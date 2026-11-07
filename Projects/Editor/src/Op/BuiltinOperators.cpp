@@ -395,14 +395,17 @@ void EditorApp::RegisterBuiltinOperators()
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { StartPlayMode(); return OpResult::Ok(); },
         [this, hasScene, inEditor, buildBusy](const OpContext& c, const OpArgs& a) {
-            return hasScene(c, a) && inEditor(c, a) && !m_standalonePlay.IsActive() && !buildBusy(c, a);
+            return hasScene(c, a) && inEditor(c, a) && !m_standalonePlay.IsActive()
+                && !m_pendingShadowBakePlayScene && !buildBusy(c, a);
         });
 
     add("play.stop", "Stop", "Play",
         "Play モードを停止して編集状態へ戻す。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { StopPlayMode(); return OpResult::Ok(); },
-        [this, hasScene, inEditor](const OpContext& c, const OpArgs& a) { return m_standalonePlay.IsActive() || (hasScene(c, a) && !inEditor(c, a)); });
+        [this, hasScene, inEditor](const OpContext& c, const OpArgs& a) {
+            return m_pendingShadowBakePlayScene || m_standalonePlay.IsActive() || (hasScene(c, a) && !inEditor(c, a));
+        });
 
     /// @note 開始と停止を 1 キーへまとめたもの。停止は常に許し、開始だけ buildBusy を見る。
     add("play.toggle", "Play / Stop", "Play",
@@ -410,7 +413,7 @@ void EditorApp::RegisterBuiltinOperators()
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { TogglePlayMode(); return OpResult::Ok(); },
         [this, hasScene, inEditor, buildBusy](const OpContext& c, const OpArgs& a) {
-            if (m_standalonePlay.IsActive()) return true;
+            if (m_standalonePlay.IsActive() || m_pendingShadowBakePlayScene) return true;
             if (!hasScene(c, a)) return false;
             return inEditor(c, a) ? !buildBusy(c, a) : true;
         });

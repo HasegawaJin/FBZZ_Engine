@@ -129,14 +129,14 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
     /// @see Docs/design/water-gameplay-visuals.md
     /// @see Docs/design/graphics-quality.md
     const std::vector<std::string> forward{
-        "ForwardOpaque", "TerrainForward", "Sky", "SunMoon", "VolumetricCloud",
+        "ForwardOpaque", "TerrainForward", "TerrainHiZInstances", "Sky", "SunMoon", "VolumetricCloud",
     };
     const std::vector<std::string> forwardPrepass{
         "DepthNormalPrepass", "TerrainGBuffer", "GTAO", "ContactShadows", "SSAO",
-        "ForwardOpaque", "TerrainForward", "Sky", "SunMoon", "VolumetricCloud", "SSR", "SSRResolve",
+        "ForwardOpaque", "TerrainForward", "TerrainHiZInstances", "Sky", "SunMoon", "VolumetricCloud", "SSR", "SSRResolve",
     };
     const std::vector<std::string> deferred{
-        "DeferredGBuffer", "TerrainGBuffer", "DeferredDepthCopy", "GTAO", "ContactShadows",
+        "DeferredGBuffer", "TerrainGBuffer", "TerrainHiZInstances", "DeferredDepthCopy", "GTAO", "ContactShadows",
         "SSAO", "DeferredLighting", "Sky", "SunMoon", "VolumetricCloud",
         "DeferredSkinnedForward", "FiberForward", "SSR", "SSRResolve",
     };
@@ -176,7 +176,7 @@ TEST_F(GeometryPipelineTest, HybridScreenFirstFreezesBaselineBeforeTracingAndRes
         pipeline.AddRawPass("RayReflection", {}, {}, []() {});
     }, true);
     const std::vector<std::string> expected{
-        "DeferredGBuffer", "TerrainGBuffer", "DeferredDepthCopy", "GTAO", "ContactShadows", "SSAO",
+        "DeferredGBuffer", "TerrainGBuffer", "TerrainHiZInstances", "DeferredDepthCopy", "GTAO", "ContactShadows", "SSAO",
         "ReflectionSourceLighting", "Sky", "SunMoon", "SSR", "RayReflection",
         "DeferredLighting", "VolumetricCloud", "DeferredSkinnedForward", "FiberForward",
     };

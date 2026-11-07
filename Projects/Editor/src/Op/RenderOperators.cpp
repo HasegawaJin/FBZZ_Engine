@@ -462,10 +462,9 @@ void RegisterRenderOperators(OperatorRegistry& registry)
 
     registry.Register(MakeContextToggle(
         "render.scene_view_occlusion_culling", "Scene View Occlusion Culling",
-        "Scene View で CPU オクルージョンカリングを効かせる。既定は OFF。"
-        "遮蔽者はメッシュ実体ではなくバウンディング球の近似なので、"
-        "有効にすると見えているものが消えることがある。"
-        "「消えた原因がカリングか」を切り分けるときに入れ切りする。"
+        "Scene View で地形と不透明メッシュによる遮蔽判定を有効にする。既定は OFF。"
+        "山や壁に隠れたメッシュ・大量配置・Fiber・水面・エフェクトの描画を省く。"
+        "境界や不透明被覆が不明な場合は描画を継続する。"
         "Scene View はデバッグカメラで描くため CameraComponent の設定は効かず、"
         "編集ビューでの有効・無効はここでしか切り替えられない。",
         &EditorContext::sceneViewOcclusionCulling));

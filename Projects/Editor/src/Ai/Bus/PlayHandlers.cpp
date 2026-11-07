@@ -5,6 +5,7 @@
 #include "BusInternal.hpp"
 
 #include <Editor/Ai/OperatorBridge.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Renderer/Camera.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Input/Input.hpp>
@@ -193,7 +194,8 @@ Outcome DoPlayControl(editor::EditorContext& ctx, const JsonValue& payload, bool
         if (standaloneActive || !ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play は Editor 状態からのみ開始できます");
         operatorId = "play.start";
     } else if (action == "stop") {
-        if (!standaloneActive && ctx.playMode->IsInEditor()) return Outcome::Err("INVALID_PLAY_STATE", "Play Mode は開始されていません");
+        if (!standaloneActive && ctx.playMode->IsInEditor() && !editor::CanInvokeOperator(ctx, "play.stop"))
+            return Outcome::Err("INVALID_PLAY_STATE", "Play Mode は開始されていません");
         operatorId = "play.stop";
     } else if (action == "pause") {
         if (!ctx.playMode->IsPlaying()) return Outcome::Err("INVALID_PLAY_STATE", "一時停止は Playing 状態でのみ実行できます");

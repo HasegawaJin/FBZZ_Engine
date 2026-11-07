@@ -8,6 +8,7 @@
 #include <Graphics/Renderer/BuiltinShader.hpp>
 #include <Graphics/Renderer/ShaderDependencyTracker.hpp>
 #include <Graphics/Passes/Geometry/ComputedSkinningDemand.hpp>
+#include <Graphics/Pipeline/RenderPipeline.hpp>
 #include <limits>
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
@@ -162,6 +163,7 @@ public:
     bool allowGeometry = false;
     bool allowRenderTargets = false;
     uint32_t constantBufferUpdates = 0;
+    uint32_t drawSubmits = 0;
     std::function<void()> beforeConstantBufferCreate;
     std::function<void(size_t)> afterConstantBufferUpdate;
     TestShader* lastCreatedShader = nullptr;
@@ -188,7 +190,7 @@ public:
     void BeginFrame() override {}
     void EndFrame() override {}
     void Clear(const math::Vector4&) override {}
-    void Submit(const r::DrawCall&, r::ResourceManager&) override {}
+    void Submit(const r::DrawCall&, r::ResourceManager&) override { ++drawSubmits; }
     void Dispatch(const r::ComputeCall&, r::ResourceManager&) override {}
     void Resize(uint32_t, uint32_t) override {}
     uint32_t GetWidth() const override { return 1; }
@@ -1541,6 +1543,420 @@ TEST_F(ShadowPreparationRenderTest, LateNativeConsumerKeepsTheInitialFitWithoutR
     ASSERT_NE(lateObserver->snapshot, nullptr);
     EXPECT_TRUE(lateObserver->snapshot->Objects().empty());
     EXPECT_MAT4_NEAR(lateObserver->snapshot->lighting.lightVP, expected.lightVP, testkit::kTolerance);
+}
+
+TEST_F(ShadowPreparationRenderTest, UsesCurrentPoseBoundsForSkinnedDirectionalAndPunctualShadows)
+{
+    r::RenderSettings settings;
+    settings.shadowEnabled = true;
+    settings.volumetricLight.enabled = false;
+    settings.gpuInstancing = false;
+    settings.geometryDrawMode = r::GeometryDrawMode::CPU;
+    r::Camera camera;
+    r::RenderPassHandles handles;
+    handles.frameCB = m_resources->CreateConstantBuffer(sizeof(r::PerFrameCB));
+    handles.objectCB = m_resources->CreateConstantBuffer(sizeof(r::PerObjectCB));
+    handles.shadowShader = m_resources->LoadShader(ShaderPath("Shared.hlsl"));
+    handles.shadowSkinnedShader = handles.shadowShader;
+    const auto palette = m_resources->CreateConstantBuffer(sizeof(math::Matrix4) * 128);
+    const auto atlas = m_resources->CreateRenderTarget(16, 16);
+    const std::array<r::SkinnedVertex, 3> vertices{};
+    const std::array<r::Vertex, 3> deformedVertices{};
+    const uint32_t indices[]{0, 1, 2};
+    const auto source = m_resources->CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(r::SkinnedVertex));
+    const auto deformed = m_resources->CreateVertexBuffer(deformedVertices.data(), sizeof(deformedVertices), sizeof(r::Vertex));
+    const auto indexBuffer = m_resources->CreateIndexBuffer(indices, 3);
+    ASSERT_TRUE(handles.frameCB && handles.objectCB && handles.shadowShader && palette && atlas && source && deformed && indexBuffer);
+    const auto lightFrustum = math::Frustum::FromViewProjection(math::Matrix4::Identity());
+
+    for (bool punctual : {false, true}) {
+        for (bool computed : {false, true}) {
+            for (int boundsCase = 0; boundsCase < 3; ++boundsCase) {
+                SCOPED_TRACE("punctual=" + std::to_string(punctual) + " computed=" + std::to_string(computed)
+                    + " boundsCase=" + std::to_string(boundsCase));
+                auto snapshot = std::make_shared<r::RenderScene>();
+                r::RenderObject object;
+                object.skinned = true;
+                object.colorEligible = true;
+                object.itemCount = 1;
+                object.skinningPalette = palette;
+                object.boundsCenter = {boundsCase == 1 ? 100.0f : 0.0f, 0, 0.5f};
+                object.boundsRadius = boundsCase == 2 ? 0.0f : 0.25f;
+                snapshot->objects.push_back(object);
+                r::RenderMeshItem item;
+                item.vertexBuffer = item.skinningVertexBuffer = source;
+                item.deformedVertexBuffer = computed ? deformed : r::ResourceHandle<r::BufferTag>{};
+                item.indexBuffer = indexBuffer;
+                item.indexCount = item.vertexCount = 3;
+                /// @note The bind pose is outside when the animated pose is visible or unknown, and inside for the excluded animated pose.
+                item.boundsCenter = {boundsCase == 1 ? 0.0f : 100.0f, 0, 0.5f};
+                item.boundsRadius = 0.25f;
+                snapshot->items.push_back(item);
+                scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+                context.renderScene = snapshot;
+                context.resourceRegistry.BindTarget("ShadowMap", atlas);
+                context.resourceRegistry.BindTarget("PunctualShadowMap", atlas);
+                context.shadowStrength = punctual ? 0.0f : 1.0f;
+                context.shadowCascadeCount = 1;
+                context.shadowCascades[0].frustum = lightFrustum;
+                context.shadowCascades[0].texelWorldSize = 0.01f;
+                context.punctualShadowViewCount = punctual ? 1 : 0;
+                context.punctualShadowViews[0].frustum = lightFrustum;
+                context.punctualShadowViews[0].texelAngularSize = 0;
+                const auto before = m_backend.drawSubmits;
+
+                r::ExecuteShadowPass(context);
+
+                const uint32_t expected = boundsCase == 1 ? 0u : 1u;
+                EXPECT_EQ(m_backend.drawSubmits - before, expected);
+                EXPECT_EQ(context.statsShadowDrawCalls, expected);
+                EXPECT_EQ(context.statsShadowTriangleCount, expected);
+            }
+        }
+    }
+}
+
+TEST_F(MaterialExtractionSharingTest, FiltersOpaqueCoverageInForwardAndGBufferOcclusionPasses)
+{
+    m_backend.allowRenderTargets = true;
+    r::RenderPassHandles handles;
+    handles.frameCB = m_resources->CreateConstantBuffer(sizeof(r::PerFrameCB));
+    handles.objectCB = m_resources->CreateConstantBuffer(sizeof(r::PerObjectCB));
+    handles.lightCB = m_resources->CreateConstantBuffer(sizeof(r::LightConstantsCB));
+    handles.shadowCB = m_resources->CreateConstantBuffer(sizeof(r::ShadowConstantsCB));
+    handles.punctualShadowCB = m_resources->CreateConstantBuffer(sizeof(r::PunctualShadowConstantsCB));
+    handles.advancedGraphicsCB = m_resources->CreateConstantBuffer(sizeof(r::AdvancedGraphicsCB));
+    handles.gbufferShader = m_resources->LoadShader(ShaderPath("Shared.hlsl"));
+    handles.gbufferSkinnedShader = handles.gbufferShader;
+    const auto palette = m_resources->CreateConstantBuffer(sizeof(math::Matrix4) * 128);
+    const auto target = m_resources->CreateRenderTarget(16, 16);
+    const uint8_t albedoPixel[]{255, 255, 255, 255};
+    const auto albedoTexture = m_resources->CreateTexture(albedoPixel, 1, 1);
+    std::array<r::Vertex, 8> vertices{};
+    const std::array<math::Vector3, 8> positions{{
+        {-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+        {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}
+    }};
+    for (size_t i = 0; i < vertices.size(); ++i) vertices[i].position = positions[i];
+    const uint32_t indices[]{0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7,
+        0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2};
+    const auto vertexBuffer = m_resources->CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(r::Vertex));
+    const auto indexBuffer = m_resources->CreateIndexBuffer(indices, 36);
+    ASSERT_TRUE(handles.frameCB && handles.objectCB && handles.lightCB && handles.shadowCB && handles.punctualShadowCB
+        && handles.advancedGraphicsCB && handles.gbufferShader && palette && target && albedoTexture && vertexBuffer && indexBuffer);
+    r::Camera camera;
+    camera.m_position = {};
+    camera.LookAt({0, 0, 1});
+    camera.m_projection = r::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 7.2f;
+    camera.m_aspect = 128.0f / 72.0f;
+    camera.m_near = 0.1f;
+    camera.m_far = 100;
+    const std::array<const char*, 24> cases{{"opaque", "alpha-cutout", "fully-clipped", "lod-fade", "wind",
+        "unknown-vertex", "unknown-opacity", "missing-variants", "depth-bias", "slope-bias", "wireframe",
+        "missing-interior", "invalid-material", "transparent", "skinned", "nan-cutoff", "nan-alpha", "nan-wind",
+        "negative-alpha", "opaque-output", "zero-alpha-without-cutout", "alpha-texture-mask", "alpha-texture-handle",
+        "opaque-output-with-texture"}};
+
+    for (bool gbuffer : {false, true}) {
+        for (size_t materialCase = 0; materialCase < cases.size(); ++materialCase) {
+            SCOPED_TRACE("gbuffer=" + std::to_string(gbuffer) + " case=" + cases[materialCase]);
+            r::RenderSettings settings;
+            settings.gpuInstancing = false;
+            settings.geometryDrawMode = r::GeometryDrawMode::CPU;
+            auto snapshot = std::make_shared<r::RenderScene>();
+            for (uint32_t i = 0; i < 2; ++i) {
+                r::RenderObject object;
+                object.firstItem = i;
+                object.itemCount = 1;
+                object.colorEligible = true;
+                object.boundsCenter = object.sortPosition = {0, 0, i == 0 ? 10.0f : 20.0f};
+                object.boundsRadius = i == 0 ? std::sqrt(3.0f) : 0.01f;
+                object.world.m[0][0] = object.world.m[1][1] = object.world.m[2][2] = i == 0 ? 1.0f : 0.005f;
+                object.world.m[2][3] = object.boundsCenter.z;
+                object.skinningPalette = palette;
+                r::RenderMeshItem item;
+                item.objectIndex = i;
+                item.vertexBuffer = item.skinningVertexBuffer = vertexBuffer;
+                item.indexBuffer = indexBuffer;
+                item.indexCount = 36;
+                item.vertexCount = 8;
+                item.occluderRadius = i == 0 ? 1.0f : 0.0f;
+                item.material.valid = true;
+                item.material.shader = handles.gbufferShader;
+                item.material.paramsBuffer = m_resources->CreateConstantBuffer(96);
+                ASSERT_TRUE(item.material.paramsBuffer);
+                item.material.capabilities.gbufferEquivalentShader = true;
+                item.material.shaderCapabilities.vertex = r::ShaderVertexContract::STANDARD_SURFACE;
+                item.material.shaderCapabilities.surface = r::ShaderSurfaceContract::STANDARD_PBR;
+                item.material.shaderCapabilities.opacity = r::ShaderOpacityContract::ALPHA_CLIP;
+                item.material.shaderCapabilities.variants = r::ShaderVariantSet::STANDARD_SURFACE;
+                const auto writeFloat = [&](size_t offset, float value) {
+                    std::memcpy(item.material.gbufferParams.data() + offset, &value, sizeof(value));
+                };
+                writeFloat(12, 1.0f);
+                item.forwardMaterial = item.material;
+                if (i == 0) {
+                    /// @note Forward must validate the material actually submitted, even when the GBuffer alternative remains fully opaque.
+                    auto& material = gbuffer ? item.material : item.forwardMaterial;
+                    const auto set = [&](size_t offset, float value) {
+                        std::memcpy(material.gbufferParams.data() + offset, &value, sizeof(value));
+                    };
+                    const uint32_t albedoBit = 1;
+                    switch (materialCase) {
+                    case 1: set(64, 0.5f); break;
+                    case 2: set(64, 0.5f); set(12, 0.0f); break;
+                    case 3: object.lodDither = 0.5f; break;
+                    case 4: set(68, 0.1f); break;
+                    case 5: material.shaderCapabilities.vertex = r::ShaderVertexContract::UNKNOWN; break;
+                    case 6: material.shaderCapabilities.opacity = r::ShaderOpacityContract::UNKNOWN; break;
+                    case 7: material.shaderCapabilities.variants = r::ShaderVariantSet::NONE; break;
+                    case 8: material.depthBias = 1; break;
+                    case 9: material.depthBiasSlope = 1; break;
+                    case 10: settings.viewMode = r::ViewMode::WireframeLit; break;
+                    case 11: item.occluderRadius = 0; break;
+                    case 12: material.valid = false; break;
+                    case 13:
+                        item.material.capabilities.blend = item.forwardMaterial.capabilities.blend = r::BlendMode::ALPHA_BLEND;
+                        break;
+                    case 14: object.skinned = true; break;
+                    case 15: set(64, std::numeric_limits<float>::quiet_NaN()); break;
+                    case 16: set(12, std::numeric_limits<float>::quiet_NaN()); break;
+                    case 17: set(68, std::numeric_limits<float>::quiet_NaN()); break;
+                    case 18: set(12, -1.0f); break;
+                    case 19: material.shaderCapabilities.opacity = r::ShaderOpacityContract::OPAQUE_OUTPUT; break;
+                    case 20: set(12, 0.0f); break;
+                    case 21: std::memcpy(material.gbufferParams.data() + 80, &albedoBit, sizeof(albedoBit)); break;
+                    case 22: material.textures[0] = albedoTexture; break;
+                    case 23:
+                        material.shaderCapabilities.opacity = r::ShaderOpacityContract::OPAQUE_OUTPUT;
+                        std::memcpy(material.gbufferParams.data() + 80, &albedoBit, sizeof(albedoBit));
+                        material.textures[0] = albedoTexture;
+                        break;
+                    default: break;
+                    }
+                }
+                if (gbuffer) item.forwardMaterial = item.material;
+                const auto& submittedMaterial = gbuffer ? item.material : item.forwardMaterial;
+                m_resources->Update(submittedMaterial.paramsBuffer, submittedMaterial.gbufferParams.data(), submittedMaterial.gbufferParams.size());
+                snapshot->objects.push_back(object);
+                snapshot->items.push_back(item);
+            }
+            renderer::OcclusionCuller culler;
+            scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, target, UINT32_MAX, handles);
+            context.renderScene = snapshot;
+            context.occlusionCuller = &culler;
+            context.occlusionCullingEnabled = true;
+            context.frustumCullingEnabled = false;
+            context.isDeferred = gbuffer;
+            context.resourceRegistry.BindTarget("HDR", target);
+            context.resourceRegistry.BindTarget("GBuffer", target);
+            r::PrepareViewOcclusion(context);
+            const auto before = m_backend.drawSubmits;
+
+            if (gbuffer) r::ExecuteGBufferPass(context);
+            else r::ExecuteForwardPasses(context);
+
+            const bool provenOpaque = materialCase == 0 || materialCase == 19 || materialCase == 20 || materialCase == 23;
+            const bool omittedNear = materialCase == 13 || (!gbuffer && materialCase == 12);
+            const uint32_t expected = provenOpaque || omittedNear ? 1u : 2u;
+            EXPECT_EQ(m_backend.drawSubmits - before, expected);
+            EXPECT_EQ(context.statsDrawCalls, expected);
+            EXPECT_EQ(context.statsOcclusionCulled, provenOpaque ? 1 : 0);
+        }
+    }
+}
+
+TEST_F(MaterialExtractionSharingTest, InvalidatesCpuAndGpuOcclusionWitnessAfterViewOrSnapshotChanges)
+{
+    r::RenderPassHandles handles;
+    const auto shader = m_resources->LoadShader(ShaderPath("Shared.hlsl"));
+    std::array<r::Vertex, 8> vertices{};
+    const std::array<math::Vector3, 8> positions{{
+        {-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+        {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}
+    }};
+    for (size_t index = 0; index < vertices.size(); ++index) vertices[index].position = positions[index];
+    const uint32_t indices[]{0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7,
+        0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2};
+    const auto vb = m_resources->CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(r::Vertex));
+    const auto ib = m_resources->CreateIndexBuffer(indices, 36);
+    ASSERT_TRUE(shader && vb && ib);
+    const std::array<const char*, 23> cases{{"snapshot", "serial", "camera-position", "camera-rotation", "aspect",
+        "near", "projection", "jitter", "layer", "distance", "layer-distance", "small-object", "frustum-values",
+        "disabled-pass", "wireframe", "pipeline", "culler", "viewport", "pass-dependencies", "padding",
+        "missing-snapshot", "culler-reset", "resource-reset"}};
+    for (size_t mutation = 0; mutation < cases.size(); ++mutation) {
+        SCOPED_TRACE(cases[mutation]);
+        r::Camera camera;
+        camera.m_position = {};
+        camera.LookAt({0, 0, 1});
+        camera.m_projection = r::ProjectionMode::Orthographic;
+        camera.m_orthoHeight = 7.2f; camera.m_aspect = 128.0f / 72.0f;
+        camera.m_near = 0.1f; camera.m_far = 100;
+        auto frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+        r::RenderSettings settings;
+        auto snapshot = std::make_shared<r::RenderScene>();
+        snapshot->snapshotSerial = 1; snapshot->sceneGeneration = 2; snapshot->frameStamp = 3;
+        r::RenderObject object;
+        object.colorEligible = true; object.itemCount = 1;
+        object.boundsCenter = {0, 0, 10}; object.boundsRadius = std::sqrt(3.0f);
+        object.world.m[2][3] = 10;
+        snapshot->objects.push_back(object);
+        r::RenderMeshItem item;
+        item.vertexBuffer = vb; item.indexBuffer = ib; item.indexCount = 36; item.vertexCount = 8;
+        item.occluderRadius = 1;
+        item.material.valid = true; item.material.shader = shader;
+        item.material.shaderCapabilities.vertex = r::ShaderVertexContract::STANDARD_SURFACE;
+        item.material.shaderCapabilities.surface = r::ShaderSurfaceContract::STANDARD_PBR;
+        item.material.shaderCapabilities.opacity = r::ShaderOpacityContract::OPAQUE_OUTPUT;
+        item.material.shaderCapabilities.variants = r::ShaderVariantSet::STANDARD_SURFACE;
+        const float alpha = 1;
+        std::memcpy(item.material.gbufferParams.data() + 12, &alpha, sizeof(alpha));
+        item.forwardMaterial = item.material;
+        snapshot->items.push_back(item);
+        r::OcclusionCuller culler, otherCuller;
+        scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+        context.renderScene = snapshot; context.occlusionCuller = &culler;
+        context.occlusionCullingEnabled = true; context.frustumCullingEnabled = false;
+        context.cameraFrustum = &frustum;
+        r::PrepareViewOcclusion(context);
+        ASSERT_TRUE(r::IsViewOcclusionCurrent(context));
+        ASSERT_TRUE(r::IsViewOccluded(context, {0, 0, 20}, 0.01f));
+        auto target = math::Matrix4::Identity(); target.m[2][3] = 20;
+        ASSERT_TRUE(r::IsViewAabbOccluded(context, target, {-0.01f, -0.01f, -0.01f}, {0.01f, 0.01f, 0.01f}));
+        context.occlusionGpuRows = {77, 1};
+        switch (mutation) {
+        case 0: {
+            auto replacement = std::make_shared<r::RenderScene>(*snapshot);
+            replacement->items.clear(); replacement->terrains.clear();
+            context.renderScene = std::move(replacement);
+            break;
+        }
+        case 1: ++snapshot->snapshotSerial; break;
+        case 2: camera.m_position.x = 10; break;
+        case 3: camera.LookAt({1, 0, 1}); break;
+        case 4: camera.m_aspect = 2; break;
+        case 5: camera.m_near = 0.2f; break;
+        case 6: camera.m_projection = r::ProjectionMode::Perspective; break;
+        case 7: context.taaJitterNdcX = 0.1f; break;
+        case 8: context.cullingMask = 0; break;
+        case 9: context.cullMaxDistance = 5; break;
+        case 10: context.hasLayerCullDistances = true; context.cullLayerDistances[0] = 5; break;
+        case 11: context.smallObjectScreenHeight = 0.5f; break;
+        case 12: frustum = math::Frustum::FromViewProjection(math::Matrix4::Identity()); break;
+        case 13: {
+            r::RenderPassOverride over; over.name = "ForwardOpaque"; over.enabled = false;
+            settings.passOverrides.push_back(std::move(over)); break;
+        }
+        case 14: settings.viewMode = r::ViewMode::WireframeLit; break;
+        case 15: context.isDeferred = true; break;
+        case 16: context.occlusionCuller = &otherCuller; break;
+        case 17: context.width = 256; break;
+        case 18: {
+            r::RenderPassOverride over; over.name = "ForwardOpaque"; over.extraReads.push_back("LateDepth");
+            settings.passOverrides.push_back(std::move(over)); break;
+        }
+        case 19: context.cullingBoundsPadding = 1; break;
+        case 20: context.renderScene.reset(); break;
+        case 21: culler.Reset(camera); break;
+        case 22: m_resources->Reset(); break;
+        default: break;
+        }
+        EXPECT_FALSE(r::IsViewOcclusionCurrent(context));
+        EXPECT_FALSE(r::IsViewOccluded(context, {0, 0, 20}, 0.01f));
+        EXPECT_FALSE(r::IsViewAabbOccluded(context, target, {-0.01f, -0.01f, -0.01f}, {0.01f, 0.01f, 0.01f}));
+        /// @note GPU consumers use the same publication/view proof even if an earlier uploaded row handle remains present.
+        EXPECT_TRUE(context.occlusionGpuRows.IsValid());
+    }
+}
+
+TEST_F(MaterialExtractionSharingTest, OccludersFollowExecutedPassesAcrossPlanCacheOverridesAndGraphCulling)
+{
+    std::array<r::Vertex, 8> vertices{};
+    const std::array<math::Vector3, 8> positions{{
+        {-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+        {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}
+    }};
+    for (size_t index = 0; index < vertices.size(); ++index) vertices[index].position = positions[index];
+    const uint32_t indices[]{0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7,
+        0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2};
+    const auto vb = m_resources->CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(r::Vertex));
+    const auto ib = m_resources->CreateIndexBuffer(indices, 36);
+    const auto shader = m_resources->LoadShader(ShaderPath("Shared.hlsl"));
+    const auto params = m_resources->CreateConstantBuffer(96);
+    ASSERT_TRUE(vb && ib && shader && params);
+    auto snapshot = std::make_shared<r::RenderScene>();
+    for (uint32_t index = 0; index < 2; ++index) {
+        r::RenderObject object;
+        object.colorEligible = true; object.firstItem = index; object.itemCount = 1;
+        object.boundsCenter = {0, 0, index == 0 ? 10.0f : 20.0f};
+        object.boundsRadius = index == 0 ? std::sqrt(3.0f) : 0.01f;
+        object.world.m[2][3] = object.boundsCenter.z;
+        snapshot->objects.push_back(object);
+        r::RenderMeshItem item;
+        item.objectIndex = index; item.vertexBuffer = vb; item.indexBuffer = ib;
+        item.indexCount = 36; item.vertexCount = 8; item.occluderRadius = index == 0 ? 1.0f : 0.0f;
+        item.material.valid = true; item.material.shader = shader; item.material.paramsBuffer = params;
+        item.material.shaderCapabilities.vertex = r::ShaderVertexContract::STANDARD_SURFACE;
+        item.material.shaderCapabilities.surface = r::ShaderSurfaceContract::STANDARD_PBR;
+        item.material.shaderCapabilities.opacity = r::ShaderOpacityContract::OPAQUE_OUTPUT;
+        item.material.shaderCapabilities.variants = r::ShaderVariantSet::STANDARD_SURFACE;
+        const float alpha = 1;
+        std::memcpy(item.material.gbufferParams.data() + 12, &alpha, sizeof(alpha));
+        item.forwardMaterial = item.material;
+        snapshot->items.push_back(item);
+    }
+    r::Camera camera;
+    camera.m_position = {}; camera.LookAt({0, 0, 1});
+    camera.m_projection = r::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 7.2f; camera.m_aspect = 128.0f / 72.0f;
+    camera.m_near = 0.1f; camera.m_far = 100;
+    r::RenderSettings settings;
+    r::RenderPassHandles handles;
+    r::OcclusionCuller culler;
+    scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+    context.renderScene = snapshot; context.occlusionCuller = &culler;
+    context.occlusionCullingEnabled = true; context.frustumCullingEnabled = false;
+    r::RenderPipeline pipeline;
+    r::ResolvedRenderPlan resolved;
+    r::GpuProfilerViewMetadata view;
+    uint64_t previousGeneration = 0;
+    struct Stage { bool readSource; bool disabled; bool occluded; };
+    const Stage stages[]{{true, false, true}, {true, false, true}, {true, true, false},
+        {true, true, false}, {false, false, false}, {false, false, false}, {true, false, true}};
+    for (size_t frame = 0; frame < std::size(stages); ++frame) {
+        SCOPED_TRACE(frame);
+        const auto stage = stages[frame];
+        pipeline.BeginBuild();
+        r::RenderGraph::ResourceDesc desc;
+        desc.kind = r::RenderGraph::ResourceKind::Buffer; desc.external = true; desc.transient = false;
+        desc.byteSize = sizeof(vertices); desc.stride = sizeof(r::Vertex);
+        pipeline.DeclareBuffer("UnusedSource", vb, desc);
+        pipeline.DeclareBuffer("ObserverOutput", vb, desc);
+        pipeline.SetOutputs({"ObserverOutput"});
+        r::RenderPassOverride over; over.name = "ForwardOpaque"; over.enabled = !stage.disabled;
+        settings.passOverrides = {over};
+        pipeline.SetPassOverrides(settings.passOverrides);
+        int sourceRuns = 0, observerRuns = 0;
+        bool occluded = false;
+        pipeline.AddRawPass("ForwardOpaque", {}, {"UnusedSource"}, [&] { ++sourceRuns; });
+        const auto observer = [&] {
+            ++observerRuns;
+            occluded = r::IsViewOccluded(context, snapshot->objects[1].boundsCenter, snapshot->objects[1].boundsRadius);
+        };
+        if (stage.readSource) pipeline.AddRawPass("OcclusionObserver", {"UnusedSource"}, {"ObserverOutput"}, observer, false);
+        else pipeline.AddRawPass("OcclusionObserver", {}, {"ObserverOutput"}, observer, false);
+        ASSERT_TRUE(pipeline.Execute(context, nullptr, &view, &resolved));
+        EXPECT_EQ(observerRuns, 1);
+        EXPECT_EQ(sourceRuns, stage.occluded ? 1 : 0);
+        EXPECT_EQ(occluded, stage.occluded);
+        EXPECT_EQ(pipeline.LastReport().culledPasses.size(), !stage.disabled && !stage.readSource ? 1u : 0u);
+        const auto generation = pipeline.LastGpuProfilerView().planGeneration;
+        if (frame == 1 || frame == 3 || frame == 5) EXPECT_EQ(generation, previousGeneration);
+        else EXPECT_GT(generation, previousGeneration);
+        previousGeneration = generation;
+    }
 }
 
 class ManagedFrameGeometryTest : public MaterialExtractionSharingTest {

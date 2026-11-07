@@ -106,6 +106,7 @@ struct RenderPassContext : renderer::RenderPassContext {
     Scene& scene;
     const physics::World* physicsWorld = nullptr;
     const RenderSystemUIOptions* uiOptions = nullptr;
+    bool directionalShadowBakeEnabled = false;
     RenderPassContext(Scene& source, renderer::IRenderer& device, renderer::ResourceManager& manager,
                       const renderer::Camera& view, const renderer::RenderSettings& options,
                       renderer::ResourceHandle<renderer::RenderTargetTag> target,

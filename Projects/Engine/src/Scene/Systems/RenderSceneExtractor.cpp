@@ -278,10 +278,11 @@ struct StaticGeometryEntry {
     uint64_t lastExtractFrame = UINT64_MAX, lastPoseChangeFrame = UINT64_MAX;
     const renderer::Mesh* mesh = nullptr;
     std::array<uint32_t, 10> pose{};
-    std::array<uint32_t, 13> meshInputs{};
+    std::array<uint32_t, 14> meshInputs{};
     math::Matrix4 world, inverseTranspose;
     math::Vector3 center{};
     float radius = 0;
+    float windPadding = 0, occluderRadius = 0;
     bool reliable = false, valid = false;
 };
 struct SpatialObjectIdentity {
@@ -400,14 +401,15 @@ std::array<uint32_t, 10> StaticPoseInputs(const Transform& transform)
     return std::bit_cast<std::array<uint32_t, 10>>(std::array<float, 10>{p.x, p.y, p.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z});
 }
 
-std::array<uint32_t, 13> StaticMeshInputs(const renderer::Mesh& mesh)
+std::array<uint32_t, 14> StaticMeshInputs(const renderer::Mesh& mesh)
 {
     const auto& c = mesh.boundsCenter;
     const auto& e = mesh.boundsExtents;
     return {mesh.vertexBuffer.id, mesh.vertexBuffer.gen, mesh.indexBuffer.id, mesh.indexBuffer.gen,
         mesh.vertexCount, mesh.indexCount, std::bit_cast<uint32_t>(c.x), std::bit_cast<uint32_t>(c.y),
         std::bit_cast<uint32_t>(c.z), std::bit_cast<uint32_t>(mesh.boundsRadius),
-        std::bit_cast<uint32_t>(e.x), std::bit_cast<uint32_t>(e.y), std::bit_cast<uint32_t>(e.z)};
+        std::bit_cast<uint32_t>(e.x), std::bit_cast<uint32_t>(e.y), std::bit_cast<uint32_t>(e.z),
+        std::bit_cast<uint32_t>(mesh.occlusionRadius)};
 }
 
 /// @note Only internally published immutable snapshots use this bounded index; unknown or evicted snapshots retain full discovery.
@@ -1142,6 +1144,15 @@ renderer::RenderObject ExtractObject(GameObject& go, T& component, uint64_t fram
     return object;
 }
 
+float WorldOccluderRadius(const math::Matrix4& world, float localRadius)
+{
+    /// @note The renderer-world transform is TRS; its minimum axis length keeps the inscribed sphere inside negative/nonuniformly scaled geometry.
+    const float sx = math::Vector3{world.m[0][0], world.m[1][0], world.m[2][0]}.Length();
+    const float sy = math::Vector3{world.m[0][1], world.m[1][1], world.m[2][1]}.Length();
+    const float sz = math::Vector3{world.m[0][2], world.m[1][2], world.m[2][2]}.Length();
+    return localRadius > 0.0f ? localRadius * (std::min)({sx, sy, sz}) : 0.0f;
+}
+
 renderer::RenderMeshItem ExtractMesh(const math::Matrix4& world, float maximumScale, const renderer::Mesh& mesh)
 {
     renderer::RenderMeshItem item;
@@ -1155,6 +1166,7 @@ renderer::RenderMeshItem ExtractMesh(const math::Matrix4& world, float maximumSc
     const auto bounds = ComputeWorldBounds(world, maximumScale, mesh);
     item.boundsCenter = bounds.center;
     item.boundsRadius = mesh.boundsRadius > 0.0f ? bounds.radius : 0.0f;
+    item.occluderRadius = WorldOccluderRadius(world, mesh.occlusionRadius);
     return item;
 }
 
@@ -1328,7 +1340,7 @@ public:
             auto [found, inserted] = m_meshIndices.try_emplace(&mesh, m_meshes.size());
             if (inserted) m_meshes.push_back({mesh.vertexBuffer, mesh.indexBuffer, mesh.vertexCount, mesh.indexCount,
                 mesh.isSkinned ? sizeof(renderer::SkinnedVertex) : sizeof(renderer::Vertex),
-                mesh.boundsCenter, mesh.boundsRadius, IsReliableOccluder(mesh)});
+                mesh.boundsCenter, mesh.boundsRadius, mesh.occlusionRadius, IsReliableOccluder(mesh)});
             m_lastMesh = &mesh; m_lastIndex = found->second;
         }
         const auto& shared = m_meshes[m_lastIndex];
@@ -1343,6 +1355,7 @@ public:
             world.m[1][0]*c.x + world.m[1][1]*c.y + world.m[1][2]*c.z + world.m[1][3],
             world.m[2][0]*c.x + world.m[2][1]*c.y + world.m[2][2]*c.z + world.m[2][3]};
         item.boundsRadius = shared.radius > 0.0f ? shared.radius * maximumScale + 0.0f : 0.0f;
+        item.occluderRadius = WorldOccluderRadius(world, shared.occlusionRadius);
         return item;
     }
 private:
@@ -1352,6 +1365,7 @@ private:
         size_t stride;
         math::Vector3 center;
         float radius;
+        float occlusionRadius;
         bool reliable;
     };
     renderer::RenderScene& m_output;
@@ -1371,6 +1385,11 @@ __forceinline renderer::RenderObject ExtractUncachedStaticObject(GameObject& go,
     auto object = ExtractObject(go, component, frame);
     object.firstItem = static_cast<uint32_t>(output.items.size());
     auto& item = denseGeometry.Append(*component.mesh, object.world, ComputeWorldBoundsScale(object.world));
+    const float windPadding = ComputeLeafWindBoundsPadding(go, 1);
+    object.leafWindBoundsPadding = windPadding;
+    if (windPadding < 0.0f) item.boundsRadius = 0.0f;
+    else if (item.boundsRadius > 0.0f) item.boundsRadius += windPadding;
+    if (windPadding != 0.0f) item.occluderRadius = 0.0f;
     object.boundsCenter = item.boundsCenter; object.boundsRadius = item.boundsRadius;
     object.itemCount = 1;
     item.objectIndex = static_cast<uint32_t>(output.objects.size());
@@ -1405,20 +1424,22 @@ renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& s
     if (!sameOwner) entry.lastPoseChangeFrame = UINT64_MAX;
     else if (poseChanged) entry.lastPoseChangeFrame = frame;
     const auto meshInputs = StaticMeshInputs(*component.mesh);
+    const float windPadding = ComputeLeafWindBoundsPadding(go, 1);
     if (!entry.valid || entry.entity != entity || entry.lifetime != lifetime || entry.mesh != component.mesh
-        || entry.pose != pose || entry.meshInputs != meshInputs) {
+        || entry.pose != pose || entry.meshInputs != meshInputs || entry.windPadding != windPadding) {
         boundsChanged = true;
         if (entry.entity.IsValid()) denseGeometry.MarkExistingChange();
         std::optional<profiler::ProfileScope> rebuildProfile;
         if (profiler::Profiler::IsEnabled()) rebuildProfile.emplace(
             profiler::ProfilerMarker("RenderSceneExtractor::StaticGeometryRebuild"));
         entry.entity = entity; entry.lifetime = lifetime; entry.mesh = component.mesh;
-        entry.pose = pose; entry.meshInputs = meshInputs;
+        entry.pose = pose; entry.meshInputs = meshInputs; entry.windPadding = windPadding;
         entry.world = go.transform.GetWorldMatrix();
         entry.inverseTranspose = math::Matrix4::InverseTransposeAffine(entry.world);
         const auto bounds = ComputeWorldBounds(entry.world, ComputeWorldBoundsScale(entry.world), *component.mesh);
         entry.center = bounds.center;
-        entry.radius = component.mesh->boundsRadius > 0.0f ? bounds.radius : 0.0f;
+        entry.radius = component.mesh->boundsRadius > 0.0f && windPadding >= 0.0f ? bounds.radius + windPadding : 0.0f;
+        entry.occluderRadius = windPadding == 0.0f ? WorldOccluderRadius(entry.world, component.mesh->occlusionRadius) : 0.0f;
         entry.reliable = IsReliableOccluder(*component.mesh);
         entry.valid = true;
     }
@@ -1431,6 +1452,7 @@ renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& s
     object.castShadows = component.castShadows; object.lodVisible = component.lodVisible; object.lodDither = component.lodDither;
     object.firstItem = static_cast<uint32_t>(output.items.size()); object.itemCount = 1;
     object.boundsCenter = entry.center; object.boundsRadius = entry.radius;
+    object.leafWindBoundsPadding = entry.windPadding;
     auto& item = output.items.emplace_back();
     item.objectIndex = static_cast<uint32_t>(output.objects.size());
     item.vertexBuffer = item.skinningVertexBuffer = component.mesh->vertexBuffer;
@@ -1438,6 +1460,7 @@ renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& s
     item.vertexCount = component.mesh->vertexCount; item.indexCount = component.mesh->indexCount;
     item.vertexStride = sizeof(renderer::Vertex);
     item.boundsCenter = entry.center; item.boundsRadius = entry.radius; item.reliableOccluder = entry.reliable;
+    item.occluderRadius = entry.occluderRadius;
     return object;
 }
 
@@ -1482,6 +1505,7 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
     output.frameStamp = frameStamp;
     const auto lodRenderers = rayTracingInputs ? CollectRayLodRenderers(scene, output.rayLodDiagnostics)
         : std::unordered_map<uint64_t, RayLodSelection>{};
+    std::optional<std::unordered_map<uint64_t, RayLodSelection>> bakeLodRenderers;
     const auto objectsProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSceneExtractor::GeometryObjects", "Rendering"));
     auto& candidates = s_renderGeometryCandidates;
@@ -1528,6 +1552,16 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
                 object.rayVisible = lod->second.visible;
                 object.rayLodSelectionRequired = lod->second.ambiguous;
             }
+            if (mr->bakeStaticShadow) {
+                if (!rayTracingInputs && !bakeLodRenderers) {
+                    std::vector<renderer::RenderRayLodDiagnostic> unusedDiagnostics;
+                    bakeLodRenderers = CollectRayLodRenderers(scene, unusedDiagnostics);
+                }
+                const auto& bakeLods = rayTracingInputs ? lodRenderers : *bakeLodRenderers;
+                object.shadowBakeStatic = !bakeLods.contains(EntityKey(go.GetID()));
+                if (object.shadowBakeStatic)
+                    output.shadowBakeMeshObjects.push_back(static_cast<uint32_t>(output.objects.size()));
+            }
             if (spatialUpdates.Enabled())
                 spatialUpdates.Append(id, staticMeshes.GetLifetime(id), false, boundsChanged);
             applyColorEligibility(object);
@@ -1545,6 +1579,7 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
             object.rayLodSelectionRequired = lod->second.ambiguous;
         }
         object.skinned = true;
+        object.leafWindBoundsPadding = ComputeLeafWindBoundsPadding(go, smr->SubmeshCount());
         object.firstItem = static_cast<uint32_t>(output.items.size());
         /// @note No callbacks run in this object traversal; every submesh uses the same current transform without retaining it across views.
         const float maximumScale = ComputeWorldBoundsScale(object.world);
@@ -1634,7 +1669,7 @@ RenderFrameGeometryItem CompactGeometryItem(const renderer::RenderMeshItem& item
         item.vertexBuffer, item.indexBuffer, item.skinningVertexBuffer, item.deformedVertexBuffer,
         item.preparedSkinning, item.preparedSkinningWrite, item.indexCount, item.vertexCount,
         item.vertexContentVersion, item.indexContentVersion, item.deformedContentVersion,
-        item.vertexStride, item.vertexPositionOffset, item.reliableOccluder, item.boundsCenter, item.boundsRadius};
+        item.vertexStride, item.vertexPositionOffset, item.reliableOccluder, item.boundsCenter, item.boundsRadius, item.occluderRadius};
 }
 
 /// @pre item retains default per-view state; only geometry fields may have been restored into it.
@@ -1659,6 +1694,7 @@ void RestoreGeometryItemInto(const RenderFrameGeometryItem& geometry, renderer::
     item.reliableOccluder = geometry.reliableOccluder;
     item.boundsCenter = geometry.boundsCenter;
     item.boundsRadius = geometry.boundsRadius;
+    item.occluderRadius = geometry.occluderRadius;
 }
 
 renderer::RenderMeshItem RestoreGeometryItem(const RenderFrameGeometryItem& geometry)
@@ -1693,7 +1729,7 @@ RenderFrameGeometryItem CompactStaticRasterGeometryItem(const renderer::RenderMe
     return {item.objectIndex, item.materialSlot, item.sourceSubmesh,
         item.vertexBuffer, item.indexBuffer, item.skinningVertexBuffer, {}, {}, UINT32_MAX,
         item.indexCount, item.vertexCount, 0, 0, 0, sizeof(renderer::Vertex), 0,
-        item.reliableOccluder, item.boundsCenter, item.boundsRadius};
+        item.reliableOccluder, item.boundsCenter, item.boundsRadius, item.occluderRadius};
 }
 
 /// @note Only static Raster seeds are deferred; material/selection state and any later Ray binding-repair metadata are never copied.
@@ -1748,6 +1784,9 @@ bool CachedGeometryColorEligibilityMatches(Scene& scene, const renderer::RenderS
         if (!go) return false;
         const auto* component = go->GetComponent<MaterialComponent>();
         if (object.colorEligible != (!component || component->enabled)) return false;
+        /// @note Leaf authoring can change between views without a pose notification; the frozen witness also observes asset edits and unresolved-to-ready transitions.
+        const auto* skin = object.skinned ? go->GetComponent<SkinnedMeshRenderer>() : nullptr;
+        if (ComputeLeafWindBoundsPadding(*go, skin ? skin->SubmeshCount() : 1) != object.leafWindBoundsPadding) return false;
     }
     return true;
 }
@@ -1786,13 +1825,48 @@ bool CurrentRayMaterialInputs(const RenderPassContext& ctx)
         || renderer::IsRayDebugView(ctx.settings.viewMode));
 }
 
+bool LeafWindBoundsMayHaveExpanded(Scene& scene, const renderer::RenderObject& object)
+{
+    if (!(object.boundsRadius > 0.0f)) return false;
+    auto* owner = scene.GetGameObject({object.sourceIndex, object.sourceGeneration});
+    if (!owner) return false;
+    const auto* skin = object.skinned ? owner->GetComponent<SkinnedMeshRenderer>() : nullptr;
+    const float padding = ComputeLeafWindBoundsPadding(*owner, skin ? skin->SubmeshCount() : 1);
+    return padding < 0.0f || padding > object.leafWindBoundsPadding;
+}
+
+/// @note Importer/native callbacks may grow another material after geometry was frozen; detach only affected publications and keep older views immutable.
+void FailOpenChangedLeafWindBounds(Scene& scene, renderer::RenderScene& snapshot)
+{
+    const auto objects = snapshot.Objects();
+    std::vector<renderer::RenderObject> detached;
+    bool changed = false;
+    for (size_t ordinal = 0; ordinal < objects.size(); ++ordinal) {
+        const auto& object = objects[ordinal];
+        if (!LeafWindBoundsMayHaveExpanded(scene, object)) continue;
+        if (!changed) detached.assign(objects.begin(), objects.end());
+        changed = true;
+        detached[ordinal].boundsRadius = 0.0f;
+        for (uint32_t index = object.firstItem; index < object.firstItem + object.itemCount; ++index) {
+            snapshot.items[index].boundsRadius = 0.0f;
+            snapshot.items[index].occluderRadius = 0.0f;
+        }
+    }
+    if (!changed) return;
+    snapshot.objects = std::move(detached);
+    snapshot.sharedObjects.reset();
+    /// @note The retained geometry journal certifies its original spheres; no old dirty-set may describe this fail-open publication.
+    snapshot.spatialUpdate.reset();
+}
+
 bool NeedsMaterialBindings(const material_demand_detail::View& view, const renderer::RenderScene& snapshot,
-                           std::span<const uint32_t> items)
+                           std::span<const uint32_t> items, Scene& scene)
 {
     for (uint32_t index : items) {
         if (index >= snapshot.items.size()) return true;
         const auto& item = snapshot.items[index];
         if (item.objectIndex >= snapshot.Objects().size()) return true;
+        if (LeafWindBoundsMayHaveExpanded(scene, snapshot.Objects()[item.objectIndex])) return true;
         const auto result = material_demand_detail::Evaluate(view, snapshot.Objects()[item.objectIndex], item);
         if (result.reasons != 0 || (!result.cameraEvaluated && result.matchesView)) return true;
     }
@@ -1881,11 +1955,16 @@ void CompleteBindings(RenderPassContext& context)
     const bool changed = pending.resourceOwner != context.resources.GetInstanceId()
         || pending.resourceEpoch != context.resources.GetResetVersion() || pending.resourceFrame != context.resources.FrameStamp()
         || pending.snapshot->sceneGeneration != context.scene.GetRenderSceneGeneration()
-        || pending.assetGeneration != asset::AssetManager::GetAssetGeneration();
+        || pending.assetGeneration != asset::AssetManager::GetAssetGeneration()
+        || std::any_of(pending.items.begin(), pending.items.end(), [&](uint32_t index) {
+            return index < pending.snapshot->items.size()
+                && pending.snapshot->items[index].objectIndex < pending.snapshot->Objects().size()
+                && LeafWindBoundsMayHaveExpanded(context.scene, pending.snapshot->Objects()[pending.snapshot->items[index].objectIndex]);
+        });
     if (!changed) {
         const auto witness = CaptureBindingDemandWitness(view);
         if (pending.noDemandWitness && *pending.noDemandWitness == witness) return;
-        if (!NeedsMaterialBindings(view, *pending.snapshot, pending.items)) {
+        if (!NeedsMaterialBindings(view, *pending.snapshot, pending.items, context.scene)) {
             pending.noDemandWitness = witness;
             return;
         }
@@ -1898,7 +1977,9 @@ void CompleteBindings(RenderPassContext& context)
     completed->snapshotSerial = ++s_renderSceneSerial;
     renderer::material_transfer_detail::MaterialTransferPayloadScope materialTransferPayloads(context.resources);
     CompletionDepthScope completionDepth;
+    FailOpenChangedLeafWindBounds(context.scene, *completed);
     RestoreMaterialBindings(context, *completed, owned->items);
+    FailOpenChangedLeafWindBounds(context.scene, *completed);
     if (preparedItems.known) RememberPreparedSnapshotItems(completed, preparedItems.indices);
     context.renderScene = std::move(completed);
 }
@@ -1984,6 +2065,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
         output = MakeRenderSnapshot();
         output->sharedObjects = frameGeometry->geometry->sharedObjects;
         output->spatialUpdate = frameGeometry->geometry->spatialUpdate;
+        output->shadowBakeMeshObjects = frameGeometry->geometry->shadowBakeMeshObjects;
         if (reusePrototype) {
             RestoreFrameGeometryItems(*frameGeometry, *output);
         } else {
@@ -2022,6 +2104,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             output->sharedObjects = FreezeRenderObjects(std::move(output->objects));
             geometry->sharedObjects = output->sharedObjects;
             geometry->spatialUpdate = output->spatialUpdate;
+            geometry->shadowBakeMeshObjects = output->shadowBakeMeshObjects;
             frameGeometry->itemGeometry.clear();
             frameGeometry->deferredItemGeometry.reset();
             /// @note Skinned inputs and Ray metadata can change before material callbacks; retain their original eager capture timing.
@@ -2287,6 +2370,11 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             input.world = go->transform.GetWorldMatrix(); input.layer = static_cast<uint32_t>(go->layer);
             input.selected = IsSelectedForOutline(*go, ctx.settings); input.castShadows = component->m_castShadows;
             input.maxDistance = component->m_maxDistance;
+            const auto& budget = component->m_vegetationBudget;
+            input.vegetationBudget = {budget.enabled,
+                static_cast<uint32_t>(std::max(0, budget.drawDetailPerCell)),
+                static_cast<uint32_t>(std::max(0, budget.nearDetailPerCell)),
+                static_cast<uint32_t>(std::max(0, budget.shadowDetailPerCell))};
             sources.push_back({definition, std::move(input), go});
         }
         if (ctx.uiOptions) for (const auto& preview : ctx.uiOptions->instancePreviews) {
@@ -2443,14 +2531,16 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
         output->environment = ctx.environment;
         output->lighting = static_cast<const renderer::RenderLightingInput&>(ctx);
     }
+    FailOpenChangedLeafWindBounds(ctx.scene, *output);
     if (!omittedBindings.empty()) {
         const auto finalView = CurrentMaterialDemandView(ctx, CurrentRayMaterialInputs(ctx));
         const bool changed = resetVersion != ctx.resources.GetResetVersion()
             || output->sceneGeneration != ctx.scene.GetRenderSceneGeneration() || resourceFrame != ctx.resources.FrameStamp();
-        if (changed || NeedsMaterialBindings(finalView, *output, omittedBindings)) {
+        if (changed || NeedsMaterialBindings(finalView, *output, omittedBindings, ctx.scene)) {
             FBZZ_PROFILE_SCOPE("RenderSceneExtractor::RestoreMaterialBindings");
             RestoreMaterialBindings(ctx, *output, omittedBindings, materialDemandTrace.Active() ? &materialDemandTrace : nullptr);
             omittedBindings.clear();
+            FailOpenChangedLeafWindBounds(ctx.scene, *output);
         }
     }
     /// @note 材質/環境の callback が ticket を完成しても、未公開 geometry 自体は再抽出しない。

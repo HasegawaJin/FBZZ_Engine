@@ -95,6 +95,12 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     "影が絵に出ないオブジェクト (小物・天井裏・遠景) を外すと、\n"
                     "見た目を変えずにシャドウ描画量をそのぶん減らせる。");
 
+            if (mr.castShadows) {
+                ImGui::Checkbox("Bake Static Shadow", &mr.bakeStaticShadow);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Include this stationary mesh in directional Auto Bake.");
+            }
+
             DrawRendererMaterialStatus(ctx, mr.mesh ? 1u : 0u, false);
         });
 

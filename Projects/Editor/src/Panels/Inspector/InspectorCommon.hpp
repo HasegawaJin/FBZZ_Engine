@@ -1570,6 +1570,21 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         ImGui::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
         ImGui::DragFloat("Shadow Bias",     &lc.shadowBias,     0.05f, 0.1f, 10.0f);
         if (lc.type == scene::LightComponent::Type::Directional) {
+            const char* shadowModes[] = {"Realtime", "Auto Bake"};
+            int shadowMode = static_cast<int>(lc.shadowMode);
+            if (ImGui::Combo("Shadow Mode", &shadowMode, shadowModes, 2))
+                lc.shadowMode = static_cast<scene::LightComponent::ShadowMode>(shadowMode);
+            if (lc.shadowMode == scene::LightComponent::ShadowMode::AUTO_BAKE) {
+                const auto drawBakeDirection = [&go](const char* label, math::Vector3& direction) {
+                    ImGui::PushID(label);
+                    widgets::DragAxes(label, direction, 0.01f, -1.0f, 1.0f);
+                    if (ImGui::SmallButton("Use Current")) direction = go.transform.Forward();
+                    ImGui::PopID();
+                };
+                drawBakeDirection("Day Direction", lc.shadowBakeDayDirection);
+                drawBakeDirection("Evening Direction", lc.shadowBakeEveningDirection);
+                ImGui::TextDisabled("Play prepares static far shadows for both directions.");
+            }
             /// @note 0 のとき "Auto" 表示。シーン全体の AABB から自動フィット。
             const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Auto" : "%.1f m";
             ImGui::DragFloat("Shadow Distance", &lc.shadowDistance, 5.0f, 0.0f, 2000.0f, distFmt);

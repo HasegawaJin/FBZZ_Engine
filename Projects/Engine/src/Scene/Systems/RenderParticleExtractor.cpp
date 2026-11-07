@@ -802,7 +802,7 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
         UpdateParticleBounds(*emitter, tf);
         const float cameraDistance = (emitter->runtime.boundsCenter - ctx.camera.m_position).Length();
         const float coverage = emitter->runtime.boundsRadius / (std::max)(cameraDistance, 0.001f);
-        const bool frustumVisible = !ctx.cameraFrustum
+        const bool frustumVisible = !ctx.frustumCullingEnabled || !ctx.cameraFrustum
             || ctx.cameraFrustum->IntersectsSphere(emitter->runtime.boundsCenter, emitter->runtime.boundsRadius);
         const bool coverageVisible = emitter->settings.culling.screenCoverageThreshold <= 0.0f
             || coverage >= emitter->settings.culling.screenCoverageThreshold;
@@ -828,6 +828,8 @@ void ExtractRenderParticles(RenderPassContext& ctx, renderer::RenderScene& outpu
 
         renderer::RenderParticleInput input;
         input.layer = static_cast<uint32_t>(go.layer); input.position = tf.worldPosition;
+        input.boundsCenter = emitter->runtime.boundsCenter;
+        input.boundsRadius = emitter->runtime.boundsRadius;
         input.priority = emitter->settings.renderPriority; input.gpu = isGpuMode;
         input.settings.sortMode = emitter->settings.sortMode;
         input.settings.trail = emitter->settings.trail;

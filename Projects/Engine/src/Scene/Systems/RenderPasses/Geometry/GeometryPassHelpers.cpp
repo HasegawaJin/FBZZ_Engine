@@ -518,6 +518,44 @@ float ComputeWorldBoundsScale(const math::Matrix4& world)
     return std::max({ sx, sy, sz });
 }
 
+float ComputeLeafWindBoundsPadding(const GameObject& go, size_t slotCount)
+{
+    const auto* component = const_cast<GameObject&>(go).GetComponent<MaterialComponent>();
+    if (!component) return 0.0f;
+    float maximumStrength = 0.0f;
+    for (size_t index = 0; index < slotCount; ++index) {
+        const auto& slot = component->SlotAt(index);
+        const auto source = asset::ReadMaterialAuthoring(slot.GetMaterialAsset());
+        const auto authoring = slot.ReadAuthoring();
+        const auto& values = authoring->Data();
+        bool known = source || (values.materialPath.empty() && !values.materialAsset.IsValid());
+        float strength = 0.0f;
+        const auto apply = [&](const auto& parameters) {
+            const auto found = parameters.find("leafWindStrength");
+            if (found == parameters.end() || found->second.size() != 1) return;
+            const float value = static_cast<float>(found->second.front());
+            if (!std::isfinite(value)) return;
+            strength = value; known = true;
+        };
+        if (source) {
+            const auto& assetValues = source->Data();
+            if (assetValues.integerParams.contains("leafWindStrength")) apply(assetValues.integerParams);
+            else apply(assetValues.params);
+        }
+        apply(values.presentationParamDefaults);
+        apply(values.paramOverrides);
+        apply(values.integerParamOverrides);
+        if (!known) return -1.0f;
+        maximumStrength = (std::max)(maximumStrength, strength);
+    }
+    /// @note LeafWind's |gust|<=1 and |flutter|<=0.5 bound the local displacement below 2*strength; shader deformation precedes renderer-world scaling.
+    /// @see Assets/Shaders/Rendering/LeafWind.hlsli FbzzLeafWind displacement.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-sin HLSL sine range.
+    const auto& scale = go.transform.worldScale;
+    const float padding = maximumStrength * 2.0f * (std::max)({std::abs(scale.x), std::abs(scale.y), std::abs(scale.z)});
+    return std::isfinite(padding) ? padding : -1.0f;
+}
+
 WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
                                const renderer::Mesh& mesh, float padding)
 {
@@ -543,6 +581,9 @@ bool ComputeSkinnedWorldBounds(const GameObject& go,
                                float padding)
 {
     if (!smr.model) return false;
+    const float windPadding = ComputeLeafWindBoundsPadding(go, smr.SubmeshCount());
+    if (windPadding < 0.0f) return false;
+    padding = (std::max)(padding, 0.0f) + windPadding;
 
     const Transform& tf = go.transform;
 
@@ -666,8 +707,10 @@ bool IsMeshVisible(RenderPassContext& ctx,
                    const renderer::Mesh& mesh)
 {
     if (mesh.boundsRadius <= 0.0f) return true;
+    const float windPadding = ComputeLeafWindBoundsPadding(go, 1);
+    if (windPadding < 0.0f) return true;
     const WorldBounds bounds =
-        ComputeWorldBounds(go.transform, mesh, ctx.cullingBoundsPadding);
+        ComputeWorldBounds(go.transform, mesh, (std::max)(ctx.cullingBoundsPadding, 0.0f) + windPadding);
     return TestBoundsVisible(ctx, go, bounds);
 }
 

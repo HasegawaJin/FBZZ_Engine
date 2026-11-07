@@ -1,0 +1,6 @@
+# @file    GpuHiZ.cs.hlsl.meta
+# @brief   GPU 遮蔽階層シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = "9ddd6ced328a4705a256d007a7fc49d2"

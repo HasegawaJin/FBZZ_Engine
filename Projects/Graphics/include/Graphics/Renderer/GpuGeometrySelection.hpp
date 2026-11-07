@@ -16,6 +16,7 @@ namespace fbzz::renderer {
 
 class IRenderer;
 class ResourceManager;
+struct ComputeCall;
 
 inline constexpr uint32_t kGpuGeometryMaxLods = 4;
 inline constexpr uint32_t kGpuGeometrySelectionGroupSize = 64;
@@ -113,6 +114,12 @@ public:
     [[nodiscard]] FBZZ_GRAPHICS_API bool Prepare(IRenderer& renderer, ResourceManager& resources,
         const GpuGeometrySelectionView& view, std::span<const GpuGeometryCandidate> candidates,
         uint32_t indexCapacityElements, uint32_t vertexCapacityElements, GpuGeometryDispatch& out);
+
+    /// @note Records input uploads. The caller must submit the owned compute request before drawing from its output.
+    /// @return Outputs change only when a request is ready. Native dispatch rejection requires a direct draw fallback.
+    [[nodiscard]] FBZZ_GRAPHICS_API bool PrepareDispatch(IRenderer& renderer, ResourceManager& resources,
+        const GpuGeometrySelectionView& view, std::span<const GpuGeometryCandidate> candidates,
+        uint32_t indexCapacityElements, uint32_t vertexCapacityElements, ComputeCall& compute, GpuGeometryDispatch& out);
 
     /// @brief service が保持する GPU buffer pool を解放する。
     FBZZ_GRAPHICS_API void Release(ResourceManager& resources);

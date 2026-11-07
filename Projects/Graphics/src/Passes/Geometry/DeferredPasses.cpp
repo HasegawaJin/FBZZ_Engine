@@ -77,19 +77,6 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
             std::sort(queue.begin(), queue.end(), [](const MeshEntry& a, const MeshEntry& b) {
                 return a.distanceSquared < b.distanceSquared;
             });
-            if (ctx.occlusionCuller && ctx.occlusionCullingEnabled) {
-                ctx.occlusionCuller->Reset(ctx.camera);
-                auto end = queue.begin();
-                for (const auto& entry : queue) {
-                    const auto bounds = RenderBounds(ctx, *entry.object);
-                    if (!ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius, entry.item->reliableOccluder)) {
-                        ++ctx.statsOcclusionCulled;
-                        continue;
-                    }
-                    *end++ = entry;
-                }
-                queue.erase(end, queue.end());
-            }
         }
         /// @note Opaque material sorting uses final canonical values, so identical per-object buffers do not split one material group; DrawCall still validates every binding.
         std::stable_sort(queue.begin(), queue.end(), [](const MeshEntry& a, const MeshEntry& b) {
@@ -154,6 +141,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         batcher.Flush();
     }
     ExecuteInstanceGBuffer(ctx);
+    ctx.terrainHiZInstancesPending = ctx.isDeferred && ctx.terrainHiZActive;
 }
 
 void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)

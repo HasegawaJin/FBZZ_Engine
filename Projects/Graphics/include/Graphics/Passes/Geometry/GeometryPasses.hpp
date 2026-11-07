@@ -12,6 +12,21 @@
 #include <vector>
 #include <algorithm>
 namespace fbzz::renderer {
+struct OcclusionPasses {
+    bool meshGBuffer = true;
+    bool meshForward = true;
+    bool terrainGBuffer = true;
+    bool terrainForward = true;
+};
+/// @note 確定した実行計画の色・深度パスだけを登録する。影・別カメラへ深度を流用しない。
+FBZZ_GRAPHICS_API void PrepareViewOcclusion(RenderPassContext& ctx, OcclusionPasses passes = {});
+FBZZ_GRAPHICS_API void RasterTerrainOccluders(RenderPassContext& ctx);
+/// @return false after a publication, camera, culling policy, pass override or resource epoch changes; CPU queries and GPU uploads must both fail open.
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsViewOcclusionCurrent(const RenderPassContext& ctx);
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsViewOccluded(const RenderPassContext& ctx, const math::Vector3& center, float radius);
+/// @param worldMargin ワールド空間の変形余白 [m]。ローカル AABB へ二重に加えない。
+[[nodiscard]] FBZZ_GRAPHICS_API bool IsViewAabbOccluded(const RenderPassContext& ctx, const math::Matrix4& world,
+    const math::Vector3& low, const math::Vector3& high, float worldMargin = 0);
 FBZZ_GRAPHICS_API void ExecuteShadowPass(RenderPassContext& ctx);
 FBZZ_GRAPHICS_API void ExecuteForwardPasses(RenderPassContext& ctx);
 FBZZ_GRAPHICS_API void ExecuteGBufferPass(RenderPassContext& ctx);
@@ -183,7 +198,8 @@ public:
         , m_frustumCulled(ctx.statsFrustumCulled)
         , m_occlusionCulled(ctx.statsOcclusionCulled)
         , m_distanceCulled(ctx.statsDistanceCulled)
-        , m_smallObjectCulled(ctx.statsSmallObjectCulled) {}
+        , m_smallObjectCulled(ctx.statsSmallObjectCulled)
+        , m_gpuVisibilityUnknownObjects(ctx.statsGpuVisibilityUnknownObjects) {}
     ~CullStatsRollback()
     {
         m_ctx.statsTotalObjects      = m_totalObjects;
@@ -191,6 +207,7 @@ public:
         m_ctx.statsOcclusionCulled   = m_occlusionCulled;
         m_ctx.statsDistanceCulled    = m_distanceCulled;
         m_ctx.statsSmallObjectCulled = m_smallObjectCulled;
+        m_ctx.statsGpuVisibilityUnknownObjects = m_gpuVisibilityUnknownObjects;
     }
     CullStatsRollback(const CullStatsRollback&) = delete;
     CullStatsRollback& operator=(const CullStatsRollback&) = delete;
@@ -202,6 +219,7 @@ private:
     int m_occlusionCulled;
     int m_distanceCulled;
     int m_smallObjectCulled;
+    int m_gpuVisibilityUnknownObjects;
 };
 
 inline void DeclareScreenSpaceOcclusionReads(PassBuilder& builder, const RenderPassContext& ctx)

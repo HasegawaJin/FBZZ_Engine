@@ -55,11 +55,25 @@ Dedicated `.meshinstances` / `.terrainpaint` GUIDs use a bounded cache of genera
 
 ## 配置全体の保守的カリング (2026-11-06)
 
+### 植生の128mセル予算
+
+`InstancedMeshComponent` の `vegetationCellBudget` は、配置先をワールド原点基準の128mのXZセルへ分ける。設定は配置セットのowner単位で、`vegetationDrawDetailPerCell`、`vegetationNearDetailPerCell`、`vegetationShadowDetailPerCell` はそれぞれ通常描画の詳細候補、LOD0候補、影の詳細候補に割り当てる行数。各値の0は上限なし。生成時の配置数はPCGまたはTerrain散布の予算で管理する。
+
+描画側は安定IDからセル内の順位を作り、通常描画の超過は利用可能なLOD2以降、近景の超過はLOD1以降、影の超過は最も粗い既存LODへ切り替える。全行をそれぞれの可視判定に通し、単一LODの素材にはそのLODを使う。配置の版やownerの変換が変わったときにセルの行と境界を更新する。境界には幹・樹冠・風変形を含む全LODの形状を収め、視点やライトから確実に外れたセルを個体選別の前に外す。
+
 8kmマップの最適化では、常駐行の作成時に、有効な各個体のworld球を含むAABBをSourceへ保持する。ビューとライトごとに、個体単位のCPU走査・GPU選別用バッファの貸出より前に、同じ余白・球距離または前方距離と視錐台で配置全体を判定する。範囲外と確定したSourceだけを省き、極小物判定とLODは既存の個体単位の処理へ残す。
 
 部分編集では変更した球を既存AABBへ加え、削除・移動前の範囲は残す。全体の再構築時だけ縮めるため、範囲の再走査を毎フレームや一個体の編集へ追加しない。非有限の境界は粗い判定を使わず従来の個体処理へ戻す。全個体が無効なら描画しない。内容・owner変換・モデル境界・ResourceManager世代の既存照合に従い、カメラ移動だけで常駐行を再転送しない。
 
+CPU 遮蔽を使う 512 個体以上の集合は、常駐球を包む二分木を source ごとに作る。節全体が距離・視錐台・遮蔽で除外できる場合は有効個体数をまとめて数え、残る最大 32 個体の葉だけを通常選別する。個体・owner・モデル境界の変更で木を破棄する。可視結果を保存せず、CPU の描画順は選別後に元の slot 順へ戻す。
+
 GPU選別用バッファの確保後にUAV等の検証で拒否した場合は、ハンドルをResourceManagerへ返す。ディスクリプター不足でプールへ入らなかったバッファを保持し続けない。
+
+## カリング統計の完全性
+
+カメラの通常色パスだけが有効個体を一度数える。Source 全体の視錐台・距離除外は有効個体数を一括加算し、CPU の個体選別は最初の除外理由を一件加算する。Shadow・Selection・Velocity・Capture と Forward の前段 GBuffer はカメラ統計を増やさない。
+
+GPU 個体選別の候補は `gpuVisibilityUnknownObjects` へ分ける。追加の CPU 全走査や GPU 読戻しは行わず、未確定候補を可視として数えない。Analysis は `Known visible` と未確定候補数を表示し、API は `knownVisibleObjects` を可視数の下限として返す。`visibleObjectsComplete` が false のフレームは `visibleObjects` を null とし、真のフレームだけ距離・極小を含む全除外理由を引いた値を返す。
 
 ## 地形・森林の参照解決 (2026-11-06)
 

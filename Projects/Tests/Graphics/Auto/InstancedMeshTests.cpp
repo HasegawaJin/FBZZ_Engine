@@ -7,12 +7,16 @@
 #include <Core/Logger.hpp>
 #include <Core/ILogSink.hpp>
 #include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
+#include <Graphics/Pipeline/OcclusionCuller.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
 #include <Graphics/Renderer/GpuProfiler.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Renderer/RenderDebugOverlay.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/Camera.hpp>
 #define WIN32_LEAN_AND_MEAN
@@ -25,6 +29,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 
 namespace fbzz::tests {
 namespace {
@@ -134,16 +139,23 @@ protected:
     }
     void Begin() { m_resources->AdvanceFrame(); m_bundle.renderer->BeginFrame(); m_frameOpen=true; }
     void End() { m_bundle.renderer->SetRenderTarget({},*m_resources); m_bundle.renderer->EndFrame(); m_frameOpen=false; }
-    void Draw(const std::shared_ptr<r::RenderScene>& scene,int mode,bool shadow=false,bool forward=false)
+    void Draw(const std::shared_ptr<r::RenderScene>& scene,int mode,bool shadow=false,bool forward=false,const r::GpuHiZ* hierarchy=nullptr)
     {
         m_settings.gpuInstancing=mode!=0; m_settings.bulkInstanceGpuCulling=mode==2 || mode==3;
         m_settings.geometryDrawMode=mode==3 ? r::GeometryDrawMode::GPU_INSTANCE_INDIRECT : mode==2 ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
         r::RenderPassContext ctx{{},*m_bundle.renderer,*m_resources,m_camera,m_settings,m_target,UINT32_MAX,m_handles};
         ctx.renderScene=scene; ctx.width=m_width; ctx.height=m_height; ctx.isDeferred=true;
+        ctx.taaJitterNdcX=m_jitterX; ctx.taaJitterNdcY=m_jitterY;
         ctx.time=m_time;
         ctx.cullMaxDistance=m_maxDistance; ctx.cullingBoundsPadding=m_boundsPadding;
         ctx.smallObjectScreenHeight=m_smallHeight; ctx.cullDistanceSpherical=m_sphericalDistance;
         ctx.cullingMask=m_cullingMask;
+        ctx.frustumCullingEnabled=m_frustumCulling;
+        ctx.occlusionCuller=m_occlusion; ctx.occlusionCullingEnabled=m_occlusion!=nullptr || hierarchy!=nullptr;
+        if (m_occlusion && !shadow) {
+            r::PrepareViewOcclusion(ctx);
+            if (m_occlusionSetup) m_occlusionSetup(*m_occlusion);
+        }
         const auto target=shadow ? m_shadow : m_target;
         m_bundle.renderer->SetRenderTarget(target,*m_resources); m_bundle.renderer->Clear({0,0,0,0});
         if (shadow) {
@@ -151,8 +163,16 @@ protected:
             m_resources->Update(m_handles.frameCB,&frame,sizeof(frame));
             r::SubmitInstanceShadows(ctx,math::Frustum::FromViewProjection(frame.viewProjection),m_handles.frameCB);
         } else if (forward) r::ExecuteInstanceForward(ctx);
+        else if (hierarchy) {
+            EXPECT_TRUE(r::HasTerrainHiZInstanceCandidates(ctx));
+            r::ExecuteInstanceGBuffer(ctx,*hierarchy);
+        }
         else r::ExecuteInstanceGBuffer(ctx);
         m_uploadBytes=ctx.statsInstanceUploadBytes; m_draws=shadow ? ctx.statsShadowDrawCalls : ctx.statsDrawCalls;
+        m_stats={}; m_stats.totalObjects=ctx.statsTotalObjects; m_stats.frustumCulled=ctx.statsFrustumCulled;
+        m_stats.distanceCulled=ctx.statsDistanceCulled; m_stats.smallObjectCulled=ctx.statsSmallObjectCulled;
+        m_stats.gpuVisibilityUnknownObjects=ctx.statsGpuVisibilityUnknownObjects;
+        m_stats.occlusionCulled=ctx.statsOcclusionCulled;
     }
     std::vector<float> Read(bool shadow=false,bool depth=false)
     {
@@ -183,6 +203,11 @@ protected:
     uint64_t m_identity=0,m_uploadBytes=0; uint32_t m_draws=0,m_width=128,m_height=128,m_validationErrors=0; bool m_frameOpen=false;
     float m_maxDistance=0,m_boundsPadding=0,m_smallHeight=0; bool m_sphericalDistance=true; uint32_t m_cullingMask=UINT32_MAX;
     float m_time=0;
+    float m_jitterX=0,m_jitterY=0;
+    bool m_frustumCulling=true;
+    r::RenderDebugOverlay::RenderStats m_stats;
+    r::OcclusionCuller* m_occlusion=nullptr;
+    std::function<void(r::OcclusionCuller&)> m_occlusionSetup;
 };
 
 TEST_F(InstancedMeshTest, GpuCullingMatchesIndividualAndCpuInstancedPixelsAcrossViews)
@@ -193,6 +218,416 @@ TEST_F(InstancedMeshTest, GpuCullingMatchesIndividualAndCpuInstancedPixelsAcross
         const auto individual=Render(scene,0); Same(individual,Render(scene,1)); Same(individual,Render(scene,2)); Same(individual,Render(scene,3));
     }
 }
+
+TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlacementsOrShadows)
+{
+    if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
+    constexpr uint32_t PLACEMENTS_PER_CELL = 64;
+    constexpr std::array<float, 3> RED_BY_LOD{0.16f, 0.52f, 0.88f};
+    const auto scene = Scene(2 * PLACEMENTS_PER_CELL);
+    auto& input = scene->instances.front();
+    auto placements = std::make_shared<r::InstanceSetData>(*input.data);
+    for (uint32_t index = 0; index < placements->placements.size(); ++index) {
+        auto& placement = placements->placements[index];
+        const uint32_t row = (index % PLACEMENTS_PER_CELL) / 8;
+        const uint32_t column = index % 8;
+        const float left = index < PLACEMENTS_PER_CELL ? -4.35f : 0.85f;
+        placement.position = {left + static_cast<float>(column) * 0.5f, -1.75f + static_cast<float>(row) * 0.5f, 4.0f};
+        placement.scale = {0.5f, 0.5f, 0.5f};
+    }
+    input.data = placements;
+    input.lodCount = 3;
+    input.lodHeights = {0.01f, 0.005f, 0.0f, 0.0f};
+    input.localBoundsRadius = 1.2f;
+    input.parts.push_back({input.parts.back().mesh, 2});
+
+    /// @note The coarse mesh keeps its silhouette but moves in depth, making shadow LOD visible independently of color.
+    const std::array<r::Vertex, 4> coarseVertices{{
+        {{-0.35f, -0.35f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 0}},
+        {{-0.35f, 0.35f, 1}, {0, 0, -1}, {1, 0, 0}, {0, 1}},
+        {{0.35f, 0.35f, 1}, {0, 0, -1}, {1, 0, 0}, {1, 1}},
+        {{0.35f, -0.35f, 1}, {0, 0, -1}, {1, 0, 0}, {1, 0}},
+    }};
+    input.parts.back().mesh.vertexBuffer = m_resources->CreateVertexBuffer(coarseVertices.data(), sizeof(coarseVertices), sizeof(r::Vertex));
+    ASSERT_TRUE(input.parts.back().mesh.vertexBuffer);
+    for (auto& part : input.parts) {
+        InstanceMaterial material;
+        material.albedo = {RED_BY_LOD[part.lod], 0.2f, 0.2f, 1.0f};
+        material.cutoff = 0.0f;
+        material.textureMask = 0;
+        part.mesh.material.surface.alphaCutoff = 0.0f;
+        part.mesh.material.textures[0] = {};
+        std::memcpy(part.mesh.material.gbufferParams.data(), &material, sizeof(material));
+    }
+
+    m_camera.m_far = 30.0f;
+    const auto unbudgeted = Render(scene, 0);
+    const auto unbudgetedShadow = Render(scene, 0, true, true);
+    input.vegetationBudget = {true, 40, 12, 8};
+    const auto budgeted = Render(scene, 0);
+    Same(budgeted, Render(scene, 2));
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects, 2 * PLACEMENTS_PER_CELL);
+    const auto budgetedShadow = Render(scene, 0, true, true);
+    Same(budgetedShadow, Render(scene, 2, true, true));
+    ASSERT_EQ(budgeted.size(), unbudgeted.size());
+    ASSERT_EQ(budgetedShadow.size(), unbudgetedShadow.size());
+
+    std::array<std::array<uint32_t, 3>, 2> lodCounts{};
+    std::array<uint32_t, 2> highShadow{};
+    const auto projection = m_camera.GetViewProjection();
+    for (uint32_t index = 0; index < placements->placements.size(); ++index) {
+        const auto clip = projection * math::Vector4{placements->placements[index].position, 1.0f};
+        const auto x = static_cast<uint32_t>((0.5f + 0.5f * clip.x / clip.w) * m_width);
+        const auto y = static_cast<uint32_t>((0.5f - 0.5f * clip.y / clip.w) * m_height);
+        const size_t pixel = (static_cast<size_t>(y) * m_width + x) * 4;
+        ASSERT_LT(pixel, budgeted.size());
+        ASSERT_LT(pixel, budgetedShadow.size());
+        EXPECT_NEAR(unbudgeted[pixel], RED_BY_LOD[0], 0.01f);
+        const auto lod = std::find_if(RED_BY_LOD.begin(), RED_BY_LOD.end(), [&](float red) {
+            return std::abs(red - budgeted[pixel]) < 0.01f;
+        });
+        ASSERT_NE(lod, RED_BY_LOD.end()) << "Missing color at placement " << placements->placements[index].id;
+        const uint32_t cell = index / PLACEMENTS_PER_CELL;
+        ++lodCounts[cell][static_cast<size_t>(lod - RED_BY_LOD.begin())];
+        ASSERT_LT(budgetedShadow[pixel], 0.9999f) << "Missing shadow at placement " << placements->placements[index].id;
+        ASSERT_LT(unbudgetedShadow[pixel], 0.9999f);
+        if (std::abs(budgetedShadow[pixel] - unbudgetedShadow[pixel]) < 0.002f) ++highShadow[cell];
+    }
+    constexpr std::array<uint32_t, 3> EXPECTED_LOD_COUNTS{12, 28, 24};
+    for (const auto& counts : lodCounts) EXPECT_EQ(counts, EXPECTED_LOD_COUNTS);
+    for (const auto count : highShadow) EXPECT_EQ(count, 8u);
+
+    auto reordered = std::make_shared<r::InstanceSetData>(*placements);
+    std::reverse(reordered->placements.begin(), reordered->placements.end());
+    input.data = reordered;
+    Same(budgeted, Render(scene, 2));
+    Same(budgetedShadow, Render(scene, 2, true, true));
+    input.vegetationBudget.enabled = false;
+    Same(unbudgeted, Render(scene, 2));
+    Same(unbudgetedShadow, Render(scene, 2, true, true));
+}
+
+TEST_F(InstancedMeshTest, VegetationCellsKeepEdgeOverhangAndReusePlacementsWhenPanning)
+{
+    if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
+    constexpr uint32_t PLACEMENTS_PER_CELL = 64;
+    const auto scene = Scene(2 * PLACEMENTS_PER_CELL);
+    auto& input = scene->instances.front();
+    input.lodCount = 1;
+    input.lodHeights = {0, 0, 0, 0};
+    input.parts.resize(1);
+    auto placements = std::make_shared<r::InstanceSetData>(*input.data);
+    for (uint32_t index = 0; index < placements->placements.size(); ++index) {
+        const uint32_t slot = index % PLACEMENTS_PER_CELL;
+        const float centerX = index < PLACEMENTS_PER_CELL ? 122.0f : 160.0f;
+        auto& placement = placements->placements[index];
+        placement.position = {centerX + (static_cast<float>(slot % 8) - 3.5f) * 0.5f,
+            (static_cast<float>(slot / 8) - 3.5f) * 0.5f, 4.0f};
+        placement.scale = {0.5f, 0.5f, 0.5f};
+    }
+    /// @note This root lies outside the view and below the 128 m cell boundary. Its mesh extends into the view.
+    auto& overhang = placements->placements.front();
+    overhang.position = {127.9f, 0, 4};
+    overhang.scale = {1, 1, 1};
+    input.data = placements;
+    m_camera.m_position = {133.05f, 0, -8};
+    m_camera.LookAt({133.05f, 0, 4});
+    const auto frustum = math::Frustum::FromViewProjection(m_camera.GetViewProjection());
+    EXPECT_FALSE(frustum.Contains(overhang.position));
+    EXPECT_TRUE(frustum.IntersectsSphere(overhang.position, input.localBoundsRadius));
+
+    const auto nearReference = Render(scene, 2);
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects, 2 * PLACEMENTS_PER_CELL);
+    EXPECT_TRUE(std::any_of(nearReference.begin(), nearReference.end(), [](float value) { return value > 0.01f; }));
+    input.vegetationBudget.enabled = true;
+    Same(nearReference, Render(scene, 2));
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects, PLACEMENTS_PER_CELL);
+    EXPECT_EQ(m_stats.frustumCulled, PLACEMENTS_PER_CELL);
+
+    m_camera.m_position.x = 160.0f;
+    m_camera.LookAt({160, 0, 4});
+    const auto farBudgeted = Render(scene, 2);
+    EXPECT_EQ(m_uploadBytes, 0u);
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects, PLACEMENTS_PER_CELL);
+    EXPECT_EQ(m_stats.frustumCulled, PLACEMENTS_PER_CELL);
+    EXPECT_NE(farBudgeted, nearReference);
+    input.vegetationBudget.enabled = false;
+    Same(farBudgeted, Render(scene, 2));
+}
+
+TEST_F(InstancedMeshTest, GpuVisibilityBatchPreservesMaterialsAndInterleavedCpuSets)
+{
+    if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
+    const auto scene=std::make_shared<r::RenderScene>();
+    const auto append=[&](uint32_t count,float x,const math::Vector4& color) {
+        auto sourceScene=Scene(count);
+        auto input=std::move(sourceScene->instances.front());
+        auto placements=std::make_shared<r::InstanceSetData>(*input.data);
+        for (size_t i=0;i<placements->placements.size();++i) {
+            auto& placement=placements->placements[i];
+            placement.position={x+(static_cast<float>(i%8)-3.5f)*0.25f,
+                (static_cast<float>(i/8)-3.5f)*0.25f,4.0f};
+            placement.scale={0.25f,0.25f,0.25f};
+        }
+        input.data=placements;
+        InstanceMaterial material;
+        material.albedo=color;
+        material.cutoff=0.0f;
+        material.textureMask=0;
+        for (auto& part : input.parts) {
+            part.mesh.material.surface.alphaCutoff=0.0f;
+            std::memcpy(part.mesh.material.gbufferParams.data(),&material,sizeof(material));
+        }
+        scene->instances.push_back(std::move(input));
+    };
+    append(64,-3.0f,{1,0.2f,0.2f,1});
+    append(4,0.0f,{0.2f,1,0.2f,1});
+    append(64,3.0f,{0.2f,0.2f,1,1});
+
+    const auto reference=Render(scene,0);
+    const auto batched=Render(scene,2);
+    EXPECT_EQ(m_stats.totalObjects,132);
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,128);
+    Same(reference,batched);
+
+    const auto referenceShadow=Render(scene,0,true,true);
+    Same(referenceShadow,Render(scene,2,true,true));
+}
+
+TEST_F(InstancedMeshTest, CurrentViewOcclusionMatchesCpuAndIndirectWithoutSuppressingShadowsOrReappearingInstances)
+{
+    const auto scene=Scene(256);
+    const auto baseline=Render(scene,1);
+    const auto shadow=Render(scene,2,true,true);
+    r::OcclusionCuller culler;
+    culler.Reset(m_camera);
+    ASSERT_TRUE(culler.TestAndRaster({0,0,-2},3.5f,3.0f));
+    m_occlusionSetup=[](auto& depth) { depth.TestAndRaster({0,0,-2},3.5f,3.0f); };
+    m_occlusion=&culler;
+    const auto cpu=Render(scene,1);
+    EXPECT_GT(m_stats.occlusionCulled,0);
+    EXPECT_LT(m_stats.occlusionCulled,256);
+    Same(cpu,Render(scene,2));
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,256);
+    Same(shadow,Render(scene,2,true,true));
+    m_occlusionSetup={};
+    culler.Reset(m_camera);
+    Same(baseline,Render(scene,2));
+    m_occlusion=nullptr;
+}
+TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWindShadows)
+{
+    if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
+    constexpr uint32_t CASCADE_COUNT = 4;
+    constexpr uint32_t PLACEMENTS_PER_CASCADE = 36;
+    const std::array<float, CASCADE_COUNT> centers{-12.0f, -4.0f, 4.0f, 12.0f};
+    const auto scene = Scene(CASCADE_COUNT * PLACEMENTS_PER_CASCADE, 0.8f);
+    auto& input = scene->instances.front();
+    input.localBoundsRadius = 0.9f;
+    auto placements = std::make_shared<r::InstanceSetData>(*input.data);
+    for (uint32_t i = 0; i < placements->placements.size(); ++i) {
+        auto& placement = placements->placements[i];
+        const uint32_t tile = i / PLACEMENTS_PER_CASCADE;
+        const uint32_t cell = i % PLACEMENTS_PER_CASCADE;
+        placement.position = {centers[tile] + (static_cast<float>(cell % 6) - 2.5f) * 0.55f,
+            (static_cast<float>(cell / 6) - 2.5f) * 0.55f, 4.0f};
+        const float scale = tile == 0 || (tile >= 2 && cell % 2 == 0) ? 0.3f : 0.8f;
+        placement.scale = {cell % 5 == 0 ? -scale : scale, scale, scale};
+        placement.active = cell % 13 != 0;
+    }
+    input.data = placements;
+    m_camera.m_position = {40, 0, -8};
+    m_camera.LookAt({40, 0, 4});
+    EXPECT_FALSE(math::Frustum::FromViewProjection(m_camera.GetViewProjection())
+        .IntersectsSphere(placements->placements[1].position, 1.0f));
+
+    const auto renderAtlas = [&](bool gpu) {
+        m_settings.shadowEnabled = true;
+        m_settings.shadow.mapResolution = m_width;
+        m_settings.gpuInstancing = gpu;
+        m_settings.bulkInstanceGpuCulling = gpu;
+        m_settings.geometryDrawMode = gpu ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
+        r::RenderPassContext ctx{{}, *m_bundle.renderer, *m_resources, m_camera, m_settings,
+            m_target, UINT32_MAX, m_handles};
+        ctx.renderScene = scene;
+        ctx.width = m_width;
+        ctx.height = m_height;
+        ctx.time = 1.7f;
+        ctx.shadowStrength = 1.0f;
+        ctx.shadowCascadeCount = CASCADE_COUNT;
+        ctx.resourceRegistry.BindTarget("ShadowMap", m_shadow);
+        for (uint32_t i = 0; i < CASCADE_COUNT; ++i) {
+            r::Camera light = m_camera;
+            light.m_orthoHeight = 4.0f + static_cast<float>(i) * 0.2f;
+            light.m_position = {centers[i], 0.0f, -8.0f + static_cast<float>(i)};
+            light.LookAt({centers[i], 0, 4});
+            auto& cascade = ctx.shadowCascades[i];
+            cascade.viewProjection = light.GetViewProjection();
+            cascade.view = light.GetViewMatrix();
+            cascade.eyePos = light.m_position;
+            cascade.frustum = math::Frustum::FromViewProjection(cascade.viewProjection);
+            cascade.viewportSize = m_width / 2;
+            cascade.viewportX = (i % 2) * cascade.viewportSize;
+            cascade.viewportY = (i / 2) * cascade.viewportSize;
+        }
+        Begin();
+        r::ExecuteShadowPass(ctx);
+        m_draws = ctx.statsShadowDrawCalls;
+        End();
+        return Read(true, true);
+    };
+
+    const auto rigid = renderAtlas(false);
+    for (auto& part : input.parts) {
+        const float wind[]{0.65f, 1.7f, -1.0f};
+        std::memcpy(part.mesh.material.gbufferParams.data() + 68, wind, sizeof(wind));
+    }
+    const auto reference = renderAtlas(false);
+    ASSERT_EQ(reference.size(), static_cast<size_t>(m_width) * m_height * 4);
+    EXPECT_NE(reference, rigid);
+    const auto actual = renderAtlas(true);
+    Same(reference, actual);
+    /// @note 最初の 2 枚は異なる LOD だけが可視。GPU は空の LOD も間接引数を持つ。
+    EXPECT_EQ(m_draws, CASCADE_COUNT * input.parts.size());
+    std::array<uint32_t, CASCADE_COUNT> covered{};
+    for (uint32_t y = 0; y < m_height; ++y)
+        for (uint32_t x = 0; x < m_width; ++x)
+            if (reference[(static_cast<size_t>(y) * m_width + x) * 4] < 0.9999f)
+                ++covered[(y / (m_height / 2)) * 2 + x / (m_width / 2)];
+    for (const auto count : covered) EXPECT_GT(count, 20u);
+
+    input.vegetationBudget = {true, 0, 0, 8};
+    const auto budgeted = renderAtlas(false);
+    EXPECT_NE(budgeted, reference);
+    Same(budgeted, renderAtlas(true));
+}
+
+TEST_F(InstancedMeshTest, GpuOcclusionRowsFollowProjectionChangesAndInvalidViewsFailOpen)
+{
+    const auto scene=Scene(256);
+    r::OcclusionCuller culler;
+    for (const auto projection : {r::ProjectionMode::Orthographic,r::ProjectionMode::Perspective}) {
+        m_camera.m_projection=projection; m_camera.m_far=100;
+        for (const auto position : {math::Vector3{0,0,-8},math::Vector3{3,1,-8}}) {
+            m_camera.m_position=position; m_camera.LookAt({0,0,4});
+            m_occlusion=nullptr;
+            const auto baseline=Render(scene,1);
+            culler.Reset(m_camera);
+            ASSERT_TRUE(culler.TestAndRaster({0,0,-2},3.5f,3.0f));
+            m_occlusionSetup=[](auto& depth) { depth.TestAndRaster({0,0,-2},3.5f,3.0f); };
+            m_occlusion=&culler;
+            const auto cpu=Render(scene,1);
+            EXPECT_GT(m_stats.occlusionCulled,0);
+            Same(cpu,Render(scene,2));
+            EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,256);
+            EXPECT_EQ(m_stats.occlusionCulled,0);
+            EXPECT_EQ(m_uploadBytes,0u);
+            auto invalid=m_camera; invalid.m_far=invalid.m_near;
+            culler.Reset(invalid);
+            m_occlusionSetup=[&](auto& depth) { depth.Reset(invalid); };
+            Same(baseline,Render(scene,2));
+        }
+    }
+    m_occlusion=nullptr;
+}
+
+TEST_F(InstancedMeshTest, CurrentGpuDepthHiZRejectsCoveredInstancesAndKeepsHolesAndForeground)
+{
+    if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
+    r::OcclusionCuller culler;
+    m_occlusion=&culler;
+    Resize(127,125);
+    m_camera.m_aspect=127.0f/125.0f;
+    m_camera.m_far=100.0f;
+    m_jitterX=0.011f;
+    m_jitterY=-0.009f;
+
+    const auto occluder=Scene(1);
+    auto terrainPlacements=std::make_shared<r::InstanceSetData>(*occluder->instances[0].data);
+    terrainPlacements->placements[0]={1,{-1,0,0},{},{5,8,1},true};
+    occluder->instances[0].data=terrainPlacements;
+    InstanceMaterial opaque;
+    opaque.cutoff=0;
+    opaque.textureMask=0;
+    for (auto& part : occluder->instances[0].parts) {
+        part.mesh.material.surface.alphaCutoff=0;
+        std::memcpy(part.mesh.material.gbufferParams.data(),&opaque,sizeof(opaque));
+    }
+
+    const auto scene=Scene(64);
+    auto placements=std::make_shared<r::InstanceSetData>(*scene->instances[0].data);
+    for (auto& placement : placements->placements) placement.active=false;
+    placements->placements[0]={1,{-1,-0.75f,4},{},{1,1,1},true};
+    placements->placements[1]={2,{0.9f,-0.75f,4},{},{1,1,1},true};
+    placements->placements[2]={3,{-1,0.75f,-3},{},{1,1,1},true};
+    scene->instances[0].data=placements;
+    const float windStrength=0.1f;
+    scene->instances[0].localBoundsRadius+=2.0f*windStrength;
+    for (auto& part : scene->instances[0].parts)
+        std::memcpy(part.mesh.material.gbufferParams.data()+68,&windStrength,sizeof(windStrength));
+    const auto reference=std::make_shared<r::RenderScene>(*scene);
+    auto visiblePlacements=std::make_shared<r::InstanceSetData>(*placements);
+    visiblePlacements->placements[0].active=false;
+    reference->instances[0].identity={1,++m_identity};
+    reference->instances[0].data=visiblePlacements;
+
+    for (const auto projection : {r::ProjectionMode::Orthographic,r::ProjectionMode::Perspective}) {
+        SCOPED_TRACE(static_cast<int>(projection));
+        m_camera.m_projection=projection;
+        const auto fullImage=Render(scene,2);
+        const auto expected=Render(reference,2);
+        ASSERT_NE(fullImage,expected);
+
+        Begin();
+        Draw(occluder,0);
+        const auto hierarchy=r::BuildGpuHiZ(*m_bundle.renderer,*m_resources,m_target);
+        ASSERT_TRUE(hierarchy.depths.IsValid());
+        /// @note The fixture reads receiver color alone so a missing GPU rejection changes the image.
+        Draw(scene,2,false,false,&hierarchy);
+        End();
+        EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,3);
+        Same(expected,Read());
+
+        Begin();
+        auto& renderer=*m_bundle.renderer;
+        renderer.SetRenderTarget(m_target,*m_resources);
+        renderer.Clear({0,0,0,0});
+        const auto clearHierarchy=r::BuildGpuHiZ(renderer,*m_resources,m_target);
+        ASSERT_TRUE(clearHierarchy.depths.IsValid());
+        Draw(scene,2,false,false,&clearHierarchy);
+        End();
+        Same(fullImage,Read());
+    }
+    m_occlusion=nullptr;
+}
+
+TEST_F(InstancedMeshTest, SpatialGroupsRebuildAfterPartialEditsAndKeepUnknownBoundsVisible)
+{
+    auto scene = Scene(1024);
+    r::OcclusionCuller culler;
+    m_occlusionSetup = [](auto& depth) { depth.TestAndRaster({0,0,-2},3.5f,3.0f); };
+    m_occlusion = &culler;
+    const auto grouped = Render(scene,1);
+    EXPECT_GT(m_stats.occlusionCulled,0);
+    EXPECT_LT(m_stats.occlusionCulled,1024);
+    Same(grouped,Render(scene,2));
+    const auto previous = scene->instances[0].data;
+    auto edited = std::make_shared<r::InstanceSetData>(*previous);
+    edited->parentRevision = previous->revision; ++edited->revision;
+    edited->dirtySlots = {119}; edited->placements[119].position = {4,0,4};
+    scene->instances[0].data = edited;
+    const auto moved = Render(scene,1);
+    EXPECT_EQ(m_uploadBytes,208u);
+    Same(moved,Render(scene,2));
+    scene->instances[0].localBoundsRadius = 0;
+    m_occlusion = nullptr;
+    const auto unknown = Render(scene,1);
+    m_occlusion = &culler;
+    Same(unknown,Render(scene,1));
+    EXPECT_EQ(m_stats.occlusionCulled,0);
+    m_occlusion = nullptr; m_occlusionSetup = {};
+}
+
 TEST_F(InstancedMeshTest, MaskedDoubleSidedShadowsMatchAcrossLodsAndBackViews)
 {
     const auto scene=Scene(130);
@@ -289,12 +724,107 @@ TEST_F(InstancedMeshTest, DeferredForwardSkipsPreparingGBufferOnlyInstances)
     EXPECT_GT(m_draws,0u);
 }
 
+TEST_F(InstancedMeshTest, SubToleranceShearKeepsAnActuallyVisibleVertexSubmitted)
+{
+    const auto scene=Scene(1);
+    auto& input=scene->instances[0];
+    auto data=std::make_shared<r::InstanceSetData>(*input.data);
+    data->placements[0].position={}; data->placements[0].eulerRadians={};
+    data->placements[0].scale={1,1,1}; input.data=data;
+    input.localBoundsCenter={}; input.localBoundsRadius=1;
+    input.world=math::Matrix4::Identity(); input.world.m[0][1]=9.0e-7f;
+    input.world.m[0][3]=input.world.m[1][3]=-1.41421377658844f;
+    input.world.m[2][3]=4;
+    constexpr float ROOT_HALF=0.7071067690849304f;
+    const std::array<r::Vertex,3> vertices{{
+        {{ROOT_HALF,ROOT_HALF,0},{0,0,-1},{1,0,0},{0,0}},
+        {{ROOT_HALF-0.05f,ROOT_HALF,0},{0,0,-1},{1,0,0},{0,1}},
+        {{ROOT_HALF,ROOT_HALF-0.05f,0},{0,0,-1},{1,0,0},{1,0}}}};
+    const uint32_t indices[]{0,1,2};
+    const auto vertex=m_resources->CreateVertexBuffer(vertices.data(),sizeof(vertices),sizeof(r::Vertex));
+    const auto index=m_resources->CreateIndexBuffer(indices,3);
+    ASSERT_TRUE(vertex && index);
+    for (auto& part : input.parts) {
+        part.mesh.vertexBuffer=vertex; part.mesh.indexBuffer=index;
+        part.mesh.vertexCount=part.mesh.indexCount=3;
+    }
+    m_camera.m_position={}; m_camera.m_projection=r::ProjectionMode::Orthographic;
+    m_camera.m_orthoHeight=2; m_camera.m_aspect=1; m_camera.m_near=0.1f; m_camera.m_far=100;
+    m_camera.m_rotation=math::Quaternion::LookRotation({0,0,1},{-ROOT_HALF,ROOT_HALF,0});
+    const auto frustum=math::Frustum::FromViewProjection(m_camera.GetViewProjection());
+    const auto transformed=input.world*math::Vector4{vertices[0].position,1};
+    const math::Vector3 visibleVertex{transformed.x,transformed.y,transformed.z};
+    ASSERT_GE(frustum.GetPlane(0).SignedDistanceTo(visibleVertex),0.0f);
+    ASSERT_TRUE(frustum.Contains(visibleVertex));
+    /// @note The visible sliver can be below pixel coverage; native draw submission is the culling contract under test.
+    m_frustumCulling=false; Render(scene,0);
+    const auto referenceDraws=m_draws; ASSERT_GT(referenceDraws,0u);
+    m_frustumCulling=true; Render(scene,0);
+    EXPECT_EQ(m_draws,referenceDraws);
+    EXPECT_EQ(m_stats.totalObjects,1);
+    EXPECT_EQ(m_stats.frustumCulled,0);
+}
+
+TEST_F(InstancedMeshTest, CpuCullingCountsEachActivePlacementOnceAcrossPartsAndLods)
+{
+    const auto scene=Scene(5);
+    auto data=std::make_shared<r::InstanceSetData>(*scene->instances[0].data);
+    data->placements[0].position={0,0,4}; data->placements[0].scale={1,1,1};
+    data->placements[1].position={1000,0,4}; data->placements[1].scale={1,1,1};
+    data->placements[2].position={0,0,40}; data->placements[2].scale={1,1,1};
+    data->placements[3].position={1,0,4}; data->placements[3].scale={0.01f,0.01f,0.01f};
+    data->placements[4].active=false; scene->instances[0].data=data;
+    m_maxDistance=20; m_smallHeight=0.01f;
+    Render(scene,1);
+    EXPECT_EQ(m_stats.totalObjects,4);
+    EXPECT_EQ(m_stats.frustumCulled,1);
+    EXPECT_EQ(m_stats.distanceCulled,1);
+    EXPECT_EQ(m_stats.smallObjectCulled,1);
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,0);
+    EXPECT_EQ(m_stats.KnownVisibleObjects(),1);
+    Render(scene,1,true,true);
+    EXPECT_EQ(m_stats.totalObjects,0);
+    EXPECT_EQ(m_stats.frustumCulled,0);
+    EXPECT_EQ(m_stats.distanceCulled,0);
+    EXPECT_EQ(m_stats.smallObjectCulled,0);
+}
+
+TEST_F(InstancedMeshTest, GpuVisibilityCandidatesStayUnknownAndPrepassRollbackRestoresThem)
+{
+    const auto scene=Scene(130);
+    const auto cpu=Render(scene,1);
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,0);
+    EXPECT_GT(m_stats.frustumCulled,0);
+    Same(cpu,Render(scene,2));
+    EXPECT_EQ(m_stats.totalObjects,130);
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,130);
+    EXPECT_EQ(m_stats.KnownVisibleObjects(),0);
+
+    Begin();
+    r::RenderPassContext ctx{{},*m_bundle.renderer,*m_resources,m_camera,m_settings,m_target,UINT32_MAX,m_handles};
+    ctx.renderScene=scene; ctx.width=m_width; ctx.height=m_height; ctx.isDeferred=false;
+    m_bundle.renderer->SetRenderTarget(m_target,*m_resources);
+    {
+        const r::CullStatsRollback rollback(ctx);
+        r::ExecuteInstanceGBuffer(ctx);
+        EXPECT_EQ(ctx.statsGpuVisibilityUnknownObjects,130);
+        EXPECT_EQ(ctx.statsTotalObjects,130);
+    }
+    EXPECT_EQ(ctx.statsGpuVisibilityUnknownObjects,0);
+    EXPECT_EQ(ctx.statsTotalObjects,0);
+    End();
+}
+
 TEST_F(InstancedMeshTest, EntireSetOutsideViewSkipsDrawsAndReentersWithoutUploadingPlacements)
 {
     const auto scene=Scene(130);
     scene->instances[0].world.m[0][3]=1000.0f;
     const auto outside=Render(scene,2);
     EXPECT_EQ(m_draws,0u);
+    EXPECT_EQ(m_stats.totalObjects,130);
+    EXPECT_EQ(m_stats.frustumCulled,130);
+    EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,0);
+    EXPECT_EQ(m_stats.KnownVisibleObjects(),0);
     for (float value : outside) EXPECT_EQ(value,0.0f);
 
     m_camera.m_position={1000,0,-8}; m_camera.LookAt({1000,0,4});
@@ -315,6 +845,10 @@ TEST_F(InstancedMeshTest, DistanceRejectedSetKeepsPartialEditsAndInactiveRowsCor
         m_sphericalDistance=spherical; m_maxDistance=2.0f; m_boundsPadding=0.25f;
         const auto outside=Render(scene,2);
         EXPECT_EQ(m_draws,0u);
+        EXPECT_EQ(m_stats.totalObjects,130);
+        EXPECT_EQ(m_stats.distanceCulled,130);
+        EXPECT_EQ(m_stats.gpuVisibilityUnknownObjects,0);
+        EXPECT_EQ(m_stats.KnownVisibleObjects(),0);
         for (float value : outside) EXPECT_EQ(value,0.0f);
 
         const auto previous=scene->instances[0].data;

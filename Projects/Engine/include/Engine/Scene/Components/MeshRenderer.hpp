@@ -30,6 +30,8 @@ struct MeshRenderer {
     /// @note ShadowPass はシーンを光源視点でもう一度描くため、影に寄与しないオブジェクトを
     /// @note 外すだけで描画量が減る。既定 true で従来と同じ見た目を保つ。
     bool castShadows = true;
+    /// @note 不変な不透明メッシュだけを方向ライトの静的影ベイクに含める。
+    bool bakeStaticShadow = false;
 
     /// @note "primitive:cube" / "primitive:sphere" / "models/foo.fbx:0"
     std::string meshPath;
@@ -54,6 +56,7 @@ struct MeshRenderer {
     {
         r.Field("enabled",     enabled);
         r.Field("castShadows", castShadows);
+        r.Field("bakeStaticShadow", bakeStaticShadow);
         r.Field("meshPath",    meshPath);
     }
 };

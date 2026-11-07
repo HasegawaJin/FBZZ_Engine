@@ -1,0 +1,6 @@
+# @file    BakedDepthRestore.hlsl.meta
+# @brief   方向ライトのベイク深度復元シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = '026dd3904fa04a1ca86f32a7682a0938'

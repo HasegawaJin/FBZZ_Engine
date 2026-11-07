@@ -30,7 +30,7 @@ struct FbzzMeshletDescriptor
 };
 
 /// @brief Per-dispatch culling and raw-vertex metadata.
-/// @note Keep the six world-space planes followed by four uints to match the 112-byte C++ b13 upload.
+/// @note The six planes and four uints occupy 112 bytes. Terrain appends a local-space culling view.
 cbuffer MeshletGeometryConstants : register(b13)
 {
     float4 g_meshletFrustumPlanes[6];
@@ -38,6 +38,9 @@ cbuffer MeshletGeometryConstants : register(b13)
     uint g_meshletVertexStride;
     uint g_meshletPositionOffset;
     uint g_meshletCullingEnabled;
+#ifdef FBZZ_TERRAIN_MESHLET
+    float4 g_terrainMeshletEye;
+#endif
 };
 
 static const uint kFbzzMeshletMaximumVertices = 64u;

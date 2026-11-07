@@ -9,6 +9,7 @@
 /// @note heightDirty (穴を含む) でチャンクを、splatDirty で番号 / 重みマップを作り直す。
 /// @see Docs/design/terrain-layers.md
 #include <Engine/Asset/StreamedTextureResolver.hpp>
+#include <Engine/Asset/BakeFingerprint.hpp>
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
@@ -46,10 +47,12 @@
 #include <array>
 #include <algorithm>
 #include <cassert>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <span>
 #include <unordered_map>
@@ -366,6 +369,12 @@ static TerrainChunk& EnsureTerrainChunk(
             verts.size() * sizeof(TerrainVertex),
             static_cast<uint32_t>(sizeof(TerrainVertex)));
 
+        auto occlusion = verts.size() <= UINT16_MAX ? std::make_shared<renderer::TerrainOcclusionGeometry>() : nullptr;
+        if (occlusion) {
+            occlusion->heights.reserve(verts.size());
+            for (const auto& vertex : verts) occlusion->heights.push_back(vertex.position.y);
+        }
+
         for (int lod = 0; lod < kLODCount; ++lod) {
             std::vector<uint32_t> indices;
             BuildTerrainPatchLodIndices(terrain, x0, z0, x1, z1, kLODSteps[lod], indices);
@@ -373,7 +382,29 @@ static TerrainChunk& EnsureTerrainChunk(
             /// @note 全セルが穴のチャンクはインデックス 0 本。空バッファは作らず、描画側で飛ばす。
             if (chunk.indexCountLOD[lod] > 0)
                 chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), chunk.indexCountLOD[lod]);
+            if (occlusion) {
+                auto& cpuIndices = occlusion->indices[lod];
+                cpuIndices.reserve(indices.size());
+                for (const auto index : indices) cpuIndices.push_back(static_cast<uint16_t>(index));
+            }
         }
+        if (occlusion && chunk.indexCountLOD[0] == uint32_t((x1 - x0) * (z1 - z0) * 6)) {
+            constexpr int columnStep = 16, overlap = 4;
+            for (int z = z0; z < z1; z += columnStep) {
+                for (int x = x0; x < x1; x += columnStep) {
+                    const int lowX = std::max(x - overlap, 0), lowZ = std::max(z - overlap, 0);
+                    const int highX = std::min(x + columnStep + overlap, terrain.columns - 1);
+                    const int highZ = std::min(z + columnStep + overlap, terrain.rows - 1);
+                    float minimum = std::numeric_limits<float>::infinity();
+                    for (int sz = lowZ; sz <= highZ; ++sz)
+                        for (int sx = lowX; sx <= highX; ++sx)
+                            minimum = std::min(minimum, SampleStitchedTerrainHeight(terrain, neighbors, sx, sz));
+                    occlusion->columns.push_back({{float(lowX) * terrain.cellSize, float(lowZ) * terrain.cellSize,
+                        float(highX) * terrain.cellSize, float(highZ) * terrain.cellSize}, minimum});
+                }
+            }
+        }
+        chunk.occlusion = std::move(occlusion);
         cache.chunks[key] = std::move(chunk);
         cache.entities[eid.index].geometryDirty = true;
     }
@@ -555,6 +586,29 @@ static void RebuildSplatTextures(TerrainGpuState& state, const TerrainComponent&
     state.splatWeights = resources.CreateTexture(weights, 1, 1);
 }
 
+/// @note LOD0 の水平位置と索引は同じ格子、穴、パッチ範囲から生成する。高さは接合後の描画値を使う。
+static uint64_t TerrainShadowBakeGeometryHash(const TerrainComponent& terrain,
+    const std::vector<renderer::RenderTerrainPatch>& patches)
+{
+    asset::BakeFingerprint hash;
+    hash.Add(static_cast<uint64_t>(patches.size()));
+    hash.Add(static_cast<uint64_t>(terrain.holeData.size()));
+    hash.Add(std::span<const uint8_t>(terrain.holeData));
+    for (const auto& patch : patches) {
+        if (!patch.occlusion || patch.occlusion->indices[0].size() != patch.indexCountLOD[0]) return 0;
+        const auto& grid = patch.gpuPatch;
+        for (uint32_t value : {grid.originX, grid.originZ, grid.columns, grid.rows,
+            grid.terrainColumns, grid.terrainRows, patch.indexCountLOD[0]})
+            hash.Add(static_cast<uint64_t>(value));
+        hash.Add(std::span<const float>(&grid.cellSize, 1));
+        hash.Add(std::span<const float>(patch.occlusion->heights));
+    }
+    const std::string text = hash.Finish();
+    uint64_t value = 0;
+    std::from_chars(text.data(), text.data() + text.size(), value, 16);
+    return value;
+}
+
 /// @note Scalar samples include stitched neighbor heights; GPU central differences match the CPU fallback.
 static void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainComponent& terrain,
     const TerrainNeighbors& neighbors, renderer::RenderTerrainInput& input,
@@ -562,6 +616,7 @@ static void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainCompo
 {
     if (input.patches.empty()) return;
     if (state.geometryDirty) {
+        state.shadowBakeGeometryHash = 0;
         resources.Release(state.heights);
         resources.Release(state.patches);
         resources.Release(state.indices);
@@ -830,6 +885,12 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
                     chunk.indexCountLOD[0] != 0)
                     input.patches.push_back(chunk);
         PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, resources);
+        if (ctx.directionalShadowBakeEnabled && !input.patches.empty()) {
+            if (!gpu.shadowBakeGeometryHash)
+                gpu.shadowBakeGeometryHash = TerrainShadowBakeGeometryHash(terrain, input.patches);
+            input.shadowBakeGeometryHash = gpu.shadowBakeGeometryHash;
+            input.shadowBakeStatic = input.shadowBakeGeometryHash != 0;
+        }
         ExtractTerrainSurface(cache, terrain, eid, gpu, input, cache.fallback, resources, output);
         output.terrains.push_back(std::move(input));
     }

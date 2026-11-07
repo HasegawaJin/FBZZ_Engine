@@ -92,6 +92,11 @@ public:
         return LoadFromText(tomlText, nullptr, sourcePath);
     }
 
+    /// @note Main-thread preparation preserves serialized Script settings without constructors or callbacks.
+    /// @note Referenced or inline Terrain data must load successfully; no fallback geometry is substituted.
+    [[nodiscard]] FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadPassiveDataFromText(
+        const std::string& tomlText, const std::string& sourcePath);
+
     /// @brief データだけ復元した Scene へ、後から GPU リソースを結び直す。
     /// @note 既に mesh を持つ MeshRenderer は触らない (二重に載せない)。
     /// @return 解決できた MeshRenderer の数。
@@ -115,6 +120,8 @@ public:
         return AppendObjects(scene, tomlText, &resources, outRoots);
     }
 private:
+    FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadFromTextCore(const std::string& tomlText,
+        renderer::ResourceManager* resources, const std::string& sourcePath, bool passiveScripts);
     FBZZ_ENGINE_API static std::string SaveToTextCore(Scene& scene, const std::string& scenePath, std::string& diagnostic, bool passiveClone);
 };
 

@@ -430,6 +430,9 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     result.Set("totalObjects", JsonValue(rendering.renderStats.totalObjects));
     result.Set("frustumCulled", JsonValue(rendering.renderStats.frustumCulled));
     result.Set("occlusionCulled", JsonValue(rendering.renderStats.occlusionCulled));
+    result.Set("distanceCulled", JsonValue(rendering.renderStats.distanceCulled));
+    result.Set("smallObjectCulled", JsonValue(rendering.renderStats.smallObjectCulled));
+    result.Set("gpuVisibilityUnknownObjects", JsonValue(rendering.renderStats.gpuVisibilityUnknownObjects));
     /// @note シャドウマップ描画はカメラ視点の統計と別枠。合計だけで「描画が軽い」と誤判断しないよう分けて返す。
     result.Set("shadowDrawCalls", JsonValue(rendering.renderStats.shadowDrawCalls));
     result.Set("shadowTriangles", JsonValue(rendering.renderStats.shadowTriangleCount));
@@ -437,8 +440,10 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     /// @note «描画が減った» のが束ねによるものかカリングによるものか読み分けられない。
     result.Set("instancedBatches", JsonValue(rendering.renderStats.instancedBatches));
     result.Set("instancedDrawsSaved", JsonValue(rendering.renderStats.instancedDrawsSaved));
-    result.Set("visibleObjects", JsonValue(rendering.renderStats.totalObjects
-        - rendering.renderStats.frustumCulled - rendering.renderStats.occlusionCulled));
+    const bool visibilityComplete=rendering.renderStats.gpuVisibilityUnknownObjects==0;
+    result.Set("visibleObjectsComplete", JsonValue(visibilityComplete));
+    result.Set("knownVisibleObjects", JsonValue(rendering.renderStats.KnownVisibleObjects()));
+    result.Set("visibleObjects", visibilityComplete ? JsonValue(rendering.renderStats.KnownVisibleObjects()) : JsonValue{});
     result.Set("topSamples", std::move(samples));
     JsonValue cpuPasses = JsonValue::MakeArray();
     for (const auto& [name, elapsedMs] : rendering.passTimings) {

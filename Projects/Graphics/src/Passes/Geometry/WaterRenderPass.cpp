@@ -14,6 +14,7 @@
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Core/Logger.hpp>
+#include "../../Renderer/GpuCullDrawQueue.hpp"
 #include "WaterNoiseBake.hpp"
 #include <algorithm>
 #include <array>
@@ -279,6 +280,12 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
     }
     const auto projection = lodCamera.GetProjectionMatrix();
     auto cb = input.constants;
+    const auto occluded = [&](const math::Vector3& low, const math::Vector3& high,
+        float margin = 0.0f, bool includedInStatistics = true) {
+        if (cameraOverride || !IsViewAabbOccluded(ctx, cb.worldMatrix, low, high, margin)) return false;
+        if (countStatistics && includedInStatistics) ++ctx.statsOcclusionCulled;
+        return true;
+    };
     cb.wvpMatrix = MakeJitteredProjection(camera, cameraOverride ? 0.0f : ctx.taaJitterNdcX,
         cameraOverride ? 0.0f : ctx.taaJitterNdcY) * camera.GetViewMatrix() * cb.worldMatrix;
     if (input.adaptivePatchLod) {
@@ -327,11 +334,13 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
             const bool selected = view.includeCulledPatches || IsSurfacePatchVisible(surface, patch, view);
             if (!gpuCulling && !selected) continue;
             if (countStatistics && selected) ++ctx.statsTotalObjects;
-            if (frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax)) {
+            const bool frustumRejected=frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax);
+            if (frustumRejected) {
                 if (countStatistics && selected) ++ctx.statsFrustumCulled;
                 if (!gpuCulling) continue;
             }
             const auto mask = patch.coarseEdgeMask;
+            if (occluded(patch.aabbMin, patch.aabbMax, 0.0f, selected && !frustumRejected)) continue;
             if (mask >= input.patchIndexBuffers.size() || !input.patchIndexBuffers[mask].IsValid()) continue;
             SetWaterPatchConstants(cb, patch, patchLod.cellsPerPatch);
             SetWaterPatchMorphConstants(cb, patch, patchLod, view,
@@ -343,10 +352,12 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
             for (const auto& far : farPatches) {
                 const auto& patch = far.geometry;
                 if (countStatistics) ++ctx.statsTotalObjects;
-                if (frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax)) {
+                const bool frustumRejected=frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax);
+                if (frustumRejected) {
                     if (countStatistics) ++ctx.statsFrustumCulled;
                     if (!gpuCulling) continue;
                 }
+                if (occluded(patch.aabbMin, patch.aabbMax, 0.0f, !frustumRejected)) continue;
                 SetWaterPatchConstants(cb, patch, patchLod.cellsPerPatch);
                 SetWaterPatchMorphConstants(cb, patch, patchLod, view,
                     input.patchMorphEnabled, FarPatchMorphAxisMask(far.region));
@@ -371,6 +382,8 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
             if (countStatistics) ++ctx.statsFrustumCulled;
             continue;
         }
+        if (occluded(low, high, std::sqrt(2.0f * input.margin.horizontal * input.margin.horizontal
+            + input.margin.vertical * input.margin.vertical))) continue;
         submit(patch.vertexBuffer, patch.indexBuffer, patch.indexCount, cb, low, high);
     }
 }
@@ -384,6 +397,7 @@ struct WaterPatchInstance {
 static_assert(sizeof(WaterPatchInstance) == 192);
 
 struct WaterGpuDraw {
+    ComputeCall compute;
     GpuGeometryDispatch indirect;
     uint32_t visibleInstancesForStatistics = 0;
 };
@@ -446,8 +460,8 @@ WaterGpuDraw PrepareWaterGpuDraw(const RenderWaterInput& input, RenderPassContex
             (std::max)(patch.cellSize.x, patch.cellSize.y), {}};
         candidates.push_back(candidate);
     }
-    (void)handles.geometrySelection->Prepare(ctx.renderer, ctx.resources, view, candidates,
-        indexCount, vertexCount, result.indirect);
+    (void)handles.geometrySelection->PrepareDispatch(ctx.renderer, ctx.resources, view, candidates,
+        indexCount, vertexCount, result.compute, result.indirect);
     if (result.indirect.indirectArguments.IsValid() && !handles.indirectPathReported) {
         handles.indirectPathReported = true;
         FBZZ_LOG_INFO("Water geometry path: GPU indexed indirect prepared (%u candidates)", result.indirect.candidateCount);
@@ -1029,19 +1043,22 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             /// @note スロットを空にすると次元が食い違う。
             call.textures[26] = input.velocityField;
             if (gpu.indirect.indirectArguments.IsValid()) {
+                const auto fallback = call;
                 call.indirectArguments = gpu.indirect.indirectArguments;
                 call.indirectArgumentOffset = gpu.indirect.indirectArgumentOffset;
                 call.indirectCommandCount = gpu.indirect.candidateCount;
                 call.indirectInstanceOffset = true;
-            }
-            const int previousTriangleCount = ctx.statsTriangleCount;
-            SubmitCounted(ctx, call);
-            if (gpu.indirect.indirectArguments.IsValid())
-                ctx.statsTriangleCount = previousTriangleCount
-                    + static_cast<int>(static_cast<uint64_t>(count / 3u) * gpu.visibleInstancesForStatistics);
-            if (instanceCount > 1u && !gpu.indirect.indirectArguments.IsValid()) {
-                ++ctx.statsInstancedBatches;
-                ctx.statsInstancedDrawsSaved += static_cast<int>(instanceCount) - 1;
+                /// @note The shared constants, compute and draw stay ordered with other transparent water groups.
+                gpu_cull_detail::SubmitCullDraw(renderer, resources, gpu.compute, call, fallback);
+                ++ctx.statsDrawCalls;
+                ctx.statsVertexCount += DrawCallVertexCount(call);
+                ctx.statsTriangleCount += static_cast<int>(static_cast<uint64_t>(count / 3u) * gpu.visibleInstancesForStatistics);
+            } else {
+                SubmitCounted(ctx, call);
+                if (instanceCount > 1u) {
+                    ++ctx.statsInstancedBatches;
+                    ctx.statsInstancedDrawsSaved += static_cast<int>(instanceCount) - 1;
+                }
             }
         }, nullptr, 0, true, nullptr, standardWaterShader);
     }

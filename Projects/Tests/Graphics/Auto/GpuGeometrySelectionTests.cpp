@@ -4,6 +4,7 @@
 /// @date    2026-10-10
 #include <TestKit/TestKit.hpp>
 
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/GpuGeometrySelection.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
@@ -235,6 +236,102 @@ TEST_F(GpuGeometrySelectionTest, DispatchesOrderedIndexedArgumentsAndCullsOutsid
     EXPECT_GT(redPixels, 0u);
     EXPECT_GT(greenPixels, 0u);
     EXPECT_EQ(bluePixels, 0u);
+}
+
+TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndependentViewLoans)
+{
+    auto& device = *m_bundle.renderer;
+    auto& resources = *m_resources;
+    if (!device.SupportsIndirectDraw()) GTEST_SKIP() << "Indexed indirect drawing is unavailable";
+
+    struct ProbeConstants {
+        float depth;
+        uint32_t index;
+        uint32_t readPyramid;
+        uint32_t padding;
+    };
+    const auto shader = resources.LoadShader(FBZZ_GPU_HI_Z_PROBE_SHADER);
+    const auto constants = resources.CreateConstantBuffer(sizeof(ProbeConstants));
+    const auto depthPipeline = resources.CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON});
+    ASSERT_TRUE(resources.Get(shader) && constants.IsValid() && depthPipeline.IsValid());
+
+    renderer::DrawCall draw;
+    draw.shader = shader;
+    draw.constantBuffers[0] = constants;
+    draw.vertexCount = 3;
+    const auto writeDepth = [&](float depth) {
+        const ProbeConstants values{depth, 0, 0, 0};
+        resources.Update(constants, &values, sizeof(values));
+        draw.pipelineState = depthPipeline;
+        draw.vsBuffers[0] = {};
+        device.Submit(draw, resources);
+    };
+    const auto probe = [&](const renderer::GpuHiZ& hierarchy, uint32_t index, uint32_t x) {
+        const ProbeConstants values{0.5f, index, 1, 0};
+        resources.Update(constants, &values, sizeof(values));
+        device.SetViewport(x, 0, 1, 1);
+        draw.pipelineState = m_pipelineState;
+        draw.vsBuffers[0] = hierarchy.depths;
+        device.Submit(draw, resources);
+    };
+
+    resources.AdvanceFrame();
+    device.BeginFrame();
+    device.SetRenderTarget(m_target, resources);
+    device.Clear({0.0f, 0.0f, 0.0f, 0.0f});
+    uint32_t resultOffset = 0;
+    for (const bool reversedZ : {false, true}) {
+        renderer::RenderTargetDesc desc;
+        desc.reversedZ = reversedZ;
+        const auto source = resources.CreateRenderTarget(43, 13, desc);
+        ASSERT_TRUE(source.IsValid());
+        device.SetRenderTarget(source, resources);
+        device.ClearDepth();
+        device.SetViewport(3, 2, 36, 9);
+        writeDepth(0.5f);
+        device.SetViewport(3, 2, 2, 2);
+        writeDepth(reversedZ ? 0.75f : 0.25f);
+
+        /// @note 37×9 は最初の段で 10×3。端の未描画列と端数の行を両方含む。
+        device.SetViewport(3, 2, 37, 9);
+        const auto first = renderer::BuildGpuHiZ(device, resources, source, 3, 2, 37, 9);
+        ASSERT_TRUE(first.depths.IsValid());
+        EXPECT_EQ(first.width, 37u);
+        EXPECT_EQ(first.height, 9u);
+        EXPECT_EQ(first.reversedZ, reversedZ);
+        EXPECT_FALSE(renderer::BuildGpuHiZ(device, resources, source, 42, 0, 2, 1).depths.IsValid());
+
+        /// @note ビルダーが復元した viewport と DSV へ描く。古い貸出のデータはそのまま残る。
+        writeDepth(reversedZ ? 0.75f : 0.25f);
+        const auto second = renderer::BuildGpuHiZ(device, resources, source, 3, 2, 37, 9);
+        ASSERT_TRUE(second.depths.IsValid());
+        EXPECT_NE(first.depths, second.depths);
+        device.SetViewport(0, 0, 3, 2);
+        const auto neighbor = renderer::BuildGpuHiZ(device, resources, source, 0, 0, 3, 2);
+        ASSERT_TRUE(neighbor.depths.IsValid());
+
+        device.SetRenderTarget(m_target, resources);
+        probe(first, 0, resultOffset++);
+        probe(first, 20, resultOffset++);
+        probe(first, 43, resultOffset++);
+        probe(first, 44, resultOffset++);
+        probe(first, 45, resultOffset++);
+        probe(second, 45, resultOffset++);
+        probe(neighbor, 0, resultOffset++);
+    }
+    device.SetRenderTarget({}, resources);
+    device.EndFrame();
+
+    std::vector<float> pixels;
+    ASSERT_TRUE(Capture(pixels));
+    const std::array expected{0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.25f, 1.0f,
+        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.75f, 0.0f};
+    for (size_t i = 0; i < expected.size(); ++i) {
+        SCOPED_TRACE(i);
+        EXPECT_FLOAT_EQ(pixels[i * 4], expected[i]);
+        EXPECT_FLOAT_EQ(pixels[i * 4 + 1], 1.0f);
+    }
 }
 
 TEST_F(GpuGeometrySelectionTest, MeshShaderMatchesGpuSelectedIndexedLodAndInstanceRows)

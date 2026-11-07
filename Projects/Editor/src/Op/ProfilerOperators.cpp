@@ -135,6 +135,12 @@ OpResult PerformanceQuery(const OpArgs& args)
     stats.Set("drawCalls", OpData(rendering.renderStats.drawCalls)); stats.Set("triangleCount", OpData(rendering.renderStats.triangleCount));
     stats.Set("totalObjects", OpData(rendering.renderStats.totalObjects)); stats.Set("frustumCulled", OpData(rendering.renderStats.frustumCulled));
     stats.Set("occlusionCulled", OpData(rendering.renderStats.occlusionCulled)); stats.Set("distanceCulled", OpData(rendering.renderStats.distanceCulled));
+    stats.Set("smallObjectCulled", OpData(rendering.renderStats.smallObjectCulled));
+    stats.Set("gpuVisibilityUnknownObjects", OpData(rendering.renderStats.gpuVisibilityUnknownObjects));
+    const bool visibilityComplete=rendering.renderStats.gpuVisibilityUnknownObjects==0;
+    stats.Set("visibleObjectsComplete", OpData(visibilityComplete));
+    stats.Set("knownVisibleObjects", OpData(rendering.renderStats.KnownVisibleObjects()));
+    stats.Set("visibleObjects", visibilityComplete ? OpData(rendering.renderStats.KnownVisibleObjects()) : OpData{});
     result.Set("rendering", std::move(stats));
     return OpResult::Data(std::move(result));
 }

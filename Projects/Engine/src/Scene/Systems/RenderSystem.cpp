@@ -25,6 +25,7 @@
 #include <Core/Profiler/FrameTimeline.hpp>
 #include "MaterialDemandTrace.hpp"
 #include "RenderShadowPreparation.hpp"
+#include "RenderDirectionalShadowBake.hpp"
 #include "CanvasGeometryGuard.hpp"
 #include <Engine/Scene/Components/ParticleEmitterSpace.hpp>
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
@@ -625,7 +626,7 @@ void RenderSystem(Scene& scene,
         shadowBounds.valid = true;
     }
 
-    const auto shadows = renderer::PrepareShadows(camera, rs, shadowBounds, lightDir,
+    auto shadows = renderer::PrepareShadows(camera, rs, shadowBounds, lightDir,
         dirShadowDistance, dirShadowBias);
     const auto& cascades = shadows.cascades;
     const int cascadeCount = shadows.count;
@@ -848,6 +849,7 @@ void RenderSystem(Scene& scene,
     /// @note RenderPipeline が組み立てる。ここに 2 つ目の一覧は置かない。
 
     passCtx.uiOptions               = uiOptions;
+    passCtx.directionalShadowBakeEnabled = rs.shadowEnabled && lighting.dirShadowBakeLight != EntityID::INVALID;
     passCtx.outputWidth             = nativeW;
     passCtx.outputHeight            = nativeH;
     /// @note ポストプロセスチェーンの終着点。等倍なら従来どおり outputRT へ直接書き切る。
@@ -1062,6 +1064,10 @@ void RenderSystem(Scene& scene,
     {
         profiler::frame_timeline::Scope timelineExtract(profiler::frame_timeline::Event::EXTRACT);
         ExtractRenderScene(passCtx, reusableGeometry);
+    }
+    if (passCtx.directionalShadowBakeEnabled) {
+        PrepareDirectionalShadowBakeForRender(passCtx, lighting.dirShadowBakeLight, shadowBounds, lightDir,
+            dirShadowBias, shadows);
     }
     cpuTrace.SetPhase(cpu_trace::Phase::ENVIRONMENT_PIPELINE);
 
@@ -1334,6 +1340,7 @@ void RenderSystem(Scene& scene,
         dbgSnap.renderStats.occlusionCulled = passCtx.statsOcclusionCulled;
         dbgSnap.renderStats.distanceCulled    = passCtx.statsDistanceCulled;
         dbgSnap.renderStats.smallObjectCulled = passCtx.statsSmallObjectCulled;
+        dbgSnap.renderStats.gpuVisibilityUnknownObjects = passCtx.statsGpuVisibilityUnknownObjects;
         dbgSnap.renderStats.drawCalls       = passCtx.statsDrawCalls;
         dbgSnap.renderStats.vertexCount     = passCtx.statsVertexCount;
         dbgSnap.renderStats.triangleCount   = passCtx.statsTriangleCount;

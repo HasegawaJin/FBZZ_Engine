@@ -302,18 +302,18 @@ FBZZ_ENGINE_API ActiveWeather FindActiveWeather(Scene& scene);
 /// @note ワールド空間バウンディング球 (カリング用)
 
 
-/// @note メッシュのローカルバウンディング球をワールド空間に変換する。boundsRadius が 0 のメッシュ (ComputeBounds 未実行) は半径 0 を返す。padding はワールド単位で半径へ加算する余白 (カメラの Culling Bounds Padding)。
-/// @note このメッシュを SW オクルージョンカリングの遮蔽者として使ってよいか。
-/// @note OcclusionCuller はバウンディング球の投影円に内接する正方形へ「球の背面深度」を焼く。床タイル・壁パネル・板ポリ・フェンスのように球に対し実体が薄い形では「球の内側は概ねメッシュで埋まっている」という前提が崩れ、実際には何も無い空間まで遮蔽者として主張してしまう (見えているものが消える)。
-/// @note 判定材料は AABB の最小半径成分と球半径の比。立方体で 0.577、球で 1.0、10x10x0.2 の板で 0.014 になるので、この比だけで薄い形を弾ける。
-/// @note 弾かれた物も「遮蔽される側」としては通常どおり判定される (描画は落ちる)。
+/// @note 形状密度の粗い指標。遮蔽登録は別途 Mesh::occlusionRadius と現在の材質被覆を要求する。
 [[nodiscard]] FBZZ_ENGINE_API bool IsReliableOccluder(const renderer::Mesh& mesh);
 
+/// @note boundsRadius が 0 なら未確定の半径 0。padding はワールド空間の外接球だけへ加える。
 FBZZ_ENGINE_API WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
                                float padding = 0.0f);
 
 /// @return Maximum axis norm of the current world matrix, preserving nonuniform and negative scale bounds.
 FBZZ_ENGINE_API float ComputeWorldBoundsScale(const math::Matrix4& world);
+/// @return World-space leaf displacement for the selected material slots; -1 means unresolved bounds and requires fail-open culling.
+/// @note Reads current immutable authoring without importer/GPU callbacks; slot overrides follow material synchronization order.
+[[nodiscard]] FBZZ_ENGINE_API float ComputeLeafWindBoundsPadding(const GameObject& go, size_t slotCount);
 /// @pre maximumScale was computed from this same world matrix; both values belong to one callback-free extraction.
 FBZZ_ENGINE_API WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
                                const renderer::Mesh& mesh, float padding = 0.0f);

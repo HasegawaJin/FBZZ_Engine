@@ -17,6 +17,8 @@
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -66,6 +68,99 @@ TEST_F(SceneSerializerTest, SavesAndReloadsAnEmptyScene)
 
     ASSERT_NE(restored, nullptr);
     EXPECT_TRUE(restored->GetRootGameObjects().empty());
+}
+
+TEST_F(SceneSerializerTest, KeepsDirectionalShadowBakePresetsAndDefaultsLegacyLightsToRealtime)
+{
+    scene::Scene source;
+    auto& light = source.CreateGameObject("Sun").AddComponent<scene::LightComponent>();
+    light.shadowMode = scene::LightComponent::ShadowMode::AUTO_BAKE;
+    light.shadowBakeDayDirection = {0, -1, 0};
+    light.shadowBakeEveningDirection = {0.6f, -0.2f, 0.7f};
+    source.CreateGameObject("Rock").AddComponent<scene::MeshRenderer>().bakeStaticShadow = true;
+
+    const auto expectBaked = [](scene::Scene& restored) {
+        auto* object = restored.Find("Sun");
+        ASSERT_NE(object, nullptr);
+        const auto* component = object->GetComponent<scene::LightComponent>();
+        ASSERT_NE(component, nullptr);
+        EXPECT_EQ(component->shadowMode, scene::LightComponent::ShadowMode::AUTO_BAKE);
+        EXPECT_EQ(component->shadowBakeDayDirection, (math::Vector3{0, -1, 0}));
+        EXPECT_EQ(component->shadowBakeEveningDirection, (math::Vector3{0.6f, -0.2f, 0.7f}));
+        auto* rock = restored.Find("Rock");
+        ASSERT_NE(rock, nullptr);
+        const auto* mesh = rock->GetComponent<scene::MeshRenderer>();
+        ASSERT_NE(mesh, nullptr);
+        EXPECT_TRUE(mesh->bakeStaticShadow);
+    };
+    auto saved = RoundTrip(source);
+    ASSERT_NE(saved, nullptr);
+    expectBaked(*saved);
+
+    std::string diagnostic;
+    const auto cloneText = scene::SceneSerializer::CapturePassiveClone(source, diagnostic);
+    ASSERT_FALSE(cloneText.empty());
+    auto cloned = scene::SceneSerializer::LoadDataFromText(cloneText, ScenePath());
+    ASSERT_NE(cloned, nullptr);
+    expectBaked(*cloned);
+
+    std::istringstream lines(cloneText);
+    std::string legacy;
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (line.find("shadowMode") == std::string::npos && line.find("shadowBake") == std::string::npos
+            && line.find("bakeStaticShadow") == std::string::npos)
+            legacy += line + '\n';
+    }
+    auto old = scene::SceneSerializer::LoadDataFromText(legacy, ScenePath());
+    ASSERT_NE(old, nullptr);
+    auto* oldObject = old->Find("Sun");
+    ASSERT_NE(oldObject, nullptr);
+    const auto* oldLight = oldObject->GetComponent<scene::LightComponent>();
+    ASSERT_NE(oldLight, nullptr);
+    EXPECT_EQ(oldLight->shadowMode, scene::LightComponent::ShadowMode::REALTIME);
+    EXPECT_EQ(oldLight->shadowBakeDayDirection, math::Vector3::ZERO);
+    EXPECT_EQ(oldLight->shadowBakeEveningDirection, math::Vector3::ZERO);
+    auto* oldRock = old->Find("Rock");
+    ASSERT_NE(oldRock, nullptr);
+    const auto* oldMesh = oldRock->GetComponent<scene::MeshRenderer>();
+    ASSERT_NE(oldMesh, nullptr);
+    EXPECT_FALSE(oldMesh->bakeStaticShadow);
+}
+
+TEST_F(SceneSerializerTest, KeepsVegetationCellBudgetsInTheSceneAndPlayClone)
+{
+    using Instances = scene::InstancedMeshComponent;
+    const Instances::VegetationBudget authored{true, 48, 16, 8};
+    scene::Scene source;
+    source.CreateGameObject("Giant Trees").AddComponent<Instances>().m_vegetationBudget = authored;
+
+    const auto expectBudget = [](scene::Scene& restored, const Instances::VegetationBudget& expected) {
+        auto* owner = restored.Find("Giant Trees");
+        ASSERT_NE(owner, nullptr);
+        const auto* instances = owner->GetComponent<Instances>();
+        ASSERT_NE(instances, nullptr);
+        EXPECT_EQ(instances->m_vegetationBudget, expected);
+    };
+    auto saved = RoundTrip(source);
+    ASSERT_NE(saved, nullptr);
+    expectBudget(*saved, authored);
+
+    std::string diagnostic;
+    const auto cloneText = scene::SceneSerializer::CapturePassiveClone(source, diagnostic);
+    ASSERT_FALSE(cloneText.empty());
+    auto cloned = scene::SceneSerializer::LoadDataFromText(cloneText, ScenePath());
+    ASSERT_NE(cloned, nullptr);
+    expectBudget(*cloned, authored);
+
+    std::istringstream lines(cloneText);
+    std::string legacy, line;
+    while (std::getline(lines, line)) {
+        if (line.find("vegetation") == std::string::npos) legacy += line + '\n';
+    }
+    auto old = scene::SceneSerializer::LoadDataFromText(legacy, ScenePath());
+    ASSERT_NE(old, nullptr);
+    expectBudget(*old, {});
 }
 
 TEST_F(SceneSerializerTest, KeepsAnimatorPoseLodAcrossSaveAndPassivePlayCloneAndDefaultsLegacyData)

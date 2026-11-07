@@ -1677,6 +1677,7 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
             mrTbl.insert("mesh",        mr->meshPath);
             mrTbl.insert("enabled",     mr->enabled);
             mrTbl.insert("castShadows", mr->castShadows);
+            mrTbl.insert("bakeStaticShadow", mr->bakeStaticShadow);
             goTbl.insert("MeshRenderer", std::move(mrTbl));
         }
 
@@ -2613,6 +2614,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             mr.enabled  = (*mrTbl)["enabled"].value_or(true);
             /// @note 既存シーンにキーが無い場合は true (従来どおり全メッシュが影を落とす)。
             mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
+            mr.bakeStaticShadow = (*mrTbl)["bakeStaticShadow"].value_or(false);
 
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, resources);
@@ -3600,6 +3602,7 @@ bool SceneSerializer::AppendObjects(
             mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
             mr.enabled  = (*mrTbl)["enabled"].value_or(true);
             mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
+            mr.bakeStaticShadow = (*mrTbl)["bakeStaticShadow"].value_or(false);
             if (!mr.meshPath.empty()) {
                 mr.mesh = ResolveMesh(mr.meshPath, resources);
                 if (!mr.mesh)

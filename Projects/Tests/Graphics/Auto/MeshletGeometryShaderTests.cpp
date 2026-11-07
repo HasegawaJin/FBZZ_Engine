@@ -6,12 +6,18 @@
 #include <TestKit/Graphics/ShaderPath.hpp>
 #include <TestKit/TempDir.hpp>
 #include <Core/ILogSink.hpp>
+#include <Core/Profiler/Profiler.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Passes/Geometry/TerrainRenderPass.hpp>
+#include <Graphics/Pipeline/DirectionalShadowBake.hpp>
 #include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/GpuProfiler.hpp>
+#include <Graphics/Renderer/IBuffer.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/MeshletGeometry.hpp>
+#include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
@@ -21,6 +27,7 @@
 #include <objbase.h>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -30,6 +37,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace fbzz::tests {
@@ -80,6 +88,12 @@ struct MeshletImage {
     std::array<std::vector<float>, 3> colors;
     std::vector<float> depth;
 };
+
+struct TerrainTestVertex {
+    math::Vector3 position, normal, tangent;
+    math::Vector2 uv;
+};
+static_assert(sizeof(TerrainTestVertex) == 44);
 
 struct MeshletBenchmarkResult {
     uint32_t cells = 0;
@@ -372,6 +386,139 @@ protected:
         if (!shadow) for (uint32_t attachment = 0; attachment < image.colors.size(); ++attachment)
             image.colors[attachment] = ReadTexture(m_resources->GetColorTexture(target, attachment), false);
         image.depth = ReadTexture(m_resources->GetDepthTexture(target), true);
+        return image;
+    }
+
+    std::shared_ptr<r::RenderScene> TerrainScene(const math::Matrix4& world)
+    {
+        constexpr uint32_t CELLS = 16;
+        constexpr uint32_t ROW_STRIDE = CELLS + 1;
+        std::vector<TerrainTestVertex> vertices;
+        std::vector<uint32_t> indices;
+        for (uint32_t side = 0; side < 2; ++side) {
+            const auto first = static_cast<uint32_t>(vertices.size());
+            const float center = side == 0 ? -0.9f : 0.9f;
+            for (uint32_t y = 0; y <= CELLS; ++y) for (uint32_t x = 0; x <= CELLS; ++x) {
+                const float u = static_cast<float>(x) / CELLS;
+                const float v = static_cast<float>(y) / CELLS;
+                vertices.push_back({{center + (u - 0.5f) * 1.6f, 2.0f * v - 1.0f, 2.8f + 0.4f * v},
+                    {0.0f, 0.0f, side == 0 ? -1.0f : 1.0f}, {1.0f, 0.0f, 0.0f}, {u, v}});
+            }
+            for (uint32_t y = 0; y < CELLS; ++y) for (uint32_t x = 0; x < CELLS; ++x) {
+                if (x >= 6 && x < 10 && y >= 6 && y < 10) continue;
+                const uint32_t a = first + y * ROW_STRIDE + x;
+                const uint32_t b = a + 1;
+                const uint32_t c = a + ROW_STRIDE;
+                const uint32_t d = c + 1;
+                if (side == 0) indices.insert(indices.end(), {a, c, b, b, c, d});
+                else indices.insert(indices.end(), {a, b, c, b, d, c});
+            }
+        }
+
+        auto& resources = *m_resources;
+        const uint8_t white[]{255, 255, 255, 255}, slots[]{0, 0, 0, 0}, weights[]{255, 0, 0, 0};
+        const auto texture = resources.CreateTexture(white, 1, 1);
+        r::TerrainLayerGpu layer;
+        layer.diffuseIndex = layer.normalIndex = layer.aoRoughnessIndex = layer.heightIndex =
+            resources.Get(texture)->GetBindlessIndex();
+        layer.normalStrength = 0;
+        const auto layers = resources.CreateStructuredBuffer(&layer, 1, sizeof(layer));
+        r::RenderTerrainInput terrain;
+        terrain.constants.worldMatrix = world;
+        terrain.constants.layerCount = 1;
+        terrain.constants.layerBufferIndex = resources.Get(layers)->GetBindlessIndex();
+        terrain.constants.terrainParams = {4, 2, 0, 0};
+        terrain.splatIndices = resources.CreateTexture(slots, 1, 1);
+        terrain.splatWeights = resources.CreateTexture(weights, 1, 1);
+        auto& patch = terrain.patches.emplace_back();
+        patch.aabbMin = {-1.7f, -1.0f, 2.8f};
+        patch.aabbMax = {1.7f, 1.0f, 3.2f};
+        patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(),
+            vertices.size() * sizeof(TerrainTestVertex), sizeof(TerrainTestVertex));
+        const auto indexCount = static_cast<uint32_t>(indices.size());
+        patch.indexBufferLOD.fill(resources.CreateIndexBuffer(indices.data(), indexCount));
+        patch.indexCountLOD.fill(indexCount);
+        auto scene = std::make_shared<r::RenderScene>();
+        scene->terrains.push_back(std::move(terrain));
+        return scene;
+    }
+
+    MeshletImage RenderTerrain(const std::shared_ptr<const r::RenderScene>& scene,
+        const r::Camera& camera, bool mesh, const r::Camera* shadowView = nullptr)
+    {
+        auto& resources = *m_resources;
+        auto& device = *m_bundle.renderer;
+        const bool shadow = shadowView != nullptr;
+        const auto target = shadow ? m_shadow : m_gbuffer;
+        r::RenderSettings settings;
+        settings.geometryDrawMode = mesh ? r::GeometryDrawMode::MESH_SHADER : r::GeometryDrawMode::CPU;
+        settings.shadowEnabled = shadow;
+        settings.shadow.mapResolution = EXTENT;
+        r::RenderPassHandles handles;
+        handles.frameCB = m_frameCB;
+        handles.objectCB = m_objectCB;
+        handles.shadowShader = m_shadowShader;
+        handles.defaultPSO = resources.CreatePipelineState({r::RasterizerMode::SOLID,
+            r::BlendMode::OPAQUE_BLEND, r::DepthMode::DEPTH_ON});
+        handles.advancedGraphicsCB = m_advancedCB;
+        handles.shadowCB = resources.CreateConstantBuffer(sizeof(r::ShadowConstantsCB));
+        handles.lightCB = resources.CreateConstantBuffer(sizeof(r::LightConstantsCB));
+        const r::AdvancedGraphicsCB advanced{};
+        const r::ShadowConstantsCB shadowConstants{};
+        const r::LightConstantsCB light{};
+        r::RenderPassContext ctx{{}, device, resources, camera, settings, target, UINT32_MAX, handles};
+        ctx.renderScene = scene;
+        ctx.width = ctx.height = EXTENT;
+        ctx.isDeferred = true;
+        ctx.occlusionCullingEnabled = false;
+
+        Begin();
+        resources.Update(handles.advancedGraphicsCB, &advanced, sizeof(advanced));
+        resources.Update(handles.shadowCB, &shadowConstants, sizeof(shadowConstants));
+        resources.Update(handles.lightCB, &light, sizeof(light));
+        profiler::Profiler::BeginFrame();
+        if (!shadow) {
+            ctx.resourceRegistry.BindTarget("GBuffer", target);
+            r::TerrainRenderPass pass(r::TerrainDrawMode::GBuffer);
+            r::PassBuilder builder;
+            pass.Setup(builder, ctx);
+            r::PassResources access(ctx.resourceRegistry, builder.Accesses(), pass.Name());
+            ctx.passResources = &access;
+            device.SetRenderTarget(target, resources);
+            device.Clear({0, 0, 0, 0});
+            device.ClearDepth();
+            pass.Execute(access, ctx);
+            ctx.passResources = nullptr;
+        } else if (shadowView->m_projection == r::ProjectionMode::Orthographic) {
+            ctx.resourceRegistry.BindTarget("ShadowMap", target);
+            ctx.shadowStrength = 1.0f;
+            ctx.shadowCascadeCount = 1;
+            auto& cascade = ctx.shadowCascades[0];
+            cascade.viewProjection = shadowView->GetViewProjection();
+            cascade.view = shadowView->GetViewMatrix();
+            cascade.eyePos = shadowView->m_position;
+            cascade.frustum = math::Frustum::FromViewProjection(cascade.viewProjection);
+            cascade.viewportSize = EXTENT;
+            r::ExecuteShadowPass(ctx);
+        } else {
+            ctx.resourceRegistry.BindTarget("ShadowMap", m_shadowDepthOnly);
+            ctx.resourceRegistry.BindTarget("PunctualShadowMap", target);
+            ctx.shadowStrength = 0.0f;
+            ctx.punctualShadowViewCount = 1;
+            auto& view = ctx.punctualShadowViews[0];
+            view.viewProjection = shadowView->GetViewProjection();
+            view.view = shadowView->GetViewMatrix();
+            view.eyePos = shadowView->m_position;
+            view.frustum = math::Frustum::FromViewProjection(view.viewProjection);
+            view.viewportSize = EXTENT;
+            r::ExecuteShadowPass(ctx);
+        }
+        profiler::Profiler::EndFrame();
+        End();
+        MeshletImage image;
+        if (!shadow) for (uint32_t attachment = 0; attachment < image.colors.size(); ++attachment)
+            image.colors[attachment] = ReadTexture(resources.GetColorTexture(target, attachment), false);
+        image.depth = ReadTexture(resources.GetDepthTexture(target), true);
         return image;
     }
 
@@ -794,6 +941,332 @@ TEST_F(MeshletGeometryShaderTest, InvalidMeshletRangePreservesTheCallerIndexedFa
     for (size_t offset = 0; offset < fallback.depth.size(); offset += 4u)
         coverage += fallback.depth[offset] > 1.0e-5f;
     EXPECT_GT(coverage, 1000u);
+}
+
+TEST_F(MeshletGeometryShaderTest, TerrainMeshletsPreserveGrazingMirroredAndShadowCoverage)
+{
+    if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "DX12 Mesh Shader support required";
+    const bool profilerWasEnabled = profiler::Profiler::IsEnabled();
+    const auto previousFilter = profiler::Profiler::GetRequestedCaptureFilter();
+    profiler::Profiler::RequestCaptureFilter({});
+    profiler::Profiler::SetEnabled(true);
+    const auto meshSubmissions = [] {
+        const auto& records = profiler::Profiler::GetLastFrameRecords();
+        return std::count_if(records.begin(), records.end(), [](const auto& record) {
+            return std::string_view(record.name) == "TerrainMeshlet::Submit";
+        });
+    };
+    const auto expectTerrain = [&](const std::shared_ptr<r::RenderScene>& scene,
+        const r::Camera& view, const r::Camera* light, bool requireMesh) {
+        const auto reference = RenderTerrain(scene, view, false, light);
+        EXPECT_EQ(meshSubmissions(), 0);
+        const auto actual = RenderTerrain(scene, view, true, light);
+        if (requireMesh) EXPECT_EQ(meshSubmissions(), 1);
+        ExpectSame(reference, actual, light != nullptr);
+    };
+    const auto scene = TerrainScene(math::Matrix4::Identity());
+    auto front = Camera(5.0f);
+    front.m_projection = r::ProjectionMode::Perspective;
+    front.m_position = {0.6f, 0.3f, -0.5f};
+    front.LookAt({0, 0, 3});
+    auto back = Camera(5.0f);
+    back.m_position = {-0.6f, 0.3f, 7.0f};
+    back.LookAt({0, 0, 3});
+    auto grazing = front;
+    grazing.m_position = {-0.9f, 0.4f, 2.88f};
+    grazing.m_near = 0.02f;
+    grazing.m_fovY = 100.0f;
+    grazing.LookAt({-0.6f, 0, 3});
+    {
+        SCOPED_TRACE("perspective front");
+        expectTerrain(scene, front, nullptr, true);
+    }
+    {
+        SCOPED_TRACE("orthographic back");
+        expectTerrain(scene, back, nullptr, true);
+    }
+    {
+        SCOPED_TRACE("near grazing perspective");
+        expectTerrain(scene, grazing, nullptr, true);
+    }
+    {
+        SCOPED_TRACE("mirrored winding");
+        const auto mirrored = TerrainScene(math::Matrix4::Scale({-1, 1, 1}));
+        expectTerrain(mirrored, front, nullptr, false);
+    }
+
+    /// @note The main view excludes the terrain so a camera-derived shadow cone would remove valid depth.
+    auto offCamera = front;
+    offCamera.LookAt({0, 0, -4});
+    {
+        SCOPED_TRACE("directional shadow from the back");
+        expectTerrain(scene, offCamera, &back, true);
+    }
+    {
+        SCOPED_TRACE("punctual shadow from the front");
+        expectTerrain(scene, offCamera, &front, true);
+    }
+    profiler::Profiler::SetEnabled(profilerWasEnabled);
+    profiler::Profiler::RequestCaptureFilter(previousFilter);
+}
+
+TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndKeepsMovedCasters)
+{
+    auto& resources = *m_resources;
+    auto& device = *m_bundle.renderer;
+    /// @note Keep the perforated terrain thick enough in the 64px depth tile to measure a 5x5 interior.
+    const auto terrainScale = math::Matrix4::Scale({1.75f, 1.75f, 1.0f});
+    auto staticScene = TerrainScene(terrainScale);
+    staticScene->terrains.front().shadowBakeStatic = true;
+    ASSERT_TRUE(r::IsDirectionalShadowBakeTerrain(staticScene->terrains.front()));
+    auto dynamicScene = std::make_shared<r::RenderScene>();
+    dynamicScene->terrains.push_back(staticScene->terrains.front());
+    dynamicScene->terrains.front().shadowBakeStatic = false;
+    auto combinedScene = std::make_shared<r::RenderScene>();
+    combinedScene->terrains.push_back(staticScene->terrains.front());
+    combinedScene->terrains.push_back(dynamicScene->terrains.front());
+    const auto moveDynamicTerrain = [&](float x) {
+        const auto world = math::Matrix4::Translate({x, 0, -0.5f}) * terrainScale;
+        dynamicScene->terrains.front().constants.worldMatrix = world;
+        combinedScene->terrains.back().constants.worldMatrix = world;
+    };
+
+    const auto target = resources.CreateRenderTarget(EXTENT * 2u, EXTENT * 2u,
+        {0, r::Format::RGBA16F, true, false});
+    ASSERT_TRUE(target);
+    const auto camera = Camera(5.0f);
+    const r::ShadowBounds coverage{{0, 0, 3}, 6.0f, true};
+    const r::ShadowBounds bakeCoverage{coverage.center, 8.0f, true};
+    r::RenderSettings settings;
+    settings.geometryDrawMode = r::GeometryDrawMode::CPU;
+    settings.shadowEnabled = true;
+    settings.shadow.mapResolution = EXTENT * 2u;
+    settings.shadow.cascadeCount = 2;
+    r::RenderPassHandles handles;
+    handles.frameCB = m_frameCB;
+    handles.objectCB = m_objectCB;
+    handles.shadowShader = m_shadowShader;
+    handles.defaultPSO = resources.CreatePipelineState({r::RasterizerMode::SOLID,
+        r::BlendMode::OPAQUE_BLEND, r::DepthMode::DEPTH_ON});
+    ASSERT_TRUE(handles.defaultPSO);
+
+    const auto render = [&](const std::shared_ptr<const r::RenderScene>& scene, const r::PreparedShadows& prepared,
+        const r::DirectionalShadowBakeView& baked, bool expectRestore) {
+        r::RenderPassContext ctx{{}, device, resources, camera, settings, target, UINT32_MAX, handles};
+        ctx.renderScene = scene;
+        ctx.shadowStrength = 1.0f;
+        ctx.shadowCascadeCount = prepared.count;
+        ctx.directionalShadowBake = baked;
+        for (int index = 0; index < prepared.count; ++index) ctx.shadowCascades[index] = prepared.cascades[index];
+        ctx.resourceRegistry.BindTarget("ShadowMap", target);
+
+        const bool wasEnabled = profiler::Profiler::IsEnabled();
+        const auto priorFilter = profiler::Profiler::GetRequestedCaptureFilter();
+        profiler::Profiler::RequestCaptureFilter({});
+        profiler::Profiler::SetEnabled(true);
+        Begin();
+        profiler::Profiler::BeginFrame();
+        r::ExecuteShadowPass(ctx);
+        profiler::Profiler::EndFrame();
+        End();
+        const auto& records = profiler::Profiler::GetLastFrameRecords();
+        EXPECT_EQ(std::count_if(records.begin(), records.end(), [](const auto& record) {
+            return std::string_view(record.name) == "DirectionalShadowBake::Restore";
+        }), expectRestore ? 1 : 0);
+        profiler::Profiler::SetEnabled(wasEnabled);
+        profiler::Profiler::RequestCaptureFilter(priorFilter);
+        MeshletImage image;
+        image.depth = ReadTexture(resources.GetDepthTexture(target), true);
+        return image;
+    };
+
+    const auto expectResampled = [](const MeshletImage& reference, const MeshletImage& actual) {
+        ASSERT_EQ(reference.depth.size(), static_cast<size_t>(EXTENT) * EXTENT * 4u);
+        ASSERT_EQ(actual.depth.size(), reference.depth.size());
+        size_t inside = 0;
+        size_t outside = 0;
+        size_t missing = 0;
+        size_t unexpected = 0;
+        float maxDepthError = 0.0f;
+        /// @note A fixed texel covers fewer than two live pixels in this fixture. Permit edge shifts inside that footprint only.
+        constexpr uint32_t margin = 2;
+        constexpr float clear = 1.0f - 1.0e-5f;
+        for (uint32_t y = margin; y < EXTENT - margin; ++y) for (uint32_t x = margin; x < EXTENT - margin; ++x) {
+            float lo = 1.0f;
+            float hi = 0.0f;
+            for (uint32_t ty = y - margin; ty <= y + margin; ++ty)
+                for (uint32_t tx = x - margin; tx <= x + margin; ++tx) {
+                    const float depth = reference.depth[4u * (ty * EXTENT + tx)];
+                    lo = (std::min)(lo, depth);
+                    hi = (std::max)(hi, depth);
+                }
+            const float depth = actual.depth[4u * (y * EXTENT + x)];
+            ASSERT_TRUE(std::isfinite(depth));
+            if (hi < clear) {
+                ++inside;
+                missing += depth >= clear;
+                maxDepthError = (std::max)({maxDepthError, lo - depth, depth - hi});
+            } else if (lo >= clear) {
+                ++outside;
+                unexpected += depth < clear;
+            }
+        }
+        EXPECT_GT(inside, 32u);
+        EXPECT_GT(outside, 32u);
+        EXPECT_EQ(missing, 0u);
+        EXPECT_EQ(unexpected, 0u);
+        EXPECT_LE(maxDepthError, 2.0e-6f);
+    };
+
+    const std::array<math::Vector3, 2> directions{{{0, 0, 1}, {0.5f, -0.25f, 0.8f}}};
+    for (const auto& direction : directions) {
+        const auto lightDirection = direction.Normalized();
+        SCOPED_TRACE(direction.x);
+        moveDynamicTerrain(-2.5f);
+        r::DirectionalShadowBakeData bake;
+        ASSERT_TRUE(r::BakeDirectionalStaticShadow(device, resources, *combinedScene, bakeCoverage,
+            lightDirection, EXTENT, UINT32_MAX, bake));
+        const auto texture = r::UploadDirectionalShadowBake(resources, bake);
+        ASSERT_TRUE(texture);
+        auto prepared = r::PrepareShadows(camera, settings, coverage, lightDirection, 12.0f, 1.0f);
+        ASSERT_EQ(prepared.count, 2);
+        /// @note The fixture reads the upper-left depth tile. Place the far tile there and keep the near tile separate.
+        std::swap(prepared.cascades[0].viewportX, prepared.cascades[1].viewportX);
+        std::swap(prepared.cascades[0].atlasRect, prepared.cascades[1].atlasRect);
+        auto uncovered = prepared;
+        uncovered.cascades[1].viewProjection.m[0][3] += 2.0f;
+        r::DirectionalShadowBakeView rejected;
+        EXPECT_FALSE(r::PrepareDirectionalShadowBakeView(resources, bake, texture, coverage,
+            lightDirection, UINT32_MAX, 1.0f, uncovered, rejected));
+        EXPECT_FALSE(rejected.depth);
+        const auto originalProjection = prepared.cascades[1].viewProjection;
+        r::DirectionalShadowBakeView baked;
+        ASSERT_TRUE(r::PrepareDirectionalShadowBakeView(resources, bake, texture, coverage,
+            lightDirection, UINT32_MAX, 1.0f, prepared, baked));
+        EXPECT_MAT4_NEAR(prepared.cascades[1].viewProjection, originalProjection, 0.0f);
+        r::DirectionalShadowBakeView stale;
+        EXPECT_FALSE(r::PrepareDirectionalShadowBakeView(resources, bake, texture, coverage,
+            math::Vector3::UP, UINT32_MAX, 1.0f, prepared, stale));
+
+        /// @note Erode static coverage alone. Touching static and dynamic silhouettes can hide each other's edges.
+        const auto staticReference = render(staticScene, prepared, {}, false);
+        auto bakedStatic = render(staticScene, prepared, baked, true);
+        expectResampled(staticReference, bakedStatic);
+
+        const auto beforeMove = render(dynamicScene, prepared, {}, false);
+        moveDynamicTerrain(2.5f);
+        const auto moved = render(dynamicScene, prepared, {}, false);
+        ASSERT_EQ(moved.depth.size(), bakedStatic.depth.size());
+        EXPECT_NE(beforeMove.depth, moved.depth);
+        for (size_t offset = 0; offset < bakedStatic.depth.size(); offset += 4u)
+            bakedStatic.depth[offset] = (std::min)(bakedStatic.depth[offset], moved.depth[offset]);
+        ExpectSame(bakedStatic, render(combinedScene, prepared, baked, true), true);
+
+        auto sameProjection = prepared;
+        auto& farCascade = sameProjection.cascades[1];
+        /// @note Reconstruct the fixed orthographic camera independently to check exact, unresampled depth restoration.
+        const float radius = bake.coverage.radius;
+        const float pullback = 2.0f * radius + 20.0f;
+        const auto up = std::abs(bake.lightDirection.y) > 0.99f ? math::Vector3::RIGHT : math::Vector3::UP;
+        farCascade.eyePos = bake.coverage.center - bake.lightDirection * pullback;
+        farCascade.view = math::Matrix4::LookAt(farCascade.eyePos, bake.coverage.center, up);
+        farCascade.viewProjection = math::Matrix4::Orthographic(-radius, radius, -radius, radius,
+            1.0f, pullback + radius + 20.0f) * farCascade.view;
+        farCascade.frustum = math::Frustum::FromViewProjection(farCascade.viewProjection);
+        farCascade.texelWorldSize = (2.0f * radius) / static_cast<float>(EXTENT);
+        r::DirectionalShadowBakeView unresampled;
+        ASSERT_TRUE(r::PrepareDirectionalShadowBakeView(resources, bake, texture, coverage,
+            lightDirection, UINT32_MAX, 1.0f, sameProjection, unresampled));
+        const auto exactReference = render(combinedScene, sameProjection, {}, false);
+        const auto exactRestore = render(combinedScene, sameProjection, unresampled, true);
+        ExpectSame(exactReference, exactRestore, true);
+        resources.Release(texture);
+    }
+}
+
+TEST_F(MeshletGeometryShaderTest, TerrainNormalConeOnlyRejectsProvenBackFaces)
+{
+    struct ConeProbe {
+        uint32_t packedCone;
+        float apexDistance;
+        math::Vector2 padding;
+        math::Vector4 center;
+        math::Vector4 eye;
+    };
+    static_assert(sizeof(ConeProbe) == 48);
+    auto& resources = *m_resources;
+    std::array<TerrainTestVertex, 3> vertices{};
+    vertices[0].position = {-1, -1, 3};
+    vertices[1].position = {1, -1, 3};
+    vertices[2].position = {-1, 1, 3};
+    const uint32_t indices[]{0, 2, 1};
+    const auto vb = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(TerrainTestVertex));
+    const auto ib = resources.CreateIndexBuffer(indices, 3);
+    r::MeshletGeometry geometry;
+    ASSERT_TRUE(resources.Meshlets().PrepareTerrain(resources, vb, ib, 3, geometry));
+    ASSERT_EQ(geometry.meshletCount, 1u);
+    const auto* blob = resources.Get(geometry.blob);
+    ASSERT_NE(blob, nullptr);
+    r::MeshletDescriptor descriptor;
+    ASSERT_TRUE(blob->CopyData(0, sizeof(descriptor), &descriptor));
+
+    /// @note SNORM8 (0, 0, -127) and UNORM8 cutoff ceil(0.3 * 255).
+    constexpr uint32_t axis = 0x4D810000u;
+    const math::Vector4 center{0, 0, 3, 0};
+    const float invalidDistance = std::numeric_limits<float>::quiet_NaN();
+    const std::array<ConeProbe, 13> probes{{
+        {std::bit_cast<uint32_t>(descriptor.boundsMin[3]), descriptor.boundsMax[3], {}, center, {0, 0, 4, 1}},
+        {axis, 0.25f, {}, center, {0, 0, 4, 1}},
+        {axis, 0.25f, {}, center, {0, 0, 3.125f, 1}},
+        {axis, invalidDistance, {}, center, {0, 0, 1, 2}},
+        {axis, 0, {}, center, {0, 0, -1, 2}},
+        {axis, 0, {}, center, {1, 0, 0, 2}},
+        {axis, 0, {}, center, {0, 0, 3.000001f, 1}},
+        {0xE6810000u, 0, {}, center, {0.6f, 0, 0.8f, 2}},
+        {0xFF810000u, 0, {}, center, {0, 0, 4, 1}},
+        {axis, 0, {}, center, {0, 0, 4, 0}},
+        {axis, invalidDistance, {}, center, {0, 0, 4, 1}},
+        {0, 0, {}, center, {0, 0, 4, 1}},
+        {0x339A004Cu, 0, {}, center, {-0.6f, 0, 0.8f, 2}},
+    }};
+    const std::array<float, 13> expected{1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
+    const auto shaderRoot = m_temp.File("Shaders");
+    const auto fixtureRoot = root.parent_path().parent_path() / "Projects/Tests/Graphics/Fixtures";
+    std::error_code error;
+    std::filesystem::create_directories(shaderRoot / "Terrain", error);
+    ASSERT_FALSE(error);
+    std::filesystem::copy_file(root / "Terrain/TerrainNormalCone.hlsli",
+        shaderRoot / "Terrain/TerrainNormalCone.hlsli", error);
+    ASSERT_FALSE(error);
+    const auto shaderPath = shaderRoot / "TerrainNormalConeProbe.hlsl";
+    std::filesystem::copy_file(fixtureRoot / shaderPath.filename(), shaderPath, error);
+    ASSERT_FALSE(error);
+
+    auto& device = *m_bundle.renderer;
+    r::DrawCall draw;
+    draw.shader = resources.LoadShader(shaderPath.generic_string());
+    draw.pipelineState = m_copyState;
+    draw.vertexCount = 3;
+    draw.constantBuffers[2] = resources.CreateConstantBuffer(sizeof(probes));
+    ASSERT_TRUE(draw.shader && draw.constantBuffers[2]);
+    Begin();
+    resources.Update(draw.constantBuffers[2], probes.data(), sizeof(probes));
+    device.SetRenderTarget(m_readback, resources);
+    device.Clear({0, 0, 0, 0});
+    device.Submit(draw, resources);
+    End();
+    std::vector<float> pixels;
+    uint32_t width = 0, height = 0;
+    ASSERT_TRUE(device.CaptureRenderTargetToLinearRGBA(m_readback, resources, pixels, width, height));
+    ASSERT_EQ(width, EXTENT);
+    ASSERT_EQ(height, EXTENT);
+    ASSERT_EQ(pixels.size(), static_cast<size_t>(width) * height * 4);
+    for (size_t index = 0; index < expected.size(); ++index) {
+        SCOPED_TRACE(index);
+        EXPECT_FLOAT_EQ(pixels[4 * index], expected[index]);
+        EXPECT_FLOAT_EQ(pixels[4 * index + 3], 1.0f);
+    }
 }
 
 TEST_F(MeshletGeometryShaderTest, DISABLED_SteadyHighDensityGeometryComparison)

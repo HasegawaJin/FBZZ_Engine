@@ -1,0 +1,6 @@
+# @file    BakedDepthExtract.hlsl.meta
+# @brief   方向ライトのベイク深度転写シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = 'b24cbce5c62149a7a16bb86cf62b0b4c'

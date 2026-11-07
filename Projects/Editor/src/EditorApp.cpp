@@ -2032,6 +2032,7 @@ void EditorApp::OnUpdate(float dt)
     /// @note シーンを開き直すと、その中で参照されるアセットを新しい版で読み直せる。逆順だと
     /// @note        「開き直した直後だけ古いアセットを掴む」1 フレームができるため、アセットより後に行う。
     ProcessSceneDiskReload();
+    TickPendingShadowBakePlay();
 
     if (m_aiPipeServer && m_aiPipeServer->IsRunning() && m_aiDispatcher) {
         m_aiDispatcher->SetSceneViewportRT(m_sceneViewportRT);
@@ -2161,6 +2162,7 @@ void EditorApp::OnRender()
     const bool needGameView = !fluidPlaybackCapture
         && (isViewportShowing(m_gameViewportPanel)
             || isViewportShowing(m_uiViewportPanel)
+            || m_pendingShadowBakePlayScene
             || aiViewportCaptureActive
             || m_gameViewportRTRecreated
             || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(true)));

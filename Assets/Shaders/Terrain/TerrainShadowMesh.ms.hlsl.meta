@@ -1,0 +1,6 @@
+# @file    TerrainShadowMesh.ms.hlsl.meta
+# @brief   地形 meshlet 影シェーダーのアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = '8a90222a093049eeb4e0e074cc42a438'

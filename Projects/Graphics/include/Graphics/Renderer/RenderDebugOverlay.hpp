@@ -39,6 +39,15 @@ public:
         int distanceCulled    = 0;
         /// @note 画面上で小さすぎるとして除外した数
         int smallObjectCulled = 0;
+        /// @note GPU で可視判定し、結果を CPU へ読み戻していない候補数。
+        int gpuVisibilityUnknownObjects = 0;
+        /// @note GPU 未確定候補を除いた可視数。gpuVisibilityUnknownObjects > 0 なら全体の下限。
+        [[nodiscard]] constexpr int64_t KnownVisibleObjects() const noexcept
+        {
+            const int64_t count=static_cast<int64_t>(totalObjects)-frustumCulled-occlusionCulled
+                -distanceCulled-smallObjectCulled-gpuVisibilityUnknownObjects;
+            return count>0 ? count : 0;
+        }
         /// @note カメラ視点で実際に発行した DrawCall 数 (不透明・半透明合計)
         int drawCalls       = 0;
         /// @note 描画した総頂点数

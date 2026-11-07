@@ -5,6 +5,7 @@
 #include "Graphics/Pipeline/RenderPipeline.hpp"
 #include "Graphics/Pipeline/RenderPassContext.hpp"
 #include <Graphics/Pipeline/RenderPassCapture.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Core/Logger.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Graphics/Renderer/RenderBindingGuard.hpp>
@@ -381,6 +382,40 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
             graph.InjectPlan(m_lastReport);
         }
     }
+
+    ctx.terrainHiZActive = false;
+    ctx.terrainHiZInstancesPending = false;
+    /// @note 無効化・グラフ除外された描画元を遮蔽物にしない。CPU 準備自体はグラフの外で行う。
+    OcclusionPasses occlusionPasses{false, false, false, false};
+    if (ctx.occlusionCullingEnabled && ctx.occlusionCuller) {
+        bool deferredDepth = false;
+        bool forwardOpaque = false;
+        bool terrainHiZPlanned = false;
+        const auto& passes = graph.GetPasses();
+        for (const size_t index : graph.GetLastReport().executionOrder) {
+            const auto& name = passes[index].name;
+            if (name == "DeferredGBuffer") occlusionPasses.meshGBuffer = true;
+            if (name == "ForwardOpaque") forwardOpaque = true;
+            if (name == "ForwardOpaque" || name == "DeferredSkinnedForward") occlusionPasses.meshForward = true;
+            if (name == "TerrainGBuffer") occlusionPasses.terrainGBuffer = true;
+            if (name == "TerrainForward") occlusionPasses.terrainForward = true;
+            if (name == "DeferredDepthCopy") deferredDepth = true;
+            if (name == "TerrainHiZInstances") {
+                terrainHiZPlanned = ctx.isDeferred
+                    ? occlusionPasses.meshGBuffer && occlusionPasses.terrainGBuffer && !deferredDepth
+                    : forwardOpaque && occlusionPasses.terrainForward;
+            }
+        }
+        occlusionPasses.meshGBuffer = occlusionPasses.meshGBuffer && deferredDepth;
+        occlusionPasses.terrainGBuffer = occlusionPasses.terrainGBuffer && deferredDepth;
+        ctx.terrainHiZActive = terrainHiZPlanned && (!ctx.isDeferred || deferredDepth);
+        if (ctx.terrainHiZActive) {
+            /// @note 実深度を使う色経路では地形の CPU ラスタライズを省く。失敗時の描画は可視側へ倒す。
+            occlusionPasses.terrainGBuffer = false;
+            occlusionPasses.terrainForward = false;
+        }
+    }
+    PrepareViewOcclusion(ctx, occlusionPasses);
 
     bool gpuViewAccepted = false;
     if (gpuView && gpuPlan) {

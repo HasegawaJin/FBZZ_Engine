@@ -1,0 +1,6 @@
+# @file    TerrainMeshlet.hlsli.meta
+# @brief   地形 meshlet 描画 include のアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = '2271e33a1c4d44b1a739f79a87f0e030'

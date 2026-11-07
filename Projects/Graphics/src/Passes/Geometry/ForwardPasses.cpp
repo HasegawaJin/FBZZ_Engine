@@ -78,8 +78,6 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         std::sort(staticOpaque.begin(), staticOpaque.end(), frontToBack);
         std::sort(skinnedOpaque.begin(), skinnedOpaque.end(), frontToBack);
     }
-    const bool occlusion = ctx.occlusionCuller && ctx.occlusionCullingEnabled;
-    if (occlusion) ctx.occlusionCuller->Reset(ctx.camera);
     std::optional<DrawCall> bindings;
     auto submit = [&]<bool DETAILED>(const Entry& entry) {
         if (!entry.item->forwardMaterial.valid || !entry.item->forwardMaterial.shader.IsValid()) return;
@@ -104,12 +102,6 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     };
     for (const auto& entry : staticOpaque) {
         if (!entry.item->forwardMaterial.valid || !entry.item->forwardMaterial.shader.IsValid()) continue;
-        const auto bounds = RenderBounds(ctx, *entry.object);
-        if (occlusion && !ctx.occlusionCuller->TestAndRaster(bounds.center, bounds.radius,
-                                                            entry.item->reliableOccluder)) {
-            ++ctx.statsOcclusionCulled;
-            continue;
-        }
         if (detailed) submit.template operator()<true>(entry);
         else submit.template operator()<false>(entry);
     }
@@ -118,6 +110,7 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         else submit.template operator()<false>(entry);
     }
     ExecuteInstanceForward(ctx);
+    ctx.terrainHiZInstancesPending = !ctx.isDeferred && ctx.terrainHiZActive;
     ExecuteFiberPass(ctx);
     if (detailed) {
         /// @note These sums are diagnostic aggregates, not contiguous child spans; visibility overlaps Gather, and per-draw clocks affect this run only.

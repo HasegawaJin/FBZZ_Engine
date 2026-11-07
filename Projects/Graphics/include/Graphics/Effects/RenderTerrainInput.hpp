@@ -4,7 +4,19 @@
 /// @date    2026-09-21
 #pragma once
 #include <Graphics/Pipeline/RenderConstants.hpp>
+#include <memory>
 namespace fbzz::renderer {
+struct TerrainOcclusionColumn {
+    math::Vector4 rectangle;
+    float minimumHeight = 0;
+};
+/// @note 描画と同じ穴・境界接続を持つ不変の CPU 形状。地形の編集時だけ再生成する。
+struct TerrainOcclusionGeometry {
+    std::vector<float> heights;
+    std::array<std::vector<uint16_t>, 3> indices;
+    /// @note 隣接列と重なる footprint 全域の下限。全 LOD の境界に揃え、形状更新時だけ生成する。
+    std::vector<TerrainOcclusionColumn> columns;
+};
 /// @note 32-byte layout shared with TerrainGeometry.hlsli; heights have a one-sample border.
 struct TerrainGpuPatch {
     uint32_t originX = 0, originZ = 0;
@@ -16,6 +28,7 @@ struct TerrainGpuPatch {
 static_assert(sizeof(TerrainGpuPatch) == 32);
 
 struct RenderTerrainPatch {
+    std::shared_ptr<const TerrainOcclusionGeometry> occlusion;
     renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
     std::array<renderer::ResourceHandle<renderer::BufferTag>, 3> indexBufferLOD;
     std::array<uint32_t, 3> indexCountLOD = {};
@@ -39,5 +52,8 @@ struct RenderTerrainInput {
     ResourceHandle<StructuredBufferTag> gpuHeights, gpuPatches;
     ResourceHandle<BufferTag> gpuIndices;
     uint32_t gpuIndexCount = 0, gpuVertexCapacity = 0;
+    /// @note 高さ、穴、境界と変換の版をホストが検証できる地形に限る。
+    bool shadowBakeStatic = false;
+    uint64_t shadowBakeGeometryHash = 0;
 };
 } /// @note namespace fbzz::renderer

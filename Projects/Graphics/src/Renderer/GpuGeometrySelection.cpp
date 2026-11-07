@@ -202,6 +202,18 @@ bool GpuGeometrySelection::Prepare(IRenderer& renderer, ResourceManager& resourc
     const GpuGeometrySelectionView& view, std::span<const GpuGeometryCandidate> candidates,
     uint32_t indexCapacityElements, uint32_t vertexCapacityElements, GpuGeometryDispatch& out)
 {
+    ComputeCall compute;
+    GpuGeometryDispatch prepared;
+    if (!PrepareDispatch(renderer, resources, view, candidates, indexCapacityElements, vertexCapacityElements,
+        compute, prepared) || !renderer.TryDispatch(compute, resources)) return false;
+    out = prepared;
+    return true;
+}
+
+bool GpuGeometrySelection::PrepareDispatch(IRenderer& renderer, ResourceManager& resources,
+    const GpuGeometrySelectionView& view, std::span<const GpuGeometryCandidate> candidates,
+    uint32_t indexCapacityElements, uint32_t vertexCapacityElements, ComputeCall& compute, GpuGeometryDispatch& out)
+{
     if (!m_state || !renderer.SupportsIndirectDraw() || !ValidateView(view)
         || !ValidateCandidates(candidates, indexCapacityElements, vertexCapacityElements))
         return false;
@@ -264,14 +276,12 @@ bool GpuGeometrySelection::Prepare(IRenderer& renderer, ResourceManager& resourc
     call.dispatchX = (candidateCount - 1u) / kGpuGeometrySelectionGroupSize + 1u;
     call.dispatchY = 1;
     call.dispatchZ = 1;
-    if (!renderer.TryDispatch(call, resources))
-        return false;
-
     GpuGeometryDispatch prepared;
     prepared.decisions = decisionOutput;
     prepared.indirectArguments = argumentOutput;
     prepared.candidateCount = candidateCount;
     prepared.indirectArgumentOffset = 0;
+    compute = std::move(call);
     out = prepared;
     return true;
 }

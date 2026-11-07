@@ -75,6 +75,13 @@ public:
                                uint32_t vertexCount, uint32_t vertexStride,
                                uint32_t indexCount, MeshletGeometry& outGeometry);
 
+    /// @brief Caches the selected terrain topology with conservative geometric normal cones.
+    /// @note The source terrain vertex buffer uses the 44-byte position/normal/tangent/UV layout.
+    [[nodiscard]] FBZZ_GRAPHICS_API bool PrepareTerrain(ResourceManager& resources,
+                               ResourceHandle<BufferTag> vertexBuffer,
+                               ResourceHandle<BufferTag> indexBuffer,
+                               uint32_t indexCount, MeshletGeometry& outGeometry);
+
     /// @brief Invalidates entries that use a released source or blob handle.
     FBZZ_GRAPHICS_API void Invalidate(ResourceManager& resources, ResourceHandle<BufferTag> buffer);
 
@@ -82,12 +89,18 @@ public:
     FBZZ_GRAPHICS_API void Release(ResourceManager& resources);
 
 private:
+    [[nodiscard]] bool PrepareImpl(ResourceManager& resources, ResourceHandle<BufferTag> vertexBuffer,
+                                  ResourceHandle<BufferTag> indexBuffer, uint32_t vertexCount,
+                                  uint32_t vertexStride, uint32_t indexCount, bool terrainCones,
+                                  MeshletGeometry& outGeometry);
+
     struct InputKey {
         ResourceHandle<BufferTag> vertexBuffer{};
         ResourceHandle<BufferTag> indexBuffer{};
         uint32_t vertexCount = 0;
         uint32_t vertexStride = 0;
         uint32_t indexCount = 0;
+        bool terrainCones = false;
 
         bool operator==(const InputKey&) const = default;
     };

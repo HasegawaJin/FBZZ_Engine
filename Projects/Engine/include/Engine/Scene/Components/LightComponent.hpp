@@ -13,6 +13,7 @@ namespace fbzz::scene {
 
 struct LightComponent {
     enum class Type { Directional, Point, Spot, Area, Sphere, Tube };
+    enum class ShadowMode : std::uint8_t { REALTIME, AUTO_BAKE };
 
     Type          type      = Type::Directional;
     math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
@@ -66,6 +67,10 @@ struct LightComponent {
     /// @note カメラに近い順で、あふれたライトは黙って影を落とさなくなる。sourceRadius は
     /// @note 深度ではなく半影の広さとして効く。
     bool  castShadows    = true;  ///< @note false のとき影を無効化 (shadowStrength=0 と等価)
+    ShadowMode shadowMode = ShadowMode::REALTIME;
+    /// @note ワールド空間の光線方向。ゼロの場合は Sequence またはライトの初期姿勢から解決する。
+    math::Vector3 shadowBakeDayDirection{};
+    math::Vector3 shadowBakeEveningDirection{};
     float shadowBias     = 1.0f;  ///< @note 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
     float shadowStrength = 1.0f;  ///< @note 影の濃さ: 0=影なし, 1=完全な影
     float shadowDistance = 0.0f;  ///< @note Directional のみ: 0=シーンに自動フィット, >0=正射影の半幅 [m]
@@ -152,6 +157,16 @@ struct LightComponent {
         r.Field("areaHeight",   areaHeight);
         r.Field("areaTwoSided", areaTwoSided);
         r.Field("castShadows",    castShadows);
+        {
+            static constexpr const char* kShadowModes[]{"Realtime", "Auto Bake"};
+            int mode = static_cast<int>(shadowMode);
+            r.BeginField("shadowMode", "Shadow Mode");
+            r.Enum("Shadow Mode", mode, kShadowModes);
+            r.EndField();
+            shadowMode = mode == 1 ? ShadowMode::AUTO_BAKE : ShadowMode::REALTIME;
+        }
+        r.Field("shadowBakeDayDirection", shadowBakeDayDirection);
+        r.Field("shadowBakeEveningDirection", shadowBakeEveningDirection);
         r.Field("shadowBias",     shadowBias);
         r.Field("shadowStrength", shadowStrength);
         r.Field("shadowDistance", shadowDistance);

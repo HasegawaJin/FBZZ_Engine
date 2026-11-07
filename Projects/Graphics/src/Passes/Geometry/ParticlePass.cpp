@@ -263,7 +263,7 @@ renderer::ResourceHandle<renderer::PipelineStateTag> SelectParticlePSO(
     default:                               return additivePSO;
     }
 }
-void TickGpuEmitter(RenderParticleInput& emitter, ResourceHandle<TextureTag> sceneColor, RenderPassContext& ctx) {
+void TickGpuEmitter(RenderParticleInput& emitter, ResourceHandle<TextureTag> sceneColor, RenderPassContext& ctx, bool drawVisible = true) {
     auto& renderer = ctx.renderer;
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
@@ -297,6 +297,8 @@ void TickGpuEmitter(RenderParticleInput& emitter, ResourceHandle<TextureTag> sce
     renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     }
 
+    /// @note 遮蔽で描画を省いても更新を続け、カメラ移動後に停止した粒子を再表示しない。
+    if (!drawVisible) return;
     /// @name GPU ソート
     /// @note CPU へ読み戻して並べると毎フレーム同期待ちになるので GPU 側で並べ替える。
     /// @note 動かすのは (キー, 粒子 index) の対だけ。プールはスポーン用のリングバッファなので、
@@ -476,6 +478,14 @@ void ExecuteParticlePass(RenderPassContext& ctx)
     });
     for (auto& input : g_viewParticles) {
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
+        ++ctx.statsTotalObjects;
+        if (IsViewOccluded(ctx, input.boundsCenter, input.boundsRadius > 0
+            ? input.boundsRadius + std::max(ctx.cullingBoundsPadding, 0.0f) : 0)) {
+            ++ctx.statsOcclusionCulled;
+            ++ctx.statsParticleCulled;
+            if (input.gpu) TickGpuEmitter(input, {}, ctx, false);
+            continue;
+        }
         auto* emitter = &input;
         const int count = input.drawCount;
         auto constants = input.constants;

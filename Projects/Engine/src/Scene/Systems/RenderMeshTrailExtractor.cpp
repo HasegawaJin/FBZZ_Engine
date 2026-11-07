@@ -25,6 +25,7 @@
 #include <Engine/Scene/Systems/RenderMeshTrailExtractor.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -427,6 +428,32 @@ math::Vector4 SampleColor(const MeshTrailComponent& trail, const MeshTrailSample
     const float newestWeight = math::Clamp01(1.0f - (currentTime - sample.timestamp) / duration);
     return trail.colorEnd + (trail.colorStart - trail.colorEnd) * newestWeight;
 }
+/// @note 正規化された非負の skin weight の結果は、保存した各骨で変換した元境界の凸包内にある。
+/// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/mul Linear blend skinning uses weighted affine positions.
+void HistoricalSkinBounds(const MeshTrailSample& sample, const renderer::Mesh& mesh, renderer::RenderMeshTrailInput& input)
+{
+    if (input.shader.IsValid() || !mesh.morphTargets.empty() || mesh.boundsRadius <= 0) return;
+    math::Vector3 low{}, high{};
+    bool first = true;
+    const auto include = [&](const math::Matrix4& bone) {
+        const auto world = sample.world * bone;
+        const auto center = world * math::Vector4{mesh.boundsCenter, 1};
+        const auto extent = [&](int row) {
+            return mesh.boundsRadius * (std::abs(world.m[row][0]) + std::abs(world.m[row][1]) + std::abs(world.m[row][2]));
+        };
+        const math::Vector3 origin{center.x, center.y, center.z}, extents{extent(0), extent(1), extent(2)};
+        const auto a = origin - extents, b = origin + extents;
+        if (first) { low = a; high = b; first = false; }
+        else {
+            low = {std::min(low.x, a.x), std::min(low.y, a.y), std::min(low.z, a.z)};
+            high = {std::max(high.x, b.x), std::max(high.y, b.y), std::max(high.z, b.z)};
+        }
+    };
+    include(math::Matrix4::Identity());
+    for (const auto& bone : sample.boneMatrices) include(bone);
+    input.boundsCenter = (low + high) * 0.5f;
+    input.boundsRadius = (high - low).Length() * 0.5f;
+}
 void ExtractStaticSample(MeshTrailComponent& trail, MeshTrailSample& sample, MeshRenderer& mr,
     RenderPassContext& ctx, float currentTime, const TrailMaterialBinding* material,
     renderer::RenderScene& output, uint32_t layer) {
@@ -439,6 +466,10 @@ void ExtractStaticSample(MeshTrailComponent& trail, MeshTrailSample& sample, Mes
     input.vertices = mr.mesh->vertexBuffer; input.indices = mr.mesh->indexBuffer;
     input.indexCount = mr.mesh->indexCount; input.vertexCount = mr.mesh->vertexCount;
     if (TrailShaderMatchesMesh(material, false)) { input.shader = material->shader; input.material = material->paramsCB; }
+    if (!input.shader.IsValid() && mr.mesh->morphTargets.empty()) {
+        const auto bounds = ComputeWorldBounds(sample.world, ComputeWorldBoundsScale(sample.world), *mr.mesh);
+        input.boundsCenter = bounds.center; input.boundsRadius = bounds.radius;
+    }
     input.doubleSided = trail.doubleSided; input.colorBuffer = trail.meshTrailCB; input.texture = trail.texture;
     output.meshTrails.push_back(std::move(input));
 }
@@ -459,6 +490,7 @@ void ExtractSkinnedSample(MeshTrailComponent& trail, MeshTrailSample& sample, Sk
         input.vertices = smr.ResolveSlotVertexBuffer(meshIndex, mesh->vertexBuffer); input.indices = mesh->indexBuffer;
         input.indexCount = mesh->indexCount; input.vertexCount = mesh->vertexCount;
         if (TrailShaderMatchesMesh(material, true)) { input.shader = material->shader; input.material = material->paramsCB; }
+        HistoricalSkinBounds(sample, *mesh, input);
         input.doubleSided = trail.doubleSided; input.colorBuffer = trail.meshTrailCB; input.texture = trail.texture;
         output.meshTrails.push_back(std::move(input));
     }

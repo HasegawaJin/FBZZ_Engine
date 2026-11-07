@@ -1,0 +1,6 @@
+# @file    TerrainGBufferMesh.ms.hlsl.meta
+# @brief   地形 meshlet GBuffer シェーダーのアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = '86a24d3c5afa405296ebc0c6d5519cfd'

@@ -48,6 +48,7 @@ struct TerrainGpuState {
     std::vector<std::array<uint32_t, 3>> indexStarts;
     uint32_t indexCount = 0, vertexCapacity = 0;
     bool geometryDirty = true;
+    uint64_t shadowBakeGeometryHash = 0;
     renderer::ResourceHandle<renderer::StructuredBufferTag> surfaceLayerBuffer;
     renderer::ResourceHandle<renderer::TextureTag> surfaceSplatIndices, surfaceSplatWeights;
     std::optional<TerrainLayerGpu> uploadedSurfaceLayer;

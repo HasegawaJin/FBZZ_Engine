@@ -7,7 +7,19 @@
 #include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Effects/RenderSkinningInput.hpp>
+#include <array>
 namespace fbzz::renderer {
+/// @note 検証済みの当該ビュー用の借用ハンドル。フレームを越えて保持しない。
+struct DirectionalShadowBakeView {
+    ResourceHandle<TextureTag> depth;
+    ResourceHandle<ShaderTag> restoreShader;
+    ResourceHandle<PipelineStateTag> restorePipeline;
+    math::Matrix4 cascadeToBakeClip;
+    float maxSmoothDepthStep = 0.0f;
+    float sourceDepthBias = 0.0f;
+    bool includesStaticMeshes = false;
+};
+
 /// @note Only a successful bake may publish a never-again-written texture; resource owner/epoch and exact handle bind the proof.
 struct RenderTexturePublication {
     ResourceHandle<TextureTag> texture;
@@ -230,6 +242,18 @@ struct RenderPassContext : RenderLightingInput {
     /// @note こちらは「影の到達範囲に入るか」を 1 回で判定したいパス向けの代表値。
     const math::Frustum* lightFrustum  = nullptr;
     OcclusionCuller*      occlusionCuller = nullptr;
+    ResourceHandle<StructuredBufferTag> occlusionGpuRows;
+    /// @note Only the resolved graph can move color instances behind terrain. Pending work is consumed once in that view.
+    bool terrainHiZActive = false;
+    bool terrainHiZInstancesPending = false;
+    /// @note CPU depth and uploaded rows belong to this immutable publication and exact view; callbacks invalidate the proof by replacing either input.
+    std::shared_ptr<const renderer::RenderScene> occlusionPreparedScene;
+    const OcclusionCuller* occlusionPreparedCuller = nullptr;
+    uint64_t occlusionPreparedCullerVersion = 0;
+    std::array<uint32_t, 96> occlusionPreparedView{};
+    std::vector<RenderPassOverride> occlusionPreparedPassOverrides;
+    uint64_t occlusionPreparedSerial = 0, occlusionPreparedSceneGeneration = 0, occlusionPreparedFrame = 0;
+    uint64_t occlusionPreparedResourceEpoch = 0, occlusionPreparedResourceFrame = 0;
     /// @note 空連動 IBL の永続状態 (フレームをまたぐ。RenderSystem が static 実体を指す)。
     EnvironmentResources* environmentResources = nullptr;
 
@@ -241,6 +265,8 @@ struct RenderPassContext : RenderLightingInput {
     int statsOcclusionCulled = 0;
     int statsDistanceCulled    = 0;
     int statsSmallObjectCulled = 0;
+    /// @note GPU が可視判定する未読戻し候補数。可視数やカリング数へ推測で加えない。
+    int statsGpuVisibilityUnknownObjects = 0;
     int statsDrawCalls       = 0;
     int statsVertexCount     = 0;
     int statsTriangleCount   = 0;
@@ -275,6 +301,7 @@ struct RenderPassContext : RenderLightingInput {
     int statsParticleBudgetDropped = 0;
     /// @}
 
+    DirectionalShadowBakeView directionalShadowBake;
 };
 
 /// @note DrawCall 1 件が描く三角形数。

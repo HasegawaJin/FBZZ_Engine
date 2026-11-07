@@ -34,6 +34,8 @@ bool RenderDecalReceiverLayers(RenderPassContext& ctx, uint32_t markMask)
     const auto& input = SceneInput(ctx);
     for (const auto& object : input.Objects()) {
         if (!MatchesView(ctx, object)) continue;
+        const auto bounds = RenderBounds(ctx, object);
+        if (IsViewOccluded(ctx, bounds.center, bounds.radius)) continue;
         const bool markStatic = !object.skinned && ContainsLayer(markMask, 9);
         bool staticSiblingMarked = false;
         if (object.skinned && ContainsLayer(markMask, 9)) {
@@ -87,6 +89,9 @@ void ExecuteDecalPass(RenderPassContext& ctx) {
     bool anyFiltered = false;
     for (const auto& input : ctx.renderScene->decals) {
         if (!ContainsLayer(ctx.cullingMask, input.layer)) continue;
+        ++ctx.statsTotalObjects;
+        if (IsViewAabbOccluded(ctx, math::Matrix4::Inverse(input.projection.invDecalWorld),
+            {-0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, 0.5f})) { ++ctx.statsOcclusionCulled; continue; }
         if (input.projection.receiverLayerMask != ~0u) { alwaysReceive &= input.projection.receiverLayerMask; anyFiltered = true; }
         pending.push_back(&input);
     }

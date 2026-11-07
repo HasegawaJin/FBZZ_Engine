@@ -47,9 +47,17 @@ Editorの`render.geometry_mode`操作で`cpu`（通常描画）、`indirect`（�
 
 ## 地形と草木への接続
 
-Terrainの本番adapterは`indirect`と`mesh`で共通GPU選択を使う。地形ごとに全チャンク・全3LODのIBを連結し、候補順の24-byte間接指示から各パッチを描く。LODの最大格子幅は投影16pxで選ぶ。透視・正射影を区別し、閲覧カメラの位置・投影・解像度を影でも共有する。ライト視錐台は可視判定だけに使う。Fiberを持つ地形はLOD0を維持する。Frustum Cullingを無効にしたときは本体・影ともCPU経路へ戻る。
+Terrainの`indirect`経路は共通GPU選択を使う。地形ごとに全チャンク・全3LODのIBを連結し、候補順の24-byte間接指示から各パッチを描く。LODの最大格子幅は投影16pxで選ぶ。透視・正射影を区別し、閲覧カメラの位置・投影・解像度を影でも共有する。ライト視錐台は可視判定だけに使う。Fiberを持つ地形はLOD0を維持する。Frustum Cullingを無効にしたときは本体・影ともCPU経路へ戻る。
 
 GPUのVSは`SV_VertexID`とb15のパッチ番号から座標・UVを作り、高さ標本から法線と接線を中央差分で作る。ForwardとGBufferは既存TerrainSurface、影は同じTerrainGeometryの評価を使う。高さ標本は隣接地形の平均済みの一標本の外周を含む。スカルプト・穴・隣接の再生成でGPU資源を無効化する。穴の形とindex生成は既存CPU契約を正本にし、CPU頂点・LODバッファもfallbackと選択輪郭用に保持する。GPUで四分木全体を生成・均衡化する実装ではない。
+
+### Terrainのメッシュレットと法線コーン
+
+DX12の`mesh`では、地形のForward、GBuffer、深度影にメッシュレットを使える。既存のパッチVBとカメラで選択したLODのIBを使い、穴と境界を含む三角形の順序を保つ。キャッシュはVB/IBの世代と内容版に従う。頂点評価、画素シェーダー、ラスタライザーは対応するインデックス描画と共有する。未対応の描画条件や準備失敗時は既存の描画経路へ戻る。`indirect`は引き続き投影サイズでパッチLODを選ぶ。
+
+各コーンは三角形の幾何法線を包む軸と半角、および全三角形の裏側に置いた頂点を地形ローカル空間で持つ。透視投影は視点からコーン頂点への向き、平行投影は視線方向を使う。Mesh stageは実際に描くカメラまたはライトの視錐台と、全三角形が裏向きになる条件を検査する。境界には安全域を持たせ、反転や不安定な変換、コーンを作れない形状、裏面カリングを使わないラスタライザーではコーン判定を省く。 [meshoptimizer のクラスタ境界](https://github.com/zeux/meshoptimizer/blob/master/src/meshletutils.cpp) · [DirectX Meshlet Cull サンプル](https://github.com/microsoft/DirectX-Graphics-Samples/blob/master/Samples/Desktop/D3D12MeshShaders/src/MeshletCull/MeshletAS.hlsl)
+
+Terrainの48 byte記述子はAABBの未使用2枠に、量子化した軸と安全側に丸めた角度しきい値、および中心から頂点までの距離を格納する。キャッシュ生成時に復元した頂点を全三角形の面と照合する。Mesh stageはAABBと同時にコーンを読み、向きが裏側の場合だけ安全域付きの二乗比較を行う。
 
 草は既存FiberのBlade配置・地形層・風・接触・距離LODを使い、木は通常のModel/MeshRendererとLODGroupを使う。別のVegetationコンポーネントや保存形式は追加しない。`gpuInstancing`を有効にした`indirect`で、64個以上の連続する同一のGBuffer/深度影の束はGPUでworld sphereを判定し、128-byte instance行列を詰め直し、20-byte引数のinstanceCountをatomicに生成する。LOD遷移・無効bounds・小さい束・非対応・準備失敗ではCPU描画を使う。透明物の束やVelocity/ObjectMaskにはこの順序を入れ替える処理を使わない。
 
@@ -101,7 +109,7 @@ RTX 4070・DX12・ソースReleaseで、256/512 cellsの平面（131,072/524,288
 
 新規GPU回帰8件は、本番adapterのbindings/counts/画素、全可視・軽微なクリップのindexed fallback、大きな部分クリップのMS選択、全GBuffer attachmentとdepth、負・非一様scale・shear、無効/無効化frustum、VB/IB更新、資源解放・Resetを確認した。既存GPU146件と合わせて154件が合格し、CPU回帰55件も合格した。比較用disabled benchmarkは通常の回帰件数へ含めない。最終Releaseビルドは`build/agent/build-20261010-131550-32760.log`、コンパイル検査は`build/agent/check-20261010-131353-12624.log`と`build/agent/check-20261010-131538-43608.log`、CPU結果は`build/agent/test-20261010-132121-9296.log`、GPU結果は`build/agent/meshlet-regression.json`と`build/agent/water-reference-gpu.json`。
 
-利用はEditorの`Geometry Draw Mode`操作で`mesh`を選ぶ。高密度のstatic GBufferとdirectional/spot/point shadowが条件付きでMesh stageを使う。水面、小さいmesh、全可視、custom、skinned/変形、透明、非対応GPUは通常描画を使う。Terrain adapterとoffline meshlet asset生成は未実装。SDKへの反映は保留し、120FPS達成とは報告しない。
+利用はEditorの`Geometry Draw Mode`操作で`mesh`を選ぶ。この比較の対象は高密度のstatic GBufferとdirectional/spot/point shadowで、水面、小さいmesh、全可視、custom、skinned/変形、透明、非対応GPUは通常描画を使う。Terrain adapterの条件は上記の地形節に記載する。offline meshlet asset生成は未実装。
 
 ## Standaloneの設定
 
@@ -116,3 +124,7 @@ Computeとindirect drawは値を所有する一つのRHI命令へまとめ、pro
 geometryMode = "instances"は通常の水面・地形LODを維持し、instanceの間接描画だけを有効にする。既存のindirectは従来どおり水面・地形も切り替える。両者は別条件で比較する。
 
 静的instanceのGPU判定も同じ所有命令にまとめる。producer側で個体ごとに静的VBの内容版を取得せず、間接drawのindex範囲はnative実行直前に検証する。既存の同期Prepare APIは変更せず、SubmitStaticだけがqueue受理を返す。native validationが成立しない資源はGPUへ渡さない。
+
+永続 `InstanceSet` は同じ色ビューの選別要求をまとめて記録し、1 回の待機で要求ごとの成否を受け取る。描画と材質定数は元のセット・パーツ順で提出し、記録に失敗したセットは CPU 選別で描く。Hi-Z の深度集約は段ごとに定数を保持して一括記録し、失敗した段に依存する処理を止める。水面は定数更新・選別・間接描画を元の透明描画順でキューへ積み、選別を記録できなければ同じ水面グループを直接描く。
+
+影パスはすべての有効なライトビューについて、地形と `InstanceSet` の選別をアトラス描画前に記録する。太陽光のカスケードはセット内の配置と共通 LOD を一度評価し、カスケードごとの錐台と出力領域へ振り分ける。Spot と Point の錐台・引数も独立に保持する。記録結果を受け取った後に各タイルのビューポートとライト定数を束縛し、元の描画順を保つ。無効化された選別や失敗した要求はタイル単位で既存の CPU 経路へ戻す。

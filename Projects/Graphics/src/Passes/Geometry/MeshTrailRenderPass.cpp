@@ -4,6 +4,7 @@
 /// @date    2026-09-21
 #include <Graphics/Passes/Geometry/MeshTrailRenderPass.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 namespace fbzz::renderer {
 std::string_view MeshTrailRenderPass::Name() const { return "MeshTrail"; }
 
@@ -20,6 +21,9 @@ void MeshTrailRenderPass::Execute(PassResources&, RenderPassContext& ctx) {
     ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     for (const auto& input : ctx.renderScene->meshTrails) {
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
+        ++ctx.statsTotalObjects;
+        if (IsViewOccluded(ctx, input.boundsCenter, input.boundsRadius > 0
+            ? input.boundsRadius + std::max(ctx.cullingBoundsPadding, 0.0f) : 0)) { ++ctx.statsOcclusionCulled; continue; }
         resources.Update(h.objectCB, &input.object, sizeof(input.object));
         resources.Update(input.colorBuffer, &input.color, sizeof(input.color));
         DrawCall call;

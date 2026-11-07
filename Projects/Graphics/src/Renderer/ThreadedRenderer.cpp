@@ -74,6 +74,28 @@ void UnregisterRenderer(IRenderer& facade)
     for (auto& entry : registry.entries) if (entry.facade == &facade) { entry = {}; return; }
 }
 
+ThreadedRenderer* FindRenderer(IRenderer& facade)
+{
+    auto& registry = Registry();
+    std::lock_guard lock(registry.mutex);
+    for (const auto& entry : registry.entries)
+        if (entry.facade == &facade) return entry.owner;
+    return nullptr;
+}
+
+void DispatchSequenceNative(IRenderer& renderer, ResourceManager& resources,
+    std::span<const ComputeCall> calls, std::span<uint8_t> receipts, bool stopOnFailure)
+{
+    for (size_t i = 0; i < calls.size(); ++i) {
+        const bool recorded = renderer.TryDispatch(calls[i], resources);
+        receipts[i] = recorded;
+        if (!recorded && stopOnFailure) {
+            std::fill(receipts.begin() + i + 1, receipts.end(), uint8_t{0});
+            break;
+        }
+    }
+}
+
 /// @note Queue acceptance does not borrow native buffer pointers or drain the producer frame.
 bool CullDrawRangeCurrent(const DrawCall& call, ResourceManager& resources)
 {
@@ -466,6 +488,11 @@ public:
     bool TryDispatch(const ComputeCall& call, ResourceManager& resources) override
     {
         return Sync([&] { return m_native->TryDispatch(call, resources); });
+    }
+    void TryDispatchSequence(std::span<const ComputeCall> calls, std::span<uint8_t> receipts,
+        ResourceManager& resources, bool stopOnFailure)
+    {
+        Sync([&] { DispatchSequenceNative(*m_native, resources, calls, receipts, stopOnFailure); });
     }
     bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target, ResourceManager& resources) override
     {
@@ -1012,12 +1039,7 @@ std::unique_ptr<IIblBaker> ThreadedRenderer::CreateIblBaker()
 void gpu_cull_detail::SubmitCullDraw(IRenderer& renderer, ResourceManager& resources,
     const ComputeCall& compute, const DrawCall& indirect, const DrawCall& fallback)
 {
-    ThreadedRenderer* owner = nullptr;
-    {
-        auto& registry = Registry();
-        std::lock_guard lock(registry.mutex);
-        for (const auto& entry : registry.entries) if (entry.facade == &renderer) { owner = entry.owner; break; }
-    }
+    auto* owner = FindRenderer(renderer);
     if (owner) owner->CullDraw(compute, indirect, fallback, resources);
     else if (!CullDrawRangeCurrent(indirect, resources)) return;
     else if (renderer.TryDispatch(compute, resources)) {
@@ -1029,15 +1051,22 @@ void gpu_cull_detail::SubmitCullDraw(IRenderer& renderer, ResourceManager& resou
     }
 }
 
+void gpu_cull_detail::TryDispatchSequence(IRenderer& renderer, ResourceManager& resources,
+    std::span<const ComputeCall> calls, std::span<uint8_t> receipts, bool stopOnFailure)
+{
+    if (calls.size() != receipts.size()) {
+        std::fill(receipts.begin(), receipts.end(), uint8_t{0});
+        return;
+    }
+    if (calls.empty()) return;
+    if (auto* owner = FindRenderer(renderer)) owner->TryDispatchSequence(calls, receipts, resources, stopOnFailure);
+    else DispatchSequenceNative(renderer, resources, calls, receipts, stopOnFailure);
+}
+
 void compute_composite_detail::Submit(IRenderer& renderer, ResourceManager& resources,
     const ComputeCall& compute, ResourceHandle<RenderTargetTag> target, const DrawCall& composite)
 {
-    ThreadedRenderer* owner = nullptr;
-    {
-        auto& registry = Registry();
-        std::lock_guard lock(registry.mutex);
-        for (const auto& entry : registry.entries) if (entry.facade == &renderer) { owner = entry.owner; break; }
-    }
+    auto* owner = FindRenderer(renderer);
     if (owner) owner->ComputeComposite(compute, target, composite, resources);
     else if (renderer.TryDispatch(compute, resources)) {
         renderer.SetRenderTarget(target, resources);

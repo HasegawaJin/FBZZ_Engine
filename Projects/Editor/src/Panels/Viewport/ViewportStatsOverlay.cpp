@@ -170,12 +170,18 @@ void DrawStatsOverlay(EditorContext& ctx)
 
         std::snprintf(value, sizeof(value), "%.0f%%", cullRate);
         std::snprintf(buf, sizeof(buf), "of %d", rs.totalObjects);
-        StatRow("Culled", value,
+        StatRow(rs.gpuVisibilityUnknownObjects>0 ? "Culled (known)" : "Culled", value,
                 (cullRate >= 50.0f) ? EditorTheme::Color(ThemeColor::Success)
               : (cullRate >= 30.0f) ? EditorTheme::Color(ThemeColor::Warning)
                                     : EditorTheme::Color(ThemeColor::TextMuted),
                 buf);
-        CullBar(culled, 4, rs.totalObjects, fontH * 0.4f);
+        /// @note 残りの色は実描画を表すため、GPU 未確定候補があるフレームはバーを出さない。
+        if (rs.gpuVisibilityUnknownObjects==0)
+            CullBar(culled, 4, rs.totalObjects, fontH * 0.4f);
+        if (rs.gpuVisibilityUnknownObjects>0) {
+            FormatCount(value, sizeof(value), static_cast<uint64_t>(rs.gpuVisibilityUnknownObjects));
+            StatRow("GPU visibility unknown", value, EditorTheme::Color(ThemeColor::TextMuted));
+        }
     }
     ImGui::End();
 

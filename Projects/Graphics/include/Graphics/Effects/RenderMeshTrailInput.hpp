@@ -7,6 +7,9 @@
 namespace fbzz::renderer {
 struct RenderMeshTrailInput {
     uint32_t layer = 0;
+    math::Vector3 boundsCenter{};
+    /// @note 0 は残像の変形境界が未確定。現在の本体や bind pose の境界で代用しない。
+    float boundsRadius = 0;
     PerObjectCB object{};
     math::Vector4 color;
     ResourceHandle<BufferTag> vertices, indices;

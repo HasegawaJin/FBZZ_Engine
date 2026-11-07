@@ -35,6 +35,8 @@ struct RenderParticleInput {
     uint32_t layer = 0;
     int priority = 0, drawCount = 0;
     math::Vector3 position;
+    math::Vector3 boundsCenter;
+    float boundsRadius = 0;
     bool gpu = false, simulate = false;
     ParticleDrawSettings settings;
     ParticleDrawResources runtime;

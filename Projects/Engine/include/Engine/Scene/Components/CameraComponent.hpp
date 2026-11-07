@@ -44,14 +44,12 @@ struct CameraComponent {
     bool  frustumCulling = true;
 
     /// @note CPU ソフトウェアオクルージョンカリング (OcclusionCuller) の有無。
-    /// @note 遮蔽者はメッシュ実体ではなくバウンディング球の近似なので保守的側に倒してある。
-    /// @note 床タイル・壁パネルのような実体が薄いメッシュは過大申告になるため既定は false
-    /// @note (CameraCullingSettings の既定と揃えてある)。数値は Analysis パネルで確認できる。
+    /// @note 閉メッシュ内部の球と不透明被覆を証明できる静的材質だけを遮蔽者として使う。既定 false。
+    /// @see Docs/design/occlusion-culling.md
     bool  occlusionCulling = false;
 
     /// @note 全バウンディング球へ加算するワールド単位の余白 [m]。
-    /// @note スキンドメッシュの球はバインドポーズから作るため、大きく動くモーションでは
-    /// @note 実シルエットが球からはみ出す。毎フレームのポーズ bounds 生成は高価なので余白で吸収する。
+    /// @note 現在姿勢と葉変位を含む外接球へ追加し、遮蔽者の内接球には加算しない。
     float cullingBoundsPadding = 0.0f;
 
     /// @note 描画距離の上限 [m]。0 以下で無効 (farZ まで描く)。
@@ -80,7 +78,9 @@ struct CameraComponent {
         r.Field("aspectRatio", aspectRatio);
         r.Field("nearZ", nearZ);
         r.Field("farZ", farZ);
-        r.Field("cullingMask", reinterpret_cast<int&>(cullingMask));
+        int cullingMaskValue = static_cast<int>(cullingMask);
+        r.Field("cullingMask", cullingMaskValue);
+        cullingMask = static_cast<fbzz::LayerMask>(cullingMaskValue);
         r.Field("frustumCulling", frustumCulling);
         r.Field("occlusionCulling", occlusionCulling);
         r.Field("cullingBoundsPadding", cullingBoundsPadding);

@@ -234,6 +234,14 @@ void TrailRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         if (vertices.empty())
             continue;
 
+        math::Vector3 low = vertices.front().position, high = low;
+        for (const auto& vertex : vertices) {
+            low = {std::min(low.x, vertex.position.x), std::min(low.y, vertex.position.y), std::min(low.z, vertex.position.z)};
+            high = {std::max(high.x, vertex.position.x), std::max(high.y, vertex.position.y), std::max(high.z, vertex.position.z)};
+        }
+        ++ctx.statsTotalObjects;
+        if (IsViewAabbOccluded(ctx, math::Matrix4::Identity(), low, high)) { ++ctx.statsOcclusionCulled; continue; }
+
         const size_t maxVertices =
             static_cast<size_t>(trail->points.size() - 1) *
             static_cast<size_t>(trail->smoothSubdivisions + 1) * 6u;

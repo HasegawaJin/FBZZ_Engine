@@ -75,9 +75,12 @@ struct RenderMeshItem {
     RenderMaterial forwardMaterial;
     bool visible = true;
     bool slotVisible = true;
+    /// @note 形状密度の粗い指標。遮蔽被覆の証明には occluderRadius と材質契約を使う。
     bool reliableOccluder = false;
     math::Vector3 boundsCenter{};
     float boundsRadius = 0.0f;
+    /// @note 実形状内部のワールド球。最小軸スケールで縮小し、カリング余白は加えない。
+    float occluderRadius = 0.0f;
 };
 
 /// @note Palette handles are valid for this extracted frame only; ordinary snapshot GPU handle lifetime rules apply.
@@ -106,6 +109,8 @@ struct RenderObject {
     math::Vector3 sortPosition{};
     math::Vector3 boundsCenter{};
     float boundsRadius = 0.0f;
+    /// @note Immutable geometry witness in world metres; -1 means the leaf material was unresolved at extraction.
+    float leafWindBoundsPadding = 0.0f;
     ResourceHandle<ConstantBufferTag> skinningPalette;
     ResourceHandle<ConstantBufferTag> previousSkinningPalette;
     bool previousSkinningValid = false;
@@ -113,11 +118,20 @@ struct RenderObject {
     bool rayLodSelectionRequired = false;
     /// @note レイは LOD0 を固定使用し、Raster の選択・crossfade・cull とは独立する。
     bool rayVisible = true;
+    /// @note ホストが静的な版と変換を検証できる場合だけベイク候補にする。
+    bool shadowBakeStatic = false;
 };
 
 struct RenderInstancePart {
     RenderMeshItem mesh;
     uint32_t lod=0;
+};
+/// @note 各配置元の 128m ワールド XZ セル内で、高精細描画に使う安定順の個体数。0 は上限なし。
+struct InstanceVegetationBudget {
+    bool enabled = false;
+    uint32_t drawDetailPerCell = 0;
+    uint32_t nearDetailPerCell = 0;
+    uint32_t shadowDetailPerCell = 0;
 };
 struct RenderInstanceInput {
     std::array<uint64_t,2> identity{};
@@ -127,11 +141,13 @@ struct RenderInstanceInput {
     float maxDistance=0;
     math::Matrix4 world=math::Matrix4::Identity();
     math::Vector3 localBoundsCenter{};
+    /// @note Must enclose every LOD's geometry and its maximum leaf wind displacement in set-local units.
     float localBoundsRadius=0;
     std::array<float,4> lodHeights{};
     uint32_t lodCount=0;
     std::shared_ptr<const InstanceSetData> data;
     std::vector<RenderInstancePart> parts;
+    InstanceVegetationBudget vegetationBudget;
 };
 
 struct RenderMaskGroup {
@@ -197,6 +213,8 @@ struct RenderScene {
     std::vector<RenderMaskGroup> maskGroups;
     uint32_t liveMaskRequests = 0;
     std::vector<RenderRayEffectSource> rayUnsupportedEffects;
+    /// @note Engine の正規抽出では静的影候補の ordinal だけを保持する。
+    std::vector<uint32_t> shadowBakeMeshObjects;
 
     [[nodiscard]] std::span<const RenderObject> Objects() const
     {

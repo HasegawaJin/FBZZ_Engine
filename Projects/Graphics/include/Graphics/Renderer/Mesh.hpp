@@ -71,16 +71,15 @@ struct Mesh {
     math::Vector3 boundsCenter  = {};
     float         boundsRadius  = 0.0f;
     /// @note ローカル AABB の半分の大きさ (boundsCenter からの各軸の伸び)。
-    /// @note 球はカリング判定に十分だが「この形は球で近似してよいか」を判定できない。板ポリと
-    /// @note       立方体は同じ半径の球になり得るが遮蔽者としての信頼度は正反対 (OcclusionCuller::
-    /// @note       TestAndRaster の内接正方形の前提が崩れる)。最小半径成分と boundsRadius の比が材料。
     math::Vector3 boundsExtents = {};
+    /// @note boundsCenter を中心とする実形状内部の球。閉じた三角形面の証明が無い場合は 0。
+    float occlusionRadius = 0.0f;
 
     /// @note CPU 頂点配列からバウンディング球と AABB を計算する。
     /// @note メッシュ生成後・GPU アップロード前に一度だけ呼ぶ想定。
     FBZZ_GRAPHICS_API void ComputeBounds();
 
-    /// @note boundsExtents だけを CPU 頂点配列から埋める (球には触れない)。
+    /// @note boundsExtents と occlusionRadius を CPU 三角形から更新し、外接球は維持する。
     /// @note .mesh / .fzasset は球だけをヘッダーに持つため、そちらから読んだメッシュは AABB を
     /// @note       知らないまま「薄い形」と区別がつかない。フォーマットを変えずに補うため、頂点を
     /// @note       読み終えた直後にこれだけを走らせる。

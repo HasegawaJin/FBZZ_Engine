@@ -1,0 +1,6 @@
+# @file    TerrainMesh.ms.hlsl.meta
+# @brief   地形 meshlet Forward シェーダーのアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = '9e192d5de55f462fafc4a5bb9ac28e34'

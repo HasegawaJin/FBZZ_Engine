@@ -7,22 +7,206 @@
 #include <Graphics/Pipeline/GeometryPipeline.hpp>
 #include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
 #include <Graphics/Pipeline/RenderPipeline.hpp>
+#include <Graphics/Pipeline/RenderPassContext.hpp>
+#include "Pipeline/TaaDepthWitness.hpp"
+#include "Passes/Geometry/RenderScenePassHelpers.hpp"
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/OpaqueRenderPlan.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
 #include <Graphics/Renderer/RuntimePackageValidation.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <filesystem>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <system_error>
 
 namespace fbzz::tests {
 namespace {
 class GraphicsStandaloneTest : public testkit::Fixture {};
+
+class DepthWitnessRenderer final : public renderer::IRenderer {
+public:
+    void Shutdown() override {}
+    void BeginFrame() override {}
+    void EndFrame() override {}
+    void Clear(const math::Vector4&) override {}
+    void Submit(const renderer::DrawCall&, renderer::ResourceManager&) override {}
+    void Dispatch(const renderer::ComputeCall&, renderer::ResourceManager&) override {}
+    void Resize(uint32_t,uint32_t) override {}
+    uint32_t GetWidth() const override { return 8; }
+    uint32_t GetHeight() const override { return 8; }
+    void SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>,renderer::ResourceManager&) override {}
+    void ClearDepth() override {}
+    void SetViewport(uint32_t,uint32_t,uint32_t,uint32_t) override {}
+private:
+    class Buffer final : public renderer::IBuffer {
+    public:
+        Buffer(size_t size,uint32_t stride) : m_size(size),m_stride(stride) {}
+        void Update(const void*,size_t) override { ++m_version; }
+        size_t GetSize() const override { return m_size; }
+        uint32_t GetStride() const override { return m_stride; }
+        uint64_t GetContentVersion() const override { return m_version; }
+    private:
+        size_t m_size;
+        uint32_t m_stride;
+        uint64_t m_version=1;
+    };
+    class Shader final : public renderer::IShader {
+    public:
+        explicit Shader(std::string path) : m_path(std::move(path)) {}
+        const std::string& GetPath() const override { return m_path; }
+        const renderer::ShaderDescriptor& GetDescriptor() const override { return m_descriptor; }
+    private:
+        std::string m_path;
+        renderer::ShaderDescriptor m_descriptor;
+    };
+    std::unique_ptr<renderer::IBuffer> CreateNativeVertexBuffer(const void*,size_t size,uint32_t stride) override
+    { return std::make_unique<Buffer>(size,stride); }
+    std::unique_ptr<renderer::IBuffer> CreateNativeIndexBuffer(const void*,uint32_t count) override
+    { return std::make_unique<Buffer>(count*sizeof(uint32_t),0); }
+    std::unique_ptr<renderer::IShader> CreateNativeShader(const std::string& path) override
+    { return std::make_unique<Shader>(path); }
+    std::unique_ptr<renderer::IConstantBuffer> CreateNativeConstantBuffer(size_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTexture(const std::string&) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTextureFromData(const uint8_t*,uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTexture3DFromData(const uint8_t*,uint32_t,uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeTextureFromRenderTarget(renderer::IRenderTarget&,uint32_t,renderer::RenderTargetTextureKind) override { return {}; }
+    std::unique_ptr<renderer::IPipelineState> CreateNativePipelineState(const renderer::PipelineStateDesc&) override { return {}; }
+    std::unique_ptr<renderer::IRenderTarget> CreateNativeRenderTarget(uint32_t,uint32_t,const renderer::RenderTargetDesc&) override { return {}; }
+    std::unique_ptr<renderer::ITexture> CreateNativeComputeTexture(uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeStructuredBuffer(const void*,uint32_t,uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*,uint32_t,uint32_t) override { return {}; }
+};
+
+class TaaDepthWitnessTest : public testkit::Fixture {
+protected:
+    std::shared_ptr<renderer::RenderScene> Scene()
+    {
+        auto scene=std::make_shared<renderer::RenderScene>();
+        scene->sceneGeneration=1; scene->snapshotSerial=1;
+        renderer::RenderObject object;
+        object.colorEligible=true; object.itemCount=1; object.boundsRadius=2;
+        scene->objects.push_back(object);
+        const std::array<renderer::Vertex,3> vertices{};
+        const uint32_t indices[]{0,1,2};
+        renderer::RenderMeshItem item;
+        item.vertexBuffer=m_resources.CreateVertexBuffer(vertices.data(),sizeof(vertices),sizeof(renderer::Vertex));
+        item.indexBuffer=m_resources.CreateIndexBuffer(indices,3);
+        item.vertexCount=item.indexCount=3;
+        item.vertexStride=sizeof(renderer::Vertex); item.boundsRadius=2; item.occluderRadius=0.5f;
+        item.material.valid=true;
+        item.material.shader=m_resources.LoadShader("TaaDepthWitnessFixture.hlsl");
+        item.material.capabilities.gbufferEquivalentShader=true;
+        item.material.shaderCapabilities={renderer::ShaderVertexContract::STANDARD_SURFACE,
+            renderer::ShaderSurfaceContract::STANDARD_PBR,renderer::ShaderOpacityContract::ALPHA_CLIP,
+            renderer::ShaderVariantSet::STANDARD_SURFACE};
+        item.forwardMaterial=item.material; scene->items.push_back(item);
+        return scene;
+    }
+    bool Build(const std::shared_ptr<renderer::RenderScene>& scene,std::vector<uint64_t>& witness)
+    {
+        renderer::RenderPassContext context{{},m_renderer,m_resources,m_camera,m_settings,{},~0u,m_handles};
+        context.renderScene=scene; context.width=context.height=8;
+        return renderer::taa_depth_detail::BuildDepthWitness(context,witness);
+    }
+    DepthWitnessRenderer m_renderer;
+    renderer::ResourceManager m_resources{m_renderer};
+    renderer::RenderSettings m_settings;
+    renderer::Camera m_camera;
+    renderer::RenderPassHandles m_handles;
+};
+
+TEST_F(TaaDepthWitnessTest, OccluderInteriorChangesInvalidateDepthWhileUnchangedInputsReuseTheWitness)
+{
+    const auto scene=Scene();
+    m_settings.pipeline=renderer::RenderingPipeline::Deferred;
+    std::vector<uint64_t> original,unchanged,changed;
+    ASSERT_TRUE(Build(scene,original)); ASSERT_FALSE(original.empty());
+    ASSERT_TRUE(Build(scene,unchanged)); EXPECT_EQ(original,unchanged);
+    scene->items[0].occluderRadius=0.25f;
+    ASSERT_TRUE(Build(scene,changed)); EXPECT_NE(original,changed);
+    scene->items[0].occluderRadius=0.5f;
+    ASSERT_TRUE(Build(scene,unchanged)); EXPECT_EQ(original,unchanged);
+    scene->objects[0].leafWindBoundsPadding=0.5f;
+    EXPECT_FALSE(Build(scene,changed));
+    scene->objects[0].leafWindBoundsPadding=-1;
+    EXPECT_FALSE(Build(scene,changed));
+}
+
+TEST_F(TaaDepthWitnessTest, LeafMotionCannotProveStaticDepthEvenWhenMaterialAndBoundsStayUnchanged)
+{
+    const auto scene=Scene();
+    std::vector<uint64_t> witness;
+    for (const auto pipeline : {renderer::RenderingPipeline::Forward,renderer::RenderingPipeline::Deferred}) {
+        m_settings.pipeline=pipeline;
+        const float strength=0.5f;
+        std::memcpy(scene->items[0].material.gbufferParams.data()+68,&strength,sizeof(strength));
+        scene->items[0].forwardMaterial=scene->items[0].material;
+        EXPECT_FALSE(Build(scene,witness));
+        EXPECT_FALSE(Build(scene,witness));
+        const float invalid=std::numeric_limits<float>::quiet_NaN();
+        std::memcpy(scene->items[0].material.gbufferParams.data()+68,&invalid,sizeof(invalid));
+        scene->items[0].forwardMaterial=scene->items[0].material;
+        EXPECT_FALSE(Build(scene,witness));
+        const float rigid=0;
+        std::memcpy(scene->items[0].material.gbufferParams.data()+68,&rigid,sizeof(rigid));
+        scene->items[0].forwardMaterial=scene->items[0].material;
+        EXPECT_TRUE(Build(scene,witness));
+    }
+}
+
+TEST_F(TaaDepthWitnessTest, OpacityContractsAndCoverageParametersInvalidateTheDepthProof)
+{
+    const auto scene=Scene();
+    m_settings.pipeline=renderer::RenderingPipeline::Deferred;
+    const auto originalMaterial=scene->items[0].material;
+    std::vector<uint64_t> original,changed;
+    ASSERT_TRUE(Build(scene,original));
+    scene->items[0].material.shaderCapabilities.opacity=renderer::ShaderOpacityContract::OPAQUE_OUTPUT;
+    ASSERT_TRUE(Build(scene,changed)); EXPECT_NE(original,changed);
+    scene->items[0].material=originalMaterial;
+    scene->items[0].material.shaderCapabilities.opacity=renderer::ShaderOpacityContract::UNKNOWN;
+    scene->items[0].forwardMaterial=scene->items[0].material;
+    EXPECT_FALSE(Build(scene,changed));
+    scene->items[0].material=originalMaterial;
+    const float cutoff=0.5f;
+    std::memcpy(scene->items[0].material.gbufferParams.data()+64,&cutoff,sizeof(cutoff));
+    ASSERT_TRUE(Build(scene,changed)); EXPECT_NE(original,changed);
+    scene->items[0].material=originalMaterial;
+    scene->items[0].material.depthBias=1;
+    ASSERT_TRUE(Build(scene,changed)); EXPECT_NE(original,changed);
+    scene->items[0].material=originalMaterial;
+    scene->items[0].material.shaderCapabilities.variants=renderer::ShaderVariantSet::NONE;
+    scene->items[0].forwardMaterial=scene->items[0].material;
+    EXPECT_FALSE(Build(scene,changed));
+}
+
+TEST_F(TaaDepthWitnessTest, GpuFrustumEstimateKeepsTheFirstCullingReasonWhenOcclusionAlsoRejects)
+{
+    m_camera.m_projection=renderer::ProjectionMode::Orthographic;
+    m_camera.m_orthoHeight=10; m_camera.m_aspect=1;
+    m_camera.m_position={0,0,0}; m_camera.LookAt({0,0,1}); m_camera.m_near=0.1f; m_camera.m_far=10;
+    const auto frustum=math::Frustum::FromViewProjection(m_camera.GetViewProjection());
+    renderer::OcclusionCuller culler;
+    renderer::RenderPassContext context{{},m_renderer,m_resources,m_camera,m_settings,{},~0u,m_handles};
+    context.cameraFrustum=&frustum; context.occlusionCuller=&culler; context.occlusionCullingEnabled=true;
+    context.renderScene=Scene();
+    renderer::PrepareViewOcclusion(context);
+    culler.RasterQuad({-3,-3,2},{-3,3,2},{3,3,2},{3,-3,2});
+    ASSERT_FALSE(culler.TestAndRaster({0,0,20},0.5f));
+    context.statsTotalObjects=1;
+    renderer::RenderObject object; object.boundsCenter={0,0,20}; object.boundsRadius=0.5f;
+    EXPECT_FALSE(renderer::IsRenderObjectVisible(context,object,true));
+    EXPECT_EQ(context.statsFrustumCulled,1);
+    EXPECT_EQ(context.statsOcclusionCulled,0);
+    EXPECT_EQ(context.statsTotalObjects-context.statsFrustumCulled-context.statsOcclusionCulled,0);
+}
 
 TEST_F(GraphicsStandaloneTest, AgilityPackageAcceptsHostExportsAndPinnedRuntime)
 {

@@ -9,6 +9,8 @@
 #include <Graphics/Renderer/RenderVisibility.hpp>
 #include <cassert>
 #include <algorithm>
+#include <cmath>
+#include <cstring>
 
 namespace fbzz::renderer {
 
@@ -27,6 +29,30 @@ inline WorldBounds RenderBounds(const RenderPassContext& ctx, const renderer::Re
 {
     return { object.boundsCenter, object.boundsRadius > 0.0f
         ? object.boundsRadius + (std::max)(ctx.cullingBoundsPadding, 0.0f) : 0.0f };
+}
+
+/// @note 実形状内部でも切り抜き・変形・フェード・深度移動があれば不透明被覆の証明には使えない。
+/// @see Assets/Shaders/Material/Surface/PBR.hlsl MaterialConstants and alpha/leaf vertex contracts.
+inline float OccluderRadius(const RenderPassContext& ctx, const RenderObject& object,
+    const RenderMeshItem& item, const RenderMaterial& material)
+{
+    if (object.skinned || object.lodDither != 0 || ctx.settings.IsWireframe()
+        || !material.valid || material.capabilities.blend != BlendMode::OPAQUE_BLEND
+        || material.shaderCapabilities.vertex != ShaderVertexContract::STANDARD_SURFACE
+        || !material.shaderCapabilities.HasStandardVariants()
+        || material.shaderCapabilities.opacity == ShaderOpacityContract::UNKNOWN
+        || material.depthBias != 0 || material.depthBiasSlope != 0) return 0;
+    uint32_t textureMask;
+    std::memcpy(&textureMask, material.gbufferParams.data() + 80, sizeof(textureMask));
+    /// @note Float albedo textures may have negative alpha; cutoff 0 alone cannot prove their coverage.
+    if (!material.shaderCapabilities.HasOpaqueOutput() && ((textureMask & 1u) != 0 || material.textures[0].IsValid())) return 0;
+    float alpha, cutoff, wind;
+    std::memcpy(&alpha, material.gbufferParams.data() + 12, sizeof(alpha));
+    std::memcpy(&cutoff, material.gbufferParams.data() + 64, sizeof(cutoff));
+    std::memcpy(&wind, material.gbufferParams.data() + 68, sizeof(wind));
+    if (!std::isfinite(alpha) || alpha < 0 || !std::isfinite(cutoff) || cutoff > 0
+        || !std::isfinite(wind) || wind != 0) return 0;
+    return item.occluderRadius;
 }
 
 inline renderer::RenderCullingView CullingView(const RenderPassContext& ctx)
@@ -59,6 +85,10 @@ inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::Render
     case renderer::VisibilityResult::FRUSTUM_CULLED: ++ctx.statsFrustumCulled; return false;
     case renderer::VisibilityResult::VISIBLE:
         if (gpuEstimateOutside) ++ctx.statsFrustumCulled;
+        if (IsViewOccluded(ctx, bounds.center, bounds.radius)) {
+            if (!gpuEstimateOutside) ++ctx.statsOcclusionCulled;
+            return false;
+        }
         return true;
     }
     return true;

@@ -288,12 +288,14 @@ protected:
     }
 
     std::shared_ptr<const renderer::RenderScene> ExtractView(const renderer::RenderSettings& settings,
-        scene::RenderFrameGeometryCache& cache, uint32_t layerMask = UINT32_MAX, bool experimentalRayTracing = false)
+        scene::RenderFrameGeometryCache& cache, uint32_t layerMask = UINT32_MAX, bool experimentalRayTracing = false,
+        float boundsPadding = 0.0f)
     {
         renderer::Camera camera;
         renderer::RenderPassHandles handles;
         scene::RenderPassContext context(m_scene, m_renderer, *m_resources, camera, settings, {}, layerMask, handles);
         context.experimentalRayTracingEnabled = experimentalRayTracing;
+        context.cullingBoundsPadding = boundsPadding;
         scene::ExtractRenderScene(context, &cache);
         return context.renderScene;
     }
@@ -741,6 +743,153 @@ TEST_F(RenderSceneExtractorTest, SkinnedSubmeshBoundsKeepRendererScaleAndAnimato
     EXPECT_FLOAT_EQ(animated.items[0].boundsRadius, 3);
     EXPECT_FLOAT_EQ(animated.items[1].boundsRadius, 9);
     EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 13.5f);
+}
+
+TEST_F(RenderSceneExtractorMaterialTest, LeafWindBoundsFollowAssetOverridesAndScaledSpatialUpdates)
+{
+    SpatialProducerEnvironment producer;
+    auto& go = StaticObject();
+    go.transform.worldScale = {-2, 3, 4};
+    m_mesh.boundsRadius = 2;
+    m_mesh.occlusionRadius = 0.25f;
+    asset::MaterialAssetAuthoring values;
+    values.params["leafWindStrength"] = {0.25f};
+    const auto handle = LoadMaterial("wind.mat", values);
+    ASSERT_TRUE(handle.IsValid());
+    auto& material = go.AddComponent<scene::MaterialComponent>();
+    material.SetMaterialAsset(handle);
+    const auto first = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    ASSERT_EQ(first.objects.size(), 1u);
+    ASSERT_EQ(first.items.size(), 1u);
+    EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 10);
+    EXPECT_FLOAT_EQ(first.items[0].boundsRadius, 10);
+    EXPECT_FLOAT_EQ(first.items[0].occluderRadius, 0);
+    (void)scene::ExtractRenderSceneGeometry(m_scene, 10);
+
+    EditMaterialAuthoring(material, [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
+    const auto overridden = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    EXPECT_FLOAT_EQ(overridden.objects[0].boundsRadius, 12);
+    ASSERT_NE(overridden.spatialUpdate, nullptr);
+    ASSERT_EQ(overridden.spatialUpdate->changedObjectOrdinals.size(), 1u);
+    EXPECT_EQ(overridden.spatialUpdate->changedObjectOrdinals[0], 0u);
+
+    EditMaterialAuthoring(material, [](auto& authored) { authored.integerParamOverrides["leafWindStrength"] = {1}; });
+    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).objects[0].boundsRadius, 16);
+    EditMaterialAuthoring(material, [](auto& authored) {
+        authored.paramOverrides.clear(); authored.integerParamOverrides.clear();
+    });
+    auto* sourceAsset = asset::AssetManager::Get<asset::MaterialAsset>(handle);
+    ASSERT_NE(sourceAsset, nullptr);
+    EditMaterialAuthoring(*sourceAsset, [](auto& authored) { authored.params["leafWindStrength"] = {0}; });
+    const auto rigid = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    EXPECT_FLOAT_EQ(rigid.objects[0].boundsRadius, 8);
+    EXPECT_FLOAT_EQ(rigid.items[0].occluderRadius, 0.5f);
+    EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 10);
+}
+
+TEST_F(RenderSceneExtractorTest, UnresolvedLeafMaterialBoundsFailOpenWithoutLoading)
+{
+    auto& go = StaticObject();
+    m_mesh.boundsRadius = 1;
+    auto& material = go.AddComponent<scene::MaterialComponent>();
+    material.SetMaterialPath("UnresolvedLeafMaterial.mat");
+    const auto unresolved = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    ASSERT_EQ(unresolved.objects.size(), 1u);
+    EXPECT_FLOAT_EQ(unresolved.objects[0].boundsRadius, 0);
+    EXPECT_FALSE(material.GetMaterialAsset().IsValid());
+    EditMaterialAuthoring(material, [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
+    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).objects[0].boundsRadius, 2);
+}
+
+TEST_F(RenderSceneExtractorTest, SkinnedLeafWindUsesRendererScaleAndAllMaterialSlots)
+{
+    auto& go = SkinnedObject();
+    go.transform.worldScale = {-2, 3, 4};
+    auto& animator = go.AddComponent<scene::AnimatorComponent>();
+    animator.skinnedBoundsRadius = 5;
+    auto& material = go.AddComponent<scene::MaterialComponent>();
+    EditMaterialAuthoring(material, [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.25f}; });
+    material.ResizeSlots(2);
+    material.extraSlots[0].SetMaterialPath("SecondLeafMaterial.mat");
+    EditMaterialAuthoring(material.extraSlots[0], [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
+    const auto animated = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    ASSERT_EQ(animated.objects.size(), 1u);
+    EXPECT_FLOAT_EQ(animated.objects[0].boundsRadius, 36);
+    animator.skinnedBoundsRadius = 0;
+    const auto bindPose = scene::ExtractRenderSceneGeometry(m_scene, 10);
+    EXPECT_FLOAT_EQ(bindPose.objects[0].boundsRadius, 16);
+}
+
+TEST_F(RenderSceneExtractorMaterialTest, LeafWindMaterialEditsRebuildSharedGeometryBetweenViews)
+{
+    auto& go = StaticObject();
+    m_mesh.boundsRadius = 1;
+    m_mesh.occlusionRadius = 0.25f;
+    go.transform.worldScale = {-2, 3, 4};
+    auto& material = go.AddComponent<scene::MaterialComponent>();
+    renderer::RenderSettings settings;
+    scene::RenderFrameGeometryCache cache;
+    Time::frameCount = 10;
+    const auto first = ExtractView(settings, cache, UINT32_MAX, false, 7.0f);
+    ASSERT_EQ(first->Objects().size(), 1u);
+    EXPECT_FLOAT_EQ(first->Objects()[0].boundsRadius, 4);
+    EXPECT_FLOAT_EQ(first->items[0].occluderRadius, 0.5f);
+    const auto warm = ExtractView(settings, cache, UINT32_MAX, false, 7.0f);
+    EXPECT_EQ(warm->sharedObjects, first->sharedObjects);
+    EXPECT_FLOAT_EQ(warm->items[0].occluderRadius, 0.5f);
+    EditMaterialAuthoring(material, [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
+    const auto windy = ExtractView(settings, cache);
+    EXPECT_FLOAT_EQ(windy->Objects()[0].boundsRadius, 8);
+    EXPECT_FLOAT_EQ(windy->items[0].occluderRadius, 0);
+    EXPECT_FLOAT_EQ(first->Objects()[0].boundsRadius, 4);
+    const auto retainedGeometry = cache.geometry;
+    const auto unchanged = ExtractView(settings, cache);
+    EXPECT_EQ(cache.geometry, retainedGeometry);
+    EXPECT_EQ(unchanged->sharedObjects, windy->sharedObjects);
+}
+
+TEST_F(RenderSceneExtractorMaterialTest, LeafWindImporterCallbacksFailOpenWithoutMutatingRetainedGeometry)
+{
+    struct RestoreImporter {
+        std::unique_ptr<asset::IAssetImporter<asset::MaterialAsset>> previous;
+        ~RestoreImporter() { asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::move(previous)); }
+    } restore{std::move(asset::AssetStore<asset::MaterialAsset>::Get().importer)};
+    for (const char* selectedMode : {"legacy", "fused"}) {
+        ExtractionScanEnvironment mode(selectedMode);
+        SpatialProducerEnvironment producer;
+        m_scene.Clear();
+        m_mesh.boundsRadius = 1;
+        m_mesh.occlusionRadius = 0.25f;
+        auto& leaves = StaticObject();
+        leaves.AddComponent<scene::MaterialComponent>();
+        auto& trigger = StaticObject();
+        trigger.AddComponent<scene::MaterialComponent>().SetVisible(false);
+        scene::RenderFrameGeometryCache cache;
+        const auto first = ExtractView({}, cache);
+        ASSERT_EQ(first->Objects().size(), 2u);
+        EXPECT_FLOAT_EQ(first->Objects()[0].boundsRadius, 1);
+        auto* triggerMaterial = trigger.GetComponent<scene::MaterialComponent>();
+        triggerMaterial->SetMaterialPath(m_temp.File(std::string(selectedMode) + "-wind-callback.mat").generic_string());
+        auto importer = std::make_unique<ExtractionCallbackMaterialImporter>();
+        std::shared_ptr<const renderer::RenderScene> nested;
+        importer->beforeImport = [&] {
+            EditMaterialAuthoring(*leaves.GetComponent<scene::MaterialComponent>(), [](auto& authored) {
+                authored.paramOverrides["leafWindStrength"] = {1};
+            });
+            nested = ExtractView({}, cache);
+        };
+        asset::AssetManager::RegisterImporter<asset::MaterialAsset>(std::move(importer));
+        const auto outer = ExtractView({}, cache);
+        ASSERT_NE(nested, nullptr);
+        EXPECT_FLOAT_EQ(outer->Objects()[0].boundsRadius, 0);
+        EXPECT_FLOAT_EQ(outer->items[0].occluderRadius, 0);
+        EXPECT_EQ(outer->spatialUpdate, nullptr);
+        EXPECT_FLOAT_EQ(nested->Objects()[0].boundsRadius, 3);
+        EXPECT_FLOAT_EQ(first->Objects()[0].boundsRadius, 1);
+        const auto current = ExtractView({}, cache);
+        EXPECT_FLOAT_EQ(current->Objects()[0].boundsRadius, 3);
+        EXPECT_FLOAT_EQ(outer->Objects()[0].boundsRadius, 0);
+    }
 }
 
 TEST_F(RenderSceneExtractorTest, LocalSlotsResolveReorderedSubmeshesAndMorphInputs)

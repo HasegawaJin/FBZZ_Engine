@@ -162,7 +162,8 @@ private:
     /// @brief Play 中の OS カーソル (拘束範囲・方針の適用と Escape の解放)。
     void UpdatePlayCursorControls();
     /// @brief Play 開始/停止/トグル。ツールバーのボタンと Ctrl+P ホットキーの共通経路。
-    void StartPlayMode();
+    void StartPlayMode(bool shadowBakePrepared = false);
+    void TickPendingShadowBakePlay();
     void StartStandalonePlayMode();
     void LaunchStandalonePlay();
     void TickStandalonePlay(float dt);
@@ -364,6 +365,8 @@ private:
     renderer::RenderSettings m_playRenderSettings;
     /// @note Script.App.Quit intent を次 frame へ渡す。Scene が先に変われば要求を捨てる。
     uint64_t m_scriptQuitSceneLifetime = 0;
+    /// @note Play is deferred until the matching edit scene finishes preparing its directional shadow presets.
+    uint64_t m_pendingShadowBakePlayScene = 0;
     /// @brief Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
     MemoryLeakDiff     m_memoryLeakDiff;
     /// @brief .fluid の焼き・プレビューのジョブ窓口 (m_ctx.fluidBake がこれを指す)。

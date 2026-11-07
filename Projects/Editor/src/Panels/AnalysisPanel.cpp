@@ -2036,8 +2036,8 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
         bool          percent;   ///< @note 描画対象オブジェクト数に対する割合を添えるか
     };
     const auto count = [](long long v) { return static_cast<std::uint64_t>((std::max)(0LL, v)); };
-    const long long rendered = static_cast<long long>(stats.totalObjects) - stats.frustumCulled -
-                               stats.occlusionCulled - stats.distanceCulled - stats.smallObjectCulled;
+    const bool visibilityComplete=stats.gpuVisibilityUnknownObjects==0;
+    const long long rendered=stats.KnownVisibleObjects();
 
     const Item geometry[] = {
         { "Draw calls",          count(stats.drawCalls),                                  false },
@@ -2057,7 +2057,8 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
     };
     const Item culling[] = {
         { "Objects (pre-cull)",  count(stats.totalObjects),      false },
-        { "Rendered",            count(rendered),                true  },
+        { visibilityComplete ? "Rendered" : "Known visible", count(rendered), true },
+        { "GPU visibility unknown", count(stats.gpuVisibilityUnknownObjects), false },
         { "Frustum culled",      count(stats.frustumCulled),     true  },
         { "Occlusion culled",    count(stats.occlusionCulled),   true  },
         { "Distance culled",     count(stats.distanceCulled),    true  },

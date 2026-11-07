@@ -1,10 +1,170 @@
 /// @file    GeometryPassHelpers.cpp
-/// @brief   Graphics の共通 PSO と定数バッファ。
+/// @brief   Graphics の共通 PSO・定数バッファとビュー単位の遮蔽準備。
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include "RenderScenePassHelpers.hpp"
+#include <Graphics/Pipeline/OcclusionCuller.hpp>
+#include <Core/Profiler/ProfileScope.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
+#include <bit>
+#include <cmath>
 #include <map>
 namespace fbzz::renderer {
+namespace {
+std::array<uint32_t, 96> CaptureOcclusionView(const RenderPassContext& ctx)
+{
+    std::array<uint32_t, 96> result{};
+    size_t offset = 0;
+    const auto put = [&](float value) { result[offset++] = std::bit_cast<uint32_t>(value); };
+    const auto& camera = ctx.camera;
+    for (float value : {camera.m_position.x, camera.m_position.y, camera.m_position.z,
+        camera.m_rotation.x, camera.m_rotation.y, camera.m_rotation.z, camera.m_rotation.w,
+        camera.m_fovY, camera.m_aspect, camera.m_near, camera.m_far, camera.m_orthoHeight,
+        ctx.taaJitterNdcX, ctx.taaJitterNdcY, ctx.cullingBoundsPadding, ctx.cullMaxDistance,
+        ctx.smallObjectScreenHeight, ctx.cullProjScaleY,
+        ctx.cullCameraForward.x, ctx.cullCameraForward.y, ctx.cullCameraForward.z}) put(value);
+    for (float distance : ctx.cullLayerDistances) put(distance);
+    if (ctx.cameraFrustum) {
+        for (int index = 0; index < math::Frustum::PLANE_COUNT; ++index) {
+            const auto plane = ctx.cameraFrustum->GetPlane(index);
+            put(plane.normal.x); put(plane.normal.y); put(plane.normal.z); put(plane.distance);
+        }
+    } else offset += math::Frustum::PLANE_COUNT * 4;
+    result[offset++] = ctx.cullingMask;
+    result[offset++] = ctx.width; result[offset++] = ctx.height;
+    result[offset++] = static_cast<uint32_t>(camera.m_projection);
+    result[offset++] = static_cast<uint32_t>(ctx.settings.pipeline);
+    result[offset++] = static_cast<uint32_t>(ctx.settings.geometryDrawMode);
+    result[offset++] = static_cast<uint32_t>(ctx.settings.viewMode);
+    result[offset++] = static_cast<uint32_t>(ctx.frustumCullingEnabled)
+        | (static_cast<uint32_t>(ctx.occlusionCullingEnabled) << 1)
+        | (static_cast<uint32_t>(ctx.hasLayerCullDistances) << 2)
+        | (static_cast<uint32_t>(ctx.cullDistanceSpherical) << 3)
+        | (static_cast<uint32_t>(ctx.cullOrthographic) << 4)
+        | (static_cast<uint32_t>(ctx.isDeferred) << 5)
+        | (static_cast<uint32_t>(ctx.cameraFrustum != nullptr) << 6)
+        | (static_cast<uint32_t>(ctx.waterMediumPassActive) << 7);
+    return result;
+}
+} /// @note namespace
+
+bool IsViewOcclusionCurrent(const RenderPassContext& ctx)
+{
+    const auto& prepared = ctx.occlusionPreparedScene;
+    if (!ctx.occlusionCullingEnabled || !ctx.occlusionCuller || !prepared || !ctx.renderScene
+        || ctx.occlusionPreparedCuller != ctx.occlusionCuller
+        || ctx.occlusionPreparedCullerVersion != ctx.occlusionCuller->GetResetVersion()
+        || prepared.get() != ctx.renderScene.get()
+        || prepared.owner_before(ctx.renderScene) || ctx.renderScene.owner_before(prepared)
+        || ctx.renderScene->snapshotSerial != ctx.occlusionPreparedSerial
+        || ctx.renderScene->sceneGeneration != ctx.occlusionPreparedSceneGeneration
+        || ctx.renderScene->frameStamp != ctx.occlusionPreparedFrame
+        || ctx.resources.GetResetVersion() != ctx.occlusionPreparedResourceEpoch
+        || ctx.resources.FrameStamp() != ctx.occlusionPreparedResourceFrame
+        || CaptureOcclusionView(ctx) != ctx.occlusionPreparedView
+        || ctx.settings.passOverrides.size() != ctx.occlusionPreparedPassOverrides.size()) return false;
+    for (size_t index = 0; index < ctx.settings.passOverrides.size(); ++index) {
+        const auto& current = ctx.settings.passOverrides[index];
+        const auto& prior = ctx.occlusionPreparedPassOverrides[index];
+        if (current.name != prior.name || current.enabled != prior.enabled
+            || current.allowCulling != prior.allowCulling || current.extraReads != prior.extraReads) return false;
+    }
+    return true;
+}
+
+bool IsViewOccluded(const RenderPassContext& ctx, const math::Vector3& center, float radius)
+{
+    return IsViewOcclusionCurrent(ctx)
+        && !ctx.occlusionCuller->TestAndRaster(center, radius);
+}
+
+bool IsViewAabbOccluded(const RenderPassContext& ctx, const math::Matrix4& world,
+    const math::Vector3& low, const math::Vector3& high, float worldMargin)
+{
+    if (!IsViewOcclusionCurrent(ctx)) return false;
+    if (low.x > high.x || low.y > high.y || low.z > high.z) return false;
+    const auto center = world * math::Vector4{(low + high) * 0.5f, 1};
+    const auto local = (high - low) * 0.5f;
+    const auto extent = [&](int r) {
+        return std::abs(world.m[r][0]) * local.x + std::abs(world.m[r][1]) * local.y + std::abs(world.m[r][2]) * local.z;
+    };
+    const float padding = std::max(worldMargin, 0.0f) + std::max(ctx.cullingBoundsPadding, 0.0f);
+    const math::Vector3 extents{extent(0) + padding, extent(1) + padding, extent(2) + padding};
+    const math::Vector3 origin{center.x, center.y, center.z};
+    return !ctx.occlusionCuller->TestAabb(origin - extents, origin + extents);
+}
+
+void PrepareViewOcclusion(RenderPassContext& ctx, OcclusionPasses passes)
+{
+    ctx.occlusionGpuRows = {};
+    ctx.occlusionPreparedScene.reset();
+    ctx.occlusionPreparedCuller = nullptr;
+    auto* const culler = ctx.occlusionCuller;
+    if (!culler || !ctx.occlusionCullingEnabled) return;
+    FBZZ_PROFILE_SCOPE("ViewOcclusion::Prepare");
+    culler->Reset(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    const uint64_t cullerVersion = culler->GetResetVersion();
+    /// @note Native reads may pump callbacks; a matching version on another culler does not prove this view.
+    const auto sameCuller = [&] {
+        return ctx.occlusionCuller == culler && culler->GetResetVersion() == cullerVersion;
+    };
+    ctx.occlusionPreparedCullerVersion = cullerVersion;
+    const auto input = ctx.renderScene;
+    if (!input || ctx.settings.IsWireframe()) return;
+    ctx.occlusionPreparedScene = input;
+    ctx.occlusionPreparedSerial = input->snapshotSerial;
+    ctx.occlusionPreparedSceneGeneration = input->sceneGeneration;
+    ctx.occlusionPreparedFrame = input->frameStamp;
+    ctx.occlusionPreparedView = CaptureOcclusionView(ctx);
+    ctx.occlusionPreparedPassOverrides = ctx.settings.passOverrides;
+    ctx.occlusionPreparedResourceEpoch = ctx.resources.GetResetVersion();
+    ctx.occlusionPreparedResourceFrame = ctx.resources.FrameStamp();
+    auto& shared = ctx.resources.Rendering().Shared();
+    if (!sameCuller()) return;
+    const bool terrainEnabled = ctx.isDeferred ? passes.terrainGBuffer : passes.terrainForward;
+    const auto terrainShader = ctx.isDeferred ? shared.terrainGBufferShader : shared.terrainShader;
+    const bool terrainReady = terrainEnabled && ctx.resources.Get(terrainShader);
+    if (!sameCuller()) return;
+    if (terrainReady) {
+        RasterTerrainOccluders(ctx);
+        if (!sameCuller()) return;
+    }
+    FBZZ_PROFILE_SCOPE("ViewOcclusion::Meshes");
+    for (const auto& object : input->Objects()) {
+        if (!object.colorEligible || !MatchesView(ctx, object)) continue;
+        if (object.firstItem > input->items.size() || object.itemCount > input->items.size() - object.firstItem) continue;
+        for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
+            const auto& item = input->items[i];
+            if (!HasColorGeometry(item) || item.indexCount == 0 || item.vertexCount == 0) continue;
+            const auto route = ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred);
+            const bool gbuffer = route == GeometryRoute::GBuffer;
+            if (route == GeometryRoute::ForwardTransparent || (gbuffer ? !passes.meshGBuffer : !passes.meshForward)) continue;
+            const auto& material = gbuffer ? item.material : item.forwardMaterial;
+            const float interior = OccluderRadius(ctx, object, item, material);
+            if (interior <= 0) continue;
+            const auto bounds = RenderBounds(ctx, object);
+            if (EvaluateVisibility(CullingView(ctx), {bounds.center, bounds.radius, DrawDistance(ctx, object)})
+                != VisibilityResult::VISIBLE) continue;
+            /// @note Get は CPU 描画完了待機を伴うため、被覆を証明できない候補と画面外候補には呼ばない。
+            const bool vertexReady = ctx.resources.Get(item.vertexBuffer) != nullptr;
+            if (!sameCuller()) return;
+            if (!vertexReady) continue;
+            const bool indexReady = ctx.resources.Get(item.indexBuffer) != nullptr;
+            if (!sameCuller()) return;
+            if (!indexReady) continue;
+            const auto shader = gbuffer ? ctx.handles.gbufferShader : material.shader;
+            const bool shaderReady = ctx.resources.Get(shader) != nullptr;
+            if (!sameCuller()) return;
+            if (!shaderReady) continue;
+            culler->TestAndRaster(bounds.center, bounds.radius, interior);
+        }
+    }
+    if (ctx.occlusionPreparedScene == input && ctx.renderScene == input
+        && sameCuller())
+        ctx.occlusionPreparedCuller = culler;
+}
+
 renderer::ResourceHandle<renderer::PipelineStateTag> GetOrCreateMaterialPSO(
     renderer::ResourceManager& resources,
     renderer::BlendMode        blend,

@@ -5,6 +5,8 @@
 #include <TestKit/TestKit.hpp>
 #include <Core/ILogSink.hpp>
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
+#include <Graphics/Pipeline/OcclusionCuller.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Renderer/FiberPlacement.hpp>
 #include <Graphics/Renderer/GpuProfiler.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
@@ -240,6 +242,11 @@ protected:
         context.renderScene = scene; context.width = WIDTH; context.height = HEIGHT;
         context.frameStamp = resources.FrameStamp(); context.isDeferred = false;
         context.cameraFrustum = &frustum; context.frustumCullingEnabled = true;
+        context.occlusionCuller = m_occlusion; context.occlusionCullingEnabled = m_occlusion != nullptr;
+        if (m_occlusion) {
+            r::PrepareViewOcclusion(context);
+            if (m_occlusionSeed) m_occlusion->TestAndRaster(camera.m_position + camera.GetForward() * 10.0f, 9.0f, 9.0f);
+        }
         context.resourceRegistry.BindTarget("HDR", m_color);
         context.resourceRegistry.BindTarget("ShadowMap", m_shadow);
         if (shadows) {
@@ -484,7 +491,30 @@ protected:
     r::RenderPassHandles m_handles{}; r::RenderSettings m_settings{}; r::Camera m_light;
     std::map<uint32_t, PreparedFiberScene> m_scenes;
     uint32_t m_validationErrors = 0; bool m_frameOpen = false;
+    r::OcclusionCuller* m_occlusion = nullptr;
+    bool m_occlusionSeed = true;
 };
+
+TEST_F(FiberRenderPerfTest, HiddenFiberPagesSkipColorButKeepTheirLightViewShadowsAndReappearAfterReset)
+{
+    auto scene = Prepare(1000).scene;
+    const auto camera = CorrectnessCamera();
+    const auto visible = RenderOnce(scene, camera, true);
+    ASSERT_GT(visible.draws, 0u);
+    ASSERT_GT(visible.shadowDraws, 0u);
+    r::OcclusionCuller culler;
+    culler.Reset(camera);
+    const auto center = camera.m_position + camera.GetForward() * 10.0f;
+    ASSERT_TRUE(culler.TestAndRaster(center, 9.0f, 9.0f));
+    m_occlusion = &culler;
+    const auto hidden = RenderOnce(scene, camera, true);
+    EXPECT_LT(hidden.draws, visible.draws);
+    EXPECT_EQ(hidden.shadowDraws, visible.shadowDraws);
+    m_occlusionSeed = false;
+    culler.Reset(camera);
+    EXPECT_EQ(RenderOnce(scene, camera).draws, visible.draws);
+    m_occlusion = nullptr;
+}
 
 TEST_F(FiberRenderPerfTest, ShadedBladesReceiveEnvironmentLightWithoutDirectLight)
 {

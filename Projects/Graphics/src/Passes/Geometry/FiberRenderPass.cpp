@@ -173,6 +173,12 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
                     if (mode == FiberPassMode::COLOR) ++ctx.statsFrustumCulled;
                     continue;
                 }
+                if (mode != FiberPassMode::SELECTION
+                    && IsViewOccluded(ctx, bounds.center, bounds.radius > 0
+                        ? bounds.radius + std::max(ctx.cullingBoundsPadding, 0.0f) : 0)) {
+                    if (mode == FiberPassMode::COLOR) ++ctx.statsOcclusionCulled;
+                    continue;
+                }
             }
         }
         FiberFrameCB frame = surface.frame;

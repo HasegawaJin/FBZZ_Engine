@@ -1,10 +1,12 @@
 /// @file    WaterFarRenderPassTests.cpp
-/// @brief   有限水域が視錐台外でも遠景海面を提出する本番描画パスの境界を検証する。
+/// @brief   水面と遮蔽準備の本番描画経路・資源同期の境界を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #include <TestKit/TestKit.hpp>
+#include <Core/Profiler/Profiler.hpp>
 #include <Graphics/Pipeline/ViewPipeline.hpp>
 #include <Graphics/Pipeline/ViewPreparation.hpp>
+#include <Graphics/Pipeline/OcclusionCuller.hpp>
 #include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
@@ -23,6 +25,7 @@
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -50,13 +53,16 @@ private:
 
 class FarPassStructuredBuffer final : public renderer::IStructuredBuffer {
 public:
-    FarPassStructuredBuffer(uint32_t count, uint32_t stride) : m_count(count), m_stride(stride) {}
+    FarPassStructuredBuffer(uint32_t count, uint32_t stride, bool writable = false)
+        : m_count(count), m_stride(stride), m_writable(writable) {}
     void Update(const void*, size_t) override {}
     uint32_t GetElementCount() const override { return m_count; }
     uint32_t GetStride() const override { return m_stride; }
     size_t GetSize() const override { return static_cast<size_t>(m_count) * m_stride; }
+    uint32_t GetBindlessUavIndex() const override { return m_writable ? 0u : renderer::INVALID_BINDLESS_INDEX; }
 private:
     uint32_t m_count, m_stride;
+    bool m_writable;
 };
 
 class FarPassConstants final : public renderer::IConstantBuffer {
@@ -149,16 +155,27 @@ public:
     std::vector<FarPassDrawSnapshot> drawSnapshots;
     std::vector<renderer::DrawCall> submittedCalls;
     std::function<void()> afterSubmit;
+    std::function<void()> afterCpuFrameWait;
     std::vector<FarPassDispatchSnapshot> dispatchSnapshots;
     std::unordered_map<const renderer::IConstantBuffer*, FarPassConstants*> constants;
     renderer::GraphicsCapabilities capabilities{true, false, false};
     int failDispatchIndex = -1;
     uint32_t resourceOperationCount = 0;
+    uint32_t cpuFrameWaits = 0;
     uint32_t legacyDispatchCount = 0;
     mutable uint32_t threadChecks = 0;
-    bool IsRenderThread() const override { ++threadChecks; return true; }
+    bool renderThread = true;
+    bool supportsIndirect = false;
+    bool supportsWritableBuffers = false;
+    bool SupportsIndirectDraw() const override { return supportsIndirect; }
+    bool IsRenderThread() const override { ++threadChecks; return renderThread; }
     void Shutdown() override {}
     void BeginFrame() override {}
+    void WaitForCpuFrame() override
+    {
+        ++cpuFrameWaits;
+        if (afterCpuFrameWait) afterCpuFrameWait();
+    }
     void EndFrame() override {}
     void Clear(const math::Vector4&) override {}
     void Submit(const renderer::DrawCall& draw, renderer::ResourceManager& resources) override
@@ -249,7 +266,8 @@ private:
     { return std::make_unique<FarPassTexture>(width, height); }
     std::unique_ptr<renderer::IStructuredBuffer> CreateNativeStructuredBuffer(const void*, uint32_t count, uint32_t stride) override
     { return std::make_unique<FarPassStructuredBuffer>(count, stride); }
-    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t, uint32_t) override { return {}; }
+    std::unique_ptr<renderer::IStructuredBuffer> CreateNativeRWStructuredBuffer(const void*, uint32_t count, uint32_t stride) override
+    { return supportsWritableBuffers ? std::make_unique<FarPassStructuredBuffer>(count, stride, true) : nullptr; }
 };
 
 /// @note GraphicsAuto has no Engine asset registration; this host supplies known explicit declarations and restores its empty service.
@@ -472,6 +490,187 @@ TEST_F(WaterFarRenderPassTest, NullBufferLookupDoesNotSynchronizeTheRenderThread
     const uint32_t calls = backend.threadChecks;
     EXPECT_EQ(resources.Get(renderer::ResourceHandle<renderer::BufferTag>{}), nullptr);
     EXPECT_EQ(backend.threadChecks, calls);
+}
+
+TEST_F(WaterFarRenderPassTest, RejectsUnprovenOccludersBeforeResolvingNativeMeshBuffers)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    std::array<renderer::Vertex, 8> vertices{};
+    const std::array<math::Vector3, 8> positions{{
+        {-1,-1,-1}, {1,-1,-1}, {1,1,-1}, {-1,1,-1},
+        {-1,-1,1}, {1,-1,1}, {1,1,1}, {-1,1,1}}};
+    for (size_t i = 0; i < vertices.size(); ++i) vertices[i].position = positions[i];
+    const uint32_t indices[]{0,2,1,0,3,2,4,5,6,4,6,7,
+        0,4,7,0,7,3,1,2,6,1,6,5,0,1,5,0,5,4,3,7,6,3,6,2};
+    const auto vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::Vertex));
+    const auto indexBuffer = resources.CreateIndexBuffer(indices, uint32_t(std::size(indices)));
+    renderer::RenderPassHandles handles;
+    handles.gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+    const auto materialBuffer = resources.CreateConstantBuffer(96);
+    ASSERT_TRUE(vertexBuffer && indexBuffer && handles.gbufferShader && materialBuffer);
+    renderer::Camera camera;
+    camera.m_position = {}; camera.LookAt({0,0,1});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8; camera.m_aspect = 1; camera.m_near = 0.1f; camera.m_far = 100;
+    const auto frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+    renderer::OcclusionPasses passes;
+    passes.terrainGBuffer = passes.terrainForward = false;
+    renderer::RenderSettings warmupSettings;
+    renderer::RenderPassContext warmup{{}, backend, resources, camera, warmupSettings, {}, UINT32_MAX, handles};
+    auto warmupCuller = std::make_unique<renderer::OcclusionCuller>();
+    warmup.renderScene = std::make_shared<renderer::RenderScene>();
+    warmup.occlusionCuller = warmupCuller.get();
+    warmup.occlusionCullingEnabled = true;
+    renderer::PrepareViewOcclusion(warmup, passes);
+    /// @note Producer-side buffer resolution must expose its native-frame wait, while all input resources are already live.
+    backend.renderThread = false;
+    const std::array<const char*, 16> cases{{"opaque", "no-interior", "wind", "skinned", "alpha-cutout",
+        "alpha-texture", "unknown-vertex", "unknown-opacity", "invalid-material", "lod-fade", "depth-bias",
+        "transparent", "distance-culled", "frustum-culled", "disabled-pass", "hidden-item"}};
+    for (bool deferred : {false, true}) for (size_t index = 0; index < cases.size(); ++index) {
+        SCOPED_TRACE(std::string(deferred ? "deferred=" : "forward=") + cases[index]);
+        renderer::RenderSettings settings;
+        auto snapshot = std::make_shared<renderer::RenderScene>();
+        renderer::RenderObject object;
+        object.itemCount = 1; object.colorEligible = true;
+        object.boundsCenter = object.sortPosition = {0,0,10}; object.boundsRadius = 2;
+        object.world.m[2][3] = 10;
+        renderer::RenderMeshItem item;
+        item.vertexBuffer = vertexBuffer; item.indexBuffer = indexBuffer;
+        item.indexCount = uint32_t(std::size(indices)); item.vertexCount = uint32_t(vertices.size());
+        item.occluderRadius = 1;
+        item.material.valid = true; item.material.shader = handles.gbufferShader;
+        item.material.paramsBuffer = materialBuffer;
+        item.material.capabilities.gbufferEquivalentShader = true;
+        item.material.shaderCapabilities = {renderer::ShaderVertexContract::STANDARD_SURFACE,
+            renderer::ShaderSurfaceContract::STANDARD_PBR, renderer::ShaderOpacityContract::ALPHA_CLIP,
+            renderer::ShaderVariantSet::STANDARD_SURFACE};
+        const auto set = [&](size_t offset, float value) {
+            std::memcpy(item.material.gbufferParams.data() + offset, &value, sizeof(value));
+        };
+        set(12, 1);
+        switch (index) {
+        case 1: item.occluderRadius = 0; break;
+        case 2: set(68, 0.2f); break;
+        case 3: object.skinned = true; break;
+        case 4: set(64, 0.5f); break;
+        case 5: {
+            const uint32_t albedoBit = 1;
+            std::memcpy(item.material.gbufferParams.data() + 80, &albedoBit, sizeof(albedoBit));
+            break;
+        }
+        case 6: item.material.shaderCapabilities.vertex = renderer::ShaderVertexContract::UNKNOWN; break;
+        case 7: item.material.shaderCapabilities.opacity = renderer::ShaderOpacityContract::UNKNOWN; break;
+        case 8: item.material.valid = false; break;
+        case 9: object.lodDither = 0.5f; break;
+        case 10: item.material.depthBias = 1; break;
+        case 11: item.material.capabilities.blend = renderer::BlendMode::ALPHA_BLEND; break;
+        case 13: object.boundsCenter.x = object.sortPosition.x = object.world.m[0][3] = 100; break;
+        case 15: item.visible = false; break;
+        default: break;
+        }
+        item.forwardMaterial = item.material;
+        snapshot->objects.push_back(object); snapshot->items.push_back(item);
+        renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+        auto culler = std::make_unique<renderer::OcclusionCuller>();
+        context.renderScene = snapshot; context.occlusionCuller = culler.get();
+        context.occlusionCullingEnabled = true; context.isDeferred = deferred;
+        context.width = context.height = 128;
+        context.cameraFrustum = &frustum; context.frustumCullingEnabled = index == 13;
+        context.cullMaxDistance = index == 12 ? 5.0f : 0.0f;
+        auto activePasses = passes;
+        if (index == 14) activePasses.meshGBuffer = activePasses.meshForward = false;
+        backend.cpuFrameWaits = backend.threadChecks = 0;
+
+        renderer::PrepareViewOcclusion(context, activePasses);
+
+        if (index == 0) {
+            EXPECT_TRUE(renderer::IsViewOcclusionCurrent(context));
+            EXPECT_FALSE(culler->TestAndRaster({0,0,20}, 0.05f));
+        } else {
+            EXPECT_EQ(backend.threadChecks, 0u);
+            EXPECT_EQ(backend.cpuFrameWaits, 0u);
+            EXPECT_TRUE(culler->TestAndRaster({0,0,20}, 0.05f));
+        }
+    }
+    /// @note The inline fake has no worker to marshal shutdown resource operations to.
+    backend.renderThread = true;
+}
+
+TEST_F(WaterFarRenderPassTest, RejectsSameVersionCullerReplacementDuringNativePreparation)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    std::array<renderer::Vertex, 8> vertices{};
+    const std::array<math::Vector3, 8> positions{{
+        {-0.25f,-0.25f,-0.25f}, {0.25f,-0.25f,-0.25f}, {0.25f,0.25f,-0.25f}, {-0.25f,0.25f,-0.25f},
+        {-0.25f,-0.25f,0.25f}, {0.25f,-0.25f,0.25f}, {0.25f,0.25f,0.25f}, {-0.25f,0.25f,0.25f}}};
+    for (size_t i = 0; i < vertices.size(); ++i) vertices[i].position = positions[i];
+    const uint32_t indices[]{0,2,1,0,3,2,4,5,6,4,6,7,
+        0,4,7,0,7,3,1,2,6,1,6,5,0,1,5,0,5,4,3,7,6,3,6,2};
+    const auto vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::Vertex));
+    const auto indexBuffer = resources.CreateIndexBuffer(indices, uint32_t(std::size(indices)));
+    const auto materialBuffer = resources.CreateConstantBuffer(96);
+    renderer::RenderPassHandles handles;
+    handles.gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+    ASSERT_TRUE(vertexBuffer && indexBuffer && materialBuffer && handles.gbufferShader);
+    renderer::Camera camera;
+    camera.m_position = {}; camera.LookAt({0,0,1}); camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8; camera.m_aspect = 1; camera.m_near = 0.1f; camera.m_far = 100;
+    renderer::RenderSettings settings;
+    renderer::OcclusionPasses passes;
+    passes.terrainGBuffer = passes.terrainForward = false;
+    auto warmupCuller = std::make_unique<renderer::OcclusionCuller>();
+    renderer::RenderPassContext warmup{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    warmup.renderScene = std::make_shared<renderer::RenderScene>(); warmup.occlusionCuller = warmupCuller.get();
+    warmup.occlusionCullingEnabled = true;
+    renderer::PrepareViewOcclusion(warmup, passes);
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    renderer::RenderObject object;
+    object.itemCount = 1; object.colorEligible = true;
+    object.boundsCenter = object.sortPosition = {3,0,10}; object.boundsRadius = 0.5f;
+    object.world.m[0][3] = 3; object.world.m[2][3] = 10;
+    renderer::RenderMeshItem item;
+    item.vertexBuffer = vertexBuffer; item.indexBuffer = indexBuffer;
+    item.vertexCount = uint32_t(vertices.size()); item.indexCount = uint32_t(std::size(indices)); item.occluderRadius = 0.2f;
+    item.material.valid = true; item.material.shader = handles.gbufferShader; item.material.paramsBuffer = materialBuffer;
+    item.material.capabilities.gbufferEquivalentShader = true;
+    item.material.shaderCapabilities = {renderer::ShaderVertexContract::STANDARD_SURFACE,
+        renderer::ShaderSurfaceContract::STANDARD_PBR, renderer::ShaderOpacityContract::ALPHA_CLIP,
+        renderer::ShaderVariantSet::STANDARD_SURFACE};
+    const float alpha = 1; std::memcpy(item.material.gbufferParams.data() + 12, &alpha, sizeof(alpha));
+    item.forwardMaterial = item.material;
+    snapshot->objects.push_back(object); snapshot->items.push_back(item);
+    for (bool deferred : {false, true}) {
+        SCOPED_TRACE(deferred);
+        auto original = std::make_unique<renderer::OcclusionCuller>();
+        auto replacement = std::make_unique<renderer::OcclusionCuller>();
+        auto otherCamera = camera; otherCamera.m_position.x = 1; otherCamera.LookAt({1,0,1});
+        replacement->Reset(otherCamera);
+        replacement->TestAndRaster({0,0,5}, 2, 1);
+        ASSERT_FALSE(replacement->TestAndRaster({0,0,20}, 0.01f));
+        ASSERT_TRUE(replacement->TestAndRaster({3,0,20}, 0.01f));
+        renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+        context.renderScene = snapshot; context.occlusionCuller = original.get(); context.isDeferred = deferred;
+        context.occlusionCullingEnabled = true; context.frustumCullingEnabled = false; context.width = context.height = 128;
+        bool replaced = false;
+        backend.renderThread = false;
+        backend.afterCpuFrameWait = [&] {
+            if (replaced) return;
+            replaced = true;
+            EXPECT_EQ(original->GetResetVersion(), replacement->GetResetVersion());
+            context.occlusionCuller = replacement.get();
+        };
+
+        renderer::PrepareViewOcclusion(context, passes);
+
+        backend.afterCpuFrameWait = {}; backend.renderThread = true;
+        ASSERT_TRUE(replaced);
+        EXPECT_FALSE(renderer::IsViewOcclusionCurrent(context));
+        EXPECT_FALSE(renderer::IsViewOccluded(context, {0,0,20}, 0.01f));
+        EXPECT_TRUE(replacement->TestAndRaster({3,0,20}, 0.01f));
+    }
 }
 
 TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshSharedResourcesForEachView)
@@ -866,6 +1065,867 @@ TEST_F(WaterFarRenderPassTest, AuxiliaryPassesPinTheirWaterInputsAcrossSnapshotR
         for (const auto& draw : backend.draws) EXPECT_FLOAT_EQ(draw.timeParams.w, 13);
         atlas.Release(resources); interfaceMask.Release(resources);
     }
+}
+
+TEST_F(WaterFarRenderPassTest, ContinuousHeightFieldColumnsCullAcrossTilesWithoutClosingHolesOrUndergroundViews)
+{
+    FarPassRenderer backend; renderer::ResourceManager resources(backend);
+    const auto makeTile = [&](bool mountain) {
+        renderer::RenderTerrainInput terrain;
+        auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+        std::vector<renderer::Vertex> vertices;
+        for (uint32_t z = 0; z < 5; ++z) for (uint32_t x = 0; x < 5; ++x) {
+            const float height = mountain ? float(z * 2) : 0;
+            geometry->heights.push_back(height);
+            renderer::Vertex vertex; vertex.position = {float(x * 2),height,float(z * 2)}; vertices.push_back(vertex);
+        }
+        for (uint16_t z = 0; z < 4; ++z) for (uint16_t x = 0; x < 4; ++x) {
+            const uint16_t a = z * 5 + x, b = a + 5, c = a + 1, d = b + 1;
+            geometry->indices[0].insert(geometry->indices[0].end(),{a,b,c,c,b,d});
+        }
+        geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+        geometry->columns.push_back({{0,mountain ? 4.0f : 0.0f,8,8},mountain ? 4.0f : 0.0f});
+        renderer::RenderTerrainPatch patch;
+        patch.gpuPatch = {0,0,5,5,5,5,2,0}; patch.aabbMax = {8,mountain ? 8.0f : 0.0f,8}; patch.occlusion = geometry;
+        patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(),vertices.size() * sizeof(renderer::Vertex),sizeof(renderer::Vertex));
+        for (size_t lod = 0; lod < 3; ++lod) {
+            const std::vector<uint32_t> indices(geometry->indices[lod].begin(),geometry->indices[lod].end());
+            patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(),uint32_t(indices.size()));
+            patch.indexCountLOD[lod] = uint32_t(indices.size());
+        }
+        terrain.chunkWorldSize = 8; terrain.constants.worldMatrix = math::Matrix4::Identity();
+        terrain.constants.worldMatrix.m[0][3] = -4; terrain.constants.worldMatrix.m[2][3] = mountain ? 0.0f : -8.0f;
+        terrain.patches.push_back(patch);
+        return std::pair{terrain,geometry};
+    };
+    auto foreground = makeTile(false), mountain = makeTile(true);
+    auto scene = std::make_shared<renderer::RenderScene>(); scene->terrains = {foreground.first,mountain.first};
+    renderer::Camera camera; camera.m_position = {0,2,-4}; camera.LookAt({0,2,10});
+    camera.m_projection = renderer::ProjectionMode::Perspective; camera.m_orthoHeight = 20; camera.m_far = 100;
+    renderer::RenderSettings settings; renderer::RenderPassHandles handles;
+    renderer::RenderPassContext context{{},backend,resources,camera,settings,{},UINT32_MAX,handles};
+    context.renderScene = scene; context.occlusionCullingEnabled = true;
+    renderer::OcclusionCuller culler; context.occlusionCuller = &culler;
+    backend.cpuFrameWaits = 0;
+    culler.Reset(camera); renderer::RasterTerrainOccluders(context);
+    EXPECT_EQ(backend.cpuFrameWaits, 0u);
+    EXPECT_FALSE(culler.TestAndRaster({-1,3,20},0.05f));
+    EXPECT_TRUE(culler.TestAndRaster({-1,10,20},0.05f));
+    camera.m_position.y = -1; camera.LookAt({0,-1,10});
+    culler.Reset(camera); renderer::RasterTerrainOccluders(context);
+    EXPECT_TRUE(culler.TestAndRaster({-1,3,20},0.05f));
+    camera.m_position.y = 2; camera.LookAt({0,2,10});
+    for (size_t lod = 0; lod < 3; ++lod) {
+        auto& indices = mountain.second->indices[lod]; indices.erase(indices.begin() + 30,indices.begin() + 36);
+        auto& patch = scene->terrains[1].patches[0]; patch.indexCountLOD[lod] = uint32_t(indices.size());
+        const std::vector<uint32_t> gpu(indices.begin(),indices.end());
+        patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(gpu.data(),uint32_t(gpu.size()));
+    }
+    culler.Reset(camera); renderer::RasterTerrainOccluders(context);
+    EXPECT_TRUE(culler.TestAndRaster({-1,3,20},0.05f));
+}
+
+TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAndLodChoices)
+{
+    struct RestoreProfiler {
+        bool m_enabled = profiler::Profiler::IsEnabled();
+        bool m_requested = profiler::Profiler::IsRecordingRequested();
+        profiler::PerformanceCaptureFilter m_filter = profiler::Profiler::GetRequestedCaptureFilter();
+        ~RestoreProfiler()
+        {
+            profiler::Profiler::RequestCaptureFilter(m_filter);
+            profiler::Profiler::SetEnabled(false);
+            profiler::Profiler::SetEnabled(m_enabled);
+            profiler::Profiler::RequestRecording(m_requested);
+        }
+    } restore;
+    ASSERT_TRUE(profiler::Profiler::RequestCaptureFilter({"General", "ViewOcclusion::TerrainProofBuild"}));
+    profiler::Profiler::SetEnabled(false); profiler::Profiler::SetEnabled(true);
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    const auto makeTile = [&](bool mountain) {
+        renderer::RenderTerrainInput terrain;
+        auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+        std::vector<renderer::Vertex> vertices;
+        for (uint32_t z = 0; z < 5; ++z) for (uint32_t x = 0; x < 5; ++x) {
+            const float height = mountain ? float(z * 2) : 0;
+            geometry->heights.push_back(height);
+            renderer::Vertex vertex; vertex.position = {float(x * 2), height, float(z * 2)};
+            vertices.push_back(vertex);
+        }
+        for (uint16_t z = 0; z < 4; ++z) for (uint16_t x = 0; x < 4; ++x) {
+            const uint16_t a = z * 5 + x, b = a + 5, c = a + 1, d = b + 1;
+            geometry->indices[0].insert(geometry->indices[0].end(), {a,b,c,c,b,d});
+        }
+        geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+        geometry->columns.push_back({{0, mountain ? 4.0f : 0.0f, 8, 8}, mountain ? 4.0f : 0.0f});
+        renderer::RenderTerrainPatch patch;
+        patch.gpuPatch = {0,0,5,5,5,5,2,0}; patch.aabbMax = {8, mountain ? 8.0f : 0.0f, 8};
+        patch.occlusion = geometry;
+        patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
+        for (size_t lod = 0; lod < 3; ++lod) {
+            const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());
+            patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+            patch.indexCountLOD[lod] = uint32_t(indices.size());
+        }
+        terrain.chunkWorldSize = 8; terrain.constants.worldMatrix = math::Matrix4::Identity();
+        terrain.constants.worldMatrix.m[0][3] = -4; terrain.constants.worldMatrix.m[2][3] = mountain ? 0.0f : -8.0f;
+        terrain.patches.push_back(patch);
+        return terrain;
+    };
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    snapshot->terrains = {makeTile(false), makeTile(true)};
+    renderer::Camera camera; camera.m_position = {0,2,-4}; camera.LookAt({0,2,10}); camera.m_far = 100;
+    renderer::RenderSettings settings; renderer::RenderPassHandles handles;
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    renderer::OcclusionCuller culler;
+    context.renderScene = snapshot; context.occlusionCuller = &culler; context.occlusionCullingEnabled = true;
+    const auto capture = [&](uint32_t mask, float chunkSize) {
+        context.cullingMask = mask;
+        for (auto& terrain : snapshot->terrains) terrain.chunkWorldSize = chunkSize;
+        resources.AdvanceFrame(); culler.Reset(camera);
+        profiler::Profiler::BeginFrame();
+        renderer::RasterTerrainOccluders(context);
+        profiler::Profiler::EndFrame();
+        EXPECT_TRUE(profiler::Profiler::GetSnapshot().complete);
+        const auto& records = profiler::Profiler::GetLastFrameRecords();
+        return size_t(std::count_if(records.begin(), records.end(), [](const auto& record) {
+            return std::strcmp(record.name, "ViewOcclusion::TerrainProofBuild") == 0;
+        }));
+    };
+    EXPECT_EQ(capture(UINT32_MAX, 8), 1u);
+    ASSERT_FALSE(culler.TestAndRaster({-1,3,20}, 0.05f));
+    EXPECT_EQ(capture(0, 8), 0u);
+    EXPECT_TRUE(culler.TestAndRaster({-1,3,20}, 0.05f));
+    /// @note Layer zero remains included; only unused mask bits and the viewing LOD threshold change across these frames.
+    constexpr std::array<std::pair<uint32_t, float>, 6> VIEWS{{
+        {1,8}, {UINT32_MAX,8}, {UINT32_MAX,1}, {UINT32_MAX,8}, {1,1}, {UINT32_MAX,8}}};
+    for (const auto& [mask, chunkSize] : VIEWS) {
+        SCOPED_TRACE("mask=" + std::to_string(mask) + " chunkSize=" + std::to_string(chunkSize));
+        EXPECT_EQ(capture(mask, chunkSize), 0u);
+        EXPECT_FALSE(culler.TestAndRaster({-1,3,20}, 0.05f));
+    }
+}
+
+TEST_F(WaterFarRenderPassTest, HeightFieldBoxFacesPreserveTheSixFaceDepthReferenceAcrossEyeBoundaries)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    auto& shared = resources.Rendering().Shared();
+    shared.terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+    ASSERT_TRUE(shared.terrainShader);
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::Camera camera;
+    camera.m_fovY = 60; camera.m_aspect = 1; camera.m_near = 0.1f; camera.m_far = 100;
+    auto actual = std::make_unique<renderer::OcclusionCuller>();
+    auto reference = std::make_unique<renderer::OcclusionCuller>();
+    std::vector<math::Vector4> actualRows(renderer::OcclusionCuller::kGpuRows);
+    std::vector<math::Vector4> referenceRows(renderer::OcclusionCuller::kGpuRows);
+    constexpr std::array<std::array<int,4>,6> BOX_FACES{{
+        {0,3,2,1}, {4,5,6,7}, {0,4,7,3}, {1,2,6,5}, {0,1,5,4}, {3,7,6,2}}};
+    constexpr std::array<math::Vector2,3> JITTERS{{{0,0}, {0.5f/128,-0.25f/128}, {-0.25f/128,0.5f/128}}};
+    const float POSITIVE_INFINITY = std::numeric_limits<float>::infinity();
+    for (float offset : {0.0f, 4096.0f}) {
+        SCOPED_TRACE("world offset=" + std::to_string(offset));
+        const auto makeTile = [&](bool mountain) {
+            renderer::RenderTerrainInput terrain;
+            auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+            std::vector<renderer::Vertex> vertices;
+            for (uint32_t z = 0; z < 5; ++z) for (uint32_t x = 0; x < 5; ++x) {
+                const float height = mountain ? float(z * 2) : 0;
+                geometry->heights.push_back(height);
+                renderer::Vertex vertex;
+                vertex.position = {float(x * 2), height, float(z * 2)};
+                vertices.push_back(vertex);
+            }
+            for (uint16_t z = 0; z < 4; ++z) for (uint16_t x = 0; x < 4; ++x) {
+                const uint16_t a = z * 5 + x, b = a + 5, c = a + 1, d = b + 1;
+                geometry->indices[0].insert(geometry->indices[0].end(), {a,b,c,c,b,d});
+            }
+            geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+            geometry->columns.push_back(mountain
+                ? renderer::TerrainOcclusionColumn{{2,4,6,6},4}
+                : renderer::TerrainOcclusionColumn{{0,0,8,8},0});
+            renderer::RenderTerrainPatch patch;
+            patch.gpuPatch = {0,0,5,5,5,5,2,0};
+            patch.aabbMax = {8, mountain ? 8.0f : 0.0f, 8};
+            patch.occlusion = geometry;
+            patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
+            for (size_t lod = 0; lod < 3; ++lod) {
+                const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());
+                patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+                patch.indexCountLOD[lod] = uint32_t(indices.size());
+            }
+            terrain.chunkWorldSize = 8;
+            terrain.constants.worldMatrix = math::Matrix4::Identity();
+            terrain.constants.worldMatrix.m[0][3] = offset - 4;
+            terrain.constants.worldMatrix.m[2][3] = offset + (mountain ? 0.0f : -8.0f);
+            terrain.patches.push_back(patch);
+            return terrain;
+        };
+        auto snapshot = std::make_shared<renderer::RenderScene>();
+        snapshot->terrains = {makeTile(false), makeTile(true)};
+        renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+        context.renderScene = snapshot; context.occlusionCuller = actual.get();
+        context.occlusionCullingEnabled = true; context.frustumCullingEnabled = false;
+        context.width = context.height = 128;
+        const math::Vector3 low{offset - 2, 0, offset + 4}, high{offset + 2, 4.0f - 0.01f, offset + 6};
+        const math::Vector3 center{offset, high.y * 0.5f, offset + 5};
+        const std::array<math::Vector3,8> vertices{{{low.x,low.y,low.z}, {high.x,low.y,low.z},
+            {high.x,high.y,low.z}, {low.x,high.y,low.z}, {low.x,low.y,high.z},
+            {high.x,low.y,high.z}, {high.x,high.y,high.z}, {low.x,high.y,high.z}}};
+        const std::array<math::Vector3,8> eyes{{
+            {low.x,2,offset - 4}, {high.x,2,offset - 4},
+            {offset,6,low.z}, {offset,8.5f,high.z}, {offset,high.y,offset - 4},
+            {offset - 3,2,offset - 4}, {offset + 3,2,offset - 4}, {offset,8.5f,offset + 7}}};
+        for (size_t plane = 0; plane < eyes.size(); ++plane) {
+            SCOPED_TRACE("plane=" + std::to_string(plane));
+            const int extent = plane < 5 ? 1 : 0;
+            for (int side = -extent; side <= extent; ++side) {
+                SCOPED_TRACE("eye side=" + std::to_string(side));
+                camera.m_position = eyes[plane];
+                float& coordinate = plane < 2 ? camera.m_position.x : plane < 4 ? camera.m_position.z : camera.m_position.y;
+                if (side) coordinate = std::nextafter(coordinate, side < 0 ? -POSITIVE_INFINITY : POSITIVE_INFINITY);
+                camera.LookAt(center);
+                /// @note Every eye stays inside the continuous tile footprint and above its near-plane surface, so no outside-camera column clipping is needed.
+                const auto hidden = camera.m_position + (center - camera.m_position) * 3.0f;
+                for (size_t jitter = 0; jitter < JITTERS.size(); ++jitter) {
+                    SCOPED_TRACE("jitter=" + std::to_string(jitter));
+                    context.taaJitterNdcX = JITTERS[jitter].x; context.taaJitterNdcY = JITTERS[jitter].y;
+                    renderer::PrepareViewOcclusion(context);
+                    ASSERT_TRUE(renderer::IsViewOcclusionCurrent(context));
+                    reference->Reset(camera, context.taaJitterNdcX, context.taaJitterNdcY);
+                    /// @note The independent reference submits all six fixed box faces and deliberately performs no facing optimization.
+                    for (const auto& face : BOX_FACES)
+                        reference->RasterQuad(vertices[face[0]], vertices[face[1]], vertices[face[2]], vertices[face[3]]);
+                    ASSERT_FALSE(reference->TestAndRaster(hidden, 0.01f));
+                    EXPECT_FALSE(actual->TestAndRaster(hidden, 0.01f));
+                    actual->CopyGpuRows(actualRows); reference->CopyGpuRows(referenceRows);
+                    /// @note Compare the GPU payload bitwise so even one altered depth cell fails the reference contract.
+                    const auto mismatch = std::mismatch(actualRows.begin() + 9, actualRows.end(), referenceRows.begin() + 9,
+                        [](const math::Vector4& current, const math::Vector4& expected) {
+                            return std::memcmp(&current, &expected, sizeof(current)) == 0;
+                        });
+                    EXPECT_EQ(mismatch.first, actualRows.end()) << "GPU depth row=" << std::distance(actualRows.begin(), mismatch.first);
+                }
+            }
+        }
+    }
+}
+
+TEST_F(WaterFarRenderPassTest, OverlappingHeightFieldColumnsPreserveTheSixFaceDepthReference)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    auto& shared = resources.Rendering().Shared();
+    shared.terrainShader = resources.LoadShader("Assets/Shaders/Terrain/Terrain.hlsl");
+    ASSERT_TRUE(shared.terrainShader);
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::Camera camera;
+    camera.m_fovY = 60; camera.m_aspect = 1; camera.m_near = 0.1f; camera.m_far = 100;
+    auto actual = std::make_unique<renderer::OcclusionCuller>();
+    auto reference = std::make_unique<renderer::OcclusionCuller>();
+    std::vector<math::Vector4> actualRows(renderer::OcclusionCuller::kGpuRows);
+    std::vector<math::Vector4> referenceRows(renderer::OcclusionCuller::kGpuRows);
+    constexpr std::array<std::array<int,4>,6> BOX_FACES{{
+        {0,3,2,1}, {4,5,6,7}, {0,4,7,3}, {1,2,6,5}, {0,1,5,4}, {3,7,6,2}}};
+    const std::array<renderer::TerrainOcclusionColumn,3> columns{{
+        {{1,4,7,6},4}, {{3.5f,6.5f,4.5f,7.5f},3}, {{5,6.25f,6,7.75f},3.5f}}};
+    constexpr std::array<math::Vector2,3> JITTERS{{{0,0}, {0.5f/128,-0.25f/128}, {-0.25f/128,0.5f/128}}};
+    for (float offset : {0.0f, 4096.0f}) {
+        SCOPED_TRACE("world offset=" + std::to_string(offset));
+        const auto makeTile = [&](bool mountain) {
+            renderer::RenderTerrainInput terrain;
+            auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+            std::vector<renderer::Vertex> vertices;
+            for (uint32_t z = 0; z < 5; ++z) for (uint32_t x = 0; x < 5; ++x) {
+                const float height = mountain ? float(z * 2) : 0;
+                geometry->heights.push_back(height);
+                renderer::Vertex vertex;
+                vertex.position = {float(x * 2),height,float(z * 2)};
+                vertices.push_back(vertex);
+            }
+            for (uint16_t z = 0; z < 4; ++z) for (uint16_t x = 0; x < 4; ++x) {
+                const uint16_t a = z * 5 + x, b = a + 5, c = a + 1, d = b + 1;
+                geometry->indices[0].insert(geometry->indices[0].end(),{a,b,c,c,b,d});
+            }
+            geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+            if (mountain) geometry->columns.assign(columns.begin(),columns.end());
+            else geometry->columns.push_back({{0,0,8,8},0});
+            renderer::RenderTerrainPatch patch;
+            patch.gpuPatch = {0,0,5,5,5,5,2,0}; patch.aabbMax = {8,mountain ? 8.0f : 0.0f,8};
+            patch.occlusion = geometry;
+            patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(),vertices.size() * sizeof(renderer::Vertex),sizeof(renderer::Vertex));
+            for (size_t lod = 0; lod < 3; ++lod) {
+                const std::vector<uint32_t> indices(geometry->indices[lod].begin(),geometry->indices[lod].end());
+                patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(),uint32_t(indices.size()));
+                patch.indexCountLOD[lod] = uint32_t(indices.size());
+            }
+            terrain.chunkWorldSize = 8; terrain.constants.worldMatrix = math::Matrix4::Identity();
+            terrain.constants.worldMatrix.m[0][3] = offset - 4;
+            terrain.constants.worldMatrix.m[2][3] = offset + (mountain ? 0.0f : -8.0f);
+            terrain.patches.push_back(patch);
+            return terrain;
+        };
+        auto snapshot = std::make_shared<renderer::RenderScene>();
+        snapshot->terrains = {makeTile(false),makeTile(true)};
+        renderer::RenderPassContext context{{},backend,resources,camera,settings,{},UINT32_MAX,handles};
+        context.renderScene = snapshot; context.occlusionCuller = actual.get();
+        context.occlusionCullingEnabled = true; context.frustumCullingEnabled = false;
+        context.width = context.height = 128;
+        /// @note Four columns fit in one unsplit BVH leaf; both rear columns stay below the sloped surface and behind the first column.
+        for (float eyeShift : {-0.25f,0.0f,0.25f}) {
+            SCOPED_TRACE("eye shift=" + std::to_string(eyeShift));
+            camera.m_position = {offset + eyeShift,2 + eyeShift,offset - 4};
+            camera.LookAt({offset,2,offset + 5});
+            for (const auto jitter : JITTERS) {
+                SCOPED_TRACE("jitter=" + std::to_string(jitter.x) + "," + std::to_string(jitter.y));
+                context.taaJitterNdcX = jitter.x; context.taaJitterNdcY = jitter.y;
+                renderer::PrepareViewOcclusion(context);
+                ASSERT_TRUE(renderer::IsViewOcclusionCurrent(context));
+                reference->Reset(camera,jitter.x,jitter.y);
+                for (size_t column = 0; column < columns.size(); ++column) {
+                    SCOPED_TRACE("column=" + std::to_string(column));
+                    const auto& item = columns[column];
+                    const math::Vector3 low{item.rectangle.x + offset - 4,0,item.rectangle.y + offset};
+                    const math::Vector3 high{item.rectangle.z + offset - 4,item.minimumHeight - 0.01f,item.rectangle.w + offset};
+                    if (column != 0) ASSERT_FALSE(reference->TestAabb(low,high));
+                    const std::array<math::Vector3,8> vertices{{{low.x,low.y,low.z}, {high.x,low.y,low.z},
+                        {high.x,high.y,low.z}, {low.x,high.y,low.z}, {low.x,low.y,high.z},
+                        {high.x,low.y,high.z}, {high.x,high.y,high.z}, {low.x,high.y,high.z}}};
+                    /// @note The reference always submits all faces, including boxes whose visibility query already rejects them.
+                    for (const auto& face : BOX_FACES)
+                        reference->RasterQuad(vertices[face[0]],vertices[face[1]],vertices[face[2]],vertices[face[3]]);
+                }
+                ASSERT_FALSE(reference->TestAndRaster({offset,2,offset + 20},0.05f));
+                EXPECT_FALSE(actual->TestAndRaster({offset,2,offset + 20},0.05f));
+                EXPECT_TRUE(actual->TestAndRaster({offset,12,offset + 20},0.05f));
+                actual->CopyGpuRows(actualRows); reference->CopyGpuRows(referenceRows);
+                const auto mismatch = std::mismatch(actualRows.begin() + 9,actualRows.end(),referenceRows.begin() + 9,
+                    [](const math::Vector4& current,const math::Vector4& expected) {
+                        return std::memcmp(&current,&expected,sizeof(current)) == 0;
+                    });
+                EXPECT_EQ(mismatch.first,actualRows.end()) << "GPU depth row=" << std::distance(actualRows.begin(),mismatch.first);
+            }
+        }
+    }
+}
+
+TEST_F(WaterFarRenderPassTest, HeightFieldCacheRejectsInternalChunkCracksAndRecoversAfterRepair)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    renderer::RenderTerrainInput terrain;
+    terrain.constants.worldMatrix = math::Matrix4::Identity();
+    terrain.chunkWorldSize = 100;
+    std::array<std::shared_ptr<renderer::TerrainOcclusionGeometry>, 2> geometries;
+    std::array<std::vector<renderer::Vertex>, 2> vertices;
+    for (uint32_t chunk = 0; chunk < 2; ++chunk) {
+        auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+        for (uint32_t z = 0; z < 5; ++z) for (uint32_t x = 0; x < 5; ++x) {
+            const float height = chunk && x > 0 && z > 0 && z < 4 ? 8.0f : 0.0f;
+            geometry->heights.push_back(height);
+            renderer::Vertex vertex;
+            vertex.position = {float(chunk * 4 + x), height, float(z)};
+            vertices[chunk].push_back(vertex);
+        }
+        for (uint16_t z = 0; z < 4; ++z) for (uint16_t x = 0; x < 4; ++x) {
+            const uint16_t a = z * 5 + x, b = a + 5, c = a + 1, d = b + 1;
+            geometry->indices[0].insert(geometry->indices[0].end(), {a,b,c,c,b,d});
+        }
+        geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+        geometry->columns.push_back(chunk
+            ? renderer::TerrainOcclusionColumn{{5,1,8,3},8}
+            : renderer::TerrainOcclusionColumn{{0,0,4,4},0});
+        renderer::RenderTerrainPatch patch;
+        patch.gpuPatch = {chunk * 4,0,5,5,9,5,1,0};
+        patch.aabbMin = {float(chunk * 4),0,0};
+        patch.aabbMax = {float(chunk * 4 + 4),chunk ? 8.0f : 0.0f,4};
+        patch.vertexBuffer = resources.CreateVertexBuffer(vertices[chunk].data(), vertices[chunk].size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
+        for (size_t lod = 0; lod < 3; ++lod) {
+            const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());
+            patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+            patch.indexCountLOD[lod] = uint32_t(indices.size());
+        }
+        patch.occlusion = geometry;
+        geometries[chunk] = geometry;
+        terrain.patches.push_back(patch);
+    }
+    snapshot->terrains.push_back(std::move(terrain));
+    renderer::Camera camera;
+    camera.m_position = {2,4,2}; camera.LookAt({12,4,2}); camera.m_near = 0.1f; camera.m_far = 100;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    renderer::OcclusionCuller culler;
+    context.renderScene = snapshot; context.occlusionCuller = &culler; context.occlusionCullingEnabled = true;
+    const auto visible = [&] {
+        culler.Reset(camera);
+        renderer::RasterTerrainOccluders(context);
+        return culler.TestAndRaster({12,4,2}, 0.01f);
+    };
+    ASSERT_FALSE(visible());
+    EXPECT_FALSE(visible());
+
+    /// @note Both outer endpoints stay identical; only the shared chunk edge's inner samples jump above the horizontal sightline.
+    auto cracked = std::make_shared<renderer::TerrainOcclusionGeometry>(*geometries[1]);
+    auto changedVertices = vertices[1];
+    for (uint32_t z = 1; z < 4; ++z) {
+        cracked->heights[z * 5] = 8;
+        changedVertices[z * 5].position.y = 8;
+    }
+    auto& rightPatch = snapshot->terrains[0].patches[1];
+    rightPatch.occlusion = cracked;
+    resources.Update(rightPatch.vertexBuffer, changedVertices.data(), changedVertices.size() * sizeof(renderer::Vertex));
+    EXPECT_TRUE(visible());
+    EXPECT_TRUE(visible());
+    rightPatch.occlusion = geometries[1];
+    resources.Update(rightPatch.vertexBuffer, vertices[1].data(), vertices[1].size() * sizeof(renderer::Vertex));
+    EXPECT_FALSE(visible());
+}
+
+TEST_F(WaterFarRenderPassTest, HeightFieldColumnsRespectSelectedLodDrawCountsAndTopology)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    const auto makeTile = [&](bool mountain) {
+        renderer::RenderTerrainInput terrain;
+        auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+        std::vector<renderer::Vertex> vertices;
+        for (uint32_t z = 0; z < 5; ++z) for (uint32_t x = 0; x < 5; ++x) {
+            const float height = mountain ? float(z * 2) : 0;
+            geometry->heights.push_back(height);
+            renderer::Vertex vertex;
+            vertex.position = {float(x * 2), height, float(z * 2)};
+            vertices.push_back(vertex);
+        }
+        for (uint16_t z = 0; z < 4; ++z) for (uint16_t x = 0; x < 4; ++x) {
+            const uint16_t a = z * 5 + x, b = a + 5, c = a + 1, d = b + 1;
+            geometry->indices[0].insert(geometry->indices[0].end(), {a,b,c,c,b,d});
+        }
+        geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+        geometry->columns.push_back({{0, mountain ? 4.0f : 0.0f, 8, 8}, mountain ? 4.0f : 0.0f});
+        renderer::RenderTerrainPatch patch;
+        patch.gpuPatch = {0,0,5,5,5,5,2,0};
+        patch.aabbMax = {8, mountain ? 8.0f : 0.0f, 8};
+        patch.occlusion = geometry;
+        patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
+        for (size_t lod = 0; lod < 3; ++lod) {
+            const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());
+            patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+            patch.indexCountLOD[lod] = uint32_t(indices.size());
+        }
+        terrain.chunkWorldSize = 8;
+        terrain.constants.worldMatrix = math::Matrix4::Identity();
+        terrain.constants.worldMatrix.m[0][3] = -4;
+        terrain.constants.worldMatrix.m[2][3] = mountain ? 0.0f : -8.0f;
+        terrain.patches.push_back(patch);
+        return std::pair{terrain, geometry};
+    };
+    auto foreground = makeTile(false), mountain = makeTile(true);
+    const auto originalIndices = mountain.second->indices[2];
+    mountain.second->indices[2].clear();
+    mountain.first.patches[0].indexCountLOD[2] = 0;
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    snapshot->terrains = {foreground.first, mountain.first};
+    renderer::Camera camera;
+    camera.m_position = {0,2,-4}; camera.LookAt({0,2,10}); camera.m_far = 100;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    renderer::OcclusionCuller culler;
+    context.renderScene = snapshot; context.occlusionCuller = &culler; context.occlusionCullingEnabled = true;
+    const auto visible = [&] {
+        culler.Reset(camera);
+        renderer::RasterTerrainOccluders(context);
+        return culler.TestAndRaster({-1,3,20}, 0.05f);
+    };
+    ASSERT_FALSE(visible());
+    /// @note Changing only the LOD threshold must not reuse a proof for a level whose actual draw count is zero.
+    snapshot->terrains[1].chunkWorldSize = 1;
+    EXPECT_TRUE(visible());
+    mountain.second->indices[2] = originalIndices;
+    snapshot->terrains[1].patches[0].indexCountLOD[2] = uint32_t(originalIndices.size());
+    ASSERT_FALSE(visible());
+    const auto publish = [&](const std::shared_ptr<renderer::TerrainOcclusionGeometry>& geometry) {
+        auto& patch = snapshot->terrains[1].patches[0];
+        patch.occlusion = geometry;
+        std::vector<renderer::Vertex> vertices;
+        for (uint32_t z = 0; z < 5; ++z) for (uint32_t x = 0; x < 5; ++x) {
+            renderer::Vertex vertex;
+            vertex.position = {float(x * 2), geometry->heights[z * 5 + x], float(z * 2)};
+            vertices.push_back(vertex);
+        }
+        patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
+        const std::vector<uint32_t> indices(geometry->indices[2].begin(), geometry->indices[2].end());
+        patch.indexBufferLOD[2] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+        patch.indexCountLOD[2] = uint32_t(indices.size());
+    };
+    auto duplicate = std::make_shared<renderer::TerrainOcclusionGeometry>(*mountain.second);
+    std::copy(originalIndices.begin(), originalIndices.begin() + 6, duplicate->indices[2].begin() + 30);
+    publish(duplicate);
+    EXPECT_TRUE(visible());
+    auto nonfinite = std::make_shared<renderer::TerrainOcclusionGeometry>(*mountain.second);
+    nonfinite->heights[7] = std::numeric_limits<float>::quiet_NaN();
+    publish(nonfinite);
+    EXPECT_TRUE(visible());
+    publish(mountain.second);
+    EXPECT_FALSE(visible());
+    auto& terrain = snapshot->terrains[1];
+    auto& patch = terrain.patches[0];
+    terrain.chunkWorldSize = 8;
+    ASSERT_FALSE(visible());
+    /// @note Keep the stale handle and CPU geometry unchanged so only a view-selected live-resource check can reject the expired LOD.
+    const auto retiredLod = patch.indexBufferLOD[2];
+    resources.Release(retiredLod);
+    EXPECT_EQ(patch.indexBufferLOD[2],retiredLod);
+    EXPECT_FALSE(visible());
+    terrain.chunkWorldSize = 1;
+    EXPECT_TRUE(visible());
+    terrain.chunkWorldSize = 8;
+    EXPECT_FALSE(visible());
+    const std::vector<uint32_t> replacementIndices(originalIndices.begin(),originalIndices.end());
+    patch.indexBufferLOD[2] = resources.CreateIndexBuffer(replacementIndices.data(),uint32_t(replacementIndices.size()));
+    ASSERT_TRUE(patch.indexBufferLOD[2]);
+    EXPECT_EQ(patch.indexBufferLOD[2].id,retiredLod.id);
+    EXPECT_NE(patch.indexBufferLOD[2].gen,retiredLod.gen);
+    terrain.chunkWorldSize = 1;
+    EXPECT_FALSE(visible());
+}
+
+TEST_F(WaterFarRenderPassTest, OrthographicParallelRaysDoNotUsePerspectiveHeightFieldColumns)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    renderer::RenderTerrainInput terrain;
+    terrain.constants.worldMatrix = math::Matrix4::Identity();
+    terrain.chunkWorldSize = 100;
+    auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+    std::vector<renderer::Vertex> vertices;
+    constexpr uint32_t COLUMNS = 5, ROWS = 49;
+    for (uint32_t z = 0; z < ROWS; ++z) {
+        const float height = z <= 36 ? 1.0f : std::max(0.0f, 1.0f - float(z - 36) * 0.25f);
+        for (uint32_t x = 0; x < COLUMNS; ++x) {
+            geometry->heights.push_back(height);
+            renderer::Vertex vertex;
+            vertex.position = {float(x), height, float(z)};
+            vertices.push_back(vertex);
+        }
+    }
+    for (uint16_t z = 0; z + 1 < ROWS; ++z) for (uint16_t x = 0; x + 1 < COLUMNS; ++x) {
+        const auto a = static_cast<uint16_t>(uint32_t(z) * COLUMNS + x);
+        const auto b = static_cast<uint16_t>(a + COLUMNS), c = static_cast<uint16_t>(a + 1), d = static_cast<uint16_t>(b + 1);
+        geometry->indices[0].insert(geometry->indices[0].end(), {a,b,c,c,b,d});
+    }
+    geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+    geometry->columns.push_back({{0,12,4,36},1});
+    renderer::RenderTerrainPatch patch;
+    patch.gpuPatch = {0,0,COLUMNS,ROWS,COLUMNS,ROWS,1,0};
+    patch.aabbMin = {}; patch.aabbMax = {4,1,48}; patch.occlusion = geometry;
+    patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
+    for (size_t lod = 0; lod < 3; ++lod) {
+        const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());
+        patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+        patch.indexCountLOD[lod] = uint32_t(indices.size());
+    }
+    terrain.patches.push_back(patch);
+    snapshot->terrains.push_back(std::move(terrain));
+    renderer::Camera camera;
+    camera.m_position = {2,2,-16}; camera.LookAt({2,1.75f,-6});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 1.6f; camera.m_near = 0.1f; camera.m_far = 100;
+    const math::Vector3 visible{2,0.5f,16};
+    const auto clip = camera.GetViewProjection() * math::Vector4{visible,1};
+    ASSERT_GT(clip.x / clip.w, -1.0f); ASSERT_LT(clip.x / clip.w, 1.0f);
+    ASSERT_GT(clip.y / clip.w, -1.0f); ASSERT_LT(clip.y / clip.w, 1.0f);
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    renderer::OcclusionCuller culler;
+    context.renderScene = snapshot; context.occlusionCuller = &culler; context.occlusionCullingEnabled = true;
+
+    culler.Reset(camera);
+    renderer::RasterTerrainOccluders(context);
+
+    /// @note This parallel ray enters the terrain at (2,0.9,0), below the plateau; it crosses no front-facing terrain before the target.
+    EXPECT_TRUE(culler.TestAndRaster(visible, 0.01f));
+}
+
+TEST_F(WaterFarRenderPassTest, TerrainOcclusionBridgesInternalTessellationButPreservesARealHole)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    camera.m_position = {0, 2, -10}; camera.LookAt({0, 2, 10});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 20; camera.m_near = 0.1f; camera.m_far = 100;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    auto scene = std::make_shared<renderer::RenderScene>();
+    auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+    for (uint32_t z = 0; z < 5; ++z)
+        for (uint32_t x = 0; x < 5; ++x) geometry->heights.push_back(float(z * 2));
+    for (uint16_t z = 0; z < 4; ++z) {
+        for (uint16_t x = 0; x < 4; ++x) {
+            const uint16_t a = z * 5 + x, b = a + 5, c = a + 1, d = b + 1;
+            geometry->indices[0].insert(geometry->indices[0].end(), {a,b,c,c,b,d});
+        }
+    }
+    geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
+    renderer::RenderTerrainPatch patch;
+    patch.gpuPatch = {0,0,5,5,5,5,2,0}; patch.aabbMin = {}; patch.aabbMax = {8,8,8};
+    patch.occlusion = geometry; patch.indexCountLOD.fill(uint32_t(geometry->indices[0].size()));
+    std::vector<renderer::Vertex> vertices;
+    for (uint32_t z = 0; z < 5; ++z) {
+        for (uint32_t x = 0; x < 5; ++x) {
+            renderer::Vertex vertex;
+            vertex.position = {float(x * 2), geometry->heights[z * 5 + x], float(z * 2)};
+            vertices.push_back(vertex);
+        }
+    }
+    patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::Vertex), sizeof(renderer::Vertex));
+    for (size_t lod = 0; lod < 3; ++lod) {
+        const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());
+        patch.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+    }
+    renderer::RenderTerrainInput terrain; terrain.constants.worldMatrix = math::Matrix4::Identity();
+    terrain.constants.worldMatrix.m[0][3] = -4; terrain.chunkWorldSize = 8;
+    terrain.patches.push_back(patch); scene->terrains.push_back(terrain);
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    context.renderScene = scene; renderer::OcclusionCuller culler; context.occlusionCuller = &culler;
+    context.occlusionCullingEnabled = true;
+    culler.Reset(camera); renderer::RasterTerrainOccluders(context);
+    EXPECT_FALSE(culler.TestAndRaster({-1,3,40},0.05f));
+    EXPECT_TRUE(culler.TestAndRaster({-1,12,40},0.05f));
+    EXPECT_TRUE(culler.TestAndRaster({-1,3,-2},0.05f));
+    const auto savedCamera = camera;
+    const auto savedWorld = scene->terrains[0].constants.worldMatrix;
+    camera.m_projection = renderer::ProjectionMode::Perspective;
+    camera.m_position = {0,2,0}; camera.LookAt({0,2,10}); camera.m_far = 16000;
+    auto& world = scene->terrains[0].constants.worldMatrix;
+    world.m[0][0] = world.m[1][1] = world.m[2][2] = 128;
+    world.m[0][3] = -512; world.m[2][3] = 3000;
+    culler.Reset(camera); renderer::RasterTerrainOccluders(context);
+    EXPECT_FALSE(culler.TestAndRaster({0,450,6000},3));
+    EXPECT_TRUE(culler.TestAndRaster({0,2000,6000},3));
+    camera = savedCamera; world = savedWorld;
+    for (auto& indices : geometry->indices) indices.erase(indices.begin() + 30, indices.begin() + 36);
+    scene->terrains[0].patches[0].indexCountLOD.fill(uint32_t(geometry->indices[0].size()));
+    for (size_t lod = 0; lod < 3; ++lod) {
+        const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());
+        scene->terrains[0].patches[0].indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+    }
+    culler.Reset(camera); renderer::RasterTerrainOccluders(context);
+    EXPECT_TRUE(culler.TestAndRaster({-1,3,40},0.05f));
+}
+
+TEST_F(WaterFarRenderPassTest, OccludedRiverPatchesSkipSubmissionAndKeepDisplacedWavesAndAResetView)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    camera.m_position = {0, 1, 0}; camera.LookAt({0, 1, 10});
+    camera.m_near = 0.1f; camera.m_far = 100;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::SizedRenderTarget colorCopy, depthCopy;
+    handles.waterSceneColorRT = &colorCopy; handles.waterSceneDepthRT = &depthCopy;
+    auto scene = std::make_shared<renderer::RenderScene>();
+    renderer::RenderWaterInput water;
+    water.aabbMin = {-1, 0, 10}; water.aabbMax = {1, 0, 12};
+    water.constants.worldMatrix = math::Matrix4::Identity();
+    water.constants.normalParams = {2, 2, 1, 1};
+    water.constants.surfaceParams = {0.85f, 0.5f, 0.02f, 5};
+    const std::array<renderer::WaterVertex, 4> vertices{};
+    const std::array<uint32_t, 6> indices{0, 2, 1, 1, 2, 3};
+    renderer::RenderWaterPatch patch;
+    patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::WaterVertex));
+    patch.indexBuffer = resources.CreateIndexBuffer(indices.data(), 6); patch.indexCount = 6;
+    patch.aabbMin = water.aabbMin; patch.aabbMax = water.aabbMax;
+    backend.watchedVertices = patch.vertexBuffer;
+    water.patches.push_back(patch); scene->water.push_back(water);
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    context.renderScene = scene; context.width = context.height = 64;
+    context.frustumCullingEnabled = false;
+    const auto hdr = resources.CreateRenderTarget(64, 64, renderer::CameraDepthTargetDesc(1));
+    context.resourceRegistry.BindTarget("HDR", hdr); context.resourceRegistry.BindTarget("ShadowMap", hdr);
+    renderer::WaterRenderPass pass;
+    renderer::PassBuilder builder; pass.Setup(builder, context);
+    renderer::PassResources passResources(context.resourceRegistry, builder.Accesses(), pass.Name());
+    context.passResources = &passResources;
+    pass.Execute(passResources, context);
+    ASSERT_FALSE(backend.draws.empty());
+    renderer::OcclusionCuller culler;
+    context.occlusionCuller = &culler; context.occlusionCullingEnabled = true;
+    renderer::PrepareViewOcclusion(context);
+    culler.RasterQuad({-10, -10, 2}, {-10, 10, 2}, {10, 10, 2}, {10, -10, 2});
+    backend.draws.clear(); pass.Execute(passResources, context);
+    EXPECT_TRUE(backend.draws.empty()); EXPECT_EQ(context.statsOcclusionCulled, 1);
+    scene->water.front().margin.vertical = 20;
+    pass.Execute(passResources, context);
+    EXPECT_FALSE(backend.draws.empty());
+    scene->water.front().margin = {};
+    backend.draws.clear(); culler.Reset(camera); pass.Execute(passResources, context);
+    EXPECT_FALSE(backend.draws.empty());
+}
+
+TEST_F(WaterFarRenderPassTest, AdaptiveOceanAndHorizonPatchesUseOcclusionAndReappearForTheNextView)
+{
+    FarPassRenderer backend; renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    camera.m_position = {0,1,0}; camera.LookAt({0,1,10}); camera.m_near = 0.1f; camera.m_far = 100;
+    renderer::RenderSettings settings; settings.geometryDrawMode = renderer::GeometryDrawMode::CPU;
+    renderer::RenderPassHandles handles; renderer::SizedRenderTarget colorCopy, depthCopy;
+    handles.waterSceneColorRT = &colorCopy; handles.waterSceneDepthRT = &depthCopy;
+    auto scene = std::make_shared<renderer::RenderScene>();
+    renderer::RenderWaterInput water;
+    water.aabbMin = {-1,0,10}; water.aabbMax = {1,0,12};
+    water.constants.worldMatrix = math::Matrix4::Identity();
+    water.constants.normalParams = {2,2,1,1}; water.constants.surfaceParams = {0.85f,0.5f,0.02f,5};
+    water.adaptivePatchLod = true;
+    water.patchLod.cellsPerPatch = 4; water.patchLod.maxDepth = 0; water.patchLod.maxPatches = 1;
+    const std::array<renderer::WaterVertex,25> vertices{};
+    water.patchVertexBuffer = resources.CreateVertexBuffer(vertices.data(),sizeof(vertices),sizeof(renderer::WaterVertex));
+    backend.watchedVertices = water.patchVertexBuffer;
+    std::vector<uint32_t> indices; ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4,0,indices));
+    water.patchIndexBuffers[0] = resources.CreateIndexBuffer(indices.data(),uint32_t(indices.size()));
+    water.patchIndexCounts[0] = uint32_t(indices.size());
+    scene->water.push_back(water);
+    renderer::RenderPassContext context{{},backend,resources,camera,settings,{},UINT32_MAX,handles};
+    context.renderScene = scene; context.width = context.height = 64; context.frustumCullingEnabled = false;
+    const auto hdr = resources.CreateRenderTarget(64,64,renderer::CameraDepthTargetDesc(1));
+    context.resourceRegistry.BindTarget("HDR",hdr); context.resourceRegistry.BindTarget("ShadowMap",hdr);
+    renderer::WaterRenderPass pass; renderer::PassBuilder builder; pass.Setup(builder,context);
+    renderer::PassResources passResources(context.resourceRegistry,builder.Accesses(),pass.Name());
+    context.passResources = &passResources;
+    renderer::OcclusionCuller culler; context.occlusionCuller = &culler;
+    for (bool farOcean : {false,true}) {
+        SCOPED_TRACE(farOcean);
+        scene->water.front().farOceanEnabled = farOcean;
+        context.occlusionCullingEnabled = false; backend.draws.clear(); backend.drawSnapshots.clear();
+        pass.Execute(passResources,context);
+        const auto candidates = context.statsTotalObjects;
+        ASSERT_GT(candidates,0);
+        if (farOcean) {
+            ASSERT_TRUE(std::any_of(backend.draws.begin(),backend.draws.end(),[](const auto& cb) { return cb.farOceanParams.y > 0.5f; }));
+        }
+        context.occlusionCullingEnabled = true;
+        renderer::PrepareViewOcclusion(context);
+        culler.RasterQuad({-10000,-10000,2},{-10000,10000,2},{10000,10000,2},{10000,-10000,2});
+        context.statsTotalObjects = context.statsOcclusionCulled = 0;
+        backend.draws.clear(); pass.Execute(passResources,context);
+        EXPECT_GT(context.statsOcclusionCulled, farOcean ? 1 : 0);
+        if (!farOcean) EXPECT_TRUE(backend.draws.empty());
+        culler.Reset(camera); context.statsTotalObjects = context.statsOcclusionCulled = 0;
+        pass.Execute(passResources,context);
+        EXPECT_EQ(context.statsOcclusionCulled,0);
+        EXPECT_EQ(context.statsTotalObjects,candidates);
+        context.statsTotalObjects = 0;
+    }
+}
+
+TEST_F(WaterFarRenderPassTest, GpuCandidatesOutsideTheCpuViewDoNotIncreaseOcclusionStatistics)
+{
+    FarPassRenderer backend; backend.supportsIndirect=true;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    camera.m_position={0,1,0}; camera.LookAt({0,1,10}); camera.m_near=0.1f; camera.m_far=10;
+    renderer::RenderSettings settings; settings.geometryDrawMode=renderer::GeometryDrawMode::GPU_INDIRECT;
+    renderer::RenderPassHandles handles;
+    renderer::SizedRenderTarget colorCopy,depthCopy;
+    handles.waterSceneColorRT=&colorCopy; handles.waterSceneDepthRT=&depthCopy;
+    auto scene=std::make_shared<renderer::RenderScene>();
+    renderer::RenderWaterInput water;
+    water.aabbMin={-1,0,20}; water.aabbMax={1,0,22};
+    water.constants.worldMatrix=math::Matrix4::Identity();
+    water.constants.normalParams={2,2,1,1}; water.constants.surfaceParams={0.85f,0.5f,0.02f,5};
+    water.adaptivePatchLod=true;
+    water.patchLod.cellsPerPatch=4; water.patchLod.maxDepth=0; water.patchLod.maxPatches=1;
+    std::array<renderer::WaterVertex,25> vertices{};
+    water.patchVertexBuffer=resources.CreateVertexBuffer(vertices.data(),sizeof(vertices),sizeof(renderer::WaterVertex));
+    backend.watchedVertices=water.patchVertexBuffer;
+    std::vector<uint32_t> indices; ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4,0,indices));
+    water.patchIndexBuffers[0]=resources.CreateIndexBuffer(indices.data(),static_cast<uint32_t>(indices.size()));
+    water.patchIndexCounts[0]=static_cast<uint32_t>(indices.size());
+    scene->water.push_back(water);
+    renderer::RenderPassContext context{{},backend,resources,camera,settings,{},~0u,handles};
+    context.renderScene=scene; context.width=context.height=64;
+    const auto hdr=resources.CreateRenderTarget(64,64,renderer::CameraDepthTargetDesc(1));
+    context.resourceRegistry.BindTarget("HDR",hdr); context.resourceRegistry.BindTarget("ShadowMap",hdr);
+    renderer::OcclusionCuller culler;
+    context.occlusionCuller=&culler; context.occlusionCullingEnabled=true;
+    renderer::PrepareViewOcclusion(context);
+    culler.RasterQuad({-10,-10,2},{-10,10,2},{10,10,2},{10,-10,2});
+    ASSERT_FALSE(culler.TestAabb(water.aabbMin,water.aabbMax));
+    renderer::WaterRenderPass pass;
+    renderer::PassBuilder builder; pass.Setup(builder,context);
+    renderer::PassResources passResources(context.resourceRegistry,builder.Accesses(),pass.Name());
+    context.passResources=&passResources;
+    pass.Execute(passResources,context);
+    EXPECT_TRUE(backend.draws.empty());
+    EXPECT_EQ(context.statsTotalObjects,0);
+    EXPECT_EQ(context.statsFrustumCulled,0);
+    EXPECT_EQ(context.statsOcclusionCulled,0);
+}
+
+TEST_F(WaterFarRenderPassTest, RejectedWaterCullDrawKeepsTheOriginalDrawAndFollowingGroupConstants)
+{
+    FarPassRenderer backend;
+    backend.supportsIndirect = backend.supportsWritableBuffers = true;
+    backend.failDispatchIndex = 0;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    camera.m_position = {0, 5, -5}; camera.LookAt({0, 0, 5}); camera.m_far = 100;
+    renderer::RenderSettings settings;
+    settings.geometryDrawMode = renderer::GeometryDrawMode::GPU_INDIRECT;
+    renderer::RenderPassHandles handles;
+    renderer::SizedRenderTarget colorCopy, depthCopy;
+    handles.waterSceneColorRT = &colorCopy; handles.waterSceneDepthRT = &depthCopy;
+    auto scene = std::make_shared<renderer::RenderScene>();
+    renderer::RenderWaterInput water;
+    water.aabbMin = {-1, 0, 4}; water.aabbMax = {1, 0, 6};
+    water.constants.worldMatrix = math::Matrix4::Identity();
+    water.constants.normalParams = {2, 2, 1, 1};
+    water.constants.surfaceParams = {0.85f, 0.5f, 0.02f, 5};
+    water.adaptivePatchLod = true;
+    water.patchLod.cellsPerPatch = 4; water.patchLod.maxDepth = 0; water.patchLod.maxPatches = 1;
+    std::array<renderer::WaterVertex, 25> vertices{};
+    water.patchVertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::WaterVertex));
+    backend.watchedVertices = water.patchVertexBuffer;
+    std::vector<uint32_t> indices;
+    ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4, 0, indices));
+    water.patchIndexBuffers[0] = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    water.patchIndexCounts[0] = static_cast<uint32_t>(indices.size());
+    for (float time : {1.0f, 2.0f}) {
+        water.constants.timeParams.w = time;
+        scene->water.push_back(water);
+    }
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, ~0u, handles};
+    context.renderScene = scene; context.width = context.height = 64;
+    const auto hdr = resources.CreateRenderTarget(64, 64, renderer::CameraDepthTargetDesc(1));
+    context.resourceRegistry.BindTarget("HDR", hdr); context.resourceRegistry.BindTarget("ShadowMap", hdr);
+    renderer::WaterRenderPass pass;
+    renderer::PassBuilder builder; pass.Setup(builder, context);
+    renderer::PassResources passResources(context.resourceRegistry, builder.Accesses(), pass.Name());
+    context.passResources = &passResources;
+    pass.Execute(passResources, context);
+
+    ASSERT_EQ(backend.dispatchSnapshots.size(), 2u);
+    EXPECT_FALSE(backend.dispatchSnapshots[0].recorded);
+    EXPECT_TRUE(backend.dispatchSnapshots[1].recorded);
+    ASSERT_EQ(backend.draws.size(), 2u);
+    EXPECT_FLOAT_EQ(backend.draws[0].timeParams.w, 1.0f);
+    EXPECT_FLOAT_EQ(backend.draws[1].timeParams.w, 2.0f);
+    std::vector<renderer::DrawCall> waterDraws;
+    for (const auto& draw : backend.submittedCalls)
+        if (draw.vertexBuffer == water.patchVertexBuffer) waterDraws.push_back(draw);
+    ASSERT_EQ(waterDraws.size(), 2u);
+    EXPECT_FALSE(waterDraws[0].indirectArguments.IsValid());
+    EXPECT_TRUE(waterDraws[1].indirectArguments.IsValid());
 }
 
 TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBodyIsOutsideTheView)

@@ -2,53 +2,58 @@
 /// @brief   CPU ソフトウェアオクルージョンカリング。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
-
-/// @note 128x72 のリニア深度バッファを CPU 上に持ち、ワールド空間のバウンディング球をスクリーン空間
-/// @note に投影して可視判定とオクルーダー登録を行う。
-/// @note GPU Occlusion Query は結果が 1 フレーム遅延し、高速移動シーンで誤カリングが起きやすい
-/// @note ため、即時結果で単純な CPU SW 方式にしている。
 #pragma once
 #include <Graphics/Api.hpp>
-
 #include <Graphics/Renderer/Camera.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
+#include <array>
+#include <cstdint>
+#include <span>
 
 namespace fbzz::renderer {
 
+/// @note 同じビュー内の CPU 深度を使い、過去フレームの可視性には依存しない。
 class OcclusionCuller {
 public:
-    static constexpr int kWidth  = 128;
-    static constexpr int kHeight = 72;
+    static constexpr int kWidth = 256;
+    static constexpr int kHeight = 144;
+    static constexpr size_t kGpuRows = 9 + kWidth * kHeight / 4;
 
     FBZZ_GRAPHICS_API OcclusionCuller();
-
-    /// @note Reset — フレーム開始時にカメラ行列を記録し、深度バッファを 1.0 で初期化する。
-    FBZZ_GRAPHICS_API void Reset(const renderer::Camera& cam);
-
-    /// @note TestAndRaster — バウンディング球を可視判定し、可視ならオクルーダーとして登録する。
-    /// @note registerAsOccluder=false のときは判定だけを行い、深度バッファへは焼かない。
-    /// @note 登録は「球の内側は概ねメッシュで埋まっている」前提に立つ。板ポリ・壁パネルのような
-    /// @note 薄い形はこの前提を満たさず、実体の無い空間まで遮蔽を主張して«見えているのに消える»を
-    /// @note 生む。前提を満たすかの判断はメッシュ形状を知る呼び出し側 (IsReliableOccluder) が行う。
+    /// @note jitter は描画と同じ NDC オフセット。Reset ごとに過去の深度を破棄する。
+    FBZZ_GRAPHICS_API void Reset(const Camera& cam, float jitterX = 0, float jitterY = 0);
+    /// @note 同じインスタンスが別ビューで初期化された場合、準備済み CPU/GPU 遮蔽を失効させる。
+    [[nodiscard]] uint64_t GetResetVersion() const { return m_resetVersion; }
+    /// @param opaqueInteriorRadius 同じ中心の実形状内部に収まる球 [m]。不透明被覆が確定した呼び出しだけ正値を渡す。
+    /// @note 外接球は検査だけに使い、遮蔽者は内接球の投影でセル全体を覆う領域だけ登録する。
+    /// @return 不明・near 交差・数値不正は true。false は外接球全体が既存の不透明面に隠れる場合だけ。
     FBZZ_GRAPHICS_API bool TestAndRaster(const math::Vector3& worldCenter, float worldRadius,
-                       bool registerAsOccluder = true);
+        float opaqueInteriorRadius = 0);
+    /// @note 頂点はワールド空間。near をまたぐ面・裏面は登録せず、セル全体の被覆と最遠深度だけを使う。
+    FBZZ_GRAPHICS_API void RasterTriangle(const math::Vector3& a, const math::Vector3& b, const math::Vector3& c);
+    /// @note 共有対角線を持つ 2 面の凸投影だけを結合する。凹・折り返しは三角形単位へ戻す。
+    FBZZ_GRAPHICS_API void RasterQuad(const math::Vector3& a, const math::Vector3& b,
+        const math::Vector3& c, const math::Vector3& d);
+    /// @note 既存深度に隠れる箱を省き、選んだ面の頂点投影を共有する。mask は Z-/Z+/X-/X+/Y-/Y+ の順。
+    FBZZ_GRAPHICS_API void RasterBox(const math::Vector3& low, const math::Vector3& high, uint8_t faceMask = 0x3f);
+    /// @note ワールド AABB の全頂点で検査し、薄い水面を外接球へ膨らませない。near 交差・不正境界は可視。
+    [[nodiscard]] FBZZ_GRAPHICS_API bool TestAabb(const math::Vector3& low, const math::Vector3& high) const;
+    /// @note 同一ビューの GPU 検査用。先頭 8 行は view/projection、9 行目は near/far/寸法、以降は線形深度。
+    FBZZ_GRAPHICS_API void CopyGpuRows(std::span<math::Vector4> rows) const;
 
 private:
+    bool RasterPolygon(std::span<const math::Vector3> vertices);
     float m_depth[kWidth * kHeight];
-
     math::Matrix4 m_view;
     math::Matrix4 m_proj;
-    float         m_nearZ = 0.1f;
-    float         m_farZ  = 1000.0f;
-    /// @note 平行投影では見かけの大きさが距離に依らない。スクリーン半径の式が変わるため、
-    /// @note 射影の別をフレーム開始時に控えておく。
-    bool          m_orthographic = false;
-
-    /// @note ProjectPoint — ワールド座標を低解像度深度バッファ上のスクリーン座標へ射影する。
-    FBZZ_GRAPHICS_API bool ProjectPoint(const math::Vector3& worldPos,
-                      float& outSx, float& outSy,
-                      float& outLinearDepth) const;
+    float m_nearZ = 0.1f;
+    float m_farZ = 1000.0f;
+    bool m_orthographic = false;
+    bool m_valid = false;
+    bool m_hasDepth = false;
+    uint64_t m_resetVersion = 0;
 };
 
 } /// @note namespace fbzz::renderer

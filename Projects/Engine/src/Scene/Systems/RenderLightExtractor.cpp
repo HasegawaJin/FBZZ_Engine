@@ -256,6 +256,8 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
             dirShadowBias     = lc.shadowBias;
             dirShadowStrength = lc.shadowStrength;
             dirShadowDistance = lc.shadowDistance;
+            output.dirShadowBakeLight = lc.castShadows && lc.shadowStrength > 0.0f
+                && lc.shadowMode == LightComponent::ShadowMode::AUTO_BAKE ? id : EntityID::INVALID;
         } else if (lc.type == LightComponent::Type::Point
                    && lightData.pointLightCount < 8) {
             auto& pl    = lightData.pointLights[lightData.pointLightCount++];

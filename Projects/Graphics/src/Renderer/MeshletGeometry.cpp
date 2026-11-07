@@ -7,8 +7,10 @@
 #include <Graphics/Renderer/IBuffer.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Core/Logger.hpp>
+#include <Math/Vector3.hpp>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -26,6 +28,7 @@ constexpr size_t kMaximumBlobBytes = 256u * 1024u * 1024u;
 constexpr size_t kMaximumCacheBytes = 512u * 1024u * 1024u;
 constexpr size_t kMaximumCacheEntries = 2048;
 constexpr uint8_t kUnassignedLocalIndex = (std::numeric_limits<uint8_t>::max)();
+constexpr uint32_t kTerrainVertexStride = 44;
 static_assert(sizeof(std::array<uint32_t, 3>) == 12);
 
 struct WorkingMeshlet {
@@ -45,6 +48,11 @@ struct StagedDescriptor {
     MeshletDescriptor descriptor{};
     uint32_t vertexLookupElementOffset = 0;
     uint32_t primitiveElementOffset = 0;
+};
+
+struct TerrainNormalCone {
+    uint32_t packedAxisCutoff;
+    float apexDistance;
 };
 
 [[nodiscard]] bool CheckedMultiply(size_t left, size_t right, size_t& out)
@@ -92,6 +100,97 @@ void ResetWorkingMeshlet(WorkingMeshlet& meshlet)
     std::memcpy(position, vertexData + offset, sizeof(float) * 3);
     return std::isfinite(position[0]) && std::isfinite(position[1]) &&
            std::isfinite(position[2]);
+}
+
+/// @note The apex lies behind every contributing triangle plane, allowing a single perspective rejection.
+/// @see https://github.com/zeux/meshoptimizer/blob/master/src/meshoptimizer.h meshopt_Bounds cone culling contract.
+[[nodiscard]] bool BuildTerrainNormalCone(const WorkingMeshlet& meshlet, const uint8_t* vertexData,
+                                         uint32_t vertexStride, TerrainNormalCone& out)
+{
+    using math::Vector3;
+    std::array<Vector3, kMaximumMeshletVertices> positions;
+    float coordinateMagnitude = 1.0f;
+    for (size_t vertex = 0; vertex < meshlet.vertices.size(); ++vertex) {
+        float xyz[3];
+        if (!ReadPosition(vertexData, vertexStride, meshlet.vertices[vertex], xyz)) return false;
+        positions[vertex] = {xyz[0], xyz[1], xyz[2]};
+        for (float value : xyz) coordinateMagnitude = std::max(coordinateMagnitude, std::abs(value));
+    }
+
+    constexpr float guard = 128.0f * std::numeric_limits<float>::epsilon();
+    std::array<Vector3, kMaximumMeshletPrimitives> normals;
+    Vector3 sum{};
+    for (size_t primitive = 0; primitive < meshlet.primitives.size(); ++primitive) {
+        const auto& indices = meshlet.primitives[primitive];
+        const auto p0 = positions[indices[0]];
+        const auto p1 = positions[indices[1]];
+        const auto p2 = positions[indices[2]];
+        /// @note Compute oriented normals in double so nearly parallel edges cannot narrow the cone through float cancellation.
+        const double ax = static_cast<double>(p1.x) - p0.x;
+        const double ay = static_cast<double>(p1.y) - p0.y;
+        const double az = static_cast<double>(p1.z) - p0.z;
+        const double bx = static_cast<double>(p2.x) - p0.x;
+        const double by = static_cast<double>(p2.y) - p0.y;
+        const double bz = static_cast<double>(p2.z) - p0.z;
+        const double nx = ay * bz - az * by;
+        const double ny = az * bx - ax * bz;
+        const double nz = ax * by - ay * bx;
+        const double length = std::sqrt(nx * nx + ny * ny + nz * nz);
+        const double edgeScale = std::max(ax * ax + ay * ay + az * az, bx * bx + by * by + bz * bz);
+        /// @note Fail open for tiny or degenerate triangles whose winding may be unstable after transform.
+        if (!std::isfinite(length) || length <= guard * edgeScale) return false;
+        const Vector3 normal{static_cast<float>(nx / length), static_cast<float>(ny / length),
+            static_cast<float>(nz / length)};
+        normals[primitive] = normal;
+        sum += normal;
+    }
+
+    const float sumLength = sum.Length();
+    if (!std::isfinite(sumLength) || sumLength <= guard) return false;
+    const auto unitAxis = sum / sumLength;
+    const auto quantizeAxis = [](float component) {
+        return static_cast<int32_t>(std::lround(std::clamp(component, -1.0f, 1.0f) * 127.0f));
+    };
+    const int32_t axisX = quantizeAxis(unitAxis.x);
+    const int32_t axisY = quantizeAxis(unitAxis.y);
+    const int32_t axisZ = quantizeAxis(unitAxis.z);
+    constexpr float axisScale = 1.0f / 127.0f;
+    const Vector3 axis{static_cast<float>(axisX) * axisScale, static_cast<float>(axisY) * axisScale,
+        static_cast<float>(axisZ) * axisScale};
+    const Vector3 low{meshlet.boundsMin[0], meshlet.boundsMin[1], meshlet.boundsMin[2]};
+    const Vector3 high{meshlet.boundsMax[0], meshlet.boundsMax[1], meshlet.boundsMax[2]};
+    const auto center = low * 0.5f + high * 0.5f;
+    const float planeGuard = guard * coordinateMagnitude;
+    float maxCross = 0.0f;
+    float apexDistance = 0.0f;
+    for (size_t primitive = 0; primitive < meshlet.primitives.size(); ++primitive) {
+        const auto normal = normals[primitive];
+        const auto point = positions[meshlet.primitives[primitive][0]];
+        const float facing = Vector3::Dot(axis, normal);
+        if (!std::isfinite(facing) || facing <= 0.1f) return false;
+        /// @note The decoded axis need not be unit length. Its cross magnitude already scales the cutoff to match its dot product.
+        maxCross = std::max(maxCross, Vector3::Cross(axis, normal).Length());
+        const float distance = (Vector3::Dot(center - point, normal) + planeGuard) / facing;
+        if (!std::isfinite(distance)) return false;
+        apexDistance = std::max(apexDistance, distance);
+    }
+
+    const auto apex = center - axis * apexDistance;
+    /// @note Preserve the half-space proof whether the shader contracts the multiply and subtract or keeps them separate.
+    const Vector3 fusedApex{std::fma(-axis.x, apexDistance, center.x), std::fma(-axis.y, apexDistance, center.y),
+        std::fma(-axis.z, apexDistance, center.z)};
+    for (size_t primitive = 0; primitive < meshlet.primitives.size(); ++primitive) {
+        const auto point = positions[meshlet.primitives[primitive][0]];
+        const float side = Vector3::Dot(apex - point, normals[primitive]);
+        const float fusedSide = Vector3::Dot(fusedApex - point, normals[primitive]);
+        if (!std::isfinite(side) || side > -0.5f * planeGuard
+            || !std::isfinite(fusedSide) || fusedSide > -0.5f * planeGuard) return false;
+    }
+    const uint32_t cutoff = static_cast<uint32_t>(std::ceil((maxCross + guard) * 255.0f));
+    if (cutoff >= 255u) return false;
+    const auto axisByte = [](int32_t component) { return static_cast<uint32_t>(component) & 0xffu; };
+    out = {axisByte(axisX) | (axisByte(axisY) << 8u) | (axisByte(axisZ) << 16u) | (cutoff << 24u), apexDistance};
+    return true;
 }
 
 void ReleaseBlobs(ResourceManager& resources,
@@ -147,12 +246,10 @@ void ReleaseBlobs(ResourceManager& resources,
     return true;
 }
 
-} /// @note namespace
-
-bool MeshletGeometryBuilder::Build(const uint8_t* vertexData, size_t vertexDataBytes,
+bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
                                    uint32_t vertexCount, uint32_t vertexStride,
                                    const uint8_t* indexData, size_t indexDataBytes,
-                                   uint32_t indexCount,
+                                   uint32_t indexCount, bool terrainCones,
                                    std::vector<uint8_t>& outBlob,
                                    uint32_t& outMeshletCount)
 {
@@ -201,6 +298,14 @@ bool MeshletGeometryBuilder::Build(const uint8_t* vertexData, size_t vertexDataB
         for (size_t axis = 0; axis < 3; ++axis) {
             staged.descriptor.boundsMin[axis] = current.boundsMin[axis];
             staged.descriptor.boundsMax[axis] = current.boundsMax[axis];
+        }
+        if (terrainCones) {
+            TerrainNormalCone cone;
+            if (BuildTerrainNormalCone(current, vertexData, vertexStride, cone)) {
+                /// @note Terrain uses the non-geometric bound lanes. Static meshlets leave both lanes zero.
+                staged.descriptor.boundsMin[3] = std::bit_cast<float>(cone.packedAxisCutoff);
+                staged.descriptor.boundsMax[3] = cone.apexDistance;
+            }
         }
         stagedDescriptors.push_back(staged);
         vertexLookup.insert(vertexLookup.end(), current.vertices.begin(), current.vertices.end());
@@ -295,8 +400,6 @@ bool MeshletGeometryBuilder::Build(const uint8_t* vertexData, size_t vertexDataB
             primitiveOffset > (std::numeric_limits<uint32_t>::max)())
             return false;
         MeshletDescriptor descriptor = staged.descriptor;
-        descriptor.boundsMin[3] = 0.0f;
-        descriptor.boundsMax[3] = 0.0f;
         descriptor.vertexOffsetBytes = static_cast<uint32_t>(vertexOffset);
         descriptor.primitiveOffsetBytes = static_cast<uint32_t>(primitiveOffset);
         descriptors.push_back(descriptor);
@@ -312,6 +415,19 @@ bool MeshletGeometryBuilder::Build(const uint8_t* vertexData, size_t vertexDataB
     return true;
 }
 
+} /// @note namespace
+
+bool MeshletGeometryBuilder::Build(const uint8_t* vertexData, size_t vertexDataBytes,
+                                   uint32_t vertexCount, uint32_t vertexStride,
+                                   const uint8_t* indexData, size_t indexDataBytes,
+                                   uint32_t indexCount,
+                                   std::vector<uint8_t>& outBlob,
+                                   uint32_t& outMeshletCount)
+{
+    return BuildMeshlets(vertexData, vertexDataBytes, vertexCount, vertexStride, indexData,
+        indexDataBytes, indexCount, false, outBlob, outMeshletCount);
+}
+
 size_t MeshletGeometryCache::InputKeyHash::operator()(const InputKey& key) const
 {
     size_t hash = static_cast<size_t>(key.vertexBuffer.id);
@@ -325,6 +441,7 @@ size_t MeshletGeometryCache::InputKeyHash::operator()(const InputKey& key) const
     combine(key.vertexCount);
     combine(key.vertexStride);
     combine(key.indexCount);
+    combine(key.terrainCones);
     return hash;
 }
 
@@ -334,7 +451,24 @@ bool MeshletGeometryCache::Prepare(ResourceManager& resources,
                                    uint32_t vertexCount, uint32_t vertexStride,
                                    uint32_t indexCount, MeshletGeometry& outGeometry)
 {
-    if (!vertexBuffer.IsValid() || !indexBuffer.IsValid() || vertexCount == 0 ||
+    return PrepareImpl(resources, vertexBuffer, indexBuffer, vertexCount, vertexStride,
+        indexCount, false, outGeometry);
+}
+
+bool MeshletGeometryCache::PrepareTerrain(ResourceManager& resources,
+    ResourceHandle<BufferTag> vertexBuffer, ResourceHandle<BufferTag> indexBuffer,
+    uint32_t indexCount, MeshletGeometry& outGeometry)
+{
+    return PrepareImpl(resources, vertexBuffer, indexBuffer, 0, kTerrainVertexStride,
+        indexCount, true, outGeometry);
+}
+
+bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
+    ResourceHandle<BufferTag> vertexBuffer, ResourceHandle<BufferTag> indexBuffer,
+    uint32_t vertexCount, uint32_t vertexStride, uint32_t indexCount,
+    bool terrainCones, MeshletGeometry& outGeometry)
+{
+    if (!vertexBuffer.IsValid() || !indexBuffer.IsValid() || (!terrainCones && vertexCount == 0) ||
         vertexStride < 12 || (vertexStride & 3u) != 0 ||
         indexCount == 0 || indexCount % 3 != 0 ||
         static_cast<uint64_t>(indexCount / 3u) >
@@ -353,6 +487,12 @@ bool MeshletGeometryCache::Prepare(ResourceManager& resources,
         return false;
     }
 
+    if (terrainCones) {
+        const size_t count = vertexMetadata.sizeBytes / vertexStride;
+        if (vertexMetadata.sizeBytes % vertexStride != 0 || count == 0 || count > UINT32_MAX) return false;
+        vertexCount = static_cast<uint32_t>(count);
+    }
+
     size_t requiredVertexBytes = 0;
     size_t requiredIndexBytes = 0;
     if (!CheckedMultiply(vertexCount, vertexStride, requiredVertexBytes) ||
@@ -365,7 +505,7 @@ bool MeshletGeometryCache::Prepare(ResourceManager& resources,
         return false;
     }
 
-    const InputKey key{ vertexBuffer, indexBuffer, vertexCount, vertexStride, indexCount };
+    const InputKey key{ vertexBuffer, indexBuffer, vertexCount, vertexStride, indexCount, terrainCones };
     std::vector<ResourceHandle<BufferTag>> releaseHandles;
     {
         std::lock_guard lock(m_mutex);
@@ -422,10 +562,10 @@ bool MeshletGeometryCache::Prepare(ResourceManager& resources,
 
     std::vector<uint8_t> blobBytes;
     uint32_t meshletCount = 0;
-    if (!MeshletGeometryBuilder::Build(vertexBytes.data(), vertexBytes.size(),
+    if (!BuildMeshlets(vertexBytes.data(), vertexBytes.size(),
                                        vertexCount, vertexStride,
                                        indexBytes.data(), indexBytes.size(),
-                                       indexCount, blobBytes, meshletCount)) {
+                                       indexCount, terrainCones, blobBytes, meshletCount)) {
         std::vector<ResourceHandle<BufferTag>> evictedHandles;
         bool reusedGeometry = false;
         bool wasRejected = false;

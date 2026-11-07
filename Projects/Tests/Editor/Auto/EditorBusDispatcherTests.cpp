@@ -18,6 +18,7 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Profiler/Profiler.hpp>
+#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 
 #include <filesystem>
@@ -1829,6 +1830,8 @@ protected:
     void SetUp() override
     {
         EditorFixture::SetUp();
+        m_previousRendering=renderer::RenderDebugOverlay::GetLastSnapshot();
+        renderer::RenderDebugOverlay::UpdateSnapshot({},false);
         m_wasEnabled = profiler::Profiler::IsEnabled();
         m_previousFilter = profiler::Profiler::GetRequestedCaptureFilter();
         ASSERT_TRUE(profiler::Profiler::RequestCaptureFilter({}));
@@ -1840,6 +1843,7 @@ protected:
     void TearDown() override
     {
         m_dispatcher.reset();
+        renderer::RenderDebugOverlay::UpdateSnapshot(m_previousRendering,false);
         profiler::Profiler::RequestCaptureFilter(m_previousFilter);
         profiler::Profiler::SetEnabled(false);
         profiler::Profiler::SetEnabled(m_wasEnabled);
@@ -1860,7 +1864,52 @@ private:
     bool                                m_wasEnabled = true;
     profiler::PerformanceCaptureFilter m_previousFilter;
     std::unique_ptr<EditorBusDispatcher> m_dispatcher;
+    renderer::RenderDebugOverlay::Snapshot m_previousRendering;
 };
+
+TEST_F(EditorBusProfilerSnapshotTest, VisibleObjectCountIncludesDistanceAndSmallObjectRejections)
+{
+    renderer::RenderDebugOverlay::Snapshot rendering;
+    rendering.renderStats.totalObjects=100;
+    rendering.renderStats.frustumCulled=10;
+    rendering.renderStats.occlusionCulled=5;
+    rendering.renderStats.distanceCulled=20;
+    rendering.renderStats.smallObjectCulled=15;
+    renderer::RenderDebugOverlay::UpdateSnapshot(rendering,false);
+    const auto response=Snapshot();
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const auto* result=response.Find("result"); ASSERT_NE(result,nullptr);
+    ASSERT_NE(result->Find("visibleObjects"),nullptr);
+    EXPECT_DOUBLE_EQ(result->Find("visibleObjects")->AsNumber(),50);
+    ASSERT_NE(result->Find("knownVisibleObjects"),nullptr);
+    EXPECT_DOUBLE_EQ(result->Find("knownVisibleObjects")->AsNumber(),50);
+    ASSERT_NE(result->Find("visibleObjectsComplete"),nullptr);
+    EXPECT_TRUE(result->Find("visibleObjectsComplete")->AsBool());
+    ASSERT_NE(result->Find("distanceCulled"),nullptr);
+    EXPECT_DOUBLE_EQ(result->Find("distanceCulled")->AsNumber(),20);
+    ASSERT_NE(result->Find("smallObjectCulled"),nullptr);
+    EXPECT_DOUBLE_EQ(result->Find("smallObjectCulled")->AsNumber(),15);
+}
+
+TEST_F(EditorBusProfilerSnapshotTest, GpuVisibilityIsUnknownInsteadOfReportingCandidatesAsVisible)
+{
+    renderer::RenderDebugOverlay::Snapshot rendering;
+    rendering.renderStats.totalObjects=130;
+    rendering.renderStats.frustumCulled=10;
+    rendering.renderStats.gpuVisibilityUnknownObjects=100;
+    renderer::RenderDebugOverlay::UpdateSnapshot(rendering,false);
+    const auto response=Snapshot();
+    ASSERT_TRUE(IsOk(response)) << SerializeJson(response);
+    const auto* result=response.Find("result"); ASSERT_NE(result,nullptr);
+    ASSERT_NE(result->Find("visibleObjects"),nullptr);
+    EXPECT_TRUE(result->Find("visibleObjects")->IsNull());
+    ASSERT_NE(result->Find("knownVisibleObjects"),nullptr);
+    EXPECT_DOUBLE_EQ(result->Find("knownVisibleObjects")->AsNumber(),20);
+    ASSERT_NE(result->Find("visibleObjectsComplete"),nullptr);
+    EXPECT_FALSE(result->Find("visibleObjectsComplete")->AsBool());
+    ASSERT_NE(result->Find("gpuVisibilityUnknownObjects"),nullptr);
+    EXPECT_DOUBLE_EQ(result->Find("gpuVisibilityUnknownObjects")->AsNumber(),100);
+}
 
 TEST_F(EditorBusProfilerSnapshotTest, PreservesLegacyFieldsAndSamplesAlongsideCompleteCaptureDiagnostics)
 {
@@ -1880,12 +1929,13 @@ TEST_F(EditorBusProfilerSnapshotTest, PreservesLegacyFieldsAndSamplesAlongsideCo
             "frameIndex", "frameMs", "fps", "cpuProfiledMs", "drawCalls", "triangles", "vertices",
             "skinningVertices", "skinningDispatches", "skinningPaletteUploadBytes", "skinningPaletteUploads",
             "totalObjects", "frustumCulled", "occlusionCulled", "shadowDrawCalls", "shadowTriangles",
-            "instancedBatches", "instancedDrawsSaved", "visibleObjects" }) {
+            "instancedBatches", "instancedDrawsSaved", "visibleObjects", "knownVisibleObjects",
+            "gpuVisibilityUnknownObjects", "distanceCulled", "smallObjectCulled" }) {
         const JsonValue* value = result->Find(key);
         ASSERT_NE(value, nullptr) << key;
         EXPECT_TRUE(value->IsNumber()) << key;
     }
-    for (const char* key : { "profilerEnabled", "lockstep", "cpuCaptureAvailable", "cpuCaptureComplete", "cpuTopSamplesTruncated" }) {
+    for (const char* key : { "profilerEnabled", "lockstep", "cpuCaptureAvailable", "cpuCaptureComplete", "cpuTopSamplesTruncated", "visibleObjectsComplete" }) {
         const JsonValue* value = result->Find(key);
         ASSERT_NE(value, nullptr) << key;
         EXPECT_TRUE(value->IsBool()) << key;

@@ -1,0 +1,6 @@
+# @file    InstanceCascadeLodCull.cs.hlsl.meta
+# @brief   方向ライトのインスタンス選別シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = "983eaa62a20c4b739f05f628cd2f0f33"

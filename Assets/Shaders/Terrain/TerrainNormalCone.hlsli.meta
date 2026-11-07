@@ -1,0 +1,6 @@
+# @file    TerrainNormalCone.hlsli.meta
+# @brief   地形 meshlet の法線コーン判定 include のアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-07
+[meta]
+guid = 'd124a03d53ef4ae083be791975d27eb3'

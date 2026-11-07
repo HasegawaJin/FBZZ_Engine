@@ -33,6 +33,7 @@
 #include <Engine/Audio/AudioManager.hpp>
 #include <Engine/Renderer/IRenderer.hpp>
 #include <Engine/Scene/ScriptRuntime.hpp>
+#include <Engine/Scene/Systems/DirectionalShadowBakeSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
@@ -625,9 +626,10 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     const float centerOffset = (std::max)(8.0f, (availableWidth - groupWidth) * 0.5f);
     ImGui::SetCursorPosX(centerOffset);
     const bool managedBuildBusy = ctx.managedBuildBusy;
-    const char* playTooltip = managedBuildBusy
-        ? "Play is available after C# or shader builds finish"
-        : (isPaused ? "Resume from Play Mode" : "Play");
+    const char* playTooltip = "Play";
+    if (managedBuildBusy) playTooltip = "Play is available after C# or shader builds finish";
+    else if (m_pendingShadowBakePlayScene) playTooltip = "Preparing baked shadows before Play";
+    else if (isPaused) playTooltip = "Resume from Play Mode";
 
     const ImVec4 playColor  = EditorTheme::Color(ThemeColor::Success);
     const ImVec4 stopColor  = EditorTheme::Color(ThemeColor::Danger);
@@ -647,7 +649,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
     ImGui::SameLine();
     if (PlayToolbarButton(
         "##PlayModeStop",
-        "Stop",
+        m_pendingShadowBakePlayScene ? "Cancel pending Play" : "Stop",
         PlayToolbarIcon::Stop,
         CanInvokeOperator("play.stop"),
         isEditor,
@@ -829,9 +831,9 @@ void EditorApp::DrawGuidConflictBar(EditorContext&)
 
 /// @note  ホットキー登録
 
-void EditorApp::StartPlayMode()
+void EditorApp::StartPlayMode(bool shadowBakePrepared)
 {
-    if (m_packageBuild.IsRunning()) return;
+    if (m_packageBuild.IsRunning() || m_pendingShadowBakePlayScene) return;
     /// @note Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
     /// @note        ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
     const bool managedBuildBusy = m_ctx.managedBuildBusy;
@@ -848,6 +850,18 @@ void EditorApp::StartPlayMode()
     if (m_ctx.playExecutionMode == PlayExecutionMode::STANDALONE) {
         StartStandalonePlayMode();
         return;
+    }
+
+    if (!shadowBakePrepared) {
+        const auto cacheDir = util::FileSystem::PathFromUtf8(m_ctx.projectRoot) / "Library" / "DirectionalShadowBake";
+        const auto status = scene::RequestDirectionalShadowBake(*m_scene, cacheDir);
+        if (status == scene::DirectionalShadowBakeStatus::PENDING) {
+            m_pendingShadowBakePlayScene = m_scene->GetRenderSceneGeneration();
+            Toast::Info("Preparing baked shadows before Play");
+            return;
+        }
+        if (status == scene::DirectionalShadowBakeStatus::UNAVAILABLE)
+            Toast::Warning("Shadow bake unavailable. Play will use realtime shadows.");
     }
 
     /// @note 一覧と同じ検証を行う。Awake による設定を許すため、開始可否はランタイムで再判定する。
@@ -899,8 +913,42 @@ void EditorApp::StartPlayMode()
         m_ctx.requestGameViewportFocus = true;
 }
 
+void EditorApp::TickPendingShadowBakePlay()
+{
+    if (!m_pendingShadowBakePlayScene) return;
+    if (!m_scene || m_scene->GetRenderSceneGeneration() != m_pendingShadowBakePlayScene) {
+        m_pendingShadowBakePlayScene = 0;
+        return;
+    }
+    if (!m_playMode.IsInEditor() || m_ctx.InPrefabEditMode()) {
+        scene::CancelDirectionalShadowBake(*m_scene);
+        m_pendingShadowBakePlayScene = 0;
+        return;
+    }
+    if (m_packageBuild.IsRunning() || m_ctx.managedBuildBusy) return;
+
+    renderer::RenderSettings settings;
+    (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+        m_ctx.projectSettings.renderPipelineAssetPath, settings);
+    settings.StripDebugVisualization();
+    scene::ProcessDirectionalShadowBake(*m_scene, *m_renderer, *m_resources, settings);
+    const auto status = scene::GetDirectionalShadowBakeStatus(*m_scene);
+    if (status == scene::DirectionalShadowBakeStatus::PENDING) return;
+
+    m_pendingShadowBakePlayScene = 0;
+    if (status == scene::DirectionalShadowBakeStatus::UNAVAILABLE)
+        Toast::Warning("Shadow bake unavailable. Play will use realtime shadows.");
+    StartPlayMode(true);
+}
+
 void EditorApp::StopPlayMode()
 {
+    if (m_pendingShadowBakePlayScene) {
+        if (m_scene && m_scene->GetRenderSceneGeneration() == m_pendingShadowBakePlayScene)
+            scene::CancelDirectionalShadowBake(*m_scene);
+        m_pendingShadowBakePlayScene = 0;
+        return;
+    }
     ResetSpatialDebugCapture();
     if (m_standalonePlay.IsActive()) { m_standalonePlay.Stop(); return; }
     m_scriptQuitSceneLifetime = 0;
@@ -917,7 +965,7 @@ void EditorApp::StopPlayMode()
 
 void EditorApp::TogglePlayMode()
 {
-    if (m_playMode.IsInEditor() && !m_standalonePlay.IsActive())
+    if (m_playMode.IsInEditor() && !m_standalonePlay.IsActive() && !m_pendingShadowBakePlayScene)
         StartPlayMode();
     else
         StopPlayMode();

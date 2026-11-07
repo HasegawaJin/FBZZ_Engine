@@ -4,6 +4,7 @@
 /// @date    2026-09-21
 #pragma once
 #include <Engine/Api.hpp>
+#include <Engine/Scene/Entity.hpp>
 #include <Graphics/Renderer/RenderLightingInput.hpp>
 namespace fbzz::scene {
 class Scene;
@@ -11,6 +12,7 @@ struct RenderLightExtraction : renderer::RenderLightingInput {
     bool dirCastShadows = true;
     float dirShadowBias = 1;
     float dirShadowDistance = 0;
+    EntityID dirShadowBakeLight = EntityID::INVALID;
 };
 /// @note 実験 RT の許可なしでは Raster の照明だけを抽出し、RayLightTable 向けの走査・診断を省く。
 FBZZ_ENGINE_API RenderLightExtraction ExtractRenderLights(Scene&, const renderer::Camera&, const renderer::RenderSettings&,

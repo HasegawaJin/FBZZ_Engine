@@ -16,10 +16,12 @@
 #include <Core/Logger.hpp>
 #include "../Passes/PostProcess/UnderwaterPassHelpers.hpp"
 #include "../Renderer/BufferStateReadScope.hpp"
+#include "TaaDepthWitness.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
+#include <cstring>
 #include <string_view>
 
 namespace fbzz::renderer {
@@ -55,7 +57,7 @@ bool SameTaaCamera(const math::Matrix4& previous, const math::Matrix4& current)
     return true;
 }
 
-/// @note 標準頂点契約だけが位置と UV の時間変形を持たない。alpha clip は全定数と実テクスチャ内容版まで比較する。
+/// @note 葉の風を使わない標準頂点だけを静止扱いし、alpha clip は全定数と実テクスチャ内容版まで比較する。
 /// @see Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl GBufferVS / PSMain; Assets/Shaders/Material/Surface/PBR.hlsl VSMain / PSMain.
 bool AppendTaaDepthMaterial(std::vector<uint64_t>& witness, const RenderMaterial& material,
     ResourceManager& resources)
@@ -66,6 +68,11 @@ bool AppendTaaDepthMaterial(std::vector<uint64_t>& witness, const RenderMaterial
     const bool standardClip = contract.vertex == ShaderVertexContract::STANDARD_SURFACE
         && contract.SupportsGBuffer() && material.capabilities.gbufferEquivalentShader;
     if (!material.valid || (!standardOpaque && !standardClip)) return false;
+    float leafWindStrength;
+    std::memcpy(&leafWindStrength, material.gbufferParams.data()+68, sizeof(leafWindStrength));
+    /// @note 同じ材質値でも風は時刻で位置を変えるため、静止した深度履歴の証明には使えない。
+    /// @see Assets/Shaders/Rendering/LeafWind.hlsli FbzzLeafWind sampleTime.
+    if (!std::isfinite(leafWindStrength) || leafWindStrength!=0.0f) return false;
     AppendTaaHandle(witness, material.shader);
     witness.push_back(static_cast<uint64_t>(contract.vertex));
     witness.push_back(static_cast<uint64_t>(contract.surface));
@@ -104,9 +111,11 @@ bool AppendTaaDepthMaterial(std::vector<uint64_t>& witness, const RenderMaterial
     return true;
 }
 
+} /// @note namespace
+namespace taa_depth_detail {
 /// @note 不透明深度の入力だけを証明する。透明色の静止や新しい多層履歴の保証は含めない。
 /// @see Docs/design/shader-capabilities.md
-bool BuildTaaDepthWitness(RenderPassContext& context, std::vector<uint64_t>& witness)
+bool BuildDepthWitness(RenderPassContext& context, std::vector<uint64_t>& witness)
 {
     witness.clear();
     const auto input = context.renderScene;
@@ -155,6 +164,8 @@ bool BuildTaaDepthWitness(RenderPassContext& context, std::vector<uint64_t>& wit
         AppendTaaFloat(witness, object.boundsCenter.y);
         AppendTaaFloat(witness, object.boundsCenter.z);
         AppendTaaFloat(witness, object.boundsRadius);
+        AppendTaaFloat(witness, object.leafWindBoundsPadding);
+        if (!std::isfinite(object.leafWindBoundsPadding) || object.leafWindBoundsPadding!=0.0f) return false;
         AppendTaaFloat(witness, object.sortPosition.x);
         AppendTaaFloat(witness, object.sortPosition.y);
         AppendTaaFloat(witness, object.sortPosition.z);
@@ -183,6 +194,7 @@ bool BuildTaaDepthWitness(RenderPassContext& context, std::vector<uint64_t>& wit
         AppendTaaFloat(witness, item.boundsCenter.y);
         AppendTaaFloat(witness, item.boundsCenter.z);
         AppendTaaFloat(witness, item.boundsRadius);
+        AppendTaaFloat(witness, item.occluderRadius);
         const std::array<ResourceHandle<BufferTag>, 2> handles{item.vertexBuffer, item.indexBuffer};
         std::array<BufferResourceState, 2> states{};
         for (const auto handle : handles) {
@@ -206,13 +218,15 @@ bool BuildTaaDepthWitness(RenderPassContext& context, std::vector<uint64_t>& wit
         && epoch == resources.GetResetVersion() && shaders == resources.GetShaderVersion();
 }
 
+} /// @note namespace taa_depth_detail
+namespace {
 bool PrepareTaaStaticView(RenderPassContext& context, RenderViewResources& view)
 {
     if (!view.taaHistoryValid) {
         view.taaStaticViewPrevious.clear();
         view.taaStaticViewCurrent.clear();
     }
-    if (!BuildTaaDepthWitness(context, view.taaStaticViewCurrent)) {
+    if (!taa_depth_detail::BuildDepthWitness(context, view.taaStaticViewCurrent)) {
         view.taaStaticViewPrevious.clear();
         view.taaStaticViewCurrent.clear();
         return false;

@@ -585,6 +585,7 @@ fbzz_add_test_suite(CoreManual MANUAL
 fbzz_add_test_suite(GraphicsAuto
     SOURCES
         Graphics/Auto/GraphicsStandaloneCpuTests.cpp
+        Graphics/Auto/OcclusionCullerTests.cpp
         Graphics/Auto/SurfacePatchLodTests.cpp
         Graphics/Auto/RenderMeshSpatialIndexTests.cpp
         Graphics/Auto/DX12UploadArenaSizingTests.cpp
@@ -608,6 +609,8 @@ fbzz_add_test_suite(GraphicsAuto
         Graphics/Auto/RaySceneBuilderTests.cpp
     LINKS FBZZGraphics ImGui
 )
+
+target_include_directories(FBZZTestsGraphicsAutoObj PRIVATE "${CMAKE_SOURCE_DIR}/Projects/Graphics/src")
 
 # @note 実 DX12 デバイス・描画・GPU 読戻しを要するテストは通常 CTest / CI から外す。
 fbzz_add_test_suite(GraphicsStandalone OPT_IN
@@ -662,6 +665,7 @@ foreach(graphicsSuite GraphicsAuto GraphicsStandalone RayTracing)
         FBZZ_GRAPHICS_SMOKE_SHADER="${CMAKE_CURRENT_BINARY_DIR}/StandaloneTriangle.hlsl"
         FBZZ_GPU_GEOMETRY_SELECTION_VS_SHADER="${CMAKE_CURRENT_BINARY_DIR}/GpuGeometrySelectionProbe.hlsl"
         FBZZ_GPU_GEOMETRY_SELECTION_MS_SHADER="${CMAKE_CURRENT_BINARY_DIR}/GpuGeometrySelectionProbe.ms.hlsl"
+        FBZZ_GPU_HI_Z_PROBE_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/Graphics/Fixtures/GpuHiZProbe.hlsl"
         FBZZ_GRAPHICS_SHADER_ROOT="${CMAKE_SOURCE_DIR}/Assets/Shaders"
         FBZZ_RAY_INTERSECTION_SHADER="${CMAKE_CURRENT_SOURCE_DIR}/Graphics/Shaders/RayIntersection.cs.hlsl")
 endforeach()

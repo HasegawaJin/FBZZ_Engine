@@ -14,17 +14,18 @@ namespace fbzz::scene {
 inline constexpr int kCullLayerCount = 32;
 
 struct CameraCullingSettings {
-    bool  frustumCulling       = true; ///< バウンディング球の視錐台テストを行うか。false ならフラスタムカリングをしない。
+    bool  frustumCulling       = true; ///< @note バウンディング球の視錐台テストを行うか。
 
     /// @brief CPU ソフトウェアオクルージョンカリングを行うか。
-    /// @note 既定 false: 遮蔽者はバウンディング球の内接正方形として焼かれるため、床タイル・壁パネルのような「球に対して実体が薄い」メッシュが手前に不透明面があると誤って主張する。ゲームカメラは CameraComponent で明示的に有効化する前提とし、編集ビューでは「見えているものが見える」ことを優先する。Terrain は GBuffer パスより後に描かれ遮蔽者に登録されないため効きも薄い。
+    /// @note 既定 false。静的な閉メッシュの内接球と不透明被覆が確定した材質だけを遮蔽物にする。
+    /// @see Docs/design/occlusion-culling.md
     bool  occlusionCulling     = false;
 
-    float cullingBoundsPadding = 0.0f; ///< 全バウンディング球へ加算するワールド単位の余白 [m]。負値は呼び出し側で 0 に丸める。
+    float cullingBoundsPadding = 0.0f; ///< @note 外接球へ加算する余白 [m]。遮蔽物の内接球は拡張しない。
 
     /// @name 距離カリング
     /// @{
-    float maxDrawDistance = 0.0f; ///< カメラから見えなくする距離 [m]。0 以下で無効 (farZ まで描く)。
+    float maxDrawDistance = 0.0f; ///< @note 描画距離 [m]。0 以下で無効。
 
     /// @brief レイヤーごとの距離上書き [m]。0 以下の要素は maxDrawDistance にフォールバックする。
     /// @note 「小物は 30m で消したいが建物は 500m まで残したい」という距離カリングの実用形をレイヤー粒度で表す (オブジェクト個別設定は現実的でない)。Unity の Camera.layerCullDistances と同じ考え方。
@@ -37,8 +38,8 @@ struct CameraCullingSettings {
 
     /// @name 極小オブジェクトカリング
     /// @{
-    float smallObjectScreenHeight = 0.0f; ///< 画面高さに対するバウンディング球の相対高さがこの値未満なら描かない。0 以下で無効。単位は LODLevel::screenRelativeHeight と同じ (0.01 = 画面高さの 1%)。
+    float smallObjectScreenHeight = 0.0f; ///< @note 球の相対画面高さの下限。0 以下で無効、0.01 は画面高さの 1%。
     /// @}
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene
