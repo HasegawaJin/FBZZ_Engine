@@ -831,6 +831,7 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 | ファイル | 内容 |
 |---|---|
 | [`Docs/`](Docs/README.md) | ドキュメント全体の索引 |
+| [FBZZ Engine 内部仕様](Docs/design/engine-internal-spec.md) · [ランタイム最適化仕様](Docs/design/runtime-performance.md) | フレーム処理、所有権と同期、各最適化の適用条件と計測方法 |
 | [`AGENTS.md`](AGENTS.md) | コーディング規約・アーキテクチャ方針・禁止パターン (人にも AI にも同じものを渡す) |
 | [`CLAUDE.md`](CLAUDE.md) | ディレクトリ地図とタスク別の入口 |
 | [`Docs/conventions/`](Docs/conventions/) | ビルド時間・Git 運用・テストの規約 |
