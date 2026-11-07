@@ -151,6 +151,12 @@ void AddCandidate(inout TerrainCandidates c, uint layer, float weight)
 
 void NormalizeCandidates(inout TerrainCandidates c)
 {
+    if (c.count == 1)
+    {
+        if (c.weight[0] <= 1e-5f) c.layer[0] = 0;
+        c.weight[0] = 1.0f;
+        return;
+    }
     float sum = 0.0f;
     [loop]
     for (uint i = 0; i < c.count; ++i) sum += c.weight[i];
@@ -189,8 +195,10 @@ TerrainCandidates GatherPaintedCandidates(float2 uv)
             const int2 coord = min(base + int2(dx, dy), size - 1);
             const float4 indices = g_splatIndices.Load(int3(coord, 0));
             const float4 weights = g_splatWeights.Load(int3(coord, 0));
+            /// @note Most authored texels have one painted layer. Other texels can still use any of the four slots.
+            const uint slots = any(weights.yzw > 0.0f) ? 4u : 1u;
             [loop]
-            for (uint s = 0; s < 4; ++s)
+            for (uint s = 0; s < slots; ++s)
             {
                 const uint layer = (uint)round(indices[s] * 255.0f);
                 if (layer > maxLayer)
@@ -371,6 +379,24 @@ struct TerrainSurface
     float3 geometricNormal;
 };
 
+float3 SampleTerrainAlbedo(TerrainLayer layer, TerrainProjection projection)
+{
+    Texture2D diffuse = TerrainTexture(layer.diffuseIndex);
+    float3 albedo = SRGBToLinear(SampleProjected(diffuse, projection).rgb);
+    /// @note マクロ変化はテクスチャ全体の平均で割り、素材固有の明るさを維持する。
+    if (layer.macroStrength > 0.0f)
+    {
+        const float scale = max(layer.macroScale, 1e-3f);
+        const float3 far = SRGBToLinear(diffuse.SampleGrad(g_sampler, projection.uvTop * scale,
+                                                          projection.dxTop * scale,
+                                                          projection.dyTop * scale).rgb);
+        const float3 mean = SRGBToLinear(diffuse.SampleLevel(g_sampler, projection.uvTop, 16.0f).rgb);
+        const float ratio = clamp(Luminance(far) / max(Luminance(mean), 1e-3f), 0.25f, 2.0f);
+        albedo *= lerp(1.0f, ratio, saturate(layer.macroStrength));
+    }
+    return albedo;
+}
+
 /// @brief 地形 1 画素ぶんの材質を合成する。
 /// @param normalBoost タンジェント法線 XY の増幅率。描画方式に依存せず材質の強度と乗算する。
 TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
@@ -391,6 +417,29 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
     TerrainCandidates c = GatherPaintedCandidates(p.uv);
     if (terrainParams.w > 0.5f)
         ApplyAutoBlend(c, p.localPos.y, saturate(1.0f - abs(NgWorld.y)));
+
+    /// @note 候補が一層なら正規化後の重みは常に 1。高さを読んでも相対的な優先度は変わらない。
+    [branch]
+    if (c.count == 1)
+    {
+        const TerrainLayer layer = g_terrainLayers[c.layer[0]];
+        const TerrainProjection projection = MakeProjection(layer, p.uv, duvdx, duvdy, p.localPos, dPdx, dPdy, Nl);
+        float2 response = saturate(float2(layer.ambientOcclusion, layer.roughness));
+        if (layer.hasAoRoughness > 0.0f)
+            response = lerp(response, SampleProjected(TerrainTexture(layer.aoRoughnessIndex), projection).rg,
+                            saturate(layer.hasAoRoughness));
+        const float3 blendedN = SampleProjectedNormal(TerrainTexture(layer.normalIndex), projection,
+                                                       layer.normalStrength * normalBoost, Nl, Tl, Bl);
+        const float3 localNormal = dot(blendedN, blendedN) > 1e-10f ? normalize(blendedN) : Nl;
+        TerrainSurface surface;
+        surface.albedo = SampleTerrainAlbedo(layer, projection);
+        surface.roughness = response.g;
+        surface.ao = response.r;
+        surface.normal = normalize(mul(localNormal, (float3x3)worldInvTranspose));
+        surface.geometricNormal = NgWorld;
+        return surface;
+    }
+
     KeepTopCandidates(c);
 
     float3 albedos[TERRAIN_MAX_BLEND];
@@ -403,21 +452,7 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
     {
         const TerrainLayer layer = g_terrainLayers[c.layer[k]];
         projections[k] = MakeProjection(layer, p.uv, duvdx, duvdy, p.localPos, dPdx, dPdy, Nl);
-        Texture2D diffuse = TerrainTexture(layer.diffuseIndex);
-        float3 albedo = SRGBToLinear(SampleProjected(diffuse, projections[k]).rgb);
-
-        /// @note マクロ変化: 引き伸ばした同じテクスチャの輝度を «テクスチャ全体の平均» で割って掛ける。
-        /// @note 平均で割らないと暗い素材ほど全体が暗くなるだけの乗算になる。
-        if (layer.macroStrength > 0.0f)
-        {
-            const float scale = max(layer.macroScale, 1e-3f);
-            const float3 far  = SRGBToLinear(diffuse.SampleGrad(g_sampler, projections[k].uvTop * scale,
-                                                                projections[k].dxTop * scale,
-                                                                projections[k].dyTop * scale).rgb);
-            const float3 mean = SRGBToLinear(diffuse.SampleLevel(g_sampler, projections[k].uvTop, 16.0f).rgb);
-            const float ratio = clamp(Luminance(far) / max(Luminance(mean), 1e-3f), 0.25f, 2.0f);
-            albedo *= lerp(1.0f, ratio, saturate(layer.macroStrength));
-        }
+        const float3 albedo = SampleTerrainAlbedo(layer, projections[k]);
         albedos[k] = albedo;
 
         const float heightBlend = saturate(layer.heightBlend);
