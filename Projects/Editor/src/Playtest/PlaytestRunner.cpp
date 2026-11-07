@@ -122,6 +122,10 @@ bool PlaytestRunner::Start(const JsonValue& scenario, const std::filesystem::pat
 {
     if (IsRunning()) { error = "別の Playtest が実行中です"; return false; }
     if (!scenario.IsObject()) { error = "シナリオはオブジェクトである必要があります"; return false; }
+    if (const auto* force = scenario.Find("forceViewportRendering"); force && !force->IsBool()) {
+        error = "forceViewportRendering は bool が必要です";
+        return false;
+    }
     const JsonValue* steps = scenario.Find("steps");
     if (steps == nullptr || !steps->IsArray() || steps->AsArray().empty()) { error = "steps (空でない配列) が必要です"; return false; }
     for (size_t index = 0; index < steps->AsArray().size(); ++index) {
@@ -258,8 +262,10 @@ void PlaytestRunner::Tick(const PlaytestHooks& hooks)
     if (!IsRunning()) return;
     ++m_frame;
     const JsonValue::Array& steps = m_scenario.Find("steps")->AsArray();
+    /// @note Timing scenarios can use the normal viewport layout. Image steps still prepare their own target.
+    const auto* forceViewports = m_scenario.Find("forceViewportRendering");
     /// @note Fluid の専用 RT を撮る間は、WARP で高価な Scene / Game の描画を起こさない。
-    if (hooks.keepViewportsRendering && m_stepIndex < steps.size()
+    if ((!forceViewports || forceViewports->AsBool()) && hooks.keepViewportsRendering && m_stepIndex < steps.size()
         && StringOf(steps[m_stepIndex], "view") != "fluidBaked")
         hooks.keepViewportsRendering();
 

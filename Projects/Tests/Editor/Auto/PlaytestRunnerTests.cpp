@@ -286,6 +286,28 @@ TEST_F(PlaytestRunnerTest, SecondWaitStartsWhileRenderingAndKeepsTheFollowingSte
     runner.Cancel("test completed");
 }
 
+TEST_F(PlaytestRunnerTest, CanKeepTheNormalViewportLayoutUntilAnImageIsRequested)
+{
+    PlaytestRunner runner;
+    ASSERT_TRUE(Start(runner, R"({"forceViewportRendering":false,"steps":[
+        {"do":"frames","count":1},{"do":"capture","name":"game","view":"game"}
+    ]})"));
+    int forcedFrames = 0;
+    PlaytestHooks hooks;
+    hooks.keepViewportsRendering = [&] { ++forcedFrames; };
+    hooks.capture = [&](std::string_view view, std::vector<uint8_t>& png) {
+        EXPECT_EQ(view, "game");
+        const editor::playtest::RgbaImage image{1, 1, {0, 0, 0, 255}};
+        return editor::playtest::EncodePng(image, png);
+    };
+    runner.Tick(hooks);
+    runner.Tick(hooks);
+    EXPECT_EQ(forcedFrames, 0);
+    for (int tick = 0; tick < 4 && runner.IsRunning(); ++tick) runner.Tick(hooks);
+    EXPECT_EQ(runner.State(), PlaytestState::PASSED);
+    EXPECT_EQ(forcedFrames, 1);
+}
+
 TEST_F(PlaytestRunnerTest, RejectsInvalidSecondWaitBeforeFollowingSteps)
 {
     for (const auto* seconds : {"-1", "3601", "null"}) {
