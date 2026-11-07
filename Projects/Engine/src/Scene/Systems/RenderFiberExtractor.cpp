@@ -252,10 +252,15 @@ FiberResources& GetFiberResources(renderer::ResourceManager& resources)
         else ++it;
     }
     for (auto it = cache.m_fins.begin(); it != cache.m_fins.end();) {
+        const auto& entry = it->second;
         const auto& key = it->first;
-        if (!resources.Get(renderer::ResourceHandle<renderer::BufferTag>{key[0], key[1], resources.GetInstanceId()})
-            || !resources.Get(renderer::ResourceHandle<renderer::BufferTag>{key[2], key[3], resources.GetInstanceId()})
-            || (frame > it->second.m_seen && frame - it->second.m_seen > (it->second.m_terrain ? 2u : 120u))) {
+        const bool expired = frame > entry.m_seen && frame - entry.m_seen > (entry.m_terrain ? 2u : 120u);
+        /// @note Terrain patches own their source buffers. ReleaseFiberTerrainMesh removes their fin entries
+        /// @note before returning those buffers, so probing them here would only drain pending render work.
+        const bool staleSource = !expired && !entry.m_terrain
+            && (!resources.Get(renderer::ResourceHandle<renderer::BufferTag>{key[0], key[1], resources.GetInstanceId()})
+                || !resources.Get(renderer::ResourceHandle<renderer::BufferTag>{key[2], key[3], resources.GetInstanceId()}));
+        if (expired || staleSource) {
             resources.Release(it->second.m_vertices);
             resources.Release(it->second.m_indices);
             resources.Release(it->second.m_blades);
