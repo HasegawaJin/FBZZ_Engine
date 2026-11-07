@@ -103,7 +103,8 @@ bool ResolveRayConstantEnvironment(const RenderEnvironmentInput& environment,
     if (environment.sky && !blackSky) return false;
     if (environment.sunMoon
         && ((environment.sunMoon->sunEnabled && environment.sunMoon->sunDiskIntensity != 0.0f)
-            || (environment.sunMoon->moonEnabled && environment.sunMoon->moonBrightness != 0.0f))) return false;
+            || (environment.sunMoon->moonEnabled && environment.sunMoon->moonBrightness != 0.0f)
+            || environment.sunMoon->starBrightness > 0.0f)) return false;
     if (!blackSky && camera.m_clearMode != CameraClearMode::SolidColor) return false;
     const auto& background = camera.m_backgroundColor;
     if (!std::isfinite(background.x) || !std::isfinite(background.y) || !std::isfinite(background.z)

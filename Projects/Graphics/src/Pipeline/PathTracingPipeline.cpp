@@ -48,7 +48,8 @@ RayPathLighting MakePathLighting(const RenderPassContext& context)
         && (result.useSceneLights || context.lightCookieViewCount == 0) && context.cloudShadowStrength == 0.0f
         && (!environment.sky || blackSky) && !environment.cloudEnabled
         && (!environment.sunMoon || ((!environment.sunMoon->sunEnabled || environment.sunMoon->sunDiskIntensity == 0.0f)
-            && (!environment.sunMoon->moonEnabled || environment.sunMoon->moonBrightness == 0.0f)))
+            && (!environment.sunMoon->moonEnabled || environment.sunMoon->moonBrightness == 0.0f)
+            && environment.sunMoon->starBrightness <= 0.0f))
         && !environment.cameraUnderwater && !environment.underwater.enabled && !environment.caustics.enabled
         && (!context.settings.ibl.enabled || raw.requested) && (!raw.requested || raw.ready)
         && !context.settings.postProcess.fog.enabled

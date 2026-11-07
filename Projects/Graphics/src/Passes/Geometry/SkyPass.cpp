@@ -70,6 +70,7 @@ void ExecuteSunMoonPass(RenderPassContext& ctx)
         atmData.moonEnabled           = sunMoon->moonEnabled ? 1.0f : 0.0f;
         atmData.moonSize              = sunMoon->moonSize;
         atmData.moonBrightness        = sunMoon->moonBrightness;
+        atmData.starBrightness        = sunMoon->starBrightness;
         atmData.moonColor[0]          = sunMoon->moonColor.x;
         atmData.moonColor[1]          = sunMoon->moonColor.y;
         atmData.moonColor[2]          = sunMoon->moonColor.z;

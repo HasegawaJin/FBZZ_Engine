@@ -71,33 +71,27 @@ float HorizonMask(float3 rayDir, float observerHeight = 0.0f, float radiusKm = 6
     return smoothstep(horizonY - edge, horizonY + edge, rayDir.y);
 }
 
-/// @brief 1 AU で角直径約0.533度の太陽ディスク。
-/// @param sunDir 光源と同じ、太陽へ向かう正規化方向。
-/// @note 弦長で縁を測り、acos の中心での特異点と dot の 1 近傍の精度低下を避ける。
-/// @see https://aa.usno.navy.mil/faq/sun_approx Angular semidiameter SD=0.2666/R degrees
+/// @note 方向の弦長で、約 1 画素の円盤境界を求める。
+float CelestialDiskCoverage(float chord, float radius)
+{
+    float edge = max(fwidth(chord) * 0.5f, 1.0e-6f);
+    return 1.0f - smoothstep(radius - edge, radius + edge, chord);
+}
+
+/// @brief 1 AU で角直径約 0.533 度の太陽ディスク。
+/// @note 円盤の中心から縁に向け、光球の周辺減光を一次式で近似する。
+/// @see https://aa.usno.navy.mil/faq/sun_approx Angular semidiameter SD=0.2666/R degrees.
+/// @see https://academic.oup.com/mnras/article/418/2/1165/1071889 On stellar limb darkening and exoplanetary transits, linear law.
 float3 SunDisk(float3 rayDir, float3 sunDir, float sunIntensity,
                float observerHeight = 0.0f, float radiusKm = 6371.0f)
 {
     const float radius = 2.0f * sin(0.2666f * PI / 360.0f);
     float chord = length(rayDir - sunDir);
-    float edge = max(fwidth(chord) * 0.5f, 1.0e-6f);
-    float disk = 1.0f - smoothstep(radius - edge, radius + edge, chord);
-    return max(sunIntensity, 0.0f) * disk * HorizonMask(rayDir, observerHeight, radiusKm);
-}
-
-/// @brief 月ディスク。
-/// @param moonDir   月へ向かう方向 (正規化)。SunMoon では -sunDir。
-/// @param sizeScale 従来の月ディスクのサイズ調整係数。太陽の角直径とは独立。
-/// @note 地平線の可視率は太陽と共通で、観測高度と画素の角度から求める。
-float3 MoonDisk(float3 rayDir, float3 moonDir, float3 color, float brightness, float sizeScale,
-                float observerHeight = 0.0f, float radiusKm = 6371.0f)
-{
-    float cosAngle = dot(rayDir, moonDir);
-    float s     = max(sizeScale, 0.05f);
-    float edge0 = 1.0f - 0.0010f * s;
-    float edge1 = 1.0f - 0.0002f * s;
-    float disk  = smoothstep(edge0, edge1, cosAngle);
-    return color * brightness * disk * HorizonMask(rayDir, observerHeight, radiusKm);
+    float normalizedRadius = chord / radius;
+    float surfaceCosine = sqrt(saturate(1.0f - normalizedRadius * normalizedRadius));
+    float limb = lerp(0.58f, 1.0f, surfaceCosine);
+    return max(sunIntensity, 0.0f) * limb * CelestialDiskCoverage(chord, radius)
+        * HorizonMask(rayDir, observerHeight, radiusKm);
 }
 
 /// @note ATMOSPHERE_HLSLI

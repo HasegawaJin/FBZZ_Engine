@@ -147,10 +147,10 @@ TEST_F(RayEnvironmentTest, RawEnvironmentRequestsNeverBecomeConstantWhenPendingO
     }
 }
 
-TEST_F(RayEnvironmentTest, EmittingSkyDisksAndCloudLeaveConstantEnvironmentUnknown)
+TEST_F(RayEnvironmentTest, EmittingCelestialBodiesAndCloudLeaveConstantEnvironmentUnknown)
 {
     renderer::Camera camera;
-    for (uint32_t source = 0; source < 4; ++source) {
+    for (uint32_t source = 0; source < 5; ++source) {
         SCOPED_TRACE(source);
         renderer::RenderEnvironmentInput environment;
         if (source == 0) {
@@ -162,10 +162,10 @@ TEST_F(RayEnvironmentTest, EmittingSkyDisksAndCloudLeaveConstantEnvironmentUnkno
             if (source == 1) {
                 environment.sunMoon->sunEnabled = true;
                 environment.sunMoon->sunDiskIntensity = 1;
-            } else {
+            } else if (source == 2) {
                 environment.sunMoon->moonEnabled = true;
                 environment.sunMoon->moonBrightness = 1;
-            }
+            } else environment.sunMoon->starBrightness = 1;
         }
         math::Vector3 radiance{7, 8, 9};
         EXPECT_FALSE(renderer::ResolveRayConstantEnvironment(environment, camera, radiance));

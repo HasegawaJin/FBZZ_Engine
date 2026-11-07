@@ -25,6 +25,7 @@ struct RenderSunMoonInput {
     float moonSize = 0.0f;
     float moonBrightness = 0.0f;
     math::Vector3 moonColor{};
+    float starBrightness = 0.0f;
 };
 /// @note CloudVolume.hlsli の VolumetricCloudConstants と同じ配列順。
 struct RenderCloudConstants {

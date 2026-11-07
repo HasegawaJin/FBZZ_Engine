@@ -467,7 +467,7 @@ renderer::RenderEnvironmentInput ExtractRenderEnvironment(RenderPassContext& ctx
                     sky->planetRadius, sky->atmosphereRadius, sky->skyScatterIntensity, sky->mieG};
             if (!output.sunMoon) if (const auto* sun = ctx.scene.GetComponent<SunMoonRenderer>(id); sun && sun->enabled)
                 output.sunMoon = renderer::RenderSunMoonInput{sun->sunEnabled, sun->sunDiskIntensity,
-                    sun->moonEnabled, sun->moonSize, sun->moonBrightness, sun->moonColor};
+                    sun->moonEnabled, sun->moonSize, sun->moonBrightness, sun->moonColor, sun->starBrightness};
         }
     }
     beginPhase("RenderSceneExtractor::Environment::UnderwaterAndCaustics");

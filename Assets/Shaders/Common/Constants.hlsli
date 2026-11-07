@@ -253,7 +253,7 @@ cbuffer AtmosphereConstants : register(CB_ATMOSPHERE)
     float  moonEnabled;     /// @note 0/1
     float  moonSize;
     float  moonBrightness;
-    float  _moonPad0;
+    float  starBrightness;
     float3 moonColor;
     float  _moonPad1;
 };

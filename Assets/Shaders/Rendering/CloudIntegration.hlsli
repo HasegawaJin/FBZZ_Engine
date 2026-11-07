@@ -70,7 +70,8 @@ float4 FBZZIntegrateCloud(float3 ro, float3 rd, float sceneDepth, float dither, 
     float3 sunDir = lightLen > 1.0e-4f ? -lightDir / lightLen : float3(0.0f, 1.0f, 0.0f);
     /// @note 地表用の lightIntensity と独立し、主ビューの空と同じ skyDimmer で照らす。
     float3 lightCol = lightColor * max(skyDimmer, 0.0f) * max(cloudShading.y, 0.0f) * cloudSunTint.rgb;
-    float3 ambientTop = (ambientColor * 2.0f + lightCol * 0.2f)
+    /// @note 空の拡散光も薄明・夜の空の明るさに追従させる。
+    float3 ambientTop = (ambientColor * (2.0f * saturate(skyDimmer)) + lightCol * 0.2f)
                       * max(cloudLighting.y, 0.0f) * cloudAmbTint.rgb;
     float ambientFloor = saturate(cloudAlbedo.w);
     float cosT = dot(rd, sunDir);

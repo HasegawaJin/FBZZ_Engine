@@ -525,11 +525,12 @@ struct AtmosphereCB {
     float moonEnabled;     ///< @note 0/1
     float moonSize;
     float moonBrightness;
-    float _moonPad0;
+    float starBrightness;
     float moonColor[3];
     float _moonPad1;
     /// @}
 };
+static_assert(sizeof(AtmosphereCB) == 64);
 
 /// @brief Light Probe Volume 1 つぶんの配置。intensity <= 0 で無効。
 /// @note LAYOUT: AdvancedGraphicsConstants.hlsli の ProbeVolumeParams と一致させること (48 bytes)。

@@ -18,6 +18,8 @@ struct SunMoonRenderer {
     float         moonSize     = 1.0f;
     float         moonBrightness = 0.6f;
     math::Vector3 moonColor    = { 0.85f, 0.9f, 1.0f };
+    /// @brief 夜空の星の輝度倍率。0 は星を描かない。
+    float         starBrightness = 0.0f;
 
     const char* GetTypeName() const { return "Sun Moon Renderer"; }
     void Reflect(IReflector& r)
@@ -29,6 +31,7 @@ struct SunMoonRenderer {
         r.Field("moonSize", moonSize);
         r.Field("moonBrightness", moonBrightness);
         r.ColorField("moonColor", moonColor);
+        r.Field("starBrightness", starBrightness);
     }
 };
 
