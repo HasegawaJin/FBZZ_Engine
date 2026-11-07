@@ -18,6 +18,8 @@ import { RegisterWorldQueryTools, RegisterWorldCommandTools } from './Tools/Worl
 import { RegisterBuildQueryTools, RegisterBuildCommandTools } from './Tools/BuildTools.js';
 import { RegisterPlaytestQueryTools, RegisterPlaytestCommandTools } from './Tools/PlaytestTools.js';
 import { RegisterFluidQueryTools, RegisterFluidCommandTools } from './Tools/FluidTools.js';
+import { RegisterCSharpTools } from './Tools/CSharpTools.js';
+import { RegisterSqlTools } from './Tools/SqlTools.js';
 
 /// @note read 権限では Command の登録自体を行わず、各領域の状態は MCP セッション内に閉じる。
 export function RegisterEditorTools(server: McpServer, bus: EditorBus, permission: PermissionMode): void {
@@ -34,6 +36,8 @@ export function RegisterEditorTools(server: McpServer, bus: EditorBus, permissio
     RegisterPlaytestQueryTools(server, bus);
     RegisterFluidQueryTools(server, bus);
     RegisterReliabilityTools(server, bus, permission);
+    RegisterCSharpTools(server, bus, permission);
+    RegisterSqlTools(server, bus);
     if (permission !== 'read') {
         RegisterEditorCommandTools(server, bus, permission);
         RegisterSceneCommandTools(server, bus, permission);

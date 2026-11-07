@@ -21,6 +21,8 @@
 
 namespace fbzz::editor {
 
+void RegisterPlacementOperators(OperatorRegistry& registry);
+
 namespace {
 
 scene::GameObject* ResolveNode(const OpContext& c, const std::string& nodeId)
@@ -239,6 +241,7 @@ void RegisterCreateOperators(OperatorRegistry& registry)
 
 void RegisterNodeOperators(OperatorRegistry& registry)
 {
+    RegisterPlacementOperators(registry);
     RegisterRenameOperator(registry);
     RegisterCreateOperators(registry);
 }

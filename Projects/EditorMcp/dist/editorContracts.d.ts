@@ -76,6 +76,12 @@ export type EditorQuery = {
 } | {
     t: 'editor.state';
 } | {
+    t: 'editor.observation';
+    ids?: string[] | undefined;
+    afterSequence?: number | undefined;
+    managedRequestId?: string | undefined;
+    packageRequestId?: string | undefined;
+} | {
     t: 'editor.undoHistory';
     limit?: number | undefined;
 } | {
@@ -280,6 +286,22 @@ export type EditorQuery = {
 };
 export declare const EditorQuerySchema: z.ZodType<EditorQuery>;
 export type EditorCommand = {
+    t: 'editor.checked';
+    owner: string;
+    receipt: string;
+    guard: JsonValue;
+    label?: string | undefined;
+    cmds: EditorCommand[];
+} | {
+    t: 'editor.rollback';
+    owner: string;
+    receipt: string;
+} | {
+    t: 'editor.finalize';
+    guard: JsonValue;
+    save: boolean;
+    reload: boolean;
+} | {
     t: 'editor.op.invoke';
     id: string;
     args?: Record<string, unknown> | undefined;

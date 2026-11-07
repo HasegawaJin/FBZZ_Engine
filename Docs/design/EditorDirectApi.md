@@ -16,6 +16,8 @@
 
 | ID | 契約 |
 |---|---|
+| `authoring.context` | 接続先project・Scene世代・Edit/Play状態・現在のScript API配置先を取得する。 |
+| `authoring.placement.preview/apply` | 明示対象のworld整列・等間隔配置・水平面への配置を計画し、計画と対象状態を照合して一つのUndoで適用する。 |
 | `asset.model.inspect/configure/import/status` | FBX・glTF・GLB・OBJ 原本の内容、変換設定、変換ジョブ、生成物の参照を扱う。 |
 | `asset.texture.inspect/configure/reset/import/trim` | テクスチャの全インポート設定と Sprite 矩形を扱う。型の変更でも既存の矩形と ID を保持する。 |
 | `asset.creation_catalog`、`asset.create` | 種類・拡張子・プリセットを照会し、通常の Create と同じ既定内容を生成する。 |
@@ -139,6 +141,9 @@ IBL は `ibl.bake` の後に `ibl.inspect` の `state` を確認する。描画�
 検索後にプロジェクトが変わった場合、古いプロジェクトの読取りを進めない。
 
 ## 実装の接続点
+
+Roslynによるソース解析と読み取り専用SQL索引はMCP側に置く。配置は共通Opを使う。
+入力範囲、保存互換性、索引の鮮度と検証は [AI制作ツール](ai-authoring-tools.md)に従う。
 
 - `IPanel::OnRegisterOperators` は生成後に一度呼び、パネル固有の操作も同じ登録簿へ載せる。
 - `IPanel::OnUpdate` は表示状態に依存せず呼ぶ。シーン復帰を反映した後で進める。

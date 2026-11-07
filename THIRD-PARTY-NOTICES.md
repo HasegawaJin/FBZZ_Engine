@@ -47,6 +47,8 @@ FBZZ Engine 本体は MIT License ([LICENSE](LICENSE)) で配布する。
 | FXC (`fxc.exe`) | Windows SDK | DX11 用シェーダーコンパイラー。ビルド時のみ使用 |
 | Electron / React / Node.js 依存 (GameHub) | npm | `Projects/GameHub/package.json` と `node_modules` 配下の各ライセンスに従う |
 | MCP SDK ほか (EditorMcp) | npm | `Projects/EditorMcp/package.json` と `node_modules` 配下の各ライセンスに従う |
+| Node.js SQLite (EditorMcp) | インストール済み Node.js 24.10以降 | Node.js組み込みのSQLiteを使用。Node.js / SQLiteのライセンスは供給runtimeのnoticeに従う。SQLiteバイナリを別途ベンダーしない |
+| Roslyn compiler API (EditorMcp) | インストール済み Microsoft .NET 10 SDK | ローカル解析helperのビルドでSDKの `Microsoft.CodeAnalysis` / `Microsoft.CodeAnalysis.CSharp` を参照・配置する。SDK供給元のライセンスとnoticeに従い、Engine/ゲームのruntimeやSDK公開には追加しない |
 | .NET 10 SDK / runtime hosting pack | インストール済み Microsoft .NET SDK | native hosting headers はビルド時だけ使用。`nethost.dll` は製品へ配置し、供給元の `LICENSE.txt` / `ThirdPartyNotices.txt` を `EngineLicenses/DotNet/` に同梱する。runtime 本体は利用者のインストール済み環境を使う |
 
 ### 外部アセット

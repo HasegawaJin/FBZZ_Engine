@@ -13,13 +13,15 @@
     ],
     "scripts": {
         "build": "tsc",
+        "build:analysis": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../Tools/AgentBuild.ps1 managed-build Projects/EditorMcp/Managed/Fbzz.EditorAnalysis.csproj",
+        "test:analysis": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../Tools/AgentBuild.ps1 managed-test Projects/EditorMcp/Managed/Tests/Fbzz.EditorAnalysis.Tests.csproj",
         "watch": "tsc --watch",
         "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
         "test": "npm run build && node --test \"dist/tests/*.test.js\"",
         "start": "node dist/stdio.js"
     },
     "engines": {
-        "node": ">=20"
+        "node": ">=24.10.0"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",

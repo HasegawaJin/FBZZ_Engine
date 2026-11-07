@@ -451,6 +451,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/EditorSettingsDocumentTests.cpp
     Editor/Auto/SequenceOperatorTests.cpp
     Editor/Auto/IblOperatorTests.cpp
+    Editor/Auto/PlacementOperatorTests.cpp
     Editor/Auto/VolumeFlipbookOperatorTests.cpp
     Editor/Auto/DirectPanelOperatorTests.cpp
     Editor/Auto/AssetFileOperatorTests.cpp

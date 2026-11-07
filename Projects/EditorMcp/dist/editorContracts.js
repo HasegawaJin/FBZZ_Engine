@@ -91,6 +91,8 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
     }).strict(),
     z.object({ t: z.literal('scene.tree'), includeGenerated: z.boolean().optional() }).strict(),
     z.object({ t: z.literal('scene.snapshot') }).strict(),
+    z.object({ t: z.literal('editor.observation'), ids: z.array(NodeIdSchema).max(128).optional(), afterSequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+        managedRequestId: z.string().regex(/^managed:[1-9][0-9]{0,19}$/).optional(), packageRequestId: z.string().regex(/^package:[1-9][0-9]{0,19}$/).optional() }).strict(),
     z.object({ t: z.literal('scene.validate') }).strict(),
     z.object({
         t: z.literal('scene.find'),
@@ -736,6 +738,10 @@ export const EditorCommandSchema = z.lazy(() => z.discriminatedUnion('t', [
         label: z.string().min(1).max(128),
         cmds: z.array(EditorCommandSchema).min(1).max(128),
     }).strict(),
+    z.object({ t: z.literal('editor.checked'), owner: z.string().min(1).max(128), receipt: z.string().uuid(), guard: JsonValueSchema,
+        label: z.string().min(1).max(128).optional(), cmds: z.array(EditorCommandSchema).min(1).max(128) }).strict(),
+    z.object({ t: z.literal('editor.rollback'), owner: z.string().min(1).max(128), receipt: z.string().uuid() }).strict(),
+    z.object({ t: z.literal('editor.finalize'), guard: JsonValueSchema, save: z.boolean(), reload: z.boolean() }).strict(),
 ]));
 export const EditorBusResponseSchema = z.object({
     protocol: z.literal(EDITOR_PROTOCOL),
