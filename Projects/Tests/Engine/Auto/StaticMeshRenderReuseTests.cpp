@@ -46,11 +46,11 @@ TEST_F(StaticMeshRenderReuseTest, SceneBoundsObserveTypeMembershipAndDirectTerra
     EXPECT_VEC3_NEAR(staticOnly.center, math::Vector3::ZERO, testkit::kTolerance);
     EXPECT_FLOAT_EQ(staticOnly.radius, 1);
     auto& terrain = object.AddComponent<scene::TerrainComponent>();
-    terrain.columns = terrain.rows = 2; terrain.cellSize = 1; terrain.maxHeight = 2;
-    terrain.heightData = {0, 0, 0, 0};
+    terrain.columns = terrain.rows = 3; terrain.cellSize = 0.5f; terrain.maxHeight = 2;
+    terrain.heightData.assign(terrain.VertexCount(), 0.0f);
     EXPECT_FLOAT_EQ(bounds().radius, 1);
     const auto revision = terrain.surfaceRevision;
-    terrain.heightData[0] = -1; terrain.heightData[1] = 1;
+    terrain.heightData.front() = -1; terrain.heightData.back() = 1;
     const auto edited = bounds();
     EXPECT_EQ(terrain.surfaceRevision, revision);
     ASSERT_TRUE(edited.valid);

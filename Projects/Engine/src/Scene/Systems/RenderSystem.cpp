@@ -80,6 +80,7 @@
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
 #include <cmath>
@@ -89,6 +90,9 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#if (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 /// @note SceneUtils.hpp の ResolveGameCullingSettings は、呼び出し側が明示しなかったときのフォールバック解決に使う。
 namespace fbzz::scene {
@@ -167,14 +171,49 @@ void AccumulateBounds(SceneShadowBounds& aggregate, const WorldBounds& bounds)
     aggregate.radius = newRadius;
 }
 
+/// @pre heights is non-empty.
+/// @note Shadow fitting observes direct height writes, so it reduces the current data rather than caching by revision.
+/// @see https://www.intel.com/content/dam/develop/external/us/en/documents/18072-347603.pdf SSE packed floating-point minimum and maximum.
+std::pair<float, float> TerrainHeightExtents(const std::vector<float>& heights)
+{
+#if (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__SSE2__)
+    if (heights.size() >= 4) {
+        auto minima = _mm_set1_ps(heights.front());
+        auto maxima = minima;
+        auto unordered = _mm_setzero_ps();
+        size_t index = 0;
+        for (; index + 4 <= heights.size(); index += 4) {
+            const auto values = _mm_loadu_ps(heights.data() + index);
+            minima = _mm_min_ps(minima, values);
+            maxima = _mm_max_ps(maxima, values);
+            unordered = _mm_or_ps(unordered, _mm_cmpunord_ps(values, values));
+        }
+        if (_mm_movemask_ps(unordered) == 0) {
+            std::array<float, 4> low, high;
+            _mm_storeu_ps(low.data(), minima);
+            _mm_storeu_ps(high.data(), maxima);
+            float minimum = *std::min_element(low.begin(), low.end());
+            float maximum = *std::max_element(high.begin(), high.end());
+            for (; index < heights.size() && !std::isnan(heights[index]); ++index) {
+                minimum = (std::min)(minimum, heights[index]);
+                maximum = (std::max)(maximum, heights[index]);
+            }
+            if (index == heights.size()) return {minimum, maximum};
+        }
+    }
+#endif
+    const auto [minimum, maximum] = std::minmax_element(heights.begin(), heights.end());
+    return {*minimum, *maximum};
+}
+
 bool ComputeTerrainWorldBounds(const Transform& transform, const TerrainComponent& terrain, WorldBounds& outBounds)
 {
     if (!terrain.enabled || terrain.heightData.empty() || terrain.columns < 2 || terrain.rows < 2)
         return false;
 
-    auto [minIt, maxIt] = std::minmax_element(terrain.heightData.begin(), terrain.heightData.end());
-    const float minY = (*minIt) * terrain.maxHeight;
-    const float maxY = (*maxIt) * terrain.maxHeight;
+    const auto [minimum, maximum] = TerrainHeightExtents(terrain.heightData);
+    const float minY = minimum * terrain.maxHeight;
+    const float maxY = maximum * terrain.maxHeight;
     const math::Vector3 localCenter = {
         static_cast<float>(terrain.columns - 1) * terrain.cellSize * 0.5f,
         (minY + maxY) * 0.5f,
