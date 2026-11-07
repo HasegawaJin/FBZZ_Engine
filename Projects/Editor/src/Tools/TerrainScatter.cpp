@@ -6,6 +6,7 @@
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/Transform.hpp>
+#include <Engine/Scene/WorldCell.hpp>
 #include <Math/MathUtils.hpp>
 #include <algorithm>
 #include <cmath>
@@ -36,6 +37,53 @@ uint32_t Mix(uint32_t value)
     value ^= value >> 16; value *= 0x7feb352du;
     value ^= value >> 15; value *= 0x846ca68bu;
     return value ^ (value >> 16);
+}
+
+bool ApplyPlacementCellBudget(std::vector<renderer::InstancePlacement>& staged, const math::Matrix4& targetWorld,
+    uint32_t cap, uint32_t seed, TerrainPaintDiagnostics* diagnostics)
+{
+    struct RankedPlacement {
+        scene::WorldCellId cell;
+        uint64_t rank;
+        size_t slot;
+    };
+    const scene::WorldCellGrid grid{{}, scene::VEGETATION_BUDGET_CELL_SIZE};
+    std::vector<RankedPlacement> ranked;
+    ranked.reserve(staged.size());
+    for (size_t slot = 0; slot < staged.size(); ++slot) {
+        const auto& placement = staged[slot];
+        const auto world = targetWorld * math::Vector4{placement.position, 1.0f};
+        scene::WorldCellId cell;
+        if (!scene::TryLocateWorldCell(grid, {world.x, world.y, world.z}, cell)) return false;
+        ranked.push_back({cell, scene::WorldCellSeed(seed, cell, placement.id), slot});
+    }
+    std::sort(ranked.begin(), ranked.end(), [](const RankedPlacement& left, const RankedPlacement& right) {
+        if (left.cell != right.cell) return left.cell < right.cell;
+        if (left.rank != right.rank) return left.rank < right.rank;
+        return left.slot < right.slot;
+    });
+    std::vector<uint8_t> kept(staged.size());
+    uint32_t cellCount = 0;
+    for (size_t index = 0; index < ranked.size(); ++index) {
+        if (index == 0 || ranked[index - 1].cell != ranked[index].cell) cellCount = 0;
+        const auto slot = ranked[index].slot;
+        if (cellCount++ < cap) {
+            kept[slot] = 1;
+        } else if (diagnostics) {
+            auto& rejected = diagnostics->counts[static_cast<size_t>(TerrainPaintReason::CELL_BUDGET)];
+            if (++rejected <= 64) {
+                const auto point = targetWorld * math::Vector4{staged[slot].position, 1.0f};
+                diagnostics->points.push_back({{point.x, point.y, point.z}, TerrainPaintReason::CELL_BUDGET});
+            }
+        }
+    }
+    size_t output = 0;
+    for (size_t slot = 0; slot < staged.size(); ++slot) {
+        if (kept[slot]) staged[output++] = staged[slot];
+    }
+    if (diagnostics) diagnostics->counts[static_cast<size_t>(TerrainPaintReason::ACCEPTED)] -= staged.size() - output;
+    staged.resize(output);
+    return true;
 }
 
 float UnitRandom(uint32_t key, uint32_t channel)
@@ -99,7 +147,7 @@ struct ScatterPlane {
 const char* TerrainPaintReasonLabel(TerrainPaintReason reason)
 {
     constexpr const char* labels[]{"Accepted", "Density / edge fade", "Terrain hole", "Height", "Slope", "Ground layer",
-        "Water clearance", "Path clearance", "Existing object", "Minimum spacing", "Occupied cell"};
+        "Water clearance", "Path clearance", "Existing object", "Minimum spacing", "Occupied cell", "Vegetation cell budget"};
     const auto i = static_cast<size_t>(reason);
     return i < std::size(labels) ? labels[i] : "Unknown";
 }
@@ -178,8 +226,11 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
         || settings.downslopeJitter < 0.0f || settings.downslopeJitter > 180.0f
         || settings.embedDepth < 0.0f || settings.embedDepth > 100.0f
         || settings.minimumDistance < 0.0f || settings.minimumDistance > 10000.0f
-        || settings.maxInstances == 0 || settings.maxInstances > MAX_CANDIDATES)
+        || settings.maxInstances == 0 || settings.maxInstances > MAX_CANDIDATES
+        || settings.maxPlacementsPerCell > MAX_CANDIDATES)
         return fail("配置条件の範囲または上下限が不正です。");
+    if (brush && settings.maxPlacementsPerCell != 0)
+        return fail("128mセルの配置予算は全地形散布で指定してください。");
     if (!ValidTransform(terrainTransform) || !ValidTransform(targetTransform))
         return fail("地形または配置先の Transform が非有限・非可逆です。");
     const auto targetScale = targetTransform.worldScale;
@@ -318,7 +369,8 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
                 const auto cell = cellAt(embeddedPosition);
                 if (occupied.contains(id) || (cell && !occupied.insert(cell).second)) return record(TerrainPaintReason::OCCUPIED);
             }
-            if (staged.size() >= settings.maxInstances) return fail("配置数が上限を超えます。密度を下げるか上限を増やしてください。");
+            if (settings.maxPlacementsPerCell == 0 && staged.size() >= settings.maxInstances)
+                return fail("配置数が上限を超えます。密度を下げるか上限を増やしてください。");
             const auto rotation = PlacementRotation(settings, worldNormal, UnitRandom(key, 4));
             const float scale = std::lerp(settings.minScale, settings.maxScale, UnitRandom(key, 5)) / targetScale.x;
             uint32_t instanceId = static_cast<uint32_t>(id);
@@ -384,6 +436,11 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             for (uint32_t x = 0; x < nx; ++x)
                 if (!place(x, z)) return false;
         }
+    }
+    if (settings.maxPlacementsPerCell != 0) {
+        if (!ApplyPlacementCellBudget(staged, targetTransform.GetWorldMatrix(), settings.maxPlacementsPerCell,
+            settings.seed, diagnostics)) return fail("配置点が128mセルの座標範囲を超えます。");
+        if (staged.size() > settings.maxInstances) return fail("セル予算を適用しても全体の配置上限を超えます。");
     }
     placements = std::move(staged);
     reason.clear();

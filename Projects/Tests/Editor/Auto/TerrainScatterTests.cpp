@@ -17,10 +17,12 @@
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/Transform.hpp>
+#include <Engine/Scene/WorldCell.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <array>
 #include <limits>
+#include <map>
 
 namespace fbzz::tests {
 class TerrainScatterTest : public testkit::Fixture {
@@ -53,6 +55,38 @@ TEST_F(TerrainScatterTest, SameSeedReproducesTransformsAndDensityKeepsCandidateI
     m_settings.density = 0.5f; ASSERT_TRUE(Build()); ASSERT_FALSE(m_placements.empty()); EXPECT_LT(m_placements.size(), before.size());
     for (const auto& placement : m_placements) EXPECT_VEC3_NEAR(placement.position, before[placement.id - 1].position, 0.0f);
     m_settings.density = 0.0f; ASSERT_TRUE(Build()); EXPECT_TRUE(m_placements.empty());
+}
+
+TEST_F(TerrainScatterTest, LimitsPlacementsInWorldCellsBeforeApplyingTheTotalLimit)
+{
+    m_terrainTransform.worldPosition = {-4, 0, -4};
+    ASSERT_TRUE(Build());
+    const auto unrestricted = m_placements;
+    m_settings.maxPlacementsPerCell = 2;
+    m_settings.maxInstances = 8;
+    editor::TerrainPaintDiagnostics diagnostics;
+    ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain, m_terrainTransform, m_targetTransform, m_settings,
+        m_placements, m_reason, nullptr, {}, &diagnostics)) << m_reason;
+    ASSERT_EQ(m_placements.size(), 8u);
+    std::map<scene::WorldCellId, size_t> cells;
+    const scene::WorldCellGrid grid{{}, scene::VEGETATION_BUDGET_CELL_SIZE};
+    for (const auto& placement : m_placements) {
+        ASSERT_GT(placement.id, 0u);
+        ASSERT_LE(placement.id, unrestricted.size());
+        EXPECT_VEC3_NEAR(placement.position, unrestricted[placement.id - 1].position, 0.0f);
+        EXPECT_VEC3_NEAR(placement.scale, unrestricted[placement.id - 1].scale, 0.0f);
+        scene::WorldCellId cell;
+        ASSERT_TRUE(scene::TryLocateWorldCell(grid, placement.position, cell));
+        ++cells[cell];
+    }
+    ASSERT_EQ(cells.size(), 4u);
+    for (const auto& [cell, count] : cells) EXPECT_EQ(count, 2u);
+    EXPECT_EQ(diagnostics.counts[static_cast<size_t>(editor::TerrainPaintReason::CELL_BUDGET)], 8u);
+    const auto previous = m_placements;
+    m_settings.maxInstances = 7;
+    EXPECT_FALSE(Build());
+    ASSERT_EQ(m_placements.size(), previous.size());
+    for (size_t index = 0; index < previous.size(); ++index) EXPECT_EQ(m_placements[index].id, previous[index].id);
 }
 
 TEST_F(TerrainScatterTest, MinimumSeparationAndWorldFilterApplyToExistingAndNewPoints)

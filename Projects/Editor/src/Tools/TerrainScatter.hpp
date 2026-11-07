@@ -35,6 +35,7 @@ struct TerrainScatterSettings {
     float downslopeJitter = 0.0f;
     float embedDepth = 0.0f;
     float minimumDistance = 0.0f;
+    uint32_t maxPlacementsPerCell = 0;
 };
 
 inline constexpr size_t TERRAIN_SCATTER_STROKE_LIMIT = 512;
@@ -49,7 +50,7 @@ struct TerrainScatterBrush {
     float feather = 0.0f;
 };
 
-enum class TerrainPaintReason { ACCEPTED, DENSITY, HOLE, HEIGHT, SLOPE, LAYER, WATER, PATH, OBSTACLE, SPACING, OCCUPIED, COUNT };
+enum class TerrainPaintReason { ACCEPTED, DENSITY, HOLE, HEIGHT, SLOPE, LAYER, WATER, PATH, OBSTACLE, SPACING, OCCUPIED, CELL_BUDGET, COUNT };
 struct TerrainPaintDiagnosticPoint { math::Vector3 position; TerrainPaintReason reason; };
 struct TerrainPaintDiagnostics {
     std::array<size_t, static_cast<size_t>(TerrainPaintReason::COUNT)> counts{};
@@ -80,6 +81,7 @@ struct TerrainPaintPreviewPoint {
 /// @note 斜面方向では +Z を下り、+Y を法線に揃える。埋め込みは採用判定後に world m で適用する。
 /// @note 穴と追加 surface は配置対象外。target の正の一様 worldScale だけが shear なしの姿勢を保持できる。
 /// @note seed と格子から個体 ID を決める。100 万候補・指定個体数を超える処理は部分結果を返さず拒否する。
+/// @note 全地形散布の128mセル予算を使う場合、全体の配置上限はセル内選別後に評価する。
 /// @see Docs/design/terrain-scatter.md
 [[nodiscard]] bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
     const scene::Transform& terrainTransform, const scene::Transform& targetTransform,

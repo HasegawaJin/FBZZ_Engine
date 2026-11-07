@@ -503,6 +503,7 @@ void EditorApp::RegisterBuiltinOperators()
     RegisterDocumentOperators(m_operators);
     RegisterPrefabStructureMergeOperators(m_operators);
     RegisterTerrainOperators(m_operators);
+    RegisterWorldPartitionOperators(m_operators);
     RegisterEffectOperators(m_operators);
     RegisterComponentActionOperators(m_operators);
     RegisterClothOperators(m_operators);

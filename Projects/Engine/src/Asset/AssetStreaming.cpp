@@ -880,6 +880,26 @@ void AssetStreamer::ReleaseLease(std::uint64_t leaseId)
     m_impl->ReleaseLease(leaseId);
 }
 
+bool AssetStreamer::EvictUnusedRaw(std::string_view typeName, const std::string& reference)
+{
+    const auto channel = m_impl->channels.find(std::string(typeName));
+    if (channel == m_impl->channels.end()) return false;
+    Impl::Entry* entry = m_impl->FindByKey(typeName, channel->second->MakeKey(reference));
+    if (!entry || !entry->leaseIds.empty() || entry->phase != Phase::Idle) return false;
+    const uint64_t bytes = Impl::IsPublished(*entry) ? m_impl->MeasureResident(*entry) : 0;
+    if (entry->handle.IsValid() && entry->channel->IsLive(entry->handle)
+        && !entry->channel->Evict(entry->handle, entry->key)) return false;
+    m_impl->entryByHandle.erase(HandleKey(entry->typeName, entry->handle));
+    entry->handle = {};
+    m_impl->DropEntry(*entry);
+    m_impl->residentBytes -= (std::min)(m_impl->residentBytes, bytes);
+    m_impl->overBudget = m_impl->config.residentBudgetBytes != 0
+        && m_impl->residentBytes > m_impl->config.residentBudgetBytes;
+    if (!m_impl->overBudget) m_impl->overBudgetReported = false;
+    ++m_impl->evictions;
+    return true;
+}
+
 void AssetStreamer::SetLeasePriority(std::uint64_t leaseId, AssetPriority priority)
 {
     const auto it = m_impl->leases.find(leaseId);

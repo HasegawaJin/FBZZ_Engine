@@ -380,6 +380,9 @@ public:
     FBZZ_ENGINE_API bool RetryRaw(std::string_view typeName, RawAssetHandle handle);
     FBZZ_ENGINE_API bool ReloadRaw(std::string_view typeName, RawAssetHandle handle);
     FBZZ_ENGINE_API bool CompleteNowRaw(std::string_view typeName, RawAssetHandle handle);
+    /// @note Main-thread-only explicit retirement. Active direct or dependency leases and pending work refuse eviction.
+    /// @return True when the unused entry is retired; synchronous pins and channel-owned external users remain protected.
+    [[nodiscard]] FBZZ_ENGINE_API bool EvictUnusedRaw(std::string_view typeName, const std::string& reference);
     FBZZ_ENGINE_API void ReleaseLease(std::uint64_t leaseId);
     FBZZ_ENGINE_API void SetLeasePriority(std::uint64_t leaseId, AssetPriority priority);
     FBZZ_ENGINE_API void SetLeaseQuality(std::uint64_t leaseId, AssetQuality quality);

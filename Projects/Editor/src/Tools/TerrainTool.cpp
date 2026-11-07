@@ -1662,8 +1662,12 @@ void TerrainTool::DrawScatterSection(EditorContext& context, scene::GameObject* 
     ImGui::DragFloat("Spacing [world m]", &m_scatterSpacing, 0.1f, 0.25f, 10000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::SliderFloat("Density", &m_scatterDensity, 0.0f, 1.0f);
     DrawScatterSettings(terrainObject);
+    ImGui::DragInt("Placements per 128 m Cell", &m_scatterMaxPlacementsPerCell, 1.0f, 0, 1000000,
+        "%d", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::SetItemTooltip("0 leaves the number of placements per cell unlimited.");
     auto args = ScatterArguments(terrainObject ? terrainObject->instanceId : std::string{},
         targetObject ? targetObject->instanceId : std::string{});
+    args.Set("maxPlacementsPerCell", m_scatterMaxPlacementsPerCell);
     ImGui::BeginDisabled(!terrainObject || !targetObject || !CanInvokeOperator(context, "terrain.scatter", args));
     if (ImGui::Button("Bake Placements", {-1.0f, 0.0f}))
         m_scatterStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.scatter", args));

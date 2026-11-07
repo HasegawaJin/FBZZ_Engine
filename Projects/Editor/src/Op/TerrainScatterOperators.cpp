@@ -62,6 +62,7 @@ bool SameComponent(const scene::InstancedMeshComponent& current, const scene::In
     const std::shared_ptr<const renderer::InstanceSetData>& expectedSnapshot)
 {
     return current.m_enabled == expected.m_enabled && current.m_castShadows == expected.m_castShadows
+        && current.m_vegetationBudget == expected.m_vegetationBudget
         && current.m_maxDistance == expected.m_maxDistance && current.m_instanceSetRef.path == expected.m_instanceSetRef.path
         && current.m_instanceSetRef.type == expected.m_instanceSetRef.type && current.Snapshot() == expectedSnapshot;
 }
@@ -245,8 +246,10 @@ bool ReadSettings(const OpArgs& args, TerrainScatterSettings& settings)
     settings.spacing = args.GetFloat("spacing", settings.spacing);
     settings.density = args.GetFloat("density", settings.density);
     const int seed = args.GetInt("seed", 1), maxInstances = args.GetInt("maxInstances", 100000);
-    if (seed < 0 || maxInstances < 1) return false;
+    const int cellCap = args.GetInt("maxPlacementsPerCell", 0);
+    if (seed < 0 || maxInstances < 1 || cellCap < 0) return false;
     settings.seed = static_cast<uint32_t>(seed); settings.maxInstances = static_cast<uint32_t>(maxInstances);
+    settings.maxPlacementsPerCell = static_cast<uint32_t>(cellCap);
     settings.minHeight = args.GetFloat("minHeight", settings.minHeight); settings.maxHeight = args.GetFloat("maxHeight", settings.maxHeight);
     settings.minSlope = args.GetFloat("minSlope", settings.minSlope); settings.maxSlope = args.GetFloat("maxSlope", settings.maxSlope);
     settings.layer = args.GetInt("layer", settings.layer); settings.layerThreshold = args.GetFloat("layerThreshold", settings.layerThreshold);
@@ -849,7 +852,8 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
         Parameter("stroke", OpParamType::Data, std::monostate{}, "省略時は全置換。指定時は world XYZ の円の中心列 (1〜512 点)。"),
         Parameter("brushRadius", OpParamType::Float, 5.0f, "stroke の各円の半径 [world m]。0.25〜500。"),
         Parameter("erase", OpParamType::Bool, false, "true は stroke の円内の既存配置を消去する。"),
-        Parameter("maxInstances", OpParamType::Int, 100000, "配置上限。1〜1000000。超過時は全体を拒否。")};
+        Parameter("maxInstances", OpParamType::Int, 100000, "配置上限。1〜1000000。超過時は全体を拒否。"),
+        Parameter("maxPlacementsPerCell", OpParamType::Int, 0, "全地形散布の128mセルあたりの配置上限。0で制限なし。")};
     op.params[0].required = true; op.params[1].required = true;
     op.poll = [](const OpContext& context, const OpArgs&) {
         return context.ctx.activeScene && !context.ctx.projectRoot.empty()

@@ -55,6 +55,9 @@ void RegisterControlPointOperators(OperatorRegistry& registry);
 void RegisterTerrainOperators(OperatorRegistry& registry);
 void RegisterTerrainGrassOperators(OperatorRegistry& registry);
 
+/// @brief World cell persistence, PCG authoring, asynchronous streaming and HLOD operations.
+void RegisterWorldPartitionOperators(OperatorRegistry& registry);
+
 /// @brief アセットを開く操作、Prefab 編集モードと AI Command Bus の待受制御。
 void RegisterDocumentOperators(OperatorRegistry& registry);
 

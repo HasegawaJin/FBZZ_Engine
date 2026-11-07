@@ -259,6 +259,7 @@ private:
     float m_scatterDownslopeJitter = 0.0f;
     float m_scatterEmbedDepth = 0.0f;
     int m_scatterMaxInstances = 100000;
+    int m_scatterMaxPlacementsPerCell = 0;
     /// @}
 
     /// @return GUID から解決した選択先。削除・無効化した対象を別の地形へ自動で置き換えない。

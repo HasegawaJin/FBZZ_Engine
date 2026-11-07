@@ -8,6 +8,7 @@
 #include "Engine/Core/Cursor.hpp"
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneSerializer.hpp"
+#include <Engine/Scene/WorldPartition.hpp>
 #include <Engine/Scene/ControlPointAdapters.hpp>
 #include "Engine/Scene/Fields/FlowFieldSystem.hpp"
 #include "Engine/Scene/Systems/TransformSystem.hpp"
@@ -376,6 +377,8 @@ void SceneManager::Update(float dt, physics::World& world)
 
     Scene* scene = CurrentScene();
     if (!scene) return;
+
+    UpdateWorldPartitionRuntime(*scene, GetResourceManager(), m_playing || m_simulating);
 
     if (!m_simulating && !m_playing) {
         m_staticBakeValidationScene = 0; m_staticBakeValidationSucceeded = true;

@@ -126,3 +126,8 @@ FBZZ_COMPONENT_ENTRY(struct, LightProbeVolumeComponent, ComponentRegistration<Li
 FBZZ_COMPONENT_ENTRY(struct, WaterZoneComponent, FBZZ_COMPONENT(WaterZoneComponent, Terrain, "Water Zone"))
 FBZZ_COMPONENT_ENTRY(struct, TargetPointComponent, FBZZ_COMPONENT(TargetPointComponent, Misc, "Target Point"))
 FBZZ_COMPONENT_ENTRY(struct, WaterExclusionComponent, FBZZ_COMPONENT(WaterExclusionComponent, Terrain, "Water Exclusion"))
+FBZZ_COMPONENT_ENTRY(struct, WorldPartitionComponent, FBZZ_COMPONENT(WorldPartitionComponent, Environment, "World Partition"))
+FBZZ_COMPONENT_ENTRY(struct, WorldPcgVolumeComponent, FBZZ_COMPONENT(WorldPcgVolumeComponent, Environment, "PCG Volume"))
+FBZZ_COMPONENT_ENTRY(struct, WorldPcgGeneratedComponent, FBZZ_COMPONENT(WorldPcgGeneratedComponent, Environment, "PCG Generated Output"))
+FBZZ_COMPONENT_ENTRY(struct, WorldBiomeVolumeComponent, FBZZ_COMPONENT(WorldBiomeVolumeComponent, Environment, "Biome Volume"))
+FBZZ_COMPONENT_ENTRY(struct, WorldHlodSourceComponent, FBZZ_COMPONENT(WorldHlodSourceComponent, Environment, "HLOD Source"))

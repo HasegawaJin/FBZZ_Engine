@@ -14,6 +14,7 @@
 #include "../Util/TomlFloatNormalization.hpp"
 #include <toml++/toml.hpp>
 #include <algorithm>
+#include <limits>
 #include <sstream>
 
 namespace fbzz::scene {
@@ -144,14 +145,33 @@ void ReadHoles(const toml::table& terrainTbl, TerrainComponent& tc)
     if (set == 0) tc.holeData.clear();
 }
 
-bool ReadTerrainData(const toml::table& terrainTbl, int64_t formatVersion, TerrainComponent& tc)
+bool ReadTerrainData(const toml::table& terrainTbl, int64_t formatVersion, TerrainComponent& tc, bool strictGeometry)
 {
-    tc.columns          = static_cast<int>(terrainTbl["columns"].value_or(int64_t{129}));
-    tc.rows             = static_cast<int>(terrainTbl["rows"].value_or(int64_t{129}));
+    const auto columns = terrainTbl["columns"].value<int64_t>();
+    const auto rows = terrainTbl["rows"].value<int64_t>();
+    const auto columnCount = columns.value_or(int64_t{129});
+    const auto rowCount = rows.value_or(int64_t{129});
+    const auto* heightArr = terrainTbl["heightData"].as_array();
+    if (strictGeometry) {
+        constexpr auto maxDimension = (std::numeric_limits<int>::max)();
+        if ((terrainTbl.contains("columns") && !columns) || (terrainTbl.contains("rows") && !rows)
+            || columnCount <= 0 || rowCount <= 0 || columnCount > maxDimension || rowCount > maxDimension)
+            return false;
+        const auto vertices = static_cast<uint64_t>(columnCount) * static_cast<uint64_t>(rowCount);
+        if (!heightArr || heightArr->size() != vertices
+            || vertices > (std::numeric_limits<size_t>::max)() / TERRAIN_SPLAT_SLOTS)
+            return false;
+    }
+
+    tc.columns          = static_cast<int>(columnCount);
+    tc.rows             = static_cast<int>(rowCount);
     tc.cellSize         = static_cast<float>(terrainTbl["cellSize"].value_or(1.0));
     tc.maxHeight        = static_cast<float>(terrainTbl["maxHeight"].value_or(30.0));
     tc.chunkSize        = static_cast<int>(terrainTbl["chunkSize"].value_or(int64_t{32}));
     tc.heightBlendDepth = static_cast<float>(terrainTbl["heightBlendDepth"].value_or(0.2));
+    if (strictGeometry && (!std::isfinite(tc.cellSize) || tc.cellSize <= 0.0f
+        || !std::isfinite(tc.maxHeight) || !std::isfinite(tc.heightBlendDepth)))
+        return false;
     if (const auto* layerArr = terrainTbl["layerMaterials"].as_array()) {
         const size_t layerCount = (std::min)(layerArr->size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
         tc.layerMaterials.resize(layerCount);
@@ -160,10 +180,15 @@ bool ReadTerrainData(const toml::table& terrainTbl, int64_t formatVersion, Terra
     }
 
     tc.heightData.clear();
-    if (auto* heightArr = terrainTbl["heightData"].as_array()) {
+    if (heightArr) {
         tc.heightData.reserve(heightArr->size());
-        for (auto& v : *heightArr)
-            tc.heightData.push_back(static_cast<float>(v.value_or(0.0)));
+        for (const auto& v : *heightArr) {
+            const auto height = v.value<double>();
+            if (strictGeometry && (!height || !std::isfinite(*height)
+                || std::abs(*height) > (std::numeric_limits<float>::max)()))
+                return false;
+            tc.heightData.push_back(static_cast<float>(height.value_or(0.0)));
+        }
     }
     if (tc.heightData.size() != tc.VertexCount()) {
         if (!tc.heightData.empty())
@@ -250,6 +275,16 @@ bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::
 
 bool TerrainAssetSerializer::Load(const std::string& path, TerrainComponent& component)
 {
+    return LoadCore(path, component, false);
+}
+
+bool TerrainAssetSerializer::LoadStrict(const std::string& path, TerrainComponent& component)
+{
+    return LoadCore(path, component, true);
+}
+
+bool TerrainAssetSerializer::LoadCore(const std::string& path, TerrainComponent& component, bool strictGeometry)
+{
     if (path.empty()) return false;
 
     std::string text;
@@ -258,10 +293,20 @@ bool TerrainAssetSerializer::Load(const std::string& path, TerrainComponent& com
         return false;
     }
 
-    return Deserialize(text, component);
+    return DeserializeCore(text, component, strictGeometry);
 }
 
 bool TerrainAssetSerializer::Deserialize(std::string_view text, TerrainComponent& component)
+{
+    return DeserializeCore(text, component, false);
+}
+
+bool TerrainAssetSerializer::DeserializeStrict(std::string_view text, TerrainComponent& component)
+{
+    return DeserializeCore(text, component, true);
+}
+
+bool TerrainAssetSerializer::DeserializeCore(std::string_view text, TerrainComponent& component, bool strictGeometry)
 {
     toml::parse_result result = toml::parse(text);
     if (!result) {
@@ -278,7 +323,7 @@ bool TerrainAssetSerializer::Deserialize(std::string_view text, TerrainComponent
     const int64_t formatVersion = doc["terrain_asset"]["format_version"].value_or(int64_t{1});
 
     TerrainComponent next = component;
-    if (!ReadTerrainData(*terrainTbl, formatVersion, next)) return false;
+    if (!ReadTerrainData(*terrainTbl, formatVersion, next, strictGeometry)) return false;
     next.RequestSurfaceRebuild();
     component = std::move(next);
     return true;

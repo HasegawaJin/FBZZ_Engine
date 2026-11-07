@@ -143,6 +143,11 @@ public:
     /// @note 入力順に子孫から退役し、所有配列は一度だけ整理する。失効 ID と重複 ID は無視する。
     /// @note callback が Scene 世代を変えた場合は旧要求の続きを実行しない。
     FBZZ_ENGINE_API void DestroyGameObjects(std::span<const EntityID> ids);
+    /// @note Stale IDs are ignored. Every surviving child must belong to the supplied ownership set.
+    [[nodiscard]] FBZZ_ENGINE_API bool CanDestroyOwnedGameObjects(std::span<const EntityID> ids) const;
+    /// @note Retires owned children before parents and refuses foreign descendants, including those attached by destruction callbacks.
+    /// @return False preserves every foreign object; callbacks may already have retired some owned children.
+    [[nodiscard]] FBZZ_ENGINE_API bool DestroyOwnedGameObjects(std::span<const EntityID> ids);
     FBZZ_ENGINE_API bool MoveGameObject(EntityID id, int offset);
     FBZZ_ENGINE_API bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
     /// @brief ルート GO をルート同士の並び順で newRootIndex 位置へ移動する。Hierarchy のドラッグ並べ替え用。
@@ -272,7 +277,7 @@ private:
     FlowFieldFrame   m_flowFrame;
 
     FBZZ_ENGINE_API EntityID TryAllocateEntity();
-    FBZZ_ENGINE_API void     DestroyImmediate(EntityID id);
+    FBZZ_ENGINE_API bool     DestroyImmediate(EntityID id, const std::vector<EntityID>* ownership = nullptr);
     /// @note 生存個体の相対順を保って空位置を詰め、所有位置を更新する。
     /// @see Docs/design/ecs-bulk-processing.md
     FBZZ_ENGINE_API void     CompactGameObjects();

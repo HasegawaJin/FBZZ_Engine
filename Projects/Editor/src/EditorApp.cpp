@@ -63,6 +63,7 @@
 #include "Panels/FluidEditor/FluidEditorExtras.hpp"
 #include <Editor/Panels/SpriteEditorPanel.hpp>
 #include <Editor/Panels/MapEditorPanel.hpp>
+#include <Editor/Panels/WorldAuthoringPanel.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/Panels/VolumeFlipbookBakePanel.hpp>
 #include <Editor/Panels/AssetMaintenancePanel.hpp>
@@ -594,6 +595,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_mapEditorPanel = mapEditor.get();
         m_panels.push_back(std::move(mapEditor));
     }
+    m_panels.push_back(std::make_unique<WorldAuthoringPanel>());
     m_panels.push_back(std::make_unique<DependencyViewPanel>());
     {
         auto iblBake = std::make_unique<IblBakePanel>();

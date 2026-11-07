@@ -9,6 +9,7 @@
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include "Engine/Scene/Scene.hpp"
 #include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/WorldPartition.hpp>
 #include <Engine/Renderer/RenderSettings.hpp>
 #include "Engine/Scene/PrefabPool.hpp"
 #include "Engine/Scene/SceneRenderResources.hpp"
@@ -193,6 +194,7 @@ Scene::Scene() : m_renderSceneGeneration(++s_renderSceneGeneration),
 
 Scene::~Scene()
 {
+    ForgetWorldPartitionRuntime(*this);
     PrefabPool::Clear(*this);
     ManagedScriptRuntime::RetireScene(*this);
     /// @note 終了済み subsystem を Script が触らないよう、破棄では Clear / OnDestroy を呼ばない。
@@ -219,6 +221,7 @@ Scene& Scene::operator=(Scene&& other) noexcept
     if (this == &other) return *this;
     assert(m_destroyBatchDepth == 0 && other.m_destroyBatchDepth == 0 && "Scene move requires no active destruction callback");
 
+
     Clear();
 
     m_generations = std::move(other.m_generations);
@@ -240,6 +243,7 @@ Scene& Scene::operator=(Scene&& other) noexcept
     InvalidateFlowFrame();
 
     FixupOwnership();
+    TransferWorldPartitionRuntime(other, *this);
     other.Clear();
     return *this;
 }
@@ -261,9 +265,21 @@ EntityID Scene::TryAllocateEntity() {
     return EntityID{ idx, m_generations[idx] };
 }
 
-void Scene::DestroyImmediate(EntityID id) {
+bool Scene::DestroyImmediate(EntityID id, const std::vector<EntityID>* ownership) {
     GameObject* go = GetGameObject(id);
-    if (!go || go->m_destroying) return;
+    if (!go || go->m_destroying) return true;
+    const auto allowed = [&](EntityID value) {
+        if (!ownership) return true;
+        const auto found = std::lower_bound(ownership->begin(), ownership->end(), value.index,
+            [](EntityID candidate, uint32_t index) { return candidate.index < index; });
+        return found != ownership->end() && *found == value;
+    };
+    const auto childrenOwned = [&] {
+        if (!ownership) return true;
+        for (const auto child : go->m_children) if (IsValid(child) && !allowed(child)) return false;
+        return true;
+    };
+    if (!allowed(id) || !childrenOwned()) return false;
     go->m_destroying = true;
     const uint64_t generation = m_renderSceneGeneration;
     std::vector<DestroyScriptTarget> destroyScripts;
@@ -274,14 +290,15 @@ void Scene::DestroyImmediate(EntityID id) {
         /// @note コピーして走査
         std::vector<EntityID> children = go->m_children;
         for (EntityID child : children) {
-            DestroyImmediate(child);
-            if (generation != m_renderSceneGeneration) return;
+            if (!DestroyImmediate(child, ownership)) { if (GetGameObject(id) == go) go->m_destroying = false; return false; }
+            if (generation != m_renderSceneGeneration) return false;
         }
 
-        if (generation != m_renderSceneGeneration || GetGameObject(id) != go) return;
+        if (generation != m_renderSceneGeneration || GetGameObject(id) != go) return false;
+        if (!childrenOwned()) { go->m_destroying = false; return false; }
 
         /// @note 親から切り離す
-        if (go->m_parent.IsValid()) {
+        if (!ownership && go->m_parent.IsValid()) {
             if (auto* parent = GetGameObject(go->m_parent)) {
                 auto& pc = parent->m_children;
                 pc.erase(std::remove(pc.begin(), pc.end(), id), pc.end());
@@ -291,7 +308,14 @@ void Scene::DestroyImmediate(EntityID id) {
 
     InvokeDestroyScripts(*this, destroyScripts);
     /// @note callback 後も個体の正確な世代を照合し、退役した旧個体や再利用 slot を二度解放しない。
-    if (generation != m_renderSceneGeneration || GetGameObject(id) != go) return;
+    if (generation != m_renderSceneGeneration || GetGameObject(id) != go) return false;
+    if (!childrenOwned()) { go->m_destroying = false; return false; }
+    if (ownership && go->m_parent.IsValid()) {
+        if (auto* parent = GetGameObject(go->m_parent)) {
+            auto& children = parent->m_children;
+            children.erase(std::remove(children.begin(), children.end(), id), children.end());
+        }
+    }
 
     /// @note Component が抱えている GPU リソースを、Component を捨てる前に返す。
     ReleaseEntityOwnedGpuResources(*this, id);
@@ -310,6 +334,7 @@ void Scene::DestroyImmediate(EntityID id) {
     const size_t storageIndex = go->m_sceneStorageIndex;
     --m_gameObjectCount;
     m_gameObjects[storageIndex].reset();
+    return true;
 }
 
 void Scene::CompactGameObjects()
@@ -571,6 +596,43 @@ void Scene::DestroyGameObjects(std::span<const EntityID> ids)
     if (--m_destroyBatchDepth == 0) CompactGameObjects();
 }
 
+bool Scene::CanDestroyOwnedGameObjects(std::span<const EntityID> ids) const
+{
+    std::vector<EntityID> owned;
+    owned.reserve(ids.size());
+    for (const auto id : ids) if (IsValid(id)) owned.push_back(id);
+    std::sort(owned.begin(), owned.end(), [](EntityID a, EntityID b) { return a.index < b.index; });
+    owned.erase(std::unique(owned.begin(), owned.end()), owned.end());
+    for (const auto id : owned) {
+        const auto* object = GetGameObject(id);
+        for (const auto child : object->m_children) {
+            if (!IsValid(child)) continue;
+            const auto found = std::lower_bound(owned.begin(), owned.end(), child.index,
+                [](EntityID value, uint32_t index) { return value.index < index; });
+            if (found == owned.end() || *found != child) return false;
+        }
+    }
+    return true;
+}
+
+bool Scene::DestroyOwnedGameObjects(std::span<const EntityID> ids)
+{
+    if (!CanDestroyOwnedGameObjects(ids)) return false;
+    std::vector<EntityID> owned;
+    owned.reserve(ids.size());
+    for (const auto id : ids) if (IsValid(id)) owned.push_back(id);
+    std::sort(owned.begin(), owned.end(), [](EntityID a, EntityID b) { return a.index < b.index; });
+    owned.erase(std::unique(owned.begin(), owned.end()), owned.end());
+    const uint64_t generation = m_renderSceneGeneration;
+    bool complete = true;
+    ++m_destroyBatchDepth;
+    for (const auto id : owned) {
+        if (generation != m_renderSceneGeneration || !DestroyImmediate(id, &owned)) { complete = false; break; }
+    }
+    if (--m_destroyBatchDepth == 0) CompactGameObjects();
+    return complete;
+}
+
 bool Scene::MoveGameObject(EntityID id, int offset)
 {
     CompactGameObjects();
@@ -750,6 +812,7 @@ void Scene::Clear()
     m_renderSceneGeneration = ++s_renderSceneGeneration;
     m_rendererOwnerRevision = AllocateComponentLifetime();
     InvalidateFlowFrame();
+    ForgetWorldPartitionRuntime(*this);
 }
 
 renderer::PostProcessSettings& Scene::GetRuntimePostProcessSettings()

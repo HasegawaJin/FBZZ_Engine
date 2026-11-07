@@ -47,6 +47,8 @@
 #include "Components/WaterComponent.hpp"
 #include "Components/WaterZoneComponent.hpp"
 #include "Components/WaterExclusionComponent.hpp"
+#include "Components/WorldPartitionComponent.hpp"
+#include "Components/WorldPcgAuthoringComponent.hpp"
 #include "Components/TargetPointComponent.hpp"
 #include "Components/VolumetricCloudComponent.hpp"
 #include "Components/TrailComponent.hpp"

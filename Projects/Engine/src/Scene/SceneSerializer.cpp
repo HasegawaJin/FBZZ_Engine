@@ -2531,6 +2531,19 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     const std::string& tomlText, renderer::ResourceManager* resources,
     const std::string& sourcePath)
 {
+    return LoadFromTextCore(tomlText, resources, sourcePath, false);
+}
+
+std::unique_ptr<Scene> SceneSerializer::LoadPassiveDataFromText(
+    const std::string& tomlText, const std::string& sourcePath)
+{
+    return LoadFromTextCore(tomlText, nullptr, sourcePath, true);
+}
+
+std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
+    const std::string& tomlText, renderer::ResourceManager* resources,
+    const std::string& sourcePath, bool passiveScripts)
+{
     auto result = toml::parse(tomlText);
     if (!result) {
         /// @note 行と列まで出す。壊れたシーンは目視で原因を探すのが難しい。
@@ -2869,7 +2882,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             smr.enabled     = (*smrTbl)["enabled"].value_or(true);
             smr.castShadows = (*smrTbl)["castShadows"].value_or(true);
             smr.modelPath   = (*smrTbl)["modelPath"].value_or(std::string{});
-            if (!smr.modelPath.empty()) {
+            if (!smr.modelPath.empty() && !passiveScripts) {
                 smr.model = asset::AssetManager::LoadAndGet<asset::Model>(smr.modelPath);
                 if (!smr.model)
                     FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
@@ -3197,11 +3210,16 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             TerrainComponent tc{};
             tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
             tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
+            const auto* inlineData = (*terrainTbl)["inlineData"].as_table();
+            const bool passiveSnapshot = passiveScripts && inlineData;
 
-            if (!tc.terrainAssetPath.empty()) {
+            if (!tc.terrainAssetPath.empty() && !passiveSnapshot) {
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(sourcePath, tc.terrainAssetPath);
-                if (!TerrainAssetSerializer::Load(terrainDiskPath, tc)) {
+                const bool loaded = passiveScripts ? TerrainAssetSerializer::LoadStrict(terrainDiskPath, tc)
+                    : TerrainAssetSerializer::Load(terrainDiskPath, tc);
+                if (!loaded) {
+                    if (passiveScripts) return nullptr;
                     FBZZ_LOG_WARN("SceneSerializer: failed to load terrain asset '%s'",
                                   terrainDiskPath.c_str());
                     tc.InitFlat(0.0f);
@@ -3209,14 +3227,19 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
                 /// @note アセットロード後も Scene 側の enabled / terrainAssetPath を優先する
                 tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
                 tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
-            } else {
+            } else if (!passiveSnapshot) {
                 tc.InitFlat(0.0f);
             }
-            if (const auto* inlineData = (*terrainTbl)["inlineData"].as_table()) {
+            if (inlineData) {
                 std::ostringstream text;
                 text << *inlineData;
-                if (!TerrainAssetSerializer::Deserialize(text.str(), tc))
+                const auto serialized = text.str();
+                const bool loaded = passiveScripts ? TerrainAssetSerializer::DeserializeStrict(serialized, tc)
+                    : TerrainAssetSerializer::Deserialize(serialized, tc);
+                if (!loaded) {
+                    if (passiveScripts) return nullptr;
                     FBZZ_LOG_WARN("SceneSerializer: invalid inline terrain geometry");
+                }
             }
 
             /// @note 層数は可変。配列の長さをそのまま層数にする (番号が層数を超える頂点は描画が既定層で補う)。
@@ -3314,6 +3337,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
             entry.serialized->fieldsToml = preservedFieldsToml;
             entry.serialized->savedScriptId = entry.savedScriptId;
 
+            if (passiveScripts) return;
             auto script = ScriptFactory::Create(type, entry.savedScriptId);
             if (script) {
                 script->SetContext(scene.get(), &go);
@@ -3447,7 +3471,7 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     }
 
     /// @note [environment] を持たないシーンは «半径 0 の Uniform» を環境風と読んでいた頃のもの。
-    if (!hasEnvironmentTable) MigrateAmbientFlowFields(*scene);
+    if (!passiveScripts && !hasEnvironmentTable) MigrateAmbientFlowFields(*scene);
     /// @note GameObject配列の再配置後に非所有contextを張り直し、callback内の自己参照を安定させる。
     for (auto& gameObject : scene->GameObjects()) {
         if (auto* scripts = gameObject.GetComponent<ScriptComponent>()) {

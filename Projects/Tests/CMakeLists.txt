@@ -168,6 +168,13 @@ fbzz_add_test_suite(FluidAuto
 # @note --- Engine -----------------------------------------------------------------
 fbzz_add_test_suite(EngineAuto
     SOURCES
+        Engine/Auto/WorldCellTests.cpp
+        Engine/Auto/WorldPcgTests.cpp
+        Engine/Auto/WorldHlodTests.cpp
+        Engine/Auto/WorldPartitionManifestTests.cpp
+        Engine/Auto/WorldPartitionTests.cpp
+        Engine/Auto/CellAssetStreamingTests.cpp
+        Engine/Auto/SceneForestTests.cpp
         Engine/Auto/RagdollRigTests.cpp
         Engine/Auto/RagdollDefinitionTests.cpp
         Engine/Auto/RagdollControlsTests.cpp
@@ -382,6 +389,9 @@ target_compile_definitions(FBZZTestsRayTracingEngineObj PRIVATE FBZZ_ENGINE_SHAD
 # @note FBZZEditor は STATIC なので、テストが参照するオブジェクトだけが引き込まれる。
 fbzz_add_test_suite(EditorAuto
   SOURCES
+    Editor/Auto/WorldPartitionOperatorTests.cpp
+    Editor/Auto/WorldPcgAuthoringTests.cpp
+    Editor/Auto/WorldCellBakingTests.cpp
     Editor/Auto/AnimatorMaskAuditTests.cpp
     Editor/Auto/AppIconWriterTests.cpp
     Editor/Auto/AssetBrowserExplorerTests.cpp

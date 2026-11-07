@@ -27,6 +27,14 @@ public:
     /// @brief path から component に地形編集データを読み込む。
     /// @note 読み込み後は再構築 dirty を立てる。
     FBZZ_ENGINE_API static bool Load(const std::string& path, TerrainComponent& component);
+
+    /// @note Passive cell preparation requires complete height samples instead of the ordinary flat fallback.
+    [[nodiscard]] FBZZ_ENGINE_API static bool LoadStrict(const std::string& path, TerrainComponent& component);
+    [[nodiscard]] FBZZ_ENGINE_API static bool DeserializeStrict(std::string_view text, TerrainComponent& component);
+
+private:
+    static bool LoadCore(const std::string& path, TerrainComponent& component, bool strictGeometry);
+    static bool DeserializeCore(std::string_view text, TerrainComponent& component, bool strictGeometry);
 };
 
 } /// @note namespace fbzz::scene

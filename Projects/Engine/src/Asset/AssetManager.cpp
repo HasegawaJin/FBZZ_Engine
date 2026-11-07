@@ -6,6 +6,7 @@
 /// @brief Load<T>() はヘッダーでインライン化し、ここでは型ごとの特殊化と Init を実装する。
 #include <Engine/Asset/ModelSource.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/CellAssetStreaming.hpp>
 #include <Core/ExternalCallbackBoundary.hpp>
 #include "BundledModel.hpp"
 #include "ModelStreamChannel.hpp"
@@ -596,6 +597,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
     AssetStreamer::Engine().RegisterChannel(CreateModelStreamChannel(resources));
     AssetStreamer::Engine().RegisterChannel(CreateModelAssetStreamChannel(resources));
     AssetStreamer::Engine().RegisterChannel(CreateMaterialStreamChannel());
+    AssetStreamer::Engine().RegisterChannel(CreateMeshInstancesStreamChannel());
 }
 
 void AssetManager::UnloadAll()

@@ -125,7 +125,15 @@ const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& referen
     auto extension = util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(path).extension());
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
     if (extension == ".meshinstances") {
-        const auto handle = AssetManager::Load<MeshInstancesAsset>(reference);
+        AssetHandle<MeshInstancesAsset> handle;
+        auto& store = AssetStore<MeshInstancesAsset>::Get();
+        const auto found = store.cache.find(AssetManager::CanonicalKey(reference));
+        if (found != store.cache.end()) {
+            handle = found->second;
+            /// @note A renderer lookup must not turn an outstanding asynchronous placement request into a synchronous pin.
+            if (store.IsPending(handle)) return nullptr;
+        }
+        if (!AssetManager::Get(handle)) handle = AssetManager::Load<MeshInstancesAsset>(reference);
         const auto* asset = AssetManager::Get(handle);
         if (asset && loaded.size() < 4096 && detail::IsCacheableLoadedReference(reference)) loaded[reference].placements = handle;
         return asset ? &asset->instances : nullptr;
