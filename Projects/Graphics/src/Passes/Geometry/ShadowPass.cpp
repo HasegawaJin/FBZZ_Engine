@@ -413,7 +413,8 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     std::array<InstanceShadowView, kMaxShadowCascades + kMaxPunctualShadows> visibilityViews;
     for (int index = 0; index < directionalViewCount; ++index) {
         directionalViews[index] = ctx.shadowCascades[index];
-        visibilityViews[index] = {directionalViews[index].frustum, true};
+        /// @note The two near cascades retain projected-size LOD for readable branch and canopy shadows.
+        visibilityViews[index] = {directionalViews[index].frustum, true, index < 2};
     }
     for (int index = 0; index < localViewCount; ++index) {
         punctualViews[index] = ctx.punctualShadowViews[index];

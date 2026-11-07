@@ -223,7 +223,7 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
 {
     if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
     constexpr uint32_t PLACEMENTS_PER_CELL = 64;
-    constexpr std::array<float, 3> RED_BY_LOD{0.16f, 0.52f, 0.88f};
+    constexpr std::array<float, 4> RED_BY_LOD{0.16f, 0.52f, 0.88f, 0.98f};
     const auto scene = Scene(2 * PLACEMENTS_PER_CELL);
     auto& input = scene->instances.front();
     auto placements = std::make_shared<r::InstanceSetData>(*input.data);
@@ -236,8 +236,8 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
         placement.scale = {0.5f, 0.5f, 0.5f};
     }
     input.data = placements;
-    input.lodCount = 3;
-    input.lodHeights = {0.01f, 0.005f, 0.0f, 0.0f};
+    input.lodCount = 4;
+    input.lodHeights = {0.01f, 0.005f, 0.002f, 0.0f};
     input.localBoundsRadius = 1.2f;
     input.parts.push_back({input.parts.back().mesh, 2});
 
@@ -250,6 +250,8 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
     }};
     input.parts.back().mesh.vertexBuffer = m_resources->CreateVertexBuffer(coarseVertices.data(), sizeof(coarseVertices), sizeof(r::Vertex));
     ASSERT_TRUE(input.parts.back().mesh.vertexBuffer);
+    /// @note LOD3 uses the original depth. If the budget forces it, the caster is counted as a detailed shadow.
+    input.parts.push_back({input.parts.front().mesh, 3});
     for (auto& part : input.parts) {
         InstanceMaterial material;
         material.albedo = {RED_BY_LOD[part.lod], 0.2f, 0.2f, 1.0f};
@@ -272,7 +274,7 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
     ASSERT_EQ(budgeted.size(), unbudgeted.size());
     ASSERT_EQ(budgetedShadow.size(), unbudgetedShadow.size());
 
-    std::array<std::array<uint32_t, 3>, 2> lodCounts{};
+    std::array<std::array<uint32_t, 4>, 2> lodCounts{};
     std::array<uint32_t, 2> highShadow{};
     const auto projection = m_camera.GetViewProjection();
     for (uint32_t index = 0; index < placements->placements.size(); ++index) {
@@ -293,7 +295,7 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
         ASSERT_LT(unbudgetedShadow[pixel], 0.9999f);
         if (std::abs(budgetedShadow[pixel] - unbudgetedShadow[pixel]) < 0.002f) ++highShadow[cell];
     }
-    constexpr std::array<uint32_t, 3> EXPECTED_LOD_COUNTS{12, 28, 24};
+    constexpr std::array<uint32_t, 4> EXPECTED_LOD_COUNTS{12, 28, 24, 0};
     for (const auto& counts : lodCounts) EXPECT_EQ(counts, EXPECTED_LOD_COUNTS);
     for (const auto count : highShadow) EXPECT_EQ(count, 8u);
 
@@ -500,6 +502,9 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     const auto budgeted = renderAtlas(false);
     EXPECT_NE(budgeted, reference);
     Same(budgeted, renderAtlas(true));
+    /// @note The near cascade tiles occupy the upper half of the atlas.
+    ASSERT_EQ(budgeted.size(), reference.size());
+    EXPECT_TRUE(std::equal(reference.begin(), reference.begin() + reference.size() / 2, budgeted.begin()));
 }
 
 TEST_F(InstancedMeshTest, GpuOcclusionRowsFollowProjectionChangesAndInvalidViewsFailOpen)
@@ -653,7 +658,10 @@ TEST_F(InstancedMeshTest, UnchangedPlacementsUploadNothingAndOneEditUploadsOneRo
 TEST_F(InstancedMeshTest, ShadowAlphaCoverageMatchesStandardGBufferIncludingVertexColorContract)
 {
     const auto scene=Scene(130,0.2f);
+    /// @note Scene extraction for instance sets supplies the packed cutoff without the derived surface inputs.
+    for (auto& part : scene->instances.front().parts) part.mesh.material.surface.alphaCutoff = 0.0f;
     const auto colorDepth=Render(scene,2,false,true), shadowDepth=Render(scene,2,true,true);
+    Same(shadowDepth, Render(scene,0,true,true));
     ASSERT_EQ(colorDepth.size(),shadowDepth.size()); size_t differences=0,covered=0;
     for (size_t i=0;i<colorDepth.size();i+=4) {
         const bool color=colorDepth[i]>0.0001f,shadow=shadowDepth[i]<0.9999f;

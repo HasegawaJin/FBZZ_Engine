@@ -16,6 +16,7 @@ struct RenderPassContext;
 struct InstanceShadowView {
     math::Frustum frustum;
     bool directional = false;
+    bool preserveVegetationDetail = false;
 };
 
 class PreparedInstanceShadowBatch {

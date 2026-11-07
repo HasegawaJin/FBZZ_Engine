@@ -184,15 +184,21 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
     uint lod=view.counts.y-1;
     [loop] for (uint i=0;i<view.counts.y;++i) if (relativeHeight>=view.heights[i]) { lod=i; break; }
     const uint last=view.counts.y-1u;
-    if (view.vegetation.z!=0u && rank>=view.vegetation.z) lod=last;
-    else if (view.vegetation.x!=0u && rank>=view.vegetation.x) lod=max(lod,min(2u,last));
-    else if (view.vegetation.y!=0u && rank>=view.vegetation.y) lod=max(lod,min(1u,last));
 #if defined(FBZZ_INSTANCE_CASCADE_CULL)
+    const uint budgetedLod=view.vegetation.z!=0u && rank>=view.vegetation.z ? max(lod,min(2u,last)) : lod;
+    /// @note Grouped shadows reuse the terrain Hi-Z slot for the mask of near cascades that preserve detail.
+    const uint preserveDetailMask=view.terrainDepth.z;
     [loop] while (cascadeMask != 0u) {
-        AppendInstance(view, firstbitlow(cascadeMask), id, lod);
+        const uint cascade=firstbitlow(cascadeMask);
+        const uint shadowLod=(preserveDetailMask & (1u<<cascade))!=0u ? lod : budgetedLod;
+        AppendInstance(view, cascade, id, shadowLod);
         cascadeMask &= cascadeMask - 1u;
     }
 #else
+    /// @note Only the projected-size test can select the distant billboard LOD for shadow casters.
+    if (view.vegetation.z!=0u && rank>=view.vegetation.z) lod=max(lod,min(2u,last));
+    else if (view.vegetation.x!=0u && rank>=view.vegetation.x) lod=max(lod,min(2u,last));
+    else if (view.vegetation.y!=0u && rank>=view.vegetation.y) lod=max(lod,min(1u,last));
     AppendInstance(view, 0u, id, lod);
 #endif
 }

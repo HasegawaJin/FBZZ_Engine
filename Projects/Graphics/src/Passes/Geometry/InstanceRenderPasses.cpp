@@ -140,6 +140,13 @@ float LeafWindStrength(const RenderMaterial& material)
     return strength;
 }
 bool LeafAnimated(const RenderMaterial& material) { return LeafWindStrength(material)>0.0f; }
+bool UsesAlphaShadow(const RenderMaterial& material)
+{
+    /// @note Instance sets carry the normalized material buffer even when surface inputs have not been extracted.
+    float alphaCutoff = 0;
+    std::memcpy(&alphaCutoff, material.gbufferParams.data() + 64, sizeof(alphaCutoff));
+    return alphaCutoff>0.0f || material.surface.alphaCutoff>0.0f || LeafAnimated(material);
+}
 constexpr float POSITIVE_INFINITY=std::numeric_limits<float>::infinity();
 constexpr double MAX_FLOAT=static_cast<double>((std::numeric_limits<float>::max)());
 /// @note AᵀA の最大絶対行和は最大伸長の二乗の上界。float の外向き 1 ULP で集計と格納の丸めを吸収する。
@@ -458,7 +465,8 @@ uint32_t VegetationLod(const InstanceView& view,uint32_t lod,uint32_t rank)
 {
     const uint32_t last=view.counts[1]-1;
     const auto& limits=view.vegetation;
-    if (limits[2]!=0 && rank>=limits[2]) return last;
+    /// @note LOD3 can be a distant billboard. Leave it to the projected-size test for shadow casters.
+    if (limits[2]!=0 && rank>=limits[2]) return std::max(lod,std::min(2u,last));
     if (limits[0]!=0 && rank>=limits[0]) return std::max(lod,std::min(2u,last));
     if (limits[1]!=0 && rank>=limits[1]) return std::max(lod,std::min(1u,last));
     return lod;
@@ -721,7 +729,7 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         for (size_t i=0;i<material.textures.size();++i) draw.textures[i]=material.textures[i];
         ctx.resources.Update(cache.material,material.gbufferParams.data(),material.gbufferParams.size());
         draw.constantBuffers[2]=cache.material;
-        size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : (material.surface.alphaCutoff>0 || LeafAnimated(material)) ? 3u : 2u;
+        size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : UsesAlphaShadow(material) ? 3u : 2u;
         draw.shader=cache.shaders[shader];
         if (forwardPass) {
             draw.constantBuffers[2]=material.paramsBuffer; draw.constantBuffers[3]=ctx.handles.lightCB; draw.constantBuffers[4]=ctx.handles.shadowCB;
@@ -743,7 +751,7 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
             if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw); else SubmitCounted(ctx,draw);
         } else {
             draw.shader=pass==InstancePass::GBUFFER ? ctx.handles.gbufferShader : forwardPass ? material.shader
-                : pass==InstancePass::VELOCITY ? cache.shaders[9] : pass==InstancePass::SHADOW ? ((material.surface.alphaCutoff>0 || LeafAnimated(material)) ? cache.shaders[7] : ctx.handles.shadowShader) : cache.shaders[8];
+                : pass==InstancePass::VELOCITY ? cache.shaders[9] : pass==InstancePass::SHADOW ? (UsesAlphaShadow(material) ? cache.shaders[7] : ctx.handles.shadowShader) : cache.shaders[8];
             for (uint32_t slot : visible[part.lod]) {
                 PerObjectCB object{}; object.world=source.rows[slot].world;
                 object.worldInvTranspose=pass==InstancePass::VELOCITY ? source.rows[slot].previousWorld : source.rows[slot].normal;
@@ -754,7 +762,7 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
     }
 }
 void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* lightFrustum=nullptr,ResourceHandle<ConstantBufferTag> lightFrame={},
-    uint64_t excludedOwner=UINT64_MAX,const GpuHiZ* hierarchy=nullptr,bool enableGpu=true)
+    uint64_t excludedOwner=UINT64_MAX,const GpuHiZ* hierarchy=nullptr,bool enableGpu=true,bool preserveShadowDetail=false)
 {
     const auto scene=ctx.renderScene;
     if (!scene || scene->instances.empty()) return;
@@ -865,6 +873,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (pass==InstancePass::VELOCITY && !source.moved && std::none_of(input.parts.begin(),input.parts.end(),
             [](const auto& part) { return LeafAnimated(part.mesh.material); })) continue;
         auto view=View(ctx,input,frustum,pass==InstancePass::SHADOW);
+        if (preserveShadowDetail) view.vegetation[2]=0;
         if (pass==InstancePass::SELECTION) view.culling.w=0;
         const auto sourceVisibility=SourceVisibility(source,view,frustum);
         if (sourceVisibility!=VisibilityResult::VISIBLE) {
@@ -878,7 +887,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         }
         bool residentShaders=true;
         for (const auto& part : input.parts) {
-            const size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : (part.mesh.material.surface.alphaCutoff>0 || LeafAnimated(part.mesh.material)) ? 3u : 2u;
+            const size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : UsesAlphaShadow(part.mesh.material) ? 3u : 2u;
             residentShaders=residentShaders && ctx.resources.Get(cache.shaders[shader]);
         }
         VegetationCandidates vegetation;
@@ -1001,7 +1010,7 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
         if (!CanPrepareGpu(ctx,cache,input,*source,commonView.counts[0])) continue;
         const bool residentShaders=std::all_of(input.parts.begin(),input.parts.end(),[&](const auto& part) {
             const auto& material=part.mesh.material;
-            return ctx.resources.Get(cache.shaders[material.surface.alphaCutoff>0 || LeafAnimated(material) ? 3u : 2u])!=nullptr;
+            return ctx.resources.Get(cache.shaders[UsesAlphaShadow(material) ? 3u : 2u])!=nullptr;
         });
         if (!residentShaders) continue;
 
@@ -1016,16 +1025,19 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
                     cache.cascadeCullShader);
                 if (compute) {
                     std::array<InstanceView,kMaxShadowCascades> cascadeViews;
+                    uint32_t preserveDetailMask=0;
                     for (uint32_t i=0;i<cascadeCount;++i) {
                         auto& light=state.views[cascadeIndices[i]];
                         cascadeViews[i]=gpuView;
                         SetFrustumPlanes(cascadeViews[i],light.input.frustum);
+                        if (light.input.preserveVegetationDetail) preserveDetailMask|=1u<<i;
                         auto& set=light.sets.back();
                         set.receipt=commands.size();
                         set.selection={compute->uavBuffers[0],compute->uavBuffers[1],i*commonView.counts[2]};
                         set.firstGroupedCascade=i==0;
                     }
                     /// @note The directional variant reads one resident sphere and loops over the compacted light views.
+                    cascadeViews[0].terrainDepth[2]=preserveDetailMask;
                     cascadeViews[0].terrainDepth[3]=cascadeCount;
                     ctx.resources.Update(compute->srvBuffers[15],cascadeViews.data(),cascadeCount*sizeof(InstanceView));
                     commands.push_back(std::move(*compute));
@@ -1036,6 +1048,7 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
             if (light.sets.empty() || light.sets.back().sourceIndex!=sourceIndex || light.sets.back().receipt!=SIZE_MAX) continue;
             auto view=commonView;
             SetFrustumPlanes(view,light.input.frustum);
+            if (light.input.preserveVegetationDetail) view.vegetation[2]=0;
             auto compute=PrepareGpuBuffers(ctx,cache,input,*source,view,std::span{&light.input.frustum,1},cache.shaders[6]);
             if (!compute) continue;
             ctx.resources.Update(compute->srvBuffers[15],&view,sizeof(view));
@@ -1061,7 +1074,8 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
     const auto& view=state.views[viewIndex];
     if (state.cpuReplay || ctx.renderScene.get()!=state.scene.get()
         || state.policy!=PreparedInstanceShadowBatch::State::CapturePolicy(ctx)) {
-        Execute(ctx,InstancePass::SHADOW,&view.input.frustum,lightFrame,UINT64_MAX,nullptr,false);
+        Execute(ctx,InstancePass::SHADOW,&view.input.frustum,lightFrame,UINT64_MAX,nullptr,false,
+            view.input.preserveVegetationDetail);
         return;
     }
     const InstanceSubmission submission{ctx,*state.cache,InstancePass::SHADOW,view.input.frustum,lightFrame,false};
@@ -1072,7 +1086,13 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
         if (recorded && work.firstGroupedCascade) {
             FBZZ_PROFILE_SCOPE("ShadowVisibility::DirectionalCascadeDispatch");
         }
-        SubmitSet(submission,*entry.input,*entry.source,entry.view,recorded ? &work.selection : nullptr,nullptr);
+        if (!recorded && view.input.preserveVegetationDetail) {
+            auto selectionView=entry.view;
+            selectionView.vegetation[2]=0;
+            SubmitSet(submission,*entry.input,*entry.source,selectionView,nullptr,nullptr);
+        } else {
+            SubmitSet(submission,*entry.input,*entry.source,entry.view,recorded ? &work.selection : nullptr,nullptr);
+        }
     }
 }
 
