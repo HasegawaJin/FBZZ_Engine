@@ -250,6 +250,7 @@ struct WaterPSInput
     float baseWorldY : TEXCOORD12; ///< @brief 波を乗せる前の基準高さ。地形深度を同じ面から測る。
     float relativeSurfaceY : TEXCOORD13; ///< @brief WaterCB の world origin からの高さ。大きな座標で小さな波を失わない。
     float waveJacobian : TEXCOORD14; ///< @brief Gerstner 水平変位の実ヤコビアン。媒体と集光で共有する。
+    float4 waveMeshFade[4] : TEXCOORD15; ///< @brief 頂点で保持した各基波の振幅比。残差と相補的に補間する。
 };
 
 /// @brief 有限矩形の外周を保ったまま、軸の中央へ近景の頂点を集める。
@@ -792,10 +793,13 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     ResolveWaveSpread(rotation, scales);
 
     float3 depthState = WaterDepthState(basePos.xz);
+    [unroll]
+    for (int band = 0; band < 4; ++band) o.waveMeshFade[band] = 0.0f;
     [loop]
     for (int i = 0; i < WaterWaveCount(); ++i)
     {
         float fade = WaveMeshFade(g_waveParams[i].y, meshCellSize);
+        o.waveMeshFade[i >> 2][i & 3] = fade;
         [unroll]
         for (int part = 0; part < 2; ++part)
         {
@@ -1029,9 +1033,10 @@ float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float2 flowTravel, fl
 /// @note そのままの傾きを出すと «壁» に見える。
 /// @note 位相の画面周波数は dot(D, dWorldDxy)/波長。直交した伸びは位相を変えず、両画面軸が 0.5 周期/pixel 未満なら Nyquist を満たす。
 /// @note 群の斜めの包絡も位相幅へ含め、基本波に直交した長い footprint で群だけが alias することを防ぐ。
+/// @note セル幅の補間後に非線形fadeを再評価すると、頂点法線の保持率と残差の和が1を超える。各頂点のfadeを法線と同じ重みで補間する。
 /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems Chapter 1, directional wave phase and surface derivatives
 float2 WaterResidualWaveSlope(float2 worldXZ, float time, float2 dWorldDx, float2 dWorldDy,
-                              float2 meshCellSize, out float lostVariance)
+                              float4 meshWaveFade[4], out float lostVariance)
 {
     float2 slope = float2(0.0f, 0.0f);
     lostVariance = 0.0f;
@@ -1045,7 +1050,7 @@ float2 WaterResidualWaveSlope(float2 worldXZ, float time, float2 dWorldDx, float
     {
         if (g_waveDir[i].w <= 0.0f) continue;
         float wavelength = max(g_waveParams[i].y, 1.0e-4f);
-        float meshFade = WaveMeshFade(wavelength, meshCellSize);
+        float meshFade = saturate(meshWaveFade[i >> 2][i & 3]);
         float residual = 1.0f - meshFade;
         if (residual <= 0.001f) continue;
         [unroll]
@@ -1092,7 +1097,7 @@ float2 WaterResidualWaveSlope(float2 worldXZ, float time, float2 dWorldDx, float
 /// @note 異方フィルタへ渡す微分には含めていない。
 float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float2 flowTravel, float time, float footprint,
                           float2 dWorldDx, float2 dWorldDy, float3 geoNormal, float detailGain,
-                          float2 meshCellSize, float2 baseWorldXZ, float2 dBaseDx, float2 dBaseDy, bool splineSurface)
+                          float4 meshWaveFade[4], float2 baseWorldXZ, float2 dBaseDx, float2 dBaseDy, bool splineSurface)
 {
     float2 swellSlope = -geoNormal.xz / max(geoNormal.y, 0.2f);
     float2 warped = worldXZ + swellSlope * g_flowParams.w;
@@ -1111,7 +1116,7 @@ float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float2 flowT
     float2 grad = detail.xy * detailScale;
 
     float residualVariance = 0.0f;
-    grad += WaterResidualWaveSlope(baseWorldXZ, time, dBaseDx, dBaseDy, meshCellSize, residualVariance);
+    grad += WaterResidualWaveSlope(baseWorldXZ, time, dBaseDx, dBaseDy, meshWaveFade, residualVariance);
 
     float3 waveNormal = normalize(float3(-grad.x, -grad.y, 1.0f));
 

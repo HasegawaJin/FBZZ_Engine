@@ -2842,6 +2842,74 @@ TEST_F(WaterShaderTest, DetailNyquistCutoffIsContinuousAndFilteredSlopesStillBro
     EXPECT_GT(filteredTail, smoothTail + 0.001);
 }
 
+TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBoundaries)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 8, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = WATER_Z;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeWater();
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.patchRect = {0, 0, 1, 1};
+    water.patchCellSize = {WATER_X / CELLS_X, WATER_Z / CELLS_Z, 1, CELLS_X};
+    for (auto& edge : water.patchEdgeCellSize) edge = {8, 8, 0, 0};
+    for (auto& corner : water.patchCornerCellSize) corner = {8, 8, 0, 0};
+    constexpr float amplitude = 0.025f;
+    constexpr float wavelength = 8;
+    constexpr float waveNumber = math::TWO_PI / wavelength;
+    testkit::TempDir temporary("water_wave_lod_slope");
+    ASSERT_TRUE(temporary.IsValid());
+    const auto sourceRoot = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
+    const auto copiedRoot = temporary.File("Assets/Shaders");
+    std::error_code error;
+    std::filesystem::create_directories(copiedRoot, error);
+    ASSERT_FALSE(error);
+    /// @note Runtime include discovery requires an asset root; all production includes remain unchanged in the temporary copy.
+    for (const auto* directory : {"Common", "Platform", "Rendering", "Water"}) {
+        std::filesystem::copy(sourceRoot / directory, copiedRoot / directory,
+            std::filesystem::copy_options::recursive, error);
+        ASSERT_FALSE(error);
+    }
+    const auto probe = copiedRoot / "WaterWaveLodSlope.hlsl";
+    std::filesystem::copy_file(sourceRoot.parent_path().parent_path()
+        / "Projects/Tests/Graphics/Fixtures/WaterWaveLodSlope.hlsl", probe, error);
+    ASSERT_FALSE(error);
+    const auto shader = Resources().LoadShader(probe.generic_string());
+    ASSERT_TRUE(shader);
+
+    /// @note The sinusoidal derivative is independent of Z, so the coarse Z edge must not amplify it.
+    for (uint32_t waveIndex : {0u, 7u, 15u}) {
+        SCOPED_TRACE(waveIndex);
+        for (auto& direction : water.waveDir) direction = {};
+        water.waveControls = {static_cast<float>(waveIndex + 1), 0, 0, 1};
+        water.waveDir[waveIndex] = {1, 0, 0, 1};
+        water.waveParams[waveIndex] = {amplitude, wavelength, 0, waveNumber};
+        const auto pixels = RenderWater(camera, water, false, false, true, nullptr, nullptr, {}, 0, {},
+            nullptr, {}, nullptr, nullptr, {}, {}, 0, {}, nullptr, false, shader);
+        ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
+        float maximumError = 0;
+        size_t samples = 0;
+        for (uint32_t y = 1; y < EXTENT - 1; ++y) {
+            for (uint32_t x = 16; x < EXTENT - 16; ++x) {
+                const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+                if (pixels[pixel + 3] < 0.5f) continue;
+                const float expected = amplitude * waveNumber * std::cos(waveNumber * pixels[pixel + 1]);
+                ASSERT_TRUE(std::isfinite(pixels[pixel]));
+                maximumError = (std::max)(maximumError, std::abs(pixels[pixel] - expected));
+                ++samples;
+            }
+        }
+        EXPECT_GT(samples, 10000u);
+        /// @note Allow finite-grid normal interpolation and pixel filtering; the prior boundary calculation exceeds 36% of peak slope.
+        RecordProperty("maximumRelativeSlopeError", std::to_string(maximumError / (amplitude * waveNumber)));
+        EXPECT_LT(maximumError, amplitude * waveNumber * 0.06f);
+    }
+}
+
 TEST_F(WaterShaderTest, OceanOpticsComparisonProducesControlledHighResolutionCaptures)
 {
     constexpr uint32_t visualExtent = 512;

@@ -76,7 +76,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
 
     float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, flowDir, flowTravel, time, footprint,
                                              footprintDX, footprintDY, p.normal,
-                                              flowSample.detailGain, p.meshCellSize, p.baseWorldXZ, baseDX, baseDY, splineSurface);
+                                              flowSample.detailGain, p.waveMeshFade, p.baseWorldXZ, baseDX, baseDY, splineSurface);
     float3 tangentNormal = normalSample.xyz;
     float  lostSlopeVariance = normalSample.w;
 
