@@ -19,6 +19,7 @@
 #include <Physics/World.hpp>
 #include <Physics/OBBCollider.hpp>
 #include <array>
+#include <cmath>
 #include <limits>
 
 namespace fbzz::tests {
@@ -161,6 +162,163 @@ TEST_F(FootIKTest, RagdollShapeDeterminesSoleHeightInsteadOfManualAnkleOffset)
     EXPECT_FALSE(Chain().runtimePhysicsFootShape);
     EXPECT_NEAR(m_nodes[3]->transform.worldPosition.y,0.2f,1.0e-5f);
 }
+TEST_F(FootIKTest, SwingReleaseFadesPhysicalFootOffsetWithoutSnappingToFk)
+{
+    auto& ragdoll = m_actor->AddComponent<scene::RagdollComponent>();
+    ragdoll.runtime.rig = std::make_unique<scene::RagdollRig>();
+    scene::RagdollProfile profile;
+    profile.definitionsOnly = true;
+    std::vector<scene::RagdollBonePose> bones;
+    for (size_t i = 0; i < m_fk.size(); ++i) {
+        scene::RagdollBonePose bone;
+        bone.name = m_model.skeleton->nodes[i].name;
+        bone.parent = m_model.skeleton->nodes[i].parentIndex;
+        bone.position = m_fk[i];
+        bones.push_back(bone);
+    }
+    for (const auto* name : {"LeftFoot", "RightFoot"}) {
+        scene::RagdollBodyDefinition body;
+        body.bone = name;
+        body.shape = scene::RagdollBodyShape::BOX;
+        body.center = {0, -0.08f, 0};
+        body.halfExtents = {0.05f, 0.04f, 0.12f};
+        body.mass = 1.0f;
+        profile.bodies.push_back(body);
+    }
+    auto& rig = *ragdoll.runtime.rig;
+    rig.Build(bones, profile);
+    rig.Capture(bones);
+    rig.SetGravity(math::Vector3::ZERO);
+    rig.SetDrive(true, 1.0f, 1.0f, 1.0f);
+    ragdoll.mode = scene::RagdollMode::Active;
+    ragdoll.weight = 1.0f;
+    Chain().adjustHip = false;
+    Chain().footPlantDistance = 0.06f;
+    ASSERT_NE(rig.GetBody(0), nullptr);
+    rig.GetBody(0)->SetPosition({m_fk[3].x + 0.04f, 0.04f, m_fk[3].z});
+    rig.RefreshContacts(&m_world);
+    rig.Step(1.0f / 60.0f);
+    Step();
+    ASSERT_TRUE(Solver().runtimeLeftFootGrounded);
+    ASSERT_NEAR(m_nodes[3]->transform.worldPosition.x - m_fk[3].x, 0.04f, 0.0001f);
+    ExpectLegLengthsAndDirections(1, 2, 3);
+    const auto plantedFk = m_fk;
+    const float upperLength = (m_fk[2] - m_fk[1]).Length();
+    const auto expectRelease = [&] {
+        EXPECT_FALSE(Solver().runtimeLeftFootGrounded);
+        const float firstOffset = m_nodes[3]->transform.worldPosition.x - m_fk[3].x;
+        EXPECT_GT(firstOffset, 0.02f);
+        EXPECT_LT(firstOffset, 0.04f);
+        ExpectLegLengthsAndDirections(1, 2, 3);
+        for (int frame = 0; frame < 60; ++frame) {
+            Step();
+            EXPECT_FALSE(Solver().runtimeLeftFootGrounded);
+            ExpectLegLengthsAndDirections(1, 2, 3);
+        }
+        EXPECT_LT(std::abs(m_nodes[3]->transform.worldPosition.x - m_fk[3].x), 0.0005f);
+    };
+
+    Chain().smoothTime = 0.1f;
+    m_fk[3].y += 0.091f;
+    m_fk[4].y += 0.091f;
+    const float halfSpan = (m_fk[1].y - m_fk[3].y) * 0.5f;
+    m_fk[2].y = (m_fk[1].y + m_fk[3].y) * 0.5f;
+    m_fk[2].z = std::sqrt(upperLength * upperLength - halfSpan * halfSpan);
+    Step();
+    {
+        SCOPED_TRACE("swing with ground ray");
+        expectRelease();
+    }
+
+    m_fk = plantedFk;
+    Chain().smoothTime = 0.0f;
+    rig.GetBody(0)->SetPosition({m_fk[3].x + 0.04f, 0.04f, m_fk[3].z});
+    rig.RefreshContacts(&m_world);
+    rig.Step(1.0f / 60.0f);
+    Step();
+    ASSERT_TRUE(Solver().runtimeLeftFootGrounded);
+    ASSERT_NEAR(m_nodes[3]->transform.worldPosition.x - m_fk[3].x, 0.04f, 0.0001f);
+    ExpectLegLengthsAndDirections(1, 2, 3);
+
+    m_world.BeginSceneSync();
+    m_world.EndSceneSync();
+    rig.RefreshContacts(&m_world);
+    Chain().smoothTime = 0.1f;
+    Step();
+    {
+        SCOPED_TRACE("ground ray lost");
+        EXPECT_FALSE(Solver().runtimeRightFootGrounded);
+        expectRelease();
+    }
+}
+
+TEST_F(FootIKTest, GroundLossFadesSoleRotationWithoutSnappingToFk)
+{
+    const float slopeAngle = 0.2f;
+    const auto slopeRotation = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, slopeAngle);
+    const auto normal = slopeRotation * math::Vector3::UP;
+    m_floor.Update(normal * -0.5f, slopeRotation);
+    m_world.BeginSceneSync();
+    m_world.SyncCollider({}, physics::ColliderInstance{&m_floor, nullptr, &m_material, math::Vector3::ZERO, false, 0});
+    m_world.EndSceneSync();
+    Chain().useRagdollFootShape = false;
+    Chain().footNormalAxis = math::Vector3::UP;
+    Chain().adjustHip = false;
+    Step();
+    ASSERT_TRUE(Solver().runtimeLeftFootGrounded);
+    ASSERT_TRUE(Solver().runtimeRightFootGrounded);
+    for (const int foot : {3, 7})
+        ASSERT_VEC3_NEAR(m_nodes[foot]->transform.worldRotation * math::Vector3::UP, normal, 1.0e-5f);
+
+    m_world.BeginSceneSync();
+    m_world.EndSceneSync();
+    Chain().smoothTime = 0.1f;
+    Step();
+    EXPECT_FALSE(Solver().runtimeLeftFootGrounded);
+    EXPECT_FALSE(Solver().runtimeRightFootGrounded);
+    for (const int foot : {3, 7}) {
+        const auto soleNormal = m_nodes[foot]->transform.worldRotation * math::Vector3::UP;
+        const float angle = std::atan2(-soleNormal.x, soleNormal.y);
+        EXPECT_GT(angle, 0.12f);
+        EXPECT_LT(angle, slopeAngle);
+    }
+    for (int frame = 0; frame < 60; ++frame) {
+        ExpectLegLengthsAndDirections(1, 2, 3);
+        ExpectLegLengthsAndDirections(5, 6, 7);
+        Step();
+    }
+    for (const int foot : {3, 7})
+        EXPECT_VEC3_NEAR(m_nodes[foot]->transform.worldRotation * math::Vector3::UP, math::Vector3::UP, 1.0e-5f);
+}
+
+TEST_F(FootIKTest, AutoPoleCrossesPreferredHemisphereWithoutKneeJump)
+{
+    m_fk[1] = {0, 1, 0};
+    m_fk[3] = math::Vector3::ZERO;
+    m_fk[4] = {0, 0, 0.1f};
+    Chain().adjustHip = false;
+    Chain().useRagdollFootShape = false;
+    Chain().footSurfaceOffset = 0.0f;
+    Chain().autoPole = true;
+    Chain().autoPoleLocalDirection = math::Vector3::FORWARD;
+    math::Vector3 previousMid;
+    for (const float side : {-0.003f, 0.003f}) {
+        m_fk[2] = {0.3f, 0.5f, side};
+        Step();
+        ASSERT_TRUE(Solver().runtimeLeftFootGrounded);
+        ExpectLegLengthsAndDirections(1, 2, 3);
+        EXPECT_VEC3_NEAR(m_nodes[3]->transform.worldPosition, m_fk[3], 1.0e-5f);
+        const auto solvedMid = m_nodes[2]->transform.worldPosition;
+        EXPECT_GE(solvedMid.z, -1.0e-5f);
+        if (side > 0.0f) EXPECT_LT((solvedMid - previousMid).Length(), 0.02f);
+        previousMid = solvedMid;
+    }
+    m_fk[2] = {0, 0.5f, 0.3f};
+    Step();
+    ExpectLegLengthsAndDirections(1, 2, 3);
+    EXPECT_VEC3_NEAR(m_nodes[2]->transform.worldPosition, m_fk[2], 1.0e-5f);
+}
+
 TEST_F(FootIKTest, UnevenGroundDoesNotMisclassifyTheLowerGroundFootAsSwinging)
 {
     const float angle=0.5235987756f;

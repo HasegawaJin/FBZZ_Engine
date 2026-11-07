@@ -65,13 +65,11 @@ math::Quaternion FromToRotation(const math::Vector3& from, const math::Vector3& 
     const math::Vector3 t = to.Normalized();
     const float d = math::Vector3::Dot(f, t);
 
-    if (d >= 1.0f - math::EPSILON)
-        return math::Quaternion::Identity();
-
     if (d <= -1.0f + math::EPSILON) {
         return math::Quaternion::FromAxisAngle(ArbitraryPerpendicular(f), math::PI);
     }
 
+    /// @note 小さな回転を Identity へ丸めると、減衰末尾で位置と骨姿勢がずれて段差になる。
     const math::Vector3 axis = math::Vector3::Cross(f, t);
     const float w = 1.0f + d;
     return math::Quaternion{ axis.x, axis.y, axis.z, w }.Normalized();
@@ -379,6 +377,7 @@ bool QueryFootCorrection(physics::World& world,
     const auto rayPosition=leg.footFkPosition+smoothedSupportOffset*leg.physicsSupportWeight;
     const math::Vector3 origin = rayPosition +
                                  math::Vector3::UP * (legLength * chain.rayUpRatio);
+    bool hasGround = true;
     if (leg.physicsSupported) {
         /// @note SAT の代表法線を地形の面法線と混同しない。支持中の同じ collider へ照会し、動的支持も含める。
         const auto supportFilter=[&](const physics::ColliderInstance& instance) {
@@ -391,17 +390,26 @@ bool QueryFootCorrection(physics::World& world,
                 -(outHit.normal.x*(rayPosition.x-leg.physicsSupportPoint.x)
                     +outHit.normal.z*(rayPosition.z-leg.physicsSupportPoint.z))/outHit.normal.y,rayPosition.z};
         }
-    } else if (!world.Raycast(origin, -math::Vector3::UP,
-                       legLength * chain.rayDownRatio, outHit, kGroundFilter))
-        return false;
+    } else {
+        hasGround = world.Raycast(origin, -math::Vector3::UP,
+            legLength * chain.rayDownRatio, outHit, kGroundFilter);
+    }
 
-    smoothedSoleNormal=rig && leg.physicsSupportWeight>0.0f
-        ? math::Vector3::Lerp(smoothedSoleNormal,outHit.normal,alpha).NormalizedOr(outHit.normal)
-        : outHit.normal;
+    if (hasGround) {
+        smoothedSoleNormal=rig && leg.physicsSupportWeight>0.0f
+            ? math::Vector3::Lerp(smoothedSoleNormal,outHit.normal,alpha).NormalizedOr(outHit.normal)
+            : outHit.normal;
+    }
     leg.surfaceOffset = chain.footSurfaceOffset;
     leg.surfaceRotation = leg.footFkRotation;
+    /// @note 地面を見失っても形状と直前の法線を保ち、離地時の水平・姿勢補正を重みとともに戻す。
+    const auto surfaceNormal = hasGround ? outHit.normal : smoothedSoleNormal;
     leg.physicsShape = rig && rig->TryGetFootPlacement(
-        leg.footGo->name, leg.footFkRotation, outHit.normal, leg.surfaceRotation, leg.surfaceOffset,&smoothedSoleNormal);
+        leg.footGo->name, leg.footFkRotation, surfaceNormal, leg.surfaceRotation, leg.surfaceOffset,&smoothedSoleNormal);
+    if (!hasGround) {
+        outHit.normal = surfaceNormal;
+        return false;
+    }
     const float raw = outHit.point.y + leg.surfaceOffset - leg.footFkPosition.y;
     const float magnitude = std::abs(raw);
     const float deadZone = leg.physicsShape ? 0.0f : chain.correctionDeadZone;
@@ -427,13 +435,10 @@ bool SolveFootLeg(const IKChain& chain,
                   float correction,
                   float effectiveWeight,
                   const math::Vector3& hipDelta,
-                  const GroundHit* groundHit,
-                  bool grounded)
+                   const GroundHit* groundHit)
 {
-    /// @note 接地中は高さ補正が 0 でも足裏の姿勢と水平支持を更新する。
-    if (!grounded && std::abs(correction) <= math::EPSILON &&
-        hipDelta.LengthSq() <= math::EPSILON * math::EPSILON)
-        return false;
+    /// @note 離地後も接地重みが残る間は水平位置と足裏姿勢を連続的に FK へ戻す。
+    if (effectiveWeight <= math::EPSILON) return false;
 
     /// @note ヒップ補正は直前に Transform へ書き戻されているため、ここでライブ値を読むと
     /// @note hipDelta が root / foot の両方へ二重に加算される。ResolveLeg の FK スナップショットを使う。
@@ -482,13 +487,10 @@ bool SolveFootLeg(const IKChain& chain,
             const float fkWeight = math::Clamp01(sinSq / 0.04f);
             const float agreement = math::Vector3::Dot(
                 fkBend.Normalized(), preferredBend.Normalized());
-            if (agreement >= 0.0f) {
-                /// @note FK 方向が preferred と同じ半球: 信頼度ウェイトで FK と preferred をブレンド。
-                bendRaw = fkBend * fkWeight + preferredBend * (1.0f - fkWeight);
-            } else {
-                /// @note 逆半球 (後方折れ) → preferred で補正。
-                bendRaw = preferredBend;
-            }
+            /// @note 半球境界では重みとその傾きを 0 にし、小さな FK 変化で膝の解を切り替えない。
+            const float agreementWeight = math::Clamp01(agreement);
+            const float blendWeight = fkWeight * agreementWeight * agreementWeight * (3.0f - 2.0f * agreementWeight);
+            bendRaw = fkBend * blendWeight + preferredBend * (1.0f - blendWeight);
         } else {
             bendRaw = preferredBend.LengthSq() > math::EPSILON * math::EPSILON
                 ? preferredBend : fkBend;
@@ -656,12 +658,14 @@ bool SolveFootPlace(IKChain& chain,
         (rightClearance <= minimumClearance + rightTolerance);
     bodyState.leftFootGrounded = chain.runtimeLeftGrounded = leftGrounded;
     bodyState.rightFootGrounded = chain.runtimeRightGrounded = rightGrounded;
-    if (!leftGrounded) chain.smoothedLeftSupportOffset=math::Vector3::ZERO;
-    if (!rightGrounded) chain.smoothedRightSupportOffset=math::Vector3::ZERO;
     chain.leftPlantWeight = math::Lerp(
         chain.leftPlantWeight, leftGrounded ? 1.0f : 0.0f, alpha);
     chain.rightPlantWeight = math::Lerp(
         chain.rightPlantWeight, rightGrounded ? 1.0f : 0.0f, alpha);
+    if (!leftGrounded && chain.leftPlantWeight <= math::EPSILON)
+        chain.smoothedLeftSupportOffset = math::Vector3::ZERO;
+    if (!rightGrounded && chain.rightPlantWeight <= math::EPSILON)
+        chain.smoothedRightSupportOffset = math::Vector3::ZERO;
     chain.smoothedLeft = std::clamp(math::Lerp(
         chain.smoothedLeft, leftGrounded ? leftRaw : 0.0f, alpha), -chain.maxCorrection, chain.maxCorrection);
     chain.smoothedRight = std::clamp(math::Lerp(
@@ -708,17 +712,17 @@ bool SolveFootPlace(IKChain& chain,
     bodyState.terrainSlopeMetric = std::max(
         std::abs(chain.smoothedLeft), std::abs(chain.smoothedRight));
 
-    if (hasLeft && leftGrounded) {
+    if (hasLeft && (leftGrounded || chain.leftPlantWeight > math::EPSILON)) {
         modified |= SolveFootLeg(chain, scene, skeleton, renderer, animator, ownerInv, ownerRotation,
                                  left, chain.smoothedLeft,
                                  effectiveWeight * chain.leftPlantWeight, hipDelta,
-                                 &leftHit, true);
+                                 &leftHit);
     }
-    if (hasRight && rightGrounded) {
+    if (hasRight && (rightGrounded || chain.rightPlantWeight > math::EPSILON)) {
         modified |= SolveFootLeg(chain, scene, skeleton, renderer, animator, ownerInv, ownerRotation,
                                  right, chain.smoothedRight,
                                  effectiveWeight * chain.rightPlantWeight, hipDelta,
-                                 &rightHit, true);
+                                 &rightHit);
     }
     return modified;
 }

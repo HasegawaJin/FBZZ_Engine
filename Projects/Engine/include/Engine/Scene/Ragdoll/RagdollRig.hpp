@@ -77,6 +77,12 @@ struct RagdollBonePose {
     math::Vector3 scale = math::Vector3::ONE;
 };
 
+/// @note Guardで運ぶ所有者のworld姿勢。位置はm、回転は単位Quaternionで、骨アニメーションを含めない。
+struct RagdollOwnerPose {
+    math::Vector3 position = math::Vector3::ZERO;
+    math::Quaternion rotation = math::Quaternion::Identity();
+};
+
 /// @note 剛体・コライダー・関節を所有し、ソルバへ載せる。
 
 /// @note 内部で非所有ポインタ (ソルバ → 剛体、関節 → 剛体) が絡むので、コピーもムーブも禁止する。
@@ -104,7 +110,12 @@ public:
 
     /// @note Active: 各関節のドライブ目標を今の骨の姿勢から取り直す。
     /// @note 無負荷ならこの姿勢が釣り合い点になるので、絵はクリップそのままになる。
-    FBZZ_ENGINE_API void UpdateDriveTargets(const std::vector<RagdollBonePose>& bones, float sampleDt = 0.0f);
+    /// @note ownerPoseを指定したGuardでは所有者の移動だけを剛体へ運び、腰のボブ・回旋は駆動目標として扱う。
+    /// @note ownerPose省略時は従来どおり各物理根の姿勢から移動を求める。Capture後の初回は所有者姿勢の基準を保存する。
+    /// @note 正のsampleDtは描画サンプルの間隔で、Step内のsubstep時刻へ補間する。0は現在の物理時刻へ即時設定して履歴を捨てる。
+    /// @note 負または非有限のsampleDtは姿勢・目標・履歴を変更しない。
+    FBZZ_ENGINE_API void UpdateDriveTargets(const std::vector<RagdollBonePose>& bones, float sampleDt = 0.0f,
+        const RagdollOwnerPose* ownerPose = nullptr);
     /// @brief 物理形状の底面を地面へ置く足首姿勢と高さを求める。world normal.y > 0.25、距離は world m。
     /// @note 形状の +Y を soleNormal (null は normal) へ合わせ、実面 normal に対する支持高さを求める。soleNormal は有限かつ長さ > 0。
     /// @note 失敗時は出力を変更しない。Rig の姿勢・目標は変更しない。
@@ -276,8 +287,6 @@ private:
         bool customDrive = false;
         RagdollBodyDrive baseDrive;
         RagdollBodyDrive activeDrive;
-        math::Vector3 targetPosition;
-        math::Quaternion targetRotation = math::Quaternion::Identity();
         bool targetHistory = false;
         [[nodiscard]] float Reach() const { return shape == RagdollBodyShape::BOX ? halfExtents.Length() : halfHeight + radius; }
         [[nodiscard]] float Bottom(const math::Vector3& p, const math::Quaternion& q) const;
@@ -304,8 +313,43 @@ private:
     /// @note 今の倍率を全関節のドライブへ反映する。
     FBZZ_ENGINE_API void ApplyDrive();
     FBZZ_ENGINE_API void ProjectStandingPose();
+    /// @note 根はworld、子は親ローカル。速度・角速度は直前サンプルからの区間微分で、始点サンプルは0。
+    struct TargetBonePose {
+        math::Vector3 position;
+        math::Quaternion rotation = math::Quaternion::Identity();
+        math::Vector3 velocity = math::Vector3::ZERO;
+        math::Vector3 angularVelocity = math::Vector3::ZERO;
+    };
+    struct TargetSample {
+        double time = 0.0;
+        std::vector<TargetBonePose> bones;
+    };
+    void ResetTargetSamples(const std::vector<RagdollBonePose>& bones);
+    void StoreTargetSample(const std::vector<RagdollBonePose>& bones);
+    void ComposeTargetSample(const TargetSample& sample, std::vector<RagdollBonePose>& output) const;
+    void SampleDriveTargets(double time);
+    /// @note 補間時の骨原点のworld速度を重心・親剛体空間へ変換し、Controlsの上書きを最後に適用する。
+    /// @see https://modernrobotics.northwestern.edu/nu-gm-book-resource/3-3-2-twists-part-1-of-2/ Modern Robotics §3.3.2 原点と座標系による速度の変換。
+    void ApplyTargetPose(const std::vector<RagdollBonePose>& bones,
+        const std::vector<RagdollBonePose>* before, const std::vector<RagdollBonePose>* after, float sampleDt,
+        bool useSampledVelocities = false);
 
     bool m_standingGuard = false;
+    RagdollOwnerPose m_ownerPose;
+    bool m_ownerHistory = false;
+    /// @note 未消費の描画サンプルだけを保持し、固定刻みのbacklogでも将来の姿勢へ飛ばさない。
+    std::vector<TargetSample> m_targetSamples;
+    std::size_t m_targetSampleHead = 0;
+    std::vector<std::vector<TargetBonePose>> m_targetPosePool;
+    double m_sampleTime = 0.0;
+    double m_simulationTime = 0.0;
+    double m_targetStepTime = 0.0;
+    std::vector<RagdollBonePose> m_sourceTargets;
+    std::vector<RagdollBonePose> m_sampledTargets;
+    std::vector<RagdollBonePose> m_sampleBefore;
+    std::vector<RagdollBonePose> m_sampleAfter;
+    std::vector<math::Vector3> m_sampledVelocities;
+    std::vector<math::Vector3> m_sampledAngularVelocities;
     float m_standingMaxDistance = 0.15f;
     float m_standingMaxRadians = 0.25f;
     std::vector<RagdollBonePose> m_standingTargets;

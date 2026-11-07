@@ -10,6 +10,7 @@
 #include <Physics/OBBCollider.hpp>
 #include <limits>
 #include <algorithm>
+#include <cmath>
 namespace fbzz::tests {
 class RagdollControlsTest:public testkit::EngineFixture {
 protected:
@@ -96,6 +97,119 @@ TEST_F(RagdollControlsTest, ManualTargetMovesBodyAndClearRestoresAnimation)
     for(int i=0;i<240;++i){m_rig.UpdateDriveTargets(m_bones,1.0f/120);m_rig.Step(1.0f/120);}
     EXPECT_NEAR(m_rig.Controls().BodyState("Body0").position.x,0,0.01f);
 }
+
+TEST_F(RagdollControlsTest, PreservesGuardRootTransportOnTheFirstPositiveTargetSample)
+{
+    Build(2);
+    m_rig.SetDrag(0, 0);
+    m_rig.SetSubsteps(12);
+    m_rig.SetStandingGuard(true, 0.01f, 0.01f);
+    for (auto& bone : m_bones) bone.position += math::Vector3::RIGHT;
+
+    m_rig.UpdateDriveTargets(m_bones, 1.0f / 30.0f);
+    m_rig.Step(1.0f / 120.0f);
+
+    for (const auto& bone : m_bones) {
+        SCOPED_TRACE(bone.name);
+        const auto state = m_rig.Controls().BodyState(bone.name);
+        ASSERT_TRUE(state.valid);
+        EXPECT_VEC3_NEAR(state.position, bone.position, testkit::kTolerance);
+        EXPECT_VEC3_NEAR(state.velocity, math::Vector3::ZERO, testkit::kTolerance);
+    }
+}
+
+TEST_F(RagdollControlsTest, PreservesGuardRootTransportWhenTargetSamplesResumeAfterStaticSteps)
+{
+    Build(2);
+    m_rig.SetDrag(0, 0);
+    m_rig.SetSubsteps(12);
+    m_rig.SetStandingGuard(true, 0.01f, 0.01f);
+    m_rig.UpdateDriveTargets(m_bones);
+    for (int frame = 0; frame < 120; ++frame) m_rig.Step(1.0f / 120.0f);
+    for (auto& bone : m_bones) bone.position += math::Vector3::RIGHT;
+
+    m_rig.UpdateDriveTargets(m_bones, 1.0f / 30.0f);
+    m_rig.Step(1.0f / 120.0f);
+
+    for (const auto& bone : m_bones) {
+        SCOPED_TRACE(bone.name);
+        const auto state = m_rig.Controls().BodyState(bone.name);
+        ASSERT_TRUE(state.valid);
+        EXPECT_VEC3_NEAR(state.position, bone.position, testkit::kTolerance);
+        EXPECT_VEC3_NEAR(state.velocity, math::Vector3::ZERO, testkit::kTolerance);
+    }
+}
+
+TEST_F(RagdollControlsTest, PreservesCircularWorldDriveMotionAcrossAnimationSampleRates)
+{
+    scene::RagdollProfile profile;
+    profile.definitionsOnly = true;
+    scene::RagdollBodyDefinition definition;
+    definition.bone = "Child";
+    definition.shape = scene::RagdollBodyShape::SPHERE;
+    definition.radius = 0.1f;
+    definition.mass = 1.0f;
+    definition.drive.enabled = true;
+    definition.drive.space = scene::RagdollDriveSpace::WORLD;
+    definition.drive.linearFrequency = 36.0f;
+    definition.drive.angularFrequency = 0.0f;
+    definition.drive.maxForce = 1000.0f;
+    definition.drive.maxTorque = 0.0f;
+    profile.bodies.push_back(definition);
+    std::vector<scene::RagdollBodyState> baseline;
+    baseline.reserve(240);
+    float maximumPositionDifference = 0.0f;
+    float maximumVelocityDifference = 0.0f;
+
+    for (const int fps : {60, 120}) {
+        SCOPED_TRACE(fps);
+        std::vector<scene::RagdollBonePose> bones(2);
+        bones[0].name = "Root";
+        bones[1].name = "Child";
+        bones[1].parent = 0;
+        bones[1].position = math::Vector3::RIGHT;
+        m_rig.Build(bones, profile);
+        ASSERT_EQ(m_rig.GetBodyCount(), 1);
+        EXPECT_EQ(m_rig.BodyIndexOfBone(0), -1);
+        m_rig.SetGravity(math::Vector3::ZERO);
+        m_rig.SetDrag(0, 0);
+        m_rig.SetSubsteps(12);
+        m_rig.SetRootAnchor(0, 0, 0);
+        m_rig.SetStandingGuard(false, 0, 0);
+        m_rig.DisableGround();
+        m_rig.SetDrive(true, 1, 1, 1);
+        m_rig.Capture(bones);
+        m_rig.UpdateDriveTargets(bones);
+        ASSERT_TRUE(m_rig.Controls().Impulse("Child", {0, 3, 0}));
+        const int ticksPerSample = 120 / fps;
+        const float sampleDt = 1.0f / static_cast<float>(fps);
+
+        for (int tick = 0; tick < 300; ++tick) {
+            if (tick % ticksPerSample == 0) {
+                const float targetTime = static_cast<float>(tick / ticksPerSample + 1) * sampleDt;
+                const auto rotation = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 3.0f * targetTime);
+                bones[0].rotation = rotation;
+                bones[1].rotation = rotation;
+                bones[1].position = rotation * math::Vector3::RIGHT;
+                m_rig.UpdateDriveTargets(bones, sampleDt);
+            }
+            m_rig.Step(1.0f / 120.0f);
+            const auto state = m_rig.Controls().BodyState("Child");
+            ASSERT_TRUE(state.valid);
+            if (tick < 60) continue;
+            if (fps == 60) baseline.push_back(state);
+            else {
+                const auto& expected = baseline[static_cast<std::size_t>(tick - 60)];
+                maximumPositionDifference = std::max(maximumPositionDifference, (state.position - expected.position).Length());
+                maximumVelocityDifference = std::max(maximumVelocityDifference, (state.velocity - expected.velocity).Length());
+            }
+        }
+    }
+
+    EXPECT_LT(maximumPositionDifference, 0.001f);
+    EXPECT_LT(maximumVelocityDifference, 0.003f);
+}
+
 TEST_F(RagdollControlsTest, GripsRemainIndependentAndRebuildDropsRuntimeControls)
 {
     Build(2);auto& c=m_rig.Controls();physics::XPBDGripSettings s;s.breakForce=0;
@@ -126,6 +240,77 @@ TEST_F(RagdollControlsTest, SupportMarginsAndCapturePointRespondToVelocity)
     EXPECT_FALSE(m_rig.Controls().Balance(-1).valid);
     world.BeginSceneSync();world.EndSceneSync();
 }
+
+TEST_F(RagdollControlsTest, TranslatingAndRotatingSupportUsesRelativeCaptureVelocity)
+{
+    scene::RagdollProfile profile;
+    profile.definitionsOnly = true;
+    scene::RagdollBodyDefinition definition;
+    definition.bone = "Body";
+    definition.shape = scene::RagdollBodyShape::SPHERE;
+    definition.radius = 1.0f;
+    definition.mass = 2.0f;
+    profile.bodies.push_back(definition);
+    std::vector<scene::RagdollBonePose> bones(1);
+    bones[0].name = "Body";
+    bones[0].position = {0, 1, 0};
+    m_rig.Build(bones, profile);
+    m_rig.Capture(bones);
+    m_rig.SetDrive(false, 1, 1, 1);
+    m_rig.SetGravity(math::Vector3::ZERO);
+    m_rig.SetSubsteps(1);
+
+    physics::RigidBody platform;
+    platform.SetMass(100.0f);
+    platform.SetPosition({2, -0.49f, 0});
+    platform.m_useGravity = false;
+    physics::OBBCollider floor({5, 0.5f, 5});
+    platform.SetInertiaFromCollider(&floor);
+    floor.Update(platform.GetPosition(), math::Quaternion::Identity());
+    physics::PhysicsMaterial material;
+    physics::World world;
+    world.BeginSceneSync();
+    world.SyncBody({}, &platform);
+    world.SyncCollider({}, physics::ColliderInstance{&floor, &platform, &material, math::Vector3::ZERO, false, 0});
+    world.EndSceneSync();
+    m_rig.RefreshContacts(&world);
+    m_rig.Step(1.0f / 120.0f);
+    m_rig.ApplyContactReactions();
+    m_rig.SetGravity({0, -9.81f, 0});
+    auto& controls = m_rig.Controls();
+
+    for (float yawSpeed : {0.0f, 2.0f}) {
+        SCOPED_TRACE(yawSpeed);
+        platform.SetVelocity({1, 0.5f, 3});
+        platform.SetAngularVelocity({0, yawSpeed, 0});
+        const math::Vector3 expectedSurfaceVelocity{1, 0.5f, 3 + 2 * yawSpeed};
+        const auto state = controls.BodyState("Body");
+        ASSERT_TRUE(state.valid);
+        ASSERT_TRUE(controls.Impulse("Body", (expectedSurfaceVelocity - state.velocity) * state.mass));
+
+        const auto contact = controls.Contact("Body", 0);
+        ASSERT_TRUE(contact.valid);
+        EXPECT_TRUE(contact.dynamic);
+        EXPECT_FALSE(contact.self);
+        EXPECT_VEC3_NEAR(contact.otherVelocity, expectedSurfaceVelocity, testkit::kTolerance);
+        const auto balance = controls.Balance();
+        ASSERT_TRUE(balance.hasSupport);
+        ASSERT_TRUE(balance.captureValid);
+        EXPECT_VEC3_NEAR(balance.supportVelocity, expectedSurfaceVelocity, testkit::kTolerance);
+        const math::Vector3 projectedCenter{balance.center.x, balance.supportPoint.y, balance.center.z};
+        EXPECT_VEC3_NEAR(balance.capturePoint, projectedCenter, testkit::kTolerance);
+
+        ASSERT_TRUE(controls.Impulse("Body", math::Vector3{2, 0, -1} * state.mass));
+        const auto drifting = controls.Balance();
+        const float captureSeconds = std::sqrt(balance.height / 9.81f);
+        EXPECT_VEC3_NEAR(drifting.capturePoint,
+            projectedCenter + math::Vector3(2, 0, -1) * captureSeconds, testkit::kTolerance);
+    }
+
+    world.BeginSceneSync();
+    world.EndSceneSync();
+}
+
 TEST_F(RagdollControlsTest, BoxContactsPreserveTheSupportPolygonFromNarrowPhase)
 {
     Build(); m_rig.SetSubsteps(1);

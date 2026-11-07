@@ -22,6 +22,8 @@
 #include "../../../Engine/src/Scene/Managed/ManagedObjectControls.hpp"
 #include <Physics/OBBCollider.hpp>
 #include <Physics/World.hpp>
+#include <Math/MathUtils.hpp>
+#include <cmath>
 #include <limits>
 
 namespace fbzz::tests {
@@ -146,6 +148,49 @@ TEST_F(RagdollSystemTest, DisableInactiveHierarchyAndEndReleaseAllGrips)
     }
 }
 
+TEST_F(RagdollSystemTest, PauseReleasesGripsWhenDisabledOrAncestorInactive)
+{
+    auto& parent = m_scene.CreateGameObject("Parent");
+    Actor().SetParent(parent);
+    Actor().AddComponent<scene::AnimatorComponent>();
+    PrepareModel();
+    PrepareBones();
+    Ragdoll().gravity = 0.0f;
+    Ragdoll().blendOut = 0.0f;
+
+    for (const bool disableComponent : {true, false}) {
+        SCOPED_TRACE(disableComponent ? "disabled component" : "inactive ancestor");
+        parent.SetActive(true);
+        Ragdoll().enabled = true;
+        Ragdoll().beginRequested = true;
+        Ragdoll().activeRequested = true;
+        Tick();
+        ASSERT_NE(Ragdoll().runtime.rig, nullptr);
+        auto& controls = Ragdoll().runtime.rig->Controls();
+        const auto body = controls.BodyState("Body");
+        ASSERT_TRUE(body.valid);
+        physics::XPBDGripSettings settings;
+        settings.breakForce = 0.0f;
+        ASSERT_TRUE(controls.Grab("Body", nullptr, body.position, settings));
+        ASSERT_EQ(controls.GrabState("Body").status, physics::XPBDGripStatus::HOLDING);
+        Ragdoll().endRequested = true;
+
+        Tick(0.5f, false);
+
+        EXPECT_EQ(controls.GrabState("Body").status, physics::XPBDGripStatus::HOLDING);
+        EXPECT_TRUE(controls.HasGrabs());
+        EXPECT_TRUE(Ragdoll().endRequested);
+
+        if (disableComponent) Ragdoll().enabled = false;
+        else parent.SetActive(false);
+
+        Tick(0.5f, false);
+
+        EXPECT_EQ(controls.GrabState("Body").status, physics::XPBDGripStatus::RELEASED);
+        EXPECT_FALSE(controls.HasGrabs());
+    }
+}
+
 TEST_F(RagdollSystemTest, PhysicsAssetReloadIsTransactionalAndSerializedReferenceSurvives)
 {
     Actor().AddComponent<scene::AnimatorComponent>(); PrepareModel(); PrepareBones();
@@ -173,6 +218,207 @@ TEST_F(RagdollSystemTest, PhysicsAssetReloadIsTransactionalAndSerializedReferenc
     EXPECT_EQ(copied.physicsAssetPath,path);
     EXPECT_FALSE(copied.runtime.definitionValid);
     EXPECT_EQ(copied.runtime.rig,nullptr);
+}
+
+TEST_F(RagdollSystemTest, StandingGuardTransportsOwnerMotionWithoutTransportingAnimatedRootBob)
+{
+    Actor().AddComponent<scene::AnimatorComponent>();
+    PrepareModel();
+    PrepareBones();
+    testkit::TempDir temp("ragdoll-owner-frame");
+    ASSERT_TRUE(temp.IsValid());
+    scene::RagdollDefinition definition;
+    for (const auto* name : {"Body", "Tip"}) {
+        scene::RagdollBodyDefinition body;
+        body.bone = name;
+        body.shape = scene::RagdollBodyShape::SPHERE;
+        body.radius = 0.1f;
+        body.mass = 1.0f;
+        definition.bodies.push_back(body);
+    }
+    const auto path = temp.File("OwnerFrame.ragdoll").string();
+    ASSERT_TRUE(scene::SaveRagdollDefinition(path, definition));
+    Ragdoll().physicsAssetPath = path;
+    Ragdoll().gravity = 0.0f;
+    Ragdoll().standingGuard = true;
+    Ragdoll().beginRequested = true;
+    Ragdoll().activeRequested = true;
+    Tick(0.0f);
+    ASSERT_EQ(Ragdoll().runtimeStatus, scene::RagdollStatus::Running);
+    ASSERT_EQ(Ragdoll().runtimeBodyCount, 2);
+    ASSERT_NE(Ragdoll().runtime.rig, nullptr);
+    auto& controls = Ragdoll().runtime.rig->Controls();
+    const auto initialTip = controls.BodyState("Tip");
+    ASSERT_TRUE(initialTip.valid);
+    const auto* renderer = Actor().GetComponent<scene::SkinnedMeshRenderer>();
+    ASSERT_NE(renderer, nullptr);
+    ASSERT_EQ(renderer->nodeEntities.size(), 2u);
+    auto* bodyBone = m_scene.GetGameObject(renderer->nodeEntities[0]);
+    auto* tipBone = m_scene.GetGameObject(renderer->nodeEntities[1]);
+    ASSERT_NE(bodyBone, nullptr);
+    ASSERT_NE(tipBone, nullptr);
+    const auto tipFkPosition = tipBone->transform.worldPosition;
+
+    bodyBone->transform.position.y += 0.2f;
+    tipBone->transform.position.y -= 0.2f;
+    scene::FlushWorldTransforms(m_scene);
+    ASSERT_VEC3_NEAR(tipBone->transform.worldPosition, tipFkPosition, testkit::kTolerance);
+    Tick(0.0f);
+
+    const auto afterBob = controls.BodyState("Tip");
+    ASSERT_TRUE(afterBob.valid);
+    EXPECT_VEC3_NEAR(afterBob.position, initialTip.position, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(afterBob.velocity, initialTip.velocity, testkit::kTolerance);
+
+    const auto beforeOwnerBody = controls.BodyState("Body");
+    const auto beforeOwnerTip = controls.BodyState("Tip");
+    ASSERT_TRUE(beforeOwnerBody.valid);
+    ASSERT_TRUE(beforeOwnerTip.valid);
+    const math::Vector3 ownerDelta{3.0f, 0.0f, 2.0f};
+    Actor().transform.position += ownerDelta;
+    scene::FlushWorldTransforms(m_scene);
+    Tick(0.0f);
+
+    EXPECT_VEC3_NEAR(controls.BodyState("Body").position,
+                     beforeOwnerBody.position + ownerDelta, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(controls.BodyState("Tip").position,
+                     beforeOwnerTip.position + ownerDelta, testkit::kTolerance);
+    Tick(0.0f);
+    EXPECT_VEC3_NEAR(controls.BodyState("Body").position,
+                     beforeOwnerBody.position + ownerDelta, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(controls.BodyState("Tip").position,
+                     beforeOwnerTip.position + ownerDelta, testkit::kTolerance);
+
+    ASSERT_TRUE(controls.Impulse("Body", {1.0f, 0.5f, 0.0f}));
+    ASSERT_VEC3_NEAR(controls.BodyState("Body").velocity,
+                     (math::Vector3{1.0f, 0.5f, 0.0f}), testkit::kTolerance);
+    Actor().transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, math::PI * 0.5f);
+    scene::FlushWorldTransforms(m_scene);
+
+    for (int frame = 0; frame < 2; ++frame) {
+        SCOPED_TRACE(frame);
+        Tick(0.0f);
+
+        const auto rotatedBody = controls.BodyState("Body");
+        const auto rotatedTip = controls.BodyState("Tip");
+        ASSERT_TRUE(rotatedBody.valid);
+        ASSERT_TRUE(rotatedTip.valid);
+        EXPECT_VEC3_NEAR(rotatedBody.position, ownerDelta, testkit::kTolerance);
+        EXPECT_VEC3_NEAR(rotatedTip.position, (math::Vector3{2.0f, 0.0f, 2.0f}), testkit::kTolerance);
+        EXPECT_VEC3_NEAR(rotatedBody.velocity, (math::Vector3{-0.5f, 1.0f, 0.0f}), testkit::kTolerance);
+        EXPECT_VEC3_NEAR(rotatedTip.velocity, math::Vector3::ZERO, testkit::kTolerance);
+        for (const auto& state : {rotatedBody, rotatedTip}) {
+            EXPECT_VEC3_NEAR(state.rotation * math::Vector3::RIGHT, math::Vector3::UP, testkit::kTolerance);
+            EXPECT_VEC3_NEAR(state.rotation * math::Vector3::UP, -math::Vector3::RIGHT, testkit::kTolerance);
+        }
+    }
+}
+
+TEST_F(RagdollSystemTest, SamplesMovingDriveTargetsAtPhysicalTimesAcrossFrameRates)
+{
+    Actor().AddComponent<scene::AnimatorComponent>();
+    PrepareModel();
+    PrepareBones();
+    testkit::TempDir temp("ragdoll-target-time");
+    ASSERT_TRUE(temp.IsValid());
+    scene::RagdollDefinition definition;
+    scene::RagdollBodyDefinition body;
+    body.bone = "Body";
+    body.shape = scene::RagdollBodyShape::SPHERE;
+    body.radius = 0.1f;
+    body.mass = 1.0f;
+    body.drive.enabled = true;
+    body.drive.space = scene::RagdollDriveSpace::WORLD;
+    body.drive.linearFrequency = 8.0f;
+    body.drive.angularFrequency = 0.0f;
+    body.drive.maxForce = 1000.0f;
+    body.drive.maxTorque = 0.0f;
+    definition.bodies.push_back(body);
+    const auto path = temp.File("MovingTarget.ragdoll").string();
+    ASSERT_TRUE(scene::SaveRagdollDefinition(path, definition));
+    Ragdoll().physicsAssetPath = path;
+    Ragdoll().gravity = 0.0f;
+    Ragdoll().substeps = 12;
+    const auto* renderer = Actor().GetComponent<scene::SkinnedMeshRenderer>();
+    ASSERT_NE(renderer, nullptr);
+    auto* bodyBone = m_scene.GetGameObject(renderer->nodeEntities[0]);
+    ASSERT_NE(bodyBone, nullptr);
+
+    for (const int fps : {30, 60, 144, 240}) {
+        SCOPED_TRACE(fps);
+        bodyBone->transform.position = math::Vector3::ZERO;
+        scene::FlushWorldTransforms(m_scene);
+        Ragdoll().enabled = true;
+        Ragdoll().beginRequested = true;
+        Ragdoll().activeRequested = true;
+        Tick(0.0f);
+        ASSERT_EQ(Ragdoll().runtimeStatus, scene::RagdollStatus::Running);
+        auto& controls = Ragdoll().runtime.rig->Controls();
+        ASSERT_TRUE(controls.Impulse("Body", math::Vector3::RIGHT));
+        const float dt = 1.0f / static_cast<float>(fps);
+        float maximumSpeedError = 0.0f;
+        double remainingTime = 0.0;
+        int physicalSteps = 0;
+
+        for (int frame = 1; frame <= fps; ++frame) {
+            physicalSteps += scene::AccumulateRagdollSteps(remainingTime, dt);
+            bodyBone->transform.position.x = static_cast<float>(frame) * dt;
+            scene::FlushWorldTransforms(m_scene);
+            Tick(dt);
+            const auto state = controls.BodyState("Body");
+            ASSERT_TRUE(state.valid);
+            maximumSpeedError = math::Max(maximumSpeedError, std::abs(state.velocity.x - 1.0f));
+        }
+
+        EXPECT_LT(maximumSpeedError, 0.002f);
+        EXPECT_NEAR(controls.BodyState("Body").position.x,
+            static_cast<float>(physicalSteps) * scene::RAGDOLL_FIXED_STEP, 0.002f);
+        Ragdoll().enabled = false;
+        Tick(0.0f);
+    }
+
+    bodyBone->transform.position = math::Vector3::ZERO;
+    scene::FlushWorldTransforms(m_scene);
+    Ragdoll().enabled = true;
+    Ragdoll().beginRequested = true;
+    Ragdoll().activeRequested = true;
+    Tick(0.0f);
+    auto& controls = Ragdoll().runtime.rig->Controls();
+    ASSERT_TRUE(controls.Impulse("Body", math::Vector3::RIGHT));
+    double sampledTime = 0.0;
+    double remainingTime = 0.0;
+    int physicalSteps = 0;
+
+    for (int frame = 0; frame < 32; ++frame) {
+        SCOPED_TRACE(frame);
+        const float dt = frame == 0 ? 0.5f : frame == 1 ? 0.2f : 1.0f / 144.0f;
+        sampledTime += static_cast<double>(dt);
+        physicalSteps += scene::AccumulateRagdollSteps(remainingTime, dt);
+        bodyBone->transform.position.x = static_cast<float>(sampledTime);
+        scene::FlushWorldTransforms(m_scene);
+        Tick(dt);
+
+        EXPECT_NEAR(controls.BodyState("Body").velocity.x, 1.0f, 0.002f);
+        if (frame < 2)
+            EXPECT_NEAR(controls.BodyState("Body").position.x,
+                static_cast<float>((frame + 1) * 16) * scene::RAGDOLL_FIXED_STEP, 0.002f);
+    }
+    EXPECT_NEAR(controls.BodyState("Body").position.x,
+        static_cast<float>(physicalSteps) * scene::RAGDOLL_FIXED_STEP, 0.002f);
+
+    auto& rig = *Ragdoll().runtime.rig;
+    rig.SetStandingGuard(true, 0.1f, 0.1f);
+    const auto beforeRejectedSample = controls.BodyState("Body");
+    auto rejectedTargets = Ragdoll().runtime.bones;
+    rejectedTargets[0].position.x += 100.0f;
+    for (const float invalidDt : {-1.0f, std::numeric_limits<float>::quiet_NaN(),
+        std::numeric_limits<float>::infinity()}) {
+        rig.UpdateDriveTargets(rejectedTargets, invalidDt);
+        EXPECT_VEC3_NEAR(controls.BodyState("Body").position,
+            beforeRejectedSample.position, testkit::kTolerance);
+        EXPECT_VEC3_NEAR(controls.BodyState("Body").velocity,
+            beforeRejectedSample.velocity, testkit::kTolerance);
+    }
 }
 
 TEST_F(RagdollSystemTest, FifteenFpsAdvancesAFullSecondOfGravityAndFinalBounds)

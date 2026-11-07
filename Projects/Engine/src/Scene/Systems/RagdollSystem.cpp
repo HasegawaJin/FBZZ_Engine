@@ -476,11 +476,14 @@ void RagdollSystem::Update(SystemContext& ctx)
         }
 
         RagdollRig& rig = *runtime.rig;
+        const RagdollOwnerPose ownerPose{go->transform.worldPosition,go->transform.worldRotation};
+        bool capturedTargets = false;
 
         /// @note 再構築で全体が再ブレンドしないよう、現在姿勢を捕獲して phase と重みは保つ。
         if (rebuilding && ragdoll->phase != RagdollPhase::Idle && !ragdoll->beginRequested) {
             rig.Capture(runtime.bones);
-            rig.UpdateDriveTargets(runtime.bones);
+            capturedTargets = true;
+            rig.UpdateDriveTargets(runtime.bones,0.0f,&ownerPose);
             std::vector<const physics::Collider*> ignored;
             CollectOwnColliders(*go, ignored);
             rig.SetIgnoredColliders(std::move(ignored));
@@ -504,8 +507,11 @@ void RagdollSystem::Update(SystemContext& ctx)
             ragdoll->phase             = RagdollPhase::BlendIn;
             ragdoll->phaseTimer        = 0.0f;
             ragdoll->weight            = ragdoll->phaseStartWeight;
-            if (needsCapture) rig.Capture(runtime.bones);
-            rig.UpdateDriveTargets(runtime.bones);
+            if (needsCapture) {
+                rig.Capture(runtime.bones);
+                capturedTargets = true;
+            }
+            rig.UpdateDriveTargets(runtime.bones,0.0f,&ownerPose);
             ragdoll->runtimeGround = GroundHeightFor(*ragdoll, *go);
 
             /// @note 実行中はコライダーが増減しないため、起動時だけ階層を辿って拾い直す。
@@ -520,7 +526,9 @@ void RagdollSystem::Update(SystemContext& ctx)
         rig.SetStandingGuard(ragdoll->standingGuard, ragdoll->standingMaxDistance,
                              ragdoll->standingMaxDegrees * math::PI / 180.0f);
         if (ragdoll->mode == RagdollMode::Active || ragdoll->standingGuard) {
-            rig.UpdateDriveTargets(runtime.bones,ctx.dt);
+            /// @note 再捕獲で目標時計を作り直しても、未消費の固定刻みの端数は捨てない。
+            const float sampleDt = ctx.dt + (capturedTargets ? static_cast<float>(runtime.remainingTime) : 0.0f);
+            rig.UpdateDriveTargets(runtime.bones,sampleDt,&ownerPose);
             ragdoll->runtimeGround = GroundHeightFor(*ragdoll, *go);
         }
 
