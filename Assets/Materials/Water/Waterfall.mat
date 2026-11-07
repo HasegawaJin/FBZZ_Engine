@@ -1,0 +1,21 @@
+# @file    Waterfall.mat
+# @brief   Editable continuously flowing waterfall curtain.
+# @author  Hasegawa Jin
+# @date    2026-11-06
+version = 1
+shader = 'guid:2b7480e615df5a6ab43ab168cd15aa04|Assets/Shaders/Water/Waterfall.hlsl'
+blend_mode = 'AlphaBlend'
+double_sided = true
+depth_write = false
+render_queue = 3010
+render_path = 'auto'
+mesh_type = 'surface'
+[params]
+albedo = [0.16, 0.38, 0.43, 1.0]
+foamColor = [0.81, 0.94, 0.96, 1.0]
+flowSpeed = 1.6
+streamDensity = 36.0
+foamAmount = 1.15
+opacity = 0.90
+foamMode = 0.0
+edgeSoftness = 0.045

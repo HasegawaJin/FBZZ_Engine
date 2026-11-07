@@ -1,0 +1,21 @@
+# @file    WaterfallFoam.mat
+# @brief   Animated impact foam with a soft radial boundary.
+# @author  Hasegawa Jin
+# @date    2026-11-06
+version = 1
+shader = 'guid:2b7480e615df5a6ab43ab168cd15aa04|Assets/Shaders/Water/Waterfall.hlsl'
+blend_mode = 'AlphaBlend'
+double_sided = true
+depth_write = false
+render_queue = 3015
+render_path = 'auto'
+mesh_type = 'surface'
+[params]
+albedo = [0.39, 0.60, 0.62, 1.0]
+foamColor = [0.83, 0.94, 0.96, 1.0]
+flowSpeed = 0.55
+streamDensity = 20.0
+foamAmount = 1.2
+opacity = 0.72
+foamMode = 1.0
+edgeSoftness = 0.05

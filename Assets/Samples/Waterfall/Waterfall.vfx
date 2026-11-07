@@ -1,0 +1,520 @@
+# @file    Waterfall.vfx
+# @brief   Reusable waterfall curtain, foam, droplets and mist.
+# @author  Hasegawa Jin
+# @date    2026-11-06
+
+[scene]
+format_version = 2
+
+[[gameobjects]]
+name = "Waterfall"
+instanceId = "e04b2278-0614-54e2-8aa1-effbd5f38c8e"
+active = true
+layer = 0
+tag = "Untagged"
+parent = ""
+parentInstanceId = ""
+prefabAssetPath = ""
+prefabSourceId = ""
+[gameobjects.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0, 1]
+scale = [1, 1, 1]
+[gameobjects.VFXComponent]
+enabled = true
+playOnAwake = true
+loop = true
+speed = 1.0
+duration = 10.0
+autoDestroy = false
+
+[[gameobjects]]
+name = "Waterfall Curtain"
+instanceId = "b41d1695-d0be-58e0-b602-470668983346"
+active = true
+layer = 0
+tag = "Untagged"
+parent = "Waterfall"
+parentInstanceId = "e04b2278-0614-54e2-8aa1-effbd5f38c8e"
+prefabAssetPath = ""
+prefabSourceId = ""
+[gameobjects.transform]
+position = [0, 0, 0]
+rotation = [0, 0, 0, 1]
+scale = [10, 10.5, 10.5]
+[gameobjects.MeshRenderer]
+enabled = true
+castShadows = false
+mesh = "guid:2bd44126177d5e05ae72bb336200cc33|Assets/Models/Water/WaterfallVolume.obj"
+[gameobjects.MaterialComponent]
+enabled = true
+visible = true
+material = "guid:8788b14fc7d45d17a70f52d1bc7b9ef4|Assets/Materials/Water/Waterfall.mat"
+
+[[gameobjects]]
+name = "Waterfall Impact Foam"
+instanceId = "76026b3e-0261-5ac6-a313-6af8b117c152"
+active = true
+layer = 0
+tag = "Untagged"
+parent = "Waterfall"
+parentInstanceId = "e04b2278-0614-54e2-8aa1-effbd5f38c8e"
+prefabAssetPath = ""
+prefabSourceId = ""
+[gameobjects.transform]
+position = [0, 0.16, -1.986876106031141]
+rotation = [0, 0, 0, 1]
+scale = [14, 1, 13]
+[gameobjects.MeshRenderer]
+enabled = true
+castShadows = false
+mesh = "guid:e5d3da1919de5abca9528944489ca0d3|Assets/Models/Water/WaterfallFoam.obj"
+[gameobjects.MaterialComponent]
+enabled = true
+visible = true
+material = "guid:968de9ca087b53a18a2dfbb8df689f08|Assets/Materials/Water/WaterfallFoam.mat"
+
+[[gameobjects]]
+name = "Waterfall Mist"
+instanceId = "e298de35-6b59-5cdf-b906-cdf11789d0ff"
+active = true
+layer = 0
+tag = "Untagged"
+parent = "Waterfall"
+parentInstanceId = "e04b2278-0614-54e2-8aa1-effbd5f38c8e"
+prefabAssetPath = ""
+prefabSourceId = ""
+[gameobjects.transform]
+position = [0, 0.4, -1.986876106031141]
+rotation = [0, 0, 0, 1]
+scale = [1, 1, 1]
+[gameobjects.ParticleEmitter]
+angularVelocityMax = 0.2
+angularVelocityMin = -0.2
+birthSubEmitter = ""
+blackbodyEnabled = false
+blackbodyIntensity = 1.0
+blackbodyReferenceTemperature = 1800.0
+boxExtents = [4.0, 0.3, 0.6]
+bursts = []
+clearOnStop = false
+collisionBounciness = 0.5
+collisionDamping = 0.0
+collisionLayerMask = 4294967295
+collisionMode = 0
+collisionPlaneY = 0.0
+collisionRadius = 0.05
+collisionResponse = 0
+collisionSubEmitter = ""
+colorCurvePower = 1.0
+colorEnd = [0.9, 0.94, 1.0, 0.37]
+colorStart = [0.9, 0.94, 1.0, 0.65]
+colorVariation = 0.04
+coneAngleDegrees = 25.0
+coneRadius = 1.0
+cullingBoundsPadding = 8.0
+cullingEnabled = true
+deathSubEmitter = ""
+duration = 10.0
+emitPosition = [0.0, 0.0, 0.0]
+emitRate = 35.0
+emitVelocity = [0.0, 0.6, 1.1]
+enabled = true
+flowCoupling = 0.0
+flowFieldChannels = 4294967295
+gravity = [0.0, 0.2, 0.0]
+inheritVelocity = 0.0
+lifetime = 3.0
+lifetimeRandom = 0.3
+lightColor = [1.0, 1.0, 1.0, 1.0]
+lightEnabled = false
+lightFadeWithAlpha = true
+lightIntensity = 1.0
+lightMaxCount = 8
+lightRange = 2.0
+lightRangeFromSize = false
+lightRatio = 1.0
+lightUseParticleColor = true
+localForces = []
+lodEnabled = true
+lodFarDistance = 450.0
+lodFarRateScale = 0.1
+lodNearDistance = 100.0
+lodNearRateScale = 1.0
+loop = true
+materialPath = "guid:49a93eeef615529c94bf8b1ce6cc766e|Assets/Materials/Water/WaterfallMist.mat"
+maxParticles = 220
+meshParticlePath = ""
+meshShapeFollowSkinnedAnimation = false
+meshShapeIndex = -1
+meshShapeNormalVelocity = 0.0
+meshShapePath = ""
+meshShapeScale = 1.0
+pauseWhenCulled = false
+playing = true
+prewarm = true
+randomSeed = 61107
+randomStartRotation = true
+rateOverDistance = 0.0
+receiveFlowFields = false
+renderMode = 0
+renderPriority = 25
+screenCoverageThreshold = 0.0
+shape = 3
+simulationMode = 0
+simulationSpace = 0
+sizeAxisScale = [1.0, 1.0, 1.0]
+sizeCurvePower = 1.0
+sizeEnd = 3.5
+sizeStart = 0.55
+sortMode = 1
+speedRange = 10.0
+sphereRadius = 1.0
+startDelay = 0.0
+stretchedLengthScale = 0.8
+stretchedVelocityScale = 0.43
+subEmitterBurstCount = 1
+subEmitterInheritVelocity = 0.0
+trailAlphaScale = 0.5
+trailColorTint = [1.0, 1.0, 1.0, 1.0]
+trailEnabled = false
+trailPointCount = 6
+trailRibbon = false
+trailRibbonWidth = 0.0
+trailSampleInterval = 0.03
+trailWidthScale = 0.6
+useColorGradient = true
+useDragCurve = false
+useEmitRateCurve = false
+useRotationCurve = false
+useSizeCurve = false
+useSpeedColorGradient = false
+useSpeedSizeCurve = false
+useVelocityCurve = false
+velocitySpread = 1.1
+[gameobjects.ParticleEmitter.colorGradient]
+interp = 0
+space = 0
+keys = [[0.0, 0.82, 0.92, 0.96, 0.0], [0.15, 0.82, 0.92, 0.96, 0.2], [0.65, 0.82, 0.92, 0.96, 0.11], [1.0, 0.82, 0.92, 0.96, 0.0]]
+[gameobjects.ParticleEmitter.dragCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.emitRateCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.rotationCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.sizeCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.speedColorGradient]
+interp = 0
+keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]]
+space = 0
+[gameobjects.ParticleEmitter.speedSizeCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.temperatureCurve]
+interp = 0
+keys = [[0.0, 1900.0], [1.0, 1100.0]]
+[gameobjects.ParticleEmitter.velocityCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+
+[[gameobjects]]
+name = "Waterfall Droplets"
+instanceId = "0d71e410-ef0d-58ae-bf7b-c5c6fb65c2d8"
+active = true
+layer = 0
+tag = "Untagged"
+parent = "Waterfall"
+parentInstanceId = "e04b2278-0614-54e2-8aa1-effbd5f38c8e"
+prefabAssetPath = ""
+prefabSourceId = ""
+[gameobjects.transform]
+position = [0, 0.4, -1.986876106031141]
+rotation = [0, 0, 0, 1]
+scale = [1, 1, 1]
+[gameobjects.ParticleEmitter]
+angularVelocityMax = 0.2
+angularVelocityMin = -0.2
+birthSubEmitter = ""
+blackbodyEnabled = false
+blackbodyIntensity = 1.0
+blackbodyReferenceTemperature = 1800.0
+boxExtents = [4.0, 0.3, 0.6]
+bursts = []
+clearOnStop = false
+collisionBounciness = 0.5
+collisionDamping = 0.0
+collisionLayerMask = 4294967295
+collisionMode = 0
+collisionPlaneY = 0.0
+collisionRadius = 0.05
+collisionResponse = 0
+collisionSubEmitter = ""
+colorCurvePower = 1.0
+colorEnd = [0.9, 0.94, 1.0, 0.37]
+colorStart = [0.9, 0.94, 1.0, 0.65]
+colorVariation = 0.04
+coneAngleDegrees = 25.0
+coneRadius = 1.0
+cullingBoundsPadding = 8.0
+cullingEnabled = true
+deathSubEmitter = ""
+duration = 10.0
+emitPosition = [0.0, 0.0, 0.0]
+emitRate = 150.0
+emitVelocity = [0.0, 4.8, 2.5]
+enabled = true
+flowCoupling = 0.0
+flowFieldChannels = 4294967295
+gravity = [0.0, -9.81, 0.0]
+inheritVelocity = 0.0
+lifetime = 1.7
+lifetimeRandom = 0.35
+lightColor = [1.0, 1.0, 1.0, 1.0]
+lightEnabled = false
+lightFadeWithAlpha = true
+lightIntensity = 1.0
+lightMaxCount = 8
+lightRange = 2.0
+lightRangeFromSize = false
+lightRatio = 1.0
+lightUseParticleColor = true
+localForces = []
+lodEnabled = true
+lodFarDistance = 450.0
+lodFarRateScale = 0.1
+lodNearDistance = 100.0
+lodNearRateScale = 1.0
+loop = true
+materialPath = "guid:49a93eeef615529c94bf8b1ce6cc766e|Assets/Materials/Water/WaterfallMist.mat"
+maxParticles = 450
+meshParticlePath = ""
+meshShapeFollowSkinnedAnimation = false
+meshShapeIndex = -1
+meshShapeNormalVelocity = 0.0
+meshShapePath = ""
+meshShapeScale = 1.0
+pauseWhenCulled = false
+playing = true
+prewarm = true
+randomSeed = 61107
+randomStartRotation = true
+rateOverDistance = 0.0
+receiveFlowFields = false
+renderMode = 1
+renderPriority = 20
+screenCoverageThreshold = 0.0
+shape = 3
+simulationMode = 0
+simulationSpace = 0
+sizeAxisScale = [0.55, 1.0, 1.0]
+sizeCurvePower = 1.0
+sizeEnd = 0.018
+sizeStart = 0.07
+sortMode = 1
+speedRange = 10.0
+sphereRadius = 1.0
+startDelay = 0.0
+stretchedLengthScale = 0.5
+stretchedVelocityScale = 0.1
+subEmitterBurstCount = 1
+subEmitterInheritVelocity = 0.0
+trailAlphaScale = 0.5
+trailColorTint = [1.0, 1.0, 1.0, 1.0]
+trailEnabled = false
+trailPointCount = 6
+trailRibbon = false
+trailRibbonWidth = 0.0
+trailSampleInterval = 0.03
+trailWidthScale = 0.6
+useColorGradient = true
+useDragCurve = false
+useEmitRateCurve = false
+useRotationCurve = false
+useSizeCurve = false
+useSpeedColorGradient = false
+useSpeedSizeCurve = false
+useVelocityCurve = false
+velocitySpread = 2.2
+[gameobjects.ParticleEmitter.colorGradient]
+interp = 0
+space = 0
+keys = [[0.0, 0.92, 0.98, 1.0, 0.7], [0.7, 0.92, 0.98, 1.0, 0.55], [1.0, 0.92, 0.98, 1.0, 0.0]]
+[gameobjects.ParticleEmitter.dragCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.emitRateCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.rotationCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.sizeCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.speedColorGradient]
+interp = 0
+keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]]
+space = 0
+[gameobjects.ParticleEmitter.speedSizeCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.temperatureCurve]
+interp = 0
+keys = [[0.0, 1900.0], [1.0, 1100.0]]
+[gameobjects.ParticleEmitter.velocityCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+
+[[gameobjects]]
+name = "Waterfall Lip Spray"
+instanceId = "4f8906d0-a274-58d2-b5c1-a198fad2a3fe"
+active = true
+layer = 0
+tag = "Untagged"
+parent = "Waterfall"
+parentInstanceId = "e04b2278-0614-54e2-8aa1-effbd5f38c8e"
+prefabAssetPath = ""
+prefabSourceId = ""
+[gameobjects.transform]
+position = [0, 10.1, -4.8]
+rotation = [0, 0, 0, 1]
+scale = [1, 1, 1]
+[gameobjects.ParticleEmitter]
+angularVelocityMax = 0.2
+angularVelocityMin = -0.2
+birthSubEmitter = ""
+blackbodyEnabled = false
+blackbodyIntensity = 1.0
+blackbodyReferenceTemperature = 1800.0
+boxExtents = [4.5, 0.08, 0.12]
+bursts = []
+clearOnStop = false
+collisionBounciness = 0.5
+collisionDamping = 0.0
+collisionLayerMask = 4294967295
+collisionMode = 0
+collisionPlaneY = 0.0
+collisionRadius = 0.05
+collisionResponse = 0
+collisionSubEmitter = ""
+colorCurvePower = 1.0
+colorEnd = [0.9, 0.94, 1.0, 0.37]
+colorStart = [0.9, 0.94, 1.0, 0.65]
+colorVariation = 0.04
+coneAngleDegrees = 25.0
+coneRadius = 1.0
+cullingBoundsPadding = 8.0
+cullingEnabled = true
+deathSubEmitter = ""
+duration = 10.0
+emitPosition = [0.0, 0.0, 0.0]
+emitRate = 45.0
+emitVelocity = [0.0, 0.1, 2.7]
+enabled = true
+flowCoupling = 0.0
+flowFieldChannels = 4294967295
+gravity = [0.0, -7.0, 0.0]
+inheritVelocity = 0.0
+lifetime = 1.1
+lifetimeRandom = 0.3
+lightColor = [1.0, 1.0, 1.0, 1.0]
+lightEnabled = false
+lightFadeWithAlpha = true
+lightIntensity = 1.0
+lightMaxCount = 8
+lightRange = 2.0
+lightRangeFromSize = false
+lightRatio = 1.0
+lightUseParticleColor = true
+localForces = []
+lodEnabled = true
+lodFarDistance = 450.0
+lodFarRateScale = 0.1
+lodNearDistance = 100.0
+lodNearRateScale = 1.0
+loop = true
+materialPath = "guid:49a93eeef615529c94bf8b1ce6cc766e|Assets/Materials/Water/WaterfallMist.mat"
+maxParticles = 180
+meshParticlePath = ""
+meshShapeFollowSkinnedAnimation = false
+meshShapeIndex = -1
+meshShapeNormalVelocity = 0.0
+meshShapePath = ""
+meshShapeScale = 1.0
+pauseWhenCulled = false
+playing = true
+prewarm = true
+randomSeed = 61107
+randomStartRotation = true
+rateOverDistance = 0.0
+receiveFlowFields = false
+renderMode = 0
+renderPriority = 25
+screenCoverageThreshold = 0.0
+shape = 3
+simulationMode = 0
+simulationSpace = 0
+sizeAxisScale = [1.0, 1.0, 1.0]
+sizeCurvePower = 1.0
+sizeEnd = 0.55
+sizeStart = 0.13
+sortMode = 1
+speedRange = 10.0
+sphereRadius = 1.0
+startDelay = 0.0
+stretchedLengthScale = 0.8
+stretchedVelocityScale = 0.43
+subEmitterBurstCount = 1
+subEmitterInheritVelocity = 0.0
+trailAlphaScale = 0.5
+trailColorTint = [1.0, 1.0, 1.0, 1.0]
+trailEnabled = false
+trailPointCount = 6
+trailRibbon = false
+trailRibbonWidth = 0.0
+trailSampleInterval = 0.03
+trailWidthScale = 0.6
+useColorGradient = true
+useDragCurve = false
+useEmitRateCurve = false
+useRotationCurve = false
+useSizeCurve = false
+useSpeedColorGradient = false
+useSpeedSizeCurve = false
+useVelocityCurve = false
+velocitySpread = 0.6
+[gameobjects.ParticleEmitter.colorGradient]
+interp = 0
+space = 0
+keys = [[0.0, 0.82, 0.92, 0.96, 0.0], [0.15, 0.82, 0.92, 0.96, 0.2], [0.65, 0.82, 0.92, 0.96, 0.11], [1.0, 0.82, 0.92, 0.96, 0.0]]
+[gameobjects.ParticleEmitter.dragCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.emitRateCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.rotationCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.sizeCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.speedColorGradient]
+interp = 0
+keys = [[0.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 0.0]]
+space = 0
+[gameobjects.ParticleEmitter.speedSizeCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+[gameobjects.ParticleEmitter.temperatureCurve]
+interp = 0
+keys = [[0.0, 1900.0], [1.0, 1100.0]]
+[gameobjects.ParticleEmitter.velocityCurve]
+interp = 0
+keys = [[0.0, 0.0], [1.0, 1.0]]
+

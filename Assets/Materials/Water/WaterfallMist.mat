@@ -1,0 +1,19 @@
+# @file    WaterfallMist.mat
+# @brief   Soft mist for looping waterfall emitters.
+# @author  Hasegawa Jin
+# @date    2026-11-06
+version = 1
+shader = 'guid:5203204117345776af8c6fca85df1b5c|Assets/Shaders/Water/WaterfallMist.hlsl'
+blend_mode = 'AlphaBlend'
+double_sided = true
+depth_write = false
+render_queue = 3030
+render_path = 'particle'
+mesh_type = 'surface'
+[params]
+albedo = [0.86, 0.95, 1.0, 1.0]
+[particle]
+soft_particles = true
+soft_particle_fade_distance = 0.8
+emissive_scale = 0.0
+distortion = false

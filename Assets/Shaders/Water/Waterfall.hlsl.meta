@@ -1,0 +1,13 @@
+# @file    Waterfall.hlsl.meta
+# @brief   Standard rigid geometry with custom transparent coverage.
+# @author  Hasegawa Jin
+# @date    2026-11-06
+[meta]
+guid = '2b7480e615df5a6ab43ab168cd15aa04'
+[shader]
+version = 1
+vertex = 'standard_surface_v1'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'surface'

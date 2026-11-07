@@ -1,0 +1,19 @@
+<!-- @file    waterfall-authoring.md -->
+<!-- @brief   Reusable visual waterfall authoring over existing mesh, material, particle and prefab contracts. -->
+<!-- @author  Hasegawa Jin -->
+<!-- @date    2026-11-06 -->
+# Waterfall authoring
+
+Waterfall curtains are ordinary rigid MeshRenderer objects with transparent project materials. They do not extend WaterComponent into a vertical fluid volume. Water below and above the curtain retains the height-field query and buoyancy contract from [water-foundation.md](water-foundation.md). Flowing texture coordinates are visual animation, not simulated water transport.
+
+`Assets/Shaders/Water/Waterfall.hlsl` supplies downward streaming, foam breakup and a radial impact-foam mode. The standard material Inspector reflects the parameters in `Waterfall.mat` and `WaterfallFoam.mat`. Duplicate a material before adjusting an individual waterfall. `flowSpeed` is UV repeats per second; curtain UV v=0 is the lip and v=1 is the foot. `streamDensity` controls the number of horizontal streaks, `foamAmount` mixes foam, and `opacity` changes visual coverage. Geometry is rigid, with custom transparent coverage; the shader declares no standard PBR, GBuffer or ray BSDF contract.
+
+`Assets/Samples/Waterfall/Waterfall.vfx` is a normal VFX prefab with a curtain, impact foam, water droplets and mist. Edit the hierarchy through the existing prefab editor. Keep the root at unit scale when physical particle velocity and gravity must remain in world units. Edit the curtain width/height and foam footprint on their child transforms, and move the spray and mist emitters to the foot. A water curtain alone does not provide collision or buoyancy. Use ordinary rock collision and an actual WaterComponent for the receiving pool when gameplay requires them.
+
+The prefab uses `WaterfallVolume.obj`, containing nine closed stream sections with varying elliptical cross-sections. Its normalized mesh maps to a 48 m width and a 64 m fall at child scale `(48, 64, 64)`; the reusable sample uses smaller child dimensions. The centerline starts with horizontal velocity and bends downward under constant gravity. This is an authored visual trajectory, not a fluid simulation. Match the upper river endpoint to the lip, place impact effects at the centerline foot, and clear the terrain across the complete stream width and depth. Check the result from the side as well as from the front.
+
+OBJ files use right-handed authoring coordinates. `ModelImporter.cpp` applies `MakeLeftHanded`, `FlipWindingOrder` and `FlipUVs`, so an export generated from engine-space geometry must negate position/normal Z, reverse triangle winding and write OBJ V as `1 - fallTime`. After import, V increases toward the foot and positive `flowSpeed` animates downward. Apply this conversion at export; do not compensate with a reversed prefab rotation. ParticleEmitter velocity is emitter-local even in world simulation space, while gravity remains world-space.
+
+The prefab uses the existing ParticleEmitter budget, distance LOD and lifetime controls. Droplets use gravity and stretched billboards; mist uses low-opacity billboards. Both loop continuously with fixed seeds. No fluid solver, new Scene phase, engine-specific gameplay script, bespoke asset format or duplicated reflection contract is introduced. This follows [vfx-prefab.md](vfx-prefab.md), [particle-authoring.md](particle-authoring.md) and [shader-capabilities.md](shader-capabilities.md).
+
+Validation must distinguish standalone shader compilation, structural asset validation and actual in-map rendering. A baseline captured for the first time records a reviewed image; it does not prove a regression comparison. The open-world placement is authored as additional objects in the existing scene, preserving existing instance IDs and terrain assets.

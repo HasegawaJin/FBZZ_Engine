@@ -1,0 +1,13 @@
+# @file    WaterfallMist.hlsl.meta
+# @brief   Persistent waterfall asset identity.
+# @author  Hasegawa Jin
+# @date    2026-11-06
+[meta]
+guid = '5203204117345776af8c6fca85df1b5c'
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'particle'
