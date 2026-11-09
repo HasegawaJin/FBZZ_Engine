@@ -28,6 +28,8 @@ struct FiberComponent {
     int m_minShellCount = 8;
     float m_lodNear = 8.0f;
     float m_lodFar = 40.0f;
+    /// @note 地形 Blade の疎な描画を始める距離 [world m]。0 は従来の距離 LOD。
+    float m_terrainSparseLodStart = 0.0f;
     float m_bladeDensity = 400.0f;
     float m_bladeWidth = 0.015f;
     /// @note Blade の高さ分割数。既定 6 は従来の 72 頂点。少ない分割は曲げの輪郭を粗くする。
@@ -87,6 +89,8 @@ struct FiberComponent {
         r.IntRange("minShellCount", m_minShellCount, 1, 64);
         r.FloatRange("lodNear", m_lodNear, 0.0f, 1000.0f);
         r.FloatRange("lodFar", m_lodFar, 0.1f, 2000.0f);
+        r.FloatRange("terrainSparseLodStart", m_terrainSparseLodStart, 0.0f, 2000.0f);
+        r.Tooltip("地形 Blade の根元を 1/8 にし、高さ分割を 1 にする距離 [m]。0 または lodNear〜lodFar の範囲外なら無効。");
         r.FloatRange("bladeDensity", m_bladeDensity, 0.001f, 2000.0f);
         /// @note km 規模の地形は疎な候補密度を使い、距離カリング前の根元バッファを抑える。
         r.Tooltip("Blade の本数 / 面積。chunkedPlacement はワールド m²、旧方式はローカル面積です。");

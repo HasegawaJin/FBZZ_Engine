@@ -413,6 +413,35 @@ TEST_F(TerrainFiberStreamingTest, DenseGrassResidencyIsBoundedByViewAndWarmFrame
     EXPECT_EQ(LiveAllocationKeys(*m_resources), allocations);
 }
 
+TEST_F(TerrainFiberStreamingTest, SparseTerrainLodUploadsOnlyTheSharedPrefixForTheFarView)
+{
+    CreateTerrain(9, 4.0f);
+    m_renderer.m_captureStructuredBytes = true;
+    auto* fiber = m_scene.GetComponent<scene::FiberComponent>(m_terrainId);
+    ASSERT_NE(fiber, nullptr);
+    fiber->m_terrainSparseLodStart = 40.0f;
+
+    ExtractContractFrame(16.0f, 16.0f);
+    ASSERT_EQ(m_output.fibers.size(), 1u);
+    const auto nearBlades = m_output.fibers.front().blades;
+    ASSERT_EQ(nearBlades.m_bladeCount, 4096u);
+
+    ExtractContractFrame(64.0f, 16.0f, false);
+    ASSERT_EQ(m_output.fibers.size(), 1u);
+    const auto farBlades = m_output.fibers.front().blades;
+    ASSERT_EQ(farBlades.m_bladeCount, 512u);
+    const auto nearBytes = m_renderer.m_structuredBytes.find(m_resources->Get(nearBlades.m_blades));
+    const auto farBytes = m_renderer.m_structuredBytes.find(m_resources->Get(farBlades.m_blades));
+    ASSERT_NE(nearBytes, m_renderer.m_structuredBytes.end());
+    ASSERT_NE(farBytes, m_renderer.m_structuredBytes.end());
+    EXPECT_EQ(farBytes->second.size() * 8, nearBytes->second.size());
+    ASSERT_LE(farBytes->second.size(), nearBytes->second.size());
+    EXPECT_TRUE(std::equal(farBytes->second.begin(), farBytes->second.end(), nearBytes->second.begin()));
+
+    ExtractContractFrame(97.0f, 16.0f, false);
+    EXPECT_TRUE(m_output.fibers.empty());
+}
+
 TEST_F(TerrainFiberStreamingTest, TwoViewsRemainLiveUntilResourceFrameRetirementAndReturnRegeneratesIdenticalRoots)
 {
     m_renderer.m_captureStructuredBytes = true;

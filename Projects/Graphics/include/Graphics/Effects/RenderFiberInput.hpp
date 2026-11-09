@@ -62,12 +62,15 @@ inline void UpdateFiberContactCounts(FiberContactCB& data, float time)
 }
 
 
+inline constexpr float TERRAIN_SPARSE_BLADE_DENSITY_SCALE = 0.125f;
+
 struct FiberDrawSettings {
     FiberRenderMode m_mode = FiberRenderMode::SHELL;
     int m_shellCount = 16, m_minShellCount = 8, m_shadowShellCount = 6;
     int m_bladeSegments = 6, m_shadowBladeSegments = 0;
     bool m_distanceLod = true;
     float m_lodNear = 8, m_lodFar = 40;
+    float m_terrainSparseLodStart = 0.0f;
 };
 struct FiberResolvedGeometry {
     ResourceHandle<BufferTag> m_vertices, m_indices;

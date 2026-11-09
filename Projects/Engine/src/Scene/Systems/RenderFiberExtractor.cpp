@@ -271,11 +271,11 @@ FiberResources& GetFiberResources(renderer::ResourceManager& resources)
 }
 
 const FiberFinBuffers& GetFiberFinBuffers(FiberResources& cache, renderer::ResourceManager& resources,
-                                         const renderer::Mesh& mesh, const FiberComponent& fiber, bool blades,
-                                          bool densityFromAlpha = false, bool terrain = false)
+                                          const renderer::Mesh& mesh, const FiberComponent& fiber, float bladeDensity,
+                                          bool blades, bool densityFromAlpha, bool terrain)
 {
     const std::array<uint32_t,8> key{mesh.vertexBuffer.id,mesh.vertexBuffer.gen,mesh.indexBuffer.id,mesh.indexBuffer.gen,
-        blades ? 1u : 0u, blades ? std::bit_cast<uint32_t>(fiber.m_bladeDensity) : 0u,
+        blades ? 1u : 0u, blades ? std::bit_cast<uint32_t>(bladeDensity) : 0u,
         blades ? std::bit_cast<uint32_t>(fiber.m_bladeWidth) : 0u, blades ? static_cast<uint32_t>(fiber.m_seed) : 0u};
     const auto [it, inserted] = cache.m_fins.try_emplace(key);
     auto& result = it->second;
@@ -285,7 +285,7 @@ const FiberFinBuffers& GetFiberFinBuffers(FiberResources& cache, renderer::Resou
     if (blades) {
         /// @note 頂点は GPU で SV_VertexID から組み立てる。CPU で作って送るのは 1 葉 64 バイトの根元だけ。
         std::vector<renderer::FiberBladeRoot> roots;
-        if (!renderer::BuildFiberBlades(mesh, fiber.m_bladeDensity, fiber.m_bladeWidth, static_cast<uint32_t>(fiber.m_seed), roots,
+        if (!renderer::BuildFiberBlades(mesh, bladeDensity, fiber.m_bladeWidth, static_cast<uint32_t>(fiber.m_seed), roots,
                 densityFromAlpha)) {
             core::Logger::Warn("Fiber: blade roots rejected invalid input or budget above 32768; reduce density/patch size");
             return result;
@@ -565,6 +565,14 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             input.settings.m_distanceLod = fiber.m_distanceLod;
             input.settings.m_lodNear = fiber.m_lodNear;
             input.settings.m_lodFar = fiber.m_lodFar;
+            const float sparseStart = fiber.m_terrainSparseLodStart;
+            float bladeDensity = fiber.m_bladeDensity;
+            if (surface.terrain && fiber.m_mode == FiberRenderMode::BLADE && fiber.m_distanceLod
+                && sparseStart > std::max(fiber.m_lodNear, 0.0f) && sparseStart < fiber.m_lodFar) {
+                input.settings.m_terrainSparseLodStart = sparseStart;
+                if ((input.lodCenter - ctx.camera.m_position).Length() >= sparseStart)
+                    bladeDensity *= renderer::TERRAIN_SPARSE_BLADE_DENSITY_SCALE;
+            }
             input.material = settings;
             input.appearance = FiberAppearanceFor(materialEntry.m_appearance, fiber.m_mode);
             input.frame = frameBase;
@@ -578,7 +586,8 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             input.flows = flows.m_buffer;
             input.velocityField = asset::VelocityFieldAtlas::Texture(resources);
             const auto resolveShape = [&](bool blades) {
-                const auto& buffers = GetFiberFinBuffers(cache, resources, *mesh, fiber, blades, surface.densityFromAlpha, surface.terrain);
+                const auto& buffers = GetFiberFinBuffers(cache, resources, *mesh, fiber, bladeDensity, blades,
+                    surface.densityFromAlpha, surface.terrain);
                 return renderer::FiberResolvedGeometry{buffers.m_vertices, buffers.m_indices, buffers.m_indexCount, buffers.m_blades, buffers.m_bladeCount};
             };
             if (fiber.m_mode == FiberRenderMode::FIN || fiber.m_mode == FiberRenderMode::HYBRID) input.fins = resolveShape(false);

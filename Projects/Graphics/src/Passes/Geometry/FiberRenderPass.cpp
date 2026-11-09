@@ -209,6 +209,8 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         frame.m_shellCount = static_cast<float>(std::clamp(fiber.m_shellCount, 1, 64));
         const auto& lodCenter = surface.lodCenter;
         const float distance=(lodCenter-ctx.camera.m_position).Length();
+        const float sparseStart = fiber.m_terrainSparseLodStart;
+        const bool sparseTerrain = sparseStart > 0.0f && distance >= sparseStart;
         if (fiber.m_distanceLod) {
             const float nearDistance=std::max(fiber.m_lodNear,0.0f);
             const float farDistance=std::max(fiber.m_lodFar,nearDistance+0.1f);
@@ -217,11 +219,18 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             const float t=std::clamp((distance-nearDistance)/(farDistance-nearDistance),0.0f,1.0f);
             frame.m_lod.x=1.0f-0.75f*t;
             frame.m_lod.y=std::clamp((farDistance-distance)/(0.1f*(farDistance-nearDistance)),0.0f,1.0f);
+            if (sparseStart > 0.0f) {
+                /// @note 生成済み根元の先頭を使い、疎なバッファへ切り替わる前後で同じ密度にする。
+                const float start = sparseTerrain ? sparseStart : nearDistance;
+                const float end = sparseTerrain ? farDistance : sparseStart;
+                const float fraction = sparseTerrain ? 0.25f : TERRAIN_SPARSE_BLADE_DENSITY_SCALE;
+                frame.m_lod.x = std::lerp(1.0f, fraction, std::clamp((distance - start) / (end - start), 0.0f, 1.0f));
+            }
         }
         if (drawBlades) {
             const int segments = mode == FiberPassMode::SHADOW && fiber.m_shadowBladeSegments > 0
                 ? fiber.m_shadowBladeSegments : fiber.m_bladeSegments;
-            frame.m_lod.z = static_cast<float>(std::clamp(segments, 1, 6));
+            frame.m_lod.z = sparseTerrain ? 1.0f : static_cast<float>(std::clamp(segments, 1, 6));
         }
         /// @note 影は層の隙間が見えにくく、カスケード・光源の面の数だけ全層を描くので層数を別に絞る。層間隔は fiberShellCount から求まるので視差の上乗せも自動で太る。
         if (mode == FiberPassMode::SHADOW)

@@ -491,6 +491,7 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     fiber.m_bladeDensity=600;
     fiber.m_bladeWidth=0.025f;
     fiber.m_bladeSegments=3;
+    fiber.m_terrainSparseLodStart=25.0f;
     fiber.m_shadowBladeSegments=0;
     fiber.m_terrainPatchCells=3;
     fiber.m_terrainLayer=2;
@@ -511,6 +512,7 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     EXPECT_TRUE(loaded->m_distanceLod);
     EXPECT_FLOAT_EQ(loaded->m_bladeDensity,600);
     EXPECT_EQ(loaded->m_bladeSegments,3);
+    EXPECT_FLOAT_EQ(loaded->m_terrainSparseLodStart,25.0f);
     EXPECT_EQ(loaded->m_shadowBladeSegments,0);
     EXPECT_EQ(loaded->m_terrainPatchCells,3);
     EXPECT_EQ(loaded->m_terrainLayer,2);
