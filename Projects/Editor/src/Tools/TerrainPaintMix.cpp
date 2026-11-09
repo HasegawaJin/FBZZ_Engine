@@ -27,7 +27,8 @@ constexpr FloatField FIELDS[]{
 bool Valid(const TerrainPaintMix& mix)
 {
     if (mix.name.empty() || mix.name.size() > 256 || mix.sources.empty() || mix.sources.size() > TERRAIN_SCATTER_PALETTE_LIMIT
-        || !std::isfinite(mix.radius) || mix.radius < 0.25f || mix.radius > 500 || mix.excludedLayer < -1 || mix.excludedLayer > 255
+        || !std::isfinite(mix.radius) || mix.radius < 0.25f || mix.radius > TERRAIN_PAINT_MAX_BRUSH_RADIUS
+        || mix.excludedLayer < -1 || mix.excludedLayer > 255
         || !std::isfinite(mix.feather) || mix.feather < 0 || mix.feather > 1 || mix.excludedMaterials.size() > 256) return false;
     for (const auto& ref : mix.excludedMaterials) if(ref.empty() || ref.size()>4096) return false;
     std::unordered_set<std::string> sources;

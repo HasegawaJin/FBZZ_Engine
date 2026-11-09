@@ -40,6 +40,7 @@ struct TerrainScatterSettings {
 
 inline constexpr size_t TERRAIN_SCATTER_STROKE_LIMIT = 512;
 inline constexpr size_t TERRAIN_SCATTER_PALETTE_LIMIT = 16;
+inline constexpr float TERRAIN_PAINT_MAX_BRUSH_RADIUS = 1024.0f;
 
 /// @note 円の中心は world XYZ。半径は地形 X/Z 軸の scale 適用後の距離 [m]。
 struct TerrainScatterBrush {

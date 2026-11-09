@@ -120,6 +120,8 @@ public:
                         scene::GameObject*&     outGO) const;
 
 private:
+    [[nodiscard]] float BrushRadiusLimit() const;
+
     /// @name 状態
     /// @{
     bool        m_active  = false;

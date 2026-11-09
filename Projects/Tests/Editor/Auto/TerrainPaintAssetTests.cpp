@@ -470,7 +470,7 @@ TEST_F(TerrainPaintAssetTest, PaintMixRoundTripsRulesAndUseRejectsMissingSources
     const auto source = CreateAsset();
     editor::TerrainTool tool; Context().terrainTool = &tool;
     editor::TerrainPaintMix mix; mix.name = "Riverbank"; mix.sources = {{source, 37}};
-    mix.radius = 18; mix.settings.seed = 71; mix.settings.minimumDistance = 2.5f;
+    mix.radius = 1024.0f; mix.settings.seed = 71; mix.settings.minimumDistance = 2.5f;
     mix.settings.minHeight = 3; mix.settings.maxHeight = 42; mix.excludedLayer = 2; mix.avoidWater = true; mix.avoidPaths = false;
     tool.ApplyPaintMix(mix);
     editor::OpArgs args; args.Set("path", std::string("Assets/Terrain/Mixes/Riverbank.terrainmix")); args.Set("name", mix.name);
@@ -479,7 +479,7 @@ TEST_F(TerrainPaintAssetTest, PaintMixRoundTripsRulesAndUseRejectsMissingSources
     ASSERT_TRUE(editor::LoadTerrainPaintMix(util::FileSystem::PathToUtf8(File("Assets/Terrain/Mixes/Riverbank.terrainmix")), loaded));
     EXPECT_EQ(loaded.sources[0].reference, source); EXPECT_FLOAT_EQ(loaded.sources[0].weight, 37);
     EXPECT_EQ(loaded.settings.seed, 71u); EXPECT_FLOAT_EQ(loaded.settings.minimumDistance, 2.5f);
-    EXPECT_FLOAT_EQ(loaded.radius, 18); EXPECT_EQ(loaded.excludedLayer, 2); EXPECT_FALSE(loaded.avoidPaths);
+    EXPECT_FLOAT_EQ(loaded.radius, 1024.0f); EXPECT_EQ(loaded.excludedLayer, 2); EXPECT_FALSE(loaded.avoidPaths);
     tool.SetPaintPalette({source}, false);
     ASSERT_TRUE(editor::InvokeOperator(Context(), "terrain.paint_mix.use", args).ok);
     EXPECT_FLOAT_EQ(tool.CapturePaintMix("Current").sources[0].weight, 37);

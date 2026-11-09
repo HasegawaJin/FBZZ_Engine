@@ -246,16 +246,18 @@ void TerrainTool::Update(
             m_heightStamp.depth = std::clamp(m_heightStamp.depth * factor, 0.01f, 100000.0f);
         }
     } else if (viewportHovered) {
+        const float radiusLimit = BrushRadiusLimit();
+        m_brush.radius = std::min(m_brush.radius, radiusLimit);
         const bool  shift        = ImGui::GetIO().KeyShift;
         const float radiusStep   = std::max(0.5f, m_brush.radius * 0.1f);
         const float strengthStep = 0.02f;
         if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, true)) {
             if (shift) m_brush.strength = std::clamp(m_brush.strength - strengthStep, 0.001f, 1.0f);
-            else       m_brush.radius   = std::clamp(m_brush.radius   - radiusStep,   0.5f, scatterPaint?500.0f:50.0f);
+            else       m_brush.radius   = std::clamp(m_brush.radius   - radiusStep,   0.5f, radiusLimit);
         }
         if (ImGui::IsKeyPressed(ImGuiKey_RightBracket, true)) {
             if (shift) m_brush.strength = std::clamp(m_brush.strength + strengthStep, 0.001f, 1.0f);
-            else       m_brush.radius   = std::clamp(m_brush.radius   + radiusStep,   0.5f, scatterPaint?500.0f:50.0f);
+            else       m_brush.radius   = std::clamp(m_brush.radius   + radiusStep,   0.5f, radiusLimit);
         }
     }
 
@@ -1197,12 +1199,19 @@ void TerrainTool::DrawHoleContent(
         ImGui::Text("Hole cells: %zu / %zu", referenceTerrain->CountHoles(), referenceTerrain->CellCount());
 }
 
+float TerrainTool::BrushRadiusLimit() const
+{
+    return m_mode == Mode::Paint ? TERRAIN_PAINT_MAX_BRUSH_RADIUS : 50.0f;
+}
+
 void TerrainTool::DrawBrushSettings()
 {
     if (m_mode == Mode::Paint && m_paintTarget == PaintTarget::HeightMap) return;
     ImGui::Spacing();
     ImGui::SeparatorText("Brush Settings");
-    ImGui::SliderFloat("Radius", &m_brush.radius, 0.5f, m_mode==Mode::Paint&&m_paintTarget==PaintTarget::Instances?500.0f:50.0f, "%.1f");
+    const ImGuiSliderFlags radiusFlags = ImGuiSliderFlags_AlwaysClamp
+        | (m_mode == Mode::Paint ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None);
+    ImGui::SliderFloat("Radius", &m_brush.radius, 0.5f, BrushRadiusLimit(), "%.1f", radiusFlags);
     if (m_mode == Mode::Paint && m_paintTarget == PaintTarget::Instances) {
         ImGui::TextDisabled("[ / ] : Radius in meters");
         return;

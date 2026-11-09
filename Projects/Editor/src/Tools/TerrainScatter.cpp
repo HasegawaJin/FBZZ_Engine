@@ -180,7 +180,8 @@ bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatter
 {
     using namespace terrain_scatter_detail;
     if (brush.centers.empty() || brush.centers.size() > TERRAIN_SCATTER_STROKE_LIMIT || !std::isfinite(brush.radius)
-        || brush.radius < 0.25f || brush.radius > 500 || !std::isfinite(brush.feather) || brush.feather < 0 || brush.feather > 1) return false;
+        || brush.radius < 0.25f || brush.radius > TERRAIN_PAINT_MAX_BRUSH_RADIUS
+        || !std::isfinite(brush.feather) || brush.feather < 0 || brush.feather > 1) return false;
     for (const auto& p : brush.centers) if (!Finite(p)) return false;
     if (!brush.polygon) return true;
     if (brush.centers.size() < 3) return false;
@@ -253,7 +254,7 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
     std::vector<math::Vector3> centers;
     if (brush) {
         if (!ValidateTerrainRegion(terrainTransform, *brush))
-            return fail("ブラシは 1〜512 点、半径 0.25〜500 m で指定してください。");
+            return fail("ブラシは 1〜512 点、半径 0.25〜1024 m で指定してください。");
         centers.reserve(brush->centers.size());
         for (const auto& point : brush->centers) {
             const auto center = plane.Project(point);
