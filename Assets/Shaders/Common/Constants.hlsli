@@ -21,7 +21,8 @@ cbuffer CameraConstants : register(CB_CAMERA)
     /// @note 1 = 平行投影。深度バッファと視空間 Z の関係が射影で変わるため、
     /// @note 深度を線形化する側 (Space.hlsli の LinearizeDepth) が式を切り替える。
     float    isOrthographic;
-    float    _camPad;
+    /// @note 1 = Directional Auto Bake の影では風変形前の葉の形状を使う。
+    float    stableLeafShadow;
 };
 
 /// @note b1 の 2 枠目を別の意味で使いたいシェーダーは、#include より前に

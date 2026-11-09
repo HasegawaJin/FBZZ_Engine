@@ -172,7 +172,8 @@ struct PerFrameCB {
     /// @note LinearizeDepthAuto がこれで式を切り替えないと SSAO/SSR/コンタクトシャドウ/
     /// @note ソフトパーティクル/デカールが正投影ビューで一斉に破綻する。
     float         isOrthographic;
-    float         _pad;
+    /// @note Directional Auto Bake の影では、風変形前の葉の形状を使う。
+    float         stableLeafShadow;
 };
 
 /// @note TAA サブピクセルジッターを織り込んだ GPU 用射影行列 (Reversed-Z) を返す。

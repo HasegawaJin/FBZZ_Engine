@@ -443,7 +443,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     EXPECT_FALSE(math::Frustum::FromViewProjection(m_camera.GetViewProjection())
         .IntersectsSphere(placements->placements[1].position, 1.0f));
 
-    const auto renderAtlas = [&](bool gpu) {
+    const auto renderAtlas = [&](bool gpu, float time = 1.7f, bool autoBake = false) {
         m_settings.shadowEnabled = true;
         m_settings.shadow.mapResolution = m_width;
         m_settings.gpuInstancing = gpu;
@@ -454,9 +454,10 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
         ctx.renderScene = scene;
         ctx.width = m_width;
         ctx.height = m_height;
-        ctx.time = 1.7f;
+        ctx.time = time;
         ctx.shadowStrength = 1.0f;
         ctx.shadowCascadeCount = CASCADE_COUNT;
+        ctx.directionalShadowBakeEnabled = autoBake;
         ctx.resourceRegistry.BindTarget("ShadowMap", m_shadow);
         for (uint32_t i = 0; i < CASCADE_COUNT; ++i) {
             r::Camera light = m_camera;
@@ -497,6 +498,12 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
             if (reference[(static_cast<size_t>(y) * m_width + x) * 4] < 0.9999f)
                 ++covered[(y / (m_height / 2)) * 2 + x / (m_width / 2)];
     for (const auto count : covered) EXPECT_GT(count, 20u);
+
+    EXPECT_NE(renderAtlas(false, 0.25f), reference);
+    EXPECT_EQ(renderAtlas(false, 0.25f, true), rigid);
+    EXPECT_EQ(renderAtlas(false, 1.7f, true), rigid);
+    Same(rigid, renderAtlas(true, 0.25f, true));
+    Same(rigid, renderAtlas(true, 1.7f, true));
 
     input.vegetationBudget = {true, 0, 0, 8};
     const auto budgeted = renderAtlas(false);

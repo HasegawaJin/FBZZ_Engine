@@ -91,6 +91,8 @@ Profilerの明示的なInstancesフィルターは定義解決・snapshot取得�
 
 ユーザーの遠景ビルボード化と負荷削減の指示により、島のSpruce/Birchへ既存4段階目のLODを使う。LOD0〜2のモデルと材質を保ち、最後に切替前のLOD2の実形状・透過色・接空間法線を焼いた交差ビルボードを足す。外形寸法はLOD0を基準にし、切替で樹冠が急に密になることを避ける。3方向の垂直板と上面の計8三角形を標準PBR/alpha-testの単一partとして描き、通常のinstancing・影・GBuffer・選択を共有する。配置ID・位置・姿勢・本数は変えない。遠景の材質は風を0にし、近景の葉は既存の材質で揺らす。
 
+Directional Light の Auto Bake モードでは、カスケード影に葉の風変形前の形状を使う。ライトやキャスターの移動でリアルタイム描画に切り替わる間も、葉の影は同じ形状を使う。見た目の葉と Spot・Point Light の影は時刻に応じて揺れる。Directional Light の Realtime モードは葉の揺れを影に反映する。
+
 切替は距離の固定値ではなく既存の保守的boundsと画面内の大きさで選ぶ。近い2段の閾値を保ち、Spruceは0.055、Birchは0.04未満で最終LODへ移す。Paint素材にも同じ定義を保存して、新規配置へ継承する。焼いたアトラスは色と法線で同じ配置を使い、透過縁へ色を延長してmipの黒縁を抑える。遠景から近景へ移動した画像と同一視点の実DX12時間・三角形数を比較する。
 
 色・法線アトラスで遠景の樹木の光応答を保つ方式の参考: [Unity BillboardAsset](https://docs.unity.com/en-us/engine/7000.0/script-reference/unityengine/billboardasset)。この島は固定した交差板を使い、カメラ方向で画像を選ぶ方式は追加しない。

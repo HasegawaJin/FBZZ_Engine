@@ -285,12 +285,13 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
         SubmitCountedShadow(ctx, restore);
     }
 
-    /// @note シャドウ用 VS は b0 の viewProjection しか読まない。カスケードの行列へ差し替える。
+    /// @note Auto Bake がリアルタイム描画へフォールバックしても葉の影の形状を保つ。
     PerFrameCB lightFrameData{};
     lightFrameData.viewProjection = cascade.viewProjection;
     lightFrameData.view = cascade.view;
     lightFrameData.cameraPos = cascade.eyePos;
     lightFrameData.isOrthographic = 1.0f;
+    lightFrameData.stableLeafShadow = ctx.directionalShadowBakeEnabled ? 1.0f : 0.0f;
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection);

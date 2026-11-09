@@ -301,6 +301,8 @@ struct RenderPassContext : RenderLightingInput {
     int statsParticleBudgetDropped = 0;
     /// @}
 
+    /// @note 選択中の Directional Light が Auto Bake のとき true。ベイクの有効性は directionalShadowBake が持つ。
+    bool directionalShadowBakeEnabled = false;
     DirectionalShadowBakeView directionalShadowBake;
 };
 

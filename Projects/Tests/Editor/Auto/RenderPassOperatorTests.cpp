@@ -1,12 +1,14 @@
 /// @file    RenderPassOperatorTests.cpp
-/// @brief   非表示の描画パス捕捉と設定検証を公開操作から検証する。
+/// @brief   描画パス捕捉と影設定の契約を公開操作から検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/Panels/RenderPassViewerPanel.hpp>
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Op/OperatorGroups.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
 namespace fbzz::tests {
 class RenderPassOperatorTest : public testkit::EditorFixture {
 protected:
@@ -38,5 +40,35 @@ TEST_F(RenderPassOperatorTest, UnknownNestedViewFieldsAndEmptyRangesAreRejected)
     view.Set("unknown", editor::OpData(true)); settings.Set("viewSettings", view); EXPECT_FALSE(Configure(settings).ok);
     view = editor::OpData::MakeObject(); view.Set("rangeMin", editor::OpData(1.0f)); view.Set("rangeMax", editor::OpData(1.0f));
     settings.Set("viewSettings", view); EXPECT_FALSE(Configure(settings).ok);
+}
+TEST_F(RenderPassOperatorTest, DirectionalShadowModePreservesOmittedDistanceAndSupportsUndo)
+{
+    editor::RegisterRenderOperators(m_registry);
+    auto& sun = AttachScene().CreateGameObject("Sun");
+    auto& light = sun.AddComponent<scene::LightComponent>();
+    light.shadowDistance = 256.0f;
+    Context().selectedEntities = {sun.GetID()};
+    editor::OpArgs args;
+    args.Set("mode", std::string("auto_bake"));
+    ASSERT_TRUE(Invoke("render.directional_shadow_mode", args).ok);
+    EXPECT_EQ(light.shadowMode, scene::LightComponent::ShadowMode::AUTO_BAKE);
+    EXPECT_FLOAT_EQ(light.shadowDistance, 256.0f);
+
+    args.Set("node", sun.instanceId);
+    args.Set("mode", std::string("realtime"));
+    args.Set("distance", -1.0f);
+    EXPECT_EQ(Invoke("render.directional_shadow_mode", args).errorCode, "BAD_ARG");
+    EXPECT_EQ(light.shadowMode, scene::LightComponent::ShadowMode::AUTO_BAKE);
+
+    args.Set("distance", 320.0f);
+    ASSERT_TRUE(Invoke("render.directional_shadow_mode", args).ok);
+    EXPECT_EQ(light.shadowMode, scene::LightComponent::ShadowMode::REALTIME);
+    EXPECT_FLOAT_EQ(light.shadowDistance, 320.0f);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(light.shadowMode, scene::LightComponent::ShadowMode::AUTO_BAKE);
+    EXPECT_FLOAT_EQ(light.shadowDistance, 256.0f);
+    ASSERT_TRUE(m_undo.Redo());
+    EXPECT_EQ(light.shadowMode, scene::LightComponent::ShadowMode::REALTIME);
+    EXPECT_FLOAT_EQ(light.shadowDistance, 320.0f);
 }
 } /// @note namespace fbzz::tests

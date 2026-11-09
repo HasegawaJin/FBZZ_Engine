@@ -1,13 +1,14 @@
 /// @file    RenderOperators.cpp
-/// @brief   デバッグ表示とビューモードの Operator。
+/// @brief   描画設定、デバッグ表示とビューモードの Operator。
 /// @author  Hasegawa Jin
 /// @date    2026-08-22
 
 /// @note 移行前は Debug メニューにしか無く、AI は viewport を撮れても NavMesh/Collider/overdraw 等の診断表示を選べなかった。
-/// @note 表示の切り替えはシーンの内容を変えないので Undo には載せない (Action)。
+/// @note ビューの診断表示は Action、シーンに保存するライト設定は Mutation として扱う。
 /// @see Docs/design/editor-operator-model.md
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/JointComponent.hpp>
+#include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/VolumeComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Fields/FlowField.hpp>
@@ -27,6 +28,8 @@
 #include <string>
 #include <string_view>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <utility>
 
 namespace fbzz::editor {
@@ -111,6 +114,111 @@ EditorOperator MakeShadowToggle()
         (void)asset::ResolveRenderPipelineSettings(context.ctx.projectSettings.render,
             context.ctx.projectSettings.renderPipelineAssetPath, resolved);
         return resolved.shadowEnabled;
+    };
+    return op;
+}
+
+EditorOperator MakeDirectionalShadowMode()
+{
+    using Light = scene::LightComponent;
+    EditorOperator op;
+    op.id = "render.directional_shadow_mode";
+    op.label = "Set Directional Shadow Mode";
+    op.category = "Render";
+    op.kind = OpKind::Mutation;
+    op.undoLabel = op.label;
+    op.desc = "方向ライトの Realtime / Auto Bake と影の最大距離を設定する。Auto Bake はエディター内の Play 前に静的な遠景の影を準備する。";
+    OpParam node;
+    node.name = "node";
+    node.type = OpParamType::NodeId;
+    node.desc = "方向ライトの GameObject ID。省略時は選択中のライト。";
+    node.required = false;
+    OpParam mode;
+    mode.name = "mode";
+    mode.enumValues = {"realtime", "auto_bake"};
+    OpParam distance;
+    distance.name = "distance";
+    distance.type = OpParamType::Float;
+    distance.desc = "影の最大距離 [m]。0 は描画設定の値を使用。省略時は現在値を保持。";
+    distance.required = false;
+    distance.hasRange = true;
+    distance.minValue = 0.0f;
+    distance.maxValue = 2000.0f;
+    op.params = {node, mode, distance};
+
+    const auto resolve = [](const EditorContext& ctx, const OpArgs& args) -> scene::GameObject* {
+        if (!ctx.activeScene) return nullptr;
+        const auto id = args.GetString("node");
+        auto* object = id.empty() ? ctx.GetSelectedGO() : ctx.activeScene->FindByGuid(id);
+        if (!object || object->runtimeGenerated || ctx.IsLocked(object->GetID())) return nullptr;
+        const auto* light = object->GetComponent<Light>();
+        return light && light->type == Light::Type::Directional ? object : nullptr;
+    };
+    op.poll = [resolve](const OpContext& context, const OpArgs& args) {
+        return resolve(context.ctx, args) != nullptr;
+    };
+    op.exec = [resolve](OpContext& context, const OpArgs& args) -> OpResult {
+        auto& ctx = context.ctx;
+        auto* object = resolve(ctx, args);
+        if (!object) return OpResult::Err("NO_DIRECTIONAL_LIGHT", "編集可能な方向ライトを選択してください");
+        const auto* light = object->GetComponent<Light>();
+        const auto modeName = args.GetString("mode");
+        const auto nextMode = modeName == "auto_bake" ? Light::ShadowMode::AUTO_BAKE : Light::ShadowMode::REALTIME;
+        const bool setDistance = args.Has("distance");
+        const auto nextDistance = setDistance
+            ? args.GetFloat("distance", std::numeric_limits<float>::quiet_NaN()) : light->shadowDistance;
+        if (setDistance && !std::isfinite(nextDistance))
+            return OpResult::Err("BAD_ARG", "distance は有限の距離で指定してください");
+        struct Values {
+            Light::ShadowMode mode;
+            float distance;
+        };
+        const Values before{light->shadowMode, light->shadowDistance};
+        const Values after{nextMode, nextDistance};
+        const bool changeMode = before.mode != after.mode;
+        const bool changeDistance = setDistance && before.distance != after.distance;
+        OpData data = OpData::MakeObject();
+        data.Set("node", object->instanceId);
+        data.Set("mode", modeName);
+        if (std::isfinite(after.distance)) data.Set("distance", after.distance);
+        auto result = OpResult::Data(std::move(data));
+        if (!changeMode && !changeDistance) {
+            result.noChange = true;
+            return result;
+        }
+
+        auto* owner = ctx.activeScene;
+        const auto entity = object->GetID();
+        const auto sceneGeneration = owner->GetRenderSceneGeneration();
+        const auto lifetime = owner->GetComponentLifetime<Light>(entity);
+        /// @note Undo は今回指定して変更した値だけを戻す。
+        const auto apply = [&ctx, owner, entity, sceneGeneration, lifetime, changeMode, changeDistance](
+                               const Values& expected, const Values& values, std::string& reason) {
+            if (ctx.activeScene != owner || owner->GetRenderSceneGeneration() != sceneGeneration
+                || owner->GetComponentLifetime<Light>(entity) != lifetime) {
+                reason = "方向ライトまたはシーンが変わっています。";
+                return false;
+            }
+            auto* target = owner->GetComponent<Light>(entity);
+            if (!target || target->type != Light::Type::Directional
+                || (changeMode && target->shadowMode != expected.mode)
+                || (changeDistance && target->shadowDistance != expected.distance
+                    && !(std::isnan(target->shadowDistance) && std::isnan(expected.distance)))) {
+                reason = "方向ライトの影設定が別の操作で変わっています。";
+                return false;
+            }
+            if (changeMode) target->shadowMode = values.mode;
+            if (changeDistance) target->shadowDistance = values.distance;
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+            return true;
+        };
+        auto command = std::make_unique<CheckedLambdaCommand>("Set Directional Shadow Mode",
+            [apply, before, after](std::string& reason) { return apply(before, after, reason); },
+            [apply, before, after](std::string& reason) { return apply(after, before, reason); });
+        std::string reason;
+        if (!command->TryExecute(reason)) return OpResult::Err("CONFLICT", std::move(reason));
+        result.command = std::move(command);
+        return result;
     };
     return op;
 }
@@ -547,6 +655,7 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "デカールの投影ボックスを描く。", &renderer::RenderSettings::showDecalBounds));
 
     registry.Register(MakeShadowToggle());
+    registry.Register(MakeDirectionalShadowMode());
 
     registry.Register(MakeRenderToggle(
         "render.particle_overdraw_view", "Particle Overdraw View",

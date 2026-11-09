@@ -30,7 +30,9 @@ ShadowOutput VSMain(VSInput v)
     const float4x4 objectWorld = world;
 #endif
     ShadowOutput output;
-    output.position = mul(mul(float4(FbzzLeafWind(position.xyz, v.uv, objectWorld, time), 1),objectWorld),viewProjection);
+    const float3 casterPosition = stableLeafShadow > 0.5f
+        ? position.xyz : FbzzLeafWind(position.xyz, v.uv, objectWorld, time);
+    output.position = mul(mul(float4(casterPosition, 1), objectWorld), viewProjection);
     output.uv = v.uv*uvTiling + uvOffset;
     /// @note Keep the complete standard vertex ABI so UV reflection retains offset 36; color alpha is not part of PBR coverage.
     output.alpha = albedo.a;
