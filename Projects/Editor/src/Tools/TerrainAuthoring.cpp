@@ -44,6 +44,7 @@ void ApplyTerrainAuthoringSnapshot(scene::TerrainComponent& terrain, const scene
 {
     const auto assetPath = terrain.terrainAssetPath;
     const auto surfaceRevision = terrain.surfaceRevision;
+    const auto heightPreview = terrain.heightPreview;
     const auto vegetationRevision = terrain.vegetationRevision;
     const bool heightDirty = terrain.heightDirty, colliderDirty = terrain.colliderDirty;
     const bool materialDirty = terrain.materialParamDirty || terrain.layerMaterials != snapshot.layerMaterials
@@ -52,6 +53,7 @@ void ApplyTerrainAuthoringSnapshot(scene::TerrainComponent& terrain, const scene
     /// @note 保存後の参照と描画側が進めた世代は履歴の値へ巻き戻さない。
     terrain.terrainAssetPath = assetPath;
     terrain.surfaceRevision = surfaceRevision;
+    terrain.heightPreview = heightPreview;
     terrain.vegetationRevision = vegetationRevision;
     terrain.heightDirty = heightDirty;
     terrain.colliderDirty = colliderDirty;

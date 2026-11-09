@@ -56,6 +56,7 @@ struct TerrainGpuState {
     /// @note Full, right-edge, bottom-edge, and corner grids share their draw-only buffers by dimensions.
     std::array<RasterStrip, 4> rasterStrips;
     bool geometryDirty = true;
+    bool heightsDirty = true;
     uint64_t shadowBakeGeometryHash = 0;
     renderer::ResourceHandle<renderer::StructuredBufferTag> surfaceLayerBuffer;
     renderer::ResourceHandle<renderer::TextureTag> surfaceSplatIndices, surfaceSplatWeights;

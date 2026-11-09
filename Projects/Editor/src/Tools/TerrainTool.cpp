@@ -351,8 +351,8 @@ void TerrainTool::Update(
                     if (!BrushOverlapsTerrainXZ(*tc, localN, m_brush.radius))
                         continue;
                     CaptureStrokeBefore(*go, *tc);
-                    ApplyTerrainSculpt(*tc, localN, m_brush, m_activeSculpt, m_flattenTarget, dt, m_strokeStep);
-                    tc->heightDirty = true;
+                    tc->RequestHeightPreview(
+                        ApplyTerrainSculpt(*tc, localN, m_brush, m_activeSculpt, m_flattenTarget, dt, m_strokeStep));
                 }
                 break;
             case Mode::Paint: {
@@ -702,8 +702,7 @@ void TerrainTool::UpdateRamp(EditorContext& context, bool mousePressed, bool mou
         if (!overlaps)
             continue;
         CaptureStrokeBefore(*go, *tc);
-        ApplyTerrainRamp(*tc, startLocal, endLocal, m_brush);
-        tc->heightDirty = true;
+        tc->RequestHeightPreview(ApplyTerrainRamp(*tc, startLocal, endLocal, m_brush));
         any = true;
     }
     if (!any)
@@ -782,7 +781,6 @@ bool TerrainTool::RaycastSingleTerrain(
 
     const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
     const float terrainD = static_cast<float>(terrain.rows    - 1) * terrain.cellSize;
-    const float minH     = std::min(0.0f, TerrainToolMinWorldHeight(terrain));
     const float maxH     = terrain.maxHeight;
 
     auto slab = [](float origin, float dir, float lo, float hi, float& tMin, float& tMax) {
@@ -800,8 +798,9 @@ bool TerrainTool::RaycastSingleTerrain(
 
     float tMin = 0.0f, tMax = 1e30f;
     if (!slab(rayOriginLocal.x, rayDir.x, 0.0f, terrainW, tMin, tMax)) return false;
-    if (!slab(rayOriginLocal.y, rayDir.y, minH, maxH,     tMin, tMax)) return false;
     if (!slab(rayOriginLocal.z, rayDir.z, 0.0f, terrainD, tMin, tMax)) return false;
+    const float minH = std::min(0.0f, TerrainToolMinWorldHeight(terrain));
+    if (!slab(rayOriginLocal.y, rayDir.y, minH, maxH, tMin, tMax)) return false;
     if (tMax <= 0.0f) return false;
     tMin = std::max(tMin, 0.0f);
 

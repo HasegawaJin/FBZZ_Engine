@@ -121,8 +121,8 @@ bool TerrainBrushEnsureHeights(scene::TerrainComponent& terrain)
 /// @brief 熱侵食 (安息角を超えた斜面を崩す)。
 /// @note 読み出しは領域のコピーから行い、差分を後でまとめて足す。走査順で片側へ崩れる偏りを出さないため。
 /// @see https://history.siggraph.org/learning/the-synthesis-and-rendering-of-eroded-fractal-terrains-by-musgrave-kolb-and-mace/ (Musgrave, Kolb, Mace 1989, "Thermal weathering")
-void TerrainBrushThermal(scene::TerrainComponent& terrain, const math::Vector3& hitLocal,
-                         const TerrainBrush& brush, float dt)
+scene::TerrainHeightRegion TerrainBrushThermal(scene::TerrainComponent& terrain, const math::Vector3& hitLocal,
+                                               const TerrainBrush& brush, float dt)
 {
     const float cell = terrain.cellSize;
     const float safeMaxHeight = std::max(terrain.maxHeight, 0.0001f);
@@ -135,7 +135,7 @@ void TerrainBrushThermal(scene::TerrainComponent& terrain, const math::Vector3& 
     const int x1 = std::min(cx + ri, terrain.columns - 1);
     const int z0 = std::max(cz - ri, 0);
     const int z1 = std::min(cz + ri, terrain.rows - 1);
-    if (x0 > x1 || z0 > z1) return;
+    if (x0 > x1 || z0 > z1) return {};
 
     /// @note 崩れた土は 1 マス外まで届くので、コピーと差分は 1 マス広く取る。
     const int ex0 = std::max(x0 - 1, 0);
@@ -196,12 +196,16 @@ void TerrainBrushThermal(scene::TerrainComponent& terrain, const math::Vector3& 
         }
     }
 
+    scene::TerrainHeightRegion changed;
     for (int z = ez0; z <= ez1; ++z)
         for (int x = ex0; x <= ex1; ++x) {
             float& h = terrain.heightData[static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
                                         + static_cast<size_t>(x)];
+            const float before = h;
             h = std::clamp(src[local(x, z)] + delta[local(x, z)], -1.0f, 1.0f);
+            if (h != before) changed.Include({x, z, x, z});
         }
+    return changed;
 }
 
 /// @brief 格子単位の位置 (px, pz) での高さと勾配。高さは «マス» 単位 (水平と同じ尺度)。
@@ -238,10 +242,10 @@ TerrainBrushHeightGradient TerrainBrushSampleGradient(const scene::TerrainCompon
 /// @note 水滴はブラシ円の外に出たら消す。縁の外まで削り跡を伸ばさないため (運んでいた土も消える)。
 /// @note 高さを «マス» 単位へ直して計算する。cellSize / maxHeight を変えても同じ見た目の削れ方になる。
 /// @see https://www.firespark.de/resources/downloads/implementation%20of%20a%20methode%20for%20hydraulic%20erosion.pdf (H. T. Beyer 2015, §3 "Simulation")
-void TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3& hitLocal,
-                           const TerrainBrush& brush, float dt, std::uint32_t strokeStep)
+scene::TerrainHeightRegion TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3& hitLocal,
+                                                 const TerrainBrush& brush, float dt, std::uint32_t strokeStep)
 {
-    if (terrain.columns < 3 || terrain.rows < 3 || brush.radius <= 0.0f) return;
+    if (terrain.columns < 3 || terrain.rows < 3 || brush.radius <= 0.0f) return {};
 
     /// @name Beyer 2015 の既定パラメーター
     /// @{
@@ -260,7 +264,7 @@ void TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3
     const float toCells  = std::max(terrain.maxHeight, 0.0001f) / cell;
     const float toNorm   = 1.0f / toCells;
     const float rate     = math::Clamp01(brush.strength * dt * kTerrainErosionRatePerSecond);
-    if (rate <= 0.0f) return;
+    if (rate <= 0.0f) return {};
     const float maxX = static_cast<float>(terrain.columns - 1);
     const float maxZ = static_cast<float>(terrain.rows - 1);
 
@@ -290,6 +294,7 @@ void TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3
     TerrainBrushRng rng;
     rng.state = TerrainBrushHash32(brush.seed ^ TerrainBrushHash32(strokeStep + 0x68e31da4u));
 
+    scene::TerrainHeightRegion changed;
     const int dropletCount = std::clamp(brush.erosionDroplets, 0, 4096);
     for (int d = 0; d < dropletCount; ++d) {
         /// @note 円内一様: 半径は √u で引く (u のままだと中心に偏る)。
@@ -345,9 +350,11 @@ void TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3
                 } };
                 float deposited = 0.0f;
                 for (size_t k = 0; k < 4; ++k) {
-                    float& h = heightAt(corner[k][0], corner[k][1]);
+                    const auto [x, z] = corner[k];
+                    float& h = heightAt(x, z);
                     const float before = h;
                     h = std::min(h + amount * share[k] * toNorm, 1.0f);
+                    if (h != before) changed.Include({x, z, x, z});
                     deposited += (h - before) * toCells;
                 }
                 sediment = std::max(sediment - deposited, 0.0f);
@@ -362,6 +369,7 @@ void TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3
                     float& h = heightAt(x, z);
                     const float before = h;
                     h = std::max(h - amount * tap.weight * toNorm, -1.0f);
+                    if (h != before) changed.Include({x, z, x, z});
                     eroded += (before - h) * toCells;
                 }
                 sediment += eroded;
@@ -372,6 +380,7 @@ void TerrainBrushHydraulic(scene::TerrainComponent& terrain, const math::Vector3
             water *= (1.0f - kEvaporation);
         }
     }
+    return changed;
 }
 
 } /// @note namespace
@@ -438,7 +447,7 @@ int ResolvePaintLayerForTerrain(const scene::TerrainComponent& terrain,
     return terrain.layerMaterials[static_cast<size_t>(preferredLayer)].empty() ? preferredLayer : -1;
 }
 
-void ApplyTerrainSculpt(scene::TerrainComponent& terrain,
+scene::TerrainHeightRegion ApplyTerrainSculpt(scene::TerrainComponent& terrain,
                         const math::Vector3&     hitLocal,
                         const TerrainBrush&      brush,
                         TerrainSculptOp          op,
@@ -447,15 +456,18 @@ void ApplyTerrainSculpt(scene::TerrainComponent& terrain,
                         std::uint32_t            strokeStep)
 {
     /// @note heightData が未初期化のまま書くと添字が飛ぶ。ブラシ側で平坦化して整合を取る。
-    if (!TerrainBrushEnsureHeights(terrain)) return;
+    const bool needsInitialization = terrain.heightData.size() != terrain.VertexCount();
+    if (!TerrainBrushEnsureHeights(terrain)) return {};
 
+    scene::TerrainHeightRegion changed;
+    if (needsInitialization) changed = {0, 0, terrain.columns - 1, terrain.rows - 1};
     if (op == TerrainSculptOp::ThermalErosion) {
-        TerrainBrushThermal(terrain, hitLocal, brush, dt);
-        return;
+        changed.Include(TerrainBrushThermal(terrain, hitLocal, brush, dt));
+        return changed;
     }
     if (op == TerrainSculptOp::HydraulicErosion) {
-        TerrainBrushHydraulic(terrain, hitLocal, brush, dt, strokeStep);
-        return;
+        changed.Include(TerrainBrushHydraulic(terrain, hitLocal, brush, dt, strokeStep));
+        return changed;
     }
 
     const float safeMaxHeight = std::max(terrain.maxHeight, 0.0001f);
@@ -482,6 +494,7 @@ void ApplyTerrainSculpt(scene::TerrainComponent& terrain,
             const size_t idx = static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
                              + static_cast<size_t>(x);
             float& h = terrain.heightData[idx];
+            const float before = h;
 
             switch (op) {
                 case TerrainSculptOp::Raise:
@@ -526,8 +539,10 @@ void ApplyTerrainSculpt(scene::TerrainComponent& terrain,
                 case TerrainSculptOp::HydraulicErosion:
                     break;
             }
+            if (h != before) changed.Include({x, z, x, z});
         }
     }
+    return changed;
 }
 
 void ApplyTerrainPaint(scene::TerrainComponent& terrain,
@@ -564,12 +579,16 @@ void ApplyTerrainPaint(scene::TerrainComponent& terrain,
     }
 }
 
-void ApplyTerrainRamp(scene::TerrainComponent& terrain,
+scene::TerrainHeightRegion ApplyTerrainRamp(scene::TerrainComponent& terrain,
                       const math::Vector3&     startLocal,
                       const math::Vector3&     endLocal,
                       const TerrainBrush&      brush)
 {
-    if (!TerrainBrushEnsureHeights(terrain) || brush.radius <= 0.0f) return;
+    const bool needsInitialization = terrain.heightData.size() != terrain.VertexCount();
+    if (!TerrainBrushEnsureHeights(terrain)) return {};
+    scene::TerrainHeightRegion changed;
+    if (needsInitialization) changed = {0, 0, terrain.columns - 1, terrain.rows - 1};
+    if (brush.radius <= 0.0f) return changed;
 
     const float safeMaxHeight = std::max(terrain.maxHeight, 0.0001f);
     const float strength = math::Clamp01(brush.strength);
@@ -601,9 +620,12 @@ void ApplyTerrainRamp(scene::TerrainComponent& terrain,
             const float target = math::Lerp(startLocal.y, endLocal.y, t) / safeMaxHeight;
             float& h = terrain.heightData[static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
                                         + static_cast<size_t>(x)];
+            const float before = h;
             h = std::clamp(math::Lerp(h, target, strength * w), -1.0f, 1.0f);
+            if (h != before) changed.Include({x, z, x, z});
         }
     }
+    return changed;
 }
 
 bool ApplyTerrainHole(scene::TerrainComponent& terrain,

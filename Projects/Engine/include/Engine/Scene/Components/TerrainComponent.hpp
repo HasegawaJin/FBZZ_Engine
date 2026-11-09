@@ -22,6 +22,25 @@
 
 namespace fbzz::scene {
 
+/// @brief ハイトマップ頂点の両端を含む矩形。
+struct TerrainHeightRegion {
+    int minX = 0, minZ = 0, maxX = -1, maxZ = -1;
+
+    [[nodiscard]] bool Empty() const { return minX > maxX || minZ > maxZ; }
+    void Include(const TerrainHeightRegion& region)
+    {
+        if (region.Empty()) return;
+        if (Empty()) {
+            *this = region;
+            return;
+        }
+        minX = std::min(minX, region.minX);
+        minZ = std::min(minZ, region.minZ);
+        maxX = std::max(maxX, region.maxX);
+        maxZ = std::max(maxZ, region.maxZ);
+    }
+};
+
 /// @brief 地形の全データ。
 struct TerrainComponent {
     /// @name ハイトマップ (CPU)
@@ -83,6 +102,12 @@ struct TerrainComponent {
     bool colliderDirty      = true;  ///< @note true → PhysicsSystem がコライダーを再構築する。
     /// @note 高さ・穴の派生データを失効させる実行時世代。保存せず、編集口か dirty 消費で進める。
     uint64_t surfaceRevision = 1;
+    /// @note 複数の描画キャッシュが同じ更新を読めるように、抽出後も直近の変更範囲と適用可能な世代を保持する。
+    struct HeightPreview {
+        TerrainHeightRegion region;
+        uint64_t baseRevision = 0, revision = 0;
+        bool pending = false;
+    } heightPreview;
     /// @note Layer/hole authoring invalidates grass independently of water depth and collider revisions.
     uint64_t vegetationRevision = 1;
 
@@ -180,6 +205,17 @@ struct TerrainComponent {
         ++surfaceRevision;
         heightDirty = true;
         colliderDirty = true;
+    }
+    /// @pre region は現在の高さ場の範囲内。寸法・穴・追加メッシュが変わるときは全体を失効させる。
+    /// @note ドラッグ中は描画を更新し、コライダーはストローク確定側で失効させる。
+    void RequestHeightPreview(const TerrainHeightRegion& region)
+    {
+        if (region.Empty()) return;
+        if (heightPreview.pending && heightPreview.revision == surfaceRevision)
+            heightPreview.region.Include(region);
+        else
+            heightPreview = {region, surfaceRevision, 0, true};
+        heightPreview.revision = ++surfaceRevision;
     }
     void RequestSplatRebuild() { splatDirty = true; }
     void RequestMaterialRebuild() { materialParamDirty = true; }

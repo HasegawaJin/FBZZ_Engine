@@ -6,6 +6,7 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
@@ -79,6 +80,7 @@ public:
     void Resize(uint32_t, uint32_t) override {}
     uint32_t GetWidth() const override { return 1; }
     uint32_t GetHeight() const override { return 1; }
+    bool SupportsIndirectDraw() const override { return true; }
     void SetRenderTarget(renderer::ResourceHandle<renderer::RenderTargetTag>, renderer::ResourceManager&) override {}
     void ClearDepth() override {}
     void SetViewport(uint32_t, uint32_t, uint32_t, uint32_t) override {}
@@ -114,18 +116,27 @@ protected:
         terrain.InitFlat(height);
         return object.GetID();
     }
-    renderer::RenderTerrainInput Extract(scene::Scene& scene, TerrainCpuRenderer& device, renderer::ResourceManager& resources,
-        renderer::RasterGeometryMode rasterMode = renderer::RasterGeometryMode::TRIANGLE_LIST)
+    std::vector<renderer::RenderTerrainInput> ExtractAll(scene::Scene& scene, TerrainCpuRenderer& device,
+        renderer::ResourceManager& resources, renderer::RasterGeometryMode rasterMode,
+        renderer::GeometryDrawMode drawMode = renderer::GeometryDrawMode::GPU_INDIRECT)
     {
         renderer::Camera camera;
         renderer::RenderSettings settings;
         settings.rasterGeometryMode = rasterMode;
+        settings.geometryDrawMode = drawMode;
         renderer::RenderPassHandles handles;
         scene::RenderPassContext context(scene, device, resources, camera, settings, {}, UINT32_MAX, handles);
         renderer::RenderScene output;
         scene::ExtractRenderTerrains(context, output);
-        EXPECT_EQ(output.terrains.size(), 1u);
-        return output.terrains.empty() ? renderer::RenderTerrainInput{} : std::move(output.terrains.front());
+        return std::move(output.terrains);
+    }
+    renderer::RenderTerrainInput Extract(scene::Scene& scene, TerrainCpuRenderer& device, renderer::ResourceManager& resources,
+        renderer::RasterGeometryMode rasterMode = renderer::RasterGeometryMode::TRIANGLE_LIST,
+        renderer::GeometryDrawMode drawMode = renderer::GeometryDrawMode::GPU_INDIRECT)
+    {
+        auto terrains = ExtractAll(scene, device, resources, rasterMode, drawMode);
+        EXPECT_EQ(terrains.size(), 1u);
+        return terrains.empty() ? renderer::RenderTerrainInput{} : std::move(terrains.front());
     }
 };
 
@@ -266,6 +277,93 @@ TEST_F(TerrainRenderResourceTest, RebuildsEveryOwnerAfterAnEditConsumedByTheFirs
     const auto a = Extract(scene, firstDevice, first), b = Extract(scene, secondDevice, second);
 
     EXPECT_FLOAT_EQ(a.patches[0].aabbMin.y, 6); EXPECT_FLOAT_EQ(b.patches[0].aabbMin.y, 6);
+}
+
+TEST_F(TerrainRenderResourceTest, HeightPreviewRebuildsOnlyAffectedPatchesForEachOwner)
+{
+    TerrainCpuRenderer firstDevice, secondDevice;
+    renderer::ResourceManager first(firstDevice), second(secondDevice);
+    scene::Scene scene;
+    auto* terrain = scene.GetComponent<scene::TerrainComponent>(AddTerrain(scene, 0));
+    terrain->columns = terrain->rows = 33;
+    terrain->chunkSize = 16;
+    terrain->InitFlat();
+    const auto before = Extract(scene, firstDevice, first);
+    const auto otherBefore = Extract(scene, secondDevice, second);
+    ASSERT_EQ(before.patches.size(), 4u);
+    ASSERT_EQ(otherBefore.patches.size(), 4u);
+
+    terrain->colliderDirty = false;
+    terrain->heightData[3 * terrain->columns + 3] = 0.5f;
+    terrain->RequestHeightPreview({3, 3, 3, 3});
+    terrain->heightData[29 * terrain->columns + 29] = 0.7f;
+    terrain->RequestHeightPreview({29, 29, 29, 29});
+    const auto combined = Extract(scene, firstDevice, first);
+    const auto otherCombined = Extract(scene, secondDevice, second);
+    ASSERT_EQ(combined.patches.size(), 4u);
+    ASSERT_EQ(otherCombined.patches.size(), 4u);
+    EXPECT_FLOAT_EQ(combined.patches[0].aabbMax.y, 5.0f);
+    EXPECT_FLOAT_EQ(combined.patches[3].aabbMax.y, 7.0f);
+    EXPECT_FLOAT_EQ(otherCombined.patches[0].aabbMax.y, 5.0f);
+    EXPECT_FLOAT_EQ(otherCombined.patches[3].aabbMax.y, 7.0f);
+    EXPECT_FALSE(terrain->colliderDirty);
+
+    terrain->heightData[3 * terrain->columns + 3] = 0.9f;
+    terrain->RequestHeightPreview({3, 3, 3, 3});
+    const auto cpu = Extract(scene, firstDevice, first, renderer::RasterGeometryMode::TRIANGLE_LIST,
+        renderer::GeometryDrawMode::CPU);
+    ASSERT_EQ(cpu.patches.size(), 4u);
+    EXPECT_FLOAT_EQ(cpu.patches[0].aabbMax.y, 9.0f);
+    EXPECT_FALSE(cpu.gpuHeights.IsValid());
+    const auto after = Extract(scene, firstDevice, first);
+    const auto otherAfter = Extract(scene, secondDevice, second);
+    ASSERT_EQ(after.patches.size(), 4u);
+    ASSERT_EQ(otherAfter.patches.size(), 4u);
+    EXPECT_FLOAT_EQ(after.patches[0].aabbMax.y, 9.0f);
+    EXPECT_FLOAT_EQ(otherAfter.patches[0].aabbMax.y, 9.0f);
+    for (size_t index = 1; index < after.patches.size(); ++index) {
+        EXPECT_EQ(after.patches[index].vertexBuffer, combined.patches[index].vertexBuffer);
+        EXPECT_EQ(otherAfter.patches[index].vertexBuffer, otherCombined.patches[index].vertexBuffer);
+    }
+    EXPECT_EQ(after.gpuIndices, before.gpuIndices);
+    EXPECT_EQ(otherAfter.gpuIndices, otherBefore.gpuIndices);
+    EXPECT_TRUE(after.gpuIndices.IsValid());
+    EXPECT_NE(after.gpuHeights, combined.gpuHeights);
+}
+
+TEST_F(TerrainRenderResourceTest, HeightPreviewRefreshesTheStitchedEdgeInTheSameExtraction)
+{
+    TerrainCpuRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene scene;
+    const auto west = AddTerrain(scene, 0);
+    const auto east = AddTerrain(scene, 0);
+    auto& grid = scene.CreateGameObject("Grid").AddComponent<scene::TerrainGridComponent>();
+    grid.SetCell(0, 0, west);
+    grid.SetCell(1, 0, east);
+    for (const auto id : {west, east}) {
+        auto* tile = scene.GetComponent<scene::TerrainComponent>(id);
+        tile->columns = tile->rows = 33;
+        tile->chunkSize = 16;
+        tile->InitFlat();
+    }
+    const auto before = ExtractAll(scene, device, resources, renderer::RasterGeometryMode::TRIANGLE_LIST);
+    ASSERT_EQ(before.size(), 2u);
+
+    auto* tile = scene.GetComponent<scene::TerrainComponent>(east);
+    tile->heightData[3 * tile->columns] = 0.8f;
+    tile->RequestHeightPreview({0, 3, 0, 3});
+    const auto after = ExtractAll(scene, device, resources, renderer::RasterGeometryMode::TRIANGLE_LIST);
+    ASSERT_EQ(after.size(), 2u);
+    ASSERT_EQ(after[0].patches.size(), 4u);
+    ASSERT_EQ(after[1].patches.size(), 4u);
+
+    EXPECT_FLOAT_EQ(after[0].patches[1].aabbMax.y, 4.0f);
+    EXPECT_FLOAT_EQ(after[1].patches[0].aabbMax.y, 4.0f);
+    EXPECT_EQ(after[0].patches[0].vertexBuffer, before[0].patches[0].vertexBuffer);
+    EXPECT_EQ(after[1].patches[1].vertexBuffer, before[1].patches[1].vertexBuffer);
+    EXPECT_EQ(after[0].gpuIndices, before[0].gpuIndices);
+    EXPECT_EQ(after[1].gpuIndices, before[1].gpuIndices);
 }
 
 TEST_F(TerrainRenderResourceTest, RemovingAComponentReturnsItsResourcesBeforeReaddingAtTheSameEntity)
