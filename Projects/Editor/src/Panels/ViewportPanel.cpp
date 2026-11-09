@@ -687,7 +687,8 @@ void DrawViewModeControls(EditorContext& ctx, const ImVec4& overlaySurface)
                         "クラスタあたりのライト数をヒートマップで出します (Forward+ / Deferred+)。");
 
         ImGui::Separator();
-        overlayCheckbox("Stats",         ctx.showStats, nullptr);
+        overlayCheckbox("Stats", ctx.showStats,
+                        "Scene / Game View に各ビューの描画・カリング統計を表示します。");
         ImGui::Separator();
         ImGui::Checkbox("Scene Icons", &ctx.showSceneIcons);
         if (ImGui::IsItemHovered())
@@ -706,10 +707,8 @@ void DrawViewModeControls(EditorContext& ctx, const ImVec4& overlaySurface)
         ImGui::Separator();
         ImGui::Checkbox("Occlusion Culling", &ctx.sceneViewOcclusionCulling);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Scene View で CPU オクルージョンカリングを効かせます。\n"
-                              "既定は無効です。遮蔽者はメッシュ実体ではなくバウンディング球の\n"
-                              "近似なので、有効にすると見えているものが消える場合があります。\n"
-                              "「消えた原因がカリングか」を切り分けるときに入れ切りしてください。");
+            ImGui::SetTooltip("地形や不透明メッシュに隠れた描画候補を Scene View で除外します。\n"
+                              "遮蔽を確認できない候補は描画します。既定は無効です。");
         ImGui::Separator();
         ImGui::Checkbox("Surface snap aligns to normal", &ctx.surfaceSnapAlignToNormal);
         if (ImGui::IsItemHovered())
@@ -830,6 +829,21 @@ void ViewportPanel::OnAfterBegin(EditorContext& ctx)
     if (m_kind == Kind::Game)
         ctx.requestGameViewportFocus = false;
     ImGui::PopStyleVar();
+}
+
+void ViewportPanel::CaptureStats()
+{
+    const auto& snapshot = renderer::RenderDebugOverlay::GetLastSnapshot();
+    const auto& view = snapshot.gpuCurrentView;
+    if (!resources || !hdrRT.IsValid() || view.outputId != hdrRT.id || view.outputGeneration != hdrRT.gen
+        || view.applicationFrameSerial != resources->FrameStamp()) {
+        m_statsFrame.reset();
+        return;
+    }
+
+    m_renderStats = snapshot.renderStats;
+    m_gpuStats = snapshot.gpuProfiler;
+    m_statsFrame = view.applicationFrameSerial;
 }
 
 void ViewportPanel::OnRenderContent(EditorContext& ctx)
@@ -1282,8 +1296,11 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
     else if (isGameView && ctx.playMode && ctx.playMode->IsPaused())
         ImGui::GetWindowDrawList()->AddRect(viewportMin, viewportMax, IM_COL32(255, 180, 50, 220), 0.0f, 0, 3.0f);
 
-    if (isGameView && ctx.showStats)
-        DrawStatsOverlay(ctx);
+    if ((isSceneView || isGameView) && ctx.showStats && rawTexID && resources
+        && m_statsFrame == resources->FrameStamp()) {
+        DrawStatsOverlay(ctx, isSceneView ? "##scene_vp_stats" : "##game_vp_stats",
+                         m_renderStats, m_gpuStats, *m_statsFrame);
+    }
 
     m_controlPointLayers.Merge(viewportDrawList);
 }

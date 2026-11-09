@@ -112,9 +112,11 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
 [[nodiscard]] float SceneIconHitRadius(const SceneIconInstance& icon);
 
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
-/// @brief Game ビューポート左下のフレーム / 描画統計 HUD。
+/// @brief ビューポート左下のフレーム / 描画統計 HUD。
 /// @pre 対象ビューポートの Begin/End スコープ内から呼ぶ (位置は呼び出し元ウィンドウの左下基準)。
-void DrawStatsOverlay(EditorContext& ctx);
+void DrawStatsOverlay(EditorContext& ctx, const char* windowId,
+    const renderer::RenderDebugOverlay::RenderStats& stats, const renderer::GpuProfilerSnapshot& gpu,
+    uint64_t frame);
 /// @brief 右上のナビゲーションギズモ (Blender / Godot 風の軸ボール)。
 void DrawOrientationGizmo(EditorContext& ctx, const ImVec2& viewportMin, const ImVec2& viewportSize);
 /// @brief ナビゲーションギズモがマウスを取っているか。

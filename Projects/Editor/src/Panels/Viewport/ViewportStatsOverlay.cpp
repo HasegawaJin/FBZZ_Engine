@@ -1,11 +1,9 @@
 /// @file    ViewportStatsOverlay.cpp
-/// @brief   Game ビューポート左下へ重ねるフレーム統計 HUD
+/// @brief   ビューポート左下へ重ねるフレーム統計 HUD。
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 ///
-/// @note 役割は「絵を見ながら横目で確認する層」に限定する。内訳の一覧は Analysis > Rendering が
-/// @note       表と GPU パス履歴で持つため、同じ数字を並べ直さない。ここは「playing 中に視線を
-/// @note       外さず追う値」だけに絞る。
+/// @note パス別の内訳と GPU パス履歴は Analysis > Rendering に表示する。
 #include "ViewportCommon.hpp"
 #include <Editor/Util/EditorTheme.hpp>
 #include <Editor/Util/FrameTimeGraph.hpp>
@@ -85,11 +83,10 @@ void CullBar(const int* culled, int count, int total, float height)
 
 } /// @note namespace
 
-void DrawStatsOverlay(EditorContext& ctx)
+void DrawStatsOverlay(EditorContext& ctx, const char* windowId,
+    const renderer::RenderDebugOverlay::RenderStats& stats, const renderer::GpuProfilerSnapshot& gpu,
+    uint64_t frame)
 {
-    const auto& snapshot = renderer::RenderDebugOverlay::GetLastSnapshot();
-    const auto& rs       = snapshot.renderStats;
-
     /// @note 目標フレーム時間を「予算」として扱う。色分けもグラフの基準線もこれ 1 本に揃える。
     const int   targetFps = ctx.projectSettings.app.targetFps > 0 ? ctx.projectSettings.app.targetFps : 60;
     const float targetMs  = 1000.0f / static_cast<float>(targetFps);
@@ -123,7 +120,7 @@ void DrawStatsOverlay(EditorContext& ctx)
         ImGuiWindowFlags_NoInputs |
         ImGuiWindowFlags_NoFocusOnAppearing;
 
-    if (ImGui::Begin("##vp_stats", nullptr, kOverlayFlags)) {
+    if (ImGui::Begin(windowId, nullptr, kOverlayFlags)) {
         char buf[32];
         char value[48];
 
@@ -131,8 +128,7 @@ void DrawStatsOverlay(EditorContext& ctx)
         widgets::FrameTimeHero(targetMs);
         widgets::FrameTimeGraph(targetMs, fontH * 1.7f);
         /// @note Pass sums retain their asynchronous source and are never substituted for a GPU frame total.
-        const auto& gpu = snapshot.gpuProfiler;
-        const auto summary = detail::SummarizeGpuDisplay(gpu, snapshot.gpuCurrentView.applicationFrameSerial);
+        const auto summary = detail::SummarizeGpuDisplay(gpu, frame);
         if (summary.totalAvailable) {
             std::snprintf(value, sizeof(value), "%.2f", summary.totalMs);
             StatRow("GPU frame total", value, EditorTheme::Color(ThemeColor::Text), "ms");
@@ -152,34 +148,37 @@ void DrawStatsOverlay(EditorContext& ctx)
         } else StatRow("GPU physical frame", "unavailable", EditorTheme::Color(ThemeColor::TextMuted));
 
         /// @note 視点を動かすたびに動く 3 つ。ここだけは絵を見ながら追う価値がある。
-        std::snprintf(value, sizeof(value), "%d", rs.drawCalls);
+        std::snprintf(value, sizeof(value), "%d", stats.drawCalls);
         StatRow("Draw calls", value, EditorTheme::Color(ThemeColor::Text));
-        FormatCount(value, sizeof(value), static_cast<uint64_t>(std::max(rs.triangleCount, 0)));
+        FormatCount(value, sizeof(value), static_cast<uint64_t>(std::max(stats.triangleCount, 0)));
         StatRow("Triangles", value, EditorTheme::Color(ThemeColor::Text));
-        FormatCount(value, sizeof(value), static_cast<uint64_t>(std::max(rs.vertexCount, 0)));
+        FormatCount(value, sizeof(value), static_cast<uint64_t>(std::max(stats.vertexCount, 0)));
         StatRow("Vertices", value, EditorTheme::Color(ThemeColor::Text));
 
-        /// @name カリング (率のみ)
-        /// @note 要因別の件数は Analysis > Rendering の表で読む。ここでは効いているかだけ見る。
-        const int culled[4] = { rs.frustumCulled, rs.occlusionCulled,
-                                rs.distanceCulled, rs.smallObjectCulled };
+        FormatCount(value, sizeof(value), static_cast<uint64_t>(stats.frustumCulled));
+        StatRow("Frustum culled", value, EditorTheme::Color(ThemeColor::Text));
+        FormatCount(value, sizeof(value), static_cast<uint64_t>(stats.occlusionCulled));
+        StatRow("Occlusion culled", value, EditorTheme::Color(ThemeColor::Text));
+
+        const int culled[4] = { stats.frustumCulled, stats.occlusionCulled,
+                                stats.distanceCulled, stats.smallObjectCulled };
         const int totalCulled = culled[0] + culled[1] + culled[2] + culled[3];
-        const float cullRate  = rs.totalObjects > 0
-            ? static_cast<float>(totalCulled) / static_cast<float>(rs.totalObjects) * 100.0f
+        const float cullRate  = stats.totalObjects > 0
+            ? static_cast<float>(totalCulled) / static_cast<float>(stats.totalObjects) * 100.0f
             : 0.0f;
 
         std::snprintf(value, sizeof(value), "%.0f%%", cullRate);
-        std::snprintf(buf, sizeof(buf), "of %d", rs.totalObjects);
-        StatRow(rs.gpuVisibilityUnknownObjects>0 ? "Culled (known)" : "Culled", value,
+        std::snprintf(buf, sizeof(buf), "of %d", stats.totalObjects);
+        StatRow(stats.gpuVisibilityUnknownObjects>0 ? "Culled (known)" : "Culled", value,
                 (cullRate >= 50.0f) ? EditorTheme::Color(ThemeColor::Success)
               : (cullRate >= 30.0f) ? EditorTheme::Color(ThemeColor::Warning)
                                     : EditorTheme::Color(ThemeColor::TextMuted),
                 buf);
         /// @note 残りの色は実描画を表すため、GPU 未確定候補があるフレームはバーを出さない。
-        if (rs.gpuVisibilityUnknownObjects==0)
-            CullBar(culled, 4, rs.totalObjects, fontH * 0.4f);
-        if (rs.gpuVisibilityUnknownObjects>0) {
-            FormatCount(value, sizeof(value), static_cast<uint64_t>(rs.gpuVisibilityUnknownObjects));
+        if (stats.gpuVisibilityUnknownObjects==0)
+            CullBar(culled, 4, stats.totalObjects, fontH * 0.4f);
+        if (stats.gpuVisibilityUnknownObjects>0) {
+            FormatCount(value, sizeof(value), static_cast<uint64_t>(stats.gpuVisibilityUnknownObjects));
             StatRow("GPU visibility unknown", value, EditorTheme::Color(ThemeColor::TextMuted));
         }
     }

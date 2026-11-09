@@ -7,7 +7,9 @@
 #include <Editor/Tools/ClothPinBrush.hpp>
 #include <Editor/Tools/FiberPaintTool.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
+#include <optional>
 #include <string>
+#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceHandle.hpp>
 #include <Engine/Scene/Entity.hpp>
 
@@ -37,6 +39,9 @@ public:
 
     explicit ViewportPanel(Kind kind = Kind::Scene);
 
+    /// @note 呼び出し元はこのビューポートの描画直後、別ビューがスナップショットを更新する前に呼ぶ。
+    void CaptureStats();
+
     const char* GetWindowName() const override { return m_windowName.c_str(); }
     /// @note キーの文脈を持つのは Scene ビューだけ。Game / UI ビューは自前のキーを持たない。
     HotkeyScope GetHotkeyScope() const override
@@ -58,6 +63,9 @@ protected:
 private:
     Kind m_kind = Kind::Scene;
     std::string m_windowName;
+    std::optional<uint64_t> m_statsFrame;
+    renderer::RenderDebugOverlay::RenderStats m_renderStats;
+    renderer::GpuProfilerSnapshot m_gpuStats;
 
     /// @note ゲームがカーソルを取り上げている間だけ立つ。OnBeforeBegin が更新し、
     /// @note 直後の GetWindowFlags() が読む (Begin の引数評価はフックの後)。

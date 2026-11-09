@@ -449,10 +449,9 @@ void RegisterRenderOperators(OperatorRegistry& registry)
         "render.show_lod_bounds", "Show LOD Bounds",
         "LODGroup の判定球を現在の LOD 段の色で描く。", &EditorContext::showLODBounds));
 
-    /// @note Debug メニューにはあるが operator が無く、Grid/Skeleton と同じ列なのに AI からだけ触れなかった。Stats は FPS/draw call を Game View へ焼き込むので、viewport_capture の絵に性能値を一緒に写せる。
     registry.Register(MakeContextToggle(
         "render.show_stats", "Show Stats",
-        "Game Viewport へ FPS / draw call のオーバーレイを出す。",
+        "Scene / Game Viewport へ描画とカリングの統計を表示する。",
         &EditorContext::showStats));
 
     registry.Register(MakeContextToggle(

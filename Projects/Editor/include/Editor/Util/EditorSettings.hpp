@@ -66,7 +66,7 @@ struct EditorSettings {
     bool  showSceneIcons      = true;
     /// @brief 非表示のアイコン種別 (SceneIconTypeKey の値)。未知のキーは読み飛ばされず残る。
     std::vector<std::string> hiddenSceneIcons;
-    bool  showStats           = true;  ///< @note Game Viewport の Stats オーバーレイ
+    bool  showStats           = true;  ///< @note Scene / Game Viewport の Stats オーバーレイ。
     /// @note Scene View のオクルージョンカリング。誤カリングの切り分け用なので既定は off。
     bool  sceneViewOcclusionCulling = false;
     /// @note Ctrl+Shift ドラッグ (面スナップ) で接地面の法線へ姿勢を合わせるか。

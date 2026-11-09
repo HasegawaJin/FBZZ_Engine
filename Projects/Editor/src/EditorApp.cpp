@@ -2462,6 +2462,7 @@ void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
                         &sceneViewCulling,
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(false) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
+        if (m_ctx.showStats && m_sceneViewportPanel) m_sceneViewportPanel->CaptureStats();
     }
 }
 
@@ -2518,6 +2519,7 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
                         gameCullingMask, &uiOptions, nullptr, nullptr,
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(true) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
+    if (m_ctx.showStats && m_gameViewportPanel) m_gameViewportPanel->CaptureStats();
 }
 
 } /// @note namespace fbzz::editor

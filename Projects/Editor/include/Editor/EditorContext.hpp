@@ -419,7 +419,7 @@ struct EditorContext {
     /// @note  Scene View はデバッグカメラで描くので CameraComponent の設定が効かない。
     /// @note  既定は無効 (編集中は見えているものが見えることを優先)。効きは Stats の Occlusion 行。
     bool sceneViewOcclusionCulling = false;
-    bool showStats       = true;  /// @note  @note Game Viewport に Stats オーバーレイを表示する
+    bool showStats       = true;  /// @note Scene / Game Viewport に Stats オーバーレイを表示する。
     bool showTerrainTool = false; /// @note  @note Terrain Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
     /// @brief ホットリロードの完了・失敗を音で知らせるか。@see EditorSettings::hotReloadSound
