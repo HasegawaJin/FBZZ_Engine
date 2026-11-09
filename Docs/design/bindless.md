@@ -291,13 +291,13 @@ IblBaker の一時枠はスコープガードで返す。失敗経路が 3 つ�
 - 定数バッファも bindless 化するかは未決。root CBV 14 本で足りている間は動かさない
 
 
-## Graphicsの参照解決を一つのSubmit内でまとめる（検証用）
+## Graphicsのピクセル参照解決を一つのSubmit内でまとめる
 
-`FBZZ_DX12_BINDING_SCAN_FUSION=1` をデバイス生成前に設定すると、texture / PS StructuredBuffer / auxiliary PS bufferの必須状態遷移とb14添字取得で、同じResourceManager lookupを二度行わない。未設定・0・未知値は従来経路。性能比較の予定反復が背景負荷で完了していないため、標準では有効にしない。
+DX12のgraphics Submitは、texture、PS StructuredBuffer、auxiliary PS bufferの状態遷移とb14添字取得で、同じResourceManager照会を共有する。空のスロットは先に除き、非空のハンドルは現在の所有元と世代を照合する。`FBZZ_DX12_BINDING_SCAN_FUSION=0` で比較用の従来経路を選べる。
 
-添字は毎SubmitでINVALIDから再構築し、現在のhandleを解決する。フレーム間・描画間の値やpointerのキャッシュは持たず、全遷移、b14 upload、root書込みは維持する。texture→PS→auxiliaryのdescriptor取得・重ね書き順序も維持する。instance / VS / rawの取得と遷移は従来どおりで、GetBindlessSrvIndexがGetSrvResourceより先に必要なraw SRVの遅延生成契約も変えない。indirect依存は遷移専用のまま。
+ネイティブの記録スレッドが、毎SubmitでINVALIDから添字を構築する。texture、PS、auxiliaryの順でdescriptorを取得し、同じ添字枠への上書きもこの順に行う。全遷移を終えてから描画を記録する。raw SRVの遅延生成は `GetSrvResource` より先の `GetBindlessSrvIndex` で行い、indirect依存には状態遷移を発行する。
 
-D=Submit数、K=対象texture/PS/auxiliaryスロット数なら、該当lookupを2DK回からDK回へ減らす。計算量は引き続きO(DK)、Kは既定の固定配列幅。永続的なbinding cache、メモリ容量削減、Draw数・LOD・シェーダー品質変更はない。b14 uploadの描画間再利用は比較でCPU frame全体の改善が確認できず撤回した。
+texture、PS、auxiliaryの計36枠に対し、従来はSubmitごとに72回照会していた。まとめた経路では、そのうち非空の枠だけを各1回照会する。生成したb14の内容は、そのSubmitで確保したUpload Arenaのスライスにコピーする。
 
 ## 分離した診断
 

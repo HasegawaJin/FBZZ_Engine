@@ -31,6 +31,9 @@ namespace {
 /// @note 遮蔽検知の Present-test は実 Present を行わないため、常に同期無しで投げる。
 constexpr UINT kPresentSyncIntervalNoVsync = 0;
 
+/// @note 描画用定数の容量を圧迫しないよう、バッファ転送の常駐枠を分ける。
+constexpr size_t BUFFER_COPY_ARENA_BYTES_PER_FRAME = 4u * 1024u * 1024u;
+
 /// @note GPU overloads also emit CPU scopes; adding separate CPU events would duplicate the stack.
 /// @see https://devblogs.microsoft.com/pix/winpixeventruntime/ Official CPU/GPU event pairing.
 void EmitPixEvent(ID3D12GraphicsCommandList* commands, bool begin,
@@ -151,6 +154,8 @@ bool DX12Context::Initialize(HWND hwnd, uint32_t width, uint32_t height)
     if (!CreateDepthBuffer())          { FBZZ_LOG_ERROR("DX12Context: CreateDepthBuffer 失敗"); return false; }
     FBZZ_LOG_INFO("DX12Context: [5/6] Depth Buffer OK");
     if (!CreateCommandsAndFence())     { FBZZ_LOG_ERROR("DX12Context: CreateCommandsAndFence 失敗"); return false; }
+    /// @note 確保できないときは転送ごとの Upload Heap で継続する。
+    (void)m_bufferCopyArena.Initialize(m_device.Get(), BUFFER_COPY_ARENA_BYTES_PER_FRAME);
     FBZZ_LOG_INFO("DX12Context: [6/6] Commands/Fence OK — Initialize 完了");
     return true;
 }
@@ -633,6 +638,7 @@ bool DX12Context::BeginFrame()
         CollectDeferredReleases();
     }
     m_transientUploads[m_frameIndex].clear();
+    m_bufferCopyArena.BeginFrame(m_frameIndex);
     frame.preparedSkinning.clear();
     if (!CheckResult(frame.allocator->Reset(), "CommandAllocator::Reset")
         || !CheckResult(m_commandList->Reset(frame.allocator.Get(), nullptr), "CommandList::Reset"))
@@ -811,6 +817,7 @@ void DX12Context::Shutdown()
     m_commandList.Reset();
     for (auto& frame : m_frames) { frame.preparedSkinning.clear(); frame.allocator.Reset(); }
     for (auto& uploads : m_transientUploads) uploads.clear();
+    m_bufferCopyArena.Shutdown();
     m_deferredResources.clear();
     m_pendingUploads.clear();
     /// @note 永続 bindless の台帳もヒープと一緒に捨てる。残すと再初期化後に «存在しないヒープの
@@ -1289,6 +1296,7 @@ bool DX12Context::StageBufferCopy(
     if (!m_frameOpen || !destination || !data || sizeBytes == 0) return false;
     const auto destinationBytes=destination->GetDesc().Width;
     if (destinationOffset>destinationBytes || sizeBytes>destinationBytes-destinationOffset) return false;
+    if (m_bufferCopyArena.TryStageCopy(*m_commandList.Get(), *destination, destinationOffset, data, sizeBytes)) return true;
     D3D12_HEAP_PROPERTIES heap{};
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
     D3D12_RESOURCE_DESC desc{};

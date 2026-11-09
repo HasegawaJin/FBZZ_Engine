@@ -93,8 +93,17 @@ bool DX12StructuredBuffer::Init(DX12Context* context, DX12StateTracker* tracker,
     if (readWrite || gpuLocalReadOnly) {
         /// @note 初期データは一度だけ Upload Heap を経由し、以後の SRV 読み取りは DEFAULT Heap から行う
         /// @note       (immutable なスキニング入力を CPU 可視メモリへ置き続ける必要はない)。
-        if (!context->CreateDefaultBuffer(data, sizeBytes, m_resource)) return false;
+        const bool stageUpload = gpuLocalReadOnly && data && context->IsFrameOpen() && !context->IsComputeListOpen();
+        if (!context->CreateDefaultBuffer(stageUpload ? nullptr : data, sizeBytes, m_resource)) return false;
         tracker->Register(m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
+        if (stageUpload) {
+            /// @note 同じ描画リストの後続 SRV より先に転送し、草のパッチ追加ごとの同期投入を省く。
+            auto* commands = context->GetCommandList();
+            tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+            const bool copied = context->StageBufferCopy(m_resource.Get(), data, sizeBytes);
+            tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
+            if (!copied) return false;
+        }
     } else {
         D3D12_HEAP_PROPERTIES heap{};
         heap.Type = D3D12_HEAP_TYPE_UPLOAD;

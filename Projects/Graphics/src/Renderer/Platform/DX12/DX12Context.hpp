@@ -15,6 +15,7 @@
 #include <wrl/client.h>
 #include <vector>
 #include "DX12PixEventStack.hpp"
+#include "DX12UploadArena.hpp"
 
 namespace fbzz::renderer {
 
@@ -26,6 +27,7 @@ class PreparedSkinningTicket;
 class DX12Context final {
 public:
     static constexpr uint32_t FRAME_COUNT = 2;
+    static_assert(FRAME_COUNT == DX12UploadArena::FRAME_COUNT);
     static constexpr uint32_t BACK_BUFFER_COUNT = 3;
     static constexpr DXGI_FORMAT BACK_BUFFER_FORMAT = DXGI_FORMAT_R8G8B8A8_UNORM;
     static constexpr DXGI_FORMAT DEPTH_FORMAT = DXGI_FORMAT_D32_FLOAT;
@@ -319,6 +321,7 @@ private:
         uint64_t fenceValue = 0;
     };
     std::vector<PendingBindlessFree> m_bindlessPendingFrees;
+    DX12UploadArena m_bufferCopyArena;
     std::array<std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>, FRAME_COUNT> m_transientUploads;
     std::vector<DeferredResource> m_deferredResources;
     std::vector<PendingUpload> m_pendingUploads;

@@ -5,6 +5,7 @@
 #include "DX12UploadArena.hpp"
 
 #include <Core/Logger.hpp>
+#include <cstring>
 
 namespace fbzz::renderer {
 
@@ -75,6 +76,19 @@ DX12UploadArena::Allocation DX12UploadArena::Allocate(size_t sizeBytes, size_t a
     frame.offset = alignedOffset + sizeBytes;
     return {frame.mapped + alignedOffset,
             frame.resource->GetGPUVirtualAddress() + alignedOffset, sizeBytes};
+}
+
+bool DX12UploadArena::TryStageCopy(ID3D12GraphicsCommandList& commands, ID3D12Resource& destination,
+    size_t destinationOffset, const void* data, size_t sizeBytes)
+{
+    const auto& frame = m_frames[m_currentFrame];
+    const size_t sourceOffset = frame.offset;
+    if (!sizeBytes || sizeBytes > m_capacity || sourceOffset > m_capacity - sizeBytes) return false;
+
+    const auto allocation = Allocate(sizeBytes, 1);
+    std::memcpy(allocation.cpu, data, sizeBytes);
+    commands.CopyBufferRegion(&destination, destinationOffset, frame.resource.Get(), sourceOffset, sizeBytes);
+    return true;
 }
 
 } /// @note namespace fbzz::renderer

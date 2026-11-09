@@ -49,7 +49,7 @@ DX12Renderer::~DX12Renderer()
 
 bool DX12Renderer::Init(HWND hwnd, uint32_t width, uint32_t height)
 {
-    m_bindingFusionEnabled = false;
+    m_bindingFusionEnabled = true;
     m_bindingDiagnostics = false;
     if (const char* mode = std::getenv("FBZZ_DX12_BINDING_SCAN_FUSION"))
         m_bindingFusionEnabled = std::strcmp(mode, "1") == 0;
@@ -618,33 +618,41 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
             m_bindingResourceCoherent = false;
         ++m_bindingDraws;
     }
-    for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
-        if (auto* textureBase = resources.Get(call.textures[slot])) {
-            m_stateTracker.QueueTransition(static_cast<DX12Texture*>(textureBase)->GetResource(),
-                                           graphicsShaderResourceState);
-            if (fusedBindings) indices.pixel[slot] = textureBase->GetBindlessIndex();
+    /// @note Resolve live bindings and copy their current indices on the native recording thread only.
+    const auto bindPixelResources = [&]<bool gatherIndices>() {
+        for (uint32_t slot = 0; slot < call.textures.size(); ++slot) {
+            const auto handle = call.textures[slot];
+            if constexpr (gatherIndices) { if (!handle.IsValid()) continue; }
+            if (auto* textureBase = resources.Get(handle)) {
+                m_stateTracker.QueueTransition(static_cast<DX12Texture*>(textureBase)->GetResource(),
+                                               graphicsShaderResourceState);
+                if constexpr (gatherIndices) indices.pixel[slot] = textureBase->GetBindlessIndex();
+            }
         }
-    }
-    for (const auto handle : call.indirectReadTextures) {
-        if (auto* textureBase = resources.Get(handle))
-            m_stateTracker.QueueTransition(static_cast<DX12Texture*>(textureBase)->GetResource(),
-                graphicsShaderResourceState);
-    }
-    /// @note t29〜t30 の StructuredBuffer はピクセルテーブルに入る。mesh draw では共有 shader-resource 状態へ遷移する。
-    /// @note       クラスタライトのインデックスリストは直前に CS が UAV として書いているため、読取状態が必要。
-    for (uint32_t i = 0; i < call.psBuffers.size(); ++i) {
-        if (auto* bufferBase = resources.Get(call.psBuffers[i])) {
-            m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
-                                           graphicsShaderResourceState);
-            if (fusedBindings) indices.pixel[kPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
+        for (const auto handle : call.indirectReadTextures) {
+            if (auto* textureBase = resources.Get(handle))
+                m_stateTracker.QueueTransition(static_cast<DX12Texture*>(textureBase)->GetResource(),
+                    graphicsShaderResourceState);
         }
-    }
-    for (uint32_t i = 0; i < call.auxiliaryPsBuffers.size(); ++i) {
-        if (auto* bufferBase = resources.Get(call.auxiliaryPsBuffers[i])) {
-            m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
-                                           graphicsShaderResourceState);
-            if (fusedBindings) indices.pixel[kAuxiliaryPsBufferBaseSlot + i] = bufferBase->GetBindlessIndex();
-        }
+        /// @note The light index list can still be a compute UAV. Indices alone cannot replace its transition.
+        const auto bindBuffers = [&](const auto& handles, uint32_t baseSlot) {
+            for (uint32_t i = 0; i < handles.size(); ++i) {
+                const auto handle = handles[i];
+                if constexpr (gatherIndices) { if (!handle.IsValid()) continue; }
+                if (auto* bufferBase = resources.Get(handle)) {
+                    m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(bufferBase)->GetResource(),
+                                                   graphicsShaderResourceState);
+                    if constexpr (gatherIndices) indices.pixel[baseSlot + i] = bufferBase->GetBindlessIndex();
+                }
+            }
+        };
+        bindBuffers(call.psBuffers, kPsBufferBaseSlot);
+        bindBuffers(call.auxiliaryPsBuffers, kAuxiliaryPsBufferBaseSlot);
+    };
+    if (fusedBindings) {
+        bindPixelResources.operator()<true>();
+    } else {
+        bindPixelResources.operator()<false>();
     }
 
     /// @name bindless 添字ブロック (b14)
