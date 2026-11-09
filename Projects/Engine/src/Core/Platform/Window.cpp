@@ -12,6 +12,7 @@
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Input/Input.hpp"
 #include "Engine/Util/FileSystem.hpp"
+#include "LockedMouseMotion.hpp"
 
 #include <dwmapi.h>
 #include <windowsx.h>
@@ -48,6 +49,29 @@ namespace
 {
     constexpr wchar_t kWindowClassName[] = L"FBZZWindowClass";
     constexpr int kDefaultApplicationIconId = 101;
+    constexpr USHORT RAW_INPUT_GENERIC_DESKTOP = 0x01;
+    constexpr USHORT RAW_INPUT_MOUSE = 0x02;
+
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-rawinputdevice RAWINPUTDEVICE の前景登録と宛先。
+    void RegisterRelativeMouse(HWND hwnd)
+    {
+        /// @note メインウィンドウを宛先にし、分離した Game View からも同じ集約経路へ送る。
+        const RAWINPUTDEVICE mouse{RAW_INPUT_GENERIC_DESKTOP, RAW_INPUT_MOUSE, 0, hwnd};
+        if (!RegisterRawInputDevices(&mouse, 1, sizeof(mouse)))
+            FBZZ_LOG_WARN("Raw mouse registration failed (%lu); using cursor position delta.", GetLastError());
+    }
+
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-rawmouse RAWMOUSE の相対移動と絶対座標。
+    void ReadRelativeMouse(LPARAM lParam)
+    {
+        RAWINPUT raw{};
+        UINT size = sizeof(raw);
+        if (GetRawInputData(std::bit_cast<HRAWINPUT>(lParam), RID_INPUT, &raw, &size,
+                            sizeof(RAWINPUTHEADER)) != sizeof(raw)
+            || raw.header.dwType != RIM_TYPEMOUSE
+            || (raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) != 0) return;
+        cursor_detail::HandleRelativeMouseMotion(raw.data.mouse.lLastX, raw.data.mouse.lLastY);
+    }
 
     void EnableDpiAwareness()
     {
@@ -351,6 +375,8 @@ bool Window::Initialize(const Config& config)
         this);
 
     assert(m_hwnd && "Window creation failed");
+    if (!m_hwnd) return false;
+    RegisterRelativeMouse(m_hwnd);
 
     /// @note ダークモード有効化
     BOOL darkMode = TRUE;
@@ -595,6 +621,12 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
 
     auto* window = std::bit_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+    /// @see https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-input 前景パケットを処理した後の DefWindowProc による解放。
+    if (msg == WM_INPUT) {
+        if (GET_RAWINPUT_CODE_WPARAM(wParam) == RIM_INPUT) ReadRelativeMouse(lParam);
+        return DefWindowProcW(hwnd, msg, wParam, lParam);
+    }
 
     /// @note Safety lifecycle must run even when the ImGui hook consumes a window message.
     if (msg == WM_ACTIVATEAPP) {

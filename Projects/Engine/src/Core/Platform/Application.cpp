@@ -13,6 +13,7 @@
 #include "Engine/Asset/AssetStreaming.hpp"
 #include "Engine/Asset/StreamedTextureResolver.hpp"
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
+#include "Engine/Core/Cursor.hpp"
 #include "Engine/Core/IModule.hpp"
 #include "Engine/Core/Logger.hpp"
 #include "Engine/Core/Time.hpp"
@@ -272,6 +273,7 @@ void Application::Run() {
         {
             FBZZ_PROFILE_SCOPE("InputActionMap::Update");
             const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::INPUT_ACTIONS);
+            Cursor::SampleLockedMouseDelta();
             /// @note 入力の平滑化はプレイヤーの操作感であり、スローモーション演出 (TimeScale)
             /// @note に引きずられて鈍くなるべきではないため unscaledDeltaTime を使う。
             input::InputActionMap::Update(Time::unscaledDeltaTime);
@@ -349,6 +351,7 @@ void Application::Run(IModule& module) {
         {
             FBZZ_PROFILE_SCOPE("InputActionMap::Update");
             const profiler::frame_timeline::Scope timeline(profiler::frame_timeline::Event::INPUT_ACTIONS);
+            Cursor::SampleLockedMouseDelta();
             /// @note 入力の平滑化はプレイヤーの操作感であり、スローモーション演出 (TimeScale)
             /// @note に引きずられて鈍くなるべきではないため unscaledDeltaTime を使う。
             input::InputActionMap::Update(Time::unscaledDeltaTime);

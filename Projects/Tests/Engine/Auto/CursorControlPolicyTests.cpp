@@ -4,6 +4,7 @@
 /// @date    2026-10-23
 #include <TestKit/TestKit.hpp>
 #include "../../../Engine/src/Core/Platform/CursorControlPolicy.hpp"
+#include "../../../Engine/src/Core/Platform/LockedMouseMotion.hpp"
 #include "../../../Engine/src/Input/GameInputConsumption.hpp"
 
 namespace fbzz::tests {
@@ -21,6 +22,31 @@ TEST_F(CursorControlPolicyTest, LockedHidesEffectiveCursorWithoutChangingRequest
     EXPECT_FALSE(state.effective.visible);
     EXPECT_EQ(state.effective.lockMode, core::CursorLockMode::Locked);
     EXPECT_EQ(state.inputOwner, core::CursorInputOwner::GAME);
+}
+
+TEST_F(CursorControlPolicyTest, LockedMouseAccumulatesRelativePacketsOncePerFrame)
+{
+    core::cursor_detail::LockedMouseMotion motion;
+    motion.Add(17, -9);
+    motion.Add(-5, 2);
+    const auto delta = motion.Take();
+    ASSERT_TRUE(delta);
+    EXPECT_FLOAT_EQ(delta->x, 12.0f);
+    EXPECT_FLOAT_EQ(delta->y, -7.0f);
+    EXPECT_FALSE(motion.Take());
+}
+
+TEST_F(CursorControlPolicyTest, LockedMouseDistinguishesCancelledMotionFromNoRelativePackets)
+{
+    core::cursor_detail::LockedMouseMotion motion;
+    motion.Add(0, 0);
+    EXPECT_FALSE(motion.Take());
+    motion.Add(12, 4);
+    motion.Add(-12, -4);
+    const auto delta = motion.Take();
+    ASSERT_TRUE(delta);
+    EXPECT_FLOAT_EQ(delta->x, 0.0f);
+    EXPECT_FLOAT_EQ(delta->y, 0.0f);
 }
 
 TEST_F(CursorControlPolicyTest, VisibilityAndMovementRestrictionDoNotDecideInputOwnership)

@@ -9,6 +9,7 @@
 #include <Engine/Input/InputActionMap.hpp>
 #include <Engine/Input/Gamepad.hpp>
 #include "CursorControlPolicy.hpp"
+#include "LockedMouseMotion.hpp"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -53,6 +54,7 @@ CursorShape Cursor::s_shape = CursorShape::Default;
 namespace {
 
 cursor_detail::CursorControlPolicy g_control;
+cursor_detail::LockedMouseMotion g_lockedMouseMotion;
 CursorLockMode g_appliedLock = CursorLockMode::None;
 bool g_targetAvailable = true;
 bool g_recenterPending = true;
@@ -131,6 +133,7 @@ bool ResolveClipRect(bool hasRegion, float rx, float ry, float rw, float rh, REC
 
 void ReleaseClip(bool& clipActive)
 {
+    g_lockedMouseMotion = {};
     /// @note 既に外していれば触らない。ClipCursor(nullptr) は «誰の拘束でも» 外す API なので、
     /// @note 自分が張っていないときに毎フレーム呼ぶと他アプリの拘束まで剥がしてしまう。
     if (!clipActive) return;
@@ -611,6 +614,46 @@ bool Cursor::IsSuppressed()
     return s_suppressed;
 }
 
+namespace {
+
+/// @note 相対移動を優先し、座標差は相対パケットが届かないフレームにだけ使う。
+bool RecenterLockedCursor(const RECT& clip, bool sampleMovement)
+{
+    const int centerX = (clip.left + clip.right) / 2;
+    const int centerY = (clip.top + clip.bottom) / 2;
+    math::Vector2 delta{};
+    POINT position{};
+    const auto relative = g_lockedMouseMotion.Take();
+    if (sampleMovement) {
+        if (relative) {
+            delta = *relative;
+        } else if (GetCursorPos(&position)) {
+            delta = { static_cast<float>(position.x - centerX),
+                      static_cast<float>(position.y - centerY) };
+        }
+    }
+    if (!SetCursorPos(centerX, centerY)) {
+        input::Input::OverrideMouseDelta({});
+        return false;
+    }
+    input::Input::OverrideMouseDelta(delta);
+    return true;
+}
+
+} /// @note namespace
+
+void cursor_detail::HandleRelativeMouseMotion(int x, int y)
+{
+    if (g_appliedLock == CursorLockMode::Locked && !g_recenterPending)
+        g_lockedMouseMotion.Add(x, y);
+}
+
+void Cursor::SampleLockedMouseDelta()
+{
+    if (g_appliedLock != CursorLockMode::Locked || g_recenterPending || !Effective()) return;
+    g_recenterPending = !RecenterLockedCursor(g_appliedClip, true);
+}
+
 void Cursor::ApplyLock()
 {
     const CursorLockMode lockMode = GetRequestedPolicy().lockMode;
@@ -633,6 +676,7 @@ void Cursor::ApplyLock()
     }
 
     const bool modeChanged = g_appliedLock != lockMode || !EqualRect(&clipRect, &g_appliedClip);
+    if (modeChanged) g_lockedMouseMotion = {};
     if (!ClipCursor(&clipRect)) {
         ReleaseClip(s_clipActive);
         g_targetAvailable = false;
@@ -644,18 +688,8 @@ void Cursor::ApplyLock()
     s_clipActive = true;
     g_appliedLock = lockMode;
 
-    if (lockMode == CursorLockMode::Locked) {
-        const int centerX = (clipRect.left + clipRect.right) / 2;
-        const int centerY = (clipRect.top + clipRect.bottom) / 2;
-        POINT cursorPos{};
-        if (!g_recenterPending && !modeChanged && GetCursorPos(&cursorPos)) {
-            input::Input::OverrideMouseDelta({
-                static_cast<float>(cursorPos.x - centerX),
-                static_cast<float>(cursorPos.y - centerY)
-            });
-        }
-        else input::Input::OverrideMouseDelta({});
-        if (!SetCursorPos(centerX, centerY)) {
+    if (lockMode == CursorLockMode::Locked && (modeChanged || g_recenterPending)) {
+        if (!RecenterLockedCursor(clipRect, false)) {
             ReleaseClip(s_clipActive);
             g_targetAvailable = false;
             g_recenterPending = true;

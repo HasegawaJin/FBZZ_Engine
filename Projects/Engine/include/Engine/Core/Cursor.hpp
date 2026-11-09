@@ -188,6 +188,9 @@ struct Cursor {
     /// @brief 現在の LockMode を OS カーソルへ再適用する。ウィンドウ移動・リサイズ後に呼ぶ。
     FBZZ_ENGINE_API static void ApplyLock();
 
+    /// @brief イベント取得後、入力軸の評価前に Locked の相対移動量を確定する。
+    FBZZ_ENGINE_API static void SampleLockedMouseDelta();
+
     /// @brief Editor / PlayMode 終了時の安全復元。カーソルを必ず表示し、拘束と絵を元へ戻す。
     FBZZ_ENGINE_API static void ResetForEditor();
     /// @}
