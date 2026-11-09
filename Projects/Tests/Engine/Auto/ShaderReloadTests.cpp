@@ -425,23 +425,27 @@ TEST_F(ShaderReloadTest, ShadowTerrainBoundsObserveDirectHeightAndScaleChangesWi
     scene::Scene testScene;
     auto& owner = testScene.CreateGameObject("Current terrain heights");
     auto& terrain = owner.AddComponent<scene::TerrainComponent>();
-    terrain.columns = terrain.rows = 2;
+    terrain.columns = 9;
+    terrain.rows = 5;
     terrain.cellSize = 2;
     terrain.maxHeight = 10;
-    terrain.heightData = {-1, 0.25f, 0.5f, 1};
+    terrain.heightData.assign(45, 0.5f);
+    terrain.heightData[14] = -1;
+    terrain.heightData[34] = 1;
     owner.transform.position = owner.transform.worldPosition = {3, 4, 5};
     owner.transform.scale = owner.transform.worldScale = {-2, 3, 4};
     const auto first = scene::shadow_preparation_detail::ComputeSceneBounds(testScene, UINT32_MAX);
-    const math::Vector3 firstCenter{1, 4, 9};
+    const math::Vector3 firstCenter{-13, 4, 21};
     EXPECT_VEC3_NEAR(first.center, firstCenter, testkit::kTolerance);
-    EXPECT_NEAR(first.radius, std::sqrt(102.0f) * 4, testkit::kTolerance);
+    EXPECT_NEAR(first.radius, std::sqrt(180.0f) * 4, testkit::kTolerance);
     const auto revision = terrain.surfaceRevision;
-    terrain.heightData.assign(4, 0.5f);
+    terrain.heightData[14] = terrain.heightData[34] = 0.5f;
+    terrain.heightData[44] = 1;
     const auto second = scene::shadow_preparation_detail::ComputeSceneBounds(testScene, UINT32_MAX);
-    const math::Vector3 secondCenter{1, 19, 9};
+    const math::Vector3 secondCenter{-13, 26.5f, 21};
     EXPECT_EQ(terrain.surfaceRevision, revision);
     EXPECT_VEC3_NEAR(second.center, secondCenter, testkit::kTolerance);
-    EXPECT_NEAR(second.radius, std::sqrt(2.0f) * 4, testkit::kTolerance);
+    EXPECT_NEAR(second.radius, std::sqrt(86.25f) * 4, testkit::kTolerance);
 }
 
 class ShaderCapabilityReloadTest : public ShaderReloadTest {

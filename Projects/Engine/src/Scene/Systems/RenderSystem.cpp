@@ -180,8 +180,31 @@ std::pair<float, float> TerrainHeightExtents(const std::vector<float>& heights)
     if (heights.size() >= 4) {
         auto minima = _mm_set1_ps(heights.front());
         auto maxima = minima;
+        auto minima1 = minima, minima2 = minima, minima3 = minima;
+        auto maxima1 = maxima, maxima2 = maxima, maxima3 = maxima;
         auto unordered = _mm_setzero_ps();
         size_t index = 0;
+        /// @note Independent extrema chains let the processor overlap the packed min/max latency.
+        for (; index + 16 <= heights.size(); index += 16) {
+            const auto* block = heights.data() + index;
+            const auto values0 = _mm_loadu_ps(block);
+            const auto values1 = _mm_loadu_ps(block + 4);
+            const auto values2 = _mm_loadu_ps(block + 8);
+            const auto values3 = _mm_loadu_ps(block + 12);
+            minima = _mm_min_ps(minima, values0);
+            minima1 = _mm_min_ps(minima1, values1);
+            minima2 = _mm_min_ps(minima2, values2);
+            minima3 = _mm_min_ps(minima3, values3);
+            maxima = _mm_max_ps(maxima, values0);
+            maxima1 = _mm_max_ps(maxima1, values1);
+            maxima2 = _mm_max_ps(maxima2, values2);
+            maxima3 = _mm_max_ps(maxima3, values3);
+            const auto unordered01 = _mm_cmpunord_ps(values0, values1);
+            const auto unordered23 = _mm_cmpunord_ps(values2, values3);
+            unordered = _mm_or_ps(unordered, _mm_or_ps(unordered01, unordered23));
+        }
+        minima = _mm_min_ps(_mm_min_ps(minima, minima1), _mm_min_ps(minima2, minima3));
+        maxima = _mm_max_ps(_mm_max_ps(maxima, maxima1), _mm_max_ps(maxima2, maxima3));
         for (; index + 4 <= heights.size(); index += 4) {
             const auto values = _mm_loadu_ps(heights.data() + index);
             minima = _mm_min_ps(minima, values);
