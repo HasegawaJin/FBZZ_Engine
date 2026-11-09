@@ -731,6 +731,7 @@ static void ExtractTerrainSurface(TerrainRenderCache& cache, const TerrainCompon
     surface.layer = base.layer; surface.selected = base.selected;
     surface.chunkWorldSize = base.chunkWorldSize;
     surface.constants = base.constants;
+    surface.constants.grassGroundColor = {};
     surface.splatIndices = base.splatIndices; surface.splatWeights = base.splatWeights;
     if (!terrain.surfaceMaterial.empty()) {
         const auto materialAuthoringSnapshot = ReadTerrainMaterial(cache, terrain.surfaceMaterial);
@@ -905,6 +906,23 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         if (input.fiberSurface) {
             input.fiberDistanceLod = fiber->m_distanceLod;
             input.fiberLodFar = std::isfinite(fiber->m_lodFar) ? std::max(fiber->m_lodFar,0.1f) : 40.0f;
+            const auto& color = fiber->m_terrainGroundColor;
+            if (fiber->m_mode == FiberRenderMode::BLADE && fiber->m_distanceLod
+                && fiber->m_bladeDensity > 0.0f && fiber->m_densityScale > 0.0f && fiber->m_lengthScale > 0.0f
+                && fiber->m_terrainLayer < static_cast<int>(layers.size())
+                && std::isfinite(fiber->m_lodNear) && std::isfinite(fiber->m_lodFar)
+                && std::isfinite(fiber->m_terrainGroundCover) && fiber->m_terrainGroundCover > 0.0f
+                && std::isfinite(color.x) && std::isfinite(color.y) && std::isfinite(color.z)) {
+                const float nearDistance = std::max(fiber->m_lodNear, 0.0f);
+                const float farDistance = std::max(fiber->m_lodFar, nearDistance + 0.1f);
+                const float sparseStart = fiber->m_terrainSparseLodStart;
+                const float fullDistance = sparseStart > nearDistance && sparseStart < farDistance ? sparseStart : farDistance;
+                const float threshold = std::isfinite(fiber->m_terrainLayerThreshold)
+                    ? std::clamp(fiber->m_terrainLayerThreshold, 0.0f, 1.0f) : 0.0f;
+                input.constants.grassGroundLod = {nearDistance, fullDistance, static_cast<float>(fiber->m_terrainLayer), threshold};
+                input.constants.grassGroundColor = {std::clamp(color.x, 0.0f, 1.0f), std::clamp(color.y, 0.0f, 1.0f),
+                    std::clamp(color.z, 0.0f, 1.0f), std::clamp(fiber->m_terrainGroundCover, 0.0f, 1.0f)};
+            }
         }
         for (const auto& selected : ctx.settings.selectedObjects)
             if (selected.index == eid.index && selected.generation == eid.generation) { input.selected = true; break; }

@@ -9,20 +9,7 @@
 /// @see Docs/design/terrain-layers.md
 #include "Common/Binding.hlsli"
 
-/// @note Common/Constants.hlsli は b1 に ObjectConstants を定義するが、地形は同じ枠を TerrainCB として使うため直接宣言する。
-cbuffer CameraConstants : register(CB_CAMERA)
-{
-    float4x4 view;
-    float4x4 projection;
-    float4x4 viewProjection;
-    float4x4 invViewProjection;
-    float3   cameraPos;
-    float    nearZ;
-    float    farZ;
-    float    _camReserved;   ///< @note Water パスのみ waterSsrEnabled として使う枠
-    float    isOrthographic; ///< @note 1 = 平行投影
-    float    _camPad;
-};
+#include "Terrain/TerrainSurface.hlsli"
 
 #define MAX_POINT_LIGHTS 8
 #define MAX_SPOT_LIGHTS  4
@@ -56,7 +43,6 @@ cbuffer LightConstants : register(CB_LIGHT)
 #include "Rendering/Shadow.hlsli"
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/SpecularAA.hlsli"
-#include "Terrain/TerrainSurface.hlsli"
 
 FBZZ_TEX2D_T(float, g_shadowMap, 13);
 SamplerComparisonState g_shadowSampler : register(SAMPLER_SHADOW);

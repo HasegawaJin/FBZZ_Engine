@@ -1014,8 +1014,10 @@ struct TerrainObjectCB {
     std::uint32_t splatRows        = 1;
     /// @note 非一様スケールと親からの shear に対応する法線の変換。
     math::Matrix4 worldInvTranspose = math::Matrix4::Identity();
+    math::Vector4 grassGroundColor{}; ///< @note RGB は線形、W は地表に混ぜる強度。
+    math::Vector4 grassGroundLod{}; ///< @note 開始距離と最大寄与距離 [world m]、塗り層番号、層しきい値。
 };
-static_assert(sizeof(TerrainObjectCB) == 240, "TerrainObjectCB size mismatch");
+static_assert(sizeof(TerrainObjectCB) == 272, "TerrainObjectCB size mismatch");
 
 /// @brief 地形 1 層ぶんの GPU パラメーター (StructuredBuffer の 1 要素)。
 /// @note LAYOUT: TerrainSurface.hlsli の TerrainLayer と一致させること。テクスチャ添字に無効値を入れない。

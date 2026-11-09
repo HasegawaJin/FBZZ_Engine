@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
 ///
-/// @note LAYOUT: TerrainCB は RenderPassContext.hpp の TerrainObjectCB、TerrainLayer は TerrainLayerGpu と一致させること。
+/// @note TerrainCB と TerrainLayer は RenderConstants.hpp の TerrainObjectCB と TerrainLayerGpu に一致させる。
 /// @note t0 = 層番号マップ (RGBA8 UNORM)、t1 = 重みマップ。層テクスチャは TerrainLayer の bindless 添字から引く。
 /// @see Docs/design/terrain-layers.md
 #ifndef TERRAIN_SURFACE_HLSLI
@@ -12,6 +12,21 @@
 #include "Common/Binding.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/Color.hlsli"
+
+/// @note 共通の ObjectConstants と b1 が重なるため、地形は b0 のみ宣言する。
+cbuffer CameraConstants : register(CB_CAMERA)
+{
+    float4x4 view;
+    float4x4 projection;
+    float4x4 viewProjection;
+    float4x4 invViewProjection;
+    float3   cameraPos;
+    float    nearZ;
+    float    farZ;
+    float    _camReserved;   ///< @note Water パスのみ waterSsrEnabled として使う枠
+    float    isOrthographic; ///< @note 1 = 平行投影
+    float    _camPad;
+};
 
 cbuffer TerrainCB : register(CB_OBJECT)
 {
@@ -24,6 +39,8 @@ cbuffer TerrainCB : register(CB_OBJECT)
     uint     splatColumns;
     uint     splatRows;
     float4x4 worldInvTranspose;
+    float4   grassGroundColor;
+    float4   grassGroundLod;
 };
 
 /// @brief 1 層ぶんのパラメーター。テクスチャ添字は常に有効 (パスが 1x1 の代替を詰める)。
@@ -379,6 +396,36 @@ struct TerrainSurface
     float3 geometricNormal;
 };
 
+/// @note 見た目用の自動・高さブレンドより前の塗りを使い、草を消した道にも地表色が残るのを防ぐ。
+float TerrainGrassCoverage(TerrainCandidates painted, float3 worldPosition)
+{
+    [branch]
+    if (grassGroundColor.w <= 0.0f)
+        return 0.0f;
+    const float fade = smoothstep(grassGroundLod.x, grassGroundLod.y, length(cameraPos - worldPosition));
+    if (fade <= 0.0f || grassGroundLod.z < 0.0f)
+        return fade * grassGroundColor.w;
+    const uint grassLayer = (uint)grassGroundLod.z;
+    float weight = 0.0f;
+    [loop]
+    for (uint i = 0; i < painted.count; ++i)
+        if (painted.layer[i] == grassLayer)
+            weight = painted.weight[i];
+    const float threshold = grassGroundLod.w;
+    const float edge = smoothstep(max(0.0f, threshold - 0.05f), min(1.0f, threshold + 0.05f), weight);
+    return fade * grassGroundColor.w * weight * edge;
+}
+
+float3 BlendTerrainGrass(float3 ground, float coverage)
+{
+    [branch]
+    if (coverage <= 0.0f)
+        return ground;
+    /// @note 既存の材質から明暗のむらを引き継ぎ、遠景用の追加テクスチャ参照を避ける。
+    const float detail = clamp(0.65f + 2.5f * Luminance(ground), 0.65f, 1.3f);
+    return lerp(ground, grassGroundColor.rgb * detail, coverage);
+}
+
 float3 SampleTerrainAlbedo(TerrainLayer layer, TerrainProjection projection)
 {
     Texture2D diffuse = TerrainTexture(layer.diffuseIndex);
@@ -415,6 +462,7 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
     const float3 dPdy  = ddy(p.localPos);
 
     TerrainCandidates c = GatherPaintedCandidates(p.uv);
+    const float grassCoverage = TerrainGrassCoverage(c, p.worldPos);
     if (terrainParams.w > 0.5f)
         ApplyAutoBlend(c, p.localPos.y, saturate(1.0f - abs(NgWorld.y)));
 
@@ -432,7 +480,7 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
                                                        layer.normalStrength * normalBoost, Nl, Tl, Bl);
         const float3 localNormal = dot(blendedN, blendedN) > 1e-10f ? normalize(blendedN) : Nl;
         TerrainSurface surface;
-        surface.albedo = SampleTerrainAlbedo(layer, projection);
+        surface.albedo = BlendTerrainGrass(SampleTerrainAlbedo(layer, projection), grassCoverage);
         surface.roughness = response.g;
         surface.ao = response.r;
         surface.normal = normalize(mul(localNormal, (float3x3)worldInvTranspose));
@@ -525,6 +573,7 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
         s.roughness /= total;
         s.ao        /= total;
     }
+    s.albedo = BlendTerrainGrass(s.albedo, grassCoverage);
 
     const float3 Nlocal = dot(blendedN, blendedN) > 1e-10f ? normalize(blendedN) : Nl;
     s.normal          = normalize(mul(Nlocal, (float3x3)worldInvTranspose));

@@ -108,6 +108,7 @@ auto TerrainGrassValues(const scene::FiberComponent& fiber)
 {
     return std::tie(fiber.m_enabled, fiber.m_mode, fiber.m_shellCount, fiber.m_distanceLod,
         fiber.m_minShellCount, fiber.m_lodNear, fiber.m_lodFar, fiber.m_terrainSparseLodStart, fiber.m_bladeDensity, fiber.m_bladeWidth,
+        fiber.m_terrainGroundCover, fiber.m_terrainGroundColor.x, fiber.m_terrainGroundColor.y, fiber.m_terrainGroundColor.z,
         fiber.m_bladeSegments, fiber.m_shadowBladeSegments, fiber.m_seed, fiber.m_chunkedPlacement,
         fiber.m_chunkSize, fiber.m_maxSlope, fiber.m_maxBlades, fiber.m_paintPath, fiber.m_terrainPatchCells,
         fiber.m_terrainLayer, fiber.m_terrainLayerThreshold, fiber.m_flowChannels, fiber.m_shadowShellCount,
