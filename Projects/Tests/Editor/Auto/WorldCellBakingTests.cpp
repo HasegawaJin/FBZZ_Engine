@@ -15,6 +15,8 @@
 #include <Engine/Asset/MeshInstancesAsset.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/WorldPartitionComponent.hpp>
@@ -407,6 +409,90 @@ TEST_F(WorldCellBakingTest, PersistedPcgCellsStreamNearAndHlodExclusivelyThenUnl
     EXPECT_EQ(runtime.Status().residentNear + runtime.Status().residentHlod, 0u);
     EXPECT_EQ(resident.GameObjectCount(), 1u);
     EXPECT_EQ(resident.GetGameObject(manualId), &manual);
+}
+
+TEST_F(WorldCellBakingTest, TerrainBakeStreamsSharedEdgesAndCollidersThroughNearFarAndUnload)
+{
+    Configure();
+    auto& original = AttachedScene()->CreateGameObject("Heightfield");
+    const auto id = original.instanceId;
+    auto& terrain = original.AddComponent<scene::TerrainComponent>();
+    terrain.Resize(17, 9);
+    terrain.cellSize = 2.0f;
+    terrain.chunkSize = 8;
+    terrain.InitFlat();
+    terrain.heightData[8] = 0.25f;
+    terrain.holeData.assign(terrain.CellCount(), 0);
+    terrain.holeData[8] = 1;
+    original.AddComponent<scene::TerrainColliderComponent>();
+    auto& fiber = original.AddComponent<scene::FiberComponent>();
+    fiber.m_mode = scene::FiberRenderMode::BLADE;
+    fiber.m_materialPath.clear();
+
+    auto args = PartitionArgs();
+    args.Set("includeTerrain", true);
+    auto baked = Call(editor::BakeWorldCells, args);
+    ASSERT_TRUE(baked.ok) << baked.message;
+    EXPECT_EQ(baked.data.Find("terrainTiles")->AsInt64(), 2);
+    EXPECT_EQ(terrain.columns, 17);
+    auto manifest = LoadManifest();
+    ASSERT_EQ(manifest.cells.size(), 2u);
+    EXPECT_EQ(manifest.sourceInstanceIds, (std::vector<std::string>{id}));
+    EXPECT_EQ(PayloadIds(manifest, true), PayloadIds(manifest, false));
+    const auto rebuilt = Call(editor::BuildWorldHlod, PartitionArgs());
+    ASSERT_TRUE(rebuilt.ok) << rebuilt.message;
+    EXPECT_EQ(PayloadIds(LoadManifest(), true), PayloadIds(manifest, true));
+
+    scene::Scene resident;
+    auto& source = resident.CreateGameObject("Original Terrain");
+    source.instanceId = id;
+    source.AddComponent<scene::TerrainComponent>(terrain);
+    std::vector<std::function<void()>> jobs;
+    const auto enqueue = [&](std::function<void()> job) { jobs.push_back(std::move(job)); };
+    asset::AssetStreamer streamer(enqueue);
+    scene::WorldPartitionRuntime runtime(enqueue, &streamer);
+    scene::WorldPartitionSettings settings;
+    settings.retireSourceObjects = true;
+    std::string diagnostic;
+    ASSERT_TRUE(runtime.Configure(resident, manifest, Context().projectRoot, settings, diagnostic)) << diagnostic;
+    const auto drive = [&] {
+        for (int step = 0; step < 16; ++step) {
+            runtime.Update({16, 0, 0});
+            auto queued = std::move(jobs);
+            jobs.clear();
+            for (auto& job : queued) job();
+        }
+    };
+    const auto checkTiles = [&] {
+        const auto tiles = resident.GetEntities<scene::TerrainComponent>();
+        ASSERT_EQ(tiles.size(), 2u);
+        for (const auto tile : tiles) {
+            auto* object = resident.GetGameObject(tile);
+            ASSERT_NE(object, nullptr);
+            const auto* component = object->GetComponent<scene::TerrainComponent>();
+            EXPECT_EQ(component->columns, 9);
+            const bool right = object->instanceId != id;
+            EXPECT_FLOAT_EQ(component->heightData[right ? 0 : 8], 0.25f);
+            EXPECT_EQ(component->IsHoleCell(0, 0), right);
+            EXPECT_NE(object->GetComponent<scene::TerrainColliderComponent>(), nullptr);
+            const auto* tileFiber = object->GetComponent<scene::FiberComponent>();
+            ASSERT_NE(tileFiber, nullptr);
+            EXPECT_EQ(tileFiber->m_mode, scene::FiberRenderMode::BLADE);
+        }
+    };
+    drive();
+    ASSERT_EQ(runtime.Status().residentNear, 2u) << runtime.Status().diagnostic;
+    checkTiles();
+    for (const auto& cell : manifest.cells)
+        ASSERT_TRUE(runtime.RequestCell(cell.id, scene::WorldCellRepresentation::HLOD, diagnostic)) << diagnostic;
+    drive();
+    ASSERT_EQ(runtime.Status().residentHlod, 2u) << runtime.Status().diagnostic;
+    checkTiles();
+    for (const auto& cell : manifest.cells)
+        ASSERT_TRUE(runtime.RequestCell(cell.id, scene::WorldCellRepresentation::UNLOADED, diagnostic)) << diagnostic;
+    drive();
+    EXPECT_TRUE(resident.GetEntities<scene::TerrainComponent>().empty());
+    EXPECT_NE(AttachedScene()->FindByGuid(id), nullptr);
 }
 
 TEST_F(WorldCellBakingTest, HlodRebuildUsesPersistedNearWhileKeepingNearPathsAndSourceIdentities)

@@ -13,6 +13,7 @@
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/SceneForest.hpp>
+#include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Scene/WorldHlod.hpp>
 #include <Engine/Scene/WorldPartitionManifest.hpp>
@@ -20,9 +21,11 @@
 #include <Engine/Scene/Components/WorldPartitionComponent.hpp>
 #include <Engine/Scene/Components/WorldPcgAuthoringComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
+#include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <toml++/toml.hpp>
@@ -48,6 +51,7 @@ struct Source {
     bool shadows = true, instanced = true, hlod = true;
     float maxDistance = 0;
     toml::table actor;
+    const scene::TerrainComponent* terrain = nullptr;
 };
 
 struct NearGroup {
@@ -58,8 +62,10 @@ struct NearGroup {
 
 struct CellDraft {
     toml::array objects;
+    toml::array farTerrain;
     scene::WorldCellBounds bounds;
     bool hasBounds = false;
+    size_t terrainBytes = 0;
     std::string identityText;
     std::vector<scene::WorldPartitionDependency> dependencies;
 };
@@ -226,15 +232,28 @@ scene::GameObject* FindPartition(EditorContext& ctx, const OpArgs& args, std::st
     return found;
 }
 
-bool SupportedStatic(const scene::Scene& scene, const scene::GameObject& node)
+bool SupportedStatic(const scene::Scene& scene, const scene::GameObject& node, bool terrain)
 {
     bool supported = true;
     scene::ForEachRegisteredComponent([&]<typename T,typename Registration>() {
-        if constexpr (!std::is_same_v<T,scene::InstancedMeshComponent> && !std::is_same_v<T,scene::WorldPcgGeneratedComponent>
+        if constexpr (std::is_same_v<T,scene::TerrainComponent> || std::is_same_v<T,scene::TerrainColliderComponent>
+            || std::is_same_v<T,scene::FiberComponent>) {
+            if (!terrain && scene.HasComponent<T>(node.GetID())) supported = false;
+        } else if constexpr (!std::is_same_v<T,scene::InstancedMeshComponent> && !std::is_same_v<T,scene::WorldPcgGeneratedComponent>
             && !std::is_same_v<T,scene::MeshRenderer> && !std::is_same_v<T,scene::MaterialComponent>
-            && !std::is_same_v<T,scene::ColliderComponent> && !std::is_same_v<T,scene::WorldHlodSourceComponent>) if (scene.HasComponent<T>(node.GetID())) supported = false;
+            && !std::is_same_v<T,scene::ColliderComponent> && !std::is_same_v<T,scene::WorldHlodSourceComponent>) {
+            if (scene.HasComponent<T>(node.GetID())) supported = false;
+        } else if (terrain && scene.HasComponent<T>(node.GetID())) supported = false;
     });
     return supported && node.GetChildCount() == 0;
+}
+
+bool CanBakeTerrain(scene::GameObject& node, const scene::TerrainComponent& terrain)
+{
+    const auto* fiber = node.GetComponent<scene::FiberComponent>();
+    return terrain.enabled && terrain.surfacePositions.empty() && terrain.surfaceIndices.empty()
+        && !node.GetParent() && node.prefabAssetPath.empty()
+        && (!fiber || !fiber->m_enabled || (fiber->m_mode == scene::FiberRenderMode::BLADE && fiber->m_paintPath.empty()));
 }
 
 void ReferenceIds(const toml::node& node, const std::set<std::string>& candidates, std::set<std::string>& result)
@@ -247,6 +266,80 @@ void ReferenceIds(const toml::node& node, const std::set<std::string>& candidate
     }else if(const auto* array=node.as_array()){
         for(const auto& value:*array)ReferenceIds(value,candidates,result);
     }else if(const auto value=node.value<std::string>();value&&candidates.contains(*value))result.insert(*value);
+}
+
+struct TerrainTile {
+    size_t source;
+    int x, z, columns, rows;
+    math::Vector3 position;
+};
+
+/// @note Start on the existing chunk lattice. The final tile includes the original outer edge.
+bool PlanTerrainTiles(const Source& source, size_t index, const scene::WorldCellGrid& grid,
+    size_t maxTiles, std::multimap<scene::WorldCellId, TerrainTile>& tiles)
+{
+    const auto& terrain = *source.terrain;
+    const auto& world = source.world;
+    const math::Vector3 scale{world.m[0][0], world.m[1][1], world.m[2][2]};
+    const math::Vector3 origin{world.m[0][3], world.m[1][3], world.m[2][3]};
+    if (!Finite(scale) || !Finite(origin) || scale.x <= 0 || scale.y <= 0 || scale.z <= 0
+        || terrain.columns < 2 || terrain.rows < 2 || terrain.heightData.size() != terrain.VertexCount()
+        || !std::isfinite(terrain.cellSize) || terrain.cellSize <= 0 || terrain.chunkSize < 1
+        || terrain.chunkSize > 128 || !std::isfinite(terrain.maxHeight) || terrain.maxHeight <= 0) return false;
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 3; ++col)
+            if (row != col && world.m[row][col] != 0.0f) return false;
+    const float span = grid.cellSize / (terrain.cellSize * (std::max)(scale.x, scale.z));
+    const int stride = (std::max)(1, static_cast<int>(std::clamp(span, 1.0f, 128.0f)) / terrain.chunkSize) * terrain.chunkSize;
+    for (int z = 0; z < terrain.rows - 1;) {
+        const int depth = (std::min)(stride, terrain.rows - 1 - z);
+        for (int x = 0; x < terrain.columns - 1;) {
+            const int width = (std::min)(stride, terrain.columns - 1 - x);
+            const math::Vector3 position = origin + math::Vector3{x * terrain.cellSize * scale.x, 0, z * terrain.cellSize * scale.z};
+            scene::WorldCellId cell;
+            if (tiles.size() >= maxTiles || !scene::TryLocateWorldCell(grid, position, cell)) return false;
+            tiles.emplace(cell, TerrainTile{index, x, z, width + 1, depth + 1, position});
+            x += width;
+        }
+        z += depth;
+    }
+    return true;
+}
+
+/// @note Shared edge vertices are copied exactly. Hole cells belong to only one tile.
+scene::TerrainComponent CopyTerrainTile(const scene::TerrainComponent& terrain, const TerrainTile& tile)
+{
+    scene::TerrainComponent result;
+    result.columns = tile.columns;
+    result.rows = tile.rows;
+    result.cellSize = terrain.cellSize;
+    result.maxHeight = terrain.maxHeight;
+    result.chunkSize = terrain.chunkSize;
+    result.heightBlendDepth = terrain.heightBlendDepth;
+    result.layerMaterials = terrain.layerMaterials;
+    const bool splat = terrain.HasValidSplat();
+    const bool holes = terrain.holeData.size() == terrain.CellCount();
+    result.heightData.reserve(result.VertexCount());
+    if (splat) {
+        result.splatIndices.reserve(result.VertexCount() * scene::TERRAIN_SPLAT_SLOTS);
+        result.splatWeights.reserve(result.VertexCount() * scene::TERRAIN_SPLAT_SLOTS);
+    }
+    if (holes) result.holeData.reserve(result.CellCount());
+    for (int z = 0; z < tile.rows; ++z) {
+        const size_t start = static_cast<size_t>(tile.z + z) * terrain.columns + tile.x;
+        result.heightData.insert(result.heightData.end(), terrain.heightData.begin() + start, terrain.heightData.begin() + start + tile.columns);
+        if (splat) {
+            const size_t first = start * scene::TERRAIN_SPLAT_SLOTS;
+            const size_t end = first + static_cast<size_t>(tile.columns) * scene::TERRAIN_SPLAT_SLOTS;
+            result.splatIndices.insert(result.splatIndices.end(), terrain.splatIndices.begin() + first, terrain.splatIndices.begin() + end);
+            result.splatWeights.insert(result.splatWeights.end(), terrain.splatWeights.begin() + first, terrain.splatWeights.begin() + end);
+        }
+        if (z < tile.rows - 1 && holes) {
+            const size_t first = static_cast<size_t>(tile.z + z) * (terrain.columns - 1) + tile.x;
+            result.holeData.insert(result.holeData.end(), terrain.holeData.begin() + first, terrain.holeData.begin() + first + tile.columns - 1);
+        }
+    }
+    return result;
 }
 }
 
@@ -265,9 +358,10 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     if (maxCells < 1 || maxCells > 4096 || maxInstances < 1 || maxInstances > 1048576) return OpResult::Err("BAD_ARG","Invalid cell or instance bake budget");
     scene::FlushWorldTransforms(*ctx.activeScene);
     const bool includeScene = args.GetBool("includeScene",false), buildHlod = args.GetBool("buildHlod",true);
-    std::string sceneError; const std::string sceneText = scene::SceneSerializer::CapturePassiveClone(*ctx.activeScene,sceneError);
+    const bool includeTerrain = args.GetBool("includeTerrain", false);
+    const std::string sceneText = scene::SceneSerializer::CaptureSaveComparison(*ctx.activeScene, manifestRelative);
     const auto parsed = toml::parse(sceneText);
-    if (sceneText.empty() || !parsed) return OpResult::Err("SERIALIZE_FAILED",sceneError.empty()?"Cannot capture authored scene":sceneError);
+    if (sceneText.empty() || !parsed) return OpResult::Err("SERIALIZE_FAILED", "Cannot capture authored scene");
     std::map<std::string,toml::table> records;
     if (const auto* objects = parsed["gameobjects"].as_array()) for (const auto& value : *objects)
         if (const auto* object = value.as_table()) records.emplace((*object)["instanceId"].value_or(std::string{}),*object);
@@ -275,14 +369,21 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     for (auto& node : ctx.activeScene->GameObjects()) {
         if (node.runtimeGenerated || !node.activeInHierarchy() || node.GetID() == manager->GetID()) continue;
         const auto* generated = node.GetComponent<scene::WorldPcgGeneratedComponent>();
-        if (!generated && !includeScene) continue;
+        const auto* terrain = node.GetComponent<scene::TerrainComponent>();
+        if (!generated && !includeScene && !(includeTerrain && terrain)) continue;
         auto* instances = node.GetComponent<scene::InstancedMeshComponent>(); auto* mesh = node.GetComponent<scene::MeshRenderer>();
-        if ((!instances && !mesh) || node.name.starts_with("__") || !SupportedStatic(*ctx.activeScene,node)) { ++pinned; continue; }
+        if ((terrain ? !includeTerrain || !CanBakeTerrain(node, *terrain) : !instances && !mesh)
+            || node.name.starts_with("__") || !SupportedStatic(*ctx.activeScene,node, terrain != nullptr)) { ++pinned; continue; }
         if(node.layer<0||node.layer>=32)return OpResult::Err("BAD_LAYER","Static source layer must be in [0,31]");
         Source source; source.id=node.instanceId; source.name=node.name; source.world=node.transform.GetWorldMatrix();
         source.layer=static_cast<uint32_t>(node.layer);
         if (const auto found=records.find(source.id);found!=records.end())source.actor=found->second;
-        if (instances) {
+        if (terrain) {
+            if (!source.actor["TerrainComponent"].is_table()) return OpResult::Err("SERIALIZE_FAILED", "Terrain was not captured");
+            source.terrain = terrain;
+            sources.push_back(std::move(source));
+            continue;
+        } else if (instances) {
             if (!instances->m_enabled) continue;
             const auto* definition = asset::ResolveMeshInstanceDefinition(instances->m_instanceSetRef.path);
             const auto snapshot = definition ? instances->Snapshot(*definition) : nullptr;
@@ -317,13 +418,32 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     }
     std::sort(sources.begin(),sources.end(),[](const auto& a,const auto& b){return a.id<b.id;});
     std::set<std::string> candidateIds;for(const auto& s:sources)if(!candidateIds.insert(s.id).second)return OpResult::Err("DUPLICATE_ID","Authored source identities must be unique");
+    std::set<std::string> terrainIds;
+    for (const auto& source : sources) if (source.terrain) terrainIds.insert(source.id);
     std::map<std::string,std::set<std::string>> referenceGraph;
-    for(const auto& [id,record]:records)ReferenceIds(record,candidateIds,referenceGraph[id]);
-    std::set<std::string> pinnedIds;bool changed=true;
-    while(changed){changed=false;for(const auto& [id,edges]:referenceGraph)if(!candidateIds.contains(id)||pinnedIds.contains(id))for(const auto& target:edges)if(pinnedIds.insert(target).second)changed=true;}
+    std::set<std::string> pinnedIds;
+    std::vector<std::string> pendingPins;
+    const auto pin = [&](const std::string& id) {
+        if (pinnedIds.insert(id).second) pendingPins.push_back(id);
+    };
+    for (const auto& [id, record] : records) {
+        auto& edges = referenceGraph[id];
+        for (const auto& [key, value] : record) {
+            /// @note The edit-only grid slot list identifies original Terrain owners, not the streamed copies.
+            if (key == "TerrainGridComponent" && includeTerrain) continue;
+            if (key == "instanceId" || key == "parentInstanceId" || key == "parent" || key == "prefabSourceId") continue;
+            ReferenceIds(value, candidateIds, edges);
+        }
+        for (const auto& target : edges)
+            if (!candidateIds.contains(id) || (id != target && terrainIds.contains(target))) pin(target);
+    }
+    for (size_t i = 0; i < pendingPins.size(); ++i) {
+        const auto edges = referenceGraph.find(pendingPins[i]);
+        if (edges != referenceGraph.end()) for (const auto& target : edges->second) pin(target);
+    }
     pinned+=pinnedIds.size();std::erase_if(sources,[&](const auto& source){return pinnedIds.contains(source.id);});
     total=0;for(const auto& source:sources)total+=source.placements.size();
-    if (sources.empty()) return OpResult::Err("NO_CONTENT","No eligible generated/static content; generate PCG or enable includeScene");
+    if (sources.empty()) return OpResult::Err("NO_CONTENT","No eligible generated content, static objects or terrain");
     std::map<std::pair<scene::WorldCellId,size_t>,NearGroup> nearGroups;
     for (size_t i=0;i<sources.size();++i) for (const auto& placement:sources[i].placements) {
         const auto matrix=sources[i].world*math::Matrix4::TRS(placement.position,math::Quaternion::FromEuler(placement.eulerRadians),placement.scale);
@@ -334,16 +454,59 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
         local.position=local.position-scene::WorldCellOrigin(grid,cell);
         auto& group=nearGroups[{cell,i}]; group.source=i;group.cell=cell;group.placements.push_back(local);
     }
+    std::multimap<scene::WorldCellId, TerrainTile> terrainTiles;
+    for (size_t i = 0; i < sources.size(); ++i)
+        if (sources[i].terrain && !PlanTerrainTiles(sources[i], i, grid, static_cast<size_t>(maxCells), terrainTiles))
+            return OpResult::Err("TERRAIN_TILE_PLAN_FAILED", "Unsupported terrain dimensions, transform or tile budget: " + sources[i].name);
     std::set<scene::WorldCellId> cellIds;for(const auto& [key,group]:nearGroups)cellIds.insert(group.cell);
+    for (const auto& [cell, tile] : terrainTiles) cellIds.insert(cell);
     if(cellIds.size()>static_cast<size_t>(maxCells)) return OpResult::Err("BUDGET_EXCEEDED","World cell budget exceeded before any output was written");
     std::vector<scene::WorldHlodSource> hlodSources;
-    for(const auto& s:sources) hlodSources.push_back({s.id,s.world,s.parts,s.heights,s.placements,s.layer,s.shadows,s.hlod,true,s.bounds});
+    for(const auto& s:sources) if (!s.terrain) hlodSources.push_back({s.id,s.world,s.parts,s.heights,s.placements,s.layer,s.shadows,s.hlod,true,s.bounds});
     std::vector<scene::WorldHlodGroup> proxies;
     if(buildHlod && !scene::BuildWorldHlod(hlodSources,{grid,65536,static_cast<uint32_t>(maxInstances)},proxies,error)) return OpResult::Err("HLOD_FAILED",error);
     std::map<scene::WorldCellId,CellDraft> drafts;
     const std::string owner=manager->instanceId;
     const auto folderPath=util::FileSystem::PathFromUtf8(manifestRelative).parent_path()/(manifestPath.stem().string()+".cells");
     std::string folder=util::FileSystem::PathToUtf8(folderPath);std::replace(folder.begin(),folder.end(),'\\','/');
+    const size_t maxCellBytes = static_cast<size_t>((std::max)(settings.maxCellMegabytes, 0)) * 1024 * 1024;
+    for (const auto& [cell, tile] : terrainTiles) {
+        const auto& source = sources[tile.source];
+        auto terrain = CopyTerrainTile(*source.terrain, tile);
+        if (!std::all_of(terrain.heightData.begin(), terrain.heightData.end(), [](float value) { return std::isfinite(value); }))
+            return OpResult::Err("INVALID_TERRAIN", "Terrain contains non-finite heights: " + source.name);
+        std::string text;
+        if (!scene::TerrainAssetSerializer::Serialize(terrain, text))
+            return OpResult::Err("INVALID_TERRAIN", "Cannot serialize terrain tile: " + source.name);
+        auto& draft = drafts[cell];
+        if (text.size() > maxCellBytes - draft.terrainBytes)
+            return OpResult::Err("BUDGET_EXCEEDED", "Terrain tiles exceed the cell byte budget: " + scene::WorldCellName(cell));
+        draft.terrainBytes += text.size();
+        const std::string suffix = std::to_string(tile.x) + "_" + std::to_string(tile.z);
+        const bool first = tile.x == 0 && tile.z == 0;
+        const auto id = first ? source.id : asset::AssetDatabase::DeriveGuid(source.id, "terrain:" + suffix);
+        if (!first && records.contains(id)) return OpResult::Err("DUPLICATE_ID", "Terrain tile collides with an authored object");
+        const std::string path = folder + "/" + scene::WorldCellName(cell) + "/terrain_" + std::to_string(Hash(text)) + ".terrain";
+        std::string reference;
+        if (!WriteText(ctx, path, text, owner, reference, error)) return OpResult::Err("WRITE_FAILED", error);
+        auto object = source.actor;
+        object.insert_or_assign("instanceId", id);
+        object.insert_or_assign("name", source.name + " / " + suffix);
+        for (const auto* key : {"parent", "parentInstanceId", "prefabAssetPath", "prefabSourceId"}) object.insert_or_assign(key, "");
+        const math::Vector3 scale{source.world.m[0][0], source.world.m[1][1], source.world.m[2][2]};
+        object.insert_or_assign("transform", toml::table{{"position", toml::array{tile.position.x, tile.position.y, tile.position.z}},
+            {"rotation", toml::array{0., 0., 0., 1.}}, {"scale", toml::array{scale.x, scale.y, scale.z}}});
+        auto& component = *object["TerrainComponent"].as_table();
+        component.erase("inlineData");
+        component.insert_or_assign("terrainAssetPath", reference);
+        object.insert_or_assign("WorldHlodSourceComponent", toml::table{{"includeHlod", true}});
+        const auto [low, high] = std::minmax_element(terrain.heightData.begin(), terrain.heightData.end());
+        Include(draft.bounds, draft.hasBounds, tile.position + math::Vector3{0, *low * terrain.maxHeight * scale.y, 0});
+        Include(draft.bounds, draft.hasBounds, tile.position + math::Vector3{(tile.columns - 1) * terrain.cellSize * scale.x,
+            *high * terrain.maxHeight * scale.y, (tile.rows - 1) * terrain.cellSize * scale.z});
+        if (buildHlod) draft.farTerrain.push_back(object);
+        draft.objects.push_back(std::move(object));
+    }
     std::set<size_t> assignedOriginal;
     for(auto& [key,group]:nearGroups) {
         const auto& s=sources[group.source];auto& draft=drafts[group.cell];
@@ -385,6 +548,7 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     scene::WorldPartitionManifest manifest;manifest.grid=grid;
     for(const auto& s:sources)manifest.sourceInstanceIds.push_back(s.id);
     std::map<scene::WorldCellId,toml::array> proxyObjects;
+    for (auto& [cell, draft] : drafts) if (!draft.farTerrain.empty()) proxyObjects.emplace(cell, std::move(draft.farTerrain));
     for(size_t i=0;i<proxies.size();++i){
         const auto& proxy=proxies[i];const std::string signature=std::to_string(Hash(InstanceKey(proxy.proxy.instances)));
         const std::string relative=folder+"/"+scene::WorldCellName(proxy.cell)+"/hlod_"+asset::AssetDatabase::DeriveGuid(owner,signature+std::to_string(i))+".meshinstances";
@@ -396,10 +560,14 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     for(auto& [cell,draft]:drafts){
         scene::WorldPartitionCell entry;entry.id=cell;entry.bounds=draft.bounds;
         const std::string nearText=Dump(toml::table{{"scene",toml::table{{"format_version",2}}},{"gameobjects",std::move(draft.objects)}});
+        if (draft.terrainBytes != 0 && nearText.size() > maxCellBytes - draft.terrainBytes)
+            return OpResult::Err("BUDGET_EXCEEDED", "Terrain and near payload exceed the cell byte budget");
         entry.revision=Hash(nearText+draft.identityText);entry.nearPath=folder+"/"+scene::WorldCellName(cell)+"/near_"+std::to_string(entry.revision)+".scene";
         std::string unused;if(!WriteText(ctx,entry.nearPath,nearText,owner,unused,error))return OpResult::Err("WRITE_FAILED",error);
         if(auto found=proxyObjects.find(cell);found!=proxyObjects.end()){
             const auto text=Dump(toml::table{{"scene",toml::table{{"format_version",2}}},{"gameobjects",std::move(found->second)}});
+            if (draft.terrainBytes != 0 && text.size() > maxCellBytes - draft.terrainBytes)
+                return OpResult::Err("BUDGET_EXCEEDED", "Terrain and HLOD payload exceed the cell byte budget");
             entry.hlodPath=folder+"/"+scene::WorldCellName(cell)+"/hlod_"+std::to_string(Hash(text))+".scene";
             if(!WriteText(ctx,entry.hlodPath,text,owner,unused,error))return OpResult::Err("WRITE_FAILED",error);
         }
@@ -420,6 +588,7 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     ctx.requestAssetBrowserRefresh=true;
     OpData data=OpData::MakeObject();data.Set("partition",owner);data.Set("manifest",reference);data.Set("cells",static_cast<int>(manifest.cells.size()));
     data.Set("instances",static_cast<int>(total));data.Set("sources",static_cast<int>(sources.size()));data.Set("pinned",static_cast<int>(pinned));
+    data.Set("terrainTiles", static_cast<int>(terrainTiles.size()));
     data.Set("hlodGroups",static_cast<int>(proxies.size()));data.Set("revision",std::to_string(manifest.revision));data.Set("authoringScenePreserved",true);
     auto result=OpResult::Data(std::move(data));result.noChange=unchanged;return result;
 }
@@ -440,12 +609,25 @@ OpResult BuildWorldHlod(OpContext& context, const OpArgs& args)
     const int maxGroups=args.GetInt("maxGroups",65536),maxInstances=args.GetInt("maxInstances",1048576);
     if(maxGroups<1||maxGroups>65536||maxInstances<1||maxInstances>1048576)return OpResult::Err("BAD_ARG","Invalid HLOD budget");
     std::vector<Source> sources;
+    std::map<scene::WorldCellId,toml::array> objects;
     for(const auto& cell:manifest.cells){
         std::filesystem::path path;std::string normalized,text;
         if(!ResolvePath(ctx,cell.nearPath,path,normalized)||!util::FileSystem::ReadText(path,text))return OpResult::Err("READ_FAILED","Cannot read baked near payload");
         std::vector<std::string> forestIds;
         if(!scene::ValidateSceneForestDocument(text,forestIds,error))return OpResult::Err("INVALID_PAYLOAD",error);
-        auto prepared=scene::SceneSerializer::LoadPassiveDataFromText(text,util::FileSystem::PathToUtf8(path));
+        auto document = toml::parse(text);
+        auto* gameObjects = document.table()["gameobjects"].as_array();
+        toml::array staticObjects;
+        /// @note Terrain remains visible through the far radius. Reuse the persisted tile reference without opening its height data.
+        for (auto& object : *gameObjects) {
+            auto& record = *object.as_table();
+            if (record.contains("TerrainComponent") && record["WorldHlodSourceComponent"]["includeHlod"].value_or(false))
+                objects[cell.id].push_back(std::move(record));
+            else staticObjects.push_back(std::move(record));
+        }
+        if (staticObjects.empty()) continue;
+        document.table().insert_or_assign("gameobjects", std::move(staticObjects));
+        auto prepared=scene::SceneSerializer::LoadPassiveDataFromText(Dump(document.table()),util::FileSystem::PathToUtf8(path));
         if(!prepared)return OpResult::Err("INVALID_PAYLOAD","Cannot prepare baked near payload");
         scene::FlushWorldTransforms(*prepared);
         for(auto& node:prepared->GameObjects()){
@@ -476,7 +658,6 @@ OpResult BuildWorldHlod(OpContext& context, const OpArgs& args)
     std::vector<scene::WorldHlodGroup> proxies;
     if(!scene::BuildWorldHlod(views,{manifest.grid,static_cast<uint32_t>(maxGroups),static_cast<uint32_t>(maxInstances)},proxies,error))return OpResult::Err("HLOD_FAILED",error);
     std::string folder=util::FileSystem::PathToUtf8(util::FileSystem::PathFromUtf8(relative).parent_path()/(manifestPath.stem().string()+".cells"));std::replace(folder.begin(),folder.end(),'\\','/');
-    std::map<scene::WorldCellId,toml::array> objects;
     for(size_t i=0;i<proxies.size();++i){
         const auto& p=proxies[i];const auto signature=std::to_string(Hash(InstanceKey(p.proxy.instances)));
         const std::string output=folder+"/"+scene::WorldCellName(p.cell)+"/hlod_"+asset::AssetDatabase::DeriveGuid(manager->instanceId,signature+std::to_string(i))+".meshinstances";

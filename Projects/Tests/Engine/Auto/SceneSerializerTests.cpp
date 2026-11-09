@@ -21,6 +21,7 @@
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
 #include <Math/MathUtils.hpp>
@@ -312,6 +313,32 @@ TEST_F(SceneSerializerTest, KeepsDeepHierarchies)
     ASSERT_NE(restored, nullptr);
     EXPECT_EQ(restored->GetRootGameObjects().size(), 1u);
     EXPECT_NE(restored->Find("C"), nullptr);
+}
+
+TEST_F(SceneSerializerTest, TerrainGridResolvesForwardAndMissingCellGuids)
+{
+    const auto restored = scene::SceneSerializer::LoadDataFromText(R"(
+[[gameobjects]]
+name = 'Grid'
+instanceId = 'grid'
+[gameobjects.TerrainGridComponent]
+cellCountX = 3
+cellCountZ = 1
+cells = ['cell', 'missing', '']
+[[gameobjects]]
+name = 'Cell'
+instanceId = 'cell'
+)", ScenePath());
+    ASSERT_NE(restored, nullptr);
+    auto* gridOwner = restored->FindByGuid("grid");
+    auto* cell = restored->FindByGuid("cell");
+    ASSERT_NE(gridOwner, nullptr);
+    ASSERT_NE(cell, nullptr);
+    const auto* grid = gridOwner->GetComponent<scene::TerrainGridComponent>();
+    ASSERT_NE(grid, nullptr);
+    EXPECT_EQ(grid->GetCell(0, 0), cell->GetID());
+    EXPECT_EQ(grid->GetCell(1, 0), scene::EntityID::INVALID);
+    EXPECT_EQ(grid->GetCell(2, 0), scene::EntityID::INVALID);
 }
 
 /// @name 実行時生成物

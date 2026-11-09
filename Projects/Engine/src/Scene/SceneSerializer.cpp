@@ -3588,7 +3588,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
     /// @note GUID → EntityID の変換を行う。
     for (auto& go : scene->GameObjects()) {
         if (auto* tgc = go.GetComponent<TerrainGridComponent>())
-            tgc->ResolveFromScene(*scene);
+            tgc->ResolveCellReferences([&guids](const std::string& guid) {
+                const auto* object = guids.Find(guid);
+                return object ? object->GetID() : EntityID::INVALID;
+            });
     }
 
     /// @note [environment] を持たないシーンは «半径 0 の Uniform» を環境風と読んでいた頃のもの。

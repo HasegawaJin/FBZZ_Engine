@@ -162,6 +162,7 @@ void RegisterWorldPartitionOperators(OperatorRegistry& registry)
         OpKind::Action, {
             Partition(),
             Parameter("includeScene", OpParamType::Bool, "Include eligible Scene content in the bake, default false.", false),
+            Parameter("includeTerrain", OpParamType::Bool, "Bake eligible heightfield Terrain as streamed tiles, default false.", false),
             Parameter("buildHlod", OpParamType::Bool, "Build HLOD payloads together, default true.", true),
             Number("maxCells", OpParamType::Int, "Maximum baked cells, default 4096; reject excess before publication.", 4096, 1, 4096),
             Number("maxInstances", OpParamType::Int, "Maximum baked instances, default 1048576.", 1048576, 1, 1048576),

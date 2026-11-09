@@ -70,6 +70,7 @@ private:
     bool m_enabled = true;
     int m_maxPoints = 256;
     bool m_includeScene = false;
+    bool m_includeTerrain = false;
     bool m_buildHlod = true;
     int m_cell[2]{};
     float m_source[3]{};

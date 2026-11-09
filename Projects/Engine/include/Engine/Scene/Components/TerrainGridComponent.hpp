@@ -85,6 +85,16 @@ struct TerrainGridComponent {
     /// @brief SceneSerializer の Load 後に呼ぶ。cellInstanceIds → cells を解決する。
     FBZZ_ENGINE_API void ResolveFromScene(const Scene& scene);
 
+    /// @brief 読み込み中に既に構築済みの GUID 索引を使ってセル参照を解決する。
+    template<typename Resolver>
+    void ResolveCellReferences(const Resolver& resolve) {
+        EnsureSize();
+        const size_t total = static_cast<size_t>(cellCountX) * static_cast<size_t>(cellCountZ);
+        for (size_t i = 0; i < total; ++i)
+            cells[i] = i < cellInstanceIds.size() && !cellInstanceIds[i].empty()
+                ? resolve(cellInstanceIds[i]) : EntityID::INVALID;
+    }
+
     /// @brief Save 前に呼ぶ。cells → cellInstanceIds を同期する。
     FBZZ_ENGINE_API void SyncInstanceIds(const Scene& scene);
 };

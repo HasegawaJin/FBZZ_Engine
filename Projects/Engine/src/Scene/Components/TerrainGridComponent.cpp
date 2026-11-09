@@ -10,18 +10,10 @@ namespace fbzz::scene {
 
 void TerrainGridComponent::ResolveFromScene(const Scene& scene)
 {
-    EnsureSize();
-    const size_t total = static_cast<size_t>(cellCountX) * static_cast<size_t>(cellCountZ);
-    for (size_t i = 0; i < total; ++i) {
-        if (i < cellInstanceIds.size() && !cellInstanceIds[i].empty()) {
-            if (const GameObject* go = scene.FindByGuid(cellInstanceIds[i]))
-                cells[i] = go->GetID();
-            else
-                cells[i] = EntityID::INVALID;
-        } else {
-            cells[i] = EntityID::INVALID;
-        }
-    }
+    ResolveCellReferences([&scene](const std::string& guid) {
+        const auto* object = scene.FindByGuid(guid);
+        return object ? object->GetID() : EntityID::INVALID;
+    });
 }
 
 void TerrainGridComponent::SyncInstanceIds(const Scene& scene)

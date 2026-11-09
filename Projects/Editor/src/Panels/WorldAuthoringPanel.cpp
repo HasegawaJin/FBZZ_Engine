@@ -226,8 +226,10 @@ void WorldAuthoringPanel::DrawPartition(EditorContext& context)
     }
     ImGui::Checkbox("Include scene content", &m_includeScene);
     ImGui::SameLine(); ImGui::Checkbox("Build HLOD on bake", &m_buildHlod);
+    ImGui::Checkbox("Stream terrain tiles", &m_includeTerrain);
     auto bake = PartitionArgs();
     bake.Set("includeScene", m_includeScene); bake.Set("buildHlod", m_buildHlod);
+    bake.Set("includeTerrain", m_includeTerrain);
     bake.Set("maxCells", 4096); bake.Set("maxInstances", 1048576);
     if (ActionButton(context, "Bake cells", "worldcell.bake", bake)) InspectPartition(context);
     ImGui::SameLine();
