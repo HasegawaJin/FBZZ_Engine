@@ -143,11 +143,33 @@ WaterMeshGeometry ResolveWaterMeshGeometry(const WaterComponent& water)
     return result;
 }
 
+/// @note 正規化されたパッチは分割数だけで決まり、同じ作成元の複数の水面が共有できる。
+struct WaterPatchGrid {
+    explicit WaterPatchGrid(const renderer::ResourceManager& resources)
+        : owner(resources.GetInstanceId()), resetVersion(resources.GetResetVersion()) {}
+    WaterPatchGrid(const WaterPatchGrid&) = delete;
+    ~WaterPatchGrid()
+    {
+        auto* resources = renderer::ResourceManager::FindOwner(owner);
+        if (!resources || resources->GetResetVersion() != resetVersion) return;
+        if (vertexBuffer.IsValid()) resources->Release(vertexBuffer);
+        for (const auto buffer : indexBuffers) if (buffer.IsValid()) resources->Release(buffer);
+        for (const auto& strip : strips) if (strip.buffer.IsValid()) resources->Release(strip.buffer);
+    }
+
+    const uint64_t owner;
+    const uint64_t resetVersion;
+    renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
+    std::array<renderer::ResourceHandle<renderer::BufferTag>, 16> indexBuffers{};
+    std::array<uint32_t, 16> indexCounts{};
+    std::array<renderer::WaterStripIndices, 16> strips{};
+    bool stripsReady = false;
+};
+
 struct WaterMesh {
     std::vector<WaterChunk> chunks;
-    renderer::ResourceHandle<renderer::BufferTag> patchVertexBuffer;
-    std::array<renderer::ResourceHandle<renderer::BufferTag>, 16> patchIndexBuffers{};
-    std::array<uint32_t, 16> patchIndexCounts{};
+    std::shared_ptr<WaterPatchGrid> patchGrid;
+    bool stripsReady = false;
     math::Vector3 aabbMin;
     math::Vector3 aabbMax;
     WaterMeshGeometry geometry;
@@ -231,6 +253,8 @@ struct WaterRenderCache {
     WaterRenderCache& operator=(const WaterRenderCache&) = delete;
     uint64_t owner = 0, resetVersion = 0, sceneGeneration = 0;
     std::unordered_map<WaterCacheKey, WaterMesh, WaterCacheKeyHash> meshes;
+    /// @note 2・4・8・16・32・64 分割。最後の水面を外したときにバッファを返す。
+    std::array<std::weak_ptr<WaterPatchGrid>, 6> patchGrids;
     std::unordered_map<WaterCacheKey, WaterTextures, WaterCacheKeyHash> textures;
     std::unordered_map<WaterCacheKey, renderer::Material, WaterCacheKeyHash> appearances;
     std::unordered_map<WaterCacheKey, WaterRippleState, WaterCacheKeyHash> ripples;
@@ -269,10 +293,8 @@ void ReleaseWaterMesh(WaterMesh& mesh, renderer::ResourceManager& resources)
     for (auto& chunk : mesh.chunks) {
         if (chunk.vertexBuffer.IsValid()) resources.Release(chunk.vertexBuffer);
         if (chunk.indexBuffer.IsValid()) resources.Release(chunk.indexBuffer);
+        if (chunk.strip.buffer.IsValid()) resources.Release(chunk.strip.buffer);
     }
-    if (mesh.patchVertexBuffer.IsValid()) resources.Release(mesh.patchVertexBuffer);
-    for (auto& indexBuffer : mesh.patchIndexBuffers)
-        if (indexBuffer.IsValid()) resources.Release(indexBuffer);
     mesh = {};
 }
 
@@ -315,13 +337,58 @@ WaterRenderCache::~WaterRenderCache()
     for (auto& [key, appearance] : appearances) appearance.paramsBuffer = {};
 }
 
-void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::ResourceManager& resources)
+uint32_t WaterChunkCount(const WaterComponent& water)
+{
+    return (std::min)((std::max)(water.chunkCount, 1u), (std::min)(water.resolutionX, water.resolutionZ));
+}
+
+uint32_t WaterChunkCellOffset(uint32_t cells, uint32_t index, uint32_t chunks)
+{
+    return static_cast<uint32_t>((static_cast<uint64_t>(cells) * index) / chunks);
+}
+
+std::shared_ptr<WaterPatchGrid> AcquireWaterPatchGrid(uint32_t cells, WaterRenderCache& cache,
+    renderer::ResourceManager& resources)
+{
+    assert(cells >= 2u && cells <= 64u && std::has_single_bit(cells));
+    auto& cached = cache.patchGrids[std::bit_width(cells) - 2u];
+    if (auto grid = cached.lock()) return grid;
+    auto grid = std::make_shared<WaterPatchGrid>(resources);
+    std::vector<WaterVertex> vertices;
+    vertices.reserve(static_cast<size_t>(cells + 1u) * (cells + 1u));
+    for (uint32_t z = 0; z <= cells; ++z) {
+        for (uint32_t x = 0; x <= cells; ++x) {
+            const math::Vector2 uv{static_cast<float>(x) / cells, static_cast<float>(z) / cells};
+            vertices.push_back({{uv.x, 0.0f, uv.y}, uv});
+        }
+    }
+    grid->vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(WaterVertex),
+        static_cast<uint32_t>(sizeof(WaterVertex)));
+    if (!grid->vertexBuffer.IsValid()) return grid;
+    std::vector<uint32_t> indices;
+    for (uint32_t mask = 0; mask < grid->indexBuffers.size(); ++mask) {
+        if (!renderer::BuildSurfacePatchIndices(cells, mask, indices)) continue;
+        grid->indexCounts[mask] = static_cast<uint32_t>(indices.size());
+        grid->indexBuffers[mask] = resources.CreateIndexBuffer(indices.data(), grid->indexCounts[mask]);
+    }
+    /// @note 生成に失敗したグリッドは、他の水面の生成や後続の再構築で再試行できる。
+    if (std::all_of(grid->indexBuffers.begin(), grid->indexBuffers.end(),
+            [](auto buffer) { return buffer.IsValid(); })) cached = grid;
+    return grid;
+}
+
+void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterRenderCache& cache,
+    renderer::ResourceManager& resources)
 {
     assert(water.resolutionX > 0);
     assert(water.resolutionZ > 0);
 
+    const WaterMeshGeometry geometryKey = ResolveWaterMeshGeometry(water);
+    /// @note 同じ分割数のまま外形を編集したときも、差し替えまで既存グリッドを保持する。
+    auto patchGrid = geometryKey.sharedPatchGrid ? AcquireWaterPatchGrid(geometryKey.patchResolution, cache, resources)
+        : nullptr;
     ReleaseWaterMesh(mesh, resources);
-    mesh.geometry = ResolveWaterMeshGeometry(water);
+    mesh.geometry = geometryKey;
 
     if (UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) {
         const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
@@ -366,24 +433,8 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     const float halfZ = water.extentZ * 0.5f;
     mesh.aabbMin = { -halfX, 0.0f, -halfZ };
     mesh.aabbMax = { halfX, 0.0f, halfZ };
-    if (water.adaptivePatchLod || water.farOceanEnabled) {
-        const uint32_t cells = water.lodPatchResolution;
-        std::vector<WaterVertex> vertices;
-        vertices.reserve(static_cast<size_t>(cells + 1u) * (cells + 1u));
-        for (uint32_t z = 0; z <= cells; ++z) {
-            for (uint32_t x = 0; x <= cells; ++x) {
-                const math::Vector2 uv{static_cast<float>(x) / cells, static_cast<float>(z) / cells};
-                vertices.push_back({{uv.x, 0.0f, uv.y}, uv});
-            }
-        }
-        mesh.patchVertexBuffer = resources.CreateVertexBuffer(vertices.data(),
-            vertices.size() * sizeof(WaterVertex), static_cast<uint32_t>(sizeof(WaterVertex)));
-        for (uint32_t mask = 0; mask < mesh.patchIndexBuffers.size(); ++mask) {
-            std::vector<uint32_t> indices;
-            if (!renderer::BuildSurfacePatchIndices(cells, mask, indices)) continue;
-            mesh.patchIndexBuffers[mask] = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
-            mesh.patchIndexCounts[mask] = static_cast<uint32_t>(indices.size());
-        }
+    if (patchGrid) {
+        mesh.patchGrid = std::move(patchGrid);
         return;
     }
 
@@ -395,18 +446,14 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     /// @note 切り上げでなく境界を按分して分ける。ceil(res/chunks) を全チャンクに掛けると
     /// @note 最後のほうのチャンクは開始セルが res を追い越し、差が符号なしで折り返して
     /// @note 4G 要素の reserve になり、解像度を上げた瞬間に確保失敗で落ちていた。
-    const uint32_t numChunks =
-        (std::min)((std::max)(water.chunkCount, 1u), (std::min)(water.resolutionX, water.resolutionZ));
-    auto splitAt = [](uint32_t cells, uint32_t index, uint32_t count) {
-        return static_cast<uint32_t>((static_cast<uint64_t>(cells) * index) / count);
-    };
+    const uint32_t numChunks = WaterChunkCount(water);
 
     for (uint32_t cz = 0; cz < numChunks; ++cz) {
         for (uint32_t cx = 0; cx < numChunks; ++cx) {
-            const uint32_t ixStart = splitAt(water.resolutionX, cx,     numChunks);
-            const uint32_t ixEnd   = splitAt(water.resolutionX, cx + 1, numChunks);
-            const uint32_t izStart = splitAt(water.resolutionZ, cz,     numChunks);
-            const uint32_t izEnd   = splitAt(water.resolutionZ, cz + 1, numChunks);
+            const uint32_t ixStart = WaterChunkCellOffset(water.resolutionX, cx, numChunks);
+            const uint32_t ixEnd   = WaterChunkCellOffset(water.resolutionX, cx + 1u, numChunks);
+            const uint32_t izStart = WaterChunkCellOffset(water.resolutionZ, cz, numChunks);
+            const uint32_t izEnd   = WaterChunkCellOffset(water.resolutionZ, cz + 1u, numChunks);
             if (ixEnd <= ixStart || izEnd <= izStart) continue;
 
             const uint32_t vertCols = ixEnd - ixStart + 1;
@@ -454,6 +501,50 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, renderer::Reso
     mesh.aabbMax = { -ox, 0.0f, -oz };
 }
 
+
+void PrepareWaterStripBuffers(const WaterComponent& water, WaterMesh& mesh, renderer::ResourceManager& resources)
+{
+    bool ready = true;
+    std::vector<uint32_t> indices;
+    const auto upload = [&](renderer::WaterStripIndices& strip) {
+        strip.count = static_cast<uint32_t>(indices.size());
+        strip.buffer = resources.CreateIndexBuffer(indices.data(), strip.count);
+        ready &= strip.buffer.IsValid();
+    };
+    if (mesh.patchGrid) {
+        auto& grid = *mesh.patchGrid;
+        for (uint8_t mask = 0; mask < grid.strips.size(); ++mask) {
+            auto& strip = grid.strips[mask];
+            if (strip.buffer.IsValid()) continue;
+            if (!renderer::BuildSurfacePatchStripIndices(water.lodPatchResolution, mask, indices)) {
+                ready = false;
+                continue;
+            }
+            upload(strip);
+        }
+        grid.stripsReady = ready;
+        return;
+    } else {
+        const uint32_t chunks = WaterChunkCount(water);
+        if (mesh.chunks.size() != static_cast<size_t>(chunks) * chunks) return;
+        for (uint32_t z = 0; z < chunks; ++z) {
+            const uint32_t cellsZ = WaterChunkCellOffset(water.resolutionZ, z + 1u, chunks)
+                - WaterChunkCellOffset(water.resolutionZ, z, chunks);
+            for (uint32_t x = 0; x < chunks; ++x) {
+                auto& strip = mesh.chunks[z * chunks + x].strip;
+                if (strip.buffer.IsValid()) continue;
+                const uint32_t cellsX = WaterChunkCellOffset(water.resolutionX, x + 1u, chunks)
+                    - WaterChunkCellOffset(water.resolutionX, x, chunks);
+                if (!renderer::BuildRegularSurfaceStripIndices(cellsX, cellsZ, indices)) {
+                    ready = false;
+                    continue;
+                }
+                upload(strip);
+            }
+        }
+    }
+    mesh.stripsReady = ready;
+}
 
 inline float WGetF(const asset::MaterialAssetAuthoring* m, const char* name, float def)
 {
@@ -1131,7 +1222,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             && cachedMesh->second.geometry != ResolveWaterMeshGeometry(water);
         if (cache.dirtyMeshes.contains(cacheKey) || cachedMesh == cache.meshes.end() || geometryChanged) {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Mesh");
-            BuildWaterMesh(water, cache.meshes[cacheKey], resources);
+            BuildWaterMesh(water, cache.meshes[cacheKey], cache, resources);
             cache.dirtyMeshes.erase(cacheKey);
             cache.dirtyTextures.insert(cacheKey);
             water.meshDirty = false;
@@ -1162,7 +1253,14 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             UpdateRippleState(rippleState, water, surfaceTransform, resources);
         }
 
-        const WaterMesh& mesh = cache.meshes.at(cacheKey);
+        WaterMesh& mesh = cache.meshes.at(cacheKey);
+        const bool stripsReady = mesh.patchGrid ? mesh.patchGrid->stripsReady : mesh.stripsReady;
+        if (!splineSurface && !stripsReady
+            && ctx.settings.rasterGeometryMode == renderer::RasterGeometryMode::TRIANGLE_STRIP
+            && ctx.settings.geometryDrawMode != renderer::GeometryDrawMode::GPU_INDIRECT) {
+            FBZZ_PROFILE_SCOPE("WaterPrepare::StripIndices");
+            PrepareWaterStripBuffers(water, mesh, resources);
+        }
         renderer::RenderWaterInput input;
         input.layer = static_cast<uint32_t>(scene.GetGameObject(eid)->layer);
         const uint64_t entityKey = (static_cast<uint64_t>(eid.generation) << 32u) | eid.index;
@@ -1184,9 +1282,12 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         input.patchLod.nearCellSize = water.lodNearCellSize;
         input.patchLod.morphEnabled = !splineSurface && water.lodMorphEnabled;
         input.patchLod.morphTransitionWidth = water.lodMorphTransitionWidth;
-        input.patchVertexBuffer = mesh.patchVertexBuffer;
-        input.patchIndexBuffers = mesh.patchIndexBuffers;
-        input.patchIndexCounts = mesh.patchIndexCounts;
+        if (const auto& grid = mesh.patchGrid) {
+            input.patchVertexBuffer = grid->vertexBuffer;
+            input.patchIndexBuffers = grid->indexBuffers;
+            input.patchIndexCounts = grid->indexCounts;
+            input.patchStrips = grid->strips;
+        }
         const auto& noise = GetWaterDetailNoise(resources);
         {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Constants");

@@ -10,5 +10,5 @@ version = 1
 vertex = 'fiber_blade_v1'
 surface = 'custom'
 opacity = 'custom'
-variants = 'none'
+variants = 'fiber_blade_instanced_v1'
 preview = 'fiber_blade'

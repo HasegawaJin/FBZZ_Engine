@@ -52,6 +52,7 @@ namespace fbzz::renderer {
     enum class PrimitiveTopology {
         TRIANGLE_LIST,  ///< @brief 通常の三角形描画 (デフォルト)
         LINE_LIST,      ///< @brief デバッグ線描画
+        TRIANGLE_STRIP, ///< @note 32 ビットインデックスの 0xFFFFFFFF でストリップを再開する。
     };
 
     struct PipelineStateDesc {

@@ -114,10 +114,12 @@ protected:
         terrain.InitFlat(height);
         return object.GetID();
     }
-    renderer::RenderTerrainInput Extract(scene::Scene& scene, TerrainCpuRenderer& device, renderer::ResourceManager& resources)
+    renderer::RenderTerrainInput Extract(scene::Scene& scene, TerrainCpuRenderer& device, renderer::ResourceManager& resources,
+        renderer::RasterGeometryMode rasterMode = renderer::RasterGeometryMode::TRIANGLE_LIST)
     {
         renderer::Camera camera;
         renderer::RenderSettings settings;
+        settings.rasterGeometryMode = rasterMode;
         renderer::RenderPassHandles handles;
         scene::RenderPassContext context(scene, device, resources, camera, settings, {}, UINT32_MAX, handles);
         renderer::RenderScene output;
@@ -126,6 +128,44 @@ protected:
         return output.terrains.empty() ? renderer::RenderTerrainInput{} : std::move(output.terrains.front());
     }
 };
+
+TEST_F(TerrainRenderResourceTest, RegularLod0SharesStripAndKeepsHoleLists)
+{
+    TerrainCpuRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene scene;
+    const auto id = AddTerrain(scene, 2.0f);
+    auto& terrain = *scene.GetComponent<scene::TerrainComponent>(id);
+    terrain.columns = 6;
+    terrain.rows = 3;
+    terrain.InitFlat(2.0f);
+    const auto baseline = Extract(scene, device, resources);
+    ASSERT_EQ(baseline.patches.size(), 3u);
+    EXPECT_FALSE(baseline.patches[0].lod0Strip.buffer.IsValid());
+
+    constexpr auto STRIP = renderer::RasterGeometryMode::TRIANGLE_STRIP;
+    const auto strip = Extract(scene, device, resources, STRIP);
+    ASSERT_EQ(strip.patches.size(), 3u);
+    const auto shared = strip.patches[0].lod0Strip.buffer;
+    ASSERT_TRUE(shared.IsValid());
+    EXPECT_EQ(strip.patches[1].lod0Strip.buffer, shared);
+    EXPECT_EQ(strip.patches[0].lod0Strip.count, 13u);
+    EXPECT_NE(strip.patches[2].lod0Strip.buffer, shared);
+    EXPECT_EQ(strip.patches[2].lod0Strip.count, 9u);
+    EXPECT_EQ(strip.patches[0].indexBufferLOD, baseline.patches[0].indexBufferLOD);
+    EXPECT_EQ(strip.gpuIndices, baseline.gpuIndices);
+
+    ASSERT_TRUE(terrain.SetHoleCell(0, 0, true));
+    terrain.RequestHoleRebuild();
+    const auto holes = Extract(scene, device, resources, STRIP);
+    ASSERT_EQ(holes.patches.size(), 3u);
+    EXPECT_FALSE(holes.patches[0].lod0Strip.buffer.IsValid());
+    EXPECT_EQ(holes.patches[0].indexCountLOD[0], 18u);
+    EXPECT_EQ(holes.patches[1].lod0Strip.buffer, shared);
+
+    scene.Clear();
+    EXPECT_EQ(device.buffersAlive, 0u);
+}
 
 TEST_F(TerrainRenderResourceTest, SeparatesScenesWithIdenticalEntityIdsAndPreservesBothCaches)
 {
@@ -148,6 +188,49 @@ TEST_F(TerrainRenderResourceTest, SeparatesScenesWithIdenticalEntityIdsAndPreser
     EXPECT_NE(resources.Get(secondInput.patches[0].vertexBuffer), nullptr);
     second.Clear();
     EXPECT_EQ(device.buffersAlive, 0u); EXPECT_EQ(device.texturesAlive, 0u);
+}
+
+TEST_F(TerrainRenderResourceTest, FarLodOptInRebuildsGeometryAndPreservesLegacyIndices)
+{
+    TerrainCpuRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene scene;
+    const auto id = AddTerrain(scene, 2.0f);
+    auto& terrain = *scene.GetComponent<scene::TerrainComponent>(id);
+    terrain.columns = terrain.rows = 65;
+    terrain.chunkSize = 64;
+    terrain.InitFlat(2.0f);
+
+    const auto original = Extract(scene, device, resources);
+    terrain.farLodDistance = 2400.0f;
+    const auto extended = Extract(scene, device, resources);
+    ASSERT_EQ(original.patches.size(), 1u);
+    ASSERT_EQ(extended.patches.size(), 1u);
+    const auto& legacyPatch = original.patches.front();
+    const auto& farPatch = extended.patches.front();
+    const auto farLod = renderer::TERRAIN_FAR_LOD_INDEX;
+    EXPECT_EQ(legacyPatch.indexCountLOD[farLod], 0u);
+    EXPECT_EQ(farPatch.indexCountLOD[farLod], 408u * 3u);
+    EXPECT_LT(farPatch.indexCountLOD[farLod], farPatch.indexCountLOD[farLod - 1]);
+    ASSERT_TRUE(legacyPatch.occlusion);
+    ASSERT_TRUE(farPatch.occlusion);
+    EXPECT_EQ(farPatch.occlusion->heights, legacyPatch.occlusion->heights);
+    for (size_t lod = 0; lod < farLod; ++lod)
+        EXPECT_EQ(farPatch.occlusion->indices[lod], legacyPatch.occlusion->indices[lod]);
+    EXPECT_EQ(farPatch.gpuStartIndexLOD[farLod], original.gpuIndexCount);
+    EXPECT_EQ(extended.gpuIndexCount, original.gpuIndexCount + farPatch.indexCountLOD[farLod]);
+
+    terrain.farLodDistance = 3000.0f;
+    const auto moved = Extract(scene, device, resources);
+    ASSERT_EQ(moved.patches.size(), 1u);
+    EXPECT_EQ(moved.patches.front().indexBufferLOD[farLod], farPatch.indexBufferLOD[farLod]);
+    EXPECT_FLOAT_EQ(moved.farLodDistance, 3000.0f);
+
+    terrain.farLodDistance = 0.0f;
+    const auto restored = Extract(scene, device, resources);
+    ASSERT_EQ(restored.patches.size(), 1u);
+    EXPECT_EQ(restored.patches.front().indexCountLOD, legacyPatch.indexCountLOD);
+    EXPECT_EQ(resources.Get(farPatch.indexBufferLOD[farLod]), nullptr);
 }
 
 TEST_F(TerrainRenderResourceTest, ReusesEachCreationOwnerAndReturnsAllResourcesOnSceneClear)

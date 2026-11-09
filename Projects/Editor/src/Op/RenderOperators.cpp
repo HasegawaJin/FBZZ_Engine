@@ -319,6 +319,36 @@ void RegisterRenderOperators(OperatorRegistry& registry)
     }
     {
         EditorOperator op;
+        op.id = "render.raster_geometry_mode";
+        op.label = "Raster Geometry Mode";
+        op.category = "Render";
+        op.desc = "草・地形・水面の List と Strip を比較する。Indexed Fiber は草だけを頂点共有 List に切り替える。";
+        op.kind = OpKind::Action;
+        OpParam mode;
+        mode.name = "mode";
+        mode.type = OpParamType::String;
+        mode.enumValues = {"list", "strip", "indexed_fiber"};
+        mode.defaultValue = std::string("list");
+        op.params = {mode};
+        op.exec = [](OpContext& context, const OpArgs& args) -> OpResult {
+            using renderer::RasterGeometryMode;
+            const auto mode = args.GetString("mode", "list");
+            if (mode != "list" && mode != "strip" && mode != "indexed_fiber")
+                return OpResult::Err("BAD_RASTER_GEOMETRY_MODE", "modeはlist / strip / indexed_fiberです");
+            const bool playing = context.ctx.playMode && !context.ctx.playMode->IsInEditor();
+            auto* settings = playing ? core::Application::Get().GetActiveRenderSettings()
+                : &context.ctx.projectSettings.render;
+            if (!settings) return OpResult::Err("NO_RUNTIME_SETTINGS", "描画設定がありません");
+            settings->rasterGeometryMode = mode == "strip" ? RasterGeometryMode::TRIANGLE_STRIP
+                : mode == "indexed_fiber" ? RasterGeometryMode::INDEXED_FIBER_LIST : RasterGeometryMode::TRIANGLE_LIST;
+            OpResult result;
+            result.message = "Raster geometry: " + mode;
+            return result;
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op;
         op.id = "render.local_light_mode";
         op.label = "Local Light Mode";
         op.category = "Render";

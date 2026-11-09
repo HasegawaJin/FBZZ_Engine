@@ -33,6 +33,13 @@ enum class GeometryDrawMode : uint8_t {
     GPU_INSTANCE_INDIRECT = 3,
 };
 
+/// @note 比較用のビュー設定。対応するラスタ描画でのみ使用する。
+enum class RasterGeometryMode : uint8_t {
+    TRIANGLE_LIST,
+    TRIANGLE_STRIP,
+    INDEXED_FIBER_LIST,
+};
+
 /// @note クラスタライトカリング (Forward+ / Deferred+) の設定。
 struct ClusteredSettings {
     /// @note pipeline が *Plus のときの実行可否。false ならクラスタ経路を止めて従来動作へ戻す。
@@ -615,6 +622,7 @@ struct RenderSettings {
     bool gpuInstancing = true;
     /// @note View-local comparison switch; preserve balanced water topology and custom shader fallback.
     GeometryDrawMode geometryDrawMode = GeometryDrawMode::CPU;
+    RasterGeometryMode rasterGeometryMode = RasterGeometryMode::TRIANGLE_LIST;
     /// @note Diagnostic comparison for the bulk placement renderer; authoring components do not expose backend choices.
     bool bulkInstanceGpuCulling = true;
     /// @note 画面空間 Compute (今は AO) を非同期コンピュートキューへ出し、描画と重ねる。

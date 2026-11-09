@@ -11,6 +11,7 @@
 #include <cfenv>
 #include <cmath>
 #include <queue>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -21,6 +22,7 @@ namespace {
 constexpr uint32_t MAX_DEPTH = 10;
 constexpr uint32_t MAX_PATCHES = 16384;
 constexpr uint8_t ALL_EDGES = 15;
+constexpr uint32_t STRIP_CUT = 0xFFFFFFFFu;
 constexpr size_t MAX_CACHED_SELECTIONS = 8;
 constexpr size_t MAX_CACHED_PATCHES = 16384;
 constexpr size_t SELECTION_SIGNATURE_CAPACITY = 80;
@@ -358,8 +360,12 @@ void ResolveBoundaries(const SelectionContext& context, const LeafMap& leaves,
     for (uint32_t corner = 0; corner < 4; ++corner) {
         const int cornerX = beginX + ((corner & 1u) ? span : 0);
         const int cornerZ = beginZ + ((corner & 2u) ? span : 0);
+        const int inwardX = (corner & 1u) ? -1 : 0;
+        const int inwardZ = (corner & 2u) ? -1 : 0;
         for (int dz = -1; dz <= 0; ++dz) {
             for (int dx = -1; dx <= 0; ++dx) {
+                /// @note 内側のセルは自身の leaf に属し、その cellSize は MakePatch で設定済み。
+                if (dx == inwardX && dz == inwardZ) continue;
                 const Node* incident = FindLeaf(leaves, settings.maxDepth, cornerX + dx, cornerZ + dz);
                 if (incident)
                     patch.cornerCellSize[corner] = Maximum(patch.cornerCellSize[corner],
@@ -416,6 +422,7 @@ bool SelectSurfacePatches(const SurfacePatchSurface& surface, const SurfacePatch
     };
     if (!schedule(root)) return false;
     std::unordered_set<uint64_t> planned;
+    std::vector<Node> parents;
     while (!candidates.empty()) {
         const Candidate candidate = candidates.top();
         candidates.pop();
@@ -428,7 +435,7 @@ bool SelectSurfacePatches(const SurfacePatchSurface& surface, const SurfacePatch
             continue;
         }
         /// @note 計画は既存 leaf だけを含む。順序に依らず同じ四分割となり、可視外の境界も維持する。
-        std::vector<Node> parents;
+        parents.clear();
         parents.reserve(planned.size());
         for (uint64_t key : planned) parents.push_back(leaves.at(key));
         for (const Node& parent : parents) {
@@ -596,13 +603,12 @@ void SurfacePatchSelectionCacheOwner::Clear()
     }
 }
 
-bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
-                             std::vector<uint32_t>& outIndices)
+namespace {
+
+template<class Visitor>
+void VisitSurfacePatchFans(uint32_t cellsPerPatch, uint8_t coarseEdgeMask, Visitor&& visit)
 {
-    if (!ValidResolution(cellsPerPatch) || (coarseEdgeMask & ~ALL_EDGES) != 0) return false;
     const uint32_t columns = cellsPerPatch + 1u;
-    std::vector<uint32_t> indices;
-    indices.reserve(static_cast<size_t>(cellsPerPatch) * cellsPerPatch * 6u);
     constexpr std::array<std::array<uint32_t, 2>, 8> perimeterOffsets = {{
         {0, 0}, {0, 1}, {0, 2}, {1, 2}, {2, 2}, {2, 1}, {2, 0}, {1, 0}
     }};
@@ -620,11 +626,67 @@ bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
                 if (!omitX && !omitZ) perimeter[count++] = pz * columns + px;
             }
             const uint32_t center = (z + 1u) * columns + x + 1u;
-            for (uint32_t edge = 0; edge < count; ++edge)
-                indices.insert(indices.end(), { center, perimeter[edge], perimeter[(edge + 1u) % count] });
+            visit(center, std::span<const uint32_t>{perimeter.data(), count});
         }
     }
+}
+
+} /// @note namespace
+
+bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
+                             std::vector<uint32_t>& outIndices)
+{
+    if (!ValidResolution(cellsPerPatch) || (coarseEdgeMask & ~ALL_EDGES) != 0) return false;
+    std::vector<uint32_t> indices;
+    indices.reserve(static_cast<size_t>(cellsPerPatch) * cellsPerPatch * 6u);
+    VisitSurfacePatchFans(cellsPerPatch, coarseEdgeMask, [&](uint32_t center, std::span<const uint32_t> perimeter) {
+        for (size_t edge = 0; edge < perimeter.size(); ++edge)
+            indices.insert(indices.end(), {center, perimeter[edge], perimeter[(edge + 1u) % perimeter.size()]});
+    });
     outIndices = std::move(indices);
+    return true;
+}
+
+bool BuildSurfacePatchStripIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
+    std::vector<uint32_t>& outIndices)
+{
+    if (!ValidResolution(cellsPerPatch) || (coarseEdgeMask & ~ALL_EDGES) != 0) return false;
+    constexpr size_t FACES_PER_STRIP = 3;
+    /// @note 8 面の扇は最大 3 本に分かれ、各 Strip に追加 2 頂点と再開値が要る。
+    constexpr size_t MAX_INDICES_PER_FAN = 8 + 3 * 3;
+    const size_t fansPerAxis = cellsPerPatch / 2u;
+    std::vector<uint32_t> indices;
+    indices.reserve(fansPerAxis * fansPerAxis * MAX_INDICES_PER_FAN - 1u);
+    VisitSurfacePatchFans(cellsPerPatch, coarseEdgeMask, [&](uint32_t center, std::span<const uint32_t> perimeter) {
+        const size_t count = perimeter.size();
+        /// @note List と同じ扇・面順を保つ。中心を 3 番目に置くと交互の巻き順で連続する 3 面を表せる。
+        /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d9/triangle-strips Triangle Strips の面の巻き順。
+        for (size_t edge = 0; edge < count; edge += FACES_PER_STRIP) {
+            if (!indices.empty()) indices.push_back(STRIP_CUT);
+            indices.insert(indices.end(), {perimeter[edge], perimeter[(edge + 1u) % count], center});
+            const size_t end = (std::min)(count, edge + FACES_PER_STRIP);
+            for (size_t next = edge + 1u; next < end; ++next)
+                indices.push_back(perimeter[(next + 1u) % count]);
+        }
+    });
+    outIndices = std::move(indices);
+    return true;
+}
+
+bool BuildRegularSurfaceStripIndices(uint32_t cellsX, uint32_t cellsZ, std::vector<uint32_t>& outIndices)
+{
+    if (cellsX == 0 || cellsZ == 0 || cellsX > 512 || cellsZ > 512) return false;
+    const uint32_t columns = cellsX + 1u;
+    std::vector<uint32_t> strip;
+    strip.reserve(static_cast<size_t>(2u * columns + 1u) * cellsZ - 1u);
+    for (uint32_t z = 0; z < cellsZ; ++z) {
+        if (z != 0) strip.push_back(STRIP_CUT);
+        for (uint32_t x = 0; x < columns; ++x) {
+            strip.push_back(z * columns + x);
+            strip.push_back((z + 1u) * columns + x);
+        }
+    }
+    outIndices = std::move(strip);
     return true;
 }
 

@@ -36,6 +36,7 @@ void ReleaseTerrainGpuState(TerrainGpuState& state, renderer::ResourceManager& r
     resources.Release(state.heights);
     resources.Release(state.patches);
     resources.Release(state.indices);
+    for (auto& strip : state.rasterStrips) resources.Release(strip.indices.buffer);
     state = {};
 }
 

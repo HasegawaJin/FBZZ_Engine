@@ -39,6 +39,7 @@ struct FiberResources {
     uint64_t ownerIdentity = 0;
     ResourceHandle<ConstantBufferTag> m_material, m_frame, m_motion, m_contacts;
     ResourceHandle<PipelineStateTag> m_pipeline, m_deferredPipeline;
+    std::array<ResourceHandle<BufferTag>, 6> m_bladeIndices;
     std::array<FiberShaderSlot, 30> m_shaders;
     FiberUpload<FiberMaterialSettings> m_uploadedMaterial;
     FiberUpload<FiberFrameCB> m_uploadedFrame;
@@ -57,6 +58,7 @@ FiberResources& GetFiberResources(ResourceManager& resources) {
                 owner->Release(handle);
             owner->Release(cache.m_pipeline);
             owner->Release(cache.m_deferredPipeline);
+            for (auto handle : cache.m_bladeIndices) owner->Release(handle);
         }
         cache = {}; cache.owner = &resources; cache.ownerIdentity = resources.GetInstanceId();
         cache.version = resources.GetResetVersion();
@@ -74,6 +76,23 @@ FiberResources& GetFiberResources(ResourceManager& resources) {
     std::erase_if(cache.histories, [&](const auto& item) { return resources.FrameStamp() > item.second.m_frame && resources.FrameStamp() - item.second.m_frame > 120; });
     return cache;
 }
+
+ResourceHandle<BufferTag> GetFiberBladeIndexBuffer(FiberResources& cache, ResourceManager& resources, uint32_t segments)
+{
+    auto& buffer = cache.m_bladeIndices[segments - 1u];
+    if (buffer.IsValid()) return buffer;
+
+    /// @note 高さ段ごとに左右を並べ、ストリップと同じ対角線と表裏を使う。
+    std::array<uint32_t, 36> indices{};
+    for (uint32_t segment = 0; segment < segments; ++segment) {
+        const uint32_t left = segment * 2u;
+        const std::array corners{left, left + 1u, left + 2u, left + 2u, left + 1u, left + 3u};
+        std::copy(corners.begin(), corners.end(), indices.begin() + segment * 6u);
+    }
+    buffer = resources.CreateIndexBuffer(indices.data(), segments * 6u);
+    return buffer;
+}
+
 template<typename T>
 void UploadIfChanged(renderer::ResourceManager& resources, renderer::ResourceHandle<renderer::ConstantBufferTag> handle,
                      FiberUpload<T>& last, const T& value)
@@ -215,6 +234,22 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
                                                         : renderer::ResourceHandle<renderer::ShaderTag>{};
         if (!shellShader.IsValid() && !finShader.IsValid() && !bladeShader.IsValid()) continue;
 
+        ResourceHandle<BufferTag> bladeIndices;
+        bool bladeStrip = false;
+        if (bladeShader.IsValid()) {
+            frame.m_lod.w = 0.0f;
+            const auto geometryMode = ctx.settings.rasterGeometryMode;
+            if (geometryMode != RasterGeometryMode::TRIANGLE_LIST) {
+                const bool customBladeShader = surface.appearance
+                    && surface.appearance->shaders[static_cast<size_t>(mode) * 2] == bladeShader;
+                if (!customBladeShader || resources.GetShaderCapabilities(bladeShader).SupportsInstancedFiberBlade()) {
+                    bladeStrip = geometryMode == RasterGeometryMode::TRIANGLE_STRIP;
+                    if (geometryMode == RasterGeometryMode::INDEXED_FIBER_LIST)
+                        bladeIndices = GetFiberBladeIndexBuffer(cache, resources, static_cast<uint32_t>(frame.m_lod.z));
+                    if (bladeStrip || bladeIndices.IsValid()) frame.m_lod.w = 1.0f;
+                }
+            }
+        }
         resources.Update(ctx.handles.objectCB, &object, sizeof(object));
         UploadIfChanged(resources, cache.m_material, cache.m_uploadedMaterial, settings);
         UploadIfChanged(resources, cache.m_frame, cache.m_uploadedFrame, frame);
@@ -316,16 +351,23 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
             call.preparedSkinningRow = 0;
             const auto& blades=surface.blades;
             if (blades.m_blades.IsValid() && blades.m_bladeCount > 0) {
-                /// @note 頂点バッファなしの非インデックス描画。距離 LOD は先頭から提出本数を減らす。
-                call.shader=bladeShader;
-                call.vertexBuffer={};
-                call.indexBuffer={};
-                call.indexCount=0;
-                call.vsBuffers[0]=blades.m_blades;
-                const auto verticesPerBlade = static_cast<uint32_t>(frame.m_lod.z) * 12u;
-                call.vertexCount=static_cast<uint32_t>(static_cast<float>(blades.m_bladeCount)*frame.m_lod.x)*verticesPerBlade;
-                if (call.vertexCount==0) continue;
-                call.instanceCount=1;
+                /// @note 頂点バッファなし。距離 LOD は先頭から提出する根元数を減らす。
+                const auto bladeCount = static_cast<uint32_t>(static_cast<float>(blades.m_bladeCount) * frame.m_lod.x);
+                if (bladeCount == 0) continue;
+                const auto segments = static_cast<uint32_t>(frame.m_lod.z);
+                call.shader = bladeShader;
+                call.vertexBuffer = {};
+                call.indexBuffer = bladeIndices;
+                call.indexCount = bladeIndices.IsValid() ? segments * 6u : 0;
+                call.vsBuffers[0] = blades.m_blades;
+                if (bladeStrip) call.topology = PrimitiveTopology::TRIANGLE_STRIP;
+                if (frame.m_lod.w != 0.0f) {
+                    call.vertexCount = 2u * (segments + 1u);
+                    call.instanceCount = 2u * bladeCount;
+                } else {
+                    call.vertexCount = bladeCount * segments * 12u;
+                    call.instanceCount = 1;
+                }
                 if (mode==FiberPassMode::SHADOW) SubmitCountedShadow(ctx,call); else SubmitCounted(ctx,call);
             }
         }

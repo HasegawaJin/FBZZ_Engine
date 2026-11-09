@@ -2366,6 +2366,8 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             toml::table terrainTbl;
             terrainTbl.insert("enabled",          tc->enabled);
             terrainTbl.insert("terrainAssetPath", tc->terrainAssetPath);
+            if (std::isfinite(tc->farLodDistance) && tc->farLodDistance > 0.0f)
+                terrainTbl.insert("farLodDistance", tc->farLodDistance);
 
             if (tc->terrainAssetPath.empty() || path.empty())
                 inlineTerrains.push_back({goArr.size(), *tc});
@@ -3362,6 +3364,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
                     FBZZ_LOG_WARN("SceneSerializer: invalid inline terrain geometry");
                 }
             }
+
+            const auto farLodDistance = (*terrainTbl)["farLodDistance"].value_or(0.0f);
+            if (std::isfinite(farLodDistance) && farLodDistance > 0.0f)
+                tc.farLodDistance = farLodDistance;
 
             /// @note 層数は可変。配列の長さをそのまま層数にする (番号が層数を超える頂点は描画が既定層で補う)。
             if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {

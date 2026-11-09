@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include "../../../Engine/src/Scene/Systems/RenderPasses/Geometry/TerrainPatchIndices.hpp"
@@ -11,6 +12,37 @@
 
 namespace fbzz::tests {
 class TerrainPatchLodTest : public testkit::EngineFixture {};
+TEST_F(TerrainPatchLodTest, GridStripReconstructsTheOriginalOrientedLod0Triangles)
+{
+    scene::TerrainComponent terrain;
+    terrain.columns = terrain.rows = 33;
+    terrain.InitFlat();
+
+    for (const auto dimensions : {std::array{32, 32}, std::array{5, 2}, std::array{1, 7}}) {
+        const auto [width, height] = dimensions;
+        std::vector<uint32_t> list;
+        scene::BuildTerrainPatchLodIndices(terrain, 0, 0, width, height, 1, list);
+        std::vector<uint32_t> strip;
+        ASSERT_TRUE(renderer::BuildRegularSurfaceStripIndices(width, height, strip));
+        ASSERT_EQ(strip.size(), static_cast<size_t>(height * (2 * (width + 1) + 1) - 1));
+
+        std::vector<uint32_t> decoded;
+        size_t start = 0;
+        for (size_t index = 0; index < strip.size(); ++index) {
+            if (strip[index] == UINT32_MAX) {
+                start = index + 1;
+                continue;
+            }
+            if (index < start + 2) continue;
+            auto first = strip[index - 2];
+            auto second = strip[index - 1];
+            if ((index - start) % 2 != 0) std::swap(first, second);
+            decoded.insert(decoded.end(), {first, second, strip[index]});
+        }
+        EXPECT_EQ(decoded, list);
+    }
+}
+
 TEST_F(TerrainPatchLodTest, AllLodsShareUnitBorderSegmentsIncludingPartialPatches)
 {
     scene::TerrainComponent terrain; terrain.columns=18;terrain.rows=14;terrain.InitFlat();
@@ -20,7 +52,7 @@ TEST_F(TerrainPatchLodTest, AllLodsShareUnitBorderSegmentsIncludingPartialPatche
         const auto edge=[&](uint32_t a,uint32_t b){expected.insert({std::min(a,b),std::max(a,b)});};
         for (int x=0;x<width;++x) { edge(x,x+1);edge(height*stride+x,height*stride+x+1); }
         for (int z=0;z<height;++z) { edge(z*stride,(z+1)*stride);edge(z*stride+width,(z+1)*stride+width); }
-        for (int step : {1,2,4}) {
+        for (int step : {1,2,4,8}) {
             std::vector<uint32_t> indices;scene::BuildTerrainPatchLodIndices(terrain,0,0,width,height,step,indices);
             std::set<std::array<uint32_t,2>> actual;
             for (size_t t=0;t<indices.size();t+=3) {
@@ -42,7 +74,7 @@ TEST_F(TerrainPatchLodTest, CoarseLodsCoverEverySolidCellCenterAndLeaveHoleCente
     scene::TerrainComponent terrain;terrain.columns=18;terrain.rows=14;terrain.InitFlat();
     ASSERT_TRUE(terrain.SetHoleCell(5,6,true));ASSERT_TRUE(terrain.SetHoleCell(12,8,true));
     constexpr int WIDTH=17,HEIGHT=13,STRIDE=18;
-    for (int step : {1,2,4}) {
+    for (int step : {1,2,4,8}) {
         std::vector<uint32_t> indices;scene::BuildTerrainPatchLodIndices(terrain,0,0,WIDTH,HEIGHT,step,indices);
         for (int z=0;z<HEIGHT;++z) for (int x=0;x<WIDTH;++x) {
             bool covered=false;

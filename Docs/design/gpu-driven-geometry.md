@@ -45,9 +45,36 @@ GPU可視判定へ渡す境界は選択済みパッチのaabbMin/aabbMaxを正�
 
 Editorの`render.geometry_mode`操作で`cpu`（通常描画）、`indirect`（水面・地形・大量静的instanceのGPU間接描画）、`mesh`（高密度静的メッシュ・影のMesh Shaderと地形GPU描画）を比較できる。既定はcpu、Play中はruntimeの一時設定とする。`Water geometry path`ログは間接水面の準備成功を確認する用途に残る。GPU profilerは単一passの契約なので、その内部へBeginPass/EndPassを入れ子にしない。対象がカスタムshaderや旧格子のためfallbackしただけのFPSを、そのGPU経路の高速化と解釈しない。
 
+## ラスタライズのトポロジー比較
+
+Editorの`render.raster_geometry_mode`操作で`list`（既定）、`strip`、`indexed_fiber`を切り替える。`strip`は、草のBladeと対応GrassCardのリボン、直接描画する穴なしLOD0地形、固定格子と縫合済みパッチの水面に適用する。地形の穴・粗いLOD・Meshletと、水面のGPU間接描画・スプラインはListを使う。`indexed_fiber`は草の各リボンで頂点を共有するListに切り替える。
+
+地形と水面では既存の面割りと巻き順から描画用インデックスを作る。R32の`0xFFFFFFFF`をStrip間の区切りに使う。草はリボンごとにインスタンス化し、各段の左右の頂点を一度ずつ評価する。計測では同じカメラ・解像度・パスのGPUタイムスタンプを比較する。
+
+2026-11-08にRTX 4070・DX12・Releaseで同じ条件を3回計測した。各回のGPUパス中央値のうち中央の値を示す。草は250,036束の色と影の合計、地形は32×32セルの128パッチ、水面は128×128画素の色パスを計測した。
+
+| 対象 | List (ms) | Indexed Fiber List (ms) | Strip (ms) |
+|---|---:|---:|---:|
+| Fiber Blade | 1.846 | 2.375 | 1.406 |
+| GrassCard | 1.834 | 2.383 | 1.489 |
+| Terrain GBuffer | 0.036 | — | 0.036 |
+| Terrain影 | 0.036 | — | 0.036 |
+| 固定格子の水面 | 0.029 | — | 0.028 |
+| 適応LODの水面 | 0.093 | — | 0.109 |
+
+草のStripは1束72→28頂点で、GPU時間がBladeで約24%、GrassCardで約19%短くなった。地形と固定格子の水面では6,144→2,143インデックスになり、GPU時間は同程度だった。適応LODの水面では318,912→177,118インデックスになり、GPU時間は約16%長くなった。 [計測1](../../build/agent/raster-topology-gpu-20261108.log) · [計測2](../../build/agent/raster-topology-gpu-20261108-r2.log) · [計測3](../../build/agent/raster-topology-gpu-20261108-r3.log)
+
+上の適応LODは旧Strip生成の結果。現行は縫合済みの2×2セルの扇をListと同じ面順で走査し、最大3面ずつStripにする。同じ208パッチ・36ドローの描画区間で、`VSInvocations` は元のListと現行Stripともに89,944回、旧Stripでは144,898回だった。インデックスは318,912→225,892、背景コピーを除くGPU中央値は90.112→89.088 µsだった。 [DX12カウンタと再計測](../../build/agent/adaptive-water-reuse-summary-20261108.csv)
+
+現行Stripは隣接グラフを作らず、同じ解像度の適応格子は同一シーン内の水面で共有する。16×16セルの全16縫合パターンのCPU生成時間は1.885→0.054 ms、64×64セルでは28.856→0.682 msだった。バッファのアップロードはこの計測区間に含めていない。 [CPU生成比較](../../build/agent/adaptive-water-reuse-cpu-20261108.log)
+
 ## 地形と草木への接続
 
-Terrainの`indirect`経路は共通GPU選択を使う。地形ごとに全チャンク・全3LODのIBを連結し、候補順の24-byte間接指示から各パッチを描く。LODの最大格子幅は投影16pxで選ぶ。透視・正射影を区別し、閲覧カメラの位置・投影・解像度を影でも共有する。ライト視錐台は可視判定だけに使う。Fiberを持つ地形はLOD0を維持する。Frustum Cullingを無効にしたときは本体・影ともCPU経路へ戻る。
+Terrainの`indirect`経路は共通GPU選択を使う。地形ごとに全チャンク・全LODのIBを連結し、候補順の24-byte間接指示から各パッチを描く。LODの最大格子幅は投影16pxで選ぶ。透視・正射影を区別し、閲覧カメラの位置・投影・解像度を影でも共有する。ライト視錐台は可視判定だけに使う。Fiberを描く範囲の地形はLOD0を維持する。Frustum Cullingを無効にしたときは本体・影ともCPU経路へ戻る。
+
+シーンのTerrainComponentで`farLodDistance`を正の距離（world m）にすると、既存の1・2・4セル間隔に8セル間隔を加える。0または省略時は従来の3段階を使う。最遠LODの候補に入るのは、パッチ中心までの距離が設定値と従来のLOD2開始距離の両方に達し、三角形数が減る場合だけ。GPU間接描画は既存の投影サイズ判定も適用する。色と影は同じ閲覧カメラを基準にする。
+
+8セル間隔でも穴と全パッチ境界の標本を残す。物理・地形照会・地形アセットの高さやスプラットは変更しない。CPUの地形遮蔽証明は最大格子幅に列の端を揃え、境界を証明できない地形では描画用の三角形へ戻る。
 
 GPUのVSは`SV_VertexID`とb15のパッチ番号から座標・UVを作り、高さ標本から法線と接線を中央差分で作る。ForwardとGBufferは既存TerrainSurface、影は同じTerrainGeometryの評価を使う。高さ標本は隣接地形の平均済みの一標本の外周を含む。スカルプト・穴・隣接の再生成でGPU資源を無効化する。穴の形とindex生成は既存CPU契約を正本にし、CPU頂点・LODバッファもfallbackと選択輪郭用に保持する。GPUで四分木全体を生成・均衡化する実装ではない。
 

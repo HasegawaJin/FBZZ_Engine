@@ -21,6 +21,69 @@ namespace {
 
 class SurfacePatchLodTest : public testkit::Fixture {};
 
+std::array<uint32_t, 3> CanonicalOrientedTriangle(std::array<uint32_t, 3> triangle)
+{
+    std::rotate(triangle.begin(), std::min_element(triangle.begin(), triangle.end()), triangle.end());
+    return triangle;
+}
+
+void ExpectSameOrientedFaceOrder(const std::vector<uint32_t>& list, const std::vector<uint32_t>& strip)
+{
+    std::vector<std::array<uint32_t, 3>> expected, actual;
+    for (size_t index = 0; index < list.size(); index += 3u) {
+        expected.push_back(CanonicalOrientedTriangle({list[index], list[index + 1u], list[index + 2u]}));
+    }
+    uint32_t runLength = 0;
+    for (size_t index = 0; index < strip.size(); ++index) {
+        if (strip[index] == 0xFFFFFFFFu) {
+            EXPECT_GE(runLength, 3u);
+            runLength = 0;
+            continue;
+        }
+        if (++runLength < 3u) continue;
+        std::array<uint32_t, 3> triangle{strip[index - 2u], strip[index - 1u], strip[index]};
+        if (runLength % 2u == 0) std::swap(triangle[0], triangle[1]);
+        actual.push_back(CanonicalOrientedTriangle(triangle));
+    }
+    EXPECT_GE(runLength, 3u);
+    EXPECT_EQ(actual, expected);
+}
+
+TEST_F(SurfacePatchLodTest, AdaptiveStripPreservesOrientedFaceOrderForEveryStitchMask)
+{
+    for (const uint32_t cells : {2u, 4u, 16u, 64u}) {
+        for (uint8_t mask = 0; mask < 16u; ++mask) {
+            SCOPED_TRACE(::testing::Message() << cells << " cells, mask " << uint32_t{mask});
+            std::vector<uint32_t> list, strip;
+            ASSERT_TRUE(renderer::BuildSurfacePatchIndices(cells, mask, list));
+            ASSERT_TRUE(renderer::BuildSurfacePatchStripIndices(cells, mask, strip));
+            ExpectSameOrientedFaceOrder(list, strip);
+            EXPECT_LT(strip.size(), list.size());
+        }
+    }
+}
+
+TEST_F(SurfacePatchLodTest, RegularStripPreservesNonSquareRowsAndDiagonals)
+{
+    constexpr uint32_t CELLS_X = 16, CELLS_Z = 5, COLUMNS = CELLS_X + 1u;
+    std::vector<uint32_t> list, strip;
+    for (uint32_t z = 0; z < CELLS_Z; ++z) {
+        for (uint32_t x = 0; x < CELLS_X; ++x) {
+            const uint32_t base = z * COLUMNS + x;
+            list.insert(list.end(), {base, base + COLUMNS, base + 1u,
+                base + 1u, base + COLUMNS, base + COLUMNS + 1u});
+        }
+    }
+    ASSERT_TRUE(renderer::BuildRegularSurfaceStripIndices(CELLS_X, CELLS_Z, strip));
+    EXPECT_EQ(strip.size(), 2u * COLUMNS * CELLS_Z + CELLS_Z - 1u);
+    ExpectSameOrientedFaceOrder(list, strip);
+    const auto previous = strip;
+    EXPECT_FALSE(renderer::BuildRegularSurfaceStripIndices(0, CELLS_Z, strip));
+    EXPECT_FALSE(renderer::BuildSurfacePatchStripIndices(3, 0, strip));
+    EXPECT_FALSE(renderer::BuildSurfacePatchStripIndices(16, 16, strip));
+    EXPECT_EQ(strip, previous);
+}
+
 bool Overlap(float aMin, float aMax, float bMin, float bMax)
 {
     return (std::min)(aMax, bMax) > (std::max)(aMin, bMin);

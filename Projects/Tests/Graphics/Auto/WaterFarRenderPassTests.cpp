@@ -1713,7 +1713,10 @@ TEST_F(WaterFarRenderPassTest, TerrainOcclusionBridgesInternalTessellationButPre
     EXPECT_FALSE(culler.TestAndRaster({0,450,6000},3));
     EXPECT_TRUE(culler.TestAndRaster({0,2000,6000},3));
     camera = savedCamera; world = savedWorld;
-    for (auto& indices : geometry->indices) indices.erase(indices.begin() + 30, indices.begin() + 36);
+    for (size_t lod = 0; lod < terrain.LODCount(); ++lod) {
+        auto& indices = geometry->indices[lod];
+        indices.erase(indices.begin() + 30, indices.begin() + 36);
+    }
     scene->terrains[0].patches[0].indexCountLOD.fill(uint32_t(geometry->indices[0].size()));
     for (size_t lod = 0; lod < 3; ++lod) {
         const std::vector<uint32_t> indices(geometry->indices[lod].begin(), geometry->indices[lod].end());

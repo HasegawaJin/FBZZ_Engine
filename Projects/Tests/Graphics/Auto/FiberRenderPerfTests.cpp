@@ -4,11 +4,14 @@
 /// @date    2026-10-21
 #include <TestKit/TestKit.hpp>
 #include <Core/ILogSink.hpp>
+#include <Engine/Asset/ShaderCapabilities.hpp>
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
 #include <Graphics/Pipeline/OcclusionCuller.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Renderer/AssetPathService.hpp>
 #include <Graphics/Renderer/FiberPlacement.hpp>
 #include <Graphics/Renderer/GpuProfiler.hpp>
+#include <Graphics/Renderer/IShader.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
@@ -23,9 +26,11 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -61,6 +66,8 @@ struct FiberCase {
     uint32_t targetRoots;
     uint32_t view;
     bool shadow;
+    r::RasterGeometryMode rasterMode = r::RasterGeometryMode::TRIANGLE_LIST;
+    bool grassCard = false;
 };
 struct FiberMeasurement {
     FiberCase configuration;
@@ -72,7 +79,7 @@ struct FiberMeasurement {
 struct FiberImage {
     std::vector<float> pixels, duplicatePixels;
     uint32_t draws = 0, shadowDraws = 0;
-    uint64_t vertices = 0, shadowTriangles = 0;
+    uint64_t vertices = 0, triangles = 0, shadowTriangles = 0;
 };
 struct PreparedFiberScene {
     std::shared_ptr<r::RenderScene> scene = std::make_shared<r::RenderScene>();
@@ -104,6 +111,11 @@ protected:
         m_bundle.renderer->SetRenderWhenOccluded(true);
         m_bundle.renderer->SetVSync(false);
         r::SetShaderPathResolver(ResolveFiberShader);
+        r::AssetPathService assetPaths;
+        assetPaths.resolveShaderCapabilities = [](std::string_view reference) {
+            return asset::ResolveShaderCapabilities(ResolveFiberShader(std::filesystem::path(reference)).generic_string());
+        };
+        r::SetAssetPathService(assetPaths);
         m_resources = std::make_unique<r::ResourceManager>(*m_bundle.renderer);
         auto& resources = *m_resources;
         m_color = resources.CreateRenderTarget(WIDTH, HEIGHT, r::CameraDepthTargetDesc(1));
@@ -132,6 +144,7 @@ protected:
         m_scenes.clear(); m_resources.reset(); m_bundle.imguiRenderer.reset();
         if (m_bundle.renderer) m_bundle.renderer->Shutdown();
         m_bundle.renderer.reset(); r::SetShaderPathResolver(nullptr);
+        r::SetAssetPathService({});
         core::Logger::RemoveSink(this);
         if (m_window) DestroyWindow(m_window);
         if (SUCCEEDED(m_com)) CoUninitialize();
@@ -214,6 +227,44 @@ protected:
             surface.settings.m_shadowBladeSegments = shadow;
         }
     }
+    void SetBladeAppearance(const std::shared_ptr<r::RenderScene>& scene, std::string_view shaderStem, bool instanced)
+    {
+        auto appearance = std::make_shared<r::FiberAppearance>();
+        appearance->geometry = r::ShaderVertexContract::FIBER_BLADE;
+        constexpr std::array SUFFIXES{"", "GBuffer", "Velocity", "Shadow", "Selection"};
+        for (size_t pass = 0; pass < SUFFIXES.size(); ++pass) {
+            const auto shader = m_resources->LoadShader(std::string(shaderStem) + SUFFIXES[pass] + ".hlsl");
+            ASSERT_TRUE(shader);
+            EXPECT_EQ(m_resources->GetShaderCapabilities(shader).SupportsInstancedFiberBlade(), instanced);
+            appearance->shaders[pass * 2] = shader;
+        }
+        const auto* shader = m_resources->Get(appearance->shaders[0]);
+        ASSERT_NE(shader, nullptr);
+        const auto& descriptor = shader->GetDescriptor();
+        ASSERT_TRUE(r::HasFiberMaterialPrefix(descriptor));
+        appearance->params.resize(descriptor.cbufferSize);
+        const auto albedo = std::find_if(descriptor.textures.begin(), descriptor.textures.end(),
+            [](const auto& texture) { return texture.slot == 0; });
+        if (albedo != descriptor.textures.end()) {
+            ASSERT_LE(albedo->constantOffset + sizeof(uint32_t), appearance->params.size());
+            uint32_t index = UINT32_MAX;
+            if (instanced) {
+                constexpr uint8_t CARD_PIXELS[]{255, 255, 255, 255, 128, 255, 128, 32,
+                                                128, 255, 128, 32, 255, 255, 255, 255};
+                if (!m_cardAlbedo) m_cardAlbedo = m_resources->CreateTexture(CARD_PIXELS, 2, 2);
+                const auto* card = m_resources->Get(m_cardAlbedo);
+                ASSERT_NE(card, nullptr);
+                index = card->GetBindlessIndex();
+                const auto* cutoff = descriptor.FindVar("cardAlphaCutoff");
+                ASSERT_NE(cutoff, nullptr);
+                ASSERT_LE(cutoff->offset + sizeof(float), appearance->params.size());
+                constexpr float CUTOFF = 0.5f;
+                std::memcpy(appearance->params.data() + cutoff->offset, &CUTOFF, sizeof(CUTOFF));
+            }
+            std::memcpy(appearance->params.data() + albedo->constantOffset, &index, sizeof(index));
+        }
+        for (auto& surface : scene->fibers) surface.appearance = appearance;
+    }
     FiberImage RenderOnce(const std::shared_ptr<r::RenderScene>& scene, const r::Camera& camera,
         bool shadows = false, bool duplicate = false)
     {
@@ -256,7 +307,8 @@ protected:
         device.SetRenderTarget(m_color, resources); device.Clear({0, 0, 0, 0});
         r::ExecuteFiberPass(context);
         result.draws = context.statsDrawCalls; result.shadowDraws = context.statsShadowDrawCalls;
-        result.vertices = context.statsVertexCount; result.shadowTriangles = context.statsShadowTriangleCount;
+        result.vertices = context.statsVertexCount; result.triangles = context.statsTriangleCount;
+        result.shadowTriangles = context.statsShadowTriangleCount;
         if (duplicate && duplicateTarget) {
             context.outputRT = duplicateTarget;
             context.resourceRegistry.BindTarget("HDR", duplicateTarget);
@@ -384,6 +436,12 @@ protected:
         const std::filesystem::path& directory, uint32_t segments, uint32_t shadowSegments)
     {
         auto& prepared = Prepare(configuration.targetRoots);
+        m_settings.rasterGeometryMode = configuration.rasterMode;
+        if (configuration.grassCard) {
+            SetBladeAppearance(prepared.scene, "Assets/Shaders/Fiber/GrassCard", true);
+        } else {
+            for (auto& surface : prepared.scene->fibers) surface.appearance.reset();
+        }
         FiberMeasurement result{configuration}; result.roots = prepared.roots;
         result.bladeSegments = segments; result.shadowBladeSegments = shadowSegments;
         SetSegments(prepared.scene, static_cast<int>(segments), static_cast<int>(shadowSegments));
@@ -488,6 +546,7 @@ protected:
     HRESULT m_com = E_FAIL; HWND m_window = nullptr;
     r::RendererBundle m_bundle; std::unique_ptr<r::ResourceManager> m_resources;
     r::ResourceHandle<r::RenderTargetTag> m_color, m_shadow;
+    r::ResourceHandle<r::TextureTag> m_cardAlbedo;
     r::RenderPassHandles m_handles{}; r::RenderSettings m_settings{}; r::Camera m_light;
     std::map<uint32_t, PreparedFiberScene> m_scenes;
     uint32_t m_validationErrors = 0; bool m_frameOpen = false;
@@ -787,6 +846,56 @@ TEST_F(FiberRenderPerfTest, DensityLodBoundariesRemainIndependentOfBladeSegmentQ
     }
 }
 
+TEST_F(FiberRenderPerfTest, InstancedBladeTopologiesPreserveBladeAndCardCoverage)
+{
+    auto& prepared = Prepare(10000);
+    ASSERT_GT(prepared.roots, 0u);
+    const auto camera = CorrectnessCamera();
+    for (const bool grassCard : {false, true}) {
+        SCOPED_TRACE(grassCard ? "GrassCard" : "FiberBlade");
+        if (grassCard) ASSERT_NO_FATAL_FAILURE(SetBladeAppearance(prepared.scene, "Assets/Shaders/Fiber/GrassCard", true));
+        for (const int segments : {6, 3, 1}) {
+            SCOPED_TRACE(segments);
+            SetSegments(prepared.scene, segments, 2);
+            m_settings.rasterGeometryMode = r::RasterGeometryMode::TRIANGLE_LIST;
+            const auto baseline = RenderOnce(prepared.scene, camera, true);
+            ExpectFiniteImage(baseline, true);
+            EXPECT_EQ(baseline.vertices, static_cast<uint64_t>(prepared.roots) * 12u * segments);
+            EXPECT_EQ(baseline.triangles, static_cast<uint64_t>(prepared.roots) * 4u * segments);
+            EXPECT_EQ(baseline.shadowTriangles, static_cast<uint64_t>(prepared.roots) * 8u);
+            for (const auto mode : {r::RasterGeometryMode::INDEXED_FIBER_LIST, r::RasterGeometryMode::TRIANGLE_STRIP}) {
+                SCOPED_TRACE(static_cast<int>(mode));
+                m_settings.rasterGeometryMode = mode;
+                const auto instanced = RenderOnce(prepared.scene, camera, true);
+                EXPECT_EQ(ExpectFiniteImage(instanced, true), ExpectFiniteImage(baseline, true));
+                ExpectSamePixels(baseline.pixels, instanced.pixels, 0.002f);
+                EXPECT_EQ(instanced.vertices, static_cast<uint64_t>(prepared.roots) * 4u * (segments + 1u));
+                EXPECT_EQ(instanced.triangles, baseline.triangles);
+                EXPECT_EQ(instanced.shadowTriangles, baseline.shadowTriangles);
+                EXPECT_EQ(instanced.draws, baseline.draws);
+                EXPECT_EQ(instanced.shadowDraws, baseline.shadowDraws);
+            }
+        }
+    }
+}
+
+TEST_F(FiberRenderPerfTest, BladeAppearanceWithoutInstancingCapabilityKeepsLegacyLayout)
+{
+    auto& prepared = Prepare(10000);
+    ASSERT_GT(prepared.roots, 0u);
+    ASSERT_NO_FATAL_FAILURE(SetBladeAppearance(prepared.scene, "Assets/Shaders/Examples/Fiber/MeadowBlade", false));
+    const auto camera = CorrectnessCamera();
+    const auto baseline = RenderOnce(prepared.scene, camera);
+    ExpectFiniteImage(baseline, true);
+    for (const auto mode : {r::RasterGeometryMode::INDEXED_FIBER_LIST, r::RasterGeometryMode::TRIANGLE_STRIP}) {
+        m_settings.rasterGeometryMode = mode;
+        const auto fallback = RenderOnce(prepared.scene, camera);
+        ExpectSamePixels(baseline.pixels, fallback.pixels, 0.0f);
+        EXPECT_EQ(fallback.vertices, baseline.vertices);
+        EXPECT_EQ(fallback.triangles, baseline.triangles);
+    }
+}
+
 TEST_F(FiberRenderPerfTest, DISABLED_MeasuresResidentBladePagesWithNativeProfiler)
 {
     const char* configured = std::getenv("FBZZ_FIBER_BENCH_REPORT");
@@ -798,11 +907,22 @@ TEST_F(FiberRenderPerfTest, DISABLED_MeasuresResidentBladePagesWithNativeProfile
     const uint32_t segments = Setting("FBZZ_FIBER_BENCH_SEGMENTS", 6, 1, 6);
     const uint32_t shadowSegments = Setting("FBZZ_FIBER_BENCH_SHADOW_SEGMENTS", 0, 0, 6);
     const bool writeRaw = Setting("FBZZ_FIBER_BENCH_RAW", 0, 0, 1) != 0;
-    constexpr FiberCase cases[]{
+    constexpr FiberCase residentCases[]{
         {"empty-all", 0, 0, false}, {"100k-all", 100000, 0, false}, {"250k-all", 250000, 0, false},
         {"1m-all", 1000000, 0, false}, {"1m-partial", 1000000, 1, false}, {"1m-offscreen", 1000000, 2, false},
         {"250k-all-shadow", 250000, 0, true}
     };
+    const bool compareTopologies = Setting("FBZZ_FIBER_BENCH_TOPOLOGIES", 0, 0, 1) != 0;
+    const uint32_t topologyRoots = Setting("FBZZ_FIBER_BENCH_TOPOLOGY_ROOTS", 250000, 10000, 1000000);
+    const FiberCase topologyCases[]{
+        {"blade-list", topologyRoots, 0, true},
+        {"blade-indexed-list", topologyRoots, 0, true, r::RasterGeometryMode::INDEXED_FIBER_LIST},
+        {"blade-strip", topologyRoots, 0, true, r::RasterGeometryMode::TRIANGLE_STRIP},
+        {"grass-card-list", topologyRoots, 0, true, r::RasterGeometryMode::TRIANGLE_LIST, true},
+        {"grass-card-indexed-list", topologyRoots, 0, true, r::RasterGeometryMode::INDEXED_FIBER_LIST, true},
+        {"grass-card-strip", topologyRoots, 0, true, r::RasterGeometryMode::TRIANGLE_STRIP, true},
+    };
+    const auto cases = compareTopologies ? std::span<const FiberCase>{topologyCases} : std::span<const FiberCase>{residentCases};
     std::vector<FiberMeasurement> results;
     for (size_t i = 0; i < std::size(cases); ++i) {
         SCOPED_TRACE(cases[i].name);

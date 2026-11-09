@@ -270,6 +270,24 @@ protected:
         return true;
     }
 
+    bool PrepareRasterStrips(uint32_t cells)
+    {
+        auto& resources = *m_resources;
+        std::vector<uint32_t> strip;
+        if (!renderer::BuildRegularSurfaceStripIndices(CELLS_X, CELLS_Z, strip)) return false;
+        m_regularStrip.count = static_cast<uint32_t>(strip.size());
+        m_regularStrip.buffer = resources.CreateIndexBuffer(strip.data(), m_regularStrip.count);
+        if (!m_regularStrip.buffer || !PrepareSharedGrid(cells)) return false;
+        for (uint8_t mask = 0; mask < m_sharedStrips.size(); ++mask) {
+            if (!renderer::BuildSurfacePatchStripIndices(cells, mask, strip)) return false;
+            auto& buffer = m_sharedStrips[mask];
+            buffer.count = static_cast<uint32_t>(strip.size());
+            buffer.buffer = resources.CreateIndexBuffer(strip.data(), buffer.count);
+            if (!buffer.buffer) return false;
+        }
+        return true;
+    }
+
     std::vector<float> RenderWater(const renderer::Camera& camera, const renderer::WaterCB& water,
         bool selection, bool hasBottom, bool normalizedVertices = false,
         const renderer::SurfacePatchSelection* patches = nullptr, const math::Vector3* ambientOverride = nullptr,
@@ -474,14 +492,25 @@ protected:
     }
 
 
+    struct WaterRasterMeasurement {
+        renderer::RasterGeometryMode mode = renderer::RasterGeometryMode::TRIANGLE_LIST;
+        bool adaptive = false;
+        bool profile = false;
+        int indexEntries = 0;
+        int triangles = 0;
+        int draws = 0;
+        std::vector<double> gpuMs;
+    };
+
     std::vector<float> RenderProductionWater(const renderer::Camera& camera, renderer::WaterCB water,
         renderer::ResourceHandle<renderer::ShaderTag> shader = {},
         renderer::ResourceHandle<renderer::ConstantBufferTag> appearance = {}, bool poisonTextures = false,
-        const char* captureName = nullptr)
+        const char* captureName = nullptr, WaterRasterMeasurement* measurement = nullptr)
     {
         auto& resources = *m_resources;
         auto& device = *m_bundle.renderer;
         renderer::RenderSettings settings;
+        if (measurement) settings.rasterGeometryMode = measurement->mode;
         renderer::RenderPassHandles handles{};
         renderer::SizedRenderTarget sceneColor, sceneDepth;
         handles.lightCB = m_lightCB;
@@ -520,7 +549,23 @@ protected:
         patch.indexCount = m_indexCount;
         patch.aabbMin = input.aabbMin;
         patch.aabbMax = input.aabbMax;
+        patch.strip = m_regularStrip;
         input.patches.push_back(patch);
+        if (measurement && measurement->adaptive) {
+            input.adaptivePatchLod = true;
+            input.patchMorphEnabled = true;
+            input.patchLod.cellsPerPatch = m_sharedCells;
+            input.patchLod.maxDepth = 6;
+            input.patchLod.maxPatches = 256;
+            input.patchLod.nearCellSize = 0.06f;
+            input.patchLod.nearDistance = 6.0f;
+            input.patchLod.targetCellPixels = 2.0f;
+            input.patchLod.morphEnabled = true;
+            input.patchVertexBuffer = m_sharedVertexBuffer;
+            input.patchIndexBuffers = m_sharedIndexBuffers;
+            input.patchIndexCounts = m_sharedIndexCounts;
+            input.patchStrips = m_sharedStrips;
+        }
         scene->water.push_back(std::move(input));
         renderer::RenderPassContext context{{}, device, resources, camera, settings,
             m_selectionTarget, ~0u, handles};
@@ -531,25 +576,77 @@ protected:
         context.occlusionCullingEnabled = false;
         context.resourceRegistry.BindTarget("HDR", m_selectionTarget);
         context.resourceRegistry.BindTarget("ShadowMap", m_depthTarget);
-        resources.AdvanceFrame();
-        device.BeginFrame();
-        device.SetRenderTarget(m_depthTarget, resources);
-        device.ClearDepth();
-        device.SetRenderTarget(m_selectionTarget, resources);
-        device.Clear({0.04f, 0.08f, 0.12f, 0});
-        device.ClearDepth();
         renderer::WaterRenderPass pass;
-        auto passResources = context.Res();
-        pass.Execute(passResources, context);
+        constexpr uint32_t WARMUP_FRAMES = 10;
+        constexpr uint32_t MEASURED_FRAMES = 40;
+        constexpr uint32_t DRAIN_FRAMES = 6;
+        const bool profiling = measurement && measurement->profile;
+        const uint32_t frames = profiling ? WARMUP_FRAMES + MEASURED_FRAMES + DRAIN_FRAMES : 1u;
+        uint64_t firstMeasuredSerial = 0, lastMeasuredSerial = 0, lastPhysicalSerial = 0;
+        const auto collect = [&] {
+            if (!profiling) return;
+            device.GpuProfCollect();
+            const auto& snapshot = device.GpuProfGetSnapshot();
+            if (!snapshot.available || !snapshot.complete || snapshot.physicalFrameSerial == lastPhysicalSerial) return;
+            lastPhysicalSerial = snapshot.physicalFrameSerial;
+            for (const auto& sample : snapshot.passes) {
+                if (!sample.available || sample.name != "WaterRasterTopology" || firstMeasuredSerial == 0
+                    || sample.metadata.applicationFrameSerial < firstMeasuredSerial
+                    || sample.metadata.applicationFrameSerial > lastMeasuredSerial) continue;
+                EXPECT_TRUE(std::isfinite(sample.gpuMs));
+                EXPECT_GE(sample.gpuMs, 0.0);
+                measurement->gpuMs.push_back(sample.gpuMs);
+            }
+        };
+        for (uint32_t frame = 0; frame < frames; ++frame) {
+            resources.AdvanceFrame();
+            device.BeginFrame();
+            collect();
+            device.SetRenderTarget(m_depthTarget, resources);
+            device.ClearDepth();
+            device.SetRenderTarget(m_selectionTarget, resources);
+            device.Clear({0.04f, 0.08f, 0.12f, 0});
+            device.ClearDepth();
+            context.statsDrawCalls = context.statsTriangleCount = context.statsVertexCount = 0;
+            bool recording = false;
+            if (profiling && frame >= WARMUP_FRAMES && frame < WARMUP_FRAMES + MEASURED_FRAMES) {
+                renderer::GpuProfilerViewMetadata metadata;
+                metadata.applicationFrameSerial = resources.FrameStamp();
+                metadata.viewId = 1;
+                metadata.sceneGeneration = metadata.planGeneration = 1;
+                metadata.resourceEpoch = resources.GetResetVersion();
+                metadata.outputId = m_selectionTarget.id;
+                metadata.outputGeneration = m_selectionTarget.gen;
+                metadata.width = metadata.height = EXTENT;
+                if (firstMeasuredSerial == 0) firstMeasuredSerial = metadata.applicationFrameSerial;
+                lastMeasuredSerial = metadata.applicationFrameSerial;
+                recording = device.GpuProfBeginView(metadata);
+                EXPECT_TRUE(recording);
+            }
+            if (recording) device.GpuProfBeginPass("WaterRasterTopology");
+            auto passResources = context.Res();
+            pass.Execute(passResources, context);
+            if (recording) {
+                device.GpuProfEndPass("WaterRasterTopology");
+                device.GpuProfEndView();
+            }
+            device.SetRenderTarget({}, resources);
+            device.EndFrame();
+            collect();
+        }
         EXPECT_GT(context.statsDrawCalls, 0);
         EXPECT_GT(context.statsTriangleCount, 0);
-        device.SetRenderTarget({}, resources);
-        device.EndFrame();
+        if (measurement) {
+            measurement->indexEntries = context.statsVertexCount;
+            measurement->triangles = context.statsTriangleCount;
+            measurement->draws = context.statsDrawCalls;
+        }
         std::vector<float> pixels;
         uint32_t width = 0, height = 0;
         EXPECT_TRUE(device.CaptureRenderTargetToLinearRGBA(m_selectionTarget, resources, pixels, width, height));
         EXPECT_EQ(width, EXTENT);
         EXPECT_EQ(height, EXTENT);
+        collect();
         char output[MAX_PATH]{};
         const DWORD outputLength = GetEnvironmentVariableA("FBZZ_WATER_QA_OUTPUT", output, MAX_PATH);
         if (captureName && outputLength > 0 && outputLength < MAX_PATH) {
@@ -1053,6 +1150,8 @@ protected:
     renderer::ResourceHandle<renderer::BufferTag> m_sharedVertexBuffer;
     std::array<renderer::ResourceHandle<renderer::BufferTag>, 16> m_sharedIndexBuffers{};
     std::array<uint32_t, 16> m_sharedIndexCounts{};
+    renderer::WaterStripIndices m_regularStrip{};
+    std::array<renderer::WaterStripIndices, 16> m_sharedStrips{};
     uint32_t m_sharedCells = 0;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_cameraCB, m_waterCB, m_effectCB,
         m_lightCB, m_shadowCB, m_advancedCB, m_objectCB;
@@ -1061,6 +1160,76 @@ protected:
     uint32_t m_indexCount = 0;
     uint32_t m_captureExtent = EXTENT;
 };
+
+TEST_F(WaterShaderTest, ProductionRasterStripMatchesRegularAndAdaptiveWater)
+{
+    ASSERT_TRUE(PrepareRasterStrips(16));
+    renderer::Camera camera;
+    camera.m_position = {0, 7, -2};
+    camera.LookAt({0, 0, 0});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 9;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    const auto water = MakeWater();
+    for (const bool adaptive : {false, true}) {
+        SCOPED_TRACE(adaptive ? "adaptive" : "regular");
+        WaterRasterMeasurement list;
+        list.adaptive = adaptive;
+        WaterRasterMeasurement strip;
+        strip.adaptive = adaptive;
+        strip.mode = renderer::RasterGeometryMode::TRIANGLE_STRIP;
+        const auto baseline = RenderProductionWater(camera, water, {}, {}, false, nullptr, &list);
+        const auto result = RenderProductionWater(camera, water, {}, {}, false, nullptr, &strip);
+        ASSERT_EQ(baseline.size(), EXTENT * EXTENT * 4u);
+        ASSERT_EQ(result.size(), baseline.size());
+        EXPECT_EQ(list.triangles, strip.triangles);
+        EXPECT_EQ(list.draws, strip.draws);
+        EXPECT_LT(strip.indexEntries, list.indexEntries);
+        size_t coveredPixels = 0;
+        float maxDifference = 0.0f;
+        for (size_t i = 0; i < baseline.size(); ++i) {
+            ASSERT_TRUE(std::isfinite(baseline[i]));
+            ASSERT_TRUE(std::isfinite(result[i]));
+            maxDifference = (std::max)(maxDifference, std::abs(result[i] - baseline[i]));
+            if (i % 4 == 3 && baseline[i] > 0.01f) ++coveredPixels;
+        }
+        EXPECT_GT(coveredPixels, 500u);
+        EXPECT_LE(maxDifference, 0.002f);
+    }
+}
+
+TEST_F(WaterShaderTest, DISABLED_BenchmarkWaterRasterListAndStrip)
+{
+    ASSERT_TRUE(PrepareRasterStrips(16));
+    renderer::Camera camera;
+    camera.m_position = {0, 7, -2};
+    camera.LookAt({0, 0, 0});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 9;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    const auto water = MakeWater();
+    for (const bool adaptive : {false, true}) {
+        for (const bool strip : {adaptive, !adaptive}) {
+            WaterRasterMeasurement measurement;
+            measurement.adaptive = adaptive;
+            measurement.profile = true;
+            if (strip) measurement.mode = renderer::RasterGeometryMode::TRIANGLE_STRIP;
+            const auto pixels = RenderProductionWater(camera, water, {}, {}, false, nullptr, &measurement);
+            ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
+            ASSERT_GE(measurement.gpuMs.size(), 20u);
+            std::sort(measurement.gpuMs.begin(), measurement.gpuMs.end());
+            const auto half = measurement.gpuMs.size() / 2;
+            const double median = (measurement.gpuMs[(measurement.gpuMs.size() - 1) / 2] + measurement.gpuMs[half]) / 2.0;
+            std::printf("WATER_RASTER_BENCH grid=%s mode=%s extent=%u draws=%d triangles=%d index_entries=%d gpu_median_ms=%.6f gpu_samples=%zu\n",
+                adaptive ? "adaptive" : "regular", strip ? "strip" : "list", EXTENT,
+                measurement.draws, measurement.triangles, measurement.indexEntries, median, measurement.gpuMs.size());
+        }
+    }
+}
 
 TEST_F(WaterShaderTest, ProductionHorizonMediumAtlasFollowsTheCameraAboveAndBelowWater)
 {

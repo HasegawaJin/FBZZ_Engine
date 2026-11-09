@@ -797,6 +797,59 @@ TEST_F(WaterRenderResourceTest, ReleasesSharedAdaptiveBuffersAcrossGridRebuildsW
     EXPECT_EQ(m_renderer.buffersAlive, 1u);
     m_resources->Release(canary);
 }
+TEST_F(WaterRenderResourceTest, AdaptiveBodiesShareListAndStripUploadsAndKeepThemAcrossResize)
+{
+    scene::Scene source;
+    const auto firstId = AddWater(source, true);
+    const auto secondId = AddWater(source, true);
+    const auto extract = [&](renderer::RasterGeometryMode mode) {
+        renderer::Camera camera;
+        renderer::RenderSettings settings;
+        settings.rasterGeometryMode = mode;
+        renderer::RenderPassHandles handles;
+        scene::RenderPassContext context(source, m_renderer, *m_resources, camera, settings, {}, UINT32_MAX, handles);
+        renderer::RenderScene output;
+        scene::ExtractRenderWater(context, output);
+        return std::move(output.water);
+    };
+
+    const auto list = extract(renderer::RasterGeometryMode::TRIANGLE_LIST);
+    ASSERT_EQ(list.size(), 2u);
+    EXPECT_EQ(m_renderer.buffersAlive, 17u);
+    EXPECT_EQ(list[0].patchVertexBuffer, list[1].patchVertexBuffer);
+    EXPECT_EQ(list[0].patchIndexBuffers, list[1].patchIndexBuffers);
+    for (const auto& strip : list[0].patchStrips) EXPECT_FALSE(strip.buffer.IsValid());
+
+    constexpr auto stripMode = renderer::RasterGeometryMode::TRIANGLE_STRIP;
+    const auto strips = extract(stripMode);
+    ASSERT_EQ(strips.size(), 2u);
+    EXPECT_EQ(m_renderer.buffersAlive, 33u);
+    for (size_t mask = 0; mask < strips[0].patchStrips.size(); ++mask) {
+        const auto& strip = strips[0].patchStrips[mask];
+        ASSERT_NE(m_resources->Get(strip.buffer), nullptr);
+        EXPECT_EQ(strip.buffer, strips[1].patchStrips[mask].buffer);
+        EXPECT_EQ(strip.count, strips[1].patchStrips[mask].count);
+    }
+
+    auto* firstWater = source.GetComponent<scene::WaterComponent>(firstId);
+    ASSERT_NE(firstWater, nullptr);
+    firstWater->extentX = 24.0f;
+    firstWater->meshDirty = true;
+    const auto resized = extract(stripMode);
+    ASSERT_EQ(resized.size(), 2u);
+    EXPECT_EQ(m_renderer.buffersAlive, 33u);
+    EXPECT_FLOAT_EQ(resized[0].aabbMax.x, 12.0f);
+    EXPECT_EQ(resized[0].patchVertexBuffer, list[0].patchVertexBuffer);
+    EXPECT_EQ(resized[0].patchIndexBuffers, list[0].patchIndexBuffers);
+    for (size_t mask = 0; mask < resized[0].patchStrips.size(); ++mask)
+        EXPECT_EQ(resized[0].patchStrips[mask].buffer, strips[0].patchStrips[mask].buffer);
+
+    source.RemoveComponent<scene::WaterComponent>(firstId);
+    EXPECT_EQ(m_renderer.buffersAlive, 33u);
+    source.RemoveComponent<scene::WaterComponent>(secondId);
+    EXPECT_EQ(m_renderer.buffersAlive, 0u);
+}
+
 TEST_F(WaterRenderResourceTest, AuxiliaryDepthTextureWithoutTerrainPreservesUniformPhysicalDepth)
 {
     scene::Scene scene;

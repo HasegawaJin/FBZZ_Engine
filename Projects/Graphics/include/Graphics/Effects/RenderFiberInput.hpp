@@ -17,6 +17,7 @@ enum class FiberRenderMode { SHELL, FIN, HYBRID, BLADE };
 /// @note LAYOUT: Assets/Shaders/Fiber/FiberCommon.hlsli の FiberFrameConstants と一致させる。
 /// @note 風はワールド [m/s]、時刻 [s]。lod.x は Blade の提出率、lod.y は根元ディザの残存率 (1 で全部残す)。
 /// @note lod.z は Blade の高さ分割数 [1,6]。0 は直接描画する既存呼出元との互換値で 6 として読む。
+/// @note lod.w が 1 のときは 1 インスタンスに 1 枚のリボンを割り当て、頂点 ID は高さ段ごとの左右を指す。
 struct FiberFrameCB {
     math::Vector3 m_wind;
     float m_time = 0.0f;

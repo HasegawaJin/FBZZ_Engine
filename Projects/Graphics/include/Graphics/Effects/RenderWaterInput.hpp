@@ -7,12 +7,18 @@
 #include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include <array>
 namespace fbzz::renderer {
+struct WaterStripIndices {
+    ResourceHandle<BufferTag> buffer;
+    uint32_t count = 0;
+};
+
 struct RenderWaterPatch {
     renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
     renderer::ResourceHandle<renderer::BufferTag> indexBuffer;
     uint32_t indexCount = 0;
     math::Vector3 aabbMin;
     math::Vector3 aabbMax;
+    WaterStripIndices strip{};
 };
 struct WaterWaveMargin {
     float horizontal = 0.0f;
@@ -83,5 +89,6 @@ struct RenderWaterInput {
     bool farOceanEnabled = false;
     float farOceanCoverageScale = 1.05f;
     float farOceanRippleFadeDistance = 4.0f;
+    std::array<WaterStripIndices, 16> patchStrips{};
 };
 }

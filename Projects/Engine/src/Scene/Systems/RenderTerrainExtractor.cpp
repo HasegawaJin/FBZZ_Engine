@@ -17,6 +17,7 @@
 #include "TerrainRenderCache.hpp"
 #include "../../Asset/CacheableLoadedReference.hpp"
 #include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include "RenderPasses/Geometry/TerrainPatchIndices.hpp"
 #include "RenderPasses/Geometry/TerrainSurfacePatch.hpp"
 #include "Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp"
@@ -62,9 +63,6 @@
 namespace fbzz::scene {
 
 using terrain_height_detail::TryAddTerrainHeightSample;
-
-static constexpr int kLODCount            = 3;
-static constexpr int kLODSteps[kLODCount] = { 1, 2, 4 };
 
 namespace {
 /// @note Only an explicit terrain diagnostic reads clocks; accumulate phases without per-patch profiler records.
@@ -349,6 +347,7 @@ static TerrainChunk& EnsureTerrainChunk(
     int cx,
     int cz,
     const TerrainNeighbors& neighbors,
+    size_t lodCount,
     renderer::ResourceManager& resources)
 {
     const TerrainChunkKey key{ eid, static_cast<uint32_t>(cx), static_cast<uint32_t>(cz) };
@@ -375,9 +374,9 @@ static TerrainChunk& EnsureTerrainChunk(
             for (const auto& vertex : verts) occlusion->heights.push_back(vertex.position.y);
         }
 
-        for (int lod = 0; lod < kLODCount; ++lod) {
+        for (size_t lod = 0; lod < lodCount; ++lod) {
             std::vector<uint32_t> indices;
-            BuildTerrainPatchLodIndices(terrain, x0, z0, x1, z1, kLODSteps[lod], indices);
+            BuildTerrainPatchLodIndices(terrain, x0, z0, x1, z1, renderer::TERRAIN_LOD_STEPS[lod], indices);
             chunk.indexCountLOD[lod] = static_cast<uint32_t>(indices.size());
             /// @note 全セルが穴のチャンクはインデックス 0 本。空バッファは作らず、描画側で飛ばす。
             if (chunk.indexCountLOD[lod] > 0)
@@ -389,7 +388,9 @@ static TerrainChunk& EnsureTerrainChunk(
             }
         }
         if (occlusion && chunk.indexCountLOD[0] == uint32_t((x1 - x0) * (z1 - z0) * 6)) {
-            constexpr int columnStep = 16, overlap = 4;
+            constexpr int columnStep = 16;
+            /// @note 列の境界を最大 LOD の格子に揃え、内側へ張り出す三角形の頂点を高さ下限に含める。
+            const int overlap = renderer::TERRAIN_LOD_STEPS[lodCount - 1];
             for (int z = z0; z < z1; z += columnStep) {
                 for (int x = x0; x < x1; x += columnStep) {
                     const int lowX = std::max(x - overlap, 0), lowZ = std::max(z - overlap, 0);
@@ -409,6 +410,29 @@ static TerrainChunk& EnsureTerrainChunk(
         cache.entities[eid.index].geometryDirty = true;
     }
     return cache.chunks.at(key);
+}
+
+static renderer::TerrainStripIndices EnsureTerrainStripIndices(TerrainGpuState& gpu, const TerrainChunk& chunk,
+    uint32_t fullVertexCount, renderer::ResourceManager& resources)
+{
+    const auto& grid = chunk.gpuPatch;
+    const uint64_t cellCount = static_cast<uint64_t>(grid.columns - 1) * (grid.rows - 1);
+    /// @note LOD0 emits six indices for every solid cell, so fewer indices imply a hole in this grid.
+    if (chunk.indexCountLOD[0] / 6u != cellCount) return {};
+
+    const size_t slot = (grid.columns != fullVertexCount ? 1u : 0u) + (grid.rows != fullVertexCount ? 2u : 0u);
+    auto& strip = gpu.rasterStrips[slot];
+    if (strip.columns != grid.columns || strip.rows != grid.rows) {
+        resources.Release(strip.indices.buffer);
+        strip = {{}, grid.columns, grid.rows};
+    }
+    if (!strip.indices.buffer.IsValid()) {
+        std::vector<uint32_t> indices;
+        if (!renderer::BuildRegularSurfaceStripIndices(grid.columns - 1, grid.rows - 1, indices)) return {};
+        strip.indices.count = static_cast<uint32_t>(indices.size());
+        strip.indices.buffer = resources.CreateIndexBuffer(indices.data(), strip.indices.count);
+    }
+    return strip.indices;
 }
 
 static float TGetF(const asset::MaterialAssetAuthoring* m, const std::string& name, float def)
@@ -633,12 +657,12 @@ static void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainCompo
         for (const auto& chunk : input.patches) {
             const auto& patch = chunk.gpuPatch;
             patches.push_back(patch);
-            std::array<uint32_t, 3> starts{};
-            for (int lod = 0; lod < kLODCount; ++lod) {
+            decltype(chunk.gpuStartIndexLOD) starts{};
+            for (size_t lod = 0; lod < input.LODCount(); ++lod) {
                 starts[lod] = static_cast<uint32_t>(indices.size());
                 BuildTerrainPatchLodIndices(terrain, static_cast<int>(patch.originX), static_cast<int>(patch.originZ),
                     static_cast<int>(patch.originX + patch.columns - 1),
-                    static_cast<int>(patch.originZ + patch.rows - 1), kLODSteps[lod], indices);
+                    static_cast<int>(patch.originZ + patch.rows - 1), renderer::TERRAIN_LOD_STEPS[lod], indices);
             }
             state.indexStarts.push_back(starts);
             state.vertexCapacity = std::max(state.vertexCapacity, patch.columns * patch.rows);
@@ -692,7 +716,7 @@ static TerrainChunk& EnsureSurfaceChunk(TerrainRenderCache& cache, const Terrain
     TerrainChunk chunk;
     chunk.aabbMin = data.aabbMin; chunk.aabbMax = data.aabbMax;
     chunk.vertexBuffer = resources.CreateVertexBuffer(data.vertices.data(), data.vertices.size() * sizeof(TerrainVertex), sizeof(TerrainVertex));
-    for (int lod = 0; lod < kLODCount; ++lod) {
+    for (size_t lod = 0; lod < renderer::TERRAIN_FAR_LOD_INDEX; ++lod) {
         chunk.indexCountLOD[lod] = static_cast<uint32_t>(data.indices.size());
         chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(data.indices.data(), chunk.indexCountLOD[lod]);
     }
@@ -795,6 +819,10 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
 
         if (!ownerObject->activeInHierarchy()) continue;
 
+        renderer::RenderTerrainInput input;
+        if (std::isfinite(terrain.farLodDistance))
+            input.farLodDistance = std::max(terrain.farLodDistance, 0.0f);
+        const size_t lodCount = input.LODCount();
         const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
 
         TerrainGpuState& gpu = cache.entities[eid.index];
@@ -803,11 +831,13 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
             gpu.entityId = eid;
         }
         if (terrain.heightDirty) { ++terrain.surfaceRevision; terrain.heightDirty = false; }
-        if (gpu.surfaceRevision != terrain.surfaceRevision) {
+        const bool surfaceChanged = gpu.surfaceRevision != terrain.surfaceRevision;
+        if (surfaceChanged || gpu.lodCount != lodCount) {
             EraseTerrainChunkCache(cache, resources, eid);
-            EraseNeighborTerrainChunkCaches(cache, scene, resources, neighbors);
+            if (surfaceChanged) EraseNeighborTerrainChunkCaches(cache, scene, resources, neighbors);
             gpu.geometryDirty = true;
             gpu.surfaceRevision = terrain.surfaceRevision;
+            gpu.lodCount = lodCount;
         }
         if (terrain.splatDirty) { ++terrain.vegetationRevision; terrain.splatDirty = false; }
         if (gpu.vegetationRevision != terrain.vegetationRevision || !gpu.splatIndices.IsValid() || !gpu.splatWeights.IsValid()) {
@@ -865,7 +895,6 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         terrainCBData.splatColumns     = terrain.HasValidSplat() ? static_cast<uint32_t>(terrain.columns) : 1u;
         terrainCBData.splatRows        = terrain.HasValidSplat() ? static_cast<uint32_t>(terrain.rows) : 1u;
 
-        renderer::RenderTerrainInput input;
         input.layer = static_cast<uint32_t>(scene.GetGameObject(eid)->layer);
         input.constants = terrainCBData;
         input.splatIndices = gpu.splatIndices;
@@ -879,11 +908,16 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         }
         for (const auto& selected : ctx.settings.selectedObjects)
             if (selected.index == eid.index && selected.generation == eid.generation) { input.selected = true; break; }
-        for (int cz = 0; cz < chunkCountZ; ++cz)
-            for (int cx = 0; cx < chunkCountX; ++cx)
-                if (const auto& chunk = EnsureTerrainChunk(cache, terrain, eid, cx, cz, neighbors, resources);
-                    chunk.indexCountLOD[0] != 0)
-                    input.patches.push_back(chunk);
+        const bool useRasterStrip = ctx.settings.rasterGeometryMode == renderer::RasterGeometryMode::TRIANGLE_STRIP;
+        for (int cz = 0; cz < chunkCountZ; ++cz) {
+            for (int cx = 0; cx < chunkCountX; ++cx) {
+                const auto& chunk = EnsureTerrainChunk(cache, terrain, eid, cx, cz, neighbors, lodCount, resources);
+                if (chunk.indexCountLOD[0] == 0) continue;
+                auto& patch = input.patches.emplace_back(chunk);
+                if (useRasterStrip) patch.lod0Strip = EnsureTerrainStripIndices(gpu, chunk,
+                    static_cast<uint32_t>(terrain.chunkSize) + 1u, resources);
+            }
+        }
         PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, resources);
         if (ctx.directionalShadowBakeEnabled && !input.patches.empty()) {
             if (!gpu.shadowBakeGeometryHash)

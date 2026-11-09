@@ -106,6 +106,21 @@ FiberInput FiberBladeInput(uint vertexId)
     if (segments == 1u) return FiberBladeInputSegments(vertexId, 1u);
     return FiberBladeInputSegments(vertexId, segments);
 }
+
+FiberInput InstancedFiberBladeInput(uint vertexId, uint instanceId)
+{
+    FiberBladeRoot blade = fiberBlades[instanceId / 2u];
+    float row = float(vertexId / 2u);
+    FiberInput v;
+    v.position = blade.position;
+    v.normal = blade.normal;
+    v.uv = float2(blade.u, blade.v);
+    v.faceNormal0 = float3(blade.height, blade.rank, 0.0f);
+    v.height = fiberLod.z == 6.0f ? row / 6.0f : fiberLod.z == 3.0f ? row / 3.0f : row / fiberLod.z;
+    v.edgeCoordinate = float(vertexId % 2u) * 2.0f - 1.0f;
+    v.edgeVector = instanceId % 2u == 0u ? blade.side0 : blade.side1;
+    return v;
+}
 #elif FIBER_FIN
 struct FiberInput {
     float3 position : POSITION;
@@ -255,8 +270,9 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
 }
 
 #if FIBER_FIN == 2
-FiberPixel VSMain(uint vertexId : SV_VertexID)
+FiberPixel VSMain(uint vertexId : SV_VertexID, uint instanceId : SV_InstanceID)
 {
+    if (fiberLod.w > 0.5f) return FiberVertex(InstancedFiberBladeInput(vertexId, instanceId), 0);
     return FiberVertex(FiberBladeInput(vertexId), 0);
 }
 #else

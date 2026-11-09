@@ -205,6 +205,18 @@ private:
 [[nodiscard]] FBZZ_GRAPHICS_API bool BuildSurfacePatchIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
     std::vector<uint32_t>& outIndices);
 
+/// @brief 縫合済みパッチの面と巻き順を保ち、リストと同じ面順のストリップを生成する。
+/// @return 無効な分割数または mask なら false。outIndices は未変更。
+/// @note 0xFFFFFFFF は 32 ビットの strip cut。
+[[nodiscard]] FBZZ_GRAPHICS_API bool BuildSurfacePatchStripIndices(uint32_t cellsPerPatch, uint8_t coarseEdgeMask,
+    std::vector<uint32_t>& outIndices);
+
+/// @brief 固定格子の各セルを (左上, 左下, 右上) と (右上, 左下, 右下) に分けるストリップ。
+/// @return 各軸のセル数が 1..512 の外なら false。outIndices は未変更。
+/// @note 行間は 0xFFFFFFFF で区切る。頂点は Z 行優先。
+[[nodiscard]] FBZZ_GRAPHICS_API bool BuildRegularSurfaceStripIndices(uint32_t cellsX, uint32_t cellsZ,
+    std::vector<uint32_t>& outIndices);
+
 /// @brief 同じ境界頂点を共有するパッチが使う波・高さ評価のセル幅を返す。
 /// @pre unitUv は共有格子の正規化座標 [0,1]。
 /// @note 内部は cellSize、辺は edgeCellSize、角は cornerCellSize。辺上で角の影響を補間しない。

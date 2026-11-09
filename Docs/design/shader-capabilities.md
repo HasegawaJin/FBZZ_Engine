@@ -19,6 +19,8 @@ variants = 'standard_surface_v1'
 
 `vertex` は `standard_surface_v1` / `standard_skinned_v1` / `custom`。標準セットは Engine の頂点変換、UV とスキニングを共有し、独自の頂点変形を含まない。`variants` は一致する標準 GBuffer の static / instanced / skinned 変種の組、または `none`。形状や alpha clip が異なる独自シェーダーに標準セットを付けない。
 
+草のシェーダーで `vertex = 'fiber_blade_v1'` と `variants = 'fiber_blade_instanced_v1'` を宣言すると、描画パスがリボン単位のインスタンス化を選べる。`fiberLod.w` が 1 のときは `SV_InstanceID / 2` が根元番号、下位ビットがリボン番号、`SV_VertexID` がリボン内の頂点番号になる。0 のときは従来どおり `SV_VertexID` から根元・リボン・面の頂点を求める。
+
 `surface` は `metallic_roughness_v1` / `lambert_v1` / `unlit_v1` / `water_v1` / `terrain_v1` / `custom`。`opacity` は `alpha_clip_v1` / `opaque_v1` / `custom`。GBuffer は標準 PBR、標準 alpha clip、一致する頂点・変種セットをすべて要求する。Lambert と Unlit は PBR と同等ではないため Forward へ送る。空欄、未宣言、不正な型、未知の版、矛盾する変種セットも Forward へ送る。
 
 RT の形状、被覆、BSDF は別に評価する。標準の不透明形状は遮蔽者になれても、PBR の表面契約が無ければ標準 BSDF として評価しない。スキンドでは現在フレームの変形済み形状も要求する。定数材質、テクスチャ、追加ローブや誘電体に関する既存の被覆検証は引き続き適用する。

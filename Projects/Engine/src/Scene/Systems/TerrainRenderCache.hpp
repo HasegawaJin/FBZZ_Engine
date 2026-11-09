@@ -35,6 +35,11 @@ struct TerrainChunkKeyHash {
     }
 };
 struct TerrainGpuState {
+    struct RasterStrip {
+        renderer::TerrainStripIndices indices;
+        uint32_t columns = 0, rows = 0;
+    };
+
     EntityID entityId = EntityID::INVALID;
     uint64_t surfaceRevision = UINT64_MAX, vegetationRevision = UINT64_MAX;
     renderer::ResourceHandle<renderer::TextureTag> splatIndices;   ///< @note 所有
@@ -45,8 +50,11 @@ struct TerrainGpuState {
     std::vector<TerrainLayerGpu> uploadedLayers;
     renderer::ResourceHandle<renderer::StructuredBufferTag> heights, patches;
     renderer::ResourceHandle<renderer::BufferTag> indices;
-    std::vector<std::array<uint32_t, 3>> indexStarts;
+    std::vector<decltype(renderer::RenderTerrainPatch::gpuStartIndexLOD)> indexStarts;
     uint32_t indexCount = 0, vertexCapacity = 0;
+    size_t lodCount = 0;
+    /// @note Full, right-edge, bottom-edge, and corner grids share their draw-only buffers by dimensions.
+    std::array<RasterStrip, 4> rasterStrips;
     bool geometryDirty = true;
     uint64_t shadowBakeGeometryHash = 0;
     renderer::ResourceHandle<renderer::StructuredBufferTag> surfaceLayerBuffer;

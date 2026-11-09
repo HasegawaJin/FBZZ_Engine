@@ -234,15 +234,8 @@ void SetWaterPatchConstants(WaterCB& cb, const SurfacePatch& patch, uint32_t cel
 }
 
 void SetWaterPatchMorphConstants(WaterCB& cb, const SurfacePatch& patch,
-    const SurfacePatchLodSettings& settings, const SurfacePatchView& view,
-    bool enabled, uint8_t axisMask)
+    const SurfacePatchLodSettings& settings, bool enabled, uint8_t axisMask)
 {
-    cb.patchMorphView = {view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z,
-        view.projectionScalePixels};
-    cb.patchMorphForward = {view.cameraForward.x, view.cameraForward.y, view.cameraForward.z,
-        view.orthographic ? 1.0f : 0.0f};
-    cb.patchMorphMetric = {view.minProjectionDistance, settings.targetCellPixels,
-        settings.nearDistance, settings.nearCellSize};
     cb.patchMorphParams = {enabled ? 1.0f : 0.0f, settings.morphTransitionWidth,
         static_cast<float>(patch.depth), static_cast<float>(axisMask)};
     cb.patchMorphCellSize = {patch.morphCellSize.x, patch.morphCellSize.y, 0.0f, 0.0f};
@@ -262,11 +255,35 @@ uint8_t FarPatchMorphAxisMask(SurfaceFarRegion region)
     }
 }
 
+struct WaterRasterIndices {
+    ResourceHandle<BufferTag> buffer;
+    uint32_t count = 0;
+    uint32_t stripTriangleCount = 0;
+
+    bool operator==(const WaterRasterIndices&) const = default;
+
+    void Apply(DrawCall& call) const
+    {
+        call.indexBuffer = buffer;
+        call.indexCount = count;
+        call.stripTriangleCount = stripTriangleCount;
+        if (stripTriangleCount != 0) call.topology = PrimitiveTopology::TRIANGLE_STRIP;
+    }
+};
+
+WaterRasterIndices SelectWaterRasterIndices(ResourceHandle<BufferTag> list, uint32_t listCount,
+    const WaterStripIndices& strip, bool useStrip)
+{
+    if (useStrip && strip.buffer.IsValid() && strip.count >= 3u)
+        return {strip.buffer, strip.count, listCount / 3u};
+    return {list, listCount};
+}
+
 template<class Submit>
 void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bool countStatistics,
                        Submit&& submit, const Camera* cameraOverride = nullptr,
                        uint32_t viewportHeight = 0, bool allowFarOcean = true,
-                       const Camera* lodCameraOverride = nullptr, bool gpuCulling = false)
+                       const Camera* lodCameraOverride = nullptr, bool gpuCulling = false, bool useStrip = false)
 {
     const Camera& camera = cameraOverride ? *cameraOverride : ctx.camera;
     const Camera& lodCamera = lodCameraOverride ? *lodCameraOverride : camera;
@@ -330,11 +347,18 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
         cb.gridParams.x = 0.0f;
         cb.farOceanParams = {farEnabled ? 1.0f : 0.0f, 0.0f,
             input.farOceanRippleFadeDistance, 0.0f};
+        cb.patchMorphView = {view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z,
+            view.projectionScalePixels};
+        cb.patchMorphForward = {view.cameraForward.x, view.cameraForward.y, view.cameraForward.z,
+            view.orthographic ? 1.0f : 0.0f};
+        cb.patchMorphMetric = {view.minProjectionDistance, patchLod.targetCellPixels,
+            patchLod.nearDistance, patchLod.nearCellSize};
         for (const auto& patch : selection->patches) {
-            const bool selected = view.includeCulledPatches || IsSurfacePatchVisible(surface, patch, view);
+            /// @note 選択と描画は変位・モーフ込みの同じ保守的な境界を使う。
+            const bool frustumRejected = !IsSurfacePatchVisible(surface, patch, view);
+            const bool selected = view.includeCulledPatches || !frustumRejected;
             if (!gpuCulling && !selected) continue;
             if (countStatistics && selected) ++ctx.statsTotalObjects;
-            const bool frustumRejected=frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax);
             if (frustumRejected) {
                 if (countStatistics && selected) ++ctx.statsFrustumCulled;
                 if (!gpuCulling) continue;
@@ -343,12 +367,15 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
             if (occluded(patch.aabbMin, patch.aabbMax, 0.0f, selected && !frustumRejected)) continue;
             if (mask >= input.patchIndexBuffers.size() || !input.patchIndexBuffers[mask].IsValid()) continue;
             SetWaterPatchConstants(cb, patch, patchLod.cellsPerPatch);
-            SetWaterPatchMorphConstants(cb, patch, patchLod, view,
-                input.patchMorphEnabled, SURFACE_MORPH_AXIS_BOTH);
-            submit(input.patchVertexBuffer, input.patchIndexBuffers[mask], input.patchIndexCounts[mask], cb, patch.aabbMin, patch.aabbMax);
+            SetWaterPatchMorphConstants(cb, patch, patchLod, input.patchMorphEnabled, SURFACE_MORPH_AXIS_BOTH);
+            const auto indices = SelectWaterRasterIndices(input.patchIndexBuffers[mask],
+                input.patchIndexCounts[mask], input.patchStrips[mask], useStrip);
+            submit(input.patchVertexBuffer, indices, cb, patch.aabbMin, patch.aabbMax);
         }
         if (farEnabled && input.patchIndexBuffers[0].IsValid()) {
             cb.farOceanParams.y = 1.0f;
+            const auto indices = SelectWaterRasterIndices(input.patchIndexBuffers[0],
+                input.patchIndexCounts[0], input.patchStrips[0], useStrip);
             for (const auto& far : farPatches) {
                 const auto& patch = far.geometry;
                 if (countStatistics) ++ctx.statsTotalObjects;
@@ -359,9 +386,9 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
                 }
                 if (occluded(patch.aabbMin, patch.aabbMax, 0.0f, !frustumRejected)) continue;
                 SetWaterPatchConstants(cb, patch, patchLod.cellsPerPatch);
-                SetWaterPatchMorphConstants(cb, patch, patchLod, view,
-                    input.patchMorphEnabled, FarPatchMorphAxisMask(far.region));
-                submit(input.patchVertexBuffer, input.patchIndexBuffers[0], input.patchIndexCounts[0], cb, patch.aabbMin, patch.aabbMax);
+                SetWaterPatchMorphConstants(cb, patch, patchLod, input.patchMorphEnabled,
+                    FarPatchMorphAxisMask(far.region));
+                submit(input.patchVertexBuffer, indices, cb, patch.aabbMin, patch.aabbMax);
             }
         }
         return;
@@ -384,7 +411,8 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
         }
         if (occluded(low, high, std::sqrt(2.0f * input.margin.horizontal * input.margin.horizontal
             + input.margin.vertical * input.margin.vertical))) continue;
-        submit(patch.vertexBuffer, patch.indexBuffer, patch.indexCount, cb, low, high);
+        const auto indices = SelectWaterRasterIndices(patch.indexBuffer, patch.indexCount, patch.strip, useStrip);
+        submit(patch.vertexBuffer, indices, cb, low, high);
     }
 }
 
@@ -498,10 +526,10 @@ template<class Submit>
 void VisitWaterPatchDraws(const RenderWaterInput& input, RenderPassContext& ctx, bool countStatistics,
     bool enableInstances, Submit&& submit, const Camera* cameraOverride = nullptr,
     uint32_t viewportHeight = 0, bool allowFarOcean = true, const Camera* lodCameraOverride = nullptr,
-    bool enableGpuGeometry = false)
+    bool enableGpuGeometry = false, bool allowStrip = true)
 {
-    ResourceHandle<BufferTag> vertices, indices;
-    uint32_t indexCount = 0;
+    ResourceHandle<BufferTag> vertices;
+    WaterRasterIndices indices;
     WaterCB base{};
     std::vector<WaterPatchInstance> instances;
     std::vector<std::array<math::Vector3, 2>> bounds;
@@ -509,6 +537,9 @@ void VisitWaterPatchDraws(const RenderWaterInput& input, RenderPassContext& ctx,
     const bool gpuCulling = enableGpuGeometry && enableInstances && input.adaptivePatchLod
         && ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT
         && ctx.frustumCullingEnabled && ctx.renderer.SupportsIndirectDraw();
+    /// @note カスタム shader と GPU 間接経路は既存の面順序と indexCount / 3 契約を保つ。
+    const bool useStrip = allowStrip && enableInstances && ctx.settings.rasterGeometryMode == RasterGeometryMode::TRIANGLE_STRIP
+        && ctx.settings.geometryDrawMode != GeometryDrawMode::GPU_INDIRECT;
     auto flush = [&] {
         if (instances.empty()) return;
         auto buffer = (instances.size() > 1 || (enableGpuGeometry
@@ -519,38 +550,38 @@ void VisitWaterPatchDraws(const RenderWaterInput& input, RenderPassContext& ctx,
             ctx.resources.Update(buffer, instances.data(), instances.size() * sizeof(WaterPatchInstance));
             auto cb = base;
             cb.patchCellSize.z = 2.0f;
-            const auto gpu = enableGpuGeometry ? PrepareWaterGpuDraw(input, ctx, cb, instances, bounds, indexCount) : WaterGpuDraw{};
-            submit(vertices, indices, indexCount, cb, buffer, static_cast<uint32_t>(instances.size()), gpu);
+            const auto gpu = gpuCulling
+                ? PrepareWaterGpuDraw(input, ctx, cb, instances, bounds, indices.count) : WaterGpuDraw{};
+            submit(vertices, indices, cb, buffer, static_cast<uint32_t>(instances.size()), gpu);
         } else {
             for (const auto& instance : instances) {
                 auto cb = base;
                 ApplyWaterPatchInstance(cb, instance);
-                submit(vertices, indices, indexCount, cb, ResourceHandle<StructuredBufferTag>{}, 1u, WaterGpuDraw{});
+                submit(vertices, indices, cb, ResourceHandle<StructuredBufferTag>{}, 1u, WaterGpuDraw{});
             }
         }
         instances.clear();
         bounds.clear();
     };
     VisitWaterPatches(input, ctx, countStatistics,
-        [&](auto vertexBuffer, auto indexBuffer, uint32_t count, const WaterCB& cb,
+        [&](auto vertexBuffer, const WaterRasterIndices& patchIndices, const WaterCB& cb,
             const math::Vector3& low, const math::Vector3& high) {
             if (!enableInstances || cb.patchCellSize.z <= 0.5f) {
                 flush();
-                submit(vertexBuffer, indexBuffer, count, cb, ResourceHandle<StructuredBufferTag>{}, 1u, WaterGpuDraw{});
+                submit(vertexBuffer, patchIndices, cb, ResourceHandle<StructuredBufferTag>{}, 1u, WaterGpuDraw{});
                 return;
             }
             /// @note 有限面と遠景はPSのdiscard契約が異なるため、同じ索引でも束を分ける。
-            if (!instances.empty() && (vertices != vertexBuffer || indices != indexBuffer
-                || indexCount != count || base.farOceanParams.y != cb.farOceanParams.y)) flush();
+            if (!instances.empty() && (vertices != vertexBuffer || indices != patchIndices
+                || base.farOceanParams.y != cb.farOceanParams.y)) flush();
             if (instances.empty()) {
                 vertices = vertexBuffer;
-                indices = indexBuffer;
-                indexCount = count;
+                indices = patchIndices;
                 base = cb;
             }
             instances.push_back(MakeWaterPatchInstance(cb));
             if (gpuCulling) bounds.push_back({low, high});
-        }, cameraOverride, viewportHeight, allowFarOcean, lodCameraOverride, gpuCulling);
+        }, cameraOverride, viewportHeight, allowFarOcean, lodCameraOverride, gpuCulling, useStrip);
     flush();
 }
 
@@ -719,12 +750,11 @@ void WaterMediumAtlasPass::Execute(PassResources&, RenderPassContext& ctx)
             tileResolution, tileResolution);
 
         VisitWaterPatchDraws(input, ctx, false, true,
-            [&](auto vertexBuffer, auto indexBuffer, uint32_t count, const WaterCB& cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
+            [&](auto vertexBuffer, const WaterRasterIndices& indices, const WaterCB& cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
                 ctx.resources.Update(handles.waterCB, &cb, sizeof(cb));
                 renderer::DrawCall call;
                 call.vertexBuffer = vertexBuffer;
-                call.indexBuffer = indexBuffer;
-                call.indexCount = count;
+                indices.Apply(call);
                 call.instanceBuffer = instanceBuffer;
                 call.instanceCount = instanceCount;
                 call.shader = handles.mediumAtlasShader;
@@ -781,13 +811,12 @@ void WaterInterfacePass::Execute(PassResources&, RenderPassContext& ctx)
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
 
         VisitWaterPatchDraws(input, ctx, false, true,
-            [&](auto vertexBuffer, auto indexBuffer, uint32_t count, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
+            [&](auto vertexBuffer, const WaterRasterIndices& indices, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
                 cb.farOceanParams.w = static_cast<float>(bodyIndex + 1u);
                 ctx.resources.Update(handles.waterCB, &cb, sizeof(cb));
                 renderer::DrawCall call;
                 call.vertexBuffer = vertexBuffer;
-                call.indexBuffer = indexBuffer;
-                call.indexCount = count;
+                indices.Apply(call);
                 call.instanceBuffer = instanceBuffer;
                 call.instanceCount = instanceCount;
                 call.shader = handles.interfaceShader;
@@ -837,15 +866,14 @@ void WaterSelectionMaskSystem(RenderPassContext& ctx)
         if (!input.medium.exclusions.empty() && !clipExclusions) continue;
         const uint32_t bodyIndex = clipExclusions
             ? static_cast<uint32_t>(body - h.waterMediumBodies.begin()) : 0u;
-        VisitWaterPatchDraws(input, ctx, false, true, [&](auto vertexBuffer, auto indexBuffer, uint32_t count, const WaterCB& cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
+        VisitWaterPatchDraws(input, ctx, false, true, [&](auto vertexBuffer, const WaterRasterIndices& indices, const WaterCB& cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
             auto selectionCB = cb;
             selectionCB.crestFoamParams.z = 0.0f;
             selectionCB.farOceanParams.w = clipExclusions ? static_cast<float>(bodyIndex + 1u) : 0.0f;
             ctx.resources.Update(handles.waterCB, &selectionCB, sizeof(selectionCB));
             renderer::DrawCall dc;
             dc.vertexBuffer       = vertexBuffer;
-            dc.indexBuffer        = indexBuffer;
-            dc.indexCount         = count;
+            indices.Apply(dc);
             dc.instanceBuffer     = instanceBuffer;
             dc.instanceCount      = instanceCount;
             dc.shader             = handles.selectionShader;
@@ -1000,20 +1028,18 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             && bodyIndex != 0xFFFFFFFFu;
         if (!input.medium.exclusions.empty() && !clipExclusions) continue;
         VisitWaterPatchDraws(input, ctx, true, standardWaterShader,
-            [&](auto vertexBuffer, auto indexBuffer, uint32_t count, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw& gpu) {
+            [&](auto vertexBuffer, const WaterRasterIndices& indices, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw& gpu) {
             if (!ctx.handles.iblPrefilter.IsValid()) cb.reflectParams.x = 0.0f;
             cb.farOceanParams.w = clipExclusions ? static_cast<float>(bodyIndex + 1u) : 0.0f;
             resources.Update(handles.waterCB, &cb, sizeof(cb));
             renderer::DrawCall call;
             call.vertexBuffer = vertexBuffer;
-            call.indexBuffer  = indexBuffer;
+            indices.Apply(call);
             call.shader       = activeShader;
             call.pipelineState = settings->IsWireframe() ? handles.wireframePSO : handles.waterPSO;
-            call.indexCount   = count;
             call.instanceBuffer = instanceBuffer;
             call.instanceCount = instanceCount;
             call.layer        = renderer::RenderLayer::TRANSPARENT_LAYER;
-            call.topology     = renderer::PrimitiveTopology::TRIANGLE_LIST;
             call.constantBuffers[0] = handles.cameraCB;
             call.constantBuffers[1] = handles.waterCB;
             call.constantBuffers[2] = acceptsAppearance && input.appearanceParameters.IsValid()
@@ -1052,7 +1078,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 gpu_cull_detail::SubmitCullDraw(renderer, resources, gpu.compute, call, fallback);
                 ++ctx.statsDrawCalls;
                 ctx.statsVertexCount += DrawCallVertexCount(call);
-                ctx.statsTriangleCount += static_cast<int>(static_cast<uint64_t>(count / 3u) * gpu.visibleInstancesForStatistics);
+                ctx.statsTriangleCount += static_cast<int>(static_cast<uint64_t>(indices.count / 3u) * gpu.visibleInstancesForStatistics);
             } else {
                 SubmitCounted(ctx, call);
                 if (instanceCount > 1u) {
@@ -1060,7 +1086,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                     ctx.statsInstancedDrawsSaved += static_cast<int>(instanceCount) - 1;
                 }
             }
-        }, nullptr, 0, true, nullptr, standardWaterShader);
+        }, nullptr, 0, true, nullptr, standardWaterShader, activeShader == handles.waterShader);
     }
 }
 

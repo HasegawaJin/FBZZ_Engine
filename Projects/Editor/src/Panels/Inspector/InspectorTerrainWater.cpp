@@ -8,6 +8,7 @@
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace fbzz::editor {
@@ -155,6 +156,11 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             int chunkSize = tc.chunkSize;
             if (ImGui::DragInt("Chunk Size", &chunkSize, 1.0f, 8, 256))
                 edit.Change([&] { tc.chunkSize = chunkSize; });
+            float farLodDistance = tc.farLodDistance;
+            if (ImGui::InputFloat("Far LOD Distance (m)", &farLodDistance, 100.0f, 500.0f, "%.1f"))
+                edit.Change([&] { tc.farLodDistance = std::isfinite(farLodDistance) ? std::max(0.0f, farLodDistance) : 0.0f; });
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                ImGui::SetTooltip("0 disables the additional far LOD. This affects rendering only.");
 
             /// @note スプラットの番号付け替えと dirty 要求は TerrainComponent、Undo は前後スナップショットが持つ。
             /// @see Docs/design/terrain-layers.md

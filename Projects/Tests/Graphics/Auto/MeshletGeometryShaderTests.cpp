@@ -21,6 +21,7 @@
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
+#include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include <Math/Frustum.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -389,26 +390,26 @@ protected:
         return image;
     }
 
-    std::shared_ptr<r::RenderScene> TerrainScene(const math::Matrix4& world)
+    std::shared_ptr<r::RenderScene> TerrainScene(const math::Matrix4& world, bool regularGrid = false,
+        uint32_t cells = 16, size_t patchCount = 1)
     {
-        constexpr uint32_t CELLS = 16;
-        constexpr uint32_t ROW_STRIDE = CELLS + 1;
+        const uint32_t rowStride = cells + 1;
         std::vector<TerrainTestVertex> vertices;
         std::vector<uint32_t> indices;
-        for (uint32_t side = 0; side < 2; ++side) {
+        for (uint32_t side = 0; side < (regularGrid ? 1u : 2u); ++side) {
             const auto first = static_cast<uint32_t>(vertices.size());
-            const float center = side == 0 ? -0.9f : 0.9f;
-            for (uint32_t y = 0; y <= CELLS; ++y) for (uint32_t x = 0; x <= CELLS; ++x) {
-                const float u = static_cast<float>(x) / CELLS;
-                const float v = static_cast<float>(y) / CELLS;
+            const float center = regularGrid ? 0.0f : side == 0 ? -0.9f : 0.9f;
+            for (uint32_t y = 0; y <= cells; ++y) for (uint32_t x = 0; x <= cells; ++x) {
+                const float u = static_cast<float>(x) / cells;
+                const float v = static_cast<float>(y) / cells;
                 vertices.push_back({{center + (u - 0.5f) * 1.6f, 2.0f * v - 1.0f, 2.8f + 0.4f * v},
                     {0.0f, 0.0f, side == 0 ? -1.0f : 1.0f}, {1.0f, 0.0f, 0.0f}, {u, v}});
             }
-            for (uint32_t y = 0; y < CELLS; ++y) for (uint32_t x = 0; x < CELLS; ++x) {
-                if (x >= 6 && x < 10 && y >= 6 && y < 10) continue;
-                const uint32_t a = first + y * ROW_STRIDE + x;
+            for (uint32_t y = 0; y < cells; ++y) for (uint32_t x = 0; x < cells; ++x) {
+                if (!regularGrid && x >= 6 && x < 10 && y >= 6 && y < 10) continue;
+                const uint32_t a = first + y * rowStride + x;
                 const uint32_t b = a + 1;
-                const uint32_t c = a + ROW_STRIDE;
+                const uint32_t c = a + rowStride;
                 const uint32_t d = c + 1;
                 if (side == 0) indices.insert(indices.end(), {a, c, b, b, c, d});
                 else indices.insert(indices.end(), {a, b, c, b, d, c});
@@ -430,7 +431,7 @@ protected:
         terrain.constants.terrainParams = {4, 2, 0, 0};
         terrain.splatIndices = resources.CreateTexture(slots, 1, 1);
         terrain.splatWeights = resources.CreateTexture(weights, 1, 1);
-        auto& patch = terrain.patches.emplace_back();
+        r::RenderTerrainPatch patch;
         patch.aabbMin = {-1.7f, -1.0f, 2.8f};
         patch.aabbMax = {1.7f, 1.0f, 3.2f};
         patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(),
@@ -438,22 +439,22 @@ protected:
         const auto indexCount = static_cast<uint32_t>(indices.size());
         patch.indexBufferLOD.fill(resources.CreateIndexBuffer(indices.data(), indexCount));
         patch.indexCountLOD.fill(indexCount);
+        if (regularGrid) {
+            std::vector<uint32_t> strip;
+            EXPECT_TRUE(r::BuildRegularSurfaceStripIndices(cells, cells, strip));
+            patch.lod0Strip.count = static_cast<uint32_t>(strip.size());
+            patch.lod0Strip.buffer = resources.CreateIndexBuffer(strip.data(), patch.lod0Strip.count);
+            terrain.chunkWorldSize = 16;
+        }
+        terrain.patches.assign(patchCount, patch);
         auto scene = std::make_shared<r::RenderScene>();
         scene->terrains.push_back(std::move(terrain));
         return scene;
     }
 
-    MeshletImage RenderTerrain(const std::shared_ptr<const r::RenderScene>& scene,
-        const r::Camera& camera, bool mesh, const r::Camera* shadowView = nullptr)
+    r::RenderPassHandles MakeTerrainPassHandles()
     {
         auto& resources = *m_resources;
-        auto& device = *m_bundle.renderer;
-        const bool shadow = shadowView != nullptr;
-        const auto target = shadow ? m_shadow : m_gbuffer;
-        r::RenderSettings settings;
-        settings.geometryDrawMode = mesh ? r::GeometryDrawMode::MESH_SHADER : r::GeometryDrawMode::CPU;
-        settings.shadowEnabled = shadow;
-        settings.shadow.mapResolution = EXTENT;
         r::RenderPassHandles handles;
         handles.frameCB = m_frameCB;
         handles.objectCB = m_objectCB;
@@ -463,6 +464,15 @@ protected:
         handles.advancedGraphicsCB = m_advancedCB;
         handles.shadowCB = resources.CreateConstantBuffer(sizeof(r::ShadowConstantsCB));
         handles.lightCB = resources.CreateConstantBuffer(sizeof(r::LightConstantsCB));
+        return handles;
+    }
+
+    void DrawTerrain(const std::shared_ptr<const r::RenderScene>& scene,
+        const r::Camera& camera, const r::Camera* shadowView, const r::RenderSettings& settings,
+        r::RenderPassHandles& handles, r::ResourceHandle<r::RenderTargetTag> target)
+    {
+        auto& resources = *m_resources;
+        auto& device = *m_bundle.renderer;
         const r::AdvancedGraphicsCB advanced{};
         const r::ShadowConstantsCB shadowConstants{};
         const r::LightConstantsCB light{};
@@ -472,12 +482,10 @@ protected:
         ctx.isDeferred = true;
         ctx.occlusionCullingEnabled = false;
 
-        Begin();
         resources.Update(handles.advancedGraphicsCB, &advanced, sizeof(advanced));
         resources.Update(handles.shadowCB, &shadowConstants, sizeof(shadowConstants));
         resources.Update(handles.lightCB, &light, sizeof(light));
-        profiler::Profiler::BeginFrame();
-        if (!shadow) {
+        if (!shadowView) {
             ctx.resourceRegistry.BindTarget("GBuffer", target);
             r::TerrainRenderPass pass(r::TerrainDrawMode::GBuffer);
             r::PassBuilder builder;
@@ -513,8 +521,26 @@ protected:
             view.viewportSize = EXTENT;
             r::ExecuteShadowPass(ctx);
         }
+    }
+
+    MeshletImage RenderTerrain(const std::shared_ptr<const r::RenderScene>& scene,
+        const r::Camera& camera, bool mesh, const r::Camera* shadowView = nullptr,
+        r::RasterGeometryMode rasterMode = r::RasterGeometryMode::TRIANGLE_LIST)
+    {
+        const bool shadow = shadowView != nullptr;
+        const auto target = shadow ? m_shadow : m_gbuffer;
+        r::RenderSettings settings;
+        settings.geometryDrawMode = mesh ? r::GeometryDrawMode::MESH_SHADER : r::GeometryDrawMode::CPU;
+        settings.rasterGeometryMode = rasterMode;
+        settings.shadowEnabled = shadow;
+        settings.shadow.mapResolution = EXTENT;
+        auto handles = MakeTerrainPassHandles();
+        Begin();
+        profiler::Profiler::BeginFrame();
+        DrawTerrain(scene, camera, shadowView, settings, handles, target);
         profiler::Profiler::EndFrame();
         End();
+        auto& resources = *m_resources;
         MeshletImage image;
         if (!shadow) for (uint32_t attachment = 0; attachment < image.colors.size(); ++attachment)
             image.colors[attachment] = ReadTexture(resources.GetColorTexture(target, attachment), false);
@@ -556,20 +582,14 @@ protected:
     }
 
     /// @note Only the disabled performance case uses a clock; ordinary image regressions have no timing thresholds.
-    bool Benchmark(const MeshletTestGrid& grid, uint32_t cells, uint32_t visibleDenominator,
-        bool shadow, bool mesh, uint64_t runId, MeshletBenchmarkResult& result)
+    template<class Draw>
+    bool MeasureGeometry(r::ResourceHandle<r::RenderTargetTag> target, uint32_t extent, const char* scope,
+        uint64_t runId, MeshletBenchmarkResult& result, Draw draw)
     {
         using Clock = std::chrono::steady_clock;
         constexpr uint32_t WARMUP_FRAMES = 12;
         constexpr uint32_t MEASURED_FRAMES = 48;
         constexpr uint32_t DRAIN_FRAMES = 6;
-        r::MeshletGeometry geometry;
-        if (!Prepare(grid, geometry)) return false;
-        result.cells = cells; result.visibleDenominator = visibleDenominator;
-        result.shadow = shadow; result.mesh = mesh; result.meshletCount = geometry.meshletCount;
-        const auto camera = Camera(32.0f / std::sqrt(static_cast<float>(visibleDenominator)));
-        const auto world = math::Matrix4::TRS({0, 0, 5}, math::Quaternion::Identity(), {1, 1, 1});
-        const auto target = shadow ? m_shadowDepthOnly : m_gbufferDepthOnly;
         uint64_t firstMeasuredSerial = 0;
         uint64_t lastMeasuredSerial = 0;
         uint64_t lastPhysicalSerial = 0;
@@ -580,7 +600,7 @@ protected:
                 return;
             lastPhysicalSerial = snapshot.physicalFrameSerial;
             for (const auto& pass : snapshot.passes) {
-                if (!pass.available || pass.name != "MeshletFrame" || pass.metadata.viewId != runId
+                if (!pass.available || pass.name != scope || pass.metadata.viewId != runId
                     || firstMeasuredSerial == 0 || pass.metadata.applicationFrameSerial < firstMeasuredSerial
                     || pass.metadata.applicationFrameSerial > lastMeasuredSerial) continue;
                 if (!std::isfinite(pass.gpuMs) || pass.gpuMs < 0) {
@@ -604,15 +624,14 @@ protected:
             metadata.viewId = runId; metadata.sceneGeneration = 1; metadata.planGeneration = 1;
             metadata.resourceEpoch = m_resources->GetResetVersion();
             metadata.outputId = target.id; metadata.outputGeneration = target.gen;
-            metadata.width = metadata.height = 16;
+            metadata.width = metadata.height = extent;
             if (!m_bundle.renderer->GpuProfBeginView(metadata)) {
                 End();
                 ADD_FAILURE() << "GPU timestamps unavailable for the benchmark";
                 return false;
             }
             const auto submissionStart = Clock::now();
-            const bool drawn = DrawGeometry(grid, mesh, shadow, camera, world,
-                false, true, target, false, true, true, nullptr, nullptr, true);
+            const bool drawn = draw();
             const auto submissionEnd = Clock::now();
             m_bundle.renderer->GpuProfEndView();
             End();
@@ -629,6 +648,41 @@ protected:
         if (depth.empty()) return false;
         collect();
         return result.cpuFrameMs.size() == MEASURED_FRAMES && result.gpuFrameMs.size() >= MEASURED_FRAMES / 2u;
+    }
+
+    bool Benchmark(const MeshletTestGrid& grid, uint32_t cells, uint32_t visibleDenominator,
+        bool shadow, bool mesh, uint64_t runId, MeshletBenchmarkResult& result)
+    {
+        r::MeshletGeometry geometry;
+        if (!Prepare(grid, geometry)) return false;
+        result.cells = cells; result.visibleDenominator = visibleDenominator;
+        result.shadow = shadow; result.mesh = mesh; result.meshletCount = geometry.meshletCount;
+        const auto camera = Camera(32.0f / std::sqrt(static_cast<float>(visibleDenominator)));
+        const auto world = math::Matrix4::TRS({0, 0, 5}, math::Quaternion::Identity(), {1, 1, 1});
+        const auto target = shadow ? m_shadowDepthOnly : m_gbufferDepthOnly;
+        return MeasureGeometry(target, 16, "MeshletFrame", runId, result, [&] {
+            return DrawGeometry(grid, mesh, shadow, camera, world,
+                false, true, target, false, true, true, nullptr, nullptr, true);
+        });
+    }
+
+    bool BenchmarkTerrain(const std::shared_ptr<const r::RenderScene>& scene, bool shadow,
+        r::RasterGeometryMode mode, uint64_t runId, MeshletBenchmarkResult& result)
+    {
+        auto handles = MakeTerrainPassHandles();
+        auto& device = *m_bundle.renderer;
+        const auto camera = Camera(5.0f);
+        const auto target = shadow ? m_shadow : m_gbuffer;
+        r::RenderSettings settings;
+        settings.rasterGeometryMode = mode;
+        settings.shadowEnabled = shadow;
+        settings.shadow.mapResolution = EXTENT;
+        return MeasureGeometry(target, EXTENT, "TerrainRaster", runId, result, [&] {
+            device.GpuProfBeginPass("TerrainRaster");
+            DrawTerrain(scene, camera, shadow ? &camera : nullptr, settings, handles, target);
+            device.GpuProfEndPass("TerrainRaster");
+            return true;
+        });
     }
 
     bool SaveBenchmark(const std::vector<MeshletBenchmarkResult>& results)
@@ -1010,6 +1064,41 @@ TEST_F(MeshletGeometryShaderTest, TerrainMeshletsPreserveGrazingMirroredAndShado
     profiler::Profiler::RequestCaptureFilter(previousFilter);
 }
 
+TEST_F(MeshletGeometryShaderTest, TerrainStripPreservesGBufferAndShadowCoverage)
+{
+    const auto regular = TerrainScene(math::Matrix4::Identity(), true, 32);
+    ASSERT_TRUE(regular->terrains[0].patches[0].lod0Strip.buffer.IsValid());
+    const auto perforated = TerrainScene(math::Matrix4::Identity());
+    const auto camera = Camera(5.0f);
+    const bool profilerWasEnabled = profiler::Profiler::IsEnabled();
+    const auto previousFilter = profiler::Profiler::GetRequestedCaptureFilter();
+    profiler::Profiler::RequestCaptureFilter({});
+    profiler::Profiler::SetEnabled(true);
+    const auto stripBindings = [] {
+        const auto& records = profiler::Profiler::GetLastFrameRecords();
+        return std::count_if(records.begin(), records.end(), [](const auto& record) {
+            return std::string_view(record.name) == "TerrainStrip::Bind";
+        });
+    };
+
+    for (bool shadow : {false, true}) {
+        SCOPED_TRACE(shadow);
+        const auto* shadowView = shadow ? &camera : nullptr;
+        const auto reference = RenderTerrain(regular, camera, false, shadowView);
+        EXPECT_EQ(stripBindings(), 0);
+        const auto strip = RenderTerrain(regular, camera, false, shadowView, r::RasterGeometryMode::TRIANGLE_STRIP);
+        EXPECT_EQ(stripBindings(), 1);
+        ExpectSame(reference, strip, shadow);
+
+        const auto holeList = RenderTerrain(perforated, camera, false, shadowView);
+        const auto holeFallback = RenderTerrain(perforated, camera, false, shadowView, r::RasterGeometryMode::TRIANGLE_STRIP);
+        EXPECT_EQ(stripBindings(), 0);
+        ExpectSame(holeList, holeFallback, shadow);
+    }
+    profiler::Profiler::SetEnabled(profilerWasEnabled);
+    profiler::Profiler::RequestCaptureFilter(previousFilter);
+}
+
 TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndKeepsMovedCasters)
 {
     auto& resources = *m_resources;
@@ -1293,6 +1382,29 @@ TEST_F(MeshletGeometryShaderTest, DISABLED_SteadyHighDensityGeometryComparison)
     }
     ASSERT_EQ(results.size(), 40u);
     EXPECT_TRUE(SaveBenchmark(results));
+}
+
+TEST_F(MeshletGeometryShaderTest, DISABLED_TerrainRasterTopologyComparison)
+{
+    constexpr uint32_t CELLS = 32;
+    constexpr size_t PATCHES = 128;
+    const auto scene = TerrainScene(math::Matrix4::Identity(), true, CELLS, PATCHES);
+    const auto& patch = scene->terrains[0].patches[0];
+    ASSERT_TRUE(patch.lod0Strip.buffer.IsValid());
+    uint64_t runId = 0;
+    for (bool shadow : {false, true}) {
+        for (const bool strip : {shadow, !shadow}) {
+            MeshletBenchmarkResult result;
+            ASSERT_TRUE(BenchmarkTerrain(scene, shadow,
+                strip ? r::RasterGeometryMode::TRIANGLE_STRIP : r::RasterGeometryMode::TRIANGLE_LIST,
+                ++runId, result));
+            std::printf("TERRAIN_RASTER_BENCH pass=%s mode=%s cells=%u patches=%zu index_entries_per_patch=%u "
+                "gpu_median_ms=%.6f cpu_submit_median_ms=%.6f cpu_frame_median_ms=%.6f gpu_samples=%zu\n",
+                shadow ? "shadow" : "gbuffer", strip ? "strip" : "list", CELLS, PATCHES,
+                strip ? patch.lod0Strip.count : patch.indexCountLOD[0], Median(result.gpuFrameMs),
+                Median(result.cpuSubmitMs), Median(result.cpuFrameMs), result.gpuFrameMs.size());
+        }
+    }
 }
 
 } /// @note namespace

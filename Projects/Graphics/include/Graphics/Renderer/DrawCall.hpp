@@ -101,6 +101,8 @@ struct DrawCall {
 
     RenderLayer layer = RenderLayer::OPAQUE_LAYER;
     PrimitiveTopology topology = PrimitiveTopology::TRIANGLE_LIST;
+    /// @note インデックス付きストリップのインスタンス当たり三角形数。再開マーカーを含めない。
+    uint32_t stripTriangleCount = 0;
 };
 
 } /// @note namespace fbzz::renderer

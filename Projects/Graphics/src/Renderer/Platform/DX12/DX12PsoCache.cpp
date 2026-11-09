@@ -274,6 +274,9 @@ ID3D12PipelineState* DX12PsoCache::GetOrCreate(
     desc.DSVFormat = DX12Context::DEPTH_FORMAT;
     desc.PrimitiveTopologyType = topology == PrimitiveTopology::LINE_LIST
         ? D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE : D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ne-d3d12-d3d12_index_buffer_strip_cut_value D3D12_INDEX_BUFFER_STRIP_CUT_VALUE.
+    if (topology == PrimitiveTopology::TRIANGLE_STRIP)
+        desc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFFFFFF;
 
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/d3d12/ns-d3d12-d3d12_rasterizer_desc FillMode と CullMode は独立した状態。
     desc.RasterizerState.FillMode = (state.rasterizer == RasterizerMode::WIREFRAME

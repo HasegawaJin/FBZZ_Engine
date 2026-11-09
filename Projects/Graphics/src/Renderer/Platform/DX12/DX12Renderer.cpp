@@ -435,8 +435,8 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     }
     if (call.topology != PrimitiveTopology::TRIANGLE_LIST
         && call.topology != PrimitiveTopology::LINE_LIST
-        && (hasIndirectArguments || meshDispatch)) {
-        FBZZ_LOG_ERROR("DX12Renderer::Submit: invalid primitive topology for indirect/mesh draw");
+        && (call.topology != PrimitiveTopology::TRIANGLE_STRIP || hasIndirectArguments)) {
+        FBZZ_LOG_ERROR("DX12Renderer::Submit: invalid primitive topology for draw");
         return;
     }
     for (uint32_t slot = 0; slot < call.vsRawBuffers.size(); ++slot) {
@@ -748,8 +748,10 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
     /// @note       Draw 呼び出しより前であれば記録順の制約を満たす。
     m_stateTracker.FlushBarriers(commands);
     if (!meshDispatch) {
-        commands->IASetPrimitiveTopology(call.topology == PrimitiveTopology::LINE_LIST
-            ? D3D_PRIMITIVE_TOPOLOGY_LINELIST : D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        D3D_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+        if (call.topology == PrimitiveTopology::LINE_LIST) topology = D3D_PRIMITIVE_TOPOLOGY_LINELIST;
+        if (call.topology == PrimitiveTopology::TRIANGLE_STRIP) topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
+        commands->IASetPrimitiveTopology(topology);
     }
 
     if (!meshDispatch && prepared) {

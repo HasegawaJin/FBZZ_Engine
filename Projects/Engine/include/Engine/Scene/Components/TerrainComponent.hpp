@@ -73,6 +73,9 @@ struct TerrainComponent {
     /// @brief chunkSize × chunkSize マスのブロックごとにカリング・LOD を掛ける。
     int chunkSize = 32;
 
+    /// @note 正値で描画専用の 8 セル間隔 LOD を有効にする。距離はワールド m、0 で従来の 3 段階。
+    float farLodDistance = 0.0f;
+
     bool enabled            = true;
     bool heightDirty        = false; ///< @note true → TerrainRenderPass がメッシュを再構築する (穴の変更も含む)。
     bool splatDirty         = false; ///< @note true → スプラットと層テクスチャを再アップロードする。
@@ -94,6 +97,7 @@ struct TerrainComponent {
         r.Field("cellSize",   cellSize);
         r.Field("maxHeight",  maxHeight);
         r.Field("chunkSize",  chunkSize);
+        r.Field("farLodDistance", farLodDistance);
         r.Field("terrainAssetPath", terrainAssetPath);
         r.FloatRange("heightBlendDepth", heightBlendDepth, 0.01f, 1.0f);
         /// @note layerMaterials / heightData / splat / holeData は IReflector の対応型に収まらず、

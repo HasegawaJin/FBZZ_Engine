@@ -309,8 +309,17 @@ struct RenderPassContext : RenderLightingInput {
 /// @note vertexCount を 3 で割る必要があり、加算側で毎回書き分けると数え間違いが起きる。
 [[nodiscard]] inline int DrawCallTriangleCount(const renderer::DrawCall& call)
 {
-    if (call.topology != renderer::PrimitiveTopology::TRIANGLE_LIST) return 0;
-    const uint32_t perInstance = call.indexCount > 0 ? call.indexCount / 3u : call.vertexCount / 3u;
+    uint32_t perInstance = 0;
+    switch (call.topology) {
+    case renderer::PrimitiveTopology::TRIANGLE_LIST:
+        perInstance = (call.indexCount > 0 ? call.indexCount : call.vertexCount) / 3u;
+        break;
+    case renderer::PrimitiveTopology::TRIANGLE_STRIP:
+        perInstance = call.indexCount > 0 ? call.stripTriangleCount : (std::max)(call.vertexCount, 2u) - 2u;
+        break;
+    case renderer::PrimitiveTopology::LINE_LIST:
+        break;
+    }
     return static_cast<int>(perInstance * (call.instanceCount > 0 ? call.instanceCount : 1u));
 }
 

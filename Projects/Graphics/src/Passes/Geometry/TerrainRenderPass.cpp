@@ -42,6 +42,17 @@ bool HasTerrainBuffer(ResourceManager& resources, ResourceHandle<BufferTag> hand
     return resources.GetBufferMetadata(handle, metadata) && metadata.live;
 }
 
+void BindTerrainStrip(const RenderPassContext& ctx, const RenderTerrainPatch& patch, int lod, DrawCall& call)
+{
+    if (lod != 0 || ctx.settings.rasterGeometryMode != RasterGeometryMode::TRIANGLE_STRIP
+        || !patch.lod0Strip.buffer.IsValid() || patch.lod0Strip.count == 0) return;
+    FBZZ_PROFILE_SCOPE("TerrainStrip::Bind");
+    call.indexBuffer = patch.lod0Strip.buffer;
+    call.indexCount = patch.lod0Strip.count;
+    call.topology = PrimitiveTopology::TRIANGLE_STRIP;
+    call.stripTriangleCount = patch.indexCountLOD[0] / 3u;
+}
+
 TerrainGpuResources& GetTerrainGpuResources(ResourceManager& resources)
 {
     static TerrainGpuResources state;
@@ -209,6 +220,24 @@ bool PreserveFiberTerrainDetail(const RenderTerrainInput& input, const RenderTer
         std::clamp(cameraPosition.y,bounds[0].y,bounds[1].y),std::clamp(cameraPosition.z,bounds[0].z,bounds[1].z)};
     return (nearest-cameraPosition).LengthSq() <= input.fiberLodFar*input.fiberLodFar;
 }
+
+float TerrainLODDistanceSquared(const RenderTerrainInput& input, const RenderTerrainPatch& patch,
+    const math::Vector3& cameraPosition)
+{
+    const auto localCenter = (patch.aabbMin + patch.aabbMax) * 0.5f;
+    const auto worldCenter = input.constants.worldMatrix * math::Vector4{localCenter, 1.0f};
+    return (math::Vector3{worldCenter.x, worldCenter.y, worldCenter.z} - cameraPosition).LengthSq();
+}
+
+bool UseFarTerrainLOD(const RenderTerrainInput& input, const RenderTerrainPatch& patch, float distanceSquared)
+{
+    if (input.farLodDistance <= 0.0f || !patch.indexBufferLOD[TERRAIN_FAR_LOD_INDEX].IsValid()) return false;
+    /// @note 穴を含む粗い格子は細分化して保持するため、三角形が減らない場合もある。
+    if (patch.indexCountLOD[TERRAIN_FAR_LOD_INDEX] >= patch.indexCountLOD[TERRAIN_FAR_LOD_INDEX - 1]) return false;
+    const float distance = std::max(input.farLodDistance, input.chunkWorldSize * 6.0f);
+    return distanceSquared >= distance * distance;
+}
+
 /// @note The viewing camera controls LOD in color and shadow passes; only visibility uses the light frustum.
 static bool PrepareTerrainGpu(RenderPassContext& ctx, const RenderTerrainInput& input,
     const math::Frustum& frustum, GpuGeometryDispatch& output, bool selection = false, ComputeCall* deferred = nullptr)
@@ -239,16 +268,23 @@ static bool PrepareTerrainGpu(RenderPassContext& ctx, const RenderTerrainInput& 
         + world.m[2][0]*world.m[2][0] + world.m[2][2]*world.m[2][2]);
     std::vector<GpuGeometryCandidate> candidates;
     candidates.reserve(input.patches.size());
+    static_assert(TERRAIN_LOD_STEPS.size() <= kGpuGeometryMaxLods);
     for (const auto& patch : input.patches) {
         const auto bounds = TerrainWorldBounds(world, patch.aabbMin, patch.aabbMax);
         GpuGeometryCandidate candidate;
         candidate.boundsMin = {bounds[0].x, bounds[0].y, bounds[0].z, 0};
         candidate.boundsMax = {bounds[1].x, bounds[1].y, bounds[1].z, 0};
-        candidate.lodCount = selection || PreserveFiberTerrainDetail(input,patch,ctx.camera.m_position) ? 1u : 3u;
+        candidate.lodCount = 1;
+        if (!selection && !PreserveFiberTerrainDetail(input, patch, ctx.camera.m_position)) {
+            candidate.lodCount = static_cast<uint32_t>(TERRAIN_FAR_LOD_INDEX);
+            if (input.farLodDistance > 0.0f && UseFarTerrainLOD(input, patch,
+                TerrainLODDistanceSquared(input, patch, ctx.camera.m_position)))
+                ++candidate.lodCount;
+        }
         for (uint32_t lod = 0; lod < candidate.lodCount; ++lod)
             candidate.lods[lod] = {patch.indexCountLOD[lod], patch.gpuStartIndexLOD[lod], 0,
                 patch.gpuPatch.columns * patch.gpuPatch.rows,
-                std::max(patch.gpuPatch.cellSize * stretch * static_cast<float>(1u << lod), 0.0001f), {}};
+                std::max(patch.gpuPatch.cellSize * stretch * static_cast<float>(TERRAIN_LOD_STEPS[lod]), 0.0001f), {}};
         candidates.push_back(candidate);
     }
     auto& service = GetTerrainGpuResources(ctx.resources).selection;
@@ -315,13 +351,8 @@ static int SelectTerrainLOD(const RenderTerrainInput& input, const RenderTerrain
                             const math::Vector3& cameraPosition)
 {
     if (PreserveFiberTerrainDetail(input,chunk,cameraPosition)) return 0;
-    const math::Vector3 localCenter = (chunk.aabbMin + chunk.aabbMax) * 0.5f;
-    const math::Vector4 worldCenter = input.constants.worldMatrix
-        * math::Vector4{ localCenter.x, localCenter.y, localCenter.z, 1.0f };
-    const float dx = worldCenter.x - cameraPosition.x;
-    const float dy = worldCenter.y - cameraPosition.y;
-    const float dz = worldCenter.z - cameraPosition.z;
-    const float distSq = dx * dx + dy * dy + dz * dz;
+    const float distSq = TerrainLODDistanceSquared(input, chunk, cameraPosition);
+    if (UseFarTerrainLOD(input, chunk, distSq)) return static_cast<int>(TERRAIN_FAR_LOD_INDEX);
     const float nearDistance = input.chunkWorldSize * 2.0f;
     const float midDistance = input.chunkWorldSize * 6.0f;
     return distSq < nearDistance * nearDistance ? 0
@@ -422,7 +453,7 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
             if (!HasTerrainBuffer(ctx.resources, patch.indexBufferLOD[selectedLod])
                 || selectedIndices.empty() || selectedIndices.size() % 3 != 0
                 || selectedIndices.size() != patch.indexCountLOD[selectedLod]) return false;
-            for (size_t lod = 0; lod < 3; ++lod) {
+            for (size_t lod = 0; lod < input.LODCount(); ++lod) {
                 key.push_back(patch.indexBufferLOD[lod].id); key.push_back(patch.indexBufferLOD[lod].gen);
                 key.push_back(patch.indexCountLOD[lod]);
                 key.push_back(patch.occlusion->indices[lod].size());
@@ -468,14 +499,16 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
                 && std::max(prior.low.z,tile.low.z) < std::min(prior.high.z,tile.high.z)) return false;
         area += double(tile.high.x - tile.low.x) * (tile.high.z - tile.low.z);
         uint32_t nextX = 0, nextZ = 0, rowHeight = 0;
+        const auto largestStep = static_cast<uint32_t>(TERRAIN_LOD_STEPS[input.LODCount() - 1]);
         for (const auto& patch : input.patches) {
             const auto& g = patch.gpuPatch;
-            if (g.columns < 2 || g.rows < 2 || g.originX != nextX || g.originZ != nextZ || g.originX % 4 || g.originZ % 4
+            if (g.columns < 2 || g.rows < 2 || g.originX != nextX || g.originZ != nextZ
+                || g.originX % largestStep || g.originZ % largestStep
                 || g.terrainColumns != base.terrainColumns || g.terrainRows != base.terrainRows || g.cellSize != commonCell
                 || patch.indexCountLOD[0] != (g.columns - 1) * (g.rows - 1) * 6u
                 || patch.occlusion->indices[0].size() != patch.indexCountLOD[0]
                 || patch.occlusion->heights.size() != size_t(g.columns) * g.rows) return false;
-            for (size_t lod = 0; lod < 3; ++lod) {
+            for (size_t lod = 0; lod < input.LODCount(); ++lod) {
                 if (patch.occlusion->indices[lod].size() != patch.indexCountLOD[lod]
                     || !HasFullTerrainTopology(*patch.occlusion, g, patch.occlusion->indices[lod])) return false;
             }
@@ -1058,6 +1091,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                     SubmitCounted(ctx, call);
                 } else {
                     if (gpu) BindTerrainGpu(call, input, gpuDispatch, currentPatch, gpuShader);
+                    else BindTerrainStrip(ctx, chunk, lod, call);
                     SubmitCounted(ctx, call);
                 }
         }
@@ -1150,6 +1184,7 @@ void SubmitTerrainShadowCastersImpl(
                     SubmitCountedShadow(ctx, dc);
                 } else {
                     if (gpu) BindTerrainGpu(dc, input, gpuDispatch, currentPatch, gpuShader);
+                    else BindTerrainStrip(ctx, chunk, lod, dc);
                     SubmitCountedShadow(ctx, dc);
                 }
         }
