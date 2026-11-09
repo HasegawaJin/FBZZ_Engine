@@ -10,6 +10,7 @@
 #include "QueuedComputeComposite.hpp"
 #include <Graphics/Renderer/RenderThread.hpp>
 #include <Graphics/Renderer/RenderCpuTrace.hpp>
+#include <Graphics/Renderer/SkinningPolicy.hpp>
 #include <Core/Profiler/Profiler.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Core/Profiler/FrameTimeline.hpp>
@@ -42,6 +43,7 @@ bool ConsumeCpuShadowTransfer(IRenderer& renderer)
 }
 
 enum class ResourceSubmitOutcome : uint8_t { UNKNOWN, SUCCESS, MIXED, REENTRY, NO_QUEUED, WORKER, SERIAL_EXHAUSTED, BUSY };
+enum class EarlySubmitKind : uint8_t { CPU_SHADOW_TRANSFERS, SKINNING_READ_AHEAD };
 constexpr std::array<const char*, 8> RESOURCE_SUBMIT_LABELS{
     "AsyncResourceSubmit::Unknown", "AsyncResourceSubmit::Success", "AsyncResourceSubmit::Mixed",
     "AsyncResourceSubmit::Reentry", "AsyncResourceSubmit::NoQueued", "AsyncResourceSubmit::Worker",
@@ -325,6 +327,7 @@ public:
         std::lock_guard lock(m_commandsMutex);
         assert(!m_cpuFrameOpen && m_commands.empty());
         m_resourceUpdatesOnly = true;
+        m_skinningReadAheadSerial = 0;
         m_applicationSerial = serial;
         m_cpuFrameOpen = true;
     }
@@ -377,16 +380,19 @@ public:
         return true;
     }
     /// @note Registry lifetime is borrowed by the caller; all existing synchronization uses the same execution mutex.
-    ResourceSubmitOutcome TrySubmitResourceUpdates()
+    ResourceSubmitOutcome TrySubmitPendingCommands(EarlySubmitKind kind)
     {
-        if (IsRenderThread()) return ResourceSubmitOutcome::WORKER;
+        const bool skinning = kind == EarlySubmitKind::SKINNING_READ_AHEAD;
+        if (IsRenderThread() || (skinning && std::this_thread::get_id() != m_producerThread))
+            return ResourceSubmitOutcome::WORKER;
         std::unique_lock executionLock(m_executionMutex, std::try_to_lock);
         if (!executionLock.owns_lock()) return ResourceSubmitOutcome::BUSY;
         if (m_synchronousActive) return ResourceSubmitOutcome::REENTRY;
         std::unique_lock commandsLock(m_commandsMutex, std::try_to_lock);
         if (!commandsLock.owns_lock()) return ResourceSubmitOutcome::BUSY;
         if (m_shutdown || !m_cpuFrameOpen || m_commands.empty()) return ResourceSubmitOutcome::NO_QUEUED;
-        if (!m_resourceUpdatesOnly) return ResourceSubmitOutcome::MIXED;
+        if (skinning && m_skinningReadAheadSerial != 0) return ResourceSubmitOutcome::NO_QUEUED;
+        if (!skinning && !m_resourceUpdatesOnly) return ResourceSubmitOutcome::MIXED;
         if (m_submissionSerial == std::numeric_limits<uint64_t>::max()) return ResourceSubmitOutcome::SERIAL_EXHAUSTED;
         const uint64_t serial = m_submissionSerial + 1;
         auto reservation = m_thread.TryReserveSubmission(serial);
@@ -401,10 +407,23 @@ public:
         /// @note Commit before publication because the worker may finish immediately after notification.
         m_submissionSerial = serial;
         m_resourceUpdatesOnly = true;
+        if (skinning) m_skinningReadAheadSerial = serial;
         const bool accepted = reservation.Publish(std::move(frame));
         assert(accepted);
         cpu_trace::PacketAccepted(&m_thread, serial, accepted);
         return ResourceSubmitOutcome::SUCCESS;
+    }
+    void FinishSkinningReadAhead()
+    {
+        if (std::this_thread::get_id() != m_producerThread || IsRenderThread()) return;
+        std::lock_guard executionLock(m_executionMutex);
+        if (m_skinningReadAheadSerial == 0) return;
+        const SynchronousScope synchronousScope(m_synchronousActive);
+        const cpu_trace::SourceScope traceSource(cpu_trace::Source::UNKNOWN, "SkinningReadAhead::Join");
+        const cpu_trace::WaitKindScope traceWait(cpu_trace::WaitKind::COMPLETION);
+        const bool completed = m_thread.WaitUntilCompleted(m_skinningReadAheadSerial);
+        assert(completed);
+        (void)completed;
     }
     void Shutdown() override
     {
@@ -782,6 +801,7 @@ private:
     bool m_vsync = false;
     bool m_cpuFrameOpen = false;
     bool m_resourceUpdatesOnly = true;
+    uint64_t m_skinningReadAheadSerial = 0;
     bool m_synchronousActive = false;
     bool m_resizePending = false;
     bool m_shutdown = false;
@@ -1141,12 +1161,32 @@ bool TrySubmitPendingResourceUpdates(IRenderer& renderer)
     auto outcome = ResourceSubmitOutcome::UNKNOWN;
     if (!registryLock.owns_lock()) outcome = ResourceSubmitOutcome::BUSY;
     else for (const auto& entry : registry.entries) if (entry.facade == &renderer) {
-        outcome = entry.owner->TrySubmitResourceUpdates();
+        outcome = entry.owner->TrySubmitPendingCommands(EarlySubmitKind::CPU_SHADOW_TRANSFERS);
         break;
     }
     const cpu_trace::SourceScope traceOutcome(cpu_trace::Source::UNKNOWN,
         RESOURCE_SUBMIT_LABELS[static_cast<size_t>(outcome)]);
     return outcome == ResourceSubmitOutcome::SUCCESS;
+}
+
+bool TryStartOwnedSkinningReadAhead(IRenderer& renderer)
+{
+    if (s_resourceSubmitActive) return false;
+    const SynchronousScope attemptScope(s_resourceSubmitActive);
+    auto& registry = Registry();
+    std::unique_lock registryLock(registry.mutex, std::try_to_lock);
+    if (!registryLock.owns_lock()) return false;
+    for (const auto& entry : registry.entries) {
+        if (entry.facade != &renderer) continue;
+        const cpu_trace::SourceScope traceSource(cpu_trace::Source::UNKNOWN, "SkinningReadAhead::Submit");
+        return entry.owner->TrySubmitPendingCommands(EarlySubmitKind::SKINNING_READ_AHEAD) == ResourceSubmitOutcome::SUCCESS;
+    }
+    return false;
+}
+
+void FinishOwnedSkinningReadAhead(IRenderer& renderer)
+{
+    if (auto* owner = FindRenderer(renderer)) owner->FinishSkinningReadAhead();
 }
 
 RendererBundle EnableRenderThread(RendererBundle native)

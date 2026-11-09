@@ -72,6 +72,7 @@
 #include "Engine/Renderer/RenderState.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Graphics/Renderer/RenderCpuTrace.hpp>
+#include <Graphics/Renderer/SkinningPolicy.hpp>
 #include "Engine/Renderer/DynamicBufferPool.hpp"
 #include "Engine/Asset/Skeleton.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
@@ -677,6 +678,18 @@ void RenderSystem(Scene& scene,
     auto& skyCloudShadowScale = lighting.cloudShadowScale;
     auto& skyCloudShadowSpeed = lighting.cloudShadowSpeed;
     math::Vector3 lightDir = lightData.lightDir.Normalized();
+    bool skinningReadAhead = false;
+    if (renderer::UseSkinningWaitOptimization() && renderer::UseOwnedSkinningBatch()
+        && resources.Get(shared.skinningComputeCS) && resources.Get(shared.skinningCB)) {
+        const auto skinned = scene.GetEntities<SkinnedMeshRenderer>();
+        const bool hasWarmSkinning = std::any_of(skinned.begin(), skinned.end(), [&](EntityID id) {
+            const auto* object = scene.GetGameObject(id);
+            const auto* skin = scene.GetComponent<SkinnedMeshRenderer>(id);
+            return object && object->activeInHierarchy() && skin && skin->enabled && skin->lodVisible
+                && skin->gpuSkinnedThisFrame && skin->model && skin->skinnedBufferModel == skin->model;
+        });
+        if (hasWarmSkinning) skinningReadAhead = renderer::TryStartOwnedSkinningReadAhead(renderer);
+    }
     SceneShadowBounds shadowBounds;
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::ComputeShadowBounds");
@@ -690,6 +703,8 @@ void RenderSystem(Scene& scene,
 
     auto shadows = renderer::PrepareShadows(camera, rs, shadowBounds, lightDir,
         dirShadowDistance, dirShadowBias);
+    /// @note The producer may access lazy native descriptors after the CPU-only shadow preparation.
+    if (skinningReadAhead) renderer::FinishOwnedSkinningReadAhead(renderer);
     const auto& cascades = shadows.cascades;
     const int cascadeCount = shadows.count;
     const auto& lightVP = shadows.lightVP;

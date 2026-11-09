@@ -73,6 +73,7 @@ public:
     void InvalidateObjectConstants() { m_hasLastObject = false; }
 
 private:
+    [[nodiscard]] bool CheckDeformedReadiness(ResourceHandle<BufferTag> output);
     const math::Frustum* m_gpuFrustum = nullptr;
     std::vector<math::Vector4> m_gpuBounds;
     FBZZ_GRAPHICS_API void SubmitOne(const renderer::DrawCall& call);
@@ -83,6 +84,7 @@ private:
     renderer::ResourceHandle<renderer::ShaderTag> m_baseShader;
     renderer::ResourceHandle<renderer::ShaderTag> m_instancedShader;
     bool                                          m_shadow = false;
+    bool                                          m_reuseDeformedReadiness = false;
 
     renderer::DrawCall       m_prototype{};
     std::vector<PerObjectCB> m_pending;

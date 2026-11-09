@@ -8,6 +8,7 @@
 #include <Graphics/Renderer/RenderCpuTrace.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Graphics/Renderer/GpuInstanceCulling.hpp>
+#include <cstdlib>
 #include <cstring>
 #include <Graphics/Renderer/IBuffer.hpp>
 #include <array>
@@ -58,6 +59,20 @@ ResourceHandle<ShaderTag> DeformedShader(RenderPassContext& ctx, ResourceHandle<
 /// @note CPU 側の得が確実とは言えない。3 個から束ねる。
 constexpr std::size_t kMinInstanceCount = 3;
 
+RenderSkinningWriteReceipt* FindDeformedWrite(RenderPassContext& ctx, ResourceHandle<BufferTag> output)
+{
+    auto& receipt = ctx.skinningBatchReceipt;
+    /// @note Keep the draw-side lookup bounded; larger skinning batches use their usual native validation.
+    constexpr size_t MAX_MEMOIZED_OUTPUTS = 2;
+    if (!receipt.ownedPath || receipt.writes.size() > MAX_MEMOIZED_OUTPUTS
+        || receipt.resourceInstance != ctx.resources.GetInstanceId()
+        || receipt.resourceEpoch != ctx.resources.GetResetVersion()
+        || receipt.resourceFrame != ctx.resources.FrameStamp()) return nullptr;
+    for (auto& write : receipt.writes)
+        if (write.output == output && write.recorded && write.resultingVersion > write.previousVersion) return &write;
+    return nullptr;
+}
+
 } /// @note namespace
 
 bool IsSameInstanceBatch(const renderer::DrawCall& a, const renderer::DrawCall& b)
@@ -107,11 +122,42 @@ InstanceBatcher::InstanceBatcher(RenderPassContext& ctx,
 {
     m_gpuFrustum = gpuFrustum;
     m_deformedShader = DeformedShader(ctx, baseShader);
+    if (m_deformedShader.IsValid()) {
+        const char* mode = std::getenv("FBZZ_DEFORMED_BATCH_READINESS_REUSE");
+        m_reuseDeformedReadiness = !mode || std::strcmp(mode, "0") != 0;
+    }
 }
 
 InstanceBatcher::~InstanceBatcher()
 {
     Flush();
+}
+
+bool InstanceBatcher::CheckDeformedReadiness(ResourceHandle<BufferTag> output)
+{
+    const auto liveGpuOutput = [&] {
+        BufferResourceMetadata metadata;
+        return m_ctx.resources.GetBufferMetadata(output, metadata) && metadata.gpuWritable;
+    };
+    if (const auto* write = m_reuseDeformedReadiness ? FindDeformedWrite(m_ctx, output) : nullptr; write && write->deformedInstancingReady) {
+        const cpu_trace::SourceScope retainedWait(cpu_trace::Source::BATCH_DEFORMED,
+            "InstanceBatcher::DeformedReadinessRetainedWait", true);
+        m_ctx.resources.SynchronizeBufferAccess(false);
+        /// @note The wait may pump scene or resource changes. A live GPU-writable output keeps its SRV and nonzero version across writes.
+        const auto* current = FindDeformedWrite(m_ctx, output);
+        if (current && current->deformedInstancingReady && liveGpuOutput()) {
+            const cpu_trace::SourceScope cacheHit(cpu_trace::Source::BATCH_DEFORMED, "InstanceBatcher::DeformedReadinessCacheHit");
+            return true;
+        }
+    }
+    const auto* deformed = m_ctx.resources.Get(output);
+    const bool ready = deformed && deformed->GetContentVersion()
+        && deformed->GetBindlessSrvIndex() != INVALID_BINDLESS_INDEX;
+    if (m_reuseDeformedReadiness && ready) {
+        if (auto* write = FindDeformedWrite(m_ctx, output); write && liveGpuOutput())
+            write->deformedInstancingReady = true;
+    }
+    return ready;
 }
 
 void InstanceBatcher::Add(const renderer::DrawCall& prototype, const PerObjectCB& object,
@@ -121,15 +167,14 @@ void InstanceBatcher::Add(const renderer::DrawCall& prototype, const PerObjectCB
         ? cpu_trace::Source::BATCH_DEFORMED : cpu_trace::Source::BATCH_STATIC, "InstanceBatcher::Add");
     /// @note LOD 遷移中は objectParams.x を PS が読む。per-instance に運べないので束ねない
     /// @note (Docs/design/gpu-instancing.md §2.1)。
-    const auto* deformed = prototype.deformationSource.IsValid() ? m_ctx.resources.Get(prototype.vertexBuffer) : nullptr;
-    const bool deformedReady = !prototype.deformationSource.IsValid()
-        || (m_deformedShader.IsValid() && deformed && deformed->GetContentVersion()
-            && deformed->GetBindlessSrvIndex() != INVALID_BINDLESS_INDEX);
-    const bool batchable = !prototype.preparedSkinning && deformedReady && m_instancedShader.IsValid()
-                        && prototype.shader == m_baseShader
-                        && object.objectParams.x == 0.0f
-                        && !prototype.instanceBuffer.IsValid() && prototype.instanceCount == 1
-                        && !prototype.indirectArguments.IsValid() && prototype.meshGroupCountX == 0;
+    bool batchable = !prototype.preparedSkinning && m_instancedShader.IsValid()
+        && prototype.shader == m_baseShader && object.objectParams.x == 0.0f
+        && !prototype.instanceBuffer.IsValid() && prototype.instanceCount == 1
+        && !prototype.indirectArguments.IsValid() && prototype.meshGroupCountX == 0;
+    if (batchable && prototype.deformationSource.IsValid()) {
+        /// @note Get は CPU 描画完了を待つため、束ねられる候補だけ native の内容版を照合する。
+        batchable = m_deformedShader.IsValid() && CheckDeformedReadiness(prototype.vertexBuffer);
+    }
 
     if (!batchable) {
         Flush();
@@ -218,11 +263,12 @@ void InstanceBatcher::Flush()
     }
 
     renderer::ResourceHandle<renderer::StructuredBufferTag> instanceBuffer;
-    const bool deformedResourcesReady = !deformedBatch || std::all_of(vertices.begin(), vertices.end(), [&](const auto handle) {
-        const auto* buffer = m_ctx.resources.Get(handle);
-        return buffer && buffer->GetContentVersion() && buffer->GetBindlessSrvIndex() != INVALID_BINDLESS_INDEX;
-    });
-    if (deformedResourcesReady && pending.size() >= kMinInstanceCount) {
+    const bool canUploadBatch = pending.size() >= kMinInstanceCount
+        && (!deformedBatch || std::all_of(vertices.begin(), vertices.end(), [&](const auto handle) {
+            const auto* buffer = m_ctx.resources.Get(handle);
+            return buffer && buffer->GetContentVersion() && buffer->GetBindlessSrvIndex() != INVALID_BINDLESS_INDEX;
+        }));
+    if (canUploadBatch) {
         instanceBuffer = s_instancePool.Acquire(
             m_ctx.resources, pending.size(), static_cast<std::uint32_t>(deformedBatch ? sizeof(DeformedInstanceData) : sizeof(PerInstanceData)));
     }

@@ -8,7 +8,9 @@
 #include <Graphics/Renderer/DebugDraw.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/SkinningPolicy.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Pipeline/InstanceBatch.hpp>
 #include "../../../Graphics/src/Passes/Geometry/OwnedSkinningBatch.hpp"
 #include <Graphics/Renderer/IShader.hpp>
 #include <cstdlib>
@@ -724,7 +726,7 @@ struct OwnedSkinningProbe {
     std::function<void()> beforeOperation;
     float sourceValue = 0, paletteValue = 0;
     std::array<uint32_t, 4> constants{};
-    uint32_t begin = 0, end = 0, attempts = 0, operations = 0;
+    uint32_t begin = 0, end = 0, attempts = 0, operations = 0, srvReads = 0;
     bool rejectAll = false, rejectGroup = false, bindless = false;
 };
 
@@ -740,14 +742,17 @@ private:
 
 class OwnedProbeOutput final : public renderer::IBuffer {
 public:
-    OwnedProbeOutput(size_t bytes, uint32_t stride, uint32_t descriptor) : m_bytes(bytes), m_stride(stride), m_descriptor(descriptor) {}
+    OwnedProbeOutput(OwnedSkinningProbe& probe, size_t bytes, uint32_t stride, uint32_t descriptor)
+        : m_probe(probe), m_bytes(bytes), m_stride(stride), m_descriptor(descriptor) {}
     void Update(const void*, size_t) override {}
     size_t GetSize() const override { return m_bytes; }
     uint32_t GetStride() const override { return m_stride; }
+    uint32_t GetBindlessSrvIndex() const override { ++m_probe.srvReads; return m_descriptor + 100; }
     uint32_t GetBindlessUavIndex() const override { return m_descriptor; }
     uint64_t GetContentVersion() const override { return m_version; }
     void NotifyGpuWrite() override { ++m_version; }
 private:
+    OwnedSkinningProbe& m_probe;
     size_t m_bytes;
     uint32_t m_stride, m_descriptor;
     uint64_t m_version = 5;
@@ -823,7 +828,7 @@ private:
     { return std::make_unique<OwnedProbeConstants>(m_probe, bytes); }
     std::unique_ptr<renderer::IShader> CreateNativeShader(const std::string& path) override { return std::make_unique<OwnedProbeShader>(path); }
     std::unique_ptr<renderer::IBuffer> CreateNativeGpuWritableVertexBuffer(size_t bytes, uint32_t stride) override
-    { return std::make_unique<OwnedProbeOutput>(bytes, stride, ++m_descriptor); }
+    { return std::make_unique<OwnedProbeOutput>(m_probe, bytes, stride, ++m_descriptor); }
     std::unique_ptr<renderer::IStructuredBuffer> CreateNativeStructuredBuffer(const void* data, uint32_t count, uint32_t stride) override
     { return std::make_unique<OwnedProbeStructured>(m_probe, data, count, stride); }
     OwnedSkinningProbe& m_probe;
@@ -833,23 +838,31 @@ private:
     uint32_t m_descriptor = 7;
 };
 
-/// @note Set both private mode switches for one test and restore the invoking process's comparison settings.
+/// @note Restore the invoking process's comparison settings.
 class SkinningBatchEnvironment {
 public:
-    SkinningBatchEnvironment(const char* owned, const char* demand = "0")
+    SkinningBatchEnvironment(const char* owned, const char* demand = "0", const char* readinessReuse = nullptr)
+        : m_overrideReadiness(readinessReuse != nullptr)
     {
         if (const char* value = std::getenv("FBZZ_OWNED_SKINNING_BATCH")) m_owned = value;
         if (const char* value = std::getenv("FBZZ_GPU_SKINNING_DEMAND")) m_demand = value;
         _putenv_s("FBZZ_OWNED_SKINNING_BATCH", owned ? owned : "");
         _putenv_s("FBZZ_GPU_SKINNING_DEMAND", demand ? demand : "");
+        if (m_overrideReadiness) {
+            if (const char* value = std::getenv("FBZZ_DEFORMED_BATCH_READINESS_REUSE")) m_readiness = value;
+            _putenv_s("FBZZ_DEFORMED_BATCH_READINESS_REUSE", readinessReuse);
+        }
     }
     ~SkinningBatchEnvironment()
     {
         _putenv_s("FBZZ_OWNED_SKINNING_BATCH", m_owned ? m_owned->c_str() : "");
         _putenv_s("FBZZ_GPU_SKINNING_DEMAND", m_demand ? m_demand->c_str() : "");
+        if (m_overrideReadiness)
+            _putenv_s("FBZZ_DEFORMED_BATCH_READINESS_REUSE", m_readiness ? m_readiness->c_str() : "");
     }
 private:
-    std::optional<std::string> m_owned, m_demand;
+    std::optional<std::string> m_owned, m_demand, m_readiness;
+    bool m_overrideReadiness;
 };
 
 class OwnedSkinningOperationTest : public testkit::Fixture {
@@ -891,6 +904,66 @@ protected:
     bool OwnedRequested() const
     { return renderer::skinning_batch_detail::Enabled(); }
 };
+
+TEST_F(OwnedSkinningOperationTest, DeformedReadinessReusesLookupWithoutMovingCompletion)
+{
+    const SkinningBatchEnvironment environment("1", "0", "1");
+    m_probe.bindless = true;
+    m_settings.gpuInstancing = true;
+    m_handles.gbufferShader = m_handles.skinningComputeCS;
+    m_handles.objectCB = m_resources->CreateConstantBuffer(sizeof(renderer::PerObjectCB));
+    renderer::RenderPassContext skinning{{}, *m_rhi, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
+    skinning.skinningRequests = {Request(), Request()};
+    skinning.skinningMatrices = {math::Matrix4::Identity()};
+    renderer::ExecuteSkinningRequests(skinning);
+
+    RhiResult drawResult;
+    OwnedSkinningProbe drawProbe;
+    drawProbe.bindless = true;
+    OwnedProbeRhi drawRhi(drawResult, drawProbe);
+    renderer::RenderPassContext context{{}, drawRhi, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
+    context.skinningBatchReceipt = std::move(skinning.skinningBatchReceipt);
+    auto& receipt = context.skinningBatchReceipt;
+    ASSERT_EQ(receipt.writes.size(), 2u);
+    ASSERT_TRUE(receipt.writes[0].recorded);
+    ASSERT_TRUE(receipt.writes[1].recorded);
+    const auto first = receipt.writes[0].output;
+    const auto second = receipt.writes[1].output;
+
+    const renderer::SkinnedVertex source{};
+    renderer::DrawCall call;
+    call.shader = m_handles.gbufferShader;
+    call.vertexCount = 3;
+    call.deformationSource = m_resources->CreateVertexBuffer(&source, sizeof(source), sizeof(source));
+    const renderer::PerObjectCB object{};
+    const auto submit = [&](renderer::ResourceHandle<renderer::BufferTag> output) {
+        renderer::InstanceBatcher batch(context, call.shader, call.shader, false);
+        call.vertexBuffer = output;
+        m_resources->Update(m_handles.objectCB, &object, sizeof(object));
+        const auto operations = m_probe.operations;
+        const auto draws = drawResult.submittedVertices.size();
+        batch.Add(call, object);
+        EXPECT_EQ(m_probe.operations, operations + 1);
+        EXPECT_EQ(drawResult.submittedVertices.size(), draws);
+        batch.Flush();
+        EXPECT_EQ(drawResult.submittedVertices.size(), draws + 1);
+    };
+
+    submit(first);
+    submit(second);
+    EXPECT_EQ(m_probe.srvReads, 2u);
+    submit(first);
+    submit(second);
+    EXPECT_EQ(m_probe.srvReads, 2u);
+
+    m_probe.beforeOperation = [&] { ++receipt.resourceFrame; };
+    submit(first);
+    EXPECT_EQ(m_probe.srvReads, 3u);
+    receipt.resourceFrame = m_resources->FrameStamp();
+    const SkinningBatchEnvironment disabled("1", "0", "0");
+    submit(first);
+    EXPECT_EQ(m_probe.srvReads, 4u);
+}
 
 /// @note Three distinct source groups and an unbatched legacy palette must all finish in one producer-to-worker operation.
 TEST_F(OwnedSkinningOperationTest, DefaultOwnedBatchCompletesDistinctGroupsAndLegacyInputInOneOperation)
@@ -2134,6 +2207,48 @@ TEST_F(ThreadedRhiTest, EarlyTransfersOwnInputsPreserveAllLateWritersAndKeepFram
     m_bundle.renderer->EndFrame();
     m_bundle.renderer->WaitForCpuFrame();
     EXPECT_EQ(m_result.draws, (std::vector<int>{61}));
+}
+
+TEST_F(ThreadedRhiTest, SkinningReadAheadPublishesMixedPrefixBeforeOrderedNativeBufferRead)
+{
+    m_result.bufferTracksWrites = true;
+    const int original = 7, early = 11, late = 19;
+    const auto buffer = m_resources->CreateVertexBuffer(&original, sizeof(original), sizeof(int));
+    ASSERT_TRUE(buffer.IsValid());
+    m_result.blockTransferNumber = 1;
+    m_bundle.renderer->BeginCpuFrame(1);
+    m_bundle.renderer->BeginFrame();
+    m_resources->Update(m_constants, &early, sizeof(early));
+    m_resources->Update(buffer, &early, sizeof(early));
+    EXPECT_FALSE(renderer::TrySubmitPendingResourceUpdates(*m_bundle.renderer));
+    bool submitted = false;
+    for (uint32_t attempt = 0; attempt < 65536 && !submitted; ++attempt) {
+        submitted = renderer::TryStartOwnedSkinningReadAhead(*m_bundle.renderer);
+        if (!submitted) std::this_thread::yield();
+    }
+    ASSERT_TRUE(submitted);
+    m_result.entered.acquire();
+    m_resources->Update(m_constants, &late, sizeof(late));
+    m_resources->Update(buffer, &late, sizeof(late));
+    EXPECT_FALSE(renderer::TryStartOwnedSkinningReadAhead(*m_bundle.renderer));
+    m_resumed = true;
+    m_result.resume.release();
+    renderer::FinishOwnedSkinningReadAhead(*m_bundle.renderer);
+    EXPECT_EQ(m_result.transfers, (std::vector<int>{early}));
+
+    const std::array handles{buffer};
+    std::array<renderer::BufferResourceState, 1> states;
+    m_resources->GetBufferStates(handles, states);
+    EXPECT_TRUE(states[0].live);
+    EXPECT_EQ(states[0].contentVersion, 3u);
+    EXPECT_EQ(m_result.transfers, (std::vector<int>{early, late}));
+    int copied = 0;
+    const auto* native = m_resources->Get(buffer);
+    ASSERT_NE(native, nullptr);
+    ASSERT_TRUE(native->CopyData(0, sizeof(copied), &copied));
+    EXPECT_EQ(copied, late);
+    m_bundle.renderer->EndFrame();
+    m_bundle.renderer->WaitForCpuFrame();
 }
 
 TEST_F(ThreadedRhiTest, StructuredOpaqueAndBeginFrameQueuesStayInOriginalFallbackOrder)

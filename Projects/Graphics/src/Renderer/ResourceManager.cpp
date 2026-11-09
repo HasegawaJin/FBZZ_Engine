@@ -775,14 +775,19 @@ IBuffer* ResourceManager::Get(ResourceHandle<BufferTag> h)
     const cpu_trace::SourceScope traceSource(cpu_trace::Source::BUFFER_GET, "ResourceManager::Get(Buffer)", true);
     /// @note Static meshes have no deformed buffer; a null lookup has no shadow/version to synchronize and must not flush the CPU command frame.
     if (!h.IsValid()) { cpu_trace::Count(cpu_trace::Counter::BUFFER_INVALID); return nullptr; }
+    SynchronizeBufferAccess(true);
+    return m_buffers.Get(h);
+}
+
+void ResourceManager::SynchronizeBufferAccess(bool nativeRead)
+{
     /// @note CPU shadow と内容版は転送要求の完了後に読む。Render Thread の再入では待たない。
     if (!m_rendererDetached && !m_renderer.IsRenderThread()) {
-        cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
+        if (nativeRead) cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
         m_renderer.WaitForCpuFrame();
-    } else {
+    } else if (nativeRead) {
         cpu_trace::Count(m_rendererDetached ? cpu_trace::Counter::BUFFER_DETACHED : cpu_trace::Counter::BUFFER_WORKER);
     }
-    return m_buffers.Get(h);
 }
 
 void ResourceManager::GetBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
@@ -799,14 +804,7 @@ void ResourceManager::ReadBufferStates(std::span<const ResourceHandle<BufferTag>
     if (handles.size() != out.size()) return;
     const cpu_trace::SourceScope traceSource(cpu_trace::Source::BUFFER_GET, "ResourceManager::GetBufferStates", true);
     const bool hasValidHandle = std::any_of(handles.begin(), handles.end(), [](const auto handle) { return handle.IsValid(); });
-    if (hasValidHandle) {
-        if (!m_rendererDetached && !m_renderer.IsRenderThread()) {
-            cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
-            m_renderer.WaitForCpuFrame();
-        } else {
-            cpu_trace::Count(m_rendererDetached ? cpu_trace::Counter::BUFFER_DETACHED : cpu_trace::Counter::BUFFER_WORKER);
-        }
-    }
+    if (hasValidHandle) SynchronizeBufferAccess(true);
     if (scope) scope->CaptureReadBoundary();
     ReadNativeBufferStates(handles, out);
 }

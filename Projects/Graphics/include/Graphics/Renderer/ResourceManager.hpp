@@ -325,9 +325,12 @@ public:
 
 private:
     friend struct prepared_skinning_detail::TicketFactory;
+    friend class InstanceBatcher;
     friend class Material;
     friend class material_transfer_detail::MaterialTransferPayloadScope;
     friend class buffer_state_detail::BufferStateReadScope;
+    /// @note Wait on the attached facade before using native data or a proof that replaces its read.
+    void SynchronizeBufferAccess(bool nativeRead);
     FBZZ_GRAPHICS_API void ReadBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
                           std::span<BufferResourceState> out,
                           buffer_state_detail::BufferStateReadScope* scope);

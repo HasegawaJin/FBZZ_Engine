@@ -23,6 +23,8 @@ struct RenderSkinningWriteReceipt {
     ResourceHandle<BufferTag> output;
     uint64_t previousVersion = 0, resultingVersion = 0;
     bool recorded = false;
+    /// @note Set by the first ordered Add lookup for a live GPU-writable output in this view.
+    bool deformedInstancingReady = false;
 };
 /// @note Owned results are consumed only by the matching resource instance/epoch and the caller's current scene owner.
 struct RenderSkinningBatchReceipt {
