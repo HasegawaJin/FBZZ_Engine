@@ -13,6 +13,16 @@
 /// @note 画面空間 AO / 接触影の受け口。対象は «ライティングを持つ全マテリアル» で、このファイルを include するシェーダーとちょうど一致する。
 #include "Rendering/ScreenSpaceShading.hlsli"
 
+/// @brief 両面カードの辺を暗所でも読める診断色で描く。
+float4 Lighting_CardWireframe(float3 normal, float mode)
+{
+    const float3 up = float3(0.0f, 1.0f, 0.0f);
+    const float diffuse = abs(dot(SafeNormalize(normal, up), SafeNormalize(-lightDir, up)));
+    const float ambient = dot(ambientColor, float3(0.2126f, 0.7152f, 0.0722f));
+    const float lighting = mode > 1.5f ? 1.0f : max(0.25f, saturate(diffuse * lightIntensity + ambient));
+    return float4(float3(0.08f, 0.92f, 0.78f) * lighting, 1.0f);
+}
+
 /// @brief Return source-side RGB transmission for a receiver already resolved inside water.
 /// @see https://www.pbr-book.org/4ed/Volume_Scattering/Transmittance PBRT, Transmittance.
 float3 Lighting_WaterSourceTransmittance(float3 worldPos, float3 towardSource,

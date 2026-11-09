@@ -42,7 +42,7 @@ constexpr CubeFaceBasis kCubeFaces[6] = {
 
 } /// @note namespace
 
-void ExecuteSkyCapturePass(RenderPassContext& ctx)
+void ExecuteSkyCapturePass(RenderPassContext& ctx, bool animateCloudSettings)
 {
     auto& renderer  = ctx.renderer;
     auto& resources = ctx.resources;
@@ -80,7 +80,7 @@ void ExecuteSkyCapturePass(RenderPassContext& ctx)
         /// @note 小さな間隔を float で保てるよう、steady_clock の絶対 epoch ではなく起点からの秒を使う。
         static const auto clockOrigin = std::chrono::steady_clock::now();
         const float captureTime = std::chrono::duration<float>(std::chrono::steady_clock::now() - clockOrigin).count();
-        if (!ctx.environmentResources->ConsumeDirty(sig, captureTime, ctx.frameStamp))
+        if (!ctx.environmentResources->ConsumeDirty(sig, captureTime, ctx.frameStamp, animateCloudSettings))
             /// @note 変化なし / 間引き中 → キャッシュ済みキューブを再利用
             return;
     }

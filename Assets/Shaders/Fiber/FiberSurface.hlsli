@@ -410,6 +410,18 @@ float4 PSMain(FiberPixel p) : SV_Target0
 #else
 float4 PSMain(FiberPixel p) : SV_Target0
 {
+    /// @note 配置密度と LOD は維持し、表面の模様とアトラスのアルファを外して変形後の三角形の辺を描く。
+    if (objectParams.y > 0.5f) {
+#if FIBER_FIN == 2
+        const float density = FiberMaskFiltered(p.uv).r;
+#endif
+        ApplyLodDither(p.position.xy, objectParams.x);
+        clip(fiberLod.y - FiberHash(floor(p.root.xz * 31.0f)) - 1.0e-6f);
+#if FIBER_FIN == 2
+        clip(fiberDensity * density - p.coordinate - 1.0e-6f);
+#endif
+        return Lighting_CardWireframe(p.normal, objectParams.y);
+    }
     FiberStrand strand = FiberCoverage(p);
     float2 cardMotion = float2(1.0f, 1.0f);
 #ifdef FBZZ_FIBER_GRASS_CARD

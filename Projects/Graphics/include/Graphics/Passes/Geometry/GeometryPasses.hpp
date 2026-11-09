@@ -289,7 +289,7 @@ public:
 
 FBZZ_GRAPHICS_API void ExecuteSkyPass                        (RenderPassContext& ctx);
 FBZZ_GRAPHICS_API void ExecuteSunMoonPass                    (RenderPassContext& ctx);
-FBZZ_GRAPHICS_API void ExecuteSkyCapturePass                 (RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void ExecuteSkyCapturePass                 (RenderPassContext& ctx, bool animateCloudSettings = false);
 FBZZ_GRAPHICS_API void ExecuteSkyLightBakePass               (RenderPassContext& ctx);
 FBZZ_GRAPHICS_API void ExecuteLightCookiePass                (RenderPassContext& ctx);
 FBZZ_GRAPHICS_API void ReleaseLightCookieCache               ();

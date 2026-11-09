@@ -36,6 +36,7 @@ cbuffer ObjectConstants : register(CB_OBJECT)
     /// @note x = LOD ディザのしきい値 (Rendering/LodDither.hlsli が解釈する)。
     /// @note 0 が「無効」か: この枠を書かないパスが既定値のまま素通りできるようにするため。
     /// @note 1 を無効値にすると、書き忘れたパスの絵が黙って消える。
+    /// @note y = カードのワイヤー診断表示。0=無効、1=Lit、2=Unlit。
     float4   objectParams;
 };
 #endif /// @note FBZZ_OBJECT_CONSTANTS

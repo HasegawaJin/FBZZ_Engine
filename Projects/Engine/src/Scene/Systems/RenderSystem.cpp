@@ -1159,8 +1159,10 @@ void RenderSystem(Scene& scene,
     bool reflectionProbeSelected = false;
     float reflectionProbeIntensity = 1.0f;
     int dynamicIblMipCount = 0;
-    if (activeIblSource == IblSource::DynamicSky) {
-        ExecuteSkyCapturePass(passCtx);
+    /// @note Unlit の消灯済み skyDimmer を共有キューブへ焼くと、別の Lit ビューも黒い照明を読む。
+    /// @see Assets/Shaders/Material/Sky/Skydome.hlsl PSMain の skyDimmer。
+    if (!rs.IsUnlit() && activeIblSource == IblSource::DynamicSky) {
+        ExecuteSkyCapturePass(passCtx, Script::IsInPlayMode());
         ExecuteSkyLightBakePass(passCtx);
         if (sEnvironmentResources.HasBakedTextures()) {
             passHandles.iblIrradiance = sEnvironmentResources.skyIrradiance;
@@ -1179,7 +1181,7 @@ void RenderSystem(Scene& scene,
     const auto reflectionProbeProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSystem::ReflectionProbeCapture", "Rendering"));
     material_demand_detail::CompleteBindings(passCtx);
-    if (auto* localProbe = ExecuteReflectionProbeCapturePass(passCtx)) {
+    if (auto* localProbe = rs.IsUnlit() ? nullptr : ExecuteReflectionProbeCapturePass(passCtx)) {
         reflectionProbeSelected = true;
         passHandles.iblIrradiance = localProbe->runtimeIrradiance;
         passHandles.iblPrefilter  = localProbe->runtimePrefilter;

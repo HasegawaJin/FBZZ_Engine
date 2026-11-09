@@ -615,6 +615,8 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
 {
     auto& [ctx,cache,pass,frustum,lightFrame,countStatistics]=submission;
     const bool forwardPass=pass==InstancePass::FORWARD || pass==InstancePass::CAPTURE;
+    const float cardWireframe = pass == InstancePass::FORWARD && ctx.settings.IsWireframe()
+        ? (ctx.settings.IsUnlit() ? 2.0f : 1.0f) : 0.0f;
     const bool gpu=selection!=nullptr;
     /// @note GPU visibility stays on the GPU; unresolved candidates must not be reported as visible CPU objects.
     /// @see Docs/design/instanced-mesh.md カリング統計の完全性。
@@ -725,7 +727,9 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         draw.constantBuffers[0]=pass==InstancePass::SHADOW ? lightFrame : ctx.handles.frameCB;
         draw.constantBuffers[1]=ctx.handles.objectCB; draw.constantBuffers[8]=ctx.handles.advancedGraphicsCB;
         draw.constantBuffers[5]=cache.windFrame;
-        PerObjectCB identity{}; ctx.resources.Update(ctx.handles.objectCB,&identity,sizeof(identity));
+        PerObjectCB identity{};
+        identity.objectParams.y = cardWireframe;
+        ctx.resources.Update(ctx.handles.objectCB,&identity,sizeof(identity));
         for (size_t i=0;i<material.textures.size();++i) draw.textures[i]=material.textures[i];
         ctx.resources.Update(cache.material,material.gbufferParams.data(),material.gbufferParams.size());
         draw.constantBuffers[2]=cache.material;
@@ -755,6 +759,7 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
             for (uint32_t slot : visible[part.lod]) {
                 PerObjectCB object{}; object.world=source.rows[slot].world;
                 object.worldInvTranspose=pass==InstancePass::VELOCITY ? source.rows[slot].previousWorld : source.rows[slot].normal;
+                object.objectParams.y = cardWireframe;
                 ctx.resources.Update(ctx.handles.objectCB,&object,sizeof(object));
                 if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw); else SubmitCounted(ctx,draw);
             }

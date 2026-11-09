@@ -155,6 +155,10 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
     if (!cache.m_material.IsValid() || !cache.m_frame.IsValid() || !cache.m_pipeline.IsValid()) return;
     if (mode == FiberPassMode::VELOCITY && !cache.m_motion.IsValid()) return;
     if (mode == FiberPassMode::COLOR && ctx.isDeferred && !cache.m_deferredPipeline.IsValid()) return;
+    const bool wireframe = mode == FiberPassMode::COLOR && ctx.settings.IsWireframe();
+    const auto colorPipeline = wireframe
+        ? GetOrCreateMaterialPSO(resources, BlendMode::OPAQUE_BLEND, true, 0, 0.0f, true)
+        : (ctx.isDeferred ? cache.m_deferredPipeline : cache.m_pipeline);
     const auto cameraData = lightFrame ? *lightFrame
         : MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     resources.Update(ctx.handles.frameCB, &cameraData, sizeof(cameraData));
@@ -175,6 +179,7 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         const bool drawShells = fiber.m_mode == FiberRenderMode::SHELL || fiber.m_mode == FiberRenderMode::HYBRID;
         const bool drawBlades = fiber.m_mode == FiberRenderMode::BLADE;
         auto object = surface.object;
+        if (wireframe) object.objectParams.y = ctx.settings.IsUnlit() ? 2.0f : 1.0f;
         if (mode == FiberPassMode::SHADOW && !surface.cast) continue;
         const bool skinned = surface.skinned;
         if (mode == FiberPassMode::COLOR) ++ctx.statsTotalObjects;
@@ -257,8 +262,7 @@ void ExecuteFiberGeometry(RenderPassContext& ctx, FiberPassMode mode,
         call.pipelineState = cache.m_pipeline;
         if (mode == FiberPassMode::COLOR) {
             /// @note Deferred は GBuffer の深度を転写済み。DEPTH_SKY (等しい深度も通す) / 読取専用で固有の繊維照明を上書きする。
-            call.pipelineState = ctx.isDeferred ? cache.m_deferredPipeline : cache.m_pipeline;
-            if (ctx.settings.IsWireframe()) call.pipelineState = ctx.handles.wireframePSO;
+            call.pipelineState = colorPipeline;
         }
         call.constantBuffers[0] = ctx.handles.frameCB;
         call.constantBuffers[1] = ctx.handles.objectCB;

@@ -10,6 +10,9 @@ namespace fbzz::renderer {
 OpaqueRenderPlan ResolveOpaqueRenderPlan(
     const RenderSettings& settings, const OpaqueRenderAvailability& availability)
 {
+    /// @note ワイヤーは面の深度やアルファで線を隠さない Forward の診断経路を使う。
+    if (settings.IsWireframe())
+        return { OpaqueRenderPath::FORWARD };
     if (settings.UsesGBuffer() && availability.depthNormal
         && availability.deferredLighting && availability.depthCopy)
         return { OpaqueRenderPath::DEFERRED };

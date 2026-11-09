@@ -111,15 +111,27 @@ TEST_F(GeometryPipelineTest, UnlitSkipsOnlyTheForwardScreenSpacePrepass)
 {
     auto settings = SettingsWithoutScreenSpaceEffects();
     settings.ssr.enabled = true;
-    for (const auto mode : { renderer::ViewMode::Unlit, renderer::ViewMode::WireframeUnlit }) {
+    settings.viewMode = renderer::ViewMode::Unlit;
+    settings.pipeline = RenderingPipeline::Forward;
+    EXPECT_EQ(ResolveOpaqueRenderPlan(settings, { true, true, true }).path,
+              OpaqueRenderPath::FORWARD);
+    settings.pipeline = RenderingPipeline::Deferred;
+    EXPECT_EQ(ResolveOpaqueRenderPlan(settings, { true, true, true }).path,
+              OpaqueRenderPath::DEFERRED);
+}
+
+TEST_F(GeometryPipelineTest, WireframeUsesForwardColorWithoutAnOpaquePrepass)
+{
+    auto settings = SettingsWithoutScreenSpaceEffects();
+    settings.ssr.enabled = true;
+    for (const auto mode : { renderer::ViewMode::WireframeLit, renderer::ViewMode::WireframeUnlit }) {
         settings.viewMode = mode;
-        settings.pipeline = RenderingPipeline::Forward;
-        EXPECT_EQ(ResolveOpaqueRenderPlan(settings, { true, true, true }).path,
-                  OpaqueRenderPath::FORWARD);
-        /// @note 構成抽出では既存の Deferred の診断表示を変更しない。
-        settings.pipeline = RenderingPipeline::Deferred;
-        EXPECT_EQ(ResolveOpaqueRenderPlan(settings, { true, true, true }).path,
-                  OpaqueRenderPath::DEFERRED);
+        for (const auto pipeline : { RenderingPipeline::Forward, RenderingPipeline::ForwardPlus,
+                                     RenderingPipeline::Deferred, RenderingPipeline::DeferredPlus }) {
+            settings.pipeline = pipeline;
+            EXPECT_EQ(ResolveOpaqueRenderPlan(settings, { true, true, true }).path,
+                      OpaqueRenderPath::FORWARD);
+        }
     }
 }
 

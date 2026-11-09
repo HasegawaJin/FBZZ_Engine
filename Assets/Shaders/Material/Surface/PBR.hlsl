@@ -97,6 +97,8 @@ PSInput VSMain(VSInput v)
 float4 PSMain(PSInput p) : SV_Target0
 {
     ApplyLodDither(p.svPosition.xy, objectParams.x);
+    if (objectParams.y > 0.5f && alphaCutoff > 0.0f)
+        return Lighting_CardWireframe(p.normal, objectParams.y);
 
     float2 uv = p.uv * uvTiling + uvOffset;
 

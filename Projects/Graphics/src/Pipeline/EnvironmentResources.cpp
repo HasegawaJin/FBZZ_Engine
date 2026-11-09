@@ -4,6 +4,8 @@
 /// @date    2026-07-01
 #include <Graphics/Pipeline/EnvironmentResources.hpp>
 #include <cmath>
+#include <cstdlib>
+#include <string_view>
 
 namespace fbzz::renderer {
 
@@ -52,7 +54,8 @@ bool EnvironmentResources::SkySignature::CloudApproxEquals(const SkySignature& o
         && approxVec(cloud.cloudAmbTint, o.cloud.cloudAmbTint);
 }
 
-bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float currentTimeSeconds, uint64_t frameStamp)
+bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float currentTimeSeconds,
+    uint64_t frameStamp, bool animateCloudSettings)
 {
     /// @note Scene/Game が同じ環境を使う。後のビューが違うカメラ位置でも同一フレームに捕捉し直さない。
     if (frameStamp != 0 && frameStamp == m_lastCaptureFrame) return false;
@@ -79,8 +82,25 @@ bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float curre
     constexpr float kCloudRebakeInterval = 0.5f;
     constexpr float kCloudCaptureMove = 50.0f;
 
-    /// @note 有効無効・密度・照明の編集は時刻が停止中でも直ちに反映する。
-    if (!m_lastSignature.CloudApproxEquals(current, kParamEps)) return consume();
+    /// @note A/B 計測でプロセス起動時に 0 を指定すると、再生中も雲設定の変更を即時反映する。
+    static const bool throttleCloudAnimation = [] {
+#if defined(_MSC_VER)
+        char* value = nullptr;
+        size_t size = 0;
+        const auto result = _dupenv_s(&value, &size, "FBZZ_IBL_THROTTLE_CLOUD_ANIMATION");
+        const bool enabled = result != 0 || !value || std::string_view{value} != "0";
+        std::free(value);
+        return enabled;
+#else
+        const char* value = std::getenv("FBZZ_IBL_THROTTLE_CLOUD_ANIMATION");
+        return !value || std::string_view{value} != "0";
+#endif
+    }();
+    const bool throttleCloudSettings = animateCloudSettings && throttleCloudAnimation;
+    const bool cloudSettingsChanged = !m_lastSignature.CloudApproxEquals(current, kParamEps);
+    /// @note 雲の有効切り替えと Edit の設定変更は間引かない。
+    if (m_lastSignature.cloudEnabled != current.cloudEnabled || (!throttleCloudSettings && cloudSettingsChanged))
+        return consume();
 
     const float sunCos  = math::Vector3::Dot(m_lastSignature.sunDirection, current.sunDirection);
     const bool atmosphereChanged = (sunCos < kSunAngleCosThreshold)
@@ -92,13 +112,14 @@ bool EnvironmentResources::ConsumeDirty(const SkySignature& current, float curre
     const math::Vector3 captureMove = current.capturePosition - m_lastSignature.capturePosition;
     const bool cloudPositionChanged = current.cloudEnabled
         && math::Vector3::Dot(captureMove, captureMove) >= kCloudCaptureMove * kCloudCaptureMove;
-    if (!atmosphereChanged && !cloudTimeChanged && !cloudPositionChanged)
+    const bool skySettingsChanged = atmosphereChanged || cloudSettingsChanged;
+    if (!skySettingsChanged && !cloudTimeChanged && !cloudPositionChanged)
         /// @note 空が実質変わっていない → キャッシュ済み IBL を再利用
         return false;
 
     /// @note 変化はあるが、連続変化 (時間帯アニメ) を毎フレーム焼き直さないよう最低間隔で間引く。
     /// @note 間隔未達なら signature を更新せずに変化を保持し、次の機会にまとめて焼き直す。
-    const float interval = atmosphereChanged ? kMinRebakeInterval : kCloudRebakeInterval;
+    const float interval = skySettingsChanged ? kMinRebakeInterval : kCloudRebakeInterval;
     if (currentTimeSeconds - m_lastBakeTime < interval)
         return false;
 

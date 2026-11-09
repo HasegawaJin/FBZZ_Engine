@@ -220,7 +220,9 @@ void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& v
         AdvancedGraphicsCB agData{};
         /// @note 未バインド SRV をサンプルさせず、確実に ambient へフォールバックさせるための判定。
         /// @note 動的 IBL は .dds を持たないので input.dynamicIblReady を別経路として許可する。
-        const bool iblResourcesReady =
+        /// @note Unlit は白の ambientColor を使う。キューブを有効にすると PBR の IBL 分岐がその白を置き換える。
+        /// @see Assets/Shaders/Pipeline/Deferred/DeferredLighting.hlsl PSMain の IBL 分岐。
+        const bool iblResourcesReady = !rs.IsUnlit() &&
             (input.dynamicIblReady || (rs.ibl.enabled && rs.HasValidIblAssets())) &&
             passHandles.iblIrradiance.IsValid() && passHandles.iblPrefilter.IsValid();
         agData.iblIntensity          = iblResourcesReady ? rs.ibl.intensity * input.reflectionProbeIntensity : 0.0f;

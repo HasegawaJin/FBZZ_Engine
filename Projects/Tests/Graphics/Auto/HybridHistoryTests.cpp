@@ -197,6 +197,33 @@ protected:
             (32 * 0.8f + 192 * 0.2f) / 255}), 0.001f);
     }
 
+    void ExpectIblIntensity(renderer::ViewMode mode, bool dynamic, float expected)
+    {
+        renderer::RenderSettings settings;
+        settings.viewMode = mode;
+        settings.ibl.enabled = !dynamic;
+        settings.ibl.irradiancePath = "Irradiance.dds";
+        settings.ibl.prefilterPath = "Prefilter.dds";
+        settings.ibl.intensity = 0.5f;
+        renderer::RenderViewResources view;
+        view.advancedGraphicsCB = m_resources->CreateConstantBuffer(sizeof(renderer::AdvancedGraphicsCB));
+        ASSERT_TRUE(view.advancedGraphicsCB);
+        renderer::Camera camera;
+        renderer::RenderPassHandles handles;
+        handles.iblIrradiance = handles.iblPrefilter = m_current;
+        renderer::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, camera, settings, {}, ~0u, handles};
+        renderer::AdvancedViewInput input;
+        input.dynamicIblReady = dynamic;
+        input.dynamicIblMipCount = 1;
+        bool probesPrepared = false;
+        renderer::PrepareAdvancedConstants(context, view, input, [&](renderer::AdvancedGraphicsCB&) {
+            probesPrepared = true;
+        });
+        ASSERT_TRUE(view.advancedGraphicsSnapshotValid);
+        EXPECT_FLOAT_EQ(view.advancedGraphicsSnapshot.iblIntensity, expected);
+        EXPECT_EQ(probesPrepared, expected > 0.0f);
+    }
+
 private:
     void Copy(renderer::ResourceHandle<renderer::RenderTargetTag> output,
         renderer::ResourceHandle<renderer::TextureTag> input)
@@ -243,6 +270,16 @@ private:
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_frameCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_postCB;
 };
+
+TEST_F(HybridHistoryTest, UnlitViewKeepsWhiteAmbientInsteadOfUsingImageBasedLighting)
+{
+    for (const bool dynamic : {false, true}) {
+        ExpectIblIntensity(renderer::ViewMode::Lit, dynamic, 0.5f);
+        ExpectIblIntensity(renderer::ViewMode::Unlit, dynamic, 0.0f);
+        ExpectIblIntensity(renderer::ViewMode::WireframeUnlit, dynamic, 0.0f);
+        ExpectIblIntensity(renderer::ViewMode::WireframeLit, dynamic, 0.5f);
+    }
+}
 
 TEST_F(HybridHistoryTest, ProviderChangesAndRejectedReflectionResetGpuFeedbackWithoutChangingEarlierSubmits)
 {

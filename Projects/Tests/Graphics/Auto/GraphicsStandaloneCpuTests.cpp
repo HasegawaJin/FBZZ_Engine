@@ -314,6 +314,22 @@ TEST_F(GraphicsStandaloneTest, SkyCacheCloudEnableAndDisableCaptureImmediately)
     EXPECT_FALSE(environment.ConsumeDirty(signature, 1.0f, 4));
 }
 
+TEST_F(GraphicsStandaloneTest, SkyCacheCoalescesAnimatedCloudDensityAndCoverage)
+{
+    renderer::EnvironmentResources environment;
+    renderer::EnvironmentResources::SkySignature signature;
+    signature.cloudEnabled = true;
+    ASSERT_TRUE(environment.ConsumeDirty(signature, 0.0f, 1, true));
+    signature.cloud.cloudLayer.z = 0.4f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 0.016f, 2, true));
+    signature.cloud.cloudLayer.w = 0.6f;
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 0.032f, 3, true));
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 0.033f, 4, true));
+    EXPECT_FALSE(environment.ConsumeDirty(signature, 0.034f, 5, true));
+    signature.cloudEnabled = false;
+    EXPECT_TRUE(environment.ConsumeDirty(signature, 0.035f, 6, true));
+}
+
 TEST_F(GraphicsStandaloneTest, SkyCacheMovingCloudsWaitHalfASecondForWindOrEvolution)
 {
     for (const bool useWind : {false, true}) {

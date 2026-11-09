@@ -78,8 +78,10 @@ public:
     /// @note 雲だけの変化は 0.5 秒で間引き、捕捉位置は前回から 50 m 以上離れた場合だけ変える。
     /// @param currentTimeSeconds 単調な実時間の経過秒。停止中の編集とカメラ移動も更新できること。
     /// @param frameStamp ResourceManager の描画フレーム。0 はフレーム単位の抑制を行わない。
+    /// @param animateCloudSettings 再生中の雲設定の連続変化を太陽・大気と同じ間隔でまとめる。
     /// @note 全ビューで環境 1 個を共有し、雲の時間・捕捉位置だけの更新は最大 2 Hz、同一フレームは一度まで。
-    FBZZ_GRAPHICS_API bool ConsumeDirty(const SkySignature& current, float currentTimeSeconds, uint64_t frameStamp = 0);
+    FBZZ_GRAPHICS_API bool ConsumeDirty(const SkySignature& current, float currentTimeSeconds,
+        uint64_t frameStamp = 0, bool animateCloudSettings = false);
 
     /// @note 解像度変更・テクスチャ破棄後に次の描画フレームで必ず再捕捉する。
     void MarkDirty() { m_forceDirty = true; }

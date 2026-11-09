@@ -241,6 +241,7 @@ struct PerObjectCB {
     math::Matrix4 world;
     math::Matrix4 worldInvTranspose;
     /// @note x = LOD ディザのしきい値。既定 0 は「遷移していない」= 全画素を描く。
+    /// @note y = カードのワイヤー診断表示。0=無効、1=Lit、2=Unlit。
     /// @note LAYOUT: Constants.hlsli の ObjectConstants と一致させること。
     math::Vector4 objectParams;
 };
