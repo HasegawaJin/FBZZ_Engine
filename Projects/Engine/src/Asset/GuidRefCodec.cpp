@@ -10,6 +10,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <cctype>
+#include <unordered_map>
 
 namespace fbzz::asset {
 
@@ -69,7 +70,7 @@ void TransformStrings(toml::array& arr, const Fn& fn)
 {
     for (auto& node : arr) {
         if (auto* s = node.as_string()) {
-            const std::string converted = fn(s->get());
+            const std::string& converted = fn(s->get());
             if (converted != s->get()) *s = converted;
         } else if (auto* t = node.as_table()) {
             TransformStrings(*t, fn);
@@ -84,7 +85,7 @@ void TransformStrings(toml::table& tbl, const Fn& fn)
 {
     for (auto&& [key, node] : tbl) {
         if (auto* s = node.as_string()) {
-            const std::string converted = fn(s->get());
+            const std::string& converted = fn(s->get());
             if (converted != s->get()) *s = converted;
         } else if (auto* t = node.as_table()) {
             TransformStrings(*t, fn);
@@ -151,18 +152,14 @@ std::string ReconcileSpriteSuffix(const std::string& absTexturePath,
     return std::string(kSpriteMarker) + hintName;
 }
 
-} /// @note namespace
-
-std::string EncodeGuidRef(const std::string& pathOrRef)
+bool IsAssetReferenceCandidate(const AssetReferenceParts& parts)
 {
-    if (pathOrRef.empty()) return pathOrRef;
-    if (AssetDatabase::IsGuidRef(pathOrRef)) return pathOrRef;
-
-    const AssetReferenceParts parts = SplitAssetReference(pathOrRef);
-    /// @note ファイル名で高速に足切りする。baked (.fzasset/.mesh/.skel) や通常文字列はここで素通り。
     const std::string name = util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(parts.base));
-    if (!AssetDatabase::ShouldHaveMeta(name)) return pathOrRef;
+    return AssetDatabase::ShouldHaveMeta(name);
+}
 
+std::string EncodeAssetReference(const std::string& pathOrRef, const AssetReferenceParts& parts)
+{
     /// @note 相対 ("Assets/...") も絶対パスも AssetManager の解決規則で実パス化してから索引を引く。
     /// @note 未登録 (実在しない / Assets 外) なら元の文字列を返し、データを壊さない。
     const std::string absPath = AssetManager::ResolveAssetPath(parts.base);
@@ -179,6 +176,15 @@ std::string EncodeGuidRef(const std::string& pathOrRef)
         encoded += AssetDatabase::kRefHintSeparator + hint;
     }
     return encoded;
+}
+
+} /// @note namespace
+
+std::string EncodeGuidRef(const std::string& pathOrRef)
+{
+    if (pathOrRef.find('.') == std::string::npos || AssetDatabase::IsGuidRef(pathOrRef)) return pathOrRef;
+    const AssetReferenceParts parts = SplitAssetReference(pathOrRef);
+    return IsAssetReferenceCandidate(parts) ? EncodeAssetReference(pathOrRef, parts) : pathOrRef;
 }
 
 std::string DecodeGuidRef(const std::string& ref)
@@ -234,7 +240,15 @@ std::string DecodeGuidRef(const std::string& ref)
 
 void EncodeGuidRefs(toml::table& root)
 {
-    TransformStrings(root, [](const std::string& v) { return EncodeGuidRef(v); });
+    /// @note 同じ参照が数千個あってもパス解決とファイル照会は文書内で一度だけ行う。
+    std::unordered_map<std::string, std::string> encoded;
+    TransformStrings(root, [&encoded](const std::string& value) -> const std::string& {
+        if (value.find('.') == std::string::npos || AssetDatabase::IsGuidRef(value)) return value;
+        if (const auto found = encoded.find(value); found != encoded.end()) return found->second;
+        const AssetReferenceParts parts = SplitAssetReference(value);
+        if (!IsAssetReferenceCandidate(parts)) return value;
+        return encoded.emplace(value, EncodeAssetReference(value, parts)).first->second;
+    });
 }
 
 void DecodeGuidRefs(toml::table& root)

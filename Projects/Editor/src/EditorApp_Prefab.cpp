@@ -43,6 +43,7 @@ std::vector<scene::EntityID> CollectRoots(scene::Scene& scene)
 
 void EditorApp::EnterPrefabEditMode(const std::string& assetRelPath)
 {
+    if (RejectWhileSceneSaving()) return;
     if (assetRelPath.empty() || !m_ctx.activeScene) return;
 
     /// @note Play 中の編集は状態が混ざるので受け付けない。

@@ -145,20 +145,28 @@ bool ValidateSavedScriptIds(const toml::array& objects)
 template<typename Fn>
 void TransformSceneAssetRefs(toml::table& document, const Fn& transform)
 {
-    std::vector<std::pair<toml::table*, toml::table>> metadata;
+    struct PrefabMetadata {
+        toml::table* object;
+        std::optional<std::string> assetPath;
+        std::optional<std::string> sourceSnapshot;
+    };
+    std::vector<PrefabMetadata> metadata;
     std::vector<std::pair<toml::table*, toml::table>> managedSettings;
     if (auto* objects = document["gameobjects"].as_array()) {
         for (auto& item : *objects) {
             auto* object = item.as_table();
             if (!object) continue;
-            toml::table fields;
-            for (const char* key : { "prefabAssetPath", "prefabSourceSnapshot" }) {
-                if (const auto value = (*object)[key].value<std::string>()) {
-                    fields.insert(key, *value);
-                    object->erase(key);
-                }
-            }
-            if (!fields.empty()) metadata.emplace_back(object, std::move(fields));
+            const auto detach = [object](const char* key) -> std::optional<std::string> {
+                auto* value = (*object)[key].as_string();
+                if (!value) return std::nullopt;
+                std::string text = std::move(value->get());
+                object->erase(key);
+                return text;
+            };
+            const auto* assetPath = (*object)["prefabAssetPath"].as_string();
+            auto path = assetPath && !assetPath->get().empty() ? detach("prefabAssetPath") : std::nullopt;
+            auto snapshot = detach("prefabSourceSnapshot");
+            if (path || snapshot) metadata.push_back({object, std::move(path), std::move(snapshot)});
             if (auto* scripts = (*object)["ScriptComponents"].as_array()) {
                 for (auto& entry : *scripts) {
                     auto* script = entry.as_table();
@@ -174,11 +182,17 @@ void TransformSceneAssetRefs(toml::table& document, const Fn& transform)
         }
     }
     transform(document);
-    for (auto& [object, fields] : metadata) {
-        if (const auto reference = fields["prefabAssetPath"].value<std::string>())
-            fields.insert_or_assign("prefabAssetPath", CanonicalPrefabAssetRef(*reference));
-        for (const auto& [key, value] : fields)
-            object->insert(key.str(), value);
+    std::unordered_map<std::string, std::string> canonicalPaths;
+    for (auto& [object, path, snapshot] : metadata) {
+        if (path) {
+            if (asset::AssetDatabase::IsGuidRef(*path)) object->insert("prefabAssetPath", std::move(*path));
+            else {
+                auto [entry, inserted] = canonicalPaths.try_emplace(*path);
+                if (inserted) entry->second = CanonicalPrefabAssetRef(*path);
+                object->insert("prefabAssetPath", entry->second);
+            }
+        }
+        if (snapshot) object->insert("prefabSourceSnapshot", std::move(*snapshot));
     }
     for (auto& [script, fields] : managedSettings)
         script->insert("fields", std::move(fields));
@@ -1119,11 +1133,13 @@ std::string SavedIKReferenceGuid(const ObjectReference& reference,
 std::string SavedIKReferenceName(const std::string& guid,
                                  const std::string& legacyName,
                                  bool migrationPending,
-                                 const Scene& scene)
+                                 Scene& scene,
+                                 std::optional<GuidIndex>& guids)
 {
     if (guid.empty()) return migrationPending ? legacyName : std::string{};
     if (!legacyName.empty()) return legacyName;
-    const GameObject* target = scene.FindByGuid(guid);
+    if (!guids) guids.emplace(scene, false);
+    const GameObject* target = guids->Find(guid);
     return target ? target->name : legacyName;
 }
 
@@ -1480,15 +1496,20 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
     return SaveToText(scene, scenePath, diagnostic);
 }
 
-std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic)
-{ return SaveToTextCore(scene, scenePath, diagnostic, false); }
+namespace {
 
-std::string SceneSerializer::CapturePassiveClone(Scene& scene, std::string& diagnostic)
-{ return SaveToTextCore(scene, {}, diagnostic, true); }
-
-std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& scenePath, std::string& diagnostic, bool passiveClone)
+std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::string& path,
+    std::string& diagnostic, bool passiveClone, std::function<bool()>* writeAssets = nullptr,
+    const std::vector<EntityID>* subtree = nullptr)
 {
     diagnostic.clear();
+    std::vector<EntityID> sceneObjects;
+    if (!subtree) {
+        sceneObjects.reserve(scene.GameObjectCount());
+        for (auto& object : scene.GameObjects())
+            if (!object.runtimeGenerated) sceneObjects.push_back(object.GetID());
+    }
+    const auto& objects = subtree ? *subtree : sceneObjects;
     struct ScriptSnapshot {
         EntityID owner;
         std::string ownerGuid;
@@ -1501,8 +1522,9 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
     std::unordered_map<std::string, ScriptSnapshot> scriptSnapshots;
     std::vector<std::string> scriptOrder;
     std::unordered_map<std::string, EntityID> objectIdentities;
-    for (auto& go : scene.GameObjects()) {
-        if (go.runtimeGenerated) continue;
+    objectIdentities.reserve(objects.size());
+    for (EntityID id : objects) {
+        auto& go = *scene.GetGameObject(id);
         objectIdentities.emplace(go.instanceId, go.GetID());
         auto* scripts = go.GetComponent<ScriptComponent>();
         if (!scripts) continue;
@@ -1542,13 +1564,12 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
     const auto collectionUnchanged = [&]() {
         size_t objectCount = 0;
         size_t scriptCount = 0;
-        for (auto& go : scene.GameObjects()) {
-            if (go.runtimeGenerated) continue;
+        const auto verifyObject = [&](GameObject& go) {
             ++objectCount;
             const auto object = objectIdentities.find(go.instanceId);
             if (object == objectIdentities.end() || object->second != go.GetID()) return false;
             auto* scripts = go.GetComponent<ScriptComponent>();
-            if (!scripts) continue;
+            if (!scripts) return true;
             for (auto& entry : scripts->scripts) {
                 ++scriptCount;
                 const auto snapshot = scriptSnapshots.find(entry.inspectionId);
@@ -1556,10 +1577,20 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
                     || snapshot->second.savedScriptId != entry.savedScriptId
                     || snapshot->second.expected != entry.script.get()) return false;
             }
+            return true;
+        };
+        if (subtree) {
+            for (EntityID id : objects) {
+                auto* go = scene.GetGameObject(id);
+                if (!go || go->runtimeGenerated || !verifyObject(*go)) return false;
+            }
+        } else {
+            for (auto& go : scene.GameObjects())
+                if (!go.runtimeGenerated && !verifyObject(go)) return false;
         }
         return objectCount == objectIdentities.size() && scriptCount == scriptSnapshots.size();
     };
-    const auto changedCollection = [&]() -> std::string {
+    const auto changedCollection = [&]() -> std::function<std::string()> {
         diagnostic = "GameObject or Script collection changed during serialization.";
         FBZZ_LOG_ERROR("SceneSerializer: Script serialization failed: %s", diagnostic.c_str());
         return {};
@@ -1613,12 +1644,27 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
                 if (!recognized) snapshot.fields.insert(key, value);
             }
         }
-        snapshot.saved = {entry->script->GetTypeName(), TomlTableToString(snapshot.fields), entry->script->enabled, entry->savedScriptId};
+        snapshot.saved = {entry->script->GetTypeName(), passiveClone ? std::string{} : TomlTableToString(snapshot.fields),
+                          entry->script->enabled, entry->savedScriptId};
     }
-    if (!collectionUnchanged()) return changedCollection();
-    /// @note Terrain のレイヤーマテリアルは «シーンの隣» へ書き出す副作用がある。
-    /// @note 保存先が決まらない呼び出し (テキストだけ欲しい場合) では書き出さない。
-    const std::string& path = scenePath;
+    if (!scriptOrder.empty() && !collectionUnchanged()) return changedCollection();
+    struct InlineTerrain {
+        size_t objectIndex;
+        TerrainComponent data;
+    };
+    struct ExternalTerrain {
+        TerrainComponent data;
+        std::filesystem::file_time_type writeTime;
+    };
+    struct ExternalMaterial {
+        asset::MaterialAsset::AuthoringSnapshotPtr data;
+        std::filesystem::file_time_type writeTime;
+    };
+    std::vector<InlineTerrain> inlineTerrains;
+    std::unordered_map<std::string, ExternalTerrain> externalTerrains;
+    std::unordered_map<std::string, ExternalMaterial> externalMaterials;
+    std::unordered_set<std::string> resolvedLayerMaterials;
+    std::optional<GuidIndex> ikReferenceGuids;
     toml::table doc;
 
     toml::table sceneTbl;
@@ -1636,10 +1682,9 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
 
     toml::array goArr;
 
-    for (auto& go : scene.GameObjects()) {
-        /// @note ランタイム専用 GO は永続化しない。システムが needsBake 時などに再生成するため、
-        /// @note 保存するとロード時にゾンビ GO が蓄積し childEntities と不整合を起こす。
-        if (go.runtimeGenerated) continue;
+    goArr.reserve(objects.size());
+    for (EntityID id : objects) {
+        auto& go = *scene.GetGameObject(id);
 
         toml::table goTbl;
         goTbl.insert("name",            go.name);
@@ -2246,7 +2291,7 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
                 }
                 const std::string savedTargetName = SavedIKReferenceName(
                     savedTargetGuid, chain.targetName,
-                    chain.targetReferenceMigrationPending, scene);
+                    chain.targetReferenceMigrationPending, scene, ikReferenceGuids);
                 chainTbl.insert("targetName", savedTargetName);
                 chainTbl.insert("targetGuid", savedTargetGuid);
 
@@ -2261,7 +2306,7 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
                 }
                 const std::string savedPoleName = SavedIKReferenceName(
                     savedPoleGuid, chain.poleName,
-                    chain.poleReferenceMigrationPending, scene);
+                    chain.poleReferenceMigrationPending, scene, ikReferenceGuids);
                 chainTbl.insert("poleName", savedPoleName);
                 chainTbl.insert("poleGuid", savedPoleGuid);
                 chainTbl.insert("autoPole", chain.autoPole);
@@ -2322,37 +2367,28 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
             terrainTbl.insert("enabled",          tc->enabled);
             terrainTbl.insert("terrainAssetPath", tc->terrainAssetPath);
 
-            /// @note シーン終了時の保存では Inspector の「Save Asset」を押さないため、参照だけ保存
-            /// @note すると .terrain / .mat の実体が古いまま残る。Scene 保存と同時に外部アセットも
-            /// @note 更新して再起動後の白地形を防ぐ。scenePath が空なら実体は書かない。
-            if (!path.empty() && !tc->terrainAssetPath.empty()) {
-                const std::string terrainDiskPath =
-                    ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
-                TerrainAssetSerializer::Save(*tc, terrainDiskPath);
+            if (tc->terrainAssetPath.empty() || path.empty())
+                inlineTerrains.push_back({goArr.size(), *tc});
+            else if (writeAssets) {
+                const auto diskPath = ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
+                const auto found = externalTerrains.find(diskPath);
+                if (found != externalTerrains.end()) found->second.data = *tc;
+                else externalTerrains.emplace(diskPath, ExternalTerrain{*tc,
+                    util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(diskPath))});
             }
             toml::array layerMatArr;
             for (const std::string& layerMaterial : tc->layerMaterials) {
                 layerMatArr.push_back(layerMaterial);
-                /// @note 保存先が決まっているときだけ、レイヤーマテリアルを実ファイルへ書く。
-                /// @note scenePath が空 = «テキストだけ欲しい» 呼び出しなので、副作用は起こさない。
-                if (!path.empty() && !layerMaterial.empty()) {
+                if (writeAssets && !path.empty() && !layerMaterial.empty() && resolvedLayerMaterials.insert(layerMaterial).second) {
                     const auto matDiskPath = ResolveTerrainLayerWritePath(path, layerMaterial);
-                    if (matDiskPath.empty()) continue;
+                    if (matDiskPath.empty() || externalMaterials.contains(matDiskPath)) continue;
                     auto matHandle = asset::AssetManager::Load<asset::MaterialAsset>(layerMaterial);
-                    if (const auto snapshot = asset::ReadMaterialAuthoring(matHandle)) {
-                        (void)asset::SaveMaterialAssetToFile(matDiskPath, snapshot->Data());
-                    }
+                    if (auto snapshot = asset::ReadMaterialAuthoring(matHandle))
+                        externalMaterials.emplace(matDiskPath, ExternalMaterial{std::move(snapshot),
+                            util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(matDiskPath))});
                 }
             }
             terrainTbl.insert("layerMaterials", std::move(layerMatArr));
-            if (tc->terrainAssetPath.empty() || path.empty()) {
-                std::string text;
-                if (TerrainAssetSerializer::Serialize(*tc, text)) {
-                    auto data = toml::parse(text);
-                    if (data && data.table()["terrain"].as_table())
-                        terrainTbl.insert("inlineData", *data.table()["terrain"].as_table());
-                }
-            }
 
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
         }
@@ -2493,15 +2529,6 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
 
     doc.insert("gameobjects", std::move(goArr));
 
-    util::NormalizeTomlFloats(doc);
-
-    /// @note ディスク上のアセット参照は guid: 形式にする (リネーム・移動耐性)。
-    /// @note ランタイム側のコンポーネントは "Assets/..." パスのままなので、この一点で変換が完結する。
-    TransformSceneAssetRefs(doc, asset::EncodeGuidRefs);
-
-    std::ostringstream oss;
-    oss << doc;
-    const std::string text = oss.str();
     if (!collectionUnchanged()) return changedCollection();
     for (auto& [entryId, snapshot] : scriptSnapshots) {
         if (passiveClone) break;
@@ -2510,7 +2537,101 @@ std::string SceneSerializer::SaveToTextCore(Scene& scene, const std::string& sce
         if (!entry->serialized) entry->serialized = core::MakeUnique<SerializedScriptData>();
         *entry->serialized = std::move(snapshot.saved);
     }
+    if (writeAssets && (!externalTerrains.empty() || !externalMaterials.empty())) {
+        *writeAssets = [terrains = std::move(externalTerrains), materials = std::move(externalMaterials)] {
+            const auto unchanged = [](const std::string& path, std::filesystem::file_time_type expected) {
+                if (util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(path)) == expected) return true;
+                FBZZ_LOG_WARN("SceneSerializer: asset changed during save: %s", path.c_str());
+                return false;
+            };
+            for (const auto& [path, terrain] : terrains) {
+                std::string text;
+                if (!TerrainAssetSerializer::Serialize(terrain.data, text)) return false;
+                std::string existing;
+                const bool same = util::FileSystem::ReadText(path, existing) && existing == text;
+                if (!unchanged(path, terrain.writeTime)) return false;
+                if (!same && !util::FileSystem::WriteTextAtomic(path, text)) return false;
+            }
+            for (const auto& [path, material] : materials)
+                if (!unchanged(path, material.writeTime) || !asset::SaveMaterialAssetToFile(path, material.data->Data()))
+                    return false;
+            return true;
+        };
+    }
+
+    return [doc = std::move(doc), terrains = std::move(inlineTerrains)]() mutable {
+        auto& objects = *doc["gameobjects"].as_array();
+        for (const auto& terrain : terrains) {
+            std::string text;
+            if (!TerrainAssetSerializer::Serialize(terrain.data, text)) return std::string{};
+            auto data = toml::parse(text);
+            auto* inlineData = data ? data.table()["terrain"].as_table() : nullptr;
+            if (!inlineData) return std::string{};
+            auto& object = *objects[terrain.objectIndex].as_table();
+            object["TerrainComponent"].as_table()->insert("inlineData", std::move(*inlineData));
+        }
+
+        util::NormalizeTomlFloats(doc);
+        TransformSceneAssetRefs(doc, asset::EncodeGuidRefs);
+        std::ostringstream stream;
+        stream << doc;
+        return std::move(stream).str();
+    };
+}
+
+} /// @note namespace
+
+PreparedSceneSave SceneSerializer::PrepareSave(Scene& scene, const std::string& scenePath, std::string& diagnostic)
+{
+    PreparedSceneSave save;
+    save.formatScene = PrepareSceneDocument(scene, scenePath, diagnostic, false, &save.writeAssets);
+    return save;
+}
+
+std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic)
+{
+    auto save = PrepareSave(scene, scenePath, diagnostic);
+    if (!save.formatScene) return {};
+    auto text = save.formatScene();
+    if (text.empty()) diagnostic = "Could not format the captured scene.";
+    else if (save.writeAssets && !save.writeAssets()) {
+        diagnostic = "Could not write the scene's Terrain or Material assets.";
+        return {};
+    }
     return text;
+}
+
+std::string SceneSerializer::CapturePassiveClone(Scene& scene, std::string& diagnostic)
+{
+    auto format = PrepareSceneDocument(scene, {}, diagnostic, true);
+    return format ? format() : std::string{};
+}
+
+std::string SceneSerializer::CaptureSaveComparison(Scene& scene, const std::string& scenePath)
+{
+    std::string diagnostic;
+    auto format = PrepareSceneDocument(scene, scenePath, diagnostic, true);
+    return format ? format() : std::string{};
+}
+
+std::string SceneSerializer::CapturePassiveSubtree(Scene& scene, EntityID root)
+{
+    if (!scene.GetGameObject(root)) return {};
+    std::vector<EntityID> pending{root};
+    std::vector<EntityID> objects;
+    while (!pending.empty()) {
+        const EntityID id = pending.back();
+        pending.pop_back();
+        auto* object = scene.GetGameObject(id);
+        if (!object) continue;
+        if (!object->runtimeGenerated) objects.push_back(id);
+        for (int childIndex = object->GetChildCount() - 1; childIndex >= 0; --childIndex)
+            if (auto* child = object->GetChild(childIndex)) pending.push_back(child->GetID());
+    }
+    scene.SortEntitiesBySceneOrder(objects);
+    std::string diagnostic;
+    auto format = PrepareSceneDocument(scene, {}, diagnostic, true, nullptr, &objects);
+    return format ? format() : std::string{};
 }
 
 /// @note Load

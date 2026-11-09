@@ -677,6 +677,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
 void EditorApp::Shutdown()
 {
+    if (m_pendingSceneSave.result.valid()) {
+        m_pendingSceneSave.afterSave = {};
+        m_pendingSceneSave.result.wait();
+        PollSceneSave();
+    }
     m_standalonePlay.Shutdown();
     m_ctx.undoStack = &m_undoStack;
     m_playMode.Cancel(); m_ctx.activeScene = m_scene.get(); m_ctx.runtime = &m_runtime;
@@ -1007,6 +1012,7 @@ void EditorApp::PersistEditorSettings()
 
 bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath)
 {
+    if (RejectWhileSceneSaving()) return false;
     if (m_ctx.modelImportBusy && m_ctx.modelImportBusy()) {
         FBZZ_LOG_WARN("Project switch waits for model imports to finish.");
         return false;
@@ -1315,10 +1321,6 @@ void EditorApp::BeginFrame()
             m_ctx.managedBuildBusy = false;
         }
     }
-    {
-        FBZZ_PROFILE_SCOPE("EditorBegin::SceneDirty");
-        RefreshSceneDirtyState(false);
-    }
 
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
@@ -1570,8 +1572,8 @@ void EditorApp::ProcessMapEditingModeTransition(uint32_t dockId)
 
 void EditorApp::ProcessPlayViewportLayoutTransition(uint32_t dockId)
 {
-    const bool shouldExpandGameView =
-        m_ctx.playFocusMode == EditorContext::PlayFocusMode::Maximized
+    const bool shouldExpandGameView = m_playAllowsPhysicalInput
+        && m_ctx.playFocusMode == EditorContext::PlayFocusMode::Maximized
         && !m_playMode.IsInEditor()
         && !m_playMode.HasPendingRestore();
     if (shouldExpandGameView && !m_playViewportLayoutActive) {
@@ -1744,6 +1746,11 @@ void EditorApp::UpdatePlayCursorControls()
     const bool playing = !m_playMode.IsInEditor() && !m_playMode.HasPendingRestore();
     if (!playing) {
         if (m_playCursorApplied) core::Cursor::ResetForEditor();
+        if (m_playInputPolicyApplied) {
+            /// @note Restore ordinary Editor focus behavior, while a batch host keeps its process policy.
+            core::Cursor::SetPhysicalInputAllowed(m_playPreviousPhysicalInputAllowed);
+            m_playInputPolicyApplied = false;
+        }
         m_playCursorApplied = false;
         m_playCursorReleased = false;
         m_playCursorAcquireAttempts = 0;
@@ -1755,6 +1762,13 @@ void EditorApp::UpdatePlayCursorControls()
 
     const bool firstFrame = !m_playCursorApplied;
     m_playCursorApplied = true;
+    if (!m_playAllowsPhysicalInput) {
+        m_playCursorAcquireAttempts = 0;
+        m_ctx.requestGameCursorCapture = false;
+        m_ctx.requestGameViewportFocus = false;
+        core::Cursor::SetSuppressed(true);
+        return;
+    }
     if (firstFrame && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
         m_playCursorAcquireAttempts = 2;
     if (m_ctx.gameViewportRectValid) {
@@ -2033,6 +2047,7 @@ void EditorApp::OnUpdate(float dt)
     asset::AssetDatabase::FlushIndexFile();
     /// @note シーンを開き直すと、その中で参照されるアセットを新しい版で読み直せる。逆順だと
     /// @note        「開き直した直後だけ古いアセットを掴む」1 フレームができるため、アセットより後に行う。
+    PollSceneSave();
     ProcessSceneDiskReload();
     TickPendingShadowBakePlay();
 

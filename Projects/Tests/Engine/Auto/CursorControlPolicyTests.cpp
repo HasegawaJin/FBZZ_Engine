@@ -83,6 +83,45 @@ TEST_F(CursorControlPolicyTest, MissingTargetRestoresVisibleFreeCursor)
     EXPECT_EQ(state.effective.lockMode, core::CursorLockMode::None);
 }
 
+TEST_F(CursorControlPolicyTest, AutomationDeniesCaptureEvenAfterFocusChangesOrExplicitAcquire)
+{
+    m_control.SetPhysicalInputAllowed(false);
+    EXPECT_FALSE(m_control.IsPhysicalInputAllowed());
+    for (bool active : {true, false, true}) {
+        m_control.SetWindowActive(active);
+        EXPECT_FALSE(m_control.Acquire());
+        const auto state = m_control.Resolve(m_locked, false);
+        EXPECT_EQ(state.requested.lockMode, core::CursorLockMode::Locked);
+        EXPECT_EQ(state.effective.lockMode, core::CursorLockMode::None);
+        EXPECT_TRUE(state.effective.visible);
+        EXPECT_EQ(state.inputOwner, core::CursorInputOwner::HOST);
+        EXPECT_EQ(state.suspendedReason, core::CursorSuspendReason::HOST_OVERRIDE);
+    }
+    m_control.Release(core::CursorSuspendReason::NOT_PLAYING);
+    EXPECT_FALSE(m_control.Acquire());
+}
+
+TEST_F(CursorControlPolicyTest, ManualPlayAfterAutomationRequiresFreshExplicitAcquisition)
+{
+    m_control.SetPhysicalInputAllowed(false);
+    m_control.SetPhysicalInputAllowed(true);
+    EXPECT_TRUE(m_control.IsPhysicalInputAllowed());
+    EXPECT_FALSE(m_control.OwnsGameInput());
+    EXPECT_TRUE(m_control.Acquire());
+    EXPECT_EQ(m_control.Resolve(m_locked, false).effective.lockMode, core::CursorLockMode::Locked);
+    m_control.SetPhysicalInputAllowed(false);
+    EXPECT_FALSE(m_control.OwnsGameInput());
+}
+
+TEST_F(CursorControlPolicyTest, AutomationPreservesInjectedButtonsWithoutPhysicalInput)
+{
+    using Filter = input::input_detail::GameInputConsumption;
+    m_control.SetPhysicalInputAllowed(false);
+    EXPECT_FALSE(Filter::ResolveButton(true, false, m_control.OwnsGameInput(), false));
+    EXPECT_TRUE(Filter::ResolveButton(false, true, m_control.OwnsGameInput(), false));
+    EXPECT_TRUE(Filter::ResolveButton(true, true, m_control.OwnsGameInput(), true));
+}
+
 class GameInputConsumptionTest : public testkit::Fixture {
 protected:
     input::input_detail::GameInputConsumption m_consumption;

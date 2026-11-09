@@ -831,8 +831,9 @@ void EditorApp::DrawGuidConflictBar(EditorContext&)
 
 /// @note  ホットキー登録
 
-void EditorApp::StartPlayMode(bool shadowBakePrepared)
+void EditorApp::StartPlayMode(bool shadowBakePrepared, bool allowPhysicalInput)
 {
+    if (RejectWhileSceneSaving()) return;
     if (m_packageBuild.IsRunning() || m_pendingShadowBakePlayScene) return;
     /// @note Play ツールバーボタンと Ctrl+P ホットキーの共通経路。
     /// @note        ガード条件をここに集約し、どの入力経路でも同じ前提チェックを通す。
@@ -847,8 +848,9 @@ void EditorApp::StartPlayMode(bool shadowBakePrepared)
         return;
     }
 
+    m_playAllowsPhysicalInput = allowPhysicalInput;
     if (m_ctx.playExecutionMode == PlayExecutionMode::STANDALONE) {
-        StartStandalonePlayMode();
+        StartStandalonePlayMode(allowPhysicalInput);
         return;
     }
 
@@ -857,6 +859,7 @@ void EditorApp::StartPlayMode(bool shadowBakePrepared)
         const auto status = scene::RequestDirectionalShadowBake(*m_scene, cacheDir);
         if (status == scene::DirectionalShadowBakeStatus::PENDING) {
             m_pendingShadowBakePlayScene = m_scene->GetRenderSceneGeneration();
+            m_pendingShadowBakeAllowPhysicalInput = allowPhysicalInput;
             Toast::Info("Preparing baked shadows before Play");
             return;
         }
@@ -879,8 +882,19 @@ void EditorApp::StartPlayMode(bool shadowBakePrepared)
 
     std::vector<std::string> selected;
     for (const auto id : m_ctx.selectedEntities) if (auto* object = m_scene->GetGameObject(id)) selected.push_back(object->instanceId);
+    /// @note Apply before clone callbacks so an automated start cannot briefly capture the host cursor.
+    m_playPreviousPhysicalInputAllowed = core::Cursor::IsPhysicalInputAllowed();
+    m_playInputPolicyApplied = true;
+    core::Cursor::SetPhysicalInputAllowed(allowPhysicalInput);
+    m_ctx.requestGameViewportFocus = false;
+    m_ctx.requestGameCursorCapture = false;
     m_playMode.Play(*m_scene, m_ctx.currentScenePath, m_resources);
-    if (!m_playMode.IsPlaying()) { Toast::Error(m_playMode.Diagnostic()); return; }
+    if (!m_playMode.IsPlaying()) {
+        core::Cursor::SetPhysicalInputAllowed(m_playPreviousPhysicalInputAllowed);
+        m_playInputPolicyApplied = false;
+        Toast::Error(m_playMode.Diagnostic());
+        return;
+    }
     if (m_managedScripts) m_managedScripts->BeginPlaySession();
     m_ctx.activeScene = m_playMode.PlayScene(); m_ctx.runtime = m_playMode.PlayRuntime();
     m_ctx.undoStack = m_playMode.TemporaryUndo();
@@ -909,7 +923,7 @@ void EditorApp::StartPlayMode(bool shadowBakePrepared)
         /// @note        往復のたびに積むリークを、1 往復ぶんの差分だけでは区別できないため。
         m_memoryLeakDiff.CaptureSessionBaselineIfAbsent(*m_ctx.resources);
     }
-    if (m_playMode.IsPlaying() && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
+    if (m_playMode.IsPlaying() && allowPhysicalInput && m_ctx.playFocusMode != EditorContext::PlayFocusMode::Unfocused)
         m_ctx.requestGameViewportFocus = true;
 }
 
@@ -938,7 +952,7 @@ void EditorApp::TickPendingShadowBakePlay()
     m_pendingShadowBakePlayScene = 0;
     if (status == scene::DirectionalShadowBakeStatus::UNAVAILABLE)
         Toast::Warning("Shadow bake unavailable. Play will use realtime shadows.");
-    StartPlayMode(true);
+    StartPlayMode(true, m_pendingShadowBakeAllowPhysicalInput);
 }
 
 void EditorApp::StopPlayMode()
@@ -963,10 +977,10 @@ void EditorApp::StopPlayMode()
     m_playMode.Stop(*m_ctx.activeScene);
 }
 
-void EditorApp::TogglePlayMode()
+void EditorApp::TogglePlayMode(bool allowPhysicalInput)
 {
     if (m_playMode.IsInEditor() && !m_standalonePlay.IsActive() && !m_pendingShadowBakePlayScene)
-        StartPlayMode();
+        StartPlayMode(false, allowPhysicalInput);
     else
         StopPlayMode();
 }

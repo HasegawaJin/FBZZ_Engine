@@ -13,6 +13,7 @@
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Core/Application.hpp>
 #include <Engine/Core/CrashHandler.hpp>
+#include <Engine/Core/Cursor.hpp>
 #include <Engine/Core/DeveloperMode.hpp>
 #include <Engine/Core/EngineRebuildBootstrap.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -47,6 +48,7 @@ struct LaunchArgs {
     std::filesystem::path projectPath;
     bool                  standalone = false;
     bool                  editorPlay = false;
+    bool                  allowPhysicalInput = true;
     std::filesystem::path playScene;
     std::filesystem::path playLog;
     /// @brief --batch のシナリオ。空でなければ Playtest を回して終了する (Docs/design/ai-verification-loop.md)。
@@ -104,6 +106,8 @@ LaunchArgs ParseArgs()
             args.standalone = true;
         else if (arg == L"--editor-play")
             args.editorPlay = true;
+        else if (arg == L"--play-no-physical-input")
+            args.allowPhysicalInput = false;
         else if (arg == L"--play-scene" || arg == L"--play-log") {
             if (i + 1 >= argc) { args.argumentError = "Missing Standalone Play path operand."; continue; }
             const std::filesystem::path path(argv[++i]);
@@ -152,8 +156,8 @@ LaunchArgs ParseArgs()
         if (!args.standalone || !args.batchScenario.empty() || args.hidden || args.pixCapture.requested
             || !args.projectPath.is_absolute() || !args.playScene.is_absolute() || !args.playLog.is_absolute())
             args.argumentError = "Editor Play requires --standalone and absolute --project, --play-scene and --play-log paths.";
-    } else if (!args.playScene.empty() || !args.playLog.empty()) {
-        args.argumentError = "--play-scene and --play-log require --editor-play.";
+    } else if (!args.playScene.empty() || !args.playLog.empty() || !args.allowPhysicalInput) {
+        args.argumentError = "--play-scene, --play-log and --play-no-physical-input require --editor-play.";
     }
 
     /// @note バッチは «エディターと同じ実装» で回すのが目的なので Standalone に倒さない。既定プロジェクトの補完より後に置く。
@@ -243,6 +247,8 @@ int Run()
             return 1;
         }
         if (!core::InitializePixCapture(args.pixCapture)) return 1;
+        /// @note Apply before window callbacks and script startup; the process policy also blocks later click reacquisition.
+        core::Cursor::SetPhysicalInputAllowed(args.allowPhysicalInput);
         if (!app.Init(scene::MakeWindowConfig(settings), settings.app.rendererBackend)) return 1;
 
         auto& renderer = app.GetRenderer();
@@ -282,6 +288,8 @@ int Run()
             return batch ? 2 : 1;
         }
         if (!core::InitializePixCapture(args.pixCapture)) return batch ? 2 : 1;
+        /// @note Hidden batch runs must not activate briefly before the later SW_HIDE.
+        if (batch) core::Cursor::SetPhysicalInputAllowed(false);
         if (!app.Init(core::Window::Config{}, settings.app.rendererBackend)) return 1;
 
         auto& renderer    = app.GetRenderer();

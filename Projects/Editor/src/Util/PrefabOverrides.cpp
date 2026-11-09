@@ -7,12 +7,12 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Editor/Util/PrefabOverrides.hpp>
 #include <Editor/Util/AssetPath.hpp>
-#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
@@ -136,15 +136,6 @@ void DiffTables(const toml::table& prefabTable,
     }
 }
 
-/// @note rootEntity 以下の GO を GUID で集める。
-void CollectHierarchyGuids(scene::GameObject& go, std::unordered_set<std::string>& out)
-{
-    if (!go.instanceId.empty()) out.insert(go.instanceId);
-    for (int i = 0; i < go.GetChildCount(); ++i)
-        if (auto* child = go.GetChild(i))
-            CollectHierarchyGuids(*child, out);
-}
-
 /// @note 一意化された表示名を個別変更と誤認しないよう、内部参照の名前ヒントもソースへ戻す。
 void NormalizeReferenceNames(toml::table& object,
     const std::unordered_map<std::string, const toml::table*>& sources)
@@ -228,6 +219,7 @@ bool ComputePrefabOverrides(scene::Scene& scene,
     for (const auto& [id, table] : prefabById)
         sourceByName.emplace((*table)["name"].value_or(std::string{}), id);
     std::unordered_map<std::string, std::string> sourceParents;
+    std::unordered_map<std::string, std::vector<std::string>> sourceChildren;
     for (const auto& [id, table] : prefabById) {
         std::string parent = (*table)["parentInstanceId"].value_or(std::string{});
         if (parent.empty()) {
@@ -235,31 +227,31 @@ bool ComputePrefabOverrides(scene::Scene& scene,
             const auto byName = sourceByName.find(parentName);
             if (!parentName.empty() && byName != sourceByName.end()) parent = byName->second;
         }
+        sourceChildren[parent].push_back(id);
         sourceParents.emplace(id, std::move(parent));
     }
     /// @note 複数ルートのアセットでも、このルート由来の構造だけを比較する。
     std::unordered_set<std::string> expectedSources;
-    if (prefabById.contains(root->prefabSourceId))
+    std::vector<std::string> pendingSources;
+    if (prefabById.contains(root->prefabSourceId)) {
         expectedSources.insert(root->prefabSourceId);
-    else
+        pendingSources.push_back(root->prefabSourceId);
+    } else {
         out.hasStructuralOverrides = true;
-    bool expanded = true;
-    while (expanded) {
-        expanded = false;
-        for (const auto& [id, parent] : sourceParents)
-            if (!expectedSources.contains(id) && expectedSources.contains(parent)) {
-                expectedSources.insert(id);
-                expanded = true;
-            }
+    }
+    while (!pendingSources.empty()) {
+        const auto children = sourceChildren.find(pendingSources.back());
+        pendingSources.pop_back();
+        if (children == sourceChildren.end()) continue;
+        for (const auto& child : children->second)
+            if (expectedSources.insert(child).second) pendingSources.push_back(child);
     }
 
     /// @name インスタンス側の現在状態をシリアライズして拾う
     /// @note ランタイム構造体を直接比べず、保存されるのと同じ表現で比べる。
     /// @note Save したら消える差分を override として出さないため。
-    std::unordered_set<std::string> hierarchyGuids;
-    CollectHierarchyGuids(*root, hierarchyGuids);
-
-    const std::string sceneText = SceneIO::Serialize(scene);
+    const std::string rootGuid = root->instanceId;
+    const std::string sceneText = scene::SceneSerializer::CapturePassiveSubtree(scene, rootEntity);
     if (sceneText.empty()) return false;
     toml::parse_result sceneParsed = toml::parse(sceneText);
     if (!sceneParsed) return false;
@@ -273,7 +265,7 @@ bool ComputePrefabOverrides(scene::Scene& scene,
         if (!table) continue;
         const std::string guid = (*table)["instanceId"].value_or(std::string{});
         const std::string source = (*table)["prefabSourceId"].value_or(std::string{});
-        if (hierarchyGuids.contains(guid) && !source.empty()) instanceToSource.emplace(guid, source);
+        if (!guid.empty() && !source.empty()) instanceToSource.emplace(guid, source);
     }
     std::unordered_set<std::string> actualSources;
     for (const auto& item : *sceneObjects) {
@@ -281,7 +273,7 @@ bool ComputePrefabOverrides(scene::Scene& scene,
         if (!tbl) continue;
 
         const std::string instanceGuid = (*tbl)["instanceId"].value_or(std::string{});
-        if (instanceGuid.empty() || !hierarchyGuids.contains(instanceGuid)) continue;
+        if (instanceGuid.empty()) continue;
 
         const std::string sourceId = (*tbl)["prefabSourceId"].value_or(std::string{});
         if (sourceId.empty() || !expectedSources.contains(sourceId) || !actualSources.insert(sourceId).second)
@@ -290,7 +282,7 @@ bool ComputePrefabOverrides(scene::Scene& scene,
         const auto found = prefabById.find(sourceId);
         if (found == prefabById.end()) continue;
         /// @note ルートの配置先はインスタンス固有のため、子の親だけを比較する。
-        if (instanceGuid != root->instanceId) {
+        if (instanceGuid != rootGuid) {
             const std::string parentGuid = (*tbl)["parentInstanceId"].value_or(std::string{});
             const auto parent = instanceToSource.find(parentGuid);
             const std::string parentSource = parent == instanceToSource.end() ? std::string{} : parent->second;

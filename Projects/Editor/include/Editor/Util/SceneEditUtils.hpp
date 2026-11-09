@@ -11,6 +11,7 @@
 #include <Math/Vector3.hpp>
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace fbzz::editor {
@@ -28,6 +29,17 @@ struct EditorContext;
 void ExecuteSceneEditWithUndo(EditorContext& ctx,
                               const char* description,
                               const std::function<void()>& edit);
+
+/// @brief Editor 専用非表示を除いた、シーンへ保存する有効状態。
+bool GetAuthoringActive(const EditorContext& ctx, const scene::GameObject& object);
+
+/// @brief 指定オブジェクトの有効状態を一括で変更し、対象の変更前の値だけを Undo に残す。
+void SetGameObjectsActive(EditorContext& ctx, std::span<const scene::EntityID> ids,
+                          bool active, const char* description);
+
+/// @brief 有効な対象のうち、対象集合内に祖先を持たないものを入力順で返す。
+[[nodiscard]] std::vector<scene::EntityID> CollectHierarchyRoots(
+    const scene::Scene& scene, std::span<const scene::EntityID> ids);
 
 /// @note RemoveSelection / PruneSelection は Editor/Util/Selection.hpp へ移動 (選択の変更は 1 箇所に集約)
 

@@ -481,8 +481,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         }
 
         /// @name Overrides: このインスタンスがアセット定義とどこで違うか
-        /// @note Apply/Revert それぞれで何が起きるかを事前に見せる。差分算出はシーン全体の
-        /// @note        シリアライズを伴うため毎フレームは回さず、Undo リビジョンと選択が変わったときだけ取り直す。
+        /// @note 大きな Prefab も通常の編集で照合しない。差分一覧を開いた時点で対象階層を取得する。
         {
             struct OverrideCache {
                 std::string       guid;
@@ -495,23 +494,15 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
 
             const std::size_t revision =
                 ctx.undoStack ? ctx.undoStack->GetRevision() : 0;
-            if (cache.guid != go->instanceId || cache.sourceSnapshot != go->prefabSourceSnapshot
-                || cache.undoRevision != revision) {
-                cache.guid         = go->instanceId;
-                cache.sourceSnapshot = go->prefabSourceSnapshot;
-                cache.undoRevision = revision;
-                cache.valid = ComputePrefabOverrides(*ctx.activeScene, go->GetID(),
-                                                     ctx.projectRoot, cache.set);
-                if (!cache.valid) cache.set = {};
-            }
-
-            const int overrideCount = static_cast<int>(cache.set.entries.size());
-            char overridesLabel[64];
-            std::snprintf(overridesLabel, sizeof(overridesLabel),
-                          cache.set.hasStructuralOverrides ? "Overrides (%d + hierarchy)" : "Overrides (%d)",
-                          overrideCount);
-
-            const bool hasOverrides = overrideCount > 0 || cache.set.hasStructuralOverrides;
+            const bool needsRefresh = cache.guid != go->instanceId || cache.undoRevision != revision
+                || cache.sourceSnapshot != go->prefabSourceSnapshot;
+            const bool hasResult = !needsRefresh && cache.valid;
+            const bool hasOverrides = hasResult && (!cache.set.entries.empty() || cache.set.hasStructuralOverrides);
+            char overridesLabel[96] = "Overrides###PrefabOverrides";
+            if (hasResult)
+                std::snprintf(overridesLabel, sizeof(overridesLabel), cache.set.hasStructuralOverrides
+                    ? "Overrides (%zu + hierarchy)###PrefabOverrides" : "Overrides (%zu)###PrefabOverrides",
+                    cache.set.entries.size());
             if (hasOverrides)
                 ImGui::PushStyleColor(ImGuiCol_Button,
                                       EditorTheme::Color(ThemeColor::AccentSoft));
@@ -519,13 +510,20 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::OpenPopup("##prefab_overrides");
             if (hasOverrides) ImGui::PopStyleColor();
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(cache.set.hasStructuralOverrides
+                ImGui::SetTooltip(!hasResult ? "Compare this instance with the prefab asset" : cache.set.hasStructuralOverrides
                     ? "Hierarchy changes are preserved. Automatic prefab updates are paused for this instance."
-                    : (overrideCount > 0
-                    ? "Properties on this instance that differ from the prefab asset"
-                    : "This instance matches the prefab asset"));
+                    : (hasOverrides ? "Properties on this instance that differ from the prefab asset"
+                                    : "This instance matches the prefab asset"));
 
             if (ImGui::BeginPopup("##prefab_overrides")) {
+                if (needsRefresh) {
+                    cache.guid = go->instanceId;
+                    cache.sourceSnapshot = go->prefabSourceSnapshot;
+                    cache.undoRevision = revision;
+                    cache.valid = ComputePrefabOverrides(*ctx.activeScene, go->GetID(), ctx.projectRoot, cache.set);
+                    if (!cache.valid) cache.set = {};
+                }
+                const int overrideCount = static_cast<int>(cache.set.entries.size());
                 if (!cache.valid) {
                     ImGui::TextDisabled("Could not read the prefab asset.");
                 } else if (cache.set.entries.empty() && !cache.set.hasStructuralOverrides) {
@@ -649,14 +647,10 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
     /// @note        activeSelf を表示するのは、親が無効でも子自身の保存値を編集できる必要があるため
     /// @note        (activeInHierarchy だと親の状態を誤って上書きする)。
     {
-        bool active = go->activeSelf();
+        bool active = GetAuthoringActive(ctx, *go);
         if (ImGui::Checkbox("##game_object_active", &active)) {
-            const bool before = go->activeSelf();
-            go->SetActive(active);
-            PushGameObjectPropertyCommand(
-                ctx, go->GetID(), "Toggle GameObject",
-                before, active,
-                [](scene::GameObject& target, bool value) { target.SetActive(value); });
+            const scene::EntityID id = go->GetID();
+            SetGameObjectsActive(ctx, {&id, 1}, active, "Toggle GameObject");
         }
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("%s", active ? "Enabled - uncheck to disable this GameObject"

@@ -5,6 +5,7 @@
 /// @note GameObject 階層と登録済み Component を .fbzz に変換する。 未知の型は ScriptFactory / ComponentRegistry との対応を見て扱う。
 #pragma once
 #include <Engine/Api.hpp>
+#include <functional>
 #include <string>
 #include <memory>
 #include <span>
@@ -18,6 +19,11 @@ class Scene;
 class GameObject;
 struct EntityID;
 struct ScriptComponent;
+
+struct PreparedSceneSave {
+    std::function<std::string()> formatScene;
+    std::function<bool()> writeAssets;
+};
 
 /// @brief ScriptComponent を Script 実体ごと複製する (Duplicate / Copy&Paste / Prefab 展開用)。
 /// @note フィールド値は `.fbzz` 保存と同じリフレクタ (SceneWriteReflector/SceneReadReflector) を往復するため、値型・入れ子型・GameObject 参照・アセット参照は保存・復元と同じ規則で引き継がれる。複製だけ別経路にすると片方に足したフィールドがもう片方で黙って落ちる。
@@ -51,6 +57,17 @@ public:
     FBZZ_ENGINE_API static std::string SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic);
     /// @note Play baseline acquisition skips callbacks and cached serialized-data publication on the parked Edit objects.
     FBZZ_ENGINE_API static std::string CapturePassiveClone(Scene& scene, std::string& diagnostic);
+
+    /// @brief 対象階層だけを保存形式で取得する。シーン内の他のオブジェクトへの参照は維持する。
+    FBZZ_ENGINE_API static std::string CapturePassiveSubtree(Scene& scene, EntityID root);
+
+    /// @brief 所有スレッドで保存値と Script callback を確定する。失敗時は formatScene が空。
+    /// @note 返した関数は Scene を参照せず、同じプロジェクトが開いている間にそれぞれ一度だけ実行する。
+    FBZZ_ENGINE_API static PreparedSceneSave PrepareSave(
+        Scene& scene, const std::string& scenePath, std::string& diagnostic);
+
+    /// @brief 保存先に対応する読み取り専用の比較用テキストを取得する。
+    FBZZ_ENGINE_API static std::string CaptureSaveComparison(Scene& scene, const std::string& scenePath);
 
     /// @brief `.fbzz` ファイルから Scene を復元する。
     /// @param resources nullptr ならデータだけ復元する。詳細は LoadData を参照。
@@ -122,7 +139,6 @@ public:
 private:
     FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadFromTextCore(const std::string& tomlText,
         renderer::ResourceManager* resources, const std::string& sourcePath, bool passiveScripts);
-    FBZZ_ENGINE_API static std::string SaveToTextCore(Scene& scene, const std::string& scenePath, std::string& diagnostic, bool passiveClone);
 };
 
 } /// @note namespace fbzz::scene

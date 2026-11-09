@@ -16,6 +16,7 @@
 #include <Editor/PackageBuildService.hpp>
 #include <Editor/Util/MemoryLeakDiff.hpp>
 #include <Editor/Util/SceneDirtyTracker.hpp>
+#include <Editor/Util/SceneIO.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/StandalonePlaySession.hpp>
 #include <Editor/Playtest/InputRecorder.hpp>
@@ -162,14 +163,14 @@ private:
     /// @brief Play 中の OS カーソル (拘束範囲・方針の適用と Escape の解放)。
     void UpdatePlayCursorControls();
     /// @brief Play 開始/停止/トグル。ツールバーのボタンと Ctrl+P ホットキーの共通経路。
-    void StartPlayMode(bool shadowBakePrepared = false);
+    void StartPlayMode(bool shadowBakePrepared = false, bool allowPhysicalInput = true);
     void TickPendingShadowBakePlay();
-    void StartStandalonePlayMode();
-    void LaunchStandalonePlay();
+    void StartStandalonePlayMode(bool allowPhysicalInput);
+    void LaunchStandalonePlay(bool allowPhysicalInput);
     void TickStandalonePlay(float dt);
     void OpenStandalonePlayLog();
     void StopPlayMode();
-    void TogglePlayMode();
+    void TogglePlayMode(bool allowPhysicalInput = true);
     void RegisterDefaultHotkeys();
 
 
@@ -237,7 +238,7 @@ private:
     void SetHotReloadState(EditorContext::HotReloadState state, const std::string& msg = "");
     void CaptureCleanScene();
     void RebuildEditorUIFromScene();
-    void RefreshSceneDirtyState(bool force);
+    void CheckSceneDirtyForStandalone();
     void UpdateWindowTitle();
     void MarkSceneDirty();
     void ConfirmDiscardUnsaved(const std::string& actionName, std::function<void()> action);
@@ -248,9 +249,14 @@ private:
     void RequestExit();
     bool OpenSceneFromDialog();
     bool OpenScenePath(const std::string& path);
-    bool SaveScene();
-    bool SaveSceneAsDialog();
-    bool SaveScenePath(const std::string& requestedPath); ///< @note 保存の実体 (ダイアログ / AI 共通)
+    bool SaveScene(bool background = false, std::function<void()> afterSave = {});
+    bool SaveSceneAsDialog(bool background, std::function<void()> afterSave = {});
+    bool SaveScenePath(const std::string& requestedPath, bool background = false, std::function<void()> afterSave = {});
+    bool StartSceneSave(const std::string& path, bool backup, bool background, std::function<void()> afterSave = {});
+    void PollSceneSave();
+    bool FinishSceneSave(const std::string& path, bool backup, uint64_t editRevision,
+                         std::size_t undoRevision, const SceneSaveResult& result);
+    bool RejectWhileSceneSaving();
     void RemoveEditorHiding();   ///< @note Play/Save 前に editor-only 非表示を一時解除
     void RestoreEditorHiding();  ///< @note Play 復元/Save 後に editor-only 非表示を再適用
     /// @brief Play 中のシーン読み書き要求を断る (断ったら true)。理由は Console と Toast へ。
@@ -346,7 +352,16 @@ private:
     std::string        m_projectSettingsFailedToml;
     float              m_projectSettingsPollTimer = 0.0f;
     float              m_projectSettingsIdleTime  = 0.0f;
-    float              m_dirtyPollTimer = 0.0f;
+    uint64_t           m_sceneEditRevision = 0;
+    struct PendingSceneSave {
+        std::future<SceneSaveResult> result;
+        std::string path;
+        std::function<void()> afterSave;
+        uint64_t editRevision = 0;
+        std::size_t undoRevision = 0;
+        bool backup = false;
+    };
+    PendingSceneSave   m_pendingSceneSave;
     bool               m_titleInitialized = false;
     bool               m_lastTitleDirty = false;
     std::string        m_lastTitleScenePath;
@@ -367,6 +382,10 @@ private:
     uint64_t m_scriptQuitSceneLifetime = 0;
     /// @note Play is deferred until the matching edit scene finishes preparing its directional shadow presets.
     uint64_t m_pendingShadowBakePlayScene = 0;
+    bool m_pendingShadowBakeAllowPhysicalInput = true;
+    bool m_playAllowsPhysicalInput = true;
+    bool m_playInputPolicyApplied = false;
+    bool m_playPreviousPhysicalInputAllowed = true;
     /// @brief Play 開始時に取った Renderer リソースの基準。Stop 後の復元が落ち着いてから比べる。
     MemoryLeakDiff     m_memoryLeakDiff;
     /// @brief .fluid の焼き・プレビューのジョブ窓口 (m_ctx.fluidBake がこれを指す)。

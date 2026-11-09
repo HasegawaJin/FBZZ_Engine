@@ -20,6 +20,8 @@ struct StandalonePlayRequest {
     std::filesystem::path project;
     std::filesystem::path scene;
     std::filesystem::path log;
+    /// @note Automated Play must not activate its window or acquire physical input; manual Play keeps the default.
+    bool allowPhysicalInput = true;
 };
 
 /// @note Start failure must leave no child running. Every operation addresses only that Start's retained process handle.

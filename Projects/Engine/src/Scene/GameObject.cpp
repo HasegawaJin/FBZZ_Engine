@@ -53,11 +53,9 @@ bool GameObject::SetParent(GameObject* parent)
         }
     }
 
-    auto& newSiblings = parent->m_children;
-    newSiblings.erase(std::remove(newSiblings.begin(), newSiblings.end(), m_id), newSiblings.end());
-
+    /// @note 既に同じ親なら上で返しているため、追加先にこの子は存在しない。
     m_parent = parent->m_id;
-    newSiblings.push_back(m_id);
+    parent->m_children.push_back(m_id);
     return true;
 }
 

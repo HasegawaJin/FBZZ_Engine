@@ -373,7 +373,9 @@ bool Window::Initialize(const Config& config)
         }
     }
 
-    ShowWindow(m_hwnd, SW_SHOW);
+    /// @note Automated Play may render a normal window but must not activate it.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
+    ShowWindow(m_hwnd, Cursor::IsPhysicalInputAllowed() ? SW_SHOW : SW_SHOWNOACTIVATE);
     UpdateWindow(m_hwnd);
 
     RECT clientRect{};
@@ -408,14 +410,19 @@ void Window::SetWindowMode(WindowMode mode)
                      monitor.left, monitor.top,
                      monitor.right - monitor.left,
                      monitor.bottom - monitor.top,
-                     SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+                     SWP_FRAMECHANGED | SWP_NOOWNERZORDER
+                     | (Cursor::IsPhysicalInputAllowed() ? 0u : SWP_NOACTIVATE | SWP_NOZORDER));
     } else {
         SetWindowLongPtrW(m_hwnd, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-        if (m_hasWindowedPlacement)
-            SetWindowPlacement(m_hwnd, &m_placement->m_value);
+        if (m_hasWindowedPlacement) {
+            auto placement = m_placement->m_value;
+            if (!Cursor::IsPhysicalInputAllowed()) placement.showCmd = SW_SHOWNOACTIVATE;
+            SetWindowPlacement(m_hwnd, &placement);
+        }
         /// @note 新しい枠を反映させる。SetWindowPlacement だけでは非クライアント領域が再計算されない。
         SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED
+                     | (Cursor::IsPhysicalInputAllowed() ? 0u : SWP_NOACTIVATE));
     }
 
     m_windowMode = mode;
@@ -460,7 +467,8 @@ void Window::ApplyWindowedClientSize(uint32_t width, uint32_t height)
     /// @note 位置は動かさない。解像度を変えるたびにウィンドウが飛ぶのは操作として不快。
     SetWindowPos(m_hwnd, nullptr, 0, 0,
                  rect.right - rect.left, rect.bottom - rect.top,
-                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER);
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER
+                 | (Cursor::IsPhysicalInputAllowed() ? 0u : SWP_NOACTIVATE));
 }
 
 void Window::GetMonitorSize(uint32_t& outWidth, uint32_t& outHeight) const

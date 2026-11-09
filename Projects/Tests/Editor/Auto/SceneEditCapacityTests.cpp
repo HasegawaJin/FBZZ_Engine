@@ -11,8 +11,10 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
+#include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace fbzz::tests {
 class SceneEditCapacityTest : public testkit::EditorFixture {
@@ -85,6 +87,26 @@ TEST_F(SceneEditCapacityTest, ParentAndChildSelectionDuplicatesOnlyTheOriginalHi
     ASSERT_EQ(Context().selectedEntities.size(), 1u);
     EXPECT_EQ(Context().selectedEntities.front(), duplicate->GetID());
     EXPECT_EQ(m_dirtyCalls, 1);
+}
+
+TEST_F(SceneEditCapacityTest, SelectedRootsKeepInputOrderAndIgnoreStaleIdsAndDescendants)
+{
+    auto& target = AttachScene();
+    auto& ancestor = target.CreateGameObject("Ancestor");
+    auto& intermediate = target.CreateGameObject("Intermediate");
+    intermediate.SetParent(ancestor);
+    auto& child = target.CreateGameObject("Child");
+    child.SetParent(intermediate);
+    auto& sibling = target.CreateGameObject("Sibling");
+    sibling.SetParent(intermediate);
+    const auto stale = target.CreateGameObject("Removed").GetID();
+    ASSERT_TRUE(target.DestroyGameObject(stale));
+    const auto unrelated = target.CreateGameObject("Unrelated").GetID();
+    ASSERT_EQ(stale.index, unrelated.index);
+    const std::array selection{child.GetID(), unrelated, sibling.GetID(), stale, ancestor.GetID(), unrelated};
+
+    EXPECT_EQ(editor::CollectHierarchyRoots(target, selection),
+        (std::vector<scene::EntityID>{unrelated, ancestor.GetID()}));
 }
 
 TEST_F(SceneEditCapacityTest, UIPresetCreatesAutomaticCanvasBeyondOldCapacity)

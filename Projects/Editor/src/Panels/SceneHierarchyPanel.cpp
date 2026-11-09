@@ -56,6 +56,7 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -63,6 +64,54 @@
 namespace fbzz::editor {
 
 namespace {
+
+struct DeferredHierarchyEdit {
+    void operator=(std::function<void()> edit)
+    {
+        action = std::move(edit);
+        snapshot = true;
+    }
+
+    void SetLocal(std::function<void()> edit)
+    {
+        action = std::move(edit);
+        snapshot = false;
+    }
+
+    void Run(EditorContext& ctx) const
+    {
+        if (!action) return;
+        if (snapshot) ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", action);
+        else action();
+    }
+
+    std::function<void()> action;
+    bool snapshot = false;
+};
+
+void ToggleEditorHiding(EditorContext& ctx, scene::EntityID id)
+{
+    if (ctx.editScene && ctx.activeScene != ctx.editScene) return;
+    auto* object = ctx.activeScene->GetGameObject(id);
+    if (!object) return;
+    const std::string guid = object->instanceId;
+    const bool hide = !ctx.editorHiddenGuids.contains(guid);
+    auto apply = [context = &ctx, scene = ctx.activeScene, guid, id](bool hidden) {
+        if (context->activeScene != scene) return;
+        auto* target = scene->GetGameObject(id);
+        if (!target || target->instanceId != guid) target = scene->FindByGuid(guid);
+        if (!target) return;
+        const bool active = GetAuthoringActive(*context, *target);
+        if (hidden) context->editorHiddenGuids.insert_or_assign(guid, active);
+        else context->editorHiddenGuids.erase(guid);
+        target->SetActive(!hidden && active);
+        if (context->markSceneDirty) context->markSceneDirty();
+    };
+    if (ctx.undoStack)
+        ctx.undoStack->Execute(std::make_unique<LambdaCommand>("Toggle Editor Visibility",
+            [apply, hide] { apply(hide); }, [apply, hide] { apply(!hide); }));
+    else apply(hide);
+}
 
 void SetParentWithUndo(EditorContext& ctx,
                        scene::EntityID childId,
@@ -114,9 +163,11 @@ bool ReadEntityPayload(const ImGuiPayload* payload, scene::EntityID& outId)
     return true;
 }
 
-bool ContainsEntity(const std::vector<scene::EntityID>& entities, scene::EntityID id)
+void SetHierarchyMembers(HierarchyTraversal::EntitySet& members, std::span<const scene::EntityID> ids)
 {
-    return std::find(entities.begin(), entities.end(), id) != entities.end();
+    members.clear();
+    members.reserve(ids.size());
+    for (const auto id : ids) members.insert(HierarchyTraversal::EntityKey(id));
 }
 
 /// @brief ドラッグで運ばれている GameObject のうち、祖先が同じ集合に居ないものを行の並び順で返す。
@@ -125,22 +176,19 @@ bool ContainsEntity(const std::vector<scene::EntityID>& entities, scene::EntityI
 std::vector<scene::EntityID> DraggedRoots(scene::Scene& scene, scene::EntityID payloadId,
                                           const std::vector<scene::EntityID>& order)
 {
-    const std::vector<scene::EntityID> all = dragdrop::DraggedEntities(payloadId);
-    std::vector<scene::EntityID> roots;
-    for (scene::EntityID id : all) {
-        const scene::GameObject* go = scene.GetGameObject(id);
-        if (!go) continue;
-        bool ancestorDragged = false;
-        for (const scene::GameObject* p = go->GetParent(); p && !ancestorDragged; p = p->GetParent())
-            ancestorDragged = ContainsEntity(all, p->GetID());
-        if (!ancestorDragged) roots.push_back(id);
+    const auto roots = CollectHierarchyRoots(scene, dragdrop::DraggedEntities(payloadId));
+    if (roots.size() < 2) return roots;
+    HierarchyTraversal::EntitySet remaining;
+    SetHierarchyMembers(remaining, roots);
+    std::vector<scene::EntityID> sorted;
+    sorted.reserve(roots.size());
+    for (const auto id : order) {
+        if (remaining.erase(HierarchyTraversal::EntityKey(id))) sorted.push_back(id);
+        if (remaining.empty()) return sorted;
     }
-    const auto rank = [&order](scene::EntityID id) {
-        return static_cast<size_t>(std::find(order.begin(), order.end(), id) - order.begin());
-    };
-    std::stable_sort(roots.begin(), roots.end(),
-                     [&rank](scene::EntityID a, scene::EntityID b) { return rank(a) < rank(b); });
-    return roots;
+    for (const auto id : roots)
+        if (remaining.erase(HierarchyTraversal::EntityKey(id))) sorted.push_back(id);
+    return sorted;
 }
 
 /// @brief 掴んだ 1 件を先頭 (主選択) にして選択を置き換える。
@@ -214,7 +262,7 @@ void SaveSelectedAsAsset(EditorContext& ctx, const std::string& objectName,
 /// @param pendingExpand 置いた後に開くノードの書き先。null 可。
 void QueueAssetDrop(EditorContext& ctx, const std::string& payloadPath,
                     scene::EntityID parentId, const std::string& parentGuid,
-                    std::function<void()>& deferred, PendingObjectCreate& pendingCreate,
+                    DeferredHierarchyEdit& deferred, PendingObjectCreate& pendingCreate,
                     scene::EntityID* pendingExpand)
 {
     std::vector<std::string> fbxPaths;
@@ -336,7 +384,6 @@ struct InlineRenameState {
 /// @brief ツリーを「開いて見せる」ための状態一式 (パネルメンバーへの参照)。
 struct HierarchyRevealState {
     scene::EntityID&              pendingExpand; /// @note SetParent 直後に開くノード
-    std::vector<scene::EntityID>& openChain;     /// @note 他の面から選ばれた対象の祖先
     scene::EntityID&              scrollTo;      /// @note 行までスクロールする対象
     std::unordered_map<std::string, bool>& expansionRequests;
 };
@@ -349,7 +396,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                        size_t rootIndex,
                        size_t rootCount,
                        HierarchyTraversal& visited,
-                       std::function<void()>& deferred,
+                       DeferredHierarchyEdit& deferred,
                        PendingObjectCreate& pendingCreate,
                        HierarchyRevealState reveal,
                        scene::EntityID& lastClicked,
@@ -358,7 +405,8 @@ void DrawHierarchyNode(EditorContext& ctx,
                        bool& hierarchyNodeHovered,
                        std::vector<scene::EntityID>& outVisible,
                        const std::vector<scene::EntityID>& prevVisible,
-                       InlineRenameState rename)
+                       InlineRenameState rename,
+                       bool parentActive = true)
 {
     scene::EntityID* const pendingExpand = &reveal.pendingExpand;
     const scene::EntityID id = go.GetID();
@@ -405,12 +453,13 @@ void DrawHierarchyNode(EditorContext& ctx,
     }
 
     const bool hasChildren    = VisibleChildCount(ctx, go) > 0;
-    const bool selected       = ContainsEntity(ctx.selectedEntities, id);
+    const auto key            = HierarchyTraversal::EntityKey(id);
+    const bool selected       = visited.selected.contains(key);
     const bool isRoot         = go.GetParent() == nullptr;
-    const bool isActive       = go.activeInHierarchy();
+    const bool isActive       = parentActive && go.activeSelf();
     /// @note 目アイコンとメニューが切り替えるのは自分の値 (activeSelf)。表示もそれに合わせ、親のせいで無効なときだけ薄く描く。
-    const bool isActiveSelf   = go.activeSelf();
-    const bool isLocked       = ctx.IsLocked(id);
+    const bool isActiveSelf   = GetAuthoringActive(ctx, go);
+    const bool isLocked       = visited.locked.contains(key);
     const bool isEditorHidden  = ctx.editorHiddenGuids.count(go.instanceId) > 0;
     const bool isPrimarySelected = ctx.PrimarySelected() == id;
     /// @note Prefab インスタンスを青色で識別し、通常 GO と視覚的に区別する (Unity 互換の UX)。
@@ -432,7 +481,7 @@ void DrawHierarchyNode(EditorContext& ctx,
     }
     /// @note 他の面で選ばれた対象までの祖先を開く。開いた状態は StateStorage に残るので、
     /// @note 要求はこのフレームの描画が終わった時点で捨ててよい (畳み直しを妨げない)。
-    if (ContainsEntity(reveal.openChain, id))
+    if (visited.revealed.contains(key))
         ImGui::SetNextItemOpen(true, ImGuiCond_Always);
     if (const auto request = reveal.expansionRequests.find(go.instanceId); request != reveal.expansionRequests.end()) {
         ImGui::SetNextItemOpen(request->second, ImGuiCond_Always);
@@ -503,24 +552,10 @@ void DrawHierarchyNode(EditorContext& ctx,
         const bool visClick  = visHov  && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         const bool lockClick = lockHov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
 
-        if (ehClick) deferred = [&ctx, id]() {
-            if (auto* g = ctx.activeScene->GetGameObject(id)) {
-                const std::string guid = g->instanceId;
-                auto it = ctx.editorHiddenGuids.find(guid);
-                if (it != ctx.editorHiddenGuids.end()) {
-                    /// @note 解除: 非表示前の activeSelf を復元
-                    g->SetActive(it->second);
-                    ctx.editorHiddenGuids.erase(it);
-                } else {
-                    /// @note 非表示: 現在の activeSelf を保存してから SetActive(false)
-                    ctx.editorHiddenGuids[guid] = g->activeSelf();
-                    g->SetActive(false);
-                }
-            }
-        };
-        if (visClick)  deferred = [&ctx, id]() {
-            if (auto* g = ctx.activeScene->GetGameObject(id)) g->SetActive(!g->activeSelf());
-        };
+        if (ehClick) deferred.SetLocal([&ctx, id] { ToggleEditorHiding(ctx, id); });
+        if (visClick) deferred.SetLocal([&ctx, id, isActiveSelf] {
+            SetGameObjectsActive(ctx, {&id, 1}, !isActiveSelf, "Toggle GameObject");
+        });
         if (lockClick) ctx.ToggleLock(id);
 
         ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -608,7 +643,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         scene::EntityID draggedId;
         if (ReadEntityPayload(ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), draggedId)) {
             std::vector<scene::EntityID> dragged = DraggedRoots(*ctx.activeScene, draggedId, prevVisible);
-            deferred = [&ctx, dragged, draggedId, id, pendingExpand]() {
+            deferred.SetLocal([&ctx, dragged, draggedId, id, pendingExpand]() {
                 auto* target = ctx.activeScene->GetGameObject(id);
                 if (!target) return;
                 std::vector<scene::EntityID> moved;
@@ -622,7 +657,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                 if (moved.empty()) return;
                 SelectMoved(ctx, std::move(moved), draggedId);
                 if (pendingExpand) *pendingExpand = id;
-            };
+            });
         }
         std::string assetPath;
         if (ReadAssetPayload(ImGui::AcceptDragDropPayload("ASSET_PATH"), assetPath))
@@ -702,7 +737,8 @@ void DrawHierarchyNode(EditorContext& ctx,
                     ctrlHeld ? ctx.selectedEntities : std::vector<scene::EntityID>{};
                 if (it1 > it2) std::swap(it1, it2);
                 for (auto it = it1; it <= it2; ++it)
-                    if (!ContainsEntity(range, *it)) range.push_back(*it);
+                    if (!ctrlHeld || visited.selected.insert(HierarchyTraversal::EntityKey(*it)).second)
+                        range.push_back(*it);
                 SelectEntities(ctx, std::move(range), SelectionReveal::Skip);
             }
         } else {
@@ -710,6 +746,7 @@ void DrawHierarchyNode(EditorContext& ctx,
             else          SelectEntity(ctx, id, SelectionReveal::Skip);
             lastClicked = id;
         }
+        SetHierarchyMembers(visited.selected, ctx.selectedEntities);
         pendingClick = {};
     }
 
@@ -723,52 +760,29 @@ void DrawHierarchyNode(EditorContext& ctx,
         /// @note 右クリックした GO が既に複数選択中なら選択を維持する。
         /// @note そうでなければ単一選択に切り替える。
         {
-            const bool alreadySelected = std::find(
-                ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
-                != ctx.selectedEntities.end();
-            if (!alreadySelected || ctx.selectedEntities.size() == 1)
+            const bool alreadySelected = visited.selected.contains(key);
+            if (!alreadySelected || ctx.selectedEntities.size() == 1) {
                 SelectEntity(ctx, id, SelectionReveal::Skip);
+                SetHierarchyMembers(visited.selected, ctx.selectedEntities);
+            }
         }
         const bool multiSelected = ctx.selectedEntities.size() > 1;
 
         if (ImGui::MenuItem(multiSelected ? "Hide/Show" : (isActiveSelf ? "Hide" : "Show"))) {
             if (multiSelected) {
                 const std::vector<scene::EntityID> toToggle = ctx.selectedEntities;
-                deferred = [&ctx, toToggle]() {
+                deferred.SetLocal([&ctx, toToggle]() {
                     bool anyActive = false;
                     for (auto eid : toToggle)
                         if (auto* g = ctx.activeScene->GetGameObject(eid))
-                            if (g->activeSelf()) { anyActive = true; break; }
-                    const bool newState = !anyActive;
-                    for (auto eid : toToggle)
-                        if (auto* g = ctx.activeScene->GetGameObject(eid))
-                            g->SetActive(newState);
-                    if (ctx.markSceneDirty) ctx.markSceneDirty();
-                };
+                            if (GetAuthoringActive(ctx, *g)) { anyActive = true; break; }
+                    SetGameObjectsActive(ctx, toToggle, !anyActive, anyActive ? "Hide GameObjects" : "Show GameObjects");
+                });
             } else {
-                deferred = [&ctx, id]() {
-                    if (auto* g = ctx.activeScene->GetGameObject(id)) {
-                        const std::string instanceId = g->instanceId;
-                        const bool before = g->activeSelf();
-                        const bool after = !before;
-                        g->SetActive(after);
-                        scene::Scene* scene = ctx.activeScene;
-                        const auto markDirty = ctx.markSceneDirty;
-                        if (ctx.undoStack) {
-                            auto apply = [scene, instanceId, markDirty](bool active) {
-                                if (auto* target = scene->FindByGuid(instanceId)) {
-                                    target->SetActive(active);
-                                    if (markDirty) markDirty();
-                                }
-                            };
-                            ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                                after ? "Show GameObject" : "Hide GameObject",
-                                [apply, after]() { apply(after); },
-                                [apply, before]() { apply(before); }));
-                        }
-                        if (ctx.markSceneDirty) ctx.markSceneDirty();
-                    }
-                };
+                deferred.SetLocal([&ctx, id, isActiveSelf] {
+                    SetGameObjectsActive(ctx, {&id, 1}, !isActiveSelf,
+                        isActiveSelf ? "Hide GameObject" : "Show GameObject");
+                });
             }
         }
         if (ImGui::MenuItem(isLocked ? "Unlock" : "Lock"))
@@ -790,10 +804,10 @@ void DrawHierarchyNode(EditorContext& ctx,
         if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
             InvokeOperator(ctx, "edit.copy");
         if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
-            deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste"); };
+            deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste"); });
         if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false,
                             CanInvokeOperator(ctx, "edit.paste_as_child")))
-            deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste_as_child"); };
+            deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste_as_child"); });
         ImGui::Separator();
         /// @note operator 経由にする: 旧実装はメニューからの複製が Undo に載っていなかった
         /// @note (ExecuteSceneEditWithUndo で包んでいなかったため。Ctrl+D は載る)。
@@ -801,10 +815,10 @@ void DrawHierarchyNode(EditorContext& ctx,
                             CanInvokeOperator(ctx, "edit.duplicate"))) {
             const std::vector<scene::EntityID> toDup =
                 multiSelected ? ctx.selectedEntities : std::vector<scene::EntityID>{ id };
-            deferred = [&ctx, toDup]() {
+            deferred.SetLocal([&ctx, toDup]() {
                 SelectEntities(ctx, toDup, SelectionReveal::Skip);
                 InvokeOperator(ctx, "edit.duplicate");
-            };
+            });
         }
         if (multiSelected) {
             if (ImGui::MenuItem("Group Selection")) {
@@ -890,20 +904,20 @@ void DrawHierarchyNode(EditorContext& ctx,
                 ImGui::SetTooltip("Write instance state back to the .prefab asset,\n"
                                   "then update every other instance in this scene");
             if (ImGui::MenuItem("Revert from Prefab")) {
-                deferred = [&ctx, id]() {
+                deferred.SetLocal([&ctx, id]() {
                     if (!ctx.activeScene) return;
                     ExecuteSceneEditWithUndo(ctx, "Revert Prefab", [&ctx, id]() {
                         std::vector<scene::EntityID> newRoots;
                         if (PrefabSerializer::Revert(*ctx.activeScene, id, newRoots, ctx.projectRoot))
                             if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
                     });
-                };
+                });
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Discard instance changes and restore from the source .prefab asset");
             if (ImGui::MenuItem("Open Prefab")) {
                 const std::string prefabPath = go.prefabAssetPath;
-                deferred = [&ctx, prefabPath]() { ctx.requestOpenPrefabEdit = prefabPath; };
+                deferred.SetLocal([&ctx, prefabPath] { ctx.requestOpenPrefabEdit = prefabPath; });
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Edit the .prefab itself in isolation — every instance follows on save");
@@ -911,9 +925,9 @@ void DrawHierarchyNode(EditorContext& ctx,
         if (ImGui::BeginMenu("Hierarchy")) {
             const bool hasParent = go.GetParent() != nullptr;
             if (ImGui::MenuItem("Set As Root", nullptr, false, hasParent))
-                deferred = [&ctx, id]() {
+                deferred.SetLocal([&ctx, id]() {
                     SetParentWithUndo(ctx, id, {}, "Set GameObject As Root");
-                };
+                });
             ImGui::EndMenu();
         }
         if (isRoot && ImGui::BeginMenu("Order")) {
@@ -937,7 +951,7 @@ void DrawHierarchyNode(EditorContext& ctx,
         /// @note Delete キー経由は DeleteSelectedWithUndo を通るため取り消せる食い違いがあった。
         if (ImGui::MenuItem("Delete", nullptr, false,
                             CanInvokeOperator(ctx, "edit.delete_selected")))
-            deferred = [&ctx]() { InvokeOperator(ctx, "edit.delete_selected"); };
+            deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.delete_selected"); });
         ImGui::EndPopup();
     }
 
@@ -947,7 +961,7 @@ void DrawHierarchyNode(EditorContext& ctx,
                 if (auto* child = go.GetChild(i))
                     DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, pendingCreate, reveal,
                                       lastClicked, pendingClick, hierarchyDragStarted,
-                                      hierarchyNodeHovered, outVisible, prevVisible, rename);
+                                      hierarchyNodeHovered, outVisible, prevVisible, rename, isActive);
             }
             ImGui::TreePop();
         } else {
@@ -962,7 +976,7 @@ void DrawHierarchyNode(EditorContext& ctx,
 
 /// @brief 行の無い所を右クリックしたときのメニュー。ツリー・検索結果・Map Mode の 3 表示で共有する。
 /// @note Select All はロック済みを除く規則を持つので、Ctrl+A と同じ Operator を呼ぶ。
-void DrawHierarchyBackgroundMenu(EditorContext& ctx, std::function<void()>& deferred,
+void DrawHierarchyBackgroundMenu(EditorContext& ctx, DeferredHierarchyEdit& deferred,
                                  PendingObjectCreate& pendingCreate)
 {
     if (!ImGui::BeginPopupContextWindow("##scene_ctx",
@@ -972,7 +986,7 @@ void DrawHierarchyBackgroundMenu(EditorContext& ctx, std::function<void()>& defe
     if (ImGui::MenuItem("Select All", "Ctrl+A", false, CanInvokeOperator(ctx, "select.all")))
         InvokeOperator(ctx, "select.all");
     if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
-        deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste"); };
+        deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste"); });
     ImGui::Separator();
     DrawCreateObjectMenu(ctx, pendingCreate);
     ImGui::EndPopup();
@@ -1149,6 +1163,10 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     }
 
     ConsumeRevealRequest(ctx);
+    auto& visited = m_traversal;
+    SetHierarchyMembers(visited.selected, ctx.selectedEntities);
+    SetHierarchyMembers(visited.locked, ctx.lockedEntities);
+    SetHierarchyMembers(visited.revealed, m_revealOpenChain);
 
     /// @note ドラッグ開始後の選択保留はマウス操作が終わったフレームで解放する。
     /// @note MouseReleased のフレームにはまだドロップ判定が残っているので消さない。
@@ -1199,7 +1217,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     /// @note 検索中はフラットリスト。キーボード移動の並びもこのリストが正本になる。
     if (m_searchFilter[0] != '\0') {
-        std::function<void()> deferred;
+        DeferredHierarchyEdit deferred;
         auto& visibleRows = m_nextVisibleOrder;
         visibleRows.clear();
 
@@ -1219,7 +1237,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                     continue;
             }
             const scene::EntityID id = go.GetID();
-            const bool selected = ContainsEntity(ctx.selectedEntities, id);
+            const bool selected = visited.selected.contains(HierarchyTraversal::EntityKey(id));
             visibleRows.push_back(id);
             ImGui::PushID(static_cast<int>(id.index));
 
@@ -1252,6 +1270,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::Selectable(go.name.c_str(), selected)) {
                 if (ImGui::GetIO().KeyCtrl) ToggleSelection(ctx, id, SelectionReveal::Skip);
                 else                        SelectEntity(ctx, id, SelectionReveal::Skip);
+                SetHierarchyMembers(visited.selected, ctx.selectedEntities);
             }
             ui::PopHierarchySelectionColors();
             if (m_revealScrollTo == id) {
@@ -1266,13 +1285,14 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             if (ImGui::BeginPopupContextItem()) {
                 /// @note 選択を対象にする操作 (Copy / Delete) が右クリックした行を指すよう、先に単一選択にする。
                 SelectEntity(ctx, id, SelectionReveal::Skip);
+                SetHierarchyMembers(visited.selected, ctx.selectedEntities);
                 if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
                     InvokeOperator(ctx, "edit.copy");
                 if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
-                    deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste"); };
+                    deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste"); });
                 if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false,
                                     CanInvokeOperator(ctx, "edit.paste_as_child")))
-                    deferred = [&ctx]() { InvokeOperator(ctx, "edit.paste_as_child"); };
+                    deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste_as_child"); });
                 ImGui::Separator();
                 if (ImGui::BeginMenu("Create Child")) {
                     DrawCreateObjectMenuItems(ctx, go.instanceId, pendingCreate);
@@ -1287,7 +1307,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::Separator();
                 if (ImGui::MenuItem("Delete", nullptr, false,
                                     CanInvokeOperator(ctx, "edit.delete_selected")))
-                    deferred = [&ctx]() { InvokeOperator(ctx, "edit.delete_selected"); };
+                    deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.delete_selected"); });
                 ImGui::EndPopup();
             }
             ImGui::PopID();
@@ -1300,16 +1320,14 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         HandleKeyboardNavigation(ctx);
         HandlePanelRequests(ctx);
         DrawHierarchyBackgroundMenu(ctx, deferred, pendingCreate);
-        if (deferred)
-            ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
+        deferred.Run(ctx);
         InvokePendingObjectCreate(ctx, pendingCreate);
         return;
     }
 
     /// @note Map Mode は Terrain Grid / Terrain / Water のルートだけをツリーで出す (子を親から切り離して見せない)。
     if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
-        std::function<void()> deferred;
-        auto& visited = m_traversal;
+        DeferredHierarchyEdit deferred;
         visited.BeginFrame(ctx.activeScene->GameObjectCount());
 
         const auto roots = ctx.activeScene->GetRootGameObjects();
@@ -1323,7 +1341,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 && !go->GetComponent<scene::WaterComponent>())
                 continue;
             DrawHierarchyNode(ctx, *go, 0, rootCount, visited, deferred, pendingCreate,
-                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo, m_expansionRequests },
+                HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
                 m_lastClickedEntity, m_pendingClickEntity, m_hierarchyDragStarted,
                 hierarchyNodeHovered, mapVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
@@ -1335,15 +1353,13 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         HandleKeyboardNavigation(ctx);
         HandlePanelRequests(ctx);
         DrawHierarchyBackgroundMenu(ctx, deferred, pendingCreate);
-        if (deferred)
-            ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
+        deferred.Run(ctx);
         InvokePendingObjectCreate(ctx, pendingCreate);
         return;
     }
 
     /// @note 描画ループ中にシーンを変えると後続の反復でポインタが無効になるので、変更はループ後にまとめて実行する。
-    std::function<void()> deferred;
-    auto& visited = m_traversal;
+    DeferredHierarchyEdit deferred;
     visited.BeginFrame(ctx.activeScene->GameObjectCount());
     auto& outVisible = m_nextVisibleOrder;
     outVisible.clear();
@@ -1360,7 +1376,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     const size_t rootCount = roots.size();
     for (size_t i = 0; i < roots.size(); ++i)
         if (roots[i]) DrawHierarchyNode(ctx, *roots[i], i, rootCount, visited, deferred, pendingCreate,
-            HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo, m_expansionRequests },
+            HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
             m_lastClickedEntity, m_pendingClickEntity,
             m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
             InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
@@ -1369,7 +1385,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     for (auto& go : ctx.activeScene->GameObjects()) {
         if (go.GetParent() == nullptr && !visited.Contains(go.GetID()))
             DrawHierarchyNode(ctx, go, 0, 0, visited, deferred, pendingCreate,
-                HierarchyRevealState{ m_pendingExpand, m_revealOpenChain, m_revealScrollTo, m_expansionRequests },
+                HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
                 m_lastClickedEntity, m_pendingClickEntity,
                 m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
                 InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
@@ -1417,9 +1433,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     DrawHierarchyBackgroundMenu(ctx, deferred, pendingCreate);
 
-    if (deferred) {
-        ExecuteSceneEditWithUndo(ctx, "Edit Scene Hierarchy", deferred);
-    }
+    deferred.Run(ctx);
     InvokePendingObjectCreate(ctx, pendingCreate);
 }
 

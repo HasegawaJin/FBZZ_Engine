@@ -48,3 +48,15 @@ Two deliberate behavior changes are visible: Locked now forces effective hidden 
 `UIInputPolicyTests.cpp` exercises the shared production button handler without a renderer: normal click, cancellation after a press, consumed acquisition, explicit scripted pointer click, client-position injection followed by physical motion while Host owns input, multi-control cancellation, physical/injected gesture separation and revision continuity. These tests do not claim to execute the complete rendered UI pipeline or OS interaction.
 
 Native compilation, CPU tests, existing hidden Playtests and guarded interactive OS checks must be run by the build owner. Staging or passing a pure test does not prove Win32 focus, clipping, visibility or child-abnormal-exit behavior.
+
+## Automated Play isolation
+
+Command Bus `play.control` and `editor.op.invoke` (`play.start` / `play.toggle`), including Playtest scenarios, start an input-injected-only session. The operator bridge supplies the invocation source; request arguments cannot impersonate an interactive UI invocation.
+
+- Automated sessions keep physical game input owned by the host. Cursor requests remain inspectable, but `AcquireGameInput` cannot apply them, even after focus changes or a Game View click. Explicit `input.inject` continues to work.
+- Automatic Game View focus, maximization and focus-on-appearing are disabled for the session. Interactive toolbar, shortcut and menu Play retain their saved focus behavior.
+- Deferred shadow baking and standalone save confirmation preserve the startup policy. Standalone passes `--play-no-physical-input` with `--editor-play`, applies the policy before window creation, and uses non-activating show/resize/fullscreen operations.
+- `Cursor::ResetForEditor` never re-enables physical input. The in-editor session restores its previous host policy on completion or failed startup, preserving an injected-only batch host. A later interactive Play explicitly enables physical input without acquiring it until the existing handoff rules allow acquisition.
+- Existing application focus checks and detached Game View targeting remain unchanged. Isolation does not depend on the cached foreground flag.
+
+Regression coverage: `AutomationPlayDispatchTest`, `CursorControlPolicyTest`, `GameInputConsumptionTest`, and `StandalonePlaySessionTest`. These tests do not move the real cursor or launch game windows.

@@ -338,7 +338,7 @@ OperatorBridgeResult ListOperators(editor::EditorContext& context, const JsonVal
     const bool includeUnavailable =
         (includeValue == nullptr) ? true : includeValue->AsBool();
 
-    const OpContext opContext{ context, *undo };
+    const OpContext opContext{ context, *undo, OpInvocationSource::AUTOMATION };
 
     JsonValue list = JsonValue::MakeArray();
     int matched = 0;
@@ -397,7 +397,7 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
     if (const OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
         return OperatorBridgeResult::Err(argCheck.errorCode, argCheck.message);
 
-    OpContext  opContext{ context, *undo };
+    OpContext  opContext{ context, *undo, OpInvocationSource::AUTOMATION };
     /// @note 実際に渡された args で判定する。dryRun の available もこれと同じ値になるので、
     ///       「dry-run では可だったのに実行すると NOT_AVAILABLE」が起きない。
     const bool available = !op->poll || op->poll(opContext, args);
@@ -481,7 +481,7 @@ OperatorBridgeResult QueryOperator(editor::EditorContext& context, const JsonVal
     if (const OpResult argCheck = ValidateArgs(*op, args); !argCheck.ok)
         return OperatorBridgeResult::Err(argCheck.errorCode, argCheck.message);
 
-    OpContext opContext{ context, *undo };
+    OpContext opContext{ context, *undo, OpInvocationSource::AUTOMATION };
     if (op->poll && !op->poll(opContext, args))
         return OperatorBridgeResult::Err("NOT_AVAILABLE",
                                          "現在の状態ではこの操作を実行できません: " + id);

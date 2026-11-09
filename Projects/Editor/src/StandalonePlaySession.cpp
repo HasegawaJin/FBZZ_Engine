@@ -56,6 +56,10 @@ public:
         }
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
+        if (!request.allowPhysicalInput) {
+            startup.dwFlags |= STARTF_USESHOWWINDOW;
+            startup.wShowWindow = SW_SHOWNOACTIVATE;
+        }
         PROCESS_INFORMATION process{};
         std::wstring command = StandalonePlaySession::CommandLine(request);
         /// @note Suspend until job assignment so launch failure and Editor death cannot orphan a running game.
@@ -159,9 +163,11 @@ void RegisterStandalonePlayOperators(OperatorRegistry& registry)
 
 std::wstring StandalonePlaySession::CommandLine(const StandalonePlayRequest& request)
 {
-    return QuoteArgument(request.executable.wstring()) + L" --standalone --editor-play --project "
+    std::wstring command = QuoteArgument(request.executable.wstring()) + L" --standalone --editor-play --project "
         + QuoteArgument(request.project.wstring()) + L" --play-scene " + QuoteArgument(request.scene.wstring())
         + L" --play-log " + QuoteArgument(request.log.wstring());
+    if (!request.allowPhysicalInput) command += L" --play-no-physical-input";
+    return command;
 }
 
 bool StandalonePlaySession::Start(const StandalonePlayRequest& request)

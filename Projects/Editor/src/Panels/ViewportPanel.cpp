@@ -812,14 +812,17 @@ void ViewportPanel::OnBeforeBegin(EditorContext& ctx)
         && ctx.playMode != nullptr && !ctx.playMode->IsInEditor()
         && !core::Cursor::IsSuppressed()
         && core::Cursor::GetEffectivePolicy().CapturesCursor();
-    if (m_kind == Kind::Game && ctx.requestGameViewportFocus)
+    if (m_kind == Kind::Game && ctx.requestGameViewportFocus && core::Cursor::IsPhysicalInputAllowed())
         ImGui::SetNextWindowFocus();
 }
 
 ImGuiWindowFlags ViewportPanel::GetWindowFlags() const
 {
-    return m_pinWindowRect ? (ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)
-                           : ImGuiWindowFlags_None;
+    ImGuiWindowFlags flags = m_pinWindowRect ? (ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize)
+                                           : ImGuiWindowFlags_None;
+    if (m_kind == Kind::Game && !core::Cursor::IsPhysicalInputAllowed())
+        flags |= ImGuiWindowFlags_NoFocusOnAppearing;
+    return flags;
 }
 
 void ViewportPanel::OnAfterBegin(EditorContext& ctx)

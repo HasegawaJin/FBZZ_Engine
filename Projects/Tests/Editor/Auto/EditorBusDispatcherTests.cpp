@@ -12,6 +12,8 @@
 #include <Editor/Ai/EditorBusDispatcher.hpp>
 #include <Editor/Ai/EditorBusProtocol.hpp>
 #include <Editor/Ai/Json.hpp>
+#include <Editor/Ai/OperatorBridge.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/SceneIO.hpp>
@@ -2065,6 +2067,68 @@ TEST_F(EditorBusProfilerSnapshotTest, ExposesCapacityLossSeparatelyFromTheTopSam
     const JsonValue* samples = result->Find("topSamples");
     ASSERT_NE(samples, nullptr);
     EXPECT_EQ(samples->AsArray().size(), 1u);
+}
+
+class AutomationPlayDispatchTest : public testkit::EditorFixture {
+protected:
+    void SetUp() override
+    {
+        EditorFixture::SetUp();
+        (void)AttachScene();
+        Context().operators = &m_registry;
+        Context().undoStack = &m_undo;
+        Context().playMode = &m_play;
+        for (const char* id : {"play.start", "play.toggle"}) {
+            editor::EditorOperator op;
+            op.id = id;
+            op.kind = editor::OpKind::Action;
+            op.exec = [this](editor::OpContext& context, const editor::OpArgs&) {
+                m_source = context.source;
+                ++m_calls;
+                return editor::OpResult::Ok();
+            };
+            m_registry.Register(std::move(op));
+        }
+    }
+    void TearDown() override
+    {
+        Context().playMode = nullptr;
+        Context().operators = nullptr;
+        Context().undoStack = nullptr;
+        EditorFixture::TearDown();
+    }
+    editor::OperatorRegistry m_registry;
+    editor::UndoStack m_undo;
+    editor::PlayModeController m_play;
+    editor::OpInvocationSource m_source = editor::OpInvocationSource::INTERACTIVE;
+    int m_calls = 0;
+};
+
+TEST_F(AutomationPlayDispatchTest, PlayControlUsesAutomationSource)
+{
+    EditorBusDispatcher dispatcher(Context());
+    const auto response = dispatcher.Handle(
+        R"({"protocol":"fbzz.editor.v1","id":"test-1","kind":"command","dryRun":false,"payload":{"t":"play.control","action":"start"}})");
+    ExpectWellFormedResponse(response, "automated Play");
+    EXPECT_EQ(m_calls, 1);
+    EXPECT_EQ(m_source, editor::OpInvocationSource::AUTOMATION);
+}
+
+TEST_F(AutomationPlayDispatchTest, DirectPlayOperatorsAreAutomatedButUiInvocationRemainsInteractive)
+{
+    for (const char* id : {"play.start", "play.toggle"}) {
+        auto payload = JsonValue::MakeObject();
+        payload.Set("id", JsonValue(id));
+        EXPECT_TRUE(editor::ai::InvokeOperator(Context(), payload, true).ok);
+        EXPECT_EQ(m_calls, 0);
+        EXPECT_TRUE(editor::ai::InvokeOperator(Context(), payload, false).ok);
+        EXPECT_EQ(m_calls, 1);
+        EXPECT_EQ(m_source, editor::OpInvocationSource::AUTOMATION);
+        EXPECT_TRUE(editor::InvokeOperator(Context(), id).ok);
+        EXPECT_EQ(m_calls, 2);
+        EXPECT_EQ(m_source, editor::OpInvocationSource::INTERACTIVE);
+        m_calls = 0;
+    }
 }
 
 } /// @note namespace fbzz::tests

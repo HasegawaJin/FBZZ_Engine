@@ -280,6 +280,21 @@ CursorState Cursor::GetState()
 bool Cursor::IsGameInputOwned() { return g_control.OwnsGameInput(); }
 bool Cursor::CanReadGameInput() { return g_control.OwnsGameInput(); }
 
+bool Cursor::IsPhysicalInputAllowed() { return g_control.IsPhysicalInputAllowed(); }
+
+void Cursor::SetPhysicalInputAllowed(bool allowed)
+{
+    const bool wasOwned = g_control.OwnsGameInput();
+    g_control.SetPhysicalInputAllowed(allowed);
+    if (wasOwned && !allowed) {
+        input::Input::CancelGameInput();
+        input::InputActionMap::ResetRuntime();
+        input::Gamepad::StopAllVibration();
+    }
+    g_recenterPending = true;
+    Refresh();
+}
+
 bool Cursor::AcquireGameInput()
 {
     if (g_control.OwnsGameInput()) return true;

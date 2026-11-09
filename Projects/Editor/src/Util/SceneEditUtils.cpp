@@ -25,6 +25,9 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace fbzz::editor {
 
@@ -246,16 +249,6 @@ std::size_t CountHierarchyObjects(scene::GameObject& object)
     return count;
 }
 
-bool HasSelectedAncestor(EditorContext& ctx, scene::GameObject& go)
-{
-    for (scene::GameObject* parent = go.GetParent(); parent; parent = parent->GetParent()) {
-        if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), parent->GetID())
-            != ctx.selectedEntities.end())
-            return true;
-    }
-    return false;
-}
-
 /// @return id が Canvas を指していなければ空。
 std::string UICanvasGuidOf(scene::Scene& targetScene, scene::EntityID id)
 {
@@ -329,11 +322,99 @@ void ExecuteSceneEditWithUndo(EditorContext& ctx,
         ctx.undoStack->Push(std::move(command));
 }
 
+bool GetAuthoringActive(const EditorContext& ctx, const scene::GameObject& object)
+{
+    if (ctx.editScene && ctx.activeScene != ctx.editScene) return object.activeSelf();
+    const auto hidden = ctx.editorHiddenGuids.find(object.instanceId);
+    return hidden == ctx.editorHiddenGuids.end() ? object.activeSelf() : hidden->second;
+}
+
+void SetGameObjectsActive(EditorContext& ctx, std::span<const scene::EntityID> ids,
+                          bool active, const char* description)
+{
+    if (!ctx.activeScene) return;
+    struct ActiveEdit {
+        scene::EntityID entity;
+        std::string guid;
+        bool before;
+    };
+    auto edits = std::make_shared<std::vector<ActiveEdit>>();
+    edits->reserve(ids.size());
+    for (scene::EntityID id : ids) {
+        if (auto* object = ctx.activeScene->GetGameObject(id)) {
+            const bool before = GetAuthoringActive(ctx, *object);
+            if (before != active) edits->push_back({id, object->instanceId, before});
+        }
+    }
+    if (edits->empty()) return;
+
+    auto apply = [context = &ctx, scene = ctx.activeScene, edits, active](bool forward) {
+        if (context->activeScene != scene) return;
+        const bool editing = !context->editScene || context->editScene == scene;
+        std::unordered_map<std::string_view, scene::GameObject*> byGuid;
+        bool indexed = false;
+        bool changed = false;
+        for (const auto& edit : *edits) {
+            auto* object = scene->GetGameObject(edit.entity);
+            if (!object || object->instanceId != edit.guid) {
+                /// @note スナップショットを介した Undo の後は EntityID が変わる。GUID 索引はそのときだけ作る。
+                if (!indexed) {
+                    for (auto& candidate : scene->GameObjects()) byGuid.emplace(candidate.instanceId, &candidate);
+                    indexed = true;
+                }
+                const auto found = byGuid.find(edit.guid);
+                if (found == byGuid.end()) continue;
+                object = found->second;
+            }
+            const bool value = forward ? active : edit.before;
+            const auto hidden = context->editorHiddenGuids.find(edit.guid);
+            if (!editing || hidden == context->editorHiddenGuids.end()) object->SetActive(value);
+            else hidden->second = value;
+            changed = true;
+        }
+        if (changed && context->markSceneDirty) context->markSceneDirty();
+    };
+    if (ctx.undoStack)
+        ctx.undoStack->Execute(std::make_unique<LambdaCommand>(description,
+            [apply] { apply(true); }, [apply] { apply(false); }));
+    else apply(true);
+}
+
 void DestroySelected(EditorContext& ctx, const std::vector<scene::EntityID>& ids)
 {
-    for (scene::EntityID id : ids)
-        ctx.activeScene->DestroyGameObject(id);
+    ctx.activeScene->DestroyGameObjects(ids);
     PruneSelection(ctx);
+}
+
+std::vector<scene::EntityID> CollectHierarchyRoots(const scene::Scene& scene, std::span<const scene::EntityID> ids)
+{
+    std::vector<const scene::GameObject*> ordered;
+    ordered.reserve(ids.size());
+    std::unordered_set<const scene::GameObject*> selected;
+    selected.reserve(ids.size());
+    for (const auto id : ids)
+        if (const auto* object = scene.GetGameObject(id); object && selected.insert(object).second)
+            ordered.push_back(object);
+
+    std::vector<scene::EntityID> roots;
+    roots.reserve(ordered.size());
+    std::unordered_map<const scene::GameObject*, bool> ancestorMemo;
+    std::vector<const scene::GameObject*> path;
+    for (const auto* object : ordered) {
+        bool hasSelectedAncestor = false;
+        path.clear();
+        for (auto* parent = object->GetParent(); parent; parent = parent->GetParent()) {
+            if (selected.contains(parent)) { hasSelectedAncestor = true; break; }
+            if (const auto cached = ancestorMemo.find(parent); cached != ancestorMemo.end()) {
+                hasSelectedAncestor = cached->second;
+                break;
+            }
+            path.push_back(parent);
+        }
+        for (const auto* parent : path) ancestorMemo.emplace(parent, hasSelectedAncestor);
+        if (!hasSelectedAncestor) roots.push_back(object->GetID());
+    }
+    return roots;
 }
 
 scene::EntityID DuplicateHierarchyRecursive(EditorContext& ctx,
@@ -371,15 +452,9 @@ std::unique_ptr<ICommand> MakeDeleteSelectedCommand(EditorContext& ctx)
 std::unique_ptr<ICommand> MakeDuplicateSelectedCommand(EditorContext& ctx)
 {
     if (!ctx.activeScene || ctx.selectedEntities.empty()) return nullptr;
-    std::vector<scene::EntityID> toDup;
+    auto toDup = CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities);
     std::size_t required = 0;
-    for (scene::EntityID id : ctx.selectedEntities) {
-        auto* source = ctx.activeScene->GetGameObject(id);
-        if (!source || HasSelectedAncestor(ctx, *source) ||
-            std::find(toDup.begin(), toDup.end(), id) != toDup.end()) continue;
-        required += CountHierarchyObjects(*source);
-        toDup.push_back(id);
-    }
+    for (const auto id : toDup) required += CountHierarchyObjects(*ctx.activeScene->GetGameObject(id));
     if (toDup.empty()) return nullptr;
     if (!ctx.activeScene->CanCreateGameObjects(required)) {
         FBZZ_LOG_WARN("Duplicate selection: insufficient entity capacity");
@@ -452,14 +527,7 @@ void CopySelectedToClipboard(EditorContext& ctx)
 
     scene::Scene prepared;
     std::vector<scene::EntityID> preparedRoots;
-    std::vector<scene::EntityID> sourceRoots;
-
-    for (scene::EntityID id : ctx.selectedEntities) {
-        auto* src = ctx.activeScene->GetGameObject(id);
-        if (!src || HasSelectedAncestor(ctx, *src) ||
-            std::find(sourceRoots.begin(), sourceRoots.end(), id) != sourceRoots.end()) continue;
-        sourceRoots.push_back(id);
-    }
+    const auto sourceRoots = CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities);
     std::vector<CloneRootRequest> requests;
     requests.reserve(sourceRoots.size());
     for (scene::EntityID sourceRoot : sourceRoots)

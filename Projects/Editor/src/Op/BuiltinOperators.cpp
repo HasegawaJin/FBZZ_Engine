@@ -27,6 +27,7 @@
 #include <imgui.h>
 
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -114,8 +115,9 @@ void EditorApp::RegisterBuiltinOperators()
         "現在のシーンと未保存のアセットを保存する (Prefab 編集中は編集中の Prefab を保存する)。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) {
+            if (RejectWhileSceneSaving()) return OpResult::Err("SCENE_SAVE_BUSY", "Scene save is in progress.");
             AssetDirtyRegistry::SaveAll();
-            SaveScene();
+            SaveScene(true);
             return OpResult::Ok();
         },
         hasScene);
@@ -123,7 +125,7 @@ void EditorApp::RegisterBuiltinOperators()
     add("scene.save_as", "Save Scene As...", "File",
         "保存先を選び直してシーンを保存する。",
         OpKind::Action,
-        [this](OpContext&, const OpArgs&) { SaveSceneAsDialog(); return OpResult::Ok(); },
+        [this](OpContext&, const OpArgs&) { SaveSceneAsDialog(true); return OpResult::Ok(); },
         [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); });
 
     add("asset.save_all", "Save All Assets", "File",
@@ -222,9 +224,15 @@ void EditorApp::RegisterBuiltinOperators()
         "ロックされていない全 GameObject を選択する。",
         OpKind::Action,
         [](OpContext& c, const OpArgs&) {
+            auto& scene = *c.ctx.activeScene;
+            std::unordered_set<const scene::GameObject*> locked;
+            locked.reserve(c.ctx.lockedEntities.size());
+            for (const auto id : c.ctx.lockedEntities)
+                if (const auto* object = scene.GetGameObject(id)) locked.insert(object);
             std::vector<scene::EntityID> all;
-            for (auto& go : c.ctx.activeScene->GameObjects())
-                if (!c.ctx.IsLocked(go.GetID()))
+            all.reserve(scene.GameObjectCount());
+            for (auto& go : scene.GameObjects())
+                if (!locked.contains(&go))
                     all.push_back(go.GetID());
             /// @note 全選択で Hierarchy を先頭へ飛ばさない (どこを見ていたか分からなくなる)。
             SelectEntities(c.ctx, std::move(all), SelectionReveal::Skip);
@@ -393,7 +401,7 @@ void EditorApp::RegisterBuiltinOperators()
     add("play.start", "Play", "Play",
         "Play モードを開始する。",
         OpKind::Action,
-        [this](OpContext&, const OpArgs&) { StartPlayMode(); return OpResult::Ok(); },
+        [this](OpContext& c, const OpArgs&) { StartPlayMode(false, c.source == OpInvocationSource::INTERACTIVE); return OpResult::Ok(); },
         [this, hasScene, inEditor, buildBusy](const OpContext& c, const OpArgs& a) {
             return hasScene(c, a) && inEditor(c, a) && !m_standalonePlay.IsActive()
                 && !m_pendingShadowBakePlayScene && !buildBusy(c, a);
@@ -411,7 +419,7 @@ void EditorApp::RegisterBuiltinOperators()
     add("play.toggle", "Play / Stop", "Play",
         "Play モードを開始/停止する。",
         OpKind::Action,
-        [this](OpContext&, const OpArgs&) { TogglePlayMode(); return OpResult::Ok(); },
+        [this](OpContext& c, const OpArgs&) { TogglePlayMode(c.source == OpInvocationSource::INTERACTIVE); return OpResult::Ok(); },
         [this, hasScene, inEditor, buildBusy](const OpContext& c, const OpArgs& a) {
             if (m_standalonePlay.IsActive() || m_pendingShadowBakePlayScene) return true;
             if (!hasScene(c, a)) return false;

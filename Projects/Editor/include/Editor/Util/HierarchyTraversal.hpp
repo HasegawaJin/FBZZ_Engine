@@ -5,7 +5,9 @@
 #pragma once
 #include <Engine/Scene/Entity.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::scene { class GameObject; }
@@ -14,8 +16,18 @@ namespace fbzz::editor {
 
 /// @note Scene の構造編集は描画後へ遅延するため、1 回の巡回内では生存 Entity の index が一意。
 struct HierarchyTraversal {
+    using EntitySet = std::unordered_set<std::uint64_t>;
+
+    static std::uint64_t EntityKey(scene::EntityID id)
+    {
+        return (static_cast<std::uint64_t>(id.generation) << 32) | id.index;
+    }
+
     std::vector<bool> visited;
     std::unordered_map<const scene::GameObject*, int> hiddenCounts;
+    EntitySet selected;
+    EntitySet locked;
+    EntitySet revealed;
 
     /// @brief 前フレームの値を破棄する。Scene の切替や同じ slot の再利用も次の巡回に持ち越さない。
     void BeginFrame(size_t gameObjectCount)

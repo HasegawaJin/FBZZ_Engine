@@ -3,45 +3,51 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-26
 #include <Editor/Util/SceneDirtyTracker.hpp>
-#include <Editor/Util/SceneIO.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneSerializer.hpp>
 #include <functional>
+#include <optional>
 #include <string>
 
 namespace fbzz::editor {
 
 namespace {
 
-std::size_t HashScene(const scene::Scene& scene)
+std::optional<std::size_t> HashScene(const scene::Scene& scene, const std::string& path)
 {
-    const std::string text = SceneIO::Serialize(scene);
-    if (text.empty()) return 0;
+    const std::string text = scene::SceneSerializer::CaptureSaveComparison(const_cast<scene::Scene&>(scene), path);
+    if (text.empty()) return std::nullopt;
     return std::hash<std::string>{}(text);
 }
 
 } /// @note namespace
 
-void SceneDirtyTracker::CaptureClean(const scene::Scene& scene)
+void SceneDirtyTracker::CaptureClean(const scene::Scene& scene, const std::string& path)
 {
-    const std::size_t cleanHash = HashScene(scene);
-    if (cleanHash == 0) {
+    const auto cleanHash = HashScene(scene, path);
+    if (!cleanHash) {
         m_dirty = true;
         return;
     }
-    m_cleanHash = cleanHash;
+    CaptureCleanHash(*cleanHash);
+}
+
+void SceneDirtyTracker::CaptureCleanHash(std::size_t hash)
+{
+    m_cleanHash = hash;
     m_hasCleanSnapshot = true;
     m_dirty = false;
 }
 
-bool SceneDirtyTracker::Evaluate(const scene::Scene& scene)
+bool SceneDirtyTracker::Evaluate(const scene::Scene& scene, const std::string& path)
 {
     if (!m_hasCleanSnapshot) {
-        CaptureClean(scene);
+        CaptureClean(scene, path);
         return m_dirty;
     }
 
-    const std::size_t currentHash = HashScene(scene);
-    m_dirty = currentHash == 0 || currentHash != m_cleanHash;
+    const auto currentHash = HashScene(scene, path);
+    m_dirty = !currentHash || *currentHash != m_cleanHash;
     return m_dirty;
 }
 

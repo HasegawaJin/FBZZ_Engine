@@ -37,6 +37,7 @@
 #include <cmath>
 #include <span>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace fbzz::editor {
 
@@ -791,10 +792,10 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
 
     const bool ortho = ctx.editorCamera->m_projection == renderer::ProjectionMode::Orthographic;
     const math::Vector3 cameraPos = ctx.editorCamera->m_position;
-    const auto isSelected = [&ctx](scene::EntityID id) {
-        return std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
-            != ctx.selectedEntities.end();
-    };
+    std::unordered_set<const scene::GameObject*> selection;
+    selection.reserve(ctx.selectedEntities.size());
+    for (const auto id : ctx.selectedEntities)
+        if (const auto* object = ctx.activeScene->GetGameObject(id)) selection.insert(object);
 
     std::unordered_map<uint64_t, int> stacked;
     for (int type = 0; type < kSceneIconCount; ++type) {
@@ -805,10 +806,11 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
             if (!go) continue;
 
             const math::Vector3& world = go->transform.worldPosition;
+            const bool selected = selection.contains(go);
             float scale = 1.0f;
             float alpha = 1.0f;
             /// @note 正投影は距離で見かけの大きさが変わらないので、縮小もフェードもしない。
-            if (!ortho && !isSelected(id)) {
+            if (!ortho && !selected) {
                 const float dist = (world - cameraPos).Length();
                 if (dist > kIconMaxDistance) continue;
                 scale = math::Clamp(kIconFullSizeDistance / (std::max)(dist, 1.0e-3f), kIconMinScale, 1.0f);
@@ -835,6 +837,7 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
             icon.scale     = scale;
             icon.alpha     = alpha;
             icon.active    = active;
+            icon.selected  = selected;
             out.push_back(icon);
         }
     }
@@ -846,11 +849,6 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
 
-    auto isSelected = [&ctx](scene::EntityID id) {
-        return std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
-            != ctx.selectedEntities.end();
-    };
-
     static std::vector<SceneIconInstance> icons;
     CollectSceneIcons(ctx, vpMin, vpSize, icons);
 
@@ -858,7 +856,7 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
         scene::GameObject* go = ctx.activeScene->GetGameObject(icon.id);
         if (!go) continue;
         const SceneIconDef& def = kSceneIcons[icon.type];
-        const bool selected = isSelected(icon.id);
+        const bool selected = icon.selected;
         const ImU32 color = ScaleAlpha(def.color, icon.alpha);
 
         switch (def.shape) {
@@ -1312,14 +1310,13 @@ void DrawGizmo(EditorContext& ctx,
         edit.applyDelta.clear();
 
         /// @note 子は親に追従するので、選択済みの祖先を持つ対象へ delta を掛けると二重に動く (Unity と同じ規則)。
-        auto hasSelectedAncestor = [&ctx](scene::GameObject* obj) {
-            for (scene::GameObject* p = obj->GetParent(); p; p = p->GetParent()) {
-                if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(),
-                              p->GetID()) != ctx.selectedEntities.end())
-                    return true;
-            }
-            return false;
-        };
+        std::unordered_set<const scene::GameObject*> roots;
+        for (const auto id : CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities))
+            roots.insert(ctx.activeScene->GetGameObject(id));
+        std::unordered_set<const scene::GameObject*> locked;
+        locked.reserve(ctx.lockedEntities.size());
+        for (const auto id : ctx.lockedEntities)
+            if (const auto* object = ctx.activeScene->GetGameObject(id)) locked.insert(object);
 
         edit.entityIds.push_back(go->GetID());
         edit.instanceIds.push_back(go->instanceId);
@@ -1327,19 +1324,19 @@ void DrawGizmo(EditorContext& ctx,
         edit.lastApplied.push_back(go->transform);
         edit.startWorldScale.push_back(go->transform.worldScale);
         edit.startWorld.push_back(go->transform.GetWorldMatrix());
-        edit.applyDelta.push_back(centerPivot && !hasSelectedAncestor(go));
+        edit.applyDelta.push_back(centerPivot && roots.contains(go));
 
         for (scene::EntityID id : ctx.selectedEntities) {
             if (id == selected) continue;
             scene::GameObject* sel = ctx.activeScene->GetGameObject(id);
-            if (!sel || ctx.IsLocked(id)) continue;
+            if (!sel || locked.contains(sel)) continue;
             edit.entityIds.push_back(sel->GetID());
             edit.instanceIds.push_back(sel->instanceId);
             edit.before.push_back(sel->transform);
             edit.lastApplied.push_back(sel->transform);
             edit.startWorldScale.push_back(sel->transform.worldScale);
             edit.startWorld.push_back(sel->transform.GetWorldMatrix());
-            edit.applyDelta.push_back(!hasSelectedAncestor(sel));
+            edit.applyDelta.push_back(roots.contains(sel));
         }
 
         edit.gizmoStartWorldInv = math::Matrix4::Inverse(gizmoWorldRow);

@@ -3,22 +3,27 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 ///
-/// この判定が «変更なし» に倒れると、閉じるときに何も聞かれず作業が消える。
-/// 逆に倒れると、何もしていないのに毎回保存を促されて «どうせ嘘» と学習してしまい、
-/// 本当に消えるときにも無視される。どちらも実害が出るので両側を固定する。
+/// @note 未保存状態の判定と、バックグラウンド保存へ渡すデータの境界を検証する。
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 
 #include <Editor/Util/SceneDirtyTracker.hpp>
+#include <Editor/EditorContext.hpp>
+#include <Editor/Util/SceneEditUtils.hpp>
+#include <Editor/Util/SceneIO.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/TerrainAssetSerializer.hpp>
+#include <Engine/Util/FileSystem.hpp>
+#include <array>
 
 namespace fbzz::tests {
 
 using editor::SceneDirtyTracker;
 
-/// SceneDirtyTracker は SceneIO::Serialize を通してシーンをハッシュする。
-/// その一時ファイルの置き場所を用意するため EditorFixture に載せる。
 class SceneDirtyTrackerTest : public testkit::EditorFixture {};
 
 TEST_F(SceneDirtyTrackerTest, StartsClean)
@@ -168,4 +173,128 @@ TEST_F(SceneDirtyTrackerTest, EvaluateWithoutABaselineAdoptsTheCurrentScene)
     EXPECT_TRUE(tracker.Evaluate(scene));
 }
 
-} // namespace fbzz::tests
+TEST_F(SceneDirtyTrackerTest, PreparedSaveOwnsTheCapturedValuesAndCleanHash)
+{
+    const auto path = (ProjectRoot() / "captured.scene").generic_string();
+    scene::Scene scene;
+    auto& object = scene.CreateGameObject("Object");
+    object.SetActive(false);
+    auto save = editor::SceneIO::PrepareSave(scene, path, false);
+    ASSERT_TRUE(save);
+    object.SetActive(true);
+    const auto result = save();
+    ASSERT_TRUE(result.succeeded);
+
+    auto loaded = scene::SceneSerializer::LoadData(path);
+    ASSERT_NE(loaded, nullptr);
+    const auto* saved = loaded->FindByGuid(object.instanceId);
+    ASSERT_NE(saved, nullptr);
+    EXPECT_FALSE(saved->activeSelf());
+
+    SceneDirtyTracker tracker;
+    tracker.CaptureCleanHash(result.contentHash);
+    EXPECT_FALSE(tracker.Evaluate(*loaded, path));
+    EXPECT_TRUE(tracker.Evaluate(scene, path));
+}
+
+TEST_F(SceneDirtyTrackerTest, PreparedSaveRejectsAnExternalFileCreatedWhileSaving)
+{
+    const auto diskPath = ProjectRoot() / "external.scene";
+    const auto path = diskPath.generic_string();
+    scene::Scene scene;
+    scene.CreateGameObject("Editor object");
+    auto save = editor::SceneIO::PrepareSave(scene, path, false, util::FileSystem::LastWriteTime(diskPath));
+    ASSERT_TRUE(save);
+    ASSERT_TRUE(util::FileSystem::WriteText(path, "external content"));
+
+    const auto result = save();
+    EXPECT_FALSE(result.succeeded);
+    EXPECT_TRUE(result.diskChanged);
+    std::string text;
+    ASSERT_TRUE(util::FileSystem::ReadText(path, text));
+    EXPECT_EQ(text, "external content");
+}
+
+TEST_F(SceneDirtyTrackerTest, BackupIncludesTerrainWithoutWritingTheAsset)
+{
+    const auto path = (ProjectRoot() / "backup.scene").generic_string();
+    const auto assetPath = (ProjectRoot() / "shared.terrain").generic_string();
+    scene::TerrainComponent existingTerrain;
+    existingTerrain.InitFlat(0.0f);
+    ASSERT_TRUE(scene::TerrainAssetSerializer::Save(existingTerrain, assetPath));
+    scene::Scene scene;
+    auto& terrain = scene.CreateGameObject("Ground").AddComponent<scene::TerrainComponent>();
+    terrain.terrainAssetPath = assetPath;
+    terrain.InitFlat(0.25f);
+    auto save = editor::SceneIO::PrepareSave(scene, path, true);
+    ASSERT_TRUE(save);
+    terrain.InitFlat(0.5f);
+    ASSERT_TRUE(save().succeeded);
+
+    scene::TerrainComponent assetTerrain;
+    ASSERT_TRUE(scene::TerrainAssetSerializer::Load(assetPath, assetTerrain));
+    ASSERT_FALSE(assetTerrain.heightData.empty());
+    EXPECT_FLOAT_EQ(assetTerrain.heightData.front(), 0.0f);
+    auto loaded = scene::SceneSerializer::LoadData(path);
+    ASSERT_NE(loaded, nullptr);
+    auto* object = loaded->Find("Ground");
+    ASSERT_NE(object, nullptr);
+    const auto* restored = object->GetComponent<scene::TerrainComponent>();
+    ASSERT_NE(restored, nullptr);
+    ASSERT_FALSE(restored->heightData.empty());
+    EXPECT_FLOAT_EQ(restored->GetHeightAt(0.0f, 0.0f), 0.25f);
+}
+
+TEST_F(SceneDirtyTrackerTest, PrefabSubtreeCaptureDoesNotInspectUnrelatedScripts)
+{
+    scene::Scene scene;
+    auto& root = scene.CreateGameObject("Prefab root");
+    auto& child = scene.CreateGameObject("Prefab child");
+    child.SetParent(root);
+    child.SetActive(false);
+    auto& unrelated = scene.CreateGameObject("Unrelated object");
+    unrelated.AddComponent<scene::ScriptComponent>().scripts.emplace_back().savedScriptId = "invalid";
+
+    const std::string snapshot = scene::SceneSerializer::CapturePassiveSubtree(scene, root.GetID());
+    ASSERT_FALSE(snapshot.empty());
+    auto loaded = scene::SceneSerializer::LoadDataFromText(snapshot, {});
+    ASSERT_NE(loaded, nullptr);
+    ASSERT_EQ(loaded->GameObjectCount(), 2u);
+    const auto* savedChild = loaded->FindByGuid(child.instanceId);
+    ASSERT_NE(savedChild, nullptr);
+    EXPECT_FALSE(savedChild->activeSelf());
+    ASSERT_NE(savedChild->GetParent(), nullptr);
+    EXPECT_EQ(savedChild->GetParent()->instanceId, root.instanceId);
+}
+
+TEST_F(SceneDirtyTrackerTest, BulkActiveEditKeepsOneUndoAndPreservesEditorHiding)
+{
+    scene::Scene scene;
+    editor::UndoStack undo;
+    editor::EditorContext context;
+    context.activeScene = &scene;
+    context.undoStack = &undo;
+    bool dirty = false;
+    context.markSceneDirty = [&dirty] { dirty = true; };
+    auto& object = scene.CreateGameObject("Visible object");
+    auto& hidden = scene.CreateGameObject("Hidden in editor");
+    hidden.SetActive(false);
+    context.editorHiddenGuids.emplace(hidden.instanceId, true);
+    const std::array selection{object.GetID(), hidden.GetID()};
+
+    editor::SetGameObjectsActive(context, selection, false, "Disable selection");
+    EXPECT_TRUE(dirty);
+    EXPECT_FALSE(object.activeSelf());
+    EXPECT_FALSE(editor::GetAuthoringActive(context, hidden));
+    ASSERT_TRUE(undo.Undo());
+    EXPECT_FALSE(undo.CanUndo());
+    EXPECT_TRUE(object.activeSelf());
+    EXPECT_TRUE(editor::GetAuthoringActive(context, hidden));
+    EXPECT_FALSE(hidden.activeSelf());
+    ASSERT_TRUE(undo.Redo());
+    EXPECT_FALSE(object.activeSelf());
+    EXPECT_FALSE(editor::GetAuthoringActive(context, hidden));
+    EXPECT_FALSE(hidden.activeSelf());
+}
+
+} /// @note namespace fbzz::tests

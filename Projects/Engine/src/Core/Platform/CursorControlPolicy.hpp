@@ -11,7 +11,7 @@ class CursorControlPolicy final {
 public:
     bool Acquire()
     {
-        if (!m_windowActive) return false;
+        if (!m_physicalInputAllowed || !m_windowActive) return false;
         m_owner = CursorInputOwner::GAME;
         m_reason = CursorSuspendReason::NONE;
         return true;
@@ -23,6 +23,14 @@ public:
         m_reason = reason == CursorSuspendReason::NONE ? CursorSuspendReason::RELEASED : reason;
     }
 
+    void SetPhysicalInputAllowed(bool allowed)
+    {
+        m_physicalInputAllowed = allowed;
+        if (!allowed) Release(CursorSuspendReason::HOST_OVERRIDE);
+    }
+
+    [[nodiscard]] bool IsPhysicalInputAllowed() const { return m_physicalInputAllowed; }
+
     void SetWindowActive(bool active)
     {
         m_windowActive = active;
@@ -31,7 +39,7 @@ public:
 
     [[nodiscard]] bool OwnsGameInput() const
     {
-        return m_windowActive && m_owner == CursorInputOwner::GAME;
+        return m_physicalInputAllowed && m_windowActive && m_owner == CursorInputOwner::GAME;
     }
 
     /// @note Returning focus never acquires ownership; only an explicit Acquire does.
@@ -42,7 +50,8 @@ public:
         state.requested = requested;
         state.windowActive = m_windowActive;
         state.inputOwner = OwnsGameInput() ? CursorInputOwner::GAME : CursorInputOwner::HOST;
-        state.suspendedReason = !m_windowActive ? CursorSuspendReason::WINDOW_INACTIVE
+        state.suspendedReason = !m_physicalInputAllowed ? CursorSuspendReason::HOST_OVERRIDE
+            : !m_windowActive ? CursorSuspendReason::WINDOW_INACTIVE
             : !OwnsGameInput() ? m_reason
             : suppressed ? CursorSuspendReason::HOST_OVERRIDE
             : !targetAvailable ? CursorSuspendReason::TARGET_UNAVAILABLE : CursorSuspendReason::NONE;
@@ -59,6 +68,7 @@ private:
     CursorInputOwner m_owner = CursorInputOwner::GAME;
     CursorSuspendReason m_reason = CursorSuspendReason::NONE;
     bool m_windowActive = true;
+    bool m_physicalInputAllowed = true;
 };
 
 } /// @note namespace fbzz::core::cursor_detail

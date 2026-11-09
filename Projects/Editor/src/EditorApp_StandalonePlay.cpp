@@ -17,9 +17,9 @@
 
 namespace fbzz::editor {
 
-void EditorApp::StartStandalonePlayMode()
+void EditorApp::StartStandalonePlayMode(bool allowPhysicalInput)
 {
-    RefreshSceneDirtyState(true);
+    CheckSceneDirtyForStandalone();
     if (m_ctx.sceneDirty || m_ctx.currentScenePath.empty() || AssetDirtyRegistry::HasAny()) {
         /// @note Scene-relative Terrain/sidecar paths prevent reuse of the old shared temporary snapshot file.
         const std::string expectedProject = m_projectRoot;
@@ -30,26 +30,28 @@ void EditorApp::StartStandalonePlayMode()
             "Standalone Play reads the current scene and assets from disk.\n"
             "Save unsaved changes and start in a separate process?\n"
             "Cancel keeps all edits and does not start a game.",
-            [this, expectedProject, expectedScene, expectedGeneration, expectedPath] {
+            [this, expectedProject, expectedScene, expectedGeneration, expectedPath, allowPhysicalInput] {
                 if (m_projectRoot != expectedProject || m_scene.get() != expectedScene
                     || m_scene->GetRenderSceneGeneration() != expectedGeneration || m_ctx.currentScenePath != expectedPath
                     || m_standalonePlay.IsActive() || !m_playMode.IsInEditor()) return;
                 if (AssetDirtyRegistry::SaveAll() != 0 || AssetDirtyRegistry::HasAny()) {
                     Toast::Error("Standalone Play: an asset could not be saved. See Console."); return;
                 }
-                if ((m_ctx.sceneDirty || m_ctx.currentScenePath.empty()) && !SaveScene()) return;
-                LaunchStandalonePlay();
+                if (m_ctx.sceneDirty || m_ctx.currentScenePath.empty()) {
+                    SaveScene(true, [this, allowPhysicalInput] { LaunchStandalonePlay(allowPhysicalInput); });
+                    return;
+                }
+                LaunchStandalonePlay(allowPhysicalInput);
             });
         return;
     }
-    LaunchStandalonePlay();
+    LaunchStandalonePlay(allowPhysicalInput);
 }
 
-void EditorApp::LaunchStandalonePlay()
+void EditorApp::LaunchStandalonePlay(bool allowPhysicalInput)
 {
     if (m_standalonePlay.IsActive() || !m_playMode.IsInEditor() || m_ctx.InPrefabEditMode()
         || m_ctx.managedBuildBusy || m_packageBuild.IsRunning()) return;
-    RefreshSceneDirtyState(true);
     if (m_ctx.sceneDirty || m_ctx.currentScenePath.empty() || AssetDirtyRegistry::HasAny()) {
         Toast::Error("Standalone Play was not started: save the current scene and assets first."); return;
     }
@@ -74,6 +76,7 @@ void EditorApp::LaunchStandalonePlay()
     const auto logName = std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64())
         + L"-" + std::to_wstring(++nextSession) + L".log";
     StandalonePlayRequest request;
+    request.allowPhysicalInput = allowPhysicalInput;
     request.executable = std::move(executable);
     request.project = project;
     request.scene = util::FileSystem::MakeAbsolute(util::FileSystem::PathFromUtf8(m_ctx.currentScenePath));

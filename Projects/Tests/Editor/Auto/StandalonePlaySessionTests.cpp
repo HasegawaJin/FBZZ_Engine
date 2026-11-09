@@ -196,6 +196,45 @@ TEST_F(StandalonePlaySessionTest, WindowsCommandLinePreservesExactProjectSceneAn
     LocalFree(argv);
 }
 
+TEST_F(StandalonePlaySessionTest, AutomatedPlayCommandLinePreservesOperandsAndDisablesPhysicalInput)
+{
+    m_request.allowPhysicalInput = false;
+    const auto command = editor::StandalonePlaySession::CommandLine(m_request);
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(command.c_str(), &argc);
+    ASSERT_NE(argv, nullptr);
+    if (argc == 10) {
+        EXPECT_EQ(std::wstring(argv[0]), m_request.executable.wstring());
+        EXPECT_EQ(std::wstring(argv[1]), L"--standalone");
+        EXPECT_EQ(std::wstring(argv[2]), L"--editor-play");
+        EXPECT_EQ(std::wstring(argv[4]), m_request.project.wstring());
+        EXPECT_EQ(std::wstring(argv[6]), m_request.scene.wstring());
+        EXPECT_EQ(std::wstring(argv[8]), m_request.log.wstring());
+        EXPECT_EQ(std::wstring(argv[9]), L"--play-no-physical-input");
+    }
+    EXPECT_EQ(argc, 10);
+    LocalFree(argv);
+}
+
+TEST_F(StandalonePlaySessionTest, AutomatedInputPolicyReachesProcessWithoutChangingLaterManualPlay)
+{
+    editor::StandalonePlaySession session(Process());
+    const auto manualRequest = m_request;
+    EXPECT_TRUE(manualRequest.allowPhysicalInput);
+    m_request.allowPhysicalInput = false;
+
+    ASSERT_TRUE(session.Start(m_request));
+    EXPECT_FALSE(m_observation->request.allowPhysicalInput);
+    m_observation->result = editor::IStandalonePlayProcess::PollResult::EXITED;
+    ASSERT_TRUE(session.Tick(0.0f));
+
+    ASSERT_TRUE(session.Start(manualRequest));
+    EXPECT_TRUE(m_observation->request.allowPhysicalInput);
+    EXPECT_EQ(m_observation->starts, 2);
+    EXPECT_EQ(editor::StandalonePlaySession::CommandLine(m_observation->request).find(
+        L"--play-no-physical-input"), std::wstring::npos);
+}
+
 TEST_F(StandalonePlaySessionTest, SettingsKeepExecutionModeIndependentOfMaximizedDisplayPolicy)
 {
     const auto config = m_request.project / L"Assets" / L"EditorConfig" / L"editor_settings.toml";

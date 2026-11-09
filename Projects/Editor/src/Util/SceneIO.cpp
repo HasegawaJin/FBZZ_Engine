@@ -36,18 +36,56 @@ void SceneIO::SetEditorSceneState(EditorSceneState* state)
 
 bool SceneIO::Save(const scene::Scene& scene, const std::string& path)
 {
-    /// @note Engine の SceneSerializer::Save が非const Scene& を要求する設計になっているため const_cast で対応。
-    /// @note Save は概念的に読み取り専用 (シーンを変更しない) なので安全だが、
-    /// @note Engine 側が const 対応になったタイミングで除去すること。
-    scene::Scene& mutableScene = const_cast<scene::Scene&>(scene);
-    if (!scene::SceneSerializer::Save(mutableScene, path)) return false;
+    auto save = PrepareSave(const_cast<scene::Scene&>(scene), path, false);
+    return save && save().succeeded;
+}
+
+std::function<SceneSaveResult()> SceneIO::PrepareSave(scene::Scene& scene,
+    const std::string& path, bool backup, std::optional<std::filesystem::file_time_type> expectedWriteTime)
+{
+    std::string diagnostic;
+    auto save = scene::SceneSerializer::PrepareSave(scene, backup ? std::string{} : path, diagnostic);
+    if (!save.formatScene) return {};
+
+    std::optional<EditorSceneState> metadata;
     if (s_editorSceneState) {
-        std::vector<std::string> instanceIds;
-        for (auto& go : mutableScene.GameObjects())
-            if (!go.runtimeGenerated) instanceIds.push_back(go.instanceId);
-        s_editorSceneState->PruneToInstances(instanceIds);
+        metadata = *s_editorSceneState;
+        if (!metadata->GetAllComponentOrders().empty() || !metadata->GetHiddenObjects().empty()
+            || !metadata->GetLockedObjects().empty()) {
+            std::vector<std::string> instanceIds;
+            for (auto& go : scene.GameObjects())
+                if (!go.runtimeGenerated) instanceIds.push_back(go.instanceId);
+            metadata->PruneToInstances(instanceIds);
+        }
     }
-    return !s_editorSceneState || EditorSerializer::Save(*s_editorSceneState, path);
+
+    return [path, save = std::move(save), metadata = std::move(metadata), expectedWriteTime, backup]() mutable {
+        SceneSaveResult result;
+        const auto diskPath = util::FileSystem::PathFromUtf8(path);
+        const auto changed = [&] {
+            return expectedWriteTime && util::FileSystem::LastWriteTime(diskPath) != *expectedWriteTime;
+        };
+        if (changed()) {
+            result.diskChanged = true;
+            return result;
+        }
+        const std::string text = save.formatScene();
+        if (text.empty()) return result;
+        if (changed()) {
+            result.diskChanged = true;
+            return result;
+        }
+        if (save.writeAssets && !save.writeAssets()) return result;
+        if (changed()) {
+            result.diskChanged = true;
+            return result;
+        }
+        if (!util::FileSystem::WriteTextAtomic(path, text)) return result;
+        result.writeTime = util::FileSystem::LastWriteTime(diskPath);
+        result.succeeded = !metadata || EditorSerializer::Save(*metadata, path);
+        if (result.succeeded && !backup) result.contentHash = std::hash<std::string>{}(text);
+        return result;
+    };
 }
 
 bool SceneIO::Load(scene::Scene& scene, const std::string& path)

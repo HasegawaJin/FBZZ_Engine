@@ -109,6 +109,7 @@ void EditorApp::ReportUnresolvedSceneRefs(const std::string& path) const
 
 void EditorApp::ProcessSceneDiskReload()
 {
+    if (m_pendingSceneSave.result.valid()) return;
     /// @note SaveScene が立てた上書き確認を、モーダル描画の外であるここで開く。
     if (m_staleSaveConfirmPending) {
         m_staleSaveConfirmPending = false;
@@ -122,7 +123,7 @@ void EditorApp::ProcessSceneDiskReload()
                 /// @note 上書きを選んだ = ディスクの版は捨ててよい。基準時刻を今の値へ
                 ///       進めてから保存し直し、同じ確認を繰り返さないようにする。
                 CaptureSceneDiskStamp();
-                return SaveScene();
+                return SaveScene(true);
             },
             [this] { (void)ReloadSceneFromDisk(); });
     }
@@ -198,4 +199,4 @@ void EditorApp::DrawSceneReloadBar(EditorContext& ctx)
     ImGui::PopStyleColor();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

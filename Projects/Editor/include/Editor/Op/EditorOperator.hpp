@@ -87,9 +87,13 @@ enum class OpKind {
 };
 
 /// @note EditorApp そのものは渡さない。渡すと Op 層が EditorApp の全公開面へ依存し、循環と「何でもできる引数」になる。EditorApp 固有の処理が要る操作は登録時のラムダが this を捕捉する (ホットキー登録が既に取っている形と同じ)。
+/// @brief Invocation source is supplied by the host, never by serialized operator arguments.
+enum class OpInvocationSource { INTERACTIVE, AUTOMATION };
+
 struct OpContext {
     EditorContext& ctx;
     UndoStack&     undo;
+    OpInvocationSource source = OpInvocationSource::INTERACTIVE;
 };
 
 struct OpResult {

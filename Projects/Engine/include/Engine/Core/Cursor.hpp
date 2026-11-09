@@ -99,8 +99,12 @@ struct Cursor {
 
     /// @brief Explicit host handoff; focus return alone never reacquires game input.
     /// @note Consumes controls already held by the host until their individual release; raw Editor UI input is preserved.
-    /// @return False while the application is inactive.
+    /// @return False while the application is inactive or physical input is disabled by the host.
     FBZZ_ENGINE_API static bool AcquireGameInput();
+    /// @brief Session policy for automated Play; injected game input remains available.
+    /// @note Disabling releases ownership. Enabling never acquires it; ResetForEditor preserves this policy.
+    FBZZ_ENGINE_API static void SetPhysicalInputAllowed(bool allowed);
+    [[nodiscard]] FBZZ_ENGINE_API static bool IsPhysicalInputAllowed();
     FBZZ_ENGINE_API static void ReleaseGameInput(CursorSuspendReason reason = CursorSuspendReason::RELEASED);
     [[nodiscard]] FBZZ_ENGINE_API static bool IsGameInputOwned();
     [[nodiscard]] FBZZ_ENGINE_API static bool CanReadGameInput();

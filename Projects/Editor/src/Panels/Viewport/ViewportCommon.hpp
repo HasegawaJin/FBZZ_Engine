@@ -100,6 +100,7 @@ struct SceneIconInstance {
     float  scale     = 1.0f;  /// @note 距離で縮めた倍率。当たり半径にも掛ける。
     float  alpha     = 1.0f;  /// @note 距離フェードと非アクティブ減衰を掛けた不透明度 [0,1]。
     bool   active    = true;
+    bool   selected  = false;
 };
 
 /// @brief 表示すべきアイコンを投影して集める。

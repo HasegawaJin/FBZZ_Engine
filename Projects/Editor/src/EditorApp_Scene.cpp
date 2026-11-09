@@ -36,6 +36,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace fbzz::editor {
@@ -227,41 +229,20 @@ void EditorApp::CaptureCleanScene()
     }
 
     CacheSceneWriteTime();
-    m_dirtyTracker.CaptureClean(*m_ctx.editScene);
-    m_ctx.sceneDirty = false;
-    m_dirtyPollTimer = 0.0f;
+    RemoveEditorHiding();
+    m_dirtyTracker.CaptureClean(*m_ctx.editScene, m_ctx.currentScenePath);
+    RestoreEditorHiding();
+    m_ctx.sceneDirty = m_dirtyTracker.IsDirty();
     UpdateWindowTitle();
 }
 
-void EditorApp::RefreshSceneDirtyState(bool force)
+void EditorApp::CheckSceneDirtyForStandalone()
 {
-    if (!m_ctx.editScene) return;
-    if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
-
-    /// @note Evaluate() はシーン全体を serialize して hash 化する重い処理 (~80ms)。MarkDirty() が呼ばれた時点で dirty 確定なので、IsDirty()==true なら Evaluate() を呼ばず即 return する。 Evaluate() はフォールバック専用 (MarkDirty() が漏れた編集を 0.5 秒周期で拾う)。
-    if (!force && m_dirtyTracker.IsDirty()) {
-        /// @note IsDirty()==true → dirty 確定。sceneDirty との同期だけ行う。
-        if (!m_ctx.sceneDirty) {
-            m_ctx.sceneDirty = true;
-            UpdateWindowTitle();
-        }
-        return;
-    }
-
-    /// @note 両方 clean → 評価不要
-    if (!force && !m_ctx.sceneDirty)
-        return;
-
-    /// @note フォールバック：MarkDirty() が漏れた場合のみ 0.5 秒周期で hash 評価
-    m_dirtyPollTimer += ImGui::GetIO().DeltaTime;
-    if (!force && m_dirtyPollTimer < 0.5f)
-        return;
-    m_dirtyPollTimer = 0.0f;
-
-    const bool wasDirty = m_ctx.sceneDirty;
-    m_ctx.sceneDirty = m_dirtyTracker.Evaluate(*m_ctx.editScene);
-    if (wasDirty != m_ctx.sceneDirty)
-        UpdateWindowTitle();
+    if (!m_ctx.editScene || m_ctx.sceneDirty || m_ctx.currentScenePath.empty()) return;
+    RemoveEditorHiding();
+    const bool changed = m_dirtyTracker.Evaluate(*m_ctx.editScene, m_ctx.currentScenePath);
+    RestoreEditorHiding();
+    if (changed) MarkSceneDirty();
 }
 
 void EditorApp::MarkSceneDirty()
@@ -277,6 +258,7 @@ void EditorApp::MarkSceneDirty()
         return;
     }
 
+    ++m_sceneEditRevision;
     m_dirtyTracker.MarkDirty();
     if (!m_ctx.sceneDirty) {
         m_ctx.sceneDirty = true;
@@ -288,6 +270,7 @@ void EditorApp::MarkSceneDirty()
 
 void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::function<void()> action)
 {
+    if (RejectWhileSceneSaving()) return;
     /// @note Prefab 編集モード中はシーンの新規作成 / 差し替えを受け付けない。m_scene の中身を 作り替えると、入っているプレファブと退避してあるシーンを取り違えて壊すため。
     if (m_ctx.InPrefabEditMode()) {
         FBZZ_LOG_WARN("%s: close the prefab edit mode first", actionName.c_str());
@@ -313,7 +296,7 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
     ModalDialog::OpenUnsavedChanges(actionName, msg,
         [this, action]() {
             AssetDirtyRegistry::SaveAll();
-            if (m_ctx.sceneDirty && !SaveScene()) return false;
+            if (m_ctx.sceneDirty) return SaveScene(true, action);
             if (action) action();
             return true;
         },
@@ -328,6 +311,7 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
 void EditorApp::NewScene()
 {
     if (!m_ctx.editScene) return;
+    if (RejectWhileSceneSaving()) return;
     if (RejectSceneIOWhilePlaying("New Scene")) return;
     m_ctx.editScene->Clear();
     m_undoStack.Clear();
@@ -374,6 +358,7 @@ bool EditorApp::OpenSceneFromDialog()
 bool EditorApp::OpenScenePath(const std::string& path)
 {
     if (!m_ctx.editScene || path.empty()) return false;
+    if (RejectWhileSceneSaving()) return false;
     if (RejectSceneIOWhilePlaying("Open Scene")) return false;
 
     if (!SceneIO::Load(*m_ctx.editScene, path)) {
@@ -413,13 +398,14 @@ bool EditorApp::OpenScenePath(const std::string& path)
 
 /// @name シーンを保存
 
-bool EditorApp::SaveScene()
+bool EditorApp::SaveScene(bool background, std::function<void()> afterSave)
 {
     if (!m_ctx.editScene) return false;
+    if (RejectWhileSceneSaving()) return false;
     if (RejectSceneIOWhilePlaying("Save Scene")) return false;
     /// @note Prefab 編集モード中は m_scene の中身がプレファブなので、シーンとして保存すると 元のシーンファイルをプレファブの内容で上書きしてしまう。Ctrl+S は反射で押されるため、 ここで止めて「プレファブを保存」へ同じキーのまま読み替える。
     if (m_ctx.InPrefabEditMode()) return SavePrefabEdit();
-    if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog();
+    if (m_settings.lastScenePath.empty()) return SaveSceneAsDialog(background, std::move(afterSave));
 
     /// @note 読み込んだ後に他人 (AI・外部エディタ・git) がファイルを書いていたら、黙って 踏まない。Ctrl+S は反射で押される操作なので、ここで止めないと相手の編集が 一度も画面に出ないまま消える。
     if (IsSceneStaleOnDisk()) {
@@ -427,39 +413,24 @@ bool EditorApp::SaveScene()
         return false;
     }
 
-    CaptureEditorViewStateToSceneMeta();
-    RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.editScene, m_settings.lastScenePath);
-    RestoreEditorHiding();
-    if (!ok) {
-        FBZZ_LOG_ERROR("Save scene failed: %s", m_settings.lastScenePath.c_str());
-        return false;
-    }
-    SaveProjectSettingsNow();
-
-    m_ctx.currentScenePath = m_settings.lastScenePath;
-    CaptureCleanScene();
-    CaptureSceneDiskStamp();
-    AddRecentScene(m_settings.lastScenePath);
-    Toast::Success("Saved: " + util::FileSystem::GetFilename(m_settings.lastScenePath));
-    FBZZ_LOG_INFO("Saved scene: %s", m_settings.lastScenePath.c_str());
-    return true;
+    return StartSceneSave(m_settings.lastScenePath, false, background, std::move(afterSave));
 }
 
-bool EditorApp::SaveSceneAsDialog()
+bool EditorApp::SaveSceneAsDialog(bool background, std::function<void()> afterSave)
 {
-    if (!m_ctx.editScene) return false;
+    if (!m_ctx.editScene || RejectWhileSceneSaving()) return false;
 
     std::string path;
     if (!FileDialog::SaveFile(m_hwnd, { SCENE_FILTER }, path)) return false;
-    return SaveScenePath(path);
+    return SaveScenePath(path, background, std::move(afterSave));
 }
 
 /// @brief 指定パスへ保存する実体。ダイアログ経由と AI (Command Bus の scene.save) が共有する。
 /// @note 保存は「書き出す」だけでは終わらず、lastScenePath / currentScenePath の更新、 クリーン状態の再取得、Recent への追加までが 1 つの操作。書き出しだけ真似ると、 保存したのに dirty のままという食い違いが残る。
-bool EditorApp::SaveScenePath(const std::string& requestedPath)
+bool EditorApp::SaveScenePath(const std::string& requestedPath, bool background, std::function<void()> afterSave)
 {
     if (!m_ctx.editScene || requestedPath.empty()) return false;
+    if (RejectWhileSceneSaving()) return false;
     if (RejectSceneIOWhilePlaying("Save Scene")) return false;
     const std::string path = WithFbzzExtension(requestedPath);
 
@@ -473,20 +444,87 @@ bool EditorApp::SaveScenePath(const std::string& requestedPath)
         return false;
     }
 
+    return StartSceneSave(path, false, background, std::move(afterSave));
+}
+
+bool EditorApp::RejectWhileSceneSaving()
+{
+    if (!m_pendingSceneSave.result.valid()) return false;
+    Toast::Info("Scene save is in progress.");
+    return true;
+}
+
+bool EditorApp::StartSceneSave(const std::string& path, bool backup, bool background, std::function<void()> afterSave)
+{
+    FBZZ_PROFILE_SCOPE("SceneSave::Capture");
+    const auto expectedWriteTime = backup ? std::nullopt : std::optional{
+        util::FileSystem::LastWriteTime(util::FileSystem::PathFromUtf8(path))};
     CaptureEditorViewStateToSceneMeta();
     RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.editScene, path);
+    auto save = SceneIO::PrepareSave(*m_ctx.editScene, path, backup, expectedWriteTime);
     RestoreEditorHiding();
-    if (!ok) {
-        FBZZ_LOG_ERROR("Save scene failed: %s", path.c_str());
+    const auto editRevision = m_sceneEditRevision;
+    const auto undoRevision = m_undoStack.GetRevision();
+    if (!save || !background) {
+        const auto result = save ? save() : SceneSaveResult{};
+        const bool succeeded = FinishSceneSave(path, backup, editRevision, undoRevision, result);
+        if (succeeded && afterSave) afterSave();
+        return succeeded;
+    }
+    m_pendingSceneSave = {TaskSystem::Submit(std::move(save)), path, std::move(afterSave),
+                          editRevision, undoRevision, backup};
+    if (!backup) Toast::Info("Saving: " + util::FileSystem::GetFilename(path));
+    return true;
+}
+
+void EditorApp::PollSceneSave()
+{
+    if (!m_pendingSceneSave.result.valid() ||
+        m_pendingSceneSave.result.wait_for(std::chrono::seconds{0}) != std::future_status::ready) return;
+    auto pending = std::exchange(m_pendingSceneSave, {});
+    if (FinishSceneSave(pending.path, pending.backup, pending.editRevision,
+                        pending.undoRevision, pending.result.get()) && pending.afterSave) {
+        if (!m_ctx.sceneDirty && !AssetDirtyRegistry::HasAny()) pending.afterSave();
+        else Toast::Info("New edits arrived during saving. Save them before continuing.");
+    }
+}
+
+bool EditorApp::FinishSceneSave(const std::string& path, bool backup, uint64_t editRevision,
+                                std::size_t undoRevision, const SceneSaveResult& result)
+{
+    if (backup) {
+        if (result.succeeded) {
+            WriteSessionLock();
+            Toast::Push(Toast::Level::Info, "Auto-saved (backup in Library/AutoSave)", 2.5f);
+        } else {
+            Toast::Error("Auto-save failed. See Console.");
+            FBZZ_LOG_WARN("AutoSave failed: %s", path.c_str());
+        }
+        return result.succeeded;
+    }
+    if (!result.succeeded) {
+        if (result.writeTime != std::filesystem::file_time_type{} &&
+            util::FileSystem::SamePathText(path, m_ctx.currentScenePath)) {
+            m_sceneDiskStamp = result.writeTime;
+            m_sceneDiskStampValid = true;
+            CacheSceneWriteTime();
+        }
+        const char* reason = result.diskChanged ? "file changed on disk" : "could not write scene or metadata";
+        FBZZ_LOG_ERROR("Save scene failed (%s): %s", reason, path.c_str());
+        Toast::Error(std::string("Save failed: ") + reason);
         return false;
     }
-    SaveProjectSettingsNow();
-
     m_settings.lastScenePath = path;
     m_ctx.currentScenePath = path;
-    CaptureCleanScene();
-    CaptureSceneDiskStamp();
+    m_sceneDiskStamp = result.writeTime;
+    m_sceneDiskStampValid = result.writeTime != std::filesystem::file_time_type{};
+    m_sceneDiskChanged = false;
+    CacheSceneWriteTime();
+    m_dirtyTracker.CaptureCleanHash(result.contentHash);
+    m_ctx.sceneDirty = m_sceneEditRevision != editRevision || m_undoStack.GetRevision() != undoRevision;
+    if (m_ctx.sceneDirty) m_dirtyTracker.MarkDirty();
+    UpdateWindowTitle();
+    SaveProjectSettingsNow();
     AddRecentScene(path);
     Toast::Success("Saved: " + util::FileSystem::GetFilename(path));
     FBZZ_LOG_INFO("Saved scene: %s", path.c_str());
@@ -658,6 +696,7 @@ constexpr int kAutoSaveMinIntervalSec = 60;
 
 void EditorApp::TickAutoSave(float dt)
 {
+    if (m_pendingSceneSave.result.valid()) return;
     const auto stopCounting = [this](bool resetTimer) {
         if (resetTimer) m_autoSaveTimer = 0.0f;
         m_autoSaveWaitingForIdle = false;
@@ -694,29 +733,14 @@ void EditorApp::TickAutoSave(float dt)
 
 bool EditorApp::AutoSaveNow()
 {
+    if (m_pendingSceneSave.result.valid()) return false;
     m_autoSaveTimer = 0.0f;
     m_autoSaveWaitingForIdle = false;
     if (!m_ctx.editScene) return false;
 
     const std::string path = AutoSavePath();
     if (path.empty()) return false;
-    util::FileSystem::EnsureDirectory(AutoSaveDir());
-
-    /// @note 本保存 (SaveScene) とは別の中間ファイルへ書く。dirty 状態や lastScenePath は変えない。
-    CaptureEditorViewStateToSceneMeta();
-    RemoveEditorHiding();
-    const bool ok = SceneIO::Save(*m_ctx.editScene, path);
-    RestoreEditorHiding();
-    if (ok) {
-        /// @note 開いた後にシーンを切り替えていても、印が今のシーンを指すように書き直す。
-        WriteSessionLock();
-        Toast::Push(Toast::Level::Info, "Auto-saved (backup in Library/AutoSave)", 2.5f);
-        FBZZ_LOG_DEBUG("AutoSave: wrote %s", path.c_str());
-    } else {
-        Toast::Error("Auto-save failed. See Console.");
-        FBZZ_LOG_WARN("AutoSave failed: %s", path.c_str());
-    }
-    return ok;
+    return StartSceneSave(path, true, true);
 }
 
 void EditorApp::DrawAutoSaveNotice()
@@ -780,9 +804,7 @@ void EditorApp::ProcessCrashRecovery()
                 ApplyEditorViewStateFromSceneMeta();
                 RebuildEditorUIFromScene();
                 /// @note 復旧直後は未保存状態にして、ユーザーに保存を促す。
-                m_dirtyTracker.MarkDirty();
-                m_ctx.sceneDirty = true;
-                UpdateWindowTitle();
+                MarkSceneDirty();
                 Toast::Success("Recovered auto-saved scene");
                 FBZZ_LOG_INFO("CrashRecovery: restored %s", autosavePath.c_str());
             } else {
@@ -825,6 +847,7 @@ void EditorApp::CheckHotReload()
     }
 
     if (!m_ctx.hotReloadEnabled) return;
+    if (m_pendingSceneSave.result.valid()) return;
     if (m_settings.lastScenePath.empty() || !m_ctx.editScene) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
 
@@ -1068,21 +1091,16 @@ void EditorApp::SetHotReloadState(EditorContext::HotReloadState state, const std
 void EditorApp::RemoveEditorHiding()
 {
     if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) return;
-    for (const auto& [guid, wasActive] : m_ctx.editorHiddenGuids) {
-        if (auto* go = m_ctx.activeScene->FindByGuid(guid))
-            /// @note 非表示前の状態を復元
-            go->SetActive(wasActive);
-    }
+    for (auto& go : m_ctx.activeScene->GameObjects())
+        if (const auto found = m_ctx.editorHiddenGuids.find(go.instanceId); found != m_ctx.editorHiddenGuids.end())
+            go.SetActive(found->second);
 }
 
 void EditorApp::RestoreEditorHiding()
 {
     if (!m_ctx.activeScene || m_ctx.editorHiddenGuids.empty()) return;
-    for (const auto& [guid, wasActive] : m_ctx.editorHiddenGuids) {
-        (void)wasActive;
-        if (auto* go = m_ctx.activeScene->FindByGuid(guid))
-            go->SetActive(false);
-    }
+    for (auto& go : m_ctx.activeScene->GameObjects())
+        if (m_ctx.editorHiddenGuids.contains(go.instanceId)) go.SetActive(false);
 }
 
 void EditorApp::CaptureEditorViewStateToSceneMeta()
@@ -1114,16 +1132,32 @@ void EditorApp::ApplyEditorViewStateFromSceneMeta()
     m_ctx.lockedEntities.clear();
     if (!m_ctx.activeScene) return;
 
-    /// @note .scene には非表示を解除した状態の activeSelf が入っている (Save 前に RemoveEditorHiding が戻す)。つまり「隠す前の値」はいま読んだ値そのもの。
-    for (const std::string& guid : m_ctx.editorSceneState.GetHiddenObjects()) {
-        auto* go = m_ctx.activeScene->FindByGuid(guid);
-        if (!go) continue;
-        m_ctx.editorHiddenGuids[guid] = go->activeSelf();
-        go->SetActive(false);
+    const auto& hidden = m_ctx.editorSceneState.GetHiddenObjects();
+    const auto& locked = m_ctx.editorSceneState.GetLockedObjects();
+    if (hidden.empty() && locked.empty()) return;
+
+    std::unordered_map<std::string_view, scene::GameObject*> byGuid;
+    for (const auto& guid : hidden)
+        if (!guid.empty()) byGuid.try_emplace(guid, nullptr);
+    for (const auto& guid : locked)
+        if (!guid.empty()) byGuid.try_emplace(guid, nullptr);
+    for (auto& object : m_ctx.activeScene->GameObjects()) {
+        const auto entry = byGuid.find(object.instanceId);
+        if (entry != byGuid.end() && !entry->second) entry->second = &object;
     }
-    for (const std::string& guid : m_ctx.editorSceneState.GetLockedObjects())
-        if (const auto* go = m_ctx.activeScene->FindByGuid(guid))
-            m_ctx.lockedEntities.push_back(go->GetID());
+
+    /// @note .scene には非表示を解除した状態の activeSelf が入っている (Save 前に RemoveEditorHiding が戻す)。つまり「隠す前の値」はいま読んだ値そのもの。
+    for (const auto& guid : hidden) {
+        const auto entry = byGuid.find(guid);
+        if (entry == byGuid.end() || !entry->second) continue;
+        auto& object = *entry->second;
+        m_ctx.editorHiddenGuids.try_emplace(guid, object.activeSelf());
+        object.SetActive(false);
+    }
+    for (const auto& guid : locked) {
+        const auto entry = byGuid.find(guid);
+        if (entry != byGuid.end() && entry->second) m_ctx.lockedEntities.push_back(entry->second->GetID());
+    }
 }
 
 }
