@@ -12,6 +12,9 @@
 
 - C#解析は外部 .NET 10 processで行う。ゲームコードやconstructorを実行しない。
 - 配置はEditorのOperatorRegistryへ登録し、既存 `editor_op_query` / `editor_op_invoke` から呼ぶ。
+- 川を配置したら、保存前に `editor_op_query` の `terrain.river.validate` で違反座標を調べる。しきい値と流出先は [川の自然ルール](river-nature-rules.md) に従う。
+- HeightMap の取り込みや Sculpt 後は `terrain.relief.validate` で急斜面や孤立した起伏の座標を調べる。意図した崖・谷の許容値は [地形制作](terrain-authoring.md#起伏の制作時検査) に従う。
+- 尾根・谷は `terrain.relief.sculpt` で成形し、池の水面は `control_points.fit_lake_shore` で岸へ合わせる。引数と Island.scene の制作例は [地形と岸の成形](terrain-authoring.md#地形と岸の成形) に従う。
 - SQLはEditorから取得したデータの読み取り用索引であり、Sceneやアセットの正本ではない。
 - `authoring.context` Queryが接続先projectとSceneを返す。解析対象を要求者の任意のルートへ切り替えない。
 - 保存済アセット、現在Scene、解析source snapshotは異なる時点・範囲であり、一つのatomic snapshotと称しない。

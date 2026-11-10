@@ -8,6 +8,7 @@
 #include <Editor/Op/EditorOperator.hpp>
 #include <Tools/TerrainAuthoring.hpp>
 #include <Tools/TerrainBrush.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
@@ -47,7 +48,603 @@ protected:
         Context().selectedEntities = {go.GetID()};
         return go;
     }
+    scene::GameObject& MakeRiver(float upstreamHeight, float downstreamHeight, float depth, float flow = 1.0f)
+    {
+        auto& river = AttachedScene()->CreateGameObject("River");
+        auto& water = river.AddComponent<scene::WaterComponent>();
+        water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+        water.splineSamplesPerSegment = 1;
+        water.splinePoints = {
+            {1, {2.0f, upstreamHeight, 5.0f}, 2.0f, depth, flow},
+            {2, {18.0f, downstreamHeight, 5.0f}, 2.0f, depth, flow}};
+        return river;
+    }
 };
+
+namespace {
+
+const editor::OpData* FindNatureIssue(const editor::OpResult& result, std::string_view code)
+{
+    const auto* issues = result.data.Find("issues");
+    if (issues) {
+        for (const auto& row : issues->AsArray())
+            if (row.Find("code")->AsString() == code) return &row;
+    }
+    return nullptr;
+}
+
+} /// @note namespace
+
+TEST_F(TerrainAuthoringTest, RiverRulesAllowHighGroundAndFollowSignedFlow)
+{
+    auto& ground = MakeTerrain();
+    ground.transform.position.y = 100.0f;
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    for (int z = 0; z < 3; ++z) {
+        ASSERT_TRUE(terrain.SetHeightAtGrid(0, z, 9.25f));
+        ASSERT_TRUE(terrain.SetHeightAtGrid(1, z, 8.0f));
+        ASSERT_TRUE(terrain.SetHeightAtGrid(2, z, 6.75f));
+    }
+    auto& river = MakeRiver(11.0f, 9.0f, 2.0f);
+    river.transform.position.y = 100.0f;
+    auto& water = *river.GetComponent<scene::WaterComponent>();
+    const auto points = water.splinePoints;
+    const auto heights = terrain.heightData;
+    bool dirty = false;
+    Context().markSceneDirty = [&dirty] { dirty = true; };
+    editor::OpArgs args;
+    args.Set("node", river.instanceId);
+    auto result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(result.data.Find("valid")->AsBool());
+    EXPECT_GT(result.data.Find("sampleCount")->AsInt(), 2);
+    EXPECT_EQ(water.splinePoints, points);
+    EXPECT_EQ(terrain.heightData, heights);
+    EXPECT_FALSE(dirty);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    Context().markSceneDirty = [] {};
+
+    for (auto& point : water.splinePoints) point.flowSpeed = -1.0f;
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(result.data.Find("flowDirection")->AsString(), "reverse");
+    EXPECT_NE(FindNatureIssue(result, "UPHILL"), nullptr);
+    water.splinePoints.front().flowSpeed = 1.0f;
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_NE(FindNatureIssue(result, "MIXED_FLOW"), nullptr);
+    EXPECT_EQ(FindNatureIssue(result, "UPHILL"), nullptr);
+}
+
+TEST_F(TerrainAuthoringTest, RiverRulesFindRidgeBetweenPointsAndReportMissingGround)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    for (int z = 0; z < 3; ++z) ASSERT_TRUE(terrain.SetHeightAtGrid(1, z, 8.0f));
+    auto& river = MakeRiver(4.0f, 4.0f, 1.0f);
+    editor::OpArgs args;
+    args.Set("node", river.instanceId);
+    auto result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_FALSE(result.data.Find("valid")->AsBool());
+    const auto* buried = FindNatureIssue(result, "BURIED_SURFACE");
+    ASSERT_NE(buried, nullptr);
+    EXPECT_GT(buried->Find("position")->AsVec3().x, 2.0f);
+    EXPECT_LT(buried->Find("position")->AsVec3().x, 18.0f);
+    EXPECT_GT(buried->Find("differenceMeters")->AsDouble(), 0.1);
+    EXPECT_NE(FindNatureIssue(result, "FLOATING_BED"), nullptr);
+
+    ASSERT_TRUE(terrain.SetHoleCell(0, 0, true));
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_NE(FindNatureIssue(result, "MISSING_TERRAIN"), nullptr);
+}
+
+TEST_F(TerrainAuthoringTest, RiverRulesCheckOutletFootprintAndHeightTolerance)
+{
+    MakeTerrain();
+    const auto riverId = MakeRiver(1.0f, 1.0f, 1.0f).instanceId;
+    auto& outlet = AttachedScene()->CreateGameObject("Lake");
+    outlet.transform.position = {18.0f, 1.0f, 5.0f};
+    auto& water = outlet.AddComponent<scene::WaterComponent>();
+    water.extentX = water.extentZ = 4.0f;
+    editor::OpArgs args;
+    args.Set("node", riverId);
+    args.Set("outlet", outlet.instanceId);
+    auto result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(result.data.Find("valid")->AsBool());
+
+    outlet.transform.position.y = 3.0f;
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    const auto* mismatch = FindNatureIssue(result, "OUTLET_HEIGHT");
+    ASSERT_NE(mismatch, nullptr);
+    EXPECT_DOUBLE_EQ(mismatch->Find("differenceMeters")->AsDouble(), -2.0);
+    args.Set("maxOutletHeightDifference", 2.0f);
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(result.data.Find("valid")->AsBool());
+
+    outlet.transform.position.x = 40.0f;
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_NE(FindNatureIssue(result, "OUTLET_OUTSIDE"), nullptr);
+}
+
+TEST_F(TerrainAuthoringTest, RiverRulesMeasureDropWidthAndDepthPerWorldMeter)
+{
+    MakeTerrain();
+    auto& river = MakeRiver(8.0f, 1.0f, 1.0f);
+    auto& downstream = river.GetComponent<scene::WaterComponent>()->splinePoints.back();
+    downstream.width = 10.0f;
+    downstream.depth = 7.0f;
+    editor::OpArgs args;
+    args.Set("node", river.instanceId);
+    auto result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    const auto* drop = FindNatureIssue(result, "STEEP_DROP");
+    const auto* width = FindNatureIssue(result, "ABRUPT_WIDTH");
+    const auto* depth = FindNatureIssue(result, "ABRUPT_DEPTH");
+    ASSERT_NE(drop, nullptr);
+    ASSERT_NE(width, nullptr);
+    ASSERT_NE(depth, nullptr);
+    EXPECT_NEAR(drop->Find("rate")->AsDouble(), 7.0 / 16.0, 1.0e-5);
+    EXPECT_NEAR(width->Find("rate")->AsDouble(), 8.0 / 16.0, 1.0e-5);
+    EXPECT_NEAR(depth->Find("rate")->AsDouble(), 6.0 / 16.0, 1.0e-5);
+
+    args.Set("maxDownhillGrade", 0.0f);
+    args.Set("maxWidthChangeRate", 0.0f);
+    args.Set("maxDepthChangeRate", 0.0f);
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(FindNatureIssue(result, "STEEP_DROP"), nullptr);
+    EXPECT_EQ(FindNatureIssue(result, "ABRUPT_WIDTH"), nullptr);
+    EXPECT_EQ(FindNatureIssue(result, "ABRUPT_DEPTH"), nullptr);
+}
+
+TEST_F(TerrainAuthoringTest, RiverBankRuleFindsOnlyTheLowSideOfTheValley)
+{
+    auto& terrain = *MakeTerrain().GetComponent<scene::TerrainComponent>();
+    terrain.Resize(5, 3);
+    terrain.cellSize = 5.0f;
+    for (int x = 0; x < terrain.columns; ++x) {
+        ASSERT_TRUE(terrain.SetHeightAtGrid(x, 0, 3.0f));
+        ASSERT_TRUE(terrain.SetHeightAtGrid(x, 2, 3.0f));
+    }
+    editor::OpArgs args;
+    args.Set("node", MakeRiver(1.0f, 1.0f, 1.0f).instanceId);
+    args.Set("minBankRise", 1.0f);
+    auto result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(result.data.Find("valid")->AsBool());
+
+    for (int x = 0; x < terrain.columns; ++x) ASSERT_TRUE(terrain.SetHeightAtGrid(x, 0, 0.0f));
+    result = editor::InvokeOperator(Context(), "terrain.river.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    const auto* bank = FindNatureIssue(result, "LOW_BANK");
+    ASSERT_NE(bank, nullptr);
+    EXPECT_FLOAT_EQ(bank->Find("position")->AsVec3().z, 2.0f);
+    EXPECT_EQ(result.data.Find("issueCount")->AsInt(), result.data.Find("sampleCount")->AsInt());
+}
+
+TEST_F(TerrainAuthoringTest, ReliefRulesMeasureScaledSpikesAndPitsWithoutTreatingHolesAsTerrain)
+{
+    auto& ground = MakeTerrain();
+    ground.transform.scale.y = 2.0f;
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    ASSERT_TRUE(terrain.SetHeightAtGrid(1, 1, 12.0f));
+    auto result = editor::InvokeOperator(Context(), "terrain.relief.validate");
+    ASSERT_TRUE(result.ok) << result.message;
+    const auto* spike = FindNatureIssue(result, "ISOLATED_SPIKE");
+    ASSERT_NE(spike, nullptr);
+    EXPECT_NEAR(spike->Find("differenceMeters")->AsDouble(), 24.0, 1.0e-5);
+    EXPECT_NE(FindNatureIssue(result, "STEEP_TERRAIN"), nullptr);
+
+    ASSERT_TRUE(terrain.SetHeightAtGrid(1, 1, -12.0f));
+    result = editor::InvokeOperator(Context(), "terrain.relief.validate");
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_NE(FindNatureIssue(result, "ISOLATED_PIT"), nullptr);
+    ASSERT_TRUE(terrain.SetHoleCell(0, 0, true));
+    result = editor::InvokeOperator(Context(), "terrain.relief.validate");
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(result.data.Find("checkedCells")->AsInt(), 3);
+    EXPECT_EQ(result.data.Find("checkedVertices")->AsInt(), 0);
+    EXPECT_EQ(FindNatureIssue(result, "ISOLATED_PIT"), nullptr);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(TerrainAuthoringTest, SeamRuleChecksExtraFineVerticesAndReportsWorldHeightDifference)
+{
+    auto& first = MakeTerrain("West");
+    auto& second = MakeTerrain("East");
+    second.transform.position.x = 20.0f;
+    auto& neighbor = *second.GetComponent<scene::TerrainComponent>();
+    neighbor.Resize(5, 5);
+    neighbor.cellSize = 5.0f;
+    editor::OpArgs args;
+    args.Set("node", first.instanceId);
+    args.Set("neighbor", second.instanceId);
+    auto result = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(result.data.Find("valid")->AsBool());
+    EXPECT_EQ(result.data.Find("sampleCount")->AsInt(), 5);
+    ASSERT_TRUE(neighbor.SetHeightAtGrid(0, 1, 3.0f));
+    result = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_FALSE(result.data.Find("valid")->AsBool());
+    EXPECT_NEAR(result.data.Find("maxDifferenceMeters")->AsDouble(), 3.0, 1.0e-5);
+    const auto* issue = FindNatureIssue(result, "TERRAIN_SEAM_STEP");
+    ASSERT_NE(issue, nullptr);
+    EXPECT_VEC3_NEAR(issue->Find("position")->AsVec3(), (math::Vector3{20.0f, 0.0f, 5.0f}), 0.00001f);
+    second.transform.position.x = 20.1f;
+    result = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(result.errorCode, "NO_SHARED_EDGE");
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(TerrainAuthoringTest, SeamRuleDetectsAReversedSlopeEvenWhenAllEdgeHeightsMatch)
+{
+    auto& first = MakeTerrain("West");
+    auto& second = MakeTerrain("East");
+    second.transform.position.x = 20.0f;
+    auto& west = *first.GetComponent<scene::TerrainComponent>();
+    auto& east = *second.GetComponent<scene::TerrainComponent>();
+    for (int z = 0; z < 3; ++z) {
+        ASSERT_TRUE(west.SetHeightAtGrid(1, z, -10.0f));
+        ASSERT_TRUE(east.SetHeightAtGrid(1, z, 10.0f));
+    }
+    editor::OpArgs args;
+    args.Set("node", first.instanceId);
+    args.Set("neighbor", second.instanceId);
+    args.Set("maxCrossSlopeDifference", 12.0f);
+    auto result = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(result.data.Find("valid")->AsBool());
+    EXPECT_EQ(result.data.Find("slopeSampleCount")->AsInt(), 2);
+    EXPECT_DOUBLE_EQ(result.data.Find("maxCrossSlopeDifferenceDegrees")->AsDouble(), 0.0);
+
+    ASSERT_TRUE(east.SetHeightAtGrid(1, 0, -10.0f));
+    result = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_FALSE(result.data.Find("valid")->AsBool());
+    EXPECT_DOUBLE_EQ(result.data.Find("maxDifferenceMeters")->AsDouble(), 0.0);
+    EXPECT_NEAR(result.data.Find("maxCrossSlopeDifferenceDegrees")->AsDouble(), 90.0, 0.00001);
+    EXPECT_EQ(result.data.Find("issueCount")->AsInt(), 1);
+    const auto* issue = FindNatureIssue(result, "TERRAIN_SEAM_SLOPE");
+    ASSERT_NE(issue, nullptr);
+    EXPECT_FLOAT_EQ(issue->Find("position")->AsVec3().z, 5.0f);
+    args.Set("maxCrossSlopeDifference", 0.0f);
+    result = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_TRUE(result.data.Find("valid")->AsBool());
+}
+
+TEST_F(TerrainAuthoringTest, SeamBlendChangesOnlyTheSelectedInteriorAndUndoesInOneStep)
+{
+    auto& first = MakeTerrain("West");
+    auto& second = MakeTerrain("East");
+    auto& west = *first.GetComponent<scene::TerrainComponent>();
+    auto& east = *second.GetComponent<scene::TerrainComponent>();
+    west.Resize(5, 5);
+    east.Resize(5, 5);
+    west.cellSize = east.cellSize = 10.0f;
+    second.transform.position.x = 40.0f;
+    for (int z = 0; z < 5; ++z) {
+        ASSERT_TRUE(west.SetHeightAtGrid(3, z, -4.0f));
+        ASSERT_TRUE(east.SetHeightAtGrid(1, z, -4.0f));
+    }
+    const auto before = west.heightData, reference = east.heightData;
+    editor::OpArgs args;
+    args.Set("node", first.instanceId);
+    args.Set("neighbor", second.instanceId);
+    args.Set("maxCrossSlopeDifference", 12.0f);
+    auto check = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    ASSERT_TRUE(check.ok) << check.message;
+    EXPECT_EQ(check.data.Find("issueCount")->AsInt(), 4);
+    editor::OpArgs blend;
+    blend.Set("node", first.instanceId);
+    blend.Set("neighbor", second.instanceId);
+    blend.Set("blendRows", 2);
+    auto result = editor::InvokeOperator(Context(), "terrain.seam.blend", blend);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(result.data.Find("changedVertices")->AsInt(), 6);
+    EXPECT_NEAR(west.GetHeightAt(30.0f, 20.0f), 4.0f, 0.00001f);
+    EXPECT_NEAR(west.GetHeightAt(20.0f, 20.0f), 4.0f, 0.00001f);
+    EXPECT_EQ(east.heightData, reference);
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_EQ(west.heightData[i], before[i]);
+        EXPECT_EQ(west.heightData[20 + i], before[20 + i]);
+        EXPECT_EQ(west.heightData[i * 5], before[i * 5]);
+        EXPECT_EQ(west.heightData[i * 5 + 4], before[i * 5 + 4]);
+    }
+    check = editor::InvokeOperator(Context(), "terrain.seam.validate", args);
+    ASSERT_TRUE(check.ok) << check.message;
+    EXPECT_EQ(check.data.Find("issueCount")->AsInt(), 1);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(west.heightData, before);
+    EXPECT_EQ(east.heightData, reference);
+}
+
+TEST_F(TerrainAuthoringTest, SculptRidgeUsesDifferentFlanksAndPreservesTileEdgesThroughUndo)
+{
+    auto& owner = MakeTerrain();
+    auto& terrain = *owner.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(9, 9);
+    terrain.cellSize = 5.0f;
+    const auto before = terrain.heightData;
+    editor::OpArgs args;
+    args.Set("start", math::Vector3{0,0,20});
+    args.Set("end", math::Vector3{40,0,20});
+    args.Set("height", 20.0f);
+    args.Set("leftWidth", 15.0f);
+    args.Set("rightWidth", 5.0f);
+    args.Set("peakAlong", 0.5f);
+    const auto result = editor::InvokeOperator(Context(), "terrain.relief.sculpt", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 20.0f), 20.0f);
+    EXPECT_GT(terrain.GetHeightAt(20.0f, 25.0f), 0.0f);
+    EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 15.0f), 0.0f);
+    EXPECT_FLOAT_EQ(terrain.GetHeightAt(0.0f, 25.0f), 0.0f);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(terrain.heightData, before);
+    ASSERT_TRUE(m_undo.Redo());
+    EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 20.0f), 20.0f);
+}
+
+TEST_F(TerrainAuthoringTest, FitLakeShoreFollowsConcavityAndRejectsAnOpenSearch)
+{
+    editor::RegisterControlPointOperators(m_registry);
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(7, 7);
+    terrain.cellSize = 2.0f;
+    for (int z = 0; z < 7; ++z) {
+        for (int x = 0; x < 7; ++x) {
+            const bool wet = x > 0 && x < 6 && z > 0 && z < 6 && (x < 4 || z > 2);
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, wet ? -4.0f : 4.0f));
+        }
+    }
+    auto& lake = AttachedScene()->CreateGameObject("Lake");
+    lake.transform.position = {6,0,6};
+    auto& water = lake.AddComponent<scene::WaterComponent>();
+    editor::OpArgs args;
+    args.Set("node", lake.instanceId);
+    args.Set("terrain", ground.instanceId);
+    args.Set("width", 4.0f);
+    args.Set("depth", 4.0f);
+    args.Set("spacing", 2.0f);
+    auto result = editor::InvokeOperator(Context(), "control_points.fit_lake_shore", args);
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(result.errorCode, "SHORE_NOT_FOUND");
+    EXPECT_EQ(water.surfaceShape, scene::WaterSurfaceShape::RECTANGLE);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    args.Set("width", 12.0f);
+    args.Set("depth", 12.0f);
+    args.Set("tolerance", 0.1f);
+    result = editor::InvokeOperator(Context(), "control_points.fit_lake_shore", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    ASSERT_EQ(water.surfaceShape, scene::WaterSurfaceShape::SPLINE_LAKE);
+    ASSERT_EQ(water.splineSamplesPerSegment, 1u);
+    scene::WaterSplineSnapshot mesh;
+    ASSERT_TRUE(scene::BuildWaterSplineSnapshot(water.surfaceShape, water.splinePoints,
+        water.splineSamplesPerSegment, lake.transform, mesh, water.buoyancyDepth));
+    scene::WaterSplineSample sample;
+    EXPECT_TRUE(scene::TrySampleWaterSpline(mesh, 6.0f, 6.0f, sample));
+    EXPECT_FLOAT_EQ(sample.depth, water.buoyancyDepth);
+    EXPECT_FALSE(scene::TrySampleWaterSpline(mesh, 10.0f, 2.0f, sample));
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(water.surfaceShape, scene::WaterSurfaceShape::RECTANGLE);
+    EXPECT_EQ(water.splineSamplesPerSegment, 8u);
+}
+
+TEST_F(TerrainAuthoringTest, MassifAddsSeededBranchReliefAndPreservesHoleVertices)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(81, 81);
+    terrain.cellSize = 1.0f;
+    ASSERT_TRUE(terrain.SetHoleCell(38, 40, true));
+    const auto before = terrain.heightData;
+    editor::OpArgs args;
+    args.Set("node", ground.instanceId);
+    args.Set("start", math::Vector3{10, 0, 40});
+    args.Set("end", math::Vector3{70, 0, 40});
+    args.Set("height", 40.0f);
+    args.Set("leftWidth", 14.0f);
+    args.Set("rightWidth", 9.0f);
+    args.Set("seed", 73);
+    const auto result = editor::InvokeOperator(Context(), "terrain.relief.massif", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_GT(terrain.GetHeightAt(43, 40), 30.0f);
+    EXPECT_EQ(terrain.heightData[static_cast<std::size_t>(40) * terrain.columns + 38],
+        before[static_cast<std::size_t>(40) * terrain.columns + 38]);
+    EXPECT_EQ(terrain.heightData[0], before[0]);
+    EXPECT_TRUE(terrain.IsHoleCell(38, 40));
+    const auto shaped = terrain.heightData;
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(terrain.heightData, before);
+    const auto repeated = editor::InvokeOperator(Context(), "terrain.relief.massif", args);
+    ASSERT_TRUE(repeated.ok) << repeated.message;
+    EXPECT_EQ(terrain.heightData, shaped);
+}
+
+TEST_F(TerrainAuthoringTest, RiverCarvePreviewsDepthAndPreservesProtectedGroundThroughUndo)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(21, 13);
+    terrain.cellSize = 1.0f;
+    for (int z = 0; z < terrain.rows; ++z)
+        for (int x = 0; x < terrain.columns; ++x)
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, 5.0f));
+    ASSERT_TRUE(terrain.SetHoleCell(11, 5, true));
+    ASSERT_TRUE(terrain.PaintLayerAtGrid(9, 7, 2, 1.0f));
+    auto& river = MakeRiver(4.0f, 3.0f, 2.0f);
+    auto& water = *river.GetComponent<scene::WaterComponent>();
+    for (auto& point : water.splinePoints) point.width = 4.0f;
+    const auto before = terrain.heightData;
+    const auto beforeSplat = terrain.splatWeights;
+    editor::OpArgs args;
+    args.Set("node", river.instanceId);
+    args.Set("terrain", ground.instanceId);
+    args.Set("endFade", 2.0f);
+    args.Set("bankWidth", 2.0f);
+    args.Set("maxCut", 2.0f);
+    args.Set("bankLayer", 1);
+    args.Set("protectedLayer", 2);
+    const auto preview = editor::InvokeOperator(Context(), "terrain.river.carve.preview", args);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    EXPECT_FALSE(preview.data.Find("withinLimit")->AsBool());
+    EXPECT_GT(preview.data.Find("protectedVertices")->AsInt64(), 0);
+    EXPECT_GT(preview.data.Find("paintedVertices")->AsInt64(), 0);
+    EXPECT_EQ(terrain.heightData, before);
+    EXPECT_EQ(terrain.splatWeights, beforeSplat);
+    const auto rejected = editor::InvokeOperator(Context(), "terrain.river.carve", args);
+    EXPECT_EQ(rejected.errorCode, "RIVER_CUT_LIMIT");
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    EXPECT_EQ(terrain.heightData, before);
+
+    args.Set("maxCut", 12.0f);
+    const auto carved = editor::InvokeOperator(Context(), "terrain.river.carve", args);
+    ASSERT_TRUE(carved.ok) << carved.message;
+    EXPECT_NEAR(terrain.GetHeightAt(10, 5), 1.5f, 0.0001f);
+    EXPECT_NEAR(terrain.GetHeightAt(10, 7), 3.5f, 0.0001f);
+    EXPECT_NEAR(terrain.GetHeightAt(2, 5), 5.0f, 0.0001f);
+    EXPECT_NEAR(terrain.GetHeightAt(11, 5), 5.0f, 0.0001f);
+    EXPECT_NEAR(terrain.GetHeightAt(9, 7), 5.0f, 0.0001f);
+    EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(9, 7, 2), 1.0f);
+    EXPECT_GT(terrain.GetLayerWeightAtGrid(10, 7, 1), 0.9f);
+    EXPECT_TRUE(terrain.IsHoleCell(11, 5));
+    const auto repeated = editor::InvokeOperator(Context(), "terrain.river.carve", args);
+    EXPECT_TRUE(repeated.ok);
+    EXPECT_TRUE(repeated.noChange);
+    ASSERT_EQ(m_undo.GetHistorySize(), 1u);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(terrain.heightData, before);
+    EXPECT_EQ(terrain.splatWeights, beforeSplat);
+}
+
+TEST_F(TerrainAuthoringTest, DrainageFitUsesDownhillRouteAndAccumulatesArea)
+{
+    editor::RegisterControlPointOperators(m_registry);
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(9, 9);
+    terrain.cellSize = 1.0f;
+    for (int z = 0; z < 9; ++z)
+        for (int x = 0; x < 9; ++x)
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, static_cast<float>(8 - z + 2 * std::abs(x - 4))));
+    editor::OpArgs args;
+    args.Set("node", ground.instanceId);
+    args.Set("seed", math::Vector3{4, 0, 4});
+    args.Set("width", 8.0f);
+    args.Set("depth", 8.0f);
+    args.Set("spacing", 1.0f);
+    args.Set("minArea", 0.0f);
+    const auto result = editor::InvokeOperator(Context(), "terrain.drainage.inspect", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    const auto* seed = result.data.Find("seed");
+    const auto* outlet = result.data.Find("outlet");
+    ASSERT_NE(seed, nullptr);
+    ASSERT_NE(outlet, nullptr);
+    EXPECT_GT(outlet->Find("area")->AsDouble(), seed->Find("area")->AsDouble());
+    EXPECT_FLOAT_EQ(outlet->Find("ground")->AsVec3().z, 8.0f);
+
+    auto& owner = AttachedScene()->CreateGameObject("River");
+    auto& water = owner.AddComponent<scene::WaterComponent>();
+    args.Set("node", owner.instanceId);
+    args.Set("terrain", ground.instanceId);
+    const auto fit = editor::InvokeOperator(Context(), "control_points.fit_river_drainage", args);
+    ASSERT_TRUE(fit.ok) << fit.message;
+    ASSERT_EQ(water.splinePoints.size(), 5u);
+    for (std::size_t i = 1; i < water.splinePoints.size(); ++i) {
+        EXPECT_LT(water.splinePoints[i].localPosition.y, water.splinePoints[i - 1].localPosition.y);
+        EXPECT_GE(water.splinePoints[i].width, water.splinePoints[i - 1].width);
+    }
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(water.surfaceShape, scene::WaterSurfaceShape::RECTANGLE);
+}
+
+TEST_F(TerrainAuthoringTest, DrainageCrossesTerrainTileBoundary)
+{
+    editor::RegisterControlPointOperators(m_registry);
+    auto& upstream = MakeTerrain("Upstream");
+    auto& downstream = MakeTerrain("Downstream");
+    downstream.transform.position.z = 4.0f;
+    for (auto* tile : {&upstream, &downstream}) {
+        auto& terrain = *tile->GetComponent<scene::TerrainComponent>();
+        terrain.Resize(9, 5);
+        terrain.cellSize = 1.0f;
+        for (int z = 0; z < 5; ++z)
+            for (int x = 0; x < 9; ++x)
+                ASSERT_TRUE(terrain.SetHeightAtGrid(x, z,
+                    8.0f - tile->transform.position.z - z + 2.0f * std::abs(x - 4)));
+    }
+    auto tiles = editor::OpData::MakeArray();
+    tiles.Push(upstream.instanceId);
+    tiles.Push(downstream.instanceId);
+    editor::OpArgs args;
+    args.Set("terrainTiles", tiles);
+    args.Set("seed", math::Vector3{4, 0, 4});
+    args.Set("width", 8.0f);
+    args.Set("depth", 8.0f);
+    args.Set("spacing", 1.0f);
+    args.Set("minArea", 0.0f);
+    const auto query = editor::InvokeOperator(Context(), "terrain.drainage.inspect", args);
+    ASSERT_TRUE(query.ok) << query.message;
+    EXPECT_EQ(query.data.Find("tileCount")->AsInt(), 2);
+    EXPECT_FLOAT_EQ(query.data.Find("outlet")->Find("ground")->AsVec3().z, 8.0f);
+
+    auto& river = AttachedScene()->CreateGameObject("River across tiles");
+    auto& water = river.AddComponent<scene::WaterComponent>();
+    args.Set("node", river.instanceId);
+    const auto fit = editor::InvokeOperator(Context(), "control_points.fit_river_drainage", args);
+    ASSERT_TRUE(fit.ok) << fit.message;
+    ASSERT_FALSE(water.splinePoints.empty());
+    EXPECT_FLOAT_EQ(water.splinePoints.back().localPosition.z, 8.0f);
+}
+
+TEST_F(TerrainAuthoringTest, LakeUsesSpillHeightAndKeepsTheIslandDry)
+{
+    editor::RegisterControlPointOperators(m_registry);
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(9, 9);
+    terrain.cellSize = 1.0f;
+    for (int z = 0; z < 9; ++z)
+        for (int x = 0; x < 9; ++x) {
+            const bool basin = x >= 2 && x <= 6 && z >= 2 && z <= 6;
+            const float height = x == 5 && z == 4 ? 6.0f : (basin ? 0.0f : 3.0f);
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, height));
+        }
+    auto& owner = AttachedScene()->CreateGameObject("Lake");
+    auto& water = owner.AddComponent<scene::WaterComponent>();
+    editor::OpArgs args;
+    args.Set("node", owner.instanceId);
+    args.Set("terrain", ground.instanceId);
+    args.Set("seed", math::Vector3{4, 0, 4});
+    args.Set("width", 8.0f);
+    args.Set("depth", 8.0f);
+    args.Set("spacing", 1.0f);
+    args.Set("tolerance", 0.05f);
+    args.Set("useSpillLevel", true);
+    args.Set("freeboard", 0.5f);
+    const auto result = editor::InvokeOperator(Context(), "control_points.fit_lake_shore", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    EXPECT_EQ(result.data.Find("islandCount")->AsInt(), 1);
+    EXPECT_NEAR(water.lakePlaneHeight, 2.5f, 0.001f);
+    scene::WaterSplineSnapshot mesh;
+    ASSERT_TRUE(scene::BuildWaterSplineSnapshot(water.surfaceShape, water.splinePoints,
+        water.splineSamplesPerSegment, owner.transform, mesh, water.buoyancyDepth, water.splineMeshCellSize, water.lakeIslandPoints));
+    scene::WaterSplineSample sample;
+    EXPECT_TRUE(scene::TrySampleWaterSpline(mesh, 4, 4, sample));
+    EXPECT_FALSE(scene::TrySampleWaterSpline(mesh, 5, 4, sample));
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_TRUE(water.lakeIslandPoints.empty());
+}
 
 TEST_F(TerrainAuthoringTest, FlatLowlandAndSnowlineUseWorldHeight)
 {

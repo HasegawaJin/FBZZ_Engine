@@ -106,6 +106,10 @@ FBZZ_ENGINE_API void ReflectSplineControlPointValues(IReflector& reflector,
 FBZZ_ENGINE_API void ReflectWaterControlPointValues(IReflector& reflector,
     const char* fieldName, std::vector<WaterSplinePoint>& points);
 
+/// @brief Reflect bounded, owner-local lake exclusion contours.
+FBZZ_ENGINE_API void ReflectWaterLakeIslandPoints(IReflector& reflector,
+    std::vector<WaterLakeIslandPoint>& points);
+
 /// @brief Hash Cloth solver particle identity and triangle topology without positions or materials.
 /// @param asset Null for generated grid cloth.
 /// @param generatedSegments Segment count used by generated grid cloth.

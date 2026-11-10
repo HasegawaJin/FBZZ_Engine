@@ -4,9 +4,21 @@
 /// @date    2026-11-04
 #pragma once
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/TerrainSplat.hpp>
 #include <Engine/Scene/Transform.hpp>
+#include <Math/Vector2.hpp>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <string>
+#include <vector>
+
+namespace fbzz::scene { class GameObject; class Scene; }
 
 namespace fbzz::editor {
+
+class OpData;
 
 /// @note 保存後の参照と実行時世代を保持する。geometry=false は塗りだけを失効させ、形状・物理を再構築しない。
 void ApplyTerrainAuthoringSnapshot(scene::TerrainComponent& terrain, const scene::TerrainComponent& snapshot, bool geometry);
@@ -56,5 +68,120 @@ struct TerrainBiomeSettings {
 /// @see Docs/design/terrain-authoring.md
 bool BakeTerrainBiome(scene::TerrainComponent& terrain, const scene::Transform& transform,
     const TerrainBiomeSettings& settings);
+
+struct TerrainRidgeSettings {
+    math::Vector3 start;
+    math::Vector3 end;
+    float height = 45.0f;
+    float leftWidth = 75.0f;
+    float rightWidth = 45.0f;
+    float bend = 0.0f;
+    float peakAlong = 0.55f;
+};
+
+/// @return False on invalid shape or budget overflow. The heightfield remains unchanged on failure.
+/// @note The ridge uses world XZ and signed world metres. Tile borders are preserved.
+bool SculptTerrainRidge(scene::TerrainComponent& terrain, const scene::Transform& pose, const TerrainRidgeSettings& settings);
+
+struct TerrainMassifSettings {
+    TerrainRidgeSettings spine;
+    int branchesPerSide = 3;
+    std::uint32_t seed = 1;
+    float erosion = 0.35f;
+};
+
+/// @return False on invalid shape or budget overflow. The input heightfield remains unchanged on failure.
+bool SculptTerrainMassif(scene::TerrainComponent& terrain, const scene::Transform& pose, const TerrainMassifSettings& settings);
+
+struct TerrainRiverCarveSection {
+    math::Vector2 center;
+    float waterHeight = 0.0f;
+    float halfWidth = 0.0f;
+    float depth = 0.0f;
+};
+
+struct TerrainRiverCarveSettings {
+    float bankWidth = 8.0f;
+    float bankRise = 1.5f;
+    float endFade = 8.0f;
+    float maxCut = 12.0f;
+    int bankLayer = -1;
+    int protectedLayer = -1;
+};
+
+struct TerrainRiverCarvePlan {
+    struct Vertex {
+        std::size_t index;
+        float normalizedHeight;
+    };
+    struct Material {
+        std::size_t offset;
+        std::array<std::uint8_t, scene::TERRAIN_SPLAT_SLOTS> indices;
+        std::array<std::uint8_t, scene::TERRAIN_SPLAT_SLOTS> weights;
+    };
+    std::vector<Vertex> vertices;
+    std::vector<Material> materials;
+    std::size_t protectedVertices = 0;
+    float deepestCut = 0.0f;
+};
+
+/// @note The section positions and settings are world metres. Proposed heights are absolute normalized terrain samples.
+/// @return False for invalid or over-budget geometry. Terrain and output remain unchanged on failure.
+bool PlanTerrainRiverCarve(const scene::TerrainComponent& terrain, const scene::Transform& pose,
+    std::span<const TerrainRiverCarveSection> sections, const TerrainRiverCarveSettings& settings, TerrainRiverCarvePlan& out);
+
+struct TerrainShoreSettings {
+    math::Vector3 seed;
+    float width = 120.0f;
+    float depth = 120.0f;
+    float spacing = 2.0f;
+    float tolerance = 0.5f;
+};
+
+struct TerrainShoreOutline {
+    std::vector<math::Vector3> outer;
+    std::vector<std::vector<math::Vector3>> islands;
+};
+
+struct TerrainAnalysisSurface {
+    const scene::TerrainComponent* terrain;
+    const scene::Transform* pose;
+};
+
+/// @return Resolves an explicit unique GUID array, or the single target when the array is omitted.
+/// @note Flush world transforms before sampling the returned surfaces.
+bool ResolveTerrainAnalysisSurfaces(scene::Scene& world, const scene::GameObject* single, const OpData* tiles,
+    std::vector<TerrainAnalysisSurface>& out);
+
+/// @return Closed world-space contours at seed.y. Failure leaves the output unchanged.
+/// @note Only the submerged component connected to seed is traced. Missing surfaces and spills are rejected.
+bool TraceTerrainShore(std::span<const TerrainAnalysisSurface> surfaces,
+    const TerrainShoreSettings& settings, TerrainShoreOutline& out, std::string& diagnostic);
+
+struct TerrainDrainageNode {
+    math::Vector3 ground;
+    float waterHeight = 0.0f;
+    double area = 0.0;
+    int downstream = -1;
+};
+
+struct TerrainDrainage {
+    std::vector<TerrainDrainageNode> nodes;
+    int seed = -1;
+    int spill = -1;
+    int outlet = -1;
+    float step = 0.0f;
+};
+
+/// @note A small constant lift keeps the authored stream visible over an uncut bed without changing its grade.
+inline constexpr float DRAINAGE_RIVER_SURFACE_CLEARANCE = 0.05f;
+
+/// @return The bounded drainage graph, with area zero at samples that cannot reach the search edge.
+/// @see https://doi.org/10.1016/j.cageo.2013.04.024 Barnes et al., Priority-Flood.
+bool BuildTerrainDrainage(std::span<const TerrainAnalysisSurface> surfaces,
+    const TerrainShoreSettings& settings, TerrainDrainage& out, std::string& diagnostic);
+
+/// @return River width and depth in world metres derived from contributing area and local fill.
+math::Vector2 DrainageRiverSize(const TerrainDrainageNode& node, float step);
 
 } /// @note namespace fbzz::editor

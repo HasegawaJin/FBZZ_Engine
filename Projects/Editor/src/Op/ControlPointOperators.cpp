@@ -25,6 +25,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Util/Uuid.hpp>
+#include "../Tools/TerrainAuthoring.hpp"
 #include "../Tools/TerrainTool.hpp"
 #include <algorithm>
 #include <bit>
@@ -106,11 +107,13 @@ struct PointAuthoring {
     scene::ControlPointSourceMode source = scene::ControlPointSourceMode::INLINE;
     scene::ControlPointRuntimeMode runtime = scene::ControlPointRuntimeMode::LIVE;
     std::vector<scene::WaterSplinePoint> waterPoints;
+    std::vector<scene::WaterLakeIslandPoint> lakeIslandPoints;
     std::vector<math::Vector3> splinePoints;
     std::vector<scene::WaterControlPointBinding> waterBindings;
     std::vector<scene::SplineControlPointBinding> splineBindings;
     float lakeHeight = 0.0f;
     scene::WaterSurfaceShape waterShape = scene::WaterSurfaceShape::RECTANGLE;
+    uint32_t waterSamplesPerSegment = 8;
     bool splineClosed = false;
     bool bakedSplineClosed = false;
     std::vector<scene::WaterSplinePoint> waterBake;
@@ -132,9 +135,13 @@ struct PointAuthoring {
                 && SameFloat(lhs.width, rhs.width) && SameFloat(lhs.depth, rhs.depth) && SameFloat(lhs.flowSpeed, rhs.flowSpeed);
         };
         return source == other.source && runtime == other.runtime && SameFloat(lakeHeight, other.lakeHeight)
-            && waterShape == other.waterShape && splineClosed == other.splineClosed
+            && waterShape == other.waterShape && waterSamplesPerSegment == other.waterSamplesPerSegment
+            && splineClosed == other.splineClosed
             && bakedSplineClosed == other.bakedSplineClosed
             && SameRows(waterPoints, other.waterPoints, waterPoint) && SameRows(waterBake, other.waterBake, waterPoint)
+            && SameRows(lakeIslandPoints, other.lakeIslandPoints, [](const auto& lhs, const auto& rhs) {
+                return lhs.ring == rhs.ring && SameVector(lhs.localPosition, rhs.localPosition);
+            })
             && SameRows(splinePoints, other.splinePoints, SameVector)
             && SameRows(waterBindings, other.waterBindings, waterBinding)
             && SameRows(splineBindings, other.splineBindings, [](const auto& lhs, const auto& rhs) { return lhs.id == rhs.id && lhs.target.guid == rhs.target.guid; })
@@ -151,8 +158,10 @@ PointAuthoring Capture(scene::GameObject& owner, bool waterKind)
         const auto& water = *owner.GetComponent<scene::WaterComponent>();
         state.source = water.pointSourceMode; state.runtime = water.pointRuntimeMode;
         state.waterPoints = water.splinePoints; state.waterBindings = water.pointBindings;
+        state.lakeIslandPoints = water.lakeIslandPoints;
         state.lakeHeight = water.lakePlaneHeight; state.waterBake = water.bakedSplinePoints;
         state.waterShape = water.surfaceShape; state.bakedWaterShape = water.bakedSurfaceShape; state.bakedLakeHeight = water.bakedLakePlaneHeight;
+        state.waterSamplesPerSegment = water.splineSamplesPerSegment;
         state.bakeSignature = water.bakedInputSignature; state.bakeSource = water.bakedSourceMode;
         state.bakeVersion = water.bakedAdapterVersion; state.bakeValid = water.bakeValid;
         ClearReferenceCaches(state.waterBindings);
@@ -184,8 +193,11 @@ void Write(scene::GameObject& owner, bool waterKind, const PointAuthoring& befor
         AssignChanged(water.pointSourceMode, before.source, after.source, apply);
         AssignChanged(water.pointRuntimeMode, before.runtime, after.runtime, apply);
         AssignChanged(water.splinePoints, before.waterPoints, after.waterPoints, apply);
+        AssignChanged(water.lakeIslandPoints, before.lakeIslandPoints, after.lakeIslandPoints, apply);
         AssignChanged(water.pointBindings, before.waterBindings, after.waterBindings, apply);
         AssignChanged(water.lakePlaneHeight, before.lakeHeight, after.lakeHeight, apply);
+        AssignChanged(water.surfaceShape, before.waterShape, after.waterShape, apply);
+        AssignChanged(water.splineSamplesPerSegment, before.waterSamplesPerSegment, after.waterSamplesPerSegment, apply);
         AssignChanged(water.bakedSplinePoints, before.waterBake, after.waterBake, apply);
         AssignChanged(water.bakedInputSignature, before.bakeSignature, after.bakeSignature, apply);
         AssignChanged(water.bakedSourceMode, before.bakeSource, after.bakeSource, apply);
@@ -813,6 +825,166 @@ OpResult LakeHeight(OpContext& context, const OpArgs& args)
     return Commit(plan, "Set Lake Surface Height");
 }
 
+OpResult FitLakeShore(OpContext& context, const OpArgs& args)
+{
+    auto plan = MakePlan(context.ctx, args);
+    if (!plan || !plan->waterKind || plan->before.source != scene::ControlPointSourceMode::INLINE
+        || plan->before.runtime != scene::ControlPointRuntimeMode::LIVE)
+        return OpResult::Err("LAKE_REQUIRED", "編集可能な Inline / Live の Water が必要です。");
+    auto& world = *context.ctx.activeScene;
+    auto* owner = world.GetGameObject(plan->ownerId);
+    auto& water = *owner->GetComponent<scene::WaterComponent>();
+    if (!water.enabled || water.farOceanEnabled || (water.surfaceShape != scene::WaterSurfaceShape::RECTANGLE
+        && water.surfaceShape != scene::WaterSurfaceShape::SPLINE_LAKE))
+        return OpResult::Err("LAKE_REQUIRED", "有限の矩形水域または Spline Lake を指定してください。");
+    std::vector<TerrainAnalysisSurface> surfaces;
+    if (!ResolveTerrainAnalysisSurfaces(world, world.FindByGuid(args.GetString("terrain")), args.GetData("terrainTiles"), surfaces))
+        return OpResult::Err("NO_TERRAIN", "池を含む有効な Terrain を指定してください。");
+    if (!FiniteChain(owner))
+        return OpResult::Err("INVALID_TRANSFORM", "池の姿勢を確認してください。");
+
+    scene::FlushWorldTransforms(world);
+    const auto& pose = owner->transform;
+    const auto up = pose.worldRotation * math::Vector3::UP;
+    if (!Finite(pose.worldPosition) || !Finite(pose.worldScale)
+        || std::abs(pose.worldScale.x) <= 1.0e-6f || std::abs(pose.worldScale.y) <= 1.0e-6f || std::abs(pose.worldScale.z) <= 1.0e-6f
+        || std::abs(up.x) > 0.00001f || std::abs(up.z) > 0.00001f)
+        return OpResult::Err("INVALID_TRANSFORM", "池のワールド変換は直立かつ可逆である必要があります。");
+
+    TerrainShoreSettings settings;
+    settings.seed = args.GetVec3("seed", pose.worldPosition);
+    float localHeight = water.surfaceShape == scene::WaterSurfaceShape::SPLINE_LAKE && !water.splinePoints.empty()
+        ? water.splinePoints.front().localPosition.y : 0.0f;
+    settings.seed.y = pose.worldPosition.y + localHeight * pose.worldScale.y * up.y;
+    settings.width = args.GetFloat("width", settings.width);
+    settings.depth = args.GetFloat("depth", settings.depth);
+    settings.spacing = args.GetFloat("spacing", settings.spacing);
+    settings.tolerance = args.GetFloat("tolerance", settings.tolerance);
+    TerrainShoreOutline shore;
+    std::string diagnostic;
+    std::optional<math::Vector3> spill;
+    if (args.GetBool("useSpillLevel", false)) {
+        TerrainDrainage drainage;
+        if (!BuildTerrainDrainage(surfaces, settings, drainage, diagnostic))
+            return OpResult::Err("DRAINAGE_NOT_FOUND", diagnostic);
+        const auto& seed = drainage.nodes[drainage.seed];
+        const float freeboard = args.GetFloat("freeboard", 0.1f);
+        if (!std::isfinite(freeboard) || freeboard <= 0.0f || seed.waterHeight - seed.ground.y <= freeboard)
+            return OpResult::Err("NO_CLOSED_BASIN", "流出口より低い閉じた水面を作れる窪地を指定してください。");
+        settings.seed.y = seed.waterHeight - freeboard;
+        spill = drainage.nodes[drainage.spill].ground;
+        localHeight = (settings.seed.y - pose.worldPosition.y) / (pose.worldScale.y * up.y);
+    }
+    if (!TraceTerrainShore(surfaces, settings, shore, diagnostic))
+        return OpResult::Err("SHORE_NOT_FOUND", diagnostic);
+
+    plan->after.waterShape = scene::WaterSurfaceShape::SPLINE_LAKE;
+    plan->after.waterSamplesPerSegment = 1;
+    plan->after.lakeHeight = localHeight;
+    plan->after.waterPoints.clear();
+    plan->after.lakeIslandPoints.clear();
+    plan->after.bakeValid = false;
+    const auto inverse = pose.worldRotation.Inverse();
+    const auto toLocal = [&](const math::Vector3& point) {
+        const auto local = inverse * (point - pose.worldPosition);
+        return math::Vector3{local.x / pose.worldScale.x, localHeight, local.z / pose.worldScale.z};
+    };
+    for (const auto& point : shore.outer) {
+        plan->after.waterPoints.push_back({static_cast<uint32_t>(plan->after.waterPoints.size() + 1),
+            toLocal(point), 0.0f, water.buoyancyDepth, 0.0f});
+    }
+    if (shore.islands.size() > scene::WATER_LAKE_MAX_ISLANDS)
+        return OpResult::Err("SHORE_TOO_COMPLEX", "中島の数が上限を超えています。");
+    for (std::size_t ring = 0; ring < shore.islands.size(); ++ring)
+        for (const auto& point : shore.islands[ring])
+            plan->after.lakeIslandPoints.push_back({static_cast<int>(ring), toLocal(point)});
+    scene::WaterSplineSnapshot snapshot;
+    if (!scene::BuildWaterSplineSnapshot(plan->after.waterShape, plan->after.waterPoints, 1, pose,
+            snapshot, water.buoyancyDepth, water.splineMeshCellSize, plan->after.lakeIslandPoints))
+        return OpResult::Err("INVALID_SHORE", "輪郭を水面にできません。格子間隔と簡略化許容値を調整してください。");
+    CaptureChain(world, owner, plan->dependencies);
+    auto result = Commit(plan, "Fit Lake Shore to Terrain");
+    if (result.ok) {
+        result.data = OpData::MakeObject();
+        result.data.Set("pointCount", OpData(static_cast<int>(shore.outer.size())));
+        result.data.Set("islandCount", OpData(static_cast<int>(shore.islands.size())));
+        result.data.Set("waterHeight", OpData(settings.seed.y));
+        if (spill) result.data.Set("spill", *spill);
+    }
+    return result;
+}
+
+OpResult FitRiverDrainage(OpContext& context, const OpArgs& args)
+{
+    auto plan = MakePlan(context.ctx, args);
+    if (!plan || !plan->waterKind || plan->before.source != scene::ControlPointSourceMode::INLINE
+        || plan->before.runtime != scene::ControlPointRuntimeMode::LIVE)
+        return OpResult::Err("RIVER_REQUIRED", "編集可能な Inline / Live Water が必要です。");
+    auto& world = *context.ctx.activeScene;
+    auto* owner = world.GetGameObject(plan->ownerId);
+    auto& water = *owner->GetComponent<scene::WaterComponent>();
+    if (!water.enabled || water.farOceanEnabled || (water.surfaceShape != scene::WaterSurfaceShape::RECTANGLE
+        && water.surfaceShape != scene::WaterSurfaceShape::SPLINE_RIVER))
+        return OpResult::Err("RIVER_REQUIRED", "有効な矩形水域または Spline River を指定してください。");
+    std::vector<TerrainAnalysisSurface> surfaces;
+    if (!ResolveTerrainAnalysisSurfaces(world, world.FindByGuid(args.GetString("terrain")), args.GetData("terrainTiles"), surfaces))
+        return OpResult::Err("NO_TERRAIN", "流路を解析する Terrain を指定してください。");
+    if (!FiniteChain(owner))
+        return OpResult::Err("INVALID_TRANSFORM", "川の姿勢を確認してください。");
+    scene::FlushWorldTransforms(world);
+    const auto& pose = owner->transform;
+    const auto up = pose.worldRotation * math::Vector3::UP;
+    const float horizontalScale = std::abs(pose.worldScale.x);
+    if (!Finite(pose.worldPosition) || !Finite(pose.worldScale) || horizontalScale < 0.0001f
+        || std::abs(pose.worldScale.y) < 0.0001f || std::abs(horizontalScale - std::abs(pose.worldScale.z)) > horizontalScale * 1.0e-5f
+        || std::abs(up.x) > 0.00001f || std::abs(up.z) > 0.00001f)
+        return OpResult::Err("INVALID_TRANSFORM", "川は直立かつ水平等倍のワールド変換が必要です。");
+    TerrainShoreSettings settings;
+    settings.seed = args.GetVec3("seed", pose.worldPosition);
+    settings.width = args.GetFloat("width", settings.width);
+    settings.depth = args.GetFloat("depth", settings.depth);
+    settings.spacing = args.GetFloat("spacing", settings.spacing);
+    const float minArea = args.GetFloat("minArea", 16.0f);
+    if (!std::isfinite(minArea) || minArea < 0.0f)
+        return OpResult::Err("INVALID_AREA", "最小集水面積は有限の非負値が必要です。");
+    TerrainDrainage drainage;
+    std::string diagnostic;
+    if (!BuildTerrainDrainage(surfaces, settings, drainage, diagnostic))
+        return OpResult::Err("DRAINAGE_NOT_FOUND", diagnostic);
+    plan->after.waterShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    plan->after.waterSamplesPerSegment = 1;
+    plan->after.waterPoints.clear();
+    plan->after.bakeValid = false;
+    const auto inverse = pose.worldRotation.Inverse();
+    for (int index = drainage.seed; index >= 0; index = drainage.nodes[index].downstream) {
+        const auto& node = drainage.nodes[index];
+        if (node.area < minArea) continue;
+        auto& points = plan->after.waterPoints;
+        if (points.size() == scene::WATER_SPLINE_MAX_CONTROL_POINTS)
+            return OpResult::Err("RIVER_TOO_COMPLEX", "流路が長すぎます。格子間隔を広げてください。");
+        const auto size = DrainageRiverSize(node, drainage.step);
+        if (size.y > water.buoyancyDepth)
+            return OpResult::Err("RIVER_TOO_DEEP", "必要な水深が Water の上限を超えています。");
+        const auto local = inverse * (math::Vector3{node.ground.x, node.waterHeight + DRAINAGE_RIVER_SURFACE_CLEARANCE,
+            node.ground.z} - pose.worldPosition);
+        points.push_back({static_cast<uint32_t>(points.size() + 1),
+            {local.x / pose.worldScale.x, local.y / pose.worldScale.y, local.z / pose.worldScale.z},
+            size.x / horizontalScale, size.y, 1.0f});
+    }
+    scene::WaterSplineSnapshot snapshot;
+    if (!scene::BuildWaterSplineSnapshot(plan->after.waterShape, plan->after.waterPoints, 1, pose,
+            snapshot, water.buoyancyDepth, water.splineMeshCellSize))
+        return OpResult::Err("INVALID_RIVER", "流路の幅や曲がりを有効な川メッシュに変換できません。");
+    CaptureChain(world, owner, plan->dependencies);
+    auto result = Commit(plan, "Fit River to Terrain Drainage");
+    if (result.ok) {
+        result.data = OpData::MakeObject();
+        result.data.Set("pointCount", OpData(static_cast<int>(plan->after.waterPoints.size())));
+        result.data.Set("spillHeight", OpData(drainage.nodes[drainage.spill].ground.y));
+    }
+    return result;
+}
+
 std::vector<scene::ClothAttachment> CaptureAttachments(const scene::ClothComponent& cloth)
 {
     auto rows = cloth.attachments;
@@ -1111,6 +1283,26 @@ void RegisterControlPointOperators(OperatorRegistry& registry)
         });
     params = OwnerParams(); params.push_back(Param("height", OpParamType::Float, "所有者のlocal平面高さ"));
     RegisterMutation(registry, "control_points.set_lake_height", "Set Lake Surface Height", std::move(params), LakeHeight);
+    params = OwnerParams();
+    params[1].enumValues = {"water"};
+    params.push_back(Param("terrain", OpParamType::NodeId, "解析する Terrain の GUID", false));
+    params.push_back(Param("terrainTiles", OpParamType::Data, "複数の Terrain を解析する場合の GUID 配列。最大16", false));
+    params.push_back(Param("seed", OpParamType::Vec3, "水没域内のワールドXZ。省略時は水域の原点", false));
+    params.push_back(Param("width", OpParamType::Float, "ワールドXの検索幅[m]。既定120", false));
+    params.push_back(Param("depth", OpParamType::Float, "ワールドZの検索幅[m]。既定120", false));
+    params.push_back(Param("spacing", OpParamType::Float, "地表照会の格子間隔[m]。既定2", false));
+    params.push_back(Param("tolerance", OpParamType::Float, "輪郭の簡略化許容値[m]。既定0.5", false));
+    auto drainageParams = OwnerParams();
+    drainageParams[1].enumValues = {"water"};
+    for (const auto& param : params)
+        if (param.name == "terrain" || param.name == "terrainTiles" || param.name == "seed" || param.name == "width"
+            || param.name == "depth" || param.name == "spacing") drainageParams.push_back(param);
+    drainageParams.push_back(Param("minArea", OpParamType::Float, "採用する最小集水面積[m²]。既定16", false));
+    RegisterMutation(registry, "control_points.fit_river_drainage", "Fit River to Terrain Drainage",
+        std::move(drainageParams), FitRiverDrainage);
+    params.push_back(Param("useSpillLevel", OpParamType::Bool, "窪地の流出口から水位を決める", false));
+    params.push_back(Param("freeboard", OpParamType::Float, "流出口から下げる水位[m]。既定0.1", false));
+    RegisterMutation(registry, "control_points.fit_lake_shore", "Fit Lake Shore to Terrain", std::move(params), FitLakeShore);
     RegisterMutation(registry, "control_points.bake", "Bake Control Points", OwnerParams(), Bake);
     RegisterMutation(registry, "control_points.set_runtime", "Set Control Point Runtime Mode", [&] {
         auto values = OwnerParams(); auto mode = Param("mode", OpParamType::String, "点の実行時追従"); mode.enumValues = {"LIVE", "BAKED_STATIC"}; values.push_back(mode); return values;

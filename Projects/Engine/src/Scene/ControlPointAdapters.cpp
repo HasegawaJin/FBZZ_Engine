@@ -87,6 +87,13 @@ std::uint64_t WaterRawSignature(const WaterComponent& water,
     HashMode(hash, water.pointSourceMode, signatureRuntimeMode);
     HashValue(hash, water.surfaceShape);
     HashFloat(hash, water.lakePlaneHeight);
+    if (water.surfaceShape == WaterSurfaceShape::SPLINE_LAKE && !water.lakeIslandPoints.empty()) {
+        HashValue(hash, static_cast<std::uint64_t>(water.lakeIslandPoints.size()));
+        for (const auto& point : water.lakeIslandPoints) {
+            HashValue(hash, static_cast<std::uint64_t>(point.ring));
+            HashVector(hash, point.localPosition);
+        }
+    }
     if (water.pointSourceMode == ControlPointSourceMode::INLINE) {
         HashValue(hash, static_cast<std::uint64_t>(water.splinePoints.size()));
         for (const WaterSplinePoint& point : water.splinePoints) {
@@ -403,6 +410,15 @@ void ReflectControlPointRuntimeMode(IReflector& reflector,
     const char* fieldName, ControlPointRuntimeMode& mode)
 {
     ReflectPointRuntimeMode(reflector, fieldName, mode);
+}
+
+void ReflectWaterLakeIslandPoints(IReflector& reflector, std::vector<WaterLakeIslandPoint>& points)
+{
+    ReflectRows(reflector, "lakeIslandPoints", points, WATER_LAKE_MAX_ISLAND_POINTS,
+        [&reflector](WaterLakeIslandPoint& point) {
+            reflector.Field("ring", point.ring);
+            reflector.Field("localPosition", point.localPosition);
+        });
 }
 
 void ReflectControlPointSignature(IReflector& reflector,

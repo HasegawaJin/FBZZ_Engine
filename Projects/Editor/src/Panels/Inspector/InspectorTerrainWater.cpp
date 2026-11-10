@@ -5,6 +5,7 @@
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include "InspectorTerrainWater.hpp"
 #include "../../Util/MaterialAuthoringEditing.hpp"
+#include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <algorithm>
@@ -14,6 +15,129 @@
 namespace fbzz::editor {
 
 namespace {
+
+enum class NatureInspection { RELIEF, RIVER, SEAM };
+
+void DrawNatureRules(scene::GameObject& owner, EditorContext& context, NatureInspection kind)
+{
+    const bool river = kind == NatureInspection::RIVER;
+    const bool seam = kind == NatureInspection::SEAM;
+    const char* opId = seam ? "terrain.seam.validate" : river ? "terrain.river.validate" : "terrain.relief.validate";
+    const auto* op = context.operators ? context.operators->Find(opId) : nullptr;
+    const char* title = seam ? "Terrain Seam Rules" : river ? "River Nature Rules" : "Terrain Relief Rules";
+    if (!op || !context.activeScene || !ImGui::TreeNode(title)) return;
+
+    struct InspectionState {
+        std::uint64_t sceneGeneration = 0;
+        std::string node;
+        std::string target;
+        OpArgs args;
+        OpResult lastResult;
+        bool inspected = false;
+    };
+    static InspectionState riverState, reliefState, seamState;
+    auto& state = seam ? seamState : river ? riverState : reliefState;
+    const auto generation = context.activeScene->GetRenderSceneGeneration();
+    if (state.sceneGeneration != generation || state.node != owner.instanceId) {
+        state = {};
+        state.sceneGeneration = generation;
+        state.node = owner.instanceId;
+        state.args.Set("node", state.node);
+    }
+
+    for (const auto& param : op->params) {
+        const auto* initial = std::get_if<float>(&param.defaultValue);
+        if (!initial) continue;
+        float value = state.args.GetFloat(param.name, *initial);
+        if (ImGui::DragFloat(param.desc.c_str(), &value, 0.05f, param.minValue, param.maxValue,
+                "%.2f", ImGuiSliderFlags_AlwaysClamp)) {
+            state.args.Set(param.name, value);
+            state.inspected = false;
+        }
+    }
+
+    const auto* target = state.target.empty() ? nullptr : context.activeScene->FindByGuid(state.target);
+    if (river || seam) {
+        const char* defaultLabel = seam ? "Select adjacent terrain" : "Open end";
+        const char* label = target ? target->name.c_str() : state.target.empty() ? defaultLabel : "Missing target";
+        if (ImGui::BeginCombo(seam ? "Neighbor" : "Outlet", label)) {
+            const auto select = [&](std::string id) {
+                state.target = std::move(id);
+                state.args.Set(seam ? "neighbor" : "outlet", state.target);
+                state.inspected = false;
+            };
+            const auto choice = [&](const scene::GameObject& node) {
+                ImGui::PushID(node.instanceId.c_str());
+                if (ImGui::Selectable(node.name.c_str(), state.target == node.instanceId)) select(node.instanceId);
+                ImGui::PopID();
+            };
+            if (ImGui::Selectable(defaultLabel, state.target.empty())) select({});
+            if (seam) {
+                for (auto id : context.activeScene->GetEntities<scene::TerrainComponent>()) {
+                    const auto* node = context.activeScene->GetGameObject(id);
+                    const auto* terrain = context.activeScene->GetComponent<scene::TerrainComponent>(id);
+                    if (node && node != &owner && node->activeInHierarchy() && terrain && terrain->enabled) choice(*node);
+                }
+            } else {
+                for (auto id : context.activeScene->GetEntities<scene::WaterComponent>()) {
+                    const auto* node = context.activeScene->GetGameObject(id);
+                    const auto* water = context.activeScene->GetComponent<scene::WaterComponent>(id);
+                    if (node && node->activeInHierarchy() && water && water->enabled
+                        && water->surfaceShape != scene::WaterSurfaceShape::SPLINE_RIVER) choice(*node);
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+
+    ImGui::BeginDisabled(seam && !target);
+    if (ImGui::Button(seam ? "Validate Seam" : river ? "Validate River" : "Validate Terrain")) {
+        state.lastResult = InvokeOperator(context, op->id, state.args);
+        state.inspected = true;
+    }
+    if (seam) {
+        ImGui::SameLine();
+        if (ImGui::Button("Blend Selected Terrain")) {
+            OpArgs blend;
+            blend.Set("node", state.node);
+            blend.Set("neighbor", state.target);
+            auto result = InvokeOperator(context, "terrain.seam.blend", blend);
+            state.lastResult = result.ok ? InvokeOperator(context, op->id, state.args) : std::move(result);
+            state.inspected = true;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Blend the selected side by up to 8 m over 6 rows. One Undo.");
+    }
+    ImGui::EndDisabled();
+    if (state.inspected) {
+        const auto& result = state.lastResult;
+        if (!result.ok) ImGui::TextWrapped("%s", result.message.c_str());
+        else {
+            const int count = result.data.Find("issueCount")->AsInt();
+            ImGui::Text("Last check: %d issue(s), %d sample(s)", count, result.data.Find("sampleCount")->AsInt());
+            if (const auto* maximum = result.data.Find("maxDifferenceMeters")) ImGui::Text("Max height step: %.3f m", maximum->AsDouble());
+            if (const auto* maximum = result.data.Find("maxCrossSlopeDifferenceDegrees"))
+                ImGui::Text("Max slope break: %.2f deg (%d samples)", maximum->AsDouble(), result.data.Find("slopeSampleCount")->AsInt());
+            const auto& issues = result.data.Find("issues")->AsArray();
+            for (const auto& issue : issues) {
+                const auto position = issue.Find("position")->AsVec3();
+                const auto* difference = issue.Find("differenceMeters");
+                ImGui::Text("%s (%.2f, %.2f, %.2f)", issue.Find("code")->AsString().c_str(), position.x, position.y, position.z);
+                if (const auto* rate = issue.Find("rate")) {
+                    ImGui::SameLine();
+                    ImGui::Text("%.2f m/m", rate->AsDouble());
+                } else if (const auto* slope = issue.Find("slopeDegrees")) {
+                    ImGui::SameLine();
+                    ImGui::Text("%.1f deg", slope->AsDouble());
+                } else if (difference) {
+                    ImGui::SameLine();
+                    ImGui::Text("%.2f m", difference->AsDouble());
+                }
+            }
+            if (result.data.Find("truncated")->AsBool()) ImGui::TextDisabled("Showing the first %zu issues.", issues.size());
+        }
+    }
+    ImGui::TreePop();
+}
 
 /// @note Terrain の配列は最初の変更直前だけ保存し、ドラッグ終了まで同じ Undo 操作にまとめる。
 class TerrainInspectorEdit {
@@ -288,6 +412,8 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                                "Height Dirty : %s", tc.heightDirty   ? "Yes" : "No");
             ImGui::TextColored(tc.colliderDirty ? ImVec4{1,0.5f,0.2f,1} : ImVec4{0.5f,1,0.5f,1},
                                "Collider Dirty: %s", tc.colliderDirty ? "Yes" : "No");
+            DrawNatureRules(*go, ctx, NatureInspection::RELIEF);
+            DrawNatureRules(*go, ctx, NatureInspection::SEAM);
         });
 
     DrawComponentSection<scene::WaterComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Water",
@@ -429,6 +555,7 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 else if (water.splineSnapshot->meshQualityLimited)
                     ImGui::TextDisabled("水面の細かさが上限に達しています。");
             }
+            if (water.surfaceShape == scene::WaterSurfaceShape::SPLINE_RIVER) DrawNatureRules(*go, ctx, NatureInspection::RIVER);
             ImGui::SeparatorText("Geometry");
             ImGui::BeginDisabled(scene::UsesWaterSurfaceGeometry(water) || water.zoneOwner.IsValid());
             if (ImGui::Checkbox("Adaptive Mesh", &water.adaptivePatchLod)) water.meshDirty = true;
@@ -720,4 +847,4 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 
 }
 
-}
+} /// @note namespace fbzz::editor

@@ -3,16 +3,28 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #include "TerrainAuthoring.hpp"
+#include "TerrainBrush.hpp"
+#include <Editor/Op/OpData.hpp>
+#include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Math/Matrix4.hpp>
 #include <Math/Vector4.hpp>
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <functional>
+#include <limits>
+#include <map>
+#include <queue>
+#include <utility>
 #include <vector>
 
 namespace fbzz::editor {
 namespace {
+
+constexpr std::size_t MAX_SHORE_POINTS = 256;
+constexpr std::array<std::pair<int, int>, 6> TERRAIN_NEIGHBORS{{{1,0}, {-1,0}, {0,1}, {0,-1}, {1,-1}, {-1,1}}};
 
 float Transition(float value, float center, float width)
 {
@@ -21,7 +33,635 @@ float Transition(float value, float center, float width)
     return t * t * (3.0f - 2.0f * t);
 }
 
+bool Finite(const math::Vector3& value)
+{
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+struct TerrainAnalysisGrid {
+    int nx = 0, nz = 0;
+    float stepX = 0.0f, stepZ = 0.0f;
+    math::Vector3 center;
+    std::vector<float> ground;
+
+    int Stride() const { return nx + 1; }
+    int CenterIndex() const { return nz / 2 * Stride() + nx / 2; }
+    bool Boundary(int index) const
+    {
+        return index % Stride() == 0 || index % Stride() == nx || index / Stride() == 0 || index / Stride() == nz;
+    }
+    math::Vector3 Position(int index) const
+    {
+        return {center.x + (index % Stride() - nx / 2) * stepX, center.y,
+            center.z + (index / Stride() - nz / 2) * stepZ};
+    }
+};
+
+bool SampleTerrainAnalysisGrid(std::span<const TerrainAnalysisSurface> surfaces,
+    const TerrainShoreSettings& settings, TerrainAnalysisGrid& grid)
+{
+    const auto& [seed, width, depth, spacing, tolerance] = settings;
+    if (!Finite(seed) || !std::isfinite(width) || !std::isfinite(depth) || !std::isfinite(spacing)
+        || !std::isfinite(tolerance) || width <= 0.0f || depth <= 0.0f || spacing <= 0.0f || tolerance < 0.0f
+        || width / static_cast<double>(spacing) > 256.0 || depth / static_cast<double>(spacing) > 256.0
+        || surfaces.empty() || surfaces.size() > 16)
+        return false;
+    grid.nx = 2 * static_cast<int>(std::ceil(width / (2.0 * spacing)));
+    grid.nz = 2 * static_cast<int>(std::ceil(depth / (2.0 * spacing)));
+    grid.stepX = width / grid.nx;
+    grid.stepZ = depth / grid.nz;
+    grid.center = seed;
+    grid.ground.assign(static_cast<std::size_t>(grid.Stride()) * (grid.nz + 1), std::numeric_limits<float>::quiet_NaN());
+    const int last = static_cast<int>(grid.ground.size() - 1);
+    if (!Finite(grid.Position(0)) || !Finite(grid.Position(last))
+        || grid.Position(0).x >= grid.Position(1).x || grid.Position(0).z >= grid.Position(grid.Stride()).z
+        || grid.Position(last - 1).x >= grid.Position(last).x
+        || grid.Position(last - grid.Stride()).z >= grid.Position(last).z) return false;
+    for (int i = 0; i < static_cast<int>(grid.ground.size()); ++i) {
+        const auto point = grid.Position(i);
+        for (const auto& surface : surfaces) {
+            scene::TerrainSurfaceSample sample;
+            if (scene::TrySampleTerrainWorld(*surface.terrain, *surface.pose, point.x, point.z, sample)
+                && (!std::isfinite(grid.ground[i]) || sample.position.y > grid.ground[i]))
+                grid.ground[i] = sample.position.y;
+        }
+    }
+    return true;
+}
+
+float SmoothUnit(float value)
+{
+    const float t = std::clamp(value, 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+double SegmentDistanceSquared(const math::Vector3& point, const math::Vector3& first, const math::Vector3& last)
+{
+    const double dx = static_cast<double>(last.x) - first.x, dz = static_cast<double>(last.z) - first.z;
+    const double x = static_cast<double>(point.x) - first.x, z = static_cast<double>(point.z) - first.z;
+    const double length = dx * dx + dz * dz;
+    const double t = length > 0.0 ? std::clamp((x * dx + z * dz) / length, 0.0, 1.0) : 0.0;
+    return (x - t * dx) * (x - t * dx) + (z - t * dz) * (z - t * dz);
+}
+
+std::vector<math::Vector3> SimplifyShore(std::vector<math::Vector3>& ring, float tolerance)
+{
+    const auto size = ring.size();
+    if (size < 3) return {};
+    const auto split = static_cast<std::size_t>(std::max_element(ring.begin(), ring.end(), [&](const auto& a, const auto& b) {
+        return SegmentDistanceSquared(a, ring.front(), ring.front()) < SegmentDistanceSquared(b, ring.front(), ring.front());
+    }) - ring.begin());
+    if (split == 0) return {};
+    ring.push_back(ring.front());
+    std::vector<bool> keep(size + 1, false);
+    keep[0] = keep[split] = true;
+    std::size_t kept = 2;
+    std::vector<std::pair<std::size_t, std::size_t>> pending{{0, split}, {split, size}};
+    const double limit = static_cast<double>(tolerance) * tolerance;
+    while (!pending.empty()) {
+        const auto [first, last] = pending.back();
+        pending.pop_back();
+        double largest = limit;
+        std::size_t furthest = first;
+        for (auto i = first + 1; i < last; ++i) {
+            const double distance = SegmentDistanceSquared(ring[i], ring[first], ring[last]);
+            if (distance > largest) { largest = distance; furthest = i; }
+        }
+        if (furthest != first) {
+            if (++kept > MAX_SHORE_POINTS) return {};
+            keep[furthest] = true;
+            pending.emplace_back(first, furthest);
+            pending.emplace_back(furthest, last);
+        }
+    }
+    std::vector<math::Vector3> result;
+    for (std::size_t i = 0; i < size; ++i)
+        if (keep[i]) result.push_back(ring[i]);
+    return result;
+}
+
 } /// @note namespace
+
+bool SculptTerrainRidge(scene::TerrainComponent& terrain, const scene::Transform& pose, const TerrainRidgeSettings& settings)
+{
+    const auto& [start, end, height, leftWidth, rightWidth, bend, peakAlong] = settings;
+    math::Vector3 normal;
+    const auto up = pose.worldRotation * math::Vector3::UP;
+    if (!Finite(start) || !Finite(end) || !Finite(pose.worldPosition)
+        || !scene::TryTerrainNormalToWorld(pose, math::Vector3::UP, normal)
+        || std::abs(up.x) > 0.00001f || std::abs(up.z) > 0.00001f
+        || !std::isfinite(height) || !std::isfinite(bend) || !std::isfinite(peakAlong)
+        || !std::isfinite(leftWidth) || !std::isfinite(rightWidth) || leftWidth <= 0.0f || rightWidth <= 0.0f
+        || peakAlong < 0.1f || peakAlong > 0.9f || terrain.columns < 3 || terrain.rows < 3
+        || terrain.columns > 4097 || terrain.rows > 4097 || terrain.heightData.size() != terrain.VertexCount()
+        || !std::isfinite(terrain.cellSize) || terrain.cellSize <= 0.0f
+        || !std::isfinite(terrain.maxHeight) || terrain.maxHeight <= 0.0f) return false;
+    const double axisX = static_cast<double>(end.x) - start.x, axisZ = static_cast<double>(end.z) - start.z;
+    const double length = std::hypot(axisX, axisZ);
+    if (length < 1.0) return false;
+    const double dirX = axisX / length, dirZ = axisZ / length;
+    const float margin = (std::max)(leftWidth, rightWidth) + std::abs(bend);
+    float minX = std::numeric_limits<float>::infinity(), minZ = minX;
+    float maxX = -minX, maxZ = -minX;
+    for (const float x : {(std::min)(start.x, end.x) - margin, (std::max)(start.x, end.x) + margin}) {
+        for (const float z : {(std::min)(start.z, end.z) - margin, (std::max)(start.z, end.z) + margin}) {
+            const auto local = ToTerrainLocal(pose, {x, pose.worldPosition.y, z});
+            if (!Finite(local)) return false;
+            minX = (std::min)(minX, local.x); maxX = (std::max)(maxX, local.x);
+            minZ = (std::min)(minZ, local.z); maxZ = (std::max)(maxZ, local.z);
+        }
+    }
+    const auto grid = [&](float value, int dimension) {
+        return static_cast<int>(std::clamp(static_cast<double>(value) / terrain.cellSize, 1.0, static_cast<double>(dimension - 2)));
+    };
+    const int x0 = grid(minX, terrain.columns), x1 = grid(maxX, terrain.columns);
+    const int z0 = grid(minZ, terrain.rows), z1 = grid(maxZ, terrain.rows);
+    if (static_cast<std::size_t>(x1 - x0 + 1) * (z1 - z0 + 1) > 1048576) return false;
+    const double heightScale = static_cast<double>(terrain.maxHeight) * pose.worldScale.y * up.y;
+    const auto matrix = pose.GetWorldMatrix();
+    std::vector<std::pair<std::size_t, float>> changes;
+    for (int z = z0; z <= z1; ++z) {
+        for (int x = x0; x <= x1; ++x) {
+            const auto point = matrix * math::Vector4{x * terrain.cellSize, 0.0f, z * terrain.cellSize, 1.0f};
+            const double dx = static_cast<double>(point.x) - start.x, dz = static_cast<double>(point.z) - start.z;
+            const double t = (dx * dirX + dz * dirZ) / length;
+            if (!std::isfinite(t)) return false;
+            if (t <= 0.0 || t >= 1.0) continue;
+            const double side = -dx * dirZ + dz * dirX - 4.0 * bend * t * (1.0 - t);
+            const double width = side >= 0.0 ? leftWidth : rightWidth;
+            if (std::abs(side) >= width) continue;
+            const float along = SmoothUnit(static_cast<float>((std::min)(t / peakAlong, (1.0 - t) / (1.0 - peakAlong))));
+            const float across = SmoothUnit(static_cast<float>(1.0 - std::abs(side) / width));
+            const auto index = static_cast<std::size_t>(z) * terrain.columns + x;
+            const float before = terrain.heightData[index];
+            if (!std::isfinite(before)) return false;
+            const float after = static_cast<float>(std::clamp(before + height * along * across / heightScale, -1.0, 1.0));
+            if (after != before) changes.emplace_back(index, after);
+        }
+    }
+    for (const auto& [index, heightValue] : changes) terrain.heightData[index] = heightValue;
+    return true;
+}
+
+bool SculptTerrainMassif(scene::TerrainComponent& terrain, const scene::Transform& pose, const TerrainMassifSettings& settings)
+{
+    const auto& spine = settings.spine;
+    const double dx = static_cast<double>(spine.end.x) - spine.start.x;
+    const double dz = static_cast<double>(spine.end.z) - spine.start.z;
+    const double length = std::hypot(dx, dz);
+    if (!std::isfinite(length) || length < 8.0 || length > 20000.0
+        || !std::isfinite(spine.height) || spine.height <= 0.0f || spine.height > 10000.0f
+        || !std::isfinite(spine.leftWidth) || spine.leftWidth < 4.0f || spine.leftWidth > 4000.0f
+        || !std::isfinite(spine.rightWidth) || spine.rightWidth < 4.0f || spine.rightWidth > 4000.0f
+        || settings.branchesPerSide < 2 || settings.branchesPerSide > 4
+        || !std::isfinite(settings.erosion) || settings.erosion < 0.0f || settings.erosion > 1.0f) return false;
+
+    auto before = terrain.heightData;
+    const auto restore = [&] {
+        terrain.heightData.swap(before);
+        return false;
+    };
+    if (!SculptTerrainRidge(terrain, pose, spine)) return restore();
+    const math::Vector3 side{static_cast<float>(-dz / length), 0.0f, static_cast<float>(dx / length)};
+    const auto center = [&](float t) {
+        return spine.start + (spine.end - spine.start) * t + side * (4.0f * spine.bend * t * (1.0f - t));
+    };
+    std::uint32_t state = settings.seed;
+    const auto variation = [&] {
+        state = state * 1664525u + 1013904223u;
+        return static_cast<float>(state >> 8) / 16777216.0f;
+    };
+    std::vector<std::pair<math::Vector3, float>> erosionSites;
+    for (const float sign : {1.0f, -1.0f}) {
+        const float width = sign > 0.0f ? spine.leftWidth : spine.rightWidth;
+        const auto offset = side * sign;
+        const float step = 0.58f / settings.branchesPerSide;
+        std::array<TerrainRidgeSettings, 4> branches;
+        for (int i = 0; i < settings.branchesPerSide; ++i) {
+            const float t = 0.18f + step * (i + 0.45f + 0.3f * (variation() - 0.5f));
+            auto& branch = branches[i];
+            branch.start = center(t) + offset * (0.1f * width);
+            branch.end = center(t + std::lerp(0.10f, 0.22f, variation()))
+                + offset * (width * std::lerp(0.95f, 1.35f, variation()));
+            branch.height = spine.height * std::lerp(0.40f, 0.65f, variation());
+            branch.leftWidth = width * std::lerp(0.16f, 0.26f, variation());
+            branch.rightWidth = width * std::lerp(0.16f, 0.26f, variation());
+            branch.bend = sign * width * std::lerp(-0.08f, 0.08f, variation());
+            if (!SculptTerrainRidge(terrain, pose, branch)) return restore();
+        }
+        for (int i = 1; i < settings.branchesPerSide; ++i) {
+            const auto& previous = branches[i - 1];
+            const auto& branch = branches[i];
+            TerrainRidgeSettings valley;
+            valley.start = (previous.start + branch.start) * 0.5f + offset * (0.18f * width);
+            valley.end = (previous.end + branch.end) * 0.5f + offset * (0.22f * width);
+            valley.height = -spine.height * std::lerp(0.12f, 0.22f, variation());
+            valley.leftWidth = width * 0.18f;
+            valley.rightWidth = width * 0.18f;
+            valley.peakAlong = 0.68f;
+            if (!SculptTerrainRidge(terrain, pose, valley)) return restore();
+            erosionSites.emplace_back(valley.start + (valley.end - valley.start) * 0.55f, width * 0.22f);
+        }
+    }
+    if (settings.erosion > 0.0f) {
+        const float scale = (std::max)(std::abs(pose.worldScale.x), std::abs(pose.worldScale.z));
+        std::uint32_t stroke = 0;
+        for (const auto& [point, radius] : erosionSites) {
+            TerrainBrush brush;
+            brush.radius = radius / scale;
+            brush.strength = settings.erosion;
+            brush.seed = settings.seed;
+            const auto local = ToTerrainLocal(pose, point);
+            if (!Finite(local) || !std::isfinite(brush.radius)) return restore();
+            if (BrushOverlapsTerrainXZ(terrain, local, brush.radius))
+                ApplyTerrainSculpt(terrain, local, brush, TerrainSculptOp::HydraulicErosion, 0.0f, 1.0f / 30.0f, stroke);
+            ++stroke;
+        }
+    }
+    const auto restoreVertex = [&](int x, int z) {
+        const auto index = static_cast<std::size_t>(z) * terrain.columns + x;
+        terrain.heightData[index] = before[index];
+    };
+    for (int x = 0; x < terrain.columns; ++x) {
+        restoreVertex(x, 0);
+        restoreVertex(x, terrain.rows - 1);
+    }
+    for (int z = 1; z < terrain.rows - 1; ++z) {
+        restoreVertex(0, z);
+        restoreVertex(terrain.columns - 1, z);
+    }
+    if (terrain.CountHoles() != 0)
+        for (int z = 0; z < terrain.rows - 1; ++z)
+            for (int x = 0; x < terrain.columns - 1; ++x)
+                if (terrain.IsHoleCell(x, z)) {
+                    restoreVertex(x, z);
+                    restoreVertex(x + 1, z);
+                    restoreVertex(x, z + 1);
+                    restoreVertex(x + 1, z + 1);
+                }
+    return true;
+}
+
+bool PlanTerrainRiverCarve(const scene::TerrainComponent& terrain, const scene::Transform& pose,
+    std::span<const TerrainRiverCarveSection> sections, const TerrainRiverCarveSettings& settings, TerrainRiverCarvePlan& out)
+{
+    constexpr std::size_t MAX_VERTEX_VISITS = 2'000'000;
+    const auto validRange = [](float value, float minimum, float maximum) {
+        return std::isfinite(value) && value >= minimum && value <= maximum;
+    };
+    const auto up = pose.worldRotation * math::Vector3::UP;
+    math::Vector3 normal;
+    if (sections.size() < 2 || sections.size() > 8192 || terrain.columns < 3 || terrain.rows < 3
+        || terrain.columns > 4097 || terrain.rows > 4097 || terrain.heightData.size() != terrain.VertexCount()
+        || !validRange(terrain.cellSize, 0.001f, 100000.0f) || !validRange(terrain.maxHeight, 0.001f, 1000000.0f)
+        || !Finite(pose.worldPosition) || !Finite(up) || std::abs(up.x) > 0.00001f || std::abs(up.z) > 0.00001f
+        || !scene::TryTerrainNormalToWorld(pose, math::Vector3::UP, normal)
+        || !validRange(settings.bankWidth, 0.0f, 512.0f) || !validRange(settings.bankRise, 0.0f, 100.0f)
+        || !validRange(settings.endFade, 0.0f, 512.0f) || !validRange(settings.maxCut, 0.01f, 1000.0f)) return false;
+    if (settings.bankLayer < -1 || settings.bankLayer >= terrain.LayerCount()
+        || settings.protectedLayer < -1 || settings.protectedLayer >= terrain.LayerCount()
+        || (settings.bankLayer >= 0 && settings.bankLayer == settings.protectedLayer)
+        || ((settings.bankLayer >= 0 || settings.protectedLayer >= 0) && !terrain.HasValidSplat())) return false;
+    const double heightScale = static_cast<double>(terrain.maxHeight) * pose.worldScale.y * up.y;
+    if (!std::isfinite(heightScale) || heightScale <= 0.0) return false;
+    std::vector<double> distanceAlong(sections.size());
+    for (std::size_t i = 0; i < sections.size(); ++i) {
+        const auto& section = sections[i];
+        if (!std::isfinite(section.center.x) || !std::isfinite(section.center.y) || !std::isfinite(section.waterHeight)
+            || !validRange(section.halfWidth, 0.01f, 4096.0f) || !validRange(section.depth, 0.0f, 10000.0f))
+            return false;
+        if (i == 0) continue;
+        const auto& previous = sections[i - 1];
+        const double length = std::hypot(static_cast<double>(section.center.x) - previous.center.x,
+            static_cast<double>(section.center.y) - previous.center.y);
+        if (length < 0.0001) return false;
+        distanceAlong[i] = distanceAlong[i - 1] + length;
+    }
+
+    struct Target { float height, bankWeight; double waterOffset; bool protectedVertex; };
+    std::map<std::size_t, Target> targets;
+    std::size_t visits = 0;
+    const auto matrix = pose.GetWorldMatrix();
+    for (std::size_t i = 1; i < sections.size(); ++i) {
+        const auto& a = sections[i - 1];
+        const auto& b = sections[i];
+        const float radius = (std::max)(a.halfWidth, b.halfWidth) + settings.bankWidth;
+        float minX = std::numeric_limits<float>::infinity(), minZ = minX, maxX = -minX, maxZ = -minX;
+        for (const float x : {(std::min)(a.center.x, b.center.x) - radius, (std::max)(a.center.x, b.center.x) + radius}) {
+            for (const float z : {(std::min)(a.center.y, b.center.y) - radius, (std::max)(a.center.y, b.center.y) + radius}) {
+                const auto local = ToTerrainLocal(pose, {x, pose.worldPosition.y, z});
+                if (!Finite(local)) return false;
+                minX = (std::min)(minX, local.x);
+                maxX = (std::max)(maxX, local.x);
+                minZ = (std::min)(minZ, local.z);
+                maxZ = (std::max)(maxZ, local.z);
+            }
+        }
+        const double cell = terrain.cellSize;
+        if (maxX < 0 || maxZ < 0 || minX > (terrain.columns - 1) * cell || minZ > (terrain.rows - 1) * cell) continue;
+        const auto bound = [cell](double value, int count) {
+            return static_cast<int>(std::clamp(value / cell, 0.0, static_cast<double>(count - 1)));
+        };
+        const int x0 = bound(minX, terrain.columns), x1 = bound(maxX, terrain.columns);
+        const int z0 = bound(minZ, terrain.rows), z1 = bound(maxZ, terrain.rows);
+        visits += static_cast<std::size_t>(x1 - x0 + 1) * (z1 - z0 + 1);
+        if (visits > MAX_VERTEX_VISITS) return false;
+        const double dx = static_cast<double>(b.center.x) - a.center.x;
+        const double dz = static_cast<double>(b.center.y) - a.center.y;
+        const double lengthSquared = dx * dx + dz * dz;
+        for (int z = z0; z <= z1; ++z) {
+            for (int x = x0; x <= x1; ++x) {
+                const auto point = matrix * math::Vector4{x * terrain.cellSize, 0, z * terrain.cellSize, 1};
+                if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) return false;
+                const double rx = static_cast<double>(point.x) - a.center.x;
+                const double rz = static_cast<double>(point.z) - a.center.y;
+                const double projection = (rx * dx + rz * dz) / lengthSquared;
+                if ((i == 1 && projection < 0.0) || (i + 1 == sections.size() && projection > 1.0)) continue;
+                const double t = std::clamp(projection, 0.0, 1.0);
+                const double lateral = std::hypot(rx - t * dx, rz - t * dz);
+                const double halfWidth = std::lerp(static_cast<double>(a.halfWidth), static_cast<double>(b.halfWidth), t);
+                if (lateral > halfWidth + settings.bankWidth) continue;
+                const double water = std::lerp(static_cast<double>(a.waterHeight), static_cast<double>(b.waterHeight), t);
+                const double depth = std::lerp(static_cast<double>(a.depth), static_cast<double>(b.depth), t);
+                const double heightCap = point.y + heightScale;
+                double target = water - depth * (1.0 - SmoothUnit(static_cast<float>(lateral / halfWidth)));
+                if (lateral > halfWidth) {
+                    const double edge = (lateral - halfWidth) / settings.bankWidth;
+                    const double blend = edge * edge;
+                    target = std::lerp(water + settings.bankRise * SmoothUnit(static_cast<float>(edge)), heightCap, blend * blend);
+                }
+                float endWeight = 1.0f;
+                if (settings.endFade > 0.0f) {
+                    const double station = std::lerp(distanceAlong[i - 1], distanceAlong[i], t);
+                    const double toEnd = (std::min)(station, distanceAlong.back() - station);
+                    endWeight = SmoothUnit(static_cast<float>(toEnd / settings.endFade));
+                    target = std::lerp(heightCap, target, static_cast<double>(endWeight));
+                }
+                const auto index = static_cast<std::size_t>(z) * terrain.columns + x;
+                const float before = terrain.heightData[index];
+                if (!std::isfinite(before)) return false;
+                const double normalized = (target - point.y) / heightScale;
+                const float height = static_cast<float>((std::min)(normalized, static_cast<double>(before)));
+                float bankWeight = 0.0f;
+                if (settings.bankLayer >= 0) {
+                    const float across = lateral <= halfWidth
+                        ? SmoothUnit(static_cast<float>((lateral / halfWidth - 0.55) / 0.45))
+                        : 1.0f - SmoothUnit(static_cast<float>((lateral - halfWidth) / settings.bankWidth));
+                    bankWeight = across * endWeight;
+                }
+                if (height >= before && bankWeight < 1.0f / 255.0f) continue;
+                const bool protectedVertex = x == 0 || x == terrain.columns - 1 || z == 0 || z == terrain.rows - 1
+                    || terrain.IsHoleCell(x - 1, z - 1) || terrain.IsHoleCell(x, z - 1)
+                    || terrain.IsHoleCell(x - 1, z) || terrain.IsHoleCell(x, z)
+                    || (settings.protectedLayer >= 0 && terrain.GetLayerWeightAtGrid(x, z, settings.protectedLayer) >= 0.35f);
+                if (!protectedVertex && normalized < -1.0) return false;
+                const auto [entry, inserted] = targets.try_emplace(index, Target{height, bankWeight, water - point.y, protectedVertex});
+                if (!inserted) {
+                    entry->second.height = (std::min)(entry->second.height, height);
+                    if (bankWeight > entry->second.bankWeight) {
+                        entry->second.bankWeight = bankWeight;
+                        entry->second.waterOffset = water - point.y;
+                    }
+                }
+            }
+        }
+    }
+    TerrainRiverCarvePlan plan;
+    plan.vertices.reserve(targets.size());
+    for (const auto& [index, target] : targets) {
+        if (target.protectedVertex) {
+            ++plan.protectedVertices;
+            continue;
+        }
+        if (target.height < terrain.heightData[index]) {
+            const double cut = (static_cast<double>(terrain.heightData[index]) - target.height) * heightScale;
+            if (cut > std::numeric_limits<float>::max()) return false;
+            plan.deepestCut = (std::max)(plan.deepestCut, static_cast<float>(cut));
+            plan.vertices.push_back({index, target.height});
+        }
+        if (target.bankWeight >= 1.0f / 255.0f) {
+            const double clearance = std::abs(static_cast<double>(target.height) * heightScale - target.waterOffset);
+            const float elevation = 1.0f - SmoothUnit(static_cast<float>(clearance / (settings.bankRise + 0.5)));
+            const auto offset = index * scene::TERRAIN_SPLAT_SLOTS;
+            const auto* indices = terrain.splatIndices.data() + offset;
+            const auto* weights = terrain.splatWeights.data() + offset;
+            const float weight = std::round(target.bankWeight * elevation * 255.0f) / 255.0f;
+            if (weight <= scene::terrain_splat::WeightOf(indices, weights, settings.bankLayer)) continue;
+            TerrainRiverCarvePlan::Material material{offset, {}, {}};
+            std::copy_n(indices, scene::TERRAIN_SPLAT_SLOTS, material.indices.begin());
+            std::copy_n(weights, scene::TERRAIN_SPLAT_SLOTS, material.weights.begin());
+            scene::terrain_splat::SetWeight(material.indices.data(), material.weights.data(), settings.bankLayer, weight);
+            if (!std::equal(material.indices.begin(), material.indices.end(), indices)
+                || !std::equal(material.weights.begin(), material.weights.end(), weights))
+                plan.materials.push_back(material);
+        }
+    }
+    out = std::move(plan);
+    return true;
+}
+
+bool ResolveTerrainAnalysisSurfaces(scene::Scene& world, const scene::GameObject* single, const OpData* tiles,
+    std::vector<TerrainAnalysisSurface>& out)
+{
+    std::vector<TerrainAnalysisSurface> surfaces;
+    const auto append = [&](const scene::GameObject* owner) {
+        const auto* terrain = owner ? world.GetComponent<scene::TerrainComponent>(owner->GetID()) : nullptr;
+        if (!terrain || !terrain->enabled || !owner->activeInHierarchy()
+            || std::any_of(surfaces.begin(), surfaces.end(), [&](const auto& item) { return item.terrain == terrain; }))
+            return false;
+        for (auto* node = owner; node; node = node->GetParent()) {
+            const auto& pose = node->transform;
+            const auto scale = pose.scale;
+            const double rotationLength = pose.rotation.Length();
+            if (!Finite(pose.position) || !Finite(scale)
+                || std::abs(scale.x) <= 1.0e-6f || std::abs(scale.y) <= 1.0e-6f || std::abs(scale.z) <= 1.0e-6f
+                || !std::isfinite(rotationLength) || std::abs(rotationLength - 1.0) > 0.001) return false;
+        }
+        surfaces.push_back({terrain, &owner->transform});
+        return true;
+    };
+    if (tiles && !tiles->IsNull()) {
+        if (!tiles->IsArray() || tiles->AsArray().empty() || tiles->AsArray().size() > 16) return false;
+        for (const auto& id : tiles->AsArray())
+            if (!id.IsString() || !append(world.FindByGuid(id.AsString()))) return false;
+    } else if (!append(single)) {
+        return false;
+    }
+    out = std::move(surfaces);
+    return true;
+}
+
+bool TraceTerrainShore(std::span<const TerrainAnalysisSurface> surfaces,
+    const TerrainShoreSettings& settings, TerrainShoreOutline& out, std::string& diagnostic)
+{
+    const auto& seed = settings.seed;
+    const auto fail = [&](const char* message) { diagnostic = message; return false; };
+    TerrainAnalysisGrid grid;
+    if (!SampleTerrainAnalysisGrid(surfaces, settings, grid))
+        return fail("検索範囲・格子間隔・簡略化許容値を確認してください。各軸は最大256区間です。");
+    const int stride = grid.Stride(), root = grid.CenterIndex();
+    const auto& ground = grid.ground;
+    if (!(ground[root] < seed.y)) return fail("開始点に水位より低い地表がありません。");
+    std::vector<bool> wet(ground.size(), false);
+    std::vector<int> queue{root};
+    wet[root] = true;
+    /// @note The two diagonal neighbors follow the same east–south diagonal as the contour triangles.
+    for (std::size_t i = 0; i < queue.size(); ++i) {
+        const int id = queue[i];
+        if (grid.Boundary(id)) return fail("水没域が検索範囲の外へ流出しています。");
+        for (const auto& [dx, dz] : TERRAIN_NEIGHBORS) {
+            const int next = id + dx + dz * stride;
+            if (!std::isfinite(ground[next])) return fail("水没域の隣に穴または地形の欠損があります。");
+            if (!wet[next] && ground[next] < seed.y) { wet[next] = true; queue.push_back(next); }
+        }
+    }
+
+    struct ShoreVertex { math::Vector3 position; std::array<int, 2> links{}; std::size_t degree = 0; };
+    std::vector<ShoreVertex> vertices;
+    std::map<std::pair<int, int>, int> edgeVertices;
+    const auto crossing = [&](int a, int b) {
+        if (a > b) std::swap(a, b);
+        const auto [entry, inserted] = edgeVertices.try_emplace({a, b}, static_cast<int>(vertices.size()));
+        if (inserted) {
+            const auto first = grid.Position(a), last = grid.Position(b);
+            /// @note A sample exactly at the waterline is dry. Keep coincident crossings on their own edges.
+            const double t = std::clamp((static_cast<double>(seed.y) - ground[a]) / (static_cast<double>(ground[b]) - ground[a]), 0.00001, 0.99999);
+            vertices.push_back({{std::lerp(first.x, last.x, static_cast<float>(t)), seed.y,
+                std::lerp(first.z, last.z, static_cast<float>(t))}});
+        }
+        return entry->second;
+    };
+    const auto triangle = [&](const std::array<int, 3>& ids) {
+        std::array<int, 2> segment{};
+        std::size_t count = 0;
+        for (std::size_t edge = 0; edge < ids.size(); ++edge) {
+            const int a = ids[edge], b = ids[(edge + 1) % ids.size()];
+            if (wet[a] != wet[b]) segment[count++] = crossing(a, b);
+        }
+        if (!count) return true;
+        auto& a = vertices[segment[0]];
+        auto& b = vertices[segment[1]];
+        if (a.degree >= a.links.size() || b.degree >= b.links.size()) return false;
+        a.links[a.degree++] = segment[1]; b.links[b.degree++] = segment[0];
+        return true;
+    };
+    for (int z = 0; z < grid.nz; ++z) {
+        for (int x = 0; x < grid.nx; ++x) {
+            const int a = z * stride + x;
+            if (!triangle({a, a + stride, a + 1}) || !triangle({a + 1, a + stride, a + stride + 1}))
+                return fail("岸の輪郭が分岐しています。");
+        }
+    }
+    if (vertices.size() < 3) return fail("閉じた岸の輪郭を見つけられません。");
+    if (vertices.size() > 16384) return fail("岸が細かすぎます。格子間隔を広げてください。");
+    std::vector<bool> visited(vertices.size(), false);
+    std::vector<std::pair<double, std::vector<math::Vector3>>> rings;
+    for (int start = 0; start < static_cast<int>(vertices.size()); ++start) {
+        if (visited[start]) continue;
+        std::vector<math::Vector3> ring;
+        int previous = -1, current = start;
+        do {
+            const auto& vertex = vertices[current];
+            if (vertex.degree != 2 || visited[current]) return fail("岸の輪郭を閉じられません。");
+            visited[current] = true;
+            ring.push_back(vertex.position);
+            const int next = vertex.links[0] == previous ? vertex.links[1] : vertex.links[0];
+            previous = current;
+            current = next;
+        } while (current != start);
+        double area = 0.0;
+        for (std::size_t i = 1; i + 1 < ring.size(); ++i) {
+            const auto a = ring[i] - ring.front(), b = ring[i + 1] - ring.front();
+            area += static_cast<double>(a.x) * b.z - static_cast<double>(a.z) * b.x;
+        }
+        auto simplified = SimplifyShore(ring, settings.tolerance);
+        if (simplified.size() < 3 || area == 0.0) return fail("制御点が3〜256点に収まるよう簡略化許容値を調整してください。");
+        rings.emplace_back(std::abs(area), std::move(simplified));
+    }
+    const auto outer = std::max_element(rings.begin(), rings.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+    TerrainShoreOutline outline;
+    outline.outer = std::move(outer->second);
+    for (auto it = rings.begin(); it != rings.end(); ++it)
+        if (it != outer) outline.islands.push_back(std::move(it->second));
+    out = std::move(outline);
+    diagnostic.clear();
+    return true;
+}
+
+bool BuildTerrainDrainage(std::span<const TerrainAnalysisSurface> surfaces,
+    const TerrainShoreSettings& settings, TerrainDrainage& out, std::string& diagnostic)
+{
+    TerrainAnalysisGrid grid;
+    if (!SampleTerrainAnalysisGrid(surfaces, settings, grid)) {
+        diagnostic = "排水範囲と格子間隔を確認してください。各軸は最大256区間です。";
+        return false;
+    }
+    TerrainDrainage result;
+    result.seed = grid.CenterIndex();
+    result.step = (std::min)(grid.stepX, grid.stepZ);
+    result.nodes.resize(grid.ground.size());
+    std::vector<int> rank(grid.ground.size(), -1), order;
+    std::vector<bool> queued(grid.ground.size(), false);
+    using QueueItem = std::pair<float, int>;
+    std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<>> queue;
+    const auto visit = [&](int id, float waterHeight, int downstream) {
+        queued[id] = true;
+        auto& node = result.nodes[id];
+        node.ground = grid.Position(id);
+        node.ground.y = grid.ground[id];
+        node.waterHeight = waterHeight;
+        node.area = static_cast<double>(grid.stepX) * grid.stepZ;
+        node.downstream = downstream;
+        queue.emplace(waterHeight, id);
+    };
+    for (int id = 0; id < static_cast<int>(grid.ground.size()); ++id)
+        if (grid.Boundary(id) && std::isfinite(grid.ground[id])) visit(id, grid.ground[id], -1);
+    /// @see https://doi.org/10.1016/j.cageo.2013.04.024 Barnes et al., Priority-Flood: priority queue from known outlets.
+    while (!queue.empty()) {
+        const auto [height, id] = queue.top();
+        queue.pop();
+        rank[id] = static_cast<int>(order.size());
+        order.push_back(id);
+        const int x = id % grid.Stride(), z = id / grid.Stride();
+        double steepest = 0.0;
+        for (const auto& [dx, dz] : TERRAIN_NEIGHBORS) {
+            if (x + dx < 0 || x + dx > grid.nx || z + dz < 0 || z + dz > grid.nz) continue;
+            const int next = id + dx + dz * grid.Stride();
+            if (!std::isfinite(grid.ground[next])) continue;
+            if (!queued[next]) visit(next, (std::max)(height, grid.ground[next]), id);
+            if (grid.Boundary(id) || rank[next] < 0) continue;
+            const double gradient = (static_cast<double>(height) - result.nodes[next].waterHeight)
+                / std::hypot(static_cast<double>(dx) * grid.stepX, static_cast<double>(dz) * grid.stepZ);
+            if (gradient > steepest) { steepest = gradient; result.nodes[id].downstream = next; }
+        }
+    }
+    if (rank[result.seed] < 0) {
+        diagnostic = "開始点から検索範囲の有効な外周へ排水経路を求められません。";
+        return false;
+    }
+    for (auto it = order.rbegin(); it != order.rend(); ++it) {
+        const auto& node = result.nodes[*it];
+        if (node.downstream >= 0) result.nodes[node.downstream].area += node.area;
+    }
+    result.spill = result.seed;
+    for (int id = result.seed; id >= 0; id = result.nodes[id].downstream) {
+        if (result.nodes[id].ground.y > result.nodes[result.spill].ground.y) result.spill = id;
+        result.outlet = id;
+    }
+    out = std::move(result);
+    diagnostic.clear();
+    return true;
+}
+
+math::Vector2 DrainageRiverSize(const TerrainDrainageNode& node, float step)
+{
+    const double root = std::sqrt(node.area);
+    const float cap = std::clamp(step * 0.7f, 0.15f, 24.0f);
+    const float width = static_cast<float>(std::clamp(0.03 * root, 0.15, static_cast<double>(cap)));
+    const float depth = static_cast<float>(std::min(4.0, 0.15 + 0.003 * root))
+        + (node.waterHeight - node.ground.y) + DRAINAGE_RIVER_SURFACE_CLEARANCE;
+    return {width, depth};
+}
 
 bool TerrainAuthoringValuesEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second)
 {

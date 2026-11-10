@@ -41,3 +41,73 @@ UI と AI は `terrain.heightmap.stamp` を共用する。center は world 座�
 ## 境界
 
 木・岩は [配置の契約](terrain-scatter.md) に従う。独自 Vegetation Component やゲーム作者向け C++ スクリプトは作らない。メッシュ形状を押す Stamp、曲線で編集する道、非破壊の積層地形は別機能であり、既存の球状 Stamp / 直線 Ramp と区別する。
+
+## 地形と岸の成形
+
+### 集水域と流出口
+
+`terrain.drainage.inspect` は指定した Terrain と検索矩形を最大 256×256 区間でサンプリングし、外周から Priority-Flood で排水可能な高さを求める。実際の地形は変更しない。各点から下流へ単一の辺を張り、急降下を優先し、平坦では先に排水が確定した点へつなぐ。逆順に面積を足して集水量を近似する。`minArea` m² 以上の支流・本流の辺と下流 ID を上限付きで返す。`seed` の流出口・最低のあふれ口も返す。穴・欠損を未知の障壁として扱う。各辺の座標、排水高、元の地表高、集水面積を返す。参考は [Barnes et al., Priority-Flood](https://doi.org/10.1016/j.cageo.2013.04.024)。
+
+`control_points.fit_river_drainage` は同じ入力で、seed から検索範囲端へ向かう流下列を既存の Inline/Live 水域へ 1 Undo で設定する。`minArea` に達した点から始め、集水面積に応じて幅と深さを増やす。湖面相当の排水高と地表との差は水深へ含め、既存の深度上限を超える経路や交差した水面は拒否する。検索矩形外の流域を推測せず、河口の接続は検索範囲を調整するか既存 Water Zone から指定する。1 水域の最大 256 制御点は既存契約に従う。
+
+川の制御点は地形を掘らずに設定する。川底と水面が重ならないよう、川の水面は排水高に 0.05 m を足す。照会ではこの高さを `riverSurfaceHeight` として返す。
+
+`terrain.drainage.inspect`、`control_points.fit_river_drainage`、`control_points.fit_lake_shore` に `terrainTiles` を渡すと、最大 16 枚の Terrain GUID を同じ格子で解析する。配列を渡したときは単体指定より優先する。複数の地表が重なる位置は最上面を使う。全タイルで地表が欠けた位置は未知のまま扱う。256×256 区間の制限は解析全体に適用する。解析結果から設定する川は 1 回につき 1 本。
+
+### 川床と川岸の成形
+
+`terrain.river.carve.preview` と `terrain.river.carve` は、既存の Spline River の水面高・幅・深さを使い、指定した Terrain 1 枚に川床を刻む。中央は制御点の水深まで下げ、岸へ向かうほど浅くする。水面の外側は `bankWidth` [m] と `bankRise` [m] で掘削の肩を決め、範囲の縁を現在の地形へつなぐ。 `endFade` [m] で両端の掘削を弱める。 `maxCut` [m] を超える切り下げがあれば確定を拒否する。プレビューは変更頂点数、最大切り下げ、保護した頂点数を返す。
+
+川の制御点、地形タイルの外周、穴に接する頂点は維持する。既に目標より低い地形は持ち上げない。掘削は絶対高さを目標にするため、同じ設定で再実行しても掘り下がらない。確定は 1 Undo。タイル境界をまたぐ場合は外周が残るため、共有頂点を両側へ適用する処理が別途必要になる。
+
+`bankLayer` を指定すると、浅い岸から水面のすぐ上までを既存の Terrain レイヤーへ焼く。初期値 -1 では材質を変更しない。植物側は同じ材質を PCG の `includeMaterial` または `excludeMaterial` に指定できる。`protectedLayer` を設定すると、その重みが 0.35 以上の道などの頂点は掘削と塗り分けの両方から除外する。
+
+### 尾根と谷の成形
+
+`terrain.relief.sculpt` はワールド XZ の `start` から `end` に沿って高さ場へ起伏を加える。`height` はワールド m で、正は尾根、負は谷。`leftWidth` と `rightWidth` は進行方向から見た両側の裾幅、`bend` は中央での左向きの曲がり [m]。`peakAlong` は起点から最も高く変化する位置 [0.1,0.9]。両端と裾は smoothstep で高さ変化ゼロへ接続する。主尾根へ幅や向きの異なる支尾根・谷を重ねられる。
+
+直立した Terrain の高さ場だけを、端から 1 頂点内側の範囲で編集する。高さは既存の許容範囲へ収め、穴・塗り・追加メッシュを保持する。1 操作 1 Undo。区間が短すぎる場合や単一操作の候補予算を超えた場合は編集しない。地形タイルの端の頂点は共有辺を保つため変更しない。
+
+`terrain.relief.massif` は `start` / `end` の主尾根に、左右の支尾根とその間の谷を重ねる。`leftWidth` と `rightWidth` で斜面の広がりを別々に指定し、`branchesPerSide` と `seed` で枝の向き・長さ・高さを変える。谷筋には既存の Hydraulic Erosion を `erosion` の強さで適用する。タイルの外周と穴に接する頂点は保護する。結果を 1 Undo で確定する。
+
+### 池の輪郭
+
+`control_points.fit_lake_shore` は有効な Terrain 1 枚の地表を、池の基準水位（Water の高さ、または既存 Spline Lake の基準平面）で切る。`seed` は水がたまる場所の world XZ。省略時は Water の原点。`width` / `depth` [world m] の矩形を `spacing` 以下の格子で照会し、seed に接続した水没域の輪郭を求める。`tolerance` [m] で輪郭を簡略化し、直線区間の Spline Lake 制御点へ変換する。半径や点順で丸く成形せず、地形の入り江や張り出しを残す。
+
+検索範囲の外へ流出する水没域、輪郭に隣接する地形欠損、簡略化で交差した輪郭は診断して拒否する。中島は水面と水中判定が共有するメッシュから除外する。両軸最大 256 区間、輪郭ごとに最大 256 制御点、中島は最大 16 個かつ合計 512 点。既存の Inline/Live の有限矩形水域または湖を対象にし、妥当性を検証してから 1 Undo で確定する。 `useSpillLevel = true` で窪地の流出口から `freeboard`（既定 0.1 m）を引いた高さを水位にする。
+
+### Island.scene の制作案
+
+`Northern Forest Lake` の水位は 139.144485 m。湖底が丸いため、輪郭の取得に先立って東岸に岬、南岸に入り江を成形する。対象地形は `Spruce Island 8km NW Terrain`（`07a3cad4-9641-55e0-8806-a0e7e3c251a3`）。
+
+| `terrain.relief.sculpt` | start XYZ | end XYZ | height | leftWidth | rightWidth | bend | peakAlong |
+|---|---|---|---:|---:|---:|---:|---:|
+| 東岸の岬 | `[-790,0,2850]` | `[-1050,0,2900]` | 55 | 44 | 68 | 20 | 0.4 |
+| 南岸の入り江 | `[-1220,0,2920]` | `[-1260,0,3190]` | -45 | 50 | 28 | -12 | 0.52 |
+
+次に `control_points.fit_lake_shore` へ `node = 61597f94-3cd4-54e0-b7b4-ce092d13f3b2`、上記 Terrain GUID、`seed = [-1100,0,2848]`、`width = 896`、`depth = 768`、`spacing = 4`、`tolerance = 3` を渡す。保存済み地形データを使った試算では、41 点の閉じた輪郭が得られ、中島と自己交差はなかった。配置後は既存の草木と道が水に入っていないか Scene View で確認する。
+
+## 起伏の制作時検査
+
+### タイル境界の高さ
+
+`terrain.seam.validate` は `node` と `neighbor` の Terrain が共有する辺の高さを比較する Query。Terrain Inspector の `Terrain Seam Rules` からも呼べる。正のスケールを持つ軸平行な高さ場を対象にする。隣接を判定する XZ 誤差は 0.01 world m。重なる辺の両端と、両方の高さ場の格子頂点位置を線形補間で評価し、解像度が違っても片方だけの頂点にできた段差を検出する。`heightTolerance` はワールド m、既定 0.05。最大段差、標本数、違反座標を返す。穴・追加メッシュ・法線は高さの比較から外す。参考は [Epic Landscape Technical Guide, Landscape Components](https://dev.epicgames.com/documentation/unreal-engine/landscape-technical-guide-in-unreal-engine) の共有辺頂点。
+
+`maxCrossSlopeDifference` を指定すると、高さが揃っていても境界を横切る斜面に急な折れがある場所を検出する。単位は度、0（既定）で無効。両側の格子点で分けた各区間の中点で、共有辺に接する三角形の勾配を同じワールド軸方向に測る。正負を含む傾斜角の差を比較するため、同じ傾きのまま継がる坂は合格し、左右で逆向きになる尾根は角度差が出る。結果は `slopeSampleCount`、`maxCrossSlopeDifferenceDegrees` と `TERRAIN_SEAM_SLOPE` の座標を返す。
+
+2026-11-10 の `Island.scene` の保存済み 4 タイルでの試算では、共有辺の高さは一致していたが、SW–SE の `(384.0, 43.19, -718.0)` では傾斜が約 +51.23° から −42.10° に変わった。角度差は約 93.33°。高さ場から算出した値で、描画時の見え方は Scene View で判断する。
+
+`terrain.seam.blend` は共有辺の高さが 0.05 m 以内で一致し、辺全体の格子が揃う 2 枚を対象にする。`neighbor` の境界三角形の傾きへ `node` の最初の内側頂点を寄せ、`blendRows`（既定 6、1〜64）行まで smoothstep で補正を弱める。`strength`（既定 1、0〜1）と `maxCorrection`（既定 8 world m、0〜1000）で補正量を制限する。対象外のタイル・他の共有辺に影響しないよう、選んだタイルの外周頂点は変更しない。穴、塗り、追加メッシュを保持し、変更を 1 Undo で確定する。Terrain Inspector からは既定値で実行できる。
+
+同じ保存データを使い、SW を SE に寄せる既定値の試算では、最大の角度差が約 93.33° から 5.06° に下がり、12° を超える境界区間は 89 から 0 になった。地形ファイルに対する編集・保存は試算には含まない。
+
+### 急斜面と孤立した起伏
+
+`terrain.relief.validate` は選択中または `node` で指定した Terrain の高さ場を読み取り、Terrain Inspector と AI に検査結果を返す。傾けた地形と特異なスケールはエラー。直立した地形の yaw と非一様スケールを考慮し、差分をワールド m で測る。
+
+| 検査 | 判定 |
+|---|---|
+| 急斜面 | 1 セルを描画と同じ対角線で分け、2 三角形のうち大きい斜度が `maxSlopeDegrees`（既定 60°）を超える。 |
+| 孤立した突起・くぼみ | 上下左右の 4 頂点すべてから `minIsolatedRelief` m（既定 2 m）以上突出・陥没する内部頂点を返す。 |
+
+しきい値の 0 は各検査を無効にする。穴セルと穴に接する内部頂点を対象外にする。洞窟の追加メッシュとタイル間の継ぎ目は別の形状契約に属する。検査は高さ場を 1 回走査し、全件数と先頭最大 64 件の種別・ワールド座標・斜度または高低差を返す。意図した崖や谷はしきい値を調整し、修正は既存 Sculpt から確定する。川は [川の自然ルール](river-nature-rules.md) で照合する。
