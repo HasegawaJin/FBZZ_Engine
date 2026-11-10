@@ -25,7 +25,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float2 mbTexelSize = float2(1.0f / screenWidth, 1.0f / screenHeight);
     float2 uv = (float2(pixel) + 0.5f) * mbTexelSize;
 
-    if (motionBlurStrength <= 0.0f || motionBlurSamples <= 0)
+    /// @note 1 サンプルでは t=0 だけを読むため、再投影が不要。
+    if (motionBlurStrength <= 0.0f || motionBlurSamples <= 1)
     {
         OutputBlur[pixel] = texColor.SampleLevel(sampDefault, uv, 0);
         return;
@@ -61,20 +62,19 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     /// @note 長さに上限を付ける。カメラのワープやテレポートの 1 フレームで画面全体が流れるのを防ぐ。
     const float kMaxMotionUV = 0.05f;
     const float rawLen = length(motionVec);
-    if (rawLen > kMaxMotionUV)
-        motionVec *= kMaxMotionUV / rawLen;
-    float motionLen = length(motionVec);
-    if (motionLen < 1e-5f)
+    if (rawLen < 1e-5f)
     {
         OutputBlur[pixel] = texColor.SampleLevel(sampDefault, uv, 0);
         return;
     }
+    if (rawLen > kMaxMotionUV)
+        motionVec *= kMaxMotionUV / rawLen;
     float4 accumulated = float4(0.0f, 0.0f, 0.0f, 0.0f);
-    int    samples     = clamp(motionBlurSamples, 1, 32);
+    const int samples = min(motionBlurSamples, 32);
 
     for (int i = 0; i < samples; ++i)
     {
-        float  t         = (samples > 1) ? ((float(i) / float(samples - 1)) - 0.5f) : 0.0f;
+        float  t         = float(i) / float(samples - 1) - 0.5f;
         float2 sampleUV  = saturate(uv + motionVec * t);
         accumulated += texColor.SampleLevel(sampDefault, sampleUV, 0);
     }
