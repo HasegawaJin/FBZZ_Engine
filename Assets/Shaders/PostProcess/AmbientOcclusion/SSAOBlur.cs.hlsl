@@ -10,15 +10,17 @@
 FBZZ_TEX2D(texSSAO, TEX_SSAO_SLOT);
 FBZZ_RWTEX2D_T(float4, outputBlur, UAV_OUTPUT_SLOT);
 
-[numthreads(8, 8, 1)]
-void CSMain(uint3 dtid : SV_DispatchThreadID)
+[numthreads(AO_BLUR_GROUP_SIZE, AO_BLUR_GROUP_SIZE, 1)]
+void CSMain(uint3 dtid : SV_DispatchThreadID, uint3 groupId : SV_GroupID,
+    uint3 localId : SV_GroupThreadID, uint groupIndex : SV_GroupIndex)
 {
     const uint2 pixel = dtid.xy;
-    float2 outSize;
+    uint2 outSize;
     outputBlur.GetDimensions(outSize.x, outSize.y);
-    if (pixel.x >= (uint)outSize.x || pixel.y >= (uint)outSize.y)
+    LoadAOBlurTile(texSSAO, groupId.xy, groupIndex, outSize);
+    if (any(pixel >= outSize))
         return;
 
-    const float ao = BlurAO(texSSAO, int2(pixel), outSize);
+    const float ao = BlurAO(localId.xy);
     outputBlur[pixel] = float4(ao, ao, ao, 1.0f);
 }

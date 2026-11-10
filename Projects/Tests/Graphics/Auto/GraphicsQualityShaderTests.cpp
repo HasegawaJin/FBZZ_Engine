@@ -170,6 +170,76 @@ TEST_F(GraphicsQualityShaderTest, TaaStaticProofPreservesSubpixelLinesMissingFro
         EXPECT_GT(result.phases.front(), 0.3f);
     }
 }
+TEST_F(GraphicsQualityShaderTest, AoBlurPreservesDepthEdgesAndPartialThreadGroups)
+{
+    constexpr int WIDTH = 13;
+    constexpr int HEIGHT = 11;
+    constexpr int DEPTH_WIDTH = WIDTH * 2 + 1;
+    constexpr int DEPTH_HEIGHT = HEIGHT * 2 + 1;
+    constexpr std::array WEIGHTS{1, 4, 6, 4, 1};
+    std::array<uint8_t, WIDTH * HEIGHT * 4> aoPixels{};
+    std::array<uint8_t, DEPTH_WIDTH * DEPTH_HEIGHT * 4> depthPixels{};
+    for (int y = 0; y < HEIGHT; ++y)
+        for (int x = 0; x < WIDTH; ++x)
+            aoPixels[(y * WIDTH + x) * 4] = static_cast<uint8_t>((x * 31 + y * 53) % 256);
+    for (int y = 0; y < DEPTH_HEIGHT; ++y)
+        for (int x = 0; x < DEPTH_WIDTH; ++x)
+            depthPixels[(y * DEPTH_WIDTH + x) * 4] = x < 16 ? 220 : 70;
+    const auto ao = m_resources->CreateTexture(aoPixels.data(), WIDTH, HEIGHT);
+    const auto depth = m_resources->CreateTexture(depthPixels.data(), DEPTH_WIDTH, DEPTH_HEIGHT);
+    const auto output = m_resources->CreateRenderTarget(WIDTH, HEIGHT, {1, r::Format::RGBA16F, false});
+    const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    ASSERT_TRUE(ao && depth && output && copy);
+
+    const auto viewDepth = [&](int x, int y) {
+        const float ndc = depthPixels[(y * 2 * DEPTH_WIDTH + x * 2) * 4] / 255.0f;
+        return m_camera.m_far - ndc * (m_camera.m_far - m_camera.m_near);
+    };
+    for (bool gtao : {false, true}) {
+        SCOPED_TRACE(gtao ? "GTAO" : "SSAO");
+        const auto shader = m_resources->LoadShader(gtao
+            ? "Assets/Shaders/PostProcess/AmbientOcclusion/GTAOBlur.cs.hlsl"
+            : "Assets/Shaders/PostProcess/AmbientOcclusion/SSAOBlur.cs.hlsl");
+        const auto blurred = m_resources->CreateComputeTexture(WIDTH, HEIGHT);
+        ASSERT_TRUE(shader && blurred);
+        Begin();
+        r::ComputeCall dispatch;
+        dispatch.shader = shader;
+        dispatch.constantBuffers[0] = m_frame;
+        dispatch.srvInputs[7] = depth;
+        dispatch.srvInputs[gtao ? 23 : 9] = ao;
+        dispatch.uavOutputs[gtao ? 7 : 0] = blurred;
+        dispatch.dispatchX = (WIDTH + 7) / 8;
+        dispatch.dispatchY = (HEIGHT + 7) / 8;
+        dispatch.dispatchZ = 1;
+        m_bundle.renderer->Dispatch(dispatch, *m_resources);
+        m_bundle.renderer->SetRenderTarget(output, *m_resources);
+        auto draw = Draw(copy);
+        draw.textures[5] = blurred;
+        m_bundle.renderer->Submit(draw, *m_resources);
+        End();
+
+        std::vector<float> pixels;
+        uint32_t width = 0, height = 0;
+        ASSERT_TRUE(m_bundle.renderer->CaptureRenderTargetToLinearRGBA(output, *m_resources, pixels, width, height));
+        ASSERT_EQ(width, WIDTH);
+        ASSERT_EQ(height, HEIGHT);
+        for (int y = 0; y < HEIGHT; ++y) for (int x = 0; x < WIDTH; ++x) {
+            const float centerZ = viewDepth(x, y);
+            float sum = 0.0f, weightSum = 0.0f;
+            for (int dy = -2; dy <= 2; ++dy) for (int dx = -2; dx <= 2; ++dx) {
+                const int tapX = std::clamp(x + dx, 0, WIDTH - 1);
+                const int tapY = std::clamp(y + dy, 0, HEIGHT - 1);
+                const float weight = static_cast<float>(WEIGHTS[dx + 2] * WEIGHTS[dy + 2])
+                    * std::exp(-std::abs(viewDepth(tapX, tapY) - centerZ) / (centerZ * 0.05f));
+                sum += (aoPixels[(tapY * WIDTH + tapX) * 4] / 255.0f) * weight;
+                weightSum += weight;
+            }
+            EXPECT_NEAR(pixels[(y * WIDTH + x) * 4], sum / weightSum, 0.001f) << x << ',' << y;
+        }
+    }
+}
+
 TEST_F(GraphicsQualityShaderTest, GtaoSynchronizesStaticNoiseWithTaaJitterPhase)
 {
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
