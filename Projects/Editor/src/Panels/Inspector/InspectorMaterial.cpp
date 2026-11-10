@@ -7,11 +7,8 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Asset/ShaderCapabilities.hpp>
 #include "InspectorMaterial.hpp"
 #include <Editor/Util/AssetDirtyRegistry.hpp>
-#include <cstring>
-#include <optional>
 #include "../../Util/MaterialAuthoringEditing.hpp"
 
 namespace fbzz::editor {
@@ -67,183 +64,11 @@ void DrawMaterialSlotBody(const material_edit_detail::SlotTarget& target, Editor
             else
                 undo.active = false;
             const ImGuiID activeBefore = ImGui::GetActiveID();
-            bool materialDirty = false;
-            std::optional<renderer::ShaderDescriptor> ownedDescriptor;
-            const renderer::ShaderDescriptor* desc = nullptr;
-            if (auto* resources = ctx.resources) {
-                const std::string shaderPath = mat.shaderPath.empty()
-                    ? "Assets/Shaders/Material/Surface/Fallback.hlsl"
-                    : mat.shaderPath;
-                if (auto shader = resources->LoadShader(shaderPath); shader.IsValid()) {
-                    if (auto* loadedShader = resources->Get(shader))
-                        ownedDescriptor = loadedShader->GetDescriptor();
-                }
-            }
-
-            if (ownedDescriptor) desc = &*ownedDescriptor;
-            ImGui::SeparatorText("State");
-            {
-                if (widgets::AssetPathField("Shader", mat.shaderPath,
-                                            ".hlsl", ctx.projectRoot)) {
-                    materialDirty = true;
-                }
-
-                static constexpr const char* kBlendNames[] = {
-                    "Opaque", "AlphaBlend", "Additive", "Premultiplied" };
-                int blendIndex = 0;
-                if (mat.blendMode == renderer::BlendMode::ALPHA_BLEND) blendIndex = 1;
-                else if (mat.blendMode == renderer::BlendMode::ADDITIVE) blendIndex = 2;
-                else if (mat.blendMode == renderer::BlendMode::PREMULTIPLIED) blendIndex = 3;
-                if (ImGui::Combo("Blend", &blendIndex, kBlendNames, 4)) {
-                    mat.blendMode = blendIndex == 1 ? renderer::BlendMode::ALPHA_BLEND
-                        : blendIndex == 2 ? renderer::BlendMode::ADDITIVE
-                        : blendIndex == 3 ? renderer::BlendMode::PREMULTIPLIED
-                        : renderer::BlendMode::OPAQUE_BLEND;
-                    materialDirty = true;
-                }
-                materialDirty |= ImGui::Checkbox("Double Sided", &mat.doubleSided);
-                materialDirty |= ImGui::DragInt("Render Queue", &mat.renderQueue, 1.0f, 0, 5000);
-                materialDirty |= ImGui::DragInt("Depth Bias", &mat.depthBias, 0.25f, -1024, 1024);
-                materialDirty |= ImGui::DragFloat("Depth Bias Slope", &mat.depthBiasSlope, 0.01f, -8.0f, 8.0f);
-                ImGui::SetItemTooltip("Positive values pull this material toward the camera (fixes Z-fighting on coplanar faces)");
-                {
-                    /// @note 通常の Forward / Deferred はプロジェクト設定で決まる。
-                    /// @note ここでは専用レンダーパスの用途だけを指定する。
-                    /// @note LAYOUT: asset::RenderPath と同じ並びにすること。欠けた用途は
-                    /// @note Combo を触った瞬間に別の値へ化ける。
-                    static constexpr const char* kMaterialUsageNames[] = {
-                        "Auto", "Particle", "Trail", "UI", "Decal" };
-                    int usageIndex = static_cast<int>(mat.renderPath);
-                    if (ImGui::Combo("Material Usage", &usageIndex, kMaterialUsageNames,
-                                     IM_ARRAYSIZE(kMaterialUsageNames))) {
-                        mat.renderPath = static_cast<asset::RenderPath>(usageIndex);
-                        materialDirty = true;
-                    }
-                    ImGui::TextDisabled("Forward / Deferred: Project Settings");
-                }
-                {
-                    static constexpr const char* kMeshTypeNames[] = { "Any", "Surface", "Skinned" };
-                    int mtIndex = static_cast<int>(mat.meshType);
-                    if (ImGui::Combo("Mesh Type", &mtIndex, kMeshTypeNames, 3)) {
-                        mat.meshType = static_cast<asset::MeshType>(mtIndex);
-                        materialDirty = true;
-                    }
-                }
-            }
-
-            const auto shaderCapabilities = asset::ResolveShaderCapabilities(mat.shaderPath);
-            const bool isWaterMaterial = shaderCapabilities.surface == renderer::ShaderSurfaceContract::WATER
-                || shaderCapabilities.preview == renderer::ShaderPreviewKind::WATER;
-
-            if (isWaterMaterial) {
-                materialDirty |= DrawWaterMaterialAuthoring(mat, desc, ctx.projectRoot);
-            } else {
-                materialDirty |= DrawSolidDielectricMaterialInspector(mat);
-                ImGui::SeparatorText("Textures");
-                /// @note fzmat のキーは GeometryPassHelpers の kTextureSlotNames と一致させる。ShaderDescriptor の
-                /// @note tex.name は HLSL 変数名 ("texAlbedo") で kTextureSlotNames ("albedo") と異なるため、
-                /// @note tex.slot でインデックスして変換する。t5-t7 はカスタムシェーダー用の汎用スロット。
-                static constexpr std::array<const char*, 8> kCanonicalSlots = {
-                    "albedo", "normal", "metallic", "emissive", "ao", "tex5", "tex6", "tex7"
-                };
-                /// @note Sprite のコマを受けるのはメッシュ描画 (Auto) の albedo だけ。
-                /// @note 矩形を uvTiling / uvOffset へ畳むのは ApplyAlbedoSpriteUv (GeometryPassHelpers) の
-                /// @note 1 か所しかなく、1 描画に 1 組しか無い。他のスロットや Particle / UI / Decal の
-                /// @note パスへ入れても切り抜きは効かず、アトラス全面が出る。
-                const bool spriteAlbedo = mat.renderPath == asset::RenderPath::Auto;
-                auto drawTexSlot = [&](const char* slot) {
-                    std::string& path = mat.textures[slot];
-                    const char* filter = spriteAlbedo && std::strcmp(slot, "albedo") == 0
-                        ? widgets::kSpriteAssetFilter : widgets::kTextureAssetFilter;
-                    if (widgets::TextureSlotField(slot, path, filter, ctx.projectRoot))
-                        materialDirty = true;
-                };
-                if (desc && !desc->textures.empty()) {
-                    for (const auto& tex : desc->textures)
-                        if (tex.slot < kCanonicalSlots.size())
-                            drawTexSlot(kCanonicalSlots[tex.slot]);
-                } else {
-                    /// @note シェーダー未取得時は標準 5 スロットのみ表示。
-                    for (size_t i = 0; i < 5; ++i)
-                        drawTexSlot(kCanonicalSlots[i]);
-                }
-                auto drawParam = [&](const std::string& name, std::vector<float>& values) {
-                    if (values.empty())
-                        return;
-
-                    ImGui::PushID(name.c_str());
-                    if (values.size() == 1) {
-                        materialDirty |= ImGui::DragFloat(name.c_str(), values.data(), 0.01f);
-                    } else if (values.size() == 2) {
-                        materialDirty |= widgets::DragAxes(name.c_str(), values.data(), 2, 0.01f);
-                    } else if (values.size() == 3) {
-                        materialDirty |= widgets::DragAxes(name.c_str(), values.data(), 3, 0.01f);
-                    } else if (values.size() == 4) {
-                        const bool looksLikeColor = name.find("color") != std::string::npos
-                            || name.find("Color") != std::string::npos
-                            || name.find("albedo") != std::string::npos;
-                        materialDirty |= looksLikeColor
-                            ? ImGui::ColorEdit4(name.c_str(), values.data())
-                            : widgets::DragAxes(name.c_str(), values.data(), 4, 0.01f);
-                    } else {
-                        for (size_t i = 0; i < values.size(); ++i) {
-                            ImGui::PushID(static_cast<int>(i));
-                            materialDirty |= ImGui::DragFloat("Value", &values[i], 0.01f);
-                            ImGui::PopID();
-                        }
-                    }
-                    ImGui::PopID();
-                };
-                auto defaultParamValues = [](const std::string& name, size_t componentCount) {
-                    std::vector<float> values(componentCount, 0.0f);
-                    if (name == "albedo" && componentCount >= 4) {
-                        values[0] = values[1] = values[2] = values[3] = 1.0f;
-                    } else if ((name == "emissiveColor" || name == "rimColor") && componentCount >= 3) {
-                        values[0] = values[1] = values[2] = 1.0f;
-                    } else if (name == "uvTiling" && componentCount >= 2) {
-                        values[0] = values[1] = 1.0f;
-                    } else if (name == "roughness") {
-                        values[0] = 0.65f;
-                    } else if (name == "normalStrength" || name == "occlusionStrength" || name == "rimIntensity") {
-                        values[0] = 1.0f;
-                    } else if (name == "alphaCutoff") {
-                        values[0] = 0.5f;
-                    } else if (name == "rimPower") {
-                        values[0] = 3.0f;
-                    }
-                    return values;
-                };
-
-                ImGui::SeparatorText("Params");
-                if (desc) {
-                    for (const auto& var : desc->vars) {
-                        if (!var.IsWritable() || var.varType != renderer::ShaderVarType::Float
-                            || var.elements || var.varClass == renderer::ShaderVarClass::Matrix
-                            || mat.integerParams.contains(var.name)) {
-                            materialDirty |= DrawReflectedMaterialParam(mat, var);
-                            continue;
-                        }
-                        const size_t componentCount = var.columns > 0 ? var.columns : 1;
-                        std::vector<float>& values = mat.params[var.name];
-                        if (values.size() != componentCount)
-                            values = defaultParamValues(var.name, componentCount);
-                        drawParam(var.name, values);
-                    }
-                }
-                for (const auto& [name, values] : mat.integerParams) {
-                    if (desc && desc->FindVar(name)) continue;
-                    ImGui::TextDisabled("%s: reflection unavailable (%zu values)", name.c_str(), values.size());
-                }
-                for (auto& [name, values] : mat.params) {
-                    if (desc && desc->FindVar(name))
-                        continue;
-                    drawParam(name, values);
-                }
-            }
+            DrawMaterialAuthoringFields(mat, ctx.resources, ctx.projectRoot);
 
             const auto commitResult = material_edit_detail::FinishAssetEdit(materialHandle, *materialEdit);
             bool authoringConflict = commitResult == material_edit_detail::CommitResult::CONFLICT;
-            materialDirty = commitResult == material_edit_detail::CommitResult::COMMITTED;
+            const bool materialDirty = commitResult == material_edit_detail::CommitResult::COMMITTED;
             const auto committedPublication = asset::ReadMaterialAuthoring(materialHandle);
             if (authoringConflict) { undo.active = false; undo.changed = false; }
             if (materialDirty) {

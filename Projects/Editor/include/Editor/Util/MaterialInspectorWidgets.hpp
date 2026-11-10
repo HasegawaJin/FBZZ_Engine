@@ -5,23 +5,15 @@
 #pragma once
 
 #include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Renderer/ShaderDescriptor.hpp>
+
+namespace fbzz::renderer { class ResourceManager; }
 
 namespace fbzz::editor {
 
-/// @note Project-owned MaterialConstants use reflection types and the existing eight named bindless texture slots.
-bool DrawReflectedMaterialInspector(asset::MaterialAssetAuthoring& material,
-    const renderer::ShaderDescriptor* descriptor, const std::string& projectRoot);
-
-/// @note Preserve the legacy reflected Water layout; project-owned layouts expose their appearance before shared services.
-bool DrawWaterMaterialAuthoring(asset::MaterialAssetAuthoring& material,
-    const renderer::ShaderDescriptor* descriptor, const std::string& projectRoot);
-
-/// @note 型・行列・配列の要素数を Reflection に合わせる。未対応型は理由を表示し編集しない。
-bool DrawReflectedMaterialParam(asset::MaterialAssetAuthoring& material, const renderer::ShaderVarDesc& variable);
-
-/// @note 完全被覆の滑らかな固体へ切り替え、光学設定は shader reflection と独立に保存する。
-bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& material);
+/// @brief アセット選択時とオブジェクトのスロット展開時に同じ編集欄を描く。
+/// @note 保存・Undo・プレビューの更新は編集トランザクションを所有する呼び出し元が行う。
+void DrawMaterialAuthoringFields(asset::MaterialAssetAuthoring& material,
+    renderer::ResourceManager* resources, const std::string& projectRoot);
 
 /// @brief Drag & Drop 対応の texture path 入力欄を、左にサムネイルを添えて描画する。
 /// @return パスが変わったら true (サムネイルへのドロップを含む)。
