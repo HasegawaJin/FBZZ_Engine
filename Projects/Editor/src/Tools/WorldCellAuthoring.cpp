@@ -38,7 +38,7 @@ scene::GameObject* PartitionNode(EditorContext& ctx, const std::string& requeste
     scene::GameObject* found = nullptr;
     for (const auto id : ctx.activeScene->GetEntities<Partition>()) {
         auto* candidate = ctx.activeScene->GetGameObject(id);
-        if (!candidate || candidate->runtimeGenerated) continue;
+        if (!candidate || candidate->IsRuntimeGenerated()) continue;
         if (found) { error = "Multiple partitions exist; specify partition explicitly"; return nullptr; }
         found = candidate;
     }
@@ -183,7 +183,7 @@ OpResult ConfigureWorldCells(OpContext& context, const OpArgs& args)
             if (!state->applied || !component || target->GetID() != state->entity || targetScene->GetComponentLifetime<Partition>(state->entity) != state->lifetime || ConfigKey(*component) != ConfigKey(after)) { reason = "Partition configuration changed externally"; return false; }
             if (created) {
                 size_t components = 0; scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() { if (target->GetComponent<T>()) ++components; });
-                if (components != 1 || target->GetChildCount() || target->GetParent() || target->name != "World Partition" || target->tag!="Untagged" || target->layer!=0 || !target->activeSelf() || target->runtimeGenerated || !target->prefabAssetPath.empty() || target->transform.position != math::Vector3::ZERO || target->transform.scale != math::Vector3::ONE || target->transform.rotation != math::Quaternion::Identity()) { reason = "Created partition has additional edits"; return false; }
+                if (components != 1 || target->GetChildCount() || target->GetParent() || target->name != "World Partition" || target->tag!="Untagged" || target->layer!=0 || !target->activeSelf() || target->IsRuntimeGenerated() || !target->prefabAssetPath.empty() || target->transform.position != math::Vector3::ZERO || target->transform.scale != math::Vector3::ONE || target->transform.rotation != math::Quaternion::Identity()) { reason = "Created partition has additional edits"; return false; }
                 if (!targetScene->DestroyGameObject(target->GetID())) { reason = "Partition could not be removed"; return false; }
             } else ApplyConfig(*component, before);
             state->applied = false;

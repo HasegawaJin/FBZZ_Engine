@@ -1,5 +1,5 @@
 /// @file    HierarchyTraversal.hpp
-/// @brief   Hierarchy の巡回状態をフレームごとに初期化し、作業領域の容量を再利用する。
+/// @brief   Hierarchy の表示巡回と Scene 構造の索引を保持する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
@@ -10,7 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace fbzz::scene { class GameObject; }
+namespace fbzz::scene { class GameObject; class Scene; }
 
 namespace fbzz::editor {
 
@@ -23,30 +23,27 @@ struct HierarchyTraversal {
         return (static_cast<std::uint64_t>(id.generation) << 32) | id.index;
     }
 
-    std::vector<bool> visited;
+    EntitySet visited;
+    std::vector<scene::EntityID> roots;
+    std::vector<scene::EntityID> recoveredRoots;
     std::unordered_map<const scene::GameObject*, int> hiddenCounts;
+    std::unordered_map<const scene::GameObject*, bool> visibleChildren;
     EntitySet selected;
     EntitySet locked;
     EntitySet revealed;
 
-    /// @brief 前フレームの値を破棄する。Scene の切替や同じ slot の再利用も次の巡回に持ち越さない。
-    void BeginFrame(size_t gameObjectCount)
-    {
-        visited.assign(gameObjectCount, false);
-        hiddenCounts.clear();
-    }
+    /// @note Scene 世代または構造が変わったときだけルート順と生成物の集計を失効させる。
+    void BeginFrame(scene::Scene& scene, bool showGeneratedObjects);
 
-    bool Contains(scene::EntityID id) const
-    {
-        return id.index < visited.size() && visited[id.index];
-    }
     bool Visit(scene::EntityID id)
     {
-        if (!id.IsValid() || Contains(id)) return false;
-        if (id.index >= visited.size()) visited.resize(static_cast<size_t>(id.index) + 1);
-        visited[id.index] = true;
-        return true;
+        return id.IsValid() && visited.insert(EntityKey(id)).second;
     }
+
+private:
+    uint64_t m_sceneGeneration = 0;
+    uint64_t m_revision = 0;
+    bool m_showGeneratedObjects = false;
 };
 
 } // namespace fbzz::editor

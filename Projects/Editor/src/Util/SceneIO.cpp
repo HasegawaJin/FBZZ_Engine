@@ -54,7 +54,7 @@ std::function<SceneSaveResult()> SceneIO::PrepareSave(scene::Scene& scene,
             || !metadata->GetLockedObjects().empty()) {
             std::vector<std::string> instanceIds;
             for (auto& go : scene.GameObjects())
-                if (!go.runtimeGenerated) instanceIds.push_back(go.instanceId);
+                if (!go.IsRuntimeGenerated()) instanceIds.push_back(go.instanceId);
             metadata->PruneToInstances(instanceIds);
         }
     }

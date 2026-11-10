@@ -89,7 +89,7 @@ TEST_F(WaterInteractionTest, QueueOnlyChangesValuesAndCleanupFeedsTheExistingPar
     ASSERT_EQ(emitter->runtime.injectedSpawns.size(), 1u);
     EXPECT_EQ(emitter->settings.maxParticles, 64);
     EXPECT_EQ(emitter->settings.materialPath, scene::WATER_BUBBLE_MATERIAL);
-    EXPECT_TRUE(source.GetGameObject(emitterId)->runtimeGenerated);
+    EXPECT_TRUE(source.GetGameObject(emitterId)->IsRuntimeGenerated());
     EXPECT_EQ(source.GetGameObject(emitterId)->GetParent(), nullptr);
     scene::UpdateParticleCpuSimulation(source, m_world, 0.1f, 0.1f);
     EXPECT_TRUE(emitter->runtime.injectedSpawns.empty());

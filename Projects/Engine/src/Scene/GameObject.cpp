@@ -3,8 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 ///
-/// active、tag、親子関係、検索、Destroy の OOP API を提供する。
-/// Component 操作の template 本体は Scene.hpp 側に置く。
+/// @note Component 操作の template 本体は Scene.hpp 側に置く。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Scene/ScriptRuntime.hpp"
@@ -12,6 +11,13 @@
 #include <cassert>
 
 namespace fbzz::scene {
+
+void GameObject::SetRuntimeGenerated(bool generated)
+{
+    if (m_runtimeGenerated == generated) return;
+    m_runtimeGenerated = generated;
+    if (m_scene) ++m_scene->m_hierarchyRevision;
+}
 
 void GameObject::SetActive(bool active) { m_isActive = active; }
 bool GameObject::activeSelf() const { return m_isActive; }
@@ -56,6 +62,7 @@ bool GameObject::SetParent(GameObject* parent)
     /// @note 既に同じ親なら上で返しているため、追加先にこの子は存在しない。
     m_parent = parent->m_id;
     parent->m_children.push_back(m_id);
+    ++m_scene->m_hierarchyRevision;
     return true;
 }
 
@@ -69,6 +76,7 @@ bool GameObject::ClearParent()
         children.erase(std::remove(children.begin(), children.end(), m_id), children.end());
     }
     m_parent = EntityID::INVALID;
+    ++m_scene->m_hierarchyRevision;
     return true;
 }
 
@@ -132,8 +140,9 @@ bool GameObject::SetSiblingIndex(int index)
         if (clamped == current) return false;
         siblings.erase(it);
         siblings.insert(siblings.begin() + clamped, m_id);
+        ++m_scene->m_hierarchyRevision;
         /// @note シリアライザは flat 順で親子を再構築するため、m_children の並び替えだけでは
-        ///       保存 / Undo スナップショット / Play 復元で順序が元に戻る。
+        /// @note 保存 / Undo スナップショット / Play 復元で順序が元に戻る。
         m_scene->SyncSiblingFlatOrder(m_id);
         return true;
     }
@@ -201,4 +210,4 @@ void GameObject::Destroy(GameObject& go, float delay)
     go.m_scene->m_destroyQueue.push_back({ go.m_id, delay });
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

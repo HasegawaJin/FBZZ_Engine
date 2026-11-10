@@ -176,7 +176,7 @@ TEST_F(PrefabSaveTest, RejectsMissingNullAndUnsavedPointTargetsWithoutChangingTh
     EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
     EXPECT_FALSE(std::filesystem::exists(PrefabPath()));
     spline.pointBindings.front().target.guid = target.instanceId;
-    target.runtimeGenerated = true;
+    target.SetRuntimeGenerated(true);
     EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
     EXPECT_FALSE(std::filesystem::exists(PrefabPath()));
     EXPECT_EQ(spline.pointBindings.front().target.guid, target.instanceId);

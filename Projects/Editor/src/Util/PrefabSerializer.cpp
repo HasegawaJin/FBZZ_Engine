@@ -87,7 +87,7 @@ bool ValidatePointReferenceClosure(const std::unordered_map<std::string, scene::
                                                 const char* component, const char* field,
                                                 std::uint32_t bindingId, bool requireMarker, bool requireAssigned) {
         const auto found = guid.empty() ? objects.end() : objects.find(guid);
-        if (guid.empty() || found == objects.end() || !found->second || found->second->runtimeGenerated
+        if (guid.empty() || found == objects.end() || !found->second || found->second->IsRuntimeGenerated()
             || (requireMarker && !found->second->GetComponent<scene::TargetPointComponent>())) {
             if (!requireAssigned && guid.empty()) return true;
             const char* expectedTarget = requireMarker ? "a saved TargetPoint" : "an object";
@@ -111,7 +111,7 @@ bool ValidatePointReferenceClosure(const std::unordered_map<std::string, scene::
         }
         if (!target || !target->GetComponent<scene::TargetPointComponent>()) return true;
         const auto found = objects.find(target->instanceId);
-        if (found != objects.end() && found->second == target && !target->runtimeGenerated) return true;
+        if (found != objects.end() && found->second == target && !target->IsRuntimeGenerated()) return true;
         FBZZ_LOG_ERROR("Prefab save: %s (%s), %s.%s references external TargetPoint '%s'; include it in the saved hierarchy",
             owner.name.c_str(), owner.instanceId.c_str(), component, field, target->instanceId.c_str());
         return false;
@@ -124,14 +124,14 @@ bool ValidatePointReferenceClosure(const std::unordered_map<std::string, scene::
         scene::GameObject* target = ownerScene ? ownerScene->FindByGuid(reference.guid) : nullptr;
         if (!target || !target->GetComponent<scene::TargetPointComponent>()) return true;
         const auto found = objects.find(reference.guid);
-        if (found != objects.end() && found->second == target && !target->runtimeGenerated) return true;
+        if (found != objects.end() && found->second == target && !target->IsRuntimeGenerated()) return true;
         FBZZ_LOG_ERROR("Prefab save: %s (%s), %s.%s references external TargetPoint '%s'; include it in the saved hierarchy",
             owner.name.c_str(), owner.instanceId.c_str(), component, field, reference.guid.c_str());
         return false;
     };
     for (const auto& [guid, object] : objects) {
         static_cast<void>(guid);
-        if (!object || object->runtimeGenerated) continue;
+        if (!object || object->IsRuntimeGenerated()) continue;
         if (const auto* water = object->GetComponent<scene::WaterComponent>(); water && water->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS)
             for (const auto& row : water->pointBindings)
                 if (!validateTypedTarget(*object, row.target.guid, "Water", "pointBindings", row.id, true, true)) return false;

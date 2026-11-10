@@ -13,10 +13,143 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <Physics/BVHNode.hpp>
 #include <cmath>
+#include <deque>
+#include <iterator>
+#include <limits>
 #include <memory>
 
 namespace fbzz::editor {
+
+namespace {
+
+constexpr size_t MIN_INDEXED_TRIANGLES = 128;
+constexpr size_t MAX_CACHED_TRIANGLES = 1'048'576;
+
+struct PickTree {
+    uint64_t revision = 0;
+    bool skinned = false;
+    physics::BVHTree tree;
+};
+
+bool SafeCoordinate(float value)
+{
+    return std::abs(value) <= 1e15f;
+}
+
+const physics::BVHTree* PickTreeFor(const renderer::Mesh& mesh, bool skinned)
+{
+    const uint64_t revision = mesh.CpuGeometryRevision();
+    const size_t count = mesh.cpuIndices.size() / 3;
+    if (!revision || count < MIN_INDEXED_TRIANGLES || count > MAX_CACHED_TRIANGLES) return nullptr;
+    static std::deque<PickTree> trees;
+    static size_t cachedTriangles = 0;
+    if (auto entry = std::find_if(trees.begin(), trees.end(), [&](const PickTree& tree) {
+            return tree.revision == revision && tree.skinned == skinned;
+        }); entry != trees.end()) {
+        std::rotate(entry, std::next(entry), trees.end());
+        return &trees.back().tree;
+    }
+
+    std::vector<physics::Triangle> triangles;
+    triangles.reserve(count);
+    const auto collect = [&](const auto& vertices) {
+        for (size_t i = 0; i < count; ++i) {
+            const auto a = mesh.cpuIndices[3 * i];
+            const auto b = mesh.cpuIndices[3 * i + 1];
+            const auto c = mesh.cpuIndices[3 * i + 2];
+            if (a >= vertices.size() || b >= vertices.size() || c >= vertices.size()) continue;
+            physics::Triangle triangle{{vertices[a].position, vertices[b].position, vertices[c].position},
+                {}, static_cast<uint32_t>(i)};
+            for (const auto& point : triangle.v)
+                if (!SafeCoordinate(point.x) || !SafeCoordinate(point.y) || !SafeCoordinate(point.z)) return false;
+            triangles.push_back(triangle);
+        }
+        return true;
+    };
+    const bool usable = skinned ? collect(mesh.cpuSkinnedVertices) : collect(mesh.cpuVertices);
+    if (!usable) return nullptr;
+
+    while (!trees.empty() && (trees.size() >= 8 || cachedTriangles + triangles.size() > MAX_CACHED_TRIANGLES)) {
+        cachedTriangles -= trees.front().tree.triangles.size();
+        trees.pop_front();
+    }
+    cachedTriangles += triangles.size();
+    trees.push_back({revision, skinned, {}});
+    trees.back().tree.Build(std::move(triangles));
+    return &trees.back().tree;
+}
+
+bool RayMayHitBounds(const physics::AABB& bounds, const math::Matrix4& world, const math::Ray& ray)
+{
+    const float localMin[]{bounds.min.x, bounds.min.y, bounds.min.z};
+    const float localMax[]{bounds.max.x, bounds.max.y, bounds.max.z};
+    const float origins[]{ray.origin.x, ray.origin.y, ray.origin.z};
+    const float directions[]{ray.direction.x, ray.direction.y, ray.direction.z};
+    double enter = 0;
+    double leave = std::numeric_limits<double>::infinity();
+    for (int row = 0; row < 3; ++row) {
+        double min = world.m[row][3];
+        double max = min;
+        double magnitude = std::abs(min) + std::abs(origins[row]) + 1.0;
+        for (int column = 0; column < 3; ++column) {
+            const double a = static_cast<double>(world.m[row][column]) * localMin[column];
+            const double b = static_cast<double>(world.m[row][column]) * localMax[column];
+            min += (std::min)(a, b);
+            max += (std::max)(a, b);
+            magnitude += (std::max)(std::abs(a), std::abs(b));
+        }
+        /// @note 葉の詳細判定は既存の float ワールド変換を使う。境界はその丸めを外向きに含める。
+        const double padding = magnitude * (32.0 * std::numeric_limits<float>::epsilon());
+        min -= padding;
+        max += padding;
+        if (directions[row] == 0) {
+            if (origins[row] < min || origins[row] > max) return false;
+            continue;
+        }
+        const double a = (min - origins[row]) / directions[row];
+        const double b = (max - origins[row]) / directions[row];
+        enter = (std::max)(enter, (std::min)(a, b));
+        leave = (std::min)(leave, (std::max)(a, b));
+        if (leave < enter) return false;
+    }
+    return true;
+}
+
+} /// @note namespace
+
+bool CollectRayTriangleOffsets(const renderer::Mesh& mesh, bool skinned, const math::Matrix4& world,
+                               const math::Ray& ray, std::vector<size_t>& offsets)
+{
+    offsets.clear();
+    if (world.m[3][0] != 0 || world.m[3][1] != 0 || world.m[3][2] != 0 || world.m[3][3] != 1)
+        return false;
+    for (const auto& row : world.m)
+        for (const float value : row)
+            if (!SafeCoordinate(value)) return false;
+    if (!SafeCoordinate(ray.origin.x) || !SafeCoordinate(ray.origin.y) || !SafeCoordinate(ray.origin.z)
+        || !SafeCoordinate(ray.direction.x) || !SafeCoordinate(ray.direction.y) || !SafeCoordinate(ray.direction.z))
+        return false;
+    const auto* tree = PickTreeFor(mesh, skinned);
+    if (!tree) return false;
+    if (tree->nodes.empty()) return true;
+    const auto visit = [&](auto&& self, int index) -> void {
+        const auto& node = tree->nodes[index];
+        if (!RayMayHitBounds(node.aabb, world, ray)) return;
+        if (node.IsLeaf()) {
+            for (const uint32_t triangle : node.triIndices)
+                offsets.push_back(static_cast<size_t>(tree->triangles[triangle].index) * 3);
+        } else {
+            self(self, node.left);
+            self(self, node.right);
+        }
+    };
+    visit(visit, 0);
+    /// @note 親子間の僅差判定と同距離の最初の面を、従来の添字順で解決する。
+    std::sort(offsets.begin(), offsets.end());
+    return true;
+}
 
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor)
 {
@@ -139,13 +272,18 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         return ray.IntersectSphere(c, r, t);
     };
 
-    auto testMesh = [&](const auto& verts,
-                        const auto& indices,
+    std::vector<size_t> triangleOffsets;
+    auto testMesh = [&](const renderer::Mesh& mesh,
+                        const auto& verts, bool skinned,
                         const math::Matrix4& world,
                         scene::EntityID id) {
+        const auto& indices = mesh.cpuIndices;
         if (verts.empty() || indices.size() < 3) return;
 
-        for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+        const bool indexed = CollectRayTriangleOffsets(mesh, skinned, world, ray, triangleOffsets);
+        const size_t count = indexed ? triangleOffsets.size() : indices.size() / 3;
+        for (size_t item = 0; item < count; ++item) {
+            const size_t i = indexed ? triangleOffsets[item] : item * 3;
             const uint32_t i0 = indices[i + 0];
             const uint32_t i1 = indices[i + 1];
             const uint32_t i2 = indices[i + 2];
@@ -186,7 +324,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
 
     /// @note 三角形総当たりは大規模シーンでクリックごとにヒッチする。球で外れたメッシュの頂点走査を丸ごと省く。
     auto testMeshWithBounds = [&](const renderer::Mesh& mesh,
-                                  const auto& verts,
+                                  const auto& verts, bool skinned,
                                   const math::Matrix4& world,
                                   const scene::Transform& tf,
                                   scene::EntityID id,
@@ -198,7 +336,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
             const float radiusWorld = mesh.boundsRadius * (std::max)(maxScale, 0.0001f) * radiusInflate;
             if (!sphereHit(centerWorld, radiusWorld)) return;
         }
-        testMesh(verts, mesh.cpuIndices, world, id);
+        testMesh(mesh, verts, skinned, world, id);
     };
 
     auto considerNearMiss = [&](const math::Vector3& centerLocal, float radiusLocal,
@@ -268,10 +406,11 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
         const scene::EntityID goId = go.GetID();
         const bool hasIcon = std::binary_search(iconOwners.begin(), iconOwners.end(),
             (static_cast<uint64_t>(goId.index) << 32) | goId.generation);
-        const math::Matrix4 world = go.transform.GetWorldMatrix();
+        const math::Matrix4 world = (mr && mr->mesh) || (smr && smr->model)
+            ? go.transform.GetWorldMatrix() : math::Matrix4{};
 
         if (mr && mr->mesh) {
-            testMeshWithBounds(*mr->mesh, mr->mesh->cpuVertices, world, go.transform, go.GetID(), 1.0f);
+            testMeshWithBounds(*mr->mesh, mr->mesh->cpuVertices, false, world, go.transform, goId, 1.0f);
             considerNearMiss(mr->mesh->boundsCenter, mr->mesh->boundsRadius, world, go.transform, go.GetID());
         }
 
@@ -283,7 +422,7 @@ scene::EntityID RaycastEntityAtMouse(EditorContext& ctx, const ImVec2& viewportM
                 const renderer::Mesh* meshPtr = smr->SubmeshMesh(mi);
                 if (!meshPtr) continue;
                 if (mat && !mat->SlotAt(mi).visible) continue;
-                testMeshWithBounds(*meshPtr, meshPtr->cpuSkinnedVertices, world, go.transform, go.GetID(), 2.0f);
+                testMeshWithBounds(*meshPtr, meshPtr->cpuSkinnedVertices, true, world, go.transform, goId, 2.0f);
                 considerNearMiss(meshPtr->boundsCenter, meshPtr->boundsRadius, world, go.transform, go.GetID());
             }
         }

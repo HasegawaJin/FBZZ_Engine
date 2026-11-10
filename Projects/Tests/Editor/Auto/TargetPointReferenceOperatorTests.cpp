@@ -168,17 +168,17 @@ TEST_F(TargetPointReferenceOperatorTest, MissingGuidClearAndUndoPreserveTheUnres
 TEST_F(TargetPointReferenceOperatorTest, PersistentBindingRejectsRuntimeGeneratedTargetAndOwnerWithoutChanges)
 {
     auto& owner = World().CreateGameObject("Beam"); auto& beam = owner.AddComponent<scene::VFXBeamComponent>();
-    auto& runtimePoint = World().CreateGameObject("Runtime point"); runtimePoint.runtimeGenerated = true;
+    auto& runtimePoint = World().CreateGameObject("Runtime point"); runtimePoint.SetRuntimeGenerated(true);
     runtimePoint.AddComponent<scene::TargetPointComponent>();
     auto args = Args(owner, "vfx_beam", "from"); args.Set("target", runtimePoint.instanceId);
     EXPECT_FALSE(Invoke("target_point.bind_reference", args).ok);
     EXPECT_TRUE(beam.fromEntity.guid.empty()); EXPECT_EQ(m_undo.GetHistorySize(), 0u);
-    owner.runtimeGenerated = true;
+    owner.SetRuntimeGenerated(true);
     const auto count = World().GameObjectCount();
     EXPECT_FALSE(Invoke("target_point.create_and_bind", Args(owner, "vfx_beam", "from")).ok);
     EXPECT_EQ(World().GameObjectCount(), count); EXPECT_EQ(m_undo.GetHistorySize(), 0u);
-    owner.runtimeGenerated = false;
-    auto& parent = World().CreateGameObject("Runtime hierarchy"); parent.runtimeGenerated = true; owner.SetParent(parent);
+    owner.SetRuntimeGenerated(false);
+    auto& parent = World().CreateGameObject("Runtime hierarchy"); parent.SetRuntimeGenerated(true); owner.SetParent(parent);
     const auto parentedCount = World().GameObjectCount();
     EXPECT_FALSE(Invoke("target_point.create_and_bind", Args(owner, "vfx_beam", "from")).ok);
     EXPECT_EQ(World().GameObjectCount(), parentedCount); EXPECT_EQ(m_undo.GetHistorySize(), 0u);

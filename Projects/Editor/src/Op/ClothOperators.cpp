@@ -275,7 +275,7 @@ void RegisterClothOperators(OperatorRegistry& registry)
     motion.exec = [](OpContext& c, const OpArgs& args) {
         auto* object = args.GetString("node").empty() ? c.ctx.GetSelectedGO() : c.ctx.activeScene->FindByGuid(args.GetString("node"));
         auto* cloth = object ? object->GetComponent<scene::ClothComponent>() : nullptr;
-        if (!cloth || object->runtimeGenerated || c.ctx.IsLocked(object->GetID()))
+        if (!cloth || object->IsRuntimeGenerated() || c.ctx.IsLocked(object->GetID()))
             return OpResult::Err("NO_CLOTH", "編集できる布を選択してください。");
         const auto before = cloth->settings;
         auto after = before;

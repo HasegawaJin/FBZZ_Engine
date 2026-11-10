@@ -224,7 +224,7 @@ scene::GameObject* FindPartition(EditorContext& ctx, const OpArgs& args, std::st
     scene::GameObject* found = nullptr;
     for (const auto id : ctx.activeScene->GetEntities<scene::WorldPartitionComponent>()) {
         auto* node = ctx.activeScene->GetGameObject(id);
-        if (!node || node->runtimeGenerated) continue;
+        if (!node || node->IsRuntimeGenerated()) continue;
         if (found) { error = "Specify partition when multiple controllers exist"; return nullptr; }
         found = node;
     }
@@ -367,7 +367,7 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
         if (const auto* object = value.as_table()) records.emplace((*object)["instanceId"].value_or(std::string{}),*object);
     std::vector<Source> sources; size_t pinned = 0, total = 0;
     for (auto& node : ctx.activeScene->GameObjects()) {
-        if (node.runtimeGenerated || !node.activeInHierarchy() || node.GetID() == manager->GetID()) continue;
+        if (node.IsRuntimeGenerated() || !node.activeInHierarchy() || node.GetID() == manager->GetID()) continue;
         const auto* generated = node.GetComponent<scene::WorldPcgGeneratedComponent>();
         const auto* terrain = node.GetComponent<scene::TerrainComponent>();
         if (!generated && !includeScene && !(includeTerrain && terrain)) continue;

@@ -341,6 +341,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
             }
             /// @note ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
             mesh->ComputeBoundsExtents();
+            mesh->PublishCpuGeometry();
             if (resources)
                 mesh->indexBuffer = resources->CreateIndexBuffer(
                     mesh->cpuIndices.data(), smHdr.indexCount);
@@ -386,7 +387,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
     }
 
     /// @note ノード階層 (v4)。読めなくても配置側が「全 submesh を 1 GameObject」へ
-    ///       フォールバックできるため、失敗は警告に留めてモデル自体は返す。
+    /// @note フォールバックできるため、失敗は警告に留めてモデル自体は返す。
     if ((hdr.flags & FZMODEL_FLAG_NODES) != 0u) {
         model->nodeTransformsBaked =
             (hdr.flags & FZMODEL_FLAG_NODE_TRANSFORMS_BAKED) != 0u;

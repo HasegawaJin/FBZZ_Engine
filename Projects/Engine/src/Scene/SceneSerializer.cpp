@@ -1507,7 +1507,7 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
     if (!subtree) {
         sceneObjects.reserve(scene.GameObjectCount());
         for (auto& object : scene.GameObjects())
-            if (!object.runtimeGenerated) sceneObjects.push_back(object.GetID());
+            if (!object.IsRuntimeGenerated()) sceneObjects.push_back(object.GetID());
     }
     const auto& objects = subtree ? *subtree : sceneObjects;
     struct ScriptSnapshot {
@@ -1553,7 +1553,7 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
     }
     const auto resolveEntry = [&](const ScriptSnapshot& snapshot) -> ScriptEntry* {
         GameObject* owner = scene.GetGameObject(snapshot.owner);
-        if (!owner || owner->runtimeGenerated || owner->instanceId != snapshot.ownerGuid) return nullptr;
+        if (!owner || owner->IsRuntimeGenerated() || owner->instanceId != snapshot.ownerGuid) return nullptr;
         auto* scripts = owner->GetComponent<ScriptComponent>();
         if (!scripts) return nullptr;
         for (auto& entry : scripts->scripts)
@@ -1582,11 +1582,11 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
         if (subtree) {
             for (EntityID id : objects) {
                 auto* go = scene.GetGameObject(id);
-                if (!go || go->runtimeGenerated || !verifyObject(*go)) return false;
+                if (!go || go->IsRuntimeGenerated() || !verifyObject(*go)) return false;
             }
         } else {
             for (auto& go : scene.GameObjects())
-                if (!go.runtimeGenerated && !verifyObject(go)) return false;
+                if (!go.IsRuntimeGenerated() && !verifyObject(go)) return false;
         }
         return objectCount == objectIdentities.size() && scriptCount == scriptSnapshots.size();
     };
@@ -2626,7 +2626,7 @@ std::string SceneSerializer::CapturePassiveSubtree(Scene& scene, EntityID root)
         pending.pop_back();
         auto* object = scene.GetGameObject(id);
         if (!object) continue;
-        if (!object->runtimeGenerated) objects.push_back(id);
+        if (!object->IsRuntimeGenerated()) objects.push_back(id);
         for (int childIndex = object->GetChildCount() - 1; childIndex >= 0; --childIndex)
             if (auto* child = object->GetChild(childIndex)) pending.push_back(child->GetID());
     }

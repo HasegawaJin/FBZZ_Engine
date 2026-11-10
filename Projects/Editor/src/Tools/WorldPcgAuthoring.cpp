@@ -208,7 +208,7 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
         partitionOwner=scene.FindByGuid(args.GetString("partition"));
         if(!partitionOwner||!partitionOwner->GetComponent<scene::WorldPartitionComponent>())return OpResult::Err("NO_PARTITION","Configured partition owner is missing");
     }else for(auto id:scene.GetEntities<scene::WorldPartitionComponent>()){
-        auto* owner=scene.GetGameObject(id);if(!owner||owner->runtimeGenerated)continue;
+        auto* owner=scene.GetGameObject(id);if(!owner||owner->IsRuntimeGenerated())continue;
         if(partitionOwner)return OpResult::Err("AMBIGUOUS_PARTITION","Choose a partition explicitly when multiple configured controllers exist");partitionOwner=owner;
     }
     if(partitionOwner){const auto* partition=partitionOwner->GetComponent<scene::WorldPartitionComponent>();plan.profile.grid.origin=partition->gridOrigin;plan.profile.grid.cellSize=partition->cellSize;}
@@ -241,7 +241,7 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
     std::vector<math::Vector3> protectedPositions;
     for(auto id:scene.GetEntities<scene::InstancedMeshComponent>()){
         auto* owner=scene.GetGameObject(id);const auto* component=scene.GetComponent<scene::InstancedMeshComponent>(id);
-        if(!owner||owner->runtimeGenerated||!component)continue;const auto* metadata=owner->GetComponent<scene::WorldPcgGeneratedComponent>();
+        if(!owner||owner->IsRuntimeGenerated()||!component)continue;const auto* metadata=owner->GetComponent<scene::WorldPcgGeneratedComponent>();
         if(metadata&&metadata->volumeId==plan.volume->instanceId){
             auto* source=PlacementAsset(component->m_instanceSetRef.path);if(!source)return OpResult::Err("MISSING_OUTPUT","Generated placement asset is missing; detach this owner before replacing it");
             Owned owned;owned.owner=owner;owned.metadata=*metadata;owned.component=*component;owned.asset=std::make_shared<asset::MeshInstancesAsset>(*source);
@@ -259,7 +259,7 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
         const auto matrix=world.GetWorldMatrix();for(const auto& p:snapshot->placements)if(p.active){const auto v=matrix*math::Vector4{p.position,1};protectedPositions.push_back({v.x,v.y,v.z});}
     }
     if(volume->protectManual)for(auto id:scene.GetEntities<scene::MeshRenderer>()){
-        auto* owner=scene.GetGameObject(id);if(!owner||owner->runtimeGenerated||!owner->activeInHierarchy()||owner->GetComponent<scene::WorldPcgGeneratedComponent>())continue;
+        auto* owner=scene.GetGameObject(id);if(!owner||owner->IsRuntimeGenerated()||!owner->activeInHierarchy()||owner->GetComponent<scene::WorldPcgGeneratedComponent>())continue;
         scene::Transform world;if(ReadWorld(*owner,world))protectedPositions.push_back(world.worldPosition);}
     for(const auto& point:protectedPositions)AddVector(guard,point);
     float waterMargin=0;for(const auto& rule:plan.profile.rules){waterMargin=std::max(waterMargin,rule.minWaterDistance);if(rule.maxWaterDistance<1000000)waterMargin=std::max(waterMargin,rule.maxWaterDistance);}
@@ -543,7 +543,7 @@ template<typename Ignored> std::string SnapshotMetadata(scene::Scene& scene,scen
     const auto text=[&](std::string_view value){out<<value.size()<<':'<<value<<';';};
     text(node.instanceId);text(node.name);text(node.tag);text(node.prefabAssetPath);text(node.prefabSourceId);
     text(node.prefabSourceSnapshot);text(node.GetParent()?node.GetParent()->instanceId:std::string{});
-    out<<node.layer<<';'<<node.activeSelf()<<';'<<node.runtimeGenerated<<';';
+    out<<node.layer<<';'<<node.activeSelf()<<';'<<node.IsRuntimeGenerated()<<';';
     const auto vec=[&](const math::Vector3& v){out<<v.x<<','<<v.y<<','<<v.z<<';';};
     vec(node.transform.position);vec(node.transform.scale);
     const auto q=node.transform.rotation;out<<q.x<<','<<q.y<<','<<q.z<<','<<q.w<<';';

@@ -176,7 +176,7 @@ WaterInteractionRuntime* Runtime(Scene& scene, EntityID owner, WaterComponent& w
 bool OwnedEmitter(Scene& scene, const WaterInteractionEmitterState& state)
 {
     const GameObject* object = scene.GetGameObject(state.id);
-    return object && object->runtimeGenerated && !object->GetParent()
+    return object && object->IsRuntimeGenerated() && !object->GetParent()
         && object->GetChildCount() == 0 && !scene.GetComponent<ScriptComponent>(state.id)
         && scene.GetComponentLifetime<ParticleEmitter>(state.id) == state.lifetime;
 }
@@ -200,7 +200,7 @@ ParticleEmitter* EnsureEmitter(Scene& scene, EntityID owner, size_t index)
     GameObject* created = scene.TryCreateGameObject(index == 0 ? "__WaterBubbles" : "__WaterSediment");
     if (!created) return nullptr;
     const EntityID id = created->GetID();
-    created->runtimeGenerated = true;
+    created->SetRuntimeGenerated(true);
     created->AddComponent<ParticleEmitter>();
     water = scene.GetComponent<WaterComponent>(owner);
     if (!water) { scene.DestroyGameObject(id); return nullptr; }

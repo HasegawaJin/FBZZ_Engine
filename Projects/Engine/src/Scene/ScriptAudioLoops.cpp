@@ -46,7 +46,7 @@ bool ScriptAudioProxy::UpdateLoop(AudioLoop& loop, std::string_view clipPath, fl
         auto* created = script->m_scene->TryCreateGameObject("SFX_Loop_" + settings.label);
         if (!created) return false;
         auto& object = *created;
-        object.runtimeGenerated = true;
+        object.SetRuntimeGenerated(true);
         object.SetParent(*script->m_gameObject);
         object.transform.position = math::Vector3::ZERO;
         source = &object.AddComponent<AudioSourceComponent>();

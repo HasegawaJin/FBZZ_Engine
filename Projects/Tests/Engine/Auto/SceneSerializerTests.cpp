@@ -348,7 +348,7 @@ TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
     /// @note VFX のノード実体や Water の飛沫。保存すると、開くたびにゾンビ GO が増える。
     scene::Scene source;
     source.CreateGameObject("Authored");
-    source.CreateGameObject("Spawned").runtimeGenerated = true;
+    source.CreateGameObject("Spawned").SetRuntimeGenerated(true);
 
     const std::unique_ptr<scene::Scene> restored = RoundTrip(source);
 

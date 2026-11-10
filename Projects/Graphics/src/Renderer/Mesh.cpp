@@ -7,6 +7,7 @@
 #include <limits>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <map>
 
 namespace fbzz::renderer {
@@ -73,6 +74,7 @@ float ComputeInteriorRadius(const Mesh& mesh)
 
 void Mesh::ComputeBounds()
 {
+    m_cpuGeometryRevision = 0;
     /// @note CPU 頂点配列 (スキンドメッシュ優先) から AABB と、中心からの最大距離 (球半径) を求める。
     /// @note Frustum は外接球を使い、遮蔽物の登録には別途証明した内接球だけを使う。
     occlusionRadius = 0;
@@ -133,6 +135,7 @@ void Mesh::ComputeBounds()
 
 void Mesh::ComputeBoundsExtents()
 {
+    m_cpuGeometryRevision = 0;
     occlusionRadius = 0;
     const bool hasSkinned = !cpuSkinnedVertices.empty();
     const bool hasStatic  = !cpuVertices.empty();
@@ -163,6 +166,12 @@ void Mesh::ComputeBoundsExtents()
 
     boundsExtents = (vmax - vmin) * 0.5f;
     occlusionRadius = ComputeInteriorRadius(*this);
+}
+
+void Mesh::PublishCpuGeometry()
+{
+    static std::atomic<uint64_t> nextRevision{1};
+    m_cpuGeometryRevision = nextRevision.fetch_add(1, std::memory_order_relaxed);
 }
 
 } /// @note namespace fbzz::renderer

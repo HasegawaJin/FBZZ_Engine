@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-28
 ///
-/// aiProcess_PreTransformVertices でノード階層を事前にフラット化し、
-/// JoinIdenticalVertices で重複頂点を除去することでドローコールを削減する。
-/// スキンメッシュにこれらを適用するとボーン割り当てが壊れるため、別パスとして分離する。
+/// @note aiProcess_PreTransformVertices でノード階層を事前にフラット化し、
+/// @note JoinIdenticalVertices で重複頂点を除去することでドローコールを削減する。
+/// @note スキンメッシュにこれらを適用するとボーン割り当てが壊れるため、別パスとして分離する。
 #include "ModelImporterInternal.hpp"
 
 namespace fbzz::asset {
@@ -34,18 +34,19 @@ std::unique_ptr<Model> ImportStaticModel(const aiScene* scene,
         mesh->cpuVertices = vertices;
         mesh->cpuIndices  = indices;
         mesh->ComputeBounds();
+        mesh->PublishCpuGeometry();
 
         model->meshes.push_back(std::move(mesh));
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
 
     /// @note aiProcess_PreTransformVertices で階層は既に「ルート 1 個に全メッシュ」へ潰れており、
-    ///       ImportModelNodes を呼んでも同じ結果になる。配置側 (SpawnModelAssetHierarchy) に
-    ///       「nodes が空なら別処理」という分岐を持たせないため、そのまま 1 ノードとして表現する。
+    /// @note ImportModelNodes を呼んでも同じ結果になる。配置側 (SpawnModelAssetHierarchy) に
+    /// @note 「nodes が空なら別処理」という分岐を持たせないため、そのまま 1 ノードとして表現する。
     /// @note DCC の階層を残したい場合は STATIC_ASSIMP_FLAGS から PreTransformVertices を外し、
-    ///       ImportModelNodes に差し替える (頂点にベイクされた変換はノードの TRS へ移る)。
+    /// @note ImportModelNodes に差し替える (頂点にベイクされた変換はノードの TRS へ移る)。
     BuildFlatModelNode(*model, {});
     return model;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

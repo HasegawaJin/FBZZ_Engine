@@ -803,7 +803,7 @@ EntityRef ScriptDecalProxy::Spawn(const math::Vector3& point,
 
     GameObject* created = scene.TryCreateGameObject("Decal");
     if (!created) return EntityRef{};
-    created->runtimeGenerated = true;
+    created->SetRuntimeGenerated(true);
     const EntityID id = created->GetID();
     scene.AddComponent<DecalComponent>(id, DecalComponent{});
 

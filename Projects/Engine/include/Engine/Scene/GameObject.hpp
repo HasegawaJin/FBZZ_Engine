@@ -41,7 +41,8 @@ public:
 
     /// @brief システムが実行時に作った GO か (VFX Graph のノード実体・Water splash 等)。生成側が必ず立てる。
     /// @note 名前 "__" 接頭辞での判別をやめ意図を型で持たせた。SceneSerializer が保存対象から除外し、Hierarchy も既定で隠す。
-    bool runtimeGenerated = false;
+    [[nodiscard]] bool IsRuntimeGenerated() const { return m_runtimeGenerated; }
+    FBZZ_ENGINE_API void SetRuntimeGenerated(bool generated);
 
     /// @note  Unity: gameObject.transform (常に存在。ComponentArray には入れない)
     Transform transform;
@@ -107,6 +108,7 @@ private:
     /// @note managed の Component 削除要求は借用中の物理形状を壊さず Cleanup で確定する。
     std::bitset<static_cast<std::size_t>(ManagedNativeComponentKind::COUNT)> m_pendingManagedComponentRemovals;
 
+    bool m_runtimeGenerated = false;
     friend class Scene;
     friend class managed_detail::ManagedObjectControls;
 };

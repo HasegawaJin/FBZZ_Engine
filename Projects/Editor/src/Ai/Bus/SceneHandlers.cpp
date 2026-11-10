@@ -223,7 +223,7 @@ JsonValue BuildSceneSnapshot(scene::Scene& activeScene)
     int generatedCount = 0;
     for (GameObject& go : activeScene.GameObjects()) {
         /// @note ランタイム生成物は保存されず再生状態で差分が出るため snapshot 対象外。
-        if (go.runtimeGenerated) { ++generatedCount; continue; }
+        if (go.IsRuntimeGenerated()) { ++generatedCount; continue; }
         JsonValue node = JsonValue::MakeObject();
         node.Set("id", JsonValue(go.instanceId));
         node.Set("name", JsonValue(go.name));
@@ -1730,14 +1730,14 @@ Outcome DoSceneTreeQuery(editor::EditorContext& ctx, const JsonValue& payload)
                 node.Set("activeInHierarchy", JsonValue(go->activeInHierarchy()));
                 node.Set("layer", JsonValue(go->layer));
                 /// @note 生成物を含める指定のときだけ印を付ける。既定応答では常に false になるため出さず冗長さを避ける。
-                if (includeGenerated && go->runtimeGenerated)
+                if (includeGenerated && go->IsRuntimeGenerated())
                     node.Set("runtimeGenerated", JsonValue(true));
                 JsonValue children = JsonValue::MakeArray();
                 int hiddenGenerated = 0;
                 for (int i = 0; i < go->GetChildCount(); ++i) {
                     GameObject* child = go->GetChild(i);
                     if (child == nullptr) continue;
-                    if (!includeGenerated && child->runtimeGenerated) {
+                    if (!includeGenerated && child->IsRuntimeGenerated()) {
                         ++hiddenGenerated;
                         continue;
                     }
@@ -1753,7 +1753,7 @@ Outcome DoSceneTreeQuery(editor::EditorContext& ctx, const JsonValue& payload)
         JsonValue roots = JsonValue::MakeArray();
         for (GameObject* go : activeScene->GetRootGameObjects()) {
             if (go == nullptr) continue;
-            if (!includeGenerated && go->runtimeGenerated) continue;
+            if (!includeGenerated && go->IsRuntimeGenerated()) continue;
             roots.Push(Builder::Node(go, includeGenerated));
         }
         JsonValue result = JsonValue::MakeObject();

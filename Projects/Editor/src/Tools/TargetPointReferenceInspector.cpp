@@ -104,7 +104,7 @@ bool DrawSlot(EditorContext& ctx, InspectorState& state, const char* label, cons
     bool handled = false;
     if (ImGui::BeginCombo(label, current)) {
         for (auto& point : ctx.activeScene->GameObjects()) {
-            if (point.runtimeGenerated || (markerOnly && !point.GetComponent<scene::TargetPointComponent>())) continue;
+            if (point.IsRuntimeGenerated() || (markerOnly && !point.GetComponent<scene::TargetPointComponent>())) continue;
             IdScope pointId(point.instanceId.c_str());
             if (ImGui::Selectable(point.name.c_str(), point.instanceId == guid)) {
                 auto args = ownerArgs; args.Set("target", point.instanceId);
@@ -169,7 +169,7 @@ bool DrawAnchor(EditorContext& ctx, InspectorState& state, scene::GameObject& ow
     const char* current = target ? target->name.c_str() : targetGuid.empty() ? "点を選んで接続" : "接続先が見つかりません";
     if (ImGui::BeginCombo("既存のTargetPointへ接続", current)) {
         for (auto& point : ctx.activeScene->GameObjects()) {
-            if (point.runtimeGenerated || !point.GetComponent<scene::TargetPointComponent>()) continue;
+            if (point.IsRuntimeGenerated() || !point.GetComponent<scene::TargetPointComponent>()) continue;
             IdScope pointId(point.instanceId.c_str());
             if (ImGui::Selectable(point.name.c_str())) {
                 args.Set("target", point.instanceId);

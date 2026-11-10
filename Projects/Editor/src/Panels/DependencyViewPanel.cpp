@@ -9,16 +9,19 @@
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
+#include <chrono>
+#include <filesystem>
 #include <string_view>
 
 namespace fbzz::editor {
 
 namespace {
 
-/// 参照を書き込みうるファイル種別。ここに無い拡張子は中身を読まない。
+/// @note 参照を書き込みうるファイル種別。ここに無い拡張子は中身を読まない。
 constexpr std::string_view kReferrerExts[] = {
     ".scene", ".prefab", ".mat", ".animcontroller", ".animctrl",
     ".vfx", ".sequence", ".behaviortree", ".terrain", ".fzdata", ".ibl",
@@ -31,7 +34,7 @@ bool IsReferrerExt(std::string_view ext)
     return false;
 }
 
-/// 絶対パスを "Assets/..." 形式へ落とす。プロジェクト外なら空文字列。
+/// @note 絶対パスを "Assets/..." 形式へ落とす。プロジェクト外なら空文字列。
 std::string ToProjectRelative(const std::string& absPath)
 {
     const std::string root = util::StringUtils::ToLower(asset::AssetDatabase::ProjectRoot());
@@ -42,72 +45,80 @@ std::string ToProjectRelative(const std::string& absPath)
     return lower.substr(root.size());
 }
 
-} // namespace
+} /// @note namespace
 
-/// @note 探索キーは guid: ファイル名/ステムの部分一致は誤検出・取りこぼしがあるため、
-///       AssetDatabase の guid ⇄ パス索引を直接引く。guid 化前の生パス参照はステムでなく
-///       プロジェクト相対パス丸ごとの一致で拾う。
-void DependencyViewPanel::Scan(const std::string& assetPath, const std::string& rootPath)
+DependencyViewPanel::~DependencyViewPanel()
 {
+    if (m_cancel) m_cancel->store(true, std::memory_order_relaxed);
+}
+
+void DependencyViewPanel::RequestScan(const std::string& assetPath, const std::string& rootPath)
+{
+    if (m_cancel) m_cancel->store(true, std::memory_order_relaxed);
     m_scannedPath = assetPath;
+    m_rootPath = rootPath;
     m_scannedGuid.clear();
     m_results.clear();
-    m_scanning = false;
-    if (assetPath.empty() || rootPath.empty()) return;
+    m_pending = !assetPath.empty() && !rootPath.empty();
+}
+
+void DependencyViewPanel::UpdateScan()
+{
+    if (m_scan.valid()) {
+        if (m_scan.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+        auto hits = m_scan.get();
+        if (!m_cancel->load(std::memory_order_relaxed)) m_results = std::move(hits);
+        m_cancel.reset();
+    }
+    if (!m_pending) return;
+    m_pending = false;
 
     /// @note baked サブアセット (.anim/.mat) は論理パスで選ばれるが実体は Library/Baked にあり、
-    ///       guid もそちらに索引される。生パスのまま引くと空振りするため解決を挟む。
-    const std::string resolved = asset::AssetManager::ResolveAssetPath(assetPath);
-    const std::string target   = resolved.empty() ? assetPath : resolved;
+    /// @note guid もそちらに索引される。AssetDatabase へのアクセスは UI スレッドで完結する。
+    const std::string resolved = asset::AssetManager::ResolveAssetPath(m_scannedPath);
+    const std::string target   = resolved.empty() ? m_scannedPath : resolved;
 
     /// @note 参照系なので .meta を新規発行しない。未 Import の FBX には guid が無く、
-    ///       その場合はパス一致だけで探す。
+    /// @note その場合はパス一致だけで探す。
     m_scannedGuid = util::StringUtils::ToLower(
         asset::AssetDatabase::TryGetGuidFromPath(target));
     const std::string relative = ToProjectRelative(target);
     if (m_scannedGuid.empty() && relative.empty()) return;
 
+    m_cancel = std::make_shared<std::atomic_bool>(false);
     const std::string selfKey = util::StringUtils::ToLower(
-        util::FileSystem::NormalizePathSeparators(assetPath));
-
-    for (const auto& p : util::FileSystem::ListFilesRecursive(
-             util::FileSystem::PathFromUtf8(rootPath))) {
-        const std::string scanPath = util::FileSystem::NormalizePathSeparators(
-            util::FileSystem::PathToUtf8(p));
-        const std::string ext = util::StringUtils::ToLower(
-            util::FileSystem::GetExtension(scanPath));
-        if (!IsReferrerExt(ext)) continue;
-        /// @note 自分自身は参照元に数えない (.mat が自分の guid をヒントに持つ等)。
-        if (util::StringUtils::ToLower(scanPath) == selfKey) continue;
-
-        std::string content;
-        if (!util::FileSystem::ReadText(scanPath, content)) continue;
-        const std::string lower = util::StringUtils::ToLower(content);
-
-        /// @note guid が最優先。32 桁 hex はファイル内で他の意味を持たないので誤検出しない。
-        if (!m_scannedGuid.empty() && lower.find(m_scannedGuid) != std::string::npos) {
-            m_results.push_back({ scanPath, true });
-            continue;
+        util::FileSystem::NormalizePathSeparators(m_scannedPath));
+    /// @note パネルを捕捉せず、一度に一件だけ走らせる。選択切替で古い結果は公開しない。
+    m_scan = TaskSystem::Submit([root = m_rootPath, guid = m_scannedGuid, relative, selfKey, cancel = m_cancel] {
+        std::vector<RefHit> results;
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        fs::recursive_directory_iterator it(util::FileSystem::PathFromUtf8(root),
+            fs::directory_options::skip_permission_denied, ec);
+        const fs::recursive_directory_iterator end;
+        for (; !ec && it != end && !cancel->load(std::memory_order_relaxed); it.increment(ec)) {
+            if (!it->is_regular_file(ec)) continue;
+            const std::string path = util::FileSystem::NormalizePathSeparators(util::FileSystem::PathToUtf8(it->path()));
+            const auto extension = util::StringUtils::ToLower(util::FileSystem::GetExtension(path));
+            if (!IsReferrerExt(extension) || util::StringUtils::ToLower(path) == selfKey) continue;
+            std::string content;
+            if (!util::FileSystem::ReadText(path, content)) continue;
+            const auto lower = util::StringUtils::ToLower(content);
+            const bool byGuid = !guid.empty() && lower.find(guid) != std::string::npos;
+            if (byGuid || (!relative.empty() && lower.find(relative) != std::string::npos))
+                results.push_back({path, byGuid});
         }
-        /// @note 未エンコードの生パス参照。相対パス丸ごとで照合する
-        ///       (ステム一致は "Player" が別アセット名や UI 文言にも当たるため使わない)。
-        if (!relative.empty() && lower.find(relative) != std::string::npos)
-            m_results.push_back({ scanPath, false });
-    }
+        return results;
+    });
 }
 
 void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
 {
     const std::string& cur = ctx.selectedAssetPath;
-    if (!cur.empty() && cur != m_scannedPath) {
-        m_scannedPath = cur;
-        m_scanning    = true;
-    }
-
     const std::string assetsRoot =
         ctx.projectRoot.empty() ? "Assets" : ctx.projectRoot + "/Assets";
-    if (m_scanning)
-        Scan(cur, assetsRoot);
+    if (cur != m_scannedPath || assetsRoot != m_rootPath) RequestScan(cur, assetsRoot);
+    UpdateScan();
 
     if (m_scannedPath.empty()) {
         widgets::EmptyState(icons::Or(icons::kLink, nullptr),
@@ -121,8 +132,11 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SameLine();
     ImGui::TextDisabled("(%zu ref(s))", m_results.size());
     ImGui::SameLine();
-    if (ImGui::SmallButton("Refresh"))
-        Scan(m_scannedPath, assetsRoot);
+    if (ImGui::SmallButton("Refresh")) RequestScan(cur, assetsRoot);
+    if (m_pending || m_scan.valid()) {
+        ImGui::TextDisabled("Scanning saved references...");
+        return;
+    }
 
     /// @note guid が無いアセットは「移動したら参照が切れる」状態。黙って劣化させず明示する。
     if (m_scannedGuid.empty())
@@ -176,4 +190,4 @@ void DependencyViewPanel::OnRenderContent(EditorContext& ctx)
     ImGui::EndChild();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

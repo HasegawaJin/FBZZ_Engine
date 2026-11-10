@@ -150,7 +150,7 @@ EditorOperator MakeDirectionalShadowMode()
         if (!ctx.activeScene) return nullptr;
         const auto id = args.GetString("node");
         auto* object = id.empty() ? ctx.GetSelectedGO() : ctx.activeScene->FindByGuid(id);
-        if (!object || object->runtimeGenerated || ctx.IsLocked(object->GetID())) return nullptr;
+        if (!object || object->IsRuntimeGenerated() || ctx.IsLocked(object->GetID())) return nullptr;
         const auto* light = object->GetComponent<Light>();
         return light && light->type == Light::Type::Directional ? object : nullptr;
     };

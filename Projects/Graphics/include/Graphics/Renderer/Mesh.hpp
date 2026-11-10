@@ -84,6 +84,13 @@ struct Mesh {
     /// @note       知らないまま「薄い形」と区別がつかない。フォーマットを変えずに補うため、頂点を
     /// @note       読み終えた直後にこれだけを走らせる。
     FBZZ_GRAPHICS_API void ComputeBoundsExtents();
+
+    /// @note CPU の頂点と添字が確定したアセットだけが公開する。編集時は境界を再計算して公開を失効させる。
+    FBZZ_GRAPHICS_API void PublishCpuGeometry();
+    [[nodiscard]] uint64_t CpuGeometryRevision() const { return m_cpuGeometryRevision; }
+
+private:
+    uint64_t m_cpuGeometryRevision = 0;
 };
 
 } /// @note namespace fbzz::renderer

@@ -63,6 +63,32 @@
 
 namespace fbzz::editor {
 
+void HierarchyTraversal::BeginFrame(scene::Scene& scene, bool showGeneratedObjects)
+{
+    visited.clear();
+    const uint64_t generation = scene.GetRenderSceneGeneration();
+    const uint64_t revision = scene.GetHierarchyRevision();
+    if (m_sceneGeneration != generation || m_revision != revision) {
+        m_sceneGeneration = generation;
+        m_revision = revision;
+        roots.clear();
+        recoveredRoots.clear();
+        for (const auto* root : scene.GetRootGameObjects()) {
+            roots.push_back(root->GetID());
+            Visit(root->GetID());
+        }
+        for (const auto& object : scene.GameObjects())
+            if (!object.GetParent() && Visit(object.GetID())) recoveredRoots.push_back(object.GetID());
+        visited.clear();
+        hiddenCounts.clear();
+        visibleChildren.clear();
+    }
+    if (m_showGeneratedObjects != showGeneratedObjects) {
+        m_showGeneratedObjects = showGeneratedObjects;
+        visibleChildren.clear();
+    }
+}
+
 namespace {
 
 struct DeferredHierarchyEdit {
@@ -321,33 +347,29 @@ void QueueAssetDrop(EditorContext& ctx, const std::string& payloadPath,
     };
 }
 
-void MarkDescendantsVisited(scene::GameObject& go, HierarchyTraversal& traversal)
-{
-    for (int i = 0; i < go.GetChildCount(); ++i) {
-        auto* child = go.GetChild(i);
-        if (!child || !traversal.Visit(child->GetID())) continue;
-        MarkDescendantsVisited(*child, traversal);
-    }
-}
-
 /// @note ランタイム生成 GO を Hierarchy から隠すか。ctx.showGeneratedObjects が真なら全部見せる。
 /// @note 隠す判断を 1 箇所に集約する。ツリー・検索リスト・展開矢印が別々の条件を持つと
 /// @note 「矢印は出るが開いても空」のような不整合が必ず起きる。
 bool IsHiddenGenerated(const EditorContext& ctx, const scene::GameObject& go)
 {
-    return go.runtimeGenerated && !ctx.showGeneratedObjects;
+    return go.IsRuntimeGenerated() && !ctx.showGeneratedObjects;
 }
 
-/// @note 実際に描画される子の数。生成物を隠しているときは、それを除いた数を返す。
+/// @note 実際に描画される子がいるか。生成物を隠しているときは、それを除いて判定する。
 /// @note GetChildCount() をそのまま使うと、子が生成物だけのノードで「開けるのに何も出ない」状態になる。
-int VisibleChildCount(const EditorContext& ctx, const scene::GameObject& go)
+bool HasVisibleChild(const EditorContext& ctx, const scene::GameObject& go, HierarchyTraversal& traversal)
 {
-    int count = 0;
+    if (go.GetChildCount() == 0) return false;
+    const auto [entry, inserted] = traversal.visibleChildren.try_emplace(&go, false);
+    if (!inserted) return entry->second;
     for (int i = 0; i < go.GetChildCount(); ++i) {
         auto* child = go.GetChild(i);
-        if (child && !IsHiddenGenerated(ctx, *child)) ++count;
+        if (child && !IsHiddenGenerated(ctx, *child)) {
+            entry->second = true;
+            break;
+        }
     }
-    return count;
+    return entry->second;
 }
 
 /// @note 隠している生成物の総数 (子孫すべて)。行末のバッジに出し、
@@ -411,12 +433,7 @@ void DrawHierarchyNode(EditorContext& ctx,
     scene::EntityID* const pendingExpand = &reveal.pendingExpand;
     const scene::EntityID id = go.GetID();
     if (!visited.Visit(id)) return;
-    /// @note ランタイム生成物は既定で描かない。visited へは入れて、第2ループが
-    /// @note これを「孤立オブジェクト」と誤認して root レベルへ描くのを防ぐ。
-    if (IsHiddenGenerated(ctx, go)) {
-        MarkDescendantsVisited(go, visited);
-        return;
-    }
+    if (IsHiddenGenerated(ctx, go)) return;
     outVisible.push_back(id);
 
     /// @name F2 インラインリネーム: 行をそのまま入力欄に置き換える (Unity 互換)
@@ -446,13 +463,11 @@ void DrawHierarchyNode(EditorContext& ctx,
             }
             rename.id = scene::EntityID{};
         }
-        /// @note リネーム中は子ツリーを描かない (visited へは登録して二重描画を防ぐ)
-        MarkDescendantsVisited(go, visited);
         ImGui::PopID();
         return;
     }
 
-    const bool hasChildren    = VisibleChildCount(ctx, go) > 0;
+    const bool hasChildren    = HasVisibleChild(ctx, go, visited);
     const auto key            = HierarchyTraversal::EntityKey(id);
     const bool selected       = visited.selected.contains(key);
     const bool isRoot         = go.GetParent() == nullptr;
@@ -955,20 +970,14 @@ void DrawHierarchyNode(EditorContext& ctx,
         ImGui::EndPopup();
     }
 
-    if (hasChildren) {
-        if (opened) {
-            for (int i = 0; i < go.GetChildCount(); ++i) {
-                if (auto* child = go.GetChild(i))
-                    DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, pendingCreate, reveal,
-                                      lastClicked, pendingClick, hierarchyDragStarted,
-                                      hierarchyNodeHovered, outVisible, prevVisible, rename, isActive);
-            }
-            ImGui::TreePop();
-        } else {
-            /// @note 閉じていても子孫を visited に入れる。
-            /// @note これをしないと第2ループが子を root レベルで誤描画する。
-            MarkDescendantsVisited(go, visited);
+    if (hasChildren && opened) {
+        for (int i = 0; i < go.GetChildCount(); ++i) {
+            if (auto* child = go.GetChild(i))
+                DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, pendingCreate, reveal,
+                                  lastClicked, pendingClick, hierarchyDragStarted,
+                                  hierarchyNodeHovered, outVisible, prevVisible, rename, isActive);
         }
+        ImGui::TreePop();
     }
 
     ImGui::PopID();
@@ -1090,7 +1099,7 @@ void SceneHierarchyPanel::ConsumeRevealRequest(EditorContext& ctx)
         m_searchFilter[0] = '\0';
 
     /// @note ランタイム生成物は既定で行が出ない。それを選んだのなら表示を開ける。
-    if (go->runtimeGenerated) ctx.showGeneratedObjects = true;
+    if (go->IsRuntimeGenerated()) ctx.showGeneratedObjects = true;
 
     m_revealOpenChain.clear();
     for (auto* parent = go->GetParent(); parent; parent = parent->GetParent())
@@ -1326,15 +1335,16 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note Map Mode は Terrain Grid / Terrain / Water のルートだけをツリーで出す (子を親から切り離して見せない)。
+    visited.BeginFrame(*ctx.activeScene, ctx.showGeneratedObjects);
     if (ctx.mapEditingMode && ctx.mapHierarchyFilter) {
         DeferredHierarchyEdit deferred;
-        visited.BeginFrame(ctx.activeScene->GameObjectCount());
 
-        const auto roots = ctx.activeScene->GetRootGameObjects();
+        const auto& roots = visited.roots;
         const size_t rootCount = roots.size();
         auto& mapVisible = m_nextVisibleOrder;
         mapVisible.clear();
-        for (auto* go : roots) {
+        for (const auto id : roots) {
+            auto* go = ctx.activeScene->GetGameObject(id);
             if (!go) continue;
             if (!go->GetComponent<scene::TerrainGridComponent>()
                 && !go->GetComponent<scene::TerrainComponent>()
@@ -1360,10 +1370,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     /// @note 描画ループ中にシーンを変えると後続の反復でポインタが無効になるので、変更はループ後にまとめて実行する。
     DeferredHierarchyEdit deferred;
-    visited.BeginFrame(ctx.activeScene->GameObjectCount());
     auto& outVisible = m_nextVisibleOrder;
     outVisible.clear();
-    outVisible.reserve(ctx.activeScene->GameObjectCount());
     const ImVec2 hierarchyMin = ImGui::GetWindowPos();
     const ImVec2 hierarchyMax = {
         hierarchyMin.x + ImGui::GetWindowSize().x,
@@ -1371,20 +1379,19 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     };
     const ImGuiID hierarchyDropId = ImGui::GetID("##hierarchy_drop_target");
 
-    /// @note ルートから描く。畳まれていても DrawHierarchyNode が子孫を visited へ入れる。
-    const auto   roots     = ctx.activeScene->GetRootGameObjects();
+    const auto& roots = visited.roots;
     const size_t rootCount = roots.size();
     for (size_t i = 0; i < roots.size(); ++i)
-        if (roots[i]) DrawHierarchyNode(ctx, *roots[i], i, rootCount, visited, deferred, pendingCreate,
+        if (auto* root = ctx.activeScene->GetGameObject(roots[i])) DrawHierarchyNode(ctx, *root, i, rootCount, visited, deferred, pendingCreate,
             HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
             m_lastClickedEntity, m_pendingClickEntity,
             m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
             InlineRenameState{ m_renamingId, m_renameBuffer, sizeof(m_renameBuffer), m_renameFocusPending });
 
-    /// @note 親が無いのに GetRootGameObjects に入らなかった孤立オブジェクトの救済。正常なシーンでは実行されない。
-    for (auto& go : ctx.activeScene->GameObjects()) {
-        if (go.GetParent() == nullptr && !visited.Contains(go.GetID()))
-            DrawHierarchyNode(ctx, go, 0, 0, visited, deferred, pendingCreate,
+    /// @note 失効した親を参照する孤立オブジェクトは、通常のルート順の末尾で救済する。
+    for (const auto id : visited.recoveredRoots) {
+        if (auto* go = ctx.activeScene->GetGameObject(id))
+            DrawHierarchyNode(ctx, *go, 0, 0, visited, deferred, pendingCreate,
                 HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
                 m_lastClickedEntity, m_pendingClickEntity,
                 m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,

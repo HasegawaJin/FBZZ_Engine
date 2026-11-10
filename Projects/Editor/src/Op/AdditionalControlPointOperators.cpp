@@ -480,7 +480,7 @@ bool ValidCreated(scene::Scene& world, const CreatedObject& created,
     if (!PoseMatches(world, created.stamp)) return false;
     auto* object = world.GetGameObject(created.stamp.entity);
     if (!object || object->name != created.name || !object->activeSelf() || !object->prefabAssetPath.empty()
-        || !object->prefabSourceId.empty() || object->runtimeGenerated || object->tag != "Untagged" || object->layer != 0)
+        || !object->prefabSourceId.empty() || object->IsRuntimeGenerated() || object->tag != "Untagged" || object->layer != 0)
         return false;
     bool extraComponent = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {

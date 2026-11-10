@@ -425,7 +425,7 @@ bool ValidCreated(scene::Scene& scene, const NewObject& created)
         || !SameQuaternion(object->transform.rotation, created.stamp.pose.rotation)
         || !SameVector(object->transform.scale, created.stamp.pose.scale)
         || object->name != created.name || !object->activeSelf() || !object->prefabAssetPath.empty()
-        || !object->prefabSourceId.empty() || object->runtimeGenerated || object->tag != "Untagged" || object->layer != 0) return false;
+        || !object->prefabSourceId.empty() || object->IsRuntimeGenerated() || object->tag != "Untagged" || object->layer != 0) return false;
     bool extraComponent = false;
     scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
         if constexpr (!std::is_same_v<T, scene::TargetPointComponent>) extraComponent |= object->GetComponent<T>() != nullptr;
@@ -871,11 +871,11 @@ bool ApplyClothBinding(const std::shared_ptr<ClothBindingPlan>& plan, bool apply
     }
     auto& scene = *ctx.activeScene;
     if (!plan->created.empty()) {
-        if (IsInsidePrefabInstance(owner) || owner->runtimeGenerated || !FiniteChain(owner)) {
+        if (IsInsidePrefabInstance(owner) || owner->IsRuntimeGenerated() || !FiniteChain(owner)) {
             reason = "布の親子構造またはTransformを変更しています"; return false;
         }
         for (auto* ancestor = owner; ancestor; ancestor = ancestor->GetParent()) {
-            if (ancestor->runtimeGenerated || ctx.IsLocked(ancestor->GetID())) {
+            if (ancestor->IsRuntimeGenerated() || ctx.IsLocked(ancestor->GetID())) {
                 reason = "固定先を置く親が生成専用またはロックされています"; return false;
             }
         }
@@ -1018,7 +1018,7 @@ OpResult CreateClothAnchor(OpContext& context, const OpArgs& args)
     auto& ctx = context.ctx;
     auto* owner = ResolveOwner(ctx, args);
     auto* cloth = owner ? owner->GetComponent<scene::ClothComponent>() : nullptr;
-    if (!cloth || owner->runtimeGenerated || !owner->activeInHierarchy() || ctx.IsLocked(owner->GetID()))
+    if (!cloth || owner->IsRuntimeGenerated() || !owner->activeInHierarchy() || ctx.IsLocked(owner->GetID()))
         return OpResult::Err("NO_CLOTH", "編集できる有効なCloth所有者が必要です");
     if (IsInsidePrefabInstance(owner)) return OpResult::Err("PREFAB_STRUCTURE", "Prefab asset編集またはunpack後に固定先を作成してください");
     if (!FiniteChain(owner)) return OpResult::Err("INVALID_TRANSFORM", "Clothの親Transformが不正です");

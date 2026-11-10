@@ -220,7 +220,7 @@ Node ReadNode(GameObject& go) {
 }
 void WriteNode(GameObject& go, const Node& node) {
     go.instanceId = node.guid; go.name = node.name; go.tag = node.tag; go.layer = node.layer; go.SetActive(node.active);
-    go.runtimeGenerated = false;
+    go.SetRuntimeGenerated(false);
     go.transform.position = node.position; go.transform.rotation = node.rotation; go.transform.scale = node.scale;
     if (node.camera) go.AddComponent<CameraComponent>(*node.camera);
     if (node.point) go.AddComponent<TargetPointComponent>(*node.point);
@@ -417,7 +417,7 @@ bool NoIncomingSavedReferences(Scene& scene, const Draft& draft, std::string& re
     if (draft.generated.empty()) return true;
     std::unordered_set<std::string> generated;
     for (const auto& node : draft.generated) generated.insert(node.guid);
-    for (auto& object : scene.GameObjects()) if (!generated.contains(object.instanceId) && object.runtimeGenerated)
+    for (auto& object : scene.GameObjects()) if (!generated.contains(object.instanceId) && object.IsRuntimeGenerated())
         return Fail(reason, "REFERENCE_PROOF_UNAVAILABLE: an outside runtime-generated owner is omitted by passive persistence: " + object.instanceId);
     if (!NoIncomingNativeReferences(scene, draft, reason)) return false;
     std::string diagnostic; const auto text = scene::SceneSerializer::CapturePassiveClone(scene, diagnostic);
@@ -503,7 +503,7 @@ std::shared_ptr<PlayChangesAdoptionState> PlayChangesAdoptionState::Begin(scene:
     auto impl = std::make_shared<Impl>(); impl->editLifetime = edit.GetRenderSceneGeneration(); impl->playLifetime = play.GetRenderSceneGeneration();
     std::unordered_set<std::string> ids;
     for (auto& object : edit.GameObjects()) {
-        if (object.runtimeGenerated) continue;
+        if (object.IsRuntimeGenerated()) continue;
         auto* clone = play.FindByGuid(object.instanceId);
         if (object.instanceId.empty() || !ids.insert(object.instanceId).second || !clone) {
             diagnostic = "ADOPTION_BASELINE: missing or duplicate persistent Edit identity."; return nullptr;
@@ -647,7 +647,7 @@ bool PlayChangesAdoptionState::Impl::Validate(EditorContext& context, play_chang
         for (size_t index = 0; index < draft.generated.size(); ++index) {
             const auto& node = draft.generated[index]; auto* object = scene.GetGameObject(draft.created[index]);
             if (!object || object->instanceId != node.guid || ComponentBirths(scene, object->GetID()) != draft.createdBirths[index]
-                || ParentGuid(*object) != node.parent || object->runtimeGenerated || !SupportedGenerated(*object, reason))
+                || ParentGuid(*object) != node.parent || object->IsRuntimeGenerated() || !SupportedGenerated(*object, reason))
                 return Fail(reason, "STALE_GENERATED: adopted owner/component/parent was removed or changed: " + node.guid);
             for (int child = 0; child < object->GetChildCount(); ++child) if (!generatedIds.contains(object->GetChild(child)->instanceId))
                 return Fail(reason, "NEW_CHILD_CONFLICT: Undo would remove a child outside this adoption.");

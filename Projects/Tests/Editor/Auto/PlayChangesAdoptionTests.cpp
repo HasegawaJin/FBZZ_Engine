@@ -81,7 +81,7 @@ TEST_F(PlayChangesAdoptionTests, SelectedNativeFieldsPreserveOriginalObjectsAndU
 TEST_F(PlayChangesAdoptionTests, GeneratedForestPreservesParentsReferencesAndPersistenceAcrossUndoRedo) {
     auto& anchor = AttachedScene()->CreateGameObject("Anchor"); const auto anchorGuid = anchor.instanceId;
     Start(); auto& runtime = *m_play.PlayScene();
-    auto& root = runtime.CreateGameObject("GeneratedRoot"); root.runtimeGenerated = true;
+    auto& root = runtime.CreateGameObject("GeneratedRoot"); root.SetRuntimeGenerated(true);
     auto& child = runtime.CreateGameObject("GeneratedTarget"); child.AddComponent<scene::TargetPointComponent>();
     auto& sibling = runtime.CreateGameObject("GeneratedSibling");
     ASSERT_TRUE(root.SetParent(runtime.FindByGuid(anchorGuid))); ASSERT_TRUE(child.SetParent(&root));
@@ -93,7 +93,7 @@ TEST_F(PlayChangesAdoptionTests, GeneratedForestPreservesParentsReferencesAndPer
     Stop(); EXPECT_EQ(AttachedScene()->FindByGuid(rootGuid), nullptr);
     ASSERT_TRUE(Invoke("prepare", draft).ok); ASSERT_TRUE(Invoke("apply", draft).ok);
     auto* adopted = AttachedScene()->FindByGuid(rootGuid); auto* target = AttachedScene()->FindByGuid(childGuid);
-    ASSERT_NE(adopted, nullptr); ASSERT_NE(target, nullptr); EXPECT_FALSE(adopted->runtimeGenerated);
+    ASSERT_NE(adopted, nullptr); ASSERT_NE(target, nullptr); EXPECT_FALSE(adopted->IsRuntimeGenerated());
     EXPECT_EQ(adopted->GetParent(), &anchor); EXPECT_EQ(target->GetParent(), adopted);
     EXPECT_EQ(adopted->GetChild(0), target); EXPECT_EQ(adopted->GetChild(1)->name, "GeneratedSibling");
     EXPECT_FLOAT_EQ(adopted->transform.position.x, 2.0f); EXPECT_FLOAT_EQ(target->transform.position.y, 3.0f);
@@ -243,11 +243,11 @@ TEST_F(PlayChangesAdoptionTests, GeneratedUndoFailsClosedWhenPassiveReferencePro
     AttachedScene()->CreateGameObject("Initial"); Start(); auto& generated = m_play.PlayScene()->CreateGameObject("Generated"); const auto guid = generated.instanceId;
     const auto captured = Capture(Generated(guid)); ASSERT_TRUE(captured.ok); const auto draft = Id(captured); Stop();
     ASSERT_TRUE(Invoke("prepare", draft).ok); ASSERT_TRUE(Invoke("apply", draft).ok);
-    auto& outside = AttachedScene()->CreateGameObject("UninspectableRuntimeOwner"); outside.runtimeGenerated = true;
+    auto& outside = AttachedScene()->CreateGameObject("UninspectableRuntimeOwner"); outside.SetRuntimeGenerated(true);
     const auto cursor = m_editUndo.GetCursor(), revision = m_editUndo.GetRevision();
     EXPECT_FALSE(m_editUndo.Undo()); EXPECT_NE(m_editUndo.LastDiagnostic().find("REFERENCE_PROOF_UNAVAILABLE"), std::string::npos);
     EXPECT_EQ(m_editUndo.GetCursor(), cursor); EXPECT_EQ(m_editUndo.GetRevision(), revision); ASSERT_NE(AttachedScene()->FindByGuid(guid), nullptr);
-    outside.runtimeGenerated = false; ASSERT_TRUE(m_editUndo.Undo()) << m_editUndo.LastDiagnostic();
+    outside.SetRuntimeGenerated(false); ASSERT_TRUE(m_editUndo.Undo()) << m_editUndo.LastDiagnostic();
 }
 } /// @note namespace
 } /// @note namespace fbzz::tests

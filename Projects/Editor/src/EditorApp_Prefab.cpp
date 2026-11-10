@@ -33,7 +33,7 @@ std::vector<scene::EntityID> CollectRoots(scene::Scene& scene)
 {
     std::vector<scene::EntityID> roots;
     for (auto& go : scene.GameObjects()) {
-        if (go.runtimeGenerated) continue;
+        if (go.IsRuntimeGenerated()) continue;
         if (go.GetParent() == nullptr) roots.push_back(go.GetID());
     }
     return roots;

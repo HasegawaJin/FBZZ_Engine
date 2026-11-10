@@ -156,7 +156,7 @@ OpResult PreparePlacement(OpContext& context, const OpArgs& args, PlacementPlan&
     for (const auto& node : nodes->AsArray()) {
         if (!node.IsString() || node.AsString().empty()) return OpResult::Err("BAD_ARG", "nodes の各要素は空でない NodeId です");
         auto* object = plan.scene->FindByGuid(node.AsString());
-        if (object == nullptr || object->runtimeGenerated) return OpResult::Err("NO_NODE", "編集可能な対象がありません: " + node.AsString());
+        if (object == nullptr || object->IsRuntimeGenerated()) return OpResult::Err("NO_NODE", "編集可能な対象がありません: " + node.AsString());
         if (std::find(objects.begin(), objects.end(), object) != objects.end()) return OpResult::Err("BAD_ARG", "nodes に重複があります");
         objects.push_back(object);
     }

@@ -102,6 +102,8 @@ public:
 
     /// @note 保存しない寿命識別値。Clear / 移動代入で更新し、再利用された EntityID と区別する。
     [[nodiscard]] uint64_t GetRenderSceneGeneration() const { return m_renderSceneGeneration; }
+    /// @note Scene 世代と組にして、ルート順・親子関係・生成物表示の索引を失効させる。
+    [[nodiscard]] uint64_t GetHierarchyRevision() const { return m_hierarchyRevision; }
     /// @note ホストの実行資源を寿命 ID で借用する。保存・個体複製の対象外で、Clear 後も同じホストへ接続する。
     FBZZ_ENGINE_API void SetResourceManager(renderer::ResourceManager* resources);
     [[nodiscard]] FBZZ_ENGINE_API renderer::ResourceManager* GetResourceManager() const;
@@ -243,6 +245,7 @@ public:
 
 private:
     uint64_t m_renderSceneGeneration = 0;
+    uint64_t m_hierarchyRevision = 0;
     uint64_t m_resourceOwner = 0;
     /// @note 既存個体の所有位置を変える整理・並べ替え・move で更新する。末尾生成と穴化は既存位置を変えない。
     uint64_t m_rendererOwnerRevision = 0;

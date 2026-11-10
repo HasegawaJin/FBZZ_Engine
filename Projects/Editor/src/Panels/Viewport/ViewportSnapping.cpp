@@ -10,6 +10,8 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include "ViewportCommon.hpp"
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/HierarchyTraversal.hpp>
+#include <Editor/Util/SceneEditUtils.hpp>
 
 namespace fbzz::editor {
 
@@ -37,18 +39,25 @@ math::Vector3 TransformPoint(const math::Matrix4& m, const math::Vector3& p)
     return { v.x, v.y, v.z };
 }
 
-bool IsSelected(const EditorContext& ctx, scene::EntityID id)
+HierarchyTraversal::EntitySet SelectionKeys(const EditorContext& ctx)
 {
-    return std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id)
-        != ctx.selectedEntities.end();
+    HierarchyTraversal::EntitySet selected;
+    selected.reserve(ctx.selectedEntities.size());
+    for (const auto id : ctx.selectedEntities) selected.insert(HierarchyTraversal::EntityKey(id));
+    return selected;
 }
 
-/// @return 選択済みの祖先を持つなら true (親子同時選択で二重移動させない)。
-bool HasSelectedAncestor(const EditorContext& ctx, scene::GameObject* obj)
+std::vector<scene::EntityID> SnapMeshOwners(scene::Scene& scene)
 {
-    for (scene::GameObject* p = obj->GetParent(); p; p = p->GetParent())
-        if (IsSelected(ctx, p->GetID())) return true;
-    return false;
+    const auto meshes = scene.GetEntities<scene::MeshRenderer>();
+    const auto skinned = scene.GetEntities<scene::SkinnedMeshRenderer>();
+    std::vector<scene::EntityID> owners;
+    owners.reserve(meshes.size() + skinned.size());
+    owners.insert(owners.end(), meshes.begin(), meshes.end());
+    owners.insert(owners.end(), skinned.begin(), skinned.end());
+    scene.SortEntitiesBySceneOrder(owners);
+    owners.erase(std::unique(owners.begin(), owners.end()), owners.end());
+    return owners;
 }
 
 /// @brief ローカル position から今のワールド位置を組み直す。
@@ -127,14 +136,17 @@ bool FindNearestVertex(EditorContext& ctx,
     bool  found      = false;
 
     const math::Ray cursorRay = ScreenRayFromMouse(ctx, vpMin);
+    const math::Matrix4 viewProjection = ctx.editorCamera->GetProjectionMatrix() * ctx.editorCamera->GetViewMatrix();
+    const auto selected = SelectionKeys(ctx);
 
-    for (auto& go : ctx.activeScene->GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
-        if (IsSelected(ctx, go.GetID()) != selectedSide) continue;
+    for (const auto id : SnapMeshOwners(*ctx.activeScene)) {
+        auto* go = ctx.activeScene->GetGameObject(id);
+        if (!go || !go->activeInHierarchy()) continue;
+        if (selected.contains(HierarchyTraversal::EntityKey(id)) != selectedSide) continue;
 
-        ForEachWorldVertex(go, cursorRay, [&](const math::Vector3& worldPos) {
+        ForEachWorldVertex(*go, cursorRay, [&](const math::Vector3& worldPos) {
             ImVec2 sp;
-            if (!WorldToScreen(worldPos, ctx, vpMin, vpSize, sp)) return;
+            if (!WorldToScreen(worldPos, viewProjection, vpMin, vpSize, sp)) return;
             const float dx = sp.x - cursor.x;
             const float dy = sp.y - cursor.y;
             const float distSq = dx * dx + dy * dy;
@@ -173,18 +185,25 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
 
     float bestT  = 1e30f;
     bool  found  = false;
+    const auto selected = SelectionKeys(ctx);
+    std::vector<size_t> triangleOffsets;
 
-    for (auto& go : ctx.activeScene->GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
-        if (IsSelected(ctx, go.GetID())) continue;
+    for (const auto id : SnapMeshOwners(*ctx.activeScene)) {
+        auto* object = ctx.activeScene->GetGameObject(id);
+        if (!object || !object->activeInHierarchy() || selected.contains(HierarchyTraversal::EntityKey(id))) continue;
+        auto& go = *object;
 
         const math::Matrix4 world = go.transform.GetWorldMatrix();
 
-        auto testMesh = [&](const renderer::Mesh& mesh, const auto& verts, const auto& indices,
+        auto testMesh = [&](const renderer::Mesh& mesh, const auto& verts, bool skinned,
                             float radiusInflate) {
+            const auto& indices = mesh.cpuIndices;
             if (verts.empty() || indices.size() < 3) return;
             if (!RayHitsMeshBounds(ray, mesh, world, go.transform, radiusInflate)) return;
-            for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
+            const bool indexed = CollectRayTriangleOffsets(mesh, skinned, world, ray, triangleOffsets);
+            const size_t count = indexed ? triangleOffsets.size() : indices.size() / 3;
+            for (size_t item = 0; item < count; ++item) {
+                const size_t i = indexed ? triangleOffsets[item] : item * 3;
                 const std::uint32_t i0 = indices[i + 0];
                 const std::uint32_t i1 = indices[i + 1];
                 const std::uint32_t i2 = indices[i + 2];
@@ -205,14 +224,14 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
         };
 
         if (auto* mr = go.GetComponent<scene::MeshRenderer>(); mr && mr->mesh)
-            testMesh(*mr->mesh, mr->mesh->cpuVertices, mr->mesh->cpuIndices, 1.0f);
+            testMesh(*mr->mesh, mr->mesh->cpuVertices, false, 1.0f);
         if (auto* smr = go.GetComponent<scene::SkinnedMeshRenderer>(); smr && smr->model) {
             const auto* mat = go.GetComponent<scene::MaterialComponent>();
             for (size_t i = 0; i < smr->SubmeshCount(); ++i) {
                 const renderer::Mesh* meshPtr = smr->SubmeshMesh(i);
                 if (!meshPtr) continue;
                 if (mat && !mat->SlotAt(i).visible) continue;
-                testMesh(*meshPtr, meshPtr->cpuSkinnedVertices, meshPtr->cpuIndices, 2.0f);
+                testMesh(*meshPtr, meshPtr->cpuSkinnedVertices, true, 2.0f);
             }
         }
     }
@@ -222,7 +241,7 @@ bool RaycastUnselectedSurface(EditorContext& ctx,
         scene::GameObject* hitGO = nullptr;
         if (ctx.terrainTool->RaycastTerrain(*ctx.activeScene, *ctx.editorCamera,
                                             vpMin, vpSize,
-                                            hitWorld, hitGO) && hitGO && !IsSelected(ctx, hitGO->GetID())) {
+                                            hitWorld, hitGO) && hitGO && !selected.contains(HierarchyTraversal::EntityKey(hitGO->GetID()))) {
             const float t = math::Vector3::Dot(hitWorld - ray.origin, ray.direction);
             if (t > 0.0f && t < bestT) {
                 bestT     = t;
@@ -241,10 +260,9 @@ void CollectDragTargets(EditorContext& ctx)
 {
     g_drag.guids.clear();
     g_drag.before.clear();
-    for (scene::EntityID id : ctx.selectedEntities) {
+    for (scene::EntityID id : CollectHierarchyRoots(*ctx.activeScene, ctx.selectedEntities)) {
         scene::GameObject* go = ctx.activeScene->GetGameObject(id);
         if (!go || ctx.IsLocked(id)) continue;
-        if (HasSelectedAncestor(ctx, go)) continue;
         g_drag.guids.push_back(go->instanceId);
         g_drag.before.push_back(go->transform);
     }

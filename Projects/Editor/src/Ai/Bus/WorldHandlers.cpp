@@ -801,7 +801,7 @@ JsonValue UIElementJson(GameObject& go)
     JsonValue children = JsonValue::MakeArray();
     for (int i = 0; i < go.GetChildCount(); ++i) {
         GameObject* child = go.GetChild(i);
-        if (child == nullptr || child->runtimeGenerated) continue;
+        if (child == nullptr || child->IsRuntimeGenerated()) continue;
         children.Push(UIElementJson(*child));
     }
     entry.Set("children", std::move(children));

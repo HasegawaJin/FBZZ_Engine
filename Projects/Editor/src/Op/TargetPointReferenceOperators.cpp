@@ -249,7 +249,7 @@ bool DescendantOrSelf(const scene::GameObject& target, const scene::GameObject& 
 bool StructuralCreationAllowed(const EditorContext& ctx, const scene::GameObject& owner)
 {
     for (const auto* object = &owner; object; object = object->GetParent())
-        if (object->runtimeGenerated || !object->prefabAssetPath.empty() || !object->prefabSourceId.empty()
+        if (object->IsRuntimeGenerated() || !object->prefabAssetPath.empty() || !object->prefabSourceId.empty()
             || ctx.IsLocked(object->GetID())) return false;
     return true;
 }
@@ -393,7 +393,7 @@ bool ValidCreated(scene::Scene& scene, const ReferencePlan& plan)
     if (!point || point->instanceId != plan.createdGuid
         || (parent ? parent->GetID() : scene::EntityID::INVALID) != plan.createdParent
         || (parent ? parent->instanceId : std::string{}) != plan.createdParentGuid || point->GetChildCount() != 0
-        || point->name != plan.createdName || !point->activeSelf() || point->runtimeGenerated
+        || point->name != plan.createdName || !point->activeSelf() || point->IsRuntimeGenerated()
         || !point->prefabAssetPath.empty() || !point->prefabSourceId.empty() || point->tag != "Untagged" || point->layer != 0
         || !SameVector(point->transform.position, plan.createdPosition)
         || !SameQuaternion(point->transform.rotation, math::Quaternion::Identity()) || !SameVector(point->transform.scale, math::Vector3::ONE)
@@ -416,7 +416,7 @@ bool ApplyPlan(const std::shared_ptr<ReferencePlan>& plan, bool apply, std::stri
     }
     auto& scene = *ctx.activeScene;
     auto* owner = scene.GetGameObject(plan->owner);
-    if (!owner || owner->runtimeGenerated || owner->instanceId != plan->ownerGuid || ctx.IsLocked(plan->owner)) {
+    if (!owner || owner->IsRuntimeGenerated() || owner->instanceId != plan->ownerGuid || ctx.IsLocked(plan->owner)) {
         reason = "参照の所有者が変更されています"; return false;
     }
     if ((plan->anchorDomain == 1 && Lifetime<scene::LightComponent>(scene, *owner) != plan->anchorLifetime)
@@ -507,7 +507,7 @@ std::shared_ptr<ReferencePlan> MakePlan(EditorContext& ctx, const OpArgs& args)
     if (!IsControlPointAuthoringAllowed(ctx)) return {};
     auto* owner = Owner(ctx, args);
     SlotKey key;
-    if (!owner || owner->runtimeGenerated || ctx.IsLocked(owner->GetID()) || !ParseKey(args, key)) return {};
+    if (!owner || owner->IsRuntimeGenerated() || ctx.IsLocked(owner->GetID()) || !ParseKey(args, key)) return {};
     if (key.kind == ReferenceKind::IK)
         if (auto* solver = owner->GetComponent<scene::IKSolverComponent>()) scene::InitializeIKTargetReferences(*ctx.activeScene, *solver);
     Slot slot = FindSlot(*ctx.activeScene, *owner, key);
@@ -536,7 +536,7 @@ OpResult Bind(OpContext& context, const OpArgs& args, bool create)
     } else {
         plan->after = args.GetString("target");
         auto* target = plan->after.empty() ? nullptr : scene.FindByGuid(plan->after);
-        if (!plan->after.empty() && ((!target && plan->after != plan->before) || (target && target->runtimeGenerated))) return OpResult::Err("NO_TARGET", "同じSceneの保存対象GOが必要です");
+        if (!plan->after.empty() && ((!target && plan->after != plan->before) || (target && target->IsRuntimeGenerated()))) return OpResult::Err("NO_TARGET", "同じSceneの保存対象GOが必要です");
         if (target && (plan->key.kind == ReferenceKind::LOD || plan->key.kind == ReferenceKind::MOTION_WARP)
             && !target->GetComponent<scene::TargetPointComponent>()) return OpResult::Err("NO_MARKER", "この用途ではTargetPointが必要です");
     }
@@ -564,12 +564,12 @@ OpResult ConfigureAnchor(OpContext& context, const OpArgs& args)
     auto& ctx = context.ctx;
     auto* owner = Owner(ctx, args);
     const auto kind = args.GetString("kind");
-    if (!owner || owner->runtimeGenerated || ctx.IsLocked(owner->GetID()) || (kind == "light" && !owner->GetComponent<scene::LightComponent>())
+    if (!owner || owner->IsRuntimeGenerated() || ctx.IsLocked(owner->GetID()) || (kind == "light" && !owner->GetComponent<scene::LightComponent>())
         || (kind == "flow_field" && !owner->GetComponent<scene::FlowField>())
         || (kind != "light" && kind != "flow_field")) return OpResult::Err("NO_OWNER", "LightまたはFlowFieldが必要です");
     const bool create = args.GetString("target").empty();
     auto* target = create ? nullptr : ctx.activeScene->FindByGuid(args.GetString("target"));
-    if (!create && (!target || target->runtimeGenerated || !target->GetComponent<scene::TargetPointComponent>())) return OpResult::Err("NO_MARKER", "同じSceneのTargetPointが必要です");
+    if (!create && (!target || target->IsRuntimeGenerated() || !target->GetComponent<scene::TargetPointComponent>())) return OpResult::Err("NO_MARKER", "同じSceneのTargetPointが必要です");
     const auto mode = args.GetString("mode", "Position");
     if (mode != "Position" && mode != "LookAt" && mode != "Parent") return OpResult::Err("BAD_MODE", "Position、LookAt、Parentを指定してください");
     auto slotArgs = args; slotArgs.Set("kind", std::string("constraint")); slotArgs.Set("role", std::string("target"));

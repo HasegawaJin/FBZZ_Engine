@@ -302,6 +302,7 @@ bool Scene::DestroyImmediate(EntityID id, const std::vector<EntityID>* ownership
             if (auto* parent = GetGameObject(go->m_parent)) {
                 auto& pc = parent->m_children;
                 pc.erase(std::remove(pc.begin(), pc.end(), id), pc.end());
+                ++m_hierarchyRevision;
             }
         }
     }
@@ -334,6 +335,7 @@ bool Scene::DestroyImmediate(EntityID id, const std::vector<EntityID>* ownership
     const size_t storageIndex = go->m_sceneStorageIndex;
     --m_gameObjectCount;
     m_gameObjects[storageIndex].reset();
+    ++m_hierarchyRevision;
     return true;
 }
 
@@ -372,6 +374,7 @@ GameObject* Scene::TryCreateGameObject(const std::string& name) {
     m_entityToGameObject[id.index] = ptr;
     m_gameObjects.push_back(std::move(go));
     ++m_gameObjectCount;
+    ++m_hierarchyRevision;
 
     return ptr;
 }
@@ -666,6 +669,7 @@ bool Scene::MoveGameObjectToIndex(EntityID id, size_t newIndex)
     auto moved = std::move(*it);
     m_gameObjects.erase(it);
     m_gameObjects.insert(m_gameObjects.begin() + static_cast<std::ptrdiff_t>(newIndex), std::move(moved));
+    ++m_hierarchyRevision;
     const size_t firstChanged = std::min(currentIndex, newIndex);
     const size_t lastChanged = std::max(currentIndex, newIndex);
     for (size_t index = firstChanged; index <= lastChanged; ++index)

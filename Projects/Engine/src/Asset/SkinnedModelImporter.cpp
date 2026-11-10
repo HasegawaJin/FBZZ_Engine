@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-28
 ///
-/// aiProcess_PreTransformVertices を使わずボーン階層を保持する。静的メッシュと異なり
-/// 頂点ごとのボーンインデックス・ウェイトを CPU 側で構築し、GPU スキニングに必要な
-/// SkinnedVertex レイアウトへ変換する。
+/// @note aiProcess_PreTransformVertices を使わずボーン階層を保持する。静的メッシュと異なり
+/// @note 頂点ごとのボーンインデックス・ウェイトを CPU 側で構築し、GPU スキニングに必要な
+/// @note SkinnedVertex レイアウトへ変換する。
 #include "ModelImporterInternal.hpp"
 #include <Engine/Asset/AvatarMaskAsset.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -20,12 +20,12 @@ namespace {
 
 /// @brief 1 頂点に影響するボーンのインデックス・ウェイトを最大 4 本管理する。
 /// @note GPU スキニングシェーダーの定数バッファは 4 ボーン固定のため上位 4 本に絞り、
-///       挿入時は降順ソートを維持して常に影響度の大きいボーンを残す。
+/// @note 挿入時は降順ソートを維持して常に影響度の大きいボーンを残す。
 struct VertexInfluences {
     std::array<uint32_t, 4> indices = {};
     std::array<float, 4>    weights = {};
 
-    /// weight が既存スロットの最小ウェイトより大きければ差し替えて降順を維持する。
+    /// @note weight が既存スロットの最小ウェイトより大きければ差し替えて降順を維持する。
     void Add(uint32_t boneIndex, float weight)
     {
         if (weight <= 0.0f) return;
@@ -42,7 +42,7 @@ struct VertexInfluences {
         }
     }
 
-    /// 4 本の総和が 1 になるよう正規化する。全 0 の場合はボーン 0 に 1.0 を割り当てる。
+    /// @note 4 本の総和が 1 になるよう正規化する。全 0 の場合はボーン 0 に 1.0 を割り当てる。
     void Normalize()
     {
         float sum = 0.0f;
@@ -56,9 +56,9 @@ struct VertexInfluences {
     }
 };
 
-/// aiNode 木を DFS で走査し、SkeletonNode を skeleton.nodes へ追加する。
+/// @note aiNode 木を DFS で走査し、SkeletonNode を skeleton.nodes へ追加する。
 /// @note スケルトンは「ノード木全体」と「ボーンのサブセット」を分離して管理し、
-///       ボーンが存在しないノードも保持することで親子関係とバインドポーズを維持する。
+/// @note ボーンが存在しないノードも保持することで親子関係とバインドポーズを維持する。
 void ImportNodesRecursive(const aiNode* node,
                           int parentIndex,
                           float unitScale,
@@ -89,9 +89,9 @@ void ImportNodesRecursive(const aiNode* node,
         ImportNodesRecursive(node->mChildren[i], nodeIndex, unitScale, skeleton);
 }
 
-/// AnimationClip の nodeName を Skeleton の完全パスへ変換する。
+/// @note AnimationClip の nodeName を Skeleton の完全パスへ変換する。
 /// @note FBX チャンネル名には namespace や Assimp 補助 suffix が混ざるため、
-///       まず完全一致を試し、見つからなければ CanonicalNodeName で既存ノードへ寄せる。
+/// @note まず完全一致を試し、見つからなければ CanonicalNodeName で既存ノードへ寄せる。
 std::string ResolveAnimationTargetPath(const Skeleton& skeleton,
                                        std::string_view nodeName)
 {
@@ -107,9 +107,9 @@ std::string ResolveAnimationTargetPath(const Skeleton& skeleton,
     return {};
 }
 
-/// aiBone を Skeleton::bones に登録しボーンインデックスを返す。
+/// @note aiBone を Skeleton::bones に登録しボーンインデックスを返す。
 /// @note Assimp は同一ボーン名が複数メッシュに現れるため、名前で重複チェックする。
-///       ノード木に存在しない補助ボーンはルートの子として動的に追加する。
+/// @note ノード木に存在しない補助ボーンはルートの子として動的に追加する。
 int EnsureBone(const aiBone* aiBonePtr,
                float unitScale,
                Skeleton& skeleton)
@@ -153,7 +153,7 @@ int EnsureBone(const aiBone* aiBonePtr,
     return boneIndex;
 }
 
-/// aiAnimation を AnimationClip へ変換してモデルに追加する。
+/// @note aiAnimation を AnimationClip へ変換してモデルに追加する。
 void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
 {
     for (uint32_t ai = 0; ai < scene->mNumAnimations; ++ai) {
@@ -208,7 +208,7 @@ void ImportAnimations(const aiScene* scene, float unitScale, Model& model)
     }
 }
 
-} // namespace
+} /// @note namespace
 
 std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
                                           float unitScale,
@@ -267,14 +267,15 @@ std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
         mesh->cpuVertices        = cpuStaticVertices;
         mesh->cpuIndices         = indices;
         mesh->ComputeBounds();
+        mesh->PublishCpuGeometry();
 
         model->meshes.push_back(std::move(mesh));
         model->materials.push_back(ImportMaterial(scene, src, resources));
     }
 
     /// @note どのノードがどの submesh を描くかの対応表。Skeleton::nodes は変形の材料の全ノードで
-    ///       目的が異なる。ここは「GameObject をどこに何個作りどの submesh を描かせるか」という
-    ///       配置だけを答える (スキンドは PreTransformVertices 未適用のため階層はそのまま残る)。
+    /// @note 目的が異なる。ここは「GameObject をどこに何個作りどの submesh を描かせるか」という
+    /// @note 配置だけを答える (スキンドは PreTransformVertices 未適用のため階層はそのまま残る)。
     ImportModelNodes(scene, unitScale, *model);
 
     /// @note 無アニメ時の既定パレット。単位行列を使わないための前提データ。
@@ -284,4 +285,4 @@ std::unique_ptr<Model> ImportSkinnedModel(const aiScene* scene,
     return model;
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

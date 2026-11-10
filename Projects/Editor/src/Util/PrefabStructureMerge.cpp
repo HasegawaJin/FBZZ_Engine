@@ -243,7 +243,7 @@ void ValidateRemovedReferences(const toml::node& node, const std::set<std::strin
 
 bool Gather(scene::GameObject& object, std::set<std::string>& guids)
 {
-    if (object.runtimeGenerated || object.instanceId.empty() || !guids.insert(object.instanceId).second) return false;
+    if (object.IsRuntimeGenerated() || object.instanceId.empty() || !guids.insert(object.instanceId).second) return false;
     for (int index = 0; index < object.GetChildCount(); ++index)
         if (auto* child = object.GetChild(index); child && !Gather(*child, guids)) return false;
     return true;

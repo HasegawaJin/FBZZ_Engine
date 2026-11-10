@@ -4,6 +4,9 @@
 /// @date    2026-06-16
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
+#include <atomic>
+#include <future>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -15,23 +18,27 @@ public:
     const char* GetViewMenuName()      const override { return "Dependency View"; }
     bool        GetDefaultVisibility() const override { return false; }
 
-    /// 1 件の参照元。
-    struct RefHit {
-        std::string path;         ///< 参照元ファイルの絶対パス
-        bool        byGuid = false;  ///< true=guid: 参照 / false=パス文字列参照 (未エンコード)
-    };
+    ~DependencyViewPanel() override;
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
 
 private:
-    void Scan(const std::string& assetPath, const std::string& rootPath);
+    struct RefHit {
+        std::string path;
+        bool byGuid = false;
+    };
 
-    std::string         m_scannedPath;    ///< 最後にスキャンしたアセットパス
-    std::string         m_scannedGuid;    ///< その guid (空 = guid 未発行)
-    std::string         m_pendingNavDir;  ///< クリック後に AssetBrowser へ通知するディレクトリ
-    std::vector<RefHit> m_results;        ///< 参照元一覧
-    bool                m_scanning = false;
+    void RequestScan(const std::string& assetPath, const std::string& rootPath);
+    void UpdateScan();
+
+    std::string m_scannedPath;
+    std::string m_scannedGuid;
+    std::string m_rootPath;
+    std::vector<RefHit> m_results;
+    std::future<std::vector<RefHit>> m_scan;
+    std::shared_ptr<std::atomic_bool> m_cancel;
+    bool m_pending = false;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

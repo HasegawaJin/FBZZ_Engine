@@ -49,6 +49,9 @@ namespace fbzz::editor {
 
 math::Matrix4 ToColumnMajor(const math::Matrix4& rowMajor);
 math::Ray ScreenRayFromMouse(const EditorContext& ctx, const ImVec2& viewportMin);
+/// @return false の場合は索引を使えない。true の場合は元の順で三角形の先頭添字を返す。
+bool CollectRayTriangleOffsets(const renderer::Mesh& mesh, bool skinned, const math::Matrix4& world,
+                               const math::Ray& ray, std::vector<size_t>& offsets);
 /// @brief ワールド座標をビューポート内スクリーン座標へ投影する。
 /// @return カメラ背面なら false。out は未変更。
 bool WorldToScreen(const math::Vector3& world, const EditorContext& ctx,

@@ -213,6 +213,7 @@ std::unique_ptr<Model> LoadFzMeshModel(
     mesh->indexBuffer = resources.CreateIndexBuffer(mesh->cpuIndices.data(), hdr.indexCount);
     /// @note ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
     mesh->ComputeBoundsExtents();
+    mesh->PublishCpuGeometry();
 
     auto model = std::make_unique<Model>();
     model->meshes.push_back(std::move(mesh));
