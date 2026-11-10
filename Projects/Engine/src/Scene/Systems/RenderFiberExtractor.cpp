@@ -11,6 +11,7 @@
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
 #include <Engine/Scene/Systems/RenderFiberExtractor.hpp>
+#include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/FiberMaterialSettings.hpp>
@@ -454,6 +455,7 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
 
     const auto& flows = UpdateFiberFlows(cache, ctx.scene, resources);
     if (ctx.scene.GetEntities<FiberComponent>().empty()) return;
+    const auto terrainWaterClip = GetTerrainGrassWaterClip(ctx.scene);
     /// @note 風・時刻はパス内で共通。物体・面ごとに検証し直さない。
     FiberFrameCB frameBase;
     frameBase.m_time = std::isfinite(Time::time) ? Time::time : 0.0f;
@@ -576,6 +578,7 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             input.material = settings;
             input.appearance = FiberAppearanceFor(materialEntry.m_appearance, fiber.m_mode);
             input.frame = frameBase;
+            if (surface.terrain) input.frame.m_terrainWaterClip = terrainWaterClip;
             input.frame.m_flowChannels = static_cast<uint32_t>(fiber.m_flowChannels);
             input.frame.m_flowCount = CountFiberFlows(flows.m_current, input.frame.m_flowChannels, input.boundsCenter, input.boundsRadius);
             input.frame.m_flowPreviousFirst = static_cast<uint32_t>(flows.m_currentPacked.size());

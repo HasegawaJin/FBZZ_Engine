@@ -31,6 +31,8 @@ struct FiberFrameCB {
     uint32_t m_flowPreviousFirst = 0;
     uint32_t m_flowPreviousCount = 0;
     uint32_t m_flowChannels = 0;
+    /// @note X is the minimum dry root height in world metres, Y enables the terrain-only clip.
+    math::Vector4 m_terrainWaterClip{};
 };
 
 /// @brief 繊維の b10。足元の接触 32 件 × (現在, 前フレーム)。

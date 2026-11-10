@@ -30,6 +30,9 @@
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/IStructuredBuffer.hpp>
 #include <Engine/Scene/Components/FiberComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/WaterExclusion.hpp>
+#include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include "Engine/Scene/Components/TerrainGridComponent.hpp"
 #include "Engine/Scene/Entity.hpp"
 #include "Engine/Renderer/IRenderer.hpp"
@@ -815,6 +818,24 @@ static void ExtractTerrainSurface(TerrainRenderCache& cache, const TerrainCompon
     output.terrains.push_back(std::move(surface));
 }
 
+math::Vector4 GetTerrainGrassWaterClip(Scene& scene)
+{
+    math::Vector4 terrainWaterClip{};
+    for (EntityID id : scene.GetEntities<WaterComponent>()) {
+        const auto* owner = scene.GetGameObject(id);
+        const auto* water = scene.GetComponent<WaterComponent>(id);
+        if (!owner || !owner->activeInHierarchy() || !water || !water->enabled
+            || !WaterSurfaceUsesHorizon(*water) || !IsWaterSurfaceSupported(*water, owner->transform)) continue;
+        const auto* exclusions = WaterSurfaceExclusions(*water, WaterSurfaceReadView::LIVE_QUERY);
+        if (exclusions && (!exclusions->valid || !exclusions->boxes.empty())) continue;
+        /// @note Match the PCG shoreline buffer. The still waterline keeps vegetation fixed while waves move.
+        const float dryHeight = owner->transform.worldPosition.y + 0.15f;
+        if (terrainWaterClip.y == 0.0f || dryHeight > terrainWaterClip.x)
+            terrainWaterClip = {dryHeight, 1.0f, 0.0f, 0.0f};
+    }
+    return terrainWaterClip;
+}
+
 void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output) {
     auto& scene = ctx.scene;
     auto& resources = ctx.resources;
@@ -859,6 +880,7 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         collectPhases = filter.scope == "RenderSceneExtractor::Terrains"
             && (filter.category.empty() || filter.category == "General");
     }
+    std::optional<math::Vector4> grassWaterClip;
     int64_t layersNs = 0, patchesNs = 0, setupNs = 0;
     /// @note 隣接タイルを先に失効させ、同じフレームの出力が破棄済みバッファを参照しないようにする。
     for (const EntityID eid : candidates.Entities()) {
@@ -996,6 +1018,8 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
                 const float fullDistance = sparseStart > nearDistance && sparseStart < farDistance ? sparseStart : farDistance;
                 const float threshold = std::isfinite(fiber->m_terrainLayerThreshold)
                     ? std::clamp(fiber->m_terrainLayerThreshold, 0.0f, 1.0f) : 0.0f;
+                if (!grassWaterClip) grassWaterClip = GetTerrainGrassWaterClip(scene);
+                input.constants.grassGroundWaterClip = *grassWaterClip;
                 input.constants.grassGroundLod = {nearDistance, fullDistance, static_cast<float>(fiber->m_terrainLayer), threshold};
                 input.constants.grassGroundColor = {std::clamp(color.x, 0.0f, 1.0f), std::clamp(color.y, 0.0f, 1.0f),
                     std::clamp(color.z, 0.0f, 1.0f), std::clamp(fiber->m_terrainGroundCover, 0.0f, 1.0f)};

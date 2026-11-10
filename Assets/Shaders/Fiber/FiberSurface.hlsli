@@ -146,6 +146,7 @@ struct FiberInput {
 
 struct FiberPixel {
     float4 position : SV_POSITION;
+    float terrainWaterClip : SV_ClipDistance0;
     float3 worldPosition : TEXCOORD0;
     float3 root : TEXCOORD1;
     float3 normal : TEXCOORD2;
@@ -188,6 +189,8 @@ FiberPixel FiberVertex(FiberInput v, uint instance)
     o.height = (shellCount - float(instance) - 0.5f) / shellCount;
 #endif
     o.root = mul(float4(localPosition, 1.0f), world).xyz;
+    /// @note Clip by the unbent root in every pass, including shadows and selection.
+    o.terrainWaterClip = fiberTerrainWaterClip.y > 0.5f ? o.root.y - fiberTerrainWaterClip.x : 1.0f;
     o.normal = FiberNormalize(mul(localNormal, (float3x3)worldInvTranspose), float3(0, 1, 0));
 #if FIBER_FIN == 2
     o.height *= v.faceNormal0.x;

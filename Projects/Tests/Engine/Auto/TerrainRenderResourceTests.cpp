@@ -5,6 +5,9 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Components/FiberComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
@@ -139,6 +142,36 @@ protected:
         return terrains.empty() ? renderer::RenderTerrainInput{} : std::move(terrains.front());
     }
 };
+
+TEST_F(TerrainRenderResourceTest, FarGrassGroundColorUsesTheHorizonWaterline)
+{
+    TerrainCpuRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene scene;
+    const auto id = AddTerrain(scene, 2.0f);
+    auto& grass = scene.GetGameObject(id)->AddComponent<scene::FiberComponent>();
+    grass.m_mode = scene::FiberRenderMode::BLADE;
+    grass.m_terrainGroundCover = 0.5f;
+
+    auto& ocean = scene.CreateGameObject("Ocean");
+    const auto oceanId = ocean.GetID();
+    ocean.transform.position.y = 1.0f;
+    ocean.AddComponent<scene::WaterComponent>().farOceanEnabled = true;
+    auto& lake = scene.CreateGameObject("Lake");
+    lake.transform.position.y = 4.0f;
+    lake.AddComponent<scene::WaterComponent>().farOceanEnabled = false;
+    scene::FlushWorldTransforms(scene);
+
+    const auto coastal = Extract(scene, device, resources).constants;
+    EXPECT_FLOAT_EQ(coastal.grassGroundColor.w, 0.5f);
+    EXPECT_FLOAT_EQ(coastal.grassGroundWaterClip.x, 1.15f);
+    EXPECT_FLOAT_EQ(coastal.grassGroundWaterClip.y, 1.0f);
+
+    scene.GetComponent<scene::WaterComponent>(oceanId)->enabled = false;
+    const auto inland = Extract(scene, device, resources).constants;
+    EXPECT_FLOAT_EQ(inland.grassGroundColor.w, 0.5f);
+    EXPECT_FLOAT_EQ(inland.grassGroundWaterClip.y, 0.0f);
+}
 
 TEST_F(TerrainRenderResourceTest, RegularLod0SharesStripAndKeepsHoleLists)
 {

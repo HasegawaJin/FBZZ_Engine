@@ -53,6 +53,7 @@ cbuffer FiberFrameConstants : register(b5)
     uint fiberFlowPreviousCount;
     /// @note FiberComponent::flowChannels。場の channels と 1 ビットでも重なる場だけを受ける。
     uint fiberFlowChannels;
+    float4 fiberTerrainWaterClip;
 };
 
 /// @note 環境流は fiberWind が持つ。ここにはシーンに置いた FlowField だけが入り、二重に足さない。

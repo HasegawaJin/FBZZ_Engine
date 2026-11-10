@@ -621,6 +621,23 @@ TEST_F(FiberRenderPerfTest, ShadedBladesReceiveEnvironmentLightWithoutDirectLigh
     m_resources->Release(environment);
 }
 
+TEST_F(FiberRenderPerfTest, TerrainWaterClipRejectsSubmergedBladeRootsAcrossTheWholeBlade)
+{
+    auto& prepared = Prepare(10000);
+    ASSERT_GT(prepared.roots, 0u);
+    MakeStraight(prepared.scene);
+    const auto camera = CorrectnessCamera();
+    const auto dry = RenderOnce(prepared.scene, camera);
+    const auto coverage = ExpectFiniteImage(dry, true);
+    ASSERT_GT(coverage, 100u);
+    for (auto& surface : prepared.scene->fibers)
+        surface.frame.m_terrainWaterClip = {0.01f, 1.0f, 0.0f, 0.0f};
+    EXPECT_EQ(ExpectFiniteImage(RenderOnce(prepared.scene, camera), false), 0u);
+    for (auto& surface : prepared.scene->fibers)
+        surface.frame.m_terrainWaterClip.x = -0.01f;
+    EXPECT_EQ(ExpectFiniteImage(RenderOnce(prepared.scene, camera), true), coverage);
+}
+
 TEST_F(FiberRenderPerfTest, StraightBladeShadowDepthKeepsBoundedCoverageAcrossSegmentQualityAndCastToggle)
 {
     RecordProperty("depthComparison", "zero raster bias; normal-Z world height slab; selected quality is not pixel-equivalent");

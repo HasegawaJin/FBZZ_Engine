@@ -1016,8 +1016,9 @@ struct TerrainObjectCB {
     math::Matrix4 worldInvTranspose = math::Matrix4::Identity();
     math::Vector4 grassGroundColor{}; ///< @note RGB は線形、W は地表に混ぜる強度。
     math::Vector4 grassGroundLod{}; ///< @note 開始距離と最大寄与距離 [world m]、塗り層番号、層しきい値。
+    math::Vector4 grassGroundWaterClip{}; ///< @note x は最低の world Y [m]、y は Horizon によるクリップの有効フラグ。
 };
-static_assert(sizeof(TerrainObjectCB) == 272, "TerrainObjectCB size mismatch");
+static_assert(sizeof(TerrainObjectCB) == 288, "TerrainObjectCB size mismatch");
 
 /// @brief 地形 1 層ぶんの GPU パラメーター (StructuredBuffer の 1 要素)。
 /// @note LAYOUT: TerrainSurface.hlsli の TerrainLayer と一致させること。テクスチャ添字に無効値を入れない。

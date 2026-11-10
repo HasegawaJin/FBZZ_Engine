@@ -41,6 +41,7 @@ cbuffer TerrainCB : register(CB_OBJECT)
     float4x4 worldInvTranspose;
     float4   grassGroundColor;
     float4   grassGroundLod;
+    float4   grassGroundWaterClip;
 };
 
 /// @brief 1 層ぶんのパラメーター。テクスチャ添字は常に有効 (パスが 1x1 の代替を詰める)。
@@ -400,7 +401,7 @@ struct TerrainSurface
 float TerrainGrassCoverage(TerrainCandidates painted, float3 worldPosition)
 {
     [branch]
-    if (grassGroundColor.w <= 0.0f)
+    if (grassGroundColor.w <= 0.0f || (grassGroundWaterClip.y > 0.5f && worldPosition.y < grassGroundWaterClip.x))
         return 0.0f;
     const float fade = smoothstep(grassGroundLod.x, grassGroundLod.y, length(cameraPos - worldPosition));
     if (fade <= 0.0f || grassGroundLod.z < 0.0f)
