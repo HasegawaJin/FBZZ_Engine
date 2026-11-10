@@ -109,7 +109,6 @@ const char* AbortModeName(fbzz::ai::AbortMode mode)
 /// @note ChildrenOf / IsDescendant と、追加・削除・親付け・複製の実体は `BehaviorTreeOps.hpp` へ移した。
 /// @note EditorBusDispatcher にも同じ規則が手書きで複製されており、Editor の TryReparent と
 /// @note 食い違わないよう手で揃え続けていたが、実際には文言が既にずれていた。
-using btops::IsDescendant;
 
 }
 
@@ -469,26 +468,15 @@ GraphView BehaviorTreePanel::BuildView(EditorContext& ctx,
     /// @note 接続ドラッグ中に「繋げない親」を減光する。判定 (子数上限・循環・葉に子を付けない) はツールの知識だが、
     /// @note 描画は BeginNodeEditor の内側でしか書けないため、判定だけをキャンバスへ渡し描画は任せる。
     /// @note 集計結果はこの GraphView が所有し、描画後の編集・Undo は次の BuildView で反映する。
-    view.linkDragFilter = [this, childCounts = std::move(childCounts)](int fromPin, int toPin) {
-        const int fromNode = GraphIds::NodeOfPin(fromPin);
-        const int toNode = GraphIds::NodeOfPin(toPin);
-        if (fromNode == 0 || toNode == 0) return false;
-        /// @note 親ピン (出力) から掴んだか、子ピン (入力) から掴んだかで役割が入れ替わる。
-        const int parentId = GraphIds::IsOutputPin(fromPin) ? fromNode : toNode;
-        const int childId  = GraphIds::IsOutputPin(fromPin) ? toNode : fromNode;
-        if (GraphIds::IsOutputPin(fromPin) == GraphIds::IsOutputPin(toPin)) return false;
-        if (parentId == childId) return false;
-        if (IsDescendant(m_asset, childId, parentId)) return false;
-        const fbzz::ai::BTNodeDef* parent = m_asset.FindNode(parentId);
-        const fbzz::ai::BTNodeDef* child = m_asset.FindNode(childId);
-        if (parent == nullptr || child == nullptr) return false;
-        const int maxChildren = fbzz::ai::BTNodeMaxChildren(parent->type);
-        if (maxChildren == 0) return false;
-        const auto count = childCounts.find(parentId);
-        const int childCount = count != childCounts.end() ? count->second : 0;
-        if (maxChildren > 0 && child->parentId != parentId && childCount >= maxChildren)
-            return false;
-        return true;
+    view.linkDragFilter = [this, childCounts = std::move(childCounts),
+        sourcePin = 0, targets = std::unordered_set<int>{}](int fromPin, int toPin) mutable {
+        const bool fromParent = GraphIds::IsOutputPin(fromPin);
+        if (fromParent == GraphIds::IsOutputPin(toPin)) return false;
+        if (sourcePin != fromPin) {
+            sourcePin = fromPin;
+            targets = btops::CollectLinkTargets(m_asset, childCounts, GraphIds::NodeOfPin(fromPin), fromParent);
+        }
+        return targets.contains(GraphIds::NodeOfPin(toPin));
     };
     return view;
 }

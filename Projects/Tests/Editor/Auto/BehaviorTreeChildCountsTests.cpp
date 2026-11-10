@@ -85,4 +85,32 @@ TEST_F(BehaviorTreeChildCountsTest, DuplicateAndUndoReplacementCannotReuseStaleC
     EXPECT_TRUE(editor::btops::BuildChildCounts(ai::BehaviorTreeAsset{}).empty());
 }
 
+TEST_F(BehaviorTreeChildCountsTest, LinkTargetsMatchPerNodeRulesForBothDragDirections)
+{
+    ai::BehaviorTreeAsset asset;
+    AddDefinition(asset, 1, 0);
+    AddDefinition(asset, 2, 1);
+    AddDefinition(asset, 3, 2);
+    AddDefinition(asset, 4, 1);
+    AddDefinition(asset, 5, 6);
+    AddDefinition(asset, 6, 5);
+    asset.nodes[1].type = ai::BTNodeType::Inverter;
+    const auto counts = editor::btops::BuildChildCounts(asset);
+    for (const auto& source : asset.nodes) {
+        for (const bool fromParent : {false, true}) {
+            const auto targets = editor::btops::CollectLinkTargets(asset, counts, source.id, fromParent);
+            for (const auto& node : asset.nodes) {
+                const auto& parent = fromParent ? source : node;
+                const auto& child = fromParent ? node : source;
+                const int limit = ai::BTNodeMaxChildren(parent.type);
+                const int count = counts.contains(parent.id) ? counts.at(parent.id) : 0;
+                const bool expected = parent.id != child.id
+                    && !editor::btops::IsDescendant(asset, child.id, parent.id)
+                    && limit != 0 && (limit < 0 || child.parentId == parent.id || count < limit);
+                EXPECT_EQ(targets.contains(node.id), expected);
+            }
+        }
+    }
+}
+
 }

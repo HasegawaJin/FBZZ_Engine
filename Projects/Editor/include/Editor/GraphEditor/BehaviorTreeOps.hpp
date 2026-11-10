@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace fbzz::editor::btops {
@@ -27,6 +28,10 @@ namespace fbzz::editor::btops {
 /// @note 既に壊れて循環しているデータでも停止する (ノード数を上限にする)。
 [[nodiscard]] bool IsDescendant(const fbzz::ai::BehaviorTreeAsset& asset,
                                 int ancestorId, int childId);
+
+/// @brief ドラッグ元に接続できる反対側のノードを一括判定する。
+[[nodiscard]] std::unordered_set<int> CollectLinkTargets(const fbzz::ai::BehaviorTreeAsset& asset,
+    const std::unordered_map<int, int>& childCounts, int sourceId, bool fromParent);
 
 /// @note nodeType の表示名から enum を引く。見つからなければ false。
 /// @note AI は文字列で受け取るため、その解決もここに置いて表記ゆれの解釈を 1 本にする。

@@ -73,6 +73,52 @@ bool IsDescendant(const fbzz::ai::BehaviorTreeAsset& asset, int ancestorId, int 
     return false;
 }
 
+std::unordered_set<int> CollectLinkTargets(const fbzz::ai::BehaviorTreeAsset& asset,
+    const std::unordered_map<int, int>& childCounts, int sourceId, bool fromParent)
+{
+    std::unordered_map<int, const fbzz::ai::BTNodeDef*> nodes;
+    nodes.reserve(asset.nodes.size());
+    for (const auto& node : asset.nodes) nodes.try_emplace(node.id, &node);
+    const auto source = nodes.find(sourceId);
+    if (source == nodes.end() || sourceId == 0) return {};
+
+    std::unordered_set<int> forbidden;
+    if (fromParent) {
+        for (int id = sourceId; id != 0 && forbidden.insert(id).second;) {
+            const auto node = nodes.find(id);
+            if (node == nodes.end()) break;
+            id = node->second->parentId;
+        }
+    } else {
+        std::unordered_multimap<int, int> children;
+        children.reserve(nodes.size());
+        for (const auto& [id, node] : nodes) if (id != 0) children.emplace(node->parentId, id);
+        std::vector<int> pending{sourceId};
+        forbidden.insert(sourceId);
+        while (!pending.empty()) {
+            const int id = pending.back();
+            pending.pop_back();
+            const auto [first, last] = children.equal_range(id);
+            for (auto child = first; child != last; ++child)
+                if (forbidden.insert(child->second).second) pending.push_back(child->second);
+        }
+    }
+
+    std::unordered_set<int> targets;
+    for (const auto& [id, node] : nodes) {
+        if (id == 0 || forbidden.contains(id)) continue;
+        const auto* parent = fromParent ? source->second : node;
+        const auto* child = fromParent ? node : source->second;
+        const int limit = fbzz::ai::BTNodeMaxChildren(parent->type);
+        if (limit == 0) continue;
+        const auto count = childCounts.find(parent->id);
+        if (limit > 0 && child->parentId != parent->id && count != childCounts.end()
+            && count->second >= limit) continue;
+        targets.insert(id);
+    }
+    return targets;
+}
+
 bool FindNodeType(std::string_view name, fbzz::ai::BTNodeType& out)
 {
     for (int index = 0; index < static_cast<int>(fbzz::ai::BTNodeType::Count); ++index) {
