@@ -70,7 +70,7 @@ void DrawNavigationInspectors(scene::GameObject* go, EditorContext& ctx, std::an
                 ImGui::TextDisabled("%d polygons / %.2f s",
                     surface.bakeStats.polygonCount, surface.bakeStats.bakeSeconds);
             } else {
-                ImGui::TextDisabled("%zu polygons", surface.navMesh.polygons.size());
+                ImGui::TextDisabled("%zu polygons", surface.navMesh.Polygons().size());
             }
 
             if (!surface.bakeStats.failReason.empty()) {

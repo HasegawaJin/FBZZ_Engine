@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <iterator>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -59,25 +60,31 @@ struct OffMeshConnection {
     int           agentTypeMask  = -1;
 };
 
-struct NavMesh {
-    std::vector<NavMeshPolygon>    polygons;
-    std::vector<OffMeshConnection> offMeshLinks;
-    bool IsValid() const { return !polygons.empty(); }
+class NavMesh {
+public:
+    FBZZ_ENGINE_API void SetPolygons(std::vector<NavMeshPolygon> polygons);
+    FBZZ_ENGINE_API void SetOffMeshLinks(std::vector<OffMeshConnection> links);
+    void SetAreaType(size_t polygonIndex, int areaType) { m_polygons[polygonIndex].areaType = areaType; }
+
+    const std::vector<NavMeshPolygon>& Polygons() const { return m_polygons; }
+    const std::vector<OffMeshConnection>& OffMeshLinks() const { return m_offMeshLinks; }
+    std::span<const size_t> OffMeshLinksFrom(size_t polygonIndex) const
+    {
+        if (m_linksByPolygon.empty()) return {};
+        return m_linksByPolygon[polygonIndex];
+    }
+    bool IsValid() const { return !m_polygons.empty(); }
+
+    /// @note XZ 内包を優先し、同条件なら元のポリゴン順で選ぶ。
+    FBZZ_ENGINE_API int FindNearestPolygon(const math::Vector3& pos, float distanceLimit) const;
 
     /// @note XZ 位置から NavMesh 面上の Y をサンプリングする (バリセントリック補間)。
-    /// @note 見つからなければ -1e7f を返す。NavigationSystem::SampleNavMeshHeight と同一ロジック。
+    /// @note 見つからなければ -1e7f を返す。
     float SampleHeight(const math::Vector3& pos) const
     {
-        int   best       = -1;
-        float bestDistSq = 1e30f;
-        for (int i = 0; i < static_cast<int>(polygons.size()); ++i) {
-            const auto& poly = polygons[i];
-            if (poly.ContainsXZ(pos.x, pos.z)) { best = i; break; }
-            const float d = poly.DistanceSqXZ(pos.x, pos.z);
-            if (d < bestDistSq) { bestDistSq = d; best = i; }
-        }
+        const int best = FindNearestPolygon(pos, 1e30f);
         if (best < 0) return -1e7f;
-        const NavMeshPolygon& poly = polygons[static_cast<size_t>(best)];
+        const NavMeshPolygon& poly = m_polygons[static_cast<size_t>(best)];
         const size_t n = poly.vertices.size();
         for (size_t i = 1; i + 1 < n; ++i) {
             const math::Vector3& a = poly.vertices[0];
@@ -95,6 +102,21 @@ struct NavMesh {
         }
         return poly.Center().y;
     }
+
+private:
+    struct PolygonNode {
+        float minX, minZ, maxX, maxZ;
+        size_t left, right;
+        size_t polygonIndex;
+        float DistanceSqXZ(const math::Vector3& pos) const;
+    };
+
+    FBZZ_ENGINE_API size_t BuildPolygonNode(std::vector<PolygonNode>& leaves, size_t begin, size_t end);
+
+    std::vector<NavMeshPolygon> m_polygons;
+    std::vector<OffMeshConnection> m_offMeshLinks;
+    std::vector<std::vector<size_t>> m_linksByPolygon;
+    std::vector<PolygonNode> m_polygonNodes;
 };
 
 /// @note ベイク対象の収集方法

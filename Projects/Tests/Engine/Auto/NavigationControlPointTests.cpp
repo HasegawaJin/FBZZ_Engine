@@ -388,7 +388,7 @@ TEST_F(NavigationControlPointTest, MissingAssignedAgentTargetHaltsWithoutFalling
     scene::NavMeshPolygon polygon;
     polygon.vertices = {{-10.0f, 0.0f, -10.0f}, {10.0f, 0.0f, -10.0f},
                         {10.0f, 0.0f, 10.0f}, {-10.0f, 0.0f, 10.0f}};
-    surface.navMesh.polygons.push_back(polygon);
+    surface.navMesh.SetPolygons({polygon});
 
     auto& agentOwner = m_scene.CreateGameObject("Agent");
     auto& decoy = m_scene.CreateGameObject("Stale Cache Decoy");
@@ -510,7 +510,7 @@ TEST_F(NavigationControlPointTest, AgentTargetWithinItsOwnHierarchyHaltsAndKeeps
     scene::NavMeshPolygon polygon;
     polygon.vertices = {{-10.0f, 0.0f, -10.0f}, {10.0f, 0.0f, -10.0f},
                         {10.0f, 0.0f, 10.0f}, {-10.0f, 0.0f, 10.0f}};
-    surface.navMesh.polygons.push_back(polygon);
+    surface.navMesh.SetPolygons({polygon});
 
     auto& owner = m_scene.CreateGameObject("Agent");
     auto& child = m_scene.CreateGameObject("Child Goal");

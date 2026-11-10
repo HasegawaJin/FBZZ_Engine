@@ -71,7 +71,7 @@ protected:
             const auto* surface = m_scene.GetComponent<scene::NavMeshSurfaceComponent>(id);
             EXPECT_NE(surface, nullptr);
             if (!surface) continue;
-            EXPECT_FALSE(surface->navMesh.polygons.empty());
+            EXPECT_FALSE(surface->navMesh.Polygons().empty());
             EXPECT_TRUE(surface->bakeStats.failReason.empty()) << surface->bakeStats.failReason;
         }
         TaskSystem::Shutdown();
@@ -151,9 +151,9 @@ TEST_F(NavMeshBakeConcurrencyTest, ChangedLiveOffMeshEndpointIsRebuiltFromTheNew
     const auto* completed = m_scene.GetComponent<scene::NavMeshSurfaceComponent>(surfaceOwner.GetID());
     ASSERT_TRUE(finished);
     ASSERT_NE(completed, nullptr);
-    ASSERT_EQ(completed->navMesh.offMeshLinks.size(), 1u);
-    EXPECT_FLOAT_EQ(completed->navMesh.offMeshLinks[0].posA.x, 6.0f);
-    EXPECT_FLOAT_EQ(completed->navMesh.offMeshLinks[0].posB.x, 60.0f);
+    ASSERT_EQ(completed->navMesh.OffMeshLinks().size(), 1u);
+    EXPECT_FLOAT_EQ(completed->navMesh.OffMeshLinks()[0].posA.x, 6.0f);
+    EXPECT_FLOAT_EQ(completed->navMesh.OffMeshLinks()[0].posB.x, 60.0f);
     EXPECT_TRUE(completed->bakeStats.failReason.empty()) << completed->bakeStats.failReason;
 }
 
@@ -215,7 +215,7 @@ TEST_F(NavMeshBakeConcurrencyTest, ChangedTerrainHolesDiscardTheLateBakeResult)
 
     ASSERT_TRUE(completed);
     EXPECT_EQ(surface.bakedSourceHash, changedSignature);
-    EXPECT_TRUE(surface.navMesh.polygons.empty());
+    EXPECT_TRUE(surface.navMesh.Polygons().empty());
 }
 
 TEST_F(NavMeshBakeConcurrencyTest, RemovedAndReAddedSurfaceDoesNotReceiveTheOldJob)
@@ -247,13 +247,13 @@ TEST_F(NavMeshBakeConcurrencyTest, RemovedAndReAddedSurfaceDoesNotReceiveTheOldJ
     scene::NavMeshPolygon sentinel;
     sentinel.vertices = {{120.0f, 0.0f, 120.0f}, {121.0f, 0.0f, 120.0f},
                          {121.0f, 0.0f, 121.0f}, {120.0f, 0.0f, 121.0f}};
-    replacement.navMesh.polygons.push_back(sentinel);
+    replacement.navMesh.SetPolygons({sentinel});
 
     TaskSystem::Shutdown();
     system.Update(context);
     ASSERT_EQ(replacement.bakeState, scene::NavMeshBakeState::Done);
-    ASSERT_EQ(replacement.navMesh.polygons.size(), 1u);
-    EXPECT_FLOAT_EQ(replacement.navMesh.polygons[0].vertices[0].x, 120.0f);
+    ASSERT_EQ(replacement.navMesh.Polygons().size(), 1u);
+    EXPECT_FLOAT_EQ(replacement.navMesh.Polygons()[0].vertices[0].x, 120.0f);
     EXPECT_EQ(replacement.bakedSourceHash, 0x12345678u);
 }
 

@@ -150,7 +150,7 @@ TEST_F(ManagedEngineNotificationTest, NavigationCallbacksCanGrowAgentStorageWith
     start.vertices = {{-2, 0, -2}, {2, 0, -2}, {2, 0, 2}, {-2, 0, 2}};
     scene::NavMeshPolygon goal;
     goal.vertices = {{10, 0, -2}, {14, 0, -2}, {14, 0, 2}, {10, 0, 2}};
-    surface.navMesh.polygons = {start, goal};
+    surface.navMesh.SetPolygons({start, goal});
     m_owner->AddComponent<scene::NavMeshAgentComponent>().SetDestination({12, 0, 0});
     auto& second = m_scene.CreateGameObject("SecondNavigationOwner");
     second.AddComponent<scene::NavMeshAgentComponent>().SetDestination({12, 0, 0});

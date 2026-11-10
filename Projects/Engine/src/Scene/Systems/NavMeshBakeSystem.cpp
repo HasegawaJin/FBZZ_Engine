@@ -9,6 +9,7 @@
 /// @note Hertel-Mehlhorn 凸合成 → Polygon Mesh (NavMeshPolygon 構築 + Portal 接続)。
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Scene/Systems/NavMeshBakeSystem.hpp"
+#include "Engine/Scene/Systems/NavMeshQuery.hpp"
 #include "Engine/Scene/NavigationControlPoints.hpp"
 #include "Engine/Core/Scheduler/SystemContext.hpp"
 #include "Engine/Scene/Scene.hpp"
@@ -41,21 +42,6 @@ namespace {
 
 constexpr float kPi        = 3.14159265358979323846f;
 constexpr float kNoSurface = -1.0e30f;
-
-/// @note NavigationSystem.cpp の同名関数と同一ロジック。
-/// @note BakeSystem は別 TU のためローカルコピーを持つ。
-int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
-{
-    int best = -1;
-    float bestDistSq = std::numeric_limits<float>::max();
-    for (size_t i = 0; i < navMesh.polygons.size(); ++i) {
-        const auto& poly = navMesh.polygons[i];
-        if (poly.ContainsXZ(pos.x, pos.z)) return static_cast<int>(i);
-        const float d = poly.DistanceSqXZ(pos.x, pos.z);
-        if (d < bestDistSq) { bestDistSq = d; best = static_cast<int>(i); }
-    }
-    return best;
-}
 
 math::Vector3 ComponentScale(const math::Vector3& a, const math::Vector3& b)
 {
@@ -705,9 +691,9 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
         }
     }
 
-    result.navMesh.polygons   = std::move(finalPolys);
-    result.stats.polygonCount = static_cast<int>(result.navMesh.polygons.size());
-    for (const auto& poly : result.navMesh.polygons) {
+    result.navMesh.SetPolygons(std::move(finalPolys));
+    result.stats.polygonCount = static_cast<int>(result.navMesh.Polygons().size());
+    for (const auto& poly : result.navMesh.Polygons()) {
         float twiceArea = 0.0f;
         const size_t n = poly.vertices.size();
         for (size_t i = 0; i < n; ++i) {
@@ -718,7 +704,7 @@ static NavMeshBakeResult RunNavMeshBake(BakeInput inp, std::atomic<float>* progr
         result.stats.areaSquareMeters += std::abs(twiceArea) * 0.5f;
     }
 
-    if (result.navMesh.polygons.empty()) {
+    if (result.navMesh.Polygons().empty()) {
         result.stats.failReason =
             "歩行可能なセルが残りませんでした。Max Slope を上げる / Agent Radius を下げる / "
             "NotWalkable の NavMesh Modifier がベイク範囲を覆っていないか確認してください";
@@ -928,7 +914,8 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
             surface->bakeProgress = 1.0f;
 
             NavMesh& nm = surface->navMesh;
-            nm.offMeshLinks.clear();
+            std::vector<OffMeshConnection> links;
+            links.reserve(completedJob.offMeshLinks.size());
             for (const NavMeshBakeOffMeshLinkInput& link : completedJob.offMeshLinks) {
                 const int polyA = FindNearestPolygon(nm, link.startPoint);
                 const int polyB = FindNearestPolygon(nm, link.endPoint);
@@ -942,8 +929,9 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 conn.bidirectional = link.bidirectional;
                 conn.traversalTime = link.traversalTime;
                 conn.agentTypeMask = link.agentTypeMask;
-                nm.offMeshLinks.push_back(conn);
+                links.push_back(conn);
             }
+            nm.SetOffMeshLinks(std::move(links));
 
             /// @note Walkable modifier の areaType をポリゴンへ後処理で割り当てる。
             /// @note ポリゴン Center の XZ 座標がモディファイアの AABB 内にあれば areaType を上書きする。
@@ -963,11 +951,11 @@ void NavMeshBakeSystem::Update(SystemContext& ctx)
                 const float hx = std::abs(ws.x) * 0.5f + 0.05f;
                 const float hz = std::abs(ws.z) * 0.5f + 0.05f;
 
-                for (auto& poly : nm.polygons) {
-                    const math::Vector3 c = poly.Center();
+                for (size_t i = 0; i < nm.Polygons().size(); ++i) {
+                    const math::Vector3 c = nm.Polygons()[i].Center();
                     if (c.x >= wp.x - hx && c.x <= wp.x + hx &&
                         c.z >= wp.z - hz && c.z <= wp.z + hz) {
-                        poly.areaType = mod->areaType & 31;
+                        nm.SetAreaType(i, mod->areaType & 31);
                     }
                 }
             }

@@ -365,8 +365,8 @@ JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponen
     entry.Set("bakeState", JsonValue(stateName));
     entry.Set("bakeProgress", JsonValue(surface.bakeProgress));
     entry.Set("needsBake", JsonValue(surface.needsBake));
-    entry.Set("polygonCount", JsonValue(static_cast<int>(surface.navMesh.polygons.size())));
-    entry.Set("offMeshLinkCount", JsonValue(static_cast<int>(surface.navMesh.offMeshLinks.size())));
+    entry.Set("polygonCount", JsonValue(static_cast<int>(surface.navMesh.Polygons().size())));
+    entry.Set("offMeshLinkCount", JsonValue(static_cast<int>(surface.navMesh.OffMeshLinks().size())));
     /// @note polygonCount=0 だけでは傾斜・障害物・エージェント半径のどれで落ちたか分からないため、内訳を添える。
     if (!surface.bakeStats.failReason.empty())
         entry.Set("failReason", JsonValue(surface.bakeStats.failReason));
@@ -384,11 +384,11 @@ JsonValue NavMeshSurfaceJson(GameObject& go, const scene::NavMeshSurfaceComponen
         entry.Set("bake", std::move(bakeInfo));
     }
     /// @note 歩ける範囲そのもの。AI が目的地を選ぶ唯一の手掛かりになる。
-    if (!surface.navMesh.polygons.empty()) {
+    if (!surface.navMesh.Polygons().empty()) {
         math::Vector3 boundsMin{ 1e30f, 1e30f, 1e30f };
         math::Vector3 boundsMax{ -1e30f, -1e30f, -1e30f };
         std::unordered_map<int, int> areaHistogram;
-        for (const scene::NavMeshPolygon& polygon : surface.navMesh.polygons) {
+        for (const scene::NavMeshPolygon& polygon : surface.navMesh.Polygons()) {
             ++areaHistogram[polygon.areaType];
             for (const math::Vector3& vertex : polygon.vertices) {
                 boundsMin = { std::min(boundsMin.x, vertex.x), std::min(boundsMin.y, vertex.y), std::min(boundsMin.z, vertex.z) };
@@ -620,16 +620,16 @@ Outcome DoNavMeshSample(editor::EditorContext& ctx, const JsonValue& payload)
             samples.Push(std::move(sample));
             continue;
         }
-        const bool inside = surface->navMesh.polygons[static_cast<size_t>(polygon)].ContainsXZ(query.x, query.z);
+        const bool inside = surface->navMesh.Polygons()[static_cast<size_t>(polygon)].ContainsXZ(query.x, query.z);
         const float height = scene::SampleNavMeshHeight(surface->navMesh, query);
         sample.Set("onNavMesh", JsonValue(inside));
         sample.Set("polygon", JsonValue(polygon));
-        sample.Set("areaType", JsonValue(surface->navMesh.polygons[static_cast<size_t>(polygon)].areaType));
+        sample.Set("areaType", JsonValue(surface->navMesh.Polygons()[static_cast<size_t>(polygon)].areaType));
         /// @note 面の外なら最近傍ポリゴンへ寄せた点を返す。Agent を置き直す座標としてそのまま使える。
         sample.Set("nearest", VectorToJson({ query.x, height <= -1e6f ? query.y : height, query.z }));
         if (!inside) {
             sample.Set("distanceXZ", JsonValue(std::sqrt(
-                surface->navMesh.polygons[static_cast<size_t>(polygon)].DistanceSqXZ(query.x, query.z))));
+                surface->navMesh.Polygons()[static_cast<size_t>(polygon)].DistanceSqXZ(query.x, query.z))));
         }
         samples.Push(std::move(sample));
     }

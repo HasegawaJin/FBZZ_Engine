@@ -81,11 +81,12 @@ PathWithLinks BuildPathWithLinks(
         const int toPoly   = polyPath[static_cast<size_t>(i + 1)];
 
         bool hasPortal = false;
-        for (const auto& p : navMesh.polygons[static_cast<size_t>(fromPoly)].portals)
+        for (const auto& p : navMesh.Polygons()[static_cast<size_t>(fromPoly)].portals)
             if (p.neighbor == toPoly) { hasPortal = true; break; }
         if (hasPortal) continue;
 
-        for (const auto& link : navMesh.offMeshLinks) {
+        for (const size_t linkIndex : navMesh.OffMeshLinksFrom(static_cast<size_t>(fromPoly))) {
+            const auto& link = navMesh.OffMeshLinks()[linkIndex];
             const bool fwd = (link.polyA == fromPoly && link.polyB == toPoly);
             const bool bwd = link.bidirectional && (link.polyB == fromPoly && link.polyA == toPoly);
             if (!fwd && !bwd) continue;

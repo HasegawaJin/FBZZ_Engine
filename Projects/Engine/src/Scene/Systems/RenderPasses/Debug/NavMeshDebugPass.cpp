@@ -193,7 +193,7 @@ void DrawPolygons(RenderPassContext& ctx, const NavMeshSurfaceComponent& surface
     if (mode == NavMeshDrawMode::Portals)     fillAlpha = 0.08f;
 
     std::vector<math::Vector3> lifted;
-    for (const auto& poly : navMesh.polygons) {
+    for (const auto& poly : navMesh.Polygons()) {
         const math::Vector3 center = poly.Center();
         if (maxDistanceSq > 0.0f && (center - cameraPos).LengthSq() > maxDistanceSq) continue;
 
@@ -231,9 +231,9 @@ void DrawPolygons(RenderPassContext& ctx, const NavMeshSurfaceComponent& surface
             const math::Vector3 from = center + math::Vector3(0.0f, kLift + 0.05f, 0.0f);
             for (const auto& portal : poly.portals) {
                 if (portal.neighbor < 0
-                 || portal.neighbor >= static_cast<int>(navMesh.polygons.size())) continue;
+                 || portal.neighbor >= static_cast<int>(navMesh.Polygons().size())) continue;
                 const math::Vector3 to =
-                    navMesh.polygons[static_cast<size_t>(portal.neighbor)].Center()
+                    navMesh.Polygons()[static_cast<size_t>(portal.neighbor)].Center()
                     + math::Vector3(0.0f, kLift + 0.05f, 0.0f);
                 ReserveLines(2);
                 renderer::DebugDraw::Line(ctx.renderer, from, to, kPortalLink);
@@ -325,7 +325,7 @@ void NavMeshDebugPass::Execute(PassResources&, RenderPassContext& ctx)
             else
                 DrawPolygons(ctx, *surface, mode, cameraPos, maxDistSq);
 
-            for (const auto& link : surface->navMesh.offMeshLinks) {
+            for (const auto& link : surface->navMesh.OffMeshLinks()) {
                 DrawLinkArc(ctx.renderer, link.posA, link.posB, kOffMeshColor);
                 if (!link.bidirectional)
                     renderer::DebugDraw::Arrow(ctx.renderer, link.posA, link.posB,

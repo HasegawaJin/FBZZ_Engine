@@ -1,9 +1,7 @@
 /// @file    NavMeshQuery.cpp
-/// @brief   NavMesh クエリの実装。NavigationSystem (Agent の毎フレーム更新) と。
+/// @brief   NavigationSystem と EditorBus が共有する NavMesh クエリ。
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
-///
-/// EditorBusDispatcher (AI の navmesh.path / navmesh.sample) が同じ実体を共有する。
 #include "Engine/Scene/Systems/NavMeshQuery.hpp"
 #include <algorithm>
 #include <cfloat>
@@ -18,7 +16,7 @@ namespace fbzz::scene {
 
 namespace {
 
-/// XZ 平面上の符号付き面積の 2 倍 (Funnel Algorithm の左右判定に使う)。
+/// @note XZ 平面上の符号付き面積の 2 倍。
 float TriArea2(const math::Vector3& a, const math::Vector3& b, const math::Vector3& c)
 {
     return (b.x - a.x) * (c.z - a.z) - (c.x - a.x) * (b.z - a.z);
@@ -30,47 +28,156 @@ bool NearlyEqualXZ(const math::Vector3& a, const math::Vector3& b)
     return std::abs(a.x - b.x) < kEps && std::abs(a.z - b.z) < kEps;
 }
 
-} // namespace
+} /// @note namespace
 
-/// 指定座標を含むポリゴンを返す。範囲外なら最も近いポリゴンへフォールバックする
-/// (Agent が NavMesh の境界からわずかに外れているケースを許容する)。
-int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
+void NavMesh::SetPolygons(std::vector<NavMeshPolygon> polygons)
 {
-    int best = -1;
-    float bestDistSq = FLT_MAX;
-    for (size_t i = 0; i < navMesh.polygons.size(); ++i) {
-        const auto& poly = navMesh.polygons[i];
-        if (poly.ContainsXZ(pos.x, pos.z))
-            return static_cast<int>(i);
-
-        const float distSq = poly.DistanceSqXZ(pos.x, pos.z);
-        if (distSq < bestDistSq) { bestDistSq = distSq; best = static_cast<int>(i); }
+    m_polygons = std::move(polygons);
+    SetOffMeshLinks({});
+    m_polygonNodes.clear();
+    std::vector<PolygonNode> leaves;
+    leaves.reserve(m_polygons.size());
+    for (size_t index = 0; index < m_polygons.size(); ++index) {
+        const auto& vertices = m_polygons[index].vertices;
+        if (vertices.empty()) continue;
+        PolygonNode bounds{FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, 0, 0, index};
+        float previousZ = vertices.back().z;
+        for (const auto& vertex : vertices) {
+            const float dz = std::abs(vertex.z - previousZ);
+            /// @note 既存の float 交差計算で積の overflow や極短辺の丸めがあり得るメッシュは線形探索する。
+            if (!(std::abs(vertex.x) <= 1e15f && std::abs(vertex.z) <= 1e15f)
+                || (dz != 0.0f && dz < 1e-12f)) return;
+            bounds.minX = std::min(bounds.minX, vertex.x);
+            bounds.minZ = std::min(bounds.minZ, vertex.z);
+            bounds.maxX = std::max(bounds.maxX, vertex.x);
+            bounds.maxZ = std::max(bounds.maxZ, vertex.z);
+            previousZ = vertex.z;
+        }
+        /// @note float の線分補間で端点の外へ丸められる範囲まで含める。
+        const float padX = 8.0f * FLT_EPSILON * std::max({1.0f, std::abs(bounds.minX), std::abs(bounds.maxX)});
+        const float padZ = 8.0f * FLT_EPSILON * std::max({1.0f, std::abs(bounds.minZ), std::abs(bounds.maxZ)});
+        bounds.minX -= padX;
+        bounds.minZ -= padZ;
+        bounds.maxX += padX;
+        bounds.maxZ += padZ;
+        leaves.push_back(bounds);
     }
-    return best;
+    if (leaves.empty()) return;
+    m_polygonNodes.reserve(leaves.size() * 2 - 1);
+    BuildPolygonNode(leaves, 0, leaves.size());
 }
 
-/// ポリゴン隣接グラフ上の A* 探索。
-/// 最適化: open リストを二分ヒープ (std::priority_queue) で管理する。
-/// decrease-key を行わない代わりに、より良い g が見つかるたびに新しいエントリを push し、
-/// pop 時に closed 済み (=確定済みより悪い古いエントリ) を読み捨てる lazy deletion 方式を使う。
-/// これにより大きな NavMesh でも O((V+E) log V) で探索できる。
-/// areaMask: ビット i が立っているとき areaType==i のポリゴンを通過可 (-1 = 全通過)
-/// areaCosts: nullptr のとき全コスト 1.0f。areaCosts[areaType] がエッジ重みに掛かる。
-/// agentTypeId: オフメッシュリンクの agentTypeMask フィルタリングに使う。
+size_t NavMesh::BuildPolygonNode(std::vector<PolygonNode>& leaves, size_t begin, size_t end)
+{
+    const size_t nodeIndex = m_polygonNodes.size();
+    PolygonNode node = leaves[begin];
+    m_polygonNodes.push_back(node);
+    if (end - begin == 1) return nodeIndex;
+    for (size_t i = begin + 1; i < end; ++i) {
+        node.minX = std::min(node.minX, leaves[i].minX);
+        node.minZ = std::min(node.minZ, leaves[i].minZ);
+        node.maxX = std::max(node.maxX, leaves[i].maxX);
+        node.maxZ = std::max(node.maxZ, leaves[i].maxZ);
+    }
+    const bool splitX = node.maxX - node.minX >= node.maxZ - node.minZ;
+    const size_t middle = begin + (end - begin) / 2;
+    std::nth_element(leaves.begin() + begin, leaves.begin() + middle, leaves.begin() + end,
+        [splitX](const PolygonNode& a, const PolygonNode& b) {
+            return splitX ? a.minX + a.maxX < b.minX + b.maxX : a.minZ + a.maxZ < b.minZ + b.maxZ;
+        });
+    node.polygonIndex = SIZE_MAX;
+    node.left = BuildPolygonNode(leaves, begin, middle);
+    node.right = BuildPolygonNode(leaves, middle, end);
+    m_polygonNodes[nodeIndex] = node;
+    return nodeIndex;
+}
+
+float NavMesh::PolygonNode::DistanceSqXZ(const math::Vector3& pos) const
+{
+    const float dx = std::max({minX - pos.x, pos.x - maxX, 0.0f});
+    const float dz = std::max({minZ - pos.z, pos.z - maxZ, 0.0f});
+    return dx * dx + dz * dz;
+}
+
+int NavMesh::FindNearestPolygon(const math::Vector3& pos, float distanceLimit) const
+{
+    size_t best = SIZE_MAX;
+    size_t bestInside = SIZE_MAX;
+    float bestDistSq = distanceLimit;
+    const auto checkPolygon = [&](size_t index) {
+        const auto& poly = m_polygons[index];
+        if (poly.ContainsXZ(pos.x, pos.z)) {
+            bestInside = std::min(bestInside, index);
+        } else if (bestInside == SIZE_MAX) {
+            const float distSq = poly.DistanceSqXZ(pos.x, pos.z);
+            if (distSq < bestDistSq || (best != SIZE_MAX && distSq == bestDistSq && index < best)) {
+                bestDistSq = distSq;
+                best = index;
+            }
+        }
+    };
+    if (m_polygonNodes.empty() || !std::isfinite(pos.x) || !std::isfinite(pos.z)) {
+        for (size_t index = 0; index < m_polygons.size() && bestInside == SIZE_MAX; ++index) checkPolygon(index);
+    } else {
+        const auto visit = [&](auto&& self, size_t index, float lowerBound) -> void {
+            if (lowerBound > (bestInside == SIZE_MAX ? bestDistSq : 0.0f)) return;
+            const PolygonNode& node = m_polygonNodes[index];
+            if (node.polygonIndex != SIZE_MAX) {
+                checkPolygon(node.polygonIndex);
+                return;
+            }
+            const float leftBound = m_polygonNodes[node.left].DistanceSqXZ(pos);
+            const float rightBound = m_polygonNodes[node.right].DistanceSqXZ(pos);
+            if (leftBound <= rightBound) {
+                self(self, node.left, leftBound);
+                self(self, node.right, rightBound);
+            } else {
+                self(self, node.right, rightBound);
+                self(self, node.left, leftBound);
+            }
+        };
+        visit(visit, 0, m_polygonNodes.front().DistanceSqXZ(pos));
+    }
+    if (bestInside != SIZE_MAX) return static_cast<int>(bestInside);
+    return best == SIZE_MAX ? -1 : static_cast<int>(best);
+}
+
+void NavMesh::SetOffMeshLinks(std::vector<OffMeshConnection> links)
+{
+    m_offMeshLinks = std::move(links);
+    m_linksByPolygon.clear();
+    if (m_offMeshLinks.empty()) return;
+    m_linksByPolygon.resize(m_polygons.size());
+    for (size_t index = 0; index < m_offMeshLinks.size(); ++index) {
+        const auto& link = m_offMeshLinks[index];
+        const size_t a = static_cast<size_t>(link.polyA);
+        const size_t b = static_cast<size_t>(link.polyB);
+        if (a >= m_polygons.size() || b >= m_polygons.size()) continue;
+        m_linksByPolygon[a].push_back(index);
+        if (link.bidirectional && b != a) m_linksByPolygon[b].push_back(index);
+    }
+}
+
+int FindNearestPolygon(const NavMesh& navMesh, const math::Vector3& pos)
+{
+    return navMesh.FindNearestPolygon(pos, FLT_MAX);
+}
+
+/// @note decrease-key の代わりに更新後の候補を積み、確定済みの古い候補を pop 時に読み捨てる。
 bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::vector<int>& outPath,
                      int areaMask, const float* areaCosts, int agentTypeId)
 {
     if (startPoly == goalPoly) { outPath = { startPoly }; return true; }
 
-    const size_t n = navMesh.polygons.size();
+    const size_t n = navMesh.Polygons().size();
     std::vector<float> gScore(n, FLT_MAX);
     std::vector<int> cameFrom(n, -1);
     std::vector<uint8_t> closed(n, 0);
     gScore[static_cast<size_t>(startPoly)] = 0.0f;
 
     auto heuristic = [&](int a, int b) {
-        return (navMesh.polygons[static_cast<size_t>(a)].Center()
-              - navMesh.polygons[static_cast<size_t>(b)].Center()).Length();
+        return (navMesh.Polygons()[static_cast<size_t>(a)].Center()
+              - navMesh.Polygons()[static_cast<size_t>(b)].Center()).Length();
     };
     /// @note エリアタイプのコストを取得する。areaCosts が nullptr のとき 1.0f を返す。
     auto areaCost = [&](int areaType) -> float {
@@ -81,7 +188,7 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
     /// @note areaMask でポリゴンが通過可能かチェックする。
     auto canTraverse = [&](int polyIdx) -> bool {
         if (areaMask == -1) return true;
-        const int at = navMesh.polygons[static_cast<size_t>(polyIdx)].areaType;
+        const int at = navMesh.Polygons()[static_cast<size_t>(polyIdx)].areaType;
         return (areaMask & (1 << (at & 31))) != 0;
     };
 
@@ -104,11 +211,11 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
         }
 
         closed[static_cast<size_t>(current)] = 1;
-        for (const auto& portal : navMesh.polygons[static_cast<size_t>(current)].portals) {
+        for (const auto& portal : navMesh.Polygons()[static_cast<size_t>(current)].portals) {
             const int nb = portal.neighbor;
             if (closed[static_cast<size_t>(nb)]) continue;
             if (!canTraverse(nb)) continue;
-            const float edgeCost = heuristic(current, nb) * areaCost(navMesh.polygons[static_cast<size_t>(nb)].areaType);
+            const float edgeCost = heuristic(current, nb) * areaCost(navMesh.Polygons()[static_cast<size_t>(nb)].areaType);
             const float tentativeG = gScore[static_cast<size_t>(current)] + edgeCost;
             if (tentativeG < gScore[static_cast<size_t>(nb)]) {
                 gScore[static_cast<size_t>(nb)] = tentativeG;
@@ -117,7 +224,8 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
             }
         }
         /// @note オフメッシュリンクをグラフエッジとして扱う
-        for (const auto& link : navMesh.offMeshLinks) {
+        for (const size_t linkIndex : navMesh.OffMeshLinksFrom(static_cast<size_t>(current))) {
+            const auto& link = navMesh.OffMeshLinks()[linkIndex];
             /// @note agentTypeMask フィルタ: -1 は全 Agent 通過可
             if (link.agentTypeMask != -1 && !(link.agentTypeMask & (1 << (agentTypeId & 31)))) continue;
             auto tryLink = [&](int from, int to, float cost) {
@@ -138,8 +246,6 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
     return false;
 }
 
-/// ポリゴン経路から Funnel Algorithm (Simple Stupid Funnel Algorithm) で
-/// 直線最短パスへ平滑化する。先頭要素は startPos そのもの。
 std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::vector<int>& polyPath,
                                             const math::Vector3& startPos, const math::Vector3& goalPos)
 {
@@ -157,8 +263,8 @@ std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::ve
     channel.push_back({ startPos, startPos });
 
     for (size_t i = 0; i + 1 < polyPath.size(); ++i) {
-        const NavMeshPolygon& cur = navMesh.polygons[static_cast<size_t>(polyPath[i])];
-        const NavMeshPolygon& nxt = navMesh.polygons[static_cast<size_t>(polyPath[i + 1])];
+        const NavMeshPolygon& cur = navMesh.Polygons()[static_cast<size_t>(polyPath[i])];
+        const NavMeshPolygon& nxt = navMesh.Polygons()[static_cast<size_t>(polyPath[i + 1])];
 
         const NavMeshPolygon::Portal* found = nullptr;
         for (const auto& portal : cur.portals) {
@@ -219,13 +325,11 @@ std::vector<math::Vector3> BuildFunnelPath(const NavMesh& navMesh, const std::ve
     return result;
 }
 
-/// NavMesh 面上の XZ 座標から Y 高さをバリセントリック補間で返す。
-/// 最近傍ポリゴンが見つからない場合は pos.y をそのまま返す。
 float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos)
 {
     const int polyIdx = FindNearestPolygon(navMesh, pos);
     if (polyIdx < 0) return -1e7f;
-    const NavMeshPolygon& poly = navMesh.polygons[static_cast<size_t>(polyIdx)];
+    const NavMeshPolygon& poly = navMesh.Polygons()[static_cast<size_t>(polyIdx)];
     const size_t n = poly.vertices.size();
     for (size_t i = 1; i + 1 < n; ++i) {
         const math::Vector3& a = poly.vertices[0];
@@ -244,4 +348,4 @@ float SampleNavMeshHeight(const NavMesh& navMesh, const math::Vector3& pos)
     return poly.Center().y;
 }
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

@@ -10,6 +10,7 @@
 #include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/Systems/NavigationSystem.hpp>
+#include <Engine/Scene/Systems/NavMeshQuery.hpp>
 #include <Physics/World.hpp>
 #include <memory>
 
@@ -26,7 +27,7 @@ protected:
         auto& surface = scene.CreateGameObject("Surface").AddComponent<scene::NavMeshSurfaceComponent>();
         scene::NavMeshPolygon polygon;
         polygon.vertices = {{-100, 0, -100}, {100, 0, -100}, {100, 0, 100}, {-100, 0, 100}};
-        surface.navMesh.polygons.push_back(polygon);
+        surface.navMesh.SetPolygons({polygon});
         return surface;
     }
 
@@ -94,6 +95,45 @@ TEST_F(NavigationWorkspaceTest, RebuildsOccupiedBucketsAfterAgentsMoveBetweenFra
     EXPECT_NEAR(secondAgent.velocity.z, 1, testkit::kTolerance);
 }
 
+TEST_F(NavigationWorkspaceTest, IndexedPolygonQueriesPreserveOrderForOverlapsAndNearestTies)
+{
+    const auto makePolygon = [](float x, float y) {
+        scene::NavMeshPolygon polygon;
+        polygon.vertices = {{x, y, 0}, {x + 2, y, 0}, {x + 2, y, 2}, {x, y, 2}};
+        return polygon;
+    };
+    scene::NavMesh navMesh;
+    navMesh.SetPolygons({makePolygon(4, 10), makePolygon(0, 20), makePolygon(4, 30), makePolygon(20, 40)});
+    EXPECT_EQ(scene::FindNearestPolygon(navMesh, {5, 30, 1}), 0);
+    EXPECT_FLOAT_EQ(scene::SampleNavMeshHeight(navMesh, {5, 30, 1}), 10);
+    EXPECT_EQ(scene::FindNearestPolygon(navMesh, {3, 0, 1}), 0);
+    EXPECT_EQ(scene::FindNearestPolygon(navMesh, {21, 0, 1}), 3);
+    navMesh.SetPolygons({makePolygon(20, 40), makePolygon(0, 20)});
+    EXPECT_EQ(scene::FindNearestPolygon(navMesh, {21, 0, 1}), 0);
+}
+
+TEST_F(NavigationWorkspaceTest, IndexedOffMeshLinksRespectDirectionAndAgentMask)
+{
+    scene::NavMesh navMesh;
+    navMesh.SetPolygons({{}, {}, {}});
+    scene::OffMeshConnection oneWay;
+    oneWay.polyA = 1;
+    oneWay.polyB = 2;
+    oneWay.bidirectional = false;
+    oneWay.agentTypeMask = 1 << 2;
+    scene::OffMeshConnection twoWay;
+    twoWay.polyA = 1;
+    twoWay.polyB = 0;
+    navMesh.SetOffMeshLinks({oneWay, twoWay});
+    std::vector<int> path;
+    EXPECT_TRUE(scene::FindPolygonPath(navMesh, 0, 2, path, -1, nullptr, 2));
+    EXPECT_EQ(path, (std::vector<int>{0, 1, 2}));
+    EXPECT_FALSE(scene::FindPolygonPath(navMesh, 0, 2, path, -1, nullptr, 0));
+    EXPECT_FALSE(scene::FindPolygonPath(navMesh, 2, 0, path, -1, nullptr, 2));
+    navMesh.SetOffMeshLinks({});
+    EXPECT_FALSE(scene::FindPolygonPath(navMesh, 0, 1, path, -1, nullptr, 2));
+}
+
 TEST_F(NavigationWorkspaceTest, ReusesOneSystemAcrossDifferentScenesWithoutRetainingSurfaceOrAgentReferences)
 {
     Surface(m_scene);
@@ -118,9 +158,13 @@ TEST_F(NavigationWorkspaceTest, PreservesTheFirstValidSurfaceForEachTypeAndReche
     auto& first = Surface(m_scene);
     auto& duplicate = Surface(m_scene);
     auto& otherType = Surface(m_scene);
-    for (auto& point : duplicate.navMesh.polygons[0].vertices) point.y = 10;
+    auto duplicatePolygon = duplicate.navMesh.Polygons()[0];
+    for (auto& point : duplicatePolygon.vertices) point.y = 10;
+    duplicate.navMesh.SetPolygons({duplicatePolygon});
     otherType.agentTypeId = 8;
-    for (auto& point : otherType.navMesh.polygons[0].vertices) point.y = 20;
+    auto otherTypePolygon = otherType.navMesh.Polygons()[0];
+    for (auto& point : otherTypePolygon.vertices) point.y = 20;
+    otherType.navMesh.SetPolygons({otherTypePolygon});
     auto& firstObject = Agent(m_scene, {});
     auto& secondObject = Agent(m_scene, {5, 0, 0});
     auto& firstAgent = *firstObject.GetComponent<scene::NavMeshAgentComponent>();
