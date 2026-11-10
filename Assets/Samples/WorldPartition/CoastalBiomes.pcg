@@ -1,0 +1,195 @@
+# @file    CoastalBiomes.pcg
+# @brief   Coastal vegetation and exposed rock bands using the world PCG shoreline query.
+# @author  Hasegawa Jin
+# @date    2026-11-10
+# @see https://dev.epicgames.com/documentation/unreal-engine/procedural-content-generation-pcg-biome-core-and-sample-plugins-reference-guide-in-unreal-engine Epic PCG Biome, filters.
+
+format = "fbzz.pcg"
+version = 1
+key = "CoastalBiomes"
+name = "Coastal biomes: shore, transition and upland"
+seed = "20261110"
+maxInstances = 24000
+maxCandidates = 64000
+maxPlacementsPerCell = 130
+exclusions = []
+
+[grid]
+origin = [0.0, 0.0, 0.0]
+cellSize = 128.0
+
+[bounds]
+min = [0.0, 0.0, 0.0]
+max = [512.0, 0.0, 512.0]
+
+[[rules]]
+key = "shore_rock"
+name = "Rocky shore pocket"
+biome = ""
+prototypeRef = "guid:a7ce322e7ec7543d87f34a83caa20de0|Assets/Terrain/Alpine/AlpineRock.terrainpaint"
+lodHeights = [0.0]
+spacing = 7.0
+density = 0.58
+noiseScale = 21.0
+clusterStrength = 0.66
+minHeight = 0.15
+maxHeight = 12.0
+minSlope = 0.0
+maxSlope = 42.0
+minWaterDistance = 0.6
+maxWaterDistance = 18.0
+# @note The source OBJ uses centimetres. The scale range includes conversion to metres.
+minScale = 0.0055
+maxScale = 0.011
+minYaw = 0.0
+maxYaw = 360.0
+embedDepth = 0.07
+protectedDistance = 1.0
+alignToSurface = true
+includeHlod = true
+
+[[rules.parts]]
+mesh = "guid:ce6eaa61f60656d0847ed2d8dc5003a4|Assets/Terrain/Alpine/AlpineRock.obj:0"
+material = "guid:0a8186ed63195fdc9fa66ff258793e63|Assets/Terrain/Alpine/Stone.mat"
+lod = 0
+
+[[rules]]
+key = "coastal_birch"
+name = "Sheltered coastal birch"
+biome = ""
+prototypeRef = "guid:8af623571c5451078c0251555a15e605|Assets/Terrain/SpruceIsland/Birch/ForestBirch.terrainpaint"
+lodHeights = [0.26, 0.085, 0.0]
+spacing = 15.0
+density = 0.46
+noiseScale = 37.0
+clusterStrength = 0.62
+minHeight = 2.0
+maxHeight = 48.0
+minSlope = 0.0
+maxSlope = 26.0
+minWaterDistance = 8.0
+maxWaterDistance = 70.0
+minScale = 0.85
+maxScale = 1.25
+minYaw = 0.0
+maxYaw = 360.0
+embedDepth = 0.0
+protectedDistance = 2.0
+alignToSurface = false
+includeHlod = true
+
+[[rules.parts]]
+mesh = "guid:5f7829c8ab4e5c99b9347cb8e65a4470|Assets/Terrain/SpruceIsland/Birch/BirchBarkLod0.obj:0"
+material = "guid:6349b8dcf1e0592a866e986f7f4aa227|Assets/Terrain/SpruceIsland/Birch/BirchBark.mat"
+lod = 0
+
+[[rules.parts]]
+mesh = "guid:112874b833d25956aae958208cc904de|Assets/Terrain/SpruceIsland/Birch/BirchLeavesLod0.obj:0"
+material = "guid:1e29f604ac115d6da2c7d1180a940f2c|Assets/Terrain/SpruceIsland/Birch/BirchLeaves.mat"
+lod = 0
+
+[[rules.parts]]
+mesh = "guid:f522912c36be5977aed76935946e6107|Assets/Terrain/SpruceIsland/Birch/BirchBarkLod1.obj:0"
+material = "guid:6349b8dcf1e0592a866e986f7f4aa227|Assets/Terrain/SpruceIsland/Birch/BirchBark.mat"
+lod = 1
+
+[[rules.parts]]
+mesh = "guid:77078f0985d6506e83e08bc154bdaf41|Assets/Terrain/SpruceIsland/Birch/BirchLeavesLod1.obj:0"
+material = "guid:1e29f604ac115d6da2c7d1180a940f2c|Assets/Terrain/SpruceIsland/Birch/BirchLeaves.mat"
+lod = 1
+
+[[rules.parts]]
+mesh = "guid:fdec25d1cbbc55b5a75c9debcd102a97|Assets/Terrain/SpruceIsland/Birch/BirchBarkLod2.obj:0"
+material = "guid:6349b8dcf1e0592a866e986f7f4aa227|Assets/Terrain/SpruceIsland/Birch/BirchBark.mat"
+lod = 2
+
+[[rules.parts]]
+mesh = "guid:1ce70400d94858589b1245bfe87a8921|Assets/Terrain/SpruceIsland/Birch/BirchLeavesLod2.obj:0"
+material = "guid:f968dfb1317d535b8c7e6b771a368266|Assets/Terrain/SpruceIsland/Birch/BirchLeavesFar.mat"
+lod = 2
+
+[[rules]]
+key = "upland_spruce"
+name = "Upland spruce"
+biome = ""
+prototypeRef = "guid:83b5dce8bbf4590c94ecdee70d8e43f8|Assets/Terrain/Alpine/Spruce/ForestSpruce.terrainpaint"
+lodHeights = [0.36, 0.125, 0.0]
+spacing = 13.0
+density = 0.72
+noiseScale = 56.0
+clusterStrength = 0.72
+minHeight = 7.0
+maxHeight = 180.0
+minSlope = 0.0
+maxSlope = 34.0
+minWaterDistance = 14.0
+maxWaterDistance = 1000000.0
+minScale = 0.9
+maxScale = 1.3
+minYaw = 0.0
+maxYaw = 360.0
+embedDepth = 0.0
+protectedDistance = 2.0
+alignToSurface = false
+includeHlod = true
+
+[[rules.parts]]
+mesh = "guid:99e4125096235447b3909d4248a8f431|Assets/Terrain/Alpine/Spruce/SpruceBarkLod0.obj:0"
+material = "guid:801c4cb6f37e59f886c539ffb608078e|Assets/Terrain/Alpine/Spruce/SpruceBark.mat"
+lod = 0
+
+[[rules.parts]]
+mesh = "guid:7ae69402c3df5323ba57368e6ce45166|Assets/Terrain/Alpine/Spruce/SpruceNeedlesLod0.obj:0"
+material = "guid:4e76d5cb787250bc841ff59c9439a3de|Assets/Terrain/Alpine/Spruce/SpruceNeedles.mat"
+lod = 0
+
+[[rules.parts]]
+mesh = "guid:c626cd7b470c5a26bc6236a60647d561|Assets/Terrain/Alpine/Spruce/SpruceBarkLod1.obj:0"
+material = "guid:801c4cb6f37e59f886c539ffb608078e|Assets/Terrain/Alpine/Spruce/SpruceBark.mat"
+lod = 1
+
+[[rules.parts]]
+mesh = "guid:5dfa287013eb5f85bfbac36de50d7d88|Assets/Terrain/Alpine/Spruce/SpruceNeedlesLod1.obj:0"
+material = "guid:4e76d5cb787250bc841ff59c9439a3de|Assets/Terrain/Alpine/Spruce/SpruceNeedles.mat"
+lod = 1
+
+[[rules.parts]]
+mesh = "guid:ef16cdf63e4152e7aac99cf0b2ca41fa|Assets/Terrain/Alpine/Spruce/SpruceBarkLod2.obj:0"
+material = "guid:801c4cb6f37e59f886c539ffb608078e|Assets/Terrain/Alpine/Spruce/SpruceBark.mat"
+lod = 2
+
+[[rules.parts]]
+mesh = "guid:88ab03c45bc25f55902a69e2bdab2882|Assets/Terrain/Alpine/Spruce/SpruceNeedlesLod2.obj:0"
+material = "guid:f5d20af9796c5cabade190ac1bcecf46|Assets/Terrain/Alpine/Spruce/SpruceNeedlesFar.mat"
+lod = 2
+
+[[rules]]
+key = "slope_rock"
+name = "Steep exposed stone"
+biome = ""
+prototypeRef = "guid:a7ce322e7ec7543d87f34a83caa20de0|Assets/Terrain/Alpine/AlpineRock.terrainpaint"
+lodHeights = [0.0]
+spacing = 11.0
+density = 0.44
+noiseScale = 29.0
+clusterStrength = 0.65
+minHeight = 3.0
+maxHeight = 400.0
+minSlope = 30.0
+maxSlope = 68.0
+minWaterDistance = 2.0
+maxWaterDistance = 1000000.0
+# @note The source OBJ uses centimetres. The scale range includes conversion to metres.
+minScale = 0.0055
+maxScale = 0.011
+minYaw = 0.0
+maxYaw = 360.0
+embedDepth = 0.12
+protectedDistance = 1.0
+alignToSurface = true
+includeHlod = true
+
+[[rules.parts]]
+mesh = "guid:ce6eaa61f60656d0847ed2d8dc5003a4|Assets/Terrain/Alpine/AlpineRock.obj:0"
+material = "guid:0a8186ed63195fdc9fa66ff258793e63|Assets/Terrain/Alpine/Stone.mat"
+lod = 0

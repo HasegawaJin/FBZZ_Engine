@@ -26,17 +26,11 @@ void Index(std::span<const TerrainPaintEdge> edges,float margin,TerrainPaintEdge
         for(int z=z0;z<=z1;++z)for(int x=x0;x<=x1;++x)index.cells[Key(x,z)].push_back(i);
     }
 }
-bool Near(std::span<const TerrainPaintEdge> edges,const TerrainPaintEdgeIndex& index,const math::Vector3& p,float margin,bool water)
+template<typename Test>
+bool VisitEdges(std::span<const TerrainPaintEdge> edges,const TerrainPaintEdgeIndex& index,
+    const math::Vector3& p,float margin,Test test)
 {
     if(margin<=0)return false;
-    const auto test=[&](const TerrainPaintEdge& e){
-        const float dx=e.b.x-e.a.x,dz=e.b.z-e.a.z;
-        const float length=dx*dx+dz*dz;
-        const float t=length>0?std::clamp(((p.x-e.a.x)*dx+(p.z-e.a.z)*dz)/length,0.0f,1.0f):0;
-        const auto q=e.a+(e.b-e.a)*t;
-        const float x=p.x-q.x,z=p.z-q.z;
-        return x*x+z*z<margin*margin&&(!water||p.y<=q.y+std::max(2.0f,margin));
-    };
     if(index.cells.empty()&&index.global.empty()){for(const auto& e:edges)if(test(e))return true;return false;}
     for(size_t i:index.global)if(test(edges[i]))return true;
     const int cx=Cell(p.x,index.cellSize),cz=Cell(p.z,index.cellSize),radius=static_cast<int>(std::ceil(margin/index.cellSize));
@@ -45,6 +39,46 @@ bool Near(std::span<const TerrainPaintEdge> edges,const TerrainPaintEdgeIndex& i
         for(size_t i:found->second)if(test(edges[i]))return true;
     }
     return false;
+}
+
+math::Vector3 ClosestOnEdge(const TerrainPaintEdge& e, const math::Vector3& p)
+{
+    const float dx=e.b.x-e.a.x,dz=e.b.z-e.a.z;
+    const float length=dx*dx+dz*dz;
+    const float t=length>0?std::clamp(((p.x-e.a.x)*dx+(p.z-e.a.z)*dz)/length,0.0f,1.0f):0;
+    return e.a+(e.b-e.a)*t;
+}
+
+float DistanceSquaredXZ(const math::Vector3& p, const math::Vector3& q)
+{
+    const float x = p.x - q.x, z = p.z - q.z;
+    return x * x + z * z;
+}
+
+bool Near(std::span<const TerrainPaintEdge> edges,const TerrainPaintEdgeIndex& index,const math::Vector3& p,float margin,bool water)
+{
+    return VisitEdges(edges, index, p, margin, [&](const auto& edge) {
+        const auto q = ClosestOnEdge(edge, p);
+        return DistanceSquaredXZ(p, q) < margin * margin && (!water || p.y <= q.y + std::max(2.0f, margin));
+    });
+}
+
+bool Nearest(std::span<const TerrainPaintEdge> edges, const TerrainPaintEdgeIndex& index,
+    const math::Vector3& p, float radius, math::Vector3& nearest)
+{
+    float best = radius * radius;
+    bool found = false;
+    VisitEdges(edges, index, p, radius, [&](const auto& edge) {
+        const auto q = ClosestOnEdge(edge, p);
+        const float distance = DistanceSquaredXZ(p, q);
+        if (distance < best || (distance == best && (!found || std::abs(p.y - q.y) < std::abs(p.y - nearest.y)))) {
+            best = distance;
+            nearest = q;
+            found = true;
+        }
+        return false;
+    });
+    return found;
 }
 void Contour(const math::Vector3* p,const float* v,float threshold,std::vector<TerrainPaintEdge>& edges)
 {
@@ -56,9 +90,21 @@ void Contour(const math::Vector3* p,const float* v,float threshold,std::vector<T
 } /// @note namespace terrain_paint_clearance
 bool TerrainPaintClearance::NearWater(const math::Vector3& p,float distance) const {return terrain_paint_clearance::Near(water,waterIndex,p,distance,true);}
 bool TerrainPaintClearance::NearPath(const math::Vector3& p,float distance) const {return terrain_paint_clearance::Near(paths,pathIndex,p,distance,false);}
+bool TerrainPaintClearance::NearestWater(const math::Vector3& p, float radius, math::Vector3& nearest) const
+{
+    return terrain_paint_clearance::Nearest(water, waterIndex, p, radius, nearest);
+}
+
+float TerrainPaintClearance::PathDistance(const math::Vector3& p, float radius) const
+{
+    math::Vector3 nearest;
+    return terrain_paint_clearance::Nearest(paths, pathIndex, p, radius, nearest)
+        ? std::sqrt(terrain_paint_clearance::DistanceSquaredXZ(p, nearest)) : 1000000.0f;
+}
 TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& terrain,const scene::Transform& transform,
     const TerrainScatterBrush& region,std::span<const int> excludedLayers,
-    std::span<const std::pair<const scene::WaterComponent*,const scene::Transform*>> surfaces,float waterMargin,float pathMargin)
+    std::span<const std::pair<const scene::WaterComponent*,const scene::Transform*>> surfaces,float waterMargin,
+    float pathMargin, bool combinePathLayers)
 {
     TerrainPaintClearance out;
     if((waterMargin<=0&&pathMargin<=0)||region.centers.empty()||terrain.columns<2||terrain.rows<2)return out;
@@ -80,6 +126,9 @@ TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& 
                 const auto a=ids[i],b=ids[(i+1)%ids.size()];
                 if(a<geometry->vertices.size()&&b<geometry->vertices.size())out.water.push_back({geometry->vertices[a].worldPosition,geometry->vertices[b].worldPosition});
             }
+            for (const auto& ring : geometry->islandOutlines)
+                for (std::size_t i = 0; i < ring.size(); ++i)
+                    out.water.push_back({ring[i], ring[(i + 1) % ring.size()]});
         } else if(!scene::UsesWaterSurfaceGeometry(*surface)) {
             math::Vector3 corners[4];const auto matrix=pose->GetWorldMatrix();
             const float signs[][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
@@ -87,14 +136,22 @@ TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& 
             for(int i=0;i<4;++i)out.water.push_back({corners[i],corners[(i+1)%4]});
         }
     }
+    if (seas.empty() && (pathMargin <= 0.0f || excludedLayers.empty())) {
+        terrain_paint_clearance::Index(out.water, waterMargin, out.waterIndex);
+        return out;
+    }
     for(int z=z0;z<=z1;++z)for(int x=x0;x<=x1;++x) {
         math::Vector3 vertices[4];const int dx[]{0,1,1,0},dz[]{0,0,1,1};
         for(int i=0;i<4;++i){const float lx=(x+dx[i])*terrain.cellSize,lz=(z+dz[i])*terrain.cellSize;const auto q=world*math::Vector4{lx,terrain.GetHeightAt(lx,lz),lz,1};vertices[i]={q.x,q.y,q.z};}
         const int triangles[][3]={{0,1,2},{0,2,3}};
-        if(pathMargin>0)for(int layer:excludedLayers) {
-            float values[4];for(int i=0;i<4;++i)values[i]=terrain.GetLayerWeightAtGrid(x+dx[i],z+dz[i],layer);
+        const auto pathContour = [&](std::span<const int> layers) {
+            float values[4]{};
+            for(int layer:layers)for(int i=0;i<4;++i)values[i]+=terrain.GetLayerWeightAtGrid(x+dx[i],z+dz[i],layer);
             for(const auto& triangle:triangles){math::Vector3 p[3];float v[3];for(int i=0;i<3;++i){p[i]=vertices[triangle[i]];v[i]=values[triangle[i]];}terrain_paint_clearance::Contour(p,v,0.35f,out.paths);}
-        }
+        };
+        if (pathMargin > 0 && combinePathLayers && !terrain.IsHoleCell(x, z)) pathContour(excludedLayers);
+        if (pathMargin > 0 && !combinePathLayers)
+            for (int layer : excludedLayers) pathContour(std::span{&layer, 1u});
         for(float sea:seas)for(const auto& triangle:triangles){math::Vector3 p[3];float v[3];for(int i=0;i<3;++i){p[i]=vertices[triangle[i]];v[i]=p[i].y;}terrain_paint_clearance::Contour(p,v,sea,out.water);}
     }
     terrain_paint_clearance::Index(out.water,waterMargin,out.waterIndex);

@@ -62,6 +62,8 @@ struct TerrainPaintDiagnostics {
 /// @return 地形接平面で測った領域の被覆 [0,1]。polygon は単純な閉多角形。
 [[nodiscard]] float TerrainRegionCoverage(const scene::Transform& terrain, const TerrainScatterBrush& brush, const math::Vector3& world);
 [[nodiscard]] bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatterBrush& brush);
+/// @pre The terrain has at least 2×2 vertices and a positive cell size. X and Z use terrain-local metres.
+[[nodiscard]] float SampleTerrainLayerWeight(const scene::TerrainComponent& terrain, float x, float z, int layer);
 
 struct TerrainPaintPreviewPoint {
     math::Vector3 position;

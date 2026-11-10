@@ -7,6 +7,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -25,7 +26,9 @@
 #include <Engine/Scene/WorldPartitionManifest.hpp>
 #include <Engine/Scene/WorldPcg.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Math/Vector4.hpp>
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <filesystem>
@@ -146,13 +149,23 @@ struct PcgPlan {
     OpData summary=OpData::MakeObject();
 };
 
-OpResult ValidatePartialPlacementBudget(const PcgPlan& plan)
+OpResult ValidateRetainedPlacements(const PcgPlan& plan)
 {
     const auto limit = plan.profile.maxPlacementsPerCell;
-    if (!limit || !plan.generated.stats.accepted || plan.owned.empty()) return OpResult::Ok();
+    std::set<std::string_view> competitiveRules;
+    std::set<std::string_view> canopyGroups, canopyRules;
+    for (const auto& rule : plan.profile.rules)
+        if (!rule.canopyGroup.empty()) canopyGroups.insert(rule.canopyGroup);
+    for (const auto& rule : plan.profile.rules) {
+        if (!rule.competitionGroup.empty()) competitiveRules.insert(rule.key);
+        if (!rule.canopyGroup.empty() || canopyGroups.contains(rule.canopySourceGroup)) canopyRules.insert(rule.key);
+    }
+    const bool hasNewPlacements = plan.generated.stats.accepted != 0;
+    if (plan.owned.empty() || (canopyRules.empty() && ((!limit && competitiveRules.empty()) || !hasNewPlacements)))
+        return OpResult::Ok();
     const scene::WorldCellGrid budgetGrid{plan.profile.grid.origin, scene::VEGETATION_BUDGET_CELL_SIZE};
     std::map<scene::WorldCellId, uint32_t> occupied;
-    for (const auto& group : plan.generated.groups) {
+    if (limit) for (const auto& group : plan.generated.groups) {
         const auto origin = scene::WorldCellOrigin(plan.profile.grid, group.cell);
         for (const auto& placement : group.placements) {
             scene::WorldCellId cell;
@@ -162,7 +175,9 @@ OpResult ValidatePartialPlacementBudget(const PcgPlan& plan)
         }
     }
     for (const auto& [key, owned] : plan.owned) {
-        (void)key;
+        const bool competes = hasNewPlacements && competitiveRules.contains(key.second);
+        const bool usesCanopy = canopyRules.contains(key.second);
+        if (!limit && !competes && !usesCanopy) continue;
         scene::Transform world;
         const auto snapshot = owned.component.Snapshot(owned.asset->instances);
         if (!snapshot || !ReadWorld(*owned.owner, world))
@@ -173,6 +188,10 @@ OpResult ValidatePartialPlacementBudget(const PcgPlan& plan)
             const auto p = matrix * math::Vector4{placement.position, 1};
             const math::Vector3 position{p.x, p.y, p.z};
             if (InBounds(plan.profile.bounds, position)) continue;
+            if (competes)
+                return OpResult::Err("PCG_COMPETITION_PARTIAL", "Regenerate the full region of the competing rules before replacing their placements");
+            if (usesCanopy)
+                return OpResult::Err("PCG_CANOPY_PARTIAL", "Regenerate the full region of the canopy group before replacing its placements");
             scene::WorldCellId cell;
             if (!scene::TryLocateWorldCell(budgetGrid, position, cell)) continue;
             const auto found = occupied.find(cell);
@@ -213,7 +232,13 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
     }
     if(partitionOwner){const auto* partition=partitionOwner->GetComponent<scene::WorldPartitionComponent>();plan.profile.grid.origin=partition->gridOrigin;plan.profile.grid.cellSize=partition->cellSize;}
     if(!scene::ValidateWorldPcgProfile(plan.profile,diagnostic))return OpResult::Err("BAD_PROFILE",diagnostic);
-    struct Ground { const scene::TerrainComponent* data;scene::Transform world;std::string id; };
+    struct Ground {
+        const scene::TerrainComponent* data;
+        scene::Transform world;
+        std::string id;
+        std::map<std::string_view, std::vector<int>> materialLayers;
+        math::Matrix4 worldToLocal = math::Matrix4::Identity();
+    };
     struct Water { const scene::WaterComponent* data;scene::Transform world; };
     struct Biome { const scene::WorldBiomeVolumeComponent* data;std::string id; };
     std::vector<Ground> grounds;std::vector<Water> waters;std::vector<Biome> biomes;
@@ -228,6 +253,31 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
         AddVector(guard,world.worldPosition);AddVector(guard,world.worldScale);AddFloat(guard,world.worldRotation.x);AddFloat(guard,world.worldRotation.y);AddFloat(guard,world.worldRotation.z);AddFloat(guard,world.worldRotation.w);
     }
     if(grounds.empty())return OpResult::Err("NO_TERRAIN","PCG requires authored terrain samples");
+    const auto materialIdentity = [](const std::string& reference) {
+        auto guid = asset::AssetDatabase::GuidFromRef(reference);
+        if (guid.empty()) guid = asset::AssetDatabase::TryGetGuidFromPath(asset::AssetManager::ResolveAssetPath(reference));
+        return guid.empty() ? NormalizeAssetPath(reference) : "guid:" + guid;
+    };
+    std::map<std::string, std::set<std::string_view>> requestedMaterials;
+    if (!plan.profile.pathMaterial.empty())
+        requestedMaterials[materialIdentity(plan.profile.pathMaterial)].insert(plan.profile.pathMaterial);
+    for (const auto& rule : plan.profile.rules) {
+        for (const auto* material : {&rule.includeMaterial, &rule.excludeMaterial})
+            if (!material->empty()) requestedMaterials[materialIdentity(*material)].insert(*material);
+    }
+    if (!requestedMaterials.empty()) {
+        for (auto& ground : grounds) {
+            if (!ground.data->HasValidSplat()) continue;
+            for (int layer = 0; layer < ground.data->LayerCount(); ++layer) {
+                const auto& material = ground.data->layerMaterials[layer];
+                if (material.empty()) continue;
+                const auto matches = requestedMaterials.find(materialIdentity(material));
+                if (matches == requestedMaterials.end()) continue;
+                for (const auto ref : matches->second) ground.materialLayers[ref].push_back(layer);
+            }
+            if (!ground.materialLayers.empty()) ground.worldToLocal = math::Matrix4::Inverse(ground.world.GetWorldMatrix());
+        }
+    }
     for(auto id:scene.GetEntities<scene::WaterComponent>()){
         auto* owner=scene.GetGameObject(id);const auto* data=scene.GetComponent<scene::WaterComponent>(id);scene::Transform world;
         if(owner&&owner->activeInHierarchy()&&data&&data->enabled&&ReadWorld(*owner,world))waters.push_back({data,world});}
@@ -262,30 +312,169 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
         auto* owner=scene.GetGameObject(id);if(!owner||owner->IsRuntimeGenerated()||!owner->activeInHierarchy()||owner->GetComponent<scene::WorldPcgGeneratedComponent>())continue;
         scene::Transform world;if(ReadWorld(*owner,world))protectedPositions.push_back(world.worldPosition);}
     for(const auto& point:protectedPositions)AddVector(guard,point);
-    float waterMargin=0;for(const auto& rule:plan.profile.rules){waterMargin=std::max(waterMargin,rule.minWaterDistance);if(rule.maxWaterDistance<1000000)waterMargin=std::max(waterMargin,rule.maxWaterDistance);}
+    float waterMargin = 0.0f, pathMargin = 0.0f;
+    bool useWaterLevel = false, usePathBand = false;
+    for (const auto& rule : plan.profile.rules) {
+        const float distance = rule.maxWaterDistance < 1000000.0f ? rule.maxWaterDistance
+            : rule.minWaterDistance + rule.waterFade;
+        waterMargin = (std::max)(waterMargin, distance);
+        useWaterLevel |= rule.useWaterLevel;
+        if (rule.UsesPathBand()) {
+            usePathBand = true;
+            pathMargin = (std::max)(pathMargin, rule.maxPathDistance < 1000000.0f
+                ? rule.maxPathDistance : rule.minPathDistance + rule.pathFade);
+        }
+    }
     if(waterMargin>10000)return OpResult::Err("WATER_DISTANCE_BUDGET","Authoring water clearance is limited to 10000 world metres");
+    constexpr float WATER_LEVEL_SEARCH_RADIUS = 128.0f;
+    const float waterSearch = useWaterLevel ? (std::max)(waterMargin, WATER_LEVEL_SEARCH_RADIUS) : waterMargin;
     std::vector<TerrainPaintClearance> clearances;
-    if(waterMargin>0&&!waters.empty()){
+    bool hasPathLayer = false;
+    if ((waterSearch > 0 && !waters.empty()) || usePathBand) {
         std::vector<std::pair<const scene::WaterComponent*,const scene::Transform*>> views;for(const auto& water:waters)views.push_back({water.data,&water.world});
         const auto& b=plan.profile.bounds;const std::vector<math::Vector3> corners{{b.min.x,0,b.min.z},{b.max.x,0,b.min.z},{b.max.x,0,b.max.z},{b.min.x,0,b.max.z}};
-        const TerrainScatterBrush region{corners,std::max(waterMargin,0.25f),false,true,0};
-        for(const auto& ground:grounds)clearances.push_back(BuildTerrainPaintClearance(*ground.data,ground.world,region,{},views,waterMargin,0));
+        const TerrainScatterBrush region{corners,0.25f,false,true,0};
+        for (const auto& ground : grounds) {
+            const auto found = ground.materialLayers.find(plan.profile.pathMaterial);
+            const auto layers = found == ground.materialLayers.end() ? std::span<const int>{} : std::span<const int>{found->second};
+            hasPathLayer |= usePathBand && !layers.empty();
+            clearances.push_back(BuildTerrainPaintClearance(*ground.data, ground.world, region, layers, views,
+                waters.empty() ? 0.0f : waterSearch, !usePathBand || layers.empty() ? 0.0f : (std::max)(0.25f, pathMargin), true));
+        }
     }
+    std::vector<scene::WorldPcgMaterialWeight> materialWeights;
+    const auto sampleGround = [&](float x, float z, scene::TerrainSurfaceSample& highest) {
+        const Ground* highestGround = nullptr;
+        for (const auto& ground : grounds) {
+            scene::TerrainSurfaceSample one;
+            if (!scene::TrySampleTerrainWorld(*ground.data, ground.world, x, z, one)) continue;
+            if (!highestGround || one.position.y > highest.position.y
+                || (!requestedMaterials.empty() && one.position.y == highest.position.y && ground.id < highestGround->id)) {
+                highest = one;
+                highestGround = &ground;
+            }
+        }
+        return highestGround;
+    };
+    constexpr float DIAGONAL = 0.70710678f;
+    constexpr float CLIFF_NORMAL_Y = 0.64278761f;
+    const std::array<math::Vector2, 8> directions{{{1,0},{DIAGONAL,DIAGONAL},{0,1},{-DIAGONAL,DIAGONAL},
+        {-1,0},{-DIAGONAL,-DIAGONAL},{0,-1},{DIAGONAL,-DIAGONAL}}};
+    std::size_t remainingProbes = 4'000'000;
+    bool habitatBudgetExceeded = false;
+    const auto probe = [&](float x, float z, scene::TerrainSurfaceSample& surface) {
+        if (remainingProbes < grounds.size()) {
+            habitatBudgetExceeded = true;
+            return false;
+        }
+        remainingProbes -= grounds.size();
+        return sampleGround(x, z, surface) != nullptr;
+    };
+    /// @see https://pro.arcgis.com/en/pro-app/latest/tool-reference/spatial-analyst/how-surface-parameters-works.htm Esri Surface Parameters, Topographic Position Index.
+    const auto relief = [&](const math::Vector3& position, float radius, float& value) {
+        double sum = 0.0;
+        int count = 0;
+        for (const auto& direction : directions) {
+            scene::TerrainSurfaceSample neighbor;
+            if (!probe(position.x + direction.x * radius, position.z + direction.y * radius, neighbor)) continue;
+            sum += neighbor.position.y;
+            ++count;
+        }
+        if (count >= 4) value = static_cast<float>(position.y - sum / count);
+    };
     const auto sampler=[&](float x,float z,scene::WorldPcgSurfaceSample& out){
-        bool found=false;scene::TerrainSurfaceSample highest;
-        for(const auto& ground:grounds){scene::TerrainSurfaceSample one;if(scene::TrySampleTerrainWorld(*ground.data,ground.world,x,z,one)&&(!found||one.position.y>highest.position.y)){highest=one;found=true;}}
-        if(!found)return false;out.position=highest.position;out.normal=highest.normal;
+        if (habitatBudgetExceeded) return false;
+        scene::TerrainSurfaceSample highest;
+        const auto* highestGround = sampleGround(x, z, highest);
+        if (!highestGround) return false;
+        out.position = highest.position;
+        out.normal = highest.normal;
+        if (!highestGround->materialLayers.empty()) {
+            const auto& terrain = *highestGround->data;
+            const auto local = highestGround->worldToLocal * math::Vector4{highest.position, 1.0f};
+            const float width = (terrain.columns - 1) * terrain.cellSize;
+            const float depth = (terrain.rows - 1) * terrain.cellSize;
+            materialWeights.clear();
+            if (local.x >= -0.001f && local.z >= -0.001f && local.x <= width + 0.001f && local.z <= depth + 0.001f) {
+                for (const auto& [material, layers] : highestGround->materialLayers) {
+                    float weight = 0.0f;
+                    for (const int layer : layers) weight += SampleTerrainLayerWeight(terrain, local.x, local.z, layer);
+                    materialWeights.push_back({material, (std::min)(weight, 1.0f)});
+                }
+            }
+            out.materialWeights = materialWeights;
+        }
         for(const auto& biome:biomes){const auto& b=*biome.data;if(x>=b.boundsMin.x&&x<b.boundsMax.x&&z>=b.boundsMin.z&&z<b.boundsMax.z&&highest.position.y>=b.boundsMin.y&&highest.position.y<=b.boundsMax.y){out.biome=b.biome;out.biomeDensity=b.density;break;}}
-        for(const auto& water:waters){scene::WaterSurfaceHeightSample sample;if(scene::TrySampleWaterSurfaceHeightWorld(*water.data,water.world,highest.position,0,sample)
-            &&sample.insideSurface&&!sample.excluded&&highest.position.y<=sample.position.y+0.15f){out.water=true;out.waterDistance=0;break;}}
+        for (const auto& water : waters) {
+            scene::WaterSurfaceHeightSample sample;
+            if (scene::TrySampleWaterSurfaceHeightWorld(*water.data, water.world, highest.position, 0, sample)
+                && sample.insideSurface && !sample.excluded && highest.position.y <= sample.position.y + 0.15f) {
+                out.water = true;
+                out.waterDistance = 0.0f;
+                break;
+            }
+        }
         if(!out.water&&waterMargin>0){float nearest=1000000;
             for(const auto& clearance:clearances)if(clearance.NearWater(highest.position,waterMargin)){float low=0,high=waterMargin;
                 for(int step=0;step<16;++step){const float middle=(low+high)*0.5f;if(clearance.NearWater(highest.position,middle))high=middle;else low=middle;}nearest=std::min(nearest,high);}
             out.waterDistance=nearest;}
         return true;
     };
-    if(!scene::GenerateWorldPcg(plan.profile,sampler,protectedPositions,plan.generated,diagnostic))return OpResult::Err("PCG_FAILED",diagnostic);
-    if (auto result = ValidatePartialPlacementBudget(plan); !result.ok) return result;
+    const auto sampleHabitat = [&](const scene::WorldPcgRule& rule, scene::WorldPcgSurfaceSample& out) {
+        if (hasPathLayer && rule.UsesPathBand()) {
+            out.pathDistance = 1000000.0f;
+            for (const auto& [reference, weight] : out.materialWeights)
+                if (reference == plan.profile.pathMaterial && weight >= 0.35f) out.onPath = true;
+            for (const auto& clearance : clearances)
+                out.pathDistance = (std::min)(out.pathDistance, clearance.PathDistance(out.position, (std::max)(0.25f, pathMargin)));
+        }
+        if (rule.UsesNearRelief()) relief(out.position, 16.0f, out.nearRelief);
+        if (rule.UsesFarRelief()) relief(out.position, 64.0f, out.farRelief);
+        if (const float cliffRadius = rule.maxCliffDistance; cliffRadius > 0.0f) {
+            for (float radius = (std::min)(0.5f, cliffRadius); !habitatBudgetExceeded;
+                    radius = (std::min)(radius * 1.5f, cliffRadius)) {
+                for (const auto& direction : directions) {
+                    scene::TerrainSurfaceSample source;
+                    if (probe(out.position.x + direction.x * radius, out.position.z + direction.y * radius, source)
+                        && source.position.y > out.position.y && source.normal.y >= 0.0f
+                        && source.normal.y <= CLIFF_NORMAL_Y
+                        && source.normal.x * direction.x + source.normal.z * direction.y < 0.0f) {
+                        out.cliffDistance = radius;
+                        break;
+                    }
+                }
+                if (std::isfinite(out.cliffDistance) || radius == cliffRadius) break;
+            }
+        }
+        if (!rule.useWaterLevel) return;
+        for (const auto& water : waters) {
+            scene::WaterSurfaceHeightSample sample;
+            if (!scene::TrySampleWaterSurfaceHeightWorld(*water.data, water.world, out.position, 0, sample)
+                || !sample.insideSurface || sample.excluded) continue;
+            const float offset = (out.position.y - water.world.worldPosition.y) - sample.baseHeightOffset;
+            if (offset >= -sample.waterDepthLimit
+                && (!std::isfinite(out.waterOffset) || std::abs(offset) < std::abs(out.waterOffset)))
+                out.waterOffset = offset;
+        }
+        if (!out.water && !std::isfinite(out.waterOffset)) {
+            float nearestSquared = std::numeric_limits<float>::infinity();
+            for (const auto& clearance : clearances) {
+                math::Vector3 shore;
+                if (!clearance.NearestWater(out.position, WATER_LEVEL_SEARCH_RADIUS, shore)) continue;
+                const float dx = out.position.x - shore.x, dz = out.position.z - shore.z;
+                const float squared = dx * dx + dz * dz;
+                if (squared < nearestSquared) {
+                    nearestSquared = squared;
+                    out.waterOffset = (std::max)(0.0f, out.position.y - shore.y);
+                }
+            }
+        }
+    };
+    const bool generated = scene::GenerateWorldPcg(plan.profile, sampler, protectedPositions,
+        plan.generated, diagnostic, sampleHabitat);
+    if (habitatBudgetExceeded) return OpResult::Err("HABITAT_SAMPLE_BUDGET", "Narrow the region or increase placement spacing.");
+    if (!generated) return OpResult::Err("PCG_FAILED",diagnostic);
+    if (auto result = ValidateRetainedPlacements(plan); !result.ok) return result;
     AddHash(guard,plan.generated.fingerprint);plan.expected=Hex(guard);
     auto& summary=plan.summary;summary.Set("schemaVersion",1);summary.Set("volume",plan.volume->instanceId);summary.Set("profile",plan.profilePath);summary.Set("expected",plan.expected);
     summary.Set("partition",partitionOwner?partitionOwner->instanceId:std::string{});
@@ -299,6 +488,17 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
     rejected.Set("height",static_cast<int64_t>(stats.heightRejected));rejected.Set("slope",static_cast<int64_t>(stats.slopeRejected));rejected.Set("water",static_cast<int64_t>(stats.waterRejected));
     rejected.Set("exclusion",static_cast<int64_t>(stats.exclusionRejected));rejected.Set("protected",static_cast<int64_t>(stats.protectedRejected));
     rejected.Set("cellBudget", static_cast<int64_t>(stats.cellBudgetRejected));
+    rejected.Set("patch", static_cast<int64_t>(stats.patchRejected));
+    rejected.Set("neighbor", static_cast<int64_t>(stats.neighborRejected));
+    rejected.Set("spacing", static_cast<int64_t>(stats.spacingRejected));
+    rejected.Set("material", static_cast<int64_t>(stats.materialRejected));
+    rejected.Set("competition", static_cast<int64_t>(stats.competitionRejected));
+    rejected.Set("aspect", static_cast<int64_t>(stats.aspectRejected));
+    rejected.Set("canopy", static_cast<int64_t>(stats.canopyRejected));
+    rejected.Set("waterLevel", static_cast<int64_t>(stats.waterLevelRejected));
+    rejected.Set("relief", static_cast<int64_t>(stats.reliefRejected));
+    rejected.Set("cliff", static_cast<int64_t>(stats.cliffRejected));
+    rejected.Set("path", static_cast<int64_t>(stats.pathRejected));
     summary.Set("rejected",std::move(rejected));
     auto points=OpData::MakeArray();std::set<scene::WorldCellId> cells;
     const int maxPoints=args.GetInt("maxPoints",256);if(maxPoints<0||maxPoints>1024)return OpResult::Err("BAD_ARG","maxPoints must be 0..1024");
@@ -674,6 +874,23 @@ OpResult InspectWorldPcgProfile(OpContext& context,const OpArgs& args)
     }
     auto data=ProfileData(path,text,profile);data.Set("example",input.empty());
     data.Set("format","fbzz.pcg");data.Set("version",1);data.Set("boundsCoordinates","world half-open XZ; Y ignored");
+    auto vegetation = OpData::MakeObject();
+    vegetation.Set("minSpacing", "Minimum XZ separation within this rule in metres. Zero disables it.");
+    vegetation.Set("patchGroup/minPatch/maxPatch", "Optional shared habitat mask and accepted [0,1] band. Use the same noiseScale for a shared mask.");
+    vegetation.Set("neighborRule/minNeighborDistance/maxNeighborDistance", "Filter by an earlier rule's emitted placements in world XZ metres. Zero upper bound is unlimited.");
+    vegetation.Set("waterFade", "Metres used to feather density at the shoreline distance limits. Zero disables it.");
+    vegetation.Set("heightFade/slopeFade", "Feather density inside height bounds in world metres and slope bounds in degrees. Zero disables each fade.");
+    vegetation.Set("aspectHeading/aspectHalfAngle/aspectMinSlope/aspectFade", "Downhill sector in degrees: +Z is 0, +X is 90. Half-angle 180 disables it; slopes below aspectMinSlope stay neutral.");
+    vegetation.Set("canopySourceGroup/canopyGroup/canopyRadius/minCanopyCount/maxCanopyCount", "Count emitted roots from multiple rules inside a world XZ radius. Counts are inclusive; -1 is an unlimited maximum.");
+    vegetation.Set("scaleCompetitionRadius", "Multiply the rule's competition radius by the chosen placement scale.");
+    vegetation.Set("useWaterLevel/minWaterOffset/maxWaterOffset", "Signed height in metres above the water level. Negative bands allow underwater plants.");
+    vegetation.Set("minNearRelief/maxNearRelief/minFarRelief/maxFarRelief", "Signed height relative to neighboring terrain at 16 m and 64 m.");
+    vegetation.Set("maxCliffDistance/cliffFarScale", "Taper rock density and size outward from an uphill cliff face.");
+    vegetation.Set("pathMaterial/minPathDistance/maxPathDistance/pathFade", "Set pathMaterial on the profile and define each rule's band beyond its painted edge in world metres.");
+    vegetation.Set("includeMaterial/minMaterialWeight", "Require this saved terrain material and multiply density by its weight. Default minimum 0.25.");
+    vegetation.Set("excludeMaterial/excludeMaterialWeight", "Reject sites painted with this material. Default threshold 0.35.");
+    vegetation.Set("competitionGroup/competitionRadius/competitionPriority", "Keep exclusion discs in this group apart. Radii use world metres; higher priority wins within a dependency stage.");
+    data.Set("vegetationRules", std::move(vegetation));
     return OpResult::Data(std::move(data));
 }
 

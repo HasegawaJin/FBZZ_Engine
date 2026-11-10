@@ -12,3 +12,16 @@
 4. Bake cells and build HLOD to test near and far representations. Spruce, birch and rock opt into HLOD; mesh grass rules should normally set `includeHlod = false`.
 
 The empty biome labels work without biome volumes. Set a rule's `biome` and add matching WorldBiomeVolume components to limit it by authored biome. Water clearance uses authored shorelines, and manual roots are protected within the rule's `protectedDistance`. Editing a generated owner requires Detach before its next regeneration.
+
+## Coastal biomes
+
+`CoastalBiomes.pcg` uses the same generation controls with a 128 m grid. Set the volume bounds over a coast with still water near world Y=0. Preview reports water, slope and cell-budget rejections before you apply the result.
+
+| Rule | World elevation | Slope | Distance from shore |
+|---|---:|---:|---:|
+| Shore rocks | 0.15–12 m | 0–42° | 0.6–18 m |
+| Sheltered birch | 2–48 m | 0–26° | 8–70 m |
+| Upland spruce | 7–180 m | 0–34° | ≥14 m |
+| Exposed slope rocks | 3–400 m | 30–68° | ≥2 m |
+
+The 130-placement budget applies to the combined rules in each 128 m vegetation cell. Use a separate profile when ground cover needs its own budget.

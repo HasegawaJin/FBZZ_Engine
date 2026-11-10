@@ -6,8 +6,10 @@
 #include <TestKit/TempDir.hpp>
 #include <Engine/Scene/WorldPcg.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <Math/MathUtils.hpp>
 #include <Math/Quaternion.hpp>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <map>
 
@@ -41,6 +43,52 @@ protected:
     scene::WorldPcgProfile m_profile;
     std::string m_diagnostic;
 };
+
+TEST_F(WorldPcgTest, HabitatBandsRoundTripAndRejectEachUnavailableOrOutOfRangeInput)
+{
+    m_profile.pathMaterial = "guid:path";
+    auto& rule = m_profile.rules.front();
+    rule.useWaterLevel = true;
+    rule.minWaterOffset = -3.0f;
+    rule.maxWaterOffset = -1.0f;
+    rule.minNearRelief = 1.0f;
+    rule.maxFarRelief = -1.0f;
+    rule.maxCliffDistance = 16.0f;
+    rule.cliffFarScale = 0.25f;
+    rule.minScale = rule.maxScale = 1.0f;
+    rule.minPathDistance = 2.0f;
+    rule.maxPathDistance = 8.0f;
+    rule.pathFade = 1.0f;
+    std::string text;
+    ASSERT_TRUE(scene::SerializeWorldPcgProfile(m_profile, text, m_diagnostic)) << m_diagnostic;
+    scene::WorldPcgProfile decoded;
+    ASSERT_TRUE(scene::DeserializeWorldPcgProfile(text, decoded, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(decoded.pathMaterial, m_profile.pathMaterial);
+    const auto sampler = [](float x, float z, scene::WorldPcgSurfaceSample& sample) {
+        Flat(x, z, sample);
+        sample.water = true;
+        sample.waterOffset = x < -24 ? 1.0f : -2.0f;
+        sample.nearRelief = x < -16 ? 0.0f : 2.0f;
+        sample.farRelief = -2.0f;
+        sample.cliffDistance = x < -8 ? 20.0f : (x < 16 ? 0.0f : 8.0f);
+        sample.onPath = x < 0;
+        sample.pathDistance = x < 8 ? 1.0f : 4.0f;
+        return true;
+    };
+    scene::WorldPcgResult result;
+    ASSERT_TRUE(scene::GenerateWorldPcg(decoded, sampler, {}, result, m_diagnostic)) << m_diagnostic;
+    EXPECT_GT(result.stats.waterLevelRejected, 0u);
+    EXPECT_GT(result.stats.reliefRejected, 0u);
+    EXPECT_GT(result.stats.cliffRejected, 0u);
+    EXPECT_GT(result.stats.pathRejected, 0u);
+    bool tapered = false;
+    for (const auto& [key, placement] : LocatedResults(result)) {
+        EXPECT_GE(placement.position.x, 8.0f);
+        EXPECT_FLOAT_EQ(placement.scale.x, placement.position.x < 16.0f ? 1.0f : 0.625f);
+        tapered |= placement.position.x >= 16.0f;
+    }
+    EXPECT_TRUE(tapered);
+}
 
 TEST_F(WorldPcgTest, RepeatGenerationPreservesEveryIdentityAndTransform)
 {
@@ -194,6 +242,290 @@ TEST_F(WorldPcgTest, InvalidRulesReferencesAndProtectedInputsLeaveOutputUntouche
     m_profile=original;m_profile.bounds.max.x=m_profile.bounds.min.x;EXPECT_FALSE(Generate(result));
     m_profile=original;const std::vector<math::Vector3> invalid{{std::numeric_limits<float>::infinity(),0,0}};
     EXPECT_FALSE(scene::GenerateWorldPcg(m_profile,Flat,invalid,result,m_diagnostic));EXPECT_EQ(result.fingerprint,"Preserved");
+}
+
+TEST_F(WorldPcgTest, MinimumPlantSpacingDoesNotMoveTheTreesThatSurvive)
+{
+    scene::WorldPcgResult full, spaced;
+    ASSERT_TRUE(Generate(full)) << m_diagnostic;
+    m_profile.rules.front().minSpacing = 6.0f;
+    ASSERT_TRUE(Generate(spaced)) << m_diagnostic;
+    EXPECT_GT(spaced.stats.spacingRejected, 0u);
+    EXPECT_EQ(spaced.stats.accepted + spaced.stats.spacingRejected, full.stats.accepted);
+    const auto original = LocatedResults(full);
+    const auto retained = LocatedResults(spaced);
+    for (auto current = retained.begin(); current != retained.end(); ++current) {
+        const auto before = original.find(current->first);
+        ASSERT_NE(before, original.end());
+        EXPECT_EQ(current->second.id, before->second.id);
+        EXPECT_VEC3_NEAR(current->second.position, before->second.position, 0.00001f);
+        for (auto other = retained.begin(); other != current; ++other) {
+            const auto delta = current->second.position - other->second.position;
+            EXPECT_GE(std::hypot(delta.x, delta.z), 6.0f - 0.00001f);
+        }
+    }
+}
+
+TEST_F(WorldPcgTest, DependentGrassUsesOnlyTreesRetainedByTheCellCap)
+{
+    m_profile.bounds = {{0,0,0},{256,0,64}};
+    m_profile.grid.cellSize = 128.0f;
+    m_profile.rules.front().biome = "Forest";
+    auto grass = m_profile.rules.front();
+    grass.key = "Grass";
+    grass.biome = "Meadow";
+    m_profile.rules.push_back(grass);
+    const auto sample = [](float x, float z, scene::WorldPcgSurfaceSample& out) {
+        out.position = {x, 10.0f, z};
+        out.biome = x < 128.0f ? "Forest" : "Meadow";
+        return true;
+    };
+    scene::WorldPcgResult full, capped, reordered;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sample, {}, full, m_diagnostic)) << m_diagnostic;
+    m_profile.maxPlacementsPerCell = 3;
+    m_profile.rules.back().neighborRule = "Spruce";
+    m_profile.rules.back().maxNeighborDistance = 48.0f;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sample, {}, capped, m_diagnostic)) << m_diagnostic;
+    std::vector<math::Vector3> trees;
+    for (const auto& group : capped.groups) {
+        if (group.ruleKey != "Spruce") continue;
+        for (const auto& plant : group.placements)
+            trees.push_back(scene::WorldCellOrigin(m_profile.grid, group.cell) + plant.position);
+    }
+    ASSERT_EQ(trees.size(), 3u);
+    const auto nearTree = [&](const math::Vector3& position) {
+        return std::any_of(trees.begin(), trees.end(), [&](const auto& tree) {
+            return std::hypot(static_cast<double>(tree.x) - position.x, static_cast<double>(tree.z) - position.z) <= 48.0;
+        });
+    };
+    uint64_t acceptedGrass = 0, rejectedGrass = 0;
+    for (const auto& group : full.groups) {
+        if (group.ruleKey != "Grass") continue;
+        for (const auto& plant : group.placements) {
+            if (nearTree(scene::WorldCellOrigin(m_profile.grid, group.cell) + plant.position)) ++acceptedGrass;
+            else ++rejectedGrass;
+        }
+    }
+    EXPECT_EQ(capped.stats.neighborRejected, rejectedGrass);
+    EXPECT_EQ(capped.stats.accepted, 3u + (std::min)(acceptedGrass, uint64_t{3}));
+    for (const auto& group : capped.groups) {
+        if (group.ruleKey != "Grass") continue;
+        for (const auto& plant : group.placements)
+            EXPECT_TRUE(nearTree(scene::WorldCellOrigin(m_profile.grid, group.cell) + plant.position));
+    }
+    std::reverse(m_profile.rules.begin(), m_profile.rules.end());
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sample, {}, reordered, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(capped.fingerprint, reordered.fingerprint);
+    m_profile.rules.back().neighborRule = "Grass";
+    m_profile.rules.back().minNeighborDistance = 2.0f;
+    EXPECT_FALSE(scene::GenerateWorldPcg(m_profile, sample, {}, reordered, m_diagnostic));
+    EXPECT_EQ(capped.fingerprint, reordered.fingerprint);
+}
+
+TEST_F(WorldPcgTest, PatchBandsPartitionCandidatesAndWaterFadeThinsTheirEdge)
+{
+    auto& rule = m_profile.rules.front();
+    rule.patchGroup = "ForestHabitat";
+    rule.noiseScale = 16.0f;
+    scene::WorldPcgResult full, forest, meadow, faded;
+    ASSERT_TRUE(Generate(full)) << m_diagnostic;
+    rule.minPatch = 0.5f;
+    ASSERT_TRUE(Generate(forest)) << m_diagnostic;
+    rule.minPatch = 0.0f;
+    rule.maxPatch = 0.5f;
+    ASSERT_TRUE(Generate(meadow)) << m_diagnostic;
+    EXPECT_GT(forest.stats.accepted, 0u);
+    EXPECT_GT(meadow.stats.accepted, 0u);
+    EXPECT_EQ(forest.stats.accepted + meadow.stats.accepted, full.stats.accepted);
+    const auto forestSites = LocatedResults(forest);
+    for (const auto& [key, point] : LocatedResults(meadow)) {
+        (void)point;
+        EXPECT_FALSE(forestSites.contains(key));
+    }
+    rule.minWaterDistance = 4.0f;
+    rule.waterFade = 6.0f;
+    std::string text;
+    ASSERT_TRUE(scene::SerializeWorldPcgProfile(m_profile, text, m_diagnostic)) << m_diagnostic;
+    scene::WorldPcgProfile loaded;
+    ASSERT_TRUE(scene::DeserializeWorldPcgProfile(text, loaded, m_diagnostic)) << m_diagnostic;
+    ASSERT_EQ(loaded.rules.front().patchGroup, "ForestHabitat");
+    EXPECT_FLOAT_EQ(loaded.rules.front().maxPatch, 0.5f);
+    EXPECT_FLOAT_EQ(loaded.rules.front().waterFade, 6.0f);
+    const auto atWaterDistance = [](float distance) {
+        return [distance](float x, float z, scene::WorldPcgSurfaceSample& out) {
+            out.position = {x, 10.0f, z};
+            out.waterDistance = distance;
+            return true;
+        };
+    };
+    ASSERT_TRUE(scene::GenerateWorldPcg(loaded, atWaterDistance(4.0f), {}, faded, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(faded.stats.accepted, 0u);
+    EXPECT_EQ(faded.stats.densityRejected, meadow.stats.accepted);
+    ASSERT_TRUE(scene::GenerateWorldPcg(loaded, atWaterDistance(10.0f), {}, faded, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(faded.stats.accepted, meadow.stats.accepted);
+}
+
+TEST_F(WorldPcgTest, CompetitionPriorityWinsAcrossSpeciesAndIgnoresProfileRowOrder)
+{
+    auto& spruce = m_profile.rules.front();
+    spruce.competitionGroup = "Canopy";
+    spruce.competitionRadius = 64.0f;
+    spruce.competitionPriority = 2.0f;
+    auto birch = spruce;
+    birch.key = "Birch";
+    birch.competitionPriority = 1.0f;
+    m_profile.rules.push_back(birch);
+    scene::WorldPcgResult first, reordered, switched;
+    ASSERT_TRUE(Generate(first)) << m_diagnostic;
+    ASSERT_EQ(first.groups.size(), 1u);
+    EXPECT_EQ(first.groups.front().ruleKey, "Spruce");
+    EXPECT_EQ(first.stats.competitionRejected, first.stats.candidates - 1);
+    std::reverse(m_profile.rules.begin(), m_profile.rules.end());
+    ASSERT_TRUE(Generate(reordered)) << m_diagnostic;
+    EXPECT_EQ(reordered.fingerprint, first.fingerprint);
+
+    m_profile.rules.front().competitionPriority = 3.0f;
+    std::string text;
+    ASSERT_TRUE(scene::SerializeWorldPcgProfile(m_profile, text, m_diagnostic)) << m_diagnostic;
+    scene::WorldPcgProfile decoded;
+    ASSERT_TRUE(scene::DeserializeWorldPcgProfile(text, decoded, m_diagnostic)) << m_diagnostic;
+    ASSERT_TRUE(scene::GenerateWorldPcg(decoded, Flat, {}, switched, m_diagnostic)) << m_diagnostic;
+    ASSERT_EQ(switched.groups.size(), 1u);
+    EXPECT_EQ(switched.groups.front().ruleKey, "Birch");
+}
+
+TEST_F(WorldPcgTest, CanopyCountCombinesSpeciesAfterTheCellCap)
+{
+    m_profile.bounds = {{0,0,0},{256,0,128}};
+    m_profile.grid.cellSize = 128.0f;
+    m_profile.maxPlacementsPerCell = 2;
+    auto& spruce = m_profile.rules.front();
+    spruce.spacing = 128.0f;
+    spruce.biome = "Forest";
+    spruce.canopySourceGroup = "MixedForest";
+    auto birch = spruce;
+    birch.key = "Birch";
+    auto grass = spruce;
+    grass.key = "Grass";
+    grass.biome = "Meadow";
+    grass.spacing = 32.0f;
+    grass.canopySourceGroup.clear();
+    grass.canopyGroup = "MixedForest";
+    grass.canopyRadius = 1000.0f;
+    grass.minCanopyCount = 2;
+    grass.maxCanopyCount = 2;
+    m_profile.rules.push_back(birch);
+    m_profile.rules.push_back(grass);
+    const auto sample = [](float x, float z, scene::WorldPcgSurfaceSample& out) {
+        out.position = {x, 10.0f, z};
+        out.biome = x < 128.0f ? "Forest" : "Meadow";
+        return true;
+    };
+    std::string text;
+    ASSERT_TRUE(scene::SerializeWorldPcgProfile(m_profile, text, m_diagnostic)) << m_diagnostic;
+    scene::WorldPcgProfile decoded;
+    ASSERT_TRUE(scene::DeserializeWorldPcgProfile(text, decoded, m_diagnostic)) << m_diagnostic;
+    scene::WorldPcgResult result;
+    ASSERT_TRUE(scene::GenerateWorldPcg(decoded, sample, {}, result, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(result.stats.accepted, 4u);
+    EXPECT_EQ(result.stats.canopyRejected, 0u);
+
+    decoded.maxPlacementsPerCell = 1;
+    ASSERT_TRUE(scene::GenerateWorldPcg(decoded, sample, {}, result, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(result.stats.accepted, 1u);
+    EXPECT_EQ(result.stats.canopyRejected, 16u);
+
+    decoded.rules.back().canopyRadius = 0.25f;
+    decoded.rules.back().minCanopyCount = 0;
+    decoded.rules.back().maxCanopyCount = 0;
+    ASSERT_TRUE(scene::GenerateWorldPcg(decoded, sample, {}, result, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(result.stats.accepted, 2u);
+    EXPECT_EQ(result.stats.canopyRejected, 0u);
+    const auto fingerprint = result.fingerprint;
+    decoded.rules.back().canopySourceGroup = "MixedForest";
+    EXPECT_FALSE(scene::GenerateWorldPcg(decoded, sample, {}, result, m_diagnostic));
+    EXPECT_EQ(result.fingerprint, fingerprint);
+}
+
+TEST_F(WorldPcgTest, CompetitionCanUseTheActualPlacementScale)
+{
+    auto& rule = m_profile.rules.front();
+    rule.competitionGroup = "Trees";
+    rule.competitionRadius = 16.0f;
+    rule.minScale = rule.maxScale = 4.0f;
+    scene::WorldPcgResult fixed, scaled;
+    ASSERT_TRUE(Generate(fixed)) << m_diagnostic;
+    ASSERT_GT(fixed.stats.accepted, 1u);
+    rule.scaleCompetitionRadius = true;
+    ASSERT_TRUE(Generate(scaled)) << m_diagnostic;
+    ASSERT_EQ(scaled.stats.accepted, 1u);
+    ASSERT_EQ(scaled.groups.size(), 1u);
+    EXPECT_FLOAT_EQ(scaled.groups.front().placements.front().scale.x, 4.0f);
+    EXPECT_EQ(scaled.stats.competitionRejected, scaled.stats.candidates - 1);
+}
+
+TEST_F(WorldPcgTest, AspectUsesDownhillHeadingAndLeavesFlatGroundNeutral)
+{
+    auto& rule = m_profile.rules.front();
+    rule.aspectHeading = 360.0f;
+    rule.aspectHalfAngle = 55.0f;
+    const auto sample = [](float x, float z, scene::WorldPcgSurfaceSample& out) {
+        out.position = {x, 10.0f, z};
+        if (z >= 0.0f) out.normal = x < 0.0f ? math::Vector3{0.0f, 0.8660254f, 0.5f}
+            : math::Vector3{0.5f, 0.8660254f, 0.0f};
+        return true;
+    };
+    scene::WorldPcgResult forward, east;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sample, {}, forward, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(forward.stats.accepted, 192u);
+    EXPECT_EQ(forward.stats.aspectRejected, 64u);
+    for (const auto& [key, point] : LocatedResults(forward)) {
+        (void)key;
+        EXPECT_TRUE(point.position.z < 0.0f || point.position.x < 0.0f);
+    }
+    rule.aspectHeading = 90.0f;
+    rule.aspectHalfAngle = 90.0f;
+    rule.aspectFade = 12.0f;
+    std::string encoded;
+    ASSERT_TRUE(scene::SerializeWorldPcgProfile(m_profile, encoded, m_diagnostic)) << m_diagnostic;
+    scene::WorldPcgProfile decoded;
+    ASSERT_TRUE(scene::DeserializeWorldPcgProfile(encoded, decoded, m_diagnostic)) << m_diagnostic;
+    ASSERT_TRUE(scene::GenerateWorldPcg(decoded, sample, {}, east, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(east.stats.accepted, 192u);
+    EXPECT_EQ(east.stats.aspectRejected, 0u);
+    EXPECT_EQ(east.stats.densityRejected, 64u);
+    for (const auto& [key, point] : LocatedResults(east)) {
+        (void)key;
+        EXPECT_TRUE(point.position.z < 0.0f || point.position.x >= 0.0f);
+    }
+}
+
+TEST_F(WorldPcgTest, HeightAndSlopeTapersPreserveInteriorCandidatesAndThinTheBoundaries)
+{
+    auto& rule = m_profile.rules.front();
+    rule.minHeight = 10.0f;
+    rule.maxHeight = 100.0f;
+    rule.heightFade = 5.0f;
+    const math::Vector3 normal{0.0f, 1.0f, 1.0f};
+    rule.maxSlope = math::ToDeg(std::acos(normal.Normalized().y));
+    rule.slopeFade = 5.0f;
+    scene::WorldPcgResult faded;
+    ASSERT_TRUE(Generate(faded)) << m_diagnostic;
+    EXPECT_EQ(faded.stats.densityRejected, 256u);
+    const auto atHeight = [](float x, float z, scene::WorldPcgSurfaceSample& out) {
+        out.position = {x, 15.0f, z};
+        return true;
+    };
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, atHeight, {}, faded, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(faded.stats.accepted, 256u);
+    const auto atSlope = [&](float x, float z, scene::WorldPcgSurfaceSample& out) {
+        atHeight(x, z, out);
+        out.normal = normal;
+        return true;
+    };
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, atSlope, {}, faded, m_diagnostic)) << m_diagnostic;
+    EXPECT_EQ(faded.stats.densityRejected, 256u);
+    EXPECT_EQ(faded.stats.slopeRejected, 0u);
 }
 
 TEST_F(WorldPcgTest, TextProfileRoundTripPreservesAllGenerationInputsAndRejectsUnknownVersions)

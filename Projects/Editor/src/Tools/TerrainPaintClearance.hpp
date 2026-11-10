@@ -18,8 +18,12 @@ struct TerrainPaintClearance {
     TerrainPaintEdgeIndex waterIndex, pathIndex;
     [[nodiscard]] bool NearWater(const math::Vector3& position, float distance) const;
     [[nodiscard]] bool NearPath(const math::Vector3& position, float distance) const;
+    /// @return The nearest shoreline point within the world XZ radius, without a vertical filter.
+    [[nodiscard]] bool NearestWater(const math::Vector3& position, float radius, math::Vector3& nearest) const;
+    [[nodiscard]] float PathDistance(const math::Vector3& position, float radius) const;
 };
 [[nodiscard]] TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& terrain,
     const scene::Transform& transform, const TerrainScatterBrush& region, std::span<const int> excludedLayers,
-    std::span<const std::pair<const scene::WaterComponent*, const scene::Transform*>> water, float waterMargin, float pathMargin);
+    std::span<const std::pair<const scene::WaterComponent*, const scene::Transform*>> water, float waterMargin,
+    float pathMargin, bool combinePathLayers = false);
 } /// @note namespace fbzz::editor

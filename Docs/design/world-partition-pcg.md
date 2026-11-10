@@ -75,6 +75,51 @@ Preview is read-only and bounded. It reports the full candidate/result counts se
 
 `maxPlacementsPerCell` caps the combined output of a profile's rules in each 128 m vegetation cell, anchored to the partition origin. Zero preserves the uncapped profile. The generator applies biome, terrain, water and exclusion rules first, then keeps the candidates with the lowest seed-derived ranks in each cell. The same candidate keeps its ID and transform across cap changes. Streaming still groups retained output on its own configured grid. Preview reports `rejected.cellBudget` separately from density and protected-area rejections. Independent profiles can give trees and ground cover separate placement quotas. Existing authored objects remain a separate owner and can be reserved when setting those quotas.
 
+### Vegetation placement rules
+
+The following optional `.pcg` fields work with the existing profile editor, `pcg.preview` and `pcg.generate`. They apply to mesh placements such as trees, shrubs and mesh grass. Terrain Fiber uses its saved terrain layer mask. Existing profiles retain their placement and fingerprints when the optional fields are omitted.
+
+### Habitat and shore bands
+
+| Optional fields | Rule |
+|---|---|
+| `useWaterLevel`, `minWaterOffset`, `maxWaterOffset` | Accept the signed difference `groundY - waterY` in metres. Negative values are within the authored water column. On dry ground outside the water footprint, use the nearest shoreline within 128 m. Existing land rules keep their dry-ground check. |
+| `minNearRelief`, `maxNearRelief`, `minFarRelief`, `maxFarRelief` | Filter the signed height relative to the mean of the surrounding ground at 16 m and 64 m. The authoring sampler uses eight evenly spaced directions per radius and requires at least four observations at each requested radius. Negative values favor valleys and positive values favor ridges. See [Esri Topographic Position Index](https://doc.esri.com/en/arcgis-pro/latest/tool-reference/spatial-analyst/how-topographic-position-index-works.html). |
+| `maxCliffDistance`, `cliffFarScale` | Place below a nearby steep source and taper density and scale with distance. Authoring probes eight directions at increasing radii, accepts an uphill-facing source slope of at least 50°, and reports the nearest sampled distance. The configured distance is in world metres (0 disables, max 256); the default far scale multiplier is 0.45. |
+| Profile `pathMaterial`, rule `minPathDistance`, `maxPathDistance`, `pathFade` | Use the stored 0.35 weight contour of the designated path material, reject sites on it, and keep grass or shrubs in different bands with a smooth density transition. Distances are world XZ metres. |
+
+These are authoring filters over loaded terrain and water. Missing samples reject an enabled habitat test. Cliffs are sampled approximations. The optional neighborhood probes share an editor work budget. The preview reports separate water-level, relief, cliff and path rejection totals.
+
+| Fields | Placement rule |
+|---|---|
+| `minSpacing` | Minimum horizontal distance in metres between candidates of this rule. Zero disables it. A deterministic lattice traversal reserves accepted sites before the cell cap. Cropping a region can change which site wins a spacing conflict. |
+| `patchGroup`, `minPatch`, `maxPatch` | Keep candidates inside a smooth world-anchored noise band. Use the same nonempty group and `noiseScale` to share a mask across species. The lower bound is inclusive and the upper bound is exclusive except at 1. A forest can use `minPatch = 0.52` and a meadow `maxPatch = 0.52`. |
+| `neighborRule`, `minNeighborDistance`, `maxNeighborDistance` | Filter by the nearest emitted placement of another rule in the same profile. Distances are horizontal world metres. The lower bound is inclusive, the upper bound is inclusive, and a zero upper bound means unlimited. Use this for understory inside a radius, a shrub ring along the forest edge, or open grass outside tree clusters. A missing source satisfies an exclusion radius and fails a finite inclusion radius. |
+| `waterFade` | Smooth density over this many world metres from the configured shoreline distance limits. Zero preserves a sharp boundary. An unbounded upper distance has no fade at that end. |
+| `heightFade`, `slopeFade` | Taper placement density inside the configured height range (world metres) and slope range (degrees). Zero keeps a sharp boundary. The slope taper skips the physical limits at 0° and 90°. |
+| `aspectHeading`, `aspectHalfAngle`, `aspectMinSlope`, `aspectFade` | Prefer slopes facing a world XZ sector. +Z is 0°, +X is 90°, and the half-angle of 180° disables the rule. The slope direction is downhill. Slopes below `aspectMinSlope` (default 3°) are unaffected. `aspectFade` feathers density inside the sector boundary in degrees. |
+| `includeMaterial`, `minMaterialWeight` | Place only where the highest authored terrain surface has enough weight painted for this material. The default threshold is 0.25 and the matched weight also scales density. |
+| `excludeMaterial`, `excludeMaterialWeight` | Reject where the named material reaches the threshold (default 0.35). Use a saved path or rock layer to keep it clear of grass and trees. |
+| `competitionGroup`, `competitionRadius`, `competitionPriority` | Within a named group, reject candidates whose horizontal exclusion discs overlap. Radii add and use world metres. Higher priority wins within each dependency stage. Equal priority uses rule key, then lattice traversal order. |
+| `canopySourceGroup`, `canopyGroup`, `canopyRadius`, `minCanopyCount`, `maxCanopyCount` | Tag multiple source rules with `canopySourceGroup` and count their emitted roots within the consumer rule's horizontal radius. Inclusive counts select clearings, forest edges or dense understory. The maximum defaults to −1 for unlimited; `maxCanopyCount = 0` selects open ground. |
+| `scaleCompetitionRadius` | Multiply the competition radius by each candidate's chosen placement scale. The resulting radius must fit within the 1000 m maximum. Default `false` preserves fixed world-metre radii. |
+
+Neighbor links must be acyclic and resolve to rule keys. Rules in the same dependency stage compete by the existing placement rank. Earlier stages consume their cell quota first, so a dependent placement can refer only to roots that survive the cap. Leave budget for the later vegetation layer. The distance rule uses authored ground sites before visual embedding. It approximates canopy coverage through the specified radius. It does not read light or shadows.
+
+Positive spacing and neighbor distances are 0.25–1000 m. Water fade is 0–1000 m. Spacing reserves at most 1,048,576 sites per rule. Proximity only considers roots emitted in the current generation bounds, so preview the whole interacting woodland region when setting its margins.
+
+Material filters use the bilinearly interpolated saved splat weights with asset identity resolved per terrain. The layer index may differ across tiles. Duplicate layers for the same material contribute their combined weight. Missing layers have weight zero. Competition runs after terrain, material and same-rule spacing checks, before the cell cap. A provisional winner can reserve space even if the cap later removes it. Dependencies still use the surviving emitted roots. Competition radii are 0.25–1000 m when a group is present. Generation fails before publication if the competition budget of 1,048,576 reserved sites or 16 million distance tests is exhausted. Preview reports `rejected.material` and `rejected.competition`. See [Epic Open World Tools, Landscape Layers / Collision Radius / Overlap Priority](https://dev.epicgames.com/documentation/unreal-engine/open-world-tools-property-reference-in-unreal-engine).
+
+Regenerate the full region for competing rules. The Editor rejects a partial replacement when competing placements would be retained outside the generation bounds.
+
+Canopy dependencies resolve every source in the named group and reject missing groups or dependency cycles. Counts only include roots emitted after the cell cap in the current region. Use `canopySourceGroup = "Canopy"` for spruce and birch, then use `canopyGroup = "Canopy"` with `canopyRadius = 12.0` for understory. A minimum of 3 selects denser forest, a range of 1–2 selects a forest edge, and a maximum of 0 selects openings. Positive radii range from 0.25 to 1000 m and integer counts from 0 to 1024. Preview reports `rejected.canopy`. Canopy distance checks have a 16 million test budget and fail without publishing partial results. See [Epic PCG Node Reference, Point Neighborhood / Apply Scale to Bounds / Self Pruning](https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine).
+
+Canopy sources and their consumers must be regenerated together. The Editor rejects a partial replacement if this would leave previously generated participants outside the generation bounds.
+
+For a patch of exposed highland grass, set `minHeight = 80.0`, `maxHeight = 240.0`, `heightFade = 20.0`, `maxSlope = 32.0`, and `slopeFade = 6.0`. For vegetation that grows on the +Z-facing side of a hill, add `aspectHeading = 0.0`, `aspectHalfAngle = 65.0`, and `aspectFade = 15.0`. Change the heading to 180° for the opposite face. These density factors multiply the existing biome, material, clustering and water factors. Preview reports excluded directions as `rejected.aspect` and taper losses as `rejected.density`. See [Epic PCG Node Reference, Normal To Density / Curve Remap Density](https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine).
+
+Preview exposes `rejected.patch`, `rejected.neighbor`, and `rejected.spacing`. For example, set a spruce rule to `minSpacing = 6.0`, then add a mesh grass rule with `neighborRule = "spruce"`, `minNeighborDistance = 1.0`, and `maxNeighborDistance = 8.0`. A separate meadow rule can use the same `patchGroup` as the spruce with the complementary band. Use the same `noiseScale` for both sides of that band.
+
 ## Asynchronous streaming
 
 | Phase | Allowed work | Forbidden work |

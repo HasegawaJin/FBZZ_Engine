@@ -19,6 +19,8 @@
 - `authoring.context` Queryが接続先projectとSceneを返す。解析対象を要求者の任意のルートへ切り替えない。
 - 保存済アセット、現在Scene、解析source snapshotは異なる時点・範囲であり、一つのatomic snapshotと称しない。
 
+水系を新規に作るときは `terrain.drainage.inspect` で集水域と流出口を確認し、`control_points.fit_river_drainage` で支流ごとの経路を合わせる。閉じた窪地は `control_points.fit_lake_shore` の `useSpillLevel` を使える。木・草・岩は [PCG プロファイル](world-partition-pcg.md) に水位・地形・道からの距離の条件を分けて記述し、生成前に `pcg.preview` で除外理由を確認する。
+
 ## Roslyn
 
 インストール済みSDKのcompiler APIを使い、source snapshotの診断、symbol列挙、参照検索、

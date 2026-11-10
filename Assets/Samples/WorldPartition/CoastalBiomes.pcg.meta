@@ -1,0 +1,7 @@
+# @file    CoastalBiomes.pcg.meta
+# @brief   Stable identity for the coastal biome placement profile.
+# @author  Hasegawa Jin
+# @date    2026-11-10
+
+[meta]
+guid = '0b0d45dd31aa4650a734b06bb70e3f91'

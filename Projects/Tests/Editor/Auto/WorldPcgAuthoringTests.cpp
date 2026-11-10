@@ -86,6 +86,37 @@ TEST_F(WorldPcgAuthoringTest, PartialRegenerationPreservesOutsideRowsInTheSameCe
     ASSERT_TRUE(m_undo.Undo());EXPECT_EQ(Placements(),original);ASSERT_TRUE(m_undo.Redo());EXPECT_EQ(Placements(),partial);
 }
 
+TEST_F(WorldPcgAuthoringTest, MaterialMaskUsesGuidIdentityAndPaintedWeightsAcrossTerrainLayerOrders)
+{
+    auto* first = AttachedScene()->FindByGuid(m_terrain)->GetComponent<scene::TerrainComponent>();
+    auto& neighbor = AttachedScene()->CreateGameObject("Neighbor");
+    neighbor.transform.position.x = 32.0f;
+    auto& second = neighbor.AddComponent<scene::TerrainComponent>();
+    second.Resize(17, 17);
+    second.cellSize = 2.0f;
+    second.InitFlat();
+    const std::string grass = "guid:11111111111111111111111111111111|Assets/Grass.mat";
+    const std::string path = "guid:22222222222222222222222222222222|Assets/Path.mat";
+    first->layerMaterials = {grass, path};
+    second.layerMaterials = {path, grass};
+    for (int z = 0; z < 17; ++z) {
+        for (int x = 0; x < 17; ++x) {
+            ASSERT_TRUE(first->PaintLayerAtGrid(x, z, 1, 0.5f));
+            ASSERT_TRUE(second.PaintLayerAtGrid(x, z, 1, 1.0f));
+        }
+    }
+    m_profile.bounds.max.x = 64.0f;
+    m_profile.rules.front().includeMaterial = "guid:11111111111111111111111111111111|Assets/OldGrass.mat";
+    m_profile.rules.front().excludeMaterial = path;
+    SaveProfile();
+    const auto preview = Call(editor::PreviewWorldPcg, Arguments());
+    ASSERT_TRUE(preview.ok) << preview.message;
+    EXPECT_EQ(preview.data.Find("instanceCount")->AsInt64(), 64);
+    EXPECT_EQ(preview.data.Find("rejected")->Find("material")->AsInt64(), 64);
+    for (const auto& point : preview.data.Find("points")->AsArray())
+        EXPECT_GE(point.Find("position")->AsVec3().x, 32.0f);
+}
+
 TEST_F(WorldPcgAuthoringTest, EditedGeneratedOwnersRequireDetachAndDetachHistorySurvivesGeneratedRecreation)
 {
     ASSERT_TRUE(Generate(Arguments()).ok);ASSERT_FALSE(Owners().empty());const auto ownerId=Owners().front()->instanceId;

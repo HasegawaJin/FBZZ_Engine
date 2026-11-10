@@ -119,7 +119,9 @@ math::Vector3 EulerRadians(const math::Quaternion& rotation)
     return {pitch, std::atan2(matrix.m[0][2], matrix.m[2][2]), std::atan2(matrix.m[1][0], matrix.m[1][1])};
 }
 
-float LayerWeight(const scene::TerrainComponent& terrain, float x, float z, int layer)
+} /// @note namespace terrain_scatter_detail
+
+float SampleTerrainLayerWeight(const scene::TerrainComponent& terrain, float x, float z, int layer)
 {
     const float gx = x / terrain.cellSize, gz = z / terrain.cellSize;
     const int ix = std::clamp(static_cast<int>(gx), 0, terrain.columns - 2);
@@ -129,6 +131,8 @@ float LayerWeight(const scene::TerrainComponent& terrain, float x, float z, int 
     return std::lerp(std::lerp(terrain.GetLayerWeightAtGrid(ix, iz, layer), terrain.GetLayerWeightAtGrid(ix + 1, iz, layer), fx),
         std::lerp(terrain.GetLayerWeightAtGrid(ix, iz + 1, layer), terrain.GetLayerWeightAtGrid(ix + 1, iz + 1, layer), fx), fz);
 }
+
+namespace terrain_scatter_detail {
 
 /// @note ブラシの距離は高さ差を含めず、地形軸に沿った world m で測る。
 struct ScatterPlane {
@@ -344,7 +348,7 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
                 return true;
             };
             if (terrain.IsHoleAtLocal(localX, localZ)) return record(TerrainPaintReason::HOLE);
-            const float weight = settings.layer < 0 ? 1.0f : LayerWeight(terrain, localX, localZ, settings.layer);
+            const float weight = settings.layer < 0 ? 1.0f : SampleTerrainLayerWeight(terrain, localX, localZ, settings.layer);
             if (weight <= 0.0f || weight < settings.layerThreshold) return record(TerrainPaintReason::LAYER);
             const float coverage = brush ? TerrainRegionCoverage(terrainTransform, *brush, worldPosition) : 1.0f;
             if (UnitRandom(key, 3) >= settings.density * weight * coverage) return record(TerrainPaintReason::DENSITY);
