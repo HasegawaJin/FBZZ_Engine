@@ -2,6 +2,7 @@
 /// @brief   Native and generated Play adoption preserves Edit identities and checked all-or-nothing history.
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
+#include <Core/ILogSink.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/ConstraintComponents.hpp>
@@ -9,6 +10,7 @@
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
 #include <Engine/Scene/Components/TargetPointComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -62,6 +64,64 @@ protected:
     editor::UndoStack m_editUndo;
     int m_dirty = 0;
 };
+TEST_F(PlayChangesAdoptionTests, PlayUsesIndependentUnsavedTerrainSnapshotsWithoutReadingAssets) {
+    struct TerrainReadLog final : core::ILogSink {
+        TerrainReadLog() { core::Logger::AddSink(this); }
+        ~TerrainReadLog() override { core::Logger::RemoveSink(this); }
+        void OnLog(const core::LogEntry& entry) override {
+            if (entry.message.find("PlayTerrainSnapshotMissing.terrain") != std::string::npos) ++hits;
+        }
+        int hits = 0;
+    } log;
+
+    auto& external = AttachedScene()->CreateGameObject("External Terrain");
+    auto& inlineOwner = AttachedScene()->CreateGameObject("Inline Terrain");
+    external.AddComponent<scene::TerrainComponent>();
+    auto& inlineTerrain = inlineOwner.AddComponent<scene::TerrainComponent>();
+    auto& edited = *external.GetComponent<scene::TerrainComponent>();
+    edited.terrainAssetPath = "Assets/PlayTerrainSnapshotMissing.terrain";
+    edited.InitFlat();
+    edited.heightData.front() = 0.12345679f;
+    ASSERT_TRUE(edited.SetHoleCell(0, 0, true));
+    ASSERT_TRUE(edited.PaintLayerAtGrid(0, 0, 1, 1.0f));
+    edited.enabled = false;
+    edited.farLodDistance = 120.0f;
+    edited.colliderDirty = false;
+
+    inlineTerrain.InitFlat();
+    inlineTerrain.heightData.front() = -0.25f;
+
+    ASSERT_NO_FATAL_FAILURE(Start());
+    EXPECT_EQ(log.hits, 0);
+    auto* cloneOwner = m_play.PlayScene()->FindByGuid(external.instanceId);
+    ASSERT_NE(cloneOwner, nullptr);
+    auto* cloneTerrain = cloneOwner->GetComponent<scene::TerrainComponent>();
+    ASSERT_NE(cloneTerrain, nullptr);
+    EXPECT_EQ(cloneTerrain->terrainAssetPath, edited.terrainAssetPath);
+    EXPECT_EQ(cloneTerrain->heightData, edited.heightData);
+    EXPECT_EQ(cloneTerrain->splatIndices, edited.splatIndices);
+    EXPECT_EQ(cloneTerrain->splatWeights, edited.splatWeights);
+    EXPECT_TRUE(cloneTerrain->IsHoleCell(0, 0));
+    EXPECT_FALSE(cloneTerrain->enabled);
+    EXPECT_FLOAT_EQ(cloneTerrain->farLodDistance, 120.0f);
+    EXPECT_TRUE(cloneTerrain->heightDirty);
+    EXPECT_TRUE(cloneTerrain->colliderDirty);
+
+    auto* inlineCloneOwner = m_play.PlayScene()->FindByGuid(inlineOwner.instanceId);
+    ASSERT_NE(inlineCloneOwner, nullptr);
+    auto* inlineClone = inlineCloneOwner->GetComponent<scene::TerrainComponent>();
+    ASSERT_NE(inlineClone, nullptr);
+    EXPECT_TRUE(inlineClone->terrainAssetPath.empty());
+    EXPECT_EQ(inlineClone->heightData, inlineTerrain.heightData);
+
+    cloneTerrain->heightData.front() = 0.75f;
+    ASSERT_TRUE(cloneTerrain->SetHoleCell(0, 0, false));
+    ASSERT_NO_FATAL_FAILURE(Stop());
+    EXPECT_EQ(external.GetComponent<scene::TerrainComponent>(), &edited);
+    EXPECT_EQ(edited.heightData.front(), 0.12345679f);
+    EXPECT_TRUE(edited.IsHoleCell(0, 0));
+    EXPECT_FALSE(edited.colliderDirty);
+}
 TEST_F(PlayChangesAdoptionTests, SelectedNativeFieldsPreserveOriginalObjectsAndUnselectedComponents) {
     auto& original = AttachedScene()->CreateGameObject("Authoring");
     const auto id = original.GetID(); const auto guid = original.instanceId; auto* address = &original;

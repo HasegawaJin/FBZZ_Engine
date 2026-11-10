@@ -55,8 +55,16 @@ public:
     FBZZ_ENGINE_API static std::string SaveToText(Scene& scene, const std::string& scenePath = {});
     /// @note 保存失敗の型・フィールド等を diagnostic に返す。成功時は空にする。
     FBZZ_ENGINE_API static std::string SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic);
-    /// @note Play baseline acquisition skips callbacks and cached serialized-data publication on the parked Edit objects.
+    /// @note Passive text capture skips callbacks and cached Script data publication.
     FBZZ_ENGINE_API static std::string CapturePassiveClone(Scene& scene, std::string& diagnostic);
+
+    /// @brief Edit の保存値を取得し、Play 用 Scene を一度だけ構築する関数を返す。
+    /// @note Terrain は未保存の配列も所有コピーする。呼び出しは同じスレッドで行い、resources は構築まで生存すること。
+    [[nodiscard]] FBZZ_ENGINE_API static std::function<std::unique_ptr<Scene>()> PreparePlayClone(
+        Scene& scene, renderer::ResourceManager* resources, const std::string& sourcePath, std::string& diagnostic);
+
+    /// @brief 分離済みの Play Scene で保存コールバックと保存値を検証する。
+    [[nodiscard]] FBZZ_ENGINE_API static bool ValidatePlayClone(Scene& scene, std::string& diagnostic);
 
     /// @brief 対象階層だけを保存形式で取得する。シーン内の他のオブジェクトへの参照は維持する。
     FBZZ_ENGINE_API static std::string CapturePassiveSubtree(Scene& scene, EntityID root);
@@ -136,9 +144,6 @@ public:
     {
         return AppendObjects(scene, tomlText, &resources, outRoots);
     }
-private:
-    FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadFromTextCore(const std::string& tomlText,
-        renderer::ResourceManager* resources, const std::string& sourcePath, bool passiveScripts);
 };
 
 } /// @note namespace fbzz::scene

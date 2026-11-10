@@ -59,12 +59,14 @@
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <Engine/Scene/Components/NavMeshSensorComponent.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
+#include <Engine/Scene/TerrainSurfaceGeometry.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 #include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>
 #include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
 #include <Engine/Input/KeyCode.hpp>
 #include <Engine/Core/Logger.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/Material.hpp>
 #include <Engine/Renderer/IShader.hpp>
 #include <Engine/Renderer/PrimitiveMesh.hpp>
@@ -94,6 +96,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <cctype>
 #include <cassert>
 
@@ -1498,10 +1501,23 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
 namespace {
 
+using PlayTerrainSnapshots = std::unordered_map<size_t, TerrainComponent>;
+
+struct SceneDocumentOptions {
+    bool passiveClone = false;
+    std::function<bool()>* writeAssets = nullptr;
+    const std::vector<EntityID>* subtree = nullptr;
+    PlayTerrainSnapshots* playTerrains = nullptr;
+    bool validatePlay = false;
+};
+
+std::unique_ptr<Scene> LoadSceneFromText(const std::string& tomlText, renderer::ResourceManager* resources,
+    const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains = nullptr);
+
 std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::string& path,
-    std::string& diagnostic, bool passiveClone, std::function<bool()>* writeAssets = nullptr,
-    const std::vector<EntityID>* subtree = nullptr)
+    std::string& diagnostic, const SceneDocumentOptions& options)
 {
+    const auto [passiveClone, writeAssets, subtree, playTerrains, validatePlay] = options;
     diagnostic.clear();
     std::vector<EntityID> sceneObjects;
     if (!subtree) {
@@ -2369,9 +2385,17 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             if (std::isfinite(tc->farLodDistance) && tc->farLodDistance > 0.0f)
                 terrainTbl.insert("farLodDistance", tc->farLodDistance);
 
-            if (tc->terrainAssetPath.empty() || path.empty())
+            if ((playTerrains || validatePlay) && !IsValidTerrainSurfaceGeometry(tc->surfacePositions, tc->surfaceIndices)) {
+                diagnostic = "Invalid terrain surface geometry on " + go.name;
+                return {};
+            }
+            if (playTerrains) {
+                /// @note The document keeps the asset references; the authored arrays travel outside TOML.
+                terrainTbl.insert("surfaceMaterial", tc->surfaceMaterial);
+                playTerrains->emplace(goArr.size(), *tc);
+            } else if (!validatePlay && (tc->terrainAssetPath.empty() || path.empty())) {
                 inlineTerrains.push_back({goArr.size(), *tc});
-            else if (writeAssets) {
+            } else if (writeAssets) {
                 const auto diskPath = ResolveAssetDiskPathForScene(path, tc->terrainAssetPath);
                 const auto found = externalTerrains.find(diskPath);
                 if (found != externalTerrains.end()) found->second.data = *tc;
@@ -2586,7 +2610,7 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
 PreparedSceneSave SceneSerializer::PrepareSave(Scene& scene, const std::string& scenePath, std::string& diagnostic)
 {
     PreparedSceneSave save;
-    save.formatScene = PrepareSceneDocument(scene, scenePath, diagnostic, false, &save.writeAssets);
+    save.formatScene = PrepareSceneDocument(scene, scenePath, diagnostic, {.writeAssets = &save.writeAssets});
     return save;
 }
 
@@ -2605,14 +2629,35 @@ std::string SceneSerializer::SaveToText(Scene& scene, const std::string& scenePa
 
 std::string SceneSerializer::CapturePassiveClone(Scene& scene, std::string& diagnostic)
 {
-    auto format = PrepareSceneDocument(scene, {}, diagnostic, true);
+    auto format = PrepareSceneDocument(scene, {}, diagnostic, {.passiveClone = true});
     return format ? format() : std::string{};
+}
+
+std::function<std::unique_ptr<Scene>()> SceneSerializer::PreparePlayClone(Scene& scene,
+    renderer::ResourceManager* resources, const std::string& sourcePath, std::string& diagnostic)
+{
+    FBZZ_PROFILE_SCOPE("PlayClone::Capture");
+    PlayTerrainSnapshots terrains;
+    auto format = PrepareSceneDocument(scene, {}, diagnostic, {.passiveClone = true, .playTerrains = &terrains});
+    if (!format) return {};
+    return [text = format(), terrains = std::move(terrains), resources, sourcePath]() mutable {
+        FBZZ_PROFILE_SCOPE("PlayClone::Restore");
+        if (text.empty()) return std::unique_ptr<Scene>{};
+        auto capturedTerrains = std::move(terrains);
+        return LoadSceneFromText(std::exchange(text, {}), resources, sourcePath, false, &capturedTerrains);
+    };
+}
+
+bool SceneSerializer::ValidatePlayClone(Scene& scene, std::string& diagnostic)
+{
+    FBZZ_PROFILE_SCOPE("PlayClone::Validate");
+    return static_cast<bool>(PrepareSceneDocument(scene, {}, diagnostic, {.validatePlay = true}));
 }
 
 std::string SceneSerializer::CaptureSaveComparison(Scene& scene, const std::string& scenePath)
 {
     std::string diagnostic;
-    auto format = PrepareSceneDocument(scene, scenePath, diagnostic, true);
+    auto format = PrepareSceneDocument(scene, scenePath, diagnostic, {.passiveClone = true});
     return format ? format() : std::string{};
 }
 
@@ -2632,7 +2677,7 @@ std::string SceneSerializer::CapturePassiveSubtree(Scene& scene, EntityID root)
     }
     scene.SortEntitiesBySceneOrder(objects);
     std::string diagnostic;
-    auto format = PrepareSceneDocument(scene, {}, diagnostic, true, nullptr, &objects);
+    auto format = PrepareSceneDocument(scene, {}, diagnostic, {.passiveClone = true, .subtree = &objects});
     return format ? format() : std::string{};
 }
 
@@ -2654,18 +2699,20 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromText(
     const std::string& tomlText, renderer::ResourceManager* resources,
     const std::string& sourcePath)
 {
-    return LoadFromTextCore(tomlText, resources, sourcePath, false);
+    return LoadSceneFromText(tomlText, resources, sourcePath, false);
 }
 
 std::unique_ptr<Scene> SceneSerializer::LoadPassiveDataFromText(
     const std::string& tomlText, const std::string& sourcePath)
 {
-    return LoadFromTextCore(tomlText, nullptr, sourcePath, true);
+    return LoadSceneFromText(tomlText, nullptr, sourcePath, true);
 }
 
-std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
+namespace {
+
+std::unique_ptr<Scene> LoadSceneFromText(
     const std::string& tomlText, renderer::ResourceManager* resources,
-    const std::string& sourcePath, bool passiveScripts)
+    const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains)
 {
     auto result = toml::parse(tomlText);
     if (!result) {
@@ -2704,8 +2751,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
     std::vector<std::string> unresolvedScriptTypes;
 
     /// @note Pass 1: GameObject 生成 + Component アタッチ
-    for (auto& item : *goArr) {
-        auto* goTbl = item.as_table();
+    for (size_t objectIndex = 0; objectIndex < goArr->size(); ++objectIndex) {
+        auto* goTbl = (*goArr)[objectIndex].as_table();
         if (!goTbl) continue;
 
         std::string name   = (*goTbl)["name"].value_or(std::string{"GameObject"});
@@ -3331,12 +3378,20 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
         /// @note TerrainComponent
         if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
             TerrainComponent tc{};
-            tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
             tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
             const auto* inlineData = (*terrainTbl)["inlineData"].as_table();
             const bool passiveSnapshot = passiveScripts && inlineData;
 
-            if (!tc.terrainAssetPath.empty() && !passiveSnapshot) {
+            if (playTerrains) {
+                const auto captured = playTerrains->find(objectIndex);
+                if (captured == playTerrains->end()) return nullptr;
+                tc = std::move(captured->second);
+                tc.surfaceMaterial = (*terrainTbl)["surfaceMaterial"].value_or(std::string{});
+                if (tc.heightData.size() != tc.VertexCount()) tc.heightData.assign(tc.VertexCount(), 0.0f);
+                if (tc.holeData.size() != tc.CellCount()) tc.holeData.clear();
+                tc.EnsureSplat();
+                tc.heightDirty = tc.splatDirty = tc.materialParamDirty = true;
+            } else if (!tc.terrainAssetPath.empty() && !passiveSnapshot) {
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(sourcePath, tc.terrainAssetPath);
                 const bool loaded = passiveScripts ? TerrainAssetSerializer::LoadStrict(terrainDiskPath, tc)
@@ -3347,9 +3402,6 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
                                   terrainDiskPath.c_str());
                     tc.InitFlat(0.0f);
                 }
-                /// @note アセットロード後も Scene 側の enabled / terrainAssetPath を優先する
-                tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
-                tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
             } else if (!passiveSnapshot) {
                 tc.InitFlat(0.0f);
             }
@@ -3365,9 +3417,10 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
                 }
             }
 
+            tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
+            tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
             const auto farLodDistance = (*terrainTbl)["farLodDistance"].value_or(0.0f);
-            if (std::isfinite(farLodDistance) && farLodDistance > 0.0f)
-                tc.farLodDistance = farLodDistance;
+            tc.farLodDistance = std::isfinite(farLodDistance) && farLodDistance > 0.0f ? farLodDistance : 0.0f;
 
             /// @note 層数は可変。配列の長さをそのまま層数にする (番号が層数を超える頂点は描画が既定層で補う)。
             if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {
@@ -3649,6 +3702,8 @@ std::unique_ptr<Scene> SceneSerializer::LoadFromTextCore(
 
     return scene;
 }
+
+} /// @note namespace
 
 /// @note 既存 Scene への読み込み
 int SceneSerializer::ResolveMeshes(Scene& scene, renderer::ResourceManager& resources)

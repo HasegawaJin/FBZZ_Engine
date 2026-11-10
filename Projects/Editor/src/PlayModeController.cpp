@@ -33,8 +33,8 @@ void PlayModeController::Play(scene::Scene& scene, const std::string& sourcePath
         m_diagnostic = "制御点の静的ベイクが古いか不正です。ベイクを更新してからPlayしてください。";
         return;
     }
-    const std::string baseline = scene::SceneSerializer::CapturePassiveClone(scene, m_diagnostic);
-    if (baseline.empty()) { FBZZ_LOG_ERROR("Play clone capture failed: %s", m_diagnostic.c_str()); return; }
+    auto createClone = scene::SceneSerializer::PreparePlayClone(scene, resources, sourcePath, m_diagnostic);
+    if (!createClone) { FBZZ_LOG_ERROR("Play clone capture failed: %s", m_diagnostic.c_str()); return; }
     struct ParkGuard {
         scene::Scene& scene; bool transferred = false;
         ~ParkGuard() { if (!transferred) scene.SetExecutionParked(false); }
@@ -51,7 +51,7 @@ void PlayModeController::Play(scene::Scene& scene, const std::string& sourcePath
     if (generation && !managed.ForkRetainedGenerationForPlay(generation)) {
         m_diagnostic = managed.LastDiagnostic(); rollbackGeneration(); return;
     }
-    auto clone = scene::SceneSerializer::LoadFromText(baseline, resources, sourcePath);
+    auto clone = createClone();
     if (!clone) { rollbackGeneration(); m_diagnostic = "Play clone construction failed; Edit objects are unchanged."; return; }
     scene::FlushWorldTransforms(*clone);
     if (!scene::ValidateStaticControlPointBakes(*clone)) {
@@ -60,7 +60,7 @@ void PlayModeController::Play(scene::Scene& scene, const std::string& sourcePath
         return;
     }
     /// @note Serialization callbacks run only on the detached clone, never on parked Edit instances.
-    if (scene::SceneSerializer::SaveToText(*clone, {}, m_diagnostic).empty()) {
+    if (!scene::SceneSerializer::ValidatePlayClone(*clone, m_diagnostic)) {
         clone.reset(); rollbackGeneration();
         FBZZ_LOG_ERROR("Play clone validation failed: %s", m_diagnostic.c_str()); return;
     }
