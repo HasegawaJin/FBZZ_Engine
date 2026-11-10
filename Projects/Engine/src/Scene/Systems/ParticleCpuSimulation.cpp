@@ -30,6 +30,7 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <utility>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -471,7 +472,8 @@ void QueueSubEmitter(Scene& scene, const ParticleEmitter& emitter,
 /// @brief 生成がループ内に入るので、呼び出し側 (エミッター単位) が 1 本作って回す。
 bool ResolveParticleCollision(ParticleEmitter& emitter, Particle& particle,
                               const math::Vector3& nextPosition,
-                              const physics::World* world, Scene& scene,
+                              const physics::World& world, Scene& scene,
+                              std::optional<physics::World::SphereCastBatch>& sphereCasts,
                               const physics::World::ColliderFilter& filter)
 {
     physics::World::RaycastHit hit{};
@@ -484,14 +486,14 @@ bool ResolveParticleCollision(ParticleEmitter& emitter, Particle& particle,
             collided = true;
             hitPoint = { nextPosition.x, emitter.settings.collisionPlaneY + emitter.settings.collisionRadius, nextPosition.z };
         }
-    } else if (emitter.settings.collisionMode == ParticleCollisionMode::Physics && world) {
+    } else if (emitter.settings.collisionMode == ParticleCollisionMode::Physics) {
         const math::Vector3 travel = nextPosition - particle.position;
         const float distance = travel.Length();
         if (distance > 1.0e-5f) {
             const math::Vector3 direction = travel * (1.0f / distance);
-            collided = world->SphereCast(particle.position,
-                                         (std::max)(emitter.settings.collisionRadius, 0.0f),
-                                         direction, distance, hit, filter);
+            if (!sphereCasts) sphereCasts.emplace(world.PrepareSphereCasts());
+            collided = sphereCasts->Cast(particle.position,
+                (std::max)(emitter.settings.collisionRadius, 0.0f), direction, distance, hit, filter);
             if (collided) {
                 hitPoint = hit.point + hit.normal * emitter.settings.collisionRadius;
                 hitNormal = hit.normal;
@@ -889,7 +891,8 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
 void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
                         const AnimatorComponent* animator, float dt, float time,
                         const std::vector<ActiveFlowField>& flowFields,
-                        const physics::World* world, Scene& scene)
+                        const physics::World& world, Scene& scene,
+                        std::optional<physics::World::SphereCastBatch>& sphereCasts)
 {
     emitter.runtime.lastCpuSimulationFrame = Time::frameCount;
     emitter.runtime.collisionCountThisFrame = 0;
@@ -978,7 +981,9 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             return (collisionLayerMask & (1u << static_cast<unsigned>(instance.layer))) != 0u;
         };
 
-    for (auto it = emitter.runtime.particles.begin(); it != emitter.runtime.particles.end();) {
+    auto& particles = emitter.runtime.particles;
+    auto survivor = particles.begin();
+    for (auto it = particles.begin(); it != particles.end(); ++it) {
         it->age += dt;
         if (it->age >= it->lifetime) {
             ++emitter.runtime.deathCountThisFrame;
@@ -986,7 +991,6 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             QueueSubEmitter(scene, emitter, emitter.settings.deathSubEmitter,
                             emitter.settings.subEmitterBurstCount,
                             particleWorldPosition(*it), particleWorldVelocity(*it));
-            it = emitter.runtime.particles.erase(it);
             continue;
         }
         const float normalizedAge = Clamp01(it->age / (std::max)(it->lifetime, 0.001f));
@@ -1020,17 +1024,14 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
             worldParticle.velocity = TransformEmitterVector(tf, it->velocity);
             killedByCollision = ResolveParticleCollision(
                 emitter, worldParticle, TransformEmitterPoint(tf, nextPosition), world, scene,
-                collisionFilter);
+                sphereCasts, collisionFilter);
             it->position = InverseTransformEmitterPoint(tf, worldParticle.position);
             it->velocity = InverseTransformEmitterVector(tf, worldParticle.velocity);
         } else {
             killedByCollision = ResolveParticleCollision(emitter, *it, nextPosition, world, scene,
-                                                         collisionFilter);
+                                                         sphereCasts, collisionFilter);
         }
-        if (killedByCollision) {
-            it = emitter.runtime.particles.erase(it);
-            continue;
-        }
+        if (killedByCollision) continue;
         /// @note 回転カーブは角速度への時間倍率。勢いよく回り始めて減速する破片が作れる。
         it->rotation += it->angularVelocity * dt
             * (emitter.settings.useRotationCurve
@@ -1051,8 +1052,10 @@ void SimulateCpuEmitter(ParticleEmitter& emitter, const Transform& tf,
                 NormalizedParticleSpeed(emitter, *it)), 0.0f);
         }
         AppendParticleTrailPoint(emitter, *it, dt);
-        ++it;
+        if (survivor != it) *survivor = std::move(*it);
+        ++survivor;
     }
+    particles.erase(survivor, particles.end());
     UpdateParticleBounds(emitter, tf);
 }
 }
@@ -1063,6 +1066,7 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
     /// @note スクラブ・描画パス) で共有し、simulationMode やビューで軌道が割れないようにする。
     const auto flowSnapshot = scene.FlowFrame().fields;
     const std::vector<ActiveFlowField>& flowFields = *flowSnapshot;
+    std::optional<physics::World::SphereCastBatch> sphereCasts;
     for (EntityID id : scene.GetEntities<ParticleEmitter>()) {
         auto* emitter = scene.GetComponent<ParticleEmitter>(id);
         GameObject* gameObject = scene.GetGameObject(id);
@@ -1080,7 +1084,7 @@ void UpdateParticleCpuSimulation(Scene& scene, physics::World& world, float delt
         /// @note VFX Editor のプレビュー速度 (一時停止 / スロー / 倍速) をエミッター単位で dt へ注入する。
         const float scaledDt = deltaTime * emitter->GetEditorTimeScale(Time::frameCount);
         SimulateCpuEmitter(*emitter, gameObject->transform, animator, scaledDt, time,
-                           flowFields, &world, scene);
+                           flowFields, world, scene, sphereCasts);
     }
 }
 
@@ -1104,11 +1108,12 @@ bool InspectParticleEmitterLoop(Scene& scene, physics::World& world,
     const auto* animator = FindParticleAnimator(gameObject);
     emitter.ResetPlayback();
     emitter.runtime.lastPlaybackFrame = UINT64_MAX;
+    std::optional<physics::World::SphereCastBatch> sphereCasts;
     for (int frame = 0; frame < totalFrames; ++frame) {
         const float time = static_cast<float>(frame + 1) * dt;
         (void)AdvanceParticleEmitterPlaybackAtFrame(emitter, gameObject.transform, dt,
                                                      static_cast<std::uint64_t>(frame));
-        SimulateCpuEmitter(emitter, gameObject.transform, animator, dt, time, flowFields, &world, scene);
+        SimulateCpuEmitter(emitter, gameObject.transform, animator, dt, time, flowFields, world, scene, sphereCasts);
         bool visible = false;
         for (const Particle& particle : emitter.runtime.particles) {
             if (particle.size <= 0.0f || particle.color.w <= 0.01f) continue;
@@ -1162,10 +1167,11 @@ void ScrubParticleEmitterForEditor(Scene& scene, physics::World& world,
         ? static_cast<int>(static_cast<double>(target) * SCRUB_FPS) : 0;
     /// @note 31/60 秒など float に丸めると境界の直前になる値も、同じ整数フレームへ戻す。
     if (target == static_cast<float>(static_cast<double>(wholeSteps + 1) / SCRUB_FPS)) ++wholeSteps;
+    std::optional<physics::World::SphereCastBatch> sphereCasts;
     const auto simulateStep = [&](float step) {
         (void)StepParticleEmitterPlayback(emitter, gameObject.transform, step);
         SimulateCpuEmitter(emitter, gameObject.transform, animator, step, time,
-                           flowFields, &world, scene);
+                           flowFields, world, scene, sphereCasts);
     };
     for (int index = 0; index < wholeSteps; ++index) simulateStep(FIXED_STEP);
     const float remainder = target - static_cast<float>(static_cast<double>(wholeSteps) / SCRUB_FPS);

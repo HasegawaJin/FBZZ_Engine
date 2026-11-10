@@ -195,6 +195,23 @@ namespace fbzz::physics
                         RaycastHit&          hit,
                         ColliderFilter        filter = nullptr) const;
 
+        class SphereCastBatch {
+        public:
+            FBZZ_PHYSICS_API bool Cast(const math::Vector3& origin, float radius,
+                const math::Vector3& direction, float maxDistance, RaycastHit& hit,
+                const ColliderFilter& filter = nullptr) const;
+
+        private:
+            friend class World;
+            SphereCastBatch(const World& world, bool useIndex) : m_world(world), m_useIndex(useIndex) {}
+            const World& m_world;
+            bool m_useIndex;
+        };
+
+        /// @brief 同じ読み取り区間の球スイープで、BVH の境界照合を一度だけ行う。
+        /// @pre バッチの利用中は World の同期・移動・破棄と、登録個体の変更・破棄を行わない。
+        [[nodiscard]] FBZZ_PHYSICS_API SphereCastBatch PrepareSphereCasts() const;
+
         /// @brief 球と重なるコライダーを全て返す (順序未定義)。
         FBZZ_PHYSICS_API std::vector<const ColliderInstance*> OverlapSphere(
                         const math::Vector3& center,
@@ -239,12 +256,16 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void RefreshQueryIndex();
         FBZZ_PHYSICS_API size_t BuildQueryNode(size_t begin, size_t end);
         [[nodiscard]] FBZZ_PHYSICS_API bool QueryIndexMatchesColliders() const;
+        FBZZ_PHYSICS_API bool SphereCastImpl(const math::Vector3& origin, float radius,
+            const math::Vector3& direction, float maxDistance, RaycastHit& hit,
+            const ColliderFilter& filter, const bool* preparedIndex) const;
         /// @note Collider は外部所有で直接変更可能。境界が同期時点と一致しない問い合わせは全候補へ戻す。
         /// @note 作業状態を書き換えず、filter 内の再入問い合わせと複数スレッドの読み取りを許す。
         template<typename Callback>
-        void ForEachQueryCandidate(const AABB& bounds, Callback&& callback) const
+        void ForEachQueryCandidate(const AABB& bounds, Callback&& callback,
+                                   const bool* preparedIndex = nullptr) const
         {
-            if (!QueryIndexMatchesColliders()) {
+            if (!(preparedIndex ? *preparedIndex : QueryIndexMatchesColliders())) {
                 for (size_t index = 0; index < m_colliders.size(); ++index)
                     if (IsLiveCollider(index)) callback(index, m_colliders[index]);
                 return;

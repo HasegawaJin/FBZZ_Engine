@@ -16,12 +16,18 @@ namespace {
 class QuerySphere final : public physics::SphereCollider {
 public:
     explicit QuerySphere(float radius) : SphereCollider(radius) {}
+    physics::AABB GetAABB() const override
+    {
+        ++m_boundsReads;
+        return SphereCollider::GetAABB();
+    }
     physics::ColliderType GetType() const override
     {
         ++m_shapeTests;
         return physics::ColliderType::SPHERE;
     }
     mutable size_t m_shapeTests = 0;
+    mutable size_t m_boundsReads = 0;
 };
 
 class WorldQueryIndexTest : public testkit::Fixture {
@@ -130,6 +136,27 @@ TEST_F(WorldQueryIndexTest, ObservesDirectShapeMovementAndRadiusChangesWithoutAn
     ASSERT_TRUE(m_world.SphereCast({}, 1, math::Vector3::FORWARD, 20, hit));
     EXPECT_NEAR(hit.distance, 6, testkit::kTolerance);
     EXPECT_EQ(target.m_shapeTests, 1u);
+}
+
+TEST_F(WorldQueryIndexTest, SphereCastBatchChecksBoundsOnceAndAcceptsChangesBeforeTheBatch)
+{
+    auto& target = Add({0, 0, 10});
+    DistantShapes();
+    Sync();
+    auto& distant = *m_shapes.back();
+    distant.m_boundsReads = 0;
+    physics::World::RaycastHit hit;
+    {
+        const auto batch = m_world.PrepareSphereCasts();
+        ASSERT_TRUE(batch.Cast({}, 1, math::Vector3::FORWARD, 20, hit));
+        EXPECT_EQ(hit.collider, &target);
+        EXPECT_FALSE(batch.Cast({}, 1, -math::Vector3::FORWARD, 20, hit));
+        EXPECT_EQ(distant.m_boundsReads, 1u);
+    }
+    target.Update({0, 0, -10}, math::Quaternion::Identity());
+    const auto batch = m_world.PrepareSphereCasts();
+    ASSERT_TRUE(batch.Cast({}, 1, -math::Vector3::FORWARD, 20, hit));
+    EXPECT_EQ(hit.collider, &target);
 }
 
 TEST_F(WorldQueryIndexTest, RefitsMovedShapesAndRemovesUnregisteredShapes)

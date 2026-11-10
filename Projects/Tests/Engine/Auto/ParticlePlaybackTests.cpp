@@ -70,6 +70,30 @@ TEST_F(ParticlePlaybackTest, TimedBurstWithoutDurationFiresOnceInPlaybackAndScru
     }
 }
 
+TEST_F(ParticlePlaybackTest, CompactsExpiredAndKilledParticlesInTheirOriginalOrder)
+{
+    auto& emitter = Create("Compact");
+    emitter.settings.collisionMode = scene::ParticleCollisionMode::Plane;
+    emitter.settings.collisionResponse = scene::ParticleCollisionResponse::Kill;
+    emitter.settings.collisionPlaneY = 0;
+    emitter.runtime.particles.resize(5);
+    for (size_t i = 0; i < emitter.runtime.particles.size(); ++i) {
+        auto& particle = emitter.runtime.particles[i];
+        particle.position = {static_cast<float>(i), 10, 0};
+        particle.lifetime = 2;
+    }
+    emitter.runtime.particles[0].lifetime = 0;
+    emitter.runtime.particles[2].position.y = -1;
+    emitter.runtime.particles[4].lifetime = 0;
+    ++Time::frameCount;
+    scene::UpdateParticleCpuSimulation(m_scene, m_world, 0.1f, 0.1f);
+    ASSERT_EQ(emitter.runtime.particles.size(), 2u);
+    EXPECT_FLOAT_EQ(emitter.runtime.particles[0].position.x, 1);
+    EXPECT_FLOAT_EQ(emitter.runtime.particles[1].position.x, 3);
+    EXPECT_EQ(emitter.runtime.deathCountThisFrame, 2);
+    EXPECT_EQ(emitter.runtime.collisionCountThisFrame, 1);
+}
+
 TEST_F(ParticlePlaybackTest, DelayLoopAndPrewarmUseTheSamePlaybackStep)
 {
     auto& emitter = Create("Loop");

@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <unordered_map>
 #include <utility>
 
 /// @name レイキャスト交差判定ヘルパー (匿名 namespace)
@@ -1286,6 +1287,13 @@ namespace fbzz::physics
     void World::CCDPhase(float dt)
     {
         if (dt <= 0.0f) return;
+        struct SphereEntry {
+            size_t bodyIndex;
+            const SphereCollider* sphere;
+        };
+        std::unordered_map<const RigidBody*, const SphereCollider*> firstSpheres;
+        std::vector<SphereEntry> spheres;
+        bool indexed = false;
         /// @note m_useCCD が true かつ速度が十分に速い物体について、
         /// @note 他の球コライダー持ち物体との TOI を計算し速度をクランプする。
         /// @note この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
@@ -1297,43 +1305,37 @@ namespace fbzz::physics
             const float localDtA = m_effectiveDts[i];
             if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, localDtA)) continue;
 
-            /// @note bodyA に紐づくコライダーを探す (SphereCollider のみ対応)
-            const SphereCollider* sphereA = nullptr;
-            for (const auto& inst : m_colliders)
-            {
-                if (inst.body == bodyA &&
-                    inst.collider &&
-                    inst.collider->GetType() == ColliderType::SPHERE)
-                {
-                    sphereA = static_cast<const SphereCollider*>(inst.collider);
-                    break;
+            if (!indexed) {
+                indexed = true;
+                /// @note 先頭の球と剛体順を保つ。手前の剛体でクランプした速度は後続の TOI が読む。
+                for (size_t index = 0; index < m_colliders.size(); ++index) {
+                    const auto& instance = m_colliders[index];
+                    if (instance.body && IsLiveCollider(index)
+                        && instance.collider->GetType() == ColliderType::SPHERE) {
+                        firstSpheres.try_emplace(instance.body,
+                            static_cast<const SphereCollider*>(instance.collider));
+                    }
+                }
+                spheres.reserve(firstSpheres.size());
+                for (size_t j = 0; j < m_bodies.size(); ++j) {
+                    const auto sphere = firstSpheres.find(m_bodies[j]);
+                    if (sphere != firstSpheres.end()) spheres.push_back({j, sphere->second});
                 }
             }
-            if (!sphereA) continue;
+            const auto firstSphere = firstSpheres.find(bodyA);
+            if (firstSphere == firstSpheres.end()) continue;
+            const auto* sphereA = firstSphere->second;
 
             const math::Vector3 centerA = sphereA->GetAABB().Center();
             const float         radiusA = sphereA->m_radius;
             float minToi = 1.0f;
 
-            /// @note 全ボディと TOI を計算し最小値を採用する
-            for (size_t j = 0; j < m_bodies.size(); ++j)
+            for (const SphereEntry& entry : spheres)
             {
+                const size_t j = entry.bodyIndex;
                 if (i == j) continue;
                 auto& bodyB = m_bodies[j];
-
-                /// @note bodyB の SphereCollider を探す
-                const SphereCollider* sphereB = nullptr;
-                for (const auto& inst : m_colliders)
-                {
-                    if (inst.body == bodyB &&
-                        inst.collider &&
-                        inst.collider->GetType() == ColliderType::SPHERE)
-                    {
-                        sphereB = static_cast<const SphereCollider*>(inst.collider);
-                        break;
-                    }
-                }
-                if (!sphereB) continue;
+                const auto* sphereB = entry.sphere;
 
                 const math::Vector3 centerB = sphereB->GetAABB().Center();
                 const float         radiusB = sphereB->m_radius;
@@ -1529,6 +1531,25 @@ namespace fbzz::physics
                            RaycastHit&          hit,
                            ColliderFilter        filter) const
     {
+        return SphereCastImpl(origin, radius, direction, maxDistance, hit, filter, nullptr);
+    }
+
+    World::SphereCastBatch World::PrepareSphereCasts() const
+    {
+        return SphereCastBatch(*this, QueryIndexMatchesColliders());
+    }
+
+    bool World::SphereCastBatch::Cast(const math::Vector3& origin, float radius,
+        const math::Vector3& direction, float maxDistance, RaycastHit& hit,
+        const ColliderFilter& filter) const
+    {
+        return m_world.SphereCastImpl(origin, radius, direction, maxDistance, hit, filter, &m_useIndex);
+    }
+
+    bool World::SphereCastImpl(const math::Vector3& origin, float radius,
+        const math::Vector3& direction, float maxDistance, RaycastHit& hit,
+        const ColliderFilter& filter, const bool* preparedIndex) const
+    {
         /// @note Minkowski 和による膨張: 各コライダーを球半径分だけ広げてから通常のレイキャストを行う。
         /// @note 膨張した形状はコライダー種ごとに近似する — Sphere: 半径を加算 / AABB,OBB: 各辺
         /// @note 方向へ radius だけ広げる / Capsule: カプセル半径を加算 / Cylinder,Mesh,Convex: AABB 近似。
@@ -1596,7 +1617,7 @@ namespace fbzz::physics
                 bestHit.collider = inst.collider;
                 bestHit.body     = inst.body;
             }
-        });
+        }, preparedIndex);
 
         if (!std::isfinite(bestT) || bestT > maxDistance) return false;
         hit = bestHit;
