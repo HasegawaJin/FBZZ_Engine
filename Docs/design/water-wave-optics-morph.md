@@ -25,6 +25,8 @@ GPUは16基波のdir/params、4個のpacked phase float4、active count/明示�
 
 減衰はGerstnerの垂直・水平変位に適用し、逆写像にも含める。法線と逆写像収束には係数の空間勾配を含める。流れの凹みと局所波紋の意味は維持する。GPU履歴泡・残差法線も同じ減衰を使う。通常のsystem更新とPhysics snapshot準備で最新データを用意し、描画を行わない物理でも機能する。
 
+Terrain のある Horizon では水平変位に上記の減衰を使い、鉛直変位は基準水位の岸で沖の振幅の 65% を残す。地形が基準水位より高い側では、`0.35 × waveAttenuationDepth` を 0.25〜2 m と深度の符号化範囲で制限した高さまで滑らかに減衰させる。波の山と谷で地形と水面の交点が動くため、緩い砂浜では長く、急な岸では短く移動する。描画、岸泡、水中アトラスと CPU の水面照会は同じ水位変化を使う。この包絡は波の遡上を表現する幾何の近似であり、[Stockdon et al. 2006](https://pubs.usgs.gov/publication/70030520) の遡上高推定式や浅水流体の時間積分は含まない。
+
 ## 汎用LODモーフ
 
 Surface層はScene・水・RHIを知らず、元のdyadic格子、world/view、密度から座標と連続セル幅を返す。従来の無効設定は選択・16種のcenter-fan IBを維持する。nearDistanceの硬い切替は有効時だけ連続にする。

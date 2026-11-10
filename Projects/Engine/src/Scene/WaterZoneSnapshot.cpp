@@ -870,6 +870,83 @@ bool BuildBoundaryEdges(const std::vector<WaterSplineTriangle>& triangles,
 
 } /// @note namespace
 
+bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineSnapshot> islands,
+    const Transform& transform)
+{
+    std::vector<Triangle2> source, clips;
+    const auto collect = [](const WaterSplineSnapshot& mesh, std::vector<Triangle2>& triangles) {
+        for (const auto& triangle : mesh.triangles) {
+            Triangle2 converted;
+            if (!MakeFootprintTriangle(mesh, triangle, converted, 1.0e-16)) return false;
+            triangles.push_back(converted);
+        }
+        return true;
+    };
+    if (!collect(lake, source)) return false;
+    for (const auto& island : islands)
+        if (!collect(island, clips)) return false;
+    TriangleIndex sourceIndex, clipIndex;
+    if (!sourceIndex.Build(source) || !clipIndex.Build(clips)) return false;
+    const double coordinateScale = (std::max)({1.0, std::abs(static_cast<double>(lake.worldBoundsMin.x)),
+        std::abs(static_cast<double>(lake.worldBoundsMax.x)), std::abs(static_cast<double>(lake.worldBoundsMin.z)),
+        std::abs(static_cast<double>(lake.worldBoundsMax.z))});
+    const double epsilon = (std::max)(1.0e-12, coordinateScale * std::numeric_limits<double>::epsilon() * 64.0);
+    PointPool pool;
+    std::vector<std::array<std::uint32_t, 3>> triangles;
+    std::size_t work = 0;
+    for (const auto& triangle : source) {
+        std::vector<Polygon2> fragments{{{triangle.points[0], triangle.points[1], triangle.points[2]}}};
+        if (!SubtractByIndex(fragments, clipIndex.Triangles(), clipIndex, epsilon, work)) return false;
+        for (const auto& fragment : fragments)
+            if (!AddPolygonTriangles(fragment, pool, epsilon, triangles)) return false;
+    }
+    if (!SplitTJunctions(pool, triangles, epsilon, work)
+        || pool.Points().size() + lake.vertices.size() > WATER_SPLINE_MAX_VERTICES) return false;
+
+    std::vector<WaterSplineVertex> vertices;
+    vertices.reserve(pool.Points().size());
+    for (std::size_t i = 0; i < pool.Points().size(); ++i) {
+        const Point2& exact = pool.ExactPoints()[i];
+        const Point2& emitted = pool.Points()[i];
+        const Bounds2 bounds{exact.x, exact.z, exact.x, exact.z};
+        WaterSplineVertex vertex;
+        bool sampled = false;
+        if (!sourceIndex.Query(bounds, epsilon, [&](std::uint32_t id) {
+            if (sampled || !TriangleCoversWithinRounding(exact, source[id], epsilon)) return true;
+            const auto& ids = lake.triangles[id].indices;
+            const auto& a = lake.vertices[ids[0]];
+            const auto& b = lake.vertices[ids[1]];
+            const auto& c = lake.vertices[ids[2]];
+            const Point2 pa{a.worldPosition.x, a.worldPosition.z};
+            const Point2 pb{b.worldPosition.x, b.worldPosition.z};
+            const Point2 pc{c.worldPosition.x, c.worldPosition.z};
+            const double area = Cross(pa, pb, pc);
+            const double wa = Cross(exact, pb, pc) / area;
+            const double wb = Cross(pa, exact, pc) / area;
+            const double wc = 1.0 - wa - wb;
+            vertex.baseHeightOffset = static_cast<float>(wa * a.baseHeightOffset + wb * b.baseHeightOffset + wc * c.baseHeightOffset);
+            vertex.depth = static_cast<float>(std::clamp(wa * a.depth + wb * b.depth + wc * c.depth,
+                0.0, static_cast<double>(lake.maximumDepth)));
+            vertex.worldVelocity = a.worldVelocity * static_cast<float>(wa)
+                + b.worldVelocity * static_cast<float>(wb) + c.worldVelocity * static_cast<float>(wc);
+            vertex.worldPosition = {static_cast<float>(emitted.x), lake.worldBaseY + vertex.baseHeightOffset,
+                static_cast<float>(emitted.z)};
+            vertex.localPosition = ToOwnerLocal(emitted, vertex.baseHeightOffset, transform);
+            sampled = true;
+            return true;
+        }, work) || !sampled) return false;
+        vertices.push_back(vertex);
+    }
+    const auto offset = static_cast<std::uint32_t>(lake.vertices.size());
+    lake.vertices.insert(lake.vertices.end(), vertices.begin(), vertices.end());
+    lake.triangles.clear();
+    for (auto indices : triangles) {
+        for (auto& index : indices) index += offset;
+        lake.triangles.push_back({indices});
+    }
+    return true;
+}
+
 bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::span<const WaterZoneMouthInput> mouths, const Transform& ownerTransform,
     float maximumWaterDepth, float maximumWorldCellSize, WaterZoneSnapshot& out,

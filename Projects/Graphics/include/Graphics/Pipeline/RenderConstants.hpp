@@ -1103,13 +1103,13 @@ struct WaterCB {
     math::Vector4 crestFoamParams{};
     /// @note xyz=泡の線形アルベド、w=泡の粗さ。
     math::Vector4 foamColorRoughness{};
-    /// @note x=遠景海面有効、y=遠景パッチ、z=有限水域外の波紋減衰距離 [m]。
+    /// @note x=Horizon 有効、y=Horizon パッチ、z=局所波紋の減衰距離 [m]、w=媒体 owner ID。
     math::Vector4 farOceanParams{};
     /// @note x=地形情報有効、y=符号付き水深の復号範囲 [m]、zw=情報テクスチャの寸法。
     math::Vector4 terrainInfoParams{};
     /// @note 16基波の初期位相 [rad]。各Vector4に4基波を格納する。
     math::Vector4 wavePhasePacked[4]{};
-    /// @note x=有効基波数、w=明示count。w=0は従来の手書きCBを4基波として読む。
+    /// @note x=有効基波数、yz=さざ波の方向上書き (0 で基流)、w=明示count。
     math::Vector4 waveControls{};
     math::Vector4 absorptionCoefficients{};
     math::Vector4 scatteringCoefficients{};
@@ -1122,9 +1122,12 @@ struct WaterCB {
     math::Vector4 patchMorphCellSize{};
     /// @note x=浅水波の減衰開始深度 [m]、y=不変水深場有効。0深度は旧波のまま。
     math::Vector4 waveDepthParams{};
+    /// @note xy=パッチ全域の local XZ 最小値、zw=local 寸法。0 寸法は従来の有限矩形。
+    math::Vector4 horizonPatchDomain{};
+    /// @note xy=Terrain 域の中心、zw=寸法。Water 軸へ投影した world m。0 寸法は著者設定の矩形。
+    math::Vector4 terrainDomain{};
 };
-/// @note 旧1328bytes + 追加12基波(384) + 位相/count(80) + 光学(48) + モーフ(80) + 浅水(16)。
-static_assert(sizeof(WaterCB) == 1936, "WaterCB size mismatch");
+static_assert(sizeof(WaterCB) == 1968, "WaterCB size mismatch");
 
 /// @note WaterEffectParams — Water.hlsl の MaterialConstants (b2) の C++ ミラー。
 struct WaterEffectParams {

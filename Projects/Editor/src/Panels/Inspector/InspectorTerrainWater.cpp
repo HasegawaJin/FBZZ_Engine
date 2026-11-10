@@ -517,29 +517,78 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
 
             ImGui::EndDisabled();
             ImGui::SeparatorText("Waves");
-            ComponentImGuiReflector waveRefUi;
-            waveRefUi.m_projectRoot = ctx.projectRoot;
-            waveRefUi.Field("Wave Asset", water.wavesAssetRef);
-            if (waveRefUi.m_changed && ctx.markSceneDirty) ctx.markSceneDirty();
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                ImGui::SetTooltip("WaterWavesAssetを共有して波を生成します。\n未設定なら材質に保存した4本の波を使います。");
+            auto& waveAuthoring = water.waveAuthoring;
+            static constexpr const char* SEA_STATES[] = {"Wave Asset", "Calm", "Gentle", "Offshore", "Storm"};
+            const int seaState = (std::clamp)(static_cast<int>(waveAuthoring.preset), 0, IM_ARRAYSIZE(SEA_STATES) - 1);
+            const bool hasWaveAsset = !water.wavesAssetRef.path.empty();
+            const char* preview = seaState == 0 && !hasWaveAsset ? "Choose a sea state" : SEA_STATES[seaState];
+            if (ImGui::BeginCombo("Sea State", preview)) {
+                for (int i = hasWaveAsset ? 0 : 1; i < IM_ARRAYSIZE(SEA_STATES); ++i) {
+                    if (ImGui::Selectable(SEA_STATES[i], seaState == i))
+                        waveAuthoring.preset = static_cast<scene::WaterSeaPreset>(i);
+                    if (seaState == i) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::TreeNode("Shared Wave Asset")) {
+                ComponentImGuiReflector waveRefUi;
+                waveRefUi.m_projectRoot = ctx.projectRoot;
+                waveRefUi.Field("Wave Asset", water.wavesAssetRef);
+                if (waveRefUi.m_changed) {
+                    waveAuthoring.preset = water.wavesAssetRef.path.empty()
+                        ? scene::WaterSeaPreset::GENTLE : scene::WaterSeaPreset::AUTHORED;
+                    if (ctx.markSceneDirty) ctx.markSceneDirty();
+                }
+                ImGui::SetItemTooltip("WaterWavesAsset を割り当てると、この水面の波の生成元を切り替えます。");
+                ImGui::TreePop();
+            }
             ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
             ImGui::BeginDisabled(!water.enableGerstnerWaves);
+            if (waveAuthoring.preset != scene::WaterSeaPreset::AUTHORED || !water.wavesAssetRef.path.empty()) {
+                float heading = waveAuthoring.overrideHeading ? waveAuthoring.headingDegrees : water.waveDirectionDisplay.x;
+                if (ImGui::DragFloat("Main Heading", &heading, 0.5f, 0.0f, 0.0f, "%.1f deg")) {
+                    waveAuthoring.headingDegrees = std::remainder(heading, 360.0f);
+                    waveAuthoring.overrideHeading = true;
+                }
+                ImGui::SetItemTooltip("波が進む向き。0° は +X、90° は +Z。Scene View の矢印からも調整できます。");
+                if (waveAuthoring.overrideHeading) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Reset##swell_heading")) waveAuthoring.overrideHeading = false;
+                }
+                float width = waveAuthoring.spreadDegrees >= 0.0f ? waveAuthoring.spreadDegrees : water.waveDirectionDisplay.y;
+                if (ImGui::DragFloat("Angular Spread", &width, 0.5f, 0.0f, 360.0f, "%.1f deg",
+                        ImGuiSliderFlags_AlwaysClamp)) waveAuthoring.spreadDegrees = width;
+                ImGui::SetItemTooltip("扇形全体の角度。0° で波を主方向へ揃えます。");
+                if (waveAuthoring.spreadDegrees >= 0.0f) {
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Reset##swell_spread")) waveAuthoring.spreadDegrees = -1.0f;
+                }
+                ImGui::SliderFloat("Cross Swell Strength", &waveAuthoring.secondaryStrength, 0.0f, 1.0f, "%.2f");
+                ImGui::SetItemTooltip("0 で無効。副うねりの振幅を主うねりの振幅範囲に対する比率で設定します。");
+                if (waveAuthoring.secondaryStrength > 0.0f
+                    && ImGui::DragFloat("Cross Swell Heading", &waveAuthoring.secondaryHeadingDegrees, 0.5f,
+                        0.0f, 0.0f, "%.1f deg")) {
+                    waveAuthoring.secondaryHeadingDegrees = std::remainder(waveAuthoring.secondaryHeadingDegrees, 360.0f);
+                }
+            }
             if (ImGui::DragFloat("Amplitude Scale", &water.waveAmplitudeScale, 0.01f, 0.0f, 10.0f, "x%.2f"))
                 water.waveAmplitudeScale = (std::max)(water.waveAmplitudeScale, 0.0f);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("波Assetまたは材質の波の高さに掛ける倍率。\n"
                                   "同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるときに使います。");
             ImGui::EndDisabled();
+            static constexpr const char* RIPPLE_MODES[] = {"Material / Flow", "Scene Wind", "Manual"};
+            int rippleMode = static_cast<int>(waveAuthoring.rippleMode);
+            if (ImGui::Combo("Ripple Direction", &rippleMode, RIPPLE_MODES, IM_ARRAYSIZE(RIPPLE_MODES)))
+                waveAuthoring.rippleMode = static_cast<scene::WaterRippleDirectionMode>(rippleMode);
+            ImGui::SetItemTooltip("表面の細かなさざ波だけに適用します。水流・着水の波紋・うねりは独立しています。");
+            if (waveAuthoring.rippleMode == scene::WaterRippleDirectionMode::MANUAL
+                && ImGui::DragFloat("Ripple Heading", &waveAuthoring.rippleHeadingDegrees, 0.5f, 0.0f, 0.0f, "%.1f deg")) {
+                waveAuthoring.rippleHeadingDegrees = std::remainder(waveAuthoring.rippleHeadingDegrees, 360.0f);
+            }
             ImGui::DragFloat("Shallow Wave Depth", &water.waveAttenuationDepth, 0.05f, 0.0f, 10000.0f, "%.2f m");
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("この深さより浅い場所で波を弱めます。\n0で無効。描画と浮力に同じ減衰を使います。");
-            /// @note 実際に描かれている波 (.mat × 倍率 × 環境風)。風の効き具合をここで確かめる。
-            for (size_t i = 0; i < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++i) {
-                const scene::GerstnerWave& wave = water.waves[i];
-                ImGui::TextDisabled("Wave %zu   A %.2f m   L %.1f m   Q %.2f",
-                                    i, wave.amplitude, wave.wavelength, wave.steepness);
-            }
             if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f)
                 ImGui::TextDisabled("Current  %.2f m/s", currentSpeed);
 

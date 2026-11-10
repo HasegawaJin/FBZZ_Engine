@@ -62,6 +62,16 @@ struct WaterSplinePoint {
     bool operator==(const WaterSplinePoint& other) const = default;
 };
 
+inline constexpr std::size_t WATER_LAKE_MAX_ISLAND_POINTS = 512;
+inline constexpr int WATER_LAKE_MAX_ISLANDS = 16;
+
+/// @brief A vertex of a dry, closed contour, in owner-local metres.
+struct WaterLakeIslandPoint {
+    int ring = 0;
+    math::Vector3 localPosition = math::Vector3::ZERO;
+    bool operator==(const WaterLakeIslandPoint&) const = default;
+};
+
 /// @brief A sampled spline vertex shared by rendering and water queries.
 struct WaterSplineVertex {
     math::Vector3 localPosition = math::Vector3::ZERO;
@@ -94,7 +104,9 @@ struct WaterSplineSnapshot {
     std::vector<WaterSplineTriangle> triangles;
     /// @brief Original footprint triangulation retained before shared-cell refinement.
     std::vector<WaterSplineTriangle> footprintTriangles;
+    /// @note BuildWaterSplineSnapshot stores the river's left bank in point order, then the right bank in reverse order.
     std::vector<std::uint32_t> outlineIndices;
+    std::vector<std::vector<math::Vector3>> islandOutlines;
     std::vector<WaterSplineBvhNode> bvhNodes;
     std::vector<std::uint32_t> triangleOrder;
     math::Vector3 localBoundsMin = math::Vector3::ZERO;
@@ -169,7 +181,7 @@ struct WaterSplineSample {
 [[nodiscard]] FBZZ_ENGINE_API std::uint64_t WaterSplineSnapshotSignature(WaterSurfaceShape shape,
     std::span<const WaterSplinePoint> points, std::uint32_t samplesPerSegment,
     const Transform& transform, float maximumWaterDepth = 10.0f,
-    float maximumWorldCellSize = 2.0f);
+    float maximumWorldCellSize = 2.0f, std::span<const WaterLakeIslandPoint> islands = {});
 
 /// @brief Build the bounded triangle snapshot for the selected lake or river, shared by rendering, queries, and physics.
 /// @param points Stable-ID control points in component-local space.
@@ -182,7 +194,7 @@ struct WaterSplineSample {
 [[nodiscard]] FBZZ_ENGINE_API bool BuildWaterSplineSnapshot(WaterSurfaceShape shape,
     std::span<const WaterSplinePoint> points, std::uint32_t samplesPerSegment,
     const Transform& transform, WaterSplineSnapshot& out, float maximumWaterDepth = 10.0f,
-    float maximumWorldCellSize = 2.0f);
+    float maximumWorldCellSize = 2.0f, std::span<const WaterLakeIslandPoint> islands = {});
 
 /// @brief Recompute bounds, refine shared edges, gradients, and the BVH for an authored numeric mesh.
 /// @return False for invalid or over-budget geometry; out may be partially updated.

@@ -46,6 +46,10 @@ struct ActiveFlowField {
     math::Quaternion inverseRotation{};
     math::Vector3    extents = { 1.0f, 1.0f, 1.0f };
     /// @}
+
+    /// @note 水面専用の振幅と波長 [m]。媒質速度の評価には使わない。
+    float waterSwellAmplitude = 0.0f;
+    float waterSwellWavelength = 32.0f;
 };
 
 /// @brief 流れがこのエミッターに作用するか。

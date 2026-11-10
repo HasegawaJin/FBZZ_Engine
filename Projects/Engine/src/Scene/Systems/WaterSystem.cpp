@@ -175,6 +175,93 @@ std::uint64_t WaveSettingsSignature(std::string_view path,
     return HashU32(hash, std::bit_cast<std::uint32_t>(spread));
 }
 
+std::uint64_t WaveAuthoringSignature(std::uint64_t hash, const WaterWaveAuthoring& authoring)
+{
+    hash = HashByte(hash, authoring.overrideHeading ? 1u : 0u);
+    hash = HashU32(hash, std::bit_cast<std::uint32_t>(authoring.headingDegrees));
+    hash = HashU32(hash, std::bit_cast<std::uint32_t>(authoring.spreadDegrees));
+    hash = HashU32(hash, std::bit_cast<std::uint32_t>(authoring.secondaryHeadingDegrees));
+    return HashU32(hash, std::bit_cast<std::uint32_t>(authoring.secondaryStrength));
+}
+
+const asset::WaterWavesAsset* BuiltInSeaPreset(WaterSeaPreset preset)
+{
+    struct Sea {
+        int count;
+        float minLength, maxLength, minAmplitude, maxAmplitude, spread, steepness, grouping;
+    };
+    static constexpr Sea SEAS[] = {
+        {4, 2.5f, 9.0f, 0.008f, 0.025f, 0.60f, 0.20f, 0.08f},
+        {6, 5.0f, 24.0f, 0.035f, 0.18f, 0.80f, 0.38f, 0.18f},
+        {9, 11.0f, 77.0f, 0.22f, 1.35f, 1.35f, 0.68f, 0.24f},
+        {12, 15.0f, 110.0f, 0.45f, 2.4f, 1.75f, 0.85f, 0.38f},
+    };
+    static const auto assets = [] {
+        std::array<asset::WaterWavesAsset, std::size(SEAS)> result;
+        for (size_t i = 0; i < result.size(); ++i) {
+            const auto& sea = SEAS[i];
+            auto& asset = result[i];
+            asset.seed = 821;
+            asset.waveCount = sea.count;
+            asset.minimumWavelength = sea.minLength;
+            asset.maximumWavelength = sea.maxLength;
+            asset.minimumAmplitude = sea.minAmplitude;
+            asset.maximumAmplitude = sea.maxAmplitude;
+            asset.directionSpreadRadians = sea.spread;
+            asset.minimumSteepness = sea.steepness * 0.4f;
+            asset.maximumSteepness = sea.steepness;
+            asset.waveGrouping = sea.grouping;
+        }
+        return result;
+    }();
+    const auto index = static_cast<size_t>(preset);
+    return index > 0 && index <= assets.size() ? &assets[index - 1] : nullptr;
+}
+
+float WaveHeadingRadians(float degrees)
+{
+    return std::isfinite(degrees) ? std::remainder(degrees, 360.0f) * (math::PI / 180.0f) : 0.0f;
+}
+
+/// @note The seed and random draw order stay fixed when a heading or spread changes.
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/simulating-waves-using-the-water-waves-asset-in-unreal-engine Gerstner direction and angular spread.
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/Water/FGerstnerWaveOctave Direction per Gerstner wave group.
+bool GenerateWaveBands(const asset::WaterWavesAsset& source, const WaterWaveAuthoring& authoring,
+    std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES>& waves, std::uint32_t& count,
+    math::Vector2& directionDisplay)
+{
+    if (!source.GenerateWaves(waves)) return false;
+    auto settings = source.GenerationSettings();
+    count = settings.waveCount;
+    const bool overrideSpread = std::isfinite(authoring.spreadDegrees) && authoring.spreadDegrees >= 0.0f;
+    if (authoring.overrideHeading) settings.directionCenterRadians = WaveHeadingRadians(authoring.headingDegrees);
+    if (overrideSpread)
+        settings.directionSpreadRadians = (std::min)(authoring.spreadDegrees * (math::PI / 180.0f), math::TWO_PI);
+    if ((authoring.overrideHeading || overrideSpread) && !fluid::GenerateGerstnerWaves(settings, waves)) return false;
+    directionDisplay = {
+        std::remainder(settings.directionCenterRadians, math::TWO_PI) * (180.0f / math::PI),
+        settings.directionSpreadRadians * (180.0f / math::PI)
+    };
+
+    if (count == 0 || !std::isfinite(authoring.secondaryStrength) || authoring.secondaryStrength <= 0.0f) return true;
+    constexpr std::uint32_t SECONDARY_COUNT = 3;
+    const float strength = math::Clamp01(authoring.secondaryStrength);
+    settings.seed ^= 0x9E3779B9u;
+    settings.waveCount = SECONDARY_COUNT;
+    settings.directionCenterRadians = WaveHeadingRadians(authoring.secondaryHeadingDegrees);
+    settings.directionSpreadRadians = 0.45f;
+    settings.minimumWavelength = (std::max)(0.01f, settings.minimumWavelength * 0.65f);
+    settings.maximumWavelength = (std::max)(settings.minimumWavelength, settings.maximumWavelength * 0.65f);
+    settings.minimumAmplitude *= strength;
+    settings.maximumAmplitude *= strength;
+    std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> secondary{};
+    if (!fluid::GenerateGerstnerWaves(settings, secondary)) return false;
+    count = (std::min)(count, static_cast<std::uint32_t>(waves.size()) - SECONDARY_COUNT);
+    std::copy_n(secondary.begin(), SECONDARY_COUNT, waves.begin() + count);
+    count += SECONDARY_COUNT;
+    return true;
+}
+
 std::uint64_t WaveDiagnosticSignature(std::string_view path, std::string_view reason,
     const fluid::GerstnerWaveGenerationSettings& settings, float grouping, float spread, bool hasSettings)
 {
@@ -281,7 +368,7 @@ bool PrepareWaterSplineSnapshotFromPoints(WaterComponent& water,
         return true;
     }
     const std::uint64_t signature = WaterSplineSnapshotSignature(shape, points,
-        water.splineSamplesPerSegment, transform, water.buoyancyDepth, water.splineMeshCellSize);
+        water.splineSamplesPerSegment, transform, water.buoyancyDepth, water.splineMeshCellSize, water.lakeIslandPoints);
     const std::uint64_t effectiveSignature = HashU32(
         HashU32(signature, static_cast<std::uint32_t>(sourceSignature)),
         static_cast<std::uint32_t>(sourceSignature >> 32));
@@ -291,7 +378,7 @@ bool PrepareWaterSplineSnapshotFromPoints(WaterComponent& water,
     water.splineSnapshotAttemptSignature = effectiveSignature;
     WaterSplineSnapshot snapshot;
     if (!BuildWaterSplineSnapshot(shape, points, water.splineSamplesPerSegment,
-            transform, snapshot, water.buoyancyDepth, water.splineMeshCellSize)) {
+            transform, snapshot, water.buoyancyDepth, water.splineMeshCellSize, water.lakeIslandPoints)) {
         water.splineSnapshot.reset();
         return false;
     }
@@ -817,7 +904,7 @@ bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation
             ? (std::min)((std::max)(scaleInput, 0.0f), 1000000.0f)
             : (std::max)(scaleInput, 0.0f))
         : 0.0f;
-    float response = material.windResponse;
+    float response = water.waveAuthoring.preset == WaterSeaPreset::AUTHORED ? material.windResponse : 0.0f;
     if (constrainContraction && !std::isfinite(response)) response = 0.0f;
     response = math::Clamp01(response);
     const bool validWind = std::isfinite(wind.speed) && std::isfinite(wind.direction.x)
@@ -876,24 +963,38 @@ bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation
     water.waveGrouping = resolvedGrouping;
     water.waveSpread = resolvedSpread;
     water.current = flowLen > 1.0e-4f ? flow * (speed / flowLen) : math::Vector2::ZERO;
+    water.rippleDirectionOverride = math::Vector2::ZERO;
+    if (water.waveAuthoring.rippleMode == WaterRippleDirectionMode::MANUAL) {
+        const float angle = WaveHeadingRadians(water.waveAuthoring.rippleHeadingDegrees);
+        water.rippleDirectionOverride = {std::cos(angle), std::sin(angle)};
+    } else if (water.waveAuthoring.rippleMode == WaterRippleDirectionMode::SCENE_WIND
+               && wind.active && hasWindDir) {
+        water.rippleDirectionOverride = windDir;
+    }
     return true;
 }
 
 } /// @note namespace
 
-static void ResolveWaterWavesValues(WaterComponent& water, const WaterMaterialPreparation& material, const WaterWind& wind)
-{
-    ResolveWaterWaveBases(water, material, wind, material.bases, material.grouping, material.spread, false);
-}
-
 static bool ResolveWaterWavesFromValues(WaterComponent& water, const WaterMaterialPreparation& material,
                                 const WaterWind& wind, const asset::WaterWavesAsset& wavesAsset)
 {
     std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> generated{};
-    if (!wavesAsset.GenerateWaves(generated)) return false;
-    return ResolveWaterWaveBases(water, material, wind,
-        std::span<const GerstnerWave>(generated.data(), wavesAsset.waveCount),
-        wavesAsset.waveGrouping, wavesAsset.waveSpread, true);
+    std::uint32_t count = 0;
+    math::Vector2 display;
+    if (!GenerateWaveBands(wavesAsset, water.waveAuthoring, generated, count, display)
+        || !ResolveWaterWaveBases(water, material, wind, std::span(generated.data(), count),
+            wavesAsset.waveGrouping, wavesAsset.waveSpread, true)) return false;
+    water.waveDirectionDisplay = display;
+    return true;
+}
+
+static void ResolveWaterWavesValues(WaterComponent& water, const WaterMaterialPreparation& material, const WaterWind& wind)
+{
+    const auto* preset = BuiltInSeaPreset(water.waveAuthoring.preset);
+    if (preset && ResolveWaterWavesFromValues(water, material, wind, *preset)) return;
+    water.waveDirectionDisplay = math::Vector2::ZERO;
+    ResolveWaterWaveBases(water, material, wind, material.bases, material.grouping, material.spread, false);
 }
 
 void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind)
@@ -1047,6 +1148,19 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
                 /// @note 頂点で刻めない形は消す。波長にあたるのは形の差し渡し = 2·radius。
                 * WaterComponent::WaveMeshFade(flow.radius * 2.0f, water.cellSize);
             flow.speed *= planeInfluence;
+            const bool wantsSwell = field.waterSwellAmplitude > 0.0f
+                && std::isfinite(field.waterSwellAmplitude) && std::isfinite(field.waterSwellWavelength)
+                && field.waterSwellWavelength >= 2.0f && field.waterSwellWavelength <= 1000.0f;
+            const auto setSwellBand = [&] {
+                auto nearCell = water.cellSize;
+                if ((water.adaptivePatchLod || WaterSurfaceUsesHorizon(water)) && !UsesWaterSurfaceGeometry(water)) {
+                    nearCell.x = (std::min)(nearCell.x, water.lodNearCellSize);
+                    nearCell.y = (std::min)(nearCell.y, water.lodNearCellSize);
+                }
+                flow.swellWavelength = field.waterSwellWavelength;
+                flow.swellNearFade = WaterComponent::WaveMeshFade(
+                    (std::min)(flow.swellWavelength, 2.0f * flow.radius), nearCell);
+            };
             switch (field.type) {
             case FlowFieldType::Uniform: {
                 /// @note 真上・真下を向いた流れは水面を撫でない。水平成分だけを «風» として読む。
@@ -1056,6 +1170,13 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
                     flow.direction = { field.direction.x / dirLen, field.direction.z / dirLen };
                 flow.speed *= dirLen;
                 flow.chop = math::Clamp01(flow.speed / kWaterSurfaceFlowReference);
+                if (dirLen > 1.0e-4f && wantsSwell) {
+                    setSwellBand();
+                    /// @note 波長に対する振幅を制限し、短波を急峻にしすぎない。
+                    flow.height = (std::min)({field.waterSwellAmplitude, kMaxWaterSurfaceDisplacement,
+                                              0.07f * flow.swellWavelength})
+                                * planeInfluence * flow.swellNearFade;
+                }
                 break;
             }
             case FlowFieldType::Curl:
@@ -1072,6 +1193,12 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
                 if (std::abs(field.direction.y) < kWaterVortexUprightDot) continue;
                 flow.height = -bernoulli;
                 flow.speed  = field.direction.y >= 0.0f ? flow.speed : -flow.speed;
+                if (wantsSwell) {
+                    setSwellBand();
+                    /// @note Explicit vortex depth is an art control, limited relative to its horizontal support.
+                    flow.height = -(std::min)({field.waterSwellAmplitude, 24.0f, 0.45f * flow.radius})
+                                * planeInfluence * flow.swellNearFade;
+                }
                 break;
             default:
                 continue;
@@ -1085,7 +1212,8 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
 
         const float dx = field.position.x - transform.worldPosition.x;
         const float dz = field.position.z - transform.worldPosition.z;
-        if (std::abs(dx) > halfX + reach || std::abs(dz) > halfZ + reach) continue;
+        if ((std::abs(dx) > halfX + reach || std::abs(dz) > halfZ + reach)
+            && !(flow.swellWavelength > 0.0f && flow.height != 0.0f && WaterSurfaceUsesHorizon(water))) continue;
 
         /// @note 枠が空いていれば足し、埋まっていれば «一番弱い枠» と競らせる。
         if (water.surfaceFlowCount < kWaterSurfaceFlowCount) {
@@ -1182,18 +1310,20 @@ void WaterSystem::Update(SystemContext& ctx)
         WaveAssetCache& cache = m_waveAssets[BodyKey(id)];
         cache.seen = true;
         const std::string& referencePath = water->wavesAssetRef.path;
-        if (referencePath.empty()) {
+        const auto* preset = BuiltInSeaPreset(water->waveAuthoring.preset);
+        if (referencePath.empty() && !preset) {
             cache = WaveAssetCache{};
             cache.seen = true;
             ResolveWaterWavesValues(*water, material, wind);
         } else {
-            if (cache.referencePath != referencePath) {
+            if (cache.referencePath != referencePath || cache.preset != water->waveAuthoring.preset) {
                 cache = WaveAssetCache{};
                 cache.referencePath = referencePath;
+                cache.preset = water->waveAuthoring.preset;
                 cache.seen = true;
             }
 
-            const asset::DataAsset* resolved = asset::DataAssetRegistry::Resolve(referencePath);
+            const asset::DataAsset* resolved = preset ? preset : asset::DataAssetRegistry::Resolve(referencePath);
             const asset::WaterWavesAsset* source = nullptr;
             fluid::GerstnerWaveGenerationSettings settings{};
             float grouping = 0.0f;
@@ -1212,21 +1342,25 @@ void WaterSystem::Update(SystemContext& ctx)
                     grouping = source->waveGrouping;
                     spread = source->waveSpread;
                     hasSettings = true;
-                    const std::uint64_t signature = WaveSettingsSignature(referencePath, settings, grouping, spread);
+                    const std::uint64_t signature = WaveAuthoringSignature(
+                        WaveSettingsSignature(referencePath, settings, grouping, spread), water->waveAuthoring);
                     const bool cacheMatches = cache.hasAttempt && cache.attemptedAsset == resolved
                         && cache.attemptedSignature == signature;
                     if (!cacheMatches) {
                         std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> generated{};
-                        const bool generatedValid = source->GenerateWaves(generated);
+                        std::uint32_t count = 0;
+                        math::Vector2 display;
+                        const bool generatedValid = GenerateWaveBands(*source, water->waveAuthoring, generated, count, display);
                         cache.attemptedAsset = resolved;
                         cache.attemptedSignature = signature;
                         cache.hasAttempt = true;
                         cache.lastAttemptValid = generatedValid;
                         if (generatedValid) {
                             cache.generatedWaves = generated;
-                            cache.generatedWaveCount = source->waveCount;
+                            cache.generatedWaveCount = count;
                             cache.generatedGrouping = grouping;
                             cache.generatedSpread = spread;
+                            cache.generatedDirectionDisplay = display;
                             cache.hasLastGood = true;
                         }
                     }
@@ -1277,6 +1411,7 @@ void WaterSystem::Update(SystemContext& ctx)
                     std::span<const GerstnerWave>(fallback.data(), fallbackCount),
                     fallbackGrouping, fallbackSpread, true));
             }
+            water->waveDirectionDisplay = cache.generatedDirectionDisplay;
         }
     }
 

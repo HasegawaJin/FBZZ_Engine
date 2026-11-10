@@ -148,12 +148,14 @@ public:
 private:
     struct WaveAssetCache {
         std::string referencePath;
+        WaterSeaPreset preset = WaterSeaPreset::AUTHORED;
         const asset::DataAsset* attemptedAsset = nullptr;
         std::uint64_t attemptedSignature = 0;
         std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> generatedWaves{};
         std::uint32_t generatedWaveCount = 0;
         float generatedGrouping = 0.0f;
         float generatedSpread = 0.0f;
+        math::Vector2 generatedDirectionDisplay = math::Vector2::ZERO;
         bool hasLastGood = false;
         bool hasAttempt = false;
         bool lastAttemptValid = false;

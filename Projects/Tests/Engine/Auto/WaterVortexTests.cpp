@@ -96,6 +96,54 @@ scene::ActiveFlowField BakedField(const fluid::VectorFieldAsset& asset, math::Ve
 
 class WaterVortexTest : public testkit::Fixture {};
 
+TEST_F(WaterVortexTest, UniformSwellMovesWithTheWaterClockAndFadesAtTheFieldBoundary)
+{
+    auto water = FlatWater();
+    water.farOceanEnabled = true;
+    water.cellSize = {32.0f, 32.0f};
+    water.lodNearCellSize = 1.0f;
+    scene::FlowFieldSettings field;
+    field.direction = {1.0f, 0.0f, 0.0f};
+    field.radius = 40.0f;
+    field.strength = 0.0f;
+    const math::Vector3 center{200.0f, 0.0f, -120.0f};
+    const auto pose = IdentityTransform();
+    scene::ResolveWaterSurfaceFlows(water, pose, {scene::ResolveFlowField(field, center, pose.worldRotation)});
+    EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(center.x, center.z, 0.0f), 0.0f);
+    field.waterSwellAmplitude = 0.8f;
+    field.waterSwellWavelength = 16.0f;
+    const auto resolved = scene::ResolveFlowField(field, center, pose.worldRotation);
+    scene::ResolveWaterSurfaceFlows(water, pose, {resolved});
+    ASSERT_EQ(water.surfaceFlowCount, 1);
+    const float halfPeriod = math::PI / std::sqrt(9.8f * math::TWO_PI / field.waterSwellWavelength);
+    EXPECT_NEAR(water.GetSurfaceHeightAt(center.x, center.z, 0.0f), 0.8f, 0.0001f);
+    EXPECT_NEAR(water.GetSurfaceHeightAt(center.x, center.z, halfPeriod), -0.8f, 0.0001f);
+    EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(center.x + field.radius, center.z, 0.0f), 0.0f);
+    EXPECT_LT(std::abs(water.GetSurfaceHeightAt(center.x + field.radius - 0.01f, center.z, 0.0f)), 0.0001f);
+    EXPECT_VEC3_NEAR(scene::SampleFlow(center, {&resolved, 1}, field.channels, 0.0f), math::Vector3::ZERO, 0.0001f);
+}
+
+TEST_F(WaterVortexTest, AuthoredVortexKeepsItsBowlAndMovesTheSpiral)
+{
+    auto water = FlatWater();
+    scene::FlowFieldSettings settings;
+    settings.fieldType = scene::FlowFieldType::Vortex;
+    settings.direction = math::Vector3::UP;
+    settings.radius = 36.0f;
+    settings.strength = 4.0f;
+    settings.waterSwellAmplitude = 9.0f;
+    settings.waterSwellWavelength = 20.0f;
+    const auto pose = IdentityTransform();
+    scene::ResolveWaterSurfaceFlows(water, pose, {scene::ResolveFlowField(settings, {}, pose.worldRotation)});
+    ASSERT_EQ(water.surfaceFlowCount, 1);
+    EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(0.0f, 0.0f, 0.0f), -9.0f);
+    EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(0.0f, 0.0f, 1.0f), -9.0f);
+    EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(36.0f, 0.0f, 1.0f), 0.0f);
+    EXPECT_GT(std::abs(water.GetSurfaceHeightAt(18.0f, 0.0f, 0.0f) -
+                       water.GetSurfaceHeightAt(18.0f, 0.0f, 1.0f)), 0.25f);
+    EXPECT_GE(water.SurfaceHeightBound(), 9.0f);
+}
+
 /// @name 形
 
 TEST_F(WaterVortexTest, TheDepressionIsExactlyTheDepthAtTheCenterAndGoneAtTheRadius)

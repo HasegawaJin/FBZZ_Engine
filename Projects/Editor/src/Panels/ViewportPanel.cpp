@@ -993,11 +993,15 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         if (ctx.clothPinPainting || ctx.fiberPainting) m_rectSelecting = false;
     }
     const bool anyToolActive = ctx.clothPinPainting || ctx.fiberPainting || (ctx.terrainTool && ctx.terrainTool->IsActive());
+    bool waveWantsMouse = false;
     if (isSceneView) {
         const bool pointOverlayBlocked = overlayHovered || anyToolActive || IsOrientationGizmoHovered()
             || IsOrientationGizmoActive() || ImGui::IsDragDropActive();
+        if (inPlayOrPause || anyToolActive) m_waterHeadingDrag = {};
+        else waveWantsMouse = DrawWaterHeadingEditor(ctx, m_waterHeadingDrag, viewportMin, size,
+            viewportHovered && !pointOverlayBlocked && !m_prevGizmoUsing && !ImGui::GetIO().KeyAlt);
         overlayHovered = DrawControlPointOverlay(ctx, viewportMin, size,
-            !inPlayOrPause, pointOverlayBlocked) || overlayHovered;
+            !inPlayOrPause, pointOverlayBlocked || waveWantsMouse) || overlayHovered || waveWantsMouse;
     }
     m_controlPointLayers.SetCurrentChannel(viewportDrawList, 0);
     const bool targetPointTransformMode = HasTargetPointSelection(ctx)
@@ -1023,11 +1027,12 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
         }
     }
     const bool gizmoWantsMouse = inPlayOrPause ? playGizmoWantsMouse
-        : pointWantsMouse || ImGuizmo::IsUsing() || ImGuizmo::IsOver()
+        : pointWantsMouse || waveWantsMouse || ImGuizmo::IsUsing() || ImGuizmo::IsOver()
             || IsOrientationGizmoHovered() || IsOrientationGizmoActive();
     /// @note 頂点スナップ (V ドラッグ) / 面スナップ (Ctrl+Shift ドラッグ)。同じ左ドラッグを使うため、
         /// @note 選択・矩形選択・ギズモより先に処理して「掴んでいる」間は他の解釈をさせない。
-    const bool snapping = (isSceneView && !inPlayOrPause && !ctx.clothPinPainting && !ctx.fiberPainting && !pointWantsMouse && !HasTargetPointSelection(ctx))
+    const bool snapping = (isSceneView && !inPlayOrPause && !ctx.clothPinPainting && !ctx.fiberPainting
+        && !pointWantsMouse && !waveWantsMouse && !HasTargetPointSelection(ctx))
                         ? HandleViewportSnapping(ctx, viewportMin, size)
                         : false;
 
@@ -1102,7 +1107,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
             || (!overlayHovered && !anyToolActive && !IsOrientationGizmoHovered()
                 && !IsOrientationGizmoActive() && !ImGui::IsDragDropActive());
         if (!transformGizmoDrawnBeforePoints
-            && (continueTransformGizmo || (!snapping && !ctx.clothPinPainting && !ctx.fiberPainting && !pointWantsMouse
+            && (continueTransformGizmo || (!snapping && !ctx.clothPinPainting && !ctx.fiberPainting && !pointWantsMouse && !waveWantsMouse
                 && (!targetPointSelection || transformGizmoMode) && targetTransformInputAvailable)))
             DrawGizmo(ctx, viewportMin, size, m_lastGizmoOp, m_lastGizmoMode, m_prevGizmoOver, m_prevGizmoUsing);
 

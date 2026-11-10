@@ -9,6 +9,7 @@
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
 #include <Engine/Scene/WaterSpline.hpp>
+#include <Math/Vector4.hpp>
 #include <cstdint>
 #include <vector>
 
@@ -34,6 +35,8 @@ struct WaterDepthSample {
     math::Vector2 gradient = math::Vector2::ZERO;
 };
 
+enum class WaterDepthAxis { HORIZONTAL, VERTICAL };
+
 /// @brief Scene・Terrain・RHI を参照しない RGBA8 水深 snapshot。
 struct WaterDepthField {
     uint32_t width = 0;
@@ -46,6 +49,7 @@ struct WaterDepthField {
     float maximumAttenuationGradient = 0.0f;
     WaterDepthWorldMapping mapping;
     std::vector<uint8_t> rgba;
+    math::Vector4 domain{};
 };
 
 /// @return 有効なatlas と水域値から数値 snapshot を作る。失敗時は out 未変更。
@@ -54,8 +58,15 @@ FBZZ_ENGINE_API bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
 /// @return world XZ の bilinear attenuation factor と解析勾配。失敗時は out 未変更。
-/// @note 底なしは1、dryは0、clipped depthは符号で0/1を選び、範囲外は有限距離で1へ滑らかに戻す。
 FBZZ_ENGINE_API bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldXZ, WaterDepthSample& out);
+
+/// @note Horizon の垂直係数は基準水面より上の低い岸でも波高を残す。水平係数は逆写像用。
+FBZZ_ENGINE_API bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldXZ,
+    WaterDepthSample& out, WaterDepthAxis axis);
+
+/// @return 有効な Terrain の基準水深 [world m]。底が不明なら false、out 未変更。
+/// @note WaterMediumAtlas と同じ有効 texel の重みで、変位後の world XZ を照会する。
+FBZZ_ENGINE_API bool TrySampleWaterTerrainColumn(const WaterDepthField& field, math::Vector2 worldXZ, float& out);
 
 /// @note 物理snapshotと描画なし照会のために、現在のSceneの全Waterへ不変fieldを準備する。
 FBZZ_ENGINE_API void PrepareWaterDepthFields(Scene& scene,

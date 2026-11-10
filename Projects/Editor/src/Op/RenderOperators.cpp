@@ -243,6 +243,67 @@ void RegisterRenderOperators(OperatorRegistry& registry)
     RegisterViewportViewOperators(registry);
     {
         EditorOperator op;
+        op.id = "water.set_wave_heading";
+        op.label = "Set Main Swell Heading";
+        op.category = "Render";
+        op.kind = OpKind::Mutation;
+        op.undoLabel = op.label;
+        op.desc = "選択中の水面の主うねりが進む角度。+X が 0°、+Z が 90°。";
+        OpParam heading;
+        heading.name = "heading";
+        heading.type = OpParamType::Float;
+        op.params = {heading};
+        const auto resolve = [](const EditorContext& ctx) -> scene::GameObject* {
+            auto* object = ctx.GetSelectedGO();
+            if (!object || object->IsRuntimeGenerated() || ctx.IsLocked(object->GetID())) return nullptr;
+            const auto* water = object->GetComponent<scene::WaterComponent>();
+            return water && (water->waveAuthoring.preset != scene::WaterSeaPreset::AUTHORED
+                || !water->wavesAssetRef.path.empty()) ? object : nullptr;
+        };
+        op.poll = [resolve](const OpContext& context, const OpArgs&) { return resolve(context.ctx) != nullptr; };
+        op.exec = [resolve](OpContext& context, const OpArgs& args) -> OpResult {
+            auto& ctx = context.ctx;
+            auto* object = resolve(ctx);
+            const float heading = args.GetFloat("heading", std::numeric_limits<float>::quiet_NaN());
+            if (!object || !std::isfinite(heading))
+                return OpResult::Err("BAD_ARG", "水面と有限な波の進行角度を指定してください。");
+            using Water = scene::WaterComponent;
+            const auto& authoring = object->GetComponent<Water>()->waveAuthoring;
+            using Heading = std::pair<bool, float>;
+            const Heading before{authoring.overrideHeading, authoring.headingDegrees};
+            const Heading after{true, std::remainder(heading, 360.0f)};
+            OpResult result;
+            if (before == after) { result.noChange = true; return result; }
+            auto* scene = ctx.activeScene;
+            const auto entity = object->GetID();
+            const auto generation = scene->GetRenderSceneGeneration();
+            const auto lifetime = scene->GetComponentLifetime<Water>(entity);
+            const auto apply = [&ctx, scene, entity, generation, lifetime](
+                const Heading& expected, const Heading& next, std::string& reason) {
+                auto* water = ctx.activeScene == scene && scene->GetRenderSceneGeneration() == generation
+                    && scene->GetComponentLifetime<Water>(entity) == lifetime ? scene->GetComponent<Water>(entity) : nullptr;
+                if (!water || water->waveAuthoring.overrideHeading != expected.first
+                    || (expected.first && water->waveAuthoring.headingDegrees != expected.second)) {
+                    reason = "水面または主うねりの方向が別の操作で変わっています。";
+                    return false;
+                }
+                water->waveAuthoring.overrideHeading = next.first;
+                water->waveAuthoring.headingDegrees = next.second;
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+                return true;
+            };
+            auto command = std::make_unique<CheckedLambdaCommand>("Set Main Swell Heading",
+                [apply, before, after](std::string& reason) { return apply(before, after, reason); },
+                [apply, before, after](std::string& reason) { return apply(after, before, reason); });
+            std::string reason;
+            if (!command->TryExecute(reason)) return OpResult::Err("CONFLICT", std::move(reason));
+            result.command = std::move(command);
+            return result;
+        };
+        registry.Register(std::move(op));
+    }
+    {
+        EditorOperator op;
         op.id = "render.get_spatial_debug";
         op.label = "Spatial Debug Status";
         op.category = "Render";

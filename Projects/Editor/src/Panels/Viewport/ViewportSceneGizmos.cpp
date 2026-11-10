@@ -11,6 +11,7 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
+#include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Scene/Components/AudioListenerComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/AudioSpatialComponents.hpp>
@@ -628,24 +629,10 @@ void DrawWaterGizmo(EditorContext& ctx, ImDrawList* dl, const scene::GameObject&
     };
     DrawWorldPolyline(ctx, dl, corners, true, vpMin, vpSize, IM_COL32(80, 200, 255, 200), 1.5f);
 
-    /// @note 色は .mat Inspector の Wave 0..3 と揃える。長さは振幅に比例させ、水面の外へは出さない。
-    static constexpr ImU32 kWaveColors[4] = {
-        IM_COL32(255, 230,  80, 230), IM_COL32(255, 160,  80, 220),
-        IM_COL32( 80, 255, 160, 220), IM_COL32(200,  80, 255, 220),
-    };
     const math::Vector3 origin = go.transform.worldPosition;
     const float maxLength = (std::max)(
         (std::min)(hx * std::abs(go.transform.worldScale.x), hz * std::abs(go.transform.worldScale.z)) * 0.8f,
         0.5f);
-    if (water.enableGerstnerWaves) {
-        for (size_t i = 0; i < (std::min)(static_cast<size_t>(water.waveCount), water.waves.size()); ++i) {
-            const scene::GerstnerWave& wave = water.waves[i];
-            if (wave.amplitude < 1.0e-4f || wave.direction.LengthSq() < 1.0e-8f) continue;
-            const math::Vector2 dir = wave.direction.Normalized();
-            DrawDirectionLine(ctx, dl, origin, { dir.x, 0.0f, dir.y },
-                              (std::min)(wave.amplitude * 20.0f, maxLength), vpMin, vpSize, kWaveColors[i % 4]);
-        }
-    }
     if (const float currentSpeed = water.current.Length(); currentSpeed > 1.0e-3f) {
         DrawDirectionLine(ctx, dl, origin,
                           { water.current.x / currentSpeed, 0.0f, water.current.y / currentSpeed },
@@ -893,6 +880,95 @@ void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSiz
         if (scene::GameObject* go = ctx.activeScene->GetGameObject(id))
             DrawSelectedVolumes(ctx, dl, *go, vpMin, vpSize);
     }
+}
+
+bool DrawWaterHeadingEditor(EditorContext& ctx, WaterHeadingDrag& drag, const ImVec2& vpMin,
+                            const ImVec2& vpSize, bool canStart)
+{
+    auto* object = ctx.selectedEntities.size() == 1 ? ctx.GetSelectedGO() : nullptr;
+    const auto* water = object ? object->GetComponent<scene::WaterComponent>() : nullptr;
+    if (!water || !water->enableGerstnerWaves || !ctx.editorCamera || !ctx.activeScene
+        || ctx.IsLocked(object->GetID()) || object->IsRuntimeGenerated()
+        || (water->waveAuthoring.preset == scene::WaterSeaPreset::AUTHORED && water->wavesAssetRef.path.empty())) {
+        drag = {};
+        return false;
+    }
+
+    const auto owner = object->GetID();
+    const auto generation = ctx.activeScene->GetRenderSceneGeneration();
+    const auto lifetime = ctx.activeScene->GetComponentLifetime<scene::WaterComponent>(owner);
+    if (drag.owner != owner || drag.generation != generation || drag.lifetime != lifetime
+        || ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::GetIO().KeyAlt) drag = {};
+    const bool active = drag.owner.IsValid();
+    math::Vector3 origin = object->transform.worldPosition;
+    ImVec2 screen;
+    if (water->farOceanEnabled && (!WorldToScreen(origin, ctx, vpMin, vpSize, screen)
+        || screen.x < vpMin.x + 40.0f || screen.x > vpMin.x + vpSize.x - 40.0f
+        || screen.y < vpMin.y + 40.0f || screen.y > vpMin.y + vpSize.y - 40.0f)) {
+        const math::Ray centerRay{ctx.editorCamera->m_position, ctx.editorCamera->GetForward()};
+        float distance = 0.0f;
+        if (centerRay.IntersectPlane(math::Plane::FromNormalAndPoint(math::Vector3::UP, origin), distance))
+            origin = centerRay.At(distance);
+    }
+    const math::Plane plane = math::Plane::FromNormalAndPoint(math::Vector3::UP, origin);
+    if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+        const auto ray = ScreenRayFromMouse(ctx, vpMin);
+        float distance = 0.0f;
+        if (ray.IntersectPlane(plane, distance)) {
+            const auto offset = ray.At(distance) - origin;
+            if (offset.LengthSq() > 1.0e-4f) {
+                drag.candidate = std::atan2(offset.z, offset.x) * (180.0f / math::PI);
+                drag.moved = true;
+            }
+        }
+    }
+
+    const float heading = active ? drag.candidate : water->waveAuthoring.overrideHeading
+        ? water->waveAuthoring.headingDegrees : water->waveDirectionDisplay.x;
+    const float radians = (std::isfinite(heading) ? heading : 0.0f) * (math::PI / 180.0f);
+    const auto direction = [](float angle) { return math::Vector3{std::cos(angle), 0.0f, std::sin(angle)}; };
+    const float radius = (std::max)(0.5f, (std::min)(
+        (origin - ctx.editorCamera->m_position).Length() * 0.14f,
+        (std::min)(water->extentX * std::abs(object->transform.worldScale.x),
+            water->extentZ * std::abs(object->transform.worldScale.z)) * 0.4f));
+    auto* dl = ImGui::GetWindowDrawList();
+    const float fullWidth = water->waveAuthoring.spreadDegrees >= 0.0f
+        ? water->waveAuthoring.spreadDegrees : water->waveDirectionDisplay.y;
+    const float halfWidth = (std::clamp)(fullWidth, 0.0f, 360.0f) * (math::PI / 360.0f);
+    if (halfWidth > 0.0f) {
+        std::array<math::Vector3, 27> outline;
+        outline.front() = outline.back() = origin;
+        for (size_t i = 1; i < outline.size() - 1; ++i) {
+            const float t = static_cast<float>(i - 1) / static_cast<float>(outline.size() - 3);
+            outline[i] = origin + direction(radians + (2.0f * t - 1.0f) * halfWidth) * radius;
+        }
+        DrawWorldPolyline(ctx, dl, outline, false, vpMin, vpSize, IM_COL32(255, 211, 91, 145), 1.5f);
+    }
+    if (water->waveAuthoring.secondaryStrength > 0.0f && std::isfinite(water->waveAuthoring.secondaryHeadingDegrees))
+        DrawDirectionLine(ctx, dl, origin, direction(water->waveAuthoring.secondaryHeadingDegrees * (math::PI / 180.0f)),
+            radius * 0.72f, vpMin, vpSize, IM_COL32(194, 151, 255, 225));
+    DrawDirectionLine(ctx, dl, origin, direction(radians), radius, vpMin, vpSize, IM_COL32(255, 211, 91, 245));
+    bool hovered = false;
+    if (WorldToScreen(origin + direction(radians) * radius, ctx, vpMin, vpSize, screen)) {
+        const ImVec2 mouse = ImGui::GetMousePos();
+        hovered = canStart && std::hypot(mouse.x - screen.x, mouse.y - screen.y) <= 10.0f;
+        dl->AddCircleFilled(screen, hovered || active ? 6.0f : 4.0f, IM_COL32(255, 211, 91, 245));
+        if (hovered) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            ImGui::SetTooltip("Main Swell %.1f deg\nDrag to set the travel direction", heading);
+            if (!active && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                drag = {owner, generation, lifetime, heading, false};
+        }
+    }
+    if (active && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (drag.moved && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+            OpArgs args;
+            args.Set("heading", drag.candidate);
+            static_cast<void>(InvokeOperator(ctx, "water.set_wave_heading", args));
+        }
+        drag = {};
+    }
+    return active || hovered;
 }
 
 namespace {

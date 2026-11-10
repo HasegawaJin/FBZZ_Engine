@@ -158,7 +158,19 @@ bool DrawFlowFieldSettings(scene::FlowFieldSettings& force, EditorContext& ctx,
     if (force.fieldType == Type::Uniform || force.fieldType == Type::Vortex)
         changed |= widgets::DragVec3(force.fieldType == Type::Vortex ? "Axis" : "Direction",
                                      force.direction, 0.01f);
+    if (!showSpace && force.fieldType == Type::Uniform) {
+        changed |= ImGui::DragFloat("Water Swell Amplitude [m]", &force.waterSwellAmplitude, 0.02f, 0.0f, 3.0f);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("0 で無効。半径内の水面に、Direction の XZ 方向へ進むうねりを加えます。");
+        changed |= ImGui::DragFloat("Water Swell Wavelength [m]", &force.waterSwellWavelength, 0.2f, 2.0f, 1000.0f);
+    }
     if (force.fieldType == Type::Vortex) {
+        if (!showSpace) {
+            changed |= ImGui::DragFloat("Water Vortex Depth [m]", &force.waterSwellAmplitude, 0.05f, 0.0f, 24.0f);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("0 は通常の渦。正の値で水面にくぼみと螺旋の波を作ります。");
+            changed |= ImGui::DragFloat("Water Spiral Spacing [m]", &force.waterSwellWavelength, 0.2f, 2.0f, 1000.0f);
+        }
         const float axisLength = force.direction.Length();
         const float upright = axisLength > 1.0e-4f ? std::abs(force.direction.y) / axisLength : 0.0f;
         if (upright < scene::kWaterVortexUprightDot)

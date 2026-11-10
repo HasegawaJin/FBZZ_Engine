@@ -226,6 +226,12 @@ bool TrySampleWaterSurfaceHeightWorld(const WaterComponent& water, const Transfo
         }
     }
     sample.displacement = water.GetSurfaceHeightAt(worldPosition.x, worldPosition.z, time, view);
+    if (WaterSurfaceUsesHorizon(water, view)) {
+        const WaterDepthField* field = water.EffectiveDepthField(view);
+        float terrainDepth = 0.0f;
+        if (field && TrySampleWaterTerrainColumn(*field, {worldPosition.x, worldPosition.z}, terrainDepth))
+            sample.waterDepthLimit = (std::clamp)(terrainDepth + sample.displacement, 0.0f, sample.waterDepthLimit);
+    }
     const double surfaceY = static_cast<double>(pose.worldPosition.y) + sample.displacement;
     sample.position = {worldPosition.x, static_cast<float>(surfaceY), worldPosition.z};
     sample.depth = static_cast<float>(surfaceY - static_cast<double>(worldPosition.y));

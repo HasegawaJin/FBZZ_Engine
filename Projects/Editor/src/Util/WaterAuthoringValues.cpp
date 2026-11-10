@@ -45,6 +45,7 @@ void CopyWaterAuthoringValues(scene::WaterComponent& target, const scene::WaterC
     target.farOceanRippleFadeDistance = values.farOceanRippleFadeDistance;
     target.materialPath = values.materialPath;
     target.wavesAssetRef = values.wavesAssetRef;
+    target.waveAuthoring = values.waveAuthoring;
     target.enableGerstnerWaves = values.enableGerstnerWaves;
     target.waveAmplitudeScale = values.waveAmplitudeScale;
     target.buoyancyEnabled = values.buoyancyEnabled;
@@ -71,4 +72,4 @@ scene::WaterComponent CaptureWaterAuthoringValues(const scene::WaterComponent& s
     CopyWaterAuthoringValues(values, source);
     return values;
 }
-}
+} /// @note namespace fbzz::editor

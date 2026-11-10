@@ -8,6 +8,7 @@
 #include <Engine/Scene/WaterSpline.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
+#include <Math/Vector4.hpp>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -16,6 +17,9 @@ namespace fbzz::scene {
 class Scene;
 struct TerrainComponent;
 struct WaterComponent;
+
+inline constexpr uint32_t MAX_FINITE_WATER_TERRAIN_RESOLUTION = 257u;
+inline constexpr uint32_t MAX_HORIZON_WATER_TERRAIN_RESOLUTION = 513u;
 
 struct WaterTerrainSource {
     const TerrainComponent* terrain = nullptr;
@@ -53,7 +57,7 @@ struct WaterTerrainSample {
     float shoreFoam = 0.0f;
 };
 struct WaterTerrainBakeSettings {
-    uint32_t width = 257, height = 257;
+    uint32_t width = MAX_FINITE_WATER_TERRAIN_RESOLUTION, height = MAX_FINITE_WATER_TERRAIN_RESOLUTION;
     float foamThreshold = 0.3f, foamFade = 0.5f;
     /// @note 0 keeps buoyancyDepth as the encoding range; positive values override it in world metres.
     float depthRange = 0.0f;
@@ -64,7 +68,13 @@ struct WaterTerrainInfoAtlas {
     uint64_t signature = 0;
     /// @note RGBA8: R=岸泡、GB=符号付き水深16bit（G上位/B下位）、A bit0=底あり/bit1=dry/bit2=水深範囲外。
     std::vector<uint8_t> rgba;
+    /// @note xy=中心、zw=寸法。水域原点から符号付き Water 軸に沿った world m。0 寸法は保存済み矩形。
+    math::Vector4 domain{};
 };
+
+/// @note Horizon の解像度は局所波紋の Extent から独立させる。
+[[nodiscard]] FBZZ_ENGINE_API math::Vector2 ResolveWaterTerrainBakeResolution(const WaterTerrainInfoInputs& inputs,
+    const WaterComponent& water, const Transform& transform, WaterSurfaceReadView view);
 
 /// @return 不正入力/結果では false、out 未変更。holes/範囲外を含め底が無い場合は成功し hasBottom=false。
 /// @note 全 Terrain の最上交点を選び、水位より上の Terrain も dry として残す。深度-buffer の視線距離とは別の鉛直地形水深。
@@ -77,7 +87,7 @@ FBZZ_ENGINE_API bool TryComputeWaterTerrainInfoSignature(const WaterTerrainInfoI
     const Transform& transform, const WaterTerrainBakeSettings& settings, uint64_t& out,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
-/// @return 最大257×257の texel 中心を world へ写した RGBA8 atlas。失敗時は false、out 未変更。
+/// @return texel 中心を world へ写した RGBA8 atlas。失敗時は false、out 未変更。
 /// @note 波を乗せる前の基準水位で焼く。浅瀬による波高の変更は行わず、GPU/CPU の波の正本を変えない。
 FBZZ_ENGINE_API bool TryBakeWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
     const Transform& transform, const WaterTerrainBakeSettings& settings, WaterTerrainInfoAtlas& out,

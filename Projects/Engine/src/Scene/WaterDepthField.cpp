@@ -79,14 +79,17 @@ float SmoothAttenuation(float depth, float threshold)
     return t * t * (3.0f - 2.0f * t);
 }
 
-bool TexelFactor(const WaterDepthField& field, size_t pixel, float& out)
+/// @note Horizon の遡上用の高さ包絡。WaterDepthTexelFactors と揃える。
+/// @see https://pubs.usgs.gov/publication/70030520 Stockdon et al. (2006), wave runup and swash elevation.
+bool TexelFactor(const WaterDepthField& field, size_t pixel, float& out, float landFadeDepth = 0.0f)
 {
     const uint8_t flags = field.rgba[pixel + 3];
     if ((flags & 1u) == 0u) {
         out = 1.0f;
         return true;
     }
-    if ((flags & 2u) != 0u) {
+    const bool dry = (flags & 2u) != 0u;
+    if (dry && landFadeDepth <= 0.0f) {
         out = 0.0f;
         return true;
     }
@@ -94,8 +97,16 @@ bool TexelFactor(const WaterDepthField& field, size_t pixel, float& out)
     if (!TryDecodeWaterTerrainDepth(field.rgba[pixel + 1], field.rgba[pixel + 2],
             field.depthRange, depth)) return false;
     if ((flags & 4u) != 0u) {
-        out = depth > 0.0f ? 1.0f : 0.0f;
+        out = !dry && depth > 0.0f ? 1.0f : 0.0f;
         return true;
+    }
+    if (landFadeDepth > 0.0f) {
+        constexpr float SHORE_HEIGHT_FACTOR = 0.65f;
+        if (dry) depth = (std::min)(depth, 0.0f);
+        out = depth < 0.0f
+            ? SHORE_HEIGHT_FACTOR * SmoothAttenuation(depth + landFadeDepth, landFadeDepth)
+            : SHORE_HEIGHT_FACTOR + (1.0f - SHORE_HEIGHT_FACTOR) * SmoothAttenuation(depth, field.attenuationDepth);
+        return std::isfinite(out);
     }
     out = SmoothAttenuation(depth, field.attenuationDepth);
     return std::isfinite(out);
@@ -111,6 +122,24 @@ bool ValidMapping(const WaterDepthWorldMapping& mapping)
         && std::isfinite(mapping.extentZ) && mapping.extentZ > 0.0f
         && std::isfinite(rotationLength) && std::abs(rotationLength - 1.0) <= 0.001;
 }
+
+bool TryResolveWaterDepthUv(const WaterDepthField& field, math::Vector2 worldXZ, math::Vector2& out)
+{
+    if (!Finite(worldXZ) || field.width < 2 || field.height < 2
+        || field.width > MAX_HORIZON_WATER_TERRAIN_RESOLUTION || field.height > MAX_HORIZON_WATER_TERRAIN_RESOLUTION
+        || field.rgba.size() != static_cast<size_t>(field.width) * field.height * 4u
+        || !std::isfinite(field.depthRange) || field.depthRange <= 0.0f
+        || !ValidMapping(field.mapping)) return false;
+    const math::Vector3 relative{
+        worldXZ.x - field.mapping.worldPosition.x, 0.0f,
+        worldXZ.y - field.mapping.worldPosition.z};
+    const math::Vector3 local = field.mapping.worldToLocalRotation * relative;
+    const float localX = local.x - field.domain.x * std::copysign(1.0f, field.mapping.signedScaleX);
+    const float localZ = local.z - field.domain.y * std::copysign(1.0f, field.mapping.signedScaleZ);
+    out = {localX / field.mapping.signedScaleX / field.mapping.extentX + 0.5f,
+        localZ / field.mapping.signedScaleZ / field.mapping.extentZ + 0.5f};
+    return Finite(out);
+}
 } /// @note namespace
 
 bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComponent& water,
@@ -118,11 +147,14 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
 {
     const size_t pixelCount = static_cast<size_t>(atlas.width) * atlas.height;
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(view);
-    if (atlas.width < 2 || atlas.height < 2 || atlas.width > 257 || atlas.height > 257
+    const bool hasDomain = atlas.domain.z > 0.0f && atlas.domain.w > 0.0f;
+    if (atlas.width < 2 || atlas.height < 2
+        || atlas.width > MAX_HORIZON_WATER_TERRAIN_RESOLUTION || atlas.height > MAX_HORIZON_WATER_TERRAIN_RESOLUTION
         || pixelCount > std::numeric_limits<size_t>::max() / 4u
         || atlas.rgba.size() != pixelCount * 4u
         || !std::isfinite(atlas.depthRange) || atlas.depthRange <= 0.0f
-        || !std::isfinite(attenuationDepth) || attenuationDepth <= 0.0f
+        || !std::isfinite(attenuationDepth) || attenuationDepth < 0.0f
+        || (attenuationDepth == 0.0f && !hasDomain)
         || (UsesWaterSurfaceGeometry(water, view) && !WaterSurfaceGeometry(water, view))
         || !IsWaterSurfaceSupported(water, transform, view)) return false;
 
@@ -137,8 +169,9 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
     field.mapping.signedScaleX = transform.worldScale.x;
     field.mapping.signedScaleZ = transform.worldScale.z;
     const auto extent = WaterSurfaceLocalExtent(water, view);
-    field.mapping.extentX = extent.x;
-    field.mapping.extentZ = extent.y;
+    field.domain = atlas.domain;
+    field.mapping.extentX = hasDomain ? atlas.domain.z / std::abs(transform.worldScale.x) : extent.x;
+    field.mapping.extentZ = hasDomain ? atlas.domain.w / std::abs(transform.worldScale.z) : extent.y;
     field.rgba = atlas.rgba;
     if (!ValidMapping(field.mapping)) return false;
     const float texelWidthX = std::abs(field.mapping.signedScaleX)
@@ -147,6 +180,10 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
         * field.mapping.extentZ / static_cast<float>(field.height);
     field.outsideFadeWidth = (std::max)({texelWidthX, texelWidthZ, 1.0f});
     if (!std::isfinite(field.outsideFadeWidth)) return false;
+    if (attenuationDepth == 0.0f) {
+        out = std::move(field);
+        return true;
+    }
 
     std::vector<float> factors(pixelCount);
     float minimumBoundaryFactor = 1.0f;
@@ -185,24 +222,18 @@ bool TryBuildWaterDepthField(const WaterTerrainInfoAtlas& atlas, const WaterComp
 
 bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldXZ, WaterDepthSample& out)
 {
-    const size_t pixelCount = static_cast<size_t>(field.width) * field.height;
-    if (!Finite(worldXZ) || field.width < 2 || field.height < 2
-        || field.width > 257 || field.height > 257
-        || pixelCount > std::numeric_limits<size_t>::max() / 4u
-        || field.rgba.size() != pixelCount * 4u
-        || !std::isfinite(field.depthRange) || field.depthRange <= 0.0f
-        || !std::isfinite(field.attenuationDepth) || field.attenuationDepth <= 0.0f
-        || !std::isfinite(field.outsideFadeWidth) || field.outsideFadeWidth <= 0.0f
-        || !std::isfinite(field.maximumAttenuationGradient) || field.maximumAttenuationGradient < 0.0f
-        || !ValidMapping(field.mapping)) return false;
+    return TrySampleWaterDepthField(field, worldXZ, out, WaterDepthAxis::HORIZONTAL);
+}
 
-    const math::Vector3 relative{
-        worldXZ.x - field.mapping.worldPosition.x, 0.0f,
-        worldXZ.y - field.mapping.worldPosition.z};
-    const math::Vector3 local = field.mapping.worldToLocalRotation * relative;
-    const float u = local.x / field.mapping.signedScaleX / field.mapping.extentX + 0.5f;
-    const float v = local.z / field.mapping.signedScaleZ / field.mapping.extentZ + 0.5f;
-    if (!std::isfinite(u) || !std::isfinite(v)) return false;
+bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldXZ, WaterDepthSample& out,
+    WaterDepthAxis axis)
+{
+    if (!std::isfinite(field.attenuationDepth) || field.attenuationDepth <= 0.0f
+        || !std::isfinite(field.outsideFadeWidth) || field.outsideFadeWidth <= 0.0f
+        || !std::isfinite(field.maximumAttenuationGradient) || field.maximumAttenuationGradient < 0.0f) return false;
+    math::Vector2 uv;
+    if (!TryResolveWaterDepthUv(field, worldXZ, uv)) return false;
+    const auto [u, v] = uv;
     WaterDepthSample sample;
     const float outsideUvX = u < 0.0f ? -u : (u > 1.0f ? u - 1.0f : 0.0f);
     const float outsideUvZ = v < 0.0f ? -v : (v > 1.0f ? v - 1.0f : 0.0f);
@@ -230,11 +261,13 @@ bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldX
     const auto pixel = [&field](int px, int pz) {
         return (static_cast<size_t>(pz) * field.width + static_cast<size_t>(px)) * 4u;
     };
+    const float landFadeDepth = axis == WaterDepthAxis::VERTICAL && field.domain.z > 0.0f && field.domain.w > 0.0f
+        ? (std::min)(field.depthRange, std::clamp(0.35f * field.attenuationDepth, 0.25f, 2.0f)) : 0.0f;
     float f00 = 0.0f, f10 = 0.0f, f01 = 0.0f, f11 = 0.0f;
-    if (!TexelFactor(field, pixel(x0, z0), f00)
-        || !TexelFactor(field, pixel(x1, z0), f10)
-        || !TexelFactor(field, pixel(x0, z1), f01)
-        || !TexelFactor(field, pixel(x1, z1), f11)) return false;
+    if (!TexelFactor(field, pixel(x0, z0), f00, landFadeDepth)
+        || !TexelFactor(field, pixel(x1, z0), f10, landFadeDepth)
+        || !TexelFactor(field, pixel(x0, z1), f01, landFadeDepth)
+        || !TexelFactor(field, pixel(x1, z1), f11, landFadeDepth)) return false;
 
     const float lower = f00 + (f10 - f00) * tx;
     const float upper = f01 + (f11 - f01) * tx;
@@ -274,6 +307,38 @@ bool TrySampleWaterDepthField(const WaterDepthField& field, math::Vector2 worldX
     return true;
 }
 
+bool TrySampleWaterTerrainColumn(const WaterDepthField& field, math::Vector2 worldXZ, float& out)
+{
+    math::Vector2 uv;
+    if (!TryResolveWaterDepthUv(field, worldXZ, uv) || uv.x < 0.0f || uv.x > 1.0f
+        || uv.y < 0.0f || uv.y > 1.0f) return false;
+    const float x = uv.x * static_cast<float>(field.width) - 0.5f;
+    const float z = uv.y * static_cast<float>(field.height) - 0.5f;
+    const int baseX = static_cast<int>(std::floor(x)), baseZ = static_cast<int>(std::floor(z));
+    const float tx = x - static_cast<float>(baseX), tz = z - static_cast<float>(baseZ);
+    float coverage = 0.0f;
+    float sum = 0.0f;
+    for (int dz = 0; dz < 2; ++dz) {
+        for (int dx = 0; dx < 2; ++dx) {
+            const int column = std::clamp(baseX + dx, 0, static_cast<int>(field.width) - 1);
+            const int row = std::clamp(baseZ + dz, 0, static_cast<int>(field.height) - 1);
+            const size_t pixel = (static_cast<size_t>(row) * field.width + static_cast<size_t>(column)) * 4u;
+            const uint8_t flags = field.rgba[pixel + 3];
+            const bool dry = (flags & 2u) != 0u;
+            if ((flags & 1u) == 0u || ((flags & 4u) != 0u && !dry)) continue;
+            float depth = 0.0f;
+            if (!TryDecodeWaterTerrainDepth(field.rgba[pixel + 1], field.rgba[pixel + 2], field.depthRange, depth)) return false;
+            if (dry) depth = (std::min)(depth, 0.0f);
+            const float weight = (dx == 0 ? 1.0f - tx : tx) * (dz == 0 ? 1.0f - tz : tz);
+            coverage += weight;
+            sum += weight * depth;
+        }
+    }
+    if (coverage <= 1.0e-4f) return false;
+    out = sum / coverage;
+    return true;
+}
+
 void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
 {
     WaterTerrainInfoInputs inputs;
@@ -299,8 +364,10 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
             continue;
         }
         const float attenuationDepth = water ? water->EffectiveWaveAttenuationDepth(view) : 0.0f;
+        const bool needsTerrainColumn = water && !inputs.terrains.empty() && WaterSurfaceUsesHorizon(*water, view);
         if (!water || !object || !water->enabled || !object->activeInHierarchy()
-            || !std::isfinite(attenuationDepth) || attenuationDepth <= 0.0f
+            || !std::isfinite(attenuationDepth) || attenuationDepth < 0.0f
+            || (attenuationDepth == 0.0f && !needsTerrainColumn)
             || !IsWaterSurfaceSupported(*water, WaterSurfaceTransform(*water, object->transform, view), view)) {
             if (water) water->depthField.reset();
             continue;
@@ -321,13 +388,9 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
         const auto* material = materialSnapshot ? &materialSnapshot->Data() : nullptr;
         WaterTerrainBakeSettings settings;
         const Transform& pose = WaterSurfaceTransform(*water, object->transform, view);
-        const auto extent = WaterSurfaceLocalExtent(*water, view);
-        settings.width = static_cast<uint32_t>((std::clamp)(
-            std::ceil(static_cast<double>(extent.x) * std::abs(pose.worldScale.x)),
-            64.0, 257.0));
-        settings.height = static_cast<uint32_t>((std::clamp)(
-            std::ceil(static_cast<double>(extent.y) * std::abs(pose.worldScale.z)),
-            64.0, 257.0));
+        const auto resolution = ResolveWaterTerrainBakeResolution(inputs, *water, pose, view);
+        settings.width = static_cast<uint32_t>(resolution.x);
+        settings.height = static_cast<uint32_t>(resolution.y);
         settings.foamThreshold = (std::max)(MaterialFloat(material, "foamThreshold", 0.3f), 0.0f);
         settings.foamFade = (std::max)(MaterialFloat(material, "foamFade", 0.5f), 0.0f);
         settings.depthRange = (std::max)(water->buoyancyDepth, attenuationDepth);

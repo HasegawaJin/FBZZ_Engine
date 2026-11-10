@@ -190,7 +190,9 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
                 WaterSurfaceReadView::SIMULATION)) return 0.0f;
         return sample.displacement;
     };
-    if (UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)) {
+    if (UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION)
+        || (WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION)
+            && water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION))) {
         desc.depthLimitAt = [snapshot, pose = transform](float worldX, float worldZ, float time) {
             WaterSurfaceHeightSample sample;
             if (!TrySampleWaterSurfaceHeightWorld(*snapshot, pose,

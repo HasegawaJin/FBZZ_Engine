@@ -549,6 +549,7 @@ scene::GameObject* MakeWater(EditorContext& ctx)
     water.extentZ      = 80.0f;
     water.chunkCount   = 4;
     water.materialPath = DefaultWaterMaterialPath();
+    water.waveAuthoring.preset = scene::WaterSeaPreset::GENTLE;
     water.meshDirty    = true;
     water.foamDirty    = true;
     water.texDirty     = true;

@@ -951,11 +951,19 @@ WaterComponent ReadWaterComponent(const toml::table& waterTable)
     pointReader.Field("bakeValid", water.bakeValid);
     if (water.pointSourceMode == ControlPointSourceMode::INLINE)
         ReflectWaterControlPointValues(pointReader, "splinePoints", water.splinePoints);
+    ReflectWaterLakeIslandPoints(pointReader, water.lakeIslandPoints);
     water.farOceanEnabled = waterTable["farOceanEnabled"].value_or(false);
     water.farOceanCoverageScale = lodFloat("farOceanCoverageScale", 1.05f, 1.0, 2.0);
     water.farOceanRippleFadeDistance = lodFloat("farOceanRippleFadeDistance", 4.0f, 0.1, 1000.0);
     water.enableGerstnerWaves = waterTable["enableGerstnerWaves"].value_or(true);
     water.waveAmplitudeScale = static_cast<float>(waterTable["waveAmplitudeScale"].value_or(1.0));
+    if (const toml::table* waveTable = waterTable["waveAuthoring"].as_table()) {
+        SceneReadReflector waveReader(*waveTable);
+        water.waveAuthoring.Reflect(waveReader);
+    } else if (water.wavesAssetRef.path.empty()) {
+        /// @note Open oceans receive swell while finite legacy lakes and rivers receive restrained waves.
+        water.waveAuthoring.preset = water.farOceanEnabled ? WaterSeaPreset::OFFSHORE : WaterSeaPreset::CALM;
+    }
     water.buoyancyEnabled = waterTable["buoyancyEnabled"].value_or(true);
     water.buoyancy = static_cast<float>(waterTable["buoyancy"].value_or(15.0));
     water.waterDrag = static_cast<float>(waterTable["waterDrag"].value_or(2.0));
@@ -2460,6 +2468,8 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             waterPointWriter.Field("bakeValid", water->bakeValid);
             if (water->pointSourceMode == ControlPointSourceMode::INLINE)
                 ReflectWaterControlPointValues(waterPointWriter, "splinePoints", water->splinePoints);
+            if (!water->lakeIslandPoints.empty())
+                ReflectWaterLakeIslandPoints(waterPointWriter, water->lakeIslandPoints);
             waterTbl.insert("extentX",             static_cast<double>(water->extentX));
             waterTbl.insert("extentZ",             static_cast<double>(water->extentZ));
             waterTbl.insert("resolutionX",         static_cast<int64_t>(water->resolutionX));
@@ -2481,6 +2491,9 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             waterTbl.insert("farOceanRippleFadeDistance", static_cast<double>(water->farOceanRippleFadeDistance));
             waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
             waterTbl.insert("waveAmplitudeScale",  static_cast<double>(water->waveAmplitudeScale));
+            waterPointWriter.BeginObject("waveAuthoring");
+            water->waveAuthoring.Reflect(waterPointWriter);
+            waterPointWriter.EndObject();
             waterTbl.insert("buoyancyEnabled",     water->buoyancyEnabled);
             waterTbl.insert("buoyancy",            static_cast<double>(water->buoyancy));
             waterTbl.insert("waterDrag",           static_cast<double>(water->waterDrag));

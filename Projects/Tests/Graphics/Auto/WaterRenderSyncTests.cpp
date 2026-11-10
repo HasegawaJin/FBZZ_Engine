@@ -11,6 +11,7 @@
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Fields/FlowFieldEval.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
@@ -443,22 +444,70 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
     RecordProperty("fixedWorldTemporalMaxXZDriftMetres", std::to_string(maximumSentinelDrift));
 }
 
+TEST_F(WaterRenderSyncTest, LocalFlowSwellMatchesProductionHeightAndNormal)
+{
+    scene::Scene source;
+    const auto id = AddWater(source, true);
+    auto& water = *source.GetComponent<scene::WaterComponent>(id);
+    const auto& pose = source.GetGameObject(id)->transform;
+    water.enableGerstnerWaves = false;
+    scene::FlowFieldSettings settings;
+    settings.radius = 18.0f;
+    settings.direction = {0.6f, 0.0f, 0.8f};
+    settings.waterSwellAmplitude = 0.8f;
+    settings.waterSwellWavelength = 14.0f;
+    std::array<math::Vector3, PROBES> points{};
+    for (size_t i = 0; i < points.size(); ++i)
+        points[i] = {static_cast<float>(i % 8) * 5.0f - 17.5f, 0,
+                     80.0f + static_cast<float>(i / 8) * 7.0f - 10.5f};
+    for (bool vortex : {false, true}) {
+        SCOPED_TRACE(vortex);
+        if (vortex) {
+            settings.fieldType = scene::FlowFieldType::Vortex;
+            settings.direction = -math::Vector3::UP;
+            settings.waterSwellAmplitude = 6.0f;
+        }
+        scene::ResolveWaterSurfaceFlows(water, pose,
+            {scene::ResolveFlowField(settings, {0, 0, 80}, pose.worldRotation)});
+        ASSERT_EQ(water.surfaceFlowCount, 1);
+        SyncErrors errors;
+        float maximumHeight = 0.0f;
+        for (float time : {0.0f, 0.7f}) {
+            const auto input = Extract(source, DownCamera(pose.worldPosition), time);
+            const auto pixels = Probe(input, points);
+            ASSERT_EQ(pixels.size(), PROBES * 2u * 4u);
+            for (size_t i = 0; i < points.size(); ++i) {
+                const size_t p = i * 4, n = (PROBES + i) * 4;
+                scene::WaterSurfaceSample cpu;
+                ASSERT_TRUE(scene::TrySampleWaterSurfaceWorld(water, pose, {}, points[i], time, cpu,
+                    scene::WaterSurfaceReadView::SIMULATION));
+                ASSERT_NEAR(pixels[p + 3], 1.0f, 0.0001f);
+                errors.Add(pixels[p + 2] - cpu.height.displacement,
+                    {pixels[n], pixels[n + 1], pixels[n + 2]}, cpu.normal);
+                maximumHeight = (std::max)(maximumHeight, std::abs(pixels[p + 2]));
+            }
+        }
+        EXPECT_GT(maximumHeight, vortex ? 4.0f : 0.5f);
+        EXPECT_LT(errors.height, 0.001f);
+        EXPECT_LT(errors.normal, 0.004f);
+    }
+}
+
 TEST_F(WaterRenderSyncTest, ProductionHorizonRasterTracksNearShipHeightAndReportsCoarseLodError)
 {
-    const std::array<const char*, 5> names{"finiteNear", "horizonNear", "horizonOutsideFineRequest", "horizonCoarse", "horizonExpandedCoreNear"};
+    const std::array<const char*, 5> names{"finiteNear", "horizonNear", "horizonOffshore", "horizonCoarse", "horizonOffshoreLargerRippleExtent"};
     std::array<SyncErrors, 5> errors{};
     std::array<float, 5> maximumCells{};
-    std::array<size_t, 5> farSamples{};
+    std::array<size_t, 5> horizonSamples{};
     for (size_t configuration = 0; configuration < names.size(); ++configuration) {
         const bool horizon = configuration != 0u;
-        const bool outsideFiniteCore = configuration == 2u || configuration == 3u;
         const bool coarse = configuration == 3u;
         scene::Scene source;
         const auto id = AddWater(source, horizon);
         auto& water = *source.GetComponent<scene::WaterComponent>(id);
         const auto& pose = source.GetGameObject(id)->transform;
         if (configuration == 4u) {
-            /// @note Supported authoring alternative: cover the old Z=80 interaction region with the finite core, without moving the owner or wave phase.
+            /// @note Changing the ripple footprint must not move the offshore grid or its wave phase.
             water.extentX = water.extentZ = 192.0f;
             water.meshDirty = true;
             scene::PrepareWaterSimulationSurfaces(source);
@@ -467,7 +516,6 @@ TEST_F(WaterRenderSyncTest, ProductionHorizonRasterTracksNearShipHeightAndReport
         water.lodTargetPixels = coarse ? 64.0f : 2.0f;
         for (float time : {0.0f, 1.7f, 4.2f}) {
             SCOPED_TRACE(std::string(names[configuration]) + " time=" + std::to_string(time));
-            /// @note Camera and probes move at every time; supported near cases stay inside the core and original outside cases remain on far strips.
             const math::Vector3 center{time * 0.12f, pose.worldPosition.y,
                 (configuration >= 2u ? 80.0f : horizon ? 6.0f : 0.0f) + time * 0.2f};
             const auto camera = DownCamera(center);
@@ -482,13 +530,13 @@ TEST_F(WaterRenderSyncTest, ProductionHorizonRasterTracksNearShipHeightAndReport
                 ASSERT_NEAR(pixels[offset + 3], 1.0f, 0.001f);
                 ASSERT_NEAR(lodPixels[offset + 3], 1.0f, 0.001f);
                 for (size_t channel = 0; channel < 3; ++channel) ASSERT_TRUE(std::isfinite(lodPixels[offset + channel]));
-                const bool actualFarStrip = lodPixels[offset] > 0.5f;
-                EXPECT_EQ(actualFarStrip, outsideFiniteCore);
-                farSamples[configuration] += actualFarStrip ? 1u : 0u;
+                const bool actualHorizon = lodPixels[offset] > 0.5f;
+                EXPECT_EQ(actualHorizon, horizon);
+                horizonSamples[configuration] += actualHorizon ? 1u : 0u;
                 const float cellX = lodPixels[offset + 1], cellZ = lodPixels[offset + 2];
                 EXPECT_GT(cellX, 0.0f); EXPECT_GT(cellZ, 0.0f);
                 maximumCells[configuration] = (std::max)({maximumCells[configuration], cellX, cellZ});
-                if (!outsideFiniteCore) {
+                if (!coarse) {
                     EXPECT_LE(cellX, 0.1251f); EXPECT_LE(cellZ, 0.1251f);
                 }
                 const float worldX = center.x + ((static_cast<float>(x) + 0.5f) / EXTENT - 0.5f) * camera.m_orthoHeight;
@@ -506,18 +554,18 @@ TEST_F(WaterRenderSyncTest, ProductionHorizonRasterTracksNearShipHeightAndReport
     }
     for (size_t configuration = 0; configuration < errors.size(); ++configuration) {
         SCOPED_TRACE(names[configuration]);
-        const bool outsideFiniteCore = configuration == 2u || configuration == 3u;
+        const bool coarse = configuration == 3u;
         EXPECT_EQ(errors[configuration].samples, 48u);
-        EXPECT_EQ(farSamples[configuration], outsideFiniteCore ? 48u : 0u);
-        /// @note Keep the original near-ship gates. Both outside cases are measured far-strip approximations, even with a fine near-cell request.
-        EXPECT_LE(errors[configuration].height, outsideFiniteCore ? 1.2f : 0.015f);
-        EXPECT_LE(errors[configuration].normal, outsideFiniteCore ? 0.8f : 0.06f);
+        EXPECT_EQ(horizonSamples[configuration], configuration != 0u ? 48u : 0u);
+        EXPECT_LE(errors[configuration].height, coarse ? 1.2f : 0.015f);
+        EXPECT_LE(errors[configuration].normal, coarse ? 0.8f : 0.06f);
         RecordProperty(std::string(names[configuration]) + "HeightMaxMetres", std::to_string(errors[configuration].height));
         RecordProperty(std::string(names[configuration]) + "NormalMaxVectorDistance", std::to_string(errors[configuration].normal));
         RecordProperty(std::string(names[configuration]) + "CellMaxMetres", std::to_string(maximumCells[configuration]));
-        RecordProperty(std::string(names[configuration]) + "FarStripSampleCount", std::to_string(farSamples[configuration]));
+        RecordProperty(std::string(names[configuration]) + "HorizonSampleCount", std::to_string(horizonSamples[configuration]));
     }
-    RecordProperty("scope", "production extraction/WaterRenderPass; fine-core follow camera vs outside far strips; actual submitted cell/path readback; no detail normal map or ShipCombat gameplay");
-    RecordProperty("horizonFineCoreLimit", "owner-fixed authored extent; camera follow alone does not refine outside far strips; outside errors are not near-ship parity");
+    EXPECT_FLOAT_EQ(maximumCells[2], maximumCells[4]);
+    EXPECT_NEAR(errors[2].height, errors[4].height, 0.001f);
+    RecordProperty("scope", "Production WaterRenderPass raster readback of geometry height, normals and submitted cell size.");
 }
 } /// @note namespace fbzz::tests

@@ -197,8 +197,8 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
     /// @note だけが «AABB からはみ出した» 扱いで消える。盛り上がりも穴と同じ枠で測る。
     float flowDisplacement = 0.0f;
     for (int i = 0; i < (std::min)(water.surfaceFlowCount, kWaterSurfaceFlowCount); ++i) {
-        flowDisplacement = (std::max)(
-            flowDisplacement, std::abs(water.surfaceFlows[static_cast<size_t>(i)].height));
+        /// @note Overlapping fields add their displacements, so each bound contributes to the slab.
+        flowDisplacement += std::abs(water.surfaceFlows[static_cast<size_t>(i)].height);
     }
     /// @note 輪の合成断面の上限は本体 + 後続 2 本 = 1.58 倍。
     margin.vertical += flowDisplacement
@@ -215,6 +215,7 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
 struct WaterTextures {
     renderer::ResourceHandle<renderer::TextureTag> foamMask;
     math::Vector4 terrainInfoParams{};
+    math::Vector4 terrainDomain{};
     uint64_t signature = 0;
     bool depthIsUniform = false;
 };
@@ -601,11 +602,11 @@ WaterTextures BuildTextureSet(
     textures.signature = signature;
     const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION);
-    if (depthField && attenuationDepth > 0.0f
-        && depthField->attenuationDepth == attenuationDepth) {
+    if (depthField && depthField->attenuationDepth == attenuationDepth) {
         const auto& field = *depthField;
         textures.depthIsUniform = HasUniformPhysicalDepth(field.rgba, field.depthRange, water.buoyancyDepth);
         textures.foamMask = resources.CreateTexture(field.rgba.data(), field.width, field.height);
+        textures.terrainDomain = field.domain;
         if (textures.foamMask.IsValid())
             textures.terrainInfoParams = {1.0f, field.depthRange,
                 static_cast<float>(field.width), static_cast<float>(field.height)};
@@ -616,6 +617,7 @@ WaterTextures BuildTextureSet(
             WaterSurfaceReadView::SIMULATION)) {
         textures.depthIsUniform = HasUniformPhysicalDepth(atlas.rgba, atlas.depthRange, water.buoyancyDepth);
         textures.foamMask = resources.CreateTexture(atlas.rgba.data(), atlas.width, atlas.height);
+        textures.terrainDomain = atlas.domain;
         if (textures.foamMask.IsValid())
             textures.terrainInfoParams = {1.0f, atlas.depthRange,
                 static_cast<float>(atlas.width), static_cast<float>(atlas.height)};
@@ -929,11 +931,14 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAssetAuth
         cb.surfaceFlowC[i] = { f.direction.x, f.direction.y, tile, maxMagnitude };
         cb.surfaceFlowD[i] = { f.inverseRotation.x, f.inverseRotation.y,
                                f.inverseRotation.z, f.inverseRotation.w };
-        cb.surfaceFlowE[i] = { f.extents.x, f.extents.y, f.extents.z, f.planeOffsetY };
+        cb.surfaceFlowE[i] = f.kind != FlowFieldType::Baked
+            ? math::Vector4{ f.swellWavelength, f.swellNearFade, 0.0f, 0.0f }
+            : math::Vector4{ f.extents.x, f.extents.y, f.extents.z, f.planeOffsetY };
     }
 
     const size_t waveCount = (std::min)(static_cast<size_t>(water.waveCount), water.waves.size());
-    cb.waveControls = {static_cast<float>(waveCount), 0.0f, 0.0f, 1.0f};
+    cb.waveControls = {static_cast<float>(waveCount), water.rippleDirectionOverride.x,
+        water.rippleDirectionOverride.y, 1.0f};
     const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION);
     cb.waveDepthParams = {attenuationDepth,
@@ -1201,12 +1206,10 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         const float foamThreshold = WGetF(mat, "foamThreshold", 0.3f);
         const float foamFade      = WGetF(mat, "foamFade",      0.5f);
         WaterTerrainBakeSettings terrainSettings;
-        const auto terrainExtent = WaterSurfaceLocalExtent(water, WaterSurfaceReadView::SIMULATION);
-        /// @note 地形情報の密度は描画 LOD と独立。最大 257 平方の範囲で約 1 m/texel を目標とする。
-        terrainSettings.width = static_cast<uint32_t>((std::clamp)(
-            std::ceil(terrainExtent.x * std::abs(surfaceTransform.worldScale.x)), 64.0f, 257.0f));
-        terrainSettings.height = static_cast<uint32_t>((std::clamp)(
-            std::ceil(terrainExtent.y * std::abs(surfaceTransform.worldScale.z)), 64.0f, 257.0f));
+        const auto terrainResolution = ResolveWaterTerrainBakeResolution(
+            terrainInputs, water, surfaceTransform, WaterSurfaceReadView::SIMULATION);
+        terrainSettings.width = static_cast<uint32_t>(terrainResolution.x);
+        terrainSettings.height = static_cast<uint32_t>(terrainResolution.y);
         terrainSettings.foamThreshold = (std::max)(foamThreshold, 0.0f);
         terrainSettings.foamFade = (std::max)(foamFade, 0.0f);
         uint64_t terrainSignature = 0;
@@ -1214,7 +1217,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             terrainInputs, water, surfaceTransform, terrainSettings, terrainSignature,
             WaterSurfaceReadView::SIMULATION);
         if (const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
-            depthField && water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION) > 0.0f)
+            depthField && depthField->attenuationDepth == water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION))
             terrainSignature = depthField->signature;
 
         const auto cachedMesh = cache.meshes.find(cacheKey);
@@ -1301,6 +1304,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
                 input.constants.timeParams.x = input.constants.timeParams.y = maximumWorldEdge;
         }
         input.constants.terrainInfoParams = cache.textures.at(cacheKey).terrainInfoParams;
+        input.constants.terrainDomain = cache.textures.at(cacheKey).terrainDomain;
         {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Medium");
             input.medium = BuildMediumInput(water, surfaceTransform, eid, mat, mesh, margin);

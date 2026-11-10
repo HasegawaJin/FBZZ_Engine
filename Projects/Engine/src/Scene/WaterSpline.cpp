@@ -16,6 +16,11 @@
 #include <utility>
 
 namespace fbzz::scene {
+
+/// @brief Clip the lake footprint using the same bounded tessellation as water zones.
+bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineSnapshot> islands,
+    const Transform& transform);
+
 namespace {
 constexpr std::uint32_t MINIMUM_SAMPLES_PER_SEGMENT = 1;
 constexpr std::uint32_t MAXIMUM_SAMPLES_PER_SEGMENT = WATER_SPLINE_MAX_SAMPLES_PER_SEGMENT;
@@ -395,6 +400,59 @@ bool BuildLake(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint> 
     return true;
 }
 
+bool LakeOutlinesIntersect(const WaterSplineSnapshot& a, const WaterSplineSnapshot& b)
+{
+    const auto worldPoint = [](const auto& mesh, std::size_t index) {
+        const auto& point = mesh.vertices[mesh.outlineIndices[index]].worldPosition;
+        return Point2{point.x, point.z};
+    };
+    for (std::size_t i = 0; i < a.outlineIndices.size(); ++i) {
+        const auto start = worldPoint(a, i);
+        const auto end = worldPoint(a, (i + 1) % a.outlineIndices.size());
+        for (std::size_t j = 0; j < b.outlineIndices.size(); ++j)
+            if (SegmentsIntersect(start, end, worldPoint(b, j),
+                    worldPoint(b, (j + 1) % b.outlineIndices.size()), 1.0e-9)) return true;
+    }
+    return false;
+}
+
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine Epic Water Body Actors: Water Body Island.
+bool ApplyLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterLakeIslandPoint> islands,
+    const Transform& transform, float localHeight)
+{
+    if (islands.size() > WATER_LAKE_MAX_ISLAND_POINTS || !RebuildWaterSplineSnapshotDerivedData(lake))
+        return false;
+    std::array<std::vector<WaterSplinePoint>, WATER_LAKE_MAX_ISLANDS> rings;
+    for (const auto& point : islands) {
+        if (point.ring < 0 || point.ring >= WATER_LAKE_MAX_ISLANDS || !Finite(point.localPosition)) return false;
+        auto& ring = rings[point.ring];
+        ring.push_back({static_cast<std::uint32_t>(ring.size() + 1),
+            {point.localPosition.x, localHeight, point.localPosition.z}});
+    }
+    std::vector<WaterSplineSnapshot> cutouts;
+    const auto contains = [](const WaterSplineSnapshot& mesh, const math::Vector3& point) {
+        WaterSplineSample sample;
+        return TrySampleWaterSpline(mesh, point.x, point.z, sample);
+    };
+    for (const auto& ring : rings) {
+        if (ring.empty()) continue;
+        if (ring.size() < 3 || ring.size() > WATER_SPLINE_MAX_CONTROL_POINTS) return false;
+        WaterSplineSnapshot cutout;
+        cutout.worldBaseY = lake.worldBaseY;
+        if (!BuildLake(cutout, ring, 1, transform, 0.0f)
+            || !RebuildWaterSplineSnapshotDerivedData(cutout)
+            || !contains(lake, cutout.vertices.front().worldPosition) || LakeOutlinesIntersect(lake, cutout)) return false;
+        for (const auto& other : cutouts)
+            if (LakeOutlinesIntersect(other, cutout) || contains(other, cutout.vertices.front().worldPosition)
+                || contains(cutout, other.vertices.front().worldPosition)) return false;
+        auto& outline = lake.islandOutlines.emplace_back();
+        for (const auto index : cutout.outlineIndices)
+            outline.push_back(cutout.vertices[index].worldPosition);
+        cutouts.push_back(std::move(cutout));
+    }
+    return SubtractLakeIslands(lake, cutouts, transform);
+}
+
 bool IsConvexQuad(const Point2& a, const Point2& b, const Point2& c, const Point2& d, double epsilon)
 {
     const std::array<double, 4> cross{Cross(a, b, c), Cross(b, c, d), Cross(c, d, a), Cross(d, a, b)};
@@ -655,7 +713,8 @@ bool HasValidWaterSplineExtents(const WaterSplineSnapshot& snapshot, const Trans
 
 std::uint64_t WaterSplineSnapshotSignature(WaterSurfaceShape shape,
     std::span<const WaterSplinePoint> points, std::uint32_t samplesPerSegment,
-    const Transform& transform, float maximumWaterDepth, float maximumWorldCellSize)
+    const Transform& transform, float maximumWaterDepth, float maximumWorldCellSize,
+    std::span<const WaterLakeIslandPoint> islands)
 {
     std::uint64_t hash = HASH_OFFSET;
     hash = HashU32(hash, static_cast<std::uint32_t>(shape));
@@ -672,6 +731,15 @@ std::uint64_t WaterSplineSnapshotSignature(WaterSurfaceShape shape,
         hash = HashFloat(hash, point.depth);
         hash = HashFloat(hash, point.flowSpeed);
     }
+    if (shape == WaterSurfaceShape::SPLINE_LAKE && !islands.empty()) {
+        hash = HashU32(hash, static_cast<std::uint32_t>(islands.size()));
+        for (const auto& point : islands) {
+            hash = HashU32(hash, static_cast<std::uint32_t>(point.ring));
+            hash = HashFloat(hash, point.localPosition.x);
+            hash = HashFloat(hash, point.localPosition.y);
+            hash = HashFloat(hash, point.localPosition.z);
+        }
+    }
     hash = HashFloat(hash, transform.worldPosition.x);
     hash = HashFloat(hash, transform.worldPosition.y);
     hash = HashFloat(hash, transform.worldPosition.z);
@@ -687,7 +755,7 @@ std::uint64_t WaterSplineSnapshotSignature(WaterSurfaceShape shape,
 
 bool BuildWaterSplineSnapshot(WaterSurfaceShape shape, std::span<const WaterSplinePoint> points,
     std::uint32_t samplesPerSegment, const Transform& transform, WaterSplineSnapshot& out,
-    float maximumWaterDepth, float maximumWorldCellSize)
+    float maximumWaterDepth, float maximumWorldCellSize, std::span<const WaterLakeIslandPoint> islands)
 {
     if (!ValidateAuthoring(shape, points, samplesPerSegment, maximumWaterDepth, maximumWorldCellSize)
         || !SupportedTransform(transform)) return false;
@@ -695,7 +763,7 @@ bool BuildWaterSplineSnapshot(WaterSurfaceShape shape, std::span<const WaterSpli
     snapshot.shape = shape;
     snapshot.worldBaseY = transform.worldPosition.y;
     snapshot.signature = WaterSplineSnapshotSignature(shape, points, samplesPerSegment,
-        transform, maximumWaterDepth, maximumWorldCellSize);
+        transform, maximumWaterDepth, maximumWorldCellSize, islands);
     /// @note Point depth, width, and signed flow speed are linearly interpolated between controls so positive physical limits cannot spline-overshoot.
     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine Epic Games, Water Body Actors: lake and river spline metadata.
     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/Components/USplineComponent Epic Games, USplineComponent spline evaluation.
@@ -703,6 +771,8 @@ bool BuildWaterSplineSnapshot(WaterSurfaceShape shape, std::span<const WaterSpli
         ? BuildLake(snapshot, points, samplesPerSegment, transform, maximumWaterDepth)
         : BuildRiver(snapshot, points, samplesPerSegment, transform, maximumWaterDepth);
     if (!success || !HasValidWaterSplineExtents(snapshot, transform)) return false;
+    if (shape == WaterSurfaceShape::SPLINE_LAKE && !islands.empty()
+        && !ApplyLakeIslands(snapshot, islands, transform, points.front().localPosition.y)) return false;
     snapshot.footprintTriangles = snapshot.triangles;
     if (!FinalizeWaterSplineSnapshot(snapshot, maximumWorldCellSize)
         || snapshot.outlineIndices.size() < 3) return false;

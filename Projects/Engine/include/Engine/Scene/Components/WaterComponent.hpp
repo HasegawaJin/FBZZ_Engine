@@ -56,6 +56,42 @@ inline void WaterSplinePoint::Reflect(IReflector& reflector)
 /// @note 水面全体をシミュレーションせず、少数の解析波を合成して低コストに大きなうねりを表現する。
 using GerstnerWave = fluid::GerstnerWave;
 
+enum class WaterSeaPreset { AUTHORED, CALM, GENTLE, OFFSHORE, STORM };
+enum class WaterRippleDirectionMode { MATERIAL, SCENE_WIND, MANUAL };
+
+/// @brief Per-surface controls layered over a generated sea or a shared wave asset.
+/// @note All angles specify travel toward +Z from +X on the world XZ plane, in degrees.
+struct WaterWaveAuthoring {
+    WaterSeaPreset preset = WaterSeaPreset::AUTHORED;
+    bool overrideHeading = false;
+    float headingDegrees = 0.0f;
+    /// @note Full angular width. A negative value uses the source width.
+    float spreadDegrees = -1.0f;
+    float secondaryHeadingDegrees = 60.0f;
+    /// @note Relative amplitude of the secondary group. Zero disables it.
+    float secondaryStrength = 0.0f;
+    WaterRippleDirectionMode rippleMode = WaterRippleDirectionMode::MATERIAL;
+    float rippleHeadingDegrees = 0.0f;
+
+    void Reflect(IReflector& r)
+    {
+        static constexpr const char* PRESETS[] = {"Authored", "Calm", "Gentle", "Offshore", "Storm"};
+        static constexpr const char* RIPPLE_MODES[] = {"Material / Flow", "Scene Wind", "Manual"};
+        int presetValue = static_cast<int>(preset);
+        int rippleValue = static_cast<int>(rippleMode);
+        r.Enum("preset", presetValue, PRESETS);
+        r.Field("overrideHeading", overrideHeading);
+        r.Field("headingDegrees", headingDegrees);
+        r.FloatRange("spreadDegrees", spreadDegrees, -1.0f, 360.0f);
+        r.Field("secondaryHeadingDegrees", secondaryHeadingDegrees);
+        r.FloatRange("secondaryStrength", secondaryStrength, 0.0f, 1.0f);
+        r.Enum("rippleMode", rippleValue, RIPPLE_MODES);
+        r.Field("rippleHeadingDegrees", rippleHeadingDegrees);
+        preset = static_cast<WaterSeaPreset>((std::clamp)(presetValue, 0, 4));
+        rippleMode = static_cast<WaterRippleDirectionMode>((std::clamp)(rippleValue, 0, 2));
+    }
+};
+
 /// @brief 水面 1 枚が «形と質感» として受け取る流れの本数。WaterCB の枠数と揃えること。
 inline constexpr int kWaterSurfaceFlowCount = 8;
 
@@ -96,6 +132,9 @@ struct WaterSurfaceFlow {
     math::Vector2 direction = math::Vector2::ZERO; ///< @brief Uniform の XZ 向き (正規化)
     /// @brief さざ波と泡のムラへ回す強さ [0,1]。Uniform / Curl だけが持つ。
     float         chop = 0.0f;
+    /// @note 局所うねりと螺旋渦の波長 [m] と近景メッシュの帯域係数。
+    float         swellWavelength = 0.0f;
+    float         swellNearFade = 1.0f;
 
     /// @name Baked 型のときだけ使う
     /// @{
@@ -149,6 +188,7 @@ struct WaterComponent {
     WaterSurfaceShape surfaceShape = WaterSurfaceShape::RECTANGLE;
     /// @brief Stable-ID local control points for lake outlines and river centerlines.
     std::vector<WaterSplinePoint> splinePoints;
+    std::vector<WaterLakeIslandPoint> lakeIslandPoints;
     /// @brief Select inline numeric points or ordered TargetPoint bindings as the position source.
     ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
     /// @brief Select live TargetPoint resolution or the last explicit owner-local numeric bake.
@@ -208,6 +248,7 @@ struct WaterComponent {
     float waveAmplitudeScale  = 1.0f;
     /// @brief 設定時は .mat の波定義・群・広がりを上書きする。未設定なら従来の .mat 波を使う。
     DataAssetRef wavesAssetRef = { {}, "WaterWavesAsset" };
+    WaterWaveAuthoring waveAuthoring;
     /// @}
 
     /// @name 物理
@@ -257,6 +298,10 @@ struct WaterComponent {
     float waveGrouping = 0.0f;
     /// @brief 方向広がり [0,1]。.mat の waveSpread をそのまま持つ。0 で «1 波 1 方向»。
     float waveSpread = 0.0f;
+    /// @note Resolved generator center and full angular width [degrees], for the editor.
+    math::Vector2 waveDirectionDisplay = math::Vector2::ZERO;
+    /// @note Zero uses the surface's material or local flow. Only the shading ripple band reads this.
+    math::Vector2 rippleDirectionOverride = math::Vector2::ZERO;
     /// @brief WaterSystem が FlowFieldFrame から毎フレーム選び直す «この水面に効く流れ»。
     std::array<WaterSurfaceFlow, kWaterSurfaceFlowCount> surfaceFlows = {};
     int surfaceFlowCount = 0;
@@ -487,7 +532,36 @@ struct WaterComponent {
         return -(std::min)(speedSq / 19.6f, std::abs(flow.height));
     }
 
-    /// @brief 流れ 1 本が作る変位 [m]。型で中心型と Baked を振り分ける。
+    /// @brief 半径内の局所うねり、または螺旋渦の変位 [m]。
+    /// @note コンパクト包絡の値と一次微分は外周で 0。時刻は海面の共通時計 [s]。
+    /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1, directional waves and deep-water phase speed.
+    /// @warning WaterSurface.hlsli の WaterSwellDisplacement と位相・包絡を揃える。
+    static float WaterSwellDisplacement(const WaterSurfaceFlow& flow, float worldX, float worldZ, float time)
+    {
+        if (flow.height == 0.0f || flow.swellWavelength <= 0.0f || flow.radius <= 0.0f) return 0.0f;
+        const math::Vector2 offset{worldX - flow.center.x, worldZ - flow.center.y};
+        const auto normalized = offset * (1.0f / flow.radius);
+        const float radiusSquared = normalized.x * normalized.x + normalized.y * normalized.y;
+        const float envelope = 1.0f - radiusSquared;
+        if (envelope <= 0.0f) return 0.0f;
+        const float waveNumber = math::TWO_PI / flow.swellWavelength;
+        const float travel = std::sqrt(9.8f * waveNumber) * time;
+        if (flow.kind == FlowFieldType::Vortex) {
+            const float bowl = envelope * envelope * envelope;
+            if (radiusSquared <= 1.0e-10f) return flow.height * bowl;
+            const float spin = std::signbit(flow.speed) ? -1.0f : 1.0f;
+            const float phase = waveNumber * std::sqrt(radiusSquared) * flow.radius
+                              + 2.0f * spin * std::atan2(offset.y, offset.x) + travel;
+            const float spiral = 6.75f * radiusSquared * envelope * envelope * (1.0f - bowl);
+            return flow.height * (bowl - 0.22f * spiral * std::cos(phase));
+        }
+        const float along = offset.x * flow.direction.x + offset.y * flow.direction.y;
+        const float across = offset.y * flow.direction.x - offset.x * flow.direction.y;
+        const float phase = waveNumber * (along + 0.18f * across * (across / flow.radius)) - travel;
+        return flow.height * envelope * envelope * std::cos(phase);
+    }
+
+    /// @brief 流れ 1 本が作る変位 [m]。
     /// @param worldX,worldZ 変位«後» のワールド XZ (中心型が使う)。
     /// @param baseX,baseZ   変位«前» のワールド XZ (Baked が使う)。
     static float WaterSurfaceDisplacement(const WaterSurfaceFlow& flow,
@@ -653,21 +727,21 @@ private:
     mutable float m_horizontalContraction = 0.0f;
     mutable float m_waveHeightBound = 0.0f;
 
-    float AttenuationFactorAt(math::Vector2 point, WaterSurfaceReadView view) const
+    float AttenuationFactorAt(math::Vector2 point, WaterSurfaceReadView view, WaterDepthAxis axis) const
     {
         const WaterDepthField* depth = EffectiveDepthField(view);
         const float attenuationDepth = EffectiveWaveAttenuationDepth(view);
         if (!depth || attenuationDepth <= 0.0f
             || depth->attenuationDepth != attenuationDepth) return 1.0f;
         WaterDepthSample sample;
-        return TrySampleWaterDepthField(*depth, point, sample) ? sample.factor : 1.0f;
+        return TrySampleWaterDepthField(*depth, point, sample, axis) ? sample.factor : 1.0f;
     }
 
     math::Vector2 ResolvedHorizontalDisplacementAt(math::Vector2 point, float time,
         WaterSurfaceReadView view) const
     {
         math::Vector2 offset = math::Vector2::ZERO;
-        const float attenuation = AttenuationFactorAt(point, view) * m_horizontalWaveScale;
+        const float attenuation = AttenuationFactorAt(point, view, WaterDepthAxis::HORIZONTAL) * m_horizontalWaveScale;
         for (size_t i = 0; i < m_resolvedCount; ++i) {
             const auto& wave = m_resolvedWaves[i];
             const auto dir = wave.direction;
@@ -746,10 +820,11 @@ public:
     {
         float height = 0.0f;
         math::Vector2 origin = { worldX, worldZ };
+        float attenuation = 1.0f;
 
         if (enableGerstnerWaves) {
             origin = SolveUndisplacedXZ(worldX, worldZ, time, view);
-            const float attenuation = AttenuationFactorAt(origin, view);
+            attenuation = AttenuationFactorAt(origin, view, WaterDepthAxis::VERTICAL);
             for (size_t i = 0; i < m_resolvedCount; ++i) {
                 const auto& wave = m_resolvedWaves[i];
                 const auto dir = wave.direction;
@@ -770,8 +845,15 @@ public:
 
         const int liveFlows = (std::min)(surfaceFlowCount, kWaterSurfaceFlowCount);
         for (int i = 0; i < liveFlows; ++i) {
-            height += WaterSurfaceDisplacement(surfaceFlows[static_cast<size_t>(i)],
-                                               worldX, worldZ, origin.x, origin.y);
+            const auto& flow = surfaceFlows[static_cast<size_t>(i)];
+            if (flow.swellWavelength > 0.0f) {
+                const float swell = WaterSwellDisplacement(flow, worldX, worldZ, time);
+                if (swell != 0.0f)
+                    height += swell * (enableGerstnerWaves ? attenuation
+                        : AttenuationFactorAt(origin, view, WaterDepthAxis::VERTICAL));
+            } else {
+                height += WaterSurfaceDisplacement(flow, worldX, worldZ, origin.x, origin.y);
+            }
         }
 
         for (const WaterRipple& ripple : ripples)
@@ -795,6 +877,7 @@ public:
         const std::uint32_t oldSplineSamplesPerSegment = splineSamplesPerSegment;
         const float oldSplineMeshCellSize = splineMeshCellSize;
         const std::vector<WaterSplinePoint> oldSplinePoints = splinePoints;
+        const auto oldLakeIslandPoints = lakeIslandPoints;
         const ControlPointSourceMode oldPointSourceMode = pointSourceMode;
         const ControlPointRuntimeMode oldPointRuntimeMode = pointRuntimeMode;
         const std::vector<WaterControlPointBinding> oldPointBindings = pointBindings;
@@ -844,6 +927,7 @@ public:
         r.FloatRange("lakePlaneHeight", lakePlaneHeight, -1000000.0f, 1000000.0f);
         ReflectWaterControlPointBindings(r, pointBindings);
         ReflectWaterControlPointValues(r, "bakedSplinePoints", bakedSplinePoints);
+        ReflectWaterLakeIslandPoints(r, lakeIslandPoints);
         ReflectControlPointSignature(r, "bakedInputSignature", bakedInputSignature);
         ReflectControlPointSourceMode(r, "bakedSourceMode", bakedSourceMode);
         int bakedShapeValue = static_cast<int>(bakedSurfaceShape);
@@ -894,6 +978,9 @@ public:
         r.Field("wavesAssetRef", wavesAssetRef);
         r.Field("enableGerstnerWaves", enableGerstnerWaves);
         r.Field("waveAmplitudeScale", waveAmplitudeScale);
+        r.BeginObject("waveAuthoring");
+        waveAuthoring.Reflect(r);
+        r.EndObject();
         r.Field("buoyancyEnabled", buoyancyEnabled);
         r.Field("buoyancy", buoyancy);
         r.Field("waterDrag", waterDrag);
@@ -943,7 +1030,7 @@ public:
         }
         if (surfaceShape != oldSurfaceShape || splineSamplesPerSegment != oldSplineSamplesPerSegment
             || splineMeshCellSize != oldSplineMeshCellSize
-            || splinePoints != oldSplinePoints || pointSourceMode != oldPointSourceMode
+            || splinePoints != oldSplinePoints || lakeIslandPoints != oldLakeIslandPoints || pointSourceMode != oldPointSourceMode
             || pointRuntimeMode != oldPointRuntimeMode || pointBindings != oldPointBindings
             || lakePlaneHeight != oldLakePlaneHeight || bakedSplinePoints != oldBakedSplinePoints
             || bakedInputSignature != oldBakedInputSignature || bakedSourceMode != oldBakedSourceMode

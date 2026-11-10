@@ -7,7 +7,6 @@
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/SurfacePatchMorph.hpp>
 #include <Graphics/Effects/WaterGrid.hpp>
-#include <Graphics/Renderer/SurfaceFarMesh.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Graphics/Renderer/GpuGeometrySelection.hpp>
 #include <Graphics/Renderer/IShader.hpp>
@@ -55,10 +54,8 @@ bool ResolveWaterHorizonRectangle(const RenderWaterInput& input, const Camera& c
     const float cameraMargin = (std::max)(input.medium.maxDistance, camera.m_near);
     if (!std::isfinite(cameraMargin) || cameraMargin <= 0.0f) return false;
     const math::Vector2 localMargin{cameraMargin / std::sqrt(axisXSquare), cameraMargin / std::sqrt(axisZSquare)};
-    math::Vector2 minimum{(std::min)(input.aabbMin.x, localCamera.x - localMargin.x),
-        (std::min)(input.aabbMin.z, localCamera.y - localMargin.y)};
-    math::Vector2 maximum{(std::max)(input.aabbMax.x, localCamera.x + localMargin.x),
-        (std::max)(input.aabbMax.z, localCamera.y + localMargin.y)};
+    math::Vector2 minimum = localCamera - localMargin;
+    math::Vector2 maximum = localCamera + localMargin;
     const float coverage = (std::clamp)(input.farOceanCoverageScale, 1.0f, 2.0f);
     /// @note near/far の全 corner を包む。大きな平行投影でも逆行列の行列式下限を踏まない。
     for (float depth : {camera.m_near, camera.m_far}) {
@@ -84,6 +81,32 @@ bool ResolveWaterHorizonRectangle(const RenderWaterInput& input, const Camera& c
 }
 
 namespace {
+/// @note The root origin moves by whole quarter-root tiles, preserving the world lattice of fine LODs.
+/// @see https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-2-terrain-rendering-using-gpu-based-geometry GPU Gems 2, Chapter 2, regular nested grids.
+bool ResolveHorizonPatchDomain(math::Vector2 minimum, math::Vector2 maximum,
+    math::Vector2 axisScale, SurfacePatchSurface& surface, math::Vector4& domain)
+{
+    const auto snapAxis = [](float low, float high, float scale) {
+        const double span = (static_cast<double>(high) - low) * scale;
+        const double width = std::exp2(std::ceil(std::log2(span * (4.0 / 3.0))));
+        const double step = width * 0.25;
+        const double middle = (static_cast<double>(low) + high) * (0.5 * scale);
+        const double snapped = std::round(middle / step) * step;
+        return math::Vector2{static_cast<float>((snapped - width * 0.5) / scale),
+            static_cast<float>(width / scale)};
+    };
+    const auto x = snapAxis(minimum.x, maximum.x, axisScale.x);
+    const auto z = snapAxis(minimum.y, maximum.y, axisScale.y);
+    const math::Vector2 high{x.x + x.y, z.x + z.y};
+    if (!std::isfinite(x.x) || !std::isfinite(z.x) || !std::isfinite(high.x) || !std::isfinite(high.y)
+        || x.y <= 0.0f || z.y <= 0.0f || x.x > minimum.x || z.x > minimum.y
+        || high.x < maximum.x || high.y < maximum.y) return false;
+    surface.localMin = {x.x, z.x};
+    surface.localMax = high;
+    domain = {x.x, z.x, high.x - x.x, high.y - z.x};
+    return true;
+}
+
 bool AabbVisible(const math::Frustum& frustum, const math::Matrix4& world,
                  const math::Vector3& localMin, const math::Vector3& localMax,
                  const WaterWaveMargin& margin = {})
@@ -241,20 +264,6 @@ void SetWaterPatchMorphConstants(WaterCB& cb, const SurfacePatch& patch,
     cb.patchMorphCellSize = {patch.morphCellSize.x, patch.morphCellSize.y, 0.0f, 0.0f};
 }
 
-uint8_t FarPatchMorphAxisMask(SurfaceFarRegion region)
-{
-    switch (region) {
-    case SurfaceFarRegion::MIN_X:
-    case SurfaceFarRegion::MAX_X:
-        return SURFACE_MORPH_AXIS_Z;
-    case SurfaceFarRegion::MIN_Z:
-    case SurfaceFarRegion::MAX_Z:
-        return SURFACE_MORPH_AXIS_X;
-    default:
-        return 0;
-    }
-}
-
 struct WaterRasterIndices {
     ResourceHandle<BufferTag> buffer;
     uint32_t count = 0;
@@ -317,8 +326,12 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
         surface.maxHeight = input.margin.vertical * inverseHeightScale;
         const math::Vector3 axisX{cb.worldMatrix.m[0][0], cb.worldMatrix.m[1][0], cb.worldMatrix.m[2][0]};
         const math::Vector3 axisZ{cb.worldMatrix.m[0][2], cb.worldMatrix.m[1][2], cb.worldMatrix.m[2][2]};
+        const math::Vector2 axisScale{axisX.Length(), axisZ.Length()};
         surface.horizontalDisplacement = input.margin.horizontal
-            / (std::max)((std::min)(axisX.Length(), axisZ.Length()), 1.0e-6f);
+            / (std::max)((std::min)(axisScale.x, axisScale.y), 1.0e-6f);
+        math::Vector2 outerMin, outerMax;
+        const bool horizon = allowFarOcean && ResolveWaterHorizonRectangle(input, lodCamera, outerMin, outerMax);
+        if (horizon && !ResolveHorizonPatchDomain(outerMin, outerMax, axisScale, surface, cb.horizonPatchDomain)) return;
         SurfacePatchView view;
         view.cameraPosition = lodCamera.m_position;
         view.cameraForward = lodCamera.GetForward().Normalized();
@@ -327,9 +340,16 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
         view.minProjectionDistance = (std::max)(lodCamera.m_near, 0.001f);
         view.orthographic = lodCamera.m_projection == ProjectionMode::Orthographic;
         view.frustum = frustumEnabled ? frustum : nullptr;
-        view.includeCulledPatches = allowFarOcean && input.farOceanEnabled;
         SurfacePatchView selectionView = view;
         selectionView.includeCulledPatches = true;
+        std::optional<math::Frustum> lodFrustum;
+        if (horizon && lodCameraOverride) {
+            selectionView.frustum = nullptr;
+            if (ctx.frustumCullingEnabled) {
+                lodFrustum.emplace(math::Frustum::FromViewProjection(lodCamera.GetViewProjection()));
+                selectionView.frustum = &*lodFrustum;
+            }
+        }
         SurfacePatchLodSettings patchLod = input.patchLod;
         patchLod.morphEnabled = input.patchMorphEnabled;
         auto selection = ctx.surfacePatchSelectionCache.FindOwned(surface, patchLod, selectionView);
@@ -338,14 +358,8 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
             if (!SelectSurfacePatches(surface, patchLod, selectionView, computedSelection)) return;
             selection = ctx.surfacePatchSelectionCache.Store(surface, patchLod, selectionView, std::move(computedSelection));
         }
-        std::vector<SurfaceFarPatch> farPatches;
-        math::Vector2 outerMin, outerMax;
-        const bool farEnabled = allowFarOcean
-            && ResolveWaterHorizonRectangle(input, lodCamera, outerMin, outerMax)
-            && BuildSurfaceFarMesh(surface, selection->patches, outerMin, outerMax,
-                patchLod.cellsPerPatch, farPatches, input.patchMorphEnabled);
         cb.gridParams.x = 0.0f;
-        cb.farOceanParams = {farEnabled ? 1.0f : 0.0f, 0.0f,
+        cb.farOceanParams = {horizon ? 1.0f : 0.0f, horizon ? 1.0f : 0.0f,
             input.farOceanRippleFadeDistance, 0.0f};
         cb.patchMorphView = {view.cameraPosition.x, view.cameraPosition.y, view.cameraPosition.z,
             view.projectionScalePixels};
@@ -371,25 +385,6 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
             const auto indices = SelectWaterRasterIndices(input.patchIndexBuffers[mask],
                 input.patchIndexCounts[mask], input.patchStrips[mask], useStrip);
             submit(input.patchVertexBuffer, indices, cb, patch.aabbMin, patch.aabbMax);
-        }
-        if (farEnabled && input.patchIndexBuffers[0].IsValid()) {
-            cb.farOceanParams.y = 1.0f;
-            const auto indices = SelectWaterRasterIndices(input.patchIndexBuffers[0],
-                input.patchIndexCounts[0], input.patchStrips[0], useStrip);
-            for (const auto& far : farPatches) {
-                const auto& patch = far.geometry;
-                if (countStatistics) ++ctx.statsTotalObjects;
-                const bool frustumRejected=frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix, patch.aabbMin, patch.aabbMax);
-                if (frustumRejected) {
-                    if (countStatistics) ++ctx.statsFrustumCulled;
-                    if (!gpuCulling) continue;
-                }
-                if (occluded(patch.aabbMin, patch.aabbMax, 0.0f, !frustumRejected)) continue;
-                SetWaterPatchConstants(cb, patch, patchLod.cellsPerPatch);
-                SetWaterPatchMorphConstants(cb, patch, patchLod, input.patchMorphEnabled,
-                    FarPatchMorphAxisMask(far.region));
-                submit(input.patchVertexBuffer, indices, cb, patch.aabbMin, patch.aabbMax);
-            }
         }
         return;
     }
@@ -466,7 +461,7 @@ WaterGpuDraw PrepareWaterGpuDraw(const RenderWaterInput& input, RenderPassContex
     candidates.reserve(instances.size());
     for (size_t patchIndex = 0; patchIndex < instances.size(); ++patchIndex) {
         const auto& patch = instances[patchIndex];
-        /// @note Reuse the selector's displacement and morph bounds, including far-strip expansion; reconstructing from UV loses the morph safety margin.
+        /// @note Reuse the selector's displacement and morph bounds. Reconstructing from UV loses the morph safety margin.
         const auto& low = bounds[patchIndex][0];
         const auto& high = bounds[patchIndex][1];
         const auto localCenter = (low + high) * 0.5f;
@@ -571,9 +566,7 @@ void VisitWaterPatchDraws(const RenderWaterInput& input, RenderPassContext& ctx,
                 submit(vertexBuffer, patchIndices, cb, ResourceHandle<StructuredBufferTag>{}, 1u, WaterGpuDraw{});
                 return;
             }
-            /// @note 有限面と遠景はPSのdiscard契約が異なるため、同じ索引でも束を分ける。
-            if (!instances.empty() && (vertices != vertexBuffer || indices != patchIndices
-                || base.farOceanParams.y != cb.farOceanParams.y)) flush();
+            if (!instances.empty() && (vertices != vertexBuffer || indices != patchIndices)) flush();
             if (instances.empty()) {
                 vertices = vertexBuffer;
                 indices = patchIndices;
@@ -1024,13 +1017,16 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         const bool standardWaterShader = acceptsAppearance
             || resources.GetShaderCapabilities(handles.waterShader).SupportsWaterGeometry();
         const uint32_t bodyIndex = mediumBodyByWater[inputIndex];
-        const bool clipExclusions = mediumBindingsReady && !input.medium.exclusions.empty()
-            && bodyIndex != 0xFFFFFFFFu;
-        if (!input.medium.exclusions.empty() && !clipExclusions) continue;
+        const bool hasExclusions = !input.medium.exclusions.empty();
+        const bool bindOwnerMedium = mediumBindingsReady && bodyIndex != 0xFFFFFFFFu
+            && (hasExclusions || (input.farOceanEnabled && input.constants.opticalParams.x > 0.5f));
+        if (hasExclusions && !bindOwnerMedium) continue;
         VisitWaterPatchDraws(input, ctx, true, standardWaterShader,
             [&](auto vertexBuffer, const WaterRasterIndices& indices, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw& gpu) {
             if (!ctx.handles.iblPrefilter.IsValid()) cb.reflectParams.x = 0.0f;
-            cb.farOceanParams.w = clipExclusions ? static_cast<float>(bodyIndex + 1u) : 0.0f;
+            /// @note A negative owner ID exposes the camera's medium without enabling per-fragment exclusion tests.
+            cb.farOceanParams.w = bindOwnerMedium
+                ? (hasExclusions ? 1.0f : -1.0f) * static_cast<float>(bodyIndex + 1u) : 0.0f;
             resources.Update(handles.waterCB, &cb, sizeof(cb));
             renderer::DrawCall call;
             call.vertexBuffer = vertexBuffer;
@@ -1048,7 +1044,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             call.constantBuffers[4] = shadowCB;
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
             BindForwardShadingResources(call, ctx);
-            if (clipExclusions) {
+            if (bindOwnerMedium) {
                 call.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
                 call.textures[15] = mediumAtlasTexture;
             }

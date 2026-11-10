@@ -7,19 +7,43 @@
 
 波の変位・透過光の高さ比と泡の被覆率を別々に保持する。泡は `foamColor` の線形アルベドと `foamRoughness` による拡散光・空反射・鏡面光を受ける。暗所で自己発光させない。岸・着水・流れの泡は既存 `foamStrength` を使い、白波の強度と独立に調整できる。波と解析微分の根拠は [GPU Gems, Chapter 1](https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models) を参照する。泡の閾値と履歴は本エンジンの見た目の近似である。
 
-`farOceanEnabled` が有効な合成形状を持たない Rectangle は Horizon 水域となり、水平の所属をカメラに依存せず全 XZ へ拡張する。水面と水中アトラスの生成範囲は同じ view の far clip とカメラ周辺の光路を包む。保存済みの格子設定を維持しつつ共有パッチを使う。有限面の境界 leaf に外向き strip を接続し、4 つの corner と合わせて外周を覆う。全境界 leaf を保つ要求は汎用 `SurfacePatchView::includeCulledPatches` で表し、視錐台による細分化の優先順位は維持する。接続辺の頂点位置と波の帯域を一致させる。外周の strip 同士も同じ外向き分割数と共有セル幅を使う。
+`farOceanEnabled` が有効な合成形状を持たない Rectangle は Horizon 水域となり、水平の所属をカメラに依存せず全 XZ へ拡張する。ビューの far clip とカメラ周辺の光路を包む矩形を海面と水中アトラスで共有する。海面の LOD ルートはこの矩形を含む 2 の累乗幅の格子とし、各軸の位置を幅の 1/4 単位で揃える。ルートが移動しても細かい階層の頂点格子はワールドに揃う。海面・選択・界面・水中アトラスはメインカメラからパッチ LOD を選び、各パスの視錐台で描画範囲を絞る。
 
 `farOceanCoverageScale` はカメラの視錐台を覆う余裕、`farOceanRippleFadeDistance` は水域の外へ出る局所波紋が消える世界距離 [m]。海面有効時は有限面の外周透明化を止め、局所の岸マスクと波紋を遠景へ反復しない。浮力・水中・水域照会は同じ Horizon 所属を使う。`buoyancyDepth` と除外領域は維持し、Finite へ戻すと保存した Extent X/Z の所属を使う。Spline と WaterZone の合成形状は Horizon 指定があっても有限輪郭のままとする。Inspector にその契約を表示する。遠景を設ける考え方は [Unreal Engine Water Mesh](https://dev.epicgames.com/documentation/en-us/unreal-engine/water-meshing-system-and-surface-rendering-in-unreal-engine) を参考にするが、FBZZ の幾何と材質は同じ共有パッチで接続する。
 
-Horizon の細かな描画範囲は Water owner の Transform と Extent に固定される。カメラ追従はその有限矩形内のパッチ LOD を選び直すが、矩形自体を追従させない。外側は有限面の境界から外周まで延長した低密度 strip/corner であり、船の近くまでカメラを移しても自動では細かなメッシュにならない。Horizon は共有パッチ経路を使うため、旧 `cameraFocusedGrid` を有効にしてもこの外側を細分化しない。
+Horizon では沖合も同じ共有パッチで細分化する。`Near Detail Range`、`Near Detail Size`、`Detail Levels`、`Patch Budget` が描画密度を決める。保存済みの Extent は局所波紋と水面材質の UV の基準に使う。
 
-CPU の高さ照会・浮力は描画セル幅に依存しない実効波を使い、外周描画はセル幅で波の変位を帯域制限する。そのため Horizon の遠景では同じ波設定・時刻でも見えている高さと CPU 照会の一致を保証しない。船や水面接触など高さの一致が必要な interaction 範囲は有限の細かな描画範囲に収める。既存設定で広い行動範囲を扱う場合は Extent にその範囲と波の水平変位の余裕を含め、近景距離・セル幅・パッチ予算を確保する。外周の実誤差を近景の同期成功へ含めず、検証では使用した far/finite 経路と実セル幅を分けて記録する。
+CPU の高さ照会・浮力は描画セル幅に依存しない実効波を使う。GPU はセル幅で表現できない変位を落とし、画面で表現できる分を残差法線へ渡す。近景の接触精度は実セル幅で評価する。遠景やパッチ予算で粗くなった箇所では CPU の波との高さに差が出る。
 
 地形情報は Scene 内の有効な全 Terrain の三角形面を world 座標で照会する。親・回転・符号付き非一様 scale・穴を含む。重なる Terrain は最上面を選び、水面より上なら乾燥領域とする。底が無い場合は明示的な無効フラグと泡 0 を返す。Terrain の `surfaceRevision` と形状・Transform の署名で派生データを失効させ、高さ配列の有限値検査と bounds 計算は変更時だけ行う。
 
-GPU 情報は水域 UV のテクセル中心で焼く RGBA8: R=岸泡、G/B=符号付き基準水深の上位/下位 byte、A=bit0 底あり・bit1 乾燥・bit2 深度範囲外。深度は `[-depthRange,+depthRange]` を UNORM16 へ写す。範囲外の底は画面上の接触水深へフォールバックし、深い底を浅瀬として扱わない。byte をフィルターしてから結合せず、4 テクセルを Load・復号した後に有効な底の水深を補間する。水平変位後の world XZ を水域基準 UV へ戻し、水面の波高を加えた実際の垂直水深から岸泡を評価する。光の吸収・屈折に使う画面上の水層距離とは独立である。地形データで波高を減衰させる処理は、CPU/GPU の同じ波を保つ契約が必要なため含めない。
+GPU 情報はテクセル中心で焼く RGBA8 で渡す。R は岸泡、G/B は符号付き基準水深の上位・下位 byte、A は底あり・乾燥・深度範囲外のフラグを持つ。水深を復号してから補間し、範囲内の有効な底を使う。Horizon の水深テクスチャは Terrain の範囲を覆い、カメラと保存済みの水域 Extent から独立する。浅水減衰は変位前の world XZ、岸泡と水中アトラスの底は水平変位後の world XZ を使う。波の高さを足した鉛直水深で岸泡を評価し、地形情報が欠ける場所は画面上の接触深度を使う。画面上の水柱は引き続き吸収・屈折に使う。
 
 GPU リソースは ResourceManager/Scene/Entity の既存 cache に所属させる。地形・水面・岸泡設定が変わらないフレームでは情報テクスチャを再生成しない。描画 view が複数でも情報は共有し、遠景パッチの選択と範囲だけは view ごとに計算する。CPU で全境界の位置・帯域・カリング・保存・地形編集の失効を、GPU 読み戻しで白波の照明・局所波紋・接続 coverage を検証する。
+
+Terrain のある Horizon は 513×513 を使用する。GPU では RGBA8 約 1 MiB を水域ごとに保持する。広域の岸線の細部はテクセル密度に依存する。Terrain の高さ・穴・Transform の変更は深度データを失効させる。CPU の水中照会と浮力も同じ底を読み、現在の波高を加えた深さを `buoyancyDepth` で制限する。浅水減衰が無効でも Terrain の底は使う。
+
+## Horizon の屈折と岸泡
+
+係数光学の Horizon は、屈折率 1.333 の界面から反射率と屈折方向を同時に解く。非偏光 Fresnel の S・P 成分を平均し、水中側の全反射では透過方向をゼロにする。Horizon の鏡面 F0 も同じ屈折率から求める。材質の `reflectivity` は反射量の倍率で、Horizon の係数光学では `fresnelBias` / `fresnelPower` は使わない。[PBRT §9.3.4–5](https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission) を参照する。
+
+直射の海中散乱は太陽光を平均水面で屈折させ、入射時の透過率と水平面を通過する光束から、海中の光線に垂直な放射照度を求める。光路に沿った散乱点の深さを視線と太陽光の鉛直成分の比で表し、太陽から散乱点、散乱点から水面の二つの Beer 減衰を閉形式で積分する。位相関数と散乱積分は屈折候補・元の画素それぞれの光路で評価する。空と局所光は既存の近似を使う。深い海での多重散乱を含む考察は [Bruneton, Neyret and Holzschuch 2010 §5.3](https://morpho.inrialpes.fr/Publications/2010/BNH10/article.pdf)、Beer 減衰は [PBRT §11.2](https://www.pbr-book.org/4ed/Volume_Scattering/Transmittance) を参照する。
+
+係数光学を使う海面の上側は、水の屈折率 1.333 で視線を曲げる。水面直前の不透明深度を起点とし、画面への投影と深度の再照会を最大 2 回行う。屈折先の色と光路長を同じ候補から取得し、深度差が大きい候補や前景、画面外を退ける。画面端と探索距離の端では元の視線の放射輝度へ連続的に戻す。`refractionStrength` は画面 UV で探索半径を制御し、0 で屈折探索を無効にする。底の深度が空なら透過する海底色が無い深い媒体として扱う。屈折の方向は [PBRT §9.3](https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission)、光路長と吸収は [PBRT §11.2](https://www.pbr-book.org/4ed/Volume_Scattering/Transmittance)、シーン色と深度の入力は [Epic Single Layer Water](https://dev.epicgames.com/documentation/en-us/unreal-engine/single-layer-water-shading-model-in-unreal-engine) を参照する。
+
+Terrain のある岸は、波で移動する水際に薄い残り泡を描き、浅瀬で波頭が盛り上がり圧縮される場所に砕波の泡を重ねる。岸の水深と正の波高から砕波の位置を近似し、湿潤境界の幅を画素フットプリントに合わせる。`foamThreshold` と `foamFade` は世界鉛直水深で帯の範囲を決める。水深の利用は [GPU Gems §1.3.1](https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models)、波面圧縮の指標は [Dupuy and Bruneton 2012](https://liris.cnrs.fr/Documents/Liris-5812.pdf) を参照する。
+
+係数光学を使う岸の接触泡は、近傍の不透明深度を鉛直水深に換算して Terrain 情報を補う。視線が浅い場合、深度が空の場合、視線の交点が水平に離れる場合は Terrain の水深を使う。残り泡の幅と密度は変位前のワールド XZ に固定した低周波ノイズで変え、動く細かい泡模様と重ねる。水面から不透明面までの深度の利用は [GDC 2008 Shore and Foam](https://media.gdcvault.com/gdc08/slides/S6172i1.pdf) を参照する。
+
+Horizon の岸泡は、白波の履歴と同じ 3 時点の符号付き波高から、過去の砕波と水柱の深さを推定する。今の水位がその砕波より下がった浅瀬で、引き波に残る泡を現在の泡に重ねる。古いサンプルほど被覆率が指数減衰し、現在も水が覆っている範囲にだけ描く。寿命は既存の `crestFoamLifetime` [s] を共有し、0 なら岸泡も現在時刻だけを使う。沖の白波を切ったときは、地形水深で絞った頂点だけ履歴を評価する。泡の残留と減衰は [Callaghan et al. 2012](https://doi.org/10.1029/2012JC008147) を参照する。
+
+浅瀬の泡模様は、基準水深の画面微分をワールド XZ に戻して求めた地形の傾きに沿って、波高が上がると陸側へ、下がると沖側へ動かす。等深線を横切る変位の一次近似を使い、平坦な地形は正則化し、移動幅は 2 m までに抑える。水深とアトラスの有効率で沖の模様へなだらかに戻す。地形の傾きと遡上の関係は [Stockdon et al. 2006](https://pubs.usgs.gov/publication/70030520) を参照する。
+
+水平線付近で画素が広い水面を覆うときは、補間した頂点法線とさざ波から、波長ごとに画素内で解像できる傾きを評価した法線へ移行する。透視投影の遠景では視線と基準水面の交点を微分し、反射の画素フットプリントを求める。画素の広さを `detailScale` のセル数で評価し、0.22 セルから 0.95 セルまで連続的に切り替える。解像できない傾きの分散は GGX の粗さへ移す。[Bruneton, Neyret and Holzschuch 2010](https://doi.org/10.1111/j.1467-8659.2009.01618.x) の幾何から BRDF への遷移を参照する。
+
+係数光学の Horizon は、透視カメラの位置と同じ water owner のアトラス水位から入射側を決める。波高の上限から水面の外にいることが明らかな場合は先に判定し、アトラスが無効の場合と平行投影はワールド XZ の符号付き面積を使う。浅い視角では光学法線を視線側へ連続的に補正する。
+
+沖の白波は、水平方向に圧縮された波頭の前面に濃い泡を出し、過去の泡を薄く斑に残す。近距離の強い砕波には、波面の手前の短い空間を世界座標で標本化する飛沫の描画近似を加える。飛沫は水面の画素へ合成する。[Dupuy and Bruneton 2012](https://liris.cnrs.fr/Documents/Liris-5812.pdf) の変形を用いた白波と、[SideFX Ocean](https://www.sidefx.com/docs/houdini/solaris/houdini_ocean_procedural) の泡の分離を参照する。`OffshoreCrossSwell.fzdata` は `wavesAssetRef` 用で、9 基波の方向と位相を分散させる。
 
 Terrain の内容検証 cache は既存 Component lifetime と `surfaceRevision` を使い、同じ Entity へ外した Terrain を再追加した場合も区別する。Terrain の借用 pointer は抽出の呼び出し内だけ保持する。構造が同じ frame 内で変わっても、次の抽出で現在の配列から取り直す。合法な `buoyancyDepth=0` は情報の無効化だけに使い、水面自体の描画を消さない。
 
@@ -57,6 +81,6 @@ Horizon は矩形の水面と水中領域を延長する。CPU の所属と Phys
 
 水面メッシュのキャッシュは surface shape と spline signature だけでなく、実際のメッシュ方式・範囲・有限解像度・chunk 数・patch 解像度・spline の水深上限を値で比較する。dirty フラグを経由しない変更でも不一致なら旧 GPU 資源を返して再構築する。Adaptive が既に有効なら Horizon の切替だけで同じ共有格子を作り直す必要はない。外周は既存の view ごとの far mesh 生成・カリングで更新する。
 
-Horizon では有限水域が視錐台から外れても、水面・水中アトラス・界面パスが同じ `ResolveWaterHorizonRectangle` の範囲へ外周パッチを提出する。アトラスの bounds と候補 table をこの範囲から作り、除外・plume も拡張後の範囲で抽出する。吸収・散乱の矩形光路クリップは Horizon で水平スラブを省き、有限水深と除外区間を保つ。GPU table の矩形種別 w=0 は非矩形、1 は Finite、2 は Horizon とし、配列サイズを変えない。資源・入力が不正な場合の fail-closed は維持する。
+Horizon では `ResolveWaterHorizonRectangle` からビューのアトラス bounds と候補 table を作り、除外・plume もこの範囲で抽出する。吸収・散乱の矩形光路クリップは Horizon で水平スラブを省き、有限水深と除外区間を保つ。GPU table の矩形種別は w=0 が非矩形、1 が Finite、2 が Horizon。資源・入力が不正な場合は fail-closed とする。
 
 2026-10-11 の水面だけの検証は、水中領域まで同期する要件を満たしていなかったため、上記の共通契約へ修正した。保存キー `farOceanEnabled` と Extent は変更せず、古い Horizon データも読み込める。旧データの Horizon は新しい水平所属契約で動き、Finite データの挙動は維持する。

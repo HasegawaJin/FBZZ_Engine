@@ -314,6 +314,34 @@ TEST_F(WaterSplineTest, ReflectionCloneKeepsSplineFieldsAndMaximumReflectableSta
     EXPECT_EQ(clone.splinePoints[1].id, source.splinePoints[1].id);
 }
 
+TEST_F(WaterSplineTest, LakeIslandContoursSurviveReflectionAndExcludeWaterQueries)
+{
+    scene::WaterComponent source;
+    source.surfaceShape = scene::WaterSurfaceShape::SPLINE_LAKE;
+    source.splineSamplesPerSegment = 1;
+    source.splinePoints = {{1, {-5, 0, -5}, 0, 2, 0}, {2, {5, 0, -5}, 0, 2, 0},
+        {3, {5, 0, 5}, 0, 2, 0}, {4, {-5, 0, 5}, 0, 2, 0}};
+    source.lakeIslandPoints = {{0, {-1, 0, -2}}, {0, {2, 0, -2}}, {0, {0, 0, 2}}};
+    scene::WaterComponent clone;
+    scene::DeserializeReflected(scene::SerializeReflected(source), clone);
+    EXPECT_EQ(clone.lakeIslandPoints, source.lakeIslandPoints);
+    scene::Transform transform;
+    scene::WaterSplineSnapshot mesh;
+    ASSERT_TRUE(scene::BuildWaterSplineSnapshot(clone.surfaceShape, clone.splinePoints,
+        clone.splineSamplesPerSegment, transform, mesh, clone.buoyancyDepth, clone.splineMeshCellSize,
+        clone.lakeIslandPoints));
+    scene::WaterSplineSample sample;
+    EXPECT_FALSE(scene::TrySampleWaterSpline(mesh, 0, 0, sample));
+    ASSERT_TRUE(scene::TrySampleWaterSpline(mesh, 4, 0, sample));
+    EXPECT_NEAR(sample.depth, 2.0f, 0.0001f);
+    const auto signature = mesh.signature;
+    clone.lakeIslandPoints.front().localPosition.x = -6.0f;
+    EXPECT_FALSE(scene::BuildWaterSplineSnapshot(clone.surfaceShape, clone.splinePoints,
+        clone.splineSamplesPerSegment, transform, mesh, clone.buoyancyDepth, clone.splineMeshCellSize,
+        clone.lakeIslandPoints));
+    EXPECT_EQ(mesh.signature, signature);
+}
+
 TEST_F(WaterSplineTest, PointObjectReflectionKeepsOrderedBindingsWithoutInlinePositionCopies)
 {
     scene::WaterComponent waterSource;

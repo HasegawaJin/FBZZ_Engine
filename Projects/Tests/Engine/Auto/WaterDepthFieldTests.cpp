@@ -103,6 +103,83 @@ scene::WaterComponent& AddWater(scene::Scene& source)
 
 class WaterDepthFieldTest : public testkit::EngineFixture {};
 
+TEST_F(WaterDepthFieldTest, HorizonFollowsOffshoreTerrainAcrossMirroredWaterAxes)
+{
+    scene::Scene source;
+    auto& terrain = AddTerrain(source, -1.0f);
+    terrain.transform.position = {96.0f, 0.0f, 36.0f};
+    auto& land = AddTerrain(source, 6.0f);
+    land.transform.position = {108.0f, 0.0f, 36.0f};
+    scene::FlushWorldTransforms(source);
+    auto water = MakeWater();
+    scene::Transform pose;
+    pose.worldRotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(35.0f));
+    pose.worldScale = {-2.0f, 1.0f, 0.5f};
+    scene::WaterTerrainInfoInputs inputs;
+    scene::WaterTerrainInfoCache cache;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = settings.height = 64;
+    scene::WaterTerrainInfoAtlas finiteAtlas, horizonAtlas;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, finiteAtlas));
+    water.farOceanEnabled = true;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, horizonAtlas));
+    EXPECT_NE(finiteAtlas.signature, horizonAtlas.signature);
+    EXPECT_GT(horizonAtlas.domain.z, 8.0f);
+    EXPECT_GT(horizonAtlas.domain.w, 8.0f);
+    scene::WaterDepthField field;
+    ASSERT_TRUE(scene::TryBuildWaterDepthField(horizonAtlas, water, pose, field));
+    scene::WaterDepthSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterDepthField(field, {100.0f, 40.0f}, sample));
+    EXPECT_NEAR(sample.factor, 0.5f, 0.001f);
+    ASSERT_TRUE(scene::TrySampleWaterDepthField(field, {120.0f, 40.0f}, sample));
+    EXPECT_FLOAT_EQ(sample.factor, 1.0f);
+
+    water.waveAttenuationDepth = 0.0f;
+    ASSERT_TRUE(scene::TryBuildWaterDepthField(horizonAtlas, water, pose, field));
+    water.depthField = std::make_shared<const scene::WaterDepthField>(std::move(field));
+    scene::WaterSurfaceHeightSample height;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {100.0f, -0.5f, 40.0f}, 0.0f, height));
+    EXPECT_TRUE(height.underwater);
+    EXPECT_NEAR(height.waterDepthLimit, 1.0f, 0.001f);
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {100.0f, -1.5f, 40.0f}, 0.0f, height));
+    EXPECT_FALSE(height.underwater);
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {112.0f, -0.5f, 40.0f}, 0.0f, height));
+    EXPECT_FALSE(height.underwater);
+    EXPECT_FLOAT_EQ(height.waterDepthLimit, 0.0f);
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {120.0f, -1.5f, 40.0f}, 0.0f, height));
+    EXPECT_TRUE(height.underwater);
+}
+
+TEST_F(WaterDepthFieldTest, HorizonCrestWetsALowBankAndTheTroughUncoversIt)
+{
+    auto water = MakeWater();
+    water.farOceanEnabled = true;
+    water.waveAttenuationDepth = 6.0f;
+    water.waveCount = 1;
+    water.waveGrouping = water.waveSpread = 0.0f;
+    water.waves[0] = {{0.0f, 1.0f}, 0.8f, 8.0f, 0.5f, math::PI * 0.5f};
+    scene::Transform pose;
+    auto atlas = MakeAtlas({-0.2f, -2.0f, -0.2f, -2.0f}, 3u);
+    atlas.domain = {0.0f, 0.0f, 4.0f, 4.0f};
+    scene::WaterDepthField field;
+    ASSERT_TRUE(scene::TryBuildWaterDepthField(atlas, water, pose, field));
+    water.depthField = std::make_shared<const scene::WaterDepthField>(std::move(field));
+
+    const float troughTime = math::PI / std::sqrt(9.8f * math::TWO_PI / 8.0f);
+    const math::Vector3 lowBank{-1.0f, 0.25f, 0.0f};
+    scene::WaterSurfaceHeightSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, lowBank, 0.0f, sample));
+    EXPECT_TRUE(sample.underwater);
+    EXPECT_GT(sample.waterDepthLimit, 0.25f);
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, lowBank, troughTime, sample));
+    EXPECT_FALSE(sample.underwater);
+    EXPECT_FLOAT_EQ(sample.waterDepthLimit, 0.0f);
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {1.0f, 2.01f, 0.0f}, 0.0f, sample));
+    EXPECT_FLOAT_EQ(sample.waterDepthLimit, 0.0f);
+    EXPECT_NEAR(sample.displacement, 0.0f, 0.0001f);
+}
+
 TEST_F(WaterDepthFieldTest, HandlesNoBottomDryAndBothClippedDepthSigns)
 {
     auto water = MakeWater();

@@ -864,7 +864,7 @@ void ExecuteVolumetricLight(renderer::RenderPassContext& context)
     context.passResources = nullptr;
 }
 
-TEST_F(WaterFarRenderPassTest, PersistentNearPlansKeepFreshTimeFarBoundsAndSurviveSameContextCallbackEviction)
+TEST_F(WaterFarRenderPassTest, PersistentHorizonPlanKeepsFreshTimeAndSurvivesSameContextCallbackEviction)
 {
     FarPassRenderer backend;
     renderer::ResourceManager resources(backend);
@@ -884,7 +884,8 @@ TEST_F(WaterFarRenderPassTest, PersistentNearPlansKeepFreshTimeFarBoundsAndSurvi
     water.constants.surfaceParams = {0.85f, 0.5f, 0.02f, 5};
     water.constants.timeParams = {1, 1, 1, 2};
     water.adaptivePatchLod = water.farOceanEnabled = true;
-    water.patchLod.cellsPerPatch = 4; water.patchLod.maxDepth = 0; water.patchLod.maxPatches = 1;
+    /// @note Seven leaves force mixed stitch groups so the first Submit runs during traversal.
+    water.patchLod.cellsPerPatch = 4; water.patchLod.maxDepth = 2; water.patchLod.maxPatches = 7;
     std::array<renderer::WaterVertex, 25> vertices{};
     for (uint32_t z = 0; z <= 4; ++z)
         for (uint32_t x = 0; x <= 4; ++x) {
@@ -893,10 +894,12 @@ TEST_F(WaterFarRenderPassTest, PersistentNearPlansKeepFreshTimeFarBoundsAndSurvi
         }
     water.patchVertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::WaterVertex));
     backend.watchedVertices = water.patchVertexBuffer;
-    std::vector<uint32_t> indices;
-    ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4, 0, indices));
-    water.patchIndexBuffers[0] = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
-    water.patchIndexCounts[0] = static_cast<uint32_t>(indices.size());
+    for (uint32_t mask = 0; mask < water.patchIndexBuffers.size(); ++mask) {
+        std::vector<uint32_t> indices;
+        ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4, mask, indices));
+        water.patchIndexBuffers[mask] = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+        water.patchIndexCounts[mask] = static_cast<uint32_t>(indices.size());
+    }
     scene->water.push_back(water);
     renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
     context.renderScene = scene; context.width = context.height = 64; context.frustumCullingEnabled = false;
@@ -908,7 +911,6 @@ TEST_F(WaterFarRenderPassTest, PersistentNearPlansKeepFreshTimeFarBoundsAndSurvi
     renderer::PassResources passResources(context.resourceRegistry, builder.Accesses(), pass.Name());
     context.passResources = &passResources;
     renderer::SurfacePatchSurface surface;
-    surface.localMin = {-50, -50}; surface.localMax = {50, 50};
     surface.minHeight = -water.margin.vertical; surface.maxHeight = water.margin.vertical;
     surface.horizontalDisplacement = water.margin.horizontal;
     renderer::SurfacePatchView view;
@@ -924,14 +926,17 @@ TEST_F(WaterFarRenderPassTest, PersistentNearPlansKeepFreshTimeFarBoundsAndSurvi
     {
         const auto lease = owner.Borrow(key, context.surfacePatchSelectionCache);
         pass.Execute(passResources, context);
+        ASSERT_GT(backend.draws.size(), 1u);
+        const auto domain = backend.draws.front().horizonPatchDomain;
+        ASSERT_GT(domain.z, 0.0f);
+        ASSERT_GT(domain.w, 0.0f);
+        surface.localMin = {domain.x, domain.y};
+        surface.localMax = {domain.x + domain.z, domain.y + domain.w};
         const auto selected = context.surfacePatchSelectionCache.FindOwned(surface, water.patchLod, view);
         ASSERT_NE(selected, nullptr);
         nearPlan = selected;
     }
-    ASSERT_EQ(backend.draws.size(), 2u);
-    const auto firstFarRect = backend.draws.back().patchRect;
     scene->water.front().constants.timeParams.w = 7;
-    scene->water.front().farOceanCoverageScale = 1.5f;
     backend.draws.clear(); backend.submittedCalls.clear();
     bool evicted = false;
     const std::weak_ptr<const renderer::RenderScene> replacedScene = scene;
@@ -958,13 +963,11 @@ TEST_F(WaterFarRenderPassTest, PersistentNearPlansKeepFreshTimeFarBoundsAndSurvi
     EXPECT_TRUE(evicted);
     EXPECT_TRUE(nearPlan.expired());
     EXPECT_TRUE(replacedScene.expired());
-    ASSERT_EQ(backend.draws.size(), 2u);
-    EXPECT_FLOAT_EQ(backend.draws.front().farOceanParams.y, 0);
-    EXPECT_FLOAT_EQ(backend.draws.back().farOceanParams.y, 1);
-    for (const auto& draw : backend.draws) EXPECT_FLOAT_EQ(draw.timeParams.w, 7);
-    const auto secondFarRect = backend.draws.back().patchRect;
-    EXPECT_TRUE(firstFarRect.x != secondFarRect.x || firstFarRect.y != secondFarRect.y
-        || firstFarRect.z != secondFarRect.z || firstFarRect.w != secondFarRect.w);
+    ASSERT_GT(backend.draws.size(), 1u);
+    for (const auto& draw : backend.draws) {
+        EXPECT_FLOAT_EQ(draw.farOceanParams.y, 1);
+        EXPECT_FLOAT_EQ(draw.timeParams.w, 7);
+    }
     scene = std::make_shared<renderer::RenderScene>();
     scene->sceneGeneration = key.sceneGeneration;
     scene->water.push_back(water);
@@ -1790,13 +1793,16 @@ TEST_F(WaterFarRenderPassTest, AdaptiveOceanAndHorizonPatchesUseOcclusionAndReap
     water.constants.worldMatrix = math::Matrix4::Identity();
     water.constants.normalParams = {2,2,1,1}; water.constants.surfaceParams = {0.85f,0.5f,0.02f,5};
     water.adaptivePatchLod = true;
-    water.patchLod.cellsPerPatch = 4; water.patchLod.maxDepth = 0; water.patchLod.maxPatches = 1;
+    water.patchLod.cellsPerPatch = 4; water.patchLod.maxDepth = 4; water.patchLod.maxPatches = 64;
     const std::array<renderer::WaterVertex,25> vertices{};
     water.patchVertexBuffer = resources.CreateVertexBuffer(vertices.data(),sizeof(vertices),sizeof(renderer::WaterVertex));
     backend.watchedVertices = water.patchVertexBuffer;
-    std::vector<uint32_t> indices; ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4,0,indices));
-    water.patchIndexBuffers[0] = resources.CreateIndexBuffer(indices.data(),uint32_t(indices.size()));
-    water.patchIndexCounts[0] = uint32_t(indices.size());
+    for (uint32_t mask = 0; mask < water.patchIndexBuffers.size(); ++mask) {
+        std::vector<uint32_t> indices;
+        ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4, mask, indices));
+        water.patchIndexBuffers[mask] = resources.CreateIndexBuffer(indices.data(), uint32_t(indices.size()));
+        water.patchIndexCounts[mask] = uint32_t(indices.size());
+    }
     scene->water.push_back(water);
     renderer::RenderPassContext context{{},backend,resources,camera,settings,{},UINT32_MAX,handles};
     context.renderScene = scene; context.width = context.height = 64; context.frustumCullingEnabled = false;
@@ -1821,7 +1827,7 @@ TEST_F(WaterFarRenderPassTest, AdaptiveOceanAndHorizonPatchesUseOcclusionAndReap
         culler.RasterQuad({-10000,-10000,2},{-10000,10000,2},{10000,10000,2},{10000,-10000,2});
         context.statsTotalObjects = context.statsOcclusionCulled = 0;
         backend.draws.clear(); pass.Execute(passResources,context);
-        EXPECT_GT(context.statsOcclusionCulled, farOcean ? 1 : 0);
+        EXPECT_GT(context.statsOcclusionCulled, 0);
         if (!farOcean) EXPECT_TRUE(backend.draws.empty());
         culler.Reset(camera); context.statsTotalObjects = context.statsOcclusionCulled = 0;
         pass.Execute(passResources,context);
@@ -1992,16 +1998,18 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
     for (const auto& draw : backend.draws) {
         EXPECT_FLOAT_EQ(draw.farOceanParams.x, 1.0f);
         EXPECT_FLOAT_EQ(draw.farOceanParams.y, 1.0f);
-        EXPECT_TRUE(draw.patchRect.x < 0.0f || draw.patchRect.y < 0.0f
-            || draw.patchRect.z > 1.0f || draw.patchRect.w > 1.0f);
+        EXPECT_GT(draw.horizonPatchDomain.y + draw.horizonPatchDomain.w, camera.m_position.z);
+        EXPECT_GT(draw.horizonPatchDomain.z, water.aabbMax.x - water.aabbMin.x);
     }
     /// @note Statistics include instances; shared source-path shaders may batch several patches into one draw.
     size_t farTriangles = 0;
     for (const auto& draw : backend.drawSnapshots)
         farTriangles += static_cast<size_t>(draw.indexCount) * draw.instanceCount / 3u;
     EXPECT_EQ(context.statsTriangleCount, farTriangles);
-    /// @note 標準shaderだけを束ねる。有限/遠景の境界と、同一frameで後から描く別viewの貸出寿命を確認する。
+    /// @note Four equal-LOD patches share one batch and each view retains its own instance buffer.
     scene->water.front().shader = {};
+    scene->water.front().patchLod.maxDepth = 1;
+    scene->water.front().patchLod.maxPatches = 4;
     context.frustumCullingEnabled = false;
     backend.draws.clear();
     backend.drawSnapshots.clear();
@@ -2017,9 +2025,8 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
         }
     }
     ASSERT_FALSE(firstViewBuffers.empty());
-    ASSERT_EQ(backend.draws.size(), 2u);
-    EXPECT_FLOAT_EQ(backend.draws[0].farOceanParams.y, 0.0f);
-    EXPECT_FLOAT_EQ(backend.draws[1].farOceanParams.y, 1.0f);
+    ASSERT_EQ(backend.draws.size(), 1u);
+    EXPECT_FLOAT_EQ(backend.draws[0].farOceanParams.y, 1.0f);
     EXPECT_EQ(context.statsTriangleCount, triangles);
     backend.drawSnapshots.clear();
     pass.Execute(passResources, context);
@@ -2039,14 +2046,14 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
     scene->water.front().shader = projectShader;
     scene->water.front().appearanceParameters = projectParameters;
     scene->water.front().appearanceTextures[0] = projectTexture;
-    /// @note An unsupported backend must retain both finite and far water instead of dropping the requested experimental path.
+    /// @note An unsupported backend must retain the Horizon draw in indexed fallback mode.
     for (const auto mode : {renderer::GeometryDrawMode::CPU, renderer::GeometryDrawMode::GPU_INDIRECT, renderer::GeometryDrawMode::MESH_SHADER}) {
         settings.geometryDrawMode = mode;
         backend.draws.clear();
         backend.drawSnapshots.clear();
         context.statsTriangleCount = 0;
         pass.Execute(passResources, context);
-        ASSERT_EQ(backend.draws.size(), 2u);
+        ASSERT_EQ(backend.draws.size(), 1u);
         size_t projectDraws = 0;
         for (const auto& draw : backend.drawSnapshots) {
             if (draw.indexCount == 0) continue;
@@ -2056,9 +2063,8 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
             EXPECT_EQ(draw.projectTexture, projectTexture);
             EXPECT_EQ(draw.meshGroupCountX, 0u);
         }
-        EXPECT_EQ(projectDraws, 2u);
-        EXPECT_FLOAT_EQ(backend.draws[0].farOceanParams.y, 0.0f);
-        EXPECT_FLOAT_EQ(backend.draws[1].farOceanParams.y, 1.0f);
+        EXPECT_EQ(projectDraws, 1u);
+        EXPECT_FLOAT_EQ(backend.draws[0].farOceanParams.y, 1.0f);
         EXPECT_EQ(context.statsTriangleCount, triangles);
         for (const auto& draw : backend.drawSnapshots) {
             EXPECT_FALSE(draw.indirectArguments.IsValid());
@@ -2077,7 +2083,7 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
         backend.drawSnapshots.clear();
         context.statsTriangleCount = 0;
         pass.Execute(passResources, context);
-        ASSERT_EQ(backend.draws.size(), 2u);
+        ASSERT_EQ(backend.draws.size(), 1u);
         size_t fallbackDraws = 0;
         for (const auto& draw : backend.drawSnapshots) {
             if (draw.indexCount == 0) continue;
@@ -2088,7 +2094,7 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
             EXPECT_FALSE(draw.projectTexture.IsValid());
             EXPECT_EQ(draw.meshGroupCountX, 0u);
         }
-        EXPECT_EQ(fallbackDraws, 2u);
+        EXPECT_EQ(fallbackDraws, 1u);
         EXPECT_EQ(context.statsTriangleCount, triangles);
     }
     colorCopy.Release(resources);

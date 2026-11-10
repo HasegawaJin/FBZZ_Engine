@@ -132,6 +132,8 @@ ActiveFlowField ResolveFlowField(const FlowFieldSettings& settings,
     f.noiseFrequency = (std::max)(settings.noiseFrequency, 0.0001f);
     f.noiseSpeed     = settings.noiseSpeed;
     f.channels       = settings.channels;
+    f.waterSwellAmplitude = settings.waterSwellAmplitude;
+    f.waterSwellWavelength = settings.waterSwellWavelength;
     if (settings.fieldType == FlowFieldType::Baked) {
         /// @note 焼いた場の効く範囲は extents (AABB の貼り先) が決める。radius まで見ると
         /// @note 球で二重にクリップされる。Inspector は Baked のとき Radius を出さないので、

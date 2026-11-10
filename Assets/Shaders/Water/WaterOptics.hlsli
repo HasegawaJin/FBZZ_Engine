@@ -10,6 +10,33 @@ static const float WATER_OPTICAL_MAX_DISTANCE = 1000000.0f;
 static const float WATER_OPTICAL_MAX_DEPTH = 80.0f;
 static const float WATER_OPTICAL_PHASE_G_LIMIT = 0.95f;
 static const float WATER_OPTICAL_INV_FOUR_PI = 0.07957747154594767f;
+static const float WATER_REFRACTIVE_INDEX = 1.333f;
+
+struct WaterDielectricInterface
+{
+    float3 direction;
+    float reflectance;
+};
+
+/// @param incident Unit propagation direction toward the interface.
+/// @param normal Unit normal facing the incident medium.
+/// @param eta Incident IOR divided by transmitted IOR.
+/// @return Transmitted direction and unpolarized reflectance. Total internal reflection returns direction zero.
+/// @see https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission PBRT v4 §9.3.4–5, Snell's law and Fresnel reflection.
+WaterDielectricInterface WaterEvaluateDielectricInterface(float3 incident, float3 normal, float eta)
+{
+    WaterDielectricInterface result = {float3(0.0f, 0.0f, 0.0f), 1.0f};
+    const float cosIncident = saturate(-dot(incident, normal));
+    const float sinTransmittedSquared = eta * eta * (1.0f - cosIncident * cosIncident);
+    if (sinTransmittedSquared >= 1.0f) return result;
+
+    const float cosTransmitted = sqrt(1.0f - sinTransmittedSquared);
+    const float s = (eta * cosIncident - cosTransmitted) / max(eta * cosIncident + cosTransmitted, 1.0e-6f);
+    const float p = (cosIncident - eta * cosTransmitted) / max(cosIncident + eta * cosTransmitted, 1.0e-6f);
+    result.reflectance = saturate(0.5f * (s * s + p * p));
+    result.direction = eta * incident + (eta * cosIncident - cosTransmitted) * normal;
+    return result;
+}
 
 struct WaterOpticalTransport
 {
@@ -103,6 +130,15 @@ WaterOpticalTransport WaterEvaluatePreparedTransport(WaterOpticalMedium medium, 
         opticalDepth.z < 0.001f ? shortSegment.z : 1.0f - result.transmittance.z);
     result.singleScatterWeight = medium.albedo * removed;
     return result;
+}
+
+/// @param lightTravelPerViewMeter Meters from the interface along the incident beam per meter of the viewing path.
+/// @note Two Beer factors multiply to exp(-extinction * (1 + lightTravelPerViewMeter) * s).
+/// @see https://www.pbr-book.org/4ed/Volume_Scattering/Transmittance PBRT v4 §11.2, beam attenuation along consecutive segments.
+float3 WaterIntegrateDirectionalScatter(WaterOpticalMedium medium, float pathLength, float lightTravelPerViewMeter)
+{
+    const float travelScale = 1.0f + lightTravelPerViewMeter;
+    return WaterEvaluatePreparedTransport(medium, pathLength * travelScale).singleScatterWeight / travelScale;
 }
 
 /// @brief Evaluate Beer transmittance and stable integrated single-scattering weight from material coefficients.

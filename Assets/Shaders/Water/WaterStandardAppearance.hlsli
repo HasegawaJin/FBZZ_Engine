@@ -23,6 +23,217 @@ cbuffer MaterialConstants : register(b2)
     float  rippleRingStrength; ///< @brief 波紋リング強度     default 0.72
 }
 
+SamplerState g_waterDepthPointSampler : register(SAMPLER_POINT_CLAMP);
+
+struct WaterHorizonRefraction
+{
+    float2 uv;
+    float pathLength;
+    float weight;
+};
+
+/// @brief Refine the refracted ray against the opaque depth layer with at most two depth reads.
+/// @note A foreground hit, screen exit or depth discontinuity falls back to the original pixel.
+/// @see https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission PBRT v4 §9.3.4, water IOR and Snell transmission.
+/// @see https://www.jcgt.org/published/0003/04/04/ McGuire and Mara (2014), view-space ray tests against screen depth.
+WaterHorizonRefraction TraceWaterHorizonRefraction(float2 screenUV, float3 surfaceVS,
+    float3 ray, float sceneDepth, float maxShift)
+{
+    WaterHorizonRefraction hit = {screenUV, 0.0f, 0.0f};
+    const float3 rayVS = mul(float4(ray, 0.0f), view).xyz;
+    if (ray.y >= -0.001f || rayVS.z <= 0.05f || sceneDepth <= surfaceVS.z + 0.01f || maxShift <= 0.0f)
+        return hit;
+
+    const float waterColumn = sceneDepth - surfaceVS.z;
+    float candidateDepth = sceneDepth;
+    float shift = 0.0f;
+    float residual = 0.0f;
+    [unroll]
+    for (int step = 0; step < 2; ++step) {
+        const float path = (candidateDepth - surfaceVS.z) / rayVS.z;
+        const float4 clipPosition = mul(float4(surfaceVS + path * rayVS, 1.0f), projection);
+        if (clipPosition.w <= 0.0f) return hit;
+        const float2 uv = clipPosition.xy / clipPosition.w * float2(0.5f, -0.5f) + 0.5f;
+        const float2 offset = abs(uv - screenUV);
+        shift = max(offset.x, offset.y);
+        if (any(uv <= 0.0f) || any(uv >= 1.0f) || shift >= maxShift) return hit;
+
+        const float raw = g_sceneDepth.SampleLevel(g_waterDepthPointSampler, uv, 0.0f).r;
+        if (raw <= 0.0f) return hit;
+        const float sampledDepth = LinearizeDepth(raw);
+        residual = abs(sampledDepth - candidateDepth);
+        if (sampledDepth <= surfaceVS.z + 0.01f || residual > max(0.06f, 0.45f * waterColumn)) return hit;
+        hit.uv = uv;
+        candidateDepth = sampledDepth;
+    }
+
+    const float2 edge = min(hit.uv, 1.0f - hit.uv);
+    const float stableDepth = 1.0f - smoothstep(max(0.025f, 0.08f * waterColumn),
+        max(0.08f, 0.24f * waterColumn), residual);
+    hit.pathLength = (candidateDepth - surfaceVS.z) / rayVS.z;
+    hit.weight = stableDepth * smoothstep(0.0f, 0.025f, min(edge.x, edge.y))
+        * (1.0f - smoothstep(0.5f * maxShift, maxShift, shift));
+    return hit;
+}
+
+struct WaterHorizonSun
+{
+    float3 direction;
+    float3 irradiance;
+};
+
+/// @note The mean interface keeps beam entry stable across unresolved waves. Convert horizontal flux to beam irradiance.
+/// @see https://morpho.inrialpes.fr/Publications/2010/BNH10/article.pdf Bruneton, Neyret and Holzschuch (2010) §5.3, sunlight refracted into the sea.
+WaterHorizonSun WaterTransmitHorizonSun(float3 toSun, float3 irradiance)
+{
+    WaterHorizonSun sun = {float3(0.0f, -1.0f, 0.0f), float3(0.0f, 0.0f, 0.0f)};
+    if (toSun.y <= 0.0f || !any(irradiance > 0.0f)) return sun;
+
+    const WaterDielectricInterface entry = WaterEvaluateDielectricInterface(-toSun,
+        float3(0.0f, 1.0f, 0.0f), 1.0f / WATER_REFRACTIVE_INDEX);
+    sun.direction = entry.direction;
+    sun.irradiance = irradiance * ((1.0f - entry.reflectance) * toSun.y / -entry.direction.y);
+    return sun;
+}
+
+/// @note Depth grows along the viewing ray. Follow the same ray for the scattering phase and the light path.
+float3 WaterEvaluateHorizonRadiance(WaterOpticalMedium medium, float pathLength, float3 intoWater,
+    float3 bottomRadiance, float3 diffuseSource, WaterHorizonSun sun, float phaseG)
+{
+    const WaterOpticalTransport viewTransport = WaterEvaluatePreparedTransport(medium, pathLength);
+    float3 radiance = bottomRadiance * viewTransport.transmittance + diffuseSource * viewTransport.singleScatterWeight;
+    [branch]
+    if (any(sun.irradiance > 0.0f)) {
+        const float phase = WaterHenyeyGreensteinPhase(dot(sun.direction, -intoWater), phaseG);
+        const float lightTravelPerViewMeter = max(-intoWater.y, 0.0f) / -sun.direction.y;
+        radiance += sun.irradiance * phase * WaterIntegrateDirectionalScatter(medium, pathLength, lightTravelPerViewMeter);
+    }
+    return radiance;
+}
+
+float WaterHorizonBreakingStrength(float meanDepth, float crestRise)
+{
+    return smoothstep(0.42f, 0.85f, 2.0f * crestRise / max(meanDepth, 0.05f));
+}
+
+/// @brief Move swash foam across the local depth contour with the signed wave height.
+/// @note The first-order contour displacement solves depthGradient · offset = -waveHeight.
+/// @note Regularize flat terrain and cap the texture motion across unresolved atlas cells.
+/// @see https://pubs.usgs.gov/publication/70030520 Stockdon et al. (2006), swash excursion and foreshore slope.
+float2 WaterHorizonSwashOffset(float2 worldDX, float2 worldDY, float2 depthDerivative, float waveHeight)
+{
+    const float determinant = worldDX.x * worldDY.y - worldDX.y * worldDY.x;
+    if (abs(determinant) <= max(1.0e-10f, 0.005f * length(worldDX) * length(worldDY))) return 0.0f;
+
+    const float2 gradient = float2(worldDY.y * depthDerivative.x - worldDX.y * depthDerivative.y,
+        worldDX.x * depthDerivative.y - worldDY.x * depthDerivative.x) / determinant;
+    const float minimumSlopeSquared = 0.0025f;
+    const float2 offset = -gradient * (waveHeight / (dot(gradient, gradient) + minimumSlopeSquared));
+    return offset * min(1.0f, 2.0f / max(length(offset), 1.0e-5f));
+}
+
+/// @brief Appearance coverage for the wet edge, breaking crests and foam on retreating water.
+/// @note Depth is world-vertical. The lower ramp and fwidth soften the moving wet edge at pixel scale.
+/// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems §1.3.1, shoreline depth and wave behavior.
+/// @see https://liris.cnrs.fr/Documents/Liris-5812.pdf Dupuy and Bruneton (2012), wave compression as a foam-generation cue.
+/// @see https://doi.org/10.1029/2012JC008147 Callaghan et al. (2012), decay of residual foam after breaking.
+float WaterHorizonShoreFoam(float meanDepth, float verticalDepth, float depthFootprint,
+    float crestRise, float jacobian, float threshold, float fade, float washPattern, float4 waveHeights)
+{
+    const float wetRamp = max(depthFootprint, 0.025f);
+    const float wet = smoothstep(0.0f, wetRamp, verticalDepth);
+    const float breaking = WaterHorizonBreakingStrength(meanDepth, crestRise);
+    /// @note The bright rim widens with the incoming crest and thins to a broken line as the water retreats.
+    const float washWidth = max(0.35f * threshold, 0.05f) * lerp(0.45f, 1.55f, washPattern)
+        * lerp(0.8f, 1.2f, breaking);
+    const float washCoverage = lerp(0.16f, 0.68f, washPattern) * lerp(0.92f, 1.0f, breaking);
+    const float wash = washCoverage * (1.0f - smoothstep(washWidth, washWidth + max(fade, depthFootprint), verticalDepth));
+    const float bandEnd = threshold + max(fade, depthFootprint);
+    const float shallowBand = 1.0f - smoothstep(threshold, bandEnd, verticalDepth);
+    const float compression = smoothstep(0.02f, 0.25f, 1.0f - jacobian);
+    const float currentFoam = max(wash, breaking * shallowBand * lerp(0.65f, 1.0f, compression));
+    float trail = 0.0f;
+    [branch]
+    if (verticalDepth > 0.0f && verticalDepth < bandEnd && g_crestFoamParams.w > 0.001f) {
+        [unroll]
+        for (int tap = 0; tap < WATER_FOAM_TRAIL_TAPS; ++tap) {
+            const float fall = waveHeights[tap] - waveHeights.w;
+            /// @note Keep the current bottom estimate fixed while reconstructing the earlier water column.
+            const float pastDepth = verticalDepth + fall;
+            const float pastBand = 1.0f - smoothstep(threshold, bandEnd, pastDepth);
+            const float retreat = smoothstep(wetRamp, wetRamp + 0.12f, fall);
+            const float pastBreaker = WaterHorizonBreakingStrength(meanDepth, waveHeights[tap]) * pastBand * retreat;
+            trail = max(trail, pastBreaker * exp(-0.5f * (float)(tap + 1)));
+        }
+        trail *= lerp(0.25f, 0.95f, smoothstep(0.28f, 0.72f, washPattern));
+    }
+    return wet * (currentFoam + (1.0f - currentFoam) * trail);
+}
+
+/// @brief Resolve small terrain contacts from opaque depth while keeping distant intersections tied to the terrain atlas.
+/// @note View depth is converted to a world-space displacement along the original camera ray. Far lateral hits can belong to a different bank.
+/// @see https://media.gdcvault.com/gdc08/slides/S6172i1.pdf GDC 2008, Shore and Foam, surface-to-world depth as a contact signal.
+float WaterHorizonContactDepth(float terrainDepth, float3 toCamera, float viewRayZ, float sceneThickness, float hasBottom)
+{
+    const float distance = sceneThickness / max(viewRayZ, 0.05f);
+    const float lateralDistance = distance * length(toCamera.xz);
+    const float confidence = hasBottom * smoothstep(0.10f, 0.35f, toCamera.y)
+        * (1.0f - smoothstep(1.0f, 5.0f, lateralDistance));
+    return lerp(terrainDepth, distance * max(toCamera.y, 0.0f), confidence);
+}
+
+/// @note The first interface on a perspective ray uses the camera's medium. Mesh facing can change within a single crest.
+bool WaterHorizonCameraUnderwater(float baseWorldY, bool faceUnderwater)
+{
+    if (isOrthographic > 0.5f) return faceUnderwater;
+    const float relativeY = cameraPos.y - baseWorldY;
+    if (g_waveShapeParams.y < 0.5f && abs(relativeY) > g_reflectParams.w + kRippleHeightScale)
+        return relativeY < 0.0f;
+
+    const uint owner = (uint)round(abs(g_farOceanParams.w));
+    FBZZWaterMediumQueryContext context;
+    if (owner == 0u || !FBZZ_WaterMediumHeader(context) || owner > context.bodyCount) return faceUnderwater;
+    float4 column;
+    if (!FBZZ_WaterAtlasSample(owner - 1u, cameraPos.xz, context, column)) return faceUnderwater;
+    const uint row = FBZZ_WATER_MEDIUM_HEADER_ROWS + (owner - 1u) * FBZZ_WATER_MEDIUM_BODY_ROWS;
+    const float cameraDepth = FBZZ_WaterMediumRow(row + 6u).x + column.x - cameraPos.y;
+    return cameraDepth > 0.0f && cameraDepth <= column.y
+        && (g_farOceanParams.w < 0.0f || !FBZZ_WaterPointExcluded(owner - 1u, cameraPos, context));
+}
+
+/// @brief Sample moving spray droplets in a short air segment in front of a breaking crest.
+/// @note This local optical layer composites over water coverage and uses world cells to avoid screen-locked noise.
+/// @see https://www.sidefx.com/docs/houdini/solaris/houdini_ocean_procedural Ocean whitecaps and separate foam particles.
+float WaterHorizonCrestSpray(float3 surface, float3 toCamera, float2 flow, float time, float footprint, float breaker)
+{
+    const float nearWeight = 1.0f - smoothstep(0.12f, 0.42f, footprint);
+    if (breaker <= 0.08f || nearWeight <= 0.0f) return 0.0f;
+
+    const float3 cellScale = float3(2.6f, 4.0f, 2.6f);
+    const float3 rayInGrid = normalize(toCamera * cellScale);
+    const float3 drift = float3(flow.x * 2.4f, 0.75f, flow.y * 2.4f) * time;
+    float coverage = 0.0f;
+    [unroll]
+    for (int layer = 0; layer < 3; ++layer) {
+        const float distance = 0.32f + 0.42f * (float)layer;
+        const float3 grid = (surface + toCamera * distance - drift) * cellScale;
+        const float3 cell = floor(grid);
+        float3 random = frac(cell * float3(0.1031f, 0.11369f, 0.13787f));
+        random += dot(random, random.yxz + 19.19f);
+        random = frac((random.xxy + random.yzz) * random.zyx);
+        const float3 offset = frac(grid) - lerp(0.15f, 0.85f, random);
+        const float along = dot(offset, rayInGrid);
+        const float distanceToRay = length(offset - along * rayInGrid);
+        const float size = lerp(0.09f, 0.23f, random.z);
+        const float footprintInGrid = min(2.6f * footprint, 0.25f);
+        const float drop = (1.0f - smoothstep(size, size + max(footprintInGrid, 0.04f), distanceToRay))
+            * smoothstep(0.55f, 0.86f, random.x)
+            * (1.0f - smoothstep(0.25f, 0.50f, abs(along)));
+        coverage = max(coverage, drop * (1.0f - 0.22f * (float)layer));
+    }
+    return 0.64f * breaker * nearWeight * coverage;
+}
+
 float4 PSMain(WaterPSInput p) : SV_Target0
 {
     bool splineSurface = p.splineSurface.w > 0.5f;
@@ -74,7 +285,12 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         ? authoredFlow * time
         : flowDir * (g_detailParams.y * time);
 
-    float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, flowDir, flowTravel, time, footprint,
+    /// @note Wind-driven surface ripples are independent of swell and the advecting current.
+    /// @see https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.high-definition/Documentation~/water-water-system-simulation.md Unity HDRP, Wind and wave types.
+    const bool overrideRipples = dot(g_waveControls.yz, g_waveControls.yz) > 0.5f;
+    const float2 rippleDirection = overrideRipples ? g_waveControls.yz : flowDir;
+    const float2 rippleTravel = overrideRipples ? rippleDirection * (g_detailParams.y * time) : flowTravel;
+    float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, rippleDirection, rippleTravel, time, footprint,
                                              footprintDX, footprintDY, p.normal,
                                               flowSample.detailGain, p.waveMeshFade, p.baseWorldXZ, baseDX, baseDY, splineSurface);
     float3 tangentNormal = normalSample.xyz;
@@ -100,44 +316,72 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @warning 向きの判定に N を使うと、浅い角度のピクセルだけがばらばらに反転して斑になる。
     /// @note 決定は滑らかな幾何法線に任せる。
     bool cameraUnderwater = dot(p.normal, V) < 0.0f;
+    const bool horizonSurface = useCoefficientOptics && !splineSurface && g_farOceanParams.x > 0.5f;
+    if (horizonSurface) {
+        /// @note The signed XZ area of the rasterized triangle distinguishes the top from the underside even when interpolated swell normals face away.
+        const float signedArea = footprintDX.y * footprintDY.x - footprintDX.x * footprintDY.y;
+        if (abs(signedArea) > 1.0e-10f) cameraUnderwater = signedArea < 0.0f;
+        cameraUnderwater = WaterHorizonCameraUnderwater(p.baseWorldY, cameraUnderwater);
+    }
+    bool horizonOptics = horizonSurface && !cameraUnderwater;
     if (cameraUnderwater) N = -N;
+    const float3 viewDirectionDX = ddx(V);
+    const float3 viewDirectionDY = ddy(V);
+    [branch]
+    if (horizonOptics) {
+        float reflectionFootprint = footprint;
+        float2 distantDX = baseDX;
+        float2 distantDY = baseDY;
+        const float meanSurfaceHeight = cameraPos.y - p.baseWorldY;
+        if (isOrthographic < 0.5f && meanSurfaceHeight > 0.25f && V.y > 0.001f) {
+            /// @note Differentiate the eye ray's intersection with the mean plane so a crest cannot change its own reflection LOD.
+            const float2 planeDX = viewDirectionDX.xz * V.y - V.xz * viewDirectionDX.y;
+            const float2 planeDY = viewDirectionDY.xz * V.y - V.xz * viewDirectionDY.y;
+            const float planeScale = -meanSurfaceHeight / (V.y * V.y);
+            distantDX = planeScale * planeDX;
+            distantDY = planeScale * planeDY;
+            const float planeFootprint = max(length(distantDX), length(distantDY));
+            reflectionFootprint = max(planeFootprint, 0.5f * footprint);
+        }
+        const float footprintInDetailCells = reflectionFootprint * max(g_detailParams.x, 1.0e-4f);
+        const float distantWeight = smoothstep(0.22f, 0.95f, footprintInDetailCells);
+        if (distantWeight > 0.0f) {
+            /// @note Resolve visible long waves analytically before transferring subpixel slopes to BRDF roughness.
+            /// @see https://doi.org/10.1111/j.1467-8659.2009.01618.x Bruneton, Neyret and Holzschuch (2010), geometry-to-BRDF slope filtering.
+            const float4 noMesh[4] = {(float4)0.0f, (float4)0.0f, (float4)0.0f, (float4)0.0f};
+            float distantVariance;
+            const float2 slope = WaterResidualWaveSlope(p.baseWorldXZ, time, distantDX, distantDY, noMesh, distantVariance);
+            const float3 distantNormal = normalize(float3(-slope.x, 1.0f, -slope.y));
+            N = normalize(lerp(N, distantNormal, distantWeight));
+            lostSlopeVariance = lerp(lostSlopeVariance, max(lostSlopeVariance, distantVariance), distantWeight);
+        }
+    }
+    /// @note Keep the optical normal on the incident hemisphere at grazing silhouettes without flipping an entire wave face.
+    if (horizonSurface) N = normalize(N + V * max(0.0f, 0.001f - dot(N, V)));
     float NdotV = saturate(dot(N, V));
 
     /// @note F0 は垂直入射の反射率。反射率を倍増すると浅い角度で飽和し、水中の散乱光が消える。
     /// @see https://doi.org/10.1111/1467-8659.1330233 Schlick, "An Inexpensive BRDF Model for Physically-based Rendering" (1994)
     float f0 = saturate(g_surfaceParams.z);
-    float fresnel = f0 + (1.0f - f0) * pow(saturate(1.0f - NdotV), max(g_surfaceParams.w, 1.0f));
-    fresnel = saturate(fresnel * g_surfaceParams.y);
+    float fresnel;
     float3 refractedViewRay = float3(0.0f, 0.0f, 0.0f);
-    if (useCoefficientOptics && cameraUnderwater)
-    {
-        /// @note Water-to-air Fresnel and Snell use the interior-to-exterior IOR ratio; exact TIR keeps full reflection.
-        /// @see https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission PBRT v4 §9.3.5, unpolarized dielectric Fresnel and total internal reflection.
-        const float waterToAirEta = 1.333f;
-        float cosIncidentWater = saturate(NdotV);
-        float sinTransmittedSquared = waterToAirEta * waterToAirEta
-                                    * max(1.0f - cosIncidentWater * cosIncidentWater, 0.0f);
-        if (sinTransmittedSquared >= 1.0f)
-        {
-            fresnel = 1.0f;
+    if (horizonOptics || (useCoefficientOptics && cameraUnderwater)) {
+        const float eta = cameraUnderwater ? WATER_REFRACTIVE_INDEX : 1.0f / WATER_REFRACTIVE_INDEX;
+        const WaterDielectricInterface interfaceSample = WaterEvaluateDielectricInterface(-V, N, eta);
+        refractedViewRay = interfaceSample.direction;
+        fresnel = dot(refractedViewRay, refractedViewRay) <= 1.0e-8f
+            ? 1.0f : saturate(interfaceSample.reflectance * g_surfaceParams.y);
+        if (horizonSurface) {
+            const float normalReflectance = (1.0f - eta) / (1.0f + eta);
+            f0 = normalReflectance * normalReflectance;
         }
-        else
-        {
-            float cosTransmittedAir = sqrt(max(1.0f - sinTransmittedSquared, 0.0f));
-            float sNumerator = waterToAirEta * cosIncidentWater - cosTransmittedAir;
-            float sDenominator = max(waterToAirEta * cosIncidentWater + cosTransmittedAir, 1.0e-6f);
-            float pNumerator = cosIncidentWater - waterToAirEta * cosTransmittedAir;
-            float pDenominator = max(cosIncidentWater + waterToAirEta * cosTransmittedAir, 1.0e-6f);
-            float reflectance = 0.5f * (sNumerator * sNumerator / (sDenominator * sDenominator)
-                                       + pNumerator * pNumerator / (pDenominator * pDenominator));
-            fresnel = saturate(reflectance * g_surfaceParams.y);
-            refractedViewRay = refract(-V, N, waterToAirEta);
-            if (dot(refractedViewRay, refractedViewRay) <= 1.0e-8f)
-                fresnel = 1.0f;
-        }
+    } else {
+        fresnel = saturate((f0 + (1.0f - f0) * pow(1.0f - NdotV, max(g_surfaceParams.w, 1.0f)))
+            * g_surfaceParams.y);
     }
 
-    float rawSceneDepth = g_sceneDepth.Sample(g_samplerClamp, screenUV).r;
+    float rawSceneDepth = horizonOptics ? g_sceneDepth.SampleLevel(g_waterDepthPointSampler, screenUV, 0.0f).r
+        : g_sceneDepth.Sample(g_samplerClamp, screenUV).r;
     /// @note 深度が far plane に張り付く場所は Terrain / Mesh が無い背景ピクセルとして扱う。
     /// @note 背景の skydome 色を屈折色として読むと、水面が空そのものに溶けてしまうため、
     /// @note «底が見えない深い水» として描く。
@@ -145,8 +389,11 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float backgroundMask = rawSceneDepth <= 0.0f ? 1.0f : 0.0f;
     float linearSceneDepth = LinearizeDepth(rawSceneDepth);
     /// @note クリップ w は平行投影では 1。両投影とも同じ view Z で水層の距離を求める。
-    float linearSurfDepth = max(mul(float4(p.worldPos, 1.0f), view).z, 0.0001f);
-    float waterDepth = lerp(max(0.0f, linearSceneDepth - linearSurfDepth), g_deepColorDepth.w, backgroundMask);
+    float3 surfaceVS = mul(float4(p.worldPos, 1.0f), view).xyz;
+    float linearSurfDepth = max(surfaceVS.z, 0.0001f);
+    float sceneThickness = max(0.0f, linearSceneDepth - linearSurfDepth);
+    float waterDepth = lerp(sceneThickness, g_deepColorDepth.w, backgroundMask);
+    float viewRayZ = abs(mul(float4(-V, 0.0f), view).z);
 #ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
     float2 splineTerrainDepth = float2(0.0f, 0.0f);
 #endif
@@ -160,7 +407,6 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         const float fallbackDepth = min(waterDepth, max(p.splineSurface.x, 0.0f));
         waterDepth = lerp(fallbackDepth, terrainPath, saturate(splineTerrainDepth.x));
 #else
-        float viewRayZ = abs(mul(float4(-V, 0.0f), view).z);
         float authoredDepthView = max(p.splineSurface.x, 0.0f)
             * viewRayZ / max(abs(V.y), 0.05f);
         waterDepth = min(waterDepth, authoredDepthView);
@@ -209,14 +455,23 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         refrOffset = 0.5f * float2(slopeDelta.x * projection[0][0], -slopeDelta.y * projection[1][1])
                    * g_refractionFlowParams.x * (1.0f - fresnel);
     }
-    float2 refrUV = saturate(screenUV + refrOffset);
+    float2 refrUV = screenUV;
+    WaterHorizonRefraction horizonHit = {screenUV, 0.0f, 0.0f};
+    if (horizonOptics) {
+        [branch]
+        if (backgroundMask < 0.5f && fresnel < 0.995f && g_refractionFlowParams.x > 0.0f) {
+            /// @note Reuse the material control as a screen-space search budget for the Snell ray.
+            horizonHit = TraceWaterHorizonRefraction(screenUV, surfaceVS, refractedViewRay, linearSceneDepth,
+                min(4.0f * g_refractionFlowParams.x, 0.25f));
+            if (horizonHit.weight >= 0.999f) refrUV = horizonHit.uv;
+        }
+    } else {
+        refrUV = saturate(screenUV + refrOffset);
 
-    /// @note 屈折先が水面より手前 (= カメラと水面の間に物体がある) なら屈折させない。
-    /// @note そのまま UV をずらすと手前オブジェクトのシルエットが水中に滲み出す。
-    float refrRawDepth    = g_sceneDepth.Sample(g_samplerClamp, refrUV).r;
-    float refrLinearDepth = LinearizeDepth(refrRawDepth);
-    if (refrLinearDepth < linearSurfDepth)
-        refrUV = screenUV;
+        /// @note 屈折先が水面より手前なら、前景のシルエットを水中に混ぜない。
+        float refrRawDepth = g_sceneDepth.Sample(g_samplerClamp, refrUV).r;
+        if (LinearizeDepth(refrRawDepth) < linearSurfDepth) refrUV = screenUV;
+    }
     /// @note sceneColor はシーン側で照明・影が済んだ色なので、ここでは減衰だけを掛ける。
     float3 refractColor = g_sceneColor.Sample(g_samplerClamp, refrUV).rgb;
 
@@ -326,25 +581,42 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         }
         else
         {
-            /// @note waterDepth は view-Z の差なので、ray の view-space z 成分で割ってカメラ光路長 [m] を近似する。
-            /// @note refracted UV の先にある実際の屈折経路は追跡せず、浅い視線の発散を 0.05 で抑える。
-            float viewRayZ = abs(mul(float4(-V, 0.0f), view).z);
+            /// @note For the original pixel, convert view-Z thickness into world meters along the original ray.
             float opticalPathLength = isOrthographic > 0.5f ? waterDepth : waterDepth / max(viewRayZ, 0.05f);
-            WaterOpticalTransport opticalTransport = WaterEvaluateOpticalTransport(
-                g_absorptionCoefficients.xyz, g_scatteringCoefficients.xyz, opticalPathLength);
-            float phaseG = WaterOpticalClampPhaseG(g_opticalParams.y);
-            float directPhase = WaterHenyeyGreensteinPhase(dot(-L, V), phaseG);
-            /// @note sunOverPi is irradiance / π; multiplying by π·phase yields irradiance·phase without a second Lambert cosine.
-            /// @note Isotropic phase 1/(4π) therefore contributes sunOverPi·0.25 without another Lambert term.
-            float3 directScatterSource = sunOverPi * ((L.y > 0.0f ? 1.0f : 0.0f) * shadow * (PI * directPhase));
+            const float phaseG = g_opticalParams.y;
             /// @note Approximate the environment as uniform radiance over the visible hemisphere; isotropic integration gives one half.
-            float3 ambientScatterSource = skyIrradianceOverPi * 0.5f;
-            float3 inscatter = opticalTransport.singleScatterWeight
-                             * (directScatterSource + ambientScatterSource + punctualSingleScatterSource);
+            const float3 diffuseSource = skyIrradianceOverPi * 0.5f + punctualSingleScatterSource;
             /// @note Rectangle water over cleared depth has no transmitted bottom; authored spline depth remains finite without terrain.
             /// @see https://dev.epicgames.com/documentation/unreal-engine/single-layer-water-shading-model-in-unreal-engine Epic Single Layer Water, homogeneous volume and scene-depth refraction inputs.
-            float bottomTransmission = splineSurface ? 1.0f : (1.0f - backgroundMask);
-            body = refractColor * opticalTransport.transmittance * bottomTransmission + inscatter;
+            const float bottomTransmission = splineSurface ? 1.0f : (1.0f - backgroundMask);
+            [branch]
+            if (horizonOptics) {
+                const bool bentSample = horizonHit.weight >= 0.999f;
+                const bool openWater = backgroundMask > 0.5f;
+                if (bentSample) opticalPathLength = horizonHit.pathLength;
+                if (openWater) opticalPathLength = WATER_OPTICAL_MAX_DISTANCE;
+                const float3 intoWater = bentSample || (openWater && refractedViewRay.y < 0.0f) ? refractedViewRay : -V;
+                const WaterOpticalMedium medium = WaterPrepareOpticalMedium(
+                    g_absorptionCoefficients.xyz, g_scatteringCoefficients.xyz);
+                const WaterHorizonSun sun = WaterTransmitHorizonSun(L, sunOverPi * (shadow * PI));
+                body = WaterEvaluateHorizonRadiance(medium, opticalPathLength, intoWater,
+                    refractColor * bottomTransmission, diffuseSource, sun, phaseG);
+                /// @note Blend complete radiance samples at uncertain hits so the scene colors keep their own paths and phase angles.
+                [branch]
+                if (horizonHit.weight > 0.0f && !bentSample) {
+                    const float3 bentColor = g_sceneColor.SampleLevel(g_samplerClamp, horizonHit.uv, 0.0f).rgb;
+                    const float3 bentRadiance = WaterEvaluateHorizonRadiance(medium, horizonHit.pathLength,
+                        refractedViewRay, bentColor, diffuseSource, sun, phaseG);
+                    body = lerp(body, bentRadiance, horizonHit.weight);
+                }
+            } else {
+                const WaterOpticalTransport opticalTransport = WaterEvaluateOpticalTransport(
+                    g_absorptionCoefficients.xyz, g_scatteringCoefficients.xyz, opticalPathLength);
+                const float directPhase = WaterHenyeyGreensteinPhase(dot(-L, V), phaseG);
+                const float3 directSource = sunOverPi * ((L.y > 0.0f ? 1.0f : 0.0f) * shadow * (PI * directPhase));
+                body = refractColor * opticalTransport.transmittance * bottomTransmission
+                    + opticalTransport.singleScatterWeight * (directSource + diffuseSource);
+            }
         }
     } else {
         /// @note 水の層が返す光 = 散乱色 × (太陽 + 空 + 局所光)。定数色のまま出すと昼夜・影に追随しない。
@@ -359,7 +631,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 異方を反射ローブへ渡すと、きらめきが風向に沿った帯になる ── 海面の見え方そのもの。
     /// @note 接空間は «風向» で張り直す。p.tangent はワールド +X 基準なので、そのまま渡すと
     /// @note 異方の向きが風と無関係になる。うねの筋を横切る «風向» 側が粗い。
-    float3 flowWorld = float3(flowDir.x, 0.0f, flowDir.y);
+    float3 flowWorld = float3(rippleDirection.x, 0.0f, rippleDirection.y);
     float3 specT = flowWorld - N * dot(N, flowWorld);
     float  specTLen = length(specT);
     specT = specTLen > 1.0e-4f ? specT / specTLen : normalize(p.tangent);
@@ -404,9 +676,12 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 浅いほど強くし、岸辺に沿った白い帯を作る。
     float foamThreshold = g_foamParams.x;
     float foamFade      = max(g_foamParams.y, 0.0001f);
+    float foamScale = max(g_foamParams.w, 1.0e-4f);
     float shoreFoam     = (1.0f - smoothstep(foamThreshold, foamThreshold + foamFade, waterDepth)) * (1.0f - backgroundMask);
 
     float foamMaskVal = 0.0f;
+    float2 swashOffset = 0.0f;
+    float swashWeight = 0.0f;
     if (g_terrainInfoParams.x > 0.5f) {
         float2 terrainUv = splineSurface ? p.uv : WaterTerrainUvAtWorldXZ(p.worldPos.xz);
 #ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
@@ -418,22 +693,44 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         float wet = verticalDepth > 0.0f ? 1.0f : 0.0f;
         float terrainFoam = (1.0f - smoothstep(foamThreshold, foamThreshold + foamFade,
             max(verticalDepth, 0.0f))) * wet;
+        if (!splineSurface && g_farOceanParams.x > 0.5f) {
+            const float contactDepth = horizonOptics
+                ? WaterHorizonContactDepth(verticalDepth, V, viewRayZ, sceneThickness, 1.0f - backgroundMask)
+                : verticalDepth;
+            const float depthFootprint = min(fwidth(contactDepth), foamFade);
+            const float2 depthDerivative = float2(ddx(terrainDepth.y), ddy(terrainDepth.y));
+            float washPattern = 0.5f;
+            [branch]
+            if (terrainDepth.x > 0.0f && contactDepth > 0.0f && contactDepth < foamThreshold + foamFade) {
+                /// @note The slow layer varies the width of the wash; the existing advected foam layer supplies the fine breakup.
+                const float washScale = 0.47f * foamScale;
+                const float2 washPosition = p.baseWorldXZ * washScale + float2(11.5f, 23.0f);
+                washPattern = WaterNoiseTile(washPosition, baseDX * washScale, baseDY * washScale).z;
+                swashWeight = smoothstep(0.5f, 1.0f, terrainDepth.x)
+                    * (1.0f - smoothstep(0.55f * foamThreshold, foamThreshold + foamFade, contactDepth));
+                swashOffset = WaterHorizonSwashOffset(footprintDX, footprintDY, depthDerivative, p.worldPos.y - p.baseWorldY);
+            }
+            const float crestRise = max(p.worldPos.y - p.baseWorldY, 0.0f);
+            terrainFoam = WaterHorizonShoreFoam(terrainDepth.y, contactDepth, depthFootprint,
+                crestRise, p.waveJacobian, max(foamThreshold, 0.0f), foamFade, washPattern, p.shoreWaveHeights);
+        }
         shoreFoam = lerp(shoreFoam, terrainFoam, saturate(terrainDepth.x));
     } else {
         foamMaskVal = g_foamMask.Sample(g_samplerClamp, p.uv).r;
     }
     float localDataWeight = WaterLocalDataWeight(p.uv);
-    shoreFoam *= localDataWeight;
+    /// @note 岸泡はワールド地形またはシーン深度から得る。旧矩形に固定されるのは局所マスクと波紋だけ。
     foamMaskVal *= localDataWeight;
     /// @note 泡のムラもさざ波タイルから引く。ワールド座標なので水面の大きさに依らず粒が揃う。
-    float foamScale = max(g_foamParams.w, 1.0e-4f);
     float2 foamAdvection = splineSurface
         ? -authoredFlow * (time * foamScale)
         : flowDir * (time * 0.35f);
-    float2 foamP = p.worldPos.xz * foamScale + foamAdvection;
+    /// @note The coast follows the changing water level. Open water and incomplete terrain coverage retain the current-driven pattern.
+    const float2 swashTextureShift = -(swashOffset * foamScale + 0.8f * foamAdvection) * swashWeight;
+    const float2 foamP = p.worldPos.xz * foamScale + foamAdvection + swashTextureShift;
     /// @note 乱流 (Curl) はムラのコントラストを上げる。«ざわついた水» は泡の粒が揃わない。
-    float foamTexVal = saturate(WaterNoiseTile(foamP, footprintDX * foamScale,
-                                               footprintDY * foamScale).z
+    float foamTexVal = saturate(WaterNoiseTile(foamP, footprintDX * foamScale + ddx(swashTextureShift),
+                                               footprintDY * foamScale + ddy(swashTextureShift)).z
                                 * lerp(1.6f, 3.0f, flowSample.chop));
     /// @note VS が波高と圧縮の被覆率を履歴込みで作る。岸泡の強度とは別に波頭だけを調整できる。
     float crestFoam = saturate(p.waveState.y * max(g_crestFoamParams.z, 0.0f));
@@ -443,7 +740,25 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float localFoamAmount = max(max(foamMaskVal, shoreFoam), eyeFoam) * foamTexVal;
     float localFoam = saturate(smoothstep(0.05f, 1.0f, localFoamAmount) * max(g_foamParams.z, 0.0f));
     float crestCoverage = smoothstep(0.05f, 1.0f, crestFoam * foamTexVal);
+    float sprayCoverage = 0.0f;
+    [branch]
+    if (horizonOptics && crestFoam > 0.001f) {
+        /// @note Compression lights the advancing lip. The older advected foam breaks into weaker patches.
+        /// @see https://liris.cnrs.fr/Documents/Liris-5812.pdf Dupuy and Bruneton (2012), deformation-driven whitecap coverage.
+        const float compression = smoothstep(0.08f, 0.37f, 1.0f - p.waveJacobian);
+        const float crestHeight = smoothstep(0.16f, 0.54f, p.waveState.x);
+        const float frontSlope = smoothstep(-0.04f, 0.25f, dot(p.normal.xz, flowDir));
+        const float breaker = compression * crestHeight * lerp(0.55f, 1.0f, frontSlope)
+            * saturate(g_crestFoamParams.z);
+        const float2 grainPosition = foamP * 2.37f + float2(17.6f, 8.3f);
+        const float grain = WaterNoiseTile(grainPosition, footprintDX * (foamScale * 2.37f),
+            footprintDY * (foamScale * 2.37f)).z;
+        const float lip = breaker * lerp(0.27f, 1.0f, smoothstep(0.33f, 0.70f, grain));
+        crestCoverage = max(lip, crestCoverage * lerp(0.48f, 0.86f, grain));
+        sprayCoverage = WaterHorizonCrestSpray(p.worldPos, V, flowDir, time, footprint, breaker);
+    }
     float foam = saturate(max(localFoam, crestCoverage));
+    foam += (1.0f - foam) * sprayCoverage;
     /// @note 泡と波紋の輪は «水面に浮いた白い粗面» なので、定数色ではなく Lambert で照らす。
     /// @note 太陽は泡の面の向きで受け、影の中では空と局所光だけが残る。
     float3 surfaceIrradiance = sunOverPi * (NdotL * shadow) + skyIrradianceOverPi + punctualOverPi;
@@ -467,7 +782,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         color = lerp(color, foamColor, foam);
     }
 
-    float2 rippleRG = (g_rippleTex.Sample(g_samplerClamp, p.uv).rg * 2.0f - 1.0f) * localDataWeight;
+    float2 rippleRG = DecodeWaterRipple(g_rippleTex.Sample(g_samplerClamp, p.uv).rgb).rg * localDataWeight;
     float rippleRing = saturate(length(rippleRG) * rippleRingStrength);
     color = lerp(color, rippleRingColor * surfaceIrradiance, rippleRing);
     /// @warning ここで色を事前圧縮しないこと。水面は HDR バッファへブレンド描画され、露出・ACES

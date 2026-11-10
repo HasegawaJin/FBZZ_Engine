@@ -187,22 +187,42 @@ bool TrySampleWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, math::Vecto
     return true;
 }
 
+math::Vector2 ResolveWaterTerrainBakeResolution(const WaterTerrainInfoInputs& inputs,
+    const WaterComponent& water, const Transform& transform, WaterSurfaceReadView view)
+{
+    if (!inputs.terrains.empty() && WaterSurfaceUsesHorizon(water, view)) {
+        constexpr float resolution = static_cast<float>(MAX_HORIZON_WATER_TERRAIN_RESOLUTION);
+        return {resolution, resolution};
+    }
+    const auto extent = WaterSurfaceLocalExtent(water, view);
+    constexpr float maxResolution = static_cast<float>(MAX_FINITE_WATER_TERRAIN_RESOLUTION);
+    const auto dimension = [maxResolution](float size, float scale) {
+        const float meters = size * std::abs(scale);
+        return std::isfinite(meters) ? (std::clamp)(std::ceil(meters), 64.0f, maxResolution) : 64.0f;
+    };
+    return {dimension(extent.x, transform.worldScale.x), dimension(extent.y, transform.worldScale.z)};
+}
+
 bool TryComputeWaterTerrainInfoSignature(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
     const Transform& transform, const WaterTerrainBakeSettings& settings, uint64_t& out,
     WaterSurfaceReadView view)
 {
     const float depthRange = settings.depthRange == 0.0f ? water.buoyancyDepth : settings.depthRange;
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(view);
+    const bool horizon = WaterSurfaceUsesHorizon(water, view);
+    const uint32_t maxResolution = horizon ? MAX_HORIZON_WATER_TERRAIN_RESOLUTION : MAX_FINITE_WATER_TERRAIN_RESOLUTION;
     if (!IsWaterSurfaceSupported(water, transform, view)
         || !std::isfinite(water.buoyancyDepth) || water.buoyancyDepth < 0.0f
         || !std::isfinite(attenuationDepth) || attenuationDepth < 0.0f
         || !std::isfinite(settings.depthRange) || settings.depthRange < 0.0f
         || !ValidParameters(transform.worldPosition.y, depthRange, settings.foamThreshold, settings.foamFade)
-        || settings.width == 0 || settings.height == 0 || settings.width > 257 || settings.height > 257) return false;
+        || settings.width == 0 || settings.height == 0
+        || settings.width > maxResolution || settings.height > maxResolution) return false;
     uint64_t signature = inputs.signature;
     MixTransform(signature, transform);
     MixFloat(signature, water.extentX); MixFloat(signature, water.extentZ); MixFloat(signature, water.buoyancyDepth);
     MixFloat(signature, attenuationDepth);
+    Mix(signature, horizon);
     Mix(signature, static_cast<uint64_t>(WaterSurfaceEffectiveShape(water, view)));
     if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view))
         Mix(signature, geometry->signature);
@@ -224,12 +244,45 @@ bool TryBakeWaterTerrainInfo(const WaterTerrainInfoInputs& inputs, const WaterCo
     atlas.rgba.resize(static_cast<size_t>(atlas.width) * atlas.height * 4u);
     const auto world = transform.GetWorldMatrix();
     const auto extent = WaterSurfaceLocalExtent(water, view);
+    math::Vector2 localCenter{};
+    math::Vector2 localExtent = extent;
+    if (WaterSurfaceUsesHorizon(water, view) && !inputs.terrains.empty()) {
+        const auto inverseRotation = transform.worldRotation.Inverse();
+        const float signX = std::copysign(1.0f, transform.worldScale.x);
+        const float signZ = std::copysign(1.0f, transform.worldScale.z);
+        const float largest = std::numeric_limits<float>::max();
+        math::Vector2 minimum{largest, largest}, maximum{-largest, -largest};
+        for (const auto& terrain : inputs.terrains) {
+            for (float x : {terrain.boundsMin.x, terrain.boundsMax.x}) {
+                for (float z : {terrain.boundsMin.z, terrain.boundsMax.z}) {
+                    const auto local = inverseRotation * math::Vector3{
+                        x - transform.worldPosition.x, 0.0f, z - transform.worldPosition.z};
+                    minimum.x = (std::min)(minimum.x, local.x * signX);
+                    minimum.y = (std::min)(minimum.y, local.z * signZ);
+                    maximum.x = (std::max)(maximum.x, local.x * signX);
+                    maximum.y = (std::max)(maximum.y, local.z * signZ);
+                }
+            }
+        }
+        const auto center = minimum * 0.5f + maximum * 0.5f;
+        const auto span = maximum - minimum;
+        /// @note One empty texel at each side prevents the boundary clamp from extending the last Terrain tile into open water.
+        const math::Vector2 padded{
+            span.x + 2.0f * (std::max)(1.0f, span.x / (std::max)(1.0f, static_cast<float>(atlas.width) - 2.0f)),
+            span.y + 2.0f * (std::max)(1.0f, span.y / (std::max)(1.0f, static_cast<float>(atlas.height) - 2.0f))};
+        if (!std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(padded.x)
+            || !std::isfinite(padded.y) || padded.x <= 0.0f || padded.y <= 0.0f) return false;
+        const float scaleX = std::abs(transform.worldScale.x), scaleZ = std::abs(transform.worldScale.z);
+        atlas.domain = {center.x, center.y, padded.x, padded.y};
+        localCenter = {center.x / scaleX, center.y / scaleZ};
+        localExtent = {padded.x / scaleX, padded.y / scaleZ};
+    }
     const bool usesGeometry = UsesWaterSurfaceGeometry(water, view);
     const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view);
     for (uint32_t z = 0; z < atlas.height; ++z) for (uint32_t x = 0; x < atlas.width; ++x) {
         const auto point = world * math::Vector4{
-            ((static_cast<float>(x) + 0.5f) / atlas.width - 0.5f) * extent.x, 0.0f,
-            ((static_cast<float>(z) + 0.5f) / atlas.height - 0.5f) * extent.y, 1.0f};
+            localCenter.x + ((static_cast<float>(x) + 0.5f) / atlas.width - 0.5f) * localExtent.x, 0.0f,
+            localCenter.y + ((static_cast<float>(z) + 0.5f) / atlas.height - 0.5f) * localExtent.y, 1.0f};
         if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) return false;
         float meanWaterY = point.y;
         WaterSplineSample spline;

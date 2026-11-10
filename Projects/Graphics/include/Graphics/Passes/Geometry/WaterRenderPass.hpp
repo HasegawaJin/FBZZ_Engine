@@ -31,7 +31,7 @@ struct WaterDetailNoise {
 FBZZ_GRAPHICS_API bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& viewTargets);
 
 /// @return Horizon の水面と水中アトラスが共有する local XZ 範囲。無効設定なら false。
-/// @note カメラの far clip とカメラ周辺の光路を包み、有限面の接続境界を保持する。
+/// @note カメラの far clip とカメラ周辺の光路を包む。
 /// @see Docs/design/water-surface-quality.md Horizon の水面と水中領域。
 [[nodiscard]] FBZZ_GRAPHICS_API bool ResolveWaterHorizonRectangle(const RenderWaterInput& input, const Camera& camera,
     math::Vector2& outMin, math::Vector2& outMax);

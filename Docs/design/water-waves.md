@@ -16,7 +16,7 @@ Wireframe Lit / Unlit は、水面の頂点変形を維持したまま両面の�
 
 | 帯 | 担当 | 出るもの |
 |----|------|----------|
-| 波長 ≳ 3.5 セル | VS の Gerstner 変位 (4 本) | シルエット・うねり・白波・浮力 |
+| 波長 ≳ 3.5 セル | VS の Gerstner 変位 (最大 16 本) | シルエット・うねり・白波・浮力 |
 | 波長 < 3.5 セル | PS の `WaterResidualWaveSlope` | 傾きだけ (シルエットは出ない) |
 | さざ波 (5 オクターブ) | PS の `WaterDetailGradient` + タイル | 法線のゆらぎ・反射のざらつき |
 | ピクセル以下 | `roughnessAA` | 粗さ (= 反射のぼけ) |
@@ -25,6 +25,16 @@ Wireframe Lit / Unlit は、水面の頂点変形を維持したまま両面の�
 その帯の見え方が丸ごと抜けて「板」や「鏡」になる。
 
 ---
+
+## 海況と進行方向
+
+Water Component の `Sea State` で凪・穏やか・外洋・荒天を選ぶ。共有設定には `Wave Asset` を使う。角度はワールド XZ の進行方向で、0° は +X、90° は +Z。Scene View の黄色い矢印をドラッグして主うねりの向きを調整し、ボタンを離すと Undo できる操作として確定する。扇形は方向の全幅、紫の矢印は副うねりを示す。
+
+角度と広がりの編集は seed・波長・振幅・初期位相を保つ。副うねりは独立した seed で 3 本を生成する。16 本の枠を超える場合は主うねりの末尾を減らす。生成した波を既存の収縮制限に通し、描画・浮力・水面判定に共有する。さざ波の方向はシーン風または手動の向きへ差し替えられる。シーン風が無効なときは材質またはローカルの水流を使う。
+
+旧シーンに海況設定も波アセットもなければ、水平線まで延長する水面は外洋、有限水域は凪へ読み替える。波アセット付きの旧シーンはその参照を使用する。保存時に `waveAuthoring` を書き出す。マテリアルの個別 4 波編集は水面 Inspector の海況設定に統合した。
+
+方向と角度分布は [Unreal Engine の Water Waves Asset](https://dev.epicgames.com/documentation/en-us/unreal-engine/simulating-waves-using-the-water-waves-asset-in-unreal-engine)、うねりとさざ波の分離は [Unity HDRP の波帯](https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.high-definition/Documentation~/water-water-system-simulation.md) を参照した。
 
 ## うねりの「群」— 正弦 4 本が同じ形に見える問題
 
@@ -397,16 +407,39 @@ C++ の `WaterEffectParams` も同じ名前で揃えること。
 
 | 型 | 流れ | 形 | 質感 |
 |---|---|---|---|
-| Uniform | 向き × 流速 × influence | **出さない** | «風の足跡» — さざ波の強度を最大 1.6 倍 |
+| Uniform | 向き × 流速 × influence | 振幅を指定したときだけ局所うねり | «風の足跡» — さざ波の強度を最大 1.6 倍 |
 | Sink | 内向き | 穴 `−v²/2g` (排水口) | 目に泡 (渦の 0.6 倍) |
 | Source | 外向き | 盛り上がり `+v²/2g` (湧き上がり) | 縁に泡の輪 |
-| Vortex | 接線 | 穴 `−v²/2g` (軸がほぼ鉛直のものだけ) | 目に泡 |
+| Vortex | 接線 | 穴 `−v²/2g`、または制作指定の螺旋渦 (軸がほぼ鉛直のものだけ) | 目と螺旋の波頭に泡 |
 | Curl | `SampleFlow` のまま (PS では曲げない) | **出さない** | さざ波の強度↑ + 泡のムラ (chop) |
 | Baked | 場を基準面で標本化した XZ 成分 | `−min(\|v_xz\|²/2g, 上限)` | 流速から向きと強度 |
 
-**Uniform と Curl が形を持たない理由**: 局所の風はうねりを育てない。風で波が育つには吹送距離と
-時間が要り、それは `.mat` の `windResponse` と `SceneEnvironment` の環境風の担当 (`WaterSystem`)。
+局所流速だけではうねりを育てない。環境風への波の反応は `.mat` の `windResponse` と
+`SceneEnvironment` の担当 (`WaterSystem`)。Uniform の明示的なうねりは下記の制作制御を使う。
 乱流には «高さ» が定義できない。
+
+### Uniform の局所うねり
+
+海面に **Flow Field → Uniform** を置き、**Direction** の水平成分、**Radius [m]**、
+**Water Swell Amplitude [m]**、**Water Swell Wavelength [m]** を指定する。振幅 0 が旧データの既定。
+例えば半径 90 m・振幅 0.8 m・波長 24 m。速度を 0 にすると海流を変えずにうねりを置ける。
+水面の材質に `Assets/Materials/Water/ClearCoastalSwell.mat` を使うと、浅瀬向けに調整した吸収・散乱と反射を利用できる。
+
+基準水面と影響球の断面を使い、世界 XZ の中心に固定する。縦変位は
+`A · max(1 − r²/R², 0)² · cos(k · (along + 0.18 · across²/R) − √(9.8k) · t)`。
+外周の高さと勾配はゼロ。波長は 2〜1000 m、振幅は波長の 7% と既存の変位上限 3 m 以下へ制限する。
+浮力・水中判定・描画は同じ波の時計と浅水減衰を使う。描画ではさらにパッチのセル幅に応じて細かい波を減衰する。
+局所うねりは他の場と同じ水面あたり 8 枠を共有し、Horizon では元の矩形外にも配置できる。
+
+### Vortex の螺旋渦
+
+**Flow Field → Vortex** で **Axis** を鉛直へ向け、**Water Vortex Depth [m]** と **Water Spiral Spacing [m]** を指定する。
+深さ 0 では従来の Bernoulli の渦を使う。正の深さは半径の 45% と 24 m の小さい方まで。
+半径 70 m・深さ 12 m・間隔 28 m など、場ごとに設定できる。
+中心のくぼみと内側へ進む二本腕の波を合成し、位相に沿って波頭の泡を置く。
+描画 LOD はくぼみの直径と螺旋の間隔を別々に評価し、粗いグリッドでは螺旋から先に減衰させる。
+波は中心と外周で減衰し、軸を反転すると旋回方向も反転する。スクリプトやシーン保存上は
+`waterSwellAmplitude` と `waterSwellWavelength` を Uniform と共用する。
 
 **Curl を PS で曲げない理由**: 向きを曲げるにはピクセルごとにカールノイズを回すことになる。
 乱流が出したいのは «向き» ではなく «ざわつき» なので、質感だけに落とす。
@@ -518,7 +551,7 @@ influence(r) = pow(saturate(1 − r/radius), falloffPower)      r ≥ radius で
 | `surfaceFlowB` | speed (Vortex は spin×速さ、Baked は無次元の倍率) | falloffPower | kind (`FlowFieldType`) | chop |
 | `surfaceFlowC` | dir.x | dir.z | bakedTile (−1 = 無効) | bakedMaxMagnitude |
 | `surfaceFlowD` | inverseRotation (x, y, z, w) | | | |
-| `surfaceFlowE` | extents.x | extents.y | extents.z | planeOffsetY |
+| `surfaceFlowE` | Baked の extents.x / 局所波の波長 | Baked の extents.y / 局所波の近景帯域係数 | extents.z | planeOffsetY |
 
 本数は `waveShapeParams.y` (枠を増やさないため据え置き)。`kind` は `FlowFieldType` の値そのもので、
 `ParticleGpuSim.cs.hlsl` の `FF_*` と同じ番号。

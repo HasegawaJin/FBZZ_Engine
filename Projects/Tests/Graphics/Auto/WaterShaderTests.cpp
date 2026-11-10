@@ -1161,7 +1161,46 @@ protected:
     uint32_t m_captureExtent = EXTENT;
 };
 
-TEST_F(WaterShaderTest, ProductionRasterStripMatchesRegularAndAdaptiveWater)
+/// @note These production tests need real Engine metadata even when run without another asset fixture.
+/// @note Restore the standard Engine callbacks, not an empty service: AssetManager installs them at DLL load.
+class ProductionWaterShaderTest : public WaterShaderTest {
+protected:
+    static renderer::AssetPathService MakeEngineAssetPathService()
+    {
+        renderer::AssetPathService service{};
+        service.resolveAssetPath = [](const std::string& path) {
+            return asset::AssetManager::ResolveAssetPath(path);
+        };
+        service.resolveTextureSource = [](std::string_view path, std::string& out) {
+            return asset::TexDescSerializer::ResolveSourcePath(path, out);
+        };
+        service.normalizeTextureKey = [](std::string_view reference, std::string& out) {
+            std::string spriteName;
+            (void)asset::ParseSpriteReference(reference, out, spriteName);
+        };
+        service.resolveShaderCapabilities = asset::ResolveShaderCapabilities;
+        return service;
+    }
+
+    void SetUp() override
+    {
+        auto service = MakeEngineAssetPathService();
+        service.resolveShaderCapabilities = [](std::string_view reference) {
+            return asset::ResolveShaderCapabilities(
+                ResolveWaterShaderFile(std::filesystem::path(reference)).generic_string());
+        };
+        renderer::SetAssetPathService(service);
+        WaterShaderTest::SetUp();
+    }
+
+    void TearDown() override
+    {
+        WaterShaderTest::TearDown();
+        renderer::SetAssetPathService(MakeEngineAssetPathService());
+    }
+};
+
+TEST_F(ProductionWaterShaderTest, ProductionRasterStripMatchesRegularAndAdaptiveWater)
 {
     ASSERT_TRUE(PrepareRasterStrips(16));
     renderer::Camera camera;
@@ -1200,7 +1239,7 @@ TEST_F(WaterShaderTest, ProductionRasterStripMatchesRegularAndAdaptiveWater)
     }
 }
 
-TEST_F(WaterShaderTest, DISABLED_BenchmarkWaterRasterListAndStrip)
+TEST_F(ProductionWaterShaderTest, DISABLED_BenchmarkWaterRasterListAndStrip)
 {
     ASSERT_TRUE(PrepareRasterStrips(16));
     renderer::Camera camera;
@@ -1487,45 +1526,6 @@ TEST_F(WaterShaderTest, ProjectAppearanceUsesItsOwnReflectedBufferAndMatchesInde
     for (size_t index = 0; index < red.size(); ++index) tintDifference += std::abs(red[index] - indexed[index]);
     EXPECT_GT(tintDifference, 100.0);
 }
-
-/// @note These production tests need real Engine metadata even when run without another asset fixture.
-/// @note Restore the standard Engine callbacks, not an empty service: AssetManager installs them at DLL load.
-class ProductionWaterShaderTest : public WaterShaderTest {
-protected:
-    static renderer::AssetPathService MakeEngineAssetPathService()
-    {
-        renderer::AssetPathService service{};
-        service.resolveAssetPath = [](const std::string& path) {
-            return asset::AssetManager::ResolveAssetPath(path);
-        };
-        service.resolveTextureSource = [](std::string_view path, std::string& out) {
-            return asset::TexDescSerializer::ResolveSourcePath(path, out);
-        };
-        service.normalizeTextureKey = [](std::string_view reference, std::string& out) {
-            std::string spriteName;
-            (void)asset::ParseSpriteReference(reference, out, spriteName);
-        };
-        service.resolveShaderCapabilities = asset::ResolveShaderCapabilities;
-        return service;
-    }
-
-    void SetUp() override
-    {
-        auto service = MakeEngineAssetPathService();
-        service.resolveShaderCapabilities = [](std::string_view reference) {
-            return asset::ResolveShaderCapabilities(
-                ResolveWaterShaderFile(std::filesystem::path(reference)).generic_string());
-        };
-        renderer::SetAssetPathService(service);
-        WaterShaderTest::SetUp();
-    }
-
-    void TearDown() override
-    {
-        WaterShaderTest::TearDown();
-        renderer::SetAssetPathService(MakeEngineAssetPathService());
-    }
-};
 
 TEST_F(ProductionWaterShaderTest, ProductionRejectsUnknownWaterDeformationAndIsolatesItsMaterialBindings)
 {
@@ -2480,6 +2480,183 @@ TEST_F(WaterShaderTest, CoefficientOpticsUsesZeroExtinctionAndRgbBeerLambertTran
     }
 }
 
+TEST_F(WaterShaderTest, HorizonRefractionUsesSnellDistanceAndFallsBackOutsideTheSearchBudget)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, -6};
+    camera.LookAt({0, 0, 0});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.absorptionCoefficients = {0.2f, 0.4f, 0.6f, 0};
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    const auto dark = MakeDarkLight();
+    water.refractionFlowParams.x = 0;
+    const auto straight = RenderOpticalWater(camera, water, dark, true);
+    water.refractionFlowParams.x = 0.00001f;
+    const auto rejected = RenderOpticalWater(camera, water, dark, true);
+    water.refractionFlowParams.x = 1;
+    const auto bent = RenderOpticalWater(camera, water, dark, true);
+    ASSERT_EQ(straight.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(rejected.size(), straight.size());
+    ASSERT_EQ(bent.size(), straight.size());
+
+    const float incidentCosine = std::abs(camera.GetForward().y);
+    const float transmittedCosine = std::sqrt(1.0f - (1.0f - incidentCosine * incidentCosine) / (1.333f * 1.333f));
+    const std::array<float, 3> absorption{0.2f, 0.4f, 0.6f};
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    for (size_t channel = 0; channel < absorption.size(); ++channel) {
+        EXPECT_NEAR(straight[center + channel], std::exp(-absorption[channel] * 2.0f / incidentCosine), 0.004f);
+        EXPECT_NEAR(bent[center + channel], std::exp(-absorption[channel] * 2.0f / transmittedCosine), 0.012f);
+        EXPECT_NEAR(rejected[center + channel], straight[center + channel], 0.001f);
+        EXPECT_GT(bent[center + channel], straight[center + channel] + 0.02f);
+    }
+}
+
+TEST_F(WaterShaderTest, HorizonTransmissionUsesDielectricFresnelAtNormalAndObliqueIncidence)
+{
+    renderer::Camera camera;
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 60;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.surfaceParams = {1, 1, 0.4f, 2};
+    const auto dark = MakeDarkLight();
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    constexpr float WATER_IOR = 1.333f;
+    for (float horizontalDistance : {0.0f, 16.0f}) {
+        camera.m_position = {0, 6, -horizontalDistance};
+        if (horizontalDistance > 0.0f) camera.LookAt({0, 0, 0});
+        else camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+        water.wvpMatrix = camera.GetGpuViewProjection();
+        const auto pixels = RenderOpticalWater(camera, water, dark, true);
+        ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
+        const float cosine = std::abs(camera.GetForward().y);
+        const float transmittedCosine = std::sqrt(1.0f - (1.0f - cosine * cosine) / (WATER_IOR * WATER_IOR));
+        const float s = (cosine - WATER_IOR * transmittedCosine) / (cosine + WATER_IOR * transmittedCosine);
+        const float p = (WATER_IOR * cosine - transmittedCosine) / (WATER_IOR * cosine + transmittedCosine);
+        EXPECT_NEAR(pixels[center], 1.0f - 0.5f * (s * s + p * p), 0.003f);
+    }
+}
+
+TEST_F(WaterShaderTest, HorizonDirectScatterAccountsForTheIncidentAndOutgoingBeerPaths)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.absorptionCoefficients = {0.4f, 0.2f, 0.05f, 0};
+    water.scatteringCoefficients = {0.1f, 0.1f, 0.1f, 0};
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    auto sunlight = MakeDarkLight();
+    sunlight.lightColor = {1, 1, 1};
+    sunlight.lightIntensity = 1;
+    constexpr std::array<float, 3> EXTINCTION{0.5f, 0.3f, 0.15f};
+    constexpr float WATER_IOR = 1.333f;
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    for (float sunCosine : {1.0f, 0.35f}) {
+        sunlight.lightDir = {-std::sqrt(1.0f - sunCosine * sunCosine), -sunCosine, 0};
+        const auto pixels = RenderOpticalWater(camera, water, sunlight, true, BlackTexture());
+        ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
+        const float waterCosine = std::sqrt(1.0f - (1.0f - sunCosine * sunCosine) / (WATER_IOR * WATER_IOR));
+        const float s = (sunCosine - WATER_IOR * waterCosine) / (sunCosine + WATER_IOR * waterCosine);
+        const float p = (WATER_IOR * sunCosine - waterCosine) / (WATER_IOR * sunCosine + waterCosine);
+        const float beam = (1.0f - 0.5f * (s * s + p * p)) * sunCosine / waterCosine;
+        const float scale = 1.0f + 1.0f / waterCosine;
+        for (size_t channel = 0; channel < EXTINCTION.size(); ++channel) {
+            const float extinction = EXTINCTION[channel] * scale;
+            const float expected = 0.25f * beam * (0.1f / extinction) * (1.0f - std::exp(-extinction * 2.0f));
+            EXPECT_NEAR(pixels[center + channel], expected, 0.002f);
+        }
+    }
+}
+
+TEST_F(WaterShaderTest, HorizonReflectionRetainsLongWavePhaseBeyondTheRippleFilter)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.surfaceParams.y = 1;
+    water.reflectParams.x = 1;
+    water.detailParams = {64, 0, 0, 0.82f};
+    water.waveControls = {1, 0, 0, 1};
+    water.waveDir[0] = {1, 0, 0, 1};
+    constexpr float WAVELENGTH = 12.0f;
+    water.waveParams[0] = {1.4f, WAVELENGTH, 1, math::TWO_PI / WAVELENGTH};
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    const auto dark = MakeDarkLight();
+    VisualOverrides visual;
+    visual.effects = {};
+    visual.effects.specularStrength = 0.0f;
+    visual.advanced.iblIntensity = 1.0f;
+    /// @note Amplify the reflected signal above the render target's half-float quantization.
+    visual.advanced.iblSpecularScale = 4.0f;
+    visual.environmentGradient = true;
+    const auto render = [&] {
+        return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {},
+            &dark, {}, nullptr, nullptr, {}, {}, 0, {}, &visual);
+    };
+    const auto first = render();
+    water.wavePhasePacked[0].x = math::PI * 0.5f;
+    const auto second = render();
+    ASSERT_EQ(first.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(second.size(), first.size());
+    double sumDifference = 0.0;
+    for (uint32_t y = 48; y < 80; ++y)
+        for (uint32_t x = 48; x < 80; ++x) {
+            const size_t offset = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            sumDifference += std::abs(first[offset + 2] - second[offset + 2]);
+        }
+    EXPECT_GT(sumDifference / (32 * 32), 0.001);
+}
+
+TEST_F(WaterShaderTest, HorizonOpenWaterScatteringIsIndependentOfTheLegacyDepthTintDistance)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.absorptionCoefficients = {0.18f, 0.055f, 0.025f, 0};
+    water.scatteringCoefficients = {0.009f, 0.025f, 0.04f, 0};
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    auto ambient = MakeDarkLight();
+    ambient.ambientColor = {0.2f, 0.3f, 0.4f};
+    const auto shortTint = RenderOpticalWater(camera, water, ambient);
+    water.deepColorDepth.w = 20;
+    const auto longTint = RenderOpticalWater(camera, water, ambient);
+    ASSERT_EQ(shortTint.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(longTint.size(), shortTint.size());
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    EXPECT_NEAR(shortTint[center + 2], 0.2f * 0.04f / 0.065f, 0.003f);
+    EXPECT_NEAR(shortTint[center + 2], longTint[center + 2], 0.001f);
+}
+
 TEST_F(WaterShaderTest, OrthographicCoefficientOpticsKeepsEqualDepthAcrossThePlaneAndCameraHeights)
 {
     renderer::Camera camera;
@@ -2780,23 +2957,150 @@ TEST_F(WaterShaderTest, UnderwaterGrazingViewTotallyReflectsAndRejectsAirColorTr
     visual.advanced.iblSpecularScale = 1;
     visual.environmentGradient = true;
     const auto dark = MakeDarkLight();
-    const auto redPixels = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {},
-        &dark, redAir, nullptr, nullptr, {}, {}, 0, {}, &visual);
-    const auto bluePixels = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {},
-        &dark, blueAir, nullptr, nullptr, {}, {}, 0, {}, &visual);
-    ASSERT_EQ(redPixels.size(), EXTENT * EXTENT * 4u);
-    ASSERT_EQ(bluePixels.size(), redPixels.size());
-    for (uint32_t y = 48; y < 80; ++y)
-        for (uint32_t x = 48; x < 80; ++x) {
-            const size_t offset = (y * EXTENT + x) * 4u;
-            EXPECT_GT(redPixels[offset + 3], 0.9f);
-            for (size_t channel = 0; channel < 3; ++channel) {
-                ASSERT_TRUE(std::isfinite(redPixels[offset + channel]));
-                ASSERT_TRUE(std::isfinite(bluePixels[offset + channel]));
-                EXPECT_GT(redPixels[offset + channel], 0.005f);
-                EXPECT_NEAR(redPixels[offset + channel], bluePixels[offset + channel], 0.001f);
+    for (float horizon : {0.0f, 1.0f}) {
+        SCOPED_TRACE(horizon);
+        water.farOceanParams.x = horizon;
+        const auto redPixels = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {},
+            &dark, redAir, nullptr, nullptr, {}, {}, 0, {}, &visual);
+        const auto bluePixels = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {},
+            &dark, blueAir, nullptr, nullptr, {}, {}, 0, {}, &visual);
+        ASSERT_EQ(redPixels.size(), EXTENT * EXTENT * 4u);
+        ASSERT_EQ(bluePixels.size(), redPixels.size());
+        for (uint32_t y = 48; y < 80; ++y)
+            for (uint32_t x = 48; x < 80; ++x) {
+                const size_t offset = (y * EXTENT + x) * 4u;
+                EXPECT_GT(redPixels[offset + 3], 0.9f);
+                for (size_t channel = 0; channel < 3; ++channel) {
+                    ASSERT_TRUE(std::isfinite(redPixels[offset + channel]));
+                    ASSERT_TRUE(std::isfinite(bluePixels[offset + channel]));
+                    EXPECT_GT(redPixels[offset + channel], 0.005f);
+                    EXPECT_NEAR(redPixels[offset + channel], bluePixels[offset + channel], 0.001f);
+                }
             }
-        }
+    }
+}
+
+TEST_F(WaterShaderTest, HorizonTerrainFoamFavorsBreakingCrestsOverTheTrough)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.terrainInfoParams = {1, 8, 2, 1};
+    water.foamParams = {1.65f, 0.4f, 1, 0.5f};
+    water.reflectParams.w = 0.45f;
+    water.waveControls = {1, 0, 0, 1};
+    const float waveNumber = math::TWO_PI / 8.0f;
+    const float omega = std::sqrt(9.8f * waveNumber);
+    water.waveDir[0] = {1, 0, 0.55f, 1};
+    water.waveParams[0] = {0.45f, 8, omega, waveNumber};
+    water.wavePhasePacked[0].x = math::PI * 0.5f;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    const uint16_t word = static_cast<uint16_t>(std::round((0.95f / 8 + 1) * 0.5f * 65535));
+    const auto high = static_cast<uint8_t>(word >> 8u);
+    const auto low = static_cast<uint8_t>(word);
+    const auto terrain = TerrainInfoTexture({0, high, low, 1, 0, high, low, 1});
+    ASSERT_TRUE(terrain);
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    const auto crest = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light);
+    water.timeParams.w = math::PI / omega;
+    const auto trough = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light);
+    water.foamParams.z = 0;
+    const auto noFoam = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light);
+    ASSERT_EQ(crest.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(trough.size(), crest.size());
+    ASSERT_EQ(noFoam.size(), crest.size());
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    EXPECT_GT(crest[center], trough[center] + 0.05f);
+    EXPECT_GT(trough[center], noFoam[center] + 0.02f);
+    EXPECT_LE(noFoam[center], 0.001f);
+}
+
+TEST_F(WaterShaderTest, HorizonRetreatKeepsFoamFromPastBreakersWithOffshoreWhitecapsDisabled)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.terrainInfoParams = {1, 8, 2, 1};
+    water.foamParams = {1.65f, 0.4f, 1, 0.5f};
+    water.reflectParams.w = 0.45f;
+    water.waveControls = {1, 0, 0, 1};
+    const float waveNumber = math::TWO_PI / 8.0f;
+    const float omega = std::sqrt(9.8f * waveNumber);
+    water.waveDir[0] = {1, 0, 0, 1};
+    water.waveParams[0] = {0.45f, 8, omega, waveNumber};
+    water.wavePhasePacked[0].x = math::PI * 0.5f;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    const uint16_t word = static_cast<uint16_t>(std::round((0.95f / 8 + 1) * 0.5f * 65535));
+    const auto high = static_cast<uint8_t>(word >> 8u);
+    const auto low = static_cast<uint8_t>(word);
+    const auto terrain = TerrainInfoTexture({0, high, low, 1, 0, high, low, 1});
+    ASSERT_TRUE(terrain);
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    water.crestFoamParams = {0.5f, 0.2f, 0.0f, 2.0f * math::PI / omega};
+    water.timeParams.w = math::PI / omega;
+    const auto trailing = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light);
+    water.crestFoamParams.w = 0.0f;
+    const auto instant = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light);
+    water.crestFoamParams.w = 0.01f;
+    const auto expired = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light);
+    ASSERT_EQ(trailing.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(instant.size(), trailing.size());
+    ASSERT_EQ(expired.size(), trailing.size());
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    EXPECT_GT(trailing[center], instant[center] + 0.02f);
+    EXPECT_NEAR(expired[center], instant[center], 0.001f);
+}
+
+TEST_F(WaterShaderTest, HorizonShoreFoamUsesNearbyOpaqueDepthWhenTerrainAtlasIsCoarse)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.terrainInfoParams = {1, 8, 2, 1};
+    water.foamParams = {0.5f, 0.35f, 1, 0.5f};
+    water.worldMatrix.m[1][3] = -1.8f;
+    water.wvpMatrix = camera.GetGpuViewProjection() * water.worldMatrix;
+    const uint16_t word = static_cast<uint16_t>(std::round((3.0f / 8 + 1) * 0.5f * 65535));
+    const auto high = static_cast<uint8_t>(word >> 8u);
+    const auto low = static_cast<uint8_t>(word);
+    const auto terrain = TerrainInfoTexture({0, high, low, 1, 0, high, low, 1});
+    ASSERT_TRUE(terrain);
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    const auto nearby = RenderWater(camera, water, false, true, false, nullptr, nullptr, {}, 0, terrain, &light, m_black);
+    const auto background = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light, m_black);
+    water.farOceanParams.x = 0;
+    const auto finite = RenderWater(camera, water, false, true, false, nullptr, nullptr, {}, 0, terrain, &light, m_black);
+    ASSERT_EQ(nearby.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(background.size(), nearby.size());
+    ASSERT_EQ(finite.size(), nearby.size());
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    EXPECT_GT(nearby[center], 0.03f);
+    EXPECT_LE(background[center], 0.001f);
+    EXPECT_LE(finite[center], 0.001f);
 }
 
 TEST_F(WaterShaderTest, TerrainDepthIgnoresLegacyMaskRedWhileFallbackStillProducesLitFoam)
@@ -3550,6 +3854,7 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsFlatAndSlopedTerrainBottomFixe
     const auto encode = [](float depth) { return static_cast<uint16_t>(std::round((depth / 8 + 1) * 0.5f * 65535)); };
     const auto decode = [](uint16_t word) { return (static_cast<float>(word) / 65535 * 2 - 1) * 8; };
     for (bool slope : {false, true}) {
+        water.terrainDomain = slope ? math::Vector4{1.25f, -0.5f, 10.0f, 14.0f} : math::Vector4{};
         const uint16_t left = encode(slope ? 3.25f : 4.25f), right = encode(slope ? 5.25f : 4.25f);
         const auto terrain = TerrainInfoTexture({0, static_cast<uint8_t>(left >> 8), static_cast<uint8_t>(left), 1,
             0, static_cast<uint8_t>(right >> 8), static_cast<uint8_t>(right), 1});
@@ -3566,7 +3871,8 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsFlatAndSlopedTerrainBottomFixe
                     if (atlas.pixels[offset + 3] < 0.5f) continue;
                     /// @note The fixture's 9 m bounds gain 0.5 m horizontal margin on each side.
                     const float worldX = -5.0f + (static_cast<float>(x) + 0.5f) / atlas.tileResolution * 10;
-                    const float blend = std::clamp((0.5f + worldX / WATER_X) * 2 - 0.5f, 0.0f, 1.0f);
+                    const float terrainU = slope ? 0.5f + (worldX - 1.25f) / 10.0f : 0.5f + worldX / WATER_X;
+                    const float blend = std::clamp(terrainU * 2 - 0.5f, 0.0f, 1.0f);
                     const float expectedBottom = -(decode(left) + (decode(right) - decode(left)) * blend);
                     const float bottom = atlas.pixels[offset] - atlas.pixels[offset + 1];
                     maxError = (std::max)(maxError, std::abs(bottom - expectedBottom));
@@ -3579,6 +3885,44 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsFlatAndSlopedTerrainBottomFixe
             EXPECT_LT(maxError, 0.002f) << "Fixed terrain moved with waves; slope=" << slope << " time=" << time;
         }
     }
+}
+
+TEST_F(WaterShaderTest, ProductionMediumAtlasMovesTheHorizonShorelineAcrossTheMeanWaterLevel)
+{
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1.0f;
+    water.terrainInfoParams = {1, 8, 2, 1};
+    water.terrainDomain = {0, 0, 10, 10};
+    water.waveDepthParams = {6, 1, 1, 0};
+    water.waveControls = {1, 0, 0, 1};
+    water.waveDir[0] = {0, 1, 0.5f, 1};
+    const float waveNumber = math::TWO_PI / 8.0f;
+    const float omega = std::sqrt(9.8f * waveNumber);
+    water.waveParams[0] = {0.8f, 8, omega, waveNumber};
+    water.wavePhasePacked[0].x = math::PI * 0.5f;
+    const auto encode = [](float depth) {
+        return static_cast<uint16_t>(std::round((depth / 8 + 1) * 0.5f * 65535));
+    };
+    const uint16_t left = encode(0.4f), right = encode(-0.4f);
+    const auto terrain = TerrainInfoTexture({0, static_cast<uint8_t>(left >> 8), static_cast<uint8_t>(left), 1,
+        0, static_cast<uint8_t>(right >> 8), static_cast<uint8_t>(right), 3});
+    ASSERT_TRUE(terrain);
+    const auto crest = CaptureProductionMediumAtlas(water, false, 0, false, false, terrain);
+    water.timeParams.w = math::PI / omega;
+    const auto trough = CaptureProductionMediumAtlas(water, false, 0, false, false, terrain);
+    ASSERT_GT(crest.tileResolution, 16u);
+    ASSERT_EQ(crest.tileResolution, trough.tileResolution);
+    ASSERT_EQ(crest.pixels.size(), static_cast<size_t>(crest.width) * crest.height * 4u);
+    ASSERT_EQ(crest.pixels.size(), trough.pixels.size());
+    const uint32_t row = crest.tileResolution / 2;
+    const uint32_t landward = crest.tileResolution * 5 / 8;
+    const uint32_t seaward = crest.tileResolution * 3 / 8;
+    const size_t landPixel = (static_cast<size_t>(row) * crest.width + landward) * 4u;
+    const size_t seaPixel = (static_cast<size_t>(row) * crest.width + seaward) * 4u;
+    EXPECT_GT(crest.pixels[landPixel + 1], 0.1f);
+    EXPECT_GT(crest.pixels[seaPixel + 1], crest.pixels[landPixel + 1] + 0.2f);
+    EXPECT_NEAR(trough.pixels[landPixel + 1], 0.0f, 0.001f);
+    EXPECT_NEAR(trough.pixels[seaPixel + 1], 0.0f, 0.001f);
 }
 
 TEST_F(WaterShaderTest, ProductionMediumAtlasPreservesSplineCoverageHeightAndExplicitZeroDepth)

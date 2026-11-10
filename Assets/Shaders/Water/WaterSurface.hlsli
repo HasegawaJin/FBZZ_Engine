@@ -111,10 +111,10 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_patchCornerCellSize[4];
     float4   g_crestFoamParams; ///< @note x/y=正規化波高の開始/幅, z=波頭泡の強度, w=履歴の減衰時間 [s]
     float4   g_foamColorRoughness; ///< @note xyz=泡の反射率, w=泡表面の粗さ
-    float4   g_farOceanParams; ///< @note x=外洋有効, y=遠景描画, z=矩形外の波紋減衰幅 [m]
+    float4   g_farOceanParams; ///< @note x=Horizon 有効, y=Horizon パッチ, z=局所波紋の減衰幅 [m], abs(w)=媒体 owner ID。正のとき除外を照会する。
     float4   g_terrainInfoParams; ///< @note x=水底情報有効, y=符号付き水深の範囲 [m], zw=情報テクスチャ寸法
     float4   g_wavePhasePacked[4];
-    float4   g_waveControls; ///< @note x=有効基波数、w=明示count flag。0は4基波互換。
+    float4   g_waveControls; ///< @note x=有効基波数、yz=さざ波の方向上書き (0 で基流)、w=明示count。
     float4   g_absorptionCoefficients;
     float4   g_scatteringCoefficients;
     float4   g_opticalParams;
@@ -124,6 +124,8 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_patchMorphParams;
     float4   g_patchMorphCellSize;
     float4   g_waveDepthParams;
+    float4   g_horizonPatchDomain; ///< @note xy=local XZ 最小値, zw=local 寸法。0 寸法は従来の有限矩形。
+    float4   g_terrainDomain; ///< @note xy=Terrain 域中心, zw=寸法。Water 軸へ投影した world m。
 };
 
 int WaterWaveCount()
@@ -251,6 +253,7 @@ struct WaterPSInput
     float relativeSurfaceY : TEXCOORD13; ///< @brief WaterCB の world origin からの高さ。大きな座標で小さな波を失わない。
     float waveJacobian : TEXCOORD14; ///< @brief Gerstner 水平変位の実ヤコビアン。媒体と集光で共有する。
     float4 waveMeshFade[4] : TEXCOORD15; ///< @brief 頂点で保持した各基波の振幅比。残差と相補的に補間する。
+    float4 shoreWaveHeights : TEXCOORD19; ///< @brief xyz=岸泡履歴の符号付き波高、w=現在の波高 [m]。
 };
 
 /// @brief 有限矩形の外周を保ったまま、軸の中央へ近景の頂点を集める。
@@ -300,66 +303,95 @@ float WaveMeshFade(float wavelength, float2 cellSize)
     return smoothstep(2.0f, 3.5f, wavelength / cell);
 }
 
-/// @note 群の向きを波から傾ける角 (0.55 rad) の cos / sin。WaterComponent と同じ値。
 float2 WaterTerrainUvAtWorldXZ(float2 worldXZ);
+float2 SampleWaterTerrainDepth(float2 uv);
+
+float2 WaterTerrainExtent()
+{
+    return all(g_terrainDomain.zw > 0.0f) ? g_terrainDomain.zw : g_normalParams.xy;
+}
 
 /// @note CPU WaterDepthField と同じflags/GB16bit/texel中心を使い、係数を復号してから補間する。
-float WaterDepthTexelFactor(float4 texel)
+/// @see https://pubs.usgs.gov/publication/70030520 Stockdon et al. (2006), wave runup and swash elevation.
+float2 WaterDepthTexelFactors(float4 texel, float landFadeDepth)
 {
     uint flags = (uint)round(texel.a * 255.0f);
     if ((flags & 1u) == 0u) return 1.0f;
-    if ((flags & 2u) != 0u) return 0.0f;
+    const bool dry = (flags & 2u) != 0u;
+    if (dry && landFadeDepth <= 0.0f) return 0.0f;
     uint word = (uint)round(texel.g * 255.0f) * 256u + (uint)round(texel.b * 255.0f);
     float depth = ((float)word / 65535.0f * 2.0f - 1.0f) * g_terrainInfoParams.y;
-    if ((flags & 4u) != 0u) return depth > 0.0f ? 1.0f : 0.0f;
-    return smoothstep(0.0f, g_waveDepthParams.x, depth);
+    if ((flags & 4u) != 0u) return !dry && depth > 0.0f ? 1.0f : 0.0f;
+    if (dry) depth = min(depth, 0.0f);
+    const float horizontal = smoothstep(0.0f, g_waveDepthParams.x, depth);
+    if (landFadeDepth <= 0.0f) return horizontal;
+    const float shoreHeightFactor = 0.65f;
+    const float vertical = depth < 0.0f
+        ? shoreHeightFactor * smoothstep(-landFadeDepth, 0.0f, depth)
+        : lerp(shoreHeightFactor, 1.0f, horizontal);
+    return float2(horizontal, vertical);
 }
 
-/// @return x=浅水振幅係数、yz=world XZでの係数の解析勾配。
-float3 WaterDepthState(float2 baseWorldXZ)
+struct WaterWaveDepthState
 {
+    float3 horizontal;
+    float3 vertical;
+};
+
+/// @return 各軸の x は振幅係数、yz は world XZ での解析勾配。
+WaterWaveDepthState WaterDepthState(float2 baseWorldXZ)
+{
+    WaterWaveDepthState state = {float3(1.0f, 0.0f, 0.0f), float3(1.0f, 0.0f, 0.0f)};
     if (g_waveDepthParams.x <= 0.0f || g_waveDepthParams.y < 0.5f || g_terrainInfoParams.x < 0.5f)
-        return float3(1.0f, 0.0f, 0.0f);
+        return state;
     float2 uv = WaterTerrainUvAtWorldXZ(baseWorldXZ);
     float2 clampedUv = saturate(uv);
-    float2 outside = (uv - clampedUv) * g_normalParams.xy;
+    float2 terrainExtent = WaterTerrainExtent();
+    float2 outside = (uv - clampedUv) * terrainExtent;
     float outsideDistance = length(outside);
     float outsideWidth = max(g_waveDepthParams.z, 0.001f);
-    if (outsideDistance >= outsideWidth) return float3(1.0f, 0.0f, 0.0f);
+    if (outsideDistance >= outsideWidth) return state;
     int2 dimensions = max((int2)g_terrainInfoParams.zw, int2(1, 1));
     float2 pixel = clampedUv * (float2)dimensions - 0.5f;
     int2 basePixel = (int2)floor(pixel);
     float2 blend = frac(pixel);
-    float factors[4];
+    const float landFadeDepth = all(g_terrainDomain.zw > 0.0f)
+        ? min(g_terrainInfoParams.y, clamp(0.35f * g_waveDepthParams.x, 0.25f, 2.0f)) : 0.0f;
+    float2 factors[4];
     [unroll]
     for (int z = 0; z < 2; ++z) {
         [unroll]
         for (int x = 0; x < 2; ++x) {
             int2 texel = clamp(basePixel + int2(x, z), int2(0, 0), dimensions - 1);
-            factors[z * 2 + x] = WaterDepthTexelFactor(g_foamMask.Load(int3(texel, 0)));
+            factors[z * 2 + x] = WaterDepthTexelFactors(g_foamMask.Load(int3(texel, 0)), landFadeDepth);
         }
     }
-    float lower = lerp(factors[0], factors[1], blend.x);
-    float upper = lerp(factors[2], factors[3], blend.x);
-    float du = lerp(factors[1] - factors[0], factors[3] - factors[2], blend.y) * dimensions.x;
-    float dv = lerp(factors[2] - factors[0], factors[3] - factors[1], blend.x) * dimensions.y;
+    float2 lower = lerp(factors[0], factors[1], blend.x);
+    float2 upper = lerp(factors[2], factors[3], blend.x);
+    float2 du = lerp(factors[1] - factors[0], factors[3] - factors[2], blend.y) * dimensions.x;
+    float2 dv = lerp(factors[2] - factors[0], factors[3] - factors[1], blend.x) * dimensions.y;
     if (outside.x != 0.0f) du = 0.0f;
     if (outside.y != 0.0f) dv = 0.0f;
     float2 axisU = normalize(mul(float4(1.0f, 0.0f, 0.0f, 0.0f), g_worldMatrix).xz);
     float2 axisV = normalize(mul(float4(0.0f, 0.0f, 1.0f, 0.0f), g_worldMatrix).xz);
-    float2 gradient = du * axisU / g_normalParams.x + dv * axisV / g_normalParams.y;
-    float factor = saturate(lerp(lower, upper, blend.y));
+    float2 gradientX = du * (axisU.x / terrainExtent.x) + dv * (axisV.x / terrainExtent.y);
+    float2 gradientZ = du * (axisU.y / terrainExtent.x) + dv * (axisV.y / terrainExtent.y);
+    float2 factor = saturate(lerp(lower, upper, blend.y));
     if (outsideDistance > 0.0f) {
         float t = saturate(outsideDistance / outsideWidth);
         float blendOut = t * t * (3.0f - 2.0f * t);
-        float2 distanceGradient = (axisU * outside.x + axisV * outside.y) / outsideDistance;
-        gradient = (1.0f - blendOut) * gradient
-            + (1.0f - factor) * (6.0f * t * (1.0f - t) / outsideWidth) * distanceGradient;
+        const float2 distanceGradient = (axisU * outside.x + axisV * outside.y) / outsideDistance;
+        const float2 fadeSlope = (1.0f - factor) * (6.0f * t * (1.0f - t) / outsideWidth);
+        gradientX = (1.0f - blendOut) * gradientX + fadeSlope * distanceGradient.x;
+        gradientZ = (1.0f - blendOut) * gradientZ + fadeSlope * distanceGradient.y;
         factor = lerp(factor, 1.0f, blendOut);
     }
-    return float3(factor, gradient);
+    state.horizontal = float3(factor.x, gradientX.x, gradientZ.x);
+    state.vertical = float3(factor.y, gradientX.y, gradientZ.y);
+    return state;
 }
 
+/// @note 群の向きを波から傾ける角 (0.55 rad) の cos / sin。WaterComponent と同じ値。
 static const float kWaveGroupCos = 0.852525f;
 static const float kWaveGroupSin = 0.522687f;
 
@@ -396,7 +428,7 @@ float WaveGroupEnvelope(int index, float2 D, float k, float omega, float2 worldX
 /// @warning 方向が 0 の «使っていない波» で normalize が NaN を返すため、包絡は必ず
 /// @note 早期リターンの後で評価すること。NaN は fade <= 0 の判定をすり抜けて全体へ伝播する。
 float3 GerstnerDisplace(int index, float4 dirData, float4 params, float3 pos, float time, float fade,
-                        float3 depthState, inout float3 tangent, inout float3 binormal)
+                        WaterWaveDepthState depthState, inout float3 tangent, inout float3 binormal)
 {
     if (dirData.w <= 0.0f || fade <= 0.0f)
         return float3(0.0f, 0.0f, 0.0f);
@@ -404,24 +436,21 @@ float3 GerstnerDisplace(int index, float4 dirData, float4 params, float3 pos, fl
     float2 D = normalize(dirData.xy);
     float  Q = saturate(dirData.z);
     float baseA = params.x * fade * WaveGroupEnvelope(index, D, params.w, params.z, pos.xz, time);
-    float A = baseA * depthState.x;
     float  k = params.w;
     float  omega = params.z;
     float  phi = k * dot(D, pos.xz) - omega * time + WaterWavePhase(index);
     float  s = sin(phi);
     float  c = cos(phi);
 
-    tangent.x  -= Q * D.x * D.x * k * A * s;
-    tangent.y  += D.x * k * A * c;
-    tangent.z  -= Q * D.x * D.y * k * A * s;
-    binormal.x -= Q * D.x * D.y * k * A * s;
-    binormal.y += D.y * k * A * c;
-    binormal.z -= Q * D.y * D.y * k * A * s;
+    const float2 push = Q * baseA * D;
+    const float2 horizontalSlope = c * depthState.horizontal.yz - k * s * depthState.horizontal.x * D;
+    const float2 verticalSlope = s * depthState.vertical.yz + k * c * depthState.vertical.x * D;
     /// @note 振幅の空間減衰には積の微分が必要。浅瀬の勾配を落とすとCPUの法線と異なる。
-    tangent += float3(Q * D.x * c, s, Q * D.y * c) * (baseA * depthState.y);
-    binormal += float3(Q * D.x * c, s, Q * D.y * c) * (baseA * depthState.z);
+    tangent += float3(push.x * horizontalSlope.x, baseA * verticalSlope.x, push.y * horizontalSlope.x);
+    binormal += float3(push.x * horizontalSlope.y, baseA * verticalSlope.y, push.y * horizontalSlope.y);
 
-    return float3(Q * A * D.x * c, A * s, Q * A * D.y * c);
+    const float2 horizontal = push * (depthState.horizontal.x * c);
+    return float3(horizontal.x, baseA * depthState.vertical.x * s, horizontal.y);
 }
 
 /// @brief 方向広がりの成分ごとの «向きと振幅倍率»。
@@ -455,10 +484,10 @@ void ResolveWaveSpread(out float2 rotation, out float2 scales)
     rotation = float2(cos(angle), sin(angle));
 }
 
-/// @brief 指定時刻の正規化した正の波高と水平圧縮を同じ波評価から求める。
+/// @brief 指定時刻の符号付き波高 [m] と水平圧縮を同じ波評価から求める。
 /// @param basePos 変位«前»のワールド位置。Gerstner の位相はここで取る。
 /// @note 位相の sin を高さとヤコビアンで共有し、履歴の追加の三角関数を避ける。
-float2 WaterWaveCrestAt(float3 basePos, float time, float2 meshCellSize, float3 depthState)
+float2 WaterWaveCrestAt(float3 basePos, float time, float2 meshCellSize, WaterWaveDepthState depthState)
 {
     float txx = 1.0f, txz = 0.0f, bzx = 0.0f, bzz = 1.0f;
     float height = 0.0f;
@@ -484,22 +513,21 @@ float2 WaterWaveCrestAt(float3 basePos, float time, float2 meshCellSize, float3 
             float baseA = g_waveParams[i].x * fade * scale
                     * WaveGroupEnvelope(i, D, k, g_waveParams[i].z, basePos.xz, time);
             float phi = k * dot(D, basePos.xz) - g_waveParams[i].z * time + WaterWavePhase(i);
-            float waveHeight = baseA * depthState.x * sin(phi);
-            height += waveHeight;
-            float qkAs = saturate(g_waveDir[i].z) * k * waveHeight;
+            const float heightAtPhase = baseA * sin(phi);
+            height += heightAtPhase * depthState.vertical.x;
+            float qkAs = saturate(g_waveDir[i].z) * k * heightAtPhase * depthState.horizontal.x;
             txx -= D.x * D.x * qkAs;
             txz -= D.x * D.y * qkAs;
             bzx -= D.x * D.y * qkAs;
             bzz -= D.y * D.y * qkAs;
             float gradientPush = saturate(g_waveDir[i].z) * baseA * cos(phi);
-            txx += D.x * gradientPush * depthState.y;
-            txz += D.y * gradientPush * depthState.y;
-            bzx += D.x * gradientPush * depthState.z;
-            bzz += D.y * gradientPush * depthState.z;
+            txx += D.x * gradientPush * depthState.horizontal.y;
+            txz += D.y * gradientPush * depthState.horizontal.y;
+            bzx += D.x * gradientPush * depthState.horizontal.z;
+            bzz += D.y * gradientPush * depthState.horizontal.z;
         }
     }
-    return float2(saturate(height / max(g_reflectParams.w, 0.01f)),
-                  saturate(1.0f - (txx * bzz - txz * bzx)));
+    return float2(height, saturate(1.0f - (txx * bzz - txz * bzx)));
 }
 
 /// @brief 波高による泡の帯を作り、水平圧縮が強い波頭と折り畳みを増幅する。
@@ -598,6 +626,82 @@ float3 WaterRadialDisplacement(int i, float2 worldXZ)
     float2 d = worldXZ - a.xy;
     float  h = a.w * exp(-dot(d, d) / (s * s));
     return float3(h, -2.0f * h * d / (s * s));
+}
+
+/// @brief World-anchored swell height and XZ gradient inside a Uniform field.
+/// @note The squared compact envelope keeps the displacement and slope continuous at the boundary.
+/// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1, directional waves and deep-water phase speed.
+/// @warning Keep the phase and envelope in sync with WaterComponent::WaterSwellDisplacement.
+float3 WaterSwellDisplacement(int i, float2 worldXZ, float time, float2 meshCellSize)
+{
+    const float4 field = g_surfaceFlowA[i];
+    const float2 band = g_surfaceFlowE[i].xy;
+    if (field.w <= 0.0f || field.z <= 0.0f || band.x <= 0.0f || band.y <= 0.0f)
+        return 0.0f;
+    const float invRadius = 1.0f / field.z;
+    const float2 offset = worldXZ - field.xy;
+    const float2 normalized = offset * invRadius;
+    const float envelope = 1.0f - dot(normalized, normalized);
+    if (envelope <= 0.0f) return 0.0f;
+    const float lodFade = min(1.0f, WaveMeshFade(min(band.x, 2.0f * field.z), meshCellSize) / band.y);
+    if (lodFade <= 0.0f) return 0.0f;
+    const float2 direction = g_surfaceFlowC[i].xy;
+    const float2 side = float2(-direction.y, direction.x);
+    const float across = dot(offset, side);
+    const float waveNumber = 6.28318530718f / band.x;
+    const float phase = waveNumber * (dot(offset, direction) + 0.18f * across * (across * invRadius))
+                      - sqrt(9.8f * waveNumber) * time;
+    float sine, cosine;
+    sincos(phase, sine, cosine);
+    const float amplitude = field.w * lodFade;
+    const float shape = envelope * envelope;
+    const float2 shapeGradient = -4.0f * envelope * normalized * invRadius;
+    const float2 phaseGradient = waveNumber * (direction + side * (0.36f * across * invRadius));
+    return float3(amplitude * shape * cosine,
+        amplitude * (shapeGradient * cosine - shape * sine * phaseGradient));
+}
+
+/// @brief Compact vortex bowl, analytic slope and spiral crest foam.
+/// @note Angular frequency is an integer so crossing the atan2 branch cut does not introduce a seam.
+/// @warning Keep the bowl and spiral in sync with WaterComponent::WaterSwellDisplacement.
+float4 WaterVortexSwellDisplacement(int i, float2 worldXZ, float time, float2 meshCellSize)
+{
+    const float4 field = g_surfaceFlowA[i];
+    const float2 band = g_surfaceFlowE[i].xy;
+    if (field.w >= 0.0f || field.z <= 0.0f || band.y <= 0.0f) return 0.0f;
+    const float diameter = 2.0f * field.z;
+    /// @note The broad depression can remain resolved after the finer spiral falls below the mesh bandwidth.
+    const float bowlFade = min(1.0f, WaveMeshFade(diameter, meshCellSize) / band.y);
+    if (bowlFade <= 0.0f) return 0.0f;
+    const float invRadius = 1.0f / field.z;
+    const float2 offset = worldXZ - field.xy;
+    const float2 normalized = offset * invRadius;
+    const float radiusSquared = dot(normalized, normalized);
+    const float envelope = 1.0f - radiusSquared;
+    if (envelope <= 0.0f) return 0.0f;
+    const float bowl = envelope * envelope * envelope;
+    const float2 radiusGradient = 2.0f * normalized * invRadius;
+    const float2 bowlGradient = -3.0f * envelope * envelope * radiusGradient;
+    const float3 bowlDisplacement = (field.w * bowlFade) * float3(bowl, bowlGradient);
+    const float spiralFade = min(1.0f, WaveMeshFade(min(band.x, diameter), meshCellSize) / band.y);
+    if (radiusSquared <= 1.0e-10f || spiralFade <= 0.0f) return float4(bowlDisplacement, 0.0f);
+    const float ring = 6.75f * radiusSquared * envelope * envelope;
+    const float spiral = ring * (1.0f - bowl);
+    const float2 ringGradient = 6.75f * envelope * (envelope - 2.0f * radiusSquared) * radiusGradient;
+    const float2 spiralGradient = ringGradient * (1.0f - bowl) - ring * bowlGradient;
+    const float spin = (asuint(g_surfaceFlowB[i].x) & 0x80000000u) != 0u ? -1.0f : 1.0f;
+    const float waveNumber = 6.28318530718f / band.x;
+    const float unitRadius = sqrt(radiusSquared);
+    const float phase = waveNumber * unitRadius * field.z + 2.0f * spin * atan2(offset.y, offset.x)
+                      + sqrt(9.8f * waveNumber) * time;
+    const float2 phaseGradient = waveNumber * normalized / unitRadius
+        + (2.0f * spin * invRadius / radiusSquared) * float2(-normalized.y, normalized.x);
+    float sine, cosine;
+    sincos(phase, sine, cosine);
+    const float crest = saturate(cosine);
+    const float3 spiralDisplacement = (-0.22f * field.w * spiralFade)
+        * float3(spiral * cosine, spiralGradient * cosine - spiral * sine * phaseGradient);
+    return float4(bowlDisplacement + spiralDisplacement, spiral * crest * crest * crest * spiralFade);
 }
 
 /// @brief PS が使う «その点の流れと質感»。
@@ -725,6 +829,13 @@ float WaterLocalDataWeight(float2 uv)
     return 1.0f - smoothstep(0.0f, max(g_farOceanParams.z, 0.001f), distance);
 }
 
+/// @note The ripple bake truncates zero to 127 and untouched texels use 128. Both codes represent still water.
+float3 DecodeWaterRipple(float3 encoded)
+{
+    const float3 bytes = encoded * 255.0f;
+    return (max(bytes - 128.0f, 0.0f) - max(127.0f - bytes, 0.0f)) / 127.0f;
+}
+
 /// @brief Indexed VS と Mesh Shader が共有する水面頂点評価。
 /// @note Mesh Shader は同じパッチ instance index を渡し、既存の波・morph・flow・TAA 入力を維持する。
 WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
@@ -742,11 +853,25 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
         float3 axisX = mul(float4(1.0f, 0.0f, 0.0f, 0.0f), g_worldMatrix).xyz;
         float3 axisZ = mul(float4(0.0f, 0.0f, 1.0f, 0.0f), g_worldMatrix).xyz;
         float2 axisScale = max(float2(length(axisX), length(axisZ)), 1.0e-6f);
-        float2 extent = g_normalParams.xy / axisScale;
+        float2 authoredExtent = g_normalParams.xy / axisScale;
+        bool horizonDomain = all(g_horizonPatchDomain.zw > 0.0f);
+        float2 extent = horizonDomain ? g_horizonPatchDomain.zw : authoredExtent;
+        float2 minimum = horizonDomain ? g_horizonPatchDomain.xy : -0.5f * authoredExtent;
         /// @note 二進分割 UV から同じ全域 extent を一度だけ掛け、隣接 LOD の共有位置を揃える。
         uv = lerp(patch.rect.xy, patch.rect.zw, v.uv);
-        localPos.xz = (uv - 0.5f) * extent;
+        localPos.xz = minimum + uv * extent;
         meshCellSize = ResolveWaterPatchCellSize(v.uv, patch);
+        if (patch.morphParams.x > 0.5f) {
+            float3 worldPos = mul(float4(localPos, 1.0f), g_worldMatrix).xyz;
+            SurfacePatchMorphSample morph = SurfacePatchMorphUv(uv, v.uv, worldPos,
+                axisX * extent.x, axisZ * extent.y, patch.rect, patch.cellSize.w, patch.morphParams,
+                g_patchMorphView, g_patchMorphForward, g_patchMorphMetric, patch.morphCellSize.xy, meshCellSize);
+            uv = morph.uv;
+            meshCellSize = morph.cellSize;
+            localPos.xz = minimum + uv * extent;
+        }
+        /// @note 水面格子だけがカメラを追う。波紋とプロジェクト材質の UV は保存済み矩形に固定する。
+        if (horizonDomain) uv = localPos.xz / authoredExtent + 0.5f;
     }
     else if (!splineSurface && g_gridParams.x > 0.5f)
     {
@@ -765,20 +890,6 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     }
     float3 worldPos = mul(float4(localPos, 1.0f), g_worldMatrix).xyz;
     float relativeSurfaceY = mul(float4(localPos, 0.0f), g_worldMatrix).y;
-    if (!splineSurface && patch.cellSize.z > 0.5f && patch.morphParams.x > 0.5f) {
-        float3 axisU = mul(float4(1.0f, 0.0f, 0.0f, 0.0f), g_worldMatrix).xyz;
-        float3 axisV = mul(float4(0.0f, 0.0f, 1.0f, 0.0f), g_worldMatrix).xyz;
-        float3 rootU = normalize(axisU) * g_normalParams.x;
-        float3 rootV = normalize(axisV) * g_normalParams.y;
-        SurfacePatchMorphSample morph = SurfacePatchMorphUv(uv, v.uv, worldPos, rootU, rootV,
-            patch.rect, patch.cellSize.w, patch.morphParams, g_patchMorphView,
-            g_patchMorphForward, g_patchMorphMetric, patch.morphCellSize.xy, meshCellSize);
-        uv = morph.uv;
-        meshCellSize = morph.cellSize;
-        float2 localExtent = g_normalParams.xy / float2(length(axisU), length(axisV));
-        localPos.xz = (uv - 0.5f) * localExtent;
-        worldPos = mul(float4(localPos, 1.0f), g_worldMatrix).xyz;
-    }
     float3 tangent = float3(1.0f, 0.0f, 0.0f);
     float3 binormal = float3(0.0f, 0.0f, 1.0f);
     float3 disp = float3(0.0f, 0.0f, 0.0f);
@@ -792,7 +903,7 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     float2 rotation, scales;
     ResolveWaveSpread(rotation, scales);
 
-    float3 depthState = WaterDepthState(basePos.xz);
+    WaterWaveDepthState depthState = WaterDepthState(basePos.xz);
     [unroll]
     for (int band = 0; band < 4; ++band) o.waveMeshFade[band] = 0.0f;
     [loop]
@@ -823,11 +934,28 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     /// @note Baked だけは変位«前» (basePos) で引く。焼いた場は 3D なので、波を乗せた後の高さで
     /// @note 標本化すると «高さを高さで引く» 循環になる。
     int flowCount = (int)g_waveShapeParams.y;
+    float vortexFoam = 0.0f;
     [loop]
     for (int fi = 0; fi < WATER_SURFACE_FLOW_COUNT; ++fi)
     {
         if (fi >= flowCount) continue;
-        if ((int)g_surfaceFlowB[fi].z != WFF_BAKED)
+        const int flowKind = (int)g_surfaceFlowB[fi].z;
+        if (flowKind == WFF_UNIFORM || (flowKind == WFF_VORTEX && g_surfaceFlowE[fi].x > 0.0f))
+        {
+            const float4 swell = flowKind == WFF_VORTEX
+                ? WaterVortexSwellDisplacement(fi, worldPos.xz, time, meshCellSize)
+                : float4(WaterSwellDisplacement(fi, worldPos.xz, time, meshCellSize), 0.0f);
+            const float height = swell.x * depthState.vertical.x;
+            const float2 slope = swell.yz * depthState.vertical.x;
+            worldPos.y += height;
+            relativeSurfaceY += height;
+            /// @note The swell is evaluated after horizontal Gerstner displacement, while depth is sampled before it.
+            tangent.y += dot(slope, tangent.xz) + swell.x * depthState.vertical.y;
+            binormal.y += dot(slope, binormal.xz) + swell.x * depthState.vertical.z;
+            vortexFoam = max(vortexFoam, swell.w * depthState.vertical.x);
+            continue;
+        }
+        if (flowKind != WFF_BAKED)
         {
             float3 pit = WaterRadialDisplacement(fi, worldPos.xz);
             worldPos.y += pit.x;
@@ -851,7 +979,7 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     /// @note いるので、ここは読んで足すだけ (water-waves.md の «波紋の帯分け»)。
     /// @note VS からのテクスチャ読みは SampleLevel。UV は波を乗せる前の頂点 UV で、CPU 側の
     /// @note GetSurfaceHeightAt も変位前の XZ で輪を引く。
-    float rippleHeight = (g_rippleTex.SampleLevel(g_samplerClamp, uv, 0).b * 2.0f - 1.0f)
+    float rippleHeight = DecodeWaterRipple(g_rippleTex.SampleLevel(g_samplerClamp, uv, 0).rgb).b
                        * kRippleHeightScale * WaterLocalDataWeight(uv);
     worldPos.y += rippleHeight;
     relativeSurfaceY += rippleHeight;
@@ -862,18 +990,31 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     o.waveJacobian = jacobian;
     float fold = saturate(1.0f - jacobian);
     float crestHeight = saturate(disp.y / max(g_reflectParams.w, 0.01f));
-    float crestFoam = 0.0f;
+    const bool crestFoamEnabled = g_crestFoamParams.z > 0.001f;
+    float crestFoam = crestFoamEnabled ? WaterCrestFoamAmount(float2(crestHeight, fold)) : 0.0f;
+    const float lifetime = g_crestFoamParams.w;
+    bool shoreHistory = !splineSurface && g_farOceanParams.x > 0.5f && g_terrainInfoParams.x > 0.5f
+        && g_foamParams.x > 0.0f && g_foamParams.z > 0.001f;
+    o.shoreWaveHeights = disp.y;
     [branch]
-    if (g_crestFoamParams.z > 0.001f)
-    {
-        crestFoam = WaterCrestFoamAmount(float2(crestHeight, fold));
-        float lifetime = max(g_crestFoamParams.w, 0.0f);
-        if (lifetime > 0.001f) {
+    if (lifetime > 0.001f && (crestFoamEnabled || shoreHistory)) {
+        if (shoreHistory && !crestFoamEnabled) {
+            /// @note When only shore history is enabled, skip wave re-evaluation in deep water.
+            const float2 terrain = SampleWaterTerrainDepth(WaterTerrainUvAtWorldXZ(worldPos.xz));
+            const float maxRise = max(g_reflectParams.w, 0.0f);
+            shoreHistory = terrain.x > 0.0f && terrain.y >= -maxRise
+                && terrain.y <= g_foamParams.x + max(g_foamParams.y, 0.0f) + maxRise;
+        }
+        if (crestFoamEnabled || shoreHistory) {
             [unroll]
-            for (int tap = 1; tap <= WATER_FOAM_TRAIL_TAPS; ++tap) {
-                float age = lifetime * (0.5f * (float)tap);
-                float2 past = WaterWaveCrestAt(basePos, time - age, meshCellSize, depthState);
-                crestFoam = max(crestFoam, WaterCrestFoamAmount(past) * exp(-age / lifetime));
+            for (int tap = 0; tap < WATER_FOAM_TRAIL_TAPS; ++tap) {
+                const float ageInLifetimes = 0.5f * (float)(tap + 1);
+                const float2 past = WaterWaveCrestAt(basePos, time - lifetime * ageInLifetimes, meshCellSize, depthState);
+                if (shoreHistory) o.shoreWaveHeights[tap] = past.x;
+                if (crestFoamEnabled) {
+                    const float2 pastCrest = float2(saturate(past.x / max(g_reflectParams.w, 0.01f)), past.y);
+                    crestFoam = max(crestFoam, WaterCrestFoamAmount(pastCrest) * exp(-ageInLifetimes));
+                }
             }
         }
     }
@@ -901,7 +1042,7 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     if (splineSurface && authoredFlowSpeed > 1.0e-4f)
         flowSample.direction = authoredFlow / authoredFlowSpeed;
     o.flowDirectionDetail = float4(flowSample.direction, flowSample.detailGain, flowSample.chop);
-    o.flowFoam = float2(flowSample.eye, flowSample.ring);
+    o.flowFoam = float2(flowSample.eye, max(flowSample.ring, vortexFoam));
     return o;
 }
 
@@ -1043,7 +1184,7 @@ float2 WaterResidualWaveSlope(float2 worldXZ, float time, float2 dWorldDx, float
     float2 rotation, scales;
     ResolveWaveSpread(rotation, scales);
     float grouping = saturate(g_reflectParams.y);
-    float3 depthState = WaterDepthState(worldXZ);
+    float3 depthState = WaterDepthState(worldXZ).vertical;
 
     [loop]
     for (int i = 0; i < WaterWaveCount(); ++i)
@@ -1120,7 +1261,7 @@ float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float2 flowT
 
     float3 waveNormal = normalize(float3(-grad.x, -grad.y, 1.0f));
 
-    float2 ripple = (g_rippleTex.Sample(g_samplerClamp, uv).rg * 2.0f - 1.0f)
+    float2 ripple = DecodeWaterRipple(g_rippleTex.Sample(g_samplerClamp, uv).rgb).rg
                  * WaterLocalDataWeight(uv);
     float3 rippleNormal = float3(ripple.xy, sqrt(saturate(1.0f - dot(ripple.xy, ripple.xy))));
     waveNormal = normalize(waveNormal + rippleNormal * 0.5f);
@@ -1227,14 +1368,16 @@ float2 SampleWaterTerrainDepth(float2 uv)
             int2 texel = clamp(basePixel + int2(x, z), int2(0, 0), dimensions - 1);
             float4 value = g_foamMask.Load(int3(texel, 0));
             uint flags = (uint)round(value.a * 255.0f);
-            if ((flags & 1u) == 0u || (flags & 4u) != 0u) continue;
+            bool dry = (flags & 2u) != 0u;
+            /// @note Horizon の範囲外深度でも、地上の底は既定の外洋深度へ戻さない。
+            if ((flags & 1u) == 0u || ((flags & 4u) != 0u && !(dry && all(g_terrainDomain.zw > 0.0f)))) continue;
             float weight = (x == 0 ? 1.0f - blend.x : blend.x)
                          * (z == 0 ? 1.0f - blend.y : blend.y);
             uint highByte = (uint)round(value.g * 255.0f);
             uint lowByte = (uint)round(value.b * 255.0f);
             float depth = ((float)(highByte * 256u + lowByte) / 65535.0f * 2.0f - 1.0f)
                         * g_terrainInfoParams.y;
-            if ((flags & 2u) != 0u) depth = min(depth, 0.0f);
+            if (dry) depth = min(depth, 0.0f);
             coverage += weight;
             depthSum += weight * depth;
         }
@@ -1250,7 +1393,9 @@ float2 WaterTerrainUvAtWorldXZ(float2 worldXZ)
     float2 axisX = normalize(mul(float4(1.0f, 0.0f, 0.0f, 0.0f), g_worldMatrix).xz);
     float2 axisZ = normalize(mul(float4(0.0f, 0.0f, 1.0f, 0.0f), g_worldMatrix).xz);
     float2 offset = worldXZ - origin;
-    return 0.5f + float2(dot(offset, axisX), dot(offset, axisZ)) / max(g_normalParams.xy, 1.0e-6f);
+    float2 terrainCenter = all(g_terrainDomain.zw > 0.0f) ? g_terrainDomain.xy : float2(0.0f, 0.0f);
+    return 0.5f + (float2(dot(offset, axisX), dot(offset, axisZ)) - terrainCenter)
+        / max(WaterTerrainExtent(), 1.0e-6f);
 }
 
 /// @brief Tests the current surface point against its resolved owner's exclusion boxes.

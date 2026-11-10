@@ -29,6 +29,15 @@ struct MaterialDragPreviewState {
     bool            applied      = false;                    ///< @note 現在どれかに仮適用中か
 };
 
+/// @note The candidate angle is previewed by the arrow and committed once on release.
+struct WaterHeadingDrag {
+    scene::EntityID owner = scene::EntityID::INVALID;
+    uint64_t generation = 0;
+    uint64_t lifetime = 0;
+    float candidate = 0.0f;
+    bool moved = false;
+};
+
 class ViewportPanel : public IPanel {
 public:
     enum class Kind {
@@ -94,6 +103,7 @@ private:
     ClothPinBrush m_clothPinBrush;
     FiberPaintTool m_fiberPaintTool;
     ControlPointViewportTool m_controlPoints;
+    WaterHeadingDrag m_waterHeadingDrag;
     ImDrawListSplitter m_controlPointLayers;
 
     /// @note 前フレームでビューポート上のオーバーレイ UI (ツールバー・ブックマーク等) を

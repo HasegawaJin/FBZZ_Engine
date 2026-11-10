@@ -115,6 +115,8 @@ void CollectSceneIcons(const EditorContext& ctx, const ImVec2& vpMin, const ImVe
 [[nodiscard]] float SceneIconHitRadius(const SceneIconInstance& icon);
 
 void DrawSceneIcons(EditorContext& ctx, const ImVec2& vpMin, const ImVec2& vpSize);
+bool DrawWaterHeadingEditor(EditorContext& ctx, WaterHeadingDrag& drag, const ImVec2& vpMin,
+                            const ImVec2& vpSize, bool canStart);
 /// @brief ビューポート左下のフレーム / 描画統計 HUD。
 /// @pre 対象ビューポートの Begin/End スコープ内から呼ぶ (位置は呼び出し元ウィンドウの左下基準)。
 void DrawStatsOverlay(EditorContext& ctx, const char* windowId,

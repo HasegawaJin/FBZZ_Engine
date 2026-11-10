@@ -92,6 +92,9 @@ buoyancyEnabled = true
 splashEnabled = false
 materialPath = 'guid:768942cb26074999bd78718850ca4c33|Assets/Materials/Samples/SurfaceExamples/CustomWater.mat'
 
+[gameobjects.WaterComponent.waveAuthoring]
+preset = 1
+
 [gameobjects.WaterComponent.interactionSettings]
 enabled = false
 bubblesEnabled = false

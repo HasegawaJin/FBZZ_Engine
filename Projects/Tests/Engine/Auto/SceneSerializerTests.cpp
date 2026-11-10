@@ -22,6 +22,7 @@
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Util/FileSystem.hpp>
 
 #include <Math/MathUtils.hpp>
@@ -69,6 +70,57 @@ TEST_F(SceneSerializerTest, SavesAndReloadsAnEmptyScene)
 
     ASSERT_NE(restored, nullptr);
     EXPECT_TRUE(restored->GetRootGameObjects().empty());
+}
+
+TEST_F(SceneSerializerTest, MigratesLegacyWaterAndPersistsTheNewSeaControls)
+{
+    const auto scene = scene::SceneSerializer::LoadDataFromText(R"(
+[[gameobjects]]
+name = 'Ocean'
+[gameobjects.WaterComponent]
+farOceanEnabled = true
+waveAmplitudeScale = 0.75
+[[gameobjects]]
+name = 'Lake'
+[gameobjects.WaterComponent]
+farOceanEnabled = false
+[[gameobjects]]
+name = 'Shared'
+[gameobjects.WaterComponent]
+farOceanEnabled = true
+wavesAssetRef = 'Assets/Shared.fzdata'
+)", ScenePath());
+    ASSERT_NE(scene, nullptr);
+    auto* ocean = scene->Find("Ocean")->GetComponent<scene::WaterComponent>();
+    const auto* lake = scene->Find("Lake")->GetComponent<scene::WaterComponent>();
+    const auto* shared = scene->Find("Shared")->GetComponent<scene::WaterComponent>();
+    ASSERT_NE(ocean, nullptr);
+    ASSERT_NE(lake, nullptr);
+    ASSERT_NE(shared, nullptr);
+    EXPECT_EQ(ocean->waveAuthoring.preset, scene::WaterSeaPreset::OFFSHORE);
+    EXPECT_EQ(lake->waveAuthoring.preset, scene::WaterSeaPreset::CALM);
+    EXPECT_EQ(shared->waveAuthoring.preset, scene::WaterSeaPreset::AUTHORED);
+    EXPECT_EQ(shared->wavesAssetRef.path, "Assets/Shared.fzdata");
+    EXPECT_FLOAT_EQ(ocean->waveAmplitudeScale, 0.75f);
+    auto& authoring = ocean->waveAuthoring;
+    authoring.overrideHeading = true;
+    authoring.headingDegrees = -30.0f;
+    authoring.spreadDegrees = 70.0f;
+    authoring.secondaryHeadingDegrees = 20.0f;
+    authoring.secondaryStrength = 0.25f;
+    authoring.rippleMode = scene::WaterRippleDirectionMode::MANUAL;
+    authoring.rippleHeadingDegrees = 40.0f;
+    const auto restored = RoundTrip(*scene);
+    ASSERT_NE(restored, nullptr);
+    const auto& loaded = restored->Find("Ocean")->GetComponent<scene::WaterComponent>()->waveAuthoring;
+    EXPECT_EQ(loaded.preset, scene::WaterSeaPreset::OFFSHORE);
+    EXPECT_TRUE(loaded.overrideHeading);
+    EXPECT_FLOAT_EQ(loaded.headingDegrees, -30.0f);
+    EXPECT_FLOAT_EQ(loaded.spreadDegrees, 70.0f);
+    EXPECT_FLOAT_EQ(loaded.secondaryHeadingDegrees, 20.0f);
+    EXPECT_FLOAT_EQ(loaded.secondaryStrength, 0.25f);
+    EXPECT_EQ(loaded.rippleMode, scene::WaterRippleDirectionMode::MANUAL);
+    EXPECT_FLOAT_EQ(loaded.rippleHeadingDegrees, 40.0f);
 }
 
 TEST_F(SceneSerializerTest, KeepsDirectionalShadowBakePresetsAndDefaultsLegacyLightsToRealtime)

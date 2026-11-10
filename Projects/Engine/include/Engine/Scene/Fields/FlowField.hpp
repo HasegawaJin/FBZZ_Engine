@@ -62,6 +62,9 @@ struct FlowFieldSettings {
     /// @brief Curl 用: ノイズ格子の空間周波数 [1/m] とスクロール速度。
     float noiseFrequency = 0.5f;
     float noiseSpeed = 1.0f;
+    /// @brief 水面用の振幅・波長 [m]。半径付き Uniform ではうねり、Vortex では渦の深さと螺旋間隔。
+    float waterSwellAmplitude = 0.0f;
+    float waterSwellWavelength = 32.0f;
     /// @brief ParticleEmitter::flowFieldChannels と 1 ビットでも重なったエミッターにだけ作用する。
     /// @note 既定は全ビット ON なので、マスクを触らない既存シーンの挙動は変わらない。
     /// @note これが無いと «＋の粒子は−の電極へ引かれるが＋の電極には反発する» のように、
@@ -93,6 +96,8 @@ struct FlowFieldSettings {
         r.Field("direction", direction);
         r.Field("noiseFrequency", noiseFrequency);
         r.Field("noiseSpeed", noiseSpeed);
+        r.Field("waterSwellAmplitude", waterSwellAmplitude);
+        r.Field("waterSwellWavelength", waterSwellWavelength);
         /// @note IReflector は符号なし整数を扱わない。ビットパターンは int 経由でも保たれる。
         int channelsValue = static_cast<int>(channels);
         r.Field("channels", channelsValue);

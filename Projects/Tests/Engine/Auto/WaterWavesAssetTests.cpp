@@ -338,6 +338,39 @@ TEST_F(WaterWavesAssetTest, UpdateDoesNotCarryLastGoodWavesAcrossSceneGeneration
     EXPECT_EQ(secondWater.waveCount, 0u);
 }
 
+TEST_F(WaterWavesAssetTest, SeaHeadingKeepsTheSeededWavePatternAndAddsIndependentCrossSwell)
+{
+    scene::Scene scene;
+    physics::World world;
+    auto& water = scene.CreateGameObject("Ocean").AddComponent<scene::WaterComponent>();
+    water.waveAuthoring.preset = scene::WaterSeaPreset::OFFSHORE;
+    scene::WaterSystem system;
+    UpdateWaterSystem(system, scene, world);
+    ASSERT_EQ(water.waveCount, 9u);
+    const auto original = water.waves;
+
+    water.waveAuthoring.overrideHeading = true;
+    water.waveAuthoring.headingDegrees = 90.0f;
+    water.waveAuthoring.secondaryHeadingDegrees = -90.0f;
+    water.waveAuthoring.secondaryStrength = 0.3f;
+    water.waveAuthoring.rippleMode = scene::WaterRippleDirectionMode::MANUAL;
+    water.waveAuthoring.rippleHeadingDegrees = 180.0f;
+    UpdateWaterSystem(system, scene, world);
+    ASSERT_EQ(water.waveCount, 12u);
+    for (size_t i = 0; i < 9; ++i) {
+        EXPECT_NEAR(water.waves[i].direction.x, -original[i].direction.y, 1.0e-6f);
+        EXPECT_NEAR(water.waves[i].direction.y, original[i].direction.x, 1.0e-6f);
+        EXPECT_FLOAT_EQ(water.waves[i].phaseOffsetRadians, original[i].phaseOffsetRadians);
+        EXPECT_FLOAT_EQ(water.waves[i].wavelength, original[i].wavelength);
+        EXPECT_FLOAT_EQ(water.waves[i].amplitude, original[i].amplitude);
+    }
+    for (size_t i = 9; i < water.waveCount; ++i)
+        EXPECT_LT(water.waves[i].direction.y, -0.95f);
+    EXPECT_NEAR(water.rippleDirectionOverride.x, -1.0f, 1.0e-6f);
+    EXPECT_NEAR(water.rippleDirectionOverride.y, 0.0f, 1.0e-6f);
+    EXPECT_EQ(water.current, math::Vector2::ZERO);
+}
+
 TEST_F(WaterWavesAssetTest, ReflectedAppearanceKeepsLegacyMissingKeyDefaultsWithoutAssumingOffsets)
 {
     renderer::ShaderDescriptor descriptor;

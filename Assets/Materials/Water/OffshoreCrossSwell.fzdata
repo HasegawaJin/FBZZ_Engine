@@ -1,0 +1,21 @@
+# @file    OffshoreCrossSwell.fzdata
+# @brief   沖のうねりと風波の位相・進行方向を分散させる再現可能な波プリセット。
+# @author  Hasegawa Jin
+# @date    2026-11-10
+# @see https://doi.org/10.1111/j.1467-8659.2009.01618.x Bruneton et al. (2010) §3, spectral ocean waves.
+type = 'WaterWavesAsset'
+algorithmVersion = 1
+seed = 821
+waveCount = 9
+minimumWavelength = 11.0
+maximumWavelength = 77.0
+minimumAmplitude = 0.22
+maximumAmplitude = 1.35
+directionCenterRadians = -1.45
+directionSpreadRadians = 2.55
+minimumSteepness = 0.35
+maximumSteepness = 0.68
+minimumPhaseOffsetRadians = 0.0
+maximumPhaseOffsetRadians = 6.2831853
+waveGrouping = 0.24
+waveSpread = 0.06
