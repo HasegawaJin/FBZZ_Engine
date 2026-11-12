@@ -18,7 +18,7 @@ struct CameraComponent {
     /// @note 再現できるよう Scene 側にも保持する。
     float aspectRatio = 16.0f / 9.0f;
     float nearZ   = 0.1f;
-    float farZ    = 1000.0f;
+    float farZ    = renderer::DEFAULT_CAMERA_FAR_Z;
     bool  isMain  = true;
     bool  enabled = true;
     fbzz::LayerMask cullingMask = fbzz::Layer::Everything;

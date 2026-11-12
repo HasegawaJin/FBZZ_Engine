@@ -301,7 +301,7 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
     std::optional<math::Frustum> computedFrustum;
     const math::Frustum* frustum = !cameraOverride ? ctx.cameraFrustum : nullptr;
     if (!frustum) {
-        computedFrustum.emplace(math::Frustum::FromViewProjection(camera.GetViewProjection()));
+        computedFrustum.emplace(math::Frustum::FromViewProjection(camera.GetGpuViewProjection()));
         frustum = &*computedFrustum;
     }
     const auto projection = lodCamera.GetProjectionMatrix();
@@ -346,7 +346,7 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
         if (horizon && lodCameraOverride) {
             selectionView.frustum = nullptr;
             if (ctx.frustumCullingEnabled) {
-                lodFrustum.emplace(math::Frustum::FromViewProjection(lodCamera.GetViewProjection()));
+                lodFrustum.emplace(math::Frustum::FromViewProjection(lodCamera.GetGpuViewProjection()));
                 selectionView.frustum = &*lodFrustum;
             }
         }
@@ -441,7 +441,7 @@ WaterGpuDraw PrepareWaterGpuDraw(const RenderWaterInput& input, RenderPassContex
         || !ctx.frustumCullingEnabled || !handles.geometrySelection)
         return result;
     const auto frustum = ctx.cameraFrustum ? *ctx.cameraFrustum
-        : math::Frustum::FromViewProjection(ctx.camera.GetViewProjection());
+        : math::Frustum::FromViewProjection(ctx.camera.GetGpuViewProjection());
     GpuGeometrySelectionView view;
     for (int planeIndex = 0; planeIndex < math::Frustum::PLANE_COUNT; ++planeIndex) {
         const auto plane = frustum.GetPlane(planeIndex);
@@ -916,7 +916,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     const auto copyColorShader = handles.copyColorShader;
     const auto depthCopyShader = handles.depthCopyShader;
     /// @note カリング錐台はジッター無しのまま。半ピクセルのために可視判定を揺らす意味がない。
-    const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+    const math::Frustum frustum = math::Frustum::FromViewProjection(camera.GetGpuViewProjection());
 
     /// @note 描画用の行列だけ TAA ジッターを乗せる。乗せないと水面だけ AA が効かず、
     /// @note b0 経由で描く不透明物とサブピクセルずれた深度になって TAA の再投影が濁る。

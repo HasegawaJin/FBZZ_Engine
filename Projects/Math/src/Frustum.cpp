@@ -23,7 +23,17 @@ constexpr std::array<uint32_t, 16> kVisibleBytes = [] {
     return table;
 }();
 
-} // namespace
+/// @note 投影行列から取り出した遠平面の法線は near / (far - near) 程度まで小さくなる。
+/// @note 平面の大きさに関わらず、カリングで球や AABB の半径と比べる距離はワールド単位に揃える。
+Plane NormalizeDepthPlane(const Plane& plane)
+{
+    const float length = plane.normal.Length();
+    if (length == 0.0f) return plane;
+    const float inverseLength = 1.0f / length;
+    return { plane.normal * inverseLength, plane.distance * inverseLength };
+}
+
+} /// @note namespace
 
 /// @note 4 球を転置して «球がレーン・平面がループ» にする。単体版は «平面がレーン» なので、判定の式と加算の順序は同じで結果も一致する。
 void Frustum::IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible) const
@@ -70,7 +80,7 @@ void Frustum::IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint
 }
 
 /// @note Gribb-Hartmann 法。M * v (列ベクトル規則) では clip.i = dot(row_i, world)。
-/// @note 各平面の係数は row_3 ± row_i で求まる。DirectX 深度 [0,1] のため near は row_2 のみ。
+/// @note 各平面の係数は row_3 ± row_i で求まる。DirectX 深度 [0,1] のため z=0 側は row_2 のみ。
 Frustum Frustum::FromViewProjection(const Matrix4& vp)
 {
     Frustum f;
@@ -99,19 +109,17 @@ Frustum Frustum::FromViewProjection(const Matrix4& vp)
           vp.m[3][3] - vp.m[1][3]
     }.Normalized());
 
-    /// @note near: row2 (DirectX 深度 [0,1]: clip.z >= 0)
-    f.SetPlane(4, Plane{
+    f.SetPlane(4, NormalizeDepthPlane({
         { vp.m[2][0], vp.m[2][1], vp.m[2][2] },
           vp.m[2][3]
-    }.Normalized());
+    }));
 
-    /// @note far: row3 - row2
-    f.SetPlane(5, Plane{
+    f.SetPlane(5, NormalizeDepthPlane({
         { vp.m[3][0] - vp.m[2][0], vp.m[3][1] - vp.m[2][1], vp.m[3][2] - vp.m[2][2] },
           vp.m[3][3] - vp.m[2][3]
-    }.Normalized());
+    }));
 
     return f;
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

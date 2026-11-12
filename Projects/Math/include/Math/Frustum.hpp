@@ -30,7 +30,8 @@ struct Frustum {
     /// @brief 6 平面とも既定の Plane (法線 +Y・距離 0) で埋める。
     Frustum();
 
-    /// @brief i 番目の平面 (left/right/bottom/top/near/far の順)。
+    /// @brief i 番目の平面 (left/right/bottom/top/clip.z=0/clip.z=clip.w の順)。
+    /// @note 深度の 2 平面は通常 Z で near/far、Reversed-Z で far/near。
     /// @pre 0 <= i < PLANE_COUNT。
     Plane GetPlane(int i) const;
 
@@ -53,7 +54,7 @@ struct Frustum {
     FBZZ_MATH_API void IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint8_t> visible) const;
 
     /// @brief ビュープロジェクション行列から 6 平面を抽出する (Gribb-Hartmann 法)。
-    /// @pre DirectX 左手系、深度 [0,1]、列ベクトル規則 (M * v)。
+    /// @pre DirectX 左手系、深度 [0,1] (Reversed-Z 可)、列ベクトル規則 (M * v)。
     FBZZ_MATH_API static Frustum FromViewProjection(const Matrix4& vp);
 
 private:

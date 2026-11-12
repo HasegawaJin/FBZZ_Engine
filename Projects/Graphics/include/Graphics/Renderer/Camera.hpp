@@ -19,6 +19,9 @@ namespace fbzz::renderer {
 /// @note       別々に書くと «描画パスによって色が違う» 壊れ方をする。
 inline constexpr math::Vector4 kDefaultBackgroundColor = { 0.005f, 0.005f, 0.02f, 1.0f };
 
+/// @note 8 km 級のマップを対角やマップ外から見渡せる既定の遠クリップ距離 [m]。
+inline constexpr float DEFAULT_CAMERA_FAR_Z = 24000.0f;
+
 /// @brief 描画を始めるときにバッファをどう初期化するか。
 enum class CameraClearMode : uint8_t {
     /// @brief カラーを backgroundColor で塗り、深度もリセットする。単独カメラの既定。
@@ -75,7 +78,7 @@ public:
     float m_fovY   = 60.0f;
     float m_aspect = 16.0f / 9.0f;
     float m_near   = 0.1f;
-    float m_far    = 1000.0f;
+    float m_far    = DEFAULT_CAMERA_FAR_Z;
 
     ProjectionMode m_projection = ProjectionMode::Perspective;
     /// @brief Orthographic のときに映る縦幅 (ワールド単位)。横幅は m_aspect 倍。

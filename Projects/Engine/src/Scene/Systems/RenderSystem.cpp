@@ -885,9 +885,9 @@ void RenderSystem(Scene& scene,
     }
     const auto passContextProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("RenderSystem::PassContextSetup", "Rendering"));
-    /// @note カメラ視錐台とライト視錐台。Gribb-Hartmann 法は VP 行列の行の和・差から
-    /// @note 6 平面を直接出せるので逆行列が要らない。全ジオメトリパスで共有する。
-    const math::Frustum cameraFrustum = math::Frustum::FromViewProjection(camera.GetViewProjection());
+    /// @note Reversed-Z の遠平面は z 行から直接抽出できる。通常 Z では w 行との差で遠距離の精度が落ちる。
+    /// @see Docs/design/view-culling.md
+    const math::Frustum cameraFrustum = math::Frustum::FromViewProjection(camera.GetGpuViewProjection());
     const math::Frustum lightFrustum  = math::Frustum::FromViewProjection(lightVP);
     OcclusionCuller occlusionCuller;
 

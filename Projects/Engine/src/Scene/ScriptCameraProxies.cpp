@@ -295,7 +295,7 @@ float ScriptCameraProxy::GetNearZ() const
 float ScriptCameraProxy::GetFarZ() const
 {
     const auto* cam = SelfComponent<CameraComponent>(script);
-    return cam ? cam->farZ : 1000.0f;
+    return cam ? cam->farZ : renderer::DEFAULT_CAMERA_FAR_Z;
 }
 
 

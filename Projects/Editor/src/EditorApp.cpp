@@ -1904,7 +1904,7 @@ bool EditorApp::OnInit()
     m_debugCamera.camera.m_rotation = { m_settings.cameraLastRx, m_settings.cameraLastRy, m_settings.cameraLastRz, m_settings.cameraLastRw };
     m_debugCamera.camera.m_aspect   = 1920.0f / 1080.0f;
     /// @note Scene View は広い地形を編集するため、シーン内の CameraComponent の farZ と独立して遠景を映す。
-    m_debugCamera.camera.m_far      = 10000.0f;
+    m_debugCamera.camera.m_far      = renderer::DEFAULT_CAMERA_FAR_Z;
     /// @note 射影は Teleport の後に直接書く。SetProjection は「見かけの大きさを引き継ぐ」ため
     /// @note        保存した orthoHeight を上書きしてしまう。復元では保存値をそのまま採用したい。
     m_debugCamera.camera.m_orthoHeight = m_settings.cameraOrthoHeight;

@@ -43,7 +43,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             ImGui::Checkbox("Is Main", &cc.isMain);
             ImGui::DragFloat("FOV", &cc.fovY, 0.5f, 1.0f, 170.0f);
             ImGui::DragFloat("Near", &cc.nearZ, 0.001f, 0.001f, 10.0f);
-            ImGui::DragFloat("Far", &cc.farZ, 1.0f, 1.0f, 10000.0f);
+            ImGui::DragFloat("Far", &cc.farZ, 10.0f, 1.0f, 100000.0f, "%.0f m");
 
             const char* clearItems[] = { "Solid Color", "Depth Only" };
             int clearMode = static_cast<int>(cc.clearMode);

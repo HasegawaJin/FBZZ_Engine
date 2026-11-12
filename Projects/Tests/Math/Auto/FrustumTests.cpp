@@ -2,9 +2,6 @@
 /// @brief   Frustum の平面抽出 (Gribb–Hartmann) と点・球・AABB の内外判定を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// カリングの誤りは 2 通りしか出ない。«見えているものが消える» か «無駄に描く» か。
-/// 後者は絵に出ないので、平面の向きが 1 枚裏返っていても誰も気づけない。
 #include <TestKit/TestKit.hpp>
 
 #include <Math/Frustum.hpp>
@@ -18,7 +15,7 @@ namespace {
 constexpr float kNear = 0.1f;
 constexpr float kFar  = 100.0f;
 
-/// 原点を +Z 方向に見る、視野角 60 度・アスペクト 1 のカメラ。
+/// @note 原点を +Z 方向に見る、視野角 60 度・アスペクト 1 のカメラ。
 math::Matrix4 PerspectiveViewProjection(const math::Vector3& eye)
 {
     const math::Matrix4 view = math::Matrix4::LookAt(eye, math::Vector3::ZERO, math::Vector3::UP);
@@ -27,7 +24,7 @@ math::Matrix4 PerspectiveViewProjection(const math::Vector3& eye)
     return proj * view;
 }
 
-} // namespace
+} /// @note namespace
 
 class FrustumTest : public testkit::Fixture {
 protected:
@@ -70,6 +67,26 @@ TEST_F(FrustumTest, RejectsAPointBehindTheCamera)
 TEST_F(FrustumTest, RejectsAPointBeyondTheFarPlane)
 {
     EXPECT_FALSE(frustum.Contains(eye + math::Vector3::FORWARD * (kFar + 1.0f)));
+}
+
+TEST_F(FrustumTest, ReversedZKeepsWorldSpaceBoundsAccurateAtLongRange)
+{
+    constexpr float FAR_Z = 24000.0f;
+    const math::Vector3 cameraPosition{1000.0f, 100.0f, -8192.0f};
+    const auto view = math::Matrix4::LookAt(cameraPosition, cameraPosition + math::Vector3::FORWARD, math::Vector3::UP);
+    const auto projection = math::Matrix4::PerspectiveReversedZ(math::ToRad(60.0f), 1.0f, 0.01f, FAR_Z);
+    const auto longFrustum = math::Frustum::FromViewProjection(projection * view);
+    const auto inside = cameraPosition + math::Vector3::FORWARD * 11586.0f;
+    const auto beyond = cameraPosition + math::Vector3::FORWARD * (FAR_Z + 2.0f);
+
+    EXPECT_NEAR(longFrustum.GetPlane(4).normal.Length(), 1.0f, testkit::kTolerance);
+    EXPECT_TRUE(longFrustum.Contains(inside));
+    EXPECT_TRUE(longFrustum.IntersectsAABB(inside, {1.0f, 1.0f, 1.0f}));
+    EXPECT_FALSE(longFrustum.Contains(cameraPosition - math::Vector3::FORWARD));
+    EXPECT_FALSE(longFrustum.Contains(beyond));
+    EXPECT_FALSE(longFrustum.IntersectsSphere(beyond, 1.0f));
+    EXPECT_FALSE(longFrustum.IntersectsAABB(beyond, {1.0f, 1.0f, 1.0f}));
+    EXPECT_TRUE(longFrustum.IntersectsSphere(beyond, 3.0f));
 }
 
 TEST_F(FrustumTest, RejectsAPointOutsideTheSideWalls)
@@ -160,4 +177,4 @@ TEST_F(FrustumTest, OrthographicSideWallsAreAxisAligned)
     EXPECT_VEC3_NEAR(ortho.GetPlane(5).normal, -math::Vector3::FORWARD, testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

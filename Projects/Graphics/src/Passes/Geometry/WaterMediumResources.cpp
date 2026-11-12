@@ -767,7 +767,7 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
     math::Frustum generatedFrustum;
     const math::Frustum* frustum = ctx.cameraFrustum;
     if (!frustum) {
-        generatedFrustum = math::Frustum::FromViewProjection(ctx.camera.GetViewProjection());
+        generatedFrustum = math::Frustum::FromViewProjection(ctx.camera.GetGpuViewProjection());
         frustum = &generatedFrustum;
     }
     math::Vector4 viewBounds;

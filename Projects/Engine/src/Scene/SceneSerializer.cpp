@@ -2894,7 +2894,7 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
             cc.fovY    = (float)(*ccTbl)["fovY"].value_or(60.0);
             cc.aspectRatio = (float)(*ccTbl)["aspectRatio"].value_or(16.0 / 9.0);
             cc.nearZ   = (float)(*ccTbl)["nearZ"].value_or(0.1);
-            cc.farZ    = (float)(*ccTbl)["farZ"].value_or(1000.0);
+            cc.farZ    = (float)(*ccTbl)["farZ"].value_or(static_cast<double>(cc.farZ));
             cc.isMain  = (*ccTbl)["isMain"].value_or(true);
             cc.enabled = (*ccTbl)["enabled"].value_or(true);
             cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);

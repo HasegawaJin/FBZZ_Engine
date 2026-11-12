@@ -788,7 +788,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         frame.projection=ctx.camera.GetProjectionMatrix();frame.viewProjection=frame.projection*frame.view;
         frame.invViewProjection=math::Matrix4::Inverse(frame.viewProjection);
     }
-    const auto cameraFrustum=math::Frustum::FromViewProjection(ctx.camera.GetViewProjection());
+    const auto cameraFrustum=math::Frustum::FromViewProjection(ctx.camera.GetGpuViewProjection());
     const auto& frustum=lightFrustum ? *lightFrustum : cameraFrustum;
     const bool countStatistics=pass==InstancePass::GBUFFER || (pass==InstancePass::FORWARD && !ctx.isDeferred);
     const auto* preparedCuller=ctx.occlusionPreparedCuller;
