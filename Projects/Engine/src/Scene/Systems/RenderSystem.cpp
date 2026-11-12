@@ -1440,6 +1440,8 @@ void RenderSystem(Scene& scene,
         dbgSnap.renderStats.totalObjects    = passCtx.statsTotalObjects;
         dbgSnap.renderStats.frustumCulled   = passCtx.statsFrustumCulled;
         dbgSnap.renderStats.occlusionCulled = passCtx.statsOcclusionCulled;
+        dbgSnap.renderStats.frustumCullingEnabled = passCtx.frustumCullingEnabled;
+        dbgSnap.renderStats.occlusionCullingEnabled = passCtx.occlusionCullingEnabled;
         dbgSnap.renderStats.distanceCulled    = passCtx.statsDistanceCulled;
         dbgSnap.renderStats.smallObjectCulled = passCtx.statsSmallObjectCulled;
         dbgSnap.renderStats.gpuVisibilityUnknownObjects = passCtx.statsGpuVisibilityUnknownObjects;

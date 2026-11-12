@@ -197,6 +197,8 @@ sample の出力枠は Begin 時に予約し、保存済みの子の親が出力
 
 Performance の CPU タブへ現行 Profiler の Tree、Flat、フィルター、履歴、スパイク捕捉を移す。Rendering タブへ描画統計、GPU パス、RenderGraph 構成を移す。Memory は独立パネルへ移し、追跡対象外と追跡中の値を区別する既存表示を保持する。
 
+Rendering の描画統計は最後に描いたビューとその application serial を示す。CPU の視錐台・遮蔽の除外数は、カリング無効 (`Off`) と有効時の 0 件を区別する。GPU の判定結果を読み戻さない候補は `GPU visibility unknown` に表示する。
+
 Script は Type、Callback、Instance の集計表と Call Tree を持ち、Scene、実行モード、型、対象オブジェクト、callback、名前で絞り込める。既定の並び順は Self の降順。表は Inclusive、Self、Calls、Faults、Avg per call、Avg per frame、Max call、Peak frame を区別する。Type と Callback の履歴キーは groupBy、収集セッション、実行文脈、typeId、callback の組とし、行から対応する Instance の一覧へ進める。Instance の履歴と対象への移動は instance key を使い、直接の対象移動は Instance 行だけで有効にする。
 
 Performance のウィンドウ安定キーは旧 `Analysis` を継承し、表示名と View メニュー名だけを `Performance Profiler` にする。IPanel に既定値が GetWindowName の GetWindowTitle を追加し、ImGui に渡す名前を `std::string(LOCT(GetWindowTitle())) + "###" + GetWindowName()` とする。組み立て済み文字列全体へ LOC を適用しない。

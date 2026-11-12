@@ -22,6 +22,7 @@
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Systems/UIInteraction.hpp>
 #include <Engine/Util/StringUtils.hpp>
 
 #include <imgui.h>
@@ -2026,6 +2027,17 @@ const char* FormatAnalysisCount(std::uint64_t value, char (&buffer)[32])
     return buffer;
 }
 
+/// @note RenderSystem の viewId は UI 描画先に 1 を足した値。0 は UI 描画先なし。
+const char* RenderStatsViewName(std::uint64_t viewId)
+{
+    switch (viewId) {
+    case static_cast<std::uint64_t>(scene::UIRenderTargetView::GameViewport) + 1: return "Game View";
+    case static_cast<std::uint64_t>(scene::UIRenderTargetView::SceneViewport) + 1: return "Scene View";
+    case static_cast<std::uint64_t>(scene::UIRenderTargetView::CanvasEditor) + 1: return "Canvas Editor";
+    default: return "Render View";
+    }
+}
+
 /// @brief DrawCall / ポリゴン / カリングの統計を表示する。
 /// @note 左右 2 列: 縦 1 列だとスクロールが要り、下の GPU パス表が押し出されていた。
 void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& stats)
@@ -2034,6 +2046,8 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
         const char*   label;
         std::uint64_t value;
         bool          percent;   ///< @note 描画対象オブジェクト数に対する割合を添えるか
+        bool          enabled = true;
+        const char*   tooltip = nullptr;
     };
     const auto count = [](long long v) { return static_cast<std::uint64_t>((std::max)(0LL, v)); };
     const bool visibilityComplete=stats.gpuVisibilityUnknownObjects==0;
@@ -2058,17 +2072,27 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
     const Item culling[] = {
         { "Objects (pre-cull)",  count(stats.totalObjects),      false },
         { visibilityComplete ? "Rendered" : "Known visible", count(rendered), true },
-        { "GPU visibility unknown", count(stats.gpuVisibilityUnknownObjects), false },
-        { "Frustum culled",      count(stats.frustumCulled),     true  },
-        { "Occlusion culled",    count(stats.occlusionCulled),   true  },
+        { "GPU visibility unknown", count(stats.gpuVisibilityUnknownObjects), false, true,
+            "GPU culling results are not read back." },
+        { "Frustum culled (CPU)", count(stats.frustumCulled), true, stats.frustumCullingEnabled,
+            "Includes CPU estimates for some GPU batches." },
+        { "Occlusion culled (CPU)", count(stats.occlusionCulled), true, stats.occlusionCullingEnabled },
         { "Distance culled",     count(stats.distanceCulled),    true  },
         { "Small object culled", count(stats.smallObjectCulled), true  },
     };
     constexpr std::size_t kGeometryCount = sizeof(geometry) / sizeof(geometry[0]);
     constexpr std::size_t kCullingCount  = sizeof(culling) / sizeof(culling[0]);
 
+    const auto labelCell = [](const Item& item) {
+        ImGui::TextUnformatted(item.label);
+        if (item.tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", item.tooltip);
+    };
     const double totalObjects = static_cast<double>((std::max)(1, stats.totalObjects));
     const auto valueCell = [&](const Item& item) {
+        if (!item.enabled) {
+            AnalysisTextRight("Off");
+            return;
+        }
         char number[32];
         char text[64];
         FormatAnalysisCount(item.value, number);
@@ -2092,11 +2116,11 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
         for (std::size_t r = 0; r < (std::max)(kGeometryCount, kCullingCount); ++r) {
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
-            if (r < kGeometryCount) ImGui::TextUnformatted(geometry[r].label);
+            if (r < kGeometryCount) labelCell(geometry[r]);
             ImGui::TableNextColumn();
             if (r < kGeometryCount) valueCell(geometry[r]);
             ImGui::TableNextColumn();
-            if (r < kCullingCount) ImGui::TextUnformatted(culling[r].label);
+            if (r < kCullingCount) labelCell(culling[r]);
             ImGui::TableNextColumn();
             if (r < kCullingCount) valueCell(culling[r]);
         }
@@ -2112,7 +2136,7 @@ void DrawAnalysisRenderStats(const renderer::RenderDebugOverlay::RenderStats& st
             for (std::size_t i = 0; i < n; ++i) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(items[i].label);
+                labelCell(items[i]);
                 ImGui::TableNextColumn();
                 valueCell(items[i]);
             }
@@ -2383,7 +2407,14 @@ void DrawPerformanceRendering(EditorContext& ctx)
     DrawSelectedFrameTime(targetMs, fontH * 3.0f);
     ImGui::Spacing();
 
-    DrawAnalysisRenderStats(snap.renderStats);
+    if (snap.width != 0 && snap.height != 0) {
+        const auto& view = snap.gpuCurrentView;
+        ImGui::TextDisabled("Render stats: %s / application frame %llu", RenderStatsViewName(view.viewId),
+            static_cast<unsigned long long>(view.applicationFrameSerial));
+        DrawAnalysisRenderStats(snap.renderStats);
+    } else {
+        ImGui::TextDisabled("No render stats captured.");
+    }
 
     /// @note Profiler タブは CPU スコープのみ表示するため、GPU 負荷のボトルネックはここで可視化する。
     ImGui::Spacing();

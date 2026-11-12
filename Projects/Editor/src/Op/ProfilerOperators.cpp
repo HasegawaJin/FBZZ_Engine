@@ -135,6 +135,10 @@ OpResult PerformanceQuery(const OpArgs& args)
     stats.Set("drawCalls", OpData(rendering.renderStats.drawCalls)); stats.Set("triangleCount", OpData(rendering.renderStats.triangleCount));
     stats.Set("totalObjects", OpData(rendering.renderStats.totalObjects)); stats.Set("frustumCulled", OpData(rendering.renderStats.frustumCulled));
     stats.Set("occlusionCulled", OpData(rendering.renderStats.occlusionCulled)); stats.Set("distanceCulled", OpData(rendering.renderStats.distanceCulled));
+    const bool renderingAvailable = rendering.width != 0 && rendering.height != 0;
+    stats.Set("available", OpData(renderingAvailable));
+    stats.Set("frustumCullingEnabled", renderingAvailable ? OpData(rendering.renderStats.frustumCullingEnabled) : OpData{});
+    stats.Set("occlusionCullingEnabled", renderingAvailable ? OpData(rendering.renderStats.occlusionCullingEnabled) : OpData{});
     stats.Set("smallObjectCulled", OpData(rendering.renderStats.smallObjectCulled));
     stats.Set("gpuVisibilityUnknownObjects", OpData(rendering.renderStats.gpuVisibilityUnknownObjects));
     const bool visibilityComplete=rendering.renderStats.gpuVisibilityUnknownObjects==0;

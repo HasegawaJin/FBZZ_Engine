@@ -156,9 +156,9 @@ void DrawStatsOverlay(EditorContext& ctx, const char* windowId,
         StatRow("Vertices", value, EditorTheme::Color(ThemeColor::Text));
 
         FormatCount(value, sizeof(value), static_cast<uint64_t>(stats.frustumCulled));
-        StatRow("Frustum culled", value, EditorTheme::Color(ThemeColor::Text));
+        StatRow("Frustum (CPU)", stats.frustumCullingEnabled ? value : "Off", EditorTheme::Color(ThemeColor::Text));
         FormatCount(value, sizeof(value), static_cast<uint64_t>(stats.occlusionCulled));
-        StatRow("Occlusion culled", value, EditorTheme::Color(ThemeColor::Text));
+        StatRow("Occlusion (CPU)", stats.occlusionCullingEnabled ? value : "Off", EditorTheme::Color(ThemeColor::Text));
 
         const int culled[4] = { stats.frustumCulled, stats.occlusionCulled,
                                 stats.distanceCulled, stats.smallObjectCulled };

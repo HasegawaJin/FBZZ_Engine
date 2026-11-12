@@ -31,9 +31,9 @@ public:
     struct RenderStats {
         /// @note カリング前の描画候補オブジェクト数
         int totalObjects    = 0;
-        /// @note フラスタムカリングで除外した数
+        /// @note CPU のフラスタム除外数。一部の GPU バッチでは CPU 側の推定値を含む。
         int frustumCulled   = 0;
-        /// @note オクルージョンカリングで除外した数
+        /// @note CPU のオクルージョン除外数。GPU の判定結果は含まない。
         int occlusionCulled = 0;
         /// @note 描画距離 (Max Draw Distance / Layer Cull Distances) で除外した数
         int distanceCulled    = 0;
@@ -74,6 +74,8 @@ public:
         /// @see Docs/design/gpu-instancing.md
         int instancedBatches    = 0;
         int instancedDrawsSaved = 0;
+        bool frustumCullingEnabled = false;
+        bool occlusionCullingEnabled = false;
     };
 
     struct Snapshot {
