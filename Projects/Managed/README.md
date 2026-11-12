@@ -4,7 +4,7 @@
 <!-- @date    2026-10-04 -->
 # C# スクリプト
 
-.NET SDK 10.0.300 と x64 .NET 10 runtime を使う。SDK は Projects/Managed/global.json で固定し、Roslyn generator と compiler を揃える。ゲームコードは標準 C#、省略したメンバー修飾子は private。`Fbzz.ScriptApi` と常駐 `Fbzz.ManagedHost` は nullable enable、ゲーム csproj は nullable warnings を使う。namespace と nullable 記号は通常の作者コードで必須にしない。
+.NET SDK 10.0.403 と x64 .NET 10 runtime を使う。SDK は Projects/Managed/global.json で固定し、Roslyn generator と compiler を揃える。ゲームコードは標準 C#、省略したメンバー修飾子は private。`Fbzz.ScriptApi` と常駐 `Fbzz.ManagedHost` は nullable enable、ゲーム csproj は nullable warnings を使う。namespace と nullable 記号は通常の作者コードで必須にしない。
 
 参照・配列・型 GUID・名前による共通設定 Op に加え、[制作・実行経路の完成](../../Docs/design/csharp-completion.md)の追加機能を実装した。GameObject / Component 制御、Collider とゲームサービス、所有者付き Jobs / Events、複合設定と DataAsset、Play 差し替え、Inspector 統合、SDK catalog、製品への managed package を接続する。現在の API と寿命・利用条件は [作者向け契約](../../Docs/design/csharp-authoring.md)、Host・保存・世代の詳細は [ランタイム設計](../../Docs/design/csharp-scripting.md)を参照する。
 

@@ -10,7 +10,7 @@ EditorのローカルCommand Busをstdio MCPへ接続する。実行中Editorの
 ## 前提とビルド
 
 - Node.js 24.10以降。SQLは組み込み `node:sqlite` を使う。
-- Roslyn解析には .NET 10 runtimeと、helperのビルドに .NET SDK 10.0.300を使う。
+- Roslyn解析には .NET 10 runtimeを使う。helperのビルドには `Projects/Managed/global.json` で固定した .NET SDK 10.0.403 が必要。
 - 起動先は `dist/stdio.js`。Named Pipeと権限は既存 `FBZZ_EDITOR_PIPE` / `FBZZ_MCP_PERMISSION`で指定する。
 
 このディレクトリで次を実行する。managed buildは共通AgentBuildの排他を使う。
