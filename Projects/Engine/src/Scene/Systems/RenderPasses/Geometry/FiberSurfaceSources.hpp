@@ -4,7 +4,6 @@
 /// @date    2026-09-17
 #pragma once
 #include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/FiberInteractorComponent.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Transform.hpp>
@@ -35,49 +34,6 @@ struct FiberTerrainCache {
     std::vector<FiberRetiredTerrainPatch> m_retired;
     std::vector<renderer::Mesh*> m_visible;
 };
-
-struct FiberContactCache {
-    FiberContactCB m_data;
-    uint64_t m_frame = (std::numeric_limits<uint64_t>::max)();
-    float m_time = 0;
-    uint32_t m_cursor = 0;
-};
-
-/// @note 各ビュー・影パスで二重に進めない。32 接触を循環保持し、過去側は速度出力まで固定する。
-void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
-{
-    if (cache.m_frame == Time::frameCount) return;
-    if (Time::time < cache.m_time || Time::frameCount < cache.m_frame) cache = {};
-    cache.m_frame=Time::frameCount;
-    cache.m_time=Time::time;
-    for (size_t i=0;i<32;++i) {
-        cache.m_data.m_centers[i+32]=cache.m_data.m_centers[i];
-        cache.m_data.m_times[i+32]=cache.m_data.m_times[i];
-    }
-    if (scene.GetEntities<FiberInteractorComponent>().empty()) {
-        UpdateFiberContactCounts(cache.m_data, Time::time);
-        return;
-    }
-    for (auto& go : scene.GameObjects()) {
-        const auto* actor=go.GetComponent<FiberInteractorComponent>();
-        if (!go.activeInHierarchy() || !actor || !actor->m_enabled) continue;
-        const auto center=go.transform.worldPosition;
-        if (!std::isfinite(center.x)||!std::isfinite(center.y)||!std::isfinite(center.z)
-            || !std::isfinite(actor->m_radius)||!std::isfinite(actor->m_strength)
-            || !std::isfinite(actor->m_recoverySeconds)) continue;
-        const float radius=std::clamp(actor->m_radius,0.01f,10.0f);
-        size_t slot=32;
-        for (size_t i=0;i<32;++i) {
-            const auto& old=cache.m_data.m_centers[i];
-            if (old.w>0 && (math::Vector3{old.x,old.y,old.z}-center).LengthSq()<radius*radius*0.0625f) {slot=i;break;}
-        }
-        if (slot==32) slot=cache.m_cursor++%32;
-        cache.m_data.m_centers[slot]={center.x,center.y,center.z,radius};
-        cache.m_data.m_times[slot]={Time::time,std::clamp(actor->m_strength,0.0f,1.0f),
-            std::clamp(actor->m_recoverySeconds,0.05f,30.0f),0};
-    }
-    UpdateFiberContactCounts(cache.m_data, Time::time);
-}
 
 bool FiberTerrainExpired(uint64_t frame, uint64_t seen)
 {

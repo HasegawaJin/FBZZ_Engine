@@ -621,6 +621,60 @@ TEST_F(FiberRenderPerfTest, ShadedBladesReceiveEnvironmentLightWithoutDirectLigh
     m_resources->Release(environment);
 }
 
+TEST_F(FiberRenderPerfTest, ColliderShapeLayoutCompilesForEveryFiberPassAndSkinnedFamily)
+{
+    for (const char* family : {"FiberShell", "FiberShellSkinned", "FiberFin", "FiberFinSkinned", "FiberBlade", "GrassCard"})
+        for (const char* pass : {"", "GBuffer", "Velocity", "Shadow", "Selection"}) {
+            const auto path = std::string("Assets/Shaders/Fiber/") + family + pass + ".hlsl";
+            SCOPED_TRACE(path);
+            const auto handle = m_resources->LoadShader(path);
+            ASSERT_TRUE(handle.IsValid()); ASSERT_NE(m_resources->Get(handle), nullptr);
+        }
+}
+
+TEST_F(FiberRenderPerfTest, ColliderShapesBendGrassAndFiniteTimeRecoveryRestoresTheOriginalImage)
+{
+    auto& prepared = Prepare(10000);
+    MakeStraight(prepared.scene);
+    const auto camera = CorrectnessCamera();
+    const auto baseline = RenderOnce(prepared.scene, camera);
+    ASSERT_GT(ExpectFiniteImage(baseline, true), 100u);
+    std::vector<float> spherePixels;
+    for (int kind = 0; kind < 3; ++kind) {
+        SCOPED_TRACE(kind);
+        for (auto& surface : prepared.scene->fibers) {
+            surface.frame.m_time = 2.0f;
+            surface.contacts = {};
+            surface.contacts.m_count = 1;
+            surface.contacts.m_centers[0] = {25, 0, 25, kind == 1 ? 6.0f : 12.0f};
+            surface.contacts.m_times[0] = {2, 1, 2, static_cast<float>(kind)};
+            surface.contacts.m_extents[0] = kind == 1 ? math::Vector4{10, 0, 0, 0} : math::Vector4{10, 1, 6, 0};
+            surface.contacts.m_rotations[0] = {0, 0.382683432f, 0, 0.923879533f};
+        }
+        const auto bent = RenderOnce(prepared.scene, camera);
+        ExpectFiniteImage(bent, true);
+        ASSERT_EQ(bent.pixels.size(), baseline.pixels.size());
+        double difference = 0;
+        for (size_t i = 0; i < bent.pixels.size(); ++i) difference += std::abs(bent.pixels[i] - baseline.pixels[i]);
+        EXPECT_GT(difference, 0.01);
+        if (kind == 0) spherePixels = bent.pixels;
+        else {
+            EXPECT_NE(bent.pixels, spherePixels);
+            for (auto& surface : prepared.scene->fibers) {
+                if (kind == 1) surface.contacts.m_extents[0] = {0, 0, 10, 0};
+                else surface.contacts.m_rotations[0] = {0, 0, 0, 1};
+            }
+            EXPECT_NE(RenderOnce(prepared.scene, camera).pixels, bent.pixels);
+        }
+        for (auto& surface : prepared.scene->fibers) surface.contacts.m_centers[0].y = 20;
+        EXPECT_EQ(RenderOnce(prepared.scene, camera).pixels, baseline.pixels);
+        for (auto& surface : prepared.scene->fibers) surface.contacts.m_centers[0].y = 0;
+        for (auto& surface : prepared.scene->fibers) surface.frame.m_time = 4.1f;
+        const auto recovered = RenderOnce(prepared.scene, camera);
+        EXPECT_EQ(recovered.pixels, baseline.pixels);
+    }
+}
+
 TEST_F(FiberRenderPerfTest, TerrainWaterClipRejectsSubmergedBladeRootsAcrossTheWholeBlade)
 {
     auto& prepared = Prepare(10000);

@@ -35,15 +35,20 @@ struct FiberFrameCB {
     math::Vector4 m_terrainWaterClip{};
 };
 
-/// @brief 繊維の b10。足元の接触 32 件 × (現在, 前フレーム)。
+/// @brief 繊維の b10。描画範囲に届く接触 32 件 × (現在, 前フレーム)。
 /// @note LAYOUT: FiberCommon.hlsli の FiberContactConstants と一致させる。radius (centers.w) が 0 の枠は無効。
 struct FiberContactCB {
     std::array<math::Vector4,64> m_centers{};
     std::array<math::Vector4,64> m_times{};
+    /// @note times.w: 0 = 球、1 = カプセル、2 = 箱。extents.xyz はカプセルのワールド半軸または箱の半寸法 [m]。
+    std::array<math::Vector4,64> m_extents{};
+    /// @note 箱の local → world 単位 Quaternion。球とカプセルでは読まない。
+    std::array<math::Vector4,64> m_rotations{};
     /// @note シェーダーが走査する枠数 [0,32]。今フレームは発生済みで回復しきっていない最後の枠 + 1。
     uint32_t m_count = 0;
     /// @note 前フレームは評価時刻が履歴ごとに違うため時刻で絞らず、半径を持つ最後の枠 + 1。
     uint32_t m_previousCount = 0;
+    /// @note 現在・前フレームで32件の描画予算から省いた履歴数。GPUでは予約領域。
     uint32_t m_padding[2]{};
 };
 

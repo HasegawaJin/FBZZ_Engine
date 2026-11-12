@@ -29,4 +29,4 @@ public:
 } /// @note namespace fbzz::renderer
 
 static_assert(sizeof(fbzz::renderer::FiberFrameCB) == 80);
-static_assert(sizeof(fbzz::renderer::FiberContactCB) == 2064);
+static_assert(sizeof(fbzz::renderer::FiberContactCB) == 4112);

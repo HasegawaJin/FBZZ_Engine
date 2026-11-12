@@ -17,6 +17,8 @@
 #include <Engine/Scene/SceneSerializer.hpp>
 #include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Scene/Components/FiberComponent.hpp>
+#include <Engine/Scene/Components/FiberInteractorComponent.hpp>
+#include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Systems/RenderFiberExtractor.hpp>
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
@@ -380,6 +382,217 @@ protected:
     uint64_t m_savedFrame = 0;
     float m_savedTime = 0, m_savedDelta = 0;
 };
+
+TEST_F(TerrainFiberStreamingTest, CapsuleContactsUseColliderCenterRotationAndNonuniformScale)
+{
+    CreateTerrain(65, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Capsule grass contact");
+    actor.transform.position = {16, 0, 16};
+    actor.transform.scale = {-2, 3, 0.5f};
+    actor.transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, 1.57079632679f);
+    actor.AddComponent<scene::FiberInteractorComponent>();
+    auto& capsule = actor.AddComponent<scene::CapsuleColliderComponent>();
+    capsule.center = {1, 0, 0}; capsule.radius = 0.5f; capsule.halfHeight = 0.4f;
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    size_t found = 0;
+    for (const auto& input : m_output.fibers) for (uint32_t i = 0; i < input.contacts.m_count; ++i) {
+        const auto& center = input.contacts.m_centers[i];
+        EXPECT_NEAR(center.x, 16, 1.0e-4f); EXPECT_NEAR(center.y, -2, 1.0e-4f);
+        EXPECT_NEAR(center.z, 16, 1.0e-4f); EXPECT_FLOAT_EQ(center.w, 1);
+        EXPECT_FLOAT_EQ(input.contacts.m_times[i].w, 1);
+        EXPECT_NEAR(input.contacts.m_extents[i].x, -1.2f, 1.0e-4f);
+        EXPECT_NEAR(input.contacts.m_extents[i].y, 0, 1.0e-4f);
+        ++found;
+    }
+    EXPECT_GT(found, 0u);
+}
+
+TEST_F(TerrainFiberStreamingTest, BoxContactsKeepOrientedDimensionsAndColliderCenter)
+{
+    CreateTerrain(65, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Oriented box contact");
+    actor.transform.position = {16, 1, 16}; actor.transform.scale = {2, 3, 4};
+    actor.transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, 1.57079632679f);
+    actor.AddComponent<scene::FiberInteractorComponent>();
+    auto& box = actor.AddComponent<scene::BoxColliderComponent>();
+    box.size = {2, 4, 6}; box.center = {1, 0, 0};
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    size_t found = 0;
+    for (const auto& input : m_output.fibers) for (uint32_t i = 0; i < input.contacts.m_count; ++i) {
+        EXPECT_FLOAT_EQ(input.contacts.m_times[i].w, 2);
+        EXPECT_NEAR(input.contacts.m_centers[i].x, 16, 1.0e-4f);
+        EXPECT_NEAR(input.contacts.m_centers[i].z, 14, 1.0e-4f);
+        EXPECT_FLOAT_EQ(input.contacts.m_extents[i].x, 2);
+        EXPECT_FLOAT_EQ(input.contacts.m_extents[i].y, 6);
+        EXPECT_FLOAT_EQ(input.contacts.m_extents[i].z, 12);
+        EXPECT_NEAR(input.contacts.m_rotations[i].y, 0.70710678f, 1.0e-4f);
+        ++found;
+    }
+    EXPECT_GT(found, 0u);
+}
+
+TEST_F(TerrainFiberStreamingTest, DistantActorsCannotEvictNearbyContactsAndEmptyChunksSkipTheShaderLoop)
+{
+    CreateTerrain(1025, 0.2f);
+    for (int i = 0; i < 64; ++i) {
+        auto& actor = m_scene.CreateGameObject("Independent grass contact");
+        actor.transform.position = {16.0f + 64.0f * static_cast<float>(i), 0, 16};
+        actor.AddComponent<scene::FiberInteractorComponent>();
+    }
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    size_t nearby = 0, empty = 0;
+    for (const auto& input : m_output.fibers) {
+        if (input.contacts.m_count == 0) ++empty;
+        for (uint32_t i = 0; i < input.contacts.m_count; ++i) {
+            const auto& center = input.contacts.m_centers[i];
+            if (center.x == 16) ++nearby;
+            const math::Vector3 position{center.x, center.y, center.z};
+            EXPECT_LE((position - input.boundsCenter).Length(), input.boundsRadius + center.w + 0.001f);
+        }
+    }
+    EXPECT_GT(nearby, 0u); EXPECT_GT(empty, 0u);
+}
+
+TEST_F(TerrainFiberStreamingTest, ContactsAboveTheGrassDoNotLeakAcrossHeights)
+{
+    CreateTerrain(65, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Overhead contact");
+    actor.transform.position = {16, 200, 16};
+    actor.AddComponent<scene::FiberInteractorComponent>();
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    ASSERT_FALSE(m_output.fibers.empty());
+    for (const auto& input : m_output.fibers) {
+        EXPECT_EQ(input.contacts.m_count, 0u); EXPECT_EQ(input.contacts.m_previousCount, 0u);
+    }
+}
+
+TEST_F(TerrainFiberStreamingTest, DisabledColliderDoesNotFallBackToManualSphereAndManualModeRemainsAvailable)
+{
+    CreateTerrain(65, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Disabled box contact");
+    actor.transform.position = {16, 0, 16};
+    auto& interactor = actor.AddComponent<scene::FiberInteractorComponent>();
+    actor.AddComponent<scene::BoxColliderComponent>().enabled = false;
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    for (const auto& input : m_output.fibers) EXPECT_EQ(input.contacts.m_count, 0u);
+    interactor.m_useCollider = false;
+    ExtractContractFrame(16, 16);
+    EXPECT_TRUE(std::any_of(m_output.fibers.begin(), m_output.fibers.end(), [](const auto& input) {
+        return input.contacts.m_count > 0 && input.contacts.m_times[0].w == 0;
+    }));
+}
+
+TEST_F(TerrainFiberStreamingTest, ContactSnapshotsAreSharedAcrossViewsAndRecoverAfterDisable)
+{
+    CreateTerrain(65, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Recovering contact");
+    actor.transform.position = {16, 0, 16};
+    auto& interactor = actor.AddComponent<scene::FiberInteractorComponent>();
+    interactor.m_recoverySeconds = 1.0f;
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    const auto first = m_output.fibers;
+    ASSERT_FALSE(first.empty());
+    interactor.m_enabled = false;
+    ExtractContractFrame(18, 16, false);
+    ASSERT_EQ(first.size(), m_output.fibers.size());
+    for (size_t i = 0; i < first.size(); ++i)
+        EXPECT_EQ(std::memcmp(&first[i].contacts, &m_output.fibers[i].contacts, sizeof(renderer::FiberContactCB)), 0);
+    Time::time = 0.5f;
+    ExtractContractFrame(16, 16);
+    EXPECT_TRUE(std::any_of(m_output.fibers.begin(), m_output.fibers.end(), [](const auto& input) { return input.contacts.m_count > 0; }));
+    Time::time = 1.1f;
+    ExtractContractFrame(16, 16);
+    size_t previous = 0;
+    for (const auto& input : m_output.fibers) { EXPECT_EQ(input.contacts.m_count, 0u); previous += input.contacts.m_previousCount; }
+    EXPECT_GT(previous, 0u);
+    ExtractContractFrame(16, 16);
+    for (const auto& input : m_output.fibers) { EXPECT_EQ(input.contacts.m_count, 0u); EXPECT_EQ(input.contacts.m_previousCount, 0u); }
+}
+
+TEST_F(TerrainFiberStreamingTest, FastMotionStampsIntermediateContactsWithoutRegeneratingGrassRoots)
+{
+    CreateTerrain(65, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Running contact");
+    actor.transform.position = {8, 0, 8};
+    actor.AddComponent<scene::FiberInteractorComponent>();
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    const auto roots = Snapshot();
+    actor.transform.position = {12, 0, 8};
+    scene::FlushWorldTransforms(m_scene);
+    Time::time = 1.0f / 60.0f;
+    ExtractContractFrame(16, 16);
+    bool middle = false;
+    for (const auto& input : m_output.fibers) for (uint32_t i = 0; i < input.contacts.m_count; ++i)
+        middle |= std::abs(input.contacts.m_centers[i].x - 10.0f) < 0.001f;
+    EXPECT_TRUE(middle);
+    ExpectSamePatchHandles(roots, Snapshot());
+}
+
+TEST_F(TerrainFiberStreamingTest, DiscontinuousFramesAndTimeRewindResetPreviousContactSnapshots)
+{
+    CreateTerrain(65, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Discontinuous contact");
+    actor.transform.position = {8, 0, 8};
+    actor.AddComponent<scene::FiberInteractorComponent>();
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    Time::frameCount += 5;
+    actor.transform.position = {12, 0, 8};
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    size_t found = 0;
+    for (const auto& input : m_output.fibers) {
+        EXPECT_EQ(input.contacts.m_count, input.contacts.m_previousCount);
+        for (uint32_t i = 0; i < input.contacts.m_count; ++i) {
+            EXPECT_FLOAT_EQ(input.contacts.m_centers[i].x, input.contacts.m_centers[32 + i].x);
+            ++found;
+        }
+    }
+    EXPECT_GT(found, 0u);
+    Time::time = -1;
+    ExtractContractFrame(16, 16);
+    for (const auto& input : m_output.fibers) for (uint32_t i = 0; i < input.contacts.m_count; ++i)
+        EXPECT_FLOAT_EQ(input.contacts.m_times[i].x, -1);
+}
+
+TEST_F(TerrainFiberStreamingTest, StationaryRotatedBoxDoesNotAccumulateDuplicateContactHistory)
+{
+    CreateTerrain(17, 0.2f);
+    auto& actor = m_scene.CreateGameObject("Stationary rotated contact");
+    actor.transform.position = {16, 0, 16};
+    actor.transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, 1.57079632679f);
+    actor.AddComponent<scene::FiberInteractorComponent>();
+    actor.AddComponent<scene::BoxColliderComponent>().size = {4, 12, 24};
+    scene::FlushWorldTransforms(m_scene);
+    for (int frame = 0; frame < 200; ++frame) ExtractContractFrame(16, 16);
+    size_t count = 0;
+    for (const auto& input : m_output.fibers) {
+        EXPECT_LE(input.contacts.m_count, 1u); count += input.contacts.m_count;
+    }
+    EXPECT_GT(count, 0u);
+}
+
+TEST_F(TerrainFiberStreamingTest, ChunkContactBudgetReportsOverflowWithoutMergingDifferentActors)
+{
+    CreateTerrain(65, 0.2f);
+    for (int i = 0; i < 40; ++i) {
+        auto& actor = m_scene.CreateGameObject("Overlapping contact");
+        actor.transform.position = {16, 0, 16};
+        actor.AddComponent<scene::FiberInteractorComponent>();
+    }
+    scene::FlushWorldTransforms(m_scene);
+    ExtractContractFrame(16, 16);
+    EXPECT_TRUE(std::any_of(m_output.fibers.begin(), m_output.fibers.end(), [](const auto& input) {
+        return input.contacts.m_count == 32 && input.contacts.m_padding[0] == 8;
+    }));
+}
 
 TEST_F(TerrainFiberStreamingTest, DenseGrassResidencyIsBoundedByViewAndWarmFramesReuseAllocations)
 {

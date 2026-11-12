@@ -498,6 +498,7 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     fiber.m_terrainLayerThreshold=0.6f;
     fiber.m_flowChannels=0b101;
     auto& actor=go.AddComponent<scene::FiberInteractorComponent>();
+    actor.m_useCollider=false;
     actor.m_radius=0.7f;
     actor.m_recoverySeconds=3;
     const auto path=temp.File("blade.scene").generic_string();
@@ -523,6 +524,8 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
     EXPECT_FLOAT_EQ(scene::FiberComponent{}.m_terrainLayerThreshold,0.25f);
     const auto* contact=restored->GetComponent<scene::FiberInteractorComponent>(entities[0]);
     ASSERT_NE(contact,nullptr);
+    EXPECT_FALSE(contact->m_useCollider);
+    EXPECT_TRUE(scene::FiberInteractorComponent{}.m_useCollider);
     EXPECT_FLOAT_EQ(contact->m_radius,0.7f);
     EXPECT_FLOAT_EQ(contact->m_recoverySeconds,3);
 }

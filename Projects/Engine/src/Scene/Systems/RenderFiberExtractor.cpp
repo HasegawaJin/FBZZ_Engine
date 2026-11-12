@@ -34,6 +34,7 @@
 #include <Engine/Renderer/DynamicBufferPool.hpp>
 #include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 #include "RenderPasses/Geometry/FiberSurfaceSources.hpp"
+#include "RenderPasses/Geometry/FiberContacts.hpp"
 #include "RenderPasses/Geometry/FiberPlacementResources.hpp"
 #include "RenderPasses/Geometry/FiberAppearanceResources.hpp"
 #include "RenderPasses/Geometry/FlowFieldGpu.hpp"
@@ -447,6 +448,7 @@ void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, 
 }
 
 void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) {
+    if (ctx.scene.GetEntities<FiberComponent>().empty()) return;
     auto& resources = ctx.resources;
     auto& cache = GetFiberResources(resources);
     const auto wind = ctx.scene.FlowFrame().ambient;
@@ -454,7 +456,6 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
     UpdateFiberContacts(contacts,ctx.scene);
 
     const auto& flows = UpdateFiberFlows(cache, ctx.scene, resources);
-    if (ctx.scene.GetEntities<FiberComponent>().empty()) return;
     const auto terrainWaterClip = GetTerrainGrassWaterClip(ctx.scene);
     /// @note 風・時刻はパス内で共通。物体・面ごとに検証し直さない。
     FiberFrameCB frameBase;
@@ -583,7 +584,6 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             input.frame.m_flowCount = CountFiberFlows(flows.m_current, input.frame.m_flowChannels, input.boundsCenter, input.boundsRadius);
             input.frame.m_flowPreviousFirst = static_cast<uint32_t>(flows.m_currentPacked.size());
             input.frame.m_flowPreviousCount = CountFiberFlows(flows.m_previous, input.frame.m_flowChannels, input.boundsCenter, input.boundsRadius);
-            input.contacts = contacts.m_data;
             input.vertices = surface.vertices; input.indices = mesh->indexBuffer; input.indexCount = mesh->indexCount;
             input.skinnedVertices = surface.skinnedVertices; input.skin = surface.skin; input.previousSkin = surface.previousSkin;
             input.flows = flows.m_buffer;
@@ -611,12 +611,14 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
                         chunkInput.boundsRadius = page.radius*maxScale+fiberPadding+fiber.m_bladeWidth;
                         chunkInput.frame.m_flowCount = CountFiberFlows(flows.m_current,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
                         chunkInput.frame.m_flowPreviousCount = CountFiberFlows(flows.m_previous,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
+                        chunkInput.contacts = SelectFiberContacts(contacts, chunkInput);
                         output.fibers.push_back(std::move(chunkInput));
                     }
                 }
                 continue;
             }
             if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned) input.blades = resolveShape(true);
+            input.contacts = SelectFiberContacts(contacts, input);
             output.fibers.push_back(std::move(input));
         }
     }

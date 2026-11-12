@@ -72,18 +72,97 @@ float3 FiberLocalFlow(float3 root, float time, bool previous)
         fiberVelocityAtlas, fiberFlowSampler, root, time, covered);
 }
 
-/// @note 最後の 32 接触。発生時刻より前の速度評価には接触を適用しない。
+/// @note チャンクに届く最大32接触。発生時刻より前の速度評価には接触を適用しない。
 /// @note LAYOUT: FiberRenderPass.hpp の FiberContactCB と一致させる。
 cbuffer FiberContactConstants : register(b10)
 {
     float4 fiberContactCenters[64];
     float4 fiberContactTimes[64];
+    float4 fiberContactExtents[64];
+    float4 fiberContactRotations[64];
     /// @note 走査する枠数 [0,32]。これより後ろの枠は寄与しない (CPU が保証する)。
     uint fiberContactCount;
     uint fiberContactPreviousCount;
     uint _fiberContactPadding0;
     uint _fiberContactPadding1;
 };
+
+float3 FiberContactRotate(float3 value, float4 rotation)
+{
+    float3 twice = 2.0f * cross(rotation.xyz, value);
+    return value + rotation.w * twice + cross(rotation.xyz, twice);
+}
+
+/// @note Degenerate and parallel segments are supported; both returned points lie on their closed segments.
+/// @see https://realtimecollisiondetection.net/books/rtcd/ Section 5.1.9, Closest Points of Two Line Segments.
+void FiberContactClosestSegments(float3 p, float3 q, float3 a, float3 b, out float3 grass, out float3 collider)
+{
+    float3 u = q - p, v = b - a, r = p - a;
+    float uu = dot(u, u), vv = dot(v, v), uv = dot(u, v);
+    float ur = dot(u, r), vr = dot(v, r);
+    float s = 0.0f, t = 0.0f;
+    if (uu > 1.0e-8f) {
+        if (vv > 1.0e-8f) {
+            float denominator = uu * vv - uv * uv;
+            if (denominator > 1.0e-8f * uu * vv) s = saturate((uv * vr - ur * vv) / denominator);
+            t = (uv * s + vr) / vv;
+            if (t < 0.0f) { t = 0.0f; s = saturate(-ur / uu); }
+            else if (t > 1.0f) { t = 1.0f; s = saturate((uv - ur) / uu); }
+        } else s = saturate(-ur / uu);
+    } else if (vv > 1.0e-8f) t = saturate(vr / vv);
+    grass = p + u * s;
+    collider = a + v * t;
+}
+
+/// @note The undeformed blade segment is tested in 3D, so overhead colliders do not flatten the ground below them.
+float FiberContactWeight(uint index, float3 root, float3 normal, float lengthValue, out float3 direction)
+{
+    float3 center = fiberContactCenters[index].xyz;
+    float radius = fiberContactCenters[index].w;
+    float kind = fiberContactTimes[index].w;
+    float3 extent = fiberContactExtents[index].xyz;
+    float3 delta;
+    float weight;
+    if (kind > 1.5f) {
+        float4 rotation = fiberContactRotations[index];
+        float4 inverse = float4(-rotation.xyz, rotation.w);
+        float3 localRoot = FiberContactRotate(root - center, inverse);
+        float3 segment = FiberContactRotate(normal * lengthValue, inverse);
+        float enter = 0.0f, leave = 1.0f;
+        [unroll] for (uint axis = 0; axis < 3; ++axis) {
+            if (abs(segment[axis]) < 1.0e-7f) {
+                if (abs(localRoot[axis]) > extent[axis]) { direction = 0; return 0.0f; }
+            } else {
+                float first = (-extent[axis] - localRoot[axis]) / segment[axis];
+                float last = (extent[axis] - localRoot[axis]) / segment[axis];
+                enter = max(enter, min(first, last));
+                leave = min(leave, max(first, last));
+            }
+        }
+        if (enter > leave) { direction = 0; return 0.0f; }
+        float3 localSample = localRoot + segment * ((enter + leave) * 0.5f);
+        float3 penetration = extent - abs(localSample);
+        weight = saturate(min(penetration.x, min(penetration.y, penetration.z))
+            / max(min(extent.x, min(extent.y, extent.z)), 0.001f));
+        delta = FiberContactRotate(localSample, rotation);
+    } else {
+        float3 grass, collider;
+        if (kind > 0.5f) {
+            FiberContactClosestSegments(root, root + normal * lengthValue, center - extent, center + extent, grass, collider);
+        } else {
+            grass = root + normal * clamp(dot(center - root, normal), 0.0f, lengthValue);
+            collider = center;
+        }
+        delta = grass - collider;
+        float distanceSq = dot(delta, delta);
+        if (distanceSq >= radius * radius) { direction = 0; return 0.0f; }
+        weight = saturate(1.0f - sqrt(distanceSq) / max(radius, 0.001f));
+    }
+    float3 projected = delta - normal * dot(delta, normal);
+    float3 fallback = abs(normal.y) < 0.9f ? cross(normal, float3(0, 1, 0)) : cross(normal, float3(0, 0, 1));
+    direction = dot(projected, projected) > 1.0e-8f ? normalize(projected) : normalize(fallback);
+    return weight;
+}
 
 float3 FiberContactOffset(float3 root, float3 normal, float height, float time, float lengthValue, bool previous = false)
 {
@@ -97,16 +176,18 @@ float3 FiberContactOffset(float3 root, float3 normal, float height, float time, 
         float age = time - fiberContactTimes[i].x;
         float radius = fiberContactCenters[i].w;
         if (radius <= 0 || age < 0) continue;
-        float3 delta = root-fiberContactCenters[i].xyz;
-        float weight = saturate(1.0f-length(delta)/radius)
-            * saturate(1.0f-age/max(fiberContactTimes[i].z, 0.05f))*fiberContactTimes[i].y;
-        if (weight > strongest) {
+        float phase = age / max(fiberContactTimes[i].z, 0.05f);
+        if (phase >= 1.0f) continue;
+        float3 contactDirection;
+        float weight = FiberContactWeight(i, root, normal, lengthValue, contactDirection);
+        /// @note Analytic finite-time recovery needs no per-blade CPU state or frame-rate-dependent integration.
+        weight *= (1.0f-phase) * (1.0f-phase) * cos(phase * 6.283185307f) * fiberContactTimes[i].y;
+        if (abs(weight) > abs(strongest)) {
             strongest = weight;
-            direction = delta-normal*dot(delta,normal);
-            direction = dot(direction,direction)>1.0e-8f ? normalize(direction) : float3(1,0,0);
+            direction = contactDirection;
         }
     }
-    return (direction-normal)*lengthValue*0.85f*strongest*height*height*planarShading;
+    return (direction*strongest-normal*abs(strongest))*lengthValue*0.85f*height*height*planarShading;
 }
 
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
