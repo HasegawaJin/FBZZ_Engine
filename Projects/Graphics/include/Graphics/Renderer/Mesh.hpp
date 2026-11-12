@@ -7,6 +7,7 @@
 #pragma once
 #include <Graphics/Api.hpp>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include "ResourceHandle.hpp"
@@ -15,6 +16,8 @@
 #include <Math/Vector4.hpp>
 
 namespace fbzz::renderer {
+
+struct MeshletClusterData;
 
 struct Vertex {
     math::Vector3 position;
@@ -88,9 +91,11 @@ struct Mesh {
     /// @note CPU の頂点と添字が確定したアセットだけが公開する。編集時は境界を再計算して公開を失効させる。
     FBZZ_GRAPHICS_API void PublishCpuGeometry();
     [[nodiscard]] uint64_t CpuGeometryRevision() const { return m_cpuGeometryRevision; }
+    [[nodiscard]] const std::shared_ptr<const MeshletClusterData>& ClusterLod() const { return m_clusterLod; }
 
 private:
     uint64_t m_cpuGeometryRevision = 0;
+    std::shared_ptr<const MeshletClusterData> m_clusterLod;
 };
 
 } /// @note namespace fbzz::renderer

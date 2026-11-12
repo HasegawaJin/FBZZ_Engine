@@ -31,6 +31,7 @@
 namespace fbzz::renderer {
 
 class PreparedSkinningTicket;
+struct MeshletClusterData;
 
 struct RenderMaterial {
     ShaderCapabilities shaderCapabilities;
@@ -81,6 +82,7 @@ struct RenderMeshItem {
     float boundsRadius = 0.0f;
     /// @note 実形状内部のワールド球。最小軸スケールで縮小し、カリング余白は加えない。
     float occluderRadius = 0.0f;
+    std::shared_ptr<const MeshletClusterData> clusterLod;
 };
 
 /// @note Palette handles are valid for this extracted frame only; ordinary snapshot GPU handle lifetime rules apply.

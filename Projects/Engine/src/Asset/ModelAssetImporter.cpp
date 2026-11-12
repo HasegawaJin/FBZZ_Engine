@@ -341,7 +341,6 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
             }
             /// @note ヘッダーは球しか持たないので AABB だけ頂点から補う (遮蔽者に使えるかの判定材料)。
             mesh->ComputeBoundsExtents();
-            mesh->PublishCpuGeometry();
             if (resources)
                 mesh->indexBuffer = resources->CreateIndexBuffer(
                     mesh->cpuIndices.data(), smHdr.indexCount);
@@ -375,6 +374,7 @@ std::unique_ptr<ModelAsset> ModelAssetImporter::ImportFromReader(
                 }
             }
 
+            mesh->PublishCpuGeometry();
             entry.mesh = std::move(mesh);
         }
     }

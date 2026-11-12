@@ -30,7 +30,7 @@ struct FbzzMeshletDescriptor
 };
 
 /// @brief Per-dispatch culling and raw-vertex metadata.
-/// @note The six planes and four uints occupy 112 bytes. Terrain appends a local-space culling view.
+/// @note The 112-byte prefix is shared. Terrain and static cluster draws append different data.
 cbuffer MeshletGeometryConstants : register(b13)
 {
     float4 g_meshletFrustumPlanes[6];
@@ -41,10 +41,67 @@ cbuffer MeshletGeometryConstants : register(b13)
 #ifdef FBZZ_TERRAIN_MESHLET
     float4 g_terrainMeshletEye;
 #endif
+#ifdef FBZZ_STATIC_CLUSTER_LOD
+    float4 g_clusterClipRows[4];
+    float2 g_clusterViewportHalfSize;
+    float g_clusterErrorPixels;
+    uint g_clusterNodeOffsetBytes;
+#endif
 };
 
 static const uint kFbzzMeshletMaximumVertices = 64u;
 static const uint kFbzzMeshletMaximumPrimitives = 126u;
+
+#ifdef FBZZ_STATIC_CLUSTER_LOD
+/// @note Bounds the difference of two homogeneous projections over the whole source AABB and error ball.
+/// @note The reversed-Z near plane is w - z = 0. Rows include the object's nonuniform scale and shear.
+bool FbzzClusterErrorFits(float3 boundsMin, float3 boundsMax, float error)
+{
+    if (error == 0.0f) return true;
+    const float3 center = boundsMin * 0.5f + boundsMax * 0.5f;
+    const float3 extent = boundsMax * 0.5f - boundsMin * 0.5f;
+    float4 clipCenter, clipExtent, clipError;
+    [unroll]
+    for (uint axis = 0; axis < 4; ++axis)
+    {
+        const float4 row = g_clusterClipRows[axis];
+        clipCenter[axis] = dot(row, float4(center, 1.0f));
+        clipExtent[axis] = dot(abs(row.xyz), extent);
+        clipError[axis] = length(row.xyz) * error;
+    }
+    const float wMin = clipCenter.w - clipExtent.w;
+    if (!(wMin > clipError.w + 1.0e-6f)) return false;
+    const float4 nearRow = g_clusterClipRows[3] - g_clusterClipRows[2];
+    if (!(dot(nearRow, float4(center, 1.0f)) > dot(abs(nearRow.xyz), extent) + length(nearRow.xyz) * error))
+        return false;
+    const float2 absNdc = (abs(clipCenter.xy) + clipExtent.xy) / wMin;
+    const float2 ndcError = (clipError.xy + absNdc * clipError.w) / (wMin - clipError.w);
+    const float pixelError = length(ndcError * g_clusterViewportHalfSize);
+    return isfinite(pixelError) && pixelError <= g_clusterErrorPixels;
+}
+
+/// @note Exactly the highest acceptable ancestor covers each leaf. Nodes without acceptable parents draw independently.
+bool IsFbzzClusterSelected(uint node)
+{
+    if (g_clusterNodeOffsetBytes == 0u) return true;
+    bool selected = false;
+    bool ownNode = true;
+    [loop]
+    while (node != 0xffffffffu)
+    {
+        const uint offset = g_clusterNodeOffsetBytes + node * 32u;
+        const float4 low = asfloat(g_meshletRawData.Load4(offset));
+        const uint4 high = g_meshletRawData.Load4(offset + 16u);
+        const bool fits = FbzzClusterErrorFits(low.xyz, asfloat(high.xyz), low.w);
+        if (ownNode) selected = fits;
+        else if (fits) return false;
+        if (!selected) return false;
+        ownNode = false;
+        node = high.w;
+    }
+    return selected;
+}
+#endif
 
 /// @brief Returns whether a local-space meshlet AABB intersects all active world-space frustum planes.
 /// @param descriptor Local-space meshlet bounds.

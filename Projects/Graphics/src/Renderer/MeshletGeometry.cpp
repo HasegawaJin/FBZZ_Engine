@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #include <Graphics/Renderer/MeshletGeometry.hpp>
+#include "StaticClusterLod.hpp"
 
 #include <Graphics/Renderer/IBuffer.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
@@ -251,7 +252,8 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
                                    const uint8_t* indexData, size_t indexDataBytes,
                                    uint32_t indexCount, bool terrainCones,
                                    std::vector<uint8_t>& outBlob,
-                                   uint32_t& outMeshletCount)
+                                   uint32_t& outMeshletCount,
+                                   std::span<const StaticClusterRange> clusterRanges = {})
 {
     if (!vertexData || !indexData || vertexCount == 0 || vertexStride < 12 ||
         (vertexStride & 3u) != 0 ||
@@ -275,6 +277,7 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
     std::vector<std::array<uint32_t, 3>> primitives;
     std::vector<uint8_t> localIndex(vertexCount, kUnassignedLocalIndex);
     WorkingMeshlet current;
+    size_t clusterRangeIndex = 0;
     current.vertices.reserve(kMaximumMeshletVertices);
     current.primitives.reserve(kMaximumMeshletPrimitives);
     const size_t estimatedMeshletCount = (indexCount / 3u + kMaximumMeshletPrimitives - 1u) /
@@ -302,11 +305,13 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
         if (terrainCones) {
             TerrainNormalCone cone;
             if (BuildTerrainNormalCone(current, vertexData, vertexStride, cone)) {
-                /// @note Terrain uses the non-geometric bound lanes. Static meshlets leave both lanes zero.
+                /// @note Terrain uses the non-geometric bound lanes; flat static meshlets leave both lanes zero.
                 staged.descriptor.boundsMin[3] = std::bit_cast<float>(cone.packedAxisCutoff);
                 staged.descriptor.boundsMax[3] = cone.apexDistance;
             }
         }
+        if (!clusterRanges.empty())
+            staged.descriptor.boundsMin[3] = std::bit_cast<float>(clusterRanges[clusterRangeIndex].node);
         stagedDescriptors.push_back(staged);
         vertexLookup.insert(vertexLookup.end(), current.vertices.begin(), current.vertices.end());
         primitives.insert(primitives.end(), current.primitives.begin(), current.primitives.end());
@@ -328,6 +333,10 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
     };
 
     for (size_t firstIndex = 0; firstIndex < indexCount; firstIndex += 3) {
+        if (!clusterRanges.empty() && firstIndex == clusterRanges[clusterRangeIndex].endIndex) {
+            if (!flushMeshlet()) return false;
+            ++clusterRangeIndex;
+        }
         uint32_t triangle[3]{};
         std::memcpy(triangle, indexData + firstIndex * sizeof(uint32_t),
                     sizeof(triangle));
@@ -417,6 +426,26 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
 
 } /// @note namespace
 
+bool MeshletGeometryBuilder::BuildClusters(std::span<const Vertex> vertices,
+    std::span<const uint32_t> indices, MeshletClusterData& output)
+{
+    StaticClusterBuild hierarchy;
+    if (!BuildStaticClusterLod(vertices, indices, hierarchy)) return false;
+    const auto* vertexBytes = static_cast<const uint8_t*>(static_cast<const void*>(vertices.data()));
+    const auto* indexBytes = static_cast<const uint8_t*>(static_cast<const void*>(hierarchy.indices.data()));
+    MeshletClusterData packed;
+    if (!BuildMeshlets(vertexBytes, vertices.size_bytes(), static_cast<uint32_t>(vertices.size()), sizeof(Vertex),
+        indexBytes, hierarchy.indices.size() * sizeof(uint32_t), static_cast<uint32_t>(hierarchy.indices.size()),
+        false, packed.bytes, packed.meshletCount, hierarchy.ranges)) return false;
+    const size_t nodeBytes = hierarchy.nodes.size() * sizeof(StaticClusterNode);
+    if (nodeBytes > kMaximumBlobBytes - packed.bytes.size()) return false;
+    packed.nodeOffsetBytes = static_cast<uint32_t>(packed.bytes.size());
+    packed.bytes.resize(packed.bytes.size() + nodeBytes);
+    std::memcpy(packed.bytes.data() + packed.nodeOffsetBytes, hierarchy.nodes.data(), nodeBytes);
+    output = std::move(packed);
+    return true;
+}
+
 bool MeshletGeometryBuilder::Build(const uint8_t* vertexData, size_t vertexDataBytes,
                                    uint32_t vertexCount, uint32_t vertexStride,
                                    const uint8_t* indexData, size_t indexDataBytes,
@@ -442,6 +471,7 @@ size_t MeshletGeometryCache::InputKeyHash::operator()(const InputKey& key) const
     combine(key.vertexStride);
     combine(key.indexCount);
     combine(key.terrainCones);
+    combine(key.clustered);
     return hash;
 }
 
@@ -449,10 +479,11 @@ bool MeshletGeometryCache::Prepare(ResourceManager& resources,
                                    ResourceHandle<BufferTag> vertexBuffer,
                                    ResourceHandle<BufferTag> indexBuffer,
                                    uint32_t vertexCount, uint32_t vertexStride,
-                                   uint32_t indexCount, MeshletGeometry& outGeometry)
+                                   uint32_t indexCount, MeshletGeometry& outGeometry,
+                                   const MeshletClusterData* clusters)
 {
     return PrepareImpl(resources, vertexBuffer, indexBuffer, vertexCount, vertexStride,
-        indexCount, false, outGeometry);
+        indexCount, false, outGeometry, clusters);
 }
 
 bool MeshletGeometryCache::PrepareTerrain(ResourceManager& resources,
@@ -460,13 +491,13 @@ bool MeshletGeometryCache::PrepareTerrain(ResourceManager& resources,
     uint32_t indexCount, MeshletGeometry& outGeometry)
 {
     return PrepareImpl(resources, vertexBuffer, indexBuffer, 0, kTerrainVertexStride,
-        indexCount, true, outGeometry);
+        indexCount, true, outGeometry, nullptr);
 }
 
 bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
     ResourceHandle<BufferTag> vertexBuffer, ResourceHandle<BufferTag> indexBuffer,
     uint32_t vertexCount, uint32_t vertexStride, uint32_t indexCount,
-    bool terrainCones, MeshletGeometry& outGeometry)
+    bool terrainCones, MeshletGeometry& outGeometry, const MeshletClusterData* clusters)
 {
     if (!vertexBuffer.IsValid() || !indexBuffer.IsValid() || (!terrainCones && vertexCount == 0) ||
         vertexStride < 12 || (vertexStride & 3u) != 0 ||
@@ -492,6 +523,8 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         if (vertexMetadata.sizeBytes % vertexStride != 0 || count == 0 || count > UINT32_MAX) return false;
         vertexCount = static_cast<uint32_t>(count);
     }
+    /// @note A packed import hierarchy indexes the original VB/IB contents. Updated buffers use the legacy path.
+    if (clusters && (vertexMetadata.contentVersion != 1 || indexMetadata.contentVersion != 1)) return false;
 
     size_t requiredVertexBytes = 0;
     size_t requiredIndexBytes = 0;
@@ -505,7 +538,7 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         return false;
     }
 
-    const InputKey key{ vertexBuffer, indexBuffer, vertexCount, vertexStride, indexCount, terrainCones };
+    const InputKey key{ vertexBuffer, indexBuffer, vertexCount, vertexStride, indexCount, terrainCones, clusters != nullptr };
     std::vector<ResourceHandle<BufferTag>> releaseHandles;
     {
         std::lock_guard lock(m_mutex);
@@ -539,18 +572,24 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
     }
     ReleaseBlobs(resources, releaseHandles);
 
-    std::vector<uint8_t> vertexBytes(requiredVertexBytes);
-    std::vector<uint8_t> indexBytes(requiredIndexBytes);
     IBuffer* sourceVertexBuffer = resources.Get(vertexBuffer);
-    if (!sourceVertexBuffer ||
-        sourceVertexBuffer->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX ||
-        !sourceVertexBuffer->CopyData(0, requiredVertexBytes, vertexBytes.data())) {
-        return false;
+    if (!sourceVertexBuffer || sourceVertexBuffer->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX) return false;
+
+    std::vector<uint8_t> generated;
+    uint32_t meshletCount = 0;
+    bool validBlob = true;
+    if (clusters) {
+        meshletCount = clusters->meshletCount;
+    } else {
+        std::vector<uint8_t> vertexBytes(requiredVertexBytes);
+        std::vector<uint8_t> indexBytes(requiredIndexBytes);
+        IBuffer* sourceIndexBuffer = resources.Get(indexBuffer);
+        if (!sourceIndexBuffer || !sourceVertexBuffer->CopyData(0, requiredVertexBytes, vertexBytes.data())
+            || !sourceIndexBuffer->CopyData(0, requiredIndexBytes, indexBytes.data())) return false;
+        validBlob = BuildMeshlets(vertexBytes.data(), vertexBytes.size(), vertexCount, vertexStride,
+            indexBytes.data(), indexBytes.size(), indexCount, terrainCones, generated, meshletCount);
     }
-    IBuffer* sourceIndexBuffer = resources.Get(indexBuffer);
-    if (!sourceIndexBuffer || !sourceIndexBuffer->CopyData(0, requiredIndexBytes, indexBytes.data())) {
-        return false;
-    }
+    const auto& blobBytes = clusters ? clusters->bytes : generated;
 
     BufferResourceMetadata verifiedVertexMetadata{};
     BufferResourceMetadata verifiedIndexMetadata{};
@@ -560,12 +599,7 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
                            vertexMetadata.contentVersion, indexMetadata.contentVersion))
         return false;
 
-    std::vector<uint8_t> blobBytes;
-    uint32_t meshletCount = 0;
-    if (!BuildMeshlets(vertexBytes.data(), vertexBytes.size(),
-                                       vertexCount, vertexStride,
-                                       indexBytes.data(), indexBytes.size(),
-                                       indexCount, terrainCones, blobBytes, meshletCount)) {
+    if (!validBlob) {
         std::vector<ResourceHandle<BufferTag>> evictedHandles;
         bool reusedGeometry = false;
         bool wasRejected = false;
@@ -658,6 +692,7 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
     MeshletGeometry geometry{ blob, meshletCount, vertexCount, vertexStride, indexCount };
     geometry.boundsMin = aggregateBoundsMin;
     geometry.boundsMax = aggregateBoundsMax;
+    geometry.clusterNodeOffsetBytes = clusters ? clusters->nodeOffsetBytes : 0;
     std::vector<ResourceHandle<BufferTag>> evictedHandles;
     bool stored = false;
     bool accepted = false;

@@ -21,6 +21,14 @@ private b13は112 byteで、world frustum planes六本とmeshletCount/vertexStri
 
 cacheは全descriptorから求めたlocal AABBもCPUへ保持する。Mesh Shaderモードでも、全体が見える場合、軽微なクリップ、カリング無効、無効な視錐台は通常描画へ戻す。各world frustum planeへの投影半径をsupport、中心のsigned distanceをdistanceとし、`(support - distance) / (2 * support)` がどれか一面で0.25以上のときだけMesh stageを使う。これはAABB厚みのクリップ量の推定で、実際のtriangleの可視割合や任意GPUの高速化を保証しない。比較fixtureのforceMeshだけは全可視もMSへ送り、性能差を隠さない。初回分割・転送の費用はsteady測定へ含めず、assetのoffline生成や事前準備は未実装である。
 
+### 不透明な静的メッシュのクラスタLOD
+
+CPU形状を公開する静的メッシュのうち、8,192三角形以上でモーフを持たないサブメッシュは、インポート中に三角形の重心を空間分割して葉を作る。近接する子の形状をまとめ、元頂点を使うエッジ縮約で親を作る。サブメッシュ間は分けたまま、グループの境界・同一位置の属性分割・非多様体の頂点を固定する。境界の頂点と辺が各段で一致するので、隣のクラスタが別の段を選んでも継ぎ目を保てる。簡略化できない枝は細かい形状のまま残す。
+
+ノードは元形状のローカルAABB、親番号、縮約の各段で累積した最大位置変位を持つ。GBufferのDX12 `mesh`モードで、TAAのジッターを除いた射影と描画解像度から誤差をピクセル換算する。近面を横切る候補は細かく描く。GPUは各候補から親を調べ、誤差が1ピクセルに収まる最上位のノードだけを描画する。非一様スケール・shearはローカルからclipへの行列に含める。通常の`cpu`モードを同じアセットの比較に使える。 [Epic Naniteの階層クラスタの概要](https://dev.epicgames.com/documentation/unreal-engine/nanite-in-unreal-engine)
+
+標準PBRの不透明GBufferを対象とし、葉風・alpha cutout・LOD dither・深度bias・内容更新済みVB/IBはクラスタLODの対象外とする。影とForwardは既存の経路を使う。blobはメッシュに付随するCPUデータとして保持し、DX12で使用するときにだけ既存の有界キャッシュへアップロードする。初期段階は全メッシュレット候補をDispatchMeshし、採用しない候補は頂点評価前に出力ゼロへ落とす。クラスタ遮蔽・候補の圧縮・ページのストリーミングは、岩場での画質・GPU時間・インポート時間の比較後に判断する。
+
 ## 所有と入力
 
 Graphicsの共通処理はScene、物理、水の数式を参照しない。候補は保守的なworld AABB、同一VB/IBと材質のbatch、LOD別index範囲、投影サイズの基準を持つ。波と変形を含むAABBは呼び手が供給する。GPUのLOD指標は投影サイズによる格子密度で、任意形状の幾何誤差を保証しない。

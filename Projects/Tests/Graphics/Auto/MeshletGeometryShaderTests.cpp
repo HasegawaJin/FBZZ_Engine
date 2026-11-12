@@ -68,21 +68,23 @@ struct MeshletTestMaterial {
 };
 static_assert(sizeof(MeshletTestMaterial) == 96);
 
-/// @note MeshletGeometry.hlsli b13のworld-space平面と4uint。空平面はcullingEnabled=0で使う。
+/// @note MeshletGeometry.hlsli b13 includes zeroed cluster metadata for the flat meshlet fixture.
 struct MeshletTestConstants {
     std::array<math::Vector4, 6> planes{};
     uint32_t meshletCount = 0;
     uint32_t vertexStride = sizeof(r::Vertex);
     uint32_t positionOffset = 0;
     uint32_t cullingEnabled = 0;
+    std::array<math::Vector4, 5> clusterConstants{};
 };
-static_assert(sizeof(MeshletTestConstants) == 112);
+static_assert(sizeof(MeshletTestConstants) == 192);
 
 struct MeshletTestGrid {
     std::vector<r::Vertex> vertices;
     std::vector<uint32_t> indices;
     r::ResourceHandle<r::BufferTag> vertexBuffer;
     r::ResourceHandle<r::BufferTag> indexBuffer;
+    std::shared_ptr<const r::MeshletClusterData> clusterLod;
 };
 
 struct MeshletImage {
@@ -200,7 +202,7 @@ protected:
         testkit::Fixture::TearDown();
     }
 
-    MeshletTestGrid Grid(uint32_t cells, float span)
+    MeshletTestGrid Grid(uint32_t cells, float span, float relief = 0)
     {
         MeshletTestGrid grid;
         grid.vertices.reserve(static_cast<size_t>(cells + 1u) * (cells + 1u));
@@ -209,7 +211,7 @@ protected:
             const float u = static_cast<float>(x) / cells;
             const float v = static_cast<float>(y) / cells;
             r::Vertex vertex;
-            vertex.position = {(u - 0.5f) * span, (v - 0.5f) * span, 0};
+            vertex.position = {(u - 0.5f) * span, (v - 0.5f) * span, (x % 2u ? relief : -relief)};
             vertex.normal = {0, 0, -1}; vertex.tangent = {1, 0, 0}; vertex.uv = {u, v};
             grid.vertices.push_back(vertex);
         }
@@ -244,6 +246,7 @@ protected:
         item.indexCount = static_cast<uint32_t>(grid.indices.size());
         item.vertexStride = sizeof(r::Vertex);
         item.vertexPositionOffset = 0;
+        item.clusterLod = grid.clusterLod;
         item.material.valid = true;
         item.material.capabilities.blend = r::BlendMode::OPAQUE_BLEND;
         item.material.capabilities.gbufferEquivalentShader = true;
@@ -282,7 +285,7 @@ protected:
         const math::Matrix4& world, bool cutout, bool culling, r::ResourceHandle<r::RenderTargetTag> target,
         bool rejectPlanes = false, bool profile = false, bool productionAdapter = false,
         r::DrawCall* preparedDraw = nullptr, const math::Matrix4* cullingViewProjection = nullptr,
-        bool forceMesh = false)
+        bool forceMesh = false, const r::MeshletClusterView* clusterView = nullptr)
     {
         auto& resources = *m_resources;
         auto& device = *m_bundle.renderer;
@@ -319,7 +322,7 @@ protected:
                     ? *cullingViewProjection : frame.viewProjection;
                 if (!r::TryPrepareMeshletDraw(resources, device, meshletViewProjection, world,
                     shadow ? r::MeshletDrawPass::SHADOW : r::MeshletDrawPass::GBUFFER,
-                    item, false, draw, culling, forceMesh) && forceMesh) return false;
+                    item, false, draw, culling, forceMesh, clusterView) && (forceMesh || clusterView)) return false;
             } else {
                 r::MeshletGeometry geometry;
                 if (!Prepare(grid, geometry)) return false;
@@ -376,12 +379,13 @@ protected:
     MeshletImage Render(const MeshletTestGrid& grid, bool mesh, bool shadow, const r::Camera& camera,
         const math::Matrix4& world, bool cutout = false, bool culling = true, bool rejectPlanes = false,
         bool productionAdapter = false, r::DrawCall* preparedDraw = nullptr,
-        const math::Matrix4* cullingViewProjection = nullptr, bool forceMesh = false)
+        const math::Matrix4* cullingViewProjection = nullptr, bool forceMesh = false,
+        const r::MeshletClusterView* clusterView = nullptr)
     {
         const auto target = shadow ? m_shadow : m_gbuffer;
         Begin();
         EXPECT_TRUE(DrawGeometry(grid, mesh, shadow, camera, world, cutout, culling, target,
-            rejectPlanes, false, productionAdapter, preparedDraw, cullingViewProjection, forceMesh));
+            rejectPlanes, false, productionAdapter, preparedDraw, cullingViewProjection, forceMesh, clusterView));
         End();
         MeshletImage image;
         if (!shadow) for (uint32_t attachment = 0; attachment < image.colors.size(); ++attachment)
@@ -822,6 +826,35 @@ TEST_F(MeshletGeometryShaderTest, ProductionDrawAdapterPreservesCountsBindingsAn
     EXPECT_EQ(fallback.vertexCount, before.vertexCount);
     EXPECT_EQ(fallback.startIndex, before.startIndex);
     EXPECT_EQ(fallback.meshGroupCountX, before.meshGroupCountX);
+}
+
+TEST_F(MeshletGeometryShaderTest, ClusterLodChangesDepthWithoutOpeningCoverage)
+{
+    if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
+    auto grid = Grid(64, 4, 0.02f);
+    r::MeshletClusterData packed;
+    ASSERT_TRUE(r::MeshletGeometryBuilder::BuildClusters(grid.vertices, grid.indices, packed));
+    grid.clusterLod = std::make_shared<const r::MeshletClusterData>(std::move(packed));
+    const auto camera = Camera();
+    const auto world = math::Matrix4::TRS({0, 0, 5}, math::Quaternion::Identity(), {1, 1, 1});
+    const r::MeshletClusterView fineView{camera.GetGpuViewProjection(), 1000000, 1000000};
+    const r::MeshletClusterView coarseView{camera.GetGpuViewProjection(), 1, 1};
+    const auto indexed = Render(grid, false, false, camera, world);
+    r::DrawCall draw;
+    const auto fine = Render(grid, true, false, camera, world, false, true, false, true,
+        &draw, nullptr, false, &fineView);
+    EXPECT_EQ(draw.meshGroupCountX, grid.clusterLod->meshletCount);
+    ExpectSame(indexed, fine, false);
+
+    const auto coarse = Render(grid, true, false, camera, world, false, true, false, true,
+        nullptr, nullptr, false, &coarseView);
+    ASSERT_EQ(coarse.depth.size(), fine.depth.size());
+    size_t differentDepths = 0;
+    for (size_t i = 0; i < coarse.depth.size(); i += 4) {
+        EXPECT_EQ(coarse.depth[i] > 0.0f, fine.depth[i] > 0.0f);
+        if (std::abs(coarse.depth[i] - fine.depth[i]) > 1.0e-5f) ++differentDepths;
+    }
+    EXPECT_GT(differentDepths, 0u);
 }
 
 TEST_F(MeshletGeometryShaderTest, ProductionAdapterUsesMeshletsOnlyForMeaningfulClipping)

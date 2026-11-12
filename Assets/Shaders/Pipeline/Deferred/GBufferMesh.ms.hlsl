@@ -5,9 +5,11 @@
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html - mesh output limits and SetMeshOutputCounts.
 
 #include "Pipeline/Deferred/GBuffer.hlsl"
+#define FBZZ_STATIC_CLUSTER_LOD
 #include "Pipeline/MeshletGeometry.hlsli"
 
 groupshared uint4 g_meshletDescriptorWords[3];
+groupshared uint g_meshletClusterSelected;
 
 /// @brief Emits at most 64 shared source vertices and 126 original-order local triangles for one meshlet.
 /// @note All lanes reach one uniform SetMeshOutputCounts call; zero counts reject invalid and culled meshlets before vertex loads.
@@ -26,12 +28,14 @@ void MSMain(uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID,
             g_meshletDescriptorWords[0] = g_meshletRawData.Load4(byteOffset);
             g_meshletDescriptorWords[1] = g_meshletRawData.Load4(byteOffset + 16u);
             g_meshletDescriptorWords[2] = g_meshletRawData.Load4(byteOffset + 32u);
+            g_meshletClusterSelected = IsFbzzClusterSelected(g_meshletDescriptorWords[0].w) ? 1u : 0u;
         }
         else
         {
             g_meshletDescriptorWords[0] = 0u;
             g_meshletDescriptorWords[1] = 0u;
             g_meshletDescriptorWords[2] = 0u;
+            g_meshletClusterSelected = 0u;
         }
     }
     GroupMemoryBarrierWithGroupSync();
@@ -52,7 +56,7 @@ void MSMain(uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID,
         && descriptor.primitiveCount > 0u
         && descriptor.primitiveCount <= kFbzzMeshletMaximumPrimitives
         && vertexLayoutValid;
-    const bool visible = descriptorValid && IsFbzzMeshletVisible(descriptor, world);
+    const bool visible = descriptorValid && g_meshletClusterSelected != 0u && IsFbzzMeshletVisible(descriptor, world);
     const uint outputVertexCount = visible ? descriptor.vertexCount : 0u;
     const uint outputPrimitiveCount = visible ? descriptor.primitiveCount : 0u;
     SetMeshOutputCounts(outputVertexCount, outputPrimitiveCount);

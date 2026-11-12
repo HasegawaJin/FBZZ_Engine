@@ -14,6 +14,7 @@
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/MeshletGeometry.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -24,7 +25,7 @@ namespace fbzz::asset {
 
 namespace {
 
-/// 落とせる品質段。実際の段数は LOD の数で頭打ちになる。
+/// @note 落とせる品質段。実際の段数は LOD の数で頭打ちになる。
 constexpr AssetQuality kLowestModelQuality = 3;
 
 bool EndsWithCI(const std::string& text, std::string_view suffix)
@@ -40,9 +41,11 @@ bool EndsWithCI(const std::string& text, std::string_view suffix)
 
 std::uint64_t MeshBytes(const renderer::Mesh& mesh)
 {
+    const auto& clusters = mesh.ClusterLod();
     return mesh.cpuVertices.size() * sizeof(renderer::Vertex)
          + mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex)
-         + mesh.cpuIndices.size() * sizeof(uint32_t);
+         + mesh.cpuIndices.size() * sizeof(uint32_t)
+         + (clusters ? clusters->bytes.capacity() : 0);
 }
 
 /// @brief 同期 importer (ModelAssetImporter) と同じ作り方で頂点・インデックスバッファを作る。

@@ -11,6 +11,7 @@
 #include <Core/Logger.hpp>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <vector>
 #include <optional>
 #include <tuple>
@@ -35,6 +36,10 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     ctx.renderer.SetRenderTarget(ctx.Res().Target("GBuffer"), resources);
     ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
     const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    MeshletClusterView clusterView{};
+    if (ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
+        clusterView = {ctx.camera.GetGpuProjectionMatrix() * frame.view, ctx.width, ctx.height};
+    }
     resources.Update(h.frameCB, &frame, sizeof(frame));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
     UpdateShadowConstants(ctx);
@@ -122,9 +127,11 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 
             if (!skinned && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
                 renderer::DrawCall meshCall = dc;
+                const bool clusterEligible = entry.object->lodDither == 0.0f
+                    && entry.object->leafWindBoundsPadding == 0.0f;
                 if (TryPrepareMeshletDraw(resources, ctx.renderer, frame.viewProjection,
                     entry.object->world, MeshletDrawPass::GBUFFER, item, false, meshCall,
-                    ctx.frustumCullingEnabled)) {
+                    ctx.frustumCullingEnabled, false, clusterEligible ? &clusterView : nullptr)) {
                     batcher.Flush();
                     const renderer::PerObjectCB objectCB = ObjectConstants(*entry.object);
                     resources.Update(h.objectCB, &objectCB, sizeof(objectCB));

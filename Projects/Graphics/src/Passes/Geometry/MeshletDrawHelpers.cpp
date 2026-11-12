@@ -27,8 +27,12 @@ struct MeshletGeometryConstants {
     uint32_t vertexStride = 0;
     uint32_t positionOffset = 0;
     uint32_t cullingEnabled = 0;
+    std::array<std::array<float, 4>, 4> clusterClipRows{};
+    std::array<float, 2> clusterViewportHalfSize{};
+    float clusterErrorPixels = 0;
+    uint32_t clusterNodeOffsetBytes = 0;
 };
-static_assert(sizeof(MeshletGeometryConstants) == 112);
+static_assert(sizeof(MeshletGeometryConstants) == 192);
 
 MeshletDrawResources& StateFor(ResourceManager& resources)
 {
@@ -192,13 +196,20 @@ bool TryPrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
                            const math::Matrix4& world,
                            MeshletDrawPass pass, const RenderMeshItem& item,
                            bool skinned, DrawCall& inOut, bool frustumCullingEnabled,
-                           bool forceMesh)
+                           bool forceMesh, const MeshletClusterView* clusterView)
 {
     if (!renderer.SupportsMeshShaders() || !IsMeshletDrawCandidate(item, skinned, pass)) return false;
     if (!forceMesh && !frustumCullingEnabled) return false;
 
+    const bool tryClusters = clusterView && clusterView->width > 0 && clusterView->height > 0
+        && pass == MeshletDrawPass::GBUFFER && inOut.startIndex == 0 && inOut.baseVertex == 0
+        && item.material.capabilities.blend == BlendMode::OPAQUE_BLEND
+        && item.material.surface.alphaCutoff <= 0.0f && item.material.depthBias == 0
+        && item.material.depthBiasSlope == 0.0f && item.clusterLod;
     MeshletGeometry geometry;
-    if (!resources.Meshlets().Prepare(resources, item.vertexBuffer, item.indexBuffer,
+    const bool clustered = tryClusters && resources.Meshlets().Prepare(resources, item.vertexBuffer, item.indexBuffer,
+        item.vertexCount, item.vertexStride, item.indexCount, geometry, item.clusterLod.get());
+    if (!clustered && !resources.Meshlets().Prepare(resources, item.vertexBuffer, item.indexBuffer,
         item.vertexCount, item.vertexStride, item.indexCount, geometry)) return false;
     if (!geometry.blob.IsValid() || geometry.meshletCount == 0
         || geometry.meshletCount > kMeshletMaximumDispatchGroups
@@ -220,8 +231,20 @@ bool TryPrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
     MeshletGeometryConstants constants;
     const bool validFrustum = BuildConstants(frustum, geometry.meshletCount,
         geometry.vertexStride, frustumCullingEnabled, constants);
-    if (!forceMesh && (!validFrustum || !HasMeaningfulFrustumClipping(geometry, world, frustum)))
+    if (!forceMesh && (!validFrustum || (!clustered && !HasMeaningfulFrustumClipping(geometry, world, frustum))))
         return false;
+    if (clustered) {
+        const auto localToClip = clusterView->viewProjection * world;
+        for (size_t row = 0; row < 4; ++row) {
+            for (size_t column = 0; column < 4; ++column) {
+                if (!std::isfinite(localToClip.m[row][column])) return false;
+                constants.clusterClipRows[row][column] = localToClip.m[row][column];
+            }
+        }
+        constants.clusterViewportHalfSize = {clusterView->width * 0.5f, clusterView->height * 0.5f};
+        constants.clusterErrorPixels = 1.0f;
+        constants.clusterNodeOffsetBytes = geometry.clusterNodeOffsetBytes;
+    }
 
     MeshletDrawResources& state = StateFor(resources);
     const ResourceHandle<ShaderTag> meshShader = MeshletShader(resources, state, pass);

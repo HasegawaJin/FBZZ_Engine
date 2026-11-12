@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-31
 #include "Graphics/Renderer/Mesh.hpp"
+#include <Graphics/Renderer/MeshletGeometry.hpp>
 #include <cmath>
 #include <limits>
 #include <algorithm>
@@ -75,6 +76,7 @@ float ComputeInteriorRadius(const Mesh& mesh)
 void Mesh::ComputeBounds()
 {
     m_cpuGeometryRevision = 0;
+    m_clusterLod.reset();
     /// @note CPU 頂点配列 (スキンドメッシュ優先) から AABB と、中心からの最大距離 (球半径) を求める。
     /// @note Frustum は外接球を使い、遮蔽物の登録には別途証明した内接球だけを使う。
     occlusionRadius = 0;
@@ -136,6 +138,7 @@ void Mesh::ComputeBounds()
 void Mesh::ComputeBoundsExtents()
 {
     m_cpuGeometryRevision = 0;
+    m_clusterLod.reset();
     occlusionRadius = 0;
     const bool hasSkinned = !cpuSkinnedVertices.empty();
     const bool hasStatic  = !cpuVertices.empty();
@@ -170,6 +173,13 @@ void Mesh::ComputeBoundsExtents()
 
 void Mesh::PublishCpuGeometry()
 {
+    m_clusterLod.reset();
+    if (!isSkinned && morphTargets.empty() && cpuIndices.size() >= 8192u * 3u
+        && cpuVertices.size() == vertexCount && cpuIndices.size() == indexCount) {
+        MeshletClusterData clusters;
+        if (MeshletGeometryBuilder::BuildClusters(cpuVertices, cpuIndices, clusters))
+            m_clusterLod = std::make_shared<const MeshletClusterData>(std::move(clusters));
+    }
     static std::atomic<uint64_t> nextRevision{1};
     m_cpuGeometryRevision = nextRevision.fetch_add(1, std::memory_order_relaxed);
 }

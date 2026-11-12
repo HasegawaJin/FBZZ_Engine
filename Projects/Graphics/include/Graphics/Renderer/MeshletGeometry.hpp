@@ -10,12 +10,21 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
 namespace fbzz::renderer {
 
 class ResourceManager;
+struct Vertex;
+
+/// @note Import-owned packed geometry. The GPU blob is created only for a view using cluster LOD.
+struct MeshletClusterData {
+    std::vector<uint8_t> bytes;
+    uint32_t meshletCount = 0;
+    uint32_t nodeOffsetBytes = 0;
+};
 
 /// @brief GPU meshlet descriptor shared with MeshletGeometry.hlsli.
 struct MeshletDescriptor {
@@ -38,11 +47,16 @@ struct MeshletGeometry {
     /// @note Aggregate position bounds use the source mesh's local space before world transform.
     std::array<float, 3> boundsMin{};
     std::array<float, 3> boundsMax{};
+    uint32_t clusterNodeOffsetBytes = 0;
 };
 
 /// @brief Deterministic greedy partitioner for indexed triangle geometry.
 class MeshletGeometryBuilder {
 public:
+    /// @return False when the mesh cannot be safely simplified or exceeds packing limits.
+    [[nodiscard]] FBZZ_GRAPHICS_API static bool BuildClusters(std::span<const Vertex> vertices,
+        std::span<const uint32_t> indices, MeshletClusterData& output);
+
     /// @brief Builds contiguous meshlets with at most 64 vertices and 126 triangles.
     /// @param vertexData Interleaved vertex bytes with position.xyz at offset zero.
     /// @param vertexStride Distance between records, at least 12 bytes and a multiple of four.
@@ -73,7 +87,8 @@ public:
                                ResourceHandle<BufferTag> vertexBuffer,
                                ResourceHandle<BufferTag> indexBuffer,
                                uint32_t vertexCount, uint32_t vertexStride,
-                               uint32_t indexCount, MeshletGeometry& outGeometry);
+                               uint32_t indexCount, MeshletGeometry& outGeometry,
+                               const MeshletClusterData* clusters = nullptr);
 
     /// @brief Caches the selected terrain topology with conservative geometric normal cones.
     /// @note The source terrain vertex buffer uses the 44-byte position/normal/tangent/UV layout.
@@ -92,7 +107,7 @@ private:
     [[nodiscard]] bool PrepareImpl(ResourceManager& resources, ResourceHandle<BufferTag> vertexBuffer,
                                   ResourceHandle<BufferTag> indexBuffer, uint32_t vertexCount,
                                   uint32_t vertexStride, uint32_t indexCount, bool terrainCones,
-                                  MeshletGeometry& outGeometry);
+                                  MeshletGeometry& outGeometry, const MeshletClusterData* clusters);
 
     struct InputKey {
         ResourceHandle<BufferTag> vertexBuffer{};
@@ -101,6 +116,7 @@ private:
         uint32_t vertexStride = 0;
         uint32_t indexCount = 0;
         bool terrainCones = false;
+        bool clustered = false;
 
         bool operator==(const InputKey&) const = default;
     };

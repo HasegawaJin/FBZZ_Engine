@@ -20,6 +20,13 @@ enum class MeshletDrawPass : uint8_t {
     SHADOW,
 };
 
+/// @note The unjittered color-view projection keeps the screen-error decision stable across TAA samples.
+struct MeshletClusterView {
+    math::Matrix4 viewProjection;
+    uint32_t width;
+    uint32_t height;
+};
+
 /// @brief Checks whether a static standard-surface item can use the meshlet path.
 /// @param item Resolved mesh and material snapshot.
 /// @param skinned True when the owning render object uses skinning.
@@ -33,7 +40,7 @@ enum class MeshletDrawPass : uint8_t {
 /// @param world Local-to-world matrix for the object's aggregate meshlet bounds.
 /// @param forceMesh Keeps the mesh-shader path enabled for explicit comparison even when the whole object is visible.
 /// @return True when inOut is a fully configured direct mesh-shader draw.
-/// @note Without forceMesh, only objects with at least 25 percent estimated clipping on a frustum plane use meshlets.
+/// @note Flat meshlets require at least 25 percent estimated clipping unless forced. Cluster LOD also handles fully visible geometry.
 /// @note Callers update b1 and submit immediately after success so the shared b13 upload and draw stay ordered.
 /// @see https://microsoft.github.io/DirectX-Specs/d3d/MeshShader.html DispatchMesh groups and mesh output limits.
 [[nodiscard]] FBZZ_GRAPHICS_API bool TryPrepareMeshletDraw(ResourceManager& resources, IRenderer& renderer,
@@ -42,6 +49,7 @@ enum class MeshletDrawPass : uint8_t {
                                          MeshletDrawPass pass, const RenderMeshItem& item,
                                          bool skinned, DrawCall& inOut,
                                          bool frustumCullingEnabled = true,
-                                         bool forceMesh = false);
+                                         bool forceMesh = false,
+                                         const MeshletClusterView* clusterView = nullptr);
 
 } /// @note namespace fbzz::renderer

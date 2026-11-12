@@ -1161,6 +1161,7 @@ renderer::RenderMeshItem ExtractMesh(const math::Matrix4& world, float maximumSc
     item.indexBuffer = mesh.indexBuffer;
     item.indexCount = mesh.indexCount;
     item.vertexCount = mesh.vertexCount;
+    item.clusterLod = mesh.ClusterLod();
     item.vertexStride = mesh.isSkinned ? sizeof(renderer::SkinnedVertex) : sizeof(renderer::Vertex);
     item.reliableOccluder = IsReliableOccluder(mesh);
     const auto bounds = ComputeWorldBounds(world, maximumScale, mesh);
@@ -1340,7 +1341,7 @@ public:
             auto [found, inserted] = m_meshIndices.try_emplace(&mesh, m_meshes.size());
             if (inserted) m_meshes.push_back({mesh.vertexBuffer, mesh.indexBuffer, mesh.vertexCount, mesh.indexCount,
                 mesh.isSkinned ? sizeof(renderer::SkinnedVertex) : sizeof(renderer::Vertex),
-                mesh.boundsCenter, mesh.boundsRadius, mesh.occlusionRadius, IsReliableOccluder(mesh)});
+                mesh.boundsCenter, mesh.boundsRadius, mesh.occlusionRadius, IsReliableOccluder(mesh), mesh.ClusterLod()});
             m_lastMesh = &mesh; m_lastIndex = found->second;
         }
         const auto& shared = m_meshes[m_lastIndex];
@@ -1348,6 +1349,7 @@ public:
         item.vertexBuffer = shared.vertices; item.indexBuffer = shared.indices;
         item.skinningVertexBuffer = shared.vertices;
         item.vertexCount = shared.vertexCount; item.indexCount = shared.indexCount;
+        item.clusterLod = shared.clusterLod;
         item.vertexStride = static_cast<uint32_t>(shared.stride); item.reliableOccluder = shared.reliable;
         const auto& c = shared.center;
         item.boundsCenter = {
@@ -1367,6 +1369,7 @@ private:
         float radius;
         float occlusionRadius;
         bool reliable;
+        std::shared_ptr<const renderer::MeshletClusterData> clusterLod;
     };
     renderer::RenderScene& m_output;
     std::vector<SharedMeshFragment> m_meshes;
@@ -1458,6 +1461,7 @@ renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& s
     item.vertexBuffer = item.skinningVertexBuffer = component.mesh->vertexBuffer;
     item.indexBuffer = component.mesh->indexBuffer;
     item.vertexCount = component.mesh->vertexCount; item.indexCount = component.mesh->indexCount;
+    item.clusterLod = component.mesh->ClusterLod();
     item.vertexStride = sizeof(renderer::Vertex);
     item.boundsCenter = entry.center; item.boundsRadius = entry.radius; item.reliableOccluder = entry.reliable;
     item.occluderRadius = entry.occluderRadius;
@@ -1669,7 +1673,8 @@ RenderFrameGeometryItem CompactGeometryItem(const renderer::RenderMeshItem& item
         item.vertexBuffer, item.indexBuffer, item.skinningVertexBuffer, item.deformedVertexBuffer,
         item.preparedSkinning, item.preparedSkinningWrite, item.indexCount, item.vertexCount,
         item.vertexContentVersion, item.indexContentVersion, item.deformedContentVersion,
-        item.vertexStride, item.vertexPositionOffset, item.reliableOccluder, item.boundsCenter, item.boundsRadius, item.occluderRadius};
+        item.vertexStride, item.vertexPositionOffset, item.reliableOccluder, item.boundsCenter, item.boundsRadius,
+        item.occluderRadius, item.clusterLod};
 }
 
 /// @pre item retains default per-view state; only geometry fields may have been restored into it.
@@ -1695,6 +1700,7 @@ void RestoreGeometryItemInto(const RenderFrameGeometryItem& geometry, renderer::
     item.boundsCenter = geometry.boundsCenter;
     item.boundsRadius = geometry.boundsRadius;
     item.occluderRadius = geometry.occluderRadius;
+    item.clusterLod = geometry.clusterLod;
 }
 
 renderer::RenderMeshItem RestoreGeometryItem(const RenderFrameGeometryItem& geometry)
@@ -1729,7 +1735,7 @@ RenderFrameGeometryItem CompactStaticRasterGeometryItem(const renderer::RenderMe
     return {item.objectIndex, item.materialSlot, item.sourceSubmesh,
         item.vertexBuffer, item.indexBuffer, item.skinningVertexBuffer, {}, {}, UINT32_MAX,
         item.indexCount, item.vertexCount, 0, 0, 0, sizeof(renderer::Vertex), 0,
-        item.reliableOccluder, item.boundsCenter, item.boundsRadius, item.occluderRadius};
+        item.reliableOccluder, item.boundsCenter, item.boundsRadius, item.occluderRadius, item.clusterLod};
 }
 
 /// @note Only static Raster seeds are deferred; material/selection state and any later Ray binding-repair metadata are never copied.

@@ -33,6 +33,7 @@ struct RenderFrameGeometryItem {
     math::Vector3 boundsCenter{};
     float boundsRadius = 0;
     float occluderRadius = 0;
+    std::shared_ptr<const renderer::MeshletClusterData> clusterLod;
 };
 /// @brief 同じフレームの複数ビューでメッシュ候補だけを共有する一時領域。
 /// @note 呼び出し元がフレーム末尾で破棄し、描画中に Scene を変更するスクリプトがある場合は使わない。
