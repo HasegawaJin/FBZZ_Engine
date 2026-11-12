@@ -122,6 +122,8 @@ float triplanar, triplanarSharpness, macroScale, macroStrength
 
 ## 3. 画素ごとの合成順
 
+`farLodDistance` が正のとき、カメラから地形画素までの距離が設定値の 75% に達すると材質の細部をフェードする。設定値以遠は幾何法線と層ごとの定数 AO・粗さを使い、対応するテクスチャ参照を省く。塗りの重み、色、トライプラナーの投影方向と高さブレンドを共有する。Forward と GBuffer は同じ処理を使う。
+
 Forward (`Terrain.hlsl`) と GBuffer (`TerrainGBuffer.hlsl`) は `TerrainSurface.hlsli` の
 `EvaluateTerrainSurface` を共有する。以前は 2 本のシェーダーに同じ式を手で写していた。
 

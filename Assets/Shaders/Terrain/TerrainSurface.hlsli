@@ -32,7 +32,7 @@ cbuffer TerrainCB : register(CB_OBJECT)
 {
     float4x4 worldMatrix;      ///< @note テレインローカル → ワールド
     float4x4 wvpMatrix;        ///< @note テレインローカル → クリップ
-    float4   weather;          ///< @note x=wetness y=darkening z=puddleAmount
+    float4   weather;          ///< @note x=wetness y=darkening z=puddleAmount w=material LOD distance [world m]
     float4   terrainParams;    ///< @note x=ローカル幅 X [m] y=ローカル奥行 Z [m] z=heightBlendDepth w=自動ブレンドを持つ層があるか
     uint     layerBufferIndex; ///< @note TerrainLayer 配列の bindless 添字
     uint     layerCount;
@@ -445,6 +445,22 @@ float3 SampleTerrainAlbedo(TerrainLayer layer, TerrainProjection projection)
     return albedo;
 }
 
+/// @note Geometry and layer weights stay independent of material LOD so painted boundaries remain in place.
+float TerrainMaterialDetail(float3 worldPosition)
+{
+    if (weather.w <= 0.0f) return 1.0f;
+    const float relativeDistance = length(worldPosition - cameraPos) / weather.w;
+    return 1.0f - smoothstep(0.75f, 1.0f, relativeDistance);
+}
+
+float2 EvaluateTerrainResponse(TerrainLayer layer, TerrainProjection projection, float detail)
+{
+    const float2 base = saturate(float2(layer.ambientOcclusion, layer.roughness));
+    const float weight = saturate(layer.hasAoRoughness) * detail;
+    [branch] if (weight <= 0.0f) return base;
+    return lerp(base, SampleProjected(TerrainTexture(layer.aoRoughnessIndex), projection).rg, weight);
+}
+
 /// @brief 地形 1 画素ぶんの材質を合成する。
 /// @param normalBoost タンジェント法線 XY の増幅率。描画方式に依存せず材質の強度と乗算する。
 TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
@@ -461,6 +477,7 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
     const float2 duvdy = ddy(p.uv);
     const float3 dPdx  = ddx(p.localPos);
     const float3 dPdy  = ddy(p.localPos);
+    const float detail = TerrainMaterialDetail(p.worldPos);
 
     TerrainCandidates c = GatherPaintedCandidates(p.uv);
     const float grassCoverage = TerrainGrassCoverage(c, p.worldPos);
@@ -473,12 +490,11 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
     {
         const TerrainLayer layer = g_terrainLayers[c.layer[0]];
         const TerrainProjection projection = MakeProjection(layer, p.uv, duvdx, duvdy, p.localPos, dPdx, dPdy, Nl);
-        float2 response = saturate(float2(layer.ambientOcclusion, layer.roughness));
-        if (layer.hasAoRoughness > 0.0f)
-            response = lerp(response, SampleProjected(TerrainTexture(layer.aoRoughnessIndex), projection).rg,
-                            saturate(layer.hasAoRoughness));
-        const float3 blendedN = SampleProjectedNormal(TerrainTexture(layer.normalIndex), projection,
-                                                       layer.normalStrength * normalBoost, Nl, Tl, Bl);
+        const float2 response = EvaluateTerrainResponse(layer, projection, detail);
+        float3 blendedN = Nl;
+        [branch] if (detail > 0.0f)
+            blendedN = SampleProjectedNormal(TerrainTexture(layer.normalIndex), projection,
+                                            layer.normalStrength * normalBoost * detail, Nl, Tl, Bl);
         const float3 localNormal = dot(blendedN, blendedN) > 1e-10f ? normalize(blendedN) : Nl;
         TerrainSurface surface;
         surface.albedo = BlendTerrainGrass(SampleTerrainAlbedo(layer, projection), grassCoverage);
@@ -559,13 +575,13 @@ TerrainSurface EvaluateTerrainSurface(TerrainPSInput p, float normalBoost)
         if (w <= 0.001f)
             continue;
         const TerrainLayer layer = g_terrainLayers[c.layer[n]];
-        const float2 aoRough = SampleProjected(TerrainTexture(layer.aoRoughnessIndex), projections[n]).rg;
-        const float hasTex = saturate(layer.hasAoRoughness);
+        const float2 response = EvaluateTerrainResponse(layer, projections[n], detail);
         s.albedo    += albedos[n] * w;
-        s.roughness += lerp(saturate(layer.roughness), aoRough.g, hasTex) * w;
-        s.ao        += lerp(saturate(layer.ambientOcclusion), aoRough.r, hasTex) * w;
-        blendedN    += SampleProjectedNormal(TerrainTexture(layer.normalIndex), projections[n],
-                                             layer.normalStrength * normalBoost, Nl, Tl, Bl) * w;
+        s.roughness += response.g * w;
+        s.ao        += response.r * w;
+        [branch] if (detail > 0.0f)
+            blendedN += SampleProjectedNormal(TerrainTexture(layer.normalIndex), projections[n],
+                                              layer.normalStrength * normalBoost * detail, Nl, Tl, Bl) * w;
         total       += w;
     }
     if (total > 1e-5f)

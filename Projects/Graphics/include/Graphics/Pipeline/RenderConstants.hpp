@@ -1003,7 +1003,7 @@ static_assert(sizeof(TrailCB) == 224, "TrailCB layout mismatch");
 struct TerrainObjectCB {
     math::Matrix4 worldMatrix;
     math::Matrix4 wvpMatrix;
-    /// @brief 天候 (x=wetness, y=darkening, z=puddleAmount)。
+    /// @brief 天候 (x=wetness, y=darkening, z=puddleAmount) と材質 LOD の到達距離 (w, world m, 0 で無効)。
     /// @note 地形シェーダーは b1 を TerrainCB に使うため b8 を宣言できず、値はここで手渡す。
     math::Vector4 weather;
     /// @brief x=ローカル幅 X [m], y=ローカル奥行 Z [m], z=heightBlendDepth, w=自動ブレンドを持つ層があるか (0/1)。

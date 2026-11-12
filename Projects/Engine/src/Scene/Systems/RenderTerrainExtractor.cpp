@@ -984,7 +984,8 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         terrainCBData.worldMatrix = world;
         terrainCBData.worldInvTranspose = math::Matrix4::InverseTransposeAffine(world);
         terrainCBData.wvpMatrix   = world;
-        terrainCBData.weather = { weather.wetness, weather.darkening, weather.puddleAmount, 0.0f };
+        terrainCBData.weather = { weather.wetness, weather.darkening, weather.puddleAmount,
+            std::isfinite(terrain.farLodDistance) ? (std::max)(terrain.farLodDistance, 0.0f) : 0.0f };
         terrainCBData.terrainParams = {
             static_cast<float>(terrain.columns - 1) * terrain.cellSize,
             static_cast<float>(terrain.rows - 1) * terrain.cellSize,
