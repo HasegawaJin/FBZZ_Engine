@@ -346,7 +346,6 @@ void ApplyNodeAndDescendantsOffset(const asset::Skeleton& skeleton,
 }
 
 /// @note 足首直下の地面を取得し、上下両方向の接地補正量を返す。
-/// @note 段差の低い側を 0 扱いすると脚 Solver が走らず、膝を曲げる余地も作れない。
 bool QueryFootCorrection(physics::World& world,
                          const IKChain& chain,
                          LegNodes& leg,
@@ -421,6 +420,16 @@ bool QueryFootCorrection(physics::World& world,
     outCorrection = math::Clamp(
         signedCorrection, -chain.maxCorrection, chain.maxCorrection);
     return true;
+}
+
+/// @note 許容距離の手前から接地重みを下げ、補正の出入りで姿勢が跳ねないようにする。
+float FootPlantProximity(float height, float plantDistance)
+{
+    if (plantDistance <= math::EPSILON)
+        return height <= math::EPSILON ? 1.0f : 0.0f;
+    const float fullWeightDistance = plantDistance / 3.0f;
+    const float fade = math::Clamp01((height - fullWeightDistance) / (plantDistance - fullWeightDistance));
+    return 1.0f - fade * fade * (3.0f - 2.0f * fade);
 }
 
 /// @note 地面高さをゴールに解析的 2-Bone IK を解き、膝位置と足首位置を同時に更新する。
@@ -633,35 +642,24 @@ bool SolveFootPlace(IKChain& chain,
         QueryFootCorrection(world, chain, right, physicsRig, chain.smoothedRightSupportOffset,
             chain.smoothedRightSoleNormal,alpha,rightHit,rightRaw);
     chain.runtimePhysicsFootShape = left.physicsShape || right.physicsShape;
-    /// @note 接地相は FK の足裏高の差で選ぶ。地形高を差し引くと、段差の低い側を遊脚と誤判定する。
-    /// @note 低い足を必ず接地候補に残し、そこから一定以上高い足だけをスイング相として解放する。
-    const float leftClearance = leftHasGround
-        ? left.footGo->transform.worldPosition.y -
-            left.surfaceOffset
-        : std::numeric_limits<float>::max();
-    const float rightClearance = rightHasGround
-        ? right.footGo->transform.worldPosition.y -
-            right.surfaceOffset
-        : std::numeric_limits<float>::max();
-    float minimumClearance = std::numeric_limits<float>::max();
-    if (leftHasGround) minimumClearance = std::min(minimumClearance, leftClearance);
-    if (rightHasGround) minimumClearance = std::min(minimumClearance, rightClearance);
-    const float plantTolerance = std::max(chain.footPlantDistance, 0.0f);
-    /// @note 接地中は解除側の閾値を広げ、境界付近で接地/非接地が毎フレーム反転するのを防ぐ。
-    const float leftTolerance = plantTolerance *
-        (chain.leftPlantWeight > 0.01f ? 1.5f : 1.0f);
-    const float rightTolerance = plantTolerance *
-        (chain.rightPlantWeight > 0.01f ? 1.5f : 1.0f);
-    const bool leftGrounded = leftHasGround &&
-        (leftClearance <= minimumClearance + leftTolerance);
-    const bool rightGrounded = rightHasGround &&
-        (rightClearance <= minimumClearance + rightTolerance);
+    const float leftSoleY = left.footFkPosition.y - left.surfaceOffset;
+    const float rightSoleY = right.footFkPosition.y - right.surfaceOffset;
+    const float plantDistance = chain.footPlantDistance;
+    const float leftPoseWeight = rightHasGround ? FootPlantProximity(leftSoleY - rightSoleY, plantDistance) : 1.0f;
+    const float rightPoseWeight = leftHasGround ? FootPlantProximity(rightSoleY - leftSoleY, plantDistance) : 1.0f;
+    const float leftGroundWeight = leftHasGround ? FootPlantProximity(leftSoleY - leftHit.point.y, plantDistance) : 0.0f;
+    const float rightGroundWeight = rightHasGround ? FootPlantProximity(rightSoleY - rightHit.point.y, plantDistance) : 0.0f;
+    /// @note 坂や下り段差では支持側を基準に低い地面へ届かせる。両足が浮く間は支持を作らない。
+    const float leftTargetWeight = leftHasGround
+        ? leftPoseWeight * std::max(leftGroundWeight, rightPoseWeight * rightGroundWeight) : 0.0f;
+    const float rightTargetWeight = rightHasGround
+        ? rightPoseWeight * std::max(rightGroundWeight, leftPoseWeight * leftGroundWeight) : 0.0f;
+    const bool leftGrounded = leftTargetWeight > math::EPSILON;
+    const bool rightGrounded = rightTargetWeight > math::EPSILON;
     bodyState.leftFootGrounded = chain.runtimeLeftGrounded = leftGrounded;
     bodyState.rightFootGrounded = chain.runtimeRightGrounded = rightGrounded;
-    chain.leftPlantWeight = math::Lerp(
-        chain.leftPlantWeight, leftGrounded ? 1.0f : 0.0f, alpha);
-    chain.rightPlantWeight = math::Lerp(
-        chain.rightPlantWeight, rightGrounded ? 1.0f : 0.0f, alpha);
+    chain.leftPlantWeight = math::Lerp(chain.leftPlantWeight, leftTargetWeight, alpha);
+    chain.rightPlantWeight = math::Lerp(chain.rightPlantWeight, rightTargetWeight, alpha);
     if (!leftGrounded && chain.leftPlantWeight <= math::EPSILON)
         chain.smoothedLeftSupportOffset = math::Vector3::ZERO;
     if (!rightGrounded && chain.rightPlantWeight <= math::EPSILON)
@@ -677,11 +675,10 @@ bool SolveFootPlace(IKChain& chain,
     chain.runtimeHipLimited = false;
     if (chain.adjustHip && chain.hipWeight > 0.0f) {
         float lowestCorrection = std::numeric_limits<float>::max();
-        if (leftGrounded) lowestCorrection = std::min(lowestCorrection, chain.smoothedLeft);
-        if (rightGrounded) lowestCorrection = std::min(lowestCorrection, chain.smoothedRight);
+        if (leftGrounded) lowestCorrection = std::min(lowestCorrection, chain.smoothedLeft * leftTargetWeight);
+        if (rightGrounded) lowestCorrection = std::min(lowestCorrection, chain.smoothedRight * rightTargetWeight);
         if (!leftGrounded && !rightGrounded) lowestCorrection = 0.0f;
-        const float reserve = (leftGrounded || rightGrounded)
-            ? chain.hipBendReserve * effectiveWeight : 0.0f;
+        const float reserve = chain.hipBendReserve * effectiveWeight * std::max(leftTargetWeight, rightTargetWeight);
         const float requested = (lowestCorrection * effectiveWeight - reserve) * chain.hipWeight;
         const float lower = -chain.maxHipLowering * effectiveWeight;
         const float upper = chain.maxHipRaising * effectiveWeight;
@@ -710,7 +707,8 @@ bool SolveFootPlace(IKChain& chain,
     /// @note 地形傾斜メトリクス: 両足のうち大きいほうの補正量を Spine auto-weight の駆動値にする。
     /// @note 平地ではほぼ 0 だが坂道では足高さ差に応じて増加するため weight 変調に適している。
     bodyState.terrainSlopeMetric = std::max(
-        std::abs(chain.smoothedLeft), std::abs(chain.smoothedRight));
+        std::abs(chain.smoothedLeft) * chain.leftPlantWeight,
+        std::abs(chain.smoothedRight) * chain.rightPlantWeight);
 
     if (hasLeft && (leftGrounded || chain.leftPlantWeight > math::EPSILON)) {
         modified |= SolveFootLeg(chain, scene, skeleton, renderer, animator, ownerInv, ownerRotation,

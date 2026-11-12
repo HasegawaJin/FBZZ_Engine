@@ -31,6 +31,7 @@ protected:
     scene::Scene m_scene;
     physics::World m_world;
     physics::OBBCollider m_floor{{5,0.5f,5}};
+    physics::OBBCollider m_upperStep{{0.05f,0.5f,1}};
     physics::PhysicsMaterial m_material;
     scene::GameObject* m_actor = nullptr;
     std::array<scene::GameObject*,9> m_nodes{};
@@ -80,10 +81,15 @@ protected:
         EXPECT_VEC3_NEAR(m_nodes[root]->transform.worldRotation * upper, solvedUpper, 1.0e-5f);
         EXPECT_VEC3_NEAR(m_nodes[mid]->transform.worldRotation * lower, solvedLower, 1.0e-5f);
     }
-    void Ground(float y) {
+    void Ground(float y, bool addUpperStep = false) {
         m_floor.Update({0,y-0.5f,0},math::Quaternion::Identity());
         m_world.BeginSceneSync();
         m_world.SyncCollider({},physics::ColliderInstance{&m_floor,nullptr,&m_material,math::Vector3::ZERO,false,0});
+        if (addUpperStep) {
+            m_upperStep.Update({0.1f, -0.5f, 0}, math::Quaternion::Identity());
+            m_world.SyncCollider({}, physics::ColliderInstance{
+                &m_upperStep, nullptr, &m_material, math::Vector3::ZERO, false, 0});
+        }
         m_world.EndSceneSync();
     }
     void Step(float dt=1.0f/60) {
@@ -334,6 +340,58 @@ TEST_F(FootIKTest, UnevenGroundDoesNotMisclassifyTheLowerGroundFootAsSwinging)
     EXPECT_NEAR(m_nodes[3]->transform.worldPosition.y,0.1f-0.057735f,0.0001f);
     EXPECT_NEAR(m_nodes[7]->transform.worldPosition.y,0.1f+0.057735f,0.0001f);
 }
+
+TEST_F(FootIKTest, BothFeetAboveGroundKeepTheAirbornePoseEvenWhenRaysHit)
+{
+    Chain().smoothTime = 0.1f;
+    Step(1.0f);
+    ASSERT_TRUE(Solver().runtimeLeftFootGrounded);
+    ASSERT_TRUE(Solver().runtimeRightFootGrounded);
+
+    for (auto& position : m_fk) position.y += 0.15f;
+    for (int frame = 0; frame < 6; ++frame) {
+        Step();
+        EXPECT_FALSE(Solver().runtimeLeftFootGrounded);
+        EXPECT_FALSE(Solver().runtimeRightFootGrounded);
+        EXPECT_VEC3_NEAR(m_nodes[0]->transform.worldPosition, m_fk[0], 1.0e-5f);
+        EXPECT_VEC3_NEAR(m_nodes[3]->transform.worldPosition, m_fk[3], 1.0e-5f);
+        EXPECT_VEC3_NEAR(m_nodes[7]->transform.worldPosition, m_fk[7], 1.0e-5f);
+    }
+}
+
+TEST_F(FootIKTest, AirborneFeetGainWeightGraduallyAsTheSolesApproachGround)
+{
+    Chain().adjustHip = false;
+    m_fk[2].z = m_fk[6].z = 0.2f;
+    Ground(-0.061f);
+    Step();
+    EXPECT_FALSE(Solver().runtimeLeftFootGrounded);
+    EXPECT_VEC3_NEAR(m_nodes[3]->transform.worldPosition, m_fk[3], 1.0e-5f);
+
+    Ground(-0.04f);
+    Step();
+    EXPECT_TRUE(Solver().runtimeLeftFootGrounded);
+    EXPECT_NEAR(Chain().leftPlantWeight, 0.5f, 1.0e-5f);
+    EXPECT_NEAR(m_nodes[3]->transform.worldPosition.y, m_fk[3].y - 0.02f, 1.0e-5f);
+
+    Ground(-0.01f);
+    Step();
+    EXPECT_NEAR(Chain().leftPlantWeight, 1.0f, 1.0e-5f);
+    EXPECT_NEAR(m_nodes[3]->transform.worldPosition.y, m_fk[3].y - 0.01f, 1.0e-5f);
+}
+
+TEST_F(FootIKTest, RaisedSwingFootReleasesWhileTheOtherFootRemainsPlanted)
+{
+    Step();
+    ASSERT_TRUE(Solver().runtimeLeftFootGrounded);
+    m_fk[3].y += 0.075f;
+    m_fk[4].y += 0.075f;
+    Step();
+    EXPECT_FALSE(Solver().runtimeLeftFootGrounded);
+    EXPECT_TRUE(Solver().runtimeRightFootGrounded);
+    EXPECT_VEC3_NEAR(m_nodes[3]->transform.worldPosition, m_fk[3], 1.0e-5f);
+}
+
 TEST_F(FootIKTest, FlatGroundPreservesFkHipAndLegLengthsWithoutArtificialBendReserve)
 {
     Chain().maxExtension=0.5f;
@@ -346,7 +404,7 @@ TEST_F(FootIKTest, FlatGroundPreservesFkHipAndLegLengthsWithoutArtificialBendRes
 }
 TEST_F(FootIKTest, DownwardTerrainCorrectionCannotExceedIndependentHipLimit)
 {
-    Ground(-0.3f); Chain().maxHipLowering=0.06f;
+    Ground(-0.3f, true); Chain().maxHipLowering=0.06f;
     Step();
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,0.94f,1.0e-5f);
     EXPECT_TRUE(Chain().runtimeHipLimited);
@@ -373,7 +431,7 @@ TEST_F(FootIKTest, ExplicitBendReserveAndWeightRemainInsideTheHipBudget)
 }
 TEST_F(FootIKTest, TighteningLimitAndDisablingHipDiscardOutOfRangeHistoryImmediately)
 {
-    Ground(-0.3f); Chain().smoothTime=0.1f;
+    Ground(-0.3f, true); Chain().smoothTime=0.1f;
     for(int i=0;i<120;++i) Step();
     Chain().maxHipLowering=0.01f; Step();
     EXPECT_GE(m_nodes[0]->transform.worldPosition.y,0.99f-1.0e-5f);
@@ -386,7 +444,7 @@ TEST_F(FootIKTest, TighteningLimitAndDisablingHipDiscardOutOfRangeHistoryImmedia
 }
 TEST_F(FootIKTest, MissingHipAndMissingGroundNeverApplyPhantomHipDisplacement)
 {
-    Chain().hipBoneName="Missing"; Ground(-0.3f); Step();
+    Chain().hipBoneName="Missing"; Ground(-0.3f, true); Step();
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1,1.0e-5f);
     EXPECT_NEAR(Solver().runtimeHipOffset,0,1.0e-5f);
     Chain().hipBoneName="Hips"; Ground(-5); Step();
@@ -398,7 +456,7 @@ TEST_F(FootIKTest, HipTuningSurvivesSceneRoundTripWithoutPersistingRuntimeState)
 {
     Chain().hipWeight=0.4f; Chain().maxHipLowering=0.03f;
     Chain().maxHipRaising=0.02f; Chain().hipBendReserve=0.01f;
-    Ground(-0.3f); Step();
+    Ground(-0.3f, true); Step();
     const auto text=scene::SceneSerializer::SaveToText(m_scene);
     auto loaded=scene::SceneSerializer::LoadDataFromText(text,"");
     ASSERT_NE(loaded,nullptr);
@@ -421,12 +479,13 @@ TEST_F(FootIKTest, HalfWeightProducesHalfFootCorrectionRatherThanQuarterCorrecti
 TEST_F(FootIKTest, InvalidSavedTuningRemainsFiniteAndBoundedAtEvaluation)
 {
     Chain().maxHipLowering=-1; Chain().hipWeight=std::numeric_limits<float>::quiet_NaN();
-    Chain().smoothTime=-1; Ground(-0.3f); Step();
+    Chain().smoothTime=-1; Ground(-0.3f, true); Step();
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1,1.0e-5f);
     EXPECT_TRUE(std::isfinite(Solver().runtimeHipOffset));
 }
 TEST_F(FootIKTest, HipCorrectionMovesToeDescendantsExactlyOnce)
 {
+    Chain().footPlantDistance = 0.18f;
     for (const float ground : {-0.05f, 0.05f}) {
         Chain().maxHipRaising=0.1f;
         Ground(ground); Step();
@@ -442,6 +501,7 @@ TEST_F(FootIKTest, HipCorrectionMovesToeDescendantsExactlyOnce)
 }
 TEST_F(FootIKTest, FootPlaceThenSpineAndAimDoNotApplyHipCorrectionAgain)
 {
+    Chain().footPlantDistance = 0.18f;
     Ground(-0.05f);
     auto& spineTarget=Target("SpineTarget",m_fk[3]+math::Vector3{0,-0.05f,0});
     auto& aimTarget=Target("AimTarget",m_fk[4]+math::Vector3{0,-0.05f,1});

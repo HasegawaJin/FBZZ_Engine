@@ -20,7 +20,7 @@ Inspector、Scene/Prefab の chain、C# IKSolver.SetFootSettings が同じ値を
 | footSurfaceOffset / SurfaceOffset | 足首ピボットの地面からの高さ、world m、0..0.5 | 0.05 |
 | correctionDeadZone / DeadZone | m、0..0.25 | 0.025 |
 | maxCorrection / MaxCorrection | 上下補正・水平追従それぞれの上限、m、0..1 | 0.12 |
-| footPlantDistance / PlantDistance | FK の足裏高の左右差の許容、m、0..1 | 0.06 |
+| footPlantDistance / PlantDistance | FK の足裏から地面までの距離と、左右の FK 足裏高の差に対する接地重みの上限距離、m、0..1 | 0.06 |
 | smoothTime / SmoothTime | 指数応答の時定数、s、0..1、0 は即時 | 0.10 |
 | hipWeight / HipWeight | 腰の追従率、0..1、0 は腰を維持 | 1 |
 | maxHipLowering / MaxHipLowering | 腰を下げる上限、m、0..1、0 は下降禁止 | 0.10 |
@@ -29,7 +29,7 @@ Inspector、Scene/Prefab の chain、C# IKSolver.SetFootSettings が同じ値を
 | rayUpRatio / RayUpRatio | 脚長に対する比、0..2 | 0.5 |
 | rayDownRatio / RayDownRatio | レイ全長の脚長比、0..4 | 1.2 |
 
-接地相は FK の足裏高の左右差で判定する。地形の高低差そのものを遊脚と判定しない。
+接地重みは FK の足裏と地面の距離、および左右の FK 足裏高の差で判定する。既定では各距離が 2 cm 以内で全重み、6 cm に達するまで滑らかに 0 へ減衰する。片足が支持されていて左右の FK 足裏高が近ければ、もう片足は段差の低い面へ追従できる。地面が FK の足裏より上に来た場合は上向き補正でめり込みを解消する。
 
 SurfaceOffset は靴底の厚みではなく足首ボーンの高さ。モデルごとに調整する。足を上下させる値と腰の上限を同時に大きくしない。腰の上限はチェーンの有効 weight に応じて縮め、HipWeight は目標の強さに一度だけ掛ける。足の位置も weight を二重に掛けない。
 

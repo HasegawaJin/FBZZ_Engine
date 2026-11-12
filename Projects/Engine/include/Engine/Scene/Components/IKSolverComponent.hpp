@@ -77,8 +77,8 @@ struct IKChain {
     float footSurfaceOffset   = 0.05f;
     float correctionDeadZone  = 0.025f;
     float maxCorrection       = 0.12f;
-    /// @note 左右の足の地面クリアランス差がこれを超えた場合、高い側をスイング中とみなす。
-    /// @note 足首ピボットの基準高はモデルごとに異なるため、地面からの絶対距離では判定しない。
+    /// @note FK 足裏と地面の距離、および左右の FK 足裏高の差で接地重みが 0 になる距離 (world m)。
+    /// @note 段差では支持側の足を基準に低い地面へ追従できる。
     float footPlantDistance   = 0.06f;
     float smoothTime          = 0.10f;
     math::Vector3 footNormalAxis = math::Vector3::ZERO;
