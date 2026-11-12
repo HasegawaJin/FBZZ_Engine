@@ -949,7 +949,7 @@ OpResult FitRiverDrainage(OpContext& context, const OpArgs& args)
         return OpResult::Err("INVALID_AREA", "最小集水面積は有限の非負値が必要です。");
     TerrainDrainage drainage;
     std::string diagnostic;
-    if (!BuildTerrainDrainage(surfaces, settings, drainage, diagnostic))
+    if (!BuildTerrainDrainage(surfaces, settings, drainage, diagnostic, minArea))
         return OpResult::Err("DRAINAGE_NOT_FOUND", diagnostic);
     plan->after.waterShape = scene::WaterSurfaceShape::SPLINE_RIVER;
     plan->after.waterSamplesPerSegment = 1;
@@ -965,7 +965,7 @@ OpResult FitRiverDrainage(OpContext& context, const OpArgs& args)
         const auto size = DrainageRiverSize(node, drainage.step);
         if (size.y > water.buoyancyDepth)
             return OpResult::Err("RIVER_TOO_DEEP", "必要な水深が Water の上限を超えています。");
-        const auto local = inverse * (math::Vector3{node.ground.x, node.waterHeight + DRAINAGE_RIVER_SURFACE_CLEARANCE,
+        const auto local = inverse * (math::Vector3{node.ground.x, node.riverHeight,
             node.ground.z} - pose.worldPosition);
         points.push_back({static_cast<uint32_t>(points.size() + 1),
             {local.x / pose.worldScale.x, local.y / pose.worldScale.y, local.z / pose.worldScale.z},

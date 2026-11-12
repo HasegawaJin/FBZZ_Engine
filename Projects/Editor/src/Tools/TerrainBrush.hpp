@@ -16,6 +16,9 @@
 
 namespace fbzz::editor {
 
+/// @note World coordinates and scale are metres. The same seed keeps patch boundaries aligned across tiles.
+float SampleTerrainPatchNoise(float worldX, float worldZ, float scale, std::uint32_t seed);
+
 /// @brief ブラシ中心からの距離に対する減衰カーブ。
 enum class TerrainFalloff : std::uint8_t {
     Linear,

@@ -385,6 +385,14 @@ scene::TerrainHeightRegion TerrainBrushHydraulic(scene::TerrainComponent& terrai
 
 } /// @note namespace
 
+float SampleTerrainPatchNoise(float worldX, float worldZ, float scale, std::uint32_t seed)
+{
+    constexpr double PERIOD = 1048576.0;
+    const float x = static_cast<float>(std::remainder(static_cast<double>(worldX) / scale, PERIOD));
+    const float z = static_cast<float>(std::remainder(static_cast<double>(worldZ) / scale, PERIOD));
+    return TerrainBrushFbm(x, z, seed, 3);
+}
+
 math::Vector3 ToTerrainLocal(const scene::Transform& transform, const math::Vector3& worldPoint)
 {
     const math::Vector4 local = math::Matrix4::Inverse(transform.GetWorldMatrix())

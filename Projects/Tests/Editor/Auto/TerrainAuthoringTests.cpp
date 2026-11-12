@@ -8,10 +8,15 @@
 #include <Editor/Op/EditorOperator.hpp>
 #include <Tools/TerrainAuthoring.hpp>
 #include <Tools/TerrainBrush.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/WaterfallComponent.hpp>
+#include <Engine/Scene/MeshBuilder.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <fstream>
 #include <limits>
 
 namespace fbzz::tests {
@@ -568,6 +573,62 @@ TEST_F(TerrainAuthoringTest, DrainageFitUsesDownhillRouteAndAccumulatesArea)
     EXPECT_EQ(water.surfaceShape, scene::WaterSurfaceShape::RECTANGLE);
 }
 
+TEST_F(TerrainAuthoringTest, RiverProfileDoesNotUseTheDepressionFillAsItsSurface)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(9, 9);
+    terrain.cellSize = 1.0f;
+    for (int z = 0; z < 9; ++z)
+        for (int x = 0; x < 9; ++x) {
+            const auto radius = (std::max)(std::abs(x - 4), std::abs(z - 4));
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, radius == 2 ? 20.0f : radius < 2 ? 5.0f : 2.0f));
+        }
+    editor::OpArgs args;
+    args.Set("node", ground.instanceId);
+    args.Set("seed", math::Vector3{4, 0, 4});
+    args.Set("width", 8.0f);
+    args.Set("depth", 8.0f);
+    args.Set("spacing", 1.0f);
+    args.Set("minArea", 0.0f);
+    const auto result = editor::InvokeOperator(Context(), "terrain.drainage.inspect", args);
+    ASSERT_TRUE(result.ok) << result.message;
+    const auto* seed = result.data.Find("seed");
+    ASSERT_NE(seed, nullptr);
+    EXPECT_NEAR(seed->Find("waterHeight")->AsDouble(), 20.0, 0.01);
+    EXPECT_NEAR(seed->Find("riverSurfaceHeight")->AsDouble(), 5.05, 0.01);
+    EXPECT_LT(seed->Find("depth")->AsDouble(), 1.0);
+    const auto& edges = result.data.Find("edges")->AsArray();
+    for (const auto& edge : edges) {
+        EXPECT_LE(edge.Find("riverSurfaceHeight")->AsDouble(), edge.Find("ground")->AsVec3().y + 0.051f);
+        const auto downstream = edge.Find("downstream")->AsInt();
+        for (const auto& other : edges)
+            if (other.Find("index")->AsInt() == downstream)
+                EXPECT_LE(other.Find("riverSurfaceHeight")->AsDouble(), edge.Find("riverSurfaceHeight")->AsDouble());
+    }
+}
+
+TEST_F(TerrainAuthoringTest, WaterfallRuleRequiresAnActualCliffAndALakeFedReach)
+{
+    std::array sections{
+        editor::TerrainRiverCarveSection{{0, 0}, 15.05f, 2.0f, 1.0f, true, false, false, 15.0f},
+        editor::TerrainRiverCarveSection{{4, 0}, 14.05f, 2.0f, 1.0f, false, false, false, 14.0f},
+        editor::TerrainRiverCarveSection{{8, 0}, 6.05f, 2.0f, 1.0f, false, false, false, 6.0f},
+        editor::TerrainRiverCarveSection{{12, 0}, 5.05f, 2.0f, 1.0f, false, false, false, 5.0f}};
+    EXPECT_TRUE(editor::FindTerrainWaterfallLips(sections, 3.0f, 0.85f).empty());
+    sections[1].sourceLakeHeight = 13.0f;
+    EXPECT_TRUE(editor::FindTerrainWaterfallLips(sections, 3.0f, 0.85f).empty());
+    sections[1].sourceLakeHeight = 16.0f;
+    EXPECT_EQ(editor::FindTerrainWaterfallLips(sections, 3.0f, 0.85f), std::vector<std::size_t>{1});
+    EXPECT_TRUE(editor::FindTerrainWaterfallLips(sections, 9.0f, 0.85f).empty());
+    EXPECT_TRUE(editor::FindTerrainWaterfallLips(sections, 3.0f, 2.1f).empty());
+    sections[2].groundHeight = 12.0f;
+    EXPECT_TRUE(editor::FindTerrainWaterfallLips(sections, 3.0f, 0.85f).empty());
+    sections[2].groundHeight = 6.0f;
+    sections[2].beginsReach = true;
+    EXPECT_TRUE(editor::FindTerrainWaterfallLips(sections, 3.0f, 0.85f).empty());
+}
+
 TEST_F(TerrainAuthoringTest, DrainageCrossesTerrainTileBoundary)
 {
     editor::RegisterControlPointOperators(m_registry);
@@ -1058,6 +1119,502 @@ TEST_F(TerrainAuthoringTest, FailedAndNoOpStampsDoNotDirtyTerrainOrCreateHistory
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
     EXPECT_FALSE(dirty);
     Context().markSceneDirty = [] {};
+}
+
+TEST_F(TerrainAuthoringTest, TerrainMapsSeparatePlanarSlopesFromLocalRelief)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    const std::array surfaces{editor::TerrainAnalysisSurface{&terrain, &ground.transform}};
+    editor::TerrainMapSettings settings;
+    settings.radius = 10.0f;
+    editor::TerrainMapRaster raster;
+    for (int z = 0; z < 3; ++z)
+        for (int x = 0; x < 3; ++x) ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, x * 10.0f));
+    ASSERT_TRUE(editor::BuildTerrainMap(surfaces, settings, editor::TerrainMapChannel::SLOPE, raster));
+    EXPECT_NEAR(raster.Sample(0.5f, 0.5f), 0.5f, 0.001f);
+    ASSERT_TRUE(editor::BuildTerrainMap(surfaces, settings, editor::TerrainMapChannel::CAVITY, raster));
+    EXPECT_NEAR(raster.Sample(0.5f, 0.5f), 0.5f, 0.001f);
+    ASSERT_TRUE(editor::BuildTerrainMap(surfaces, settings, editor::TerrainMapChannel::ROUGHNESS, raster));
+    EXPECT_NEAR(raster.Sample(0.5f, 0.5f), 0.0f, 0.001f);
+    ASSERT_TRUE(terrain.SetHeightAtGrid(1, 1, 5.0f));
+    ASSERT_TRUE(editor::BuildTerrainMap(surfaces, settings, editor::TerrainMapChannel::CAVITY, raster));
+    EXPECT_GT(raster.Sample(0.5f, 0.5f), 0.75f);
+    ASSERT_TRUE(editor::BuildTerrainMap(surfaces, settings, editor::TerrainMapChannel::ROUGHNESS, raster));
+    EXPECT_GT(raster.Sample(0.5f, 0.5f), 0.5f);
+}
+
+TEST_F(TerrainAuthoringTest, TerrainFlowMapCarriesUpstreamAreaAcrossTileEdges)
+{
+    auto& upstream = MakeTerrain("Upstream");
+    auto& downstream = MakeTerrain("Downstream");
+    downstream.transform.position.x = 20.0f;
+    scene::FlushWorldTransforms(*AttachedScene());
+    auto& first = *upstream.GetComponent<scene::TerrainComponent>();
+    auto& second = *downstream.GetComponent<scene::TerrainComponent>();
+    for (int z = 0; z < 3; ++z) {
+        for (int x = 0; x < 3; ++x) {
+            const float height = 80.0f - 10.0f * x + (z == 1 ? 0.0f : 10.0f);
+            ASSERT_TRUE(first.SetHeightAtGrid(x, z, height));
+            ASSERT_TRUE(second.SetHeightAtGrid(x, z, height - 20.0f));
+        }
+    }
+    const editor::TerrainAnalysisSurface up{&first, &upstream.transform}, down{&second, &downstream.transform};
+    const editor::TerrainMapSettings settings;
+    editor::TerrainMapRaster a, b, local;
+    ASSERT_TRUE(editor::BuildTerrainMap(std::array{up, down}, settings, editor::TerrainMapChannel::FLOW, a));
+    ASSERT_TRUE(editor::BuildTerrainMap(std::array{down, up}, settings, editor::TerrainMapChannel::FLOW, b));
+    ASSERT_TRUE(editor::BuildTerrainMap(std::array{down}, settings, editor::TerrainMapChannel::FLOW, local));
+    EXPECT_GT(a.Sample(1.0f, 0.5f), 0.0f);
+    EXPECT_FLOAT_EQ(a.Sample(1.0f, 0.5f), b.Sample(0.0f, 0.5f));
+    EXPECT_GT(b.Sample(0.5f, 0.5f), local.Sample(0.5f, 0.5f));
+}
+
+TEST_F(TerrainAuthoringTest, DensityMapBakePreservesHoleBordersAndSupportsUndo)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    ASSERT_TRUE(terrain.SetHoleCell(0, 0, true));
+    const auto before = terrain;
+    editor::OpArgs args;
+    args.Set("node", ground.instanceId);
+    args.Set("channel", std::string("Density"));
+    for (std::size_t i = 0; i < editor::TerrainMapSettings{}.preferences.size(); ++i)
+        args.Set(editor::TERRAIN_MAP_NAMES[i], 0.0f);
+    const auto preview = editor::InvokeOperator(Context(), "terrain.maps.preview", args);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    const auto* pixels = preview.data.Find("previewGray8Hex");
+    ASSERT_NE(pixels, nullptr);
+    EXPECT_TRUE(pixels->AsString().starts_with("00"));
+    EXPECT_TRUE(pixels->AsString().ends_with("ff"));
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+
+    Context().projectRoot = ProjectRoot().generic_string();
+    auto exportArgs = args;
+    exportArgs.Set("path", std::string("Assets/Density.png"));
+    const auto exported = editor::InvokeOperator(Context(), "terrain.maps.export", exportArgs);
+    ASSERT_TRUE(exported.ok) << exported.message;
+    ASSERT_TRUE(std::filesystem::is_regular_file(File("Assets/Density.png.meta")));
+    scene::TerrainComponent image;
+    image.columns = terrain.columns;
+    image.rows = terrain.rows;
+    ASSERT_TRUE(scene::LoadHeightMapFromFile(File("Assets/Density.png").generic_string(), image));
+    EXPECT_FLOAT_EQ(image.heightData.front(), 0.0f);
+    EXPECT_FLOAT_EQ(image.heightData.back(), 1.0f);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+
+    args.Set("layer", 1);
+    const auto baked = editor::InvokeOperator(Context(), "terrain.maps.bake", args);
+    ASSERT_TRUE(baked.ok) << baked.message;
+    EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(1, 1, 1), 0.0f);
+    EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(2, 2, 1), 1.0f);
+    EXPECT_EQ(terrain.heightData, before.heightData);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(terrain.splatIndices, before.splatIndices);
+    EXPECT_EQ(terrain.splatWeights, before.splatWeights);
+}
+
+TEST_F(TerrainAuthoringTest, RefinedFlowCarveCarriesCatchmentFromOutsideTheDetailRegion)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.cellSize = 2.0f;
+    terrain.maxHeight = 200.0f;
+    terrain.Resize(513, 65);
+    for (int z = 0; z < terrain.rows; ++z)
+        for (int x = 0; x < terrain.columns; ++x)
+            terrain.heightData[static_cast<std::size_t>(z) * terrain.columns + x] = (150.0f - 0.08f * x + 0.9f * std::abs(z - 32)) / terrain.maxHeight;
+    const std::array sources{editor::TerrainAnalysisSurface{&terrain, &ground.transform}};
+    editor::TerrainFlowCarveSettings settings;
+    settings.region = {{512, 0, 64}, 64.0f};
+    settings.minArea = 5000.0f;
+    editor::TerrainRiverCarvePlan plan;
+    std::string diagnostic;
+    int reaches = 0;
+    ASSERT_TRUE(editor::PlanTerrainFlowCarve(sources, settings, plan, reaches, diagnostic)) << diagnostic;
+    EXPECT_FLOAT_EQ(plan.analysisSpacing, 2.0f);
+    EXPECT_GT(reaches, 0);
+    EXPECT_GT(plan.deepestCut, 0.0f);
+    EXPECT_FALSE(plan.vertices.empty());
+}
+
+TEST_F(TerrainAuthoringTest, FlowChannelPreviewAndCutLimitKeepTerrainUnchangedUntilApply)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.cellSize = 2.0f;
+    terrain.Resize(13, 13);
+    for (int z = 0; z < terrain.rows; ++z)
+        for (int x = 0; x < terrain.columns; ++x)
+            terrain.heightData[static_cast<std::size_t>(z) * terrain.columns + x] = (20.0f - 0.2f * x + std::abs(z - 6)) / terrain.maxHeight;
+    const auto before = terrain.heightData;
+    editor::OpArgs args;
+    args.Set("node", ground.instanceId);
+    args.Set("flowSize", 0.0f);
+    args.Set("minArea", 15.0f);
+    args.Set("maxCut", 0.01f);
+    const auto preview = editor::InvokeOperator(Context(), "terrain.flow.carve.preview", args);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    EXPECT_GT(preview.data.Find("changedVertices")->AsInt(), 0);
+    EXPECT_FALSE(preview.data.Find("withinLimit")->AsBool());
+    EXPECT_FALSE(editor::InvokeOperator(Context(), "terrain.flow.carve", args).ok);
+    EXPECT_EQ(terrain.heightData, before);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    args.Set("maxCut", 20.0f);
+    const auto carved = editor::InvokeOperator(Context(), "terrain.flow.carve", args);
+    ASSERT_TRUE(carved.ok) << carved.message;
+    EXPECT_NE(terrain.heightData, before);
+    EXPECT_EQ(terrain.heightData.front(), before.front());
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(terrain.heightData, before);
+}
+
+TEST_F(TerrainAuthoringTest, GentleFlowBankDepositsAboveWaterWithinTheRequestedBudget)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    terrain.cellSize = 2.0f;
+    terrain.Resize(9, 9);
+    terrain.InitFlat(2.0f);
+    const std::array sections{editor::TerrainRiverCarveSection{{2, 8}, 1.8f, 2.0f, 0.4f},
+        editor::TerrainRiverCarveSection{{14, 8}, 1.8f, 2.0f, 0.4f}};
+    editor::TerrainRiverCarveSettings settings;
+    settings.bankWidth = 4.0f;
+    settings.endFade = 0.0f;
+    settings.depositHeight = 0.5f;
+    settings.gentleBankLayer = 1;
+    editor::TerrainRiverCarvePlan plan;
+    ASSERT_TRUE(editor::PlanTerrainRiverCarve(terrain, ground.transform, sections, settings, plan));
+    EXPECT_GT(plan.highestDeposit, 0.0f);
+    EXPECT_LE(plan.highestDeposit, settings.depositHeight + 0.0001f);
+    EXPECT_GT(plan.deepestCut, 0.0f);
+    EXPECT_FALSE(plan.materials.empty());
+}
+
+TEST_F(TerrainAuthoringTest, TerrainMaterialRulesBlendTogetherAndProtectPaintedWeights)
+{
+    auto& ground = MakeTerrain();
+    auto& terrain = *ground.GetComponent<scene::TerrainComponent>();
+    scene::terrain_splat::BlendToward(terrain.splatIndices.data(), terrain.splatWeights.data(), 2, 1.0f);
+    const auto before = terrain.splatWeights;
+    const std::array sources{editor::TerrainAnalysisSurface{&terrain, &ground.transform}};
+    editor::TerrainMaterialBakeSettings settings;
+    settings.rules = {{0, 1.0f, {}}, {1, 3.0f, {}}};
+    settings.protectedLayers = {2};
+    editor::TerrainMapRaster mask{3, 3, {0, 1, 0, 0, 0, 0, 0, 0, 0}};
+    settings.protection = &mask;
+    ASSERT_TRUE(editor::BakeTerrainMaterials(terrain, sources, editor::TerrainMapSettings{}, settings));
+    EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(0, 0, 2), 1.0f);
+    EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(1, 0, 0), 1.0f);
+    EXPECT_NEAR(terrain.GetLayerWeightAtGrid(2, 0, 1), 0.75f, 1.0f / 255.0f);
+    EXPECT_NE(terrain.splatWeights, before);
+}
+
+TEST_F(TerrainAuthoringTest, HabitatPatchesAgreeOnTheSharedWorldSpaceTileEdge)
+{
+    auto& west = MakeTerrain("West");
+    auto& east = MakeTerrain("East");
+    east.transform.position.x = 20.0f;
+    editor::OpArgs args;
+    args.Set("channel", std::string("Density"));
+    for (std::size_t i = 0; i < editor::TerrainMapSettings{}.preferences.size(); ++i)
+        args.Set(editor::TERRAIN_MAP_NAMES[i], 0.0f);
+    args.Set("patchScale", 17.0f);
+    args.Set("patchMin", 0.38f);
+    args.Set("patchMax", 0.75f);
+    args.Set("node", west.instanceId);
+    const auto left = editor::InvokeOperator(Context(), "terrain.maps.preview", args);
+    ASSERT_TRUE(left.ok) << left.message;
+    args.Set("node", east.instanceId);
+    const auto right = editor::InvokeOperator(Context(), "terrain.maps.preview", args);
+    ASSERT_TRUE(right.ok) << right.message;
+    const auto& a = left.data.Find("previewGray8Hex")->AsString();
+    const auto& b = right.data.Find("previewGray8Hex")->AsString();
+    constexpr int SIZE = editor::TERRAIN_MAP_PREVIEW_SIZE;
+    for (int row = 0; row < SIZE; ++row)
+        EXPECT_EQ(a.substr(2 * ((row + 1) * SIZE - 1), 2), b.substr(2 * row * SIZE, 2));
+    args.Set("patchSeed", 42);
+    const auto different = editor::InvokeOperator(Context(), "terrain.maps.preview", args);
+    ASSERT_TRUE(different.ok) << different.message;
+    EXPECT_NE(b, different.data.Find("previewGray8Hex")->AsString());
+}
+
+TEST_F(TerrainAuthoringTest, FlowNetworkSharesBankHeightsAndUndoesRiverCreationWithTerrain)
+{
+    auto& west = MakeTerrain("West");
+    auto& east = MakeTerrain("East");
+    east.transform.position.x = 24.0f;
+    auto& a = *west.GetComponent<scene::TerrainComponent>();
+    auto& b = *east.GetComponent<scene::TerrainComponent>();
+    a.cellSize = b.cellSize = 2.0f;
+    b.maxHeight = 200.0f;
+    a.Resize(13, 5);
+    b.Resize(13, 5);
+    for (int z = 0; z < 5; ++z) {
+        for (int x = 0; x < 13; ++x) {
+            const float height = 24.0f - x * 0.5f + 4.0f * std::abs(z - 2);
+            ASSERT_TRUE(a.SetHeightAtGrid(x, z, height));
+            ASSERT_TRUE(b.SetHeightAtGrid(x, z, height - 6.0f));
+        }
+    }
+    const auto protectedOffset = std::size_t{13} * scene::TERRAIN_SPLAT_SLOTS;
+    scene::terrain_splat::BlendToward(b.splatIndices.data() + protectedOffset, b.splatWeights.data() + protectedOffset, 2, 1.0f);
+    editor::OpArgs args;
+    args.Set("node", west.instanceId);
+    args.Set("flowSize", 0.0f);
+    args.Set("minArea", 32.0f);
+    args.Set("protectedLayer", 2);
+    const auto preview = editor::InvokeOperator(Context(), "terrain.flow.network.preview", args);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    EXPECT_EQ(preview.data.Find("tileCount")->AsInt(), 2);
+    EXPECT_GT(preview.data.Find("riverCount")->AsInt(), 0);
+    EXPECT_FALSE(preview.data.Find("cut")->AsArray().empty());
+    EXPECT_FALSE(preview.data.Find("waterLines")->AsArray().empty());
+    args.Set("expected", preview.data.Find("expected")->AsString());
+    args.Set("bankWidth", 7.0f);
+    EXPECT_EQ(editor::InvokeOperator(Context(), "terrain.flow.network.apply", args).errorCode, "STALE_PREVIEW");
+    args.Set("bankWidth", 8.0f);
+    const float old = a.heightData[0];
+    a.heightData[0] += 0.001f;
+    EXPECT_EQ(editor::InvokeOperator(Context(), "terrain.flow.network.apply", args).errorCode, "STALE_PREVIEW");
+    a.heightData[0] = old;
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    const auto beforeA = a.heightData, beforeB = b.heightData;
+    const auto applied = editor::InvokeOperator(Context(), "terrain.flow.network.apply", args);
+    ASSERT_TRUE(applied.ok) << applied.message;
+    ASSERT_EQ(m_undo.GetHistorySize(), 1u);
+    EXPECT_NE(a.heightData, beforeA);
+    EXPECT_NE(b.heightData, beforeB);
+    EXPECT_LT(a.heightData[2 * 13 + 12], beforeA[2 * 13 + 12]);
+    EXPECT_FLOAT_EQ(a.heightData[13 + 12], beforeA[13 + 12]);
+    EXPECT_FLOAT_EQ(b.heightData[13], beforeB[13]);
+    for (int z = 0; z < 5; ++z) EXPECT_NEAR(a.heightData[z * 13 + 12] * a.maxHeight, b.heightData[z * 13] * b.maxHeight, 0.001f);
+    const auto& rivers = applied.data.Find("rivers")->AsArray();
+    ASSERT_FALSE(rivers.empty());
+    for (const auto& guid : rivers) {
+        auto* river = AttachedScene()->FindByGuid(guid.AsString());
+        ASSERT_NE(river, nullptr);
+        EXPECT_EQ(river->GetComponent<scene::WaterComponent>()->surfaceShape, scene::WaterSurfaceShape::SPLINE_RIVER);
+    }
+    EXPECT_EQ(editor::InvokeOperator(Context(), "terrain.flow.network.apply", args).errorCode, "STALE_PREVIEW");
+    ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
+    EXPECT_EQ(a.heightData, beforeA);
+    EXPECT_EQ(b.heightData, beforeB);
+    for (const auto& guid : rivers) EXPECT_EQ(AttachedScene()->FindByGuid(guid.AsString()), nullptr);
+    ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic();
+    for (const auto& guid : rivers) EXPECT_NE(AttachedScene()->FindByGuid(guid.AsString()), nullptr);
+}
+
+TEST_F(TerrainAuthoringTest, FlowNetworkBuildsAndUndoesAConnectedWaterfall)
+{
+    auto& owner = MakeTerrain("Cliff valley");
+    auto& terrain = *owner.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(25, 7);
+    terrain.cellSize = 2.0f;
+    for (int z = 0; z < 7; ++z)
+        for (int x = 0; x < 25; ++x)
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, 32.0f - 0.25f * x - (x >= 12 ? 8.0f : 0.0f)
+                + 4.0f * std::abs(z - 3)));
+    editor::OpArgs args;
+    args.Set("node", owner.instanceId);
+    args.Set("flowSize", 0.0f);
+    args.Set("minArea", 100.0f);
+    args.Set("maxCut", 24.0f);
+    args.Set("buildWaterfalls", true);
+    const auto dryPreview = editor::InvokeOperator(Context(), "terrain.flow.network.preview", args);
+    ASSERT_TRUE(dryPreview.ok) << dryPreview.message;
+    EXPECT_EQ(dryPreview.data.Find("waterfallCount")->AsInt(), 0);
+    auto& lakeOwner = AttachedScene()->CreateGameObject("Headwater lake");
+    lakeOwner.transform.position.y = 29.85f;
+    auto& lake = lakeOwner.AddComponent<scene::WaterComponent>();
+    lake.surfaceShape = scene::WaterSurfaceShape::SPLINE_LAKE;
+    lake.splineSamplesPerSegment = 1;
+    lake.splinePoints = {{1, {11, 0, 4}, 0, 1}, {2, {19.25f, 0, 4}, 0, 1},
+        {3, {19.25f, 0, 8}, 0, 1}, {4, {11, 0, 8}, 0, 1}};
+    ASSERT_TRUE(terrain.SetHeightAtGrid(8, 3, 29.30f));
+    const auto lakeTerrain = terrain.heightData;
+    const auto preview = editor::InvokeOperator(Context(), "terrain.flow.network.preview", args);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    ASSERT_EQ(preview.data.Find("sourceLakeCount")->AsInt(), 1);
+    ASSERT_EQ(preview.data.Find("sourceOutletCount")->AsInt(), 1);
+    ASSERT_GT(preview.data.Find("waterfallCount")->AsInt(), 0);
+    const auto& falls = preview.data.Find("waterfallLines")->AsArray();
+    ASSERT_EQ(falls.front().AsArray().size(), 2u);
+    const auto lip = falls.front().AsArray()[0].AsVec3();
+    const auto foot = falls.front().AsArray()[1].AsVec3();
+    EXPECT_GT(lip.y - foot.y, 3.0f);
+    args.Set("expected", preview.data.Find("expected")->AsString());
+    const auto applied = editor::InvokeOperator(Context(), "terrain.flow.network.apply", args);
+    ASSERT_TRUE(applied.ok) << applied.message;
+    ASSERT_EQ(m_undo.GetHistorySize(), 1u);
+    const auto& ids = applied.data.Find("waterfallVisuals")->AsArray();
+    ASSERT_EQ(ids.size(), falls.size());
+    auto* curtain = AttachedScene()->FindByGuid(ids[0].AsString());
+    ASSERT_NE(curtain, nullptr);
+    auto* waterfall = curtain->GetComponent<scene::WaterfallComponent>();
+    ASSERT_NE(waterfall, nullptr);
+    auto* upstream = waterfall->upstream.Resolve(*AttachedScene());
+    auto* downstream = waterfall->downstream.Resolve(*AttachedScene());
+    ASSERT_NE(upstream, nullptr);
+    ASSERT_NE(downstream, nullptr);
+    ASSERT_NE(upstream, downstream);
+    scene::WaterfallGeometry geometry;
+    const auto readSection = [&](scene::GameObject& node, bool atStart, scene::WaterfallSection& out) {
+        const auto* water = node.GetComponent<scene::WaterComponent>();
+        scene::WaterSplineSnapshot snapshot;
+        return water && scene::BuildWaterSplineSnapshot(water->surfaceShape, water->splinePoints,
+            water->splineSamplesPerSegment, node.transform, snapshot, water->buoyancyDepth, 100.0f)
+            && scene::GetWaterfallRiverSection(snapshot, atStart, !atStart, out);
+    };
+    ASSERT_TRUE(readSection(*upstream, false, geometry.source));
+    ASSERT_TRUE(readSection(*downstream, true, geometry.receiver));
+    EXPECT_VEC3_NEAR(math::Vector3::Lerp(geometry.source.left, geometry.source.right, 0.5f), lip, 0.001f);
+    EXPECT_VEC3_NEAR(math::Vector3::Lerp(geometry.receiver.left, geometry.receiver.right, 0.5f), foot, 0.001f);
+    scene::MeshBuilder mesh;
+    std::uint32_t farIndex = 0;
+    ASSERT_TRUE(scene::BuildWaterfallGeometry(geometry, {}, mesh, nullptr, &farIndex));
+    ASSERT_GT(farIndex, mesh.IndexCount() - farIndex);
+    for (const auto& bank : {geometry.source.left, geometry.source.right, geometry.receiver.left, geometry.receiver.right}) {
+        EXPECT_TRUE(std::any_of(mesh.Vertices().begin(), mesh.Vertices().end(), [&](const auto& vertex) {
+            return (vertex.position + lip - bank).Length() < 0.001f;
+        }));
+    }
+    EXPECT_FALSE(scene::BuildWaterfallGeometry(geometry, [&](const auto&) { return lip.y + 2.0f; }, mesh));
+    ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
+    EXPECT_EQ(terrain.heightData, lakeTerrain);
+    for (const auto& id : ids) EXPECT_EQ(AttachedScene()->FindByGuid(id.AsString()), nullptr);
+    ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic();
+    for (const auto& id : ids) EXPECT_NE(AttachedScene()->FindByGuid(id.AsString()), nullptr);
+}
+
+TEST_F(TerrainAuthoringTest, RiverBedBetweenTerrainVerticesStillExcavatesTheCenter)
+{
+    auto& owner = MakeTerrain();
+    auto& terrain = *owner.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(9, 9);
+    terrain.cellSize = 4.0f;
+    for (int z = 0; z < terrain.rows; ++z)
+        for (int x = 0; x < terrain.columns; ++x)
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, 10.0f));
+    const std::array sections{editor::TerrainRiverCarveSection{{4, 14}, 10.0f, 0.75f, 1.0f},
+        editor::TerrainRiverCarveSection{{28, 14}, 10.0f, 0.75f, 1.0f}};
+    editor::TerrainRiverCarveSettings settings;
+    settings.endFade = 0.0f;
+    settings.bankWidth = 0.0f;
+    editor::TerrainRiverCarvePlan plan;
+    ASSERT_TRUE(editor::PlanTerrainRiverCarve(terrain, owner.transform, sections, settings, plan));
+    scene::TerrainSurfaceSample sample;
+    ASSERT_TRUE(scene::TrySampleTerrainWorld(terrain, owner.transform, 16.0f, 14.0f, sample, plan.vertices));
+    EXPECT_NEAR(sample.position.y, 9.0f, 0.001f);
+    ASSERT_TRUE(scene::TrySampleTerrainWorld(terrain, owner.transform, 16.0f, 20.0f, sample, plan.vertices));
+    EXPECT_NEAR(sample.position.y, 10.0f, 0.001f);
+}
+
+TEST_F(TerrainAuthoringTest, TerrainRecipeRestoresArgumentsAndRemapsMaterialReferences)
+{
+    auto& first = MakeTerrain("Recipe source");
+    auto& second = MakeTerrain("Recipe target");
+    second.GetComponent<scene::TerrainComponent>()->layerMaterials = {"rock", "snow", "grass"};
+    Context().projectRoot = ProjectRoot().generic_string();
+    auto recipe = editor::OpData::MakeObject(), flow = editor::OpData::MakeObject();
+    flow.Set("minArea", 4000.0f);
+    flow.Set("rockLayer", 1);
+    recipe.Set("flow", std::move(flow));
+    auto materials = editor::OpData::MakeObject(), rules = editor::OpData::MakeArray(), rule = editor::OpData::MakeObject();
+    rule.Set("layer", 0);
+    rule.Set("weight", 2.0f);
+    auto preferences = editor::OpData::MakeArray();
+    for (float value : {0.0f, -0.25f, 0.0f, 0.5f, 0.0f}) preferences.Push(value);
+    rule.Set("preferences", std::move(preferences));
+    rules.Push(std::move(rule));
+    materials.Set("rules", std::move(rules));
+    recipe.Set("materials", std::move(materials));
+    auto habitat = editor::OpData::MakeObject();
+    habitat.Set("channel", "Density");
+    habitat.Set("pathLayer", 2);
+    habitat.Set("patchSeed", 19);
+    recipe.Set("habitat", std::move(habitat));
+    editor::OpArgs save;
+    save.Set("path", std::string("Assets/Test.terrainrecipe.toml"));
+    save.Set("node", first.instanceId);
+    save.Set("recipe", std::move(recipe));
+    const auto saved = editor::InvokeOperator(Context(), "terrain.recipe.save", save);
+    ASSERT_TRUE(saved.ok) << saved.message;
+    EXPECT_TRUE(std::filesystem::is_regular_file(File("Assets/Test.terrainrecipe.toml.meta")));
+    editor::OpArgs load;
+    load.Set("path", std::string("Assets/Test.terrainrecipe.toml"));
+    load.Set("node", second.instanceId);
+    const auto loaded = editor::InvokeOperator(Context(), "terrain.recipe.load", load);
+    ASSERT_TRUE(loaded.ok) << loaded.message;
+    const auto* value = loaded.data.Find("recipe");
+    ASSERT_NE(value, nullptr);
+    EXPECT_EQ(value->Find("flow")->Find("rockLayer")->AsInt(), 0);
+    EXPECT_EQ(value->Find("materials")->Find("rules")->AsArray()[0].Find("layer")->AsInt(), 2);
+    EXPECT_EQ(value->Find("habitat")->Find("pathLayer")->AsInt(), 1);
+    EXPECT_EQ(value->Find("habitat")->Find("patchSeed")->AsInt(), 19);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(TerrainAuthoringTest, FlowNetworkWaterPreviewExtendsTributariesOntoTheDownstreamReach)
+{
+    auto& owner = MakeTerrain();
+    auto& terrain = *owner.GetComponent<scene::TerrainComponent>();
+    terrain.cellSize = 3.0f;
+    terrain.Resize(33, 21);
+    for (int x = 0; x < terrain.columns; ++x) {
+        const float split = (std::max)(0.0f, 4.0f - 0.25f * x);
+        for (int z = 0; z < terrain.rows; ++z) {
+            const float valley = (std::min)(std::abs(z - (10.0f - split)), std::abs(z - (10.0f + split)));
+            ASSERT_TRUE(terrain.SetHeightAtGrid(x, z, 55.0f - 0.3f * x + 1.5f * valley));
+        }
+    }
+    editor::OpArgs args;
+    args.Set("node", owner.instanceId);
+    args.Set("flowSize", 0.0f);
+    args.Set("minArea", 180.0f);
+    args.Set("maxCut", 50.0f);
+    const auto preview = editor::InvokeOperator(Context(), "terrain.flow.network.preview", args);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    const auto& lines = preview.data.Find("waterLines")->AsArray();
+    ASSERT_GT(lines.size(), 1u);
+    args.Set("expected", preview.data.Find("expected")->AsString());
+    const auto applied = editor::InvokeOperator(Context(), "terrain.flow.network.apply", args);
+    ASSERT_TRUE(applied.ok) << applied.message;
+    std::vector<scene::WaterSplineSnapshot> water;
+    const auto& ids = applied.data.Find("rivers")->AsArray();
+    ASSERT_EQ(ids.size(), lines.size());
+    for (const auto& id : ids) {
+        auto* river = AttachedScene()->FindByGuid(id.AsString());
+        ASSERT_NE(river, nullptr);
+        const auto& component = *river->GetComponent<scene::WaterComponent>();
+        ASSERT_TRUE(scene::BuildWaterSplineSnapshot(component.surfaceShape, component.splinePoints,
+            component.splineSamplesPerSegment, river->transform, water.emplace_back(), component.buoyancyDepth, component.splineMeshCellSize));
+    }
+    constexpr std::array OFFSETS{math::Vector2{1, 0}, math::Vector2{1, 1}, math::Vector2{0, 1}, math::Vector2{-1, 1},
+        math::Vector2{-1, 0}, math::Vector2{-1, -1}, math::Vector2{0, -1}, math::Vector2{1, -1}};
+    bool confluence = false;
+    for (std::size_t downstream = 0; downstream < lines.size(); ++downstream) {
+        const auto junction = lines[downstream].AsArray().front().AsVec3();
+        int tributaries = 0;
+        for (std::size_t upstream = 0; upstream < lines.size(); ++upstream) {
+            const auto& points = lines[upstream].AsArray();
+            if (upstream == downstream || points.size() < 3 || points[points.size() - 2].AsVec3() != junction) continue;
+            bool overlap = false;
+            for (const auto& offset : OFFSETS) {
+                scene::WaterSplineSample a, b;
+                const float x = junction.x + 0.08f * offset.x, z = junction.z + 0.08f * offset.y;
+                if (scene::TrySampleWaterSpline(water[upstream], x, z, a) && scene::TrySampleWaterSpline(water[downstream], x, z, b)) {
+                    EXPECT_NEAR(a.baseHeight, b.baseHeight, 0.1f);
+                    overlap = true;
+                    break;
+                }
+            }
+            EXPECT_TRUE(overlap);
+            if (overlap) ++tributaries;
+        }
+        confluence |= tributaries > 1;
+    }
+    EXPECT_TRUE(confluence);
 }
 
 } /// @note namespace fbzz::tests

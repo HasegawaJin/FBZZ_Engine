@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -39,6 +40,7 @@
 #include <memory>
 #include <imgui.h>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace fbzz::editor {
@@ -94,13 +96,14 @@ std::string TerrainToolOpStatus(const OpResult& result)
     return std::string(result.ok ? "OK: " : "Error: ") + result.message;
 }
 
-void TerrainToolLayerCombo(const char* label, const scene::TerrainComponent* terrain, int& layer, bool allowAll = false)
+void TerrainToolLayerCombo(const char* label, const scene::TerrainComponent* terrain, int& layer, bool allowAll = false,
+    const char* unsetLabel = "All layers")
 {
-    std::string preview = layer < 0 ? "All layers" : "Layer " + std::to_string(layer);
+    std::string preview = layer < 0 ? unsetLabel : "Layer " + std::to_string(layer);
     if (terrain && layer >= 0 && layer < terrain->LayerCount())
         preview += "  " + terrain->layerMaterials[static_cast<size_t>(layer)];
     if (!ImGui::BeginCombo(label, preview.c_str())) return;
-    if (allowAll && ImGui::Selectable("All layers", layer < 0)) layer = -1;
+    if (allowAll && ImGui::Selectable(unsetLabel, layer < 0)) layer = -1;
     if (terrain) {
         for (int i = 0; i < terrain->LayerCount(); ++i) {
             const std::string name = "Layer " + std::to_string(i) + "  " + terrain->layerMaterials[static_cast<size_t>(i)];
@@ -219,7 +222,11 @@ void TerrainTool::Update(
         m_strokeActive = m_rampDragging = m_flattenLocked = false;
         m_hitTerrain = nullptr;
         m_instanceOwner.clear();m_instanceId=0;m_instanceDragging=false;m_paintArea.clear();
+        ClearFlowPreview();
     }
+    if (!m_flowExpected.empty() && context.undoStack && context.undoStack->GetRevision() != m_flowOverlayUndoRevision) ClearFlowPreview();
+    DrawTerrainMapOverlay(context, camera, viewportMin, viewportSize);
+    if (m_active) DrawFlowPreview(camera, viewportMin, viewportSize);
     /// @note ビューポート外・非アクティブではレイキャストしない。ただし進行中のストロークは離すまで追う。
     const bool scatterPaint = m_mode == Mode::Paint && m_paintTarget == PaintTarget::Instances;
     const bool heightStamp = m_mode == Mode::Paint && m_paintTarget == PaintTarget::HeightMap;
@@ -1235,6 +1242,12 @@ scene::GameObject* TerrainTool::DrawHeightMapTarget(scene::Scene& scene)
         m_biomeStatus.clear();
         m_grassStatus.clear();
         m_layerMaskStatus.clear();
+        m_mapPreview.clear();
+        m_densityPreview = {};
+        m_mapStatus.clear();
+        ClearFlowPreview();
+        m_flowCarveStatus.clear();
+        m_naturalMaterialStatus.clear();
         m_scatterStatus.clear();
         m_scatterTargetId.clear();
     }
@@ -1275,6 +1288,12 @@ scene::GameObject* TerrainTool::DrawHeightMapTarget(scene::Scene& scene)
                 m_biomeStatus.clear();
                 m_grassStatus.clear();
                 m_layerMaskStatus.clear();
+                m_mapPreview.clear();
+                m_densityPreview = {};
+                m_mapStatus.clear();
+                ClearFlowPreview();
+                m_flowCarveStatus.clear();
+                m_naturalMaterialStatus.clear();
                 m_scatterStatus.clear();
             }
             if (selected) ImGui::SetItemDefaultFocus();
@@ -1441,6 +1460,677 @@ void TerrainTool::DrawBiomeSection(EditorContext& context, scene::GameObject* ta
         TerrainToolStatus(m_layerMaskStatus);
         ImGui::PopID();
     }
+}
+
+bool TerrainTool::DrawTerrainHabitat(scene::GameObject* target)
+{
+    if (!ImGui::TreeNode("Vegetation Patches & Edges")) return false;
+    bool changed = false;
+    const auto preset = [&](float patchMin, float patchMax, TerrainHabitatBand water, float pathMin, const std::array<float, 5>& preferences) {
+        if (m_habitat.patchScale == 0.0f) m_habitat.patchScale = 120.0f;
+        m_habitat.patchMin = patchMin;
+        m_habitat.patchMax = patchMax;
+        m_habitat.avoidWater = true;
+        m_habitat.water = water;
+        m_habitat.path = {pathMin, 0.0f, 5.0f};
+        m_mapSettings.preferences = preferences;
+        changed = true;
+    };
+    if (ImGui::Button("Tall Trees")) preset(0.48f, 1.0f, {6, 0, 10}, 7, {-0.15f, -0.8f, 0.4f, -0.4f, -0.4f});
+    ImGui::SameLine();
+    if (ImGui::Button("Shrubs")) preset(0.28f, 0.72f, {2, 0, 7}, 3, {0, -0.6f, 0.35f, -0.2f, -0.25f});
+    ImGui::SameLine();
+    if (ImGui::Button("Ferns")) preset(0.33f, 0.86f, {1, 55, 8}, 1, {-0.35f, -0.7f, 0.9f, 0.25f, -0.45f});
+    changed |= ImGui::DragFloat("Patch size [m]", &m_habitat.patchScale, 1.0f, 0.0f, 2048.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::DragInt("Patch seed", &m_habitat.seed, 1.0f, 0, (std::numeric_limits<int>::max)(), "%d", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::DragFloatRange2("Patch range", &m_habitat.patchMin, &m_habitat.patchMax, 0.01f, 0.0f, 1.0f, "%.2f", "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::Checkbox("Avoid submerged ground", &m_habitat.avoidWater);
+    ImGui::TextDisabled("Distance maximum 0 means unlimited.");
+    const auto drawBand = [&](const char* id, TerrainHabitatBand& band) {
+        ImGui::PushID(id);
+        ImGui::SeparatorText(id);
+        changed |= ImGui::DragFloat("Min [m]", &band.minimum, 0.5f, 0.0f, 1000.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("Max [m]", &band.maximum, 0.5f, 0.0f, 1000.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("Edge fade [m]", &band.fade, 0.25f, 0.0f, 500.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::PopID();
+    };
+    drawBand("Water distance", m_habitat.water);
+    const int oldPath = m_habitat.pathLayer;
+    TerrainToolLayerCombo("Path layer", target ? target->GetComponent<scene::TerrainComponent>() : nullptr,
+        m_habitat.pathLayer, true, "Disabled");
+    changed |= oldPath != m_habitat.pathLayer;
+    if (m_habitat.pathLayer >= 0) drawBand("Path distance", m_habitat.path);
+    ImGui::TreePop();
+    return changed;
+}
+
+void TerrainTool::ClearFlowPreview()
+{
+    m_flowPreviewReady = false;
+    m_flowExpected.clear();
+    for (auto& group : m_flowPreviewPoints) group.clear();
+    m_flowPreviewWater.clear();
+    m_flowPreviewWaterfalls.clear();
+    m_flowPreviewWaterfallSections.clear();
+}
+
+void TerrainTool::CaptureFlowPreview(const OpData& data)
+{
+    if (const auto* expected = data.Find("expected")) m_flowExpected = expected->AsString();
+    constexpr const char* GROUPS[] = {"cut", "deposit", "protected"};
+    for (std::size_t i = 0; i < m_flowPreviewPoints.size(); ++i) {
+        if (const auto* points = data.Find(GROUPS[i]))
+            for (const auto& point : points->AsArray()) m_flowPreviewPoints[i].push_back(point.AsVec3());
+    }
+    if (const auto* lines = data.Find("waterLines")) {
+        for (const auto& line : lines->AsArray()) {
+            auto& points = m_flowPreviewWater.emplace_back();
+            for (const auto& point : line.AsArray()) points.push_back(point.AsVec3());
+        }
+    }
+    if (const auto* lines = data.Find("waterfallLines")) {
+        for (const auto& line : lines->AsArray()) {
+            const auto& points = line.AsArray();
+            if (points.size() == 2) m_flowPreviewWaterfalls.push_back({points[0].AsVec3(), points[1].AsVec3()});
+        }
+    }
+    if (const auto* lines = data.Find("waterfallSections")) {
+        for (const auto& line : lines->AsArray()) {
+            const auto& points = line.AsArray();
+            if (points.size() == 2) m_flowPreviewWaterfallSections.push_back({points[0].AsVec3(), points[1].AsVec3()});
+        }
+    }
+}
+
+void TerrainTool::DrawFlowPreview(const renderer::Camera& camera, const ImVec2& origin, const ImVec2& size) const
+{
+    if (m_flowExpected.empty()) return;
+    const auto matrix = camera.GetViewProjection();
+    const auto project = [&](const math::Vector3& p, ImVec2& out) {
+        const auto clip = matrix * math::Vector4{p, 1.0f};
+        if (clip.w <= 0.0001f || clip.z < 0.0f || clip.z > clip.w) return false;
+        out = TerrainToolProject(matrix, origin, size, p);
+        return true;
+    };
+    auto* draw = ImGui::GetForegroundDrawList();
+    draw->PushClipRect(origin, {origin.x + size.x, origin.y + size.y}, true);
+    constexpr ImU32 COLORS[] = {IM_COL32(255, 102, 84, 220), IM_COL32(99, 219, 117, 220), IM_COL32(255, 201, 74, 225)};
+    for (std::size_t i = 0; i < m_flowPreviewPoints.size(); ++i) {
+        for (const auto& point : m_flowPreviewPoints[i]) {
+            ImVec2 screen;
+            if (project(point, screen)) draw->AddCircleFilled(screen, 2.5f, COLORS[i]);
+        }
+    }
+    for (const auto& line : m_flowPreviewWater) {
+        for (std::size_t i = 1; i < line.size(); ++i) {
+            ImVec2 a, b;
+            if (project(line[i - 1], a) && project(line[i], b)) draw->AddLine(a, b, IM_COL32(91, 191, 255, 235), 2.0f);
+        }
+    }
+    for (const auto& line : m_flowPreviewWaterfalls) {
+        ImVec2 lip, foot;
+        if (project(line[0], lip) && project(line[1], foot)) {
+            draw->AddLine(lip, foot, IM_COL32(184, 120, 255, 255), 4.0f);
+            draw->AddCircleFilled(foot, 4.0f, IM_COL32(184, 120, 255, 255));
+        }
+    }
+    for (const auto& line : m_flowPreviewWaterfallSections) {
+        ImVec2 left, right;
+        if (project(line[0], left) && project(line[1], right))
+            draw->AddLine(left, right, IM_COL32(218, 173, 255, 255), 3.0f);
+    }
+    draw->PopClipRect();
+}
+
+void TerrainTool::DrawNaturalTerrainSections(EditorContext& context, scene::GameObject* target, const OpArgs& mapArgs)
+{
+    const auto* terrain = target ? target->GetComponent<scene::TerrainComponent>() : nullptr;
+    if (ImGui::TreeNode("Flow Channels")) {
+        auto& bed = m_flowCarve.bed;
+        ImGui::TextWrapped("Set a detail region above to focus the analysis. Preview the cuts and water lines before applying.");
+        bool changed = ImGui::Checkbox("Build water and shared banks", &m_flowBuildWater);
+        if (m_flowBuildWater) {
+            ImGui::TextDisabled("Optional river material");
+            const std::string oldMaterial = m_flowWaterMaterial;
+            TerrainToolPathField("##FlowWaterMaterial", m_flowWaterMaterial, sizeof(m_flowWaterMaterial));
+            changed |= oldMaterial != m_flowWaterMaterial;
+            changed |= ImGui::Checkbox("Build lake-fed waterfalls", &m_flowBuildWaterfalls);
+            if (m_flowBuildWaterfalls) {
+                changed |= ImGui::DragFloat("Min waterfall drop [m]", &m_flowWaterfallDrop, 0.1f, 0.5f, 1000.0f,
+                    "%.1f", ImGuiSliderFlags_AlwaysClamp);
+                changed |= ImGui::DragFloat("Min waterfall grade (drop/run)", &m_flowWaterfallGrade, 0.01f, 0.25f, 10.0f,
+                    "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            }
+        }
+        changed |= ImGui::DragFloat("Min catchment [m2]", &m_flowCarve.minArea, 50.0f, 1.0f, 1.0e12f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("Depth scale", &m_flowCarve.depthScale, 0.01f, 0.01f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("Bank width [m]", &bed.bankWidth, 0.25f, 0.0f, 512.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("Maximum cut [m]", &bed.maxCut, 0.25f, 0.01f, 1000.0f, "%.1f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("Gentle grade (rise/run)", &bed.gentleGrade, 0.005f, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("Gentle bank deposit [m]", &bed.depositHeight, 0.05f, 0.0f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        const auto layer = [&](const char* label, int& index) {
+            const int old = index;
+            TerrainToolLayerCombo(label, terrain, index, true, "Disabled");
+            changed |= index != old;
+        };
+        layer("Steep bank rock", bed.bankLayer);
+        layer("Gentle bank gravel", bed.gentleBankLayer);
+        layer("Protect layer", bed.protectedLayer);
+        if (changed) ClearFlowPreview();
+        auto args = mapArgs;
+        args.Set("minArea", m_flowCarve.minArea);
+        args.Set("depthScale", m_flowCarve.depthScale);
+        args.Set("bankWidth", bed.bankWidth);
+        args.Set("maxCut", bed.maxCut);
+        args.Set("gentleGrade", bed.gentleGrade);
+        args.Set("depositHeight", bed.depositHeight);
+        args.Set("rockLayer", bed.bankLayer);
+        args.Set("gravelLayer", bed.gentleBankLayer);
+        args.Set("protectedLayer", bed.protectedLayer);
+        if (m_flowBuildWater) {
+            args.Set("waterMaterial", std::string(m_flowWaterMaterial));
+            args.Set("buildWaterfalls", m_flowBuildWaterfalls);
+            args.Set("waterfallMinDrop", m_flowWaterfallDrop);
+            args.Set("waterfallMinGrade", m_flowWaterfallGrade);
+        }
+        const char* previewOp = m_flowBuildWater ? "terrain.flow.network.preview" : "terrain.flow.carve.preview";
+        const char* applyOp = m_flowBuildWater ? "terrain.flow.network.apply" : "terrain.flow.carve";
+        ImGui::BeginDisabled(!terrain || !CanInvokeOperator(context, previewOp, args));
+        if (ImGui::Button("Preview Channel Cuts")) {
+            const auto result = InvokeOperator(context, previewOp, args);
+            m_flowCarveStatus = TerrainToolOpStatus(result);
+            ClearFlowPreview();
+            if (result.ok) {
+                const auto& data = result.data;
+                const auto* withinLimit = data.Find("withinLimit");
+                m_flowPreviewReady = withinLimit && withinLimit->AsBool();
+                if (m_flowBuildWater) {
+                    CaptureFlowPreview(data);
+                    m_flowOverlayUndoRevision = context.undoStack ? context.undoStack->GetRevision() : 0;
+                }
+                char summary[180];
+                std::snprintf(summary, sizeof(summary), "%d reaches, %d vertices, %d protected. Max cut %.2f m, deposit %.2f m. Grid %.2f m.",
+                    data.Find(m_flowBuildWater ? "riverCount" : "reaches")->AsInt(), data.Find("changedVertices")->AsInt(), data.Find("protectedVertices")->AsInt(),
+                    data.Find("deepestCut")->AsDouble(), data.Find("highestDeposit")->AsDouble(), data.Find("analysisSpacing")->AsDouble());
+                m_flowCarveStatus = std::string(m_flowPreviewReady ? "OK: " : "Error: Cut limit exceeded. ") + summary;
+                if (const auto* count = data.Find("waterfallCount"); m_flowBuildWaterfalls && count)
+                    m_flowCarveStatus += " Waterfalls: " + std::to_string(count->AsInt()) + ".";
+                if (const auto* outlets = data.Find("sourceOutletCount"); m_flowBuildWaterfalls && outlets)
+                    m_flowCarveStatus += " Lake outlets: " + std::to_string(outlets->AsInt()) + ".";
+                if (const auto* rejected = data.Find("rejectedWaterfallCount"); rejected && rejected->AsInt() > 0)
+                    m_flowCarveStatus += " Rejected cliff connections: " + std::to_string(rejected->AsInt()) + ".";
+            }
+        }
+        ImGui::EndDisabled();
+        if (m_flowBuildWater) args.Set("expected", m_flowExpected);
+        ImGui::BeginDisabled(!terrain || !m_flowPreviewReady || !CanInvokeOperator(context, applyOp, args));
+        if (ImGui::Button(m_flowBuildWater ? "Apply Flow Network" : "Apply Channel Cuts")) {
+            m_flowCarveStatus = TerrainToolOpStatus(InvokeOperator(context, applyOp, args));
+            ClearFlowPreview();
+            m_mapPreview.clear();
+        }
+        ImGui::EndDisabled();
+        if (m_flowBuildWater && !m_flowExpected.empty()) {
+            ImGui::TextColored({1, 0.4f, 0.33f, 1}, "Cut"); ImGui::SameLine();
+            ImGui::TextColored({0.39f, 0.86f, 0.46f, 1}, "Deposit"); ImGui::SameLine();
+            ImGui::TextColored({1, 0.79f, 0.29f, 1}, "Protected"); ImGui::SameLine();
+            ImGui::TextColored({0.36f, 0.75f, 1, 1}, "Water");
+            if (m_flowBuildWaterfalls) { ImGui::SameLine(); ImGui::TextColored({0.72f, 0.47f, 1, 1}, "Waterfall"); }
+        }
+        TerrainToolStatus(m_flowCarveStatus);
+        ImGui::TreePop();
+    }
+
+    if (!ImGui::TreeNode("Material Rules")) return;
+    ImGui::TextWrapped("Blend ridge, slope, valley and bank materials in a single Undo step. Assign existing material layers.");
+    OpData rules = OpData::MakeArray();
+    for (std::size_t i = 0; i < m_naturalMaterials.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        auto& rule = m_naturalMaterials[i];
+        const auto label = i < TERRAIN_MATERIAL_ROLES.size() ? std::string(TERRAIN_MATERIAL_ROLES[i]) : "Rule " + std::to_string(i + 1);
+        TerrainToolLayerCombo(label.c_str(), terrain, rule.layer, true, "Disabled");
+        if (rule.layer >= 0 && ImGui::TreeNode("Adjust weights")) {
+            ImGui::DragFloat("Strength", &rule.weight, 0.05f, 0.0f, 16.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+            for (std::size_t channel = 0; channel < rule.preferences.size(); ++channel)
+                ImGui::SliderFloat(TERRAIN_MAP_NAMES[channel], &rule.preferences[channel], -1.0f, 1.0f);
+            ImGui::TreePop();
+        }
+        if (terrain && rule.layer >= 0 && rule.layer < terrain->LayerCount()) {
+            auto entry = OpData::MakeObject();
+            entry.Set("layer", rule.layer);
+            entry.Set("weight", rule.weight);
+            auto preferences = OpData::MakeArray();
+            for (const float value : rule.preferences) preferences.Push(value);
+            entry.Set("preferences", std::move(preferences));
+            rules.Push(std::move(entry));
+        }
+        ImGui::PopID();
+    }
+    if (m_naturalMaterials.size() < 8 && ImGui::SmallButton("Add Material Rule")) m_naturalMaterials.emplace_back();
+    auto protectedLayers = OpData::MakeArray();
+    for (std::size_t i = 0; i < m_naturalProtectedLayers.size(); ++i) {
+        ImGui::PushID(static_cast<int>(i));
+        TerrainToolLayerCombo("Protect existing layer", terrain, m_naturalProtectedLayers[i], true, "Disabled");
+        ImGui::PopID();
+        const int layer = m_naturalProtectedLayers[i];
+        if (layer >= 0 && std::none_of(protectedLayers.AsArray().begin(), protectedLayers.AsArray().end(),
+            [&](const auto& value) { return value.AsInt() == layer; })) protectedLayers.Push(layer);
+    }
+    if (m_naturalProtectedLayers.size() < 8 && ImGui::SmallButton("Add Protected Layer")) m_naturalProtectedLayers.push_back(-1);
+    if (!protectedLayers.AsArray().empty()) ImGui::SliderFloat("Protection threshold", &m_naturalProtectedThreshold, 0.001f, 1.0f);
+    ImGui::TextDisabled("Protection mask (white keeps paint)");
+    TerrainToolPathField("##NaturalProtectionMask", m_naturalProtectionMask, sizeof(m_naturalProtectionMask));
+    ImGui::SliderFloat("Material blend", &m_naturalStrength, 0.0f, 1.0f);
+    const bool hasRules = !rules.AsArray().empty();
+    auto args = mapArgs;
+    args.Set("rules", std::move(rules));
+    args.Set("protectedLayers", std::move(protectedLayers));
+    args.Set("protectedThreshold", m_naturalProtectedThreshold);
+    args.Set("protectionMask", std::string(m_naturalProtectionMask));
+    args.Set("strength", m_naturalStrength);
+    ImGui::BeginDisabled(!terrain || !hasRules || !CanInvokeOperator(context, "terrain.maps.bake_materials", args));
+    if (ImGui::Button("Bake All Material Rules"))
+        m_naturalMaterialStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.maps.bake_materials", args));
+    ImGui::EndDisabled();
+    TerrainToolStatus(m_naturalMaterialStatus);
+    ImGui::TreePop();
+}
+
+OpData TerrainTool::CaptureTerrainRecipe(const scene::TerrainComponent* terrain) const
+{
+    auto recipe = OpData::MakeObject();
+    auto common = OpData::MakeObject();
+    common.Set("includeNeighbors", m_mapIncludeNeighbors);
+    common.Set("flowSize", m_mapSettings.flowRegion.size);
+    auto flow = common;
+    const auto& bed = m_flowCarve.bed;
+    flow.Set("minArea", m_flowCarve.minArea);
+    flow.Set("depthScale", m_flowCarve.depthScale);
+    flow.Set("bankWidth", bed.bankWidth);
+    flow.Set("maxCut", bed.maxCut);
+    flow.Set("gentleGrade", bed.gentleGrade);
+    flow.Set("depositHeight", bed.depositHeight);
+    flow.Set("rockLayer", bed.bankLayer);
+    flow.Set("gravelLayer", bed.gentleBankLayer);
+    flow.Set("protectedLayer", bed.protectedLayer);
+    flow.Set("waterMaterial", m_flowWaterMaterial);
+    flow.Set("buildWaterfalls", m_flowBuildWaterfalls);
+    flow.Set("waterfallMinDrop", m_flowWaterfallDrop);
+    flow.Set("waterfallMinGrade", m_flowWaterfallGrade);
+    recipe.Set("flow", std::move(flow));
+
+    common.Set("resolution", m_mapSettings.resolution);
+    common.Set("radius", m_mapSettings.radius);
+    common.Set("flowFullArea", m_mapSettings.flowFullArea);
+    auto materials = common;
+    materials.Set("strength", m_naturalStrength);
+    materials.Set("protectedThreshold", m_naturalProtectedThreshold);
+    materials.Set("protectionMask", m_naturalProtectionMask);
+    auto layers = OpData::MakeArray();
+    for (const int layer : m_naturalProtectedLayers)
+        if (layer >= 0 && std::none_of(layers.AsArray().begin(), layers.AsArray().end(),
+            [&](const auto& value) { return value.AsInt() == layer; })) layers.Push(layer);
+    materials.Set("protectedLayers", std::move(layers));
+    auto rules = OpData::MakeArray();
+    for (const auto& rule : m_naturalMaterials) {
+        if (rule.layer < 0 || (terrain && rule.layer >= terrain->LayerCount())) continue;
+        auto entry = OpData::MakeObject(), preferences = OpData::MakeArray();
+        for (float preference : rule.preferences) preferences.Push(preference);
+        entry.Set("layer", rule.layer);
+        entry.Set("weight", rule.weight);
+        entry.Set("preferences", std::move(preferences));
+        rules.Push(std::move(entry));
+    }
+    materials.Set("rules", std::move(rules));
+    recipe.Set("materials", std::move(materials));
+
+    auto habitat = common;
+    habitat.Set("channel", "Density");
+    habitat.Set("density", m_mapSettings.density);
+    for (std::size_t i = 0; i < m_mapSettings.preferences.size(); ++i) habitat.Set(TERRAIN_MAP_NAMES[i], m_mapSettings.preferences[i]);
+    habitat.Set("patchScale", m_habitat.patchScale);
+    habitat.Set("patchMin", m_habitat.patchMin);
+    habitat.Set("patchMax", m_habitat.patchMax);
+    habitat.Set("patchSeed", m_habitat.seed);
+    habitat.Set("avoidWater", m_habitat.avoidWater);
+    habitat.Set("waterMin", m_habitat.water.minimum);
+    habitat.Set("waterMax", m_habitat.water.maximum);
+    habitat.Set("waterFade", m_habitat.water.fade);
+    habitat.Set("pathLayer", m_habitat.pathLayer);
+    habitat.Set("pathMin", m_habitat.path.minimum);
+    habitat.Set("pathMax", m_habitat.path.maximum);
+    habitat.Set("pathFade", m_habitat.path.fade);
+    recipe.Set("habitat", std::move(habitat));
+    return recipe;
+}
+
+void TerrainTool::RestoreTerrainRecipe(const OpData& recipe)
+{
+    const auto number = [](const OpData& data) { return data.IsInt() ? static_cast<float>(data.AsInt64()) : data.AsFloat(); };
+    const auto read = [&](const OpData& section, const char* key, auto& output) {
+        if (const auto* value = section.Find(key)) {
+            using Value = std::remove_reference_t<decltype(output)>;
+            if constexpr (std::is_same_v<Value, bool>) output = value->AsBool(output);
+            else if constexpr (std::is_same_v<Value, int>) output = value->AsInt(output);
+            else if constexpr (std::is_same_v<Value, float>) output = number(*value);
+        }
+    };
+    for (const auto* group : {"flow", "materials", "habitat"}) {
+        if (const auto* settings = recipe.Find(group)) {
+            read(*settings, "includeNeighbors", m_mapIncludeNeighbors);
+            read(*settings, "flowSize", m_mapSettings.flowRegion.size);
+            read(*settings, "resolution", m_mapSettings.resolution);
+            read(*settings, "radius", m_mapSettings.radius);
+            read(*settings, "flowFullArea", m_mapSettings.flowFullArea);
+        }
+    }
+    m_flowCustomCenter = false;
+    if (const auto* flow = recipe.Find("flow")) {
+        auto& bed = m_flowCarve.bed;
+        read(*flow, "minArea", m_flowCarve.minArea);
+        read(*flow, "depthScale", m_flowCarve.depthScale);
+        read(*flow, "bankWidth", bed.bankWidth);
+        read(*flow, "maxCut", bed.maxCut);
+        read(*flow, "gentleGrade", bed.gentleGrade);
+        read(*flow, "depositHeight", bed.depositHeight);
+        read(*flow, "rockLayer", bed.bankLayer);
+        read(*flow, "gravelLayer", bed.gentleBankLayer);
+        read(*flow, "protectedLayer", bed.protectedLayer);
+        if (const auto* value = flow->Find("waterMaterial")) strncpy_s(m_flowWaterMaterial, value->AsString().c_str(), _TRUNCATE);
+        m_flowBuildWaterfalls = false;
+        m_flowWaterfallDrop = DEFAULT_WATERFALL_DROP;
+        m_flowWaterfallGrade = DEFAULT_WATERFALL_GRADE;
+        read(*flow, "buildWaterfalls", m_flowBuildWaterfalls);
+        read(*flow, "waterfallMinDrop", m_flowWaterfallDrop);
+        read(*flow, "waterfallMinGrade", m_flowWaterfallGrade);
+        m_flowBuildWater = true;
+    }
+    if (const auto* materials = recipe.Find("materials")) {
+        read(*materials, "strength", m_naturalStrength);
+        read(*materials, "protectedThreshold", m_naturalProtectedThreshold);
+        if (const auto* value = materials->Find("protectionMask")) strncpy_s(m_naturalProtectionMask, value->AsString().c_str(), _TRUNCATE);
+        if (const auto* layers = materials->Find("protectedLayers")) {
+            m_naturalProtectedLayers.clear();
+            for (const auto& layer : layers->AsArray()) m_naturalProtectedLayers.push_back(layer.AsInt());
+            if (m_naturalProtectedLayers.empty()) m_naturalProtectedLayers.push_back(-1);
+        }
+        if (const auto* rules = materials->Find("rules")) {
+            m_naturalMaterials.clear();
+            for (const auto& entry : rules->AsArray()) {
+                auto& rule = m_naturalMaterials.emplace_back();
+                read(entry, "layer", rule.layer);
+                read(entry, "weight", rule.weight);
+                if (const auto* preferences = entry.Find("preferences"))
+                    for (std::size_t i = 0; i < rule.preferences.size() && i < preferences->AsArray().size(); ++i)
+                        rule.preferences[i] = number(preferences->AsArray()[i]);
+            }
+        }
+    }
+    if (const auto* habitat = recipe.Find("habitat")) {
+        read(*habitat, "density", m_mapSettings.density);
+        for (std::size_t i = 0; i < m_mapSettings.preferences.size(); ++i) read(*habitat, TERRAIN_MAP_NAMES[i], m_mapSettings.preferences[i]);
+        read(*habitat, "patchScale", m_habitat.patchScale);
+        read(*habitat, "patchMin", m_habitat.patchMin);
+        read(*habitat, "patchMax", m_habitat.patchMax);
+        read(*habitat, "patchSeed", m_habitat.seed);
+        read(*habitat, "avoidWater", m_habitat.avoidWater);
+        read(*habitat, "waterMin", m_habitat.water.minimum);
+        read(*habitat, "waterMax", m_habitat.water.maximum);
+        read(*habitat, "waterFade", m_habitat.water.fade);
+        read(*habitat, "pathLayer", m_habitat.pathLayer);
+        read(*habitat, "pathMin", m_habitat.path.minimum);
+        read(*habitat, "pathMax", m_habitat.path.maximum);
+        read(*habitat, "pathFade", m_habitat.path.fade);
+    }
+    ClearFlowPreview();
+    m_mapPreview.clear();
+}
+
+void TerrainTool::DrawTerrainRecipeSection(EditorContext& context, scene::GameObject* target)
+{
+    if (!ImGui::TreeNode("Terrain Recipe")) return;
+    TerrainToolPathField("##TerrainRecipePath", m_terrainRecipePath, sizeof(m_terrainRecipePath));
+    OpArgs args;
+    args.Set("path", std::string(m_terrainRecipePath));
+    if (target) args.Set("node", target->instanceId);
+    ImGui::BeginDisabled(m_terrainRecipePath[0] == '\0');
+    if (ImGui::Button("Save Recipe")) {
+        args.Set("recipe", CaptureTerrainRecipe(target ? target->GetComponent<scene::TerrainComponent>() : nullptr));
+        m_terrainRecipeStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.recipe.save", args));
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load Recipe")) {
+        const auto result = InvokeOperator(context, "terrain.recipe.load", args);
+        m_terrainRecipeStatus = TerrainToolOpStatus(result);
+        if (result.ok)
+            if (const auto* recipe = result.data.Find("recipe")) RestoreTerrainRecipe(*recipe);
+    }
+    ImGui::EndDisabled();
+    TerrainToolStatus(m_terrainRecipeStatus);
+    ImGui::TreePop();
+}
+
+void TerrainTool::DrawTerrainMapsSection(EditorContext& context, scene::GameObject* target)
+{
+    if (!ImGui::CollapsingHeader("Shape & Density Maps")) return;
+    ImGui::PushID("TerrainMaps");
+    DrawTerrainRecipeSection(context, target);
+    const auto* terrain = target ? target->GetComponent<scene::TerrainComponent>() : nullptr;
+    const char* const overlays[]{"Off", "Generated map", "Saved terrain layer", "Placement density mask"};
+    int overlay = static_cast<int>(m_mapOverlay);
+    if (ImGui::Combo("Scene overlay", &overlay, overlays, 4)) m_mapOverlay = static_cast<MapOverlay>(overlay);
+    if (m_mapOverlay == MapOverlay::SAVED_LAYER) TerrainToolLayerCombo("Displayed layer", terrain, m_mapOverlayLayer);
+    if (m_mapOverlay != MapOverlay::OFF) {
+        ImGui::TextColored({0.27f, 0.57f, 1.0f, 1.0f}, "0   Low");
+        ImGui::SameLine(); ImGui::TextColored({1.0f, 0.86f, 0.27f, 1.0f}, "High   1");
+    }
+    ImGui::TextWrapped("Preview how terrain shape controls ground materials and placement density.");
+    bool changed = ImGui::Combo("Map", &m_mapChannel, TERRAIN_MAP_NAMES.data(), static_cast<int>(TERRAIN_MAP_NAMES.size()));
+    changed |= ImGui::Checkbox("Include connected terrain tiles", &m_mapIncludeNeighbors);
+    changed |= ImGui::SliderInt("Max samples per axis", &m_mapSettings.resolution, 2, 513);
+    changed |= ImGui::DragFloat("Relief radius [m]", &m_mapSettings.radius, 0.5f, 0.25f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::DragFloat("Flow white area [m2]", &m_mapSettings.flowFullArea, 100.0f, 1.0f, 1.0e12f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    changed |= ImGui::DragFloat("Flow detail region [m]", &m_mapSettings.flowRegion.size, 8.0f, 0.0f, 100000.0f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::SetItemTooltip("0 uses the regional grid. Enter a smaller square to resolve local streams.");
+    if (m_mapSettings.flowRegion.size > 0.0f) {
+        changed |= ImGui::Checkbox("Set world X/Z center", &m_flowCustomCenter);
+        if (m_flowCustomCenter) {
+            float xz[]{m_mapSettings.flowRegion.center.x, m_mapSettings.flowRegion.center.z};
+            if (ImGui::DragFloat2("Center X/Z [m]", xz, 1.0f)) {
+                m_mapSettings.flowRegion.center = {xz[0], 0.0f, xz[1]};
+                changed = true;
+            }
+        }
+    }
+    if (m_mapChannel == static_cast<int>(TerrainMapChannel::DENSITY)) {
+        if (ImGui::Button("Grass")) { m_mapSettings.preferences = TerrainMapSettings{}.preferences; changed = true; }
+        ImGui::SameLine();
+        if (ImGui::Button("Forest")) { m_mapSettings.preferences = {-0.25f, -0.8f, 0.65f, 0.15f, -0.5f}; changed = true; }
+        ImGui::SameLine();
+        if (ImGui::Button("Rock")) { m_mapSettings.preferences = {0.15f, 1.0f, -0.65f, 0.0f, 0.7f}; changed = true; }
+        ImGui::TextWrapped("Negative favors black. Positive favors white. Zero ignores the map.");
+        for (std::size_t i = 0; i < m_mapSettings.preferences.size(); ++i)
+            changed |= ImGui::SliderFloat(TERRAIN_MAP_NAMES[i], &m_mapSettings.preferences[i], -1.0f, 1.0f, "%.2f");
+        changed |= ImGui::SliderFloat("Max density", &m_mapSettings.density, 0.0f, 1.0f);
+        changed |= DrawTerrainHabitat(target);
+    }
+    if (changed || !target) {
+        m_mapPreview.clear();
+        ClearFlowPreview();
+    }
+
+    OpArgs mapArgs;
+    mapArgs.Set("node", target ? target->instanceId : std::string{});
+    mapArgs.Set("includeNeighbors", m_mapIncludeNeighbors);
+    mapArgs.Set("resolution", m_mapSettings.resolution);
+    mapArgs.Set("radius", m_mapSettings.radius);
+    mapArgs.Set("flowFullArea", m_mapSettings.flowFullArea);
+    mapArgs.Set("flowSize", m_mapSettings.flowRegion.size);
+    if (m_flowCustomCenter) mapArgs.Set("flowCenter", m_mapSettings.flowRegion.center);
+    auto args = mapArgs;
+    args.Set("channel", std::string(TERRAIN_MAP_NAMES[static_cast<std::size_t>(m_mapChannel)]));
+    args.Set("density", m_mapSettings.density);
+    for (std::size_t i = 0; i < m_mapSettings.preferences.size(); ++i)
+        args.Set(TERRAIN_MAP_NAMES[i], m_mapSettings.preferences[i]);
+    args.Set("patchScale", m_habitat.patchScale);
+    args.Set("patchMin", m_habitat.patchMin);
+    args.Set("patchMax", m_habitat.patchMax);
+    args.Set("patchSeed", m_habitat.seed);
+    args.Set("avoidWater", m_habitat.avoidWater);
+    args.Set("waterMin", m_habitat.water.minimum);
+    args.Set("waterMax", m_habitat.water.maximum);
+    args.Set("waterFade", m_habitat.water.fade);
+    args.Set("pathLayer", m_habitat.pathLayer);
+    args.Set("pathMin", m_habitat.path.minimum);
+    args.Set("pathMax", m_habitat.path.maximum);
+    args.Set("pathFade", m_habitat.path.fade);
+
+    ImGui::BeginDisabled(!target || !CanInvokeOperator(context, "terrain.maps.preview", args));
+    if (ImGui::Button("Generate Preview")) {
+        const auto result = InvokeOperator(context, "terrain.maps.preview", args);
+        m_mapStatus = TerrainToolOpStatus(result);
+        const auto* pixels = result.data.Find("previewGray8Hex");
+        m_mapPreview = pixels ? pixels->AsString() : std::string{};
+        m_mapOverlayCache.samples.clear();
+        if (result.ok && target && terrain) {
+            m_mapPreviewLifetime = context.activeScene->GetComponentLifetime<scene::TerrainComponent>(target->GetID());
+            m_mapPreviewSurface = terrain->surfaceRevision;
+            m_mapPreviewVegetation = terrain->vegetationRevision;
+            m_mapPreviewUndo = context.undoStack ? context.undoStack->GetRevision() : 0;
+            m_mapPreviewWorld = target->transform.GetWorldMatrix();
+        }
+    }
+    ImGui::EndDisabled();
+    constexpr int SIZE = TERRAIN_MAP_PREVIEW_SIZE;
+    if (terrain && m_mapPreview.size() == SIZE * SIZE * 2) {
+        const float previewWidth = (std::min)(ImGui::GetContentRegionAvail().x, 240.0f);
+        if (previewWidth > 0.0f) {
+            const float ratio = static_cast<float>(terrain->rows - 1) / (terrain->columns - 1);
+            const float previewHeight = std::clamp(previewWidth * ratio, 32.0f, 240.0f);
+            const auto origin = ImGui::GetCursorScreenPos();
+            ImGui::Dummy({previewWidth, previewHeight});
+            auto* draw = ImGui::GetWindowDrawList();
+            const auto nibble = [](char c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
+            const float stepX = previewWidth / SIZE, stepY = previewHeight / SIZE;
+            for (int z = 0; z < SIZE; ++z) {
+                for (int x = 0; x < SIZE; ++x) {
+                    const int offset = (z * SIZE + x) * 2;
+                    const int gray = nibble(m_mapPreview[offset]) * 16 + nibble(m_mapPreview[offset + 1]);
+                    draw->AddRectFilled({origin.x + x * stepX, origin.y + z * stepY},
+                        {origin.x + (x + 1) * stepX, origin.y + (z + 1) * stepY}, IM_COL32(gray, gray, gray, 255));
+                }
+            }
+        }
+    }
+    ImGui::TextDisabled("PNG path under Assets (optional)");
+    ImGui::InputText("##MapExportPath", m_mapExportPath, sizeof(m_mapExportPath));
+    auto exportArgs = args;
+    exportArgs.Set("path", std::string(m_mapExportPath));
+    ImGui::BeginDisabled(!target || !CanInvokeOperator(context, "terrain.maps.export", exportArgs));
+    if (ImGui::Button("Export 16-bit PNG")) m_mapStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.maps.export", exportArgs));
+    ImGui::EndDisabled();
+
+    TerrainToolLayerCombo("Bake layer", terrain, m_mapLayer);
+    ImGui::SliderFloat("Blend strength", &m_mapStrength, 0.0f, 1.0f);
+    args.Set("layer", m_mapLayer);
+    args.Set("strength", m_mapStrength);
+    ImGui::BeginDisabled(!terrain || m_mapLayer >= terrain->LayerCount() || !CanInvokeOperator(context, "terrain.maps.bake", args));
+    if (ImGui::Button("Bake Map into Layer")) m_mapStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.maps.bake", args));
+    ImGui::EndDisabled();
+    TerrainToolStatus(m_mapStatus);
+    DrawNaturalTerrainSections(context, target, mapArgs);
+    ImGui::PopID();
+}
+
+void TerrainTool::DrawTerrainMapOverlay(EditorContext& context, const renderer::Camera& camera,
+    const ImVec2& origin, const ImVec2& size)
+{
+    if (m_mapOverlay == MapOverlay::OFF || !context.activeScene
+        || m_heightMapSceneGeneration != context.activeScene->GetRenderSceneGeneration()) return;
+    const auto* target = context.activeScene->FindByGuid(m_heightMapTargetId);
+    const auto* terrain = target ? context.activeScene->GetComponent<scene::TerrainComponent>(target->GetID()) : nullptr;
+    if (!terrain || !terrain->enabled || !target->activeInHierarchy() || terrain->columns < 2 || terrain->rows < 2
+        || !std::isfinite(terrain->cellSize) || terrain->cellSize <= 0.0f
+        || terrain->heightData.size() != static_cast<std::size_t>(terrain->columns) * terrain->rows) return;
+    constexpr int SIZE = TERRAIN_MAP_PREVIEW_SIZE;
+    const bool generated = m_mapOverlay == MapOverlay::GENERATED;
+    const bool densityMask = m_mapOverlay == MapOverlay::DENSITY_MASK;
+    const auto lifetime = context.activeScene->GetComponentLifetime<scene::TerrainComponent>(target->GetID());
+    const auto world = target->transform.GetWorldMatrix();
+    if (generated) {
+        if (m_mapPreview.size() != SIZE * SIZE * 2) return;
+        bool sameWorld = true;
+        for (int row = 0; row < 4; ++row) for (int col = 0; col < 4; ++col)
+            sameWorld &= world.m[row][col] == m_mapPreviewWorld.m[row][col];
+        if (!sameWorld || m_mapPreviewLifetime != lifetime || m_mapPreviewSurface != terrain->surfaceRevision
+            || m_mapPreviewVegetation != terrain->vegetationRevision
+            || (context.undoStack && m_mapPreviewUndo != context.undoStack->GetRevision())) {
+            m_mapPreview.clear();
+            m_mapStatus = "Generate Preview again after changing the terrain.";
+            return;
+        }
+    } else if (densityMask) {
+        if (m_densityPreview.pixels.empty() || m_densityPreviewPath != m_scatterDensityMap
+            || m_densityPreview.width != std::clamp(terrain->columns, 2, 513)
+            || m_densityPreview.height != std::clamp(terrain->rows, 2, 513)) return;
+    } else if (!terrain->HasValidSplat() || m_mapOverlayLayer < 0 || m_mapOverlayLayer >= terrain->LayerCount()) return;
+
+    auto& cache = m_mapOverlayCache;
+    const int layer = generated || densityMask ? -1 : m_mapOverlayLayer;
+    if (cache.samples.empty() || cache.source != m_mapOverlay || cache.terrain != target->instanceId
+        || cache.lifetime != lifetime || cache.surface != terrain->surfaceRevision
+        || cache.vegetation != terrain->vegetationRevision || cache.layer != layer) {
+        cache.source = m_mapOverlay; cache.terrain = target->instanceId;
+        cache.lifetime = lifetime; cache.surface = terrain->surfaceRevision; cache.vegetation = terrain->vegetationRevision;
+        cache.layer = layer;
+        cache.samples.resize(SIZE * SIZE);
+        const float width = (terrain->columns - 1) * terrain->cellSize;
+        const float depth = (terrain->rows - 1) * terrain->cellSize;
+        if (!std::isfinite(width) || !std::isfinite(depth)) { cache.samples.clear(); return; }
+        const auto nibble = [](char c) { return c <= '9' ? c - '0' : c - 'a' + 10; };
+        for (int z = 0; z < SIZE; ++z) for (int x = 0; x < SIZE; ++x) {
+            const int index = z * SIZE + x;
+            auto& sample = cache.samples[index];
+            const float u = static_cast<float>(x) / (SIZE - 1), v = static_cast<float>(z) / (SIZE - 1);
+            const float localX = u * width, localZ = v * depth;
+            const float height = terrain->GetHeightAt(localX, localZ);
+            sample.valid = std::isfinite(height) && !terrain->IsHoleAtLocal(localX, localZ);
+            sample.local = {localX, height, localZ};
+            if (generated) sample.value = (nibble(m_mapPreview[index * 2]) * 16 + nibble(m_mapPreview[index * 2 + 1])) / 255.0f;
+            else if (densityMask) sample.value = m_densityPreview.Sample(u, v);
+            else sample.value = SampleTerrainLayerWeight(*terrain, localX, localZ, layer);
+        }
+    }
+    const auto projection = camera.GetViewProjection() * world;
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->PushClipRect(origin, {origin.x + size.x, origin.y + size.y}, true);
+    const MapOverlaySample* hovered = nullptr;
+    float closest = 49.0f;
+    const auto mouse = ImGui::GetMousePos();
+    const bool hover = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(origin, {origin.x + size.x, origin.y + size.y});
+    for (const auto& sample : cache.samples) {
+        if (!sample.valid || !std::isfinite(sample.value)) continue;
+        const auto clip = projection * math::Vector4{sample.local, 1.0f};
+        if (!std::isfinite(clip.x) || !std::isfinite(clip.y) || !std::isfinite(clip.z) || !std::isfinite(clip.w)) continue;
+        if (clip.w <= 0.0001f || clip.z < 0.0f || clip.z > clip.w || std::abs(clip.x) > clip.w || std::abs(clip.y) > clip.w) continue;
+        const ImVec2 screen{origin.x + (0.5f + clip.x / clip.w * 0.5f) * size.x,
+            origin.y + (0.5f - clip.y / clip.w * 0.5f) * size.y};
+        const float value = std::clamp(sample.value, 0.0f, 1.0f);
+        const ImU32 color = IM_COL32(static_cast<int>(std::lerp(69.0f, 255.0f, value)),
+            static_cast<int>(std::lerp(145.0f, 219.0f, value)), static_cast<int>(std::lerp(255.0f, 69.0f, value)), 200);
+        draw->AddCircleFilled(screen, 2.8f, color, 8);
+        if (hover) {
+            const float dx = mouse.x - screen.x, dy = mouse.y - screen.y;
+            if (const float distance = dx * dx + dy * dy; distance < closest) { closest = distance; hovered = &sample; }
+        }
+    }
+    if (hovered) {
+        const auto point = world * math::Vector4{hovered->local, 1.0f};
+        const char* label = generated ? TERRAIN_MAP_NAMES[m_mapChannel] : densityMask ? "Density mask" : "Layer weight";
+        ImGui::SetTooltip("%s  %.3f\nX %.2f  Y %.2f  Z %.2f", label,
+            hovered->value, point.x, point.y, point.z);
+    }
+    draw->PopClipRect();
 }
 
 void TerrainTool::DrawPaintAssetInspector(EditorContext& context, const std::string& path)
@@ -1669,6 +2359,20 @@ void TerrainTool::DrawScatterSection(EditorContext& context, scene::GameObject* 
     ImGui::TextWrapped("Choose a model template, or leave it blank to reuse this object's current template. Baking replaces this object's placements and supports Undo.");
     ImGui::DragFloat("Spacing [world m]", &m_scatterSpacing, 0.1f, 0.25f, 10000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::SliderFloat("Density", &m_scatterDensity, 0.0f, 1.0f);
+    ImGui::TextDisabled("Placement density map (optional)");
+    TerrainToolPathField("##ScatterDensityMap", m_scatterDensityMap, sizeof(m_scatterDensityMap));
+    ImGui::BeginDisabled(!terrainObject || !m_scatterDensityMap[0]);
+    if (ImGui::Button("Preview density mask")) {
+        m_densityPreview = {};
+        const auto* terrain = terrainObject->GetComponent<scene::TerrainComponent>();
+        if (terrain && LoadTerrainScatterDensityMap(context.projectRoot, m_scatterDensityMap, *terrain, m_densityPreview)) {
+            m_densityPreviewPath = m_scatterDensityMap;
+            m_mapOverlayCache.samples.clear();
+            m_mapOverlay = MapOverlay::DENSITY_MASK;
+            m_scatterStatus = "OK: Density mask shown in Scene View";
+        } else m_scatterStatus = "Error: Could not read the placement density map";
+    }
+    ImGui::EndDisabled();
     DrawScatterSettings(terrainObject);
     ImGui::DragInt("Placements per 128 m Cell", &m_scatterMaxPlacementsPerCell, 1.0f, 0, 1000000,
         "%d", ImGuiSliderFlags_AlwaysClamp);
@@ -1676,6 +2380,7 @@ void TerrainTool::DrawScatterSection(EditorContext& context, scene::GameObject* 
     auto args = ScatterArguments(terrainObject ? terrainObject->instanceId : std::string{},
         targetObject ? targetObject->instanceId : std::string{});
     args.Set("maxPlacementsPerCell", m_scatterMaxPlacementsPerCell);
+    args.Set("densityMap", std::string(m_scatterDensityMap));
     ImGui::BeginDisabled(!terrainObject || !targetObject || !CanInvokeOperator(context, "terrain.scatter", args));
     if (ImGui::Button("Bake Placements", {-1.0f, 0.0f}))
         m_scatterStatus = TerrainToolOpStatus(InvokeOperator(context, "terrain.scatter", args));
@@ -1741,6 +2446,7 @@ void TerrainTool::DrawAuthoringSection(EditorContext& context)
     auto* targetObject = DrawHeightMapTarget(*context.activeScene);
     DrawImportSection(context, targetObject);
     DrawBiomeSection(context, targetObject);
+    DrawTerrainMapsSection(context, targetObject);
     DrawScatterSection(context, targetObject);
     ImGui::PopID();
 }

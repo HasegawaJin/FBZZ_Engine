@@ -5,16 +5,19 @@
 #pragma once
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
+#include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Math/Vector2.hpp>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
 
-namespace fbzz::scene { class GameObject; class Scene; }
+namespace fbzz::scene { class GameObject; class Scene; struct WaterSplineSnapshot; }
 
 namespace fbzz::editor {
 
@@ -98,6 +101,11 @@ struct TerrainRiverCarveSection {
     float waterHeight = 0.0f;
     float halfWidth = 0.0f;
     float depth = 0.0f;
+    bool beginsReach = false;
+    bool openStart = false;
+    bool openEnd = false;
+    float groundHeight = 0.0f;
+    std::optional<float> sourceLakeHeight;
 };
 
 struct TerrainRiverCarveSettings {
@@ -107,13 +115,13 @@ struct TerrainRiverCarveSettings {
     float maxCut = 12.0f;
     int bankLayer = -1;
     int protectedLayer = -1;
+    int gentleBankLayer = -1;
+    float gentleGrade = 0.08f;
+    float depositHeight = 0.0f;
 };
 
 struct TerrainRiverCarvePlan {
-    struct Vertex {
-        std::size_t index;
-        float normalizedHeight;
-    };
+    using Vertex = scene::TerrainHeightOverride;
     struct Material {
         std::size_t offset;
         std::array<std::uint8_t, scene::TERRAIN_SPLAT_SLOTS> indices;
@@ -121,14 +129,18 @@ struct TerrainRiverCarvePlan {
     };
     std::vector<Vertex> vertices;
     std::vector<Material> materials;
+    std::vector<std::size_t> protectedIndices;
     std::size_t protectedVertices = 0;
     float deepestCut = 0.0f;
+    float highestDeposit = 0.0f;
+    float analysisSpacing = 0.0f;
 };
 
 /// @note The section positions and settings are world metres. Proposed heights are absolute normalized terrain samples.
 /// @return False for invalid or over-budget geometry. Terrain and output remain unchanged on failure.
 bool PlanTerrainRiverCarve(const scene::TerrainComponent& terrain, const scene::Transform& pose,
-    std::span<const TerrainRiverCarveSection> sections, const TerrainRiverCarveSettings& settings, TerrainRiverCarvePlan& out);
+    std::span<const TerrainRiverCarveSection> sections, const TerrainRiverCarveSettings& settings, TerrainRiverCarvePlan& out,
+    bool includeBoundary = false);
 
 struct TerrainShoreSettings {
     math::Vector3 seed;
@@ -153,6 +165,116 @@ struct TerrainAnalysisSurface {
 bool ResolveTerrainAnalysisSurfaces(scene::Scene& world, const scene::GameObject* single, const OpData* tiles,
     std::vector<TerrainAnalysisSurface>& out);
 
+enum class TerrainMapChannel { HEIGHT, SLOPE, CAVITY, FLOW, ROUGHNESS, DENSITY };
+inline constexpr std::array TERRAIN_MAP_NAMES{"Height", "Slope", "Cavity", "Flow", "Roughness", "Density"};
+inline constexpr int TERRAIN_MAP_PREVIEW_SIZE = 48;
+
+struct TerrainFlowRegion {
+    math::Vector3 center;
+    float size = 0.0f;
+};
+
+struct TerrainHabitatBand {
+    float minimum = 0.0f;
+    float maximum = 0.0f;
+    float fade = 8.0f;
+};
+
+struct TerrainHabitatSettings {
+    float patchScale = 0.0f;
+    float patchMin = 0.0f;
+    float patchMax = 1.0f;
+    int seed = 1;
+    bool avoidWater = false;
+    int pathLayer = -1;
+    TerrainHabitatBand water;
+    TerrainHabitatBand path;
+};
+
+struct TerrainMapSettings {
+    int resolution = 257;
+    float radius = 12.0f;
+    float flowFullArea = 250000.0f;
+    float density = 1.0f;
+    std::array<float, 5> preferences{0.0f, -1.0f, 0.2f, -0.3f, -0.5f};
+    TerrainFlowRegion flowRegion;
+};
+
+struct TerrainMapRaster {
+    int width = 0;
+    int height = 0;
+    std::vector<float> pixels;
+
+    /// @pre The raster has at least two samples on each axis and u/v are in [0,1].
+    float Sample(float u, float v) const;
+};
+
+/// @note The first surface is the output tile. All surfaces share a world XZ drainage domain.
+/// @return False on invalid input. The raster remains unchanged.
+/// @see Docs/design/terrain-authoring.md
+bool BuildTerrainMap(std::span<const TerrainAnalysisSurface> surfaces, const TerrainMapSettings& settings,
+    TerrainMapChannel channel, TerrainMapRaster& out, const std::function<float(const math::Vector3&)>& habitat = {});
+
+struct TerrainMaterialRule {
+    int layer = -1;
+    float weight = 1.0f;
+    std::array<float, 5> preferences{};
+};
+
+inline constexpr std::array TERRAIN_MATERIAL_ROLES{"Ridge Rock", "Slope Soil", "Valley Litter", "Bank Gravel"};
+inline constexpr std::array<TerrainMaterialRule, 4> TERRAIN_NATURAL_MATERIAL_RULES{{
+    {0, 1.0f, {0.25f, 0.7f, -1.0f, -0.2f, 0.45f}},
+    {1, 0.35f, {0.0f, -0.35f, 0.0f, -0.65f, -0.5f}},
+    {2, 0.85f, {-0.1f, -0.8f, 1.0f, -0.65f, -0.6f}},
+    {3, 1.4f, {0.0f, -0.65f, 0.3f, 1.0f, -0.4f}},
+}};
+
+struct TerrainMaterialBakeSettings {
+    std::vector<TerrainMaterialRule> rules;
+    std::vector<int> protectedLayers;
+    float protectedThreshold = 0.35f;
+    float strength = 1.0f;
+    const TerrainMapRaster* protection = nullptr;
+};
+
+/// @note The first surface must refer to terrain or its unmodified source. All rules are evaluated before modifying splats.
+bool BakeTerrainMaterials(scene::TerrainComponent& terrain, std::span<const TerrainAnalysisSurface> surfaces,
+    const TerrainMapSettings& maps, const TerrainMaterialBakeSettings& settings);
+
+struct TerrainFlowCarveSettings {
+    TerrainFlowRegion region;
+    TerrainRiverCarveSettings bed;
+    float minArea = 6000.0f;
+    float depthScale = 0.65f;
+};
+
+/// @note Plans a branched channel network for the first surface using a shared regional/refined drainage graph.
+bool PlanTerrainFlowCarve(std::span<const TerrainAnalysisSurface> surfaces, const TerrainFlowCarveSettings& settings,
+    TerrainRiverCarvePlan& out, int& reaches, std::string& diagnostic);
+
+struct TerrainFlowNetworkPlan {
+    std::vector<TerrainRiverCarvePlan> tiles;
+    std::vector<TerrainRiverCarveSection> sections;
+    float analysisSpacing = 0.0f;
+    int sourceOutletCount = 0;
+};
+
+inline constexpr float DEFAULT_WATERFALL_DROP = 3.0f;
+inline constexpr float DEFAULT_WATERFALL_GRADE = 0.85f;
+
+/// @return Lake-fed cliff lips with a wet segment on both sides in the same reach.
+[[nodiscard]] std::vector<std::size_t> FindTerrainWaterfallLips(std::span<const TerrainRiverCarveSection> sections,
+    float minDrop, float minGrade);
+
+/// @note Input surfaces are editable non-overlapping tiles. Layer indices are relative to the first tile.
+/// @note Shared heights are planned in world space before conversion back to each tile's height scale.
+bool PlanTerrainFlowNetwork(std::span<const TerrainAnalysisSurface> sources, const TerrainFlowCarveSettings& settings,
+    TerrainFlowNetworkPlan& out, std::string& diagnostic, std::span<const scene::WaterSplineSnapshot> sourceLakes = {});
+
+/// @pre Mask dimensions and layer index have been validated. strength is in [0,1].
+/// @note Vertices touching holes are preserved.
+void BlendTerrainMap(scene::TerrainComponent& terrain, const TerrainMapRaster& raster, int layer, float strength);
+
 /// @return Closed world-space contours at seed.y. Failure leaves the output unchanged.
 /// @note Only the submerged component connected to seed is traced. Missing surfaces and spills are rejected.
 bool TraceTerrainShore(std::span<const TerrainAnalysisSurface> surfaces,
@@ -160,9 +282,12 @@ bool TraceTerrainShore(std::span<const TerrainAnalysisSurface> surfaces,
 
 struct TerrainDrainageNode {
     math::Vector3 ground;
+    /// @note Priority-Flood spill elevation is for routing, not the rendered river surface.
     float waterHeight = 0.0f;
     double area = 0.0;
     int downstream = -1;
+    /// @note Ground-bounded, non-increasing downstream surface in world metres; requires channel-bed carving.
+    float riverHeight = 0.0f;
 };
 
 struct TerrainDrainage {
@@ -179,9 +304,9 @@ inline constexpr float DRAINAGE_RIVER_SURFACE_CLEARANCE = 0.05f;
 /// @return The bounded drainage graph, with area zero at samples that cannot reach the search edge.
 /// @see https://doi.org/10.1016/j.cageo.2013.04.024 Barnes et al., Priority-Flood.
 bool BuildTerrainDrainage(std::span<const TerrainAnalysisSurface> surfaces,
-    const TerrainShoreSettings& settings, TerrainDrainage& out, std::string& diagnostic);
+    const TerrainShoreSettings& settings, TerrainDrainage& out, std::string& diagnostic, double minRiverArea = 0.0);
 
-/// @return River width and depth in world metres derived from contributing area and local fill.
+/// @return River width and bed depth in world metres derived from contributing area, independently of spill fill.
 math::Vector2 DrainageRiverSize(const TerrainDrainageNode& node, float step);
 
 } /// @note namespace fbzz::editor

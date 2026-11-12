@@ -104,9 +104,15 @@ float TerrainPaintClearance::PathDistance(const math::Vector3& p, float radius) 
 TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& terrain,const scene::Transform& transform,
     const TerrainScatterBrush& region,std::span<const int> excludedLayers,
     std::span<const std::pair<const scene::WaterComponent*,const scene::Transform*>> surfaces,float waterMargin,
-    float pathMargin, bool combinePathLayers)
+    float pathMargin, bool combinePathLayers, std::size_t* remainingWork)
 {
     TerrainPaintClearance out;
+    const auto spend = [&](std::size_t count, std::size_t tests = 1) {
+        if (!remainingWork) return true;
+        if (count > *remainingWork / tests) { out.budgetExceeded = true; return false; }
+        *remainingWork -= count * tests;
+        return true;
+    };
     if((waterMargin<=0&&pathMargin<=0)||region.centers.empty()||terrain.columns<2||terrain.rows<2)return out;
     const auto inverse=math::Matrix4::Inverse(transform.GetWorldMatrix()),world=transform.GetWorldMatrix();
     math::Vector3 lo{INFINITY,0,INFINITY},hi{-INFINITY,0,-INFINITY};
@@ -122,14 +128,18 @@ TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& 
         if(scene::WaterSurfaceUsesHorizon(*surface)){seas.push_back(pose->worldPosition.y+0.15f);continue;}
         if(const auto* geometry=scene::WaterSurfaceGeometry(*surface)) {
             const auto& ids=geometry->outlineIndices;
+            if (!spend(ids.size())) return out;
             for(size_t i=0;i<ids.size();++i) {
                 const auto a=ids[i],b=ids[(i+1)%ids.size()];
                 if(a<geometry->vertices.size()&&b<geometry->vertices.size())out.water.push_back({geometry->vertices[a].worldPosition,geometry->vertices[b].worldPosition});
             }
-            for (const auto& ring : geometry->islandOutlines)
+            for (const auto& ring : geometry->islandOutlines) {
+                if (!spend(ring.size())) return out;
                 for (std::size_t i = 0; i < ring.size(); ++i)
                     out.water.push_back({ring[i], ring[(i + 1) % ring.size()]});
+            }
         } else if(!scene::UsesWaterSurfaceGeometry(*surface)) {
+            if (!spend(4)) return out;
             math::Vector3 corners[4];const auto matrix=pose->GetWorldMatrix();
             const float signs[][2]={{-1,-1},{1,-1},{1,1},{-1,1}};
             for(int i=0;i<4;++i){const auto p=matrix*math::Vector4{signs[i][0]*surface->extentX*0.5f,0,signs[i][1]*surface->extentZ*0.5f,1};corners[i]={p.x,p.y,p.z};}
@@ -140,6 +150,8 @@ TerrainPaintClearance BuildTerrainPaintClearance(const scene::TerrainComponent& 
         terrain_paint_clearance::Index(out.water, waterMargin, out.waterIndex);
         return out;
     }
+    const auto cells = static_cast<std::size_t>(x1 - x0 + 1) * static_cast<std::size_t>(z1 - z0 + 1);
+    if (!spend(cells, 1 + seas.size() + (pathMargin > 0.0f ? excludedLayers.size() : 0))) return out;
     for(int z=z0;z<=z1;++z)for(int x=x0;x<=x1;++x) {
         math::Vector3 vertices[4];const int dx[]{0,1,1,0},dz[]{0,0,1,1};
         for(int i=0;i<4;++i){const float lx=(x+dx[i])*terrain.cellSize,lz=(z+dz[i])*terrain.cellSize;const auto q=world*math::Vector4{lx,terrain.GetHeightAt(lx,lz),lz,1};vertices[i]={q.x,q.y,q.z};}

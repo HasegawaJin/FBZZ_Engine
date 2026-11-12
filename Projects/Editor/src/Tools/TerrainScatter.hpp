@@ -17,6 +17,11 @@ namespace fbzz::editor {
 class OperatorRegistry;
 class OpArgs;
 struct EditorContext;
+struct TerrainMapRaster;
+
+/// @return Failure leaves out unchanged. Preview and placement use the same linear image sampling and local XZ extent.
+[[nodiscard]] bool LoadTerrainScatterDensityMap(const std::string& projectRoot, const std::string& reference,
+    const scene::TerrainComponent& terrain, TerrainMapRaster& out);
 
 struct TerrainScatterSettings {
     /// @note 地形 X/Z 軸の scale 適用後の格子幅 [m]。個体間の最小距離ではない。
@@ -85,13 +90,14 @@ struct TerrainPaintPreviewPoint {
 /// @note 穴と追加 surface は配置対象外。target の正の一様 worldScale だけが shear なしの姿勢を保持できる。
 /// @note seed と格子から個体 ID を決める。100 万候補・指定個体数を超える処理は部分結果を返さず拒否する。
 /// @note 全地形散布の128mセル予算を使う場合、全体の配置上限はセル内選別後に評価する。
+/// @note densityMap は対象地形のローカル XZ 全域に対応し、採用率へ乗算する。
 /// @see Docs/design/terrain-scatter.md
 [[nodiscard]] bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
     const scene::Transform& terrainTransform, const scene::Transform& targetTransform,
     const TerrainScatterSettings& settings, std::vector<renderer::InstancePlacement>& placements,
     std::string& reason, const TerrainScatterBrush* brush = nullptr,
     const std::function<bool(const math::Vector3&)>& accepts = {}, TerrainPaintDiagnostics* diagnostics = nullptr,
-    const std::function<TerrainPaintReason(const math::Vector3&)>& classify = {});
+    const std::function<TerrainPaintReason(const math::Vector3&)>& classify = {}, const TerrainMapRaster* densityMap = nullptr);
 
 void RegisterTerrainScatterOperators(OperatorRegistry& registry);
 } /// @note namespace fbzz::editor

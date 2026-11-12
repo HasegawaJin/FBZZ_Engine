@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #include "TerrainScatter.hpp"
+#include "TerrainAuthoring.hpp"
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/Transform.hpp>
@@ -214,7 +215,7 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
     const TerrainScatterSettings& settings, std::vector<renderer::InstancePlacement>& placements,
     std::string& reason, const TerrainScatterBrush* brush,
     const std::function<bool(const math::Vector3&)>& accepts, TerrainPaintDiagnostics* diagnostics,
-    const std::function<TerrainPaintReason(const math::Vector3&)>& classify)
+    const std::function<TerrainPaintReason(const math::Vector3&)>& classify, const TerrainMapRaster* densityMap)
 {
     using namespace terrain_scatter_detail;
     const auto fail = [&](const char* text) { reason = text; return false; };
@@ -351,7 +352,9 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             const float weight = settings.layer < 0 ? 1.0f : SampleTerrainLayerWeight(terrain, localX, localZ, settings.layer);
             if (weight <= 0.0f || weight < settings.layerThreshold) return record(TerrainPaintReason::LAYER);
             const float coverage = brush ? TerrainRegionCoverage(terrainTransform, *brush, worldPosition) : 1.0f;
-            if (UnitRandom(key, 3) >= settings.density * weight * coverage) return record(TerrainPaintReason::DENSITY);
+            const float densityWeight = densityMap ? densityMap->Sample(static_cast<float>(localX / width),
+                static_cast<float>(localZ / depth)) : 1.0f;
+            if (UnitRandom(key, 3) >= settings.density * weight * coverage * densityWeight) return record(TerrainPaintReason::DENSITY);
             math::Vector3 worldNormal;
             if (!Finite(worldPosition) || !scene::TryTerrainNormalToWorld(terrainTransform, terrain.GetNormalAt(localX, localZ), worldNormal))
                 return fail("配置点の座標または法線を有限の値で表せません。");

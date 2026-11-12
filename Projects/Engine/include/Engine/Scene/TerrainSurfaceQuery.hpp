@@ -5,12 +5,18 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include <Math/Vector3.hpp>
+#include <cstddef>
+#include <span>
 namespace fbzz::scene {
 struct TerrainComponent;
 struct Transform;
 struct TerrainSurfaceSample {
     math::Vector3 position;
     math::Vector3 normal;
+};
+struct TerrainHeightOverride {
+    std::size_t index;
+    float normalizedHeight;
 };
 /// @return TRS の逆転置による単位法線。非可逆 scale・非有限法線では false、out 未変更。
 /// @see https://pbr-book.org/4ed/Geometry_and_Transformations/Applying_Transformations#Normals PBRT 3.10.3 Normals。
@@ -22,6 +28,10 @@ FBZZ_ENGINE_API bool TryTerrainNormalToWorld(const Transform& transform, const m
 /// @see https://pbr-book.org/4ed/Geometry_and_Transformations/Applying_Transformations#Normals PBRT 3.10.3 Normals。
 FBZZ_ENGINE_API bool TrySampleTerrainWorld(const TerrainComponent& terrain, const Transform& transform,
     float worldX, float worldZ, TerrainSurfaceSample& out);
+/// @note Overrides are sorted by unique vertex index. Holes and added surfaces use the authored geometry.
+/// @note Only position is used by height previews. The returned normal still comes from the authored terrain.
+FBZZ_ENGINE_API bool TrySampleTerrainWorld(const TerrainComponent& terrain, const Transform& transform,
+    float worldX, float worldZ, TerrainSurfaceSample& out, std::span<const TerrainHeightOverride> overrides);
 /// @return Nearest upward-facing floor below reference, within maxDistance world metres; false leaves out unchanged.
 /// @note Ceiling and exterior ground above reference are excluded. At the floor itself maxDistance=0 succeeds.
 FBZZ_ENGINE_API bool TrySampleTerrainFloorWorld(const TerrainComponent& terrain, const Transform& transform,

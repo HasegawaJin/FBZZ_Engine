@@ -32,6 +32,7 @@ namespace fbzz::editor {
 class UndoStack;
 struct EditorContext;
 class OpArgs;
+class OpData;
 
 /// @brief Scene View 上の地形編集ツール。
 class TerrainTool {
@@ -241,8 +242,60 @@ private:
     float m_layerMaskStrength = 1.0f;
     bool m_layerMaskInvert = false;
     std::string m_layerMaskStatus;
+    TerrainMapSettings m_mapSettings;
+    int m_mapChannel = static_cast<int>(TerrainMapChannel::DENSITY);
+    int m_mapLayer = 0;
+    float m_mapStrength = 1.0f;
+    bool m_mapIncludeNeighbors = true;
+    bool m_flowCustomCenter = false;
+    bool m_flowPreviewReady = false;
+    bool m_flowBuildWater = true;
+    bool m_flowBuildWaterfalls = false;
+    float m_flowWaterfallDrop = DEFAULT_WATERFALL_DROP;
+    float m_flowWaterfallGrade = DEFAULT_WATERFALL_GRADE;
+    char m_flowWaterMaterial[512] = {};
+    char m_terrainRecipePath[512] = "Assets/Terrain/Recipes/RiverValley.terrainrecipe.toml";
+    std::string m_terrainRecipeStatus;
+    std::string m_flowExpected;
+    std::size_t m_flowOverlayUndoRevision = 0;
+    std::array<std::vector<math::Vector3>, 3> m_flowPreviewPoints;
+    std::vector<std::vector<math::Vector3>> m_flowPreviewWater;
+    std::vector<std::array<math::Vector3, 2>> m_flowPreviewWaterfalls;
+    std::vector<std::array<math::Vector3, 2>> m_flowPreviewWaterfallSections;
+    TerrainHabitatSettings m_habitat;
+    TerrainFlowCarveSettings m_flowCarve;
+    std::vector<TerrainMaterialRule> m_naturalMaterials{TERRAIN_NATURAL_MATERIAL_RULES.begin(), TERRAIN_NATURAL_MATERIAL_RULES.end()};
+    float m_naturalStrength = 1.0f;
+    float m_naturalProtectedThreshold = 0.35f;
+    std::vector<int> m_naturalProtectedLayers{-1};
+    char m_naturalProtectionMask[512] = {};
+    std::string m_flowCarveStatus;
+    std::string m_naturalMaterialStatus;
+    char m_mapExportPath[512] = {};
+    std::string m_mapPreview;
+    enum class MapOverlay { OFF, GENERATED, SAVED_LAYER, DENSITY_MASK };
+    MapOverlay m_mapOverlay = MapOverlay::OFF;
+    int m_mapOverlayLayer = 0;
+    std::uint64_t m_mapPreviewLifetime = 0, m_mapPreviewSurface = 0, m_mapPreviewVegetation = 0, m_mapPreviewUndo = 0;
+    math::Matrix4 m_mapPreviewWorld = math::Matrix4::Identity();
+    TerrainMapRaster m_densityPreview;
+    std::string m_densityPreviewPath;
+    struct MapOverlaySample {
+        math::Vector3 local;
+        float value = 0.0f;
+        bool valid = false;
+    };
+    struct MapOverlayCache {
+        MapOverlay source = MapOverlay::OFF;
+        std::string terrain;
+        std::uint64_t lifetime = 0, surface = 0, vegetation = 0;
+        int layer = -1;
+        std::vector<MapOverlaySample> samples;
+    } m_mapOverlayCache;
+    std::string m_mapStatus;
     std::string m_scatterTargetId;
     char m_scatterSource[512] = {};
+    char m_scatterDensityMap[512] = {};
     std::string m_scatterStatus;
     float m_scatterSpacing = 6.0f;
     float m_scatterDensity = 1.0f;
@@ -268,6 +321,16 @@ private:
     scene::GameObject* DrawHeightMapTarget(scene::Scene& scene);
     void DrawImportSection(EditorContext& context, scene::GameObject* target);
     void DrawBiomeSection(EditorContext& context, scene::GameObject* target);
+    void DrawTerrainMapsSection(EditorContext& context, scene::GameObject* target);
+    bool DrawTerrainHabitat(scene::GameObject* target);
+    void DrawNaturalTerrainSections(EditorContext& context, scene::GameObject* target, const OpArgs& mapArgs);
+    void ClearFlowPreview();
+    void CaptureFlowPreview(const OpData& data);
+    void DrawFlowPreview(const renderer::Camera& camera, const ImVec2& origin, const ImVec2& size) const;
+    void DrawTerrainMapOverlay(EditorContext& context, const renderer::Camera& camera, const ImVec2& origin, const ImVec2& size);
+    void DrawTerrainRecipeSection(EditorContext& context, scene::GameObject* target);
+    OpData CaptureTerrainRecipe(const scene::TerrainComponent* terrain) const;
+    void RestoreTerrainRecipe(const OpData& recipe);
     void DrawGrassPaint(EditorContext& context, scene::GameObject* terrain);
     void DrawHeightMapPaint();
     void UpdateHeightMapStamp(EditorContext& context, bool pressed);

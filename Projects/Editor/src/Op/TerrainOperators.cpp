@@ -9,19 +9,30 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetPath.hpp>
+#include <Editor/Util/TerrainWaterDefaults.hpp>
 #include <Tools/TerrainAuthoring.hpp>
 #include <Tools/TerrainBrush.hpp>
+#include <Tools/TerrainPaintClearance.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/BakeFingerprint.hpp>
+#include <Engine/Scene/ComponentReflectionCodec.hpp>
+#include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/ControlPointAdapters.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/WaterSurfaceQuery.hpp>
+#include <Engine/Scene/Waterfall.hpp>
 #include <Engine/Scene/GameObject.hpp>
+#include <Engine/Scene/MeshBuilder.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
 #include <algorithm>
 #include <array>
@@ -29,10 +40,13 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <numbers>
 #include <numeric>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <type_traits>
 #include <utility>
 
 namespace fbzz::editor {
@@ -775,6 +789,1320 @@ OpResult CommitTerrain(OpContext& context, scene::GameObject& go, scene::Terrain
     return result;
 }
 
+bool ResolveMapSurfaces(scene::Scene& world, const scene::GameObject& owner, const OpArgs& args,
+    std::vector<TerrainAnalysisSurface>& surfaces)
+{
+    const auto* tiles = args.GetData("terrainTiles");
+    if (!ResolveTerrainAnalysisSurfaces(world, &owner, tiles, surfaces)) return false;
+    if (tiles && !tiles->IsNull()) {
+        const auto target = std::find_if(surfaces.begin(), surfaces.end(), [&](const auto& surface) { return surface.pose == &owner.transform; });
+        if (target == surfaces.end()) return false;
+        std::iter_swap(surfaces.begin(), target);
+        return true;
+    }
+    if (!args.GetBool("includeNeighbors", true)) return true;
+
+    TerrainSeamTile first{};
+    if (!ReadSeamTile(owner, first)) return false;
+    std::vector<TerrainSeamTile> connected{first};
+    struct Candidate { TerrainSeamTile tile; const scene::Transform* pose; };
+    std::vector<Candidate> candidates;
+    for (const auto id : world.GetEntities<scene::TerrainComponent>()) {
+        const auto* node = world.GetGameObject(id);
+        TerrainSeamTile tile{};
+        if (node && node != &owner && ReadSeamTile(*node, tile)) candidates.push_back({tile, &node->transform});
+    }
+    for (std::size_t i = 0; i < connected.size(); ++i) {
+        for (auto& candidate : candidates) {
+            if (!candidate.pose || !FindTerrainSeam(connected[i], candidate.tile)) continue;
+            if (surfaces.size() == 16) return false;
+            connected.push_back(candidate.tile);
+            surfaces.push_back({candidate.tile.terrain, candidate.pose});
+            candidate.pose = nullptr;
+        }
+    }
+    return true;
+}
+
+std::filesystem::path TerrainAuthoringAssetPath(const EditorContext& context, const std::string& requested, std::string_view suffix,
+    bool allowAbsolute = false)
+{
+    if (context.projectRoot.empty()) return {};
+    const auto path = util::FileSystem::PathFromUtf8(requested);
+    if ((!allowAbsolute && path.has_root_path()) || !util::FileSystem::PathToUtf8(path.filename()).ends_with(suffix)) return {};
+    const auto project = util::FileSystem::PathFromUtf8(context.projectRoot);
+    std::error_code error;
+    const auto root = std::filesystem::weakly_canonical(project / "Assets", error);
+    if (error) return {};
+    const auto output = std::filesystem::weakly_canonical(project / path, error);
+    if (error) return {};
+    const auto relative = output.lexically_relative(root);
+    return relative.empty() || relative.is_absolute() || *relative.begin() == ".." ? std::filesystem::path{} : output;
+}
+
+TerrainFlowRegion ReadFlowRegion(const OpArgs& args, const scene::GameObject& owner, float sizeDefault = 0.0f)
+{
+    const auto& terrain = *owner.GetScene()->GetComponent<scene::TerrainComponent>(owner.GetID());
+    const auto& pose = owner.transform;
+    const auto center = pose.worldPosition + math::Vector3{(terrain.columns - 1) * terrain.cellSize * pose.worldScale.x * 0.5f,
+        0.0f, (terrain.rows - 1) * terrain.cellSize * pose.worldScale.z * 0.5f};
+    return {args.GetVec3("flowCenter", center), args.GetFloat("flowSize", sizeDefault)};
+}
+
+TerrainMapSettings ReadMapSettings(const OpArgs& args, const scene::GameObject& owner)
+{
+    TerrainMapSettings settings;
+    settings.resolution = args.GetInt("resolution", settings.resolution);
+    settings.radius = args.GetFloat("radius", settings.radius);
+    settings.flowFullArea = args.GetFloat("flowFullArea", settings.flowFullArea);
+    settings.density = args.GetFloat("density", settings.density);
+    for (std::size_t i = 0; i < settings.preferences.size(); ++i)
+        settings.preferences[i] = args.GetFloat(TERRAIN_MAP_NAMES[i], settings.preferences[i]);
+    settings.flowRegion = ReadFlowRegion(args, owner);
+    return settings;
+}
+
+float HabitatTransition(float value, float low, float high, float fade)
+{
+    const float edge = (std::min)(low > 0.0f ? value - low : std::numeric_limits<float>::infinity(),
+        high > 0.0f ? high - value : std::numeric_limits<float>::infinity());
+    if (fade == 0.0f) return edge >= 0.0f ? 1.0f : 0.0f;
+    const float t = std::clamp(edge / fade, 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+bool PrepareTerrainHabitat(const OpArgs& args, scene::Scene& world, const scene::GameObject& owner, std::span<const TerrainAnalysisSurface> surfaces,
+    std::function<float(const math::Vector3&)>& weight)
+{
+    TerrainHabitatSettings habitat;
+    habitat.patchScale = args.GetFloat("patchScale");
+    habitat.patchMin = args.GetFloat("patchMin");
+    habitat.patchMax = args.GetFloat("patchMax", 1.0f);
+    habitat.seed = args.GetInt("patchSeed", 1);
+    habitat.avoidWater = args.GetBool("avoidWater");
+    habitat.pathLayer = args.GetInt("pathLayer", -1);
+    habitat.water = {args.GetFloat("waterMin"), args.GetFloat("waterMax"), args.GetFloat("waterFade", 8.0f)};
+    habitat.path = {args.GetFloat("pathMin"), args.GetFloat("pathMax"), args.GetFloat("pathFade", 8.0f)};
+    const auto validBand = [](const TerrainHabitatBand& band) {
+        return std::isfinite(band.minimum) && std::isfinite(band.maximum) && std::isfinite(band.fade)
+            && (band.maximum == 0.0f || band.maximum >= band.minimum);
+    };
+    const auto& target = surfaces.front();
+    if (!std::isfinite(habitat.patchScale) || !std::isfinite(habitat.patchMin) || !std::isfinite(habitat.patchMax)
+        || habitat.patchMin > habitat.patchMax || habitat.seed < 0 || !validBand(habitat.water) || !validBand(habitat.path)
+        || habitat.pathLayer < -1 || habitat.pathLayer >= target.terrain->LayerCount()) return false;
+    const auto search = [](const TerrainHabitatBand& band) { return (std::max)(band.maximum, band.minimum > 0.0f ? band.minimum + band.fade : 0.0f); };
+    const float waterSearch = search(habitat.water);
+    const float pathSearch = habitat.pathLayer >= 0 ? search(habitat.path) : 0.0f;
+    if (habitat.patchScale <= 0.0f && !habitat.avoidWater && waterSearch == 0.0f && pathSearch == 0.0f) return true;
+
+    std::vector<std::pair<const scene::WaterComponent*, const scene::Transform*>> waters;
+    if (waterSearch > 0.0f || habitat.avoidWater) {
+        for (const auto id : world.GetEntities<scene::WaterComponent>()) {
+            const auto* node = world.GetGameObject(id);
+            const auto* water = world.GetComponent<scene::WaterComponent>(id);
+            if (node && node->activeInHierarchy() && water && water->enabled) waters.emplace_back(water, &node->transform);
+        }
+        if (waters.size() > 128) return false;
+    }
+    std::vector<TerrainPaintClearance> clearances;
+    if ((!waters.empty() && waterSearch > 0.0f) || pathSearch > 0.0f) {
+        TerrainSeamTile tile{};
+        if (!ReadSeamTile(owner, tile)) return false;
+        const float west = static_cast<float>(tile.x), east = static_cast<float>(tile.East());
+        const float north = static_cast<float>(tile.z), south = static_cast<float>(tile.South());
+        const std::array<math::Vector3, 4> corners{{{west, 0, north}, {east, 0, north}, {east, 0, south}, {west, 0, south}}};
+        const TerrainScatterBrush region{corners, 0.25f, false, true};
+        const std::string pathMaterial = pathSearch > 0.0f ? target.terrain->layerMaterials[habitat.pathLayer] : std::string{};
+        const auto pathGuid = asset::AssetDatabase::GuidFromRef(pathMaterial);
+        for (const auto& surface : surfaces) {
+            const auto scale = surface.pose->worldScale;
+            const auto& rotation = surface.pose->worldRotation;
+            if (!IsValidTerrainDimension(surface.terrain->columns) || !IsValidTerrainDimension(surface.terrain->rows)
+                || !std::isfinite(surface.terrain->cellSize) || surface.terrain->cellSize <= 0.0f
+                || surface.terrain->heightData.size() != surface.terrain->VertexCount()
+                || !std::isfinite(scale.x) || !std::isfinite(scale.y) || !std::isfinite(scale.z)
+                || scale.x <= 0.0f || scale.y <= 0.0f || scale.z <= 0.0f
+                || rotation.x != 0.0f || rotation.y != 0.0f || rotation.z != 0.0f || std::abs(rotation.w) != 1.0f) return false;
+            std::vector<int> layers;
+            for (int layer = 0; layer < surface.terrain->LayerCount() && !pathMaterial.empty(); ++layer) {
+                const auto& material = surface.terrain->layerMaterials[layer];
+                if (material == pathMaterial || (!pathGuid.empty() && asset::AssetDatabase::GuidFromRef(material) == pathGuid)) layers.push_back(layer);
+            }
+            clearances.push_back(BuildTerrainPaintClearance(*surface.terrain, *surface.pose, region, layers, waters,
+                waterSearch, layers.empty() ? 0.0f : pathSearch, true));
+        }
+    }
+    weight = [habitat, target, waters = std::move(waters), clearances = std::move(clearances), waterSearch, pathSearch](const math::Vector3& point) {
+        float density = 1.0f;
+        if (habitat.patchScale > 0.0f) {
+            const float patch = SampleTerrainPatchNoise(point.x, point.z, habitat.patchScale, static_cast<std::uint32_t>(habitat.seed));
+            density = HabitatTransition(patch, habitat.patchMin, habitat.patchMax == 1.0f ? 0.0f : habitat.patchMax, 0.12f);
+        }
+        if (density == 0.0f) return 0.0f;
+        float waterDistance = std::numeric_limits<float>::infinity(), pathDistance = waterDistance;
+        for (const auto& [water, pose] : waters) {
+            scene::WaterSurfaceHeightSample sample;
+            if (scene::TrySampleWaterSurfaceHeightWorld(*water, *pose, point, 0.0f, sample) && sample.insideSurface
+                && !sample.excluded && point.y <= sample.position.y + 0.15f) {
+                if (habitat.avoidWater) return 0.0f;
+                waterDistance = 0.0f;
+                break;
+            }
+        }
+        if (pathSearch > 0.0f) {
+            const auto& pose = *target.pose;
+            const float x = (point.x - pose.worldPosition.x) / pose.worldScale.x;
+            const float z = (point.z - pose.worldPosition.z) / pose.worldScale.z;
+            if (SampleTerrainLayerWeight(*target.terrain, x, z, habitat.pathLayer) >= 0.35f) pathDistance = 0.0f;
+        }
+        for (const auto& clearance : clearances) {
+            math::Vector3 nearest;
+            if (waterSearch > 0.0f && waterDistance > 0.0f && clearance.NearestWater(point, waterSearch, nearest))
+                waterDistance = (std::min)(waterDistance, std::hypot(point.x - nearest.x, point.z - nearest.z));
+            if (pathSearch > 0.0f && pathDistance > 0.0f)
+                pathDistance = (std::min)(pathDistance, clearance.PathDistance(point, pathSearch));
+        }
+        return density * HabitatTransition(waterDistance, habitat.water.minimum, habitat.water.maximum, habitat.water.fade)
+            * (habitat.pathLayer < 0 ? 1.0f : HabitatTransition(pathDistance, habitat.path.minimum, habitat.path.maximum, habitat.path.fade));
+    };
+    return true;
+}
+
+OpResult RunTerrainMap(OpContext& context, const OpArgs& args, OpKind kind)
+{
+    auto* owner = ResolveTerrainNode(context, args.GetString("node"));
+    if (!owner || (kind == OpKind::Mutation && context.ctx.IsLocked(owner->GetID())))
+        return OpResult::Err("NO_TERRAIN", "Select a terrain that can be used for this operation.");
+    auto& world = *context.ctx.activeScene;
+    scene::FlushWorldTransforms(world);
+    std::vector<TerrainAnalysisSurface> surfaces;
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces))
+        return OpResult::Err("BAD_TERRAIN_TILES", "Use up to 16 active terrain tiles and include the target tile.");
+
+    const auto channelName = args.GetString("channel", "Density");
+    const auto channel = std::find(TERRAIN_MAP_NAMES.begin(), TERRAIN_MAP_NAMES.end(), channelName);
+    if (channel == TERRAIN_MAP_NAMES.end()) return OpResult::Err("BAD_CHANNEL", "Unknown terrain map channel.");
+    const auto settings = ReadMapSettings(args, *owner);
+    const auto mapChannel = static_cast<TerrainMapChannel>(channel - TERRAIN_MAP_NAMES.begin());
+    std::function<float(const math::Vector3&)> habitat;
+    if (mapChannel == TerrainMapChannel::DENSITY && !PrepareTerrainHabitat(args, world, *owner, surfaces, habitat))
+        return OpResult::Err("BAD_HABITAT", "Check the patch range, distance bands, path layer and water surface count.");
+
+    auto& terrain = *owner->GetComponent<scene::TerrainComponent>();
+    const int layer = args.GetInt("layer", -1);
+    if (kind == OpKind::Mutation && (layer < 0 || layer >= terrain.LayerCount()))
+        return OpResult::Err("BAD_LAYER", "Select an existing terrain material layer.");
+    std::filesystem::path exportPath;
+    if (kind == OpKind::Action) {
+        auto requested = args.GetString("path");
+        if (requested.empty()) requested = "Assets/Terrain/Maps/" + channelName + "_" + asset::AssetDatabase::GenerateGuid() + ".png";
+        exportPath = TerrainAuthoringAssetPath(context.ctx, requested, ".png");
+        if (exportPath.empty()) return OpResult::Err("BAD_PATH", "Enter a .png path under the project's Assets folder.");
+    }
+
+    TerrainMapRaster raster;
+    if (!BuildTerrainMap(surfaces, settings, mapChannel, raster, habitat))
+        return OpResult::Err("MAP_FAILED", "Check the heightfield, map settings, and positive world-aligned terrain transforms.");
+    auto data = OpData::MakeObject();
+    data.Set("width", raster.width);
+    data.Set("height", raster.height);
+    data.Set("tileCount", static_cast<int>(surfaces.size()));
+    if (kind == OpKind::Query) {
+        constexpr char HEX[] = "0123456789abcdef";
+        std::string pixels;
+        pixels.reserve(TERRAIN_MAP_PREVIEW_SIZE * TERRAIN_MAP_PREVIEW_SIZE * 2);
+        for (int z = 0; z < TERRAIN_MAP_PREVIEW_SIZE; ++z) {
+            for (int x = 0; x < TERRAIN_MAP_PREVIEW_SIZE; ++x) {
+                const auto value = static_cast<unsigned>(std::lround(255.0f * raster.Sample(
+                    static_cast<float>(x) / (TERRAIN_MAP_PREVIEW_SIZE - 1), static_cast<float>(z) / (TERRAIN_MAP_PREVIEW_SIZE - 1))));
+                pixels.push_back(HEX[value >> 4]);
+                pixels.push_back(HEX[value & 15]);
+            }
+        }
+        data.Set("previewSize", TERRAIN_MAP_PREVIEW_SIZE);
+        data.Set("previewGray8Hex", std::move(pixels));
+        auto result = OpResult::Data(std::move(data));
+        result.message = "Preview generated";
+        return result;
+    }
+    if (kind == OpKind::Action) {
+        const auto path = util::FileSystem::PathToUtf8(exportPath);
+        scene::TerrainComponent image;
+        image.columns = raster.width;
+        image.rows = raster.height;
+        image.heightData = std::move(raster.pixels);
+        if (!scene::SaveHeightMapToFile(path, image, true)) return OpResult::Err("WRITE_FAILED", "Could not save " + path);
+        context.ctx.requestAssetBrowserRefresh = true;
+        const auto guid = asset::AssetDatabase::GuidFromPath(path);
+        if (guid.empty()) return OpResult::Err("META_FAILED", "PNG saved but asset metadata could not be created: " + path);
+        data.Set("path", NormalizeAssetPath(path));
+        data.Set("guid", guid);
+        auto result = OpResult::Data(std::move(data));
+        result.message = "Saved " + NormalizeAssetPath(path);
+        return result;
+    }
+
+    auto after = terrain;
+    BlendTerrainMap(after, raster, layer, args.GetFloat("strength", 1.0f));
+    if (after.splatIndices == terrain.splatIndices && after.splatWeights == terrain.splatWeights) {
+        auto result = OpResult::Data(std::move(data));
+        result.noChange = true;
+        result.message = "Layer weights are unchanged";
+        return result;
+    }
+    auto result = CommitTerrain(context, *owner, std::move(after), "Bake Terrain Map into Layer", false);
+    result.data = std::move(data);
+    return result;
+}
+
+void AddTerrainFlowParameters(EditorOperator& op, float defaultSize)
+{
+    op.params.push_back(TerrainParameter("terrainTiles", OpParamType::Data, "Explicit tile GUIDs including the target, up to 16", OpData{}));
+    op.params.push_back(TerrainParameter("includeNeighbors", OpParamType::Bool, "Use connected terrain tiles when no list is supplied", true));
+    auto center = TerrainParameter("flowCenter", OpParamType::Vec3, "World XZ center; omit to use the target center");
+    center.required = false;
+    op.params.push_back(std::move(center));
+    AddRuleRange(op, "flowSize", "Detailed flow region side in world metres; 0 uses regional flow", defaultSize, 0.0f, 100000.0f);
+}
+
+void AddTerrainMapSamplingParameters(EditorOperator& op)
+{
+    auto resolution = TerrainParameter("resolution", OpParamType::Int, "Maximum output samples per axis", 257);
+    resolution.hasRange = true;
+    resolution.minValue = 2.0f;
+    resolution.maxValue = 513.0f;
+    op.params.push_back(std::move(resolution));
+    const TerrainMapSettings defaults;
+    AddRuleRange(op, "radius", "Relief sampling radius in world metres", defaults.radius, 0.25f, 1000.0f);
+    AddRuleRange(op, "flowFullArea", "Additional contributing area in m² for white", defaults.flowFullArea, 1.0f, 1.0e12f);
+}
+
+void RegisterTerrainMapOperators(OperatorRegistry& registry)
+{
+    auto bake = TerrainMutation("terrain.maps.bake", "Bake Terrain Map into Layer");
+    bake.desc = "Blend a terrain shape or density map into an existing layer.";
+    auto channel = TerrainParameter("channel", OpParamType::String, "Map channel", std::string("Density"));
+    channel.enumValues.assign(TERRAIN_MAP_NAMES.begin(), TERRAIN_MAP_NAMES.end());
+    bake.params.push_back(std::move(channel));
+    AddTerrainFlowParameters(bake, 0.0f);
+    AddTerrainMapSamplingParameters(bake);
+    const TerrainMapSettings defaults;
+    AddRuleRange(bake, "density", "Maximum density", defaults.density, 0.0f, 1.0f);
+    for (std::size_t i = 0; i < defaults.preferences.size(); ++i)
+        AddRuleRange(bake, TERRAIN_MAP_NAMES[i], "Density preference: negative favors black, positive favors white", defaults.preferences[i], -1.0f, 1.0f);
+    AddRuleRange(bake, "patchScale", "Habitat patch scale in world metres; 0 disables it", 0.0f, 0.0f, 2048.0f);
+    AddRuleRange(bake, "patchMin", "Lowest accepted patch value", 0.0f, 0.0f, 1.0f);
+    AddRuleRange(bake, "patchMax", "Highest accepted patch value", 1.0f, 0.0f, 1.0f);
+    bake.params.push_back(TerrainParameter("patchSeed", OpParamType::Int, "World-aligned habitat seed", 1));
+    bake.params.push_back(TerrainParameter("avoidWater", OpParamType::Bool, "Reject submerged samples", false));
+    bake.params.push_back(TerrainParameter("pathLayer", OpParamType::Int, "Painted road/trail layer, or -1", -1));
+    for (const auto* name : {"waterMin", "pathMin"})
+        AddRuleRange(bake, name, "Minimum distance in world metres", 0.0f, 0.0f, 1000.0f);
+    for (const auto* name : {"waterMax", "pathMax"})
+        AddRuleRange(bake, name, "Maximum distance in world metres; 0 leaves it open", 0.0f, 0.0f, 1000.0f);
+    for (const auto* name : {"waterFade", "pathFade"})
+        AddRuleRange(bake, name, "Distance band transition width in world metres", 8.0f, 0.0f, 500.0f);
+
+    auto preview = bake;
+    preview.id = "terrain.maps.preview";
+    preview.label = "Preview Terrain Map";
+    preview.desc = "Return a 48 by 48 grayscale thumbnail as row-major Gray8 hex.";
+    preview.kind = OpKind::Query;
+    preview.undoLabel.clear();
+    preview.exec = [](OpContext& context, const OpArgs& args) { return RunTerrainMap(context, args, OpKind::Query); };
+    registry.Register(std::move(preview));
+
+    auto exportMap = bake;
+    exportMap.id = "terrain.maps.export";
+    exportMap.label = "Export Terrain Map PNG";
+    exportMap.desc = "Write the selected map to a linear 16-bit grayscale PNG under project Assets.";
+    exportMap.kind = OpKind::Action;
+    exportMap.undoLabel.clear();
+    exportMap.params.push_back(TerrainParameter("path", OpParamType::String, "Assets-relative .png path; empty creates a unique path", std::string{}));
+    exportMap.exec = [](OpContext& context, const OpArgs& args) { return RunTerrainMap(context, args, OpKind::Action); };
+    registry.Register(std::move(exportMap));
+
+    bake.params.push_back(TerrainParameter("layer", OpParamType::Int, "Existing material layer index"));
+    AddRuleRange(bake, "strength", "Blend strength", 1.0f, 0.0f, 1.0f);
+    bake.exec = [](OpContext& context, const OpArgs& args) { return RunTerrainMap(context, args, OpKind::Mutation); };
+    registry.Register(std::move(bake));
+}
+
+bool ReadMaterialRules(const OpArgs& args, TerrainMaterialBakeSettings& settings)
+{
+    const auto* rules = args.GetData("rules");
+    if (!rules || !rules->IsArray() || rules->AsArray().empty() || rules->AsArray().size() > 8) return false;
+    const auto number = [](const OpData& data, float& value) {
+        if (data.IsInt()) { value = static_cast<float>(data.AsInt64()); return true; }
+        return data.TryGetFloat(value);
+    };
+    for (const auto& item : rules->AsArray()) {
+        TerrainMaterialRule rule;
+        const auto* layer = item.Find("layer");
+        if (!layer || !layer->TryGetInt32(rule.layer)) return false;
+        if (const auto* value = item.Find("weight"); value && !number(*value, rule.weight)) return false;
+        if (const auto* preferences = item.Find("preferences")) {
+            if (!preferences->IsArray() || preferences->AsArray().size() != rule.preferences.size()) return false;
+            for (std::size_t i = 0; i < rule.preferences.size(); ++i)
+                if (!number(preferences->AsArray()[i], rule.preferences[i])) return false;
+        }
+        settings.rules.push_back(rule);
+    }
+    if (const auto* protectedLayers = args.GetData("protectedLayers"); protectedLayers && !protectedLayers->IsNull()) {
+        if (!protectedLayers->IsArray() || protectedLayers->AsArray().size() > 8) return false;
+        for (const auto& value : protectedLayers->AsArray()) {
+            int layer = -1;
+            if (!value.TryGetInt32(layer) || std::find(settings.protectedLayers.begin(), settings.protectedLayers.end(), layer) != settings.protectedLayers.end()) return false;
+            settings.protectedLayers.push_back(layer);
+        }
+    }
+    return true;
+}
+
+OpResult RunTerrainMaterialBake(OpContext& context, const OpArgs& args)
+{
+    auto* owner = ResolveTerrainNode(context, args.GetString("node"));
+    if (!owner || context.ctx.IsLocked(owner->GetID())) return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    auto& world = *context.ctx.activeScene;
+    scene::FlushWorldTransforms(world);
+    std::vector<TerrainAnalysisSurface> surfaces;
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    TerrainMaterialBakeSettings settings;
+    if (!ReadMaterialRules(args, settings)) return OpResult::Err("BAD_RULES", "Check the material rules and protected layer list.");
+    settings.strength = args.GetFloat("strength", settings.strength);
+    settings.protectedThreshold = args.GetFloat("protectedThreshold", settings.protectedThreshold);
+    const auto maps = ReadMapSettings(args, *owner);
+    const auto& terrain = *surfaces.front().terrain;
+    TerrainMapRaster protection;
+    if (const auto file = args.GetString("protectionMask"); !file.empty()) {
+        scene::TerrainComponent image;
+        image.columns = std::clamp(terrain.columns, 2, 4097);
+        image.rows = std::clamp(terrain.rows, 2, 4097);
+        if (!scene::LoadHeightMapFromFile(ResolveTerrainInput(context.ctx, file), image))
+            return OpResult::Err("BAD_PROTECTION_MASK", "Could not read the material protection mask.");
+        protection = {image.columns, image.rows, std::move(image.heightData)};
+        settings.protection = &protection;
+    }
+    auto after = terrain;
+    if (!BakeTerrainMaterials(after, surfaces, maps, settings))
+        return OpResult::Err("MATERIAL_BAKE_FAILED", "Check the layer indices, map settings and terrain transform.");
+    if (after.splatIndices == terrain.splatIndices && after.splatWeights == terrain.splatWeights) {
+        auto result = OpResult::Ok();
+        result.noChange = true;
+        result.message = "Layer weights are unchanged";
+        return result;
+    }
+    return CommitTerrain(context, *owner, std::move(after), "Bake Terrain Material Rules", false);
+}
+
+void ApplyRiverCarvePlan(scene::TerrainComponent& terrain, const TerrainRiverCarvePlan& plan)
+{
+    for (const auto& vertex : plan.vertices) terrain.heightData[vertex.index] = vertex.normalizedHeight;
+    for (const auto& material : plan.materials) {
+        std::copy(material.indices.begin(), material.indices.end(), terrain.splatIndices.data() + material.offset);
+        std::copy(material.weights.begin(), material.weights.end(), terrain.splatWeights.data() + material.offset);
+    }
+}
+
+TerrainFlowCarveSettings ReadFlowCarveSettings(const OpArgs& args, const scene::GameObject& owner)
+{
+    TerrainFlowCarveSettings settings;
+    settings.region = ReadFlowRegion(args, owner, 512.0f);
+    settings.minArea = args.GetFloat("minArea", settings.minArea);
+    settings.depthScale = args.GetFloat("depthScale", settings.depthScale);
+    auto& bed = settings.bed;
+    bed.bankWidth = args.GetFloat("bankWidth", bed.bankWidth);
+    bed.maxCut = args.GetFloat("maxCut", bed.maxCut);
+    bed.bankLayer = args.GetInt("rockLayer", -1);
+    bed.gentleBankLayer = args.GetInt("gravelLayer", -1);
+    bed.protectedLayer = args.GetInt("protectedLayer", -1);
+    bed.gentleGrade = args.GetFloat("gentleGrade", bed.gentleGrade);
+    bed.depositHeight = args.GetFloat("depositHeight", bed.depositHeight);
+    return settings;
+}
+
+OpResult RunTerrainFlowCarve(OpContext& context, const OpArgs& args, bool preview)
+{
+    auto* owner = ResolveTerrainNode(context, args.GetString("node"));
+    if (!owner || (!preview && context.ctx.IsLocked(owner->GetID()))) return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    auto& world = *context.ctx.activeScene;
+    scene::FlushWorldTransforms(world);
+    std::vector<TerrainAnalysisSurface> surfaces;
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    const auto settings = ReadFlowCarveSettings(args, *owner);
+    const auto& bed = settings.bed;
+    const auto& terrain = *surfaces.front().terrain;
+    for (const int layer : {bed.bankLayer, bed.gentleBankLayer, bed.protectedLayer})
+        if (layer < -1 || layer >= terrain.LayerCount()) return OpResult::Err("BAD_LAYER", "Choose existing terrain layers or -1.");
+    TerrainRiverCarvePlan plan;
+    std::string diagnostic;
+    int reaches = 0;
+    if (!PlanTerrainFlowCarve(surfaces, settings, plan, reaches, diagnostic)) return OpResult::Err("FLOW_CARVE_FAILED", diagnostic);
+    auto data = OpData::MakeObject();
+    data.Set("reaches", reaches);
+    data.Set("analysisSpacing", plan.analysisSpacing);
+    data.Set("changedVertices", static_cast<std::int64_t>(plan.vertices.size()));
+    data.Set("paintedVertices", static_cast<std::int64_t>(plan.materials.size()));
+    data.Set("protectedVertices", static_cast<std::int64_t>(plan.protectedVertices));
+    data.Set("deepestCut", plan.deepestCut);
+    data.Set("highestDeposit", plan.highestDeposit);
+    const bool withinLimit = plan.deepestCut <= bed.maxCut;
+    data.Set("withinLimit", withinLimit);
+    if (preview || (plan.vertices.empty() && plan.materials.empty())) {
+        auto result = OpResult::Data(std::move(data));
+        result.noChange = !preview;
+        result.message = preview ? "Flow channel preview generated" : "No channel edits match the current settings";
+        return result;
+    }
+    if (!withinLimit) {
+        auto result = OpResult::Err("FLOW_CUT_LIMIT", "The proposed excavation exceeds the maximum cut.");
+        result.data = std::move(data);
+        return result;
+    }
+    auto after = terrain;
+    ApplyRiverCarvePlan(after, plan);
+    auto result = CommitTerrain(context, *owner, std::move(after), "Carve Terrain Flow Channels", !plan.vertices.empty());
+    result.data = std::move(data);
+    return result;
+}
+
+std::string TerrainNetworkFingerprint(const scene::TerrainComponent& terrain, const scene::Transform& pose)
+{
+    asset::BakeFingerprint hash;
+    hash.Add(static_cast<std::uint64_t>(terrain.columns));
+    hash.Add(static_cast<std::uint64_t>(terrain.rows));
+    hash.Add(std::array{terrain.cellSize, terrain.maxHeight, pose.worldPosition.x, pose.worldPosition.y, pose.worldPosition.z,
+        pose.worldRotation.x, pose.worldRotation.y, pose.worldRotation.z, pose.worldRotation.w,
+        pose.worldScale.x, pose.worldScale.y, pose.worldScale.z});
+    hash.Add(terrain.heightData);
+    hash.Add(terrain.holeData);
+    hash.Add(terrain.splatIndices);
+    hash.Add(terrain.splatWeights);
+    hash.Add(static_cast<std::uint64_t>(terrain.enabled));
+    hash.Add(terrain.terrainAssetPath);
+    for (const auto& layer : terrain.layerMaterials) hash.Add(layer);
+    return hash.Finish();
+}
+
+struct TerrainNetworkEdit {
+    std::string guid;
+    std::uint64_t lifetime = 0;
+    std::string beforeFingerprint, afterFingerprint;
+    TerrainRiverCarvePlan before, after;
+};
+
+struct TerrainNetworkRiver {
+    std::string guid;
+    std::string name;
+    math::Vector3 origin;
+    scene::WaterComponent water;
+    std::size_t firstSection = 0, lastSection = 0;
+    std::uint64_t lifetime = 0;
+};
+
+struct TerrainNetworkVisual {
+    std::string guid, name;
+    math::Vector3 position;
+    scene::WaterfallComponent waterfall;
+    std::array<math::Vector3, 4> banks;
+    std::size_t upstream = 0, downstream = 0;
+    std::uint64_t lifetime = 0;
+};
+
+struct TerrainNetworkEditBatch {
+    EditorContext* context;
+    std::uint64_t generation;
+    std::vector<TerrainNetworkEdit> terrain;
+    std::vector<TerrainNetworkRiver> rivers;
+    std::vector<TerrainNetworkVisual> visuals;
+};
+
+bool BuildNetworkRivers(std::span<const TerrainRiverCarveSection> sections, const std::string& material,
+    std::span<const std::size_t> waterfallLips, std::vector<TerrainNetworkRiver>& rivers)
+{
+    constexpr std::size_t MAX_RIVERS = 96;
+    const auto makeStrip = [&](std::span<const TerrainRiverCarveSection> points, const TerrainRiverCarveSection* next,
+        bool straightJoin, bool waterfallReach, TerrainNetworkRiver& river) {
+        const auto& start = points.front();
+        river.origin = {start.center.x, start.waterHeight, start.center.y};
+        auto& water = river.water;
+        water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+        water.splineSamplesPerSegment = 1;
+        water.materialPath = material;
+        water.splashEnabled = false;
+        const auto addPoint = [&](const TerrainRiverCarveSection& point) {
+            const auto position = math::Vector3{point.center.x, point.waterHeight, point.center.y} - river.origin;
+            const float speed = waterfallReach ? std::clamp(std::sqrt(9.81f * point.depth) * 0.55f, 0.35f, 8.0f) : 1.0f;
+            water.splinePoints.push_back({static_cast<std::uint32_t>(water.splinePoints.size() + 1), position,
+                point.halfWidth * 2.0f, point.depth, speed});
+            water.buoyancyDepth = (std::max)(water.buoyancyDepth, point.depth);
+        };
+        for (const auto& point : points) addPoint(point);
+        if (next) {
+            const auto& join = points.back();
+            const auto delta = next->center - join.center;
+            const float length = std::hypot(delta.x, delta.y);
+            if (length <= 0.0f) return false;
+            const float t = (std::min)(0.5f, join.halfWidth / length);
+            auto center = join.center + delta * t;
+            if (straightJoin) {
+                /// @note A straight terminal overlap fits within the shared bed section when the downstream bend would fold the strip.
+                const auto incoming = join.center - points[points.size() - 2].center;
+                const float incomingLength = std::hypot(incoming.x, incoming.y);
+                if (incomingLength <= 0.0f) return false;
+                center = join.center + incoming * ((std::min)(t * length, incomingLength * 0.5f) / incomingLength);
+            }
+            addPoint({center, std::lerp(join.waterHeight, next->waterHeight, t),
+                std::lerp(join.halfWidth, next->halfWidth, t), std::lerp(join.depth, next->depth, t)});
+        }
+        scene::Transform pose;
+        pose.worldPosition = river.origin;
+        scene::WaterSplineSnapshot snapshot;
+        return scene::BuildWaterSplineSnapshot(water.surfaceShape, water.splinePoints, 1, pose, snapshot,
+            water.buoyancyDepth, water.splineMeshCellSize);
+    };
+    const auto appendStrips = [&](std::size_t cursor, std::size_t end, const TerrainRiverCarveSection* continuation) {
+        while (cursor + 1 < end) {
+            if (rivers.size() == MAX_RIVERS) return false;
+            std::size_t limit = (std::min)(end, cursor + scene::WATER_SPLINE_MAX_CONTROL_POINTS - 1);
+            for (;;) {
+                const auto points = sections.subspan(cursor, limit - cursor);
+                const auto* next = limit < end ? &sections[limit] : continuation;
+                const bool waterfallReach = (cursor > 0 && std::binary_search(waterfallLips.begin(), waterfallLips.end(), cursor - 1))
+                    || std::binary_search(waterfallLips.begin(), waterfallLips.end(), limit - 1);
+                TerrainNetworkRiver river;
+                bool valid = makeStrip(points, next, false, waterfallReach, river);
+                if (!valid && next && points.size() == 2) {
+                    river = {};
+                    valid = makeStrip(points, next, true, waterfallReach, river);
+                }
+                if (valid) {
+                    river.name = "Flow River " + std::to_string(rivers.size() + 1);
+                    river.firstSection = cursor;
+                    river.lastSection = limit - 1;
+                    rivers.push_back(std::move(river));
+                    break;
+                }
+                if (points.size() == 2) return false;
+                limit = cursor + (std::max)(std::size_t{2}, points.size() / 2);
+            }
+            cursor = limit - 1;
+        }
+        return true;
+    };
+    for (std::size_t begin = 0; begin < sections.size();) {
+        std::size_t end = begin + 1;
+        while (end < sections.size() && !sections[end].beginsReach) ++end;
+        const TerrainRiverCarveSection* continuation = nullptr;
+        if (sections[begin].openEnd) {
+            const auto downstream = std::find_if(sections.begin(), sections.end(), [&](const auto& point) {
+                return point.beginsReach && point.center == sections[end - 1].center;
+            });
+            if (downstream == sections.end() || downstream + 1 == sections.end()) return false;
+            continuation = &*(downstream + 1);
+        }
+        auto cursor = begin;
+        for (const auto lip : waterfallLips) {
+            if (lip < begin || lip >= end) continue;
+            /// @note Water above and below the cliff remains queryable; the falling curtain is visual geometry.
+            if (!appendStrips(cursor, lip + 1, nullptr)) return false;
+            cursor = lip + 1;
+        }
+        if (!appendStrips(cursor, end, continuation)) return false;
+        begin = end;
+    }
+    return true;
+}
+
+bool PlanNetworkWaterfall(std::size_t lip, std::vector<TerrainNetworkRiver>& rivers,
+    const std::function<float(const math::Vector3&)>& ground, TerrainNetworkVisual& out)
+{
+    const auto upper = std::find_if(rivers.begin(), rivers.end(), [&](const auto& river) { return river.lastSection == lip; });
+    const auto lower = std::find_if(rivers.begin(), rivers.end(), [&](const auto& river) { return river.firstSection == lip + 1; });
+    if (upper == rivers.end() || lower == rivers.end()) return false;
+    const auto getSection = [](const TerrainNetworkRiver& river, bool atStart, scene::WaterfallSection& section) {
+        scene::Transform pose;
+        pose.worldPosition = river.origin;
+        scene::WaterSplineSnapshot snapshot;
+        return scene::BuildWaterSplineSnapshot(river.water.surfaceShape, river.water.splinePoints,
+            river.water.splineSamplesPerSegment, pose, snapshot, river.water.buoyancyDepth, 100.0f)
+            && scene::GetWaterfallRiverSection(snapshot, atStart, !atStart, section);
+    };
+    scene::WaterfallGeometry geometry;
+    if (!getSection(*upper, false, geometry.source) || !getSection(*lower, true, geometry.receiver)) return false;
+    scene::MeshBuilder mesh;
+    if (!scene::BuildWaterfallGeometry(geometry, ground, mesh)) {
+        geometry.rockAttached = true;
+        if (!scene::BuildWaterfallGeometry(geometry, ground, mesh)) return false;
+    }
+    out.upstream = static_cast<std::size_t>(upper - rivers.begin());
+    out.downstream = static_cast<std::size_t>(lower - rivers.begin());
+    out.position = math::Vector3::Lerp(geometry.source.left, geometry.source.right, 0.5f);
+    out.banks = {geometry.source.left, geometry.source.right, geometry.receiver.left, geometry.receiver.right};
+    out.waterfall.rockAttached = geometry.rockAttached;
+    return true;
+}
+
+bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::string& reason)
+{
+    auto& ctx = *batch.context;
+    auto* world = ctx.activeScene;
+    if (!world || world->GetRenderSceneGeneration() != batch.generation
+        || (ctx.playMode && !ctx.playMode->IsInEditor())) { reason = "The edit scene changed."; return false; }
+    scene::FlushWorldTransforms(*world);
+    std::vector<scene::TerrainComponent*> terrains;
+    for (const auto& edit : batch.terrain) {
+        auto* owner = world->FindByGuid(edit.guid);
+        auto* terrain = owner ? owner->GetComponent<scene::TerrainComponent>() : nullptr;
+        if (!terrain || !owner->activeInHierarchy() || ctx.IsLocked(owner->GetID())
+            || world->GetComponentLifetime<scene::TerrainComponent>(owner->GetID()) != edit.lifetime
+            || TerrainNetworkFingerprint(*terrain, owner->transform) != (apply ? edit.beforeFingerprint : edit.afterFingerprint)) {
+            reason = "A terrain tile changed after the network was prepared.";
+            return false;
+        }
+        terrains.push_back(terrain);
+    }
+    if (apply && !world->CanCreateGameObjects(batch.rivers.size() + batch.visuals.size())) {
+        reason = "The scene has insufficient room for the rivers and waterfalls.";
+        return false;
+    }
+    std::vector<scene::EntityID> waterNodes;
+    for (auto& river : batch.rivers) {
+        auto* owner = world->FindByGuid(river.guid);
+        if (apply) {
+            if (owner) { reason = "A planned river GUID already exists."; return false; }
+            continue;
+        }
+        auto* water = owner ? owner->GetComponent<scene::WaterComponent>() : nullptr;
+        if (!water || ctx.IsLocked(owner->GetID()) || owner->GetParent() || owner->GetChildCount() || !owner->activeSelf()
+            || owner->name != river.name || owner->tag != "Untagged" || owner->layer != 0 || !owner->prefabAssetPath.empty()
+            || owner->transform.position != river.origin || owner->transform.rotation != math::Quaternion::Identity()
+            || owner->transform.scale != math::Vector3::ONE
+            || world->GetComponentLifetime<scene::WaterComponent>(owner->GetID()) != river.lifetime) {
+            reason = "A generated river was edited.";
+            return false;
+        }
+        bool extraComponent = false;
+        scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+            if constexpr (!std::is_same_v<T, scene::WaterComponent>) extraComponent |= owner->GetComponent<T>() != nullptr;
+        });
+        auto authored = *water;
+        if (extraComponent || scene::SerializeReflected(authored) != scene::SerializeReflected(river.water)) {
+            reason = "A generated river's components were edited.";
+            return false;
+        }
+        waterNodes.push_back(owner->GetID());
+    }
+    for (auto& visual : batch.visuals) {
+        auto* owner = world->FindByGuid(visual.guid);
+        if (apply) {
+            if (owner) { reason = "A planned waterfall GUID already exists."; return false; }
+            continue;
+        }
+        auto* waterfall = owner ? owner->GetComponent<scene::WaterfallComponent>() : nullptr;
+        if (!waterfall || ctx.IsLocked(owner->GetID()) || owner->GetParent()
+            || !owner->activeSelf() || owner->name != visual.name || owner->tag != "Untagged" || owner->layer != 0
+            || !owner->prefabAssetPath.empty() || owner->transform.position != visual.position
+            || owner->transform.rotation != math::Quaternion::Identity() || owner->transform.scale != math::Vector3::ONE
+            || world->GetComponentLifetime<scene::WaterfallComponent>(owner->GetID()) != visual.lifetime) {
+            reason = "A generated waterfall was edited.";
+            return false;
+        }
+        bool extraComponent = false;
+        scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+            if constexpr (!std::is_same_v<T, scene::WaterfallComponent>) extraComponent |= owner->GetComponent<T>() != nullptr;
+        });
+        for (int child = 0; child < owner->GetChildCount(); ++child) {
+            auto* object = owner->GetChild(child);
+            extraComponent |= object && !object->GetComponent<scene::WaterfallPart>();
+        }
+        if (extraComponent || scene::SerializeReflected(*waterfall) != scene::SerializeReflected(visual.waterfall)) {
+            reason = "A generated waterfall's components were edited.";
+            return false;
+        }
+        waterNodes.push_back(owner->GetID());
+    }
+    if (apply) {
+        for (auto& river : batch.rivers) {
+            auto* owner = world->TryCreateGameObject(river.name);
+            if (!owner) { world->DestroyGameObjects(waterNodes); reason = "Could not create the river network."; return false; }
+            owner->instanceId = river.guid;
+            owner->transform.position = river.origin;
+            owner->AddComponent<scene::WaterComponent>(river.water);
+            river.lifetime = world->GetComponentLifetime<scene::WaterComponent>(owner->GetID());
+            waterNodes.push_back(owner->GetID());
+        }
+        for (auto& visual : batch.visuals) {
+            auto* owner = world->TryCreateGameObject(visual.name);
+            if (!owner) { world->DestroyGameObjects(waterNodes); reason = "Could not create the waterfalls."; return false; }
+            owner->instanceId = visual.guid;
+            owner->transform.position = visual.position;
+            owner->AddComponent<scene::WaterfallComponent>(visual.waterfall);
+            visual.lifetime = world->GetComponentLifetime<scene::WaterfallComponent>(owner->GetID());
+            waterNodes.push_back(owner->GetID());
+        }
+    } else {
+        world->DestroyGameObjects(waterNodes);
+    }
+    for (std::size_t i = 0; i < terrains.size(); ++i) {
+        const auto& plan = apply ? batch.terrain[i].after : batch.terrain[i].before;
+        auto& terrain = *terrains[i];
+        ApplyRiverCarvePlan(terrain, plan);
+        if (!plan.vertices.empty()) { terrain.RequestHeightRebuild(); terrain.colliderDirty = true; }
+        if (!plan.materials.empty()) terrain.splatDirty = true;
+        if (apply && batch.terrain[i].afterFingerprint.empty()) {
+            const auto* owner = world->FindByGuid(batch.terrain[i].guid);
+            batch.terrain[i].afterFingerprint = TerrainNetworkFingerprint(terrain, owner->transform);
+        }
+    }
+    scene::FlushWorldTransforms(*world);
+    if (ctx.markSceneDirty) ctx.markSceneDirty();
+    reason.clear();
+    return true;
+}
+
+OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool preview)
+{
+    if (!preview && !context.undo.IsRecordingEnabled())
+        return OpResult::Err("UNDO_REQUIRED", "Enable Undo recording before applying a flow network.");
+    auto* owner = ResolveTerrainNode(context, args.GetString("node"));
+    if (!owner) return OpResult::Err("NO_TERRAIN", "Select an editable terrain.");
+    auto& world = *context.ctx.activeScene;
+    scene::FlushWorldTransforms(world);
+    std::vector<TerrainAnalysisSurface> surfaces;
+    if (!ResolveMapSurfaces(world, *owner, args, surfaces)) return OpResult::Err("BAD_TERRAIN_TILES", "Select up to 16 active terrain tiles.");
+    std::vector<std::pair<std::string, scene::EntityID>> owners;
+    for (const auto id : world.GetEntities<scene::TerrainComponent>()) {
+        const auto* node = world.GetGameObject(id);
+        if (node && std::any_of(surfaces.begin(), surfaces.end(), [&](const auto& surface) { return surface.pose == &node->transform; }))
+            owners.emplace_back(node->instanceId, id);
+    }
+    std::sort(owners.begin(), owners.end(), [&](const auto& a, const auto& b) {
+        if ((a.second == owner->GetID()) != (b.second == owner->GetID())) return a.second == owner->GetID();
+        return a.first < b.first;
+    });
+    if (owners.size() != surfaces.size()) return OpResult::Err("BAD_TERRAIN_TILES", "Could not identify the terrain tiles.");
+    surfaces.clear();
+    auto batch = std::make_shared<TerrainNetworkEditBatch>();
+    batch->context = &context.ctx;
+    batch->generation = world.GetRenderSceneGeneration();
+    asset::BakeFingerprint token;
+    token.Add("fbzz.terrain.flow.network.v3");
+    token.Add(batch->generation);
+    token.Add(static_cast<std::uint64_t>(context.undo.GetRevision()));
+    for (const auto& [guid, id] : owners) {
+        const auto* node = world.GetGameObject(id);
+        const auto* terrain = world.GetComponent<scene::TerrainComponent>(id);
+        if (context.ctx.IsLocked(id) || node->IsRuntimeGenerated())
+            return OpResult::Err("LOCKED_TERRAIN", "Unlock the participating terrain tiles before preparing a network.");
+        auto& edit = batch->terrain.emplace_back();
+        edit.guid = guid;
+        edit.lifetime = world.GetComponentLifetime<scene::TerrainComponent>(id);
+        edit.beforeFingerprint = TerrainNetworkFingerprint(*terrain, node->transform);
+        token.Add(guid);
+        token.Add(edit.lifetime);
+        token.Add(edit.beforeFingerprint);
+        surfaces.push_back({terrain, &node->transform});
+    }
+    const auto settings = ReadFlowCarveSettings(args, *owner);
+    const auto& bed = settings.bed;
+    auto material = args.GetString("waterMaterial");
+    if (material.empty()) {
+        const auto presets = WaterMaterialPresets();
+        const auto river = std::find_if(presets.begin(), presets.end(), [](const auto& preset) { return std::string_view(preset.label) == "River"; });
+        if (river != presets.end()) material = river->path;
+    }
+    token.Add(material);
+    const bool buildWaterfalls = args.GetBool("buildWaterfalls", false);
+    const float waterfallDrop = args.GetFloat("waterfallMinDrop", DEFAULT_WATERFALL_DROP);
+    const float waterfallGrade = args.GetFloat("waterfallMinGrade", DEFAULT_WATERFALL_GRADE);
+    if (buildWaterfalls && (!std::isfinite(waterfallDrop) || waterfallDrop < 0.5f || waterfallDrop > 1000.0f
+        || !std::isfinite(waterfallGrade) || waterfallGrade < 0.25f || waterfallGrade > 10.0f))
+        return OpResult::Err("BAD_WATERFALL_RULE", "Check the minimum waterfall drop and rise/run ratio.");
+    token.Add(static_cast<std::uint64_t>(buildWaterfalls));
+    if (buildWaterfalls) token.Add(std::array{waterfallDrop, waterfallGrade});
+    std::vector<scene::WaterSplineSnapshot> sourceLakes;
+    if (buildWaterfalls) {
+        std::map<std::string, scene::EntityID> lakeOwners;
+        for (const auto id : world.GetEntities<scene::WaterComponent>()) {
+            const auto* node = world.GetGameObject(id);
+            const auto* water = world.GetComponent<scene::WaterComponent>(id);
+            if (node && water && node->activeInHierarchy() && water->enabled && !water->farOceanEnabled
+                && water->surfaceShape == scene::WaterSurfaceShape::SPLINE_LAKE)
+                lakeOwners.emplace(node->instanceId, id);
+        }
+        for (const auto& [guid, id] : lakeOwners) {
+            auto* node = world.GetGameObject(id);
+            auto* water = world.GetComponent<scene::WaterComponent>(id);
+            scene::WaterControlPointSnapshot controls;
+            scene::WaterSplineSnapshot snapshot;
+            if (!BuildAuthoredWater(*node, *water, controls, snapshot)) continue;
+            token.Add(guid);
+            token.Add(snapshot.signature);
+            sourceLakes.push_back(std::move(snapshot));
+        }
+    }
+    token.Add(std::array{settings.region.center.x, settings.region.center.z, settings.region.size, settings.minArea, settings.depthScale,
+        bed.bankWidth, bed.maxCut, bed.gentleGrade, bed.depositHeight});
+    for (const int layer : {bed.bankLayer, bed.gentleBankLayer, bed.protectedLayer})
+        token.Add(static_cast<std::uint64_t>(static_cast<std::int64_t>(layer) + 1));
+    const auto expected = token.Finish();
+    if (!preview && args.GetString("expected") != expected)
+        return OpResult::Err("STALE_PREVIEW", "The scene or settings changed. Generate a new network preview.");
+
+    TerrainFlowNetworkPlan plan;
+    std::string diagnostic;
+    if (!PlanTerrainFlowNetwork(surfaces, settings, plan, diagnostic, sourceLakes)) return OpResult::Err("FLOW_NETWORK_FAILED", diagnostic);
+    auto waterfallLips = buildWaterfalls ? FindTerrainWaterfallLips(plan.sections, waterfallDrop, waterfallGrade)
+        : std::vector<std::size_t>{};
+    if (waterfallLips.size() > 32)
+        return OpResult::Err("WATERFALL_LIMIT", "Too many cliff drops. Raise the waterfall thresholds or shrink the region.");
+    const auto candidateCount = waterfallLips.size();
+    const auto plannedGround = [&](const math::Vector3& point) {
+        float height = -std::numeric_limits<float>::infinity();
+        for (std::size_t i = 0; i < surfaces.size(); ++i) {
+            scene::TerrainSurfaceSample sample;
+            if (scene::TrySampleTerrainWorld(*surfaces[i].terrain, *surfaces[i].pose,
+                    point.x, point.z, sample, plan.tiles[i].vertices)) height = (std::max)(height, sample.position.y);
+        }
+        return height;
+    };
+    for (;;) {
+        batch->rivers.clear();
+        batch->visuals.clear();
+        if (!BuildNetworkRivers(plan.sections, material, waterfallLips, batch->rivers))
+            return OpResult::Err("FLOW_WATER_FAILED", "A reach cannot form a valid Spline River. Narrow the drainage selection or raise the catchment threshold.");
+        const auto remove = std::remove_if(waterfallLips.begin(), waterfallLips.end(), [&](std::size_t lip) {
+            TerrainNetworkVisual visual;
+            if (!PlanNetworkWaterfall(lip, batch->rivers, plannedGround, visual)) return true;
+            visual.name = "Flow Waterfall " + std::to_string(batch->visuals.size() + 1);
+            batch->visuals.push_back(std::move(visual));
+            return false;
+        });
+        if (remove == waterfallLips.end()) break;
+        waterfallLips.erase(remove, waterfallLips.end());
+    }
+    auto data = OpData::MakeObject();
+    data.Set("expected", expected);
+    data.Set("tileCount", static_cast<int>(surfaces.size()));
+    data.Set("riverCount", static_cast<int>(batch->rivers.size()));
+    data.Set("waterfallCount", static_cast<int>(waterfallLips.size()));
+    data.Set("sourceLakeCount", static_cast<int>(sourceLakes.size()));
+    data.Set("sourceOutletCount", plan.sourceOutletCount);
+    data.Set("rejectedWaterfallCount", static_cast<int>(candidateCount - waterfallLips.size()));
+    data.Set("analysisSpacing", plan.analysisSpacing);
+    std::size_t vertexCount = 0, protectedCount = 0;
+    float deepestCut = 0.0f, highestDeposit = 0.0f;
+    for (const auto& tile : plan.tiles) {
+        vertexCount += tile.vertices.size();
+        protectedCount += tile.protectedIndices.size();
+        deepestCut = (std::max)(deepestCut, tile.deepestCut);
+        highestDeposit = (std::max)(highestDeposit, tile.highestDeposit);
+    }
+    data.Set("changedVertices", static_cast<std::int64_t>(vertexCount));
+    data.Set("protectedVertices", static_cast<std::int64_t>(protectedCount));
+    data.Set("deepestCut", deepestCut);
+    data.Set("highestDeposit", highestDeposit);
+    data.Set("withinLimit", deepestCut <= bed.maxCut);
+    if (preview) {
+        constexpr std::size_t POINTS_PER_KIND = 576;
+        const auto stride = (std::max)(std::size_t{1}, (vertexCount + POINTS_PER_KIND - 1) / POINTS_PER_KIND);
+        const auto protectedStride = (std::max)(std::size_t{1}, (protectedCount + POINTS_PER_KIND - 1) / POINTS_PER_KIND);
+        auto cut = OpData::MakeArray(), deposit = OpData::MakeArray(), protect = OpData::MakeArray(), lines = OpData::MakeArray();
+        std::size_t cutCount = 0, depositCount = 0, protectedSamples = 0;
+        for (std::size_t i = 0; i < surfaces.size(); ++i) {
+            const auto& terrain = *surfaces[i].terrain;
+            const auto& pose = *surfaces[i].pose;
+            const auto position = [&](std::size_t index) {
+                return ToTerrainWorld(pose, {static_cast<float>(index % terrain.columns) * terrain.cellSize,
+                    terrain.heightData[index] * terrain.maxHeight, static_cast<float>(index / terrain.columns) * terrain.cellSize});
+            };
+            for (const auto& vertex : plan.tiles[i].vertices) {
+                if (vertex.normalizedHeight < terrain.heightData[vertex.index]) {
+                    if (cutCount++ % stride == 0) cut.Push(position(vertex.index));
+                } else if (depositCount++ % stride == 0) deposit.Push(position(vertex.index));
+            }
+            for (const auto index : plan.tiles[i].protectedIndices)
+                if (protectedSamples++ % protectedStride == 0) protect.Push(position(index));
+        }
+        for (const auto& river : batch->rivers) {
+            auto line = OpData::MakeArray();
+            for (const auto& point : river.water.splinePoints) line.Push(river.origin + point.localPosition);
+            lines.Push(std::move(line));
+        }
+        data.Set("cut", std::move(cut));
+        data.Set("deposit", std::move(deposit));
+        data.Set("protected", std::move(protect));
+        data.Set("waterLines", std::move(lines));
+        auto waterfallLines = OpData::MakeArray();
+        for (const auto lip : waterfallLips) {
+            auto line = OpData::MakeArray();
+            for (const auto index : {lip, lip + 1}) {
+                const auto& p = plan.sections[index];
+                line.Push(math::Vector3{p.center.x, p.waterHeight, p.center.y});
+            }
+            waterfallLines.Push(std::move(line));
+        }
+        data.Set("waterfallLines", std::move(waterfallLines));
+        auto sections = OpData::MakeArray();
+        for (const auto& waterfall : batch->visuals) for (std::size_t index : {0u, 2u}) {
+            auto line = OpData::MakeArray();
+            line.Push(waterfall.banks[index]);
+            line.Push(waterfall.banks[index + 1]);
+            sections.Push(std::move(line));
+        }
+        data.Set("waterfallSections", std::move(sections));
+        auto result = OpResult::Data(std::move(data));
+        result.message = "Flow network preview generated";
+        return result;
+    }
+    if (deepestCut > bed.maxCut) return OpResult::Err("FLOW_CUT_LIMIT", "The proposed excavation exceeds the maximum cut.");
+    if (batch->rivers.empty()) {
+        auto result = OpResult::Data(std::move(data));
+        result.noChange = true;
+        result.message = "No channels match the selected catchment.";
+        return result;
+    }
+    for (std::size_t i = 0; i < surfaces.size(); ++i) {
+        const auto& terrain = *surfaces[i].terrain;
+        auto& edit = batch->terrain[i];
+        edit.after = std::move(plan.tiles[i]);
+        edit.after.protectedIndices.clear();
+        for (const auto& vertex : edit.after.vertices) edit.before.vertices.push_back({vertex.index, terrain.heightData[vertex.index]});
+        for (const auto& materialEdit : edit.after.materials) {
+            auto old = materialEdit;
+            std::copy_n(terrain.splatIndices.data() + old.offset, scene::TERRAIN_SPLAT_SLOTS, old.indices.begin());
+            std::copy_n(terrain.splatWeights.data() + old.offset, scene::TERRAIN_SPLAT_SLOTS, old.weights.begin());
+            edit.before.materials.push_back(old);
+        }
+    }
+    auto riverIds = OpData::MakeArray();
+    for (auto& river : batch->rivers) { river.guid = asset::AssetDatabase::GenerateGuid(); riverIds.Push(river.guid); }
+    data.Set("rivers", std::move(riverIds));
+    auto waterfallIds = OpData::MakeArray();
+    for (auto& visual : batch->visuals) {
+        visual.guid = asset::AssetDatabase::GenerateGuid();
+        visual.waterfall.upstream.guid = batch->rivers[visual.upstream].guid;
+        visual.waterfall.downstream.guid = batch->rivers[visual.downstream].guid;
+        waterfallIds.Push(visual.guid);
+    }
+    data.Set("waterfallVisuals", std::move(waterfallIds));
+    auto command = std::make_unique<CheckedLambdaCommand>("Build Terrain Flow Network",
+        [batch](std::string& reason) { return ApplyTerrainNetworkBatch(*batch, true, reason); },
+        [batch](std::string& reason) { return ApplyTerrainNetworkBatch(*batch, false, reason); });
+    if (!command->TryExecute(diagnostic)) return OpResult::Err("FLOW_NETWORK_CONFLICT", diagnostic);
+    auto result = OpResult::Data(std::move(data));
+    result.command = std::move(command);
+    result.message = "Built the river network and channel beds";
+    return result;
+}
+
+template<class Container>
+bool WriteTerrainRecipeValue(Container& target, std::string_view key, const OpData& source, int depth)
+{
+    if (depth > 5) return false;
+    const auto add = [&]<class T>(T&& value) {
+        if constexpr (std::is_same_v<Container, toml::table>) target.insert(key, std::forward<T>(value));
+        else target.push_back(std::forward<T>(value));
+        return true;
+    };
+    switch (source.GetType()) {
+    case OpData::Type::Bool: return add(source.AsBool());
+    case OpData::Type::Int: return add(source.AsInt64());
+    case OpData::Type::Float: return std::isfinite(source.AsDouble()) && add(source.AsDouble());
+    case OpData::Type::String: return source.AsString().size() < 512 && add(source.AsString());
+    case OpData::Type::Array: {
+        toml::array values;
+        for (const auto& value : source.AsArray()) if (!WriteTerrainRecipeValue(values, {}, value, depth + 1)) return false;
+        return add(std::move(values));
+    }
+    case OpData::Type::Object: {
+        toml::table values;
+        for (const auto& [name, value] : source.AsObject()) if (!WriteTerrainRecipeValue(values, name, value, depth + 1)) return false;
+        return add(std::move(values));
+    }
+    default: return false;
+    }
+}
+
+bool ReadTerrainRecipeValue(const toml::node& source, OpData& output, int depth)
+{
+    if (depth > 5) return false;
+    if (const auto* table = source.as_table()) {
+        output = OpData::MakeObject();
+        for (const auto& [key, field] : *table) {
+            OpData value;
+            if (!ReadTerrainRecipeValue(field, value, depth + 1)) return false;
+            output.Set(std::string(key.str()), std::move(value));
+        }
+    } else if (const auto* array = source.as_array()) {
+        output = OpData::MakeArray();
+        for (const auto& field : *array) {
+            OpData value;
+            if (!ReadTerrainRecipeValue(field, value, depth + 1)) return false;
+            output.Push(std::move(value));
+        }
+    } else if (const auto* flag = source.as_boolean()) output = flag->get();
+    else if (const auto* integer = source.as_integer()) output = integer->get();
+    else if (const auto* number = source.as_floating_point(); number && std::isfinite(number->get())) output = number->get();
+    else if (const auto* string = source.as_string(); string && string->get().size() < 512) output = string->get();
+    else return false;
+    return true;
+}
+
+bool RecipeLayerIndex(const OpData& value)
+{
+    int layer = -1;
+    return value.TryGetInt32(layer) && layer >= -1 && layer < scene::TERRAIN_MAX_LAYERS;
+}
+
+bool ValidateTerrainRecipe(const OperatorRegistry& registry, const OpData& recipe)
+{
+    if (!recipe.IsObject() || recipe.AsObject().empty()) return false;
+    std::map<std::string, double, std::less<>> common;
+    for (const auto& [group, values] : recipe.AsObject()) {
+        if (group == "layerMaterials") {
+            if (!values.IsArray() || values.AsArray().size() > scene::TERRAIN_MAX_LAYERS) return false;
+            for (const auto& ref : values.AsArray()) if (!ref.IsString()) return false;
+            continue;
+        }
+        const char* operation = group == "flow" ? "terrain.flow.network.preview"
+            : group == "materials" ? "terrain.maps.bake_materials" : group == "habitat" ? "terrain.maps.preview" : nullptr;
+        const auto* spec = operation ? registry.Find(operation) : nullptr;
+        if (!spec || !values.IsObject()) return false;
+        OpArgs materialArgs;
+        for (const auto& [key, value] : values.AsObject()) {
+            if (key == "node" || key == "terrainTiles" || key == "flowCenter" || key == "expected" || key == "path") return false;
+            const auto param = std::find_if(spec->params.begin(), spec->params.end(), [&](const auto& item) { return item.name == key; });
+            if (param == spec->params.end()) return false;
+            if (param->type == OpParamType::Float || param->type == OpParamType::Int) {
+                const double numeric = value.IsInt() ? static_cast<double>(value.AsInt64()) : value.AsDouble(std::numeric_limits<double>::quiet_NaN());
+                if (!std::isfinite(numeric) || (param->type == OpParamType::Int && !value.IsInt())
+                    || (param->hasRange && (numeric < param->minValue || numeric > param->maxValue))) return false;
+                if (param->type == OpParamType::Int) {
+                    int integer = 0;
+                    if (!value.TryGetInt32(integer) || (key.ends_with("Layer") && !RecipeLayerIndex(value))
+                        || (key == "patchSeed" && integer < 0)) return false;
+                }
+            } else if (param->type == OpParamType::String) {
+                if (!value.IsString() || (key == "channel" && value.AsString() != "Density")) return false;
+            } else if (param->type == OpParamType::Bool) {
+                if (!value.IsBool()) return false;
+            } else if (param->type == OpParamType::Data && group == "materials") materialArgs.Set(key, value);
+            else return false;
+            if (key == "includeNeighbors" || key == "flowSize" || key == "resolution" || key == "radius" || key == "flowFullArea") {
+                const double number = value.IsBool() ? static_cast<double>(value.AsBool())
+                    : value.IsInt() ? static_cast<double>(value.AsInt64()) : value.AsDouble();
+                const auto [entry, inserted] = common.try_emplace(key, number);
+                if (!inserted && entry->second != number) return false;
+            }
+        }
+        if (group == "materials") {
+            const auto* rules = materialArgs.GetData("rules");
+            if (rules && (!rules->IsArray() || !rules->AsArray().empty())) {
+                TerrainMaterialBakeSettings settings;
+                if (!ReadMaterialRules(materialArgs, settings)) return false;
+                for (const auto& rule : settings.rules) {
+                    if (rule.layer < 0 || rule.layer >= scene::TERRAIN_MAX_LAYERS || rule.weight < 0.0f || rule.weight > 16.0f) return false;
+                    for (float preference : rule.preferences) if (!std::isfinite(preference) || std::abs(preference) > 1.0f) return false;
+                }
+            }
+            if (const auto* layers = values.Find("protectedLayers")) {
+                if (!layers->IsArray() || layers->AsArray().size() > 8) return false;
+                for (const auto& layer : layers->AsArray()) if (!RecipeLayerIndex(layer) || layer.AsInt() < 0) return false;
+            }
+        }
+    }
+    return recipe.Find("flow") || recipe.Find("materials") || recipe.Find("habitat");
+}
+
+bool RemapTerrainRecipeLayers(OpData& recipe, const scene::TerrainComponent& terrain)
+{
+    const auto* references = recipe.Find("layerMaterials");
+    const auto map = [&](int original, int& layer) {
+        layer = original;
+        if (original < 0) return true;
+        if (!references) return original < terrain.LayerCount();
+        if (original >= static_cast<int>(references->AsArray().size())) return false;
+        const auto& reference = references->AsArray()[original].AsString();
+        if (reference.empty()) return original < terrain.LayerCount() && terrain.layerMaterials[original].empty();
+        const auto guid = asset::AssetDatabase::GuidFromRef(reference);
+        const auto found = std::find_if(terrain.layerMaterials.begin(), terrain.layerMaterials.end(), [&](const auto& current) {
+            return current == reference || (!guid.empty() && asset::AssetDatabase::GuidFromRef(current) == guid);
+        });
+        if (found == terrain.layerMaterials.end()) return false;
+        layer = static_cast<int>(found - terrain.layerMaterials.begin());
+        return true;
+    };
+    for (const auto* group : {"flow", "materials", "habitat"}) {
+        const auto* stored = recipe.Find(group);
+        if (!stored) continue;
+        auto values = *stored;
+        for (const auto* key : {"rockLayer", "gravelLayer", "protectedLayer", "pathLayer"}) {
+            if (const auto* old = values.Find(key)) {
+                int layer = -1;
+                if (!map(old->AsInt(), layer)) return false;
+                values.Set(key, layer);
+            }
+        }
+        if (const auto* rules = values.Find("rules")) {
+            auto mapped = OpData::MakeArray();
+            for (auto rule : rules->AsArray()) {
+                int layer = -1;
+                if (!map(rule.Find("layer")->AsInt(), layer)) return false;
+                rule.Set("layer", layer);
+                mapped.Push(std::move(rule));
+            }
+            values.Set("rules", std::move(mapped));
+        }
+        if (const auto* layers = values.Find("protectedLayers")) {
+            auto mapped = OpData::MakeArray();
+            for (const auto& old : layers->AsArray()) {
+                int layer = -1;
+                if (!map(old.AsInt(), layer)) return false;
+                if (std::none_of(mapped.AsArray().begin(), mapped.AsArray().end(), [&](const auto& value) { return value.AsInt() == layer; }))
+                    mapped.Push(layer);
+            }
+            values.Set("protectedLayers", std::move(mapped));
+        }
+        /// @note layerMaterials is placed after the section keys by save, and Set only replaces existing keys here.
+        recipe.Set(group, std::move(values));
+    }
+    if (references) {
+        auto current = OpData::MakeArray();
+        for (const auto& reference : terrain.layerMaterials) current.Push(reference);
+        recipe.Set("layerMaterials", std::move(current));
+    }
+    return true;
+}
+
+OpResult RunTerrainRecipe(OpContext& context, const OpArgs& args, bool save)
+{
+    auto requested = args.GetString("path");
+    if (!save && asset::AssetDatabase::IsGuidRef(requested)) requested = asset::AssetManager::ResolveAssetPath(requested);
+    const auto file = TerrainAuthoringAssetPath(context.ctx, requested, ".terrainrecipe.toml", true);
+    if (file.empty()) return OpResult::Err("BAD_PATH", "Choose an Assets path ending in .terrainrecipe.toml.");
+    const auto path = util::FileSystem::PathToUtf8(file);
+    const auto node = args.GetString("node");
+    const auto* owner = !node.empty() ? ResolveTerrainNode(context, node) : nullptr;
+    const auto* terrain = owner ? owner->GetScene()->GetComponent<scene::TerrainComponent>(owner->GetID()) : nullptr;
+    if (!node.empty() && !terrain) return OpResult::Err("NO_TERRAIN", "The recipe target has no Terrain component.");
+    constexpr std::uintmax_t MAX_BYTES = 128 * 1024;
+    OpData recipe;
+    if (save) {
+        const auto* input = args.GetData("recipe");
+        if (!input || !input->IsObject()) return OpResult::Err("BAD_RECIPE", "Supply a recipe object.");
+        recipe = *input;
+        if (terrain) {
+            auto references = OpData::MakeArray();
+            for (const auto& reference : terrain->layerMaterials) references.Push(reference);
+            recipe.Set("layerMaterials", std::move(references));
+        }
+    } else {
+        std::string content;
+        std::error_code error;
+        const auto size = std::filesystem::file_size(file, error);
+        if (error || size > MAX_BYTES || !util::FileSystem::ReadText(path, content)) return OpResult::Err("READ_FAILED", "Could not read the recipe.");
+        const auto parsed = toml::parse(content, path);
+        if (!parsed || parsed["format"].value<std::string>() != "fbzz.terrainrecipe" || parsed["version"].value<int>() != 1
+            || !parsed["recipe"].node() || !ReadTerrainRecipeValue(*parsed["recipe"].node(), recipe, 0))
+            return OpResult::Err("BAD_RECIPE", "Unsupported or malformed terrain recipe.");
+    }
+    if (!context.ctx.operators || !ValidateTerrainRecipe(*context.ctx.operators, recipe))
+        return OpResult::Err("BAD_RECIPE", "The recipe contains an unsupported or invalid operator argument.");
+    if (terrain && !RemapTerrainRecipeLayers(recipe, *terrain))
+        return OpResult::Err("RECIPE_LAYER_MISSING", "Assign the recipe's materials to the selected terrain before loading it.");
+    if (save) {
+        toml::table table{{"format", "fbzz.terrainrecipe"}, {"version", 1}};
+        if (!WriteTerrainRecipeValue(table, "recipe", recipe, 0)) return OpResult::Err("BAD_RECIPE", "A recipe value cannot be saved.");
+        std::ostringstream output;
+        output << table;
+        const auto content = output.str();
+        if (content.size() > MAX_BYTES || !util::FileSystem::WriteTextAtomic(path, content))
+            return OpResult::Err("WRITE_FAILED", "Could not save the terrain recipe.");
+        context.ctx.requestAssetBrowserRefresh = true;
+        if (asset::AssetDatabase::GuidFromPath(path).empty())
+            return OpResult::Err("META_FAILED", "Recipe saved but its asset metadata could not be created: " + path);
+    }
+    auto data = OpData::MakeObject();
+    data.Set("path", NormalizeAssetPath(path));
+    data.Set("recipe", std::move(recipe));
+    auto result = OpResult::Data(std::move(data));
+    result.message = save ? "Terrain recipe saved" : "Terrain recipe loaded";
+    return result;
+}
+
+void RegisterNaturalTerrainOperators(OperatorRegistry& registry)
+{
+    auto materials = TerrainMutation("terrain.maps.bake_materials", "Bake Terrain Material Rules");
+    materials.desc = "Blend multiple shape-based material rules in one operation with painted-area protection.";
+    AddTerrainFlowParameters(materials, 0.0f);
+    AddTerrainMapSamplingParameters(materials);
+    materials.params.push_back(TerrainParameter("rules", OpParamType::Data, "1–8 rules: {layer, weight?, preferences?: [Height, Slope, Cavity, Flow, Roughness]}"));
+    materials.params.push_back(TerrainParameter("protectedLayers", OpParamType::Data, "Existing layers to protect by combined weight", OpData{}));
+    materials.params.push_back(TerrainParameter("protectionMask", OpParamType::String, "Optional linear image; white protects painted weights", std::string{}));
+    AddRuleRange(materials, "strength", "Material blend strength", 1.0f, 0.0f, 1.0f);
+    AddRuleRange(materials, "protectedThreshold", "Combined existing layer weight that prevents editing", 0.35f, 0.001f, 1.0f);
+    materials.exec = RunTerrainMaterialBake;
+    registry.Register(std::move(materials));
+
+    auto carve = TerrainMutation("terrain.flow.carve", "Carve Terrain Flow Channels");
+    carve.desc = "Carve the selected terrain's drainage channels, including tributaries and bank deposition.";
+    AddTerrainFlowParameters(carve, 512.0f);
+    AddRuleRange(carve, "minArea", "Minimum upstream area in square metres", 6000.0f, 1.0f, 1.0e12f);
+    AddRuleRange(carve, "depthScale", "Channel depth multiplier", 0.65f, 0.01f, 4.0f);
+    AddRuleRange(carve, "bankWidth", "Bank width in metres", 8.0f, 0.0f, 512.0f);
+    AddRuleRange(carve, "maxCut", "Maximum allowed excavation in metres", 12.0f, 0.01f, 1000.0f);
+    AddRuleRange(carve, "gentleGrade", "Maximum rise/run ratio for gentle banks", 0.08f, 0.0f, 1.0f);
+    AddRuleRange(carve, "depositHeight", "Maximum addition on gentle, dry banks in metres", 0.0f, 0.0f, 10.0f);
+    carve.params.push_back(TerrainParameter("rockLayer", OpParamType::Int, "Steep bank material layer, or -1", -1));
+    carve.params.push_back(TerrainParameter("gravelLayer", OpParamType::Int, "Gentle bank material layer, or -1", -1));
+    carve.params.push_back(TerrainParameter("protectedLayer", OpParamType::Int, "Road or authored layer to protect, or -1", -1));
+    auto preview = carve;
+    preview.id = "terrain.flow.carve.preview";
+    preview.label = "Preview Terrain Flow Channels";
+    preview.kind = OpKind::Query;
+    preview.undoLabel.clear();
+    preview.exec = [](OpContext& context, const OpArgs& args) { return RunTerrainFlowCarve(context, args, true); };
+    registry.Register(std::move(preview));
+    auto network = carve;
+    network.id = "terrain.flow.network.apply";
+    network.label = "Apply Terrain Flow Network";
+    network.undoLabel = "Build Terrain Flow Network";
+    network.desc = "Apply matching channel beds and Spline Rivers across the selected terrain tiles.";
+    network.params.push_back(TerrainParameter("waterMaterial", OpParamType::String, "Optional river material asset reference", std::string{}));
+    network.params.push_back(TerrainParameter("buildWaterfalls", OpParamType::Bool, "Generate waterfalls below a Spline Lake outlet and a supported cliff", false));
+    AddRuleRange(network, "waterfallMinDrop", "Minimum waterfall drop in metres", DEFAULT_WATERFALL_DROP, 0.5f, 1000.0f);
+    AddRuleRange(network, "waterfallMinGrade", "Minimum waterfall grade (drop/run)", DEFAULT_WATERFALL_GRADE, 0.25f, 10.0f);
+    auto networkPreview = network;
+    networkPreview.id = "terrain.flow.network.preview";
+    networkPreview.label = "Preview Terrain Flow Network";
+    networkPreview.kind = OpKind::Query;
+    networkPreview.undoLabel.clear();
+    networkPreview.exec = [](OpContext& context, const OpArgs& args) { return RunTerrainFlowNetwork(context, args, true); };
+    registry.Register(std::move(networkPreview));
+    network.params.push_back(TerrainParameter("expected", OpParamType::String, "Fresh expected token from terrain.flow.network.preview"));
+    network.exec = [](OpContext& context, const OpArgs& args) { return RunTerrainFlowNetwork(context, args, false); };
+    registry.Register(std::move(network));
+    carve.exec = [](OpContext& context, const OpArgs& args) { return RunTerrainFlowCarve(context, args, false); };
+    registry.Register(std::move(carve));
+    for (const bool save : {true, false}) {
+        EditorOperator recipe;
+        recipe.id = save ? "terrain.recipe.save" : "terrain.recipe.load";
+        recipe.label = save ? "Save Terrain Recipe" : "Load Terrain Recipe";
+        recipe.category = "Terrain";
+        recipe.desc = "Store or read portable flow, materials and habitat operator arguments.";
+        recipe.kind = save ? OpKind::Action : OpKind::Query;
+        recipe.params = {TerrainParameter("path", OpParamType::String, "Project Assets path ending in .terrainrecipe.toml"),
+            TerrainParameter("node", OpParamType::NodeId, "Optional terrain for material reference mapping", std::string{})};
+        if (save) recipe.params.push_back(TerrainParameter("recipe", OpParamType::Data, "Object containing flow, materials and habitat operator settings"));
+        recipe.poll = [](const OpContext& context, const OpArgs&) { return !context.ctx.projectRoot.empty(); };
+        recipe.exec = [save](OpContext& context, const OpArgs& args) { return RunTerrainRecipe(context, args, save); };
+        registry.Register(std::move(recipe));
+    }
+}
+
 OpResult BlendTerrainSeam(OpContext& context, const OpArgs& args)
 {
     auto* owner = ResolveTerrainNode(context, args.GetString("node"));
@@ -895,11 +2223,7 @@ OpResult CarveTerrainRiver(OpContext& context, const OpArgs& args, bool preview)
         return result;
     }
     auto after = *terrain;
-    for (const auto& vertex : plan.vertices) after.heightData[vertex.index] = vertex.normalizedHeight;
-    for (const auto& material : plan.materials) {
-        std::copy(material.indices.begin(), material.indices.end(), after.splatIndices.data() + material.offset);
-        std::copy(material.weights.begin(), material.weights.end(), after.splatWeights.data() + material.offset);
-    }
+    ApplyRiverCarvePlan(after, plan);
     auto result = CommitTerrain(context, *ground, std::move(after), "Carve Terrain River Bed", !plan.vertices.empty());
     result.data = std::move(data);
     return result;
@@ -1245,7 +2569,7 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
         settings.spacing = args.GetFloat("spacing", settings.spacing);
         TerrainDrainage graph;
         std::string diagnostic;
-        if (!BuildTerrainDrainage(surfaces, settings, graph, diagnostic))
+        if (!BuildTerrainDrainage(surfaces, settings, graph, diagnostic, minArea))
             return OpResult::Err("DRAINAGE_NOT_FOUND", diagnostic);
         const auto describe = [&](int index) {
             const auto& node = graph.nodes[index];
@@ -1254,7 +2578,7 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
             data.Set("index", index);
             data.Set("ground", node.ground);
             data.Set("waterHeight", node.waterHeight);
-            data.Set("riverSurfaceHeight", node.waterHeight + DRAINAGE_RIVER_SURFACE_CLEARANCE);
+            data.Set("riverSurfaceHeight", node.riverHeight);
             data.Set("area", node.area);
             data.Set("downstream", node.downstream);
             data.Set("width", size.x);
@@ -1356,6 +2680,8 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
     RegisterTerrainReliefOperator(registry);
     RegisterTerrainSeamOperator(registry);
     RegisterTerrainAuthoringOperators(registry);
+    RegisterTerrainMapOperators(registry);
+    RegisterNaturalTerrainOperators(registry);
     RegisterTerrainScatterOperators(registry);
     RegisterTerrainGrassOperators(registry);
 }

@@ -139,17 +139,15 @@ bool SaveHeightMapToFile(
     }
 
     const std::filesystem::path fsPath(util::StringUtils::ToWide(path));
-    if (fsPath.has_parent_path())
-        (void)util::FileSystem::EnsureParentDirectory(fsPath);
-
     if (!HeightMapEnsureCom()) return false;
 
     /// @note R16_UNORM は WIC の 16bppGray へ写り、PNG エンコーダーはそのまま 16 bit グレースケールで保存する。
-    const HRESULT hr = DirectX::SaveToWICFile(
+    DirectX::Blob png;
+    const HRESULT hr = DirectX::SaveToWICMemory(
         *dst, DirectX::WIC_FLAGS_NONE,
         DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
-        fsPath.c_str());
-    return SUCCEEDED(hr);
+        png);
+    return SUCCEEDED(hr) && util::FileSystem::WriteBinaryAtomic(fsPath, png.GetBufferPointer(), png.GetBufferSize());
 }
 
 } /// @note namespace fbzz::scene

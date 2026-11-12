@@ -80,7 +80,7 @@ bool TryTerrainNormalToWorld(const Transform& transform, const math::Vector3& lo
 }
 
 static bool TrySampleHeightfieldWorld(const TerrainComponent& terrain, const Transform& transform,
-    float worldX, float worldZ, TerrainSurfaceSample& out)
+    float worldX, float worldZ, TerrainSurfaceSample& out, std::span<const TerrainHeightOverride> overrides)
 {
     const auto scale = transform.worldScale;
     const double rotationLength = transform.worldRotation.Length();
@@ -103,6 +103,13 @@ static bool TrySampleHeightfieldWorld(const TerrainComponent& terrain, const Tra
     const auto availableCell = [&](int x, int z) {
         return x >= 0 && z >= 0 && x < terrain.columns - 1 && z < terrain.rows - 1 && !terrain.IsHoleCell(x, z);
     };
+    const auto height = [&](int x, int z) {
+        const auto index = static_cast<std::size_t>(z) * columns + x;
+        if (overrides.empty()) return terrain.heightData[index] * terrain.maxHeight;
+        const auto edit = std::lower_bound(overrides.begin(), overrides.end(), index,
+            [](const auto& value, std::size_t target) { return value.index < target; });
+        return (edit != overrides.end() && edit->index == index ? edit->normalizedHeight : terrain.heightData[index]) * terrain.maxHeight;
+    };
     if (direction.x == 0 && direction.z == 0) {
         if (origin.x < 0 || origin.z < 0 || origin.x > width || origin.z > depth) return false;
         const int x = cellAt(origin.x, terrain.columns - 1), z = cellAt(origin.z, terrain.rows - 1);
@@ -111,7 +118,21 @@ static bool TrySampleHeightfieldWorld(const TerrainComponent& terrain, const Tra
         if (edge(origin.z)) present |= availableCell(x, z - 1);
         if (edge(origin.x) && edge(origin.z)) present |= availableCell(x - 1, z - 1);
         if (!present) return false;
-        const math::Vector3 local{origin.x, terrain.GetHeightAt(origin.x, origin.z), origin.z};
+        float localHeight;
+        if (overrides.empty()) {
+            localHeight = terrain.GetHeightAt(origin.x, origin.z);
+        } else {
+            const float fx = origin.x / terrain.cellSize - static_cast<float>(x);
+            const float fz = origin.z / terrain.cellSize - static_cast<float>(z);
+            const float h10 = height(x + 1, z), h01 = height(x, z + 1);
+            if (fx + fz <= 1.0f) {
+                const float h00 = height(x, z);
+                localHeight = h00 + fx * (h10 - h00) + fz * (h01 - h00);
+            } else {
+                localHeight = h10 * (1.0f - fz) + h01 * (1.0f - fx) + height(x + 1, z + 1) * (fx + fz - 1.0f);
+            }
+        }
+        const math::Vector3 local{origin.x, localHeight, origin.z};
         const auto world = transform.worldPosition + transform.worldRotation * math::Vector3{
             local.x * scale.x, local.y * scale.y, local.z * scale.z};
         return Finish(terrain, transform, local, worldX, worldZ, world.y, out);
@@ -142,8 +163,7 @@ static bool TrySampleHeightfieldWorld(const TerrainComponent& terrain, const Tra
         const auto visit = [&](int cellX, int cellZ) {
             if (!availableCell(cellX, cellZ)) return;
             const auto vertex = [&](int vx, int vz) {
-                return math::Vector3{vx * terrain.cellSize,
-                    terrain.heightData[static_cast<std::size_t>(vz) * columns + vx] * terrain.maxHeight, vz * terrain.cellSize};
+                return math::Vector3{vx * terrain.cellSize, height(vx, vz), vz * terrain.cellSize};
             };
             const auto v00 = vertex(cellX, cellZ), v10 = vertex(cellX + 1, cellZ);
             const auto v01 = vertex(cellX, cellZ + 1), v11 = vertex(cellX + 1, cellZ + 1);
@@ -422,7 +442,8 @@ SurfacePreparation PrepareSurface(PreparedSurfaceEntry& entry, const TerrainComp
     return SurfacePreparation::PREPARED;
 }
 bool SampleSurface(const TerrainComponent& terrain, const Transform& transform, const math::Vector3& reference,
-    float maxDistance, SurfaceSelection selection, TerrainSurfaceSample& out)
+    float maxDistance, SurfaceSelection selection, TerrainSurfaceSample& out,
+    std::span<const TerrainHeightOverride> overrides = {})
 {
     FBZZ_PROFILE_SCOPE("TerrainSurfaceQuery::SampleSurface");
     math::Vector3 normal;
@@ -447,7 +468,7 @@ bool SampleSurface(const TerrainComponent& terrain, const Transform& transform, 
         const auto localUp = transform.worldRotation.Inverse() * math::Vector3::UP;
         if (selection == SurfaceSelection::TOP || (localUp.x == 0 && localUp.z == 0)) {
             TerrainSurfaceSample heightfield;
-            if (TrySampleHeightfieldWorld(terrain, transform, reference.x, reference.z, heightfield)) accept(heightfield);
+            if (TrySampleHeightfieldWorld(terrain, transform, reference.x, reference.z, heightfield, overrides)) accept(heightfield);
         } else if (terrain.columns >= 2 && terrain.rows >= 2 && std::isfinite(terrain.cellSize) && terrain.cellSize > 0
             && std::isfinite(terrain.maxHeight) && terrain.heightData.size() == terrain.VertexCount()
             && (terrain.holeData.empty() || terrain.holeData.size() == terrain.CellCount())) {
@@ -524,6 +545,11 @@ bool TrySampleTerrainWorld(const TerrainComponent& terrain, const Transform& tra
     float worldX, float worldZ, TerrainSurfaceSample& out)
 {
     return SampleSurface(terrain, transform, {worldX, 0, worldZ}, 0, SurfaceSelection::TOP, out);
+}
+bool TrySampleTerrainWorld(const TerrainComponent& terrain, const Transform& transform,
+    float worldX, float worldZ, TerrainSurfaceSample& out, std::span<const TerrainHeightOverride> overrides)
+{
+    return SampleSurface(terrain, transform, {worldX, 0, worldZ}, 0, SurfaceSelection::TOP, out, overrides);
 }
 bool TrySampleTerrainFloorWorld(const TerrainComponent& terrain, const Transform& transform,
     const math::Vector3& reference, float maxDistance, TerrainSurfaceSample& out)

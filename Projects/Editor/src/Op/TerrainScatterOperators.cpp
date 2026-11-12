@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #include "Tools/TerrainScatter.hpp"
+#include "Tools/TerrainAuthoring.hpp"
 #include "Tools/TerrainPaintEditing.hpp"
 #include "Tools/TerrainPaintMix.hpp"
 #include "Tools/TerrainInstanceEditing.hpp"
@@ -11,6 +12,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/PlayModeController.hpp>
+#include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -29,6 +31,7 @@
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
+#include <Engine/Scene/TerrainHeightMapLoader.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/TomlReflector.hpp>
@@ -44,6 +47,21 @@
 #include <unordered_set>
 
 namespace fbzz::editor {
+
+bool LoadTerrainScatterDensityMap(const std::string& projectRoot, const std::string& reference,
+    const scene::TerrainComponent& terrain, TerrainMapRaster& out)
+{
+    if (reference.empty()) return false;
+    auto path = asset::AssetManager::ResolveAssetPath(reference);
+    if (path.empty()) path = ToProjectAssetDiskPath(projectRoot, reference);
+    scene::TerrainComponent image;
+    image.columns = std::clamp(terrain.columns, 2, 513);
+    image.rows = std::clamp(terrain.rows, 2, 513);
+    if (!scene::LoadHeightMapFromFile(path, image, true)) return false;
+    out = {image.columns, image.rows, std::move(image.heightData)};
+    return true;
+}
+
 namespace terrain_scatter_operators {
 OpParam Parameter(const char* name, OpParamType type, OpValue fallback, const char* description)
 {
@@ -367,6 +385,10 @@ OpResult Scatter(OpContext& context, const OpArgs& args)
         return OpResult::Err("NO_TEMPLATE", "有効な .terrainpaint / .meshinstances または旧配置素材を指定してください。");
     TerrainScatterSettings settings;
     if (!ReadSettings(args, settings)) return OpResult::Err("BAD_ARG", "seed または maxInstances が範囲外です。");
+    TerrainMapRaster densityMap;
+    const auto densityPath = args.GetString("densityMap");
+    if (!erase && !densityPath.empty() && !LoadTerrainScatterDensityMap(ctx.projectRoot, densityPath, *terrain, densityMap))
+        return OpResult::Err("DENSITY_MAP_LOAD_FAILED", "Could not read the placement density map.");
     std::vector<renderer::InstancePlacement> placements;
     if (stroke && !previousReference.empty()) {
         const auto snapshot = previous->Snapshot();
@@ -379,7 +401,7 @@ OpResult Scatter(OpContext& context, const OpArgs& args)
     std::string reason;
     scene::FlushWorldTransforms(*ctx.activeScene);
     if (!BuildTerrainScatter(*terrain, terrainNode->transform, targetNode->transform, settings, placements, reason,
-            stroke ? &brush : nullptr))
+            stroke ? &brush : nullptr, {}, nullptr, {}, densityMap.pixels.empty() ? nullptr : &densityMap))
         return OpResult::Err("INVALID_SCATTER", reason);
     if (stroke && oldCount == placements.size()) return PublishStroke(ctx, {}, 0, 0, erase);
     ScatterChange change;
@@ -883,6 +905,8 @@ void RegisterTerrainScatterOperators(OperatorRegistry& registry)
         parameter.desc = "world XYZ の円の中心列 (1〜512 点)。";
     }
     paint.exec = PaintPalette;
+    op.params.push_back(Parameter("densityMap", OpParamType::String, std::string{},
+        "Optional linear image over the target terrain's local XZ. Black rejects and white keeps the original density."));
 
     EditorOperator palette;
     palette.id = "terrain.select_paint_palette";
