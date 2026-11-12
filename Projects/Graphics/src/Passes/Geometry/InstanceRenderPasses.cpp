@@ -92,6 +92,7 @@ struct InstanceResources {
     uint64_t windStamp = UINT64_MAX;
     float windTime = 0.0f, previousWindTime = 0.0f;
     std::set<std::array<uint32_t,2>> warnedCustom;
+    std::map<std::array<uint32_t,2>,ResourceHandle<ShaderTag>> customForwardShaders;
 };
 InstanceResources& Resources(ResourceManager& manager)
 {
@@ -622,6 +623,24 @@ struct InstanceSubmission {
     ResourceHandle<ConstantBufferTag> lightFrame;
     bool countStatistics;
 };
+ResourceHandle<ShaderTag> ForwardInstanceShader(ResourceManager& resources, InstanceResources& cache,
+    const RenderMaterial& material)
+{
+    if (material.shaderCapabilities.SupportsGBuffer()) return cache.shaders[1];
+    if (!material.shaderCapabilities.SupportsResidentForward()
+        || material.capabilities.blend != BlendMode::OPAQUE_BLEND) return {};
+    const auto* source = resources.Get(material.shader);
+    if (!source || !source->GetPath().ends_with(".hlsl")) return {};
+    const std::array key{material.shader.id, material.shader.gen};
+    const auto [entry, inserted] = cache.customForwardShaders.try_emplace(key);
+    if (inserted) {
+        std::string path = source->GetPath();
+        path.insert(path.find_last_of('.'), ".Resident");
+        entry->second = resources.LoadShader(path);
+    }
+    return entry->second;
+}
+
 void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& input,InstanceSource& source,
     const InstanceView& view,const InstanceSetSelection* selection,OcclusionCuller* occlusion)
 {
@@ -726,8 +745,6 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         if ((pass == InstancePass::FORWARD || pass == InstancePass::GBUFFER)
             && material.capabilities.blend != BlendMode::OPAQUE_BLEND) continue;
         const bool standard=material.shaderCapabilities.SupportsGBuffer();
-        if (forwardPass && !standard && cache.warnedCustom.insert({material.shader.id,material.shader.gen}).second)
-            FBZZ_LOG_WARN("Instance rendering: custom shader uses individual CPU draws to preserve its vertex/material contract");
         if (pass==InstancePass::GBUFFER && !standard) continue;
         if (forwardPass && ctx.isDeferred && standard) continue;
         if (!gpu && visible[part.lod].empty()) continue;
@@ -748,6 +765,13 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : UsesAlphaShadow(material) ? 3u : 2u;
         draw.shader=cache.shaders[shader];
         if (forwardPass) {
+            draw.shader = ForwardInstanceShader(ctx.resources, cache, material);
+            if (!standard && !ctx.resources.Get(draw.shader)
+                && cache.warnedCustom.insert({material.shader.id,material.shader.gen}).second) {
+                const auto* sourceShader = ctx.resources.Get(material.shader);
+                FBZZ_LOG_WARN("Instance rendering: individual forward draws for %s",
+                    sourceShader ? sourceShader->GetPath().c_str() : "unavailable shader");
+            }
             draw.constantBuffers[2]=material.paramsBuffer; draw.constantBuffers[3]=ctx.handles.lightCB; draw.constantBuffers[4]=ctx.handles.shadowCB;
             BindForwardShadingResources(draw,ctx); draw.textures[8]=ctx.resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
             draw.textures[16]=ctx.handles.iblIrradiance; draw.textures[17]=ctx.handles.iblPrefilter; draw.textures[18]=ctx.handles.iblBrdfLut;
@@ -759,12 +783,16 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         }
         if (pass==InstancePass::VELOCITY) draw.textures[7]=ctx.resources.GetDepthTexture(ctx.Res().Target("HDR"));
         const bool instanced=ctx.resources.Get(source.gpu) && ctx.resources.Get(draw.shader)
-            && (gpu || ctx.resources.Get(cpuIds[part.lod])) && (!forwardPass || standard);
+            && (gpu || ctx.resources.Get(cpuIds[part.lod]));
         if (instanced) {
             draw.instanceBuffer=source.gpu; draw.vsBuffers[0]=gpu ? selection->ids : cpuIds[part.lod];
             draw.instanceCount=gpu ? view.counts[0] : static_cast<uint32_t>(visible[part.lod].size());
             if (gpu) { draw.indirectArguments=selection->arguments; draw.indirectArgumentOffset=(selection->firstArgument+partIndex)*sizeof(GpuGeometryIndexedArguments); draw.indirectInstanceOffset=true; }
-            if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw); else SubmitCounted(ctx,draw);
+            if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw);
+            else if (forwardPass && !standard) {
+                FBZZ_PROFILE_SCOPE("InstanceDraw::CustomResidentForward");
+                SubmitCounted(ctx,draw);
+            } else SubmitCounted(ctx,draw);
         } else {
             draw.shader=pass==InstancePass::GBUFFER ? ctx.handles.gbufferShader : forwardPass ? material.shader
                 : pass==InstancePass::VELOCITY ? cache.shaders[9] : pass==InstancePass::SHADOW ? (UsesAlphaShadow(material) ? cache.shaders[7] : ctx.handles.shadowShader) : cache.shaders[8];
@@ -905,7 +933,14 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         }
         bool residentShaders=true;
         for (const auto& part : input.parts) {
-            const size_t shader=pass==InstancePass::GBUFFER ? 0u : forwardPass ? 1u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : UsesAlphaShadow(part.mesh.material) ? 3u : 2u;
+            const auto& material = part.mesh.material;
+            if (forwardPass) {
+                if (pass == InstancePass::FORWARD && (material.capabilities.blend != BlendMode::OPAQUE_BLEND
+                    || (ctx.isDeferred && material.shaderCapabilities.SupportsGBuffer()))) continue;
+                residentShaders = residentShaders && ctx.resources.Get(ForwardInstanceShader(ctx.resources, cache, material));
+                continue;
+            }
+            const size_t shader=pass==InstancePass::GBUFFER ? 0u : pass==InstancePass::SELECTION ? 4u : pass==InstancePass::VELOCITY ? 5u : UsesAlphaShadow(material) ? 3u : 2u;
             residentShaders=residentShaders && ctx.resources.Get(cache.shaders[shader]);
         }
         VegetationCandidates vegetation;

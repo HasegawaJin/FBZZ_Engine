@@ -10,7 +10,7 @@ namespace fbzz::renderer {
 enum class ShaderVertexContract : uint8_t { UNKNOWN, STANDARD_SURFACE, STANDARD_SKINNED, WATER_SURFACE, FIBER_SHELL, FIBER_FIN, FIBER_BLADE };
 enum class ShaderSurfaceContract : uint8_t { UNKNOWN, STANDARD_PBR, LAMBERT, UNLIT, WATER, TERRAIN };
 enum class ShaderOpacityContract : uint8_t { UNKNOWN, OPAQUE_OUTPUT, ALPHA_CLIP };
-enum class ShaderVariantSet : uint8_t { NONE, STANDARD_SURFACE, STANDARD_SKINNED, FIBER_BLADE_INSTANCED };
+enum class ShaderVariantSet : uint8_t { NONE, STANDARD_SURFACE, STANDARD_SKINNED, FIBER_BLADE_INSTANCED, RESIDENT_FORWARD };
 enum class ShaderPreviewKind : uint8_t {
     UNKNOWN, SURFACE, SKINNED, WATER, TERRAIN, UI, PARTICLE, TRAIL, DECAL,
     POST_PROCESS, MESH_TRAIL, GPU_PARTICLE, FIBER_SHELL, FIBER_FIN, FIBER_BLADE
@@ -47,6 +47,12 @@ struct ShaderCapabilities {
     [[nodiscard]] constexpr bool SupportsInstancedFiberBlade() const
     {
         return vertex == ShaderVertexContract::FIBER_BLADE && variants == ShaderVariantSet::FIBER_BLADE_INSTANCED;
+    }
+    /// @note A companion shader reads the shared resident rows and evaluates the original forward material.
+    [[nodiscard]] constexpr bool SupportsResidentForward() const
+    {
+        return vertex == ShaderVertexContract::STANDARD_SURFACE && opacity != ShaderOpacityContract::UNKNOWN
+            && variants == ShaderVariantSet::RESIDENT_FORWARD;
     }
     /// @note 標準の変形・UV・alpha clip を共有する static / instanced / skinned GBuffer 変種の組を要求する。
     [[nodiscard]] constexpr bool HasStandardVariants() const

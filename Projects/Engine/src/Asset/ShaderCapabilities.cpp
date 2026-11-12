@@ -126,9 +126,10 @@ renderer::ShaderCapabilities ReadCapabilities(const std::string& path)
     if (variants == "standard_surface_v1") result.variants = ShaderVariantSet::STANDARD_SURFACE;
     else if (variants == "standard_skinned_v1") result.variants = ShaderVariantSet::STANDARD_SKINNED;
     else if (variants == "fiber_blade_instanced_v1") result.variants = ShaderVariantSet::FIBER_BLADE_INSTANCED;
+    else if (variants == "resident_forward_v1") result.variants = ShaderVariantSet::RESIDENT_FORWARD;
     else if (variants != "none") return {};
     if (result.variants != ShaderVariantSet::NONE && !result.HasStandardVariants()
-        && !result.SupportsInstancedFiberBlade()) return {};
+        && !result.SupportsInstancedFiberBlade() && !result.SupportsResidentForward()) return {};
     const std::string preview = table["preview"].value_or(std::string{});
     if (preview.empty()) {
         if (result.surface == ShaderSurfaceContract::WATER) result.preview = ShaderPreviewKind::WATER;
