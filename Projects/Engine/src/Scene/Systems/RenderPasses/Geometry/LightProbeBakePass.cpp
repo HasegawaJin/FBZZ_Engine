@@ -137,16 +137,28 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
     for (auto& go : ctx.scene.GameObjects()) {
         auto* volume = go.GetComponent<LightProbeVolumeComponent>();
         if (!volume || !volume->enabled || !go.activeInHierarchy() || !canBake) continue;
+        const math::Vector3 boxMin = BoxMin(go, *volume);
+        const math::Vector3 boxSize = BoxSize(*volume);
+        const float distanceSq = DistanceSqToBox(ctx.camera.m_position, boxMin, boxSize);
+        const float maxBakeDistance = volume->maxBakeDistance;
+        const bool boxChanged = (boxMin - volume->runtimeBoxMin).LengthSq() > 1.0e-6f
+            || (boxSize - volume->runtimeBoxSize).LengthSq() > 1.0e-6f;
+        const bool canCapture = volume->bakeRequested || volume->runtimeForceBake || !(maxBakeDistance > 0.0f)
+            || distanceSq <= maxBakeDistance * maxBakeDistance;
+        if (!canCapture) {
+            if (volume->runtimeReady && !boxChanged && volume->runtimeGrid == volume->ClampedGrid()
+                && resources.Get(volume->runtimeVolume) && resources.Get(volume->runtimeVisibility))
+                ready.push_back({{&go, volume}, distanceSq, boxSize.x * boxSize.y * boxSize.z});
+            continue;
+        }
         if (!EnsureRuntime(resources, *volume)) continue;
         if (volume->bakeRequested) {
             volume->bakeRequested = false;
+            volume->runtimeForceBake = true;
             RestartBake(*volume);
         }
         /// @note 箱が動いた・大きさが変わった・焼きの設定が変わったら焼き直す。古い結果は焼き上がるまで使う。
-        const math::Vector3 boxMin = BoxMin(go, *volume);
-        const math::Vector3 boxSize = BoxSize(*volume);
-        if ((boxMin - volume->runtimeBoxMin).LengthSq() > 1.0e-6f
-            || (boxSize - volume->runtimeBoxSize).LengthSq() > 1.0e-6f) {
+        if (boxChanged) {
             volume->runtimeBoxMin = boxMin;
             volume->runtimeBoxSize = boxSize;
             RestartBake(*volume);
@@ -204,13 +216,14 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
                 if (volume->runtimePass >= std::clamp(volume->bounces, 1, 8)) {
                     /// @note 常時更新は «前回の結果を受けて焼く» を回し続ける。反射の回数は収束した値に落ち着く。
                     volume->runtimeBaking = volume->realtimeUpdate;
+                    volume->runtimeForceBake = false;
                     volume->runtimePass = std::clamp(volume->bounces, 1, 8);
                 }
             }
         }
 
         if (!volume->runtimeReady) continue;
-        ready.push_back({ { &go, volume }, DistanceSqToBox(ctx.camera.m_position, boxMin, boxSize),
+        ready.push_back({ { &go, volume }, distanceSq,
                           boxSize.x * boxSize.y * boxSize.z });
     }
 

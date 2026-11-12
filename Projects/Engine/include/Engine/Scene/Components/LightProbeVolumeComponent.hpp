@@ -34,6 +34,7 @@ struct LightProbeVolumeComponentGpuState {
     int      runtimeCursor    = 0;         ///< @note 次に焼くプローブの通し番号
     int      runtimePass      = 0;         ///< @note 何回目の焼き (0 始まり)
     bool     runtimeBaking    = false;
+    bool     runtimeForceBake = false; ///< @note 明示要求は距離制限の外でも全バウンスを完了する。
     bool     runtimeReady     = false;     ///< @note 1 回目の焼きが全プローブ終わったか (それまでは描画に使わない)
     /// @}
 
@@ -53,6 +54,7 @@ struct LightProbeVolumeComponent : TransientGpuState<LightProbeVolumeComponentGp
     bool          rejectInsideGeometry = true; ///< @note 形状の中に埋まったプローブを捨て、周りの値で埋める (壁際の黒いにじみ対策)
     int           captureResolution = 32;  ///< @note プローブ 1 面の解像度 [px]。拡散は低周波なので 32 で足りる
     int           probesPerFrame  = 8;     ///< @note 1 フレームに焼くプローブ数。1 プローブ = 6 面ぶんのシーン描画
+    float         maxBakeDistance = 0.0f;  ///< @note ビューから箱までの距離 [m]。0 で無制限。既に焼いた間接光は使い続ける。
     int           bounces         = 2;     ///< @note 焼く回数。2 回目以降は前回の結果を受けた面を描くので多重反射になる
     bool          realtimeUpdate  = false; ///< @note 焼き終えたら最初から焼き直し続ける (昼夜や動く光源に追従)
     bool          bakeRequested   = false; ///< @note Inspector / Script が立てる。次フレームから焼き直す
@@ -84,6 +86,7 @@ struct LightProbeVolumeComponent : TransientGpuState<LightProbeVolumeComponentGp
         r.Field("rejectInsideGeometry", rejectInsideGeometry);
         r.Field("captureResolution", captureResolution);
         r.Field("probesPerFrame",    probesPerFrame);
+        r.FloatRange("maxBakeDistance", maxBakeDistance, 0.0f, 10000.0f);
         r.Field("bounces",           bounces);
         r.Field("realtimeUpdate",    realtimeUpdate);
     }
