@@ -4,6 +4,8 @@
 <!-- @date    2026-10-11 -->
 # C# で拡張する行動判断
 
+Scene のネイティブ `BehaviorTreeComponent` は `farTickDistance` と `farTickRate` で距離による評価間隔を設定できる。すべての有効なカメラが指定距離より遠いときに間隔を延ばす。設定距離が 0、カメラがない、または近距離のカメラがある場合は `tickRate` を使う。Blackboard・知覚の変化と明示的な評価要求は、どの距離でも次の更新で処理する。
+
 `Fbzz.AI` の `BehaviorTree` は共有する定義、`BehaviorTreeInstance` は個体ごとの実行状態を持つ。C# 作者は Engine の C++ を変更せず、条件・行動・優先順位・待機・ターゲット・移動戦略を変更できる。群れの近傍検索、連続 steering、3D habitat の安全制約、Transform のバッチ確定などの大量処理は native の共通サービスへ委ねる。
 
 この API は純 managed の companion である。既存の `BehaviorTreeAsset` / `BehaviorTreeEvaluator` のネイティブ実行を置換せず、既存 asset の読み込みや C# delegate の native BT ノード登録を提供しない。C# の判断から native swarm の意図・ターゲット・パラメータを変更する接続点として使える。BT 自身の Tick は native 呼び出しを行わない。

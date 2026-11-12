@@ -12,6 +12,7 @@
 #include "Engine/Scene/Components/AnimatorComponent.hpp"
 #include "Engine/Scene/Components/AudioSourceComponent.hpp"
 #include "Engine/Scene/Components/BehaviorTreeComponent.hpp"
+#include "Engine/Scene/Components/CameraComponent.hpp"
 #include "Engine/Scene/Components/NavMeshAgentComponent.hpp"
 #include "Engine/Scene/Components/NavMeshPatrolComponent.hpp"
 #include "Engine/Scene/Components/NavMeshSensorComponent.hpp"
@@ -373,7 +374,7 @@ void PopulateReservedKeys(Scene& scene, EntityID eid, GameObject& self,
 ComponentAccess BehaviorTreeSystem::GetAccess() const
 {
     return ComponentAccess{}
-        .Reads<NavMeshSensorComponent>()
+        .Reads<NavMeshSensorComponent, CameraComponent>()
         .Writes<BehaviorTreeComponent, NavMeshAgentComponent, NavMeshPatrolComponent,
                 AnimatorComponent, AudioSourceComponent, Transform>();
 }
@@ -390,6 +391,7 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
     SceneActionHandler actions(scene, ctx.world);
+    bool collectedCameras = false;
 
     for (EntityID eid : scene.GetEntities<BehaviorTreeComponent>()) {
         auto* bt = scene.GetComponent<BehaviorTreeComponent>(eid);
@@ -407,6 +409,27 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
         };
         if (!go->activeInHierarchy() || !bt->enabled) {
             abort(); bt->tickElapsed = 0; continue;
+        }
+
+        float tickRate = bt->tickRate;
+        if (std::isfinite(bt->farTickDistance) && bt->farTickDistance > 0.0f
+            && std::isfinite(bt->farTickRate) && bt->farTickRate > tickRate) {
+            if (!collectedCameras) {
+                m_cameraPositions.clear();
+                for (EntityID cameraID : scene.GetEntities<CameraComponent>()) {
+                    const auto* camera = scene.GetComponent<CameraComponent>(cameraID);
+                    const auto* owner = scene.GetGameObject(cameraID);
+                    if (camera && camera->enabled && owner && owner->activeInHierarchy())
+                        m_cameraPositions.push_back(owner->transform.worldPosition);
+                }
+                collectedCameras = true;
+            }
+            const float farDistanceSquared = bt->farTickDistance * bt->farTickDistance;
+            const auto isFar = [&](const math::Vector3& cameraPosition) {
+                return (cameraPosition - go->transform.worldPosition).LengthSq() > farDistanceSquared;
+            };
+            if (!m_cameraPositions.empty() && std::all_of(m_cameraPositions.begin(), m_cameraPositions.end(), isFar))
+                tickRate = bt->farTickRate;
         }
 
         /// @name ロード / 再ロード
@@ -434,7 +457,7 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
                 /// @note 黄金比の小数部 (低食い違い列) を使う。index % N は連番スポーンで
                 /// @note 同じ剰余に落ち、同一フレームに集中するため。
                 const float phase = std::fmod(static_cast<float>(eid.index) * 0.6180339887f, 1.0f);
-                bt->tickTimer = bt->tickRate * phase;
+                bt->tickTimer = tickRate * phase;
             } else {
                 bt->state.Clear();
                 bt->lastNodeStatus.clear();
@@ -465,14 +488,14 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
         }
         const bool wake = bt->evaluationRequested || sensorWake
             || bt->blackboard.GetRevision() != bt->evaluatedRevision;
-        if (bt->tickRate > 0.0f) {
-            bt->tickTimer -= ctx.dt;
+        if (tickRate > 0.0f) {
+            bt->tickTimer = (std::min)(bt->tickTimer, tickRate) - ctx.dt;
             if (bt->tickTimer > 0.0f && !wake) continue;
 
             /// @note 実際に経過した時間を木へ渡す。1 フレーム分の dt を渡すと、
             /// @note tickRate 間隔で呼ばれる Wait/Cooldown の待ち時間が tickRate/dt 倍に伸びる。
             /// @note Wake preserves the regular deadline; overdue work runs once without a catch-up burst.
-            if (bt->tickTimer <= 0.0f) bt->tickTimer = bt->tickRate;
+            if (bt->tickTimer <= 0.0f) bt->tickTimer = tickRate;
         }
 
         const float tickDt = bt->tickElapsed;

@@ -27,6 +27,8 @@ struct BehaviorTreeComponent {
     ///
     /// @note 既定 0.1 秒。人間の反応速度 (~200ms) に対し知覚上問題ない間引き。位相は個体ごとにずらす。
     float tickRate    = 0.1f;
+    float farTickDistance = 0.0f; ///< @note すべての有効カメラからこの距離 [m] より遠い場合に適用する。0 で無効。
+    float farTickRate = 0.5f; ///< @note 遠景での最小評価間隔 [s]。知覚・Blackboard の変更による wake は優先する。
     bool  startPaused = false;
     /// @}
 
@@ -71,6 +73,8 @@ struct BehaviorTreeComponent {
                   "個体ごとに位相をずらすため、同時スポーンでも評価が集中しません。");
         r.EndField();
 
+        r.FloatRange("farTickDistance", farTickDistance, 0.0f, 10000.0f);
+        r.FloatRange("farTickRate", farTickRate, 0.0f, 10.0f);
         r.Field("startPaused", startPaused);
     }
 

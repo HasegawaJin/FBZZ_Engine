@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include <Engine/Scene/Components/BehaviorTreeComponent.hpp>
+#include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <TestKit/TestKit.hpp>
@@ -83,5 +84,31 @@ TEST_F(BehaviorTreeSystemTest, ChangedBlackboardWakesEarlyWithActualElapsedWaitT
     ASSERT_TRUE(bt->blackboard.SetFloat(ai::bb::Health01, 0.4f));
     behavior.Update(ctx); EXPECT_EQ(bt->tickCount, 3U); EXPECT_EQ(bt->lastRootStatus, ai::BTStatus::Success);
     EXPECT_FLOAT_EQ(bt->elapsedTime, 0.4f);
+}
+
+TEST_F(BehaviorTreeSystemTest, FarTickIntervalYieldsToWakeAndToAnyNearbyCamera)
+{
+    auto& object = scene.CreateGameObject("Agent");
+    ASSERT_TRUE(Attach(object, ai::BTNodeType::Wait));
+    auto& camera = scene.CreateGameObject("Far camera");
+    camera.AddComponent<scene::CameraComponent>();
+    camera.transform.worldPosition = {100.0f, 0.0f, 0.0f};
+    auto* bt = object.GetComponent<scene::BehaviorTreeComponent>();
+    bt->tickRate = 0.25f;
+    bt->farTickRate = 1.0f;
+    bt->farTickDistance = 10.0f;
+    auto ctx = Context(0.25f);
+    behavior.Update(ctx);
+    ASSERT_EQ(bt->tickCount, 1u);
+    behavior.Update(ctx);
+    EXPECT_EQ(bt->tickCount, 1u);
+    bt->RequestEvaluation();
+    behavior.Update(ctx);
+    EXPECT_EQ(bt->tickCount, 2u);
+
+    scene.CreateGameObject("Near camera").AddComponent<scene::CameraComponent>();
+    behavior.Update(ctx);
+    EXPECT_EQ(bt->tickCount, 3u);
+    EXPECT_FLOAT_EQ(bt->elapsedTime, 1.0f);
 }
 }

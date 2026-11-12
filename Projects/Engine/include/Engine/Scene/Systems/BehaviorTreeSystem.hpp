@@ -10,6 +10,8 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include "Engine/Core/Scheduler/ISystem.hpp"
+#include <Math/Vector3.hpp>
+#include <vector>
 
 namespace fbzz::scene {
 
@@ -21,6 +23,9 @@ public:
     FBZZ_ENGINE_API ComponentAccess  GetAccess()  const override;
     FBZZ_ENGINE_API OrderingHints    GetOrder()   const override;
     FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
+
+private:
+    std::vector<math::Vector3> m_cameraPositions;
 };
 
 } /// @note namespace fbzz::scene
