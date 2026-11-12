@@ -204,20 +204,82 @@ OpResult ValidateRetainedPlacements(const PcgPlan& plan)
     return OpResult::Ok();
 }
 
-OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
+void DescribePcgBounds(OpData& data, const scene::WorldPcgProfile& profile)
 {
+    data.Set("boundsMin", profile.bounds.min);
+    data.Set("boundsMax", profile.bounds.max);
+    auto exclusions = OpData::MakeArray();
+    for (const auto& box : profile.exclusions) {
+        auto item = OpData::MakeObject();
+        item.Set("min", box.min); item.Set("max", box.max);
+        exclusions.Push(std::move(item));
+    }
+    data.Set("exclusions", std::move(exclusions));
+}
+
+OpResult LivePreviewBudgetExceeded()
+{
+    return OpResult::Err("PCG_LIVE_BUDGET", "Narrow the update region or use Preview for the full calculation.");
+}
+
+bool FitsLiveCandidateBudget(const scene::WorldPcgProfile& profile)
+{
+    constexpr double MAX_LIVE_CANDIDATES = 65536.0;
+    double total = 0.0;
+    for (const auto& rule : profile.rules) {
+        const double margin = static_cast<double>(rule.embedDepth) + rule.embedJitter;
+        const auto count = [&](float low, float high) {
+            /// @note The extra lattice cell covers a region offset from a grid boundary.
+            return std::ceil((static_cast<double>(high) - low + 2.0 * margin) / rule.spacing) + 1.0;
+        };
+        total += count(profile.bounds.min.x, profile.bounds.max.x) * count(profile.bounds.min.z, profile.bounds.max.z);
+        if (total > MAX_LIVE_CANDIDATES) return false;
+    }
+    return true;
+}
+
+OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool preview = false)
+{
+    const int maxPoints = args.GetInt("maxPoints", 256);
+    const int maxRejected = args.GetInt("maxRejectedPoints", 0);
+    if (maxPoints < 0 || maxPoints > 1024 || maxRejected < 0 || maxRejected > static_cast<int>(scene::MAX_WORLD_PCG_DEBUG_SAMPLES))
+        return OpResult::Err("BAD_ARG", "Preview point limits must be 0..1024");
     auto& ctx=context.ctx;if(!Editable(ctx))return OpResult::Err("NOT_AVAILABLE","PCG authoring requires the editable scene");
     auto& scene=*ctx.activeScene;plan.volume=scene.FindByGuid(args.GetString("volume"));
-    const auto* volume=plan.volume?plan.volume->GetComponent<scene::WorldPcgVolumeComponent>():nullptr;
-    if(!volume||!volume->enabled)return OpResult::Err("NO_VOLUME","An enabled PCG volume is required");
-    plan.profilePath=ProfilePath(ctx,volume->profilePath,false);
+    const auto* savedVolume=plan.volume?plan.volume->GetComponent<scene::WorldPcgVolumeComponent>():nullptr;
+    if(!savedVolume)return OpResult::Err("NO_VOLUME","An enabled PCG volume is required");
+    const bool live = args.GetBool("live");
+    const bool draft = args.Has("draftProfilePath") || args.Has("draftProfileText") || args.Has("draftSeed")
+        || args.Has("draftBoundsMin") || args.Has("draftBoundsMax") || args.GetBool("draftUseProfileBounds")
+        || args.Has("draftProtectManual") || args.Has("draftEnabled");
+    if (!preview && (draft || live)) return OpResult::Err("BAD_ARG", "Draft and live parameters belong to pcg.preview");
+    auto settings = *savedVolume;
+    if (draft) {
+        if (args.Has("draftBoundsMin") != args.Has("draftBoundsMax")
+            || (args.Has("draftBoundsMin") && args.GetBool("draftUseProfileBounds")))
+            return OpResult::Err("BAD_ARG", "Provide paired draft bounds or choose profile bounds");
+        if (args.Has("draftProfilePath")) settings.profilePath = args.GetString("draftProfilePath");
+        if (args.GetBool("draftUseProfileBounds")) settings.overrideBounds = false;
+        if (args.Has("draftBoundsMin")) {
+            settings.overrideBounds = true;
+            settings.boundsMin = args.GetVec3("draftBoundsMin"); settings.boundsMax = args.GetVec3("draftBoundsMax");
+        }
+        if (args.Has("draftSeed")) {
+            const int seed = args.GetInt("draftSeed", -1);
+            if (seed < -1) return OpResult::Err("BAD_ARG", "Draft seed must be -1 or nonnegative");
+            settings.overrideSeed = seed >= 0; settings.seed = seed >= 0 ? seed : 1;
+        }
+        settings.protectManual = args.GetBool("draftProtectManual", settings.protectManual);
+        settings.enabled = args.GetBool("draftEnabled", settings.enabled);
+    }
+    const auto* volume = &settings;
+    if (!volume->enabled) return OpResult::Err("NO_VOLUME", "An enabled PCG volume is required");
+    const bool draftText = args.Has("draftProfileText");
+    plan.profilePath=ProfilePath(ctx,volume->profilePath,draftText);
+    if (draftText) plan.profileText = args.GetString("draftProfileText");
     std::string diagnostic;
-    if(plan.profilePath.empty()||!world_pcg_profile_draft::ReadProfileBytes(plan.profilePath,plan.profileText)
+    if(plan.profilePath.empty()||(!draftText&&!world_pcg_profile_draft::ReadProfileBytes(plan.profilePath,plan.profileText))
         ||!scene::DeserializeWorldPcgProfile(plan.profileText,plan.profile,diagnostic))return OpResult::Err("INVALID_PROFILE",diagnostic.empty()?"PCG profile cannot be read":diagnostic);
-    for(auto& rule:plan.profile.rules)if(rule.parts.empty()){
-        const auto* definition=asset::ResolveMeshInstanceDefinition(rule.prototypeRef);
-        if(!definition)return OpResult::Err("NO_TEMPLATE","Cannot resolve PCG prototype: "+rule.prototypeRef);
-        rule.parts.assign(definition->Parts().begin(),definition->Parts().end());rule.lodHeights.assign(definition->LodHeights().begin(),definition->LodHeights().end());}
     if(volume->overrideBounds)plan.profile.bounds={volume->boundsMin,volume->boundsMax};
     if(volume->overrideSeed){if(volume->seed<0)return OpResult::Err("BAD_ARG","PCG seed must be nonnegative");plan.profile.seed=static_cast<uint64_t>(volume->seed);}
     if(args.Has("boundsMin")!=args.Has("boundsMax"))return OpResult::Err("BAD_ARG","Both boundsMin and boundsMax are required");
@@ -232,6 +294,11 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
     }
     if(partitionOwner){const auto* partition=partitionOwner->GetComponent<scene::WorldPartitionComponent>();plan.profile.grid.origin=partition->gridOrigin;plan.profile.grid.cellSize=partition->cellSize;}
     if(!scene::ValidateWorldPcgProfile(plan.profile,diagnostic))return OpResult::Err("BAD_PROFILE",diagnostic);
+    if (live && !FitsLiveCandidateBudget(plan.profile)) return LivePreviewBudgetExceeded();
+    for(auto& rule:plan.profile.rules)if(rule.parts.empty()){
+        const auto* definition=asset::ResolveMeshInstanceDefinition(rule.prototypeRef);
+        if(!definition)return OpResult::Err("NO_TEMPLATE","Cannot resolve PCG prototype: "+rule.prototypeRef);
+        rule.parts.assign(definition->Parts().begin(),definition->Parts().end());rule.lodHeights.assign(definition->LodHeights().begin(),definition->LodHeights().end());}
     struct Ground {
         const scene::TerrainComponent* data;
         scene::Transform world;
@@ -253,6 +320,7 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
         AddVector(guard,world.worldPosition);AddVector(guard,world.worldScale);AddFloat(guard,world.worldRotation.x);AddFloat(guard,world.worldRotation.y);AddFloat(guard,world.worldRotation.z);AddFloat(guard,world.worldRotation.w);
     }
     if(grounds.empty())return OpResult::Err("NO_TERRAIN","PCG requires authored terrain samples");
+    if (live && grounds.size() > 8) return LivePreviewBudgetExceeded();
     const auto materialIdentity = [](const std::string& reference) {
         auto guid = asset::AssetDatabase::GuidFromRef(reference);
         if (guid.empty()) guid = asset::AssetDatabase::TryGetGuidFromPath(asset::AssetManager::ResolveAssetPath(reference));
@@ -288,12 +356,22 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
                 ||!std::isfinite(data->density)||data->density<0||data->density>1)return OpResult::Err("BAD_BIOME","Biome volume bounds or density are invalid");
             biomes.push_back({data,owner->instanceId});}}
     std::sort(biomes.begin(),biomes.end(),[](const auto& a,const auto& b){return a.data->priority==b.data->priority?a.id<b.id:a.data->priority>b.data->priority;});
+    if (live && (waters.size() > 8 || biomes.size() > 32)) return LivePreviewBudgetExceeded();
+    std::size_t remainingRows = 65536;
+    const auto spendRows = [&](std::size_t count) {
+        if (!live) return true;
+        if (count > remainingRows) return false;
+        remainingRows -= count;
+        return true;
+    };
     std::vector<math::Vector3> protectedPositions;
     for(auto id:scene.GetEntities<scene::InstancedMeshComponent>()){
         auto* owner=scene.GetGameObject(id);const auto* component=scene.GetComponent<scene::InstancedMeshComponent>(id);
         if(!owner||owner->IsRuntimeGenerated()||!component)continue;const auto* metadata=owner->GetComponent<scene::WorldPcgGeneratedComponent>();
         if(metadata&&metadata->volumeId==plan.volume->instanceId){
             auto* source=PlacementAsset(component->m_instanceSetRef.path);if(!source)return OpResult::Err("MISSING_OUTPUT","Generated placement asset is missing; detach this owner before replacing it");
+            const auto snapshot = source->instances.Snapshot();
+            if (snapshot && !spendRows(snapshot->placements.size())) return LivePreviewBudgetExceeded();
             Owned owned;owned.owner=owner;owned.metadata=*metadata;owned.component=*component;owned.asset=std::make_shared<asset::MeshInstancesAsset>(*source);
             owned.signature=OwnerSignature(*owner,*metadata,*component,*source);AddHash(guard,owner->instanceId);AddHash(guard,owned.signature);AddHash(guard,metadata->signature);AddHash(guard,metadata->manualOverride?1:0);
             const auto& budget = component->m_vegetationBudget;
@@ -306,11 +384,15 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
         }
         if(!volume->protectManual||!owner->activeInHierarchy()||!component->m_enabled)continue;
         const auto snapshot=component->Snapshot();scene::Transform world;if(!snapshot||!ReadWorld(*owner,world))return OpResult::Err("INVALID_PLACEMENT","Manual placement cannot be sampled");
+        if (!spendRows(snapshot->placements.size())) return LivePreviewBudgetExceeded();
         const auto matrix=world.GetWorldMatrix();for(const auto& p:snapshot->placements)if(p.active){const auto v=matrix*math::Vector4{p.position,1};protectedPositions.push_back({v.x,v.y,v.z});}
     }
     if(volume->protectManual)for(auto id:scene.GetEntities<scene::MeshRenderer>()){
         auto* owner=scene.GetGameObject(id);if(!owner||owner->IsRuntimeGenerated()||!owner->activeInHierarchy()||owner->GetComponent<scene::WorldPcgGeneratedComponent>())continue;
-        scene::Transform world;if(ReadWorld(*owner,world))protectedPositions.push_back(world.worldPosition);}
+        scene::Transform world;if(ReadWorld(*owner,world)) {
+            if (!spendRows(1)) return LivePreviewBudgetExceeded();
+            protectedPositions.push_back(world.worldPosition);
+        }}
     for(const auto& point:protectedPositions)AddVector(guard,point);
     float waterMargin = 0.0f, pathMargin = 0.0f;
     bool useWaterLevel = false, usePathBand = false;
@@ -329,6 +411,7 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
     constexpr float WATER_LEVEL_SEARCH_RADIUS = 128.0f;
     const float waterSearch = useWaterLevel ? (std::max)(waterMargin, WATER_LEVEL_SEARCH_RADIUS) : waterMargin;
     std::vector<TerrainPaintClearance> clearances;
+    std::size_t remainingClearanceWork = 131072;
     bool hasPathLayer = false;
     if ((waterSearch > 0 && !waters.empty()) || usePathBand) {
         std::vector<std::pair<const scene::WaterComponent*,const scene::Transform*>> views;for(const auto& water:waters)views.push_back({water.data,&water.world});
@@ -338,8 +421,11 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
             const auto found = ground.materialLayers.find(plan.profile.pathMaterial);
             const auto layers = found == ground.materialLayers.end() ? std::span<const int>{} : std::span<const int>{found->second};
             hasPathLayer |= usePathBand && !layers.empty();
-            clearances.push_back(BuildTerrainPaintClearance(*ground.data, ground.world, region, layers, views,
-                waters.empty() ? 0.0f : waterSearch, !usePathBand || layers.empty() ? 0.0f : (std::max)(0.25f, pathMargin), true));
+            auto clearance = BuildTerrainPaintClearance(*ground.data, ground.world, region, layers, views,
+                waters.empty() ? 0.0f : waterSearch, !usePathBand || layers.empty() ? 0.0f : (std::max)(0.25f, pathMargin),
+                true, live ? &remainingClearanceWork : nullptr);
+            if (clearance.budgetExceeded) return LivePreviewBudgetExceeded();
+            clearances.push_back(std::move(clearance));
         }
     }
     std::vector<scene::WorldPcgMaterialWeight> materialWeights;
@@ -360,7 +446,7 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
     constexpr float CLIFF_NORMAL_Y = 0.64278761f;
     const std::array<math::Vector2, 8> directions{{{1,0},{DIAGONAL,DIAGONAL},{0,1},{-DIAGONAL,DIAGONAL},
         {-1,0},{-DIAGONAL,-DIAGONAL},{0,-1},{DIAGONAL,-DIAGONAL}}};
-    std::size_t remainingProbes = 4'000'000;
+    std::size_t remainingProbes = live ? 262144 : 4'000'000;
     bool habitatBudgetExceeded = false;
     const auto probe = [&](float x, float z, scene::TerrainSurfaceSample& surface) {
         if (remainingProbes < grounds.size()) {
@@ -470,18 +556,25 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
             }
         }
     };
+    scene::WorldPcgDiagnostics samples;
+    samples.maxSamples = static_cast<std::size_t>(maxRejected);
     const bool generated = scene::GenerateWorldPcg(plan.profile, sampler, protectedPositions,
-        plan.generated, diagnostic, sampleHabitat);
-    if (habitatBudgetExceeded) return OpResult::Err("HABITAT_SAMPLE_BUDGET", "Narrow the region or increase placement spacing.");
+        plan.generated, diagnostic, sampleHabitat, maxRejected > 0 ? &samples : nullptr);
+    if (habitatBudgetExceeded) return live ? LivePreviewBudgetExceeded()
+        : OpResult::Err("HABITAT_SAMPLE_BUDGET", "Narrow the region or increase placement spacing.");
     if (!generated) return OpResult::Err("PCG_FAILED",diagnostic);
     if (auto result = ValidateRetainedPlacements(plan); !result.ok) return result;
     AddHash(guard,plan.generated.fingerprint);plan.expected=Hex(guard);
-    auto& summary=plan.summary;summary.Set("schemaVersion",1);summary.Set("volume",plan.volume->instanceId);summary.Set("profile",plan.profilePath);summary.Set("expected",plan.expected);
+    auto& summary=plan.summary;summary.Set("schemaVersion",1);summary.Set("volume",plan.volume->instanceId);summary.Set("profile",plan.profilePath);
+    if (draft) summary.Set("draft", true);
+    else summary.Set("expected",plan.expected);
     summary.Set("partition",partitionOwner?partitionOwner->instanceId:std::string{});
+    summary.Set("profileReference", savedVolume->profilePath);
     summary.Set("candidateCount",static_cast<int64_t>(plan.generated.stats.candidates));summary.Set("instanceCount",static_cast<int64_t>(plan.generated.stats.accepted));
     summary.Set("groupCount",static_cast<int64_t>(plan.generated.groups.size()));summary.Set("fingerprint",plan.generated.fingerprint);
     summary.Set("maxPlacementsPerCell", static_cast<int64_t>(plan.profile.maxPlacementsPerCell));
     summary.Set("placementBudgetCellSize", scene::VEGETATION_BUDGET_CELL_SIZE);
+    DescribePcgBounds(summary, plan.profile);
     summary.Set("waterDistanceAccuracy","authored shoreline segments; 16-step distance bisection within requested clearance");
     auto rejected=OpData::MakeObject();const auto& stats=plan.generated.stats;
     rejected.Set("noSurface",static_cast<int64_t>(stats.noSurface));rejected.Set("biome",static_cast<int64_t>(stats.biomeRejected));rejected.Set("density",static_cast<int64_t>(stats.densityRejected));
@@ -500,10 +593,38 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan)
     rejected.Set("cliff", static_cast<int64_t>(stats.cliffRejected));
     rejected.Set("path", static_cast<int64_t>(stats.pathRejected));
     summary.Set("rejected",std::move(rejected));
-    auto points=OpData::MakeArray();std::set<scene::WorldCellId> cells;
-    const int maxPoints=args.GetInt("maxPoints",256);if(maxPoints<0||maxPoints>1024)return OpResult::Err("BAD_ARG","maxPoints must be 0..1024");
-    size_t emitted=0;for(const auto& group:plan.generated.groups){cells.insert(group.cell);for(const auto& p:group.placements){if(emitted>=static_cast<size_t>(maxPoints))break;
-        auto point=OpData::MakeObject();point.Set("position",p.position+scene::WorldCellOrigin(plan.profile.grid,group.cell));point.Set("rule",group.ruleKey);point.Set("id",static_cast<int64_t>(p.id));points.Push(std::move(point));++emitted;}}
+    auto points = OpData::MakeArray();
+    std::set<scene::WorldCellId> cells;
+    std::map<std::string, int64_t> counts;
+    for (const auto& rule : plan.profile.rules) counts.emplace(rule.key, 0);
+    const auto pointCount = (std::min)(stats.accepted, static_cast<uint64_t>(maxPoints));
+    uint64_t sampled = 0, groupStart = 0;
+    for (const auto& group : plan.generated.groups) {
+        cells.insert(group.cell);
+        counts[group.ruleKey] += static_cast<int64_t>(group.placements.size());
+        const auto groupEnd = groupStart + group.placements.size();
+        while (sampled < pointCount) {
+            const auto index = sampled * stats.accepted / pointCount;
+            if (index >= groupEnd) break;
+            const auto& placement = group.placements[static_cast<std::size_t>(index - groupStart)];
+            auto point = OpData::MakeObject();
+            point.Set("position", placement.position + scene::WorldCellOrigin(plan.profile.grid, group.cell));
+            point.Set("rule", group.ruleKey); point.Set("id", static_cast<int64_t>(placement.id));
+            points.Push(std::move(point));
+            ++sampled;
+        }
+        groupStart = groupEnd;
+    }
+    auto ruleCounts = OpData::MakeObject();
+    for (const auto& [rule, count] : counts) ruleCounts.Set(rule, count);
+    summary.Set("ruleCounts", std::move(ruleCounts));
+    auto rejectedPoints = OpData::MakeArray();
+    for (const auto& site : samples.rejected) {
+        auto point = OpData::MakeObject();
+        point.Set("position", site.position); point.Set("rule", site.ruleKey); point.Set("reason", std::string(site.reason));
+        rejectedPoints.Push(std::move(point));
+    }
+    summary.Set("rejectedPoints", std::move(rejectedPoints));
     summary.Set("cellCount",static_cast<int64_t>(cells.size()));summary.Set("points",std::move(points));summary.Set("applied",false);return OpResult::Ok();
 }
 
@@ -685,7 +806,17 @@ OpResult BakePcg(OpContext& context,const OpArgs& args)
 } /// @note namespace world_pcg_authoring
 
 OpResult PreviewWorldPcg(OpContext& context,const OpArgs& args)
-{world_pcg_authoring::PcgPlan plan;if(auto result=world_pcg_authoring::PreparePcg(context,args,plan);!result.ok)return result;return OpResult::Data(std::move(plan.summary));}
+{world_pcg_authoring::PcgPlan plan;if(auto result=world_pcg_authoring::PreparePcg(context,args,plan,true);!result.ok)return result;return OpResult::Data(std::move(plan.summary));}
+
+bool SameWorldPcgProfile(EditorContext& context, const std::string& first, const std::string& second)
+{
+    const auto path = world_pcg_authoring::ProfilePath(context, first, true);
+    const auto other = world_pcg_authoring::ProfilePath(context, second, true);
+    if (path.empty() || other.empty()) return false;
+    if (path == other) return true;
+    std::error_code error;
+    return std::filesystem::equivalent(util::FileSystem::PathFromUtf8(path), util::FileSystem::PathFromUtf8(other), error);
+}
 OpResult GenerateWorldPcg(OpContext& context,const OpArgs& args) {return world_pcg_authoring::BakePcg(context,args);}
 
 } /// @note namespace fbzz::editor
@@ -864,8 +995,17 @@ OpResult InspectWorldPcgProfile(OpContext& context,const OpArgs& args)
 {
     using namespace world_pcg_profile_draft;
     const auto input=args.GetString("path");std::string path,text,diagnostic;scene::WorldPcgProfile profile;
+    const auto preset = args.GetString("preset");
+    if (!preset.empty() && (!input.empty() || preset != "rocks"))
+        return OpResult::Err("BAD_ARG", "Use preset=rocks without a saved path");
     if(input.empty()){
-        scene::WorldPcgRule rule;rule.key="trees";rule.name="Trees";rule.parts={{"primitive:cube","Assets/Materials/Default.mat",0}};rule.lodHeights={0};profile.rules.push_back(std::move(rule));
+        if (preset == "rocks") {
+            const auto rock = args.GetString("rockSource"), pebble = args.GetString("pebbleSource");
+            if (rock.empty() || pebble.empty()) return OpResult::Err("BAD_ARG", "Rock and pebble prototype references are required");
+            profile = scene::CreateRockNaturePcgProfile(rock, pebble);
+        } else {
+            scene::WorldPcgRule rule;rule.key="trees";rule.name="Trees";rule.parts={{"primitive:cube","Assets/Materials/Default.mat",0}};rule.lodHeights={0};profile.rules.push_back(std::move(rule));
+        }
         if(!scene::SerializeWorldPcgProfile(profile,text,diagnostic))return OpResult::Err("BAD_PROFILE",diagnostic);
     }else{
         path=world_pcg_authoring::ProfilePath(context.ctx,input,false);
@@ -883,6 +1023,10 @@ OpResult InspectWorldPcgProfile(OpContext& context,const OpArgs& args)
     vegetation.Set("aspectHeading/aspectHalfAngle/aspectMinSlope/aspectFade", "Downhill sector in degrees: +Z is 0, +X is 90. Half-angle 180 disables it; slopes below aspectMinSlope stay neutral.");
     vegetation.Set("canopySourceGroup/canopyGroup/canopyRadius/minCanopyCount/maxCanopyCount", "Count emitted roots from multiple rules inside a world XZ radius. Counts are inclusive; -1 is an unlimited maximum.");
     vegetation.Set("scaleCompetitionRadius", "Multiply the rule's competition radius by the chosen placement scale.");
+    vegetation.Set("scaleBias", "Scale distribution exponent [0.1,8]. Above one favors small stones; one preserves uniform legacy sizes.");
+    vegetation.Set("embedJitter", "Stable additional embedding [0,embedJitter] in world metres. Does not move the unembedded sampling site.");
+    vegetation.Set("alignDownslope/downslopeJitter", "Align +Y to the surface and +Z downhill, with a seeded angular spread in degrees. Flat sites use yaw.");
+    vegetation.Set("waterLevelFade", "Feather density inside both signed water-height limits in metres. Requires useWaterLevel.");
     vegetation.Set("useWaterLevel/minWaterOffset/maxWaterOffset", "Signed height in metres above the water level. Negative bands allow underwater plants.");
     vegetation.Set("minNearRelief/maxNearRelief/minFarRelief/maxFarRelief", "Signed height relative to neighboring terrain at 16 m and 64 m.");
     vegetation.Set("maxCliffDistance/cliffFarScale", "Taper rock density and size outward from an uphill cliff face.");
@@ -891,6 +1035,7 @@ OpResult InspectWorldPcgProfile(OpContext& context,const OpArgs& args)
     vegetation.Set("excludeMaterial/excludeMaterialWeight", "Reject sites painted with this material. Default threshold 0.35.");
     vegetation.Set("competitionGroup/competitionRadius/competitionPriority", "Keep exclusion discs in this group apart. Radii use world metres; higher priority wins within a dependency stage.");
     data.Set("vegetationRules", std::move(vegetation));
+    data.Set("rockPreset", "preset=rocks, rockSource and pebbleSource returns six editable rules without modifying files or the Scene. Tune scales for your source geometry; material masks distinguish river and sea beds.");
     return OpResult::Data(std::move(data));
 }
 
@@ -946,6 +1091,27 @@ OpResult ConfigureWorldPcgVolume(OpContext& context,const OpArgs& args)
     if(before&&Same(*before,after)){auto data=OpData::MakeObject();data.Set("node",node->instanceId);data.Set("volume",node->instanceId);data.Set("created",false);auto result=OpResult::Data(std::move(data));result.noChange=true;return result;}
     const auto id=node?node->instanceId:asset::AssetDatabase::GenerateGuid();
     return ApplyChecked<scene::WorldPcgVolumeComponent>(ctx,id,std::move(before),after,node==nullptr,"Configure World PCG Volume");
+}
+
+OpResult InspectWorldPcgVolume(OpContext& context, const OpArgs& args)
+{
+    auto* scene = context.ctx.activeScene;
+    auto* node = scene ? scene->FindByGuid(args.GetString("volume")) : nullptr;
+    const auto* volume = node ? node->GetComponent<scene::WorldPcgVolumeComponent>() : nullptr;
+    if (!volume) return OpResult::Err("NO_VOLUME", "Choose a PCG volume");
+    const auto path = world_pcg_authoring::ProfilePath(context.ctx, volume->profilePath, false);
+    scene::WorldPcgProfile profile;
+    std::string diagnostic;
+    if (path.empty() || !scene::LoadWorldPcgProfile(path, profile, diagnostic))
+        return OpResult::Err("BAD_PROFILE", diagnostic.empty() ? "The volume profile could not be loaded" : diagnostic);
+    if (volume->overrideBounds) profile.bounds = {volume->boundsMin, volume->boundsMax};
+    if (!scene::ValidateWorldPcgProfile(profile, diagnostic)) return OpResult::Err("BAD_PROFILE", diagnostic);
+    auto data = OpData::MakeObject();
+    data.Set("volume", node->instanceId); data.Set("profile", volume->profilePath);
+    data.Set("profileReference", volume->profilePath);
+    data.Set("enabled", volume->enabled);
+    world_pcg_authoring::DescribePcgBounds(data, profile);
+    return OpResult::Data(std::move(data));
 }
 
 OpResult DetachWorldPcg(OpContext& context,const OpArgs& args)

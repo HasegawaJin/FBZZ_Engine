@@ -6,7 +6,10 @@
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <TestKit/Engine/ResourceTrackingRenderer.hpp>
 #include <Tools/WorldAuthoring.hpp>
+#include <Editor/Op/OperatorGroups.hpp>
+#include <Editor/Panels/WorldAuthoringPanel.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/MeshInstancesAsset.hpp>
@@ -17,6 +20,8 @@
 #include <Engine/Scene/Components/WorldPartitionComponent.hpp>
 #include <Engine/Scene/WorldPcg.hpp>
 #include <Engine/Util/FileSystem.hpp>
+#include <imgui.h>
+#include <imgui_internal.h>
 #include <map>
 
 namespace fbzz::tests {
@@ -65,6 +70,217 @@ protected:
     editor::UndoStack m_undo;scene::WorldPcgProfile m_profile;std::string m_path,m_volume,m_terrain;
     testkit::ResourceTrackingRenderer m_device;renderer::ResourceManager m_resources{m_device};
 };
+
+TEST_F(WorldPcgAuthoringTest, RockNatureDraftIsReadOnlyAndRequiresExplicitSources)
+{
+    const auto count = AttachedScene()->GameObjectCount();
+    const auto cursor = m_undo.GetCursor();
+    editor::OpArgs args; args.Set("preset", std::string("rocks"));
+    EXPECT_FALSE(Call(editor::InspectWorldPcgProfile, args).ok);
+    args.Set("rockSource", std::string("guid:rock")); args.Set("pebbleSource", std::string("guid:pebble"));
+    auto draft = Call(editor::InspectWorldPcgProfile, args);
+    ASSERT_TRUE(draft.ok) << draft.message;
+    const auto* text = draft.data.Find("text"); ASSERT_NE(text, nullptr); ASSERT_TRUE(text->IsString());
+    scene::WorldPcgProfile profile; std::string diagnostic;
+    ASSERT_TRUE(scene::DeserializeWorldPcgProfile(text->AsString(), profile, diagnostic)) << diagnostic;
+    EXPECT_EQ(profile.rules.size(), 6u); EXPECT_EQ(profile.rules.front().prototypeRef, "guid:rock");
+    EXPECT_EQ(profile.rules[1].prototypeRef, "guid:pebble");
+    EXPECT_EQ(AttachedScene()->GameObjectCount(), count); EXPECT_EQ(m_undo.GetCursor(), cursor);
+    EXPECT_FALSE(editor::AssetDirtyRegistry::HasAny()); EXPECT_TRUE(Owners().empty());
+    args.Set("path", m_path); EXPECT_FALSE(Call(editor::InspectWorldPcgProfile, args).ok);
+}
+
+class WorldPcgProfilePanelTest : public WorldPcgAuthoringTest {
+protected:
+    void SetUp() override
+    {
+        WorldPcgAuthoringTest::SetUp();
+        editor::RegisterWorldPartitionOperators(m_operators);
+        Context().operators = &m_operators;
+        m_previous = ImGui::GetCurrentContext();
+        m_gui = ImGui::CreateContext();
+        auto& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = {1100, 1000};
+        io.DeltaTime = 1.0f / 60.0f;
+        unsigned char* pixels = nullptr;
+        int width = 0, height = 0;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    }
+
+    void TearDown() override
+    {
+        ImGui::DestroyContext(m_gui);
+        ImGui::SetCurrentContext(m_previous);
+        Context().operators = nullptr;
+        WorldPcgAuthoringTest::TearDown();
+    }
+
+    void Frame(ImGuiID activate = 0)
+    {
+        ImGui::NewFrame();
+        m_gui->NavActivateId = m_gui->NavActivateDownId = m_gui->NavActivatePressedId = activate;
+        m_gui->NavActivateFlags = ImGuiActivateFlags_None;
+        m_gui->NavInputSource = ImGuiInputSource_Keyboard;
+        ImGui::SetNextWindowPos({0, 0});
+        ImGui::SetNextWindowSize({1100, 1000});
+        m_panel.OnRender(Context());
+        ImGui::Render();
+    }
+
+    ImGuiContext* m_previous = nullptr;
+    ImGuiContext* m_gui = nullptr;
+    editor::WorldAuthoringPanel m_panel;
+    editor::OperatorRegistry m_operators;
+};
+
+TEST_F(WorldPcgProfilePanelTest, SavesDuplicatedProjectRuleAndRefusesAnExternalOverwrite)
+{
+    auto* volume = AttachedScene()->FindByGuid(m_volume);
+    ASSERT_NE(volume, nullptr);
+    editor::SelectEntity(Context(), volume->GetID());
+    Frame(); Frame();
+    auto* window = ImGui::FindWindowByName("###World / PCG");
+    ASSERT_NE(window, nullptr);
+    const ImGuiID profiles = window->GetID("Project placement profiles");
+    window->StateStorage.SetInt(profiles, 1);
+    Frame(window->GetID("Use selected volume"));
+    Frame(ImHashStr("Load profile", 0, profiles));
+    Frame(ImHashStr("Duplicate rule", 0, profiles));
+
+    const auto save = ImHashStr("Save profile", 0, profiles);
+    Frame(save);
+    scene::WorldPcgProfile saved;
+    std::string diagnostic;
+    ASSERT_TRUE(scene::LoadWorldPcgProfile(m_path, saved, diagnostic)) << diagnostic;
+    ASSERT_EQ(saved.rules.size(), 2u);
+    EXPECT_EQ(saved.rules.front().key, m_profile.rules.front().key);
+    EXPECT_NE(saved.rules.front().key, saved.rules.back().key);
+    EXPECT_EQ(saved.rules.front().parts.front().meshPath, saved.rules.back().parts.front().meshPath);
+    auto preview = Call(editor::PreviewWorldPcg, Arguments());
+    ASSERT_TRUE(preview.ok) << preview.message;
+    EXPECT_EQ(preview.data.Find("instanceCount")->AsInt64(), 128);
+
+    Frame(ImHashStr("Duplicate rule", 0, profiles));
+    saved.name = "External edit";
+    ASSERT_TRUE(scene::SaveWorldPcgProfile(m_path, saved, diagnostic)) << diagnostic;
+    Frame(save);
+    ASSERT_TRUE(scene::LoadWorldPcgProfile(m_path, saved, diagnostic)) << diagnostic;
+    EXPECT_EQ(saved.rules.size(), 2u);
+    EXPECT_EQ(saved.name, "External edit");
+}
+
+TEST_F(WorldPcgProfilePanelTest, LivePreviewCoalescesDraftEditsAndRefreshesAfterSave)
+{
+    auto operation = *m_operators.Find("pcg.preview");
+    std::vector<editor::OpData> previews;
+    operation.exec = [execute = std::move(operation.exec), &previews](auto& context, const auto& args) {
+        auto result = execute(context, args);
+        previews.push_back(result.data);
+        return result;
+    };
+    m_operators.Register(std::move(operation));
+    auto* volume = AttachedScene()->FindByGuid(m_volume);
+    ASSERT_NE(volume, nullptr);
+    editor::SelectEntity(Context(), volume->GetID());
+    Frame(); Frame();
+    auto* window = ImGui::FindWindowByName("###World / PCG");
+    ASSERT_NE(window, nullptr);
+    const auto profiles = window->GetID("Project placement profiles");
+    window->StateStorage.SetInt(profiles, 1);
+    Frame(window->GetID("Use selected volume"));
+    Frame(ImHashStr("Load profile", 0, profiles));
+    Frame(ImHashStr("Duplicate rule", 0, profiles));
+    m_panel.OnUpdate(Context(), 0.2f);
+    EXPECT_TRUE(previews.empty());
+    Frame(ImHashStr("Duplicate rule", 0, profiles));
+    m_panel.OnUpdate(Context(), 0.2f);
+    EXPECT_TRUE(previews.empty());
+    m_panel.OnUpdate(Context(), 0.1f);
+    ASSERT_EQ(previews.size(), 1u);
+    ASSERT_TRUE(previews.back().Find("instanceCount"));
+    EXPECT_EQ(previews.back().Find("instanceCount")->AsInt64(), 192);
+    EXPECT_FALSE(previews.back().Find("expected"));
+    m_panel.OnUpdate(Context(), 1.0f);
+    EXPECT_EQ(previews.size(), 1u);
+
+    Frame(ImHashStr("Save profile", 0, profiles));
+    m_panel.OnUpdate(Context(), 0.3f);
+    ASSERT_EQ(previews.size(), 2u);
+    EXPECT_EQ(previews.back().Find("instanceCount")->AsInt64(), 192);
+    EXPECT_TRUE(previews.back().Find("expected"));
+    EXPECT_TRUE(Owners().empty());
+}
+
+TEST_F(WorldPcgAuthoringTest, DraftPreviewUsesUnsavedInputsWithoutIssuingAGenerationToken)
+{
+    const auto before = AttachedScene()->GameObjectCount();
+    const auto revision = m_undo.GetRevision();
+    auto args = Arguments();
+    const auto saved = Call(editor::PreviewWorldPcg, args);
+    ASSERT_TRUE(saved.ok) << saved.message;
+    args.Set("live", true);
+    const auto live = Call(editor::PreviewWorldPcg, args);
+    ASSERT_TRUE(live.ok) << live.message;
+    EXPECT_EQ(live.data.Find("expected")->AsString(), saved.data.Find("expected")->AsString());
+
+    auto profile = m_profile;
+    profile.rules.front().density = 0.0f;
+    std::string text, diagnostic;
+    ASSERT_TRUE(scene::SerializeWorldPcgProfile(profile, text, diagnostic)) << diagnostic;
+    args.Set("draftProfileText", text);
+    args.Set("draftBoundsMin", math::Vector3{0,0,0}); args.Set("draftBoundsMax", math::Vector3{8,0,32});
+    const auto draft = Call(editor::PreviewWorldPcg, args);
+    ASSERT_TRUE(draft.ok) << draft.message;
+    EXPECT_TRUE(draft.data.Find("draft")->AsBool());
+    EXPECT_FALSE(draft.data.Find("expected"));
+    EXPECT_EQ(draft.data.Find("instanceCount")->AsInt64(), 0);
+    EXPECT_EQ(draft.data.Find("rejected")->Find("density")->AsInt64(), 16);
+    args.Set("expected", saved.data.Find("expected")->AsString());
+    EXPECT_FALSE(Call(editor::GenerateWorldPcg, args).ok);
+
+    args.Set("draftBoundsMax", math::Vector3{2048,0,2048});
+    const auto overBudget = Call(editor::PreviewWorldPcg, args);
+    EXPECT_FALSE(overBudget.ok);
+    EXPECT_EQ(overBudget.errorCode, "PCG_LIVE_BUDGET");
+    EXPECT_EQ(AttachedScene()->GameObjectCount(), before);
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    EXPECT_TRUE(Owners().empty());
+    scene::WorldPcgProfile disk;
+    ASSERT_TRUE(scene::LoadWorldPcgProfile(m_path, disk, diagnostic));
+    EXPECT_FLOAT_EQ(disk.rules.front().density, m_profile.rules.front().density);
+}
+
+TEST_F(WorldPcgAuthoringTest, VolumeInspectionAndPreviewReportEffectiveBoundsAndRejectedSites)
+{
+    m_profile.rules.front().density = 0.0f;
+    SaveProfile();
+    const auto before = AttachedScene()->GameObjectCount();
+    const auto revision = m_undo.GetRevision();
+    const auto volume = Call(editor::InspectWorldPcgVolume, Arguments());
+    ASSERT_TRUE(volume.ok) << volume.message;
+    EXPECT_VEC3_NEAR(volume.data.Find("boundsMax")->AsVec3(), m_profile.bounds.max, 0.0f);
+
+    auto args = Arguments();
+    args.Set("boundsMin", math::Vector3{0,0,0}); args.Set("boundsMax", math::Vector3{8,0,32});
+    const auto baseline = Call(editor::PreviewWorldPcg, args);
+    ASSERT_TRUE(baseline.ok) << baseline.message;
+    args.Set("maxRejectedPoints", 8);
+    const auto preview = Call(editor::PreviewWorldPcg, args);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    EXPECT_EQ(preview.data.Find("expected")->AsString(), baseline.data.Find("expected")->AsString());
+    EXPECT_FLOAT_EQ(preview.data.Find("boundsMax")->AsVec3().x, 8.0f);
+    EXPECT_EQ(preview.data.Find("ruleCounts")->Find("trees")->AsInt64(), 0);
+    const auto& samples = preview.data.Find("rejectedPoints")->AsArray();
+    ASSERT_EQ(samples.size(), 8u);
+    for (const auto& sample : samples) {
+        EXPECT_EQ(sample.Find("reason")->AsString(), "density");
+        EXPECT_LT(sample.Find("position")->AsVec3().x, 8.0f);
+    }
+    EXPECT_EQ(AttachedScene()->GameObjectCount(), before);
+    EXPECT_EQ(m_undo.GetRevision(), revision);
+    EXPECT_TRUE(Owners().empty());
+}
 
 TEST_F(WorldPcgAuthoringTest, PreviewDoesNotWriteAssetsDirtySceneOrHistoryAndRepeatedGenerationIsNoOp)
 {

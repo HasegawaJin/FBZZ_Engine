@@ -24,7 +24,7 @@ namespace fbzz::renderer { class ResourceManager; class IImGuiRenderer; }
 
 namespace fbzz::editor::widgets {
 
-enum class AssetPickerHost { INSPECTOR, FLUID_EDITOR };
+enum class AssetPickerHost { INSPECTOR, FLUID_EDITOR, WORLD_PCG };
 
 /// @note 画像パス選択欄で共通利用する、ImageImporter 対応拡張子の検索フィルター。
 /// @note 呼び出し側ごとの列挙漏れで、読み込める画像がピッカーに表示されない状態を防ぐ。

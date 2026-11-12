@@ -148,6 +148,39 @@ Live Previewは追加・消去予定の個数を素材カードへ表示する�
 
 木の葉は PBR 材質の `leafWindStrength` (model m)、`leafWindFrequency` (rad/s)、`leafWindRootHeight` (model m) で揺らす。幹材質の strength は0のまま保つ。材質の68〜76 byteの予約領域を使い、96 byte共通 prefixを維持する。色・影・選択・速度が同じ頂点関数を使い、隣接木の位相は world 原点から決める。InstancedMesh の配置行をフレームごとに変更せず、前時刻と現時刻から速度を書く。新しく塗った木も、配置 snapshot の葉材質を通して同じ揺れを継承する。
 
+## 小石・岩の自然配置プリセット
+
+2026-11-11 の小石・岩の配置ルール実装依頼により、広域制作には既存の `.pcg` と保存済み InstanceSet を使う。`CreateRockNaturePcgProfile` が次の6層を作る。各層は独立したモデル・材質・LOD・密度を保持し、大岩の周囲の小石はセル予算を通過した大岩だけを参照する。既存の手動配置・Undo・プレビュー照合の契約は [World PCG](world-partition-pcg.md) に従う。
+
+| ルール | 配置条件 | 既定の候補間隔 | モデル原寸へ掛ける scale |
+|---|---|---:|---:|
+| `boulders` | 水没していない地表。最低7 mの間隔と48 mの群落ノイズ | 14 m | 0.7〜1.8 |
+| `boulder_debris` | 実際に採用された大岩から1.5〜6 mの周囲 | 0.9 m | 0.06〜0.4 |
+| `shore_pebbles` | 水面から−0.35〜+2.2 m、水際から18 m以内、傾斜30度以下 | 0.6 m | 0.035〜0.22 |
+| `riverbed_pebbles` | 水面から−15〜−0.25 mの地表 | 0.65 m | 0.045〜0.28 |
+| `riverbed_rocks` | 水面から−15〜−0.4 m、最低2 mの間隔 | 4 m | 0.25〜0.9 |
+| `cliff_scree` | 上り側の崖から20 m以内、傾斜4〜55度。崖から離れると密度と粒径を減らす | 1.5 m | 0.12〜1.1 |
+
+これらは地形の雰囲気を作る初期値であり、地質・河川の堆積シミュレーションではない。水中ルールは川・湖・海の共通水面照会を使う。川だけへ限定する場合は `includeMaterial` に保存済み川床材質を指定する。道を避ける場合も保存済み材質の除外、または profile の `pathMaterial` と各層の距離帯を指定する。水面・崖の情報がない場所は対応する層を配置しない。素材はメートル単位・接地原点を前提に、元メッシュの大きさに合わせて scale と埋め込みを調整する。
+
+追加の `.pcg` フィールドは次のとおり。省略時は既存配置の計算を維持し、保存形式は version=1 のまま拡張する。
+
+| フィールド | 既定 | 契約 |
+|---|---:|---|
+| `scaleBias` | 1 | 0.1〜8。安定乱数 u に対し `lerp(minScale,maxScale,pow(u,scaleBias))`。1より大きいと小粒を増やす。プリセットは2.5 |
+| `embedJitter` | 0 | `embedDepth` に安定乱数で0〜指定値を加える [world m]。合計1000 m以下。地形条件・近傍判定は埋め込み前の地表で測る |
+| `alignDownslope` | false | +Yを法線、+Zを地表の最急降下方向へ合わせる。平坦なら既存yawへ戻す |
+| `downslopeJitter` | 0 | 下り方向から左右へ振る最大角度 [度、0〜180] |
+| `waterLevelFade` | 0 | 水面からの高度帯の両端から内側へ密度をsmoothstepで減らす幅 [world m、0〜1000]。`useWaterLevel=true` が必要 |
+
+粒径・埋め込み・姿勢は別の安定乱数から作り、密度を変えても残る候補の姿勢を維持する。埋め込み後の根で範囲・保存セル・128 mセル予算を判定し、候補探索には最大埋め込み量を含める。追加の地形照会やフレームごとの配置更新は行わない。サイズ分布は [PBRT 4e, Sampling Using the Inversion Method](https://www.pbr-book.org/4ed/Monte_Carlo_Integration/Sampling_Using_the_Inversion_Method) の逆CDFによる標本化に基づく。
+
+Editorの **World / PCG → PCG → Project placement profiles → Rock nature preset** で岩と小石の `.terrainpaint` を選び、**Draft rock nature profile** を押す。6層の下書きができる。ルールを追加・複製し、範囲・素材・粒径をフォームで調整できる。**Save profile** でプロジェクトに保存し、Volumeに割り当てて **Preview → Generate** の順に確定する。既定範囲は256 m四方、128 mセルあたり全層合計12000個。小石3層は `includeHlod=false` として遠景HLODへ含めない。広域に細かい砂利を敷く場合は制作範囲を分割し、候補数と描画距離・LODを確認する。
+
+AIは同じ `pcg.profile.inspect` へ `preset="rocks"`, `rockSource`, `pebbleSource` を渡す。保存済みpathとの同時指定や空の素材は拒否する。返された `text` を既存の `pcg.profile.save` で保存する。ドラフト生成だけではScene・アセット・履歴を変更しない。
+
+`WorldPcgTest` は粒径の偏り、個体IDと姿勢の再現性、埋め込み後の範囲・保存セル、下り方向への整列、水位帯の両端、6層の保存・読込と採用済み大岩への従属を検証する。`WorldPcgAuthoringTest` はドラフトがScene・アセット・履歴を変更しないことと、素材不足・既存pathとの同時指定の拒否を検証する。
+
 EngineTestProjectの旧CanopyWind/PineCrownWind Sequenceは葉のGameObject全体を平行移動・回転するため、樹冠の枝や幹の接合部も動いて見える。島シーンに残る12個の植生SequencePlayerを無効にし、元の配置・固定幹は維持する。天候Sequenceは維持する。`IslandNaturalDetails.playtest.json`はPlayを180フレーム進めても18個の幹・樹冠Transformが変化しないことを確認する。
 
 汎用floatパラメーターの初期値1を葉の強さへ適用しない。`InitDefaultMaterialParams`はstrength=0、frequency=1、rootHeight=0を設定し、旧Barkなど風の値を持たない材質を固定する。葉材質の明示値はその後に適用する。`MaterialReflectionTest.LegacyMaterialsStayRigidUntilLeafWindIsExplicitlyAuthored`が旧材質と葉のopt-inを検査する。島と共通素材のBarkにもstrength=0を保存し、旧実行環境で読み直した場合も幹を揺らさない。

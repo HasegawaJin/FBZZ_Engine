@@ -23,6 +23,7 @@
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -52,6 +53,8 @@ struct Source {
     float maxDistance = 0;
     toml::table actor;
     const scene::TerrainComponent* terrain = nullptr;
+    bool lightProbe = false;
+    bool farOnlyMesh = false;
 };
 
 struct NearGroup {
@@ -59,6 +62,14 @@ struct NearGroup {
     scene::WorldCellId cell;
     std::vector<renderer::InstancePlacement> placements;
 };
+
+/// @note The persisted near record carries the policy so an HLOD rebuild reproduces the same collision boundary.
+toml::table FarTerrainRecord(toml::table record)
+{
+    if (record["WorldHlodSourceComponent"]["omitTerrainCollisionInHlod"].value_or(false))
+        record.erase("TerrainColliderComponent");
+    return record;
+}
 
 struct CellDraft {
     toml::array objects;
@@ -256,6 +267,20 @@ bool CanBakeTerrain(scene::GameObject& node, const scene::TerrainComponent& terr
         && (!fiber || !fiber->m_enabled || (fiber->m_mode == scene::FiberRenderMode::BLADE && fiber->m_paintPath.empty()));
 }
 
+/// @note Probe boxes are world-aligned and ignore node scale and rotation. Keep mixed owners persistent.
+bool CanBakeLightProbe(scene::Scene& scene, scene::GameObject& node)
+{
+    if (node.GetParent() || node.GetChildCount() != 0 || !node.prefabAssetPath.empty()) return false;
+    bool supported = true;
+    scene::ForEachRegisteredComponent([&]<typename T, typename Registration>() {
+        if constexpr (!std::is_same_v<T, scene::LightProbeVolumeComponent>
+            && !std::is_same_v<T, scene::WorldHlodSourceComponent>) {
+            if (scene.HasComponent<T>(node.GetID())) supported = false;
+        }
+    });
+    return supported;
+}
+
 void ReferenceIds(const toml::node& node, const std::set<std::string>& candidates, std::set<std::string>& result)
 {
     if(const auto* table=node.as_table()){
@@ -359,6 +384,8 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     scene::FlushWorldTransforms(*ctx.activeScene);
     const bool includeScene = args.GetBool("includeScene",false), buildHlod = args.GetBool("buildHlod",true);
     const bool includeTerrain = args.GetBool("includeTerrain", false);
+    const bool omitTerrainCollisionInHlod = args.GetBool("omitTerrainCollisionInHlod", false);
+    const bool includeLightProbes = args.GetBool("includeLightProbes", false);
     const std::string sceneText = scene::SceneSerializer::CaptureSaveComparison(*ctx.activeScene, manifestRelative);
     const auto parsed = toml::parse(sceneText);
     if (sceneText.empty() || !parsed) return OpResult::Err("SERIALIZE_FAILED", "Cannot capture authored scene");
@@ -370,8 +397,32 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
         if (node.IsRuntimeGenerated() || !node.activeInHierarchy() || node.GetID() == manager->GetID()) continue;
         const auto* generated = node.GetComponent<scene::WorldPcgGeneratedComponent>();
         const auto* terrain = node.GetComponent<scene::TerrainComponent>();
-        if (!generated && !includeScene && !(includeTerrain && terrain)) continue;
+        const auto* policy = node.GetComponent<scene::WorldHlodSourceComponent>();
+        const auto* probe = includeLightProbes ? node.GetComponent<scene::LightProbeVolumeComponent>() : nullptr;
+        const bool farOnlyMesh = policy && policy->includeHlod && policy->farOnlyMesh;
+        if (!generated && !includeScene && !(includeTerrain && terrain) && !probe && !farOnlyMesh) continue;
+        if (probe) {
+            if (!probe->enabled) continue;
+            if (!CanBakeLightProbe(*ctx.activeScene, node) || node.name.starts_with("__")) { ++pinned; continue; }
+            const auto found = records.find(node.instanceId);
+            if (found == records.end() || !found->second["LightProbeVolumeComponent"].is_table())
+                return OpResult::Err("SERIALIZE_FAILED", "Light probe volume was not captured");
+            const auto& size = probe->boxExtents;
+            if (!std::isfinite(size.x) || !std::isfinite(size.y) || !std::isfinite(size.z))
+                return OpResult::Err("BAD_POSITION", "Light probe extents must be finite");
+            Source source;
+            source.id = node.instanceId; source.name = node.name; source.actor = found->second;
+            source.lightProbe = true; source.hlod = false; source.instanced = false;
+            source.world = math::Matrix4::Translate(node.transform.worldPosition);
+            const math::Vector3 extent{(std::max)(size.x, 0.01f), (std::max)(size.y, 0.01f), (std::max)(size.z, 0.01f)};
+            source.bounds = {math::Vector3::ZERO - extent, extent};
+            source.placements.emplace_back().id = 1;
+            sources.push_back(std::move(source));
+            continue;
+        }
         auto* instances = node.GetComponent<scene::InstancedMeshComponent>(); auto* mesh = node.GetComponent<scene::MeshRenderer>();
+        if (farOnlyMesh && (!mesh || instances || terrain || node.GetParent() || !node.prefabAssetPath.empty()))
+            return OpResult::Err("INVALID_HLOD_PROXY", "A far-only mesh must be a standalone MeshRenderer: " + node.name);
         if ((terrain ? !includeTerrain || !CanBakeTerrain(node, *terrain) : !instances && !mesh)
             || node.name.starts_with("__") || !SupportedStatic(*ctx.activeScene,node, terrain != nullptr)) { ++pinned; continue; }
         if(node.layer<0||node.layer>=32)return OpResult::Err("BAD_LAYER","Static source layer must be in [0,31]");
@@ -394,8 +445,9 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
             source.maxDistance=instances->m_maxDistance;
             source.hlod=instances->m_maxDistance<=0 || instances->m_maxDistance>=settings.hlodDistance;
         } else {
-            if (!mesh->enabled || mesh->meshPath.empty()) continue;
+            if ((!mesh->enabled && !farOnlyMesh) || mesh->meshPath.empty()) continue;
             source.instanced=false; source.shadows=mesh->castShadows;
+            source.farOnlyMesh = farOnlyMesh;
             const auto* material=node.GetComponent<scene::MaterialComponent>();
             if(material){
                 const auto& values=material->Authoring();
@@ -408,8 +460,10 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
             if(source.actor.empty()) return OpResult::Err("SERIALIZE_FAILED","Static actor was not captured");
         }
         if(generated)source.hlod=source.hlod&&generated->includeHlod;
-        if(const auto* policy=node.GetComponent<scene::WorldHlodSourceComponent>())source.hlod=source.hlod&&policy->includeHlod;
+        if(policy)source.hlod=source.hlod&&policy->includeHlod;
         source.hlod=source.hlod&&HasHlodMaterials(source.parts);
+        if (farOnlyMesh && !source.hlod)
+            return OpResult::Err("INVALID_HLOD_PROXY", "A far-only mesh needs an explicit HLOD-compatible material: " + node.name);
         if (source.placements.empty()) continue;
         if (!DefinitionBounds(ctx,source.parts,source.bounds)) return OpResult::Err("BOUNDS_UNAVAILABLE","Cannot establish conservative static model bounds: "+node.name);
         total+=source.placements.size();
@@ -442,7 +496,7 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
         if (edges != referenceGraph.end()) for (const auto& target : edges->second) pin(target);
     }
     pinned+=pinnedIds.size();std::erase_if(sources,[&](const auto& source){return pinnedIds.contains(source.id);});
-    total=0;for(const auto& source:sources)total+=source.placements.size();
+    total=0;for(const auto& source:sources)if(!source.lightProbe)total+=source.placements.size();
     if (sources.empty()) return OpResult::Err("NO_CONTENT","No eligible generated content, static objects or terrain");
     std::map<std::pair<scene::WorldCellId,size_t>,NearGroup> nearGroups;
     for (size_t i=0;i<sources.size();++i) for (const auto& placement:sources[i].placements) {
@@ -462,7 +516,7 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
     for (const auto& [cell, tile] : terrainTiles) cellIds.insert(cell);
     if(cellIds.size()>static_cast<size_t>(maxCells)) return OpResult::Err("BUDGET_EXCEEDED","World cell budget exceeded before any output was written");
     std::vector<scene::WorldHlodSource> hlodSources;
-    for(const auto& s:sources) if (!s.terrain) hlodSources.push_back({s.id,s.world,s.parts,s.heights,s.placements,s.layer,s.shadows,s.hlod,true,s.bounds});
+    for(const auto& s:sources) if (!s.terrain && !s.lightProbe) hlodSources.push_back({s.id,s.world,s.parts,s.heights,s.placements,s.layer,s.shadows,s.hlod,true,s.bounds});
     std::vector<scene::WorldHlodGroup> proxies;
     if(buildHlod && !scene::BuildWorldHlod(hlodSources,{grid,65536,static_cast<uint32_t>(maxInstances)},proxies,error)) return OpResult::Err("HLOD_FAILED",error);
     std::map<scene::WorldCellId,CellDraft> drafts;
@@ -499,12 +553,13 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
         auto& component = *object["TerrainComponent"].as_table();
         component.erase("inlineData");
         component.insert_or_assign("terrainAssetPath", reference);
-        object.insert_or_assign("WorldHlodSourceComponent", toml::table{{"includeHlod", true}});
+        object.insert_or_assign("WorldHlodSourceComponent", toml::table{
+            {"includeHlod", true}, {"omitTerrainCollisionInHlod", omitTerrainCollisionInHlod}});
         const auto [low, high] = std::minmax_element(terrain.heightData.begin(), terrain.heightData.end());
         Include(draft.bounds, draft.hasBounds, tile.position + math::Vector3{0, *low * terrain.maxHeight * scale.y, 0});
         Include(draft.bounds, draft.hasBounds, tile.position + math::Vector3{(tile.columns - 1) * terrain.cellSize * scale.x,
             *high * terrain.maxHeight * scale.y, (tile.rows - 1) * terrain.cellSize * scale.z});
-        if (buildHlod) draft.farTerrain.push_back(object);
+        if (buildHlod) draft.farTerrain.push_back(FarTerrainRecord(object));
         draft.objects.push_back(std::move(object));
     }
     std::set<size_t> assignedOriginal;
@@ -535,7 +590,8 @@ OpResult BakeWorldCells(OpContext& context, const OpArgs& args)
             draft.identityText+=signature;Dependencies(draft,s.parts,reference);
         } else {
             toml::table object=s.actor;object.insert_or_assign("parent","");object.insert_or_assign("parentInstanceId","");
-            object.insert_or_assign("WorldHlodSourceComponent",toml::table{{"includeHlod",s.hlod}});
+            object.insert_or_assign("WorldHlodSourceComponent",toml::table{{"includeHlod",s.hlod},{"farOnlyMesh",s.farOnlyMesh}});
+            if (s.farOnlyMesh) object["MeshRenderer"].as_table()->insert_or_assign("enabled", false);
             renderer::InstancePlacement world;
             if(!DecomposeTerrainPlacement(s.world,world)) return OpResult::Err("UNSUPPORTED_TRANSFORM","Static actor root cannot be flattened without shear");
             const auto q=math::Quaternion::FromEuler(world.eulerRadians);
@@ -622,7 +678,7 @@ OpResult BuildWorldHlod(OpContext& context, const OpArgs& args)
         for (auto& object : *gameObjects) {
             auto& record = *object.as_table();
             if (record.contains("TerrainComponent") && record["WorldHlodSourceComponent"]["includeHlod"].value_or(false))
-                objects[cell.id].push_back(std::move(record));
+                objects[cell.id].push_back(FarTerrainRecord(std::move(record)));
             else staticObjects.push_back(std::move(record));
         }
         if (staticObjects.empty()) continue;
@@ -644,7 +700,7 @@ OpResult BuildWorldHlod(OpContext& context, const OpArgs& args)
                 source.placements=snapshot->placements;source.shadows=component->m_castShadows;
                 if(component->m_maxDistance>0&&component->m_maxDistance<settings.hlodDistance)continue;
             }else if(auto* mesh=node.GetComponent<scene::MeshRenderer>()){
-                if(!mesh->enabled)continue;
+                if(!mesh->enabled && !(policy && policy->farOnlyMesh))continue;
                 const auto* material=node.GetComponent<scene::MaterialComponent>();source.parts.push_back({mesh->meshPath,material?material->GetMaterialPath():std::string{},0});source.heights={0.0f};
                 renderer::InstancePlacement placement;placement.id=1;source.placements.push_back(placement);source.shadows=mesh->castShadows;
             }else continue;

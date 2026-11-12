@@ -18,6 +18,9 @@
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/FiberComponent.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
+#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/WorldPartitionComponent.hpp>
 #include <Engine/Scene/Components/WorldPcgAuthoringComponent.hpp>
@@ -493,6 +496,60 @@ TEST_F(WorldCellBakingTest, TerrainBakeStreamsSharedEdgesAndCollidersThroughNear
     drive();
     EXPECT_TRUE(resident.GetEntities<scene::TerrainComponent>().empty());
     EXPECT_NE(AttachedScene()->FindByGuid(id), nullptr);
+}
+
+TEST_F(WorldCellBakingTest, HlodRebuildPreservesRenderOnlyTerrainNearProbesAndAuthoredProxy)
+{
+    Configure();
+    auto& ground = AttachedScene()->CreateGameObject("Ground");
+    auto& terrain = ground.AddComponent<scene::TerrainComponent>();
+    terrain.Resize(9, 9);
+    terrain.cellSize = 2.0f;
+    terrain.chunkSize = 8;
+    terrain.InitFlat();
+    ground.AddComponent<scene::TerrainColliderComponent>();
+    auto& probe = AttachedScene()->CreateGameObject("Near probe");
+    probe.transform.position = {4.0f, 0.0f, 4.0f};
+    probe.AddComponent<scene::LightProbeVolumeComponent>();
+    auto& proxy = AttachedScene()->CreateGameObject("Far forest proxy");
+    proxy.transform.position = {6.0f, 0.0f, 6.0f};
+    proxy.AddComponent<scene::MeshRenderer>().meshPath = "primitive:cube";
+    proxy.AddComponent<scene::MaterialComponent>().SetMaterialPath("Assets/Materials/Baking.mat");
+    proxy.AddComponent<scene::WorldHlodSourceComponent>().farOnlyMesh = true;
+
+    auto args = PartitionArgs();
+    args.Set("includeTerrain", true);
+    args.Set("omitTerrainCollisionInHlod", true);
+    args.Set("includeLightProbes", true);
+    const auto baked = Call(editor::BakeWorldCells, args);
+    ASSERT_TRUE(baked.ok) << baked.message;
+    const auto manifest = LoadManifest();
+    ASSERT_EQ(manifest.cells.size(), 1u);
+    const auto& cell = manifest.cells.front();
+    auto nearScene = scene::SceneSerializer::LoadPassiveDataFromText(Read(cell.nearPath),
+        util::FileSystem::PathToUtf8(ProjectRoot() / util::FileSystem::PathFromUtf8(cell.nearPath)));
+    ASSERT_NE(nearScene, nullptr);
+    EXPECT_EQ(nearScene->GetEntities<scene::TerrainColliderComponent>().size(), 1u);
+    EXPECT_EQ(nearScene->GetEntities<scene::LightProbeVolumeComponent>().size(), 1u);
+    auto* nearProxyObject = nearScene->FindByGuid(proxy.instanceId);
+    ASSERT_NE(nearProxyObject, nullptr);
+    const auto* nearProxy = nearProxyObject->GetComponent<scene::MeshRenderer>();
+    ASSERT_NE(nearProxy, nullptr);
+    EXPECT_FALSE(nearProxy->enabled);
+    EXPECT_TRUE(proxy.GetComponent<scene::MeshRenderer>()->enabled);
+    EXPECT_EQ(PayloadPlacementCount(manifest, true), 1u);
+    const auto farText = Read(cell.hlodPath);
+    EXPECT_EQ(farText.find("TerrainColliderComponent"), std::string::npos);
+    EXPECT_EQ(farText.find("LightProbeVolumeComponent"), std::string::npos);
+
+    const auto rebuilt = Call(editor::BuildWorldHlod, PartitionArgs());
+    ASSERT_TRUE(rebuilt.ok) << rebuilt.message;
+    const auto rebuiltManifest = LoadManifest();
+    ASSERT_EQ(rebuiltManifest.cells.size(), 1u);
+    const auto rebuiltText = Read(rebuiltManifest.cells.front().hlodPath);
+    EXPECT_EQ(rebuiltText.find("TerrainColliderComponent"), std::string::npos);
+    EXPECT_EQ(rebuiltText.find("LightProbeVolumeComponent"), std::string::npos);
+    EXPECT_EQ(PayloadPlacementCount(rebuiltManifest, true), 1u);
 }
 
 TEST_F(WorldCellBakingTest, HlodRebuildUsesPersistedNearWhileKeepingNearPathsAndSourceIdentities)

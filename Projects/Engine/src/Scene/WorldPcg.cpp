@@ -38,7 +38,9 @@ constexpr std::array<std::pair<const char*, float WorldPcgRule::*>, 16> RULE_NUM
     {"minScale",&WorldPcgRule::minScale},{"maxScale",&WorldPcgRule::maxScale},
     {"minYaw",&WorldPcgRule::minYaw},{"maxYaw",&WorldPcgRule::maxYaw},
     {"embedDepth",&WorldPcgRule::embedDepth},{"protectedDistance",&WorldPcgRule::protectedDistance}}};
-constexpr std::array<std::tuple<const char*, float WorldPcgRule::*, float>, 28> OPTIONAL_RULE_NUMBERS{{
+constexpr std::array<std::tuple<const char*, float WorldPcgRule::*, float>, 32> OPTIONAL_RULE_NUMBERS{{
+    {"scaleBias", &WorldPcgRule::scaleBias, 1.0f}, {"embedJitter", &WorldPcgRule::embedJitter, 0.0f},
+    {"waterLevelFade", &WorldPcgRule::waterLevelFade, 0.0f}, {"downslopeJitter", &WorldPcgRule::downslopeJitter, 0.0f},
     {"minPatch", &WorldPcgRule::minPatch, 0.0f}, {"maxPatch", &WorldPcgRule::maxPatch, 1.0f},
     {"minSpacing", &WorldPcgRule::minSpacing, 0.0f}, {"waterFade", &WorldPcgRule::waterFade, 0.0f},
     {"minNeighborDistance", &WorldPcgRule::minNeighborDistance, 0.0f},
@@ -86,7 +88,15 @@ float Unit(uint64_t key,uint64_t stream) { return static_cast<float>(Mix(key+str
 
 float PlacementScale(const WorldPcgRule& rule, uint64_t key)
 {
-    return std::lerp(rule.minScale, rule.maxScale, Unit(key, 5));
+    /// @note Inverse CDF F(t)=t^(1/scaleBias); the identity branch keeps existing profiles bit-for-bit stable.
+    /// @see https://www.pbr-book.org/4ed/Monte_Carlo_Integration/Sampling_Using_the_Inversion_Method PBRT 4e, Sampling Using the Inversion Method.
+    const float unit = Unit(key, 5);
+    return std::lerp(rule.minScale, rule.maxScale, rule.scaleBias == 1.0f ? unit : std::pow(unit, rule.scaleBias));
+}
+
+float Embedding(const WorldPcgRule& rule, uint64_t key)
+{
+    return rule.embedJitter == 0.0f ? rule.embedDepth : rule.embedDepth + rule.embedJitter * Unit(key, 6);
 }
 
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Apply Scale to Bounds and Self Pruning.
@@ -117,10 +127,11 @@ bool PlacementRankLess(const RankedPlacement& left, const RankedPlacement& right
 
 bool LatticeRange(const WorldPcgProfile& profile,const WorldPcgRule& rule,int32_t& x0,int32_t& x1,int32_t& z0,int32_t& z1)
 {
-    const double a=std::floor((static_cast<double>(profile.bounds.min.x)-rule.embedDepth)/rule.spacing);
-    const double b=std::ceil((static_cast<double>(profile.bounds.max.x)+rule.embedDepth)/rule.spacing);
-    const double c=std::floor((static_cast<double>(profile.bounds.min.z)-rule.embedDepth)/rule.spacing);
-    const double d=std::ceil((static_cast<double>(profile.bounds.max.z)+rule.embedDepth)/rule.spacing);
+    const double margin = static_cast<double>(rule.embedDepth) + rule.embedJitter;
+    const double a=std::floor((static_cast<double>(profile.bounds.min.x)-margin)/rule.spacing);
+    const double b=std::ceil((static_cast<double>(profile.bounds.max.x)+margin)/rule.spacing);
+    const double c=std::floor((static_cast<double>(profile.bounds.min.z)-margin)/rule.spacing);
+    const double d=std::ceil((static_cast<double>(profile.bounds.max.z)+margin)/rule.spacing);
     constexpr double LOW=static_cast<double>(INT32_MIN)+1.0,HIGH=static_cast<double>(INT32_MAX)-1.0;
     if(a<LOW||b>HIGH||c<LOW||d>HIGH)return false;
     x0=static_cast<int32_t>(a);x1=static_cast<int32_t>(b);z0=static_cast<int32_t>(c);z1=static_cast<int32_t>(d);return true;
@@ -136,12 +147,21 @@ float Noise(uint64_t seed,float x,float z,float scale)
     return std::lerp(std::lerp(value(0,0),value(1,0),tx),std::lerp(value(0,1),value(1,1),tx),tz);
 }
 
-math::Vector3 Rotation(float yaw,const math::Vector3& normal,bool align)
+math::Vector3 Rotation(const WorldPcgRule& rule, uint64_t key, const math::Vector3& normal)
 {
+    const float sample = Unit(key, 4);
+    const float yaw = std::lerp(rule.minYaw, rule.maxYaw, sample);
     const auto spin=math::Quaternion::FromAxisAngle(math::Vector3::UP,math::ToRad(yaw));
-    if(!align)return {0,math::ToRad(yaw),0};
+    if(!rule.alignToSurface && !rule.alignDownslope)return {0,math::ToRad(yaw),0};
     const auto axis=math::Vector3::Cross(math::Vector3::UP,normal);
-    const auto rotation=math::Quaternion{axis.x,axis.y,axis.z,1.0f+normal.y}.Normalized()*spin;
+    auto rotation=math::Quaternion{axis.x,axis.y,axis.z,1.0f+normal.y}.Normalized()*spin;
+    if (rule.alignDownslope) {
+        const auto downhill = normal * normal.y - math::Vector3::UP;
+        if (downhill.LengthSq() > 0.000001f)
+            rotation = math::Quaternion::LookRotation(downhill.Normalized(), normal)
+                * math::Quaternion::FromAxisAngle(math::Vector3::UP,
+                    math::ToRad(std::lerp(-rule.downslopeJitter, rule.downslopeJitter, sample)));
+    }
     /// @note Euler serialization uses Quaternion::FromEuler's YXZ order, preserving the same surface pose.
     const auto matrix=math::Matrix4::Rotate(rotation);
     const float pitch=std::asin(std::clamp(-matrix.m[1][2],-1.0f,1.0f));
@@ -300,6 +320,7 @@ uint64_t ProfileHash(const WorldPcgProfile& profile,const std::vector<const Worl
         }
         if (rule->scaleCompetitionRadius) Hash(hash, "scaleCompetitionRadius");
         if (rule->useWaterLevel) Hash(hash, "useWaterLevel");
+        if (rule->alignDownslope) Hash(hash, "alignDownslope");
         for(const auto& part:rule->parts){Hash(hash,part.meshPath);Hash(hash,part.materialPath);Hash(hash,part.lod);}
         for(float height:rule->lodHeights)HashFloat(hash,height);
     }
@@ -317,6 +338,56 @@ bool ReadBounds(const toml::table& table,WorldCellBounds& box) { return ReadVect
 toml::table BoundsData(const WorldCellBounds& box) { return toml::table{{"min",VectorData(box.min)},{"max",VectorData(box.max)}}; }
 
 } /// @note namespace world_pcg_detail
+
+WorldPcgProfile CreateRockNaturePcgProfile(std::string_view rockPrototype, std::string_view pebblePrototype)
+{
+    WorldPcgProfile profile;
+    profile.key = "RockNature";
+    profile.name = "Shore, riverbed and cliff rock layers";
+    profile.maxPlacementsPerCell = 12000;
+    const auto make = [](const char* key, std::string_view source, float spacing, float low, float high) {
+        WorldPcgRule rule;
+        rule.key = key; rule.name = key; rule.prototypeRef = source;
+        rule.spacing = spacing; rule.minScale = low; rule.maxScale = high;
+        rule.density = 0.85f; rule.noiseScale = 18.0f; rule.clusterStrength = 0.8f;
+        rule.scaleBias = 2.5f; rule.alignToSurface = true;
+        rule.maxSlope = 42.0f; rule.slopeFade = 6.0f;
+        rule.embedDepth = low * 0.12f; rule.embedJitter = low * 0.15f;
+        return rule;
+    };
+    auto boulders = make("boulders", rockPrototype, 14.0f, 0.7f, 1.8f);
+    boulders.density = 0.5f; boulders.minSpacing = 7.0f; boulders.noiseScale = 48.0f;
+    profile.rules.push_back(boulders);
+
+    auto debris = make("boulder_debris", pebblePrototype, 0.9f, 0.06f, 0.4f);
+    debris.neighborRule = "boulders"; debris.minNeighborDistance = 1.5f; debris.maxNeighborDistance = 6.0f;
+    debris.includeHlod = false;
+    profile.rules.push_back(debris);
+
+    auto shore = make("shore_pebbles", pebblePrototype, 0.6f, 0.035f, 0.22f);
+    shore.includeHlod = false;
+    shore.useWaterLevel = true; shore.minWaterOffset = -0.35f; shore.maxWaterOffset = 2.2f;
+    shore.waterLevelFade = 0.3f; shore.maxWaterDistance = 18.0f;
+    shore.maxSlope = 30.0f;
+    profile.rules.push_back(shore);
+
+    auto bed = make("riverbed_pebbles", pebblePrototype, 0.65f, 0.045f, 0.28f);
+    bed.includeHlod = false;
+    bed.useWaterLevel = true; bed.minWaterOffset = -15.0f; bed.maxWaterOffset = -0.25f; bed.waterLevelFade = 0.3f;
+    profile.rules.push_back(bed);
+
+    auto bedRocks = make("riverbed_rocks", rockPrototype, 4.0f, 0.25f, 0.9f);
+    bedRocks.useWaterLevel = true; bedRocks.minWaterOffset = -15.0f; bedRocks.maxWaterOffset = -0.4f;
+    bedRocks.waterLevelFade = 0.5f; bedRocks.minSpacing = 2.0f; bedRocks.density = 0.6f;
+    profile.rules.push_back(bedRocks);
+
+    auto talus = make("cliff_scree", rockPrototype, 1.5f, 0.12f, 1.1f);
+    talus.maxCliffDistance = 20.0f; talus.cliffFarScale = 0.25f;
+    talus.minSlope = 4.0f; talus.maxSlope = 55.0f;
+    talus.alignDownslope = true; talus.downslopeJitter = 35.0f;
+    profile.rules.push_back(talus);
+    return profile;
+}
 
 bool ValidateWorldPcgProfile(const WorldPcgProfile& profile,std::string& diagnostic)
 {
@@ -350,7 +421,10 @@ bool ValidateWorldPcgProfile(const WorldPcgProfile& profile,std::string& diagnos
             ||!Range(rule.minWaterDistance,0,1000000)||!Range(rule.maxWaterDistance,rule.minWaterDistance,1000000)
             ||!Range(rule.minScale,0.001f,1000)||!Range(rule.maxScale,rule.minScale,1000)
             ||!Range(rule.minYaw,-360,360)||!Range(rule.maxYaw,rule.minYaw,360)
-            ||!Range(rule.embedDepth,0,1000)||!Range(rule.protectedDistance,0,100000))return Fail(diagnostic,"PCG rule range is invalid: "+rule.key);
+            ||!Range(rule.embedDepth,0,1000)||!Range(rule.protectedDistance,0,100000)
+            || !Range(rule.scaleBias, 0.1f, 8.0f) || !Range(rule.embedJitter, 0.0f, 1000.0f - rule.embedDepth)
+            || !Range(rule.waterLevelFade, 0.0f, 1000.0f) || (rule.waterLevelFade > 0 && !rule.useWaterLevel)
+            || !Range(rule.downslopeJitter, 0.0f, 180.0f))return Fail(diagnostic,"PCG rule range is invalid: "+rule.key);
         const auto distanceValid = [](float value) { return value == 0.0f || Range(value, 0.25f, 1000.0f); };
         if (rule.patchGroup.size() > 256 || rule.neighborRule.size() > 256
             || !Range(rule.minPatch, 0.0f, 1.0f) || !Range(rule.maxPatch, rule.minPatch, 1.0f)
@@ -407,6 +481,12 @@ bool ValidateWorldPcgProfile(const WorldPcgProfile& profile,std::string& diagnos
 bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& sample,std::span<const math::Vector3> protectedPositions,
     WorldPcgResult& out,std::string& diagnostic,const WorldPcgHabitatSampler& sampleHabitat)
 {
+    return GenerateWorldPcg(profile, sample, protectedPositions, out, diagnostic, sampleHabitat, nullptr);
+}
+
+bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& sample,std::span<const math::Vector3> protectedPositions,
+    WorldPcgResult& out,std::string& diagnostic,const WorldPcgHabitatSampler& sampleHabitat, WorldPcgDiagnostics* diagnostics)
+{
     using namespace world_pcg_detail;
     if(!ValidateWorldPcgProfile(profile,diagnostic))return false;
     if(!sample)return Fail(diagnostic,"PCG requires a surface sampler");
@@ -442,6 +522,29 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
         const auto nx=static_cast<uint64_t>(static_cast<int64_t>(x1)-x0),nz=static_cast<uint64_t>(static_cast<int64_t>(z1)-z0);
         if(nz&&nx>(profile.maxCandidates-estimated)/nz)return Fail(diagnostic,"PCG candidate budget exceeded before sampling");estimated+=nx*nz;}
     WorldPcgResult staged;
+    const std::size_t sampleLimit = diagnostics ? diagnostics->maxSamples : 0;
+    if (sampleLimit > MAX_WORLD_PCG_DEBUG_SAMPLES) return Fail(diagnostic, "PCG rejection sample limit exceeded");
+    struct RejectedSite {
+        uint64_t rank;
+        math::Vector3 position;
+        std::string_view ruleKey, reason;
+    };
+    std::vector<RejectedSite> rejected;
+    rejected.reserve(sampleLimit);
+    const auto rankLess = [](const RejectedSite& left, const RejectedSite& right) { return left.rank < right.rank; };
+    const auto reject = [&](uint64_t& count, std::string_view reason, const WorldPcgRule& rule,
+        uint64_t candidate, const math::Vector3& position) {
+        ++count;
+        if (sampleLimit == 0) return;
+        constexpr uint64_t REJECTION_STREAM = 0x9c87db62a4e59531ull;
+        const RejectedSite site{Mix(candidate ^ REJECTION_STREAM), position, rule.key, reason};
+        if (rejected.size() == sampleLimit) {
+            if (!rankLess(site, rejected.front())) return;
+            std::pop_heap(rejected.begin(), rejected.end(), rankLess);
+            rejected.back() = site;
+        } else rejected.push_back(site);
+        std::push_heap(rejected.begin(), rejected.end(), rankLess);
+    };
     using GroupKey=std::pair<WorldCellId,std::string>;
     std::map<GroupKey,WorldPcgCellGroup> groups;
     std::map<GroupKey,std::unordered_set<uint32_t>> ids;
@@ -450,7 +553,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             return Fail(diagnostic, "PCG instance budget exceeded; no partial result was published");
         WorldCellId cell;
         const auto& rule = *candidate.rule;
-        const auto position = candidate.groundPosition - candidate.normal * rule.embedDepth;
+        const auto position = candidate.groundPosition - candidate.normal * Embedding(rule, candidate.key);
         if (!TryLocateWorldCell(profile.grid, position, cell))
             return Fail(diagnostic, "PCG candidate has no valid world cell");
         const GroupKey key{cell, rule.key};
@@ -472,8 +575,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
         renderer::InstancePlacement placement;
         placement.id = id;
         placement.position = position - WorldCellOrigin(profile.grid, cell);
-        placement.eulerRadians = Rotation(std::lerp(rule.minYaw, rule.maxYaw, Unit(candidate.key, 4)),
-            candidate.normal, rule.alignToSurface);
+        placement.eulerRadians = Rotation(rule, candidate.key, candidate.normal);
         const float scale = PlacementScale(rule, candidate.key) * candidate.sizeMultiplier;
         placement.scale = {scale, scale, scale};
         if (!Finite(placement.position) || !Finite(placement.eulerRadians))
@@ -526,17 +628,17 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 ||!Range(surface.biomeDensity,0,1)||!Range(surface.waterDistance,0,1000000)) {
                 if(x>=profile.bounds.min.x&&x<profile.bounds.max.x&&z>=profile.bounds.min.z&&z<profile.bounds.max.z){++staged.stats.candidates;++staged.stats.noSurface;}continue;}
             const auto normal=surface.normal.Normalized();math::Vector3 position{x,surface.position.y,z};
-            const auto authoredPosition=position-normal*rule->embedDepth;
+            const auto authoredPosition=position-normal*Embedding(*rule, candidate);
             if(authoredPosition.x<profile.bounds.min.x||authoredPosition.x>=profile.bounds.max.x||authoredPosition.z<profile.bounds.min.z||authoredPosition.z>=profile.bounds.max.z)continue;
             ++staged.stats.candidates;
-            if(!rule->biome.empty()&&surface.biome!=rule->biome){++staged.stats.biomeRejected;continue;}
+            if(!rule->biome.empty()&&surface.biome!=rule->biome){reject(staged.stats.biomeRejected,"biome",*rule,candidate,position);continue;}
             if(surface.excluded||std::any_of(profile.exclusions.begin(),profile.exclusions.end(),[&](const auto& box){return Inside(box,position);}))
-                {++staged.stats.exclusionRejected;continue;}
+                {reject(staged.stats.exclusionRejected,"exclusion",*rule,candidate,position);continue;}
             if((!rule->useWaterLevel && surface.water)||surface.waterDistance<rule->minWaterDistance||surface.waterDistance>rule->maxWaterDistance)
-                {++staged.stats.waterRejected;continue;}
-            if(position.y<rule->minHeight||position.y>rule->maxHeight){++staged.stats.heightRejected;continue;}
+                {reject(staged.stats.waterRejected,"water",*rule,candidate,position);continue;}
+            if(position.y<rule->minHeight||position.y>rule->maxHeight){reject(staged.stats.heightRejected,"height",*rule,candidate,position);continue;}
             const float slope=math::ToDeg(std::acos(std::clamp(normal.y,-1.0f,1.0f)));
-            if(slope<rule->minSlope||slope>rule->maxSlope){++staged.stats.slopeRejected;continue;}
+            if(slope<rule->minSlope||slope>rule->maxSlope){reject(staged.stats.slopeRejected,"slope",*rule,candidate,position);continue;}
             float aspectWeight = 1.0f;
             if (filterAspect && slope >= rule->aspectMinSlope) {
                 const float horizontal = std::hypot(normal.x, normal.z);
@@ -548,7 +650,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                     constexpr float ANGLE_ROUNDING_TOLERANCE = 0.0001f;
                     const float remainingAngle = rule->aspectHalfAngle - angle;
                     if (remainingAngle < -ANGLE_ROUNDING_TOLERANCE) {
-                        ++staged.stats.aspectRejected;
+                        reject(staged.stats.aspectRejected, "aspect", *rule, candidate, position);
                         continue;
                     }
                     aspectWeight = FadeFromEdge(remainingAngle > ANGLE_ROUNDING_TOLERANCE ? remainingAngle : 0.0f, rule->aspectFade);
@@ -558,13 +660,13 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             const float excludedMaterial = MaterialWeight(surface, rule->excludeMaterial, 0.0f);
             if (!Range(material, rule->minMaterialWeight, 1.0f) || !Range(excludedMaterial, 0.0f, 1.0f)
                 || excludedMaterial >= rule->excludeMaterialWeight) {
-                ++staged.stats.materialRejected;
+                reject(staged.stats.materialRejected, "material", *rule, candidate, position);
                 continue;
             }
             if (filterPatch) {
                 const float patch = Noise(patchSeed, x, z, rule->noiseScale);
                 if (patch < rule->minPatch || (rule->maxPatch < 1.0f && patch >= rule->maxPatch)) {
-                    ++staged.stats.patchRejected;
+                    reject(staged.stats.patchRejected, "patch", *rule, candidate, position);
                     continue;
                 }
             }
@@ -572,27 +674,31 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 const auto& index = source->second;
                 if (index.Near(position, rule->minNeighborDistance)
                     || (rule->maxNeighborDistance > 0.0f && !index.Near(position, rule->maxNeighborDistance, true))) {
-                    ++staged.stats.neighborRejected;
+                    reject(staged.stats.neighborRejected, "neighbor", *rule, candidate, position);
                     continue;
                 }
             }
             if (needsHabitat && sampleHabitat) sampleHabitat(*rule, surface);
             if (rule->useWaterLevel && !Range(surface.waterOffset, rule->minWaterOffset, rule->maxWaterOffset)) {
-                ++staged.stats.waterLevelRejected;
+                reject(staged.stats.waterLevelRejected, "waterLevel", *rule, candidate, position);
                 continue;
             }
             if ((rule->UsesNearRelief()
                     && !Range(surface.nearRelief, rule->minNearRelief, rule->maxNearRelief))
                 || (rule->UsesFarRelief()
                     && !Range(surface.farRelief, rule->minFarRelief, rule->maxFarRelief))) {
-                ++staged.stats.reliefRejected;
+                reject(staged.stats.reliefRejected, "relief", *rule, candidate, position);
                 continue;
             }
             float habitatWeight = 1.0f;
+            if (rule->useWaterLevel && rule->waterLevelFade > 0.0f) {
+                habitatWeight *= FadeFromEdge(surface.waterOffset - rule->minWaterOffset, rule->waterLevelFade)
+                    * FadeFromEdge(rule->maxWaterOffset - surface.waterOffset, rule->waterLevelFade);
+            }
             float sizeMultiplier = 1.0f;
             if (rule->maxCliffDistance > 0.0f) {
                 if (!Range(surface.cliffDistance, 0.0f, rule->maxCliffDistance)) {
-                    ++staged.stats.cliffRejected;
+                    reject(staged.stats.cliffRejected, "cliff", *rule, candidate, position);
                     continue;
                 }
                 const float distance = surface.cliffDistance / rule->maxCliffDistance;
@@ -602,7 +708,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Distance and Density Filter.
             if (rule->UsesPathBand()) {
                 if (surface.onPath || !Range(surface.pathDistance, rule->minPathDistance, rule->maxPathDistance)) {
-                    ++staged.stats.pathRejected;
+                    reject(staged.stats.pathRejected, "path", *rule, candidate, position);
                     continue;
                 }
                 habitatWeight *= FadeFromEdge(surface.pathDistance - rule->minPathDistance, rule->pathFade);
@@ -611,20 +717,20 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             }
             const float chance=rule->density*surface.biomeDensity*std::lerp(1.0f,Noise(ruleSeed,x,z,rule->noiseScale),rule->clusterStrength)
                 * WaterDensity(*rule, surface.waterDistance) * material * ReliefDensity(*rule, position.y, slope) * aspectWeight * habitatWeight;
-            if(Unit(candidate,3)>=chance){++staged.stats.densityRejected;continue;}
-            if(protectedIndex.Near(position,rule->protectedDistance)){++staged.stats.protectedRejected;continue;}
+            if(Unit(candidate,3)>=chance){reject(staged.stats.densityRejected,"density",*rule,candidate,position);continue;}
+            if(protectedIndex.Near(position,rule->protectedDistance)){reject(staged.stats.protectedRejected,"protected",*rule,candidate,position);continue;}
             /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Point Neighborhood.
             if (canopyGroup != canopy.end()) {
                 const int count = canopyGroup->second.CountNear(position, rule->canopyRadius, true, canopyStopAt, &remainingCanopyTests);
                 if (remainingCanopyTests == 0)
                     return Fail(diagnostic, "PCG canopy distance test budget exceeded; narrow the region or canopy radius");
                 if (count < rule->minCanopyCount || (rule->maxCanopyCount >= 0 && count > rule->maxCanopyCount)) {
-                    ++staged.stats.canopyRejected;
+                    reject(staged.stats.canopyRejected, "canopy", *rule, candidate, position);
                     continue;
                 }
             }
             if (spacing.Near(position, spacing.size)) {
-                ++staged.stats.spacingRejected;
+                reject(staged.stats.spacingRejected, "spacing", *rule, candidate, position);
                 continue;
             }
             /// @note Provisional sites reserve their full exclusion discs before the independent cell quota.
@@ -637,7 +743,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 if (remainingCompetitionTests == 0)
                     return Fail(diagnostic, "PCG competition distance test budget exceeded; narrow the region or separate competition groups");
                 if (overlaps) {
-                    ++staged.stats.competitionRejected;
+                    reject(staged.stats.competitionRejected, "competition", *rule, candidate, position);
                     continue;
                 }
                 if (competitionSites == MAX_PCG_PLACEMENTS)
@@ -663,7 +769,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             const auto used = usedCellSlots.find(budgetCell);
             const auto remaining = profile.maxPlacementsPerCell - (used == usedCellSlots.end() ? 0 : used->second);
             if (remaining == 0) {
-                ++staged.stats.cellBudgetRejected;
+                reject(staged.stats.cellBudgetRejected, "cellBudget", *rule, candidate, position);
                 continue;
             }
             auto& ranked = placementCells[budgetCell];
@@ -675,12 +781,13 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 std::push_heap(ranked.begin(), ranked.end(), PlacementRankLess);
                 ++retainedPlacements;
             } else {
-                ++staged.stats.cellBudgetRejected;
                 if (PlacementRankLess(next, ranked.front())) {
                     std::pop_heap(ranked.begin(), ranked.end(), PlacementRankLess);
+                    const auto& removed = ranked.back().candidate;
+                    reject(staged.stats.cellBudgetRejected, "cellBudget", *removed.rule, removed.key, removed.groundPosition);
                     ranked.back() = next;
                     std::push_heap(ranked.begin(), ranked.end(), PlacementRankLess);
-                }
+                } else reject(staged.stats.cellBudgetRejected, "cellBudget", *rule, candidate, position);
             }
         }
         return true;
@@ -722,6 +829,13 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             std::pair{"pathRejected", staged.stats.pathRejected}}) {
         if (count) { Hash(fingerprint, name); Hash(fingerprint, count); }
     }
+    if (diagnostics) {
+        std::sort_heap(rejected.begin(), rejected.end(), rankLess);
+        std::vector<WorldPcgRejectedSample> samples;
+        samples.reserve(rejected.size());
+        for (const auto& site : rejected) samples.push_back({site.position, std::string(site.ruleKey), site.reason});
+        diagnostics->rejected = std::move(samples);
+    }
     std::ostringstream text;text<<std::hex<<fingerprint;staged.fingerprint=text.str();out=std::move(staged);diagnostic.clear();return true;
 }
 
@@ -746,6 +860,7 @@ bool SerializeWorldPcgProfile(const WorldPcgProfile& profile,std::string& outTex
             if (rule.*member != initial) row.insert(field, rule.*member);
         if (rule.scaleCompetitionRadius) row.insert("scaleCompetitionRadius", true);
         if (rule.useWaterLevel) row.insert("useWaterLevel", true);
+        if (rule.alignDownslope) row.insert("alignDownslope", true);
         toml::array parts,lods;
         for(const auto& part:rule.parts)parts.push_back(toml::table{{"mesh",part.meshPath},{"material",part.materialPath},{"lod",part.lod}});
         for(float height:rule.lodHeights)lods.push_back(height);
@@ -821,6 +936,11 @@ bool DeserializeWorldPcgProfile(std::string_view text,WorldPcgProfile& out,std::
             const auto value = fieldNode.value<bool>();
             if (!value) return Fail(diagnostic, "Invalid PCG useWaterLevel flag");
             rule.useWaterLevel = *value;
+        }
+        if (const auto fieldNode = (*row)["alignDownslope"]; fieldNode) {
+            const auto value = fieldNode.value_exact<bool>();
+            if (!value) return Fail(diagnostic, "Invalid PCG alignDownslope flag");
+            rule.alignDownslope = *value;
         }
         if (const auto fieldNode = (*row)["scaleCompetitionRadius"]; fieldNode) {
             const auto value = fieldNode.value_exact<bool>();

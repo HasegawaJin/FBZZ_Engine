@@ -596,7 +596,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
         m_mapEditorPanel = mapEditor.get();
         m_panels.push_back(std::move(mapEditor));
     }
-    m_panels.push_back(std::make_unique<WorldAuthoringPanel>());
+    {
+        auto worldAuthoring = std::make_unique<WorldAuthoringPanel>();
+        if (m_sceneViewportPanel) m_sceneViewportPanel->SetWorldAuthoringPanel(*worldAuthoring);
+        m_panels.push_back(std::move(worldAuthoring));
+    }
     m_panels.push_back(std::make_unique<DependencyViewPanel>());
     {
         auto iblBake = std::make_unique<IblBakePanel>();

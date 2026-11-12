@@ -17,6 +17,8 @@ namespace fbzz::renderer { class IRenderer; class ResourceManager; }
 
 namespace fbzz::editor {
 
+class WorldAuthoringPanel;
+
 /// @note Scene View への .mat ドラッグ中プレビュー状態。
 /// @note Unity と同じく「カーソルが乗ったオブジェクトへ即座に仮適用し、外れたら元へ戻す。
 /// @note 左ボタンを離した位置で確定」という操作のため、仮適用先と元の値を保持する。
@@ -47,6 +49,8 @@ public:
     };
 
     explicit ViewportPanel(Kind kind = Kind::Scene);
+    /// @note EditorApp owns both panels for the viewport lifetime.
+    void SetWorldAuthoringPanel(const WorldAuthoringPanel& panel) { m_worldAuthoring = &panel; }
 
     /// @note 呼び出し元はこのビューポートの描画直後、別ビューがスナップショットを更新する前に呼ぶ。
     void CaptureStats();
@@ -70,6 +74,7 @@ protected:
     ImGuiWindowFlags GetWindowFlags() const override;
 
 private:
+    const WorldAuthoringPanel* m_worldAuthoring = nullptr;
     Kind m_kind = Kind::Scene;
     std::string m_windowName;
     std::optional<uint64_t> m_statsFrame;

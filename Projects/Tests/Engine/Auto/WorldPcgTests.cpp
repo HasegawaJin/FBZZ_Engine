@@ -44,6 +44,149 @@ protected:
     std::string m_diagnostic;
 };
 
+TEST_F(WorldPcgTest, RejectionSamplesTrackActualGroundFailuresAndCellQuotaEvictions)
+{
+    m_profile.maxPlacementsPerCell = 2;
+    const auto sampler = [](float x, float z, scene::WorldPcgSurfaceSample& surface) {
+        Flat(x, z, surface);
+        surface.water = x < 0.0f;
+        if (z < 0.0f) surface.normal = {1, 0, 0};
+        return true;
+    };
+    scene::WorldPcgResult baseline, captured;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sampler, {}, baseline, m_diagnostic));
+    scene::WorldPcgDiagnostics diagnostics;
+    diagnostics.maxSamples = scene::MAX_WORLD_PCG_DEBUG_SAMPLES;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sampler, {}, captured, m_diagnostic, {}, &diagnostics)) << m_diagnostic;
+    EXPECT_EQ(captured.fingerprint, baseline.fingerprint);
+    ASSERT_GT(captured.stats.cellBudgetRejected, 0u);
+    const auto accepted = LocatedResults(captured);
+    std::map<std::string_view, std::size_t> counts;
+    for (const auto& sample : diagnostics.rejected) {
+        EXPECT_EQ(sample.ruleKey, m_profile.rules.front().key);
+        const std::string_view expected = sample.position.x < 0.0f ? "water" : sample.position.z < 0.0f ? "slope" : "cellBudget";
+        EXPECT_EQ(sample.reason, expected);
+        for (const auto& [key, site] : accepted) EXPECT_NE(sample.position, site.position);
+        ++counts[sample.reason];
+    }
+    EXPECT_EQ(counts["water"], captured.stats.waterRejected);
+    EXPECT_EQ(counts["slope"], captured.stats.slopeRejected);
+    EXPECT_EQ(counts["cellBudget"], captured.stats.cellBudgetRejected);
+
+    scene::WorldPcgDiagnostics limited;
+    limited.maxSamples = 8;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sampler, {}, captured, m_diagnostic, {}, &limited));
+    ASSERT_EQ(limited.rejected.size(), 8u);
+    for (std::size_t index = 0; index < limited.rejected.size(); ++index)
+        EXPECT_VEC3_NEAR(limited.rejected[index].position, diagnostics.rejected[index].position, 0.0f);
+    EXPECT_EQ(captured.fingerprint, baseline.fingerprint);
+}
+
+TEST_F(WorldPcgTest, StoneSizeBiasAndEmbeddingPreserveSeededCandidateIdentity)
+{
+    scene::WorldPcgResult uniform, stones, repeated;
+    ASSERT_TRUE(Generate(uniform)) << m_diagnostic;
+    auto& rule = m_profile.rules.front();
+    rule.scaleBias = 3.0f; rule.embedDepth = 0.05f; rule.embedJitter = 0.2f;
+    ASSERT_TRUE(Generate(stones)) << m_diagnostic;
+    ASSERT_TRUE(Generate(repeated)) << m_diagnostic;
+    const auto baseline = LocatedResults(uniform), biased = LocatedResults(stones), again = LocatedResults(repeated);
+    ASSERT_EQ(baseline.size(), biased.size());
+    EXPECT_NE(uniform.fingerprint, stones.fingerprint);
+    EXPECT_EQ(stones.fingerprint, repeated.fingerprint);
+    size_t smaller = 0;
+    for (const auto& [key, stone] : biased) {
+        const auto& before = baseline.at(key);
+        EXPECT_EQ(before.id, stone.id);
+        EXPECT_NEAR(before.position.x, stone.position.x, 0.00001f);
+        EXPECT_NEAR(before.position.z, stone.position.z, 0.00001f);
+        EXPECT_GE(stone.position.y, 9.75f); EXPECT_LE(stone.position.y, 9.95f);
+        EXPECT_LE(stone.scale.x, before.scale.x);
+        smaller += stone.scale.x < before.scale.x;
+        EXPECT_VEC3_NEAR(stone.position, again.at(key).position, 0.0f);
+    }
+    EXPECT_GT(smaller, biased.size() * 9 / 10);
+    const auto kept = stones.fingerprint;
+    rule.embedJitter = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(Generate(stones)); EXPECT_EQ(stones.fingerprint, kept);
+}
+
+TEST_F(WorldPcgTest, DownhillStoneOrientationAndEmbeddingOwnTheActualStorageCell)
+{
+    auto& rule = m_profile.rules.front();
+    rule.alignDownslope = true; rule.embedDepth = 1.0f; rule.embedJitter = 2.0f;
+    const math::Vector3 normal = math::Vector3{0.4f, 1.0f, 0.2f}.Normalized();
+    const auto downhill = (normal * normal.y - math::Vector3::UP).Normalized();
+    const auto sampler = [&](float x, float z, scene::WorldPcgSurfaceSample& surface) {
+        Flat(x, z, surface); surface.normal = normal; return true;
+    };
+    scene::WorldPcgResult result;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sampler, {}, result, m_diagnostic)) << m_diagnostic;
+    ASSERT_GT(result.stats.accepted, 0u);
+    for (const auto& group : result.groups) for (const auto& placement : group.placements) {
+        const auto rotation = math::Quaternion::FromEuler(placement.eulerRadians);
+        EXPECT_VEC3_NEAR(rotation * math::Vector3::UP, normal, 0.00001f);
+        EXPECT_VEC3_NEAR((rotation * math::Vector3{0, 0, 1}), downhill, 0.00001f);
+        const auto world = scene::WorldCellOrigin(m_profile.grid, group.cell) + placement.position;
+        scene::WorldCellId cell;
+        ASSERT_TRUE(scene::TryLocateWorldCell(m_profile.grid, world, cell)); EXPECT_EQ(cell, group.cell);
+        EXPECT_GE(world.x, m_profile.bounds.min.x); EXPECT_LT(world.x, m_profile.bounds.max.x);
+        EXPECT_GE(world.z, m_profile.bounds.min.z); EXPECT_LT(world.z, m_profile.bounds.max.z);
+    }
+}
+
+TEST_F(WorldPcgTest, SignedWaterFadeRetainsDeepStonesAndFeathersBothBandEdges)
+{
+    auto& rule = m_profile.rules.front();
+    rule.useWaterLevel = true; rule.minWaterOffset = -4.0f; rule.maxWaterOffset = -1.0f;
+    rule.waterLevelFade = 0.5f;
+    const auto sampler = [](float x, float z, scene::WorldPcgSurfaceSample& surface) {
+        Flat(x, z, surface); surface.water = true; surface.waterDistance = 0;
+        surface.waterOffset = x < -16 ? -4.0f : (x > 16 ? -1.0f : -2.0f); return true;
+    };
+    scene::WorldPcgResult result;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sampler, {}, result, m_diagnostic)) << m_diagnostic;
+    EXPECT_GT(result.stats.accepted, 0u); EXPECT_GT(result.stats.densityRejected, 0u);
+    for (const auto& [key, placement] : LocatedResults(result)) {
+        EXPECT_GE(placement.position.x, -16.0f); EXPECT_LE(placement.position.x, 16.0f);
+    }
+    rule.useWaterLevel = false;
+    EXPECT_FALSE(scene::ValidateWorldPcgProfile(m_profile, m_diagnostic));
+}
+
+TEST_F(WorldPcgTest, RockNatureProfileRoundTripsAndUsesEmittedBouldersForDebris)
+{
+    m_profile = scene::CreateRockNaturePcgProfile("guid:rock", "guid:pebble");
+    m_profile.bounds = {{-32, 0, -32}, {32, 0, 32}};
+    for (auto& rule : m_profile.rules) { rule.parts = {{"guid:mesh", "guid:material", 0}}; rule.lodHeights = {0}; }
+    std::string text;
+    ASSERT_TRUE(scene::SerializeWorldPcgProfile(m_profile, text, m_diagnostic)) << m_diagnostic;
+    scene::WorldPcgProfile decoded;
+    ASSERT_TRUE(scene::DeserializeWorldPcgProfile(text, decoded, m_diagnostic)) << m_diagnostic;
+    ASSERT_EQ(decoded.rules.size(), 6u);
+    EXPECT_FLOAT_EQ(decoded.rules[0].scaleBias, 2.5f);
+    EXPECT_TRUE(decoded.rules.back().alignDownslope);
+    EXPECT_FLOAT_EQ(decoded.rules.back().downslopeJitter, 35.0f);
+    EXPECT_GT(decoded.rules[0].embedJitter, 0.0f);
+    EXPECT_GT(decoded.rules[2].waterLevelFade, 0.0f);
+    m_profile = decoded;
+    scene::WorldPcgResult result;
+    ASSERT_TRUE(Generate(result)) << m_diagnostic;
+    std::vector<math::Vector3> boulders, debris;
+    for (const auto& group : result.groups) for (const auto& placement : group.placements) {
+        const auto world = scene::WorldCellOrigin(m_profile.grid, group.cell) + placement.position;
+        if (group.ruleKey == "boulders") boulders.push_back(world);
+        else if (group.ruleKey == "boulder_debris") debris.push_back(world);
+        else ADD_FAILURE() << "Unavailable water/cliff habitat must not produce " << group.ruleKey;
+    }
+    ASSERT_FALSE(boulders.empty()); ASSERT_FALSE(debris.empty());
+    for (const auto& stone : debris) {
+        float nearest = std::numeric_limits<float>::infinity();
+        for (const auto& boulder : boulders) nearest = (std::min)(nearest, std::hypot(stone.x - boulder.x, stone.z - boulder.z));
+        EXPECT_GE(nearest, 1.5f - 0.00001f); EXPECT_LE(nearest, 6.0f + 0.00001f);
+    }
+}
+
 TEST_F(WorldPcgTest, HabitatBandsRoundTripAndRejectEachUnavailableOrOutOfRangeInput)
 {
     m_profile.pathMaterial = "guid:path";

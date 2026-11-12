@@ -127,7 +127,12 @@ void RegisterWorldPartitionOperators(OperatorRegistry& registry)
         }, ConfigureWorldCells);
 
     add("pcg.profile.inspect", "Inspect a saved PCG profile; an omitted path returns its schema and an authoring example.",
-        OpKind::Query, {Parameter("path", OpParamType::String, "Project-relative profile path; default empty returns schema/example.", std::string{})},
+        OpKind::Query, {
+            Parameter("path", OpParamType::String, "Project-relative profile path; default empty returns schema/example.", std::string{}),
+            Optional("preset", OpParamType::String, "rocks returns a layered rock nature draft; requires an empty path and both sources."),
+            Optional("rockSource", OpParamType::String, "Rock .terrainpaint prototype reference for preset=rocks."),
+            Optional("pebbleSource", OpParamType::String, "Pebble .terrainpaint prototype reference for preset=rocks."),
+        },
         InspectWorldPcgProfile, false, false);
     add("pcg.profile.save", "Validate and save a PCG profile. Existing different content requires its previous fingerprint in expected.",
         OpKind::Action, {
@@ -148,8 +153,21 @@ void RegisterWorldPartitionOperators(OperatorRegistry& registry)
             Optional("enabled", OpParamType::Bool, "Enable this generation volume; creation default true."),
         }, ConfigureWorldPcgVolume);
 
+    add("pcg.volume.inspect", "Read effective PCG bounds and profile exclusion boxes without generating placements.",
+        OpKind::Query, {Parameter("volume", OpParamType::NodeId, "PCGVolume node GUID.")}, InspectWorldPcgVolume);
+    auto preview = PreviewParameters();
+    preview.push_back(Number("maxRejectedPoints", OpParamType::Int, "Maximum rejected ground samples; zero disables sampling.", 0, 0, 1024));
+    preview.push_back(Optional("live", OpParamType::Bool, "Use the bounded automatic preview budget."));
+    preview.push_back(Optional("draftProfilePath", OpParamType::String, "Preview a different project .pcg for this volume."));
+    preview.push_back(Optional("draftProfileText", OpParamType::String, "Preview unsaved .pcg text for the effective profile."));
+    preview.push_back(Optional("draftSeed", OpParamType::Int, "Preview seed override; -1 uses the profile seed."));
+    preview.push_back(Optional("draftBoundsMin", OpParamType::Vec3, "Unsaved volume minimum; supply draftBoundsMax too."));
+    preview.push_back(Optional("draftBoundsMax", OpParamType::Vec3, "Unsaved volume maximum; supply draftBoundsMin too."));
+    preview.push_back(Optional("draftUseProfileBounds", OpParamType::Bool, "Preview removal of the volume bounds override."));
+    preview.push_back(Optional("draftProtectManual", OpParamType::Bool, "Preview the unsaved manual-edit protection setting."));
+    preview.push_back(Optional("draftEnabled", OpParamType::Bool, "Preview the unsaved volume enabled setting."));
     add("pcg.preview", "Compute deterministic generation without changing the Scene; returns counts, bounded samples and expected fingerprint.",
-        OpKind::Query, PreviewParameters(), PreviewWorldPcg);
+        OpKind::Query, std::move(preview), PreviewWorldPcg);
     auto generateParameters = PreviewParameters();
     generateParameters.push_back(Parameter("expected", OpParamType::String,
         "Fingerprint from the same pcg.preview plan; stale inputs are rejected before any changes."));
@@ -163,6 +181,8 @@ void RegisterWorldPartitionOperators(OperatorRegistry& registry)
             Partition(),
             Parameter("includeScene", OpParamType::Bool, "Include eligible Scene content in the bake, default false.", false),
             Parameter("includeTerrain", OpParamType::Bool, "Bake eligible heightfield Terrain as streamed tiles, default false.", false),
+            Parameter("includeLightProbes", OpParamType::Bool, "Stream eligible standalone Light Probe Volumes in near cells only.", false),
+            Parameter("omitTerrainCollisionInHlod", OpParamType::Bool, "Use render-only HLOD terrain tiles. Enable when all physics actors stay in near cells.", false),
             Parameter("buildHlod", OpParamType::Bool, "Build HLOD payloads together, default true.", true),
             Number("maxCells", OpParamType::Int, "Maximum baked cells, default 4096; reject excess before publication.", 4096, 1, 4096),
             Number("maxInstances", OpParamType::Int, "Maximum baked instances, default 1048576.", 1048576, 1, 1048576),

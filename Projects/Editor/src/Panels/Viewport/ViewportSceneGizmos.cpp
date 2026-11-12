@@ -12,6 +12,7 @@
 #include <Editor/Util/ViewportCamera.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Panels/WorldAuthoringPanel.hpp>
 #include <Engine/Scene/Components/AudioListenerComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/AudioSpatialComponents.hpp>
@@ -34,6 +35,7 @@
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/WaterZoneSnapshot.hpp>
 #include <Engine/Scene/Components/WeatherComponent.hpp>
+#include <Engine/Scene/Components/WorldPcgAuthoringComponent.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <cmath>
 #include <span>
@@ -348,6 +350,41 @@ void DrawWireAabb(EditorContext& ctx, ImDrawList* dl, const math::Vector3& cente
     }
 }
 
+bool ValidDebugBounds(const math::Vector3& low, const math::Vector3& high)
+{
+    return std::isfinite(low.x) && std::isfinite(low.y) && std::isfinite(low.z)
+        && std::isfinite(high.x) && std::isfinite(high.y) && std::isfinite(high.z)
+        && low.x <= high.x && low.y <= high.y && low.z <= high.z;
+}
+
+void DrawPcgFootprint(EditorContext& ctx, ImDrawList* draw, math::Vector3 low, math::Vector3 high,
+    float y, const ImVec2& origin, const ImVec2& size, ImU32 color, const char* label)
+{
+    low.y = high.y = y;
+    if (!ValidDebugBounds(low, high) || low.x == high.x || low.z == high.z) return;
+    const math::Vector3 corners[]{low, {high.x,y,low.z}, high, {low.x,y,high.z}};
+    DrawWorldPolyline(ctx, draw, corners, true, origin, size, color, 2.0f);
+    ImVec2 screen;
+    if (WorldToScreen(low * 0.5f + high * 0.5f, ctx, origin, size, screen)) draw->AddText(screen, color, label);
+}
+
+void DrawBiomeBounds(EditorContext& ctx, ImDrawList* draw, const scene::GameObject& owner,
+    const scene::WorldBiomeVolumeComponent& biome, const ImVec2& origin, const ImVec2& size)
+{
+    if (!ValidDebugBounds(biome.boundsMin, biome.boundsMax)) return;
+    const bool enabled = biome.enabled && owner.activeInHierarchy();
+    const auto color = enabled ? IM_COL32(105, 231, 158, 220) : IM_COL32(160, 166, 175, 130);
+    const auto center = biome.boundsMin * 0.5f + biome.boundsMax * 0.5f;
+    DrawWireAabb(ctx, draw, center, biome.boundsMax * 0.5f - biome.boundsMin * 0.5f, origin, size, color);
+    ImVec2 screen;
+    if (WorldToScreen({center.x, biome.boundsMin.y, center.z}, ctx, origin, size, screen)) {
+        char label[160];
+        std::snprintf(label, sizeof(label), "%s  density %.2f  priority %d%s", biome.biome.c_str(),
+            biome.density, biome.priority, enabled ? "" : "  disabled");
+        draw->AddText(screen, color, label);
+    }
+}
+
 /// @brief SplineComponent のローカル空間 Catmull-Rom 評価。
 /// @note SplineSystem (GameplayComponentSystems.cpp の CatmullRom) と同じ式。あちらは非公開なので複製している。
 math::Vector3 EvaluateSplineLocal(const scene::SplineComponent& spline, float normalized)
@@ -649,6 +686,13 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
 {
     const math::Vector3 pos = go.transform.worldPosition;
 
+    if (const auto* biome = go.GetComponent<scene::WorldBiomeVolumeComponent>())
+        DrawBiomeBounds(ctx, dl, go, *biome, vpMin, vpSize);
+    if (const auto* pcg = go.GetComponent<scene::WorldPcgVolumeComponent>(); pcg && pcg->overrideBounds) {
+        const auto color = pcg->enabled && go.activeInHierarchy() ? IM_COL32(96, 211, 255, 230) : IM_COL32(160, 166, 175, 130);
+        DrawPcgFootprint(ctx, dl, pcg->boundsMin, pcg->boundsMax, pos.y, vpMin, vpSize, color, "PCG volume");
+    }
+
     if (const auto* probe = go.GetComponent<scene::ReflectionProbeComponent>()) {
         const ImU32 col = IM_COL32(190, 190, 240, 220);
         /// @note ReflectionProbeCapturePass は箱をワールド軸・回転無視・スケール無視で判定する。
@@ -733,6 +777,108 @@ void DrawSelectedVolumes(EditorContext& ctx, ImDrawList* dl, scene::GameObject& 
 }
 
 } /// @note namespace
+
+void WorldAuthoringPanel::DrawSceneDebug(EditorContext& ctx, const ImVec2& origin, const ImVec2& size) const
+{
+    if (!visible || !ctx.activeScene || !ctx.editorCamera || m_project != ctx.projectRoot
+        || m_sceneGeneration != ctx.activeScene->GetRenderSceneGeneration()) return;
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->PushClipRect(origin, {origin.x + size.x, origin.y + size.y}, true);
+    if (m_showBiomeBounds) {
+        std::size_t count = 0;
+        for (const auto id : ctx.activeScene->GetEntities<scene::WorldBiomeVolumeComponent>()) {
+            if (count >= 128) break;
+            if (std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), id) != ctx.selectedEntities.end()) continue;
+            const auto* owner = ctx.activeScene->GetGameObject(id);
+            const auto* biome = ctx.activeScene->GetComponent<scene::WorldBiomeVolumeComponent>(id);
+            if (!owner || !biome || owner->IsRuntimeGenerated()) continue;
+            DrawBiomeBounds(ctx, draw, *owner, *biome, origin, size);
+            ++count;
+        }
+    }
+
+    const auto* owner = m_volume[0] ? ctx.activeScene->FindByGuid(m_volume) : nullptr;
+    const auto* volume = owner ? ctx.activeScene->GetComponent<scene::WorldPcgVolumeComponent>(owner->GetID()) : nullptr;
+    const bool fresh = !ctx.undoStack || m_previewUndoRevision == ctx.undoStack->GetRevision();
+    const auto& snapshot = m_previewData.IsNull() ? m_volumeBounds : m_previewData;
+    const auto* profile = snapshot.Find("profileReference");
+    const bool current = fresh && volume && profile && profile->AsString() == volume->profilePath;
+    const auto* draft = m_previewData.Find("draft");
+    const bool draftPreview = draft && draft->AsBool();
+    if (m_showPcgBounds) {
+        const float y = owner ? owner->transform.worldPosition.y : 0.0f;
+        const auto* minimum = snapshot.Find("boundsMin");
+        const auto* maximum = snapshot.Find("boundsMax");
+        const bool selectedOverride = volume && volume->overrideBounds
+            && std::find(ctx.selectedEntities.begin(), ctx.selectedEntities.end(), owner->GetID()) != ctx.selectedEntities.end();
+        if (current && minimum && maximum && !m_partialUpdate && (!selectedOverride || draftPreview)) {
+            const auto color = draftPreview ? IM_COL32(255, 205, 105, 240)
+                : volume->enabled && owner->activeInHierarchy() ? IM_COL32(96, 211, 255, 230) : IM_COL32(160, 166, 175, 130);
+            DrawPcgFootprint(ctx, draw, minimum->AsVec3(), maximum->AsVec3(), y, origin, size, color,
+                draftPreview ? "Draft PCG bounds" : "PCG volume");
+        }
+        if (m_partialUpdate || (!draftPreview && m_volumeDraft && m_overrideBounds && (!volume || !volume->overrideBounds
+            || volume->boundsMin.x != m_boundsMin[0] || volume->boundsMin.z != m_boundsMin[2]
+            || volume->boundsMax.x != m_boundsMax[0] || volume->boundsMax.z != m_boundsMax[2]))) {
+            const auto& low = m_partialUpdate ? m_updateBoundsMin : m_boundsMin;
+            const auto& high = m_partialUpdate ? m_updateBoundsMax : m_boundsMax;
+            DrawPcgFootprint(ctx, draw, {low[0],y,low[2]}, {high[0],y,high[2]},
+                y, origin, size, IM_COL32(255, 205, 105, 240), m_partialUpdate ? "Update region" : "Draft PCG bounds");
+        }
+        if (const auto* boxes = snapshot.Find("exclusions"); current && boxes && boxes->IsArray()) {
+            for (const auto& box : boxes->AsArray()) {
+                const auto low = box.Find("min")->AsVec3();
+                const auto high = box.Find("max")->AsVec3();
+                if (ValidDebugBounds(low, high)) DrawWireAabb(ctx, draw, low * 0.5f + high * 0.5f,
+                    high * 0.5f - low * 0.5f, origin, size, IM_COL32(255, 128, 108, 210));
+            }
+        }
+    }
+
+    const OpData* hovered = nullptr;
+    float nearest = 49.0f;
+    const auto mouse = ImGui::GetMousePos();
+    const bool hover = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(origin, {origin.x + size.x, origin.y + size.y});
+    const auto projection = ctx.editorCamera->GetViewProjection();
+    const auto drawSites = [&](const char* key, bool rejected) {
+        const auto* points = m_previewData.Find(key);
+        if (!points || !points->IsArray()) return;
+        constexpr ImU32 colors[]{IM_COL32(105,225,145,240), IM_COL32(95,203,255,240), IM_COL32(248,219,108,240),
+            IM_COL32(196,148,255,240), IM_COL32(247,151,104,240), IM_COL32(109,238,219,240)};
+        for (const auto& point : points->AsArray()) {
+            const auto& rule = point.Find("rule")->AsString();
+            const auto* reason = point.Find("reason");
+            if ((!m_debugRule.empty() && rule != m_debugRule)
+                || (rejected && !m_debugReason.empty() && reason->AsString() != m_debugReason)) continue;
+            ImVec2 screen;
+            if (!WorldToScreen(point.Find("position")->AsVec3(), projection, origin, size, screen)) continue;
+            const auto& tint = rejected ? reason->AsString() : rule;
+            const ImU32 color = colors[ImHashStr(tint.c_str()) % std::size(colors)];
+            if (rejected) {
+                draw->AddLine({screen.x - 3,screen.y - 3}, {screen.x + 3,screen.y + 3}, color, 1.5f);
+                draw->AddLine({screen.x + 3,screen.y - 3}, {screen.x - 3,screen.y + 3}, color, 1.5f);
+            } else draw->AddCircleFilled(screen, 3.0f, color, 8);
+            if (hover) {
+                const float dx = mouse.x - screen.x, dy = mouse.y - screen.y;
+                if (const float distance = dx * dx + dy * dy; distance < nearest) {
+                    nearest = distance;
+                    hovered = &point;
+                }
+            }
+        }
+    };
+    if (current && (volume->enabled || draftPreview) && owner->activeInHierarchy()) {
+        if (m_showRejected) drawSites("rejectedPoints", true);
+        if (m_showAccepted) drawSites("points", false);
+    }
+    if (hovered) {
+        const auto* reason = hovered->Find("reason");
+        const auto p = hovered->Find("position")->AsVec3();
+        ImGui::SetTooltip("%s  |  %s\nX %.2f  Y %.2f  Z %.2f", hovered->Find("rule")->AsString().c_str(),
+            reason ? reason->AsString().c_str() : "Accepted", p.x, p.y, p.z);
+    }
+    draw->PopClipRect();
+}
 
 int SceneIconTypeCount() { return kSceneIconCount; }
 

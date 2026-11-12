@@ -11,8 +11,16 @@ namespace fbzz::scene {
 
 struct WorldHlodSourceComponent {
     bool includeHlod = true;
+    bool farOnlyMesh = false;
+    bool omitTerrainCollisionInHlod = false;
     const char* GetTypeName() const { return "WorldHlodSource"; }
-    void Reflect(IReflector& r) { r.Field("includeHlod", includeHlod); }
+    void Reflect(IReflector& r)
+    {
+        r.Field("includeHlod", includeHlod);
+        r.Field("farOnlyMesh", farOnlyMesh);
+        r.Tooltip("Use a standalone MeshRenderer as an authored cell HLOD proxy. The near payload hides this mesh.");
+        r.Field("omitTerrainCollisionInHlod", omitTerrainCollisionInHlod);
+    }
 };
 
 struct WorldBiomeVolumeComponent {

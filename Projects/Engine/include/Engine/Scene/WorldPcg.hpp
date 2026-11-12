@@ -6,6 +6,7 @@
 #include <Engine/Api.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
 #include <Engine/Scene/WorldCell.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -60,6 +61,15 @@ struct WorldPcgRule {
     float minFarRelief = -1000000.0f, maxFarRelief = 1000000.0f;
     float maxCliffDistance = 0.0f, cliffFarScale = 0.45f;
     float minPathDistance = 0.0f, maxPathDistance = 1000000.0f, pathFade = 0.0f;
+    /// @note Scale uses lerp(minScale,maxScale,u^scaleBias); values above one favor small stones. One preserves legacy sampling.
+    float scaleBias = 1.0f;
+    /// @note Adds a stable [0,embedJitter] displacement to embedDepth in world metres, independent of scale and density.
+    float embedJitter = 0.0f;
+    /// @note Feathers density inside the signed water-height band in world metres; requires useWaterLevel.
+    float waterLevelFade = 0.0f;
+    /// @note Aligns +Y with the surface and +Z downhill, with a seeded angular spread in degrees. Flat sites retain authored yaw.
+    bool alignDownslope = false;
+    float downslopeJitter = 0.0f;
 
     bool UsesPathBand() const { return minPathDistance > 0.0f || maxPathDistance < 1000000.0f || pathFade > 0.0f; }
     bool UsesNearRelief() const { return minNearRelief > -1000000.0f || maxNearRelief < 1000000.0f; }
@@ -139,6 +149,25 @@ struct WorldPcgResult {
     std::string fingerprint;
 };
 
+inline constexpr std::size_t MAX_WORLD_PCG_DEBUG_SAMPLES = 1024;
+
+struct WorldPcgRejectedSample {
+    math::Vector3 position;
+    std::string ruleKey;
+    /// @note Static reason key shared with the preview's rejection counts.
+    std::string_view reason;
+};
+
+struct WorldPcgDiagnostics {
+    std::size_t maxSamples = 0;
+    std::vector<WorldPcgRejectedSample> rejected;
+};
+
+/// @brief Builds layered boulders, satellite debris, shore gravel, submerged stones and cliff-foot scree rules.
+/// @note Sources are authored rock/pebble prototypes with metre-scale geometry and a ground-level pivot. No asset I/O or Scene mutation.
+/// @note Bounds default to 256 m; inspect the preview and adjust source scales and water bands before generating.
+[[nodiscard]] FBZZ_ENGINE_API WorldPcgProfile CreateRockNaturePcgProfile(std::string_view rockPrototype, std::string_view pebblePrototype);
+
 [[nodiscard]] FBZZ_ENGINE_API bool ValidateWorldPcgProfile(const WorldPcgProfile& profile, std::string& diagnostic);
 /// @return Failure leaves out unchanged, including candidate/instance budget and ID collision failures.
 /// @note A world-anchored jitter lattice keeps existing candidates fixed when bounds or cell size change.
@@ -148,6 +177,11 @@ struct WorldPcgResult {
 [[nodiscard]] FBZZ_ENGINE_API bool GenerateWorldPcg(const WorldPcgProfile& profile, const WorldPcgSampler& sample,
     std::span<const math::Vector3> protectedPositions, WorldPcgResult& out, std::string& diagnostic,
     const WorldPcgHabitatSampler& sampleHabitat = {});
+/// @note Captures a bounded, deterministic sample of rejected ground sites. Sites without ground have only a count.
+/// @return Failure leaves out and diagnostics unchanged. Samples do not affect placements or fingerprints.
+[[nodiscard]] FBZZ_ENGINE_API bool GenerateWorldPcg(const WorldPcgProfile& profile, const WorldPcgSampler& sample,
+    std::span<const math::Vector3> protectedPositions, WorldPcgResult& out, std::string& diagnostic,
+    const WorldPcgHabitatSampler& sampleHabitat, WorldPcgDiagnostics* diagnostics);
 /// @return Validated UTF-8 TOML; failure leaves outText unchanged and performs no file I/O.
 [[nodiscard]] FBZZ_ENGINE_API bool SerializeWorldPcgProfile(const WorldPcgProfile& profile, std::string& outText, std::string& diagnostic);
 /// @return Invalid or unknown-version text leaves out unchanged and performs no file I/O.

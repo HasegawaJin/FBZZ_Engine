@@ -6,6 +6,7 @@
 #include <bit>
 #include "MapToolCommon.hpp"
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Panels/WorldAuthoringPanel.hpp>
 #include <Editor/Util/DragDropSet.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -1098,6 +1099,7 @@ void ViewportPanel::OnRenderContent(EditorContext& ctx)
 
     if (isSceneView && !inPlayOrPause) {
         DrawSceneIcons(ctx, viewportMin, size);
+        if (m_worldAuthoring) m_worldAuthoring->DrawSceneDebug(ctx, viewportMin, size);
         /// @note スナップドラッグ中はギズモを出さない。同じ左ドラッグを ImGuizmo が掴むと
         /// @note 吸着とギズモ移動が同時に走って挙動が二重になる。
         const bool targetPointSelection = HasTargetPointSelection(ctx);

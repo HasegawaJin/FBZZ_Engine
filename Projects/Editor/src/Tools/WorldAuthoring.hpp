@@ -11,6 +11,9 @@ namespace fbzz::editor {
 [[nodiscard]] OpResult InspectWorldPcgProfile(OpContext&, const OpArgs&);
 [[nodiscard]] OpResult SaveWorldPcgProfile(OpContext&, const OpArgs&);
 [[nodiscard]] OpResult ConfigureWorldPcgVolume(OpContext&, const OpArgs&);
+[[nodiscard]] OpResult InspectWorldPcgVolume(OpContext&, const OpArgs&);
+/// @note Resolves project-relative paths and GUID references, including the destination of a new profile draft.
+[[nodiscard]] bool SameWorldPcgProfile(EditorContext&, const std::string& first, const std::string& second);
 [[nodiscard]] OpResult PreviewWorldPcg(OpContext&, const OpArgs&);
 [[nodiscard]] OpResult GenerateWorldPcg(OpContext&, const OpArgs&);
 [[nodiscard]] OpResult DetachWorldPcg(OpContext&, const OpArgs&);
