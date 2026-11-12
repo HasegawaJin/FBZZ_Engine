@@ -41,7 +41,12 @@ bool PlaySettingsBirthTable::Capture(scene::Scene& edit, scene::Scene& play, std
     std::unordered_set<scene::GameObject*> visited; std::unordered_set<std::string> guids;
     while (!pending.empty()) {
         auto* original = pending.back(); pending.pop_back();
-        if (!original || !visited.insert(original).second || !guids.insert(original->instanceId).second)
+        if (!original || !visited.insert(original).second)
+            return Failed(diagnostic, "Invalid initial Edit hierarchy or duplicate owner GUID.");
+        for (int index = 0; index < original->GetChildCount(); ++index) pending.push_back(original->GetChild(index));
+        /// @note The Play serializer excludes runtime-generated objects. Their owners recreate them in Play.
+        if (original->IsRuntimeGenerated()) continue;
+        if (!guids.insert(original->instanceId).second)
             return Failed(diagnostic, "Invalid initial Edit hierarchy or duplicate owner GUID.");
         auto* clone = play.FindByGuid(original->instanceId); if (!clone) return Failed(diagnostic, "The initial Play clone omitted an Edit owner.");
         Owner owner; owner.guid = original->instanceId; owner.editEntity = original->GetID(); owner.playEntity = clone->GetID();
@@ -59,7 +64,6 @@ bool PlaySettingsBirthTable::Capture(scene::Scene& edit, scene::Scene& play, std
                 owner.scripts.push_back({entry.savedScriptId, originalScript->GetTypeName(), originalScript->ReferenceBirth(), cloneScript->ReferenceBirth()});
             }
         next.m_owners.push_back(std::move(owner));
-        for (int index = 0; index < original->GetChildCount(); ++index) pending.push_back(original->GetChild(index));
     }
     *this = std::move(next); diagnostic.clear(); return true;
 }
