@@ -274,8 +274,9 @@ TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndepe
         draw.vsBuffers[0] = {};
         device.Submit(draw, resources);
     };
-    const auto probe = [&](const renderer::GpuHiZ& hierarchy, uint32_t index, uint32_t x) {
-        const ProbeConstants values{0.5f, index, 1, 0};
+    const auto probe = [&](const renderer::GpuHiZ& hierarchy, uint32_t index, uint32_t x,
+                           float candidateDepth = 0.5f, uint32_t mode = 1) {
+        const ProbeConstants values{candidateDepth, index, mode, 0};
         resources.Update(constants, &values, sizeof(values));
         device.SetViewport(x, 0, 1, 1);
         draw.pipelineState = m_pipelineState;
@@ -318,6 +319,12 @@ TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndepe
         const auto neighbor = renderer::BuildGpuHiZ(device, resources, source, 0, 0, 3, 2);
         ASSERT_TRUE(neighbor.depths.IsValid());
 
+        device.ClearDepth();
+        device.SetViewport(22, 2, 18, 9);
+        writeDepth(0.5f);
+        const auto shadowTiles = renderer::BuildGpuHiZ(device, resources, source, 3, 2, 37, 9);
+        ASSERT_TRUE(shadowTiles.depths.IsValid());
+
         device.SetRenderTarget(m_target, resources);
         probe(first, 0, resultOffset++);
         probe(first, 20, resultOffset++);
@@ -326,14 +333,20 @@ TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndepe
         probe(first, 45, resultOffset++);
         probe(second, 45, resultOffset++);
         probe(neighbor, 0, resultOffset++);
+        const uint32_t occlusionMode = reversedZ ? 3u : 2u;
+        const float behind = reversedZ ? 0.2f : 0.8f;
+        const float inFront = reversedZ ? 0.8f : 0.2f;
+        probe(shadowTiles, 19, resultOffset++, behind, occlusionMode);
+        probe(shadowTiles, 0, resultOffset++, behind, occlusionMode);
+        probe(shadowTiles, 19, resultOffset++, inFront, occlusionMode);
     }
     device.SetRenderTarget({}, resources);
     device.EndFrame();
 
     std::vector<float> pixels;
     ASSERT_TRUE(Capture(pixels));
-    const std::array expected{0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.25f, 1.0f,
-        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.75f, 0.0f};
+    const std::array expected{0.5f, 0.5f, 0.5f, 1.0f, 1.0f, 0.25f, 1.0f, 1.0f, 0.0f, 0.0f,
+        0.5f, 0.5f, 0.5f, 0.0f, 0.0f, 0.75f, 0.0f, 1.0f, 0.0f, 0.0f};
     for (size_t i = 0; i < expected.size(); ++i) {
         SCOPED_TRACE(i);
         EXPECT_FLOAT_EQ(pixels[i * 4], expected[i]);

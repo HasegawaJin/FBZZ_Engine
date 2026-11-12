@@ -2,6 +2,7 @@
 /// @brief   テストの深度を描き、GPU 遮蔽階層の値をカラーへ出す。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
+#include "../../../../Assets/Shaders/Pipeline/HiZOcclusion.hlsli"
 
 cbuffer ProbeConstants : register(b0)
 {
@@ -32,7 +33,13 @@ ProbeVertex VSMain(uint vertex : SV_VertexID)
     if (g_readPyramid != 0) {
         /// @note DrawCall::vsBuffers[0] はインスタンス用スロットの次に束縛される。
         StructuredBuffer<float> pyramid = ResourceDescriptorHeap[g_bindlessVertex.y];
-        output.value = pyramid[g_probeIndex];
+        if (g_readPyramid == 1) {
+            output.value = pyramid[g_probeIndex];
+        } else {
+            const float4x4 identity = float4x4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+            output.value = OccludedByHiZRegion(float3(0, 0, g_depth), 0.05f, identity,
+                uint2(37, 9), uint4(g_probeIndex, 0, 18, 9), g_readPyramid == 3, pyramid) ? 1.0 : 0.0;
+        }
     }
     return output;
 }

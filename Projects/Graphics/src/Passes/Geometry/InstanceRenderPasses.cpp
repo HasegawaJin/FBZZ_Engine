@@ -40,8 +40,9 @@ struct InstanceView {
     math::Matrix4 terrainViewProjection{};
     std::array<uint32_t,4> terrainDepth{};
     std::array<uint32_t,4> vegetation{};
+    std::array<uint32_t,4> shadowViewport{};
 };
-static_assert(sizeof(InstanceView)==304);
+static_assert(sizeof(InstanceView)==320);
 constexpr uint32_t TERRAIN_HIZ_SLOT=28;
 constexpr uint32_t VEGETATION_SLOTS=27;
 constexpr uint32_t MIN_GPU_PLACEMENTS=64;
@@ -519,6 +520,27 @@ bool SupportsTerrainHiZMode(const RenderPassContext& ctx)
     return ctx.occlusionCullingEnabled && ctx.settings.bulkInstanceGpuCulling && ctx.settings.gpuInstancing
         && !ctx.settings.IsWireframe() && ctx.renderer.SupportsIndirectDraw()
         && (mode==GeometryDrawMode::GPU_INDIRECT || mode==GeometryDrawMode::MESH_SHADER);
+}
+
+bool HasShadowHiZBounds(const RenderInstanceInput& input)
+{
+    /// @note A raster depth bias can move a caster nearer than its projected geometric bounds.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d11/d3d10-graphics-programming-guide-output-merger-stage-depth-bias Depth Bias.
+    return std::all_of(input.parts.begin(),input.parts.end(),[](const auto& part) {
+        const auto& material=part.mesh.material;
+        return material.shaderCapabilities.SupportsGBuffer() && material.depthBias==0
+            && material.depthBiasSlope==0.0f && std::isfinite(LeafWindStrength(material));
+    });
+}
+
+void BindShadowHiZ(InstanceView& view,const InstanceShadowView& light,ComputeCall& compute)
+{
+    if (!light.hierarchy.depths.IsValid()) return;
+    view.terrainViewProjection=light.viewProjection;
+    view.terrainDepth[0]=light.hierarchy.width;
+    view.terrainDepth[1]=light.hierarchy.height;
+    view.shadowViewport={light.viewportX,light.viewportY,light.viewportSize,light.hierarchy.reversedZ ? 1u : 0u};
+    compute.srvBuffers[TERRAIN_HIZ_SLOT]=light.hierarchy.depths;
 }
 bool CanPrepareGpu(RenderPassContext& ctx,const InstanceResources& cache,const RenderInstanceInput& input,
     const InstanceSource& source,uint32_t slotCount)
@@ -1007,6 +1029,15 @@ PreparedInstanceShadowBatch::~PreparedInstanceShadowBatch()=default;
 PreparedInstanceShadowBatch::PreparedInstanceShadowBatch(PreparedInstanceShadowBatch&&) noexcept=default;
 PreparedInstanceShadowBatch& PreparedInstanceShadowBatch::operator=(PreparedInstanceShadowBatch&&) noexcept=default;
 
+bool HasInstanceShadowOcclusionCandidates(const RenderPassContext& ctx)
+{
+    if (!ctx.renderScene || !SupportsTerrainHiZMode(ctx)) return false;
+    return std::any_of(ctx.renderScene->instances.begin(),ctx.renderScene->instances.end(),[&](const auto& input) {
+        return input.castShadows && !input.selectionOnly && HasValidInput(ctx,input)
+            && input.data->placements.size()>=MIN_GPU_PLACEMENTS && HasShadowHiZBounds(input);
+    });
+}
+
 PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,std::span<const InstanceShadowView> views,
     std::vector<ComputeCall>& commands)
 {
@@ -1024,6 +1055,7 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
     state.policy=PreparedInstanceShadowBatch::State::CapturePolicy(ctx);
     state.views.reserve(views.size());
     for (const auto& view : views) state.views.push_back({view,{}});
+    const bool hasHiZ=std::any_of(views.begin(),views.end(),[](const auto& view) { return view.hierarchy.depths.IsValid(); });
     const size_t firstCommand=commands.size();
     UpdateWindFrame(ctx,cache);
 
@@ -1063,6 +1095,7 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
             return ctx.resources.Get(cache.shaders[UsesAlphaShadow(material) ? 3u : 2u])!=nullptr;
         });
         if (!residentShaders) continue;
+        const bool useHiZ=hasHiZ && HasShadowHiZBounds(input);
 
         if (cascadeCount>1) {
             if (!ctx.resources.Get(cache.cascadeCullShader))
@@ -1081,6 +1114,7 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
                         cascadeViews[i]=gpuView;
                         SetFrustumPlanes(cascadeViews[i],light.input.frustum);
                         ConfigureShadowLod(cascadeViews[i], light.input, input.vegetationBudget.enabled);
+                        if (useHiZ) BindShadowHiZ(cascadeViews[i],light.input,*compute);
                         /// @note The grouped kernel reads the shared cell budget from view zero and masks out near tiles itself.
                         cascadeViews[i].vegetation[2] = gpuView.vegetation[2];
                         if (light.input.preserveVegetationDetail) preserveDetailMask|=1u<<i;
@@ -1104,6 +1138,7 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
             ConfigureShadowLod(view, light.input, input.vegetationBudget.enabled);
             auto compute=PrepareGpuBuffers(ctx,cache,input,*source,view,std::span{&light.input.frustum,1},cache.shaders[6]);
             if (!compute) continue;
+            if (useHiZ) BindShadowHiZ(view,light.input,*compute);
             ctx.resources.Update(compute->srvBuffers[15],&view,sizeof(view));
             auto& set=light.sets.back();
             set.receipt=commands.size();

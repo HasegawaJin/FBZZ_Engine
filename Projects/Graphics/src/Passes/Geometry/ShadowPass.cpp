@@ -253,6 +253,30 @@ struct ShadowSelections {
     std::span<const uint8_t> receipts;
 };
 
+enum class ShadowTilePhase { ALL, OCCLUDERS, INSTANCES };
+
+void PrepareShadowAtlasHiZ(RenderPassContext& ctx, ResourceHandle<RenderTargetTag> atlas,
+    std::span<InstanceShadowView> views)
+{
+    uint32_t left = UINT32_MAX, top = UINT32_MAX, right = 0, bottom = 0;
+    for (const auto& view : views) {
+        if (view.viewportSize == 0) return;
+        left = (std::min)(left, view.viewportX);
+        top = (std::min)(top, view.viewportY);
+        right = (std::max)(right, view.viewportX + view.viewportSize);
+        bottom = (std::max)(bottom, view.viewportY + view.viewportSize);
+    }
+    if (left >= right || top >= bottom) return;
+    FBZZ_PROFILE_SCOPE("ShadowVisibility::BuildHiZ");
+    const auto hierarchy = BuildGpuHiZ(ctx.renderer, ctx.resources, atlas, left, top, right - left, bottom - top);
+    if (!hierarchy.depths.IsValid()) return;
+    for (auto& view : views) {
+        view.hierarchy = hierarchy;
+        view.viewportX -= left;
+        view.viewportY -= top;
+    }
+}
+
 struct BakedDepthRestoreConstants {
     math::Matrix4 cascadeToBakeClip;
     math::Vector4 sampling;
@@ -264,14 +288,14 @@ static_assert(sizeof(BakedDepthRestoreConstants) == 80 && sizeof(BakedDepthResto
 void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
                          int cascadeIndex, size_t selectionIndex, const std::vector<ShadowCaster>& casters,
                          const ShadowSelections& selections,
-                         bool usesBakedStaticDepth)
+                          bool usesBakedStaticDepth, ShadowTilePhase phase)
 {
     /// @note このカスケードのタイルへビューポートを絞る。SetRenderTarget はビューポートを
     /// @note RT 全体へ戻すため、必ずその後に呼ぶ。
     ctx.renderer.SetViewport(cascade.viewportX, cascade.viewportY,
                              cascade.viewportSize, cascade.viewportSize);
 
-    if (usesBakedStaticDepth) {
+    if (usesBakedStaticDepth && phase != ShadowTilePhase::INSTANCES) {
         FBZZ_PROFILE_SCOPE("DirectionalShadowBake::Restore");
         const auto& baked = ctx.directionalShadowBake;
         const BakedDepthRestoreConstants constants{baked.cascadeToBakeClip,
@@ -295,19 +319,22 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
     lightFrameData.stableLeafShadow = ctx.directionalShadowBakeEnabled ? 1.0f : 0.0f;
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
-    EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection);
-    /// @note 植生のアルファテストより先に地形の深度を入れ、遮られたフラグメントを棄却できるようにする。
-    SubmitTerrainShadowBatchView(ctx, cascade.frustum, cascade.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
-        ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, usesBakedStaticDepth);
-    SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
-    SubmitFiberShadowCasters(ctx, lightFrameData, cascade.frustum);
+    if (phase != ShadowTilePhase::INSTANCES) {
+        EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection);
+        SubmitTerrainShadowBatchView(ctx, cascade.frustum, cascade.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
+            ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, usesBakedStaticDepth);
+    }
+    if (phase != ShadowTilePhase::OCCLUDERS) {
+        SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
+        SubmitFiberShadowCasters(ctx, lightFrameData, cascade.frustum);
+    }
 }
 
 /// @note RenderPunctualShadowView — Spot / Point のタイル 1 枚を描く。
 /// @note カスケードとの違いはビューポートと行列の出どころだけで、提出の流れは同一。
 void RenderPunctualShadowView(RenderPassContext& ctx, const PunctualShadowView& view,
                               int viewIndex, size_t selectionIndex, const std::vector<ShadowCaster>& casters,
-                              const ShadowSelections& selections)
+                              const ShadowSelections& selections, ShadowTilePhase phase)
 {
     ctx.renderer.SetViewport(view.viewportX, view.viewportY,
                              view.viewportSize, view.viewportSize);
@@ -318,14 +345,15 @@ void RenderPunctualShadowView(RenderPassContext& ctx, const PunctualShadowView& 
     lightFrameData.cameraPos = view.eyePos;
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
-    EmitShadowCasters(ctx, casters, viewIndex, true, view.viewProjection);
-    SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
-    SubmitFiberShadowCasters(ctx, lightFrameData, view.frustum);
-
-    /// @note 地形も Spot / Point の影を落とす。屋内の床が地形でできているシーンでは、
-    /// @note ここを飛ばすと「壁の影は出るのに床には何も落ちない」ことになる。
-    SubmitTerrainShadowBatchView(ctx, view.frustum, view.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
-        ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, false);
+    if (phase != ShadowTilePhase::INSTANCES) {
+        EmitShadowCasters(ctx, casters, viewIndex, true, view.viewProjection);
+        SubmitTerrainShadowBatchView(ctx, view.frustum, view.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
+            ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, false);
+    }
+    if (phase != ShadowTilePhase::OCCLUDERS) {
+        SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
+        SubmitFiberShadowCasters(ctx, lightFrameData, view.frustum);
+    }
 }
 
 } /// @note namespace
@@ -382,6 +410,9 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         && resources.Get(baked.restoreShader) && resources.Get(baked.restorePipeline) && resources.Get(ctx.handles.objectCB);
     const size_t bakedCascadeIndex = restoreStaticDepth ? static_cast<size_t>(cascadeCount - 1) : SIZE_MAX;
     const uint32_t bakedCascadeBit = restoreStaticDepth && baked.includesStaticMeshes ? (1u << bakedCascadeIndex) : 0u;
+    const auto shadowScene = ctx.renderScene;
+    const auto shadowResourceEpoch = resources.GetResetVersion();
+    const auto shadowResourceFrame = resources.FrameStamp();
 
     /// @name caster の収集はフレームに 1 回だけ
     /// @note シーン走査・GetComponent・bounds 計算・ソートはカスケード間で共有できる。カスケード
@@ -414,6 +445,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
 
     const int localViewCount = needPunctual ? punctualViewCount : 0;
     std::array<int, kMaxShadowCascades> directionalIndices;
+    std::array<ShadowCascade, kMaxShadowCascades> directionalViews;
     std::array<PunctualShadowView, kMaxPunctualShadows> punctualViews;
     std::array<InstanceShadowView, kMaxShadowCascades + kMaxPunctualShadows> visibilityViews;
     int directionalViewCount = 0;
@@ -423,46 +455,71 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         if (static_cast<size_t>(index) == bakedCascadeIndex) bakedViewIndex = directionalViewCount;
         /// @note The two near cascades retain projected-size LOD for readable branch and canopy shadows.
         directionalIndices[directionalViewCount] = index;
-        visibilityViews[directionalViewCount++] = {ctx.shadowCascades[index].frustum, true, index < 2,
-            ctx.shadowCascades[index].texelWorldSize};
+        const auto& view = directionalViews[directionalViewCount] = ctx.shadowCascades[index];
+        visibilityViews[directionalViewCount++] = {view.frustum, true, index < 2, view.texelWorldSize,
+            view.viewProjection, view.viewportX, view.viewportY, view.viewportSize, {}};
     }
     for (int index = 0; index < localViewCount; ++index) {
-        punctualViews[index] = ctx.punctualShadowViews[index];
-        visibilityViews[directionalViewCount + index] = {punctualViews[index].frustum, false};
+        const auto& view = punctualViews[index] = ctx.punctualShadowViews[index];
+        visibilityViews[directionalViewCount + index] = {view.frustum, false, false, 0.0f,
+            view.viewProjection, view.viewportX, view.viewportY, view.viewportSize, {}};
     }
     const auto views = std::span{visibilityViews}.first(static_cast<size_t>(directionalViewCount + localViewCount));
     std::vector<ComputeCall> commands;
+    std::vector<uint8_t> receipts;
     PreparedInstanceShadowBatch instanceBatch;
     PreparedTerrainShadowBatch terrainBatch;
+    const auto dispatch = [&] {
+        receipts.resize(commands.size());
+        if (!commands.empty()) {
+            FBZZ_PROFILE_SCOPE("ShadowVisibility::Dispatch");
+            gpu_cull_detail::TryDispatchSequence(renderer, resources, commands, receipts);
+        }
+        commands.clear();
+    };
+    const auto depthCurrent = [&] {
+        return ctx.occlusionCullingEnabled && ctx.renderScene == shadowScene
+            && resources.GetResetVersion() == shadowResourceEpoch && resources.FrameStamp() == shadowResourceFrame;
+    };
+    const auto punctualAtlas = ctx.Res().Target("PunctualShadowMap");
+    const auto drawTiles = [&](ShadowTilePhase phase) {
+        const ShadowSelections selections{instanceBatch, terrainBatch, receipts};
+        if (directionalViewCount > 0) {
+            const int before = ctx.statsShadowDrawCalls;
+            renderer.SetRenderTarget(shadowAtlas, resources);
+            for (int i = 0; i < directionalViewCount; ++i)
+                RenderShadowCascade(ctx, directionalViews[i], directionalIndices[i], i, casters, selections,
+                    static_cast<size_t>(i) == bakedViewIndex, phase);
+            if (phase == ShadowTilePhase::OCCLUDERS && before != ctx.statsShadowDrawCalls && depthCurrent())
+                PrepareShadowAtlasHiZ(ctx, shadowAtlas, views.first(directionalViewCount));
+        }
+        if (localViewCount > 0) {
+            const int before = ctx.statsShadowDrawCalls;
+            renderer.SetRenderTarget(punctualAtlas, resources);
+            for (int i = 0; i < localViewCount; ++i)
+                RenderPunctualShadowView(ctx, punctualViews[i], i, static_cast<size_t>(directionalViewCount + i),
+                    casters, selections, phase);
+            if (phase == ShadowTilePhase::OCCLUDERS && before != ctx.statsShadowDrawCalls && depthCurrent())
+                PrepareShadowAtlasHiZ(ctx, punctualAtlas, views.subspan(directionalViewCount));
+        }
+    };
+
+    const bool useHiZ = !views.empty() && depthCurrent() && HasInstanceShadowOcclusionCandidates(ctx);
     {
         FBZZ_PROFILE_SCOPE("ShadowVisibility::Prepare");
-        instanceBatch = PrepareInstanceShadowBatch(ctx, views, commands);
+        if (!useHiZ) instanceBatch = PrepareInstanceShadowBatch(ctx, views, commands);
         terrainBatch = PrepareTerrainShadowBatch(ctx, views, commands, bakedViewIndex);
     }
-    std::vector<uint8_t> receipts(commands.size());
-    if (!commands.empty()) {
-        /// @note Selection reads immutable geometry and independent outputs, so no tile draw is needed between requests.
-        FBZZ_PROFILE_SCOPE("ShadowVisibility::Dispatch");
-        gpu_cull_detail::TryDispatchSequence(renderer, resources, commands, receipts);
+    dispatch();
+    if (useHiZ) {
+        drawTiles(ShadowTilePhase::OCCLUDERS);
+        if (!depthCurrent()) for (auto& view : views) view.hierarchy = {};
+        instanceBatch = PrepareInstanceShadowBatch(ctx, views, commands);
+        dispatch();
     }
-    const ShadowSelections selections{instanceBatch, terrainBatch, receipts};
-
-    if (needDirectional) {
-        /// @note クリアの後に punctual アトラスを触っている可能性があるので、束縛し直す。
-        renderer.SetRenderTarget(shadowAtlas, resources);
-        for (int i = 0; i < directionalViewCount; ++i) {
-            const int index = directionalIndices[i];
-            RenderShadowCascade(ctx, ctx.shadowCascades[index], index, i, casters, selections,
-                static_cast<size_t>(i) == bakedViewIndex);
-        }
+    drawTiles(useHiZ ? ShadowTilePhase::INSTANCES : ShadowTilePhase::ALL);
+    if (needDirectional)
         ctx.cachedShadowDepthReady = ctx.cachedShadowAtlas.IsValid() && shadowAtlas == ctx.cachedShadowAtlas;
-    }
-
-    if (needPunctual) {
-        renderer.SetRenderTarget(ctx.Res().Target("PunctualShadowMap"), resources);
-        for (int i = 0; i < punctualViewCount; ++i)
-            RenderPunctualShadowView(ctx, punctualViews[i], i, static_cast<size_t>(directionalViewCount + i), casters, selections);
-    }
 
     /// @note 後続パスがビューポートを RT 全体だと仮定してよいよう、タイル絞りを解除しておく。
     /// @note SetRenderTarget を経由しない描画がこの直後に来ても壊れないようにする保険。

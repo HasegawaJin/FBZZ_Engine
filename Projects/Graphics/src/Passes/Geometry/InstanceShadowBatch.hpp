@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #pragma once
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Math/Frustum.hpp>
 #include <memory>
@@ -18,7 +19,14 @@ struct InstanceShadowView {
     bool directional = false;
     bool preserveVegetationDetail = false;
     float texelWorldSize = 0.0f;
+    math::Matrix4 viewProjection;
+    uint32_t viewportX = 0;
+    uint32_t viewportY = 0;
+    uint32_t viewportSize = 0;
+    GpuHiZ hierarchy;
 };
+
+[[nodiscard]] bool HasInstanceShadowOcclusionCandidates(const RenderPassContext& context);
 
 class PreparedInstanceShadowBatch {
 public:

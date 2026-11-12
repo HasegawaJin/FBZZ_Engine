@@ -443,7 +443,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     EXPECT_FALSE(math::Frustum::FromViewProjection(m_camera.GetViewProjection())
         .IntersectsSphere(placements->placements[1].position, 1.0f));
 
-    const auto renderAtlas = [&](bool gpu, float time = 1.7f, bool autoBake = false) {
+    const auto renderAtlas = [&](bool gpu, float time = 1.7f, bool autoBake = false, bool occlusion = false) {
         m_settings.shadowEnabled = true;
         m_settings.shadow.mapResolution = m_width;
         m_settings.gpuInstancing = gpu;
@@ -458,6 +458,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
         ctx.shadowStrength = 1.0f;
         ctx.shadowCascadeCount = CASCADE_COUNT;
         ctx.directionalShadowBakeEnabled = autoBake;
+        ctx.occlusionCullingEnabled = occlusion;
         ctx.resourceRegistry.BindTarget("ShadowMap", m_shadow);
         for (uint32_t i = 0; i < CASCADE_COUNT; ++i) {
             r::Camera light = m_camera;
@@ -512,6 +513,19 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     /// @note The near cascade tiles occupy the upper half of the atlas.
     ASSERT_EQ(budgeted.size(), reference.size());
     EXPECT_TRUE(std::equal(reference.begin(), reference.begin() + reference.size() / 2, budgeted.begin()));
+
+    r::RenderObject occluder;
+    occluder.itemCount = 1;
+    occluder.colorEligible = true;
+    occluder.world = math::Matrix4::TRS({centers[1], 0, 2}, math::Quaternion::Identity(), {4.5f, 4.5f, 1});
+    scene->objects.push_back(occluder);
+    auto opaquePart = input.parts[0].mesh;
+    opaquePart.material = {};
+    opaquePart.material.doubleSided = true;
+    scene->items.push_back(opaquePart);
+    const auto occludedReference = renderAtlas(true);
+    EXPECT_NE(occludedReference, budgeted);
+    Same(occludedReference, renderAtlas(true, 1.7f, false, true));
 }
 
 TEST_F(InstancedMeshTest, GpuOcclusionRowsFollowProjectionChangesAndInvalidViewsFailOpen)

@@ -14,6 +14,7 @@ struct View {
     float4x4 terrainViewProjection;
     uint4 terrainDepth;
     uint4 vegetation;
+    uint4 shadowViewport;
 };
 struct Args { uint offset; uint indexCount; uint instanceCount; uint startIndex; int baseVertex; uint startInstance; };
 FBZZ_SBUFFER_T(Record,g_records,SB_SKIN_SRC_VERTICES_SLOT);
@@ -23,10 +24,18 @@ static const uint VEGETATION_SLOTS = 27u;
 FBZZ_SBUFFER_T(uint,g_vegetationSlots,VEGETATION_SLOTS);
 FBZZ_RWSBUFFER_T(uint,g_ids,UAV_CLUSTER_LIGHTS_SLOT);
 FBZZ_RWSBUFFER_T(Args,g_args,UAV_GPU_SORT_SLOT);
-#if !defined(FBZZ_INSTANCE_CASCADE_CULL)
-FBZZ_SBUFFER_T(float4,g_occlusion,SB_CLUSTER_INDICES_SLOT);
 static const uint TERRAIN_HIZ_SLOT = 28u;
 FBZZ_SBUFFER_T(float,g_terrainHiZ,TERRAIN_HIZ_SLOT);
+
+bool OccludedByShadowHiZ(const View light, float3 center, float radius)
+{
+    if (light.terrainDepth.x == 0 || light.shadowViewport.z == 0) return false;
+    return OccludedByHiZRegion(center, radius, light.terrainViewProjection, light.terrainDepth.xy,
+        uint4(light.shadowViewport.xy, light.shadowViewport.zz), light.shadowViewport.w != 0, g_terrainHiZ);
+}
+
+#if !defined(FBZZ_INSTANCE_CASCADE_CULL)
+FBZZ_SBUFFER_T(float4,g_occlusion,SB_CLUSTER_INDICES_SLOT);
 /// @note Current-view conservative CPU depth, without previous-frame queries or CPU visibility readback.
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d11/conservative-rasterization Fully covered cells only.
 bool Occluded(float3 center, float radius)
@@ -122,7 +131,8 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
     if (view.culling.y>0 && cullDistance>0 && screenHeight<view.culling.y) return;
 #if !defined(FBZZ_INSTANCE_CASCADE_CULL)
     if (view.culling.w>0 && Occluded(sphere.xyz,radius)) return;
-    if (view.terrainDepth.x!=0 && OccludedByHiZ(sphere.xyz, radius, view.terrainViewProjection,
+    if (OccludedByShadowHiZ(view, sphere.xyz, radius)) return;
+    if (view.shadowViewport.z==0 && view.terrainDepth.x!=0 && OccludedByHiZ(sphere.xyz, radius, view.terrainViewProjection,
         view.terrainDepth.xy, g_terrainHiZ)) return;
 #endif
     const float relativeHeight=2*sphere.w*view.cameraProjection.w/view.metrics.x
@@ -136,6 +146,8 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
     const uint preserveDetailMask=view.terrainDepth.z;
     [loop] while (cascadeMask != 0u) {
         const uint cascade=firstbitlow(cascadeMask);
+        cascadeMask &= cascadeMask - 1u;
+        if (OccludedByShadowHiZ(g_view[cascade], sphere.xyz, radius)) continue;
         uint shadowLod=(preserveDetailMask & (1u<<cascade))!=0u ? lod : budgetedLod;
         const float texelsPerMeter = g_view[cascade].forward.w;
         if (texelsPerMeter > 0.0f) {
@@ -144,7 +156,6 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
             shadowLod = max(shadowLod, min(minimum, last));
         }
         AppendInstance(view, cascade, id, shadowLod);
-        cascadeMask &= cascadeMask - 1u;
     }
 #else
     /// @note Only the projected-size test can select the distant billboard LOD for shadow casters.
