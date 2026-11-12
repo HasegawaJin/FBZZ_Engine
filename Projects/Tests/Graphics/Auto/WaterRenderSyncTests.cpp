@@ -343,6 +343,7 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
         scene::Scene source;
         const auto id = AddWater(source, horizon, parented);
         auto& water = *source.GetComponent<scene::WaterComponent>(id);
+        if (horizon) water.waveAuthoring.speedMultiplier = 0.65f;
         const auto& pose = source.GetGameObject(id)->transform;
         std::array<float, PROBES> previous{};
         std::array<math::Vector3, PROBES> fixedWorld{};
@@ -429,8 +430,8 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
     }
     EXPECT_EQ(errors.samples, 768u);
     EXPECT_LE(errors.height, 0.003f);
-    /// @note Production analytic normals intentionally omit the low-frequency group-envelope derivative.
-    EXPECT_LE(errors.normal, 0.05f);
+    /// @note Allow the CPU central difference and the finite inverse solve to differ from the GPU analytic normal.
+    EXPECT_LE(errors.normal, 0.004f);
     EXPECT_GT(maximumChange, 0.1f);
     EXPECT_EQ(temporalSamples, 768u);
     EXPECT_GT(minimumFixedWorldTemporalRange, 0.1f);

@@ -1,0 +1,22 @@
+# @file    WaterfallSurface.mat
+# @brief   Connected waterfall surface and downstream impact foam.
+# @author  Hasegawa Jin
+# @date    2026-11-11
+version = 1
+shader = 'guid:2b7480e615df5a6ab43ab168cd15aa04|Assets/Shaders/Water/Waterfall.hlsl'
+blend_mode = 'AlphaBlend'
+double_sided = true
+depth_write = false
+render_queue = 3155
+render_path = 'auto'
+mesh_type = 'surface'
+[params]
+albedo = [0.085, 0.235, 0.28, 1.0]
+foamColor = [0.79, 0.86, 0.88, 1.0]
+flowSpeed = 1.0
+streamDensity = 28.0
+foamAmount = 1.14
+opacity = 0.86
+foamMode = 0.0
+edgeSoftness = 0.055
+geometryMode = 1.0

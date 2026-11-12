@@ -515,6 +515,19 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
     left.push_back(endLeft);
     right.push_back(endRight);
 
+    float distance = 0.0f;
+    math::Vector3 previous = snapshot.vertices[left.front()].worldPosition * 0.5f
+        + snapshot.vertices[right.front()].worldPosition * 0.5f;
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        auto& a = snapshot.vertices[left[i]];
+        auto& b = snapshot.vertices[right[i]];
+        const auto center = a.worldPosition * 0.5f + b.worldPosition * 0.5f;
+        distance += std::hypot(center.x - previous.x, center.z - previous.z);
+        if (!std::isfinite(distance)) return false;
+        a.riverDistance = b.riverDistance = distance;
+        previous = center;
+    }
+
     std::vector<Point2> outline;
     outline.reserve(left.size() + right.size());
     snapshot.outlineIndices.reserve(left.size() + right.size());
@@ -930,6 +943,9 @@ bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot, float worldX, flo
             sample.depth = static_cast<float>(depth);
             sample.worldVelocity = {static_cast<float>(flowX), 0.0f, static_cast<float>(flowZ)};
             sample.baseHeightGradient = triangle.baseHeightGradient;
+            sample.riverDistance = static_cast<float>(wa * va.riverDistance + wb * vb.riverDistance + wc * vc.riverDistance);
+            sample.horizonMaterialWeight = static_cast<float>(wa * va.horizonMaterialWeight
+                + wb * vb.horizonMaterialWeight + wc * vc.horizonMaterialWeight);
             if (!std::isfinite(sample.baseHeight) || !std::isfinite(sample.baseHeightOffset)
                 || !std::isfinite(sample.depth) || sample.depth < 0.0f
                 || !Finite(sample.worldVelocity) || !Finite(sample.baseHeightGradient)) return false;

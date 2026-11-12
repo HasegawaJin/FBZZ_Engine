@@ -98,6 +98,8 @@ struct RenderObject {
     uint32_t firstItem = 0;
     uint32_t itemCount = 0;
     uint32_t layer = 0;
+    /// @note Nonzero for a generated waterfall. The two index ranges share one buffer.
+    uint32_t waterfallFarIndexStart = 0;
     bool skinned = false;
     bool castShadows = true;
     bool lodVisible = true;
@@ -190,6 +192,7 @@ struct RenderSpatialUpdate {
 /// @note 通常 GPU ハンドルは非所有。preparedSkinning の出力だけは ticket が元入力と native lease を保持する。
 /// @note 候補はカメラで絞らない。各ビューがレイヤー・LOD・視錐台・距離を評価する。
 struct RenderScene {
+    std::vector<uint32_t> waterfallObjects;
     std::vector<RenderCustomPostInput> customPost;
     RenderLightingInput lighting;
     RenderEnvironmentInput environment;

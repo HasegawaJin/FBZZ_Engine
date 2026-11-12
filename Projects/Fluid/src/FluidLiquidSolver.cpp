@@ -251,6 +251,11 @@ void FluidLiquidSolver::Emit()
 
 void FluidLiquidSolver::Advance(float dt)
 {
+    Advance(dt, {});
+}
+
+void FluidLiquidSolver::Advance(float dt, const FluidLiquidBoundary& boundary)
+{
     if (dt <= 0.0f) return;
     float maxSpeed = 0.0f;
     for (const Particle& particle : m_particles)
@@ -270,10 +275,15 @@ void FluidLiquidSolver::Advance(float dt)
     /// @note 1 刻みで粒子半径まで。これを超えると近傍の取りこぼしで粒子がすり抜ける。
     const int steps = std::clamp(static_cast<int>(std::ceil(maxSpeed * dt / m_radius)), 1, 48);
     const float stepDt = dt / static_cast<float>(steps);
-    for (int step = 0; step < steps; ++step) Step(stepDt);
+    for (int step = 0; step < steps; ++step) Step(stepDt, boundary);
 }
 
 void FluidLiquidSolver::Step(float dt)
+{
+    Step(dt, {});
+}
+
+void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
 {
     if (dt <= 0.0f) return;
     Emit();
@@ -343,6 +353,20 @@ void FluidLiquidSolver::Step(float dt)
     const float frictionKeep = std::exp(-(std::max)(m_settings.floorFriction, 0.0f) * 10.0f * dt);
     for (std::size_t i = 0; i < count; ++i) {
         Particle& particle = m_particles[i];
+        FluidLiquidContact surface;
+        bool collided = false;
+        float approach = 0.0f;
+        if (boundary.sample) {
+            const math::Vector3 predicted{m_predictedX[i], m_predictedY[i], m_predictedZ[i]};
+            collided = boundary.sample(boundary.context, predicted, m_radius, surface);
+            if (collided) approach = math::Vector3::Dot({particle.vx, particle.vy, particle.vz}, surface.normal);
+        }
+        if (collided && surface.distance < m_radius) {
+            const auto offset = surface.normal * (m_radius - surface.distance);
+            m_predictedX[i] += offset.x;
+            m_predictedY[i] += offset.y;
+            m_predictedZ[i] += offset.z;
+        }
         /// @note PBF の押し広げ補正をすべて速度へ持ち越すと、重なりや激突のたびに粒子が爆ぜる。
         /// @note 位置補正を保ち、速度へ持ち越す分だけを抑える。流れの速さは発生源と重力が決める。
         float pushX = (m_predictedX[i] - particle.x) / dt - particle.vx;
@@ -361,6 +385,15 @@ void FluidLiquidSolver::Step(float dt)
         particle.x  = m_predictedX[i];
         particle.y  = m_predictedY[i];
         particle.z  = m_predictedZ[i];
+        if (collided) {
+            math::Vector3 velocity{particle.vx, particle.vy, particle.vz};
+            const float normalSpeed = math::Vector3::Dot(velocity, surface.normal);
+            const float rebound = (std::max)(-approach, 0.0f) * surface.restitution;
+            velocity += surface.normal * ((std::max)(normalSpeed, rebound) - normalSpeed);
+            particle.vx = velocity.x;
+            particle.vy = velocity.y;
+            particle.vz = velocity.z;
+        }
         if (m_settings.floor && particle.y <= floorContact) {
             particle.vx *= frictionKeep;
             particle.vz *= frictionKeep;
@@ -387,9 +420,10 @@ void FluidLiquidSolver::Step(float dt)
     ApplyViscosity();
 
     for (Particle& particle : m_particles) particle.age += dt;
-    std::erase_if(m_particles, [](const Particle& p) {
+    std::erase_if(m_particles, [&boundary](const Particle& p) {
         return p.x < kBoundsMinX || p.x > kBoundsMaxX || p.y < kBoundsMinY || p.y > kBoundsMaxY
-            || p.z < kBoundsMinZ || p.z > kBoundsMaxZ;
+            || p.z < kBoundsMinZ || p.z > kBoundsMaxZ
+            || (boundary.drain && boundary.drain(boundary.context, {p.x, p.y, p.z}, {p.vx, p.vy, p.vz}));
     });
     m_time += dt;
 }

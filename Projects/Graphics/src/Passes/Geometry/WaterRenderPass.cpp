@@ -13,6 +13,7 @@
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Core/Logger.hpp>
+#include <Core/Util/StringUtils.hpp>
 #include "../../Renderer/GpuCullDrawQueue.hpp"
 #include "WaterNoiseBake.hpp"
 #include <algorithm>
@@ -20,10 +21,12 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 namespace fbzz::renderer {
@@ -173,15 +176,17 @@ static_assert(sizeof(WaterCameraCB) == 288);
 
 struct WaterDrawResources {
     ResourceHandle<ShaderTag> waterShader, selectionShader, copyColorShader, depthCopyShader;
-    ResourceHandle<ShaderTag> mediumAtlasShader, interfaceShader;
+    ResourceHandle<ShaderTag> mediumAtlasShader, interfaceShader, crestSprayShader;
     ResourceHandle<PipelineStateTag> waterPSO, wireframePSO, selectionPSO;
-    ResourceHandle<PipelineStateTag> mediumAtlasPSO, interfacePSO;
-    ResourceHandle<ConstantBufferTag> cameraCB, waterCB, effectCB, mediumCaptureCB;
+    ResourceHandle<PipelineStateTag> mediumAtlasPSO, interfacePSO, crestSprayPSO;
+    ResourceHandle<ConstantBufferTag> cameraCB, waterCB, effectCB, mediumCaptureCB, zoneAppearanceCB;
     ResourceHandle<TextureTag> black, neutralRipple;
     DynamicStructuredBufferPool patchInstances{16};
     std::unique_ptr<GpuGeometrySelection> geometrySelection;
     bool indirectPathReported = false;
     std::unordered_set<uint64_t> rejectedGeometryWarnings;
+    uint64_t appearanceShaderVersion = 0;
+    std::unordered_map<uint64_t, bool> defaultWaterAppearances;
 };
 
 WaterDrawResources& GetWaterDrawResources(ResourceManager& resources)
@@ -199,22 +204,49 @@ WaterDrawResources& GetWaterDrawResources(ResourceManager& resources)
     handles.depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
     handles.mediumAtlasShader = resources.LoadShader("Assets/Shaders/Water/WaterMediumAtlas.hlsl");
     handles.interfaceShader = resources.LoadShader("Assets/Shaders/Water/WaterInterface.hlsl");
+    handles.crestSprayShader = resources.LoadShader("Assets/Shaders/Water/WaterCrestSpray.hlsl");
     /// @note 波の裏側とチャンク順で水面を上塗りしないよう、本描画は深度を書く。
     handles.waterPSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::ALPHA_BLEND, DepthMode::DEPTH_ON});
     handles.wireframePSO = resources.CreatePipelineState({RasterizerMode::WIREFRAME_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
     handles.selectionPSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
     handles.mediumAtlasPSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
     handles.interfacePSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
+    handles.crestSprayPSO = resources.CreatePipelineState({RasterizerMode::SOLID_NOCULL, BlendMode::ALPHA_BLEND, DepthMode::DEPTH_READ});
     handles.cameraCB = resources.CreateConstantBuffer(sizeof(WaterCameraCB));
     handles.waterCB = resources.CreateConstantBuffer(sizeof(WaterCB));
     handles.effectCB = resources.CreateConstantBuffer(sizeof(WaterEffectParams));
     handles.mediumCaptureCB = resources.CreateConstantBuffer(sizeof(math::Vector4));
+    handles.zoneAppearanceCB = resources.CreateConstantBuffer(sizeof(WaterMaterialBlendTarget) * 32);
     handles.geometrySelection = std::make_unique<GpuGeometrySelection>();
     const uint8_t black[4] = {0, 0, 0, 255};
     const uint8_t ripple[4] = {128, 128, 128, 255};
     handles.black = resources.CreateTexture(black, 1, 1);
     handles.neutralRipple = resources.CreateTexture(ripple, 1, 1);
     return handles;
+}
+
+/// @note GUID and path loads can have different handles for the same standard water shader.
+bool IsDefaultWaterAppearance(ResourceManager& resources, WaterDrawResources& handles,
+    ResourceHandle<ShaderTag> appearance)
+{
+    if (appearance == handles.waterShader) return true;
+    const uint64_t shaderVersion = resources.GetShaderVersion();
+    if (handles.appearanceShaderVersion != shaderVersion) {
+        handles.appearanceShaderVersion = shaderVersion;
+        handles.defaultWaterAppearances.clear();
+    }
+    const uint64_t key = (static_cast<uint64_t>(appearance.gen) << 32) | appearance.id;
+    const auto [cached, inserted] = handles.defaultWaterAppearances.try_emplace(key, false);
+    if (!inserted) return cached->second;
+
+    const auto* shader = resources.Get(appearance);
+    const auto* standard = resources.Get(handles.waterShader);
+    if (!shader || !standard) return false;
+    std::error_code error;
+    cached->second = shader->GetPath() == standard->GetPath() || std::filesystem::equivalent(
+        ResolveShaderFilePath(util::StringUtils::ToWide(shader->GetPath())),
+        ResolveShaderFilePath(util::StringUtils::ToWide(standard->GetPath())), error);
+    return cached->second;
 }
 
 void UpdateWaterCamera(RenderPassContext& ctx, const WaterDrawResources& handles,
@@ -585,6 +617,27 @@ bool IsWaterMediumOwnerDisabled(const RenderPassContext& ctx, uint64_t ownerKey)
     return std::find(disabled.begin(), disabled.end(), ownerKey) != disabled.end();
 }
 
+/// @note Color and interface consume the same immutable atlas owner indices for the current view.
+math::Vector4 ResolveHorizonRiverMedia(const RenderWaterInput& ocean, const RenderScene& scene,
+    const RenderPassContext& ctx)
+{
+    if (!ocean.farOceanEnabled || ocean.constants.horizonWaveSeams.front().w <= 0.0f) return {};
+    std::array<float, 4> indices{};
+    for (uint32_t i = 0; i < ctx.handles.waterMediumBodies.size(); ++i) {
+        const auto index = ctx.handles.waterMediumBodies[i].waterInputIndex;
+        if (index >= scene.water.size()) continue;
+        const auto& river = scene.water[index];
+        if (river.horizonReceiverKey != ocean.medium.stableOwnerKey
+            || IsWaterMediumOwnerDisabled(ctx, river.medium.stableOwnerKey)) continue;
+        for (std::size_t seam = 0; seam < indices.size(); ++seam) {
+            const auto& a = ocean.constants.horizonWaveSeams[seam];
+            const auto& b = river.constants.materialBlendMouth;
+            if (a.w > 0.0f && a.x == b.x && a.y == b.y) indices[seam] = static_cast<float>(i + 1u);
+        }
+    }
+    return {indices[0], indices[1], indices[2], indices[3]};
+}
+
 /// @brief Adds one owner to the view's fail-closed water list without duplicating its key.
 void DisableWaterMediumOwner(RenderPassContext& ctx, uint64_t ownerKey)
 {
@@ -742,7 +795,8 @@ void WaterMediumAtlasPass::Execute(PassResources&, RenderPassContext& ctx)
         ctx.renderer.SetViewport(body.tileX * tileResolution, body.tileY * tileResolution,
             tileResolution, tileResolution);
 
-        VisitWaterPatchDraws(input, ctx, false, true,
+        const bool connectedOcean = input.farOceanEnabled && input.constants.horizonWaveSeams.front().w > 0.0f;
+        VisitWaterPatchDraws(input, ctx, connectedOcean, true,
             [&](auto vertexBuffer, const WaterRasterIndices& indices, const WaterCB& cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
                 ctx.resources.Update(handles.waterCB, &cb, sizeof(cb));
                 renderer::DrawCall call;
@@ -803,9 +857,12 @@ void WaterInterfacePass::Execute(PassResources&, RenderPassContext& ctx)
         const auto& input = sceneOwner->water[body.waterInputIndex];
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
 
-        VisitWaterPatchDraws(input, ctx, false, true,
+        const auto linkedRivers = ResolveHorizonRiverMedia(input, *sceneOwner, ctx);
+        const bool connectedOcean = input.farOceanEnabled && input.constants.horizonWaveSeams.front().w > 0.0f;
+        VisitWaterPatchDraws(input, ctx, connectedOcean, true,
             [&](auto vertexBuffer, const WaterRasterIndices& indices, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw&) {
                 cb.farOceanParams.w = static_cast<float>(bodyIndex + 1u);
+                cb.horizonLinkedRiverMedia = linkedRivers;
                 ctx.resources.Update(handles.waterCB, &cb, sizeof(cb));
                 renderer::DrawCall call;
                 call.vertexBuffer = vertexBuffer;
@@ -994,11 +1051,46 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
     /// @note 輪の寿命は WaterSystem が進める。ここで進めると SceneView と GameView で
     /// @note 2 回進み、ビューを 2 つ開いた瞬間に波紋が倍速で消える。
 
-    for (uint32_t inputIndex = 0u; inputIndex < sceneOwner->water.size(); ++inputIndex) {
+    const bool crestSprayEnabled = !settings->IsWireframe() && handles.crestSprayShader.IsValid()
+        && handles.crestSprayPSO.IsValid();
+    std::vector<uint32_t> crestSprayOwners;
+    std::vector<uint32_t> connectedDrawOrder;
+    if (std::any_of(sceneOwner->water.begin(), sceneOwner->water.end(), [](const auto& input) {
+            return input.horizonReceiverKey != 0;
+        })) {
+        connectedDrawOrder.reserve(sceneOwner->water.size());
+        for (uint32_t i = 0; i < sceneOwner->water.size(); ++i)
+            if (sceneOwner->water[i].farOceanEnabled) connectedDrawOrder.push_back(i);
+        for (uint32_t i = 0; i < sceneOwner->water.size(); ++i)
+            if (!sceneOwner->water[i].farOceanEnabled) connectedDrawOrder.push_back(i);
+    }
+    uint32_t receivingOceanIndex = static_cast<uint32_t>(sceneOwner->water.size());
+    if (std::any_of(sceneOwner->water.begin(), sceneOwner->water.end(), [](const RenderWaterInput& water) {
+        return water.constants.riverHorizonCaps[0].z > 0.0f || water.constants.riverHorizonCaps[1].z > 0.0f;
+    })) {
+        const auto ocean = std::find_if(sceneOwner->water.begin(), sceneOwner->water.end(),
+            [](const RenderWaterInput& water) { return water.farOceanEnabled; });
+        receivingOceanIndex = static_cast<uint32_t>(ocean - sceneOwner->water.begin());
+    }
+    bool receivingOceanDrawn = false;
+    for (uint32_t drawIndex = 0u; drawIndex < sceneOwner->water.size(); ++drawIndex) {
+        uint32_t inputIndex = drawIndex;
+        /// @note Composite the receiving ocean first without changing the published medium order or indices.
+        if (!connectedDrawOrder.empty()) {
+            inputIndex = connectedDrawOrder[drawIndex];
+        } else if (receivingOceanIndex < sceneOwner->water.size()) {
+            if (drawIndex == 0) inputIndex = receivingOceanIndex;
+            else if (drawIndex <= receivingOceanIndex) inputIndex = drawIndex - 1;
+        }
         const auto& input = sceneOwner->water[inputIndex];
         if (IsWaterMediumOwnerDisabled(ctx, input.medium.stableOwnerKey)) continue;
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
         resources.Update(handles.effectCB, &input.effects, sizeof(input.effects));
+        if (!input.zoneMaterials.empty()) {
+            std::array<WaterMaterialBlendTarget, 32> profiles{};
+            std::copy(input.zoneMaterials.begin(), input.zoneMaterials.end(), profiles.begin());
+            resources.Update(handles.zoneAppearanceCB, profiles.data(), sizeof(profiles));
+        }
         const auto depthTex = sceneDepth;
         const auto colorTex = sceneColor.IsValid() ? sceneColor : handles.black;
         const auto rippleTex = input.ripple.IsValid() ? input.ripple : handles.neutralRipple;
@@ -1018,11 +1110,26 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             || resources.GetShaderCapabilities(handles.waterShader).SupportsWaterGeometry();
         const uint32_t bodyIndex = mediumBodyByWater[inputIndex];
         const bool hasExclusions = !input.medium.exclusions.empty();
+        const auto linkedRivers = mediumBindingsReady ? ResolveHorizonRiverMedia(input, *sceneOwner, ctx) : math::Vector4{};
         const bool bindOwnerMedium = mediumBindingsReady && bodyIndex != 0xFFFFFFFFu
-            && (hasExclusions || (input.farOceanEnabled && input.constants.opticalParams.x > 0.5f));
+            && (hasExclusions || input.horizonReceiverKey != 0
+                || (input.farOceanEnabled && input.constants.opticalParams.x > 0.5f));
         if (hasExclusions && !bindOwnerMedium) continue;
+        const bool crestSprayEligible = crestSprayEnabled && input.farOceanEnabled && input.constants.opticalParams.x > 0.5f
+            && input.constants.crestFoamParams.z > 0.001f && input.constants.reflectParams.w > 0.1f
+            && std::count_if(std::begin(input.constants.waveDir), std::end(input.constants.waveDir),
+                [](const math::Vector4& wave) { return wave.w > 0.5f; }) >= 2
+            && IsDefaultWaterAppearance(resources, handles, requestedShader);
+        bool drewHorizon = false;
         VisitWaterPatchDraws(input, ctx, true, standardWaterShader,
             [&](auto vertexBuffer, const WaterRasterIndices& indices, WaterCB cb, auto instanceBuffer, uint32_t instanceCount, const WaterGpuDraw& gpu) {
+            if (!receivingOceanDrawn) {
+                cb.riverHorizonCaps[0] = {};
+                cb.riverHorizonCaps[1] = {};
+            }
+            if (inputIndex == receivingOceanIndex) receivingOceanDrawn = true;
+            drewHorizon |= cb.farOceanParams.x > 0.5f;
+            cb.horizonLinkedRiverMedia = bindOwnerMedium ? linkedRivers : math::Vector4{};
             if (!ctx.handles.iblPrefilter.IsValid()) cb.reflectParams.x = 0.0f;
             /// @note A negative owner ID exposes the camera's medium without enabling per-fragment exclusion tests.
             cb.farOceanParams.w = bindOwnerMedium
@@ -1043,6 +1150,7 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
             call.constantBuffers[3] = lightCB;
             call.constantBuffers[4] = shadowCB;
             call.constantBuffers[8] = ctx.handles.advancedGraphicsCB;
+            if (!input.zoneMaterials.empty()) call.constantBuffers[11] = handles.zoneAppearanceCB;
             BindForwardShadingResources(call, ctx);
             if (bindOwnerMedium) {
                 call.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
@@ -1083,6 +1191,34 @@ void WaterRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 }
             }
         }, nullptr, 0, true, nullptr, standardWaterShader, activeShader == handles.waterShader);
+        if (crestSprayEligible && drewHorizon) crestSprayOwners.push_back(inputIndex);
+    }
+
+    /// @note All water surfaces must write depth before any transparent spray tests against them.
+    /// @note The procedural instance grid matches WaterCrestSpray.hlsl.
+    constexpr uint32_t CREST_SPRAY_GRID_WIDTH = 21;
+    for (const uint32_t inputIndex : crestSprayOwners) {
+        const auto& input = sceneOwner->water[inputIndex];
+        const bool hasExclusions = !input.medium.exclusions.empty();
+        auto constants = input.constants;
+        constants.farOceanParams = {1.0f, 0.0f, input.farOceanRippleFadeDistance,
+            hasExclusions ? static_cast<float>(mediumBodyByWater[inputIndex] + 1u) : 0.0f};
+        resources.Update(handles.waterCB, &constants, sizeof(constants));
+        DrawCall call;
+        call.shader = handles.crestSprayShader;
+        call.pipelineState = handles.crestSprayPSO;
+        call.vertexCount = 3;
+        call.instanceCount = CREST_SPRAY_GRID_WIDTH * CREST_SPRAY_GRID_WIDTH;
+        call.layer = RenderLayer::TRANSPARENT_LAYER;
+        call.constantBuffers[0] = handles.cameraCB;
+        call.constantBuffers[1] = handles.waterCB;
+        call.constantBuffers[3] = lightCB;
+        call.textures[3] = input.foam;
+        if (hasExclusions) {
+            call.auxiliaryPsBuffers[0] = ctx.handles.waterMediumTable;
+            call.textures[15] = mediumAtlasTexture;
+        }
+        SubmitCounted(ctx, call);
     }
 }
 

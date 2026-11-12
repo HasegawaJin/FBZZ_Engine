@@ -23,13 +23,14 @@ cbuffer MaterialConstants : register(b2)
     float  rippleRingStrength; ///< @brief 波紋リング強度     default 0.72
 }
 
-SamplerState g_waterDepthPointSampler : register(SAMPLER_POINT_CLAMP);
+SamplerState g_waterPointSampler : register(SAMPLER_POINT_CLAMP);
 
 struct WaterHorizonRefraction
 {
     float2 uv;
     float pathLength;
     float weight;
+    float viewDepth;
 };
 
 /// @brief Refine the refracted ray against the opaque depth layer with at most two depth reads.
@@ -39,7 +40,7 @@ struct WaterHorizonRefraction
 WaterHorizonRefraction TraceWaterHorizonRefraction(float2 screenUV, float3 surfaceVS,
     float3 ray, float sceneDepth, float maxShift)
 {
-    WaterHorizonRefraction hit = {screenUV, 0.0f, 0.0f};
+    WaterHorizonRefraction hit = {screenUV, 0.0f, 0.0f, 0.0f};
     const float3 rayVS = mul(float4(ray, 0.0f), view).xyz;
     if (ray.y >= -0.001f || rayVS.z <= 0.05f || sceneDepth <= surfaceVS.z + 0.01f || maxShift <= 0.0f)
         return hit;
@@ -58,7 +59,7 @@ WaterHorizonRefraction TraceWaterHorizonRefraction(float2 screenUV, float3 surfa
         shift = max(offset.x, offset.y);
         if (any(uv <= 0.0f) || any(uv >= 1.0f) || shift >= maxShift) return hit;
 
-        const float raw = g_sceneDepth.SampleLevel(g_waterDepthPointSampler, uv, 0.0f).r;
+        const float raw = g_sceneDepth.SampleLevel(g_waterPointSampler, uv, 0.0f).r;
         if (raw <= 0.0f) return hit;
         const float sampledDepth = LinearizeDepth(raw);
         residual = abs(sampledDepth - candidateDepth);
@@ -73,7 +74,23 @@ WaterHorizonRefraction TraceWaterHorizonRefraction(float2 screenUV, float3 surfa
     hit.pathLength = (candidateDepth - surfaceVS.z) / rayVS.z;
     hit.weight = stableDepth * smoothstep(0.0f, 0.025f, min(edge.x, edge.y))
         * (1.0f - smoothstep(0.5f * maxShift, maxShift, shift));
+    hit.viewDepth = candidateDepth;
     return hit;
+}
+
+/// @note The opaque color and depth snapshots share a texel grid. At a depth edge, sample the color of the validated point hit.
+/// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/texture2d-gatherred HLSL GatherRed returns the bilinear footprint.
+float3 SampleWaterHorizonRefraction(WaterHorizonRefraction hit, float surfaceDepth, float sceneThickness)
+{
+    const float4 depth = g_sceneDepth.GatherRed(g_samplerClamp, hit.uv);
+    const float nearest = LinearizeDepth(max(max(depth.x, depth.y), max(depth.z, depth.w)));
+    const float farthestRaw = min(min(depth.x, depth.y), min(depth.z, depth.w));
+    const float farthest = LinearizeDepth(farthestRaw);
+    const float tolerance = max(0.06f, 0.24f * sceneThickness);
+    if (farthestRaw <= 0.0f || nearest <= surfaceDepth + 0.01f
+        || max(hit.viewDepth - nearest, farthest - hit.viewDepth) > tolerance)
+        return g_sceneColor.SampleLevel(g_waterPointSampler, hit.uv, 0.0f).rgb;
+    return g_sceneColor.SampleLevel(g_samplerClamp, hit.uv, 0.0f).rgb;
 }
 
 struct WaterHorizonSun
@@ -82,17 +99,24 @@ struct WaterHorizonSun
     float3 irradiance;
 };
 
-/// @note The mean interface keeps beam entry stable across unresolved waves. Convert horizontal flux to beam irradiance.
-/// @see https://morpho.inrialpes.fr/Publications/2010/BNH10/article.pdf Bruneton, Neyret and Holzschuch (2010) §5.3, sunlight refracted into the sea.
-WaterHorizonSun WaterTransmitHorizonSun(float3 toSun, float3 irradiance)
+/// @param swellNormal Filtered geometric normal without the short-wave normal map.
+/// @note Project flux across the same interface on both sides of the dielectric boundary.
+/// @see https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission PBRT v4 §9.3.4–5, Snell transmission and Fresnel reflectance.
+WaterHorizonSun WaterTransmitHorizonSun(float3 toSun, float3 irradiance, float3 swellNormal)
 {
     WaterHorizonSun sun = {float3(0.0f, -1.0f, 0.0f), float3(0.0f, 0.0f, 0.0f)};
     if (toSun.y <= 0.0f || !any(irradiance > 0.0f)) return sun;
 
-    const WaterDielectricInterface entry = WaterEvaluateDielectricInterface(-toSun,
-        float3(0.0f, 1.0f, 0.0f), 1.0f / WATER_REFRACTIVE_INDEX);
+    /// @note Temper the local slope in the mean water column and fade it at sunset where wave occlusion is unresolved.
+    const float swellWeight = 0.5f * smoothstep(0.0f, 0.12f, toSun.y);
+    const float3 entryNormal = normalize(lerp(float3(0.0f, 1.0f, 0.0f), swellNormal, swellWeight));
+    const float incidentCosine = dot(toSun, entryNormal);
+    if (incidentCosine <= 0.0f) return sun;
+
+    const WaterDielectricInterface entry = WaterEvaluateDielectricInterface(-toSun, entryNormal,
+        1.0f / WATER_REFRACTIVE_INDEX);
     sun.direction = entry.direction;
-    sun.irradiance = irradiance * ((1.0f - entry.reflectance) * toSun.y / -entry.direction.y);
+    sun.irradiance = irradiance * ((1.0f - entry.reflectance) * incidentCosine / -dot(entry.direction, entryNormal));
     return sun;
 }
 
@@ -187,7 +211,7 @@ bool WaterHorizonCameraUnderwater(float baseWorldY, bool faceUnderwater)
 {
     if (isOrthographic > 0.5f) return faceUnderwater;
     const float relativeY = cameraPos.y - baseWorldY;
-    if (g_waveShapeParams.y < 0.5f && abs(relativeY) > g_reflectParams.w + kRippleHeightScale)
+    if (g_waveShapeParams.y < 0.5f && abs(relativeY) > WaterMaximumWaveRise() + kRippleHeightScale)
         return relativeY < 0.0f;
 
     const uint owner = (uint)round(abs(g_farOceanParams.w));
@@ -201,37 +225,76 @@ bool WaterHorizonCameraUnderwater(float baseWorldY, bool faceUnderwater)
         && (g_farOceanParams.w < 0.0f || !FBZZ_WaterPointExcluded(owner - 1u, cameraPos, context));
 }
 
-/// @brief Sample moving spray droplets in a short air segment in front of a breaking crest.
-/// @note This local optical layer composites over water coverage and uses world cells to avoid screen-locked noise.
-/// @see https://www.sidefx.com/docs/houdini/solaris/houdini_ocean_procedural Ocean whitecaps and separate foam particles.
-float WaterHorizonCrestSpray(float3 surface, float3 toCamera, float2 flow, float time, float footprint, float breaker)
+cbuffer WaterZoneAppearanceConstants : register(b11)
 {
-    const float nearWeight = 1.0f - smoothstep(0.12f, 0.42f, footprint);
-    if (breaker <= 0.08f || nearWeight <= 0.0f) return 0.0f;
+    WaterMaterialBlendTarget g_zoneMaterials[32];
+}
 
-    const float3 cellScale = float3(2.6f, 4.0f, 2.6f);
-    const float3 rayInGrid = normalize(toCamera * cellScale);
-    const float3 drift = float3(flow.x * 2.4f, 0.75f, flow.y * 2.4f) * time;
-    float coverage = 0.0f;
-    [unroll]
-    for (int layer = 0; layer < 3; ++layer) {
-        const float distance = 0.32f + 0.42f * (float)layer;
-        const float3 grid = (surface + toCamera * distance - drift) * cellScale;
-        const float3 cell = floor(grid);
-        float3 random = frac(cell * float3(0.1031f, 0.11369f, 0.13787f));
-        random += dot(random, random.yxz + 19.19f);
-        random = frac((random.xxy + random.yzz) * random.zyx);
-        const float3 offset = frac(grid) - lerp(0.15f, 0.85f, random);
-        const float along = dot(offset, rayInGrid);
-        const float distanceToRay = length(offset - along * rayInGrid);
-        const float size = lerp(0.09f, 0.23f, random.z);
-        const float footprintInGrid = min(2.6f * footprint, 0.25f);
-        const float drop = (1.0f - smoothstep(size, size + max(footprintInGrid, 0.04f), distanceToRay))
-            * smoothstep(0.55f, 0.86f, random.x)
-            * (1.0f - smoothstep(0.25f, 0.50f, abs(along)));
-        coverage = max(coverage, drop * (1.0f - 0.22f * (float)layer));
+void BlendWaterMaterialProfiles(inout WaterMaterialBlendTarget material,
+    WaterMaterialBlendTarget other, float weight)
+{
+    material.shallowColorDepth = lerp(material.shallowColorDepth, other.shallowColorDepth, weight);
+    material.deepColorDepth = lerp(material.deepColorDepth, other.deepColorDepth, weight);
+    material.surface = lerp(material.surface, other.surface, weight);
+    material.normalReflectionRefraction = lerp(material.normalReflectionRefraction, other.normalReflectionRefraction, weight);
+    material.detail = lerp(material.detail, other.detail, weight);
+    material.foam = lerp(material.foam, other.foam, weight);
+    material.crestFoam = lerp(material.crestFoam, other.crestFoam, weight);
+    material.foamColorRoughness = lerp(material.foamColorRoughness, other.foamColorRoughness, weight);
+    material.absorptionPhase = lerp(material.absorptionPhase, other.absorptionPhase, weight);
+    material.scatteringMode = lerp(material.scatteringMode, other.scatteringMode, weight);
+    material.sss = lerp(material.sss, other.sss, weight);
+    material.effects = lerp(material.effects, other.effects, weight);
+    material.skyTint = lerp(material.skyTint, other.skyTint, weight);
+    material.rippleColor = lerp(material.rippleColor, other.rippleColor, weight);
+}
+
+WaterMaterialBlendTarget ResolveWaterSurfaceAppearance(WaterPSInput p)
+{
+    WaterMaterialBlendTarget material;
+    material.shallowColorDepth = g_shallowColorDepth;
+    material.deepColorDepth = g_deepColorDepth;
+    material.surface = g_surfaceParams;
+    material.normalReflectionRefraction = float4(g_normalParams.w, g_reflectParams.x, g_refractionFlowParams.x, 0.0f);
+    material.detail = g_detailParams;
+    material.foam = g_foamParams;
+    material.crestFoam = g_crestFoamParams;
+    material.foamColorRoughness = g_foamColorRoughness;
+    material.absorptionPhase = float4(g_absorptionCoefficients.xyz, g_opticalParams.y);
+    material.scatteringMode = float4(g_scatteringCoefficients.xyz, g_opticalParams.x);
+    material.sss = g_sssParams;
+    material.effects = float4(rimGlowStrength, minShallowAlpha, specularStrength, rippleRingStrength);
+    material.skyTint = float4(skyReflectTint, 0.0f);
+    material.rippleColor = float4(rippleRingColor, 0.0f);
+
+    const float zoneWeight = dot(p.zoneReceiverWeights + p.zoneSourceWeights, float3(1.0f, 1.0f, 1.0f));
+    [branch] if (zoneWeight > 0.5f) {
+        const uint uniformIndex = p.zoneMaterialIndices.x & 31u;
+        const uint uniformTriangle = uniformIndex * (1u + (1u << 5u) + (1u << 10u));
+        if (all(p.zoneMaterialIndices == uniformTriangle)) {
+            material = g_zoneMaterials[uniformIndex];
+        } else {
+        float accumulated = 0.0f;
+        [unroll] for (uint corner = 0u; corner < 3u; ++corner) {
+            const uint2 indices = (p.zoneMaterialIndices >> (corner * 5u)) & 31u;
+            const float receiver = max(0.0f, p.zoneReceiverWeights[corner]);
+            const float source = max(0.0f, p.zoneSourceWeights[corner]);
+            if (receiver > 0.0f) {
+                accumulated += receiver;
+                BlendWaterMaterialProfiles(material, g_zoneMaterials[indices.x], receiver / accumulated);
+            }
+            if (source > 0.0f) {
+                accumulated += source;
+                BlendWaterMaterialProfiles(material, g_zoneMaterials[indices.y], source / accumulated);
+            }
+        }
+        }
     }
-    return 0.64f * breaker * nearWeight * coverage;
+    const float receiverWeight = g_materialBlendMouth.w > 0.0f ? saturate(p.splineSurface.w - 1.0f) : 0.0f;
+    [branch] if (receiverWeight > 0.0f) {
+        BlendWaterMaterialProfiles(material, g_materialBlendTarget, receiverWeight);
+    }
+    return material;
 }
 
 float4 PSMain(WaterPSInput p) : SV_Target0
@@ -257,6 +320,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
             : max(0.25f, saturate(diffuse * lightIntensity + dot(ambientColor, float3(0.2126f, 0.7152f, 0.0722f))));
         return float4(float3(1.0f, 0.65f, 0.1f) * lighting, 1.0f);
     }
+    const WaterMaterialBlendTarget material = ResolveWaterSurfaceAppearance(p);
     float time = g_timeParams.w;
     float2 screenUV = p.screenPos.xy / p.screenPos.w * float2(0.5f, -0.5f) + 0.5f;
 
@@ -281,18 +345,21 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     if (splineSurface && authoredFlowSpeed > 1.0e-4f)
         flowSample.direction = authoredFlow / authoredFlowSpeed;
     float2 flowDir = flowSample.direction;
-    float2 flowTravel = splineSurface
-        ? authoredFlow * time
-        : flowDir * (g_detailParams.y * time);
+    const WaterCurrentAdvection current = WaterCurrentAt(authoredFlow, time);
 
     /// @note Wind-driven surface ripples are independent of swell and the advecting current.
     /// @see https://github.com/Unity-Technologies/Graphics/blob/master/Packages/com.unity.render-pipelines.high-definition/Documentation~/water-water-system-simulation.md Unity HDRP, Wind and wave types.
     const bool overrideRipples = dot(g_waveControls.yz, g_waveControls.yz) > 0.5f;
+    const bool followCurrent = splineSurface && !overrideRipples;
     const float2 rippleDirection = overrideRipples ? g_waveControls.yz : flowDir;
-    const float2 rippleTravel = overrideRipples ? rippleDirection * (g_detailParams.y * time) : flowTravel;
-    float4 normalSample  = SampleWaterNormal(p.worldPos.xz, p.uv, rippleDirection, rippleTravel, time, footprint,
-                                             footprintDX, footprintDY, p.normal,
-                                              flowSample.detailGain, p.waveMeshFade, p.baseWorldXZ, baseDX, baseDY, splineSurface);
+    const float2 rippleTravel = followCurrent ? 0.0f : rippleDirection * (material.detail.y * time);
+    const float2 rippleXZ = followCurrent ? p.baseWorldXZ : p.worldPos.xz;
+    const float2 rippleDx = followCurrent ? baseDX : footprintDX;
+    const float2 rippleDy = followCurrent ? baseDY : footprintDY;
+    float4 normalSample  = SampleWaterNormal(rippleXZ, p.uv, rippleDirection, rippleTravel, time, footprint,
+                                             rippleDx, rippleDy, p.normal,
+                                              flowSample.detailGain, p.waveMeshFade, p.baseWorldXZ, baseDX, baseDY, splineSurface,
+                                              material.normalReflectionRefraction.x, material.detail.z, followCurrent, current);
     float3 tangentNormal = normalSample.xyz;
     float  lostSlopeVariance = normalSample.w;
 
@@ -308,16 +375,19 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     }
     float3 N = normalize(mul(tangentNormal, tbn));
     float3 V = normalize(cameraPos - p.worldPos);
-    bool useCoefficientOptics = g_opticalParams.x > 0.5f;
+    bool useCoefficientOptics = material.scatteringMode.w > 0.5f;
     /// @note 平行投影の視線は画素位置によらない。係数光学の光路と位相で透視のeye-rayを使わない。
-    if (isOrthographic > 0.5f && g_opticalParams.x > 0.5f)
+    if (isOrthographic > 0.5f && material.scatteringMode.w > 0.5f)
         V = -normalize(float3(view[0][2], view[1][2], view[2][2]));
     /// @note 水面下から見上げているときは面の裏側を見ている (PSO は両面描画)。
     /// @warning 向きの判定に N を使うと、浅い角度のピクセルだけがばらばらに反転して斑になる。
     /// @note 決定は滑らかな幾何法線に任せる。
     bool cameraUnderwater = dot(p.normal, V) < 0.0f;
-    const bool horizonSurface = useCoefficientOptics && !splineSurface && g_farOceanParams.x > 0.5f;
-    if (horizonSurface) {
+    const bool oceanSurface = !splineSurface && g_farOceanParams.x > 0.5f;
+    const float horizonWeight = oceanSurface ? 1.0f
+        : (g_materialBlendMouth.w > 0.0f ? saturate(p.splineSurface.w - 1.0f) : 0.0f);
+    const bool horizonSurface = useCoefficientOptics && horizonWeight > 0.0f;
+    if (horizonSurface && (oceanSurface || horizonWeight > 0.5f)) {
         /// @note The signed XZ area of the rasterized triangle distinguishes the top from the underside even when interpolated swell normals face away.
         const float signedArea = footprintDX.y * footprintDY.x - footprintDX.x * footprintDY.y;
         if (abs(signedArea) > 1.0e-10f) cameraUnderwater = signedArea < 0.0f;
@@ -325,6 +395,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     }
     bool horizonOptics = horizonSurface && !cameraUnderwater;
     if (cameraUnderwater) N = -N;
+    float3 swellNormal = tbn[2];
     const float3 viewDirectionDX = ddx(V);
     const float3 viewDirectionDY = ddy(V);
     [branch]
@@ -333,7 +404,10 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         float2 distantDX = baseDX;
         float2 distantDY = baseDY;
         const float meanSurfaceHeight = cameraPos.y - p.baseWorldY;
-        if (isOrthographic < 0.5f && meanSurfaceHeight > 0.25f && V.y > 0.001f) {
+        /// @note A grazing ray can hit a nearby crest above the mean plane. Keep its footprint local until the two intersections agree.
+        const float surfaceDrop = cameraPos.y - p.worldPos.y;
+        const float planeWeight = smoothstep(0.3f, 0.8f, surfaceDrop / max(meanSurfaceHeight, 0.25f));
+        if (isOrthographic < 0.5f && meanSurfaceHeight > 0.25f && V.y > 0.001f && planeWeight > 0.0f) {
             /// @note Differentiate the eye ray's intersection with the mean plane so a crest cannot change its own reflection LOD.
             const float2 planeDX = viewDirectionDX.xz * V.y - V.xz * viewDirectionDX.y;
             const float2 planeDY = viewDirectionDY.xz * V.y - V.xz * viewDirectionDY.y;
@@ -341,46 +415,54 @@ float4 PSMain(WaterPSInput p) : SV_Target0
             distantDX = planeScale * planeDX;
             distantDY = planeScale * planeDY;
             const float planeFootprint = max(length(distantDX), length(distantDY));
-            reflectionFootprint = max(planeFootprint, 0.5f * footprint);
+            distantDX = lerp(baseDX, distantDX, planeWeight);
+            distantDY = lerp(baseDY, distantDY, planeWeight);
+            reflectionFootprint = lerp(footprint, max(planeFootprint, 0.5f * footprint), planeWeight);
         }
-        const float footprintInDetailCells = reflectionFootprint * max(g_detailParams.x, 1.0e-4f);
+        const float footprintInDetailCells = reflectionFootprint * max(material.detail.x, 1.0e-4f);
         const float distantWeight = smoothstep(0.22f, 0.95f, footprintInDetailCells);
         if (distantWeight > 0.0f) {
             /// @note Resolve visible long waves analytically before transferring subpixel slopes to BRDF roughness.
             /// @see https://doi.org/10.1111/j.1467-8659.2009.01618.x Bruneton, Neyret and Holzschuch (2010), geometry-to-BRDF slope filtering.
             const float4 noMesh[4] = {(float4)0.0f, (float4)0.0f, (float4)0.0f, (float4)0.0f};
             float distantVariance;
-            const float2 slope = WaterResidualWaveSlope(p.baseWorldXZ, time, distantDX, distantDY, noMesh, distantVariance);
+            const float waveWeight = WaterfallWaveWeight(p.baseWorldXZ);
+            const float2 slope = WaterResidualWaveSlope(p.baseWorldXZ, time, distantDX, distantDY, noMesh, distantVariance) * waveWeight;
+            distantVariance *= waveWeight * waveWeight;
             const float3 distantNormal = normalize(float3(-slope.x, 1.0f, -slope.y));
-            N = normalize(lerp(N, distantNormal, distantWeight));
-            lostSlopeVariance = lerp(lostSlopeVariance, max(lostSlopeVariance, distantVariance), distantWeight);
+            const float normalWeight = distantWeight * horizonWeight;
+            N = normalize(lerp(N, distantNormal, normalWeight));
+            swellNormal = normalize(lerp(swellNormal, distantNormal, normalWeight));
+            lostSlopeVariance = lerp(lostSlopeVariance, max(lostSlopeVariance, distantVariance), normalWeight);
         }
     }
+    const float incidentCosine = dot(N, V);
+    const float2 incidentGradient = float2(ddx(incidentCosine), ddy(incidentCosine));
     /// @note Keep the optical normal on the incident hemisphere at grazing silhouettes without flipping an entire wave face.
-    if (horizonSurface) N = normalize(N + V * max(0.0f, 0.001f - dot(N, V)));
+    if (horizonSurface) N = normalize(N + V * max(0.0f, 0.001f - incidentCosine));
     float NdotV = saturate(dot(N, V));
 
     /// @note F0 は垂直入射の反射率。反射率を倍増すると浅い角度で飽和し、水中の散乱光が消える。
     /// @see https://doi.org/10.1111/1467-8659.1330233 Schlick, "An Inexpensive BRDF Model for Physically-based Rendering" (1994)
-    float f0 = saturate(g_surfaceParams.z);
-    float fresnel;
+    float f0 = saturate(material.surface.z);
+    const float localFresnel = saturate((f0 + (1.0f - f0)
+        * pow(1.0f - NdotV, max(material.surface.w, 1.0f))) * material.surface.y);
+    float fresnel = localFresnel;
     float3 refractedViewRay = float3(0.0f, 0.0f, 0.0f);
     if (horizonOptics || (useCoefficientOptics && cameraUnderwater)) {
         const float eta = cameraUnderwater ? WATER_REFRACTIVE_INDEX : 1.0f / WATER_REFRACTIVE_INDEX;
         const WaterDielectricInterface interfaceSample = WaterEvaluateDielectricInterface(-V, N, eta);
         refractedViewRay = interfaceSample.direction;
-        fresnel = dot(refractedViewRay, refractedViewRay) <= 1.0e-8f
-            ? 1.0f : saturate(interfaceSample.reflectance * g_surfaceParams.y);
+        const float dielectricFresnel = dot(refractedViewRay, refractedViewRay) <= 1.0e-8f
+            ? 1.0f : saturate(interfaceSample.reflectance * material.surface.y);
+        fresnel = lerp(localFresnel, dielectricFresnel, cameraUnderwater ? 1.0f : horizonWeight);
         if (horizonSurface) {
             const float normalReflectance = (1.0f - eta) / (1.0f + eta);
-            f0 = normalReflectance * normalReflectance;
+            f0 = lerp(f0, normalReflectance * normalReflectance, horizonWeight);
         }
-    } else {
-        fresnel = saturate((f0 + (1.0f - f0) * pow(1.0f - NdotV, max(g_surfaceParams.w, 1.0f)))
-            * g_surfaceParams.y);
     }
 
-    float rawSceneDepth = horizonOptics ? g_sceneDepth.SampleLevel(g_waterDepthPointSampler, screenUV, 0.0f).r
+    float rawSceneDepth = horizonOptics ? g_sceneDepth.SampleLevel(g_waterPointSampler, screenUV, 0.0f).r
         : g_sceneDepth.Sample(g_samplerClamp, screenUV).r;
     /// @note 深度が far plane に張り付く場所は Terrain / Mesh が無い背景ピクセルとして扱う。
     /// @note 背景の skydome 色を屈折色として読むと、水面が空そのものに溶けてしまうため、
@@ -392,12 +474,13 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     float3 surfaceVS = mul(float4(p.worldPos, 1.0f), view).xyz;
     float linearSurfDepth = max(surfaceVS.z, 0.0001f);
     float sceneThickness = max(0.0f, linearSceneDepth - linearSurfDepth);
-    float waterDepth = lerp(sceneThickness, g_deepColorDepth.w, backgroundMask);
+    float waterDepth = lerp(sceneThickness, material.deepColorDepth.w, backgroundMask);
     float viewRayZ = abs(mul(float4(-V, 0.0f), view).z);
 #ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
     float2 splineTerrainDepth = float2(0.0f, 0.0f);
 #endif
-    if (splineSurface) {
+    if (splineSurface && horizonWeight < 1.0f) {
+        const float sceneWaterDepth = waterDepth;
 #ifdef FBZZ_WATER_SMOOTH_SPLINE_OPTICS
         /// @note Bilinear world-space bottom depth keeps optical bands independent of spline tessellation and viewing distance.
         if (g_terrainInfoParams.x > 0.5f)
@@ -411,29 +494,30 @@ float4 PSMain(WaterPSInput p) : SV_Target0
             * viewRayZ / max(abs(V.y), 0.05f);
         waterDepth = min(waterDepth, authoredDepthView);
 #endif
+        waterDepth = lerp(waterDepth, sceneWaterDepth, horizonWeight);
     }
-    float depthFactor = smoothstep(0.0f, 1.0f, saturate(waterDepth / max(g_deepColorDepth.w, 0.0001f)));
+    float depthFactor = smoothstep(0.0f, 1.0f, saturate(waterDepth / max(material.deepColorDepth.w, 0.0001f)));
 
-    float shallowFactor = smoothstep(0.0f, 1.0f, saturate(waterDepth / max(g_shallowColorDepth.w, 0.0001f)));
+    float shallowFactor = smoothstep(0.0f, 1.0f, saturate(waterDepth / max(material.shallowColorDepth.w, 0.0001f)));
     /// @note 色だけは «うねりの山ほど水の層が薄い» ことを織り込む。水底までの距離だけで決めると
     /// @note 波の山も谷も同じ色になり、うねりが «色の付いた板» にしか見えない。
     /// @note アルファと屈折の判定には素の depthFactor を使う (そちらは «底までの距離» の話)。
     float colorDepthFactor = saturate(depthFactor * (1.0f - p.waveState.x * 0.40f));
     /// @note 浅瀬色 / 深部色は «水の層が散乱して返す色» (反射率)。光はこの後で掛ける。
-    float3 scatterAlbedo = lerp(g_shallowColorDepth.xyz, g_deepColorDepth.xyz, colorDepthFactor);
+    float3 scatterAlbedo = lerp(material.shallowColorDepth.xyz, material.deepColorDepth.xyz, colorDepthFactor);
 
     /// @note 水底からの光は Beer–Lambert で減る。赤から先に吸われるのが «水の色» の正体なので、
     /// @note 深部色の色相を 1 深部深度あたりの透過率として使い、明るさは別に e^-1 ずつ落とす。
     /// @see https://doi.org/10.1364/AO.36.008710 Pope & Fry, "Absorption spectrum (380–700 nm) of pure water" (1997)
-    float  deepDepth = max(g_deepColorDepth.w, 1.0e-4f);
-    float  deepPeak  = max(max(g_deepColorDepth.x, g_deepColorDepth.y), max(g_deepColorDepth.z, 1.0e-4f));
-    float3 deepHue   = max(g_deepColorDepth.xyz / deepPeak, 0.02f);
+    float  deepDepth = max(material.deepColorDepth.w, 1.0e-4f);
+    float  deepPeak  = max(max(material.deepColorDepth.x, material.deepColorDepth.y), max(material.deepColorDepth.z, 1.0e-4f));
+    float3 deepHue   = max(material.deepColorDepth.xyz / deepPeak, 0.02f);
     float  opticalDepth = waterDepth / deepDepth;
     float3 transmittance = pow(deepHue, opticalDepth) * exp(-opticalDepth) * (1.0f - backgroundMask);
     /// @note 散乱で水の層そのものの色へ置き換わる割合。深部深度で 95%。
-    /// @note opacity と minShallowAlpha は «濁り» の上限と下限として残す。
+    /// @note opacity と material.effects.y は «濁り» の上限と下限として残す。
     float  scatterOpacity = 1.0f - exp(-3.0f * opticalDepth);
-    float  murk = lerp(saturate(g_surfaceParams.x) * lerp(saturate(minShallowAlpha), 1.0f, scatterOpacity),
+    float  murk = lerp(saturate(material.surface.x) * lerp(saturate(material.effects.y), 1.0f, scatterOpacity),
                        1.0f, backgroundMask);
 
     /// @note スクリーンスペース屈折は水面法線とスネル方向で HDR カラー参照 UV をずらす。水底ジオメトリを
@@ -443,7 +527,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 水面を通る光は面の傾きと反対側へ曲がる。画面 UV の上下反転もカメラ空間で合わせる。
     /// @see https://www.graphics.cornell.edu/~bjw/microfacetbsdf.pdf Walter et al. (2007) §4.2 Ideal Refraction
     float3 viewNormal = mul(float4(N, 0.0f), view).xyz;
-    float2 refrOffset = float2(-viewNormal.x, viewNormal.y) * g_refractionFlowParams.x
+    float2 refrOffset = float2(-viewNormal.x, viewNormal.y) * material.normalReflectionRefraction.z
                       * (1.0f - fresnel) * refractionMask;
     if (useCoefficientOptics && cameraUnderwater && fresnel < 1.0f)
     {
@@ -453,28 +537,33 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         float2 transmittedSlope = transmittedViewRay.xy / max(abs(transmittedViewRay.z), 0.05f);
         float2 slopeDelta = transmittedSlope - incidentSlope;
         refrOffset = 0.5f * float2(slopeDelta.x * projection[0][0], -slopeDelta.y * projection[1][1])
-                   * g_refractionFlowParams.x * (1.0f - fresnel);
+                   * material.normalReflectionRefraction.z * (1.0f - fresnel);
     }
-    float2 refrUV = screenUV;
-    WaterHorizonRefraction horizonHit = {screenUV, 0.0f, 0.0f};
+    /// @note sceneColor はシーン側で照明・影が済んだ色なので、ここでは減衰だけを掛ける。
+    float3 refractColor = 0.0f;
+    float3 horizonRefractColor = 0.0f;
+    WaterHorizonRefraction horizonHit = {screenUV, 0.0f, 0.0f, 0.0f};
     if (horizonOptics) {
         [branch]
-        if (backgroundMask < 0.5f && fresnel < 0.995f && g_refractionFlowParams.x > 0.0f) {
+        if (backgroundMask < 0.5f && fresnel < 0.995f && material.normalReflectionRefraction.z > 0.0f) {
             /// @note Reuse the material control as a screen-space search budget for the Snell ray.
             horizonHit = TraceWaterHorizonRefraction(screenUV, surfaceVS, refractedViewRay, linearSceneDepth,
-                min(4.0f * g_refractionFlowParams.x, 0.25f));
-            if (horizonHit.weight >= 0.999f) refrUV = horizonHit.uv;
+                min(4.0f * material.normalReflectionRefraction.z, 0.25f));
         }
-    } else {
-        refrUV = saturate(screenUV + refrOffset);
+        [branch]
+        if (horizonHit.weight >= 0.999f)
+            horizonRefractColor = SampleWaterHorizonRefraction(horizonHit, linearSurfDepth, sceneThickness);
+        else
+            horizonRefractColor = g_sceneColor.SampleLevel(g_waterPointSampler, screenUV, 0.0f).rgb;
+    }
+    if (!horizonOptics || horizonWeight < 1.0f) {
+        float2 refrUV = saturate(screenUV + refrOffset);
 
         /// @note 屈折先が水面より手前なら、前景のシルエットを水中に混ぜない。
         float refrRawDepth = g_sceneDepth.Sample(g_samplerClamp, refrUV).r;
         if (LinearizeDepth(refrRawDepth) < linearSurfDepth) refrUV = screenUV;
+        refractColor = g_sceneColor.Sample(g_samplerClamp, refrUV).rgb;
     }
-    /// @note sceneColor はシーン側で照明・影が済んだ色なので、ここでは減衰だけを掛ける。
-    float3 refractColor = g_sceneColor.Sample(g_samplerClamp, refrUV).rgb;
-
     /// @note 空反射は空連動 IBL の事前フィルタ済みキューブから引く (専用の環境テクスチャは不要)。
     /// @note 水面上からの反射だけを上半球へ保つ。水中から見た係数光学では下半球の反射を使う。
     /// @note 水平線際の上面反射はさざ波による下半球サンプルで黒帯にならないよう保守的に制限する。
@@ -484,7 +573,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 消失割合でなく強度込みの傾き分散を GGX の alpha^2 へ足す。弱いさざ波まで遠景で一律に粗さ 0.7 へしない。
     /// @note 可視法線の画面内分散も含め、残した長いうねりのハイライトが subpixel へ縮む場合の明滅を抑える。
     /// @see https://www.jp.square-enix.com/tech/library/pdf/ImprovedGeometricSpecularAA.pdf Tokuyoshi & Kaplanyan (2019), filtered NDF roughness
-    float  roughness = saturate(1.0f - g_detailParams.w);
+    float  roughness = saturate(1.0f - material.detail.w);
     float3 normalDX = ddx(N);
     float3 normalDY = ddy(N);
     float normalVariance = 0.15f * (dot(normalDX, normalDX) + dot(normalDY, normalDY));
@@ -497,11 +586,11 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     const float3 kLuma = float3(0.2126f, 0.7152f, 0.0722f);
     /// @note IBL が無いときの空反射。.mat の空色を空の明るさ (skyDimmer) で落とす。Unlit 表示では
     /// @note skyDimmer が 0 になるので ambientColor (白) を下限にする。
-    float3 reflectColor = skyReflectTint * max(skyDimmer, dot(ambientColor, kLuma));
+    float3 reflectColor = material.skyTint.xyz * max(skyDimmer, dot(ambientColor, kLuma));
     /// @note 水の層・泡が空から受ける放射照度 / π (Lambert の反射率に掛ければそのまま放射輝度)。
     float3 skyIrradianceOverPi = ambientColor;
     [branch]
-    if (g_reflectParams.x > 0.001f && iblIntensity > 0.0f)
+    if (material.normalReflectionRefraction.y > 0.001f && iblIntensity > 0.0f)
     {
         /// @note 通常マテリアルと同じく IBL の全体スケールと鏡面 / 拡散スケールを通す。
         float  iblSpecular = iblIntensity * max(iblSpecularScale, 0.0f);
@@ -513,9 +602,9 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         float3 skyAverage = g_skyReflection.SampleLevel(g_samplerClamp, float3(0.0f, 1.0f, 0.0f),
                                                         (float)max(iblMaxMipLevel, 0)).rgb;
         /// @note 空色は «色相» だけを .mat から取り、明るさは空から取る。定数のまま混ぜると夜も光る。
-        float3 tintLit = skyReflectTint * (dot(skyAverage, kLuma)
-                                           / max(dot(skyReflectTint, kLuma), 1.0e-3f));
-        reflectColor = lerp(tintLit, sky, saturate(g_reflectParams.x)) * iblSpecular;
+        float3 tintLit = material.skyTint.xyz * (dot(skyAverage, kLuma)
+                                           / max(dot(material.skyTint.xyz, kLuma), 1.0e-3f));
+        reflectColor = lerp(tintLit, sky, saturate(material.normalReflectionRefraction.y)) * iblSpecular;
         skyIrradianceOverPi = skyAverage * (iblIntensity * max(iblDiffuseScale, 0.0f));
     }
 
@@ -526,6 +615,24 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @warning 背景ピクセルで反射を減らさないこと。そこはフレネルが 1 に張り付き本来は鏡になる
     /// @note 水平線際で、以前の 0.45 倍で遠い水面が黒く沈んでいた。
     float reflectionWeight = saturate(fresnel);
+    if (horizonOptics) {
+        /// @note Only footprints spanning a rapidly changing grazing angle need averaged reflection.
+        const float angleWidth = abs(incidentGradient.x) + abs(incidentGradient.y);
+        const float grazingFilter = smoothstep(0.025f, 0.11f, angleWidth)
+            * (1.0f - smoothstep(0.06f, 0.23f, NdotV));
+        [branch]
+        if (grazingFilter > 0.0f) {
+            /// @note Add the screen-pixel box variance to the unresolved slope variance projected onto the viewing direction.
+            const float variance = (1.0f - NdotV * NdotV) * lostSlopeVariance
+                + dot(incidentGradient, incidentGradient) / 12.0f;
+            const float sigma = min(sqrt(max(variance, 0.0f)), 0.5f);
+            /// @see https://morpho.inrialpes.fr/Publications/2010/BNH10/article.pdf Bruneton et al. (2010), §5.2 Eq. 26, average sky Fresnel.
+            const float excessWeight = exp(-2.69f * sigma) / (1.0f + 22.7f * sigma * sqrt(sigma));
+            const float normalReflection = saturate(f0 * material.surface.y);
+            const float meanReflection = lerp(normalReflection, reflectionWeight, excessWeight);
+            reflectionWeight = lerp(reflectionWeight, meanReflection, grazingFilter);
+        }
+    }
     [branch]
     if (reflectionWeight > 0.04f && backgroundMask < 0.5f)
     {
@@ -566,7 +673,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         punctualSpecular += BRDF_Specular(N, V, ps.L, f0.xxx, saturate(roughnessAA + ps.roughnessBias))
                           * punctualRadiant * punctualNdotL;
         if (useCoefficientOptics && !cameraUnderwater) {
-            float localPhase = WaterHenyeyGreensteinPhase(dot(-ps.L, V), g_opticalParams.y);
+            float localPhase = WaterHenyeyGreensteinPhase(dot(-ps.L, V), material.absorptionPhase.w);
             punctualSingleScatterSource += punctualRadiant * (PI * localPhase);
         }
     FBZZ_PUNCTUAL_END
@@ -583,12 +690,22 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         {
             /// @note For the original pixel, convert view-Z thickness into world meters along the original ray.
             float opticalPathLength = isOrthographic > 0.5f ? waterDepth : waterDepth / max(viewRayZ, 0.05f);
-            const float phaseG = g_opticalParams.y;
+            const float phaseG = material.absorptionPhase.w;
             /// @note Approximate the environment as uniform radiance over the visible hemisphere; isotropic integration gives one half.
             const float3 diffuseSource = skyIrradianceOverPi * 0.5f + punctualSingleScatterSource;
             /// @note Rectangle water over cleared depth has no transmitted bottom; authored spline depth remains finite without terrain.
             /// @see https://dev.epicgames.com/documentation/unreal-engine/single-layer-water-shading-model-in-unreal-engine Epic Single Layer Water, homogeneous volume and scene-depth refraction inputs.
             const float bottomTransmission = splineSurface ? 1.0f : (1.0f - backgroundMask);
+            body = 0.0f;
+            [branch]
+            if (!horizonOptics || horizonWeight < 1.0f) {
+                const WaterOpticalTransport opticalTransport = WaterEvaluateOpticalTransport(
+                    material.absorptionPhase.xyz, material.scatteringMode.xyz, opticalPathLength);
+                const float directPhase = WaterHenyeyGreensteinPhase(dot(-L, V), phaseG);
+                const float3 directSource = sunOverPi * ((L.y > 0.0f ? 1.0f : 0.0f) * shadow * (PI * directPhase));
+                body = refractColor * opticalTransport.transmittance * bottomTransmission
+                    + opticalTransport.singleScatterWeight * (directSource + diffuseSource);
+            }
             [branch]
             if (horizonOptics) {
                 const bool bentSample = horizonHit.weight >= 0.999f;
@@ -597,25 +714,19 @@ float4 PSMain(WaterPSInput p) : SV_Target0
                 if (openWater) opticalPathLength = WATER_OPTICAL_MAX_DISTANCE;
                 const float3 intoWater = bentSample || (openWater && refractedViewRay.y < 0.0f) ? refractedViewRay : -V;
                 const WaterOpticalMedium medium = WaterPrepareOpticalMedium(
-                    g_absorptionCoefficients.xyz, g_scatteringCoefficients.xyz);
-                const WaterHorizonSun sun = WaterTransmitHorizonSun(L, sunOverPi * (shadow * PI));
-                body = WaterEvaluateHorizonRadiance(medium, opticalPathLength, intoWater,
-                    refractColor * bottomTransmission, diffuseSource, sun, phaseG);
+                    material.absorptionPhase.xyz, material.scatteringMode.xyz);
+                const WaterHorizonSun sun = WaterTransmitHorizonSun(L, sunOverPi * (shadow * PI), swellNormal);
+                float3 horizonBody = WaterEvaluateHorizonRadiance(medium, opticalPathLength, intoWater,
+                    horizonRefractColor * (1.0f - backgroundMask), diffuseSource, sun, phaseG);
                 /// @note Blend complete radiance samples at uncertain hits so the scene colors keep their own paths and phase angles.
                 [branch]
                 if (horizonHit.weight > 0.0f && !bentSample) {
-                    const float3 bentColor = g_sceneColor.SampleLevel(g_samplerClamp, horizonHit.uv, 0.0f).rgb;
+                    const float3 bentColor = SampleWaterHorizonRefraction(horizonHit, linearSurfDepth, sceneThickness);
                     const float3 bentRadiance = WaterEvaluateHorizonRadiance(medium, horizonHit.pathLength,
                         refractedViewRay, bentColor, diffuseSource, sun, phaseG);
-                    body = lerp(body, bentRadiance, horizonHit.weight);
+                    horizonBody = lerp(horizonBody, bentRadiance, horizonHit.weight);
                 }
-            } else {
-                const WaterOpticalTransport opticalTransport = WaterEvaluateOpticalTransport(
-                    g_absorptionCoefficients.xyz, g_scatteringCoefficients.xyz, opticalPathLength);
-                const float directPhase = WaterHenyeyGreensteinPhase(dot(-L, V), phaseG);
-                const float3 directSource = sunOverPi * ((L.y > 0.0f ? 1.0f : 0.0f) * shadow * (PI * directPhase));
-                body = refractColor * opticalTransport.transmittance * bottomTransmission
-                    + opticalTransport.singleScatterWeight * (directSource + diffuseSource);
+                body = lerp(body, horizonBody, horizonWeight);
             }
         }
     } else {
@@ -657,26 +768,26 @@ float4 PSMain(WaterPSInput p) : SV_Target0
         float3 scatterDir = normalize(L + N * 0.30f);
         float forwardScatter = pow(saturate(dot(V, -scatterDir)), 3.0f);
         /// @note うねりの山ほど水の層が薄く、光が通り抜ける。
-        float thickness = p.waveState.x * saturate(g_sssParams.w);
+        float thickness = p.waveState.x * saturate(material.sss.w);
         /// @note 空からの散乱は影を受けない (空の光は影の中にも届く)。これが無いと曇りや夜の海だけが
         /// @note «光を通さない板» に戻る。
-        body += g_sssParams.rgb * thickness
+        body += material.sss.rgb * thickness
               * (sunOverPi * (forwardScatter * shadow) + skyIrradianceOverPi * 0.5f);
 
         /// @note 浅い角度では視線が水の層を長く通り、層の色が明るむ。自発光ではなく受けた光で出す。
-        float rim = pow(1.0f - NdotV, 3.0f) * rimGlowStrength;
-        body += lerp(scatterAlbedo, skyReflectTint, 0.35f) * bodyIrradiance * rim;
+        float rim = pow(1.0f - NdotV, 3.0f) * material.effects.x;
+        body += lerp(scatterAlbedo, material.skyTint.xyz, 0.35f) * bodyIrradiance * rim;
     }
 
     /// @note 透過した水の層と反射をフレネルで分け合い、表面のきらめきは上に足す。
     float3 color = lerp(body, reflectColor, reflectionWeight)
-                 + (sunSpecular + punctualSpecular) * specularStrength;
+                 + (sunSpecular + punctualSpecular) * material.effects.z;
 
     /// @note 波打ち際 (地形と水面が交差する浅瀬) に発生する接岸泡。waterDepth が threshold より
     /// @note 浅いほど強くし、岸辺に沿った白い帯を作る。
-    float foamThreshold = g_foamParams.x;
-    float foamFade      = max(g_foamParams.y, 0.0001f);
-    float foamScale = max(g_foamParams.w, 1.0e-4f);
+    float foamThreshold = material.foam.x;
+    float foamFade      = max(material.foam.y, 0.0001f);
+    float foamScale = max(material.foam.w, 1.0e-4f);
     float shoreFoam     = (1.0f - smoothstep(foamThreshold, foamThreshold + foamFade, waterDepth)) * (1.0f - backgroundMask);
 
     float foamMaskVal = 0.0f;
@@ -722,50 +833,80 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 岸泡はワールド地形またはシーン深度から得る。旧矩形に固定されるのは局所マスクと波紋だけ。
     foamMaskVal *= localDataWeight;
     /// @note 泡のムラもさざ波タイルから引く。ワールド座標なので水面の大きさに依らず粒が揃う。
-    float2 foamAdvection = splineSurface
-        ? -authoredFlow * (time * foamScale)
-        : flowDir * (time * 0.35f);
+    const float2 foamAdvection = splineSurface ? 0.0f : flowDir * (time * 0.35f);
     /// @note The coast follows the changing water level. Open water and incomplete terrain coverage retain the current-driven pattern.
     const float2 swashTextureShift = -(swashOffset * foamScale + 0.8f * foamAdvection) * swashWeight;
-    const float2 foamP = p.worldPos.xz * foamScale + foamAdvection + swashTextureShift;
+    const float2 foamXZ = splineSurface ? p.baseWorldXZ : p.worldPos.xz;
+    const float2 foamP = foamXZ * foamScale + foamAdvection + swashTextureShift;
+    const float2 foamDx = (splineSurface ? baseDX : footprintDX) * foamScale + ddx(swashTextureShift);
+    const float2 foamDy = (splineSurface ? baseDY : footprintDY) * foamScale + ddy(swashTextureShift);
+    const float2 firstFoamOffset = current.firstOffset * foamScale;
+    const float2 secondFoamOffset = current.secondOffset * foamScale;
+    const float2 firstFoamDx = foamDx + ddx(firstFoamOffset);
+    const float2 firstFoamDy = foamDy + ddy(firstFoamOffset);
+    const float2 secondFoamDx = foamDx + ddx(secondFoamOffset);
+    const float2 secondFoamDy = foamDy + ddy(secondFoamOffset);
+    float foamNoise;
+    if (splineSurface && current.directionWeight > 0.0f) {
+        const float first = WaterNoiseTile(foamP + firstFoamOffset, firstFoamDx, firstFoamDy).z;
+        const float second = WaterNoiseTile(foamP + secondFoamOffset, secondFoamDx, secondFoamDy).z;
+        foamNoise = lerp(second, first, current.firstWeight);
+    } else {
+        foamNoise = WaterNoiseTile(foamP, foamDx, foamDy).z;
+    }
     /// @note 乱流 (Curl) はムラのコントラストを上げる。«ざわついた水» は泡の粒が揃わない。
-    float foamTexVal = saturate(WaterNoiseTile(foamP, footprintDX * foamScale + ddx(swashTextureShift),
-                                               footprintDY * foamScale + ddy(swashTextureShift)).z
-                                * lerp(1.6f, 3.0f, flowSample.chop));
-    /// @note VS が波高と圧縮の被覆率を履歴込みで作る。岸泡の強度とは別に波頭だけを調整できる。
-    float crestFoam = saturate(p.waveState.y * max(g_crestFoamParams.z, 0.0f));
+    const float foamContrast = lerp(1.6f, 3.0f, flowSample.chop);
+    float foamTexVal = saturate(foamNoise * foamContrast);
+    const float crestStrength = max(material.crestFoam.z, 0.0f);
+    const float crestSignal = saturate(horizonOptics ? p.waveState.w : p.waveState.y);
+    const float crestFoam = saturate(crestSignal * crestStrength);
     /// @note 渦と排水口の目は実際に白く泡立つ。足さないと «ただ凹んだ穴» にしか見えない。
     /// @note 湧き出しは縁で水がぶつかるので、輪として出す。
     float eyeFoam = max(flowSample.eye * 0.9f, flowSample.ring * 0.7f);
     float localFoamAmount = max(max(foamMaskVal, shoreFoam), eyeFoam) * foamTexVal;
-    float localFoam = saturate(smoothstep(0.05f, 1.0f, localFoamAmount) * max(g_foamParams.z, 0.0f));
+    float localFoam = saturate(smoothstep(0.05f, 1.0f, localFoamAmount) * max(material.foam.z, 0.0f));
     float crestCoverage = smoothstep(0.05f, 1.0f, crestFoam * foamTexVal);
-    float sprayCoverage = 0.0f;
+    const float grainScale = foamScale * 2.37f;
     [branch]
-    if (horizonOptics && crestFoam > 0.001f) {
+    if (horizonOptics && crestFoam > 0.0f) {
         /// @note Compression lights the advancing lip. The older advected foam breaks into weaker patches.
         /// @see https://liris.cnrs.fr/Documents/Liris-5812.pdf Dupuy and Bruneton (2012), deformation-driven whitecap coverage.
         const float compression = smoothstep(0.08f, 0.37f, 1.0f - p.waveJacobian);
         const float crestHeight = smoothstep(0.16f, 0.54f, p.waveState.x);
         const float frontSlope = smoothstep(-0.04f, 0.25f, dot(p.normal.xz, flowDir));
+        /// @note Fade the independent lip with the interpolated crest signal to avoid a jump along triangle contours.
+        const float support = smoothstep(0.0f, 0.20f, crestSignal);
         const float breaker = compression * crestHeight * lerp(0.55f, 1.0f, frontSlope)
-            * saturate(g_crestFoamParams.z);
-        const float2 grainPosition = foamP * 2.37f + float2(17.6f, 8.3f);
-        const float grain = WaterNoiseTile(grainPosition, footprintDX * (foamScale * 2.37f),
-            footprintDY * (foamScale * 2.37f)).z;
+            * saturate(material.crestFoam.z) * support;
+        /// @note Match the particle coordinate used to evaluate the crest history.
+        const float2 grainPosition = p.baseWorldXZ * grainScale + float2(17.6f, 8.3f);
+        const float grain = WaterNoiseTile(grainPosition, baseDX * grainScale, baseDY * grainScale).z;
         const float lip = breaker * lerp(0.27f, 1.0f, smoothstep(0.33f, 0.70f, grain));
-        crestCoverage = max(lip, crestCoverage * lerp(0.48f, 0.86f, grain));
-        sprayCoverage = WaterHorizonCrestSpray(p.worldPos, V, flowDir, time, footprint, breaker);
+        const float fresh = smoothstep(0.05f, 1.0f, crestFoam * saturate(grain * foamContrast));
+        crestCoverage = max(lip, fresh * lerp(0.48f, 0.86f, grain));
+    }
+    const float trailFoam = saturate(p.waveState.z * crestStrength);
+    [branch]
+    if (horizonOptics && trailFoam > 0.0f) {
+        /// @note Stretch the remaining film in the base current's frame. Its coverage already follows the local flow.
+        const float2 driftAxis = g_flowParams.xy;
+        const float2 crossAxis = float2(-driftAxis.y, driftAxis.x);
+        const float2x2 stretch = float2x2(0.48f * driftAxis, crossAxis);
+        const float driftSpeed = clamp(g_waveDepthParams.w + g_refractionFlowParams.y, -4.0f, 4.0f);
+        const float2 trailP = mul(stretch, p.baseWorldXZ - driftAxis * (driftSpeed * time)) * grainScale;
+        const float grain = WaterNoiseTile(trailP + float2(7.4f, 15.1f),
+            mul(stretch, baseDX) * grainScale, mul(stretch, baseDY) * grainScale).z;
+        const float trail = 0.62f * trailFoam * smoothstep(0.18f, 0.78f, grain);
+        crestCoverage += (1.0f - crestCoverage) * trail;
     }
     float foam = saturate(max(localFoam, crestCoverage));
-    foam += (1.0f - foam) * sprayCoverage;
     /// @note 泡と波紋の輪は «水面に浮いた白い粗面» なので、定数色ではなく Lambert で照らす。
     /// @note 太陽は泡の面の向きで受け、影の中では空と局所光だけが残る。
     float3 surfaceIrradiance = sunOverPi * (NdotL * shadow) + skyIrradianceOverPi + punctualOverPi;
     [branch]
     if (foam > 0.001f) {
-        float3 foamAlbedo = saturate(g_foamColorRoughness.rgb) * lerp(0.85f, 1.0f, saturate(foamTexVal));
-        float foamRoughness = clamp(g_foamColorRoughness.w, 0.05f, 1.0f);
+        float3 foamAlbedo = saturate(material.foamColorRoughness.rgb) * lerp(0.85f, 1.0f, saturate(foamTexVal));
+        float foamRoughness = clamp(material.foamColorRoughness.w, 0.05f, 1.0f);
         float foamFresnel = 0.02f + 0.98f * pow(1.0f - NdotV, 5.0f);
         /// @note 泡は粗い誘電体として光を受ける。白色を直接加算せず、空と局所光の陰影も保持する。
         /// @see https://www.graphics.cornell.edu/~bjw/microfacetbsdf.pdf Walter et al. (2007), GGX dielectric reflection.
@@ -774,7 +915,7 @@ float4 PSMain(WaterPSInput p) : SV_Target0
             foamColor += BRDF_Specular(N, V, L, float3(0.02f, 0.02f, 0.02f), foamRoughness)
                        * (NdotL * shadow * PI) * sunOverPi;
         }
-        if (g_reflectParams.x > 0.001f && iblIntensity > 0.0f) {
+        if (material.normalReflectionRefraction.y > 0.001f && iblIntensity > 0.0f) {
             float3 foamSky = g_skyReflection.SampleLevel(g_samplerClamp, R,
                 foamRoughness * (float)max(iblMaxMipLevel, 0)).rgb;
             foamColor += foamSky * (foamFresnel * iblIntensity * max(iblSpecularScale, 0.0f));
@@ -783,8 +924,8 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     }
 
     float2 rippleRG = DecodeWaterRipple(g_rippleTex.Sample(g_samplerClamp, p.uv).rgb).rg * localDataWeight;
-    float rippleRing = saturate(length(rippleRG) * rippleRingStrength);
-    color = lerp(color, rippleRingColor * surfaceIrradiance, rippleRing);
+    float rippleRing = saturate(length(rippleRG) * material.effects.w);
+    color = lerp(color, material.rippleColor.xyz * surfaceIrradiance, rippleRing);
     /// @warning ここで色を事前圧縮しないこと。水面は HDR バッファへブレンド描画され、露出・ACES
     /// @note トーンマップは Composite パスが一括で行う。事前圧縮するときらめきが Bloom に乗らない。
     color = max(color, 0.0f);
@@ -794,6 +935,15 @@ float4 PSMain(WaterPSInput p) : SV_Target0
     /// @note 縁ではコピー前のシーンと同じ背後へ溶けるので、屈折を合成済みでも継ぎ目は出ない。
     float alpha = splineSurface ? 1.0f
         : WaterEdgeFade(p.uv, g_refractionFlowParams.zw, g_normalParams.xy, footprint);
+    [unroll] for (int capIndex = 0; capIndex < 2; ++capIndex) {
+        const float4 cap = g_riverHorizonCaps[capIndex];
+        [branch] if (cap.z > 0.0f) {
+            const float relativeDistance = length(p.baseWorldXZ - cap.xy) / cap.z;
+            const float inland = smoothstep(0.4f, 1.0f, relativeDistance);
+            const float aboveSea = smoothstep(-0.08f, 0.65f, p.baseWorldY - cap.w);
+            alpha *= lerp(aboveSea, 1.0f, inland);
+        }
+    }
     /// @note 水面は自分自身の重なりを解決するため深度を書く。フェードで見えなくなった縁がそのまま
     /// @note 深度を書くと、その裏の半透明やデカールを «見えない板» が遮る。絵に出ない画素は残さない。
     clip(alpha - 0.003f);

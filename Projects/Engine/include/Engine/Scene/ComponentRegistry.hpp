@@ -46,6 +46,7 @@
 #include "Components/WaterComponent.hpp"
 #include "Components/WaterZoneComponent.hpp"
 #include "Components/WaterExclusionComponent.hpp"
+#include "Components/WaterfallComponent.hpp"
 #include "Components/WorldPartitionComponent.hpp"
 #include "Components/WorldPcgAuthoringComponent.hpp"
 #include "Components/TargetPointComponent.hpp"

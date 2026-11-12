@@ -1,0 +1,14 @@
+# @file    WaterCrestSpray.hlsl.meta
+# @brief   Shader identity for the procedural airborne crest droplets.
+# @author  Hasegawa Jin
+# @date    2026-11-10
+[meta]
+guid = '882df68a67524f02a619463288e52a07'
+
+[shader]
+version = 1
+vertex = 'custom'
+surface = 'custom'
+opacity = 'custom'
+variants = 'none'
+preview = 'none'

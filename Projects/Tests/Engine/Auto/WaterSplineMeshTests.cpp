@@ -65,6 +65,26 @@ TEST_F(WaterSplineMeshTest, LargeWorldOriginKeepsTheLastValidMeshWhenMidpointsLo
     }
 }
 
+TEST_F(WaterSplineMeshTest, LongReachDoesNotSubdivideAlreadyDenseUpstreamTriangles)
+{
+    const std::array<scene::WaterSplinePoint, 4> points{{
+        {1, {0.0f, 0.0f, 0.0f}, 4.0f, 2.0f, 1.0f},
+        {2, {2.0f, 0.0f, 0.0f}, 4.0f, 2.0f, 1.0f},
+        {3, {4.0f, 0.0f, 0.0f}, 4.0f, 2.0f, 1.0f},
+        {4, {84.0f, 0.0f, 0.0f}, 4.0f, 2.0f, 1.0f}}};
+    scene::Transform transform;
+    scene::WaterSplineSnapshot mesh;
+    ASSERT_TRUE(scene::BuildWaterSplineSnapshot(scene::WaterSurfaceShape::SPLINE_RIVER,
+        points, 1, transform, mesh, 10.0f, 5.0f));
+    EXPECT_FALSE(mesh.meshQualityLimited);
+    EXPECT_LE(mesh.maximumWorldEdgeLength, 5.0f);
+    size_t upstreamVertices = 0;
+    for (const auto& vertex : mesh.vertices) {
+        if (vertex.worldPosition.x < 4.0f) ++upstreamVertices;
+    }
+    EXPECT_EQ(upstreamVertices, 4u);
+}
+
 TEST_F(WaterSplineMeshTest, SlopedRiverNormalIncludesTheHorizontalWaveInverseMap)
 {
     scene::WaterComponent water;

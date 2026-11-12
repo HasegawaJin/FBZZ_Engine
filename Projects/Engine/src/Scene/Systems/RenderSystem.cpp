@@ -13,6 +13,7 @@
 #include "Engine/Renderer/RenderSettings.hpp"
 #include <Engine/Renderer/OpaqueRenderPlan.hpp>
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+#include "WaterfallFluidRuntime.hpp"
 #include <Engine/Scene/Systems/RenderLightExtractor.hpp>
 #include <Engine/Scene/Systems/RenderPasses/GeometryPipeline.hpp>
 #include "Engine/Renderer/RenderDebugOverlay.hpp"
@@ -1143,6 +1144,7 @@ void RenderSystem(Scene& scene,
         profiler::frame_timeline::Scope timelineSkinning(profiler::frame_timeline::Event::SKINNING);
         ExecuteSkinningComputePass(passCtx);
     }
+    RequestWaterfallFluidForView(scene, camera, cameraFrustum, passCtx.height);
     cpuTrace.SetPhase(cpu_trace::Phase::EXTRACT);
     RenderFrameGeometryCache* reusableGeometry = frameGeometry;
     if (reusableGeometry && !CanShareFrameGeometry(scene)) {

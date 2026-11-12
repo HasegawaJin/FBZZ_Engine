@@ -49,7 +49,7 @@ struct Polygon2 {
 
 struct MouthGeometry {
     WaterZoneMouthInput input;
-    WaterSplineSample ownerEndpoint;
+    WaterSplineSample receiverEndpoint;
     std::vector<Triangle2> corridor;
 };
 
@@ -592,13 +592,16 @@ private:
 /// @brief Adds a clipped polygon as consistently wound shared-mesh triangles.
 /// @note A generated intersection wedge may collapse only when its canonical indices repeat; nonzero authored triangles remain a precision failure.
 bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilon,
-    std::vector<std::array<std::uint32_t, 3>>& output)
+    std::vector<std::array<std::uint32_t, 3>>& output, bool mergeGeneratedSlivers = false)
 {
     if (polygon.points.size() < 3) return true;
     const double area = SignedArea(polygon.points);
     if (!std::isfinite(area)) return false;
     if (area == 0.0) return true;
+    const bool generated = std::any_of(polygon.points.begin(), polygon.points.end(),
+        [](const Point2& p) { return p.generatedIntersection; });
     if (std::abs(area) <= epsilon * epsilon) {
+        if (mergeGeneratedSlivers && generated) return true;
         pool.MarkPrecisionCollision();
         return false;
     }
@@ -623,6 +626,11 @@ bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilo
         const double exactArea = Cross(pool.ExactPoints()[indices[0]],
             pool.ExactPoints()[indices[i]], pool.ExactPoints()[indices[i + 1]]);
         if (inputArea == 0.0) continue;
+        const double emittedArea = Cross(a, b, c);
+        const bool generatedTriangle = inputPoints[0].generatedIntersection || inputPoints[i].generatedIntersection
+            || inputPoints[i + 1].generatedIntersection;
+        /// @note A clipped wedge with no positive area in the final mesh contributes no drawable coverage.
+        if (mergeGeneratedSlivers && generatedTriangle && emittedArea <= epsilon * epsilon) continue;
         if (exactArea == 0.0) {
             const bool repeatedIndex = indices[0] == indices[i] || indices[i] == indices[i + 1]
                 || indices[i + 1] == indices[0];
@@ -639,7 +647,7 @@ bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilo
             pool.MarkPrecisionCollision();
             return false;
         }
-        if (std::abs(Cross(a, b, c)) <= epsilon * epsilon) {
+        if (std::abs(emittedArea) <= epsilon * epsilon) {
             pool.MarkPrecisionCollision();
             return false;
         }
@@ -681,7 +689,7 @@ bool PointOnSegment(const Point2& a, const Point2& b, const Point2& point, doubl
 }
 
 bool SplitTJunctions(PointPool& pool, std::vector<std::array<std::uint32_t, 3>>& triangles,
-    double epsilon, std::size_t& work)
+    double epsilon, std::size_t& work, bool mergeGeneratedSlivers = false)
 {
     std::vector<std::uint32_t> sorted(pool.Points().size());
     std::iota(sorted.begin(), sorted.end(), 0u);
@@ -747,7 +755,7 @@ bool SplitTJunctions(PointPool& pool, std::vector<std::array<std::uint32_t, 3>>&
         const Point2& a = pool.ExactPoints()[triangle[0]];
         const Point2& b = pool.ExactPoints()[triangle[1]];
         const Point2& c = pool.ExactPoints()[triangle[2]];
-        const Point2 center{(a.x + b.x + c.x) / 3.0, (a.z + b.z + c.z) / 3.0};
+        const Point2 center{(a.x + b.x + c.x) / 3.0, (a.z + b.z + c.z) / 3.0, mergeGeneratedSlivers};
         std::uint32_t centerIndex = 0;
         if (!pool.Insert(center, epsilon, centerIndex)) return false;
         if (triangles.size() + boundary.size() > MAX_ZONE_TRIANGLES) return false;
@@ -756,6 +764,8 @@ bool SplitTJunctions(PointPool& pool, std::vector<std::array<std::uint32_t, 3>>&
             const std::uint32_t second = boundary[(i + 1) % boundary.size()];
             const double area = Cross(center, pool.ExactPoints()[first], pool.ExactPoints()[second]);
             if (area == 0.0) continue;
+            if (mergeGeneratedSlivers && Cross(pool.Points()[centerIndex], pool.Points()[first],
+                    pool.Points()[second]) <= epsilon * epsilon) continue;
             if (std::abs(area) <= epsilon * epsilon) {
                 pool.MarkPrecisionCollision();
                 return false;
@@ -780,6 +790,39 @@ bool PreferredSource(std::size_t a, std::size_t b, std::span<const WaterZoneSour
 {
     return sources[a].priority > sources[b].priority
         || (sources[a].priority == sources[b].priority && a < b);
+}
+
+/// @note Resolve only an emitted point within one float-rounding radius of an original footprint triangle.
+WaterSplineSample SampleRoundedFootprint(const WaterSplineSnapshot& geometry,
+    const WaterSplineTriangle& triangle, const Point2& point)
+{
+    const auto& a = geometry.vertices[triangle.indices[0]];
+    const auto& b = geometry.vertices[triangle.indices[1]];
+    const auto& c = geometry.vertices[triangle.indices[2]];
+    const Point2 pa{a.worldPosition.x, a.worldPosition.z};
+    const Point2 pb{b.worldPosition.x, b.worldPosition.z};
+    const Point2 pc{c.worldPosition.x, c.worldPosition.z};
+    const double area = Cross(pa, pb, pc);
+    const double u = (std::max)(0.0, Cross(point, pb, pc) / area);
+    const double v = (std::max)(0.0, Cross(pa, point, pc) / area);
+    const double w = (std::max)(0.0, Cross(pa, pb, point) / area);
+    const double sum = u + v + w;
+    const auto interpolate = [&](float x, float y, float z) {
+        return static_cast<float>((u * x + v * y + w * z) / sum);
+    };
+    WaterSplineSample result;
+    result.baseHeightOffset = interpolate(a.baseHeightOffset, b.baseHeightOffset, c.baseHeightOffset);
+    result.baseHeight = geometry.worldBaseY + result.baseHeightOffset;
+    result.depth = interpolate(a.depth, b.depth, c.depth);
+    result.worldVelocity = {
+        interpolate(a.worldVelocity.x, b.worldVelocity.x, c.worldVelocity.x),
+        interpolate(a.worldVelocity.y, b.worldVelocity.y, c.worldVelocity.y),
+        interpolate(a.worldVelocity.z, b.worldVelocity.z, c.worldVelocity.z)};
+    result.riverDistance = interpolate(a.riverDistance, b.riverDistance, c.riverDistance);
+    result.horizonMaterialWeight = interpolate(a.horizonMaterialWeight, b.horizonMaterialWeight,
+        c.horizonMaterialWeight);
+    result.baseHeightGradient = triangle.baseHeightGradient;
+    return result;
 }
 
 bool BuildBoundaryEdges(const std::vector<WaterSplineTriangle>& triangles,
@@ -950,7 +993,7 @@ bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineS
 bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::span<const WaterZoneMouthInput> mouths, const Transform& ownerTransform,
     float maximumWaterDepth, float maximumWorldCellSize, WaterZoneSnapshot& out,
-    std::string& diagnostic)
+    std::string& diagnostic, bool blendMaterials)
 {
     const auto fail = [&](const char* reason) {
         diagnostic = reason;
@@ -1005,6 +1048,8 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         std::abs(sourceBounds.maxX), std::abs(sourceBounds.maxZ), extentScale});
     const double epsilon = (std::max)(1.0e-12,
         coordinateScale * std::numeric_limits<double>::epsilon() * 64.0);
+    const bool followsRiver = !mouths.empty() && std::all_of(mouths.begin(), mouths.end(),
+        [](const WaterZoneMouthInput& mouth) { return mouth.riverEndpointDistance >= 0.0f; });
     std::size_t work = 0;
     std::vector<TriangleIndex> sourceIndices(sources.size());
     for (std::size_t sourceIndex = 0; sourceIndex < sources.size(); ++sourceIndex)
@@ -1014,8 +1059,10 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::vector<MouthGeometry> mouthGeometry;
     mouthGeometry.reserve(mouths.size());
     std::vector<std::uint32_t> sourceMouthCount(sources.size(), 0);
+    std::array<bool, MAX_ZONE_SOURCES> isMouthReceiver{};
     for (const auto& mouth : mouths) {
         if (mouth.sourceIndex == 0 || mouth.sourceIndex >= sources.size()
+            || mouth.receiverIndex >= sources.size() || mouth.receiverIndex == mouth.sourceIndex
             || sourceMouthCount[mouth.sourceIndex] >= 2 || !Finite(mouth.endpoint)
             || !Finite(mouth.inwardDirection) || !std::isfinite(mouth.blendLength)
             || mouth.blendLength <= 0.0f)
@@ -1025,11 +1072,11 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         if (!std::isfinite(directionLength) || directionLength < 0.999 || directionLength > 1.001)
             return fail("a river mouth inward direction is not normalized");
         WaterSplineSample endpointSample;
-        if (!TrySampleWaterSpline(*sources[0].geometry, mouth.endpoint.x, mouth.endpoint.z, endpointSample))
+        if (!TrySampleWaterSpline(*sources[mouth.receiverIndex].geometry, mouth.endpoint.x, mouth.endpoint.z, endpointSample))
             return fail("a river mouth endpoint is outside the receiver footprint");
         MouthGeometry built;
         built.input = mouth;
-        built.ownerEndpoint = endpointSample;
+        built.receiverEndpoint = endpointSample;
         for (const Triangle2& riverTriangle : sourceTriangles[mouth.sourceIndex]) {
             std::vector<Polygon2> clipped;
             if (!ClipMouthCorridor(riverTriangle, mouth, epsilon, work, clipped))
@@ -1041,6 +1088,7 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         }
         if (built.corridor.empty()) return fail("a river mouth corridor does not intersect its river");
         ++sourceMouthCount[mouth.sourceIndex];
+        isMouthReceiver[mouth.receiverIndex] = true;
         mouthGeometry.push_back(std::move(built));
     }
 
@@ -1078,7 +1126,7 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::vector<Triangle2> coveredTriangles;
     const auto appendPolygons = [&](const std::vector<Polygon2>& polygons) {
         for (const Polygon2& polygon : polygons) {
-            if (!AddPolygonTriangles(polygon, pointPool, epsilon, unionTriangles)
+            if (!AddPolygonTriangles(polygon, pointPool, epsilon, unionTriangles, followsRiver)
                 || !AddPolygonToCoverage(polygon, coveredTriangles)) return false;
         }
         return unionTriangles.size() <= MAX_ZONE_TRIANGLES && coveredTriangles.size() <= MAX_ZONE_TRIANGLES;
@@ -1094,7 +1142,9 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         TriangleIndex coveredIndex;
         if (!coveredIndex.Build(coveredTriangles)) return fail("union coverage index exceeds its budget");
         std::vector<Polygon2> accepted;
-        const bool needsMouthBoundarySplit = sourceIndex == 0 || sourceMouthCount[sourceIndex] > 0;
+        /// @note Arc-distance transitions are already represented by the river's sampled cross sections.
+        const bool needsMouthBoundarySplit = !followsRiver
+            && (isMouthReceiver[sourceIndex] || sourceMouthCount[sourceIndex] > 0);
         for (const Triangle2& triangle : sourceTriangles[sourceIndex]) {
             std::vector<Polygon2> fragments{{{triangle.points[0], triangle.points[1], triangle.points[2]}}};
             if (needsMouthBoundarySplit && !allMouthTriangles.empty()
@@ -1113,7 +1163,7 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
 
     if (unionTriangles.empty() || pointPool.Points().size() > MAX_ZONE_VERTICES)
         return fail("Zone union has no finite output triangles");
-    if (!SplitTJunctions(pointPool, unionTriangles, epsilon, work))
+    if (!SplitTJunctions(pointPool, unionTriangles, epsilon, work, followsRiver))
         return fail(pointPool.HasPrecisionCollision()
             ? "union geometry is below numeric tolerance or collapses at float precision"
             : "Zone T-junction split exceeded the bounded output budget");
@@ -1126,30 +1176,46 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     built.geometry.vertices.reserve(pointPool.Points().size());
     bool attributePrecisionAmbiguous = false;
     bool attributeWorkExceeded = false;
-    const auto resolveAttributes = [&](const Point2& point, WaterSplineSample& resolved) {
+    const auto resolveAttributes = [&](const Point2& point, WaterSplineSample& resolved,
+                                       WaterZoneMaterialSample& material) {
         std::array<WaterSplineSample, MAX_ZONE_SOURCES> samples{};
         std::array<bool, MAX_ZONE_SOURCES> hasSample{};
         std::size_t normalWinner = 0;
         bool anySample = false;
+        const Point2 query{static_cast<float>(point.x), static_cast<float>(point.z)};
+        const double roundingRadius = FloatRoundingRadius(query) * (followsRiver ? 4.0 : 1.0);
+        const Bounds2 queryBounds{query.x - roundingRadius, query.z - roundingRadius,
+            query.x + roundingRadius, query.z + roundingRadius};
         for (std::size_t sourceIndex = 0; sourceIndex < sources.size(); ++sourceIndex) {
-            if (!TrySampleWaterSpline(*sources[sourceIndex].geometry, static_cast<float>(point.x),
-                    static_cast<float>(point.z), samples[sourceIndex])) continue;
-            hasSample[sourceIndex] = true;
+            const auto& geometry = *sources[sourceIndex].geometry;
+            hasSample[sourceIndex] = TrySampleWaterSpline(geometry, static_cast<float>(point.x),
+                static_cast<float>(point.z), samples[sourceIndex]);
+            if (!hasSample[sourceIndex] && followsRiver && roundingRadius > 0.0) {
+                if (!sourceIndices[sourceIndex].Query(queryBounds, roundingRadius, [&](std::uint32_t candidate) {
+                        if (!hasSample[sourceIndex] && TriangleCoversWithinRounding(query,
+                                sourceIndices[sourceIndex].Triangles()[candidate], roundingRadius)) {
+                            samples[sourceIndex] = SampleRoundedFootprint(geometry, FootprintTriangles(geometry)[candidate],
+                                query);
+                            hasSample[sourceIndex] = true;
+                        }
+                        return true;
+                    }, work)) {
+                    attributeWorkExceeded = true;
+                    return false;
+                }
+            }
+            if (!hasSample[sourceIndex]) continue;
             if (!anySample || PreferredSource(sourceIndex, normalWinner, sources)) normalWinner = sourceIndex;
             anySample = true;
         }
         if (!anySample) return false;
 
-        const Point2 query{static_cast<float>(point.x), static_cast<float>(point.z)};
-        const double roundingRadius = FloatRoundingRadius(query);
-        const Bounds2 queryBounds{query.x - roundingRadius, query.z - roundingRadius,
-            query.x + roundingRadius, query.z + roundingRadius};
-        for (std::size_t sourceIndex = 0; sourceIndex < sources.size(); ++sourceIndex) {
+        for (std::size_t sourceIndex = 0; !followsRiver && sourceIndex < sources.size(); ++sourceIndex) {
             if (hasSample[sourceIndex]) continue;
             bool required = PreferredSource(sourceIndex, normalWinner, sources);
-            if (!required && sourceIndex != 0 && normalWinner == 0) {
+            if (!required && isMouthReceiver[normalWinner]) {
                 for (const MouthGeometry& mouth : mouthGeometry) {
-                    if (mouth.input.sourceIndex != sourceIndex) continue;
+                    if (mouth.input.sourceIndex != sourceIndex || mouth.input.receiverIndex != normalWinner) continue;
                     const double dx = point.x - mouth.input.endpoint.x;
                     const double dz = point.z - mouth.input.endpoint.z;
                     const double distance = dx * mouth.input.inwardDirection.x
@@ -1182,16 +1248,20 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
                 - static_cast<double>(ownerTransform.worldPosition.y) + sample.baseHeightOffset;
         };
         resolved = samples[normalWinner];
+        material.receiver = material.source = static_cast<std::uint32_t>(normalWinner);
         double baseHeightOffset = ownerRelativeOffset(normalWinner, resolved);
         const MouthGeometry* selectedMouth = nullptr;
         double mouthWeight = 0.0;
         std::size_t mouthRiver = 0;
         for (const MouthGeometry& mouth : mouthGeometry) {
             const std::size_t riverIndex = mouth.input.sourceIndex;
-            if (!hasSample[riverIndex] || (normalWinner != 0 && normalWinner != riverIndex)) continue;
+            if (!hasSample[riverIndex]
+                || (normalWinner != mouth.input.receiverIndex && normalWinner != riverIndex)) continue;
             const double dx = point.x - mouth.input.endpoint.x;
             const double dz = point.z - mouth.input.endpoint.z;
-            const double distance = dx * mouth.input.inwardDirection.x + dz * mouth.input.inwardDirection.y;
+            const double distance = mouth.input.riverEndpointDistance >= 0.0f
+                ? std::abs(samples[riverIndex].riverDistance - mouth.input.riverEndpointDistance)
+                : dx * mouth.input.inwardDirection.x + dz * mouth.input.inwardDirection.y;
             if (distance < -epsilon || distance > mouth.input.blendLength + epsilon) continue;
             selectedMouth = &mouth;
             mouthRiver = riverIndex;
@@ -1200,9 +1270,15 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
             break;
         }
         if (selectedMouth) {
-            const WaterSplineSample& receiver = selectedMouth->ownerEndpoint;
+            const std::size_t receiverIndex = selectedMouth->input.receiverIndex;
+            material = {static_cast<std::uint32_t>(receiverIndex), static_cast<std::uint32_t>(mouthRiver),
+                static_cast<float>(mouthWeight)};
+            const bool localReceiver = receiverIndex != 0 || (followsRiver
+                && sources[receiverIndex].geometry->shape == WaterSurfaceShape::SPLINE_RIVER);
+            const WaterSplineSample& receiver = localReceiver && hasSample[receiverIndex]
+                ? samples[receiverIndex] : selectedMouth->receiverEndpoint;
             const WaterSplineSample& river = samples[mouthRiver];
-            const double receiverOffset = ownerRelativeOffset(0, receiver);
+            const double receiverOffset = ownerRelativeOffset(receiverIndex, receiver);
             const double riverOffset = ownerRelativeOffset(mouthRiver, river);
             baseHeightOffset = receiverOffset + (riverOffset - receiverOffset) * mouthWeight;
             resolved.depth = static_cast<float>(receiver.depth
@@ -1218,11 +1294,22 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
             return false;
         resolved.baseHeightOffset = static_cast<float>(baseHeightOffset);
         resolved.baseHeight = static_cast<float>(worldBaseHeight);
+        resolved.horizonMaterialWeight = hasSample[0] ? samples[0].horizonMaterialWeight : 0.0f;
         resolved.depth = (std::clamp)(resolved.depth, 0.0f, maximumWaterDepth);
         return std::isfinite(resolved.depth) && Finite(resolved.worldVelocity)
             && Finite(resolved.baseHeightGradient);
     };
-    for (const Point2& point : pointPool.Points()) {
+    constexpr auto unusedVertex = std::numeric_limits<std::uint32_t>::max();
+    std::vector<std::uint32_t> vertexMap(pointPool.Points().size(), unusedVertex);
+    for (const auto& triangle : unionTriangles)
+        for (const auto index : triangle) vertexMap[index] = 0;
+    std::vector<Point2> exactPoints;
+    exactPoints.reserve(pointPool.Points().size());
+    for (std::size_t i = 0; i < pointPool.Points().size(); ++i) {
+        if (followsRiver && vertexMap[i] == unusedVertex) continue;
+        vertexMap[i] = static_cast<std::uint32_t>(built.geometry.vertices.size());
+        exactPoints.push_back(pointPool.ExactPoints()[i]);
+        const Point2& point = pointPool.Points()[i];
         WaterSplineVertex vertex;
         vertex.worldPosition = {static_cast<float>(point.x), built.geometry.worldBaseY,
             static_cast<float>(point.z)};
@@ -1233,7 +1320,7 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     }
     for (const auto& indices : unionTriangles) {
         WaterSplineTriangle triangle;
-        triangle.indices = indices;
+        triangle.indices = {vertexMap[indices[0]], vertexMap[indices[1]], vertexMap[indices[2]]};
         built.geometry.triangles.push_back(triangle);
         built.geometry.footprintTriangles.push_back(triangle);
     }
@@ -1244,10 +1331,12 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     if (!built.geometry.meshQualityLimited && built.geometry.maximumWorldEdgeLength > maximumWorldCellSize
         * (1.0f + 16.0f * std::numeric_limits<float>::epsilon()))
         return fail("Zone mesh refinement could not meet the requested cell size within budget");
+    if (blendMaterials) built.materials.reserve(built.geometry.vertices.size());
     for (WaterSplineVertex& vertex : built.geometry.vertices) {
         const Point2 point{vertex.worldPosition.x, vertex.worldPosition.z};
         WaterSplineSample resolved;
-        if (!resolveAttributes(point, resolved)) return fail(attributePrecisionAmbiguous
+        WaterZoneMaterialSample material;
+        if (!resolveAttributes(point, resolved, material)) return fail(attributePrecisionAmbiguous
             ? "a union vertex is outside a winning source within float rounding uncertainty"
             : attributeWorkExceeded ? "Zone attribute validation exceeded its bounded work budget"
             : "a union vertex has no finite source attributes");
@@ -1256,6 +1345,8 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
         vertex.worldVelocity = resolved.worldVelocity;
         vertex.baseHeightOffset = resolved.baseHeightOffset;
         vertex.depth = resolved.depth;
+        vertex.horizonMaterialWeight = resolved.horizonMaterialWeight;
+        if (blendMaterials) built.materials.push_back(material);
         if (!Finite(vertex.localPosition) || !Finite(vertex.worldPosition) || !Finite(vertex.worldVelocity)
             || !std::isfinite(vertex.baseHeightOffset)) return fail("a Zone vertex cannot be represented in owner space");
     }
@@ -1264,8 +1355,9 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     if (!HasValidWaterSplineExtents(built.geometry, ownerTransform))
         return fail("Zone local or transformed extents are not safely representable");
     if (!BuildBoundaryEdges(built.geometry.triangles, built.geometry.vertices,
-            pointPool.ExactPoints(), epsilon, built.boundaryEdges))
+            exactPoints, epsilon, built.boundaryEdges))
         return fail("Zone boundary topology is non-manifold or empty");
+    built.geometry.horizonMouth = sources[0].geometry->horizonMouth;
     out = std::move(built);
     diagnostic.clear();
     return true;

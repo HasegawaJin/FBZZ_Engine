@@ -1,0 +1,21 @@
+# @file    WaterfallVolumeMist.mat
+# @brief   Locally integrated, depth-clipped waterfall mist.
+# @author  Hasegawa Jin
+# @date    2026-11-11
+version = 1
+shader = 'guid:5203204117345776af8c6fca85df1b5c|Assets/Shaders/Water/WaterfallMist.hlsl'
+blend_mode = 'Premultiplied'
+double_sided = true
+depth_write = false
+render_queue = 3030
+render_path = 'particle'
+mesh_type = 'surface'
+[params]
+albedo = [1.08, 1.17, 1.21, 1.0]
+volumeDensity = 0.96
+[particle]
+soft_particles = true
+receive_shadows = true
+shadow_strength = 1.0
+emissive_scale = 0.0
+distortion = false

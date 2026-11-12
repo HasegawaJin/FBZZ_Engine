@@ -5,3 +5,7 @@
 #pragma once
 
 #include "InspectorCommon.hpp"
+
+namespace fbzz::editor {
+void BindWaterObjectReferenceFields(ComponentImGuiReflector& reflector, scene::Scene* world);
+} /// @note namespace fbzz::editor

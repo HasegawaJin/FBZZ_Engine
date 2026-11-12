@@ -2159,6 +2159,47 @@ TEST_F(WaterShaderTest, PastCrestsLeaveAWeakerMovingTrailAndFoamNeedsLight)
     EXPECT_LE(brightest, 0.0001f);
 }
 
+TEST_F(WaterShaderTest, HorizonBreakerFoamFadesInAtTheCrestCoverageThreshold)
+{
+    constexpr float AMPLITUDE = 2.0f;
+    constexpr float WAVELENGTH = 32.0f;
+    constexpr float CREST_HEIGHT = 0.55f;
+    const float phase = std::asin(CREST_HEIGHT);
+    renderer::Camera camera;
+    camera.m_position = {AMPLITUDE * std::cos(phase), 10.0f, 0.0f};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 2.0f;
+    camera.m_aspect = 1.0f;
+    camera.m_near = 0.1f;
+    camera.m_far = 30.0f;
+
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1.0f;
+    water.reflectParams.w = AMPLITUDE;
+    water.waveControls.x = 1.0f;
+    water.waveDir[0] = {1.0f, 0.0f, 1.0f, 1.0f};
+    water.waveParams[0] = {AMPLITUDE, WAVELENGTH, 0.0f, math::TWO_PI / WAVELENGTH};
+    water.wavePhasePacked[0].x = phase;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.crestFoamParams = {0.66f, 0.2f, 0.9f, 0.0f};
+
+    /// @note Hold the displaced crest and its compression fixed while exposing the onset of foam coverage.
+    const auto belowThreshold = RenderWater(camera, water, false, false);
+    water.crestFoamParams.x = 0.54f;
+    const auto justAboveThreshold = RenderWater(camera, water, false, false);
+    water.crestFoamParams.x = 0.3f;
+    const auto fullCoverage = RenderWater(camera, water, false, false);
+    ASSERT_EQ(belowThreshold.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(justAboveThreshold.size(), belowThreshold.size());
+    ASSERT_EQ(fullCoverage.size(), belowThreshold.size());
+
+    const size_t center = (EXTENT / 2u * EXTENT + EXTENT / 2u) * 4u;
+    EXPECT_GT(belowThreshold[center + 3u], 0.9f);
+    EXPECT_NEAR(justAboveThreshold[center], belowThreshold[center], 0.03f);
+    EXPECT_GT(fullCoverage[center], belowThreshold[center] + 0.10f);
+}
+
 TEST_F(WaterShaderTest, FarOceanPatchesRemoveTheFiniteEdgeDiscardAndRemainSelectable)
 {
     renderer::Camera camera;
@@ -2517,6 +2558,75 @@ TEST_F(WaterShaderTest, HorizonRefractionUsesSnellDistanceAndFallsBackOutsideThe
     }
 }
 
+TEST_F(WaterShaderTest, HorizonRefractionRejectsForegroundColorFromAdjacentTexels)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, -6};
+    camera.LookAt({0, 0, 0});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.absorptionCoefficients.z = 0.6f;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    const auto dark = MakeDarkLight();
+
+    /// @note The center ray samples depth at rows 74 then 72. Color filtering at its final hit also reaches row 73.
+    constexpr uint32_t FOREGROUND_ROW = 73;
+    const float pixelSize = camera.m_orthoHeight / static_cast<float>(EXTENT);
+    const auto viewCenter = camera.m_position + camera.GetForward() * 4.0f;
+    const auto top = viewCenter + camera.GetUp() * (0.5f * camera.m_orthoHeight - FOREGROUND_ROW * pixelSize);
+    const auto bottom = top - camera.GetUp() * pixelSize;
+    const auto right = camera.GetRight() * 4.0f;
+    const renderer::Vertex depthGeometry[] = {
+        {{-16, -2, -16}, {0, 1, 0}, {1, 0, 0}, {0, 0}},
+        {{-16, -2, 16}, {0, 1, 0}, {1, 0, 0}, {0, 1}},
+        {{16, -2, -16}, {0, 1, 0}, {1, 0, 0}, {1, 0}},
+        {{16, -2, -16}, {0, 1, 0}, {1, 0, 0}, {1, 0}},
+        {{-16, -2, 16}, {0, 1, 0}, {1, 0, 0}, {0, 1}},
+        {{16, -2, 16}, {0, 1, 0}, {1, 0, 0}, {1, 1}},
+        {top - right, {}, {}, {}},
+        {bottom - right, {}, {}, {}},
+        {top + right, {}, {}, {}},
+        {top + right, {}, {}, {}},
+        {bottom - right, {}, {}, {}},
+        {bottom + right, {}, {}, {}}
+    };
+    VisualOverrides visual;
+    visual.depthVertices = Resources().CreateVertexBuffer(depthGeometry, sizeof(depthGeometry), sizeof(renderer::Vertex));
+    visual.depthVertexCount = static_cast<uint32_t>(std::size(depthGeometry));
+    ASSERT_TRUE(visual.depthVertices);
+
+    std::vector<uint8_t> color(EXTENT * EXTENT * 4u);
+    for (uint32_t y = 0; y < EXTENT; ++y) {
+        for (uint32_t x = 0; x < EXTENT; ++x) {
+            const size_t offset = (y * EXTENT + x) * 4u;
+            color[offset] = y == FOREGROUND_ROW ? 255 : 0;
+            color[offset + 2] = 255;
+            color[offset + 3] = 255;
+        }
+    }
+    const auto sceneColor = Resources().CreateTexture(color.data(), EXTENT, EXTENT);
+    ASSERT_TRUE(sceneColor);
+
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+    for (float strength : {1.0f, 0.024f}) {
+        SCOPED_TRACE(strength);
+        water.refractionFlowParams.x = strength;
+        const auto continuous = RenderOpticalWater(camera, water, dark, true, sceneColor);
+        const auto foreground = RenderWater(camera, water, false, true, false, nullptr, nullptr, {}, 0, {},
+            &dark, sceneColor, nullptr, nullptr, {}, {}, 0, {}, &visual);
+        ASSERT_EQ(continuous.size(), EXTENT * EXTENT * 4u);
+        ASSERT_EQ(foreground.size(), continuous.size());
+        EXPECT_GT(continuous[center], 0.05f);
+        EXPECT_NEAR(foreground[center], 0.0f, 0.001f);
+        EXPECT_NEAR(foreground[center + 2], continuous[center + 2], 0.001f);
+    }
+}
+
 TEST_F(WaterShaderTest, HorizonTransmissionUsesDielectricFresnelAtNormalAndObliqueIncidence)
 {
     renderer::Camera camera;
@@ -2581,6 +2691,44 @@ TEST_F(WaterShaderTest, HorizonDirectScatterAccountsForTheIncidentAndOutgoingBee
             const float expected = 0.25f * beam * (0.1f / extinction) * (1.0f - std::exp(-extinction * 2.0f));
             EXPECT_NEAR(pixels[center + channel], expected, 0.002f);
         }
+    }
+}
+
+TEST_F(WaterShaderTest, HorizonScatteringBrightensTheSunwardSwellFace)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.absorptionCoefficients = {0.3f, 0.1f, 0.03f, 0};
+    water.scatteringCoefficients = {0.01f, 0.03f, 0.05f, 0};
+    water.waveControls.x = 1;
+    water.waveDir[0] = {1, 0, 0, 1};
+    constexpr float WAVELENGTH = 12.0f;
+    water.waveParams[0] = {1.4f, WAVELENGTH, 1, math::TWO_PI / WAVELENGTH};
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    auto light = MakeDarkLight();
+    light.lightColor = {1, 1, 1};
+    light.lightIntensity = 1;
+    const auto black = BlackTexture();
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+
+    for (float phase : {0.0f, math::PI}) {
+        water.wavePhasePacked[0].x = phase;
+        light.lightDir = {0.8f, -0.6f, 0};
+        const auto fromWest = RenderOpticalWater(camera, water, light, false, black);
+        light.lightDir.x = -light.lightDir.x;
+        const auto fromEast = RenderOpticalWater(camera, water, light, false, black);
+        ASSERT_EQ(fromWest.size(), EXTENT * EXTENT * 4u);
+        ASSERT_EQ(fromEast.size(), fromWest.size());
+        const float westMinusEast = fromWest[center + 2] - fromEast[center + 2];
+        EXPECT_GT(phase == 0.0f ? westMinusEast : -westMinusEast, 0.01f);
     }
 }
 
@@ -3354,10 +3502,16 @@ TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBounda
     const auto shader = Resources().LoadShader(probe.generic_string());
     ASSERT_TRUE(shader);
 
-    /// @note The sinusoidal derivative is independent of Z, so the coarse Z edge must not amplify it.
+    /// @note Check ungrouped and obliquely grouped waves across the coarse Z edge.
     for (uint32_t waveIndex : {0u, 7u, 15u}) {
         SCOPED_TRACE(waveIndex);
         for (auto& direction : water.waveDir) direction = {};
+        const float grouping = waveIndex == 0 ? 0.0f : 0.85f;
+        const float groupK = waveNumber * (0.09f + 0.035f * static_cast<float>(waveIndex & 3u));
+        const float groupRotation = (waveIndex & 1u) != 0 ? -0.55f : 0.55f;
+        const float groupDirectionX = std::cos(groupRotation);
+        const float groupDirectionZ = std::sin(groupRotation);
+        water.reflectParams.y = grouping;
         water.waveControls = {static_cast<float>(waveIndex + 1), 0, 0, 1};
         water.waveDir[waveIndex] = {1, 0, 0, 1};
         water.waveParams[waveIndex] = {amplitude, wavelength, 0, waveNumber};
@@ -3370,7 +3524,14 @@ TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBounda
             for (uint32_t x = 16; x < EXTENT - 16; ++x) {
                 const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
                 if (pixels[pixel + 3] < 0.5f) continue;
-                const float expected = amplitude * waveNumber * std::cos(waveNumber * pixels[pixel + 1]);
+                const float baseX = pixels[pixel + 1];
+                const float baseZ = pixels[pixel + 2];
+                const float phase = waveNumber * baseX;
+                const float groupPhase = groupK * (groupDirectionX * baseX + groupDirectionZ * baseZ);
+                const float envelope = 1.0f + grouping * std::sin(groupPhase);
+                const float envelopeSlope = grouping * groupK * groupDirectionX * std::cos(groupPhase);
+                const float expected = amplitude * (waveNumber * std::cos(phase) * envelope
+                    + std::sin(phase) * envelopeSlope);
                 ASSERT_TRUE(std::isfinite(pixels[pixel]));
                 maximumError = (std::max)(maximumError, std::abs(pixels[pixel] - expected));
                 ++samples;

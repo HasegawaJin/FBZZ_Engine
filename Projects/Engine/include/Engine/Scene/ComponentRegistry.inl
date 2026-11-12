@@ -130,3 +130,5 @@ FBZZ_COMPONENT_ENTRY(struct, WorldPcgVolumeComponent, FBZZ_COMPONENT(WorldPcgVol
 FBZZ_COMPONENT_ENTRY(struct, WorldPcgGeneratedComponent, FBZZ_COMPONENT(WorldPcgGeneratedComponent, Environment, "PCG Generated Output"))
 FBZZ_COMPONENT_ENTRY(struct, WorldBiomeVolumeComponent, FBZZ_COMPONENT(WorldBiomeVolumeComponent, Environment, "Biome Volume"))
 FBZZ_COMPONENT_ENTRY(struct, WorldHlodSourceComponent, FBZZ_COMPONENT(WorldHlodSourceComponent, Environment, "HLOD Source"))
+FBZZ_COMPONENT_ENTRY(struct, WaterfallComponent, FBZZ_COMPONENT(WaterfallComponent, Terrain, "Waterfall"))
+FBZZ_COMPONENT_ENTRY(struct, WaterfallPart, FBZZ_INTERNAL_COMPONENT(WaterfallPart, "Waterfall Part"))

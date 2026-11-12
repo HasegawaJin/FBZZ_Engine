@@ -4,6 +4,7 @@
 /// @date    2026-08-26
 #include <Engine/Scene/Systems/RuntimeMeshSystem.hpp>
 #include "RuntimeMeshUpload.hpp"
+#include "WaterfallRuntime.hpp"
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
 
 #include <Engine/Core/Scheduler/SystemContext.hpp>
@@ -12,6 +13,7 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
+#include <Engine/Scene/Components/WaterfallComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/MeshResolver.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -26,6 +28,7 @@ void RuntimeMeshSystem::Update(SystemContext& ctx)
 {
     if (!ctx.resources) return;
     renderer::ResourceManager& resources = *ctx.resources;
+    UpdateWaterfallRuntime(ctx.scene, ctx.playing && !ctx.simulating ? 0.0f : ctx.dt);
 
     for (EntityID id : ctx.scene.GetEntities<MeshRenderer>()) {
         auto* meshRenderer = ctx.scene.GetComponent<MeshRenderer>(id);
@@ -43,8 +46,21 @@ void RuntimeMeshSystem::Update(SystemContext& ctx)
         if (PrepareRuntimeMesh(ctx.scene, id, procedural->runtimeMesh, resources)) procedural->dirty = MeshDirty::All;
         const bool uploaded = procedural->dirty != MeshDirty::None;
         if (uploaded) {
+            auto* waterfall = go->GetComponent<WaterfallPart>();
             if (!UploadRuntimeMesh(procedural->runtimeMesh, resources, procedural->builder.Vertices(),
-                procedural->builder.Indices(), procedural->dirty)) continue;
+                    procedural->builder.Indices(), procedural->dirty)) {
+                if (waterfall) {
+                    if (auto* mesh = go->GetComponent<MeshRenderer>(); mesh && mesh->mesh) {
+                        mesh->mesh = nullptr;
+                        NotifyMeshRendererChanged(ctx.scene, id);
+                    }
+                }
+                continue;
+            }
+            if (waterfall) {
+                waterfall->farIndexStart = waterfall->pendingFarIndexStart;
+                procedural->runtimeMesh.Current()->boundsRadius += WATERFALL_VERTEX_MARGIN;
+            }
             procedural->dirty = MeshDirty::None;
         }
         if (!procedural->runtimeMesh.HasMesh()) continue;

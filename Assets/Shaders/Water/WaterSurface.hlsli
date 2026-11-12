@@ -76,6 +76,24 @@ cbuffer CameraConstants : register(CB_CAMERA)
 #include "Common/AdvancedGraphicsConstants.hlsli"
 
 /// @note C++ の WaterCB と 16 byte 単位で同期する。Vector4 パックにして暗黙パディング差をなくす。
+struct WaterMaterialBlendTarget
+{
+    float4 shallowColorDepth;
+    float4 deepColorDepth;
+    float4 surface;
+    float4 normalReflectionRefraction;
+    float4 detail;
+    float4 foam;
+    float4 crestFoam;
+    float4 foamColorRoughness;
+    float4 absorptionPhase;
+    float4 scatteringMode;
+    float4 sss;
+    float4 effects;
+    float4 skyTint;
+    float4 rippleColor;
+};
+
 cbuffer WaterCB : register(CB_OBJECT)
 {
     float4x4 g_worldMatrix;
@@ -123,10 +141,29 @@ cbuffer WaterCB : register(CB_OBJECT)
     float4   g_patchMorphMetric;
     float4   g_patchMorphParams;
     float4   g_patchMorphCellSize;
-    float4   g_waveDepthParams;
+    float4   g_waveDepthParams; ///< @note w=矩形水域の基流の符号付き速度 [m/s]。
     float4   g_horizonPatchDomain; ///< @note xy=local XZ 最小値, zw=local 寸法。0 寸法は従来の有限矩形。
     float4   g_terrainDomain; ///< @note xy=Terrain 域中心, zw=寸法。Water 軸へ投影した world m。
+    float4   g_riverHorizonCaps[2]; ///< @note xy=world XZ, z=blend radius [m], w=sea level [m].
+    float4   g_waterfallSeams[4]; ///< @note xy=world XZ, zw=flat/fade radii [m]. Negative first w pins the surface.
+    float4   g_materialBlendMouth;
+    float4   g_horizonWaveSeams[4];
+    float4   g_horizonLinkedRiverMedia;
+    WaterMaterialBlendTarget g_materialBlendTarget;
 };
+
+float WaterfallWaveWeight(float2 worldXZ)
+{
+    if (g_waterfallSeams[0].w < 0.0f) return 0.0f;
+    float weight = 1.0f;
+    [unroll] for (uint i = 0; i < 4; ++i) {
+        const float4 seam = g_waterfallSeams[i];
+        if (seam.w > 0.0f) weight = min(weight, smoothstep(seam.z, seam.w, length(worldXZ - seam.xy)));
+        const float4 mouth = g_horizonWaveSeams[i];
+        if (mouth.w > 0.0f) weight = min(weight, smoothstep(mouth.z, mouth.w, length(worldXZ - mouth.xy)));
+    }
+    return weight;
+}
 
 int WaterWaveCount()
 {
@@ -230,6 +267,7 @@ struct WaterVSInput
     float3 position : POSITION;
     float2 uv       : TEXCOORD0;
     float4 splineData : TEXCOORD1; ///< @brief x=水深 [m], yz=ワールド XZ 流速 [m/s], w=スプライン頂点 flag
+    float4 zoneMaterial : TEXCOORD2;
 };
 
 struct WaterPSInput
@@ -241,8 +279,8 @@ struct WaterPSInput
     float3 tangent    : TEXCOORD3;
     float3 binormal   : TEXCOORD4;
     float4 screenPos  : TEXCOORD5;
-    /// @brief x = 0:谷 1:うねりの山 (透過光の強さ), y = 波頭泡の被覆率と減衰した航跡
-    float2 waveState  : TEXCOORD6;
+    /// @brief x=正規化波高、y=白波の合成被覆率、z=Horizon の移流した残り泡、w=現在の波頭泡。
+    float4 waveState  : TEXCOORD6;
     /// @brief xy = 流向、z = さざ波強度、w = 泡のムラ。頂点で評価して補間する。
     float4 flowDirectionDetail : TEXCOORD7;
     float2 flowFoam : TEXCOORD8;
@@ -254,7 +292,23 @@ struct WaterPSInput
     float waveJacobian : TEXCOORD14; ///< @brief Gerstner 水平変位の実ヤコビアン。媒体と集光で共有する。
     float4 waveMeshFade[4] : TEXCOORD15; ///< @brief 頂点で保持した各基波の振幅比。残差と相補的に補間する。
     float4 shoreWaveHeights : TEXCOORD19; ///< @brief xyz=岸泡履歴の符号付き波高、w=現在の波高 [m]。
+    nointerpolation uint2 zoneMaterialIndices : TEXCOORD20;
+    float3 zoneReceiverWeights : TEXCOORD21;
+    float3 zoneSourceWeights : TEXCOORD22;
 };
+
+/// @brief Give the connected river raster priority when both surfaces meet at the same elevation.
+float WaterHorizonDepthTieOffset(float2 worldXZ)
+{
+    if (!any(g_horizonLinkedRiverMedia > 0.0f)) return 0.0f;
+    float weight = 0.0f;
+    [unroll] for (uint i = 0u; i < 4u; ++i) {
+        const float4 mouth = g_horizonWaveSeams[i];
+        if (g_horizonLinkedRiverMedia[i] > 0.0f)
+            weight = max(weight, 1.0f - smoothstep(mouth.z, mouth.w, length(worldXZ - mouth.xy)));
+    }
+    return 0.03f * weight;
+}
 
 /// @brief 有限矩形の外周を保ったまま、軸の中央へ近景の頂点を集める。
 /// @note Graphics/Effects/WaterGrid.hpp と同じ式。中心はセル単位で揃え、カメラ移動で近景の格子を滑らせない。
@@ -395,59 +449,114 @@ WaterWaveDepthState WaterDepthState(float2 baseWorldXZ)
 static const float kWaveGroupCos = 0.852525f;
 static const float kWaveGroupSin = 0.522687f;
 
-/// @brief 波の «群» の包絡 [1-depth, 1+depth]。振幅にそのまま掛ける。
-/// @param index 波の番号 [0,3]。群の波長と傾ける向きをここから決める (CB を増やさないため)。
-/// @note 正弦を 4 本足しただけの水面はどの波頭も同じ高さ・同じ形になる。実海面は近い周波数
-/// @note どうしの «うなり» で波が群れて進み、大きい波の塊と凪の区間が交互に来る。
-/// @note 群の角周波数を r*omega/2 にするのは、深水波の群速度が位相速度の 1/2 だから。
-/// @note これで «群はゆっくり進み、個々の波頭がその中を追い越していく» 見え方になる。
-/// @note 群の向きを波から傾けるのは、同じ向きだと波頭が «高さの揃った無限に長い直線» の
-/// @note ままになるため。斜めにずらすと包絡が波頭に沿っても変化し、うねりが塊へ割れる。
-/// @warning WaterComponent::WaveGroupEnvelope と同じ式であること。片方だけ変えると、
-/// @note 見えている波と浮力が別の水面になる。
-float WaveGroupEnvelope(int index, float2 D, float k, float omega, float2 worldXZ, float time)
+float WaterWaveGroupRatio(int index)
 {
-    float depth = saturate(g_reflectParams.y);
-    if (depth <= 0.0001f) return 1.0f;
+    return 0.09f + 0.035f * (float)(index & 3);
+}
 
-    float ratio = 0.09f + 0.035f * (float)(index & 3);
-    float sign  = (index & 1) ? -1.0f : 1.0f;
-    float2 groupDir = float2(D.x * kWaveGroupCos - D.y * sign * kWaveGroupSin,
-                             D.x * sign * kWaveGroupSin + D.y * kWaveGroupCos);
-    float phase = (ratio * k) * dot(groupDir, worldXZ) - ratio * omega * 0.5f * time
-                + WaterWavePhase(index);
-    return 1.0f + depth * sin(phase);
+float2 WaterWaveGroupDirection(int index, float2 D)
+{
+    const float sign = (index & 1) ? -1.0f : 1.0f;
+    return float2(D.x * kWaveGroupCos - D.y * sign * kWaveGroupSin,
+                  D.x * sign * kWaveGroupSin + D.y * kWaveGroupCos);
+}
+
+/// @return x=振幅の包絡、yz=変位前の world XZ に対する勾配。
+/// @note 群の角周波数は r*omega/2。深水波の群速度は位相速度の半分。
+/// @warning 包絡の値は WaterComponent::WaveGroupEnvelope と同期する。
+/// @see Docs/design/water-waves.md
+float3 WaveGroupEnvelope(int index, float2 D, float k, float omega, float2 worldXZ, float time)
+{
+    const float depth = saturate(g_reflectParams.y);
+    if (depth <= 0.0001f) return float3(1.0f, 0.0f, 0.0f);
+
+    const float ratio = WaterWaveGroupRatio(index);
+    const float2 groupDir = WaterWaveGroupDirection(index, D);
+    const float groupK = ratio * k;
+    const float phase = groupK * dot(groupDir, worldXZ) - ratio * omega * 0.5f * time
+                      + WaterWavePhase(index);
+    return float3(1.0f + depth * sin(phase), depth * cos(phase) * groupK * groupDir);
+}
+
+/// @note Keep the crest gain and the height bound in sync with WaterComponent.
+static const float kWaterCrossingCrestGain = 0.85f;
+
+struct WaterCrossingCrest {
+    float3 moment;
+    float3 derivativeX;
+    float3 derivativeZ;
+};
+
+float WaterMaximumWaveRise()
+{
+    return g_reflectParams.w * (1.0f + (g_farOceanParams.x > 0.5f ? kWaterCrossingCrestGain : 0.0f));
+}
+
+/// @return x is additional height in meters and yz are its undisplaced world XZ derivatives.
+/// @note S^2 - dot(V,V) is the sum of positive crest products weighted by 2 * (1 - dot(D_i,D_j)).
+/// @see https://doi.org/10.1017/jfm.2018.886 McAllister et al. (2019), crest focusing in crossing seas.
+float3 WaterCrossingCrestDisplacement(WaterCrossingCrest crest, float3 attenuation)
+{
+    const float3 signedMoment = float3(crest.moment.x, -crest.moment.yz);
+    const float coincidence = dot(crest.moment, signedMoment);
+    if (coincidence <= 0.0f) return 0.0f;
+
+    const float scale = kWaterCrossingCrestGain / max(g_reflectParams.w, 0.01f);
+    const float factor = scale * attenuation.x;
+    const float2 halfDerivative = float2(dot(signedMoment, crest.derivativeX), dot(signedMoment, crest.derivativeZ));
+    const float2 slope = 2.0f * factor * (attenuation.x * halfDerivative + coincidence * attenuation.yz);
+    return float3(factor * attenuation.x * coincidence, slope);
 }
 
 /// @brief deep-water Gerstner 波を 1 本評価し、同時に解析微分で TBN を更新する。
-/// @param index 波の番号 [0,3]。群の包絡に渡す。
 /// @param fade  頂点グリッドで刻めない波を寝かせる係数。振幅は更に群の包絡が掛かる。
-/// @note CPU 頂点へ法線・接線を持たせず、波変位後の正しい法線を GPU で復元するため。
-/// @note 包絡は位置で変わるので厳密な微分には ∂envelope/∂x の項が付くが、包絡の波数は波の
-/// @note 1 割ほどしかないため無視する。法線がゆっくり数 % ずれるだけで絵には出ない。
-/// @warning 方向が 0 の «使っていない波» で normalize が NaN を返すため、包絡は必ず
-/// @note 早期リターンの後で評価すること。NaN は fade <= 0 の判定をすり抜けて全体へ伝播する。
+/// @note 振幅の包絡と浅瀬の減衰が変化するので、両方の勾配を含める。
+/// @warning 無効な波は normalize より先に除外する。ゼロ方向を正規化すると NaN が伝播する。
+/// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1.2.3, Gerstner Waves.
 float3 GerstnerDisplace(int index, float4 dirData, float4 params, float3 pos, float time, float fade,
-                        WaterWaveDepthState depthState, inout float3 tangent, inout float3 binormal)
+                        WaterWaveDepthState depthState, inout float3 tangent, inout float3 binormal,
+                        bool crossingEnabled, inout WaterCrossingCrest crossing)
 {
     if (dirData.w <= 0.0f || fade <= 0.0f)
         return float3(0.0f, 0.0f, 0.0f);
 
     float2 D = normalize(dirData.xy);
     float  Q = saturate(dirData.z);
-    float baseA = params.x * fade * WaveGroupEnvelope(index, D, params.w, params.z, pos.xz, time);
+    const float amplitude = params.x * fade;
+    const float3 group = WaveGroupEnvelope(index, D, params.w, params.z, pos.xz, time);
+    const float baseA = amplitude * group.x;
     float  k = params.w;
     float  omega = params.z;
     float  phi = k * dot(D, pos.xz) - omega * time + WaterWavePhase(index);
     float  s = sin(phi);
     float  c = cos(phi);
 
+    [branch]
+    if (crossingEnabled) {
+        const float positiveCrest = max(s, 0.0f);
+        const float crestWeight = amplitude * positiveCrest * positiveCrest;
+        const float2 crestGradient = crestWeight * group.yz + 2.0f * baseA * positiveCrest * k * c * D;
+        const float3 directionMoment = float3(1.0f, D);
+        crossing.moment += directionMoment * (crestWeight * group.x);
+        crossing.derivativeX += directionMoment * crestGradient.x;
+        crossing.derivativeZ += directionMoment * crestGradient.y;
+    }
+
     const float2 push = Q * baseA * D;
-    const float2 horizontalSlope = c * depthState.horizontal.yz - k * s * depthState.horizontal.x * D;
-    const float2 verticalSlope = s * depthState.vertical.yz + k * c * depthState.vertical.x * D;
+    const float2 horizontalAmplitudeGradient = group.x * depthState.horizontal.yz
+        + depthState.horizontal.x * group.yz;
+    const float2 verticalAmplitudeGradient = group.x * depthState.vertical.yz
+        + depthState.vertical.x * group.yz;
+    const float2 horizontalSlope = c * horizontalAmplitudeGradient
+        - k * s * depthState.horizontal.x * group.x * D;
+    const float2 verticalSlope = s * verticalAmplitudeGradient
+        + k * c * depthState.vertical.x * group.x * D;
     /// @note 振幅の空間減衰には積の微分が必要。浅瀬の勾配を落とすとCPUの法線と異なる。
-    tangent += float3(push.x * horizontalSlope.x, baseA * verticalSlope.x, push.y * horizontalSlope.x);
-    binormal += float3(push.x * horizontalSlope.y, baseA * verticalSlope.y, push.y * horizontalSlope.y);
+    const float2 horizontalAmplitude = Q * amplitude * D;
+    tangent += float3(horizontalAmplitude.x * horizontalSlope.x, amplitude * verticalSlope.x,
+        horizontalAmplitude.y * horizontalSlope.x);
+    binormal += float3(horizontalAmplitude.x * horizontalSlope.y, amplitude * verticalSlope.y,
+        horizontalAmplitude.y * horizontalSlope.y);
 
     const float2 horizontal = push * (depthState.horizontal.x * c);
     return float3(horizontal.x, baseA * depthState.vertical.x * s, horizontal.y);
@@ -484,13 +593,23 @@ void ResolveWaveSpread(out float2 rotation, out float2 scales)
     rotation = float2(cos(angle), sin(angle));
 }
 
-/// @brief 指定時刻の符号付き波高 [m] と水平圧縮を同じ波評価から求める。
+struct WaterCrestSample
+{
+    float3 displacement; ///< @brief ワールド XYZ の Gerstner 変位 [m]。
+    float compression; ///< @brief 水平ヤコビアンから得た圧縮 [0,1]。
+    float crossingRise; ///< @brief 交差波による追加の高さ [m]。
+};
+
+/// @brief 指定時刻の変位 [m] と水平圧縮を同じ波評価から求める。
 /// @param basePos 変位«前»のワールド位置。Gerstner の位相はここで取る。
 /// @note 位相の sin を高さとヤコビアンで共有し、履歴の追加の三角関数を避ける。
-float2 WaterWaveCrestAt(float3 basePos, float time, float2 meshCellSize, WaterWaveDepthState depthState)
+WaterCrestSample WaterWaveCrestAt(float3 basePos, float time, float2 meshCellSize,
+                                 WaterWaveDepthState depthState, bool crossingEnabled)
 {
-    float txx = 1.0f, txz = 0.0f, bzx = 0.0f, bzz = 1.0f;
-    float height = 0.0f;
+    float3 tangent = float3(1.0f, 0.0f, 0.0f);
+    float3 binormal = float3(0.0f, 0.0f, 1.0f);
+    float3 displacement = 0.0f;
+    WaterCrossingCrest crossing = (WaterCrossingCrest)0;
     float2 rotation, scales;
     ResolveWaveSpread(rotation, scales);
 
@@ -509,25 +628,18 @@ float2 WaterWaveCrestAt(float3 basePos, float time, float2 meshCellSize, WaterWa
             ApplyWaveSpread(i, part, rotation, scales, D, scale);
             if (scale <= 0.001f) continue;
 
-            float k = g_waveParams[i].w;
-            float baseA = g_waveParams[i].x * fade * scale
-                    * WaveGroupEnvelope(i, D, k, g_waveParams[i].z, basePos.xz, time);
-            float phi = k * dot(D, basePos.xz) - g_waveParams[i].z * time + WaterWavePhase(i);
-            const float heightAtPhase = baseA * sin(phi);
-            height += heightAtPhase * depthState.vertical.x;
-            float qkAs = saturate(g_waveDir[i].z) * k * heightAtPhase * depthState.horizontal.x;
-            txx -= D.x * D.x * qkAs;
-            txz -= D.x * D.y * qkAs;
-            bzx -= D.x * D.y * qkAs;
-            bzz -= D.y * D.y * qkAs;
-            float gradientPush = saturate(g_waveDir[i].z) * baseA * cos(phi);
-            txx += D.x * gradientPush * depthState.horizontal.y;
-            txz += D.y * gradientPush * depthState.horizontal.y;
-            bzx += D.x * gradientPush * depthState.horizontal.z;
-            bzz += D.y * gradientPush * depthState.horizontal.z;
+            const float4 direction = float4(D, g_waveDir[i].z, g_waveDir[i].w);
+            float4 params = g_waveParams[i];
+            params.x *= scale;
+            displacement += GerstnerDisplace(i, direction, params, basePos, time, fade,
+                depthState, tangent, binormal, crossingEnabled, crossing);
         }
     }
-    return float2(height, saturate(1.0f - (txx * bzz - txz * bzx)));
+    const float crossingRise = crossingEnabled ? WaterCrossingCrestDisplacement(crossing, depthState.vertical).x : 0.0f;
+    displacement.y += crossingRise;
+    const float jacobian = tangent.x * binormal.z - tangent.z * binormal.x;
+    WaterCrestSample result = {displacement, saturate(1.0f - jacobian), crossingRise};
+    return result;
 }
 
 /// @brief 波高による泡の帯を作り、水平圧縮が強い波頭と折り畳みを増幅する。
@@ -544,7 +656,7 @@ float WaterCrestFoamAmount(float2 state)
     return max(highWater * lerp(0.85f, 1.0f, compression), breaking * 0.85f);
 }
 
-/// @note 同じ変位前の粒を過去へ三点だけ評価し、泡を水に付着した指数減衰の航跡として近似する。
+/// @note 有限水域は同じ粒、Horizon は上流を過去へ三点評価し、泡の残留を近似する。
 /// @note lifetime=0 では履歴を省く。履歴バッファやビュー別の更新は不要。
 #define WATER_FOAM_TRAIL_TAPS 3
 
@@ -708,6 +820,7 @@ float4 WaterVortexSwellDisplacement(int i, float2 worldXZ, float time, float2 me
 struct WaterFlowSample
 {
     float2 direction;  ///< @brief さざ波・きらめき・泡が流れる向き (正規化)
+    float2 localVelocity; ///< @brief 基流を除いた場のワールド XZ 流速 [m/s]。
     float  eye;        ///< @brief 渦と吸い込みの目への近さ [0,1]。泡へ足す
     float  ring;       ///< @brief 湧き出しの縁への近さ [0,1]。泡の輪
     float  detailGain; ///< @brief さざ波の強度倍率 (1 起点)
@@ -799,9 +912,27 @@ WaterFlowSample SampleWaterSurfaceFlow(float2 worldXZ, float2 baseXZ)
         }
     }
 
+    s.localVelocity = (dir - g_flowParams.xy) * kWaterFlowReference;
     float len = length(dir);
     s.direction = len > 1.0e-4f ? dir / len : g_flowParams.xy;
     return s;
+}
+
+/// @return 残り泡を運ぶワールド XZ 速度 [m/s]。材質の flowSpeed は見た目の漂流成分。
+float2 WaterFoamDriftVelocity(WaterFlowSample flow)
+{
+    const float2 velocity = flow.localVelocity
+        + g_flowParams.xy * (g_waveDepthParams.w + g_refractionFlowParams.y);
+    return velocity * min(1.0f, 4.0f / max(length(velocity), 1.0e-4f));
+}
+
+/// @note 短い泡の寿命内で速度を一定とし、履歴を現在の点から上流へ逆追跡する。
+/// @see https://doi.org/10.1145/311535.311548 Stam (1999), Stable Fluids, semi-Lagrangian advection.
+float3 WaterFoamBacktrace(float3 basePos, float2 velocity, float age)
+{
+    const float2 travel = velocity * age;
+    basePos.xz -= travel * min(1.0f, 8.0f / max(length(travel), 1.0e-4f));
+    return basePos;
 }
 
 /// @note SurfacePatchLod::ResolveSurfacePatchCellSize と同じ辺・角の順で共有頂点の帯域を決める。
@@ -899,11 +1030,19 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     o.baseWorldXZ = basePos.xz;
     o.baseWorldY = basePos.y;
     o.splineSurface = v.splineData;
+    o.zoneMaterialIndices = (uint2)v.zoneMaterial.xy;
+    const float3 cornerWeight = float3(v.zoneMaterial.z == 1.0f,
+        v.zoneMaterial.z == 2.0f, v.zoneMaterial.z == 3.0f);
+    o.zoneReceiverWeights = cornerWeight * (1.0f - v.zoneMaterial.w);
+    o.zoneSourceWeights = cornerWeight * v.zoneMaterial.w;
+    const float seamWeight = WaterfallWaveWeight(basePos.xz);
 
     float2 rotation, scales;
     ResolveWaveSpread(rotation, scales);
 
     WaterWaveDepthState depthState = WaterDepthState(basePos.xz);
+    const bool crossingEnabled = !splineSurface && g_farOceanParams.x > 0.5f;
+    WaterCrossingCrest crossing = (WaterCrossingCrest)0;
     [unroll]
     for (int band = 0; band < 4; ++band) o.waveMeshFade[band] = 0.0f;
     [loop]
@@ -922,10 +1061,20 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
             float4 dirData = float4(D, g_waveDir[i].z, g_waveDir[i].w);
             float4 params  = g_waveParams[i];
             params.x *= scale;
-            disp += GerstnerDisplace(i, dirData, params, worldPos, time, fade, depthState, tangent, binormal);
+            disp += GerstnerDisplace(i, dirData, params, worldPos, time, fade,
+                depthState, tangent, binormal, crossingEnabled, crossing);
         }
     }
 
+    if (crossingEnabled) {
+        const float3 crest = WaterCrossingCrestDisplacement(crossing, depthState.vertical);
+        disp.y += crest.x;
+        tangent.y += crest.y;
+        binormal.y += crest.z;
+    }
+    disp *= seamWeight;
+    tangent = lerp(float3(1.0f, 0.0f, 0.0f), tangent, seamWeight);
+    binormal = lerp(float3(0.0f, 0.0f, 1.0f), binormal, seamWeight);
     worldPos += disp;
     relativeSurfaceY += disp.y;
 
@@ -945,19 +1094,19 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
             const float4 swell = flowKind == WFF_VORTEX
                 ? WaterVortexSwellDisplacement(fi, worldPos.xz, time, meshCellSize)
                 : float4(WaterSwellDisplacement(fi, worldPos.xz, time, meshCellSize), 0.0f);
-            const float height = swell.x * depthState.vertical.x;
-            const float2 slope = swell.yz * depthState.vertical.x;
+            const float height = swell.x * depthState.vertical.x * seamWeight;
+            const float2 slope = swell.yz * depthState.vertical.x * seamWeight;
             worldPos.y += height;
             relativeSurfaceY += height;
             /// @note The swell is evaluated after horizontal Gerstner displacement, while depth is sampled before it.
-            tangent.y += dot(slope, tangent.xz) + swell.x * depthState.vertical.y;
-            binormal.y += dot(slope, binormal.xz) + swell.x * depthState.vertical.z;
-            vortexFoam = max(vortexFoam, swell.w * depthState.vertical.x);
+            tangent.y += dot(slope, tangent.xz) + swell.x * depthState.vertical.y * seamWeight;
+            binormal.y += dot(slope, binormal.xz) + swell.x * depthState.vertical.z * seamWeight;
+            vortexFoam = max(vortexFoam, swell.w * depthState.vertical.x * seamWeight);
             continue;
         }
         if (flowKind != WFF_BAKED)
         {
-            float3 pit = WaterRadialDisplacement(fi, worldPos.xz);
+            float3 pit = WaterRadialDisplacement(fi, worldPos.xz) * seamWeight;
             worldPos.y += pit.x;
             relativeSurfaceY += pit.x;
             tangent.y  += pit.y;
@@ -969,10 +1118,10 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
         float  h  = WaterBakedDisplacement(fi, basePos.xz);
         float  hx = WaterBakedDisplacement(fi, basePos.xz + float2(cell, 0.0f));
         float  hz = WaterBakedDisplacement(fi, basePos.xz + float2(0.0f, cell));
-        worldPos.y += h;
-        relativeSurfaceY += h;
-        tangent.y  += (hx - h) / cell;
-        binormal.y += (hz - h) / cell;
+        worldPos.y += h * seamWeight;
+        relativeSurfaceY += h * seamWeight;
+        tangent.y  += (hx - h) / cell * seamWeight;
+        binormal.y += (hz - h) / cell * seamWeight;
     }
 
     /// @note 着水の輪のうち «頂点で刻める» ぶん。CPU が B チャンネルへ meshFade 込みで焼いて
@@ -980,7 +1129,7 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     /// @note VS からのテクスチャ読みは SampleLevel。UV は波を乗せる前の頂点 UV で、CPU 側の
     /// @note GetSurfaceHeightAt も変位前の XZ で輪を引く。
     float rippleHeight = DecodeWaterRipple(g_rippleTex.SampleLevel(g_samplerClamp, uv, 0).rgb).b
-                       * kRippleHeightScale * WaterLocalDataWeight(uv);
+                       * kRippleHeightScale * WaterLocalDataWeight(uv) * seamWeight;
     worldPos.y += rippleHeight;
     relativeSurfaceY += rippleHeight;
 
@@ -991,29 +1140,44 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     float fold = saturate(1.0f - jacobian);
     float crestHeight = saturate(disp.y / max(g_reflectParams.w, 0.01f));
     const bool crestFoamEnabled = g_crestFoamParams.z > 0.001f;
-    float crestFoam = crestFoamEnabled ? WaterCrestFoamAmount(float2(crestHeight, fold)) : 0.0f;
+    const float currentCrestFoam = crestFoamEnabled ? WaterCrestFoamAmount(float2(crestHeight, fold)) : 0.0f;
+    float crestFoam = currentCrestFoam;
+    float crestTrail = 0.0f;
+    WaterFlowSample flowSample = SampleWaterSurfaceFlow(worldPos.xz, basePos.xz);
     const float lifetime = g_crestFoamParams.w;
-    bool shoreHistory = !splineSurface && g_farOceanParams.x > 0.5f && g_terrainInfoParams.x > 0.5f
+    bool shoreHistory = crossingEnabled && g_terrainInfoParams.x > 0.5f
         && g_foamParams.x > 0.0f && g_foamParams.z > 0.001f;
     o.shoreWaveHeights = disp.y;
     [branch]
     if (lifetime > 0.001f && (crestFoamEnabled || shoreHistory)) {
-        if (shoreHistory && !crestFoamEnabled) {
-            /// @note When only shore history is enabled, skip wave re-evaluation in deep water.
+        if (shoreHistory) {
+            /// @note The fixed shore column needs its own history only where past water can reach the foam band.
             const float2 terrain = SampleWaterTerrainDepth(WaterTerrainUvAtWorldXZ(worldPos.xz));
-            const float maxRise = max(g_reflectParams.w, 0.0f);
+            const float maxRise = WaterMaximumWaveRise();
             shoreHistory = terrain.x > 0.0f && terrain.y >= -maxRise
                 && terrain.y <= g_foamParams.x + max(g_foamParams.y, 0.0f) + maxRise;
         }
         if (crestFoamEnabled || shoreHistory) {
+            const float2 drift = crossingEnabled && crestFoamEnabled ? WaterFoamDriftVelocity(flowSample) : 0.0f;
+            const bool movingTrail = dot(drift, drift) > 1.0e-8f;
             [unroll]
             for (int tap = 0; tap < WATER_FOAM_TRAIL_TAPS; ++tap) {
                 const float ageInLifetimes = 0.5f * (float)(tap + 1);
-                const float2 past = WaterWaveCrestAt(basePos, time - lifetime * ageInLifetimes, meshCellSize, depthState);
-                if (shoreHistory) o.shoreWaveHeights[tap] = past.x;
+                const float age = lifetime * ageInLifetimes;
+                WaterCrestSample past = (WaterCrestSample)0;
+                if (shoreHistory || !movingTrail)
+                    past = WaterWaveCrestAt(basePos, time - age, meshCellSize, depthState, crossingEnabled);
+                if (shoreHistory) o.shoreWaveHeights[tap] = past.displacement.y;
                 if (crestFoamEnabled) {
-                    const float2 pastCrest = float2(saturate(past.x / max(g_reflectParams.w, 0.01f)), past.y);
-                    crestFoam = max(crestFoam, WaterCrestFoamAmount(pastCrest) * exp(-ageInLifetimes));
+                    if (movingTrail) {
+                        const float3 source = WaterFoamBacktrace(basePos, drift, age);
+                        past = WaterWaveCrestAt(source, time - age, meshCellSize, WaterDepthState(source.xz), crossingEnabled);
+                    }
+                    const float2 pastCrest = float2(saturate(past.displacement.y / max(g_reflectParams.w, 0.01f)), past.compression);
+                    /// @see https://doi.org/10.1029/2012JC008147 Callaghan et al. (2012), decay of residual whitecap foam.
+                    const float coverage = WaterCrestFoamAmount(pastCrest) * exp(-ageInLifetimes);
+                    if (crossingEnabled) crestTrail = max(crestTrail, coverage);
+                    else crestFoam = max(crestFoam, coverage);
                 }
             }
         }
@@ -1027,6 +1191,13 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     float3 normal = normalize(cross(binormal, tangent));
 
     o.svPosition = mul(float4(worldPos, 1.0f), viewProjection);
+    /// @note Bias only raster depth. Screen UVs, world height and the medium atlas retain the physical surface.
+    const float depthTieOffset = WaterHorizonDepthTieOffset(basePos.xz);
+    if (depthTieOffset > 0.0f && o.svPosition.w > 0.0f) {
+        const float3 forward = float3(view[0][2], view[1][2], view[2][2]);
+        const float4 deeper = mul(float4(worldPos + forward * depthTieOffset, 1.0f), viewProjection);
+        if (deeper.w > 0.0f) o.svPosition.z = (deeper.z / deeper.w) * o.svPosition.w;
+    }
     o.worldPos = worldPos;
     o.uv = uv;
     o.meshCellSize = meshCellSize;
@@ -1035,8 +1206,7 @@ WaterPSInput EvaluateWaterVertex(WaterVSInput v, uint instanceId)
     o.binormal = binormal;
     o.screenPos = o.svPosition;
     /// @note 変位そのものから山の高さを取る。親 Transform があっても基準面がずれない。
-    o.waveState = float2(crestHeight, crestFoam);
-    WaterFlowSample flowSample = SampleWaterSurfaceFlow(worldPos.xz, basePos.xz);
+    o.waveState = float4(crestHeight, max(crestFoam, crestTrail), crestTrail, currentCrestFoam);
     float2 authoredFlow = v.splineData.yz;
     float authoredFlowSpeed = length(authoredFlow);
     if (splineSurface && authoredFlowSpeed > 1.0e-4f)
@@ -1075,6 +1245,29 @@ float3 WaterNoiseTile(float2 q, float2 dqdx, float2 dqdy)
     return float3((t.rg * 2.0f - 1.0f) * g_normalParams.z, t.b);
 }
 
+struct WaterCurrentAdvection
+{
+    float2 firstOffset;
+    float2 secondOffset;
+    float firstWeight;
+    float directionWeight;
+};
+
+/// @brief Trace the two noise samples upstream along the local world XZ velocity [m/s].
+/// @note Each sample fades out as its phase wraps, bounding the distance traced through a curved velocity field.
+WaterCurrentAdvection WaterCurrentAt(float2 velocity, float time)
+{
+    const float period = 1.6f;
+    const float firstPhase = frac(time / period);
+    const float secondPhase = frac(firstPhase + 0.5f);
+    WaterCurrentAdvection current;
+    current.firstOffset = -velocity * (period * (firstPhase - 0.5f));
+    current.secondOffset = -velocity * (period * (secondPhase - 0.5f));
+    current.firstWeight = smoothstep(0.0f, 1.0f, 1.0f - abs(2.0f * firstPhase - 1.0f));
+    current.directionWeight = smoothstep(0.0f, 0.25f, length(velocity));
+    return current;
+}
+
 /// @note オクターブごとの固有ドリフト。同じ向きに揃うと縞が流れて見えるため方向をばらす。
 #define WATER_DETAIL_OCTAVES 5
 static const float2 kWaterDrift[WATER_DETAIL_OCTAVES] = {
@@ -1111,7 +1304,7 @@ static const float kWaterDetailVarianceTail[WATER_DETAIL_OCTAVES] = {
 /// @note 粒の集まりにしか見えず、水というより «ブツブツした膜» になる。
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/simulating-waves-using-the-water-waves-asset-in-unreal-engine Unreal Engine Water Waves, macro mesh waves and material normal-map micro detail.
 float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float2 flowTravel, float time, float footprint,
-                           float2 dWorldDx, float2 dWorldDy)
+                           float2 dWorldDx, float2 dWorldDy, bool followCurrent, WaterCurrentAdvection current)
 {
     float scale = max(g_detailParams.x, 1.0e-4f);
     float speed = g_detailParams.y;
@@ -1124,12 +1317,20 @@ float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float2 flowTravel, fl
 
     /// @note オクターブごとに座標を回し、格子が縞として残らないようにする。異方スケールを
     /// @note 初期値に畳んでおけば、以降は回転を掛け足すだけで両方が同時に効く。
-    float2x2 m = aniso;
+    /// @note Rotating absolute world coordinates by a varying flow direction shears the noise at bends.
+    float2x2 m = followCurrent ? float2x2(1.0f, 0.0f, 0.0f, 1.0f) : aniso;
     const float2x2 step = float2x2(0.80f, -0.60f, 0.60f, 0.80f);
 
     float2 grad = float2(0.0f, 0.0f);
     float amp = 1.0f, freq = scale, lostVariance = 0.0f;
-    float meanAxisScaleSq = 0.5f * (1.0f + 1.0f / (stretch * stretch));
+    const float crossGain = lerp(1.0f, rcp(stretch), current.directionWeight);
+    const float varianceAxisScale = followCurrent ? crossGain : rcp(stretch);
+    const float meanAxisScaleSq = 0.5f * (1.0f + varianceAxisScale * varianceAxisScale);
+    const float2 firstDx = dWorldDx + ddx(current.firstOffset);
+    const float2 firstDy = dWorldDy + ddy(current.firstOffset);
+    const float2 secondDx = dWorldDx + ddx(current.secondOffset);
+    const float2 secondDy = dWorldDy + ddy(current.secondOffset);
+    const float driftSpeed = followCurrent ? 0.0f : speed;
 
     [loop]
     for (int i = 0; i < WATER_DETAIL_OCTAVES; ++i)
@@ -1150,8 +1351,17 @@ float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float2 flowTravel, fl
                       * slopeScale * slopeScale * (1.0f - fade * fade);
         if (fade > 0.0f)
         {
-            float2 q = mul(m, worldXZ) * freq + (flow + kWaterDrift[i] * (time * speed)) * freq;
-            float3 n = WaterNoiseTile(q, mul(m, dWorldDx) * freq, mul(m, dWorldDy) * freq);
+            const float2 q = (mul(m, worldXZ) + flow + kWaterDrift[i] * (time * driftSpeed)) * freq;
+            float3 n;
+            if (followCurrent && current.directionWeight > 0.0f) {
+                const float3 first = WaterNoiseTile(q + mul(m, current.firstOffset) * freq,
+                    mul(m, firstDx) * freq, mul(m, firstDy) * freq);
+                const float3 second = WaterNoiseTile(q + mul(m, current.secondOffset) * freq,
+                    mul(m, secondDx) * freq, mul(m, secondDy) * freq);
+                n = lerp(second, first, current.firstWeight);
+            } else {
+                n = WaterNoiseTile(q, mul(m, dWorldDx) * freq, mul(m, dWorldDy) * freq);
+            }
             /// @note 勾配は変換後の座標系で出るので、mul(g, m) = m^T g で元の軸へ戻す (連鎖律)。
             grad += mul(n.xy, m) * (amp * freq * fade);
         }
@@ -1160,8 +1370,17 @@ float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float2 flowTravel, fl
         freq *= 2.07f;
     }
 
+    if (followCurrent)
+        grad -= crossFlow * (dot(grad, crossFlow) * (1.0f - crossGain));
     const float invNorm = 1.0f / kWaterDetailNorm;
     return float3(grad * invNorm, lostVariance);
+}
+
+float3 WaterDetailGradient(float2 worldXZ, float2 flowDir, float2 flowTravel, float time, float footprint,
+                           float2 dWorldDx, float2 dWorldDy)
+{
+    return WaterDetailGradient(worldXZ, flowDir, flowTravel, time, footprint, dWorldDx, dWorldDy,
+        false, (WaterCurrentAdvection)0);
 }
 
 /// @brief 頂点グリッドで刻めなかった Gerstner 波を «法線だけ» 戻す。
@@ -1202,24 +1421,26 @@ float2 WaterResidualWaveSlope(float2 worldXZ, float time, float2 dWorldDx, float
             ApplyWaveSpread(i, part, rotation, scales, D, amplitudeScale);
             if (amplitudeScale <= 0.001f) continue;
             float phaseFootprint = max(abs(dot(D, dWorldDx)), abs(dot(D, dWorldDy)));
-            float groupSign = (i & 1) ? -1.0f : 1.0f;
-            float2 groupDir = float2(D.x * kWaveGroupCos - D.y * groupSign * kWaveGroupSin,
-                                    D.x * groupSign * kWaveGroupSin + D.y * kWaveGroupCos);
-            float groupRatio = 0.09f + 0.035f * (float)(i & 3);
-            if (grouping > 0.0001f)
+            const float groupRatio = WaterWaveGroupRatio(i);
+            if (grouping > 0.0001f) {
+                const float2 groupDir = WaterWaveGroupDirection(i, D);
                 phaseFootprint += groupRatio * max(abs(dot(groupDir, dWorldDx)), abs(dot(groupDir, dWorldDy)));
+            }
             float pixelFade = saturate(1.0f - phaseFootprint * 2.0f / wavelength);
             float k = g_waveParams[i].w;
             float baseAmplitude = g_waveParams[i].x * amplitudeScale;
             float amplitude = baseAmplitude * depthState.x;
-            float envelope = WaveGroupEnvelope(i, D, k, g_waveParams[i].z, worldXZ, time);
+            const float3 group = WaveGroupEnvelope(i, D, k, g_waveParams[i].z, worldXZ, time);
             float phi = k * dot(D, worldXZ) - g_waveParams[i].z * time + WaterWavePhase(i);
-            slope += D * (amplitude * residual * envelope * k * cos(phi)) * pixelFade;
-            slope += depthState.yz * (baseAmplitude * residual * envelope * sin(phi) * pixelFade);
+            const float2 amplitudeGradient = group.x * depthState.yz + depthState.x * group.yz;
+            const float2 heightGradient = amplitude * group.x * k * cos(phi) * D
+                + baseAmplitude * sin(phi) * amplitudeGradient;
+            slope += heightGradient * (residual * pixelFade);
             /// @note cos の平均二乗は 1/2。方向の trace を 2 軸へ均し、群の平均二乗と保持した振幅の二乗を含める。
             float retained = meshFade + residual * pixelFade;
             float amplitudeK = amplitude * k;
-            lostVariance += 0.25f * amplitudeK * amplitudeK * (1.0f + 0.5f * grouping * grouping)
+            const float groupEnergy = 1.0f + 0.5f * grouping * grouping * (1.0f + groupRatio * groupRatio);
+            lostVariance += 0.25f * amplitudeK * amplitudeK * groupEnergy
                           * (1.0f - retained * retained);
         }
     }
@@ -1238,36 +1459,62 @@ float2 WaterResidualWaveSlope(float2 worldXZ, float time, float2 dWorldDx, float
 /// @note 異方フィルタへ渡す微分には含めていない。
 float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float2 flowTravel, float time, float footprint,
                           float2 dWorldDx, float2 dWorldDy, float3 geoNormal, float detailGain,
-                          float4 meshWaveFade[4], float2 baseWorldXZ, float2 dBaseDx, float2 dBaseDy, bool splineSurface)
+                          float4 meshWaveFade[4], float2 baseWorldXZ, float2 dBaseDx, float2 dBaseDy, bool splineSurface,
+                          float normalStrength, float detailStrength, bool followCurrent, WaterCurrentAdvection current)
 {
     float2 swellSlope = -geoNormal.xz / max(geoNormal.y, 0.2f);
-    float2 warped = worldXZ + swellSlope * g_flowParams.w;
+    float2 warpOffset = swellSlope * g_flowParams.w;
     if (splineSurface) {
         /// @note 正のworld流速へ模様を運ぶため、回転・異方変換の前に逆向きへ座標を遡る。
-        warped -= flowTravel;
-        dWorldDx -= ddx(flowTravel);
-        dWorldDy -= ddy(flowTravel);
+        warpOffset -= flowTravel;
         flowTravel = 0.0f;
     }
 
-    float3 detail = WaterDetailGradient(warped, flowDir, flowTravel, time, footprint, dWorldDx, dWorldDy);
+    /// @note Use the warped coordinate's footprint for mip selection and keep the unwarped footprint as a lower bound.
+    dWorldDx += ddx(warpOffset);
+    dWorldDy += ddy(warpOffset);
+    float detailFootprint = max(footprint, max(length(dWorldDx), length(dWorldDy)));
+    float3 detail = WaterDetailGradient(worldXZ + warpOffset, flowDir, flowTravel, time, detailFootprint,
+        dWorldDx, dWorldDy, followCurrent, current);
     /// @note 風上を向いた斜面ほどさざ波が立ち、風下は凪ぐ。一様に散らすとうねりが «ただの起伏» に見える。
     float windward = saturate(0.5f + dot(swellSlope, flowDir));
-    float detailScale = max(g_detailParams.z, 0.0f) * lerp(0.55f, 1.35f, windward) * max(detailGain, 0.0f);
+    float detailScale = max(detailStrength, 0.0f) * lerp(0.55f, 1.35f, windward) * max(detailGain, 0.0f);
     float2 grad = detail.xy * detailScale;
 
     float residualVariance = 0.0f;
-    grad += WaterResidualWaveSlope(baseWorldXZ, time, dBaseDx, dBaseDy, meshWaveFade, residualVariance);
-
-    float3 waveNormal = normalize(float3(-grad.x, -grad.y, 1.0f));
+    const float seam = WaterfallWaveWeight(baseWorldXZ);
+    grad += WaterResidualWaveSlope(baseWorldXZ, time, dBaseDx, dBaseDy, meshWaveFade, residualVariance) * seam;
+    residualVariance *= seam * seam;
 
     float2 ripple = DecodeWaterRipple(g_rippleTex.Sample(g_samplerClamp, uv).rgb).rg
                  * WaterLocalDataWeight(uv);
-    float3 rippleNormal = float3(ripple.xy, sqrt(saturate(1.0f - dot(ripple.xy, ripple.xy))));
-    waveNormal = normalize(waveNormal + rippleNormal * 0.5f);
-    return float4(normalize(lerp(float3(0.0f, 0.0f, 1.0f), waveNormal, g_normalParams.w)),
+    /// @note A flat interaction normal contributes zero slope. Bound the conversion at grazing slopes.
+    /// @see https://jcgt.org/published/0009/03/04/ Mikkelsen (2020), surface gradient composition.
+    float rippleNormalZ = sqrt(saturate(1.0f - dot(ripple, ripple)));
+    grad -= 0.5f * ripple / max(rippleNormalZ, 0.25f);
+    float3 waveNormal = normalize(float3(-grad.x, -grad.y, 1.0f));
+    return float4(normalize(lerp(float3(0.0f, 0.0f, 1.0f), waveNormal, normalStrength)),
                   (detail.z * detailScale * detailScale + residualVariance)
-                      * g_normalParams.w * g_normalParams.w);
+                      * normalStrength * normalStrength);
+}
+
+float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float2 flowTravel, float time, float footprint,
+                          float2 dWorldDx, float2 dWorldDy, float3 geoNormal, float detailGain,
+                          float4 meshWaveFade[4], float2 baseWorldXZ, float2 dBaseDx, float2 dBaseDy, bool splineSurface,
+                          float normalStrength, float detailStrength)
+{
+    return SampleWaterNormal(worldXZ, uv, flowDir, flowTravel, time, footprint, dWorldDx, dWorldDy,
+        geoNormal, detailGain, meshWaveFade, baseWorldXZ, dBaseDx, dBaseDy, splineSurface,
+        normalStrength, detailStrength, false, (WaterCurrentAdvection)0);
+}
+
+float4 SampleWaterNormal(float2 worldXZ, float2 uv, float2 flowDir, float2 flowTravel, float time, float footprint,
+                          float2 dWorldDx, float2 dWorldDy, float3 geoNormal, float detailGain,
+                          float4 meshWaveFade[4], float2 baseWorldXZ, float2 dBaseDx, float2 dBaseDy, bool splineSurface)
+{
+    return SampleWaterNormal(worldXZ, uv, flowDir, flowTravel, time, footprint, dWorldDx, dWorldDy,
+        geoNormal, detailGain, meshWaveFade, baseWorldXZ, dBaseDx, dBaseDy, splineSurface,
+        g_normalParams.w, g_detailParams.z);
 }
 
 /// @brief 水面メッシュ外周のフェード係数。矩形の縁でアルファを落とす。

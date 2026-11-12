@@ -13,6 +13,7 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
+#include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Engine/Scene/Systems/PhysicsSystem.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
@@ -85,6 +86,48 @@ void CreateConnectedWaters(scene::Scene& source)
     zone.riverMouths.push_back({scene::EntityRef{riverObject.GetID()}, false, 4.0f});
 }
 } /// @note namespace
+
+TEST_F(WaterZonePersistenceTest, HorizonLinkSurvivesReloadAndSharesTheSimulatedMouthHeight)
+{
+    scene::Scene source;
+    auto& oceanObject = source.CreateGameObject("Horizontal Sea");
+    oceanObject.AddComponent<scene::WaterComponent>().farOceanEnabled = true;
+    auto& riverObject = source.CreateGameObject("River");
+    auto& river = riverObject.AddComponent<scene::WaterComponent>();
+    river.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    river.splinePoints = {
+        {1, {-32.0f, 2.0f, 0.0f}, 8.0f, 4.0f, 1.0f},
+        {2, {-16.0f, 1.0f, 0.0f}, 8.0f, 4.0f, 1.0f},
+        {3, {  0.0f, 0.25f, 0.0f}, 8.0f, 4.0f, 1.0f},
+    };
+    river.horizonMaterialReceiver = scene::EntityRef{oceanObject.GetID()};
+    river.horizonMaterialBlendLength = 12.0f;
+
+    auto restored = scene::SceneSerializer::LoadDataFromText(scene::SceneSerializer::SaveToText(source), "");
+    ASSERT_NE(restored, nullptr);
+    auto* restoredRiver = restored->Find("River");
+    auto* restoredOcean = restored->Find("Horizontal Sea");
+    ASSERT_NE(restoredRiver, nullptr);
+    ASSERT_NE(restoredOcean, nullptr);
+    auto* riverWater = restoredRiver->GetComponent<scene::WaterComponent>();
+    const auto* oceanWater = restoredOcean->GetComponent<scene::WaterComponent>();
+    ASSERT_EQ(riverWater->horizonMaterialReceiver.Resolve(*restored), restoredOcean);
+    EXPECT_FLOAT_EQ(riverWater->horizonMaterialBlendLength, 12.0f);
+    scene::FlushWorldTransforms(*restored);
+    scene::EnsureWaterSimulationSurfaces(*restored);
+    for (const float time : {0.0f, 1.5f, 3.0f}) {
+        scene::WaterSurfaceHeightSample riverSample, oceanSample;
+        const math::Vector3 point{0.0f, -0.5f, 3.0f};
+        const auto view = scene::WaterSurfaceReadView::SIMULATION;
+        ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(*riverWater, restoredRiver->transform,
+            point, time, riverSample, view));
+        ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(*oceanWater, restoredOcean->transform,
+            point, time, oceanSample, view));
+        EXPECT_NEAR(riverSample.position.y, oceanSample.position.y, testkit::kTolerance);
+        EXPECT_TRUE(riverSample.underwater);
+        EXPECT_TRUE(oceanSample.underwater);
+    }
+}
 
 TEST_F(WaterZonePersistenceTest, PassiveCloneRestoresNestedReferencesAndOmitsRuntimeState)
 {

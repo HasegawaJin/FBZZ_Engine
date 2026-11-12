@@ -10,5 +10,5 @@ float4 PSMain(WaterPSInput input) : SV_Target0
     float2 residual = WaterResidualWaveSlope(input.baseWorldXZ, g_timeParams.w,
         ddx(input.baseWorldXZ), ddy(input.baseWorldXZ), input.waveMeshFade, lostVariance);
     float2 geometricSlope = -input.normal.xz / input.normal.y;
-    return float4(geometricSlope.x + residual.x, input.baseWorldXZ.x, lostVariance, 1.0f);
+    return float4(geometricSlope.x + residual.x, input.baseWorldXZ, 1.0f);
 }

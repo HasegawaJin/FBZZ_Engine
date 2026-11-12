@@ -11,9 +11,9 @@ render_queue = 3030
 render_path = 'particle'
 mesh_type = 'surface'
 [params]
-albedo = [0.86, 0.95, 1.0, 1.0]
+albedo = [1.10, 1.22, 1.29, 1.0]
 [particle]
 soft_particles = true
-soft_particle_fade_distance = 0.8
+soft_particle_fade_distance = 0.18
 emissive_scale = 0.0
 distortion = false

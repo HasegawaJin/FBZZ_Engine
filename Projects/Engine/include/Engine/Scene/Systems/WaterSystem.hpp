@@ -53,7 +53,7 @@ inline constexpr const char* kWaveDirection[4]  = { "wave0Direction",  "wave1Dir
 inline constexpr const char* kWaveAmplitude[4]  = { "wave0Amplitude",  "wave1Amplitude",  "wave2Amplitude",  "wave3Amplitude"  };
 inline constexpr const char* kWaveWavelength[4] = { "wave0Wavelength", "wave1Wavelength", "wave2Wavelength", "wave3Wavelength" };
 inline constexpr const char* kWaveSteepness[4]  = { "wave0Steepness",  "wave1Steepness",  "wave2Steepness",  "wave3Steepness"  };
-/// @note 環境風で波がどれだけ育つか [0,1]。外洋は 1、池は 0。
+/// @note 旧材質との互換用キー。水面の解決では読み取らない。
 inline constexpr const char* kWindResponse  = "windResponse";
 /// @note Rectangle の基流速度 [m/s]。Spline は制御点の流速を使う。
 inline constexpr const char* kCurrentSpeed  = "currentSpeed";
@@ -69,26 +69,21 @@ inline constexpr const char* kFlowDirection = "flowDirection";
 /// @note       更新前のプロジェクトを開いた瞬間に海が止まる。
 [[nodiscard]] FBZZ_ENGINE_API GerstnerWave DefaultWaterWave(int index);
 
-/// @note 水面が受け取る環境流。SceneEnvironment の環境流を要約したもの。
+/// @note 既存の波解決 API との互換用。現在の水面は環境風から独立している。
 struct WaterWind {
     bool          active    = false;
     math::Vector3 direction = { 1.0f, 0.0f, 0.0f };
     float         speed     = 0.0f; ///< @note 水面での流速 [m/s]
 };
 
-/// @note この風速で .mat が書いた振幅どおりの波になる基準 [m/s]。
-/// @note これより速ければ追い風の波が育ち、遅ければ潰れる。倍率の上限 2 は
-/// @note       «.mat の 2 倍まで» という見た目の歯止めで、物理的な意味は無い。
+/// @note 旧 API との互換用に保持する基準風速 [m/s]。
 inline constexpr float kWaveGrowthReferenceWindSpeed = 10.0f;
 
-/// @note .mat の波に個体の倍率と環境風を掛け、water.waves / water.current を組み立てる。
-/// @note 風は «追い風の波を育て、向かい風の波を潰す» だけで、波の向きは回さない。
-/// @note 向きを回さない理由: 位相は k·(D·p) のため D を回すと原点から遠い点ほど位相が跳ね、
-/// @note       風が変わるたびに遠景の波が早送りのように走って見える。
+/// @note .mat の波に個体の倍率を掛け、water.waves / water.current を組み立てる。
 FBZZ_ENGINE_API void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind);
 /// @note Pure wave derivation from caller-owned immutable values preserves preview snapshot lifetime.
 FBZZ_ENGINE_API void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAssetAuthoring& material, const WaterWind& wind);
-/// @brief Resolve asset base waves while retaining material optics, current, and wind response.
+/// @brief Resolve asset base waves while retaining material optics and current.
 /// @return False leaves the active wave source unchanged when generated values are invalid.
 [[nodiscard]] FBZZ_ENGINE_API bool ResolveWaterWavesFromAsset(
     WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind,

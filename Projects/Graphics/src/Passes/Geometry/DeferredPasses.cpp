@@ -291,19 +291,19 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
 
 /// @name Deferred 内スキンドメッシュフォワードパス
 namespace {
-void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route)
+void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route, bool waterfalls = false)
 {
     const auto sceneOwner = ctx.renderScene;
     const auto& input = sceneOwner ? *sceneOwner : SceneInput(ctx);
     std::vector<MeshEntry> queue;
-    for (const auto& object : input.Objects()) {
-        if (!object.colorEligible || !MatchesView(ctx, object)) continue;
+    const auto append = [&](const RenderObject& object) {
+        if ((object.waterfallFarIndexStart != 0) != waterfalls || !object.colorEligible || !MatchesView(ctx, object)) return;
         if (route == renderer::GeometryRoute::ForwardOpaque && object.skinned) ++ctx.statsTotalObjects;
         const auto first = input.items.begin() + object.firstItem;
         const auto last = first + object.itemCount;
         if (std::none_of(first, last, [&](const auto& item) {
             return HasColorGeometry(item) && renderer::ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred) == route;
-        })) continue;
+        })) return;
         if (ctx.isDeferred && !object.skinned) ++ctx.statsTotalObjects;
         const bool visible = [&] {
             if (route == renderer::GeometryRoute::ForwardTransparent && (!ctx.isDeferred || object.skinned)) {
@@ -312,13 +312,19 @@ void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route)
             }
             return IsRenderObjectVisible(ctx, object);
         }();
-        if (!visible) continue;
+        if (!visible) return;
         for (auto it = first; it != last; ++it) {
             const auto& item = *it;
             if (!HasColorGeometry(item) || !item.forwardMaterial.valid || !item.forwardMaterial.shader.IsValid()
                 || renderer::ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred) != route) continue;
             queue.push_back({&object, &item, (object.sortPosition - ctx.camera.m_position).LengthSq()});
         }
+    };
+    const auto objects = input.Objects();
+    if (waterfalls) {
+        for (const auto index : input.waterfallObjects) if (index < objects.size()) append(objects[index]);
+    } else {
+        for (const auto& object : objects) append(object);
     }
     std::sort(queue.begin(), queue.end(), [route](const MeshEntry& a, const MeshEntry& b) {
         if (a.item->material.renderQueue != b.item->material.renderQueue)
@@ -330,11 +336,28 @@ void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route)
             < std::tie(b.object->sourceIndex, b.object->sourceGeneration, b.item->materialSlot, b.item->sourceSubmesh);
     });
     std::optional<DrawCall> bindings;
+    const float projectionY = waterfalls ? std::abs(ctx.camera.GetProjectionMatrix().m[1][1]) : 0.0f;
+    const auto viewForward = waterfalls ? ctx.camera.GetForward() : math::Vector3{};
     for (const auto& entry : queue) {
         if (!bindings) bindings = ForwardPassBindings(ctx);
         const auto constants = ObjectConstants(*entry.object);
         ctx.resources.Update(ctx.handles.objectCB, &constants, sizeof(constants));
-        SubmitCounted(ctx, ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings));
+        auto draw = ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings);
+        const auto farStart = entry.object->waterfallFarIndexStart;
+        if (waterfalls && farStart < draw.indexCount) {
+            const float frontDepth = math::Vector3::Dot(entry.object->boundsCenter - ctx.camera.m_position, viewForward)
+                - entry.object->boundsRadius;
+            const float divisor = ctx.camera.m_projection == ProjectionMode::Orthographic ? 1.0f
+                : (std::max)(frontDepth, ctx.camera.m_near);
+            const float diameterPx = entry.object->boundsRadius * projectionY * static_cast<float>(ctx.height) / divisor;
+            if (diameterPx < 170.0f) {
+                draw.startIndex = farStart;
+                draw.indexCount -= farStart;
+            } else {
+                draw.indexCount = farStart;
+            }
+        }
+        SubmitCounted(ctx, draw);
     }
 }
 }
@@ -346,15 +369,23 @@ void ExecuteDeferredSkinnedForwardPass(RenderPassContext& ctx)
     ExecuteInstanceForward(ctx);
 }
 
-void ExecuteForwardTransparentPass(RenderPassContext& ctx)
+namespace {
+void ExecuteForwardTransparency(RenderPassContext& ctx, bool waterfalls)
 {
+    if (waterfalls && SceneInput(ctx).waterfallObjects.empty()) return;
     ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
     const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     ctx.resources.Update(ctx.handles.frameCB, &frame, sizeof(frame));
     ctx.resources.Update(ctx.handles.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
     UpdateShadowConstants(ctx);
     UpdatePunctualShadowConstants(ctx);
-    SubmitForwardRoute(ctx, renderer::GeometryRoute::ForwardTransparent);
+    SubmitForwardRoute(ctx, renderer::GeometryRoute::ForwardTransparent, waterfalls);
+}
+} /// @note namespace
+
+void ExecuteForwardTransparentPass(RenderPassContext& ctx)
+{
+    ExecuteForwardTransparency(ctx, false);
 }
 
 void ExecuteDeferredForwardTransparentPass(RenderPassContext& ctx)
@@ -419,7 +450,7 @@ void ForwardTransparentPass::Setup(PassBuilder& builder, const RenderPassContext
 
 void ForwardTransparentPass::Execute(PassResources&, RenderPassContext& ctx)
 {
-    ExecuteForwardTransparentPass(ctx);
+    ExecuteForwardTransparency(ctx, m_waterfalls);
 }
 
 void DeferredLightingPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const

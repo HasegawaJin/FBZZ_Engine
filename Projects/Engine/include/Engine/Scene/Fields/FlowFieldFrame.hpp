@@ -15,7 +15,7 @@
 
 namespace fbzz::scene {
 
-/// @brief «このシーンの風» の要約。粒子以外 (雲・水面・草) は点ごとに積分せず、
+/// @brief «このシーンの風» の要約。雲や草は点ごとに積分せず、
 /// @brief 方向と速さだけを自分のシェーダーへ渡すので 1 本ぶんへ畳んだ値を受け取る。
 struct AmbientWind {
     bool          active = false;
@@ -44,4 +44,4 @@ struct FlowFieldFrame {
     static constexpr uint64_t kNeverFilled = ~static_cast<uint64_t>(0);
 };
 
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene

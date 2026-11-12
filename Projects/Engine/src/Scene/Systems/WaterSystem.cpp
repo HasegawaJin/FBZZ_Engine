@@ -15,6 +15,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/WaterSurfaceQuery.hpp>
+#include "WaterfallRuntime.hpp"
 #include <Engine/Scene/WaterSpline.hpp>
 #include <Engine/Scene/WaterZoneSnapshot.hpp>
 #include <Engine/Scene/Components/WaterZoneComponent.hpp>
@@ -79,7 +80,6 @@ struct WaterMaterialPreparation {
     std::array<GerstnerWave, 4> bases{};
     float grouping = 0.45f;
     float spread = 0.35f;
-    float windResponse = 0.0f;
     math::Vector2 flow = {1.0f, 0.0f};
     float speed = 0.0f;
     float flowLength = 1.0f;
@@ -99,7 +99,6 @@ WaterMaterialPreparation BuildWaterMaterialPreparation(const asset::MaterialAsse
     }
     result.grouping = GetF(material, water_keys::kWaveGrouping, 0.45f);
     result.spread = GetF(material, water_keys::kWaveSpread, 0.35f);
-    result.windResponse = GetF(material, water_keys::kWindResponse, 0.0f);
     result.flow = GetF2(material, water_keys::kFlowDirection, {1.0f, 0.0f});
     result.speed = (std::max)(GetF(material, water_keys::kCurrentSpeed, 0.0f), 0.0f);
     result.flowLength = result.flow.Length();
@@ -361,7 +360,7 @@ void ClearWaterSplineSnapshot(WaterComponent& water)
 
 bool PrepareWaterSplineSnapshotFromPoints(WaterComponent& water,
     WaterSurfaceShape shape, std::span<const WaterSplinePoint> points, const Transform& transform,
-    std::uint64_t sourceSignature)
+    std::uint64_t sourceSignature, const Transform* horizon = nullptr)
 {
     if (shape == WaterSurfaceShape::RECTANGLE) {
         ClearWaterSplineSnapshot(water);
@@ -381,6 +380,35 @@ bool PrepareWaterSplineSnapshotFromPoints(WaterComponent& water,
             transform, snapshot, water.buoyancyDepth, water.splineMeshCellSize, water.lakeIslandPoints)) {
         water.splineSnapshot.reset();
         return false;
+    }
+    if (horizon && snapshot.shape == WaterSurfaceShape::SPLINE_RIVER) {
+        const auto& outline = snapshot.outlineIndices;
+        const std::size_t left = water.horizonMaterialAtStart ? 0u : outline.size() / 2u - 1u;
+        const auto& a = snapshot.vertices[outline[left]];
+        const auto& b = snapshot.vertices[outline[outline.size() - 1u - left]];
+        const auto center = a.worldPosition * 0.5f + b.worldPosition * 0.5f;
+        const float flatRadius = 0.5f * std::hypot(a.worldPosition.x - b.worldPosition.x,
+            a.worldPosition.z - b.worldPosition.z);
+        const float endDistance = a.riverDistance;
+        const float offset = horizon->worldPosition.y - center.y;
+        const float length = (std::clamp)(water.horizonMaterialBlendLength, 0.1f, 10000.0f);
+        const float verticalScale = (transform.worldRotation * math::Vector3::UP).y * transform.worldScale.y;
+        if (std::abs(offset) <= 1.0f && flatRadius > 0.0f) {
+            snapshot.horizonMouth = {center.x, center.z, flatRadius + 2.0f,
+                flatRadius + (std::max)(6.0f, flatRadius * 0.35f)};
+            for (auto& vertex : snapshot.vertices) {
+                const float t = math::Clamp01(std::abs(vertex.riverDistance - endDistance) / length);
+                const float weight = 1.0f - t * t * (3.0f - 2.0f * t);
+                vertex.horizonMaterialWeight = weight;
+                vertex.worldPosition.y += offset * weight;
+                vertex.localPosition.y += offset * weight / verticalScale;
+                vertex.baseHeightOffset += offset * weight;
+            }
+            if (!RebuildWaterSplineSnapshotDerivedData(snapshot)) {
+                water.splineSnapshot.reset();
+                return false;
+            }
+        }
     }
     snapshot.signature = effectiveSignature;
     water.splineSnapshot = std::make_shared<const WaterSplineSnapshot>(std::move(snapshot));
@@ -429,10 +457,26 @@ bool PrepareWaterSplineSnapshot(Scene& scene, EntityID ownerId,
         water.splineSnapshotAttemptSignature = failedSignature == 0 ? 1 : failedSignature;
         return false;
     }
-    const std::uint64_t geometrySourceSignature = water.pointRuntimeMode == ControlPointRuntimeMode::BAKED_STATIC
+    std::uint64_t geometrySourceSignature = water.pointRuntimeMode == ControlPointRuntimeMode::BAKED_STATIC
         ? water.bakedInputSignature : controls.inputSignature;
+    const Transform* horizon = nullptr;
+    if (controls.surfaceShape == WaterSurfaceShape::SPLINE_RIVER
+        && std::isfinite(water.horizonMaterialBlendLength) && water.horizonMaterialBlendLength > 0.0f) {
+        const auto* receiver = water.horizonMaterialReceiver.Resolve(scene);
+        const auto* ocean = receiver ? scene.GetComponent<WaterComponent>(receiver->GetID()) : nullptr;
+        if (ocean && ocean->enabled && receiver->activeInHierarchy()
+            && WaterSurfaceUsesHorizon(*ocean, WaterSurfaceReadView::LIVE_QUERY)
+            && IsWaterSurfaceSupported(*ocean, receiver->transform)) {
+            horizon = &receiver->transform;
+            geometrySourceSignature = HashU32(geometrySourceSignature,
+                std::bit_cast<std::uint32_t>(horizon->worldPosition.y));
+            geometrySourceSignature = HashU32(geometrySourceSignature,
+                std::bit_cast<std::uint32_t>(water.horizonMaterialBlendLength));
+            geometrySourceSignature = HashU32(geometrySourceSignature, water.horizonMaterialAtStart ? 1u : 2u);
+        }
+    }
     return PrepareWaterSplineSnapshotFromPoints(water, controls.surfaceShape, controls.points, transform,
-        geometrySourceSignature);
+        geometrySourceSignature, horizon);
 }
 
 void PrepareWaterSplineSnapshots(Scene& scene)
@@ -506,6 +550,7 @@ std::uint64_t WaterZoneInputSignature(const WaterZoneComponent& zone, EntityID o
     std::uint64_t hash = 14695981039346656037ULL;
     hash = HashZoneU64(hash, (static_cast<std::uint64_t>(ownerID.generation) << 32) | ownerID.index);
     hash = HashZoneU32(hash, zone.enabled ? 1u : 0u);
+    hash = HashZoneU32(hash, zone.blendMaterials ? 1u : 0u);
     hash = HashZoneU32(hash, static_cast<std::uint32_t>(zone.ownerPriority));
     hash = HashZoneFloat(hash, zone.meshCellSize);
     hash = HashZoneWater(hash, owner, ownerTransform);
@@ -529,6 +574,11 @@ std::uint64_t WaterZoneInputSignature(const WaterZoneComponent& zone, EntityID o
             | mouth.river.id.index);
         hash = HashZoneU32(hash, mouth.atStart ? 1u : 0u);
         hash = HashZoneFloat(hash, mouth.blendLength);
+        hash = HashZoneU32(hash, mouth.receiver.IsAssigned() ? 1u : 0u);
+        if (const GameObject* receiver = mouth.receiver.Resolve(scene)) {
+            const EntityID receiverId = receiver->GetID();
+            hash = HashZoneU64(hash, (static_cast<std::uint64_t>(receiverId.generation) << 32) | receiverId.index);
+        }
     }
     return hash == 0 ? 1 : hash;
 }
@@ -752,18 +802,33 @@ void PrepareWaterZoneSnapshots(Scene& scene)
                     break;
                 }
                 const std::size_t sourceIndex = static_cast<std::size_t>(sourceIt - sourceIDs.begin());
+                std::uint32_t receiverIndex = 0;
+                if (authoredMouth.receiver.IsAssigned()) {
+                    const GameObject* receiver = authoredMouth.receiver.Resolve(scene);
+                    const auto receiverIt = receiver ? std::find(sourceIDs.begin(), sourceIDs.end(), receiver->GetID())
+                        : sourceIDs.end();
+                    if (receiverIt == sourceIDs.end() || receiverIt == sourceIt) {
+                        invalid = "a river mouth receiver must be another Water in this Zone";
+                        break;
+                    }
+                    receiverIndex = static_cast<std::uint32_t>(receiverIt - sourceIDs.begin());
+                }
                 mouthInputs.push_back({static_cast<std::uint32_t>(sourceIndex), endpoint,
                     {static_cast<float>(inward.x / length), static_cast<float>(inward.z / length)},
-                    authoredMouth.blendLength});
+                    authoredMouth.blendLength, receiverIndex,
+                    authoredMouth.atStart ? 0.0f : sources[sourceIndex].geometry->vertices[
+                        sources[sourceIndex].geometry->outlineIndices[
+                            sources[sourceIndex].geometry->outlineIndices.size() / 2u - 1u]].riverDistance});
             }
             if (invalid.empty()) {
                 WaterZoneSnapshot built;
                 if (!BuildWaterZoneSnapshot(sources, mouthInputs, ownerGO->transform,
-                        owner->buoyancyDepth, zone->meshCellSize, built, invalid)) {
+                        owner->buoyancyDepth, zone->meshCellSize, built, invalid, zone->blendMaterials)) {
                     if (invalid.empty()) invalid = "Zone numeric snapshot build failed";
                 } else {
                     built.geometry.signature = signature;
                     zone->snapshot = std::make_shared<const WaterZoneSnapshot>(std::move(built));
+                    zone->materialSources = zone->blendMaterials ? std::move(sourceIDs) : std::vector<EntityID>{};
                     zone->diagnostic.clear();
                 }
             }
@@ -800,6 +865,23 @@ void PrepareWaterSceneSurfaces(Scene& scene)
     }
     PrepareWaterZoneSnapshots(scene);
     PrepareWaterExclusionSnapshots(scene);
+    PrepareWaterfallSeams(scene);
+    for (const EntityID id : scene.GetEntities<WaterComponent>())
+        scene.GetComponent<WaterComponent>(id)->horizonWaveSeams = {};
+    for (const EntityID id : scene.GetEntities<WaterComponent>()) {
+        auto* river = scene.GetComponent<WaterComponent>(id);
+        if (!river->enabled || river->zoneOwner.IsValid() || !scene.GetGameObject(id)->activeInHierarchy()) continue;
+        const auto* geometry = WaterSurfaceGeometry(*river, WaterSurfaceReadView::LIVE_QUERY);
+        if (!geometry || geometry->horizonMouth.w <= 0.0f) continue;
+        const auto* receiver = river->horizonMaterialReceiver.Resolve(scene);
+        auto* ocean = receiver ? scene.GetComponent<WaterComponent>(receiver->GetID()) : nullptr;
+        if (!ocean || !WaterSurfaceUsesHorizon(*ocean, WaterSurfaceReadView::LIVE_QUERY)) continue;
+        auto& seams = ocean->horizonWaveSeams;
+        const auto slot = std::find_if(seams.begin(), seams.end(), [](auto seam) { return seam.w == 0.0f; });
+        if (slot == seams.end()) continue;
+        *slot = geometry->horizonMouth;
+        river->horizonWaveSeams[0] = *slot;
+    }
 }
 
 namespace {
@@ -817,6 +899,8 @@ void CaptureWaterSimulationSurfaces(Scene& scene, bool unpublishedOnly = false)
         water->simulationExclusionSnapshot = water->exclusionSnapshot;
         water->simulationDepthField = water->depthField;
         water->simulationWaveAttenuationDepth = water->waveAttenuationDepth;
+        water->simulationWaterfallSeams = water->waterfallSeams;
+        water->simulationHorizonWaveSeams = water->horizonWaveSeams;
         water->simulationTransform = go->transform;
         water->simulationSurfaceShape = WaterSurfaceEffectiveShape(*water);
         water->simulationZoneSurfaceSelected = water->zoneSurfaceSelected;
@@ -828,6 +912,8 @@ void CaptureWaterSimulationSurfaces(Scene& scene, bool unpublishedOnly = false)
         const GameObject* go = scene.GetGameObject(id);
         if (!zone || !go) continue;
         if (unpublishedOnly && zone->simulationPublished) continue;
+        if (zone->simulationSnapshot != zone->snapshot)
+            zone->simulationMaterialSources = zone->snapshot ? zone->materialSources : std::vector<EntityID>{};
         zone->simulationSnapshot = zone->snapshot;
         zone->simulationOwnerTransform = go->transform;
         zone->simulationPublished = true;
@@ -881,7 +967,7 @@ WaterComponent* ResolveWaterZoneOwner(Scene& scene, EntityID entity)
 namespace {
 
 bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation& material,
-                           const WaterWind& wind, std::span<const GerstnerWave> bases,
+                           std::span<const GerstnerWave> bases,
                            float grouping, float spread, bool constrainContraction)
 {
     if (bases.size() > fluid::MAX_BASE_GERSTNER_WAVES) return false;
@@ -904,38 +990,10 @@ bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation
             ? (std::min)((std::max)(scaleInput, 0.0f), 1000000.0f)
             : (std::max)(scaleInput, 0.0f))
         : 0.0f;
-    float response = water.waveAuthoring.preset == WaterSeaPreset::AUTHORED ? material.windResponse : 0.0f;
-    if (constrainContraction && !std::isfinite(response)) response = 0.0f;
-    response = math::Clamp01(response);
-    const bool validWind = std::isfinite(wind.speed) && std::isfinite(wind.direction.x)
-        && std::isfinite(wind.direction.y) && std::isfinite(wind.direction.z);
-    const float windGain = wind.active && validWind
-        ? response * math::Clamp(wind.speed / kWaveGrowthReferenceWindSpeed, 0.0f, 2.0f)
-        : 0.0f;
-    const float windLen = validWind
-        ? std::sqrt(wind.direction.x * wind.direction.x + wind.direction.z * wind.direction.z) : 0.0f;
-    const bool hasWindDir = windLen > 1.0e-3f;
-    const math::Vector2 windDir = hasWindDir
-        ? math::Vector2{ wind.direction.x / windLen, wind.direction.z / windLen }
-        : math::Vector2::ZERO;
-
     std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> resolved{};
     for (size_t i = 0; i < bases.size(); ++i) {
-        GerstnerWave wave = bases[i];
-        if (windGain > 0.0f && hasWindDir) {
-            const float dirLen = wave.direction.Length();
-            const float align = dirLen > 1.0e-4f
-                ? math::Vector2::Dot(wave.direction * (1.0f / dirLen), windDir)
-                : 0.0f;
-            /// @note 向かい風で潰れる量は、追い風で育つ量の半分に留める。
-            const float gain = align >= 0.0f
-                ? 1.0f + windGain * align
-                : 1.0f + windGain * align * 0.5f;
-            wave.amplitude *= (std::max)(gain, 0.2f);
-            wave.steepness = math::Clamp01(wave.steepness * (1.0f + windGain * 0.25f));
-        }
-        wave.amplitude *= scale;
-        resolved[i] = wave;
+        resolved[i] = bases[i];
+        resolved[i].amplitude *= scale;
     }
 
     const float resolvedGrouping = scale > 0.0f ? math::Clamp01(grouping) : 0.0f;
@@ -967,9 +1025,6 @@ bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation
     if (water.waveAuthoring.rippleMode == WaterRippleDirectionMode::MANUAL) {
         const float angle = WaveHeadingRadians(water.waveAuthoring.rippleHeadingDegrees);
         water.rippleDirectionOverride = {std::cos(angle), std::sin(angle)};
-    } else if (water.waveAuthoring.rippleMode == WaterRippleDirectionMode::SCENE_WIND
-               && wind.active && hasWindDir) {
-        water.rippleDirectionOverride = windDir;
     }
     return true;
 }
@@ -977,42 +1032,42 @@ bool ResolveWaterWaveBases(WaterComponent& water, const WaterMaterialPreparation
 } /// @note namespace
 
 static bool ResolveWaterWavesFromValues(WaterComponent& water, const WaterMaterialPreparation& material,
-                                const WaterWind& wind, const asset::WaterWavesAsset& wavesAsset)
+                                const asset::WaterWavesAsset& wavesAsset)
 {
     std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> generated{};
     std::uint32_t count = 0;
     math::Vector2 display;
     if (!GenerateWaveBands(wavesAsset, water.waveAuthoring, generated, count, display)
-        || !ResolveWaterWaveBases(water, material, wind, std::span(generated.data(), count),
+        || !ResolveWaterWaveBases(water, material, std::span(generated.data(), count),
             wavesAsset.waveGrouping, wavesAsset.waveSpread, true)) return false;
     water.waveDirectionDisplay = display;
     return true;
 }
 
-static void ResolveWaterWavesValues(WaterComponent& water, const WaterMaterialPreparation& material, const WaterWind& wind)
+static void ResolveWaterWavesValues(WaterComponent& water, const WaterMaterialPreparation& material)
 {
     const auto* preset = BuiltInSeaPreset(water.waveAuthoring.preset);
-    if (preset && ResolveWaterWavesFromValues(water, material, wind, *preset)) return;
+    if (preset && ResolveWaterWavesFromValues(water, material, *preset)) return;
     water.waveDirectionDisplay = math::Vector2::ZERO;
-    ResolveWaterWaveBases(water, material, wind, material.bases, material.grouping, material.spread, false);
+    ResolveWaterWaveBases(water, material, material.bases, material.grouping, material.spread, false);
 }
 
-void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind)
+void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind&)
 {
     const auto snapshot = material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
-    ResolveWaterWavesValues(water, PrepareWaterMaterial(snapshot), wind);
+    ResolveWaterWavesValues(water, PrepareWaterMaterial(snapshot));
 }
 
-void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAssetAuthoring& material, const WaterWind& wind)
+void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAssetAuthoring& material, const WaterWind&)
 {
-    ResolveWaterWavesValues(water, BuildWaterMaterialPreparation(&material), wind);
+    ResolveWaterWavesValues(water, BuildWaterMaterialPreparation(&material));
 }
 
 bool ResolveWaterWavesFromAsset(WaterComponent& water, const asset::MaterialAsset* material,
-    const WaterWind& wind, const asset::WaterWavesAsset& wavesAsset)
+    const WaterWind&, const asset::WaterWavesAsset& wavesAsset)
 {
     const auto snapshot = material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
-    return ResolveWaterWavesFromValues(water, PrepareWaterMaterial(snapshot), wind, wavesAsset);
+    return ResolveWaterWavesFromValues(water, PrepareWaterMaterial(snapshot), wavesAsset);
 }
 
 math::Vector2 ResolveWaterCellSize(const WaterComponent& water, const Transform& transform)
@@ -1292,10 +1347,7 @@ void WaterSystem::Update(SystemContext& ctx)
         m_bodies.clear();
         m_waveAssetSceneGeneration = sceneGeneration;
     }
-    /// @note 環境流は Scene のフレームキャッシュが正本。GameObject の並び順で勝者が決まる «最初に見つかった radius 0 の Wind» の探索はもう無い。
     const FlowFieldFrame& flowFrame = scene.FlowFrame();
-    const AmbientWind& ambient = flowFrame.ambient;
-    const WaterWind wind{ ambient.active, ambient.direction, ambient.speed };
 
     for (auto& entry : m_waveAssets) entry.second.seen = false;
 
@@ -1314,7 +1366,7 @@ void WaterSystem::Update(SystemContext& ctx)
         if (referencePath.empty() && !preset) {
             cache = WaveAssetCache{};
             cache.seen = true;
-            ResolveWaterWavesValues(*water, material, wind);
+            ResolveWaterWavesValues(*water, material);
         } else {
             if (cache.referencePath != referencePath || cache.preset != water->waveAuthoring.preset) {
                 cache = WaveAssetCache{};
@@ -1370,7 +1422,7 @@ void WaterSystem::Update(SystemContext& ctx)
             }
 
             if (reason.empty()) {
-                if (!ResolveWaterWaveBases(*water, material, wind,
+                if (!ResolveWaterWaveBases(*water, material,
                         std::span<const GerstnerWave>(cache.generatedWaves.data(), cache.generatedWaveCount),
                         cache.generatedGrouping, cache.generatedSpread, true)) {
                     reason = "resolved values could not be applied safely";
@@ -1407,7 +1459,7 @@ void WaterSystem::Update(SystemContext& ctx)
                     fallbackGrouping = cache.generatedGrouping;
                     fallbackSpread = cache.generatedSpread;
                 }
-                static_cast<void>(ResolveWaterWaveBases(*water, material, wind,
+                static_cast<void>(ResolveWaterWaveBases(*water, material,
                     std::span<const GerstnerWave>(fallback.data(), fallbackCount),
                     fallbackGrouping, fallbackSpread, true));
             }

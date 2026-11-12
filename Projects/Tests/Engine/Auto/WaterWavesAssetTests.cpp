@@ -136,7 +136,7 @@ TEST_F(WaterWavesAssetTest, BuiltinAssetRoundTripsReflectedValuesAndReloadsTheSh
         EXPECT_TRUE(SameWave(reloaded[i], expected[i]));
 }
 
-TEST_F(WaterWavesAssetTest, AssetResolutionKeepsEightBaseWavesAndLimitsWindScaledContraction)
+TEST_F(WaterWavesAssetTest, AssetResolutionKeepsEightBaseWavesAndLimitsScaledContraction)
 {
     asset::WaterWavesAsset source;
     source.waveCount = 8;
@@ -156,7 +156,7 @@ TEST_F(WaterWavesAssetTest, AssetResolutionKeepsEightBaseWavesAndLimitsWindScale
     water.waveAmplitudeScale = 1.7f;
     ASSERT_TRUE(scene::ResolveWaterWavesFromAsset(water, &material, wind, source));
     EXPECT_EQ(water.waveCount, 8u);
-    EXPECT_NEAR(water.waves[0].amplitude, 2.04f, 1.0e-5f);
+    EXPECT_NEAR(water.waves[0].amplitude, 1.02f, 1.0e-5f);
     EXPECT_FLOAT_EQ(water.waveSpread, 0.0f);
     EXPECT_NEAR(water.current.x, 0.0f, 1.0e-6f);
     EXPECT_NEAR(water.current.y, 2.0f, 1.0e-6f);
@@ -183,13 +183,12 @@ TEST_F(WaterWavesAssetTest, InvalidAssetSettingsFailWithoutChangingTheResolvedWa
     EXPECT_FLOAT_EQ(water.waves[0].phaseOffsetRadians, before.phaseOffsetRadians);
 }
 
-TEST_F(WaterWavesAssetTest, SharedMaterialPublicationKeepsPerWaterScaleWindAndImmediateEdits)
+TEST_F(WaterWavesAssetTest, SharedMaterialPublicationKeepsPerWaterScaleAndImmediateEdits)
 {
     asset::MaterialAsset material;
     EditMaterialAuthoring(material, [](auto& values) {
         values.params[scene::water_keys::kWaveDirection[0]] = {1.0f, 0.0f};
         values.params[scene::water_keys::kWaveAmplitude[0]] = {1.0f};
-        values.params[scene::water_keys::kWindResponse] = {1.0f};
         values.params[scene::water_keys::kFlowDirection] = {3.0f, 4.0f};
         values.params[scene::water_keys::kCurrentSpeed] = {5.0f};
     });
@@ -198,22 +197,20 @@ TEST_F(WaterWavesAssetTest, SharedMaterialPublicationKeepsPerWaterScaleWindAndIm
     scene::WaterComponent second;
     first.waveAmplitudeScale = 0.5f;
     second.waveAmplitudeScale = 3.0f;
-    scene::WaterWind wind{true, {1.0f, 0.0f, 0.0f}, 10.0f};
-    scene::ResolveWaterWaves(first, &material, wind);
-    scene::ResolveWaterWaves(second, &material, wind);
-    EXPECT_FLOAT_EQ(first.waves[0].amplitude, 1.0f);
-    EXPECT_FLOAT_EQ(second.waves[0].amplitude, 6.0f);
+    scene::ResolveWaterWaves(first, &material, {});
+    scene::ResolveWaterWaves(second, &material, {});
+    EXPECT_FLOAT_EQ(first.waves[0].amplitude, 0.5f);
+    EXPECT_FLOAT_EQ(second.waves[0].amplitude, 3.0f);
     EXPECT_NEAR(second.current.x, 3.0f, testkit::kTolerance);
     EXPECT_NEAR(second.current.y, 4.0f, testkit::kTolerance);
     second.enableGerstnerWaves = false;
-    scene::ResolveWaterWaves(second, &material, wind);
+    scene::ResolveWaterWaves(second, &material, {});
     EXPECT_FLOAT_EQ(second.waves[0].amplitude, 0.0f);
     EditMaterialAuthoring(material, [](auto& values) {
         values.params[scene::water_keys::kWaveAmplitude[0]] = {4.0f};
-        values.params[scene::water_keys::kWindResponse] = {0.0f};
         values.params[scene::water_keys::kCurrentSpeed] = {10.0f};
     });
-    scene::ResolveWaterWaves(first, &material, wind);
+    scene::ResolveWaterWaves(first, &material, {});
     EXPECT_FLOAT_EQ(first.waves[0].amplitude, 2.0f);
     EXPECT_NEAR(first.current.x, 6.0f, testkit::kTolerance);
     EXPECT_FLOAT_EQ(retained->Data().params.at(scene::water_keys::kWaveAmplitude[0])[0], 1.0f);

@@ -25,6 +25,7 @@
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/WaterfallComponent.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
 #include <Engine/Asset/MeshInstancesAsset.hpp>
@@ -1141,6 +1142,12 @@ renderer::RenderObject ExtractObject(GameObject& go, T& component, uint64_t fram
     object.castShadows = component.castShadows;
     object.lodVisible = component.lodVisible;
     object.lodDither = component.lodDither;
+    if constexpr (std::is_same_v<T, MeshRenderer>) {
+        if (const auto* part = go.GetComponent<WaterfallPart>()) {
+            object.waterfallFarIndexStart = part->farIndexStart;
+            object.sortPosition = go.transform.worldPosition;
+        }
+    }
     return object;
 }
 
@@ -1453,6 +1460,10 @@ renderer::RenderObject ExtractStaticObject(const ComponentArray<MeshRenderer>& s
     object.previousWorld = AdvanceWorld(component, object.world, frame);
     object.sortPosition = go.transform.position;
     object.castShadows = component.castShadows; object.lodVisible = component.lodVisible; object.lodDither = component.lodDither;
+    if (const auto* part = go.GetComponent<WaterfallPart>()) {
+        object.waterfallFarIndexStart = part->farIndexStart;
+        object.sortPosition = go.transform.worldPosition;
+    }
     object.firstItem = static_cast<uint32_t>(output.items.size()); object.itemCount = 1;
     object.boundsCenter = entry.center; object.boundsRadius = entry.radius;
     object.leafWindBoundsPadding = entry.windPadding;
@@ -2558,6 +2569,11 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
         const bool current = write.recorded && item.preparedSkinning->IsWriteCurrent(item.preparedSkinningWrite);
         item.deformedVertexBuffer = current ? write.output : renderer::ResourceHandle<renderer::BufferTag>{};
         item.deformedContentVersion = current ? write.resultingVersion : 0;
+    }
+    if (!ctx.scene.GetEntities<WaterfallPart>().empty()) {
+        const auto objects = output->Objects();
+        for (std::uint32_t i = 0; i < objects.size(); ++i)
+            if (objects[i].waterfallFarIndexStart != 0) output->waterfallObjects.push_back(i);
     }
     RememberPreparedSnapshotItems(output, OwnPreparedSnapshotItems(std::move(preparedItems)));
     ctx.renderScene = std::move(output);

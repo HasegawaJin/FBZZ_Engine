@@ -682,12 +682,8 @@ bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
 
     ImGui::TextDisabled("Configure wave direction and sea state on the Water component.");
 
-    ImGui::SeparatorText("Wind & Current");
-    ImGui::PushID("WaterWindCurrent");
-    dirty |= DrawMaterialFloat(mat, "Wind Response", kWindResponse, 0.0f, 0.01f, 0.0f, 1.0f);
-    Tooltip("シーンの環境流 (Scene Environment) で波がどれだけ育つか。\n"
-            "風速 10 m/s でこの倍率ぶん上乗せされ、向かい風の波は小さくなります。\n"
-            "目安: 外洋 1 / 湖 0.4 / 川 0.2 / 池 0");
+    ImGui::SeparatorText("Current");
+    ImGui::PushID("WaterCurrent");
     dirty |= DrawMaterialFloat(mat, "Current Speed", kCurrentSpeed, 0.0f, 0.01f, 0.0f, 20.0f);
     Tooltip("矩形水域で、浮いている物体を Flow Direction の向きへ流す速さ [m/s]。\n"
         "スプライン水域は、各点の Flow Speed を使います。");

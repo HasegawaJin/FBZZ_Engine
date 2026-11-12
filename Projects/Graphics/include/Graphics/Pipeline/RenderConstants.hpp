@@ -1057,11 +1057,31 @@ struct WaterVertex {
     math::Vector2 uv;
     /// @note x=スプラインの水深 [m]、yz=ワールド XZ 流速 [m/s]、w=スプライン頂点なら 1。
     math::Vector4 splineData{};
+    /// @note Two packed triangle profile index triples, corner plus one, and source weight.
+    math::Vector4 zoneMaterial{};
 };
-static_assert(sizeof(WaterVertex) == 36, "WaterVertex size mismatch");
+static_assert(sizeof(WaterVertex) == 52, "WaterVertex size mismatch");
 
 /// @note WaterCB — Water シェーダーの b1。
 /// @note LAYOUT: Assets/Shaders/Water/Water.hlsl の WaterCB と完全に一致させること。
+struct WaterMaterialBlendTarget {
+    math::Vector4 shallowColorDepth{};
+    math::Vector4 deepColorDepth{};
+    math::Vector4 surface{};
+    math::Vector4 normalReflectionRefraction{};
+    math::Vector4 detail{};
+    math::Vector4 foam{};
+    math::Vector4 crestFoam{};
+    math::Vector4 foamColorRoughness{};
+    math::Vector4 absorptionPhase{};
+    math::Vector4 scatteringMode{};
+    math::Vector4 sss{};
+    math::Vector4 effects{};
+    math::Vector4 skyTint{};
+    math::Vector4 rippleColor{};
+};
+static_assert(sizeof(WaterMaterialBlendTarget) == 224);
+
 struct WaterCB {
     math::Matrix4 worldMatrix;
     math::Matrix4 wvpMatrix;
@@ -1122,14 +1142,23 @@ struct WaterCB {
     math::Vector4 patchMorphMetric{};
     math::Vector4 patchMorphParams{};
     math::Vector4 patchMorphCellSize{};
-    /// @note x=浅水波の減衰開始深度 [m]、y=不変水深場有効。0深度は旧波のまま。
+    /// @note x=浅水波の減衰開始深度 [m]、y=水深場有効、z=範囲外フェード幅 [m]、w=矩形水域の基流の符号付き速度 [m/s]。
     math::Vector4 waveDepthParams{};
     /// @note xy=パッチ全域の local XZ 最小値、zw=local 寸法。0 寸法は従来の有限矩形。
     math::Vector4 horizonPatchDomain{};
     /// @note xy=Terrain 域の中心、zw=寸法。Water 軸へ投影した world m。0 寸法は著者設定の矩形。
     math::Vector4 terrainDomain{};
+    /// @note River cap xy=world XZ, z=blend radius [m], w=receiving sea level [m]. Zero radius disables a cap.
+    math::Vector4 riverHorizonCaps[2]{};
+    /// @note xy=world XZ, z=flat radius [m], w=outer fade radius [m]. A negative first w pins the whole water surface.
+    std::array<math::Vector4, 4> waterfallSeams{};
+    /// @note xy = endpoint XZ, zw = common flat/fade radii [m].
+    math::Vector4 materialBlendMouth{};
+    std::array<math::Vector4, 4> horizonWaveSeams{};
+    math::Vector4 horizonLinkedRiverMedia{};
+    WaterMaterialBlendTarget materialBlendTarget{};
 };
-static_assert(sizeof(WaterCB) == 1968, "WaterCB size mismatch");
+static_assert(sizeof(WaterCB) == 2384, "WaterCB size mismatch");
 
 /// @note WaterEffectParams — Water.hlsl の MaterialConstants (b2) の C++ ミラー。
 struct WaterEffectParams {

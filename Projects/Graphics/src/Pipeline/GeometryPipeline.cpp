@@ -166,6 +166,7 @@ void BuildWaterComposition(RenderPipeline& pipeline)
     pipeline.AddPass<VolumetricLightPass>();
     pipeline.AddPass<WaterCausticsPass>();
     pipeline.AddPass<WaterRenderPass>();
+    pipeline.AddPass<ForwardTransparentPass>(false, true);
 }
 
 } /// @note namespace fbzz::renderer

@@ -103,7 +103,7 @@ WaterWaveSummary SummarizeWaterWaves(const WaterComponent& water)
     /// @note Match the existing caustics displacement scale while deriving frequency and phase speed from active waves.
     result.amplitude = static_cast<float>(std::clamp(totalAmplitude * 0.12, 0.015, 0.18));
     result.frequency = static_cast<float>(weightedFrequency / totalAmplitude);
-    result.speed = static_cast<float>(weightedSpeed / totalAmplitude);
+    result.speed = static_cast<float>(weightedSpeed / totalAmplitude) * water.WaveSpeedMultiplier();
     return result;
 }
 

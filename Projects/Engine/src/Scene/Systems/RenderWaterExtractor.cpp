@@ -10,6 +10,7 @@
 #include <Engine/Scene/Systems/RenderWaterExtractor.hpp>
 #include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include <Engine/Scene/WaterSpline.hpp>
+#include <Engine/Scene/WaterZoneSnapshot.hpp>
 #include <Engine/Scene/WaterTerrainInfo.hpp>
 #include <Engine/Scene/WaterDepthField.hpp>
 #include <Engine/Scene/WaterExclusion.hpp>
@@ -30,6 +31,7 @@
 #include "Engine/Scene/Components/ParticleEmitter.hpp"
 #include "Engine/Scene/Components/TerrainComponent.hpp"
 #include "Engine/Scene/Components/WaterComponent.hpp"
+#include "Engine/Scene/Components/WaterZoneComponent.hpp"
 #include "Engine/Renderer/IShader.hpp"
 #include "Engine/Renderer/Material.hpp"
 #include "Engine/Renderer/Camera.hpp"
@@ -178,7 +180,7 @@ struct WaterMesh {
 /// @note 頂点が Gerstner 変位で平面から出る量。水平は Q*A、垂直は A の総和が上限。
 using WaveMargin = renderer::WaterWaveMargin;
 
-WaveMargin ComputeWaveMargin(const WaterComponent& water)
+WaveMargin ComputeWaveMargin(const WaterComponent& water, bool horizonSurface)
 {
     WaveMargin margin;
     if (water.enableGerstnerWaves) {
@@ -192,6 +194,8 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water)
             margin.vertical   += amplitude;
             margin.horizontal += amplitude * math::Clamp01(wave.steepness);
         }
+        /// @note The Horizon crossing correction adds height without changing the horizontal bounds.
+        if (horizonSurface) margin.vertical += margin.vertical * WATER_CROSSING_CREST_STRENGTH;
     }
     /// @note 流れの場が作る形と着水の輪も «平面から出る量»。入れないと穴や山や輪の上のチャンク
     /// @note だけが «AABB からはみ出した» 扱いで消える。盛り上がりも穴と同じ枠で測る。
@@ -402,22 +406,45 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterRenderCac
             || !std::isfinite(extent.x) || !std::isfinite(extent.y)
             || extent.x <= 0.0f || extent.y <= 0.0f) return;
 
+        const auto* zone = water.simulationZoneSnapshot.get();
+        const bool blendMaterials = zone && zone->materials.size() == snapshot.vertices.size();
         std::vector<WaterVertex> vertices;
-        vertices.reserve(snapshot.vertices.size());
+        vertices.reserve(blendMaterials ? snapshot.triangles.size() * 3u : snapshot.vertices.size());
         const float depthCap = (std::max)(water.buoyancyDepth, 0.0f);
-        for (const WaterSplineVertex& source : snapshot.vertices) {
+        const auto makeVertex = [&](const WaterSplineVertex& source) {
             WaterVertex vertex{};
             vertex.position = source.localPosition;
             vertex.uv = {source.localPosition.x / extent.x + 0.5f,
                 source.localPosition.z / extent.y + 0.5f};
             vertex.splineData = {(std::min)(source.depth, depthCap),
-                source.worldVelocity.x, source.worldVelocity.z, 1.0f};
-            vertices.push_back(vertex);
-        }
+                source.worldVelocity.x, source.worldVelocity.z, 1.0f + source.horizonMaterialWeight};
+            return vertex;
+        };
         std::vector<uint32_t> indices;
         indices.reserve(snapshot.triangles.size() * 3u);
-        for (const WaterSplineTriangle& triangle : snapshot.triangles)
-            indices.insert(indices.end(), triangle.indices.begin(), triangle.indices.end());
+        if (blendMaterials) {
+            static_assert(WATER_ZONE_MAX_BODIES == 32);
+            for (const auto& triangle : snapshot.triangles) {
+                uint32_t receivers = 0, sources = 0;
+                for (uint32_t corner = 0; corner < 3u; ++corner) {
+                    const auto& profile = zone->materials[triangle.indices[corner]];
+                    receivers |= profile.receiver << (corner * 5u);
+                    sources |= profile.source << (corner * 5u);
+                }
+                for (uint32_t corner = 0; corner < 3u; ++corner) {
+                    const uint32_t index = triangle.indices[corner];
+                    WaterVertex vertex = makeVertex(snapshot.vertices[index]);
+                    vertex.zoneMaterial = {static_cast<float>(receivers), static_cast<float>(sources),
+                        static_cast<float>(corner + 1u), zone->materials[index].sourceWeight};
+                    indices.push_back(static_cast<uint32_t>(vertices.size()));
+                    vertices.push_back(vertex);
+                }
+            }
+        } else {
+            for (const auto& source : snapshot.vertices) vertices.push_back(makeVertex(source));
+            for (const auto& triangle : snapshot.triangles)
+                indices.insert(indices.end(), triangle.indices.begin(), triangle.indices.end());
+        }
 
         WaterChunk chunk;
         chunk.vertexBuffer = resources.CreateVertexBuffer(vertices.data(),
@@ -941,10 +968,12 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAssetAuth
         water.rippleDirectionOverride.y, 1.0f};
     const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION);
+    const float signedCurrentSpeed = water.current.x * cb.flowParams.x + water.current.y * cb.flowParams.y;
     cb.waveDepthParams = {attenuationDepth,
         depthField && attenuationDepth > 0.0f ? 1.0f : 0.0f,
-        depthField ? depthField->outsideFadeWidth : 1.0f, 0.0f};
+        depthField ? depthField->outsideFadeWidth : 1.0f, signedCurrentSpeed};
     const float horizontalScale = water.GetHorizontalWaveScale(WaterSurfaceReadView::SIMULATION);
+    const float waveSpeed = water.WaveSpeedMultiplier();
     std::array<float, 16> phases{};
     for (size_t i = 0; i < waveCount; ++i) {
         const GerstnerWave& wave = water.waves[static_cast<size_t>(i)];
@@ -955,7 +984,7 @@ WaterCB BuildWaterCB(const WaterComponent& water, const asset::MaterialAssetAuth
             && wave.wavelength > 0.0001f && std::isfinite(directionLengthSq) && directionLengthSq > 1.0e-8f;
         const math::Vector2 dir = validWave ? wave.direction.Normalized() : math::Vector2{1.0f, 0.0f};
         const float k = validWave ? math::TWO_PI / wave.wavelength : 0.0f;
-        const float omega = validWave ? std::sqrt(9.8f * k) : 0.0f;
+        const float omega = validWave ? std::sqrt(9.8f * k) * waveSpeed : 0.0f;
         const float steepness = math::Clamp01(wave.steepness) * horizontalScale;
         cb.waveDir[i] = { dir.x, dir.y, steepness, validWave ? 1.0f : 0.0f };
         cb.waveParams[i] = { validWave ? wave.amplitude : 0.0f, wave.wavelength, omega, k };
@@ -992,6 +1021,34 @@ WaterEffectParams BuildWaterEffectParams(const asset::MaterialAssetAuthoring* ma
 /// @brief ローカル AABB をワールド行列で包み直して可視判定する。
 /// @note 描画側は `Transform::GetWorldMatrix()` を使い親の回転・スケールが乗るため、
 /// @note カリングをローカル position 基準にすると水面を子にしたり拡大した瞬間に消える。
+/// @brief Build the receiving profile from the same resolved values used for its own draw.
+renderer::WaterMaterialBlendTarget MakeWaterMaterialBlendTarget(const renderer::WaterCB& target,
+    const renderer::WaterEffectParams& effects)
+{
+    return {
+        target.shallowColorDepth,
+        target.deepColorDepth,
+        target.surfaceParams,
+        {target.normalParams.w, target.reflectParams.x, target.refractionFlowParams.x, 0.0f},
+        target.detailParams,
+        target.foamParams,
+        target.crestFoamParams,
+        target.foamColorRoughness,
+        {target.absorptionCoefficients.x, target.absorptionCoefficients.y, target.absorptionCoefficients.z, target.opticalParams.y},
+        {target.scatteringCoefficients.x, target.scatteringCoefficients.y, target.scatteringCoefficients.z, target.opticalParams.x},
+        target.sssParams,
+        {effects.rimGlowStrength, effects.minShallowAlpha, effects.specularStrength, effects.rippleRingStrength},
+        {effects.skyReflectTint[0], effects.skyReflectTint[1], effects.skyReflectTint[2], 0.0f},
+        {effects.rippleRingColor[0], effects.rippleRingColor[1], effects.rippleRingColor[2], 0.0f},
+    };
+}
+
+struct HorizonMaterialLink {
+    std::size_t inputIndex;
+    std::uint64_t receiverKey;
+    math::Vector4 mouth;
+};
+
 void ExpandByWaveMargin(const WaveMargin& margin, math::Vector3& outMin, math::Vector3& outMax)
 {
     outMin.x -= margin.horizontal;
@@ -1159,6 +1216,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
                 selectedZoneOwners.insert((static_cast<uint64_t>(owner.generation) << 32u) | owner.index);
         }
     }
+    std::vector<HorizonMaterialLink> horizonMaterialLinks;
     const WaterCandidateLease candidates(scene);
     for (const EntityID eid : candidates.Entities()) {
         auto* ownerObject = scene.GetGameObject(eid);
@@ -1174,6 +1232,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         if (const auto* exclusions = WaterSurfaceExclusions(water, WaterSurfaceReadView::SIMULATION);
             exclusions && !exclusions->valid) continue;
         const bool splineSurface = UsesWaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
+        const bool horizonSurface = WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION);
         const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, WaterSurfaceReadView::SIMULATION);
         if (splineSurface && !geometry) continue;
         water.resolutionX = std::clamp(water.resolutionX, 1u, 512u);
@@ -1192,7 +1251,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         InvalidateWaterCaches(cacheKey, water.meshDirty, water.texDirty || water.foamDirty);
         if (!ownerObject->activeInHierarchy()) continue;
 
-        const WaveMargin margin = ComputeWaveMargin(water);
+        const WaveMargin margin = ComputeWaveMargin(water, horizonSurface);
         asset::MaterialAsset::AuthoringSnapshotPtr matAuthoringSnapshot;
         const asset::MaterialAssetAuthoring* mat = nullptr;
         if (!water.materialPath.empty()) {
@@ -1274,7 +1333,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         input.patches = mesh.chunks;
         input.adaptivePatchLod = !splineSurface && (water.adaptivePatchLod || water.farOceanEnabled);
         input.patchMorphEnabled = !splineSurface && water.lodMorphEnabled;
-        input.farOceanEnabled = WaterSurfaceUsesHorizon(water, WaterSurfaceReadView::SIMULATION);
+        input.farOceanEnabled = horizonSurface;
         input.farOceanCoverageScale = water.farOceanCoverageScale;
         input.farOceanRippleFadeDistance = water.farOceanRippleFadeDistance;
         input.patchLod.cellsPerPatch = water.lodPatchResolution;
@@ -1295,6 +1354,8 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Constants");
             input.constants = BuildWaterCB(water, mat, surfaceTransform, math::Matrix4::Identity(), Time::time, 1.0f, noise, resources);
+            input.constants.waterfallSeams = water.EffectiveWaterfallSeams(WaterSurfaceReadView::SIMULATION);
+            input.constants.horizonWaveSeams = water.EffectiveHorizonWaveSeams(WaterSurfaceReadView::SIMULATION);
         }
         if (splineSurface) {
             input.constants.gridParams.x = 0.0f;
@@ -1302,6 +1363,28 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             const float maximumWorldEdge = geometry->maximumWorldEdgeLength;
             if (std::isfinite(maximumWorldEdge) && maximumWorldEdge > 0.0f)
                 input.constants.timeParams.x = input.constants.timeParams.y = maximumWorldEdge;
+            if (geometry->shape == WaterSurfaceShape::SPLINE_RIVER && geometry->outlineIndices.size() >= 4) {
+                const auto& outline = geometry->outlineIndices;
+                const size_t middle = outline.size() / 2;
+                const auto writeCap = [&](size_t index, size_t left, size_t right) {
+                    const auto& a = geometry->vertices[outline[left]].worldPosition;
+                    const auto& b = geometry->vertices[outline[right]].worldPosition;
+                    const auto center = a + (b - a) * 0.5f;
+                    const float width = std::hypot(a.x - b.x, a.z - b.z);
+                    input.constants.riverHorizonCaps[index] = {center.x, center.z,
+                        (std::clamp)(width * 1.5f, 8.0f, 48.0f), center.y};
+                };
+                writeCap(0, 0, outline.size() - 1);
+                writeCap(1, middle - 1, middle);
+            }
+            if (input.constants.horizonWaveSeams.front().w > 0.0f && geometry->horizonMouth.w > 0.0f) {
+                const auto* receiver = water.horizonMaterialReceiver.Resolve(scene);
+                if (receiver) {
+                    const auto id = receiver->GetID();
+                    horizonMaterialLinks.push_back({output.water.size(),
+                        (static_cast<uint64_t>(id.generation) << 32u) | id.index, geometry->horizonMouth});
+                }
+            }
         }
         input.constants.terrainInfoParams = cache.textures.at(cacheKey).terrainInfoParams;
         input.constants.terrainDomain = cache.textures.at(cacheKey).terrainDomain;
@@ -1311,6 +1394,25 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         }
         input.medium.depthIsUniform = cache.textures.at(cacheKey).depthIsUniform;
         input.effects = BuildWaterEffectParams(mat);
+        const auto* zone = scene.GetComponent<WaterZoneComponent>(eid);
+        if (zone && zone->simulationSnapshot && !zone->simulationSnapshot->materials.empty()) {
+            const auto ownerProfile = MakeWaterMaterialBlendTarget(input.constants, input.effects);
+            input.zoneMaterials.reserve(zone->simulationMaterialSources.size());
+            for (const auto sourceId : zone->simulationMaterialSources) {
+                const auto* source = scene.GetComponent<WaterComponent>(sourceId);
+                if (!source || source->materialPath == water.materialPath) {
+                    input.zoneMaterials.push_back(ownerProfile);
+                    continue;
+                }
+                const auto material = source->materialPath.empty() ? asset::MaterialAsset::AuthoringSnapshotPtr{}
+                    : asset::ReadMaterialAuthoring(asset::AssetManager::Load<asset::MaterialAsset>(source->materialPath));
+                const auto* authoring = material ? &material->Data() : nullptr;
+                const auto sourceConstants = BuildWaterCB(*source, authoring, surfaceTransform,
+                    math::Matrix4::Identity(), Time::time, 1.0f, noise, resources);
+                input.zoneMaterials.push_back(MakeWaterMaterialBlendTarget(sourceConstants,
+                    BuildWaterEffectParams(authoring)));
+            }
+        }
         input.detailNoise = noise.texture;
         input.foam = cache.textures.at(cacheKey).foamMask;
         input.ripple = rippleState.gpuTex;
@@ -1337,6 +1439,36 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             }
         }
         output.water.push_back(std::move(input));
+    }
+    for (const HorizonMaterialLink& link : horizonMaterialLinks) {
+        const auto receiver = std::find_if(output.water.begin(), output.water.end(), [&](const auto& input) {
+            return input.farOceanEnabled && input.medium.stableOwnerKey == link.receiverKey;
+        });
+        if (receiver == output.water.end()) continue;
+        auto& river = output.water[link.inputIndex];
+        auto& cb = river.constants;
+        river.horizonReceiverKey = link.receiverKey;
+        river.medium.priority = receiver->medium.priority + 1;
+        for (auto& cap : cb.riverHorizonCaps)
+            if (cap.x == link.mouth.x && cap.y == link.mouth.y) cap = {};
+        cb.materialBlendMouth = link.mouth;
+        cb.materialBlendTarget = MakeWaterMaterialBlendTarget(receiver->constants, receiver->effects);
+    }
+    /// @note A bounded visual handoff is possible only when there is one unambiguous receiving Horizon plane.
+    const auto isHorizon = [](const auto& water) { return water.farOceanEnabled; };
+    const auto ocean = std::find_if(output.water.begin(), output.water.end(), isHorizon);
+    const bool singleOcean = ocean != output.water.end() && ocean->medium.exclusions.empty()
+        && std::find_if(ocean + 1, output.water.end(), isHorizon) == output.water.end();
+    for (auto& water : output.water) {
+        for (auto& cap : water.constants.riverHorizonCaps) {
+            if (cap.z <= 0.0f) continue;
+            const float level = singleOcean ? ocean->medium.surfaceY : 0.0f;
+            if (!singleOcean || !std::isfinite(level) || std::abs(cap.w - level) > 1.0f) {
+                cap = {};
+                continue;
+            }
+            cap.w = level;
+        }
     }
 }
 

@@ -25,6 +25,7 @@
 #include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/FileDialog.hpp>
 #include <Editor/Util/FluidBakeService.hpp>
+#include <Editor/Util/WaterfallFluidBake.hpp>
 #include <Editor/Util/FluidInspector.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -2200,6 +2201,7 @@ void EditorApp::OnRender()
     /// @note 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
     /// @note        パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
     if (m_fluidBake) m_fluidBake->Tick(m_ctx);
+    PollWaterfallFluidBake(m_ctx);
     for (auto& panel : m_panels) panel->OnRenderFrame(m_ctx);
 
     m_renderer->SetRenderTarget({}, *m_resources);

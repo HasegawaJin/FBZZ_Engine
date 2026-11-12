@@ -277,6 +277,10 @@ protected:
     {
         testkit::Fixture::SetUp();
         renderer::AssetPathService service;
+        service.resolveAssetPath = [](const std::string& path) {
+            const size_t hint = path.find('|');
+            return path.starts_with("guid:") && hint != std::string::npos ? path.substr(hint + 1) : path;
+        };
         service.resolveShaderCapabilities = [](std::string_view path) {
             renderer::ShaderCapabilities capabilities;
             if (path.ends_with("Water/Water.hlsl") || path.ends_with("ProjectAppearance.hlsl")) {
@@ -1729,6 +1733,60 @@ TEST_F(WaterFarRenderPassTest, TerrainOcclusionBridgesInternalTessellationButPre
     EXPECT_TRUE(culler.TestAndRaster({-1,3,40},0.05f));
 }
 
+TEST_F(WaterFarRenderPassTest, RiverHandoffUsesTheOceanOnlyWhenItsViewDrawsIt)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::SizedRenderTarget colorCopy, depthCopy;
+    handles.waterSceneColorRT = &colorCopy;
+    handles.waterSceneDepthRT = &depthCopy;
+    const std::array<renderer::WaterVertex, 4> vertices{};
+    const std::array<uint32_t, 6> indices{0, 2, 1, 1, 2, 3};
+    renderer::RenderWaterPatch patch;
+    patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::WaterVertex));
+    patch.indexBuffer = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    patch.indexCount = static_cast<uint32_t>(indices.size());
+    patch.aabbMin = {-2.0f, 0.0f, 2.0f}; patch.aabbMax = {2.0f, 0.0f, 6.0f};
+    backend.watchedVertices = patch.vertexBuffer;
+    renderer::RenderWaterInput river;
+    river.aabbMin = patch.aabbMin; river.aabbMax = patch.aabbMax;
+    river.constants.worldMatrix = math::Matrix4::Identity();
+    river.constants.normalParams = {4.0f, 4.0f, 1.0f, 1.0f};
+    river.constants.riverHorizonCaps[0] = {0.0f, 4.0f, 12.0f, 0.0f};
+    river.patches.push_back(patch);
+    auto sea = river;
+    sea.layer = 1;
+    sea.farOceanEnabled = true;
+    sea.constants.riverHorizonCaps[0] = {};
+    sea.constants.normalParams.x = 8.0f;
+    auto scene = std::make_shared<renderer::RenderScene>();
+    scene->water = {river, sea};
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    context.renderScene = scene; context.width = context.height = 64;
+    context.frustumCullingEnabled = false;
+    const auto hdr = resources.CreateRenderTarget(64, 64, renderer::CameraDepthTargetDesc(1));
+    context.resourceRegistry.BindTarget("HDR", hdr); context.resourceRegistry.BindTarget("ShadowMap", hdr);
+    renderer::WaterRenderPass pass;
+    renderer::PassBuilder builder;
+    pass.Setup(builder, context);
+    renderer::PassResources passResources(context.resourceRegistry, builder.Accesses(), pass.Name());
+    context.passResources = &passResources;
+    pass.Execute(passResources, context);
+    ASSERT_EQ(backend.draws.size(), 2u);
+    EXPECT_FLOAT_EQ(backend.draws[0].normalParams.x, 8.0f);
+    EXPECT_FLOAT_EQ(backend.draws[1].riverHorizonCaps[0].z, 12.0f);
+
+    context.cullingMask = 1;
+    backend.draws.clear();
+    pass.Execute(passResources, context);
+    ASSERT_EQ(backend.draws.size(), 1u);
+    EXPECT_FLOAT_EQ(backend.draws[0].riverHorizonCaps[0].z, 0.0f);
+    EXPECT_FLOAT_EQ(scene->water[0].constants.riverHorizonCaps[0].z, 12.0f);
+}
+
 TEST_F(WaterFarRenderPassTest, OccludedRiverPatchesSkipSubmissionAndKeepDisplacedWavesAndAResetView)
 {
     FarPassRenderer backend;
@@ -1935,6 +1993,103 @@ TEST_F(WaterFarRenderPassTest, RejectedWaterCullDrawKeepsTheOriginalDrawAndFollo
     ASSERT_EQ(waterDraws.size(), 2u);
     EXPECT_FALSE(waterDraws[0].indirectArguments.IsValid());
     EXPECT_TRUE(waterDraws[1].indirectArguments.IsValid());
+}
+
+TEST_F(WaterFarRenderPassTest, CrestSprayReadsDepthAfterEveryStandardHorizonSurface)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    camera.m_position = {0.0f, 5.0f, -10.0f};
+    camera.LookAt({0.0f, 0.0f, 0.0f});
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::SizedRenderTarget colorCopy, depthCopy;
+    handles.waterSceneColorRT = &colorCopy;
+    handles.waterSceneDepthRT = &depthCopy;
+    renderer::RenderWaterInput water;
+    water.aabbMin = {-50.0f, 0.0f, -50.0f};
+    water.aabbMax = {50.0f, 0.0f, 50.0f};
+    water.constants.worldMatrix = math::Matrix4::Identity();
+    water.constants.normalParams = {100.0f, 100.0f, 1.0f, 1.0f};
+    water.constants.opticalParams.x = 1.0f;
+    water.constants.crestFoamParams = {0.5f, 0.15f, 1.0f, 1.2f};
+    water.constants.reflectParams.w = 2.0f;
+    water.constants.waveControls = {2.0f, 0.0f, 0.0f, 1.0f};
+    water.constants.waveDir[0] = {1.0f, 0.0f, 0.6f, 1.0f};
+    water.constants.waveDir[1] = {0.0f, 1.0f, 0.6f, 1.0f};
+    water.constants.waveParams[0] = water.constants.waveParams[1] = {1.0f, 8.0f, 2.77f, 0.79f};
+    water.adaptivePatchLod = water.farOceanEnabled = true;
+    water.patchLod.cellsPerPatch = 4;
+    water.patchLod.maxDepth = 0;
+    water.patchLod.maxPatches = 1;
+    const std::array<renderer::WaterVertex, 25> vertices{};
+    water.patchVertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::WaterVertex));
+    backend.watchedVertices = water.patchVertexBuffer;
+    std::vector<uint32_t> indices;
+    ASSERT_TRUE(renderer::BuildSurfacePatchIndices(4, 0, indices));
+    water.patchIndexBuffers[0] = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    water.patchIndexCounts[0] = static_cast<uint32_t>(indices.size());
+    const uint8_t depthTexel[4]{};
+    water.foam = resources.CreateTexture(depthTexel, 1, 1);
+
+    auto scene = std::make_shared<renderer::RenderScene>();
+    scene->water = {water, water};
+    scene->water[1].shader = resources.LoadShader("guid:c496f8e37c024b17aac1fce28730e300|Assets/Shaders/Water/Water.hlsl");
+    ASSERT_TRUE(scene->water[1].shader.IsValid());
+    ASSERT_NE(scene->water[1].shader, resources.LoadShader("Assets/Shaders/Water/Water.hlsl"));
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    context.renderScene = scene;
+    context.width = context.height = 64;
+    context.frustumCullingEnabled = false;
+    const auto hdr = resources.CreateRenderTarget(64, 64, renderer::CameraDepthTargetDesc(1));
+    context.resourceRegistry.BindTarget("HDR", hdr);
+    context.resourceRegistry.BindTarget("ShadowMap", hdr);
+    renderer::WaterRenderPass pass;
+    renderer::PassBuilder builder;
+    pass.Setup(builder, context);
+    renderer::PassResources passResources(context.resourceRegistry, builder.Accesses(), pass.Name());
+    context.passResources = &passResources;
+
+    const auto isSpray = [](const FarPassDrawSnapshot& draw) {
+        return draw.shaderPath.ends_with("/WaterCrestSpray.hlsl");
+    };
+    const auto render = [&] {
+        backend.drawSnapshots.clear();
+        backend.submittedCalls.clear();
+        backend.draws.clear();
+        pass.Execute(passResources, context);
+        return std::count_if(backend.drawSnapshots.begin(), backend.drawSnapshots.end(), isSpray);
+    };
+    ASSERT_EQ(render(), 2);
+    ASSERT_EQ(backend.draws.size(), 2u);
+    ASSERT_EQ(backend.drawSnapshots.size(), backend.submittedCalls.size());
+    for (size_t index = backend.drawSnapshots.size() - 2; index < backend.drawSnapshots.size(); ++index) {
+        EXPECT_TRUE(isSpray(backend.drawSnapshots[index]));
+        const auto& spray = backend.submittedCalls[index];
+        EXPECT_FALSE(spray.vertexBuffer.IsValid());
+        EXPECT_EQ(spray.vertexCount, 3u);
+        EXPECT_EQ(spray.instanceCount, 21u * 21u);
+        EXPECT_EQ(spray.textures[3], water.foam);
+        const auto* state = resources.Get(spray.pipelineState);
+        ASSERT_NE(state, nullptr);
+        EXPECT_EQ(state->GetDesc().depth, renderer::DepthMode::DEPTH_READ);
+        EXPECT_EQ(state->GetDesc().blend, renderer::BlendMode::ALPHA_BLEND);
+    }
+
+    const auto litMode = settings.viewMode;
+    settings.viewMode = renderer::ViewMode::WireframeLit;
+    EXPECT_EQ(render(), 0);
+    settings.viewMode = litMode;
+    scene->water[0].constants.waveDir[1].w = 0.0f;
+    EXPECT_EQ(render(), 1);
+    scene->water[1].constants.crestFoamParams.z = 0.0f;
+    EXPECT_EQ(render(), 0);
+    scene->water[1].constants.crestFoamParams.z = 1.0f;
+    scene->water[1].shader = resources.LoadShader("Assets/Shaders/Arbitrary/ProjectAppearance.hlsl");
+    EXPECT_EQ(render(), 0);
+    colorCopy.Release(resources);
+    depthCopy.Release(resources);
 }
 
 TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBodyIsOutsideTheView)

@@ -37,6 +37,7 @@ WaterVSInput LoadWaterRawVertex(uint vertexIndex)
     input.position = asfloat(g_waterRawVertices.Load3(byteOffset));
     input.uv = asfloat(g_waterRawVertices.Load2(byteOffset + 12));
     input.splineData = asfloat(g_waterRawVertices.Load4(byteOffset + 20));
+    input.zoneMaterial = 0.0f;
     return input;
 }
 

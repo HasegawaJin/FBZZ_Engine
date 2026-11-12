@@ -34,11 +34,13 @@ struct WaterZoneRiverMouth {
     EntityRef river;
     bool atStart = false;
     float blendLength = 20.0f; ///< @note 接続端点から川の内側へ向かう距離 [world m]。
+    EntityRef receiver; ///< @note 未指定は Zone の親水域。支流では同じ Zone の下流側の水域を指定できる。
     void Reflect(IReflector& reflector)
     {
         reflector.RefField("river", river, "WaterComponent");
         reflector.Field("atStart", atStart);
         reflector.FloatRange("blendLength", blendLength, 0.1f, 10000.0f);
+        reflector.RefField("receiver", receiver, "WaterComponent");
         blendLength = std::isfinite(blendLength) ? (std::clamp)(blendLength, 0.1f, 10000.0f) : 20.0f;
     }
 };
@@ -48,11 +50,14 @@ struct WaterZoneComponent {
     int ownerPriority = 0;
     std::vector<WaterZoneMember> members;
     std::vector<WaterZoneRiverMouth> riverMouths;
+    bool blendMaterials = false;
     float meshCellSize = 2.0f; ///< @note 共通メッシュの目標最大辺長 [world m]。
     /// @note 不変の数値結果と試行署名は保存しない。
     std::shared_ptr<const WaterZoneSnapshot> snapshot;
+    std::vector<EntityID> materialSources;
     /// @brief Fixed-step Zone surface retained independently from LiveQuery preparation.
     std::shared_ptr<const WaterZoneSnapshot> simulationSnapshot;
+    std::vector<EntityID> simulationMaterialSources;
     /// @brief Owner pose captured atomically with simulationSnapshot.
     Transform simulationOwnerTransform{};
     /// @brief True after the first simulation publication, including an invalid result.
@@ -65,7 +70,9 @@ struct WaterZoneComponent {
     void ResetRuntimeState()
     {
         snapshot.reset();
+        materialSources.clear();
         simulationSnapshot.reset();
+        simulationMaterialSources.clear();
         simulationOwnerTransform = Transform{};
         simulationPublished = false;
         attemptSignature = 0;
@@ -77,10 +84,12 @@ struct WaterZoneComponent {
     void Reflect(IReflector& reflector)
     {
         reflector.Field("enabled", enabled);
-        reflector.Tooltip("Connected waters share this object's Water material, waves and buoyancy settings.");
+        reflector.Tooltip("Connected waters share this object's waves and buoyancy settings.");
         reflector.Field("ownerPriority", ownerPriority);
         ReflectList(reflector, "members", members, WATER_ZONE_MAX_BODIES - 1);
         ReflectList(reflector, "riverMouths", riverMouths, WATER_ZONE_MAX_MOUTHS);
+        reflector.Field("blendMaterials", blendMaterials);
+        reflector.Tooltip("Blend each river's material into its receiver across the mouth length in world meters.");
         reflector.FloatRange("meshCellSize", meshCellSize, 0.05f, 100.0f);
         meshCellSize = std::isfinite(meshCellSize) ? (std::clamp)(meshCellSize, 0.05f, 100.0f) : 2.0f;
         reflector.Readonly("ready", static_cast<bool>(snapshot));

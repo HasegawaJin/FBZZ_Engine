@@ -955,6 +955,10 @@ WaterComponent ReadWaterComponent(const toml::table& waterTable)
     water.farOceanEnabled = waterTable["farOceanEnabled"].value_or(false);
     water.farOceanCoverageScale = lodFloat("farOceanCoverageScale", 1.05f, 1.0, 2.0);
     water.farOceanRippleFadeDistance = lodFloat("farOceanRippleFadeDistance", 4.0f, 0.1, 1000.0);
+    pointReader.Field("horizonMaterialReceiver", water.horizonMaterialReceiver);
+    water.horizonMaterialAtStart = waterTable["horizonMaterialAtStart"].value_or(false);
+    water.horizonMaterialBlendLength = lodFloat("horizonMaterialBlendLength",
+        water.horizonMaterialBlendLength, 0.1, 10000.0);
     water.enableGerstnerWaves = waterTable["enableGerstnerWaves"].value_or(true);
     water.waveAmplitudeScale = static_cast<float>(waterTable["waveAmplitudeScale"].value_or(1.0));
     if (const toml::table* waveTable = waterTable["waveAuthoring"].as_table()) {
@@ -2489,6 +2493,9 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             waterTbl.insert("farOceanEnabled",      water->farOceanEnabled);
             waterTbl.insert("farOceanCoverageScale", static_cast<double>(water->farOceanCoverageScale));
             waterTbl.insert("farOceanRippleFadeDistance", static_cast<double>(water->farOceanRippleFadeDistance));
+            waterPointWriter.Field("horizonMaterialReceiver", water->horizonMaterialReceiver);
+            waterPointWriter.Field("horizonMaterialAtStart", water->horizonMaterialAtStart);
+            waterPointWriter.Field("horizonMaterialBlendLength", water->horizonMaterialBlendLength);
             waterTbl.insert("enableGerstnerWaves", water->enableGerstnerWaves);
             waterTbl.insert("waveAmplitudeScale",  static_cast<double>(water->waveAmplitudeScale));
             waterPointWriter.BeginObject("waveAuthoring");

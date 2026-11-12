@@ -7,7 +7,11 @@ Waterの形状は既存のRectangle、閉じたSpline Lake、開いたSpline Riv
 
 正本はWaterComponentの制御点であり、生成Meshを正本へ置き換えない。各点には1〜INT32_MAXの一意なIDを保存する。位置と幅はlocal単位、水深と流速はworld m・m/sとする。yaw・親TRS・符号付き非一様scaleに対応し、従来と同じ水平TRS契約を使う。流向は変換した曲線接線をworld XZへ投影して正規化し、符号付き流速を掛ける。scaleで流速や水深を変えない。Splineの点流速が基準流れを定め、Rectangleの材質currentSpeedと入れ替わる。外部FlowFieldによる影響は引き続き加算する。
 
+標準材質のさざ波と泡は、頂点から補間したworld XZの流速で移流する。経過時間が大きくなっても曲がり角の移動量が伸び続けないよう、短い位相を二つ使い、各位相の切り替わりで寄与をゼロにする。Ripple Directionを手動指定した場合はさざ波に指定方向を使い、泡は流速に従う。
+
 Catmull-Romの曲線を有限個の標本へ分け、湖は単純閉多角形、川は幅を持つ帯として三角形化する。輪郭は湖2048頂点・川4096頂点までとし、点数256・分割数64の個別上限を満たしても積が予算を超える場合は生成しない。水面内部は共有中点で細分化し、元の平面・水深・流速の線形補間を維持する。32768頂点・65536三角形または座標精度の限界では、直前の完全な段階を保ち、qualityLimitedと実際の最大辺長を返す。不変snapshotはlocal/world頂点、頂点ごとの基準高さ・水深・world流速、三角形の添字と高さ勾配、bounds、BVH、署名を持つ。描画のVB/IBとCPUの所属・重心座標補間は同じ三角形を使う。幅・深さ・流速の標本間補間を両経路で独自に作らない。
+
+内部の細分化は長い辺を優先し、隣り合う三角形で同じ中点を使う。曲線の標本数は岸の形を、メッシュの目標最大辺長は内部の三角形密度を調整する。Water Zoneでは接続全体の密度をMesh Cell Sizeで調整する。
 
 設定やTransformの変更時だけsnapshotを作り直す。無効な点・重複ID・非有限値・退化・自己交差・重なる川の帯・予算超過では数値生成のoutを変更しない。選択中の不正Splineは無効な水域として扱い、Rectangleへ暗黙に戻さない。SceneやGPUへのpointerをsnapshotへ残さず、Physics substepにはsnapshotとTransformの値を渡す。Edit/Playや複製は同じ不変snapshotを共有でき、編集後の新snapshotはそのWaterだけへ差し替える。
 

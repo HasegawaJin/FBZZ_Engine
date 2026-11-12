@@ -7,7 +7,7 @@
 
 ## 波アセット
 
-`WaterWavesAsset` は組込み `DataAsset` として `.fzdata` へ保存し、既存のCreate・型指定Picker・反射Inspector・Undo・再読込を使う。Waterは期待型を持つ `wavesAssetRef` で参照する。参照が空なら従来の `.mat` にある4基波、設定済みなら専用Assetを波の入力とする。光学・流れ・環境風は引き続き既存の材質とSceneから解決する。
+`WaterWavesAsset` は組込み `DataAsset` として `.fzdata` へ保存し、既存のCreate・型指定Picker・反射Inspector・Undo・再読込を使う。Waterは期待型を持つ `wavesAssetRef` で参照する。参照が空なら従来の `.mat` にある4基波、設定済みなら専用Assetを波の入力とする。光学は既存の材質から、流れは材質とSceneの局所場から解決する。
 
 FluidはMath/STLだけに依存し、最大16基波の決定的生成と数値契約を持つ。乱数は指定した整数ハッシュと変換で定義し、同じalgorithmVersion/seed/設定で再生成できる。Assetの初期波数は8、生成器自身が方向分布を持つため方向伴走成分の初期値は0。Waterの実行時基波配列は16、active countの既定は4、従来の方向広がりで最大32成分を評価する。描画LODで物理の波数・振幅を変えない。
 

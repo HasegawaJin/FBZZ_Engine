@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
+#include <Math/Vector4.hpp>
 #include <Engine/Api.hpp>
 #include <Math/Vector2.hpp>
 #include <Math/Vector3.hpp>
@@ -79,6 +80,8 @@ struct WaterSplineVertex {
     math::Vector3 worldVelocity = math::Vector3::ZERO;
     float baseHeightOffset = 0.0f;
     float depth = 0.0f;
+    float riverDistance = 0.0f; ///< @note Distance along the sampled river centerline from its start [world m].
+    float horizonMaterialWeight = 0.0f;
 };
 
 /// @brief A triangle over the common water surface snapshot.
@@ -118,6 +121,7 @@ struct WaterSplineSnapshot {
     float maximumBaseHeightOffset = 0.0f;
     float maximumDepth = 0.0f;
     float maximumWorldEdgeLength = 0.0f;
+    math::Vector4 horizonMouth{}; ///< @note World XZ center and flat/fade radii [m].
     bool meshQualityLimited = false;
     std::uint64_t signature = 0;
 };
@@ -129,6 +133,8 @@ struct WaterSplineSample {
     float depth = 0.0f;
     math::Vector3 worldVelocity = math::Vector3::ZERO;
     math::Vector2 baseHeightGradient = math::Vector2::ZERO;
+    float riverDistance = 0.0f;
+    float horizonMaterialWeight = 0.0f;
 };
 
 /// @brief Return the component-centered local XZ extent used by water geometry and UV mapping.

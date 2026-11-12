@@ -175,7 +175,21 @@ private:
     int m_detailEpoch[2] = { 0, 0 };
 };
 
-/// @brief 2D の粒子液体ソルバー (Position Based Fluids, Macklin & Müller 2013)。
+/// @brief Collision field sampled in normalized liquid simulation coordinates.
+/// @note distance is positive outside the solid and normal is a unit outward gradient.
+struct FluidLiquidContact {
+    math::Vector3 normal = math::Vector3::UP;
+    float distance = 0.0f;
+    float restitution = 0.0f;
+};
+
+struct FluidLiquidBoundary {
+    const void* context = nullptr;
+    bool (*sample)(const void*, const math::Vector3&, float, FluidLiquidContact&) = nullptr;
+    bool (*drain)(const void*, const math::Vector3&, const math::Vector3&) = nullptr;
+};
+
+/// @brief 粒子液体ソルバー (Position Based Fluids, Macklin & Müller 2013)。
 
 /// @note PBF を選ぶ理由: 力で押し返す SPH は硬い液体ほど刻みを細かくしないと爆発する。PBF は密度を
 /// @note 「位置の拘束」として解くので、しぶきの初速が大きくても刻み数が読める。焼きはオフラインでも
@@ -203,6 +217,8 @@ public:
     [[nodiscard]] bool IsVolumetric() const { return m_volumetric; }
     /// @brief dt 秒ぶん進める。1 刻みで粒子半径以上動かないよう内部で刻みを割る。
     FBZZ_FLUID_API void Advance(float dt);
+    /// @note The boundary and its context are borrowed for this call only.
+    FBZZ_FLUID_API void Advance(float dt, const FluidLiquidBoundary& boundary);
     FBZZ_FLUID_API void Step(float dt);
 
     [[nodiscard]] const std::vector<Particle>& Particles() const { return m_particles; }
@@ -213,6 +229,7 @@ public:
     [[nodiscard]] FBZZ_FLUID_API float MeasuredDensity(std::size_t index) const;
 
 private:
+    void Step(float dt, const FluidLiquidBoundary& boundary);
     [[nodiscard]] FBZZ_FLUID_API float Poly6(float distanceSquared) const;
     [[nodiscard]] FBZZ_FLUID_API float SpikyGradientScale(float distance) const;
     [[nodiscard]] FBZZ_FLUID_API float NextRandom();

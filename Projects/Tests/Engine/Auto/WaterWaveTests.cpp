@@ -1,5 +1,5 @@
 /// @file    WaterWaveTests.cpp
-/// @brief   水面の実効波 (.mat × 倍率 × 環境風) の解決と、CPU 側の水面高さを検証する。
+/// @brief   水面の実効波 (.mat × 倍率) の解決と、CPU 側の水面高さを検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 ///
@@ -79,32 +79,39 @@ TEST(WaterWaves, AmplitudeScaleAndDisableApplyOnTopOfTheMaterial)
 
 /// @name 環境風
 
-TEST(WaterWaves, TailwindGrowsWavesAndHeadwindShrinksThem)
+TEST(WaterWaves, LegacyWindResponseDoesNotChangeAuthoredWaves)
 {
     asset::MaterialAsset mat = SingleWaveMaterial({ 1.0f, 0.0f }, 0.4f, 10.0f);
     EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWindResponse] = { 1.0f }; });
     scene::WaterComponent water;
 
     scene::ResolveWaterWaves(water, &mat, { true, { 1.0f, 0.0f, 0.0f }, 10.0f });
-    EXPECT_GT(water.waves[0].amplitude, 0.4f);
+    EXPECT_FLOAT_EQ(water.waves[0].amplitude, 0.4f);
+    EXPECT_FLOAT_EQ(water.waves[0].steepness, 0.5f);
 
     scene::ResolveWaterWaves(water, &mat, { true, { -1.0f, 0.0f, 0.0f }, 10.0f });
-    EXPECT_LT(water.waves[0].amplitude, 0.4f);
-    /// @note 向かい風でも消し切らない。消えると風上を向いた水面だけが鏡のように止まる。
-    EXPECT_GT(water.waves[0].amplitude, 0.0f);
+    EXPECT_FLOAT_EQ(water.waves[0].amplitude, 0.4f);
+    EXPECT_FLOAT_EQ(water.waves[0].steepness, 0.5f);
 }
 
-TEST(WaterWaves, WindIsIgnoredWhenTheMaterialDoesNotRespond)
+TEST(WaterWaves, LegacySceneWindRippleModeFallsBackToMaterialFlow)
 {
-    const asset::MaterialAsset mat = SingleWaveMaterial({ 1.0f, 0.0f }, 0.4f, 10.0f);
     scene::WaterComponent water;
-    scene::ResolveWaterWaves(water, &mat, { true, { 1.0f, 0.0f, 0.0f }, 10.0f });
-    EXPECT_FLOAT_EQ(water.waves[0].amplitude, 0.4f);
+    water.waveAuthoring.rippleMode = scene::WaterRippleDirectionMode::MANUAL;
+    water.waveAuthoring.rippleHeadingDegrees = 90.0f;
+    const scene::WaterWind wind{ true, { 1.0f, 0.0f, 0.0f }, 10.0f };
+    scene::ResolveWaterWaves(water, nullptr, wind);
+    EXPECT_NEAR(water.rippleDirectionOverride.x, 0.0f, 1.0e-6f);
+    EXPECT_FLOAT_EQ(water.rippleDirectionOverride.y, 1.0f);
+
+    water.waveAuthoring.rippleMode = scene::WaterRippleDirectionMode::SCENE_WIND;
+    scene::ResolveWaterWaves(water, nullptr, wind);
+    EXPECT_FLOAT_EQ(water.rippleDirectionOverride.Length(), 0.0f);
 }
 
 TEST(WaterWaves, WindDoesNotRotateWaveDirections)
 {
-    /// @note 向きを回すと、原点から遠い点ほど位相が跳んで遠景の波が走る (理由は WaterSystem.hpp を参照)。
+    /// @note 向きを回すと、原点から遠い点ほど位相が跳んで遠景の波が走る。
     asset::MaterialAsset mat = SingleWaveMaterial({ 1.0f, 0.0f }, 0.4f, 10.0f);
     EditMaterialAuthoring(mat, [&](auto& values) { values.params[kWindResponse] = { 1.0f }; });
     scene::WaterComponent water;

@@ -17,6 +17,7 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/Selection.hpp>
+#include <Editor/Util/WaterfallFluidBake.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/Tools/TargetPointReferenceEditing.hpp>
@@ -511,6 +512,7 @@ void EditorApp::RegisterBuiltinOperators()
     RegisterDocumentOperators(m_operators);
     RegisterPrefabStructureMergeOperators(m_operators);
     RegisterTerrainOperators(m_operators);
+    RegisterWaterfallFluidOperators(m_operators);
     RegisterWorldPartitionOperators(m_operators);
     RegisterEffectOperators(m_operators);
     RegisterComponentActionOperators(m_operators);

@@ -10,12 +10,14 @@
 #include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/DataAssetRef.hpp>
 #include <Engine/Scene/WaterDepthField.hpp>
+#include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include <Engine/Scene/WaterSpline.hpp>
 #include <Engine/Scene/WaterZoneSnapshot.hpp>
 #include <Engine/Scene/WaterInteraction.hpp>
 #include <Engine/Scene/ControlPointAdapters.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Reflection.hpp>
 #include <Fluid/GerstnerWaves.hpp>
 #include <Fluid/VectorFieldAsset.hpp>
@@ -56,7 +58,12 @@ inline void WaterSplinePoint::Reflect(IReflector& reflector)
 /// @note 水面全体をシミュレーションせず、少数の解析波を合成して低コストに大きなうねりを表現する。
 using GerstnerWave = fluid::GerstnerWave;
 
+/// @note Maximum extra crossing-crest height as a fraction of the linear wave height bound.
+/// @see https://doi.org/10.1017/jfm.2018.886 McAllister et al., wave breaking in crossing seas.
+inline constexpr float WATER_CROSSING_CREST_STRENGTH = 0.85f;
+
 enum class WaterSeaPreset { AUTHORED, CALM, GENTLE, OFFSHORE, STORM };
+/// @note SCENE_WIND は旧シーンの値 1 を保持し、MATERIAL と同様に解決される。
 enum class WaterRippleDirectionMode { MATERIAL, SCENE_WIND, MANUAL };
 
 /// @brief Per-surface controls layered over a generated sea or a shared wave asset.
@@ -70,13 +77,15 @@ struct WaterWaveAuthoring {
     float secondaryHeadingDegrees = 60.0f;
     /// @note Relative amplitude of the secondary group. Zero disables it.
     float secondaryStrength = 0.0f;
+    /// @note Temporal multiplier for the Gerstner swell. Zero samples its initial phase.
+    float speedMultiplier = 1.0f;
     WaterRippleDirectionMode rippleMode = WaterRippleDirectionMode::MATERIAL;
     float rippleHeadingDegrees = 0.0f;
 
     void Reflect(IReflector& r)
     {
         static constexpr const char* PRESETS[] = {"Authored", "Calm", "Gentle", "Offshore", "Storm"};
-        static constexpr const char* RIPPLE_MODES[] = {"Material / Flow", "Scene Wind", "Manual"};
+        static constexpr const char* RIPPLE_MODES[] = {"Material / Flow", "Material / Flow (Legacy)", "Manual"};
         int presetValue = static_cast<int>(preset);
         int rippleValue = static_cast<int>(rippleMode);
         r.Enum("preset", presetValue, PRESETS);
@@ -85,6 +94,7 @@ struct WaterWaveAuthoring {
         r.FloatRange("spreadDegrees", spreadDegrees, -1.0f, 360.0f);
         r.Field("secondaryHeadingDegrees", secondaryHeadingDegrees);
         r.FloatRange("secondaryStrength", secondaryStrength, 0.0f, 1.0f);
+        r.FloatRange("speedMultiplier", speedMultiplier, 0.0f, 2.0f);
         r.Enum("rippleMode", rippleValue, RIPPLE_MODES);
         r.Field("rippleHeadingDegrees", rippleHeadingDegrees);
         preset = static_cast<WaterSeaPreset>((std::clamp)(presetValue, 0, 4));
@@ -234,6 +244,10 @@ struct WaterComponent {
     bool lodMorphEnabled = false;
     float lodMorphTransitionWidth = 0.25f;
     /// @note Rectangle の水平水域を延長し、描画・浮力・水中判定を共有する。深さと除外は維持する。
+    /// @note Optional receiving Horizon Water for the selected river endpoint.
+    EntityRef horizonMaterialReceiver;
+    bool horizonMaterialAtStart = false;
+    float horizonMaterialBlendLength = 80.0f; ///< @note Upstream transition length in world meters.
     bool farOceanEnabled = false;
     /// @note active view の far clip を包む外周に掛ける余裕率。
     float farOceanCoverageScale = 1.05f;
@@ -307,6 +321,10 @@ struct WaterComponent {
     int surfaceFlowCount = 0;
     /// @brief 生きている着水の輪。WaterSystem が寿命を進め、描画と GetSurfaceHeightAt が読む。
     std::vector<WaterRipple> ripples;
+    /// @note The Waterfall's contact bands are pinned in both surface reads. XY is world XZ; ZW are radii in metres.
+    std::array<math::Vector4, 4> waterfallSeams{}, simulationWaterfallSeams{};
+    /// @note Linked river and Horizon share these pinned bands in world XZ.
+    std::array<math::Vector4, 4> horizonWaveSeams{}, simulationHorizonWaveSeams{};
     /// @brief LiveQuery surface 用に Terrain から作る不変の数値 snapshot。
     /// @note Simulation は別 pointer と減衰閾値を捕捉し、LiveQuery の再構築で固定stepの評価を変えない。
     std::shared_ptr<const WaterDepthField> depthField;
@@ -367,12 +385,28 @@ struct WaterComponent {
         return waveAttenuationDepth;
     }
 
+    [[nodiscard]] const std::array<math::Vector4, 4>& EffectiveWaterfallSeams(WaterSurfaceReadView view) const
+    {
+        return view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled && simulationSurfacePublished
+            ? simulationWaterfallSeams : waterfallSeams;
+    }
+
+    [[nodiscard]] const std::array<math::Vector4, 4>& EffectiveHorizonWaveSeams(WaterSurfaceReadView view) const
+    {
+        return view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled && simulationSurfacePublished
+            ? simulationHorizonWaveSeams : horizonWaveSeams;
+    }
+
     /// @brief Clear non-authoring geometry and handles after copying this component into another Scene.
     void ResetSurfaceRuntimeState()
     {
         depthField.reset();
         simulationDepthField.reset();
         simulationWaveAttenuationDepth = 0.0f;
+        waterfallSeams = {};
+        simulationWaterfallSeams = {};
+        horizonWaveSeams = {};
+        simulationHorizonWaveSeams = {};
         splineSnapshot.reset();
         zoneSnapshot.reset();
         simulationZoneSnapshot.reset();
@@ -621,14 +655,23 @@ struct WaterComponent {
         int index = 0;
     };
 
+    /// @return 有効なうねりの速度倍率。非有限値では等速。
+    [[nodiscard]] float WaveSpeedMultiplier() const
+    {
+        const float speed = waveAuthoring.speedMultiplier;
+        return std::isfinite(speed) ? (std::clamp)(speed, 0.0f, 2.0f) : 1.0f;
+    }
+
     /// @note 保存しない。公開入力の直接編集も検出し、同一設定では超越関数を再評価しない。
     void PrepareWaveCache(WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY) const
     {
         const WaterDepthField* depth = EffectiveDepthField(view);
         const float attenuationDepth = EffectiveWaveAttenuationDepth(view);
+        const float waveSpeed = WaveSpeedMultiplier();
         const uint64_t depthSignature = depth ? depth->signature : 0;
         bool same = m_waveCacheValid && m_cachedWaveCount == waveCount
                  && m_cachedSpread == waveSpread && m_cachedGrouping == waveGrouping
+                 && m_cachedWaveSpeedMultiplier == waveSpeed
                  && m_cachedDepthSignature == depthSignature
                  && m_cachedAttenuationDepth == attenuationDepth;
         const size_t activeCount = (std::min)(static_cast<size_t>(waveCount), waves.size());
@@ -644,6 +687,7 @@ struct WaterComponent {
         m_cachedWaveCount = waveCount;
         m_cachedSpread = waveSpread;
         m_cachedGrouping = waveGrouping;
+        m_cachedWaveSpeedMultiplier = waveSpeed;
         m_cachedDepthSignature = depthSignature;
         m_cachedAttenuationDepth = attenuationDepth;
         m_resolvedCount = 0;
@@ -651,13 +695,14 @@ struct WaterComponent {
         m_horizontalDisplacementBound = 0.0f;
         m_horizontalWaveScale = 1.0f;
         m_horizontalContraction = 0.0f;
-        m_waveHeightBound = 0.0f;
+        float baseHeightSum = 0.0f;
         const float grouping = math::Clamp01(waveGrouping);
         /// @note Float-rounded direction normalization and rotations get a small upper-bound margin.
         const float peak = (1.0f + grouping + grouping * 0.195f) * WaveSpreadAmplitudeSum(waveSpread)
             * (1.0f + 32.0f * std::numeric_limits<float>::epsilon());
         for (size_t i = 0; i < activeCount; ++i) {
             const auto& wave = waves[i];
+            baseHeightSum += (std::max)(wave.amplitude, 0.0f);
             if (wave.amplitude < 0.0001f || wave.wavelength <= 0.0001f
                 || !std::isfinite(wave.phaseOffsetRadians)) continue;
             const float directionLengthSq = wave.direction.LengthSq();
@@ -665,7 +710,7 @@ struct WaterComponent {
             /// @note 物理と水域照会の波は描画の分割数・カメラ・LOD に依存させない。
             const float k = math::TWO_PI / wave.wavelength;
             m_contraction += math::Clamp01(wave.steepness) * wave.amplitude * peak * k;
-            const float omega = std::sqrt(9.8f * k);
+            const float omega = std::sqrt(9.8f * k) * waveSpeed;
             const math::Vector2 direction = wave.direction.Normalized();
             for (int component = 0; component < 2; ++component) {
                 const auto part = WaveSpreadComponent(static_cast<int>(i), component, direction, waveSpread);
@@ -675,9 +720,10 @@ struct WaterComponent {
                     math::Clamp01(wave.steepness) * wave.amplitude * part.amplitudeScale,
                     wave.phaseOffsetRadians, static_cast<int>(i) };
                 m_horizontalDisplacementBound += std::abs(resolved.horizontalAmplitude) * (1.0f + grouping);
-                m_waveHeightBound += std::abs(resolved.amplitude) * (1.0f + std::abs(waveGrouping));
             }
         }
+        /// @note Match the unsharpened height reference in RenderWaterExtractor.cpp, including tiny spread components.
+        m_waveHeightBound = baseHeightSum * ((1.0f + grouping) * WaveSpreadAmplitudeSum(waveSpread));
         float attenuationGradient = 0.0f;
         if (attenuationDepth > 0.0f && depth
             && depth->attenuationDepth == attenuationDepth
@@ -698,6 +744,8 @@ struct WaterComponent {
     {
         PrepareWaveCache(view);
         float bound = enableGerstnerWaves ? m_waveHeightBound : 0.0f;
+        if (bound > 0.0f && WaterSurfaceUsesHorizon(*this, view))
+            bound += bound * WATER_CROSSING_CREST_STRENGTH;
         if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(*this, view)) {
             bound += (std::max)(std::abs(geometry->minimumBaseHeightOffset),
                 std::abs(geometry->maximumBaseHeightOffset));
@@ -717,6 +765,7 @@ private:
     mutable std::uint32_t m_cachedWaveCount = 0;
     mutable float m_cachedSpread = 0.0f;
     mutable float m_cachedGrouping = 0.0f;
+    mutable float m_cachedWaveSpeedMultiplier = 1.0f;
     mutable uint64_t m_cachedDepthSignature = 0;
     mutable float m_cachedAttenuationDepth = 0.0f;
     mutable std::array<ResolvedWave, fluid::MAX_BASE_GERSTNER_WAVES * 2> m_resolvedWaves{};
@@ -737,6 +786,26 @@ private:
         return TrySampleWaterDepthField(*depth, point, sample, axis) ? sample.factor : 1.0f;
     }
 
+    float WaterfallWaveWeight(math::Vector2 point, WaterSurfaceReadView view) const
+    {
+        const auto& seams = EffectiveWaterfallSeams(view);
+        if (seams.front().w < 0.0f) return 0.0f;
+        float weight = 1.0f;
+        for (const auto& seam : seams) {
+            if (seam.w <= 0.0f) break;
+            const float distance = (point - math::Vector2{seam.x, seam.y}).Length();
+            const float t = (std::clamp)((distance - seam.z) / (seam.w - seam.z), 0.0f, 1.0f);
+            weight = (std::min)(weight, t * t * (3.0f - 2.0f * t));
+        }
+        for (const auto& seam : EffectiveHorizonWaveSeams(view)) {
+            if (seam.w <= 0.0f) break;
+            const float distance = (point - math::Vector2{seam.x, seam.y}).Length();
+            const float t = math::Clamp01((distance - seam.z) / (seam.w - seam.z));
+            weight = (std::min)(weight, t * t * (3.0f - 2.0f * t));
+        }
+        return weight;
+    }
+
     math::Vector2 ResolvedHorizontalDisplacementAt(math::Vector2 point, float time,
         WaterSurfaceReadView view) const
     {
@@ -754,7 +823,7 @@ private:
             offset.x += dir.x * push;
             offset.y += dir.y * push;
         }
-        return offset;
+        return offset * WaterfallWaveWeight(point, view);
     }
 
 public:
@@ -825,6 +894,9 @@ public:
         if (enableGerstnerWaves) {
             origin = SolveUndisplacedXZ(worldX, worldZ, time, view);
             attenuation = AttenuationFactorAt(origin, view, WaterDepthAxis::VERTICAL);
+            const bool crossingCrests = WaterSurfaceUsesHorizon(*this, view);
+            float crestSum = 0.0f;
+            math::Vector2 directionalCrestSum = math::Vector2::ZERO;
             for (size_t i = 0; i < m_resolvedCount; ++i) {
                 const auto& wave = m_resolvedWaves[i];
                 const auto dir = wave.direction;
@@ -833,14 +905,32 @@ public:
                                                           wave.phaseOffsetRadians);
                 const float phase = wave.k * (dir.x * origin.x + dir.y * origin.y) - wave.omega * time
                                   + wave.phaseOffsetRadians;
-                height += wave.amplitude * envelope * std::sin(phase) * attenuation;
+                const float amplitude = wave.amplitude * envelope;
+                const float phaseSine = std::sin(phase);
+                height += amplitude * phaseSine * attenuation;
+                if (crossingCrests) {
+                    const float positivePhase = (std::max)(phaseSine, 0.0f);
+                    const float crest = amplitude * positivePhase * positivePhase;
+                    crestSum += crest;
+                    directionalCrestSum += dir * crest;
+                }
+            }
+            if (crossingCrests) {
+                /// @note The difference is twice the pair sum weighted by 1 - dot(direction_i, direction_j).
+                /// @note The vertical-only correction leaves the horizontal inverse unchanged.
+                const float crossing = (std::max)(crestSum * crestSum - directionalCrestSum.LengthSq(), 0.0f);
+                height += WATER_CROSSING_CREST_STRENGTH * crossing * attenuation * attenuation
+                    / (std::max)(m_waveHeightBound, 0.01f);
             }
         }
 
+        float baseHeight = 0.0f;
         if (const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(*this, view)) {
             WaterSplineSample base;
-            if (TrySampleWaterSpline(*geometry, origin.x, origin.y, base))
-                height += base.baseHeightOffset;
+            if (TrySampleWaterSpline(*geometry, origin.x, origin.y, base)) {
+                baseHeight = base.baseHeightOffset;
+                height += baseHeight;
+            }
         }
 
         const int liveFlows = (std::min)(surfaceFlowCount, kWaterSurfaceFlowCount);
@@ -859,7 +949,8 @@ public:
         for (const WaterRipple& ripple : ripples)
             height += WaterRippleHeight(ripple, origin.x, origin.y);
 
-        return height;
+        const float weight = WaterfallWaveWeight(origin, view);
+        return weight < 1.0f ? std::lerp(baseHeight, height, weight) : height;
     }
 
     void Reflect(IReflector& r)
@@ -912,6 +1003,10 @@ public:
         r.Field("lodNearCellSize", lodNearCellSize);
         r.Field("lodMorphEnabled", lodMorphEnabled);
         r.Field("lodMorphTransitionWidth", lodMorphTransitionWidth);
+        r.RefField("horizonMaterialReceiver", horizonMaterialReceiver, "WaterComponent");
+        r.Field("horizonMaterialAtStart", horizonMaterialAtStart);
+        r.FloatRange("horizonMaterialBlendLength", horizonMaterialBlendLength, 0.1f, 10000.0f);
+        r.Tooltip("World meters measured upstream from the selected river endpoint.");
         r.Field("farOceanEnabled", farOceanEnabled);
         r.Field("farOceanCoverageScale", farOceanCoverageScale);
         r.Field("farOceanRippleFadeDistance", farOceanRippleFadeDistance);

@@ -68,6 +68,8 @@ struct RenderWaterInput {
     bool selected = false;
     WaterCB constants{};
     WaterEffectParams effects{};
+    std::vector<WaterMaterialBlendTarget> zoneMaterials;
+    uint64_t horizonReceiverKey = 0;
     WaterMediumInput medium;
     WaterWaveMargin margin;
     math::Vector3 aabbMin, aabbMax;

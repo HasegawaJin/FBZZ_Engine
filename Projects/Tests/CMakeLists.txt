@@ -296,6 +296,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/FlipbookMipsTests.cpp
         Engine/Auto/VFXLineGeometryTests.cpp
         Engine/Auto/FluidLiquid3DTests.cpp
+        Engine/Auto/WaterfallFluidClipTests.cpp
         Engine/Auto/FluidRecipeBakeTests.cpp
         Engine/Auto/FluidBakeSafetyTests.cpp
         Engine/Auto/FluidDeterminismTests.cpp

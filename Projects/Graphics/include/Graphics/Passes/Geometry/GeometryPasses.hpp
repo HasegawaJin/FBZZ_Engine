@@ -347,13 +347,19 @@ public:
 };
 class ForwardTransparentPass final : public IRenderPass {
 public:
-    explicit ForwardTransparentPass(bool deferred = false) : m_deferred(deferred) {}
+    explicit ForwardTransparentPass(bool deferred = false, bool waterfalls = false)
+        : m_deferred(deferred), m_waterfalls(waterfalls) {}
     /// @note Deferred の旧 ID は保存済み passOverrides との互換性のため維持する。
-    std::string_view Name() const override { return m_deferred ? "DeferredForwardTransparent" : "ForwardTransparent"; }
+    std::string_view Name() const override
+    {
+        if (m_waterfalls) return "WaterfallSurfaces";
+        return m_deferred ? "DeferredForwardTransparent" : "ForwardTransparent";
+    }
     FBZZ_GRAPHICS_API void Setup(PassBuilder& builder, const RenderPassContext& ctx) const override;
     FBZZ_GRAPHICS_API void Execute(PassResources& resources, RenderPassContext& ctx) override;
 private:
     bool m_deferred;
+    bool m_waterfalls;
 };
 using DeferredForwardTransparentPass = ForwardTransparentPass;
 class DeferredLightingPass final : public IRenderPass {

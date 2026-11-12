@@ -43,6 +43,9 @@ void CopyWaterAuthoringValues(scene::WaterComponent& target, const scene::WaterC
     target.farOceanEnabled = values.farOceanEnabled;
     target.farOceanCoverageScale = values.farOceanCoverageScale;
     target.farOceanRippleFadeDistance = values.farOceanRippleFadeDistance;
+    target.horizonMaterialReceiver = values.horizonMaterialReceiver;
+    target.horizonMaterialAtStart = values.horizonMaterialAtStart;
+    target.horizonMaterialBlendLength = values.horizonMaterialBlendLength;
     target.materialPath = values.materialPath;
     target.wavesAssetRef = values.wavesAssetRef;
     target.waveAuthoring = values.waveAuthoring;

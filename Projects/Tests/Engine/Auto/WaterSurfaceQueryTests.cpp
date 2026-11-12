@@ -71,6 +71,54 @@ TEST_F(WaterSurfaceQueryTest, HorizonToggleExtendsMembershipButPreservesHeightAn
     }
 }
 
+TEST_F(WaterSurfaceQueryTest, HorizonRaisesCrossingCrestsWithoutRaisingAlignedCrestsOrTroughs)
+{
+    auto water = FlatWater();
+    water.waveCount = 2;
+    water.waves[0] = {{1.0f, 0.0f}, 1.0f, 8.0f, 0.0f, math::PI * 0.5f};
+    water.waves[1] = water.waves[0];
+    scene::Transform pose;
+    scene::WaterSurfaceHeightSample sample;
+
+    water.farOceanEnabled = true;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {0, 0, 0}, 0.0f, sample));
+    EXPECT_NEAR(sample.displacement, 2.0f, testkit::kTolerance);
+
+    water.waves[1].direction = {0.0f, 1.0f};
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {0, 0, 0}, 0.0f, sample));
+    EXPECT_NEAR(sample.displacement, 2.85f, testkit::kTolerance);
+    EXPECT_LE(sample.displacement, water.SurfaceHeightBound());
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {4, 0, 4}, 0.0f, sample));
+    EXPECT_NEAR(sample.displacement, -2.0f, testkit::kTolerance);
+
+    water.farOceanEnabled = false;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {0, 0, 0}, 0.0f, sample));
+    EXPECT_NEAR(sample.displacement, 2.0f, testkit::kTolerance);
+}
+
+TEST_F(WaterSurfaceQueryTest, WaveSpeedUpdatesTheCachedSurfacePhase)
+{
+    auto water = FlatWater();
+    water.waveCount = 1;
+    water.waves[0] = {{1.0f, 0.0f}, 1.0f, 12.0f, 0.2f, 0.0f};
+    const scene::Transform pose;
+    const math::Vector3 point{1.5f, 0.0f, 0.5f};
+    scene::WaterSurfaceHeightSample initial;
+    scene::WaterSurfaceHeightSample advanced;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, point, 0.0f, initial));
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, point, 0.8f, advanced));
+    ASSERT_GT(std::abs(initial.displacement - advanced.displacement), 0.1f);
+
+    scene::WaterSurfaceHeightSample sample;
+    water.waveAuthoring.speedMultiplier = 2.0f;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, point, 0.4f, sample));
+    EXPECT_NEAR(sample.displacement, advanced.displacement, testkit::kTolerance);
+
+    water.waveAuthoring.speedMultiplier = 0.0f;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, point, 0.8f, sample));
+    EXPECT_NEAR(sample.displacement, initial.displacement, testkit::kTolerance);
+}
+
 TEST_F(WaterSurfaceQueryTest, UsesWorldParentPoseYawAndSignedNonuniformScale)
 {
     const auto water = FlatWater();

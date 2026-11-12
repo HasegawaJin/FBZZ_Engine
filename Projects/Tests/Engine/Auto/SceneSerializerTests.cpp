@@ -103,11 +103,13 @@ wavesAssetRef = 'Assets/Shared.fzdata'
     EXPECT_EQ(shared->wavesAssetRef.path, "Assets/Shared.fzdata");
     EXPECT_FLOAT_EQ(ocean->waveAmplitudeScale, 0.75f);
     auto& authoring = ocean->waveAuthoring;
+    EXPECT_FLOAT_EQ(authoring.speedMultiplier, 1.0f);
     authoring.overrideHeading = true;
     authoring.headingDegrees = -30.0f;
     authoring.spreadDegrees = 70.0f;
     authoring.secondaryHeadingDegrees = 20.0f;
     authoring.secondaryStrength = 0.25f;
+    authoring.speedMultiplier = 0.65f;
     authoring.rippleMode = scene::WaterRippleDirectionMode::MANUAL;
     authoring.rippleHeadingDegrees = 40.0f;
     const auto restored = RoundTrip(*scene);
@@ -119,6 +121,7 @@ wavesAssetRef = 'Assets/Shared.fzdata'
     EXPECT_FLOAT_EQ(loaded.spreadDegrees, 70.0f);
     EXPECT_FLOAT_EQ(loaded.secondaryHeadingDegrees, 20.0f);
     EXPECT_FLOAT_EQ(loaded.secondaryStrength, 0.25f);
+    EXPECT_FLOAT_EQ(loaded.speedMultiplier, 0.65f);
     EXPECT_EQ(loaded.rippleMode, scene::WaterRippleDirectionMode::MANUAL);
     EXPECT_FLOAT_EQ(loaded.rippleHeadingDegrees, 40.0f);
 }

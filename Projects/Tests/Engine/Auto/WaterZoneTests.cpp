@@ -262,7 +262,8 @@ TEST_F(WaterZoneTest, RiverMouthBlendsAtItsEndpointAndBlendLengthAtDefaultPriori
     scene::WaterZoneSnapshot zone;
     std::string diagnostic;
     ASSERT_TRUE(scene::BuildWaterZoneSnapshot(sources, mouths, ownerTransform,
-        10.0f, 1.0f, zone, diagnostic)) << diagnostic;
+        10.0f, 1.0f, zone, diagnostic, true)) << diagnostic;
+    ASSERT_EQ(zone.materials.size(), zone.geometry.vertices.size());
     scene::WaterSplineSample sample;
     ASSERT_TRUE(scene::TrySampleWaterSpline(zone.geometry, 5.0f, 0.0f, sample));
     EXPECT_NEAR(sample.baseHeightOffset, 0.0f, testkit::kTolerance);
@@ -284,6 +285,10 @@ TEST_F(WaterZoneTest, RiverMouthBlendsAtItsEndpointAndBlendLengthAtDefaultPriori
     const double normalizedDistance = (interiorVertex->worldPosition.x - 5.0) / 4.0;
     const double blendWeight = normalizedDistance * normalizedDistance
         * (3.0 - 2.0 * normalizedDistance);
+    const auto& material = zone.materials[static_cast<std::size_t>(interiorVertex - zone.geometry.vertices.data())];
+    EXPECT_EQ(material.receiver, 0u);
+    EXPECT_EQ(material.source, 1u);
+    EXPECT_NEAR(material.sourceWeight, blendWeight, testkit::kTolerance);
     EXPECT_NEAR(sample.baseHeightOffset, 8.0 * blendWeight, 0.05f);
     EXPECT_NEAR(sample.depth, 2.0 + 2.0 * blendWeight, 0.05f);
     EXPECT_NEAR(sample.worldVelocity.x, 6.0 * blendWeight, 0.05f);
@@ -291,6 +296,39 @@ TEST_F(WaterZoneTest, RiverMouthBlendsAtItsEndpointAndBlendLengthAtDefaultPriori
     EXPECT_NEAR(sample.baseHeightOffset, 8.0f, testkit::kTolerance);
     EXPECT_NEAR(sample.depth, 4.0f, testkit::kTolerance);
     EXPECT_NEAR(sample.worldVelocity.x, 6.0f, 0.05f);
+}
+
+TEST_F(WaterZoneTest, TributaryUsesTheSpecifiedReceiverInTheSameZone)
+{
+    const auto owner = MakeRectangle(-8.0f, -6.0f, -2.0f, 2.0f, 0.0f,
+        0.0f, 2.0f, math::Vector3::ZERO);
+    const auto receiver = MakeRectangle(-5.0f, 5.0f, -5.0f, 5.0f, 0.0f,
+        3.0f, 2.0f, math::Vector3{2.0f, 0.0f, 0.0f});
+    ASSERT_NE(owner, nullptr);
+    ASSERT_NE(receiver, nullptr);
+    const std::array<scene::WaterSplinePoint, 2> points{{
+        {1, {5.0f, 8.0f, 0.0f}, 2.0f, 4.0f, 6.0f},
+        {2, {10.0f, 8.0f, 0.0f}, 2.0f, 4.0f, 6.0f},
+    }};
+    scene::Transform transform;
+    scene::WaterSplineSnapshot spline;
+    ASSERT_TRUE(scene::BuildWaterSplineSnapshot(scene::WaterSurfaceShape::SPLINE_RIVER,
+        points, 2, transform, spline, 10.0f, 1000.0f));
+    const auto tributary = std::make_shared<const scene::WaterSplineSnapshot>(std::move(spline));
+    const std::array<scene::WaterZoneSource, 3> sources{{{owner, 0}, {receiver, 0}, {tributary, 0}}};
+    const std::array<scene::WaterZoneMouthInput, 1> mouths{{
+        {2, {5.0f, 8.0f, 0.0f}, {1.0f, 0.0f}, 4.0f, 1},
+    }};
+    scene::WaterZoneSnapshot zone;
+    std::string diagnostic;
+    ASSERT_TRUE(scene::BuildWaterZoneSnapshot(sources, mouths, transform, 10.0f, 1.0f, zone, diagnostic)) << diagnostic;
+    scene::WaterSplineSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterSpline(zone.geometry, 5.0f, 0.0f, sample));
+    EXPECT_NEAR(sample.baseHeightOffset, 3.0f, testkit::kTolerance);
+    EXPECT_NEAR(sample.worldVelocity.x, 2.0f, testkit::kTolerance);
+    ASSERT_TRUE(scene::TrySampleWaterSpline(zone.geometry, 9.0f, 0.0f, sample));
+    EXPECT_NEAR(sample.baseHeightOffset, 8.0f, testkit::kTolerance);
+    EXPECT_NEAR(sample.worldVelocity.x, 6.0f, testkit::kTolerance);
 }
 
 TEST_F(WaterZoneTest, RelativeSurfaceOffsetsSurviveLargeWorldHeightAndTranslatedSmallGeometry)

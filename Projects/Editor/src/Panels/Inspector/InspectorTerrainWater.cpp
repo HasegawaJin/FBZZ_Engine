@@ -4,11 +4,14 @@
 /// @date    2026-06-07
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include "InspectorTerrainWater.hpp"
+#include "InspectorUI.hpp"
 #include "../../Util/MaterialAuthoringEditing.hpp"
 #include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 
@@ -555,7 +558,25 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 else if (water.splineSnapshot->meshQualityLimited)
                     ImGui::TextDisabled("水面の細かさが上限に達しています。");
             }
-            if (water.surfaceShape == scene::WaterSurfaceShape::SPLINE_RIVER) DrawNatureRules(*go, ctx, NatureInspection::RIVER);
+            if (water.surfaceShape == scene::WaterSurfaceShape::SPLINE_RIVER) {
+                ImGui::SeparatorText("Horizontal Sea Connection");
+                ComponentImGuiReflector connection;
+                BindWaterObjectReferenceFields(connection, ctx.activeScene);
+                connection.m_refTypeValidator = [world = ctx.activeScene, go](scene::EntityID id, const char*) {
+                    const auto* receiver = world ? world->GetGameObject(id) : nullptr;
+                    const auto* target = receiver && receiver != go ? world->GetComponent<scene::WaterComponent>(id) : nullptr;
+                    return target && scene::WaterSurfaceUsesHorizon(*target, scene::WaterSurfaceReadView::LIVE_QUERY);
+                };
+                connection.RefField("Receiving Water", water.horizonMaterialReceiver, "WaterComponent");
+                ImGui::Checkbox("Connect at Start", &water.horizonMaterialAtStart);
+                ImGui::DragFloat("Material Transition", &water.horizonMaterialBlendLength,
+                    0.5f, 0.1f, 10000.0f, "%.1f m", ImGuiSliderFlags_AlwaysClamp);
+                ImGui::SetItemTooltip("Distance along the river centerline from the connected endpoint.");
+                if (water.horizonMaterialReceiver.IsAssigned())
+                    ImGui::TextDisabled("%s", water.horizonWaveSeams.front().w > 0.0f
+                        ? "Connected" : "Place the endpoint within 1 m of an active Horizontal Sea.");
+                DrawNatureRules(*go, ctx, NatureInspection::RIVER);
+            }
             ImGui::SeparatorText("Geometry");
             ImGui::BeginDisabled(scene::UsesWaterSurfaceGeometry(water) || water.zoneOwner.IsValid());
             if (ImGui::Checkbox("Adaptive Mesh", &water.adaptivePatchLod)) water.meshDirty = true;
@@ -563,25 +584,64 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 ImGui::SetTooltip("カメラと画面上の大きさに合わせて、水面の細かさを変えます。\n"
                                   "波と浮力の設定は描画の細かさに影響されません。");
             if (water.adaptivePatchLod || water.farOceanEnabled) {
-                int patchResolution = static_cast<int>(water.lodPatchResolution);
-                int maxDepth = static_cast<int>(water.lodMaxDepth);
-                int maxPatches = static_cast<int>(water.lodMaxPatches);
-                if (ImGui::SliderInt("Patch Resolution", &patchResolution, 2, 64)) {
-                    water.lodPatchResolution = 2;
-                    while (water.lodPatchResolution < static_cast<uint32_t>(patchResolution)) water.lodPatchResolution *= 2;
-                    water.meshDirty = true;
+                struct SurfaceDetailPreset {
+                    const char* name;
+                    uint32_t resolution;
+                    uint32_t levels;
+                    uint32_t budget;
+                };
+                /// @note プリセット名は保存せず、既存の作者値をそのまま使う。
+                /// @see Docs/design/water-surface-quality.md
+                static constexpr std::array<SurfaceDetailPreset, 3> PRESETS = {{
+                    {"Low", 8, 8, 512},
+                    {"Balanced", 16, 9, 1024},
+                    {"High", 32, 10, 1024},
+                }};
+                const auto current = std::find_if(PRESETS.begin(), PRESETS.end(), [&water](const auto& preset) {
+                    return water.lodPatchResolution == preset.resolution && water.lodMaxDepth == preset.levels
+                        && water.lodMaxPatches == preset.budget;
+                });
+                const auto* selectedPreset = current == PRESETS.end() ? nullptr : &*current;
+                const char* detailName = selectedPreset ? selectedPreset->name : "Custom";
+                if (ImGui::BeginCombo("Surface Detail", detailName)) {
+                    for (const auto& preset : PRESETS) {
+                        const bool selected = selectedPreset == &preset;
+                        if (ImGui::Selectable(preset.name, selected) && !selected) {
+                            water.meshDirty |= water.lodPatchResolution != preset.resolution;
+                            water.lodPatchResolution = preset.resolution;
+                            water.lodMaxDepth = preset.levels;
+                            water.lodMaxPatches = preset.budget;
+                        }
+                        if (selected) ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
                 }
-                if (ImGui::SliderInt("Detail Levels", &maxDepth, 0, 10)) water.lodMaxDepth = static_cast<uint32_t>(maxDepth);
-                if (ImGui::SliderInt("Patch Budget", &maxPatches, 1, 4096)) water.lodMaxPatches = static_cast<uint32_t>(maxPatches);
-                ImGui::DragFloat("Screen Cell Width", &water.lodTargetPixels, 0.25f, 1.0f, 64.0f, "%.1f px");
-                ImGui::DragFloat("Near Detail Range", &water.lodNearDistance, 1.0f, 0.0f, 10000.0f, "%.1f m");
-                ImGui::DragFloat("Near Detail Size", &water.lodNearCellSize, 0.05f, 0.25f, 100.0f, "%.2f m");
-                ImGui::Checkbox("Smooth LOD", &water.lodMorphEnabled);
-                if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-                    ImGui::SetTooltip("格子の切り替えを滑らかにし、カメラ移動時の波形の変化を抑えます。");
-                ImGui::BeginDisabled(!water.lodMorphEnabled);
-                ImGui::DragFloat("LOD Transition Width", &water.lodMorphTransitionWidth, 0.01f, 0.05f, 1.0f, "%.2f");
-                ImGui::EndDisabled();
+                ImGui::SetItemTooltip("格子密度・分割段数・パッチ上限をまとめて設定します。\n"
+                                      "波の高さと浮力には影響しません。個別調整は Advanced LOD で行えます。");
+                if (ImGui::TreeNode("Advanced LOD")) {
+                    int patchResolution = static_cast<int>(water.lodPatchResolution);
+                    int maxDepth = static_cast<int>(water.lodMaxDepth);
+                    int maxPatches = static_cast<int>(water.lodMaxPatches);
+                    if (ImGui::SliderInt("Patch Resolution", &patchResolution, 2, 64)) {
+                        water.lodPatchResolution = 2;
+                        while (water.lodPatchResolution < static_cast<uint32_t>(patchResolution)) water.lodPatchResolution *= 2;
+                        water.meshDirty = true;
+                    }
+                    ImGui::SetItemTooltip("1パッチの各軸のセル数。大きくすると、同じパッチ内に頂点が増えます。");
+                    if (ImGui::SliderInt("Detail Levels", &maxDepth, 0, 10)) water.lodMaxDepth = static_cast<uint32_t>(maxDepth);
+                    ImGui::SetItemTooltip("水面を何段まで細かいパッチへ分割できるかを指定します。");
+                    if (ImGui::SliderInt("Patch Budget", &maxPatches, 1, 4096)) water.lodMaxPatches = static_cast<uint32_t>(maxPatches);
+                    ImGui::SetItemTooltip("ビューあたりのパッチ数の上限。上限に達すると細分化を抑えます。");
+                    ImGui::DragFloat("Screen Cell Width", &water.lodTargetPixels, 0.25f, 1.0f, 64.0f, "%.1f px");
+                    ImGui::DragFloat("Near Detail Range", &water.lodNearDistance, 1.0f, 0.0f, 10000.0f, "%.1f m");
+                    ImGui::DragFloat("Near Detail Size", &water.lodNearCellSize, 0.05f, 0.25f, 100.0f, "%.2f m");
+                    ImGui::Checkbox("Smooth LOD", &water.lodMorphEnabled);
+                    ImGui::SetItemTooltip("格子の切り替えを滑らかにし、カメラ移動時の波形の変化を抑えます。");
+                    ImGui::BeginDisabled(!water.lodMorphEnabled);
+                    ImGui::DragFloat("LOD Transition Width", &water.lodMorphTransitionWidth, 0.01f, 0.05f, 1.0f, "%.2f");
+                    ImGui::EndDisabled();
+                    ImGui::TreePop();
+                }
             }
             ImGui::BeginDisabled(water.adaptivePatchLod || water.farOceanEnabled);
             ImGui::Checkbox("Camera Focused Grid", &water.cameraFocusedGrid);
@@ -671,6 +731,13 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
             }
             ImGui::Checkbox("Enable Waves", &water.enableGerstnerWaves);
             ImGui::BeginDisabled(!water.enableGerstnerWaves);
+            ImGui::SliderFloat("Wave Speed", &waveAuthoring.speedMultiplier, 0.0f, 2.0f, "x%.2f",
+                               ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SetItemTooltip("うねりの進行速度の倍率。0 で停止、1 で標準。");
+            if (waveAuthoring.speedMultiplier != 1.0f) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Reset##wave_speed")) waveAuthoring.speedMultiplier = 1.0f;
+            }
             if (waveAuthoring.preset != scene::WaterSeaPreset::AUTHORED || !water.wavesAssetRef.path.empty()) {
                 float heading = waveAuthoring.overrideHeading ? waveAuthoring.headingDegrees : water.waveDirectionDisplay.x;
                 if (ImGui::DragFloat("Main Heading", &heading, 0.5f, 0.0f, 0.0f, "%.1f deg")) {
@@ -704,10 +771,11 @@ void DrawTerrainWaterInspectors(scene::GameObject* go, EditorContext& ctx, std::
                 ImGui::SetTooltip("波Assetまたは材質の波の高さに掛ける倍率。\n"
                                   "同じ Ocean.mat を «凪の入り江» と «外洋» に使い分けるときに使います。");
             ImGui::EndDisabled();
-            static constexpr const char* RIPPLE_MODES[] = {"Material / Flow", "Scene Wind", "Manual"};
-            int rippleMode = static_cast<int>(waveAuthoring.rippleMode);
+            static constexpr const char* RIPPLE_MODES[] = {"Material / Flow", "Manual"};
+            int rippleMode = waveAuthoring.rippleMode == scene::WaterRippleDirectionMode::MANUAL ? 1 : 0;
             if (ImGui::Combo("Ripple Direction", &rippleMode, RIPPLE_MODES, IM_ARRAYSIZE(RIPPLE_MODES)))
-                waveAuthoring.rippleMode = static_cast<scene::WaterRippleDirectionMode>(rippleMode);
+                waveAuthoring.rippleMode = rippleMode == 1
+                    ? scene::WaterRippleDirectionMode::MANUAL : scene::WaterRippleDirectionMode::MATERIAL;
             ImGui::SetItemTooltip("表面の細かなさざ波だけに適用します。水流・着水の波紋・うねりは独立しています。");
             if (waveAuthoring.rippleMode == scene::WaterRippleDirectionMode::MANUAL
                 && ImGui::DragFloat("Ripple Heading", &waveAuthoring.rippleHeadingDegrees, 0.5f, 0.0f, 0.0f, "%.1f deg")) {

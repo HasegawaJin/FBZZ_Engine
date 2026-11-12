@@ -5,7 +5,7 @@
 `Scene::FlowFrame()` が収集した不変の配列を、`FlowReceiver` が受信 ON/OFF・32 bit チャンネル・Bounds で判定する。CPU の点評価は `FlowReceiver::Sample` → `SampleFlow`、GPU の点評価は既存の共通 `Rendering/FlowField.hlsli` を使用する。Particle / Fur の GPU 転送は `PackGpuFlowField` を共有する。
 
 - Cloth と剛体のコールバックは `MakeFlowSampler` が配列の所有権・時刻・受信条件を固定する。Cloth の既定は受信 OFF。三角形重心ごとに速度を受け取り、既存の一様風へ加える。
-- Water は共通の速度を水面で標本化し、水平成分へ変換して current に加える。表面形状へ変換する場も共通のチャンネル判定を使う。
+- Water は局所場の速度を水面で標本化し、水平成分へ変換して current に加える。表面形状へ変換する場も共通のチャンネル判定を使う。うねりとさざ波の向きは環境風から独立している。
 - Particle のシーン場選択と CPU 緩和は共通受信処理を使う。内蔵場は受信 OFF でも残す。Baked の空間カリング時は既存の covered 契約をゼロ流速の代理で保つ。
 - Fur は `SelectFlowFields(frame, false)` でシーン場だけを転送し、共通のチャンネル・Bounds 判定を使う。環境風は専用の曲げに適用するため、場のリストには再び含めない。履歴のインデックスと GPU バッファ構成は保つ。
 
