@@ -10,6 +10,7 @@
 #include "Common/BindlessIndices.hlsli"
 #include "Common/MaterialTextures.hlsli"
 #include "Common/ObjectInstance.hlsli"
+#include "Common/Space.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
 #include "Rendering/Shadow.hlsli"
@@ -17,7 +18,6 @@
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LeafWetness.hlsli"
 #include "Rendering/LodDither.hlsli"
-/// @note ApplyNormalMap は Shadow.hlsli → Space.hlsli 経由で入る。
 
 /// @note offset は C++ 側 MaterialConstants と一致させる。
 cbuffer MaterialConstants : register(CB_MATERIAL)
@@ -85,17 +85,22 @@ PSInput VSMain(VSInput v)
     const float4x4 objectWorld=world, objectNormal=worldInvTranspose;
 #endif
     PSInput o;
-    float4 worldPos4 = mul(float4(FbzzLeafWind(v.position, v.uv, objectWorld, time), 1.0f), objectWorld);
+    float3 localNormal = v.normal;
+    float3 localTangent = v.tangent;
+    const float3 localPosition = FbzzLeafWindDeform(v.position, v.uv, objectWorld, time, true, localNormal, localTangent);
+    float4 worldPos4 = mul(float4(localPosition, 1.0f), objectWorld);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = SafeNormalize(mul(v.normal,  (float3x3)objectNormal), float3(0.0f, 1.0f, 0.0f));
-    o.tangent    = SafeNormalize(mul(v.tangent, (float3x3)objectWorld), float3(1.0f, 0.0f, 0.0f));
+    o.normal     = SafeNormalize(mul(localNormal, (float3x3)objectNormal), float3(0.0f, 1.0f, 0.0f));
+    o.tangent    = SafeNormalize(mul(localTangent, (float3x3)objectWorld), float3(1.0f, 0.0f, 0.0f));
     o.uv         = v.uv;
     return o;
 }
 
-float4 PSMain(PSInput p) : SV_Target0
+float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
 {
+    const float3 worldPositionDx = ddx(p.worldPos);
+    const float3 worldPositionDy = ddy(p.worldPos);
     ApplyLodDither(p.svPosition.xy, objectParams.x);
     if (objectParams.y > 0.5f && alphaCutoff > 0.0f)
         return Lighting_CardWireframe(p.normal, objectParams.y);
@@ -141,6 +146,7 @@ float4 PSMain(PSInput p) : SV_Target0
         wet = ApplyWetness(col, rough, N);
     col   = wet.albedo;
     rough = max(wet.roughness, 0.045f);
+    N = OrientSurfaceNormal(N, frontFace);
     rough = FilterSpecularRoughness(N, rough);
 
     const float3 tangent = SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f));
@@ -155,8 +161,8 @@ float4 PSMain(PSInput p) : SV_Target0
 
     float3 V      = SafeNormalize(cameraPos - p.worldPos, N);
     float3 L      = SafeNormalize(-lightDir, N);
-    float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
-                                  lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    float  shadow = ComputeShadowSurface(texShadow, sampShadow, p.worldPos,
+        lightViewProjection, shadowMapTexelSize, shadowBias, N, L, worldPositionDx, worldPositionDy);
     /// @note Forward の画面空間 AO / 接触影。Deferred では b8 が 0 なので素通りする。
     shadow *= FBZZ_ScreenContactShadow(p.svPosition.xy);
     ao *= FBZZ_ScreenAO(p.svPosition.xy);
@@ -171,7 +177,7 @@ float4 PSMain(PSInput p) : SV_Target0
               sampDefault, sampLinearClamp)
         : Lighting_PBR_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
-              lightColor, lightIntensity, shadow);
+              lightColor, lightIntensity, shadow, ao, receiverInWater, receiverMedium);
 
     /// @note 点光源 / スポットの走査元は clusterLightMode が決める (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN_PBR(p.worldPos, p.svPosition.xy, N, V, col, met, rough)

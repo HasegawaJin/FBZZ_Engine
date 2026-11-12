@@ -69,7 +69,8 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     float4 gb1    = texGBuffer1.Sample(sampGBuffer, uv);
     float4 receiverEmission = texGBufferEmission.Sample(sampGBuffer, uv);
     const bool resolveActive = HybridReflectionResolveActive(reflectionResolveEnabled);
-    const bool glassReceiver = resolveActive && HybridGlassReceiver(receiverEmission.a);
+    const float surfaceMarker = GBufferSurfaceMarker(receiverEmission.a);
+    const bool glassReceiver = resolveActive && HybridGlassReceiver(surfaceMarker);
     /// @note The immutable SSR source excludes authored glass rather than lighting its opaque GBuffer proxy.
     if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_SOURCE && glassReceiver) return float4(0, 0, 0, 1);
     float4 rayReflection = 0.0f;
@@ -78,7 +79,7 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
         rayReflection = texRayReflection.Sample(sampGBuffer, uv);
     /// @note A proven camera-inside/glass result owns complete radiance, including an opaque terminal; Raster lighting must not be added again.
     if (reflectionResolveEnabled == HYBRID_REFLECTION_RESOLVE_FINAL
-        && (receiverEmission.a == 0 || receiverEmission.a == HYBRID_GLASS_SUPPORTED)
+        && (surfaceMarker == 0 || surfaceMarker == HYBRID_GLASS_SUPPORTED)
         && rayReflection.a == HYBRID_REFLECTION_DIELECTRIC_FULL && all(isfinite(rayReflection)) && all(rayReflection.rgb >= 0))
         return float4(rayReflection.rgb, 1);
     float3 col    = gb0.rgb;
@@ -92,11 +93,11 @@ float4 PSMain(FBZZFullscreenVertex p) : SV_Target0
     rough = clamp(rough, 0.045f, 1.0f);
     met   = saturate(met);
 
-    float ao = 1.0f;
+    float ao = GBufferMaterialAO(receiverEmission.a);
     if (ssaoIntensity > 0.0f)
     {
         float ssao = texSSAO.Sample(sampLinearClamp, uv).r;
-        ao = lerp(1.0f, saturate(ssao), saturate(ssaoIntensity));
+        ao *= lerp(1.0f, saturate(ssao), saturate(ssaoIntensity));
     }
 
     float3 V      = SafeNormalize(cameraPos - worldPos, N);

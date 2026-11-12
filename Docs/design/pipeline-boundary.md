@@ -94,7 +94,9 @@ Lambert / Unlit と、標準契約を宣言していないプロジェクト側�
 
 ### 2.2 発光の保持 (2026-09-30)
 
-標準 PBR の発光を Deferred でも保持するため、現在の GBuffer は RGBA16F の 3 枚とする。Target0 は albedo / roughness、Target1 は符号化した shading normal / metallic、Target2 は線形 HDR emission / 予約である。上記の「2 枚」は発光保持を追加する前の能力判定の背景であり、拡張ローブと接線基底は引き続き格納しない。
+標準 PBR の発光を Deferred でも保持するため、現在の GBuffer は RGBA16F の 3 枚とする。Target0 は albedo / roughness、Target1 は符号化した shading normal / metallic、Target2 は線形 HDR emission / Hybrid マーカーと材質 AO である。上記の「2 枚」は発光保持を追加する前の能力判定の背景であり、拡張ローブと接線基底は引き続き格納しない。
+
+Target2 の alpha は整数部に Hybrid マーカー (0、1、2)、小数部に (1 - 材質 AO) × 0.25 を保持する。整数だけを書き込む経路は材質 AO が 1 になる。照明は材質 AO と画面空間 AO を乗算し、Hybrid の厳密比較は整数部で行う。
 
 `GBuffer.hlsl` の static / instanced / skinned は Forward PBR と同じ UV・sRGB デコードで emissive texture × emissiveColor × emissiveScale を出力する。Engine の 96 バイト材質への正規化も発光色と強度を移す。地形と Fiber は発光なしを明示して Target2 に 0 を書き、背後の発光面の値を残さない。
 

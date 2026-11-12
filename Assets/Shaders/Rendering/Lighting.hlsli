@@ -274,6 +274,26 @@ float3 Lighting_PBR_Advanced(
 }
 
 /// @brief 拡張 PBR + IBL。拡散はキューブだけ。
+/// @brief Shade the main light and the ambient fallback when no environment cubemap is active.
+float3 Lighting_PBR_Advanced(
+    float3 worldPos, float3 N, float3 V, float3 L, float3 T, float3 B,
+    float3 albedo, float metallic, float roughness,
+    float clearcoat, float clearcoatRoughness,
+    float sheen, float anisotropy, float3 sheenColor,
+    float3 lightColor, float lightIntensity, float shadow, float ao,
+    bool receiverInWater, FBZZWaterMediumSample medium)
+{
+    float3 directTransmittance = 1.0f;
+    [branch] if (lightIntensity != 0.0f && any(lightColor != 0.0f))
+        directTransmittance = Lighting_WaterSourceTransmittance(worldPos, L,
+            receiverInWater ? medium.maxDistance : 0.0f, receiverInWater, medium);
+    const float3 ambient = albedo * ambientColor * ao
+        * Lighting_WaterEnvironmentTransmittance(worldPos, receiverInWater, medium);
+    return ambient + Lighting_PBR_Advanced(N, V, L, T, B, albedo, metallic, roughness,
+        clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
+        lightColor * directTransmittance, lightIntensity, shadow);
+}
+
 float3 Lighting_PBR_IBL_Advanced(
     float3 N, float3 V, float3 L, float3 T, float3 B,
     float3 albedo, float metallic, float roughness,

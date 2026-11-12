@@ -6,6 +6,7 @@
 /// @note SV_Target0 = albedo(linear) / roughness、SV_Target1 = worldNormal*0.5+0.5 / metallic、SV_Target2 = emission (Pipeline/Deferred/GBuffer.hlsl と一致)。
 /// @see Docs/design/terrain-layers.md
 #include "Common/Binding.hlsli"
+#include "Rendering/HybridGlassPolicy.hlsli"
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
 #include "Terrain/TerrainSurface.hlsli"
@@ -22,7 +23,6 @@ GBufferOut PSMain(TerrainPSInput p)
     TerrainSurface surface = EvaluateTerrainSurface(p, 1.0f);
     const float3 N = surface.normal;
 
-    /// @note AO は GBuffer にチャンネルが無く、画面空間 GTAO/SSAO が担う (メッシュと同じ扱い)。
     float roughness = saturate(surface.roughness);
 
     /// @note 天候。地形は b1 を TerrainCB に使うので b8 を宣言できず、値は TerrainCB から手渡す。
@@ -37,6 +37,6 @@ GBufferOut PSMain(TerrainPSInput p)
     o.albedoRoughness = float4(wet.albedo, roughness);
     o.normalMetallic  = float4(N * 0.5f + 0.5f, 0.0f);
     /// @note 地形は現在発光材質を持たない。背後の発光面の値を残さない。
-    o.emission = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    o.emission = float4(0.0f, 0.0f, 0.0f, PackGBufferSurface(0.0f, surface.ao));
     return o;
 }

@@ -52,6 +52,15 @@ float3 ApplyNormalMap(float3 normalSample, float3 N, float3 T)
     return normalize(mul(n, TBN));
 }
 
+/// @brief Orient the evaluated shading normal to the rasterized side of a two-sided surface.
+/// @note Apply after tangent-space perturbations so the back-face normal is the inverse of the full front-face result.
+/// @see https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#double-sided glTF 2.0 Double Sided.
+/// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-semantics SV_IsFrontFace.
+float3 OrientSurfaceNormal(float3 normal, bool frontFace)
+{
+    return frontFace ? normal : -normal;
+}
+
 /// @brief ワールド座標をライトのクリップ空間へ写し、シャドウマップの UV と比較用深度を返す。
 /// @note 影マップは通常の Z (near → 0、far → 1)。
 void WorldToShadowUV(float3 worldPos, float4x4 lightVP,

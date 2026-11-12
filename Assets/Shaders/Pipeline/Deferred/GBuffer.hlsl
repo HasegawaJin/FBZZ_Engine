@@ -2,7 +2,7 @@
 /// @brief   標準 PBR の表面と線形 HDR 発光を 3 枚の MRT に保持する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
-/// @note SV_Target0: albedo / roughness、SV_Target1: normal / metallic、SV_Target2: emission / validated Hybrid surface marker。
+/// @note SV_Target0: albedo / roughness、SV_Target1: normal / metallic、SV_Target2: emission / packed Hybrid surface marker and material AO。
 
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
@@ -18,11 +18,13 @@
 #include "Common/BindlessIndices.hlsli"
 #include "Common/ObjectInstance.hlsli"
 #include "Rendering/LeafWind.hlsli"
+#include "Rendering/HybridGlassPolicy.hlsli"
 
 FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
 FBZZ_TEX2D(texNormal, TEX_NORMAL_SLOT);
 FBZZ_TEX2D(texMetallicRough, TEX_METALLIC_ROUGH_SLOT);
 FBZZ_TEX2D(texEmissive, TEX_EMISSIVE_SLOT);
+FBZZ_TEX2D(texAO, TEX_AO_SLOT);
 FBZZ_TEX2D(texLeafWetness, 7);
 SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 
@@ -30,11 +32,14 @@ SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 PSInput GBufferVS(VSInput v, float4x4 objectWorld, float4x4 objectWorldInvTranspose)
 {
     PSInput o;
-    float4 worldPos4 = mul(float4(FbzzLeafWind(v.position, v.uv, objectWorld, time), 1.0f), objectWorld);
+    float3 localNormal = v.normal;
+    float3 localTangent = v.tangent;
+    const float3 localPosition = FbzzLeafWindDeform(v.position, v.uv, objectWorld, time, true, localNormal, localTangent);
+    float4 worldPos4 = mul(float4(localPosition, 1.0f), objectWorld);
     o.worldPos   = worldPos4.xyz;
     o.svPosition = mul(worldPos4, viewProjection);
-    o.normal     = SafeNormalize(mul(v.normal, (float3x3)objectWorldInvTranspose), float3(0.0f, 1.0f, 0.0f));
-    o.tangent    = SafeNormalize(mul(v.tangent, (float3x3)objectWorld), float3(1.0f, 0.0f, 0.0f));
+    o.normal     = SafeNormalize(mul(localNormal, (float3x3)objectWorldInvTranspose), float3(0.0f, 1.0f, 0.0f));
+    o.tangent    = SafeNormalize(mul(localTangent, (float3x3)objectWorld), float3(1.0f, 0.0f, 0.0f));
     o.uv         = v.uv;
     return o;
 }
@@ -85,7 +90,7 @@ PSInput VSMain(VSInput v)
 }
 #endif
 
-GBufferOut PSMain(PSInput p)
+GBufferOut PSMain(PSInput p, bool frontFace : SV_IsFrontFace)
 {
     ApplyLodDither(p.svPosition.xy, objectParams.x);
 
@@ -128,6 +133,7 @@ GBufferOut PSMain(PSInput p)
         wet = ApplyWetness(col, saturate(rough), N);
     col   = wet.albedo;
     rough = wet.roughness;
+    N = OrientSurfaceNormal(N, frontFace);
 
     /// @note 1 面の法線分散は、別オブジェクトの法線が混ざる GBuffer 読み取りより前に測る。
     rough = FilterSpecularRoughness(N, rough);
@@ -138,11 +144,15 @@ GBufferOut PSMain(PSInput p)
         ? SRGBToLinear(texEmissive.Sample(sampDefault, uv).rgb)
         : float3(1.0f, 1.0f, 1.0f);
 
+    const float materialAO = (textureMask & (1u << 4))
+        ? lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength)
+        : 1.0f;
+
     GBufferOut o;
     o.albedoRoughness = float4(col, rough);
     /// @note 法線は [-1,1] → [0,1] にエンコード (復元: n*2-1)
     o.normalMetallic  = float4(N * 0.5f + 0.5f, met);
     /// @note The normalized draw material supplies opaque0 / supportedGlass1 / unsupportedTypedGlass2 at float@84; alpha is not emission energy.
-    o.emission = float4(emissionTexture * emissiveColor * emissiveScale, _matPad1.x);
+    o.emission = float4(emissionTexture * emissiveColor * emissiveScale, PackGBufferSurface(_matPad1.x, materialAO));
     return o;
 }

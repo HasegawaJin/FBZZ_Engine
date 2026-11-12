@@ -9,6 +9,7 @@
 #include "Common/Constants.hlsli"
 #include "Common/Structs.hlsli"
 #include "Common/Skinning.hlsli"
+#include "Common/Space.hlsli"
 #include "Common/Color.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Rendering/Lighting.hlsli"
@@ -80,8 +81,10 @@ PSInput VSMain(SkinnedVSInput v)
     return o;
 }
 
-float4 PSMain(PSInput p) : SV_Target0
+float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
 {
+    const float3 worldPositionDx = ddx(p.worldPos);
+    const float3 worldPositionDy = ddy(p.worldPos);
     ApplyLodDither(p.svPosition.xy, objectParams.x);
 
     float2 uv = p.uv * uvTiling + uvOffset;
@@ -116,6 +119,7 @@ float4 PSMain(PSInput p) : SV_Target0
     const WetSurface wet = ApplyWetness(col, rough, N);
     col   = wet.albedo;
     rough = max(wet.roughness, 0.045f);
+    N = OrientSurfaceNormal(N, frontFace);
     rough = FilterSpecularRoughness(N, rough);
     const float3 tangent = SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f));
     float3 T = SafeNormalize(tangent - N * dot(N, tangent),
@@ -131,8 +135,8 @@ float4 PSMain(PSInput p) : SV_Target0
     const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(p.worldPos, receiverMedium);
     float3 V      = SafeNormalize(cameraPos - p.worldPos, N);
     float3 L      = SafeNormalize(-lightDir, N);
-    float  shadow = ComputeShadow(texShadow, sampShadow, p.worldPos,
-                                  lightViewProjection, shadowMapTexelSize, shadowBias, N, L);
+    float  shadow = ComputeShadowSurface(texShadow, sampShadow, p.worldPos,
+        lightViewProjection, shadowMapTexelSize, shadowBias, N, L, worldPositionDx, worldPositionDy);
     /// @note スキンドは GBuffer に描かれない (ExecuteGBufferPass が isSkinned を除外) ので、画面空間 AO / 接触影は背景の遮蔽を読んでしまい使わない。
     /// @note Deferred でもキャラは DeferredLighting を通らないため、パイプライン間の差は出ない。
     float3 result = iblIntensity > 0.0f
@@ -144,7 +148,7 @@ float4 PSMain(PSInput p) : SV_Target0
               sampDefault, sampLinearClamp)
         : Lighting_PBR_Advanced(p.worldPos, N, V, L, T, B, col, met, rough,
               clearcoat, clearcoatRoughness, sheen, anisotropy, sheenColor,
-              lightColor, lightIntensity, shadow);
+              lightColor, lightIntensity, shadow, ao, receiverInWater, receiverMedium);
 
     /// @note 点光源 / スポットの走査元は clusterLightMode が決める (b3 の固定長配列 / StructuredBuffer / クラスタリスト)。
     FBZZ_PUNCTUAL_BEGIN_PBR(p.worldPos, p.svPosition.xy, N, V, col, met, rough)

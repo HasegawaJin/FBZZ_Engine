@@ -889,7 +889,7 @@ void CSMain(uint3 pixel : SV_DispatchThreadID)
     float glassMarker = 0;
     if (glassEnabled) {
         Texture2D<float4> gbufferEmission = ResourceDescriptorHeap[FbzzPixelSlot(22)];
-        glassMarker = gbufferEmission.Load(int3(pixel.xy, 0)).a;
+        glassMarker = GBufferSurfaceMarker(gbufferEmission.Load(int3(pixel.xy, 0)).a);
         if (!isfinite(glassMarker) || (HybridGlassReceiver(glassMarker) && glassMarker != HYBRID_GLASS_SUPPORTED)) return;
     }
     Texture2D<float> depthTexture = ResourceDescriptorHeap[FbzzPixelSlot(7)];
