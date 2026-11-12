@@ -296,14 +296,11 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection);
-    SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
-    SubmitFiberShadowCasters(ctx, lightFrameData, cascade.frustum);
-
-    /// @note Terrain は自前でチャンクを走査し、チャンク単位で objectCB を更新するため
-    /// @note caster 配列には混ぜない。地形は 1 枚の連続面で自己重なりが無く、
-    /// @note 並べ替えても Hi-Z の効きが変わらない。
+    /// @note 植生のアルファテストより先に地形の深度を入れ、遮られたフラグメントを棄却できるようにする。
     SubmitTerrainShadowBatchView(ctx, cascade.frustum, cascade.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
         ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, usesBakedStaticDepth);
+    SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
+    SubmitFiberShadowCasters(ctx, lightFrameData, cascade.frustum);
 }
 
 /// @note RenderPunctualShadowView — Spot / Point のタイル 1 枚を描く。

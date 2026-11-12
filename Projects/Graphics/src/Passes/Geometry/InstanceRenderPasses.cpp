@@ -323,12 +323,13 @@ void SetFrustumPlanes(InstanceView& view,const math::Frustum& frustum)
         view.planes[i]={plane.normal.x,plane.normal.y,plane.normal.z,plane.distance};
     }
 }
-/// @note Use light-space texels for the extra shadow-only reduction on authored vegetation.
+/// @note 中遠景の植生は影マップ上の直径 40 / 80 texel を境に LOD 2 / 1 へ落とす。
 void ConfigureShadowLod(InstanceView& view, const InstanceShadowView& light, bool vegetation)
 {
     if (light.preserveVegetationDetail) view.vegetation[2] = 0;
+    constexpr float SHADOW_LOD_TEXEL_SCALE = 0.5f;
     if (vegetation && light.directional && !light.preserveVegetationDetail && light.texelWorldSize > 0.0f)
-        view.forward.w = 1.0f / light.texelWorldSize;
+        view.forward.w = SHADOW_LOD_TEXEL_SCALE / light.texelWorldSize;
 }
 InstanceView View(const RenderPassContext& ctx,const RenderInstanceInput& input,const math::Frustum& frustum,bool shadow)
 {
