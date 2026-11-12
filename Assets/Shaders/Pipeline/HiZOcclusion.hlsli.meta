@@ -1,0 +1,6 @@
+# @file    HiZOcclusion.hlsli.meta
+# @brief   描画深度による遮蔽シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-12
+[meta]
+guid = "a67bdca265f84781855651e8f97ed465"

@@ -4,6 +4,7 @@
 /// @date    2026-10-10
 #include "Common/Binding.hlsli"
 #include "Common/BindlessIndices.hlsli"
+#include "Pipeline/HiZOcclusion.hlsli"
 struct Record { float4x4 world; float4x4 normal; float4x4 previousWorld; float4 bounds; };
 struct View {
     float4 planes[6];
@@ -56,62 +57,6 @@ bool Occluded(float3 center, float radius)
         [loop] for (uint x = first.x; x <= last.x; ++x) {
             const uint pixel = y * (uint)metrics.z + x;
             if (g_occlusion[9 + pixel / 4][pixel & 3] >= nearest) return false;
-        }
-    }
-    return true;
-}
-/// @brief Tests all tiles covering a projected sphere against the current reversed-Z depth hierarchy.
-/// @note Bounds are expanded for clip-space arithmetic and raster sample positions. Near and viewport intersections keep the candidate.
-/// @see https://developer.nvidia.com/gpugems/gpugems2/part-v-image-oriented-computing/chapter-42-conservative-rasterization Conservative Depth.
-bool OccludedByTerrainHiZ(float3 center, float radius, View view)
-{
-    if (radius <= 0 || !all(isfinite(float4(center, radius)))) return false;
-    const float4 position = float4(center, 1);
-    const float4 clipCenter = mul(position, view.terrainViewProjection);
-    const float4 clipX = radius * view.terrainViewProjection[0];
-    const float4 clipY = radius * view.terrainViewProjection[1];
-    const float4 clipZ = radius * view.terrainViewProjection[2];
-    const float4 error = 2.0e-6 * (mul(abs(position), abs(view.terrainViewProjection))
-        + abs(clipX) + abs(clipY) + abs(clipZ)) + 1.0e-7;
-    if (!all(isfinite(error))) return false;
-
-    float2 low = 1.0, high = -1.0;
-    float nearest = 0.0;
-    [unroll] for (uint corner = 0; corner < 8; ++corner) {
-        const float4 clip = clipCenter + ((corner & 1) ? clipX : -clipX)
-            + ((corner & 2) ? clipY : -clipY) + ((corner & 4) ? clipZ : -clipZ);
-        const float minW = clip.w - error.w;
-        const float maxZ = clip.z + error.z;
-        if (!all(isfinite(clip)) || minW <= 0 || clip.z - error.z <= 0 || maxZ >= minW) return false;
-        const float2 ndc = clip.xy / clip.w;
-        const float2 margin = (error.xy + abs(ndc) * error.w) / minW;
-        low = min(low, ndc - margin);
-        high = max(high, ndc + margin);
-        nearest = max(nearest, maxZ / minW);
-    }
-
-    const float2 dimensions = float2(view.terrainDepth.xy);
-    const float2 firstPixel = float2(low.x * 0.5 + 0.5, 0.5 - high.y * 0.5) * dimensions - 1.0;
-    const float2 lastPixel = float2(high.x * 0.5 + 0.5, 0.5 - low.y * 0.5) * dimensions + 1.0;
-    if (!all(isfinite(float4(firstPixel, lastPixel))) || any(firstPixel < 0) || any(lastPixel >= dimensions)) return false;
-
-    /// @note Levels are tightly packed, starting at ceil(viewport/4) with ceil-halving to 1×1.
-    uint2 tiles = (view.terrainDepth.xy + 3u) / 4u;
-    uint2 first = uint2(floor(firstPixel)) / 4u;
-    uint2 last = uint2(floor(lastPixel)) / 4u;
-    uint levelOffset = 0u;
-    [loop] while (any(last - first > 1u)) {
-        levelOffset += tiles.x * tiles.y;
-        tiles = (tiles + 1u) / 2u;
-        first /= 2u;
-        last /= 2u;
-    }
-    /// @note Min reduction preserves the farthest covered pixel, including the far clear depth of holes.
-    const float guardedNearest = nearest + 1.0e-5;
-    [loop] for (uint y = first.y; y <= last.y; ++y) {
-        [loop] for (uint x = first.x; x <= last.x; ++x) {
-            const float depth = g_terrainHiZ[levelOffset + y * tiles.x + x];
-            if (!isfinite(depth) || depth <= guardedNearest || depth > 1.0) return false;
         }
     }
     return true;
@@ -177,7 +122,8 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
     if (view.culling.y>0 && cullDistance>0 && screenHeight<view.culling.y) return;
 #if !defined(FBZZ_INSTANCE_CASCADE_CULL)
     if (view.culling.w>0 && Occluded(sphere.xyz,radius)) return;
-    if (view.terrainDepth.x!=0 && OccludedByTerrainHiZ(sphere.xyz,radius,view)) return;
+    if (view.terrainDepth.x!=0 && OccludedByHiZ(sphere.xyz, radius, view.terrainViewProjection,
+        view.terrainDepth.xy, g_terrainHiZ)) return;
 #endif
     const float relativeHeight=2*sphere.w*view.cameraProjection.w/view.metrics.x
         /(view.metrics.w>0.5f ? 1.0f : max(distance-sphere.w,view.metrics.y));
