@@ -176,7 +176,7 @@ class FogOverride final : public VolumeOverride {
     float density     = 0.04f;
     float farDistance = 80.0f;
     float color[3]    = { 0.55f, 0.65f, 0.75f };
-    /// 0=Exponential (固定色) / 1=Atmosphere (大気散乱)。AtmosphericScatteringComponent::FogSource と一致させること。
+    /// @note 0 = Exponential (固定色)、1 = Atmosphere (空の大気散乱色)。
     int   source      = 0;
 };
 
@@ -211,6 +211,7 @@ class FroxelFogOverride final : public VolumeOverride {
     float nearDistance  = 0.1f;
     float farDistance   = 64.0f;
     float ambient       = 1.0f;
+    float lightScattering = 2.0f;
 };
 
 /// @brief 画面の明るさから露出を自動で決める (眼の順応)。
@@ -285,4 +286,4 @@ public:
 
 #undef FBZZ_VOLUME_OVERRIDE_BODY
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset

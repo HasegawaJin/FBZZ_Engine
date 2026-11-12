@@ -413,7 +413,7 @@ GameObject の階層と型別の `ComponentArray` を使う。世代付き Entit
 | 描画 | `MeshRenderer` / `SkinnedMeshRenderer` / `MaterialComponent` / `ProceduralMeshComponent` / `LODGroupComponent` / `DecalComponent` |
 | カメラ | `CameraComponent` / `CameraRigComponents` |
 | ライティング | `LightComponent` (Directional / Point / Spot / Area / Sphere / Tube) / `EnvironmentLightComponent` / `ReflectionProbeComponent` |
-| 空・天候 | `SkyRenderer` / `SunMoonRenderer` / `AtmosphericScatteringComponent` / `VolumetricCloudComponent` / `WeatherComponent` |
+| 空・天候 | `SkyRenderer` / `SunMoonRenderer` / `VolumetricCloudComponent` / `WeatherComponent` / `PostProcessVolumeComponent` の Fog |
 | ポストプロセス | `VolumeComponent` (グローバル) / `PostProcessVolumeComponent` (ローカル) |
 | 物理 | `ColliderComponent` (8 形状) / `RigidBodyComponent` / `CharacterControllerComponent` / `ConstraintComponents` / `JointComponent` / `RagdollComponent` |
 | アニメーション | `AnimatorComponent` / `BoneComponent` / `IKSolverComponent` / `MotionWarpComponent` / `SpringBoneComponent` / `SequencePlayerComponent` |

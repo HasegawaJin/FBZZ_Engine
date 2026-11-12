@@ -437,7 +437,6 @@
 { "Decal",                     "" },
 { "Post Process Volume",       "" },
 { "Reflection Probe",          "" },
-{ "Atmospheric Scattering",    "" },
 { "Volumetric Cloud",          "" },
 { "Sky Renderer",              "" },
 { "Sun Moon Renderer",         "" },

@@ -70,12 +70,9 @@ float LinearDepthFromNdc(float ndcZ)
 
 /// @note ApplyFroxelFog — 積分済みボリュームから「加算する光」と「背景の透過率」を取り出す。
 /// @note rgb = 視線に沿って散乱してきた光, a = 背景に掛ける透過率
-float3 ApplyFroxelFog(float3 hdr, float2 uv, float ndcDepth)
+float3 ApplyFroxelFog(float3 hdr, float2 uv, float viewZ)
 {
     if (froxelGridZ == 0u) return hdr;
-
-    /// @note 深度が最遠 (スカイドーム) のときは、グリッドの最終スライスまで積分した値になる。
-    const float viewZ = LinearDepthFromNdc(ndcDepth);
 
     /// @note Load でなく Sample。スライス間を補間しないと、粗いグリッドの境界がそのまま画面上の縞になる。
     const float4 fog = FBZZ_SampleIntegratedFroxel(texFroxelFog, sampLinearClamp, uv, viewZ);
@@ -528,6 +525,8 @@ CompositeOutput PSMain(FBZZFullscreenVertex p)
     uv = ShockRingUV(uv, shockRingCenter, shockRingRadius, shockRingWidth, shockRingAmplitude);
     bool coefficientUnderwater = underwaterOpticalMode > 0.5f && underwaterStrength > 0.0f;
     bool sharedWaterOptics = underwaterOpticalMode > 1.5f;
+    /// @note Shared water is a scene-wide composition mode, while underwaterDepth describes the camera's actual medium.
+    const bool applyAirFog = !coefficientUnderwater || (sharedWaterOptics && underwaterDepth <= 0.0f);
     if (coefficientUnderwater && !sharedWaterOptics && underwaterDistortion > 0.0f)
     {
         float wave = sin((uv.x + uv.y) * 28.0f + time * 2.4f);
@@ -561,6 +560,28 @@ CompositeOutput PSMain(FBZZFullscreenVertex p)
     [branch]
     if (dofBlurRadius > 0.0f || fogDensity > 0.0f || underwaterStrength > 0.0f || froxelGridZ != 0u)
         ndcDepth = texDepth.Sample(sampLinearClamp, uv).r;
+    float airFogViewZ = LinearDepthFromNdc(ndcDepth);
+    bool airFogHasSurface = !IsFarDepth(ndcDepth);
+    [branch]
+    if (applyAirFog && sharedWaterOptics && (fogDensity > 0.0f || froxelGridZ != 0u))
+    {
+        /// @note Transparent water does not write opaque depth; terminate air transport at its first visible interface.
+        /// @see Docs/design/water-gameplay-visuals.md WaterInterface stores view depth normalized by farZ.
+        uint interfaceWidth = 0u;
+        uint interfaceHeight = 0u;
+        g_waterInterface.GetDimensions(interfaceWidth, interfaceHeight);
+        if (interfaceWidth > 0u && interfaceHeight > 0u)
+        {
+            const int2 interfacePixel = clamp((int2)(uv * float2(interfaceWidth, interfaceHeight)),
+                int2(0, 0), int2(interfaceWidth, interfaceHeight) - 1);
+            const float4 interfaceValue = g_waterInterface.Load(int3(interfacePixel, 0));
+            if (interfaceValue.x > 0.0f && interfaceValue.w > 0.5f)
+            {
+                airFogViewZ = min(airFogViewZ, max(interfaceValue.y * farZ, 0.0f));
+                airFogHasSurface = true;
+            }
+        }
+    }
     hdr = ApplyDepthOfFieldHDR(hdr, uv, ndcDepth);
     hdr = ApplySharpenHDR(hdr, uv);
 
@@ -581,15 +602,16 @@ CompositeOutput PSMain(FBZZFullscreenVertex p)
         else
             hdr = ApplyUnderwaterOpticsHDR(hdr, uv, ndcDepth);
     }
-    else
-        hdr = ApplyFroxelFog(hdr, uv, ndcDepth);
+    if (applyAirFog)
+        hdr = ApplyFroxelFog(hdr, uv, airFogViewZ);
 
     /// @note 露出 → ACES トーンマップ → sRGB ガンマ補正
     const float resolvedExposure = ResolveExposure();
     float3 ldr = FinalOutput(hdr, resolvedExposure);
     /// @note HDR 平均は非線形の画面変換より先。旧 LDR 霧・空間効果は従来の LDR 履歴を使う。
     /// @see https://knarkowicz.wordpress.com/2016/01/06/aces-filmic-tone-mapping-curve/ Exposure before tone mapping and gamma afterwards.
-    const bool hdrHistoryCompatible = (coefficientUnderwater || (fogDensity <= 0.0f && clarityStrength <= 0.0f))
+    const bool hdrHistoryCompatible = (!applyAirFog || fogDensity <= 0.0f)
+        && (coefficientUnderwater || clarityStrength <= 0.0f)
         && !(underwaterStrength > 0.0f && underwaterOpticalMode <= 0.5f)
         && pixelSize <= 1.0f && abs(lensDistortion) <= 1e-5f && shockRingAmplitude <= 1e-5f
         && (!coefficientUnderwater || sharedWaterOptics || underwaterDistortion <= 0.0f);
@@ -600,12 +622,11 @@ CompositeOutput PSMain(FBZZFullscreenVertex p)
     /// @note 深度から線形距離を復元してフォグを適用する。
     /// @note 深度 0 (Reversed-Z の最遠) はスカイドームなので霧を掛けない。
     /// @note フォグの適用ロジック (ApplyFog) は共通で、色の出どころだけ fogSource で切り替える (§3-3)。
-    if (fogDensity > 0.0f && !coefficientUnderwater)
+    if (fogDensity > 0.0f && applyAirFog)
     {
-        if (!IsFarDepth(ndcDepth))
+        if (airFogHasSurface)
         {
-            float linDepth = LinearDepthFromNdc(ndcDepth);
-            float dist     = max(linDepth - fogFar, 0.0f);
+            float dist     = max(airFogViewZ - fogFar, 0.0f);
             float factor   = FogFactor(dist, fogDensity);
 
             float3 col = fogColor; /// @note Exponential: 固定フォグ色

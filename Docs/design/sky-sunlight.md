@@ -6,6 +6,10 @@
 
 2026-11-05 の日当たり・日の出の見え方の改善依頼に対応する。既存の Sky / SunMoon / DirectionalLight を使い、空だけの独立した太陽方向は追加しない。光源 Transform の forward の反対が太陽方向で、影・水のハイライト・空は同じ方向を読む。
 
+## 空と霧の設定
+
+空の大気散乱は `SkyRenderer` が持つ。霧の密度・開始距離・色の方式は `Post Process Volume` の Profile にある `Fog` で編集する。`Atmosphere` を選ぶと `SkyRenderer` の大気散乱から霧の色を求める。旧シーンにコンポーネントとして保存された霧の設定は、グローバル Profile の `Fog` へ移す。
+
 ## 円盤と地平線
 
 太陽の角半径は1 AUにおける0.2666度を固定値として使う。軌道計算や時刻・緯度による自動運行は追加しない。[USNOの太陽座標](https://aa.usno.navy.mil/faq/sun_approx)の角半径式を参照する。円盤の縁は正規化した視線と太陽方向の弦長で測り、pixel shaderのfwidthで約1画素の被覆へなだらかに変える。円盤の色は光源のlightColorを使い、夕方の空・直接光と別の固定黄色を重ねない。

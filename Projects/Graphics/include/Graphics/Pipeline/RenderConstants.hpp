@@ -405,7 +405,8 @@ struct FroxelFogCB {
     float    historyBlend = 1.0f;
     /// @note 履歴が使えないフレーム (初回 / 解像度変更 / 霧の再有効化) の印。
     uint32_t historyValid = 0;
-    float    _pad[2]      = { 0.0f, 0.0f };
+    float    lightScattering = 1.0f;
+    float    _pad         = 0.0f;
 };
 static_assert(sizeof(FroxelFogCB) == 224,
     "FroxelFogCB must match FroxelFogConstants in Common/FroxelFogConstants.hlsli (224 bytes)");

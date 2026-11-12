@@ -11,6 +11,8 @@
 
 水中の色はHDRで背景放射輝度にBeer透過率を掛け、環境光の均質散乱と方向光の影付き単一散乱を加えた後、既存の露出・ACES・sRGB変換を受ける。固定青色のLDR霧と彩度低下を光学モードに重ねない。光のない環境では散乱は自己発光しない。方向光は空気から水への屈折と界面のFresnel透過、光源側のRGB消散、視線側のRGB消散を別々に扱う。[PBRT Transmittance](https://www.pbr-book.org/4ed/Volume_Scattering/Transmittance)、[Phase Functions](https://www.pbr-book.org/4ed/Volume_Scattering/Phase_Functions)、[UE Single Layer Water](https://dev.epicgames.com/documentation/en-us/unreal-engine/single-layer-water-shading-model-in-unreal-engine)を参照する。
 
+共有水域の合成modeはシーン全体に適用するが、空気のFogを抑止する判定にはカメラの解決済み水深を使う。Compositeの`underwaterDepth`は光学水中なら実水深、陸上・水域外・乾燥領域なら0とする。水域が存在しても乾いたカメラでは通常FogとFroxel Fogを維持し、不透明物体と最初の可視水面のうち近い方まで適用する。空だけの画素には従来どおり通常Fogを適用せず、Froxel Fogはグリッド終端まで適用する。
+
 方向光の積分は既存VolumetricRaw/VolumetricResultの半解像度と深度対応upsampleを再利用する。水中での結果はHDRへ先に加算せず、Compositeで透過後の背景へ一度だけ加える。記録成功をビューごとに保持し、無効化・失敗・Path表示では前フレームの散乱結果を読まない。上空の体積光は従来の水面前加算を維持する。新たな履歴・体積グリッド・全解像度レイマーチは増やさない。
 
 体積光の積分は PostProcess の VolumetricLight が明示的に有効な場合だけ行う。Water 材質の Optical Volume と Underwater Light は媒体と光の修飾値であり、PostProcess を自動で有効にしない。水中も PostProcess のステップ数と距離を上限にし、強度を掛ける。体積光オフでも背景の RGB 消散と環境光は維持する。共通条件は [VolumetricLight の契約](volumetric-light.md) を参照する。

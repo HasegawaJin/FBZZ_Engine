@@ -15,7 +15,6 @@
 #include <Engine/Scene/Components/SunMoonRenderer.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
 #include <limits>
@@ -89,7 +88,7 @@ math::Vector3 WorldToTerrainLocal(const GameObject* gameObject, const math::Vect
 
 
 /// @brief シーン全体から最初のコンポーネントを検索する汎用ヘルパー。
-/// @note EnvironmentLight/AtmosphericScattering/SkyRenderer は通常シーンに 1 つで、どの Script
+/// @note EnvironmentLight/SkyRenderer は通常シーンに 1 つで、どの Script
 /// @note からでもアクセスできるよう全探索する。enabled は見ない (SetEnabled(false) を呼ぶために
 /// @note コンポーネント自体を見つける必要があるため)。
 /// @note Script* でなく Scene* を受け取る: Script::m_scene は protected で free function から
@@ -376,39 +375,6 @@ void ScriptEnvironmentProxy::SetIBLSpecularScale(float scale) const
 }
 
 
-void ScriptEnvironmentProxy::SetFogEnabled(bool enabled) const
-{
-    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogEnabled = enabled;
-}
-
-void ScriptEnvironmentProxy::SetFogDensity(float density) const
-{
-    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogDensity = density;
-}
-
-void ScriptEnvironmentProxy::SetFogFar(float fogFar) const
-{
-    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogFar = fogFar;
-}
-
-void ScriptEnvironmentProxy::SetFogColor(const math::Vector3& rgb) const
-{
-    if (auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene)) c->fogColor = rgb;
-}
-
-bool ScriptEnvironmentProxy::IsFogEnabled() const
-{
-    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
-    return c && c->fogEnabled;
-}
-
-float ScriptEnvironmentProxy::GetFogDensity() const
-{
-    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
-    return c ? c->fogDensity : 0.0f;
-}
-
-
 void ScriptEnvironmentProxy::SetSunIntensity(float intensity) const
 {
     /// @note 対象は大気散乱の明るさ。太陽ディスクは ScriptSunMoonProxy::SetSun が持つ。
@@ -468,18 +434,6 @@ float ScriptEnvironmentProxy::GetIBLSpecularScale() const
     return c ? c->specularScale : 0.0f;
 }
 
-
-math::Vector3 ScriptEnvironmentProxy::GetFogColor() const
-{
-    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
-    return c ? c->fogColor : math::Vector3::ZERO;
-}
-
-float ScriptEnvironmentProxy::GetFogFar() const
-{
-    auto* c = FindFirstInScene<AtmosphericScatteringComponent>(script->m_scene);
-    return c ? c->fogFar : 0.0f;
-}
 
 /// @brief ScriptDecalProxy
 

@@ -118,7 +118,6 @@ struct FogSettings {
     float farDistance = 10.0f;
     float color[3] = { 0.01f, 0.01f, 0.04f };
     /// @note フォグ色の出どころ。0=Exponential(固定 color), 1=Atmosphere(大気散乱)。
-    /// @note AtmosphericScatteringComponent::FogSource と一致させること。
     int   source = 0;
 };
 
@@ -458,6 +457,8 @@ struct FroxelFogSettings {
     float heightStart   = 0.0f;
     /// @note 環境光が霧へ寄与する倍率。
     float ambient = 1.0f;
+    /// @note 直接光が霧へ散乱する倍率。1 が基準。
+    float lightScattering = 2.0f;
 };
 
 /// @note AutoExposureSettings — 画面の明るさから露出を自動で決める (眼の順応)。

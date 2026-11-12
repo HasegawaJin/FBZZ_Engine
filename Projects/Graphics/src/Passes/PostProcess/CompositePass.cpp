@@ -149,6 +149,8 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     if (sharedWaterOptics) {
         postData.underwaterOpticalMode = 2.0f;
         postData.underwaterStrength = 1.0f;
+        /// @note Shared composition also runs on land; only the resolved camera depth suppresses air fog.
+        postData.underwaterDepth = UsesOpticalUnderwater(underwater) ? underwater.depth : 0.0f;
         postData.underwaterMaxDistance = 0.0f;
         postData.underwaterLightSteps = 16.0f;
         for (const auto& packedBody : h.waterMediumBodies) {

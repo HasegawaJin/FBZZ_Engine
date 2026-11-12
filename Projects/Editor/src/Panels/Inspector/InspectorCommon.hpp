@@ -57,7 +57,6 @@
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
 #include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
-#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
 #include <Editor/Util/PostProcessInspectorWidgets.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
@@ -321,7 +320,6 @@ struct ComponentUndoCompare {
 
 FBZZ_COMPONENT_UNDO_REFLECTS(AabbColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(AnimatorComponent)
-FBZZ_COMPONENT_UNDO_REFLECTS(AtmosphericScatteringComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(BoneComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(BoxColliderComponent)
 FBZZ_COMPONENT_UNDO_REFLECTS(CapsuleColliderComponent)
@@ -978,7 +976,7 @@ inline bool DrawRemoveComponentMenuItem(scene::GameObject& go, const std::type_i
 }
 
 /// @brief 内部型 (addable = false) のカードでも Remove を出す型。
-/// @note ProceduralMesh はスクリプトの mesh.Apply が付け直すので外しても壊れない。Bone は骨格が壊れる。
+/// @note ProceduralMesh は mesh.Apply で再作成できる。
 template<typename T>
 [[nodiscard]] constexpr bool ComponentCardAllowsRemove()
 {

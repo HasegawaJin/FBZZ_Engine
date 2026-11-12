@@ -1187,8 +1187,13 @@ struct ImGuiReflector : scene::IReflector {
     void FloatRange(const char* name, float& v, float min, float max) override
     {
         if (!BeginRow(name)) return;
-        /// @note ゲージ (スライダー) + 数値入力ボックス。"##" でラベルを隠し、左カラムの名前だけ使う。
-        m_changed |= widgets::RangeField("##v", v, min, max);
+        const float step = FieldStep();
+        if (step > 0.0f) {
+            m_changed |= widgets::DragFloatExpr("##v", v, step, min, max, "%.4f",
+                                                ImGuiSliderFlags_AlwaysClamp);
+        } else {
+            m_changed |= widgets::RangeField("##v", v, min, max);
+        }
         EndRow();
     }
 

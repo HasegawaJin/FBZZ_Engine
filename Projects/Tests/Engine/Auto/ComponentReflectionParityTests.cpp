@@ -27,7 +27,6 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 
-#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
@@ -233,12 +232,6 @@ TEST_F(ComponentReflectionParityTest, VolumetricCloudKeepsItsSceneKeys)
           "lightStepCount", "maxDistance", "minDistance", "multiScatter", "powderStrength",
           "silverLining", "stepCount", "sunIntensity", "sunTint", "thickness", "topSoftness",
           "weatherAmount", "weatherSize", "windDirection", "windSpeed" });
-}
-
-TEST_F(ComponentReflectionParityTest, AtmosphericScatteringKeepsItsSceneKeys)
-{
-    ExpectKeysStillWritten<scene::AtmosphericScatteringComponent>("AtmosphericScatteringComponent",
-        { "enabled", "fogColor", "fogDensity", "fogEnabled", "fogFar", "fogSource" });
 }
 
 TEST_F(ComponentReflectionParityTest, EnvironmentLightKeepsItsSceneKeys)

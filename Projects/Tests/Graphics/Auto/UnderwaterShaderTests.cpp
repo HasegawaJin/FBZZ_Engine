@@ -122,10 +122,12 @@ protected:
         m_black = resources.CreateTexture(black, 1, 1);
         m_white = resources.CreateTexture(white, 1, 1);
         m_zero3d = resources.CreateTexture3D(black, 1, 1, 1);
+        const uint8_t fog[] = {16, 32, 64, 128};
+        m_testFog = resources.CreateTexture3D(fog, 1, 1, 1);
         ASSERT_TRUE(m_composite && m_volume && m_upsample && m_caustics && m_depthShader && m_copy);
         ASSERT_TRUE(m_colorState && m_depthState && m_frameCB && m_shadowFrameCB && m_objectCB && m_shadowObjectCB);
         ASSERT_TRUE(m_postCB && m_lightCB && m_shadowCB && m_advancedCB && m_cloudCB && m_froxelCB);
-        ASSERT_TRUE(m_shadowTarget && m_black && m_white && m_zero3d);
+        ASSERT_TRUE(m_shadowTarget && m_black && m_white && m_zero3d && m_testFog);
         ASSERT_TRUE(resources.GetDepthTexture(m_shadowTarget));
         ASSERT_TRUE(m_debug && m_debugFrameCB);
         ASSERT_TRUE(m_mediumProbe);
@@ -166,6 +168,7 @@ protected:
         post.saturation = 1;
         post.userBrightness = 1;
         post.underwaterStrength = 1;
+        post.underwaterDepth = 1;
         post.underwaterOpticalMode = 1;
         post.underwaterSurfaceY = 0;
         post.underwaterBottomY = -20;
@@ -233,9 +236,10 @@ protected:
 
     void Begin(const renderer::Camera& camera, const renderer::PostProcCB& post,
         const renderer::LightConstantsCB& light, float receiverDistance, math::Vector3 hdrColor,
-        ShadowMask shadowMask = ShadowMask::OPEN)
+        ShadowMask shadowMask = ShadowMask::OPEN, renderer::AdvancedGraphicsCB advanced = {})
     {
         m_localLightingReady = false;
+        m_fogEnabled = false;
         m_cameraFar = camera.m_far;
         auto& resources = *m_resources;
         auto& device = *m_bundle.renderer;
@@ -244,7 +248,6 @@ protected:
         const auto frame = renderer::MakeCameraFrameCB(camera, 0, 0);
         renderer::PerObjectCB object{};
         object.world = object.worldInvTranspose = math::Matrix4::Identity();
-        renderer::AdvancedGraphicsCB advanced{};
         advanced.screenWidth = static_cast<float>(m_width);
         advanced.screenHeight = static_cast<float>(m_height);
         const renderer::RenderCloudConstants cloud{};
@@ -493,6 +496,17 @@ protected:
         m_bundle.renderer->Dispatch(upsample, resources);
     }
 
+    /// @note A constant integrated volume isolates final fog composition from injection and temporal convergence.
+    void EnableFroxelFog()
+    {
+        renderer::FroxelFogCB fog{};
+        fog.nearDistance = 1;
+        fog.farDistance = 20;
+        fog.gridX = fog.gridY = fog.gridZ = 1;
+        m_resources->Update(m_froxelCB, &fog, sizeof(fog));
+        m_fogEnabled = true;
+    }
+
     std::vector<float> FinishComposite(bool sharedReady = true, bool rectangleVariant = false)
     {
         auto& resources = *m_resources;
@@ -520,7 +534,7 @@ protected:
         draw.textures[20] = m_black;
         draw.textures[21] = m_shafts;
         draw.textures[22] = m_zero3d;
-        draw.textures[23] = m_zero3d;
+        draw.textures[23] = m_fogEnabled ? m_testFog : m_zero3d;
         if (sharedReady && m_localLightingReady) {
             draw.auxiliaryPsBuffers[0] = m_mediumTable;
             draw.textures[15] = resources.GetColorTexture(m_mediumAtlas);
@@ -781,7 +795,7 @@ private:
     renderer::ResourceHandle<renderer::RenderTargetTag> m_hdr, m_output, m_sceneDepth, m_shadowTarget;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_mediumAtlas, m_interface;
     renderer::ResourceHandle<renderer::TextureTag> m_raw, m_shafts, m_black, m_white, m_zero3d;
-    renderer::ResourceHandle<renderer::TextureTag> m_localCookie;
+    renderer::ResourceHandle<renderer::TextureTag> m_localCookie, m_testFog;
     renderer::ResourceHandle<renderer::StructuredBufferTag> m_mediumTable, m_punctualLights, m_clusterIndices;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_clusterCB, m_punctualShadowCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_frameCB, m_shadowFrameCB, m_objectCB, m_shadowObjectCB,
@@ -789,8 +803,100 @@ private:
     uint32_t m_width = EXTENT, m_height = EXTENT;
     renderer::PostProcCB m_currentPost{};
     bool m_localLightingReady = false;
+    bool m_fogEnabled = false;
     float m_cameraFar = 40;
 };
+
+TEST_F(UnderwaterShaderTest, SharedWaterPreservesBothAirFogModesForDryCameraViews)
+{
+    for (bool orthographic : {false, true}) for (bool froxel : {false, true}) {
+        for (int location = 0; location < 3; ++location) {
+            auto camera = Camera(orthographic);
+            camera.m_position.y = location == 0 ? 2.0f : -1.0f;
+            if (location == 1) camera.m_position.x = 100;
+            auto water = Water();
+            water.underwaterDepth = 0;
+            water.fogDensity = froxel ? 0.0f : 0.2f;
+            water.fogColor[0] = 0.05f;
+            water.fogColor[1] = 0.1f;
+            water.fogColor[2] = 0.2f;
+            SharedMediumInputs medium;
+            if (location == 2) medium.exclusions.push_back({math::Vector4{1, 0, 0, 0},
+                math::Vector4{0, 1, 0, 1}, math::Vector4{0, 0, 1, -5}, math::Vector4{20, 20, 20, 0}});
+            auto air = water;
+            air.underwaterOpticalMode = air.underwaterStrength = 0;
+            Begin(camera, air, Dark(), 10, {1, 1, 1});
+            if (froxel) EnableFroxelFog();
+            const auto expected = FinishComposite();
+            auto clear = air;
+            clear.fogDensity = 0;
+            const auto unfogged = Composite(camera, clear, Dark(), 10, {1, 1, 1});
+            EXPECT_GT(std::abs(Mean(expected)[0] - Mean(unfogged)[0]), 0.03);
+            for (int variant = 0; variant < 3; ++variant) {
+                SCOPED_TRACE(orthographic);
+                SCOPED_TRACE(froxel);
+                SCOPED_TRACE(location);
+                SCOPED_TRACE(variant);
+                water.underwaterOpticalMode = variant == 1 ? 2.25f : 2.0f;
+                if (variant == 1) water.waterOpticalDryTiles.fill(0xffffffffu);
+                else water.waterOpticalDryTiles.fill(0u);
+                Begin(camera, water, Dark(), 10, {1, 1, 1});
+                SetLocalLighting(water, {}, renderer::ClusterLightMode::Linear, false, false, &medium);
+                if (froxel) EnableFroxelFog();
+                ExpectSame(FinishComposite(true, variant == 2), expected, 0.003f);
+            }
+        }
+    }
+}
+
+TEST_F(UnderwaterShaderTest, AirFogTerminatesAtTheNearestWaterInterfaceOrOpaqueSurface)
+{
+    for (bool orthographic : {false, true}) for (bool froxel : {false, true}) {
+        for (float opaqueDistance : {0.0f, 3.0f, 10.0f}) {
+            SCOPED_TRACE(orthographic);
+            SCOPED_TRACE(froxel);
+            SCOPED_TRACE(opaqueDistance);
+            auto camera = Camera(orthographic);
+            camera.m_position.y = 2;
+            auto water = Water();
+            water.underwaterOpticalMode = 2;
+            water.underwaterDepth = 0;
+            water.fogDensity = froxel ? 0.0f : 0.2f;
+            SharedMediumInputs medium;
+            medium.interfaceValid = true;
+            medium.interfaceDistance = 5;
+            Begin(camera, water, Dark(), opaqueDistance, {1, 1, 1});
+            SetLocalLighting(water, {}, renderer::ClusterLightMode::Linear, false, false, &medium);
+            if (froxel) EnableFroxelFog();
+            const auto actual = FinishComposite();
+            auto air = water;
+            air.underwaterOpticalMode = air.underwaterStrength = 0;
+            const float distance = opaqueDistance > 0 ? (std::min)(opaqueDistance, 5.0f) : 5.0f;
+            Begin(camera, air, Dark(), distance, {1, 1, 1});
+            if (froxel) EnableFroxelFog();
+            ExpectSame(actual, FinishComposite(), 0.003f);
+        }
+    }
+}
+
+TEST_F(UnderwaterShaderTest, WetCameraStillSuppressesBothAirFogModes)
+{
+    for (bool orthographic : {false, true}) for (bool shared : {false, true}) {
+        auto water = Water();
+        water.underwaterOpticalMode = shared ? 2.0f : 1.0f;
+        water.underwaterAbsorption[0] = 0.1f;
+        const auto draw = [&](bool fog) {
+            auto post = water;
+            post.fogDensity = fog ? 0.2f : 0.0f;
+            Begin(Camera(orthographic), post, Dark(), 10, {1, 1, 1});
+            if (shared) SetLocalLighting(post, {});
+            if (fog) EnableFroxelFog();
+            return FinishComposite();
+        };
+        const auto expected = draw(false);
+        ExpectSame(draw(true), expected);
+    }
+}
 
 TEST_F(UnderwaterShaderTest, HomogeneousRgbAbsorptionMatchesBeerAtPhysicalCameraDistances)
 {
@@ -1092,6 +1198,40 @@ TEST_F(UnderwaterShaderTest, ShadowDepthSetupPreservesTheOpenClearValueAndActual
             EXPECT_NEAR(open[offset], 1.0f, 0.0005f);
             EXPECT_NEAR(blocked[offset], 0.1f, 0.0005f);
         }
+}
+
+TEST_F(UnderwaterShaderTest, AirShaftsKeepShadowGapsAndStopAtTheFirstWaterSurface)
+{
+    auto camera = Camera();
+    camera.m_orthoHeight = 12;
+    renderer::PostProcCB air{};
+    air.underwaterOpticalMode = -1;
+    renderer::AdvancedGraphicsCB shafts{};
+    shafts.volLightIntensity = 1;
+    shafts.volMaxDist = 10;
+    shafts.volSteps = 32;
+    shafts.volTintR = shafts.volTintG = shafts.volTintB = 1;
+
+    SharedMediumInputs medium;
+    medium.interfaceValid = true;
+    medium.interfaceDistance = 2;
+    Begin(camera, air, Sun(), 8, {}, ShadowMask::HALF_BLOCKED, shafts);
+    SetLocalLighting(air, {}, renderer::ClusterLightMode::Linear, false, false, &medium);
+    DispatchShafts();
+    const auto clipped = FinishShafts();
+
+    air.underwaterOpticalMode = 0;
+    Begin(camera, air, Sun(), 8, {}, ShadowMask::HALF_BLOCKED, shafts);
+    DispatchShafts();
+    const auto dry = FinishShafts();
+
+    ASSERT_EQ(clipped.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(dry.size(), clipped.size());
+    const auto left = (EXTENT / 2u * EXTENT + EXTENT / 4u) * 4u;
+    const auto right = (EXTENT / 2u * EXTENT + EXTENT * 3u / 4u) * 4u;
+    EXPECT_NEAR(clipped[left], 0.0f, 0.001f);
+    EXPECT_GT(dry[right], 0.5f);
+    EXPECT_NEAR(clipped[right], dry[right] * 0.25f, 0.002f);
 }
 
 TEST_F(UnderwaterShaderTest, HighExtinctionSingleScatteringIsFiniteAndBoundedByIncidentEnergy)

@@ -48,7 +48,6 @@
 #include "Engine/Scene/Transform.hpp"
 #include "Engine/Scene/Components/LightComponent.hpp"
 #include "Engine/Scene/Components/EnvironmentLightComponent.hpp"
-#include "Engine/Scene/Components/AtmosphericScatteringComponent.hpp"
 #include "Engine/Scene/Components/SkyRenderer.hpp"
 #include "Engine/Scene/Components/PostProcessVolumeComponent.hpp"
 #include "Engine/Scene/Components/WeatherComponent.hpp"
@@ -426,22 +425,6 @@ void RenderSystem(Scene& scene,
         effectiveSettings.ibl.diffuseScale   = elc.diffuseScale;
         effectiveSettings.ibl.specularScale  = elc.specularScale;
         effectiveSettings.ibl.maxMipLevel    = elc.maxMipLevel;
-        break;
-    }
-    /// @note AtmosphericScatteringComponent — シーン Inspector から霧設定を上書きする。
-    for (EntityID id : scene.GetEntities<AtmosphericScatteringComponent>()) {
-        GameObject* go     = scene.GetGameObject(id);
-        auto*       atmPtr = scene.GetComponent<AtmosphericScatteringComponent>(id);
-        if (!go || !atmPtr || !go->activeInHierarchy() || !atmPtr->enabled) continue;
-        const AtmosphericScatteringComponent& atm = *atmPtr;
-        auto& fog      = volumeSettings.post.fog;
-        fog.enabled    = atm.fogEnabled;
-        fog.source     = static_cast<int>(atm.fogSource);
-        fog.density    = atm.fogDensity;
-        fog.farDistance = atm.fogFar;
-        fog.color[0]   = atm.fogColor.x;
-        fog.color[1]   = atm.fogColor.y;
-        fog.color[2]   = atm.fogColor.z;
         break;
     }
     /// @name PostProcessVolumeComponent の合成

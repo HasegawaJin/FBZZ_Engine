@@ -25,14 +25,15 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     if (ctx.rayPathViewActive || !ctx.settings.IsVolumetricLightActive()) return;
     const auto raw    = ctx.Res().Texture("VolumetricRaw");
     const bool sharedPlanned = ctx.renderScene && HasOpticalWaterMedium(*ctx.renderScene);
-    const bool underwater = sharedPlanned || UsesOpticalUnderwater(ctx.environment.underwater);
-    const bool sharedLight = sharedPlanned && HasOpticalWaterMedium(*ctx.renderScene, true);
+    const bool submerged = UsesOpticalUnderwater(ctx.environment.underwater);
+    const bool airLight = !submerged && ctx.settings.shadowEnabled && ctx.settings.IsPassEnabled("Shadow")
+        && ctx.Res().Target("ShadowMap").IsValid();
+    const bool waterLight = ctx.waterMediumPassActive && ctx.waterInterfacePassActive
+        && (sharedPlanned ? HasOpticalWaterMedium(*ctx.renderScene, true)
+                          : submerged && ctx.environment.underwater.lightStrength > 0.0f);
 
-    if ((underwater && ((sharedPlanned ? !sharedLight : ctx.environment.underwater.lightStrength <= 0.0f)
-                || !ctx.waterMediumPassActive || !ctx.waterInterfacePassActive)) ||
-        !h.volumetricShader.IsValid() || !h.volumetricResult.IsValid() ||
-        !raw.IsValid() || ctx.width == 0u || ctx.height == 0u ||
-        (!underwater && !ctx.Res().Target("ShadowMap").IsValid()))
+    if ((!airLight && !waterLight) || !h.volumetricShader.IsValid() || !h.volumetricResult.IsValid()
+        || !raw.IsValid() || ctx.width == 0u || ctx.height == 0u)
         return;
 
     static uint64_t s_resourceOwner = 0;
@@ -50,31 +51,7 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
             renderer::DepthMode::DEPTH_OFF
         });
     }
-    if (!upsampleShader.IsValid() || !copyShader.IsValid() || !additivePSO.IsValid())
-        return;
-
-    PostProcCB waterData{};
-    FillUnderwaterConstants(waterData, ctx.environment.underwater);
-    if (sharedPlanned) {
-        waterData.underwaterOpticalMode = 1.0f;
-        waterData.underwaterLightStrength = 1.0f;
-        waterData.underwaterMaxDistance = 0.0f;
-        waterData.underwaterLightSteps = 16.0f;
-        for (const auto& visibleBody : h.waterMediumBodies) {
-            if (visibleBody.waterInputIndex >= ctx.renderScene->water.size()) continue;
-            const auto& body = ctx.renderScene->water[visibleBody.waterInputIndex];
-            if (!body.medium.opticalEnabled) continue;
-            waterData.underwaterMaxDistance = (std::max)(waterData.underwaterMaxDistance, body.medium.maxDistance);
-            waterData.underwaterLightSteps = (std::max)(waterData.underwaterLightSteps, static_cast<float>(body.medium.lightSteps));
-        }
-    }
-    /// @note 材質の光学距離・ステップは媒体側の上限。PostProcess の品質予算と強度を迂回しない。
-    waterData.underwaterMaxDistance = (std::min)(waterData.underwaterMaxDistance, vol.maxDist);
-    waterData.underwaterLightSteps = (std::min)(waterData.underwaterLightSteps,
-        static_cast<float>(std::clamp(vol.steps, 16, 64)));
-    waterData.underwaterLightStrength *= vol.intensity;
-    waterData.time = ctx.time;
-    resources.Update(h.postprocCB, &waterData, sizeof(waterData));
+    if (!upsampleShader.IsValid()) return;
 
     /// @note 雲の切れ間から差す光の線は、シャドウマップに写らない頭上の雲で光芒を遮って作る。雲は画面空間
     /// @note レイマーチで描くためシャドウマップに入らず、同じ密度場 (CloudVolume.hlsli) を引かないと
@@ -131,10 +108,7 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     volDC.dispatchZ          = 1;
     for (const auto slot : {0u, 3u, 4u, 5u, 8u})
         if (!resources.Get(volDC.constantBuffers[slot])) return;
-    if (!resources.Get(raw) || !resources.Get(h.volumetricResult)
-        || !resources.Get(volDC.srvInputs[7]) || (!underwater && !resources.Get(volDC.srvInputs[8]))) return;
-    if (underwater && (!resources.Get(volDC.srvBuffers[14])
-        || !resources.Get(volDC.srvInputs[15]) || !resources.Get(volDC.srvInputs[13]))) return;
+    if (!resources.Get(raw) || !resources.Get(h.volumetricResult) || !resources.Get(volDC.srvInputs[7])) return;
     /// @note HDR の DSV と同じ深度を読むため、再構成は描画先を束縛しない Compute で行う。
     /// @note 深度差の大きい隣接画素を除き、手前の地形へ奥の光芒がにじむのを抑える。
     /// @see https://developer.download.nvidia.com/assets/gameworks/papers/Fast_Flexible_Physically-Based_Volumetric_Light_Scattering.pdf Apply Lighting / Composite Results
@@ -147,7 +121,13 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
     upsampleDC.dispatchX = (ctx.width + 7u) / 8u;
     upsampleDC.dispatchY = (ctx.height + 7u) / 8u;
     upsampleDC.dispatchZ = 1;
-    if (r.GetCapabilities().bindless) {
+    const auto dispatchLight = [&](const PostProcCB& data) {
+        resources.Update(h.postprocCB, &data, sizeof(data));
+        if (!r.GetCapabilities().bindless) {
+            r.Dispatch(volDC, resources);
+            r.Dispatch(upsampleDC, resources);
+            return true;
+        }
         /// @note 両段の実記録を一回の引渡しで確認する。下段失敗でも初段はrollbackせず、合成へ公開しない。
         /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/threaded-rendering-in-unreal-engine Inter-thread communication.
         bool dispatchesRecorded = false;
@@ -156,31 +136,58 @@ void ExecuteVolumetricLightPass(RenderPassContext& ctx)
             dispatchesRecorded = r.TryDispatch(volDC, resources)
                 && r.TryDispatch(upsampleDC, resources);
         });
-        if (!dispatchesRecorded) return;
-    } else {
-        r.Dispatch(volDC, resources);
-        r.Dispatch(upsampleDC, resources);
-    }
-    if (underwater) {
-        /// @note 水中はCompositeが背景にBeer透過を掛けた後へ散乱を合成し、二重減衰を避ける。
-        ctx.underwaterLightPassActive = true;
-        return;
+        return dispatchesRecorded;
+    };
+
+    if (airLight && copyShader.IsValid() && additivePSO.IsValid() && resources.Get(volDC.srvInputs[8])) {
+        PostProcCB airData{};
+        airData.time = ctx.time;
+        /// @note Negative mode enables the first-water-interface distance cap in the air dispatch.
+        if (sharedPlanned && resources.Get(volDC.srvInputs[13])) airData.underwaterOpticalMode = -1.0f;
+        if (dispatchLight(airData)) {
+            /// @note 積分結果を HDR へ加算する。Composite でなくここで足す理由: レイは不透明深度で止まっており、
+            /// @note Composite (半透明描画後) まで待つと «水底までの光芒» が水面の手前に描かれる。ここで足せば
+            /// @note 後続の透明描画が普通に上へ乗り遮蔽が正しくなる。
+            /// @note CS 出力は既に volLightIntensity を掛けてある。ここで再度掛けないこと。
+            /// @note Dispatch は OM の RTV/DSV を外すので、描く前に張り直す。
+            r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
+
+            renderer::DrawCall applyDC;
+            applyDC.shader        = copyShader;
+            applyDC.pipelineState = additivePSO;
+            applyDC.vertexCount   = 3;
+            /// @note TEX_GBUFFER0: CopyColor の入力スロット
+            applyDC.textures[5]   = h.volumetricResult;
+            r.Submit(applyDC, resources);
+        }
     }
 
-    /// @note 積分結果を HDR へ加算する。Composite でなくここで足す理由: レイは不透明深度で止まっており、
-    /// @note Composite (半透明描画後) まで待つと «水底までの光芒» が水面の手前に描かれる。ここで足せば
-    /// @note 後続の透明描画が普通に上へ乗り遮蔽が正しくなる。
-    /// @note CS 出力は既に volLightIntensity を掛けてある。ここで再度掛けないこと。
-    /// @note Dispatch は OM の RTV/DSV を外すので、描く前に張り直す。
-    r.SetRenderTarget(ctx.Res().Target("HDR"), resources);
+    if (!waterLight || !resources.Get(volDC.srvBuffers[14])
+        || !resources.Get(volDC.srvInputs[15]) || !resources.Get(volDC.srvInputs[13])) return;
 
-    renderer::DrawCall applyDC;
-    applyDC.shader        = copyShader;
-    applyDC.pipelineState = additivePSO;
-    applyDC.vertexCount   = 3;
-    /// @note TEX_GBUFFER0: CopyColor の入力スロット
-    applyDC.textures[5]   = h.volumetricResult;
-    r.Submit(applyDC, resources);
+    PostProcCB waterData{};
+    FillUnderwaterConstants(waterData, ctx.environment.underwater);
+    if (sharedPlanned) {
+        waterData.underwaterOpticalMode = 1.0f;
+        waterData.underwaterLightStrength = 1.0f;
+        waterData.underwaterMaxDistance = 0.0f;
+        waterData.underwaterLightSteps = 16.0f;
+        for (const auto& visibleBody : h.waterMediumBodies) {
+            if (visibleBody.waterInputIndex >= ctx.renderScene->water.size()) continue;
+            const auto& body = ctx.renderScene->water[visibleBody.waterInputIndex];
+            if (!body.medium.opticalEnabled) continue;
+            waterData.underwaterMaxDistance = (std::max)(waterData.underwaterMaxDistance, body.medium.maxDistance);
+            waterData.underwaterLightSteps = (std::max)(waterData.underwaterLightSteps, static_cast<float>(body.medium.lightSteps));
+        }
+    }
+    /// @note 材質の光学距離・ステップは媒体側の上限。PostProcess の品質予算と強度を迂回しない。
+    waterData.underwaterMaxDistance = (std::min)(waterData.underwaterMaxDistance, vol.maxDist);
+    waterData.underwaterLightSteps = (std::min)(waterData.underwaterLightSteps,
+        static_cast<float>(std::clamp(vol.steps, 16, 64)));
+    waterData.underwaterLightStrength *= vol.intensity;
+    waterData.time = ctx.time;
+    /// @note Composite consumes the water result after applying Beer transmittance to the background.
+    ctx.underwaterLightPassActive = dispatchLight(waterData);
 }
 
 
@@ -195,17 +202,16 @@ void VolumetricLightPass::Setup(PassBuilder& builder, const RenderPassContext& c
         builder.Read("WaterMediumAtlas");
     if (ctx.resourceRegistry.Target("WaterInterface").IsValid())
         builder.Read("WaterInterface");
-    if ((ctx.renderScene && HasOpticalWaterMedium(*ctx.renderScene))
-        || UsesOpticalUnderwater(ctx.environment.underwater)) builder.Read("HDR");
-    else builder.ReadWrite("HDR");
+    builder.ReadWrite("HDR");
 }
 
 bool VolumetricLightPass::IsEnabled(const RenderPassContext& ctx) const
 {
     if (ctx.rayPathViewActive || !ctx.settings.IsVolumetricLightActive()) return false;
     const auto& water = ctx.environment.underwater;
+    if (!UsesOpticalUnderwater(water)) return true;
     if (ctx.renderScene && HasOpticalWaterMedium(*ctx.renderScene)) return HasOpticalWaterMedium(*ctx.renderScene, true);
-    return UsesOpticalUnderwater(water) ? water.lightStrength > 0.0f : ctx.settings.volumetricLight.enabled;
+    return water.lightStrength > 0.0f;
 }
 
 void VolumetricLightPass::Execute(PassResources&, RenderPassContext& ctx)

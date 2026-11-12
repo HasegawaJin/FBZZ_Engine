@@ -35,7 +35,6 @@
 #include "Components/DecalComponent.hpp"
 #include "Components/EnvironmentLightComponent.hpp"
 #include "Components/ReflectionProbeComponent.hpp"
-#include "Components/AtmosphericScatteringComponent.hpp"
 #include "Components/PostProcessVolumeComponent.hpp"
 #include "Components/IKSolverComponent.hpp"
 #include "Components/SpringBoneComponent.hpp"

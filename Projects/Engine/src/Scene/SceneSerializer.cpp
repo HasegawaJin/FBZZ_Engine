@@ -33,7 +33,6 @@
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
-#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/RigidBodyComponent.hpp>
@@ -1879,9 +1878,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
         /// @note ReflectionProbeComponent
         WriteComponentReflected<ReflectionProbeComponent>(go, goTbl, "ReflectionProbeComponent");
 
-        /// @note AtmosphericScatteringComponent
-        WriteComponentReflected<AtmosphericScatteringComponent>(go, goTbl, "AtmosphericScatteringComponent");
-
         /// @note PostProcessVolumeComponent — ルック本体は .fzdata プロファイル側にあるため、
         /// @note シーンにはボリュームの掛かり方 (参照・領域・優先度) だけを保存する。
         WriteComponentReflected<PostProcessVolumeComponent>(go, goTbl, "PostProcessVolumeComponent");
@@ -2934,9 +2930,6 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
         /// @note ReflectionProbeComponent
         ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
 
-        /// @note AtmosphericScatteringComponent
-        ReadComponentReflected<AtmosphericScatteringComponent>(go, *goTbl, "AtmosphericScatteringComponent");
-
         /// @note PostProcessVolumeComponent — pp サブテーブルから PostProcessSettings を復元する。
         ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");
 
@@ -3864,9 +3857,6 @@ bool SceneSerializer::AppendObjects(
 
         /// @note ReflectionProbeComponent
         ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
-
-        /// @note AtmosphericScatteringComponent
-        ReadComponentReflected<AtmosphericScatteringComponent>(go, *goTbl, "AtmosphericScatteringComponent");
 
         /// @note PostProcessVolumeComponent
         ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");

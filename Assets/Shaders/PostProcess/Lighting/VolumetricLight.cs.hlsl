@@ -406,33 +406,31 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         : LinearizeDepth(ndcDepth, nearZ, farZ, isOrthographic) / max(farZ, 0.001f);
     float2 uv = (float2(fullPixel) + 0.5f) / float2(fullSize);
 
+    const float3 worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
+    const float3 viewForward = normalize(float3(view[0][2], view[1][2], view[2][2]));
+    float3 rayOrigin = cameraPos;
+    float3 rayDir;
+    if (isOrthographic > 0.5f)
+    {
+        rayDir = viewForward;
+        rayOrigin = ReconstructWorldPos(uv, 1.0f, invViewProjection) - nearZ * rayDir;
+    }
+    else
+    {
+        const float3 rayDelta = worldPos - rayOrigin;
+        rayDir = rayDelta / max(length(rayDelta), 1.0e-6f);
+    }
+    const float endpointDistance = max(dot(worldPos - rayOrigin, rayDir), 0.0f);
+
     if (underwaterOpticalMode > 0.5f)
     {
-        float3 sceneWorldPos = IsFarDepth(ndcDepth)
-            ? ReconstructWorldPos(uv, 0.0f, invViewProjection)
-            : ReconstructWorldPos(uv, ndcDepth, invViewProjection);
-        float3 cameraRayDir;
-        float3 cameraRayOrigin;
-        if (isOrthographic > 0.5f)
-        {
-            cameraRayDir = normalize(float3(view[0][2], view[1][2], view[2][2]));
-            float3 nearPlanePos = ReconstructWorldPos(uv, 1.0f, invViewProjection);
-            cameraRayOrigin = nearPlanePos - cameraRayDir * nearZ;
-        }
-        else
-        {
-            cameraRayOrigin = cameraPos;
-            float3 rayDelta = sceneWorldPos - cameraRayOrigin;
-            cameraRayDir = rayDelta / max(length(rayDelta), 1.0e-6f);
-        }
-        float endpointDistance = max(dot(sceneWorldPos - cameraRayOrigin, cameraRayDir), 0.0f);
         float2 taaOffsetPx = float2(taaJitterX * screenWidth, taaJitterY * screenHeight) * 0.5f;
         FBZZWaterMediumQueryContext waterContext;
         const bool sharedWaterReady = FBZZ_WaterMediumHeader(waterContext) && waterContext.bodyCount > 0u;
         float3 waterScatter = sharedWaterReady
-            ? FBZZ_IntegrateSharedWaterLight(cameraRayOrigin, cameraRayDir, endpointDistance,
+            ? FBZZ_IntegrateSharedWaterLight(rayOrigin, rayDir, endpointDistance,
                 fullPixel, taaOffsetPx, waterContext)
-            : FBZZ_IntegrateUnderwaterLight(cameraRayOrigin, cameraRayDir,
+            : FBZZ_IntegrateUnderwaterLight(rayOrigin, rayDir,
                 endpointDistance, fullPixel, taaOffsetPx);
         OutputVolumetric[id.xy] = float4(waterScatter, representativeDepth);
         return;
@@ -444,26 +442,22 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    float3 worldPos;
-    if (IsFarDepth(ndcDepth))
-    {
-        float3 farPos = ReconstructWorldPos(uv, 0.0f, invViewProjection);
-        worldPos = cameraPos + normalize(farPos - cameraPos) * volMaxDist;
-    }
-    else
-    {
-        worldPos = ReconstructWorldPos(uv, ndcDepth, invViewProjection);
-        float dist = length(worldPos - cameraPos);
-        if (dist > volMaxDist)
-            worldPos = cameraPos + normalize(worldPos - cameraPos) * volMaxDist;
-    }
-
     /// @note 細い隙間を積分区間が飛び越えないよう、従来と同じ最低 16 サンプルを保つ。
     const int steps = clamp(volSteps, 16, 128);
     const float phaseG = clamp(volScattering, -0.95f, 0.95f);
-    float3 rayDir = worldPos - cameraPos;
-    float rayLength = length(rayDir);
-    rayDir /= max(rayLength, 1e-6f);
+    float rayLength = min(endpointDistance, volMaxDist);
+    /// @note Air rays stop at the first visible water surface, which is absent from opaque depth.
+    /// @see Docs/design/water-gameplay-visuals.md WaterInterface stores view depth normalized by farZ.
+    [branch]
+    if (underwaterOpticalMode < 0.0f)
+    {
+        const float4 interfaceValue = texWaterInterface.Load(int3(fullPixel, 0));
+        const float rayForward = dot(rayDir, viewForward);
+        if (interfaceValue.x >= 1.0f && interfaceValue.w > 0.5f
+            && interfaceValue.y > 0.0f && interfaceValue.y <= 1.0001f && rayForward > 1.0e-5f)
+            rayLength = min(rayLength, interfaceValue.y * farZ / rayForward);
+    }
+
     float marchStart = min(max(volMinDist, 0.0f), rayLength);
     float marchLength = rayLength - marchStart;
     if (marchLength <= 1.0e-4f)
@@ -475,7 +469,11 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float stepDist = marchLength / float(steps);
     float lightLen = length(lightDir);
     float3 L = lightLen > 1.0e-4f ? -lightDir / lightLen : float3(0.0f, 1.0f, 0.0f);
-    float scatter = HG(dot(rayDir, L), phaseG);
+    const float cosTheta = dot(rayDir, L);
+    const float forward = saturate(cosTheta);
+    /// @note 前方散乱の光芒を強調する演出用の倍率。等方散乱では 1、太陽方向では最大 2。
+    const float shaftGain = 1.0f + forward * forward * saturate(phaseG / 0.3f);
+    const float scatter = HG(cosTheta, phaseG) * shaftGain;
     float3 accumulated = 0.0f;
     float transmittance = 1.0f;
     /// @note 位相を TAA と共に変える。TAA 無効時のジッターは 0 なので画面のちらつきを増やさない。
@@ -490,7 +488,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     for (int step = 0; step < steps; ++step)
     {
         float sampleT = min(marchStart + (float(step) + jitter) * stepDist, rayLength);
-        float3 samplePos = cameraPos + rayDir * sampleT;
+        float3 samplePos = rayOrigin + rayDir * sampleT;
         float density = volHeightFalloff > 1.0e-5f
             ? exp(-max(samplePos.y - volHeightStart, 0.0f) * volHeightFalloff) : 1.0f;
         float distFade = fadeSpan > 1.0e-4f

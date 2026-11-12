@@ -52,7 +52,6 @@ FBZZ_COMPONENT_ENTRY(struct, NavMeshPatrolComponent, FBZZ_CUSTOM_COMPONENT(NavMe
 FBZZ_COMPONENT_ENTRY(struct, NavMeshSensorComponent, FBZZ_CUSTOM_COMPONENT(NavMeshSensorComponent, Navigation, "NavMesh Sensor"))
 FBZZ_COMPONENT_ENTRY(struct, EnvironmentLightComponent, FBZZ_CUSTOM_COMPONENT(EnvironmentLightComponent, Environment, "Environment Light"))
 FBZZ_COMPONENT_ENTRY(struct, ReflectionProbeComponent, FBZZ_CUSTOM_COMPONENT(ReflectionProbeComponent, Environment, "Reflection Probe"))
-FBZZ_COMPONENT_ENTRY(struct, AtmosphericScatteringComponent, FBZZ_CUSTOM_COMPONENT(AtmosphericScatteringComponent, Environment, "Atmospheric Scattering"))
 FBZZ_COMPONENT_ENTRY(struct, PostProcessVolumeComponent, FBZZ_CUSTOM_COMPONENT(PostProcessVolumeComponent, Environment, "Post Process Volume"))
     /// @note 新規型は Scene の SoA tuple 順を保つため既存順を崩さず末尾へ追加する。
     /// @note VFXScreenEffect はかつて VFXGraphSystem が生成するだけの内部型だったが、.vfx がプレハブになった以上「シーンに置いて保存できる」必要がある (置けなければ変換で消える)。weight は VFXElement が毎フレーム書くランタイム値なので Reflect には含めない。

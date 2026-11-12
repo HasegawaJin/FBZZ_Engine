@@ -3,7 +3,6 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
 #include <Engine/Scene/Components/LightComponent.hpp>
-#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/AudioListenerComponent.hpp>
 #include <Engine/Scene/Components/AudioSourceComponent.hpp>
 #include <Engine/Scene/Components/AudioSpatialComponents.hpp>
@@ -375,15 +374,6 @@ scene::GameObject* MakeSunMoon(EditorContext& ctx)
     return &go;
 }
 
-scene::GameObject* MakeAtmosphere(EditorContext& ctx)
-{
-    auto* created = ctx.activeScene->TryCreateGameObject("Atmospheric Scattering");
-    if (!created) return nullptr;
-    auto& go = *created;
-    go.AddComponent<scene::AtmosphericScatteringComponent>();
-    return &go;
-}
-
 scene::GameObject* MakeEnvironmentLight(EditorContext& ctx)
 {
     auto* created = ctx.activeScene->TryCreateGameObject("Environment Light");
@@ -505,7 +495,6 @@ scene::GameObject* MakeSkySystem(EditorContext& ctx)
     auto& go = *created;
     go.AddComponent<scene::SkyRenderer>();
     go.AddComponent<scene::SunMoonRenderer>();
-    go.AddComponent<scene::AtmosphericScatteringComponent>();
     go.AddComponent<scene::EnvironmentLightComponent>();
     return &go;
 }
@@ -1358,10 +1347,9 @@ constexpr ObjectPreset kPresets[] = {
     { "camera.virtual", "Camera Rig", "Virtual Camera", "Camera + VirtualCamera。priority が最大のものが main になる", &MakeVirtualCamera },
     { "camera.follow",  "Camera Rig", "Follow Camera",  "Camera + VirtualCamera + CameraFollow。target を Inspector で指定する", &MakeFollowCamera },
 
-    { "env.skySystem",        "Environment", "Sky System",             "Sky + Sun/Moon + 大気散乱 + 環境光(IBL) をまとめた屋外シーンの環境ルート", &MakeSkySystem },
+    { "env.skySystem",        "Environment", "Sky System",             "Sky + Sun/Moon + 環境光(IBL) をまとめた屋外シーンの環境ルート", &MakeSkySystem },
     { "env.sky",              "Environment", "Sky",                    "SkyRenderer 単体", &MakeSky },
     { "env.sunMoon",          "Environment", "Sun & Moon",             "SunMoonRenderer。太陽と月の天体描画", &MakeSunMoon },
-    { "env.atmosphere",       "Environment", "Atmospheric Scattering", "大気散乱。空の色と遠景の霞み", &MakeAtmosphere },
     { "env.environmentLight", "Environment", "Environment Light",      "環境光 (IBL)。空からの間接光", &MakeEnvironmentLight },
     { "env.volumetricCloud",  "Environment", "Volumetric Cloud",       "ボリューメトリック雲", &MakeVolumetricCloud },
     { "env.postProcess",      "Environment", "Post Process Volume",    "ルック設定 (Post Process Profile を割り当てて使う)", &MakePostProcessVolume },

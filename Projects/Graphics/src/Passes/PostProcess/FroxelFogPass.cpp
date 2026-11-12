@@ -117,6 +117,8 @@ void ExecuteFroxelFogPass(RenderPassContext& ctx)
     data.gridY         = gridY;
     data.gridZ         = gridZ;
     data.ambient       = (std::max)(fog.ambient, 0.0f);
+    data.lightScattering = std::isfinite(fog.lightScattering)
+        ? std::clamp(fog.lightScattering, 0.0f, 8.0f) : 1.0f;
     resources.Update(h.froxelFogCB, &data, sizeof(FroxelFogCB));
 
     /// @name 1. Inject

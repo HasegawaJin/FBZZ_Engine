@@ -2,7 +2,6 @@
 /// @brief   Environment / Decal / IBL / PostProcess 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Scene/Components/AtmosphericScatteringComponent.hpp>
 #include <Engine/Scene/Components/DecalComponent.hpp>
 #include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
 #include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
@@ -458,29 +457,6 @@ void DrawEnvironmentInspectors(scene::GameObject* go, EditorContext& ctx, std::a
             }
             if (ImGui::Button("Bake", ImVec2(-1.0f, 0.0f))) {
                 OpArgs args; args.Set("node", go->instanceId); InvokeOperator(ctx, "component.light_probe.bake", args);
-            }
-        });
-
-    /// @name AtmosphericScatteringComponent
-    DrawComponentSection<scene::AtmosphericScatteringComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Atmospheric Scattering",
-        [](scene::AtmosphericScatteringComponent& atm, EditorContext&) {
-
-            ImGui::SeparatorText("Fog");
-            ImGui::Checkbox("Fog Enabled", &atm.fogEnabled);
-            if (atm.fogEnabled) {
-                static constexpr const char* kFogSourceNames[] = { "Exponential", "Atmosphere" };
-                int fogSource = static_cast<int>(atm.fogSource);
-                if (ImGui::Combo("Fog Source", &fogSource, kFogSourceNames, 2)) {
-                    fogSource = (fogSource < 0 || fogSource > 1) ? 0 : fogSource;
-                    atm.fogSource = static_cast<scene::FogSource>(fogSource);
-                }
-                ImGui::DragFloat("Density",        &atm.fogDensity, 0.001f, 0.0f, 1.0f);
-                ImGui::DragFloat("Far Distance (m)",&atm.fogFar,    1.0f,   0.0f, 10000.0f);
-                if (atm.fogSource == scene::FogSource::Exponential) {
-                    widgets::ColorEdit3("Fog Color", atm.fogColor);
-                } else {
-                    ImGui::TextDisabled("Fog color は SkyRenderer の大気散乱から計算されます。");
-                }
             }
         });
 

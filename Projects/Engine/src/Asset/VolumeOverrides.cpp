@@ -22,10 +22,13 @@ using renderer::BlendInt;
 /// @name Reflect の短縮ヘルパー
 /// BeginField で永続キーと表示名を与えてから Field を呼ぶ、という定型をまとめる。
 
-void Range(IReflector& r, const char* name, float& value, float min, float max)
+void Range(IReflector& r, const char* name, float& value, float min, float max,
+           const char* displayName = nullptr, float step = 0.0f)
 {
-    r.BeginField(name, name);
-    r.FloatRange(name, value, min, max);
+    const char* label = displayName ? displayName : name;
+    r.BeginField(name, label);
+    r.SetFieldStep(step);
+    r.FloatRange(label, value, min, max);
 }
 
 void Number(IReflector& r, const char* name, float& value)
@@ -61,7 +64,7 @@ void Color3(IReflector& r, const char* name, float (&color)[3])
     color[2] = value.z;
 }
 
-} // namespace
+} /// @note namespace
 
 /// 露出
 
@@ -365,10 +368,13 @@ void FogOverride::Apply(renderer::VolumeSettings& target, float weight) const
 
 void FogOverride::Reflect(IReflector& r)
 {
-    Range(r, "density",     density,     0.0f, 1.0f);
-    Range(r, "farDistance", farDistance, 0.0f, 10000.0f);
+    Range(r, "density", density, 0.0f, 1.0f, "Density (1/m)", 0.0001f);
+    r.Tooltip("0.0100 では、霧の開始位置から 100 m 奥で背景光が約 37% 通ります。");
+    Range(r, "farDistance", farDistance, 0.0f, 10000.0f, "Start Distance (m)");
     Color3(r, "color", color);
-    Integer(r, "source", source, 0, 1);
+    static constexpr const char* kFogColorSources[] = { "Exponential", "Atmosphere" };
+    r.BeginField("source", "Fog Color Source");
+    r.Enum("Fog Color Source", source, kFogColorSources);
 }
 
 void VolumetricLightOverride::Apply(renderer::VolumeSettings& target, float weight) const
@@ -389,16 +395,18 @@ void VolumetricLightOverride::Apply(renderer::VolumeSettings& target, float weig
 
 void VolumetricLightOverride::Reflect(IReflector& r)
 {
-    Range(r, "scattering",  scattering,  0.0f, 1.0f);
-    Range(r, "intensity",   intensity,   0.0f, 8.0f);
+    Range(r, "scattering", scattering, 0.0f, 1.0f, "Anisotropy (g)");
+    r.Tooltip("0 は全方向に均等。上げるほど光源に向けた視線で強くなります。");
+    Range(r, "intensity", intensity, 0.0f, 8.0f, "Intensity (×)");
     Color3(r, "tint", tint);
-    Range(r, "minDistance", minDistance, 0.0f, 500.0f);
+    Range(r, "minDistance", minDistance, 0.0f, 500.0f, "Start Distance (m)");
     /// @note 屋外の光芒は雲の切れ間から地面まで伸びるため、200 では手前の空気しか積分できない。
-    Range(r, "maxDistance", maxDistance, 1.0f, 4000.0f);
-    Range(r, "edgeFade",    edgeFade,    0.0f, 1.0f);
-    Range(r, "density",     density,     0.0f, 0.2f);
-    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f);
-    Range(r, "heightStart",   heightStart, -500.0f, 500.0f);
+    Range(r, "maxDistance", maxDistance, 1.0f, 4000.0f, "Max Distance (m)");
+    Range(r, "edgeFade", edgeFade, 0.0f, 1.0f, "Edge Fade (0–1)");
+    Range(r, "density", density, 0.0f, 0.2f, "Extinction (1/m)", 0.0001f);
+    r.Tooltip("光芒がカメラへ届くまでの消散。0 は距離による消散なし。");
+    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f, "Height Falloff (1/m)", 0.0001f);
+    Range(r, "heightStart", heightStart, -500.0f, 500.0f, "Base Height (m)");
     Integer(r, "steps", steps, 4, 128);
 }
 
@@ -413,6 +421,7 @@ void FroxelFogOverride::Apply(renderer::VolumeSettings& target, float weight) co
     f.nearDistance  = BlendFloat(f.nearDistance,  nearDistance,  weight);
     f.farDistance   = BlendFloat(f.farDistance,   farDistance,   weight);
     f.ambient       = BlendFloat(f.ambient,       ambient,       weight);
+    f.lightScattering = BlendFloat(f.lightScattering, lightScattering, weight);
     BlendColor3(f.albedo,   albedo,   weight, f.albedo);
     BlendColor3(f.emissive, emissive, weight, f.emissive);
     /// @note グリッド寸法はブレンドしない (再確保が走るため)。RenderSettings の既定を使う。
@@ -420,15 +429,20 @@ void FroxelFogOverride::Apply(renderer::VolumeSettings& target, float weight) co
 
 void FroxelFogOverride::Reflect(IReflector& r)
 {
-    Range(r, "density",       density,       0.0f, 0.5f);
+    Range(r, "density", density, 0.0f, 0.5f, "Density (1/m)", 0.0001f);
+    r.Tooltip("均一な霧では 0.0100 で 100 m 進むと背景光が約 37% 通ります。");
     Color3(r, "albedo",   albedo);
     Color3(r, "emissive", emissive);
-    Range(r, "anisotropy",    anisotropy,   -0.95f, 0.95f);
-    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f);
-    Range(r, "heightStart",   heightStart,  -500.0f, 500.0f);
-    Range(r, "nearDistance",  nearDistance,  0.01f, 10.0f);
-    Range(r, "farDistance",   farDistance,   1.0f, 500.0f);
-    Range(r, "ambient",       ambient,       0.0f, 4.0f);
+    Range(r, "anisotropy", anisotropy, -0.95f, 0.95f, "Anisotropy (g)");
+    r.Tooltip("0 は全方向に均等。正の値は逆光側、負の値は順光側の散乱を強めます。");
+    Range(r, "lightScattering", lightScattering, 0.0f, 8.0f, "Light Scattering (×)");
+    r.Tooltip("太陽・点光源・スポットなどが霧を照らす強さ。1 が基準、2 で散乱光が 2 倍になります。");
+    Range(r, "heightFalloff", heightFalloff, 0.0f, 0.5f, "Height Falloff (1/m)", 0.0001f);
+    r.Tooltip("基準高度より上で霧が薄くなる速さ。0.0100 では 100 m 上で密度が約 37% になります。");
+    Range(r, "heightStart", heightStart, -500.0f, 500.0f, "Base Height (m)");
+    Range(r, "nearDistance", nearDistance, 0.01f, 10.0f, "Near Distance (m)");
+    Range(r, "farDistance", farDistance, 1.0f, 500.0f, "Far Distance (m)");
+    Range(r, "ambient", ambient, 0.0f, 4.0f, "Ambient Light (×)");
 }
 
 void AutoExposureOverride::Apply(renderer::VolumeSettings& target, float weight) const
@@ -601,7 +615,7 @@ void CustomEffectOverride::Reflect(IReflector& r)
     }
 }
 
-} // namespace fbzz::asset
+} /// @note namespace fbzz::asset
 
 /// @name レジストリ登録
 /// @note 登録漏れを 1 か所で目視確認できるようにするため、ファイル末尾にまとめる。
