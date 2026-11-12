@@ -550,6 +550,10 @@ public:
         });
     }
     void ClearDepth() override { Record([this] { m_native->ClearDepth(); }); }
+    void ClearDepthRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override
+    {
+        Record([=, this] { m_native->ClearDepthRegion(x, y, width, height); });
+    }
     void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override
     {
         Record([=, this] { m_native->SetViewport(x, y, width, height); });

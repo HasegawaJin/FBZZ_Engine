@@ -115,6 +115,8 @@ public:
     /// @brief 束縛中の RT の深度を最遠値へ戻す (RenderTargetDesc::reversedZ なら 0、それ以外は 1)。
     /// @note 値を引数で受けないのは、RT の深度の向きと食い違ったクリアで深度テストが全滅するため。
     virtual void ClearDepth() = 0;
+    /// @pre GraphicsCapabilities::depthRegionClear が有効で、矩形が現在の深度ターゲット内に収まること。
+    virtual void ClearDepthRegion(uint32_t, uint32_t, uint32_t, uint32_t) {}
 
     /// @note SetViewport — 現在の描画先の一部矩形だけへ描くようビューポートを絞る。
     /// @note カスケードシャドウはシャドウマップを 2x2 タイルに分け、カスケードごとに描き込む

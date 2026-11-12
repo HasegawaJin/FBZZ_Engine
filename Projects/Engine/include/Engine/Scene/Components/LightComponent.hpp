@@ -13,7 +13,7 @@ namespace fbzz::scene {
 
 struct LightComponent {
     enum class Type { Directional, Point, Spot, Area, Sphere, Tube };
-    enum class ShadowMode : std::uint8_t { REALTIME, AUTO_BAKE };
+    enum class ShadowMode : std::uint8_t { REALTIME, AUTO_BAKE, CACHED_FAR_CASCADE };
 
     Type          type      = Type::Directional;
     math::Vector3 color     = { 1.0f, 1.0f, 1.0f };
@@ -158,12 +158,13 @@ struct LightComponent {
         r.Field("areaTwoSided", areaTwoSided);
         r.Field("castShadows",    castShadows);
         {
-            static constexpr const char* kShadowModes[]{"Realtime", "Auto Bake"};
+            static constexpr const char* kShadowModes[]{"Realtime", "Auto Bake", "Cached Far Cascade"};
             int mode = static_cast<int>(shadowMode);
             r.BeginField("shadowMode", "Shadow Mode");
             r.Enum("Shadow Mode", mode, kShadowModes);
             r.EndField();
-            shadowMode = mode == 1 ? ShadowMode::AUTO_BAKE : ShadowMode::REALTIME;
+            shadowMode = mode >= 0 && mode <= static_cast<int>(ShadowMode::CACHED_FAR_CASCADE)
+                ? static_cast<ShadowMode>(mode) : ShadowMode::REALTIME;
         }
         r.Field("shadowBakeDayDirection", shadowBakeDayDirection);
         r.Field("shadowBakeEveningDirection", shadowBakeEveningDirection);

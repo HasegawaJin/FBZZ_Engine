@@ -380,7 +380,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     auto& contactShadowResult     = viewTargets.contactShadowResult;
     uint32_t& sHdrW               = viewTargets.width;
     uint32_t& sHdrH               = viewTargets.height;
-    auto& shadowMapRT = shared.shadowMapRT;
+    const auto shadowMapRT = passCtx.cachedShadowAtlas.IsValid() ? passCtx.cachedShadowAtlas : shared.shadowMapRT.Handle();
     auto& punctualShadowRT = shared.punctualShadowRT;
     auto& lightCookieRT = shared.lightCookieRT;
     /// @note エディターが編集した «このパスは載せない / これを待つ» をこのフレームへ効かせる。

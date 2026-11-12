@@ -264,6 +264,6 @@ private:
 /// @note Unset/linear bypass all source projection and index maintenance; environment choices are captured once per process.
 [[nodiscard]] FBZZ_GRAPHICS_API bool MeshSpatialQueriesEnabled();
 /// @note Shadow query owns the union of light frusta; camera visibility and reflection-face visibility are separate consumers.
-[[nodiscard]] FBZZ_GRAPHICS_API CandidateBatch CollectShadowCandidates(const RenderPassContext& context, int cascadeCount);
+[[nodiscard]] FBZZ_GRAPHICS_API CandidateBatch CollectShadowCandidates(const RenderPassContext& context, uint32_t updateMask);
 
 } /// @note namespace fbzz::renderer::spatial_detail

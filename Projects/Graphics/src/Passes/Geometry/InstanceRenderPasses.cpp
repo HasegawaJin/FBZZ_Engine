@@ -322,6 +322,13 @@ void SetFrustumPlanes(InstanceView& view,const math::Frustum& frustum)
         view.planes[i]={plane.normal.x,plane.normal.y,plane.normal.z,plane.distance};
     }
 }
+/// @note Use light-space texels for the extra shadow-only reduction on authored vegetation.
+void ConfigureShadowLod(InstanceView& view, const InstanceShadowView& light, bool vegetation)
+{
+    if (light.preserveVegetationDetail) view.vegetation[2] = 0;
+    if (vegetation && light.directional && !light.preserveVegetationDetail && light.texelWorldSize > 0.0f)
+        view.forward.w = 1.0f / light.texelWorldSize;
+}
 InstanceView View(const RenderPassContext& ctx,const RenderInstanceInput& input,const math::Frustum& frustum,bool shadow)
 {
     InstanceView result;
@@ -461,10 +468,15 @@ uint32_t CpuLod(const InstanceView& view,const math::Vector4& bounds)
     for (uint32_t i=0;i<view.counts[1];++i) if (height>=heights[i]) return i;
     return view.counts[1]-1;
 }
-uint32_t VegetationLod(const InstanceView& view,uint32_t lod,uint32_t rank)
+uint32_t VegetationLod(const InstanceView& view,uint32_t lod,uint32_t rank,float radius)
 {
     const uint32_t last=view.counts[1]-1;
     const auto& limits=view.vegetation;
+    if (view.forward.w > 0.0f) {
+        const float diameter = 2.0f * radius * view.forward.w;
+        const uint32_t minimum = diameter <= 20.0f ? 2u : diameter <= 40.0f ? 1u : 0u;
+        lod = std::max(lod, std::min(minimum, last));
+    }
     /// @note LOD3 can be a distant billboard. Leave it to the projected-size test for shadow casters.
     if (limits[2]!=0 && rank>=limits[2]) return std::max(lod,std::min(2u,last));
     if (limits[0]!=0 && rank>=limits[0]) return std::max(lod,std::min(2u,last));
@@ -654,7 +666,7 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
                 if (countStatistics) ++ctx.statsOcclusionCulled;
                 return;
             }
-            visible[VegetationLod(view,CpuLod(view,sphere),rank)].push_back(i);
+            visible[VegetationLod(view,CpuLod(view,sphere),rank,sphere.w)].push_back(i);
         };
         if (input.vegetationBudget.enabled && !source.vegetationCells.empty()) {
             FBZZ_PROFILE_SCOPE("InstanceVisibility::VegetationCells");
@@ -767,7 +779,8 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
     }
 }
 void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* lightFrustum=nullptr,ResourceHandle<ConstantBufferTag> lightFrame={},
-    uint64_t excludedOwner=UINT64_MAX,const GpuHiZ* hierarchy=nullptr,bool enableGpu=true,bool preserveShadowDetail=false)
+    uint64_t excludedOwner=UINT64_MAX,const GpuHiZ* hierarchy=nullptr,bool enableGpu=true,
+    const InstanceShadowView* shadowView=nullptr)
 {
     const auto scene=ctx.renderScene;
     if (!scene || scene->instances.empty()) return;
@@ -878,7 +891,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (pass==InstancePass::VELOCITY && !source.moved && std::none_of(input.parts.begin(),input.parts.end(),
             [](const auto& part) { return LeafAnimated(part.mesh.material); })) continue;
         auto view=View(ctx,input,frustum,pass==InstancePass::SHADOW);
-        if (preserveShadowDetail) view.vegetation[2]=0;
+        if (shadowView) ConfigureShadowLod(view, *shadowView, input.vegetationBudget.enabled);
         if (pass==InstancePass::SELECTION) view.culling.w=0;
         const auto sourceVisibility=SourceVisibility(source,view,frustum);
         if (sourceVisibility!=VisibilityResult::VISIBLE) {
@@ -1035,6 +1048,9 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
                         auto& light=state.views[cascadeIndices[i]];
                         cascadeViews[i]=gpuView;
                         SetFrustumPlanes(cascadeViews[i],light.input.frustum);
+                        ConfigureShadowLod(cascadeViews[i], light.input, input.vegetationBudget.enabled);
+                        /// @note The grouped kernel reads the shared cell budget from view zero and masks out near tiles itself.
+                        cascadeViews[i].vegetation[2] = gpuView.vegetation[2];
                         if (light.input.preserveVegetationDetail) preserveDetailMask|=1u<<i;
                         auto& set=light.sets.back();
                         set.receipt=commands.size();
@@ -1053,7 +1069,7 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
             if (light.sets.empty() || light.sets.back().sourceIndex!=sourceIndex || light.sets.back().receipt!=SIZE_MAX) continue;
             auto view=commonView;
             SetFrustumPlanes(view,light.input.frustum);
-            if (light.input.preserveVegetationDetail) view.vegetation[2]=0;
+            ConfigureShadowLod(view, light.input, input.vegetationBudget.enabled);
             auto compute=PrepareGpuBuffers(ctx,cache,input,*source,view,std::span{&light.input.frustum,1},cache.shaders[6]);
             if (!compute) continue;
             ctx.resources.Update(compute->srvBuffers[15],&view,sizeof(view));
@@ -1080,7 +1096,7 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
     if (state.cpuReplay || ctx.renderScene.get()!=state.scene.get()
         || state.policy!=PreparedInstanceShadowBatch::State::CapturePolicy(ctx)) {
         Execute(ctx,InstancePass::SHADOW,&view.input.frustum,lightFrame,UINT64_MAX,nullptr,false,
-            view.input.preserveVegetationDetail);
+            &view.input);
         return;
     }
     const InstanceSubmission submission{ctx,*state.cache,InstancePass::SHADOW,view.input.frustum,lightFrame,false};
@@ -1091,9 +1107,9 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
         if (recorded && work.firstGroupedCascade) {
             FBZZ_PROFILE_SCOPE("ShadowVisibility::DirectionalCascadeDispatch");
         }
-        if (!recorded && view.input.preserveVegetationDetail) {
+        if (!recorded) {
             auto selectionView=entry.view;
-            selectionView.vegetation[2]=0;
+            ConfigureShadowLod(selectionView, view.input, entry.input->vegetationBudget.enabled);
             SubmitSet(submission,*entry.input,*entry.source,selectionView,nullptr,nullptr);
         } else {
             SubmitSet(submission,*entry.input,*entry.source,entry.view,recorded ? &work.selection : nullptr,nullptr);

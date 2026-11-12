@@ -219,8 +219,16 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
             if (canCastShadow) {
                 /// @note 遠すぎるライトへタイルを割り当てない。判定距離に range を足すのは、
                 /// @note range の大きいライトは離れていても画面を広く照らすため。
+                const float fadeWidth = rs.shadow.punctualShadowDistance * 0.2f;
                 const float limit = rs.shadow.punctualShadowDistance + lc.range;
                 if (cameraDistSq <= limit * limit) {
+                    /// @note Base the fade on distance to the light's influence volume.
+                    const float fadeStart = limit - fadeWidth;
+                    float visibility = 1.0f;
+                    if (fadeWidth > 0.0f && cameraDistSq > fadeStart * fadeStart) {
+                        const float t = std::clamp((limit - std::sqrt(cameraDistSq)) / fadeWidth, 0.0f, 1.0f);
+                        visibility = t * t * (3.0f - 2.0f * t);
+                    }
                     PunctualShadowCandidate cand{};
                     cand.punctualIndex = punctualIndex;
                     cand.legacySlot    = legacySlot;
@@ -240,10 +248,10 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
                                        : lc.outerCone;
                     cand.nearPlane     = (std::max)(lc.shadowNearPlane, 0.01f);
                     cand.bias          = (std::max)(lc.shadowBias, 0.0f);
-                    cand.strength      = std::clamp(lc.shadowStrength, 0.0f, 1.0f);
+                    cand.strength      = std::clamp(lc.shadowStrength, 0.0f, 1.0f) * visibility;
                     cand.sourceRadius  = (std::max)(lc.sourceRadius, 0.0f);
                     cand.cameraDistSq  = cameraDistSq;
-                    shadowCandidates.push_back(cand);
+                    if (cand.strength > 0.0f) shadowCandidates.push_back(cand);
                 }
             }
         }
@@ -258,6 +266,8 @@ RenderLightExtraction ExtractRenderLights(Scene& scene, const renderer::Camera& 
             dirShadowDistance = lc.shadowDistance;
             output.dirShadowBakeLight = lc.castShadows && lc.shadowStrength > 0.0f
                 && lc.shadowMode == LightComponent::ShadowMode::AUTO_BAKE ? id : EntityID::INVALID;
+            output.dirCachedFarShadowLight = lc.castShadows && lc.shadowStrength > 0.0f
+                && lc.shadowMode == LightComponent::ShadowMode::CACHED_FAR_CASCADE ? id : EntityID::INVALID;
         } else if (lc.type == LightComponent::Type::Point
                    && lightData.pointLightCount < 8) {
             auto& pl    = lightData.pointLights[lightData.pointLightCount++];

@@ -8,6 +8,7 @@
 #include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
 #include <Graphics/Pipeline/RenderPipeline.hpp>
 #include <Graphics/Pipeline/RenderPassContext.hpp>
+#include <Graphics/Pipeline/ViewPreparation.hpp>
 #include "Pipeline/TaaDepthWitness.hpp"
 #include "Passes/Geometry/RenderScenePassHelpers.hpp"
 #include <Graphics/Renderer/Mesh.hpp>
@@ -29,6 +30,78 @@
 namespace fbzz::tests {
 namespace {
 class GraphicsStandaloneTest : public testkit::Fixture {};
+
+TEST_F(GraphicsStandaloneTest, CachedFarShadowKeepsItsProjectionAndRefreshesOnTheEighthFrame)
+{
+    namespace r = renderer;
+    r::RenderSettings settings;
+    settings.shadow.cascadeCount = 4;
+    const r::ShadowBounds bounds{{}, 500.0f, true};
+    const math::Vector3 lightDirection{0.0f, -1.0f, 0.0f};
+    r::ShadowCascadeCache cache;
+    r::Camera camera;
+    const r::FarShadowCacheKey key{};
+    auto initial = r::PrepareShadows(camera, settings, bounds, lightDirection, 150.0f, 1.0f, true);
+    ASSERT_FALSE(r::PrepareShadowCascadeCache(cache, initial, camera, lightDirection, key, 16, 3));
+    cache.valid = true;
+    camera.m_position.x += 2.0f;
+    for (uint64_t frame = 17; frame < 24; ++frame) {
+        auto current = r::PrepareShadows(camera, settings, bounds, lightDirection, 150.0f, 1.0f, true);
+        ASSERT_TRUE(r::PrepareShadowCascadeCache(cache, current, camera, lightDirection, key, frame, 3));
+        EXPECT_FLOAT_EQ(current.lightVP.m[0][3], initial.lightVP.m[0][3]);
+        EXPECT_FLOAT_EQ(current.lightVP.m[1][3], initial.lightVP.m[1][3]);
+        EXPECT_FLOAT_EQ(current.cascades[3].eyePos.x, initial.cascades[3].eyePos.x);
+    }
+    auto next = r::PrepareShadows(camera, settings, bounds, lightDirection, 150.0f, 1.0f, true);
+    EXPECT_FALSE(r::PrepareShadowCascadeCache(cache, next, camera, lightDirection, key, 24, 3));
+    EXPECT_FALSE(cache.valid);
+    EXPECT_EQ(cache.updateFrame, 24u);
+}
+
+TEST_F(GraphicsStandaloneTest, CachedFarShadowRefreshesWhenTheViewOrTerrainChanges)
+{
+    namespace r = renderer;
+    r::RenderSettings settings;
+    settings.shadow.cascadeCount = 4;
+    const r::ShadowBounds bounds{{}, 500.0f, true};
+    const math::Vector3 lightDirection{0.0f, -1.0f, 0.0f};
+    r::ShadowCascadeCache cache;
+    r::Camera camera;
+    r::FarShadowCacheKey key{};
+    auto prepare = [&](uint64_t frame) {
+        auto shadows = r::PrepareShadows(camera, settings, bounds, lightDirection, 150.0f, 1.0f, true);
+        const bool reuse = r::PrepareShadowCascadeCache(cache, shadows, camera, lightDirection, key, frame, 3);
+        cache.valid = true;
+        return reuse;
+    };
+    EXPECT_FALSE(prepare(1));
+    EXPECT_TRUE(prepare(2));
+    ++key.terrainRevision;
+    EXPECT_FALSE(prepare(3));
+    camera.m_position.x += 100.0f;
+    EXPECT_FALSE(prepare(4));
+    EXPECT_FALSE(prepare(6));
+    EXPECT_TRUE(prepare(7));
+}
+
+TEST_F(GraphicsStandaloneTest, MiddleAndFarShadowTilesHaveSeparateRefreshPhases)
+{
+    namespace r = renderer;
+    r::RenderSettings settings;
+    settings.shadow.cascadeCount = 4;
+    const r::ShadowBounds bounds{{}, 500.0f, true};
+    const math::Vector3 lightDirection{0.0f, -1.0f, 0.0f};
+    std::array<r::ShadowCascadeCache, 4> cache;
+    r::Camera camera;
+    for (uint64_t frame = 0; frame <= 16; ++frame) {
+        auto shadows = r::PrepareShadows(camera, settings, bounds, lightDirection, 150.0f, 1.0f, true);
+        const bool reuseMiddle = r::PrepareShadowCascadeCache(cache[2], shadows, camera, lightDirection, {}, frame, 2);
+        const bool reuseFar = r::PrepareShadowCascadeCache(cache[3], shadows, camera, lightDirection, {}, frame, 3);
+        EXPECT_EQ(reuseMiddle, frame != 0 && frame % 4 != 2) << frame;
+        EXPECT_EQ(reuseFar, frame % 8 != 0) << frame;
+        cache[2].valid = cache[3].valid = true;
+    }
+}
 
 class DepthWitnessRenderer final : public renderer::IRenderer {
 public:

@@ -13,6 +13,7 @@ struct RenderLightExtraction : renderer::RenderLightingInput {
     float dirShadowBias = 1;
     float dirShadowDistance = 0;
     EntityID dirShadowBakeLight = EntityID::INVALID;
+    EntityID dirCachedFarShadowLight = EntityID::INVALID;
 };
 /// @note 実験 RT の許可なしでは Raster の照明だけを抽出し、RayLightTable 向けの走査・診断を省く。
 FBZZ_ENGINE_API RenderLightExtraction ExtractRenderLights(Scene&, const renderer::Camera&, const renderer::RenderSettings&,

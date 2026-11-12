@@ -20,6 +20,7 @@ struct ShadowBounds {
     math::Vector3 center = math::Vector3::ZERO;
     float radius = 0.0f;
     bool valid = false;
+    uint64_t terrainRevision = 0;
 };
 struct PreparedShadows {
     ShadowCascade cascades[kMaxShadowCascades]{};
@@ -32,6 +33,13 @@ struct PreparedShadows {
 FBZZ_GRAPHICS_API PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& settings,
     const ShadowBounds& bounds, const math::Vector3& lightDirection,
     float shadowDistance, float shadowBias);
+/// @note キャッシュ対象の投影に再利用用の余白を加える。
+FBZZ_GRAPHICS_API PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& settings,
+    const ShadowBounds& bounds, const math::Vector3& lightDirection,
+    float shadowDistance, float shadowBias, bool padCachedCascades);
+/// @return 再利用するときは true。対応する投影も前回の深度とそろえる。
+FBZZ_GRAPHICS_API bool PrepareShadowCascadeCache(ShadowCascadeCache& cache, PreparedShadows& shadows,
+    const Camera& camera, const math::Vector3& lightDirection, const FarShadowCacheKey& key, uint64_t frame, int index);
 struct AdvancedViewInput {
     bool dynamicIblReady = false;
     float reflectionProbeIntensity = 1.0f;

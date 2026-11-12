@@ -32,12 +32,35 @@ struct TaaProviderHistory {
     uint64_t epoch = 0;
 };
 
+struct FarShadowCacheKey {
+    uint64_t sceneGeneration = 0;
+    uint64_t hierarchyRevision = 0;
+    uint64_t terrainRevision = 0;
+    uint64_t light = 0;
+    uint32_t cullingMask = 0;
+    bool operator==(const FarShadowCacheKey&) const = default;
+};
+
+/// @note アトラスと最遠タイルの投影は同じビューに属し、描画完了時にまとめて有効化する。
+struct ShadowCascadeCache {
+    ShadowCascade cascade{};
+    FarShadowCacheKey key;
+    math::Vector3 cameraForward;
+    math::Vector3 lightDirection;
+    uint64_t updateFrame = 0;
+    uint64_t previousFrame = 0;
+    float precedingSplit = 0.0f;
+    bool valid = false;
+};
+
 /// @note Viewport ごとに解像度依存の中間リソースを保持する。
 /// @note static で共有すると SceneView と GameView が 1 フレーム内でリサイズし合う。
 struct RenderViewResources {
     /// @note View ごとの RenderGraph 計画と transient RT をフレーム間で保持する。
     /// @note スタック生成だと DX12 の descriptor heap を毎フレーム作り直し、CPU が詰まる。
     RenderPipeline pipeline;
+    SizedRenderTarget cachedShadowAtlas;
+    std::array<ShadowCascadeCache, kMaxShadowCascades> shadowCascadeCaches;
     uint32_t nativeWidth = 0;
     uint32_t nativeHeight = 0;
     bool needsUpscale = false;

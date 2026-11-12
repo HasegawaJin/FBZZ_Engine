@@ -90,7 +90,7 @@ float ComputeLightDepthKey(const math::Matrix4& lightView, const math::Vector3& 
          + lightView.m[2][3];
 }
 
-void CollectMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
+void CollectMeshShadowCasters(RenderPassContext& ctx, uint32_t updateMask,
     const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters, bool skinned,
     const spatial_detail::CandidateBatch* candidates, uint32_t bakedCascadeBit)
 {
@@ -103,7 +103,7 @@ void CollectMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
         const bool hasBounds = bounds.radius > 0.0f;
         if (hasBounds && !renderer::IsWithinDrawDistance(CullingView(ctx),
             { bounds.center, bounds.radius, DrawDistance(ctx, object) })) return;
-        const uint32_t cascadeMask = shadow_visibility_detail::ComputeCascadeMask(ctx, cascadeCount, bounds, hasBounds);
+        const uint32_t cascadeMask = shadow_visibility_detail::ComputeCascadeMask(ctx, updateMask, bounds, hasBounds);
         const uint32_t punctualMask = shadow_visibility_detail::ComputePunctualMask(ctx, bounds, hasBounds);
         if (cascadeMask == 0 && punctualMask == 0) return;
         const math::Vector3 worldPosition{ object.world.m[0][3], object.world.m[1][3], object.world.m[2][3] };
@@ -144,18 +144,18 @@ void CollectMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
     }
 }
 
-void CollectStaticMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
+void CollectStaticMeshShadowCasters(RenderPassContext& ctx, uint32_t updateMask,
     const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters,
     const spatial_detail::CandidateBatch* candidates, uint32_t bakedCascadeBit)
 {
-    CollectMeshShadowCasters(ctx, cascadeCount, sortView, outCasters, false, candidates, bakedCascadeBit);
+    CollectMeshShadowCasters(ctx, updateMask, sortView, outCasters, false, candidates, bakedCascadeBit);
 }
 
-void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx, int cascadeCount,
+void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx, uint32_t updateMask,
     const math::Matrix4& sortView, std::vector<ShadowCaster>& outCasters,
     const spatial_detail::CandidateBatch* candidates = nullptr)
 {
-    CollectMeshShadowCasters(ctx, cascadeCount, sortView, outCasters, true, candidates, 0);
+    CollectMeshShadowCasters(ctx, updateMask, sortView, outCasters, true, candidates, 0);
 }
 
 /// @brief EmitShadowCasters — 収集済み caster のうち、指定ビューに属するものを描画する。
@@ -262,7 +262,8 @@ static_assert(sizeof(BakedDepthRestoreConstants) == 80 && sizeof(BakedDepthResto
 /// @note RenderShadowCascade — カスケード 1 枚をアトラスの担当タイルへ描く。
 /// @note casters は全カスケード共通のソート済み配列。ここでは cascadeMask で絞って投げるだけ。
 void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
-                         int cascadeIndex, const std::vector<ShadowCaster>& casters, const ShadowSelections& selections,
+                         int cascadeIndex, size_t selectionIndex, const std::vector<ShadowCaster>& casters,
+                         const ShadowSelections& selections,
                          bool usesBakedStaticDepth)
 {
     /// @note このカスケードのタイルへビューポートを絞る。SetRenderTarget はビューポートを
@@ -295,7 +296,6 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection);
-    const auto selectionIndex = static_cast<size_t>(cascadeIndex);
     SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
     SubmitFiberShadowCasters(ctx, lightFrameData, cascade.frustum);
 
@@ -343,6 +343,9 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     const int punctualViewCount =
         std::clamp(ctx.punctualShadowViewCount, 0, kMaxPunctualShadows);
     const bool hasPunctualAtlas = ctx.Res().Target("PunctualShadowMap").IsValid();
+    const int cascadeCount = std::clamp(ctx.shadowCascadeCount, 1, kMaxShadowCascades);
+    const uint32_t updateMask = shadow_visibility_detail::DirectionalUpdateMask(ctx);
+    const auto shadowAtlas = ctx.Res().Target("ShadowMap");
 
     /// @note Spot / Point のアトラスも毎フレームまっさらにしてから始める。スロットの割り当ては
     /// @note フレームごとに変わる (カメラが動けば近い順が入れ替わる) ため、前フレームの深度が
@@ -352,9 +355,17 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         renderer.ClearDepth();
     }
 
-    /// @note クリアはアトラス全面へ 1 回。カスケードごとのビューポートを張る前に行う。
-    renderer.SetRenderTarget(ctx.Res().Target("ShadowMap"), resources);
-    renderer.ClearDepth();
+    /// @note 再利用するタイルを残し、更新するタイルだけを初期化する。
+    renderer.SetRenderTarget(shadowAtlas, resources);
+    if (ctx.reuseShadowCascadeMask != 0) {
+        for (int i = 0; i < cascadeCount; ++i) {
+            if ((updateMask & (1u << i)) == 0) continue;
+            const auto& cascade = ctx.shadowCascades[i];
+            renderer.ClearDepthRegion(cascade.viewportX, cascade.viewportY, cascade.viewportSize, cascade.viewportSize);
+        }
+    } else {
+        renderer.ClearDepth();
+    }
 
     if (!rs.shadowEnabled) return;
     /// @note 影の濃さが 0 のときは面の陰影に深度が一切効かない (`Shadow.hlsli`:
@@ -367,10 +378,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     const bool needPunctual    = hasPunctualAtlas && punctualViewCount > 0;
     if (!needDirectional && !needPunctual) return;
 
-    /// @note このスコープの `renderer` は ctx.renderer への参照なので、
-    /// @note 定数は名前空間から完全修飾で引く。
-    const int cascadeCount =
-        std::clamp(ctx.shadowCascadeCount, 1, fbzz::renderer::kMaxShadowCascades);
+    const uint32_t directionalUpdateMask = needDirectional ? updateMask : 0;
     /// @note 復元資源が失効していれば同じ投影に全キャスターを再描画する。
     const auto& baked = ctx.directionalShadowBake;
     const bool restoreStaticDepth = needDirectional && cascadeCount > 1 && resources.Get(baked.depth)
@@ -391,14 +399,14 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     /// @note Collected caster item pointers retain the same immutable owner through emission, even if a resource hook publishes another snapshot.
     std::shared_ptr<const RenderScene> spatialSnapshot;
     if (spatial_detail::MeshSpatialQueriesEnabled()) {
-        const auto candidates = spatial_detail::CollectShadowCandidates(ctx, cascadeCount);
+        const auto candidates = spatial_detail::CollectShadowCandidates(ctx, directionalUpdateMask);
         spatialSnapshot = candidates.snapshot;
         const auto* validCandidates = candidates.snapshot ? &candidates : nullptr;
-        CollectStaticMeshShadowCasters(ctx, cascadeCount, sortView, casters, validCandidates, bakedCascadeBit);
-        CollectSkinnedMeshShadowCasters(ctx, cascadeCount, sortView, casters, validCandidates);
+        CollectStaticMeshShadowCasters(ctx, directionalUpdateMask, sortView, casters, validCandidates, bakedCascadeBit);
+        CollectSkinnedMeshShadowCasters(ctx, directionalUpdateMask, sortView, casters, validCandidates);
     } else {
-        CollectStaticMeshShadowCasters(ctx, cascadeCount, sortView, casters, nullptr, bakedCascadeBit);
-        CollectSkinnedMeshShadowCasters(ctx, cascadeCount, sortView, casters);
+        CollectStaticMeshShadowCasters(ctx, directionalUpdateMask, sortView, casters, nullptr, bakedCascadeBit);
+        CollectSkinnedMeshShadowCasters(ctx, directionalUpdateMask, sortView, casters);
     }
 
     /// @note 光源に近い順。Hi-Z が後続の遮蔽フラグメントを捨てられるようにする。
@@ -407,15 +415,19 @@ void ExecuteShadowPass(RenderPassContext& ctx)
                          return a.depthKey < b.depthKey;
                      });
 
-    const int directionalViewCount = needDirectional ? cascadeCount : 0;
     const int localViewCount = needPunctual ? punctualViewCount : 0;
-    std::array<ShadowCascade, kMaxShadowCascades> directionalViews;
+    std::array<int, kMaxShadowCascades> directionalIndices;
     std::array<PunctualShadowView, kMaxPunctualShadows> punctualViews;
     std::array<InstanceShadowView, kMaxShadowCascades + kMaxPunctualShadows> visibilityViews;
-    for (int index = 0; index < directionalViewCount; ++index) {
-        directionalViews[index] = ctx.shadowCascades[index];
+    int directionalViewCount = 0;
+    size_t bakedViewIndex = SIZE_MAX;
+    for (int index = 0; index < cascadeCount; ++index) {
+        if ((directionalUpdateMask & (1u << index)) == 0) continue;
+        if (static_cast<size_t>(index) == bakedCascadeIndex) bakedViewIndex = directionalViewCount;
         /// @note The two near cascades retain projected-size LOD for readable branch and canopy shadows.
-        visibilityViews[index] = {directionalViews[index].frustum, true, index < 2};
+        directionalIndices[directionalViewCount] = index;
+        visibilityViews[directionalViewCount++] = {ctx.shadowCascades[index].frustum, true, index < 2,
+            ctx.shadowCascades[index].texelWorldSize};
     }
     for (int index = 0; index < localViewCount; ++index) {
         punctualViews[index] = ctx.punctualShadowViews[index];
@@ -428,7 +440,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     {
         FBZZ_PROFILE_SCOPE("ShadowVisibility::Prepare");
         instanceBatch = PrepareInstanceShadowBatch(ctx, views, commands);
-        terrainBatch = PrepareTerrainShadowBatch(ctx, views, commands, bakedCascadeIndex);
+        terrainBatch = PrepareTerrainShadowBatch(ctx, views, commands, bakedViewIndex);
     }
     std::vector<uint8_t> receipts(commands.size());
     if (!commands.empty()) {
@@ -440,9 +452,13 @@ void ExecuteShadowPass(RenderPassContext& ctx)
 
     if (needDirectional) {
         /// @note クリアの後に punctual アトラスを触っている可能性があるので、束縛し直す。
-        renderer.SetRenderTarget(ctx.Res().Target("ShadowMap"), resources);
-        for (int i = 0; i < cascadeCount; ++i)
-            RenderShadowCascade(ctx, directionalViews[i], i, casters, selections, static_cast<size_t>(i) == bakedCascadeIndex);
+        renderer.SetRenderTarget(shadowAtlas, resources);
+        for (int i = 0; i < directionalViewCount; ++i) {
+            const int index = directionalIndices[i];
+            RenderShadowCascade(ctx, ctx.shadowCascades[index], index, i, casters, selections,
+                static_cast<size_t>(i) == bakedViewIndex);
+        }
+        ctx.cachedShadowDepthReady = ctx.cachedShadowAtlas.IsValid() && shadowAtlas == ctx.cachedShadowAtlas;
     }
 
     if (needPunctual) {

@@ -190,7 +190,13 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
     const uint preserveDetailMask=view.terrainDepth.z;
     [loop] while (cascadeMask != 0u) {
         const uint cascade=firstbitlow(cascadeMask);
-        const uint shadowLod=(preserveDetailMask & (1u<<cascade))!=0u ? lod : budgetedLod;
+        uint shadowLod=(preserveDetailMask & (1u<<cascade))!=0u ? lod : budgetedLod;
+        const float texelsPerMeter = g_view[cascade].forward.w;
+        if (texelsPerMeter > 0.0f) {
+            const float diameter = 2.0f * sphere.w * texelsPerMeter;
+            const uint minimum = diameter <= 20.0f ? 2u : diameter <= 40.0f ? 1u : 0u;
+            shadowLod = max(shadowLod, min(minimum, last));
+        }
         AppendInstance(view, cascade, id, shadowLod);
         cascadeMask &= cascadeMask - 1u;
     }
@@ -199,6 +205,11 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
     if (view.vegetation.z!=0u && rank>=view.vegetation.z) lod=max(lod,min(2u,last));
     else if (view.vegetation.x!=0u && rank>=view.vegetation.x) lod=max(lod,min(2u,last));
     else if (view.vegetation.y!=0u && rank>=view.vegetation.y) lod=max(lod,min(1u,last));
+    if (view.forward.w > 0.0f) {
+        const float diameter = 2.0f * sphere.w * view.forward.w;
+        const uint minimum = diameter <= 20.0f ? 2u : diameter <= 40.0f ? 1u : 0u;
+        lod = max(lod, min(minimum, last));
+    }
     AppendInstance(view, 0u, id, lod);
 #endif
 }

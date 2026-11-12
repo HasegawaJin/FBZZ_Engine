@@ -17,6 +17,7 @@ struct InstanceShadowView {
     math::Frustum frustum;
     bool directional = false;
     bool preserveVegetationDetail = false;
+    float texelWorldSize = 0.0f;
 };
 
 class PreparedInstanceShadowBatch {

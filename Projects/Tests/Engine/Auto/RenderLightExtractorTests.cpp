@@ -71,5 +71,29 @@ TEST_F(RenderLightExtractorTest, SpotShadowAndCookieSlotsMatchLegacyAndStructure
     EXPECT_EQ(input.lightCookieViews[0].sourcePath, "cookie.png");
 }
 
+TEST_F(RenderLightExtractorTest, PunctualShadowFadesWithoutDroppingTheLight)
+{
+    scene::Scene source;
+    auto& light = source.CreateGameObject("Spot").AddComponent<scene::LightComponent>();
+    light.type = scene::LightComponent::Type::Spot;
+    light.range = 10.0f;
+    light.shadowStrength = 0.8f;
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    settings.shadow.punctualShadowDistance = 50.0f;
+    camera.m_position = {0, 0, -55};
+    const auto fading = scene::ExtractRenderLights(source, camera, settings, 1024);
+    ASSERT_EQ(fading.punctualLights.size(), 1u);
+    ASSERT_EQ(fading.punctualShadowViewCount, 1);
+    EXPECT_FLOAT_EQ(fading.punctualShadowViews[0].shadowStrength, 0.4f);
+
+    camera.m_position.z = -60.0f;
+    const auto outside = scene::ExtractRenderLights(source, camera, settings, 1024);
+    ASSERT_EQ(outside.punctualLights.size(), 1u);
+    EXPECT_EQ(outside.punctualShadowViewCount, 0);
+    EXPECT_EQ(outside.punctualLights[0].shadowIndex, -1);
+    EXPECT_FLOAT_EQ(outside.punctualLights[0].intensity, fading.punctualLights[0].intensity);
+}
+
 }
 }

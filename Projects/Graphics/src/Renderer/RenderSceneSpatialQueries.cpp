@@ -195,7 +195,7 @@ bool MeshSpatialQueriesEnabled()
     return config.options.mode != QueryMode::LINEAR;
 }
 
-CandidateBatch CollectShadowCandidates(const RenderPassContext& context, int cascadeCount)
+CandidateBatch CollectShadowCandidates(const RenderPassContext& context, uint32_t updateMask)
 {
     CandidateBatch batch;
     batch.snapshot = context.renderScene;
@@ -203,8 +203,9 @@ CandidateBatch CollectShadowCandidates(const RenderPassContext& context, int cas
     FBZZ_PROFILE_SCOPE("RenderMeshSpatial::ShadowCandidates");
     std::array<const math::Frustum*, kMaxShadowCascades + kMaxPunctualShadows> volumes{};
     size_t count = 0;
-    for (int cascade = 0; cascade < std::clamp(cascadeCount, 0, kMaxShadowCascades); ++cascade)
-        volumes[count++] = &context.shadowCascades[cascade].frustum;
+    for (int cascade = 0; cascade < kMaxShadowCascades; ++cascade)
+        if ((updateMask & (1u << cascade)) != 0) volumes[count++] = &context.shadowCascades[cascade].frustum;
+    const int directionalCount = static_cast<int>(count);
     for (int view = 0; view < std::clamp(context.punctualShadowViewCount, 0, kMaxPunctualShadows); ++view)
         volumes[count++] = &context.punctualShadowViews[view].frustum;
     static thread_local RenderSceneSpatialCache cache;
@@ -222,7 +223,7 @@ CandidateBatch CollectShadowCandidates(const RenderPassContext& context, int cas
         debug ? &ticket.request : nullptr, debug.get());
     if (batch.validationMismatch)
         FBZZ_LOG_ERROR("RenderMeshSpatial BVH union differs from current linear bounds; using full shadow candidate scan");
-    RecordTrace(context, cascadeCount, batch);
+    RecordTrace(context, directionalCount, batch);
     if (debug) DebugPublication().Publish(ticket, std::move(debug));
     return batch;
 }

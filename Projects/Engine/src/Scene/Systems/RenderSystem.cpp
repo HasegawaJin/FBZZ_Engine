@@ -290,8 +290,11 @@ renderer::ShadowBounds shadow_preparation_detail::ComputeSceneBounds(Scene& scen
 
         if (auto* terrain = go.GetComponent<TerrainComponent>()) {
             WorldBounds bounds{};
-            if (ComputeTerrainWorldBounds(go.transform, *terrain, bounds))
+            if (ComputeTerrainWorldBounds(go.transform, *terrain, bounds)) {
                 AccumulateBounds(result, bounds);
+                result.terrainRevision = result.terrainRevision * 1099511628211ull + id.index;
+                result.terrainRevision = result.terrainRevision * 1099511628211ull + terrain->surfaceRevision;
+            }
         }
     }
     candidates.clear();
@@ -701,10 +704,37 @@ void RenderSystem(Scene& scene,
         shadowBounds.valid = true;
     }
 
+    const auto cachedLight = lighting.dirCachedFarShadowLight;
+    const bool requestFarCache = cachedLight.IsValid() && rs.shadowEnabled && rs.shadow.cascadeCount > 1
+        && Script::IsInPlayMode() && renderer.GetCapabilities().depthRegionClear;
     auto shadows = renderer::PrepareShadows(camera, rs, shadowBounds, lightDir,
-        dirShadowDistance, dirShadowBias);
+        dirShadowDistance, dirShadowBias, requestFarCache);
     /// @note The producer may access lazy native descriptors after the CPU-only shadow preparation.
     if (skinningReadAhead) renderer::FinishOwnedSkinningReadAhead(renderer);
+    auto& shadowAtlas = viewTargets.cachedShadowAtlas;
+    auto& shadowCaches = viewTargets.shadowCascadeCaches;
+    uint32_t reuseShadowCascadeMask = 0;
+    if (requestFarCache) {
+        if (shadowAtlas.Ensure(resources, rs.shadow.mapResolution, rs.shadow.mapResolution, 0))
+            shadowCaches = {};
+        if (resources.GetDepthTexture(shadowAtlas.Handle()).IsValid()) {
+            const renderer::FarShadowCacheKey key{scene.GetRenderSceneGeneration(), scene.GetHierarchyRevision(),
+                shadowBounds.terrainRevision, (static_cast<uint64_t>(cachedLight.generation) << 32u) | cachedLight.index,
+                cullingMask};
+            for (int index = std::min(2, shadows.count - 1); index < shadows.count; ++index) {
+                if (renderer::PrepareShadowCascadeCache(shadowCaches[index], shadows, camera, lightDir, key,
+                        Time::frameCount, index))
+                    reuseShadowCascadeMask |= 1u << index;
+            }
+        } else {
+            shadowAtlas.Release(resources);
+            shadowCaches = {};
+            shadows = renderer::PrepareShadows(camera, rs, shadowBounds, lightDir, dirShadowDistance, dirShadowBias);
+        }
+    } else if (shadowAtlas.IsValid()) {
+        shadowAtlas.Release(resources);
+        shadowCaches = {};
+    }
     const auto& cascades = shadows.cascades;
     const int cascadeCount = shadows.count;
     const auto& lightVP = shadows.lightVP;
@@ -927,6 +957,8 @@ void RenderSystem(Scene& scene,
 
     passCtx.uiOptions               = uiOptions;
     passCtx.directionalShadowBakeEnabled = rs.shadowEnabled && lighting.dirShadowBakeLight != EntityID::INVALID;
+    passCtx.cachedShadowAtlas = shadowAtlas.Handle();
+    passCtx.reuseShadowCascadeMask = reuseShadowCascadeMask;
     passCtx.outputWidth             = nativeW;
     passCtx.outputHeight            = nativeH;
     /// @note ポストプロセスチェーンの終着点。等倍なら従来どおり outputRT へ直接書き切る。
@@ -1364,6 +1396,12 @@ void RenderSystem(Scene& scene,
     }
     assert(graphExecuted);
     (void)graphExecuted;
+    if (shadowAtlas.IsValid()) {
+        const int firstCached = std::min(2, cascadeCount - 1);
+        for (int index = 0; index < renderer::kMaxShadowCascades; ++index)
+            shadowCaches[index].valid = graphExecuted && passCtx.cachedShadowDepthReady
+                && index >= firstCached && index < cascadeCount;
+    }
     /// @note パスが書き換えたフレームをまたぐ状態をビューへ戻す。
     /// @note TAA は反転させた向き (次フレームは «書いた方» を履歴として読む)、
     /// @note 自動露出は消費したリセット世代。

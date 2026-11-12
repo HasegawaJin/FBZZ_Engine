@@ -56,6 +56,9 @@ struct RenderPassContext : RenderLightingInput {
     /// @note The opt-in worker returns values only; no native pointer or producer input is borrowed by this receipt.
     RenderSkinningBatchReceipt skinningBatchReceipt;
     uint64_t frameStamp = 0;
+    ResourceHandle<RenderTargetTag> cachedShadowAtlas;
+    uint32_t reuseShadowCascadeMask = 0;
+    bool cachedShadowDepthReady = false;
     float time = 0.0f;
     float deltaTime = 0.0f;
     float unscaledDeltaTime = 0.0f;

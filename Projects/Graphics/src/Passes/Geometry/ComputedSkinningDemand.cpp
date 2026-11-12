@@ -32,8 +32,8 @@ bool RequiresComputedSkinning(const RenderPassContext& context,
     if (!IsWithinDrawDistance(CullingView(context),
         { bounds.center, bounds.radius, DrawDistance(context, object) })) return false;
     const bool directional = context.shadowStrength > 0.0f || context.settings.volumetricLight.enabled;
-    const int cascadeCount = std::clamp(context.shadowCascadeCount, 1, kMaxShadowCascades);
-    if (directional && shadow_visibility_detail::ComputeCascadeMask(context, cascadeCount, bounds, true) != 0) return true;
+    if (directional && shadow_visibility_detail::ComputeCascadeMask(context,
+            shadow_visibility_detail::DirectionalUpdateMask(context), bounds, true) != 0) return true;
     /// @note atlas や shader の実体未確認時も候補を残し、通常 shadow 準備を先取りしない。
     return shadow_visibility_detail::ComputePunctualMask(context, bounds, true) != 0;
 }

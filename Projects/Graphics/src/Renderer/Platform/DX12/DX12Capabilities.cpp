@@ -13,7 +13,7 @@ GraphicsCapabilities DX12Renderer::GetCapabilities() const
 
     /// @see https://devblogs.microsoft.com/directx/dxr-1-1/ Inline Raytracing と DXR Tier 1.1。
     return { m_context.SupportsBindless(), m_context.SupportsInlineRaytracing(),
-             m_context.SupportsRaytracingPipeline() };
+             m_context.SupportsRaytracingPipeline(), true };
 }
 
 }

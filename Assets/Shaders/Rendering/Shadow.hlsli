@@ -126,10 +126,32 @@ float CascadeBiasAt(int index)
     return cascadeBias.w;
 }
 
-/// @note SampleShadowCascadePCF — カスケード 1 枚ぶんの PCF。
-/// @note PCF はカーネル半径ぶん周囲を舐めるため、タイル端で隣のカスケードへはみ出す。
-/// @note アトラスでは隣が「別の深度」なので、はみ出すと帯状の誤った影が出る。
-/// @note サンプル範囲をタイル内側へクランプして漏れを断つ。
+/// @see https://www.ludicon.com/castano/blog/articles/shadow-mapping-summary-part-1/ Separable bilinear PCF weights.
+float SampleShadowBox7(Texture2D<float> shadowMap, SamplerComparisonState shadowSampler,
+                       float2 atlasUV, float depth, float2 texelSize)
+{
+    const float2 texelPosition = atlasUV / texelSize - 0.5f;
+    const float2 phase = frac(texelPosition);
+    const float2 firstCenter = (floor(texelPosition) - 2.5f) * texelSize;
+    float2 samplePosition[4];
+    float2 sampleWeight[4];
+    [unroll] for (int pair = 0; pair < 4; ++pair)
+    {
+        /// @note Seven linear comparison samples cover eight texels, with fractional weights at the two ends.
+        const float2 left = pair == 0 ? 1.0f - phase : float2(1.0f, 1.0f);
+        const float2 right = pair == 3 ? phase : float2(1.0f, 1.0f);
+        sampleWeight[pair] = left + right;
+        samplePosition[pair] = firstCenter + (2.0f * pair + right / sampleWeight[pair]) * texelSize;
+    }
+    float result = 0.0f;
+    [unroll] for (int y = 0; y < 4; ++y)
+    [unroll] for (int x = 0; x < 4; ++x)
+        result += sampleWeight[x].x * sampleWeight[y].y * shadowMap.SampleCmpLevelZero(
+            shadowSampler, float2(samplePosition[x].x, samplePosition[y].y), depth);
+    return result * (1.0f / 49.0f);
+}
+
+/// @note タイルの境界では個々のサンプルをクランプして、隣のカスケードの深度を読まない。
 float SampleShadowCascadePCF(Texture2D<float> shadowMap,
                              SamplerComparisonState shadowSampler,
                              float2 uv, float depth, float4 atlasRect,
@@ -138,6 +160,11 @@ float SampleShadowCascadePCF(Texture2D<float> shadowMap,
     float2 inset = atlasTexelSize * (float(radius) + 1.0f);
     float2 uvMin = atlasRect.xy + inset;
     float2 uvMax = atlasRect.xy + atlasRect.zw - inset;
+    const float2 atlasUV = CascadeUVToAtlas(uv, atlasRect);
+    /// @note At tile borders, keep the original per-tap clamp rather than combining clamped weights.
+    [branch] if (radius == 3 && all(atlasUV - 3.0f * atlasTexelSize >= uvMin)
+                             && all(atlasUV + 3.0f * atlasTexelSize <= uvMax))
+        return SampleShadowBox7(shadowMap, shadowSampler, atlasUV, depth, atlasTexelSize);
 
     float shadow = 0.0f;
     float total  = 0.0f;
@@ -145,7 +172,7 @@ float SampleShadowCascadePCF(Texture2D<float> shadowMap,
     for (int y = -radius; y <= radius; ++y)
     for (int x = -radius; x <= radius; ++x)
     {
-        float2 sampleUV = CascadeUVToAtlas(uv, atlasRect) + float2(x, y) * atlasTexelSize;
+        float2 sampleUV = atlasUV + float2(x, y) * atlasTexelSize;
         sampleUV = clamp(sampleUV, uvMin, uvMax);
         shadow += shadowMap.SampleCmpLevelZero(shadowSampler, sampleUV, depth);
         total  += 1.0f;
@@ -168,6 +195,13 @@ float CascadeSplitAt(int index)
     if (index == 2) return cascadeSplitFar.z;
     return cascadeSplitFar.w;
 }
+
+/// @brief Fade direct occlusion at the end of the last cascade while retaining world-space cloud shadows.
+float DirectionalCascadeCoverage(int index, float edge)
+{
+    return index == cascadeCount - 1 ? 1.0f - smoothstep(0.85f, 1.0f, edge) : 1.0f;
+}
+
 int SelectShadowCascade(float3 worldPos, out float2 outUV, out float outDepth, out float outEdge)
 {
     outUV    = float2(0.0f, 0.0f);
@@ -322,7 +356,8 @@ float ComputeShadow(Texture2D<float> shadowMap,
         }
     }
 
-    return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
+    const float strength = shadowStrength * DirectionalCascadeCoverage(index, edge);
+    return lerp(1.0f - strength, 1.0f, factor) * cloud;
 }
 
 
@@ -371,9 +406,11 @@ float SampleShadowSurfacePCF(Texture2D<float> shadowMap,
     const bool hasReceiverPlane = ShadowReceiverPlaneGradient(worldPositionDx, worldPositionDy,
         lightVP, atlasRect, texelSize, depthGradient);
     /// @note ハードウェアの線形比較は 4 テクセルへ同じ基準を渡すため、tap 内の最大 1 テクセル差だけ bias で覆う。
-    const float adjustedBias = hasReceiverPlane
-        ? bias + dot(abs(depthGradient), texelSize)
-        : ApplySlopeScaledBias(bias, N, L);
+    if (!hasReceiverPlane)
+        return SampleShadowCascadePCF(shadowMap, shadowSampler, uv,
+            depth - ApplySlopeScaledBias(bias, N, L), atlasRect, texelSize, shadowPcfRadius);
+
+    const float adjustedBias = bias + dot(abs(depthGradient), texelSize);
     const float2 centerUV = CascadeUVToAtlas(uv, atlasRect);
     const float2 inset = texelSize * (float(shadowPcfRadius) + 1.0f);
     const float2 uvMin = atlasRect.xy + inset;
@@ -447,7 +484,8 @@ float ComputeShadowSurface(Texture2D<float> shadowMap,
             }
         }
     }
-    return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
+    const float strength = shadowStrength * DirectionalCascadeCoverage(index, edge);
+    return lerp(1.0f - strength, 1.0f, factor) * cloud;
 }
 
 /// @note PCSS (Percentage Closer Soft Shadows)
@@ -578,6 +616,7 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
     float  receiverDepth;
     float4 atlasRect  = float4(0.0f, 0.0f, 1.0f, 1.0f);
     float  activeBias = bias;
+    float  strength = shadowStrength;
 
     if (cascadeCount <= 1)
     {
@@ -595,6 +634,7 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
             return cloud;
         atlasRect  = cascadeAtlasRect[index];
         activeBias = CascadeBiasAt(index);
+        strength *= DirectionalCascadeCoverage(index, edge);
     }
 
     /// @note スロープスケールバイアスで Self-Shadow アクネを防ぐ
@@ -624,7 +664,7 @@ float ComputeShadowPCSS(Texture2D<float>       shadowMap,
     float factor = SampleShadowCascadePCF(shadowMap, shadowSampler, uv, receiverDepth,
                                           atlasRect, texelSize, pcfRadius);
 
-    return lerp(1.0f - shadowStrength, 1.0f, factor) * cloud;
+    return lerp(1.0f - strength, 1.0f, factor) * cloud;
 }
 
 /// @note SHADOW_HLSLI

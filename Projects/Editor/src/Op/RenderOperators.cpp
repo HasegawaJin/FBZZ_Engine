@@ -127,7 +127,7 @@ EditorOperator MakeDirectionalShadowMode()
     op.category = "Render";
     op.kind = OpKind::Mutation;
     op.undoLabel = op.label;
-    op.desc = "方向ライトの Realtime / Auto Bake と影の最大距離を設定する。Auto Bake はエディター内の Play 前に静的な遠景の影を準備する。";
+    op.desc = "方向ライトの影モードと最大距離を設定する。Cached Far Cascade は Play 中の中遠景カスケードを再利用する。";
     OpParam node;
     node.name = "node";
     node.type = OpParamType::NodeId;
@@ -135,7 +135,7 @@ EditorOperator MakeDirectionalShadowMode()
     node.required = false;
     OpParam mode;
     mode.name = "mode";
-    mode.enumValues = {"realtime", "auto_bake"};
+    mode.enumValues = {"realtime", "auto_bake", "cached_far_cascade"};
     OpParam distance;
     distance.name = "distance";
     distance.type = OpParamType::Float;
@@ -163,7 +163,9 @@ EditorOperator MakeDirectionalShadowMode()
         if (!object) return OpResult::Err("NO_DIRECTIONAL_LIGHT", "編集可能な方向ライトを選択してください");
         const auto* light = object->GetComponent<Light>();
         const auto modeName = args.GetString("mode");
-        const auto nextMode = modeName == "auto_bake" ? Light::ShadowMode::AUTO_BAKE : Light::ShadowMode::REALTIME;
+        auto nextMode = Light::ShadowMode::REALTIME;
+        if (modeName == "auto_bake") nextMode = Light::ShadowMode::AUTO_BAKE;
+        if (modeName == "cached_far_cascade") nextMode = Light::ShadowMode::CACHED_FAR_CASCADE;
         const bool setDistance = args.Has("distance");
         const auto nextDistance = setDistance
             ? args.GetFloat("distance", std::numeric_limits<float>::quiet_NaN()) : light->shadowDistance;

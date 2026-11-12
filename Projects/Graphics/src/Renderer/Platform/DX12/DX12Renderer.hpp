@@ -41,6 +41,7 @@ public:
     void SetRenderWhenOccluded(bool enabled) override { m_context.SetRenderWhenOccluded(enabled); }
     FBZZ_GRAPHICS_API void Clear(const math::Vector4& color) override;
     FBZZ_GRAPHICS_API void ClearDepth() override;
+    FBZZ_GRAPHICS_API void ClearDepthRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override;
     FBZZ_GRAPHICS_API void Submit(const DrawCall& call, ResourceManager& resources) override;
     FBZZ_GRAPHICS_API bool RenderDebugPreview(const DrawCall& call, ResourceHandle<RenderTargetTag> target,
                             ResourceManager& resources) override;

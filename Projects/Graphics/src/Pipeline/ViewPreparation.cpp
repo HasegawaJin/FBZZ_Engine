@@ -9,6 +9,7 @@
 
 namespace fbzz::renderer {
 namespace {
+constexpr float CACHED_SHADOW_PADDING = 0.125f;
 /// @note 視錐台スライス [nearZ, farZ] の外接球。centerDistance はカメラ前方への距離。
 /// @note 8 頂点へ合わせるとカメラの回転で箱の大きさが変わり、影の精細度が脈動する。
 /// @note 外接球の半径は向きに依存しない。
@@ -82,6 +83,13 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
     const ShadowBounds& shadowBounds, const math::Vector3& lightDir,
     float dirShadowDistance, float dirShadowBias)
 {
+    return PrepareShadows(camera, rs, shadowBounds, lightDir, dirShadowDistance, dirShadowBias, false);
+}
+
+PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
+    const ShadowBounds& shadowBounds, const math::Vector3& lightDir,
+    float dirShadowDistance, float dirShadowBias, bool padCachedCascades)
+{
     PreparedShadows result;
     /// @name カスケードシャドウ (CSM) のフィッティング
     /// @note 精細さを決めるのは解像度ではなく「1 テクセルが覆うワールド距離」。単一マップでは
@@ -139,6 +147,9 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
         } else {
             center = shadowBounds.center;
         }
+
+        if (padCachedCascades && i >= std::min(2, cascadeCount - 1))
+            radius *= 1.0f + CACHED_SHADOW_PADDING;
 
         /// @note テクセルスナップ。中心がカメラに追従するとサブテクセルのずれで輪郭が波打つ
         /// @note (shadow swimming)。ライト空間で 1 テクセル単位へ量子化すると標本位置が固定される。
@@ -199,6 +210,53 @@ PreparedShadows PrepareShadows(const Camera& camera, const RenderSettings& rs,
     result.lightView = widestCascade.view;
     result.lightPos = widestCascade.eyePos;
     return result;
+}
+
+/// @see https://www.cryengine.com/docs/static/engines/cryengine-3/categories/1114113/pages/21267738 Cached Shadows: Placement and Update。
+bool PrepareShadowCascadeCache(ShadowCascadeCache& cache, PreparedShadows& shadows,
+    const Camera& camera, const math::Vector3& lightDirection, const FarShadowCacheKey& key, uint64_t frame, int index)
+{
+    constexpr float MIN_CAMERA_FORWARD_DOT = 0.966f;
+    constexpr float MIN_LIGHT_DIRECTION_DOT = 0.9999905f;
+    if (index <= 0 || index >= shadows.count) return false;
+    const bool farthest = index == shadows.count - 1;
+    const uint64_t interval = farthest ? 8u : 4u;
+    const uint64_t phase = farthest ? 0u : 2u;
+    auto& cascade = shadows.cascades[index];
+    const float precedingSplit = shadows.cascades[index - 1].splitFar;
+    const auto cameraForward = camera.GetForward();
+    const float radius = cache.cascade.texelWorldSize * static_cast<float>(cache.cascade.viewportSize) * 0.5f;
+    /// @note 投影の余白を一部残し、テクセル丸めとライトの微小回転でも受光範囲が端から外れないようにする。
+    const float translationLimit = radius * CACHED_SHADOW_PADDING * 0.5f;
+    const bool reuse = cache.valid && cache.key == key && frame == cache.previousFrame + 1
+        && frame % interval != phase && frame - cache.updateFrame < interval && cache.precedingSplit == precedingSplit
+        && cache.cascade.splitFar == cascade.splitFar && cache.cascade.viewportSize == cascade.viewportSize
+        && cache.cascade.viewportX == cascade.viewportX && cache.cascade.viewportY == cascade.viewportY
+        && std::abs(cache.cascade.texelWorldSize - cascade.texelWorldSize) <= cache.cascade.texelWorldSize * 0.01f
+        && std::abs(cache.cascade.biasNDC - cascade.biasNDC) <= std::abs(cache.cascade.biasNDC) * 0.01f
+        && math::Vector3::Dot(cache.cameraForward, cameraForward) >= MIN_CAMERA_FORWARD_DOT
+        && math::Vector3::Dot(cache.lightDirection, lightDirection) >= MIN_LIGHT_DIRECTION_DOT
+        && (std::abs(cache.lightDirection.y) > 0.99f) == (std::abs(lightDirection.y) > 0.99f)
+        && (cascade.eyePos - cache.cascade.eyePos).Length() <= translationLimit;
+
+    cache.previousFrame = frame;
+    if (reuse) {
+        cascade = cache.cascade;
+        if (farthest) {
+            shadows.lightVP = cascade.viewProjection;
+            shadows.lightView = cascade.view;
+            shadows.lightPos = cascade.eyePos;
+        }
+    } else {
+        cache.valid = false;
+        cache.cascade = cascade;
+        cache.key = key;
+        cache.cameraForward = cameraForward;
+        cache.lightDirection = lightDirection;
+        cache.updateFrame = frame;
+        cache.precedingSplit = precedingSplit;
+    }
+    return reuse;
 }
 
 void PrepareAdvancedConstants(RenderPassContext& passCtx, RenderViewResources& viewTargets,

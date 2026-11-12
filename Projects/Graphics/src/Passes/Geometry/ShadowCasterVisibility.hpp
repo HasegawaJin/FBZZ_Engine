@@ -25,17 +25,25 @@ inline bool IsShadowRelevant(const ShadowCascade& cascade, const WorldBounds& bo
     return (bounds.radius * 2.0f) >= cascade.texelWorldSize * MIN_TEXEL_DIAMETER;
 }
 
-/// @note ComputeCascadeMask — この bounds がどのカスケードへ提出されるかを一度に判定する。
-inline uint32_t ComputeCascadeMask(const RenderPassContext& ctx, int cascadeCount,
+/// @note 描き直すタイルのマスク。ビット位置はアトラス内の元のカスケード番号を保つ。
+inline uint32_t DirectionalUpdateMask(const RenderPassContext& ctx)
+{
+    const int count = std::clamp(ctx.shadowCascadeCount, 1, kMaxShadowCascades);
+    return ((1u << count) - 1u) & ~ctx.reuseShadowCascadeMask;
+}
+
+/// @note 境界が未計算のキャスターは更新する全タイルに提出する。
+inline uint32_t ComputeCascadeMask(const RenderPassContext& ctx, uint32_t updateMask,
                             const WorldBounds& bounds, bool hasBounds)
 {
     if (!hasBounds) {
         /// @note bounds が取れないメッシュはカリングせず全カスケードへ出す (従来の安全側)。
-        return (1u << cascadeCount) - 1u;
+        return updateMask;
     }
 
     uint32_t mask = 0;
-    for (int i = 0; i < cascadeCount; ++i) {
+    for (int i = 0; i < kMaxShadowCascades; ++i) {
+        if ((updateMask & (1u << i)) == 0) continue;
         const ShadowCascade& cascade = ctx.shadowCascades[i];
         if (!cascade.frustum.IntersectsSphere(bounds.center, bounds.radius)) continue;
         if (!IsShadowRelevant(cascade, bounds)) continue;

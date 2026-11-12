@@ -12,6 +12,7 @@ struct GraphicsCapabilities {
     bool bindless = false;
     bool inlineRayQuery = false;
     bool rayTracingPipeline = false;
+    bool depthRegionClear = false;
 };
 
 }

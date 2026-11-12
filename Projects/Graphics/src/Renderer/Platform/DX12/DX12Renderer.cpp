@@ -280,6 +280,12 @@ void DX12Renderer::Clear(const math::Vector4& color)
 
 void DX12Renderer::ClearDepth()
 {
+    ClearDepthRegion(0, 0, 0, 0);
+}
+
+/// @see https://learn.microsoft.com/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-cleardepthstencilview D3D12 ClearDepthStencilView の矩形指定。
+void DX12Renderer::ClearDepthRegion(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+{
     if (m_currentColorAttachmentCount != 0) return;
     if (m_context.IsFrameOpen()) {
         if (IsCurrentRenderTargetLost()) {
@@ -291,8 +297,11 @@ void DX12Renderer::ClearDepth()
         if (!target) m_context.MarkBackBufferWritten();
         const auto dsv = target ? target->GetDsv(target->IsCubemap() ? m_currentCubeMip : 0) : m_context.GetDsv();
         const float farDepth = FarDepth(target && target->IsReversedZ());
+        const D3D12_RECT region{static_cast<LONG>(x), static_cast<LONG>(y),
+                                static_cast<LONG>(x + width), static_cast<LONG>(y + height)};
+        const bool partial = width != 0 && height != 0;
         m_context.GetCommandList()->ClearDepthStencilView(
-            dsv, D3D12_CLEAR_FLAG_DEPTH, farDepth, 0, 0, nullptr);
+            dsv, D3D12_CLEAR_FLAG_DEPTH, farDepth, 0, partial ? 1u : 0u, partial ? &region : nullptr);
     }
 }
 
