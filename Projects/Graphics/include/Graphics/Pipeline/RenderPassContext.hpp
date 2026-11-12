@@ -246,9 +246,13 @@ struct RenderPassContext : RenderLightingInput {
     const math::Frustum* lightFrustum  = nullptr;
     OcclusionCuller*      occlusionCuller = nullptr;
     ResourceHandle<StructuredBufferTag> occlusionGpuRows;
-    /// @note Only the resolved graph can move color instances behind terrain. Pending work is consumed once in that view.
-    bool terrainHiZActive = false;
-    bool terrainHiZInstancesPending = false;
+    bool gpuOcclusionEnabled = false;
+    bool gpuOcclusionTerrain = false;
+    bool gpuOccluderDepthReady = false;
+    /// @note Maps this snapshot's mesh items to the graph's indirect argument buffer.
+    std::vector<uint32_t> gpuOcclusionArguments;
+    std::vector<bool> gpuOccluderItems;
+    std::vector<bool> gpuOcclusionCounted;
     /// @note CPU depth and uploaded rows belong to this immutable publication and exact view; callbacks invalidate the proof by replacing either input.
     std::shared_ptr<const renderer::RenderScene> occlusionPreparedScene;
     const OcclusionCuller* occlusionPreparedCuller = nullptr;

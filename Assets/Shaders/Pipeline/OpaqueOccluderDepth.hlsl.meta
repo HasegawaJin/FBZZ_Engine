@@ -1,0 +1,6 @@
+# @file    OpaqueOccluderDepth.hlsl.meta
+# @brief   描画深度による遮蔽シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-12
+[meta]
+guid = "40b9543b26be44088be3c5ec4a21afab"

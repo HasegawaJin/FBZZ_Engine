@@ -195,6 +195,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
     if (targets.upscaleSrc.IsValid())           resources.Release(targets.upscaleSrc);
     if (targets.gbuffer.IsValid())              resources.Release(targets.gbuffer);
     if (targets.velocity.IsValid())             resources.Release(targets.velocity);
+    targets.occluderDepth.Release(resources);
     if (targets.decalDepth.IsValid())           resources.Release(targets.decalDepth);
     if (targets.decalMask.IsValid())            resources.Release(targets.decalMask);
     /// @note bloomHalf は bloomChain[0] の別名なので、ここでは解放しない (二重解放になる)。

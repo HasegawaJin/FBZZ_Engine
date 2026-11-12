@@ -4,6 +4,7 @@
 /// @date    2026-09-21
 #include <Graphics/Pipeline/ViewPipeline.hpp>
 #include <Graphics/Pipeline/GeometryPipeline.hpp>
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <Graphics/Pipeline/ViewPreparation.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
@@ -423,6 +424,19 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         { RK::RenderTarget, kLightCookieAtlasWidth, kLightCookieAtlasHeight, kResFormat, 1, true, false, false });
 
     declareViewTarget("HDR",                hdrRT,                  1, true);
+    if (SupportsViewGpuOcclusion(passCtx) && !passOverriddenOff(DEPTH_PREPASS)
+        && !passOverriddenOff(BUILD_OCCLUSION_HIZ) && !passOverriddenOff(CULL_OCCLUDED_MESHES)) {
+        viewTargets.occluderDepth.Ensure(resources, sHdrW, sHdrH, CameraDepthTargetDesc(0));
+        if (viewTargets.occluderDepth.IsValid()) {
+            declareViewTarget(OCCLUDER_DEPTH.data(), viewTargets.occluderDepth.Handle(), 0, true);
+            RenderGraph::ResourceDesc buffer;
+            buffer.allowAliasing = false;
+            buffer.stride = sizeof(float);
+            pipeline.DeclareStructuredBuffer(OCCLUSION_HIZ, {}, buffer);
+            buffer.stride = OCCLUSION_DRAW_ARGUMENT_STRIDE;
+            pipeline.DeclareStructuredBuffer(OCCLUSION_DRAW_ARGUMENTS, {}, buffer);
+        }
+    }
     declareViewTarget("LDR",                ldrRT,                  1, false);
     declareViewTarget("SelectionMask",      selectionMaskRT,        1, true);
     declareViewTarget("Outline",            outlineRT,              1, false);

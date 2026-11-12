@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "RenderScenePassHelpers.hpp"
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <Graphics/Effects/ComputedSkinningOutput.hpp>
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
 #include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
@@ -32,7 +33,10 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
 {
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
-    const auto& input = SceneInput(ctx);
+    const auto sceneOwner = ctx.renderScene;
+    const auto& input = sceneOwner ? *sceneOwner : SceneInput(ctx);
+    const auto arguments = ctx.isDeferred && ctx.gpuOcclusionEnabled
+        ? ctx.Res().StructuredBuffer(OCCLUSION_DRAW_ARGUMENTS) : ResourceHandle<StructuredBufferTag>{};
     ctx.renderer.SetRenderTarget(ctx.Res().Target("GBuffer"), resources);
     ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
     const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
@@ -63,7 +67,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                     != renderer::GeometryRoute::GBuffer) continue;
                 ++ctx.statsTotalObjects;
             }
-            const bool gpuFrustum = !skinned && object.boundsRadius > 0 && object.lodDither == 0
+            const bool gpuFrustum = !arguments.IsValid() && !skinned && object.boundsRadius > 0 && object.lodDither == 0
                 && (ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT
                     || ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INSTANCE_INDIRECT) && ctx.settings.gpuInstancing
                 && ctx.renderer.SupportsIndirectDraw() && resources.Get(h.gbufferInstancedShader);
@@ -125,7 +129,22 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             for (size_t i = 0; i < material.textures.size(); ++i) dc.textures[i] = material.textures[i];
 
-            if (!skinned && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
+            const size_t itemIndex = &item - input.items.data();
+            if (arguments.IsValid() && itemIndex < ctx.gpuOcclusionArguments.size()
+                && ctx.gpuOcclusionArguments[itemIndex] != UINT32_MAX) {
+                batcher.Flush();
+                const auto constants = ObjectConstants(*entry.object);
+                resources.Update(h.objectCB, &constants, sizeof(constants));
+                dc.constantBuffers[1] = h.objectCB;
+                (void)BindMeshOcclusionArguments(ctx, input, itemIndex, arguments, dc);
+                SubmitCounted(ctx, dc);
+                batcher.InvalidateObjectConstants();
+                continue;
+            }
+            /// @note A seed item must keep its indexed surface even when mesh selection failed and instances still use Hi-Z.
+            const bool seeded = ctx.gpuOccluderDepthReady && ctx.renderScene.get() == &input
+                && itemIndex < ctx.gpuOccluderItems.size() && ctx.gpuOccluderItems[itemIndex];
+            if (!skinned && !seeded && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
                 renderer::DrawCall meshCall = dc;
                 const bool clusterEligible = entry.object->lodDither == 0.0f
                     && entry.object->leafWindBoundsPadding == 0.0f;
@@ -147,8 +166,9 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
         }
         batcher.Flush();
     }
-    ExecuteInstanceGBuffer(ctx);
-    ctx.terrainHiZInstancesPending = ctx.isDeferred && ctx.terrainHiZActive;
+    const auto hierarchy = ctx.isDeferred ? ReadViewGpuHiZ(ctx) : GpuHiZ{};
+    if (hierarchy.depths.IsValid()) ExecuteInstanceGBuffer(ctx, hierarchy);
+    else ExecuteInstanceGBuffer(ctx);
 }
 
 void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)
@@ -295,6 +315,8 @@ void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route, b
 {
     const auto sceneOwner = ctx.renderScene;
     const auto& input = sceneOwner ? *sceneOwner : SceneInput(ctx);
+    const auto arguments = route == GeometryRoute::ForwardOpaque && ctx.gpuOcclusionEnabled
+        ? ctx.Res().StructuredBuffer(OCCLUSION_DRAW_ARGUMENTS) : ResourceHandle<StructuredBufferTag>{};
     std::vector<MeshEntry> queue;
     const auto append = [&](const RenderObject& object) {
         if ((object.waterfallFarIndexStart != 0) != waterfalls || !object.colorEligible || !MatchesView(ctx, object)) return;
@@ -343,6 +365,7 @@ void SubmitForwardRoute(RenderPassContext& ctx, renderer::GeometryRoute route, b
         const auto constants = ObjectConstants(*entry.object);
         ctx.resources.Update(ctx.handles.objectCB, &constants, sizeof(constants));
         auto draw = ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings);
+        (void)BindMeshOcclusionArguments(ctx, input, entry.item - input.items.data(), arguments, draw);
         const auto farStart = entry.object->waterfallFarIndexStart;
         if (waterfalls && farStart < draw.indexCount) {
             const float frontDepth = math::Vector3::Dot(entry.object->boundsCenter - ctx.camera.m_position, viewForward)
@@ -398,12 +421,14 @@ std::string_view GBufferPass::Name() const
     return m_mode == GBufferPassMode::DepthNormalPrepass ? "DepthNormalPrepass" : "DeferredGBuffer";
 }
 
-void GBufferPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+void GBufferPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     /// @note Forward のプリパスだけが影と Cookie を読む。Deferred 本経路は
     /// @note ライティングをしないので、法線・深度・roughness を書くだけ。
     if (m_mode == GBufferPassMode::DepthNormalPrepass)
         builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas");
+    else if (ctx.gpuOcclusionEnabled)
+        builder.Read(OCCLUSION_HIZ, PassBuilder::Purpose::SHADER_READ).Read(OCCLUSION_DRAW_ARGUMENTS);
     builder.Write("GBuffer");
 }
 
@@ -430,6 +455,7 @@ void DeferredSkinnedForwardPass::Setup(PassBuilder& builder, const RenderPassCon
 {
     builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas")
            .ReadWrite("HDR");
+    if (ctx.gpuOcclusionEnabled) builder.Read(OCCLUSION_DRAW_ARGUMENTS);
     if (ctx.waterMediumPassActive)
         builder.Read("WaterMediumAtlas");
 }

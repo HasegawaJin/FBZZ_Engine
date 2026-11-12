@@ -1,0 +1,6 @@
+# @file    TerrainDepth.hlsl.meta
+# @brief   描画深度による遮蔽シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-12
+[meta]
+guid = "13ab179823884262a6dfefbe949df0a4"

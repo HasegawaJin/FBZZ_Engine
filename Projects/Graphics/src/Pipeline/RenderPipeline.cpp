@@ -5,6 +5,7 @@
 #include "Graphics/Pipeline/RenderPipeline.hpp"
 #include "Graphics/Pipeline/RenderPassContext.hpp"
 #include <Graphics/Pipeline/RenderPassCapture.hpp>
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Core/Logger.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
@@ -174,6 +175,15 @@ void RenderPipeline::ReleaseViewResources(renderer::ResourceManager& resources)
 
 std::vector<size_t> RenderPipeline::CollectEnabledSetups(RenderPassContext& ctx)
 {
+    const auto registeredAndEnabled = [&](std::string_view name) {
+        const auto* override = FindOverride(name);
+        return (!override || override->enabled) && std::any_of(m_entries.begin(), m_entries.end(),
+            [name](const auto& pass) { return pass && pass->Name() == name; });
+    };
+    ctx.gpuOcclusionEnabled = ctx.resourceRegistry.Target(OCCLUDER_DEPTH).IsValid() && SupportsViewGpuOcclusion(ctx)
+        && registeredAndEnabled(DEPTH_PREPASS) && registeredAndEnabled(BUILD_OCCLUSION_HIZ)
+        && registeredAndEnabled(CULL_OCCLUDED_MESHES)
+        && registeredAndEnabled(ctx.isDeferred ? "DeferredGBuffer" : "ForwardOpaque");
     std::vector<size_t> enabled;
     enabled.reserve(m_entries.size());
     for (size_t i = 0; i < m_entries.size(); ++i) {
@@ -383,37 +393,31 @@ bool RenderPipeline::Execute(RenderPassContext& ctx, RenderPassCapture* capture,
         }
     }
 
-    ctx.terrainHiZActive = false;
-    ctx.terrainHiZInstancesPending = false;
+    ctx.gpuOcclusionTerrain = false;
+    ctx.gpuOccluderDepthReady = false;
+    ctx.gpuOcclusionArguments.clear();
+    ctx.gpuOccluderItems.clear();
+    ctx.gpuOcclusionCounted.clear();
     /// @note 無効化・グラフ除外された描画元を遮蔽物にしない。CPU 準備自体はグラフの外で行う。
     OcclusionPasses occlusionPasses{false, false, false, false};
     if (ctx.occlusionCullingEnabled && ctx.occlusionCuller) {
         bool deferredDepth = false;
-        bool forwardOpaque = false;
-        bool terrainHiZPlanned = false;
+        bool depthPrepass = false;
         const auto& passes = graph.GetPasses();
         for (const size_t index : graph.GetLastReport().executionOrder) {
             const auto& name = passes[index].name;
             if (name == "DeferredGBuffer") occlusionPasses.meshGBuffer = true;
-            if (name == "ForwardOpaque") forwardOpaque = true;
             if (name == "ForwardOpaque" || name == "DeferredSkinnedForward") occlusionPasses.meshForward = true;
             if (name == "TerrainGBuffer") occlusionPasses.terrainGBuffer = true;
             if (name == "TerrainForward") occlusionPasses.terrainForward = true;
             if (name == "DeferredDepthCopy") deferredDepth = true;
-            if (name == "TerrainHiZInstances") {
-                terrainHiZPlanned = ctx.isDeferred
-                    ? occlusionPasses.meshGBuffer && occlusionPasses.terrainGBuffer && !deferredDepth
-                    : forwardOpaque && occlusionPasses.terrainForward;
-            }
+            if (name == DEPTH_PREPASS) depthPrepass = true;
         }
         occlusionPasses.meshGBuffer = occlusionPasses.meshGBuffer && deferredDepth;
         occlusionPasses.terrainGBuffer = occlusionPasses.terrainGBuffer && deferredDepth;
-        ctx.terrainHiZActive = terrainHiZPlanned && (!ctx.isDeferred || deferredDepth);
-        if (ctx.terrainHiZActive) {
-            /// @note 実深度を使う色経路では地形の CPU ラスタライズを省く。失敗時の描画は可視側へ倒す。
-            occlusionPasses.terrainGBuffer = false;
-            occlusionPasses.terrainForward = false;
-        }
+        /// @note GPU の深度はメッシュ選別に使う。地形・水面は同じビューの CPU 地形深度を参照する。
+        ctx.gpuOcclusionTerrain = depthPrepass
+            && (ctx.isDeferred ? occlusionPasses.terrainGBuffer : occlusionPasses.terrainForward);
     }
     PrepareViewOcclusion(ctx, occlusionPasses);
 

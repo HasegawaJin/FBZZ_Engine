@@ -110,11 +110,9 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             ImGui::Checkbox("Occlusion Culling", &cc.occlusionCulling);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
-                    "CPU software occlusion culling (128x72 linear depth buffer).\n"
-                    "Occluders are approximated by bounding spheres, so the test is kept\n"
-                    "conservative: it never removes a visible object, but it also rejects\n"
-                    "far fewer than a real occluder-mesh rasterizer would.\n"
-                    "Check the actual counts in Analysis > Rendering.");
+                    "Cull objects hidden behind opaque geometry in this view.\n"
+                    "Indirect and Mesh modes also use a GPU depth prepass and Hi-Z.\n"
+                    "Analysis > Rendering shows CPU rejections and GPU candidates.");
             }
 
             /// @note 余白は「バインドポーズ球からはみ出すモーション」への実務的な逃げ道。

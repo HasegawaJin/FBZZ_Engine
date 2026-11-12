@@ -5,6 +5,7 @@
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
 #include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <algorithm>
 #include <vector>
 #include <optional>
@@ -27,6 +28,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h = ctx.handles;
     const auto& input = sceneOwner ? *sceneOwner : SceneInput(ctx);
+    const auto arguments = ctx.gpuOcclusionEnabled
+        ? ctx.Res().StructuredBuffer(OCCLUSION_DRAW_ARGUMENTS) : ResourceHandle<StructuredBufferTag>{};
     ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), resources);
     ClearForCamera(ctx.renderer, ctx.camera);
     const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
@@ -87,7 +90,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
             const auto constants = ObjectConstants(*entry.object);
             resources.Update(h.objectCB, &constants, sizeof(constants));
             const auto uploaded = std::chrono::steady_clock::now();
-            const auto draw = ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings);
+            auto draw = ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings);
+            (void)BindMeshOcclusionArguments(ctx, input, entry.item - input.items.data(), arguments, draw);
             const auto prepared = std::chrono::steady_clock::now();
             SubmitCounted(ctx, draw);
             const auto submitted = std::chrono::steady_clock::now();
@@ -97,7 +101,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         } else {
             const auto constants = ObjectConstants(*entry.object);
             resources.Update(h.objectCB, &constants, sizeof(constants));
-            SubmitCounted(ctx, ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings));
+            auto draw = ForwardDrawWithBindings(ctx, *entry.object, *entry.item, *bindings);
+            (void)BindMeshOcclusionArguments(ctx, input, entry.item - input.items.data(), arguments, draw);
+            SubmitCounted(ctx, draw);
         }
     };
     for (const auto& entry : staticOpaque) {
@@ -109,8 +115,9 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
         if (detailed) submit.template operator()<true>(entry);
         else submit.template operator()<false>(entry);
     }
-    ExecuteInstanceForward(ctx);
-    ctx.terrainHiZInstancesPending = !ctx.isDeferred && ctx.terrainHiZActive;
+    const auto hierarchy = ReadViewGpuHiZ(ctx);
+    if (hierarchy.depths.IsValid()) ExecuteInstanceForward(ctx, hierarchy);
+    else ExecuteInstanceForward(ctx);
     ExecuteFiberPass(ctx);
     if (detailed) {
         /// @note These sums are diagnostic aggregates, not contiguous child spans; visibility overlaps Gather, and per-draw clocks affect this run only.
@@ -124,6 +131,8 @@ void ExecuteForwardPasses(RenderPassContext& ctx)
 void ForwardOpaquePass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     builder.Read("ShadowMap").Read("PunctualShadowMap").Read("LightCookieAtlas").Write("HDR");
+    if (ctx.gpuOcclusionEnabled)
+        builder.Read(OCCLUSION_HIZ, PassBuilder::Purpose::SHADER_READ).Read(OCCLUSION_DRAW_ARGUMENTS);
     /// @note GBuffer プリパスが走ったフレームだけ画面空間の遮蔽が存在する。
     /// @note 走っていないのに申告すると、誰も書かない名前を読むことになり Plan が落ちる。
     if (ctx.gbufferDepthReady)

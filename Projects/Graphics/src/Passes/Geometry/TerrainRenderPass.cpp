@@ -77,7 +77,7 @@ ResourceHandle<ShaderTag> TerrainGpuShader(ResourceManager& resources, size_t mo
 
 bool UsesTerrainMeshlets(const RenderPassContext& ctx)
 {
-    return ctx.frustumCullingEnabled && !ctx.settings.IsWireframe()
+    return !ctx.gpuOcclusionTerrain && ctx.frustumCullingEnabled && !ctx.settings.IsWireframe()
         && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER && ctx.renderer.SupportsMeshShaders();
 }
 
@@ -936,6 +936,58 @@ void RasterTerrainOccluders(RenderPassContext& ctx)
         if (!triangleBudget) break;
     }
 }
+bool DrawTerrainOccluderDepth(RenderPassContext& ctx)
+{
+    const auto scene = ctx.renderScene;
+    if (!ctx.gpuOcclusionTerrain || !scene || scene->terrains.empty()) return false;
+    auto& resources = ctx.resources;
+    auto& shared = resources.Rendering().Shared();
+    auto& colorShader = ctx.isDeferred ? shared.terrainGBufferShader : shared.terrainShader;
+    if (!resources.Get(colorShader))
+        colorShader = resources.LoadShader(ctx.isDeferred ? "Assets/Shaders/Terrain/TerrainGBuffer.hlsl"
+            : "Assets/Shaders/Terrain/Terrain.hlsl");
+    if (!resources.Get(shared.terrainDepthShader))
+        shared.terrainDepthShader = resources.LoadShader("Assets/Shaders/Terrain/TerrainDepth.hlsl");
+    if (!resources.Get(shared.terrainPSO))
+        shared.terrainPSO = resources.CreatePipelineState({RasterizerMode::SOLID, BlendMode::OPAQUE_BLEND, DepthMode::DEPTH_ON});
+    if (!resources.Get(shared.terrainObjectCB))
+        shared.terrainObjectCB = resources.CreateConstantBuffer(sizeof(TerrainObjectCB));
+    if (!resources.Get(colorShader) || !resources.Get(shared.terrainDepthShader)
+        || !resources.Get(shared.terrainPSO) || !resources.Get(shared.terrainObjectCB)) return false;
+
+    const auto viewProjection = MakeJitteredProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY)
+        * ctx.camera.GetViewMatrix();
+    const auto frustum = math::Frustum::FromViewProjection(viewProjection);
+    bool submitted = false;
+    for (const auto& input : scene->terrains) {
+        if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
+        auto constants = input.constants;
+        const auto& world = constants.worldMatrix;
+        constants.wvpMatrix = viewProjection * world;
+        resources.Update(shared.terrainObjectCB, &constants, sizeof(constants));
+        for (const auto& patch : input.patches) {
+            if (!IsViewOcclusionCurrent(ctx)) return false;
+            if (ctx.frustumCullingEnabled && !IsChunkVisible(frustum, world, patch.aabbMin, patch.aabbMax)) continue;
+            if (IsViewAabbOccluded(ctx, world, patch.aabbMin, patch.aabbMax)) continue;
+            const int lod = SelectTerrainLOD(input, patch, ctx.camera.m_position);
+            if (patch.indexCountLOD[lod] == 0) continue;
+            DrawCall draw;
+            draw.vertexBuffer = patch.vertexBuffer;
+            draw.indexBuffer = patch.indexBufferLOD[lod];
+            draw.indexCount = patch.indexCountLOD[lod];
+            draw.shader = shared.terrainDepthShader;
+            draw.pipelineState = shared.terrainPSO;
+            draw.constantBuffers[1] = shared.terrainObjectCB;
+            BindTerrainStrip(ctx, patch, lod, draw);
+            if (HasTerrainBuffer(resources, draw.vertexBuffer) && HasTerrainBuffer(resources, draw.indexBuffer)) {
+                SubmitCounted(ctx, draw);
+                submitted = true;
+            }
+        }
+    }
+    return submitted;
+}
+
 std::string_view TerrainRenderPass::Name() const
 {
     return m_mode == TerrainDrawMode::GBuffer ? "TerrainGBuffer" : "TerrainForward";
@@ -1027,8 +1079,8 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
         terrainCBData.wvpMatrix = jitteredVP * world;
         resources.Update(terrainCBH, &terrainCBData, sizeof(terrainCBData));
         auto meshView = MakeTerrainMeshletView(meshShader, frustum, world, jitteredVP);
-        /// @note Only the CPU terrain proof requires the CPU-selected topology. Hi-Z reads the actual GPU-selected surface.
-        const auto gpuShader = !terrainMeshlets && ctx.frustumCullingEnabled && (!ctx.occlusionCullingEnabled || ctx.terrainHiZActive)
+        /// @note The depth prepass and CPU proof use the same indexed terrain LOD as the color pass.
+        const auto gpuShader = !terrainMeshlets && ctx.frustumCullingEnabled && !ctx.occlusionCullingEnabled
             && (ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT || ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER)
             ? TerrainGpuShader(resources, shaderMode) : ResourceHandle<ShaderTag>{};
         GpuGeometryDispatch gpuDispatch;
@@ -1045,8 +1097,7 @@ void TerrainRenderPass::Execute(PassResources&, RenderPassContext& ctx)
                 if (ctx.frustumCullingEnabled &&
                     !IsChunkVisible(frustum, world, chunk.aabbMin, chunk.aabbMax)) {
                     ++ctx.statsFrustumCulled;
-                    /// @note The Hi-Z seed needs only drawable terrain. Avoid queuing an indirect draw for a proven off-screen chunk.
-                    if (!gpu || ctx.terrainHiZActive) continue;
+                    if (!gpu) continue;
                 }
 
                 if (IsViewAabbOccluded(ctx, world, chunk.aabbMin, chunk.aabbMax)) {
@@ -1102,7 +1153,7 @@ namespace {
 bool UsesGpuShadowTerrain(const RenderPassContext& ctx)
 {
     /// @note Color and shadow use the same camera-driven LOD policy with different frusta.
-    return ctx.frustumCullingEnabled && (!ctx.occlusionCullingEnabled || ctx.terrainHiZActive)
+    return ctx.frustumCullingEnabled && !ctx.occlusionCullingEnabled
         && (ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT || ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER);
 }
 
@@ -1163,7 +1214,7 @@ void SubmitTerrainShadowCastersImpl(
         size_t patchIndex = 0;
         for (const auto& chunk : input.patches) {
                 const size_t currentPatch = patchIndex++;
-                if ((!gpu || ctx.terrainHiZActive) && !IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
+                if (!gpu && !IsChunkVisible(lightFrustum, world, chunk.aabbMin, chunk.aabbMax))
                     continue;
 
                 const int lod = SelectTerrainLOD(input, chunk, ctx.camera.m_position);

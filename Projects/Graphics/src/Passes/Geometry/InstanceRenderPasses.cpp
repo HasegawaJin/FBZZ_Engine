@@ -824,8 +824,6 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
     UpdateWindFrame(ctx,cache);
     auto frame=MakeCameraFrameCB(ctx.camera,ctx.taaJitterNdcX,ctx.taaJitterNdcY);
     const bool forwardPass=pass==InstancePass::FORWARD || pass==InstancePass::CAPTURE;
-    const bool splitTerrainHiZ=ctx.terrainHiZActive
-        && ((pass==InstancePass::GBUFFER && ctx.isDeferred) || (pass==InstancePass::FORWARD && !ctx.isDeferred));
     if (pass==InstancePass::CAPTURE) {
         frame.projection=ctx.camera.GetProjectionMatrix();frame.viewProjection=frame.projection*frame.view;
         frame.invViewProjection=math::Matrix4::Inverse(frame.viewProjection);
@@ -904,8 +902,6 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (input.selectionOnly && pass != InstancePass::SELECTION) continue;
         if (pass==InstancePass::CAPTURE && input.identity[1]==excludedOwner) continue;
         if (!HasValidInput(ctx,input)) continue;
-        /// @note Keep the early/late partition independent of hierarchy creation and resource readiness so the late fallback still draws every deferred set.
-        if (splitTerrainHiZ && IsTerrainHiZCandidate(input)!=(hierarchy!=nullptr)) continue;
         if (pass==InstancePass::SHADOW && !input.castShadows) continue;
         if (pass==InstancePass::SELECTION && !input.selected) continue;
         /// @note Deferred already consumed these parts; reject before preparing rows or synchronizing GPU visibility dispatches.

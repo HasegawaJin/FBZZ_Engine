@@ -5,10 +5,14 @@
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Pipeline/OcclusionCuller.hpp>
+#include <Graphics/Pipeline/GpuHiZ.hpp>
+#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+#include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <bit>
 #include <cmath>
+#include <cstring>
 #include <map>
 namespace fbzz::renderer {
 namespace {
@@ -36,6 +40,7 @@ std::array<uint32_t, 96> CaptureOcclusionView(const RenderPassContext& ctx)
     result[offset++] = static_cast<uint32_t>(camera.m_projection);
     result[offset++] = static_cast<uint32_t>(ctx.settings.pipeline);
     result[offset++] = static_cast<uint32_t>(ctx.settings.geometryDrawMode);
+    result[offset++] = static_cast<uint32_t>(ctx.settings.rasterGeometryMode);
     result[offset++] = static_cast<uint32_t>(ctx.settings.viewMode);
     result[offset++] = static_cast<uint32_t>(ctx.frustumCullingEnabled)
         | (static_cast<uint32_t>(ctx.occlusionCullingEnabled) << 1)
@@ -47,7 +52,43 @@ std::array<uint32_t, 96> CaptureOcclusionView(const RenderPassContext& ctx)
         | (static_cast<uint32_t>(ctx.waterMediumPassActive) << 7);
     return result;
 }
+
+struct MeshOcclusionCandidate {
+    math::Vector4 bounds;
+    uint32_t indexCount;
+    uint32_t padding[3]{};
+};
+static_assert(sizeof(MeshOcclusionCandidate) == 32);
+
+struct MeshOcclusionView {
+    math::Matrix4 viewProjection;
+    uint32_t width, height, candidateCount, padding = 0;
+};
+static_assert(sizeof(MeshOcclusionView) == 80);
+
+const RenderMaterial* MeshOcclusionMaterial(const RenderPassContext& ctx, const RenderMeshItem& item)
+{
+    const auto route = ResolveGeometryRoute(item.material.capabilities, ctx.isDeferred);
+    if (route != GeometryRoute::GBuffer && route != GeometryRoute::ForwardOpaque) return nullptr;
+    const auto& material = route == GeometryRoute::GBuffer ? item.material : item.forwardMaterial;
+    if (!HasColorGeometry(item) || !item.indexCount || !material.valid
+        || material.capabilities.blend != BlendMode::OPAQUE_BLEND
+        || material.shaderCapabilities.vertex != ShaderVertexContract::STANDARD_SURFACE
+        || !material.shaderCapabilities.HasStandardGeometry()
+        || item.material.depthBias != 0 || item.material.depthBiasSlope != 0.0f
+        || material.depthBias != 0 || material.depthBiasSlope != 0.0f) return nullptr;
+    return &material;
+}
 } /// @note namespace
+
+bool SupportsViewGpuOcclusion(const RenderPassContext& ctx)
+{
+    const auto mode = ctx.settings.geometryDrawMode;
+    return ctx.occlusionCullingEnabled && ctx.occlusionCuller && !ctx.settings.IsWireframe()
+        && ctx.width != 0 && ctx.height != 0 && ctx.renderScene && ctx.renderer.SupportsIndirectDraw()
+        && (mode == GeometryDrawMode::GPU_INDIRECT || mode == GeometryDrawMode::MESH_SHADER)
+        && (!ctx.renderScene->items.empty() || HasTerrainHiZInstanceCandidates(ctx));
+}
 
 bool IsViewOcclusionCurrent(const RenderPassContext& ctx)
 {
@@ -93,6 +134,158 @@ bool IsViewAabbOccluded(const RenderPassContext& ctx, const math::Matrix4& world
     const math::Vector3 extents{extent(0) + padding, extent(1) + padding, extent(2) + padding};
     const math::Vector3 origin{center.x, center.y, center.z};
     return !ctx.occlusionCuller->TestAabb(origin - extents, origin + extents);
+}
+
+bool DrawOpaqueOccluderDepth(RenderPassContext& ctx)
+{
+    const auto scene = ctx.renderScene;
+    if (!scene || scene->items.empty() || !IsViewOcclusionCurrent(ctx)) return false;
+    auto& resources = ctx.resources;
+    auto& shared = resources.Rendering().Shared();
+    if (!resources.Get(shared.opaqueOccluderDepthShader))
+        shared.opaqueOccluderDepthShader = resources.LoadShader("Assets/Shaders/Pipeline/OpaqueOccluderDepth.hlsl");
+    if (ctx.isDeferred && !resources.Get(shared.opaqueOccluderMaterialCB))
+        shared.opaqueOccluderMaterialCB = resources.CreateConstantBuffer(96);
+    if (!resources.Get(shared.opaqueOccluderDepthShader) || !resources.Get(ctx.handles.frameCB)
+        || !resources.Get(ctx.handles.objectCB)
+        || (ctx.isDeferred && (!resources.Get(ctx.handles.gbufferShader)
+            || !resources.Get(shared.opaqueOccluderMaterialCB)))) return false;
+
+    const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    resources.Update(ctx.handles.frameCB, &frame, sizeof(frame));
+    ctx.gpuOccluderItems.assign(scene->items.size(), false);
+    bool submitted = false;
+    for (const auto& object : scene->Objects()) {
+        if (!object.colorEligible || object.skinned || object.waterfallFarIndexStart || !MatchesView(ctx, object)
+            || object.lodDither != 0.0f || object.leafWindBoundsPadding != 0.0f) continue;
+        if (!object.itemCount || object.firstItem >= scene->items.size()
+            || object.itemCount > scene->items.size() - object.firstItem) continue;
+        const auto bounds = RenderBounds(ctx, object);
+        const auto clip = frame.viewProjection * math::Vector4{bounds.center, 1.0f};
+        /// @note Approximate diameter in pixels limits depth-only work to substantial occluders.
+        constexpr float MIN_OCCLUDER_PIXELS = 64.0f;
+        const float diameter = bounds.radius * std::abs(frame.projection.m[1][1]) * static_cast<float>(ctx.height) / clip.w;
+        if (clip.w <= 0.0f || !std::isfinite(diameter) || diameter < MIN_OCCLUDER_PIXELS
+            || EvaluateVisibility(CullingView(ctx), {bounds.center, bounds.radius, DrawDistance(ctx, object)})
+                != VisibilityResult::VISIBLE
+            || IsViewOccluded(ctx, bounds.center, bounds.radius)) continue;
+        const auto& first = scene->items[object.firstItem];
+        if (!HasColorGeometry(first) || (ctx.isDeferred
+            && ResolveGeometryRoute(first.material.capabilities, true) != GeometryRoute::GBuffer)) continue;
+        const auto constants = ObjectConstants(object);
+        resources.Update(ctx.handles.objectCB, &constants, sizeof(constants));
+        for (uint32_t index = object.firstItem; index < object.firstItem + object.itemCount; ++index) {
+            const auto& item = scene->items[index];
+            const auto* material = MeshOcclusionMaterial(ctx, item);
+            if (!material || !material->shaderCapabilities.SupportsGBuffer()
+                || (ctx.isDeferred && ResolveGeometryRoute(item.material.capabilities, true) != GeometryRoute::GBuffer)
+                || !resources.Get(item.vertexBuffer) || !resources.Get(item.indexBuffer)) continue;
+            float wind;
+            std::memcpy(&wind, material->gbufferParams.data() + 68, sizeof(wind));
+            if (wind != 0.0f) continue;
+            uint32_t textureMask;
+            std::memcpy(&textureMask, material->gbufferParams.data() + 80, sizeof(textureMask));
+            if ((textureMask & 1u) != 0 && !resources.Get(material->textures[0])) continue;
+            DrawCall draw;
+            draw.vertexBuffer = item.vertexBuffer;
+            draw.indexBuffer = item.indexBuffer;
+            draw.indexCount = item.indexCount;
+            draw.vertexCount = item.vertexCount;
+            draw.shader = shared.opaqueOccluderDepthShader;
+            draw.pipelineState = MaterialPipeline(ctx, item.material);
+            draw.constantBuffers[0] = ctx.handles.frameCB;
+            draw.constantBuffers[1] = ctx.handles.objectCB;
+            draw.textures[0] = material->textures[0];
+            if (ctx.isDeferred) {
+                const auto params = MakeHybridGBufferParams(material->gbufferParams, material->surface);
+                resources.Update(shared.opaqueOccluderMaterialCB, params.data(), params.size());
+                draw.constantBuffers[2] = shared.opaqueOccluderMaterialCB;
+            } else {
+                if (!resources.Get(material->shader) || !resources.Get(material->paramsBuffer)) continue;
+                draw.constantBuffers[2] = material->paramsBuffer;
+            }
+            if (!IsViewOcclusionCurrent(ctx)) return false;
+            SubmitCounted(ctx, draw);
+            ctx.gpuOccluderItems[index] = true;
+            submitted = true;
+        }
+    }
+    return submitted;
+}
+
+GpuHiZ ReadViewGpuHiZ(const RenderPassContext& ctx)
+{
+    if (!ctx.gpuOcclusionEnabled || !ctx.gpuOccluderDepthReady || !IsViewOcclusionCurrent(ctx)) return {};
+    return {ctx.Res().StructuredBuffer(OCCLUSION_HIZ), ctx.width, ctx.height, true};
+}
+
+void CullOccludedMeshes(RenderPassContext& ctx, const GpuHiZ& hierarchy)
+{
+    const auto scene = ctx.renderScene;
+    if (!scene || !hierarchy.depths.IsValid()) return;
+    constexpr uint32_t GROUP_SIZE = 64;
+    constexpr uint32_t MAX_CANDIDATES = 65535u * GROUP_SIZE;
+    if (scene->items.size() > MAX_CANDIDATES) return;
+    std::vector<MeshOcclusionCandidate> candidates;
+    ctx.gpuOcclusionArguments.assign(scene->items.size(), UINT32_MAX);
+    ctx.gpuOcclusionCounted.assign(scene->Objects().size(), false);
+    for (const auto& object : scene->Objects()) {
+        if (!object.colorEligible || object.skinned || object.waterfallFarIndexStart
+            || !MatchesView(ctx, object) || object.leafWindBoundsPadding < 0.0f) continue;
+        if (object.firstItem > scene->items.size() || object.itemCount > scene->items.size() - object.firstItem) continue;
+        const auto bounds = RenderBounds(ctx, object);
+        if (bounds.radius <= 0.0f
+            || EvaluateVisibility(CullingView(ctx), {bounds.center, bounds.radius, DrawDistance(ctx, object)})
+                != VisibilityResult::VISIBLE) continue;
+        for (uint32_t index = object.firstItem; index < object.firstItem + object.itemCount; ++index) {
+            const auto& item = scene->items[index];
+            if (!MeshOcclusionMaterial(ctx, item)) continue;
+            ctx.gpuOcclusionArguments[index] = static_cast<uint32_t>(candidates.size());
+            candidates.push_back({{bounds.center, bounds.radius}, item.indexCount});
+        }
+    }
+    if (candidates.empty()) return;
+
+    auto& resources = ctx.resources;
+    auto& shared = resources.Rendering().Shared();
+    if (!resources.Get(shared.meshOcclusionShader))
+        shared.meshOcclusionShader = resources.LoadShader("Assets/Shaders/Pipeline/MeshOcclusionCull.cs.hlsl");
+    if (!resources.Get(shared.meshOcclusionViewCB))
+        shared.meshOcclusionViewCB = resources.CreateConstantBuffer(sizeof(MeshOcclusionView));
+    if (!resources.Get(shared.meshOcclusionShader) || !resources.Get(shared.meshOcclusionViewCB)) return;
+    static DynamicStructuredBufferPool candidatePool;
+    static DynamicRWStructuredBufferPool argumentPool;
+    const auto inputs = candidatePool.Acquire(resources, candidates.size(), sizeof(MeshOcclusionCandidate));
+    const auto arguments = argumentPool.Acquire(resources, candidates.size(), OCCLUSION_DRAW_ARGUMENT_STRIDE);
+    if (!resources.Get(inputs) || !resources.Get(arguments) || !IsViewOcclusionCurrent(ctx)) return;
+    const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
+    const MeshOcclusionView view{frame.viewProjection, ctx.width, ctx.height, static_cast<uint32_t>(candidates.size())};
+    resources.Update(shared.meshOcclusionViewCB, &view, sizeof(view));
+    resources.Update(inputs, candidates.data(), candidates.size() * sizeof(MeshOcclusionCandidate));
+    ComputeCall compute;
+    compute.shader = shared.meshOcclusionShader;
+    compute.constantBuffers[0] = shared.meshOcclusionViewCB;
+    compute.srvBuffers[14] = inputs;
+    compute.srvBuffers[28] = hierarchy.depths;
+    compute.uavBuffers[0] = arguments;
+    compute.dispatchX = (view.candidateCount + GROUP_SIZE - 1) / GROUP_SIZE;
+    if (IsViewOcclusionCurrent(ctx) && ctx.renderer.TryDispatch(compute, resources) && IsViewOcclusionCurrent(ctx))
+        ctx.resourceRegistry.BindStructuredBuffer(OCCLUSION_DRAW_ARGUMENTS, arguments);
+}
+
+bool BindMeshOcclusionArguments(RenderPassContext& ctx, const RenderScene& scene, size_t index,
+    ResourceHandle<StructuredBufferTag> arguments, DrawCall& draw)
+{
+    if (!arguments.IsValid() || ctx.renderScene.get() != &scene || index >= ctx.gpuOcclusionArguments.size()
+        || ctx.gpuOcclusionArguments[index] == UINT32_MAX || !IsViewOcclusionCurrent(ctx)) return false;
+    const auto& item = scene.items[index];
+    draw.indirectArguments = arguments;
+    draw.indirectArgumentOffset = uint64_t{ctx.gpuOcclusionArguments[index]} * OCCLUSION_DRAW_ARGUMENT_STRIDE;
+    if (item.objectIndex < ctx.gpuOcclusionCounted.size() && !ctx.gpuOcclusionCounted[item.objectIndex]) {
+        ctx.gpuOcclusionCounted[item.objectIndex] = true;
+        ++ctx.statsGpuVisibilityUnknownObjects;
+    }
+    return true;
 }
 
 void PrepareViewOcclusion(RenderPassContext& ctx, OcclusionPasses passes)

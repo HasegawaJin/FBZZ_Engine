@@ -5,9 +5,15 @@
 #include <TestKit/TestKit.hpp>
 
 #include <Graphics/Pipeline/GpuHiZ.hpp>
+#include <Graphics/Pipeline/GeometryPipeline.hpp>
+#include <Graphics/Pipeline/RenderPipeline.hpp>
+#include <Graphics/Pipeline/RenderPassContext.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/GpuGeometrySelection.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/Mesh.hpp>
+#include <Graphics/Renderer/OpaqueRenderPlan.hpp>
+#include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/RendererFactory.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
@@ -19,6 +25,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <string>
@@ -332,6 +339,138 @@ TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndepe
         EXPECT_FLOAT_EQ(pixels[i * 4], expected[i]);
         EXPECT_FLOAT_EQ(pixels[i * 4 + 1], 1.0f);
     }
+}
+
+TEST_F(GpuGeometrySelectionTest, DepthPrepassFeedsRegularMeshIndirectDrawsThroughTheGraph)
+{
+    namespace r = renderer;
+    auto& device = *m_bundle.renderer;
+    auto& resources = *m_resources;
+    if (!device.SupportsIndirectDraw()) GTEST_SKIP() << "Indexed indirect drawing is unavailable";
+
+    const auto seed = resources.CreateRenderTarget(kExtent, kExtent, r::CameraDepthTargetDesc(0));
+    const auto gbuffer = resources.CreateRenderTarget(kExtent, kExtent, r::CameraDepthTargetDesc(3));
+    r::RenderPassHandles handles;
+    handles.gbufferShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+    handles.frameCB = resources.CreateConstantBuffer(sizeof(r::PerFrameCB));
+    handles.objectCB = resources.CreateConstantBuffer(sizeof(r::PerObjectCB));
+    handles.lightCB = resources.CreateConstantBuffer(sizeof(r::LightConstantsCB));
+    ASSERT_TRUE(seed.IsValid() && gbuffer.IsValid() && handles.gbufferShader.IsValid());
+
+    const std::array<r::Vertex, 4> vertices{{
+        {{-1, -1, 0}, {0, 0, -1}, {1, 0, 0}, {0, 0}},
+        {{-1, 1, 0}, {0, 0, -1}, {1, 0, 0}, {0, 1}},
+        {{1, 1, 0}, {0, 0, -1}, {1, 0, 0}, {1, 1}},
+        {{1, -1, 0}, {0, 0, -1}, {1, 0, 0}, {1, 0}},
+    }};
+    const std::array<uint32_t, 6> indices{0, 1, 2, 0, 2, 3};
+    r::RenderMeshItem mesh;
+    mesh.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(r::Vertex));
+    mesh.indexBuffer = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    mesh.indexCount = static_cast<uint32_t>(indices.size());
+    mesh.vertexCount = static_cast<uint32_t>(vertices.size());
+    mesh.material.valid = true;
+    mesh.material.doubleSided = true;
+    mesh.material.capabilities.gbufferEquivalentShader = true;
+    mesh.material.shaderCapabilities = {r::ShaderVertexContract::STANDARD_SURFACE,
+        r::ShaderSurfaceContract::STANDARD_PBR, r::ShaderOpacityContract::ALPHA_CLIP, r::ShaderVariantSet::STANDARD_SURFACE};
+    const math::Vector4 albedo{1, 1, 1, 1};
+    std::memcpy(mesh.material.gbufferParams.data(), &albedo, sizeof(albedo));
+    const auto scene = std::make_shared<r::RenderScene>();
+    const auto add = [&](const math::Vector3& center, float halfWidth, float halfHeight) {
+        r::RenderObject object;
+        object.firstItem = static_cast<uint32_t>(scene->items.size());
+        object.itemCount = 1;
+        object.colorEligible = true;
+        object.boundsCenter = center;
+        object.boundsRadius = std::sqrt(halfWidth * halfWidth + halfHeight * halfHeight);
+        object.world.m[0][0] = halfWidth;
+        object.world.m[1][1] = halfHeight;
+        object.world.m[0][3] = center.x;
+        object.world.m[1][3] = center.y;
+        object.world.m[2][3] = center.z;
+        object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(object.world);
+        mesh.objectIndex = static_cast<uint32_t>(scene->objects.size());
+        scene->objects.push_back(object);
+        scene->items.push_back(mesh);
+    };
+    add({-1.2f, 0, 3}, 1.0f, 2.2f);
+    add({-1, 0, 5}, 0.12f, 0.12f);
+    add({1, 0, 5}, 0.12f, 0.12f);
+    add({-1, 0, 2}, 0.12f, 0.12f);
+
+    r::Camera camera;
+    camera.m_position = {};
+    camera.m_projection = r::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 4.0f;
+    camera.m_aspect = 1.0f;
+    camera.m_far = 30.0f;
+    r::RenderSettings settings;
+    settings.pipeline = r::RenderingPipeline::Deferred;
+    settings.geometryDrawMode = r::GeometryDrawMode::GPU_INDIRECT;
+    r::OcclusionCuller culler;
+    r::RenderPassContext ctx{{}, device, resources, camera, settings, m_target, UINT32_MAX, handles};
+    ctx.renderScene = scene;
+    ctx.isDeferred = true;
+    ctx.width = kExtent;
+    ctx.height = kExtent;
+    ctx.occlusionCullingEnabled = true;
+    ctx.occlusionCuller = &culler;
+
+    r::RenderPipeline pipeline;
+    const auto targetDesc = r::RenderGraph::ResourceDesc{r::RenderGraph::ResourceKind::RenderTarget,
+        kExtent, kExtent, r::Format::RGBA16F, 0, true};
+    auto colorDesc = targetDesc;
+    colorDesc.colorCount = 3;
+    pipeline.DeclareTarget(r::OCCLUDER_DEPTH, seed, targetDesc);
+    pipeline.DeclareTarget("GBuffer", gbuffer, colorDesc);
+    pipeline.DeclareStructuredBuffer(r::OCCLUSION_HIZ, {}, {});
+    pipeline.DeclareStructuredBuffer(r::OCCLUSION_DRAW_ARGUMENTS, {}, {});
+    r::BuildGeometryPipeline(pipeline, {r::OpaqueRenderPath::DEFERRED});
+    pipeline.SetOutputs({"GBuffer"});
+    pipeline.SetPassOverrides({{"TerrainGBuffer", false}});
+
+    resources.AdvanceFrame();
+    device.BeginFrame();
+    ASSERT_TRUE(pipeline.Execute(ctx));
+    const auto arguments = ctx.resourceRegistry.StructuredBuffer(r::OCCLUSION_DRAW_ARGUMENTS);
+    ASSERT_TRUE(arguments.IsValid());
+    EXPECT_EQ(ctx.statsGpuVisibilityUnknownObjects, 4);
+
+    /// @note Draw each argument on its own viewport without seed depth so a zero count is observable.
+    device.SetRenderTarget(m_target, resources);
+    device.Clear({0, 0, 0, 1});
+    r::DrawCall probe;
+    probe.vertexBuffer = m_vertexBuffer;
+    probe.indexBuffer = m_indexBuffer;
+    probe.shader = m_vertexShader;
+    probe.pipelineState = m_pipelineState;
+    probe.instanceBuffer = m_instanceBuffer;
+    probe.indexCount = 6;
+    probe.indirectArguments = arguments;
+    for (uint32_t index = 0; index < 4; ++index) {
+        device.SetViewport(index * 16, 0, 16, kExtent);
+        probe.indirectArgumentOffset = index * r::OCCLUSION_DRAW_ARGUMENT_STRIDE;
+        device.Submit(probe, resources);
+    }
+    device.SetRenderTarget({}, resources);
+    device.EndFrame();
+    std::vector<float> pixels;
+    ASSERT_TRUE(Capture(pixels));
+    std::array<uint32_t, 4> visiblePixels{};
+    for (size_t pixel = 0; pixel < pixels.size() / 4; ++pixel)
+        if (pixels[pixel * 4] > 0.9f) ++visiblePixels[pixel % kExtent / 16];
+    EXPECT_GT(visiblePixels[0], 0u);
+    EXPECT_EQ(visiblePixels[1], 0u);
+    EXPECT_GT(visiblePixels[2], 0u);
+    EXPECT_GT(visiblePixels[3], 0u);
+
+    pipeline.SetPassOverrides({{"TerrainGBuffer", false}, {std::string(r::DEPTH_PREPASS), false}});
+    resources.AdvanceFrame();
+    device.BeginFrame();
+    EXPECT_TRUE(pipeline.Execute(ctx));
+    EXPECT_FALSE(ctx.resourceRegistry.StructuredBuffer(r::OCCLUSION_DRAW_ARGUMENTS).IsValid());
+    device.EndFrame();
 }
 
 TEST_F(GpuGeometrySelectionTest, MeshShaderMatchesGpuSelectedIndexedLodAndInstanceRows)

@@ -17,6 +17,7 @@ FBZZ_GRAPHICS_API void SubmitTerrainShadowCasters(
 );
 
 FBZZ_GRAPHICS_API void TerrainSelectionMaskSystem(RenderPassContext& ctx);
+[[nodiscard]] bool DrawTerrainOccluderDepth(RenderPassContext& ctx);
 
 /// @note 地形を «どこへ» 描くか。描き先とシェーダーだけが違い、収集と描画の手順は同じ。
 /// @note ctx.isDeferred で分けないのは、以前は Forward の GBuffer プリパスの間だけ

@@ -1,0 +1,6 @@
+# @file    MeshOcclusionCull.cs.hlsl.meta
+# @brief   描画深度による遮蔽シェーダーの識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-12
+[meta]
+guid = "1fe6480637d74bf2828f64b07dac5723"

@@ -79,6 +79,7 @@ struct RenderViewResources {
     /// @note モーションベクター (RG=速度, B=書き込み済みフラグ)。TAA / MotionBlur が有効な
     /// @note フレームだけ描く。深度は自前で持つので、本描画の深度バッファとは共有しない。
     renderer::ResourceHandle<renderer::RenderTargetTag> velocity;
+    SizedRenderTarget occluderDepth;
     renderer::ResourceHandle<renderer::RenderTargetTag> decalDepth;
     renderer::ResourceHandle<renderer::RenderTargetTag> decalMask;
     /// @note Bloom のミップ連鎖。bloomChain[0] が半解像度で、以降 1/2 ずつ。
@@ -341,7 +342,9 @@ struct RenderSharedResources {
     ResourceHandle<ConstantBufferTag> reflectionProbeCaptureShadowCB{};
     ResourceHandle<ConstantBufferTag> reflectionProbeCapturePunctualCB{};
     /// @note 地形の描画資源は Manager ごとに所有し、Reset で他の共有資源と共に失効させる。
-    ResourceHandle<ShaderTag> terrainShader{}, terrainGBufferShader{};
+    ResourceHandle<ShaderTag> terrainShader{}, terrainGBufferShader{}, terrainDepthShader{};
+    ResourceHandle<ShaderTag> opaqueOccluderDepthShader, meshOcclusionShader;
+    ResourceHandle<ConstantBufferTag> opaqueOccluderMaterialCB, meshOcclusionViewCB;
     ResourceHandle<PipelineStateTag> terrainPSO{}, terrainWireframePSO{};
     ResourceHandle<ConstantBufferTag> terrainCameraCB{}, terrainObjectCB{};
     /// @note 遅延生成する粒子・カスタム合成資源も Manager の寿命に閉じる。
