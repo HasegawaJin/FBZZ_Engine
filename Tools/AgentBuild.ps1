@@ -755,13 +755,22 @@ function Invoke-Managed {
 # @note 上書きの引数は意図して持たない。逃げ道があると AI は BUSY のたびにそれを使う。
 function Get-ConcurrentBuild {
     $names = "Name='cl.exe' OR Name='link.exe' OR Name='MSBuild.exe' OR Name='cmake.exe' OR Name='ctest.exe' OR Name='dotnet.exe'"
+    try { $processes = @(Get-CimInstance Win32_Process -Filter $names -ErrorAction Stop) }
+    catch {
+        # @note CIM が制限されたホストでは名前による列挙へ戻す。コマンド行を読めない MSBuild / dotnet も競合として扱い、排他を弱めない。
+        $processes = @(Get-Process -ErrorAction Stop | Where-Object {
+            $_.ProcessName -in @('cl', 'link', 'MSBuild', 'cmake', 'ctest', 'dotnet')
+        } | ForEach-Object {
+            [pscustomobject]@{ Name = $_.ProcessName + '.exe'; ProcessId = $_.Id; CommandLine = '[CIM unavailable]' }
+        })
+    }
     $found = @()
-    foreach ($process in @(Get-CimInstance Win32_Process -Filter $names -ErrorAction SilentlyContinue)) {
+    foreach ($process in $processes) {
         $commandLine = [string]$process.CommandLine
         # @note /nodemode: はノード再利用で待機しているだけのワーカー。実ビルド中は親の MSBuild / cl.exe が別にいる。
         if ($process.Name -in @('MSBuild.exe', 'dotnet.exe') -and $commandLine -match '/nodemode:') { continue }
         # @note Editor の .NET host と待機中の compiler server はビルドではない。
-        if ($process.Name -eq 'dotnet.exe' -and $commandLine -notmatch '\s(build|publish|test|run|msbuild)\b|MSBuild\.dll') { continue }
+        if ($process.Name -eq 'dotnet.exe' -and $commandLine -ne '[CIM unavailable]' -and $commandLine -notmatch '\s(build|publish|test|run|msbuild)\b|MSBuild\.dll') { continue }
         $found += $process
     }
     return $found

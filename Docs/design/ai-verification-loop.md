@@ -30,6 +30,8 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 - 構成ツリーは `development → debug → release` の順で CMakeCache のあるものを使う。
 - **ビルドは同時に 1 本だけ。** SDK 公開も `build/<Config>` から行うので、人のタスクと AI の検証は同じツリーで重なりうる。重なった MSBuild は中間ファイルを奪い合い、C1041 / C1083 / LNK1104 / MSB3491 という «コードのエラー» の形で落ちる。AI がそれを直そうとして正しいコードを壊すのを防ぐため、AgentBuild は始める前に `cl.exe` / `link.exe` / `MSBuild.exe` (ノード再利用の待機を除く) / `cmake.exe` / `ctest.exe` を探し、あれば `RESULT busy` (終了コード 2) で断る。途中で重なった形跡は `HINT CONTENDED` で返す。上書きの引数は持たせない (逃げ道があると常に使われる)。対処は verify-cpp スキルの «ビルドが重なったとき»。
 
+プロセス検査のCIMがホストの権限で利用できない場合は、AgentBuildは名前によるプロセス列挙へ戻す。コマンド行が読めないMSBuildとdotnetも実行中として扱い、ノード再利用やcompiler serverの例外を適用しない。共有mutexと競合検出を省略しない。
+
 ## 2. Playtest
 
 ### ロックステップ
@@ -86,6 +88,7 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 - バッチは再起動系 (`RelaunchOutsideKillOnCloseJob` / エンジン鮮度チェック) とモーダルを飛ばす。再起動すると呼び出し側が受け取る終了コードが «0 で抜けた親» になるため
 
 ## 3. 絵の回帰
+
 
 - 基準画像は `<Project>/Tests/Golden/<name>.png`。`Assets/` の外に置く (`.meta` が付かず、アセットとして読まれない)。
 - 比較は RGB の画素ごとの差 (0..1)。`meanDiff` (全画素平均) と `badPixelRatio` (差が `pixelThreshold` 既定 0.1 を越えた画素の割合) の両方で判定する。平均だけだと小さな欠け (HUD が 1 個消えた) を見逃し、割合だけだとトーンの全体ずれを見逃す。
