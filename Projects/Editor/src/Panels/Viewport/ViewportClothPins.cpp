@@ -24,6 +24,13 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
     ImGui::BeginGroup();
     if (ImGui::SmallButton(ctx.clothPinPainting ? "Finish Cloth Pins" : "Paint Cloth Pins"))
         InvokeOperator(ctx, "cloth.paint_mode");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Edit Cloth Anchors")) {
+        if (!ctx.clothPinPainting) InvokeOperator(ctx, "cloth.paint_mode");
+        brush.anchorMode = true;
+        brush.distanceMode = false;
+        brush.dragging = false;
+    }
     if (ctx.clothPinPainting) {
         ImGui::SameLine();
         int mode = brush.anchorMode ? 2 : brush.distanceMode ? 1 : 0;
@@ -161,6 +168,7 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
     if (canPaint && !brush.anchorMode) draw->AddCircle(mouse, brush.radius, IM_COL32(240,240,240,220), 40, 1.5f);
     draw->PopClipRect();
     if (brush.anchorMode && canPaint && nearestParticle >= 0 && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const std::string ownerGuid = go->instanceId;
         std::string targetGuid;
         bool connected = false;
         for (const auto& attachment : cloth->attachments) {
@@ -185,6 +193,8 @@ bool DrawClothPinBrush(EditorContext& ctx, ClothPinBrush& brush, const ImVec2& m
             if (const auto* target = result.data.Find("target"); target && target->IsString()) targetGuid = target->AsString();
         }
         if (!targetGuid.empty()) {
+            OpArgs edit; edit.Set("owner", ownerGuid);
+            static_cast<void>(InvokeOperator(ctx, "control_points.edit", edit));
             OpArgs select; select.Set("target", targetGuid);
             const auto result = InvokeOperator(ctx, "control_points.select", select);
             if (!result.ok) FBZZ_LOG_WARN("Cloth anchor: %s", result.message.c_str());

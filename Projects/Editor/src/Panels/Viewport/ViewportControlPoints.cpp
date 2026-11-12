@@ -9,6 +9,7 @@
 #include <Engine/Scene/Components/TargetPointComponent.hpp>
 #include <Engine/Scene/Components/SplineComponents.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/ClothComponent.hpp>
 #include <Engine/Scene/Components/PresentationComponents.hpp>
 #include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
 #include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
@@ -63,12 +64,17 @@ const ControlPointPreview* PreviewFor(const ControlPointMoveSession& session, sc
 scene::GameObject* EditOwner(EditorContext& ctx)
 {
     if (!ctx.activeScene) return nullptr;
-    if (!ctx.controlPointOwnerGuid.empty()) return ctx.activeScene->FindByGuid(ctx.controlPointOwnerGuid);
-    for (auto* object = ctx.GetSelectedGO(); object; object = object->GetParent())
-        if (object->GetComponent<scene::WaterComponent>() || object->GetComponent<scene::SplineComponent>()
-            || object->GetComponent<scene::LineRendererComponent>()
-            || object->GetComponent<scene::NavMeshPatrolComponent>()
-            || object->GetComponent<scene::NavMeshOffMeshLinkComponent>()) return object;
+    const auto hasPoints = [](scene::GameObject& object) {
+        return object.GetComponent<scene::WaterComponent>() || object.GetComponent<scene::ClothComponent>()
+            || object.GetComponent<scene::SplineComponent>() || object.GetComponent<scene::LineRendererComponent>()
+            || object.GetComponent<scene::NavMeshPatrolComponent>() || object.GetComponent<scene::NavMeshOffMeshLinkComponent>();
+    };
+    auto* selected = ctx.GetSelectedGO();
+    if (selected && hasPoints(*selected)) return selected;
+    if (!ctx.controlPointOwnerGuid.empty())
+        if (auto* owner = ctx.activeScene->FindByGuid(ctx.controlPointOwnerGuid)) return owner;
+    for (auto* object = selected ? selected->GetParent() : nullptr; object; object = object->GetParent())
+        if (hasPoints(*object)) return object;
     return nullptr;
 }
 
@@ -93,6 +99,9 @@ bool OwnerReferencesPoint(scene::GameObject& owner, const std::string& guid)
         && line->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(line->pointBindings)) return true;
     if (const auto* patrol = owner.GetComponent<scene::NavMeshPatrolComponent>(); patrol
         && patrol->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS && contains(patrol->waypointBindings)) return true;
+    if (const auto* cloth = owner.GetComponent<scene::ClothComponent>())
+        for (const auto& attachment : cloth->attachments)
+            if (attachment.targetReference.guid == guid) return true;
     const auto* link = owner.GetComponent<scene::NavMeshOffMeshLinkComponent>();
     return link && link->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS
         && (link->startTarget.guid == guid || link->endTarget.guid == guid);
@@ -309,6 +318,9 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
                 }
             }
         }
+    } else if (water && water->pointSourceMode == scene::ControlPointSourceMode::INLINE
+        && water->surfaceShape != scene::WaterSurfaceShape::RECTANGLE) {
+        for (const auto& point : water->splinePoints) state.curve.push_back(point.localPosition);
     } else if (spline && spline->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
         const auto points = scene::ResolveSplinePointAuthoring(*ctx.activeScene, owner->GetID(), *spline, spline->pointRuntimeMode);
         if (points.valid) for (size_t index = 0; index < points.points.size(); ++index) {
@@ -419,10 +431,31 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
         }
     }
     scene::EntityID hit{};
+    std::size_t inlineHit = std::numeric_limits<std::size_t>::max();
     float best = std::numeric_limits<float>::max();
     size_t labels = 0;
     constexpr size_t MAX_POINT_LABELS = 32;
     draw->PushClipRect(min, {min.x + size.x, min.y + size.y}, true);
+    if (water && water->pointSourceMode == scene::ControlPointSourceMode::INLINE
+        && water->surfaceShape != scene::WaterSurfaceShape::RECTANGLE) {
+        for (std::size_t index = 0; index < water->splinePoints.size(); ++index) {
+            ImVec2 screen;
+            if (!Project(viewProjection, min, size, owner->transform.worldPosition,
+                    Offset(owner->transform, water->splinePoints[index].localPosition), screen)) continue;
+            const auto mouse = ImGui::GetMousePos();
+            const float dx = mouse.x - screen.x, dy = mouse.y - screen.y;
+            const float distance = dx * dx + dy * dy;
+            if (canStart && !ctx.IsLocked(owner->GetID()) && distance <= 100.0f && distance < best) {
+                best = distance; inlineHit = index;
+            }
+            draw->AddCircleFilled(screen, 5.0f, IM_COL32(90, 210, 255, 240));
+            draw->AddCircle(screen, 7.0f, IM_COL32(20, 35, 45, 255), 16, 1.5f);
+            if (index < MAX_POINT_LABELS) {
+                const auto label = std::to_string(index + 1);
+                draw->AddText({screen.x + 10.0f, screen.y - 6.0f}, IM_COL32(210, 240, 255, 255), label.c_str());
+            }
+        }
+    }
     for (const auto id : ctx.activeScene->GetEntities<scene::TargetPointComponent>()) {
         auto* target = ctx.activeScene->GetGameObject(id);
         if (!target) continue;
@@ -563,10 +596,33 @@ bool ControlPointViewportTool::Update(EditorContext& ctx, const ImVec2& min, con
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         if (auto* point = ctx.activeScene->GetGameObject(hit))
             ImGui::SetTooltip("%s\nクリック: 選択 / Shift: 追加 / Ctrl: 切替", point->name.c_str());
+    } else if (canStart && inlineHit != std::numeric_limits<std::size_t>::max()
+        && !gizmoOver && !transformGizmoOwnsMouse && !claimed) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        ImGui::SetTooltip("Water 点 %zu\nクリック: TargetPoint にして選択", inlineHit + 1);
     }
     if (canStart && !gizmoOver && !transformGizmoOwnsMouse && !claimed
         && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        if (hit.IsValid()) {
+        if (!hit.IsValid() && inlineHit != std::numeric_limits<std::size_t>::max()) {
+            /// @note Only an explicit click materializes numeric points; selection itself and Scene loading remain read-only.
+            const std::string ownerGuid = owner->instanceId;
+            OpArgs convert;
+            convert.Set("node", ownerGuid); convert.Set("kind", std::string("water"));
+            convert.Set("source", std::string("POINT_OBJECTS"));
+            const auto result = InvokeOperator(ctx, "control_points.convert", convert);
+            if (result.ok) {
+                OpArgs edit; edit.Set("owner", ownerGuid);
+                static_cast<void>(InvokeOperator(ctx, "control_points.edit", edit));
+                const auto* targets = result.data.Find("targets");
+                if (targets && targets->IsArray() && inlineHit < targets->AsArray().size()) {
+                    OpArgs select; select.Set("target", targets->AsArray()[inlineHit].AsString());
+                    static_cast<void>(InvokeOperator(ctx, "control_points.select", select));
+                    ctx.gizmoMode = EditorContext::GizmoMode::Translate;
+                }
+            } else FBZZ_LOG_WARN("Water control point: %s", result.message.c_str());
+            ctx.controlPointMouseClaimFrame = frame;
+            return true;
+        } else if (hit.IsValid()) {
             auto* point = ctx.activeScene->GetGameObject(hit);
             if (owner && point && OwnerReferencesPoint(*owner, point->instanceId)
                 && ctx.controlPointOwnerGuid != owner->instanceId) {

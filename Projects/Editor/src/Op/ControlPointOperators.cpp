@@ -1338,7 +1338,8 @@ void RegisterControlPointOperators(OperatorRegistry& registry)
         auto* owner = guid.empty() ? nullptr : context.ctx.activeScene->FindByGuid(guid);
         if (!guid.empty() && (!owner || (!owner->GetComponent<scene::WaterComponent>() && !owner->GetComponent<scene::SplineComponent>()
             && !owner->GetComponent<scene::NavMeshPatrolComponent>() && !owner->GetComponent<scene::NavMeshOffMeshLinkComponent>()
-            && !owner->GetComponent<scene::LineRendererComponent>()) || context.ctx.IsLocked(owner->GetID())))
+            && !owner->GetComponent<scene::LineRendererComponent>() && !owner->GetComponent<scene::ClothComponent>())
+            || context.ctx.IsLocked(owner->GetID())))
             return OpResult::Err("NO_OWNER", "点列または端点を持つ所有者が必要です");
         if (!guid.empty()) {
             context.ctx.clothPinPainting = false;

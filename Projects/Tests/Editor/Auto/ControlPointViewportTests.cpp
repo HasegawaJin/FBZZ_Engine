@@ -249,6 +249,7 @@ TEST_F(ControlPointViewportTest, BehindNearFarOutsideAndNonfiniteMarkersAreNotPi
         {30.0f, 0.0f, 0.0f},
         {(std::numeric_limits<float>::infinity)(), 0.0f, 0.0f},
     }};
+    m_camera.m_far = 1000.0f;
     int index = 0;
     for (const auto& position : invalidPositions)
         MakeMarker(("Invalid " + std::to_string(index++)).c_str(), position);
@@ -484,6 +485,32 @@ TEST_F(ControlPointViewportTest, ReleasingOutsideViewportCancelsTheGizmoCandidat
     EXPECT_TRUE(Frame(850.0f, 300.0f, false));
     EXPECT_VEC3_NEAR(marker.transform.position, initial, testkit::kTolerance);
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+}
+
+TEST_F(ControlPointViewportTest, ClickingInlineRiverPointSelectsTheCorrespondingGizmoTarget)
+{
+    auto& owner = AttachedScene()->CreateGameObject("River");
+    auto& water = owner.AddComponent<scene::WaterComponent>();
+    water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    water.splinePoints = {{41, {-2.0f, 0.0f, 0.0f}, 2.0f, 1.0f, 1.0f},
+        {17, {2.0f, 0.0f, 2.0f}, 3.0f, 1.0f, 1.0f}};
+    Context().selectedEntities = {owner.GetID()};
+    Context().gizmoMode = editor::EditorContext::GizmoMode::Rotate;
+    Frame(520.0f, 300.0f, false);
+    EXPECT_EQ(water.pointSourceMode, scene::ControlPointSourceMode::INLINE);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
+    ASSERT_TRUE(Frame(520.0f, 300.0f, true));
+    ASSERT_EQ(water.pointSourceMode, scene::ControlPointSourceMode::POINT_OBJECTS);
+    ASSERT_EQ(water.pointBindings.size(), 2u);
+    const auto* selected = Context().GetSelectedGO();
+    ASSERT_NE(selected, nullptr);
+    EXPECT_EQ(selected->instanceId, water.pointBindings[1].target.guid);
+    EXPECT_EQ(water.pointBindings[1].id, 17u);
+    EXPECT_EQ(Context().gizmoMode, editor::EditorContext::GizmoMode::Translate);
+    EXPECT_EQ(Context().controlPointOwnerGuid, owner.instanceId);
+    EXPECT_EQ(m_undo.GetHistorySize(), 1u);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(water.pointSourceMode, scene::ControlPointSourceMode::INLINE);
 }
 
 TEST_F(ControlPointViewportTest, SceneOverlayConvertsInlineOwnersStartsEditingAndSupportsPointGizmoUndo)

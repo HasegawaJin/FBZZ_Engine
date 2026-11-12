@@ -279,12 +279,13 @@ bool DrawOwnerView(EditorContext& ctx, OverlayState& state, scene::GameObject& o
     OpArgs edit;
     edit.Set("owner", active ? std::string{} : owner.instanceId);
     const bool editAllowed = editable && !blocked && authoringAllowed
-        && (active || (objectSource && !ownerLocked));
-    ImGui::BeginDisabled(!editAllowed || !CanInvokeOperator(ctx, "control_points.edit", edit));
+        && (active || !ownerLocked);
+    ImGui::BeginDisabled(!editAllowed || (objectSource && !CanInvokeOperator(ctx, "control_points.edit", edit)));
     const bool editPressed = ImGui::SmallButton(editLabel);
     ImGui::EndDisabled();
     if (editPressed) {
-        static_cast<void>(InvokeAction(ctx, state, "control_points.edit", edit));
+        if (!active && !objectSource) static_cast<void>(ConvertSource(ctx, state, owner, view));
+        else static_cast<void>(InvokeAction(ctx, state, "control_points.edit", edit));
         ImGui::PopID();
         return true;
     }
