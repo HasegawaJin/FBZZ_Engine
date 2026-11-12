@@ -6,6 +6,7 @@
 /// @note ロード時は既存 Scene をクリアしてから復元する。
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
+#include "SceneLoadWork.hpp"
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Memory/MakeUnique.hpp>
@@ -1522,6 +1523,9 @@ struct SceneDocumentOptions {
 std::unique_ptr<Scene> LoadSceneFromText(const std::string& tomlText, renderer::ResourceManager* resources,
     const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains = nullptr);
 
+std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer::ResourceManager* resources,
+    const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains, void (*pump)());
+
 std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::string& path,
     std::string& diagnostic, const SceneDocumentOptions& options)
 {
@@ -2698,14 +2702,22 @@ std::string SceneSerializer::CapturePassiveSubtree(Scene& scene, EntityID root)
 std::unique_ptr<Scene> SceneSerializer::Load(
     const std::string& path, renderer::ResourceManager* resources)
 {
-    /// @note assert しない。シーンファイルの欠落や破損はデータ側の事故で、不変条件の破れではない。
-    /// @note abort させると壊れたシーンへ遷移しただけでエディタが落ちる。ログにして nullptr を返す。
-    std::string text;
-    if (!util::FileSystem::ReadText(path, text)) {
+    return LoadWithProgress(path, resources, nullptr);
+}
+
+std::unique_ptr<Scene> SceneSerializer::LoadWithProgress(
+    const std::string& path, renderer::ResourceManager* resources, void (*pump)())
+{
+    auto parsed = detail::RunSceneLoadWork([&path]() -> std::optional<toml::parse_result> {
+        std::string text;
+        if (!util::FileSystem::ReadText(path, text)) return std::nullopt;
+        return toml::parse(text);
+    }, pump);
+    if (!parsed) {
         FBZZ_LOG_ERROR("SceneSerializer: scene file not found [%s]", path.c_str());
         return nullptr;
     }
-    return LoadFromText(text, resources, path);
+    return RestoreSceneDocument(std::move(*parsed), resources, path, false, nullptr, pump);
 }
 
 std::unique_ptr<Scene> SceneSerializer::LoadFromText(
@@ -2727,7 +2739,12 @@ std::unique_ptr<Scene> LoadSceneFromText(
     const std::string& tomlText, renderer::ResourceManager* resources,
     const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains)
 {
-    auto result = toml::parse(tomlText);
+    return RestoreSceneDocument(toml::parse(tomlText), resources, sourcePath, passiveScripts, playTerrains, nullptr);
+}
+
+std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer::ResourceManager* resources,
+    const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains, void (*pump)())
+{
     if (!result) {
         /// @note 行と列まで出す。壊れたシーンは目視で原因を探すのが難しい。
         const auto& err = result.error();
@@ -2765,6 +2782,7 @@ std::unique_ptr<Scene> LoadSceneFromText(
 
     /// @note Pass 1: GameObject 生成 + Component アタッチ
     for (size_t objectIndex = 0; objectIndex < goArr->size(); ++objectIndex) {
+        if (pump) pump();
         auto* goTbl = (*goArr)[objectIndex].as_table();
         if (!goTbl) continue;
 
@@ -3408,7 +3426,7 @@ std::unique_ptr<Scene> LoadSceneFromText(
                 const std::string terrainDiskPath =
                     ResolveAssetDiskPathForScene(sourcePath, tc.terrainAssetPath);
                 const bool loaded = passiveScripts ? TerrainAssetSerializer::LoadStrict(terrainDiskPath, tc)
-                    : TerrainAssetSerializer::Load(terrainDiskPath, tc);
+                    : TerrainAssetSerializer::LoadWithProgress(terrainDiskPath, tc, pump);
                 if (!loaded) {
                     if (passiveScripts) return nullptr;
                     FBZZ_LOG_WARN("SceneSerializer: failed to load terrain asset '%s'",
@@ -3573,6 +3591,7 @@ std::unique_ptr<Scene> LoadSceneFromText(
 
     /// @note Pass 2: 親子関係の解決
     for (auto& item : *goArr) {
+        if (pump) pump();
         auto* goTbl = item.as_table();
         if (!goTbl) continue;
 
@@ -3592,6 +3611,7 @@ std::unique_ptr<Scene> LoadSceneFromText(
 
     /// @note Reflect() を通る全コンポーネント / スクリプトの GameObject 参照。
     for (auto& item : *goArr) {
+        if (pump) pump();
         const auto* goTbl = item.as_table();
         if (!goTbl) continue;
         const std::string guid = (*goTbl)["instanceId"].value_or(std::string{});
@@ -3681,6 +3701,7 @@ std::unique_ptr<Scene> LoadSceneFromText(
     for (Script* script : pendingDeserializedScripts)
         if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->ResolveSavedComponentReferences();
     for (Script* script : pendingDeserializedScripts) {
+        if (pump) pump();
         if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script); adapter && !adapter->ValidateReferences())
             adapter->BlockForMissingRequirements();
         script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");

@@ -88,12 +88,16 @@ std::function<SceneSaveResult()> SceneIO::PrepareSave(scene::Scene& scene,
     };
 }
 
-bool SceneIO::Load(scene::Scene& scene, const std::string& path)
+bool SceneIO::Load(scene::Scene& scene, const std::string& path, void (*pump)())
 {
-    auto prepared = scene::SceneSerializer::Load(path, scene.GetResourceManager());
+    auto prepared = scene::SceneSerializer::LoadWithProgress(path, scene.GetResourceManager(), pump);
     if (!prepared) return false;
+    if (pump) pump();
+    EditorSceneState metadata;
+    if (s_editorSceneState && !EditorSerializer::Load(metadata, path)) return false;
     scene = std::move(*prepared);
-    return !s_editorSceneState || EditorSerializer::Load(*s_editorSceneState, path);
+    if (s_editorSceneState) *s_editorSceneState = std::move(metadata);
+    return true;
 }
 
 std::string SceneIO::Serialize(const scene::Scene& scene)

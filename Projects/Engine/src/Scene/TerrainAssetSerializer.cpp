@@ -4,6 +4,7 @@
 /// @date    2026-06-01
 /// @see Docs/design/terrain-layers.md (§7 保存形式)
 #include <Engine/Scene/TerrainAssetSerializer.hpp>
+#include "SceneLoadWork.hpp"
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
@@ -233,6 +234,33 @@ bool ReadTerrainData(const toml::table& terrainTbl, int64_t formatVersion, Terra
     return true;
 }
 
+bool DecodeTerrainDocument(std::string_view text, TerrainComponent& next, bool strictGeometry, bool& hasLayers)
+{
+    auto result = toml::parse(text);
+    if (!result) {
+        FBZZ_LOG_ERROR("TerrainAssetSerializer: parse failed");
+        return false;
+    }
+
+    const auto& doc = result.table();
+    const toml::table* terrain = doc["terrain"].as_table();
+    if (!terrain) terrain = &doc;
+    hasLayers = (*terrain)["layerMaterials"].is_array();
+    const auto version = doc["terrain_asset"]["format_version"].value_or(int64_t{1});
+    return ReadTerrainData(*terrain, version, next, strictGeometry);
+}
+
+void ApplyDecodedTerrain(TerrainComponent& component, TerrainComponent&& next, bool hasLayers)
+{
+    if (hasLayers) {
+        for (auto& material : next.layerMaterials)
+            material = asset::DecodeGuidRef(material);
+    }
+    next.surfaceMaterial = asset::DecodeGuidRef(next.surfaceMaterial);
+    next.RequestSurfaceRebuild();
+    component = std::move(next);
+}
+
 } /// @note namespace
 
 bool TerrainAssetSerializer::Serialize(const TerrainComponent& component, std::string& out)
@@ -275,25 +303,38 @@ bool TerrainAssetSerializer::Save(const TerrainComponent& component, const std::
 
 bool TerrainAssetSerializer::Load(const std::string& path, TerrainComponent& component)
 {
-    return LoadCore(path, component, false);
+    return LoadCore(path, component, false, nullptr);
+}
+
+bool TerrainAssetSerializer::LoadWithProgress(const std::string& path, TerrainComponent& component, void (*pump)())
+{
+    return LoadCore(path, component, false, pump);
 }
 
 bool TerrainAssetSerializer::LoadStrict(const std::string& path, TerrainComponent& component)
 {
-    return LoadCore(path, component, true);
+    return LoadCore(path, component, true, nullptr);
 }
 
-bool TerrainAssetSerializer::LoadCore(const std::string& path, TerrainComponent& component, bool strictGeometry)
+bool TerrainAssetSerializer::LoadCore(const std::string& path, TerrainComponent& component,
+    bool strictGeometry, void (*pump)())
 {
     if (path.empty()) return false;
 
-    std::string text;
-    if (!util::FileSystem::ReadText(path, text)) {
-        FBZZ_LOG_ERROR("TerrainAssetSerializer: read failed: %s", path.c_str());
-        return false;
-    }
+    TerrainComponent next = component;
+    bool hasLayers = false;
+    const bool decoded = detail::RunSceneLoadWork([&] {
+        std::string text;
+        if (!util::FileSystem::ReadText(path, text)) {
+            FBZZ_LOG_ERROR("TerrainAssetSerializer: read failed: %s", path.c_str());
+            return false;
+        }
+        return DecodeTerrainDocument(text, next, strictGeometry, hasLayers);
+    }, pump);
+    if (!decoded) return false;
 
-    return DeserializeCore(text, component, strictGeometry);
+    ApplyDecodedTerrain(component, std::move(next), hasLayers);
+    return true;
 }
 
 bool TerrainAssetSerializer::Deserialize(std::string_view text, TerrainComponent& component)
@@ -308,24 +349,10 @@ bool TerrainAssetSerializer::DeserializeStrict(std::string_view text, TerrainCom
 
 bool TerrainAssetSerializer::DeserializeCore(std::string_view text, TerrainComponent& component, bool strictGeometry)
 {
-    toml::parse_result result = toml::parse(text);
-    if (!result) {
-        FBZZ_LOG_ERROR("TerrainAssetSerializer: parse failed");
-        return false;
-    }
-
-    toml::table doc = result.table();
-    /// @note guid: 参照を "Assets/..." パスへ戻してから読む。
-    asset::DecodeGuidRefs(doc);
-    const toml::table* terrainTbl = doc["terrain"].as_table();
-    if (!terrainTbl)
-        terrainTbl = &doc;
-    const int64_t formatVersion = doc["terrain_asset"]["format_version"].value_or(int64_t{1});
-
     TerrainComponent next = component;
-    if (!ReadTerrainData(*terrainTbl, formatVersion, next, strictGeometry)) return false;
-    next.RequestSurfaceRebuild();
-    component = std::move(next);
+    bool hasLayers = false;
+    if (!DecodeTerrainDocument(text, next, strictGeometry, hasLayers)) return false;
+    ApplyDecodedTerrain(component, std::move(next), hasLayers);
     return true;
 }
 

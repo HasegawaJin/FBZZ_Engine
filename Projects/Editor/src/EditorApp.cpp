@@ -1157,7 +1157,9 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
     }
 
     if (!sceneToOpen.empty()) {
-        if (!SceneIO::Load(*m_ctx.editScene, sceneToOpen)) {
+        const core::Window::LoadingScope loading(*m_window,
+            L"Loading " + util::StringUtils::ToWide(util::FileSystem::GetFilename(sceneToOpen)));
+        if (!SceneIO::Load(*m_ctx.editScene, sceneToOpen, &core::Window::LoadingScope::Pump)) {
             FBZZ_LOG_ERROR("Open project scene failed: %s", sceneToOpen.c_str());
             return false;
         }
@@ -1170,6 +1172,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
         ClearEntitySelection(m_ctx);
         ApplyEditorViewStateFromSceneMeta();
         RebuildEditorUIFromScene();
+        core::Window::LoadingScope::Pump();
         CaptureCleanScene();
     }
 
@@ -1916,6 +1919,7 @@ bool EditorApp::OnInit()
         m_debugCamera.camera.m_aspect =
             static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
+    const core::Window::LoadingScope loading(*m_window, L"Preparing scene rendering");
     WarmupRenderResources();
     return true;
 }
@@ -2296,6 +2300,7 @@ void EditorApp::WarmupRenderResources()
                             &warmupSceneViewCulling);
     }
 
+    core::Window::LoadingScope::Pump();
     const auto gameRT = m_gameViewportRT;
     if (gameRT.IsValid()) {
         m_renderer->SetRenderTarget(gameRT, *m_resources);

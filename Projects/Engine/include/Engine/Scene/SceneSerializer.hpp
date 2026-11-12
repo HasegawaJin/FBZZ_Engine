@@ -82,6 +82,10 @@ public:
     FBZZ_ENGINE_API static std::unique_ptr<Scene> Load(const std::string& path,
                                        renderer::ResourceManager* resources);
 
+    /// @note Scene と資源の復元は呼び出しスレッドで行う。pump からそれらの所有処理へ再入しないこと。
+    FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadWithProgress(const std::string& path,
+        renderer::ResourceManager* resources, void (*pump)());
+
     static std::unique_ptr<Scene> Load(const std::string& path,
                                        renderer::ResourceManager& resources)
     {

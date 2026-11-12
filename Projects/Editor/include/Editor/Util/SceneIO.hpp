@@ -31,7 +31,8 @@ public:
     static std::function<SceneSaveResult()> PrepareSave(scene::Scene& scene,
         const std::string& path, bool backup,
         std::optional<std::filesystem::file_time_type> expectedWriteTime = std::nullopt);
-    static bool Load(scene::Scene& scene, const std::string& path);
+    /// @note Scene と Editor メタデータの準備が成功してから両方を置き換える。
+    static bool Load(scene::Scene& scene, const std::string& path, void (*pump)() = nullptr);
 
     /// @brief PlayMode スナップショット用 (メモリ上の TOML 文字列)。
     static std::string Serialize(const scene::Scene& scene);

@@ -41,6 +41,7 @@ namespace {
 /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew PM_QS_SENDMESSAGE.
 void PumpRenderWaitMessages()
 {
+    if (Window::PollLoadingEvents()) return;
     MSG message{};
     (void)PeekMessageW(&message, nullptr, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
 }

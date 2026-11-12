@@ -66,6 +66,25 @@ public:
         /// @brief メッセージポンプ。WM_QUIT を受け取ったら ShouldClose() が true になる。
         FBZZ_ENGINE_API void PollEvents();
 
+        /// @brief 所有スレッド上で長い編集操作を行う間、OS のウィンドウ操作を処理する。
+        /// @note 編集入力を抑止し、終了要求と Renderer へのリサイズ通知は通常のポンプへ延期する。
+        class LoadingScope {
+        public:
+            FBZZ_ENGINE_API LoadingScope(Window& window, const std::wstring& status);
+            FBZZ_ENGINE_API ~LoadingScope();
+            LoadingScope(const LoadingScope&) = delete;
+            LoadingScope& operator=(const LoadingScope&) = delete;
+            FBZZ_ENGINE_API static void Pump();
+
+        private:
+            Window* m_window = nullptr;
+            std::vector<HWND__*> m_disabledOwnedWindows;
+        };
+
+        /// @return 読み込み用のメッセージ処理を行った場合に true。
+        FBZZ_ENGINE_API static bool PollLoadingEvents();
+        [[nodiscard]] FBZZ_ENGINE_API bool IsLoading() const;
+
         bool     ShouldClose() const { return m_shouldClose; }
         HWND__*  GetHandle()   const { return m_hwnd; }
         uint32_t GetWidth()    const { return m_width; }
@@ -135,6 +154,11 @@ public:
         uint32_t m_width       = 0;
         uint32_t m_height      = 0;
         bool     m_shouldClose = false;
+        bool     m_resizeAfterLoading = false;
+        bool     m_closeAfterLoading = false;
+        std::wstring m_title;
+        std::wstring m_loadingStatus;
+        HWND__* m_loadingPanel = nullptr;
 
         WindowMode m_windowMode = WindowMode::Windowed;
         /// @note WS_OVERLAPPEDWINDOW を戻すだけでは位置とサイズがフルスクリーン時のまま残り、ウィンドウへ戻した瞬間に画面いっぱいの枠付きウィンドウになるため、ボーダーレスへ入る直前のウィンドウ配置を覚える。

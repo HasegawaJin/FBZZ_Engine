@@ -15,7 +15,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace fbzz::core { struct Cursor; }
+namespace fbzz::core { struct Cursor; class Window; }
 namespace fbzz::scene { struct ScriptInputProxy; }
 namespace fbzz::input::input_detail { struct GameInputAccess; }
 
@@ -88,6 +88,7 @@ public:
 
 private:
     friend struct core::Cursor;
+    friend class core::Window;
     friend struct input_detail::GameInputAccess;
     friend struct scene::ScriptInputProxy;
     /// @note Records held controls for gameplay consumption without changing raw host/UI input.

@@ -20,6 +20,7 @@
 #include <Editor/Util/Toast.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
+#include <Engine/Core/Window.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
@@ -155,6 +156,7 @@ int ReconcileStalePrefabInstances(scene::Scene& scene,
 
     int updated = 0;
     for (const std::string& assetPath : assetPaths) {
+        core::Window::LoadingScope::Pump();
         const std::string diskPath = ToProjectAssetDiskPath(projectRoot, assetPath);
         std::uint64_t assetTime = 0;
         if (!TryGetWriteTime(util::FileSystem::PathFromUtf8(diskPath), assetTime)) continue;
@@ -361,7 +363,9 @@ bool EditorApp::OpenScenePath(const std::string& path)
     if (RejectWhileSceneSaving()) return false;
     if (RejectSceneIOWhilePlaying("Open Scene")) return false;
 
-    if (!SceneIO::Load(*m_ctx.editScene, path)) {
+    const core::Window::LoadingScope loading(*m_window,
+        L"Loading " + util::StringUtils::ToWide(util::FileSystem::GetFilename(path)));
+    if (!SceneIO::Load(*m_ctx.editScene, path, &core::Window::LoadingScope::Pump)) {
         FBZZ_LOG_ERROR("Open scene failed: %s", path.c_str());
         return false;
     }
@@ -375,6 +379,7 @@ bool EditorApp::OpenScenePath(const std::string& path)
     ClearEntitySelection(m_ctx);
     ApplyEditorViewStateFromSceneMeta();
     RebuildEditorUIFromScene();
+    core::Window::LoadingScope::Pump();
     CaptureCleanScene();
     CaptureSceneDiskStamp();
 
@@ -797,7 +802,8 @@ void EditorApp::ProcessCrashRecovery()
         "Restore it? (Choosing No keeps the last saved scene.)",
         [this, autosavePath]() {
             if (!m_ctx.editScene) return;
-            if (SceneIO::Load(*m_ctx.editScene, autosavePath)) {
+            const core::Window::LoadingScope loading(*m_window, L"Recovering scene");
+            if (SceneIO::Load(*m_ctx.editScene, autosavePath, &core::Window::LoadingScope::Pump)) {
                 scene::FlushWorldTransforms(*m_ctx.editScene);
                 m_undoStack.Clear();
                 ClearEntitySelection(m_ctx);
@@ -864,7 +870,8 @@ void EditorApp::CheckHotReload()
 
     if (ft != m_lastSceneWriteTime) {
         m_lastSceneWriteTime = ft;
-        if (!SceneIO::Load(*m_ctx.editScene, m_settings.lastScenePath))
+        const core::Window::LoadingScope loading(*m_window, L"Reloading scene");
+        if (!SceneIO::Load(*m_ctx.editScene, m_settings.lastScenePath, &core::Window::LoadingScope::Pump))
             FBZZ_LOG_WARN("Hot reload failed: %s", m_settings.lastScenePath.c_str());
         else {
             ClearEntitySelection(m_ctx);

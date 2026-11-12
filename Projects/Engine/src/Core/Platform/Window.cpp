@@ -22,7 +22,9 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
+#include <chrono>
 #include <filesystem>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -249,15 +251,16 @@ namespace
         /// @note IDropTarget
         HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override
         {
-            m_hasFiles = DataHasFiles(data);
+            m_hasFiles = m_window && !m_window->IsLoading() && DataHasFiles(data);
             if (effect) *effect = m_hasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
             if (m_hasFiles) NotifyOver(pt);
             return S_OK;
         }
         HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt, DWORD* effect) override
         {
-            if (effect) *effect = m_hasFiles ? DROPEFFECT_COPY : DROPEFFECT_NONE;
-            if (m_hasFiles) NotifyOver(pt);
+            const bool canDrop = m_hasFiles && m_window && !m_window->IsLoading();
+            if (effect) *effect = canDrop ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+            if (canDrop) NotifyOver(pt);
             return S_OK;
         }
         HRESULT STDMETHODCALLTYPE DragLeave() override
@@ -268,6 +271,12 @@ namespace
         }
         HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL pt, DWORD* effect) override
         {
+            m_hasFiles = false;
+            if (m_window && m_window->IsLoading()) {
+                if (effect) *effect = DROPEFFECT_NONE;
+                m_window->InvokeFileDragLeave();
+                return S_OK;
+            }
             if (effect) *effect = DROPEFFECT_COPY;
             POINT p{ pt.x, pt.y };
             ScreenToClient(m_hwnd, &p);
@@ -276,7 +285,6 @@ namespace
                 m_window->InvokeFileDrop(paths, p.x, p.y);
                 m_window->InvokeFileDragLeave();
             }
-            m_hasFiles = false;
             return S_OK;
         }
 
@@ -340,6 +348,7 @@ bool Window::Initialize(const Config& config)
 {
     EnableDpiAwareness();
 
+    m_title = config.title;
     m_width  = config.width;
     m_height = config.height;
 
@@ -567,7 +576,8 @@ void Window::Shutdown()
 
 void Window::SetTitle(const std::wstring& title)
 {
-    if (m_hwnd)
+    m_title = title;
+    if (m_hwnd && !IsLoading())
         SetWindowTextW(m_hwnd, title.c_str());
 }
 
@@ -598,6 +608,184 @@ void Window::ClearNativeMenu()
     m_nativeMenuCommandCallback = {};
 }
 
+namespace {
+
+thread_local Window* s_loadingWindow = nullptr;
+thread_local std::chrono::steady_clock::time_point s_nextLoadingPoll;
+thread_local std::chrono::steady_clock::time_point s_showLoadingPanelAfter;
+
+constexpr wchar_t LOADING_PANEL_CLASS[] = L"FBZZLoadingPanel";
+
+LRESULT CALLBACK LoadingPanelProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_NCHITTEST) return HTTRANSPARENT;
+    if (msg == WM_ERASEBKGND) return 1;
+    if (msg != WM_PAINT) return DefWindowProcW(hwnd, msg, wParam, lParam);
+
+    PAINTSTRUCT paint{};
+    HDC dc = BeginPaint(hwnd, &paint);
+    RECT area{};
+    GetClientRect(hwnd, &area);
+    FillRect(dc, &area, GetSysColorBrush(COLOR_WINDOW));
+
+    const auto scale = [dpi = GetDpiForWindow(hwnd)](int value) { return MulDiv(value, dpi, 96); };
+    RECT label{scale(18), scale(14), area.right - scale(18), scale(38)};
+    wchar_t status[512]{};
+    GetWindowTextW(hwnd, status, static_cast<int>(std::size(status)));
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, GetSysColor(COLOR_WINDOWTEXT));
+    const HGDIOBJ previousFont = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
+    DrawTextW(dc, status, -1, &label, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+    SelectObject(dc, previousFont);
+
+    const RECT track{label.left, scale(46), label.right, scale(53)};
+    FillRect(dc, &track, GetSysColorBrush(COLOR_3DSHADOW));
+    const LONG span = track.right - track.left;
+    const LONG segment = span / 4;
+    const LONG offset = static_cast<LONG>((GetTickCount64() % 1500) * (span + segment) / 1500);
+    const RECT activity{(std::max)(track.left, track.left + offset - segment), track.top,
+        (std::min)(track.right, track.left + offset), track.bottom};
+    FillRect(dc, &activity, GetSysColorBrush(COLOR_HIGHLIGHT));
+    EndPaint(hwnd, &paint);
+    return 0;
+}
+
+/// @see https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#owned-windows Owned windows follow owner minimization.
+HWND CreateLoadingPanel(HWND owner, const std::wstring& status)
+{
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    WNDCLASSW windowClass{};
+    windowClass.hInstance = instance;
+    windowClass.lpfnWndProc = LoadingPanelProc;
+    windowClass.lpszClassName = LOADING_PANEL_CLASS;
+    if (!RegisterClassW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    return CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, LOADING_PANEL_CLASS, status.c_str(),
+        WS_POPUP | WS_BORDER, 0, 0, 0, 0, owner, nullptr, instance, nullptr);
+}
+
+void UpdateLoadingPanel(HWND panel, HWND owner)
+{
+    RECT client{};
+    GetClientRect(owner, &client);
+    POINT center{client.right / 2, client.bottom / 2};
+    ClientToScreen(owner, &center);
+    const UINT dpi = GetDpiForWindow(owner);
+    const int width = MulDiv(420, dpi, 96);
+    const int height = MulDiv(72, dpi, 96);
+    const RECT bounds{center.x - width / 2, center.y - height / 2,
+        center.x - width / 2 + width, center.y - height / 2 + height};
+    RECT current{};
+    GetWindowRect(panel, &current);
+    if (!EqualRect(&bounds, &current) || !IsWindowVisible(panel))
+        SetWindowPos(panel, nullptr, bounds.left, bounds.top, width, height,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    RedrawWindow(panel, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+}
+
+/// @note A detached editor panel can receive input even while its owner ignores editing commands.
+void DisableOwnedWindows(HWND owner, std::vector<HWND>& disabled)
+{
+    struct Enumeration {
+        HWND owner;
+        std::vector<HWND>& disabled;
+    } enumeration{owner, disabled};
+    EnumThreadWindows(GetCurrentThreadId(), [](HWND hwnd, LPARAM data) -> BOOL {
+        auto& context = *std::bit_cast<Enumeration*>(data);
+        if (hwnd != context.owner && GetAncestor(hwnd, GA_ROOTOWNER) == context.owner && IsWindowEnabled(hwnd)) {
+            context.disabled.push_back(hwnd);
+            EnableWindow(hwnd, FALSE);
+        }
+        return TRUE;
+    }, std::bit_cast<LPARAM>(&enumeration));
+}
+
+} /// @note namespace
+
+Window::LoadingScope::LoadingScope(Window& window, const std::wstring& status)
+{
+    if (s_loadingWindow || !window.m_hwnd) return;
+    m_window = &window;
+    s_loadingWindow = &window;
+    s_nextLoadingPoll = {};
+    s_showLoadingPanelAfter = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
+    window.m_loadingStatus = status;
+    DisableOwnedWindows(window.m_hwnd, m_disabledOwnedWindows);
+    if (const HWND capture = GetCapture(); capture && GetAncestor(capture, GA_ROOTOWNER) == window.m_hwnd)
+        ReleaseCapture();
+    const std::wstring title = window.m_title + L" | " + status;
+    SetWindowTextW(window.m_hwnd, title.c_str());
+    Pump();
+}
+
+Window::LoadingScope::~LoadingScope()
+{
+    if (!m_window) return;
+    s_nextLoadingPoll = {};
+    Pump();
+    if (HWND panel = std::exchange(m_window->m_loadingPanel, nullptr)) DestroyWindow(panel);
+    for (HWND hwnd : m_disabledOwnedWindows)
+        if (IsWindow(hwnd)) EnableWindow(hwnd, TRUE);
+    input::Input::ResetNativeState();
+    s_loadingWindow = nullptr;
+    SetWindowTextW(m_window->m_hwnd, m_window->m_title.c_str());
+    if (std::exchange(m_window->m_closeAfterLoading, false))
+        PostMessageW(m_window->m_hwnd, WM_CLOSE, 0, 0);
+}
+
+void Window::LoadingScope::Pump()
+{
+    (void)Window::PollLoadingEvents();
+}
+
+bool Window::IsLoading() const
+{
+    return s_loadingWindow == this;
+}
+
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew PeekMessageW also processes sent messages.
+bool Window::PollLoadingEvents()
+{
+    Window* const window = s_loadingWindow;
+    if (!window) return false;
+    const auto now = std::chrono::steady_clock::now();
+    if (now < s_nextLoadingPoll) return false;
+    s_nextLoadingPoll = now + std::chrono::milliseconds(16);
+
+    MSG msg{};
+    for (int count = 0; count < 64 && PeekMessageW(&msg, window->m_hwnd, 0, 0, PM_REMOVE); ++count) {
+        switch (msg.message) {
+        case WM_QUIT:
+            window->m_shouldClose = true;
+            return true;
+        case WM_PAINT:
+        case WM_NCPAINT:
+        case WM_NCMOUSEMOVE:
+        case WM_NCMOUSELEAVE:
+        case WM_NCLBUTTONDOWN:
+        case WM_NCLBUTTONUP:
+        case WM_NCLBUTTONDBLCLK:
+        case WM_SYSCOMMAND:
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYUP:
+        case WM_LBUTTONUP:
+        case WM_RBUTTONUP:
+        case WM_MBUTTONUP:
+        case WM_XBUTTONUP:
+        case WM_INPUT:
+        case WM_CLOSE:
+            DispatchMessageW(&msg);
+            break;
+        }
+    }
+    if (now >= s_showLoadingPanelAfter && IsWindowVisible(window->m_hwnd) && !IsIconic(window->m_hwnd)) {
+        if (!window->m_loadingPanel)
+            window->m_loadingPanel = CreateLoadingPanel(window->m_hwnd, window->m_loadingStatus);
+        if (window->m_loadingPanel) UpdateLoadingPanel(window->m_loadingPanel, window->m_hwnd);
+    }
+    return true;
+}
+
 void Window::PollEvents()
 {
     MSG msg{};
@@ -609,6 +797,9 @@ void Window::PollEvents()
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    if (std::exchange(m_resizeAfterLoading, false) && m_resizeCallback
+        && !m_shouldClose && IsWindow(m_hwnd) && !IsIconic(m_hwnd))
+        m_resizeCallback(m_width, m_height);
 }
 
 LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -621,10 +812,11 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
 
     auto* window = std::bit_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    const bool loading = window && window->IsLoading();
 
     /// @see https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-input 前景パケットを処理した後の DefWindowProc による解放。
     if (msg == WM_INPUT) {
-        if (GET_RAWINPUT_CODE_WPARAM(wParam) == RIM_INPUT) ReadRelativeMouse(lParam);
+        if (!loading && GET_RAWINPUT_CODE_WPARAM(wParam) == RIM_INPUT) ReadRelativeMouse(lParam);
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
@@ -640,8 +832,41 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         Cursor::ResetForEditor();
     }
 
+    if (loading) {
+        switch (msg) {
+        case WM_CLOSE:
+            window->m_closeAfterLoading = true;
+            return 0;
+        case WM_COMMAND:
+            return 0;
+        case WM_SYSCOMMAND:
+            if ((wParam & 0xFFF0) == SC_KEYMENU || (wParam & 0xFFF0) == SC_MOUSEMENU) return 0;
+            break;
+        case WM_NCLBUTTONDOWN:
+        case WM_NCLBUTTONDBLCLK:
+            if (wParam == HTMENU || wParam == HTSYSMENU) return 0;
+            break;
+        case WM_ACTIVATEAPP:
+        case WM_SIZE:
+        case WM_MOVE:
+        case WM_DPICHANGED:
+        case WM_DESTROY:
+        case WM_SETFOCUS:
+        case WM_KILLFOCUS:
+        case WM_KEYUP:
+        case WM_SYSKEYUP:
+        case WM_LBUTTONUP:
+        case WM_RBUTTONUP:
+        case WM_MBUTTONUP:
+        case WM_XBUTTONUP:
+            break;
+        default:
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
+    }
+
     /// @note 登録済みフック (ImGui 等) に先にメッセージを渡す
-    if (window && window->m_wndProcHook)
+    if (window && window->m_wndProcHook && (!loading || (msg != WM_SIZE && msg != WM_DPICHANGED)))
         if (window->m_wndProcHook(hwnd, msg, wParam, lParam))
             return true;
 
@@ -669,8 +894,12 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         if (w == 0 || h == 0) return 0;
         window->m_width  = w;
         window->m_height = h;
-        if (window->m_resizeCallback)
+        if (loading)
+            window->m_resizeAfterLoading = true;
+        else if (window->m_resizeCallback) {
+            window->m_resizeAfterLoading = false;
             window->m_resizeCallback(w, h);
+        }
         /// @note 拘束中はクライアント矩形が変わった時点で拘束範囲も古くなる。
         fbzz::core::Cursor::ApplyLock();
         return 0;
