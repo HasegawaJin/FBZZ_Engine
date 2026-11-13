@@ -183,7 +183,7 @@ void ReleaseRenderViewResources(RenderViewResources& targets, renderer::Resource
 {
     /// @note transient RT も同じ Viewport 寿命に属するため、固定 RT より先に明示解放する。
     targets.pipeline.ReleaseViewResources(resources);
-    targets.cachedShadowAtlas.Release(resources);
+    targets.staticShadowAtlas.Release(resources);
     ReleaseRayTracingViewResources(targets, resources);
     if (targets.hdr.IsValid())                  resources.Release(targets.hdr);
     if (targets.ldr.IsValid())                  resources.Release(targets.ldr);

@@ -12,6 +12,7 @@
 #include <Graphics/Renderer/GpuGeometrySelection.hpp>
 #include <Graphics/Pipeline/OcclusionCuller.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
+#include <bit>
 #include "InstanceShadowBatch.hpp"
 #include "TerrainShadowBatch.hpp"
 #include <algorithm>
@@ -1157,6 +1158,12 @@ bool UsesGpuShadowTerrain(const RenderPassContext& ctx)
         && (ctx.settings.geometryDrawMode == GeometryDrawMode::GPU_INDIRECT || ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER);
 }
 
+bool IsStaticShadowTerrain(const RenderPassContext& ctx, const RenderTerrainInput& input)
+{
+    return IsDirectionalShadowBakeTerrain(input) && input.shadowBakeGeometryHash != 0
+        && (!UsesGpuShadowTerrain(ctx) || UsesTerrainMeshlets(ctx));
+}
+
 void SubmitTerrainShadowCastersImpl(
     RenderPassContext&                            ctx,
     const math::Frustum&                          lightFrustum,
@@ -1165,7 +1172,7 @@ void SubmitTerrainShadowCastersImpl(
     renderer::ResourceHandle<renderer::ConstantBufferTag> frameCB,
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB,
     const PreparedTerrainShadowBatch* batch, size_t viewIndex, std::span<const uint8_t> receipts,
-    const math::Matrix4* lightViewProjection, bool usesBakedStaticDepth)
+    const math::Matrix4* lightViewProjection, bool usesBakedStaticDepth, TerrainShadowCasterFilter filter)
 {
     /// @note ライト種別・shadow atlas・cascade の選択は ShadowPass 側に閉じ込め、
     /// @note こちらは「指定されたライト視錐台へ描けるチャンクを提出する」だけにする。
@@ -1183,6 +1190,8 @@ void SubmitTerrainShadowCastersImpl(
         const auto& input = scene->terrains[index];
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
         if (usesBakedStaticDepth && IsDirectionalShadowBakeTerrain(input)) continue;
+        if (filter != TerrainShadowCasterFilter::ALL
+            && (filter == TerrainShadowCasterFilter::STATIC_ONLY) != IsStaticShadowTerrain(ctx, input)) continue;
         const auto& world = input.constants.worldMatrix;
         PerObjectCB object{};
         object.world = world;
@@ -1244,6 +1253,26 @@ void SubmitTerrainShadowCastersImpl(
 
 } /// @note namespace
 
+uint64_t TerrainShadowCacheContentKey(const RenderPassContext& ctx)
+{
+    uint64_t key = 14695981039346656037ull;
+    if (!ctx.renderScene) return key;
+    const auto append = [&key](uint64_t value) { key = (key ^ value) * 1099511628211ull; };
+    for (const auto& input : ctx.renderScene->terrains) {
+        if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0
+            || !IsStaticShadowTerrain(ctx, input)) continue;
+        append(input.shadowBakeGeometryHash);
+        for (const auto& row : input.constants.worldMatrix.m)
+            for (const float value : row) append(std::bit_cast<uint32_t>(value));
+        /// @note 色と影で同じ LOD を使う。カメラ移動で選んだ面が変わったときは深度を作り直す。
+        uint64_t lodKey = 0;
+        for (const auto& patch : input.patches)
+            lodKey = (lodKey ^ (1 + SelectTerrainLOD(input, patch, ctx.camera.m_position))) * 1099511628211ull;
+        append(lodKey);
+    }
+    return key;
+}
+
 PreparedTerrainShadowBatch PrepareTerrainShadowBatch(RenderPassContext& ctx,
     std::span<const InstanceShadowView> views, std::vector<ComputeCall>& commands, size_t bakedViewIndex)
 {
@@ -1279,17 +1308,18 @@ void SubmitTerrainShadowBatchView(RenderPassContext& ctx, const math::Frustum& f
     ResourceHandle<ShaderTag> shadowShader, ResourceHandle<PipelineStateTag> pipelineState,
     ResourceHandle<ConstantBufferTag> frameCB, ResourceHandle<ConstantBufferTag> objectCB,
     const PreparedTerrainShadowBatch& batch, size_t viewIndex, std::span<const uint8_t> receipts,
-    bool usesBakedStaticDepth)
+    bool usesBakedStaticDepth, TerrainShadowCasterFilter filter)
 {
     SubmitTerrainShadowCastersImpl(ctx, frustum, shadowShader, pipelineState, frameCB, objectCB, &batch, viewIndex,
-        receipts, &lightViewProjection, usesBakedStaticDepth);
+        receipts, &lightViewProjection, usesBakedStaticDepth, filter);
 }
 
 void SubmitTerrainShadowCasters(RenderPassContext& ctx, const math::Frustum& lightFrustum,
     ResourceHandle<ShaderTag> shadowShader, ResourceHandle<PipelineStateTag> pipelineState,
     ResourceHandle<ConstantBufferTag> frameCB, ResourceHandle<ConstantBufferTag> objectCB)
 {
-    SubmitTerrainShadowCastersImpl(ctx, lightFrustum, shadowShader, pipelineState, frameCB, objectCB, nullptr, 0, {}, nullptr, false);
+    SubmitTerrainShadowCastersImpl(ctx, lightFrustum, shadowShader, pipelineState, frameCB, objectCB,
+        nullptr, 0, {}, nullptr, false, TerrainShadowCasterFilter::ALL);
 }
 
 void TerrainSelectionMaskSystem(RenderPassContext& ctx)

@@ -695,17 +695,19 @@ void RenderSystem(Scene& scene,
         dirShadowDistance, dirShadowBias, requestFarCache);
     /// @note The producer may access lazy native descriptors after the CPU-only shadow preparation.
     if (skinningReadAhead) renderer::FinishOwnedSkinningReadAhead(renderer);
-    auto& shadowAtlas = viewTargets.cachedShadowAtlas;
+    auto& shadowAtlas = viewTargets.staticShadowAtlas;
     auto& shadowCaches = viewTargets.shadowCascadeCaches;
+    uint32_t staticShadowCascadeMask = 0;
     uint32_t reuseShadowCascadeMask = 0;
     if (requestFarCache) {
         if (shadowAtlas.Ensure(resources, rs.shadow.mapResolution, rs.shadow.mapResolution, 0))
             shadowCaches = {};
-        if (resources.GetDepthTexture(shadowAtlas.Handle()).IsValid()) {
+        if (resources.Get(resources.GetDepthTexture(shadowAtlas.Handle())) && resources.Get(shared.depthCopyShader)) {
             const renderer::FarShadowCacheKey key{scene.GetRenderSceneGeneration(), scene.GetHierarchyRevision(),
                 shadowBounds.terrainRevision, (static_cast<uint64_t>(cachedLight.generation) << 32u) | cachedLight.index,
                 cullingMask};
             for (int index = std::min(2, shadows.count - 1); index < shadows.count; ++index) {
+                staticShadowCascadeMask |= 1u << index;
                 if (renderer::PrepareShadowCascadeCache(shadowCaches[index], shadows, camera, lightDir, key,
                         Time::frameCount, index))
                     reuseShadowCascadeMask |= 1u << index;
@@ -941,8 +943,11 @@ void RenderSystem(Scene& scene,
 
     passCtx.uiOptions               = uiOptions;
     passCtx.directionalShadowBakeEnabled = rs.shadowEnabled && lighting.dirShadowBakeLight != EntityID::INVALID;
-    passCtx.cachedShadowAtlas = shadowAtlas.Handle();
-    passCtx.reuseShadowCascadeMask = reuseShadowCascadeMask;
+    passCtx.staticShadowCache.atlas = shadowAtlas.Handle();
+    passCtx.staticShadowCache.cascadeMask = staticShadowCascadeMask;
+    passCtx.staticShadowCache.reuseMask = reuseShadowCascadeMask;
+    for (int index = 0; index < cascadeCount; ++index)
+        passCtx.staticShadowCache.contentKeys[index] = shadowCaches[index].contentKey;
     passCtx.outputWidth             = nativeW;
     passCtx.outputHeight            = nativeH;
     /// @note ポストプロセスチェーンの終着点。等倍なら従来どおり outputRT へ直接書き切る。
@@ -1382,10 +1387,10 @@ void RenderSystem(Scene& scene,
     assert(graphExecuted);
     (void)graphExecuted;
     if (shadowAtlas.IsValid()) {
-        const int firstCached = std::min(2, cascadeCount - 1);
-        for (int index = 0; index < renderer::kMaxShadowCascades; ++index)
-            shadowCaches[index].valid = graphExecuted && passCtx.cachedShadowDepthReady
-                && index >= firstCached && index < cascadeCount;
+        for (int index = 0; index < renderer::kMaxShadowCascades; ++index) {
+            shadowCaches[index].valid = graphExecuted && (passCtx.staticShadowCache.readyMask & (1u << index));
+            shadowCaches[index].contentKey = passCtx.staticShadowCache.contentKeys[index];
+        }
     }
     /// @note パスが書き換えたフレームをまたぐ状態をビューへ戻す。
     /// @note TAA は反転させた向き (次フレームは «書いた方» を履歴として読む)、
@@ -1459,6 +1464,8 @@ void RenderSystem(Scene& scene,
         dbgSnap.renderStats.skinningDemandSubmitted = passCtx.statsSkinningDemandSubmitted;
         dbgSnap.renderStats.skinningDemandSkipped = passCtx.statsSkinningDemandSkipped;
         dbgSnap.renderStats.shadowDrawCalls     = passCtx.statsShadowDrawCalls;
+        dbgSnap.renderStats.staticShadowUpdateMask = passCtx.staticShadowCache.updateMask;
+        dbgSnap.renderStats.staticShadowReadyMask = passCtx.staticShadowCache.readyMask;
         dbgSnap.renderStats.shadowTriangleCount = passCtx.statsShadowTriangleCount;
         dbgSnap.renderStats.instancedBatches    = passCtx.statsInstancedBatches;
         dbgSnap.renderStats.instancedDrawsSaved = passCtx.statsInstancedDrawsSaved;

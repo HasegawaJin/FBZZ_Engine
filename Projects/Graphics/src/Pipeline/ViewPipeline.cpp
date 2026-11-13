@@ -381,7 +381,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     auto& contactShadowResult     = viewTargets.contactShadowResult;
     uint32_t& sHdrW               = viewTargets.width;
     uint32_t& sHdrH               = viewTargets.height;
-    const auto shadowMapRT = passCtx.cachedShadowAtlas.IsValid() ? passCtx.cachedShadowAtlas : shared.shadowMapRT.Handle();
+    const auto shadowMapRT = shared.shadowMapRT.Handle();
     auto& punctualShadowRT = shared.punctualShadowRT;
     auto& lightCookieRT = shared.lightCookieRT;
     /// @note エディターが編集した «このパスは載せない / これを待つ» をこのフレームへ効かせる。
@@ -418,6 +418,9 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         { RK::RenderTarget, nativeW, nativeH, kResFormat, 1, true, true, false });
     pipeline.DeclareTarget("ShadowMap", shadowMapRT,
         { RK::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, kResFormat, 0, true, false, false });
+    if (passCtx.staticShadowCache.atlas.IsValid())
+        pipeline.DeclareTarget("StaticShadowMap", passCtx.staticShadowCache.atlas,
+            { RK::RenderTarget, rs.shadow.mapResolution, rs.shadow.mapResolution, kResFormat, 0, true, false, false });
     pipeline.DeclareTarget("PunctualShadowMap", punctualShadowRT,
         { RK::RenderTarget, punctualShadowRes, punctualShadowRes, kResFormat, 0, true, false, false });
     pipeline.DeclareTarget("LightCookieAtlas", lightCookieRT,

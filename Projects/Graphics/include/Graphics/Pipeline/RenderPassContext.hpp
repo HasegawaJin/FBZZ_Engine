@@ -20,6 +20,15 @@ struct DirectionalShadowBakeView {
     bool includesStaticMeshes = false;
 };
 
+struct StaticShadowCacheView {
+    ResourceHandle<RenderTargetTag> atlas;
+    uint32_t cascadeMask = 0;
+    uint32_t reuseMask = 0;
+    uint32_t readyMask = 0;
+    uint32_t updateMask = 0;
+    std::array<uint64_t, kMaxShadowCascades> contentKeys{};
+};
+
 /// @note Only a successful bake may publish a never-again-written texture; resource owner/epoch and exact handle bind the proof.
 struct RenderTexturePublication {
     ResourceHandle<TextureTag> texture;
@@ -56,9 +65,7 @@ struct RenderPassContext : RenderLightingInput {
     /// @note The opt-in worker returns values only; no native pointer or producer input is borrowed by this receipt.
     RenderSkinningBatchReceipt skinningBatchReceipt;
     uint64_t frameStamp = 0;
-    ResourceHandle<RenderTargetTag> cachedShadowAtlas;
-    uint32_t reuseShadowCascadeMask = 0;
-    bool cachedShadowDepthReady = false;
+    StaticShadowCacheView staticShadowCache;
     float time = 0.0f;
     float deltaTime = 0.0f;
     float unscaledDeltaTime = 0.0f;

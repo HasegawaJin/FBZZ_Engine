@@ -436,6 +436,8 @@ Outcome DoProfilerSnapshot(editor::EditorContext& ctx, const JsonValue& payload)
     /// @note シャドウマップ描画はカメラ視点の統計と別枠。合計だけで「描画が軽い」と誤判断しないよう分けて返す。
     result.Set("shadowDrawCalls", JsonValue(rendering.renderStats.shadowDrawCalls));
     result.Set("shadowTriangles", JsonValue(rendering.renderStats.shadowTriangleCount));
+    result.Set("staticShadowUpdateMask", JsonValue(static_cast<int>(rendering.renderStats.staticShadowUpdateMask)));
+    result.Set("staticShadowReadyMask", JsonValue(static_cast<int>(rendering.renderStats.staticShadowReadyMask)));
     /// @note drawCalls / shadowDrawCalls は束ねた後の数。何回束ねて何回ぶん減ったかを併記しないと、
     /// @note «描画が減った» のが束ねによるものかカリングによるものか読み分けられない。
     result.Set("instancedBatches", JsonValue(rendering.renderStats.instancedBatches));

@@ -1039,7 +1039,7 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
             }
         }
         if (useGpuGeometry) PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, resources);
-        if (ctx.directionalShadowBakeEnabled && !input.patches.empty()) {
+        if ((ctx.directionalShadowBakeEnabled || ctx.staticShadowCache.cascadeMask != 0) && !input.patches.empty()) {
             if (!gpu.shadowBakeGeometryHash)
                 gpu.shadowBakeGeometryHash = TerrainShadowBakeGeometryHash(terrain, input.patches);
             input.shadowBakeGeometryHash = gpu.shadowBakeGeometryHash;

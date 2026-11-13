@@ -22,7 +22,9 @@
 #include <Core/Profiler/ProfileScope.hpp>
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace fbzz::renderer {
@@ -67,6 +69,7 @@ struct ShadowCaster {
     uint32_t                                              indexCount = 0;
     const renderer::RenderMeshItem*                       item = nullptr;
     bool                                                  skinned = false;
+    bool                                                  staticCache = false;
     renderer::ResourceHandle<renderer::ShaderTag>         shader;
     renderer::ResourceHandle<renderer::ConstantBufferTag> skinningCB; ///< @note 無効 = 静的メッシュ
     math::Matrix4                                         world;
@@ -125,6 +128,11 @@ void CollectMeshShadowCasters(RenderPassContext& ctx, uint32_t updateMask,
             caster.indexCount = item.indexCount;
             caster.item = &item;
             caster.skinned = skinned;
+            /// @note A marked mesh that moves this frame must appear only in the live depth.
+            caster.staticCache = ctx.staticShadowCache.cascadeMask != 0
+                && IsDirectionalShadowBakeMesh(object, item)
+                && item.vertexContentVersion != 0 && item.indexContentVersion != 0
+                && std::memcmp(&object.world, &object.previousWorld, sizeof(object.world)) == 0;
             caster.world = object.world;
             if (hasBounds) caster.worldSphere = {bounds.center.x, bounds.center.y, bounds.center.z, bounds.radius};
             caster.lodDither = object.lodDither;
@@ -158,6 +166,8 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx, uint32_t updateMask
     CollectMeshShadowCasters(ctx, updateMask, sortView, outCasters, true, candidates, 0);
 }
 
+enum class ShadowCasterFilter { ALL, STATIC_ONLY, DYNAMIC_ONLY };
+
 /// @brief EmitShadowCasters — 収集済み caster のうち、指定ビューに属するものを描画する。
 /// @param punctual false なら cascadeMask の bit viewIndex を、true なら punctualMask を見る。
 /// @pre 配列は呼び出し前にソート済みであること (`ComputeLightDepthKey` 参照。ソートは 1 回でよい)。
@@ -168,7 +178,7 @@ void CollectSkinnedMeshShadowCasters(RenderPassContext& ctx, uint32_t updateMask
 void EmitShadowCasters(RenderPassContext& ctx,
                        const std::vector<ShadowCaster>& casters,
                        int viewIndex, bool punctual,
-                       const math::Matrix4& viewProjection)
+                       const math::Matrix4& viewProjection, ShadowCasterFilter filter = ShadowCasterFilter::ALL)
 {
     auto& h = ctx.handles;
 
@@ -188,6 +198,8 @@ void EmitShadowCasters(RenderPassContext& ctx,
     for (const ShadowCaster& caster : casters) {
         const uint32_t mask = punctual ? caster.punctualMask : caster.cascadeMask;
         if ((mask & viewBit) == 0) continue;
+        if (filter != ShadowCasterFilter::ALL && (filter == ShadowCasterFilter::STATIC_ONLY) != caster.staticCache)
+            continue;
 
         PerObjectCB objData{};
         objData.world          = caster.world;
@@ -288,7 +300,7 @@ static_assert(sizeof(BakedDepthRestoreConstants) == 80 && sizeof(BakedDepthResto
 void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
                          int cascadeIndex, size_t selectionIndex, const std::vector<ShadowCaster>& casters,
                          const ShadowSelections& selections,
-                          bool usesBakedStaticDepth, ShadowTilePhase phase)
+                         bool usesBakedStaticDepth, ResourceHandle<TextureTag> staticDepth, ShadowTilePhase phase)
 {
     /// @note このカスケードのタイルへビューポートを絞る。SetRenderTarget はビューポートを
     /// @note RT 全体へ戻すため、必ずその後に呼ぶ。
@@ -309,6 +321,15 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
         restore.constantBuffers[1] = ctx.handles.objectCB;
         SubmitCountedShadow(ctx, restore);
     }
+    if (staticDepth.IsValid() && phase != ShadowTilePhase::INSTANCES) {
+        /// @note 同じアトラス座標の深度を復元し、後続の動的キャスターと同じ深度テストに通す。
+        DrawCall restore;
+        restore.vertexCount = 3;
+        restore.shader = ctx.handles.depthCopyShader;
+        restore.pipelineState = ctx.handles.defaultPSO;
+        restore.textures[7] = staticDepth;
+        SubmitCountedShadow(ctx, restore);
+    }
 
     /// @note Auto Bake がリアルタイム描画へフォールバックしても葉の影の形状を保つ。
     PerFrameCB lightFrameData{};
@@ -320,9 +341,11 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     if (phase != ShadowTilePhase::INSTANCES) {
-        EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection);
+        EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection,
+            staticDepth.IsValid() ? ShadowCasterFilter::DYNAMIC_ONLY : ShadowCasterFilter::ALL);
         SubmitTerrainShadowBatchView(ctx, cascade.frustum, cascade.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
-            ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, usesBakedStaticDepth);
+            ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, usesBakedStaticDepth,
+            staticDepth.IsValid() ? TerrainShadowCasterFilter::DYNAMIC_ONLY : TerrainShadowCasterFilter::ALL);
     }
     if (phase != ShadowTilePhase::OCCLUDERS) {
         SubmitInstanceShadowBatchView(ctx, selections.instances, selectionIndex, selections.receipts, ctx.handles.frameCB);
@@ -358,6 +381,55 @@ void RenderPunctualShadowView(RenderPassContext& ctx, const PunctualShadowView& 
 
 } /// @note namespace
 
+void UpdateStaticShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade, int cascadeIndex,
+    const std::vector<ShadowCaster>& casters)
+{
+    ctx.renderer.SetViewport(cascade.viewportX, cascade.viewportY, cascade.viewportSize, cascade.viewportSize);
+    ctx.renderer.ClearDepthRegion(cascade.viewportX, cascade.viewportY, cascade.viewportSize, cascade.viewportSize);
+    PerFrameCB frame{};
+    frame.viewProjection = cascade.viewProjection;
+    frame.view = cascade.view;
+    frame.cameraPos = cascade.eyePos;
+    frame.isOrthographic = 1.0f;
+    const auto& h = ctx.handles;
+    ctx.resources.Update(h.frameCB, &frame, sizeof(frame));
+    EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection, ShadowCasterFilter::STATIC_ONLY);
+    SubmitTerrainShadowBatchView(ctx, cascade.frustum, cascade.viewProjection, h.shadowShader, h.defaultPSO,
+        h.frameCB, h.objectCB, {}, 0, {}, false, TerrainShadowCasterFilter::STATIC_ONLY);
+}
+
+std::array<uint64_t, kMaxShadowCascades> StaticShadowContentKeys(RenderPassContext& ctx,
+    const std::vector<ShadowCaster>& casters, uint32_t mask)
+{
+    auto commonKey = TerrainShadowCacheContentKey(ctx);
+    const auto append = [](uint64_t& key, uint64_t value) { key = (key ^ value) * 1099511628211ull; };
+    append(commonKey, ctx.resources.GetShaderVersion());
+    append(commonKey, static_cast<uint64_t>(ctx.settings.rasterGeometryMode));
+    append(commonKey, static_cast<uint64_t>(ctx.settings.geometryDrawMode));
+    std::array<uint64_t, kMaxShadowCascades> keys;
+    keys.fill(commonKey);
+    for (const auto& caster : casters) {
+        if (!caster.staticCache || (caster.cascadeMask & mask) == 0) continue;
+        const auto& item = *caster.item;
+        uint64_t meshKey = 14695981039346656037ull;
+        for (const auto handle : {item.vertexBuffer, item.indexBuffer}) {
+            append(meshKey, handle.id);
+            append(meshKey, handle.gen);
+        }
+        append(meshKey, item.vertexContentVersion);
+        append(meshKey, item.indexContentVersion);
+        append(meshKey, item.indexCount);
+        append(meshKey, item.material.doubleSided);
+        append(meshKey, static_cast<uint32_t>(item.material.depthBias));
+        append(meshKey, std::bit_cast<uint32_t>(item.material.depthBiasSlope));
+        for (const auto& row : caster.world.m)
+            for (float value : row) append(meshKey, std::bit_cast<uint32_t>(value));
+        for (int index = 0; index < kMaxShadowCascades; ++index)
+            if ((caster.cascadeMask & mask) & (1u << index)) append(keys[index], meshKey);
+    }
+    return keys;
+}
+
 void ExecuteShadowPass(RenderPassContext& ctx)
 {
     auto& renderer  = ctx.renderer;
@@ -380,17 +452,8 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         renderer.ClearDepth();
     }
 
-    /// @note 再利用するタイルを残し、更新するタイルだけを初期化する。
     renderer.SetRenderTarget(shadowAtlas, resources);
-    if (ctx.reuseShadowCascadeMask != 0) {
-        for (int i = 0; i < cascadeCount; ++i) {
-            if ((updateMask & (1u << i)) == 0) continue;
-            const auto& cascade = ctx.shadowCascades[i];
-            renderer.ClearDepthRegion(cascade.viewportX, cascade.viewportY, cascade.viewportSize, cascade.viewportSize);
-        }
-    } else {
-        renderer.ClearDepth();
-    }
+    renderer.ClearDepth();
 
     if (!rs.shadowEnabled) return;
     /// @note 影の濃さが 0 のときは面の陰影に深度が一切効かない (`Shadow.hlsli`:
@@ -413,6 +476,14 @@ void ExecuteShadowPass(RenderPassContext& ctx)
     const auto shadowScene = ctx.renderScene;
     const auto shadowResourceEpoch = resources.GetResetVersion();
     const auto shadowResourceFrame = resources.FrameStamp();
+    auto& cache = ctx.staticShadowCache;
+    const auto cacheAtlas = cache.atlas.IsValid() ? ctx.Res().Target("StaticShadowMap") : ResourceHandle<RenderTargetTag>{};
+    const auto staticDepth = cacheAtlas.IsValid() && cacheAtlas == cache.atlas && cacheAtlas != shadowAtlas
+        ? resources.GetDepthTexture(cacheAtlas) : ResourceHandle<TextureTag>{};
+    const bool useStaticCache = needDirectional && cache.cascadeMask != 0 && resources.Get(staticDepth)
+        && resources.Get(h.depthCopyShader) && resources.Get(h.shadowShader) && resources.Get(h.defaultPSO)
+        && resources.Get(h.frameCB) && resources.Get(h.objectCB) && renderer.GetCapabilities().depthRegionClear;
+    if (!useStaticCache) cache.cascadeMask = 0;
 
     /// @name caster の収集はフレームに 1 回だけ
     /// @note シーン走査・GetComponent・bounds 計算・ソートはカスケード間で共有できる。カスケード
@@ -443,6 +514,26 @@ void ExecuteShadowPass(RenderPassContext& ctx)
                          return a.depthKey < b.depthKey;
                      });
 
+    uint32_t staticCacheViewMask = 0;
+    if (cache.cascadeMask != 0) {
+        const auto keys = StaticShadowContentKeys(ctx, casters, cache.cascadeMask);
+        uint32_t updates = cache.cascadeMask & ~cache.reuseMask;
+        for (int index = 0; index < cascadeCount; ++index) {
+            const uint32_t bit = 1u << index;
+            if ((cache.cascadeMask & bit) != 0 && cache.contentKeys[index] != keys[index]) updates |= bit;
+        }
+        if (updates != 0) {
+            FBZZ_PROFILE_SCOPE("ShadowStaticCache::Update");
+            renderer.SetRenderTarget(cacheAtlas, resources);
+            for (int index = 0; index < cascadeCount; ++index)
+                if ((updates & (1u << index)) != 0)
+                    UpdateStaticShadowCascade(ctx, ctx.shadowCascades[index], index, casters);
+        }
+        cache.contentKeys = keys;
+        cache.updateMask = updates;
+        cache.readyMask = cache.cascadeMask;
+    }
+
     const int localViewCount = needPunctual ? punctualViewCount : 0;
     std::array<int, kMaxShadowCascades> directionalIndices;
     std::array<ShadowCascade, kMaxShadowCascades> directionalViews;
@@ -455,6 +546,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         if (static_cast<size_t>(index) == bakedCascadeIndex) bakedViewIndex = directionalViewCount;
         /// @note The two near cascades retain projected-size LOD for readable branch and canopy shadows.
         directionalIndices[directionalViewCount] = index;
+        if (cache.readyMask & (1u << index)) staticCacheViewMask |= 1u << directionalViewCount;
         const auto& view = directionalViews[directionalViewCount] = ctx.shadowCascades[index];
         visibilityViews[directionalViewCount++] = {view.frustum, true, index < 2, view.texelWorldSize,
             view.viewProjection, view.viewportX, view.viewportY, view.viewportSize, {}};
@@ -489,7 +581,8 @@ void ExecuteShadowPass(RenderPassContext& ctx)
             renderer.SetRenderTarget(shadowAtlas, resources);
             for (int i = 0; i < directionalViewCount; ++i)
                 RenderShadowCascade(ctx, directionalViews[i], directionalIndices[i], i, casters, selections,
-                    static_cast<size_t>(i) == bakedViewIndex, phase);
+                    static_cast<size_t>(i) == bakedViewIndex,
+                    (staticCacheViewMask & (1u << i)) != 0 ? staticDepth : ResourceHandle<TextureTag>{}, phase);
             if (phase == ShadowTilePhase::OCCLUDERS && before != ctx.statsShadowDrawCalls && depthCurrent())
                 PrepareShadowAtlasHiZ(ctx, shadowAtlas, views.first(directionalViewCount));
         }
@@ -518,8 +611,6 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         dispatch();
     }
     drawTiles(useHiZ ? ShadowTilePhase::INSTANCES : ShadowTilePhase::ALL);
-    if (needDirectional)
-        ctx.cachedShadowDepthReady = ctx.cachedShadowAtlas.IsValid() && shadowAtlas == ctx.cachedShadowAtlas;
 
     /// @note 後続パスがビューポートを RT 全体だと仮定してよいよう、タイル絞りを解除しておく。
     /// @note SetRenderTarget を経由しない描画がこの直後に来ても壊れないようにする保険。
@@ -528,11 +619,12 @@ void ExecuteShadowPass(RenderPassContext& ctx)
 }
 
 
-void ShadowPass::Setup(PassBuilder& builder, const RenderPassContext&) const
+void ShadowPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 {
     /// @note Directional の CSM と Spot / Point のアトラスを 1 パスで描く。caster の収集と
     /// @note ソートを両者で共有するので、分けるとシーン走査が丸ごと 2 回になる。
     builder.Write("ShadowMap").Write("PunctualShadowMap");
+    if (ctx.staticShadowCache.atlas.IsValid()) builder.ReadWrite("StaticShadowMap");
 }
 
 void ShadowPass::Execute(PassResources&, RenderPassContext& ctx)

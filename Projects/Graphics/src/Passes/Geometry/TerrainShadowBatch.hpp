@@ -17,6 +17,11 @@ struct InstanceShadowView;
 struct RenderPassContext;
 struct RenderScene;
 
+enum class TerrainShadowCasterFilter { ALL, STATIC_ONLY, DYNAMIC_ONLY };
+
+/// @note CPU LOD とメッシュレットは同じインデックスを使う。GPU 選択の LOD は深度の再利用対象外。
+[[nodiscard]] uint64_t TerrainShadowCacheContentKey(const RenderPassContext& ctx);
+
 struct PreparedTerrainShadowSet {
     ResourceHandle<ShaderTag> shader;
     GpuGeometryDispatch dispatch;
@@ -39,6 +44,6 @@ void SubmitTerrainShadowBatchView(RenderPassContext& ctx, const math::Frustum& f
     ResourceHandle<ShaderTag> shadowShader, ResourceHandle<PipelineStateTag> pipelineState,
     ResourceHandle<ConstantBufferTag> frameCB, ResourceHandle<ConstantBufferTag> objectCB,
     const PreparedTerrainShadowBatch& batch, size_t viewIndex, std::span<const uint8_t> receipts,
-    bool usesBakedStaticDepth);
+    bool usesBakedStaticDepth, TerrainShadowCasterFilter filter = TerrainShadowCasterFilter::ALL);
 
 } /// @note namespace fbzz::renderer

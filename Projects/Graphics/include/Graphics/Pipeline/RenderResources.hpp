@@ -41,7 +41,7 @@ struct FarShadowCacheKey {
     bool operator==(const FarShadowCacheKey&) const = default;
 };
 
-/// @note アトラスと最遠タイルの投影は同じビューに属し、描画完了時にまとめて有効化する。
+/// @note 静的深度とその投影は同じビューに属し、描画完了時にまとめて有効化する。
 struct ShadowCascadeCache {
     ShadowCascade cascade{};
     FarShadowCacheKey key;
@@ -51,6 +51,7 @@ struct ShadowCascadeCache {
     uint64_t previousFrame = 0;
     float precedingSplit = 0.0f;
     bool valid = false;
+    uint64_t contentKey = 0;
 };
 
 /// @note Viewport ごとに解像度依存の中間リソースを保持する。
@@ -59,7 +60,7 @@ struct RenderViewResources {
     /// @note View ごとの RenderGraph 計画と transient RT をフレーム間で保持する。
     /// @note スタック生成だと DX12 の descriptor heap を毎フレーム作り直し、CPU が詰まる。
     RenderPipeline pipeline;
-    SizedRenderTarget cachedShadowAtlas;
+    SizedRenderTarget staticShadowAtlas;
     std::array<ShadowCascadeCache, kMaxShadowCascades> shadowCascadeCaches;
     uint32_t nativeWidth = 0;
     uint32_t nativeHeight = 0;

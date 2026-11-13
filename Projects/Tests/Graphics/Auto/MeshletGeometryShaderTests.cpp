@@ -1132,6 +1132,84 @@ TEST_F(MeshletGeometryShaderTest, TerrainStripPreservesGBufferAndShadowCoverage)
     profiler::Profiler::RequestCaptureFilter(previousFilter);
 }
 
+TEST_F(MeshletGeometryShaderTest, StaticCascadeCacheRestoresDepthAndDrawsMovedCastersOnReuse)
+{
+    auto& resources = *m_resources;
+    auto& device = *m_bundle.renderer;
+    const auto terrainScale = math::Matrix4::Scale({1.75f, 1.75f, 1.0f});
+    auto scene = TerrainScene(terrainScale);
+    scene->terrains.front().shadowBakeStatic = true;
+    scene->terrains.front().shadowBakeGeometryHash = 1;
+    scene->terrains.push_back(scene->terrains.front());
+    scene->terrains.back().shadowBakeStatic = false;
+    const auto target = resources.CreateRenderTarget(EXTENT * 2u, EXTENT * 2u, {0, r::Format::RGBA16F, true, false});
+    const auto staticAtlas = resources.CreateRenderTarget(EXTENT * 2u, EXTENT * 2u, {0, r::Format::RGBA16F, true, false});
+    ASSERT_TRUE(target);
+    ASSERT_TRUE(staticAtlas);
+    auto handles = MakeTerrainPassHandles();
+    handles.depthCopyShader = resources.LoadShader("Assets/Shaders/Pipeline/Deferred/DepthCopy.hlsl");
+    ASSERT_TRUE(handles.depthCopyShader);
+    r::RenderSettings settings;
+    settings.geometryDrawMode = r::GeometryDrawMode::CPU;
+    settings.shadowEnabled = true;
+    settings.shadow.mapResolution = EXTENT * 2u;
+    settings.shadow.cascadeCount = 4;
+    const auto camera = Camera(5.0f);
+    const r::ShadowBounds coverage{{0, 0, 3}, 6.0f, true};
+    const auto prepared = r::PrepareShadows(camera, settings, coverage, math::Vector3{0, 0, 1}, 12.0f, 1.0f, true);
+    r::StaticShadowCacheView cache;
+    const auto render = [&](const r::PreparedShadows& shadows, bool useCache, uint32_t expectedUpdates) {
+        r::RenderPassContext ctx{{}, device, resources, camera, settings, target, UINT32_MAX, handles};
+        ctx.renderScene = scene;
+        ctx.shadowStrength = 1.0f;
+        ctx.shadowCascadeCount = shadows.count;
+        for (int index = 0; index < shadows.count; ++index) ctx.shadowCascades[index] = shadows.cascades[index];
+        ctx.resourceRegistry.BindTarget("ShadowMap", target);
+        if (useCache) {
+            ctx.staticShadowCache = cache;
+            ctx.resourceRegistry.BindTarget("StaticShadowMap", staticAtlas);
+        }
+        Begin();
+        r::ExecuteShadowPass(ctx);
+        End();
+        if (useCache) {
+            EXPECT_EQ(ctx.staticShadowCache.readyMask, cache.cascadeMask);
+            EXPECT_EQ(ctx.staticShadowCache.updateMask, expectedUpdates);
+            cache = ctx.staticShadowCache;
+        }
+        MeshletImage image;
+        image.depth = ReadTexture(resources.GetDepthTexture(target), true);
+        return image;
+    };
+
+    for (const int cachedIndex : {2, 3}) {
+        SCOPED_TRACE(cachedIndex);
+        auto shadows = prepared;
+        /// @note The depth reader samples the atlas at its upper-left tile.
+        std::swap(shadows.cascades[0].viewportX, shadows.cascades[cachedIndex].viewportX);
+        std::swap(shadows.cascades[0].viewportY, shadows.cascades[cachedIndex].viewportY);
+        const auto bit = 1u << cachedIndex;
+        cache = {};
+        cache.atlas = staticAtlas;
+        cache.cascadeMask = bit;
+        scene->terrains.front().constants.worldMatrix = terrainScale;
+        scene->terrains.back().constants.worldMatrix = math::Matrix4::Translate({-2.5f, 0, -0.5f}) * terrainScale;
+        const auto initial = render(shadows, false, 0);
+        ExpectSame(initial, render(shadows, true, bit), true);
+
+        cache.reuseMask = bit;
+        scene->terrains.back().constants.worldMatrix = math::Matrix4::Translate({2.5f, 0, -0.5f}) * terrainScale;
+        const auto moved = render(shadows, false, 0);
+        EXPECT_NE(initial.depth, moved.depth);
+        ExpectSame(moved, render(shadows, true, 0), true);
+
+        scene->terrains.front().constants.worldMatrix = math::Matrix4::Translate({0, 1.0f, 0}) * terrainScale;
+        const auto changedStatic = render(shadows, false, 0);
+        EXPECT_NE(moved.depth, changedStatic.depth);
+        ExpectSame(changedStatic, render(shadows, true, bit), true);
+    }
+}
+
 TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndKeepsMovedCasters)
 {
     auto& resources = *m_resources;

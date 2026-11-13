@@ -29,7 +29,7 @@ inline bool IsShadowRelevant(const ShadowCascade& cascade, const WorldBounds& bo
 inline uint32_t DirectionalUpdateMask(const RenderPassContext& ctx)
 {
     const int count = std::clamp(ctx.shadowCascadeCount, 1, kMaxShadowCascades);
-    return ((1u << count) - 1u) & ~ctx.reuseShadowCascadeMask;
+    return (1u << count) - 1u;
 }
 
 /// @note 境界が未計算のキャスターは更新する全タイルに提出する。

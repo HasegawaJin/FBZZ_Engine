@@ -70,6 +70,8 @@ public:
         /// @note       カメラ統計に混ぜず内訳として分けて表示する。
         int shadowDrawCalls     = 0;
         int shadowTriangleCount = 0;
+        uint32_t staticShadowUpdateMask = 0;
+        uint32_t staticShadowReadyMask = 0;
         /// @note 束ねて発行した Instanced Draw の回数と、それで減ったドロー数。
         /// @see Docs/design/gpu-instancing.md
         int instancedBatches    = 0;
