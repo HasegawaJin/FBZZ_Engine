@@ -115,6 +115,8 @@ struct RenderObject {
     float boundsRadius = 0.0f;
     /// @note Immutable geometry witness in world metres; -1 means the leaf material was unresolved at extraction.
     float leafWindBoundsPadding = 0.0f;
+    /// @note World-space maximum vertex displacement from the bind pose. Negative means unavailable.
+    float skinClusterDisplacement = -1.0f;
     ResourceHandle<ConstantBufferTag> skinningPalette;
     ResourceHandle<ConstantBufferTag> previousSkinningPalette;
     bool previousSkinningValid = false;

@@ -1,0 +1,6 @@
+# @file    ClusterMeshletVisibility.hlsli.meta
+# @brief   Cluster shader asset identity.
+# @author  Hasegawa Jin
+# @date    2026-11-13
+[meta]
+guid = '57ef668472e3499b8c6df5f36158529e'

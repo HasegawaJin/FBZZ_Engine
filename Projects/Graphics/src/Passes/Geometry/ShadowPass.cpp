@@ -80,6 +80,7 @@ struct ShadowCaster {
     /// @note LOD クロスフェード中のディザしきい値。影も本体と同じ市松で抜かないと、
     /// @note 遷移中だけ 2 レベルぶんの影が重なって濃くなる。
     float                                                 lodDither = 0.0f;
+    float                                                 skinClusterDisplacement = -1.0f;
     RenderGpuBonePalette gpuBones;
 };
 
@@ -139,6 +140,7 @@ void CollectMeshShadowCasters(RenderPassContext& ctx, uint32_t updateMask,
             caster.world = object.world;
             if (hasBounds) caster.worldSphere = {bounds.center.x, bounds.center.y, bounds.center.z, bounds.radius};
             caster.lodDither = object.lodDither;
+            caster.skinClusterDisplacement = object.skinClusterDisplacement;
             const bool vertexSkinning = skinned && !item.preparedSkinning && !item.deformedVertexBuffer.IsValid();
             caster.vertexBuffer = skinned ? (vertexSkinning ? item.skinningVertexBuffer
                 : item.deformedVertexBuffer) : item.vertexBuffer;
@@ -181,11 +183,13 @@ enum class ShadowCasterFilter { ALL, STATIC_ONLY, DYNAMIC_ONLY };
 void EmitShadowCasters(RenderPassContext& ctx,
                        const std::vector<ShadowCaster>& casters,
                        int viewIndex, bool punctual,
-                       const math::Matrix4& viewProjection, ShadowCasterFilter filter = ShadowCasterFilter::ALL)
+                       const math::Matrix4& viewProjection, uint32_t viewportSize,
+                       ShadowCasterFilter filter = ShadowCasterFilter::ALL)
 {
     auto& h = ctx.handles;
 
     const uint32_t viewBit = 1u << viewIndex;
+    const MeshletClusterView clusterView{viewProjection, viewportSize, viewportSize};
 
     /// @note 変種を渡すのは静的メッシュ用のシェーダーで描く caster だけ。VS スキニングへ落ちた
     /// @note caster は shader が違うので prototype が一致せず、束ねられずに 1 件ずつ出る。
@@ -221,13 +225,17 @@ void EmitShadowCasters(RenderPassContext& ctx,
         dc.shader             = caster.shader;
         dc.pipelineState      = h.defaultPSO;
         dc.constantBuffers[0] = h.frameCB;
-        const bool alpha=caster.item && caster.item->material.surface.alphaCutoff>0;
+        const bool alpha = caster.item && caster.item->material.surface.alphaCutoff > 0.0f;
+        float windStrength = 0.0f;
+        if (caster.item) std::memcpy(&windStrength, caster.item->material.gbufferParams.data() + 68u, sizeof(windStrength));
+        const bool maskedSurface = alpha || windStrength > 0.0f;
+        if (windStrength > 0.0f) dc.constantBuffers[5] = MeshletWindFrame(ctx);
         if (caster.item) {
             const auto& material=caster.item->material;
             dc.pipelineState=GetOrCreateMaterialPSO(ctx.resources,BlendMode::OPAQUE_BLEND,material.doubleSided,
                 material.depthBias,material.depthBiasSlope,false);
         }
-        if (alpha) {
+        if (maskedSurface) {
             batcher.Flush();
             const auto& material=caster.item->material;
             dc.shader=caster.skinningCB.IsValid() ? masked.shaders[2] : masked.shaders[0];
@@ -245,17 +253,23 @@ void EmitShadowCasters(RenderPassContext& ctx,
         /// @note VS スキニングの caster は b1 の world も使うが、束ねないので従来どおり載る。
         if (ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER && caster.item) {
             renderer::DrawCall meshCall = dc;
+            auto objectClusterView = clusterView;
+            if (caster.skinned) objectClusterView.skinDisplacement = caster.skinClusterDisplacement;
+            const auto meshPass = maskedSurface ? MeshletDrawPass::SHADOW_MASKED : MeshletDrawPass::SHADOW;
             if (TryPrepareMeshletDraw(ctx.resources, ctx.renderer, viewProjection, caster.world,
-                MeshletDrawPass::SHADOW, *caster.item, caster.skinned, meshCall)) {
+                meshPass, *caster.item, caster.skinned, meshCall, true, false,
+                !caster.staticCache && caster.lodDither == 0.0f ? &objectClusterView : nullptr)) {
                 batcher.Flush();
+                maskedBatch.Flush();
                 ctx.resources.Update(h.objectCB, &objData, sizeof(objData));
                 meshCall.constantBuffers[1] = h.objectCB;
-                SubmitCountedShadow(ctx, meshCall);
+                SubmitMeshletDraw(ctx, meshCall, meshPass);
                 batcher.InvalidateObjectConstants();
+                maskedBatch.InvalidateObjectConstants();
                 continue;
             }
         }
-        if (alpha) maskedBatch.Add(dc,objData,caster.worldSphere);
+        if (maskedSurface) maskedBatch.Add(dc,objData,caster.worldSphere);
         else batcher.Add(dc, objData, caster.worldSphere);
     }
     batcher.Flush();
@@ -350,7 +364,7 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     if (phase != ShadowTilePhase::INSTANCES) {
-        EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection,
+        EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection, cascade.viewportSize,
             staticDepth.IsValid() ? ShadowCasterFilter::DYNAMIC_ONLY : ShadowCasterFilter::ALL);
         SubmitTerrainShadowBatchView(ctx, cascade.frustum, cascade.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
             ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, usesBakedStaticDepth,
@@ -378,7 +392,7 @@ void RenderPunctualShadowView(RenderPassContext& ctx, const PunctualShadowView& 
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     if (phase != ShadowTilePhase::INSTANCES) {
-        EmitShadowCasters(ctx, casters, viewIndex, true, view.viewProjection);
+        EmitShadowCasters(ctx, casters, viewIndex, true, view.viewProjection, view.viewportSize);
         SubmitTerrainShadowBatchView(ctx, view.frustum, view.viewProjection, ctx.handles.shadowShader, ctx.handles.defaultPSO,
             ctx.handles.frameCB, ctx.handles.objectCB, selections.terrain, selectionIndex, selections.receipts, false);
     }
@@ -400,9 +414,11 @@ void UpdateStaticShadowCascade(RenderPassContext& ctx, const ShadowCascade& casc
     frame.view = cascade.view;
     frame.cameraPos = cascade.eyePos;
     frame.isOrthographic = 1.0f;
+    frame.stableLeafShadow = 1.0f;
     const auto& h = ctx.handles;
     ctx.resources.Update(h.frameCB, &frame, sizeof(frame));
-    EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection, ShadowCasterFilter::STATIC_ONLY);
+    EmitShadowCasters(ctx, casters, cascadeIndex, false, cascade.viewProjection,
+        cascade.viewportSize, ShadowCasterFilter::STATIC_ONLY);
     SubmitTerrainShadowBatchView(ctx, cascade.frustum, cascade.viewProjection, h.shadowShader, h.defaultPSO,
         h.frameCB, h.objectCB, {}, 0, {}, false, TerrainShadowCasterFilter::STATIC_ONLY);
 }

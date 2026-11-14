@@ -16,6 +16,7 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace fbzz::renderer {
@@ -424,9 +425,70 @@ bool BuildMeshlets(const uint8_t* vertexData, size_t vertexDataBytes,
     return true;
 }
 
-} /// @note namespace
+/// @see https://dev.epicgames.com/documentation/unreal-engine/nanite-technical-details Streaming geometry and always-resident detail.
+void BuildClusterStream(MeshletClusterData& data, std::span<const StaticClusterNode> nodes)
+{
+    constexpr size_t PAGE_WORDS = (64u * 1024u) / sizeof(uint32_t);
+    std::vector<uint32_t> depths(nodes.size());
+    uint32_t maxDepth = 0;
+    auto low = nodes.front().boundsMin;
+    auto high = nodes.front().boundsMax;
+    for (size_t i = nodes.size(); i > 0; --i) {
+        const uint32_t parent = nodes[i - 1].parent;
+        if (parent != UINT32_MAX) depths[i - 1] = depths[parent] + 1u;
+        else {
+            const auto& node = nodes[i - 1];
+            data.streamRootError = (std::max)(data.streamRootError, node.error);
+            low = {(std::min)(low.x, node.boundsMin.x), (std::min)(low.y, node.boundsMin.y),
+                (std::min)(low.z, node.boundsMin.z)};
+            high = {(std::max)(high.x, node.boundsMax.x), (std::max)(high.y, node.boundsMax.y),
+                (std::max)(high.z, node.boundsMax.z)};
+        }
+        maxDepth = (std::max)(maxDepth, depths[i - 1]);
+    }
+    data.streamBoundsCenter = low * 0.5f + high * 0.5f;
+    data.streamBoundsRadius = (high * 0.5f - low * 0.5f).Length();
+    std::vector<std::vector<uint32_t>> depthMeshlets(maxDepth + 1u);
+    const size_t descriptorBytes = data.meshletCount * sizeof(MeshletDescriptor);
+    data.streamMetadata.assign(data.bytes.begin(), data.bytes.begin() + descriptorBytes);
+    data.streamNodeOffsetBytes = static_cast<uint32_t>(descriptorBytes);
+    data.streamMetadata.insert(data.streamMetadata.end(), data.bytes.begin() + data.nodeOffsetBytes, data.bytes.end());
+    data.streamTable = depths;
+    data.streamTable.resize(nodes.size() + data.meshletCount * 3u);
+    for (uint32_t i = 0; i < data.meshletCount; ++i) {
+        uint32_t node = 0;
+        std::memcpy(&node, data.bytes.data() + i * sizeof(MeshletDescriptor) + 12u, sizeof(node));
+        depthMeshlets[depths[node]].push_back(i);
+    }
+    for (uint32_t depth = 0; depth <= maxDepth; ++depth) {
+        MeshletStreamPage* page = nullptr;
+        for (uint32_t index : depthMeshlets[depth]) {
+            MeshletDescriptor descriptor;
+            const size_t offset = index * sizeof(MeshletDescriptor);
+            std::memcpy(&descriptor, data.bytes.data() + offset, sizeof(descriptor));
+            const size_t primitiveWords = descriptor.primitiveCount * 3u;
+            if (!page || page->words.size() + descriptor.vertexCount + primitiveWords > PAGE_WORDS) {
+                data.streamPages.push_back({depth, {}});
+                page = &data.streamPages.back();
+            }
+            const size_t row = nodes.size() + index * 3u;
+            data.streamTable[row] = static_cast<uint32_t>(data.streamPages.size() - 1u);
+            const auto append = [&](uint32_t field, uint32_t source, size_t count) {
+                const size_t first = page->words.size();
+                data.streamTable[row + field] = static_cast<uint32_t>(first);
+                page->words.resize(first + count);
+                std::memcpy(page->words.data() + first, data.bytes.data() + source, count * sizeof(uint32_t));
+            };
+            append(1, descriptor.vertexOffsetBytes, descriptor.vertexCount);
+            append(2, descriptor.primitiveOffsetBytes, primitiveWords);
+            descriptor.boundsMax[3] = std::bit_cast<float>(index);
+            std::memcpy(data.streamMetadata.data() + offset, &descriptor, sizeof(descriptor));
+        }
+    }
+}
 
-bool MeshletGeometryBuilder::BuildClusters(std::span<const Vertex> vertices,
+template<class VertexType>
+bool PackClusters(std::span<const VertexType> vertices,
     std::span<const uint32_t> indices, MeshletClusterData& output)
 {
     StaticClusterBuild hierarchy;
@@ -434,7 +496,7 @@ bool MeshletGeometryBuilder::BuildClusters(std::span<const Vertex> vertices,
     const auto* vertexBytes = static_cast<const uint8_t*>(static_cast<const void*>(vertices.data()));
     const auto* indexBytes = static_cast<const uint8_t*>(static_cast<const void*>(hierarchy.indices.data()));
     MeshletClusterData packed;
-    if (!BuildMeshlets(vertexBytes, vertices.size_bytes(), static_cast<uint32_t>(vertices.size()), sizeof(Vertex),
+    if (!BuildMeshlets(vertexBytes, vertices.size_bytes(), static_cast<uint32_t>(vertices.size()), sizeof(VertexType),
         indexBytes, hierarchy.indices.size() * sizeof(uint32_t), static_cast<uint32_t>(hierarchy.indices.size()),
         false, packed.bytes, packed.meshletCount, hierarchy.ranges)) return false;
     const size_t nodeBytes = hierarchy.nodes.size() * sizeof(StaticClusterNode);
@@ -442,8 +504,30 @@ bool MeshletGeometryBuilder::BuildClusters(std::span<const Vertex> vertices,
     packed.nodeOffsetBytes = static_cast<uint32_t>(packed.bytes.size());
     packed.bytes.resize(packed.bytes.size() + nodeBytes);
     std::memcpy(packed.bytes.data() + packed.nodeOffsetBytes, hierarchy.nodes.data(), nodeBytes);
+    if constexpr (std::is_same_v<VertexType, SkinnedVertex>) {
+        for (const auto& vertex : vertices) {
+            const double sum = static_cast<double>(vertex.boneWeights[0]) + vertex.boneWeights[1]
+                + vertex.boneWeights[2] + vertex.boneWeights[3];
+            packed.maximumSkinWeightError = (std::max)(packed.maximumSkinWeightError, static_cast<float>(std::abs(sum - 1.0)));
+        }
+    }
+    if constexpr (std::is_same_v<VertexType, Vertex>) BuildClusterStream(packed, hierarchy.nodes);
     output = std::move(packed);
     return true;
+}
+
+} /// @note namespace
+
+bool MeshletGeometryBuilder::BuildClusters(std::span<const Vertex> vertices,
+    std::span<const uint32_t> indices, MeshletClusterData& output)
+{
+    return PackClusters(vertices, indices, output);
+}
+
+bool MeshletGeometryBuilder::BuildClusters(std::span<const SkinnedVertex> vertices,
+    std::span<const uint32_t> indices, MeshletClusterData& output)
+{
+    return PackClusters(vertices, indices, output);
 }
 
 bool MeshletGeometryBuilder::Build(const uint8_t* vertexData, size_t vertexDataBytes,
@@ -472,6 +556,7 @@ size_t MeshletGeometryCache::InputKeyHash::operator()(const InputKey& key) const
     combine(key.indexCount);
     combine(key.terrainCones);
     combine(key.clustered);
+    combine(key.paged);
     return hash;
 }
 
@@ -480,10 +565,10 @@ bool MeshletGeometryCache::Prepare(ResourceManager& resources,
                                    ResourceHandle<BufferTag> indexBuffer,
                                    uint32_t vertexCount, uint32_t vertexStride,
                                    uint32_t indexCount, MeshletGeometry& outGeometry,
-                                   const MeshletClusterData* clusters)
+                                   const MeshletClusterData* clusters, bool paged)
 {
     return PrepareImpl(resources, vertexBuffer, indexBuffer, vertexCount, vertexStride,
-        indexCount, false, outGeometry, clusters);
+        indexCount, false, outGeometry, clusters, paged);
 }
 
 bool MeshletGeometryCache::PrepareTerrain(ResourceManager& resources,
@@ -491,13 +576,13 @@ bool MeshletGeometryCache::PrepareTerrain(ResourceManager& resources,
     uint32_t indexCount, MeshletGeometry& outGeometry)
 {
     return PrepareImpl(resources, vertexBuffer, indexBuffer, 0, kTerrainVertexStride,
-        indexCount, true, outGeometry, nullptr);
+        indexCount, true, outGeometry, nullptr, false);
 }
 
 bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
     ResourceHandle<BufferTag> vertexBuffer, ResourceHandle<BufferTag> indexBuffer,
     uint32_t vertexCount, uint32_t vertexStride, uint32_t indexCount,
-    bool terrainCones, MeshletGeometry& outGeometry, const MeshletClusterData* clusters)
+    bool terrainCones, MeshletGeometry& outGeometry, const MeshletClusterData* clusters, bool paged)
 {
     if (!vertexBuffer.IsValid() || !indexBuffer.IsValid() || (!terrainCones && vertexCount == 0) ||
         vertexStride < 12 || (vertexStride & 3u) != 0 ||
@@ -538,7 +623,8 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         return false;
     }
 
-    const InputKey key{ vertexBuffer, indexBuffer, vertexCount, vertexStride, indexCount, terrainCones, clusters != nullptr };
+    if (paged && (!clusters || clusters->streamMetadata.empty())) return false;
+    const InputKey key{ vertexBuffer, indexBuffer, vertexCount, vertexStride, indexCount, terrainCones, clusters != nullptr, paged };
     std::vector<ResourceHandle<BufferTag>> releaseHandles;
     {
         std::lock_guard lock(m_mutex);
@@ -589,7 +675,7 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
         validBlob = BuildMeshlets(vertexBytes.data(), vertexBytes.size(), vertexCount, vertexStride,
             indexBytes.data(), indexBytes.size(), indexCount, terrainCones, generated, meshletCount);
     }
-    const auto& blobBytes = clusters ? clusters->bytes : generated;
+    const auto& blobBytes = clusters ? (paged ? clusters->streamMetadata : clusters->bytes) : generated;
 
     BufferResourceMetadata verifiedVertexMetadata{};
     BufferResourceMetadata verifiedIndexMetadata{};
@@ -692,7 +778,7 @@ bool MeshletGeometryCache::PrepareImpl(ResourceManager& resources,
     MeshletGeometry geometry{ blob, meshletCount, vertexCount, vertexStride, indexCount };
     geometry.boundsMin = aggregateBoundsMin;
     geometry.boundsMax = aggregateBoundsMax;
-    geometry.clusterNodeOffsetBytes = clusters ? clusters->nodeOffsetBytes : 0;
+    geometry.clusterNodeOffsetBytes = clusters ? (paged ? clusters->streamNodeOffsetBytes : clusters->nodeOffsetBytes) : 0;
     std::vector<ResourceHandle<BufferTag>> evictedHandles;
     bool stored = false;
     bool accepted = false;

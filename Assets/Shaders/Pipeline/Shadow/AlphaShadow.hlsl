@@ -11,6 +11,19 @@
 FBZZ_TEX2D(g_shadowAlbedo, TEX_ALBEDO_SLOT);
 SamplerState g_shadowAlbedoSampler : register(SAMPLER_DEFAULT);
 struct ShadowOutput { float4 position : SV_POSITION; float2 uv : TEXCOORD0; float alpha : TEXCOORD1; };
+ShadowOutput EvaluateAlphaShadow(float3 position, float2 uv, float4x4 objectWorld)
+{
+    ShadowOutput output;
+    float3 casterPosition = position;
+    /// @note The cascade-wide branch skips wind evaluation on the static depth path.
+    [branch] if (stableLeafShadow <= 0.5f)
+        casterPosition = FbzzLeafWind(position, uv, objectWorld, time);
+    output.position = mul(mul(float4(casterPosition, 1), objectWorld), viewProjection);
+    output.uv = uv * uvTiling + uvOffset;
+    output.alpha = albedo.a;
+    return output;
+}
+
 #ifdef FBZZ_SHADOW_SKINNED
 #include "Common/Skinning.hlsli"
 ShadowOutput VSMain(SkinnedVSInput v)
@@ -29,14 +42,7 @@ ShadowOutput VSMain(VSInput v)
     const float4 position = float4(v.position,1);
     const float4x4 objectWorld = world;
 #endif
-    ShadowOutput output;
-    const float3 casterPosition = stableLeafShadow > 0.5f
-        ? position.xyz : FbzzLeafWind(position.xyz, v.uv, objectWorld, time);
-    output.position = mul(mul(float4(casterPosition, 1), objectWorld), viewProjection);
-    output.uv = v.uv*uvTiling + uvOffset;
-    /// @note Keep the complete standard vertex ABI so UV reflection retains offset 36; color alpha is not part of PBR coverage.
-    output.alpha = albedo.a;
-    return output;
+    return EvaluateAlphaShadow(position.xyz, v.uv, objectWorld);
 }
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-clip - discard below the material cutoff.
 void PSMain(ShadowOutput v)

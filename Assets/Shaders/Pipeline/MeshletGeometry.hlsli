@@ -7,7 +7,9 @@
 
 #include "Common/BindlessIndices.hlsli"
 
-#if BINDLESS_SUPPORTED
+#if defined(FBZZ_CLUSTER_COMPUTE)
+FBZZ_BYTEBUFFER(g_meshletRawData, 14);
+#elif BINDLESS_SUPPORTED
 static ByteAddressBuffer g_meshletRawVertices = ResourceDescriptorHeap[
     NonUniformResourceIndex(FbzzVertexSlot(VS_SB_BUFFER0_SLOT))];
 static ByteAddressBuffer g_meshletRawData = ResourceDescriptorHeap[
@@ -46,6 +48,17 @@ cbuffer MeshletGeometryConstants : register(b13)
     float2 g_clusterViewportHalfSize;
     float g_clusterErrorPixels;
     uint g_clusterNodeOffsetBytes;
+    uint2 g_clusterHiZSize;
+    uint g_clusterHiZPadding;
+    float g_clusterWindPadding;
+    float4 g_clusterClipPadding;
+    uint g_clusterVertexSkinning;
+    uint g_clusterNodeCount;
+    uint g_clusterResidentDepth;
+    uint g_clusterInstanceMode;
+    uint g_clusterInstanceCapacity;
+    uint g_clusterArgumentIndex;
+    uint2 g_clusterInstancePadding;
 #endif
 };
 
@@ -53,26 +66,43 @@ static const uint kFbzzMeshletMaximumVertices = 64u;
 static const uint kFbzzMeshletMaximumPrimitives = 126u;
 
 #ifdef FBZZ_STATIC_CLUSTER_LOD
+#ifdef FBZZ_CLUSTER_COMPUTE
+FBZZ_SBUFFER_T(uint, g_clusterPageTable, 15);
+#else
+FBZZ_SBUFFER_T(uint, g_clusterPageTable, 14);
+#endif
+#ifndef FBZZ_CLUSTER_COMPUTE
+FBZZ_VS_SBUFFER(uint, g_clusterSelection, 3);
+#endif
+
 /// @note Bounds the difference of two homogeneous projections over the whole source AABB and error ball.
-/// @note The reversed-Z near plane is w - z = 0. Rows include the object's nonuniform scale and shear.
-bool FbzzClusterErrorFits(float3 boundsMin, float3 boundsMax, float error)
+/// @note The camera uses reversed Z, while shadow tiles can use forward Z. Retain the fine cut at either clip plane.
+float4 FbzzClusterClipRow(uint axis, float4x4 objectWorld)
+{
+    return g_clusterInstanceMode != 0u ? mul(objectWorld, g_clusterClipRows[axis]) : g_clusterClipRows[axis];
+}
+
+bool FbzzClusterErrorFits(float3 boundsMin, float3 boundsMax, float error, float4x4 objectWorld)
 {
     if (error == 0.0f) return true;
     const float3 center = boundsMin * 0.5f + boundsMax * 0.5f;
     const float3 extent = boundsMax * 0.5f - boundsMin * 0.5f;
+    error += 2.0f * g_clusterWindPadding;
     float4 clipCenter, clipExtent, clipError;
     [unroll]
     for (uint axis = 0; axis < 4; ++axis)
     {
-        const float4 row = g_clusterClipRows[axis];
+        const float4 row = FbzzClusterClipRow(axis, objectWorld);
         clipCenter[axis] = dot(row, float4(center, 1.0f));
         clipExtent[axis] = dot(abs(row.xyz), extent);
-        clipError[axis] = length(row.xyz) * error;
+        clipError[axis] = length(row.xyz) * error + 2.0f * g_clusterClipPadding[axis];
     }
     const float wMin = clipCenter.w - clipExtent.w;
     if (!(wMin > clipError.w + 1.0e-6f)) return false;
-    const float4 nearRow = g_clusterClipRows[3] - g_clusterClipRows[2];
-    if (!(dot(nearRow, float4(center, 1.0f)) > dot(abs(nearRow.xyz), extent) + length(nearRow.xyz) * error))
+    const float4 clipEndRow = FbzzClusterClipRow(3u, objectWorld) - FbzzClusterClipRow(2u, objectWorld);
+    if (!(clipCenter.z > clipExtent.z + clipError.z)
+        || !(dot(clipEndRow, float4(center, 1.0f)) > dot(abs(clipEndRow.xyz), extent) + length(clipEndRow.xyz) * error
+            + 2.0f * (g_clusterClipPadding.z + g_clusterClipPadding.w)))
         return false;
     const float2 absNdc = (abs(clipCenter.xy) + clipExtent.xy) / wMin;
     const float2 ndcError = (clipError.xy + absNdc * clipError.w) / (wMin - clipError.w);
@@ -81,7 +111,7 @@ bool FbzzClusterErrorFits(float3 boundsMin, float3 boundsMax, float error)
 }
 
 /// @note Exactly the highest acceptable ancestor covers each leaf. Nodes without acceptable parents draw independently.
-bool IsFbzzClusterSelected(uint node)
+bool IsFbzzClusterSelected(uint node, float4x4 objectWorld)
 {
     if (g_clusterNodeOffsetBytes == 0u) return true;
     bool selected = false;
@@ -92,7 +122,9 @@ bool IsFbzzClusterSelected(uint node)
         const uint offset = g_clusterNodeOffsetBytes + node * 32u;
         const float4 low = asfloat(g_meshletRawData.Load4(offset));
         const uint4 high = g_meshletRawData.Load4(offset + 16u);
-        const bool fits = FbzzClusterErrorFits(low.xyz, asfloat(high.xyz), low.w);
+        bool fits = false;
+        [branch] if (g_clusterNodeCount != 0u) fits = g_clusterPageTable[node] == g_clusterResidentDepth;
+        if (!fits) fits = FbzzClusterErrorFits(low.xyz, asfloat(high.xyz), low.w, objectWorld);
         if (ownNode) selected = fits;
         else if (fits) return false;
         if (!selected) return false;
@@ -120,7 +152,10 @@ bool IsFbzzMeshletVisible(FbzzMeshletDescriptor descriptor, float4x4 objectWorld
         return true;
 
     const float3 localCenter = (descriptor.boundsMin.xyz + descriptor.boundsMax.xyz) * 0.5f;
-    const float3 localExtents = max((descriptor.boundsMax.xyz - descriptor.boundsMin.xyz) * 0.5f, 0.0f);
+    float3 localExtents = max((descriptor.boundsMax.xyz - descriptor.boundsMin.xyz) * 0.5f, 0.0f);
+#ifdef FBZZ_STATIC_CLUSTER_LOD
+    localExtents += g_clusterWindPadding;
+#endif
     const float3 worldCenter = mul(float4(localCenter, 1.0f), objectWorld).xyz;
     const float3 worldAxisX = mul(float4(localExtents.x, 0.0f, 0.0f, 0.0f), objectWorld).xyz;
     const float3 worldAxisY = mul(float4(0.0f, localExtents.y, 0.0f, 0.0f), objectWorld).xyz;
@@ -158,6 +193,7 @@ bool IsFbzzMeshletVisible(FbzzMeshletDescriptor descriptor, float4x4 objectWorld
     return true;
 }
 
+#ifndef FBZZ_CLUSTER_COMPUTE
 /// @brief Loads a position from the raw static-vertex buffer.
 /// @param vertexIndex Global vertex index from the meshlet lookup table.
 /// @return Position at the b13 byte stride and position offset.
@@ -173,6 +209,13 @@ float3 LoadFbzzMeshletPosition(uint vertexIndex)
 /// @return Global vertex index into the source vertex buffer.
 uint LoadFbzzMeshletGlobalVertex(FbzzMeshletDescriptor descriptor, uint localVertexIndex)
 {
+#ifdef FBZZ_STATIC_CLUSTER_LOD
+    if (g_clusterNodeCount != 0u) {
+        const uint row = g_clusterNodeCount + asuint(descriptor.boundsMax.w) * 3u;
+        StructuredBuffer<uint> page = ResourceDescriptorHeap[NonUniformResourceIndex(g_clusterPageTable[row])];
+        return page[g_clusterPageTable[row + 1u] + localVertexIndex];
+    }
+#endif
     return g_meshletRawData.Load(descriptor.vertexOffsetBytes + localVertexIndex * 4u);
 }
 
@@ -182,7 +225,16 @@ uint LoadFbzzMeshletGlobalVertex(FbzzMeshletDescriptor descriptor, uint localVer
 /// @return Three meshlet-local vertex indices.
 uint3 LoadFbzzMeshletLocalTriangle(FbzzMeshletDescriptor descriptor, uint primitiveIndex)
 {
+#ifdef FBZZ_STATIC_CLUSTER_LOD
+    if (g_clusterNodeCount != 0u) {
+        const uint row = g_clusterNodeCount + asuint(descriptor.boundsMax.w) * 3u;
+        StructuredBuffer<uint> page = ResourceDescriptorHeap[NonUniformResourceIndex(g_clusterPageTable[row])];
+        const uint offset = g_clusterPageTable[row + 2u] + primitiveIndex * 3u;
+        return uint3(page[offset], page[offset + 1u], page[offset + 2u]);
+    }
+#endif
     return g_meshletRawData.Load3(descriptor.primitiveOffsetBytes + primitiveIndex * 12u);
 }
+#endif
 
 #endif

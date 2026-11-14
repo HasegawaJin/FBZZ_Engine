@@ -75,9 +75,9 @@ struct MeshletTestConstants {
     uint32_t vertexStride = sizeof(r::Vertex);
     uint32_t positionOffset = 0;
     uint32_t cullingEnabled = 0;
-    std::array<math::Vector4, 5> clusterConstants{};
+    std::array<math::Vector4, 9> clusterConstants{};
 };
-static_assert(sizeof(MeshletTestConstants) == 192);
+static_assert(sizeof(MeshletTestConstants) == 256);
 
 struct MeshletTestGrid {
     std::vector<r::Vertex> vertices;
@@ -285,7 +285,8 @@ protected:
         const math::Matrix4& world, bool cutout, bool culling, r::ResourceHandle<r::RenderTargetTag> target,
         bool rejectPlanes = false, bool profile = false, bool productionAdapter = false,
         r::DrawCall* preparedDraw = nullptr, const math::Matrix4* cullingViewProjection = nullptr,
-        bool forceMesh = false, const r::MeshletClusterView* clusterView = nullptr)
+        bool forceMesh = false, const r::MeshletClusterView* clusterView = nullptr,
+        const r::GpuHiZ* hierarchy = nullptr, bool compact = false)
     {
         auto& resources = *m_resources;
         auto& device = *m_bundle.renderer;
@@ -322,7 +323,7 @@ protected:
                     ? *cullingViewProjection : frame.viewProjection;
                 if (!r::TryPrepareMeshletDraw(resources, device, meshletViewProjection, world,
                     shadow ? r::MeshletDrawPass::SHADOW : r::MeshletDrawPass::GBUFFER,
-                    item, false, draw, culling, forceMesh, clusterView) && (forceMesh || clusterView)) return false;
+                    item, false, draw, culling, forceMesh, clusterView, hierarchy) && (forceMesh || clusterView)) return false;
             } else {
                 r::MeshletGeometry geometry;
                 if (!Prepare(grid, geometry)) return false;
@@ -350,7 +351,12 @@ protected:
         if (profile) device.GpuProfBeginPass("MeshletFrame");
         device.SetRenderTarget(target, resources);
         device.Clear({0, 0, 0, 0}); device.ClearDepth();
-        device.Submit(draw, resources);
+        if (compact) {
+            r::RenderSettings settings;
+            r::RenderPassHandles handles;
+            r::RenderPassContext ctx{{}, device, resources, camera, settings, target, UINT32_MAX, handles};
+            r::SubmitMeshletDraw(ctx, draw, shadow ? r::MeshletDrawPass::SHADOW : r::MeshletDrawPass::GBUFFER);
+        } else device.Submit(draw, resources);
         if (profile) {
             device.SetRenderTarget({}, resources);
             device.GpuProfEndPass("MeshletFrame");
@@ -380,12 +386,14 @@ protected:
         const math::Matrix4& world, bool cutout = false, bool culling = true, bool rejectPlanes = false,
         bool productionAdapter = false, r::DrawCall* preparedDraw = nullptr,
         const math::Matrix4* cullingViewProjection = nullptr, bool forceMesh = false,
-        const r::MeshletClusterView* clusterView = nullptr)
+        const r::MeshletClusterView* clusterView = nullptr, const r::GpuHiZ* hierarchy = nullptr,
+        bool compact = false)
     {
         const auto target = shadow ? m_shadow : m_gbuffer;
         Begin();
         EXPECT_TRUE(DrawGeometry(grid, mesh, shadow, camera, world, cutout, culling, target,
-            rejectPlanes, false, productionAdapter, preparedDraw, cullingViewProjection, forceMesh, clusterView));
+            rejectPlanes, false, productionAdapter, preparedDraw, cullingViewProjection, forceMesh, clusterView,
+            hierarchy, compact));
         End();
         MeshletImage image;
         if (!shadow) for (uint32_t attachment = 0; attachment < image.colors.size(); ++attachment)
@@ -837,24 +845,157 @@ TEST_F(MeshletGeometryShaderTest, ClusterLodChangesDepthWithoutOpeningCoverage)
     grid.clusterLod = std::make_shared<const r::MeshletClusterData>(std::move(packed));
     const auto camera = Camera();
     const auto world = math::Matrix4::TRS({0, 0, 5}, math::Quaternion::Identity(), {1, 1, 1});
-    const r::MeshletClusterView fineView{camera.GetGpuViewProjection(), 1000000, 1000000};
-    const r::MeshletClusterView coarseView{camera.GetGpuViewProjection(), 1, 1};
-    const auto indexed = Render(grid, false, false, camera, world);
-    r::DrawCall draw;
-    const auto fine = Render(grid, true, false, camera, world, false, true, false, true,
-        &draw, nullptr, false, &fineView);
-    EXPECT_EQ(draw.meshGroupCountX, grid.clusterLod->meshletCount);
-    ExpectSame(indexed, fine, false);
+    for (bool shadow : {false, true}) {
+        SCOPED_TRACE(shadow);
+        const auto projection = shadow ? camera.GetProjectionMatrix() : camera.GetGpuProjectionMatrix();
+        const auto viewProjection = projection * camera.GetViewMatrix();
+        const r::MeshletClusterView fineView{viewProjection, 1000000, 1000000};
+        const r::MeshletClusterView coarseView{viewProjection, 1, 1};
+        const auto indexed = Render(grid, false, shadow, camera, world);
+        r::DrawCall draw;
+        const auto fine = Render(grid, true, shadow, camera, world, false, true, false, true,
+            &draw, nullptr, false, &fineView);
+        EXPECT_EQ(draw.meshGroupCountX, grid.clusterLod->meshletCount);
+        ExpectSame(indexed, fine, shadow);
 
-    const auto coarse = Render(grid, true, false, camera, world, false, true, false, true,
-        nullptr, nullptr, false, &coarseView);
-    ASSERT_EQ(coarse.depth.size(), fine.depth.size());
-    size_t differentDepths = 0;
-    for (size_t i = 0; i < coarse.depth.size(); i += 4) {
-        EXPECT_EQ(coarse.depth[i] > 0.0f, fine.depth[i] > 0.0f);
-        if (std::abs(coarse.depth[i] - fine.depth[i]) > 1.0e-5f) ++differentDepths;
+        const auto coarse = Render(grid, true, shadow, camera, world, false, true, false, true,
+            nullptr, nullptr, false, &coarseView);
+        ASSERT_EQ(coarse.depth.size(), fine.depth.size());
+        size_t differentDepths = 0;
+        for (size_t i = 0; i < coarse.depth.size(); i += 4) {
+            const auto covered = [shadow](float depth) { return shadow ? depth < 1.0f : depth > 0.0f; };
+            EXPECT_EQ(covered(coarse.depth[i]), covered(fine.depth[i]));
+            if (std::abs(coarse.depth[i] - fine.depth[i]) > 1.0e-5f) ++differentDepths;
+        }
+        EXPECT_GT(differentDepths, 0u);
     }
-    EXPECT_GT(differentDepths, 0u);
+}
+
+TEST_F(MeshletGeometryShaderTest, ClusteredGBufferRejectsOnlyOccludedMeshlets)
+{
+    if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
+    auto grid = Grid(64, 4, 0.02f);
+    r::MeshletClusterData packed;
+    ASSERT_TRUE(r::MeshletGeometryBuilder::BuildClusters(grid.vertices, grid.indices, packed));
+    grid.clusterLod = std::make_shared<const r::MeshletClusterData>(std::move(packed));
+    const auto camera = Camera();
+    const auto world = math::Matrix4::TRS({0, 0, 5}, math::Quaternion::Identity(), {0.25f, 0.25f, 0.25f});
+    const r::MeshletClusterView view{camera.GetGpuViewProjection(), EXTENT, EXTENT};
+    const auto reference = Render(grid, true, false, camera, world, false, true, false, true,
+        nullptr, nullptr, false, &view);
+    ASSERT_TRUE(std::any_of(reference.depth.begin(), reference.depth.end(), [](float depth) { return depth > 0.0f; }));
+    uint32_t entryCount = 1;
+    for (uint32_t tiles = (EXTENT + 3u) / 4u; tiles > 1u; tiles = (tiles + 1u) / 2u)
+        entryCount += tiles * tiles;
+    for (float value : {0.0f, 1.0f}) {
+        const std::vector<float> depths(entryCount, value);
+        const auto buffer = m_resources->CreateStructuredBuffer(depths.data(), entryCount, sizeof(float));
+        ASSERT_TRUE(buffer.IsValid());
+        const r::GpuHiZ hierarchy{buffer, EXTENT, EXTENT, true};
+        for (bool compact : {false, true}) {
+            SCOPED_TRACE(compact);
+            const auto candidate = Render(grid, true, false, camera, world, false, true, false, true,
+                nullptr, nullptr, false, &view, &hierarchy, compact);
+            if (value == 0.0f) ExpectSame(reference, candidate, false);
+            else for (size_t i = 0; i < candidate.depth.size(); i += 4)
+                EXPECT_FLOAT_EQ(candidate.depth[i], 0.0f);
+        }
+        m_resources->Release(buffer);
+    }
+}
+
+TEST_F(MeshletGeometryShaderTest, StreamedClustersKeepCoverageBeforeFinePagesAreResident)
+{
+    if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
+    auto grid = Grid(128, 4, 0.02f);
+    r::MeshletClusterData packed;
+    ASSERT_TRUE(r::MeshletGeometryBuilder::BuildClusters(grid.vertices, grid.indices, packed));
+    size_t pageBytes = 0;
+    for (const auto& page : packed.streamPages) pageBytes += page.words.size() * sizeof(uint32_t);
+    ASSERT_GT(pageBytes, 512u * 1024u);
+    grid.clusterLod = std::make_shared<const r::MeshletClusterData>(std::move(packed));
+    const auto camera = Camera();
+    const auto world = math::Matrix4::TRS({0, 0, 5}, math::Quaternion::Identity(), {1, 1, 1});
+    const r::MeshletClusterView fineView{camera.GetGpuViewProjection(), 1000000, 1000000};
+    const auto indexed = Render(grid, false, false, camera, world);
+    r::DrawCall firstDraw;
+    const auto coarse = Render(grid, true, false, camera, world, false, true, false, true,
+        &firstDraw, nullptr, false, &fineView, nullptr, true);
+    ASSERT_TRUE(firstDraw.auxiliaryPsBuffers[0].IsValid());
+    ASSERT_LT(firstDraw.meshletPages.size(), grid.clusterLod->streamPages.size());
+    ASSERT_EQ(coarse.depth.size(), indexed.depth.size());
+    for (size_t i = 0; i < coarse.depth.size(); i += 4)
+        EXPECT_EQ(coarse.depth[i] > 0.0f, indexed.depth[i] > 0.0f);
+
+    r::DrawCall finalDraw;
+    MeshletImage fine;
+    for (size_t frame = 0; frame < grid.clusterLod->streamPages.size(); ++frame) {
+        fine = Render(grid, true, false, camera, world, false, true, false, true,
+            &finalDraw, nullptr, false, &fineView, nullptr, true);
+        if (finalDraw.meshletPages.size() == grid.clusterLod->streamPages.size()) break;
+    }
+    ASSERT_EQ(finalDraw.meshletPages.size(), grid.clusterLod->streamPages.size());
+    ExpectSame(indexed, fine, false);
+}
+
+TEST_F(MeshletGeometryShaderTest, SkinnedClustersUseTheCurrentBonePalette)
+{
+    if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
+    auto grid = Grid(32, 4, 0.02f);
+    std::vector<r::SkinnedVertex> vertices;
+    vertices.reserve(grid.vertices.size());
+    for (const auto& source : grid.vertices) {
+        r::SkinnedVertex vertex{source.position, source.normal, source.tangent, source.uv};
+        vertex.boneWeights[0] = 1.0f;
+        vertices.push_back(vertex);
+    }
+    r::MeshletClusterData packed;
+    ASSERT_TRUE(r::MeshletGeometryBuilder::BuildClusters(vertices, grid.indices, packed));
+    grid.clusterLod = std::make_shared<const r::MeshletClusterData>(std::move(packed));
+    auto item = MakeRenderItem(grid, false);
+    auto& resources = *m_resources;
+    item.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(r::SkinnedVertex), sizeof(r::SkinnedVertex));
+    item.skinningVertexBuffer = item.vertexBuffer;
+    item.vertexStride = sizeof(r::SkinnedVertex);
+    ASSERT_TRUE(item.vertexBuffer.IsValid());
+
+    const auto camera = Camera();
+    const auto rotation = math::Quaternion::Identity();
+    const auto world = math::Matrix4::TRS({0, 0, 5}, rotation, {1, 1, 1});
+    const auto pose = math::Matrix4::TRS({0.5f, -0.25f, 0.5f}, rotation, {1, 1, 1});
+    const auto indexed = Render(grid, false, true, camera, world * pose);
+    r::PerFrameCB frame{};
+    frame.viewProjection = camera.GetProjectionMatrix() * camera.GetViewMatrix();
+    const r::MeshletClusterView view{frame.viewProjection, 1000000, 1000000, 0.75f};
+    r::PerObjectCB object{};
+    object.world = world;
+    std::array<math::Matrix4, 128> palette;
+    palette.fill(math::Matrix4::Identity());
+    palette[0] = pose;
+    const auto skinCB = resources.CreateConstantBuffer(sizeof(palette));
+    ASSERT_TRUE(skinCB.IsValid());
+    Begin();
+    resources.Update(m_frameCB, &frame, sizeof(frame));
+    resources.Update(m_objectCB, &object, sizeof(object));
+    resources.Update(skinCB, palette.data(), sizeof(palette));
+    r::DrawCall draw;
+    draw.vertexBuffer = item.vertexBuffer;
+    draw.indexBuffer = item.indexBuffer;
+    draw.vertexCount = item.vertexCount;
+    draw.indexCount = item.indexCount;
+    draw.pipelineState = m_geometryState;
+    draw.constantBuffers[0] = m_frameCB;
+    draw.constantBuffers[1] = m_objectCB;
+    draw.constantBuffers[7] = skinCB;
+    ASSERT_TRUE(r::TryPrepareMeshletDraw(resources, *m_bundle.renderer, frame.viewProjection, world,
+        r::MeshletDrawPass::SHADOW, item, true, draw, true, false, &view));
+    m_bundle.renderer->SetRenderTarget(m_shadow, resources);
+    m_bundle.renderer->ClearDepth();
+    m_bundle.renderer->Submit(draw, resources);
+    End();
+    MeshletImage actual;
+    actual.depth = ReadTexture(resources.GetDepthTexture(m_shadow), true);
+    ExpectSame(indexed, actual, true);
 }
 
 TEST_F(MeshletGeometryShaderTest, ProductionAdapterUsesMeshletsOnlyForMeaningfulClipping)
@@ -1154,7 +1295,7 @@ TEST_F(MeshletGeometryShaderTest, StaticCascadeCacheRestoresDepthAndDrawsMovedCa
     settings.shadowEnabled = true;
     settings.shadow.mapResolution = EXTENT * 2u;
     settings.shadow.cascadeCount = 4;
-    const auto camera = Camera(5.0f);
+    auto camera = Camera(5.0f);
     const r::ShadowBounds coverage{{0, 0, 3}, 6.0f, true};
     const auto prepared = r::PrepareShadows(camera, settings, coverage, math::Vector3{0, 0, 1}, 12.0f, 1.0f, true);
     r::StaticShadowCacheView cache;
@@ -1208,6 +1349,45 @@ TEST_F(MeshletGeometryShaderTest, StaticCascadeCacheRestoresDepthAndDrawsMovedCa
         EXPECT_NE(moved.depth, changedStatic.depth);
         ExpectSame(changedStatic, render(shadows, true, bit), true);
     }
+
+    SCOPED_TRACE("terrain LOD invalidates only the covering cascade");
+    auto shadows = prepared;
+    constexpr float FAR_TERRAIN_X = 64.0f;
+    constexpr uint32_t MID_BIT = 1u << 2;
+    constexpr uint32_t FAR_BIT = 1u << 3;
+    scene->terrains.front().constants.worldMatrix = terrainScale;
+    auto& farTerrain = scene->terrains.back();
+    farTerrain.shadowBakeStatic = true;
+    farTerrain.constants.worldMatrix = math::Matrix4::Translate({FAR_TERRAIN_X, 0, 0}) * terrainScale;
+    farTerrain.chunkWorldSize = 2.0f;
+    /// @note Use four rows of the fixture's 16-cell grid so both LODs cover enough pixels to compare.
+    farTerrain.patches.front().indexCountLOD[1] = 4u * 16u * 6u;
+
+    /// @note Fixed, disjoint light views isolate cache invalidation from projection changes.
+    for (const int index : {2, 3}) {
+        auto light = Camera(10.0f);
+        light.m_position.x = index == 3 ? FAR_TERRAIN_X : 0.0f;
+        light.LookAt(light.m_position + math::Vector3{0, 0, 1});
+        auto& cascade = shadows.cascades[index];
+        cascade.view = light.GetViewMatrix();
+        cascade.viewProjection = light.GetProjectionMatrix() * cascade.view;
+        cascade.frustum = math::Frustum::FromViewProjection(cascade.viewProjection);
+        cascade.eyePos = light.m_position;
+    }
+    std::swap(shadows.cascades[0].viewportX, shadows.cascades[3].viewportX);
+    std::swap(shadows.cascades[0].viewportY, shadows.cascades[3].viewportY);
+    cache = {};
+    cache.atlas = staticAtlas;
+    cache.cascadeMask = MID_BIT | FAR_BIT;
+    camera.m_position.x = FAR_TERRAIN_X - 7.0f;
+    const auto beforeLodChange = render(shadows, false, 0);
+    ExpectSame(beforeLodChange, render(shadows, true, cache.cascadeMask), true);
+
+    cache.reuseMask = cache.cascadeMask;
+    camera.m_position.x = FAR_TERRAIN_X;
+    const auto afterLodChange = render(shadows, false, 0);
+    EXPECT_NE(beforeLodChange.depth, afterLodChange.depth);
+    ExpectSame(afterLodChange, render(shadows, true, FAR_BIT), true);
 }
 
 TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndKeepsMovedCasters)

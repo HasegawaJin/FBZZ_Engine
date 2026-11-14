@@ -70,6 +70,10 @@ struct DrawCall {
     /// @brief VS/MS-readable raw Buffer SRV (t14〜t15)。Mesh Shader が既存 VB/IB を読む用途にも使う。
     /// @note 同じ slot の vsBuffers と同時指定しない。両方を指定した場合、DX12 は描画を記録しない。
     std::array<ResourceHandle<BufferTag>, 2> vsRawBuffers = {};
+    /// @note Mesh stage reads compacted candidate IDs in bindless vertex slot 3.
+    ResourceHandle<StructuredBufferTag> meshletSelection;
+    /// @note Bindless meshlet page table references these SRVs through descriptor indices.
+    std::vector<ResourceHandle<StructuredBufferTag>> meshletPages;
 
     /// @brief PS-readable StructuredBuffer (t29〜t30)。クラスタライティングのライト配列と
     /// @note        インデックスリスト。

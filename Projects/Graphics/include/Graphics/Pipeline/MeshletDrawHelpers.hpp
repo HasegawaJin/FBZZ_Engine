@@ -4,6 +4,7 @@
 /// @date    2026-10-10
 #pragma once
 #include <Graphics/Api.hpp>
+#include <Graphics/Pipeline/GpuHiZ.hpp>
 
 #include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
@@ -18,6 +19,7 @@ namespace fbzz::renderer {
 enum class MeshletDrawPass : uint8_t {
     GBUFFER,
     SHADOW,
+    SHADOW_MASKED,
 };
 
 /// @note The unjittered color-view projection keeps the screen-error decision stable across TAA samples.
@@ -25,6 +27,17 @@ struct MeshletClusterView {
     math::Matrix4 viewProjection;
     uint32_t width;
     uint32_t height;
+    /// @note Negative means the skinning palette cannot provide a conservative bound.
+    float skinDisplacement = -1.0f;
+};
+
+/// @note Indexed instance commands provide the visible ID range without GPU readback.
+struct MeshletClusterInstances {
+    ResourceHandle<StructuredBufferTag> rows;
+    ResourceHandle<StructuredBufferTag> ids;
+    ResourceHandle<StructuredBufferTag> indexedArguments;
+    uint32_t argumentIndex = UINT32_MAX;
+    uint32_t capacity = 0;
 };
 
 /// @brief Checks whether a static standard-surface item can use the meshlet path.
@@ -34,6 +47,9 @@ struct MeshletClusterView {
 /// @return False for unsupported, small, deformed, custom, or shadow alpha-cutout inputs.
 [[nodiscard]] FBZZ_GRAPHICS_API bool IsMeshletDrawCandidate(const RenderMeshItem& item, bool skinned,
                                           MeshletDrawPass pass);
+
+/// @note A clustered color surface needs a matching depth cut and must bypass the full-resolution Hi-Z seed.
+[[nodiscard]] bool CanUseGBufferClusterLod(const RenderObject& object, const RenderMeshItem& item);
 
 /// @brief Prepares a mesh-shader DrawCall while leaving the input unchanged on failure.
 /// @param viewProjection Exact camera or shadow view-projection matrix for this draw.
@@ -50,6 +66,14 @@ struct MeshletClusterView {
                                          bool skinned, DrawCall& inOut,
                                          bool frustumCullingEnabled = true,
                                          bool forceMesh = false,
-                                         const MeshletClusterView* clusterView = nullptr);
+                                         const MeshletClusterView* clusterView = nullptr,
+                                         const GpuHiZ* hierarchy = nullptr);
+
+struct RenderPassContext;
+[[nodiscard]] ResourceHandle<ConstantBufferTag> MeshletWindFrame(RenderPassContext& ctx);
+FBZZ_GRAPHICS_API void SubmitMeshletDraw(RenderPassContext& ctx, const DrawCall& draw, MeshletDrawPass pass);
+[[nodiscard]] bool TrySubmitInstancedClusterDraw(RenderPassContext& ctx, const math::Matrix4& rasterViewProjection,
+    const MeshletClusterView& view, const RenderMeshItem& item, MeshletDrawPass pass,
+    const DrawCall& indexedDraw, const MeshletClusterInstances& instances);
 
 } /// @note namespace fbzz::renderer

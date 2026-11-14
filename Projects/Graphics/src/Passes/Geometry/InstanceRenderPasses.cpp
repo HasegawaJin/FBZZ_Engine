@@ -9,6 +9,7 @@
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Graphics/Renderer/IStructuredBuffer.hpp>
 #include <Graphics/Pipeline/GpuHiZ.hpp>
+#include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
 #include <Graphics/Pipeline/OcclusionCuller.hpp>
 #include <Math/Quaternion.hpp>
 #include <Core/Logger.hpp>
@@ -720,7 +721,9 @@ struct InstanceSubmission {
     const math::Frustum& frustum;
     ResourceHandle<ConstantBufferTag> lightFrame;
     bool countStatistics;
+    const InstanceShadowView* shadowView = nullptr;
 };
+
 ResourceHandle<ShaderTag> ForwardInstanceShader(ResourceManager& resources, InstanceResources& cache,
     const RenderMaterial& material)
 {
@@ -742,7 +745,7 @@ ResourceHandle<ShaderTag> ForwardInstanceShader(ResourceManager& resources, Inst
 void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& input,InstanceSource& source,
     const InstanceView& view,const InstanceSetSelection* selection,OcclusionCuller* occlusion)
 {
-    auto& [ctx,cache,pass,frustum,lightFrame,countStatistics]=submission;
+    auto& [ctx,cache,pass,frustum,lightFrame,countStatistics,shadowView]=submission;
     const bool forwardPass=pass==InstancePass::FORWARD || pass==InstancePass::CAPTURE;
     const float cardWireframe = pass == InstancePass::FORWARD && ctx.settings.IsWireframe()
         ? (ctx.settings.IsUnlit() ? 2.0f : 1.0f) : 0.0f;
@@ -892,6 +895,44 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
             draw.instanceBuffer=source.gpu; draw.vsBuffers[0]=gpu ? selection->ids : cpuIds[part.lod];
             draw.instanceCount=gpu ? view.counts[0] : static_cast<uint32_t>(visible[part.lod].size());
             if (gpu) { draw.indirectArguments=selection->arguments; draw.indirectArgumentOffset=(selection->firstArgument+partIndex)*sizeof(GpuGeometryIndexedArguments); draw.indirectInstanceOffset=true; }
+        }
+        const bool clustered = ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER
+            && !ctx.settings.IsWireframe() && ctx.renderer.SupportsMeshShaders() && LeafAnimated(material)
+            && part.mesh.clusterLod && (pass == InstancePass::GBUFFER || (pass == InstancePass::SHADOW && shadowView));
+        if (clustered && (instanced || source.activeCount <= 32u)) {
+            const auto jittered = pass == InstancePass::SHADOW ? shadowView->viewProjection
+                : MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY).viewProjection;
+            const auto clusterVp = pass == InstancePass::SHADOW ? jittered : ctx.camera.GetGpuViewProjection();
+            const MeshletClusterView clusterView{clusterVp,
+                pass == InstancePass::SHADOW ? shadowView->viewportSize : ctx.width,
+                pass == InstancePass::SHADOW ? shadowView->viewportSize : ctx.height};
+            const auto meshPass = pass == InstancePass::GBUFFER ? MeshletDrawPass::GBUFFER
+                : UsesAlphaShadow(material) ? MeshletDrawPass::SHADOW_MASKED : MeshletDrawPass::SHADOW;
+            if (instanced) {
+                const auto argumentIndex = gpu ? selection->firstArgument + partIndex : UINT32_MAX;
+                const MeshletClusterInstances instances{source.gpu, draw.vsBuffers[0], draw.indirectArguments,
+                    argumentIndex, draw.instanceCount};
+                if (TrySubmitInstancedClusterDraw(ctx, jittered, clusterView, part.mesh, meshPass, draw, instances)) continue;
+            } else {
+                auto prototype = draw;
+                prototype.shader = pass == InstancePass::GBUFFER ? ctx.handles.gbufferShader
+                    : UsesAlphaShadow(material) ? cache.shaders[7] : ctx.handles.shadowShader;
+                for (uint32_t slot : visible[part.lod]) {
+                    PerObjectCB object{};
+                    object.world = source.rows[slot].world;
+                    object.worldInvTranspose = source.rows[slot].normal;
+                    ctx.resources.Update(ctx.handles.objectCB, &object, sizeof(object));
+                    auto meshDraw = prototype;
+                    if (TryPrepareMeshletDraw(ctx.resources, ctx.renderer, jittered, object.world,
+                            meshPass, part.mesh, false, meshDraw, ctx.frustumCullingEnabled, false, &clusterView)) {
+                        SubmitMeshletDraw(ctx, meshDraw, meshPass);
+                    } else if (pass == InstancePass::SHADOW) SubmitCountedShadow(ctx, prototype);
+                    else SubmitCounted(ctx, prototype);
+                }
+                continue;
+            }
+        }
+        if (instanced) {
             if (pass==InstancePass::SHADOW) SubmitCountedShadow(ctx,draw);
             else if (forwardPass && !standard) {
                 FBZZ_PROFILE_SCOPE("InstanceDraw::CustomResidentForward");
@@ -945,7 +986,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
     };
     const auto occlusionCurrent=[&] { return sameOcclusionPublication() && IsViewOcclusionCurrent(ctx); };
     if (pass!=InstancePass::SHADOW) ctx.resources.Update(ctx.handles.frameCB,&frame,sizeof(frame));
-    const InstanceSubmission submission{ctx,cache,pass,frustum,lightFrame,countStatistics};
+    const InstanceSubmission submission{ctx,cache,pass,frustum,lightFrame,countStatistics,shadowView};
     const auto submit=[&](const RenderInstanceInput& input,InstanceSource& source,const InstanceView& view,
         const ComputeCall* selection,const VegetationCandidates& vegetation) {
         if (selection) {
@@ -1284,7 +1325,7 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
             &view.input);
         return;
     }
-    const InstanceSubmission submission{ctx,*state.cache,InstancePass::SHADOW,view.input.frustum,lightFrame,false};
+    const InstanceSubmission submission{ctx,*state.cache,InstancePass::SHADOW,view.input.frustum,lightFrame,false,&view.input};
     for (const auto& work : view.sets) {
         if (!state.ResourcesCurrent(ctx.resources)) return;
         const auto& entry=state.sources[work.sourceIndex];

@@ -1,0 +1,6 @@
+# @file    AlphaShadowMesh.ms.hlsl.meta
+# @brief   Cluster shader asset identity.
+# @author  Hasegawa Jin
+# @date    2026-11-13
+[meta]
+guid = '21513d1fc5f24da9905af0cfb9b84c48'

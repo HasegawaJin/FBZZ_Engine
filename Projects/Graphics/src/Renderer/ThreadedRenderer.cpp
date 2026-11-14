@@ -22,11 +22,13 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <source_location>
 #include <type_traits>
 #include <utility>
 #include <unordered_map>
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/IStructuredBuffer.hpp>
 #include <imgui.h>
 
 namespace fbzz::renderer {
@@ -101,6 +103,14 @@ void DispatchSequenceNative(IRenderer& renderer, ResourceManager& resources,
 /// @note Queue acceptance does not borrow native buffer pointers or drain the producer frame.
 bool CullDrawRangeCurrent(const DrawCall& call, ResourceManager& resources)
 {
+    if (call.meshGroupCountX != 0) {
+        const auto* arguments = resources.Get(call.indirectArguments);
+        const auto* selection = resources.Get(call.meshletSelection);
+        return selection && selection->GetBindlessIndex() != INVALID_BINDLESS_INDEX
+            && arguments && arguments->GetStride() == 12u
+            && call.indirectArgumentOffset <= arguments->GetSize()
+            && call.indirectCommandCount <= (arguments->GetSize() - call.indirectArgumentOffset) / 12u;
+    }
     const auto* indices = resources.Get(call.indexBuffer);
     return indices && static_cast<uint64_t>(call.startIndex) + call.indexCount <= indices->GetSize()/sizeof(uint32_t);
 }
@@ -472,11 +482,15 @@ public:
     {
         Record([this, call, &resources] { m_native->Submit(call, resources); });
     }
-    void CullDraw(const ComputeCall& compute, const DrawCall& indirect, const DrawCall& fallback, ResourceManager& resources)
+    void CullDraw(const ComputeCall& compute, const DrawCall& indirect, const DrawCall& fallback,
+        ResourceManager& resources, const ComputeCall* setup)
     {
-        Record([this, compute, indirect, fallback, &resources] {
-            if (!CullDrawRangeCurrent(indirect, resources)) return;
-            if (m_native->TryDispatch(compute, resources)) {
+        Record([this, compute, indirect, fallback, &resources,
+                setup = setup ? std::optional<ComputeCall>(*setup) : std::nullopt] {
+            const bool ready = CullDrawRangeCurrent(indirect, resources);
+            if (!ready && !indirect.meshGroupCountX) return;
+            if (ready && (!setup || m_native->TryDispatch(*setup, resources))
+                && m_native->TryDispatch(compute, resources)) {
                 const cpu_trace::SourceScope gpuDrawTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeDraw");
                 FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeDraw"); m_native->Submit(indirect, resources);
             } else {
@@ -1061,14 +1075,17 @@ std::unique_ptr<IIblBaker> ThreadedRenderer::CreateIblBaker()
 }
 
 void gpu_cull_detail::SubmitCullDraw(IRenderer& renderer, ResourceManager& resources,
-    const ComputeCall& compute, const DrawCall& indirect, const DrawCall& fallback)
+    const ComputeCall& compute, const DrawCall& indirect, const DrawCall& fallback, const ComputeCall* setup)
 {
-    auto* owner = FindRenderer(renderer);
-    if (owner) owner->CullDraw(compute, indirect, fallback, resources);
-    else if (!CullDrawRangeCurrent(indirect, resources)) return;
-    else if (renderer.TryDispatch(compute, resources)) {
+    if (auto* owner = FindRenderer(renderer)) {
+        owner->CullDraw(compute, indirect, fallback, resources, setup);
+        return;
+    }
+    const bool ready = CullDrawRangeCurrent(indirect, resources);
+    if (!ready && !indirect.meshGroupCountX) return;
+    if (ready && (!setup || renderer.TryDispatch(*setup, resources)) && renderer.TryDispatch(compute, resources)) {
         const cpu_trace::SourceScope gpuDrawTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeDraw");
-                FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeDraw"); renderer.Submit(indirect, resources);
+        FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeDraw"); renderer.Submit(indirect, resources);
     } else {
         const cpu_trace::SourceScope gpuFallbackTrace(cpu_trace::Source::UNKNOWN, "GpuIndirect::NativeFallback");
                 FBZZ_PROFILE_SCOPE("Render::GpuIndirect::NativeFallback"); renderer.Submit(fallback, resources);

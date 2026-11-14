@@ -6,10 +6,12 @@
 
 #include "Pipeline/Deferred/GBuffer.hlsl"
 #define FBZZ_STATIC_CLUSTER_LOD
-#include "Pipeline/MeshletGeometry.hlsli"
+#include "Pipeline/ClusterMeshletVisibility.hlsli"
+#include "Pipeline/ClusterMeshletSkinning.hlsli"
 
-groupshared uint4 g_meshletDescriptorWords[3];
-groupshared uint g_meshletClusterSelected;
+groupshared uint g_meshletId;
+groupshared uint g_instanceId;
+groupshared bool g_meshletVisible;
 
 /// @brief Emits at most 64 shared source vertices and 126 original-order local triangles for one meshlet.
 /// @note All lanes reach one uniform SetMeshOutputCounts call; zero counts reject invalid and culled meshlets before vertex loads.
@@ -19,44 +21,20 @@ void MSMain(uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID,
     out vertices PSInput vertices[kFbzzMeshletMaximumVertices],
     out indices uint3 primitives[kFbzzMeshletMaximumPrimitives])
 {
-    const bool meshletInRange = groupId.x < g_meshletCount && groupId.y == 0u && groupId.z == 0u;
-    if (groupThreadId.x == 0u)
-    {
-        if (meshletInRange)
-        {
-            const uint byteOffset = groupId.x * 48u;
-            g_meshletDescriptorWords[0] = g_meshletRawData.Load4(byteOffset);
-            g_meshletDescriptorWords[1] = g_meshletRawData.Load4(byteOffset + 16u);
-            g_meshletDescriptorWords[2] = g_meshletRawData.Load4(byteOffset + 32u);
-            g_meshletClusterSelected = IsFbzzClusterSelected(g_meshletDescriptorWords[0].w) ? 1u : 0u;
-        }
-        else
-        {
-            g_meshletDescriptorWords[0] = 0u;
-            g_meshletDescriptorWords[1] = 0u;
-            g_meshletDescriptorWords[2] = 0u;
-            g_meshletClusterSelected = 0u;
-        }
+    if (groupThreadId.x == 0u) {
+        const uint2 pair = ReadClusterMeshGroup(groupId);
+        g_meshletId = pair.x;
+        g_instanceId = pair.y;
+        g_meshletVisible = pair.x < g_meshletCount && groupId.z == 0u
+            && (FbzzVertexSlot(3u) != 0xffffffffu
+                || (groupId.y == 0u && IsClusterMeshletVisible(ReadClusterMeshlet(pair.x), world)));
     }
     GroupMemoryBarrierWithGroupSync();
 
-    FbzzMeshletDescriptor descriptor;
-    descriptor.boundsMin = asfloat(g_meshletDescriptorWords[0]);
-    descriptor.boundsMax = asfloat(g_meshletDescriptorWords[1]);
-    descriptor.vertexOffsetBytes = g_meshletDescriptorWords[2].x;
-    descriptor.primitiveOffsetBytes = g_meshletDescriptorWords[2].y;
-    descriptor.vertexCount = g_meshletDescriptorWords[2].z;
-    descriptor.primitiveCount = g_meshletDescriptorWords[2].w;
-
-    const bool vertexLayoutValid = g_meshletPositionOffset <= g_meshletVertexStride
-        && g_meshletVertexStride - g_meshletPositionOffset >= 60u;
-    const bool descriptorValid = meshletInRange
-        && descriptor.vertexCount > 0u
-        && descriptor.vertexCount <= kFbzzMeshletMaximumVertices
-        && descriptor.primitiveCount > 0u
-        && descriptor.primitiveCount <= kFbzzMeshletMaximumPrimitives
-        && vertexLayoutValid;
-    const bool visible = descriptorValid && g_meshletClusterSelected != 0u && IsFbzzMeshletVisible(descriptor, world);
+    FbzzMeshletDescriptor descriptor = (FbzzMeshletDescriptor)0;
+    if (g_meshletVisible) descriptor = ReadClusterMeshlet(g_meshletId);
+    const bool visible = g_meshletVisible && descriptor.vertexCount <= kFbzzMeshletMaximumVertices
+        && descriptor.primitiveCount <= kFbzzMeshletMaximumPrimitives;
     const uint outputVertexCount = visible ? descriptor.vertexCount : 0u;
     const uint outputPrimitiveCount = visible ? descriptor.primitiveCount : 0u;
     SetMeshOutputCounts(outputVertexCount, outputPrimitiveCount);
@@ -74,7 +52,15 @@ void MSMain(uint3 groupThreadId : SV_GroupThreadID, uint3 groupId : SV_GroupID,
         input.normal = asfloat(g_meshletRawVertices.Load3(byteOffset + 12u));
         input.tangent = asfloat(g_meshletRawVertices.Load3(byteOffset + 24u));
         input.uv = asfloat(g_meshletRawVertices.Load2(byteOffset + 36u));
-        vertices[laneIndex] = GBufferVS(input, world, worldInvTranspose);
+        ApplyClusterSkinning(input, byteOffset);
+        float4x4 objectWorld = world;
+        float4x4 objectNormal = worldInvTranspose;
+        if (g_clusterInstanceMode != 0u) {
+            const ClusterInstanceRow instance = g_clusterInstances[g_instanceId];
+            objectWorld = instance.world;
+            objectNormal = instance.normal;
+        }
+        vertices[laneIndex] = GBufferVS(input, objectWorld, objectNormal);
     }
 
     for (uint primitiveIndex = laneIndex;

@@ -80,7 +80,7 @@ struct ClusterEdgeCandidate {
 /// @note The common link must contain exactly the two opposite vertices and no common edge.
 [[nodiscard]] bool CanCollapseClusterEdge(uint32_t from, uint32_t to,
     std::span<const ClusterVertexUse> uses, std::span<const ClusterTriangle> triangles,
-    std::span<const Vector3> positions)
+    std::span<const Vector3> positions, bool preserveXZ)
 {
     size_t common = 0;
     for (uint32_t neighbor : uses[from].neighbors)
@@ -101,6 +101,8 @@ struct ClusterEdgeCandidate {
         }
         const Vector3 before = ClusterNormal(source, positions);
         const Vector3 after = ClusterNormal(replacement, positions);
+        if (preserveXZ && !((before.y > 0.0f && after.y > 0.0f)
+            || (before.y < 0.0f && after.y < 0.0f))) return false;
         const double lengthProduct = static_cast<double>(before.LengthSq()) * after.LengthSq();
         if (!std::isfinite(lengthProduct) || lengthProduct <= 0.0
             || Vector3::Dot(before, after) <= 0.25 * std::sqrt(lengthProduct)) return false;
@@ -109,7 +111,8 @@ struct ClusterEdgeCandidate {
 }
 
 [[nodiscard]] float CollapseClusterRound(std::vector<ClusterTriangle>& triangles,
-    std::span<const Vector3> positions, std::span<const uint8_t> protectedVertices, size_t target)
+    std::span<const Vector3> positions, std::span<const uint8_t> protectedVertices, size_t target,
+    bool preserveXZ, std::span<const uint32_t> skinGroups)
 {
     std::vector<ClusterVertexUse> uses(positions.size());
     std::map<ClusterEdge, ClusterEdgeUse> edges;
@@ -154,8 +157,9 @@ struct ClusterEdgeCandidate {
         if (remaining <= target) break;
         const auto a = edge.first, b = edge.second;
         if (uses[a].locked || uses[b].locked || uses[a].reserved || uses[b].reserved) continue;
-        if (CanCollapseClusterEdge(a, b, uses, triangles, positions)) remap[a] = b;
-        else if (CanCollapseClusterEdge(b, a, uses, triangles, positions)) remap[b] = a;
+        if (!skinGroups.empty() && skinGroups[a] != skinGroups[b]) continue;
+        if (CanCollapseClusterEdge(a, b, uses, triangles, positions, preserveXZ)) remap[a] = b;
+        else if (CanCollapseClusterEdge(b, a, uses, triangles, positions, preserveXZ)) remap[b] = a;
         else continue;
         remaining -= 2;
         maxMovement = (std::max)(maxMovement, std::sqrt(edge.lengthSquared));
@@ -176,17 +180,19 @@ struct ClusterEdgeCandidate {
 }
 
 /// @note Sum round displacement maxima to bound the position error of the composed collapse maps.
-[[nodiscard]] float SimplifyCluster(std::vector<uint32_t>& indices, std::span<const Vertex> vertices,
-    std::span<const uint8_t> seams)
+[[nodiscard]] float SimplifyCluster(std::vector<uint32_t>& indices, std::span<const Vector3> sourcePositions,
+    std::span<const uint8_t> seams, bool preserveXZ, std::span<const uint32_t> sourceSkinGroups)
 {
     std::vector<uint32_t> ids = indices;
     std::sort(ids.begin(), ids.end());
     ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
     std::vector<Vector3> positions;
     std::vector<uint8_t> protectedVertices;
+    std::vector<uint32_t> skinGroups;
     for (uint32_t id : ids) {
-        positions.push_back(vertices[id].position);
+        positions.push_back(sourcePositions[id]);
         protectedVertices.push_back(seams[id]);
+        if (!sourceSkinGroups.empty()) skinGroups.push_back(sourceSkinGroups[id]);
     }
     std::vector<ClusterTriangle> triangles(indices.size() / 3);
     for (size_t i = 0; i < indices.size(); ++i)
@@ -194,7 +200,7 @@ struct ClusterEdgeCandidate {
     const size_t target = (std::max)(size_t{1}, triangles.size() / 2);
     float error = 0.0f;
     for (size_t round = 0; round < STATIC_CLUSTER_MAX_ROUNDS && triangles.size() > target; ++round) {
-        const float movement = CollapseClusterRound(triangles, positions, protectedVertices, target);
+        const float movement = CollapseClusterRound(triangles, positions, protectedVertices, target, preserveXZ, skinGroups);
         if (movement == 0.0f) break;
         error = std::nextafter(error + movement, std::numeric_limits<float>::infinity());
     }
@@ -237,7 +243,8 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
 }
 
 [[nodiscard]] ClusterBranch BuildClusterBranch(std::span<ClusterSourceTriangle> triangles,
-    std::span<const Vertex> vertices, std::span<const uint8_t> seams, StaticClusterBuild& output)
+    std::span<const Vector3> positions, std::span<const uint8_t> seams, StaticClusterBuild& output,
+    bool preserveXZ, std::span<const uint32_t> skinGroups)
 {
     constexpr float limit = (std::numeric_limits<float>::max)();
     ClusterBranch branch;
@@ -247,7 +254,7 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
         std::sort(triangles.begin(), triangles.end(), [](const auto& a, const auto& b) { return a.ordinal < b.ordinal; });
         for (const auto& tri : triangles) {
             for (uint32_t vertex : tri.indices) {
-                const auto& position = vertices[vertex].position;
+                const auto& position = positions[vertex];
                 ExtendClusterBounds(branch.bounds, position, position);
                 branch.indices.push_back(vertex);
             }
@@ -270,8 +277,8 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
     std::nth_element(triangles.begin(), triangles.begin() + middle, triangles.end(), [axis](const auto& a, const auto& b) {
         return std::tie(a.center[axis], a.ordinal) < std::tie(b.center[axis], b.ordinal);
     });
-    auto left = BuildClusterBranch(triangles.first(middle), vertices, seams, output);
-    auto right = BuildClusterBranch(triangles.subspan(middle), vertices, seams, output);
+    auto left = BuildClusterBranch(triangles.first(middle), positions, seams, output, preserveXZ, skinGroups);
+    auto right = BuildClusterBranch(triangles.subspan(middle), positions, seams, output, preserveXZ, skinGroups);
     branch.roots = std::move(left.roots);
     branch.roots.insert(branch.roots.end(), right.roots.begin(), right.roots.end());
     if (left.indices.empty() || right.indices.empty()
@@ -283,7 +290,7 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
     branch.indices = std::move(left.indices);
     branch.indices.insert(branch.indices.end(), right.indices.begin(), right.indices.end());
     const size_t fineCount = branch.indices.size();
-    const float error = SimplifyCluster(branch.indices, vertices, seams);
+    const float error = SimplifyCluster(branch.indices, positions, seams, preserveXZ, skinGroups);
     if (branch.indices.empty() || !std::isfinite(error)) {
         branch.indices.clear();
     } else if (branch.indices.size() < fineCount) {
@@ -294,27 +301,28 @@ void EmitCluster(ClusterBranch& branch, StaticClusterBuild& output)
     return branch;
 }
 
-} /// @note namespace
-
-bool BuildStaticClusterLod(std::span<const Vertex> vertices, std::span<const uint32_t> indices,
-    StaticClusterBuild& output)
+bool BuildClusterLod(std::span<const Vector3> positions, std::span<const uint32_t> indices,
+    std::span<const uint8_t> protectedVertices, bool preserveXZ, StaticClusterBuild& output,
+    std::span<const uint32_t> skinGroups = {})
 {
     const size_t triangleCount = indices.size() / 3;
     if (indices.size() % 3 != 0 || triangleCount <= STATIC_CLUSTER_LEAF_TRIANGLES
-        || triangleCount > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES || vertices.size() > indices.size()) return false;
+        || triangleCount > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES || positions.size() > indices.size()
+        || (!protectedVertices.empty() && protectedVertices.size() != positions.size())) return false;
 
-    std::vector<uint32_t> orderedVertices(vertices.size());
+    std::vector<uint32_t> orderedVertices(positions.size());
     std::iota(orderedVertices.begin(), orderedVertices.end(), 0u);
     const auto positionKey = [&](uint32_t index) {
-        const auto& pos = vertices[index].position;
+        const auto& pos = positions[index];
         return std::tie(pos.x, pos.y, pos.z);
     };
-    for (const auto& vertex : vertices)
-        if (!ClusterFinite(vertex.position)) return false;
+    for (const auto& position : positions)
+        if (!ClusterFinite(position)) return false;
     std::sort(orderedVertices.begin(), orderedVertices.end(), [&](uint32_t a, uint32_t b) {
         return positionKey(a) < positionKey(b);
     });
-    std::vector<uint8_t> seams(vertices.size());
+    std::vector<uint8_t> seams(positions.size());
+    if (!protectedVertices.empty()) std::copy(protectedVertices.begin(), protectedVertices.end(), seams.begin());
     /// @note Position duplicates may represent UV or hard-normal seams even when the chart topology differs.
     for (size_t i = 1; i < orderedVertices.size(); ++i) {
         const uint32_t a = orderedVertices[i - 1], b = orderedVertices[i];
@@ -327,16 +335,59 @@ bool BuildStaticClusterLod(std::span<const Vertex> vertices, std::span<const uin
         const ClusterTriangle triangle{indices[i], indices[i + 1], indices[i + 2]};
         Vector3 center{};
         for (uint32_t vertex : triangle) {
-            if (vertex >= vertices.size()) return false;
-            center += vertices[vertex].position * (1.0f / 3.0f);
+            if (vertex >= positions.size()) return false;
+            center += positions[vertex] * (1.0f / 3.0f);
         }
         source.push_back({triangle, {center.x, center.y, center.z}, i / 3});
     }
     StaticClusterBuild staged;
-    static_cast<void>(BuildClusterBranch(source, vertices, seams, staged));
-    if (staged.indices.size() == indices.size()) return false;
+    static_cast<void>(BuildClusterBranch(source, positions, seams, staged, preserveXZ, skinGroups));
+    if (!preserveXZ && staged.indices.size() == indices.size()) return false;
     output = std::move(staged);
     return true;
+}
+
+} /// @note namespace
+
+bool BuildStaticClusterLod(std::span<const Vertex> vertices, std::span<const uint32_t> indices,
+    StaticClusterBuild& output)
+{
+    if (vertices.size() > indices.size() || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES)
+        return false;
+    std::vector<Vector3> positions;
+    positions.reserve(vertices.size());
+    for (const auto& vertex : vertices) positions.push_back(vertex.position);
+    return BuildClusterLod(positions, indices, {}, false, output);
+}
+
+bool BuildStaticClusterLod(std::span<const SkinnedVertex> vertices, std::span<const uint32_t> indices,
+    StaticClusterBuild& output)
+{
+    if (vertices.size() > indices.size() || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES)
+        return false;
+    using Influence = std::pair<uint32_t, float>;
+    std::map<std::array<Influence, 4>, uint32_t> uniqueGroups;
+    std::vector<Vector3> positions;
+    std::vector<uint32_t> groups;
+    positions.reserve(vertices.size());
+    groups.reserve(vertices.size());
+    for (const auto& vertex : vertices) {
+        std::array<Influence, 4> influences{};
+        float totalWeight = 0.0f;
+        for (size_t i = 0; i < influences.size(); ++i) {
+            const float weight = vertex.boneWeights[i];
+            if (!std::isfinite(weight) || weight < 0.0f || vertex.boneIndices[i] >= 128u) return false;
+            totalWeight += weight;
+            if (weight > 0.0f) influences[i] = {vertex.boneIndices[i], weight};
+        }
+        if (std::abs(totalWeight - 1.0f) > 1.0e-6f) return false;
+        std::sort(influences.begin(), influences.end());
+        const auto [group, inserted] = uniqueGroups.try_emplace(influences, static_cast<uint32_t>(uniqueGroups.size()));
+        static_cast<void>(inserted);
+        positions.push_back(vertex.position);
+        groups.push_back(group->second);
+    }
+    return BuildClusterLod(positions, indices, {}, false, output, groups);
 }
 
 } /// @note namespace fbzz::renderer

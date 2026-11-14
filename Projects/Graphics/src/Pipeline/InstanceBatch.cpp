@@ -95,7 +95,8 @@ bool IsSameInstanceBatch(const renderer::DrawCall& a, const renderer::DrawCall& 
         || a.meshGroupCountX != b.meshGroupCountX || a.meshGroupCountY != b.meshGroupCountY
         || a.meshGroupCountZ != b.meshGroupCountZ) return false;
     if (a.indirectReadTextures != b.indirectReadTextures || a.vsRawBuffers != b.vsRawBuffers
-        || a.auxiliaryPsBuffers != b.auxiliaryPsBuffers) return false;
+        || a.auxiliaryPsBuffers != b.auxiliaryPsBuffers
+        || a.meshletSelection != b.meshletSelection || a.meshletPages != b.meshletPages) return false;
 
     for (std::size_t i = 0; i < a.constantBuffers.size(); ++i) {
         /// @note b1 (ObjectConstants) だけは中身が物体ごとに違って当然なので見ない。

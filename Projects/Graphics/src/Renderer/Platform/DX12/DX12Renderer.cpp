@@ -464,6 +464,12 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
             }
         }
     }
+    if (call.meshletSelection.IsValid()) {
+        const auto* selection = resources.Get(call.meshletSelection);
+        if (!meshDispatch || !selection || selection->GetBindlessIndex() == INVALID_BINDLESS_INDEX) return;
+    }
+    for (const auto handle : call.meshletPages)
+        if (!meshDispatch || !resources.Get(handle)) return;
     for (const auto handle : call.indirectReadBuffers) {
         const auto* buffer = resources.Get(handle);
         if (!m_context.SupportsBindless() || !buffer || buffer->GetBindlessSrvIndex() == INVALID_BINDLESS_INDEX) {
@@ -686,6 +692,8 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         }
         if (auto* instanceBase = resources.Get(call.instanceBuffer))
             indices.vertex[0] = instanceBase->GetBindlessIndex();
+        if (auto* selection = resources.Get(call.meshletSelection))
+            indices.vertex[3] = selection->GetBindlessIndex();
         for (uint32_t i = 0; i < call.vsBuffers.size(); ++i) {
             if (auto* bufferBase = resources.Get(call.vsBuffers[i]))
                 indices.vertex[1 + i] = bufferBase->GetBindlessIndex();
@@ -748,6 +756,12 @@ void DX12Renderer::Submit(const DrawCall& call, ResourceManager& resources)
         if (buffer->IsGpuWritable()) m_stateTracker.QueueTransition(buffer->GetSrvResource(),
             D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
+    if (auto* selection = resources.Get(call.meshletSelection))
+        m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(selection)->GetResource(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    for (const auto handle : call.meshletPages)
+        m_stateTracker.QueueTransition(static_cast<DX12StructuredBuffer*>(resources.Get(handle))->GetResource(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     if (auto* argumentBase = resources.Get(call.indirectArguments))
         m_stateTracker.QueueTransition(
             static_cast<DX12StructuredBuffer*>(argumentBase)->GetResource(),

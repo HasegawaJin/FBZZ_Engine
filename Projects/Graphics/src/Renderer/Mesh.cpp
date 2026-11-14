@@ -174,10 +174,12 @@ void Mesh::ComputeBoundsExtents()
 void Mesh::PublishCpuGeometry()
 {
     m_clusterLod.reset();
-    if (!isSkinned && morphTargets.empty() && cpuIndices.size() >= 8192u * 3u
-        && cpuVertices.size() == vertexCount && cpuIndices.size() == indexCount) {
+    if (morphTargets.empty() && cpuIndices.size() >= CLUSTER_MIN_TRIANGLES * 3u && cpuIndices.size() == indexCount) {
         MeshletClusterData clusters;
-        if (MeshletGeometryBuilder::BuildClusters(cpuVertices, cpuIndices, clusters))
+        const bool built = isSkinned
+            ? cpuSkinnedVertices.size() == vertexCount && MeshletGeometryBuilder::BuildClusters(cpuSkinnedVertices, cpuIndices, clusters)
+            : cpuVertices.size() == vertexCount && MeshletGeometryBuilder::BuildClusters(cpuVertices, cpuIndices, clusters);
+        if (built)
             m_clusterLod = std::make_shared<const MeshletClusterData>(std::move(clusters));
     }
     static std::atomic<uint64_t> nextRevision{1};

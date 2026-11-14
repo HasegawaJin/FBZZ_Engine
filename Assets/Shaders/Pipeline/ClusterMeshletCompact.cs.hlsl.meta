@@ -1,0 +1,6 @@
+# @file    ClusterMeshletCompact.cs.hlsl.meta
+# @brief   Cluster shader asset identity.
+# @author  Hasegawa Jin
+# @date    2026-11-13
+[meta]
+guid = 'be40d75b622348a2acaf4068f6955047'

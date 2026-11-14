@@ -31,5 +31,7 @@ struct StaticClusterBuild {
 /// @see https://dev.epicgames.com/documentation/unreal-engine/nanite-in-unreal-engine Nanite Virtualized Geometry Overview, hierarchical clusters.
 [[nodiscard]] bool BuildStaticClusterLod(std::span<const Vertex> vertices,
     std::span<const uint32_t> indices, StaticClusterBuild& output);
+[[nodiscard]] bool BuildStaticClusterLod(std::span<const SkinnedVertex> vertices,
+    std::span<const uint32_t> indices, StaticClusterBuild& output);
 
 } /// @note namespace fbzz::renderer

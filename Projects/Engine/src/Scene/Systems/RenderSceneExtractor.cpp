@@ -56,6 +56,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <Graphics/Renderer/MeshletGeometry.hpp>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
@@ -1161,6 +1162,60 @@ float WorldOccluderRadius(const math::Matrix4& world, float localRadius)
     return localRadius > 0.0f ? localRadius * (std::min)({sx, sy, sz}) : 0.0f;
 }
 
+/// @note A normalized skin blend is bounded by the maximum bone displacement over the bind AABB.
+float SkinClusterDisplacement(const renderer::RenderObject& object, const SkinnedMeshRenderer& skin,
+    std::span<const math::Matrix4> palette)
+{
+    float maximum = 0.0f;
+    for (size_t slot = 0; slot < skin.SubmeshCount(); ++slot) {
+        const auto* mesh = skin.SubmeshMesh(slot);
+        if (!mesh || !mesh->ClusterLod()) continue;
+        const auto measure = [&](const math::Matrix4& bone) {
+            for (unsigned corner = 0; corner < 8; ++corner) {
+                const math::Vector3 sign{corner & 1u ? 1.0f : -1.0f, corner & 2u ? 1.0f : -1.0f,
+                    corner & 4u ? 1.0f : -1.0f};
+                const math::Vector3 position{mesh->boundsCenter.x + sign.x * mesh->boundsExtents.x,
+                    mesh->boundsCenter.y + sign.y * mesh->boundsExtents.y,
+                    mesh->boundsCenter.z + sign.z * mesh->boundsExtents.z};
+                const auto skinned = bone * math::Vector4{position, 1.0f};
+                const auto delta = object.world * math::Vector4{skinned.x - position.x,
+                    skinned.y - position.y, skinned.z - position.z, 0.0f};
+                const auto transformed = object.world * math::Vector4{skinned.x, skinned.y, skinned.z, 0.0f};
+                const float length = math::Vector3{delta.x, delta.y, delta.z}.Length()
+                    + mesh->ClusterLod()->maximumSkinWeightError
+                    * math::Vector3{transformed.x, transformed.y, transformed.z}.Length();
+                if (!std::isfinite(length)) return false;
+                maximum = (std::max)(maximum, length);
+            }
+            return true;
+        };
+        if (!measure(math::Matrix4::Identity())) return -1.0f;
+        for (const auto& bone : palette)
+            if (!measure(bone)) return -1.0f;
+    }
+    return maximum + 1.0e-4f;
+}
+
+/// @note Baked animation certifies a model-space sphere centered at the origin for the whole clip or blend.
+float BakedSkinClusterDisplacement(const SkinnedMeshRenderer& skin, float poseRadius, const math::Matrix4& world)
+{
+    if (!(poseRadius > 0.0f) || !std::isfinite(poseRadius)) return -1.0f;
+    float bindRadius = 0.0f;
+    for (size_t slot = 0; slot < skin.SubmeshCount(); ++slot) {
+        const auto* mesh = skin.SubmeshMesh(slot);
+        if (mesh && mesh->ClusterLod()) {
+            const float radius = mesh->boundsCenter.Length() + mesh->boundsExtents.Length();
+            if (!std::isfinite(radius)) return -1.0f;
+            bindRadius = (std::max)(bindRadius, radius);
+        }
+    }
+    float scaleSquared = 0.0f;
+    for (size_t row = 0; row < 3; ++row)
+        scaleSquared += math::Vector3{world.m[row][0], world.m[row][1], world.m[row][2]}.LengthSq();
+    const float displacement = (poseRadius + bindRadius) * std::sqrt(scaleSquared) + 1.0e-4f;
+    return std::isfinite(displacement) ? displacement : -1.0f;
+}
+
 renderer::RenderMeshItem ExtractMesh(const math::Matrix4& world, float maximumScale, const renderer::Mesh& mesh)
 {
     renderer::RenderMeshItem item;
@@ -1620,6 +1675,16 @@ renderer::RenderScene BuildRenderSceneGeometry(Scene& scene, uint64_t frameStamp
             }
             /// @note A source retired during a resource callback has no current draw input; never present its deferred CPU seed.
             if (bake.cpuDeferred && !object.gpuBones.current.IsValid()) { object.lodVisible = false; object.rayVisible = false; }
+        }
+        if (object.gpuBones.current.IsValid()) {
+            object.skinClusterDisplacement = BakedSkinClusterDisplacement(*smr, animator->boneBake.radius, object.world);
+        } else {
+            const std::span<const math::Matrix4> palette = animator && animator->skinningBuffer.IsValid()
+                ? std::span<const math::Matrix4>(animator->boneMatrices)
+                : smr->model->skeleton ? std::span<const math::Matrix4>(smr->model->skeleton->referencePose)
+                                       : std::span<const math::Matrix4>{};
+            object.skinClusterDisplacement = SkinClusterDisplacement(object, *smr, palette.first(
+                (std::min)(palette.size(), size_t{128})));
         }
         for (size_t slot = 0; slot < smr->SubmeshCount(); ++slot) {
             const auto* mesh = smr->SubmeshMesh(slot);

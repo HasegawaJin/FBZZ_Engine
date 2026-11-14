@@ -41,8 +41,10 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     ctx.renderer.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
     const auto frame = MakeCameraFrameCB(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     MeshletClusterView clusterView{};
+    GpuHiZ clusterHierarchy;
     if (ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
         clusterView = {ctx.camera.GetGpuProjectionMatrix() * frame.view, ctx.width, ctx.height};
+        if (ctx.isDeferred) clusterHierarchy = ReadViewGpuHiZ(ctx);
     }
     resources.Update(h.frameCB, &frame, sizeof(frame));
     resources.Update(h.lightCB, &ctx.lightData, sizeof(renderer::LightConstantsCB));
@@ -126,6 +128,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                 dc.constantBuffers[2] = parameterBuffer;
             }
             if (vertexSkinning) { dc.constantBuffers[7] = entry.object->skinningPalette; BindGpuBonePalette(dc, *entry.object); }
+            if (entry.object->leafWindBoundsPadding > 0.0f) dc.constantBuffers[5] = MeshletWindFrame(ctx);
             dc.constantBuffers[8] = h.advancedGraphicsCB;
             for (size_t i = 0; i < material.textures.size(); ++i) dc.textures[i] = material.textures[i];
 
@@ -144,18 +147,19 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
             /// @note A seed item must keep its indexed surface even when mesh selection failed and instances still use Hi-Z.
             const bool seeded = ctx.gpuOccluderDepthReady && ctx.renderScene.get() == &input
                 && itemIndex < ctx.gpuOccluderItems.size() && ctx.gpuOccluderItems[itemIndex];
-            if (!skinned && !seeded && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
+            if (!seeded && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
                 renderer::DrawCall meshCall = dc;
-                const bool clusterEligible = entry.object->lodDither == 0.0f
-                    && entry.object->leafWindBoundsPadding == 0.0f;
+                const bool clusterEligible = CanUseGBufferClusterLod(*entry.object, item);
+                auto objectClusterView = clusterView;
+                if (skinned) objectClusterView.skinDisplacement = entry.object->skinClusterDisplacement;
                 if (TryPrepareMeshletDraw(resources, ctx.renderer, frame.viewProjection,
-                    entry.object->world, MeshletDrawPass::GBUFFER, item, false, meshCall,
-                    ctx.frustumCullingEnabled, false, clusterEligible ? &clusterView : nullptr)) {
+                    entry.object->world, MeshletDrawPass::GBUFFER, item, skinned, meshCall,
+                    ctx.frustumCullingEnabled, false, clusterEligible ? &objectClusterView : nullptr, &clusterHierarchy)) {
                     batcher.Flush();
                     const renderer::PerObjectCB objectCB = ObjectConstants(*entry.object);
                     resources.Update(h.objectCB, &objectCB, sizeof(objectCB));
                     meshCall.constantBuffers[1] = h.objectCB;
-                    SubmitCounted(ctx, meshCall);
+                    SubmitMeshletDraw(ctx, meshCall, MeshletDrawPass::GBUFFER);
                     batcher.InvalidateObjectConstants();
                     continue;
                 }

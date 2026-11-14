@@ -1,0 +1,6 @@
+# @file    ClusterMeshletSkinning.hlsli.meta
+# @brief   Cluster shader asset identity.
+# @author  Hasegawa Jin
+# @date    2026-11-13
+[meta]
+guid = 'da76108756da46bb8f9f043d3486aae9'

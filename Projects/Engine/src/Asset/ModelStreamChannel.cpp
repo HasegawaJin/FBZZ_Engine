@@ -42,10 +42,17 @@ bool EndsWithCI(const std::string& text, std::string_view suffix)
 std::uint64_t MeshBytes(const renderer::Mesh& mesh)
 {
     const auto& clusters = mesh.ClusterLod();
+    uint64_t clusterBytes = 0;
+    if (clusters) {
+        clusterBytes = clusters->bytes.capacity() + clusters->streamMetadata.capacity()
+            + clusters->streamTable.capacity() * sizeof(uint32_t);
+        for (const auto& page : clusters->streamPages)
+            clusterBytes += page.words.capacity() * sizeof(uint32_t);
+    }
     return mesh.cpuVertices.size() * sizeof(renderer::Vertex)
          + mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex)
          + mesh.cpuIndices.size() * sizeof(uint32_t)
-         + (clusters ? clusters->bytes.capacity() : 0);
+         + clusterBytes;
 }
 
 /// @brief 同期 importer (ModelAssetImporter) と同じ作り方で頂点・インデックスバッファを作る。

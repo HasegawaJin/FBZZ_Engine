@@ -18,6 +18,7 @@
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/RenderDebugOverlay.hpp>
 #include <Graphics/Renderer/Mesh.hpp>
+#include <Graphics/Renderer/MeshletGeometry.hpp>
 #include <Graphics/Renderer/Camera.hpp>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -141,8 +142,9 @@ protected:
     void End() { m_bundle.renderer->SetRenderTarget({},*m_resources); m_bundle.renderer->EndFrame(); m_frameOpen=false; }
     void Draw(const std::shared_ptr<r::RenderScene>& scene,int mode,bool shadow=false,bool forward=false,const r::GpuHiZ* hierarchy=nullptr)
     {
-        m_settings.gpuInstancing=mode!=0; m_settings.bulkInstanceGpuCulling=mode==2 || mode==3;
-        m_settings.geometryDrawMode=mode==3 ? r::GeometryDrawMode::GPU_INSTANCE_INDIRECT : mode==2 ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
+        m_settings.gpuInstancing=mode!=0; m_settings.bulkInstanceGpuCulling=mode==2 || mode==3 || mode==5;
+        m_settings.geometryDrawMode=mode>=4 ? r::GeometryDrawMode::MESH_SHADER
+            : mode==3 ? r::GeometryDrawMode::GPU_INSTANCE_INDIRECT : mode==2 ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
         r::RenderPassContext ctx{{},*m_bundle.renderer,*m_resources,m_camera,m_settings,m_target,UINT32_MAX,m_handles};
         ctx.renderScene=scene; ctx.width=m_width; ctx.height=m_height; ctx.isDeferred=true;
         ctx.taaJitterNdcX=m_jitterX; ctx.taaJitterNdcY=m_jitterY;
@@ -217,6 +219,51 @@ TEST_F(InstancedMeshTest, GpuCullingMatchesIndividualAndCpuInstancedPixelsAcross
         m_camera.m_position=position; m_camera.LookAt({0,0,4});
         const auto individual=Render(scene,0); Same(individual,Render(scene,1)); Same(individual,Render(scene,2)); Same(individual,Render(scene,3));
     }
+}
+
+TEST_F(InstancedMeshTest, ClusteredWindUsesCpuAndGpuSelectedPlacementIds)
+{
+    if (!m_bundle.renderer->SupportsMeshShaders() || !m_bundle.renderer->SupportsIndirectDraw())
+        GTEST_SKIP() << "Indirect mesh shaders unavailable";
+    const auto scene = Scene(130);
+    auto& input = scene->instances.front();
+    constexpr uint32_t CELLS = 24;
+    std::vector<r::Vertex> vertices;
+    std::vector<uint32_t> indices;
+    for (uint32_t y = 0; y <= CELLS; ++y) for (uint32_t x = 0; x <= CELLS; ++x) {
+        const float u = static_cast<float>(x) / CELLS;
+        const float v = static_cast<float>(y) / CELLS;
+        vertices.push_back({{(u - 0.5f) * 0.7f, (v - 0.5f) * 0.7f, 0.0f}, {0, 0, -1}, {1, 0, 0}, {u, v}});
+        if (x == CELLS || y == CELLS) continue;
+        const uint32_t i = y * (CELLS + 1u) + x;
+        indices.insert(indices.end(), {i, i + CELLS + 1u, i + 1u, i + 1u, i + CELLS + 1u, i + CELLS + 2u});
+    }
+    r::MeshletClusterData packed;
+    ASSERT_TRUE(r::MeshletGeometryBuilder::BuildClusters(vertices, indices, packed));
+    const auto cluster = std::make_shared<const r::MeshletClusterData>(std::move(packed));
+    const auto vb = m_resources->CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(r::Vertex), sizeof(r::Vertex));
+    const auto ib = m_resources->CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    ASSERT_TRUE(vb && ib);
+    input.localBoundsRadius = 1.5f;
+    input.lodHeights = {0.2f, 0, 0, 0};
+    for (auto& part : input.parts) {
+        auto& mesh = part.mesh;
+        mesh.vertexBuffer = vb;
+        mesh.indexBuffer = ib;
+        mesh.vertexCount = static_cast<uint32_t>(vertices.size());
+        mesh.indexCount = static_cast<uint32_t>(indices.size());
+        mesh.vertexStride = sizeof(r::Vertex);
+        mesh.clusterLod = cluster;
+        mesh.material.capabilities.gbufferEquivalentShader = true;
+        const std::array<float, 3> wind{0.15f, 1.7f, -1.0f};
+        std::memcpy(mesh.material.gbufferParams.data() + 68u, wind.data(), sizeof(wind));
+    }
+    m_time = 1.4f;
+    const auto reference = Render(scene, 1);
+    ASSERT_TRUE(std::any_of(reference.begin(), reference.end(), [](float value) { return value > 0.1f; }));
+    Same(reference, Render(scene, 4));
+    EXPECT_TRUE(m_resources->Rendering().Shared().meshletDraw.compactShader.IsValid());
+    Same(reference, Render(scene, 5));
 }
 
 TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlacementsOrShadows)

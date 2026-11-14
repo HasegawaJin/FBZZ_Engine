@@ -6,6 +6,7 @@
 #include "RenderScenePassHelpers.hpp"
 #include <Graphics/Pipeline/OcclusionCuller.hpp>
 #include <Graphics/Pipeline/GpuHiZ.hpp>
+#include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
 #include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
 #include <Graphics/Renderer/DynamicBufferPool.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
@@ -78,6 +79,14 @@ const RenderMaterial* MeshOcclusionMaterial(const RenderPassContext& ctx, const 
         || item.material.depthBias != 0 || item.material.depthBiasSlope != 0.0f
         || material.depthBias != 0 || material.depthBiasSlope != 0.0f) return nullptr;
     return &material;
+}
+
+bool UsesClusteredDepth(const RenderPassContext& ctx, const RenderObject& object, const RenderMeshItem& item)
+{
+    return ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER && ctx.frustumCullingEnabled
+        && ctx.isDeferred && ctx.renderer.SupportsMeshShaders()
+        && ResolveGeometryRoute(item.material.capabilities, true) == GeometryRoute::GBuffer
+        && CanUseGBufferClusterLod(object, item);
 }
 } /// @note namespace
 
@@ -177,7 +186,7 @@ bool DrawOpaqueOccluderDepth(RenderPassContext& ctx)
         for (uint32_t index = object.firstItem; index < object.firstItem + object.itemCount; ++index) {
             const auto& item = scene->items[index];
             const auto* material = MeshOcclusionMaterial(ctx, item);
-            if (!material || !material->shaderCapabilities.SupportsGBuffer()
+            if (!material || UsesClusteredDepth(ctx, object, item) || !material->shaderCapabilities.SupportsGBuffer()
                 || (ctx.isDeferred && ResolveGeometryRoute(item.material.capabilities, true) != GeometryRoute::GBuffer)
                 || !resources.Get(item.vertexBuffer) || !resources.Get(item.indexBuffer)) continue;
             float wind;
@@ -239,7 +248,7 @@ void CullOccludedMeshes(RenderPassContext& ctx, const GpuHiZ& hierarchy)
                 != VisibilityResult::VISIBLE) continue;
         for (uint32_t index = object.firstItem; index < object.firstItem + object.itemCount; ++index) {
             const auto& item = scene->items[index];
-            if (!MeshOcclusionMaterial(ctx, item)) continue;
+            if (!MeshOcclusionMaterial(ctx, item) || UsesClusteredDepth(ctx, object, item)) continue;
             ctx.gpuOcclusionArguments[index] = static_cast<uint32_t>(candidates.size());
             candidates.push_back({{bounds.center, bounds.radius}, item.indexCount});
         }

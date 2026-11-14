@@ -6,6 +6,7 @@
 #include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/ResourceHandle.hpp>
+#include <Math/Vector3.hpp>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -18,12 +19,29 @@ namespace fbzz::renderer {
 
 class ResourceManager;
 struct Vertex;
+struct SkinnedVertex;
+
+struct MeshletStreamPage {
+    uint32_t depth = 0;
+    std::vector<uint32_t> words;
+};
+
+inline constexpr uint32_t CLUSTER_MIN_TRIANGLES = 1024u;
 
 /// @note Import-owned packed geometry. The GPU blob is created only for a view using cluster LOD.
 struct MeshletClusterData {
     std::vector<uint8_t> bytes;
     uint32_t meshletCount = 0;
     uint32_t nodeOffsetBytes = 0;
+    std::vector<uint8_t> streamMetadata;
+    std::vector<uint32_t> streamTable;
+    std::vector<MeshletStreamPage> streamPages;
+    uint32_t streamNodeOffsetBytes = 0;
+    /// @note Maximum root error in bind-local units, used to request detail before it becomes visible.
+    float streamRootError = 0.0f;
+    math::Vector3 streamBoundsCenter{};
+    float streamBoundsRadius = 0.0f;
+    float maximumSkinWeightError = 0.0f;
 };
 
 /// @brief GPU meshlet descriptor shared with MeshletGeometry.hlsli.
@@ -55,6 +73,8 @@ class MeshletGeometryBuilder {
 public:
     /// @return False when the mesh cannot be safely simplified or exceeds packing limits.
     [[nodiscard]] FBZZ_GRAPHICS_API static bool BuildClusters(std::span<const Vertex> vertices,
+        std::span<const uint32_t> indices, MeshletClusterData& output);
+    [[nodiscard]] FBZZ_GRAPHICS_API static bool BuildClusters(std::span<const SkinnedVertex> vertices,
         std::span<const uint32_t> indices, MeshletClusterData& output);
 
     /// @brief Builds contiguous meshlets with at most 64 vertices and 126 triangles.
@@ -88,7 +108,7 @@ public:
                                ResourceHandle<BufferTag> indexBuffer,
                                uint32_t vertexCount, uint32_t vertexStride,
                                uint32_t indexCount, MeshletGeometry& outGeometry,
-                               const MeshletClusterData* clusters = nullptr);
+                               const MeshletClusterData* clusters = nullptr, bool paged = false);
 
     /// @brief Caches the selected terrain topology with conservative geometric normal cones.
     /// @note The source terrain vertex buffer uses the 44-byte position/normal/tangent/UV layout.
@@ -107,7 +127,7 @@ private:
     [[nodiscard]] bool PrepareImpl(ResourceManager& resources, ResourceHandle<BufferTag> vertexBuffer,
                                   ResourceHandle<BufferTag> indexBuffer, uint32_t vertexCount,
                                   uint32_t vertexStride, uint32_t indexCount, bool terrainCones,
-                                  MeshletGeometry& outGeometry, const MeshletClusterData* clusters);
+                                  MeshletGeometry& outGeometry, const MeshletClusterData* clusters, bool paged);
 
     struct InputKey {
         ResourceHandle<BufferTag> vertexBuffer{};
@@ -117,6 +137,7 @@ private:
         uint32_t indexCount = 0;
         bool terrainCones = false;
         bool clustered = false;
+        bool paged = false;
 
         bool operator==(const InputKey&) const = default;
     };

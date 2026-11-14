@@ -83,6 +83,14 @@ TEST_F(MeshletGeometryBuilderTest, ClusterLodReducesTrianglesAndKeepsEveryMixedL
     ASSERT_EQ(nodeBytes % sizeof(Node), 0u);
     std::vector<Node> nodes(nodeBytes / sizeof(Node));
     std::memcpy(nodes.data(), packed.bytes.data() + packed.nodeOffsetBytes, nodeBytes);
+    ASSERT_EQ(packed.streamTable.size(), nodes.size() + packed.meshletCount * 3u);
+    ASSERT_FALSE(packed.streamPages.empty());
+    EXPECT_EQ(packed.streamPages.front().depth, 0u);
+    ASSERT_EQ(packed.streamMetadata.size(), packed.streamNodeOffsetBytes + nodeBytes);
+    for (size_t page = 0; page < packed.streamPages.size(); ++page) {
+        EXPECT_LE(packed.streamPages[page].words.size() * sizeof(uint32_t), 64u * 1024u);
+        if (page != 0) EXPECT_GE(packed.streamPages[page].depth, packed.streamPages[page - 1].depth);
+    }
     using Edges = std::map<std::pair<uint32_t, uint32_t>, int>;
     std::vector<Edges> borders(nodes.size());
     std::vector<uint32_t> triangleCounts(nodes.size());
@@ -90,11 +98,23 @@ TEST_F(MeshletGeometryBuilderTest, ClusterLodReducesTrianglesAndKeepsEveryMixedL
         const auto meshlet = ReadDescriptor(packed.bytes, i);
         const uint32_t node = std::bit_cast<uint32_t>(meshlet.boundsMin[3]);
         ASSERT_LT(node, nodes.size());
+        const size_t row = nodes.size() + i * 3u;
+        ASSERT_LT(packed.streamTable[row], packed.streamPages.size());
+        const auto& page = packed.streamPages[packed.streamTable[row]];
+        const auto vertexWord = packed.streamTable[row + 1];
+        const auto primitiveWord = packed.streamTable[row + 2];
+        EXPECT_EQ(page.depth, packed.streamTable[node]);
+        EXPECT_EQ(std::bit_cast<uint32_t>(ReadDescriptor(packed.streamMetadata, i).boundsMax[3]), i);
+        ASSERT_LE(vertexWord + meshlet.vertexCount, page.words.size());
+        ASSERT_LE(primitiveWord + meshlet.primitiveCount * 3u, page.words.size());
+        for (uint32_t vertex = 0; vertex < meshlet.vertexCount; ++vertex)
+            EXPECT_EQ(page.words[vertexWord + vertex], ReadUint32(packed.bytes, meshlet.vertexOffsetBytes + vertex * 4u));
         triangleCounts[node] += meshlet.primitiveCount;
         for (uint32_t tri = 0; tri < meshlet.primitiveCount; ++tri) {
             std::array<uint32_t, 3> global{};
             for (uint32_t c = 0; c < global.size(); ++c) {
                 const uint32_t local = ReadUint32(packed.bytes, meshlet.primitiveOffsetBytes + (tri * 3 + c) * 4);
+                EXPECT_EQ(page.words[primitiveWord + tri * 3u + c], local);
                 global[c] = ReadUint32(packed.bytes, meshlet.vertexOffsetBytes + local * 4);
             }
             for (size_t c = 0; c < global.size(); ++c) {
@@ -111,11 +131,13 @@ TEST_F(MeshletGeometryBuilderTest, ClusterLodReducesTrianglesAndKeepsEveryMixedL
         const auto& node = nodes[i];
         if (node.error == 0.0f) fineTriangles += triangleCounts[i];
         if (node.parent == UINT32_MAX) {
+            EXPECT_EQ(packed.streamTable[i], 0u);
             coarseTriangles += triangleCounts[i];
             continue;
         }
         ASSERT_GT(node.parent, i);
         ASSERT_LT(node.parent, nodes.size());
+        EXPECT_EQ(packed.streamTable[i], packed.streamTable[node.parent] + 1u);
         EXPECT_GT(nodes[node.parent].error, node.error);
         childTriangles[node.parent] += triangleCounts[i];
         for (const auto& [edge, orientation] : borders[i]) childBorders[node.parent][edge] += orientation;

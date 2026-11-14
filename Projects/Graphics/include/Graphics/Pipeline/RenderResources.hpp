@@ -190,7 +190,27 @@ struct MeshletDrawResources {
     bool shadowShaderAttempted = false;
     ResourceHandle<ShaderTag> gbufferShader{};
     ResourceHandle<ShaderTag> shadowShader{};
+    ResourceHandle<ShaderTag> maskedShadowShader{};
+    bool maskedShadowShaderAttempted = false;
     ResourceHandle<ConstantBufferTag> geometryConstants{};
+    ResourceHandle<ConstantBufferTag> windFrame{};
+    uint64_t windFrameStamp = UINT64_MAX;
+    ResourceHandle<ShaderTag> compactShader{}, resetShader{};
+    DynamicRWStructuredBufferPool compactIds{32}, compactArguments{1};
+    struct Stream {
+        std::weak_ptr<const MeshletClusterData> source;
+        std::vector<ResourceHandle<StructuredBufferTag>> pages;
+        std::vector<uint32_t> descriptors;
+        ResourceHandle<StructuredBufferTag> table;
+        uint32_t tableDepth = UINT32_MAX;
+        uint64_t lastFrame = 0;
+        size_t nextPage = 0;
+        size_t bytes = 0;
+    };
+    std::unordered_map<uint64_t, Stream> streams;
+    size_t streamBytes = 0;
+    size_t uploadedBytes = 0;
+    uint64_t streamFrame = UINT64_MAX;
 };
 
 /// @note GPU 実体は ResourceManager が所有し、この状態も同じ Manager の Reset/終了時に破棄する。
