@@ -1,9 +1,7 @@
-/**
- * @file BuildGameHub.mjs
- * @brief SDK の最新性を検証し、Vite 生成物と Electron ランタイムを構成別パッケージへ組み立てる。
- * @author Hasegawa Jin
- * @date 2026/07/20
- */
+/// @file    BuildGameHub.mjs
+/// @brief   SDK の最新性を検証し、Vite 生成物と Electron ランタイムを構成別パッケージへ組み立てる。
+/// @author  Hasegawa Jin
+/// @date    2026/07/20
 
 import { createHash } from 'node:crypto';
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -17,14 +15,14 @@ const require = createRequire(import.meta.url);
 const ViteConfigGenerator = require('@electron-forge/plugin-vite/dist/ViteConfig.js').default;
 const { createPackage, getRawHeader } = require('@electron/asar');
 const { flipFuses, FuseV1Options, FuseVersion } = require('@electron/fuses');
-const { NtExecutable, NtExecutableResource, Resource } = require('resedit');
+const { Data, NtExecutable, NtExecutableResource, Resource } = require('resedit');
 const VALID_CONFIGURATIONS = new Set(['Debug', 'Development', 'Release']);
 
-// exe内でasarハッシュを保持するリソース。Electronのarchive_win.cppがこの型とIDで探す。
+/// @see https://github.com/electron/electron/blob/main/shell/common/asar/archive_win.cc Electron が照合する ASAR リソース。
 const INTEGRITY_RESOURCE_TYPE = 'INTEGRITY';
 const INTEGRITY_RESOURCE_ID = 'ELECTRONASAR';
 
-/** Forge Vite Pluginと同じ基底設定を生成し、main・preload・rendererを本番形式でビルドする。 */
+/// @note 開発サーバーと同じ Forge Vite Plugin の基底設定を使う。
 async function BuildVite(projectRoot) {
   const pluginConfig = {
     build: [
@@ -44,15 +42,8 @@ async function BuildVite(projectRoot) {
   await Promise.all(rendererConfigs.map((config) => BuildViteBundle(config)));
 }
 
-/**
- * app.asarヘッダーのSHA-256をexeのリソースへ書き込む。
- *
- * WHY: EnableEmbeddedAsarIntegrityValidationを立てたexeは起動直後にこのリソースを
- *      FindResourceで引く。書き忘れると照合以前に «FindResource failed» のFATALで
- *      落ち、アプリのコードへ到達しない。@electron/packagerはこれをresedit工程で
- *      行うが、本スクリプトはElectron本体を手で組むためここで補う。
- */
-async function WriteAsarIntegrity(executablePath, packageRoot, asarPath) {
+/// @note EnableEmbeddedAsarIntegrityValidation を有効にする Release では起動時にこのリソースが必須。
+function AddAsarIntegrity(entries, packageRoot, asarPath) {
   const { headerString } = getRawHeader(asarPath);
   const integrity = [{
     file: path.win32.relative(packageRoot, asarPath),
@@ -60,9 +51,7 @@ async function WriteAsarIntegrity(executablePath, packageRoot, asarPath) {
     value: createHash('SHA256').update(headerString).digest('hex'),
   }];
 
-  const executable = NtExecutable.from(await readFile(executablePath));
-  const resources = NtExecutableResource.from(executable);
-  const versionInfo = Resource.VersionInfo.fromEntries(resources.entries);
+  const versionInfo = Resource.VersionInfo.fromEntries(entries);
   if (versionInfo.length !== 1) {
     throw new Error('Electron本体のバージョンリソースを特定できませんでした。');
   }
@@ -71,24 +60,45 @@ async function WriteAsarIntegrity(executablePath, packageRoot, asarPath) {
     throw new Error('Electron本体の言語リソースを特定できませんでした。');
   }
 
-  resources.entries.push({
+  entries.push({
     type: INTEGRITY_RESOURCE_TYPE,
     id: INTEGRITY_RESOURCE_ID,
     bin: Buffer.from(JSON.stringify(integrity), 'utf-8'),
     lang: languages[0].lang,
     codepage: languages[0].codepage,
   });
+}
+
+/// @note Fuse の変更前に PE リソースを更新する。resedit による再生成は Fuse の変更を保持しない。
+/// @see https://github.com/electron/packager/blob/main/src/resedit.ts Electron Packager の既存アイコングループ置換。
+async function WriteExecutableResources(executablePath, iconPath, packageRoot, asarPath) {
+  const executable = NtExecutable.from(await readFile(executablePath));
+  const resources = NtExecutableResource.from(executable);
+  const iconGroups = Resource.IconGroupEntry.fromEntries(resources.entries);
+  if (iconGroups.length !== 1) {
+    throw new Error('Electron本体のアイコングループを特定できませんでした。');
+  }
+
+  const [iconGroup] = iconGroups;
+  const icon = Data.IconFile.from(await readFile(iconPath));
+  Resource.IconGroupEntry.replaceIconsForResource(
+    resources.entries, iconGroup.id, iconGroup.lang, icon.icons.map((item) => item.data),
+  );
+  if (asarPath) {
+    AddAsarIntegrity(resources.entries, packageRoot, asarPath);
+  }
   resources.outputResource(executable);
   await writeFile(executablePath, Buffer.from(executable.generate()));
 }
 
-/** Electron本体、アプリ、Templatesを配置し、配布構成に応じてASARとFuseを適用する。 */
 async function AssemblePackage(projectRoot, configuration) {
   const configurationRoot = path.join(projectRoot, 'out', configuration);
   const packageRoot = path.join(configurationRoot, 'FBZZGameHub-win32-x64');
   const stagingRoot = path.join(configurationRoot, '.app-staging');
   const resourcesRoot = path.join(packageRoot, 'resources');
   const executablePath = path.join(packageRoot, 'FBZZGameHub.exe');
+  const iconPath = path.join(projectRoot, 'Branding', 'GameHub.ico');
+  const asarPath = configuration === 'Release' ? path.join(resourcesRoot, 'app.asar') : null;
 
   await rm(configurationRoot, { recursive: true, force: true });
   await mkdir(configurationRoot, { recursive: true });
@@ -119,17 +129,15 @@ async function AssemblePackage(projectRoot, configuration) {
       return !(relativeParts.length >= 2 && generatedTemplateRoots.has(relativeParts[1]));
     },
   });
-  if (configuration === 'Release') {
-    const asarPath = path.join(resourcesRoot, 'app.asar');
+  if (asarPath) {
     await createPackage(stagingRoot, asarPath);
     await rm(stagingRoot, { recursive: true, force: true });
-    // WHY flipFuses より前か: reseditはPE全体を作り直すため、後から掛けるとfuseの書き換えが消える。
-    await WriteAsarIntegrity(executablePath, packageRoot, asarPath);
   } else {
     await rename(stagingRoot, path.join(resourcesRoot, 'app'));
   }
   await rm(path.join(resourcesRoot, 'default_app.asar'), { force: true });
 
+  await WriteExecutableResources(executablePath, iconPath, packageRoot, asarPath);
   await flipFuses(executablePath, {
     version: FuseVersion.V1,
     [FuseV1Options.RunAsNode]: false,
@@ -142,11 +150,10 @@ async function AssemblePackage(projectRoot, configuration) {
   return executablePath;
 }
 
-/** 引数を検証し、Node.js 24でも完了を保証できる構成別ビルドを実行する。 */
 async function RunBuild() {
   const configuration = process.argv[2];
   if (!VALID_CONFIGURATIONS.has(configuration)) {
-  console.error('ビルド構成はDebug、Development、Releaseのいずれかを指定してください。');
+    console.error('ビルド構成はDebug、Development、Releaseのいずれかを指定してください。');
     return 1;
   }
 
