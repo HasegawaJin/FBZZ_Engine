@@ -6,6 +6,8 @@
 #include <Graphics/Pipeline/RenderConstants.hpp>
 #include <Graphics/Renderer/SurfacePatchLod.hpp>
 #include <array>
+#include <memory>
+#include <span>
 namespace fbzz::renderer {
 struct WaterStripIndices {
     ResourceHandle<BufferTag> buffer;
@@ -20,6 +22,20 @@ struct RenderWaterPatch {
     math::Vector3 aabbMax;
     WaterStripIndices strip{};
 };
+
+/// @note Bounds enclose the finest source geometry in local space. Descendants occupy a contiguous postorder range.
+struct WaterSurfaceCluster {
+    math::Vector3 boundsMin, boundsMax;
+    float error = 0.0f;
+    uint32_t firstDescendant = 0;
+    uint32_t startIndex = 0, indexCount = 0;
+};
+
+/// @note Index ranges are relative to the generated index stream. Protected vertices retain their complete incident topology.
+[[nodiscard]] FBZZ_GRAPHICS_API bool BuildWaterSurfaceClusters(std::span<const WaterVertex> vertices,
+    std::span<const uint32_t> indices, std::span<const uint8_t> protectedVertices,
+    std::vector<WaterSurfaceCluster>& outClusters, std::vector<uint32_t>& outIndices);
+
 struct WaterWaveMargin {
     float horizontal = 0.0f;
     float vertical   = 0.0f;
@@ -79,6 +95,10 @@ struct RenderWaterInput {
     ResourceHandle<ConstantBufferTag> appearanceParameters;
     std::array<ResourceHandle<TextureTag>, 8> appearanceTextures{};
     std::vector<RenderWaterPatch> patches;
+    /// @note Spline and Zone LOD uses the single patch's vertex buffer unless the Zone needs per-triangle material payloads.
+    std::shared_ptr<const std::vector<WaterSurfaceCluster>> surfaceClusters;
+    ResourceHandle<BufferTag> surfaceClusterIndices;
+    ResourceHandle<BufferTag> surfaceClusterVertices;
     /// @note GPU 実体は抽出側が所有し、選択結果は描画ビューごとに作る。
     bool adaptivePatchLod = false;
     /// @note 保存済み opt-in。selection mask を含む全ビューで色 pass と同じ morph を使う。

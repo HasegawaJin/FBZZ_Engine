@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #include "StaticClusterLod.hpp"
+#include <Graphics/Effects/RenderWaterInput.hpp>
 
 #include <algorithm>
 #include <array>
@@ -388,6 +389,53 @@ bool BuildStaticClusterLod(std::span<const SkinnedVertex> vertices, std::span<co
         groups.push_back(group->second);
     }
     return BuildClusterLod(positions, indices, {}, false, output, groups);
+}
+
+bool BuildWaterSurfaceClusters(std::span<const WaterVertex> vertices, std::span<const uint32_t> indices,
+    std::span<const uint8_t> protectedVertices, std::vector<WaterSurfaceCluster>& outClusters,
+    std::vector<uint32_t>& outIndices)
+{
+    if (indices.size() / 3 <= STATIC_CLUSTER_LEAF_TRIANGLES
+        || indices.size() / 3 > STATIC_CLUSTER_MAX_SOURCE_TRIANGLES || vertices.size() > indices.size())
+        return false;
+    std::vector<Vector3> positions;
+    positions.reserve(vertices.size());
+    for (const auto& vertex : vertices) positions.push_back(vertex.position);
+    StaticClusterBuild hierarchy;
+    if (!BuildClusterLod(positions, indices, protectedVertices, true, hierarchy)) return false;
+
+    std::vector<WaterSurfaceCluster> clusters(hierarchy.nodes.size());
+    for (uint32_t i = 0; i < clusters.size(); ++i) clusters[i].firstDescendant = i;
+    for (uint32_t i = 0; i < clusters.size(); ++i) {
+        const auto& node = hierarchy.nodes[i];
+        auto& cluster = clusters[i];
+        cluster.boundsMin = node.boundsMin;
+        cluster.boundsMax = node.boundsMax;
+        cluster.error = node.error;
+        if (node.parent != UINT32_MAX) {
+            auto& first = clusters[node.parent].firstDescendant;
+            first = (std::min)(first, cluster.firstDescendant);
+        }
+    }
+    std::vector<uint32_t> orderedIndices;
+    orderedIndices.reserve(hierarchy.indices.size());
+    /// @note Contiguous leaf ranges merge into a single draw when all fine clusters are visible.
+    for (bool leaves : {true, false}) {
+        size_t begin = 0;
+        for (const auto& range : hierarchy.ranges) {
+            auto& cluster = clusters[range.node];
+            if ((cluster.firstDescendant == range.node) == leaves) {
+                cluster.startIndex = static_cast<uint32_t>(orderedIndices.size());
+                cluster.indexCount = static_cast<uint32_t>(range.endIndex - begin);
+                orderedIndices.insert(orderedIndices.end(), hierarchy.indices.begin() + begin,
+                    hierarchy.indices.begin() + range.endIndex);
+            }
+            begin = range.endIndex;
+        }
+    }
+    outClusters = std::move(clusters);
+    outIndices = std::move(orderedIndices);
+    return true;
 }
 
 } /// @note namespace fbzz::renderer

@@ -2292,6 +2292,91 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
     depthCopy.Release(resources);
 }
 
+TEST_F(WaterFarRenderPassTest, SplineClustersReduceDistantTrianglesAndMatchTheSelectionMask)
+{
+    FarPassRenderer backend;
+    renderer::ResourceManager resources(backend);
+    renderer::Camera camera;
+    camera.m_position = {8.0f, 4.0f, -16.0f};
+    camera.m_far = 20000.0f;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::SizedRenderTarget colorCopy, depthCopy;
+    handles.waterSceneColorRT = &colorCopy;
+    handles.waterSceneDepthRT = &depthCopy;
+    handles.selectionMaskPSO = resources.CreatePipelineState({renderer::RasterizerMode::SOLID_NOCULL,
+        renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON});
+    auto scene = std::make_shared<renderer::RenderScene>();
+    auto& water = scene->water.emplace_back();
+    water.selected = true;
+    water.aabbMax = {16.0f, 0.0f, 16.0f};
+    water.constants.worldMatrix = math::Matrix4::Identity();
+    water.margin = {0.5f, 0.5f};
+    water.shader = resources.LoadShader("Assets/Shaders/Arbitrary/ProjectAppearance.hlsl");
+    ASSERT_TRUE(resources.GetShaderCapabilities(water.shader).SupportsWaterGeometry());
+
+    constexpr uint32_t cells = 16;
+    std::vector<renderer::WaterVertex> vertices;
+    for (uint32_t z = 0; z <= cells; ++z)
+        for (uint32_t x = 0; x <= cells; ++x)
+            vertices.push_back({{static_cast<float>(x), 0.0f, static_cast<float>(z)}, {},
+                {3.0f, 0.0f, 1.5f, 1.0f}});
+    std::vector<uint32_t> indices;
+    ASSERT_TRUE(renderer::BuildSurfacePatchIndices(cells, 0, indices));
+    auto clusters = std::make_shared<std::vector<renderer::WaterSurfaceCluster>>();
+    std::vector<uint32_t> clusterIndices;
+    ASSERT_TRUE(renderer::BuildWaterSurfaceClusters(vertices, indices, {}, *clusters, clusterIndices));
+    ASSERT_GT(clusters->back().error, 0.0f);
+    const auto vb = resources.CreateVertexBuffer(vertices.data(), vertices.size() * sizeof(renderer::WaterVertex),
+        sizeof(renderer::WaterVertex));
+    const auto ib = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    water.patches.push_back({vb, ib, static_cast<uint32_t>(indices.size()), {}, water.aabbMax});
+    water.surfaceClusters = clusters;
+    water.surfaceClusterIndices = resources.CreateIndexBuffer(clusterIndices.data(),
+        static_cast<uint32_t>(clusterIndices.size()));
+    ASSERT_TRUE(water.surfaceClusterIndices.IsValid());
+
+    renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+    context.renderScene = scene;
+    context.width = context.height = 64;
+    context.frustumCullingEnabled = false;
+    context.selectionOutlineEnabled = true;
+    const auto hdr = resources.CreateRenderTarget(64, 64, renderer::CameraDepthTargetDesc(1));
+    context.resourceRegistry.BindTarget("HDR", hdr);
+    context.resourceRegistry.BindTarget("ShadowMap", hdr);
+    renderer::WaterRenderPass pass;
+    renderer::PassBuilder builder;
+    pass.Setup(builder, context);
+    renderer::PassResources passResources(context.resourceRegistry, builder.Accesses(), pass.Name());
+    context.passResources = &passResources;
+    const auto colorRanges = [&] {
+        backend.submittedCalls.clear();
+        pass.Execute(passResources, context);
+        std::vector<std::pair<uint32_t, uint32_t>> ranges;
+        for (const auto& draw : backend.submittedCalls)
+            if (draw.shader == water.shader) ranges.emplace_back(draw.startIndex, draw.indexCount);
+        return ranges;
+    };
+    const std::vector<std::pair<uint32_t, uint32_t>> full{{0u, static_cast<uint32_t>(indices.size())}};
+    EXPECT_EQ(colorRanges(), full);
+    settings.geometryDrawMode = renderer::GeometryDrawMode::MESH_SHADER;
+    EXPECT_EQ(colorRanges(), full);
+    camera.m_position.z = -12000.0f;
+    const auto distant = colorRanges();
+    ASSERT_FALSE(distant.empty());
+    size_t distantIndexCount = 0;
+    for (const auto& range : distant) distantIndexCount += range.second;
+    EXPECT_LT(distantIndexCount, indices.size());
+    backend.submittedCalls.clear();
+    renderer::WaterSelectionMaskSystem(context);
+    std::vector<std::pair<uint32_t, uint32_t>> selection;
+    for (const auto& draw : backend.submittedCalls)
+        if (draw.indexBuffer == water.surfaceClusterIndices) selection.emplace_back(draw.startIndex, draw.indexCount);
+    EXPECT_EQ(selection, distant);
+    colorCopy.Release(resources);
+    depthCopy.Release(resources);
+}
+
 TEST_F(WaterFarRenderPassTest, UnderwaterVolumeIsRecordedBeforeCompositeAndBoundOnlyAfterSuccess)
 {
     FarPassRenderer backend;

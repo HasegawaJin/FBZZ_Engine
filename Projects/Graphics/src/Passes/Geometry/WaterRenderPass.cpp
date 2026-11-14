@@ -13,6 +13,7 @@
 #include <Graphics/Renderer/ShaderPathResolver.hpp>
 #include <Graphics/Pipeline/RenderResources.hpp>
 #include <Core/Logger.hpp>
+#include <Core/Profiler/ProfileScope.hpp>
 #include <Core/Util/StringUtils.hpp>
 #include "../../Renderer/GpuCullDrawQueue.hpp"
 #include "WaterNoiseBake.hpp"
@@ -300,6 +301,7 @@ struct WaterRasterIndices {
     ResourceHandle<BufferTag> buffer;
     uint32_t count = 0;
     uint32_t stripTriangleCount = 0;
+    uint32_t startIndex = 0;
 
     bool operator==(const WaterRasterIndices&) const = default;
 
@@ -308,6 +310,7 @@ struct WaterRasterIndices {
         call.indexBuffer = buffer;
         call.indexCount = count;
         call.stripTriangleCount = stripTriangleCount;
+        call.startIndex = startIndex;
         if (stripTriangleCount != 0) call.topology = PrimitiveTopology::TRIANGLE_STRIP;
     }
 };
@@ -318,6 +321,36 @@ WaterRasterIndices SelectWaterRasterIndices(ResourceHandle<BufferTag> list, uint
     if (useStrip && strip.buffer.IsValid() && strip.count >= 3u)
         return {strip.buffer, strip.count, listCount / 3u};
     return {list, listCount};
+}
+
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-meshing-system-and-surface-rendering-in-unreal-engine View-dependent water mesh density.
+/// @note The error includes both samples of the shader displacement. A near-plane crossing always retains the fine cut.
+bool WaterClusterErrorFits(const WaterSurfaceCluster& cluster, const math::Matrix4& localToClip,
+    const math::Matrix4& worldToClip, const WaterWaveMargin& margin, uint32_t width, uint32_t height)
+{
+    const auto center = (cluster.boundsMin + cluster.boundsMax) * 0.5f;
+    const auto extent = (cluster.boundsMax - cluster.boundsMin) * 0.5f;
+    std::array<float, 4> clipCenter{}, clipExtent{}, clipError{};
+    for (size_t row = 0; row < 4; ++row) {
+        const float* local = localToClip.m[row];
+        const float* world = worldToClip.m[row];
+        const float wave = (std::abs(world[0]) + std::abs(world[2])) * margin.horizontal
+            + std::abs(world[1]) * margin.vertical;
+        clipCenter[row] = local[0] * center.x + local[1] * center.y + local[2] * center.z + local[3];
+        clipExtent[row] = std::abs(local[0]) * extent.x + std::abs(local[1]) * extent.y
+            + std::abs(local[2]) * extent.z;
+        clipError[row] = math::Vector3{local[0], local[1], local[2]}.Length() * cluster.error + 2.0f * wave;
+    }
+    const float minW = clipCenter[3] - clipExtent[3];
+    if (!(minW > clipError[3] + 1.0e-6f)
+        || !(minW - clipCenter[2] > clipExtent[2] + clipError[2] + clipError[3])) return false;
+    const auto pixelError = [&](size_t row, uint32_t size) {
+        const float maxNdc = (std::abs(clipCenter[row]) + clipExtent[row]) / minW;
+        return (clipError[row] + maxNdc * clipError[3]) * (0.5f * static_cast<float>(size))
+            / (minW - clipError[3]);
+    };
+    const float error = std::hypot(pixelError(0, width), pixelError(1, height));
+    return std::isfinite(error) && error <= 1.0f;
 }
 
 template<class Submit>
@@ -346,6 +379,63 @@ void VisitWaterPatches(const RenderWaterInput& input, RenderPassContext& ctx, bo
     };
     cb.wvpMatrix = MakeJitteredProjection(camera, cameraOverride ? 0.0f : ctx.taaJitterNdcX,
         cameraOverride ? 0.0f : ctx.taaJitterNdcY) * camera.GetViewMatrix() * cb.worldMatrix;
+    if (ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER && input.surfaceClusters
+        && !input.surfaceClusters->empty() && input.surfaceClusterIndices.IsValid()
+        && input.patches.size() == 1u && ctx.width > 0 && lodViewportHeight > 0) {
+        FBZZ_PROFILE_SCOPE("WaterRender::ClusterSelection");
+        const auto& patch = input.patches.front();
+        const auto& clusters = *input.surfaceClusters;
+        const auto vertexBuffer = input.surfaceClusterVertices.IsValid()
+            ? input.surfaceClusterVertices : patch.vertexBuffer;
+        const auto worldToClip = lodCamera.GetGpuViewProjection();
+        const auto localToClip = worldToClip * cb.worldMatrix;
+        const float waveRadius = std::hypot(input.margin.horizontal * std::sqrt(2.0f), input.margin.vertical);
+        cb.patchCellSize = {};
+        std::vector<const WaterSurfaceCluster*> selected;
+        selected.reserve(clusters.size() / 2 + 1);
+        uint32_t selectedFineIndices = 0;
+        for (size_t end = clusters.size(); end > 0;) {
+            const auto& cluster = clusters[end - 1];
+            if (countStatistics) ++ctx.statsTotalObjects;
+            if (frustumEnabled && !AabbVisible(*frustum, cb.worldMatrix,
+                    cluster.boundsMin, cluster.boundsMax, input.margin)) {
+                if (countStatistics) ++ctx.statsFrustumCulled;
+            } else if (!occluded(cluster.boundsMin, cluster.boundsMax, waveRadius)) {
+                const bool leaf = cluster.firstDescendant == end - 1;
+                if (leaf || WaterClusterErrorFits(
+                        cluster, localToClip, worldToClip, input.margin, ctx.width, lodViewportHeight)) {
+                    selected.push_back(&cluster);
+                    if (leaf) selectedFineIndices += cluster.indexCount;
+                    end = cluster.firstDescendant;
+                    continue;
+                }
+                --end;
+                continue;
+            }
+            /// @note A rejected parent also encloses every finer candidate.
+            end = cluster.firstDescendant;
+        }
+        if (selectedFineIndices == patch.indexCount) {
+            /// @note The complete fine cut uses the original triangle order for overlapping displaced water.
+            submit(patch.vertexBuffer, WaterRasterIndices{patch.indexBuffer, patch.indexCount},
+                cb, patch.aabbMin, patch.aabbMax);
+            return;
+        }
+        std::sort(selected.begin(), selected.end(), [](const auto* a, const auto* b) {
+            return a->startIndex < b->startIndex;
+        });
+        WaterRasterIndices range{input.surfaceClusterIndices};
+        for (const auto* cluster : selected) {
+            if (range.count && range.startIndex + range.count != cluster->startIndex) {
+                submit(vertexBuffer, range, cb, patch.aabbMin, patch.aabbMax);
+                range.count = 0;
+            }
+            if (!range.count) range.startIndex = cluster->startIndex;
+            range.count += cluster->indexCount;
+        }
+        if (range.count) submit(vertexBuffer, range, cb, patch.aabbMin, patch.aabbMax);
+        return;
+    }
     if (input.adaptivePatchLod) {
         if (!input.patchVertexBuffer.IsValid()) return;
         SurfacePatchSurface surface;

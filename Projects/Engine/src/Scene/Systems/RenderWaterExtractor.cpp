@@ -172,6 +172,10 @@ struct WaterPatchGrid {
 struct WaterMesh {
     std::vector<WaterChunk> chunks;
     std::shared_ptr<WaterPatchGrid> patchGrid;
+    std::shared_ptr<const std::vector<renderer::WaterSurfaceCluster>> surfaceClusters;
+    renderer::ResourceHandle<renderer::BufferTag> surfaceClusterIndices;
+    renderer::ResourceHandle<renderer::BufferTag> surfaceClusterVertices;
+    bool surfaceClustersAttempted = false;
     bool stripsReady = false;
     math::Vector3 aabbMin;
     math::Vector3 aabbMax;
@@ -310,6 +314,8 @@ void ReleaseWaterMesh(WaterMesh& mesh, renderer::ResourceManager& resources)
         if (chunk.indexBuffer.IsValid()) resources.Release(chunk.indexBuffer);
         if (chunk.strip.buffer.IsValid()) resources.Release(chunk.strip.buffer);
     }
+    if (mesh.surfaceClusterIndices.IsValid()) resources.Release(mesh.surfaceClusterIndices);
+    if (mesh.surfaceClusterVertices.IsValid()) resources.Release(mesh.surfaceClusterVertices);
     mesh = {};
 }
 
@@ -386,7 +392,7 @@ std::shared_ptr<WaterPatchGrid> AcquireWaterPatchGrid(uint32_t cells, WaterRende
 }
 
 void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterRenderCache& cache,
-    renderer::ResourceManager& resources)
+    renderer::ResourceManager& resources, bool buildSurfaceClusters)
 {
     assert(water.resolutionX > 0);
     assert(water.resolutionZ > 0);
@@ -411,6 +417,7 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterRenderCac
 
         const auto* zone = water.simulationZoneSnapshot.get();
         const bool blendMaterials = zone && zone->materials.size() == snapshot.vertices.size();
+        mesh.surfaceClustersAttempted = buildSurfaceClusters;
         std::vector<WaterVertex> vertices;
         vertices.reserve(blendMaterials ? snapshot.triangles.size() * 3u : snapshot.vertices.size());
         const float depthCap = (std::max)(water.buoyancyDepth, 0.0f);
@@ -423,25 +430,30 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterRenderCac
                 source.worldVelocity.x, source.worldVelocity.z, 1.0f + source.horizonMaterialWeight};
             return vertex;
         };
+        const auto appendZoneTriangle = [&](std::span<const uint32_t, 3> triangle,
+            std::vector<WaterVertex>& outputVertices) {
+            static_assert(WATER_ZONE_MAX_BODIES == 32);
+            uint32_t receivers = 0, sources = 0;
+            for (uint32_t corner = 0; corner < 3u; ++corner) {
+                const auto& profile = zone->materials[triangle[corner]];
+                receivers |= profile.receiver << (corner * 5u);
+                sources |= profile.source << (corner * 5u);
+            }
+            for (uint32_t corner = 0; corner < 3u; ++corner) {
+                const uint32_t index = triangle[corner];
+                WaterVertex vertex = makeVertex(snapshot.vertices[index]);
+                vertex.zoneMaterial = {static_cast<float>(receivers), static_cast<float>(sources),
+                    static_cast<float>(corner + 1u), zone->materials[index].sourceWeight};
+                outputVertices.push_back(vertex);
+            }
+        };
         std::vector<uint32_t> indices;
         indices.reserve(snapshot.triangles.size() * 3u);
         if (blendMaterials) {
-            static_assert(WATER_ZONE_MAX_BODIES == 32);
             for (const auto& triangle : snapshot.triangles) {
-                uint32_t receivers = 0, sources = 0;
-                for (uint32_t corner = 0; corner < 3u; ++corner) {
-                    const auto& profile = zone->materials[triangle.indices[corner]];
-                    receivers |= profile.receiver << (corner * 5u);
-                    sources |= profile.source << (corner * 5u);
-                }
-                for (uint32_t corner = 0; corner < 3u; ++corner) {
-                    const uint32_t index = triangle.indices[corner];
-                    WaterVertex vertex = makeVertex(snapshot.vertices[index]);
-                    vertex.zoneMaterial = {static_cast<float>(receivers), static_cast<float>(sources),
-                        static_cast<float>(corner + 1u), zone->materials[index].sourceWeight};
-                    indices.push_back(static_cast<uint32_t>(vertices.size()));
-                    vertices.push_back(vertex);
-                }
+                const auto first = static_cast<uint32_t>(vertices.size());
+                indices.insert(indices.end(), {first, first + 1u, first + 2u});
+                appendZoneTriangle(triangle.indices, vertices);
             }
         } else {
             for (const auto& source : snapshot.vertices) vertices.push_back(makeVertex(source));
@@ -457,6 +469,59 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterRenderCac
         chunk.aabbMin = snapshot.localBoundsMin;
         chunk.aabbMax = snapshot.localBoundsMax;
         mesh.chunks.push_back(std::move(chunk));
+        if (!buildSurfaceClusters) return;
+
+        std::vector<WaterVertex> sharedVertices;
+        std::vector<uint32_t> sharedIndices;
+        if (blendMaterials) {
+            sharedVertices.reserve(snapshot.vertices.size());
+            for (const auto& source : snapshot.vertices) sharedVertices.push_back(makeVertex(source));
+            sharedIndices.reserve(indices.size());
+            for (const auto& triangle : snapshot.triangles)
+                sharedIndices.insert(sharedIndices.end(), triangle.indices.begin(), triangle.indices.end());
+        }
+        std::vector<uint8_t> protectedVertices(snapshot.vertices.size());
+        for (const auto& triangle : snapshot.triangles) {
+            bool preserve = false;
+            bool underDepthCap = false, overDepthCap = false;
+            for (uint32_t index : triangle.indices) {
+                const auto& source = snapshot.vertices[index];
+                preserve |= source.horizonMaterialWeight > 0.0f;
+                underDepthCap |= source.depth < depthCap;
+                overDepthCap |= source.depth > depthCap;
+                if (blendMaterials) {
+                    const auto& first = zone->materials[triangle.indices[0]];
+                    const auto& current = zone->materials[index];
+                    preserve |= first.receiver != current.receiver || first.source != current.source
+                        || first.sourceWeight != current.sourceWeight;
+                }
+            }
+            if (preserve || (underDepthCap && overDepthCap))
+                for (uint32_t index : triangle.indices) protectedVertices[index] = 1u;
+        }
+        auto clusters = std::make_shared<std::vector<renderer::WaterSurfaceCluster>>();
+        std::vector<uint32_t> clusterIndices;
+        if (!renderer::BuildWaterSurfaceClusters(
+                blendMaterials ? sharedVertices : vertices, blendMaterials ? sharedIndices : indices,
+                protectedVertices, *clusters, clusterIndices)) return;
+        if (blendMaterials) {
+            /// @note Original mixed-material triangles need their three corner payloads. Every new triangle
+            /// @note only uses unmodified uniform material regions, but still needs per-corner interpolation.
+            std::vector<WaterVertex> clusterVertices;
+            clusterVertices.reserve(clusterIndices.size());
+            for (size_t i = 0; i < clusterIndices.size(); i += 3) {
+                const std::span<uint32_t, 3> triangle(clusterIndices.data() + i, 3u);
+                appendZoneTriangle(triangle, clusterVertices);
+                for (uint32_t corner = 0; corner < 3u; ++corner)
+                    triangle[corner] = static_cast<uint32_t>(i) + corner;
+            }
+            mesh.surfaceClusterVertices = resources.CreateVertexBuffer(clusterVertices.data(),
+                clusterVertices.size() * sizeof(WaterVertex), static_cast<uint32_t>(sizeof(WaterVertex)));
+            if (!mesh.surfaceClusterVertices.IsValid()) return;
+        }
+        mesh.surfaceClusterIndices = resources.CreateIndexBuffer(clusterIndices.data(),
+            static_cast<uint32_t>(clusterIndices.size()));
+        if (mesh.surfaceClusterIndices.IsValid()) mesh.surfaceClusters = std::move(clusters);
         return;
     }
 
@@ -1352,11 +1417,14 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             terrainSignature = depthField->signature;
 
         const auto cachedMesh = cache.meshes.find(cacheKey);
+        const bool buildSurfaceClusters = splineSurface
+            && ctx.settings.geometryDrawMode == renderer::GeometryDrawMode::MESH_SHADER;
         const bool geometryChanged = cachedMesh != cache.meshes.end()
-            && cachedMesh->second.geometry != ResolveWaterMeshGeometry(water);
+            && (cachedMesh->second.geometry != ResolveWaterMeshGeometry(water)
+                || (buildSurfaceClusters && !cachedMesh->second.surfaceClustersAttempted));
         if (cache.dirtyMeshes.contains(cacheKey) || cachedMesh == cache.meshes.end() || geometryChanged) {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Mesh");
-            BuildWaterMesh(water, cache.meshes[cacheKey], cache, resources);
+            BuildWaterMesh(water, cache.meshes[cacheKey], cache, resources, buildSurfaceClusters);
             cache.dirtyMeshes.erase(cacheKey);
             cache.dirtyTextures.insert(cacheKey);
             water.meshDirty = false;
@@ -1400,6 +1468,11 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         input.margin = margin;
         input.aabbMin = mesh.aabbMin; input.aabbMax = mesh.aabbMax;
         input.patches = mesh.chunks;
+        if (buildSurfaceClusters) {
+            input.surfaceClusters = mesh.surfaceClusters;
+            input.surfaceClusterIndices = mesh.surfaceClusterIndices;
+            input.surfaceClusterVertices = mesh.surfaceClusterVertices;
+        }
         input.adaptivePatchLod = !splineSurface && (water.adaptivePatchLod || water.farOceanEnabled);
         input.patchMorphEnabled = !splineSurface && water.lodMorphEnabled;
         input.farOceanEnabled = horizonSurface;

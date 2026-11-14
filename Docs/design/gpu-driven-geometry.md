@@ -63,7 +63,13 @@ Mesh ShaderはDX12のfeature queryで対応が確認された場合だけ使う�
 
 GPU可視判定へ渡す境界は選択済みパッチのaabbMin/aabbMaxを正本にし、モーフの移動余白や遠景stripの拡張をUV矩形から作り直して失わない。既存の可視数・カリング数・三角数は同じ保守的なCPU境界による診断上の推定を維持する。実際のGPU指示はCSが決め、統計のために読み戻さない。間接描画とMesh dispatchを旧GPU Instancing件数へ含めない。
 
-Editorの`render.geometry_mode`操作で`cpu`（通常描画）、`indirect`（水面・地形・大量静的instanceのGPU間接描画）、`mesh`（高密度静的メッシュ・影のMesh Shaderと地形GPU描画）を比較できる。既定はcpu、Play中はruntimeの一時設定とする。`Water geometry path`ログは間接水面の準備成功を確認する用途に残る。GPU profilerは単一passの契約なので、その内部へBeginPass/EndPassを入れ子にしない。対象がカスタムshaderや旧格子のためfallbackしただけのFPSを、そのGPU経路の高速化と解釈しない。
+### スプライン水域のクラスタLOD
+
+`mesh`では、細分化済みの川・湖・Water Zoneを空間クラスタに分ける。親は子の境界、XZ面での巻き順、河口の混合頂点、水深上限をまたぐ三角形、Water Zoneの材質遷移を固定して縮約する。GPU用のインデックスは描画キャッシュに置き、編集・水面照会・浮力は既存のスプラインsnapshotを使用する。
+
+色・選択・水面界面・水中アトラスは、主ビューと波の変位上限から同じ画面誤差1ピクセルの階層を選ぶ。実際の視錐台は描画先ごとに使い、主ビューの遮蔽判定は水中アトラスへ流用しない。連続するインデックス範囲は結合し、水域順と既存のWaterシェーダーを使って描く。カスタムWater材質、DX11、非Mesh Shader GPUでもクラスタを利用できる。小規模メッシュとバッファ準備失敗時は元のインデックス描画を使う。
+
+Editorの`render.geometry_mode`操作で`cpu`（通常描画）、`indirect`（水面・地形・大量静的instanceのGPU間接描画）、`mesh`（静的メッシュと影のMesh Shader、地形GPU描画、スプライン水域のクラスタLOD）を比較できる。既定はcpu、Play中はruntimeの一時設定とする。`Water geometry path`ログは間接水面の準備成功を確認する用途に残る。GPU profilerは単一passの契約なので、その内部へBeginPass/EndPassを入れ子にしない。比較では対象の描画経路が選ばれたことも確認する。
 
 ## ラスタライズのトポロジー比較
 

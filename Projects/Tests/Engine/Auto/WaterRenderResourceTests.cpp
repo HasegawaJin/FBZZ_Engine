@@ -363,11 +363,13 @@ protected:
         return object.GetID();
     }
     renderer::RenderWaterInput Extract(scene::Scene& scene, uint64_t frameStamp = 0,
-        const renderer::Camera* cameraOverride = nullptr)
+        const renderer::Camera* cameraOverride = nullptr,
+        renderer::GeometryDrawMode mode = renderer::GeometryDrawMode::CPU)
     {
         renderer::Camera camera;
         if (cameraOverride) camera = *cameraOverride;
         renderer::RenderSettings settings;
+        settings.geometryDrawMode = mode;
         renderer::RenderPassHandles handles;
         scene::RenderPassContext context(scene, m_renderer, *m_resources, camera, settings, {}, UINT32_MAX, handles);
         context.frameStamp = frameStamp;
@@ -1655,6 +1657,34 @@ TEST_F(WaterRenderResourceTest, SplineRiverUploadsTheSharedSnapshotAndInvalidate
     ASSERT_EQ(moved.patches.size(), 1u);
     EXPECT_NE(moved.patches[0].vertexBuffer, authoredVertexBuffer);
     EXPECT_EQ(m_resources->Get(authoredVertexBuffer), nullptr);
+}
+
+TEST_F(WaterRenderResourceTest, SplineClusterBuffersFollowModeAndSplineEdits)
+{
+    scene::Scene scene;
+    auto& water = scene.CreateGameObject("Dense river").AddComponent<scene::WaterComponent>();
+    water.enableGerstnerWaves = false;
+    water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    water.splineSamplesPerSegment = 4;
+    water.splineMeshCellSize = 1.0f;
+    water.splinePoints = {{1, {0.0f, 0.0f, 0.0f}, 16.0f, 3.0f, 1.0f},
+                          {2, {64.0f, 1.0f, 0.0f}, 16.0f, 3.0f, 2.0f}};
+    const auto cpu = Extract(scene);
+    EXPECT_FALSE(cpu.surfaceClusters);
+    const auto simulation = water.splineSnapshot;
+    const auto mode = renderer::GeometryDrawMode::MESH_SHADER;
+    const auto first = Extract(scene, 1, nullptr, mode);
+    ASSERT_TRUE(first.surfaceClusters);
+    ASSERT_TRUE(first.surfaceClusterIndices.IsValid());
+    EXPECT_FALSE(first.surfaceClusterVertices.IsValid());
+    EXPECT_EQ(water.splineSnapshot, simulation);
+    EXPECT_EQ(Extract(scene, 2, nullptr, mode).surfaceClusterIndices, first.surfaceClusterIndices);
+    EXPECT_FALSE(Extract(scene, 3).surfaceClusterIndices.IsValid());
+    water.splinePoints[1].flowSpeed = 3.0f;
+    const auto edited = Extract(scene, 4, nullptr, mode);
+    ASSERT_TRUE(edited.surfaceClusters);
+    EXPECT_NE(edited.surfaceClusterIndices, first.surfaceClusterIndices);
+    EXPECT_EQ(m_resources->Get(first.surfaceClusterIndices), nullptr);
 }
 
 TEST_F(WaterRenderResourceTest, WaterZoneRendersOneSharedUnionAndReleasesSuppressedResources)
