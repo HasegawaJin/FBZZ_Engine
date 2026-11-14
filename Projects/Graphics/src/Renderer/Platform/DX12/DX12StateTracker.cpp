@@ -14,9 +14,7 @@ void DX12StateTracker::Register(ID3D12Resource* resource, D3D12_RESOURCE_STATES 
 void DX12StateTracker::Remove(ID3D12Resource* resource)
 {
     m_states.erase(resource);
-    /// @note 溜めたまま発行していないバリアも一緒に捨てる。消えるリソースを名指ししたバリアを
-    /// @note       残すと、次の Flush で同じ番地に載った別リソースが身に覚えのない StateBefore で
-    /// @note       遷移させられ中身が壊れる (リサイズで RT を作り直した直後に出る)。
+    /// @note 未発行の遷移も破棄し、同じアドレスに再登録された資源へ適用しない。
     std::erase_if(m_pendingBarriers, [resource](const D3D12_RESOURCE_BARRIER& barrier) {
         return barrier.Type == D3D12_RESOURCE_BARRIER_TYPE_TRANSITION
             && barrier.Transition.pResource == resource;
@@ -70,19 +68,32 @@ void DX12StateTracker::QueueTransition(ID3D12Resource* resource, D3D12_RESOURCE_
 
 void DX12StateTracker::QueueTransitionAllToCommon()
 {
-    /// @note m_states を走査しながら QueueTransition を呼ぶと同じ map を書き換えることになるため、
-    /// @note       先に対象を集めてから移す。
-    std::vector<ID3D12Resource*> targets;
-    targets.reserve(m_states.size());
-    for (const auto& [resource, state] : m_states)
+    /// @note 先に既存の遷移を確定し、元から保留されていた資源の記録順を維持する。
+    size_t retained = 0;
+    for (auto& barrier : m_pendingBarriers) {
+        auto& transition = barrier.Transition;
+        const auto found = m_states.find(transition.pResource);
+        if (found != m_states.end() && found->second != D3D12_RESOURCE_STATE_COMMON
+            && found->second != D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE) {
+            found->second = D3D12_RESOURCE_STATE_COMMON;
+            transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+            if (transition.StateBefore == D3D12_RESOURCE_STATE_COMMON) continue;
+        }
+        m_pendingBarriers[retained++] = barrier;
+    }
+    m_pendingBarriers.resize(retained);
+    for (auto& [resource, state] : m_states) {
         /// @note AS storage must never leave AS state, including across the async-compute handoff.
         /// @see https://microsoft.github.io/DirectX-Specs/d3d/Raytracing.html#acceleration-structure-memory-restrictions AS state restrictions
-        if (state != D3D12_RESOURCE_STATE_COMMON
-            && state != D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE)
-            targets.push_back(resource);
-
-    for (ID3D12Resource* resource : targets)
-        QueueTransition(resource, D3D12_RESOURCE_STATE_COMMON);
+        if (state == D3D12_RESOURCE_STATE_COMMON
+            || state == D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE) continue;
+        D3D12_RESOURCE_BARRIER barrier{};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition = {resource, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+            state, D3D12_RESOURCE_STATE_COMMON};
+        m_pendingBarriers.push_back(barrier);
+        state = D3D12_RESOURCE_STATE_COMMON;
+    }
 }
 
 void DX12StateTracker::FlushBarriers(ID3D12GraphicsCommandList* commands)

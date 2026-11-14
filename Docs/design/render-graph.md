@@ -46,6 +46,8 @@ FNV-1a 指紋が前フレームと一致すれば、依存解決・カリング�
 
 DX12 の `DX12StateTracker` がリソースごとの状態を追跡する。束縛時に `QueueTransition` で集め、必要な時点で `ResourceBarrier` にまとめて発行する。 [DX12StateTracker](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12StateTracker.cpp)
 
+非同期コンピュートへ渡すための一括 `COMMON` 遷移では、保留中の遷移を先に更新し、残りの追跡中リソースを一巡して追加する。既存遷移の順序を保ち、各リソースを処理するたびに保留列を探し直さない。
+
 グラフ駆動のバリアはこの上に乗る **最適化**（冗長な遷移の除去、split barrier、
 パス跨ぎのバッチ）であって、欠けている土台ではない。現状で正しく動いているものを
 二重化する利得が無いので作っていない。
