@@ -16,12 +16,17 @@
 #include <cmath>
 #include <limits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace fbzz::scene {
 namespace {
 constexpr size_t kSceneCacheCapacity = 4;
-std::array<WaterTerrainInfoCache, kSceneCacheCapacity> g_terrainCaches;
+struct WaterDepthSceneCache {
+    WaterTerrainInfoCache terrain;
+    std::unordered_map<uint64_t, WaterTerrainInfoAtlasCache> atlases;
+};
+std::array<WaterDepthSceneCache, kSceneCacheCapacity> g_depthCaches;
 std::array<uint64_t, kSceneCacheCapacity> g_cacheGenerations{};
 std::array<uint64_t, kSceneCacheCapacity> g_cacheUse{};
 uint64_t g_cacheClock = 0;
@@ -42,13 +47,13 @@ bool Finite(const math::Quaternion& value)
         && std::isfinite(value.z) && std::isfinite(value.w);
 }
 
-WaterTerrainInfoCache& TerrainCacheFor(const Scene& scene)
+WaterDepthSceneCache& DepthCacheFor(const Scene& scene)
 {
     const uint64_t generation = scene.GetRenderSceneGeneration();
     for (size_t i = 0; i < kSceneCacheCapacity; ++i) {
         if (g_cacheGenerations[i] == generation) {
             g_cacheUse[i] = ++g_cacheClock;
-            return g_terrainCaches[i];
+            return g_depthCaches[i];
         }
     }
     size_t target = 0;
@@ -56,8 +61,8 @@ WaterTerrainInfoCache& TerrainCacheFor(const Scene& scene)
         if (g_cacheUse[i] < g_cacheUse[target]) target = i;
     g_cacheGenerations[target] = generation;
     g_cacheUse[target] = ++g_cacheClock;
-    g_terrainCaches[target] = WaterTerrainInfoCache{};
-    return g_terrainCaches[target];
+    g_depthCaches[target] = {};
+    return g_depthCaches[target];
 }
 
 float MaterialFloat(const asset::MaterialAssetAuthoring* material, const char* key, float fallback)
@@ -341,8 +346,10 @@ bool TrySampleWaterTerrainColumn(const WaterDepthField& field, math::Vector2 wor
 
 void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
 {
+    auto& cache = DepthCacheFor(scene);
     WaterTerrainInfoInputs inputs;
-    if (!TerrainCacheFor(scene).TryCollect(scene, inputs)) {
+    if (!cache.terrain.TryCollect(scene, inputs)) {
+        cache.atlases.clear();
         for (EntityID id : scene.GetEntities<WaterComponent>())
             if (auto* water = scene.GetComponent<WaterComponent>(id)) {
                 const bool hasPublishedSimulation = view == WaterSurfaceReadView::SIMULATION
@@ -353,6 +360,7 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
     }
 
     std::unordered_map<std::string, asset::MaterialAsset::AuthoringSnapshotPtr> materials;
+    std::unordered_set<uint64_t> liveAtlases;
     for (EntityID id : scene.GetEntities<WaterComponent>()) {
         WaterComponent* water = scene.GetComponent<WaterComponent>(id);
         GameObject* object = scene.GetGameObject(id);
@@ -400,18 +408,24 @@ void PrepareWaterDepthFields(Scene& scene, WaterSurfaceReadView view)
             water->depthField.reset();
             continue;
         }
+        const auto lifetime = scene.GetComponentLifetime<WaterComponent>(id);
+        if (lifetime != 0) liveAtlases.insert(lifetime);
         if (water->depthField && water->depthField->signature == signature
             && water->depthField->attenuationDepth == attenuationDepth) continue;
 
         WaterTerrainInfoAtlas atlas;
         WaterDepthField field;
-        if (!TryBakeWaterTerrainInfo(inputs, *water, pose, settings, atlas, view)
+        const bool baked = lifetime != 0
+            ? cache.atlases[lifetime].TryBake(inputs, *water, pose, settings, atlas, view)
+            : TryBakeWaterTerrainInfo(inputs, *water, pose, settings, atlas, view);
+        if (!baked
             || !TryBuildWaterDepthField(atlas, *water, pose, field, view)) {
             water->depthField.reset();
             continue;
         }
         water->depthField = std::make_shared<const WaterDepthField>(std::move(field));
     }
+    std::erase_if(cache.atlases, [&](const auto& entry) { return !liveAtlases.contains(entry.first); });
 }
 } /// @note namespace fbzz::scene
 

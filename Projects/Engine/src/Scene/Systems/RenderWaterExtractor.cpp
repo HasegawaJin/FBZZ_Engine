@@ -55,6 +55,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <span>
@@ -216,12 +217,21 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water, bool horizonSurface)
 
 /// @brief 水面が使うテクスチャはエンジンが生成する泡マスクだけ。
 /// @note 法線・泡・環境反射は手続き / 空連動 IBL から取るため、オーサリング済みテクスチャ資産は不要。
+struct WaterDepthTextureSource {
+    uint32_t width = 0, height = 0;
+    std::shared_ptr<const std::vector<uint8_t>> rgba;
+};
+
 struct WaterTextures {
     renderer::ResourceHandle<renderer::TextureTag> foamMask;
     math::Vector4 terrainInfoParams{};
     math::Vector4 terrainDomain{};
     uint64_t signature = 0;
     bool depthIsUniform = false;
+    bool dynamicDepth = false;
+    bool dynamicDepthUnavailable = false;
+    WaterDepthTextureSource uploadedDepth;
+    WaterTerrainInfoAtlasCache terrainAtlas;
 };
 
 /// @note 焼いた 1 枚と «前のフレームに輪があったか»。
@@ -609,43 +619,132 @@ bool HasUniformPhysicalDepth(const std::vector<uint8_t>& rgba, float depthRange,
     return TryDecodeWaterTerrainDepth(rgba[1u], rgba[2u], depthRange, depth) && depth >= depthLimit;
 }
 
-WaterTextures BuildTextureSet(
+TerrainHeightRegion FindWaterDepthChanges(const WaterDepthTextureSource& previous, const WaterDepthTextureSource& current)
+{
+    TerrainHeightRegion changes;
+    const size_t rowBytes = static_cast<size_t>(current.width) * 4u;
+    for (uint32_t z = 0; z < current.height; ++z) {
+        const size_t offset = z * rowBytes;
+        const auto* oldRow = previous.rgba->data() + offset;
+        const auto* newRow = current.rgba->data() + offset;
+        if (std::memcmp(oldRow, newRow, rowBytes) == 0) continue;
+        int first = 0, last = static_cast<int>(current.width) - 1;
+        while (std::memcmp(oldRow + first * 4u, newRow + first * 4u, 4u) == 0) ++first;
+        while (std::memcmp(oldRow + last * 4u, newRow + last * 4u, 4u) == 0) --last;
+        changes.Include({first, static_cast<int>(z), last, static_cast<int>(z)});
+    }
+    return changes;
+}
+
+bool CanUploadWaterDepth(const WaterDepthField* field, float attenuationDepth)
+{
+    return field && field->attenuationDepth == attenuationDepth && field->width && field->height
+        && field->width <= MAX_HORIZON_WATER_TERRAIN_RESOLUTION && field->height <= MAX_HORIZON_WATER_TERRAIN_RESOLUTION
+        && field->rgba.size() == static_cast<size_t>(field->width) * field->height * 4u;
+}
+
+void UpdateWaterDepthTexture(WaterTextures& textures, WaterDepthTextureSource source,
+    bool replaceTexture, renderer::IRenderer& renderer, renderer::ResourceManager& resources)
+{
+    const auto& previous = textures.uploadedDepth;
+    const bool sameSize = previous.rgba && previous.width == source.width && previous.height == source.height;
+    const auto* pixels = source.rgba->data();
+    const uint32_t rowPitch = source.width * 4u;
+    if (!replaceTexture && sameSize && textures.foamMask.IsValid()) {
+        if (previous.rgba == source.rgba) return;
+        const auto changed = FindWaterDepthChanges(previous, source);
+        if (changed.Empty()) {
+            textures.uploadedDepth = std::move(source);
+            return;
+        }
+        if (textures.dynamicDepth || !textures.dynamicDepthUnavailable) {
+            bool uploaded = false;
+            /// @note In-frame updates must be ordered after older draw submissions using this texture.
+            renderer.ExecuteResourceOperation([&] {
+                if (textures.dynamicDepth) {
+                    if (auto* texture = resources.Get(textures.foamMask)) {
+                        const size_t offset = static_cast<size_t>(changed.minZ) * rowPitch + changed.minX * 4u;
+                        uploaded = texture->UpdateRegion(changed.minX, changed.minZ,
+                            changed.maxX - changed.minX + 1, changed.maxZ - changed.minZ + 1,
+                            pixels + offset, rowPitch);
+                    }
+                    return;
+                }
+                const auto replacement = resources.CreateDynamicTexture(source.width, source.height,
+                    renderer::DynamicTextureFormat::RGBA8);
+                if (auto* texture = resources.Get(replacement)) {
+                    uploaded = texture->UpdateRegion(0, 0, source.width, source.height, pixels, rowPitch);
+                }
+                if (uploaded) {
+                    resources.Release(textures.foamMask);
+                    textures.foamMask = replacement;
+                    textures.dynamicDepth = true;
+                } else if (replacement.IsValid()) {
+                    resources.Release(replacement);
+                } else {
+                    textures.dynamicDepthUnavailable = true;
+                }
+            });
+            if (uploaded) {
+                textures.uploadedDepth = std::move(source);
+                return;
+            }
+        }
+    }
+
+    if (textures.foamMask.IsValid()) resources.Release(textures.foamMask);
+    textures.foamMask = resources.CreateTexture(pixels, source.width, source.height);
+    textures.dynamicDepth = false;
+    textures.uploadedDepth = textures.foamMask.IsValid() ? std::move(source) : WaterDepthTextureSource{};
+}
+
+void UpdateWaterTextures(
+    WaterTextures& textures,
     const WaterComponent& water,
     const Transform& waterTransform,
     const WaterTerrainInfoInputs& inputs,
     bool validInputs,
+    bool replaceTexture,
+    renderer::IRenderer& renderer,
     renderer::ResourceManager& resources,
     const WaterTerrainBakeSettings& settings,
     uint64_t signature)
 {
-    WaterTextures textures;
     textures.signature = signature;
-    const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
+    textures.terrainInfoParams = {};
+    textures.terrainDomain = {};
+    textures.depthIsUniform = false;
+    const auto& depthField = water.simulationReadEnabled && water.simulationSurfacePublished
+        ? water.simulationDepthField : water.depthField;
     const float attenuationDepth = water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION);
-    if (depthField && depthField->attenuationDepth == attenuationDepth) {
+    if (CanUploadWaterDepth(depthField.get(), attenuationDepth)) {
         const auto& field = *depthField;
         textures.depthIsUniform = HasUniformPhysicalDepth(field.rgba, field.depthRange, water.buoyancyDepth);
-        textures.foamMask = resources.CreateTexture(field.rgba.data(), field.width, field.height);
+        UpdateWaterDepthTexture(textures, {field.width, field.height, {depthField, &field.rgba}},
+            replaceTexture, renderer, resources);
         textures.terrainDomain = field.domain;
         if (textures.foamMask.IsValid())
             textures.terrainInfoParams = {1.0f, field.depthRange,
                 static_cast<float>(field.width), static_cast<float>(field.height)};
-        return textures;
+        return;
     }
-    WaterTerrainInfoAtlas atlas;
-    if (validInputs && TryBakeWaterTerrainInfo(inputs, water, waterTransform, settings, atlas,
+    std::shared_ptr<const WaterTerrainInfoAtlas> atlas;
+    if (validInputs && textures.terrainAtlas.TryBakeSnapshot(inputs, water, waterTransform, settings, atlas,
             WaterSurfaceReadView::SIMULATION)) {
-        textures.depthIsUniform = HasUniformPhysicalDepth(atlas.rgba, atlas.depthRange, water.buoyancyDepth);
-        textures.foamMask = resources.CreateTexture(atlas.rgba.data(), atlas.width, atlas.height);
-        textures.terrainDomain = atlas.domain;
+        textures.depthIsUniform = HasUniformPhysicalDepth(atlas->rgba, atlas->depthRange, water.buoyancyDepth);
+        UpdateWaterDepthTexture(textures, {atlas->width, atlas->height, {atlas, &atlas->rgba}},
+            replaceTexture, renderer, resources);
+        textures.terrainDomain = atlas->domain;
         if (textures.foamMask.IsValid())
-            textures.terrainInfoParams = {1.0f, atlas.depthRange,
-                static_cast<float>(atlas.width), static_cast<float>(atlas.height)};
+            textures.terrainInfoParams = {1.0f, atlas->depthRange,
+                static_cast<float>(atlas->width), static_cast<float>(atlas->height)};
     } else {
+        if (textures.foamMask.IsValid()) resources.Release(textures.foamMask);
+        textures.uploadedDepth = {};
+        textures.dynamicDepth = false;
         const std::array<uint8_t, 4> empty{};
         textures.foamMask = resources.CreateTexture(empty.data(), 1, 1);
     }
-    return textures;
 }
 
 /// @note 波紋テクスチャを焼く。RG = 法線 xy、**B = 頂点へ乗せる高さ** [m] (kWaterRippleHeightScale 正規化)。
@@ -1249,7 +1348,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             terrainInputs, water, surfaceTransform, terrainSettings, terrainSignature,
             WaterSurfaceReadView::SIMULATION);
         if (const WaterDepthField* depthField = water.EffectiveDepthField(WaterSurfaceReadView::SIMULATION);
-            depthField && depthField->attenuationDepth == water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION))
+            CanUploadWaterDepth(depthField, water.EffectiveWaveAttenuationDepth(WaterSurfaceReadView::SIMULATION)))
             terrainSignature = depthField->signature;
 
         const auto cachedMesh = cache.meshes.find(cacheKey);
@@ -1267,14 +1366,11 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         if (cache.dirtyTextures.contains(cacheKey) || !cache.textures.contains(cacheKey)
             || cache.textures.at(cacheKey).signature != terrainSignature) {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Textures");
-            cache.dirtyTextures.erase(cacheKey);
+            const bool replaceTexture = cache.dirtyTextures.erase(cacheKey) != 0;
             WaterTextures& cached = cache.textures[cacheKey];
-            /// @note 焼き直しは解像度スライダー操作中フレーム毎に走るため、上書き前に解放する。
-            /// @note 返さず差し替えると 1 フレームぶんの泡マスクがそのまま漏れ続ける。
-            if (cached.foamMask.IsValid()) resources.Release(cached.foamMask);
-            cached = BuildTextureSet(
-                water, surfaceTransform, terrainInputs, validTerrainInputs && validTerrainSettings,
-                resources, terrainSettings, terrainSignature);
+            UpdateWaterTextures(
+                cached, water, surfaceTransform, terrainInputs, validTerrainInputs && validTerrainSettings,
+                replaceTexture, ctx.renderer, resources, terrainSettings, terrainSignature);
             water.texDirty = false;
             water.foamDirty = false;
         }

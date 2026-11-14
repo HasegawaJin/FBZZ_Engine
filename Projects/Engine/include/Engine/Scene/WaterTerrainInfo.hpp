@@ -10,6 +10,7 @@
 #include <Math/Vector3.hpp>
 #include <Math/Vector4.hpp>
 #include <cstdint>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -25,6 +26,7 @@ struct WaterTerrainSource {
     const TerrainComponent* terrain = nullptr;
     Transform transform;
     math::Vector3 boundsMin, boundsMax;
+    uint64_t lifetime = 0;
 };
 struct WaterTerrainInfoInputs {
     std::vector<WaterTerrainSource> terrains;
@@ -41,7 +43,9 @@ public:
 private:
     struct Validation {
         uint64_t signature = 0;
+        uint64_t revision = 0, layout = 0;
         bool valid = false;
+        bool conservative = false;
         float minHeight = 0.0f, maxHeight = 0.0f;
     };
     uint64_t m_sceneGeneration = 0;
@@ -70,6 +74,26 @@ struct WaterTerrainInfoAtlas {
     std::vector<uint8_t> rgba;
     /// @note xy=中心、zw=寸法。水域原点から符号付き Water 軸に沿った world m。0 寸法は保存済み矩形。
     math::Vector4 domain{};
+};
+
+/// @note Water instance owns one cache. A missed terrain revision or changed atlas layout requires a full bake.
+class WaterTerrainInfoAtlasCache {
+public:
+    /// @return Same atlas as a full bake. On failure the cache and out remain unchanged.
+    FBZZ_ENGINE_API bool TryBake(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
+        const Transform& transform, const WaterTerrainBakeSettings& settings, WaterTerrainInfoAtlas& out,
+        WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
+    /// @return The immutable cached atlas. On failure the cache and out remain unchanged.
+    FBZZ_ENGINE_API bool TryBakeSnapshot(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
+        const Transform& transform, const WaterTerrainBakeSettings& settings,
+        std::shared_ptr<const WaterTerrainInfoAtlas>& out, WaterSurfaceReadView view);
+private:
+    struct SourceVersion {
+        uint64_t layout = 0, signature = 0, revision = 0;
+    };
+    uint64_t m_layout = 0;
+    std::vector<SourceVersion> m_sources;
+    std::shared_ptr<const WaterTerrainInfoAtlas> m_atlas;
 };
 
 /// @note Horizon の解像度は局所波紋の Extent から独立させる。

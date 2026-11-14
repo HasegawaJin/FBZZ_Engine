@@ -18,6 +18,8 @@
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Script.hpp>
 #include <Engine/Scene/WaterSurfaceQuery.hpp>
+#include <Engine/Scene/WaterDepthField.hpp>
+#include <Engine/Scene/WaterTerrainInfo.hpp>
 #include <Engine/Scene/WaterInteraction.hpp>
 #include <Engine/Scene/WaterSpline.hpp>
 #include <Engine/Scene/Scene.hpp>
@@ -104,13 +106,16 @@ private:
     size_t* m_alive;
 };
 
-/// @note The opt-in dynamic backend observes only successful writes to its own texture; terrain-info uploads are separate.
+struct WaterTextureUpdate {
+    uint32_t x, y, width, height;
+};
+/// @note The opt-in dynamic backend observes only successful writes to its own texture.
 class WaterCpuDynamicTexture final : public renderer::ITexture {
 public:
     WaterCpuDynamicTexture(uint32_t width, uint32_t height,
         std::unordered_map<const renderer::ITexture*, std::vector<uint8_t>>& pixels,
-        std::shared_ptr<size_t> uploads)
-        : m_width(width), m_height(height), m_pixels(pixels), m_uploads(std::move(uploads))
+        std::shared_ptr<size_t> uploads, std::vector<WaterTextureUpdate>* updates = nullptr)
+        : m_width(width), m_height(height), m_pixels(pixels), m_uploads(std::move(uploads)), m_updates(updates)
     {
         m_pixels[this].assign(static_cast<size_t>(width) * height * 4u, 0u);
     }
@@ -127,7 +132,8 @@ public:
         for (uint32_t row = 0; row < height; ++row)
             std::memcpy(destination.data() + (static_cast<size_t>(y + row) * m_width + x) * 4u,
                 source + static_cast<size_t>(row) * srcRowPitch, static_cast<size_t>(width) * 4u);
-        ++*m_uploads;
+        if (m_uploads) ++*m_uploads;
+        if (m_updates) m_updates->push_back({x, y, width, height});
         return true;
     }
 private:
@@ -135,6 +141,7 @@ private:
     std::unordered_map<const renderer::ITexture*, std::vector<uint8_t>>& m_pixels;
     /// @note The fixture keeps the counter alive independently of texture destruction, so replacement failures remain observable.
     std::shared_ptr<size_t> m_uploads;
+    std::vector<WaterTextureUpdate>* m_updates;
 };
 
 /// @note 資源生成・返却だけを提供し、Shader と描画は実行しない CPU のバックエンド境界。
@@ -143,10 +150,12 @@ public:
     size_t buffersAlive = 0;
     size_t textureUploads = 0;
     bool recordDynamicRippleUploads = false;
+    bool recordDynamicDepthUploads = false;
     bool recordRuntimeTextures = false;
     size_t runtimeTexturesAlive = 0;
     size_t rippleTextureCreations = 0;
     std::shared_ptr<size_t> rippleTextureUploads;
+    std::vector<WaterTextureUpdate> depthTextureUpdates;
     std::function<void()> beforeVertexBuffer;
     std::unordered_map<const renderer::ITexture*, std::vector<uint8_t>> texturePixels;
     void Shutdown() override {}
@@ -184,6 +193,10 @@ private:
         uint32_t width, uint32_t height, renderer::DynamicTextureFormat format) override
     {
         if (recordRuntimeTextures) return std::make_unique<WaterCpuTexture>(width, height, 1, &runtimeTexturesAlive);
+        if (recordDynamicDepthUploads && format == renderer::DynamicTextureFormat::RGBA8
+            && ((width == scene::MAX_HORIZON_WATER_TERRAIN_RESOLUTION && height == width)
+                || (width == 64u && height == 64u)))
+            return std::make_unique<WaterCpuDynamicTexture>(width, height, texturePixels, nullptr, &depthTextureUpdates);
         if (!recordDynamicRippleUploads || format != renderer::DynamicTextureFormat::RGBA8
             || width != scene::kWaterRippleTextureSize || height != scene::kWaterRippleTextureSize) return {};
         ++rippleTextureCreations;
@@ -1112,6 +1125,112 @@ TEST_F(WaterRenderResourceTest, TerrainEditsRebakeInfoWithoutChangingWaterGeomet
     EXPECT_NE(hidden.foam, changed.foam);
     EXPECT_EQ(m_resources->Get(changed.foam), nullptr);
     EXPECT_EQ(Extract(scene).foam, hidden.foam);
+}
+
+TEST_F(WaterRenderResourceTest, HeightPreviewUploadsOnlyChangedPublishedWaterDepth)
+{
+    m_renderer.recordDynamicDepthUploads = true;
+    scene::Scene scene;
+    const auto waterId = AddWater(scene);
+    auto* water = scene.GetComponent<scene::WaterComponent>(waterId);
+    ASSERT_NE(water, nullptr);
+    water->farOceanEnabled = true;
+    auto& ground = scene.CreateGameObject("Shore");
+    auto& terrain = ground.AddComponent<scene::TerrainComponent>();
+    terrain.columns = terrain.rows = 17;
+    terrain.cellSize = 2.0f;
+    terrain.InitFlat(-0.1f);
+    terrain.heightDirty = false;
+
+    const auto initial = Extract(scene);
+    ASSERT_TRUE(initial.foam.IsValid());
+    EXPECT_TRUE(m_renderer.depthTextureUpdates.empty());
+    const auto update = [&](int x, float height) {
+        terrain.heightData[8u * 17u + static_cast<size_t>(x)] = height;
+        terrain.RequestHeightPreview({x, 8, x, 8});
+        const auto input = Extract(scene);
+        terrain.heightPreview.pending = false;
+        return input;
+    };
+    const auto promoted = update(8, 0.1f);
+    ASSERT_NE(promoted.foam, initial.foam);
+    ASSERT_EQ(m_renderer.depthTextureUpdates.size(), 1u);
+    EXPECT_EQ(m_renderer.depthTextureUpdates.front().width, scene::MAX_HORIZON_WATER_TERRAIN_RESOLUTION);
+
+    const auto partial = update(9, 0.2f);
+    EXPECT_EQ(partial.foam, promoted.foam);
+    ASSERT_EQ(m_renderer.depthTextureUpdates.size(), 2u);
+    EXPECT_LT(m_renderer.depthTextureUpdates.back().width, scene::MAX_HORIZON_WATER_TERRAIN_RESOLUTION);
+    EXPECT_LT(m_renderer.depthTextureUpdates.back().height, scene::MAX_HORIZON_WATER_TERRAIN_RESOLUTION);
+    const auto* texture = m_resources->Get(partial.foam);
+    ASSERT_NE(texture, nullptr);
+    ASSERT_NE(water->depthField, nullptr);
+    EXPECT_EQ(m_renderer.texturePixels.at(texture), water->depthField->rgba);
+
+    const auto unchanged = update(9, 0.2f);
+    EXPECT_EQ(unchanged.foam, partial.foam);
+    EXPECT_EQ(m_renderer.depthTextureUpdates.size(), 2u);
+}
+
+TEST_F(WaterRenderResourceTest, FiniteWaterHeightPreviewReusesAtlasTexture)
+{
+    m_renderer.recordDynamicDepthUploads = true;
+    scene::Scene scene;
+    const auto waterId = AddWater(scene);
+    auto* water = scene.GetComponent<scene::WaterComponent>(waterId);
+    const auto* object = scene.GetGameObject(waterId);
+    ASSERT_NE(water, nullptr);
+    ASSERT_NE(object, nullptr);
+    water->extentX = water->extentZ = 16.0f;
+    auto& ground = scene.CreateGameObject("Shore");
+    auto& terrain = ground.AddComponent<scene::TerrainComponent>();
+    terrain.columns = terrain.rows = 17;
+    terrain.cellSize = 2.0f;
+    terrain.InitFlat(-0.1f);
+    terrain.heightDirty = false;
+    ground.transform.worldPosition = {-16.0f, 0.0f, -16.0f};
+
+    const auto first = Extract(scene);
+    ASSERT_FLOAT_EQ(first.constants.terrainInfoParams.z, 64.0f);
+    ASSERT_FLOAT_EQ(first.constants.terrainInfoParams.w, 64.0f);
+    ASSERT_EQ(water->depthField, nullptr);
+    const auto update = [&](int x, float height) {
+        terrain.heightData[8u * 17u + static_cast<size_t>(x)] = height;
+        terrain.RequestHeightPreview({x, 8, x, 8});
+        const auto input = Extract(scene);
+        terrain.heightPreview.pending = false;
+        return input;
+    };
+    const auto outside = update(16, 0.2f);
+    EXPECT_EQ(outside.foam, first.foam);
+    EXPECT_TRUE(m_renderer.depthTextureUpdates.empty());
+
+    const auto promoted = update(8, 0.1f);
+    ASSERT_NE(promoted.foam, first.foam);
+    ASSERT_EQ(m_renderer.depthTextureUpdates.size(), 1u);
+    EXPECT_EQ(m_renderer.depthTextureUpdates.front().width, 64u);
+    EXPECT_EQ(m_renderer.depthTextureUpdates.front().height, 64u);
+    const auto partial = update(9, 0.2f);
+    EXPECT_EQ(partial.foam, promoted.foam);
+    ASSERT_EQ(m_renderer.depthTextureUpdates.size(), 2u);
+    EXPECT_LT(m_renderer.depthTextureUpdates.back().width, 64u);
+    EXPECT_LT(m_renderer.depthTextureUpdates.back().height, 64u);
+
+    scene::WaterTerrainInfoInputs inputs;
+    scene::WaterTerrainInfoCache terrainInfo;
+    ASSERT_TRUE(terrainInfo.TryCollect(scene, inputs));
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = settings.height = 64u;
+    scene::WaterTerrainInfoAtlas canonical;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, *water, object->transform, settings, canonical));
+    const auto* texture = m_resources->Get(partial.foam);
+    ASSERT_NE(texture, nullptr);
+    EXPECT_EQ(m_renderer.texturePixels.at(texture), canonical.rgba);
+
+    water->foamDirty = true;
+    const auto explicitlyReplaced = Extract(scene);
+    EXPECT_NE(explicitlyReplaced.foam, partial.foam);
+    EXPECT_EQ(m_renderer.depthTextureUpdates.size(), 2u);
 }
 
 TEST_F(WaterRenderResourceTest, HorizonUsesSharedGeometryAndExtendsThePhysicalWaterRegion)
