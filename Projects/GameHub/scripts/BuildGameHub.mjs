@@ -120,13 +120,13 @@ async function AssemblePackage(projectRoot, configuration) {
   await writeFile(path.join(stagingRoot, 'package.json'), `${JSON.stringify(runtimePackage, null, 2)}\n`, 'utf8');
 
   const templatesRoot = path.join(projectRoot, 'Templates');
-  const generatedTemplateRoots = new Set(['Binaries', 'Build', 'Lib', 'Library']);
+  const excludedTemplateRoots = new Set(['Binaries', 'Build', 'Include', 'Lib', 'Library']);
   await cp(templatesRoot, path.join(resourcesRoot, 'Templates'), {
     recursive: true,
-    // ローカル生成物は配布templateへ梱包しない。Engine shader はテンプレートに存在しない (SDK の share を使う)。
+    /// @note ローカル生成物と廃止済みの C++ Script 用ヘッダーは配布テンプレートに含めない。
     filter: (source) => {
       const relativeParts = path.relative(templatesRoot, source).split(path.sep);
-      return !(relativeParts.length >= 2 && generatedTemplateRoots.has(relativeParts[1]));
+      return !(relativeParts.length >= 2 && excludedTemplateRoots.has(relativeParts[1]));
     },
   });
   if (asarPath) {

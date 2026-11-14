@@ -16,9 +16,8 @@ const TEXT_EXTENSIONS = new Set([
   '.cpp', '.hpp', '.h', '.inl', '.txt', '.toml', '.json', '.cmake', '.md', '.hlsl', '.hlsli', '.glsl', '.gitignore',
 ]);
 
-/// @note CMakeCache の生成元絶対パスと旧ビルド出力を新規プロジェクトへ持ち込まない。
-const GENERATED_ROOT_DIRECTORIES = new Set(['Binaries', 'Build', 'Lib', 'Library']);
-
+/// @note ローカルのビルド出力と廃止済みの C++ Script 用ヘッダーを新規プロジェクトへ持ち込まない。
+const EXCLUDED_ROOT_DIRECTORIES = new Set(['Binaries', 'Build', 'Include', 'Lib', 'Library']);
 
 async function exists(target: string): Promise<boolean> {
   try {
@@ -133,7 +132,7 @@ export class TemplateService {
     const walk = async (sourceDirectory: string, relativeDirectory: string): Promise<void> => {
       for (const entry of await readdir(sourceDirectory, { withFileTypes: true })) {
         if (!relativeDirectory && entry.name === 'template.toml') continue;
-        if (!relativeDirectory && entry.isDirectory() && GENERATED_ROOT_DIRECTORIES.has(entry.name)) continue;
+        if (!relativeDirectory && entry.isDirectory() && EXCLUDED_ROOT_DIRECTORIES.has(entry.name)) continue;
         if (relativeDirectory === 'Src' && entry.isDirectory() && entry.name === 'Scripts') continue;
         const replacedName = applyPlaceholders(entry.name, info, createdAt, sdkId).replace(/\.tmpl$/, '');
         const relativePath = path.join(relativeDirectory, replacedName);
