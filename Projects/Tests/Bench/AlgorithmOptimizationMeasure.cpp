@@ -1,11 +1,16 @@
 /// @file    AlgorithmOptimizationMeasure.cpp
-/// @brief   Measure four source iterations using external clocks and fixed CPU inputs.
+/// @brief   Measure production functions with fixed CPU-side inputs and external clocks.
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <Psapi.h>
+#include <dxgi1_4.h>
+#include <wrl/client.h>
+#include <Core/Logger.hpp>
 #include <Core/Profiler/Profiler.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/Mesh.hpp>
@@ -13,21 +18,45 @@
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/FiberComponent.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/WaterZoneComponent.hpp>
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
+#include <Engine/Scene/Systems/RenderFiberExtractor.hpp>
+#include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Engine/Scene/Systems/RenderWaterExtractor.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <Engine/Scene/Systems/WaterSystem.hpp>
+#include <Engine/Scene/WaterSpline.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
+#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+#include <Graphics/Passes/Geometry/TerrainRenderPass.hpp>
+#include <Graphics/Passes/Geometry/WaterRenderPass.hpp>
+#include <Graphics/Pipeline/OcclusionCuller.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/FiberGeometry.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
 #include <Math/MathUtils.hpp>
+#include <TestKit/Engine/ResourceTrackingRenderer.hpp>
 #include "../../Engine/src/Scene/Systems/CanvasGeometryGuard.hpp"
+#include "../../Engine/src/Scene/Systems/RenderPasses/Geometry/TerrainPatchIndices.hpp"
 #include "../../Graphics/src/Renderer/RenderMeshSpatialIndex.hpp"
+#include "../../Graphics/src/Renderer/Platform/DX12/DX12StateTracker.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <bit>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -348,6 +377,699 @@ Result BvhCase(const std::string& name, int count, int warmup, int samples)
     result.warm = ReadMemory(); index = {}; result.retired = ReadMemory(); return result;
 }
 
+void HashWord(uint64_t& hash, uint32_t word)
+{
+    hash = (hash ^ word) * 1099511628211ull;
+}
+
+uint64_t WaterMeshHash(const scene::WaterSplineSnapshot& snapshot)
+{
+    uint64_t hash = 14695981039346656037ull;
+    for (const auto& vertex : snapshot.vertices) {
+        for (float value : {vertex.worldPosition.x, vertex.worldPosition.y, vertex.worldPosition.z,
+                vertex.depth, vertex.worldVelocity.x, vertex.worldVelocity.z})
+            HashWord(hash, std::bit_cast<uint32_t>(value));
+    }
+    for (const auto* triangles : {&snapshot.footprintTriangles, &snapshot.triangles})
+        for (const auto& triangle : *triangles)
+            for (uint32_t index : triangle.indices) HashWord(hash, index);
+    return hash;
+}
+
+Result WaterSplineCase(const std::string& scenario, int count, int warmup, int samples)
+{
+    Result result;
+    const bool steady = scenario == "river-steady";
+    const bool river = scenario == "river" || scenario == "river-edit" || steady;
+    const bool lake = scenario == "lake" || scenario == "lake-edit";
+    if ((!river && !lake) || count < 8 || count > 256) { result.valid = false; return result; }
+    const bool edit = scenario.ends_with("-edit");
+    const auto shape = river ? scene::WaterSurfaceShape::SPLINE_RIVER : scene::WaterSurfaceShape::SPLINE_LAKE;
+    std::vector<scene::WaterSplinePoint> points;
+    points.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        const float angle = math::TWO_PI * static_cast<float>(i) / static_cast<float>(count);
+        const float radius = (i % 2 == 0) ? 100.0f : 83.0f;
+        const auto position = river ? math::Vector3{12.0f * i, -0.2f * i, 8.0f * std::sin(3.0f * angle)}
+            : math::Vector3{radius * std::cos(angle), 0.0f, radius * std::sin(angle)};
+        points.push_back({static_cast<uint32_t>(i + 1), position, 5.0f, 3.0f, 1.0f});
+    }
+    const int repetitions = river ? 16 : 8;
+    result.operationsPerSample = repetitions;
+    const float originalZ = points[count / 2].localPosition.z;
+    const scene::Transform transform;
+    scene::WaterComponent water;
+    if (steady) {
+        water.surfaceShape = shape;
+        water.splinePoints = points;
+        water.splineSamplesPerSegment = 1;
+        water.splineMeshCellSize = 100000.0f;
+        if (!scene::PrepareWaterSplineSnapshot(water, transform)) { result.valid = false; return result; }
+    }
+    Reserve(result, samples);
+    for (int i = 0; i < warmup + samples; ++i) {
+        if (edit) points[count / 2].localPosition.z = originalZ + (i % 2 == 0 ? 0.25f : -0.25f);
+        scene::WaterSplineSnapshot mesh;
+        const auto begin = Clock::now();
+        for (int repetition = 0; repetition < repetitions && result.valid; ++repetition) {
+            result.valid = steady ? scene::PrepareWaterSplineSnapshot(water, transform)
+                : scene::BuildWaterSplineSnapshot(shape, points, river ? 1u : 8u, transform, mesh, 5.0f, 100000.0f);
+        }
+        const auto end = Clock::now();
+        if (!result.valid) return result;
+        Append(result, i, warmup, Us(begin, end) / repetitions);
+        if (i >= warmup) result.checksum += WaterMeshHash(steady ? *water.splineSnapshot : mesh);
+    }
+    return result;
+}
+
+Result WaterCacheCase(const std::string& scenario, int count, int warmup, int samples)
+{
+    Result result;
+    const bool grouped = scenario == "zone-steady" || scenario == "zone-change";
+    const bool changing = scenario == "zone-change";
+    const bool horizon = scenario == "horizon-links";
+    if ((!grouped && !horizon && scenario != "independent") || count < 2 || count > 512
+        || (horizon && count % 2 != 0)) {
+        result.valid = false;
+        return result;
+    }
+    testkit::ResourceTrackingRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene world;
+    std::vector<scene::EntityID> owners;
+    for (int i = 0; i < count; ++i) {
+        auto& object = world.CreateGameObject("Water");
+        auto& water = object.AddComponent<scene::WaterComponent>();
+        water.extentX = water.extentZ = 8.0f;
+        water.enableGerstnerWaves = false;
+        water.resolutionX = water.resolutionZ = 4;
+        water.chunkCount = 1;
+        object.transform.worldPosition = {25.0f * static_cast<float>(i), 0.0f, 0.0f};
+        owners.push_back(object.GetID());
+        if (horizon && i % 2 == 0) {
+            water.farOceanEnabled = true;
+            water.adaptivePatchLod = true;
+        } else if (horizon) {
+            water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+            water.splineSamplesPerSegment = 1;
+            water.splineMeshCellSize = 100.0f;
+            water.horizonMaterialAtStart = true;
+            water.horizonMaterialReceiver = scene::EntityRef{owners[i - 1]};
+            water.splinePoints = {{1, {-25.0f, 0.0f, 0.0f}, 4.0f, 2.0f, 1.0f},
+                {2, {-25.0f, 1.0f, 15.0f}, 4.0f, 2.0f, 1.0f}};
+        }
+    }
+    if (grouped) {
+        for (int i = 0; i + 1 < count; i += 2) {
+            auto& zone = world.GetGameObject(owners[i])->AddComponent<scene::WaterZoneComponent>();
+            zone.enabled = !changing;
+            zone.members.push_back({scene::EntityRef{owners[i + 1]}, 0});
+        }
+    }
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    scene::RenderPassContext context(world, device, resources, camera, settings, {}, UINT32_MAX, handles);
+    const auto extract = [&]() {
+        renderer::RenderScene output;
+        scene::ExtractRenderWater(context, output);
+        return output.water;
+    };
+    Reserve(result, samples);
+    const auto initial = extract();
+    if (initial.size() != static_cast<size_t>(grouped && !changing ? (count + 1) / 2 : count)) {
+        result.valid = false;
+        return result;
+    }
+    for (int i = 0; i < warmup + samples; ++i) {
+        std::vector<renderer::ResourceHandle<renderer::BufferTag>> releasedBuffers;
+        if (changing) {
+            for (int owner = 0; owner + 1 < count; owner += 2)
+                world.GetComponent<scene::WaterZoneComponent>(owners[owner])->enabled = false;
+            const auto independent = extract();
+            if (independent.size() != static_cast<size_t>(count)) { result.valid = false; return result; }
+            for (size_t member = 1; member < independent.size(); member += 2)
+                releasedBuffers.push_back(independent[member].patches.front().vertexBuffer);
+            for (int owner = 0; owner + 1 < count; owner += 2)
+                world.GetComponent<scene::WaterZoneComponent>(owners[owner])->enabled = true;
+        }
+        const auto begin = Clock::now();
+        const auto water = extract();
+        const auto end = Clock::now();
+        if (water.size() != static_cast<size_t>(grouped ? (count + 1) / 2 : count) ||
+            !std::all_of(releasedBuffers.begin(), releasedBuffers.end(), [&](const auto buffer) {
+                return buffer.IsValid() && resources.Get(buffer) == nullptr;
+            })) { result.valid = false; return result; }
+        Append(result, i, warmup, Us(begin, end));
+        if (i >= warmup) {
+            uint64_t hash = 14695981039346656037ull;
+            for (const auto& input : water) {
+                HashWord(hash, static_cast<uint32_t>(input.medium.stableOwnerKey));
+                HashWord(hash, static_cast<uint32_t>(input.horizonReceiverKey));
+                for (const auto& patch : input.patches) HashWord(hash, patch.indexCount);
+            }
+            if (horizon) {
+                for (int riverIndex = 1; riverIndex < count; riverIndex += 2) {
+                    const auto& river = water[riverIndex];
+                    if (river.horizonReceiverKey == 0 || river.horizonReceiverKey != water[riverIndex - 1].medium.stableOwnerKey) {
+                        result.valid = false;
+                        return result;
+                    }
+                }
+            }
+            result.checksum += hash;
+        }
+    }
+    return result;
+}
+
+Result WaterMediumCase(const std::string& scenario, int count, int warmup, int samples)
+{
+    Result result;
+    const bool duplicated = scenario == "duplicates";
+    if ((!duplicated && scenario != "unique") || count < 2 || count > 8192 || count % 2 != 0) {
+        result.valid = false;
+        return result;
+    }
+    testkit::ResourceTrackingRenderer device;
+    renderer::ResourceManager resources(device);
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    renderer::RenderPassContext context{{}, device, resources, camera, settings, {}, UINT32_MAX, handles};
+    renderer::RenderViewResources view;
+    context.width = context.height = 16;
+    auto sceneInput = std::make_shared<renderer::RenderScene>();
+    for (int i = 0; i < count; ++i) {
+        renderer::RenderWaterInput input;
+        input.constants.worldMatrix = math::Matrix4::Identity();
+        input.medium.stableOwnerKey = 1 + static_cast<uint64_t>(duplicated ? i / 2 : i);
+        input.medium.opticalEnabled = true;
+        input.medium.worldBoundsXZ = {100000.0f, 100000.0f, 100008.0f, 100008.0f};
+        sceneInput->water.push_back(std::move(input));
+    }
+    context.renderScene = sceneInput;
+    Reserve(result, samples);
+    for (int i = 0; i < warmup + samples; ++i) {
+        const auto begin = Clock::now();
+        const bool prepared = renderer::PrepareWaterMediumResources(context, view);
+        const auto end = Clock::now();
+        const auto& disabled = context.handles.waterMediumDisabledOwnerKeys;
+        if (prepared || disabled.size() != static_cast<size_t>(duplicated ? count / 2 : 0)) {
+            result.valid = false;
+            return result;
+        }
+        Append(result, i, warmup, Us(begin, end));
+        if (i >= warmup) {
+            uint64_t hash = 14695981039346656037ull;
+            for (uint64_t key : disabled) HashWord(hash, static_cast<uint32_t>(key));
+            result.checksum += hash;
+        }
+    }
+    return result;
+}
+
+Result StateTrackerCase(const std::string& scenario, int count, int warmup, int samples)
+{
+    Result result;
+    const bool pending = scenario == "half-pending";
+    if ((!pending && scenario != "registered") || count < 4 || count > 4096) {
+        result.valid = false;
+        return result;
+    }
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IDXGIFactory4> factory;
+    ComPtr<IDXGIAdapter> adapter;
+    ComPtr<ID3D12Device> device;
+    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) ||
+        FAILED(factory->EnumWarpAdapter(IID_PPV_ARGS(&adapter))) ||
+        FAILED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)))) {
+        result.valid = false;
+        return result;
+    }
+    ComPtr<ID3D12CommandAllocator> allocator;
+    ComPtr<ID3D12GraphicsCommandList> commands;
+    if (FAILED(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&allocator))) ||
+        FAILED(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator.Get(), nullptr, IID_PPV_ARGS(&commands))) ||
+        FAILED(commands->Close())) { result.valid = false; return result; }
+
+    D3D12_HEAP_PROPERTIES heap{};
+    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+    D3D12_RESOURCE_DESC desc{};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Width = 256; desc.Height = 1; desc.DepthOrArraySize = 1; desc.MipLevels = 1;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    std::vector<ComPtr<ID3D12Resource>> resources(count);
+    for (int i = 0; i < count; ++i) {
+        const auto initial = pending && i % 4 == 0 ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_COPY_DEST;
+        if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, initial, nullptr,
+                IID_PPV_ARGS(&resources[i])))) { result.valid = false; return result; }
+    }
+    renderer::DX12StateTracker tracker;
+    Reserve(result, samples);
+    for (int i = 0; i < warmup + samples; ++i) {
+        tracker.Clear();
+        if (FAILED(allocator->Reset()) || FAILED(commands->Reset(allocator.Get(), nullptr))) {
+            result.valid = false;
+            return result;
+        }
+        for (int index = 0; index < count; ++index) {
+            auto* resource = resources[index].Get();
+            const auto initial = pending && index % 4 == 0 ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_COPY_DEST;
+            tracker.Register(resource, initial);
+            if (pending && index % 2 == 0) tracker.QueueTransition(resource, D3D12_RESOURCE_STATE_COPY_SOURCE);
+        }
+        const auto begin = Clock::now();
+        tracker.QueueTransitionAllToCommon();
+        const auto end = Clock::now();
+        tracker.FlushBarriers(commands.Get());
+        if (FAILED(commands->Close())) { result.valid = false; return result; }
+        Append(result, i, warmup, Us(begin, end));
+    }
+    return result;
+}
+
+enum class LandscapePass { VEGETATION, GRASS, TERRAIN, TERRAIN_OCCLUSION, SHADOW, TERRAIN_SHADOW };
+
+renderer::RenderMeshItem LandscapeQuad(renderer::ResourceManager& resources)
+{
+    std::array<renderer::Vertex, 4> vertices{};
+    for (size_t i = 0; i < vertices.size(); ++i)
+        vertices[i].position = {float(i % 2), 0.0f, float(i / 2)};
+    const std::array<uint32_t, 6> indices{0, 2, 1, 1, 2, 3};
+    renderer::RenderMeshItem mesh;
+    mesh.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::Vertex));
+    mesh.indexBuffer = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    mesh.indexCount = static_cast<uint32_t>(indices.size());
+    mesh.material.valid = true;
+    mesh.material.doubleSided = true;
+    mesh.material.shaderCapabilities = {renderer::ShaderVertexContract::STANDARD_SURFACE,
+        renderer::ShaderSurfaceContract::STANDARD_PBR, renderer::ShaderOpacityContract::ALPHA_CLIP,
+        renderer::ShaderVariantSet::STANDARD_SURFACE};
+    return mesh;
+}
+
+void AddLandscapeInstances(renderer::RenderScene& scene, const renderer::RenderMeshItem& mesh,
+    uint32_t sourceCount, uint32_t placementsPerSource)
+{
+    scene.instances.reserve(sourceCount);
+    auto data = std::make_shared<renderer::InstanceSetData>();
+    data->placements.reserve(placementsPerSource);
+    for (uint32_t i = 0; i < placementsPerSource; ++i) {
+        const float x = static_cast<float>(i % 128) * 2 - 127;
+        const float z = static_cast<float>((i / 128) % 128) * 2 - 127;
+        data->placements.push_back({i + 1, {x, 0, z}, {}, {1, 1, 1}, true});
+    }
+    for (uint32_t i = 0; i < sourceCount; ++i) {
+        renderer::RenderInstanceInput input;
+        input.identity = {1, i + 1};
+        input.world.m[0][3] = static_cast<float>(i % 128) * 2;
+        input.world.m[2][3] = static_cast<float>((i / 128) % 128) * 2;
+        input.localBoundsRadius = 1.5f;
+        input.lodCount = 2;
+        input.lodHeights = {0.008f, 0, 0, 0};
+        input.data = data;
+        input.parts = {{mesh, 0}, {mesh, 1}};
+        input.vegetationBudget = {true, 96, 48, 64};
+        scene.instances.push_back(std::move(input));
+    }
+}
+
+std::shared_ptr<const renderer::TerrainOcclusionGeometry> LandscapePatchGeometry(
+    const renderer::TerrainGpuPatch& grid)
+{
+    auto geometry = std::make_shared<renderer::TerrainOcclusionGeometry>();
+    geometry->heights.resize(grid.columns * grid.rows);
+    for (size_t i = 0; i < geometry->heights.size(); ++i)
+        geometry->heights[i] = static_cast<float>(grid.originZ + i / grid.columns) * 0.125f;
+    scene::TerrainComponent flat;
+    flat.columns = static_cast<int>(grid.columns);
+    flat.rows = static_cast<int>(grid.rows);
+    for (size_t lod = 0; lod < geometry->indices.size(); ++lod) {
+        std::vector<uint32_t> indices;
+        scene::BuildTerrainPatchLodIndices(flat, 0, 0, flat.columns - 1, flat.rows - 1,
+            renderer::TERRAIN_LOD_STEPS[lod], indices);
+        geometry->indices[lod].assign(indices.begin(), indices.end());
+    }
+    geometry->columns.push_back({{float(grid.originX), float(grid.originZ),
+        float(grid.originX + grid.columns - 1), float(grid.originZ + grid.rows - 1)}, geometry->heights.front()});
+    return geometry;
+}
+
+void AddLandscapeTerrain(renderer::RenderScene& scene, renderer::ResourceManager& resources,
+    uint32_t count)
+{
+    constexpr uint32_t STEP = 8;
+    const uint32_t width = static_cast<uint32_t>(std::sqrt(count));
+    const uint32_t height = count / width;
+    renderer::RenderTerrainInput input;
+    input.chunkWorldSize = STEP;
+    input.constants.worldMatrix = math::Matrix4::Identity();
+    input.constants.worldMatrix.m[0][3] = -32;
+    input.constants.worldMatrix.m[2][3] = -32;
+    std::array<renderer::ResourceHandle<renderer::BufferTag>, renderer::TERRAIN_LOD_STEPS.size()> indexBuffers{};
+    input.patches.reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint32_t x = (i % width) * STEP;
+        const uint32_t z = (i / width) * STEP;
+        renderer::RenderTerrainPatch patch;
+        patch.gpuPatch = {x, z, STEP + 1, STEP + 1, width * STEP + 1, height * STEP + 1, 1, 0};
+        patch.occlusion = LandscapePatchGeometry(patch.gpuPatch);
+        patch.aabbMin = {float(x), patch.occlusion->heights.front(), float(z)};
+        patch.aabbMax = {float(x + STEP), patch.occlusion->heights.back(), float(z + STEP)};
+        std::array<renderer::Vertex, (STEP + 1) * (STEP + 1)> vertices{};
+        for (size_t vertex = 0; vertex < vertices.size(); ++vertex)
+            vertices[vertex].position = {float(x + vertex % (STEP + 1)), patch.occlusion->heights[vertex],
+                float(z + vertex / (STEP + 1))};
+        patch.vertexBuffer = resources.CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::Vertex));
+        for (size_t lod = 0; lod < indexBuffers.size(); ++lod) {
+            const auto& indices = patch.occlusion->indices[lod];
+            if (!indexBuffers[lod].IsValid()) {
+                const std::vector<uint32_t> indices32(indices.begin(), indices.end());
+                indexBuffers[lod] = resources.CreateIndexBuffer(indices32.data(), static_cast<uint32_t>(indices32.size()));
+            }
+            patch.indexBufferLOD[lod] = indexBuffers[lod];
+            patch.indexCountLOD[lod] = static_cast<uint32_t>(indices.size());
+        }
+        input.patches.push_back(std::move(patch));
+    }
+    scene.terrains.push_back(std::move(input));
+}
+
+constexpr uint32_t GRASS_ROOTS_PER_PAGE = 1024;
+
+void AddLandscapeGrass(renderer::RenderScene& scene, renderer::ResourceManager& resources, uint32_t pageCount)
+{
+    const std::vector<renderer::FiberBladeRoot> roots(GRASS_ROOTS_PER_PAGE);
+    const auto buffer = resources.CreateStructuredBuffer(roots.data(), GRASS_ROOTS_PER_PAGE, sizeof(roots[0]));
+    scene.fibers.reserve(pageCount);
+    for (uint32_t i = 0; i < pageCount; ++i) {
+        renderer::RenderFiberInput surface;
+        surface.identity = i + 1;
+        surface.settings.m_mode = renderer::FiberRenderMode::BLADE;
+        surface.settings.m_distanceLod = true;
+        surface.settings.m_lodNear = 180;
+        surface.settings.m_lodFar = 320;
+        surface.material.m_length = 0.2f;
+        surface.material.m_density = 1;
+        surface.hasBounds = true;
+        surface.boundsCenter = surface.lodCenter = {float(i % 32) * 8 - 124, 0, float(i / 32) * 8 - 124};
+        surface.boundsRadius = 6;
+        surface.object.world = math::Matrix4::Identity();
+        surface.object.world.m[0][3] = surface.boundsCenter.x;
+        surface.object.world.m[2][3] = surface.boundsCenter.z;
+        surface.blades.m_blades = buffer;
+        surface.blades.m_bladeCount = GRASS_ROOTS_PER_PAGE;
+        scene.fibers.push_back(std::move(surface));
+    }
+}
+
+void ConfigureLandscapeShadows(renderer::RenderPassContext& ctx, float cameraOffset)
+{
+    ctx.shadowCascadeCount = 4;
+    for (int i = 0; i < ctx.shadowCascadeCount; ++i) {
+        renderer::Camera light;
+        light.m_projection = renderer::ProjectionMode::Orthographic;
+        light.m_orthoHeight = 160.0f + static_cast<float>(i) * 100.0f;
+        light.m_aspect = 1;
+        light.m_near = 0.1f;
+        light.m_far = 600.0f;
+        light.m_position = {cameraOffset + 40, 180, -180};
+        light.LookAt({cameraOffset + 40, 0, 0});
+        auto& cascade = ctx.shadowCascades[i];
+        cascade.view = light.GetViewMatrix();
+        cascade.viewProjection = light.GetViewProjection();
+        cascade.frustum = math::Frustum::FromViewProjection(cascade.viewProjection);
+        cascade.eyePos = light.m_position;
+        cascade.viewportSize = 1024;
+        cascade.viewportX = (i % 2) * cascade.viewportSize;
+        cascade.viewportY = (i / 2) * cascade.viewportSize;
+        cascade.texelWorldSize = light.m_orthoHeight / static_cast<float>(cascade.viewportSize);
+    }
+}
+
+Result LandscapeCase(LandscapePass pass, const std::string& scenario, uint32_t count, int warmup, int samples)
+{
+    Result result;
+    const bool instanceShadow = pass == LandscapePass::SHADOW;
+    const bool shadow = instanceShadow || pass == LandscapePass::TERRAIN_SHADOW;
+    const bool vegetation = pass == LandscapePass::VEGETATION;
+    const bool grass = pass == LandscapePass::GRASS;
+    const bool occlusion = pass == LandscapePass::TERRAIN_OCCLUSION;
+    const bool replace = scenario == "replace-static" || scenario == "replace-moving";
+    const bool moving = scenario == "moving" || scenario == "replace-moving";
+    const uint32_t width = static_cast<uint32_t>(std::sqrt(count));
+    if ((replace && !instanceShadow) || (!replace && !moving && scenario != "static")
+        || (!instanceShadow && !vegetation && !grass && count % width != 0)) {
+        result.valid = false;
+        return result;
+    }
+    testkit::ResourceTrackingRenderer device;
+    device.m_supportStructuredRegions = true;
+    renderer::ResourceManager resources(device);
+    renderer::RenderSettings settings;
+    settings.gpuInstancing = true;
+    settings.bulkInstanceGpuCulling = false;
+    settings.shadowEnabled = true;
+    settings.geometryDrawMode = renderer::GeometryDrawMode::CPU;
+    renderer::RenderPassHandles handles;
+    handles.frameCB = resources.CreateConstantBuffer(sizeof(renderer::PerFrameCB));
+    handles.objectCB = resources.CreateConstantBuffer(sizeof(renderer::PerObjectCB));
+    if (pass == LandscapePass::TERRAIN_SHADOW) {
+        handles.shadowShader = resources.LoadShader("Assets/Shaders/Pipeline/Shadow/ShadowMap.hlsl");
+        handles.defaultPSO = resources.CreatePipelineState({renderer::RasterizerMode::SOLID,
+            renderer::BlendMode::OPAQUE_BLEND, renderer::DepthMode::DEPTH_ON});
+    }
+    const auto target = (shadow || grass) ? resources.CreateRenderTarget(2048, 2048,
+        {0, renderer::Format::RGBA16F, true, false}) : renderer::ResourceHandle<renderer::RenderTargetTag>{};
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    if (vegetation || instanceShadow) {
+        const auto mesh = LandscapeQuad(resources);
+        AddLandscapeInstances(*snapshot, mesh, shadow ? count : 1, shadow ? (replace ? 8 : 64) : count);
+    } else if (grass) AddLandscapeGrass(*snapshot, resources, count);
+    else AddLandscapeTerrain(*snapshot, resources, count);
+    std::shared_ptr<renderer::RenderScene> prior;
+    /// @note The same resource frame sees two immutable snapshots whose instance identities match.
+    if (replace) {
+        prior = std::make_shared<renderer::RenderScene>(*snapshot);
+        for (auto& input : prior->instances) input.world.m[1][3] += 0.25f;
+    }
+    renderer::TerrainRenderPass terrainPass(renderer::TerrainDrawMode::GBuffer);
+    renderer::Camera camera;
+    camera.m_projection = occlusion ? renderer::ProjectionMode::Perspective : renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 210;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 550;
+    renderer::OcclusionCuller occlusionCuller;
+    std::array<math::Vector4, renderer::OcclusionCuller::kGpuRows> occlusionRows{};
+    Reserve(result, samples);
+    result.operationsPerSample = count;
+    result.checksum = 14695981039346656037ULL;
+    const auto hash = [&](uint32_t item) { result.checksum = (result.checksum ^ item) * 1099511628211ULL; };
+    for (int sample = -warmup; sample < samples; ++sample) {
+        resources.AdvanceFrame();
+        const int phase = (sample % 24 + 24) % 24;
+        const float offset = moving ? static_cast<float>(12 - std::abs(phase - 12)) * 6 : 0;
+        camera.m_position = {offset, 100, -115};
+        camera.LookAt({offset, 0, 0});
+        const auto frustum = math::Frustum::FromViewProjection(camera.GetGpuViewProjection());
+        renderer::RenderPassContext ctx{{}, device, resources, camera, settings, {}, UINT32_MAX, handles};
+        ctx.renderScene = snapshot;
+        ctx.width = 1024;
+        ctx.height = 1024;
+        ctx.isDeferred = true;
+        ctx.frustumCullingEnabled = true;
+        ctx.cameraFrustum = &frustum;
+        if (shadow) {
+            ctx.resourceRegistry.BindTarget("ShadowMap", target);
+            ConfigureLandscapeShadows(ctx, offset);
+        }
+        if (grass) ctx.resourceRegistry.BindTarget("GBuffer", target);
+        if (prior) {
+            ctx.renderScene = prior;
+            renderer::ExecuteShadowPass(ctx);
+            if (ctx.statsShadowDrawCalls == 0) result.valid = false;
+            ctx.statsShadowDrawCalls = 0;
+            ctx.statsShadowTriangleCount = 0;
+            ctx.renderScene = snapshot;
+        }
+        if (occlusion) {
+            ctx.occlusionCuller = &occlusionCuller;
+            ctx.occlusionCullingEnabled = true;
+            occlusionCuller.Reset(camera);
+        }
+        const std::vector<renderer::RenderGraph::ResourceAccess> accesses;
+        renderer::PassResources passResources(ctx.resourceRegistry, accesses, terrainPass.Name());
+        const auto begin = Clock::now();
+        switch (pass) {
+        case LandscapePass::VEGETATION: renderer::ExecuteInstanceGBuffer(ctx); break;
+        case LandscapePass::GRASS: renderer::ExecuteFiberGBufferPass(ctx); break;
+        case LandscapePass::TERRAIN: terrainPass.Execute(passResources, ctx); break;
+        case LandscapePass::TERRAIN_OCCLUSION: renderer::RasterTerrainOccluders(ctx); break;
+        case LandscapePass::TERRAIN_SHADOW:
+        case LandscapePass::SHADOW: renderer::ExecuteShadowPass(ctx); break;
+        }
+        const auto end = Clock::now();
+        if (sample < 0) continue;
+        Append(result, sample, 0, Us(begin, end));
+        if (occlusion) {
+            occlusionCuller.CopyGpuRows(occlusionRows);
+            for (const auto& row : occlusionRows)
+                for (float value : {row.x, row.y, row.z, row.w}) hash(std::bit_cast<uint32_t>(value));
+            result.recorded += occlusionRows[8].w > 0 ? 1 : 0;
+            continue;
+        }
+        const int draws = shadow ? ctx.statsShadowDrawCalls : ctx.statsDrawCalls;
+        const int triangles = shadow ? ctx.statsShadowTriangleCount : ctx.statsTriangleCount;
+        result.valid = result.valid && draws > 0 && triangles > 0 && (shadow || grass || ctx.statsTotalObjects == count);
+        result.recorded += draws;
+        result.candidates += triangles;
+        for (const int stat : {draws, triangles, ctx.statsTotalObjects, ctx.statsFrustumCulled, ctx.statsDistanceCulled})
+            hash(static_cast<uint32_t>(stat));
+    }
+    if (occlusion) result.valid = result.recorded == static_cast<uint64_t>(samples);
+    return result;
+}
+
+Result TerrainExtractionCase(const std::string& scenario, uint32_t count, int warmup, int samples)
+{
+    Result result;
+    const bool moving = scenario == "moving" || scenario == "edit-moving";
+    const bool edit = scenario == "edit-static" || scenario == "edit-moving";
+    const uint32_t width = static_cast<uint32_t>(std::sqrt(count));
+    if (count % width != 0 || (!moving && !edit && scenario != "static")) {
+        result.valid = false;
+        return result;
+    }
+    testkit::ResourceTrackingRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene scene;
+    renderer::RenderSettings settings;
+    settings.geometryDrawMode = renderer::GeometryDrawMode::CPU;
+    renderer::RenderPassHandles handles;
+    auto& grid = scene.CreateGameObject("Grid").AddComponent<scene::TerrainGridComponent>();
+    grid.cellCountX = width;
+    grid.cellCountZ = count / width;
+    grid.EnsureSize();
+    for (uint32_t i = 0; i < count; ++i) {
+        auto& tile = scene.CreateGameObject("Tile");
+        auto& terrain = tile.AddComponent<scene::TerrainComponent>();
+        terrain.columns = terrain.rows = 3;
+        terrain.chunkSize = 2;
+        terrain.cellSize = 1.0f;
+        terrain.InitFlat();
+        const int x = i % width, z = i / width;
+        tile.transform.position = {static_cast<float>(x * 2), 0, static_cast<float>(z * 2)};
+        grid.SetCell(x, z, tile.GetID());
+    }
+    scene::FlushWorldTransforms(scene);
+    renderer::Camera camera;
+    renderer::RenderScene output;
+    Reserve(result, samples);
+    result.operationsPerSample = count;
+    result.checksum = 14695981039346656037ULL;
+    for (int sample = -warmup; sample < samples; ++sample) {
+        resources.AdvanceFrame();
+        const int phase = (sample % 24 + 24) % 24;
+        const float offset = moving ? static_cast<float>(12 - std::abs(phase - 12)) : 0;
+        camera.m_position = {offset, 30, -30};
+        camera.LookAt({offset, 0, 0});
+        if (edit) for (const auto id : grid.cells) {
+            auto* terrain = scene.GetComponent<scene::TerrainComponent>(id);
+            terrain->heightData[4] = phase % 2 ? 0.01f : 0.02f;
+            terrain->heightDirty = true;
+        }
+        output.terrains.clear();
+        scene::RenderPassContext ctx(scene, device, resources, camera, settings, {}, UINT32_MAX, handles);
+        const auto begin = Clock::now();
+        scene::ExtractRenderTerrains(ctx, output);
+        const auto end = Clock::now();
+        if (sample < 0) continue;
+        Append(result, sample, 0, Us(begin, end));
+        result.valid = result.valid && output.terrains.size() == count;
+        for (const auto& input : output.terrains) {
+            result.valid = result.valid && input.patches.size() == 1;
+            for (const auto& patch : input.patches) {
+                result.valid = result.valid && resources.Get(patch.vertexBuffer) && patch.occlusion;
+                if (!patch.occlusion) continue;
+                result.checksum = (result.checksum ^ patch.indexCountLOD[0]) * 1099511628211ULL;
+                for (float height : patch.occlusion->heights)
+                    result.checksum = (result.checksum ^ std::bit_cast<uint32_t>(height)) * 1099511628211ULL;
+                ++result.recorded;
+            }
+        }
+    }
+    return result;
+}
+
+Result RayGrassCase(const std::string& scenario, uint32_t count, int warmup, int samples,
+    const std::filesystem::path& reportPath)
+{
+    Result result;
+    if (scenario != "resident") { result.valid = false; return result; }
+    testkit::ResourceTrackingRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene scene;
+    const auto directory = reportPath.parent_path() / ("GrassBenchmark-" + std::to_string(GetCurrentProcessId()));
+    std::error_code error;
+    if (!std::filesystem::create_directory(directory, error)) {
+        result.valid = false;
+        return result;
+    }
+    const auto materialPath = directory / "Grass.mat";
+    asset::MaterialAssetAuthoring material;
+    material.params["fiberLength"] = {0.2f};
+    material.params["fiberDensity"] = {1.0f};
+    if (!asset::SaveMaterialAssetToFile(materialPath.generic_string(), material)) {
+        std::filesystem::remove(directory, error);
+        result.valid = false;
+        return result;
+    }
+    asset::AssetManager::Init(resources, directory.generic_string() + "/");
+    const auto materialReference = materialPath.generic_string();
+    renderer::RenderScene output;
+    output.fibers.reserve(count * 4);
+    for (uint32_t i = 0; i < count; ++i) {
+        auto& object = scene.CreateGameObject("Grass");
+        object.AddComponent<scene::TerrainComponent>();
+        auto& fiber = object.AddComponent<scene::FiberComponent>();
+        fiber.m_materialPath = materialReference;
+        fiber.m_renderIdentity = i + 1;
+        fiber.m_mode = renderer::FiberRenderMode::BLADE;
+        for (int patch = 0; patch < 4; ++patch) {
+            auto& surface = output.fibers.emplace_back();
+            surface.identity = i + 1;
+            surface.blades.m_blades = {1, 1};
+            surface.blades.m_bladeCount = patch == 3 && i % 2 == 0 ? 1024 : 0;
+        }
+    }
+    Reserve(result, samples);
+    result.checksum = 14695981039346656037ULL;
+    for (int sample = -warmup; sample < samples; ++sample) {
+        output.rayUnsupportedEffects.clear();
+        const auto begin = Clock::now();
+        scene::ExtractRayFiberSources(scene, resources, output, true);
+        const auto end = Clock::now();
+        if (sample < 0) continue;
+        Append(result, sample, 0, Us(begin, end));
+        result.valid = result.valid && output.rayUnsupportedEffects.size() == (count + 1) / 2;
+        result.recorded += output.rayUnsupportedEffects.size();
+        for (const auto& effect : output.rayUnsupportedEffects)
+            for (uint32_t key : {effect.sourceIndex, effect.sourceGeneration, effect.layerMask})
+                result.checksum = (result.checksum ^ key) * 1099511628211ULL;
+    }
+    asset::AssetManager::UnloadAll();
+    std::filesystem::remove(materialPath, error);
+    auto metaPath = materialPath;
+    metaPath += ".meta";
+    std::filesystem::remove(metaPath, error);
+    std::filesystem::remove(directory, error);
+    return result;
+}
+
 void Array(std::ostream& output, const std::vector<double>& values)
 {
     output << '[';
@@ -386,6 +1108,26 @@ int Measure(int argc, char** argv)
     else if (family == "canvas") results.push_back(CanvasCase(scenario, label == "before", count, warmup, samples));
     else if (family == "geometry") results.push_back(GeometryCase(scenario, count, warmup, samples));
     else if (family == "bvh") results.push_back(BvhCase(scenario, count, warmup, samples));
+    else if (family == "water-spline") results.push_back(WaterSplineCase(scenario, count, warmup, samples));
+    else if (family == "water-cache") {
+        /// @note The CPU backend reports missing dynamic-texture support. Keep console I/O outside the measured function.
+        core::Logger::SetMinLevel(core::LogLevel::LOG_ERROR);
+        results.push_back(WaterCacheCase(scenario, count, warmup, samples));
+        core::Logger::SetMinLevel(core::LogLevel::INFO);
+    }
+    else if (family == "water-medium") results.push_back(WaterMediumCase(scenario, count, warmup, samples));
+    else if (family == "dx12-common") results.push_back(StateTrackerCase(scenario, count, warmup, samples));
+    else if (family == "vegetation") results.push_back(LandscapeCase(LandscapePass::VEGETATION, scenario, count, warmup, samples));
+    else if (family == "grass") results.push_back(LandscapeCase(LandscapePass::GRASS, scenario, count, warmup, samples));
+    else if (family == "grass-ray") results.push_back(RayGrassCase(scenario, count, warmup, samples,
+        std::filesystem::absolute(argv[7])));
+    else if (family == "terrain") results.push_back(LandscapeCase(LandscapePass::TERRAIN, scenario, count, warmup, samples));
+    else if (family == "terrain-extract") results.push_back(TerrainExtractionCase(scenario, count, warmup, samples));
+    else if (family == "terrain-occlusion")
+        results.push_back(LandscapeCase(LandscapePass::TERRAIN_OCCLUSION, scenario, count, warmup, samples));
+    else if (family == "terrain-shadow")
+        results.push_back(LandscapeCase(LandscapePass::TERRAIN_SHADOW, scenario, count, warmup, samples));
+    else if (family == "shadow") results.push_back(LandscapeCase(LandscapePass::SHADOW, scenario, count, warmup, samples));
     else return 2;
     const auto end = Clock::now();
     std::ofstream output(argv[7], std::ios::binary);

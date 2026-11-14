@@ -555,7 +555,8 @@ fbzz_stage_test_runtime(FBZZRenderSynchronizationBench)
 
 # @note Fixed CPU-only Before/After measurements; no window, GPU submission or implicit benchmark in CTest.
 add_executable(FBZZAlgorithmOptimizationBench Bench/AlgorithmOptimizationMeasure.cpp)
-target_link_libraries(FBZZAlgorithmOptimizationBench PRIVATE FBZZEngine psapi)
+target_include_directories(FBZZAlgorithmOptimizationBench PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/TestKit/include")
+target_link_libraries(FBZZAlgorithmOptimizationBench PRIVATE FBZZEngine psapi d3d12 dxgi)
 set_target_properties(FBZZAlgorithmOptimizationBench PROPERTIES FOLDER "Tests")
 fbzz_set_test_output_dir(FBZZAlgorithmOptimizationBench)
 fbzz_stage_test_runtime(FBZZAlgorithmOptimizationBench)

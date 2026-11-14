@@ -36,6 +36,38 @@ FBZZTestBench.exe --measure [--steps 600] [--warmup 120] [--repeats 7] [--ops 20
 - `water` は scene/TargetPoint/Zone の構築を計時前に終え、同期・数値解決・mesh/BVH 生成・Zone 生成を別々に測る。LIVE の静止 / 1 点移動 / 全点移動と BAKED_STATIC の静止 / 移動を含む
 - `water` は GPU / UI を使わず、asset load も行わない。標準 allocator は Engine MemoryTracker の対象外なので確保回数は `null`、再生成数は builder 実行数から記録する
 
+### 水面と DX12 の個別測定
+
+`Tools/AgentBuild.ps1 build FBZZAlgorithmOptimizationBench -Preset release` でビルドする。
+
+```text
+FBZZAlgorithmOptimizationBench.exe <family> <scenario> <before|after> <count> <warmup> <samples> <json> <build-label>
+```
+
+| family | scenario | 回数に含める処理 |
+|---|---|---|
+| `water-spline` | `river` / `lake`、`*-edit`、`river-steady` | 本番の形状生成。編集は計時外で制御点を交互に動かす。定常は構築済み形状の再利用判定 |
+| `water-cache` | `independent` / `zone-steady` / `zone-change` / `horizon-links` | CPU バックエンドで水面の抽出を一巡。Zone 有効化後の抽出は資源返却と再生成を含み、無効状態への復帰は計時外 |
+| `water-medium` | `unique` / `duplicates` | 候補の照合とビュー外判定、または所有キー重複の一括除外。GPU の媒体アトラス生成を含まない |
+| `dx12-common` | `registered` / `half-pending` | `QueueTransitionAllToCommon` の CPU 時間。資源生成、保留遷移の準備、コマンドへのバリア記録は計時外。WARP を使い GPU へ提出しない |
+
+各 JSON の `workers[].totalUs` は操作あたりの µs。複数操作をまとめて測る水面形状では `operationsPerSample` にその回数を記録する。同じ実行ファイルから比較する Release DLL を切り替えるときは、`runtimeModules` が指定の DLL を指すことを確認し、同条件の出力 checksum と標本数も照合する。
+
+### 植生・地形・影の個別測定
+
+同じ `FBZZAlgorithmOptimizationBench` を使う。Kestrel Basin の描画機能を固定入力で個別に呼び出し、`static` は固定視点、`moving` は 24 フレーム周期の水平往復にする。CPU バックエンドで本番の抽出・可視判定・描画提出を測る。GPU の実行時間、シーン読込、フレーム全体の時間は計測範囲の外。
+
+| family | count | 計時と照合の対象 |
+|---|---|---|
+| `vegetation` | 1 セット内の個体数 | 樹木などの色パスの CPU 選別・LOD と提出。候補数・描画数・三角形数を照合 |
+| `grass` | 1,024 本入りのページ数 | 常駐した草の色パスの可視判定・LOD と提出。描画数・三角形数を照合 |
+| `terrain-extract` | 地形グリッドのタイル数 | パッチの抽出。 `edit-static` / `edit-moving` は全タイルの高さ変更後の抽出。出力の高さとインデックス数を照合 |
+| `terrain` | 地形パッチ数 | 色パスの可視判定・LOD と提出。候補数・描画数・三角形数を照合 |
+| `terrain-occlusion` | 地形パッチ数 | 透視投影で生成する CPU 遮蔽深度。全セルの深度を照合 |
+| `terrain-shadow` | 地形パッチ数 | 4 カスケードの地形の影。描画数・三角形数を照合 |
+| `shadow` | 配置セット数 | 4 カスケードの配置物の影。通常は 1 セット 64 個体。 `replace-static` / `replace-moving` は 1 セット 8 個体で、同じ資源フレーム内の最初のスナップショットを描いてから差し替えを計時。描画数・三角形数を照合 |
+| `grass-ray` | 草のオーナー数 | `resident` は実験用レイトレーシング診断で 1 オーナー当たり 4 面を照合。診断されたオーナーと順序を確認 |
+
 ### JSON (`schema: "fbzz-bench/2"`)
 
 ```json
