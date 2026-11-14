@@ -4,6 +4,7 @@
 /// @date    2026-10-30
 #pragma once
 #include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
@@ -16,9 +17,11 @@
 namespace fbzz::asset { struct MaterialAsset; }
 namespace fbzz::scene {
 class Scene;
-using TerrainChunk = renderer::RenderTerrainPatch;
+struct TerrainChunk : renderer::RenderTerrainPatch {
+    bool verticesDirty = true;
+    bool topologyDirty = true;
+};
 struct TerrainChunkKey {
-    EntityID entityId;
     uint32_t chunkX = 0;
     uint32_t chunkZ = 0;
     bool operator==(const TerrainChunkKey& o) const = default;
@@ -28,10 +31,8 @@ struct TerrainChunkKey {
 struct TerrainChunkKeyHash {
     size_t operator()(const TerrainChunkKey& key) const noexcept
     {
-        size_t hash = std::hash<uint32_t>{}(key.entityId.index);
-        for (uint32_t value : {key.entityId.generation, key.chunkX, key.chunkZ})
-            hash ^= std::hash<uint32_t>{}(value) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
-        return hash;
+        const size_t hash = std::hash<uint32_t>{}(key.chunkX);
+        return hash ^ (std::hash<uint32_t>{}(key.chunkZ) + 0x9e3779b9u + (hash << 6) + (hash >> 2));
     }
 };
 struct TerrainGpuState {
@@ -41,11 +42,13 @@ struct TerrainGpuState {
     };
 
     EntityID entityId = EntityID::INVALID;
+    std::unordered_map<TerrainChunkKey, TerrainChunk, TerrainChunkKeyHash> chunks;
     uint64_t surfaceRevision = UINT64_MAX, vegetationRevision = UINT64_MAX;
     renderer::ResourceHandle<renderer::TextureTag> splatIndices;   ///< @note 所有
     renderer::ResourceHandle<renderer::TextureTag> splatWeights;   ///< @note 所有
     renderer::ResourceHandle<renderer::StructuredBufferTag> layerBuffer; ///< @note 所有
     uint32_t layerCapacity = 0;
+    bool splatDynamic = false;
     /// @note 直前に転送したバイト列。同じなら Update を省く。
     std::vector<TerrainLayerGpu> uploadedLayers;
     renderer::ResourceHandle<renderer::StructuredBufferTag> heights, patches;
@@ -57,6 +60,8 @@ struct TerrainGpuState {
     std::array<RasterStrip, 4> rasterStrips;
     bool geometryDirty = true;
     bool heightsDirty = true;
+    bool heightsDynamic = false;
+    TerrainHeightRegion heightUploadRegion;
     uint64_t shadowBakeGeometryHash = 0;
     renderer::ResourceHandle<renderer::StructuredBufferTag> surfaceLayerBuffer;
     renderer::ResourceHandle<renderer::TextureTag> surfaceSplatIndices, surfaceSplatWeights;
@@ -70,8 +75,9 @@ struct TerrainRenderCache {
     TerrainRenderCache(const TerrainRenderCache&) = delete;
     TerrainRenderCache& operator=(const TerrainRenderCache&) = delete;
     uint64_t owner = 0, resetVersion = 0;
+    bool splatDynamicUnavailable = false;
+    bool heightDynamicUnavailable = false;
     TerrainFallbackTextures fallback;
-    std::unordered_map<TerrainChunkKey, TerrainChunk, TerrainChunkKeyHash> chunks;
     std::unordered_map<uint32_t, TerrainGpuState> entities;
     uint64_t materialIndexRevision = UINT64_MAX;
     int materialAssetGeneration = -1;
@@ -81,5 +87,6 @@ struct TerrainRenderCache {
 };
 TerrainRenderCache& AcquireTerrainRenderCache(Scene& scene, renderer::ResourceManager& resources);
 void ReleaseTerrainChunkBuffers(renderer::ResourceManager& resources, TerrainChunk& chunk);
+void ReleaseTerrainChunks(TerrainGpuState& state, renderer::ResourceManager& resources);
 void ReleaseTerrainGpuState(TerrainGpuState& state, renderer::ResourceManager& resources);
 } /// @note namespace fbzz::scene

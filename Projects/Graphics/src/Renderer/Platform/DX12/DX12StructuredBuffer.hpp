@@ -22,6 +22,8 @@ public:
               bool gpuLocalReadOnly = false);
     FBZZ_GRAPHICS_API void Update(const void* data, size_t sizeBytes) override;
     FBZZ_GRAPHICS_API bool UpdateRegion(const void* data, size_t sizeBytes, size_t offsetBytes) override;
+    FBZZ_GRAPHICS_API bool UpdateRows(const void* data, size_t rowBytes, size_t rowCount,
+        size_t destinationPitch, size_t offsetBytes) override;
     uint32_t GetElementCount() const override { return m_elementCount; }
     uint32_t GetStride() const override { return m_stride; }
     size_t GetSize() const override { return static_cast<size_t>(m_elementCount) * m_stride; }

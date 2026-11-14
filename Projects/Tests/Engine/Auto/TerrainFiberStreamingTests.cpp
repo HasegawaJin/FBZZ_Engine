@@ -164,7 +164,7 @@ protected:
     /// @note Contract tests isolate the production fiber extractor so ordinary terrain draw buffers do not hide residency bounds.
     void ExtractContractFrame(float cameraX, float cameraZ, bool advance = true,
         renderer::ResourceManager* otherResources = nullptr, testkit::ResourceTrackingRenderer* otherRenderer = nullptr,
-        bool advanceSimulationTime = true)
+        bool advanceSimulationTime = true, bool extractTerrain = false)
     {
         auto& resources = otherResources ? *otherResources : *m_resources;
         auto& device = otherRenderer ? *otherRenderer : m_renderer;
@@ -180,6 +180,7 @@ protected:
         renderer::RenderPassHandles handles;
         scene::RenderPassContext context(m_scene, device, resources, camera, settings, {}, UINT32_MAX, handles);
         m_output = {};
+        if (extractTerrain) scene::ExtractRenderTerrains(context, m_output);
         scene::ExtractRenderFibers(context, m_output);
     }
 
@@ -794,6 +795,48 @@ TEST_F(TerrainFiberStreamingTest, DistantHeightLayerAndHoleEditsLeaveVisibleGras
     ExtractContractFrame(256, 256);
     ExpectSamePatchHandles(initial, Snapshot());
     EXPECT_EQ(LiveAllocationKeys(*m_resources), allocations);
+}
+
+TEST_F(TerrainFiberStreamingTest, BrushPreviewsRefreshSharedSplatEdgesAndNormalHalo)
+{
+    CreateTerrain(129, 1.0f);
+    const auto extract = [&] { ExtractContractFrame(256, 256, true, nullptr, nullptr, true, true); };
+    extract();
+    const auto initial = Snapshot();
+    auto* terrain = m_scene.GetComponent<scene::TerrainComponent>(m_terrainId);
+    ASSERT_NE(terrain, nullptr);
+
+    terrain->heightData[66u * 129u + 65u] += 1.0f / terrain->maxHeight;
+    terrain->RequestHeightPreview({65, 66, 65, 66});
+    extract();
+    const auto sculpted = Snapshot();
+    ASSERT_EQ(sculpted.size(), initial.size());
+    size_t sculptedCount = 0;
+    for (const auto& [coordinate, previous] : initial) {
+        const auto found = sculpted.find(coordinate);
+        ASSERT_NE(found, sculpted.end());
+        const bool affected = coordinate == std::pair{240, 272} || coordinate == std::pair{272, 272};
+        EXPECT_EQ(found->second.vertices != previous.vertices, affected);
+        sculptedCount += found->second.vertices != previous.vertices;
+    }
+    EXPECT_EQ(sculptedCount, 2u);
+
+    const size_t offset = (64u * 129u + 64u) * scene::TERRAIN_SPLAT_SLOTS;
+    scene::terrain_splat::SetWeight(terrain->splatIndices.data() + offset, terrain->splatWeights.data() + offset, 1, 1.0f);
+    terrain->RequestSplatPreview({64, 64, 64, 64});
+    extract();
+    const auto painted = Snapshot();
+    ASSERT_EQ(painted.size(), sculpted.size());
+    size_t paintedCount = 0;
+    for (const auto& [coordinate, previous] : sculpted) {
+        const auto found = painted.find(coordinate);
+        ASSERT_NE(found, painted.end());
+        const bool affected = (coordinate.first == 240 || coordinate.first == 272)
+            && (coordinate.second == 240 || coordinate.second == 272);
+        EXPECT_EQ(found->second.vertices != previous.vertices, affected);
+        paintedCount += found->second.vertices != previous.vertices;
+    }
+    EXPECT_EQ(paintedCount, 4u);
 }
 
 TEST_F(TerrainFiberStreamingTest, InterleavedResourceOwnersAndResetKeepOtherOwnerGrassAlive)

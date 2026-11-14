@@ -56,6 +56,33 @@ bool DX12StructuredBuffer::UpdateRegion(const void* data, size_t bytes, size_t o
     return copied;
 }
 
+bool DX12StructuredBuffer::UpdateRows(const void* data, size_t rowBytes, size_t rowCount,
+    size_t destinationPitch, size_t offsetBytes)
+{
+    if (!m_readWrite || rowBytes == destinationPitch)
+        return IStructuredBuffer::UpdateRows(data, rowBytes, rowCount, destinationPitch, offsetBytes);
+    const auto size = GetSize();
+    if (!data || rowBytes == 0 || rowCount == 0 || destinationPitch < rowBytes
+        || offsetBytes > size || rowBytes > size - offsetBytes
+        || rowCount - 1 > (size - offsetBytes - rowBytes) / destinationPitch
+        || !m_context || !m_context->IsFrameOpen() || m_context->IsComputeListOpen()) return false;
+
+    /// @note Keep the whole rectangle in COPY_DEST, then expose it to later draws on the direct list.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states Using resource barriers to synchronize resource states.
+    auto* commands = m_context->GetCommandList();
+    m_tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+    const auto* source = static_cast<const uint8_t*>(data);
+    bool copied = true;
+    for (size_t row = 0; row < rowCount; ++row) {
+        if (m_context->StageBufferCopy(m_resource.Get(), source + row * rowBytes,
+                rowBytes, offsetBytes + row * destinationPitch)) continue;
+        copied = false;
+        break;
+    }
+    m_tracker->Transition(commands, m_resource.Get(), D3D12_RESOURCE_STATE_COMMON);
+    return copied;
+}
+
 uint32_t DX12StructuredBuffer::GetBindlessUavIndex() const
 {
     if (m_bindlessUavIndex != INVALID_BINDLESS_INDEX)

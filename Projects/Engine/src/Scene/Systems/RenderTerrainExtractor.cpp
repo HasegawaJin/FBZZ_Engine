@@ -199,40 +199,71 @@ static float SampleStitchedTerrainHeight(
     return terrain.heightData[idx] * terrain.maxHeight;
 }
 
-static math::Vector3 ComputeStitchedNormal(
-    const TerrainComponent& terrain,
-    const TerrainNeighbors& neighbors,
-    int                     x,
-    int                     z)
+/// @note Scalar samples include stitched neighbor heights; GPU central differences match the CPU fallback.
+static void FillTerrainHeightRow(const TerrainComponent& terrain, const TerrainNeighbors& neighbors,
+    int firstX, int lastX, int z, float* output, bool canonicalZero = false)
 {
-    /// @note 補正済み高さで中心差分を取り、頂点位置だけでなく陰影も隣接 Terrain と連続させる。
-    /// @note `TerrainComponent::ComputeNormal()` は単体 Terrain 用に端を clamp するため、
-    /// @note TerrainGrid では境界法線が隣の傾斜を見ず、継ぎ目が暗線として残ってしまう。
-    const float dhdx = (SampleStitchedTerrainHeight(terrain, neighbors, x + 1, z)
-                      - SampleStitchedTerrainHeight(terrain, neighbors, x - 1, z))
-                     / (2.0f * terrain.cellSize);
-    const float dhdz = (SampleStitchedTerrainHeight(terrain, neighbors, x, z + 1)
-                      - SampleStitchedTerrainHeight(terrain, neighbors, x, z - 1))
-                     / (2.0f * terrain.cellSize);
-    return math::Vector3{ -dhdx, 1.0f, -dhdz }.Normalized();
+    const auto sample = [&](int x) { output[x - firstX] = SampleStitchedTerrainHeight(terrain, neighbors, x, z); };
+    if (z <= 0 || z >= terrain.rows - 1) {
+        for (int x = firstX; x <= lastX; ++x) sample(x);
+        return;
+    }
+    for (int x = firstX; x <= (std::min)(lastX, 0); ++x) sample(x);
+    const int begin = (std::max)(firstX, 1), end = (std::min)(lastX, terrain.columns - 2);
+    if (begin <= end) {
+        const auto* source = terrain.heightData.data() + static_cast<size_t>(z) * terrain.columns;
+        /// @note The CPU patch retains the stitched accumulator's signed-zero convention.
+        if (canonicalZero) {
+            std::transform(source + begin, source + end + 1, output + (begin - firstX),
+                [maxHeight = terrain.maxHeight](float height) { return 0.0f + height * maxHeight; });
+        } else {
+            std::transform(source + begin, source + end + 1, output + (begin - firstX),
+                [maxHeight = terrain.maxHeight](float height) { return height * maxHeight; });
+        }
+    }
+    for (int x = (std::max)(firstX, terrain.columns - 1); x <= lastX; ++x) sample(x);
 }
+
+struct TerrainGridLookup {
+    explicit TerrainGridLookup(const TerrainGridComponent* terrainGrid) : grid(terrainGrid)
+    {
+        if (!grid || grid->cellCountX <= 0 || grid->cellCountZ <= 0) return;
+        const size_t width = static_cast<size_t>(grid->cellCountX);
+        const size_t count = std::min(grid->cells.size(), width * static_cast<size_t>(grid->cellCountZ));
+        m_positions.reserve(count);
+        for (size_t i = 0; i < count; ++i) {
+            const auto id = grid->cells[i];
+            /// @note 重複参照は TryGetGridPos と同じく行優先で最初のセルを使う。
+            if (id.IsValid()) m_positions.try_emplace(Key(id),
+                std::array{static_cast<int>(i % width), static_cast<int>(i / width)});
+        }
+    }
+
+    const std::array<int, 2>* Find(EntityID id) const
+    {
+        const auto found = m_positions.find(Key(id));
+        return found == m_positions.end() ? nullptr : &found->second;
+    }
+
+    const TerrainGridComponent* grid;
+
+private:
+    static uint64_t Key(EntityID id) { return (uint64_t(id.generation) << 32) | id.index; }
+    std::unordered_map<uint64_t, std::array<int, 2>> m_positions;
+};
 
 static TerrainNeighbors ResolveTerrainNeighbors(
     Scene&                       scene,
-    const TerrainGridComponent*  terrainGrid,
+    const TerrainGridLookup&     gridLookup,
     EntityID                     eid)
 {
     TerrainNeighbors neighbors;
-    if (!terrainGrid)
-        return neighbors;
-
-    int gx = 0;
-    int gz = 0;
-    if (!terrainGrid->TryGetGridPos(eid, gx, gz))
-        return neighbors;
+    const auto* position = gridLookup.Find(eid);
+    if (!position) return neighbors;
+    const auto [gx, gz] = *position;
 
     auto resolveNeighbor = [&](int ngx, int ngz) -> const TerrainComponent* {
-        const EntityID neid = terrainGrid->GetCell(ngx, ngz);
+        const EntityID neid = gridLookup.grid->GetCell(ngx, ngz);
         if (!scene.IsValid(neid))
             return nullptr;
         return scene.GetComponent<TerrainComponent>(neid);
@@ -249,43 +280,50 @@ static TerrainNeighbors ResolveTerrainNeighbors(
     return neighbors;
 }
 
-static void EraseTerrainChunkCache(TerrainRenderCache& cache, renderer::ResourceManager& resources, EntityID eid)
+static void EraseTerrainChunkCache(TerrainGpuState& gpu, renderer::ResourceManager& resources)
 {
-    if (auto state = cache.entities.find(eid.index); state != cache.entities.end()) {
-        state->second.geometryDirty = true;
-        state->second.shadowBakeGeometryHash = 0;
-    }
-    std::erase_if(cache.chunks, [&](auto& kv) {
-        if (kv.first.entityId != eid)
-            return false;
-        ReleaseTerrainChunkBuffers(resources, kv.second);
-        return true;
-    });
+    gpu.geometryDirty = true;
+    gpu.heightsDirty = true;
+    gpu.heightUploadRegion = {};
+    gpu.shadowBakeGeometryHash = 0;
+    ReleaseTerrainChunks(gpu, resources);
 }
 
-static void EraseHeightPreviewChunks(TerrainRenderCache& cache, renderer::ResourceManager& resources,
-    EntityID eid, const TerrainComponent& terrain, TerrainGpuState& gpu, const TerrainHeightRegion& region)
+static void InvalidatePreviewChunks(renderer::ResourceManager& resources,
+    const TerrainComponent& terrain, TerrainGpuState& gpu, const TerrainHeightRegion& region,
+    bool heightChanged, bool topologyChanged = false)
 {
     if (terrain.chunkSize <= 0 || terrain.columns < 2 || terrain.rows < 2) {
-        EraseTerrainChunkCache(cache, resources, eid);
+        EraseTerrainChunkCache(gpu, resources);
         return;
     }
     /// @note 遮蔽証明の高さ下限は法線より広い最大 LOD 幅を読む。境界頂点は両チャンクに含まれる。
-    const int halo = renderer::TERRAIN_LOD_STEPS[gpu.lodCount - 1];
-    const int firstX = std::max(region.minX - halo - 1, 0) / terrain.chunkSize;
-    const int firstZ = std::max(region.minZ - halo - 1, 0) / terrain.chunkSize;
-    const int lastX = std::min(region.maxX + halo, terrain.columns - 2) / terrain.chunkSize;
-    const int lastZ = std::min(region.maxZ + halo, terrain.rows - 2) / terrain.chunkSize;
+    const int halo = heightChanged ? renderer::TERRAIN_LOD_STEPS[gpu.lodCount - 1] + 1 : 0;
+    const int firstX = std::max(region.minX - halo, 0) / terrain.chunkSize;
+    const int firstZ = std::max(region.minZ - halo, 0) / terrain.chunkSize;
+    const int lastX = std::min(region.maxX + halo - 1, terrain.columns - 2) / terrain.chunkSize;
+    const int lastZ = std::min(region.maxZ + halo - 1, terrain.rows - 2) / terrain.chunkSize;
     for (int z = firstZ; z <= lastZ; ++z) {
         for (int x = firstX; x <= lastX; ++x) {
-            const auto chunk = cache.chunks.find({eid, static_cast<uint32_t>(x), static_cast<uint32_t>(z)});
-            if (chunk == cache.chunks.end()) continue;
-            ReleaseTerrainChunkBuffers(resources, chunk->second);
-            cache.chunks.erase(chunk);
+            const auto chunk = gpu.chunks.find({static_cast<uint32_t>(x), static_cast<uint32_t>(z)});
+            if (chunk == gpu.chunks.end()) continue;
+            chunk->second.verticesDirty |= heightChanged;
+            /// @note Hole rectangles include the far vertex of the last cell. LOD hole probes stay within each patch.
+            chunk->second.topologyDirty |= topologyChanged
+                && x * terrain.chunkSize < region.maxX && (x + 1) * terrain.chunkSize > region.minX
+                && z * terrain.chunkSize < region.maxZ && (z + 1) * terrain.chunkSize > region.minZ;
         }
     }
-    gpu.heightsDirty = true;
+    gpu.geometryDirty |= topologyChanged;
     gpu.shadowBakeGeometryHash = 0;
+    if (!heightChanged) return;
+    /// @note The padded height buffer also reads clamped own-tile edge samples when a neighbor is absent.
+    TerrainHeightRegion padded = region;
+    if (padded.minX == 0) --padded.minX;
+    if (padded.minZ == 0) --padded.minZ;
+    if (padded.maxX == terrain.columns - 1) ++padded.maxX;
+    if (padded.maxZ == terrain.rows - 1) ++padded.maxZ;
+    gpu.heightUploadRegion.Include(padded);
 }
 
 /// @note SampleStitchedTerrainHeight が隣接タイルから読む境界と外周一標本に、編集矩形を写す。
@@ -303,156 +341,204 @@ static TerrainHeightRegion NeighborHeightPreview(const TerrainComponent& source,
 }
 
 static void InvalidateNeighborTerrainChunks(TerrainRenderCache& cache, Scene& scene, renderer::ResourceManager& resources,
-    const TerrainGridComponent* grid, EntityID eid, const TerrainComponent& terrain, const TerrainHeightRegion* region)
+    const TerrainGridLookup& gridLookup, EntityID eid, const TerrainComponent& terrain, const TerrainHeightRegion* region)
 {
-    int gx = 0, gz = 0;
-    if (!grid || !grid->TryGetGridPos(eid, gx, gz)) return;
+    const auto* position = gridLookup.Find(eid);
+    if (!position) return;
+    const auto [gx, gz] = *position;
     for (int dz = -1; dz <= 1; ++dz) {
         for (int dx = -1; dx <= 1; ++dx) {
             if (dx == 0 && dz == 0) continue;
-            const EntityID neighborId = grid->GetCell(gx + dx, gz + dz);
+            const EntityID neighborId = gridLookup.grid->GetCell(gx + dx, gz + dz);
             const auto cached = cache.entities.find(neighborId.index);
             if (cached == cache.entities.end() || cached->second.entityId != neighborId) continue;
             const auto* neighbor = scene.GetComponent<TerrainComponent>(neighborId);
             if (!neighbor) continue;
             if (!region) {
-                EraseTerrainChunkCache(cache, resources, neighborId);
+                EraseTerrainChunkCache(cached->second, resources);
                 continue;
             }
             auto& gpu = cached->second;
             const auto affected = NeighborHeightPreview(terrain, *neighbor, dx, dz, *region);
             if (!affected.Empty() && gpu.lodCount != 0)
-                EraseHeightPreviewChunks(cache, resources, neighborId, *neighbor, gpu, affected);
+                InvalidatePreviewChunks(resources, *neighbor, gpu, affected, true);
         }
     }
 }
 
-static void BuildChunk(
-    const TerrainComponent&      terrain,
-    int                          cx,
-    int                          cz,
-    const TerrainNeighbors&      neighbors,
-    std::vector<TerrainVertex>&  outVerts,
-    math::Vector3&               outAabbMin,
-    math::Vector3&               outAabbMax,
-    int&                         outX0,
-    int&                         outZ0,
-    int&                         outX1,
-    int&                         outZ1)
+struct TerrainChunkUpload {
+    TerrainChunk* chunk;
+    size_t firstVertex;
+    size_t firstIndex;
+};
+
+/// @note Limit staging during a full tile load, where all patch vertices and LOD indices can exceed the GPU upload size of a brush dab.
+constexpr size_t TERRAIN_CHUNK_BATCH_BYTES = 8 * 1024 * 1024;
+
+struct TerrainChunkScratch {
+    std::vector<float> heights;
+    std::vector<TerrainVertex> vertices;
+    std::vector<uint32_t> indices;
+    std::vector<TerrainChunkUpload> uploads;
+    std::vector<const TerrainChunk*> drawChunks;
+    int minX = 0, minZ = 0;
+    size_t stride = 0;
+
+    [[nodiscard]] const float* HeightRow(int z) const
+    {
+        return heights.data() + static_cast<size_t>(z - minZ) * stride;
+    }
+};
+
+static void FillChunkHeights(const TerrainComponent& terrain, const TerrainNeighbors& neighbors,
+    int x0, int z0, int x1, int z1, int overlap, TerrainChunkScratch& scratch)
 {
-    outX0 = cx * terrain.chunkSize;
-    outZ0 = cz * terrain.chunkSize;
-    outX1 = std::min(outX0 + terrain.chunkSize, terrain.columns - 1);
-    outZ1 = std::min(outZ0 + terrain.chunkSize, terrain.rows    - 1);
-
-    outAabbMin = {  1e30f,  1e30f,  1e30f };
-    outAabbMax = { -1e30f, -1e30f, -1e30f };
-
-    for (int z = outZ0; z <= outZ1; ++z) {
-        for (int x = outX0; x <= outX1; ++x) {
-            const float h = SampleStitchedTerrainHeight(terrain, neighbors, x, z);
-
-            TerrainVertex v;
-            v.position = {
-                static_cast<float>(x) * terrain.cellSize,
-                h,
-                static_cast<float>(z) * terrain.cellSize
-            };
-            v.normal = ComputeStitchedNormal(terrain, neighbors, x, z);
-
-            {
-                const float hL = SampleStitchedTerrainHeight(terrain, neighbors, x - 1, z);
-                const float hR = SampleStitchedTerrainHeight(terrain, neighbors, x + 1, z);
-                const float span = 2.0f * terrain.cellSize;
-                const float dhDx = (hR - hL) / span;
-                v.tangent = math::Vector3{ terrain.cellSize, dhDx * terrain.cellSize, 0.0f }.Normalized();
-            }
-
-            v.uv = {
-                static_cast<float>(x) / static_cast<float>(terrain.columns - 1),
-                static_cast<float>(z) / static_cast<float>(terrain.rows    - 1)
-            };
-            outVerts.push_back(v);
-
-            outAabbMin.x = std::min(outAabbMin.x, v.position.x);
-            outAabbMin.y = std::min(outAabbMin.y, v.position.y);
-            outAabbMin.z = std::min(outAabbMin.z, v.position.z);
-            outAabbMax.x = std::max(outAabbMax.x, v.position.x);
-            outAabbMax.y = std::max(outAabbMax.y, v.position.y);
-            outAabbMax.z = std::max(outAabbMax.z, v.position.z);
-        }
-    }
+    scratch.minX = std::max(x0 - overlap, -1);
+    scratch.minZ = std::max(z0 - overlap, -1);
+    const int maxX = std::min(x1 + overlap, terrain.columns);
+    const int maxZ = std::min(z1 + overlap, terrain.rows);
+    scratch.stride = static_cast<size_t>(maxX - scratch.minX + 1);
+    scratch.heights.resize(scratch.stride * static_cast<size_t>(maxZ - scratch.minZ + 1));
+    for (int z = scratch.minZ; z <= maxZ; ++z)
+        FillTerrainHeightRow(terrain, neighbors, scratch.minX, maxX, z,
+            scratch.heights.data() + static_cast<size_t>(z - scratch.minZ) * scratch.stride, true);
 }
 
-static TerrainChunk& EnsureTerrainChunk(
-    TerrainRenderCache& cache,
+static const TerrainChunk& PrepareTerrainChunk(
+    TerrainGpuState& gpu,
     const TerrainComponent& terrain,
-    EntityID eid,
     int cx,
     int cz,
     const TerrainNeighbors& neighbors,
     size_t lodCount,
-    renderer::ResourceManager& resources)
+    TerrainChunkScratch& scratch)
 {
-    const TerrainChunkKey key{ eid, static_cast<uint32_t>(cx), static_cast<uint32_t>(cz) };
-    if (!cache.chunks.contains(key)) {
-        std::vector<TerrainVertex> verts;
-        math::Vector3 aabbMin, aabbMax;
-        int x0, z0, x1, z1;
-        BuildChunk(terrain, cx, cz, neighbors, verts, aabbMin, aabbMax, x0, z0, x1, z1);
+    const TerrainChunkKey key{static_cast<uint32_t>(cx), static_cast<uint32_t>(cz)};
+    auto& chunk = gpu.chunks.try_emplace(key).first->second;
+    if (!chunk.verticesDirty && !chunk.topologyDirty) return chunk;
+    scratch.uploads.push_back({&chunk, scratch.vertices.size(), scratch.indices.size()});
 
-        TerrainChunk chunk;
-        chunk.gpuPatch = {static_cast<uint32_t>(x0), static_cast<uint32_t>(z0),
-            static_cast<uint32_t>(x1 - x0 + 1), static_cast<uint32_t>(z1 - z0 + 1),
-            static_cast<uint32_t>(terrain.columns), static_cast<uint32_t>(terrain.rows), terrain.cellSize, 0};
-        chunk.aabbMin = aabbMin;
-        chunk.aabbMax = aabbMax;
-        chunk.vertexBuffer = resources.CreateVertexBuffer(
-            verts.data(),
-            verts.size() * sizeof(TerrainVertex),
-            static_cast<uint32_t>(sizeof(TerrainVertex)));
-
-        auto occlusion = verts.size() <= UINT16_MAX ? std::make_shared<renderer::TerrainOcclusionGeometry>() : nullptr;
-        if (occlusion) {
-            occlusion->heights.reserve(verts.size());
-            for (const auto& vertex : verts) occlusion->heights.push_back(vertex.position.y);
-        }
-
-        for (size_t lod = 0; lod < lodCount; ++lod) {
-            std::vector<uint32_t> indices;
-            BuildTerrainPatchLodIndices(terrain, x0, z0, x1, z1, renderer::TERRAIN_LOD_STEPS[lod], indices);
-            chunk.indexCountLOD[lod] = static_cast<uint32_t>(indices.size());
-            /// @note 全セルが穴のチャンクはインデックス 0 本。空バッファは作らず、描画側で飛ばす。
-            if (chunk.indexCountLOD[lod] > 0)
-                chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(indices.data(), chunk.indexCountLOD[lod]);
-            if (occlusion) {
-                auto& cpuIndices = occlusion->indices[lod];
-                cpuIndices.reserve(indices.size());
-                for (const auto index : indices) cpuIndices.push_back(static_cast<uint16_t>(index));
+    const int x0 = cx * terrain.chunkSize, z0 = cz * terrain.chunkSize;
+    const int x1 = std::min(x0 + terrain.chunkSize, terrain.columns - 1);
+    const int z1 = std::min(z0 + terrain.chunkSize, terrain.rows - 1);
+    const auto columns = static_cast<uint32_t>(x1 - x0 + 1), rows = static_cast<uint32_t>(z1 - z0 + 1);
+    const size_t vertexCount = static_cast<size_t>(columns) * rows;
+    chunk.gpuPatch = {static_cast<uint32_t>(x0), static_cast<uint32_t>(z0), columns, rows,
+        static_cast<uint32_t>(terrain.columns), static_cast<uint32_t>(terrain.rows), terrain.cellSize, 0};
+    auto occlusion = vertexCount <= UINT16_MAX ? std::make_shared<renderer::TerrainOcclusionGeometry>() : nullptr;
+    const int overlap = renderer::TERRAIN_LOD_STEPS[lodCount - 1];
+    if (chunk.verticesDirty) {
+        /// @note Normals, tangents and occlusion columns read the same stitched samples including the patch halo.
+        FillChunkHeights(terrain, neighbors, x0, z0, x1, z1, occlusion ? overlap : 1, scratch);
+        if (occlusion) occlusion->heights.reserve(vertexCount);
+        const float span = 2.0f * terrain.cellSize;
+        float minHeight = 1e30f, maxHeight = -1e30f;
+        for (int z = z0; z <= z1; ++z) {
+            const float* heights = scratch.HeightRow(z);
+            const float* north = scratch.HeightRow(z - 1);
+            const float* south = scratch.HeightRow(z + 1);
+            for (int x = x0; x <= x1; ++x) {
+                const int i = x - scratch.minX;
+                const float height = heights[i];
+                const float dhdx = (heights[i + 1] - heights[i - 1]) / span;
+                const float dhdz = (south[i] - north[i]) / span;
+                TerrainVertex vertex;
+                vertex.position = {static_cast<float>(x) * terrain.cellSize, height, static_cast<float>(z) * terrain.cellSize};
+                vertex.normal = math::Vector3{-dhdx, 1.0f, -dhdz}.Normalized();
+                vertex.tangent = math::Vector3{terrain.cellSize, dhdx * terrain.cellSize, 0.0f}.Normalized();
+                vertex.uv = {static_cast<float>(x) / static_cast<float>(terrain.columns - 1),
+                    static_cast<float>(z) / static_cast<float>(terrain.rows - 1)};
+                scratch.vertices.push_back(vertex);
+                minHeight = std::min(minHeight, height);
+                maxHeight = std::max(maxHeight, height);
+                if (occlusion) occlusion->heights.push_back(height);
             }
         }
-        if (occlusion && chunk.indexCountLOD[0] == uint32_t((x1 - x0) * (z1 - z0) * 6)) {
+        const float firstX = static_cast<float>(x0) * terrain.cellSize, lastX = static_cast<float>(x1) * terrain.cellSize;
+        const float firstZ = static_cast<float>(z0) * terrain.cellSize, lastZ = static_cast<float>(z1) * terrain.cellSize;
+        chunk.aabbMin = {std::min({1e30f, firstX, lastX}), minHeight, std::min({1e30f, firstZ, lastZ})};
+        chunk.aabbMax = {std::max({-1e30f, firstX, lastX}), maxHeight, std::max({-1e30f, firstZ, lastZ})};
+    } else if (occlusion) {
+        occlusion->heights = chunk.occlusion->heights;
+    }
+    if (chunk.topologyDirty) {
+        for (size_t lod = 0; lod < lodCount; ++lod) {
+            const size_t firstIndex = scratch.indices.size();
+            BuildTerrainPatchLodIndices(terrain, x0, z0, x1, z1, renderer::TERRAIN_LOD_STEPS[lod], scratch.indices);
+            chunk.indexCountLOD[lod] = static_cast<uint32_t>(scratch.indices.size() - firstIndex);
+            if (occlusion) {
+                auto& cpuIndices = occlusion->indices[lod];
+                cpuIndices.reserve(chunk.indexCountLOD[lod]);
+                for (size_t i = firstIndex; i < scratch.indices.size(); ++i)
+                    cpuIndices.push_back(static_cast<uint16_t>(scratch.indices[i]));
+            }
+        }
+    } else if (occlusion) {
+        /// @note Published views may still read the previous snapshot. Keep its height and topology arrays immutable.
+        occlusion->indices = chunk.occlusion->indices;
+    }
+    if (occlusion && chunk.indexCountLOD[0] == uint32_t((x1 - x0) * (z1 - z0) * 6)) {
+        if (!chunk.verticesDirty && !chunk.occlusion->columns.empty()) {
+            occlusion->columns = chunk.occlusion->columns;
+        } else {
+            if (!chunk.verticesDirty) FillChunkHeights(terrain, neighbors, x0, z0, x1, z1, overlap, scratch);
             constexpr int columnStep = 16;
             /// @note 列の境界を最大 LOD の格子に揃え、内側へ張り出す三角形の頂点を高さ下限に含める。
-            const int overlap = renderer::TERRAIN_LOD_STEPS[lodCount - 1];
             for (int z = z0; z < z1; z += columnStep) {
                 for (int x = x0; x < x1; x += columnStep) {
                     const int lowX = std::max(x - overlap, 0), lowZ = std::max(z - overlap, 0);
                     const int highX = std::min(x + columnStep + overlap, terrain.columns - 1);
                     const int highZ = std::min(z + columnStep + overlap, terrain.rows - 1);
                     float minimum = std::numeric_limits<float>::infinity();
-                    for (int sz = lowZ; sz <= highZ; ++sz)
+                    for (int sz = lowZ; sz <= highZ; ++sz) {
+                        const float* row = scratch.HeightRow(sz);
                         for (int sx = lowX; sx <= highX; ++sx)
-                            minimum = std::min(minimum, SampleStitchedTerrainHeight(terrain, neighbors, sx, sz));
+                            minimum = std::min(minimum, row[sx - scratch.minX]);
+                    }
                     occlusion->columns.push_back({{float(lowX) * terrain.cellSize, float(lowZ) * terrain.cellSize,
                         float(highX) * terrain.cellSize, float(highZ) * terrain.cellSize}, minimum});
                 }
             }
         }
-        chunk.occlusion = std::move(occlusion);
-        cache.chunks[key] = std::move(chunk);
     }
-    return cache.chunks.at(key);
+    chunk.occlusion = std::move(occlusion);
+    return chunk;
+}
+
+/// @note Gather CPU geometry before waiting on the renderer. Release and replacement share one ordered resource operation.
+static void UploadTerrainChunks(TerrainChunkScratch& scratch, size_t lodCount,
+    renderer::IRenderer& renderer, renderer::ResourceManager& resources)
+{
+    if (scratch.uploads.empty()) return;
+    renderer.ExecuteResourceOperation([&] {
+        for (const auto& upload : scratch.uploads) {
+            auto& chunk = *upload.chunk;
+            if (chunk.verticesDirty) {
+                const size_t vertexCount = static_cast<size_t>(chunk.gpuPatch.columns) * chunk.gpuPatch.rows;
+                resources.Release(chunk.vertexBuffer);
+                chunk.vertexBuffer = resources.CreateVertexBuffer(scratch.vertices.data() + upload.firstVertex,
+                    vertexCount * sizeof(TerrainVertex), static_cast<uint32_t>(sizeof(TerrainVertex)));
+                chunk.verticesDirty = !chunk.vertexBuffer.IsValid();
+            }
+            if (!chunk.topologyDirty) continue;
+            chunk.topologyDirty = false;
+            size_t firstIndex = upload.firstIndex;
+            for (size_t lod = 0; lod < lodCount; ++lod) {
+                auto& buffer = chunk.indexBufferLOD[lod];
+                resources.Release(buffer);
+                buffer = {};
+                /// @note 全セルが穴のチャンクはインデックス 0 本。空バッファは作らず、描画側で飛ばす。
+                const uint32_t indexCount = chunk.indexCountLOD[lod];
+                if (indexCount == 0) continue;
+                buffer = resources.CreateIndexBuffer(scratch.indices.data() + firstIndex, indexCount);
+                chunk.topologyDirty |= !buffer.IsValid();
+                firstIndex += indexCount;
+            }
+        }
+    });
+    scratch.vertices.clear();
+    scratch.indices.clear();
+    scratch.uploads.clear();
 }
 
 static renderer::TerrainStripIndices EnsureTerrainStripIndices(TerrainGpuState& gpu, const TerrainChunk& chunk,
@@ -639,6 +725,7 @@ static void RebuildSplatTextures(TerrainGpuState& state, const TerrainComponent&
     resources.Release(state.splatWeights);
     state.splatIndices = {};
     state.splatWeights = {};
+    state.splatDynamic = false;
     if (terrain.HasValidSplat()) {
         state.splatIndices = resources.CreateTexture(terrain.splatIndices.data(),
             static_cast<uint32_t>(terrain.columns), static_cast<uint32_t>(terrain.rows));
@@ -651,6 +738,79 @@ static void RebuildSplatTextures(TerrainGpuState& state, const TerrainComponent&
     const uint8_t weights[4] = { 255, 0, 0, 0 };
     state.splatIndices = resources.CreateTexture(indices, 1, 1);
     state.splatWeights = resources.CreateTexture(weights, 1, 1);
+}
+
+static bool UploadSplatRectangle(renderer::ResourceManager& resources,
+    renderer::ResourceHandle<renderer::TextureTag> indices, renderer::ResourceHandle<renderer::TextureTag> weights,
+    const TerrainComponent& terrain, const TerrainHeightRegion& region)
+{
+    const auto x = static_cast<uint32_t>(region.minX), z = static_cast<uint32_t>(region.minZ);
+    const auto width = static_cast<uint32_t>(region.maxX - region.minX + 1);
+    const auto height = static_cast<uint32_t>(region.maxZ - region.minZ + 1);
+    const auto rowPitch = static_cast<uint32_t>(terrain.columns) * TERRAIN_SPLAT_SLOTS;
+    const auto offset = static_cast<size_t>(z) * rowPitch + static_cast<size_t>(x) * TERRAIN_SPLAT_SLOTS;
+    auto* indexTexture = resources.Get(indices);
+    auto* weightTexture = resources.Get(weights);
+    const auto matches = [&](const renderer::ITexture* texture) {
+        return texture && texture->GetWidth() == static_cast<uint32_t>(terrain.columns)
+            && texture->GetHeight() == static_cast<uint32_t>(terrain.rows);
+    };
+    return matches(indexTexture) && matches(weightTexture)
+        && indexTexture->UpdateRegion(x, z, width, height, terrain.splatIndices.data() + offset, rowPitch)
+        && weightTexture->UpdateRegion(x, z, width, height, terrain.splatWeights.data() + offset, rowPitch);
+}
+
+static void UpdateSplatTextures(TerrainRenderCache& cache, TerrainGpuState& gpu, TerrainComponent& terrain,
+    renderer::IRenderer& renderer, renderer::ResourceManager& resources)
+{
+    auto& preview = terrain.splatPreview;
+    if (terrain.splatDirty) {
+        ++terrain.vegetationRevision;
+        terrain.splatDirty = false;
+        preview = {};
+    } else if (preview.pending) {
+        preview.pending = false;
+        preview.revision = ++terrain.vegetationRevision;
+    }
+    if (gpu.vegetationRevision == terrain.vegetationRevision && gpu.splatIndices.IsValid() && gpu.splatWeights.IsValid())
+        return;
+
+    FBZZ_PROFILE_SCOPE("Terrain::SplatUpload");
+    const bool hasSplat = terrain.HasValidSplat();
+    const auto& dirty = preview.region;
+    const bool partial = !dirty.Empty() && preview.revision == terrain.vegetationRevision
+        && dirty.minX >= 0 && dirty.minZ >= 0 && dirty.maxX < terrain.columns && dirty.maxZ < terrain.rows;
+    const TerrainHeightRegion full{0, 0, terrain.columns - 1, terrain.rows - 1};
+    const bool canPromote = hasSplat && partial && !gpu.splatDynamic && !cache.splatDynamicUnavailable;
+    /// @note Submit both maps in one ordered operation so previous views never read a mixed pair.
+    renderer.ExecuteResourceOperation([&] {
+        if (hasSplat && gpu.splatDynamic) {
+            const auto& region = partial && gpu.vegetationRevision == preview.baseRevision ? dirty : full;
+            if (UploadSplatRectangle(resources, gpu.splatIndices, gpu.splatWeights, terrain, region)) return;
+        }
+        /// @note The first local edit promotes a tile. Idle tiles keep their original immutable textures.
+        if (canPromote) {
+            const auto width = static_cast<uint32_t>(terrain.columns);
+            const auto height = static_cast<uint32_t>(terrain.rows);
+            const auto indices = resources.CreateDynamicTexture(width, height, renderer::DynamicTextureFormat::RGBA8);
+            const auto weights = indices.IsValid()
+                ? resources.CreateDynamicTexture(width, height, renderer::DynamicTextureFormat::RGBA8)
+                : renderer::ResourceHandle<renderer::TextureTag>{};
+            if (UploadSplatRectangle(resources, indices, weights, terrain, full)) {
+                resources.Release(gpu.splatIndices);
+                resources.Release(gpu.splatWeights);
+                gpu.splatIndices = indices;
+                gpu.splatWeights = weights;
+                gpu.splatDynamic = true;
+                return;
+            }
+            resources.Release(indices);
+            resources.Release(weights);
+            if (!indices.IsValid()) cache.splatDynamicUnavailable = true;
+        }
+        RebuildSplatTextures(gpu, terrain, resources);
+    });
+    gpu.vegetationRevision = terrain.vegetationRevision;
 }
 
 /// @note LOD0 の水平位置と索引は同じ格子、穴、パッチ範囲から生成する。高さは接合後の描画値を使う。
@@ -676,14 +836,75 @@ static uint64_t TerrainShadowBakeGeometryHash(const TerrainComponent& terrain,
     return value;
 }
 
-/// @note Scalar samples include stitched neighbor heights; GPU central differences match the CPU fallback.
+static void UpdateTerrainGpuHeights(TerrainRenderCache& cache, TerrainGpuState& state, const TerrainComponent& terrain,
+    const TerrainNeighbors& neighbors, renderer::IRenderer& renderer, renderer::ResourceManager& resources)
+{
+    if (!state.heightsDirty && state.heightUploadRegion.Empty() && resources.Get(state.heights)) return;
+    FBZZ_PROFILE_SCOPE("Terrain::HeightUpload");
+    const size_t stride = static_cast<size_t>(terrain.columns) + 2;
+    const size_t count = stride * (static_cast<size_t>(terrain.rows) + 2);
+    const auto* current = resources.Get(state.heights);
+    const bool sameShape = current && current->GetElementCount() == count;
+    const auto& region = state.heightUploadRegion;
+    const bool local = !state.heightsDirty && !region.Empty() && sameShape;
+    if (local && state.heightsDynamic) {
+        const size_t width = static_cast<size_t>(region.maxX - region.minX + 1);
+        const size_t rows = static_cast<size_t>(region.maxZ - region.minZ + 1);
+        std::vector<float> heights(width * rows);
+        for (int z = region.minZ; z <= region.maxZ; ++z)
+            FillTerrainHeightRow(terrain, neighbors, region.minX, region.maxX, z,
+                heights.data() + static_cast<size_t>(z - region.minZ) * width);
+        const size_t offset = static_cast<size_t>(region.minZ + 1) * stride + region.minX + 1;
+        bool uploaded = false;
+        /// @note The default-heap buffer copies stay ordered with prior GPU draws. Batch CPU executor synchronization.
+        renderer.ExecuteResourceOperation([&] {
+            if (auto* buffer = resources.Get(state.heights))
+                uploaded = buffer->UpdateRows(heights.data(), width * sizeof(float), rows,
+                    stride * sizeof(float), offset * sizeof(float));
+        });
+        if (uploaded) {
+            state.heightUploadRegion = {};
+            return;
+        }
+    }
+
+    std::vector<float> heights(count);
+    for (int z = -1; z <= terrain.rows; ++z)
+        FillTerrainHeightRow(terrain, neighbors, -1, terrain.columns, z,
+            heights.data() + static_cast<size_t>(z + 1) * stride);
+    bool reused = false;
+    if (state.heightsDynamic && sameShape)
+        reused = resources.UpdateRegion(state.heights, heights.data(), heights.size() * sizeof(float), 0);
+    if (!reused) {
+        resources.Release(state.heights);
+        state.heights = {};
+        state.heightsDynamic = false;
+        if (local && !cache.heightDynamicUnavailable) {
+            renderer.ExecuteResourceOperation([&] {
+                const auto writable = resources.CreateRWStructuredBuffer(nullptr, static_cast<uint32_t>(count), sizeof(float));
+                if (resources.UpdateRegion(writable, heights.data(), heights.size() * sizeof(float), 0)) {
+                    state.heights = writable;
+                    state.heightsDynamic = true;
+                } else {
+                    resources.Release(writable);
+                }
+            });
+            if (!state.heightsDynamic) cache.heightDynamicUnavailable = true;
+        }
+        /// @note Replace the immutable SRV if ordered updates are unavailable, including after a partly staged rectangle.
+        if (!state.heightsDynamic)
+            state.heights = resources.CreateStructuredBuffer(heights.data(), static_cast<uint32_t>(count), sizeof(float));
+    }
+    state.heightsDirty = !resources.Get(state.heights);
+    state.heightUploadRegion = {};
+}
+
 static void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainComponent& terrain,
     const TerrainNeighbors& neighbors, renderer::RenderTerrainInput& input,
-    renderer::ResourceManager& resources)
+    TerrainRenderCache& cache, renderer::IRenderer& renderer, renderer::ResourceManager& resources)
 {
     if (input.patches.empty()) return;
     if (state.geometryDirty) {
-        state.heightsDirty = true;
         resources.Release(state.patches);
         resources.Release(state.indices);
         state.patches = {}; state.indices = {};
@@ -691,15 +912,25 @@ static void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainCompo
         state.indexCount = 0; state.vertexCapacity = 0;
         std::vector<renderer::TerrainGpuPatch> patches;
         std::vector<uint32_t> indices;
+        patches.reserve(input.patches.size());
+        size_t indexCount = 0;
+        for (const auto& chunk : input.patches)
+            for (size_t lod = 0; lod < input.LODCount(); ++lod) indexCount += chunk.indexCountLOD[lod];
+        indices.reserve(indexCount);
         for (const auto& chunk : input.patches) {
             const auto& patch = chunk.gpuPatch;
             patches.push_back(patch);
             decltype(chunk.gpuStartIndexLOD) starts{};
             for (size_t lod = 0; lod < input.LODCount(); ++lod) {
                 starts[lod] = static_cast<uint32_t>(indices.size());
-                BuildTerrainPatchLodIndices(terrain, static_cast<int>(patch.originX), static_cast<int>(patch.originZ),
-                    static_cast<int>(patch.originX + patch.columns - 1),
-                    static_cast<int>(patch.originZ + patch.rows - 1), renderer::TERRAIN_LOD_STEPS[lod], indices);
+                if (chunk.occlusion) {
+                    const auto& cpuIndices = chunk.occlusion->indices[lod];
+                    indices.insert(indices.end(), cpuIndices.begin(), cpuIndices.end());
+                } else {
+                    BuildTerrainPatchLodIndices(terrain, static_cast<int>(patch.originX), static_cast<int>(patch.originZ),
+                        static_cast<int>(patch.originX + patch.columns - 1),
+                        static_cast<int>(patch.originZ + patch.rows - 1), renderer::TERRAIN_LOD_STEPS[lod], indices);
+                }
             }
             state.indexStarts.push_back(starts);
             state.vertexCapacity = std::max(state.vertexCapacity, patch.columns * patch.rows);
@@ -709,26 +940,7 @@ static void PrepareTerrainGpuGeometry(TerrainGpuState& state, const TerrainCompo
         state.indices = resources.CreateIndexBuffer(indices.data(), state.indexCount);
         state.geometryDirty = !resources.Get(state.patches) || !resources.Get(state.indices);
     }
-    if (state.heightsDirty) {
-        resources.Release(state.heights);
-        const size_t stride = static_cast<size_t>(terrain.columns) + 2;
-        std::vector<float> heights(stride * (static_cast<size_t>(terrain.rows) + 2));
-        for (int z = -1; z <= terrain.rows; ++z) {
-            auto* row = heights.data() + static_cast<size_t>(z + 1) * stride;
-            if (z <= 0 || z >= terrain.rows - 1) {
-                for (int x = -1; x <= terrain.columns; ++x)
-                    row[x + 1] = SampleStitchedTerrainHeight(terrain, neighbors, x, z);
-                continue;
-            }
-            for (int x : {-1, 0, terrain.columns - 1, terrain.columns})
-                row[x + 1] = SampleStitchedTerrainHeight(terrain, neighbors, x, z);
-            const auto* source = terrain.heightData.data() + static_cast<size_t>(z) * terrain.columns;
-            std::transform(source + 1, source + terrain.columns - 1, row + 2,
-                [maxHeight = terrain.maxHeight](float height) { return height * maxHeight; });
-        }
-        state.heights = resources.CreateStructuredBuffer(heights.data(), static_cast<uint32_t>(heights.size()), sizeof(float));
-        state.heightsDirty = !resources.Get(state.heights);
-    }
+    UpdateTerrainGpuHeights(cache, state, terrain, neighbors, renderer, resources);
     if (state.geometryDirty || state.heightsDirty || state.indexStarts.size() != input.patches.size()) return;
     for (size_t i = 0; i < input.patches.size(); ++i)
         input.patches[i].gpuStartIndexLOD = state.indexStarts[i];
@@ -762,12 +974,12 @@ static void UploadLayerBuffer(TerrainGpuState& state, const std::vector<TerrainL
 
 
 /// @note Surface patches retain full topology at every LOD so entrances, walls and thin roofs never disappear.
-static TerrainChunk& EnsureSurfaceChunk(TerrainRenderCache& cache, const TerrainComponent& terrain, EntityID eid, size_t first,
+static TerrainChunk& EnsureSurfaceChunk(TerrainGpuState& gpu, const TerrainComponent& terrain, size_t first,
     renderer::ResourceManager& resources)
 {
-    const TerrainChunkKey key{eid, UINT32_MAX, static_cast<uint32_t>(first / TERRAIN_SURFACE_PATCH_INDICES)};
-    const auto found = cache.chunks.find(key);
-    if (found != cache.chunks.end()) return found->second;
+    const TerrainChunkKey key{UINT32_MAX, static_cast<uint32_t>(first / TERRAIN_SURFACE_PATCH_INDICES)};
+    const auto found = gpu.chunks.find(key);
+    if (found != gpu.chunks.end()) return found->second;
     const auto data = BuildTerrainSurfacePatch(terrain, first);
     TerrainChunk chunk;
     chunk.aabbMin = data.aabbMin; chunk.aabbMax = data.aabbMax;
@@ -776,9 +988,9 @@ static TerrainChunk& EnsureSurfaceChunk(TerrainRenderCache& cache, const Terrain
         chunk.indexCountLOD[lod] = static_cast<uint32_t>(data.indices.size());
         chunk.indexBufferLOD[lod] = resources.CreateIndexBuffer(data.indices.data(), chunk.indexCountLOD[lod]);
     }
-    return cache.chunks.emplace(key, std::move(chunk)).first->second;
+    return gpu.chunks.emplace(key, std::move(chunk)).first->second;
 }
-static void ExtractTerrainSurface(TerrainRenderCache& cache, const TerrainComponent& terrain, EntityID eid, TerrainGpuState& gpu,
+static void ExtractTerrainSurface(TerrainRenderCache& cache, const TerrainComponent& terrain, TerrainGpuState& gpu,
     const renderer::RenderTerrainInput& base, const TerrainFallbackTextures& fallback,
     renderer::ResourceManager& resources, renderer::RenderScene& output)
 {
@@ -814,7 +1026,7 @@ static void ExtractTerrainSurface(TerrainRenderCache& cache, const TerrainCompon
         surface.splatIndices = gpu.surfaceSplatIndices; surface.splatWeights = gpu.surfaceSplatWeights;
     }
     for (size_t first = 0; first < terrain.surfaceIndices.size(); first += TERRAIN_SURFACE_PATCH_INDICES)
-        surface.patches.push_back(EnsureSurfaceChunk(cache, terrain, eid, first, resources));
+        surface.patches.push_back(EnsureSurfaceChunk(gpu, terrain, first, resources));
     /// @note No GPU heightfield decoder and no terrain grass on cave ceilings; camera/shadow/mask consume these same patches.
     output.terrains.push_back(std::move(surface));
 }
@@ -846,15 +1058,8 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         for (EntityID eid : scene.GetEntities<TerrainComponent>())
             validIndices.insert(eid.index);
 
-        std::erase_if(cache.chunks, [&scene, &validIndices, &resources](auto& kv) {
-            if (scene.IsValid(kv.first.entityId) && validIndices.count(kv.first.entityId.index)) return false;
-            resources.Release(kv.second.vertexBuffer);
-            for (auto& ib : kv.second.indexBufferLOD)
-                resources.Release(ib);
-            return true;
-        });
-        std::erase_if(cache.entities, [&validIndices, &resources](auto& kv) {
-            if (validIndices.count(kv.first)) return false;
+        std::erase_if(cache.entities, [&scene, &validIndices, &resources](auto& kv) {
+            if (validIndices.contains(kv.first) && scene.IsValid(kv.second.entityId)) return false;
             ReleaseTerrainGpuState(kv.second, resources);
             return true;
         });
@@ -867,6 +1072,7 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         terrainGrid = scene.GetComponent<TerrainGridComponent>(gridId);
         break;
     }
+    const TerrainGridLookup gridLookup(terrainGrid);
 
     /// @note 天候はシーンに 1 つ。TerrainGrid では地形が何十個も回るのでループの外で引く。
     const ActiveWeather weather = FindActiveWeather(scene);
@@ -883,14 +1089,17 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
             && (filter.category.empty() || filter.category == "General");
     }
     std::optional<math::Vector4> grassWaterClip;
+    TerrainChunkScratch scratch;
     int64_t layersNs = 0, patchesNs = 0, setupNs = 0;
     /// @note 隣接タイルを先に失効させ、同じフレームの出力が破棄済みバッファを参照しないようにする。
     for (const EntityID eid : candidates.Entities()) {
         TerrainPhaseTimer setupTimer(collectPhases, setupNs);
         const auto* owner = scene.GetGameObject(eid);
         auto* terrain = scene.GetComponent<TerrainComponent>(eid);
-        if (!owner || !terrain || !terrain->enabled || terrain->heightData.empty() || !owner->activeInHierarchy())
-            continue;
+        if (!owner || !terrain) continue;
+        /// @note Cached visible tiles can sample authored heights from inactive or offscreen neighbors.
+        const bool drawn = terrain->enabled && !terrain->heightData.empty() && owner->activeInHierarchy();
+        if (!drawn && !terrainGrid) continue;
         auto& gpu = cache.entities[eid.index];
         if (gpu.entityId != eid) {
             ReleaseTerrainGpuState(gpu, resources);
@@ -906,13 +1115,12 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
 
         const bool partial = gpu.lodCount != 0 && preview.revision == terrain->surfaceRevision
             && preview.baseRevision == gpu.surfaceRevision;
-        if (partial) {
-            EraseHeightPreviewChunks(cache, resources, eid, *terrain, gpu, preview.region);
-        } else {
-            EraseTerrainChunkCache(cache, resources, eid);
-        }
-        InvalidateNeighborTerrainChunks(cache, scene, resources, terrainGrid, eid, *terrain,
-            partial ? &preview.region : nullptr);
+        if (partial) InvalidatePreviewChunks(resources, *terrain, gpu, preview.region,
+            preview.heightChanged, preview.topologyChanged);
+        else EraseTerrainChunkCache(gpu, resources);
+        if (!partial || preview.heightChanged)
+            InvalidateNeighborTerrainChunks(cache, scene, resources, gridLookup, eid, *terrain,
+                partial ? &preview.region : nullptr);
         gpu.surfaceRevision = terrain->surfaceRevision;
     }
     for (const EntityID eid : candidates.Entities()) {
@@ -934,18 +1142,14 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         if (std::isfinite(terrain.farLodDistance))
             input.farLodDistance = std::max(terrain.farLodDistance, 0.0f);
         const size_t lodCount = input.LODCount();
-        const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, terrainGrid, eid);
+        const TerrainNeighbors neighbors = ResolveTerrainNeighbors(scene, gridLookup, eid);
 
         TerrainGpuState& gpu = cache.entities[eid.index];
         if (gpu.lodCount != lodCount) {
-            EraseTerrainChunkCache(cache, resources, eid);
+            EraseTerrainChunkCache(gpu, resources);
             gpu.lodCount = lodCount;
         }
-        if (terrain.splatDirty) { ++terrain.vegetationRevision; terrain.splatDirty = false; }
-        if (gpu.vegetationRevision != terrain.vegetationRevision || !gpu.splatIndices.IsValid() || !gpu.splatWeights.IsValid()) {
-            RebuildSplatTextures(gpu, terrain, resources);
-            gpu.vegetationRevision = terrain.vegetationRevision;
-        }
+        UpdateSplatTextures(cache, gpu, terrain, ctx.renderer, resources);
         setupTimer.Finish();
         TerrainPhaseTimer layersTimer(collectPhases, layersNs);
 
@@ -1030,23 +1234,31 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         }
         input.selected = selection.Contains(eid);
         const bool useRasterStrip = ctx.settings.rasterGeometryMode == renderer::RasterGeometryMode::TRIANGLE_STRIP;
+        /// @note Inserting chunks can rehash the cache, but references to its elements stay valid.
+        scratch.drawChunks.clear();
         for (int cz = 0; cz < chunkCountZ; ++cz) {
             for (int cx = 0; cx < chunkCountX; ++cx) {
-                const auto& chunk = EnsureTerrainChunk(cache, terrain, eid, cx, cz, neighbors, lodCount, resources);
-                if (chunk.indexCountLOD[0] == 0) continue;
-                auto& patch = input.patches.emplace_back(chunk);
-                if (useRasterStrip) patch.lod0Strip = EnsureTerrainStripIndices(gpu, chunk,
-                    static_cast<uint32_t>(terrain.chunkSize) + 1u, resources);
+                const auto& chunk = PrepareTerrainChunk(gpu, terrain, cx, cz, neighbors, lodCount, scratch);
+                if (chunk.indexCountLOD[0] != 0) scratch.drawChunks.push_back(&chunk);
+                if (scratch.vertices.size() * sizeof(TerrainVertex) + scratch.indices.size() * sizeof(uint32_t)
+                    >= TERRAIN_CHUNK_BATCH_BYTES) UploadTerrainChunks(scratch, lodCount, ctx.renderer, resources);
             }
         }
-        if (useGpuGeometry) PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, resources);
+        UploadTerrainChunks(scratch, lodCount, ctx.renderer, resources);
+        input.patches.reserve(scratch.drawChunks.size());
+        for (const auto* chunk : scratch.drawChunks) {
+            auto& patch = input.patches.emplace_back(*chunk);
+            if (useRasterStrip) patch.lod0Strip = EnsureTerrainStripIndices(gpu, *chunk,
+                static_cast<uint32_t>(terrain.chunkSize) + 1u, resources);
+        }
+        if (useGpuGeometry) PrepareTerrainGpuGeometry(gpu, terrain, neighbors, input, cache, ctx.renderer, resources);
         if ((ctx.directionalShadowBakeEnabled || ctx.staticShadowCache.cascadeMask != 0) && !input.patches.empty()) {
             if (!gpu.shadowBakeGeometryHash)
                 gpu.shadowBakeGeometryHash = TerrainShadowBakeGeometryHash(terrain, input.patches);
             input.shadowBakeGeometryHash = gpu.shadowBakeGeometryHash;
             input.shadowBakeStatic = input.shadowBakeGeometryHash != 0;
         }
-        ExtractTerrainSurface(cache, terrain, eid, gpu, input, cache.fallback, resources, output);
+        ExtractTerrainSurface(cache, terrain, gpu, input, cache.fallback, resources, output);
         output.terrains.push_back(std::move(input));
     }
     if (collectPhases) {

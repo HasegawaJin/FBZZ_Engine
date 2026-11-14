@@ -18,6 +18,8 @@ public:
     bool m_supportTexture3D = true;
     /// @note Opt-in payload capture keeps large allocation benchmarks on the original count-only backend.
     bool m_captureStructuredBytes = false;
+    /// @note The default preserves the base contract for fixtures that exercise a failed partial upload.
+    bool m_supportStructuredRegions = false;
     renderer::ShaderDescriptor m_shaderDescriptor;
     std::unordered_map<const renderer::IConstantBuffer*, std::vector<uint8_t>> m_constantBytes;
     std::unordered_map<const renderer::IStructuredBuffer*, std::vector<uint8_t>> m_structuredBytes;
@@ -56,6 +58,13 @@ private:
         {
             if (m_capture && data && size <= GetSize())
                 std::memcpy(m_device.m_structuredBytes[this].data(), data, size);
+        }
+        bool UpdateRegion(const void* data, size_t size, size_t offset) override
+        {
+            if (!m_device.m_supportStructuredRegions) return IStructuredBuffer::UpdateRegion(data, size, offset);
+            if (!data || offset > GetSize() || size > GetSize() - offset) return false;
+            if (m_capture) std::memcpy(m_device.m_structuredBytes[this].data() + offset, data, size);
+            return true;
         }
         uint32_t GetElementCount() const override { return m_count; }
         uint32_t GetStride() const override { return m_stride; }

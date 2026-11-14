@@ -63,6 +63,12 @@ bool FiberTerrainFinite(const math::Vector3& value)
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
+bool FiberTerrainEditMissesPatch(const TerrainHeightRegion& edit, int x, int z, int nx, int nz, int halo)
+{
+    return !edit.Empty() && (edit.maxX < x - halo || edit.minX > x + nx + halo
+        || edit.maxZ < z - halo || edit.minZ > z + nz + halo);
+}
+
 /// @note world 球を逆 TRS で local 楕円体へ移す。各軸の投影半径は radius / abs(scale) で回転に依存しない。
 /// @see Docs/design/fiber-rendering.md 地形の近傍常駐。
 bool FiberTerrainWindow(const TerrainComponent& terrain, const Transform& transform,
@@ -188,10 +194,23 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
         const int nx = std::min(patch, terrain.columns - 1 - x), nz = std::min(patch, terrain.rows - 1 - z);
         auto& entry = cache.m_patches[{x, z}];
         entry.m_seen = frame;
-        const bool revisionsChanged = entry.m_metadataRevision != cache.m_metadataRevision
-            || entry.m_surfaceRevision != terrain.surfaceRevision
-            || (layer >= 0 && entry.m_vegetationRevision != terrain.vegetationRevision);
-        if (revisionsChanged || (entry.m_checkedFrame != frame && (terrain.heightDirty || (layer >= 0 && terrain.splatDirty)))) {
+        const bool heightChanged = entry.m_surfaceRevision != terrain.surfaceRevision;
+        const bool splatChanged = layer >= 0 && entry.m_vegetationRevision != terrain.vegetationRevision;
+        const bool newFrame = entry.m_checkedFrame != frame;
+        const auto& heightEdit = terrain.heightPreview;
+        const auto& splatEdit = terrain.splatPreview;
+        /// @note A skipped revision may contain older changes; use the rectangle only from the exact known base.
+        const bool heightOutside = heightChanged && !terrain.heightDirty && heightEdit.revision == terrain.surfaceRevision
+            && heightEdit.baseRevision == entry.m_surfaceRevision
+            && FiberTerrainEditMissesPatch(heightEdit.region, x, z, nx, nz, heightEdit.heightChanged ? 1 : 0);
+        const bool pendingSplat = layer >= 0 && splatEdit.pending && newFrame;
+        const bool splatOutside = !terrain.splatDirty && (splatChanged || pendingSplat)
+            && splatEdit.baseRevision == entry.m_vegetationRevision
+            && (splatEdit.pending ? splatEdit.baseRevision == terrain.vegetationRevision : splatEdit.revision == terrain.vegetationRevision)
+            && FiberTerrainEditMissesPatch(splatEdit.region, x, z, nx, nz, 0);
+        const bool fullDirty = newFrame && (terrain.heightDirty || (layer >= 0 && terrain.splatDirty));
+        if (entry.m_metadataRevision != cache.m_metadataRevision || fullDirty
+            || (heightChanged && !heightOutside) || ((splatChanged || pendingSplat) && !splatOutside)) {
             uint64_t signature = 0;
             math::Vector3 center{};
             const bool valid = ReadFiberTerrainPatch(terrain, x, z, nx, nz, layer, metadata, signature, center);
@@ -204,6 +223,9 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
             entry.m_signature = signature; entry.m_center = center; entry.m_valid = valid;
             entry.m_checkedFrame = frame; entry.m_metadataRevision = cache.m_metadataRevision;
             entry.m_surfaceRevision = terrain.surfaceRevision; entry.m_vegetationRevision = terrain.vegetationRevision;
+        } else {
+            if (heightOutside) entry.m_surfaceRevision = terrain.surfaceRevision;
+            if (splatOutside) entry.m_vegetationRevision = terrain.vegetationRevision;
         }
         if (!entry.m_valid) continue;
         if (distanceLod) {

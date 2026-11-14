@@ -19,6 +19,7 @@ void TerrainComponent::InitDefaultSplat()
     splatWeights.assign(slots, 0u);
     for (size_t i = 0; i < slots; i += TERRAIN_SPLAT_SLOTS)
         splatWeights[i] = 255u;
+    RequestSplatRebuild();
 }
 
 bool TerrainComponent::HasValidSplat() const
@@ -85,6 +86,7 @@ void TerrainComponent::Resize(int newColumns, int newRows)
     splatIndices = std::move(newIndices);
     splatWeights = std::move(newWeights);
     holeData     = std::move(newHoles);
+    RequestSplatRebuild();
     ++surfaceRevision;
 }
 

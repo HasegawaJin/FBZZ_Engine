@@ -34,6 +34,19 @@ public:
     virtual uint32_t GetStride()       const = 0;
     virtual size_t   GetSize()         const = 0;
 
+    /// @note Source rows are tightly packed. A failed copy may have staged earlier rows in this call.
+    virtual bool UpdateRows(const void* data, size_t rowBytes, size_t rowCount, size_t destinationPitch, size_t offsetBytes)
+    {
+        if (!data || rowBytes == 0 || rowCount == 0 || destinationPitch < rowBytes
+            || offsetBytes > GetSize() || rowBytes > GetSize() - offsetBytes
+            || rowCount - 1 > (GetSize() - offsetBytes - rowBytes) / destinationPitch) return false;
+        if (rowBytes == destinationPitch) return UpdateRegion(data, rowBytes * rowCount, offsetBytes);
+        const auto* source = static_cast<const uint8_t*>(data);
+        for (size_t row = 0; row < rowCount; ++row)
+            if (!UpdateRegion(source + row * rowBytes, rowBytes, offsetBytes + row * destinationPitch)) return false;
+        return true;
+    }
+
     /// @note シェーダーが ResourceDescriptorHeap[] へ渡す永続ディスクリプタ添字 (SRV)。
     /// @note 契約は ITexture::GetBindlessIndex() と同じ。無効値は INVALID_BINDLESS_INDEX。
     /// @see Docs/design/bindless.md

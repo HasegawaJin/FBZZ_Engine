@@ -29,6 +29,7 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <Engine/Renderer/DynamicBufferPool.hpp>
@@ -407,6 +408,11 @@ void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, 
 {
     if (!experimentalRayTracingEnabled) return;
     auto& cache = GetFiberResources(resources);
+    constexpr uint8_t SHELL = 1u << 0;
+    constexpr uint8_t FIN = 1u << 1;
+    constexpr uint8_t BLADE = 1u << 2;
+    constexpr std::array<uint8_t, 4> MODE_MASKS{SHELL, FIN, SHELL | FIN, BLADE};
+    std::optional<std::unordered_map<uint64_t, uint8_t>> terrainModes;
     for (EntityID id : scene.GetEntities<FiberComponent>()) {
         auto* go = scene.GetGameObject(id);
         const auto* fiber = go ? go->GetComponent<FiberComponent>() : nullptr;
@@ -426,18 +432,27 @@ void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, 
                 hasSource = HasRayFiberMesh(*mesh, *fiber, skin->ResolveSlotVertexBuffer(slot, mesh->vertexBuffer));
             }
         }
-        if (const auto* terrain = go->GetComponent<TerrainComponent>(); !hasSource && terrain && terrain->enabled) {
+        if (const auto* terrain = go->GetComponent<TerrainComponent>();
+            !hasSource && terrain && terrain->enabled && fiber->m_renderIdentity) {
             /// @note Reuse resident terrain draw counts, including seeded vertex-alpha rejection; diagnostics do not generate additional patches.
-            for (const auto& surface : output.fibers) {
-                if (!fiber->m_renderIdentity || surface.identity != fiber->m_renderIdentity) continue;
-                if (fiber->m_mode == FiberRenderMode::SHELL || fiber->m_mode == FiberRenderMode::HYBRID)
-                    hasSource = surface.vertices.IsValid() && surface.indices.IsValid() && surface.indexCount >= 3;
-                if (fiber->m_mode == FiberRenderMode::FIN || fiber->m_mode == FiberRenderMode::HYBRID)
-                    hasSource |= surface.fins.m_vertices.IsValid() && surface.fins.m_indices.IsValid() && surface.fins.m_indexCount > 0;
-                else if (fiber->m_mode == FiberRenderMode::BLADE)
-                    hasSource = surface.blades.m_blades.IsValid() && surface.blades.m_bladeCount > 0;
-                if (hasSource) break;
+            if (!terrainModes) {
+                terrainModes.emplace();
+                for (const auto& surface : output.fibers) {
+                    if (!surface.identity) continue;
+                    uint8_t mask = 0;
+                    if (surface.vertices.IsValid() && surface.indices.IsValid() && surface.indexCount >= 3)
+                        mask |= SHELL;
+                    if (surface.fins.m_vertices.IsValid() && surface.fins.m_indices.IsValid() && surface.fins.m_indexCount > 0)
+                        mask |= FIN;
+                    if (surface.blades.m_blades.IsValid() && surface.blades.m_bladeCount > 0)
+                        mask |= BLADE;
+                    if (mask) (*terrainModes)[surface.identity] |= mask;
+                }
             }
+            const auto modes = terrainModes->find(fiber->m_renderIdentity);
+            const auto mode = static_cast<size_t>(fiber->m_mode);
+            hasSource = modes != terrainModes->end() && mode < MODE_MASKS.size()
+                && (modes->second & MODE_MASKS[mode]) != 0;
         }
         if (hasSource) {
             const uint32_t layerMask = go->layer >= 0 && go->layer < 32 ? uint32_t{1} << go->layer : 0;

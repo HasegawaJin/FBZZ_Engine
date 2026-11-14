@@ -25,8 +25,14 @@ void ReleaseTerrainChunkBuffers(renderer::ResourceManager& resources, TerrainChu
     resources.Release(chunk.vertexBuffer);
     for (auto& buffer : chunk.indexBufferLOD) resources.Release(buffer);
 }
+void ReleaseTerrainChunks(TerrainGpuState& state, renderer::ResourceManager& resources)
+{
+    for (auto& [key, chunk] : state.chunks) ReleaseTerrainChunkBuffers(resources, chunk);
+    state.chunks.clear();
+}
 void ReleaseTerrainGpuState(TerrainGpuState& state, renderer::ResourceManager& resources)
 {
+    ReleaseTerrainChunks(state, resources);
     resources.Release(state.splatIndices);
     resources.Release(state.splatWeights);
     resources.Release(state.layerBuffer);
@@ -44,7 +50,6 @@ void ReleaseTerrainGpuState(TerrainGpuState& state, renderer::ResourceManager& r
 TerrainRenderCache::~TerrainRenderCache()
 {
     if (auto* resources = ResolveOwner(*this)) {
-        for (auto& [key, chunk] : chunks) ReleaseTerrainChunkBuffers(*resources, chunk);
         for (auto& [index, state] : entities) ReleaseTerrainGpuState(state, *resources);
         ReleaseTerrainFallbackTextures(*resources, fallback);
     }
@@ -53,11 +58,6 @@ TerrainRenderCache::~TerrainRenderCache()
 void TerrainRenderCache::ReleaseEntity(EntityID entity)
 {
     auto* resources = ResolveOwner(*this);
-    std::erase_if(chunks, [&](auto& entry) {
-        if (entry.first.entityId != entity) return false;
-        if (resources) ReleaseTerrainChunkBuffers(*resources, entry.second);
-        return true;
-    });
     const auto found = entities.find(entity.index);
     if (found != entities.end() && found->second.entityId == entity) {
         if (resources) ReleaseTerrainGpuState(found->second, *resources);

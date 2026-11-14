@@ -107,9 +107,17 @@ struct TerrainComponent {
         TerrainHeightRegion region;
         uint64_t baseRevision = 0, revision = 0;
         bool pending = false;
+        bool heightChanged = true;
+        bool topologyChanged = false;
     } heightPreview;
     /// @note Layer/hole authoring invalidates grass independently of water depth and collider revisions.
     uint64_t vegetationRevision = 1;
+    /// @note The last published rectangle stays available to other renderer caches at the same base revision.
+    struct SplatPreview {
+        TerrainHeightRegion region;
+        uint64_t baseRevision = 0, revision = 0;
+        bool pending = false;
+    } splatPreview;
 
     /// @name Reflection (Inspector / Serializer 対応)
     /// @{
@@ -208,16 +216,21 @@ struct TerrainComponent {
     }
     /// @pre region は現在の高さ場の範囲内。寸法・穴・追加メッシュが変わるときは全体を失効させる。
     /// @note ドラッグ中は描画を更新し、コライダーはストローク確定側で失効させる。
-    void RequestHeightPreview(const TerrainHeightRegion& region)
+    void RequestHeightPreview(const TerrainHeightRegion& region) { RequestSurfacePreview(region, true, false); }
+    /// @pre Inclusive cell rectangle within the current grid. Collision is invalidated by the stroke commit.
+    void RequestHolePreview(const TerrainHeightRegion& cells)
     {
-        if (region.Empty()) return;
-        if (heightPreview.pending && heightPreview.revision == surfaceRevision)
-            heightPreview.region.Include(region);
-        else
-            heightPreview = {region, surfaceRevision, 0, true};
-        heightPreview.revision = ++surfaceRevision;
+        if (!cells.Empty()) RequestSurfacePreview({cells.minX, cells.minZ, cells.maxX + 1, cells.maxZ + 1}, false, true);
     }
-    void RequestSplatRebuild() { splatDirty = true; }
+    void RequestSplatRebuild() { splatDirty = true; splatPreview = {}; }
+    /// @note Inclusive vertex XZ rectangle. Whole-grid writers use RequestSplatRebuild, including when merging with a preview.
+    void RequestSplatPreview(const TerrainHeightRegion& region)
+    {
+        if (splatDirty || region.Empty()) return;
+        if (splatPreview.pending) splatPreview.region.Include(region);
+        else splatPreview = {region, vegetationRevision, 0, true};
+    }
+    [[nodiscard]] bool HasPendingSplatUpdate() const { return splatDirty || splatPreview.pending; }
     void RequestMaterialRebuild() { materialParamDirty = true; }
     /// @note 穴は三角形の有無なので、描画メッシュとコライダーを作り直す。
     void RequestHoleRebuild() { RequestHeightRebuild(); }
@@ -234,6 +247,19 @@ struct TerrainComponent {
     /// @}
 
 private:
+    void RequestSurfacePreview(const TerrainHeightRegion& region, bool heights, bool topology)
+    {
+        if (region.Empty()) return;
+        if (heightPreview.pending && heightPreview.revision == surfaceRevision) {
+            heightPreview.region.Include(region);
+            heightPreview.heightChanged |= heights;
+            heightPreview.topologyChanged |= topology;
+        } else {
+            heightPreview = {region, surfaceRevision, 0, true, heights, topology};
+        }
+        heightPreview.revision = ++surfaceRevision;
+    }
+
     /// @brief 1 点の高さをインデックスから取得する (クランプ境界)。
     float SampleHeight(int x, int z) const
     {
