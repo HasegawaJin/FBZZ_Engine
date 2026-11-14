@@ -1146,7 +1146,7 @@ TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAnd
             profiler::Profiler::RequestRecording(m_requested);
         }
     } restore;
-    ASSERT_TRUE(profiler::Profiler::RequestCaptureFilter({"General", "ViewOcclusion::TerrainProofBuild"}));
+    ASSERT_TRUE(profiler::Profiler::RequestCaptureFilter({"General", "ViewOcclusion::Terrain"}));
     profiler::Profiler::SetEnabled(false); profiler::Profiler::SetEnabled(true);
     FarPassRenderer backend;
     renderer::ResourceManager resources(backend);
@@ -1165,7 +1165,7 @@ TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAnd
             geometry->indices[0].insert(geometry->indices[0].end(), {a,b,c,c,b,d});
         }
         geometry->indices[1] = geometry->indices[2] = geometry->indices[0];
-        geometry->columns.push_back({{0, mountain ? 4.0f : 0.0f, 8, 8}, mountain ? 4.0f : 0.0f});
+        geometry->columns.assign(5, {{0, mountain ? 4.0f : 0.0f, 8, 8}, mountain ? 4.0f : 0.0f});
         renderer::RenderTerrainPatch patch;
         patch.gpuPatch = {0,0,5,5,5,5,2,0}; patch.aabbMax = {8, mountain ? 8.0f : 0.0f, 8};
         patch.occlusion = geometry;
@@ -1196,22 +1196,58 @@ TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAnd
         profiler::Profiler::EndFrame();
         EXPECT_TRUE(profiler::Profiler::GetSnapshot().complete);
         const auto& records = profiler::Profiler::GetLastFrameRecords();
-        return size_t(std::count_if(records.begin(), records.end(), [](const auto& record) {
-            return std::strcmp(record.name, "ViewOcclusion::TerrainProofBuild") == 0;
-        }));
+        const auto count = [&records](const char* scope) {
+            return size_t(std::count_if(records.begin(), records.end(), [scope](const auto& record) {
+                return std::strcmp(record.name, scope) == 0;
+            }));
+        };
+        return std::array{count("ViewOcclusion::TerrainProofBuild"), count("ViewOcclusion::TerrainPatchTopology"),
+            count("ViewOcclusion::TerrainSeamLayout"), count("ViewOcclusion::TerrainSeamPatch"),
+            count("ViewOcclusion::TerrainVolumeTree"), count("ViewOcclusion::TerrainVolumeRefit")};
     };
-    EXPECT_EQ(capture(UINT32_MAX, 8), 1u);
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 2, 1, 2, 1, 0}));
     ASSERT_FALSE(culler.TestAndRaster({-1,3,20}, 0.05f));
-    EXPECT_EQ(capture(0, 8), 0u);
+    EXPECT_EQ(capture(0, 8), (std::array<size_t, 6>{0, 0, 0, 0, 0, 0}));
     EXPECT_TRUE(culler.TestAndRaster({-1,3,20}, 0.05f));
     /// @note Layer zero remains included; only unused mask bits and the viewing LOD threshold change across these frames.
     constexpr std::array<std::pair<uint32_t, float>, 6> VIEWS{{
-        {1,8}, {UINT32_MAX,8}, {UINT32_MAX,1}, {UINT32_MAX,8}, {1,1}, {UINT32_MAX,8}}};
+        {1u,8.0f}, {UINT32_MAX,8.0f}, {UINT32_MAX,1.0f}, {UINT32_MAX,8.0f}, {1u,1.0f}, {UINT32_MAX,8.0f}}};
     for (const auto& [mask, chunkSize] : VIEWS) {
         SCOPED_TRACE("mask=" + std::to_string(mask) + " chunkSize=" + std::to_string(chunkSize));
-        EXPECT_EQ(capture(mask, chunkSize), 0u);
+        EXPECT_EQ(capture(mask, chunkSize), (std::array<size_t, 6>{0, 0, 0, 0, 0, 0}));
         EXPECT_FALSE(culler.TestAndRaster({-1,3,20}, 0.05f));
     }
+    auto& mountain = snapshot->terrains[1].patches[0];
+    auto changed = std::make_shared<renderer::TerrainOcclusionGeometry>(*mountain.occlusion);
+    changed->heights[12] += 0.25f;
+    for (auto& column : changed->columns) column.minimumHeight -= 0.25f;
+    mountain.occlusion = std::move(changed);
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 1, 0, 1, 1, 1}));
+    std::vector<math::Vector4> refitted(renderer::OcclusionCuller::kGpuRows);
+    culler.CopyGpuRows(refitted);
+    EXPECT_FALSE(culler.TestAndRaster({-1,3,20}, 0.05f));
+    const auto edited = mountain.occlusion;
+    changed = std::make_shared<renderer::TerrainOcclusionGeometry>(*mountain.occlusion);
+    changed->heights[2] += 0.25f;
+    mountain.occlusion = std::move(changed);
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 1, 0, 1, 0, 0}));
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{0, 0, 0, 0, 0, 0}));
+    /// @note A new proof request also rejects the crack while its two patch owners stay unchanged.
+    mountain.aabbMax.y += 0.25f;
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 0, 0, 1, 0, 0}));
+    mountain.aabbMax.y -= 0.25f;
+    mountain.occlusion = edited;
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 1, 0, 0, 1, 1}));
+
+    changed = std::make_shared<renderer::TerrainOcclusionGeometry>(*edited);
+    changed->columns[2].rectangle.x += 0.25f;
+    mountain.occlusion = std::move(changed);
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 1, 0, 1, 1, 0}));
+    mountain.occlusion = edited;
+    EXPECT_EQ(capture(UINT32_MAX, 8), (std::array<size_t, 6>{1, 1, 0, 1, 1, 0}));
+    std::vector<math::Vector4> rebuilt(renderer::OcclusionCuller::kGpuRows);
+    culler.CopyGpuRows(rebuilt);
+    EXPECT_EQ(std::memcmp(refitted.data(), rebuilt.data(), rebuilt.size() * sizeof(math::Vector4)), 0);
 }
 
 TEST_F(WaterFarRenderPassTest, HeightFieldBoxFacesPreserveTheSixFaceDepthReferenceAcrossEyeBoundaries)

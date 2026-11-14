@@ -18,8 +18,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
+#include <map>
 #include <optional>
-#include <bit>
 #include <unordered_map>
 #include <limits>
 namespace fbzz::renderer {
@@ -370,7 +371,6 @@ bool HasFullTerrainTopology(const TerrainOcclusionGeometry& geometry, const Terr
     if (grid.columns < 2 || grid.rows < 2 || geometry.heights.size() > UINT16_MAX
         || uint64_t(grid.columns) * grid.rows != geometry.heights.size()
         || indices.empty() || indices.size() % 3 != 0) return false;
-    for (float height : geometry.heights) if (!std::isfinite(height)) return false;
     const uint64_t expectedArea = uint64_t(grid.columns - 1) * (grid.rows - 1) * 2;
     if (indices.size() / 3 > expectedArea) return false;
     uint64_t area = 0;
@@ -413,18 +413,214 @@ bool HasFullTerrainTopology(const TerrainOcclusionGeometry& geometry, const Terr
 }
 
 struct TerrainVolume { math::Vector3 low, high; };
+
+/// @note Sweep by X; active Z intervals are disjoint until the first overlap. Ends precede starts on shared edges.
+bool TerrainTilesDisjoint(std::span<const TerrainVolume> tiles)
+{
+    FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainTileOverlap");
+    struct Event { float x; size_t tile; bool starts; };
+    std::vector<Event> events;
+    events.reserve(tiles.size() * 2);
+    for (size_t i = 0; i < tiles.size(); ++i) {
+        const auto& tile = tiles[i];
+        if (tile.low.x >= tile.high.x || tile.low.z >= tile.high.z) continue;
+        events.push_back({tile.low.x, i, true});
+        events.push_back({tile.high.x, i, false});
+    }
+    std::sort(events.begin(), events.end(), [](const Event& a, const Event& b) {
+        return a.x == b.x ? a.starts < b.starts : a.x < b.x;
+    });
+    std::map<float, float> active;
+    for (const auto& event : events) {
+        const auto& tile = tiles[event.tile];
+        if (!event.starts) {
+            active.erase(tile.low.z);
+            continue;
+        }
+        const auto next = active.lower_bound(tile.low.z);
+        if ((next != active.end() && next->first < tile.high.z)
+            || (next != active.begin() && std::prev(next)->second > tile.low.z)) return false;
+        active.emplace_hint(next, tile.low.z, tile.high.z);
+    }
+    return true;
+}
+
 struct TerrainVolumeNode {
     TerrainVolume bounds;
     uint32_t first = 0, count = 0, left = 0, right = 0;
 };
+struct TerrainColumnVolume {
+    TerrainVolume bounds;
+    uint32_t sourceIndex = 0;
+};
+struct PatchTopologyProof {
+    std::shared_ptr<const TerrainOcclusionGeometry> owner;
+    std::array<ResourceHandle<BufferTag>, TERRAIN_LOD_STEPS.size()> indexBuffers{};
+    uint32_t columns = 0, rows = 0;
+    size_t lodCount = 0;
+    float borderMin = 0, borderMax = 0;
+};
+struct PatchGridLocation {
+    int32_t x = 0, z = 0;
+    uint32_t columns = 0, rows = 0;
+    bool operator==(const PatchGridLocation&) const = default;
+};
+struct SeamVertex {
+    size_t patch = 0;
+    uint32_t vertex = 0;
+};
+struct TerrainSeamNeighbor {
+    size_t patch = 0;
+    uint32_t vertex = 0, neighborVertex = 0;
+};
+struct TerrainSeamPatch {
+    std::vector<TerrainSeamNeighbor> neighbors;
+    std::shared_ptr<const TerrainOcclusionGeometry> validatedOwner;
+    uint32_t validatedWorldY = 0;
+    bool changed = true;
+};
 struct HeightFieldProof {
     std::vector<uint64_t> key, currentKey;
     std::vector<std::shared_ptr<const TerrainOcclusionGeometry>> owners;
-    std::vector<TerrainVolume> volumes;
+    std::vector<PatchTopologyProof> topology;
+    std::vector<PatchGridLocation> seamLayout, currentLayout;
+    std::vector<float> worldHeights;
+    std::vector<TerrainSeamPatch> seamPatches;
+    std::vector<TerrainColumnVolume> volumes, currentVolumes;
     std::vector<TerrainVolumeNode> nodes;
     math::Vector3 low{}, high{};
     bool valid = false;
 };
+
+template<class Visit>
+void VisitPatchBorder(uint32_t columns, uint32_t rows, Visit&& visit)
+{
+    for (uint32_t x = 0; x < columns; ++x) visit(x, 0);
+    for (uint32_t z = 1; z + 1 < rows; ++z) {
+        visit(0, z);
+        visit(columns - 1, z);
+    }
+    for (uint32_t x = 0; x < columns; ++x) visit(x, rows - 1);
+}
+
+bool ProvePatchTopology(const RenderTerrainPatch& patch, size_t lodCount, PatchTopologyProof& proof)
+{
+    const auto& grid = patch.gpuPatch;
+    if (proof.owner == patch.occlusion && proof.columns == grid.columns && proof.rows == grid.rows
+        && proof.lodCount == lodCount && proof.indexBuffers == patch.indexBufferLOD) return true;
+    FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainPatchTopology");
+    proof = {};
+    const auto& heights = patch.occlusion->heights;
+    for (float height : heights) if (!std::isfinite(height)) return false;
+    for (size_t lod = 1; lod < lodCount; ++lod) {
+        if (!HasFullTerrainTopology(*patch.occlusion, grid, patch.occlusion->indices[lod])) return false;
+    }
+    /// @note Exact row-major LOD0 quads prove coverage and connectivity without sorting triangle edges.
+    /// @note The near-plane test indexes this order by cell offset.
+    const auto& levelZero = patch.occlusion->indices[0];
+    for (uint32_t z = 0; z + 1 < grid.rows; ++z) for (uint32_t x = 0; x + 1 < grid.columns; ++x) {
+        const uint32_t a = z * grid.columns + x, b = a + grid.columns, c = a + 1, d = b + 1;
+        const size_t first = (size_t(z) * (grid.columns - 1) + x) * 6;
+        if (levelZero[first] != a || levelZero[first + 1] != b || levelZero[first + 2] != c
+            || levelZero[first + 3] != c || levelZero[first + 4] != b || levelZero[first + 5] != d) return false;
+    }
+    float borderMin = heights.front(), borderMax = borderMin;
+    VisitPatchBorder(grid.columns, grid.rows, [&](uint32_t x, uint32_t z) {
+        const float height = heights[z * grid.columns + x];
+        borderMin = std::min(borderMin, height);
+        borderMax = std::max(borderMax, height);
+    });
+    proof = {patch.occlusion, patch.indexBufferLOD, grid.columns, grid.rows, lodCount, borderMin, borderMax};
+    return true;
+}
+
+bool ValidateTerrainSeams(HeightFieldProof& proof)
+{
+    FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainSeams");
+    if (proof.currentLayout != proof.seamLayout) {
+        FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainSeamLayout");
+        proof.seamLayout = proof.currentLayout;
+        proof.seamPatches.clear();
+        proof.seamPatches.resize(proof.seamLayout.size());
+        std::unordered_map<uint64_t, SeamVertex> border;
+        border.reserve(16384);
+        for (size_t i = 0; i < proof.seamLayout.size(); ++i) {
+            const auto& grid = proof.seamLayout[i];
+            VisitPatchBorder(grid.columns, grid.rows, [&](uint32_t x, uint32_t z) {
+                const auto worldX = static_cast<uint32_t>(int64_t(grid.x) + x);
+                const auto worldZ = static_cast<uint32_t>(int64_t(grid.z) + z);
+                const uint64_t location = (uint64_t(worldX) << 32) | worldZ;
+                const SeamVertex vertex{i, z * grid.columns + x};
+                const auto [first, inserted] = border.emplace(location, vertex);
+                if (inserted) return;
+                const auto& adjacent = first->second;
+                proof.seamPatches[i].neighbors.push_back({adjacent.patch, vertex.vertex, adjacent.vertex});
+                proof.seamPatches[adjacent.patch].neighbors.push_back({i, adjacent.vertex, vertex.vertex});
+            });
+        }
+    }
+    for (size_t i = 0; i < proof.seamPatches.size(); ++i) {
+        auto& patch = proof.seamPatches[i];
+        patch.changed = patch.validatedOwner != proof.owners[i]
+            || patch.validatedWorldY != std::bit_cast<uint32_t>(proof.worldHeights[i]);
+    }
+    for (size_t i = 0; i < proof.seamPatches.size(); ++i) {
+        const auto& patch = proof.seamPatches[i];
+        if (!patch.changed || patch.neighbors.empty()) continue;
+        FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainSeamPatch");
+        const auto& heights = proof.owners[i]->heights;
+        const float worldY = proof.worldHeights[i];
+        for (const auto& adjacent : patch.neighbors) {
+            if (adjacent.patch < i && proof.seamPatches[adjacent.patch].changed) continue;
+            const float height = heights[adjacent.vertex] + worldY;
+            const float neighborHeight = proof.owners[adjacent.patch]->heights[adjacent.neighborVertex]
+                + proof.worldHeights[adjacent.patch];
+            if (height != neighborHeight) return false;
+        }
+    }
+    /// @note A failed check leaves the last proven owners intact, so another edit cannot hide an unresolved crack.
+    for (size_t i = 0; i < proof.seamPatches.size(); ++i) {
+        auto& patch = proof.seamPatches[i];
+        if (!patch.changed) continue;
+        patch.validatedOwner = proof.owners[i];
+        patch.validatedWorldY = std::bit_cast<uint32_t>(proof.worldHeights[i]);
+    }
+    return true;
+}
+
+bool TryRefitTerrainVolumeTree(HeightFieldProof& proof)
+{
+    if (proof.nodes.empty() || proof.volumes.size() != proof.currentVolumes.size()) return false;
+    /// @note The original partition depends only on XZ and source order, including equal-center ties.
+    const auto equalCoordinate = [](float a, float b) {
+        return std::isfinite(a) && std::bit_cast<uint32_t>(a) == std::bit_cast<uint32_t>(b);
+    };
+    for (const auto& volume : proof.volumes) {
+        const auto& a = volume.bounds;
+        const auto& b = proof.currentVolumes[volume.sourceIndex].bounds;
+        if (!equalCoordinate(a.low.x, b.low.x) || !equalCoordinate(a.low.z, b.low.z)
+            || !equalCoordinate(a.high.x, b.high.x) || !equalCoordinate(a.high.z, b.high.z)
+            || !std::isfinite(b.high.y) || std::bit_cast<uint32_t>(b.high.y) == std::bit_cast<uint32_t>(-0.0f)) return false;
+    }
+    FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainVolumeRefit");
+    for (auto& volume : proof.volumes) {
+        volume.bounds.low.y = proof.low.y;
+        volume.bounds.high.y = proof.currentVolumes[volume.sourceIndex].bounds.high.y;
+    }
+    /// @note Parents precede both children. Finite Y maxima without negative zero are independent of reduction order.
+    for (auto it = proof.nodes.rbegin(); it != proof.nodes.rend(); ++it) {
+        auto& node = *it;
+        node.bounds.low.y = proof.low.y;
+        if (node.count) {
+            node.bounds.high.y = proof.volumes[node.first].bounds.high.y;
+            for (uint32_t i = node.first + 1; i < node.first + node.count; ++i)
+                node.bounds.high.y = std::max(node.bounds.high.y, proof.volumes[i].bounds.high.y);
+        } else {
+            node.bounds.high.y = std::max(proof.nodes[node.left].bounds.high.y, proof.nodes[node.right].bounds.high.y);
+        }
+    }
+    return true;
+}
 
 bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
 {
@@ -438,6 +634,7 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
     for (const auto& input : ctx.renderScene->terrains) {
         if (input.layer >= 32 || !(ctx.cullingMask & (1u << input.layer))) continue;
         key.push_back(input.patches.size());
+        key.push_back(input.LODCount());
         for (const auto& row : input.constants.worldMatrix.m) for (float value : row) key.push_back(std::bit_cast<uint32_t>(value));
         for (const auto& patch : input.patches) {
             if (!patch.occlusion || patch.occlusion->columns.empty() || !HasTerrainBuffer(ctx.resources, patch.vertexBuffer)) return false;
@@ -467,17 +664,23 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
     if (sameOwners && ownerCount == proof.owners.size() && key == proof.key) return proof.valid;
     FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainProofBuild");
     /// @note Pin new geometry only on a miss, including negative proofs; old owners prevent address reuse while comparing.
+    if (proof.key.empty() || proof.key[0] != key[0] || proof.key[1] != key[1]) {
+        proof.seamLayout.clear();
+        proof.nodes.clear();
+    }
     proof.key = key; proof.owners.clear(); proof.owners.reserve(ownerCount);
+    proof.topology.resize(ownerCount);
     for (const auto& input : ctx.renderScene->terrains) {
         if (input.layer >= 32 || !(ctx.cullingMask & (1u << input.layer))) continue;
         for (const auto& patch : input.patches) proof.owners.push_back(patch.occlusion);
     }
-    proof.valid = false; proof.volumes.clear(); proof.nodes.clear();
+    proof.valid = false; proof.currentVolumes.clear();
     std::vector<TerrainVolume> tiles;
-    std::unordered_map<uint64_t, float> border;
-    border.reserve(16384);
+    proof.currentLayout.clear(); proof.currentLayout.reserve(ownerCount);
+    proof.worldHeights.clear(); proof.worldHeights.reserve(ownerCount);
     float commonCell = 0;
     double area = 0;
+    size_t patchIndex = 0;
     for (const auto& input : ctx.renderScene->terrains) {
         if (input.layer >= 32 || !(ctx.cullingMask & (1u << input.layer))) continue;
         if (input.patches.empty()) return false;
@@ -495,12 +698,10 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
             || std::abs(rootX) + base.terrainColumns > 4000000 || std::abs(rootZ) + base.terrainRows > 4000000) return false;
         TerrainVolume tile{{world.m[0][3],0,world.m[2][3]},
             {world.m[0][3] + float(base.terrainColumns - 1) * commonCell,0,world.m[2][3] + float(base.terrainRows - 1) * commonCell}};
-        for (const auto& prior : tiles)
-            if (std::max(prior.low.x,tile.low.x) < std::min(prior.high.x,tile.high.x)
-                && std::max(prior.low.z,tile.low.z) < std::min(prior.high.z,tile.high.z)) return false;
         area += double(tile.high.x - tile.low.x) * (tile.high.z - tile.low.z);
         uint32_t nextX = 0, nextZ = 0, rowHeight = 0;
-        const auto largestStep = static_cast<uint32_t>(TERRAIN_LOD_STEPS[input.LODCount() - 1]);
+        const size_t lodCount = input.LODCount();
+        const auto largestStep = static_cast<uint32_t>(TERRAIN_LOD_STEPS[lodCount - 1]);
         for (const auto& patch : input.patches) {
             const auto& g = patch.gpuPatch;
             if (g.columns < 2 || g.rows < 2 || g.originX != nextX || g.originZ != nextZ
@@ -509,18 +710,10 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
                 || patch.indexCountLOD[0] != (g.columns - 1) * (g.rows - 1) * 6u
                 || patch.occlusion->indices[0].size() != patch.indexCountLOD[0]
                 || patch.occlusion->heights.size() != size_t(g.columns) * g.rows) return false;
-            for (size_t lod = 0; lod < input.LODCount(); ++lod) {
-                if (patch.occlusion->indices[lod].size() != patch.indexCountLOD[lod]
-                    || !HasFullTerrainTopology(*patch.occlusion, g, patch.occlusion->indices[lod])) return false;
-            }
-            /// @note near の LOD0 footprint 検査はセルから直接 index offset を求めるため、順序も証明する。
-            const auto& levelZero = patch.occlusion->indices[0];
-            for (uint32_t z = 0; z + 1 < g.rows; ++z) for (uint32_t x = 0; x + 1 < g.columns; ++x) {
-                const uint32_t a = z * g.columns + x, b = a + g.columns, c = a + 1, d = b + 1;
-                const size_t first = (size_t(z) * (g.columns - 1) + x) * 6;
-                if (levelZero[first] != a || levelZero[first + 1] != b || levelZero[first + 2] != c
-                    || levelZero[first + 3] != c || levelZero[first + 4] != b || levelZero[first + 5] != d) return false;
-            }
+            for (size_t lod = 0; lod < lodCount; ++lod)
+                if (patch.occlusion->indices[lod].size() != patch.indexCountLOD[lod]) return false;
+            auto& topology = proof.topology[patchIndex++];
+            if (!ProvePatchTopology(patch, lodCount, topology)) return false;
             if (!nextX) rowHeight = g.rows - 1;
             if (rowHeight != g.rows - 1) return false;
             nextX += g.columns - 1;
@@ -528,23 +721,20 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
             if (nextX >= base.terrainColumns || nextZ >= base.terrainRows) return false;
             const float minimum = patch.aabbMin.y + world.m[1][3], maximum = patch.aabbMax.y + world.m[1][3];
             if (!std::isfinite(minimum) || !std::isfinite(maximum)) return false;
-            if (tiles.empty() && proof.volumes.empty()) { proof.low = tile.low; proof.high = tile.high; proof.low.y = minimum; proof.high.y = maximum; }
+            if (tiles.empty() && proof.currentVolumes.empty()) { proof.low = tile.low; proof.high = tile.high; proof.low.y = minimum; proof.high.y = maximum; }
             proof.low.y = std::min(proof.low.y,minimum); proof.high.y = std::max(proof.high.y,maximum);
-            for (uint32_t z = 0; z < g.rows; ++z) for (uint32_t x = 0; x < g.columns; ++x) {
-                const auto gx = g.originX + x, gz = g.originZ + z;
-                /// @note Chunk snapshots must agree along internal shared edges as well as the terrain border; a crack invalidates the solid-heightfield proof.
-                if (x != 0 && z != 0 && x + 1 != g.columns && z + 1 != g.rows) continue;
-                const uint64_t location = (uint64_t(uint32_t(int64_t(rootX) + gx)) << 32) | uint32_t(int64_t(rootZ) + gz);
-                const float height = patch.occlusion->heights[z * g.columns + x] + world.m[1][3];
-                if (!std::isfinite(height)) return false;
-                const auto [entry, inserted] = border.emplace(location,height);
-                if (!inserted && entry->second != height) return false;
-            }
+            /// @note Shared samples are indexed by the integer XZ lattice. Boundary extrema prove every sample remains finite in world Y.
+            if (!std::isfinite(topology.borderMin + world.m[1][3])
+                || !std::isfinite(topology.borderMax + world.m[1][3])) return false;
+            proof.currentLayout.push_back({static_cast<int32_t>(int64_t(rootX) + g.originX),
+                static_cast<int32_t>(int64_t(rootZ) + g.originZ), g.columns, g.rows});
+            proof.worldHeights.push_back(world.m[1][3]);
             for (const auto& column : patch.occlusion->columns) {
                 const auto& r = column.rectangle;
                 if (!std::isfinite(column.minimumHeight)) return false;
-                proof.volumes.push_back({{r.x + world.m[0][3],0,r.y + world.m[2][3]},
-                    {r.z + world.m[0][3],column.minimumHeight + world.m[1][3] - 0.01f,r.w + world.m[2][3]}});
+                const TerrainVolume bounds{{r.x + world.m[0][3],0,r.y + world.m[2][3]},
+                    {r.z + world.m[0][3],column.minimumHeight + world.m[1][3] - 0.01f,r.w + world.m[2][3]}};
+                proof.currentVolumes.push_back({bounds, static_cast<uint32_t>(proof.currentVolumes.size())});
             }
         }
         if (nextX || nextZ + 1 != base.terrainRows) return false;
@@ -552,16 +742,23 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
         proof.low.x = std::min(proof.low.x,tile.low.x); proof.low.z = std::min(proof.low.z,tile.low.z);
         proof.high.x = std::max(proof.high.x,tile.high.x); proof.high.z = std::max(proof.high.z,tile.high.z);
     }
-    if (tiles.empty() || area != double(proof.high.x - proof.low.x) * (proof.high.z - proof.low.z)) return false;
-    for (auto& volume : proof.volumes) volume.low.y = proof.low.y;
+    if (tiles.empty() || area != double(proof.high.x - proof.low.x) * (proof.high.z - proof.low.z)
+        || !TerrainTilesDisjoint(tiles)) return false;
+    if (!ValidateTerrainSeams(proof)) return false;
+    FBZZ_PROFILE_SCOPE("ViewOcclusion::TerrainVolumeTree");
+    if (TryRefitTerrainVolumeTree(proof)) { proof.valid = true; return true; }
+    if (proof.currentVolumes.empty() || proof.currentVolumes.size() > UINT32_MAX / 2) return false;
+    proof.volumes.swap(proof.currentVolumes);
+    proof.nodes.clear();
+    for (auto& volume : proof.volumes) volume.bounds.low.y = proof.low.y;
     /// @note 節の箱は検査対象の和集合を包むだけ。形状の証明と同時に作り、隠れた山裏の列を一括で省く。
     proof.nodes.reserve(proof.volumes.size() * 2);
     const auto build = [&](auto&& self, uint32_t first, uint32_t count) -> uint32_t {
         const uint32_t index = uint32_t(proof.nodes.size());
         TerrainVolumeNode node; node.first = first; node.count = count;
-        node.bounds = proof.volumes[first];
+        node.bounds = proof.volumes[first].bounds;
         for (uint32_t i = first + 1; i < first + count; ++i) {
-            const auto& box = proof.volumes[i];
+            const auto& box = proof.volumes[i].bounds;
             node.bounds.low = {std::min(node.bounds.low.x,box.low.x),std::min(node.bounds.low.y,box.low.y),std::min(node.bounds.low.z,box.low.z)};
             node.bounds.high = {std::max(node.bounds.high.x,box.high.x),std::max(node.bounds.high.y,box.high.y),std::max(node.bounds.high.z,box.high.z)};
         }
@@ -570,13 +767,17 @@ bool BuildHeightFieldProof(RenderPassContext& ctx, HeightFieldProof& proof)
             const bool splitX = node.bounds.high.x - node.bounds.low.x > node.bounds.high.z - node.bounds.low.z;
             const uint32_t half = count / 2;
             std::nth_element(proof.volumes.begin() + first,proof.volumes.begin() + first + half,proof.volumes.begin() + first + count,
-                [=](const auto& a,const auto& b) { return splitX ? a.low.x + a.high.x < b.low.x + b.high.x : a.low.z + a.high.z < b.low.z + b.high.z; });
+                [=](const auto& a,const auto& b) {
+                    const auto& left = a.bounds;
+                    const auto& right = b.bounds;
+                    return splitX ? left.low.x + left.high.x < right.low.x + right.high.x
+                                  : left.low.z + left.high.z < right.low.z + right.high.z;
+                });
             const auto left = self(self,first,half), right = self(self,first + half,count - half);
             proof.nodes[index].left = left; proof.nodes[index].right = right; proof.nodes[index].count = 0;
         }
         return index;
     };
-    if (proof.volumes.empty() || proof.volumes.size() > UINT32_MAX / 2) return false;
     build(build,0,uint32_t(proof.volumes.size()));
     proof.valid = true;
     return true;
@@ -757,7 +958,7 @@ bool RasterHeightField(RenderPassContext& ctx)
             && !ctx.cameraFrustum->IntersectsAABB((box.low + box.high) * 0.5f,(box.high - box.low) * 0.5f)) return;
         if (!ctx.occlusionCuller->TestAabb(box.low,box.high)) return;
         if (node.count) {
-            for (uint32_t i = node.first; i < node.first + node.count; ++i) draw(proof.volumes[i]);
+            for (uint32_t i = node.first; i < node.first + node.count; ++i) draw(proof.volumes[i].bounds);
         } else {
             const auto distance = [&](uint32_t child) { const auto& b = proof.nodes[child].bounds; return ((b.low + b.high) * 0.5f - camera).LengthSq(); };
             const bool leftFirst = distance(node.left) < distance(node.right);
@@ -874,7 +1075,7 @@ void RasterTerrainOccluders(RenderPassContext& ctx)
     FBZZ_PROFILE_SCOPE("ViewOcclusion::Terrain");
     if (RasterHeightField(ctx)) return;
     struct Candidate { const RenderTerrainInput* input; const RenderTerrainPatch* patch; int lod; };
-    std::vector<Candidate> candidates;
+    std::array<std::vector<Candidate>, TERRAIN_LOD_STEPS.size()> candidates;
     for (const auto& input : ctx.renderScene->terrains) {
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0) continue;
         const auto& world = input.constants.worldMatrix;
@@ -895,16 +1096,16 @@ void RasterTerrainOccluders(RenderPassContext& ctx)
                 || uint64_t(grid.columns) * grid.rows != patch.occlusion->heights.size()
                 || !std::isfinite(grid.cellSize) || grid.cellSize <= 0
                 || grid.originX > UINT32_MAX - (grid.columns - 1) || grid.originZ > UINT32_MAX - (grid.rows - 1)) continue;
-            candidates.push_back({&input, &patch, lod});
+            candidates[lod].push_back({&input, &patch, lod});
         }
     }
     /// @note 遠方の粗い実形状を先に処理する。予算超過は遮蔽不足になるだけで可視物を消さない。
-    std::stable_sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.lod > b.lod; });
+    /// @note Fixed LOD buckets retain insertion order within each priority.
     size_t triangleBudget = 100000;
     const auto view = ctx.camera.GetViewMatrix();
     const auto projection = MakeJitteredProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     const auto inverseView = math::Matrix4::Inverse(view);
-    for (const auto& candidate : candidates) {
+    for (auto lod = candidates.rbegin(); lod != candidates.rend(); ++lod) for (const auto& candidate : *lod) {
         const auto& patch = *candidate.patch;
         const auto& geometry = *patch.occlusion;
         const auto& indices = geometry.indices[candidate.lod];
@@ -914,7 +1115,7 @@ void RasterTerrainOccluders(RenderPassContext& ctx)
         if (indices.size() / 3 <= triangleBudget
             && RasterTerrainKernel(ctx, patch, world, indices, view, projection, inverseView)) {
             triangleBudget -= indices.size() / 3;
-            if (!triangleBudget) break;
+            if (!triangleBudget) return;
             continue;
         }
         const auto position = [&](uint16_t index) {
@@ -934,7 +1135,7 @@ void RasterTerrainOccluders(RenderPassContext& ctx)
             }
             ctx.occlusionCuller->RasterTriangle(position(indices[i]), position(indices[i + 1]), position(indices[i + 2]));
         }
-        if (!triangleBudget) break;
+        if (!triangleBudget) return;
     }
 }
 bool DrawTerrainOccluderDepth(RenderPassContext& ctx)
