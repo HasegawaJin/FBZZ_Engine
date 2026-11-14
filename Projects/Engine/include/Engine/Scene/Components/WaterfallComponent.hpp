@@ -8,6 +8,7 @@
 #include <Engine/Scene/EntityRef.hpp>
 #include <Engine/Scene/Reflection.hpp>
 #include <Engine/Scene/Waterfall.hpp>
+#include <Math/Vector4.hpp>
 #include <array>
 #include <future>
 #include <string>
@@ -18,6 +19,9 @@ struct WaterfallRuntime {
     WaterfallGeometry geometry;
     math::Vector3 midFall;
     std::uint64_t terrainRevision = 0;
+    math::Vector4 groundProbeBounds{};
+    bool hasGroundProbes = false;
+    bool groundProbesFinite = true;
     float spray = -1.0f;
     float mist = -1.0f;
     bool prepared = false;

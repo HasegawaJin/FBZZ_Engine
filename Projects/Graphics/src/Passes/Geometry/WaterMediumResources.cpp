@@ -753,14 +753,11 @@ bool PrepareWaterMediumResources(RenderPassContext& ctx, RenderViewResources& vi
     }
 
     if (!duplicateKeys.empty()) {
-        for (auto it = bodies.begin(); it != bodies.end();) {
-            if (duplicateKeys.contains(it->ownerKey)) {
-                AppendDisabled(ctx.handles.waterMediumDisabledOwnerKeys, disabledKeys, it->ownerKey);
-                it = bodies.erase(it);
-            } else {
-                ++it;
-            }
-        }
+        std::erase_if(bodies, [&](const BodyCandidate& body) {
+            if (!duplicateKeys.contains(body.ownerKey)) return false;
+            AppendDisabled(ctx.handles.waterMediumDisabledOwnerKeys, disabledKeys, body.ownerKey);
+            return true;
+        });
     }
     if (bodies.empty()) return finish(false);
 

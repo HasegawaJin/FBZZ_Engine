@@ -110,6 +110,12 @@ TEST_F(WaterSplineTest, TriangulatesConcaveLakeAndRejectsDegenerateInputWithoutC
         points, 1, pose, snapshot, 5.0f, 100.0f));
     EXPECT_EQ(snapshot.outlineIndices.size(), outline.size());
     EXPECT_EQ(snapshot.triangles.size(), outline.size() - 2);
+    const std::array<std::array<std::uint32_t, 3>, 4> expectedTriangles{{
+        {0, 1, 2}, {0, 2, 3}, {5, 0, 3}, {3, 4, 5},
+    }};
+    ASSERT_EQ(snapshot.footprintTriangles.size(), expectedTriangles.size());
+    for (std::size_t i = 0; i < expectedTriangles.size(); ++i)
+        EXPECT_EQ(snapshot.footprintTriangles[i].indices, expectedTriangles[i]);
 
     scene::WaterSplineSample sample;
     EXPECT_TRUE(scene::TrySampleWaterSpline(snapshot, 0.5f, 0.5f, sample));

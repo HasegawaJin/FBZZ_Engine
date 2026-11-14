@@ -13,6 +13,7 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <unordered_set>
 #include <utility>
 
 namespace fbzz::scene {
@@ -110,15 +111,47 @@ bool IsSimplePolygon(const std::vector<Point2>& polygon, double epsilon)
 {
     const std::size_t count = polygon.size();
     if (count < 3) return false;
+    struct Edge {
+        std::size_t first, second;
+        double minX, maxX, minZ, maxZ;
+    };
+    std::vector<Edge> edges;
+    edges.reserve(count);
+    double minX = polygon.front().x, maxX = minX;
+    double minZ = polygon.front().z, maxZ = minZ;
     for (std::size_t i = 0; i < count; ++i) {
-        const std::size_t nextI = (i + 1) % count;
-        const double dx = polygon[nextI].x - polygon[i].x;
-        const double dz = polygon[nextI].z - polygon[i].z;
+        const std::size_t next = (i + 1) % count;
+        const Point2& a = polygon[i];
+        const Point2& b = polygon[next];
+        const double dx = b.x - a.x;
+        const double dz = b.z - a.z;
         if (dx * dx + dz * dz <= epsilon * epsilon) return false;
-        for (std::size_t j = i + 1; j < count; ++j) {
-            const std::size_t nextJ = (j + 1) % count;
-            if (i == j || nextI == j || nextJ == i) continue;
-            if (SegmentsIntersect(polygon[i], polygon[nextI], polygon[j], polygon[nextJ], epsilon)) return false;
+        const Edge edge{i, next, (std::min)(a.x, b.x), (std::max)(a.x, b.x),
+            (std::min)(a.z, b.z), (std::max)(a.z, b.z)};
+        minX = (std::min)(minX, edge.minX);
+        maxX = (std::max)(maxX, edge.maxX);
+        minZ = (std::min)(minZ, edge.minZ);
+        maxZ = (std::max)(maxZ, edge.maxZ);
+        edges.push_back(edge);
+    }
+    if (maxZ - minZ > maxX - minX)
+        for (auto& edge : edges) {
+            std::swap(edge.minX, edge.minZ);
+            std::swap(edge.maxX, edge.maxZ);
+        }
+    std::sort(edges.begin(), edges.end(), [](const Edge& a, const Edge& b) { return a.minX < b.minX; });
+    /// @note Both forms of the existing tolerance keep endpoint cases admitted by either segment's rounded bounds.
+    const auto separated = [epsilon](double lowEnd, double highStart) {
+        return lowEnd + epsilon < highStart && lowEnd < highStart - epsilon;
+    };
+    for (std::size_t i = 0; i < count; ++i) {
+        const Edge& a = edges[i];
+        for (std::size_t j = i + 1; j < count && !separated(a.maxX, edges[j].minX); ++j) {
+            const Edge& b = edges[j];
+            if (a.second == b.first || b.second == a.first
+                || separated(a.maxZ, b.minZ) || separated(b.maxZ, a.minZ)) continue;
+            if (SegmentsIntersect(polygon[a.first], polygon[a.second],
+                    polygon[b.first], polygon[b.second], epsilon)) return false;
         }
     }
     return true;
@@ -145,44 +178,68 @@ bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
     }
     if (!std::isfinite(signedArea) || std::abs(signedArea) <= epsilon) return false;
     const double orientation = signedArea > 0.0 ? 1.0 : -1.0;
-    std::vector<std::uint32_t> remaining;
-    remaining.reserve(polygon.size());
-    for (std::size_t i = 0; i < polygon.size(); ++i)
-        remaining.push_back(static_cast<std::uint32_t>(i));
-    triangles.clear();
-    triangles.reserve(polygon.size() - 2);
-    std::size_t attempts = 0;
-    const std::size_t maximumAttempts = polygon.size() * polygon.size();
-    while (remaining.size() > 3 && attempts++ < maximumAttempts) {
-        bool clipped = false;
-        for (std::size_t i = 0; i < remaining.size(); ++i) {
-            const std::uint32_t previous = remaining[(i + remaining.size() - 1) % remaining.size()];
-            const std::uint32_t current = remaining[i];
-            const std::uint32_t next = remaining[(i + 1) % remaining.size()];
-            const Point2& a = polygon[previous];
-            const Point2& b = polygon[current];
-            const Point2& c = polygon[next];
-            if (orientation * Cross(a, b, c) <= epsilon) continue;
-            bool containsPoint = false;
-            for (const std::uint32_t candidate : remaining) {
-                if (candidate == previous || candidate == current || candidate == next) continue;
-                if (PointInTriangle(polygon[candidate], a, b, c, orientation, epsilon)) {
-                    containsPoint = true;
-                    break;
-                }
+    const auto count = static_cast<std::uint32_t>(polygon.size());
+    struct Corner {
+        std::uint32_t previous, next;
+        std::uint32_t blockers = 0;
+        bool checked = false, convex = false;
+    };
+    std::vector<Corner> corners;
+    corners.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+        corners.push_back({(i + count - 1) % count, (i + 1) % count});
+    std::vector<std::uint32_t> blocked;
+    std::uint32_t first = 0;
+    const auto contains = [&](std::uint32_t current, std::uint32_t candidate) {
+        const auto& corner = corners[current];
+        return candidate != current && candidate != corner.previous && candidate != corner.next
+            && PointInTriangle(polygon[candidate], polygon[corner.previous], polygon[current],
+                polygon[corner.next], orientation, epsilon);
+    };
+    const auto isEar = [&](std::uint32_t current) {
+        auto& corner = corners[current];
+        if (!corner.checked) {
+            corner.checked = true;
+            corner.convex = orientation * Cross(polygon[corner.previous], polygon[current], polygon[corner.next]) > epsilon;
+            corner.blockers = 0;
+            if (corner.convex) {
+                std::uint32_t candidate = corner.next;
+                do {
+                    if (contains(current, candidate)) ++corner.blockers;
+                    candidate = corners[candidate].next;
+                } while (candidate != current);
+                if (corner.blockers != 0) blocked.push_back(current);
             }
-            if (containsPoint) continue;
-            triangles.push_back({previous, current, next});
-            remaining.erase(remaining.begin() + static_cast<std::ptrdiff_t>(i));
-            clipped = true;
-            break;
         }
-        if (!clipped) return false;
+        return corner.convex && corner.blockers == 0;
+    };
+    triangles.clear();
+    triangles.reserve(count - 2);
+    for (std::uint32_t remaining = count; remaining > 3; --remaining) {
+        std::uint32_t ear = first;
+        while (!isEar(ear)) {
+            ear = corners[ear].next;
+            if (ear == first) return false;
+        }
+        const auto previous = corners[ear].previous, next = corners[ear].next;
+        triangles.push_back({previous, ear, next});
+        corners[previous].next = next;
+        corners[next].previous = previous;
+        if (first == ear) first = next;
+        if (remaining == 4) break;
+        /// @note Only the adjacent corners change shape. Other ears can only lose the removed point as a blocker.
+        corners[previous].checked = false;
+        corners[next].checked = false;
+        std::erase_if(blocked, [&](std::uint32_t current) {
+            auto& corner = corners[current];
+            if (!corner.checked) return true;
+            if (contains(current, ear)) --corner.blockers;
+            return corner.blockers == 0;
+        });
     }
-    if (remaining.size() != 3) return false;
-    if (orientation * Cross(polygon[remaining[0]], polygon[remaining[1]], polygon[remaining[2]]) <= epsilon)
-        return false;
-    triangles.push_back({remaining[0], remaining[1], remaining[2]});
+    const auto second = corners[first].next, third = corners[second].next;
+    if (orientation * Cross(polygon[first], polygon[second], polygon[third]) <= epsilon) return false;
+    triangles.push_back({first, second, third});
     return true;
 }
 
@@ -314,14 +371,14 @@ bool ValidateAuthoring(WaterSurfaceShape shape, std::span<const WaterSplinePoint
         || !std::isfinite(maximumWaterDepth) || maximumWaterDepth < 0.0f
         || !std::isfinite(maximumWorldCellSize) || maximumWorldCellSize <= 0.0f)
         return false;
-    for (std::size_t i = 0; i < points.size(); ++i) {
-        const auto& point = points[i];
+    std::unordered_set<std::uint32_t> ids;
+    ids.reserve(points.size());
+    for (const auto& point : points) {
         if (point.id == 0 || point.id > WATER_SPLINE_MAX_POINT_ID
             || !Finite(point.localPosition) || !std::isfinite(point.width)
             || !std::isfinite(point.depth) || point.depth < 0.0f || !std::isfinite(point.flowSpeed)) return false;
         if (shape == WaterSurfaceShape::SPLINE_RIVER && point.width <= 0.0f) return false;
-        for (std::size_t j = 0; j < i; ++j)
-            if (points[j].id == point.id) return false;
+        if (!ids.insert(point.id).second) return false;
         if (lake && std::abs(point.localPosition.y - points[0].localPosition.y) > 0.0001f) return false;
     }
     return true;

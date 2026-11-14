@@ -303,41 +303,34 @@ void ReleaseWaterMesh(WaterMesh& mesh, renderer::ResourceManager& resources)
     mesh = {};
 }
 
-void ReleaseWaterCacheEntries(WaterRenderCache& cache, uint64_t sceneGeneration, const EntityID* entity, renderer::ResourceManager& resources)
+template<class Erase>
+void ReleaseWaterCacheEntries(WaterRenderCache& cache, renderer::ResourceManager& resources, Erase erase)
 {
     if (cache.owner != resources.GetInstanceId() || cache.resetVersion != resources.GetResetVersion()) return;
-    const auto matches = [sceneGeneration, entity](const WaterCacheKey& key) {
-        return key.sceneGeneration == sceneGeneration
-            && (!entity || (key.index == entity->index && key.generation == entity->generation));
-    };
-    std::erase_if(cache.meshes, [&](auto& entry) {
-        if (!matches(entry.first)) return false;
-        ReleaseWaterMesh(entry.second, resources);
-        return true;
+    erase(cache.meshes, [&](WaterMesh& mesh) {
+        ReleaseWaterMesh(mesh, resources);
     });
-    std::erase_if(cache.appearances, [&](auto& entry) {
-        if (!matches(entry.first)) return false;
-        if (entry.second.paramsBuffer.IsValid()) resources.Release(entry.second.paramsBuffer);
-        entry.second.paramsBuffer = {};
-        return true;
+    erase(cache.appearances, [&](renderer::Material& appearance) {
+        if (appearance.paramsBuffer.IsValid()) resources.Release(appearance.paramsBuffer);
+        appearance.paramsBuffer = {};
     });
-    std::erase_if(cache.textures, [&](auto& entry) {
-        if (!matches(entry.first)) return false;
-        if (entry.second.foamMask.IsValid()) resources.Release(entry.second.foamMask);
-        return true;
+    erase(cache.textures, [&](const WaterTextures& textures) {
+        if (textures.foamMask.IsValid()) resources.Release(textures.foamMask);
     });
-    std::erase_if(cache.ripples, [&](auto& entry) {
-        if (!matches(entry.first)) return false;
-        if (entry.second.gpuTex.IsValid()) resources.Release(entry.second.gpuTex);
-        return true;
+    erase(cache.ripples, [&](const WaterRippleState& ripple) {
+        if (ripple.gpuTex.IsValid()) resources.Release(ripple.gpuTex);
     });
 }
 
 
 WaterRenderCache::~WaterRenderCache()
 {
-    if (auto* resources = WaterCacheOwner(*this))
-        ReleaseWaterCacheEntries(*this, sceneGeneration, nullptr, *resources);
+    if (auto* resources = WaterCacheOwner(*this)) {
+        ReleaseWaterCacheEntries(*this, *resources, [](auto& entries, auto release) {
+            for (auto& entry : entries) release(entry.second);
+            entries.clear();
+        });
+    }
     /// @note 終了済み・Reset 済みの資源は返さずに手放し、Material の破棄にも旧ハンドルを渡さない。
     for (auto& [key, appearance] : appearances) appearance.paramsBuffer = {};
 }
@@ -1162,36 +1155,16 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
     }
     auto& cache = AcquireWaterCache(scene, resources);
     const uint64_t sceneGeneration = scene.GetRenderSceneGeneration();
-    for (EntityID eid : scene.GetEntities<WaterComponent>()) {
-        const auto* water = scene.GetComponent<WaterComponent>(eid);
-        if (water && WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid())
-            ReleaseWaterCacheEntries(cache, sceneGeneration, &eid, resources);
-    }
     {
-        std::unordered_set<WaterCacheKey, WaterCacheKeyHash> validKeys;
-        for (EntityID eid : scene.GetEntities<WaterComponent>())
-            validKeys.insert({sceneGeneration, eid.index, eid.generation});
-
-        std::erase_if(cache.meshes, [&validKeys, sceneGeneration, &resources](auto& kv) {
-            if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
-            ReleaseWaterMesh(kv.second, resources);
-            return true;
-        });
-        std::erase_if(cache.appearances, [&validKeys, sceneGeneration, &resources](auto& entry) {
-            if (entry.first.sceneGeneration != sceneGeneration || validKeys.contains(entry.first)) return false;
-            if (entry.second.paramsBuffer.IsValid()) resources.Release(entry.second.paramsBuffer);
-            entry.second.paramsBuffer = {};
-            return true;
-        });
-        std::erase_if(cache.textures, [&validKeys, sceneGeneration, &resources](auto& kv) {
-            if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
-            if (kv.second.foamMask.IsValid()) resources.Release(kv.second.foamMask);
-            return true;
-        });
-        std::erase_if(cache.ripples, [&validKeys, sceneGeneration, &resources](auto& kv) {
-            if (kv.first.sceneGeneration != sceneGeneration || validKeys.contains(kv.first)) return false;
-            if (kv.second.gpuTex.IsValid()) resources.Release(kv.second.gpuTex);
-            return true;
+        /// @note Removed bodies and Zone members both release their private draw resources.
+        ReleaseWaterCacheEntries(cache, resources, [&](auto& entries, auto release) {
+            std::erase_if(entries, [&](auto& entry) {
+                const auto& key = entry.first;
+                const auto* water = scene.GetComponent<WaterComponent>({key.index, key.generation});
+                if (water && !WaterSurfaceZoneOwner(*water, WaterSurfaceReadView::SIMULATION).IsValid()) return false;
+                release(entry.second);
+                return true;
+            });
         });
     }
     {
@@ -1440,11 +1413,25 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         }
         output.water.push_back(std::move(input));
     }
+    const auto isHorizon = [](const auto& water) { return water.farOceanEnabled; };
+    const auto ocean = std::find_if(output.water.begin(), output.water.end(), isHorizon);
+    const bool multipleOceans = ocean != output.water.end()
+        && std::find_if(ocean + 1, output.water.end(), isHorizon) != output.water.end();
+    std::unordered_map<uint64_t, const renderer::RenderWaterInput*> horizonReceivers;
+    if (multipleOceans && !horizonMaterialLinks.empty()) {
+        for (auto it = ocean; it != output.water.end(); ++it) {
+            if (it->farOceanEnabled) horizonReceivers.try_emplace(it->medium.stableOwnerKey, &*it);
+        }
+    }
     for (const HorizonMaterialLink& link : horizonMaterialLinks) {
-        const auto receiver = std::find_if(output.water.begin(), output.water.end(), [&](const auto& input) {
-            return input.farOceanEnabled && input.medium.stableOwnerKey == link.receiverKey;
-        });
-        if (receiver == output.water.end()) continue;
+        const renderer::RenderWaterInput* receiver = nullptr;
+        if (multipleOceans) {
+            if (const auto found = horizonReceivers.find(link.receiverKey); found != horizonReceivers.end())
+                receiver = found->second;
+        } else if (ocean != output.water.end() && ocean->medium.stableOwnerKey == link.receiverKey) {
+            receiver = &*ocean;
+        }
+        if (!receiver) continue;
         auto& river = output.water[link.inputIndex];
         auto& cb = river.constants;
         river.horizonReceiverKey = link.receiverKey;
@@ -1455,10 +1442,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         cb.materialBlendTarget = MakeWaterMaterialBlendTarget(receiver->constants, receiver->effects);
     }
     /// @note A bounded visual handoff is possible only when there is one unambiguous receiving Horizon plane.
-    const auto isHorizon = [](const auto& water) { return water.farOceanEnabled; };
-    const auto ocean = std::find_if(output.water.begin(), output.water.end(), isHorizon);
-    const bool singleOcean = ocean != output.water.end() && ocean->medium.exclusions.empty()
-        && std::find_if(ocean + 1, output.water.end(), isHorizon) == output.water.end();
+    const bool singleOcean = ocean != output.water.end() && !multipleOceans && ocean->medium.exclusions.empty();
     for (auto& water : output.water) {
         for (auto& cap : water.constants.riverHorizonCaps) {
             if (cap.z <= 0.0f) continue;
@@ -1481,10 +1465,16 @@ void ReleaseWaterRenderResources(Scene& scene, EntityID entity)
 {
     const auto found = s_waterCaches.find(scene.GetRenderSceneGeneration());
     if (found == s_waterCaches.end()) return;
+    const WaterCacheKey key{scene.GetRenderSceneGeneration(), entity.index, entity.generation};
     for (auto& cache : found->second) {
-        if (auto* resources = WaterCacheOwner(*cache))
-            ReleaseWaterCacheEntries(*cache, scene.GetRenderSceneGeneration(), &entity, *resources);
-        const WaterCacheKey key{scene.GetRenderSceneGeneration(), entity.index, entity.generation};
+        if (auto* resources = WaterCacheOwner(*cache)) {
+            ReleaseWaterCacheEntries(*cache, *resources, [&](auto& entries, auto release) {
+                const auto entry = entries.find(key);
+                if (entry == entries.end()) return;
+                release(entry->second);
+                entries.erase(entry);
+            });
+        }
         cache->dirtyMeshes.erase(key); cache->dirtyTextures.erase(key);
     }
 }

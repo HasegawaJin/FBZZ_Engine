@@ -366,6 +366,28 @@ bool ResolveWaterfallGeometry(Scene& scene, GameObject& owner, WaterfallGeometry
         && ReadWaterfallConnections(scene, owner, *waterfall, out);
 }
 
+/// @note Identity rotation uses the same subtract/divide and double grid extents as the vertical heightfield query.
+/// @note Other poses and custom triangles can reach outside the upright grid and always use the full query.
+struct WaterfallTerrainSource {
+    const TerrainComponent* terrain;
+    const Transform* pose;
+    uint64_t revision;
+    double width, depth;
+    bool canReject;
+
+    bool Overlaps(const math::Vector4& bounds) const
+    {
+        if (!canReject) return true;
+        const auto axisOverlaps = [](float low, float high, float origin, float scale, double extent) {
+            const float first = (low - origin) / scale;
+            const float last = (high - origin) / scale;
+            return (std::max)(first, last) >= 0 && (std::min)(first, last) <= extent;
+        };
+        return axisOverlaps(bounds.x, bounds.z, pose->worldPosition.x, pose->worldScale.x, width)
+            && axisOverlaps(bounds.y, bounds.w, pose->worldPosition.z, pose->worldScale.z, depth);
+    }
+};
+
 void UpdateWaterfallRuntime(Scene& scene, float dt)
 {
     std::vector<EntityID> orphans;
@@ -380,32 +402,43 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
     const auto owners = scene.GetEntities<WaterfallComponent>();
     if (owners.empty()) return;
 
-    std::uint64_t terrainRevision = 1469598103934665603ull;
-    const auto hash = [&](std::uint64_t word) { terrainRevision = (terrainRevision ^ word) * 1099511628211ull; };
+    constexpr uint64_t HASH_BASIS = 1469598103934665603ull;
+    const auto hash = [](uint64_t& value, uint64_t word) { value = (value ^ word) * 1099511628211ull; };
+    uint64_t terrainRevision = HASH_BASIS;
+    std::vector<WaterfallTerrainSource> sources;
     const auto terrains = scene.GetEntities<TerrainComponent>();
+    sources.reserve(terrains.size());
     for (const auto id : terrains) {
         const auto* object = scene.GetGameObject(id);
         const auto* terrain = scene.GetComponent<TerrainComponent>(id);
-        hash(id.index);
-        hash(id.generation);
-        hash(terrain->surfaceRevision);
-        hash(object->activeInHierarchy() && terrain->enabled);
+        const bool enabled = object->activeInHierarchy() && terrain->enabled;
+        uint64_t stamp = HASH_BASIS;
+        const auto add = [&](uint64_t word) { hash(terrainRevision, word); hash(stamp, word); };
+        add(id.index);
+        add(id.generation);
+        add(terrain->surfaceRevision);
+        add(enabled);
         const auto& pose = object->transform;
         for (const auto value : std::array{pose.worldPosition.x, pose.worldPosition.y, pose.worldPosition.z,
             pose.worldRotation.x, pose.worldRotation.y, pose.worldRotation.z, pose.worldRotation.w,
-            pose.worldScale.x, pose.worldScale.y, pose.worldScale.z}) hash(std::bit_cast<std::uint32_t>(value));
+            pose.worldScale.x, pose.worldScale.y, pose.worldScale.z}) add(std::bit_cast<uint32_t>(value));
+        if (!enabled) continue;
+        hash(stamp, scene.GetComponentLifetime<TerrainComponent>(id));
+        const auto& rotation = pose.worldRotation;
+        const bool canReject = terrain->surfacePositions.empty() && terrain->surfaceIndices.empty()
+            && terrain->columns >= 2 && terrain->rows >= 2 && std::isfinite(terrain->cellSize) && terrain->cellSize > 0
+            && rotation.x == 0 && rotation.y == 0 && rotation.z == 0 && rotation.w == 1 && Finite(pose.worldPosition)
+            && Finite(pose.worldScale) && pose.worldScale.x != 0 && pose.worldScale.z != 0;
+        sources.push_back({terrain, &pose, stamp,
+            (static_cast<double>(terrain->columns) - 1) * terrain->cellSize,
+            (static_cast<double>(terrain->rows) - 1) * terrain->cellSize, canReject});
     }
-    const auto ground = [&](const Vector3& point) {
-        float result = -std::numeric_limits<float>::infinity();
-        for (const auto id : terrains) {
-            const auto* object = scene.GetGameObject(id);
-            const auto* terrain = scene.GetComponent<TerrainComponent>(id);
-            TerrainSurfaceSample sample;
-            if (object->activeInHierarchy() && terrain->enabled
-                && TrySampleTerrainWorld(*terrain, object->transform, point.x, point.z, sample))
-                result = (std::max)(result, sample.position.y);
-        }
-        return result;
+    const auto curtainRevision = [&](const WaterfallComponent& waterfall) {
+        uint64_t revision = HASH_BASIS;
+        if (waterfall.hasGroundProbes || !waterfall.groundProbesFinite)
+            for (const auto& source : sources)
+                if (!waterfall.groundProbesFinite || source.Overlaps(waterfall.groundProbeBounds)) hash(revision, source.revision);
+        return revision;
     };
 
     for (const auto id : owners) {
@@ -424,10 +457,10 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
             continue;
         }
         const float spray = FiniteAmount(waterfall.sprayAmount), mist = FiniteAmount(waterfall.mistAmount);
-        const bool changed = !waterfall.prepared || waterfall.geometry != geometry || waterfall.terrainRevision != terrainRevision;
+        const bool changed = !waterfall.prepared || waterfall.geometry != geometry
+            || waterfall.terrainRevision != curtainRevision(waterfall);
         if (changed) {
             waterfall.geometry = geometry;
-            waterfall.terrainRevision = terrainRevision;
             waterfall.prepared = true;
         }
         if (!changed && !waterfall.valid) continue;
@@ -435,8 +468,32 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
             [&](EntityID part) { return !scene.IsValid(part); });
         MeshBuilder builder;
         if (changed || missing) {
+            waterfall.hasGroundProbes = false;
+            waterfall.groundProbesFinite = true;
+            const auto ground = [&](const Vector3& point) {
+                const math::Vector4 bounds{point.x, point.z, point.x, point.z};
+                auto& footprint = waterfall.groundProbeBounds;
+                if (!std::isfinite(point.x) || !std::isfinite(point.z)) waterfall.groundProbesFinite = false;
+                else if (waterfall.hasGroundProbes) {
+                    footprint = {(std::min)(footprint.x, point.x), (std::min)(footprint.y, point.z),
+                        (std::max)(footprint.z, point.x), (std::max)(footprint.w, point.z)};
+                } else {
+                    footprint = bounds;
+                    waterfall.hasGroundProbes = true;
+                }
+                float result = -std::numeric_limits<float>::infinity();
+                for (const auto& source : sources) {
+                    TerrainSurfaceSample sample;
+                    if (source.Overlaps(bounds)
+                        && TrySampleTerrainWorld(*source.terrain, *source.pose, point.x, point.z, sample))
+                        result = (std::max)(result, sample.position.y);
+                }
+                return result;
+            };
             std::uint32_t farIndexStart = 0;
             waterfall.valid = BuildWaterfallGeometry(geometry, ground, builder, &waterfall.midFall, &farIndexStart);
+            /// @note Ground affects Y and can abort a build. Every XZ probe through the first failure remains a dependency.
+            waterfall.terrainRevision = curtainRevision(waterfall);
             if (!waterfall.valid) {
                 hide();
                 waterfall.status = "The waterfall intersects terrain or its water connections do not form a downhill path.";

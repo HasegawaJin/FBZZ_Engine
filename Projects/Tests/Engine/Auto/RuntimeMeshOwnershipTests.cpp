@@ -9,6 +9,9 @@
 #include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
 #include <Engine/Scene/Components/ClothComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/WaterfallComponent.hpp>
 #include <Engine/Scene/Systems/GameplayComponentSystems.hpp>
 #include <Engine/Scene/Systems/RuntimeMeshSystem.hpp>
 #include <Engine/Scene/Systems/ClothSystem.hpp>
@@ -167,5 +170,53 @@ TEST_F(RuntimeMeshOwnershipTest, KeepsClothSimulationStateWhenOnlyGpuOwnershipCh
     ASSERT_EQ(after.size(), before.size());
     for (size_t i = 0; i < after.size(); ++i) EXPECT_VEC3_NEAR(after[i], before[i], testkit::kTolerance);
     ExpectPublishedMeshes(*m_resources);
+}
+
+TEST_F(RuntimeMeshOwnershipTest, WaterfallRebuildsOnlyForTerrainItsClearanceCanSample)
+{
+    auto& upstream = m_scene.CreateGameObject("Upstream");
+    auto& source = upstream.AddComponent<scene::WaterComponent>();
+    source.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    source.splinePoints = {{1, {5, 10, -4}, 2, 1, 1}, {2, {5, 10, 2}, 2, 1, 1}};
+    auto& downstream = m_scene.CreateGameObject("Downstream");
+    auto& receiver = downstream.AddComponent<scene::WaterComponent>();
+    receiver.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    receiver.splinePoints = {{1, {5, 4, 8}, 2, 1, 1}, {2, {5, 4, 14}, 2, 1, 1}};
+    auto& waterfall = m_scene.CreateGameObject("Waterfall").AddComponent<scene::WaterfallComponent>();
+    waterfall.upstream = upstream.GetID();
+    waterfall.downstream = downstream.GetID();
+
+    auto& ground = m_scene.CreateGameObject("Ground");
+    ground.transform.worldPosition = {100, 0, 0};
+    auto& terrain = ground.AddComponent<scene::TerrainComponent>();
+    terrain.columns = terrain.rows = 21;
+    terrain.cellSize = 1;
+    terrain.maxHeight = 20;
+    terrain.InitFlat(0);
+    Tick(*m_resources);
+    ASSERT_EQ(waterfall.status, "Connected");
+    const auto part = waterfall.parts.front();
+    const auto* mesh = m_scene.GetComponent<scene::MeshRenderer>(part);
+    ASSERT_NE(mesh, nullptr);
+    const auto* original = mesh->mesh;
+    ASSERT_NE(original, nullptr);
+
+    terrain.InitFlat(20);
+    terrain.RequestHeightRebuild();
+    Tick(*m_resources);
+    EXPECT_EQ(waterfall.status, "Connected");
+    EXPECT_EQ(mesh->mesh, original);
+
+    ground.transform.worldPosition = {0, 0, 0};
+    Tick(*m_resources);
+    EXPECT_TRUE(waterfall.status.starts_with("The waterfall intersects terrain"));
+    EXPECT_FALSE(m_scene.GetGameObject(part)->activeInHierarchy());
+
+    terrain.InitFlat(0);
+    terrain.RequestHeightRebuild();
+    Tick(*m_resources);
+    EXPECT_EQ(waterfall.status, "Connected");
+    EXPECT_TRUE(m_scene.GetGameObject(part)->activeInHierarchy());
+    EXPECT_NE(mesh->mesh, original);
 }
 } /// @note namespace fbzz::tests
