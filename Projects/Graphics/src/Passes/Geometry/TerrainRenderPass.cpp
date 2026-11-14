@@ -319,11 +319,13 @@ struct TerrainCameraFrameCB {
     float         isOrthographic; float _pad;
 };
 static_assert(sizeof(TerrainCameraFrameCB) == 288, "PerFrameCB size mismatch");
-static bool IsChunkVisible(
-    const math::Frustum&  frustum,
-    const math::Matrix4&  world,
-    const math::Vector3&  localMin,
-    const math::Vector3&  localMax)
+struct TerrainChunkCullBounds {
+    math::Vector3 center;
+    math::Vector3 halfExtents;
+};
+
+static TerrainChunkCullBounds ChunkCullBounds(const math::Matrix4& world,
+    const math::Vector3& localMin, const math::Vector3& localMax)
 {
     math::Vector3 worldMin = {  1e30f,  1e30f,  1e30f };
     math::Vector3 worldMax = { -1e30f, -1e30f, -1e30f };
@@ -339,13 +341,14 @@ static bool IsChunkVisible(
         worldMin.y = std::min(worldMin.y, wp.y); worldMax.y = std::max(worldMax.y, wp.y);
         worldMin.z = std::min(worldMin.z, wp.z); worldMax.z = std::max(worldMax.z, wp.z);
     }
-    const math::Vector3 center  = { (worldMin.x + worldMax.x) * 0.5f,
-                                     (worldMin.y + worldMax.y) * 0.5f,
-                                     (worldMin.z + worldMax.z) * 0.5f };
-    const math::Vector3 extents = { (worldMax.x - worldMin.x) * 0.5f,
-                                     (worldMax.y - worldMin.y) * 0.5f,
-                                     (worldMax.z - worldMin.z) * 0.5f };
-    return frustum.IntersectsAABB(center, extents);
+    return {(worldMin + worldMax) * 0.5f, (worldMax - worldMin) * 0.5f};
+}
+
+static bool IsChunkVisible(const math::Frustum& frustum, const math::Matrix4& world,
+    const math::Vector3& localMin, const math::Vector3& localMax)
+{
+    const auto bounds = ChunkCullBounds(world, localMin, localMax);
+    return frustum.IntersectsAABB(bounds.center, bounds.halfExtents);
 }
 /// @brief 地形の描画と影で同じチャンク LOD を選ぶ。
 /// @note 異なるメッシュで自己影を描くと粗い三角形が表示面を貫き、斜面に偽の影が出る。
@@ -1454,24 +1457,51 @@ void SubmitTerrainShadowCastersImpl(
 
 } /// @note namespace
 
-uint64_t TerrainShadowCacheContentKey(const RenderPassContext& ctx)
+std::array<uint64_t, kMaxShadowCascades> TerrainShadowCacheContentKeys(const RenderPassContext& ctx, uint32_t mask)
 {
-    uint64_t key = 14695981039346656037ull;
-    if (!ctx.renderScene) return key;
-    const auto append = [&key](uint64_t value) { key = (key ^ value) * 1099511628211ull; };
+    constexpr uint64_t HASH_OFFSET = 14695981039346656037ull;
+    std::array<uint64_t, kMaxShadowCascades> keys;
+    keys.fill(HASH_OFFSET);
+    mask &= (1u << kMaxShadowCascades) - 1u;
+    if (!ctx.renderScene || mask == 0) return keys;
+    const auto append = [](uint64_t& key, uint64_t value) { key = (key ^ value) * 1099511628211ull; };
     for (const auto& input : ctx.renderScene->terrains) {
         if (input.layer >= 32 || (ctx.cullingMask & (1u << input.layer)) == 0
             || !IsStaticShadowTerrain(ctx, input)) continue;
-        append(input.shadowBakeGeometryHash);
-        for (const auto& row : input.constants.worldMatrix.m)
-            for (const float value : row) append(std::bit_cast<uint32_t>(value));
-        /// @note 色と影で同じ LOD を使う。カメラ移動で選んだ面が変わったときは深度を作り直す。
-        uint64_t lodKey = 0;
-        for (const auto& patch : input.patches)
-            lodKey = (lodKey ^ (1 + SelectTerrainLOD(input, patch, ctx.camera.m_position))) * 1099511628211ull;
-        append(lodKey);
+        const auto& world = input.constants.worldMatrix;
+        std::array<uint64_t, kMaxShadowCascades> patchKeys;
+        patchKeys.fill(HASH_OFFSET);
+        uint32_t terrainMask = 0;
+        for (size_t patchIndex = 0; patchIndex < input.patches.size(); ++patchIndex) {
+            const auto& patch = input.patches[patchIndex];
+            const auto bounds = ChunkCullBounds(world, patch.aabbMin, patch.aabbMax);
+            uint32_t patchMask = 0;
+            for (uint32_t candidates = mask; candidates != 0; candidates &= candidates - 1u) {
+                const auto cascade = std::countr_zero(candidates);
+                if (ctx.shadowCascades[cascade].frustum.IntersectsAABB(bounds.center, bounds.halfExtents))
+                    patchMask |= 1u << cascade;
+            }
+            if (patchMask == 0) continue;
+            const int lod = SelectTerrainLOD(input, patch, ctx.camera.m_position);
+            if (patch.indexCountLOD[lod] == 0) continue;
+            terrainMask |= patchMask;
+            for (; patchMask != 0; patchMask &= patchMask - 1u) {
+                auto& key = patchKeys[std::countr_zero(patchMask)];
+                append(key, patchIndex);
+                append(key, static_cast<uint64_t>(lod));
+            }
+        }
+        if (terrainMask == 0) continue;
+        uint64_t terrainKey = input.shadowBakeGeometryHash;
+        for (const auto& row : world.m)
+            for (const float value : row) append(terrainKey, std::bit_cast<uint32_t>(value));
+        for (; terrainMask != 0; terrainMask &= terrainMask - 1u) {
+            const auto cascade = std::countr_zero(terrainMask);
+            append(keys[cascade], terrainKey);
+            append(keys[cascade], patchKeys[cascade]);
+        }
     }
-    return key;
+    return keys;
 }
 
 PreparedTerrainShadowBatch PrepareTerrainShadowBatch(RenderPassContext& ctx,

@@ -443,7 +443,8 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     EXPECT_FALSE(math::Frustum::FromViewProjection(m_camera.GetViewProjection())
         .IntersectsSphere(placements->placements[1].position, 1.0f));
 
-    const auto renderAtlas = [&](bool gpu, float time = 1.7f, bool autoBake = false, bool occlusion = false) {
+    const auto renderAtlas = [&](bool gpu, float time = 1.7f, bool autoBake = false, bool occlusion = false,
+                                 bool useWorldTexels = false) {
         m_settings.shadowEnabled = true;
         m_settings.shadow.mapResolution = m_width;
         m_settings.gpuInstancing = gpu;
@@ -473,6 +474,8 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
             cascade.viewportSize = m_width / 2;
             cascade.viewportX = (i % 2) * cascade.viewportSize;
             cascade.viewportY = (i / 2) * cascade.viewportSize;
+            if (useWorldTexels)
+                cascade.texelWorldSize = light.m_orthoHeight / static_cast<float>(cascade.viewportSize);
         }
         Begin();
         r::ExecuteShadowPass(ctx);
@@ -506,6 +509,18 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     Same(rigid, renderAtlas(true, 0.25f, true));
     Same(rigid, renderAtlas(true, 1.7f, true));
 
+    const auto nearEnd = [&](const std::vector<float>& atlas) { return atlas.begin() + atlas.size() / 2; };
+    const auto windFirst = renderAtlas(false, 0.25f, false, false, true);
+    const auto windLater = renderAtlas(false, 1.7f, false, false, true);
+    ASSERT_EQ(windFirst.size(), rigid.size());
+    ASSERT_EQ(windLater.size(), rigid.size());
+    EXPECT_FALSE(std::equal(windFirst.begin(), nearEnd(windFirst), windLater.begin()));
+    EXPECT_TRUE(std::equal(nearEnd(rigid), rigid.end(), nearEnd(windFirst)));
+    EXPECT_TRUE(std::equal(nearEnd(rigid), rigid.end(), nearEnd(windLater)));
+    Same(windFirst, renderAtlas(true, 0.25f, false, false, true));
+    Same(windLater, renderAtlas(true, 1.7f, false, false, true));
+    Same(rigid, renderAtlas(true, 0.25f, true, false, true));
+
     input.vegetationBudget = {true, 0, 0, 8};
     const auto budgeted = renderAtlas(false);
     EXPECT_NE(budgeted, reference);
@@ -526,6 +541,95 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     const auto occludedReference = renderAtlas(true);
     EXPECT_NE(occludedReference, budgeted);
     Same(occludedReference, renderAtlas(true, 1.7f, false, true));
+
+    scene->objects.clear();
+    scene->items.clear();
+    input.localBoundsRadius = 0.5f;
+    input.lodCount = 4;
+    input.lodHeights = {0.07f, 0.03f, 0.01f, 0.0f};
+    auto rigidMesh = input.parts.front().mesh;
+    rigidMesh.material.gbufferParams = {};
+    rigidMesh.material.surface.alphaCutoff = 0.0f;
+    rigidMesh.material.textures[0] = {};
+    input.parts.clear();
+    for (uint32_t lod = 0; lod < input.lodCount; ++lod)
+        input.parts.push_back({rigidMesh, lod});
+    const auto placeVegetation = [&](float scaleInTexels) {
+        auto scaledPlacements = std::make_shared<r::InstanceSetData>(*placements);
+        for (uint32_t i = 0; i < scaledPlacements->placements.size(); ++i) {
+            auto& placement = scaledPlacements->placements[i];
+            const uint32_t tile = i / PLACEMENTS_PER_CASCADE;
+            const uint32_t cell = i % PLACEMENTS_PER_CASCADE;
+            const float texelSize = (4.0f + static_cast<float>(tile) * 0.2f) / (m_width / 2);
+            const float scale = scaleInTexels * texelSize;
+            /// @note Align the smaller quads to a sample center so the reference rasterizes them.
+            placement.position = {centers[tile] + (4.0f * static_cast<float>(cell % 6) - 9.5f) * texelSize,
+                (4.0f * static_cast<float>(cell / 6) - 9.5f) * texelSize, 4.0f};
+            placement.scale = {scale, scale, scale};
+            placement.active = true;
+        }
+        input.data = scaledPlacements;
+    };
+    const auto expectFarReduction = [&] {
+        input.vegetationBudget = {};
+        const auto full = renderAtlas(false, 0.0f, false, false, true);
+        ASSERT_EQ(full.size(), rigid.size());
+        EXPECT_TRUE(std::any_of(full.begin(), nearEnd(full), [](float depth) { return depth < 0.9999f; }));
+        EXPECT_TRUE(std::any_of(nearEnd(full), full.end(), [](float depth) { return depth < 0.9999f; }));
+        input.vegetationBudget = {true, 0, 0, 0};
+        const auto reduced = renderAtlas(false, 0.0f, false, false, true);
+        ASSERT_EQ(reduced.size(), full.size());
+        EXPECT_TRUE(std::equal(full.begin(), nearEnd(full), reduced.begin()));
+        EXPECT_TRUE(std::all_of(nearEnd(reduced), reduced.end(), [](float depth) { return depth >= 0.9999f; }));
+        Same(reduced, renderAtlas(true, 0.0f, false, false, true));
+    };
+    placeVegetation(1.5f);
+    expectFarReduction();
+
+    /// @note Make the coarsest LOD invisible to detect its selection independently of draw-call bookkeeping.
+    auto& billboard = input.parts.back().mesh.material;
+    InstanceMaterial transparent;
+    transparent.albedo.w = 0.0f;
+    transparent.textureMask = 0;
+    billboard.surface.alphaCutoff = transparent.cutoff;
+    std::memcpy(billboard.gbufferParams.data(), &transparent, sizeof(transparent));
+    placeVegetation(6.0f);
+    expectFarReduction();
+}
+
+TEST_F(InstancedMeshTest, ConflictingInstanceIdentityKeepsBothShapesInOneShadowBatch)
+{
+    const auto scene = Scene(64);
+    auto& first = scene->instances.front();
+    auto second = first;
+    first.world.m[0][3] = -2.0f;
+    second.world.m[0][3] = 2.0f;
+    scene->instances.push_back(second);
+    m_settings.shadowEnabled = true;
+    m_settings.gpuInstancing = false;
+    const auto render = [&] {
+        r::RenderPassContext ctx{{}, *m_bundle.renderer, *m_resources, m_camera, m_settings,
+            m_target, UINT32_MAX, m_handles};
+        ctx.renderScene = scene;
+        ctx.shadowCascadeCount = 1;
+        ctx.resourceRegistry.BindTarget("ShadowMap", m_shadow);
+        auto& view = ctx.shadowCascades[0];
+        view.view = m_camera.GetViewMatrix();
+        view.viewProjection = m_camera.GetViewProjection();
+        view.frustum = math::Frustum::FromViewProjection(view.viewProjection);
+        view.eyePos = m_camera.m_position;
+        view.viewportSize = m_width;
+        Begin();
+        r::ExecuteShadowPass(ctx);
+        End();
+        return Read(true, true);
+    };
+    const auto conflicting = render();
+    scene->instances[1].identity[1] += 1;
+    const auto independent = render();
+    Same(independent, conflicting);
+    scene->instances.pop_back();
+    EXPECT_NE(independent, render());
 }
 
 TEST_F(InstancedMeshTest, GpuOcclusionRowsFollowProjectionChangesAndInvalidViewsFailOpen)
@@ -676,6 +780,32 @@ TEST_F(InstancedMeshTest, UnchangedPlacementsUploadNothingAndOneEditUploadsOneRo
     added->placements.push_back({1000,{0,0,4},{},{1,1,1},true}); added->dirtySlots={130}; scene->instances[0].data=added;
     const auto actual=Render(scene,2); EXPECT_EQ(m_uploadBytes,208u); Same(actual,Render(scene,0));
 }
+TEST_F(InstancedMeshTest, ResidentRowsSurviveCacheSweepThroughLastLiveFrameAndReuploadAfterExpiry)
+{
+    constexpr uint64_t ROW_BYTES=208;
+    const auto first=Scene(2), second=Scene(3);
+    auto both=std::make_shared<r::RenderScene>();
+    both->instances={first->instances.front(),second->instances.front()};
+
+    Begin();
+    Draw(both,1);
+    EXPECT_EQ(m_uploadBytes,5*ROW_BYTES);
+    Draw(both,1);
+    EXPECT_EQ(m_uploadBytes,0u);
+    End();
+
+    for (int i=0;i<119;++i) m_resources->AdvanceFrame();
+    Begin();
+    Draw(second,1);
+    EXPECT_EQ(m_uploadBytes,0u);
+    End();
+
+    Begin();
+    Draw(both,1);
+    EXPECT_EQ(m_uploadBytes,2*ROW_BYTES);
+    End();
+}
+
 TEST_F(InstancedMeshTest, ShadowAlphaCoverageMatchesStandardGBufferIncludingVertexColorContract)
 {
     const auto scene=Scene(130,0.2f);

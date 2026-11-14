@@ -6,6 +6,7 @@
 #include <Graphics/Pipeline/GpuHiZ.hpp>
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Math/Frustum.hpp>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <vector>
@@ -26,7 +27,8 @@ struct InstanceShadowView {
     GpuHiZ hierarchy;
 };
 
-[[nodiscard]] bool HasInstanceShadowOcclusionCandidates(const RenderPassContext& context);
+/// @note Each bit identifies a light view that may use a current-frame shadow depth hierarchy.
+[[nodiscard]] uint32_t InstanceShadowOcclusionViewMask(RenderPassContext& context,std::span<const InstanceShadowView> views);
 
 class PreparedInstanceShadowBatch {
 public:

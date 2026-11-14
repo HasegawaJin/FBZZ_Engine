@@ -15,7 +15,7 @@
 
 深度は対応する投影と合わせて公開する。GPU上の色バッファ経由で保存可能な深度へ変換し、実行時は `SV_Depth` でアトラスに復元する。D3D12の深度リソースの部分コピーに依存しない。生成物の同一性はシーン、ライト方向、対応するキャスターと影設定で検証する。[D3D12 深度コピーの制約](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12graphicscommandlist-copytextureregion) · [Unreal Engine の静的・動的シャドウキャッシュ](https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine#caching)
 
-葉のキャスターは、`Auto Bake` の方向ライトでは風で変形する前の姿勢を使ってリアルタイムに深度を描く。アルファカットと LOD の形状を維持し、静的ベイクが未準備の場合も同じ姿勢を使う。`Realtime` の方向ライトと点・スポットライトの影では風の変形も反映する。 [葉の配置と描画](instanced-mesh.md)
+葉のキャスターは、`Auto Bake` の方向ライトでは風で変形する前の姿勢を使ってリアルタイムに深度を描く。方向ライトの3枚目以降のカスケードでも静止形状を使い、アルファカットとLODの輪郭を保持する。`Realtime` の手前2枚と点・スポットライトの影では風の変形を反映する。[葉の配置と描画](instanced-mesh.md) · [Unreal Engine の遠景の頂点変形](https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine#disabling-mesh-deformation-at-a-distance)
 
 Play要求は編集シーンに対してベイクを準備し、生成中はクローンの開始を待つ。編集シーンを閉じたときやPlay要求を取り消したときは開始を中止する。`Library/DirectionalShadowBake` へ保存した生成物は次のエディター内Playで読み込める。ベイクの範囲はシーン単位で、焼いた地形の細部は固定範囲と元画像の解像度に依存する。計測は初回ベイクと定常描画を分け、昼と夕方の各4視点で `Realtime` と `Auto Bake` を比較する。
 
@@ -25,7 +25,9 @@ CSM の最遠カスケードの末尾 15% で、太陽のリアルタイム遮�
 
 方向ライトの `Cached Far Cascade` (`cached_far_cascade`) は、Play中にカスケードが2枚以上あり、深度を矩形でクリアできる場合に使える。ビューごとの深度専用アトラスに静的キャスターを保持する。4カスケードでは中距離の静的深度を4フレーム、最遠を8フレームごとに更新し、更新の位相を2フレームずらす。2〜3カスケードでは最遠を8フレームごとに更新する。毎フレーム、静的深度を同じ矩形と投影で通常の影アトラスへ転写し、動的キャスターを現在の姿勢で重ねる。手前のカスケードは通常のリアルタイム描画を続ける。Spot / Point は既存の影アトラスを使う。編集ビューや資源を確保できない場合は通常のカスケードを使う。
 
-キャッシュ対象の投影に12.5%の余白を確保し、カメラ移動・回転や太陽の方向が許容範囲を外れたときは更新を早める。静的深度の対象は、CPUでLODを決める高さ場と、`Bake Static Shadow` が有効で形状の版が分かる不透明メッシュ。直前フレームから移動したメッシュ、スキニング、風や切り抜きのある形状、インスタンス、GPU間接選択の地形は毎フレーム描く。キャッシュ対象の地形形状・姿勢・LODや、各カスケードに含まれる静的メッシュの姿勢・材質・バッファの版が変わった場合は当該深度を描き直す。 [CRYENGINE Cached Shadows](https://www.cryengine.com/docs/static/engines/cryengine-3/categories/1114113/pages/21267738)
+キャッシュ対象の投影に12.5%の余白を確保し、カメラ移動・回転や太陽の方向が許容範囲を外れたときは更新を早める。静的深度の対象は、CPUでLODを決める高さ場と、`Bake Static Shadow` が有効で形状の版が分かる不透明メッシュ。直前フレームから移動したメッシュ、スキニング、風や切り抜きのある形状、インスタンス、GPU間接選択の地形は毎フレーム描く。各タイルの地形パッチをライトの視錐台で絞り、そのタイルに提出するパッチのLODをキャッシュの判定に使う。地形の形状と姿勢、静的メッシュの姿勢・材質・バッファの版も照合する。[Unreal Engine のカスケード深度再利用](https://dev.epicgames.com/documentation/en-us/unreal-engine/directional-lights-in-unreal-engine#reusing-cascade-depths-between-frames) · [CRYENGINE Cached Shadows](https://www.cryengine.com/docs/static/engines/cryengine-3/categories/1114113/pages/21267738)
+
+インスタンスのライト視点Hi-Zは、GPU選別の候補があり、先に深度を描いたタイルを囲む範囲から作る。未準備の配置は候補に残し、既存の常駐境界を使える場合は、ライトの視錐台と描画距離から必要なタイルを絞る。
 
 Playtest の `profiler.snapshot` は、静的深度を作り直したカスケードを `staticShadowUpdateMask`、当該フレームの合成に使った範囲を `staticShadowReadyMask` に返す。動くカメラ・太陽・キャスターを比較するときは、同じシーケンス時刻のフレームを照合し、更新のあるフレームの p95 も記録する。
 

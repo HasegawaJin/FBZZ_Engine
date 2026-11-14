@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -30,6 +31,8 @@
 namespace fbzz::renderer {
 
 namespace {
+
+constexpr int NEAR_VEGETATION_SHADOW_CASCADES = 2;
 
 struct MaskedShadowResources {
     uint64_t owner=0, epoch=UINT64_MAX;
@@ -268,11 +271,12 @@ struct ShadowSelections {
 enum class ShadowTilePhase { ALL, OCCLUDERS, INSTANCES };
 
 void PrepareShadowAtlasHiZ(RenderPassContext& ctx, ResourceHandle<RenderTargetTag> atlas,
-    std::span<InstanceShadowView> views)
+    std::span<InstanceShadowView> views, uint32_t viewMask)
 {
     uint32_t left = UINT32_MAX, top = UINT32_MAX, right = 0, bottom = 0;
-    for (const auto& view : views) {
-        if (view.viewportSize == 0) return;
+    for (size_t index = 0; index < views.size(); ++index) {
+        if ((viewMask & (1u << index)) == 0) continue;
+        const auto& view = views[index];
         left = (std::min)(left, view.viewportX);
         top = (std::min)(top, view.viewportY);
         right = (std::max)(right, view.viewportX + view.viewportSize);
@@ -282,7 +286,9 @@ void PrepareShadowAtlasHiZ(RenderPassContext& ctx, ResourceHandle<RenderTargetTa
     FBZZ_PROFILE_SCOPE("ShadowVisibility::BuildHiZ");
     const auto hierarchy = BuildGpuHiZ(ctx.renderer, ctx.resources, atlas, left, top, right - left, bottom - top);
     if (!hierarchy.depths.IsValid()) return;
-    for (auto& view : views) {
+    for (size_t index = 0; index < views.size(); ++index) {
+        if ((viewMask & (1u << index)) == 0) continue;
+        auto& view = views[index];
         view.hierarchy = hierarchy;
         view.viewportX -= left;
         view.viewportY -= top;
@@ -331,13 +337,16 @@ void RenderShadowCascade(RenderPassContext& ctx, const ShadowCascade& cascade,
         SubmitCountedShadow(ctx, restore);
     }
 
-    /// @note Auto Bake がリアルタイム描画へフォールバックしても葉の影の形状を保つ。
+    /// @note Auto Bake の代替描画と中・遠景のタイルでは葉を静止形状で描く。
+    /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine#disabling-mesh-deformation-at-a-distance Disabling Mesh Deformation at a Distance.
     PerFrameCB lightFrameData{};
     lightFrameData.viewProjection = cascade.viewProjection;
     lightFrameData.view = cascade.view;
     lightFrameData.cameraPos = cascade.eyePos;
     lightFrameData.isOrthographic = 1.0f;
-    lightFrameData.stableLeafShadow = ctx.directionalShadowBakeEnabled ? 1.0f : 0.0f;
+    const bool farCascade = cascadeIndex >= NEAR_VEGETATION_SHADOW_CASCADES
+        && cascade.texelWorldSize > 0.0f && std::isfinite(cascade.texelWorldSize);
+    lightFrameData.stableLeafShadow = (ctx.directionalShadowBakeEnabled || farCascade) ? 1.0f : 0.0f;
     ctx.resources.Update(ctx.handles.frameCB, &lightFrameData, sizeof(PerFrameCB));
 
     if (phase != ShadowTilePhase::INSTANCES) {
@@ -401,13 +410,13 @@ void UpdateStaticShadowCascade(RenderPassContext& ctx, const ShadowCascade& casc
 std::array<uint64_t, kMaxShadowCascades> StaticShadowContentKeys(RenderPassContext& ctx,
     const std::vector<ShadowCaster>& casters, uint32_t mask)
 {
-    auto commonKey = TerrainShadowCacheContentKey(ctx);
     const auto append = [](uint64_t& key, uint64_t value) { key = (key ^ value) * 1099511628211ull; };
-    append(commonKey, ctx.resources.GetShaderVersion());
-    append(commonKey, static_cast<uint64_t>(ctx.settings.rasterGeometryMode));
-    append(commonKey, static_cast<uint64_t>(ctx.settings.geometryDrawMode));
-    std::array<uint64_t, kMaxShadowCascades> keys;
-    keys.fill(commonKey);
+    auto keys = TerrainShadowCacheContentKeys(ctx, mask);
+    for (auto& key : keys) {
+        append(key, ctx.resources.GetShaderVersion());
+        append(key, static_cast<uint64_t>(ctx.settings.rasterGeometryMode));
+        append(key, static_cast<uint64_t>(ctx.settings.geometryDrawMode));
+    }
     for (const auto& caster : casters) {
         if (!caster.staticCache || (caster.cascadeMask & mask) == 0) continue;
         const auto& item = *caster.item;
@@ -548,7 +557,7 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         directionalIndices[directionalViewCount] = index;
         if (cache.readyMask & (1u << index)) staticCacheViewMask |= 1u << directionalViewCount;
         const auto& view = directionalViews[directionalViewCount] = ctx.shadowCascades[index];
-        visibilityViews[directionalViewCount++] = {view.frustum, true, index < 2, view.texelWorldSize,
+        visibilityViews[directionalViewCount++] = {view.frustum, true, index < NEAR_VEGETATION_SHADOW_CASCADES, view.texelWorldSize,
             view.viewProjection, view.viewportX, view.viewportY, view.viewportSize, {}};
     }
     for (int index = 0; index < localViewCount; ++index) {
@@ -573,31 +582,42 @@ void ExecuteShadowPass(RenderPassContext& ctx)
         return ctx.occlusionCullingEnabled && ctx.renderScene == shadowScene
             && resources.GetResetVersion() == shadowResourceEpoch && resources.FrameStamp() == shadowResourceFrame;
     };
+    const uint32_t hiZViewMask = depthCurrent() ? InstanceShadowOcclusionViewMask(ctx, views) : 0u;
+    const uint32_t directionalHiZMask = hiZViewMask & ((1u << directionalViewCount) - 1u);
+    const uint32_t punctualHiZMask = hiZViewMask >> directionalViewCount;
     const auto punctualAtlas = ctx.Res().Target("PunctualShadowMap");
     const auto drawTiles = [&](ShadowTilePhase phase) {
         const ShadowSelections selections{instanceBatch, terrainBatch, receipts};
         if (directionalViewCount > 0) {
-            const int before = ctx.statsShadowDrawCalls;
+            uint32_t drawnMask = 0;
             renderer.SetRenderTarget(shadowAtlas, resources);
-            for (int i = 0; i < directionalViewCount; ++i)
+            for (int i = 0; i < directionalViewCount; ++i) {
+                const int before = ctx.statsShadowDrawCalls;
                 RenderShadowCascade(ctx, directionalViews[i], directionalIndices[i], i, casters, selections,
                     static_cast<size_t>(i) == bakedViewIndex,
                     (staticCacheViewMask & (1u << i)) != 0 ? staticDepth : ResourceHandle<TextureTag>{}, phase);
-            if (phase == ShadowTilePhase::OCCLUDERS && before != ctx.statsShadowDrawCalls && depthCurrent())
-                PrepareShadowAtlasHiZ(ctx, shadowAtlas, views.first(directionalViewCount));
+                if (before != ctx.statsShadowDrawCalls) drawnMask |= 1u << i;
+            }
+            const uint32_t readyHiZMask = drawnMask & directionalHiZMask;
+            if (phase == ShadowTilePhase::OCCLUDERS && readyHiZMask != 0 && depthCurrent())
+                PrepareShadowAtlasHiZ(ctx, shadowAtlas, views.first(directionalViewCount), readyHiZMask);
         }
         if (localViewCount > 0) {
-            const int before = ctx.statsShadowDrawCalls;
+            uint32_t drawnMask = 0;
             renderer.SetRenderTarget(punctualAtlas, resources);
-            for (int i = 0; i < localViewCount; ++i)
+            for (int i = 0; i < localViewCount; ++i) {
+                const int before = ctx.statsShadowDrawCalls;
                 RenderPunctualShadowView(ctx, punctualViews[i], i, static_cast<size_t>(directionalViewCount + i),
                     casters, selections, phase);
-            if (phase == ShadowTilePhase::OCCLUDERS && before != ctx.statsShadowDrawCalls && depthCurrent())
-                PrepareShadowAtlasHiZ(ctx, punctualAtlas, views.subspan(directionalViewCount));
+                if (before != ctx.statsShadowDrawCalls) drawnMask |= 1u << i;
+            }
+            const uint32_t readyHiZMask = drawnMask & punctualHiZMask;
+            if (phase == ShadowTilePhase::OCCLUDERS && readyHiZMask != 0 && depthCurrent())
+                PrepareShadowAtlasHiZ(ctx, punctualAtlas, views.subspan(directionalViewCount), readyHiZMask);
         }
     };
 
-    const bool useHiZ = !views.empty() && depthCurrent() && HasInstanceShadowOcclusionCandidates(ctx);
+    const bool useHiZ = hiZViewMask != 0;
     {
         FBZZ_PROFILE_SCOPE("ShadowVisibility::Prepare");
         if (!useHiZ) instanceBatch = PrepareInstanceShadowBatch(ctx, views, commands);

@@ -1585,9 +1585,13 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
             }
             if (lc.shadowMode == scene::LightComponent::ShadowMode::CACHED_FAR_CASCADE)
                 ImGui::TextDisabled("Play updates middle/far cascades every 4/8 frames with four cascades.");
-            /// @note 0 のとき "Auto" 表示。シーン全体の AABB から自動フィット。
-            const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Auto" : "%.1f m";
-            ImGui::DragFloat("Shadow Distance", &lc.shadowDistance, 5.0f, 0.0f, 2000.0f, distFmt);
+            const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Render Settings" : "%.1f m";
+            ImGui::DragFloat("Shadow Distance Override", &lc.shadowDistance,
+                             5.0f, 0.0f, 2000.0f, distFmt);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("カメラ前方への影の最大距離 [m]。正の値は描画設定より優先されます。\n"
+                                  "0 にすると描画設定の Shadow Distance を使います。");
+            }
         } else {
             ImGui::DragFloat("Shadow Near Plane", &lc.shadowNearPlane,
                              0.01f, 0.01f, 10.0f, "%.2f m");

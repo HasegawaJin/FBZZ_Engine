@@ -1027,7 +1027,7 @@ void ProjectSettingsPanel::DrawShadows(renderer::RenderSettings& render)
               return true;
           });
     Field("Shadow Distance", render.shadow.autoFitDistance, &d.autoFitDistance,
-          "影が届く最大距離。カスケード分割の全体レンジでもある",
+          "方向ライトの Shadow Distance Override が 0 のときの最大距離 [m]。カスケード分割の全体レンジ",
           [&] { return ImGui::DragFloat("##v", &render.shadow.autoFitDistance, 1.0f, 5.0f, 2000.0f, "%.0f m"); });
 
     static const char* const kCascadeLabels[] = { "1 (single)", "2", "3", "4" };

@@ -81,6 +81,19 @@ bool IntersectsFrustum(const View view, float4 sphere, float radius)
     return true;
 }
 
+static const uint SHADOW_CASTER_CULLED = 4u;
+/// @note The resident sphere includes leaf motion; generic visibility padding does not change its shadow footprint.
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine#improving-non-nanite-performance Epic, projected-size culling and mesh LOD.
+uint ShadowCasterMinimumLod(const View view, float4 sphere)
+{
+    if (!(view.forward.w > 0.0f) || !(sphere.w > 0.0f) || !all(isfinite(sphere))) return 0u;
+    const float diameter = (sphere.w * view.forward.w) * 4.0f;
+    if (diameter < 2.0f) return SHADOW_CASTER_CULLED;
+    if (diameter <= 8.0f) return 3u;
+    if (diameter <= 40.0f) return 2u;
+    return diameter <= 80.0f ? 1u : 0u;
+}
+
 /// @note 各カスケードが独立した可視 ID・間接引数領域を持つ。通常ビューは常にスライス 0。
 /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/interlockedadd - unique visible slots.
 void AppendInstance(const View view, uint viewIndex, uint id, uint lod)
@@ -113,13 +126,21 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
     if (sphere.w<0) return;
     const float radius=sphere.w+view.culling.x;
 #if defined(FBZZ_INSTANCE_CASCADE_CULL)
-    /// @note 錐台だけがカスケードごとに異なる。距離と LOD は全スライスで同じカメラを使う。
+    /// @note Cascades share the camera distance and base LOD; the shadow footprint and frustum are per cascade.
     uint cascadeMask = 0u;
+    uint cascadeMinLods = 0u;
     const uint cascadeCount = min(view.terrainDepth.w, 4u);
-    [loop] for (uint cascade=0;cascade<cascadeCount;++cascade)
-        if (IntersectsFrustum(g_view[cascade], sphere, radius)) cascadeMask |= 1u << cascade;
+    [loop] for (uint cascade=0;cascade<cascadeCount;++cascade) {
+        const View light = g_view[cascade];
+        const uint minimumLod = ShadowCasterMinimumLod(light, sphere);
+        if (minimumLod == SHADOW_CASTER_CULLED || !IntersectsFrustum(light, sphere, radius)) continue;
+        cascadeMask |= 1u << cascade;
+        cascadeMinLods |= minimumLod << (2u * cascade);
+    }
     if (cascadeMask == 0u) return;
 #else
+    const uint minimumLod = ShadowCasterMinimumLod(view, sphere);
+    if (minimumLod == SHADOW_CASTER_CULLED) return;
     if (!IntersectsFrustum(view, sphere, radius)) return;
 #endif
     const float3 delta=sphere.xyz-view.cameraProjection.xyz;
@@ -148,25 +169,15 @@ void CSMain(uint3 threadId : SV_DispatchThreadID, uint3 groupId : SV_GroupID, ui
         const uint cascade=firstbitlow(cascadeMask);
         cascadeMask &= cascadeMask - 1u;
         if (OccludedByShadowHiZ(g_view[cascade], sphere.xyz, radius)) continue;
-        uint shadowLod=(preserveDetailMask & (1u<<cascade))!=0u ? lod : budgetedLod;
-        const float texelsPerMeter = g_view[cascade].forward.w;
-        if (texelsPerMeter > 0.0f) {
-            const float diameter = 2.0f * sphere.w * texelsPerMeter;
-            const uint minimum = diameter <= 20.0f ? 2u : diameter <= 40.0f ? 1u : 0u;
-            shadowLod = max(shadowLod, min(minimum, last));
-        }
-        AppendInstance(view, cascade, id, shadowLod);
+        const uint shadowLod=(preserveDetailMask & (1u<<cascade))!=0u ? lod : budgetedLod;
+        const uint minimumLod = (cascadeMinLods >> (2u * cascade)) & 3u;
+        AppendInstance(view, cascade, id, max(shadowLod, min(minimumLod, last)));
     }
 #else
     /// @note Only the projected-size test can select the distant billboard LOD for shadow casters.
     if (view.vegetation.z!=0u && rank>=view.vegetation.z) lod=max(lod,min(2u,last));
     else if (view.vegetation.x!=0u && rank>=view.vegetation.x) lod=max(lod,min(2u,last));
     else if (view.vegetation.y!=0u && rank>=view.vegetation.y) lod=max(lod,min(1u,last));
-    if (view.forward.w > 0.0f) {
-        const float diameter = 2.0f * sphere.w * view.forward.w;
-        const uint minimum = diameter <= 20.0f ? 2u : diameter <= 40.0f ? 1u : 0u;
-        lod = max(lod, min(minimum, last));
-    }
-    AppendInstance(view, 0u, id, lod);
+    AppendInstance(view, 0u, id, max(lod, min(minimumLod, last)));
 #endif
 }

@@ -23,6 +23,7 @@
 #include <set>
 #include <limits>
 #include <optional>
+#include <unordered_set>
 
 namespace fbzz::renderer {
 namespace {
@@ -48,6 +49,7 @@ constexpr uint32_t VEGETATION_SLOTS=27;
 constexpr uint32_t MIN_GPU_PLACEMENTS=64;
 constexpr uint32_t INSTANCE_GROUP_SIZE=64;
 constexpr uint32_t MAX_DISPATCH_X=65535;
+constexpr uint32_t SHADOW_CASTER_CULLED=4;
 struct InstanceBoundsNode {
     math::Vector3 low{}, high{};
     uint32_t first = 0, count = 0, left = 0, right = 0;
@@ -63,6 +65,7 @@ struct VegetationCandidates {
 struct InstanceSource {
     ResourceHandle<StructuredBufferTag> gpu;
     ResourceHandle<StructuredBufferTag> vegetationGpu;
+    uint64_t gpuBytes=0;
     std::vector<ResidentInstanceRecord> rows;
     std::shared_ptr<const InstanceSetData> data;
     math::Matrix4 world=math::Matrix4::Identity();
@@ -73,6 +76,7 @@ struct InstanceSource {
     bool moved=false;
     uint32_t activeCount=0;
     math::Vector3 boundsMin{}, boundsMax{};
+    float maxActiveRadius=0;
     bool hasBounds=false, finiteBounds=true;
     std::vector<uint32_t> spatialSlots;
     std::vector<InstanceBoundsNode> spatialNodes;
@@ -82,7 +86,10 @@ struct InstanceSource {
 };
 struct InstanceResources {
     uint64_t owner=0, epoch=UINT64_MAX;
-    std::map<std::array<uint64_t,2>,InstanceSource> sources;
+    using SourceMap=std::map<std::array<uint64_t,2>,InstanceSource>;
+    SourceMap sources;
+    uint64_t residentGpuBytes=0, lastSweepFrame=UINT64_MAX, evictionFrame=UINT64_MAX;
+    std::vector<SourceMap::iterator> evictionOrder;
     std::array<ResourceHandle<ShaderTag>,10> shaders{};
     ResourceHandle<ShaderTag> cascadeCullShader;
     DynamicStructuredBufferPool views{1}, partLods{1}, cpuIds{64};
@@ -95,9 +102,51 @@ struct InstanceResources {
     std::set<std::array<uint32_t,2>> warnedCustom;
     std::map<std::array<uint32_t,2>,ResourceHandle<ShaderTag>> customForwardShaders;
 };
-InstanceResources& Resources(ResourceManager& manager)
+InstanceResources& ResourceCache()
 {
     static InstanceResources cache;
+    return cache;
+}
+void ReleaseResidentGpu(ResourceManager& resources,InstanceResources& cache,InstanceSource& source)
+{
+    const auto buffer=source.gpu;
+    source.gpu={};
+    cache.residentGpuBytes-=source.gpuBytes;
+    source.gpuBytes=0;
+    resources.Release(buffer);
+}
+
+bool MakeResidentGpuRoom(ResourceManager& resources,InstanceResources& cache,uint64_t requiredBytes,uint64_t frame)
+{
+    constexpr uint64_t RESIDENT_GPU_BUDGET=256ull*1024*1024;
+    if (cache.residentGpuBytes+requiredBytes<=RESIDENT_GPU_BUDGET) return true;
+
+    /// @note During this resource frame, newly resident or prepared sources only leave the eviction candidates.
+    if (cache.evictionFrame!=frame) {
+        cache.evictionFrame=frame;
+        cache.evictionOrder.clear();
+        for (auto it=cache.sources.begin();it!=cache.sources.end();++it)
+            if (it->second.gpuBytes!=0 && it->second.preparedFrame!=frame) cache.evictionOrder.push_back(it);
+        std::sort(cache.evictionOrder.begin(),cache.evictionOrder.end(),[](const auto& a,const auto& b) {
+            if (a->second.lastSeen!=b->second.lastSeen) return a->second.lastSeen>b->second.lastSeen;
+            return a->first>b->first;
+        });
+    }
+    while (!cache.evictionOrder.empty()) {
+        auto& oldest=cache.evictionOrder.back()->second;
+        cache.evictionOrder.pop_back();
+        if (oldest.gpuBytes==0 || oldest.preparedFrame==frame) continue;
+        ReleaseResidentGpu(resources,cache,oldest);
+        resources.Release(oldest.vegetationGpu);
+        oldest.vegetationGpu={};
+        if (cache.residentGpuBytes+requiredBytes<=RESIDENT_GPU_BUDGET) return true;
+    }
+    return false;
+}
+
+InstanceResources& Resources(ResourceManager& manager)
+{
+    auto& cache=ResourceCache();
     if (cache.owner!=manager.GetInstanceId() || cache.epoch!=manager.GetResetVersion()) {
         if (auto* owner = ResourceManager::FindOwner(cache.owner)) {
             for (const auto& [identity, source] : cache.sources) {
@@ -117,16 +166,28 @@ InstanceResources& Resources(ResourceManager& manager)
     for (size_t i=0;i<paths.size();++i) if (!manager.Get(cache.shaders[i])) cache.shaders[i]=manager.LoadShader(paths[i]);
     if (!manager.Get(cache.material)) cache.material=manager.CreateConstantBuffer(96);
     if (!manager.Get(cache.windFrame)) cache.windFrame=manager.CreateConstantBuffer(sizeof(PostProcCB));
-    std::erase_if(cache.sources,[&](auto& entry) {
-        if (manager.FrameStamp()<=entry.second.lastSeen+120) return false;
-        manager.Release(entry.second.gpu);
-        manager.Release(entry.second.vegetationGpu);
-        return true;
-    });
+    const uint64_t frame=manager.FrameStamp();
+    if (cache.lastSweepFrame!=frame) {
+        cache.lastSweepFrame=frame;
+        cache.evictionFrame=UINT64_MAX;
+        cache.evictionOrder.clear();
+        for (auto it=cache.sources.begin();it!=cache.sources.end();) {
+            if (frame<=it->second.lastSeen+120) { ++it; continue; }
+            ReleaseResidentGpu(manager,cache,it->second);
+            manager.Release(it->second.vegetationGpu);
+            it=cache.sources.erase(it);
+        }
+    }
     return cache;
 }
 bool SameMatrix(const math::Matrix4& a,const math::Matrix4& b) { return std::memcmp(&a,&b,sizeof(a))==0; }
 bool SameVector(math::Vector3 a,math::Vector3 b) { return a.x==b.x&&a.y==b.y&&a.z==b.z; }
+bool MatchesSource(const InstanceSource& source,const RenderInstanceInput& input)
+{
+    return source.data && source.data.get()==input.data.get() && source.data->revision==input.data->revision
+        && SameMatrix(source.world,input.world)
+        && SameVector(source.center,input.localBoundsCenter) && source.radius==input.localBoundsRadius;
+}
 void UpdateWindFrame(RenderPassContext& ctx,InstanceResources& cache)
 {
     if (cache.windStamp != ctx.resources.FrameStamp()) {
@@ -222,16 +283,16 @@ void PrepareVegetationCells(InstanceSource& source)
 template<typename SubmitPending>
 InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const RenderInstanceInput& input,SubmitPending&& submitPending)
 {
-    auto& source=cache.sources[input.identity]; source.lastSeen=ctx.resources.FrameStamp();
-    const bool unchanged=source.data && source.data.get()==input.data.get() && source.data->revision==input.data->revision && SameMatrix(source.world,input.world)
-        && SameVector(source.center,input.localBoundsCenter) && source.radius==input.localBoundsRadius;
-    if (source.preparedFrame==ctx.resources.FrameStamp()) {
+    const uint64_t frame=ctx.resources.FrameStamp();
+    auto& source=cache.sources[input.identity]; source.lastSeen=frame;
+    const bool unchanged=MatchesSource(source,input);
+    if (source.preparedFrame==frame) {
         if (unchanged) {
             if (input.vegetationBudget.enabled && !source.vegetationPrepared) PrepareVegetationCells(source);
             return &source;
         }
         /// @note Finish any same-frame use before replacing the resident data for this identity.
-        if (!submitPending()) return nullptr;
+        if (!submitPending(source)) return nullptr;
     }
     std::vector<uint32_t> changed=source.motionSlots; source.motionSlots.clear(); source.moved=false;
     for (uint32_t slot : changed) source.rows[slot].previousWorld=source.rows[slot].world;
@@ -245,7 +306,7 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
         else { changed.resize(input.data->placements.size()); for (size_t i=0;i<changed.size();++i) changed[i]=static_cast<uint32_t>(i); }
         std::sort(changed.begin(),changed.end()); changed.erase(std::unique(changed.begin(),changed.end()),changed.end());
         const size_t previousCount=source.rows.size();
-        if (!partial) { source.activeCount=0; source.hasBounds=false; source.finiteBounds=true; }
+        if (!partial) { source.activeCount=0; source.hasBounds=false; source.finiteBounds=true; source.maxActiveRadius=0; }
         source.rows.resize(input.data->placements.size());
         for (uint32_t slot : changed) {
             const auto& placement=input.data->placements[slot]; auto& row=source.rows[slot];
@@ -270,6 +331,8 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
                 if (!std::isfinite(row.bounds.x) || !std::isfinite(row.bounds.y)
                     || !std::isfinite(row.bounds.z) || !std::isfinite(row.bounds.w) || row.bounds.w<=0) source.finiteBounds=false;
                 else {
+                    /// @note A partial edit only grows the aggregate radius and cannot hide another active row.
+                    source.maxActiveRadius=std::max(source.maxActiveRadius,radius);
                     const math::Vector3 low{center.x-row.bounds.w,center.y-row.bounds.w,center.z-row.bounds.w};
                     const math::Vector3 high{center.x+row.bounds.w,center.y+row.bounds.w,center.z+row.bounds.w};
                     if (!source.hasBounds) { source.boundsMin=low; source.boundsMax=high; source.hasBounds=true; }
@@ -284,27 +347,20 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
         source.world=input.world; source.center=input.localBoundsCenter; source.radius=input.localBoundsRadius; source.data=input.data;
     }
     if (input.vegetationBudget.enabled && !source.vegetationPrepared) PrepareVegetationCells(source);
-    source.preparedFrame=ctx.resources.FrameStamp();
-    if (!source.rows.empty() && (!ctx.resources.Get(source.gpu) || ctx.resources.Get(source.gpu)->GetElementCount()<source.rows.size())) {
-        ctx.resources.Release(source.gpu);
+    source.preparedFrame=frame;
+    const auto* buffer=ctx.resources.Get(source.gpu);
+    if (!source.rows.empty() && (!buffer || buffer->GetElementCount()<source.rows.size())) {
+        ReleaseResidentGpu(ctx.resources,cache,source);
         uint32_t capacity=64;
         while (capacity<source.rows.size()) capacity*=2;
-        constexpr uint64_t RESIDENT_GPU_BUDGET=256ull*1024*1024;
         const uint64_t required=static_cast<uint64_t>(capacity)*sizeof(ResidentInstanceRecord);
-        uint64_t used=0;
-        for (const auto& entry : cache.sources) if (const auto* buffer=ctx.resources.Get(entry.second.gpu)) used+=buffer->GetSize();
-        while (used+required>RESIDENT_GPU_BUDGET) {
-            auto oldest=cache.sources.end();
-            for (auto it=cache.sources.begin();it!=cache.sources.end();++it)
-                if (ctx.resources.Get(it->second.gpu) && it->second.preparedFrame!=ctx.resources.FrameStamp()
-                    && (oldest==cache.sources.end() || it->second.lastSeen<oldest->second.lastSeen)) oldest=it;
-            if (oldest==cache.sources.end()) break;
-            used-=ctx.resources.Get(oldest->second.gpu)->GetSize();
-            ctx.resources.Release(oldest->second.gpu); oldest->second.gpu={};
-            ctx.resources.Release(oldest->second.vegetationGpu); oldest->second.vegetationGpu={};
-        }
-        if (used+required<=RESIDENT_GPU_BUDGET) source.gpu=ctx.resources.CreateRWStructuredBuffer(nullptr,capacity,sizeof(ResidentInstanceRecord));
-        else FBZZ_LOG_WARN("Instance rendering: resident GPU budget exceeded; using CPU fallback");
+        if (MakeResidentGpuRoom(ctx.resources,cache,required,frame)) {
+            source.gpu=ctx.resources.CreateRWStructuredBuffer(nullptr,capacity,sizeof(ResidentInstanceRecord));
+            if (const auto* created=ctx.resources.Get(source.gpu)) {
+                source.gpuBytes=created->GetSize();
+                cache.residentGpuBytes+=source.gpuBytes;
+            }
+        } else FBZZ_LOG_WARN("Instance rendering: resident GPU budget exceeded; using CPU fallback");
         changed.resize(source.rows.size()); for (size_t i=0;i<changed.size();++i) changed[i]=static_cast<uint32_t>(i);
     }
     std::sort(changed.begin(),changed.end()); changed.erase(std::unique(changed.begin(),changed.end()),changed.end());
@@ -312,7 +368,10 @@ InstanceSource* Source(RenderPassContext& ctx,InstanceResources& cache,const Ren
     for (size_t i=0;i<changed.size();) {
         size_t end=i+1; while (end<changed.size() && changed[end]==changed[end-1]+1) ++end;
         const size_t bytes=(end-i)*sizeof(ResidentInstanceRecord), offset=changed[i]*sizeof(ResidentInstanceRecord);
-        if (!ctx.resources.UpdateRegion(source.gpu,source.rows.data()+changed[i],bytes,offset)) { ctx.resources.Release(source.gpu); source.gpu={}; break; }
+        if (!ctx.resources.UpdateRegion(source.gpu,source.rows.data()+changed[i],bytes,offset)) {
+            ReleaseResidentGpu(ctx.resources,cache,source);
+            break;
+        }
         ctx.statsInstanceUploadBytes+=bytes; i=end;
     }
     return &source;
@@ -324,13 +383,33 @@ void SetFrustumPlanes(InstanceView& view,const math::Frustum& frustum)
         view.planes[i]={plane.normal.x,plane.normal.y,plane.normal.z,plane.distance};
     }
 }
-/// @note 中遠景の植生は影マップ上の直径 40 / 80 texel を境に LOD 2 / 1 へ落とす。
+float ShadowLodScale(const InstanceShadowView& light,bool vegetation)
+{
+    constexpr float SHADOW_LOD_TEXEL_SCALE=0.5f;
+    return vegetation && light.directional && !light.preserveVegetationDetail
+        && std::isfinite(light.texelWorldSize) && light.texelWorldSize>0.0f
+        ? SHADOW_LOD_TEXEL_SCALE/light.texelWorldSize : 0.0f;
+}
 void ConfigureShadowLod(InstanceView& view, const InstanceShadowView& light, bool vegetation)
 {
     if (light.preserveVegetationDetail) view.vegetation[2] = 0;
-    constexpr float SHADOW_LOD_TEXEL_SCALE = 0.5f;
-    if (vegetation && light.directional && !light.preserveVegetationDetail && light.texelWorldSize > 0.0f)
-        view.forward.w = SHADOW_LOD_TEXEL_SCALE / light.texelWorldSize;
+    view.forward.w=ShadowLodScale(light,vegetation);
+}
+/// @note The resident sphere includes all mesh LODs and wind displacement; visibility padding does not change its footprint.
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine#improving-non-nanite-performance Epic, projected-size culling and mesh LOD.
+uint32_t ShadowCasterMinimumLod(float shadowLodScale,const math::Vector4& sphere)
+{
+    if (!(shadowLodScale>0.0f) || !(sphere.w>0.0f) || !std::isfinite(sphere.w)
+        || !std::isfinite(sphere.x) || !std::isfinite(sphere.y) || !std::isfinite(sphere.z)) return 0;
+    const float diameter=(sphere.w*shadowLodScale)*4.0f;
+    if (diameter<2.0f) return SHADOW_CASTER_CULLED;
+    if (diameter<=8.0f) return 3;
+    if (diameter<=40.0f) return 2;
+    return diameter<=80.0f ? 1u : 0u;
+}
+uint32_t SourceShadowMinimumLod(const InstanceSource& source,float shadowLodScale)
+{
+    return source.finiteBounds ? ShadowCasterMinimumLod(shadowLodScale,{0,0,0,source.maxActiveRadius}) : 0u;
 }
 InstanceView View(const RenderPassContext& ctx,const RenderInstanceInput& input,const math::Frustum& frustum,bool shadow)
 {
@@ -471,15 +550,11 @@ uint32_t CpuLod(const InstanceView& view,const math::Vector4& bounds)
     for (uint32_t i=0;i<view.counts[1];++i) if (height>=heights[i]) return i;
     return view.counts[1]-1;
 }
-uint32_t VegetationLod(const InstanceView& view,uint32_t lod,uint32_t rank,float radius)
+uint32_t VegetationLod(const InstanceView& view,uint32_t lod,uint32_t rank,uint32_t minimumLod)
 {
     const uint32_t last=view.counts[1]-1;
     const auto& limits=view.vegetation;
-    if (view.forward.w > 0.0f) {
-        const float diameter = 2.0f * radius * view.forward.w;
-        const uint32_t minimum = diameter <= 20.0f ? 2u : diameter <= 40.0f ? 1u : 0u;
-        lod = std::max(lod, std::min(minimum, last));
-    }
+    lod=std::max(lod,std::min(minimumLod,last));
     /// @note LOD3 can be a distant billboard. Leave it to the projected-size test for shadow casters.
     if (limits[2]!=0 && rank>=limits[2]) return std::max(lod,std::min(2u,last));
     if (limits[0]!=0 && rank>=limits[0]) return std::max(lod,std::min(2u,last));
@@ -672,6 +747,9 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
     const float cardWireframe = pass == InstancePass::FORWARD && ctx.settings.IsWireframe()
         ? (ctx.settings.IsUnlit() ? 2.0f : 1.0f) : 0.0f;
     const bool gpu=selection!=nullptr;
+    const auto sourceMinimumLod=SourceShadowMinimumLod(source,view.forward.w);
+    if (sourceMinimumLod==SHADOW_CASTER_CULLED) return;
+    const auto firstPossibleLod=std::min(sourceMinimumLod,input.lodCount-1u);
     /// @note GPU visibility stays on the GPU; unresolved candidates must not be reported as visible CPU objects.
     /// @see Docs/design/instanced-mesh.md カリング統計の完全性。
     if (gpu && countStatistics) {
@@ -686,6 +764,8 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         FBZZ_PROFILE_SCOPE("InstanceVisibility::CpuSelection");
         const auto select = [&](uint32_t i,uint32_t rank=0) {
             const auto& sphere=source.rows[i].bounds; if (sphere.w<0) return;
+            const uint32_t minimumLod=ShadowCasterMinimumLod(view.forward.w,sphere);
+            if (minimumLod==SHADOW_CASTER_CULLED) return;
             const float radius=sphere.w+view.culling.x;
             if (view.counts[3] && !frustum.IntersectsSphere({sphere.x,sphere.y,sphere.z},radius)) {
                 if (countStatistics) CountRejected(ctx,VisibilityResult::FRUSTUM_CULLED,1);
@@ -708,7 +788,7 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
                 if (countStatistics) ++ctx.statsOcclusionCulled;
                 return;
             }
-            visible[VegetationLod(view,CpuLod(view,sphere),rank,sphere.w)].push_back(i);
+            visible[VegetationLod(view,CpuLod(view,sphere),rank,minimumLod)].push_back(i);
         };
         if (input.vegetationBudget.enabled && !source.vegetationCells.empty()) {
             FBZZ_PROFILE_SCOPE("InstanceVisibility::VegetationCells");
@@ -770,6 +850,7 @@ void SubmitSet(const InstanceSubmission& submission,const RenderInstanceInput& i
         const bool standard=material.shaderCapabilities.SupportsGBuffer();
         if (pass==InstancePass::GBUFFER && !standard) continue;
         if (forwardPass && ctx.isDeferred && standard) continue;
+        if (gpu && part.lod<firstPossibleLod) continue;
         if (!gpu && visible[part.lod].empty()) continue;
         DrawCall draw; draw.vertexBuffer=part.mesh.vertexBuffer; draw.indexBuffer=part.mesh.indexBuffer;
         draw.indexCount=part.mesh.indexCount; draw.vertexCount=part.mesh.vertexCount;
@@ -930,7 +1011,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         if (pass==InstancePass::FORWARD && ctx.isDeferred && std::all_of(input.parts.begin(),input.parts.end(),
             [](const auto& part) { return part.mesh.material.shaderCapabilities.SupportsGBuffer(); })) continue;
         if (!resourcesCurrent()) return;
-        auto* preparedSource=Source(ctx,cache,input,submitPending);
+        auto* preparedSource=Source(ctx,cache,input,[&](const InstanceSource&) { return submitPending(); });
         if (!preparedSource || !resourcesCurrent()) return;
         auto& source=*preparedSource;
         if (countStatistics) ctx.statsTotalObjects+=static_cast<int>(source.activeCount);
@@ -940,6 +1021,7 @@ void Execute(RenderPassContext& ctx,InstancePass pass,const math::Frustum* light
         auto view=View(ctx,input,frustum,pass==InstancePass::SHADOW);
         if (shadowView) ConfigureShadowLod(view, *shadowView, input.vegetationBudget.enabled);
         if (pass==InstancePass::SELECTION) view.culling.w=0;
+        if (SourceShadowMinimumLod(source,view.forward.w)==SHADOW_CASTER_CULLED) continue;
         const auto sourceVisibility=SourceVisibility(source,view,frustum);
         if (sourceVisibility!=VisibilityResult::VISIBLE) {
             if (countStatistics) CountRejected(ctx,sourceVisibility,static_cast<int>(source.activeCount));
@@ -1029,13 +1111,41 @@ PreparedInstanceShadowBatch::~PreparedInstanceShadowBatch()=default;
 PreparedInstanceShadowBatch::PreparedInstanceShadowBatch(PreparedInstanceShadowBatch&&) noexcept=default;
 PreparedInstanceShadowBatch& PreparedInstanceShadowBatch::operator=(PreparedInstanceShadowBatch&&) noexcept=default;
 
-bool HasInstanceShadowOcclusionCandidates(const RenderPassContext& ctx)
+uint32_t InstanceShadowOcclusionViewMask(RenderPassContext& ctx,std::span<const InstanceShadowView> views)
 {
-    if (!ctx.renderScene || !SupportsTerrainHiZMode(ctx)) return false;
-    return std::any_of(ctx.renderScene->instances.begin(),ctx.renderScene->instances.end(),[&](const auto& input) {
-        return input.castShadows && !input.selectionOnly && HasValidInput(ctx,input)
-            && input.data->placements.size()>=MIN_GPU_PLACEMENTS && HasShadowHiZBounds(input);
-    });
+    const auto scene=ctx.renderScene;
+    if (!scene || !SupportsTerrainHiZMode(ctx)) return 0;
+    views=views.first(std::min<size_t>(views.size(),std::numeric_limits<uint32_t>::digits));
+    uint32_t eligible=0;
+    for (size_t i=0;i<views.size();++i)
+        if (views[i].viewportSize>0) eligible|=1u<<i;
+    if (eligible==0) return 0;
+
+    const auto& cache=ResourceCache();
+    const uint64_t owner=ctx.resources.GetInstanceId();
+    const uint64_t epoch=ctx.resources.GetResetVersion();
+    const uint64_t frame=ctx.resources.FrameStamp();
+    const bool cacheCurrent=cache.owner==owner && cache.epoch==epoch;
+    uint32_t mask=0;
+    for (const auto& input : scene->instances) {
+        if (!input.castShadows || input.selectionOnly || !HasValidInput(ctx,input)
+            || input.data->placements.size()<MIN_GPU_PLACEMENTS || !HasShadowHiZBounds(input)) continue;
+        const auto entry=cacheCurrent ? cache.sources.find(input.identity) : cache.sources.end();
+        /// @note Cold and edited sets may enter any light view. The batch prepares their rows and GPU buffers once.
+        if (entry==cache.sources.end() || entry->second.preparedFrame>frame || !MatchesSource(entry->second,input))
+            return eligible;
+        const auto& source=entry->second;
+        if (source.activeCount==0) continue;
+        const auto commonView=View(ctx,input,views.front().frustum,true);
+        for (uint32_t pending=eligible & ~mask;pending!=0;pending&=pending-1) {
+            const auto i=std::countr_zero(pending);
+            const float shadowLodScale=ShadowLodScale(views[i],input.vegetationBudget.enabled);
+            if (SourceShadowMinimumLod(source,shadowLodScale)==SHADOW_CASTER_CULLED) continue;
+            if (SourceVisibility(source,commonView,views[i].frustum)==VisibilityResult::VISIBLE) mask|=1u<<i;
+        }
+        if (mask==eligible) return mask;
+    }
+    return mask;
 }
 
 PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,std::span<const InstanceShadowView> views,
@@ -1059,13 +1169,18 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
     const size_t firstCommand=commands.size();
     UpdateWindFrame(ctx,cache);
 
+    /// @note 同一フレームの配置差し替え時だけ、提出待ちの参照を索引化する。
+    std::optional<std::unordered_set<const InstanceSource*>> admittedSources;
     for (const auto& input : scene->instances) {
         if (!state.ResourcesCurrent(ctx.resources)) break;
         if (input.selectionOnly || !input.castShadows || !HasValidInput(ctx,input)) continue;
-        auto* source=Source(ctx,cache,input,[&] {
-            return std::none_of(state.sources.begin(),state.sources.end(),[&](const auto& entry) {
-                return entry.input->identity==input.identity;
-            });
+        auto* source=Source(ctx,cache,input,[&](const InstanceSource& currentSource) {
+            if (!admittedSources) {
+                admittedSources.emplace();
+                admittedSources->reserve(scene->instances.size());
+                for (const auto& entry : state.sources) admittedSources->insert(entry.source);
+            }
+            return !admittedSources->contains(&currentSource);
         });
         if (!source) {
             /// @note A duplicate identity with different resident data needs ordered CPU replay before its rows are replaced.
@@ -1082,13 +1197,16 @@ PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& ctx,st
         bool admitted=false;
         for (size_t viewIndex=0;viewIndex<state.views.size();++viewIndex) {
             auto& light=state.views[viewIndex];
-            if (SourceVisibility(*source,commonView,light.input.frustum)!=VisibilityResult::VISIBLE) continue;
+            const float shadowLodScale=ShadowLodScale(light.input,input.vegetationBudget.enabled);
+            if (SourceShadowMinimumLod(*source,shadowLodScale)==SHADOW_CASTER_CULLED
+                || SourceVisibility(*source,commonView,light.input.frustum)!=VisibilityResult::VISIBLE) continue;
             light.sets.push_back({sourceIndex,SIZE_MAX,{},false});
             admitted=true;
             if (light.input.directional && cascadeCount<cascadeIndices.size()) cascadeIndices[cascadeCount++]=viewIndex;
         }
         if (!admitted) continue;
         state.sources.push_back({&input,source,commonView});
+        if (admittedSources) admittedSources->insert(source);
         if (!CanPrepareGpu(ctx,cache,input,*source,commonView.counts[0])) continue;
         const bool residentShaders=std::all_of(input.parts.begin(),input.parts.end(),[&](const auto& part) {
             const auto& material=part.mesh.material;
@@ -1174,13 +1292,9 @@ void SubmitInstanceShadowBatchView(RenderPassContext& ctx,const PreparedInstance
         if (recorded && work.firstGroupedCascade) {
             FBZZ_PROFILE_SCOPE("ShadowVisibility::DirectionalCascadeDispatch");
         }
-        if (!recorded) {
-            auto selectionView=entry.view;
-            ConfigureShadowLod(selectionView, view.input, entry.input->vegetationBudget.enabled);
-            SubmitSet(submission,*entry.input,*entry.source,selectionView,nullptr,nullptr);
-        } else {
-            SubmitSet(submission,*entry.input,*entry.source,entry.view,recorded ? &work.selection : nullptr,nullptr);
-        }
+        auto selectionView=entry.view;
+        ConfigureShadowLod(selectionView,view.input,entry.input->vegetationBudget.enabled);
+        SubmitSet(submission,*entry.input,*entry.source,selectionView,recorded ? &work.selection : nullptr,nullptr);
     }
 }
 

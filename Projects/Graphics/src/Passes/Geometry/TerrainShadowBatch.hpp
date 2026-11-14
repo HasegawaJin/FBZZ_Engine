@@ -5,6 +5,8 @@
 #pragma once
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Graphics/Renderer/GpuGeometrySelection.hpp>
+#include <Graphics/Renderer/RenderSettings.hpp>
+#include <array>
 #include <memory>
 #include <span>
 #include <vector>
@@ -20,7 +22,9 @@ struct RenderScene;
 enum class TerrainShadowCasterFilter { ALL, STATIC_ONLY, DYNAMIC_ONLY };
 
 /// @note CPU LOD とメッシュレットは同じインデックスを使う。GPU 選択の LOD は深度の再利用対象外。
-[[nodiscard]] uint64_t TerrainShadowCacheContentKey(const RenderPassContext& ctx);
+/// @note カメラ移動による LOD の変更は、そのパッチを描くカスケードにだけ反映する。
+[[nodiscard]] std::array<uint64_t, kMaxShadowCascades> TerrainShadowCacheContentKeys(
+    const RenderPassContext& ctx, uint32_t mask);
 
 struct PreparedTerrainShadowSet {
     ResourceHandle<ShaderTag> shader;

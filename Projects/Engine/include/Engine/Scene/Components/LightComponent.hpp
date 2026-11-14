@@ -73,7 +73,7 @@ struct LightComponent {
     math::Vector3 shadowBakeEveningDirection{};
     float shadowBias     = 1.0f;  ///< @note 基本バイアスへのスケール係数 (大きいほど Peter Panning が出やすい)
     float shadowStrength = 1.0f;  ///< @note 影の濃さ: 0=影なし, 1=完全な影
-    float shadowDistance = 0.0f;  ///< @note Directional のみ: 0=シーンに自動フィット, >0=正射影の半幅 [m]
+    float shadowDistance = 0.0f;  ///< @note Directional の影の最大カメラ前方距離 [m]。0 は描画設定の距離を使う。
     /// @note Directional 以外の透視投影 near 面 [m]。
     /// @note near が小さいほど深度分解能が near 側へ寄り遠い側でアクネが出る。大きくすると
     /// @note 手前の caster が near で切り取られ影が抜ける。壁・天井埋め込みだと既定では
