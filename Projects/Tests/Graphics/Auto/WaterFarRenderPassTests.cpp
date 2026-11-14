@@ -2427,26 +2427,40 @@ TEST_F(WaterFarRenderPassTest, NumericOpticalMediumRunsFromADryCameraAndRequires
     handles.waterMediumBodies.push_back({0, 0, 0, {-20, -20, 20, 20}});
     renderer::VolumetricLightPass pass;
     EXPECT_TRUE(pass.IsEnabled(context));
+    backend.afterSubmit = [&] {
+        EXPECT_EQ(backend.dispatchSnapshots.size(), 2u);
+    };
     ExecuteVolumetricLight(context);
-    ASSERT_EQ(backend.dispatchSnapshots.size(), 2u);
+    ASSERT_EQ(backend.dispatchSnapshots.size(), 4u);
+    ASSERT_EQ(backend.drawSnapshots.size(), 1u);
+    EXPECT_NE(backend.drawSnapshots.front().shaderPath.find("CopyColor.hlsl"), std::string::npos);
+    EXPECT_EQ(backend.drawSnapshots.front().texture5, handles.volumetricResult);
+    const auto& air = backend.dispatchSnapshots[0];
+    const auto& water = backend.dispatchSnapshots[2];
+    ASSERT_TRUE(air.hasPostproc);
+    ASSERT_TRUE(water.hasPostproc);
+    EXPECT_FLOAT_EQ(air.postproc.underwaterOpticalMode, -1.0f);
+    EXPECT_FLOAT_EQ(water.postproc.underwaterOpticalMode, 1.0f);
+    EXPECT_FLOAT_EQ(water.postproc.underwaterLightStrength, 1.0f);
+    EXPECT_FLOAT_EQ(water.postproc.underwaterMaxDistance, 20.0f);
     EXPECT_TRUE(context.underwaterLightPassActive);
-    EXPECT_FLOAT_EQ(backend.dispatchSnapshots.front().postproc.underwaterOpticalMode, 1);
-    EXPECT_FLOAT_EQ(backend.dispatchSnapshots.front().postproc.underwaterLightStrength, 1);
-    EXPECT_FLOAT_EQ(backend.dispatchSnapshots.front().postproc.underwaterMaxDistance, 20);
     for (bool missingAtlas : {true, false}) {
         SCOPED_TRACE(missingAtlas);
         backend.dispatchSnapshots.clear();
         context.waterMediumPassActive = !missingAtlas;
         context.waterInterfacePassActive = missingAtlas;
         ExecuteVolumetricLight(context);
-        EXPECT_TRUE(backend.dispatchSnapshots.empty());
+        ASSERT_EQ(backend.dispatchSnapshots.size(), 2u);
+        EXPECT_FLOAT_EQ(backend.dispatchSnapshots.front().postproc.underwaterOpticalMode, 0.0f);
         EXPECT_FALSE(context.underwaterLightPassActive);
     }
     scene->water.front().medium.scatteringLight.w = 0;
     context.waterMediumPassActive = context.waterInterfacePassActive = true;
-    EXPECT_FALSE(pass.IsEnabled(context));
+    backend.dispatchSnapshots.clear();
+    EXPECT_TRUE(pass.IsEnabled(context));
     ExecuteVolumetricLight(context);
-    EXPECT_TRUE(backend.dispatchSnapshots.empty());
+    ASSERT_EQ(backend.dispatchSnapshots.size(), 2u);
+    EXPECT_FLOAT_EQ(backend.dispatchSnapshots.front().postproc.underwaterOpticalMode, -1.0f);
     EXPECT_FALSE(context.underwaterLightPassActive);
 }
 
@@ -2684,8 +2698,9 @@ TEST_F(WaterFarRenderPassTest, PostProcessOptInIsRequiredForAirAndBothOpticalWat
         renderer::RenderSettings settings;
         renderer::RenderPassHandles handles;
         renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
+        const bool sharedDryView = mode == 2;
         ConfigureUnderwaterPassContext(resources, context, mode != 0, 1);
-        if (mode == 2) {
+        if (sharedDryView) {
             auto scene = std::make_shared<renderer::RenderScene>();
             renderer::RenderWaterInput water;
             water.medium.opticalEnabled = true;
@@ -2706,7 +2721,8 @@ TEST_F(WaterFarRenderPassTest, PostProcessOptInIsRequiredForAirAndBothOpticalWat
         settings.volumetricLight.enabled = true;
         EXPECT_TRUE(pass.IsEnabled(context));
         ExecuteVolumetricLight(context);
-        ASSERT_EQ(backend.dispatchSnapshots.size(), 2u);
+        ASSERT_EQ(backend.dispatchSnapshots.size(), sharedDryView ? 4u : 2u);
+        EXPECT_EQ(context.underwaterLightPassActive, mode != 0);
         settings.volumetricLight.enabled = false;
         backend.drawSnapshots.clear();
         ExecuteUnderwaterComposite(resources, context);

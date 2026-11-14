@@ -712,13 +712,14 @@ float4 PSMain(WaterPSInput p) : SV_Target0
                 const bool openWater = backgroundMask > 0.5f;
                 if (bentSample) opticalPathLength = horizonHit.pathLength;
                 if (openWater) opticalPathLength = WATER_OPTICAL_MAX_DISTANCE;
-                const float3 intoWater = bentSample || (openWater && refractedViewRay.y < 0.0f) ? refractedViewRay : -V;
                 const WaterOpticalMedium medium = WaterPrepareOpticalMedium(
                     material.absorptionPhase.xyz, material.scatteringMode.xyz);
                 const WaterHorizonSun sun = WaterTransmitHorizonSun(L, sunOverPi * (shadow * PI), swellNormal);
-                float3 horizonBody = WaterEvaluateHorizonRadiance(medium, opticalPathLength, intoWater,
+                /// @note The fallback depth estimates path length. The interface sets the scattering direction in every case.
+                /// @see https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission PBRT v4 §9.3.4, the transmitted direction is set at the interface.
+                float3 horizonBody = WaterEvaluateHorizonRadiance(medium, opticalPathLength, refractedViewRay,
                     horizonRefractColor * (1.0f - backgroundMask), diffuseSource, sun, phaseG);
-                /// @note Blend complete radiance samples at uncertain hits so the scene colors keep their own paths and phase angles.
+                /// @note Blend complete radiance samples at uncertain hits so the scene colors keep their own path lengths.
                 [branch]
                 if (horizonHit.weight > 0.0f && !bentSample) {
                     const float3 bentColor = SampleWaterHorizonRefraction(horizonHit, linearSurfDepth, sceneThickness);

@@ -2694,6 +2694,51 @@ TEST_F(WaterShaderTest, HorizonDirectScatterAccountsForTheIncidentAndOutgoingBee
     }
 }
 
+TEST_F(WaterShaderTest, HorizonDeepBottomAndOpenWaterHaveMatchingScatteringAtGrazingIncidence)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, -60};
+    camera.LookAt({0, 0, 0});
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 1200;
+    auto water = MakeOpticalWater();
+    water.farOceanParams.x = 1;
+    water.absorptionCoefficients = {0.1f, 0.1f, 0.1f, 0};
+    water.scatteringCoefficients = {0.2f, 0.2f, 0.2f, 0};
+    water.opticalParams.y = 0.65f;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    auto sunlight = MakeDarkLight();
+    sunlight.lightColor = {1, 1, 1};
+    sunlight.lightIntensity = 4;
+    sunlight.lightDir = {0, -0.5f, -std::sqrt(0.75f)};
+
+    /// @note Keep one half of the opaque depth buffer clear at the edge of an optically deep bottom.
+    const renderer::Vertex deepBottom[] = {
+        {{-600, -35, -600}, {}, {}, {}},
+        {{-600, -35, 600}, {}, {}, {}},
+        {{0, -35, -600}, {}, {}, {}},
+        {{0, -35, -600}, {}, {}, {}},
+        {{-600, -35, 600}, {}, {}, {}},
+        {{0, -35, 600}, {}, {}, {}}
+    };
+    VisualOverrides visual;
+    visual.effects.specularStrength = 0;
+    visual.depthVertices = Resources().CreateVertexBuffer(deepBottom, sizeof(deepBottom), sizeof(renderer::Vertex));
+    visual.depthVertexCount = static_cast<uint32_t>(std::size(deepBottom));
+    ASSERT_TRUE(visual.depthVertices);
+    const auto pixels = RenderWater(camera, water, false, true, false, nullptr, nullptr, {}, 0, {},
+        &sunlight, BlackTexture(), nullptr, nullptr, {}, {}, 0, {}, &visual);
+    ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
+    const size_t bottom = (EXTENT / 2 * EXTENT + EXTENT / 2 - 1) * 4u;
+    const size_t open = bottom + 4u;
+    EXPECT_GT(pixels[open], 0.01f);
+    for (size_t channel = 0; channel < 3; ++channel)
+        EXPECT_NEAR(pixels[bottom + channel], pixels[open + channel], 0.002f);
+}
+
 TEST_F(WaterShaderTest, HorizonScatteringBrightensTheSunwardSwellFace)
 {
     renderer::Camera camera;
