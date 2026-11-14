@@ -12,6 +12,7 @@
 #include <Engine/Asset/BakeFingerprint.hpp>
 #include "Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp"
 #include "RenderPasses/Geometry/GeometryPasses.hpp"
+#include "RenderPasses/Debug/SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
 #include "TerrainHeightHelpers.hpp"
 #include "TerrainRenderCache.hpp"
@@ -874,6 +875,7 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
         && (drawMode == renderer::GeometryDrawMode::GPU_INDIRECT || drawMode == renderer::GeometryDrawMode::MESH_SHADER);
 
     const TerrainCandidateLease candidates(scene);
+    const RenderSelectionLookup selection(ctx.settings.selectedObjects);
     bool collectPhases = false;
     if (profiler::Profiler::IsEnabled()) {
         const auto filter = profiler::Profiler::GetRequestedCaptureFilter();
@@ -1026,8 +1028,7 @@ void ExtractRenderTerrains(RenderPassContext& ctx, renderer::RenderScene& output
                     std::clamp(color.z, 0.0f, 1.0f), std::clamp(fiber->m_terrainGroundCover, 0.0f, 1.0f)};
             }
         }
-        for (const auto& selected : ctx.settings.selectedObjects)
-            if (selected.index == eid.index && selected.generation == eid.generation) { input.selected = true; break; }
+        input.selected = selection.Contains(eid);
         const bool useRasterStrip = ctx.settings.rasterGeometryMode == renderer::RasterGeometryMode::TRIANGLE_STRIP;
         for (int cz = 0; cz < chunkCountZ; ++cz) {
             for (int cx = 0; cx < chunkCountX; ++cx) {

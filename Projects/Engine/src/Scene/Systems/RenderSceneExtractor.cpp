@@ -2054,6 +2054,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
     ctx.deltaTime = Time::deltaTime;
     ctx.unscaledDeltaTime = Time::unscaledDeltaTime;
     MaterialDemandTraceScope materialDemandTrace(ctx);
+    const RenderSelectionLookup selection(ctx.settings.selectedObjects);
 
     GeometryMaterialCache materialCache(&ctx.resources);
     std::shared_ptr<renderer::RenderScene> output;
@@ -2237,7 +2238,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             material_demand_detail::ObjectEvaluator demandEvaluator(preparedDemandView, object);
             MaterialPhaseTimer<DIAGNOSTICS_ENABLED> objectStateTimer(stateSlotsNs);
             auto* go = ctx.scene.GetGameObject({ object.sourceIndex, object.sourceGeneration });
-            if (hasSelection) output->objectSelection.push_back(go && IsSelectedForOutline(*go, ctx.settings));
+            if (hasSelection) output->objectSelection.push_back(go && selection.Contains(go->GetID()));
             auto* component = go ? go->GetComponent<MaterialComponent>() : nullptr;
             /// @note Component 自体が無い場合も未割当として可視化し、シーンへ自動追加しない。
             std::optional<MaterialComponent> unassigned;
@@ -2385,7 +2386,7 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
             InstancePhaseTimer ownerStateTimer(collectInstancePhases, ownerNs);
             input.identity = {ctx.scene.GetRenderSceneGeneration(), (static_cast<uint64_t>(id.generation) << 32) | id.index};
             input.world = go->transform.GetWorldMatrix(); input.layer = static_cast<uint32_t>(go->layer);
-            input.selected = IsSelectedForOutline(*go, ctx.settings); input.castShadows = component->m_castShadows;
+            input.selected = selection.Contains(go->GetID()); input.castShadows = component->m_castShadows;
             input.maxDistance = component->m_maxDistance;
             const auto& budget = component->m_vegetationBudget;
             input.vegetationBudget = {budget.enabled,

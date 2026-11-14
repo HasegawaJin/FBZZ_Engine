@@ -232,10 +232,11 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
         }
     }
 
+    const RenderSelectionLookup selection(ctx.settings.selectedObjects);
     for (auto& go : ctx.scene.GameObjects()) {
         if (!go.activeInHierarchy()) continue;
         if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
-        if (!IsSelectedForOutline(go, ctx.settings)) continue;
+        if (!selection.Contains(go.GetID())) continue;
 
         PerObjectCB objData{};
         objData.world = go.transform.GetWorldMatrix();

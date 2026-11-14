@@ -449,6 +449,7 @@ void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, 
 
 void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) {
     if (ctx.scene.GetEntities<FiberComponent>().empty()) return;
+    const RenderSelectionLookup selection(ctx.settings.selectedObjects);
     auto& resources = ctx.resources;
     auto& cache = GetFiberResources(resources);
     const auto wind = ctx.scene.FlowFrame().ambient;
@@ -538,13 +539,14 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             }
         }
         if (!fiber.m_renderIdentity) fiber.m_renderIdentity = ++nextIdentity;
+        const bool selected = selection.Contains(go.GetID());
         for (const auto& surface : surfaces) {
             const auto* mesh = surface.mesh;
             if (!surface.vertices.IsValid() || !mesh->indexBuffer.IsValid()) continue;
             renderer::RenderFiberInput input;
             input.identity = fiber.m_renderIdentity;
             input.layer = static_cast<uint32_t>(go.layer);
-            input.selected = IsSelectedForOutline(go, ctx.settings);
+            input.selected = selected;
             input.skinned = mesh->isSkinned;
             input.preparedSkinning = surface.preparedSkinning;
             input.preparedSkinningWrite = surface.preparedSkinningWrite;

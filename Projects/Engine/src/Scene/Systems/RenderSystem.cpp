@@ -986,10 +986,11 @@ void RenderSystem(Scene& scene,
             const float uiHeight = uiOptions->viewportHeight > 0.0f
                 ? uiOptions->viewportHeight
                 : static_cast<float>(nativeH);
+            const RenderSelectionLookup selection(passCtx.settings.selectedObjects);
             UISelectionMaskSystem(
                 scene, renderer, resources, *uiOptions->context,
                 uiWidth, uiHeight,
-                [&](GameObject& go) { return IsSelectedForOutline(go, passCtx.settings); },
+                [&](GameObject& go) { return selection.Contains(go.GetID()); },
                 camera.m_position, camera.m_rotation, camera.GetViewProjection(),
                 uiOptions->targetView);
         };
