@@ -510,30 +510,42 @@ OpResult PlanPaint(EditorContext& ctx, const OpArgs& args, PaintPlan& plan)
         return OpResult::Err("INVALID_SCATTER",reason);
     if (plan.erase) {
         /// @note 移行済み配置は来歴か部品の一致で選ぶ。葉と幹を分けた旧配置も同じ素材で編集できる。
-        const auto selected = palette;
+        const auto selectedCount = palette.size();
+        std::unordered_set<const scene::GameObject*> selectedOwners;
+        for (const auto& source : palette)
+            if (source.owner) selectedOwners.insert(source.owner);
         for (const auto id : scene.GetEntities<scene::InstancedMeshComponent>()) {
             auto* owner = scene.GetGameObject(id);
             const auto* component = scene.GetComponent<scene::InstancedMeshComponent>(id);
             if (!owner || !owner->activeInHierarchy() || !component || !component->m_enabled
-                || std::any_of(palette.begin(), palette.end(), [&](const auto& set) { return set.owner == owner; })) continue;
+                || selectedOwners.contains(owner)) continue;
             const auto* definition = ResolveSet(component->m_instanceSetRef.path);
             const auto snapshot = component->Snapshot();
             if (!definition || !snapshot) continue;
             const auto* placement = ResolvePlacement(component->m_instanceSetRef.path);
-            for (const auto& source : selected) {
-                const bool provenance = placement && asset::AssetDatabase::GuidFromRef(placement->terrainPaintRef) == source.guid;
-                const auto parts = definition->Parts();
-                const auto expected = source.definition->Parts();
-                const bool matching = !parts.empty() && std::all_of(parts.begin(), parts.end(), [&](const auto& part) {
-                    return std::any_of(expected.begin(), expected.end(), [&](const auto& other) {
-                        return part.meshPath == other.meshPath && part.materialPath == other.materialPath && part.lod == other.lod;
+            const auto provenance = placement ? asset::AssetDatabase::GuidFromRef(placement->terrainPaintRef) : std::string{};
+            const auto parts = definition->Parts();
+            for (size_t sourceIndex = 0; sourceIndex < selectedCount; ++sourceIndex) {
+                const auto& source = palette[sourceIndex];
+                if (!provenance.empty()) {
+                    if (provenance != source.guid) continue;
+                } else {
+                    const auto expected = source.definition->Parts();
+                    const bool matching = !parts.empty() && std::all_of(parts.begin(), parts.end(), [&](const auto& part) {
+                        return std::any_of(expected.begin(), expected.end(), [&](const auto& other) {
+                            return part.meshPath == other.meshPath && part.materialPath == other.materialPath && part.lod == other.lod;
+                        });
                     });
-                });
-                const bool knownSource = placement && !asset::AssetDatabase::GuidFromRef(placement->terrainPaintRef).empty();
-                if (!provenance && (knownSource || !matching)) continue;
-                auto set = source;
+                    if (!matching && (!placement || !source.guid.empty())) continue;
+                }
+                PaintSet set;
+                set.guid = source.guid;
+                set.name = source.name;
+                set.reference = source.reference;
+                set.sourceIndex = source.sourceIndex;
+                set.weight = source.weight;
+                set.paintAsset = source.paintAsset;
                 set.owner = owner; set.ownerId = owner->instanceId; set.definition = definition;
-                set.placements.clear();
                 for (const auto& item : snapshot->placements) if (item.active) set.placements.push_back(item);
                 set.beforeCount = set.placements.size();
                 palette.push_back(std::move(set));

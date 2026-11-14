@@ -7,6 +7,7 @@
 #include <TestKit/Editor/EditorFixture.hpp>
 #include <TestKit/Engine/ResourceTrackingRenderer.hpp>
 #include <Tools/TerrainScatter.hpp>
+#include <Tools/TerrainPaintClearance.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -15,6 +16,7 @@
 #include <Engine/Asset/InstanceSetAsset.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
 #include <Engine/Scene/Transform.hpp>
 #include <Engine/Scene/WorldCell.hpp>
@@ -40,6 +42,76 @@ protected:
     std::vector<renderer::InstancePlacement> m_placements;
     std::string m_reason;
 };
+
+TEST_F(TerrainScatterTest, WaterClearanceDistanceMatchesExistingThresholdSearch)
+{
+    scene::WaterComponent water;
+    water.extentX = 4.0f;
+    water.extentZ = 4.0f;
+    scene::Transform waterTransform;
+    waterTransform.worldPosition = {4.0f, 1.0f, 4.0f};
+    const std::array surfaces{std::pair<const scene::WaterComponent*, const scene::Transform*>{&water, &waterTransform}};
+    const std::array centers{math::Vector3{4.0f, 0.0f, 4.0f}};
+    const editor::TerrainScatterBrush brush{centers, 4.0f, false};
+    constexpr float RADIUS = 10.3f;
+    const auto clearance = editor::BuildTerrainPaintClearance(m_terrain, m_terrainTransform, brush, {}, surfaces, RADIUS, 0.0f);
+    ASSERT_EQ(clearance.water.size(), 4u);
+    const auto originalDistance = [&](const math::Vector3& point, float radius) {
+        if (!clearance.NearWater(point, radius)) return 1000000.0f;
+        float low = 0.0f, high = radius;
+        for (int step = 0; step < 16; ++step) {
+            const float middle = (low + high) * 0.5f;
+            if (clearance.NearWater(point, middle)) high = middle;
+            else low = middle;
+        }
+        return high;
+    };
+    const std::array points{
+        math::Vector3{6.0f, 1.0f, 4.0f},
+        math::Vector3{7.0f, 3.0f, 4.0f},
+        math::Vector3{7.0f, 6.0f, 4.0f},
+        math::Vector3{9.0f, 4.0f, 9.0f},
+        math::Vector3{7.0f, 25.0f, 4.0f},
+        math::Vector3{20.0f, 1.0f, 4.0f},
+    };
+    EXPECT_GT(clearance.WaterDistance(points[0], RADIUS), 0.0f);
+    EXPECT_NEAR(clearance.WaterDistance(points[2], RADIUS), 5.0f, RADIUS / 65536.0f);
+    EXPECT_EQ(clearance.WaterDistance(points[4], RADIUS), 1000000.0f);
+    EXPECT_EQ(clearance.WaterDistance(points[1], 1.0f), 1000000.0f);
+    for (const auto& point : points) {
+        for (const float radius : {1.0f, 4.0f, RADIUS}) {
+            EXPECT_EQ(clearance.WaterDistance(point, radius), originalDistance(point, radius));
+        }
+    }
+}
+
+TEST_F(TerrainScatterTest, CombinedPathClearancePreservesSharedSamplesAndHoles)
+{
+    m_terrain.layerMaterials = {"ground", "trail-a", "trail-b"};
+    for (int z = 0; z < m_terrain.rows; ++z) {
+        for (int x = 2; x < m_terrain.columns; ++x) {
+            ASSERT_TRUE(m_terrain.PaintLayerAtGrid(x, z, 1, 0.30f));
+            ASSERT_TRUE(m_terrain.PaintLayerAtGrid(x, z, 2, 0.25f));
+        }
+    }
+    const float mask = m_terrain.GetLayerWeightAtGrid(2, 1, 1) + m_terrain.GetLayerWeightAtGrid(2, 1, 2);
+    ASSERT_GT(mask, 0.35f);
+    const float edgeX = (1.0f + 0.35f / mask) * m_terrain.cellSize;
+    const std::array layers{1, 2};
+    const std::array centers{math::Vector3{4.0f, 0.0f, 4.0f}};
+    const editor::TerrainScatterBrush brush{centers, 4.0f, false};
+    const auto makeClearance = [&](bool combine) {
+        return editor::BuildTerrainPaintClearance(m_terrain, m_terrainTransform, brush, layers, {}, 0.0f, 1.0f, combine);
+    };
+    EXPECT_FALSE(makeClearance(false).NearPath({edgeX, 0.0f, 3.0f}, 0.1f));
+    EXPECT_NEAR(makeClearance(true).PathDistance({edgeX, 0.0f, 3.0f}, 1.0f), 0.0f, 0.00001f);
+
+    ASSERT_TRUE(m_terrain.SetHoleCell(1, 1, true));
+    const auto clearance = makeClearance(true);
+    EXPECT_FALSE(clearance.NearPath({edgeX, 0.0f, 3.0f}, 0.1f));
+    EXPECT_TRUE(clearance.NearPath({edgeX, 0.0f, 5.0f}, 0.1f));
+    EXPECT_FALSE(clearance.NearPath({100.0f, 0.0f, 100.0f}, 1.0f));
+}
 
 TEST_F(TerrainScatterTest, SameSeedReproducesTransformsAndDensityKeepsCandidateIdentity)
 {
@@ -138,6 +210,37 @@ TEST_F(TerrainScatterTest, SoftBoundaryIsDeterministicAndDiagnosticsAccountForEv
     const auto repeated=m_placements;m_placements.clear();
     ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain,m_terrainTransform,m_targetTransform,m_settings,m_placements,m_reason,&brush));
     ASSERT_EQ(repeated.size(),m_placements.size());for(size_t n=0;n<repeated.size();++n)EXPECT_EQ(repeated[n].id,m_placements[n].id);
+}
+
+TEST_F(TerrainScatterTest, LongEraseStrokeMatchesDirectCoverageAcrossCells)
+{
+    m_terrainTransform.worldPosition = {12.0f, 3.0f, -18.0f};
+    m_terrainTransform.worldRotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, 0.8f);
+    m_targetTransform.worldPosition = {-4.0f, 0.0f, 9.0f};
+    const auto terrainWorld = m_terrainTransform.GetWorldMatrix();
+    const auto targetWorld = m_targetTransform.GetWorldMatrix();
+    std::array<math::Vector3, 40> centers;
+    for (size_t i = 0; i < centers.size(); ++i) {
+        const auto world = terrainWorld * math::Vector4{static_cast<float>(i) * 3.0f - 40.0f, 0,
+            static_cast<float>(i % 3) * 3.0f - 5.0f, 1};
+        centers[i] = {world.x, world.y, world.z};
+    }
+    for (int z = -30; z < 30; ++z) for (int x = -60; x < 120; ++x)
+        m_placements.push_back({static_cast<uint32_t>(m_placements.size() + 1),
+            {static_cast<float>(x), 0, static_cast<float>(z)}, {}, {1, 1, 1}, true});
+    const editor::TerrainScatterBrush brush{centers, 5.0f, true, false, 0.65f};
+    std::vector<uint32_t> expected;
+    for (const auto& placement : m_placements) {
+        const auto world = targetWorld * math::Vector4{placement.position, 1.0f};
+        if (editor::TerrainRegionCoverage(m_terrainTransform, brush, {world.x, world.y, world.z}) <= 0.0f)
+            expected.push_back(placement.id);
+    }
+    ASSERT_LT(expected.size(), m_placements.size());
+    ASSERT_TRUE(editor::BuildTerrainScatter(m_terrain, m_terrainTransform, m_targetTransform, m_settings,
+        m_placements, m_reason, &brush)) << m_reason;
+    std::vector<uint32_t> actual;
+    for (const auto& placement : m_placements) actual.push_back(placement.id);
+    EXPECT_EQ(actual, expected);
 }
 
 TEST_F(TerrainScatterTest, HolesHeightSlopeAndSavedLayerRestrictTheSameSurface)

@@ -13,6 +13,8 @@
 #include <cmath>
 #include <limits>
 #include <map>
+#include <optional>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace fbzz::editor {
@@ -147,6 +149,120 @@ struct ScatterPlane {
             point.z * std::copysign(1.0f, transform.worldScale.z)};
     }
 };
+
+template<typename CenterAt>
+float PolygonCoverageEdge(const math::Vector3& point, size_t count, CenterAt centerAt)
+{
+    if (count < 3) return -INFINITY;
+    bool inside = false;
+    float nearest = INFINITY;
+    for (size_t i = 0, j = count - 1; i < count; j = i++) {
+        const auto a = centerAt(j), b = centerAt(i), delta = b - a;
+        const float lengthSq = delta.LengthSq();
+        const float t = lengthSq > 0 ? std::clamp(math::Vector3::Dot(point - a, delta) / lengthSq, 0.0f, 1.0f) : 0;
+        nearest = std::min(nearest, (point - (a + delta * t)).Length());
+        if ((a.z > point.z) != (b.z > point.z) && point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x)
+            inside = !inside;
+    }
+    return !inside && nearest > 0.0001f ? -INFINITY : nearest;
+}
+
+float CoverageFromEdge(const TerrainScatterBrush& brush, float edge)
+{
+    if (edge < 0) return 0;
+    return brush.feather > 0 ? std::clamp(edge / (brush.radius * brush.feather), 0.0f, 1.0f) : 1.0f;
+}
+
+math::Vector3 ProjectCoveragePoint(const math::Quaternion& inverse, const math::Vector3& origin,
+    const math::Vector3& world)
+{
+    auto point = inverse * (world - origin);
+    point.y = 0;
+    return point;
+}
+
+/// @note A dab needs only nearby centers; polygon coverage keeps the original ordered edge traversal.
+class TerrainScatterCoverage {
+public:
+    TerrainScatterCoverage(const scene::Transform& terrain, const TerrainScatterBrush& brush)
+        : m_origin(terrain.worldPosition), m_inverse(terrain.worldRotation.Inverse()), m_brush(brush)
+    {
+        m_centers.reserve(brush.centers.size());
+        for (const auto& center : brush.centers) m_centers.push_back(Project(center));
+        if (brush.polygon || m_centers.size() <= 16) return;
+        m_cells.reserve(m_centers.size());
+        for (const auto& center : m_centers) {
+            Cell cell;
+            if (!Locate(center, cell)) {
+                m_cells.clear();
+                return;
+            }
+            m_cellMin = {(std::min)(m_cellMin.x, cell.x), (std::min)(m_cellMin.z, cell.z)};
+            m_cellMax = {(std::max)(m_cellMax.x, cell.x), (std::max)(m_cellMax.z, cell.z)};
+            m_cells[cell].push_back(center);
+        }
+    }
+
+    [[nodiscard]] float At(const math::Vector3& world) const
+    {
+        const auto point = Project(world);
+        float edge = -INFINITY;
+        if (m_brush.polygon)
+            edge = PolygonCoverageEdge(point, m_centers.size(), [&](size_t index) { return m_centers[index]; });
+        else {
+            const auto accumulate = [&](const auto& centers) {
+                for (const auto& center : centers) edge = std::max(edge, m_brush.radius - (point - center).Length());
+            };
+            Cell cell;
+            if (m_cells.empty() || !Locate(point, cell)) accumulate(m_centers);
+            else {
+                if (cell.x < m_cellMin.x - 1 || cell.x > m_cellMax.x + 1
+                    || cell.z < m_cellMin.z - 1 || cell.z > m_cellMax.z + 1) return 0;
+                for (int dz = -1; dz <= 1; ++dz) for (int dx = -1; dx <= 1; ++dx) {
+                    const auto found = m_cells.find({cell.x + dx, cell.z + dz});
+                    if (found != m_cells.end()) accumulate(found->second);
+                }
+            }
+        }
+        return CoverageFromEdge(m_brush, edge);
+    }
+
+private:
+    struct Cell {
+        int32_t x = 0, z = 0;
+        bool operator==(const Cell&) const = default;
+    };
+    struct CellHash {
+        size_t operator()(Cell cell) const
+        {
+            return Mix(static_cast<uint32_t>(cell.x)) ^ (static_cast<size_t>(Mix(static_cast<uint32_t>(cell.z))) << 1);
+        }
+    };
+
+    [[nodiscard]] math::Vector3 Project(const math::Vector3& world) const
+    {
+        return ProjectCoveragePoint(m_inverse, m_origin, world);
+    }
+
+    [[nodiscard]] bool Locate(const math::Vector3& point, Cell& out) const
+    {
+        /// @note A cell is wider than the radius to cover rounding in the original float distance check.
+        const double cellSize = 2.0 * m_brush.radius;
+        const double x = static_cast<double>(point.x) / cellSize;
+        const double z = static_cast<double>(point.z) / cellSize;
+        constexpr double LIMIT = 1.0e9;
+        if (!(std::abs(x) < LIMIT && std::abs(z) < LIMIT)) return false;
+        out = {static_cast<int32_t>(std::floor(x)), static_cast<int32_t>(std::floor(z))};
+        return true;
+    }
+
+    math::Vector3 m_origin;
+    math::Quaternion m_inverse;
+    TerrainScatterBrush m_brush;
+    std::vector<math::Vector3> m_centers;
+    std::unordered_map<Cell, std::vector<math::Vector3>, CellHash> m_cells;
+    Cell m_cellMin{INT32_MAX, INT32_MAX}, m_cellMax{INT32_MIN, INT32_MIN};
+};
 } /// @note namespace terrain_scatter_detail
 
 const char* TerrainPaintReasonLabel(TerrainPaintReason reason)
@@ -159,26 +275,15 @@ const char* TerrainPaintReasonLabel(TerrainPaintReason reason)
 
 float TerrainRegionCoverage(const scene::Transform& terrain, const TerrainScatterBrush& brush, const math::Vector3& world)
 {
+    using namespace terrain_scatter_detail;
     const auto inverse = terrain.worldRotation.Inverse();
-    const auto project = [&](const math::Vector3& value) { auto p = inverse * (value - terrain.worldPosition); p.y = 0; return p; };
+    const auto project = [&](const auto& value) { return ProjectCoveragePoint(inverse, terrain.worldPosition, value); };
     const auto point = project(world);
+    if (brush.polygon)
+        return CoverageFromEdge(brush, PolygonCoverageEdge(point, brush.centers.size(), [&](size_t i) { return project(brush.centers[i]); }));
     float edge = -INFINITY;
-    if (brush.polygon) {
-        if (brush.centers.size() < 3) return 0;
-        bool inside = false; float nearest = INFINITY;
-        for (size_t i = 0, j = brush.centers.size() - 1; i < brush.centers.size(); j = i++) {
-            const auto a = project(brush.centers[j]), b = project(brush.centers[i]), delta = b - a;
-            const float t = delta.LengthSq() > 0 ? std::clamp(math::Vector3::Dot(point - a, delta) / delta.LengthSq(), 0.0f, 1.0f) : 0;
-            nearest = std::min(nearest, (point - (a + delta * t)).Length());
-            if ((a.z > point.z) != (b.z > point.z) && point.x < (b.x - a.x) * (point.z - a.z) / (b.z - a.z) + a.x) inside = !inside;
-        }
-        if (!inside && nearest > 0.0001f) return 0;
-        edge = nearest;
-    } else {
-        for (const auto& center : brush.centers) edge = std::max(edge, brush.radius - (point - project(center)).Length());
-    }
-    if (edge < 0) return 0;
-    return brush.feather > 0 ? std::clamp(edge / (brush.radius * brush.feather), 0.0f, 1.0f) : 1.0f;
+    for (const auto& center : brush.centers) edge = std::max(edge, brush.radius - (point - project(center)).Length());
+    return CoverageFromEdge(brush, edge);
 }
 
 bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatterBrush& brush)
@@ -191,23 +296,48 @@ bool ValidateTerrainRegion(const scene::Transform& terrain, const TerrainScatter
     if (!brush.polygon) return true;
     if (brush.centers.size() < 3) return false;
     const auto inverse = terrain.worldRotation.Inverse();
-    const auto project = [&](const auto& p) { return inverse * (p - terrain.worldPosition); };
+    std::vector<math::Vector3> points;
+    points.reserve(brush.centers.size());
+    for (const auto& p : brush.centers) {
+        const auto point = inverse * (p - terrain.worldPosition);
+        if (!Finite(point)) return false;
+        points.push_back(point);
+    }
     const auto cross = [](const auto& a, const auto& b, const auto& c) { return (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x); };
+    struct Edge {
+        size_t index;
+        float minX, maxX, minZ, maxZ;
+    };
+    std::vector<Edge> edges;
+    edges.reserve(points.size());
     double area = 0;
-    const size_t n = brush.centers.size();
+    const size_t n = points.size();
     for (size_t i = 0; i < n; ++i) {
-        const auto a = project(brush.centers[i]), b = project(brush.centers[(i + 1) % n]);
+        const auto& a = points[i];
+        const auto& b = points[(i + 1) % n];
         if ((a - b).LengthSq() < 0.000001f) return false;
         area += static_cast<double>(a.x) * b.z - static_cast<double>(a.z) * b.x;
-        for (size_t j = i + 2; j < n; ++j) {
-            if (i == 0 && j == n - 1) continue;
-            const auto c = project(brush.centers[j]), d = project(brush.centers[(j + 1) % n]);
-            if (std::max(std::min(a.x,b.x),std::min(c.x,d.x)) > std::min(std::max(a.x,b.x),std::max(c.x,d.x))
-                || std::max(std::min(a.z,b.z),std::min(c.z,d.z)) > std::min(std::max(a.z,b.z),std::max(c.z,d.z))) continue;
-            if (cross(a,b,c) * cross(a,b,d) <= 0 && cross(c,d,a) * cross(c,d,b) <= 0) return false;
+        edges.push_back({i, (std::min)(a.x, b.x), (std::max)(a.x, b.x), (std::min)(a.z, b.z), (std::max)(a.z, b.z)});
+    }
+    if (!std::isfinite(area) || std::abs(area) <= 0.0001) return false;
+    std::sort(edges.begin(), edges.end(), [](const Edge& left, const Edge& right) { return left.minX < right.minX; });
+    /// @note Sorting by left edge avoids testing disjoint X intervals; touching intervals still need the crossing test.
+    for (size_t i = 0; i < n; ++i) {
+        const auto& left = edges[i];
+        const auto& a = points[left.index];
+        const auto& b = points[(left.index + 1) % n];
+        for (size_t j = i + 1; j < n && edges[j].minX <= left.maxX; ++j) {
+            const auto& right = edges[j];
+            if (left.minZ > right.maxZ || right.minZ > left.maxZ
+                || (left.index + 1) % n == right.index || (right.index + 1) % n == left.index) continue;
+            const auto& c = points[right.index];
+            const auto& d = points[(right.index + 1) % n];
+            const float first = cross(a,b,c) * cross(a,b,d);
+            const float second = cross(c,d,a) * cross(c,d,b);
+            if (first <= 0 && second <= 0) return false;
         }
     }
-    return std::isfinite(area) && std::abs(area) > 0.0001;
+    return true;
 }
 
 bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
@@ -257,6 +387,7 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
 
     const ScatterPlane plane{terrainTransform, terrainTransform.worldRotation.Inverse()};
     std::vector<math::Vector3> centers;
+    std::optional<TerrainScatterCoverage> brushCoverage;
     if (brush) {
         if (!ValidateTerrainRegion(terrainTransform, *brush))
             return fail("ブラシは 1〜512 点、半径 0.25〜1024 m で指定してください。");
@@ -266,11 +397,12 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             if (!Finite(point) || !Finite(center)) return fail("ブラシの座標が不正です。");
             centers.push_back(center);
         }
+        brushCoverage.emplace(terrainTransform, *brush);
         if (brush->erase) {
             const auto world = targetTransform.GetWorldMatrix();
             std::erase_if(placements, [&](const renderer::InstancePlacement& placement) {
                 const auto point = world * math::Vector4{placement.position.x, placement.position.y, placement.position.z, 1.0f};
-                return TerrainRegionCoverage(terrainTransform, *brush, {point.x, point.y, point.z}) > 0.0f;
+                return brushCoverage->At({point.x, point.y, point.z}) > 0.0f;
             });
             reason.clear();
             return true;
@@ -351,7 +483,7 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             if (terrain.IsHoleAtLocal(localX, localZ)) return record(TerrainPaintReason::HOLE);
             const float weight = settings.layer < 0 ? 1.0f : SampleTerrainLayerWeight(terrain, localX, localZ, settings.layer);
             if (weight <= 0.0f || weight < settings.layerThreshold) return record(TerrainPaintReason::LAYER);
-            const float coverage = brush ? TerrainRegionCoverage(terrainTransform, *brush, worldPosition) : 1.0f;
+            const float coverage = brushCoverage ? brushCoverage->At(worldPosition) : 1.0f;
             const float densityWeight = densityMap ? densityMap->Sample(static_cast<float>(localX / width),
                 static_cast<float>(localZ / depth)) : 1.0f;
             if (UnitRandom(key, 3) >= settings.density * weight * coverage * densityWeight) return record(TerrainPaintReason::DENSITY);
@@ -412,7 +544,7 @@ bool BuildTerrainScatter(const scene::TerrainComponent& terrain,
             for(uint64_t z=z0;z<=z1;++z) for(uint64_t x=x0;x<=x1;++x) {
                 const auto p=sample(static_cast<uint32_t>(x),static_cast<uint32_t>(z));
                 const auto w=worldMatrix*math::Vector4{p,1};
-                if (TerrainRegionCoverage(terrainTransform,*brush,{w.x,w.y,w.z})>0) covered.insert(z*nx+x);
+                if (brushCoverage->At({w.x,w.y,w.z}) > 0.0f) covered.insert(z*nx+x);
             }
         }
         for (const auto& center : centers) {
