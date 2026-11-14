@@ -57,6 +57,7 @@ struct PreviewFrameKey {
     FiberMode fiberMode = FiberMode::Shell;
     int fiberShellCount = 16;
     bool animate = true;
+    bool showParallax = true;
     std::array<std::uint32_t, 10> values{};
     bool operator==(const PreviewFrameKey&) const = default;
 };

@@ -1,0 +1,6 @@
+# @file    ParallaxOcclusion.hlsli.meta
+# @brief   Asset identity for the parallax occlusion shader include.
+# @author  Hasegawa Jin
+# @date    2026-11-13
+[meta]
+guid = '8b0bea2f4ebb4c8a81df3b2fb4b92b13'

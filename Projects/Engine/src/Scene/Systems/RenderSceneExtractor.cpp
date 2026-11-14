@@ -797,16 +797,17 @@ bool IsGBufferCopyVariable(const renderer::ShaderVarDesc& variable, uint32_t byt
 
 /// @note Retain only lookup indices and offsets; current descriptor names/types and current source byte ranges are still verified.
 struct GBufferCopyPlan {
-    std::array<GBufferCopyField, 13> fields{};
+    std::array<GBufferCopyField, 14> fields{};
 
     explicit GBufferCopyPlan(const renderer::ShaderDescriptor& descriptor)
     {
         struct FieldSpec { std::string_view name; uint32_t offset, bytes; };
-        constexpr std::array<FieldSpec, 13> specs{{
+        constexpr std::array<FieldSpec, 14> specs{{
             {"albedo", 0, 16}, {"metallic", 16, 4}, {"roughness", 20, 4},
             {"normalStrength", 24, 4}, {"occlusionStrength", 28, 4}, {"emissiveColor", 32, 12},
             {"emissiveScale", 44, 4}, {"uvTiling", 48, 8}, {"uvOffset", 56, 8}, {"alphaCutoff", 64, 4},
-            {"leafWindStrength", 68, 4}, {"leafWindFrequency", 72, 4}, {"leafWindRootHeight", 76, 4}}};
+            {"leafWindStrength", 68, 4}, {"leafWindFrequency", 72, 4}, {"leafWindRootHeight", 76, 4},
+            {"parallaxDepth", 92, 4}}};
         for (size_t index = 0; index < fields.size(); ++index) {
             auto& field = fields[index];
             field.destinationOffset = specs[index].offset; field.bytes = specs[index].bytes;
@@ -1246,6 +1247,7 @@ void CopyMaterial(renderer::RenderMaterial& output, const renderer::Material* ma
         copy("leafWindStrength", 68, 4);
         copy("leafWindFrequency", 72, 4);
         copy("leafWindRootHeight", 76, 4);
+        copy("parallaxDepth", 92, 4);
     }
     if (descriptor.textureMaskOffset != UINT32_MAX &&
         descriptor.textureMaskOffset <= material->paramData.size() &&

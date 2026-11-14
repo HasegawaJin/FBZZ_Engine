@@ -18,6 +18,7 @@
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LeafWetness.hlsli"
 #include "Rendering/LodDither.hlsli"
+#include "Rendering/ParallaxOcclusion.hlsli"
 
 /// @note offset は C++ 側 MaterialConstants と一致させる。
 cbuffer MaterialConstants : register(CB_MATERIAL)
@@ -36,7 +37,8 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  leafWindFrequency;  ///< @note offset 72
     float  leafWindRootHeight; ///< @note offset 76
     uint   textureMask;        ///< @note bit0 albedo / 1 normal / 2 metalRough / 3 emissive / 4 AO。offset 80
-    float3 _pad1;              ///< @note offset 84
+    float2 _pad1;              ///< @note offset 84
+    float  parallaxDepth;      ///< @note Maximum recess in world metres. offset 92
     float  clearcoat;
     float  clearcoatRoughness;
     float  sheen;
@@ -51,6 +53,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     uint texEmissiveIndex;
     uint texAOIndex;
     uint tex7Index;
+    uint tex5Index;
 };
 
 #include "Rendering/LeafWind.hlsli"
@@ -101,36 +104,47 @@ float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
 {
     const float3 worldPositionDx = ddx(p.worldPos);
     const float3 worldPositionDy = ddy(p.worldPos);
+    const float2 baseUv = p.uv * uvTiling + uvOffset;
+    const float2 uvDx = ddx(baseUv);
+    const float2 uvDy = ddy(baseUv);
     ApplyLodDither(p.svPosition.xy, objectParams.x);
     if (objectParams.y > 0.5f && alphaCutoff > 0.0f)
         return Lighting_CardWireframe(p.normal, objectParams.y);
 
-    float2 uv = p.uv * uvTiling + uvOffset;
-
     /// @note sRGB を線形へ戻してから線形の tint を掛ける。テクスチャ無しは 1 で SRGBToLinear(1)=1 なので albedo がそのまま出る。
-    float4 rawAlbedo = (textureMask & (1u << 0))
-        ? texAlbedo.Sample(sampDefault, uv)
+    const float4 rawAlbedo = (textureMask & (1u << 0))
+        ? texAlbedo.SampleGrad(sampDefault, baseUv, uvDx, uvDy)
         : float4(1.0f, 1.0f, 1.0f, 1.0f);
-    float3 col   = SRGBToLinear(rawAlbedo.rgb) * albedo.rgb;
     float  alpha = rawAlbedo.a * albedo.a;
 
     /// @note カットアウト。不透明パスなのでディザリングせず棄却する。
     clip(alpha - alphaCutoff);
 
+    /// @note Cutout coverage is shared with shadow, depth and velocity passes at the undisplaced UV.
+    const ParallaxSurface parallax = ResolveParallaxSurface(tex5Index, sampDefault,
+        baseUv, uvDx, uvDy, p.worldPos, worldPositionDx, worldPositionDy, parallaxDepth, textureMask);
+    const float2 uv = parallax.uv;
+    float3 baseColor = rawAlbedo.rgb;
+    [branch]
+    if ((textureMask & 1u) && any(uv != baseUv))
+        baseColor = texAlbedo.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb;
+    float3 col = SRGBToLinear(baseColor) * albedo.rgb;
+
     float3 N = SafeNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
     if (textureMask & (1u << 1))
     {
-        float3 ns = texNormal.Sample(sampDefault, uv).rgb;
+        float3 ns = texNormal.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb;
         float3 nm = ApplyNormalMap(ns, N, SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f)));
         N = SafeNormalize(lerp(N, nm, saturate(normalStrength)), N);
     }
+    N = ApplyParallaxSurfaceNormal(N, parallax, (textureMask & 2u) ? normalStrength : 0.0f);
 
     /// @note glTF 規約: G = roughness、B = metallic。
     float met   = metallic;
     float rough = roughness;
     if (textureMask & (1u << 2))
     {
-        float2 mr = texMetallicRough.Sample(sampDefault, uv).gb;
+        float2 mr = texMetallicRough.SampleGrad(sampDefault, uv, uvDx, uvDy).gb;
         rough = mr.x;
         met   = mr.y;
     }
@@ -141,7 +155,7 @@ float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
     WetSurface wet;
     [branch]
     if (weatherWetness > 0.0f && (textureMask & (1u << 7)))
-        wet = ApplyLeafWetness(col, rough, texLeafWetness.Sample(sampDefault, uv), p.tangent, N);
+        wet = ApplyLeafWetness(col, rough, texLeafWetness.SampleGrad(sampDefault, uv, uvDx, uvDy), p.tangent, N);
     else
         wet = ApplyWetness(col, rough, N);
     col   = wet.albedo;
@@ -157,7 +171,8 @@ float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
 
     float ao = 1.0f;
     if (textureMask & (1u << 4))
-        ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
+        ao = lerp(1.0f, texAO.SampleGrad(sampDefault, uv, uvDx, uvDy).r, occlusionStrength);
+    ao *= parallax.occlusion;
 
     float3 V      = SafeNormalize(cameraPos - p.worldPos, N);
     float3 L      = SafeNormalize(-lightDir, N);
@@ -190,7 +205,7 @@ float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
 
     /// @note エミッシブテクスチャは sRGB。
     float3 emissiveTex = (textureMask & (1u << 3))
-        ? SRGBToLinear(texEmissive.Sample(sampDefault, uv).rgb)
+        ? SRGBToLinear(texEmissive.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb)
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
 

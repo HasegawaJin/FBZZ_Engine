@@ -9,6 +9,8 @@
 #include "Common/MaterialVertex.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
+#include "Common/Math.hlsli"
+#include "Rendering/ParallaxOcclusion.hlsli"
 
 /// @note cbuffer 名を MaterialConstants にしないか:
 /// @note シェーダーリフレクションは "MaterialConstants" という名前を «.mat が編集できる
@@ -22,7 +24,8 @@ cbuffer MaterialChannelConstants : register(CB_MATERIAL)
     float4 channelEmissive;    /// @note rgb=emissiveColor a=emissiveScale
     uint   channelTextureMask; /// @note bit0..4 = albedo / normal / metallicRough / emissive / ao
     uint   channelMode;
-    float2 _channelPad;
+    float  channelParallaxDepth;
+    float  _channelPad;
 };
 
 FBZZ_TEX2D(texAlbedo, TEX_ALBEDO_SLOT);
@@ -39,20 +42,21 @@ SamplerState sampDefault      : register(SAMPLER_DEFAULT);
 #define FBZZ_CHANNEL_AO        4u
 #define FBZZ_CHANNEL_EMISSIVE  5u
 #define FBZZ_CHANNEL_UV        6u
+#define FBZZ_CHANNEL_HEIGHT    7u
 
 PSInput VSMain(VSInput v)
 {
     return TransformMaterialVertex(v);
 }
 
-float3 ShadingNormal(PSInput p, float2 uv)
+float3 ShadingNormal(PSInput p, float2 uv, float2 uvDx, float2 uvDy)
 {
     float3 N = normalize(p.normal);
     if ((channelTextureMask & 2u) == 0u) return N;
 
     float3 T = normalize(p.tangent - N * dot(N, p.tangent));
     float3 B = cross(N, T);
-    float3 tangentNormal = texNormal.Sample(sampDefault, uv).xyz * 2.0f - 1.0f;
+    float3 tangentNormal = texNormal.SampleGrad(sampDefault, uv, uvDx, uvDy).xyz * 2.0f - 1.0f;
     tangentNormal.xy *= channelPbr.w;
     return normalize(mul(tangentNormal, float3x3(T, B, N)));
 }
@@ -69,17 +73,36 @@ float3 UvChecker(float2 uv)
 
 float4 PSMain(PSInput p) : SV_Target0
 {
-    float2 uv = p.uv * channelUv.xy + channelUv.zw;
+    const float2 baseUv = p.uv * channelUv.xy + channelUv.zw;
+    const float2 uvDx = ddx(baseUv);
+    const float2 uvDy = ddy(baseUv);
+    const float3 worldDx = ddx(p.worldPos);
+    const float3 worldDy = ddy(p.worldPos);
+    const uint heightIndex = FbzzPixelSlot(FBZZ_PARALLAX_HEIGHT_SLOT);
+    if (channelMode == FBZZ_CHANNEL_HEIGHT) {
+        if ((channelTextureMask & (1u << FBZZ_PARALLAX_HEIGHT_SLOT)) && IsBindlessValid(heightIndex)) {
+            const float height = BindlessTexture2D(heightIndex).SampleGrad(sampDefault, baseUv, uvDx, uvDy).r;
+            return float4(height.xxx, 1.0f);
+        }
+        return float4(0, 0, 0, 1);
+    }
+
+    const ParallaxSurface parallax = ResolveParallaxSurface(heightIndex, sampDefault, baseUv,
+        uvDx, uvDy, p.worldPos, worldDx, worldDy, channelParallaxDepth, channelTextureMask);
+    const float2 uv = parallax.uv;
 
     if (channelMode == FBZZ_CHANNEL_UV)
         return float4(UvChecker(uv), 1.0f);
 
-    if (channelMode == FBZZ_CHANNEL_NORMAL)
-        return float4(ShadingNormal(p, uv) * 0.5f + 0.5f, 1.0f);
+    if (channelMode == FBZZ_CHANNEL_NORMAL) {
+        const float normalWeight = (channelTextureMask & 2u) ? channelPbr.w : 0.0f;
+        const float3 normal = ApplyParallaxSurfaceNormal(ShadingNormal(p, uv, uvDx, uvDy), parallax, normalWeight);
+        return float4(normal * 0.5f + 0.5f, 1.0f);
+    }
 
     if (channelMode == FBZZ_CHANNEL_ALBEDO) {
         float3 albedoColor = (channelTextureMask & 1u)
-            ? texAlbedo.Sample(sampDefault, uv).rgb
+            ? texAlbedo.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb
             : channelBaseColor.rgb;
         return float4(albedoColor, 1.0f);
     }
@@ -87,22 +110,22 @@ float4 PSMain(PSInput p) : SV_Target0
     if (channelMode == FBZZ_CHANNEL_EMISSIVE) {
         float3 emissiveColor = channelEmissive.rgb * channelEmissive.a;
         if (channelTextureMask & 8u)
-            emissiveColor *= texEmissive.Sample(sampDefault, uv).rgb;
+            emissiveColor *= texEmissive.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb;
         return float4(emissiveColor, 1.0f);
     }
 
     float value = 0.0f;
     if (channelMode == FBZZ_CHANNEL_ROUGHNESS) {
         value = channelPbr.y;
-        if (channelTextureMask & 4u) value *= texMetallicRough.Sample(sampDefault, uv).g;
+        if (channelTextureMask & 4u) value *= texMetallicRough.SampleGrad(sampDefault, uv, uvDx, uvDy).g;
     } else if (channelMode == FBZZ_CHANNEL_METALLIC) {
         value = channelPbr.x;
-        if (channelTextureMask & 4u) value *= texMetallicRough.Sample(sampDefault, uv).r;
+        if (channelTextureMask & 4u) value *= texMetallicRough.SampleGrad(sampDefault, uv, uvDx, uvDy).r;
     } else { /// @note FBZZ_CHANNEL_AO
         float occlusion = (channelTextureMask & 16u)
-            ? texAO.Sample(sampDefault, uv).r
+            ? texAO.SampleGrad(sampDefault, uv, uvDx, uvDy).r
             : 1.0f;
-        value = lerp(1.0f, occlusion, saturate(channelPbr.z));
+        value = parallax.occlusion * lerp(1.0f, occlusion, saturate(channelPbr.z));
     }
     return float4(value.xxx, 1.0f);
 }

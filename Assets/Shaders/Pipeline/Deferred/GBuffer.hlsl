@@ -15,6 +15,7 @@
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LeafWetness.hlsli"
 #include "Rendering/LodDither.hlsli"
+#include "Rendering/ParallaxOcclusion.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/ObjectInstance.hlsli"
 #include "Rendering/LeafWind.hlsli"
@@ -92,33 +93,46 @@ PSInput VSMain(VSInput v)
 
 GBufferOut PSMain(PSInput p, bool frontFace : SV_IsFrontFace)
 {
+    const float3 worldPositionDx = ddx(p.worldPos);
+    const float3 worldPositionDy = ddy(p.worldPos);
+    const float2 baseUv = p.uv * uvTiling + uvOffset;
+    const float2 uvDx = ddx(baseUv);
+    const float2 uvDy = ddy(baseUv);
     ApplyLodDither(p.svPosition.xy, objectParams.x);
-
-    float2 uv = p.uv * uvTiling + uvOffset;
 
     /// @note sRGB テクスチャを線形空間にデコードしてから tint (線形) を乗算する。
     /// @note テクスチャなし時は (1,1,1) として albedo.rgb をそのまま使用 (SRGBToLinear(1)=1)。
-    float4 rawAlbedo = (textureMask & (1u << 0))
-        ? texAlbedo.Sample(sampDefault, uv)
+    const float4 rawAlbedo = (textureMask & (1u << 0))
+        ? texAlbedo.SampleGrad(sampDefault, baseUv, uvDx, uvDy)
         : float4(1.0f, 1.0f, 1.0f, 1.0f);
-    float3 col  = SRGBToLinear(rawAlbedo.rgb) * albedo.rgb;
     float  alpha = rawAlbedo.a * albedo.a;
     clip(alpha - alphaCutoff);
+
+    /// @note Cutout coverage is shared with shadow, depth and velocity passes at the undisplaced UV.
+    const ParallaxSurface parallax = ResolveParallaxSurface(FbzzPixelSlot(FBZZ_PARALLAX_HEIGHT_SLOT), sampDefault,
+        baseUv, uvDx, uvDy, p.worldPos, worldPositionDx, worldPositionDy, _matPad1.z, textureMask);
+    const float2 uv = parallax.uv;
+    float3 baseColor = rawAlbedo.rgb;
+    [branch]
+    if ((textureMask & 1u) && any(uv != baseUv))
+        baseColor = texAlbedo.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb;
+    float3 col = SRGBToLinear(baseColor) * albedo.rgb;
 
     float3 N = SafeNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
     if (textureMask & (1u << 1))
     {
-        float3 ns = texNormal.Sample(sampDefault, uv).rgb;
+        float3 ns = texNormal.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb;
         float3 nm = ApplyNormalMap(ns, N, SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f)));
         N = SafeNormalize(lerp(N, nm, saturate(normalStrength)), N);
     }
+    N = ApplyParallaxSurfaceNormal(N, parallax, (textureMask & 2u) ? normalStrength : 0.0f);
 
     /// @note Metallic / Roughness (glTF 規約: G=roughness, B=metallic)
     float met   = metallic;
     float rough = roughness;
     if (textureMask & (1u << 2))
     {
-        float2 mr = texMetallicRough.Sample(sampDefault, uv).gb;
+        float2 mr = texMetallicRough.SampleGrad(sampDefault, uv, uvDx, uvDy).gb;
         rough = mr.x;
         met   = mr.y;
     }
@@ -128,7 +142,7 @@ GBufferOut PSMain(PSInput p, bool frontFace : SV_IsFrontFace)
     WetSurface wet;
     [branch]
     if (weatherWetness > 0.0f && (textureMask & (1u << 7)))
-        wet = ApplyLeafWetness(col, saturate(rough), texLeafWetness.Sample(sampDefault, uv), p.tangent, N);
+        wet = ApplyLeafWetness(col, saturate(rough), texLeafWetness.SampleGrad(sampDefault, uv, uvDx, uvDy), p.tangent, N);
     else
         wet = ApplyWetness(col, saturate(rough), N);
     col   = wet.albedo;
@@ -141,12 +155,12 @@ GBufferOut PSMain(PSInput p, bool frontFace : SV_IsFrontFace)
     /// @note Forward PBR と同じ UV と sRGB デコードを使い、出力は線形 HDR のまま保持する。
     /// @see https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#additional-textures glTF 2.0 §3.9.3 emissive texture
     const float3 emissionTexture = (textureMask & (1u << 3))
-        ? SRGBToLinear(texEmissive.Sample(sampDefault, uv).rgb)
+        ? SRGBToLinear(texEmissive.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb)
         : float3(1.0f, 1.0f, 1.0f);
 
-    const float materialAO = (textureMask & (1u << 4))
-        ? lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength)
-        : 1.0f;
+    const float materialAO = parallax.occlusion * ((textureMask & (1u << 4))
+        ? lerp(1.0f, texAO.SampleGrad(sampDefault, uv, uvDx, uvDy).r, occlusionStrength)
+        : 1.0f);
 
     GBufferOut o;
     o.albedoRoughness = float4(col, rough);

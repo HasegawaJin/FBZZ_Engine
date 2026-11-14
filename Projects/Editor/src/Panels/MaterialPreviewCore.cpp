@@ -104,7 +104,8 @@ struct ChannelCB {
     math::Vector4 emissive; ///< @note rgb=emissiveColor a=emissiveScale
     std::uint32_t textureMask = 0;
     std::uint32_t mode = 0;
-    float         _pad[2] = {};
+    float         parallaxDepth = 0.0f;
+    float         _pad = 0.0f;
 };
 
 
@@ -127,6 +128,7 @@ struct SharedResources {
     renderer::ResourceHandle<renderer::ConstantBufferTag> objectCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> fallbackMaterialCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> channelCB;
+    renderer::ResourceHandle<renderer::ConstantBufferTag> parallaxOffCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> lightCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> advancedCB;
     renderer::ResourceHandle<renderer::ConstantBufferTag> shadowCB;
@@ -782,12 +784,14 @@ std::uint32_t ChannelModeValue(Channel channel)
         case Channel::Occlusion: return 4;
         case Channel::Emissive:  return 5;
         case Channel::Uv:        return 6;
+        case Channel::HeightMap: return 7;
         case Channel::Albedo:
         default:                 return 0;
     }
 }
 
-ChannelCB BuildChannelCB(const asset::MaterialAssetAuthoring* material, const GpuData* gpu, Channel channel)
+ChannelCB BuildChannelCB(const asset::MaterialAssetAuthoring* material, const GpuData* gpu,
+    Channel channel, bool showParallax)
 {
     ChannelCB cb{};
     const math::Vector4 albedo = material ? AlbedoColor(*material) : math::Vector4{ 0.8f, 0.8f, 0.8f, 1.0f };
@@ -813,6 +817,11 @@ ChannelCB BuildChannelCB(const asset::MaterialAssetAuthoring* material, const Gp
     if (gpu) {
         for (std::uint32_t slot = 0; slot < 5 && slot < gpu->textures.size(); ++slot) {
             if (gpu->textures[slot].IsValid()) cb.textureMask |= (1u << slot);
+        }
+        if (gpu->parallaxDepthOffset != UINT32_MAX && gpu->textures.size() > 5 && gpu->textures[5].IsValid()) {
+            cb.textureMask |= 1u << 5;
+            if (showParallax)
+                std::memcpy(&cb.parallaxDepth, gpu->paramData.data() + gpu->parallaxDepthOffset, sizeof(float));
         }
     }
     return cb;
@@ -1966,6 +1975,7 @@ const char* ChannelLabel(Channel channel)
         case Channel::Occlusion: return "Occlusion";
         case Channel::Emissive:  return "Emissive";
         case Channel::Uv:        return "UV Checker";
+        case Channel::HeightMap: return "Height Map";
         case Channel::Wireframe: return "Wireframe";
         case Channel::Shaded:
         default:                 return "Shaded";
@@ -2086,6 +2096,7 @@ bool BuildGpuData(GpuData& gpu,
             && settings.flipGreen;
         gpu.textures[binding.slot] = resources.LoadTexture(loadPath, flipGreen);
     }
+    gpu.parallaxDepthOffset = UINT32_MAX;
     if (!descriptor.IsValid()) {
         /// @note cbuffer のリフレクションが無い分、標準スロット名だけは名前で解決しておく。
         /// @note 素材が 1 枚も付かないと «何の絵か» が消えてしまう。
@@ -2113,14 +2124,24 @@ bool BuildGpuData(GpuData& gpu,
     gpu.paramData.assign(descriptor.cbufferSize, 0u);
     InitDefaultParams(descriptor, gpu.paramData);
     ApplyAssetParams(*renderAsset, descriptor, gpu.paramData);
+    const auto* parallax = descriptor.FindVar("parallaxDepth");
+    if (parallax && parallax->IsWritable() && parallax->varType == renderer::ShaderVarType::Float
+        && parallax->varClass == renderer::ShaderVarClass::Scalar && parallax->elements == 0
+        && parallax->offset + sizeof(float) <= gpu.paramData.size())
+        gpu.parallaxDepthOffset = parallax->offset;
 
+    std::uint32_t mask = 0;
+    for (const auto& binding : descriptor.textures) {
+        if (binding.slot >= gpu.textures.size()) continue;
+        if (binding.slot < 8 && gpu.textures[binding.slot].IsValid()) mask |= 1u << binding.slot;
+        if (binding.constantOffset == UINT32_MAX ||
+            binding.constantOffset + sizeof(std::uint32_t) > gpu.paramData.size()) continue;
+        const auto* texture = resources.Get(gpu.textures[binding.slot]);
+        const std::uint32_t index = texture ? texture->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
+        std::memcpy(gpu.paramData.data() + binding.constantOffset, &index, sizeof(index));
+    }
     if (descriptor.textureMaskOffset != UINT32_MAX &&
         descriptor.textureMaskOffset + sizeof(std::uint32_t) <= gpu.paramData.size()) {
-        std::uint32_t mask = 0;
-        for (const auto& binding : descriptor.textures) {
-            if (binding.slot >= 8 || binding.slot >= gpu.textures.size()) continue;
-            if (gpu.textures[binding.slot].IsValid()) mask |= (1u << binding.slot);
-        }
         std::memcpy(gpu.paramData.data() + descriptor.textureMaskOffset, &mask, sizeof(mask));
     }
 
@@ -2139,6 +2160,7 @@ void ResetGpuData(GpuData& gpu, renderer::ResourceManager* resources)
     gpu.materialCB = {};
     gpu.textures.clear();
     gpu.paramData.clear();
+    gpu.parallaxDepthOffset = UINT32_MAX;
 }
 
 bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources, const RenderDesc& desc)
@@ -2223,11 +2245,25 @@ bool Render(renderer::IRenderer& renderer, renderer::ResourceManager& resources,
         if (!g_shared.channelCB.IsValid())
             g_shared.channelCB = resources.CreateConstantBuffer(sizeof(ChannelCB));
         if (!g_shared.channelCB.IsValid()) return false;
-        const ChannelCB channelData = BuildChannelCB(desc.material.get(), desc.gpu, desc.channel);
+        const ChannelCB channelData = BuildChannelCB(desc.material.get(), desc.gpu, desc.channel, desc.showParallax);
         resources.Update(g_shared.channelCB, &channelData, sizeof(channelData));
         materialCBForDraw = g_shared.channelCB;
     } else if (useMaterial) {
         materialCBForDraw = desc.gpu->materialCB;
+        if (!desc.showParallax && desc.gpu->parallaxDepthOffset != UINT32_MAX) {
+            /// @note Use a separate buffer so cached materials and subsequent thumbnail draws keep the authored depth.
+            auto bytes = desc.gpu->paramData;
+            const float disabled = 0.0f;
+            std::memcpy(bytes.data() + desc.gpu->parallaxDepthOffset, &disabled, sizeof(disabled));
+            const auto* buffer = resources.Get(g_shared.parallaxOffCB);
+            if (!buffer || buffer->GetSize() < bytes.size()) {
+                if (buffer) resources.Release(g_shared.parallaxOffCB);
+                g_shared.parallaxOffCB = resources.CreateConstantBuffer(static_cast<std::uint32_t>(bytes.size()));
+            }
+            if (!g_shared.parallaxOffCB.IsValid()) return false;
+            resources.Update(g_shared.parallaxOffCB, bytes.data(), bytes.size());
+            materialCBForDraw = g_shared.parallaxOffCB;
+        }
     } else {
         FallbackMaterialCB fallbackData{};
         fallbackData.albedo = { std::clamp(desc.fallbackColor.x, 0.0f, 1.0f),

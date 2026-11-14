@@ -5,6 +5,7 @@
 #include "Graphics/Renderer/Material.hpp"
 #include "Graphics/Renderer/ResourceManager.hpp"
 #include "Graphics/Renderer/IConstantBuffer.hpp"
+#include "Graphics/Renderer/IShader.hpp"
 #include "MaterialTransferPayload.hpp"
 #include <cstring>
 #include <utility>
@@ -95,9 +96,18 @@ SurfaceMaterialData Material::ResolveRaySurface(const std::array<uint8_t, 96>& c
     uint32_t mask = 0;
     std::memcpy(&mask, params.data() + 80, sizeof(mask));
     mask |= declaredTextureMask;
+    /// @note Ray hit materials use base UVs. The raster height map does not participate in ray texture validation.
+    constexpr uint32_t PARALLAX_HEIGHT_SLOT = 5;
+    constexpr uint32_t PARALLAX_HEIGHT_BIT = 1u << PARALLAX_HEIGHT_SLOT;
+    const bool hasHeightSlot = (mask & PARALLAX_HEIGHT_BIT)
+        || (textures.size() > PARALLAX_HEIGHT_SLOT && textures[PARALLAX_HEIGHT_SLOT].IsValid());
+    const auto* nativeShader = standardPbr && hasHeightSlot ? resources.Get(shader) : nullptr;
+    const bool rasterHeightMap = nativeShader && nativeShader->GetDescriptor().FindVar("parallaxDepth");
+    if (rasterHeightMap) mask &= ~PARALLAX_HEIGHT_BIT;
     std::array<RayTextureBinding, 5> bindings{};
     for (size_t i = 0; i < textures.size(); ++i) {
         if (!textures[i]) continue;
+        if (i == PARALLAX_HEIGHT_SLOT && rasterHeightMap) continue;
         if (i >= bindings.size()) { unresolvedTexture = true; continue; }
         mask |= 1u << i;
         const auto* texture = resources.Get(textures[i]);

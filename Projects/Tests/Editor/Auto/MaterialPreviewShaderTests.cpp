@@ -131,7 +131,8 @@ protected:
         Fixture::TearDown();
     }
     std::vector<float> Capture(const asset::MaterialAssetAuthoring& material, const char* name,
-        std::optional<editor::matpreview::FiberMode> fiberMode = {})
+        std::optional<editor::matpreview::FiberMode> fiberMode = {}, bool showParallax = true,
+        editor::matpreview::Channel channel = editor::matpreview::Channel::Shaded)
     {
         namespace preview = editor::matpreview;
         preview::GpuData gpu;
@@ -149,6 +150,8 @@ protected:
         desc.mesh = preview::ShapeMesh(*m_resources, preview::ThumbnailShape(material, desc.flavor), desc.flavor);
         desc.material = std::make_shared<const asset::MaterialAssetAuthoring>(material);
         desc.gpu = &gpu;
+        desc.showParallax = showParallax;
+        desc.channel = channel;
         desc.time = 2.0f;
         EXPECT_TRUE(preview::Render(*m_bundle.renderer, *m_resources, desc));
         m_bundle.renderer->EndFrame();
@@ -860,6 +863,52 @@ TEST_F(MaterialPreviewShaderTest, SurfaceExampleMaterialEditSaveReloadChangesCol
         EXPECT_GT(rgbDifference, 1.0);
         EXPECT_LT(alphaDifference, 0.001);
     }
+}
+
+TEST_F(MaterialPreviewShaderTest, StandardPbrParallaxChangesShadingAndPreservesCoverage)
+{
+    const auto heightMap = (m_root / "Assets/Terrain/Alpine/Rock_Height.png").generic_string();
+    ASSERT_TRUE(std::filesystem::is_regular_file(heightMap));
+    asset::MaterialAssetAuthoring material;
+    material.shaderPath = "guid:73d100e5a351425aaf52953c23425438";
+    material.textures["albedo"] = heightMap;
+    material.textures["tex5"] = heightMap;
+    material.params["uvTiling"] = {3.0f, 3.0f};
+
+    const auto defaultDepth = Capture(material, "ParallaxDefaultDepth");
+    ASSERT_GT(RgbEnergy(defaultDepth), 1.0f);
+    material.params["parallaxDepth"] = {0.0f};
+    const auto flat = Capture(material, "ParallaxZeroDepth");
+    EXPECT_EQ(defaultDepth, flat);
+
+    material.params["parallaxDepth"] = {0.035f};
+    const auto relief = Capture(material, "ParallaxRelief");
+    ASSERT_EQ(relief.size(), flat.size());
+    double rgbDifference = 0.0;
+    double alphaDifference = 0.0;
+    for (size_t index = 0; index < relief.size(); ++index) {
+        ASSERT_TRUE(std::isfinite(relief[index]));
+        const float difference = std::abs(relief[index] - flat[index]);
+        if (index % 4 == 3) alphaDifference += difference;
+        else rgbDifference += difference;
+    }
+    EXPECT_GT(rgbDifference, 1.0);
+    EXPECT_LT(alphaDifference, 0.001);
+    EXPECT_EQ(Capture(material, "ParallaxPreviewOff", {}, false), flat);
+
+    material.textures.erase("albedo");
+    const auto occlusion = Capture(material, "ParallaxOcclusion", {}, true, editor::matpreview::Channel::Occlusion);
+    const auto noOcclusion = Capture(material, "ParallaxOcclusionOff", {}, false, editor::matpreview::Channel::Occlusion);
+    ASSERT_EQ(occlusion.size(), noOcclusion.size());
+    EXPECT_LT(RgbEnergy(occlusion), RgbEnergy(noOcclusion) - 1.0f);
+    const auto height = Capture(material, "ParallaxHeightMap", {}, false, editor::matpreview::Channel::HeightMap);
+    ASSERT_EQ(height.size(), noOcclusion.size());
+    EXPECT_GT(RgbEnergy(height), 1.0f);
+    EXPECT_LT(RgbEnergy(height), RgbEnergy(noOcclusion));
+
+    material.textures["albedo"] = heightMap;
+    material.textures.erase("tex5");
+    EXPECT_EQ(Capture(material, "ParallaxMissingHeightMap"), flat);
 }
 
 TEST_F(MaterialPreviewShaderTest, SurfaceExampleSceneSaveReloadRetainsSharedGeometrySettings)

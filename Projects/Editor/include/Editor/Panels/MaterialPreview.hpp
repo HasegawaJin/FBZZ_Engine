@@ -42,7 +42,7 @@ public:
     void RegisterOperators(OperatorRegistry& registry, std::string_view prefix);
 
 private:
-    void DrawToolbar(EditorContext& ctx, matpreview::Flavor flavor);
+    void DrawToolbar(matpreview::Flavor flavor, bool gpuReady);
     void DrawBackground(ImVec2 origin, float size, bool hovered) const;
     /// @brief .mat の標準 normal スロットを raw RGB で表示する。
     void DrawNormalMap(EditorContext& ctx, const asset::MaterialAssetAuthoring& material);
@@ -51,8 +51,9 @@ private:
     void SynchronizeResources(EditorContext& ctx);
     /// @note resources が null なら旧所有者のハンドルを忘れ、現在の資源プールへ返さない。
     void InvalidateGpu(renderer::ResourceManager* resources);
+    bool EnsureGpuData(EditorContext& ctx, const asset::MaterialAssetAuthoring& material);
     bool EnsurePreviewFrame(EditorContext& ctx, const asset::MaterialAssetAuthoring& material,
-                             matpreview::Flavor flavor);
+                            matpreview::Flavor flavor);
     bool RenderFrame(EditorContext& ctx, matpreview::RenderDesc desc);
 
     matpreview::GpuData  m_gpu;
@@ -60,6 +61,7 @@ private:
     matpreview::Rig      m_rig;
     matpreview::Shape    m_shape   = matpreview::Shape::Sphere;
     matpreview::Channel  m_channel = matpreview::Channel::Shaded;
+    bool m_showParallax = true;
 
     renderer::ResourceHandle<renderer::RenderTargetTag> m_renderTarget;
 

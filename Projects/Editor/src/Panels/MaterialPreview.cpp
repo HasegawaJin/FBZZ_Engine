@@ -22,6 +22,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <system_error>
@@ -107,10 +108,10 @@ constexpr std::array<mp::Shape, 7> kShapes = {
     mp::Shape::Cone,   mp::Shape::Torus, mp::Shape::Capsule,
 };
 
-constexpr std::array<mp::Channel, 9> kChannels = {
+constexpr std::array<mp::Channel, 10> kChannels = {
     mp::Channel::Shaded,    mp::Channel::Albedo,    mp::Channel::Normal,
     mp::Channel::Roughness, mp::Channel::Metallic,  mp::Channel::Occlusion,
-    mp::Channel::Emissive,  mp::Channel::Uv,        mp::Channel::Wireframe,
+    mp::Channel::Emissive,  mp::Channel::Uv,        mp::Channel::HeightMap, mp::Channel::Wireframe,
 };
 
 constexpr std::array<mp::FiberMode, 4> kFiberModes = {
@@ -225,6 +226,7 @@ void MaterialPreviewView::ResetView()
     m_orbit   = {};
     m_rig     = {};
     m_channel = mp::Channel::Shaded;
+    m_showParallax = true;
 }
 
 void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::string_view prefix)
@@ -303,12 +305,16 @@ void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::str
             number("distance", m_orbit.distance, 1.5, 8);
             number("fiberShells", m_fiberShellCount, 1, 64);
             number("fiberWind", m_fiberWind, 0, 10);
-            field("animate", m_animateWater, [](bool value) { return OpData(value); },
-                [](const OpData& input, bool& next) {
-                    if (!input.IsBool()) return false;
-                    next = input.AsBool();
-                    return true;
-                });
+            const auto boolean = [&](const char* key, bool& target) {
+                field(key, target, [](bool value) { return OpData(value); },
+                    [](const OpData& input, bool& next) {
+                        if (!input.IsBool()) return false;
+                        next = input.AsBool();
+                        return true;
+                    });
+            };
+            boolean("animate", m_animateWater);
+            boolean("parallax", m_showParallax);
             if (!invalid.empty()) return OpResult::Err("BAD_ARG", invalid);
             if (!settings) return OpResult::Data(std::move(data));
             if (changes.size() != settings->AsObject().size())
@@ -350,9 +356,8 @@ void MaterialPreviewView::InvalidateGpu(renderer::ResourceManager* resources)
     m_frameCache.Invalidate();
 }
 
-void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
+void MaterialPreviewView::DrawToolbar(mp::Flavor flavor, bool gpuReady)
 {
-    (void)ctx;
     const float full = (std::max)(ImGui::GetContentRegionAvail().x, 120.0f);
     const float half = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
 
@@ -376,8 +381,13 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(half);
+    const bool supportsParallax = gpuReady && m_gpu.parallaxDepthOffset != UINT32_MAX
+        && (flavor == mp::Flavor::Surface || flavor == mp::Flavor::Skinned);
+    const bool hasHeightMap = supportsParallax && m_gpu.textures.size() > 5 && m_gpu.textures[5].IsValid();
+    if (m_channel == mp::Channel::HeightMap && !hasHeightMap) m_channel = mp::Channel::Shaded;
     if (ImGui::BeginCombo("##Channel", mp::ChannelLabel(m_channel))) {
         for (mp::Channel channel : kChannels) {
+            if (channel == mp::Channel::HeightMap && !hasHeightMap) continue;
             const bool supported = mp::ChannelSupported(flavor, channel);
             ImGui::BeginDisabled(!supported);
             if (ImGui::Selectable(mp::ChannelLabel(channel), channel == m_channel) && supported)
@@ -416,6 +426,21 @@ void MaterialPreviewView::DrawToolbar(EditorContext& ctx, mp::Flavor flavor)
 
     ImGui::SetNextItemWidth(half);
     ImGui::SliderFloat("##Exposure", &m_rig.exposure, 0.1f, 4.0f, "EV %.2f");
+    if (supportsParallax) {
+        float depth = 0.0f;
+        std::memcpy(&depth, m_gpu.paramData.data() + m_gpu.parallaxDepthOffset, sizeof(depth));
+        const bool active = hasHeightMap && depth > 0.0f;
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!active);
+        bool showParallax = active && m_showParallax;
+        if (ImGui::Checkbox("POM", &showParallax)) m_showParallax = showParallax;
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            if (!hasHeightMap) ImGui::SetTooltip("Assign a loadable Height Map in the Material Inspector.");
+            else if (!active) ImGui::SetTooltip("Set Parallax Depth above 0 cm in the Material Inspector.");
+            else ImGui::SetTooltip("Compare parallax on and off at the current angle. Drag to orbit.");
+        }
+    }
     if (flavor == mp::Flavor::Water || flavor == mp::Flavor::Fiber) {
         ImGui::SameLine();
         ImGui::Checkbox("Animate", &m_animateWater);
@@ -586,21 +611,10 @@ void MaterialPreviewView::DrawUnsupported(EditorContext& ctx,
     DrawBadge(drawList, origin, size, badge);
 }
 
-bool MaterialPreviewView::EnsurePreviewFrame(EditorContext& ctx,
-                                             const asset::MaterialAssetAuthoring& material,
-                                             mp::Flavor flavor)
+bool MaterialPreviewView::EnsureGpuData(EditorContext& ctx, const asset::MaterialAssetAuthoring& material)
 {
     if (!ctx.renderer || !ctx.resources) return false;
     auto& resources = *ctx.resources;
-
-    if (m_renderTarget.IsValid() && !resources.Get(m_renderTarget)) {
-        m_renderTarget = {};
-        m_frameCache.Invalidate();
-    }
-    if (!m_renderTarget.IsValid())
-        m_renderTarget = resources.CreateRenderTarget(kPreviewRtSize, kPreviewRtSize,
-                                                      renderer::CameraDepthTargetDesc(1));
-    if (!m_renderTarget.IsValid()) return false;
 
     if ((m_gpu.shader.IsValid() && !resources.Get(m_gpu.shader))
         || (m_gpu.materialCB.IsValid() && !resources.Get(m_gpu.materialCB))) {
@@ -618,6 +632,22 @@ bool MaterialPreviewView::EnsurePreviewFrame(EditorContext& ctx,
         m_gpuCache.Commit(ReadPreviewGpuKey(material, resources, m_resourceKey));
         ++m_sourceRevision;
     }
+    return true;
+}
+
+bool MaterialPreviewView::EnsurePreviewFrame(EditorContext& ctx,
+                                             const asset::MaterialAssetAuthoring& material,
+                                             mp::Flavor flavor)
+{
+    auto& resources = *ctx.resources;
+    if (m_renderTarget.IsValid() && !resources.Get(m_renderTarget)) {
+        m_renderTarget = {};
+        m_frameCache.Invalidate();
+    }
+    if (!m_renderTarget.IsValid())
+        m_renderTarget = resources.CreateRenderTarget(kPreviewRtSize, kPreviewRtSize,
+                                                      renderer::CameraDepthTargetDesc(1));
+    if (!m_renderTarget.IsValid()) return false;
 
     mp::RenderDesc desc;
     desc.target   = m_renderTarget;
@@ -625,6 +655,7 @@ bool MaterialPreviewView::EnsurePreviewFrame(EditorContext& ctx,
     desc.material = std::make_shared<const asset::MaterialAssetAuthoring>(material);
     desc.gpu      = &m_gpu;
     desc.channel  = m_channel;
+    desc.showParallax = m_showParallax;
     desc.rig      = m_rig;
     desc.orbit    = m_orbit;
     desc.fiberMode       = m_fiberMode;
@@ -660,7 +691,8 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     SynchronizeResources(ctx);
 
     const mp::Flavor flavor = mp::DetectFlavor(material);
-    DrawToolbar(ctx, flavor);
+    const bool gpuReady = flavor != mp::Flavor::Unsupported && EnsureGpuData(ctx, material);
+    DrawToolbar(flavor, gpuReady);
 
     /// @note AssetBrowser と同じ正方形比率で表示する。
     const float width  = (std::max)(ImGui::GetContentRegionAvail().x, 64.0f);
@@ -699,7 +731,7 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
         return true;
     }
 
-    const bool rendered = EnsurePreviewFrame(ctx, material, flavor);
+    const bool rendered = gpuReady && EnsurePreviewFrame(ctx, material, flavor);
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     void* rawId = (rendered && ctx.imguiRenderer && ctx.resources)
         ? ctx.imguiRenderer->GetImTextureID(m_renderTarget, *ctx.resources, 0)

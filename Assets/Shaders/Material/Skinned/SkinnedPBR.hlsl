@@ -17,6 +17,7 @@
 #include "Rendering/SpecularAA.hlsli"
 #include "Rendering/Wetness.hlsli"
 #include "Rendering/LodDither.hlsli"
+#include "Rendering/ParallaxOcclusion.hlsli"
 #include "Common/BindlessIndices.hlsli"
 #include "Common/MaterialTextures.hlsli"
 
@@ -34,7 +35,8 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     float  alphaCutoff;
     float3 _pad0;
     uint   textureMask;
-    float3 _pad1;
+    float2 _pad1;
+    float  parallaxDepth;      ///< @note Maximum recess in world metres. offset 92
     float  clearcoat;
     float  clearcoatRoughness;
     float  sheen;
@@ -48,6 +50,7 @@ cbuffer MaterialConstants : register(CB_MATERIAL)
     uint texMetallicIndex;
     uint texEmissiveIndex;
     uint texAOIndex;
+    uint tex5Index;
 };
 
 FBZZ_TEX2D_T(float, texShadow, TEX_SHADOW_SLOT);
@@ -85,30 +88,41 @@ float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
 {
     const float3 worldPositionDx = ddx(p.worldPos);
     const float3 worldPositionDy = ddy(p.worldPos);
+    const float2 baseUv = p.uv * uvTiling + uvOffset;
+    const float2 uvDx = ddx(baseUv);
+    const float2 uvDy = ddy(baseUv);
     ApplyLodDither(p.svPosition.xy, objectParams.x);
 
-    float2 uv = p.uv * uvTiling + uvOffset;
-
-    float4 rawAlbedo = (textureMask & (1u << 0))
-        ? texAlbedo.Sample(sampDefault, uv)
+    const float4 rawAlbedo = (textureMask & (1u << 0))
+        ? texAlbedo.SampleGrad(sampDefault, baseUv, uvDx, uvDy)
         : float4(1.0f, 1.0f, 1.0f, 1.0f);
-    float3 col   = SRGBToLinear(rawAlbedo.rgb) * albedo.rgb;
     float  alpha = rawAlbedo.a * albedo.a;
     clip(alpha - alphaCutoff);
+
+    /// @note Cutout coverage is shared with shadow, depth and velocity passes at the undisplaced UV.
+    const ParallaxSurface parallax = ResolveParallaxSurface(tex5Index, sampDefault,
+        baseUv, uvDx, uvDy, p.worldPos, worldPositionDx, worldPositionDy, parallaxDepth, textureMask);
+    const float2 uv = parallax.uv;
+    float3 baseColor = rawAlbedo.rgb;
+    [branch]
+    if ((textureMask & 1u) && any(uv != baseUv))
+        baseColor = texAlbedo.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb;
+    float3 col = SRGBToLinear(baseColor) * albedo.rgb;
 
     float3 N = SafeNormalize(p.normal, float3(0.0f, 1.0f, 0.0f));
     if (textureMask & (1u << 1))
     {
-        float3 ns = texNormal.Sample(sampDefault, uv).rgb;
+        float3 ns = texNormal.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb;
         float3 nm = ApplyNormalMap(ns, N, SafeNormalize(p.tangent, float3(1.0f, 0.0f, 0.0f)));
         N = SafeNormalize(lerp(N, nm, saturate(normalStrength)), N);
     }
+    N = ApplyParallaxSurfaceNormal(N, parallax, (textureMask & 2u) ? normalStrength : 0.0f);
 
     float met   = metallic;
     float rough = roughness;
     if (textureMask & (1u << 2))
     {
-        float2 mr = texMetallicRough.Sample(sampDefault, uv).gb;
+        float2 mr = texMetallicRough.SampleGrad(sampDefault, uv, uvDx, uvDy).gb;
         rough = mr.x;
         met   = mr.y;
     }
@@ -129,7 +143,8 @@ float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
 
     float ao = 1.0f;
     if (textureMask & (1u << 4))
-        ao = lerp(1.0f, texAO.Sample(sampDefault, uv).r, occlusionStrength);
+        ao = lerp(1.0f, texAO.SampleGrad(sampDefault, uv, uvDx, uvDy).r, occlusionStrength);
+    ao *= parallax.occlusion;
 
     FBZZWaterMediumSample receiverMedium;
     const bool receiverInWater = FBZZ_QueryWaterReceiverMedium(p.worldPos, receiverMedium);
@@ -160,7 +175,7 @@ float4 PSMain(PSInput p, bool frontFace : SV_IsFrontFace) : SV_Target0
     FBZZ_PUNCTUAL_END
 
     float3 emissiveTex = (textureMask & (1u << 3))
-        ? SRGBToLinear(texEmissive.Sample(sampDefault, uv).rgb)
+        ? SRGBToLinear(texEmissive.SampleGrad(sampDefault, uv, uvDx, uvDy).rgb)
         : float3(1.0f, 1.0f, 1.0f);
     result += emissiveTex * emissiveColor * emissiveScale;
 

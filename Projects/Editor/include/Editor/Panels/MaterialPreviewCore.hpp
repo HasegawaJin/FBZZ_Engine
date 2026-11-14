@@ -75,6 +75,7 @@ enum class Channel {
     Occlusion,
     Emissive,
     Uv,
+    HeightMap,
     Wireframe, ///< 材質のシェーダーのまま RasterizerMode だけ差し替える
 };
 
@@ -111,6 +112,7 @@ struct GpuData {
     renderer::ResourceHandle<renderer::ConstantBufferTag>      materialCB;
     std::vector<renderer::ResourceHandle<renderer::TextureTag>> textures;
     std::vector<std::uint8_t>                                  paramData;
+    std::uint32_t                                              parallaxDepthOffset = UINT32_MAX;
 };
 
 
@@ -175,6 +177,7 @@ struct RenderDesc {
     math::Vector4 fallbackColor{ 0.74f, 0.78f, 0.84f, 1.0f };
 
     Channel channel = Channel::Shaded;
+    bool    showParallax = true;
     Rig     rig{};
     Orbit   orbit{};
 

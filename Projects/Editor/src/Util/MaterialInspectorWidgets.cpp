@@ -41,6 +41,7 @@ const char* PrimaryMaterialLabel(std::string_view name)
     if (name == "alphaCutoff") return "Alpha Cutoff";
     if (name == "uvTiling") return "UV Tiling";
     if (name == "uvOffset") return "UV Offset";
+    if (name == "parallaxDepth") return "Parallax Depth (cm)";
     return nullptr;
 }
 
@@ -52,6 +53,14 @@ bool IsMaterialColor(std::string_view name)
 
 bool DrawFloatMaterialValues(const char* label, std::string_view name, float* values, int count)
 {
+    if (count == 1 && name == "parallaxDepth") {
+        float centimetres = values[0] * 100.0f;
+        const bool changed = ImGui::DragFloat(label, &centimetres, 0.1f, 0.0f, 20.0f,
+            "%.1f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SetItemTooltip("Maximum recess. Zero disables parallax.");
+        if (changed) values[0] = centimetres * 0.01f;
+        return changed;
+    }
     if (count == 1) return ImGui::DragFloat(label, values, 0.01f);
     if (count == 3 && IsMaterialColor(name))
         return ImGui::ColorEdit3(label, values, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
@@ -70,6 +79,7 @@ void DrawMaterialTextureSlots(asset::MaterialAssetAuthoring& material,
         "Albedo", "Normal", "Metallic", "Emission", "Occlusion", "tex5", "tex6", "tex7"
     };
     static_assert(IM_ARRAYSIZE(LABELS) == renderer::kMaterialTextureSlotCount);
+    const bool parallax = descriptor && descriptor->FindVar("parallaxDepth");
     const auto draw = [&](uint32_t slot) {
         const char* key = renderer::kMaterialTextureSlots[slot].key;
         const auto it = material.textures.find(key);
@@ -77,7 +87,10 @@ void DrawMaterialTextureSlots(asset::MaterialAssetAuthoring& material,
         /// @note Sprite UV は Auto メッシュの albedo だけが受け取る。
         const char* filter = slot == 0 && material.renderPath == asset::RenderPath::Auto && fallbackSlots
             ? widgets::kSpriteAssetFilter : widgets::kTextureAssetFilter;
-        if (widgets::TextureSlotField(LABELS[slot], path, filter, projectRoot)) {
+        const char* label = slot == 5 && parallax ? "Height Map" : LABELS[slot];
+        const bool changed = widgets::TextureSlotField(label, path, filter, projectRoot);
+        if (slot == 5 && parallax) ImGui::SetItemTooltip("Linear red channel. White is the surface and black is the deepest recess.");
+        if (changed) {
             if (path.empty()) material.textures.erase(key);
             else material.textures[key] = std::move(path);
         }

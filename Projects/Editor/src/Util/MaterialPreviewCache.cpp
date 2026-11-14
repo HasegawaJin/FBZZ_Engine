@@ -100,6 +100,7 @@ PreviewFrameKey MakePreviewFrameKey(std::uint64_t sourceRevision, const RenderDe
     key.fiberMode = desc.fiberMode;
     key.fiberShellCount = desc.fiberShellCount;
     key.animate = animate;
+    key.showParallax = desc.showParallax;
     key.values = { FloatBits(desc.orbit.yaw), FloatBits(desc.orbit.pitch),
                    FloatBits(desc.orbit.distance), FloatBits(desc.rig.yaw),
                    FloatBits(desc.rig.pitch), FloatBits(desc.rig.exposure),
