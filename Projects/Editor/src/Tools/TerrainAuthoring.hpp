@@ -29,6 +29,10 @@ void ApplyTerrainAuthoringSnapshot(scene::TerrainComponent& terrain, const scene
 /// @note 保存時に割り当てる terrainAssetPath と描画・物理の実行時状態を除き、編集内容の競合を判定する。
 bool TerrainAuthoringValuesEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second);
 
+/// @note Grid arrays are validated separately by brush history, which shares their unchanged blocks.
+bool TerrainAuthoringMetadataEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second);
+bool TerrainAuthoringHeightsEqual(std::span<const float> first, std::span<const float> second);
+
 enum class TerrainHeightStampBlend { ADD, REPLACE, MAXIMUM, MINIMUM };
 
 struct TerrainHeightStampSettings {
@@ -43,8 +47,17 @@ struct TerrainHeightStampSettings {
     TerrainHeightStampBlend blend = TerrainHeightStampBlend::ADD;
 };
 
+struct TerrainHeightEdit {
+    scene::TerrainHeightRegion region;
+    std::vector<scene::TerrainHeightOverride> vertices;
+};
+
 /// @return 地形寸法・設定が不正なら false。画像の読み込み前と範囲プレビューでも共用する。
 bool IsValidTerrainHeightStamp(const scene::TerrainComponent& terrain, const TerrainHeightStampSettings& settings);
+
+/// @return 失敗時は out 未変更。頂点は行優先順の正規化高さ。
+bool PlanTerrainHeightStamp(const scene::TerrainComponent& terrain, const scene::TerrainComponent& image,
+    const TerrainHeightStampSettings& settings, TerrainHeightEdit& out);
 
 /// @return 不正な設定・配列・非有限値では false、地形と実行時世代は未変更。
 /// @note 寸法・高さは地形ローカルの m、回転は +Y 軸の度数。画像上端を -Z、右端を +X に写す。
@@ -85,6 +98,10 @@ struct TerrainRidgeSettings {
 /// @return False on invalid shape or budget overflow. The heightfield remains unchanged on failure.
 /// @note The ridge uses world XZ and signed world metres. Tile borders are preserved.
 bool SculptTerrainRidge(scene::TerrainComponent& terrain, const scene::Transform& pose, const TerrainRidgeSettings& settings);
+
+/// @return False leaves out unchanged. The plan uses normalized heights and preserves the tile border.
+bool PlanTerrainRidge(const scene::TerrainComponent& terrain, const scene::Transform& pose,
+    const TerrainRidgeSettings& settings, TerrainHeightEdit& out);
 
 struct TerrainMassifSettings {
     TerrainRidgeSettings spine;

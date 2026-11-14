@@ -379,6 +379,7 @@ TEST_F(TerrainAuthoringTest, SculptRidgeUsesDifferentFlanksAndPreservesTileEdges
     auto& terrain = *owner.GetComponent<scene::TerrainComponent>();
     terrain.Resize(9, 9);
     terrain.cellSize = 5.0f;
+    terrain.heightDirty = terrain.splatDirty = terrain.colliderDirty = false;
     const auto before = terrain.heightData;
     editor::OpArgs args;
     args.Set("start", math::Vector3{0,0,20});
@@ -389,14 +390,69 @@ TEST_F(TerrainAuthoringTest, SculptRidgeUsesDifferentFlanksAndPreservesTileEdges
     args.Set("peakAlong", 0.5f);
     const auto result = editor::InvokeOperator(Context(), "terrain.relief.sculpt", args);
     ASSERT_TRUE(result.ok) << result.message;
+    const auto preview = terrain.heightPreview.region;
+    EXPECT_TRUE(terrain.heightPreview.pending);
+    EXPECT_EQ(preview.minX, 1);
+    EXPECT_EQ(preview.maxX, 7);
+    EXPECT_EQ(preview.minZ, 4);
+    EXPECT_EQ(preview.maxZ, 6);
+    EXPECT_FALSE(terrain.heightDirty);
+    EXPECT_FALSE(terrain.splatDirty);
+    EXPECT_TRUE(terrain.colliderDirty);
     EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 20.0f), 20.0f);
     EXPECT_GT(terrain.GetHeightAt(20.0f, 25.0f), 0.0f);
     EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 15.0f), 0.0f);
     EXPECT_FLOAT_EQ(terrain.GetHeightAt(0.0f, 25.0f), 0.0f);
+    terrain.heightPreview.pending = false;
+    terrain.colliderDirty = false;
     ASSERT_TRUE(m_undo.Undo());
     EXPECT_EQ(terrain.heightData, before);
+    EXPECT_TRUE(terrain.heightPreview.pending);
+    EXPECT_EQ(terrain.heightPreview.region.minX, preview.minX);
+    EXPECT_EQ(terrain.heightPreview.region.maxZ, preview.maxZ);
+    EXPECT_FALSE(terrain.heightDirty);
+    EXPECT_FALSE(terrain.splatDirty);
+    EXPECT_TRUE(terrain.colliderDirty);
+    terrain.heightPreview.pending = false;
+    terrain.colliderDirty = false;
     ASSERT_TRUE(m_undo.Redo());
     EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 20.0f), 20.0f);
+    EXPECT_TRUE(terrain.heightPreview.pending);
+    EXPECT_FALSE(terrain.heightDirty);
+    EXPECT_FALSE(terrain.splatDirty);
+    EXPECT_TRUE(terrain.colliderDirty);
+}
+
+TEST_F(TerrainAuthoringTest, RepeatedRidgeEditsCheckRawTerrainChangesAcrossUndoBranches)
+{
+    auto& owner = MakeTerrain();
+    auto& terrain = *owner.GetComponent<scene::TerrainComponent>();
+    terrain.Resize(257, 257);
+    terrain.cellSize = 1.0f;
+    editor::OpArgs args;
+    args.Set("node", owner.instanceId);
+    args.Set("start", math::Vector3{10, 0, 15});
+    args.Set("end", math::Vector3{30, 0, 15});
+    args.Set("height", 3.0f);
+    args.Set("leftWidth", 4.0f);
+    args.Set("rightWidth", 4.0f);
+    args.Set("peakAlong", 0.5f);
+    ASSERT_TRUE(editor::InvokeOperator(Context(), "terrain.relief.sculpt", args).ok);
+    ASSERT_TRUE(m_undo.Undo());
+
+    terrain.heightData.back() = 0.125f;
+    ASSERT_TRUE(editor::InvokeOperator(Context(), "terrain.relief.sculpt", args).ok);
+    const auto weight = terrain.splatWeights.back();
+    terrain.splatWeights.back() ^= 1;
+    EXPECT_FALSE(m_undo.Undo());
+    EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 15.0f), 3.0f);
+    terrain.splatWeights.back() = weight;
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_FLOAT_EQ(terrain.GetHeightAt(20.0f, 15.0f), 0.0f);
+    EXPECT_FLOAT_EQ(terrain.heightData.back(), 0.125f);
+    ASSERT_TRUE(m_undo.Redo());
+    terrain.heightData.back() = 0.25f;
+    EXPECT_FALSE(m_undo.Undo());
 }
 
 TEST_F(TerrainAuthoringTest, FitLakeShoreFollowsConcavityAndRejectsAnOpenSearch)
@@ -1380,11 +1436,21 @@ TEST_F(TerrainAuthoringTest, FlowNetworkSharesBankHeightsAndUndoesRiverCreationW
     a.heightData[0] = old;
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
     const auto beforeA = a.heightData, beforeB = b.heightData;
+    a.heightDirty = b.heightDirty = false;
+    a.splatDirty = b.splatDirty = false;
+    a.colliderDirty = b.colliderDirty = false;
     const auto applied = editor::InvokeOperator(Context(), "terrain.flow.network.apply", args);
     ASSERT_TRUE(applied.ok) << applied.message;
     ASSERT_EQ(m_undo.GetHistorySize(), 1u);
     EXPECT_NE(a.heightData, beforeA);
     EXPECT_NE(b.heightData, beforeB);
+    for (const auto* tile : {&a, &b}) {
+        EXPECT_FALSE(tile->heightDirty);
+        EXPECT_TRUE(tile->colliderDirty);
+        EXPECT_TRUE(tile->heightPreview.pending);
+        EXPECT_FALSE(tile->heightPreview.region.Empty());
+        EXPECT_FALSE(tile->HasPendingSplatUpdate());
+    }
     EXPECT_LT(a.heightData[2 * 13 + 12], beforeA[2 * 13 + 12]);
     EXPECT_FLOAT_EQ(a.heightData[13 + 12], beforeA[13 + 12]);
     EXPECT_FLOAT_EQ(b.heightData[13], beforeB[13]);
@@ -1397,9 +1463,16 @@ TEST_F(TerrainAuthoringTest, FlowNetworkSharesBankHeightsAndUndoesRiverCreationW
         EXPECT_EQ(river->GetComponent<scene::WaterComponent>()->surfaceShape, scene::WaterSurfaceShape::SPLINE_RIVER);
     }
     EXPECT_EQ(editor::InvokeOperator(Context(), "terrain.flow.network.apply", args).errorCode, "STALE_PREVIEW");
+    a.heightPreview.pending = b.heightPreview.pending = false;
+    a.colliderDirty = b.colliderDirty = false;
     ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic();
     EXPECT_EQ(a.heightData, beforeA);
     EXPECT_EQ(b.heightData, beforeB);
+    for (const auto* tile : {&a, &b}) {
+        EXPECT_FALSE(tile->heightDirty);
+        EXPECT_TRUE(tile->colliderDirty);
+        EXPECT_TRUE(tile->heightPreview.pending);
+    }
     for (const auto& guid : rivers) EXPECT_EQ(AttachedScene()->FindByGuid(guid.AsString()), nullptr);
     ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic();
     for (const auto& guid : rivers) EXPECT_NE(AttachedScene()->FindByGuid(guid.AsString()), nullptr);

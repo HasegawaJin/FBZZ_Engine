@@ -4,7 +4,9 @@
 /// @date    2026-11-04
 #include "TerrainAuthoring.hpp"
 #include "TerrainBrush.hpp"
+#include "TerrainHistory.hpp"
 #include <Editor/Op/OpData.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/TerrainSplat.hpp>
 #include <Engine/Scene/TerrainSurfaceQuery.hpp>
@@ -23,6 +25,9 @@
 #include <set>
 #include <utility>
 #include <vector>
+#if (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 
 namespace fbzz::editor {
 namespace {
@@ -146,7 +151,8 @@ std::vector<math::Vector3> SimplifyShore(std::vector<math::Vector3>& ring, float
 
 } /// @note namespace
 
-bool SculptTerrainRidge(scene::TerrainComponent& terrain, const scene::Transform& pose, const TerrainRidgeSettings& settings)
+bool PlanTerrainRidge(const scene::TerrainComponent& terrain, const scene::Transform& pose,
+    const TerrainRidgeSettings& settings, TerrainHeightEdit& out)
 {
     const auto& [start, end, height, leftWidth, rightWidth, bend, peakAlong] = settings;
     math::Vector3 normal;
@@ -183,7 +189,7 @@ bool SculptTerrainRidge(scene::TerrainComponent& terrain, const scene::Transform
     if (static_cast<std::size_t>(x1 - x0 + 1) * (z1 - z0 + 1) > 1048576) return false;
     const double heightScale = static_cast<double>(terrain.maxHeight) * pose.worldScale.y * up.y;
     const auto matrix = pose.GetWorldMatrix();
-    std::vector<std::pair<std::size_t, float>> changes;
+    TerrainHeightEdit changes;
     for (int z = z0; z <= z1; ++z) {
         for (int x = x0; x <= x1; ++x) {
             const auto point = matrix * math::Vector4{x * terrain.cellSize, 0.0f, z * terrain.cellSize, 1.0f};
@@ -200,10 +206,21 @@ bool SculptTerrainRidge(scene::TerrainComponent& terrain, const scene::Transform
             const float before = terrain.heightData[index];
             if (!std::isfinite(before)) return false;
             const float after = static_cast<float>(std::clamp(before + height * along * across / heightScale, -1.0, 1.0));
-            if (after != before) changes.emplace_back(index, after);
+            if (after != before) {
+                changes.vertices.push_back({index, after});
+                changes.region.Include({x, z, x, z});
+            }
         }
     }
-    for (const auto& [index, heightValue] : changes) terrain.heightData[index] = heightValue;
+    out = std::move(changes);
+    return true;
+}
+
+bool SculptTerrainRidge(scene::TerrainComponent& terrain, const scene::Transform& pose, const TerrainRidgeSettings& settings)
+{
+    TerrainHeightEdit changes;
+    if (!PlanTerrainRidge(terrain, pose, settings, changes)) return false;
+    for (const auto& vertex : changes.vertices) terrain.heightData[vertex.index] = vertex.normalizedHeight;
     return true;
 }
 
@@ -1523,14 +1540,79 @@ math::Vector2 DrainageRiverSize(const TerrainDrainageNode& node, float step)
     return {width, depth};
 }
 
-bool TerrainAuthoringValuesEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second)
+/// @see https://www.intel.com/content/dam/develop/external/us/en/documents/18072-347603.pdf SSE packed floating-point comparison.
+bool TerrainAuthoringHeightsEqual(std::span<const float> first, std::span<const float> second)
+{
+    if (first.size() != second.size()) return false;
+    std::size_t index = 0;
+#if (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__SSE2__)
+    /// @note Ordered float equality treats signed zeroes as equal and rejects NaNs, as the scalar comparison does.
+    for (; index + 4 <= first.size(); index += 4) {
+        const auto a = _mm_loadu_ps(first.data() + index);
+        const auto b = _mm_loadu_ps(second.data() + index);
+        if (_mm_movemask_ps(_mm_cmpeq_ps(a, b)) != 0xF) return false;
+    }
+#endif
+    for (; index < first.size(); ++index)
+        if (first[index] != second[index]) return false;
+    return true;
+}
+
+TerrainHistorySnapshot::TerrainHistorySnapshot(const scene::TerrainComponent& source, std::uint64_t token,
+    const TerrainHistorySnapshot* baseline, const TerrainHistorySnapshot* other)
+    : lifetime(token)
+{
+    metadata.columns = source.columns;
+    metadata.rows = source.rows;
+    metadata.cellSize = source.cellSize;
+    metadata.maxHeight = source.maxHeight;
+    metadata.surfacePositions = source.surfacePositions;
+    metadata.surfaceIndices = source.surfaceIndices;
+    metadata.surfaceMaterial = source.surfaceMaterial;
+    metadata.terrainAssetPath = source.terrainAssetPath;
+    metadata.layerMaterials = source.layerMaterials;
+    metadata.heightBlendDepth = source.heightBlendDepth;
+    metadata.chunkSize = source.chunkSize;
+    metadata.farLodDistance = source.farLodDistance;
+    metadata.enabled = source.enabled;
+    metadata.heightDirty = source.heightDirty;
+    metadata.splatDirty = source.splatDirty;
+    metadata.materialParamDirty = source.materialParamDirty;
+    metadata.colliderDirty = source.colliderDirty;
+    metadata.surfaceRevision = source.surfaceRevision;
+    metadata.heightPreview = source.heightPreview;
+    metadata.vegetationRevision = source.vegetationRevision;
+    metadata.splatPreview = source.splatPreview;
+    heights.Capture(source.heightData, baseline ? &baseline->heights : nullptr, other ? &other->heights : nullptr);
+    indices.Capture(source.splatIndices, baseline ? &baseline->indices : nullptr, other ? &other->indices : nullptr);
+    weights.Capture(source.splatWeights, baseline ? &baseline->weights : nullptr, other ? &other->weights : nullptr);
+    holes.Capture(source.holeData, baseline ? &baseline->holes : nullptr, other ? &other->holes : nullptr);
+}
+
+bool TerrainHistorySnapshot::Matches(const scene::TerrainComponent& current) const
+{
+    FBZZ_PROFILE_SCOPE("TerrainAuthoring::ValidateUndoSnapshot");
+    return TerrainAuthoringMetadataEqual(metadata, current) && indices.Matches(current.splatIndices)
+        && weights.Matches(current.splatWeights) && holes.Matches(current.holeData)
+        && heights.Matches(current.heightData);
+}
+
+scene::TerrainComponent TerrainHistorySnapshot::Materialize() const
+{
+    auto terrain = metadata;
+    terrain.heightData = heights.Materialize();
+    terrain.splatIndices = indices.Materialize();
+    terrain.splatWeights = weights.Materialize();
+    terrain.holeData = holes.Materialize();
+    return terrain;
+}
+
+bool TerrainAuthoringMetadataEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second)
 {
     if (first.columns != second.columns || first.rows != second.rows || first.cellSize != second.cellSize
         || first.maxHeight != second.maxHeight || first.heightBlendDepth != second.heightBlendDepth
         || first.chunkSize != second.chunkSize || first.enabled != second.enabled
-        || first.heightData != second.heightData || first.layerMaterials != second.layerMaterials
-        || first.splatIndices != second.splatIndices || first.splatWeights != second.splatWeights
-        || first.holeData != second.holeData || first.surfaceMaterial != second.surfaceMaterial
+        || first.layerMaterials != second.layerMaterials || first.surfaceMaterial != second.surfaceMaterial
         || first.surfaceIndices != second.surfaceIndices || first.surfacePositions.size() != second.surfacePositions.size()) return false;
     for (size_t i = 0; i < first.surfacePositions.size(); ++i) {
         const auto& a = first.surfacePositions[i];
@@ -1538,6 +1620,14 @@ bool TerrainAuthoringValuesEqual(const scene::TerrainComponent& first, const sce
         if (a.x != b.x || a.y != b.y || a.z != b.z) return false;
     }
     return true;
+}
+
+bool TerrainAuthoringValuesEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second)
+{
+    FBZZ_PROFILE_SCOPE("TerrainAuthoring::ValidateUndoSnapshot");
+    return TerrainAuthoringMetadataEqual(first, second) && first.splatIndices == second.splatIndices
+        && first.splatWeights == second.splatWeights && first.holeData == second.holeData
+        && TerrainAuthoringHeightsEqual(first.heightData, second.heightData);
 }
 
 void ApplyTerrainAuthoringSnapshot(scene::TerrainComponent& terrain, const scene::TerrainComponent& snapshot, bool geometry)
@@ -1579,8 +1669,8 @@ bool IsValidTerrainHeightStamp(const scene::TerrainComponent& terrain, const Ter
         && settings.blend >= TerrainHeightStampBlend::ADD && settings.blend <= TerrainHeightStampBlend::MINIMUM;
 }
 
-bool ApplyTerrainHeightStamp(scene::TerrainComponent& terrain, const scene::TerrainComponent& image,
-    const TerrainHeightStampSettings& settings)
+bool PlanTerrainHeightStamp(const scene::TerrainComponent& terrain, const scene::TerrainComponent& image,
+    const TerrainHeightStampSettings& settings, TerrainHeightEdit& out)
 {
     if (!IsValidTerrainHeightStamp(terrain, settings) || image.columns < 2 || image.rows < 2
         || image.columns > 4097 || image.rows > 4097 || image.heightData.size() != image.VertexCount()) return false;
@@ -1599,7 +1689,7 @@ bool ApplyTerrainHeightStamp(scene::TerrainComponent& terrain, const scene::Terr
     const auto gridZ = [&](double value) { return static_cast<int>(std::clamp(value / terrain.cellSize, 0.0, static_cast<double>(terrain.rows - 1))); };
     const int minX = gridX(settings.centerLocal.x - extentX), maxX = std::min(gridX(settings.centerLocal.x + extentX) + 1, terrain.columns - 1);
     const int minZ = gridZ(settings.centerLocal.z - extentZ), maxZ = std::min(gridZ(settings.centerLocal.z + extentZ) + 1, terrain.rows - 1);
-    auto heights = terrain.heightData;
+    TerrainHeightEdit changes;
     for (int z = minZ; z <= maxZ; ++z) {
         for (int x = minX; x <= maxX; ++x) {
             const double dx = static_cast<double>(x) * terrain.cellSize - settings.centerLocal.x;
@@ -1618,7 +1708,8 @@ bool ApplyTerrainHeightStamp(scene::TerrainComponent& terrain, const scene::Terr
             const double bottom = std::lerp(sample(x0, z1), sample(x1, z1), imageX - x0);
             const double value = std::lerp(top, bottom, imageZ - z0) * settings.heightScale + settings.heightOffset;
             const size_t index = static_cast<size_t>(z) * terrain.columns + x;
-            const double current = static_cast<double>(heights[index]) * terrain.maxHeight;
+            const float before = terrain.heightData[index];
+            const double current = static_cast<double>(before) * terrain.maxHeight;
             double target = value;
             switch (settings.blend) {
                 case TerrainHeightStampBlend::ADD: target = current + value; break;
@@ -1630,13 +1721,24 @@ bool ApplyTerrainHeightStamp(scene::TerrainComponent& terrain, const scene::Terr
             const double fade = settings.edgeFade > 0.0f ? std::clamp(edge / settings.edgeFade, 0.0, 1.0) : 1.0;
             const double weight = settings.strength * fade * fade * (3.0 - 2.0 * fade);
             if (weight == 0.0) continue;
-            heights[index] = static_cast<float>(std::clamp(std::lerp(current, target, weight) / terrain.maxHeight, -1.0, 1.0));
+            const float after = static_cast<float>(std::clamp(std::lerp(current, target, weight) / terrain.maxHeight, -1.0, 1.0));
+            if (after != before) {
+                changes.vertices.push_back({index, after});
+                changes.region.Include({x, z, x, z});
+            }
         }
     }
-    if (heights != terrain.heightData) {
-        terrain.heightData.swap(heights);
-        terrain.RequestHeightRebuild();
-    }
+    out = std::move(changes);
+    return true;
+}
+
+bool ApplyTerrainHeightStamp(scene::TerrainComponent& terrain, const scene::TerrainComponent& image,
+    const TerrainHeightStampSettings& settings)
+{
+    TerrainHeightEdit changes;
+    if (!PlanTerrainHeightStamp(terrain, image, settings, changes)) return false;
+    for (const auto& vertex : changes.vertices) terrain.heightData[vertex.index] = vertex.normalizedHeight;
+    if (!changes.vertices.empty()) terrain.RequestHeightRebuild();
     return true;
 }
 

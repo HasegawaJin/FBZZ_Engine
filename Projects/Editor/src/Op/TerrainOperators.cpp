@@ -12,10 +12,13 @@
 #include <Editor/Util/TerrainWaterDefaults.hpp>
 #include <Tools/TerrainAuthoring.hpp>
 #include <Tools/TerrainBrush.hpp>
+#include <Tools/TerrainHistory.hpp>
 #include <Tools/TerrainPaintClearance.hpp>
+#include <Tools/WorldAuthoring.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/BakeFingerprint.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/ComponentReflectionCodec.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -47,6 +50,7 @@
 #include <sstream>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 
 namespace fbzz::editor {
@@ -67,13 +71,6 @@ bool IsValidTerrainDimension(int value)
 {
     /// @note Inspector と同じ上限に揃え、Undo と GPU 再構築の巨大な一時確保を防ぐ。
     return value >= 2 && value <= 4097;
-}
-
-void MarkTerrainDirty(scene::TerrainComponent& terrain)
-{
-    terrain.RequestHeightRebuild();
-    terrain.splatDirty = true;
-    terrain.colliderDirty = true;
 }
 
 std::unique_ptr<ICommand> MakeTerrainResizeCommand(
@@ -782,10 +779,92 @@ OpResult CommitTerrain(OpContext& context, scene::GameObject& go, scene::Terrain
 {
     auto& terrain = *go.GetComponent<scene::TerrainComponent>();
     OpResult result;
-    result.command = MakeTerrainResizeCommand(context.ctx, go.instanceId, terrain, after, label, geometry);
+    std::vector<scene::WorldCellBounds> pcgBounds;
+    CollectTerrainPcgBounds(go, terrain, after, pcgBounds);
+    auto command = MakeTerrainResizeCommand(context.ctx, go.instanceId, terrain, after, label, geometry);
     ApplyTerrainAuthoringSnapshot(terrain, after, geometry);
+    result.command = RefreshTerrainPcg(context, pcgBounds, std::move(command));
     if (context.ctx.markSceneDirty) context.ctx.markSceneDirty();
     result.message = label;
+    return result;
+}
+
+struct TerrainHeightHistoryCache {
+    struct Snapshots {
+        std::weak_ptr<const TerrainHistorySnapshot> before, after;
+    };
+    std::uint64_t generation = 0;
+    std::unordered_map<std::uint64_t, Snapshots> byLifetime;
+};
+
+OpResult CommitTerrainHeightEdit(OpContext& context, scene::GameObject& owner, TerrainHeightEdit edit,
+    const char* label, TerrainHeightHistoryCache& cache)
+{
+    OpResult result;
+    result.message = label;
+    if (edit.vertices.empty()) {
+        result.noChange = true;
+        return result;
+    }
+
+    struct History {
+        std::shared_ptr<const TerrainHistorySnapshot> expected, alternate;
+        TerrainHeightEdit edit;
+    };
+    auto& terrain = *owner.GetComponent<scene::TerrainComponent>();
+    auto* world = owner.GetScene();
+    const auto generation = world->GetRenderSceneGeneration();
+    const auto lifetime = world->GetComponentLifetime<scene::TerrainComponent>(owner.GetID());
+    std::shared_ptr<History> history;
+    {
+        FBZZ_PROFILE_SCOPE("TerrainAuthoring::CaptureHeightEdit");
+        if (cache.generation != generation) {
+            cache.byLifetime.clear();
+            cache.generation = generation;
+        }
+        std::erase_if(cache.byLifetime, [](const auto& entry) {
+            return entry.second.before.expired() && entry.second.after.expired();
+        });
+        auto& saved = cache.byLifetime[lifetime];
+        const auto previous = saved.after.lock();
+        const auto other = saved.before.lock();
+        auto before = std::make_shared<TerrainHistorySnapshot>(terrain, lifetime, previous.get(), other.get());
+        auto after = std::make_shared<TerrainHistorySnapshot>(*before);
+        after->heights.Apply(edit.vertices, [](const auto& vertex) { return vertex.normalizedHeight; });
+        saved = {before, after};
+        history = std::make_shared<History>(std::move(before), std::move(after), std::move(edit));
+    }
+    const auto swapHeights = [history](scene::TerrainComponent& target) {
+        for (auto& vertex : history->edit.vertices)
+            std::swap(target.heightData[vertex.index], vertex.normalizedHeight);
+        std::swap(history->expected, history->alternate);
+        target.RequestHeightPreview(history->edit.region);
+        target.colliderDirty = true;
+    };
+    auto* editor = &context.ctx;
+    auto transition = [editor, world, generation, lifetime, id = owner.instanceId, history, swapHeights](std::string& reason) {
+        if (editor->activeScene != world || world->GetRenderSceneGeneration() != generation) {
+            reason = "The terrain edit scene changed.";
+            return false;
+        }
+        auto* object = world->FindByGuid(id);
+        auto* target = object ? object->GetComponent<scene::TerrainComponent>() : nullptr;
+        if (!target || world->GetComponentLifetime<scene::TerrainComponent>(object->GetID()) != lifetime
+            || !history->expected->Matches(*target)) {
+            reason = "The terrain edit target changed.";
+            return false;
+        }
+        swapHeights(*target);
+        if (editor->markSceneDirty) editor->markSceneDirty();
+        reason.clear();
+        return true;
+    };
+    auto command = std::make_unique<CheckedLambdaCommand>(label, transition, transition);
+    swapHeights(terrain);
+    std::vector<scene::WorldCellBounds> pcgBounds;
+    CollectTerrainPcgBounds(owner, terrain, history->edit.region, pcgBounds);
+    result.command = RefreshTerrainPcg(context, pcgBounds, std::move(command));
+    if (editor->markSceneDirty) editor->markSceneDirty();
     return result;
 }
 
@@ -1290,6 +1369,7 @@ struct TerrainNetworkEdit {
     std::uint64_t lifetime = 0;
     std::string beforeFingerprint, afterFingerprint;
     TerrainRiverCarvePlan before, after;
+    scene::TerrainHeightRegion heightRegion, splatRegion;
 };
 
 struct TerrainNetworkRiver {
@@ -1546,14 +1626,17 @@ bool ApplyTerrainNetworkBatch(TerrainNetworkEditBatch& batch, bool apply, std::s
         world->DestroyGameObjects(waterNodes);
     }
     for (std::size_t i = 0; i < terrains.size(); ++i) {
-        const auto& plan = apply ? batch.terrain[i].after : batch.terrain[i].before;
+        auto& edit = batch.terrain[i];
         auto& terrain = *terrains[i];
-        ApplyRiverCarvePlan(terrain, plan);
-        if (!plan.vertices.empty()) { terrain.RequestHeightRebuild(); terrain.colliderDirty = true; }
-        if (!plan.materials.empty()) terrain.splatDirty = true;
-        if (apply && batch.terrain[i].afterFingerprint.empty()) {
-            const auto* owner = world->FindByGuid(batch.terrain[i].guid);
-            batch.terrain[i].afterFingerprint = TerrainNetworkFingerprint(terrain, owner->transform);
+        ApplyRiverCarvePlan(terrain, apply ? edit.after : edit.before);
+        if (!edit.heightRegion.Empty()) {
+            terrain.RequestHeightPreview(edit.heightRegion);
+            terrain.colliderDirty = true;
+        }
+        terrain.RequestSplatPreview(edit.splatRegion);
+        if (apply && edit.afterFingerprint.empty()) {
+            const auto* owner = world->FindByGuid(edit.guid);
+            edit.afterFingerprint = TerrainNetworkFingerprint(terrain, owner->transform);
         }
     }
     scene::FlushWorldTransforms(*world);
@@ -1769,12 +1852,20 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
         auto& edit = batch->terrain[i];
         edit.after = std::move(plan.tiles[i]);
         edit.after.protectedIndices.clear();
-        for (const auto& vertex : edit.after.vertices) edit.before.vertices.push_back({vertex.index, terrain.heightData[vertex.index]});
+        const auto include = [&](scene::TerrainHeightRegion& region, std::size_t index) {
+            const int x = static_cast<int>(index % terrain.columns), z = static_cast<int>(index / terrain.columns);
+            region.Include({x, z, x, z});
+        };
+        for (const auto& vertex : edit.after.vertices) {
+            edit.before.vertices.push_back({vertex.index, terrain.heightData[vertex.index]});
+            include(edit.heightRegion, vertex.index);
+        }
         for (const auto& materialEdit : edit.after.materials) {
             auto old = materialEdit;
             std::copy_n(terrain.splatIndices.data() + old.offset, scene::TERRAIN_SPLAT_SLOTS, old.indices.begin());
             std::copy_n(terrain.splatWeights.data() + old.offset, scene::TERRAIN_SPLAT_SLOTS, old.weights.begin());
             edit.before.materials.push_back(old);
+            include(edit.splatRegion, old.offset / scene::TERRAIN_SPLAT_SLOTS);
         }
     }
     auto riverIds = OpData::MakeArray();
@@ -1792,8 +1883,25 @@ OpResult RunTerrainFlowNetwork(OpContext& context, const OpArgs& args, bool prev
         [batch](std::string& reason) { return ApplyTerrainNetworkBatch(*batch, true, reason); },
         [batch](std::string& reason) { return ApplyTerrainNetworkBatch(*batch, false, reason); });
     if (!command->TryExecute(diagnostic)) return OpResult::Err("FLOW_NETWORK_CONFLICT", diagnostic);
+    std::vector<scene::WorldCellBounds> pcgBounds;
+    for (const auto& edit : batch->terrain) {
+        auto* tile = world.FindByGuid(edit.guid);
+        const auto* terrain = tile->GetComponent<scene::TerrainComponent>();
+        auto region = edit.heightRegion;
+        region.Include(edit.splatRegion);
+        CollectTerrainPcgBounds(*tile, *terrain, region, pcgBounds);
+    }
+    /// @note A river can change wetness even where the carve leaves the bed at its original height.
+    for (const auto& river : batch->rivers) {
+        scene::Transform pose;
+        pose.worldPosition = river.origin;
+        scene::WaterSplineSnapshot snapshot;
+        if (scene::BuildWaterSplineSnapshot(river.water.surfaceShape, river.water.splinePoints,
+                river.water.splineSamplesPerSegment, pose, snapshot, river.water.buoyancyDepth, 100.0f))
+            pcgBounds.push_back({snapshot.worldBoundsMin, snapshot.worldBoundsMax});
+    }
     auto result = OpResult::Data(std::move(data));
-    result.command = std::move(command);
+    result.command = RefreshTerrainPcg(context, pcgBounds, std::move(command));
     result.message = "Built the river network and channel beds";
     return result;
 }
@@ -2231,6 +2339,7 @@ OpResult CarveTerrainRiver(OpContext& context, const OpArgs& args, bool preview)
 
 void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
 {
+    const auto heightHistory = std::make_shared<TerrainHeightHistoryCache>();
     auto carve = TerrainMutation("terrain.river.carve", "Carve Terrain River Bed");
     carve.desc = "既存 Spline River に沿って川床と川岸を成形します。";
     carve.params[0] = TerrainParameter("node", OpParamType::NodeId, "対象の川。省略時は選択中", std::string{});
@@ -2283,7 +2392,7 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     AddRuleRange(ridge, "rightWidth", "右側の裾幅[m]", defaults.rightWidth, 0.25f, 10000.0f);
     AddRuleRange(ridge, "bend", "中央の左向きの曲がり[m]", defaults.bend, -10000.0f, 10000.0f);
     AddRuleRange(ridge, "peakAlong", "軸に沿ったピーク位置[0.1,0.9]", defaults.peakAlong, 0.1f, 0.9f);
-    ridge.exec = [defaults](OpContext& context, const OpArgs& args) {
+    ridge.exec = [defaults, heightHistory](OpContext& context, const OpArgs& args) {
         auto* owner = ResolveTerrainNode(context, args.GetString("node"));
         auto* terrain = owner ? owner->GetComponent<scene::TerrainComponent>() : nullptr;
         if (!terrain || !terrain->enabled || !owner->activeInHierarchy() || context.ctx.IsLocked(owner->GetID()))
@@ -2293,16 +2402,10 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
             args.GetFloat("height", defaults.height), args.GetFloat("leftWidth", defaults.leftWidth),
             args.GetFloat("rightWidth", defaults.rightWidth), args.GetFloat("bend", defaults.bend),
             args.GetFloat("peakAlong", defaults.peakAlong)};
-        auto after = *terrain;
-        if (!SculptTerrainRidge(after, owner->transform, settings))
+        TerrainHeightEdit edit;
+        if (!PlanTerrainRidge(*terrain, owner->transform, settings, edit))
             return OpResult::Err("BAD_RELIEF", "尾根の寸法・地形の変換・編集予算を確認してください。");
-        if (after.heightData == terrain->heightData) {
-            OpResult result;
-            result.noChange = true;
-            result.message = "起伏の変更がありません。";
-            return result;
-        }
-        return CommitTerrain(context, *owner, std::move(after), "Sculpt Terrain Ridge or Valley");
+        return CommitTerrainHeightEdit(context, *owner, std::move(edit), "Sculpt Terrain Ridge or Valley", *heightHistory);
     };
     registry.Register(std::move(ridge));
 
@@ -2428,7 +2531,7 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
     auto blend = TerrainParameter("blend", OpParamType::String, "高さの合成方式", std::string{"add"});
     blend.enumValues = {"add", "replace", "max", "min"};
     stamp.params.push_back(std::move(blend));
-    stamp.exec = [](OpContext& context, const OpArgs& args) {
+    stamp.exec = [heightHistory](OpContext& context, const OpArgs& args) {
         auto* go = ResolveTerrainNode(context, args.GetString("node"));
         if (!go || !go->GetComponent<scene::TerrainComponent>()) return OpResult::Err("NO_TERRAIN", "対象地形がありません");
         math::Vector3 normal;
@@ -2457,16 +2560,10 @@ void RegisterTerrainAuthoringOperators(OperatorRegistry& registry)
         const auto path = ResolveTerrainInput(context.ctx, args.GetString("path"));
         if (path.empty() || !scene::LoadHeightMapFromFile(path, image, args.GetBool("unipolar", true)))
             return OpResult::Err("IMPORT_FAILED", "高さ画像を読み込めません。地形は未変更です");
-        auto after = terrain;
-        if (!ApplyTerrainHeightStamp(after, image, settings))
+        TerrainHeightEdit edit;
+        if (!PlanTerrainHeightStamp(terrain, image, settings, edit))
             return OpResult::Err("BAD_TERRAIN", "高さデータが不正です。地形は未変更です");
-        if (after.heightData == terrain.heightData) {
-            OpResult result;
-            result.noChange = true;
-            result.message = "貼り付けによる高さの変化はありません";
-            return result;
-        }
-        return CommitTerrain(context, *go, std::move(after), "Stamp Terrain Heightmap");
+        return CommitTerrainHeightEdit(context, *go, std::move(edit), "Stamp Terrain Heightmap", *heightHistory);
     };
     registry.Register(std::move(stamp));
 
@@ -2660,19 +2757,9 @@ void RegisterTerrainOperators(OperatorRegistry& registry)
             return result;
         }
 
-        const scene::TerrainComponent before = *terrain;
-        scene::TerrainComponent after = before;
+        scene::TerrainComponent after = *terrain;
         after.Resize(columns, rows);
-        MarkTerrainDirty(after);
-
-        /// @note OperatorRegistry::Invoke は返却コマンドを再実行しないため、画面へ反映してから同じ状態を履歴へ渡す。
-        *terrain = after;
-        if (context.ctx.markSceneDirty) context.ctx.markSceneDirty();
-
-        OpResult result;
-        result.command = MakeTerrainResizeCommand(
-            context.ctx, go->instanceId, before, std::move(after));
-        return result;
+        return CommitTerrain(context, *go, std::move(after), "Resize Terrain");
     };
 
     registry.Register(std::move(op));

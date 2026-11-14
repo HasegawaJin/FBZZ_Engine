@@ -25,6 +25,28 @@ Open an authored Scene and choose **View → Editors → World / PCG**. The pane
 
 After saving changed generation, bake again to publish a new near snapshot. **Build HLOD** alone rebuilds from the existing persisted near cells, so unsaved live changes do not silently change the distant representation.
 
+### Terrain edit refresh
+
+After the first **Generate**, committing a Terrain edit updates the affected placements of enabled PCG volumes using their saved profiles. Brush strokes refresh on release. The edit and its placement changes share one Undo/Redo entry. Sites that still qualify keep their candidate IDs and follow the current surface. Sites can appear or disappear as the height, slope, holes, painted layers or shoreline change.
+
+Local rules refresh the changed area and the surrounding samples they depend on. A 128 m placement quota refreshes complete quota cells. Rules with minimum spacing, competition, canopy or neighbor dependencies re-evaluate the affected volume because a placement change can affect other candidates. Hand-placed and detached content stays under its original owner. An output edited by hand is skipped until it is detached or restored.
+
+Candidate sampling uses conservative terrain, water and biome bounds to avoid querying unrelated sources. When bounds overlap, samples retain the original evaluation order and tie handling. Profiles with many exclusion boxes use a bounding volume hierarchy and still include points on box boundaries.
+
+The Terrain brush reports the grid region it changed. Local refresh reuses cached XZ bounds from the current placement snapshots to skip row checks in distant batches and reuses indexed asset references across strokes. Brush, ridge and height stamp Undo keep exact expected Terrain states in shared immutable blocks. Consecutive edits reuse byte-identical blocks and record alternate values for edited samples. Resizing or initializing arrays still captures every sample. The CPU Profiler exposes `WorldPcg::RefreshTerrain`, `WorldPcg::Prepare`, `WorldPcg::EvaluateRules`, and `WorldPcg::ValidateOutputHistory` for measuring commit latency.
+
+Undo and Redo of a terrain edit with one generated placement command validate the owner and exact saved file bytes before applying the combined edit. The editor marks the scene dirty after both changes. The file validation parses the same bytes it inspected when the saved file has changed.
+
+The first layer-paint stroke on a tile prepares the texture pair for rectangular updates on supported renderers. Subsequent dabs and sparse Undo/Redo upload the affected vertex rectangle. A full layer edit, a missed preview revision, or an unsupported renderer uses a complete upload. `Terrain::SplatUpload` measures that transfer, while `TerrainTool::CaptureStroke` and `TerrainTool::CommitStroke` measure editor work.
+
+Sculpt previews on GPU terrain update the affected height-buffer rows, including samples shared by adjoining tiles. The affected patches retain their existing index buffers during height-only edits. The ridge, height stamp and river network tools request the same local updates on apply and Undo/Redo. The first local edit prepares the tile buffer for ordered copies. A hole stroke rebuilds the touched patches' topology and leaves the height buffer available. Patch buffer publication batches the renderer operations with bounded staging space. Grid resizing, a missed preview revision, and renderers without ordered copies use a full height upload. `Terrain::HeightUpload` measures the transfer path.
+
+Terrain Fiber skips signature checks for patches outside a contiguous brush revision. Height checks include the normal sampling halo, and paint checks include vertices shared with adjoining patches. Full edits and patches that missed a revision still verify their signatures.
+
+For local height and hole edits, compatible water depth and shoreline atlases resample the affected texels, using all overlapping terrains to choose the bottom. Once the GPU depth texture supports rectangular updates, the extractor uploads only the rectangle whose texels changed. Changes to the atlas domain or terrain layout, full edits, and missed revisions trigger a full bake.
+
+Placement changes use the usual asset save workflow. A volume that cannot refresh keeps its previous output and reports the reason in the Editor Console. **Bake cells** publishes refreshed output to World Partition.
+
 Custom rules live in the project's `.pcg` files. Multiple volumes can reference the same file and set their own bounds and seed. A rule's key identifies its generated outputs and neighbor references. The form assigns a fresh key on Add and Duplicate, and the rule name is editable. Removing a rule with dependents requires updating their neighbor or canopy settings before saving. The form covers common placement, water, terrain material, clustering, and mesh settings. **Edit TOML** exposes the full native schema and **Edit rules** validates the text before opening the form again.
 
 The profile form keeps a draft until **Save profile** validates and writes it through `pcg.profile.save`. Overwriting the loaded file requires its inspected fingerprint. Changing **Profile file** to a new path saves a separate project definition. **Discard draft** releases unsaved edits so another profile can be loaded.

@@ -19,9 +19,13 @@
 #include <Engine/Renderer/Camera.hpp>
 #include <Math/Vector3.hpp>
 #include <Math/Ray.hpp>
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <imgui.h>
 
@@ -33,6 +37,7 @@ class UndoStack;
 struct EditorContext;
 class OpArgs;
 class OpData;
+struct TerrainHistorySnapshot;
 
 /// @brief Scene View 上の地形編集ツール。
 class TerrainTool {
@@ -191,12 +196,27 @@ private:
     float    m_flattenTarget = 0.0f;   ///< @note 基準高さ (ローカル Y [m])。
     bool     m_flattenLocked = false;
 
+    enum class TerrainStrokeChannel { HEIGHT, SPLAT, HOLES, COUNT };
+    struct TerrainStrokeRow {
+        int minX = 0, maxX = -1;
+    };
     struct TerrainStrokeSnapshot {
         std::string instanceId;
-        scene::TerrainComponent before;
+        std::shared_ptr<const TerrainHistorySnapshot> before;
         uint64_t lifetime = 0;
+        scene::EntityID entity;
+        scene::TerrainHeightRegion edited;
+        scene::TerrainHeightRegion heightRegion, splatRegion, holeRegion;
+        bool fullPcgBounds = false;
+        /// @note Per-channel row bounds keep diagonal dabs from scanning the entire stroke rectangle at commit.
+        std::array<std::vector<TerrainStrokeRow>, static_cast<std::size_t>(TerrainStrokeChannel::COUNT)> rows;
+
+        void Include(const scene::TerrainHeightRegion& region, TerrainStrokeChannel channel);
     };
+    struct TerrainStrokeEdit;
     std::vector<TerrainStrokeSnapshot> m_strokeBeforeTerrains;
+    std::unordered_map<std::string, std::size_t> m_strokeTerrainIndices;
+    std::unordered_map<std::string, std::weak_ptr<const TerrainHistorySnapshot>> m_strokeBaselines;
     uint64_t m_strokeSceneGeneration = 0;
     bool          m_strokeActive = false;
     std::uint32_t m_strokeStep   = 0;   ///< @note 侵食の乱数をストローク内の適用回ごとに変える。
@@ -361,7 +381,8 @@ private:
                                math::Vector3&                   outLocalHit) const;
 
     /// @brief ストロークで初めて触れる地形の変更前を取っておく。
-    void CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain);
+    TerrainStrokeSnapshot& CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain);
+    void ClearStrokeSnapshots();
     /// @brief ストロークを確定し、触れた地形を 1 つの Undo にまとめる。
     /// @param rebuildCollider 形が変わる操作 (Sculpt / Ramp / Hole) なら true。
     void CommitStroke(EditorContext& context, const char* undoLabel, bool rebuildCollider);

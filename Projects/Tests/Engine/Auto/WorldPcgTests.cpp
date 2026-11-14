@@ -284,6 +284,70 @@ TEST_F(WorldPcgTest, HolesWaterHeightSlopeAndExclusionsAccountForRejectedCandida
     EXPECT_EQ(manual,before);
 }
 
+TEST_F(WorldPcgTest, ManyExclusionsMatchDirectClosedBoundsChecks)
+{
+    m_profile.maxPlacementsPerCell = 32;
+    const auto sample = [](float x, float z, scene::WorldPcgSurfaceSample& out) {
+        out.position = {x, x < 0.0f ? 10.0f : 20.0f, z};
+        out.excluded = z > 28.0f;
+        return true;
+    };
+    scene::WorldPcgResult uncapped;
+    const auto cap = m_profile.maxPlacementsPerCell;
+    m_profile.maxPlacementsPerCell = 0;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sample, {}, uncapped, m_diagnostic)) << m_diagnostic;
+    const auto candidates = LocatedResults(uncapped);
+    ASSERT_GT(candidates.size(), 128u);
+    const auto& exact = candidates.begin()->second.position;
+    m_profile.exclusions = {
+        {exact, exact},
+        {{-30.0f, 10.0f, -30.0f}, {-20.0f, 10.0f, 10.0f}},
+        {{-25.0f, 0.0f, -5.0f}, {-10.0f, 10.0f, 30.0f}},
+        {{10.0f, 10.0f, -30.0f}, {30.0f, 10.0f, 30.0f}},
+        {{12.0f, 20.0f, -10.0f}, {24.0f, 20.0f, 20.0f}},
+    };
+    for (int index = 0; index < 2048; ++index) {
+        const float x = 100.0f + static_cast<float>(index % 64) * 4.0f;
+        const float z = 100.0f + static_cast<float>(index / 64) * 4.0f;
+        m_profile.exclusions.push_back({{x, -10.0f, z}, {x + 2.0f, 50.0f, z + 2.0f}});
+    }
+    m_profile.maxPlacementsPerCell = cap;
+    scene::WorldPcgDiagnostics indexedDiagnostics, directDiagnostics;
+    indexedDiagnostics.maxSamples = directDiagnostics.maxSamples = 64;
+    scene::WorldPcgResult indexed, direct;
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, sample, {}, indexed, m_diagnostic, {}, &indexedDiagnostics))
+        << m_diagnostic;
+    const auto boxes = m_profile.exclusions;
+    m_profile.exclusions.clear();
+    const auto directSample = [&](float x, float z, scene::WorldPcgSurfaceSample& out) {
+        sample(x, z, out);
+        const auto& p = out.position;
+        out.excluded |= std::any_of(boxes.begin(), boxes.end(), [&](const auto& box) {
+            return p.x >= box.min.x && p.x <= box.max.x && p.y >= box.min.y
+                && p.y <= box.max.y && p.z >= box.min.z && p.z <= box.max.z;
+        });
+        return true;
+    };
+    ASSERT_TRUE(scene::GenerateWorldPcg(m_profile, directSample, {}, direct, m_diagnostic, {}, &directDiagnostics))
+        << m_diagnostic;
+    EXPECT_GT(indexed.stats.exclusionRejected, uncapped.stats.exclusionRejected);
+    EXPECT_EQ(indexed.stats.exclusionRejected, direct.stats.exclusionRejected);
+    EXPECT_EQ(indexed.stats.cellBudgetRejected, direct.stats.cellBudgetRejected);
+    ASSERT_EQ(indexed.groups.size(), direct.groups.size());
+    for (size_t group = 0; group < indexed.groups.size(); ++group) {
+        EXPECT_EQ(indexed.groups[group].cell, direct.groups[group].cell);
+        EXPECT_EQ(indexed.groups[group].candidateKeys, direct.groups[group].candidateKeys);
+    }
+    ASSERT_EQ(indexedDiagnostics.rejected.size(), directDiagnostics.rejected.size());
+    for (size_t i = 0; i < indexedDiagnostics.rejected.size(); ++i) {
+        const auto& left = indexedDiagnostics.rejected[i];
+        const auto& right = directDiagnostics.rejected[i];
+        EXPECT_VEC3_NEAR(left.position, right.position, 0.0f);
+        EXPECT_EQ(left.ruleKey, right.ruleKey);
+        EXPECT_EQ(left.reason, right.reason);
+    }
+}
+
 TEST_F(WorldPcgTest, BiomeDensityWaterClearanceAndInvalidSamplesRemainSeparateFilters)
 {
     auto& rule=m_profile.rules[0];rule.biome="Forest";rule.minWaterDistance=4;

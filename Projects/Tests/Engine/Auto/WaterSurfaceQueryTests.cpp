@@ -5,12 +5,15 @@
 #include <TestKit/TestKit.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Scene/Fields/FlowFieldEval.hpp>
+#include <Engine/Scene/Systems/WaterSystem.hpp>
 #include <Engine/Scene/Transform.hpp>
+#include <Engine/Scene/WaterExclusion.hpp>
 #include <Engine/Scene/WaterSurfaceQuery.hpp>
 #include <Math/MathUtils.hpp>
 #include <array>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 namespace fbzz::tests {
 namespace {
@@ -160,6 +163,68 @@ TEST_F(WaterSurfaceQueryTest, LimitsUnderwaterToTheAuthoredDepthAndExcludesTheWa
     ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {0.0f, 13.0f, 0.0f}, 0.0f, sample));
     EXPECT_FALSE(sample.underwater);
     EXPECT_FLOAT_EQ(sample.depth, -1.0f);
+}
+
+TEST_F(WaterSurfaceQueryTest, InsideOnlyHeightMatchesTheSplineQueryAndPreservesOutputOnMiss)
+{
+    auto water = FlatWater();
+    water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    water.splineSamplesPerSegment = 4;
+    water.splineMeshCellSize = 100.0f;
+    water.waveCount = 1;
+    water.waves[0] = {{1.0f, 0.0f}, 0.25f, 20.0f, 0.5f};
+    water.splinePoints.resize(2);
+    water.splinePoints[0].id = 1;
+    water.splinePoints[0].width = 4.0f;
+    water.splinePoints[0].depth = 2.0f;
+    water.splinePoints[1].id = 2;
+    water.splinePoints[1].localPosition = {10.0f, 2.0f, 0.0f};
+    water.splinePoints[1].width = 4.0f;
+    water.splinePoints[1].depth = 5.0f;
+
+    scene::Transform pose;
+    pose.worldPosition = {100.0f, 50.0f, -20.0f};
+    pose.worldScale = {-2.0f, 3.0f, 0.5f};
+    ASSERT_TRUE(scene::PrepareWaterSplineSnapshot(water, pose));
+    const math::Vector3 inside{90.0f, 54.0f, -20.0f};
+    constexpr float TIME = 0.25f;
+
+    scene::WaterSurfaceHeightSample full, filtered;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, inside, TIME, full));
+    ASSERT_TRUE(full.insideSurface);
+    ASSERT_FALSE(full.underwater);
+    ASSERT_TRUE(scene::TrySampleInsideWaterSurfaceHeightWorld(water, pose, inside, TIME, filtered));
+    EXPECT_EQ(filtered.position.x, full.position.x);
+    EXPECT_EQ(filtered.position.y, full.position.y);
+    EXPECT_EQ(filtered.position.z, full.position.z);
+    EXPECT_EQ(filtered.depth, full.depth);
+    EXPECT_EQ(filtered.displacement, full.displacement);
+    EXPECT_EQ(filtered.waterDepthLimit, full.waterDepthLimit);
+    EXPECT_EQ(filtered.baseHeightOffset, full.baseHeightOffset);
+    EXPECT_EQ(filtered.baseHeightGradient.x, full.baseHeightGradient.x);
+    EXPECT_EQ(filtered.baseHeightGradient.y, full.baseHeightGradient.y);
+    EXPECT_TRUE(filtered.insideSurface);
+    EXPECT_FALSE(filtered.excluded);
+    EXPECT_FALSE(filtered.underwater);
+
+    filtered = {{1.0f, 2.0f, 3.0f}, 7.0f, true, true, 11.0f};
+    const math::Vector3 outside{90.0f, 54.0f, -24.0f};
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, outside, TIME, full));
+    ASSERT_FALSE(full.insideSurface);
+    EXPECT_FALSE(scene::TrySampleInsideWaterSurfaceHeightWorld(water, pose, outside, TIME, filtered));
+    ExpectUnchanged(filtered);
+
+    auto exclusions = std::make_shared<scene::WaterExclusionSnapshot>();
+    scene::WaterExclusionBox box;
+    box.worldPosition = inside;
+    box.halfExtent = math::Vector3::ONE;
+    exclusions->boxes.push_back(box);
+    water.exclusionSnapshot = exclusions;
+    ASSERT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, inside, TIME, full));
+    ASSERT_TRUE(full.insideSurface);
+    ASSERT_TRUE(full.excluded);
+    EXPECT_FALSE(scene::TrySampleInsideWaterSurfaceHeightWorld(water, pose, inside, TIME, filtered));
+    ExpectUnchanged(filtered);
 }
 
 TEST_F(WaterSurfaceQueryTest, AcceptsTheHorizontalUpsideDownPlane)

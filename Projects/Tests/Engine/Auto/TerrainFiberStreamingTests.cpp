@@ -1055,7 +1055,11 @@ TEST_F(TerrainFiberStreamingTest, IndexedRuntimePlacementsObserveEditsReloadUnlo
     const auto* first = asset::ResolveMeshInstanceDefinition(reference); ASSERT_NE(first, nullptr);
     const auto retained = first->Snapshot(); ASSERT_NE(retained, nullptr);
     EXPECT_EQ(asset::ResolveMeshInstanceDefinition(reference)->Snapshot(), retained);
-    auto* loaded = asset::AssetManager::LoadAndGet<asset::MeshInstancesAsset>(reference); ASSERT_NE(loaded, nullptr);
+    std::string resolved;
+    auto* loaded = asset::LoadMeshInstancesReference(reference, &resolved);
+    ASSERT_NE(loaded, nullptr);
+    EXPECT_EQ(resolved, asset::AssetManager::ResolveAssetPath(reference));
+    EXPECT_EQ(&loaded->instances, first);
     placements[0].position.x = 5;
     ASSERT_TRUE(loaded->instances.Replace(parts, heights, placements));
     EXPECT_FLOAT_EQ(asset::ResolveMeshInstanceDefinition(reference)->Snapshot()->placements[0].position.x, 5);
@@ -1075,6 +1079,11 @@ TEST_F(TerrainFiberStreamingTest, IndexedRuntimePlacementsObserveEditsReloadUnlo
     asset::AssetDatabase::OnAssetMoved(disk, moved);
     ASSERT_NE(asset::ResolveMeshInstanceDefinition(reference), nullptr);
     EXPECT_FLOAT_EQ(asset::ResolveMeshInstanceDefinition("guid:" + guid)->Snapshot()->placements[0].position.x, 9);
+    const auto* movedAsset = asset::LoadMeshInstancesReference(reference, &resolved);
+    ASSERT_NE(movedAsset, nullptr);
+    EXPECT_EQ(resolved, asset::AssetManager::ResolveAssetPath(reference));
+    EXPECT_NE(resolved, disk);
+    EXPECT_FLOAT_EQ(movedAsset->instances.Snapshot()->placements[0].position.x, 9);
     EXPECT_FLOAT_EQ(retained->placements[0].position.x, 1);
 }
 

@@ -68,7 +68,8 @@ bool ValidFlowField(const ActiveFlowField& field)
 }
 
 bool TryFootprint(const WaterComponent& water, const Transform& transform,
-    float worldX, float worldZ, float time, bool& inside, WaterSurfaceReadView view)
+    float worldX, float worldZ, float time, bool& inside, WaterSurfaceReadView view,
+    WaterSplineSample* footprintSample = nullptr)
 {
     const Transform& pose = WaterSurfaceTransform(water, transform, view);
     if (!std::isfinite(worldX) || !std::isfinite(worldZ) || !std::isfinite(time)
@@ -104,7 +105,7 @@ bool TryFootprint(const WaterComponent& water, const Transform& transform,
         const math::Vector2 origin = water.SolveUndisplacedXZ(worldX, worldZ, time, view);
         if (!std::isfinite(origin.x) || !std::isfinite(origin.y)) return false;
         WaterSplineSample splineSample;
-        inside = TrySampleWaterSpline(snapshot, origin.x, origin.y, splineSample);
+        inside = TrySampleWaterSpline(snapshot, origin.x, origin.y, footprintSample ? *footprintSample : splineSample);
         return true;
     }
     const float halfX = water.extentX * 0.5f, halfZ = water.extentZ * 0.5f;
@@ -202,24 +203,34 @@ bool WaterSurfaceContainsXZ(const WaterComponent& water, const Transform& transf
     return TryFootprint(water, transform, worldX, worldZ, time, inside, view) && inside;
 }
 
-bool TrySampleWaterSurfaceHeightWorld(const WaterComponent& water, const Transform& transform,
+namespace {
+
+template<bool INSIDE_ONLY>
+bool TrySampleHeight(const WaterComponent& water, const Transform& transform,
     const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
     WaterSurfaceReadView view)
 {
     if (!Finite(worldPosition)) return false;
     const Transform& pose = WaterSurfaceTransform(water, transform, view);
     WaterSurfaceHeightSample sample;
-    const WaterExclusionSnapshot* exclusions = WaterSurfaceExclusions(water, view);
+    WaterSplineSample splineSample;
     if (!TryFootprint(water, pose, worldPosition.x, worldPosition.z, time,
-            sample.insideSurface, view)) return false;
+            sample.insideSurface, view, INSIDE_ONLY ? &splineSample : nullptr)) return false;
+    if constexpr (INSIDE_ONLY) {
+        if (!sample.insideSurface || IsWaterPointExcluded(WaterSurfaceExclusions(water, view), worldPosition)) return false;
+    }
     sample.waterDepthLimit = water.buoyancyDepth;
     if (UsesWaterSurfaceGeometry(water, view)) {
-        const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view);
-        if (!geometry) return false;
-        const math::Vector2 origin = water.SolveUndisplacedXZ(worldPosition.x, worldPosition.z, time, view);
-        if (!std::isfinite(origin.x) || !std::isfinite(origin.y)) return false;
-        WaterSplineSample splineSample;
-        if (TrySampleWaterSpline(*geometry, origin.x, origin.y, splineSample)) {
+        bool hasSplineSample = true;
+        if constexpr (!INSIDE_ONLY) {
+            /// @note Extrapolating callers also need height and depth when the footprint rejected the point.
+            const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view);
+            if (!geometry) return false;
+            const math::Vector2 origin = water.SolveUndisplacedXZ(worldPosition.x, worldPosition.z, time, view);
+            if (!std::isfinite(origin.x) || !std::isfinite(origin.y)) return false;
+            hasSplineSample = TrySampleWaterSpline(*geometry, origin.x, origin.y, splineSample);
+        }
+        if (hasSplineSample) {
             sample.baseHeightOffset = splineSample.baseHeightOffset;
             sample.baseHeightGradient = splineSample.baseHeightGradient;
             sample.waterDepthLimit = splineSample.depth;
@@ -238,11 +249,27 @@ bool TrySampleWaterSurfaceHeightWorld(const WaterComponent& water, const Transfo
     if (!Finite(sample.position) || !std::isfinite(sample.depth) || !std::isfinite(sample.displacement)
         || !std::isfinite(sample.waterDepthLimit) || sample.waterDepthLimit < 0.0f
         || !std::isfinite(sample.baseHeightOffset) || !Finite(sample.baseHeightGradient)) return false;
-    sample.excluded = IsWaterPointExcluded(exclusions, worldPosition);
+    if constexpr (!INSIDE_ONLY) sample.excluded = IsWaterPointExcluded(WaterSurfaceExclusions(water, view), worldPosition);
     sample.underwater = sample.insideSurface && !sample.excluded && sample.depth > 0.0f
         && sample.depth <= sample.waterDepthLimit;
     out = sample;
     return true;
+}
+
+} /// @note namespace
+
+bool TrySampleWaterSurfaceHeightWorld(const WaterComponent& water, const Transform& transform,
+    const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
+    WaterSurfaceReadView view)
+{
+    return TrySampleHeight<false>(water, transform, worldPosition, time, out, view);
+}
+
+bool TrySampleInsideWaterSurfaceHeightWorld(const WaterComponent& water, const Transform& transform,
+    const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
+    WaterSurfaceReadView view)
+{
+    return TrySampleHeight<true>(water, transform, worldPosition, time, out, view);
 }
 
 bool TrySampleWaterSurfaceWorld(const WaterComponent& water, const Transform& transform,

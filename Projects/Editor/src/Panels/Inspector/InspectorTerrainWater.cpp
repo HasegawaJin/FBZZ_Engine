@@ -6,6 +6,8 @@
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
 #include "../../Util/MaterialAuthoringEditing.hpp"
+#include <Tools/TerrainAuthoring.hpp>
+#include <Tools/WorldAuthoring.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -13,7 +15,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace fbzz::editor {
 
@@ -142,6 +147,46 @@ void DrawNatureRules(scene::GameObject& owner, EditorContext& context, NatureIns
     ImGui::TreePop();
 }
 
+bool TerrainInspectorValuesEqual(const scene::TerrainComponent& first, const scene::TerrainComponent& second)
+{
+    return first.farLodDistance == second.farLodDistance && TerrainAuthoringValuesEqual(first, second);
+}
+
+std::unique_ptr<ICommand> MakeTerrainInspectorCommand(scene::GameObject& owner, EditorContext& context,
+    scene::TerrainComponent before, const scene::TerrainComponent& after)
+{
+    const auto snapshots = std::make_shared<std::pair<scene::TerrainComponent, scene::TerrainComponent>>(
+        std::move(before), after);
+    auto* scene = context.activeScene;
+    const auto generation = scene->GetRenderSceneGeneration();
+    const auto lifetime = scene->GetComponentLifetime<scene::TerrainComponent>(owner.GetID());
+    const bool editedAssetPath = snapshots->first.terrainAssetPath != snapshots->second.terrainAssetPath;
+    const auto apply = [&context, scene, generation, lifetime, guid = owner.instanceId, editedAssetPath](
+        const scene::TerrainComponent& values, const scene::TerrainComponent& expected, std::string& reason) {
+        if (context.activeScene != scene || scene->GetRenderSceneGeneration() != generation) {
+            reason = "The terrain edit scene changed.";
+            return false;
+        }
+        auto* target = scene->FindByGuid(guid);
+        auto* terrain = target ? target->GetComponent<scene::TerrainComponent>() : nullptr;
+        if (!terrain || scene->GetComponentLifetime<scene::TerrainComponent>(target->GetID()) != lifetime
+            || !TerrainInspectorValuesEqual(*terrain, expected)
+            || (editedAssetPath && terrain->terrainAssetPath != expected.terrainAssetPath)) {
+            reason = "The terrain inspector edit target changed.";
+            return false;
+        }
+        ApplyTerrainAuthoringSnapshot(*terrain, values, true);
+        if (editedAssetPath) terrain->terrainAssetPath = values.terrainAssetPath;
+        terrain->materialParamDirty = true;
+        if (context.markSceneDirty) context.markSceneDirty();
+        reason.clear();
+        return true;
+    };
+    return std::make_unique<CheckedLambdaCommand>("Change Terrain",
+        [apply, snapshots](std::string& reason) { return apply(snapshots->second, snapshots->first, reason); },
+        [apply, snapshots](std::string& reason) { return apply(snapshots->first, snapshots->second, reason); });
+}
+
 /// @note Terrain の配列は最初の変更直前だけ保存し、ドラッグ終了まで同じ Undo 操作にまとめる。
 class TerrainInspectorEdit {
 public:
@@ -150,12 +195,15 @@ public:
     {
         auto& state = State();
         const uint64_t generation = context.activeScene ? context.activeScene->GetRenderSceneGeneration() : 0;
+        const auto lifetime = context.activeScene
+            ? context.activeScene->GetComponentLifetime<scene::TerrainComponent>(object.GetID()) : 0;
         if (!CanRecordEditorUndo(context) || state.scene != context.activeScene
             || state.sceneGeneration != generation || state.id != object.GetID()
-            || state.undo != context.undoStack) state.before.reset();
+            || state.lifetime != lifetime || state.undo != context.undoStack) state.before.reset();
         state.scene = context.activeScene;
         state.sceneGeneration = generation;
         state.id = object.GetID();
+        state.lifetime = lifetime;
         state.undo = context.undoStack;
     }
     ~TerrainInspectorEdit()
@@ -180,6 +228,7 @@ private:
         scene::Scene* scene = nullptr;
         uint64_t sceneGeneration = 0;
         scene::EntityID id;
+        uint64_t lifetime = 0;
         UndoStack* undo = nullptr;
         ImGuiID activeId = 0;
         std::unique_ptr<scene::TerrainComponent> before;
@@ -188,13 +237,15 @@ private:
     void Commit()
     {
         auto& state = State();
-        if (!state.before) return;
-        if (state.before->heightData != m_terrain.heightData
-            || !ComponentUndoCompare<scene::TerrainComponent>::UserValuesEqual(*state.before, m_terrain)) {
-            PushComponentValueCommand(m_object, m_context, "Change Terrain", *state.before, m_terrain);
-            if (m_context.markSceneDirty) m_context.markSceneDirty();
-        }
-        state.before.reset();
+        auto before = std::move(state.before);
+        if (!before || !m_context.activeScene) return;
+        if (TerrainInspectorValuesEqual(*before, m_terrain) && before->terrainAssetPath == m_terrain.terrainAssetPath) return;
+        std::vector<scene::WorldCellBounds> pcgBounds;
+        CollectTerrainPcgBounds(m_object, *before, m_terrain, pcgBounds);
+        auto command = MakeTerrainInspectorCommand(m_object, m_context, std::move(*before), m_terrain);
+        OpContext opContext{m_context, *m_context.undoStack};
+        m_context.undoStack->Push(RefreshTerrainPcg(opContext, pcgBounds, std::move(command)));
+        if (m_context.markSceneDirty) m_context.markSceneDirty();
     }
     scene::GameObject& m_object;
     EditorContext& m_context;

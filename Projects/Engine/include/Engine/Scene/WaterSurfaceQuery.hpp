@@ -55,6 +55,12 @@ struct WaterSurfaceSample {
     const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
+/// @return False for invalid, excluded or outside-footprint points. Failure leaves out unchanged.
+/// @note Accepted samples match TrySampleWaterSurfaceHeightWorld, including above-water points.
+[[nodiscard]] FBZZ_ENGINE_API bool TrySampleInsideWaterSurfaceHeightWorld(const WaterComponent& water,
+    const Transform& transform, const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
+    WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
+
 /// @return 高さ・上向き単位法線・その点の水平流速 [m/s]。無効入力/結果では false、out 未変更。
 /// @note fields は現在フレームの不変 snapshot。波と流速は WaterSystem が解決した実効値を読み、Scene を参照しない。
 /// @note WaterComponent の波キャッシュを更新するため、同じ水面 snapshot の並行評価は禁止。

@@ -5,7 +5,9 @@
 /// @see Docs/design/terrain-layers.md
 #include "TerrainTool.hpp"
 #include "TerrainAuthoring.hpp"
+#include "TerrainHistory.hpp"
 #include "TerrainScatter.hpp"
+#include "WorldAuthoring.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -20,6 +22,7 @@
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Asset/TerrainPaintAsset.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/TerrainHeightMapLoader.hpp>
@@ -41,9 +44,128 @@
 #include <imgui.h>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace fbzz::editor {
+
+namespace {
+
+template<typename T>
+struct TerrainStrokeValue {
+    std::size_t index;
+    T alternate;
+};
+
+template<typename T, typename Row>
+void CaptureTerrainStrokeValues(const TerrainHistoryBlocks<T>& before, const std::vector<T>& current, int columns, int rows,
+    int stride, const std::vector<Row>& edited, std::vector<TerrainStrokeValue<T>>& patch)
+{
+    if (columns <= 0 || rows <= 0 || before.size != static_cast<std::size_t>(columns) * rows * stride)
+        return;
+    const auto rowCount = (std::min)(edited.size(), static_cast<std::size_t>(rows));
+    for (std::size_t z = 0; z < rowCount; ++z) {
+        const auto& row = edited[z];
+        if (row.minX > row.maxX) continue;
+        const auto count = ((std::min)(row.maxX, columns - 1) - row.minX + 1) * stride;
+        const auto base = (z * columns + row.minX) * stride;
+        for (int i = 0; i < count; ++i) {
+            const auto index = base + i;
+            const auto oldValue = before.At(index);
+            if (oldValue != current[index]) patch.push_back({index, oldValue});
+        }
+    }
+}
+
+template<typename T>
+void ApplyTerrainStrokeValues(std::vector<T>& target, std::vector<TerrainStrokeValue<T>>& patch)
+{
+    for (auto& edit : patch) std::swap(target[edit.index], edit.alternate);
+}
+
+scene::GameObject* ResolveStrokeOwner(scene::Scene& scene, scene::EntityID entity, const std::string& guid,
+    std::uint64_t lifetime)
+{
+    auto* owner = scene.GetGameObject(entity);
+    if (!owner || owner->instanceId != guid) {
+        /// @note Check identity even if an operation replaced or renamed the captured object.
+        owner = scene.FindByGuid(guid);
+    }
+    return owner && scene.GetComponentLifetime<scene::TerrainComponent>(owner->GetID()) == lifetime ? owner : nullptr;
+}
+
+} /// @note namespace
+
+struct TerrainTool::TerrainStrokeEdit {
+    std::string instanceId;
+    std::uint64_t lifetime;
+    scene::EntityID entity;
+    std::shared_ptr<const TerrainHistorySnapshot> expected, alternate;
+    std::vector<TerrainStrokeValue<float>> heights;
+    std::vector<TerrainStrokeValue<std::uint8_t>> splatIndices;
+    std::vector<TerrainStrokeValue<std::uint8_t>> splatWeights;
+    std::vector<TerrainStrokeValue<std::uint8_t>> holes;
+    scene::TerrainHeightRegion heightRegion, splatRegion, holeRegion;
+    bool whole = false;
+
+    TerrainStrokeEdit(TerrainStrokeSnapshot&& snapshot, const scene::TerrainComponent& current)
+        : instanceId(std::move(snapshot.instanceId)), lifetime(snapshot.lifetime), entity(snapshot.entity),
+          alternate(std::move(snapshot.before)), heightRegion(snapshot.heightRegion),
+          splatRegion(snapshot.splatRegion), holeRegion(snapshot.holeRegion)
+    {
+        FBZZ_PROFILE_SCOPE("TerrainTool::CaptureStrokeEdits");
+        const int columns = current.columns, rows = current.rows;
+        if (!TerrainAuthoringMetadataEqual(alternate->metadata, current)
+            || alternate->heights.size != current.heightData.size()
+            || alternate->indices.size != current.splatIndices.size()
+            || alternate->weights.size != current.splatWeights.size()
+            || alternate->holes.size != current.holeData.size()) {
+            whole = true;
+            expected = std::make_shared<TerrainHistorySnapshot>(current, lifetime, alternate.get());
+            return;
+        }
+        constexpr int SPLAT_SLOTS = scene::TERRAIN_SPLAT_SLOTS;
+        const auto& heightRows = snapshot.rows[static_cast<std::size_t>(TerrainStrokeChannel::HEIGHT)];
+        const auto& splatRows = snapshot.rows[static_cast<std::size_t>(TerrainStrokeChannel::SPLAT)];
+        const auto& holeRows = snapshot.rows[static_cast<std::size_t>(TerrainStrokeChannel::HOLES)];
+        CaptureTerrainStrokeValues(alternate->heights, current.heightData, columns, rows, 1, heightRows, heights);
+        CaptureTerrainStrokeValues(alternate->indices, current.splatIndices, columns, rows, SPLAT_SLOTS, splatRows, splatIndices);
+        CaptureTerrainStrokeValues(alternate->weights, current.splatWeights, columns, rows, SPLAT_SLOTS, splatRows, splatWeights);
+        CaptureTerrainStrokeValues(alternate->holes, current.holeData, columns - 1, rows - 1, 1, holeRows, holes);
+        if (Empty()) return;
+        auto next = std::make_shared<TerrainHistorySnapshot>(*alternate);
+        next->heights.Apply(heights, [&](const auto& edit) { return current.heightData[edit.index]; });
+        next->indices.Apply(splatIndices, [&](const auto& edit) { return current.splatIndices[edit.index]; });
+        next->weights.Apply(splatWeights, [&](const auto& edit) { return current.splatWeights[edit.index]; });
+        next->holes.Apply(holes, [&](const auto& edit) { return current.holeData[edit.index]; });
+        expected = std::move(next);
+    }
+
+    [[nodiscard]] bool Empty() const
+    {
+        return !whole && heights.empty() && splatIndices.empty() && splatWeights.empty() && holes.empty();
+    }
+
+    void Apply(scene::TerrainComponent& target, bool geometry)
+    {
+        if (whole) {
+            ApplyTerrainAuthoringSnapshot(target, alternate->Materialize(), geometry);
+            std::swap(expected, alternate);
+            return;
+        }
+        ApplyTerrainStrokeValues(target.heightData, heights);
+        ApplyTerrainStrokeValues(target.splatIndices, splatIndices);
+        ApplyTerrainStrokeValues(target.splatWeights, splatWeights);
+        ApplyTerrainStrokeValues(target.holeData, holes);
+        std::swap(expected, alternate);
+        if (!splatIndices.empty() || !splatWeights.empty()) target.RequestSplatPreview(splatRegion);
+        if (geometry && (!holes.empty() || !heights.empty())) {
+            if (!holes.empty()) target.RequestHolePreview({holeRegion.minX, holeRegion.minZ, holeRegion.maxX - 1, holeRegion.maxZ - 1});
+            if (!heights.empty()) target.RequestHeightPreview(heightRegion);
+            target.colliderDirty = true;
+        }
+    }
+};
 
 namespace {
 
@@ -111,13 +233,6 @@ void TerrainToolLayerCombo(const char* label, const scene::TerrainComponent* ter
         }
     }
     ImGui::EndCombo();
-}
-
-float TerrainToolMinWorldHeight(const scene::TerrainComponent& terrain)
-{
-    if (terrain.heightData.empty()) return 0.0f;
-    const auto minIt = std::min_element(terrain.heightData.begin(), terrain.heightData.end());
-    return *minIt * terrain.maxHeight;
 }
 
 const char* TerrainToolLayerDisplayName(const std::string& path)
@@ -216,7 +331,8 @@ void TerrainTool::Update(
     const auto generation = scene.GetRenderSceneGeneration();
     if (m_strokeSceneGeneration != generation) {
         m_strokeSceneGeneration = generation;
-        m_strokeBeforeTerrains.clear();
+        ClearStrokeSnapshots();
+        m_strokeBaselines.clear();
         m_scatterStroke.clear();
         m_paintPreviewTerrainId.clear();
         m_strokeActive = m_rampDragging = m_flattenLocked = false;
@@ -323,6 +439,7 @@ void TerrainTool::Update(
         ? m_hitTerrain->GetComponent<scene::FiberComponent>() : nullptr;
     if (mouseHeld && m_isHovering && m_hitTerrain
         && (!grassPaint || (fiber && fiber->m_enabled && fiber->m_terrainLayer >= 0))) {
+        FBZZ_PROFILE_SCOPE("TerrainTool::ApplyDab");
         auto* terrainComp = m_hitTerrain->GetComponent<scene::TerrainComponent>();
         assert(terrainComp && "ヒット判定したのに TerrainComponent がない — RaycastSingleTerrain のバグ");
         const int grassLayer = fiber ? ((m_grassErase != io.KeyCtrl) ? m_grassEraseLayer : fiber->m_terrainLayer) : -1;
@@ -330,13 +447,12 @@ void TerrainTool::Update(
             && (!(m_grassErase != io.KeyCtrl) || grassLayer != fiber->m_terrainLayer));
         if (!validGrassLayer) return;
         if (!m_strokeActive) {
-            m_strokeBeforeTerrains.clear();
+            ClearStrokeSnapshots();
             m_strokeActive = true;
             m_strokeStep   = 0;
         }
-        CaptureStrokeBefore(*m_hitTerrain, *terrainComp);
-
         const math::Vector3 hitLocal = ToTerrainLocal(m_hitTerrain->transform, m_hitPoint);
+        bool changed = false;
 
         /// @note Flatten は最初のクリックで基準高さを固定する。
         if (m_mode == Mode::Sculpt && m_activeSculpt == SculptMode::Flatten && !m_flattenLocked) {
@@ -357,15 +473,20 @@ void TerrainTool::Update(
                     const math::Vector3 localN = ToTerrainLocal(go->transform, m_hitPoint);
                     if (!BrushOverlapsTerrainXZ(*tc, localN, m_brush.radius))
                         continue;
-                    CaptureStrokeBefore(*go, *tc);
-                    tc->RequestHeightPreview(
-                        ApplyTerrainSculpt(*tc, localN, m_brush, m_activeSculpt, m_flattenTarget, dt, m_strokeStep));
+                    auto& snapshot = CaptureStrokeBefore(*go, *tc);
+                    const auto edited = ApplyTerrainSculpt(*tc, localN, m_brush, m_activeSculpt, m_flattenTarget, dt, m_strokeStep);
+                    snapshot.Include(edited, TerrainStrokeChannel::HEIGHT);
+                    tc->RequestHeightPreview(edited);
+                    changed |= !edited.Empty();
                 }
                 break;
             case Mode::Paint: {
                 if (grassPaint) {
-                    ApplyTerrainPaint(*terrainComp, hitLocal, m_brush, grassLayer, dt);
-                    terrainComp->splatDirty = true;
+                    auto& snapshot = CaptureStrokeBefore(*m_hitTerrain, *terrainComp);
+                    const auto edited = ApplyTerrainPaint(*terrainComp, hitLocal, m_brush, grassLayer, dt);
+                    snapshot.Include(edited, TerrainStrokeChannel::SPLAT);
+                    changed = !edited.Empty();
+                    terrainComp->RequestSplatPreview(edited);
                     break;
                 }
                 const int layerCount = std::max(terrainComp->LayerCount(), 1);
@@ -388,9 +509,11 @@ void TerrainTool::Update(
                         if (layer < 0)
                             continue;
                     }
-                    CaptureStrokeBefore(*go, *tc);
-                    ApplyTerrainPaint(*tc, localN, m_brush, layer, dt);
-                    tc->splatDirty = true;
+                    auto& snapshot = CaptureStrokeBefore(*go, *tc);
+                    const auto edited = ApplyTerrainPaint(*tc, localN, m_brush, layer, dt);
+                    snapshot.Include(edited, TerrainStrokeChannel::SPLAT);
+                    tc->RequestSplatPreview(edited);
+                    changed |= !edited.Empty();
                 }
                 break;
             }
@@ -405,16 +528,22 @@ void TerrainTool::Update(
                     const math::Vector3 localN = ToTerrainLocal(go->transform, m_hitPoint);
                     if (!BrushOverlapsTerrainXZ(*tc, localN, m_brush.radius))
                         continue;
-                    CaptureStrokeBefore(*go, *tc);
+                    auto& snapshot = CaptureStrokeBefore(*go, *tc);
                     /// @note 穴は三角形の有無なのでメッシュを作り直す。コライダーは確定時に 1 回。
-                    if (ApplyTerrainHole(*tc, localN, m_brush, !fill))
-                        tc->heightDirty = true;
+                    const bool malformedHoles = !tc->holeData.empty() && tc->holeData.size() != tc->CellCount();
+                    scene::TerrainHeightRegion edited;
+                    if (ApplyTerrainHole(*tc, localN, m_brush, !fill, &edited)) {
+                        snapshot.Include(edited, TerrainStrokeChannel::HOLES);
+                        if (malformedHoles) tc->heightDirty = true;
+                        else tc->RequestHolePreview({edited.minX, edited.minZ, edited.maxX - 1, edited.maxZ - 1});
+                        changed = true;
+                    }
                 }
                 break;
             }
         }
         ++m_strokeStep;
-        if (markDirty) markDirty();
+        if (changed && markDirty) markDirty();
     }
 
     if (mouseReleased || (!mouseHeld && m_strokeActive)) {
@@ -589,82 +718,129 @@ std::span<const scene::RenderInstancePreview> TerrainTool::PaintPreviewInputs(co
     return m_paintPreviewInputs;
 }
 
-void TerrainTool::CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain)
+TerrainTool::TerrainStrokeSnapshot& TerrainTool::CaptureStrokeBefore(scene::GameObject& go, const scene::TerrainComponent& terrain)
 {
-    const auto found = std::find_if(
-        m_strokeBeforeTerrains.begin(), m_strokeBeforeTerrains.end(),
-        [&](const TerrainStrokeSnapshot& snapshot) { return snapshot.instanceId == go.instanceId; });
-    if (found == m_strokeBeforeTerrains.end())
-        m_strokeBeforeTerrains.push_back({ go.instanceId, terrain,
-            go.GetScene()->GetComponentLifetime<scene::TerrainComponent>(go.GetID()) });
+    const auto [found, inserted] = m_strokeTerrainIndices.try_emplace(go.instanceId, m_strokeBeforeTerrains.size());
+    if (!inserted) return m_strokeBeforeTerrains[found->second];
+    FBZZ_PROFILE_SCOPE("TerrainTool::CaptureStroke");
+    const bool invalidHeight = terrain.heightData.size() != terrain.VertexCount();
+    const bool invalidHoles = !terrain.holeData.empty() && terrain.holeData.size() != terrain.CellCount();
+    const auto lifetime = go.GetScene()->GetComponentLifetime<scene::TerrainComponent>(go.GetID());
+    const auto previous = m_strokeBaselines.find(go.instanceId);
+    const auto baseline = previous == m_strokeBaselines.end() ? nullptr : previous->second.lock();
+    const auto* compatible = baseline && baseline->lifetime == lifetime ? baseline.get() : nullptr;
+    return m_strokeBeforeTerrains.emplace_back(TerrainStrokeSnapshot{go.instanceId,
+        std::make_shared<TerrainHistorySnapshot>(terrain, lifetime, compatible), lifetime, go.GetID(),
+        {}, {}, {}, {}, invalidHeight || invalidHoles, {}});
+}
+
+void TerrainTool::ClearStrokeSnapshots()
+{
+    m_strokeBeforeTerrains.clear();
+    m_strokeTerrainIndices.clear();
+}
+
+void TerrainTool::TerrainStrokeSnapshot::Include(const scene::TerrainHeightRegion& region, TerrainStrokeChannel channel)
+{
+    if (region.Empty()) return;
+    edited.Include(region);
+    switch (channel) {
+        case TerrainStrokeChannel::HEIGHT: heightRegion.Include(region); break;
+        case TerrainStrokeChannel::SPLAT: splatRegion.Include(region); break;
+        case TerrainStrokeChannel::HOLES: holeRegion.Include(region); break;
+        case TerrainStrokeChannel::COUNT: assert(false); return;
+    }
+    auto& changedRows = rows[static_cast<std::size_t>(channel)];
+    if (changedRows.size() <= static_cast<std::size_t>(region.maxZ))
+        changedRows.resize(static_cast<std::size_t>(region.maxZ) + 1);
+    for (int z = region.minZ; z <= region.maxZ; ++z) {
+        auto& row = changedRows[static_cast<std::size_t>(z)];
+        if (row.minX > row.maxX) row = {region.minX, region.maxX};
+        else {
+            row.minX = (std::min)(row.minX, region.minX);
+            row.maxX = (std::max)(row.maxX, region.maxX);
+        }
+    }
 }
 
 void TerrainTool::CommitStroke(EditorContext& context, const char* undoLabel, bool rebuildCollider)
 {
+    FBZZ_PROFILE_SCOPE("TerrainTool::CommitStroke");
     auto& scene = *context.activeScene;
+    std::erase_if(m_strokeBeforeTerrains, [](const TerrainStrokeSnapshot& snapshot) { return snapshot.edited.Empty(); });
     if (rebuildCollider) {
         for (const TerrainStrokeSnapshot& snapshot : m_strokeBeforeTerrains) {
-            if (auto* target = scene.FindByGuid(snapshot.instanceId))
+            if (auto* target = ResolveStrokeOwner(scene, snapshot.entity, snapshot.instanceId, snapshot.lifetime))
                 if (auto* component = target->GetComponent<scene::TerrainComponent>())
                     component->colliderDirty = true;
         }
     }
     if (context.undoStack && !m_strokeBeforeTerrains.empty()) {
-        std::vector<TerrainStrokeSnapshot> before = std::move(m_strokeBeforeTerrains);
-        std::vector<TerrainStrokeSnapshot> after;
-        after.reserve(before.size());
-        for (const TerrainStrokeSnapshot& snapshot : before) {
-            if (auto* target = scene.FindByGuid(snapshot.instanceId))
-                if (auto* component = target->GetComponent<scene::TerrainComponent>())
-                    after.push_back({ snapshot.instanceId, *component, snapshot.lifetime });
+        std::erase_if(m_strokeBaselines, [](const auto& entry) { return entry.second.expired(); });
+        std::vector<scene::WorldCellBounds> pcgBounds;
+        std::vector<TerrainStrokeEdit> edits;
+        edits.reserve(m_strokeBeforeTerrains.size());
+        bool currentStroke = true;
+        for (auto& snapshot : m_strokeBeforeTerrains) {
+            auto* target = ResolveStrokeOwner(scene, snapshot.entity, snapshot.instanceId, snapshot.lifetime);
+            auto* component = target ? target->GetComponent<scene::TerrainComponent>() : nullptr;
+            if (!component) {
+                currentStroke = false;
+                continue;
+            }
+            if (snapshot.fullPcgBounds) CollectTerrainPcgBounds(*target, snapshot.before->Materialize(), *component, pcgBounds);
+            auto& edit = edits.emplace_back(std::move(snapshot), *component);
+            if (edit.Empty()) {
+                edits.pop_back();
+                continue;
+            }
+            m_strokeBaselines[edit.instanceId] = edit.expected;
+            if (!snapshot.fullPcgBounds) CollectTerrainPcgBounds(*target, *component, snapshot.edited, pcgBounds);
         }
-        struct StrokeHistory {
-            std::vector<TerrainStrokeSnapshot> before;
-            std::vector<TerrainStrokeSnapshot> after;
-        };
-        const auto history = std::make_shared<StrokeHistory>(std::move(before), std::move(after));
-        auto* editorContext = &context;
-        const auto generation = scene.GetRenderSceneGeneration();
-        auto apply = [editorContext, generation, rebuildCollider](const std::vector<TerrainStrokeSnapshot>& values,
-            const std::vector<TerrainStrokeSnapshot>& expected, std::string& reason) {
-            auto* currentScene = editorContext->activeScene;
-            if (!currentScene || currentScene->GetRenderSceneGeneration() != generation) {
-                reason = "地形を編集したシーンが変わりました。";
-                return false;
-            }
-            if (values.size() != expected.size()) {
-                reason = "ストローク中に対象地形が変わりました。";
-                return false;
-            }
-            /// @note 複数地形にまたがるストロークは、全対象の寿命を確認してから一括で復元する。
-            for (size_t index = 0; index < values.size(); ++index) {
-                const auto& snapshot = values[index];
-                auto* target = currentScene->FindByGuid(snapshot.instanceId);
-                if (!target || !target->GetComponent<scene::TerrainComponent>()
-                    || currentScene->GetComponentLifetime<scene::TerrainComponent>(target->GetID()) != snapshot.lifetime) {
-                    reason = "ストロークの対象地形が削除または置換されています。";
+        if (!currentStroke) pcgBounds.clear();
+
+        if (!edits.empty() || !currentStroke) {
+            const auto history = std::make_shared<std::vector<TerrainStrokeEdit>>(std::move(edits));
+            auto* editorContext = &context;
+            const auto generation = scene.GetRenderSceneGeneration();
+            auto apply = [editorContext, generation, rebuildCollider, history, currentStroke](std::string& reason) {
+                auto* currentScene = editorContext->activeScene;
+                if (!currentScene || currentScene->GetRenderSceneGeneration() != generation) {
+                    reason = "地形を編集したシーンが変わりました。";
                     return false;
                 }
-                if (snapshot.instanceId != expected[index].instanceId
-                    || !TerrainAuthoringValuesEqual(*target->GetComponent<scene::TerrainComponent>(), expected[index].before)) {
-                    reason = "ストロークの対象地形が別の操作で変更されています。";
+                if (!currentStroke) {
+                    reason = "ストローク中に対象地形が変わりました。";
                     return false;
                 }
-            }
-            for (const TerrainStrokeSnapshot& snapshot : values) {
-                auto* target = currentScene->FindByGuid(snapshot.instanceId);
-                ApplyTerrainAuthoringSnapshot(*target->GetComponent<scene::TerrainComponent>(), snapshot.before, rebuildCollider);
-            }
-            if (editorContext->markSceneDirty) editorContext->markSceneDirty();
-            reason.clear();
-            return true;
-        };
-        context.undoStack->Push(std::make_unique<CheckedLambdaCommand>(
-            undoLabel,
-            [apply, history](std::string& reason) { return apply(history->after, history->before, reason); },
-            [apply, history](std::string& reason) { return apply(history->before, history->after, reason); }));
+                std::vector<scene::TerrainComponent*> targets;
+                targets.reserve(history->size());
+                /// @note 複数地形にまたがるストロークは、全対象の寿命を確認してから一括で復元する。
+                for (const auto& edit : *history) {
+                    auto* owner = ResolveStrokeOwner(*currentScene, edit.entity, edit.instanceId, edit.lifetime);
+                    auto* target = owner ? owner->GetComponent<scene::TerrainComponent>() : nullptr;
+                    if (!target) {
+                        reason = "ストロークの対象地形が削除または置換されています。";
+                        return false;
+                    }
+                    if (!edit.expected->Matches(*target)) {
+                        reason = "ストロークの対象地形が別の操作で変更されています。";
+                        return false;
+                    }
+                    targets.push_back(target);
+                }
+                for (std::size_t i = 0; i < targets.size(); ++i)
+                    (*history)[i].Apply(*targets[i], rebuildCollider);
+                if (editorContext->markSceneDirty) editorContext->markSceneDirty();
+                reason.clear();
+                return true;
+            };
+            auto command = std::make_unique<CheckedLambdaCommand>(undoLabel, apply, apply);
+            OpContext opContext{context, *context.undoStack};
+            context.undoStack->Push(RefreshTerrainPcg(opContext, pcgBounds, std::move(command)));
+        }
     }
-    m_strokeBeforeTerrains.clear();
+    ClearStrokeSnapshots();
     m_strokeActive = false;
 }
 
@@ -683,7 +859,7 @@ void TerrainTool::UpdateRamp(EditorContext& context, bool mousePressed, bool mou
         return;
 
     m_rampDragging = false;
-    m_strokeBeforeTerrains.clear();
+    ClearStrokeSnapshots();
 
     /// @note 線分全体を半径刻みで標本化して重なりを判定する。両端と中点だけだと、長い坂が途中で横切る Terrain を取りこぼす。
     const float dxW = m_rampEndWorld.x - m_rampStartWorld.x;
@@ -708,13 +884,13 @@ void TerrainTool::UpdateRamp(EditorContext& context, bool mousePressed, bool mou
         }
         if (!overlaps)
             continue;
-        CaptureStrokeBefore(*go, *tc);
-        tc->RequestHeightPreview(ApplyTerrainRamp(*tc, startLocal, endLocal, m_brush));
-        any = true;
+        auto& snapshot = CaptureStrokeBefore(*go, *tc);
+        const auto edited = ApplyTerrainRamp(*tc, startLocal, endLocal, m_brush);
+        snapshot.Include(edited, TerrainStrokeChannel::HEIGHT);
+        tc->RequestHeightPreview(edited);
+        any |= !edited.Empty();
     }
-    if (!any)
-        return;
-    if (markDirty)
+    if (any && markDirty)
         markDirty();
     CommitStroke(context, "Ramp Terrain", true);
 }
@@ -775,6 +951,10 @@ bool TerrainTool::RaycastSingleTerrain(
     const scene::Transform&        tf,
     math::Vector3&                 outLocalHit) const
 {
+    FBZZ_PROFILE_SCOPE("TerrainTool::RaycastHeightfield");
+    if (terrain.columns < 2 || terrain.rows < 2 || !(terrain.cellSize > 0.0f) || !std::isfinite(terrain.cellSize)
+        || terrain.heightData.size() != terrain.VertexCount()) return false;
+
     /// @note 描画と同じ World Matrix の逆変換でレイをローカル化する。方向は w=0 で平行移動を除く。
     const math::Matrix4 invWorld = math::Matrix4::Inverse(tf.GetWorldMatrix());
     const math::Vector4 localOrigin =
@@ -786,73 +966,86 @@ bool TerrainTool::RaycastSingleTerrain(
         localDirection.x, localDirection.y, localDirection.z
     }.Normalized();
 
-    const float terrainW = static_cast<float>(terrain.columns - 1) * terrain.cellSize;
-    const float terrainD = static_cast<float>(terrain.rows    - 1) * terrain.cellSize;
-    const float maxH     = terrain.maxHeight;
+    const math::Ray localRay{rayOriginLocal, rayDir};
+    const double cellSize = terrain.cellSize;
+    const double terrainW = (terrain.columns - 1) * cellSize;
+    const double terrainD = (terrain.rows - 1) * cellSize;
+    constexpr double INFINITE_DISTANCE = std::numeric_limits<double>::infinity();
 
-    auto slab = [](float origin, float dir, float lo, float hi, float& tMin, float& tMax) {
-        if (std::abs(dir) < 1e-6f) {
-            if (origin < lo || origin > hi) return false;
-        } else {
-            float t0 = (lo - origin) / dir;
-            float t1 = (hi - origin) / dir;
-            if (t0 > t1) std::swap(t0, t1);
-            tMin = std::max(tMin, t0);
-            tMax = std::min(tMax, t1);
-        }
+    const auto slab = [](double origin, double dir, double upper, double& tMin, double& tMax) {
+        if (dir == 0.0) return origin >= 0.0 && origin <= upper;
+        double t0 = -origin / dir;
+        double t1 = (upper - origin) / dir;
+        if (t0 > t1) std::swap(t0, t1);
+        tMin = std::max(tMin, t0);
+        tMax = std::min(tMax, t1);
         return tMin <= tMax;
     };
 
-    float tMin = 0.0f, tMax = 1e30f;
-    if (!slab(rayOriginLocal.x, rayDir.x, 0.0f, terrainW, tMin, tMax)) return false;
-    if (!slab(rayOriginLocal.z, rayDir.z, 0.0f, terrainD, tMin, tMax)) return false;
-    const float minH = std::min(0.0f, TerrainToolMinWorldHeight(terrain));
-    if (!slab(rayOriginLocal.y, rayDir.y, minH, maxH, tMin, tMax)) return false;
-    if (tMax <= 0.0f) return false;
-    tMin = std::max(tMin, 0.0f);
-
-    auto pointAt = [&](float t) {
-        return math::Vector3{
-            rayOriginLocal.x + rayDir.x * t,
-            rayOriginLocal.y + rayDir.y * t,
-            rayOriginLocal.z + rayDir.z * t };
+    double entry = 0.0, exit = INFINITE_DISTANCE;
+    if (!std::isfinite(rayOriginLocal.x) || !std::isfinite(rayOriginLocal.y) || !std::isfinite(rayOriginLocal.z)
+        || !std::isfinite(rayDir.x) || !std::isfinite(rayDir.y) || !std::isfinite(rayDir.z)
+        || !slab(rayOriginLocal.x, rayDir.x, terrainW, entry, exit)
+        || !slab(rayOriginLocal.z, rayDir.z, terrainD, entry, exit)
+        || !std::isfinite(entry) || exit <= 0.0) return false;
+    if (rayDir.x == 0.0f && rayDir.z == 0.0f) {
+        const float height = terrain.GetHeightAt(rayOriginLocal.x, rayOriginLocal.z);
+        if (!(rayDir.y < 0.0f && rayOriginLocal.y > height) || terrain.IsHoleAtLocal(rayOriginLocal.x, rayOriginLocal.z))
+            return false;
+        outLocalHit = {rayOriginLocal.x, height, rayOriginLocal.z};
+        return true;
+    }
+    const auto cellAt = [&](double position, int cells) {
+        return static_cast<int>(std::clamp(std::floor(position / cellSize), 0.0, static_cast<double>(cells - 1)));
+    };
+    int x = cellAt(rayOriginLocal.x + rayDir.x * entry, terrain.columns - 1);
+    int z = cellAt(rayOriginLocal.z + rayDir.z * entry, terrain.rows - 1);
+    const int stepX = rayDir.x > 0.0f ? 1 : -1;
+    const int stepZ = rayDir.z > 0.0f ? 1 : -1;
+    const double invX = rayDir.x == 0.0f ? 0.0 : 1.0 / rayDir.x;
+    const double invZ = rayDir.z == 0.0f ? 0.0 : 1.0 / rayDir.z;
+    const auto nextBoundary = [&](int cell, int step, double origin, double inverse) {
+        return inverse == 0.0 ? INFINITE_DISTANCE
+            : ((cell + (step > 0 ? 1 : 0)) * cellSize - origin) * inverse;
+    };
+    const double inverseCellSize = 1.0 / cellSize;
+    const double originX = rayOriginLocal.x * inverseCellSize, originZ = rayOriginLocal.z * inverseCellSize;
+    const double directionX = rayDir.x * inverseCellSize, directionZ = rayDir.z * inverseCellSize;
+    const auto height = [&](std::size_t index) -> double {
+        return terrain.heightData[index] * terrain.maxHeight;
     };
 
-    /// @note DDA: 格子が離散なので cellSize 刻みで交差セルを探すのが最少の反復になる。
-    const float horizontal = std::max(std::abs(rayDir.x), std::abs(rayDir.z));
-    const float stepT   = horizontal > 1e-6f ? terrain.cellSize / horizontal : (tMax - tMin);
-    const int   maxStep = static_cast<int>((tMax - tMin) / std::max(stepT, 1e-6f)) + 2;
-
-    float prevT = tMin;
-    float prevH = -1.0f;
-
-    for (int step = 0; step <= maxStep; ++step) {
-        const float tClamped = std::min(tMin + static_cast<float>(step) * stepT, tMax);
-        const math::Vector3 p = pointAt(tClamped);
-        const float terrainH = terrain.GetHeightAt(p.x, p.z);
-
-        /// @note 前の標本が地面より上、今が下 → 交差区間。
-        if (step > 0 && prevH > 0.0f && p.y <= terrainH && prevT < tMax) {
-            /// @note 二分探索 8 回で cellSize 精度の区間を 1/256 に縮める。
-            float lo = prevT;
-            float hi = tClamped;
-            for (int i = 0; i < 8; ++i) {
-                const float mid = (lo + hi) * 0.5f;
-                const math::Vector3 q = pointAt(mid);
-                if (q.y > terrain.GetHeightAt(q.x, q.z)) lo = mid;
-                else                                     hi = mid;
-            }
-            const math::Vector3 q = pointAt((lo + hi) * 0.5f);
-            /// @note 穴のセルは面が無いので貫通させ、次の交差を探し続ける。
-            if (!terrain.IsHoleAtLocal(q.x, q.z)) {
-                outLocalHit = { q.x, terrain.GetHeightAt(q.x, q.z), q.z };
+    /// @see https://www.cse.yorku.ca/~amana/research/grid.pdf Amanatides/Woo, A Fast Voxel Traversal Algorithm for Ray Tracing.
+    /// @note XZ の通過セルだけを調べる。高さ場全体の最小値は不要。
+    while (x >= 0 && z >= 0 && x < terrain.columns - 1 && z < terrain.rows - 1) {
+        const double nextX = nextBoundary(x, stepX, rayOriginLocal.x, invX);
+        const double nextZ = nextBoundary(z, stepZ, rayOriginLocal.z, invZ);
+        const auto cellIndex = static_cast<std::size_t>(z) * (terrain.columns - 1) + x;
+        if (cellIndex >= terrain.holeData.size() || !terrain.holeData[cellIndex]) {
+            const auto i = static_cast<std::size_t>(z) * terrain.columns + x;
+            const double h00 = height(i), h10 = height(i + 1);
+            const double h01 = height(i + terrain.columns), h11 = height(i + terrain.columns + 1);
+            const double u0 = originX - x, v0 = originZ - z;
+            double nearest = INFINITE_DISTANCE;
+            /// @note Use cell-local coordinates so small cells do not shrink the front-face test determinant.
+            const auto test = [&](double u, double v, double du, double dv, double h, double dhdu, double dhdv) {
+                const double approach = rayDir.y - dhdu * du - dhdv * dv;
+                if (!(approach < 0.0)) return;
+                const double distance = (h + dhdu * u + dhdv * v - rayOriginLocal.y) / approach;
+                if (!(distance >= math::EPSILON && distance < nearest)) return;
+                const double hitU = u + distance * du, hitV = v + distance * dv;
+                if (hitU >= 0.0 && hitV >= 0.0 && hitU + hitV <= 1.0) nearest = distance;
+            };
+            test(u0, v0, directionX, directionZ, h00, h10 - h00, h01 - h00);
+            test(1.0 - u0, 1.0 - v0, -directionX, -directionZ, h11, h01 - h11, h10 - h11);
+            if (std::isfinite(nearest)) {
+                outLocalHit = localRay.At(static_cast<float>(nearest));
                 return true;
             }
         }
-        prevT = tClamped;
-        prevH = p.y - terrainH;
-
-        if (tClamped >= tMax) break;
+        if (std::min(nextX, nextZ) >= exit) break;
+        if (nextX <= nextZ) x += stepX;
+        if (nextZ <= nextX) z += stepZ;
     }
     return false;
 }
@@ -871,7 +1064,9 @@ void TerrainTool::DrawBrushPreview(
     if (!terrain || terrain->heightData.empty())
         return;
 
+    FBZZ_PROFILE_SCOPE("TerrainTool::DrawBrushPreview");
     const math::Matrix4 vp = camera.GetViewProjection();
+    const math::Matrix4 world = m_hitTerrain->transform.GetWorldMatrix();
     ImDrawList* dl   = ImGui::GetForegroundDrawList();
     const bool scatter = m_mode == Mode::Paint && m_paintTarget == PaintTarget::Instances;
     const float r = scatter && !m_scatterStroke.empty() ? m_scatterStrokeRadius : m_brush.radius;
@@ -896,7 +1091,8 @@ void TerrainTool::DrawBrushPreview(
             hitLocal.z + std::sin(angle) * radiusZ
         };
         localPoint.y = terrain->GetHeightAt(localPoint.x, localPoint.z);
-        return ToTerrainWorld(m_hitTerrain->transform, localPoint);
+        const auto point = world * math::Vector4{localPoint.x, localPoint.y, localPoint.z, 1.0f};
+        return math::Vector3{point.x, point.y, point.z};
     };
 
     dl->PushClipRect(viewportMin, {viewportMin.x + viewportSize.x, viewportMin.y + viewportSize.y}, true);

@@ -553,15 +553,17 @@ scene::TerrainHeightRegion ApplyTerrainSculpt(scene::TerrainComponent& terrain,
     return changed;
 }
 
-void ApplyTerrainPaint(scene::TerrainComponent& terrain,
+scene::TerrainHeightRegion ApplyTerrainPaint(scene::TerrainComponent& terrain,
                        const math::Vector3&     hitLocal,
                        const TerrainBrush&      brush,
                        int                      layerIndex,
                        float                    dt)
 {
-    if (terrain.columns <= 0 || terrain.rows <= 0) return;
+    if (terrain.columns <= 0 || terrain.rows <= 0) return {};
     /// @note 層 0 枚の地形も «白い既定層» 1 枚として描くので、層 0 だけは塗れる。
-    if (layerIndex < 0 || layerIndex >= std::max(terrain.LayerCount(), 1)) return;
+    if (layerIndex < 0 || layerIndex >= std::max(terrain.LayerCount(), 1)) return {};
+    scene::TerrainHeightRegion changed;
+    if (!terrain.HasValidSplat()) changed = {0, 0, terrain.columns - 1, terrain.rows - 1};
     terrain.EnsureSplat();
 
     const int cx = static_cast<int>(hitLocal.x / terrain.cellSize);
@@ -581,10 +583,18 @@ void ApplyTerrainPaint(scene::TerrainComponent& terrain,
 
             const size_t base = (static_cast<size_t>(z) * static_cast<size_t>(terrain.columns)
                                + static_cast<size_t>(x)) * static_cast<size_t>(scene::TERRAIN_SPLAT_SLOTS);
-            scene::terrain_splat::BlendToward(&terrain.splatIndices[base], &terrain.splatWeights[base],
-                                              layerIndex, std::min(t, 1.0f));
+            auto* indices = terrain.splatIndices.data() + base;
+            auto* weights = terrain.splatWeights.data() + base;
+            std::array<std::uint8_t, scene::TERRAIN_SPLAT_SLOTS> previousIndices, previousWeights;
+            std::copy_n(indices, previousIndices.size(), previousIndices.begin());
+            std::copy_n(weights, previousWeights.size(), previousWeights.begin());
+            scene::terrain_splat::BlendToward(indices, weights, layerIndex, std::min(t, 1.0f));
+            if (!std::equal(previousIndices.begin(), previousIndices.end(), indices)
+                || !std::equal(previousWeights.begin(), previousWeights.end(), weights))
+                changed.Include({x, z, x, z});
         }
     }
+    return changed;
 }
 
 scene::TerrainHeightRegion ApplyTerrainRamp(scene::TerrainComponent& terrain,
@@ -639,7 +649,8 @@ scene::TerrainHeightRegion ApplyTerrainRamp(scene::TerrainComponent& terrain,
 bool ApplyTerrainHole(scene::TerrainComponent& terrain,
                       const math::Vector3&     hitLocal,
                       const TerrainBrush&      brush,
-                      bool                     hole)
+                      bool                     hole,
+                      scene::TerrainHeightRegion* edited)
 {
     if (terrain.columns < 2 || terrain.rows < 2 || terrain.cellSize <= 0.0f || brush.radius <= 0.0f)
         return false;
@@ -658,7 +669,10 @@ bool ApplyTerrainHole(scene::TerrainComponent& terrain,
             const float dz = (static_cast<float>(cz) + 0.5f) * cell - hitLocal.z;
             if (dx * dx + dz * dz > radiusSq) continue;
             if (terrain.IsHoleCell(cx, cz) == hole) continue;
-            if (terrain.SetHoleCell(cx, cz, hole)) changed = true;
+            if (terrain.SetHoleCell(cx, cz, hole)) {
+                changed = true;
+                if (edited) edited->Include({cx, cz, cx + 1, cz + 1});
+            }
         }
     }
     return changed;

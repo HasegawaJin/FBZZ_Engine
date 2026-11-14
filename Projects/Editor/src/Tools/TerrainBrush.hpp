@@ -97,7 +97,8 @@ scene::TerrainHeightRegion ApplyTerrainSculpt(scene::TerrainComponent& terrain,
 /// @brief ブラシでスプラットを layerIndex へ寄せる (terrain_splat::BlendToward)。
 /// @param layerIndex Terrain ごとに解決済みの番号 [0, LayerCount)。範囲外なら何もしない。
 /// @note 呼び出し後に TerrainComponent::RequestSplatRebuild() を立てるのは呼び出し側の責務。
-void ApplyTerrainPaint(scene::TerrainComponent& terrain,
+/// @return 変更されたスプラット頂点を囲む格子範囲。
+scene::TerrainHeightRegion ApplyTerrainPaint(scene::TerrainComponent& terrain,
                        const math::Vector3&     hitLocal,
                        const TerrainBrush&      brush,
                        int                      layerIndex,
@@ -113,11 +114,13 @@ scene::TerrainHeightRegion ApplyTerrainRamp(scene::TerrainComponent& terrain,
                       const TerrainBrush&      brush);
 
 /// @brief セル中心がブラシ円に入るセルの穴を立てる / 消す。
+/// @param edited 変更セルを囲む頂点範囲を加算する。不要なら null。
 /// @return 1 セルでも変化したか。
 /// @note 呼び出し後に TerrainComponent::RequestHoleRebuild() を立てるのは呼び出し側の責務。
 bool ApplyTerrainHole(scene::TerrainComponent& terrain,
                       const math::Vector3&     hitLocal,
                       const TerrainBrush&      brush,
-                      bool                     hole);
+                      bool                     hole,
+                      scene::TerrainHeightRegion* edited = nullptr);
 
 } /// @note namespace fbzz::editor

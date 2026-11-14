@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #include "WorldAuthoring.hpp"
+#include "TerrainBrush.hpp"
 #include "TerrainPaintClearance.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -11,7 +12,10 @@
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Asset/MeshInstancesAsset.hpp>
+#include <Engine/Core/Logger.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -30,8 +34,11 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cctype>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -83,9 +90,15 @@ std::string ProfilePath(EditorContext& context,const std::string& input,bool all
     return util::FileSystem::PathToUtf8(path);
 }
 
-bool ReadWorld(scene::GameObject& object,scene::Transform& out)
+bool ReadWorld(const scene::GameObject& object,scene::Transform& out)
 {
-    std::vector<scene::GameObject*> chain;
+    if (!object.GetParent()) {
+        out = object.transform;
+        scene::UpdateWorldTransform(out, nullptr);
+        return Finite(out.worldPosition) && Finite(out.worldScale)
+            && std::isfinite(out.worldRotation.Length()) && out.worldRotation.Length() >= 0.000001f;
+    }
+    std::vector<const scene::GameObject*> chain;
     for(auto* node=&object;node;node=node->GetParent()){
         if(chain.size()>=4096||std::find(chain.begin(),chain.end(),node)!=chain.end())return false;
         chain.push_back(node);
@@ -100,45 +113,332 @@ bool ReadWorld(scene::GameObject& object,scene::Transform& out)
 bool SameGenerated(const scene::WorldPcgGeneratedComponent& a,const scene::WorldPcgGeneratedComponent& b)
 { return a.volumeId==b.volumeId&&a.ruleKey==b.ruleKey&&a.cellX==b.cellX&&a.cellZ==b.cellZ&&a.signature==b.signature&&a.manualOverride==b.manualOverride&&a.includeHlod==b.includeHlod; }
 
-asset::MeshInstancesAsset* PlacementAsset(const std::string& reference)
+asset::MeshInstancesAsset* PlacementAsset(const std::string& reference, std::string* resolvedPath = nullptr)
 {
-    const auto path=asset::AssetManager::ResolveAssetPath(reference);
-    if(util::FileSystem::GetExtension(path)!=".meshinstances")return nullptr;
-    return asset::AssetManager::Get(asset::AssetManager::Load<asset::MeshInstancesAsset>(reference));
+    return asset::LoadMeshInstancesReference(reference, resolvedPath);
 }
 
-std::string OwnerSignature(scene::GameObject& owner,const scene::WorldPcgGeneratedComponent& metadata,
-    const scene::InstancedMeshComponent& component,const asset::MeshInstancesAsset& asset)
+std::string_view PcgAssetIdentity(std::string_view encodedReference)
+{
+    return asset::AssetDatabase::IsGuidRef(encodedReference)
+        ? encodedReference.substr(0, encodedReference.find(asset::AssetDatabase::kRefHintSeparator))
+        : encodedReference;
+}
+
+std::string OwnerSignature(scene::GameObject& owner, const scene::WorldPcgGeneratedComponent& metadata,
+    const scene::InstancedMeshComponent& component, const asset::MeshInstancesAsset& asset,
+    const scene::Transform& world, const renderer::InstanceSetData& snapshot, std::string_view placementRef)
 {
     uint64_t hash=1469598103934665603ull;
     AddHash(hash,owner.instanceId);AddHash(hash,owner.name);AddHash(hash,owner.tag);AddHash(hash,static_cast<uint64_t>(owner.layer));
     AddHash(hash,owner.activeSelf()?1:0);AddHash(hash,owner.GetChildCount());AddHash(hash,owner.GetParent()?owner.GetParent()->instanceId:std::string{});
-    scene::Transform world;if(!ReadWorld(owner,world))return {};
     AddVector(hash,world.worldPosition);AddVector(hash,world.worldScale);
     AddFloat(hash,world.worldRotation.x);AddFloat(hash,world.worldRotation.y);AddFloat(hash,world.worldRotation.z);AddFloat(hash,world.worldRotation.w);
     AddHash(hash,metadata.volumeId);AddHash(hash,metadata.ruleKey);AddHash(hash,static_cast<uint32_t>(metadata.cellX));AddHash(hash,static_cast<uint32_t>(metadata.cellZ));AddHash(hash,metadata.includeHlod?1:0);
-    AddHash(hash,component.m_instanceSetRef.path);AddHash(hash,component.m_enabled?1:0);AddHash(hash,component.m_castShadows?1:0);AddFloat(hash,component.m_maxDistance);
+    AddHash(hash, placementRef);
+    AddHash(hash,component.m_enabled?1:0);AddHash(hash,component.m_castShadows?1:0);AddFloat(hash,component.m_maxDistance);
     AddHash(hash,asset.terrainPaintRef);
     size_t extraComponents=0;scene::ForEachRegisteredComponent([&]<typename T,typename Registration>(){
         (void)sizeof(Registration);if constexpr(!std::is_same_v<T,scene::InstancedMeshComponent>&&!std::is_same_v<T,scene::WorldPcgGeneratedComponent>)
             if(owner.GetComponent<T>())++extraComponents;});AddHash(hash,extraComponents);
     for(const auto& part:asset.instances.Parts()){AddHash(hash,part.meshPath);AddHash(hash,part.materialPath);AddHash(hash,part.lod);}
     for(float height:asset.instances.LodHeights())AddFloat(hash,height);
-    const auto snapshot=component.Snapshot(asset.instances);if(!snapshot)return {};
-    for(const auto& p:snapshot->placements){AddHash(hash,p.id);AddHash(hash,p.active?1:0);AddVector(hash,p.position);AddVector(hash,p.eulerRadians);AddVector(hash,p.scale);}
+    for(const auto& p:snapshot.placements){AddHash(hash,p.id);AddHash(hash,p.active?1:0);AddVector(hash,p.position);AddVector(hash,p.eulerRadians);AddVector(hash,p.scale);}
     return Hex(hash);
+}
+
+std::string OwnerSignature(scene::GameObject& owner, const scene::WorldPcgGeneratedComponent& metadata,
+    const scene::InstancedMeshComponent& component, const asset::MeshInstancesAsset& asset)
+{
+    scene::Transform world;
+    if (!ReadWorld(owner, world)) return {};
+    const auto snapshot = component.Snapshot(asset.instances);
+    if (!snapshot) return {};
+    const auto reference = asset::EncodeGuidRef(component.m_instanceSetRef.path);
+    return OwnerSignature(owner, metadata, component, asset, world, *snapshot, PcgAssetIdentity(reference));
 }
 
 bool InBounds(const scene::WorldCellBounds& bounds,const math::Vector3& point)
 { return point.x>=bounds.min.x&&point.x<bounds.max.x&&point.z>=bounds.min.z&&point.z<bounds.max.z; }
 
+bool IntersectsXZ(const scene::WorldCellBounds& a, const scene::WorldCellBounds& b)
+{
+    return a.min.x < b.max.x && a.max.x > b.min.x && a.min.z < b.max.z && a.max.z > b.min.z;
+}
+
+bool OverlapsQueryXZ(const scene::WorldCellBounds& bounds, const scene::WorldCellBounds& closed)
+{
+    return closed.max.x >= bounds.min.x && closed.min.x < bounds.max.x
+        && closed.max.z >= bounds.min.z && closed.min.z < bounds.max.z;
+}
+
+bool ExactIdentityRotation(const math::Quaternion& rotation)
+{
+    return rotation.x == 0.0f && rotation.y == 0.0f && rotation.z == 0.0f && rotation.w == 1.0f;
+}
+
+bool ExactIdentityPose(const scene::Transform& pose)
+{
+    const auto& p = pose.worldPosition;
+    const auto& s = pose.worldScale;
+    return p.x == 0.0f && p.y == 0.0f && p.z == 0.0f
+        && s.x == 1.0f && s.y == 1.0f && s.z == 1.0f && ExactIdentityRotation(pose.worldRotation);
+}
+
+/// @note Compare actual immutable rows, including assets generated with a previous partition grid.
+std::optional<scene::WorldCellBounds> PlacementBounds(const std::shared_ptr<const renderer::InstanceSetData>& snapshot)
+{
+    struct CachedBounds {
+        std::weak_ptr<const renderer::InstanceSetData> snapshot;
+        uint64_t revision = 0;
+        std::optional<scene::WorldCellBounds> bounds;
+    };
+    static std::unordered_map<const renderer::InstanceSetData*, CachedBounds> cache;
+    auto& cached = cache[snapshot.get()];
+    if (cached.snapshot.lock() == snapshot && cached.revision == snapshot->revision) return cached.bounds;
+    cached = {snapshot, snapshot->revision, {}};
+    for (const auto& row : snapshot->placements) {
+        if (!row.active) continue;
+        const scene::WorldCellBounds point{row.position, row.position};
+        if (cached.bounds) {
+            auto& b = *cached.bounds;
+            b.min.x = (std::min)(b.min.x, row.position.x); b.min.z = (std::min)(b.min.z, row.position.z);
+            b.max.x = (std::max)(b.max.x, row.position.x); b.max.z = (std::max)(b.max.z, row.position.z);
+        } else cached.bounds = point;
+    }
+    const auto result = cached.bounds;
+    if (cache.size() > 4096) {
+        std::erase_if(cache, [](const auto& item) { return item.second.snapshot.expired(); });
+        if (cache.size() > 4096) cache.clear();
+    }
+    return result;
+}
+
+void IncludeXZ(scene::WorldCellBounds& bounds, const scene::WorldCellBounds& other)
+{
+    bounds.min.x = (std::min)(bounds.min.x, other.min.x);
+    bounds.min.z = (std::min)(bounds.min.z, other.min.z);
+    bounds.max.x = (std::max)(bounds.max.x, other.max.x);
+    bounds.max.z = (std::max)(bounds.max.z, other.max.z);
+}
+
+class PcgPointIndex {
+public:
+    template<class BoundsFor>
+    PcgPointIndex(std::size_t count, BoundsFor boundsFor)
+    {
+        m_entries.reserve(count);
+        m_matches.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            if (const auto bounds = boundsFor(i)) m_entries.push_back({*bounds, i});
+            else m_fallback.push_back(i);
+        }
+        if (!m_entries.empty()) Build(0, m_entries.size());
+    }
+
+    /// @note Overlaps and sources without conservative bounds retain their original sampling order.
+    std::span<const std::size_t> Query(float x, float z)
+    {
+        if (m_nodes.empty()) return m_fallback;
+        m_matches.assign(m_fallback.begin(), m_fallback.end());
+        Collect(0, x, z);
+        if (m_matches.size() > 1) std::sort(m_matches.begin(), m_matches.end());
+        return m_matches;
+    }
+
+private:
+    struct Entry { scene::WorldCellBounds bounds; std::size_t source; };
+    struct Node { scene::WorldCellBounds bounds; std::size_t first, end, right; };
+
+    static bool Contains(const scene::WorldCellBounds& bounds, float x, float z)
+    {
+        return x >= bounds.min.x && x <= bounds.max.x && z >= bounds.min.z && z <= bounds.max.z;
+    }
+
+    std::size_t Build(std::size_t first, std::size_t end)
+    {
+        auto bounds = m_entries[first].bounds;
+        for (auto i = first + 1; i < end; ++i) IncludeXZ(bounds, m_entries[i].bounds);
+        const auto node = m_nodes.size();
+        m_nodes.push_back({bounds, first, end, 0});
+        if (end - first <= 4) return node;
+
+        const bool alongX = static_cast<double>(bounds.max.x) - bounds.min.x
+            >= static_cast<double>(bounds.max.z) - bounds.min.z;
+        const auto center = [alongX](const auto& entry) {
+            return alongX ? static_cast<double>(entry.bounds.min.x) + entry.bounds.max.x
+                : static_cast<double>(entry.bounds.min.z) + entry.bounds.max.z;
+        };
+        const auto middle = first + (end - first) / 2;
+        std::nth_element(m_entries.begin() + first, m_entries.begin() + middle, m_entries.begin() + end,
+            [&](const Entry& a, const Entry& b) { return center(a) < center(b); });
+        Build(first, middle);
+        m_nodes[node].right = Build(middle, end);
+        return node;
+    }
+
+    void Collect(std::size_t index, float x, float z)
+    {
+        const auto& node = m_nodes[index];
+        if (!Contains(node.bounds, x, z)) return;
+        if (node.right) {
+            Collect(index + 1, x, z);
+            Collect(node.right, x, z);
+            return;
+        }
+        if (node.end - node.first == 1) {
+            m_matches.push_back(m_entries[node.first].source);
+            return;
+        }
+        for (auto i = node.first; i < node.end; ++i)
+            if (Contains(m_entries[i].bounds, x, z)) m_matches.push_back(m_entries[i].source);
+    }
+
+    std::vector<Entry> m_entries;
+    std::vector<Node> m_nodes;
+    std::vector<std::size_t> m_fallback;
+    std::vector<std::size_t> m_matches;
+};
+
+std::optional<scene::WorldCellBounds> HeightfieldQueryBounds(const scene::TerrainComponent& terrain,
+    const scene::Transform& world)
+{
+    if (terrain.columns < 2 || terrain.rows < 2 || !std::isfinite(terrain.cellSize)
+        || terrain.cellSize <= 0.0f || world.worldScale.x == 0.0f || world.worldScale.z == 0.0f) return {};
+    const auto axis = [](float origin, float scale, double length, float& min, float& max) {
+        const double offset = length * scale;
+        const double edge = origin + offset;
+        /// @note Widen the inverse of the float subtraction and division, including local zero and exact tile seams.
+        const double margin = 16.0 * std::numeric_limits<float>::epsilon()
+            * (std::max)({1.0, std::abs(static_cast<double>(origin)), std::abs(offset), std::abs(edge)});
+        const double lower = (std::min)(static_cast<double>(origin), edge) - margin;
+        const double upper = (std::max)(static_cast<double>(origin), edge) + margin;
+        constexpr double LIMIT = std::numeric_limits<float>::max();
+        if (lower < -LIMIT || upper > LIMIT) return false;
+        min = static_cast<float>(lower);
+        max = static_cast<float>(upper);
+        return true;
+    };
+    scene::WorldCellBounds bounds;
+    if (!axis(world.worldPosition.x, world.worldScale.x,
+            (terrain.columns - 1) * static_cast<double>(terrain.cellSize), bounds.min.x, bounds.max.x)
+        || !axis(world.worldPosition.z, world.worldScale.z,
+            (terrain.rows - 1) * static_cast<double>(terrain.cellSize), bounds.min.z, bounds.max.z)) return {};
+    return bounds;
+}
+
+std::optional<scene::WorldCellBounds> SplineWaterQueryBounds(const scene::WaterComponent& water)
+{
+    if (scene::WaterSurfaceUsesHorizon(water) || !scene::UsesWaterSurfaceGeometry(water)) return {};
+    const auto* geometry = scene::WaterSurfaceGeometry(water);
+    if (!geometry) return {};
+    /// @note Match the closed footprint rejection in WaterSurfaceQuery.cpp, including the displacement margin.
+    const float scale = (std::max)({std::abs(geometry->worldBoundsMin.x), std::abs(geometry->worldBoundsMax.x),
+        std::abs(geometry->worldBoundsMin.z), std::abs(geometry->worldBoundsMax.z), 1.0f});
+    const float tolerance = (std::max)(1.0e-5f, scale * 8.0f * std::numeric_limits<float>::epsilon());
+    const float margin = water.SurfaceHeightBound();
+    scene::WorldCellBounds bounds{{geometry->worldBoundsMin.x - margin - tolerance, 0.0f,
+        geometry->worldBoundsMin.z - margin - tolerance}, {geometry->worldBoundsMax.x + margin + tolerance, 0.0f,
+        geometry->worldBoundsMax.z + margin + tolerance}};
+    if (!Finite(bounds.min) || !Finite(bounds.max) || bounds.min.x > bounds.max.x || bounds.min.z > bounds.max.z)
+        return {};
+    return bounds;
+}
+
+float HorizonWetHeightLimit(const scene::WaterComponent& water, const scene::Transform& world)
+{
+    constexpr float NO_LIMIT = std::numeric_limits<float>::infinity();
+    if (!scene::WaterSurfaceUsesHorizon(water) || water.surfaceFlowCount != 0
+        || std::any_of(water.ripples.begin(), water.ripples.end(),
+            [](const auto& ripple) { return ripple.amplitude > 0.0f; })
+        || !scene::IsWaterSurfaceSupported(water, world)) return NO_LIMIT;
+    /// @note The wave bound includes crossing crests. Round to the same world height and wet threshold as the full query.
+    return static_cast<float>(static_cast<double>(world.worldPosition.y) + water.SurfaceHeightBound()) + 0.15f;
+}
+
+std::optional<scene::WorldCellBounds> TerrainRefreshBounds(const scene::WorldPcgProfile& profile,
+    std::span<const scene::WorldCellBounds> edits)
+{
+    float margin = 0.0f;
+    bool needsFullVolume = false;
+    for (const auto& rule : profile.rules) {
+        const float water = rule.maxWaterDistance < 1000000.0f ? rule.maxWaterDistance : rule.minWaterDistance + rule.waterFade;
+        const float path = rule.maxPathDistance < 1000000.0f ? rule.maxPathDistance : rule.minPathDistance + rule.pathFade;
+        const float habitat = (std::max)({water, path, rule.maxCliffDistance, rule.useWaterLevel ? 128.0f : 0.0f,
+            rule.UsesNearRelief() ? 16.0f : 0.0f, rule.UsesFarRelief() ? 64.0f : 0.0f});
+        margin = (std::max)(margin, habitat + rule.embedDepth + rule.embedJitter);
+        needsFullVolume |= rule.minSpacing > 0.0f || !rule.neighborRule.empty()
+            || !rule.competitionGroup.empty() || !rule.canopyGroup.empty();
+    }
+    std::optional<scene::WorldCellBounds> region;
+    for (auto edit : edits) {
+        edit.min.x -= margin; edit.min.z -= margin;
+        edit.max.x += margin; edit.max.z += margin;
+        if (!IntersectsXZ(edit, profile.bounds)) continue;
+        /// @note Greedy spacing and dependent rules can change placements beyond the edited neighborhood.
+        if (needsFullVolume) return profile.bounds;
+        if (region) IncludeXZ(*region, edit);
+        else region = edit;
+    }
+    if (!region) return {};
+    if (profile.maxPlacementsPerCell) {
+        /// @note Rank a whole budget cell against its original candidates before merging any retained rows.
+        const scene::WorldCellGrid grid{profile.grid.origin, scene::VEGETATION_BUDGET_CELL_SIZE};
+        scene::WorldCellId first, last;
+        if (!scene::TryLocateWorldCell(grid, region->min, first) || !scene::TryLocateWorldCell(grid, region->max, last))
+            return profile.bounds;
+        region->min = scene::WorldCellFootprint(grid, first).min;
+        region->max = scene::WorldCellFootprint(grid, last).max;
+    }
+    region->min.x = (std::max)(region->min.x, profile.bounds.min.x);
+    region->min.z = (std::max)(region->min.z, profile.bounds.min.z);
+    region->max.x = (std::min)(region->max.x, profile.bounds.max.x);
+    region->max.z = (std::min)(region->max.z, profile.bounds.max.z);
+    return region;
+}
+
 using GroupKey=std::pair<scene::WorldCellId,std::string>;
 struct Owned {
     scene::GameObject* owner=nullptr;
-    scene::WorldPcgGeneratedComponent metadata;
-    scene::InstancedMeshComponent component;
-    std::shared_ptr<asset::MeshInstancesAsset> asset;
+    /// @note The synchronous plan borrows scene components only up to transaction publication.
+    const scene::WorldPcgGeneratedComponent* metadata = nullptr;
+    const scene::InstancedMeshComponent* component = nullptr;
+    const asset::MeshInstancesAsset* asset = nullptr;
+    std::shared_ptr<const renderer::InstanceSetData> snapshot;
+    scene::Transform world;
     std::string signature;
+    std::string path;
+    bool outside = false;
+    bool validPose = false;
+    bool matchesSignature = false;
+
+    void ReadSignature()
+    {
+        if (!validPose || !snapshot) return;
+        const auto& placementRef = component->m_instanceSetRef.path;
+        const auto encoded = fbzz::asset::EncodeGuidRef(placementRef);
+        const auto identity = PcgAssetIdentity(encoded);
+        const auto hash = [&](std::string_view reference) {
+            return OwnerSignature(*owner, *metadata, *component, *asset, world, *snapshot, reference);
+        };
+        signature = hash(identity);
+        matchesSignature = signature == metadata->signature;
+        if (matchesSignature || metadata->signature.empty()) return;
+        /// @note Older output signatures included the GUID path hint that Scene loading decodes.
+        if (identity != encoded) matchesSignature = hash(encoded) == metadata->signature;
+        /// @note A legacy path-only hash has no record of the former asset GUID.
+        if (!matchesSignature && fbzz::asset::AssetDatabase::IsGuidRef(placementRef)) {
+            const auto runtimeRef = fbzz::asset::DecodeGuidRef(placementRef);
+            const auto encodedRuntime = fbzz::asset::EncodeGuidRef(runtimeRef);
+            if (PcgAssetIdentity(encodedRuntime) == PcgAssetIdentity(placementRef))
+                matchesSignature = hash(runtimeRef) == metadata->signature;
+        }
+    }
+
+    [[nodiscard]] bool IsProtected() const
+    {
+        return metadata->manualOverride || !matchesSignature;
+    }
 };
 struct PcgPlan {
     scene::GameObject* volume=nullptr;
@@ -147,6 +447,7 @@ struct PcgPlan {
     std::string profilePath,profileText,expected;
     std::map<GroupKey,Owned> owned;
     OpData summary=OpData::MakeObject();
+    bool terrainRefresh = false;
 };
 
 OpResult ValidateRetainedPlacements(const PcgPlan& plan)
@@ -175,14 +476,14 @@ OpResult ValidateRetainedPlacements(const PcgPlan& plan)
         }
     }
     for (const auto& [key, owned] : plan.owned) {
+        if (plan.terrainRefresh && (owned.outside || owned.IsProtected())) continue;
         const bool competes = hasNewPlacements && competitiveRules.contains(key.second);
         const bool usesCanopy = canopyRules.contains(key.second);
         if (!limit && !competes && !usesCanopy) continue;
-        scene::Transform world;
-        const auto snapshot = owned.component.Snapshot(owned.asset->instances);
-        if (!snapshot || !ReadWorld(*owned.owner, world))
+        const auto& snapshot = owned.snapshot;
+        if (!snapshot || !owned.validPose)
             return OpResult::Err("PCG_CONFLICT", "A retained generated owner cannot be sampled");
-        const auto matrix = world.GetWorldMatrix();
+        const auto matrix = owned.world.GetWorldMatrix();
         for (const auto& placement : snapshot->placements) {
             if (!placement.active) continue;
             const auto p = matrix * math::Vector4{placement.position, 1};
@@ -238,8 +539,10 @@ bool FitsLiveCandidateBudget(const scene::WorldPcgProfile& profile)
     return true;
 }
 
-OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool preview = false)
+OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool preview = false,
+    std::span<const scene::WorldCellBounds> terrainEdits = {})
 {
+    FBZZ_PROFILE_SCOPE("WorldPcg::Prepare");
     const int maxPoints = args.GetInt("maxPoints", 256);
     const int maxRejected = args.GetInt("maxRejectedPoints", 0);
     if (maxPoints < 0 || maxPoints > 1024 || maxRejected < 0 || maxRejected > static_cast<int>(scene::MAX_WORLD_PCG_DEBUG_SAMPLES))
@@ -275,11 +578,14 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
     const auto* volume = &settings;
     if (!volume->enabled) return OpResult::Err("NO_VOLUME", "An enabled PCG volume is required");
     const bool draftText = args.Has("draftProfileText");
-    plan.profilePath=ProfilePath(ctx,volume->profilePath,draftText);
-    if (draftText) plan.profileText = args.GetString("draftProfileText");
     std::string diagnostic;
-    if(plan.profilePath.empty()||(!draftText&&!world_pcg_profile_draft::ReadProfileBytes(plan.profilePath,plan.profileText))
-        ||!scene::DeserializeWorldPcgProfile(plan.profileText,plan.profile,diagnostic))return OpResult::Err("INVALID_PROFILE",diagnostic.empty()?"PCG profile cannot be read":diagnostic);
+    {
+        FBZZ_PROFILE_SCOPE("WorldPcg::PrepareProfile");
+        plan.profilePath=ProfilePath(ctx,volume->profilePath,draftText);
+        if (draftText) plan.profileText = args.GetString("draftProfileText");
+        if(plan.profilePath.empty()||(!draftText&&!world_pcg_profile_draft::ReadProfileBytes(plan.profilePath,plan.profileText))
+            ||!scene::DeserializeWorldPcgProfile(plan.profileText,plan.profile,diagnostic))return OpResult::Err("INVALID_PROFILE",diagnostic.empty()?"PCG profile cannot be read":diagnostic);
+    }
     if(volume->overrideBounds)plan.profile.bounds={volume->boundsMin,volume->boundsMax};
     if(volume->overrideSeed){if(volume->seed<0)return OpResult::Err("BAD_ARG","PCG seed must be nonnegative");plan.profile.seed=static_cast<uint64_t>(volume->seed);}
     if(args.Has("boundsMin")!=args.Has("boundsMax"))return OpResult::Err("BAD_ARG","Both boundsMin and boundsMax are required");
@@ -294,6 +600,16 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
     }
     if(partitionOwner){const auto* partition=partitionOwner->GetComponent<scene::WorldPartitionComponent>();plan.profile.grid.origin=partition->gridOrigin;plan.profile.grid.cellSize=partition->cellSize;}
     if(!scene::ValidateWorldPcgProfile(plan.profile,diagnostic))return OpResult::Err("BAD_PROFILE",diagnostic);
+    plan.terrainRefresh = !terrainEdits.empty();
+    if (plan.terrainRefresh) {
+        const auto region = TerrainRefreshBounds(plan.profile, terrainEdits);
+        if (!region) {
+            auto result = OpResult::Ok();
+            result.noChange = true;
+            return result;
+        }
+        plan.profile.bounds = *region;
+    }
     if (live && !FitsLiveCandidateBudget(plan.profile)) return LivePreviewBudgetExceeded();
     for(auto& rule:plan.profile.rules)if(rule.parts.empty()){
         const auto* definition=asset::ResolveMeshInstanceDefinition(rule.prototypeRef);
@@ -305,50 +621,68 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
         std::string id;
         std::map<std::string_view, std::vector<int>> materialLayers;
         math::Matrix4 worldToLocal = math::Matrix4::Identity();
+        bool uprightHeightfield = false;
     };
-    struct Water { const scene::WaterComponent* data;scene::Transform world; };
+    struct Water { const scene::WaterComponent* data; scene::Transform world; float wetHeightLimit; };
     struct Biome { const scene::WorldBiomeVolumeComponent* data;std::string id; };
     std::vector<Ground> grounds;std::vector<Water> waters;std::vector<Biome> biomes;
-    uint64_t guard=1469598103934665603ull;AddHash(guard,scene.GetRenderSceneGeneration());AddHash(guard,context.undo.GetRevision());AddHash(guard,AssetDirtyRegistry::DiscardEpoch());
-    AddHash(guard,HashText(plan.profileText));AddHash(guard,plan.volume->instanceId);AddHash(guard,volume->profilePath);AddHash(guard,volume->protectManual?1:0);
-    AddHash(guard,partitionOwner?partitionOwner->instanceId:std::string{});
-    AddHash(guard,volume->overrideBounds?1:0);AddVector(guard,volume->boundsMin);AddVector(guard,volume->boundsMax);AddHash(guard,volume->overrideSeed?1:0);AddHash(guard,static_cast<uint64_t>(volume->seed));
+    uint64_t guard=1469598103934665603ull;
+    if (!plan.terrainRefresh) {
+        AddHash(guard,scene.GetRenderSceneGeneration());AddHash(guard,context.undo.GetRevision());AddHash(guard,AssetDirtyRegistry::DiscardEpoch());
+        AddHash(guard,HashText(plan.profileText));AddHash(guard,plan.volume->instanceId);AddHash(guard,volume->profilePath);AddHash(guard,volume->protectManual?1:0);
+        AddHash(guard,partitionOwner?partitionOwner->instanceId:std::string{});
+        AddHash(guard,volume->overrideBounds?1:0);AddVector(guard,volume->boundsMin);AddVector(guard,volume->boundsMax);AddHash(guard,volume->overrideSeed?1:0);AddHash(guard,static_cast<uint64_t>(volume->seed));
+    }
     for(auto id:scene.GetEntities<scene::TerrainComponent>()){
         auto* owner=scene.GetGameObject(id);const auto* data=scene.GetComponent<scene::TerrainComponent>(id);scene::Transform world;
         if(!owner||!owner->activeInHierarchy()||!data||!data->enabled)continue;if(!ReadWorld(*owner,world))return OpResult::Err("INVALID_TRANSFORM","Terrain transform is invalid");
-        grounds.push_back({data,world,owner->instanceId});AddHash(guard,owner->instanceId);AddHash(guard,data->surfaceRevision);AddHash(guard,data->vegetationRevision);
-        AddVector(guard,world.worldPosition);AddVector(guard,world.worldScale);AddFloat(guard,world.worldRotation.x);AddFloat(guard,world.worldRotation.y);AddFloat(guard,world.worldRotation.z);AddFloat(guard,world.worldRotation.w);
+        grounds.push_back({data,world,owner->instanceId});
+        grounds.back().uprightHeightfield = ExactIdentityRotation(world.worldRotation)
+            && data->surfaceIndices.empty();
+        if (!plan.terrainRefresh) {
+            AddHash(guard,owner->instanceId);AddHash(guard,data->surfaceRevision);AddHash(guard,data->vegetationRevision);
+            AddVector(guard,world.worldPosition);AddVector(guard,world.worldScale);AddFloat(guard,world.worldRotation.x);AddFloat(guard,world.worldRotation.y);AddFloat(guard,world.worldRotation.z);AddFloat(guard,world.worldRotation.w);
+        }
     }
-    if(grounds.empty())return OpResult::Err("NO_TERRAIN","PCG requires authored terrain samples");
+    if(grounds.empty() && !plan.terrainRefresh)return OpResult::Err("NO_TERRAIN","PCG requires authored terrain samples");
     if (live && grounds.size() > 8) return LivePreviewBudgetExceeded();
-    const auto materialIdentity = [](const std::string& reference) {
-        auto guid = asset::AssetDatabase::GuidFromRef(reference);
-        if (guid.empty()) guid = asset::AssetDatabase::TryGetGuidFromPath(asset::AssetManager::ResolveAssetPath(reference));
-        return guid.empty() ? NormalizeAssetPath(reference) : "guid:" + guid;
+    std::unordered_map<std::string_view, std::string> materialIdentities;
+    const auto materialIdentity = [&](const std::string& reference) -> const std::string& {
+        auto [entry, inserted] = materialIdentities.try_emplace(reference);
+        if (inserted) {
+            auto guid = asset::AssetDatabase::GuidFromRef(reference);
+            if (guid.empty()) guid = asset::AssetDatabase::TryGetGuidFromPath(asset::AssetManager::ResolveAssetPath(reference));
+            entry->second = guid.empty() ? NormalizeAssetPath(reference) : "guid:" + guid;
+        }
+        return entry->second;
     };
     std::map<std::string, std::set<std::string_view>> requestedMaterials;
-    if (!plan.profile.pathMaterial.empty())
-        requestedMaterials[materialIdentity(plan.profile.pathMaterial)].insert(plan.profile.pathMaterial);
-    for (const auto& rule : plan.profile.rules) {
-        for (const auto* material : {&rule.includeMaterial, &rule.excludeMaterial})
-            if (!material->empty()) requestedMaterials[materialIdentity(*material)].insert(*material);
-    }
-    if (!requestedMaterials.empty()) {
-        for (auto& ground : grounds) {
-            if (!ground.data->HasValidSplat()) continue;
-            for (int layer = 0; layer < ground.data->LayerCount(); ++layer) {
-                const auto& material = ground.data->layerMaterials[layer];
-                if (material.empty()) continue;
-                const auto matches = requestedMaterials.find(materialIdentity(material));
-                if (matches == requestedMaterials.end()) continue;
-                for (const auto ref : matches->second) ground.materialLayers[ref].push_back(layer);
+    {
+        FBZZ_PROFILE_SCOPE("WorldPcg::PrepareMaterials");
+        if (!plan.profile.pathMaterial.empty())
+            requestedMaterials[materialIdentity(plan.profile.pathMaterial)].insert(plan.profile.pathMaterial);
+        for (const auto& rule : plan.profile.rules) {
+            for (const auto* material : {&rule.includeMaterial, &rule.excludeMaterial})
+                if (!material->empty()) requestedMaterials[materialIdentity(*material)].insert(*material);
+        }
+        if (!requestedMaterials.empty()) {
+            for (auto& ground : grounds) {
+                if (!ground.data->HasValidSplat()) continue;
+                for (int layer = 0; layer < ground.data->LayerCount(); ++layer) {
+                    const auto& material = ground.data->layerMaterials[layer];
+                    if (material.empty()) continue;
+                    const auto matches = requestedMaterials.find(materialIdentity(material));
+                    if (matches == requestedMaterials.end()) continue;
+                    for (const auto ref : matches->second) ground.materialLayers[ref].push_back(layer);
+                }
+                if (!ground.materialLayers.empty()) ground.worldToLocal = math::Matrix4::Inverse(ground.world.GetWorldMatrix());
             }
-            if (!ground.materialLayers.empty()) ground.worldToLocal = math::Matrix4::Inverse(ground.world.GetWorldMatrix());
         }
     }
     for(auto id:scene.GetEntities<scene::WaterComponent>()){
         auto* owner=scene.GetGameObject(id);const auto* data=scene.GetComponent<scene::WaterComponent>(id);scene::Transform world;
-        if(owner&&owner->activeInHierarchy()&&data&&data->enabled&&ReadWorld(*owner,world))waters.push_back({data,world});}
+        if(owner&&owner->activeInHierarchy()&&data&&data->enabled&&ReadWorld(*owner,world))
+            waters.push_back({data, world, HorizonWetHeightLimit(*data, world)});}
     for(auto id:scene.GetEntities<scene::WorldBiomeVolumeComponent>()){
         const auto* owner=scene.GetGameObject(id);const auto* data=scene.GetComponent<scene::WorldBiomeVolumeComponent>(id);
         if(owner&&owner->activeInHierarchy()&&data&&data->enabled){
@@ -364,42 +698,88 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
         remainingRows -= count;
         return true;
     };
+    auto protectionBounds = plan.profile.bounds;
+    float protectionMargin = 0.0f;
+    for (const auto& rule : plan.profile.rules)
+        if (rule.protectedDistance > 0.0f)
+            protectionMargin = (std::max)(protectionMargin, rule.protectedDistance + rule.embedDepth + rule.embedJitter);
+    protectionBounds.min.x -= protectionMargin; protectionBounds.min.z -= protectionMargin;
+    protectionBounds.max.x += protectionMargin; protectionBounds.max.z += protectionMargin;
+    const bool sampleProtected = volume->protectManual && (!plan.terrainRefresh || protectionMargin > 0.0f);
+    const bool validateOutsideDependencies = std::any_of(plan.profile.rules.begin(), plan.profile.rules.end(),
+        [](const auto& rule) { return !rule.competitionGroup.empty() || !rule.canopyGroup.empty(); });
+    auto ownedBounds = plan.profile.bounds;
+    if (plan.profile.maxPlacementsPerCell) {
+        const float padding = scene::VEGETATION_BUDGET_CELL_SIZE;
+        ownedBounds.min.x -= padding; ownedBounds.min.z -= padding;
+        ownedBounds.max.x += padding; ownedBounds.max.z += padding;
+    }
+    if (sampleProtected) IncludeXZ(ownedBounds, protectionBounds);
     std::vector<math::Vector3> protectedPositions;
-    for(auto id:scene.GetEntities<scene::InstancedMeshComponent>()){
+    const auto protect = [&](const math::Vector3& position) {
+        if (!plan.terrainRefresh || InBounds(protectionBounds, position)) protectedPositions.push_back(position);
+    };
+    const auto collectOwner = [&](scene::EntityID id) {
         auto* owner=scene.GetGameObject(id);const auto* component=scene.GetComponent<scene::InstancedMeshComponent>(id);
-        if(!owner||owner->IsRuntimeGenerated()||!component)continue;const auto* metadata=owner->GetComponent<scene::WorldPcgGeneratedComponent>();
+        if(!owner||owner->IsRuntimeGenerated()||!component)return OpResult::Ok();
+        const auto* metadata=owner->GetComponent<scene::WorldPcgGeneratedComponent>();
         if(metadata&&metadata->volumeId==plan.volume->instanceId){
-            auto* source=PlacementAsset(component->m_instanceSetRef.path);if(!source)return OpResult::Err("MISSING_OUTPUT","Generated placement asset is missing; detach this owner before replacing it");
-            const auto snapshot = source->instances.Snapshot();
-            if (snapshot && !spendRows(snapshot->placements.size())) return LivePreviewBudgetExceeded();
-            Owned owned;owned.owner=owner;owned.metadata=*metadata;owned.component=*component;owned.asset=std::make_shared<asset::MeshInstancesAsset>(*source);
-            owned.signature=OwnerSignature(*owner,*metadata,*component,*source);AddHash(guard,owner->instanceId);AddHash(guard,owned.signature);AddHash(guard,metadata->signature);AddHash(guard,metadata->manualOverride?1:0);
-            const auto& budget = component->m_vegetationBudget;
-            AddHash(guard, budget.enabled ? 1 : 0);
-            AddHash(guard, static_cast<uint64_t>(budget.drawDetailPerCell));
-            AddHash(guard, static_cast<uint64_t>(budget.nearDetailPerCell));
-            AddHash(guard, static_cast<uint64_t>(budget.shadowDetailPerCell));
-            if(!plan.owned.emplace(GroupKey{{metadata->cellX,metadata->cellZ},metadata->ruleKey},std::move(owned)).second)return OpResult::Err("DUPLICATE_OUTPUT","PCG ownership keys are duplicated");
-            if(!metadata->manualOverride)continue;
+            Owned owned;
+            auto* source=PlacementAsset(component->m_instanceSetRef.path, &owned.path);if(!source)return OpResult::Err("MISSING_OUTPUT","Generated placement asset is missing; detach this owner before replacing it");
+            const auto base = source->instances.Snapshot();
+            if (!base) return OpResult::Err("MISSING_OUTPUT", "Generated placement data is invalid");
+            if (!spendRows(base->placements.size())) return LivePreviewBudgetExceeded();
+            owned.owner=owner;owned.metadata=metadata;owned.component=component;owned.asset=source;
+            owned.snapshot = component->Snapshot(source->instances);
+            owned.validPose = ReadWorld(*owner, owned.world);
+            const GroupKey key{{metadata->cellX,metadata->cellZ},metadata->ruleKey};
+            if (plan.terrainRefresh && !validateOutsideDependencies && owned.snapshot && owned.validPose && ExactIdentityPose(owned.world)
+                && !IntersectsXZ(plan.profile.bounds, scene::WorldCellFootprint(plan.profile.grid, key.first))) {
+                const auto rows = PlacementBounds(owned.snapshot);
+                owned.outside = rows && !OverlapsQueryXZ(ownedBounds, *rows);
+            }
+            if (!owned.outside && owned.validPose) owned.ReadSignature();
+            if (!plan.terrainRefresh) {
+                AddHash(guard,owner->instanceId);AddHash(guard,owned.signature);AddHash(guard,metadata->signature);AddHash(guard,metadata->manualOverride?1:0);
+                const auto& budget = component->m_vegetationBudget;
+                AddHash(guard, budget.enabled ? 1 : 0);
+                AddHash(guard, static_cast<uint64_t>(budget.drawDetailPerCell));
+                AddHash(guard, static_cast<uint64_t>(budget.nearDetailPerCell));
+                AddHash(guard, static_cast<uint64_t>(budget.shadowDetailPerCell));
+            }
+            const bool protectOwner = !owned.outside && (metadata->manualOverride || (plan.terrainRefresh && owned.IsProtected()));
+            if(!plan.owned.emplace(key,std::move(owned)).second)return OpResult::Err("DUPLICATE_OUTPUT","PCG ownership keys are duplicated");
+            if(!protectOwner)return OpResult::Ok();
         }
-        if(!volume->protectManual||!owner->activeInHierarchy()||!component->m_enabled)continue;
+        if(!sampleProtected||!owner->activeInHierarchy()||!component->m_enabled)return OpResult::Ok();
         const auto snapshot=component->Snapshot();scene::Transform world;if(!snapshot||!ReadWorld(*owner,world))return OpResult::Err("INVALID_PLACEMENT","Manual placement cannot be sampled");
         if (!spendRows(snapshot->placements.size())) return LivePreviewBudgetExceeded();
-        const auto matrix=world.GetWorldMatrix();for(const auto& p:snapshot->placements)if(p.active){const auto v=matrix*math::Vector4{p.position,1};protectedPositions.push_back({v.x,v.y,v.z});}
+        const auto matrix=world.GetWorldMatrix();for(const auto& p:snapshot->placements)if(p.active){const auto v=matrix*math::Vector4{p.position,1};protect({v.x,v.y,v.z});}
+        return OpResult::Ok();
+    };
+    {
+        FBZZ_PROFILE_SCOPE("WorldPcg::CollectOwners");
+        const auto entities = plan.terrainRefresh && !sampleProtected
+            ? scene.GetEntities<scene::WorldPcgGeneratedComponent>() : scene.GetEntities<scene::InstancedMeshComponent>();
+        for (const auto id : entities) {
+            auto result = collectOwner(id);
+            if (!result.ok) return result;
+        }
     }
-    if(volume->protectManual)for(auto id:scene.GetEntities<scene::MeshRenderer>()){
+    if(sampleProtected)for(auto id:scene.GetEntities<scene::MeshRenderer>()){
         auto* owner=scene.GetGameObject(id);if(!owner||owner->IsRuntimeGenerated()||!owner->activeInHierarchy()||owner->GetComponent<scene::WorldPcgGeneratedComponent>())continue;
         scene::Transform world;if(ReadWorld(*owner,world)) {
             if (!spendRows(1)) return LivePreviewBudgetExceeded();
-            protectedPositions.push_back(world.worldPosition);
+            protect(world.worldPosition);
         }}
-    for(const auto& point:protectedPositions)AddVector(guard,point);
-    float waterMargin = 0.0f, pathMargin = 0.0f;
+    if (!plan.terrainRefresh) for(const auto& point:protectedPositions)AddVector(guard,point);
+    float waterMargin = 0.0f, pathMargin = 0.0f, embedMargin = 0.0f;
     bool useWaterLevel = false, usePathBand = false;
     for (const auto& rule : plan.profile.rules) {
         const float distance = rule.maxWaterDistance < 1000000.0f ? rule.maxWaterDistance
             : rule.minWaterDistance + rule.waterFade;
         waterMargin = (std::max)(waterMargin, distance);
+        embedMargin = (std::max)(embedMargin, rule.embedDepth + rule.embedJitter);
         useWaterLevel |= rule.useWaterLevel;
         if (rule.UsesPathBand()) {
             usePathBand = true;
@@ -415,7 +795,10 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
     bool hasPathLayer = false;
     if ((waterSearch > 0 && !waters.empty()) || usePathBand) {
         std::vector<std::pair<const scene::WaterComponent*,const scene::Transform*>> views;for(const auto& water:waters)views.push_back({water.data,&water.world});
-        const auto& b=plan.profile.bounds;const std::vector<math::Vector3> corners{{b.min.x,0,b.min.z},{b.max.x,0,b.min.z},{b.max.x,0,b.max.z},{b.min.x,0,b.max.z}};
+        const auto& b = plan.profile.bounds;
+        const float embed = plan.terrainRefresh ? embedMargin : 0.0f;
+        const std::vector<math::Vector3> corners{{b.min.x - embed, 0, b.min.z - embed}, {b.max.x + embed, 0, b.min.z - embed},
+            {b.max.x + embed, 0, b.max.z + embed}, {b.min.x - embed, 0, b.max.z + embed}};
         const TerrainScatterBrush region{corners,0.25f,false,true,0};
         for (const auto& ground : grounds) {
             const auto found = ground.materialLayers.find(plan.profile.pathMaterial);
@@ -423,15 +806,33 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
             hasPathLayer |= usePathBand && !layers.empty();
             auto clearance = BuildTerrainPaintClearance(*ground.data, ground.world, region, layers, views,
                 waters.empty() ? 0.0f : waterSearch, !usePathBand || layers.empty() ? 0.0f : (std::max)(0.25f, pathMargin),
-                true, live ? &remainingClearanceWork : nullptr);
+                true, live ? &remainingClearanceWork : nullptr, useWaterLevel || clearances.empty());
             if (clearance.budgetExceeded) return LivePreviewBudgetExceeded();
             clearances.push_back(std::move(clearance));
         }
     }
     std::vector<scene::WorldPcgMaterialWeight> materialWeights;
+    PcgPointIndex groundIndex(grounds.size(), [&](std::size_t i) -> std::optional<scene::WorldCellBounds> {
+        const auto& ground = grounds[i];
+        return ground.uprightHeightfield ? HeightfieldQueryBounds(*ground.data, ground.world) : std::nullopt;
+    });
+    PcgPointIndex waterIndex(waters.size(), [&](std::size_t i) { return SplineWaterQueryBounds(*waters[i].data); });
+    PcgPointIndex biomeIndex(biomes.size(), [&](std::size_t i) -> std::optional<scene::WorldCellBounds> {
+        return scene::WorldCellBounds{biomes[i].data->boundsMin, biomes[i].data->boundsMax};
+    });
     const auto sampleGround = [&](float x, float z, scene::TerrainSurfaceSample& highest) {
         const Ground* highestGround = nullptr;
-        for (const auto& ground : grounds) {
+        for (const auto i : groundIndex.Query(x, z)) {
+            const auto& ground = grounds[i];
+            if (ground.uprightHeightfield) {
+                const auto& world = ground.world;
+                const auto& terrain = *ground.data;
+                /// @note Use the same local division and double-precision edge bounds as the heightfield query.
+                const float lx = (x - world.worldPosition.x) / world.worldScale.x;
+                const float lz = (z - world.worldPosition.z) / world.worldScale.z;
+                if (lx < 0.0f || lz < 0.0f || lx > (terrain.columns - 1) * static_cast<double>(terrain.cellSize)
+                    || lz > (terrain.rows - 1) * static_cast<double>(terrain.cellSize)) continue;
+            }
             scene::TerrainSurfaceSample one;
             if (!scene::TrySampleTerrainWorld(*ground.data, ground.world, x, z, one)) continue;
             if (!highestGround || one.position.y > highest.position.y
@@ -441,6 +842,32 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
             }
         }
         return highestGround;
+    };
+    struct WaterReading {
+        scene::WaterSurfaceHeightSample sample;
+        bool attempted = false;
+        bool valid = false;
+    };
+    std::vector<WaterReading> waterReadings;
+    waterReadings.resize(waters.size());
+    std::span<const std::size_t> waterCandidates;
+    std::optional<math::Vector3> waterPoint;
+    /// @note Base and habitat queries share an ordered prefix for the same exact world point.
+    const auto prepareWaterPoint = [&](const math::Vector3& position) {
+        if (waterPoint && waterPoint->x == position.x && waterPoint->y == position.y && waterPoint->z == position.z)
+            return;
+        waterCandidates = waterIndex.Query(position.x, position.z);
+        for (std::size_t i = 0; i < waterCandidates.size(); ++i) waterReadings[i].attempted = false;
+        waterPoint = position;
+    };
+    const auto readWater = [&](std::size_t i) -> const WaterReading& {
+        auto& reading = waterReadings[i];
+        if (!reading.attempted) {
+            const auto& water = waters[waterCandidates[i]];
+            reading.valid = scene::TrySampleInsideWaterSurfaceHeightWorld(*water.data, water.world, *waterPoint, 0, reading.sample);
+            reading.attempted = true;
+        }
+        return reading;
     };
     constexpr float DIAGONAL = 0.70710678f;
     constexpr float CLIFF_NORMAL_Y = 0.64278761f;
@@ -490,20 +917,28 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
             }
             out.materialWeights = materialWeights;
         }
-        for(const auto& biome:biomes){const auto& b=*biome.data;if(x>=b.boundsMin.x&&x<b.boundsMax.x&&z>=b.boundsMin.z&&z<b.boundsMax.z&&highest.position.y>=b.boundsMin.y&&highest.position.y<=b.boundsMax.y){out.biome=b.biome;out.biomeDensity=b.density;break;}}
-        for (const auto& water : waters) {
-            scene::WaterSurfaceHeightSample sample;
-            if (scene::TrySampleWaterSurfaceHeightWorld(*water.data, water.world, highest.position, 0, sample)
-                && sample.insideSurface && !sample.excluded && highest.position.y <= sample.position.y + 0.15f) {
+        for (const auto i : biomeIndex.Query(x, z)) {
+            const auto& biome = *biomes[i].data;
+            if (x < biome.boundsMax.x && z < biome.boundsMax.z
+                && highest.position.y >= biome.boundsMin.y && highest.position.y <= biome.boundsMax.y) {
+                out.biome = biome.biome;
+                out.biomeDensity = biome.density;
+                break;
+            }
+        }
+        prepareWaterPoint(highest.position);
+        for (std::size_t i = 0; i < waterCandidates.size(); ++i) {
+            if (highest.position.y > waters[waterCandidates[i]].wetHeightLimit) continue;
+            const auto& reading = readWater(i);
+            if (reading.valid && highest.position.y <= reading.sample.position.y + 0.15f) {
                 out.water = true;
                 out.waterDistance = 0.0f;
                 break;
             }
         }
-        if(!out.water&&waterMargin>0){float nearest=1000000;
-            for(const auto& clearance:clearances)if(clearance.NearWater(highest.position,waterMargin)){float low=0,high=waterMargin;
-                for(int step=0;step<16;++step){const float middle=(low+high)*0.5f;if(clearance.NearWater(highest.position,middle))high=middle;else low=middle;}nearest=std::min(nearest,high);}
-            out.waterDistance=nearest;}
+        if (!out.water && waterMargin > 0)
+            for (const auto& clearance : clearances)
+                out.waterDistance = (std::min)(out.waterDistance, clearance.WaterDistance(highest.position, waterMargin));
         return true;
     };
     const auto sampleHabitat = [&](const scene::WorldPcgRule& rule, scene::WorldPcgSurfaceSample& out) {
@@ -533,12 +968,13 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
             }
         }
         if (!rule.useWaterLevel) return;
-        for (const auto& water : waters) {
-            scene::WaterSurfaceHeightSample sample;
-            if (!scene::TrySampleWaterSurfaceHeightWorld(*water.data, water.world, out.position, 0, sample)
-                || !sample.insideSurface || sample.excluded) continue;
-            const float offset = (out.position.y - water.world.worldPosition.y) - sample.baseHeightOffset;
-            if (offset >= -sample.waterDepthLimit
+        prepareWaterPoint(out.position);
+        for (std::size_t i = 0; i < waterCandidates.size(); ++i) {
+            const auto& reading = readWater(i);
+            if (!reading.valid) continue;
+            const auto& water = waters[waterCandidates[i]];
+            const float offset = (out.position.y - water.world.worldPosition.y) - reading.sample.baseHeightOffset;
+            if (offset >= -reading.sample.waterDepthLimit
                 && (!std::isfinite(out.waterOffset) || std::abs(offset) < std::abs(out.waterOffset)))
                 out.waterOffset = offset;
         }
@@ -558,12 +994,17 @@ OpResult PreparePcg(OpContext& context,const OpArgs& args,PcgPlan& plan,bool pre
     };
     scene::WorldPcgDiagnostics samples;
     samples.maxSamples = static_cast<std::size_t>(maxRejected);
-    const bool generated = scene::GenerateWorldPcg(plan.profile, sampler, protectedPositions,
-        plan.generated, diagnostic, sampleHabitat, maxRejected > 0 ? &samples : nullptr);
+    bool generated;
+    {
+        FBZZ_PROFILE_SCOPE("WorldPcg::EvaluateRules");
+        generated = scene::GenerateWorldPcg(plan.profile, sampler, protectedPositions,
+            plan.generated, diagnostic, sampleHabitat, maxRejected > 0 ? &samples : nullptr);
+    }
     if (habitatBudgetExceeded) return live ? LivePreviewBudgetExceeded()
         : OpResult::Err("HABITAT_SAMPLE_BUDGET", "Narrow the region or increase placement spacing.");
     if (!generated) return OpResult::Err("PCG_FAILED",diagnostic);
     if (auto result = ValidateRetainedPlacements(plan); !result.ok) return result;
+    if (plan.terrainRefresh) return OpResult::Ok();
     AddHash(guard,plan.generated.fingerprint);plan.expected=Hex(guard);
     auto& summary=plan.summary;summary.Set("schemaVersion",1);summary.Set("volume",plan.volume->instanceId);summary.Set("profile",plan.profilePath);
     if (draft) summary.Set("draft", true);
@@ -640,14 +1081,93 @@ struct PcgChange {
     scene::InstancedMeshComponent after;
     scene::WorldPcgGeneratedComponent afterMetadata;
     std::shared_ptr<asset::MeshInstancesAsset> beforeAsset,afterAsset;
+    struct Persisted {
+        asset::MeshInstancesAsset asset;
+        std::string bytes;
+    };
+    std::shared_ptr<Persisted> persisted;
     std::string beforeSignature,afterSignature;
 };
+
+bool ReadPlacementBytes(const std::string& path, std::string& bytes)
+{
+    std::ifstream file(util::FileSystem::PathFromUtf8(path), std::ios::binary | std::ios::ate);
+    if (!file) return false;
+    const auto size = file.tellg();
+    if (size < 0 || size > std::streamoff{512 * 1024 * 1024}) return false;
+    bytes.resize(static_cast<std::size_t>(size));
+    if (!file.seekg(0) || !file.read(bytes.data(), static_cast<std::streamsize>(size))) return false;
+    return file.peek() == std::char_traits<char>::eof() && !file.bad();
+}
+
+std::shared_ptr<PcgChange::Persisted> PersistedPlacement(const std::string& path)
+{
+    static std::unordered_map<std::string, std::weak_ptr<PcgChange::Persisted>> snapshots;
+    static auto epoch = AssetDirtyRegistry::DiscardEpoch();
+    if (epoch != AssetDirtyRegistry::DiscardEpoch()) {
+        snapshots.clear();
+        epoch = AssetDirtyRegistry::DiscardEpoch();
+    }
+    auto& entry = snapshots[path];
+    if (auto known = entry.lock()) return known;
+    auto disk = std::make_shared<PcgChange::Persisted>();
+    if (!ReadPlacementBytes(path, disk->bytes)
+        || !asset::DeserializeMeshInstancesAsset(disk->bytes, path, disk->asset)) return {};
+    entry = disk;
+    return disk;
+}
+
+bool MatchesPersistedPlacement(const std::string& path, PcgChange::Persisted& persisted)
+{
+    std::string bytes;
+    if (!ReadPlacementBytes(path, bytes)) return false;
+    if (!persisted.bytes.empty() && bytes == persisted.bytes) return true;
+    asset::MeshInstancesAsset disk;
+    if (!asset::DeserializeMeshInstancesAsset(bytes, path, disk) || !asset::MeshInstancesAssetsEqual(disk, persisted.asset)) return false;
+    persisted.bytes = std::move(bytes);
+    return true;
+}
+
+std::string PlacementPathKey(std::string path)
+{
+    path = util::FileSystem::NormalizePathSeparators(std::move(path));
+    for (auto& c : path) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return path;
+}
+
+using PlacementReferences = std::unordered_map<std::string, std::size_t>;
+
+PlacementReferences CountPlacementReferences(scene::Scene& scene)
+{
+    PlacementReferences references;
+    const auto entities = scene.GetEntities<scene::InstancedMeshComponent>();
+    references.reserve(entities.size());
+    for (const auto id : entities) {
+        if (!scene.GetGameObject(id)) continue;
+        const auto* component = scene.GetComponent<scene::InstancedMeshComponent>(id);
+        if (component->m_instanceSetRef.path.empty()) continue;
+        auto path = asset::FindLoadedMeshInstancesPath(component->m_instanceSetRef.path);
+        if (path.empty())
+            path = asset::AssetManager::ResolveAssetPath(component->m_instanceSetRef.path);
+        ++references[PlacementPathKey(std::move(path))];
+    }
+    return references;
+}
 
 void PublishDraft(const PcgChange& change,const std::shared_ptr<asset::MeshInstancesAsset>& value)
 {
     if(auto* current=PlacementAsset(change.path))*current=*value;
     AssetDirtyRegistry::RegisterDraft(change.path,change.reference,"PCG MESH INSTANCES",value,
-        [path=change.path](const asset::MeshInstancesAsset& draft){const auto* current=PlacementAsset(path);return current&&asset::MeshInstancesAssetsEqual(*current,draft)&&asset::SaveMeshInstancesAsset(path,draft);},
+        [path=change.path, persisted=change.persisted](const asset::MeshInstancesAsset& draft) {
+            const auto* current = PlacementAsset(path);
+            if (!current || !asset::MeshInstancesAssetsEqual(*current, draft)
+                || !MatchesPersistedPlacement(path, *persisted)
+                || !asset::SaveMeshInstancesAsset(path, draft)) return false;
+            persisted->asset = draft;
+            /// @note Validate new bytes on the next read instead of parsing a file we just wrote on every save.
+            persisted->bytes.clear();
+            return true;
+        },
         [path=change.path]{(void)asset::AssetManager::ReloadPath(path);});
 }
 
@@ -661,34 +1181,51 @@ public:
     bool TryUndo(std::string& diagnostic) override {return Apply(false,diagnostic);}
     bool SupportsLegacyComposition() const override {return false;}
     std::string GetDescription() const override {return "Generate World PCG";}
+    bool ApplyValidated(bool after, std::string& diagnostic)
+    {
+        if (after == m_applied || !Editable(m_context) || m_context.activeScene != m_scene
+            || m_scene->GetRenderSceneGeneration() != m_generation || AssetDirtyRegistry::DiscardEpoch() != m_epoch) {
+            diagnostic = "PCG scene or draft lifetime changed";
+            return false;
+        }
+        return Publish(after, diagnostic);
+    }
     bool ValidateHistory(std::string& diagnostic) const override
     {
+        FBZZ_PROFILE_SCOPE("WorldPcg::ValidateOutputHistory");
         if(!Editable(m_context)||m_context.activeScene!=m_scene||m_scene->GetRenderSceneGeneration()!=m_generation||AssetDirtyRegistry::DiscardEpoch()!=m_epoch){diagnostic="PCG scene or draft lifetime changed";return false;}
+        std::optional<PlacementReferences> references;
         for(const auto& change:m_changes){
-            auto* owner=m_scene->FindByGuid(change.ownerId);
-            if(!m_applied&&change.created){if(owner){diagnostic="PCG owner ID has been claimed";return false;}}
+            const asset::MeshInstancesAsset* current = nullptr;
+            auto* owner=m_scene->GetGameObject(change.identity->entity);
+            if(!m_applied&&change.created){if(m_scene->FindByGuid(change.ownerId)){diagnostic="PCG owner ID has been claimed";return false;}}
             else {
                 const auto* component=owner?owner->GetComponent<scene::InstancedMeshComponent>():nullptr;
                 const auto* metadata=owner?owner->GetComponent<scene::WorldPcgGeneratedComponent>():nullptr;
                 const auto& expectedMetadata=m_applied?change.afterMetadata:*change.beforeMetadata;
                 const auto& expectedComponent = m_applied ? change.after : *change.before;
-                const auto* asset=component?PlacementAsset(component->m_instanceSetRef.path):nullptr;
-                if(!owner||owner->GetID()!=change.identity->entity||!component||!metadata||!asset||m_scene->GetComponentLifetime<scene::WorldPcgGeneratedComponent>(owner->GetID())!=*change.metadataLifetime
+                std::string path;
+                const auto* ownerAsset = component ? PlacementAsset(component->m_instanceSetRef.path, &path) : nullptr;
+                if(!owner||owner->instanceId!=change.ownerId||!component||!metadata||!ownerAsset||m_scene->GetComponentLifetime<scene::WorldPcgGeneratedComponent>(owner->GetID())!=*change.metadataLifetime
                     ||m_scene->GetComponentLifetime<scene::InstancedMeshComponent>(owner->GetID())!=*change.instanceLifetime||!SameGenerated(*metadata,expectedMetadata)
                     ||component->m_vegetationBudget != expectedComponent.m_vegetationBudget
-                    ||OwnerSignature(*owner,*metadata,*component,*asset)!=(m_applied?change.afterSignature:change.beforeSignature)){
+                    ||OwnerSignature(*owner,*metadata,*component,*ownerAsset)!=(m_applied?change.afterSignature:change.beforeSignature)){
                     diagnostic="PCG generated owner was edited; detach it before regeneration";return false;}
                 if(change.created&&(owner->GetChildCount()!=0||owner->GetParent()!=nullptr)){diagnostic="PCG owner acquired manual hierarchy changes";return false;}
+                if (path == change.path) current = ownerAsset;
             }
-            const auto* current=PlacementAsset(change.path);const auto& expected=m_applied?change.afterAsset:(change.reuse?change.beforeAsset:change.afterAsset);
-            asset::MeshInstancesAsset disk;
-            if(!current||!expected||!asset::MeshInstancesAssetsEqual(*current,*expected)||!asset::LoadMeshInstancesAsset(change.path,disk)
-                ||(!asset::MeshInstancesAssetsEqual(disk,*change.afterAsset)&&(!change.beforeAsset||!asset::MeshInstancesAssetsEqual(disk,*change.beforeAsset)))){
+            if (!current) current = PlacementAsset(change.path);
+            const auto& expected=m_applied?change.afterAsset:(change.reuse?change.beforeAsset:change.afterAsset);
+            if(!current||!expected||(current->instances.Snapshot() != expected->instances.Snapshot()
+                && !asset::MeshInstancesAssetsEqual(*current,*expected)) || current->terrainPaintRef != expected->terrainPaintRef
+                ||!MatchesPersistedPlacement(change.path,*change.persisted)){
                 diagnostic="PCG placement asset was replaced or edited";return false;}
-            if(change.reuse)for(auto id:m_scene->GetEntities<scene::InstancedMeshComponent>()){
-                const auto* sibling=m_scene->GetGameObject(id);const auto* component=m_scene->GetComponent<scene::InstancedMeshComponent>(id);
-                if(sibling&&sibling->instanceId!=change.ownerId&&component&&util::FileSystem::SamePathText(asset::AssetManager::ResolveAssetPath(component->m_instanceSetRef.path),change.path)){
-                    diagnostic="PCG placement asset became shared; history cannot overwrite another owner";return false;}}
+            if (change.reuse) {
+                if (!references) references = CountPlacementReferences(*m_scene);
+                const auto found = references->find(PlacementPathKey(change.path));
+                if (found == references->end() || found->second != 1) {
+                    diagnostic="PCG placement asset became shared or moved; history cannot overwrite another owner";return false;}
+            }
         }
         diagnostic.clear();return true;
     }
@@ -696,11 +1233,15 @@ private:
     bool Apply(bool after,std::string& diagnostic)
     {
         if(after==m_applied||!ValidateHistory(diagnostic))return false;
+        return Publish(after, diagnostic);
+    }
+    bool Publish(bool after, std::string& diagnostic)
+    {
         size_t creates=0;for(const auto& change:m_changes)if(after&&change.created)++creates;
         if(!m_scene->CanCreateGameObjects(creates)){diagnostic="PCG scene object budget exceeded";return false;}
         for(const auto& change:m_changes){if(after)PublishDraft(change,change.afterAsset);else if(change.reuse)PublishDraft(change,change.beforeAsset);else AssetDirtyRegistry::MarkClean(change.path);}
         for(auto& change:m_changes){
-            auto* owner=m_scene->FindByGuid(change.ownerId);
+            auto* owner=m_scene->GetGameObject(change.identity->entity);
             if(!after&&change.created){m_scene->DestroyGameObject(owner->GetID());change.identity->entity={};*change.metadataLifetime=0;*change.instanceLifetime=0;continue;}
             if(after&&!owner){owner=&m_scene->CreateGameObject(change.name);owner->instanceId=change.ownerId;change.entity=owner->GetID();change.identity->entity=change.entity;}
             const auto& component=after?change.after:*change.before;
@@ -710,27 +1251,44 @@ private:
             if(after){change.afterSignature=OwnerSignature(*owner,change.afterMetadata,change.after,*change.afterAsset);owner->GetComponent<scene::WorldPcgGeneratedComponent>()->signature=change.afterSignature;change.afterMetadata.signature=change.afterSignature;}
             world_pcg_profile_draft::SyncGeneratedToken(m_generation,*owner,change.metadataLifetime,change.instanceLifetime);
         }
-        m_applied=after;PruneSelection(m_context);m_context.sceneDirty=true;if(m_context.markSceneDirty)m_context.markSceneDirty();m_context.requestAssetBrowserRefresh=true;diagnostic.clear();return true;
+        m_applied=after;PruneSelection(m_context);m_context.sceneDirty=true;if(m_context.markSceneDirty)m_context.markSceneDirty();diagnostic.clear();return true;
     }
     EditorContext& m_context;scene::Scene* m_scene;uint64_t m_generation,m_epoch;std::vector<PcgChange> m_changes;bool m_applied=false;
 };
 
-OpResult BakePcg(OpContext& context,const OpArgs& args)
+OpResult BakePcg(OpContext& context, const OpArgs& args, std::span<const scene::WorldCellBounds> terrainEdits = {},
+    std::unique_ptr<PcgCommand>* terrainHistory = nullptr)
 {
+    FBZZ_PROFILE_SCOPE("WorldPcg::Generate");
     if(!context.undo.IsRecordingEnabled())return OpResult::Err("NOT_AVAILABLE","PCG generation requires enabled Undo recording");
-    PcgPlan plan;if(auto result=PreparePcg(context,args,plan);!result.ok)return result;
-    if(args.GetString("expected").empty()||args.GetString("expected")!=plan.expected)return OpResult::Err("PCG_CONFLICT","PCG inputs changed; preview again before generation");
+    PcgPlan plan;
+    if(auto result=PreparePcg(context,args,plan,false,terrainEdits);!result.ok || result.noChange)return result;
+    if(!plan.terrainRefresh && (args.GetString("expected").empty()||args.GetString("expected")!=plan.expected))return OpResult::Err("PCG_CONFLICT","PCG inputs changed; preview again before generation");
     auto& ctx=context.ctx;auto& scene=*ctx.activeScene;
     std::map<GroupKey,const scene::WorldPcgCellGroup*> desired;for(const auto& group:plan.generated.groups)desired.emplace(GroupKey{group.cell,group.ruleKey},&group);
     std::set<GroupKey> touched;for(const auto& [key,group]:desired){(void)group;touched.insert(key);}
-    for(const auto& [key,owned]:plan.owned){scene::Transform world;if(!ReadWorld(*owned.owner,world))return OpResult::Err("PCG_CONFLICT","Generated transform is invalid");
-        const auto snapshot=owned.component.Snapshot(owned.asset->instances);if(!snapshot)return OpResult::Err("PCG_CONFLICT","Generated snapshot is missing");
-        for(const auto& p:snapshot->placements)if(p.active){const auto v=world.GetWorldMatrix()*math::Vector4{p.position,1};if(InBounds(plan.profile.bounds,{v.x,v.y,v.z})){touched.insert(key);break;}}
+    for(const auto& [key,owned]:plan.owned){
+        if (plan.terrainRefresh && (owned.outside || owned.IsProtected())) continue;
+        const auto& snapshot = owned.snapshot;
+        if(!snapshot || !owned.validPose)return OpResult::Err("PCG_CONFLICT","Generated snapshot or transform is invalid");
+        const auto matrix = owned.world.GetWorldMatrix();
+        for(const auto& p:snapshot->placements)if(p.active){const auto v=matrix*math::Vector4{p.position,1};if(InBounds(plan.profile.bounds,{v.x,v.y,v.z})){touched.insert(key);break;}}
     }
     std::vector<PcgChange> changes;size_t keptOutside=0;std::unordered_set<std::string> plannedOwners;
+    std::optional<PlacementReferences> references;
+    std::size_t totalPlacements = 0;
+    if (plan.terrainRefresh) for (auto& [key, owned] : plan.owned) {
+        const bool replaces = touched.contains(key);
+        if (replaces && owned.outside) owned.ReadSignature();
+        if (!replaces || owned.IsProtected()) totalPlacements += owned.asset->instances.Snapshot()->placements.size();
+    }
+    const auto profileReference = touched.empty() ? std::string{} : asset::EncodeGuidRef(plan.profilePath);
     for(const auto& key:touched){
         const auto old=plan.owned.find(key);const auto wanted=desired.find(key);const Owned* owned=old==plan.owned.end()?nullptr:&old->second;
-        if(owned&&(owned->metadata.manualOverride||owned->signature.empty()||owned->signature!=owned->metadata.signature))return OpResult::Err("PCG_MANUAL_OVERRIDE","A generated owner was edited; detach it before regeneration: "+owned->owner->instanceId);
+        if(owned && owned->IsProtected()) {
+            if (plan.terrainRefresh) continue;
+            return OpResult::Err("PCG_MANUAL_OVERRIDE","A generated owner was edited; detach it before regeneration: "+owned->owner->instanceId);
+        }
         PcgChange change;change.created=owned==nullptr;change.ownerId=owned?owned->owner->instanceId:asset::AssetDatabase::DeriveGuid(plan.volume->instanceId,"PCG/"+scene::WorldCellName(key.first)+"/"+key.second);
         if(change.created){
             uint64_t ordinal=0;
@@ -742,14 +1300,11 @@ OpResult BakePcg(OpContext& context,const OpArgs& args)
             }
             plannedOwners.insert(change.ownerId);
         }
-        change.name="PCG "+key.second+" ["+scene::WorldCellName(key.first)+"]";
-        change.identity=world_pcg_profile_draft::NodeToken(scene.GetRenderSceneGeneration(),change.ownerId,owned?owned->owner->GetID():scene::EntityID{});
-        change.metadataLifetime=world_pcg_profile_draft::LifetimeToken<scene::WorldPcgGeneratedComponent>(owned?scene.GetComponentLifetime<scene::WorldPcgGeneratedComponent>(owned->owner->GetID()):0);
-        change.instanceLifetime=world_pcg_profile_draft::LifetimeToken<scene::InstancedMeshComponent>(owned?scene.GetComponentLifetime<scene::InstancedMeshComponent>(owned->owner->GetID()):0);
         std::vector<renderer::InstancePlacement> placements;std::vector<asset::InstanceMeshPart> parts;std::vector<float> lods;
-        if(owned){change.entity=owned->owner->GetID();change.before=owned->component;change.beforeMetadata=owned->metadata;change.beforeSignature=owned->signature;
-            const auto snapshot=owned->component.Snapshot(owned->asset->instances);scene::Transform world;(void)ReadWorld(*owned->owner,world);
-            if(world.worldPosition!=math::Vector3::ZERO||world.worldScale!=math::Vector3(1,1,1)||world.worldRotation!=math::Quaternion::Identity())return OpResult::Err("PCG_CONFLICT","Generated owner requires its original identity transform; detach it before editing");
+        if(owned){
+            const auto& snapshot=owned->snapshot;
+            const auto& world = owned->world;
+            if(world.worldPosition!=math::Vector3::ZERO||world.worldScale!=math::Vector3::ONE||world.worldRotation!=math::Quaternion::Identity())return OpResult::Err("PCG_CONFLICT","Generated owner requires its original identity transform; detach it before editing");
             for(const auto& p:snapshot->placements)if(p.active&&!InBounds(plan.profile.bounds,p.position)){
                 scene::WorldCellId retainedCell;if(!scene::TryLocateWorldCell(plan.profile.grid,p.position,retainedCell)||retainedCell!=key.first)
                     return OpResult::Err("PCG_PARTIAL_REPARTITION","Grid changes require regenerating all owned rows; partial regeneration preserves outside ownership");
@@ -760,31 +1315,65 @@ OpResult BakePcg(OpContext& context,const OpArgs& args)
             const auto& group=*wanted->second;
             if(!placements.empty()){
                 const auto oldParts=owned->asset->instances.Parts();const auto oldLods=owned->asset->instances.LodHeights();
-                const bool same=owned->metadata.includeHlod==group.includeHlod&&oldParts.size()==group.parts.size()&&oldLods.size()==group.lodHeights.size()
+                const bool same=owned->metadata->includeHlod==group.includeHlod&&oldParts.size()==group.parts.size()&&oldLods.size()==group.lodHeights.size()
                     &&std::equal(oldLods.begin(),oldLods.end(),group.lodHeights.begin())
                     &&std::equal(oldParts.begin(),oldParts.end(),group.parts.begin(),[](const auto& a,const auto& b){return a.meshPath==b.meshPath&&a.materialPath==b.materialPath&&a.lod==b.lod;});
                 if(!same)return OpResult::Err("PCG_PARTIAL_DEFINITION_CHANGE","Changing a rule definition requires regenerating all its owned rows or using a new rule key");}
             parts=group.parts;lods=group.lodHeights;const auto origin=scene::WorldCellOrigin(plan.profile.grid,group.cell);
             for(auto p:group.placements){p.position=p.position+origin;placements.push_back(p);}
         }
-        auto after=std::make_shared<asset::MeshInstancesAsset>();after->terrainPaintRef=plan.volume->GetComponent<scene::WorldPcgVolumeComponent>()->profilePath;
+        if (plan.terrainRefresh) {
+            totalPlacements += placements.size();
+            if (owned && wanted != desired.end()) {
+                const auto old = owned->asset->instances.Snapshot();
+                std::unordered_map<uint32_t, std::size_t> order;
+                for (std::size_t index = 0; index < old->placements.size(); ++index)
+                    order.emplace(old->placements[index].id, index);
+                const auto rank = [&](uint32_t id) {
+                    const auto found = order.find(id);
+                    return found == order.end() ? old->placements.size() : found->second;
+                };
+                std::stable_sort(placements.begin(), placements.end(),
+                    [&](const auto& a, const auto& b) { return rank(a.id) < rank(b.id); });
+            }
+        }
+        auto after=std::make_shared<asset::MeshInstancesAsset>();
+        after->terrainPaintRef = profileReference;
+        if (owned) {
+            const auto& beforeProfile = owned->asset->terrainPaintRef;
+            const auto encodedBefore = asset::EncodeGuidRef(beforeProfile);
+            if (PcgAssetIdentity(encodedBefore) == PcgAssetIdentity(after->terrainPaintRef)) after->terrainPaintRef = beforeProfile;
+        }
         if(!after->instances.Replace(parts,lods,placements))return OpResult::Err("PCG_OUTPUT_INVALID","PCG output contains conflicting stable IDs or invalid definitions");
-        const bool includeHlod=wanted!=desired.end()?wanted->second->includeHlod:owned->metadata.includeHlod;
-        if(owned&&asset::MeshInstancesAssetsEqual(*after,*owned->asset)&&owned->metadata.includeHlod==includeHlod)continue;
+        const bool includeHlod=wanted!=desired.end()?wanted->second->includeHlod:owned->metadata->includeHlod;
+        if(owned&&asset::MeshInstancesAssetsEqual(*after,*owned->asset)&&owned->metadata->includeHlod==includeHlod)continue;
+        change.name="PCG "+key.second+" ["+scene::WorldCellName(key.first)+"]";
+        change.entity = owned ? owned->owner->GetID() : scene::EntityID{};
+        change.identity = world_pcg_profile_draft::NodeToken(scene.GetRenderSceneGeneration(), change.ownerId, change.entity);
+        change.metadataLifetime = world_pcg_profile_draft::LifetimeToken<scene::WorldPcgGeneratedComponent>(
+            owned ? scene.GetComponentLifetime<scene::WorldPcgGeneratedComponent>(change.entity) : 0);
+        change.instanceLifetime = world_pcg_profile_draft::LifetimeToken<scene::InstancedMeshComponent>(
+            owned ? scene.GetComponentLifetime<scene::InstancedMeshComponent>(change.entity) : 0);
         change.afterAsset=after;change.afterMetadata.volumeId=plan.volume->instanceId;change.afterMetadata.ruleKey=key.second;change.afterMetadata.cellX=key.first.x;change.afterMetadata.cellZ=key.first.z;change.afterMetadata.includeHlod=includeHlod;
         if(owned){
-            change.path=asset::AssetManager::ResolveAssetPath(owned->component.m_instanceSetRef.path);
+            change.before=*owned->component;change.beforeMetadata=*owned->metadata;change.beforeSignature=owned->signature;
+            change.path=owned->path;
             change.reuse=util::FileSystem::IsChildPathText(change.path,ctx.projectRoot+"/Assets");
-            for(auto id:scene.GetEntities<scene::InstancedMeshComponent>()){const auto* other=scene.GetGameObject(id);const auto* component=scene.GetComponent<scene::InstancedMeshComponent>(id);
-                if(other&&other->instanceId!=change.ownerId&&component&&util::FileSystem::SamePathText(asset::AssetManager::ResolveAssetPath(component->m_instanceSetRef.path),change.path))change.reuse=false;}
-            if(change.reuse){change.beforeAsset=owned->asset;change.reference=owned->component.m_instanceSetRef.path;}
-            change.after=owned->component;
+            if (change.reuse) {
+                if (!references) references = CountPlacementReferences(scene);
+                const auto found = references->find(PlacementPathKey(change.path));
+                change.reuse = found != references->end() && found->second == 1;
+            }
+            if(change.reuse){change.beforeAsset=std::make_shared<asset::MeshInstancesAsset>(*owned->asset);change.reference=owned->component->m_instanceSetRef.path;}
+            change.after=*owned->component;
         }
         if(!change.reuse){const auto file=asset::AssetDatabase::GenerateGuid();const auto folder=asset::AssetDatabase::DeriveGuid(plan.volume->instanceId,"PCG Assets");change.path=ctx.projectRoot+"/Assets/World/PCG/"+folder+"/"+file+".meshinstances";
             if(util::FileSystem::Exists(util::FileSystem::PathFromUtf8(change.path)))return OpResult::Err("PCG_FILE_CONFLICT","PCG output path already exists without exclusive ownership: "+change.path);}
         changes.push_back(std::move(change));
     }
     if(changes.empty()){auto result=OpResult::Data(plan.summary);result.noChange=true;return result;}
+    if (plan.terrainRefresh && totalPlacements > plan.profile.maxInstances)
+        return OpResult::Err("PCG_FAILED", "PCG instance budget exceeded after including retained placements");
     size_t createCount=0;for(const auto& change:changes)if(change.created)++createCount;
     if(!scene.CanCreateGameObjects(createCount))return OpResult::Err("SCENE_CAPACITY","PCG owner budget exceeds scene capacity");
     for(auto& change:changes){
@@ -795,12 +1384,24 @@ OpResult BakePcg(OpContext& context,const OpArgs& args)
             change.reference="guid:"+guid+"|"+relative;
             const auto* loaded=PlacementAsset(change.path);if(!loaded)return OpResult::Err("LOAD_FAILED","PCG output readback failed: "+change.path);
             change.afterAsset=std::make_shared<asset::MeshInstancesAsset>(*loaded);
+            ctx.requestAssetBrowserRefresh = true;
         }
+        /// @note Multiple unsaved strokes share the last saved baseline while history owns each draft revision.
+        change.persisted = PersistedPlacement(change.path);
+        if (!change.persisted) return OpResult::Err("LOAD_FAILED", "PCG saved placement baseline is missing: " + change.path);
+        if (change.reuse && !AssetDirtyRegistry::IsDirty(change.path)
+            && !asset::MeshInstancesAssetsEqual(*change.beforeAsset, change.persisted->asset))
+            return OpResult::Err("PCG_CONFLICT", "PCG placement differs from the saved baseline: " + change.path);
         change.after.m_instanceSetRef={change.reference,asset::InstanceSetAsset::TYPE_NAME};change.after.ResetOverrides();
     }
     auto command=std::make_unique<PcgCommand>(ctx,std::move(changes));std::string diagnostic;
     if(!command->TryExecute(diagnostic))return OpResult::Err("PCG_CONFLICT",diagnostic);
-    auto result=OpResult::Data(plan.summary);result.data.Set("applied",true);result.data.Set("preservedOutsideCount",static_cast<int64_t>(keptOutside));result.command=std::move(command);return result;
+    auto result = OpResult::Data(plan.summary);
+    result.data.Set("applied", true);
+    result.data.Set("preservedOutsideCount", static_cast<int64_t>(keptOutside));
+    if (terrainHistory) *terrainHistory = std::move(command);
+    else result.command = std::move(command);
+    return result;
 }
 
 } /// @note namespace world_pcg_authoring
@@ -818,6 +1419,192 @@ bool SameWorldPcgProfile(EditorContext& context, const std::string& first, const
     return std::filesystem::equivalent(util::FileSystem::PathFromUtf8(path), util::FileSystem::PathFromUtf8(other), error);
 }
 OpResult GenerateWorldPcg(OpContext& context,const OpArgs& args) {return world_pcg_authoring::BakePcg(context,args);}
+
+namespace {
+
+bool CanRefreshTerrainPcg(const scene::GameObject& owner)
+{
+    const auto& scene = *owner.GetScene();
+    return owner.activeInHierarchy() && !owner.IsRuntimeGenerated()
+        && !scene.GetEntities<scene::WorldPcgVolumeComponent>().empty()
+        && !scene.GetEntities<scene::WorldPcgGeneratedComponent>().empty();
+}
+
+scene::WorldCellBounds EmptyXZBounds()
+{
+    constexpr auto INF = std::numeric_limits<float>::infinity();
+    return {{INF, 0, INF}, {-INF, 0, -INF}};
+}
+
+void IncludeTerrainWorldPoint(scene::WorldCellBounds& bounds, const scene::Transform& world, const math::Vector3& local)
+{
+    const auto point = ToTerrainWorld(world, local);
+    world_pcg_authoring::IncludeXZ(bounds, {point, point});
+}
+
+void AppendTerrainPcgBounds(const scene::Transform& world, const scene::TerrainComponent& terrain,
+    const scene::TerrainHeightRegion& region, bool includeExtraSurface, std::vector<scene::WorldCellBounds>& bounds)
+{
+    if (!terrain.enabled) return;
+    auto result = EmptyXZBounds();
+    if (!region.Empty()) {
+        const float height = std::abs(terrain.maxHeight);
+        for (const int x : {region.minX, region.maxX})
+            for (const int z : {region.minZ, region.maxZ})
+                for (const float y : {-height, height})
+                    IncludeTerrainWorldPoint(result, world, {x * terrain.cellSize, y, z * terrain.cellSize});
+    }
+    if (includeExtraSurface)
+        for (const auto& point : terrain.surfacePositions) IncludeTerrainWorldPoint(result, world, point);
+    if (!world_pcg_authoring::Finite(result.min) || !world_pcg_authoring::Finite(result.max)) return;
+    /// @note The terrain query accepts sites on the outer edge; PCG bounds are half-open.
+    result.max.x = std::nextafter(result.max.x, std::numeric_limits<float>::infinity());
+    result.max.z = std::nextafter(result.max.z, std::numeric_limits<float>::infinity());
+    bounds.push_back(result);
+}
+
+template<typename T>
+void IncludeTerrainArrayDiff(const std::vector<T>& before, const std::vector<T>& after,
+    int width, int rows, int stride, scene::TerrainHeightRegion& region)
+{
+    const auto rowSize = static_cast<std::size_t>(width) * stride;
+    if (before.size() != after.size()) {
+        region.Include({0, 0, width - 1, rows - 1});
+        return;
+    }
+    if (before.empty() || before.size() != rowSize * rows) return;
+    for (int z = 0; z < rows; ++z) {
+        const auto* oldRow = before.data() + z * rowSize;
+        const auto* newRow = after.data() + z * rowSize;
+        if (std::memcmp(oldRow, newRow, rowSize * sizeof(T)) == 0) continue;
+        for (int x = 0; x < width; ++x)
+            if (std::memcmp(oldRow + x * stride, newRow + x * stride, stride * sizeof(T)) != 0)
+                region.Include({x, z, x, z});
+    }
+}
+
+struct TerrainPcgHistory {
+    EditorContext& context;
+    std::unique_ptr<ICommand> terrain;
+    std::vector<std::unique_ptr<world_pcg_authoring::PcgCommand>> generated;
+
+    bool Apply(bool redo, std::string& reason)
+    {
+        const auto transition = [](ICommand& command, bool forward, std::string& diagnostic) {
+            return forward ? command.TryExecute(diagnostic) : command.TryUndo(diagnostic);
+        };
+        for (const auto& command : generated)
+            if (!command->ValidateHistory(reason)) return false;
+        if (generated.size() == 1) {
+            /// @note Terrain authoring does not edit PCG owners. Defer the dirty callback until both edits are applied.
+            bool markedDirty = false;
+            auto markSceneDirty = std::exchange(context.markSceneDirty, [&] { markedDirty = true; });
+            bool applied = transition(*terrain, redo, reason);
+            if (applied && !generated.front()->ApplyValidated(redo, reason)) {
+                std::string rollbackReason;
+                if (!transition(*terrain, !redo, rollbackReason))
+                    FBZZ_LOG_ERROR("Terrain history rollback failed: %s", rollbackReason.c_str());
+                applied = false;
+            }
+            context.markSceneDirty = std::move(markSceneDirty);
+            if (markedDirty && context.markSceneDirty) context.markSceneDirty();
+            return applied;
+        }
+        if (!transition(*terrain, redo, reason)) return false;
+        const auto at = [&](std::size_t i) -> ICommand& {
+            return *generated[redo ? i : generated.size() - 1 - i];
+        };
+        std::size_t applied = 0;
+        for (; applied < generated.size(); ++applied)
+            if (!transition(at(applied), redo, reason)) break;
+        if (applied == generated.size()) return true;
+        std::string rollbackReason;
+        while (applied > 0)
+            if (!transition(at(--applied), !redo, rollbackReason))
+                FBZZ_LOG_ERROR("PCG terrain history rollback failed: %s", rollbackReason.c_str());
+        if (!transition(*terrain, !redo, rollbackReason))
+            FBZZ_LOG_ERROR("Terrain history rollback failed: %s", rollbackReason.c_str());
+        return false;
+    }
+};
+
+} /// @note namespace
+
+void CollectTerrainPcgBounds(const scene::GameObject& owner, const scene::TerrainComponent& terrain,
+    const scene::TerrainHeightRegion& edited, std::vector<scene::WorldCellBounds>& bounds)
+{
+    if (!CanRefreshTerrainPcg(owner) || edited.Empty()) return;
+    scene::Transform world;
+    if (!world_pcg_authoring::ReadWorld(owner, world)) return;
+    /// @note Interpolated normals use neighboring vertices on both sides of the edited sample.
+    const scene::TerrainHeightRegion padded{(std::max)(0, edited.minX - 2), (std::max)(0, edited.minZ - 2),
+        (std::min)(terrain.columns - 1, edited.maxX + 2), (std::min)(terrain.rows - 1, edited.maxZ + 2)};
+    AppendTerrainPcgBounds(world, terrain, padded, false, bounds);
+}
+
+void CollectTerrainPcgBounds(const scene::GameObject& owner, const scene::TerrainComponent& before,
+    const scene::TerrainComponent& after, std::vector<scene::WorldCellBounds>& bounds)
+{
+    if (!CanRefreshTerrainPcg(owner) || (!before.enabled && !after.enabled)) return;
+    if (before.enabled != after.enabled || before.columns != after.columns || before.rows != after.rows
+        || before.cellSize != after.cellSize || before.maxHeight != after.maxHeight
+        || before.layerMaterials != after.layerMaterials || before.surfaceIndices != after.surfaceIndices
+        || before.surfacePositions != after.surfacePositions) {
+        scene::Transform world;
+        if (!world_pcg_authoring::ReadWorld(owner, world)) return;
+        AppendTerrainPcgBounds(world, before, {0, 0, before.columns - 1, before.rows - 1}, true, bounds);
+        AppendTerrainPcgBounds(world, after, {0, 0, after.columns - 1, after.rows - 1}, true, bounds);
+        return;
+    }
+    if (after.columns < 2 || after.rows < 2) return;
+    scene::TerrainHeightRegion changed;
+    IncludeTerrainArrayDiff(before.heightData, after.heightData, after.columns, after.rows, 1, changed);
+    IncludeTerrainArrayDiff(before.splatIndices, after.splatIndices, after.columns, after.rows, scene::TERRAIN_SPLAT_SLOTS, changed);
+    IncludeTerrainArrayDiff(before.splatWeights, after.splatWeights, after.columns, after.rows, scene::TERRAIN_SPLAT_SLOTS, changed);
+    IncludeTerrainArrayDiff(before.holeData, after.holeData, after.columns - 1, after.rows - 1, 1, changed);
+    CollectTerrainPcgBounds(owner, after, changed, bounds);
+}
+
+std::unique_ptr<ICommand> RefreshTerrainPcg(OpContext& context, std::span<const scene::WorldCellBounds> bounds,
+    std::unique_ptr<ICommand> terrainCommand)
+{
+    if (bounds.empty() || !context.undo.IsRecordingEnabled() || !world_pcg_authoring::Editable(context.ctx))
+        return terrainCommand;
+    FBZZ_PROFILE_SCOPE("WorldPcg::RefreshTerrain");
+    auto& scene = *context.ctx.activeScene;
+    std::unordered_set<std::string_view> generatedVolumes;
+    for (const auto id : scene.GetEntities<scene::WorldPcgGeneratedComponent>()) {
+        const auto* metadata = scene.GetComponent<scene::WorldPcgGeneratedComponent>(id);
+        if (metadata) generatedVolumes.insert(metadata->volumeId);
+    }
+    std::vector<std::string> volumes;
+    for (const auto id : scene.GetEntities<scene::WorldPcgVolumeComponent>()) {
+        const auto* owner = scene.GetGameObject(id);
+        const auto* volume = scene.GetComponent<scene::WorldPcgVolumeComponent>(id);
+        if (owner && owner->activeInHierarchy() && !owner->IsRuntimeGenerated() && volume && volume->enabled
+            && generatedVolumes.contains(owner->instanceId)) volumes.push_back(owner->instanceId);
+    }
+    std::sort(volumes.begin(), volumes.end());
+    std::vector<std::unique_ptr<world_pcg_authoring::PcgCommand>> generated;
+    for (const auto& volume : volumes) {
+        OpArgs args;
+        args.Set("volume", volume);
+        args.Set("maxPoints", 0);
+        std::unique_ptr<world_pcg_authoring::PcgCommand> command;
+        auto result = world_pcg_authoring::BakePcg(context, args, bounds, &command);
+        if (!result.ok) {
+            FBZZ_LOG_WARN("Terrain PCG refresh for volume %s: %s (%s)", volume.c_str(), result.message.c_str(), result.errorCode.c_str());
+            continue;
+        }
+        if (command) generated.push_back(std::move(command));
+    }
+    if (generated.empty()) return terrainCommand;
+    const auto description = terrainCommand->GetDescription();
+    const auto history = std::make_shared<TerrainPcgHistory>(context.ctx, std::move(terrainCommand), std::move(generated));
+    return std::make_unique<CheckedLambdaCommand>(description,
+        [history](std::string& reason) { return history->Apply(true, reason); },
+        [history](std::string& reason) { return history->Apply(false, reason); });
+}
 
 } /// @note namespace fbzz::editor
 
@@ -893,10 +1680,20 @@ template<typename Ignored> std::string SnapshotMetadata(scene::Scene& scene,scen
     return out.str();
 }
 
+template<typename Entries>
+void PruneExpiredTokens(Entries& entries, std::size_t& nextPrune)
+{
+    if (entries.size() < nextPrune) return;
+    std::erase_if(entries, [](const auto& item) { return item.second.expired(); });
+    nextPrune = (std::max)(std::size_t{256}, entries.size() * 2);
+}
+
 std::shared_ptr<NodeIdentity> NodeToken(uint64_t generation,const std::string& id,scene::EntityID entity)
 {
     static std::map<std::pair<uint64_t,std::string>,std::weak_ptr<NodeIdentity>> entries;
-    std::erase_if(entries,[](const auto& item){return item.second.expired();});auto& weak=entries[{generation,id}];
+    static std::size_t nextPrune = 256;
+    PruneExpiredTokens(entries, nextPrune);
+    auto& weak=entries[{generation,id}];
     if(auto current=weak.lock())return current;
     auto token=std::make_shared<NodeIdentity>();token->entity=entity;weak=token;return token;
 }
@@ -904,7 +1701,9 @@ template<typename T> auto& LifetimeTokens()
 {static std::unordered_map<uint64_t,std::weak_ptr<uint64_t>> tokens;return tokens;}
 template<typename T> std::shared_ptr<uint64_t> LifetimeToken(uint64_t lifetime)
 {
-    auto& tokens=LifetimeTokens<T>();std::erase_if(tokens,[](const auto& item){return item.second.expired();});
+    static std::size_t nextPrune = 256;
+    auto& tokens=LifetimeTokens<T>();
+    PruneExpiredTokens(tokens, nextPrune);
     if(lifetime){if(auto token=tokens[lifetime].lock())return token;}
     auto token=std::make_shared<uint64_t>(lifetime);if(lifetime)tokens[lifetime]=token;return token;
 }

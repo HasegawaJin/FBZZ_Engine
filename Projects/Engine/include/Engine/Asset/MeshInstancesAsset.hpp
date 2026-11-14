@@ -19,9 +19,17 @@ struct MeshInstancesAsset {
 
 /// @return 不正形式・未知バージョン・重複 ID・I/O 失敗時は false。out は未変更。
 [[nodiscard]] FBZZ_ENGINE_API bool LoadMeshInstancesAsset(std::string_view path, MeshInstancesAsset& out);
+/// @param sourcePath TOML の診断に使うパス。ファイルは開かない。
+/// @return 不正形式・未知バージョン・重複 ID の場合は false。out は未変更。
+[[nodiscard]] FBZZ_ENGINE_API bool DeserializeMeshInstancesAsset(std::string_view text, std::string_view sourcePath, MeshInstancesAsset& out);
 [[nodiscard]] FBZZ_ENGINE_API bool SaveMeshInstancesAsset(std::string_view path, const MeshInstancesAsset& asset);
 [[nodiscard]] FBZZ_ENGINE_API bool MeshInstanceDefinitionsEqual(const InstanceSetAsset& first, const InstanceSetAsset& second);
 [[nodiscard]] FBZZ_ENGINE_API bool MeshInstancesAssetsEqual(const MeshInstancesAsset& first, const MeshInstancesAsset& second);
+/// @return 同期ロードした配置アセットの非所有参照。失敗時は nullptr、resolvedPath は未変更。
+[[nodiscard]] FBZZ_ENGINE_API MeshInstancesAsset* LoadMeshInstancesReference(const std::string& reference,
+    std::string* resolvedPath = nullptr);
+/// @return The indexed path for a previously loaded reference, or an empty string on a cache miss.
+[[nodiscard]] FBZZ_ENGINE_API std::string FindLoadedMeshInstancesPath(const std::string& reference);
 /// @note .meshinstances/.terrainpaint は型付き Importer、旧 .fzdata は従来の Registry を使う。戻り値は非所有参照。
 [[nodiscard]] FBZZ_ENGINE_API const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& reference);
 

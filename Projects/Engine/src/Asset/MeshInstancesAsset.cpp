@@ -15,6 +15,31 @@
 #include <unordered_map>
 
 namespace fbzz::asset {
+namespace {
+
+struct LoadedPlacementReference {
+    AssetHandle<MeshInstancesAsset> placements;
+    AssetHandle<TerrainPaintAsset> paint;
+    std::string resolvedPlacementPath;
+};
+
+auto& LoadedPlacementReferences()
+{
+    /// @note Handles follow hot reload and Unload; index changes invalidate the resolved project paths.
+    static std::unordered_map<std::string, LoadedPlacementReference> loaded;
+    static uint64_t revision = UINT64_MAX;
+    static int assetGeneration = -1;
+    const auto currentRevision = AssetDatabase::Revision();
+    const auto currentGeneration = AssetManager::GetAssetGeneration();
+    if (revision != currentRevision || assetGeneration != currentGeneration) {
+        loaded.clear();
+        revision = currentRevision;
+        assetGeneration = currentGeneration;
+    }
+    return loaded;
+}
+
+} /// @note namespace
 
 bool MeshInstanceDefinitionsEqual(const InstanceSetAsset& first, const InstanceSetAsset& second)
 {
@@ -41,10 +66,15 @@ bool MeshInstancesAssetsEqual(const MeshInstancesAsset& first, const MeshInstanc
 
 bool LoadMeshInstancesAsset(std::string_view path, MeshInstancesAsset& out)
 {
-    using namespace mesh_instances_serialization;
     std::string text;
-    if (!ReadFile(path, text)) return false;
-    const auto parsed = toml::parse(text, std::string(path));
+    return mesh_instances_serialization::ReadFile(path, text) && DeserializeMeshInstancesAsset(text, path, out);
+}
+
+bool DeserializeMeshInstancesAsset(std::string_view text, std::string_view sourcePath, MeshInstancesAsset& out)
+{
+    using namespace mesh_instances_serialization;
+    if (text.size() > 512ull * 1024 * 1024) return false;
+    const auto parsed = toml::parse(text, sourcePath);
     if (!parsed || parsed["format"].value<std::string>() != "fbzz.meshinstances" || parsed["version"].value<int64_t>() != 1) return false;
     MeshInstancesAsset candidate;
     const auto source = parsed["terrainPaintRef"].value<std::string>();
@@ -95,22 +125,42 @@ bool SaveMeshInstancesAsset(std::string_view path, const MeshInstancesAsset& ass
     return mesh_instances_serialization::WriteFile(path, table);
 }
 
+MeshInstancesAsset* LoadMeshInstancesReference(const std::string& reference, std::string* resolvedPath)
+{
+    if (reference.empty()) return nullptr;
+    auto& loaded = LoadedPlacementReferences();
+    if (const auto found = loaded.find(reference); found != loaded.end() && !found->second.resolvedPlacementPath.empty()) {
+        if (auto* value = AssetManager::Get(found->second.placements)) {
+            AssetStore<MeshInstancesAsset>::Get().Pin(found->second.placements);
+            if (resolvedPath) *resolvedPath = found->second.resolvedPlacementPath;
+            return value;
+        }
+        loaded.erase(found);
+    }
+    const auto path = AssetManager::ResolveAssetPath(reference);
+    if (util::FileSystem::GetExtension(path) != ".meshinstances") return nullptr;
+    const auto handle = AssetManager::Load<MeshInstancesAsset>(reference);
+    auto* value = AssetManager::Get(handle);
+    if (!value) return nullptr;
+    if (resolvedPath) *resolvedPath = path;
+    if (loaded.size() < 4096 && detail::IsCacheableLoadedReference(reference, path))
+        loaded[reference] = {handle, {}, path};
+    return value;
+}
+
+std::string FindLoadedMeshInstancesPath(const std::string& reference)
+{
+    auto& loaded = LoadedPlacementReferences();
+    const auto found = loaded.find(reference);
+    if (found == loaded.end() || found->second.resolvedPlacementPath.empty()
+        || !AssetManager::Get(found->second.placements)) return {};
+    return found->second.resolvedPlacementPath;
+}
+
 const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& reference)
 {
     if (reference.empty()) return nullptr;
-    struct Loaded {
-        AssetHandle<MeshInstancesAsset> placements;
-        AssetHandle<TerrainPaintAsset> paint;
-    };
-    /// @note 世代付き handle のみを保持し、再読込後の実体は毎回 Get する。GUID 索引の変更で移動・プロジェクト切替を反映する。
-    static std::unordered_map<std::string, Loaded> loaded;
-    static uint64_t revision = UINT64_MAX;
-    static int assetGeneration = -1;
-    const auto currentRevision = AssetDatabase::Revision();
-    const auto currentGeneration = AssetManager::GetAssetGeneration();
-    if (revision != currentRevision || assetGeneration != currentGeneration) {
-        loaded.clear(); revision = currentRevision; assetGeneration = currentGeneration;
-    }
+    auto& loaded = LoadedPlacementReferences();
     const bool guid = AssetDatabase::IsGuidRef(reference);
     {
         if (const auto found = loaded.find(reference); found != loaded.end()) {
@@ -135,7 +185,12 @@ const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& referen
         }
         if (!AssetManager::Get(handle)) handle = AssetManager::Load<MeshInstancesAsset>(reference);
         const auto* asset = AssetManager::Get(handle);
-        if (asset && loaded.size() < 4096 && detail::IsCacheableLoadedReference(reference)) loaded[reference].placements = handle;
+        std::string resolved;
+        if (asset && loaded.size() < 4096 && detail::IsCacheableLoadedReference(reference,
+                guid ? std::string_view(path) : std::string_view{}, &resolved)) {
+            if (util::FileSystem::GetExtension(resolved) != ".meshinstances") resolved.clear();
+            loaded[reference] = {handle, {}, std::move(resolved)};
+        }
         return asset ? &asset->instances : nullptr;
     }
     if (extension == ".terrainpaint") {

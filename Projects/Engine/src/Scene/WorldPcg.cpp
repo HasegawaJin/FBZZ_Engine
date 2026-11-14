@@ -16,6 +16,7 @@
 #include <map>
 #include <sstream>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -150,9 +151,9 @@ float Noise(uint64_t seed,float x,float z,float scale)
 math::Vector3 Rotation(const WorldPcgRule& rule, uint64_t key, const math::Vector3& normal)
 {
     const float sample = Unit(key, 4);
-    const float yaw = std::lerp(rule.minYaw, rule.maxYaw, sample);
-    const auto spin=math::Quaternion::FromAxisAngle(math::Vector3::UP,math::ToRad(yaw));
-    if(!rule.alignToSurface && !rule.alignDownslope)return {0,math::ToRad(yaw),0};
+    const float yaw = math::ToRad(std::lerp(rule.minYaw, rule.maxYaw, sample));
+    if (!rule.alignToSurface && !rule.alignDownslope) return {0, yaw, 0};
+    const auto spin = math::Quaternion::FromAxisAngle(math::Vector3::UP, yaw);
     const auto axis=math::Vector3::Cross(math::Vector3::UP,normal);
     auto rotation=math::Quaternion{axis.x,axis.y,axis.z,1.0f+normal.y}.Normalized()*spin;
     if (rule.alignDownslope) {
@@ -171,9 +172,17 @@ math::Vector3 Rotation(const WorldPcgRule& rule, uint64_t key, const math::Vecto
 
 struct PlacementSiteIndex {
     struct Site { math::Vector3 position; float radius; };
+    using Cell = std::pair<int64_t, int64_t>;
+    struct CellHash {
+        std::size_t operator()(const Cell& cell) const
+        {
+            return static_cast<std::size_t>(Mix(Mix(static_cast<uint64_t>(cell.first)) ^ static_cast<uint64_t>(cell.second)));
+        }
+    };
     float size=0;
-    std::map<std::pair<int64_t,int64_t>,std::vector<Site>> cells;
-    std::pair<int64_t,int64_t> Locate(const math::Vector3& p) const
+    /// @note Explicit neighbor traversal and per-cell insertion order keep rejection and budget behavior deterministic.
+    std::unordered_map<Cell, std::vector<Site>, CellHash> cells;
+    Cell Locate(const math::Vector3& p) const
     { return {static_cast<int64_t>(std::floor(static_cast<double>(p.x)/size)),static_cast<int64_t>(std::floor(static_cast<double>(p.z)/size))}; }
     void Insert(const math::Vector3& position, float radius = 0.0f)
     {
@@ -295,6 +304,80 @@ float ReliefDensity(const WorldPcgRule& rule, float height, float slope)
 
 bool Inside(const WorldCellBounds& box,const math::Vector3& p)
 { return p.x>=box.min.x&&p.x<=box.max.x&&p.y>=box.min.y&&p.y<=box.max.y&&p.z>=box.min.z&&p.z<=box.max.z; }
+
+/// @note Exclusion checks are boolean and their traversal order does not influence candidate rank or rejection counts.
+class PlacementExclusions {
+public:
+    explicit PlacementExclusions(std::span<const WorldCellBounds> boxes) : m_boxes(boxes)
+    {
+        if (boxes.size() <= LEAF_SIZE) return;
+        m_order.reserve(boxes.size());
+        for (uint32_t i = 0; i < static_cast<uint32_t>(boxes.size()); ++i) m_order.push_back(i);
+        Build(0, static_cast<uint32_t>(m_order.size()));
+    }
+
+    [[nodiscard]] bool Contains(const math::Vector3& point) const
+    {
+        if (m_nodes.empty()) {
+            return std::any_of(m_boxes.begin(), m_boxes.end(), [&](const auto& box) { return Inside(box, point); });
+        }
+        uint32_t index = 0;
+        while (index < m_nodes.size()) {
+            const auto& node = m_nodes[index];
+            if (!Inside(node.bounds, point)) {
+                index = node.next;
+                continue;
+            }
+            for (uint32_t offset = 0; offset < node.count; ++offset)
+                if (Inside(m_boxes[m_order[node.first + offset]], point)) return true;
+            ++index;
+        }
+        return false;
+    }
+
+private:
+    static constexpr uint32_t LEAF_SIZE = 8;
+    struct Node {
+        WorldCellBounds bounds;
+        uint32_t first = 0, count = 0, next = 0;
+    };
+
+    void Build(uint32_t first, uint32_t count)
+    {
+        const uint32_t index = static_cast<uint32_t>(m_nodes.size());
+        auto bounds = m_boxes[m_order[first]];
+        for (uint32_t offset = 1; offset < count; ++offset) {
+            const auto& box = m_boxes[m_order[first + offset]];
+            bounds.min = {(std::min)(bounds.min.x, box.min.x), (std::min)(bounds.min.y, box.min.y),
+                (std::min)(bounds.min.z, box.min.z)};
+            bounds.max = {(std::max)(bounds.max.x, box.max.x), (std::max)(bounds.max.y, box.max.y),
+                (std::max)(bounds.max.z, box.max.z)};
+        }
+        m_nodes.push_back({bounds, first, count});
+        if (count > LEAF_SIZE) {
+            const double spanX = static_cast<double>(bounds.max.x) - bounds.min.x;
+            const double spanY = static_cast<double>(bounds.max.y) - bounds.min.y;
+            const double spanZ = static_cast<double>(bounds.max.z) - bounds.min.z;
+            const auto axis = spanY > (std::max)(spanX, spanZ) ? &math::Vector3::y
+                : spanX >= spanZ ? &math::Vector3::x : &math::Vector3::z;
+            const auto center = [&](uint32_t box) {
+                return static_cast<double>(m_boxes[box].min.*axis) + m_boxes[box].max.*axis;
+            };
+            const uint32_t half = count / 2;
+            std::nth_element(m_order.begin() + first, m_order.begin() + first + half, m_order.begin() + first + count,
+                [&](uint32_t a, uint32_t b) { return center(a) < center(b); });
+            m_nodes[index].count = 0;
+            Build(first, half);
+            Build(first + half, count - half);
+        }
+        /// @note Preorder subtrees are contiguous, so an outside point can jump directly to the next sibling.
+        m_nodes[index].next = static_cast<uint32_t>(m_nodes.size());
+    }
+
+    std::span<const WorldCellBounds> m_boxes;
+    std::vector<uint32_t> m_order;
+    std::vector<Node> m_nodes;
+};
 
 uint64_t ProfileHash(const WorldPcgProfile& profile,const std::vector<const WorldPcgRule*>& rules)
 {
@@ -521,6 +604,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
     for(const auto* rule:rules){int32_t x0,x1,z0,z1;(void)LatticeRange(profile,*rule,x0,x1,z0,z1);
         const auto nx=static_cast<uint64_t>(static_cast<int64_t>(x1)-x0),nz=static_cast<uint64_t>(static_cast<int64_t>(z1)-z0);
         if(nz&&nx>(profile.maxCandidates-estimated)/nz)return Fail(diagnostic,"PCG candidate budget exceeded before sampling");estimated+=nx*nz;}
+    const PlacementExclusions exclusions(profile.exclusions);
     WorldPcgResult staged;
     const std::size_t sampleLimit = diagnostics ? diagnostics->maxSamples : 0;
     if (sampleLimit > MAX_WORLD_PCG_DEBUG_SAMPLES) return Fail(diagnostic, "PCG rejection sample limit exceeded");
@@ -545,9 +629,12 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
         } else rejected.push_back(site);
         std::push_heap(rejected.begin(), rejected.end(), rankLess);
     };
-    using GroupKey=std::pair<WorldCellId,std::string>;
-    std::map<GroupKey,WorldPcgCellGroup> groups;
-    std::map<GroupKey,std::unordered_set<uint32_t>> ids;
+    using GroupKey = std::pair<WorldCellId, std::string_view>;
+    struct OutputGroup {
+        WorldPcgCellGroup data;
+        std::unordered_set<uint32_t> ids;
+    };
+    std::map<GroupKey, OutputGroup> groups;
     const auto emit = [&](const PlacementCandidate& candidate) {
         if (staged.stats.accepted >= profile.maxInstances)
             return Fail(diagnostic, "PCG instance budget exceeded; no partial result was published");
@@ -556,8 +643,8 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
         const auto position = candidate.groundPosition - candidate.normal * Embedding(rule, candidate.key);
         if (!TryLocateWorldCell(profile.grid, position, cell))
             return Fail(diagnostic, "PCG candidate has no valid world cell");
-        const GroupKey key{cell, rule.key};
-        auto& group = groups[key];
+        auto& output = groups[{cell, rule.key}];
+        auto& group = output.data;
         if (group.ruleKey.empty()) {
             group.cell = cell;
             group.ruleKey = rule.key;
@@ -570,7 +657,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
         const uint32_t packed = (static_cast<uint32_t>(candidate.lattice.x) & 0xffffu)
             | ((static_cast<uint32_t>(candidate.lattice.z) & 0x7fffu) << 16);
         const uint32_t id = packed == 0 ? 0x40008000u : packed;
-        if (!ids[key].insert(id).second)
+        if (!output.ids.insert(id).second)
             return Fail(diagnostic, "PCG stable ID range collided; reduce the owning cell size");
         renderer::InstancePlacement placement;
         placement.id = id;
@@ -632,7 +719,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             if(authoredPosition.x<profile.bounds.min.x||authoredPosition.x>=profile.bounds.max.x||authoredPosition.z<profile.bounds.min.z||authoredPosition.z>=profile.bounds.max.z)continue;
             ++staged.stats.candidates;
             if(!rule->biome.empty()&&surface.biome!=rule->biome){reject(staged.stats.biomeRejected,"biome",*rule,candidate,position);continue;}
-            if(surface.excluded||std::any_of(profile.exclusions.begin(),profile.exclusions.end(),[&](const auto& box){return Inside(box,position);}))
+            if(surface.excluded || exclusions.Contains(position))
                 {reject(staged.stats.exclusionRejected,"exclusion",*rule,candidate,position);continue;}
             if((!rule->useWaterLevel && surface.water)||surface.waterDistance<rule->minWaterDistance||surface.waterDistance>rule->maxWaterDistance)
                 {reject(staged.stats.waterRejected,"water",*rule,candidate,position);continue;}
@@ -715,8 +802,10 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 if (rule->maxPathDistance < 1000000.0f)
                     habitatWeight *= FadeFromEdge(rule->maxPathDistance - surface.pathDistance, rule->pathFade);
             }
-            const float chance=rule->density*surface.biomeDensity*std::lerp(1.0f,Noise(ruleSeed,x,z,rule->noiseScale),rule->clusterStrength)
-                * WaterDensity(*rule, surface.waterDistance) * material * ReliefDensity(*rule, position.y, slope) * aspectWeight * habitatWeight;
+            const float clusterWeight = rule->clusterStrength == 0.0f ? 1.0f
+                : std::lerp(1.0f, Noise(ruleSeed, x, z, rule->noiseScale), rule->clusterStrength);
+            const float chance = rule->density * surface.biomeDensity * clusterWeight * WaterDensity(*rule, surface.waterDistance)
+                * material * ReliefDensity(*rule, position.y, slope) * aspectWeight * habitatWeight;
             if(Unit(candidate,3)>=chance){reject(staged.stats.densityRejected,"density",*rule,candidate,position);continue;}
             if(protectedIndex.Near(position,rule->protectedDistance)){reject(staged.stats.protectedRejected,"protected",*rule,candidate,position);continue;}
             /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Point Neighborhood.
@@ -805,7 +894,10 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
         placementCells.clear();
     }
     uint64_t fingerprint=ProfileHash(profile,rules);
-    for(auto& [key,group]:groups){(void)key;
+    staged.groups.reserve(groups.size());
+    for (auto& [key, output] : groups) {
+        (void)key;
+        auto& group = output.data;
         Hash(fingerprint,static_cast<uint32_t>(group.cell.x));Hash(fingerprint,static_cast<uint32_t>(group.cell.z));Hash(fingerprint,group.ruleKey);
         for(size_t i=0;i<group.placements.size();++i){const auto& placement=group.placements[i];Hash(fingerprint,group.candidateKeys[i]);Hash(fingerprint,placement.id);
             HashVector(fingerprint,placement.position);HashVector(fingerprint,placement.eulerRadians);HashVector(fingerprint,placement.scale);}

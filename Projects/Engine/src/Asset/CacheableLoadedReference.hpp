@@ -14,7 +14,8 @@ namespace fbzz::asset::detail {
 /// @note Call only after a successful load. Runtime Assets paths decoded from GUIDs retain indexed identity until revision/asset-generation changes.
 /// @note Relative fallbacks, unindexed files and alternate spellings keep normal filesystem precedence; no negative result is retained.
 /// @see Docs/design/instanced-mesh.md
-inline bool IsCacheableLoadedReference(const std::string& reference)
+inline bool IsCacheableLoadedReference(const std::string& reference, std::string_view resolvedPath = {},
+    std::string* cachedPath = nullptr)
 {
     /// @note Startup-only polling mode supports filesystem-driven hosts without index notifications and same-binary profiling.
     static const bool polling = [] {
@@ -22,7 +23,10 @@ inline bool IsCacheableLoadedReference(const std::string& reference)
         return mode && std::string_view(mode) == "poll";
     }();
     if (polling) return false;
-    if (AssetDatabase::IsGuidRef(reference)) return true;
+    if (AssetDatabase::IsGuidRef(reference)) {
+        if (cachedPath) *cachedPath = resolvedPath.empty() ? AssetManager::ResolveAssetPath(reference) : std::string(resolvedPath);
+        return true;
+    }
     if (!reference.starts_with("Assets/") || reference.find("/../") != std::string::npos
         || reference.find("/./") != std::string::npos || reference.find('\\') != std::string::npos) return false;
     const auto root = AssetDatabase::AssetsRoot();
@@ -30,7 +34,7 @@ inline bool IsCacheableLoadedReference(const std::string& reference)
     const auto expected = root + reference.substr(7);
     const auto guid = AssetDatabase::TryGetGuidFromPath(expected);
     if (guid.empty()) return false;
-    const auto same = [](const std::string& first, const std::string& second) {
+    const auto same = [](std::string_view first, std::string_view second) {
         if (first.size() != second.size()) return false;
         for (size_t i = 0; i < first.size(); ++i) {
             const auto fold = [](unsigned char c) { return c == '\\' ? '/' : std::tolower(c); };
@@ -38,7 +42,11 @@ inline bool IsCacheableLoadedReference(const std::string& reference)
         }
         return true;
     };
-    return same(AssetDatabase::PathFromGuid(guid), expected)
-        && same(AssetManager::ResolveAssetPath(reference), expected);
+    if (!same(AssetDatabase::PathFromGuid(guid), expected)) return false;
+    const auto resolved = resolvedPath.empty() ? AssetManager::ResolveAssetPath(reference) : std::string{};
+    const auto actual = resolvedPath.empty() ? std::string_view(resolved) : resolvedPath;
+    if (!same(actual, expected)) return false;
+    if (cachedPath) *cachedPath = actual;
+    return true;
 }
 } /// @note namespace fbzz::asset::detail
