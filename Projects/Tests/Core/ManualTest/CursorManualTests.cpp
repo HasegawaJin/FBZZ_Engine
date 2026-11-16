@@ -6,11 +6,15 @@
 
 #include <Engine/Core/Cursor.hpp>
 
+#include <tuple>
+
 namespace fbzz::tests {
 
+/// @note 個別に解放しない要求は一括操作か TearDown で破棄するため、要求 ID の破棄を明示する。
+/// @see https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/c4834 MSVC の nodiscard 診断と std::ignore。
 class CursorManualTest : public testkit::Fixture {
 protected:
-    /// 静的状態を持つ API なので、前のテストの要求を持ち越さない。
+    /// @note Cursor の静的状態をリセットし、テスト間で要求が残らないようにする。
     void SetUp() override { core::Cursor::ResetForEditor(); }
     void TearDown() override { core::Cursor::ResetForEditor(); }
 };
@@ -39,8 +43,7 @@ TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
                                        core::CursorLockMode::Locked }) {
         EXPECT_EQ(core::CursorLockModeFromString(core::ToString(mode)), mode);
     }
-    /// @note 未知の綴りは既定 (拘束しない) へ倒す。設定ファイルの手編集でカーソルを
-    ///       取り上げられたまま起動する事故を作らない。
+    /// @note 設定ファイルに未知の綴りがあっても、起動時はカーソルを拘束しない。
     EXPECT_EQ(core::CursorLockModeFromString("bogus"), core::CursorLockMode::None);
 }
 
@@ -55,8 +58,7 @@ TEST_F(CursorManualTest, ShapeNamesSurviveTomlRoundTrip)
 
 TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
 {
-    /// @note 抑制中でも «ゲームが何を求めたか» は残る。Editor が Game View から離れている間に
-    ///       要求を None へ畳んでしまうと、戻ってきたときに何を復元するか分からなくなる。
+    /// @note Game View に戻ったときに復元できるよう、OS への反映を抑制している間もゲームの要求を保持する。
     core::Cursor::SetSuppressed(true);
     core::Cursor::SetLockMode(core::CursorLockMode::Locked);
     core::Cursor::SetVisible(false);
@@ -79,8 +81,7 @@ TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
 
 TEST_F(CursorManualTest, StrongerRequestWinsAndPoppingRestoresTheWeakerOne)
 {
-    /// @note 視点操作 (Camera) の上へメニュー (Modal) を重ね、閉じたら視点へ «自動で» 戻る。
-    ///       これが SetLockMode の直書きでは書けない部分で、戻す値を覚える責任が消える。
+    /// @note メニューを閉じると、視点操作が要求した拘束と表示がスタックから復元される。
     const auto camera = core::Cursor::Push({ core::CursorLockMode::Locked, false },
                                            core::CursorPriority::Camera, 1, "Camera");
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::Locked);
@@ -114,10 +115,10 @@ TEST_F(CursorManualTest, SamePriorityLetsTheLatestRequestWin)
 
 TEST_F(CursorManualTest, RequestsAreListedStrongestFirst)
 {
-    core::Cursor::Push({ core::CursorLockMode::Locked, false },
-                       core::CursorPriority::Camera, 1, "Camera");
-    core::Cursor::Push({ core::CursorLockMode::Confined, true },
-                       core::CursorPriority::Modal, 2, "Menu");
+    std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
+                                    core::CursorPriority::Camera, 1, "Camera");
+    std::ignore = core::Cursor::Push({ core::CursorLockMode::Confined, true },
+                                    core::CursorPriority::Modal, 2, "Menu");
 
     ASSERT_EQ(core::Cursor::GetRequestCount(), 2u);
     core::CursorRequestInfo top{};
@@ -133,12 +134,12 @@ TEST_F(CursorManualTest, RequestsAreListedStrongestFirst)
 
 TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
 {
-    core::Cursor::Push({ core::CursorLockMode::Locked, false },
-                       core::CursorPriority::Camera, 7, "Camera");
-    core::Cursor::Push({ core::CursorLockMode::Confined, true },
-                       core::CursorPriority::UI, 7, "CameraUi");
-    core::Cursor::Push({ core::CursorLockMode::Confined, false },
-                       core::CursorPriority::UI, 9, "Other");
+    std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
+                                    core::CursorPriority::Camera, 7, "Camera");
+    std::ignore = core::Cursor::Push({ core::CursorLockMode::Confined, true },
+                                    core::CursorPriority::UI, 7, "CameraUi");
+    std::ignore = core::Cursor::Push({ core::CursorLockMode::Confined, false },
+                                    core::CursorPriority::UI, 9, "Other");
 
     core::Cursor::ReleaseByOwner(7);
     EXPECT_EQ(core::Cursor::GetRequestCount(), 1u);
@@ -147,11 +148,10 @@ TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
 
 TEST_F(CursorManualTest, ClearRequestsAlsoResetsTheBase)
 {
-    /// @note シーン遷移で呼ぶ経路。積んだ要求だけでなく «直書きの基底» まで戻さないと、
-    ///       前の画面が SetLockMode で取った拘束を誰も外さない。
+    /// @note シーン遷移時に基底もリセットし、前のシーンが直接指定した拘束を解除する。
     core::Cursor::SetLockMode(core::CursorLockMode::Locked);
-    core::Cursor::Push({ core::CursorLockMode::Confined, false },
-                       core::CursorPriority::UI, 1, "Screen");
+    std::ignore = core::Cursor::Push({ core::CursorLockMode::Confined, false },
+                                    core::CursorPriority::UI, 1, "Screen");
 
     core::Cursor::ClearRequests();
     EXPECT_EQ(core::Cursor::GetRequestCount(), 0u);
@@ -163,11 +163,10 @@ TEST_F(CursorManualTest, UpdatingARequestKeepsItsPlaceInTheStack)
 {
     const auto ui = core::Cursor::Push({ core::CursorLockMode::Confined, false },
                                        core::CursorPriority::UI, 1, "Pointer");
-    core::Cursor::Push({ core::CursorLockMode::Locked, false },
-                       core::CursorPriority::Camera, 2, "Camera");
+    std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
+                                    core::CursorPriority::Camera, 2, "Camera");
 
-    /// @note マウスとパッドで表示だけを切り替える経路。Release → Push だと «同値なら後勝ち» の
-    ///       順序が変わり、他の要求との強弱が黙って入れ替わる。
+    /// @note マウスとパッドで表示だけを切り替えるときも、同じ優先度での登録順を保持する。
     core::Cursor::UpdateRequest(ui, { core::CursorLockMode::Confined, true });
     EXPECT_TRUE(core::Cursor::IsVisible());
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::Confined);

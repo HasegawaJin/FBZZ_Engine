@@ -93,8 +93,10 @@ public:
     /// @note Called after a Scene has retired its objects; does not dereference or mutate the retired Scene.
     FBZZ_ENGINE_API void DetachRetiredScene();
 private:
-    friend void UpdateWorldPartitionRuntime(Scene&, renderer::ResourceManager*, bool);
-    friend void TransferWorldPartitionRuntime(Scene&, Scene&);
+    /// @note The friend redeclarations share the namespace declarations' DLL linkage.
+    /// @see https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4273 MSVC DLL linkage rules.
+    friend FBZZ_ENGINE_API void UpdateWorldPartitionRuntime(Scene&, renderer::ResourceManager*, bool);
+    friend FBZZ_ENGINE_API void TransferWorldPartitionRuntime(Scene&, Scene&);
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 };
