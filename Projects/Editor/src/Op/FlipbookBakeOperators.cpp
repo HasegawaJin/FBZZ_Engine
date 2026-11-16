@@ -105,8 +105,19 @@ void RegisterFlipbookBakeOperators(OperatorRegistry& registry)
                 material.blendMode = settings.preset == asset::ProceduralFlipbookPreset::Fire ? renderer::BlendMode::ADDITIVE
                     : settings.preset == asset::ProceduralFlipbookPreset::Explosion ? renderer::BlendMode::PREMULTIPLIED : renderer::BlendMode::ALPHA_BLEND;
             }
+            const auto guid = asset::AssetDatabase::GuidFromPath(output);
+            if (guid.empty())
+                return OpResult::Err("META_FAILED", "画像は生成済みですが .meta を登録できません: " + output);
+            const auto resolvedPath = asset::AssetDatabase::PathFromGuid(guid);
+            std::error_code referenceError;
+            /// @note 重複した GUID の索引は先に登録された画像を指すため、材質の保存前に実体を照合する。
+            if (resolvedPath.empty() || !std::filesystem::equivalent(util::FileSystem::PathFromUtf8(output),
+                    util::FileSystem::PathFromUtf8(resolvedPath), referenceError))
+                return OpResult::Err("META_FAILED", "画像は生成済みですが GUID が生成先に解決しません: " + output);
+
             OpResult result = OpResult::Ok(); result.data = OpData::MakeObject();
-            const auto reference = "guid:" + asset::AssetDatabase::GuidFromPath(output); result.data.Set("path", OpData(output)); result.data.Set("reference", OpData(reference));
+            const auto reference = "guid:" + guid;
+            result.data.Set("path", OpData(output)); result.data.Set("reference", OpData(reference));
             result.data.Set("columns", OpData(columns)); result.data.Set("rows", OpData(rows)); result.data.Set("frameCount", OpData(frameCount));
             if (!materialPath.empty()) {
                 material.renderPath = asset::RenderPath::Particle;

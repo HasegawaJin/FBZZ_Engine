@@ -164,13 +164,29 @@ TEST_F(DirectPanelOperatorTest, ProceduralFlipbookAssignsGuidAndMaterialUndoKeep
     settings.Set("columns", editor::OpData(2)); settings.Set("rows", editor::OpData(1)); settings.Set("outputDirectory", editor::OpData("Assets/Generated"));
     editor::OpArgs args; args.Set("settings", settings); args.Set("material", std::string("Assets/Particle.mat"));
     const auto generated = Invoke("asset.flipbook.generate", args); ASSERT_TRUE(generated.ok);
+    const auto* referenceValue = generated.data.Find("reference");
+    const auto* pathValue = generated.data.Find("path");
+    ASSERT_TRUE(referenceValue && referenceValue->IsString());
+    ASSERT_TRUE(pathValue && pathValue->IsString());
+    const auto& reference = referenceValue->AsString();
+    const auto& output = pathValue->AsString();
+    const auto guid = asset::AssetDatabase::GuidFromRef(reference);
+    ASSERT_EQ(guid.size(), 32u);
+    ASSERT_FALSE(output.empty());
+    EXPECT_TRUE(util::FileSystem::SamePathText(asset::AssetDatabase::PathFromGuid(guid), output));
+    EXPECT_TRUE(std::filesystem::is_regular_file(util::FileSystem::PathFromUtf8(output)));
     asset::MaterialAssetAuthoring material; ASSERT_TRUE(asset::LoadMaterialAssetFromFile(File("Assets/Particle.mat").generic_string(), material));
     std::string savedMaterial;
     ASSERT_TRUE(util::FileSystem::ReadText(File("Assets/Particle.mat").generic_string(), savedMaterial));
-    EXPECT_NE(savedMaterial.find(generated.data.Find("reference")->AsString()), std::string::npos);
+    EXPECT_NE(savedMaterial.find(reference), std::string::npos);
+    const auto albedo = material.textures.find("albedo");
+    ASSERT_NE(albedo, material.textures.end());
+    const auto albedoPath = ProjectRoot() / util::FileSystem::PathFromUtf8(albedo->second);
+    EXPECT_TRUE(util::FileSystem::SamePathText(util::FileSystem::PathToUtf8(albedoPath), output));
     EXPECT_EQ(material.particle.flipbook.spriteColumns, 2);
     ASSERT_TRUE(m_undo.Undo()); ASSERT_TRUE(asset::LoadMaterialAssetFromFile(File("Assets/Particle.mat").generic_string(), material));
-    EXPECT_TRUE(material.textures["albedo"].empty()); EXPECT_TRUE(std::filesystem::exists(generated.data.Find("path")->AsString()));
+    EXPECT_TRUE(material.textures["albedo"].empty());
+    EXPECT_TRUE(std::filesystem::is_regular_file(util::FileSystem::PathFromUtf8(output)));
 }
 TEST_F(DirectPanelOperatorTest, SequenceScanOrdersNumbersAndAtlasRejectsSingleFrameBeforeWriting)
 {
@@ -182,5 +198,44 @@ TEST_F(DirectPanelOperatorTest, SequenceScanOrdersNumbersAndAtlasRejectsSingleFr
     settings.Set("frames", frames); settings.Set("output", editor::OpData("Assets/Atlas.png")); EXPECT_FALSE(Patch("asset.flipbook.bake_atlas", settings).ok); EXPECT_FALSE(std::filesystem::exists(File("Assets/Atlas.png")));
     settings.Set("frames", *found.data.Find("frames")); const auto baked = Patch("asset.flipbook.bake_atlas", settings); ASSERT_TRUE(baked.ok);
     EXPECT_EQ(baked.data.Find("frameCount")->AsInt(), 2); EXPECT_TRUE(std::filesystem::exists(File("Assets/Atlas.png")));
+}
+
+/// @see Docs/design/EditorDirectApi.md Flipbook generation connects the generated image to the material.
+TEST_F(DirectPanelOperatorTest, AtlasWithAConflictingGuidLeavesTheMaterialAndUndoHistoryUnchanged)
+{
+    fluid::VectorFieldAsset field;
+    fluid::BakeVectorField(fluid::VectorFieldRecipe::Sphere, 8, {1, 1, 1}, 1, 1, field);
+    const auto firstFrame = File("Assets/Frame_1.png").generic_string();
+    ASSERT_TRUE(asset::SaveVectorField(firstFrame, field));
+    ASSERT_TRUE(asset::SaveVectorField(File("Assets/Frame_2.png").generic_string(), field));
+    const auto existingGuid = asset::AssetDatabase::GuidFromPath(firstFrame);
+    ASSERT_FALSE(existingGuid.empty());
+    ASSERT_TRUE(util::FileSystem::SamePathText(asset::AssetDatabase::PathFromGuid(existingGuid), firstFrame));
+    ASSERT_TRUE(util::FileSystem::WriteText(File("Assets/Atlas.png.meta").generic_string(),
+        "[meta]\nguid = '" + existingGuid + "'\n"));
+
+    const auto materialPath = File("Assets/Particle.mat").generic_string();
+    ASSERT_TRUE(asset::SaveMaterialAssetToFile(materialPath, asset::MaterialAssetAuthoring{}));
+    std::string original;
+    ASSERT_TRUE(util::FileSystem::ReadText(materialPath, original));
+    auto frames = editor::OpData::MakeArray();
+    frames.Push(editor::OpData("Assets/Frame_1.png"));
+    frames.Push(editor::OpData("Assets/Frame_2.png"));
+    auto settings = editor::OpData::MakeObject();
+    settings.Set("frames", std::move(frames));
+    settings.Set("output", editor::OpData("Assets/Atlas.png"));
+    editor::OpArgs args;
+    args.Set("settings", std::move(settings));
+    args.Set("material", std::string("Assets/Particle.mat"));
+
+    const auto result = Invoke("asset.flipbook.bake_atlas", args);
+
+    EXPECT_TRUE(std::filesystem::is_regular_file(File("Assets/Atlas.png")));
+    EXPECT_TRUE(util::FileSystem::SamePathText(asset::AssetDatabase::PathFromGuid(existingGuid), firstFrame));
+    EXPECT_FALSE(result.ok) << result.message;
+    std::string saved;
+    ASSERT_TRUE(util::FileSystem::ReadText(materialPath, saved));
+    EXPECT_EQ(saved, original);
+    EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 } /// @note namespace fbzz::tests
