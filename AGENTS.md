@@ -110,6 +110,8 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 - **ビルドは同時に 1 本だけ。** SDK 公開 (`CMake: Build SDK` / `GameHub + SDK`) も `build/<Config>` を使うので、人のタスク・別エージェントと重なりうる。`RESULT busy` や `HINT CONTENDED` (C1041 / `C1083 Permission denied` / LNK1104 / MSB3491 / "being used by another process") は**コードの誤りではない**。コードを直さず、プロセスを止めず、`build/` を消さず、終わるのを待つかユーザーに確かめてから 1 回だけ再実行する。別ツリー (`-Preset`) へ逃げない (全体の再コンパイルになる)
 - フルビルドやエディターの再起動が要る変更 (DLL を掴まれてリンクできない) はユーザーに VS Code タスク (`CMake: Build All (Debug)` / `Tests: Build & Run Suite (Debug)` 等) を依頼する。VS 更新後に configure が落ちたら `build/<Config>/` を消して再 configure
 - ビルド時間は前処理行数で決まる。標準ヘッダーは `fbzz_use_std_pch` に任せ、ヘッダーオンリーの重い実装 (`toml++` 等) を公開ヘッダーに載せない。詳細 `Docs/conventions/build-performance.md`
+- 機能追加・不具合修正では、仕様・設計文書・公開 API の契約から期待する挙動を決め、先にテストを書く。変更前のソースで、検証対象の挙動が原因で意図どおり失敗することを確認してから、ソースを実装・修正する。同じテストを再実行し、失敗が続く場合は契約に照らしてソースを修正する
+- 既存テストを変更できるのは、期待値・前提条件・合格条件など、テスト自体の誤りを仕様に照らして説明できる場合に限る。変更時は根拠となる契約と元のテストの誤りを報告する
 - テストは `TEST_F` + `TestKit` の fixture。float は `EXPECT_VEC3_NEAR` 等、乱数・時刻・sleep を持ち込まない。新規ファイルは `Projects/Tests/CMakeLists.txt` の `SOURCES` へ手で 1 行足す。詳細 `Docs/conventions/test.md`
 - テスト目的だけの公開 getter / setter (`TryGet` 等) を本体へ追加しない。本番と同じ操作と既存の出力境界で契約を検証する。内部部品の分離・限定 friend の例外条件は `Docs/conventions/test.md` の「テスト対象の境界と公開 API」に従う
 - ブランチ `main → develop → feature/<name>`。コミットは `[Feature|Fix|Design|Build|Refactor|Chore|Release] + 動詞 + 概要`、本文は Markdown。詳細 `Docs/conventions/git.md`
