@@ -204,6 +204,7 @@ TEST_F(MeshTrailRenderResourceTest, EarlyOwnerDestructionRebuildsForTheRemaining
 {
     const auto initial = Extract(m_device, *m_resources);
     ASSERT_TRUE(initial.colorBuffer.IsValid());
+    asset::AssetManager::UnloadAll();
     m_resources.reset();
     EXPECT_EQ(m_device.m_constantsAlive, 0u);
     m_resources = std::make_unique<renderer::ResourceManager>(m_device);

@@ -140,6 +140,7 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
     /// @note 媒体 atlas は照明前、界面は体積光前、SSR の解決は透明描画前に登録する。
     /// @see Docs/design/water-gameplay-visuals.md
     /// @see Docs/design/graphics-quality.md
+    /// @see Docs/design/waterfall-authoring.md 受水面を描画してから WaterfallSurfaces を描画する。
     const std::vector<std::string> forward{
         "DepthPrePass", "BuildOcclusionHiZ", "CullOccludedMeshes",
         "ForwardOpaque", "TerrainForward", "Sky", "SunMoon", "VolumetricCloud",
@@ -178,7 +179,9 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
             expected.insert(expected.end(), geometry.begin(), geometry.end());
             expected.emplace_back("AfterOpaque");
             expected.emplace_back(path == OpaqueRenderPath::DEFERRED ? "DeferredForwardTransparent" : "ForwardTransparent");
-            expected.insert(expected.end(), { "WaterInterface", "VolumetricLight", "WaterCaustics", "WaterForward" });
+            expected.insert(expected.end(), {
+                "WaterInterface", "VolumetricLight", "WaterCaustics", "WaterForward", "WaterfallSurfaces"
+            });
             EXPECT_EQ(pipeline.RegisteredPassNames(), expected);
         }
     }

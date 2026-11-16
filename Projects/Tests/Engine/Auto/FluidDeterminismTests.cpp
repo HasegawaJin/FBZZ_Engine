@@ -55,11 +55,18 @@ std::string FrameFingerprint(const asset::FluidFrameImage& image)
 /// frames コマを焼きの経路で解いて、コマごとの指紋を返す。
 std::vector<std::string> BakeFingerprints(const fluid::FluidRecipe& recipe, const std::vector<int>& frames)
 {
+    constexpr int FRAME_SIZE = 32;
+    constexpr size_t PIXEL_COUNT = FRAME_SIZE * FRAME_SIZE;
     std::vector<asset::FluidFrameImage> images;
-    if (!asset::RenderFluidBakeFrames(recipe, frames, 32, images)) return {};
+    if (!asset::RenderFluidBakeFrames(recipe, frames, FRAME_SIZE, images)) return {};
     std::vector<std::string> out;
     out.reserve(images.size());
-    for (const asset::FluidFrameImage& image : images) out.push_back(FrameFingerprint(image));
+    for (const asset::FluidFrameImage& image : images) {
+        EXPECT_EQ(image.size, FRAME_SIZE);
+        EXPECT_EQ(image.rgba.size(), PIXEL_COUNT * 4u);
+        EXPECT_EQ(image.motion.size(), PIXEL_COUNT * 2u);
+        out.push_back(FrameFingerprint(image));
+    }
     return out;
 }
 
@@ -71,7 +78,7 @@ std::vector<int> AllFrames(const fluid::FluidRecipe& recipe)
     return frames;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name 刻みの数え方
 
@@ -111,7 +118,7 @@ TEST(FluidDeterminismTest, SameRecipeGivesTheSamePixelsTwice)
     const std::vector<int> frames = AllFrames(recipe);
     const std::vector<std::string> first = BakeFingerprints(recipe, frames);
     const std::vector<std::string> second = BakeFingerprints(recipe, frames);
-    ASSERT_EQ(first.size(), frames.size());
+    ASSERT_EQ(first.size(), 4u);
     EXPECT_EQ(first, second);
 }
 
@@ -122,7 +129,8 @@ TEST(FluidDeterminismTest, ChangingTheSeedChangesThePicture)
     const std::vector<std::string> base = BakeFingerprints(recipe, frames);
     recipe.seed += 1;
     const std::vector<std::string> other = BakeFingerprints(recipe, frames);
-    ASSERT_EQ(base.size(), other.size());
+    ASSERT_EQ(base.size(), 4u);
+    ASSERT_EQ(other.size(), 4u);
     EXPECT_NE(base.back(), other.back());
 }
 
@@ -137,7 +145,10 @@ TEST(FluidDeterminismTest, LiquidIsDeterministicToo)
     recipe.output.supersampling = 1;
     recipe.output.loop = false;
     const std::vector<int> frames = AllFrames(recipe);
-    EXPECT_EQ(BakeFingerprints(recipe, frames), BakeFingerprints(recipe, frames));
+    const auto first = BakeFingerprints(recipe, frames);
+    const auto second = BakeFingerprints(recipe, frames);
+    ASSERT_EQ(first.size(), 2u);
+    EXPECT_EQ(first, second);
 }
 
 /// @name プレビュー = 焼きのそのコマ
@@ -177,6 +188,7 @@ TEST(FluidDeterminismTest, SupersamplingAppliesToSingleFramesToo)
     recipe.output.supersampling = 2;
     const std::vector<std::string> baked = BakeFingerprints(recipe, AllFrames(recipe));
     const std::vector<std::string> single = BakeFingerprints(recipe, { 2 });
+    ASSERT_EQ(baked.size(), 4u);
     ASSERT_EQ(single.size(), 1u);
     EXPECT_EQ(single.front(), baked[2]);
 }
@@ -240,4 +252,4 @@ TEST(FluidRecipeWriteTest, RoundTripKeepsTheBytesStable)
     EXPECT_EQ(first, second);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

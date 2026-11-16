@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <TestKit/Engine/ResourceTrackingRenderer.hpp>
-#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/AssetSession.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
 #include <Engine/Scene/Systems/ParticleSimulationSystem.hpp>
@@ -144,8 +144,14 @@ TEST_F(ParticlePlaybackTest, RoundedWholeFrameScrubDoesNotLoseTheLastEmission)
     for (size_t index = 0; index < particles.size(); ++index)
         EXPECT_VEC3_NEAR(emitter.runtime.particles[index].position, particles[index].position, testkit::kTolerance);
 }
-TEST_F(ParticlePlaybackTest, SchedulerUpdatesCpuParticlesWithoutResourcesOrAnyViewport)
+/// @see Docs/design/particle-authoring.md 描画ビューが無くても LateUpdate で CPU 粒子を進める。
+TEST_F(ParticlePlaybackTest, SchedulerUpdatesCpuParticlesWithoutRenderContextOrAnyViewport)
 {
+    testkit::TempDir temp("particle-cpu-headless");
+    ASSERT_TRUE(temp.IsValid());
+    testkit::ResourceTrackingRenderer device;
+    renderer::ResourceManager resources(device);
+    asset::AssetSession assets(resources, temp.Path().generic_string() + "/");
     auto& emitter = Create("Headless");
     emitter.settings.duration = 0.0f;
     emitter.settings.emitRate = 60.0f;
@@ -159,7 +165,7 @@ TEST_F(ParticlePlaybackTest, SchedulerUpdatesCpuParticlesWithoutResourcesOrAnyVi
     const auto first = emitter.runtime.particles[0];
     const auto time = emitter.runtime.playTime;
     system.Update(context);
-    EXPECT_EQ(emitter.runtime.particles.size(), 1u);
+    ASSERT_EQ(emitter.runtime.particles.size(), 1u);
     EXPECT_NEAR(emitter.runtime.playTime, time, testkit::kTolerance);
     EXPECT_NEAR(emitter.runtime.particles[0].age, first.age, testkit::kTolerance);
     ++Time::frameCount;
@@ -172,9 +178,10 @@ TEST_F(ParticlePlaybackTest, SchedulerUpdatesCpuParticlesWithoutResourcesOrAnyVi
 TEST_F(ParticlePlaybackTest, HeadlessSimulationReadsFlipbookSettingsBeforeAnyGpuMaterialPreparation)
 {
     testkit::TempDir temp("particle-cpu-material");
+    ASSERT_TRUE(temp.IsValid());
     testkit::ResourceTrackingRenderer device;
     renderer::ResourceManager resources(device);
-    asset::AssetManager::Init(resources, temp.Path().generic_string() + "/");
+    asset::AssetSession assets(resources, temp.Path().generic_string() + "/");
     asset::MaterialAssetAuthoring material;
     material.renderPath = asset::RenderPath::Particle;
     material.particle.flipbook.spriteColumns = 4;
@@ -196,15 +203,15 @@ TEST_F(ParticlePlaybackTest, HeadlessSimulationReadsFlipbookSettingsBeforeAnyGpu
     EXPECT_NEAR(uv.w - uv.y, 0.5f, testkit::kTolerance);
     EXPECT_EQ(device.m_texturesAlive, 0u);
     EXPECT_EQ(device.m_constantsAlive, 0u);
-    asset::AssetManager::UnloadAll();
 }
 
 TEST_F(ParticlePlaybackTest, RenderExtractionConsumesCpuSnapshotWithoutAdvancingPlaybackOrCollision)
 {
     testkit::TempDir temp("particle-cpu-snapshot");
+    ASSERT_TRUE(temp.IsValid());
     testkit::ResourceTrackingRenderer device;
     renderer::ResourceManager resources(device);
-    asset::AssetManager::Init(resources, temp.Path().generic_string() + "/");
+    asset::AssetSession assets(resources, temp.Path().generic_string() + "/");
     auto& emitter = Create("Snapshot");
     emitter.settings.duration = 0.0f;
     emitter.settings.emitRate = 60.0f;
@@ -233,7 +240,6 @@ TEST_F(ParticlePlaybackTest, RenderExtractionConsumesCpuSnapshotWithoutAdvancing
     EXPECT_NEAR(emitter.runtime.playTime, playTime, testkit::kTolerance);
     EXPECT_NEAR(emitter.runtime.particles.front().age, particle.age, testkit::kTolerance);
     m_scene.Clear();
-    asset::AssetManager::UnloadAll();
     resources.Release(handles.particleIB);
 }
 } /// @note namespace fbzz::tests

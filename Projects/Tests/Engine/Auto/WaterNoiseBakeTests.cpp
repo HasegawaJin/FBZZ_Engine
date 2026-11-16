@@ -19,6 +19,9 @@ namespace {
 
 namespace wn = renderer::waternoise;
 
+/// @see Docs/design/water-waves.md 既存材質に対する勾配 1 成分の目標 RMS。
+constexpr float EXPECTED_GRADIENT_RMS = 0.5f;
+
 /// @note タイルは決定的で、焼くのに 512^2 の評価が要る。1 度だけ焼いて全テストで共有する。
 const wn::Tile& SharedTile()
 {
@@ -154,19 +157,45 @@ TEST_F(WaterNoiseBakeTest, GradientRmsMatchesTheTargetSoDetailStrengthKeepsItsMe
         squareSum += static_cast<double>(dx) * dx + static_cast<double>(dy) * dy;
     }
     const float rms = static_cast<float>(std::sqrt(squareSum / (2.0 * static_cast<double>(texels))));
-    EXPECT_NEAR(rms, wn::kGradientRms, wn::kGradientRms * 0.05f);
+    EXPECT_NEAR(rms, EXPECTED_GRADIENT_RMS, EXPECTED_GRADIENT_RMS * 0.05f);
 }
 
-TEST_F(WaterNoiseBakeTest, DerivativeScaleIsExactlyTheLargestBakedGradient)
+TEST_F(WaterNoiseBakeTest, UsesNormalizedPeakAsTheDerivativeScale)
 {
     /// @note 復号係数は «実際に出た最大» でなければならない。大きすぎると 8bit の分解能を捨て、
     /// @note 小さいと山と谷が飽和して «平らな筋» になる。最大の成分がちょうど端へ張り付く。
     const wn::Tile& tile = SharedTile();
+    ASSERT_FALSE(tile.mips.empty());
     const auto& mip0 = tile.mips.front();
+    const size_t texels = static_cast<size_t>(wn::kTileSize) * wn::kTileSize;
+    ASSERT_EQ(mip0.size(), texels * 4u);
+
+    /// @note 高さの中心差分で勾配を推定する。ベイクの解析勾配や符号化済みの端の値には依存しない。
+    double squareSum = 0.0;
+    float peak = 0.0f;
+    constexpr float cellsPerTexel = static_cast<float>(wn::kTileCells) / wn::kTileSize;
+    constexpr float step = 1.0f / 512.0f;
+    const auto heightAt = [](float x, float y) {
+        float unusedX = 0.0f, unusedY = 0.0f;
+        return wn::detail::GradientNoise(x, y, wn::kTileCells, unusedX, unusedY);
+    };
+    for (std::uint32_t y = 0; y < wn::kTileSize; ++y) {
+        for (std::uint32_t x = 0; x < wn::kTileSize; ++x) {
+            const float px = (static_cast<float>(x) + 0.5f) * cellsPerTexel;
+            const float py = (static_cast<float>(y) + 0.5f) * cellsPerTexel;
+            const float dx = (heightAt(px + step, py) - heightAt(px - step, py)) / (2.0f * step);
+            const float dy = (heightAt(px, py + step) - heightAt(px, py - step)) / (2.0f * step);
+            peak = (std::max)({peak, std::abs(dx), std::abs(dy)});
+            squareSum += static_cast<double>(dx) * dx + static_cast<double>(dy) * dy;
+        }
+    }
+    const double rms = std::sqrt(squareSum / (2.0 * static_cast<double>(texels)));
+    ASSERT_GT(rms, 0.0);
+    /// @note 中心差分の打ち切りと浮動小数点誤差のため、8bit の量子化幅より小さい許容差を使う。
+    EXPECT_NEAR(tile.derivativeScale, EXPECTED_GRADIENT_RMS * peak / rms, 2.0e-3);
 
     int lowest = 255;
     int highest = 0;
-    const size_t texels = static_cast<size_t>(wn::kTileSize) * wn::kTileSize;
     for (size_t i = 0; i < texels; ++i) {
         for (std::uint32_t c = 0; c < 2u; ++c) {
             const int value = static_cast<int>(mip0[i * 4u + c]);

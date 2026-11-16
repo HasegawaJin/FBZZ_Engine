@@ -1082,9 +1082,11 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReusePreservesFirstFkWhenRootMotionCall
     for (size_t i = 0; i < firstReference.size(); ++i)
         ExpectBoneBakeTestMatrix(animator.boneMatrices[i], firstReference[i]);
     system.Update(context);
+    ASSERT_EQ(smr.nodeEntities.size(), 3u);
     ASSERT_NE(scene.GetGameObject(smr.nodeEntities[2]), nullptr);
     EXPECT_NE(smr.nodeEntities[2], removed);
     const auto nextReference = SampleBoneBakeTestReference(*model.skeleton, clip, 0.5);
+    ASSERT_EQ(animator.boneMatrices.size(), nextReference.size());
     for (size_t i = 0; i < nextReference.size(); ++i)
         ExpectBoneBakeTestMatrix(animator.boneMatrices[i], nextReference[i]);
 }

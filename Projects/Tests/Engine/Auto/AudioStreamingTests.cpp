@@ -112,17 +112,22 @@ protected:
 
 TEST_F(AudioStreamingTest, DecodesBoundedBlocksWithoutLosingSamplesAndRewinds)
 {
-    std::vector<uint8_t> expected(audio::AudioStreamReader::BLOCK_BYTES * 5 + 246);
-    for (size_t i = 0; i < expected.size(); ++i) expected[i] = static_cast<uint8_t>((i * 17 + 9) % 256);
+    constexpr size_t blockBytes = audio::AudioStreamReader::BLOCK_BYTES;
+    std::vector<uint8_t> expected(blockBytes * 5 + 246);
+    for (size_t i = 0; i < expected.size(); ++i)
+        expected[i] = static_cast<uint8_t>((i * 17 + 9 + i / blockBytes) % 256);
     audio::AudioStreamReader reader;
     ASSERT_TRUE(reader.Open(WriteWave(expected)));
     EXPECT_EQ(reader.Format().sampleRate, 48000u);
     EXPECT_EQ(reader.Format().channels, 1u);
+    EXPECT_EQ(reader.Format().bitsPerSample, 16u);
     std::vector<uint8_t> actual, block;
-    for (size_t i = 0; i < 8; ++i) {
+    while (actual.size() < expected.size()) {
         ASSERT_TRUE(reader.Read(block));
-        ASSERT_LE(block.size(), audio::AudioStreamReader::BLOCK_BYTES);
-        if (block.empty()) break;
+        ASSERT_FALSE(block.empty());
+        ASSERT_LE(block.size(), blockBytes);
+        ASSERT_LE(block.size(), expected.size() - actual.size());
+        EXPECT_EQ(block.size() % 2u, 0u);
         actual.insert(actual.end(), block.begin(), block.end());
     }
     EXPECT_EQ(actual, expected);
@@ -130,6 +135,9 @@ TEST_F(AudioStreamingTest, DecodesBoundedBlocksWithoutLosingSamplesAndRewinds)
     EXPECT_TRUE(block.empty());
     ASSERT_TRUE(reader.Rewind());
     ASSERT_TRUE(reader.Read(block));
+    ASSERT_FALSE(block.empty());
+    ASSERT_LE(block.size(), blockBytes);
+    EXPECT_EQ(block.size() % 2u, 0u);
     EXPECT_EQ(block, (std::vector<uint8_t>(expected.begin(), expected.begin() + block.size())));
 }
 
@@ -166,6 +174,8 @@ TEST_F(AudioStreamingTest, NativeStreamStopsWhilePausedAndRebuildsBusesWithoutKe
     device.SetSend(voice, 1, 0.5f);
     device.SetSend(voice, audio::kInvalidBus, 0.0f);
     device.ResumeBuffer(voice);
+    EXPECT_TRUE(device.IsPlaying(voice));
+    device.PauseBuffer(voice);
     device.StopBuffer(voice);
     EXPECT_FALSE(device.IsPlaying(voice));
     const auto second = device.PlayStream(path, true, 1);

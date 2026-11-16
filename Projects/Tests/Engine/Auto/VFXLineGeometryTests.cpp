@@ -40,9 +40,9 @@ TEST(VFXLineGeometryTest, LightningStartsAndEndsOnTheEndpoints)
     const math::Vector3 to{ 0.0f, 10.0f, 0.0f };
     scene::GenerateLightning(line, from, to, 7, 0.3f, strands);
     ASSERT_FALSE(strands.empty());
+    ASSERT_EQ(strands.front().points.size(), (std::size_t{ 1 } << line.detail) + 1);
     EXPECT_TRUE(SamePoint(strands.front().points.front(), from));
     EXPECT_TRUE(SamePoint(strands.front().points.back(), to));
-    EXPECT_EQ(strands.front().points.size(), (std::size_t{ 1 } << line.detail) + 1);
 }
 
 TEST(VFXLineGeometryTest, SameStrikeGivesTheSameBoltAndANewStrikeChangesIt)
@@ -53,7 +53,12 @@ TEST(VFXLineGeometryTest, SameStrikeGivesTheSameBoltAndANewStrikeChangesIt)
     scene::GenerateLightning(line, { 0, 0, 0 }, { 5, 0, 0 }, 42, 0.0f, a);
     scene::GenerateLightning(line, { 0, 0, 0 }, { 5, 0, 0 }, 42, 0.0f, b);
     scene::GenerateLightning(line, { 0, 0, 0 }, { 5, 0, 0 }, 43, 0.0f, c);
+    ASSERT_FALSE(a.empty());
     ASSERT_EQ(a.size(), b.size());
+    ASSERT_FALSE(c.empty());
+    ASSERT_GE(a.front().points.size(), 3u);
+    ASSERT_EQ(a.front().points.size(), b.front().points.size());
+    ASSERT_EQ(a.front().points.size(), c.front().points.size());
     bool same = true;
     for (std::size_t i = 0; i < a.front().points.size(); ++i) same &= SamePoint(a.front().points[i], b.front().points[i]);
     EXPECT_TRUE(same);
@@ -74,6 +79,7 @@ TEST(VFXLineGeometryTest, BoltStaysWithinTheChaosBand)
     const math::Vector3 to{ 10, 0, 0 };
     scene::GenerateLightning(line, from, to, 3, 0.0f, strands);
     ASSERT_EQ(strands.size(), 1u);
+    ASSERT_GE(strands.front().points.size(), 3u);
     /// @note ずらす量は段ごとに半分なので、合計は初段の 2 倍を超えない。
     const float limit = 2.0f * line.chaos * 10.0f + 1.0e-3f;
     for (const auto& point : strands.front().points) EXPECT_LE(DistanceToSegment(point, from, to), limit);
@@ -87,7 +93,9 @@ TEST(VFXLineGeometryTest, BranchesStartOnTheTrunkAndThinToATip)
     scene::GenerateLightning(line, { 0, 0, 0 }, { 8, 0, 0 }, 11, 0.0f, strands);
     ASSERT_EQ(strands.size(), 5u);
     const auto& trunk = strands.front().points;
+    ASSERT_GE(trunk.size(), 3u);
     for (std::size_t b = 1; b < strands.size(); ++b) {
+        ASSERT_GE(strands[b].points.size(), 2u);
         const math::Vector3 start = strands[b].points.front();
         const bool onTrunk = std::any_of(trunk.begin(), trunk.end(), [&](const math::Vector3& p) { return SamePoint(p, start); });
         EXPECT_TRUE(onTrunk);

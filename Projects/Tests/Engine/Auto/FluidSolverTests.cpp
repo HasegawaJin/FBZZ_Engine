@@ -72,7 +72,7 @@ float MinColliderDistance(const fluid::FluidLiquidSolver& solver, const fluid::F
     return minimum;
 }
 
-} // namespace
+} /// @note namespace
 
 TEST(FluidGasSolverTest, ProjectionRemovesMostOfTheDivergence)
 {
@@ -121,6 +121,8 @@ TEST(FluidGasSolverTest, SameSeedGivesTheSameResult)
     b.Reset(recipe, 24, 24, 1);
     a.Advance(0.4f);
     b.Advance(0.4f);
+    ASSERT_EQ(a.Density().size(), 24u * 24u);
+    EXPECT_GT(a.TotalDensity(), 0.0f);
     EXPECT_EQ(a.Density(), b.Density());
 }
 
@@ -697,4 +699,4 @@ TEST(FluidLiquidSolverTest, ReplaceOperatorsKeepsTheParticlesAndTheEmittedCounts
     EXPECT_FALSE(solver.ReplaceOperators(gas));
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests
