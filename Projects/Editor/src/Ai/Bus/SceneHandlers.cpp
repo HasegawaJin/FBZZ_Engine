@@ -460,9 +460,9 @@ Outcome DoSceneValidate(editor::EditorContext& ctx)
             }
         }
         if (auto* material = go.GetComponent<scene::MaterialComponent>(); material != nullptr && !material->GetMaterialPath().empty()) {
-            fs::path materialPath;
-            std::string relative;
-            if (!ResolveProjectFile(ctx, material->GetMaterialPath(), materialPath, relative) || !fs::is_regular_file(materialPath)) {
+            const auto materialPath = asset::AssetManager::ResolveAssetPath(material->GetMaterialPath());
+            std::error_code ec;
+            if (materialPath.empty() || !fs::is_regular_file(util::FileSystem::PathFromUtf8(materialPath), ec)) {
                 AddValidationIssue(issues, "error", "BROKEN_MATERIAL", go, "Material 参照が見つかりません: " + material->GetMaterialPath());
                 ++errors;
             }
