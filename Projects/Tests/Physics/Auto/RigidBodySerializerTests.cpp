@@ -33,7 +33,7 @@ physics::RigidBody MakeDistinctBody()
     return body;
 }
 
-} // namespace
+} /// @note namespace
 
 class RigidBodySerializerTest : public testkit::Fixture {};
 
@@ -121,6 +121,8 @@ TEST_F(RigidBodySerializerTest, FillsMissingKeysWithDefaults)
 {
     /// @note 古いシーンには新しいキーが無い。読めなくなるのではなく既定値で埋める。
     physics::RigidBody body;
+    body.SetPosition({1.0f, 2.0f, 3.0f});
+    body.m_isStatic = true;
     ASSERT_TRUE(physics::RigidBodySerializer::Deserialize(body, "mass = 2.0\n"));
 
     EXPECT_NEAR(body.GetMass(), 2.0f, testkit::kTolerance);
@@ -131,8 +133,9 @@ TEST_F(RigidBodySerializerTest, FillsMissingKeysWithDefaults)
 TEST_F(RigidBodySerializerTest, AcceptsAnEmptyDocument)
 {
     physics::RigidBody body;
+    body.SetMass(5.0f);
 
-    EXPECT_TRUE(physics::RigidBodySerializer::Deserialize(body, ""));
+    ASSERT_TRUE(physics::RigidBodySerializer::Deserialize(body, ""));
     EXPECT_NEAR(body.GetMass(), 1.0f, testkit::kTolerance);
 }
 
@@ -142,8 +145,11 @@ TEST_F(RigidBodySerializerTest, RejectsTextThatIsNotToml)
     ///       「開いたら全部リセットされていた」にしない。
     physics::RigidBody body;
     body.SetMass(5.0f);
+    body.SetPosition({1.0f, 2.0f, 3.0f});
+    const auto original = physics::RigidBodySerializer::Serialize(body);
 
     EXPECT_FALSE(physics::RigidBodySerializer::Deserialize(body, "{{{ not toml ]]]"));
+    EXPECT_EQ(physics::RigidBodySerializer::Serialize(body), original);
 }
 
 TEST_F(RigidBodySerializerTest, KeepsTheRotationNormalised)
@@ -156,4 +162,4 @@ TEST_F(RigidBodySerializerTest, KeepsTheRotationNormalised)
     EXPECT_NEAR(body.GetRotation().Length(), 1.0f, testkit::kLooseTolerance);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

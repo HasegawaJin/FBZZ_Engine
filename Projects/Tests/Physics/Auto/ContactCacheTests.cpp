@@ -173,14 +173,18 @@ TEST_F(ContactCacheTest, IgnoresTriggerContactsEntirely)
 TEST_F(ContactCacheTest, IgnoresContactsWithoutColliders)
 {
     physics::ContactCache cache;
-    std::vector<physics::ContactPoint> solved{MakeContact(5.0f)};
-    solved[0].colliderB = nullptr;
-
+    std::vector<physics::ContactPoint> solved{MakeContact(5.0f), MakeContact(9.0f)};
+    solved[1].colliderB = nullptr;
     cache.UpdateCache(solved);
-    cache.WarmStart(solved);
 
-    /// @note 触られない
-    EXPECT_NEAR(solved[0].cachedNormalImpulse, 5.0f, testkit::kTolerance);
+    std::vector<physics::ContactPoint> fresh{MakeContact(0.0f), MakeContact(0.0f)};
+    fresh[0].colliderB = nullptr;
+    fresh[0].bodyA = &body;
+    cache.WarmStart(fresh);
+
+    EXPECT_NEAR(fresh[0].cachedNormalImpulse, 0.0f, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
+    EXPECT_NEAR(fresh[1].cachedNormalImpulse, 5.0f, testkit::kTolerance);
 }
 
 TEST_F(ContactCacheTest, ForgetsThePairWhenCachingIsTurnedOff)
@@ -240,4 +244,4 @@ TEST_F(ContactCacheTest, PurgesEntriesThatWereNotRefreshed)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 0.0f, testkit::kTolerance);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

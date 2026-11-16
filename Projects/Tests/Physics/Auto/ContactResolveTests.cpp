@@ -28,7 +28,7 @@ physics::PhysicsMaterial MakeMaterial(float restitution, float friction)
     return material;
 }
 
-} // namespace
+} /// @note namespace
 
 /// 床 (静的) の上に落ちてきた剛体 1 個、という最小の接触。
 /// normal は «B から A へ» なので、床を B、落ちてきた側を A に置く。
@@ -201,7 +201,7 @@ TEST_F(ContactResolveTest, FrictionActsOnEveryTangentialDirection)
 
 /// @name トリガー
 
-TEST_F(ContactResolveTest, TriggersReportWithoutPushingBack)
+TEST_F(ContactResolveTest, TriggerContactsLeaveVelocityAndPositionUnchanged)
 {
     /// @note トリガーは «通知するだけ»。速度も位置も動かしてはいけない。
     const physics::PhysicsMaterial material = MakeMaterial(0.5f, 1.0f);
@@ -260,4 +260,4 @@ TEST_F(ContactResolveTest, ResolvingNothingIsHarmless)
     SUCCEED();
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

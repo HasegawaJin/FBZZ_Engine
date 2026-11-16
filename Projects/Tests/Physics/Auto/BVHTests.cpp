@@ -72,7 +72,7 @@ std::set<uint32_t> TreeQuery(const physics::BVHTree& tree, const physics::AABB& 
 
 physics::AABB Box(const math::Vector3& min, const math::Vector3& max) { return {min, max}; }
 
-} // namespace
+} /// @note namespace
 
 class BVHTest : public testkit::Fixture {};
 
@@ -104,7 +104,7 @@ TEST_F(BVHTest, RootBoundsEncloseEveryTriangle)
     ASSERT_FALSE(tree.nodes.empty());
     const physics::AABB& root = tree.nodes[0].aabb;
 
-    for (const physics::Triangle& tri : tree.triangles) {
+    for (const physics::Triangle& tri : TriangleStrip(20)) {
         for (const math::Vector3& vertex : tri.v) {
             EXPECT_GE(vertex.x, root.min.x - testkit::kTolerance);
             EXPECT_GE(vertex.y, root.min.y - testkit::kTolerance);
@@ -123,10 +123,14 @@ TEST_F(BVHTest, EveryTriangleAppearsInExactlyOneLeaf)
     physics::BVHTree tree;
     tree.Build(TriangleStrip(50), 4);
 
-    std::vector<int> appearances(tree.triangles.size(), 0);
+    ASSERT_EQ(tree.triangles.size(), 50u);
+    std::vector<int> appearances(50, 0);
     for (const physics::BVHNode& node : tree.nodes) {
         if (!node.IsLeaf()) continue;
-        for (uint32_t index : node.triIndices) ++appearances[index];
+        for (uint32_t index : node.triIndices) {
+            ASSERT_LT(index, appearances.size());
+            ++appearances[index];
+        }
     }
 
     for (size_t i = 0; i < appearances.size(); ++i) {
@@ -149,10 +153,14 @@ TEST_F(BVHTest, LeavesHoldNoMoreThanTheRequestedTriangleCount)
     physics::BVHTree tree;
     tree.Build(TriangleStrip(64), kMaxLeafTris);
 
+    size_t leafCount = 0;
     for (const physics::BVHNode& node : tree.nodes) {
         if (!node.IsLeaf()) continue;
+        ++leafCount;
+        EXPECT_FALSE(node.triIndices.empty());
         EXPECT_LE(node.triIndices.size(), static_cast<size_t>(kMaxLeafTris));
     }
+    EXPECT_GE(leafCount, (64u + kMaxLeafTris - 1) / kMaxLeafTris);
 }
 
 TEST_F(BVHTest, ChildBoundsAreContainedInTheirParent)
@@ -160,6 +168,8 @@ TEST_F(BVHTest, ChildBoundsAreContainedInTheirParent)
     physics::BVHTree tree;
     tree.Build(TriangleStrip(64), 4);
 
+    ASSERT_FALSE(tree.nodes.empty());
+    ASSERT_FALSE(tree.nodes.front().IsLeaf());
     for (const physics::BVHNode& node : tree.nodes) {
         if (node.IsLeaf()) continue;
         for (const int childIndex : {node.left, node.right}) {
@@ -258,4 +268,4 @@ TEST_F(BVHTest, QueryMatchesABruteForceScanForASingleTriangle)
     }
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

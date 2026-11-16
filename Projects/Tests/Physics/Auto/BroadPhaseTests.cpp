@@ -15,8 +15,10 @@
 #include <Physics/RigidBody.hpp>
 #include <Physics/SphereCollider.hpp>
 
+#include <algorithm>
 #include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace fbzz::tests {
@@ -70,6 +72,20 @@ std::vector<physics::CollisionPair> Sweep(const std::vector<physics::ColliderIns
     return pairs;
 }
 
+void ExpectPairs(const std::vector<physics::ColliderInstance>& colliders,
+                 const std::vector<std::pair<size_t, size_t>>& expected)
+{
+    const auto pairs = Sweep(colliders);
+    EXPECT_EQ(pairs.size(), expected.size());
+    for (const auto& [a, b] : expected) {
+        const auto count = std::count_if(pairs.begin(), pairs.end(), [&](const auto& pair) {
+            return (pair.colliderA == &colliders[a] && pair.colliderB == &colliders[b])
+                || (pair.colliderA == &colliders[b] && pair.colliderB == &colliders[a]);
+        });
+        EXPECT_EQ(count, 1) << "collider indices: " << a << ", " << b;
+    }
+}
+
 /// Body はコピーできないので、まとめて作るときは所有権ごと持ち回る。
 using BodySet = std::vector<std::unique_ptr<Body>>;
 
@@ -108,7 +124,7 @@ BodySet MakeCrowd(int count, float spacing)
     return bodies;
 }
 
-} // namespace
+} /// @note namespace
 
 class BroadPhaseTest : public testkit::Fixture {};
 
@@ -150,7 +166,7 @@ TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnce)
     Body b({ 0.5f, 0.0f, 0.0f });
     Body c({ 1.0f, 0.0f, 0.0f });
 
-    EXPECT_EQ(Sweep({ a.Instance(), b.Instance(), c.Instance() }).size(), 3u);
+    ExpectPairs({ a.Instance(), b.Instance(), c.Instance() }, {{0, 1}, {0, 2}, {1, 2}});
 }
 
 TEST_F(BroadPhaseTest, FindsOnlyTheOverlappingSubsetInACrowd)
@@ -160,7 +176,7 @@ TEST_F(BroadPhaseTest, FindsOnlyTheOverlappingSubsetInACrowd)
     Body far1({ 100.0f, 0.0f, 0.0f });
     Body far2({ 200.0f, 0.0f, 0.0f });
 
-    EXPECT_EQ(Sweep({ a.Instance(), b.Instance(), far1.Instance(), far2.Instance() }).size(), 1u);
+    ExpectPairs({ a.Instance(), b.Instance(), far1.Instance(), far2.Instance() }, {{0, 1}});
 }
 
 TEST_F(BroadPhaseTest, SkipsEntriesWithoutACollider)
@@ -170,7 +186,7 @@ TEST_F(BroadPhaseTest, SkipsEntriesWithoutACollider)
     Body b({ 1.0f, 0.0f, 0.0f });
     physics::ColliderInstance empty;
 
-    EXPECT_EQ(Sweep({ a.Instance(), empty, b.Instance() }).size(), 1u);
+    ExpectPairs({ a.Instance(), empty, b.Instance() }, {{0, 2}});
 }
 
 /// @name レイヤー
@@ -331,7 +347,11 @@ TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnceEvenWhenTheTreeSplits)
     ///       3 経路で走査されるので、境界の扱いを間違えると同じ組が二重に出る。
     BodySet crowd = MakeCrowd(6, 0.2f);
 
-    EXPECT_EQ(Sweep(InstancesOf(crowd)).size(), 15u);
+    std::vector<std::pair<size_t, size_t>> expected;
+    for (size_t a = 0; a < crowd.size(); ++a)
+        for (size_t b = a + 1; b < crowd.size(); ++b)
+            expected.emplace_back(a, b);
+    ExpectPairs(InstancesOf(crowd), expected);
 }
 
 TEST_F(BroadPhaseTest, TerminatesWhenEveryColliderSharesTheSameCentre)
@@ -343,4 +363,4 @@ TEST_F(BroadPhaseTest, TerminatesWhenEveryColliderSharesTheSameCentre)
     EXPECT_EQ(Sweep(InstancesOf(stacked)).size(), 15u);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

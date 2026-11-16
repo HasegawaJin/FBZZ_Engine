@@ -40,7 +40,7 @@ physics::VolumeSettings SettingsFor(physics::VolumeType type)
     return settings;
 }
 
-} // namespace
+} /// @note namespace
 
 class ColliderVolumeTest : public testkit::Fixture {};
 
@@ -138,17 +138,24 @@ TEST_F(ColliderVolumeTest, ApplyIgnoresStaticBodies)
 {
     physics::SphereCollider sphere(10.0f);
     sphere.Update(math::Vector3::ZERO, math::Quaternion::Identity());
-    physics::VolumeSettings settings = SettingsFor(physics::VolumeType::Explosion);
-    settings.explosionImpulse = 50.0f;
+    physics::VolumeSettings settings = SettingsFor(physics::VolumeType::Gravity);
+    settings.gravity = {0.0f, 4.0f, 0.0f};
     physics::ColliderVolume volume(&sphere, settings);
 
-    physics::RigidBody body;
+    physics::RigidBody body = UnitBody(math::Vector3::ZERO);
     body.m_isStatic = true;
     body.SetMass(1.0f);
-    body.SetPosition(math::Vector3(1.0f, 0.0f, 0.0f));
     volume.Apply(body, kUnitDt);
 
+    /// @note 動的に戻すと、静止中に誤って蓄積した力が速度に現れる。
+    body.m_isStatic = false;
+    body.SetMass(1.0f);
+    body.Integrate(kUnitDt);
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
+
+    volume.Apply(body, kUnitDt);
+    body.Integrate(kUnitDt);
+    EXPECT_VEC3_NEAR(body.GetVelocity(), settings.gravity * kUnitDt, testkit::kTolerance);
 }
 
 TEST_F(ColliderVolumeTest, VortexPushesTangentiallyAroundTheVerticalAxis)
@@ -311,4 +318,4 @@ TEST_F(ColliderVolumeTest, ExpiresOnceTickedPastItsDuration)
     EXPECT_TRUE(volume.IsExpired());
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests
