@@ -114,6 +114,25 @@ TEST_F(WorldRaycastShapeTest, RaycastReportsZeroDistanceFromInsideABox)
     EXPECT_NEAR(hit.distance, 0.0f, testkit::kLooseTolerance);
 }
 
+/// @see Physics/World.hpp RaycastHit::normal はヒット面の外向き法線。
+TEST_F(WorldRaycastShapeTest, RayStartingOnABoxFaceReportsThatFacesOutwardNormal)
+{
+    physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
+    box.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+    Register({ Instance(box) });
+
+    for (const auto& faceNormal : {-math::Vector3::FORWARD, math::Vector3::FORWARD}) {
+        const math::Vector3 origin = faceNormal + math::Vector3(0.0f, 0.25f, 0.0f);
+        for (const auto& direction : {-faceNormal, faceNormal, math::Vector3::RIGHT}) {
+            SCOPED_TRACE(::testing::PrintToString(direction));
+            ASSERT_TRUE(world.Raycast(origin, direction, 10.0f, hit));
+            EXPECT_FLOAT_EQ(hit.distance, 0.0f);
+            EXPECT_VEC3_NEAR(hit.point, origin, testkit::kTolerance);
+            EXPECT_VEC3_NEAR(hit.normal, faceNormal, testkit::kTolerance);
+        }
+    }
+}
+
 /// @name OBB
 
 TEST_F(WorldRaycastShapeTest, RaycastFollowsTheRotationOfAnOBB)

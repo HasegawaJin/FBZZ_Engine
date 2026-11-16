@@ -89,6 +89,16 @@ static bool RayAABB(const Vector3& o, const Vector3& d, float maxDist,
     }
     if (tNear < 0.0f || tNear > maxDist) return false;
 
+    /// @note 距離 0 の境界ヒットでは、進行方向にかかわらず始点が乗っている面を使う。
+    if (tNear == 0.0f) {
+        for (int axis = 0; axis < 3; ++axis) {
+            if (oArr[axis] != minArr[axis] && oArr[axis] != maxArr[axis]) continue;
+            hitAxis = axis;
+            hitNeg = oArr[axis] == maxArr[axis];
+            break;
+        }
+    }
+
     tOut = tNear;
     /// @note 法線: ヒット面の外向き (hitAxis 軸、レイが +→- なら外側は + 方向)
     float normArr[3] = { 0.0f, 0.0f, 0.0f };
