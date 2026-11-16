@@ -70,6 +70,7 @@ protected:
     std::string m_diagnostic;
 };
 
+/// @brief Aggregates owners and keeps every part of only the lowest LOD.
 TEST_F(WorldHlodTest, AggregatesOwnersAndKeepsEveryPartOfOnlyTheLowestLod)
 {
     std::array sources{Source("Forest/A"), Source("Forest/B")};
@@ -96,6 +97,7 @@ TEST_F(WorldHlodTest, AggregatesOwnersAndKeepsEveryPartOfOnlyTheLowestLod)
     EXPECT_EQ(owners, (std::set<std::string>{"Forest/A", "Forest/B"}));
 }
 
+/// @brief Layer shadow and material differences create independent groups.
 TEST_F(WorldHlodTest, LayerShadowAndMaterialDifferencesCreateIndependentGroups)
 {
     auto alternateParts = m_parts; alternateParts[3].materialPath = "AutumnLeaves.mat";
@@ -109,6 +111,7 @@ TEST_F(WorldHlodTest, LayerShadowAndMaterialDifferencesCreateIndependentGroups)
     }
 }
 
+/// @brief Negative cells preserve composed world transforms with uniform owner scale.
 TEST_F(WorldHlodTest, NegativeCellsPreserveComposedWorldTransformsWithUniformOwnerScale)
 {
     m_placements[0] = {7, {1, 2, 3}, {0.2f, 0.4f, -0.1f}, {0.7f, 1.4f, 0.9f}, true};
@@ -129,6 +132,7 @@ TEST_F(WorldHlodTest, NegativeCellsPreserveComposedWorldTransformsWithUniformOwn
         source.worldTransform * PlacementMatrix(m_placements[0]));
 }
 
+/// @brief Source traversal order does not change groups IDs or provenance.
 TEST_F(WorldHlodTest, SourceTraversalOrderDoesNotChangeGroupsIdsOrProvenance)
 {
     std::array sources{Source("C"), Source("A"), Source("B")};
@@ -140,6 +144,7 @@ TEST_F(WorldHlodTest, SourceTraversalOrderDoesNotChangeGroupsIdsOrProvenance)
     ExpectGroupsEqual(m_groups, before);
 }
 
+/// @brief Excluded source is ignored before its invalid data is examined.
 TEST_F(WorldHlodTest, ExcludedSourceIsIgnoredBeforeItsInvalidDataIsExamined)
 {
     std::array sources{Source("Valid"), scene::WorldHlodSource{}};
@@ -149,6 +154,7 @@ TEST_F(WorldHlodTest, ExcludedSourceIsIgnoredBeforeItsInvalidDataIsExamined)
     EXPECT_EQ(m_groups[0].sources[0].sourceKey, "Valid");
 }
 
+/// @brief Known bounds enclose every transformed corner and unknown bounds disable rejection.
 TEST_F(WorldHlodTest, KnownBoundsEncloseEveryTransformedCornerAndUnknownBoundsDisableRejection)
 {
     auto source = Source("Known"); source.hasLocalBounds = true; source.localBounds = {{-1, -2, -3}, {1, 2, 3}};
@@ -172,6 +178,7 @@ TEST_F(WorldHlodTest, KnownBoundsEncloseEveryTransformedCornerAndUnknownBoundsDi
     ASSERT_EQ(m_groups.size(), 1u); EXPECT_FALSE(m_groups[0].hasWorldBounds);
 }
 
+/// @brief Invalid transforms and budgets preserve previous output and all input values.
 TEST_F(WorldHlodTest, InvalidTransformsAndBudgetsPreservePreviousOutputAndAllInputValues)
 {
     auto source = Source("Source");

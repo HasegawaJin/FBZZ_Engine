@@ -51,6 +51,7 @@ protected:
     }
 };
 
+/// @brief Camera follows marker with rotation offset and ignores its scale.
 TEST_F(AdditionalTargetPointUsageTest, CameraFollowsMarkerWithRotationOffsetAndIgnoresItsScale)
 {
     auto& parent = m_scene.CreateGameObject("Parent"); parent.transform.position = {10.0f, 0.0f, 0.0f}; parent.transform.scale = {-2.0f, 3.0f, 0.5f};
@@ -68,6 +69,7 @@ TEST_F(AdditionalTargetPointUsageTest, CameraFollowsMarkerWithRotationOffsetAndI
     EXPECT_VEC3_NEAR(follow.offset, (math::Vector3{1.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
+/// @brief Camera retains missing GUID and does not follow same named replacement.
 TEST_F(AdditionalTargetPointUsageTest, CameraRetainsMissingGuidAndDoesNotFollowSameNamedReplacement)
 {
     auto& camera = m_scene.CreateGameObject("Camera"); auto& follow = camera.AddComponent<scene::CameraFollowComponent>();
@@ -86,6 +88,7 @@ TEST_F(AdditionalTargetPointUsageTest, CameraRetainsMissingGuidAndDoesNotFollowS
     EXPECT_EQ(saved->target.guid, guid); EXPECT_EQ(saved->target.Resolve(*loaded), nullptr);
 }
 
+/// @brief Camera and constraint reject inactive self and descendant targets without moving.
 TEST_F(AdditionalTargetPointUsageTest, CameraAndConstraintRejectInactiveSelfAndDescendantTargetsWithoutMoving)
 {
     auto& owner = m_scene.CreateGameObject("Owner"); owner.transform.position = {1.0f, 2.0f, 3.0f};
@@ -103,6 +106,7 @@ TEST_F(AdditionalTargetPointUsageTest, CameraAndConstraintRejectInactiveSelfAndD
     EXPECT_VEC3_NEAR(owner.transform.position, (math::Vector3{1.0f, 2.0f, 3.0f}), testkit::kTolerance);
 }
 
+/// @brief Invalid pose and noninvertible parent leave follow transforms unchanged.
 TEST_F(AdditionalTargetPointUsageTest, InvalidPoseAndNoninvertibleParentLeaveFollowTransformsUnchanged)
 {
     auto& parent = m_scene.CreateGameObject("Parent"); parent.transform.scale = {0.0f, 1.0f, 1.0f};
@@ -117,6 +121,7 @@ TEST_F(AdditionalTargetPointUsageTest, InvalidPoseAndNoninvertibleParentLeaveFol
     EXPECT_VEC3_NEAR(owner.transform.position, (math::Vector3{1.0f, 2.0f, 3.0f}), testkit::kTolerance);
 }
 
+/// @brief Clone forest camera and constraint bind to cloned marker.
 TEST_F(AdditionalTargetPointUsageTest, CloneForestCameraAndConstraintBindToClonedMarker)
 {
     auto& owner = m_scene.CreateGameObject("Owner"); auto& point = Point();
@@ -136,6 +141,7 @@ TEST_F(AdditionalTargetPointUsageTest, CloneForestCameraAndConstraintBindToClone
     EXPECT_VEC3_NEAR(copy.transform.worldPosition, pointCopy.transform.worldPosition, testkit::kTolerance);
 }
 
+/// @brief Missing explicit socket target does not use matching ancestor socket.
 TEST_F(AdditionalTargetPointUsageTest, MissingExplicitSocketTargetDoesNotUseMatchingAncestorSocket)
 {
     auto& parent = m_scene.CreateGameObject("Rig"); auto& socket = m_scene.CreateGameObject("Grip"); socket.SetParent(parent);
@@ -147,6 +153,7 @@ TEST_F(AdditionalTargetPointUsageTest, MissingExplicitSocketTargetDoesNotUseMatc
     EXPECT_EQ(attachment.target.guid, "missing-rig-guid");
 }
 
+/// @brief VFX beam and line retain missing endpoint GUID and hide old geometry.
 TEST_F(AdditionalTargetPointUsageTest, VfxBeamAndLineRetainMissingEndpointGuidAndHideOldGeometry)
 {
     auto& start = Point("Start"); auto& end = Point("End"); end.transform.position = {0.0f, 0.0f, 10.0f};
@@ -170,6 +177,7 @@ TEST_F(AdditionalTargetPointUsageTest, VfxBeamAndLineRetainMissingEndpointGuidAn
     EXPECT_EQ(restored->GetComponent<scene::VFXLineComponent>()->toEntity.guid, endGuid);
 }
 
+/// @brief LOD center only changes distance and missing center restores every renderer.
 TEST_F(AdditionalTargetPointUsageTest, LodCenterOnlyChangesDistanceAndMissingCenterRestoresEveryRenderer)
 {
     auto& camera = m_scene.CreateGameObject("Camera"); camera.AddComponent<scene::CameraComponent>();
@@ -190,6 +198,7 @@ TEST_F(AdditionalTargetPointUsageTest, LodCenterOnlyChangesDistanceAndMissingCen
     EXPECT_TRUE(highRenderer.lodVisible); EXPECT_TRUE(lowRenderer.lodVisible); EXPECT_FLOAT_EQ(group.size, 1.0f);
 }
 
+/// @brief Light and flow anchor use existing constraint pose without changing numeric settings.
 TEST_F(AdditionalTargetPointUsageTest, LightAndFlowAnchorUseExistingConstraintPoseWithoutChangingNumericSettings)
 {
     auto& point = Point(); point.transform.position = {10.0f, 0.0f, 0.0f};

@@ -78,21 +78,25 @@ protected:
     }
 };
 
+/// @brief Completes single bake with one worker.
 TEST_F(NavMeshBakeConcurrencyTest, CompletesSingleBakeWithOneWorker)
 {
     VerifyConcurrentBakes(1, 1);
 }
 
+/// @brief Completes several bakes with one worker.
 TEST_F(NavMeshBakeConcurrencyTest, CompletesSeveralBakesWithOneWorker)
 {
     VerifyConcurrentBakes(1, 4);
 }
 
+/// @brief Completes several bakes with two workers.
 TEST_F(NavMeshBakeConcurrencyTest, CompletesSeveralBakesWithTwoWorkers)
 {
     VerifyConcurrentBakes(2, 4);
 }
 
+/// @brief Changed live off-mesh endpoint is rebuilt from the new capture.
 TEST_F(NavMeshBakeConcurrencyTest, ChangedLiveOffMeshEndpointIsRebuiltFromTheNewCapture)
 {
     TaskSystem::Shutdown();
@@ -157,6 +161,7 @@ TEST_F(NavMeshBakeConcurrencyTest, ChangedLiveOffMeshEndpointIsRebuiltFromTheNew
     EXPECT_TRUE(completed->bakeStats.failReason.empty()) << completed->bakeStats.failReason;
 }
 
+/// @brief Changed terrain holes discard the late bake result.
 TEST_F(NavMeshBakeConcurrencyTest, ChangedTerrainHolesDiscardTheLateBakeResult)
 {
     TaskSystem::Shutdown();
@@ -218,6 +223,7 @@ TEST_F(NavMeshBakeConcurrencyTest, ChangedTerrainHolesDiscardTheLateBakeResult)
     EXPECT_TRUE(surface.navMesh.Polygons().empty());
 }
 
+/// @brief Removed and re added surface does not receive the old job.
 TEST_F(NavMeshBakeConcurrencyTest, RemovedAndReAddedSurfaceDoesNotReceiveTheOldJob)
 {
     TaskSystem::Shutdown();
@@ -257,6 +263,7 @@ TEST_F(NavMeshBakeConcurrencyTest, RemovedAndReAddedSurfaceDoesNotReceiveTheOldJ
     EXPECT_EQ(replacement.bakedSourceHash, 0x12345678u);
 }
 
+/// @brief Empty surface set still retires a completed job before a replacement is added.
 TEST_F(NavMeshBakeConcurrencyTest, EmptySurfaceSetStillRetiresACompletedJobBeforeAReplacementIsAdded)
 {
     TaskSystem::Shutdown();

@@ -89,6 +89,7 @@ protected:
     }
 };
 
+/// @brief Checks export skinned submesh transfers weights and rejects invalid slot.
 TEST_F(ClothPinBrushTest, ExportSkinnedSubmeshTransfersWeightsAndRejectsInvalidSlot)
 {
     Context().projectRoot = ProjectRoot().generic_string();
@@ -137,6 +138,7 @@ TEST_F(ClothPinBrushTest, ExportSkinnedSubmeshTransfersWeightsAndRejectsInvalidS
     EXPECT_EQ(loaded.simulationIndices,(std::vector<uint32_t>{0,1,2}));
 }
 
+/// @brief Stroke uses one undo and restores inherited pins.
 TEST_F(ClothPinBrushTest, StrokeUsesOneUndoAndRestoresInheritedPins)
 {
     ASSERT_TRUE(Paint("4 4 8").ok);
@@ -152,6 +154,7 @@ TEST_F(ClothPinBrushTest, StrokeUsesOneUndoAndRestoresInheritedPins)
     EXPECT_EQ(Cloth().pinnedParticles, (std::vector<int>{0,1,2,4,8}));
 }
 
+/// @brief Release uses current authoring before runtime rebuild.
 TEST_F(ClothPinBrushTest, ReleaseUsesCurrentAuthoringBeforeRuntimeRebuild)
 {
     ASSERT_TRUE(Paint("4").ok);
@@ -161,6 +164,7 @@ TEST_F(ClothPinBrushTest, ReleaseUsesCurrentAuthoringBeforeRuntimeRebuild)
     EXPECT_EQ(Cloth().pinnedParticles, (std::vector<int>{0,1,2,4}));
 }
 
+/// @brief Invalid input does not partially apply.
 TEST_F(ClothPinBrushTest, InvalidInputDoesNotPartiallyApply)
 {
     for (const char* text : {"4 -1", "4 9", "4 xyz", "4 2x", "9999999999999999999999999"}) {
@@ -170,6 +174,7 @@ TEST_F(ClothPinBrushTest, InvalidInputDoesNotPartiallyApply)
     }
 }
 
+/// @brief No change keeps inheritance and undo empty.
 TEST_F(ClothPinBrushTest, NoChangeKeepsInheritanceAndUndoEmpty)
 {
     EXPECT_TRUE(Paint("0 1 2").noChange);
@@ -178,6 +183,7 @@ TEST_F(ClothPinBrushTest, NoChangeKeepsInheritanceAndUndoEmpty)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Topology edit requires reinitialization.
 TEST_F(ClothPinBrushTest, TopologyEditRequiresReinitialization)
 {
     Cloth().segments = 4;
@@ -188,6 +194,7 @@ TEST_F(ClothPinBrushTest, TopologyEditRequiresReinitialization)
     EXPECT_FALSE(Cloth().overridePins);
 }
 
+/// @brief Scene switch does not apply undo to another scene.
 TEST_F(ClothPinBrushTest, SceneSwitchDoesNotApplyUndoToAnotherScene)
 {
     ASSERT_TRUE(Paint("4").ok);
@@ -196,6 +203,7 @@ TEST_F(ClothPinBrushTest, SceneSwitchDoesNotApplyUndoToAnotherScene)
     EXPECT_TRUE(Cloth().overridePins);
 }
 
+/// @brief Mouse release commits preview once.
 TEST_F(ClothPinBrushTest, MouseReleaseCommitsPreviewOnce)
 {
     Context().clothPinPainting = true;
@@ -210,6 +218,7 @@ TEST_F(ClothPinBrushTest, MouseReleaseCommitsPreviewOnce)
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief Play transition cancels preview.
 TEST_F(ClothPinBrushTest, PlayTransitionCancelsPreview)
 {
     Context().clothPinPainting = true;
@@ -222,6 +231,7 @@ TEST_F(ClothPinBrushTest, PlayTransitionCancelsPreview)
     EXPECT_FALSE(Cloth().overridePins);
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
+/// @brief Distance stroke commits once and cancels on setting change.
 TEST_F(ClothPinBrushTest, DistanceStrokeCommitsOnceAndCancelsOnSettingChange)
 {
     Context().clothPinPainting = true;
@@ -242,6 +252,7 @@ TEST_F(ClothPinBrushTest, DistanceStrokeCommitsOnceAndCancelsOnSettingChange)
     Frame(false);
     EXPECT_TRUE(Cloth().maxDistances.empty());
 }
+/// @brief Distance operator restores inheritance and rejects partial invalid stroke.
 TEST_F(ClothPinBrushTest, DistanceOperatorRestoresInheritanceAndRejectsPartialInvalidStroke)
 {
     editor::OpArgs args;
@@ -261,6 +272,7 @@ TEST_F(ClothPinBrushTest, DistanceOperatorRestoresInheritanceAndRejectsPartialIn
     m_undo.Redo(); EXPECT_EQ(Cloth().maxDistances.size(),1u);
 }
 
+/// @brief Clicking an anchor creates at the particle and reuses its existing target.
 TEST_F(ClothPinBrushTest, ClickingAnAnchorCreatesAtTheParticleAndReusesItsExistingTarget)
 {
     Context().clothPinPainting = true;
@@ -290,6 +302,7 @@ TEST_F(ClothPinBrushTest, ClickingAnAnchorCreatesAtTheParticleAndReusesItsExisti
     EXPECT_EQ(Cloth().attachments.size(), 1u);
 }
 
+/// @brief Anchor click rejects changed topology and play transition.
 TEST_F(ClothPinBrushTest, AnchorClickRejectsChangedTopologyAndPlayTransition)
 {
     Context().clothPinPainting = true;
@@ -303,6 +316,7 @@ TEST_F(ClothPinBrushTest, AnchorClickRejectsChangedTopologyAndPlayTransition)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Motion changes use one undo and preserve pins contacts and unedited motion.
 TEST_F(ClothPinBrushTest, MotionChangesUseOneUndoAndPreservePinsContactsAndUneditedMotion)
 {
     const float originalBend = Cloth().settings.bendCompliance;
@@ -326,6 +340,7 @@ TEST_F(ClothPinBrushTest, MotionChangesUseOneUndoAndPreservePinsContactsAndUnedi
     EXPECT_FLOAT_EQ(Cloth().settings.damping, 6.0f);
 }
 
+/// @brief Motion rejects invalid values without partial changes and no-op adds no history.
 TEST_F(ClothPinBrushTest, MotionRejectsInvalidValuesWithoutPartialChangesAndNoOpAddsNoHistory)
 {
     editor::OpArgs args;
@@ -343,6 +358,7 @@ TEST_F(ClothPinBrushTest, MotionRejectsInvalidValuesWithoutPartialChangesAndNoOp
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Motion undo rejects a replacement component.
 TEST_F(ClothPinBrushTest, MotionUndoRejectsAReplacementComponent)
 {
     editor::OpArgs args;

@@ -309,6 +309,7 @@ bool WriteTgaRgba8(const std::filesystem::path& file, int width, int height, con
 
 }
 
+/// @brief Bake section round-trips through TOML.
 TEST(FluidRecipeBakeTest, BakeSectionRoundTripsThroughToml)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -323,6 +324,7 @@ TEST(FluidRecipeBakeTest, BakeSectionRoundTripsThroughToml)
     ExpectBakeEq(loaded.bake, recipe.bake);
 }
 
+/// @brief File without bake section loads as 2D.
 TEST(FluidRecipeBakeTest, FileWithoutBakeSectionLoadsAs2D)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -337,6 +339,7 @@ TEST(FluidRecipeBakeTest, FileWithoutBakeSectionLoadsAs2D)
     ExpectBakeEq(loaded.bake, fluid::FluidBakeSettings{});
 }
 
+/// @brief All presets bake in 3D and liquids stay on CPU.
 TEST(FluidRecipeBakeTest, AllPresetsBakeIn3DAndLiquidsStayOnCpu)
 {
     /// @note 3D の焼きがループと歪みマップを持ったので、ループものも陽炎も 3D。
@@ -365,6 +368,7 @@ TEST(FluidRecipeBakeTest, AllPresetsBakeIn3DAndLiquidsStayOnCpu)
     EXPECT_FALSE(asset::MakeFluidPreset(asset::FluidPreset::HeatHaze).bake.sixWayLightmaps);
 }
 
+/// @brief Reflect names are the TOML keys.
 TEST(FluidRecipeBakeTest, ReflectNamesAreTheTomlKeys)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -441,6 +445,7 @@ TEST(FluidRecipeBakeTest, ReflectNamesAreTheTomlKeys)
     EXPECT_EQ(tomlKeys.count("force[].amount.key[].scale"), 1u);
 }
 
+/// @brief Sources forces motion and ramp round trip.
 TEST(FluidRecipeBakeTest, SourcesForcesMotionAndRampRoundTrip)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -517,6 +522,7 @@ TEST(FluidRecipeBakeTest, SourcesForcesMotionAndRampRoundTrip)
     EXPECT_FLOAT_EQ(loaded.render.liquidFresnel, 0.05f);
 }
 
+/// @brief Colliders and texture sources round trip.
 TEST(FluidRecipeBakeTest, CollidersAndTextureSourcesRoundTrip)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -570,6 +576,7 @@ TEST(FluidRecipeBakeTest, CollidersAndTextureSourcesRoundTrip)
     EXPECT_EQ(root["collider"][2]["shape"].value_or(std::string{}), "plane");
 }
 
+/// @brief Collider missing keys keep defaults and unknown shape is sphere.
 TEST(FluidRecipeBakeTest, ColliderMissingKeysKeepDefaultsAndUnknownShapeIsSphere)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -597,6 +604,7 @@ TEST(FluidRecipeBakeTest, ColliderMissingKeysKeepDefaultsAndUnknownShapeIsSphere
     EXPECT_FLOAT_EQ(collider.motion.keys[0].time, 0.1f);
 }
 
+/// @brief Save writes version 2 without legacy lists.
 TEST(FluidRecipeBakeTest, SaveWritesVersion2WithoutLegacyLists)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -617,6 +625,7 @@ TEST(FluidRecipeBakeTest, SaveWritesVersion2WithoutLegacyLists)
     EXPECT_FALSE(static_cast<bool>(root["liquid_emitter"]));
 }
 
+/// @brief Version 1 gas sources migrate to sources.
 TEST(FluidRecipeBakeTest, Version1GasSourcesMigrateToSources)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -663,6 +672,7 @@ TEST(FluidRecipeBakeTest, Version1GasSourcesMigrateToSources)
     ExpectSourceEq(loaded.sources[1], second);
 }
 
+/// @brief Version 1 liquid emitter keeps its old defaults.
 TEST(FluidRecipeBakeTest, Version1LiquidEmitterKeepsItsOldDefaults)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -711,6 +721,7 @@ TEST(FluidRecipeBakeTest, Version1LiquidEmitterKeepsItsOldDefaults)
     EXPECT_FLOAT_EQ(full.sources[0].duration, 0.0f);
 }
 
+/// @brief Lists are clamped to the limits on load.
 TEST(FluidRecipeBakeTest, ListsAreClampedToTheLimitsOnLoad)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -742,6 +753,7 @@ TEST(FluidRecipeBakeTest, ListsAreClampedToTheLimitsOnLoad)
     EXPECT_FLOAT_EQ(keys.back().time, static_cast<float>(fluid::kMaxFluidMotionKeys - 1));
 }
 
+/// @brief Motion keys are sorted by time on load.
 TEST(FluidRecipeBakeTest, MotionKeysAreSortedByTimeOnLoad)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -769,6 +781,7 @@ TEST(FluidRecipeBakeTest, MotionKeysAreSortedByTimeOnLoad)
     }
 }
 
+/// @brief Every preset round-trips and has an enabled source.
 TEST(FluidRecipeBakeTest, EveryPresetRoundTripsAndHasAnEnabledSource)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -809,6 +822,7 @@ TEST(FluidRecipeBakeTest, EveryPresetRoundTripsAndHasAnEnabledSource)
     }
 }
 
+/// @brief Presets are built from the same parts.
 TEST(FluidRecipeBakeTest, PresetsAreBuiltFromTheSameParts)
 {
     /// @note 液体のプリセットは旧 emitter の値を FluidSource へ移している。先頭の emitter が
@@ -854,6 +868,7 @@ TEST(FluidRecipeBakeTest, PresetsAreBuiltFromTheSameParts)
     EXPECT_NEAR(jet.colliders[0].center.y - jet.colliders[0].size.y, jet.liquid.floorHeight, 1.0e-5f);
 }
 
+/// @brief Checks volume settings come from output and render.
 TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -915,6 +930,7 @@ TEST(FluidRecipeBakeTest, VolumeSettingsComeFromOutputAndRender)
     EXPECT_EQ(asset::MakeVolumeBakeSettings(recipe, path).source.frameCount, 2);
 }
 
+/// @brief Loop blend round-trips and reaches volume baker.
 TEST(FluidRecipeBakeTest, LoopBlendRoundTripsAndReachesVolumeBaker)
 {
     testkit::TempDir temp{ "fluidloopblend" };
@@ -930,6 +946,7 @@ TEST(FluidRecipeBakeTest, LoopBlendRoundTripsAndReachesVolumeBaker)
     EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), fluid::MakeFluidStepPlan(loaded).loopOverlap);
 }
 
+/// @brief Render opacity scales volume extinction and store reverses it.
 TEST(FluidRecipeBakeTest, RenderOpacityScalesVolumeExtinctionAndStoreReversesIt)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
@@ -947,6 +964,7 @@ TEST(FluidRecipeBakeTest, RenderOpacityScalesVolumeExtinctionAndStoreReversesIt)
     EXPECT_FLOAT_EQ(asset::MakeVolumeBakeSettings(recipe, path).extinction, 9.0f);
 }
 
+/// @brief Fire mask uses bake extinction independent of render opacity.
 TEST(FluidRecipeBakeTest, FireMaskUsesBakeExtinctionIndependentOfRenderOpacity)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
@@ -976,6 +994,7 @@ TEST(FluidRecipeBakeTest, FireMaskUsesBakeExtinctionIndependentOfRenderOpacity)
     EXPECT_FALSE(asset::MakeVolumeBakeSettings(recipe, "C:/Fx/Smoke.fluid").fireEmission);
 }
 
+/// @brief Fire kelvin matches normalized volume temperature.
 TEST(FluidRecipeBakeTest, FireKelvinMatchesNormalizedVolumeTemperature)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
@@ -996,6 +1015,7 @@ TEST(FluidRecipeBakeTest, FireKelvinMatchesNormalizedVolumeTemperature)
     EXPECT_FLOAT_EQ(settings.blackbodyLutMaxKelvin, recipe.render.fireKelvin * 4.0f);
 }
 
+/// @brief Fire render controls preserve volume calibration.
 TEST(FluidRecipeBakeTest, FireRenderControlsPreserveVolumeCalibration)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
@@ -1031,6 +1051,7 @@ TEST(FluidRecipeBakeTest, FireRenderControlsPreserveVolumeCalibration)
     ExpectVector3Eq(asset::EvaluateVolumeRamp(ramped.emissionRamp, 1.0f), { 2.0f, 0.5f, 0.1f });
 }
 
+/// @brief Fire radiance uses shared color and unit box path integral.
 TEST(FluidRecipeBakeTest, FireRadianceUsesSharedColorAndUnitBoxPathIntegral)
 {
     constexpr float referenceKelvin = 1500.0f;
@@ -1066,6 +1087,7 @@ TEST(FluidRecipeBakeTest, FireRadianceUsesSharedColorAndUnitBoxPathIntegral)
     EXPECT_FLOAT_EQ(rampRadiance.z, 2.4f);
 }
 
+/// @brief User emission ramp reaches the volume baker.
 TEST(FluidRecipeBakeTest, UserEmissionRampReachesTheVolumeBaker)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
@@ -1085,6 +1107,7 @@ TEST(FluidRecipeBakeTest, UserEmissionRampReachesTheVolumeBaker)
                     { 7.0f, 1.0f, 0.5f });
 }
 
+/// @brief Liquid albedo is the liquid color.
 TEST(FluidRecipeBakeTest, LiquidAlbedoIsTheLiquidColor)
 {
     const fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
@@ -1100,6 +1123,7 @@ TEST(FluidRecipeBakeTest, LiquidAlbedoIsTheLiquidColor)
     EXPECT_EQ(settings.baseName, "Splash");
 }
 
+/// @brief Liquid surface settings reach the volume baker.
 TEST(FluidRecipeBakeTest, LiquidSurfaceSettingsReachTheVolumeBaker)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
@@ -1114,6 +1138,7 @@ TEST(FluidRecipeBakeTest, LiquidSurfaceSettingsReachTheVolumeBaker)
     EXPECT_FLOAT_EQ(settings.liquid.fresnelF0, 0.05f);
 }
 
+/// @brief Store is the inverse of make.
 TEST(FluidRecipeBakeTest, StoreIsTheInverseOfMake)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
@@ -1139,6 +1164,7 @@ TEST(FluidRecipeBakeTest, StoreIsTheInverseOfMake)
     EXPECT_EQ(stored.output.rows, recipe.output.rows);
 }
 
+/// @brief Albedo ramp is sorted on load and old files keep it off.
 TEST(FluidRecipeBakeTest, AlbedoRampIsSortedOnLoadAndOldFilesKeepItOff)
 {
     testkit::TempDir temp{ "fluidbake" };
@@ -1172,6 +1198,7 @@ TEST(FluidRecipeBakeTest, AlbedoRampIsSortedOnLoadAndOldFilesKeepItOff)
     EXPECT_FLOAT_EQ(loaded.sources[0].colorKey, 0.4f);
 }
 
+/// @brief Volume settings carry loop distortion and albedo ramp.
 TEST(FluidRecipeBakeTest, VolumeSettingsCarryLoopDistortionAndAlbedoRamp)
 {
     const auto expectRamp = [](const asset::VolumeColorRamp& actual, const fluid::FluidColorRamp& expected) {
@@ -1216,6 +1243,7 @@ TEST(FluidRecipeBakeTest, VolumeSettingsCarryLoopDistortionAndAlbedoRamp)
     expectRamp(asset::MakeVolumeBakeSettings(splash, "C:/Fx/Splash.fluid").albedoRamp, splash.render.albedoRamp);
 }
 
+/// @brief Value is luminance times alpha with top row first.
 TEST(FluidSourceMaskTest, ValueIsLuminanceTimesAlphaWithTopRowFirst)
 {
     testkit::TempDir temp{ "fluidmask" };
@@ -1259,6 +1287,7 @@ TEST(FluidSourceMaskTest, ValueIsLuminanceTimesAlphaWithTopRowFirst)
     }
 }
 
+/// @brief Shrinking keeps thin lines.
 TEST(FluidSourceMaskTest, ShrinkingKeepsThinLines)
 {
     testkit::TempDir temp{ "fluidmask" };
@@ -1287,6 +1316,7 @@ TEST(FluidSourceMaskTest, ShrinkingKeepsThinLines)
         EXPECT_NEAR(fluid::SampleFluidSourceMask(mask, u, 0.5f), 0.25f, 1.0e-3f) << u;
 }
 
+/// @brief Missing or broken file leaves the mask invalid.
 TEST(FluidSourceMaskTest, MissingOrBrokenFileLeavesTheMaskInvalid)
 {
     testkit::TempDir temp{ "fluidmask" };
@@ -1307,6 +1337,7 @@ TEST(FluidSourceMaskTest, MissingOrBrokenFileLeavesTheMaskInvalid)
     EXPECT_FALSE(asset::LoadFluidSourceMask(std::string{}, mask));
 }
 
+/// @brief Sprite reference uses only that cell.
 TEST(FluidSourceMaskTest, SpriteReferenceUsesOnlyThatCell)
 {
     testkit::TempDir temp{ "fluidmask" };

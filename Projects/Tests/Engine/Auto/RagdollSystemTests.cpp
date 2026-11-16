@@ -104,6 +104,7 @@ protected:
     }
 };
 
+/// @brief Start waits for animator model and bone entities.
 TEST_F(RagdollSystemTest, StartWaitsForAnimatorModelAndBoneEntities)
 {
     Ragdoll().activateOnStart = true;
@@ -127,6 +128,7 @@ TEST_F(RagdollSystemTest, StartWaitsForAnimatorModelAndBoneEntities)
     EXPECT_FALSE(Ragdoll().beginRequested);
 }
 
+/// @brief Disable inactive hierarchy and end release all grips.
 TEST_F(RagdollSystemTest, DisableInactiveHierarchyAndEndReleaseAllGrips)
 {
     Actor().AddComponent<scene::AnimatorComponent>();PrepareModel();PrepareBones();
@@ -148,6 +150,7 @@ TEST_F(RagdollSystemTest, DisableInactiveHierarchyAndEndReleaseAllGrips)
     }
 }
 
+/// @brief Pause releases grips when disabled or ancestor inactive.
 TEST_F(RagdollSystemTest, PauseReleasesGripsWhenDisabledOrAncestorInactive)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -191,6 +194,7 @@ TEST_F(RagdollSystemTest, PauseReleasesGripsWhenDisabledOrAncestorInactive)
     }
 }
 
+/// @brief Physics asset reload is transactional and serialized reference survives.
 TEST_F(RagdollSystemTest, PhysicsAssetReloadIsTransactionalAndSerializedReferenceSurvives)
 {
     Actor().AddComponent<scene::AnimatorComponent>(); PrepareModel(); PrepareBones();
@@ -220,6 +224,7 @@ TEST_F(RagdollSystemTest, PhysicsAssetReloadIsTransactionalAndSerializedReferenc
     EXPECT_EQ(copied.runtime.rig,nullptr);
 }
 
+/// @brief Standing guard transports owner motion without transporting animated root bob.
 TEST_F(RagdollSystemTest, StandingGuardTransportsOwnerMotionWithoutTransportingAnimatedRootBob)
 {
     Actor().AddComponent<scene::AnimatorComponent>();
@@ -314,6 +319,7 @@ TEST_F(RagdollSystemTest, StandingGuardTransportsOwnerMotionWithoutTransportingA
     }
 }
 
+/// @brief Samples moving drive targets at physical times across frame rates.
 TEST_F(RagdollSystemTest, SamplesMovingDriveTargetsAtPhysicalTimesAcrossFrameRates)
 {
     Actor().AddComponent<scene::AnimatorComponent>();
@@ -421,6 +427,7 @@ TEST_F(RagdollSystemTest, SamplesMovingDriveTargetsAtPhysicalTimesAcrossFrameRat
     }
 }
 
+/// @brief Fifteen FPS advances a full second of gravity and final bounds.
 TEST_F(RagdollSystemTest, FifteenFpsAdvancesAFullSecondOfGravityAndFinalBounds)
 {
     Actor().AddComponent<scene::AnimatorComponent>();
@@ -437,6 +444,7 @@ TEST_F(RagdollSystemTest, FifteenFpsAdvancesAFullSecondOfGravityAndFinalBounds)
     EXPECT_NEAR(animator->skinnedBoundsRadius, 0.5f, 0.001f);
 }
 
+/// @brief Ending during blend in does not jump to full weight.
 TEST_F(RagdollSystemTest, EndingDuringBlendInDoesNotJumpToFullWeight)
 {
     auto& ragdoll = Ragdoll();
@@ -450,6 +458,7 @@ TEST_F(RagdollSystemTest, EndingDuringBlendInDoesNotJumpToFullWeight)
     EXPECT_NEAR(ragdoll.weight, 0.2f * (1.0f - (1.0f / 60.0f) / 0.4f), 1.0e-6f);
 }
 
+/// @brief Fixed clock preserves elapsed time across frame rates.
 TEST_F(RagdollSystemTest, FixedClockPreservesElapsedTimeAcrossFrameRates)
 {
     for (int fps : {15, 30, 60, 120, 240}) {
@@ -462,6 +471,7 @@ TEST_F(RagdollSystemTest, FixedClockPreservesElapsedTimeAcrossFrameRates)
     }
 }
 
+/// @brief Catch up retains backlog and rejects invalid delta.
 TEST_F(RagdollSystemTest, CatchUpRetainsBacklogAndRejectsInvalidDelta)
 {
     double remaining = 0.0;
@@ -475,6 +485,7 @@ TEST_F(RagdollSystemTest, CatchUpRetainsBacklogAndRejectsInvalidDelta)
     EXPECT_NEAR(remaining, previous, 1.0e-9);
 }
 
+/// @brief Excluded branches rebuild and override additional roots.
 TEST_F(RagdollSystemTest, ExcludedBranchesRebuildAndOverrideAdditionalRoots)
 {
     Actor().AddComponent<scene::AnimatorComponent>();
@@ -523,6 +534,7 @@ TEST_F(RagdollSystemTest, ExcludedBranchesRebuildAndOverrideAdditionalRoots)
     EXPECT_EQ(Ragdoll().runtime.bones.size(), 4u);
 }
 
+/// @brief Bone selection lists survive serialization.
 TEST_F(RagdollSystemTest, BoneSelectionListsSurviveSerialization)
 {
     auto& source = Ragdoll();
@@ -535,6 +547,7 @@ TEST_F(RagdollSystemTest, BoneSelectionListsSurviveSerialization)
     EXPECT_EQ(restored.excludedRootBones, source.excludedRootBones);
 }
 
+/// @brief Pause does not advance physics or playback.
 TEST_F(RagdollSystemTest, PauseDoesNotAdvancePhysicsOrPlayback)
 {
     Actor().AddComponent<scene::AnimatorComponent>();
@@ -549,6 +562,7 @@ TEST_F(RagdollSystemTest, PauseDoesNotAdvancePhysicsOrPlayback)
     EXPECT_NEAR(Ragdoll().phaseTimer, phaseTimer, 1.0e-6f);
 }
 
+/// @brief Pause preserves guard pose and defers pending input until resume.
 TEST_F(RagdollSystemTest, PausePreservesGuardPoseAndDefersPendingInputUntilResume)
 {
     Actor().AddComponent<scene::AnimatorComponent>();
@@ -598,6 +612,7 @@ TEST_F(RagdollSystemTest, PausePreservesGuardPoseAndDefersPendingInputUntilResum
     EXPECT_EQ(Ragdoll().phase, scene::RagdollPhase::BlendOut);
 }
 
+/// @brief Managed removal releases active contact solver and readd gets fresh rig.
 TEST_F(RagdollSystemTest, ManagedRemovalReleasesActiveContactSolverAndReaddGetsFreshRig)
 {
     Actor().AddComponent<scene::AnimatorComponent>(); PrepareModel(); PrepareBones();

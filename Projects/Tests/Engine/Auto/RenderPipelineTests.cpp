@@ -46,6 +46,7 @@ std::vector<RG::ResourceAccess> Accesses(std::initializer_list<const char*> read
 
 class RenderPipelineFingerprintTest : public testkit::Fixture {};
 
+/// @brief Checks identical declarations produce the same key.
 TEST_F(RenderPipelineFingerprintTest, IdenticalDeclarationsProduceTheSameKey)
 {
     Pipeline::GraphFingerprint first;
@@ -58,6 +59,7 @@ TEST_F(RenderPipelineFingerprintTest, IdenticalDeclarationsProduceTheSameKey)
     EXPECT_EQ(first.Value(), second.Value());
 }
 
+/// @brief Checks every resource desc field changes the key.
 TEST_F(RenderPipelineFingerprintTest, EveryResourceDescFieldChangesTheKey)
 {
     const uint64_t base = ResourceKey(BaseDesc());
@@ -108,6 +110,7 @@ TEST_F(RenderPipelineFingerprintTest, EveryResourceDescFieldChangesTheKey)
     EXPECT_NE(ResourceKey(allowAliasing), base);
 }
 
+/// @brief Resource name changes the key.
 TEST_F(RenderPipelineFingerprintTest, ResourceNameChangesTheKey)
 {
     Pipeline::GraphFingerprint hdr;
@@ -117,6 +120,7 @@ TEST_F(RenderPipelineFingerprintTest, ResourceNameChangesTheKey)
     EXPECT_NE(hdr.Value(), ldr.Value());
 }
 
+/// @brief Checks pass accesses and culling change the key.
 TEST_F(RenderPipelineFingerprintTest, PassAccessesAndCullingChangeTheKey)
 {
     Pipeline::GraphFingerprint base;
@@ -136,6 +140,7 @@ TEST_F(RenderPipelineFingerprintTest, PassAccessesAndCullingChangeTheKey)
     EXPECT_NE(usage.Value(), base.Value());
 }
 
+/// @brief Concatenation cannot collide.
 TEST_F(RenderPipelineFingerprintTest, ConcatenationCannotCollide)
 {
     /// @note 区切りが無いと "ab"+"c" と "a"+"bc" が同じ鍵になる。
@@ -150,6 +155,7 @@ TEST_F(RenderPipelineFingerprintTest, ConcatenationCannotCollide)
     EXPECT_NE(split.Value(), joined.Value());
 }
 
+/// @brief Pass order changes the key.
 TEST_F(RenderPipelineFingerprintTest, PassOrderChangesTheKey)
 {
     Pipeline::GraphFingerprint forward;
@@ -163,6 +169,7 @@ TEST_F(RenderPipelineFingerprintTest, PassOrderChangesTheKey)
     EXPECT_NE(forward.Value(), reversed.Value());
 }
 
+/// @brief Checks access purpose changes the key without changing dependencies.
 TEST_F(RenderPipelineFingerprintTest, AccessPurposeChangesTheKeyWithoutChangingDependencies)
 {
     Pipeline::GraphFingerprint build;
@@ -176,6 +183,7 @@ TEST_F(RenderPipelineFingerprintTest, AccessPurposeChangesTheKeyWithoutChangingD
 
 class RenderPassResourcesTest : public testkit::Fixture {};
 
+/// @brief Registry preserves typed handles and clears all kinds.
 TEST_F(RenderPassResourcesTest, RegistryPreservesTypedHandlesAndClearsAllKinds)
 {
     renderer::RenderResourceRegistry registry;
@@ -199,6 +207,7 @@ TEST_F(RenderPassResourcesTest, RegistryPreservesTypedHandlesAndClearsAllKinds)
     EXPECT_FALSE(registry.AccelerationStructure("TLAS").IsValid());
 }
 
+/// @brief Setup keeps dependency usage separate from GPU purpose.
 TEST_F(RenderPassResourcesTest, SetupKeepsDependencyUsageSeparateFromGpuPurpose)
 {
     renderer::PassBuilder builder;
@@ -222,6 +231,7 @@ TEST_F(RenderPassResourcesTest, SetupKeepsDependencyUsageSeparateFromGpuPurpose)
     EXPECT_EQ(accesses[4].purpose, RG::ResourceAccessPurpose::UAV);
 }
 
+/// @brief Reused builder keeps storage but drops old declarations and auto target.
 TEST_F(RenderPassResourcesTest, ReusedBuilderKeepsStorageButDropsOldDeclarationsAndAutoTarget)
 {
     std::vector<RG::ResourceAccess> accesses;
@@ -249,6 +259,7 @@ TEST_F(RenderPassResourcesTest, ReusedBuilderKeepsStorageButDropsOldDeclarations
     EXPECT_TRUE(autoTarget.empty());
 }
 
+/// @brief Execute resolves declared buffers and acceleration structures.
 TEST_F(RenderPassResourcesTest, ExecuteResolvesDeclaredBuffersAndAccelerationStructures)
 {
     renderer::RenderResourceRegistry registry;
@@ -274,6 +285,7 @@ TEST_F(RenderPassResourcesTest, ExecuteResolvesDeclaredBuffersAndAccelerationStr
 
 class RenderPipelineOverrideTest : public testkit::Fixture {};
 
+/// @brief Extra reads are appended as reads.
 TEST_F(RenderPipelineOverrideTest, ExtraReadsAreAppendedAsReads)
 {
     renderer::RenderPassOverride over;
@@ -289,6 +301,7 @@ TEST_F(RenderPipelineOverrideTest, ExtraReadsAreAppendedAsReads)
     EXPECT_EQ(accesses[1].usage, RG::ResourceUsage::Read);
 }
 
+/// @brief Already declared names are not duplicated.
 TEST_F(RenderPipelineOverrideTest, AlreadyDeclaredNamesAreNotDuplicated)
 {
     /// @note 同じ名前を二重に申告しても辺は増えないが、鍵が変わって Plan を無駄にやり直す。
@@ -304,6 +317,7 @@ TEST_F(RenderPipelineOverrideTest, AlreadyDeclaredNamesAreNotDuplicated)
     EXPECT_EQ(accesses[1].name, "ShadowMap");
 }
 
+/// @brief Write declaration blocks the same extra read.
 TEST_F(RenderPipelineOverrideTest, WriteDeclarationBlocksTheSameExtraRead)
 {
     /// @note 書いている名前を «追加で読む» と申告しても、自分自身への辺になるだけ。
@@ -318,6 +332,7 @@ TEST_F(RenderPipelineOverrideTest, WriteDeclarationBlocksTheSameExtraRead)
     EXPECT_EQ(accesses[0].usage, RG::ResourceUsage::Write);
 }
 
+/// @brief Culling only ever becomes stricter.
 TEST_F(RenderPipelineOverrideTest, CullingOnlyEverBecomesStricter)
 {
     std::vector<RG::ResourceAccess> accesses;
@@ -337,6 +352,7 @@ TEST_F(RenderPipelineOverrideTest, CullingOnlyEverBecomesStricter)
     EXPECT_FALSE(mustRun);
 }
 
+/// @brief Default override is recognised and changes nothing.
 TEST_F(RenderPipelineOverrideTest, DefaultOverrideIsRecognisedAndChangesNothing)
 {
     /// @note 既定に戻った行は保存も適用もしない。無害な行がプロジェクトに溜まるのを避ける。

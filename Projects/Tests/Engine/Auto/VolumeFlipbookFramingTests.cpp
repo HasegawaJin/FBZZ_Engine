@@ -40,6 +40,7 @@ math::Vector2 FlatDistortionRg(math::Vector2 velocity)
 
 } /// @note namespace
 
+/// @brief Default presets stay inside the box and the tile.
 TEST_F(VolumeFlipbookFramingTest, DefaultPresetsStayInsideTheBoxAndTheTile)
 {
     for (const asset::VolumeSourceDesc& desc : asset::VolumeSources()) {
@@ -54,6 +55,7 @@ TEST_F(VolumeFlipbookFramingTest, DefaultPresetsStayInsideTheBoxAndTheTile)
     }
 }
 
+/// @brief Narrow framing is reported as cut by the tile edge.
 TEST_F(VolumeFlipbookFramingTest, NarrowFramingIsReportedAsCutByTheTileEdge)
 {
     asset::VolumeFlipbookBakeSettings settings = SettingsFor("Puff", 32);
@@ -66,6 +68,7 @@ TEST_F(VolumeFlipbookFramingTest, NarrowFramingIsReportedAsCutByTheTileEdge)
     EXPECT_NE(report.frameIssues.front() & asset::kFramingCutByTileEdge, 0);
 }
 
+/// @brief Too many live puffs are reported.
 TEST_F(VolumeFlipbookFramingTest, TooManyLivePuffsAreReported)
 {
     asset::VolumeFlipbookBakeSettings settings = SettingsFor(asset::kVolumeEmitterSourceName, 32);
@@ -80,6 +83,7 @@ TEST_F(VolumeFlipbookFramingTest, TooManyLivePuffsAreReported)
     EXPECT_NE(report.frameIssues.front() & asset::kFramingTooManyPuffs, 0);
 }
 
+/// @brief Checks camera basis looks along plus Z at zero yaw.
 TEST_F(VolumeFlipbookFramingTest, CameraBasisLooksAlongPlusZAtZeroYaw)
 {
     const asset::VolumeFlipbookCamera camera = asset::ComputeVolumeFlipbookCamera({});
@@ -90,6 +94,7 @@ TEST_F(VolumeFlipbookFramingTest, CameraBasisLooksAlongPlusZAtZeroYaw)
     EXPECT_NEAR(camera.toLight.Length(), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Default fire ramp matches the old piecewise ramp.
 TEST_F(VolumeFlipbookFramingTest, DefaultFireRampMatchesTheOldPiecewiseRamp)
 {
     const asset::VolumeColorRamp ramp = asset::DefaultFireRamp();
@@ -101,6 +106,7 @@ TEST_F(VolumeFlipbookFramingTest, DefaultFireRampMatchesTheOldPiecewiseRamp)
     EXPECT_VEC3_NEAR(asset::EvaluateVolumeRamp(ramp, 1.0f), (math::Vector3{ 1.0f, 0.9f, 0.6f }), testkit::kTolerance);
 }
 
+/// @brief Ramp positions that go backwards are held in place.
 TEST_F(VolumeFlipbookFramingTest, RampPositionsThatGoBackwardsAreHeldInPlace)
 {
     asset::VolumeColorRamp ramp = asset::EvenVolumeRamp({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f },
@@ -115,6 +121,7 @@ TEST_F(VolumeFlipbookFramingTest, RampPositionsThatGoBackwardsAreHeldInPlace)
     EXPECT_GT(color.z, 0.0f);
 }
 
+/// @brief Source look is applied and reset between sources.
 TEST_F(VolumeFlipbookFramingTest, SourceLookIsAppliedAndResetBetweenSources)
 {
     asset::VolumeFlipbookBakeSettings settings = SettingsFor("BloodSpray", 32);
@@ -130,6 +137,7 @@ TEST_F(VolumeFlipbookFramingTest, SourceLookIsAppliedAndResetBetweenSources)
     EXPECT_NEAR(settings.liquid.extinction, defaults.liquid.extinction, testkit::kTolerance);
 }
 
+/// @brief Fluid loop overlap matches the flat baker.
 /// @note 流体のループは 2D と同じ割合から重ねコマ数を求める。
 TEST_F(VolumeFlipbookFramingTest, FluidLoopOverlapMatchesTheFlatBaker)
 {
@@ -158,6 +166,7 @@ TEST_F(VolumeFlipbookFramingTest, FluidLoopOverlapMatchesTheFlatBaker)
     EXPECT_EQ(asset::VolumeLoopOverlapFrames(settings), 0);
 }
 
+/// @brief Loop keep weight rises from the tail to the head.
 /// @note 0 コマ目ほど «最終コマの続き» を多く混ぜ、重ねの最後で元のコマへ戻る。
 TEST_F(VolumeFlipbookFramingTest, LoopKeepWeightRisesFromTheTailToTheHead)
 {
@@ -172,6 +181,7 @@ TEST_F(VolumeFlipbookFramingTest, LoopKeepWeightRisesFromTheTailToTheHead)
     EXPECT_FLOAT_EQ(asset::VolumeLoopKeepWeight(0, 0), 1.0f);
 }
 
+/// @brief Loop blend finishes without dropping residual tail abruptly.
 TEST_F(VolumeFlipbookFramingTest, LoopBlendFinishesWithoutDroppingResidualTailAbruptly)
 {
     constexpr int overlap = 16;
@@ -183,6 +193,7 @@ TEST_F(VolumeFlipbookFramingTest, LoopBlendFinishesWithoutDroppingResidualTailAb
                         fluid::FluidLoopKeepWeight(frame, overlap));
 }
 
+/// @brief Flat loop begins with the actual continuation including motion.
 TEST_F(VolumeFlipbookFramingTest, FlatLoopBeginsWithTheActualContinuationIncludingMotion)
 {
     fluid::FluidRecipe recipe;
@@ -207,6 +218,7 @@ TEST_F(VolumeFlipbookFramingTest, FlatLoopBeginsWithTheActualContinuationIncludi
     EXPECT_EQ(images[0].motion, images[1].motion);
 }
 
+/// @brief Distortion encoding matches the flat baker convention.
 /// @note 2D の Distortion と同じ符号化: RG = 0.5 + (右, 下) の変位、B = 0.5、A = 覆い。
 TEST_F(VolumeFlipbookFramingTest, DistortionEncodingMatchesTheFlatBakerConvention)
 {
@@ -227,6 +239,7 @@ TEST_F(VolumeFlipbookFramingTest, DistortionEncodingMatchesTheFlatBakerConventio
     EXPECT_NEAR(fast.y, 0.5f, testkit::kTolerance);
 }
 
+/// @brief Checks distortion encoding agrees with the flat baker at every speed.
 /// @note 速さ 3 を含めるのは回帰検出のため。3D が速さをそのまま掛けていた頃は速さ 1 を超えると
 /// @note 2D と乖離し、符号化上限 (長さ 0.5) に当たるまで歪みが伸び続けていた。
 TEST_F(VolumeFlipbookFramingTest, DistortionEncodingAgreesWithTheFlatBakerAtEverySpeed)

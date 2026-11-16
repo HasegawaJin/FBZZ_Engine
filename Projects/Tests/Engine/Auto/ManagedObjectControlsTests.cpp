@@ -27,6 +27,7 @@ protected:
 namespace {
 } /// @note namespace
 
+/// @brief Writes active layer name tag and rejects invalid values.
 TEST_F(ManagedObjectControlsTest, WritesActiveLayerNameTagAndRejectsInvalidValues)
 {
     auto& object = m_scene.CreateGameObject("Original");
@@ -46,6 +47,7 @@ TEST_F(ManagedObjectControlsTest, WritesActiveLayerNameTagAndRejectsInvalidValue
     EXPECT_EQ(text, "Enemy");
 }
 
+/// @brief Native component add is idempotent and permanent components cannot be removed.
 TEST_F(ManagedObjectControlsTest, NativeComponentAddIsIdempotentAndPermanentComponentsCannotBeRemoved)
 {
     auto& object = m_scene.CreateGameObject();
@@ -73,6 +75,7 @@ TEST_F(ManagedObjectControlsTest, NativeComponentAddIsIdempotentAndPermanentComp
     EXPECT_EQ(object.GetComponent<scene::RigidBodyComponent>(), nullptr);
 }
 
+/// @brief Pending removal has no lifetime and cannot be cancelled by add.
 TEST_F(ManagedObjectControlsTest, PendingRemovalHasNoLifetimeAndCannotBeCancelledByAdd)
 {
     auto& object = m_scene.CreateGameObject();
@@ -92,6 +95,7 @@ TEST_F(ManagedObjectControlsTest, PendingRemovalHasNoLifetimeAndCannotBeCancelle
     EXPECT_NE(replacement, first); EXPECT_NE(replacement, 0U);
 }
 
+/// @brief Authored rigid body row keeps its birth across physics initialization.
 TEST_F(ManagedObjectControlsTest, AuthoredRigidBodyRowKeepsItsBirthAcrossPhysicsInitialization)
 {
     auto& object = m_scene.CreateGameObject();
@@ -106,6 +110,7 @@ TEST_F(ManagedObjectControlsTest, AuthoredRigidBodyRowKeepsItsBirthAcrossPhysics
     EXPECT_EQ(observed, birth);
 }
 
+/// @brief Object registry keeps stable tokens and retires changed identity.
 TEST_F(ManagedObjectControlsTest, ObjectRegistryKeepsStableTokensAndRetiresChangedIdentity)
 {
     scene::managed_detail::ManagedObjectRegistry registry;
@@ -128,6 +133,7 @@ TEST_F(ManagedObjectControlsTest, ObjectRegistryKeepsStableTokensAndRetiresChang
     EXPECT_EQ(registry.Count(), 0U);
 }
 
+/// @brief Object registry never reuses cleared or destroyed tokens.
 TEST_F(ManagedObjectControlsTest, ObjectRegistryNeverReusesClearedOrDestroyedTokens)
 {
     scene::managed_detail::ManagedObjectRegistry registry;
@@ -150,6 +156,7 @@ TEST_F(ManagedObjectControlsTest, ObjectRegistryNeverReusesClearedOrDestroyedTok
     EXPECT_EQ(registry.Count(), 1U);
 }
 
+/// @brief Deep traversal excludes root and keeps prefab instances separate.
 TEST_F(ManagedObjectControlsTest, DeepTraversalExcludesRootAndKeepsPrefabInstancesSeparate)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -177,6 +184,7 @@ TEST_F(ManagedObjectControlsTest, DeepTraversalExcludesRootAndKeepsPrefabInstanc
     EXPECT_EQ(result.size(), 1025);
 }
 
+/// @brief Scene search returns all beyond editor page limit in hierarchy order.
 TEST_F(ManagedObjectControlsTest, SceneSearchReturnsAllBeyondEditorPageLimitInHierarchyOrder)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -189,6 +197,7 @@ TEST_F(ManagedObjectControlsTest, SceneSearchReturnsAllBeyondEditorPageLimitInHi
     EXPECT_EQ(result[0], &first); EXPECT_EQ(result[1], &last);
 }
 
+/// @brief Reparent rejects cycles and overflow before changing hierarchy or transforms.
 TEST_F(ManagedObjectControlsTest, ReparentRejectsCyclesAndOverflowBeforeChangingHierarchyOrTransforms)
 {
     auto& root = m_scene.CreateGameObject("Root");

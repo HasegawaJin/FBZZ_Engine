@@ -56,6 +56,7 @@ FBZZ_REFLECT(NestedReflectionData)
 
 class MaterialReflectionTest : public testkit::EngineFixture {};
 
+/// @brief Legacy materials stay rigid until leaf wind is explicitly authored.
 TEST_F(MaterialReflectionTest, LegacyMaterialsStayRigidUntilLeafWindIsExplicitlyAuthored)
 {
     renderer::ShaderDescriptor descriptor;
@@ -86,6 +87,7 @@ TEST_F(MaterialReflectionTest, LegacyMaterialsStayRigidUntilLeafWindIsExplicitly
     EXPECT_FLOAT_EQ(Read<float>(bytes, 76), 1.8f);
 }
 
+/// @brief Integer and bool overrides reach GPU bytes without float rounding.
 TEST_F(MaterialReflectionTest, IntegerAndBoolOverridesReachGpuBytesWithoutFloatRounding)
 {
     renderer::ShaderDescriptor descriptor;
@@ -106,6 +108,7 @@ TEST_F(MaterialReflectionTest, IntegerAndBoolOverridesReachGpuBytesWithoutFloatR
     EXPECT_EQ(Read<uint32_t>(bytes, 12), 0xCDCDCDCDu);
 }
 
+/// @brief Scalar array uses sixteen byte stride and preserves padding.
 TEST_F(MaterialReflectionTest, ScalarArrayUsesSixteenByteStrideAndPreservesPadding)
 {
     auto variable = Scalar("weights", renderer::ShaderVarType::Float, 4);
@@ -122,6 +125,7 @@ TEST_F(MaterialReflectionTest, ScalarArrayUsesSixteenByteStrideAndPreservesPaddi
     EXPECT_EQ(Read<uint32_t>(bytes, 40), 0xCDCDCDCDu);
 }
 
+/// @brief Matrix arrays respect both storage orders.
 TEST_F(MaterialReflectionTest, MatrixArraysRespectBothStorageOrders)
 {
     renderer::ShaderVarDesc variable;
@@ -154,6 +158,7 @@ TEST_F(MaterialReflectionTest, MatrixArraysRespectBothStorageOrders)
     EXPECT_EQ(Read<uint32_t>(bytes, 12), 0xCDCDCDCDu);
 }
 
+/// @brief Invalid values and truncated buffers are atomic.
 TEST_F(MaterialReflectionTest, InvalidValuesAndTruncatedBuffersAreAtomic)
 {
     auto variable = Scalar("value", renderer::ShaderVarType::UInt, 4);
@@ -172,6 +177,7 @@ TEST_F(MaterialReflectionTest, InvalidValuesAndTruncatedBuffersAreAtomic)
     EXPECT_FALSE(asset::WriteMaterialValues(variable, valid, bytes));
 }
 
+/// @brief Material file preserves unsigned limits and legacy float params.
 TEST_F(MaterialReflectionTest, MaterialFilePreservesUnsignedLimitsAndLegacyFloatParams)
 {
     testkit::TempDir directory("material-reflection");
@@ -192,6 +198,7 @@ TEST_F(MaterialReflectionTest, MaterialFilePreservesUnsignedLimitsAndLegacyFloat
     EXPECT_EQ(Read<int32_t>(bytes, 0), -7);
 }
 
+/// @brief Data asset keys and asset lists round trip.
 TEST_F(MaterialReflectionTest, DataAssetKeysAndAssetListsRoundTrip)
 {
     ReflectionData original;
@@ -212,6 +219,7 @@ TEST_F(MaterialReflectionTest, DataAssetKeysAndAssetListsRoundTrip)
     EXPECT_TRUE(restored.textures[1].reference.guid.empty());
 }
 
+/// @brief Solid dielectric typed settings round trip and runtime copies.
 TEST_F(MaterialReflectionTest, SolidDielectricTypedSettingsRoundTripAndRuntimeCopies)
 {
     testkit::TempDir directory("material-dielectric");
@@ -237,6 +245,7 @@ TEST_F(MaterialReflectionTest, SolidDielectricTypedSettingsRoundTripAndRuntimeCo
     EXPECT_EQ(assigned.dielectric, original.dielectric);
 }
 
+/// @brief Legacy alpha does not implicitly enable optical transmission.
 TEST_F(MaterialReflectionTest, LegacyAlphaDoesNotImplicitlyEnableOpticalTransmission)
 {
     testkit::TempDir directory("material-legacy-alpha");
@@ -253,6 +262,7 @@ TEST_F(MaterialReflectionTest, LegacyAlphaDoesNotImplicitlyEnableOpticalTransmis
     EXPECT_EQ(restored.dielectric, renderer::SolidDielectricSettings{});
 }
 
+/// @brief Rejects wrong dielectric types without modifying output.
 TEST_F(MaterialReflectionTest, RejectsWrongDielectricTypesWithoutModifyingOutput)
 {
     testkit::TempDir directory("material-dielectric-invalid");
@@ -290,6 +300,7 @@ TEST_F(MaterialReflectionTest, RejectsWrongDielectricTypesWithoutModifyingOutput
     EXPECT_FALSE(preserved.dielectric.thinWalled);
 }
 
+/// @brief Legacy asset paths and missing fields remain compatible.
 TEST_F(MaterialReflectionTest, LegacyAssetPathsAndMissingFieldsRemainCompatible)
 {
     toml::table table{{"texture", "Assets/Old.png"}};
@@ -303,6 +314,7 @@ TEST_F(MaterialReflectionTest, LegacyAssetPathsAndMissingFieldsRemainCompatible)
     EXPECT_EQ(list[0].guid, "keep");
 }
 
+/// @brief Polymorphic data keeps type and nested asset references.
 TEST_F(MaterialReflectionTest, PolymorphicDataKeepsTypeAndNestedAssetReferences)
 {
     ASSERT_TRUE(scene::ScriptSerializableFactory::Register("NestedReflectionData",
@@ -327,6 +339,7 @@ TEST_F(MaterialReflectionTest, PolymorphicDataKeepsTypeAndNestedAssetReferences)
     EXPECT_EQ(result.textures[0].reference.guid, "nested-guid");
 }
 
+/// @brief Missing polymorphic type preserves fields across save.
 TEST_F(MaterialReflectionTest, MissingPolymorphicTypePreservesFieldsAcrossSave)
 {
     ReflectionData original;
@@ -345,6 +358,7 @@ TEST_F(MaterialReflectionTest, MissingPolymorphicTypePreservesFieldsAcrossSave)
     EXPECT_EQ(parsed["count"].value_or(0), 42);
 }
 
+/// @brief Retained draft aliases and conflicting edits cannot mutate published authoring.
 TEST_F(MaterialReflectionTest, RetainedDraftAliasesAndConflictingEditsCannotMutatePublishedAuthoring)
 {
     asset::MaterialAsset material;
@@ -368,6 +382,7 @@ TEST_F(MaterialReflectionTest, RetainedDraftAliasesAndConflictingEditsCannotMuta
     EXPECT_EQ(material.ReadAuthoring(), published);
 }
 
+/// @brief Exact authoring equality preserves unchanged identity and distinguishes float bits.
 TEST_F(MaterialReflectionTest, ExactAuthoringEqualityPreservesUnchangedIdentityAndDistinguishesFloatBits)
 {
     asset::MaterialAsset material;
@@ -391,6 +406,7 @@ TEST_F(MaterialReflectionTest, ExactAuthoringEqualityPreservesUnchangedIdentityA
     EXPECT_EQ(std::bit_cast<uint32_t>(second->Data().params.at("bits")[1]), 0x7FC00001u);
 }
 
+/// @brief Live visibility fallback and slot vector replacement resolve current authoring owners.
 TEST_F(MaterialReflectionTest, LiveVisibilityFallbackAndSlotVectorReplacementResolveCurrentAuthoringOwners)
 {
     scene::MaterialComponent material;
@@ -420,6 +436,7 @@ TEST_F(MaterialReflectionTest, LiveVisibilityFallbackAndSlotVectorReplacementRes
     EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), base);
 }
 
+/// @brief Same handle asset replacement and copy move have distinct owned publications.
 TEST_F(MaterialReflectionTest, SameHandleAssetReplacementAndCopyMoveHaveDistinctOwnedPublications)
 {
     asset::MaterialAssetAuthoring values;
@@ -442,6 +459,7 @@ TEST_F(MaterialReflectionTest, SameHandleAssetReplacementAndCopyMoveHaveDistinct
     store.Free(handle);
 }
 
+/// @brief Whole value undo publication copies values and failed load preserves owner snapshot.
 TEST_F(MaterialReflectionTest, WholeValueUndoPublicationCopiesValuesAndFailedLoadPreservesOwnerSnapshot)
 {
     asset::MaterialAssetAuthoring values;

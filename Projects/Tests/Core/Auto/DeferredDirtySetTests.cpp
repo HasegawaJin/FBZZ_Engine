@@ -20,6 +20,7 @@ using DirtySet = core::DeferredDirtySet<Identity, uint32_t, CollisionHash>;
 class DeferredDirtySetTest : public testkit::Fixture {};
 } /// @note namespace
 
+/// @brief Coalesces reasons in first notification order.
 TEST_F(DeferredDirtySetTest, CoalescesReasonsInFirstNotificationOrder)
 {
     DirtySet pending;
@@ -36,6 +37,7 @@ TEST_F(DeferredDirtySetTest, CoalescesReasonsInFirstNotificationOrder)
     EXPECT_TRUE(pending.Empty());
 }
 
+/// @brief Rejects stale owner and keeps recycled entity generations separate.
 TEST_F(DeferredDirtySetTest, RejectsStaleOwnerAndKeepsRecycledEntityGenerationsSeparate)
 {
     DirtySet pending;
@@ -57,6 +59,7 @@ TEST_F(DeferredDirtySetTest, RejectsStaleOwnerAndKeepsRecycledEntityGenerationsS
     EXPECT_EQ(batch[1].key.generation, 7u);
 }
 
+/// @brief Notifications during consumption belong to next batch.
 TEST_F(DeferredDirtySetTest, NotificationsDuringConsumptionBelongToNextBatch)
 {
     DirtySet pending;
@@ -75,6 +78,7 @@ TEST_F(DeferredDirtySetTest, NotificationsDuringConsumptionBelongToNextBatch)
     EXPECT_EQ(second[1].key.index, 2u);
 }
 
+/// @brief Collision growth and repeated drains preserve every reason.
 TEST_F(DeferredDirtySetTest, CollisionGrowthAndRepeatedDrainsPreserveEveryReason)
 {
     DirtySet pending;
@@ -97,6 +101,7 @@ TEST_F(DeferredDirtySetTest, CollisionGrowthAndRepeatedDrainsPreserveEveryReason
     EXPECT_EQ(batch.front().reasons, 8u);
 }
 
+/// @brief Duplicate at growth boundary does not allocate and burst can drain sparsely.
 TEST_F(DeferredDirtySetTest, DuplicateAtGrowthBoundaryDoesNotAllocateAndBurstCanDrainSparsely)
 {
     DirtySet pending;

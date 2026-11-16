@@ -235,6 +235,7 @@ protected:
     bool m_playing = false;
 };
 
+/// @brief Switching owner returns buffers to the previous manager.
 TEST_F(DynamicPoolOwnershipTest, SwitchingOwnerReturnsBuffersToThePreviousManager)
 {
     WaterCpuRenderer firstRenderer, secondRenderer;
@@ -249,6 +250,7 @@ TEST_F(DynamicPoolOwnershipTest, SwitchingOwnerReturnsBuffersToThePreviousManage
     EXPECT_EQ(secondRenderer.buffersAlive, 0u);
 }
 
+/// @brief Move assignment and destruction release their owned buffers.
 TEST_F(DynamicPoolOwnershipTest, MoveAssignmentAndDestructionReleaseTheirOwnedBuffers)
 {
     WaterCpuRenderer device;
@@ -265,6 +267,7 @@ TEST_F(DynamicPoolOwnershipTest, MoveAssignmentAndDestructionReleaseTheirOwnedBu
     EXPECT_EQ(device.buffersAlive, 0u);
 }
 
+/// @brief Pool may outlive its owner and reset generation.
 TEST_F(DynamicPoolOwnershipTest, PoolMayOutliveItsOwnerAndResetGeneration)
 {
     WaterCpuRenderer device;
@@ -281,6 +284,7 @@ TEST_F(DynamicPoolOwnershipTest, PoolMayOutliveItsOwnerAndResetGeneration)
     EXPECT_EQ(pool.GetBufferCount(), 0u);
 }
 
+/// @brief Managed texture dispose and retirement use their creation owner.
 TEST_F(DynamicPoolOwnershipTest, ManagedTextureDisposeAndRetirementUseTheirCreationOwner)
 {
     WaterCpuRenderer firstRenderer, secondRenderer;
@@ -442,6 +446,7 @@ protected:
     bool m_assetsInitialized = false;
 };
 
+/// @brief Alternating managers preserves meshes and clear returns both owners.
 TEST_F(WaterRenderResourceTest, AlternatingManagersPreservesMeshesAndClearReturnsBothOwners)
 {
     scene::Scene source; AddWater(source);
@@ -466,6 +471,7 @@ TEST_F(WaterRenderResourceTest, AlternatingManagersPreservesMeshesAndClearReturn
     EXPECT_EQ(other.Get(second.foam), nullptr);
     EXPECT_EQ(other.Get(second.ripple), nullptr);
 }
+/// @brief Removing water component releases every creation owner.
 TEST_F(WaterRenderResourceTest, RemovingWaterComponentReleasesEveryCreationOwner)
 {
     scene::Scene source; const auto id = AddWater(source);
@@ -483,6 +489,7 @@ TEST_F(WaterRenderResourceTest, RemovingWaterComponentReleasesEveryCreationOwner
     EXPECT_EQ(other.Get(second.foam), nullptr);
     EXPECT_EQ(other.Get(second.ripple), nullptr);
 }
+/// @brief Dirty geometry rebuilds both owners after the first view consumes the flag.
 TEST_F(WaterRenderResourceTest, DirtyGeometryRebuildsBothOwnersAfterTheFirstViewConsumesTheFlag)
 {
     scene::Scene source; const auto id = AddWater(source);
@@ -498,6 +505,7 @@ TEST_F(WaterRenderResourceTest, DirtyGeometryRebuildsBothOwnersAfterTheFirstView
     EXPECT_NE(b.patches[0].vertexBuffer, second.patches[0].vertexBuffer);
     source.Clear();
 }
+/// @brief Dirty textures rebuild both owners after the first view consumes the flag.
 TEST_F(WaterRenderResourceTest, DirtyTexturesRebuildBothOwnersAfterTheFirstViewConsumesTheFlag)
 {
     scene::Scene source;
@@ -518,6 +526,7 @@ TEST_F(WaterRenderResourceTest, DirtyTexturesRebuildBothOwnersAfterTheFirstViewC
     source.Clear();
 }
 
+/// @brief Reset and early owner destruction preserves other water meshes.
 TEST_F(WaterRenderResourceTest, ResetAndEarlyOwnerDestructionPreservesOtherWaterMeshes)
 {
     scene::Scene source; AddWater(source);
@@ -533,6 +542,7 @@ TEST_F(WaterRenderResourceTest, ResetAndEarlyOwnerDestructionPreservesOtherWater
     source.Clear(); EXPECT_EQ(m_renderer.buffersAlive, 0u);
 }
 
+/// @brief Component removal returns buffers to their creating manager.
 TEST_F(WaterRenderResourceTest, ComponentRemovalReturnsBuffersToTheirCreatingManager)
 {
     scene::Scene source;
@@ -556,6 +566,7 @@ TEST_F(WaterRenderResourceTest, ComponentRemovalReturnsBuffersToTheirCreatingMan
     other.Release(unrelated);
 }
 
+/// @brief Scene clear returns buffers after another manager has ended.
 TEST_F(WaterRenderResourceTest, SceneClearReturnsBuffersAfterAnotherManagerHasEnded)
 {
     scene::Scene source;
@@ -572,6 +583,7 @@ TEST_F(WaterRenderResourceTest, SceneClearReturnsBuffersAfterAnotherManagerHasEn
     EXPECT_EQ(m_renderer.buffersAlive, 0u);
 }
 
+/// @brief Keeps same index scenes independent through clear and destruction.
 TEST_F(WaterRenderResourceTest, KeepsSameIndexScenesIndependentThroughClearAndDestruction)
 {
     auto first = std::make_unique<scene::Scene>();
@@ -614,6 +626,7 @@ TEST_F(WaterRenderResourceTest, KeepsSameIndexScenesIndependentThroughClearAndDe
     EXPECT_EQ(m_renderer.buffersAlive, 2u);
 }
 
+/// @brief Shared material preparation reapplies current without changing simulation publication.
 TEST_F(WaterRenderResourceTest, SharedMaterialPreparationReappliesCurrentWithoutChangingSimulationPublication)
 {
     scene::Scene source;
@@ -664,6 +677,7 @@ TEST_F(WaterRenderResourceTest, SharedMaterialPreparationReappliesCurrentWithout
     EXPECT_TRUE(water->simulationSurfacePublished);
 }
 
+/// @brief Repeated material preparation retains zone and exclusion side effects.
 TEST_F(WaterRenderResourceTest, RepeatedMaterialPreparationRetainsZoneAndExclusionSideEffects)
 {
     scene::Scene source;
@@ -706,6 +720,7 @@ TEST_F(WaterRenderResourceTest, RepeatedMaterialPreparationRetainsZoneAndExclusi
     EXPECT_NE(zone.snapshot, firstZone);
 }
 
+/// @brief Nested water extraction keeps outer typed candidates and component order.
 TEST_F(WaterRenderResourceTest, NestedWaterExtractionKeepsOuterTypedCandidatesAndComponentOrder)
 {
     scene::Scene source;
@@ -740,6 +755,7 @@ TEST_F(WaterRenderResourceTest, NestedWaterExtractionKeepsOuterTypedCandidatesAn
     EXPECT_EQ(remaining.layer, 3u);
 }
 
+/// @brief Releases destroyed entity generation before reusing its index.
 TEST_F(WaterRenderResourceTest, ReleasesDestroyedEntityGenerationBeforeReusingItsIndex)
 {
     scene::Scene scene;
@@ -767,6 +783,7 @@ TEST_F(WaterRenderResourceTest, ReleasesDestroyedEntityGenerationBeforeReusingIt
     EXPECT_EQ(m_renderer.buffersAlive, 2u);
 }
 
+/// @brief Releases shared adaptive buffers across grid rebuilds without affecting other resources.
 TEST_F(WaterRenderResourceTest, ReleasesSharedAdaptiveBuffersAcrossGridRebuildsWithoutAffectingOtherResources)
 {
     scene::Scene scene;
@@ -812,6 +829,7 @@ TEST_F(WaterRenderResourceTest, ReleasesSharedAdaptiveBuffersAcrossGridRebuildsW
     EXPECT_EQ(m_renderer.buffersAlive, 1u);
     m_resources->Release(canary);
 }
+/// @brief Adaptive bodies share list and strip uploads and keep them across resize.
 TEST_F(WaterRenderResourceTest, AdaptiveBodiesShareListAndStripUploadsAndKeepThemAcrossResize)
 {
     scene::Scene source;
@@ -865,6 +883,7 @@ TEST_F(WaterRenderResourceTest, AdaptiveBodiesShareListAndStripUploadsAndKeepThe
     EXPECT_EQ(m_renderer.buffersAlive, 0u);
 }
 
+/// @brief Auxiliary depth texture without terrain preserves uniform physical depth.
 TEST_F(WaterRenderResourceTest, AuxiliaryDepthTextureWithoutTerrainPreservesUniformPhysicalDepth)
 {
     scene::Scene scene;
@@ -876,6 +895,7 @@ TEST_F(WaterRenderResourceTest, AuxiliaryDepthTextureWithoutTerrainPreservesUnif
     EXPECT_TRUE(input.medium.depthIsUniform);
 }
 
+/// @brief Unchanged ripple inputs reuse the texture across views.
 TEST_F(WaterRenderResourceTest, UnchangedRippleInputsReuseTheTextureAcrossViews)
 {
     scene::Scene scene;
@@ -889,6 +909,7 @@ TEST_F(WaterRenderResourceTest, UnchangedRippleInputsReuseTheTextureAcrossViews)
     EXPECT_EQ(first.ripple, repeated.ripple);
 }
 
+/// @brief Ripple zero tail rejection preserves the canonical baked pixels.
 TEST_F(WaterRenderResourceTest, RippleZeroTailRejectionPreservesTheCanonicalBakedPixels)
 {
     scene::Scene scene;
@@ -930,6 +951,7 @@ TEST_F(WaterRenderResourceTest, RippleZeroTailRejectionPreservesTheCanonicalBake
     EXPECT_EQ(difference, 0u);
 }
 
+/// @brief Ripple bake preserves canonical pixels across counts transforms and boundaries.
 TEST_F(WaterRenderResourceTest, RippleBakePreservesCanonicalPixelsAcrossCountsTransformsAndBoundaries)
 {
     struct Scenario {
@@ -996,6 +1018,7 @@ TEST_F(WaterRenderResourceTest, RippleBakePreservesCanonicalPixelsAcrossCountsTr
     }
 }
 
+/// @brief Initializes neutral ripple texture once without active ripples.
 TEST_F(WaterRenderResourceTest, InitializesNeutralRippleTextureOnceWithoutActiveRipples)
 {
     m_renderer.recordDynamicRippleUploads = true;
@@ -1011,6 +1034,7 @@ TEST_F(WaterRenderResourceTest, InitializesNeutralRippleTextureOnceWithoutActive
     EXPECT_EQ(m_renderer.rippleTextureCreations, 1u);
 }
 
+/// @brief Ripple signature tracks inputs and clears once after the last ripple.
 TEST_F(WaterRenderResourceTest, RippleSignatureTracksInputsAndClearsOnceAfterTheLastRipple)
 {
     m_renderer.recordDynamicRippleUploads = true;
@@ -1061,6 +1085,7 @@ TEST_F(WaterRenderResourceTest, RippleSignatureTracksInputsAndClearsOnceAfterThe
     EXPECT_EQ(Extract(scene, 8u).ripple, first.ripple);
 }
 
+/// @brief Non-finite active ripples remain unsupported and inactive ripples stay neutral.
 TEST_F(WaterRenderResourceTest, NonFiniteActiveRipplesRemainUnsupportedAndInactiveRipplesStayNeutral)
 {
     const float nonFinite = std::numeric_limits<float>::quiet_NaN();
@@ -1097,6 +1122,7 @@ TEST_F(WaterRenderResourceTest, NonFiniteActiveRipplesRemainUnsupportedAndInacti
     ExpectCanonicalRipplePixels(scene, id, 1u);
 }
 
+/// @brief Checks terrain edits rebake info without changing water geometry or rebaking unchanged views.
 TEST_F(WaterRenderResourceTest, TerrainEditsRebakeInfoWithoutChangingWaterGeometryOrRebakingUnchangedViews)
 {
     scene::Scene scene;
@@ -1129,6 +1155,7 @@ TEST_F(WaterRenderResourceTest, TerrainEditsRebakeInfoWithoutChangingWaterGeomet
     EXPECT_EQ(Extract(scene).foam, hidden.foam);
 }
 
+/// @brief Height preview uploads only changed published water depth.
 TEST_F(WaterRenderResourceTest, HeightPreviewUploadsOnlyChangedPublishedWaterDepth)
 {
     m_renderer.recordDynamicDepthUploads = true;
@@ -1174,6 +1201,7 @@ TEST_F(WaterRenderResourceTest, HeightPreviewUploadsOnlyChangedPublishedWaterDep
     EXPECT_EQ(m_renderer.depthTextureUpdates.size(), 2u);
 }
 
+/// @brief Finite water height preview reuses atlas texture.
 TEST_F(WaterRenderResourceTest, FiniteWaterHeightPreviewReusesAtlasTexture)
 {
     m_renderer.recordDynamicDepthUploads = true;
@@ -1235,6 +1263,7 @@ TEST_F(WaterRenderResourceTest, FiniteWaterHeightPreviewReusesAtlasTexture)
     EXPECT_EQ(m_renderer.depthTextureUpdates.size(), 2u);
 }
 
+/// @brief Horizon uses shared geometry and extends the physical water region.
 TEST_F(WaterRenderResourceTest, HorizonUsesSharedGeometryAndExtendsThePhysicalWaterRegion)
 {
     scene::Scene scene;
@@ -1269,6 +1298,7 @@ TEST_F(WaterRenderResourceTest, HorizonUsesSharedGeometryAndExtendsThePhysicalWa
     EXPECT_EQ(restored.patches.size(), 1u);
     EXPECT_EQ(m_resources->Get(ocean.patchVertexBuffer), nullptr);
 }
+/// @brief Horizon underwater camera tracks toggle depth and remote exclusion.
 TEST_F(WaterRenderResourceTest, HorizonUnderwaterCameraTracksToggleDepthAndRemoteExclusion)
 {
     scene::Scene scene;
@@ -1307,6 +1337,7 @@ TEST_F(WaterRenderResourceTest, HorizonUnderwaterCameraTracksToggleDepthAndRemot
     EXPECT_TRUE(ExtractEnvironment(scene, camera).cameraUnderwater);
 }
 
+/// @brief Horizon physics applies buoyancy outside the original rectangle.
 TEST_F(WaterRenderResourceTest, HorizonPhysicsAppliesBuoyancyOutsideTheOriginalRectangle)
 {
     for (bool horizon : {false, true}) {
@@ -1334,6 +1365,7 @@ TEST_F(WaterRenderResourceTest, HorizonPhysicsAppliesBuoyancyOutsideTheOriginalR
     }
 }
 
+/// @brief Zero physical depth keeps the visible water and disables only terrain info.
 TEST_F(WaterRenderResourceTest, ZeroPhysicalDepthKeepsTheVisibleWaterAndDisablesOnlyTerrainInfo)
 {
     scene::Scene scene;
@@ -1347,6 +1379,7 @@ TEST_F(WaterRenderResourceTest, ZeroPhysicalDepthKeepsTheVisibleWaterAndDisables
     EXPECT_FLOAT_EQ(input.constants.terrainInfoParams.x, 0.0f);
 }
 
+/// @brief Horizon setting changes replace warm geometry without caller dirty flags.
 TEST_F(WaterRenderResourceTest, HorizonSettingChangesReplaceWarmGeometryWithoutCallerDirtyFlags)
 {
     scene::Scene scene;
@@ -1369,6 +1402,7 @@ TEST_F(WaterRenderResourceTest, HorizonSettingChangesReplaceWarmGeometryWithoutC
     EXPECT_EQ(m_resources->Get(horizon.patchVertexBuffer), nullptr);
 }
 
+/// @brief Warm geometry tracks extent resolution and patch settings.
 TEST_F(WaterRenderResourceTest, WarmGeometryTracksExtentResolutionAndPatchSettings)
 {
     scene::Scene scene;
@@ -1396,6 +1430,7 @@ TEST_F(WaterRenderResourceTest, WarmGeometryTracksExtentResolutionAndPatchSettin
     EXPECT_EQ(Extract(scene).patchVertexBuffer, refined.patchVertexBuffer);
 }
 
+/// @brief Checks terrain removal and replacement inside one frame reacquire the current sources.
 TEST_F(WaterRenderResourceTest, TerrainRemovalAndReplacementInsideOneFrameReacquireTheCurrentSources)
 {
     scene::Scene scene;
@@ -1417,6 +1452,7 @@ TEST_F(WaterRenderResourceTest, TerrainRemovalAndReplacementInsideOneFrameReacqu
     EXPECT_NE(destroyed.foam, replaced.foam);
     EXPECT_EQ(m_resources->Get(replaced.foam), nullptr);
 }
+/// @brief Extracts explicit wave count phases and finite optical coefficients.
 TEST_F(WaterRenderResourceTest, ExtractsExplicitWaveCountPhasesAndFiniteOpticalCoefficients)
 {
     const auto materialPath = m_temp.File("WaterOptics.mat").generic_string();
@@ -1462,6 +1498,7 @@ TEST_F(WaterRenderResourceTest, ExtractsExplicitWaveCountPhasesAndFiniteOpticalC
     EXPECT_FLOAT_EQ(calm.constants.opticalParams.y, 0.0f);
 }
 
+/// @brief Extracts authored optics exclusions and sediment into the shared medium.
 TEST_F(WaterRenderResourceTest, ExtractsAuthoredOpticsExclusionsAndSedimentIntoTheSharedMedium)
 {
     asset::MaterialAssetAuthoring material;
@@ -1573,6 +1610,7 @@ TEST_F(WaterRenderResourceTest, ExtractsAuthoredOpticsExclusionsAndSedimentIntoT
     EXPECT_EQ(Time::frameCount, frameCountBefore + 1);
 }
 
+/// @brief Spline river uploads the shared snapshot and invalidates on authoring changes.
 TEST_F(WaterRenderResourceTest, SplineRiverUploadsTheSharedSnapshotAndInvalidatesOnAuthoringChanges)
 {
     scene::Scene scene;
@@ -1659,6 +1697,7 @@ TEST_F(WaterRenderResourceTest, SplineRiverUploadsTheSharedSnapshotAndInvalidate
     EXPECT_EQ(m_resources->Get(authoredVertexBuffer), nullptr);
 }
 
+/// @brief Spline cluster buffers follow mode and spline edits.
 TEST_F(WaterRenderResourceTest, SplineClusterBuffersFollowModeAndSplineEdits)
 {
     scene::Scene scene;
@@ -1687,6 +1726,7 @@ TEST_F(WaterRenderResourceTest, SplineClusterBuffersFollowModeAndSplineEdits)
     EXPECT_EQ(m_resources->Get(first.surfaceClusterIndices), nullptr);
 }
 
+/// @brief Water zone renders one shared union and releases suppressed resources.
 TEST_F(WaterRenderResourceTest, WaterZoneRendersOneSharedUnionAndReleasesSuppressedResources)
 {
     scene::Scene scene;
@@ -1789,6 +1829,7 @@ TEST_F(WaterRenderResourceTest, WaterZoneRendersOneSharedUnionAndReleasesSuppres
     EXPECT_NE(restoredMember->patches.front().vertexBuffer, suppressedMemberBuffer);
 }
 
+/// @brief Physics creates one zone volume and restores member volume when disabled.
 TEST_F(WaterRenderResourceTest, PhysicsCreatesOneZoneVolumeAndRestoresMemberVolumeWhenDisabled)
 {
     scene::Scene scene;
@@ -1826,6 +1867,7 @@ TEST_F(WaterRenderResourceTest, PhysicsCreatesOneZoneVolumeAndRestoresMemberVolu
     scene::Script::SetPhysicsWorld(previousPhysicsWorld);
 }
 
+/// @brief Script water member keeps local height and ripple on the shared owner.
 TEST_F(WaterRenderResourceTest, ScriptWaterMemberKeepsLocalHeightAndRippleOnTheSharedOwner)
 {
     scene::Scene scene;
@@ -1882,6 +1924,7 @@ TEST_F(WaterRenderResourceTest, ScriptWaterMemberKeepsLocalHeightAndRippleOnTheS
     EXPECT_NEAR(movedActual, movedExpected, testkit::kTolerance);
 }
 
+/// @brief Checks spline underwater effects prepare the shared shape before geometry extraction.
 TEST_F(WaterRenderResourceTest, SplineUnderwaterEffectsPrepareTheSharedShapeBeforeGeometryExtraction)
 {
     scene::Scene scene;
@@ -1906,6 +1949,7 @@ TEST_F(WaterRenderResourceTest, SplineUnderwaterEffectsPrepareTheSharedShapeBefo
     EXPECT_FALSE(scene::ExtractRenderEnvironment(context).underwater.enabled);
 }
 
+/// @brief Underwater optics use resolved material and yaw local rectangle bounds.
 TEST_F(WaterRenderResourceTest, UnderwaterOpticsUseResolvedMaterialAndYawLocalRectangleBounds)
 {
     scene::Scene scene;
@@ -1973,6 +2017,7 @@ TEST_F(WaterRenderResourceTest, UnderwaterOpticsUseResolvedMaterialAndYawLocalRe
     EXPECT_NEAR(environment.caustics.sinYaw, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Legacy underwater mode and camera boundary stay compatible.
 TEST_F(WaterRenderResourceTest, LegacyUnderwaterModeAndCameraBoundaryStayCompatible)
 {
     scene::Scene scene;
@@ -2007,6 +2052,7 @@ TEST_F(WaterRenderResourceTest, LegacyUnderwaterModeAndCameraBoundaryStayCompati
     EXPECT_FALSE(ExtractEnvironment(scene, camera).underwater.enabled);
 }
 
+/// @brief Checks underwater optics sanitize non-finite material values and use spline slab.
 TEST_F(WaterRenderResourceTest, UnderwaterOpticsSanitizeNonFiniteMaterialValuesAndUseSplineSlab)
 {
     scene::Scene scene;
@@ -2056,6 +2102,7 @@ TEST_F(WaterRenderResourceTest, UnderwaterOpticsSanitizeNonFiniteMaterialValuesA
     EXPECT_NEAR(environment.underwater.halfExtent.x, 0.0f, testkit::kTolerance);
     EXPECT_NEAR(environment.underwater.halfExtent.y, 0.0f, testkit::kTolerance);
 }
+/// @brief View hidden water cannot provide underwater or legacy caustic effects.
 TEST_F(WaterRenderResourceTest, ViewHiddenWaterCannotProvideUnderwaterOrLegacyCausticEffects)
 {
     for (float opticalMode : {0.0f, 1.0f}) {

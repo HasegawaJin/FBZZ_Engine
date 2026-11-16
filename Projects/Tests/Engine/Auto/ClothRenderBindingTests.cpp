@@ -29,6 +29,7 @@ protected:
         m_high.cpuIndices = {0,1,3,1,2,3,2,0,3};
     }
 };
+/// @brief Preserves rest detail and follows rigid rotation and deformation.
 TEST_F(ClothRenderBindingTest, PreservesRestDetailAndFollowsRigidRotationAndDeformation)
 {
     asset::ClothAsset bound;
@@ -50,6 +51,7 @@ TEST_F(ClothRenderBindingTest, PreservesRestDetailAndFollowsRigidRotationAndDefo
     ASSERT_TRUE(asset::EvaluateClothRenderBindings(bound.renderBindings,bound.particles,rotated,rendered));
     EXPECT_VEC3_NEAR(rendered[3],(math::Vector3{1,0.5f,0.1f}),1.0e-5f);
 }
+/// @brief Round trip preserves separate topology and rejects broken binding.
 TEST_F(ClothRenderBindingTest, RoundTripPreservesSeparateTopologyAndRejectsBrokenBinding)
 {
     asset::ClothAsset bound;
@@ -73,6 +75,7 @@ TEST_F(ClothRenderBindingTest, RoundTripPreservesSeparateTopologyAndRejectsBroke
     loaded.renderBindings[0].offset.z += 1;
     EXPECT_FALSE(asset::ValidateClothAsset(loaded));
 }
+/// @brief Failed bind and non-finite pose are transactional and collapsed face is finite.
 TEST_F(ClothRenderBindingTest, FailedBindAndNonFinitePoseAreTransactionalAndCollapsedFaceIsFinite)
 {
     asset::ClothAsset bound = m_low;
@@ -89,6 +92,7 @@ TEST_F(ClothRenderBindingTest, FailedBindAndNonFinitePoseAreTransactionalAndColl
     ASSERT_TRUE(asset::EvaluateClothRenderBindings(bound.renderBindings,bound.particles,pose,rendered));
     EXPECT_VEC3_NEAR(rendered[3],(math::Vector3{1,2,3.1f}),1.0e-6f);
 }
+/// @brief Version two keeps skin weights.
 TEST_F(ClothRenderBindingTest, VersionTwoKeepsSkinWeights)
 {
     testkit::TempDir temp{"clothv2"};

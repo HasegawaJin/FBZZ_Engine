@@ -16,6 +16,7 @@ protected:
     }
     editor::IblBakePanel m_panel; editor::OperatorRegistry m_registry; editor::UndoStack m_undo;
 };
+/// @brief Hidden panel configuration does not require renderer.
 TEST_F(IblOperatorTest, HiddenPanelConfigurationDoesNotRequireRenderer)
 {
     auto settings = editor::OpData::MakeObject(); settings.Set("sampleCount", editor::OpData(512));
@@ -24,6 +25,7 @@ TEST_F(IblOperatorTest, HiddenPanelConfigurationDoesNotRequireRenderer)
     EXPECT_EQ(result.data.Find("settings")->Find("sampleCount")->AsInt(), 512);
     EXPECT_FALSE(m_panel.visible); EXPECT_EQ(result.data.Find("state")->AsString(), "idle");
 }
+/// @brief Invalid partial settings do not apply other values.
 TEST_F(IblOperatorTest, InvalidPartialSettingsDoNotApplyOtherValues)
 {
     auto settings = editor::OpData::MakeObject(); settings.Set("sampleCount", editor::OpData(512));
@@ -32,6 +34,7 @@ TEST_F(IblOperatorTest, InvalidPartialSettingsDoNotApplyOtherValues)
     const auto result = Invoke("ibl.inspect"); EXPECT_EQ(result.data.Find("settings")->Find("sampleCount")->AsInt(), 1024);
     EXPECT_EQ(result.data.Find("job")->AsInt(), 0);
 }
+/// @brief Missing renderer does not report a queued or successful bake.
 TEST_F(IblOperatorTest, MissingRendererDoesNotReportAQueuedOrSuccessfulBake)
 {
     EXPECT_FALSE(Invoke("ibl.bake").ok);

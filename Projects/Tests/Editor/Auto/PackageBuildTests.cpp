@@ -77,6 +77,7 @@ protected:
     editor::OperatorRegistry m_operators;
 };
 
+/// @brief Unsafe output and filename are rejected without changing settings or disk.
 TEST_F(PackageBuildTest, UnsafeOutputAndFilenameAreRejectedWithoutChangingSettingsOrDisk)
 {
     const std::string before = m_package.Settings().outputDirectory;
@@ -101,6 +102,7 @@ TEST_F(PackageBuildTest, UnsafeOutputAndFilenameAreRejectedWithoutChangingSettin
     EXPECT_TRUE(m_undo.GetUndoDescription().empty());
 }
 
+/// @brief Shared panel settings start cancel and exact request IDs use one pipeline.
 TEST_F(PackageBuildTest, SharedPanelSettingsStartCancelAndExactRequestIdsUseOnePipeline)
 {
     editor::BuildSettingsPanel panel(m_package);
@@ -134,6 +136,7 @@ TEST_F(PackageBuildTest, SharedPanelSettingsStartCancelAndExactRequestIdsUseOneP
     EXPECT_EQ(Invoke("build.package_status", exact).errorCode, "PACKAGE_REQUEST_NOT_FOUND");
 }
 
+/// @brief Editor tick without rendering terminates failure and preserves previous output.
 TEST_F(PackageBuildTest, EditorTickWithoutRenderingTerminatesFailureAndPreservesPreviousOutput)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Builds/Package/Managed")));
@@ -156,6 +159,7 @@ TEST_F(PackageBuildTest, EditorTickWithoutRenderingTerminatesFailureAndPreserves
     EXPECT_EQ(content, "previous executable");
 }
 
+/// @brief Play paused restore and pending compilers reject before any start.
 TEST_F(PackageBuildTest, PlayPausedRestoreAndPendingCompilersRejectBeforeAnyStart)
 {
     editor::PlayModeController play;
@@ -183,6 +187,7 @@ TEST_F(PackageBuildTest, PlayPausedRestoreAndPendingCompilersRejectBeforeAnyStar
     Context().playMode = nullptr;
 }
 
+/// @brief Shared managed busy and shader busy block checks and start without allocating requests.
 TEST_F(PackageBuildTest, SharedManagedBusyAndShaderBusyBlockChecksAndStartWithoutAllocatingRequests)
 {
     const std::string originalName = m_package.Settings().productName;
@@ -228,6 +233,7 @@ TEST_F(PackageBuildTest, SharedManagedBusyAndShaderBusyBlockChecksAndStartWithou
     m_package.Cancel();
 }
 
+/// @brief Unowned legacy temp is preserved and new temp directories are exclusive.
 TEST_F(PackageBuildTest, UnownedLegacyTempIsPreservedAndNewTempDirectoriesAreExclusive)
 {
     const auto foreign = File("Builds/Package_tmp");
@@ -250,6 +256,7 @@ TEST_F(PackageBuildTest, UnownedLegacyTempIsPreservedAndNewTempDirectoriesAreExc
     EXPECT_EQ(document, "user document");
 }
 
+/// @brief Project local absolute scenes are normalized and external or traversal scenes are rejected.
 TEST_F(PackageBuildTest, ProjectLocalAbsoluteScenesAreNormalizedAndExternalOrTraversalScenesAreRejected)
 {
     editor::OpArgs args;
@@ -274,6 +281,7 @@ TEST_F(PackageBuildTest, ProjectLocalAbsoluteScenesAreNormalizedAndExternalOrTra
     }
 }
 
+/// @brief Existing bus projection returns the same package request and rejects unknown fields.
 TEST_F(PackageBuildTest, ExistingBusProjectionReturnsTheSamePackageRequestAndRejectsUnknownFields)
 {
     editor::ai::JsonValue payload = editor::ai::JsonValue::MakeObject();

@@ -23,6 +23,7 @@ math::Vector2 Scale(math::Vector2 v, float s) { return { v.x * s, v.y * s }; }
 
 } // namespace
 
+/// @brief Zero motion encodes to mid grey.
 TEST_F(FlipbookMotionVectorEncodingTest, ZeroMotionEncodesToMidGrey)
 {
     const asset::EncodedMotionVector encoded = asset::EncodeMotionVector({ 0.0f, 0.0f }, 0.02f);
@@ -31,6 +32,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, ZeroMotionEncodesToMidGrey)
     EXPECT_EQ(encoded.g, 128);
 }
 
+/// @brief Positive displacement is stored with negated sign.
 TEST_F(FlipbookMotionVectorEncodingTest, PositiveDisplacementIsStoredWithNegatedSign)
 {
     const asset::EncodedMotionVector encoded = asset::EncodeMotionVector({ 0.01f, -0.01f }, 0.02f);
@@ -40,6 +42,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, PositiveDisplacementIsStoredWithNegated
     EXPECT_GT(decoded.y, 0.0f);
 }
 
+/// @brief Decoded motion times strength restores negated displacement.
 TEST_F(FlipbookMotionVectorEncodingTest, DecodedMotionTimesStrengthRestoresNegatedDisplacement)
 {
     constexpr float kStrength = 0.02f;
@@ -57,6 +60,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, DecodedMotionTimesStrengthRestoresNegat
     }
 }
 
+/// @brief Warped samples land on the same content for a known shift.
 TEST_F(FlipbookMotionVectorEncodingTest, WarpedSamplesLandOnTheSameContentForAKnownShift)
 {
     const math::Vector2 d = { 0.01f, -0.02f };
@@ -80,6 +84,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, WarpedSamplesLandOnTheSameContentForAKn
     }
 }
 
+/// @brief Recommended strength is the largest axis magnitude.
 TEST_F(FlipbookMotionVectorEncodingTest, RecommendedStrengthIsTheLargestAxisMagnitude)
 {
     const std::vector<math::Vector2> displacements = { { 0.01f, -0.03f }, { 0.02f, 0.0f } };
@@ -89,6 +94,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, RecommendedStrengthIsTheLargestAxisMagn
     EXPECT_NEAR(asset::ComputeRecommendedStrength(still, 0.001f), 0.001f, testkit::kTolerance);
 }
 
+/// @brief Displacement converts per axis for non-square atlas.
 TEST_F(FlipbookMotionVectorEncodingTest, DisplacementConvertsPerAxisForNonSquareAtlas)
 {
     const asset::FlipbookGrid grid = asset::ComputeFlipbookGrid(32, 8);
@@ -101,6 +107,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, DisplacementConvertsPerAxisForNonSquare
     EXPECT_VEC2_NEAR(fromTile, (math::Vector2{ 0.5f / 8.0f, 0.5f / 4.0f }), testkit::kTolerance);
 }
 
+/// @brief Grid matches the atlas baker layout rule.
 TEST_F(FlipbookMotionVectorEncodingTest, GridMatchesTheAtlasBakerLayoutRule)
 {
     const asset::FlipbookGrid square = asset::ComputeFlipbookGrid(64, 0);
@@ -118,6 +125,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, GridMatchesTheAtlasBakerLayoutRule)
     EXPECT_EQ(clamped.rows, 1);
 }
 
+/// @brief Tile origin is row major from top left like sprite rect.
 TEST_F(FlipbookMotionVectorEncodingTest, TileOriginIsRowMajorFromTopLeftLikeSpriteRect)
 {
     const asset::FlipbookGrid grid = asset::ComputeFlipbookGrid(16, 4);
@@ -129,6 +137,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, TileOriginIsRowMajorFromTopLeftLikeSpri
     EXPECT_EQ(origin.y, 32u);
 }
 
+/// @brief Dilation fills uncovered texels without crossing tiles.
 TEST_F(FlipbookMotionVectorEncodingTest, DilationFillsUncoveredTexelsWithoutCrossingTiles)
 {
     /// @note 2x2 のタイル 2 枚を横に並べた 4x2 の Atlas。各タイルに 1 画素だけ覆われた画素がある。
@@ -148,6 +157,7 @@ TEST_F(FlipbookMotionVectorEncodingTest, DilationFillsUncoveredTexelsWithoutCros
         EXPECT_VEC2_NEAR(motion[index], (math::Vector2{ 0.0f, 5.0f }), testkit::kTolerance) << "index=" << index;
 }
 
+/// @brief Color texel is sRGB encoded with linear alpha and reports clipping.
 TEST_F(FlipbookMotionVectorEncodingTest, ColorTexelIsSrgbEncodedWithLinearAlphaAndReportsClipping)
 {
     const asset::EncodedColorTexel inRange = asset::EncodeColorTexel({ 0.25f, 0.5f, 0.0f, 0.5f }, 2.0f);

@@ -22,6 +22,7 @@ class FzAssetFormatTest : public testkit::EngineFixture {};
 
 /// @name メッシュ
 
+/// @brief Mesh header fields sit at their on-disk offsets.
 TEST_F(FzAssetFormatTest, MeshHeaderFieldsSitAtTheirOnDiskOffsets)
 {
     EXPECT_EQ(offsetof(asset::FzMeshHeader, magic), 0u);
@@ -34,6 +35,7 @@ TEST_F(FzAssetFormatTest, MeshHeaderFieldsSitAtTheirOnDiskOffsets)
     EXPECT_EQ(sizeof(asset::FzMeshHeader), 36u);
 }
 
+/// @brief Keeps the pre colour vertex layout for old files.
 TEST_F(FzAssetFormatTest, KeepsThePreColourVertexLayoutForOldFiles)
 {
     /// @note v1 の頂点は «色が付く前» の renderer::Vertex と同じ 44 バイト。
@@ -45,6 +47,7 @@ TEST_F(FzAssetFormatTest, KeepsThePreColourVertexLayoutForOldFiles)
     EXPECT_EQ(offsetof(asset::FzVertexV1, uv), 36u);
 }
 
+/// @brief Mesh flags are distinct bits.
 TEST_F(FzAssetFormatTest, MeshFlagsAreDistinctBits)
 {
     EXPECT_NE(asset::FZMESH_FLAG_SKINNED, 0u);
@@ -53,6 +56,7 @@ TEST_F(FzAssetFormatTest, MeshFlagsAreDistinctBits)
 
 /// @name アニメーション
 
+/// @brief Anim header fields sit at their on-disk offsets.
 TEST_F(FzAssetFormatTest, AnimHeaderFieldsSitAtTheirOnDiskOffsets)
 {
     /// @note 名前は 128 バイト固定。ここを縮めると尺と ticksPerSecond の位置がずれ、
@@ -66,6 +70,7 @@ TEST_F(FzAssetFormatTest, AnimHeaderFieldsSitAtTheirOnDiskOffsets)
     EXPECT_EQ(sizeof(asset::FzAnimHeader), 160u);
 }
 
+/// @brief Anim track header keeps its counts after the name.
 TEST_F(FzAssetFormatTest, AnimTrackHeaderKeepsItsCountsAfterTheName)
 {
     EXPECT_EQ(offsetof(asset::FzAnimTrackHeader, nodeName), 0u);
@@ -76,6 +81,7 @@ TEST_F(FzAssetFormatTest, AnimTrackHeaderKeepsItsCountsAfterTheName)
 
 /// @name 版番号
 
+/// @brief Versions are the ones already baked on disk.
 TEST_F(FzAssetFormatTest, VersionsAreTheOnesAlreadyBakedOnDisk)
 {
     /// @note 版を上げたらこのテストも一緒に直す。«直すべきものが 2 つある» ことを
@@ -85,6 +91,7 @@ TEST_F(FzAssetFormatTest, VersionsAreTheOnesAlreadyBakedOnDisk)
     EXPECT_EQ(asset::FZSKEL_VERSION, 1u);
 }
 
+/// @brief Headers are trivially copyable.
 TEST_F(FzAssetFormatTest, HeadersAreTriviallyCopyable)
 {
     /// @note ヘッダーは fread / fwrite でそのまま往復する。仮想関数や

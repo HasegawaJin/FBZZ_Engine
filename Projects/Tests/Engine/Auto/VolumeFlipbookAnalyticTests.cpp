@@ -80,6 +80,7 @@ asset::VolumePuff BallisticPuff()
 
 } // namespace
 
+/// @brief Density is carried exactly by secant velocity.
 TEST_F(VolumeFlipbookAnalyticTest, DensityIsCarriedExactlyBySecantVelocity)
 {
     const std::vector<asset::VolumePuff> puffs = asset::BuildVolumePuffs(PuffSource());
@@ -99,6 +100,7 @@ TEST_F(VolumeFlipbookAnalyticTest, DensityIsCarriedExactlyBySecantVelocity)
     }
 }
 
+/// @brief Packed velocity equals the flow map over one frame.
 TEST_F(VolumeFlipbookAnalyticTest, PackedVelocityEqualsTheFlowMapOverOneFrame)
 {
     const std::vector<asset::VolumePuff> puffs = asset::BuildVolumePuffs(PuffSource());
@@ -113,6 +115,7 @@ TEST_F(VolumeFlipbookAnalyticTest, PackedVelocityEqualsTheFlowMapOverOneFrame)
     }
 }
 
+/// @brief Gravity drag and stretch still carry density exactly.
 TEST_F(VolumeFlipbookAnalyticTest, GravityDragAndStretchStillCarryDensityExactly)
 {
     const std::vector<asset::VolumePuff> puffs = { BallisticPuff() };
@@ -133,6 +136,7 @@ TEST_F(VolumeFlipbookAnalyticTest, GravityDragAndStretchStillCarryDensityExactly
     }
 }
 
+/// @brief Center velocity is the derivative of the center.
 TEST_F(VolumeFlipbookAnalyticTest, CenterVelocityIsTheDerivativeOfTheCenter)
 {
     asset::VolumePuff withDrag = BallisticPuff();
@@ -153,6 +157,7 @@ TEST_F(VolumeFlipbookAnalyticTest, CenterVelocityIsTheDerivativeOfTheCenter)
     EXPECT_VEC3_NEAR(asset::PuffCenterAt(withoutDrag, 0.5f), parabola, testkit::kTolerance);
 }
 
+/// @brief Stretch elongates along the velocity.
 TEST_F(VolumeFlipbookAnalyticTest, StretchElongatesAlongTheVelocity)
 {
     asset::VolumePuff puff;
@@ -168,6 +173,7 @@ TEST_F(VolumeFlipbookAnalyticTest, StretchElongatesAlongTheVelocity)
     EXPECT_EQ(asset::SampleVolumeFill(frame, { 0.0f, 0.0f, 0.4f }).density, 0.0f);
 }
 
+/// @brief Color key and liquid are carried to the medium.
 TEST_F(VolumeFlipbookAnalyticTest, ColorKeyAndLiquidAreCarriedToTheMedium)
 {
     asset::VolumePuff smoke;
@@ -189,6 +195,7 @@ TEST_F(VolumeFlipbookAnalyticTest, ColorKeyAndLiquidAreCarriedToTheMedium)
     EXPECT_NEAR(right.liquid, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Same seed is deterministic and other seeds differ.
 TEST_F(VolumeFlipbookAnalyticTest, SameSeedIsDeterministicAndOtherSeedsDiffer)
 {
     asset::VolumeSourceSettings source;
@@ -212,6 +219,7 @@ TEST_F(VolumeFlipbookAnalyticTest, SameSeedIsDeterministicAndOtherSeedsDiffer)
     EXPECT_GT(differenceToOtherSeed, 0.01f);
 }
 
+/// @brief Looping sources return to the first frame after their duration.
 TEST_F(VolumeFlipbookAnalyticTest, LoopingSourcesReturnToTheFirstFrameAfterTheirDuration)
 {
     std::vector<asset::VolumeSourceSettings> sources;
@@ -253,6 +261,7 @@ TEST_F(VolumeFlipbookAnalyticTest, LoopingSourcesReturnToTheFirstFrameAfterTheir
     }
 }
 
+/// @brief Checks hot core cools as the puff ages.
 TEST_F(VolumeFlipbookAnalyticTest, HotCoreCoolsAsThePuffAges)
 {
     asset::VolumePuff puff;
@@ -270,6 +279,7 @@ TEST_F(VolumeFlipbookAnalyticTest, HotCoreCoolsAsThePuffAges)
     EXPECT_LT(old, young * 0.5f);
 }
 
+/// @brief Plume always has puffs to draw.
 TEST_F(VolumeFlipbookAnalyticTest, PlumeAlwaysHasPuffsToDraw)
 {
     asset::VolumeSourceSettings source;
@@ -288,6 +298,7 @@ TEST_F(VolumeFlipbookAnalyticTest, PlumeAlwaysHasPuffsToDraw)
     }
 }
 
+/// @brief Checks every builtin source fits in the puff buffer.
 TEST_F(VolumeFlipbookAnalyticTest, EveryBuiltinSourceFitsInThePuffBuffer)
 {
     for (const asset::VolumeSourceDesc& desc : asset::VolumeSources()) {
@@ -307,6 +318,7 @@ TEST_F(VolumeFlipbookAnalyticTest, EveryBuiltinSourceFitsInThePuffBuffer)
     }
 }
 
+/// @brief Pack drops puffs beyond the buffer capacity.
 TEST_F(VolumeFlipbookAnalyticTest, PackDropsPuffsBeyondTheBufferCapacity)
 {
     std::vector<asset::VolumePuff> puffs(asset::kVolumeFillMaxPuffs + 10);
@@ -319,6 +331,7 @@ TEST_F(VolumeFlipbookAnalyticTest, PackDropsPuffsBeyondTheBufferCapacity)
     EXPECT_EQ(frame.header.puffCount, asset::kVolumeFillMaxPuffs);
 }
 
+/// @brief Registered source is built and replaced by name.
 TEST_F(VolumeFlipbookAnalyticTest, RegisteredSourceIsBuiltAndReplacedByName)
 {
     const auto makeSource = [](std::size_t count) {
@@ -345,6 +358,7 @@ TEST_F(VolumeFlipbookAnalyticTest, RegisteredSourceIsBuiltAndReplacedByName)
     EXPECT_EQ(sameName, 1);
 }
 
+/// @brief Unknown source builds nothing.
 TEST_F(VolumeFlipbookAnalyticTest, UnknownSourceBuildsNothing)
 {
     asset::VolumeSourceSettings source;
@@ -354,6 +368,7 @@ TEST_F(VolumeFlipbookAnalyticTest, UnknownSourceBuildsNothing)
     EXPECT_FALSE(asset::VolumeSourceCanLoop(source));
 }
 
+/// @brief Builtin sources are registered.
 TEST_F(VolumeFlipbookAnalyticTest, BuiltinSourcesAreRegistered)
 {
     for (const char* name : { "Puff", "RisingPlume", "Fireball", "Torch", "Fountain", "WaterSplash",
@@ -362,6 +377,7 @@ TEST_F(VolumeFlipbookAnalyticTest, BuiltinSourcesAreRegistered)
     }
 }
 
+/// @brief Emitter burst spawns count puffs at the start.
 TEST_F(VolumeFlipbookAnalyticTest, EmitterBurstSpawnsCountPuffsAtTheStart)
 {
     asset::VolumeSourceSettings source;
@@ -376,6 +392,7 @@ TEST_F(VolumeFlipbookAnalyticTest, EmitterBurstSpawnsCountPuffsAtTheStart)
     EXPECT_FALSE(asset::VolumeSourceCanLoop(source));
 }
 
+/// @brief Random cone stays inside its angle.
 TEST_F(VolumeFlipbookAnalyticTest, RandomConeStaysInsideItsAngle)
 {
     const math::Vector3 axis = math::Vector3{ 1.0f, 0.35f, 0.0f }.NormalizedOr(math::Vector3::RIGHT);
@@ -387,6 +404,7 @@ TEST_F(VolumeFlipbookAnalyticTest, RandomConeStaysInsideItsAngle)
     }
 }
 
+/// @brief Density vanishes outside the cull radius.
 TEST_F(VolumeFlipbookAnalyticTest, DensityVanishesOutsideTheCullRadius)
 {
     asset::VolumeNoiseSettings noise;

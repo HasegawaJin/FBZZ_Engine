@@ -86,6 +86,7 @@ protected:
     std::array<scene::EntityID,4> m_ids;
 };
 
+/// @brief Rebuilds all mesh kinds after reset without authoring changes.
 TEST_F(RuntimeMeshOwnershipTest, RebuildsAllMeshKindsAfterResetWithoutAuthoringChanges)
 {
     Tick(*m_resources); ChangeGeometry(); Tick(*m_resources);
@@ -98,6 +99,7 @@ TEST_F(RuntimeMeshOwnershipTest, RebuildsAllMeshKindsAfterResetWithoutAuthoringC
     EXPECT_EQ(m_scene.GetComponent<scene::ProceduralMeshComponent>(m_ids[2])->dirty, scene::MeshDirty::None);
 }
 
+/// @brief Returns both slots to previous manager when switching back and forth.
 TEST_F(RuntimeMeshOwnershipTest, ReturnsBothSlotsToPreviousManagerWhenSwitchingBackAndForth)
 {
     Tick(*m_resources); ChangeGeometry(); Tick(*m_resources);
@@ -109,6 +111,7 @@ TEST_F(RuntimeMeshOwnershipTest, ReturnsBothSlotsToPreviousManagerWhenSwitchingB
     EXPECT_EQ(otherDevice.m_buffersAlive, 0u); ExpectPublishedMeshes(*m_resources);
 }
 
+/// @brief Rebuilds when previous manager has already ended.
 TEST_F(RuntimeMeshOwnershipTest, RebuildsWhenPreviousManagerHasAlreadyEnded)
 {
     Tick(*m_resources);
@@ -120,6 +123,7 @@ TEST_F(RuntimeMeshOwnershipTest, RebuildsWhenPreviousManagerHasAlreadyEnded)
     EXPECT_EQ(otherDevice.m_buffersAlive, 0u);
 }
 
+/// @brief Rebuilds released buffers even without a manager reset.
 TEST_F(RuntimeMeshOwnershipTest, RebuildsReleasedBuffersEvenWithoutAManagerReset)
 {
     Tick(*m_resources);
@@ -131,6 +135,7 @@ TEST_F(RuntimeMeshOwnershipTest, RebuildsReleasedBuffersEvenWithoutAManagerReset
     EXPECT_NE(view->mesh->vertexBuffer, old);
 }
 
+/// @brief Retries failed allocation without publishing partial meshes.
 TEST_F(RuntimeMeshOwnershipTest, RetriesFailedAllocationWithoutPublishingPartialMeshes)
 {
     Tick(*m_resources);
@@ -144,6 +149,7 @@ TEST_F(RuntimeMeshOwnershipTest, RetriesFailedAllocationWithoutPublishingPartial
     EXPECT_EQ(m_device.m_buffersAlive, 8u);
 }
 
+/// @brief Preserves previous published slot until replacement allocation succeeds.
 TEST_F(RuntimeMeshOwnershipTest, PreservesPreviousPublishedSlotUntilReplacementAllocationSucceeds)
 {
     Tick(*m_resources);
@@ -158,6 +164,7 @@ TEST_F(RuntimeMeshOwnershipTest, PreservesPreviousPublishedSlotUntilReplacementA
     for (size_t i = 0; i < m_ids.size(); ++i) EXPECT_NE(m_scene.GetComponent<scene::MeshRenderer>(m_ids[i])->mesh, previous[i]);
 }
 
+/// @brief Keeps cloth simulation state when only GPU ownership changes.
 TEST_F(RuntimeMeshOwnershipTest, KeepsClothSimulationStateWhenOnlyGpuOwnershipChanges)
 {
     Tick(*m_resources);
@@ -172,6 +179,7 @@ TEST_F(RuntimeMeshOwnershipTest, KeepsClothSimulationStateWhenOnlyGpuOwnershipCh
     ExpectPublishedMeshes(*m_resources);
 }
 
+/// @brief Waterfall rebuilds only for terrain its clearance can sample.
 TEST_F(RuntimeMeshOwnershipTest, WaterfallRebuildsOnlyForTerrainItsClearanceCanSample)
 {
     auto& upstream = m_scene.CreateGameObject("Upstream");

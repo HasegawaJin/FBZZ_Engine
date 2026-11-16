@@ -24,6 +24,7 @@ protected:
     }
 };
 
+/// @brief Native only project does not require dot net.
 TEST_F(ManagedGamePackageTest, NativeOnlyProjectDoesNotRequireDotNet)
 {
     std::filesystem::path output = "unchanged";
@@ -35,6 +36,7 @@ TEST_F(ManagedGamePackageTest, NativeOnlyProjectDoesNotRequireDotNet)
     EXPECT_FALSE(loaded);
 }
 
+/// @brief Distribution manifest requires dependencies and type sidecar and rejects traversal.
 TEST_F(ManagedGamePackageTest, DistributionManifestRequiresDependenciesAndTypeSidecarAndRejectsTraversal)
 {
     const auto manifest = m_temp.File("Managed/game.managed.toml");
@@ -54,6 +56,7 @@ TEST_F(ManagedGamePackageTest, DistributionManifestRequiresDependenciesAndTypeSi
     EXPECT_FALSE(scene::ResolveManagedGameAssembly(m_temp.Path(), "Release", output, diagnostic));
 }
 
+/// @brief Development uses only the applied generation and never guesses newest candidate.
 TEST_F(ManagedGamePackageTest, DevelopmentUsesOnlyTheAppliedGenerationAndNeverGuessesNewestCandidate)
 {
     Write(m_temp.File("Game.Scripts.csproj"));

@@ -25,6 +25,7 @@ protected:
     scene::Scene m_scene;
 };
 
+/// @brief Descendant position matches engine nested signed scale rotation order.
 TEST_F(ControlPointResolverTest, DescendantPositionMatchesEngineNestedSignedScaleRotationOrder)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -65,6 +66,7 @@ TEST_F(ControlPointResolverTest, DescendantPositionMatchesEngineNestedSignedScal
     EXPECT_NE(signature, 0u);
 }
 
+/// @brief Missing GUID is retained and failure leaves numeric output unchanged.
 TEST_F(ControlPointResolverTest, MissingGuidIsRetainedAndFailureLeavesNumericOutputUnchanged)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -92,6 +94,7 @@ TEST_F(ControlPointResolverTest, MissingGuidIsRetainedAndFailureLeavesNumericOut
                      before[0].ownerLocalPosition, testkit::kTolerance);
 }
 
+/// @brief Empty GUID remains null despite valid cached entity.
 TEST_F(ControlPointResolverTest, EmptyGuidRemainsNullDespiteValidCachedEntity)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -119,6 +122,7 @@ TEST_F(ControlPointResolverTest, EmptyGuidRemainsNullDespiteValidCachedEntity)
                      before[0].ownerLocalPosition, testkit::kTolerance);
 }
 
+/// @brief Stale scene cache resolves only the current scenes matching GUID.
 TEST_F(ControlPointResolverTest, StaleSceneCacheResolvesOnlyTheCurrentScenesMatchingGuid)
 {
     scene::Scene oldScene;
@@ -148,6 +152,7 @@ TEST_F(ControlPointResolverTest, StaleSceneCacheResolvesOnlyTheCurrentScenesMatc
     EXPECT_EQ(reference.sceneGeneration, m_scene.GetRenderSceneGeneration());
 }
 
+/// @brief Empty GUID survives scene save load and typed clone remap.
 TEST_F(ControlPointResolverTest, EmptyGuidSurvivesSceneSaveLoadAndTypedCloneRemap)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -193,6 +198,7 @@ TEST_F(ControlPointResolverTest, EmptyGuidSurvivesSceneSaveLoadAndTypedCloneRema
               destination.GetRenderSceneGeneration());
 }
 
+/// @brief Water and spline bindings reject duplicate targets.
 TEST_F(ControlPointResolverTest, WaterAndSplineBindingsRejectDuplicateTargets)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -216,6 +222,7 @@ TEST_F(ControlPointResolverTest, WaterAndSplineBindingsRejectDuplicateTargets)
     EXPECT_EQ(signature, 0u);
 }
 
+/// @brief Target point registration and display settings round trip.
 TEST_F(ControlPointResolverTest, TargetPointRegistrationAndDisplaySettingsRoundTrip)
 {
     auto& target = m_scene.CreateGameObject("TargetPoint");

@@ -309,6 +309,7 @@ private:
     uint64_t m_previousFrame = 0;
 };
 
+/// @brief Retained snapshots stay immutable after worker retirement and scene clear.
 TEST_F(RenderSceneExtractorMaterialTest, RetainedSnapshotsStayImmutableAfterWorkerRetirementAndSceneClear)
 {
     m_mesh.vertexBuffer = {11, 2}; m_mesh.indexBuffer = {12, 3};
@@ -362,6 +363,7 @@ TEST_F(RenderSceneExtractorMaterialTest, RetainedSnapshotsStayImmutableAfterWork
     EXPECT_EQ(retained->items[0].vertexCount, 3u);
 }
 
+/// @brief Sparse camera queries preserve scene priority and observe same frame edits.
 TEST_F(RenderSceneExtractorTest, SparseCameraQueriesPreserveScenePriorityAndObserveSameFrameEdits)
 {
     auto& first = m_scene.CreateGameObject("FirstCameraOwner");
@@ -400,6 +402,7 @@ TEST_F(RenderSceneExtractorTest, SparseCameraQueriesPreserveScenePriorityAndObse
     EXPECT_FLOAT_EQ(scene::ResolveGameCamera(m_scene, 1.5f).m_fovY, 59);
 }
 
+/// @brief Keeps off-screen and other layer candidates but rejects inactive hierarchy.
 TEST_F(RenderSceneExtractorTest, KeepsOffscreenAndOtherLayerCandidatesButRejectsInactiveHierarchy)
 {
     auto& go = StaticObject();
@@ -417,6 +420,7 @@ TEST_F(RenderSceneExtractorTest, KeepsOffscreenAndOtherLayerCandidatesButRejects
     EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).objects.empty());
 }
 
+/// @brief Preserves scene order for late renderer registration and mixed renderers among bones.
 TEST_F(RenderSceneExtractorTest, PreservesSceneOrderForLateRendererRegistrationAndMixedRenderersAmongBones)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -468,6 +472,7 @@ TEST_F(RenderSceneExtractorTest, PreservesSceneOrderForLateRendererRegistrationA
     EXPECT_EQ(snapshot.objects[0].sourceIndex, firstId.index);
 }
 
+/// @brief Refreshes renderer membership and hierarchy activity within the same frame.
 TEST_F(RenderSceneExtractorTest, RefreshesRendererMembershipAndHierarchyActivityWithinTheSameFrame)
 {
     auto& first = StaticObject();
@@ -504,6 +509,7 @@ TEST_F(RenderSceneExtractorTest, RefreshesRendererMembershipAndHierarchyActivity
     EXPECT_EQ(initial.objects[1].sourceIndex, secondId.index);
 }
 
+/// @brief Preserves order across destroy callbacks compaction and entity reuse.
 TEST_F(RenderSceneExtractorTest, PreservesOrderAcrossDestroyCallbacksCompactionAndEntityReuse)
 {
     auto& first = StaticObject();
@@ -540,6 +546,7 @@ TEST_F(RenderSceneExtractorTest, PreservesOrderAcrossDestroyCallbacksCompactionA
     EXPECT_EQ(afterDestroy.objects[1].sourceGeneration, replacementId.generation);
 }
 
+/// @brief Selects canonical LOD zero without filtering raster hidden renderers.
 TEST_F(RenderSceneExtractorTest, SelectsCanonicalLodZeroWithoutFilteringRasterHiddenRenderers)
 {
     auto& selected = StaticObject();
@@ -572,6 +579,7 @@ TEST_F(RenderSceneExtractorTest, SelectsCanonicalLodZeroWithoutFilteringRasterHi
     }
 }
 
+/// @brief Resolves LOD GUID for membership without changing references.
 TEST_F(RenderSceneExtractorTest, ResolvesLodGuidForMembershipWithoutChangingReferences)
 {
     auto& member = StaticObject();
@@ -599,6 +607,7 @@ TEST_F(RenderSceneExtractorTest, ResolvesLodGuidForMembershipWithoutChangingRefe
     EXPECT_EQ(unchanged->levels[0].renderers[0].instanceId, instanceId);
 }
 
+/// @brief Skinned texture quality uses animated bounds instead of bind pose.
 TEST_F(RenderSceneExtractorTest, SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose)
 {
     auto& go = SkinnedObject();
@@ -617,6 +626,7 @@ TEST_F(RenderSceneExtractorTest, SkinnedTextureQualityUsesAnimatedBoundsInsteadO
     EXPECT_FLOAT_EQ(scene::EstimateRenderTexturePixels(object, item, {}, 0.0f, 1000, false), 0.0f);
 }
 
+/// @brief Copies world bounds and handles without owning the source mesh.
 TEST_F(RenderSceneExtractorTest, CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh)
 {
     auto& go = StaticObject();
@@ -638,6 +648,7 @@ TEST_F(RenderSceneExtractorTest, CopiesWorldBoundsAndHandlesWithoutOwningTheSour
     EXPECT_FLOAT_EQ(snapshot.objects[0].world.m[0][3], 10.0f);
 }
 
+/// @brief Warm renderer index keeps current values and old geometry snapshots independent.
 TEST_F(RenderSceneExtractorTest, WarmRendererIndexKeepsCurrentValuesAndOldGeometrySnapshotsIndependent)
 {
     auto& object = StaticObject();
@@ -670,6 +681,7 @@ TEST_F(RenderSceneExtractorTest, WarmRendererIndexKeepsCurrentValuesAndOldGeomet
     EXPECT_EQ(first.objects.size(), 2u);
 }
 
+/// @brief Static bounds use current rotated negative nonuniform scale across views.
 TEST_F(RenderSceneExtractorTest, StaticBoundsUseCurrentRotatedNegativeNonuniformScaleAcrossViews)
 {
     auto& go = StaticObject();
@@ -696,6 +708,7 @@ TEST_F(RenderSceneExtractorTest, StaticBoundsUseCurrentRotatedNegativeNonuniform
     EXPECT_FLOAT_EQ(first.items[0].boundsRadius, 8);
 }
 
+/// @brief Skinned submesh bounds keep renderer scale and animator owner sphere independent.
 TEST_F(RenderSceneExtractorTest, SkinnedSubmeshBoundsKeepRendererScaleAndAnimatorOwnerSphereIndependent)
 {
     auto& go = SkinnedObject();
@@ -745,6 +758,7 @@ TEST_F(RenderSceneExtractorTest, SkinnedSubmeshBoundsKeepRendererScaleAndAnimato
     EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 13.5f);
 }
 
+/// @brief Leaf wind bounds follow asset overrides and scaled spatial updates.
 TEST_F(RenderSceneExtractorMaterialTest, LeafWindBoundsFollowAssetOverridesAndScaledSpatialUpdates)
 {
     SpatialProducerEnvironment producer;
@@ -787,6 +801,7 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindBoundsFollowAssetOverridesAndSc
     EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 10);
 }
 
+/// @brief Unresolved leaf material bounds fail open without loading.
 TEST_F(RenderSceneExtractorTest, UnresolvedLeafMaterialBoundsFailOpenWithoutLoading)
 {
     auto& go = StaticObject();
@@ -801,6 +816,7 @@ TEST_F(RenderSceneExtractorTest, UnresolvedLeafMaterialBoundsFailOpenWithoutLoad
     EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).objects[0].boundsRadius, 2);
 }
 
+/// @brief Skinned leaf wind uses renderer scale and all material slots.
 TEST_F(RenderSceneExtractorTest, SkinnedLeafWindUsesRendererScaleAndAllMaterialSlots)
 {
     auto& go = SkinnedObject();
@@ -820,6 +836,7 @@ TEST_F(RenderSceneExtractorTest, SkinnedLeafWindUsesRendererScaleAndAllMaterialS
     EXPECT_FLOAT_EQ(bindPose.objects[0].boundsRadius, 16);
 }
 
+/// @brief Leaf wind material edits rebuild shared geometry between views.
 TEST_F(RenderSceneExtractorMaterialTest, LeafWindMaterialEditsRebuildSharedGeometryBetweenViews)
 {
     auto& go = StaticObject();
@@ -848,6 +865,7 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindMaterialEditsRebuildSharedGeome
     EXPECT_EQ(unchanged->sharedObjects, windy->sharedObjects);
 }
 
+/// @brief Leaf wind importer callbacks fail open without mutating retained geometry.
 TEST_F(RenderSceneExtractorMaterialTest, LeafWindImporterCallbacksFailOpenWithoutMutatingRetainedGeometry)
 {
     struct RestoreImporter {
@@ -892,6 +910,7 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindImporterCallbacksFailOpenWithou
     }
 }
 
+/// @brief Local slots resolve reordered submeshes and morph inputs.
 TEST_F(RenderSceneExtractorTest, LocalSlotsResolveReorderedSubmeshesAndMorphInputs)
 {
     auto& go = SkinnedObject();
@@ -909,6 +928,7 @@ TEST_F(RenderSceneExtractorTest, LocalSlotsResolveReorderedSubmeshesAndMorphInpu
     EXPECT_EQ(snapshot.items[1].skinningVertexBuffer.id, 10u);
 }
 
+/// @brief Deformed output requires current frame and matching model including morph.
 TEST_F(RenderSceneExtractorTest, DeformedOutputRequiresCurrentFrameAndMatchingModelIncludingMorph)
 {
     auto& go = SkinnedObject();
@@ -929,6 +949,7 @@ TEST_F(RenderSceneExtractorTest, DeformedOutputRequiresCurrentFrameAndMatchingMo
     EXPECT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).items[0].deformedVertexBuffer.id, 62u);
 }
 
+/// @brief Rejects renderer membership in multiple LOD groups.
 TEST_F(RenderSceneExtractorTest, RejectsRendererMembershipInMultipleLodGroups)
 {
     const auto memberId = StaticObject().GetID();
@@ -941,6 +962,7 @@ TEST_F(RenderSceneExtractorTest, RejectsRendererMembershipInMultipleLodGroups)
     EXPECT_TRUE(snapshot.objects[0].rayLodSelectionRequired);
 }
 
+/// @brief Diagnoses unresolved canonical LOD instead of publishing an empty shape.
 TEST_F(RenderSceneExtractorTest, DiagnosesUnresolvedCanonicalLodInsteadOfPublishingAnEmptyShape)
 {
     auto& lower = StaticObject();
@@ -960,6 +982,7 @@ TEST_F(RenderSceneExtractorTest, DiagnosesUnresolvedCanonicalLodInsteadOfPublish
     EXPECT_EQ(snapshot.rayLodDiagnostics[0].layerMask, UINT32_MAX);
 }
 
+/// @brief Normal extraction skips unresolved ray LOD diagnostics and keeps raster geometry.
 TEST_F(RenderSceneExtractorTest, NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry)
 {
     auto& lower = StaticObject();
@@ -981,6 +1004,7 @@ TEST_F(RenderSceneExtractorTest, NormalExtractionSkipsUnresolvedRayLodDiagnostic
     EXPECT_EQ(experimental.rayLodDiagnostics.size(), 1u);
 }
 
+/// @brief Parent animator wins over reference pose and preserves previous palette.
 TEST_F(RenderSceneExtractorTest, ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette)
 {
     auto& child = SkinnedObject();
@@ -999,6 +1023,7 @@ TEST_F(RenderSceneExtractorTest, ParentAnimatorWinsOverReferencePoseAndPreserves
     EXPECT_TRUE(snapshot.objects[0].previousSkinningValid);
 }
 
+/// @brief Checks reference pose precedes identity fallback without animator.
 TEST_F(RenderSceneExtractorTest, ReferencePosePrecedesIdentityFallbackWithoutAnimator)
 {
     SkinnedObject();
@@ -1010,6 +1035,7 @@ TEST_F(RenderSceneExtractorTest, ReferencePosePrecedesIdentityFallbackWithoutAni
     EXPECT_FALSE(snapshot.objects[0].previousSkinningValid);
 }
 
+/// @brief Previous world advances once across views and resets after gap.
 TEST_F(RenderSceneExtractorTest, PreviousWorldAdvancesOnceAcrossViewsAndResetsAfterGap)
 {
     auto& go = StaticObject();
@@ -1025,6 +1051,7 @@ TEST_F(RenderSceneExtractorTest, PreviousWorldAdvancesOnceAcrossViewsAndResetsAf
     EXPECT_NE(firstView.snapshotSerial, secondView.snapshotSerial);
 }
 
+/// @brief Initial frame does not treat uninitialized history as previous frame.
 TEST_F(RenderSceneExtractorTest, InitialFrameDoesNotTreatUninitializedHistoryAsPreviousFrame)
 {
     auto& go = StaticObject();
@@ -1036,6 +1063,7 @@ TEST_F(RenderSceneExtractorTest, InitialFrameDoesNotTreatUninitializedHistoryAsP
     EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 1).objects[0].previousWorld.m[0][3], 3.0f);
 }
 
+/// @brief Material slots stay independent and hidden slots remain addressable.
 TEST_F(RenderSceneExtractorTest, MaterialSlotsStayIndependentAndHiddenSlotsRemainAddressable)
 {
     auto& go = SkinnedObject();
@@ -1052,6 +1080,7 @@ TEST_F(RenderSceneExtractorTest, MaterialSlotsStayIndependentAndHiddenSlotsRemai
     EXPECT_FALSE(snapshot.items[1].visible);
 }
 
+/// @brief Scene generation is stable across views and changes before entity reuse.
 TEST_F(RenderSceneExtractorTest, SceneGenerationIsStableAcrossViewsAndChangesBeforeEntityReuse)
 {
     const auto originalId = StaticObject().GetID();
@@ -1066,6 +1095,7 @@ TEST_F(RenderSceneExtractorTest, SceneGenerationIsStableAcrossViewsAndChangesBef
     EXPECT_NE(first.sceneGeneration, replaced.sceneGeneration);
 }
 
+/// @brief Scene move does not reuse another scenes render identity.
 TEST_F(RenderSceneExtractorTest, SceneMoveDoesNotReuseAnotherScenesRenderIdentity)
 {
     StaticObject();
@@ -1080,6 +1110,7 @@ TEST_F(RenderSceneExtractorTest, SceneMoveDoesNotReuseAnotherScenesRenderIdentit
     EXPECT_NE(snapshot.sceneGeneration, m_scene.GetRenderSceneGeneration());
 }
 
+/// @brief Resolves each shader once while preserving independent material overrides.
 TEST_F(RenderSceneExtractorMaterialTest, ResolvesEachShaderOnceWhilePreservingIndependentMaterialOverrides)
 {
     ASSERT_TRUE(WriteShader("Shared.hlsl", true));
@@ -1123,6 +1154,7 @@ TEST_F(RenderSceneExtractorMaterialTest, ResolvesEachShaderOnceWhilePreservingIn
     EXPECT_EQ(snapshot.items[3].material.capabilities.blend, renderer::BlendMode::OPAQUE_BLEND);
 }
 
+/// @brief Rechecks changed and removed shader metadata without advancing the render frame.
 TEST_F(RenderSceneExtractorMaterialTest, RechecksChangedAndRemovedShaderMetadataWithoutAdvancingTheRenderFrame)
 {
     ASSERT_TRUE(WriteShader("Changing.hlsl", true));
@@ -1176,6 +1208,7 @@ TEST_F(RenderSceneExtractorMaterialTest, RechecksChangedAndRemovedShaderMetadata
     EXPECT_TRUE(initial.items[0].material.capabilities.gbufferEquivalentShader);
 }
 
+/// @brief Full extraction defers item capabilities until material synchronization.
 TEST_F(RenderSceneExtractorMaterialTest, FullExtractionDefersItemCapabilitiesUntilMaterialSynchronization)
 {
     ASSERT_TRUE(WriteShader("FullState.hlsl", true));
@@ -1235,6 +1268,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FullExtractionDefersItemCapabilitiesUnt
     EXPECT_FALSE(full->items[0].visible);
 }
 
+/// @brief Checks full views recheck metadata and slot edits without changing retained snapshots.
 TEST_F(RenderSceneExtractorMaterialTest, FullViewsRecheckMetadataAndSlotEditsWithoutChangingRetainedSnapshots)
 {
     ASSERT_TRUE(WriteShader("FullChanging.hlsl", true));
@@ -1277,6 +1311,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FullViewsRecheckMetadataAndSlotEditsWit
     EXPECT_EQ(first->items[0].material.capabilities.blend, renderer::BlendMode::OPAQUE_BLEND);
 }
 
+/// @brief Shares poses across views while keeping selection and materials independent.
 TEST_F(RenderSceneExtractorMaterialTest, SharesPosesAcrossViewsWhileKeepingSelectionAndMaterialsIndependent)
 {
     const auto firstId = StaticObject().GetID();
@@ -1302,6 +1337,7 @@ TEST_F(RenderSceneExtractorMaterialTest, SharesPosesAcrossViewsWhileKeepingSelec
     EXPECT_EQ(m_scene.GetGameObject(firstId)->GetComponent<scene::MaterialComponent>(), nullptr);
 }
 
+/// @brief Static raster cache owns retired seed until the first later view.
 TEST_F(RenderSceneExtractorMaterialTest, StaticRasterCacheOwnsRetiredSeedUntilTheFirstLaterView)
 {
     ExtractionScanEnvironment mode("fused");
@@ -1349,6 +1385,7 @@ TEST_F(RenderSceneExtractorMaterialTest, StaticRasterCacheOwnsRetiredSeedUntilTh
     EXPECT_EQ(third->items[0].indexCount, 36u);
 }
 
+/// @brief Prototype and legacy restore keep four views independent after seed retirement.
 TEST_F(RenderSceneExtractorMaterialTest, PrototypeAndLegacyRestoreKeepFourViewsIndependentAfterSeedRetirement)
 {
     ExtractionScanEnvironment scans("fused");
@@ -1415,6 +1452,7 @@ TEST_F(RenderSceneExtractorMaterialTest, PrototypeAndLegacyRestoreKeepFourViewsI
     }
 }
 
+/// @brief Static raster seed rejects replaced owners and missing rows.
 TEST_F(RenderSceneExtractorMaterialTest, StaticRasterSeedRejectsReplacedOwnersAndMissingRows)
 {
     ExtractionScanEnvironment mode("fused");
@@ -1440,6 +1478,7 @@ TEST_F(RenderSceneExtractorMaterialTest, StaticRasterSeedRejectsReplacedOwnersAn
     EXPECT_EQ(replaced->items[0].vertexCount, 6u);
 }
 
+/// @brief Static raster reentrant hits keep owned geometry and observe direct material edits.
 TEST_F(RenderSceneExtractorMaterialTest, StaticRasterReentrantHitsKeepOwnedGeometryAndObserveDirectMaterialEdits)
 {
     struct RestoreImporter {
@@ -1490,6 +1529,7 @@ TEST_F(RenderSceneExtractorMaterialTest, StaticRasterReentrantHitsKeepOwnedGeome
     }
 }
 
+/// @brief Mixed and ray caches keep eager seeds and current view inputs.
 TEST_F(RenderSceneExtractorMaterialTest, MixedAndRayCachesKeepEagerSeedsAndCurrentViewInputs)
 {
     ExtractionScanEnvironment mode("fused");
@@ -1525,6 +1565,7 @@ TEST_F(RenderSceneExtractorMaterialTest, MixedAndRayCachesKeepEagerSeedsAndCurre
     EXPECT_EQ(current->items[1].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{91, 6}));
 }
 
+/// @brief Compact frame geometry preserves static and skinned inputs across views.
 TEST_F(RenderSceneExtractorMaterialTest, CompactFrameGeometryPreservesStaticAndSkinnedInputsAcrossViews)
 {
     m_mesh.vertexBuffer = {11, 2};
@@ -1576,6 +1617,7 @@ TEST_F(RenderSceneExtractorMaterialTest, CompactFrameGeometryPreservesStaticAndS
     EXPECT_EQ(second->items[2].sourceSubmesh, 0u);
 }
 
+/// @brief Fused scans keep interleaved skinned inputs fresh across cached views.
 TEST_F(RenderSceneExtractorMaterialTest, FusedScansKeepInterleavedSkinnedInputsFreshAcrossCachedViews)
 {
     ExtractionScanEnvironment mode("fused");
@@ -1624,6 +1666,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansKeepInterleavedSkinnedInputsF
     EXPECT_EQ(first->items[5].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{82, 5}));
 }
 
+/// @brief Fused scans fall back for legacy replaced and invalid frame cache metadata.
 TEST_F(RenderSceneExtractorMaterialTest, FusedScansFallBackForLegacyReplacedAndInvalidFrameCacheMetadata)
 {
     ExtractionScanEnvironment mode("legacy");
@@ -1663,6 +1706,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedScansFallBackForLegacyReplacedAndI
     EXPECT_EQ(legacy->items[1].deformedVertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{73, 4}));
 }
 
+/// @brief Fused color eligibility keeps missing disabled and hidden materials independent.
 TEST_F(RenderSceneExtractorMaterialTest, FusedColorEligibilityKeepsMissingDisabledAndHiddenMaterialsIndependent)
 {
     ExtractionScanEnvironment mode("fused");
@@ -1702,6 +1746,7 @@ TEST_F(RenderSceneExtractorMaterialTest, FusedColorEligibilityKeepsMissingDisabl
     EXPECT_EQ(m_scene.GetGameObject(missingId)->GetComponent<scene::MaterialComponent>(), nullptr);
 }
 
+/// @brief Scan modes keep geometry and skinned inputs independent during reentrant material load.
 TEST_F(RenderSceneExtractorMaterialTest, ScanModesKeepGeometryAndSkinnedInputsIndependentDuringReentrantMaterialLoad)
 {
     struct RestoreImporter {
@@ -1749,6 +1794,7 @@ TEST_F(RenderSceneExtractorMaterialTest, ScanModesKeepGeometryAndSkinnedInputsIn
     }
 }
 
+/// @brief Managed mesh writes invalidate shared views without rebuilding unchanged math.
 TEST_F(RenderSceneExtractorMaterialTest, ManagedMeshWritesInvalidateSharedViewsWithoutRebuildingUnchangedMath)
 {
     auto& owner = StaticObject();
@@ -1781,6 +1827,7 @@ TEST_F(RenderSceneExtractorMaterialTest, ManagedMeshWritesInvalidateSharedViewsW
     }));
 }
 
+/// @brief Mesh notifications invalidate same frame geometry without mutating published views.
 TEST_F(RenderSceneExtractorMaterialTest, MeshNotificationsInvalidateSameFrameGeometryWithoutMutatingPublishedViews)
 {
     auto& owner = StaticObject();
@@ -1806,6 +1853,7 @@ TEST_F(RenderSceneExtractorMaterialTest, MeshNotificationsInvalidateSameFrameGeo
     EXPECT_EQ(ExtractView({}, cache)->Objects().size(), 1u);
 }
 
+/// @brief Compact frame geometry rebuilds moved bounds and renderer membership every frame.
 TEST_F(RenderSceneExtractorMaterialTest, CompactFrameGeometryRebuildsMovedBoundsAndRendererMembershipEveryFrame)
 {
     m_mesh.vertexBuffer = {11, 2};
@@ -1859,6 +1907,7 @@ TEST_F(RenderSceneExtractorMaterialTest, CompactFrameGeometryRebuildsMovedBounds
     EXPECT_VEC3_NEAR(replaced->items[0].boundsCenter, (math::Vector3{75, 2, 3}), testkit::kTolerance);
 }
 
+/// @brief Compact cached items retain off camera shadow probe and ray demand.
 TEST_F(RenderSceneExtractorMaterialTest, CompactCachedItemsRetainOffCameraShadowProbeAndRayDemand)
 {
     m_mesh.vertexBuffer = {11, 2};
@@ -1902,6 +1951,7 @@ TEST_F(RenderSceneExtractorMaterialTest, CompactCachedItemsRetainOffCameraShadow
     EXPECT_VEC3_NEAR(first->items[0].boundsCenter, (math::Vector3{0, -10, 10}), testkit::kTolerance);
 }
 
+/// @brief Indexed masks retain both renderer kinds and respect each views layer and children.
 TEST_F(RenderSceneExtractorMaterialTest, IndexedMasksRetainBothRendererKindsAndRespectEachViewsLayerAndChildren)
 {
     auto& root = StaticObject();
@@ -1935,6 +1985,7 @@ TEST_F(RenderSceneExtractorMaterialTest, IndexedMasksRetainBothRendererKindsAndR
     EXPECT_TRUE(ExtractView(settings, cache)->maskGroups.empty());
 }
 
+/// @brief Keeps shared poses alive after cache retirement and scene generation changes.
 TEST_F(RenderSceneExtractorMaterialTest, KeepsSharedPosesAliveAfterCacheRetirementAndSceneGenerationChanges)
 {
     auto& original = StaticObject();
@@ -1957,6 +2008,7 @@ TEST_F(RenderSceneExtractorMaterialTest, KeepsSharedPosesAliveAfterCacheRetireme
 }
 
 } /// @note namespace
+/// @brief Checks empty effect extraction observes components added and removed within the same frame.
 TEST_F(RenderSceneExtractorMaterialTest, EmptyEffectExtractionObservesComponentsAddedAndRemovedWithinTheSameFrame)
 {
     renderer::RenderSettings settings;
@@ -1997,6 +2049,7 @@ TEST_F(RenderSceneExtractorMaterialTest, EmptyEffectExtractionObservesComponents
     EXPECT_TRUE(added->environment.sky.has_value());
 }
 
+/// @brief Typed environment candidates keep scene precedence and refresh within one frame.
 TEST_F(RenderSceneExtractorMaterialTest, TypedEnvironmentCandidatesKeepScenePrecedenceAndRefreshWithinOneFrame)
 {
     auto& first = m_scene.CreateGameObject("First environment");
@@ -2081,6 +2134,7 @@ protected:
     renderer::RenderMeshItem m_item;
 };
 
+/// @brief Fresh view masks frusta and padding do not mutate geometry.
 TEST_F(MaterialDemandContractTest, FreshViewMasksFrustaAndPaddingDoNotMutateGeometry)
 {
     const auto outside = scene::material_demand_detail::Evaluate(m_view, m_object, m_item);
@@ -2102,6 +2156,7 @@ TEST_F(MaterialDemandContractTest, FreshViewMasksFrustaAndPaddingDoNotMutateGeom
     EXPECT_TRUE(m_item.slotVisible);
 }
 
+/// @brief Layer distance and orthographic small object policy use current values.
 TEST_F(MaterialDemandContractTest, LayerDistanceAndOrthographicSmallObjectPolicyUseCurrentValues)
 {
     m_view.culling.frustum = nullptr;
@@ -2124,6 +2179,7 @@ TEST_F(MaterialDemandContractTest, LayerDistanceAndOrthographicSmallObjectPolicy
         renderer::VisibilityResult::VISIBLE);
 }
 
+/// @brief Off camera directional and punctual shadow potential remain required.
 TEST_F(MaterialDemandContractTest, OffCameraDirectionalAndPunctualShadowPotentialRemainRequired)
 {
     m_view.directionalShadowPotential = true;
@@ -2141,6 +2197,7 @@ TEST_F(MaterialDemandContractTest, OffCameraDirectionalAndPunctualShadowPotentia
     EXPECT_FALSE(scene::material_demand_detail::Evaluate(m_view, m_object, m_item).KnownConsumerPotential());
 }
 
+/// @brief Static probe potential ignores main camera frustum and skinned inputs.
 TEST_F(MaterialDemandContractTest, StaticProbePotentialIgnoresMainCameraFrustumAndSkinnedInputs)
 {
     m_view.reflectionProbePotential = true;
@@ -2156,6 +2213,7 @@ TEST_F(MaterialDemandContractTest, StaticProbePotentialIgnoresMainCameraFrustumA
     EXPECT_FALSE(scene::material_demand_detail::Evaluate(m_view, m_object, m_item).KnownConsumerPotential());
 }
 
+/// @brief Ray and uncertified user pass scope never authorize camera only omission.
 TEST_F(MaterialDemandContractTest, RayAndUncertifiedUserPassScopeNeverAuthorizeCameraOnlyOmission)
 {
     m_view.rayPotential = true;
@@ -2176,6 +2234,7 @@ TEST_F(MaterialDemandContractTest, RayAndUncertifiedUserPassScopeNeverAuthorizeC
     EXPECT_EQ(scene::material_demand_detail::Evaluate(m_view, m_object, m_item).reasons, 0u);
 }
 
+/// @brief Nonfinite or extreme values are conservative before math visibility.
 TEST_F(MaterialDemandContractTest, NonfiniteOrExtremeValuesAreConservativeBeforeMathVisibility)
 {
     m_object.boundsCenter.x = std::numeric_limits<float>::quiet_NaN();
@@ -2194,6 +2253,7 @@ TEST_F(MaterialDemandContractTest, NonfiniteOrExtremeValuesAreConservativeBefore
     EXPECT_TRUE(result.KnownConsumerPotential());
 }
 
+/// @brief Shared object visibility matches legacy for mixed slots and skinning.
 TEST_F(MaterialDemandContractTest, SharedObjectVisibilityMatchesLegacyForMixedSlotsAndSkinning)
 {
     m_view.staticGpuFrustumPossible = true;
@@ -2235,6 +2295,7 @@ TEST_F(MaterialDemandContractTest, SharedObjectVisibilityMatchesLegacyForMixedSl
     }
 }
 
+/// @brief Prepared view keeps numeric fallback local to the selected layer.
 TEST_F(MaterialDemandContractTest, PreparedViewKeepsNumericFallbackLocalToTheSelectedLayer)
 {
     const std::array invalidValues{std::numeric_limits<float>::quiet_NaN(),
@@ -2274,6 +2335,7 @@ TEST_F(MaterialDemandContractTest, PreparedViewKeepsNumericFallbackLocalToTheSel
     EXPECT_TRUE(actual.cameraEvaluated);
 }
 
+/// @brief Checks prepared view checks every frustum plane before sharing visibility.
 TEST_F(MaterialDemandContractTest, PreparedViewChecksEveryFrustumPlaneBeforeSharingVisibility)
 {
     for (int axis = 0; axis < 3; ++axis) {
@@ -2291,6 +2353,7 @@ TEST_F(MaterialDemandContractTest, PreparedViewChecksEveryFrustumPlaneBeforeShar
     }
 }
 
+/// @brief Shared object visibility matches legacy depth bounds and rejection policies.
 TEST_F(MaterialDemandContractTest, SharedObjectVisibilityMatchesLegacyDepthBoundsAndRejectionPolicies)
 {
     m_view.culling.frustum = nullptr;
@@ -2349,6 +2412,7 @@ TEST_F(MaterialDemandContractTest, SharedObjectVisibilityMatchesLegacyDepthBound
     check();
 }
 
+/// @brief Checks independent preparations observe direct changes and keep frozen outer view.
 TEST_F(MaterialDemandContractTest, IndependentPreparationsObserveDirectChangesAndKeepFrozenOuterView)
 {
     const auto frozenFrustum = m_frustum;
@@ -2384,6 +2448,7 @@ TEST_F(MaterialDemandContractTest, IndependentPreparationsObserveDirectChangesAn
 
 } /// @note namespace
 
+/// @brief Demand diagnostic candidate preserves mask rejected items and mutable slots.
 TEST_F(RenderSceneExtractorMaterialTest, DemandDiagnosticCandidatePreservesMaskRejectedItemsAndMutableSlots)
 {
     ASSERT_TRUE(WriteShader("Demand.hlsl", true));
@@ -2455,6 +2520,7 @@ protected:
 };
 } /// @note namespace
 
+/// @brief Repeated GUID loads observe explicit unload and current model contents.
 TEST_F(GuidMeshResolutionTest, RepeatedGuidLoadsObserveExplicitUnloadAndCurrentModelContents)
 {
     const auto reference = MakeReference("first.ply");
@@ -2469,6 +2535,7 @@ TEST_F(GuidMeshResolutionTest, RepeatedGuidLoadsObserveExplicitUnloadAndCurrentM
     auto* third = scene::ResolveMeshPath(reference, *m_resources); ASSERT_NE(third, nullptr); EXPECT_EQ(third->indexCount, 9u);
 }
 
+/// @brief Stable GUID follows index moves and old path hints.
 TEST_F(GuidMeshResolutionTest, StableGuidFollowsIndexMovesAndOldPathHints)
 {
     const auto reference = MakeReference("before.ply");
@@ -2482,6 +2549,7 @@ TEST_F(GuidMeshResolutionTest, StableGuidFollowsIndexMovesAndOldPathHints)
     EXPECT_EQ(scene::ResolveMeshPath(reference, *m_resources), after);
 }
 
+/// @brief Project retirement does not revive cached model handles.
 TEST_F(GuidMeshResolutionTest, ProjectRetirementDoesNotReviveCachedModelHandles)
 {
     const auto reference = MakeReference("retired.ply");
@@ -2492,6 +2560,7 @@ TEST_F(GuidMeshResolutionTest, ProjectRetirementDoesNotReviveCachedModelHandles)
     auto* current = scene::ResolveMeshPath(reference, *m_resources); ASSERT_NE(current, nullptr); EXPECT_EQ(current->indexCount, 15u);
 }
 
+/// @brief Dense geometry keeps chunk edges shared mesh edits and snapshot ownership.
 TEST_F(RenderSceneExtractorTest, DenseGeometryKeepsChunkEdgesSharedMeshEditsAndSnapshotOwnership)
 {
     m_mesh.vertexBuffer = {3, 2}; m_mesh.indexBuffer = {4, 2};
@@ -2528,6 +2597,7 @@ TEST_F(RenderSceneExtractorTest, DenseGeometryKeepsChunkEdgesSharedMeshEditsAndS
     EXPECT_EQ(first.items[64].boundsRadius, 12.0f);
 }
 
+/// @brief Keeps no change publications immutable and marks direct world edits.
 TEST_F(RenderSpatialPublicationTest, KeepsNoChangePublicationsImmutableAndMarksDirectWorldEdits)
 {
     StaticObject();
@@ -2555,6 +2625,7 @@ TEST_F(RenderSpatialPublicationTest, KeepsNoChangePublicationsImmutableAndMarksD
     EXPECT_VEC3_NEAR(warm.Objects()[1].boundsCenter, math::Vector3::ZERO, 0.0f);
 }
 
+/// @brief Includes parent propagation and raw transform restore without notifications.
 TEST_F(RenderSpatialPublicationTest, IncludesParentPropagationAndRawTransformRestoreWithoutNotifications)
 {
     auto& parent = StaticObject();
@@ -2584,6 +2655,7 @@ TEST_F(RenderSpatialPublicationTest, IncludesParentPropagationAndRawTransformRes
     EXPECT_VEC3_NEAR(moved.Objects()[1].boundsCenter, (math::Vector3{7, 0, 0}), 0.0f);
 }
 
+/// @brief Includes every owner of directly edited shared mesh bounds.
 TEST_F(RenderSpatialPublicationTest, IncludesEveryOwnerOfDirectlyEditedSharedMeshBounds)
 {
     m_mesh.boundsRadius = 2;
@@ -2603,6 +2675,7 @@ TEST_F(RenderSpatialPublicationTest, IncludesEveryOwnerOfDirectlyEditedSharedMes
     EXPECT_FLOAT_EQ(warm.Objects()[1].boundsRadius, 2);
 }
 
+/// @brief Resets lineage for order component lifetime entity reuse and empty transitions.
 TEST_F(RenderSpatialPublicationTest, ResetsLineageForOrderComponentLifetimeEntityReuseAndEmptyTransitions)
 {
     auto& first = StaticObject();
@@ -2643,6 +2716,7 @@ TEST_F(RenderSpatialPublicationTest, ResetsLineageForOrderComponentLifetimeEntit
     EXPECT_EQ(warm.spatialUpdate->objectCount, 2u);
 }
 
+/// @brief Starts a full publication after serializer restoration and scene generation change.
 TEST_F(RenderSpatialPublicationTest, StartsAFullPublicationAfterSerializerRestorationAndSceneGenerationChange)
 {
     auto& owner = StaticObject();
@@ -2669,6 +2743,7 @@ TEST_F(RenderSpatialPublicationTest, StartsAFullPublicationAfterSerializerRestor
     EXPECT_VEC3_NEAR(warm.Objects()[0].boundsCenter, (math::Vector3{3, 4, 5}), 0.0f);
 }
 
+/// @brief Conservatively marks skinned bounds on every publication.
 TEST_F(RenderSpatialPublicationTest, ConservativelyMarksSkinnedBoundsOnEveryPublication)
 {
     StaticObject();
@@ -2690,6 +2765,7 @@ TEST_F(RenderSpatialPublicationTest, ConservativelyMarksSkinnedBoundsOnEveryPubl
     EXPECT_FLOAT_EQ(warm.Objects()[1].boundsRadius, 6);
 }
 
+/// @brief Includes consecutive motion and dense fallback before returning to empty deltas.
 TEST_F(RenderSpatialPublicationTest, IncludesConsecutiveMotionAndDenseFallbackBeforeReturningToEmptyDeltas)
 {
     std::array<scene::EntityID, 128> ids;
@@ -2714,6 +2790,7 @@ TEST_F(RenderSpatialPublicationTest, IncludesConsecutiveMotionAndDenseFallbackBe
     EXPECT_FLOAT_EQ(stopped.Objects().back().boundsCenter.x, 6);
 }
 
+/// @brief Leaves legacy and unknown modes uncertified and restarts journal lineage.
 TEST_F(RenderSpatialPublicationTest, LeavesLegacyAndUnknownModesUncertifiedAndRestartsJournalLineage)
 {
     StaticObject();
@@ -2731,6 +2808,7 @@ TEST_F(RenderSpatialPublicationTest, LeavesLegacyAndUnknownModesUncertifiedAndRe
     EXPECT_NE(restarted.spatialUpdate->version, warm.spatialUpdate->version);
 }
 
+/// @brief Shares spatial journal across views and preserves it after notification.
 TEST_F(RenderSceneExtractorMaterialTest, SharesSpatialJournalAcrossViewsAndPreservesItAfterNotification)
 {
     const SpatialProducerEnvironment journal;

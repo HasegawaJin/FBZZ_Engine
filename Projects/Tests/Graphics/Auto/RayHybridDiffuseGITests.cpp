@@ -223,6 +223,7 @@ private:
     }
 };
 
+/// @brief Primary and secondary share diffuse and apply material AO once.
 TEST_F(RayHybridDiffuseGITest, PrimaryAndSecondaryShareDiffuseAndApplyMaterialAoOnce)
 {
     const auto values = Run(true, 0, 0, 0.5f, 2);
@@ -233,6 +234,7 @@ TEST_F(RayHybridDiffuseGITest, PrimaryAndSecondaryShareDiffuseAndApplyMaterialAo
     Expect(values[3], {0, 0, 0, 1});
 }
 
+/// @brief Diffuse lighting samples spherical harmonics at the hit position within the probe volume.
 TEST_F(RayHybridDiffuseGITest, HitPointUsesSpatialShRatherThanCameraSelectedConstant)
 {
     ActiveVolume(0, ShVolume());
@@ -246,6 +248,7 @@ TEST_F(RayHybridDiffuseGITest, HitPointUsesSpatialShRatherThanCameraSelectedCons
     Expect(outside[1], outside[0]);
 }
 
+/// @brief Inner probe overrides outer and metal has no diffuse lobe.
 TEST_F(RayHybridDiffuseGITest, InnerProbeOverridesOuterAndMetalHasNoDiffuseLobe)
 {
     ActiveVolume(1, ShVolume(255, 255, 255));
@@ -261,6 +264,7 @@ TEST_F(RayHybridDiffuseGITest, InnerProbeOverridesOuterAndMetalHasNoDiffuseLobe)
     Expect(metal[1], metal[0]);
 }
 
+/// @brief Known environment diffuse is replaced not added twice.
 TEST_F(RayHybridDiffuseGITest, KnownEnvironmentDiffuseIsReplacedNotAddedTwice)
 {
     const auto shared = Run(true, 0, 0, 1, 2, 3);
@@ -272,6 +276,7 @@ TEST_F(RayHybridDiffuseGITest, KnownEnvironmentDiffuseIsReplacedNotAddedTwice)
     Expect(legacy[2], {legacy[3].x + 2, legacy[3].y + 2, legacy[3].z + 2, 1});
 }
 
+/// @brief Medium does not invent spatial gi or unknown ambient optical distance.
 TEST_F(RayHybridDiffuseGITest, MediumDoesNotInventSpatialGiOrUnknownAmbientOpticalDistance)
 {
     const auto black = Run(true, 0, 0, 1, 2, 0, true);
@@ -281,6 +286,7 @@ TEST_F(RayHybridDiffuseGITest, MediumDoesNotInventSpatialGiOrUnknownAmbientOptic
     Expect(unknown[2], {0, 0, 0, 0});
 }
 
+/// @brief Readiness rejects missing stale wrong size and nonfinite active volumes.
 TEST_F(RayHybridDiffuseGITest, ReadinessRejectsMissingStaleWrongSizeAndNonfiniteActiveVolumes)
 {
     renderer::RenderViewResources view;
@@ -312,6 +318,7 @@ TEST_F(RayHybridDiffuseGITest, ReadinessRejectsMissingStaleWrongSizeAndNonfinite
     EXPECT_TRUE(renderer::IsRayDiffuseIndirectReady(context, view));
 }
 
+/// @brief Published irradiance history requires exact owner epoch handle and consumed values.
 TEST_F(RayHybridDiffuseGITest, PublishedIrradianceHistoryRequiresExactOwnerEpochHandleAndConsumedValues)
 {
     renderer::RenderViewResources view;
@@ -354,6 +361,7 @@ TEST_F(RayHybridDiffuseGITest, PublishedIrradianceHistoryRequiresExactOwnerEpoch
     EXPECT_EQ(state.constantsData.temporalAllowed, 0u);
 }
 
+/// @brief Sh bindings and parameters invalidate history and unversioned writes cannot reuse.
 TEST_F(RayHybridDiffuseGITest, ShBindingsAndParametersInvalidateHistoryAndUnversionedWritesCannotReuse)
 {
     renderer::RenderViewResources view;

@@ -62,6 +62,7 @@ private:
 
 /// @name 骨格
 
+/// @brief Saves and reloads an empty scene.
 TEST_F(SceneSerializerTest, SavesAndReloadsAnEmptyScene)
 {
     scene::Scene source;
@@ -72,6 +73,7 @@ TEST_F(SceneSerializerTest, SavesAndReloadsAnEmptyScene)
     EXPECT_TRUE(restored->GetRootGameObjects().empty());
 }
 
+/// @brief Migrates legacy water and persists the new sea controls.
 TEST_F(SceneSerializerTest, MigratesLegacyWaterAndPersistsTheNewSeaControls)
 {
     const auto scene = scene::SceneSerializer::LoadDataFromText(R"(
@@ -126,6 +128,7 @@ wavesAssetRef = 'Assets/Shared.fzdata'
     EXPECT_FLOAT_EQ(loaded.rippleHeadingDegrees, 40.0f);
 }
 
+/// @brief Keeps directional shadow bake presets and defaults legacy lights to realtime.
 TEST_F(SceneSerializerTest, KeepsDirectionalShadowBakePresetsAndDefaultsLegacyLightsToRealtime)
 {
     scene::Scene source;
@@ -184,6 +187,7 @@ TEST_F(SceneSerializerTest, KeepsDirectionalShadowBakePresetsAndDefaultsLegacyLi
     EXPECT_FALSE(oldMesh->bakeStaticShadow);
 }
 
+/// @brief Keeps vegetation cell budgets in the scene and play clone.
 TEST_F(SceneSerializerTest, KeepsVegetationCellBudgetsInTheSceneAndPlayClone)
 {
     using Instances = scene::InstancedMeshComponent;
@@ -219,6 +223,7 @@ TEST_F(SceneSerializerTest, KeepsVegetationCellBudgetsInTheSceneAndPlayClone)
     expectBudget(*old, {});
 }
 
+/// @brief Keeps animator pose LOD across save and passive play clone and defaults legacy data.
 TEST_F(SceneSerializerTest, KeepsAnimatorPoseLodAcrossSaveAndPassivePlayCloneAndDefaultsLegacyData)
 {
     scene::Scene source;
@@ -254,6 +259,7 @@ TEST_F(SceneSerializerTest, KeepsAnimatorPoseLodAcrossSaveAndPassivePlayCloneAnd
     EXPECT_FLOAT_EQ(oldAnimator->poseLodFarDistance, 60);
 }
 
+/// @brief Keeps every game object.
 TEST_F(SceneSerializerTest, KeepsEveryGameObject)
 {
     scene::Scene source;
@@ -270,6 +276,7 @@ TEST_F(SceneSerializerTest, KeepsEveryGameObject)
     EXPECT_EQ(restored->GetRootGameObjects().size(), 3u);
 }
 
+/// @brief Keeps name tag and layer.
 TEST_F(SceneSerializerTest, KeepsNameTagAndLayer)
 {
     scene::Scene source;
@@ -286,6 +293,7 @@ TEST_F(SceneSerializerTest, KeepsNameTagAndLayer)
     EXPECT_EQ(reloaded->layer, 4);
 }
 
+/// @brief Keeps the persistent identifier.
 TEST_F(SceneSerializerTest, KeepsThePersistentIdentifier)
 {
     /// @note instanceId はクロスオブジェクト参照 (IK の Pole/Target 等) の永続キー。
@@ -300,6 +308,7 @@ TEST_F(SceneSerializerTest, KeepsThePersistentIdentifier)
     EXPECT_NE(restored->FindByGuid(id), nullptr);
 }
 
+/// @brief Keeps the active flag.
 TEST_F(SceneSerializerTest, KeepsTheActiveFlag)
 {
     scene::Scene source;
@@ -315,6 +324,7 @@ TEST_F(SceneSerializerTest, KeepsTheActiveFlag)
 
 /// @name Transform
 
+/// @brief Keeps the local transform.
 TEST_F(SceneSerializerTest, KeepsTheLocalTransform)
 {
     scene::Scene source;
@@ -339,6 +349,7 @@ TEST_F(SceneSerializerTest, KeepsTheLocalTransform)
 
 /// @name 階層
 
+/// @brief Keeps the parent child hierarchy.
 TEST_F(SceneSerializerTest, KeepsTheParentChildHierarchy)
 {
     scene::Scene source;
@@ -354,6 +365,7 @@ TEST_F(SceneSerializerTest, KeepsTheParentChildHierarchy)
     EXPECT_NE(restored->Find("Child"), nullptr);
 }
 
+/// @brief Keeps deep hierarchies.
 TEST_F(SceneSerializerTest, KeepsDeepHierarchies)
 {
     scene::Scene source;
@@ -370,6 +382,7 @@ TEST_F(SceneSerializerTest, KeepsDeepHierarchies)
     EXPECT_NE(restored->Find("C"), nullptr);
 }
 
+/// @brief Terrain grid resolves forward and missing cell GUIDs.
 TEST_F(SceneSerializerTest, TerrainGridResolvesForwardAndMissingCellGuids)
 {
     const auto restored = scene::SceneSerializer::LoadDataFromText(R"(
@@ -398,6 +411,7 @@ instanceId = 'cell'
 
 /// @name 実行時生成物
 
+/// @brief Does not save runtime generated objects.
 TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
 {
     /// @note VFX のノード実体や Water の飛沫。保存すると、開くたびにゾンビ GO が増える。
@@ -414,6 +428,7 @@ TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
 
 /// @name GPU リソースを作らない復元
 
+/// @brief Keeps the mesh path without building GPU resources.
 TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
 {
     /// @note これが «データ復元と GPU リソース生成を分けた» ことの中身。
@@ -438,6 +453,7 @@ TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
     EXPECT_EQ(mr->mesh, nullptr);
 }
 
+/// @brief Keeps several mesh paths independently.
 TEST_F(SceneSerializerTest, KeepsSeveralMeshPathsIndependently)
 {
     /// @note 後から ResolveMeshes() で結び直すのはこの meshPath。1 つでも落ちると
@@ -464,17 +480,20 @@ TEST_F(SceneSerializerTest, KeepsSeveralMeshPathsIndependently)
 
 /// @name 壊れた入力
 
+/// @brief Rejects text that is not TOML.
 TEST_F(SceneSerializerTest, RejectsTextThatIsNotToml)
 {
     EXPECT_EQ(scene::SceneSerializer::LoadDataFromText("{{{ not toml ]]]", "broken.scene"),
               nullptr);
 }
 
+/// @brief Rejects a missing file.
 TEST_F(SceneSerializerTest, RejectsAMissingFile)
 {
     EXPECT_EQ(scene::SceneSerializer::LoadData(ScenePath("does_not_exist.scene")), nullptr);
 }
 
+/// @brief Accepts an empty document.
 TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
 {
     /// @note 空のシーンファイルは «壊れている» ではなく «何も無い»。
@@ -487,6 +506,7 @@ TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
 
 /// @name 安定性
 
+/// @brief Checks saving twice produces the same file.
 TEST_F(SceneSerializerTest, SavingTwiceProducesTheSameFile)
 {
     /// @note 触っていないのに差分が出ると、シーンのコミットに毎回ノイズが混ざる。
@@ -504,6 +524,7 @@ TEST_F(SceneSerializerTest, SavingTwiceProducesTheSameFile)
     EXPECT_EQ(first, second);
 }
 
+/// @brief A second round trip changes nothing.
 TEST_F(SceneSerializerTest, ASecondRoundTripChangesNothing)
 {
     scene::Scene source;
@@ -523,6 +544,7 @@ TEST_F(SceneSerializerTest, ASecondRoundTripChangesNothing)
                      testkit::kLooseTolerance);
 }
 
+/// @brief Missing scripts keep stable saved identity through save play restore and clone.
 TEST_F(SceneSerializerTest, MissingScriptsKeepStableSavedIdentityThroughSavePlayRestoreAndClone)
 {
     scene::Scene source;
@@ -558,6 +580,7 @@ TEST_F(SceneSerializerTest, MissingScriptsKeepStableSavedIdentityThroughSavePlay
     EXPECT_FALSE(scene::SceneSerializer::SaveToText(*restored).empty());
 }
 
+/// @brief Rejects owner local duplicate IDs before loading or appending any objects.
 TEST_F(SceneSerializerTest, RejectsOwnerLocalDuplicateIdsBeforeLoadingOrAppendingAnyObjects)
 {
     const std::string text = R"([[gameobjects]]
@@ -581,6 +604,7 @@ savedScriptId = '11111111-1111-4111-8111-111111111111'
     EXPECT_NE(existing.GetGameObject(sentinelId), nullptr);
 }
 
+/// @brief Rejects duplicate IDs on save and clone and assigns legacy missing IDs once.
 TEST_F(SceneSerializerTest, RejectsDuplicateIdsOnSaveAndCloneAndAssignsLegacyMissingIdsOnce)
 {
     const std::string text = R"([[gameobjects]]

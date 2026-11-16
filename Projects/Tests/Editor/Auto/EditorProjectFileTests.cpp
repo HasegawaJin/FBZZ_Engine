@@ -40,6 +40,7 @@ protected:
     }
 };
 
+/// @brief Resolves new relative and absolute files without creating them.
 TEST_F(EditorProjectFileTest, ResolvesNewRelativeAndAbsoluteFilesWithoutCreatingThem)
 {
     const std::string requested = "Assets/Scenes/New.scene";
@@ -55,6 +56,7 @@ TEST_F(EditorProjectFileTest, ResolvesNewRelativeAndAbsoluteFilesWithoutCreating
     EXPECT_FALSE(std::filesystem::exists(path));
 }
 
+/// @brief Resolves missing parent directories without creating them.
 TEST_F(EditorProjectFileTest, ResolvesMissingParentDirectoriesWithoutCreatingThem)
 {
     const std::string requested = "Assets/Scenes/NewFolder/Nested/New.scene";
@@ -67,6 +69,7 @@ TEST_F(EditorProjectFileTest, ResolvesMissingParentDirectoriesWithoutCreatingThe
     EXPECT_FALSE(std::filesystem::exists(path.parent_path()));
 }
 
+/// @brief Resolves existing output and normalizes internal dot dot.
 TEST_F(EditorProjectFileTest, ResolvesExistingOutputAndNormalizesInternalDotDot)
 {
     const std::string requested = "Assets/Scenes/Existing.scene";
@@ -80,6 +83,7 @@ TEST_F(EditorProjectFileTest, ResolvesExistingOutputAndNormalizesInternalDotDot)
     EXPECT_EQ(path, File(requested));
 }
 
+/// @brief Rejects parent traversal and absolute external files.
 TEST_F(EditorProjectFileTest, RejectsParentTraversalAndAbsoluteExternalFiles)
 {
     ExpectRejected("../Outside.scene");
@@ -88,6 +92,7 @@ TEST_F(EditorProjectFileTest, RejectsParentTraversalAndAbsoluteExternalFiles)
     ExpectRejected(ProjectRoot().generic_string() + "-outside/New.scene");
 }
 
+/// @brief Rejects missing inputs without changing outputs.
 TEST_F(EditorProjectFileTest, RejectsMissingInputsWithoutChangingOutputs)
 {
     ExpectRejected("");
@@ -95,6 +100,7 @@ TEST_F(EditorProjectFileTest, RejectsMissingInputsWithoutChangingOutputs)
     ExpectRejected("Assets/Scenes/New.scene");
 }
 
+/// @brief AI save to new file preserves named objects and missing script references.
 TEST_F(EditorProjectFileTest, AiSaveToNewFilePreservesNamedObjectsAndMissingScriptReferences)
 {
     auto& scene = AttachScene();

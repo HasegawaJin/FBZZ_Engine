@@ -13,6 +13,7 @@ namespace fbzz::tests {
 namespace {
 class RenderLightExtractorTest : public testkit::EngineFixture {};
 
+/// @brief Copies world position and temperature without keeping component references.
 TEST_F(RenderLightExtractorTest, CopiesWorldPositionAndTemperatureWithoutKeepingComponentReferences)
 {
     scene::Scene source;
@@ -36,6 +37,7 @@ TEST_F(RenderLightExtractorTest, CopiesWorldPositionAndTemperatureWithoutKeeping
     EXPECT_EQ(input.legacyShadowSlots[0], -1);
 }
 
+/// @brief Disabled light and inactive parent do not contribute.
 TEST_F(RenderLightExtractorTest, DisabledLightAndInactiveParentDoNotContribute)
 {
     scene::Scene source;
@@ -53,6 +55,7 @@ TEST_F(RenderLightExtractorTest, DisabledLightAndInactiveParentDoNotContribute)
     EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024).punctualLights.empty());
 }
 
+/// @brief Spot shadow and cookie slots match legacy and structured inputs.
 TEST_F(RenderLightExtractorTest, SpotShadowAndCookieSlotsMatchLegacyAndStructuredInputs)
 {
     scene::Scene source;
@@ -71,6 +74,7 @@ TEST_F(RenderLightExtractorTest, SpotShadowAndCookieSlotsMatchLegacyAndStructure
     EXPECT_EQ(input.lightCookieViews[0].sourcePath, "cookie.png");
 }
 
+/// @brief Punctual shadow fades without dropping the light.
 TEST_F(RenderLightExtractorTest, PunctualShadowFadesWithoutDroppingTheLight)
 {
     scene::Scene source;

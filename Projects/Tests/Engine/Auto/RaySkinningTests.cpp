@@ -462,6 +462,7 @@ protected:
     bool UseRenderThread() const override { return true; }
 };
 
+/// @brief Grouped buffer read rejects a component replaced by the wait pump and recovers.
 TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAComponentReplacedByTheWaitPumpAndRecovers)
 {
     BeginFrame();
@@ -486,6 +487,7 @@ TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAComponentReplacedByTheW
     EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
+/// @brief Grouped buffer read rejects a cleared scene and uses the replacement pose next view.
 TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAClearedSceneAndUsesTheReplacementPoseNextView)
 {
     BeginFrame();
@@ -512,6 +514,7 @@ TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAClearedSceneAndUsesTheR
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Grouped buffer read restores output slots cleared on the same component during the wait.
 TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRestoresOutputSlotsClearedOnTheSameComponentDuringTheWait)
 {
     BeginFrame();
@@ -539,6 +542,7 @@ TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRestoresOutputSlotsClearedOnThe
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Idle buffer reads preserve independent actors and previously borrowed source updates.
 TEST_F(ThreadedRaySkinningTest, IdleBufferReadsPreserveIndependentActorsAndPreviouslyBorrowedSourceUpdates)
 {
     const auto second = m_scene.CreateGameObject("Second idle-read actor").GetID();
@@ -573,6 +577,7 @@ TEST_F(ThreadedRaySkinningTest, IdleBufferReadsPreserveIndependentActorsAndPrevi
     EXPECT_NEAR(pixels[2], 8, 0.001f);
 }
 
+/// @brief Default owned batch preserves distinct source groups and current GPU outputs.
 /// @note Default owned execution keeps distinct source groups, per-actor palettes, and later direct source changes authoritative on the real worker.
 TEST_F(ThreadedRaySkinningTest, DefaultOwnedBatchPreservesDistinctSourceGroupsAndCurrentGpuOutputs)
 {
@@ -616,6 +621,7 @@ TEST_F(ThreadedRaySkinningTest, DefaultOwnedBatchPreservesDistinctSourceGroupsAn
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 5, 0.001f);
 }
 
+/// @brief Owned batch reacquires replaced component before publishing native results.
 /// @note Exercise the production DLL lease, including owner-vector reallocation while an outer word buffer is borrowed.
 TEST_F(RaySkinningTest, OwnedBatchReacquiresReplacedComponentBeforePublishingNativeResults)
 {
@@ -654,6 +660,7 @@ TEST_F(RaySkinningTest, OwnedBatchReacquiresReplacedComponentBeforePublishingNat
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
+/// @brief Owned batch rejects cleared scene without dereferencing the previous actor.
 TEST_F(RaySkinningTest, OwnedBatchRejectsClearedSceneWithoutDereferencingThePreviousActor)
 {
     BeginFrame();
@@ -692,6 +699,7 @@ TEST_F(RaySkinningTest, OwnedBatchRejectsClearedSceneWithoutDereferencingThePrev
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], OwnedSkinningComparisonRequested() ? 3 : 1, 0.001f);
 }
 
+/// @brief Owned batch never publishes old output when resource frame rejects its work.
 TEST_F(RaySkinningTest, OwnedBatchNeverPublishesOldOutputWhenResourceFrameRejectsItsWork)
 {
     BeginFrame();
@@ -730,6 +738,7 @@ TEST_F(RaySkinningTest, OwnedBatchNeverPublishesOldOutputWhenResourceFrameReject
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Owned batch rejects pose changed during the operation and recovers next view.
 TEST_F(RaySkinningTest, OwnedBatchRejectsPoseChangedDuringTheOperationAndRecoversNextView)
 {
     BeginFrame();
@@ -768,6 +777,7 @@ TEST_F(RaySkinningTest, OwnedBatchRejectsPoseChangedDuringTheOperationAndRecover
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], OwnedSkinningComparisonRequested() ? 5 : 2, 0.001f);
 }
 
+/// @brief Nested leases preserve outer words and return empty retained storage.
 TEST_F(RaySkinningSignatureScratchTest, NestedLeasesPreserveOuterWordsAndReturnEmptyRetainedStorage)
 {
     using Lease=scene::skinning_signature_detail::SignatureScratchLease;
@@ -807,6 +817,7 @@ TEST_F(RaySkinningSignatureScratchTest, NestedLeasesPreserveOuterWordsAndReturnE
     EXPECT_GE(reused.Words().capacity(),outerCapacity);
 }
 
+/// @brief Same frame pose and exact bit changes invalidate a reused signature.
 /// @note Every view still builds all exact float bits even when the renderer/resource frame did not advance.
 TEST_F(RaySkinningTest, SameFramePoseAndExactBitChangesInvalidateAReusedSignature)
 {
@@ -861,6 +872,7 @@ TEST_F(RaySkinningTest, SameFramePoseAndExactBitChangesInvalidateAReusedSignatur
     EXPECT_NEAR(pixels[2],3.0f,0.001f);
 }
 
+/// @brief Scratch reuse across different palette lengths keeps actor outputs independent.
 /// @note Different palette lengths and model inputs must not retain a preceding actor's trailing words or pose.
 TEST_F(RaySkinningTest, ScratchReuseAcrossDifferentPaletteLengthsKeepsActorOutputsIndependent)
 {
@@ -917,6 +929,7 @@ TEST_F(RaySkinningTest, ScratchReuseAcrossDifferentPaletteLengthsKeepsActorOutpu
     EXPECT_NEAR(pixels[2],9.0f,0.001f);
 }
 
+/// @brief Same frame model round trip and source version update never reuse old deformation.
 /// @note Model/source changes in one frame keep the existing invalidation and authoritative GPU-source version checks.
 TEST_F(RaySkinningTest, SameFrameModelRoundTripAndSourceVersionUpdateNeverReuseOldDeformation)
 {
@@ -949,6 +962,7 @@ TEST_F(RaySkinningTest, SameFrameModelRoundTripAndSourceVersionUpdateNeverReuseO
     EXPECT_NEAR(pixels[2],7.0f,0.001f);
 }
 
+/// @brief Scene clear with same size new actor does not reuse previous signature.
 /// @note Retained numeric capacity outlives scene clear; component generations and signatures still belong to the new scene objects.
 TEST_F(RaySkinningTest, SceneClearWithSameSizeNewActorDoesNotReusePreviousSignature)
 {
@@ -967,6 +981,7 @@ TEST_F(RaySkinningTest, SceneClearWithSameSizeNewActorDoesNotReusePreviousSignat
     EXPECT_NEAR(pixels[2],11.0f,0.001f);
 }
 
+/// @brief Thousand independent palettes survive frame lanes and preserve exact deformation.
 TEST_F(RaySkinningTest, ThousandIndependentPalettesSurviveFrameLanesAndPreserveExactDeformation)
 {
     std::vector<scene::EntityID> objects{m_object};
@@ -1003,6 +1018,7 @@ TEST_F(RaySkinningTest, ThousandIndependentPalettesSurviveFrameLanesAndPreserveE
     }
 }
 
+/// @brief Asset clips share immutable keys keep independent time and expire safely.
 TEST_F(RaySkinningTest, AssetClipsShareImmutableKeysKeepIndependentTimeAndExpireSafely)
 {
     const auto path = m_temp.Path() / "Shared.anim";
@@ -1060,6 +1076,7 @@ TEST_F(RaySkinningTest, AssetClipsShareImmutableKeysKeepIndependentTimeAndExpire
     EXPECT_TRUE(a->ClipAt(0).tracks.empty()); EXPECT_TRUE(b->ClipAt(0).tracks.empty());
 }
 
+/// @brief Deformed mask batch matches independent draws and dither falls back.
 TEST_F(RaySkinningTest, DeformedMaskBatchMatchesIndependentDrawsAndDitherFallsBack)
 {
     std::array<scene::EntityID, 3> entities{m_object};
@@ -1124,6 +1141,7 @@ TEST_F(RaySkinningTest, DeformedMaskBatchMatchesIndependentDrawsAndDitherFallsBa
     renderer::ReleaseInstanceBatchCaches(*m_resources);
 }
 
+/// @brief Deformed indexed shadow and all gbuffer targets match after frustum compaction.
 TEST_F(RaySkinningTest, DeformedIndexedShadowAndAllGbufferTargetsMatchAfterFrustumCompaction)
 {
     std::array<scene::EntityID, 4> entities{m_object};
@@ -1213,6 +1231,7 @@ TEST_F(RaySkinningTest, DeformedIndexedShadowAndAllGbufferTargetsMatchAfterFrust
     renderer::ReleaseInstanceBatchCaches(*m_resources);
 }
 
+/// @brief Pose LOD advances clock while holding pose and samples current time on near return.
 TEST_F(RaySkinningTest, PoseLodAdvancesClockWhileHoldingPoseAndSamplesCurrentTimeOnNearReturn)
 {
     auto& skeleton = *m_model->skeleton;
@@ -1272,6 +1291,7 @@ TEST_F(RaySkinningTest, PoseLodAdvancesClockWhileHoldingPoseAndSamplesCurrentTim
     EXPECT_NEAR(Animator().stateTime, 0.4f, 0.0001f);
 }
 
+/// @brief Ray demand deforms off-screen LOD hidden geometry and publishes the current snapshot.
 TEST_F(RaySkinningTest, RayDemandDeformsOffscreenLodHiddenGeometryAndPublishesTheCurrentSnapshot)
 {
     Skinned().lodVisible = false;
@@ -1295,6 +1315,7 @@ TEST_F(RaySkinningTest, RayDemandDeformsOffscreenLodHiddenGeometryAndPublishesTh
     EXPECT_NEAR(pixels[0], -1, 0.001f); EXPECT_NEAR(pixels[1], -1, 0.001f); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Disabled experimental permission does not deform hidden geometry for a saved path request.
 TEST_F(RaySkinningTest, DisabledExperimentalPermissionDoesNotDeformHiddenGeometryForASavedPathRequest)
 {
     Skinned().lodVisible = false;
@@ -1334,6 +1355,7 @@ TEST_F(RaySkinningTest, DisabledExperimentalPermissionDoesNotDeformHiddenGeometr
     EndFrameWithoutRead();
 }
 
+/// @brief Renderer membership refresh preserves scene order and ancestor palettes.
 /// @note GPU request order follows Scene ownership, including late component registration and recycled entity indices.
 TEST_F(RaySkinningTest, RendererMembershipRefreshPreservesSceneOrderAndAncestorPalettes)
 {
@@ -1394,6 +1416,7 @@ TEST_F(RaySkinningTest, RendererMembershipRefreshPreservesSceneOrderAndAncestorP
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Missing program invalidates inactive and disabled renderer publications.
 /// @note Program failure invalidates all publications even when normal eligibility would skip a renderer.
 TEST_F(RaySkinningTest, MissingProgramInvalidatesInactiveAndDisabledRendererPublications)
 {
@@ -1428,6 +1451,7 @@ TEST_F(RaySkinningTest, MissingProgramInvalidatesInactiveAndDisabledRendererPubl
     EndFrameWithoutRead();
 }
 
+/// @brief Same pose and two views share one dispatch but pose changes advance the output version.
 TEST_F(RaySkinningTest, SamePoseAndTwoViewsShareOneDispatchButPoseChangesAdvanceTheOutputVersion)
 {
     BeginFrame();
@@ -1454,6 +1478,7 @@ TEST_F(RaySkinningTest, SamePoseAndTwoViewsShareOneDispatchButPoseChangesAdvance
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Canonical skinned material requires verified current deformation before ray scene collection.
 TEST_F(RaySkinningTest, CanonicalSkinnedMaterialRequiresVerifiedCurrentDeformationBeforeRaySceneCollection)
 {
     asset::MaterialAssetAuthoring material;
@@ -1536,6 +1561,7 @@ TEST_F(RaySkinningTest, CanonicalSkinnedMaterialRequiresVerifiedCurrentDeformati
     Object().RemoveComponent<scene::MeshRenderer>();
 }
 
+/// @brief Skinning uses the current morph vertex snapshot and invalidates the cache when that snapshot changes.
 TEST_F(RaySkinningTest, MorphSnapshotRatherThanOriginalCpuVerticesIsSkinnedAndItsUpdateInvalidatesTheCache)
 {
     auto morphed = m_model->meshes[0]->cpuSkinnedVertices;
@@ -1560,6 +1586,7 @@ TEST_F(RaySkinningTest, MorphSnapshotRatherThanOriginalCpuVerticesIsSkinnedAndIt
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 7, 0.001f);
 }
 
+/// @brief Reference pose works without animator and missing pose does not publish geometry.
 TEST_F(RaySkinningTest, ReferencePoseWorksWithoutAnimatorAndMissingPoseDoesNotPublishGeometry)
 {
     Object().RemoveComponent<scene::AnimatorComponent>();
@@ -1579,6 +1606,7 @@ TEST_F(RaySkinningTest, ReferencePoseWorksWithoutAnimatorAndMissingPoseDoesNotPu
     /// @note Readback is intentionally skipped when no valid output exists.
 }
 
+/// @brief Updating the base source buffer in place makes skinning consume the current vertex bytes.
 TEST_F(RaySkinningTest, SameHandleBaseSourceUpdateUsesCurrentBufferBytesRatherThanTheOriginalCpuArray)
 {
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 1});
@@ -1603,6 +1631,7 @@ TEST_F(RaySkinningTest, SameHandleBaseSourceUpdateUsesCurrentBufferBytesRatherTh
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 8, 0.001f);
 }
 
+/// @brief Same handle topology growth reallocates output and publishes all current vertices.
 TEST_F(RaySkinningTest, SameHandleTopologyGrowthReallocatesOutputAndPublishesAllCurrentVertices)
 {
     auto& mesh = *m_model->meshes[0];
@@ -1655,6 +1684,7 @@ TEST_F(RaySkinningTest, SameHandleTopologyGrowthReallocatesOutputAndPublishesAll
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 10, 0.001f);
 }
 
+/// @brief Wrong stride or non writable output never reuses a cached pose.
 TEST_F(RaySkinningTest, WrongStrideOrNonWritableOutputNeverReusesACachedPose)
 {
     BeginFrame();
@@ -1687,6 +1717,7 @@ TEST_F(RaySkinningTest, WrongStrideOrNonWritableOutputNeverReusesACachedPose)
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
+/// @brief Model and source handle generations invalidate previous output and source snapshots.
 TEST_F(RaySkinningTest, ModelAndSourceHandleGenerationsInvalidatePreviousOutputAndSourceSnapshots)
 {
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 1});
@@ -1716,6 +1747,7 @@ TEST_F(RaySkinningTest, ModelAndSourceHandleGenerationsInvalidatePreviousOutputA
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 8, 0.001f);
 }
 
+/// @brief Resource reset recreates stale output and never reuses previous device inputs.
 TEST_F(RaySkinningTest, ResourceResetRecreatesStaleOutputAndNeverReusesPreviousDeviceInputs)
 {
     BeginFrame();
@@ -1743,6 +1775,7 @@ TEST_F(RaySkinningTest, ResourceResetRecreatesStaleOutputAndNeverReusesPreviousD
     }
 }
 
+/// @brief Partial or wrong stride source never publishes a whole renderer deformation.
 TEST_F(RaySkinningTest, PartialOrWrongStrideSourceNeverPublishesAWholeRendererDeformation)
 {
     m_otherModel = MakeModel(2);
@@ -1778,6 +1811,7 @@ TEST_F(RaySkinningTest, PartialOrWrongStrideSourceNeverPublishesAWholeRendererDe
     ASSERT_EQ(result.size(), 4u); EXPECT_NEAR(result[2], 1, 0.001f);
 }
 
+/// @brief Released skinning shader or constants never publishes old output for a new pose.
 TEST_F(RaySkinningTest, ReleasedSkinningShaderOrConstantsNeverPublishesOldOutputForANewPose)
 {
     BeginFrame();
@@ -1831,6 +1865,7 @@ TEST_F(RaySkinningTest, ReleasedSkinningShaderOrConstantsNeverPublishesOldOutput
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 6, 0.001f);
 }
 
+/// @brief Rejected dispatch never publishes an old nonzero content version.
 TEST_F(RaySkinningTest, RejectedDispatchNeverPublishesAnOldNonzeroContentVersion)
 {
     BeginFrame();
@@ -1856,6 +1891,7 @@ TEST_F(RaySkinningTest, RejectedDispatchNeverPublishesAnOldNonzeroContentVersion
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Direct signature reuse skips word materialization and preserves all consumers.
 TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseSkipsWordMaterializationAndPreservesAllConsumers)
 {
     scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1881,6 +1917,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseSkipsWordMaterializationAndP
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
+/// @brief Direct signature reuse detects public pose and borrowed source updates.
 TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseDetectsPublicPoseAndBorrowedSourceUpdates)
 {
     scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1910,6 +1947,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseDetectsPublicPoseAndBorrowed
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 6, 0.001f);
 }
 
+/// @brief Direct signature reuse keeps unready output and unknown facade fallbacks.
 TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseKeepsUnreadyOutputAndUnknownFacadeFallbacks)
 {
     scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1928,6 +1966,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseKeepsUnreadyOutputAndUnknown
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
+/// @brief Native prepared ticket defers writes and owns original source and pose.
 TEST_F(RaySkinningTest, NativePreparedTicketDefersWritesAndOwnsOriginalSourceAndPose)
 {
     SkinningDemandEnvironment mode;
@@ -1962,6 +2001,7 @@ TEST_F(RaySkinningTest, NativePreparedTicketDefersWritesAndOwnsOriginalSourceAnd
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Native prepared source snapshot tracks direct updates and handle generation.
 TEST_F(ThreadedRaySkinningTest, NativePreparedSourceSnapshotTracksDirectUpdatesAndHandleGeneration)
 {
     SkinningDemandEnvironment mode;
@@ -2037,6 +2077,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedSourceSnapshotTracksDirectUpdatesA
     EXPECT_NEAR(pixels[2], 14, 0.001f);
 }
 
+/// @brief Native prepared reuse pins raw borrow until the new frame completes.
 TEST_F(ThreadedRaySkinningTest, NativePreparedReusePinsRawBorrowUntilTheNewFrameCompletes)
 {
     SkinningDemandEnvironment mode;
@@ -2073,6 +2114,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedReusePinsRawBorrowUntilTheNewFrame
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief GPU demand off preserves original dispatch without capture.
 TEST_F(RaySkinningTest, GpuDemandOffPreservesOriginalDispatchWithoutCapture)
 {
     SkinningDemandEnvironment mode("0");
@@ -2103,6 +2145,7 @@ TEST_F(RaySkinningTest, GpuDemandOffPreservesOriginalDispatchWithoutCapture)
     EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
+/// @brief GPU demand masked output remains unsubmitted and late consumer keeps captured pose.
 TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKeepsCapturedPose)
 {
     SkinningDemandEnvironment mode;
@@ -2171,6 +2214,7 @@ TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKe
     EXPECT_FALSE(context.renderScene->items[0].deformedVertexBuffer.IsValid());
 }
 
+/// @brief GPU demand unused ticket survives view then reappears without recapture.
 TEST_F(ThreadedRaySkinningTest, GpuDemandUnusedTicketSurvivesViewThenReappearsWithoutRecapture)
 {
     SkinningDemandEnvironment mode;
@@ -2212,6 +2256,7 @@ TEST_F(ThreadedRaySkinningTest, GpuDemandUnusedTicketSurvivesViewThenReappearsWi
     EXPECT_NEAR(pixels[2], 5, 0.001f);
 }
 
+/// @brief GPU demand frustum and distance excluded rows never submit at view exit.
 TEST_F(RaySkinningTest, GpuDemandFrustumAndDistanceExcludedRowsNeverSubmitAtViewExit)
 {
     SkinningDemandEnvironment mode;
@@ -2248,6 +2293,7 @@ TEST_F(RaySkinningTest, GpuDemandFrustumAndDistanceExcludedRowsNeverSubmitAtView
     }
 }
 
+/// @brief GPU demand shadow only caster and unknown native keep full dispatch.
 TEST_F(RaySkinningTest, GpuDemandShadowOnlyCasterAndUnknownNativeKeepFullDispatch)
 {
     SkinningDemandEnvironment mode;
@@ -2292,6 +2338,7 @@ TEST_F(RaySkinningTest, GpuDemandShadowOnlyCasterAndUnknownNativeKeepFullDispatc
     EXPECT_NEAR(pixels[2], 5, 0.001f);
 }
 
+/// @brief GPU demand preparation callback and nested scope retain original full path.
 TEST_F(RaySkinningTest, GpuDemandPreparationCallbackAndNestedScopeRetainOriginalFullPath)
 {
     SkinningDemandEnvironment mode;
@@ -2322,6 +2369,7 @@ TEST_F(RaySkinningTest, GpuDemandPreparationCallbackAndNestedScopeRetainOriginal
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Native prepared ticket rejects reset without publishing receipt.
 TEST_F(RaySkinningTest, NativePreparedTicketRejectsResetWithoutPublishingReceipt)
 {
     SkinningDemandEnvironment mode;
@@ -2349,6 +2397,7 @@ TEST_F(RaySkinningTest, NativePreparedTicketRejectsResetWithoutPublishingReceipt
     EXPECT_FALSE(renderer::SubmitPreparedSkinning(completed));
 }
 
+/// @brief Native prepared old item draws captured pose after public handle release.
 TEST_F(ThreadedRaySkinningTest, NativePreparedOldItemDrawsCapturedPoseAfterPublicHandleRelease)
 {
     SkinningDemandEnvironment mode;
@@ -2386,6 +2435,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedOldItemDrawsCapturedPoseAfterPubli
     EXPECT_GT(pixels[3], 0.99f);
 }
 
+/// @brief Native prepared published output rejects external native write.
 TEST_F(RaySkinningTest, NativePreparedPublishedOutputRejectsExternalNativeWrite)
 {
     SkinningDemandEnvironment mode;
@@ -2411,6 +2461,7 @@ TEST_F(RaySkinningTest, NativePreparedPublishedOutputRejectsExternalNativeWrite)
     EndFrameWithoutRead();
 }
 
+/// @brief GPU demand wait pump cancels preparation before scene mutation.
 TEST_F(ThreadedRaySkinningTest, GpuDemandWaitPumpCancelsPreparationBeforeSceneMutation)
 {
     SkinningDemandEnvironment mode;
@@ -2441,6 +2492,7 @@ TEST_F(ThreadedRaySkinningTest, GpuDemandWaitPumpCancelsPreparationBeforeSceneMu
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief GPU demand next frame unevaluated LOD does not publish old pending pose.
 TEST_F(RaySkinningTest, GpuDemandNextFrameUnevaluatedLodDoesNotPublishOldPendingPose)
 {
     SkinningDemandEnvironment mode;
@@ -2488,6 +2540,7 @@ TEST_F(RaySkinningTest, GpuDemandNextFrameUnevaluatedLodDoesNotPublishOldPending
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
+/// @brief Demand count only scope preserves two view requests and native writes.
 TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWrites)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2541,6 +2594,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWri
     pixels=ReadAndEndFrame();ASSERT_EQ(pixels.size(),4u);EXPECT_NEAR(pixels[2],5,0.001f);
 }
 
+/// @brief Demand count only reasons union actual consumers and separate static presence.
 TEST_F(RaySkinningTest, DemandCountOnlyReasonsUnionActualConsumersAndSeparateStaticPresence)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2599,6 +2653,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyReasonsUnionActualConsumersAndSeparateSta
     auto pixels=ReadAndEndFrame();ASSERT_EQ(pixels.size(),4u);EXPECT_NEAR(pixels[2],7,0.001f);
 }
 
+/// @brief Demand count only reads slot mask dense and nested state without native work.
 TEST_F(RaySkinningTest, DemandCountOnlyReadsSlotMaskDenseAndNestedStateWithoutNativeWork)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2654,6 +2709,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyReadsSlotMaskDenseAndNestedStateWithoutNa
 
 thread_local uint32_t demandContractCallbacks=0;
 void CountDemandMathContract(const math::ContractViolation&) { ++demandContractCallbacks; }
+/// @brief Demand count only invalid bounds guard does not invoke the public math handler.
 TEST_F(RaySkinningTest, DemandCountOnlyInvalidBoundsGuardDoesNotInvokeThePublicMathHandler)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2687,6 +2743,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyInvalidBoundsGuardDoesNotInvokeThePublicM
 }
 
 
+/// @brief Demand input classification separates empty slots and zero weights from native morph bytes.
 TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeightsFromNativeMorphBytes)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2744,6 +2801,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     }
 }
 
+/// @brief Demand input classification maps selected targets and bake flags stay distinct.
 TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlagsStayDistinct)
 {
     namespace demand=scene::skinning_demand_detail;

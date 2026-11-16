@@ -43,6 +43,7 @@ protected:
     editor::OperatorRegistry m_registry;
     editor::UndoStack m_undo;
 };
+/// @brief Partial edit preserves GUID and supports undo redo.
 TEST_F(TextureImportOperatorTest, PartialEditPreservesGuidAndSupportsUndoRedo)
 {
     const std::string guid = asset::AssetDatabase::GuidFromPath(File("Assets/Color.png").generic_string());
@@ -53,6 +54,7 @@ TEST_F(TextureImportOperatorTest, PartialEditPreservesGuidAndSupportsUndoRedo)
     ASSERT_TRUE(m_undo.Undo()); EXPECT_EQ(Settings().maxSize, 4096u);
     ASSERT_TRUE(m_undo.Redo()); EXPECT_EQ(Settings().maxSize, 1024u);
 }
+/// @brief Unknown fields reject all changes.
 TEST_F(TextureImportOperatorTest, UnknownFieldsRejectAllChanges)
 {
     auto patch = editor::OpData::MakeObject(); patch.Set("maxSize", editor::OpData(1024));
@@ -61,6 +63,7 @@ TEST_F(TextureImportOperatorTest, UnknownFieldsRejectAllChanges)
     asset::TextureImportSettings settings;
     EXPECT_FALSE(asset::GetCachedTextureImportSettings(File("Assets/Color.png").generic_string(), settings));
 }
+/// @brief Incompatible compression and negative numbers are rejected.
 TEST_F(TextureImportOperatorTest, IncompatibleCompressionAndNegativeNumbersAreRejected)
 {
     auto patch = editor::OpData::MakeObject(); patch.Set("type", editor::OpData("Normal"));
@@ -69,6 +72,7 @@ TEST_F(TextureImportOperatorTest, IncompatibleCompressionAndNegativeNumbersAreRe
     patch = editor::OpData::MakeObject(); patch.Set("maxSize", editor::OpData(-1));
     EXPECT_FALSE(Configure(patch).ok); EXPECT_FALSE(m_undo.CanUndo());
 }
+/// @brief Sprite pivot and border edits keep stable identity.
 TEST_F(TextureImportOperatorTest, SpritePivotAndBorderEditsKeepStableIdentity)
 {
     auto patch = editor::OpData::MakeObject(); patch.Set("type", editor::OpData("Sprite"));
@@ -85,6 +89,7 @@ TEST_F(TextureImportOperatorTest, SpritePivotAndBorderEditsKeepStableIdentity)
     ASSERT_TRUE(Configure(patch).ok); EXPECT_EQ(Settings().sprites[0].id, id);
     ASSERT_TRUE(m_undo.Undo()); EXPECT_EQ(Settings().sprites[0].id, id);
 }
+/// @brief Undo conflict preserves external changes.
 TEST_F(TextureImportOperatorTest, UndoConflictPreservesExternalChanges)
 {
     auto patch = editor::OpData::MakeObject(); patch.Set("maxSize", editor::OpData(1024));
@@ -93,6 +98,7 @@ TEST_F(TextureImportOperatorTest, UndoConflictPreservesExternalChanges)
     ASSERT_TRUE(asset::TexDescSerializer{}.Save(external, File("Assets/Color.png.meta").generic_string()));
     EXPECT_FALSE(m_undo.Undo()); EXPECT_EQ(Settings().maxSize, 512u); EXPECT_EQ(m_undo.GetCursor(), 1u);
 }
+/// @brief Assets boundary rejects traversal.
 TEST_F(TextureImportOperatorTest, AssetsBoundaryRejectsTraversal)
 {
     std::ofstream(File("Outside.png")) << "settings-only";
@@ -100,6 +106,7 @@ TEST_F(TextureImportOperatorTest, AssetsBoundaryRejectsTraversal)
     editor::OpContext context{Context(), m_undo};
     EXPECT_FALSE(m_registry.Invoke("asset.texture.inspect", context, args).ok);
 }
+/// @brief Changing texture type keeps authored sprite rectangles and IDs.
 TEST_F(TextureImportOperatorTest, ChangingTextureTypeKeepsAuthoredSpriteRectanglesAndIds)
 {
     auto patch = editor::OpData::MakeObject(); patch.Set("type", editor::OpData("Sprite"));
@@ -113,6 +120,7 @@ TEST_F(TextureImportOperatorTest, ChangingTextureTypeKeepsAuthoredSpriteRectangl
     const auto restored = Settings(); ASSERT_EQ(restored.sprites.size(), 1u); EXPECT_EQ(restored.sprites[0].id, id);
     EXPECT_EQ(restored.sprites[0].width, 32u);
 }
+/// @brief Trim uses decoded alpha and keeps sprite identity through undo.
 TEST_F(TextureImportOperatorTest, TrimUsesDecodedAlphaAndKeepsSpriteIdentityThroughUndo)
 {
     editor::playtest::RgbaImage image; image.width = 8; image.height = 8; image.pixels.resize(8 * 8 * 4, 0);

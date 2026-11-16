@@ -46,6 +46,7 @@ class AudioBusTest : public testkit::EngineFixture {};
 
 /// @name 既定の構成
 
+/// @brief Default layout starts with master.
 TEST_F(AudioBusTest, DefaultLayoutStartsWithMaster)
 {
     const std::vector<audio::BusDesc> layout = audio::DefaultBusLayout();
@@ -55,6 +56,7 @@ TEST_F(AudioBusTest, DefaultLayoutStartsWithMaster)
     EXPECT_TRUE(layout[audio::kMasterBus].parent.empty());
 }
 
+/// @brief Checks default layout covers the categories.
 TEST_F(AudioBusTest, DefaultLayoutCoversTheCategories)
 {
     const std::vector<audio::BusDesc> layout = audio::DefaultBusLayout();
@@ -65,6 +67,7 @@ TEST_F(AudioBusTest, DefaultLayoutCoversTheCategories)
     EXPECT_TRUE(Contains(layout, "Voice"));
 }
 
+/// @brief Default layout is already normalised.
 TEST_F(AudioBusTest, DefaultLayoutIsAlreadyNormalised)
 {
     const std::vector<audio::BusDesc> layout = audio::DefaultBusLayout();
@@ -77,6 +80,7 @@ TEST_F(AudioBusTest, DefaultLayoutIsAlreadyNormalised)
 
 /// @name 並べ替え
 
+/// @brief Puts master first even if it was declared last.
 TEST_F(AudioBusTest, PutsMasterFirstEvenIfItWasDeclaredLast)
 {
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
@@ -88,6 +92,7 @@ TEST_F(AudioBusTest, PutsMasterFirstEvenIfItWasDeclaredLast)
     EXPECT_EQ(normalised[audio::kMasterBus].name, audio::kMasterBusName);
 }
 
+/// @brief Places every parent before its child.
 TEST_F(AudioBusTest, PlacesEveryParentBeforeItsChild)
 {
     /// @note submix は親が先に無いと繋げられない。ここが唯一の順序保証。
@@ -104,6 +109,7 @@ TEST_F(AudioBusTest, PlacesEveryParentBeforeItsChild)
     EXPECT_LT(IndexOf(normalised, audio::kMasterBusName), IndexOf(normalised, "SE"));
 }
 
+/// @brief Keeps deep chains in order.
 TEST_F(AudioBusTest, KeepsDeepChainsInOrder)
 {
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({
@@ -119,6 +125,7 @@ TEST_F(AudioBusTest, KeepsDeepChainsInOrder)
 
 /// @name 壊れた構成
 
+/// @brief Treats a missing parent as master.
 TEST_F(AudioBusTest, TreatsAMissingParentAsMaster)
 {
     /// @note プロジェクト設定を手で書き換えれば普通に起きる。落とさず拾い上げる。
@@ -131,6 +138,7 @@ TEST_F(AudioBusTest, TreatsAMissingParentAsMaster)
     EXPECT_LT(IndexOf(normalised, audio::kMasterBusName), IndexOf(normalised, "Orphan"));
 }
 
+/// @brief Breaks a cycle instead of hanging.
 TEST_F(AudioBusTest, BreaksACycleInsteadOfHanging)
 {
     /// @note A→B→A。並べ替えが素朴だと無限ループになる場所。
@@ -145,6 +153,7 @@ TEST_F(AudioBusTest, BreaksACycleInsteadOfHanging)
     EXPECT_EQ(normalised[audio::kMasterBus].name, audio::kMasterBusName);
 }
 
+/// @brief Collapses duplicate names to the last one.
 TEST_F(AudioBusTest, CollapsesDuplicateNamesToTheLastOne)
 {
     std::vector<audio::BusDesc> input{ Bus(audio::kMasterBusName), Bus("SE", audio::kMasterBusName),
@@ -160,6 +169,7 @@ TEST_F(AudioBusTest, CollapsesDuplicateNamesToTheLastOne)
     EXPECT_NEAR(normalised[IndexOf(normalised, "SE")].volume, 0.9f, testkit::kTolerance);
 }
 
+/// @brief Adds master when it is missing.
 TEST_F(AudioBusTest, AddsMasterWhenItIsMissing)
 {
     /// @note Master が無い構成は «最終出力が無い» ので鳴らせない。補って成立させる。
@@ -170,6 +180,7 @@ TEST_F(AudioBusTest, AddsMasterWhenItIsMissing)
     EXPECT_EQ(normalised[audio::kMasterBus].name, audio::kMasterBusName);
 }
 
+/// @brief An empty layout still yields master.
 TEST_F(AudioBusTest, AnEmptyLayoutStillYieldsMaster)
 {
     const std::vector<audio::BusDesc> normalised = audio::NormalizeBusLayout({});
@@ -178,6 +189,7 @@ TEST_F(AudioBusTest, AnEmptyLayoutStillYieldsMaster)
     EXPECT_EQ(normalised[audio::kMasterBus].name, audio::kMasterBusName);
 }
 
+/// @brief Keeps the settings of each bus.
 TEST_F(AudioBusTest, KeepsTheSettingsOfEachBus)
 {
     /// @note 並べ替えで音量や残響の設定が落ちないこと。
@@ -195,6 +207,7 @@ TEST_F(AudioBusTest, KeepsTheSettingsOfEachBus)
     EXPECT_TRUE(restored.reverb);
 }
 
+/// @brief Checks normalising twice changes nothing.
 TEST_F(AudioBusTest, NormalisingTwiceChangesNothing)
 {
     const std::vector<audio::BusDesc> once = audio::NormalizeBusLayout({

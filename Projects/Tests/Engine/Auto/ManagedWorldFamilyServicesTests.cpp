@@ -53,6 +53,7 @@ protected:
     scene::managed_detail::ManagedServiceResult m_result;
     bool m_previousPlay = false;
 };
+/// @brief Pending removal and readd use exact births beyond old 32 bit boundary.
 TEST_F(ManagedWorldFamilyServicesTest, PendingRemovalAndReaddUseExactBirthsBeyondOld32BitBoundary)
 {
     for (const auto kind : std::array<Kind, 7>{Kind::VFX, Kind::SEQUENCE, Kind::TERRAIN, Kind::WATER,
@@ -78,6 +79,7 @@ TEST_F(ManagedWorldFamilyServicesTest, PendingRemovalAndReaddUseExactBirthsBeyon
         EXPECT_FALSE(Controls::IsPendingComponentRemoval(*m_object, invalid));
     }
 }
+/// @brief Terrain edits request geometry rebuild and reject wrong scope without changes.
 TEST_F(ManagedWorldFamilyServicesTest, TerrainEditsRequestGeometryRebuildAndRejectWrongScopeWithoutChanges)
 {
     auto& terrain = m_object->AddComponent<scene::TerrainComponent>();
@@ -102,6 +104,7 @@ TEST_F(ManagedWorldFamilyServicesTest, TerrainEditsRequestGeometryRebuildAndReje
     EXPECT_EQ(terrain.heightData, original);
     EXPECT_EQ(Run(Op::SERVICE_TERRAIN, 9, true, Grid(1, 1), height, {}, true), Status::INVALID_ARGUMENT);
 }
+/// @brief Cave directional queries transfer floor ceiling miss and reject malformed packets.
 TEST_F(ManagedWorldFamilyServicesTest, CaveDirectionalQueriesTransferFloorCeilingMissAndRejectMalformedPackets)
 {
     auto& terrain = m_object->AddComponent<scene::TerrainComponent>();
@@ -133,6 +136,7 @@ TEST_F(ManagedWorldFamilyServicesTest, CaveDirectionalQueriesTransferFloorCeilin
     ASSERT_EQ(Controls::Component(*m_object, static_cast<uint32_t>(Kind::TERRAIN), Op::COMPONENT_REMOVE, exists), Status::OK);
     EXPECT_EQ(Run(Op::SERVICE_TERRAIN, 16, true, 0, reference), Status::NOT_FOUND);
 }
+/// @brief Water queries reuse CPU wave evaluation and playback mutation requires play.
 TEST_F(ManagedWorldFamilyServicesTest, WaterQueriesReuseCpuWaveEvaluationAndPlaybackMutationRequiresPlay)
 {
     auto& water = m_object->AddComponent<scene::WaterComponent>();
@@ -153,6 +157,7 @@ TEST_F(ManagedWorldFamilyServicesTest, WaterQueriesReuseCpuWaveEvaluationAndPlay
     ASSERT_EQ(Run(Op::SERVICE_WATER, 11, false, 0, ripple), Status::OK);
     EXPECT_EQ(water.ripples.size(), 1U);
 }
+/// @brief Checks water interaction selector queues only validated play values without structural edits.
 TEST_F(ManagedWorldFamilyServicesTest, WaterInteractionSelectorQueuesOnlyValidatedPlayValuesWithoutStructuralEdits)
 {
     auto& water = m_object->AddComponent<scene::WaterComponent>();
@@ -177,6 +182,7 @@ TEST_F(ManagedWorldFamilyServicesTest, WaterInteractionSelectorQueuesOnlyValidat
     EXPECT_EQ(Run(Op::SERVICE_WATER, 13, false, 1000000, bubble), Status::INVALID_ARGUMENT);
     EXPECT_EQ(water.interactionRuntime.pending.size(), 1u);
 }
+/// @brief Explicit water interaction returns `false` for excluded or disabled locations.
 TEST_F(ManagedWorldFamilyServicesTest, ExplicitWaterInteractionReturnsFalseForExcludedOrDisabledLocations)
 {
     auto& water = m_object->AddComponent<scene::WaterComponent>();
@@ -192,6 +198,7 @@ TEST_F(ManagedWorldFamilyServicesTest, ExplicitWaterInteractionReturnsFalseForEx
     EXPECT_EQ(m_result.integer, 0);
     EXPECT_TRUE(water.interactionRuntime.pending.empty());
 }
+/// @brief VFX commands keep actual playback and trigger semantics.
 TEST_F(ManagedWorldFamilyServicesTest, VfxCommandsKeepActualPlaybackAndTriggerSemantics)
 {
     auto& vfx = m_object->AddComponent<scene::VFXComponent>();
@@ -206,6 +213,7 @@ TEST_F(ManagedWorldFamilyServicesTest, VfxCommandsKeepActualPlaybackAndTriggerSe
     EXPECT_EQ(Run(Op::SERVICE_VFX, 10, true), Status::INVALID_ARGUMENT); EXPECT_TRUE(vfx.playing);
     ASSERT_EQ(Run(Op::SERVICE_VFX, 10, false), Status::OK); EXPECT_FALSE(vfx.playing);
 }
+/// @brief Checks sequence queues lifecycle and preserves double precision and exact binding.
 TEST_F(ManagedWorldFamilyServicesTest, SequenceQueuesLifecycleAndPreservesDoublePrecisionAndExactBinding)
 {
     auto& sequence = m_object->AddComponent<scene::SequencePlayerComponent>();

@@ -28,6 +28,7 @@ protected:
     }
 };
 
+/// @brief Reset clears accumulated state.
 TEST_F(TimeTickTest, ResetClearsAccumulatedState)
 {
     fbzz::Time::Tick();
@@ -39,6 +40,7 @@ TEST_F(TimeTickTest, ResetClearsAccumulatedState)
     EXPECT_EQ(fbzz::Time::frameCount, 0u);
 }
 
+/// @brief Tick advances the frame counter.
 TEST_F(TimeTickTest, TickAdvancesTheFrameCounter)
 {
     fbzz::Time::Tick();
@@ -49,6 +51,7 @@ TEST_F(TimeTickTest, TickAdvancesTheFrameCounter)
     EXPECT_GE(fbzz::Time::unscaledDeltaTime, 0.0f);
 }
 
+/// @brief Zero time scale freezes scaled time but keeps ticking.
 TEST_F(TimeTickTest, ZeroTimeScaleFreezesScaledTimeButKeepsTicking)
 {
     fbzz::Time::SetTimeScale(0.0f);

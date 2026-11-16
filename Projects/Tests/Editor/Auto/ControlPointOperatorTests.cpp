@@ -108,6 +108,7 @@ protected:
     }
 };
 
+/// @brief Water conversion preserves numeric rows and uses one undo.
 TEST_F(ControlPointOperatorTest, WaterConversionPreservesNumericRowsAndUsesOneUndo)
 {
     const auto ownerId = River();
@@ -162,6 +163,7 @@ TEST_F(ControlPointOperatorTest, WaterConversionPreservesNumericRowsAndUsesOneUn
     EXPECT_EQ(World().GameObjectCount(), count + original.size() + 1);
 }
 
+/// @brief Spline conversion and numeric return preserve the ordered positions.
 TEST_F(ControlPointOperatorTest, SplineConversionAndNumericReturnPreserveTheOrderedPositions)
 {
     auto& object = World().CreateGameObject("Path"); const auto owner = object.GetID();
@@ -187,6 +189,7 @@ TEST_F(ControlPointOperatorTest, SplineConversionAndNumericReturnPreserveTheOrde
     EXPECT_EQ(World().GameObjectCount(), objectCount);
 }
 
+/// @brief Oversized input and prefab structure fail before creating actors.
 TEST_F(ControlPointOperatorTest, OversizedInputAndPrefabStructureFailBeforeCreatingActors)
 {
     const auto owner = River();
@@ -210,6 +213,7 @@ TEST_F(ControlPointOperatorTest, OversizedInputAndPrefabStructureFailBeforeCreat
     EXPECT_EQ(World().GameObjectCount(), count); EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Shared binding reorder unbind and missing GUID keep row attributes.
 TEST_F(ControlPointOperatorTest, SharedBindingReorderUnbindAndMissingGuidKeepRowAttributes)
 {
     const auto first = River("First"); const auto second = River("Second");
@@ -242,6 +246,7 @@ TEST_F(ControlPointOperatorTest, SharedBindingReorderUnbindAndMissingGuidKeepRow
     EXPECT_EQ(Water(second).pointBindings[1].target.guid, sharedGuid);
 }
 
+/// @brief Conversion undo refuses to destroy a later shared point.
 TEST_F(ControlPointOperatorTest, ConversionUndoRefusesToDestroyALaterSharedPoint)
 {
     const auto owner = River(); ASSERT_TRUE(Convert(owner).ok);
@@ -259,6 +264,7 @@ TEST_F(ControlPointOperatorTest, ConversionUndoRefusesToDestroyALaterSharedPoint
     EXPECT_EQ(Water(owner).pointSourceMode, scene::ControlPointSourceMode::POINT_OBJECTS);
 }
 
+/// @brief Lake height preserves small local offsets with negative scale at large origin.
 TEST_F(ControlPointOperatorTest, LakeHeightPreservesSmallLocalOffsetsWithNegativeScaleAtLargeOrigin)
 {
     const auto ownerId = Lake(); auto* owner = World().GetGameObject(ownerId);
@@ -285,6 +291,7 @@ TEST_F(ControlPointOperatorTest, LakeHeightPreservesSmallLocalOffsetsWithNegativ
     ASSERT_TRUE(m_undo.Redo()); EXPECT_FLOAT_EQ(WaterTarget(ownerId, 0)->transform.position.y, 2.0f);
 }
 
+/// @brief Lake height rejects shared and external targets atomically.
 TEST_F(ControlPointOperatorTest, LakeHeightRejectsSharedAndExternalTargetsAtomically)
 {
     const auto owner = Lake(); ASSERT_TRUE(Convert(owner).ok); m_undo.Clear();
@@ -306,6 +313,7 @@ TEST_F(ControlPointOperatorTest, LakeHeightRejectsSharedAndExternalTargetsAtomic
     EXPECT_FLOAT_EQ(World().GetGameObject(targetId)->transform.position.y, 1.0f);
 }
 
+/// @brief Bake and undo preserve published geometry ripples and other settings.
 TEST_F(ControlPointOperatorTest, BakeAndUndoPreservePublishedGeometryRipplesAndOtherSettings)
 {
     const auto owner = River(); ASSERT_TRUE(Convert(owner).ok); m_undo.Clear();
@@ -334,6 +342,7 @@ TEST_F(ControlPointOperatorTest, BakeAndUndoPreservePublishedGeometryRipplesAndO
     EXPECT_EQ(Water(owner).cellSize, (math::Vector2{1.25f, 2.5f})); EXPECT_FLOAT_EQ(Water(owner).buoyancy, 42.0f);
 }
 
+/// @brief Static spline mode keeps its baked closure and mode undo restores the policy.
 TEST_F(ControlPointOperatorTest, StaticSplineModeKeepsItsBakedClosureAndModeUndoRestoresThePolicy)
 {
     auto& object = World().CreateGameObject("Spline"); const auto owner = object.GetID();
@@ -353,6 +362,7 @@ TEST_F(ControlPointOperatorTest, StaticSplineModeKeepsItsBakedClosureAndModeUndo
     EXPECT_FALSE(scene::ResolveSplinePoints(World(), owner, Spline(owner)).closed);
 }
 
+/// @brief Inline lake bake uses its common height and remains valid after scene reload.
 TEST_F(ControlPointOperatorTest, InlineLakeBakeUsesItsCommonHeightAndRemainsValidAfterSceneReload)
 {
     const auto owner = Lake();
@@ -383,6 +393,7 @@ TEST_F(ControlPointOperatorTest, InlineLakeBakeUsesItsCommonHeightAndRemainsVali
     EXPECT_TRUE(scene::ValidateStaticControlPointBakes(*reloaded));
 }
 
+/// @brief Cloth legacy rows are verified only by explicit rebind and unbind removes the constraint.
 TEST_F(ControlPointOperatorTest, ClothLegacyRowsAreVerifiedOnlyByExplicitRebindAndUnbindRemovesTheConstraint)
 {
     auto& ownerObject = World().CreateGameObject("Cloth"); const auto owner = ownerObject.GetID();
@@ -415,6 +426,7 @@ TEST_F(ControlPointOperatorTest, ClothLegacyRowsAreVerifiedOnlyByExplicitRebindA
     ASSERT_TRUE(m_undo.Undo()); EXPECT_EQ(Cloth(owner).attachments.front().bindingId, id);
 }
 
+/// @brief Cloth bind rejects invalid particles and undo rejects changed topology.
 TEST_F(ControlPointOperatorTest, ClothBindRejectsInvalidParticlesAndUndoRejectsChangedTopology)
 {
     auto& ownerObject = World().CreateGameObject("Cloth"); const auto owner = ownerObject.GetID();
@@ -431,6 +443,7 @@ TEST_F(ControlPointOperatorTest, ClothBindRejectsInvalidParticlesAndUndoRejectsC
     EXPECT_EQ(Cloth(owner).attachments.front().targetReference.guid, target.instanceId);
 }
 
+/// @brief Move uses one checked undo and same position is a no-op.
 TEST_F(ControlPointOperatorTest, MoveUsesOneCheckedUndoAndSamePositionIsANoOp)
 {
     const auto owner = River(); ASSERT_TRUE(Convert(owner).ok); m_undo.Clear();
@@ -445,6 +458,7 @@ TEST_F(ControlPointOperatorTest, MoveUsesOneCheckedUndoAndSamePositionIsANoOp)
     ASSERT_TRUE(m_undo.Redo()); EXPECT_VEC3_NEAR(target->transform.position, desired, testkit::kTolerance);
 }
 
+/// @brief Create cloth anchor connects owner local marker in one undo without resetting simulation.
 TEST_F(ControlPointOperatorTest, CreateClothAnchorConnectsOwnerLocalMarkerInOneUndoWithoutResettingSimulation)
 {
     auto& object = World().CreateGameObject("Cloth"); const auto owner = object.GetID();
@@ -477,6 +491,7 @@ TEST_F(ControlPointOperatorTest, CreateClothAnchorConnectsOwnerLocalMarkerInOneU
     EXPECT_NE(World().FindByGuid(guid), nullptr); EXPECT_FALSE(Cloth(owner).enabled);
 }
 
+/// @brief Create cloth anchor rejects invalid input and prefab structure without leaving objects.
 TEST_F(ControlPointOperatorTest, CreateClothAnchorRejectsInvalidInputAndPrefabStructureWithoutLeavingObjects)
 {
     auto& object = World().CreateGameObject("Cloth"); const auto owner = object.GetID(); object.AddComponent<scene::ClothComponent>().segments = 2;
@@ -492,6 +507,7 @@ TEST_F(ControlPointOperatorTest, CreateClothAnchorRejectsInvalidInputAndPrefabSt
     EXPECT_EQ(World().GameObjectCount(), count); EXPECT_TRUE(Cloth(owner).attachments.empty()); EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Create cloth anchor explicitly rebinds legacy row and undo restores its old external target.
 TEST_F(ControlPointOperatorTest, CreateClothAnchorExplicitlyRebindsLegacyRowAndUndoRestoresItsOldExternalTarget)
 {
     auto& object = World().CreateGameObject("Cloth"); const auto owner = object.GetID(); auto& cloth = object.AddComponent<scene::ClothComponent>(); cloth.segments = 2;
@@ -510,6 +526,7 @@ TEST_F(ControlPointOperatorTest, CreateClothAnchorExplicitlyRebindsLegacyRowAndU
     EXPECT_VEC3_NEAR(Cloth(owner).attachments[0].localPosition, legacy.localPosition, testkit::kTolerance);
 }
 
+/// @brief Created cloth anchor undo protects other consumer on the same owner and custom IK reference.
 TEST_F(ControlPointOperatorTest, CreatedClothAnchorUndoProtectsOtherConsumerOnTheSameOwnerAndCustomIkReference)
 {
     auto& object = World().CreateGameObject("Cloth"); const auto owner = object.GetID(); object.AddComponent<scene::ClothComponent>().segments = 2;
@@ -526,6 +543,7 @@ TEST_F(ControlPointOperatorTest, CreatedClothAnchorUndoProtectsOtherConsumerOnTh
     EXPECT_EQ(World().FindByGuid(guid), nullptr); EXPECT_TRUE(Cloth(owner).attachments.empty());
 }
 
+/// @brief Created cloth anchor undo rejects marker edits children and replaced cloth lifetime.
 TEST_F(ControlPointOperatorTest, CreatedClothAnchorUndoRejectsMarkerEditsChildrenAndReplacedClothLifetime)
 {
     auto& object = World().CreateGameObject("Cloth"); const auto owner = object.GetID(); object.AddComponent<scene::ClothComponent>().segments = 2;

@@ -39,6 +39,7 @@ public:
     int* shutdownCounter = nullptr;
 };
 
+/// @brief Builds and finds a system by its public name.
 TEST_F(SystemSchedulerTest, BuildsAndFindsASystemByItsPublicName)
 {
     fbzz::SystemScheduler scheduler;
@@ -56,6 +57,7 @@ TEST_F(SystemSchedulerTest, BuildsAndFindsASystemByItsPublicName)
     EXPECT_EQ(shutdownCount, 1);
 }
 
+/// @brief Updates systems in their configured phase.
 TEST_F(SystemSchedulerTest, UpdatesSystemsInTheirConfiguredPhase)
 {
     fbzz::SystemScheduler scheduler;

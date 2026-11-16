@@ -43,6 +43,7 @@ protected:
     editor::SceneQueryIndex m_index;
 };
 
+/// @brief Direct rename and scene order update name results.
 TEST_F(EditorQueryCacheTest, DirectRenameAndSceneOrderUpdateNameResults)
 {
     auto& source = *AttachedScene();
@@ -63,6 +64,7 @@ TEST_F(EditorQueryCacheTest, DirectRenameAndSceneOrderUpdateNameResults)
     EXPECT_TRUE(m_index.FindNames("player", 0).empty());
 }
 
+/// @brief Prefab counts match authoritative roots after link and hierarchy changes.
 TEST_F(EditorQueryCacheTest, PrefabCountsMatchAuthoritativeRootsAfterLinkAndHierarchyChanges)
 {
     auto& source = *AttachedScene();
@@ -88,6 +90,7 @@ TEST_F(EditorQueryCacheTest, PrefabCountsMatchAuthoritativeRootsAfterLinkAndHier
     EXPECT_EQ(m_index.CountPrefabInstances("Assets/Tree.prefab"), 2);
 }
 
+/// @brief Scene clear and reused entity slots do not return old results.
 TEST_F(EditorQueryCacheTest, SceneClearAndReusedEntitySlotsDoNotReturnOldResults)
 {
     auto& source = *AttachedScene();
@@ -103,6 +106,7 @@ TEST_F(EditorQueryCacheTest, SceneClearAndReusedEntitySlotsDoNotReturnOldResults
     EXPECT_TRUE(m_index.FindNames("Fresh", 100).empty());
 }
 
+/// @brief Asset cache reuses owned results and updates after index rebuild.
 TEST_F(EditorQueryCacheTest, AssetCacheReusesOwnedResultsAndUpdatesAfterIndexRebuild)
 {
     std::filesystem::create_directories(File("Assets"));
@@ -124,6 +128,7 @@ TEST_F(EditorQueryCacheTest, AssetCacheReusesOwnedResultsAndUpdatesAfterIndexReb
     EXPECT_TRUE(cache.Results().empty());
 }
 
+/// @brief Asset cache owns query and extension inputs from its previous results.
 TEST_F(EditorQueryCacheTest, AssetCacheOwnsQueryAndExtensionInputsFromItsPreviousResults)
 {
     const auto path = File("Assets/PlayerWithANameLongEnoughForOwnedAllocation.mat");
@@ -143,6 +148,7 @@ TEST_F(EditorQueryCacheTest, AssetCacheOwnsQueryAndExtensionInputsFromItsPreviou
     EXPECT_EQ(cache.Results()[0].entry.extension, ".mat");
 }
 
+/// @brief Prefab file registration refreshes the same frame without renaming objects.
 TEST_F(EditorQueryCacheTest, PrefabFileRegistrationRefreshesTheSameFrameWithoutRenamingObjects)
 {
     constexpr std::string_view GUID = "11111111111111111111111111111111";
@@ -166,6 +172,7 @@ TEST_F(EditorQueryCacheTest, PrefabFileRegistrationRefreshesTheSameFrameWithoutR
     EXPECT_EQ(m_index.NameRevision(), nameRevision);
 }
 
+/// @brief First prefab count registers a just created file without an earlier refresh.
 TEST_F(EditorQueryCacheTest, FirstPrefabCountRegistersAJustCreatedFileWithoutAnEarlierRefresh)
 {
     constexpr std::string_view GUID = "22222222222222222222222222222222";
@@ -187,6 +194,7 @@ TEST_F(EditorQueryCacheTest, FirstPrefabCountRegistersAJustCreatedFileWithoutAnE
     EXPECT_EQ(m_index.NameRevision(), nameRevision);
 }
 
+/// @brief Lazy registration during refresh commits the final asset revision.
 TEST_F(EditorQueryCacheTest, LazyRegistrationDuringRefreshCommitsTheFinalAssetRevision)
 {
     constexpr std::string_view GUID = "33333333333333333333333333333333";
@@ -214,6 +222,7 @@ TEST_F(EditorQueryCacheTest, LazyRegistrationDuringRefreshCommitsTheFinalAssetRe
     EXPECT_EQ(m_index.FindNames("Changed", 100), (std::vector<scene::EntityID>{object.GetID()}));
 }
 
+/// @brief GUID reassignment rekeys unchanged prefab paths in the same frame.
 TEST_F(EditorQueryCacheTest, GuidReassignmentRekeysUnchangedPrefabPathsInTheSameFrame)
 {
     constexpr std::string_view GUID = "44444444444444444444444444444444";
@@ -239,6 +248,7 @@ TEST_F(EditorQueryCacheTest, GuidReassignmentRekeysUnchangedPrefabPathsInTheSame
     EXPECT_EQ(m_index.NameRevision(), nameRevision);
 }
 
+/// @brief Project switch rekeys relative prefab paths without replacing the scene.
 TEST_F(EditorQueryCacheTest, ProjectSwitchRekeysRelativePrefabPathsWithoutReplacingTheScene)
 {
     constexpr std::string_view FIRST_GUID = "55555555555555555555555555555555";
@@ -262,6 +272,7 @@ TEST_F(EditorQueryCacheTest, ProjectSwitchRekeysRelativePrefabPathsWithoutReplac
     EXPECT_EQ(m_index.NameRevision(), nameRevision);
 }
 
+/// @brief Shared registration advances resolution revision but repeated reads do not.
 TEST_F(EditorQueryCacheTest, SharedRegistrationAdvancesResolutionRevisionButRepeatedReadsDoNot)
 {
     constexpr std::string_view GUID = "77777777777777777777777777777777";
@@ -286,6 +297,7 @@ TEST_F(EditorQueryCacheTest, SharedRegistrationAdvancesResolutionRevisionButRepe
     EXPECT_EQ(asset::AssetDatabase::Revision(), registeredRevision);
 }
 
+/// @brief Registration move removal and shutdown advance only when resolution changes.
 TEST_F(EditorQueryCacheTest, RegistrationMoveRemovalAndShutdownAdvanceOnlyWhenResolutionChanges)
 {
     constexpr std::string_view GUID = "88888888888888888888888888888888";

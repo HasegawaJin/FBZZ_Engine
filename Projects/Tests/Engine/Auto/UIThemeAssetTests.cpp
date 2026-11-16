@@ -156,6 +156,7 @@ protected:
     testkit::TempDir m_temp{"ui-theme"};
 };
 
+/// @brief Existing data asset create save reload and undo snapshot preserve theme values.
 TEST_F(UIThemeAssetTest, ExistingDataAssetCreateSaveReloadAndUndoSnapshotPreserveThemeValues)
 {
     Create(File(), Distinct());
@@ -177,6 +178,7 @@ TEST_F(UIThemeAssetTest, ExistingDataAssetCreateSaveReloadAndUndoSnapshotPreserv
     ExpectColor(reloaded->style.padding, Distinct().padding);
 }
 
+/// @brief Two canvases share the same asset and runtime switch does not overwrite inline text.
 TEST_F(UIThemeAssetTest, TwoCanvasesShareTheSameAssetAndRuntimeSwitchDoesNotOverwriteInlineText)
 {
     Create(File(), Distinct());
@@ -214,6 +216,7 @@ TEST_F(UIThemeAssetTest, TwoCanvasesShareTheSameAssetAndRuntimeSwitchDoesNotOver
     EXPECT_FLOAT_EQ(shared.fontSize, 28.0f);
 }
 
+/// @brief Missing removed wrong type and invalid assets leave fallback unchanged.
 TEST_F(UIThemeAssetTest, MissingRemovedWrongTypeAndInvalidAssetsLeaveFallbackUnchanged)
 {
     asset::UIThemeStyle fallback = Distinct();
@@ -236,6 +239,7 @@ TEST_F(UIThemeAssetTest, MissingRemovedWrongTypeAndInvalidAssetsLeaveFallbackUnc
     ExpectColor(fallback.textColor, Distinct().textColor);
 }
 
+/// @brief Production button handler selects theme hover pressed disabled and focus colors.
 TEST_F(UIThemeAssetTest, ProductionButtonHandlerSelectsThemeHoverPressedDisabledAndFocusColors)
 {
     const auto style = Distinct();
@@ -257,6 +261,7 @@ TEST_F(UIThemeAssetTest, ProductionButtonHandlerSelectsThemeHoverPressedDisabled
     ExpectColor(draw(true), style.buttonDisabledColor);
 }
 
+/// @brief Local button and image overrides retain existing relative tint and texture assignment.
 TEST_F(UIThemeAssetTest, LocalButtonAndImageOverridesRetainExistingRelativeTintAndTextureAssignment)
 {
     const auto style = Distinct();
@@ -280,6 +285,7 @@ TEST_F(UIThemeAssetTest, LocalButtonAndImageOverridesRetainExistingRelativeTintA
     EXPECT_TRUE(image.loadedTexturePath.empty());
 }
 
+/// @brief Text and layout overrides preserve only their selected local groups.
 TEST_F(UIThemeAssetTest, TextAndLayoutOverridesPreserveOnlyTheirSelectedLocalGroups)
 {
     const auto style = Distinct();
@@ -311,6 +317,7 @@ TEST_F(UIThemeAssetTest, TextAndLayoutOverridesPreserveOnlyTheirSelectedLocalGro
     EXPECT_FLOAT_EQ(layout.paddingTop, 2.0f);
 }
 
+/// @brief Scene round trip keeps GUID theme assignment inline fallbacks and override flags.
 TEST_F(UIThemeAssetTest, SceneRoundTripKeepsGuidThemeAssignmentInlineFallbacksAndOverrideFlags)
 {
     /// @note Scene load decodes GUIDs to project-relative paths; AssetManager must resolve those against the same temporary root as AssetDatabase.
@@ -352,6 +359,7 @@ TEST_F(UIThemeAssetTest, SceneRoundTripKeepsGuidThemeAssignmentInlineFallbacksAn
     EXPECT_FLOAT_EQ(local->fontSize, 19.0f);
 }
 
+/// @brief Reload and registry reset publish new values without retaining asset pointers.
 TEST_F(UIThemeAssetTest, ReloadAndRegistryResetPublishNewValuesWithoutRetainingAssetPointers)
 {
     Create(File(), Distinct());
@@ -369,6 +377,7 @@ TEST_F(UIThemeAssetTest, ReloadAndRegistryResetPublishNewValuesWithoutRetainingA
     EXPECT_FLOAT_EQ(current.fontSize, 71.0f);
 }
 
+/// @brief Registered font file GUID survives theme save and resolves to one atlas base.
 TEST_F(UIThemeAssetTest, RegisteredFontFileGuidSurvivesThemeSaveAndResolvesToOneAtlasBase)
 {
     const auto font = File("Tiny.fnt");
@@ -392,6 +401,7 @@ TEST_F(UIThemeAssetTest, RegisteredFontFileGuidSurvivesThemeSaveAndResolvesToOne
     EXPECT_EQ(scene::ResolveUIFontBasePath(expectedBase), expectedBase);
 }
 
+/// @brief Font picker atlas base saves GUID and survives font move after reload.
 TEST_F(UIThemeAssetTest, FontPickerAtlasBaseSavesGuidAndSurvivesFontMoveAfterReload)
 {
     const auto font = File("Picked.fnt");
@@ -425,6 +435,7 @@ TEST_F(UIThemeAssetTest, FontPickerAtlasBaseSavesGuidAndSurvivesFontMoveAfterRel
     EXPECT_EQ(scene::ResolveUIFontBasePath(reloaded->style.fontPath), moved.substr(0, moved.size() - 4));
 }
 
+/// @brief Font normalization preserves GUID dynamic files and unregistered atlas bases.
 TEST_F(UIThemeAssetTest, FontNormalizationPreservesGuidDynamicFilesAndUnregisteredAtlasBases)
 {
     for (const char* name : {"Unregistered.ttf.fnt", "Unregistered.ttc.fnt",
@@ -451,6 +462,7 @@ TEST_F(UIThemeAssetTest, FontNormalizationPreservesGuidDynamicFilesAndUnregister
     }
 }
 
+/// @brief Theme GUID survives asset move and a fresh registry resolution.
 TEST_F(UIThemeAssetTest, ThemeGuidSurvivesAssetMoveAndAFreshRegistryResolution)
 {
     Create(File(), Distinct());
@@ -468,6 +480,7 @@ TEST_F(UIThemeAssetTest, ThemeGuidSurvivesAssetMoveAndAFreshRegistryResolution)
     EXPECT_FLOAT_EQ(resolved.spacing, 13.0f);
 }
 
+/// @brief Legacy scene fields and invalid numbers keep legacy defaults available.
 TEST_F(UIThemeAssetTest, LegacySceneFieldsAndInvalidNumbersKeepLegacyDefaultsAvailable)
 {
     scene::UICanvas canvas;
@@ -492,6 +505,7 @@ TEST_F(UIThemeAssetTest, LegacySceneFieldsAndInvalidNumbersKeepLegacyDefaultsAva
     EXPECT_TRUE(asset::IsUIThemeStyleValid(asset::UIThemeStyle{}));
 }
 
+/// @brief Builtin theme creation remains available after managed type unregistration.
 TEST_F(UIThemeAssetTest, BuiltinThemeCreationRemainsAvailableAfterManagedTypeUnregistration)
 {
     asset::DataAssetFactory::UnregisterScriptTypes();

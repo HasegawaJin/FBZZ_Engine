@@ -58,6 +58,7 @@ protected:
     bool m_enabled = false;
 };
 
+/// @brief Edit replaces actions keeps axes and supports undo redo.
 TEST_F(InputBindingOperatorTest, EditReplacesActionsKeepsAxesAndSupportsUndoRedo)
 {
     const auto before = editor::CaptureInputBindings();
@@ -75,6 +76,7 @@ TEST_F(InputBindingOperatorTest, EditReplacesActionsKeepsAxesAndSupportsUndoRedo
     EXPECT_NE(input::InputActionMap::FindAction("TestAction"), nullptr);
 }
 
+/// @brief Invalid key code leaves all bindings and history unchanged.
 TEST_F(InputBindingOperatorTest, InvalidKeyCodeLeavesAllBindingsAndHistoryUnchanged)
 {
     const std::string before = editor::CaptureInputBindings().ToToml();
@@ -86,6 +88,7 @@ TEST_F(InputBindingOperatorTest, InvalidKeyCodeLeavesAllBindingsAndHistoryUnchan
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Unknown nested fields reject the whole edit.
 TEST_F(InputBindingOperatorTest, UnknownNestedFieldsRejectTheWholeEdit)
 {
     const std::string before = editor::CaptureInputBindings().ToToml();
@@ -98,6 +101,7 @@ TEST_F(InputBindingOperatorTest, UnknownNestedFieldsRejectTheWholeEdit)
     EXPECT_EQ(editor::CaptureInputBindings().ToToml(), before);
 }
 
+/// @brief Empty arrays and explicit default values can be authored.
 TEST_F(InputBindingOperatorTest, EmptyArraysAndExplicitDefaultValuesCanBeAuthored)
 {
     auto axis = editor::OpData::MakeObject();
@@ -119,6 +123,7 @@ TEST_F(InputBindingOperatorTest, EmptyArraysAndExplicitDefaultValuesCanBeAuthore
     EXPECT_TRUE(actual->analog.empty());
 }
 
+/// @brief Checks save and reload work without opening the settings panel.
 TEST_F(InputBindingOperatorTest, SaveAndReloadWorkWithoutOpeningTheSettingsPanel)
 {
     ASSERT_TRUE(Configure(ActionPatch(74)).ok);
@@ -134,6 +139,7 @@ TEST_F(InputBindingOperatorTest, SaveAndReloadWorkWithoutOpeningTheSettingsPanel
     EXPECT_EQ(input::InputActionMap::FindAction("TestAction")->bindings[0].code, 74u);
 }
 
+/// @brief Pending rebind can be inspected cancelled and cannot be saved.
 TEST_F(InputBindingOperatorTest, PendingRebindCanBeInspectedCancelledAndCannotBeSaved)
 {
     ASSERT_TRUE(Configure(ActionPatch(74)).ok);
@@ -153,6 +159,7 @@ TEST_F(InputBindingOperatorTest, PendingRebindCanBeInspectedCancelledAndCannotBe
     EXPECT_FALSE(input::InputActionMap::IsRebinding());
 }
 
+/// @brief Out of band binding edit prevents undo from replacing it.
 TEST_F(InputBindingOperatorTest, OutOfBandBindingEditPreventsUndoFromReplacingIt)
 {
     ASSERT_TRUE(Configure(ActionPatch(74)).ok);

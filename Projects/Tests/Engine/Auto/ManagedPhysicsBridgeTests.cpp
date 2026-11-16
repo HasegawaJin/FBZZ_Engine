@@ -149,6 +149,7 @@ void ExpectOwnerQueryEquivalent(scene::Scene& queryScene, const physics::World& 
         }
 }
 } /// @note namespace
+/// @brief Body values match native locks sleep static and zero mass.
 TEST_F(ManagedPhysicsBridgeTest, BodyValuesMatchNativeLocksSleepStaticAndZeroMass)
 {
     auto& object = m_scene.CreateGameObject("Body");
@@ -176,6 +177,7 @@ TEST_F(ManagedPhysicsBridgeTest, BodyValuesMatchNativeLocksSleepStaticAndZeroMas
     EXPECT_EQ(body.GetMass(), 0.0f); EXPECT_EQ(body.GetInvMass(), 0.0f);
 }
 
+/// @brief Rejects missing disabled wrong phase and invalid input without mutation.
 TEST_F(ManagedPhysicsBridgeTest, RejectsMissingDisabledWrongPhaseAndInvalidInputWithoutMutation)
 {
     auto& object = m_scene.CreateGameObject("Body");
@@ -204,6 +206,7 @@ TEST_F(ManagedPhysicsBridgeTest, RejectsMissingDisabledWrongPhaseAndInvalidInput
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Rejects accumulation and impulse overflow before touching live state.
 TEST_F(ManagedPhysicsBridgeTest, RejectsAccumulationAndImpulseOverflowBeforeTouchingLiveState)
 {
     auto& object = m_scene.CreateGameObject("Body");
@@ -235,6 +238,7 @@ TEST_F(ManagedPhysicsBridgeTest, RejectsAccumulationAndImpulseOverflowBeforeTouc
     EXPECT_TRUE(body.IsSleeping()); EXPECT_TRUE(body.IsFiniteState());
 }
 
+/// @brief Mass and static refresh only live scene owned inertia sources.
 TEST_F(ManagedPhysicsBridgeTest, MassAndStaticRefreshOnlyLiveSceneOwnedInertiaSources)
 {
     auto& object = m_scene.CreateGameObject("Body");
@@ -267,6 +271,7 @@ TEST_F(ManagedPhysicsBridgeTest, MassAndStaticRefreshOnlyLiveSceneOwnedInertiaSo
     EXPECT_VEC3_NEAR(body.GetAngularVelocity(), (math::Vector3{0.3125f, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Teleport synchronizes hierarchy locks and subsequent physics step.
 TEST_F(ManagedPhysicsBridgeTest, TeleportSynchronizesHierarchyLocksAndSubsequentPhysicsStep)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -302,6 +307,7 @@ TEST_F(ManagedPhysicsBridgeTest, TeleportSynchronizesHierarchyLocksAndSubsequent
     EXPECT_VEC3_NEAR(body.GetVelocity(), (math::Vector3{1, 0, 3}), testkit::kTolerance);
 }
 
+/// @brief Teleport rejects zero scale projection and descendant overflow atomically.
 TEST_F(ManagedPhysicsBridgeTest, TeleportRejectsZeroScaleProjectionAndDescendantOverflowAtomically)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -326,6 +332,7 @@ TEST_F(ManagedPhysicsBridgeTest, TeleportRejectsZeroScaleProjectionAndDescendant
     EXPECT_VEC3_NEAR(component.rigidBody->GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Teleport zero scale does not relax projection at large world coordinates.
 TEST_F(ManagedPhysicsBridgeTest, TeleportZeroScaleDoesNotRelaxProjectionAtLargeWorldCoordinates)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -342,6 +349,7 @@ TEST_F(ManagedPhysicsBridgeTest, TeleportZeroScaleDoesNotRelaxProjectionAtLargeW
     EXPECT_FALSE(component.hasPhysicsSyncState);
 }
 
+/// @brief World reads validate layer bounds and preserve collision matrix.
 TEST_F(ManagedPhysicsBridgeTest, WorldReadsValidateLayerBoundsAndPreserveCollisionMatrix)
 {
     m_world.SetGravity({1, -2, 3});
@@ -360,6 +368,7 @@ TEST_F(ManagedPhysicsBridgeTest, WorldReadsValidateLayerBoundsAndPreserveCollisi
     EXPECT_FALSE(m_world.LayersCollide(3, 7));
 }
 
+/// @brief Queries keep shape hits but deduplicate overlap and filter scene ownership.
 TEST_F(ManagedPhysicsBridgeTest, QueriesKeepShapeHitsButDeduplicateOverlapAndFilterSceneOwnership)
 {
     auto& object = m_scene.CreateGameObject("TwoShapes");
@@ -386,6 +395,7 @@ TEST_F(ManagedPhysicsBridgeTest, QueriesKeepShapeHitsButDeduplicateOverlapAndFil
     ASSERT_EQ(hits.size(), 1u); EXPECT_EQ(hits[0].object, &object);
 }
 
+/// @brief Queries reject malformed input and ignore removed collider pointers.
 TEST_F(ManagedPhysicsBridgeTest, QueriesRejectMalformedInputAndIgnoreRemovedColliderPointers)
 {
     auto& object = m_scene.CreateGameObject("Deleted");
@@ -402,6 +412,7 @@ TEST_F(ManagedPhysicsBridgeTest, QueriesRejectMalformedInputAndIgnoreRemovedColl
     EXPECT_TRUE(hits.empty());
 }
 
+/// @brief Checks largest finite no hit and degenerate normals never become phantom hits.
 TEST_F(ManagedPhysicsBridgeTest, LargestFiniteNoHitAndDegenerateNormalsNeverBecomePhantomHits)
 {
     auto& object = m_scene.CreateGameObject("OffAxis");
@@ -423,6 +434,7 @@ TEST_F(ManagedPhysicsBridgeTest, LargestFiniteNoHitAndDegenerateNormalsNeverBeco
     EXPECT_TRUE(hits.empty());
 }
 
+/// @brief Candidate owners match old filters closest all sphere and compound overlap.
 TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersMatchOldFiltersClosestAllSphereAndCompoundOverlap)
 {
     auto& near=m_scene.CreateGameObject("Compound");near.layer=3;
@@ -439,6 +451,7 @@ TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersMatchOldFiltersClosestAllSphereA
     near.layer=7;trigger.enabled=false;inactive.SetActive(true);
     ExpectOwnerQueryEquivalent(m_scene,m_world,m_kernel);
 }
+/// @brief Candidate owners do not survive removal type replacement scene clear or exchange.
 TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersDoNotSurviveRemovalTypeReplacementSceneClearOrExchange)
 {
     auto& object=m_scene.CreateGameObject("Replace");object.layer=3;
@@ -459,6 +472,7 @@ TEST_F(ManagedPhysicsBridgeTest, CandidateOwnersDoNotSurviveRemovalTypeReplaceme
     m_world.BeginSceneSync();Sync(newShape,{0,0,8});m_world.EndSceneSync();
     ExpectOwnerQueryEquivalent(m_scene,m_world,m_kernel);
 }
+/// @brief Broad candidate fallback matches old map without scanning decoration objects.
 TEST_F(ManagedPhysicsBridgeTest, BroadCandidateFallbackMatchesOldMapWithoutScanningDecorationObjects)
 {
     for (int i=0;i<128;++i) m_scene.CreateGameObject("Decoration");
@@ -514,6 +528,7 @@ protected:
     }
 };
 
+/// @brief Reuses request revision and retires changed or wrong scene publications.
 TEST_F(PhysicsSpatialDebugBridgeTest, ReusesRequestRevisionAndRetiresChangedOrWrongScenePublications)
 {
     auto& object = DebugCollider("Debug collider");
@@ -542,6 +557,7 @@ TEST_F(PhysicsSpatialDebugBridgeTest, ReusesRequestRevisionAndRetiresChangedOrWr
     EXPECT_EQ(m_world.GetBroadPhaseDebugSnapshot(), nullptr);
 }
 
+/// @brief Resolves first active synced collider and rejects stale or non collider selection.
 TEST_F(PhysicsSpatialDebugBridgeTest, ResolvesFirstActiveSyncedColliderAndRejectsStaleOrNonColliderSelection)
 {
     auto& object = DebugCollider("Compound debug collider");
@@ -580,6 +596,7 @@ TEST_F(PhysicsSpatialDebugBridgeTest, ResolvesFirstActiveSyncedColliderAndReject
     EXPECT_TRUE(invalid->physics->proxies.empty());
 }
 
+/// @brief Disable retires publication and replacement owner disables world capture.
 TEST_F(PhysicsSpatialDebugBridgeTest, DisableRetiresPublicationAndReplacementOwnerDisablesWorldCapture)
 {
     auto& object = DebugCollider("Debug collider");
@@ -597,6 +614,7 @@ TEST_F(PhysicsSpatialDebugBridgeTest, DisableRetiresPublicationAndReplacementOwn
     EXPECT_EQ(scene::PhysicsSystem::GetSpatialDebugSnapshot(request.sceneGeneration), nullptr);
 }
 
+/// @brief Scene generation change rejects old publication and retained values stay immutable.
 TEST_F(PhysicsSpatialDebugBridgeTest, SceneGenerationChangeRejectsOldPublicationAndRetainedValuesStayImmutable)
 {
     auto& object = DebugCollider("Old scene collider");
@@ -631,6 +649,7 @@ TEST_F(PhysicsSpatialDebugBridgeTest, SceneGenerationChangeRejectsOldPublication
     EXPECT_EQ(retained->physics->proxies.front().handle.generation, oldHandle.generation);
 }
 
+/// @brief Indexed queries survive component removal shape replacement and scene clear.
 TEST_F(ManagedPhysicsBridgeTest, IndexedQueriesSurviveComponentRemovalShapeReplacementAndSceneClear)
 {
     EXPECT_TRUE(m_world.OverlapSphere({}, 1).empty());

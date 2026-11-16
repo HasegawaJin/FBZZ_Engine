@@ -49,6 +49,7 @@ void ExpectSameOrientedFaceOrder(const std::vector<uint32_t>& list, const std::v
     EXPECT_EQ(actual, expected);
 }
 
+/// @brief Adaptive strip preserves oriented face order for every stitch mask.
 TEST_F(SurfacePatchLodTest, AdaptiveStripPreservesOrientedFaceOrderForEveryStitchMask)
 {
     for (const uint32_t cells : {2u, 4u, 16u, 64u}) {
@@ -63,6 +64,7 @@ TEST_F(SurfacePatchLodTest, AdaptiveStripPreservesOrientedFaceOrderForEveryStitc
     }
 }
 
+/// @brief Regular strip preserves non-square rows and diagonals.
 TEST_F(SurfacePatchLodTest, RegularStripPreservesNonSquareRowsAndDiagonals)
 {
     constexpr uint32_t CELLS_X = 16, CELLS_Z = 5, COLUMNS = CELLS_X + 1u;
@@ -142,6 +144,7 @@ renderer::SurfacePatchView LocalView()
     return view;
 }
 
+/// @brief Invalid inputs preserve the previous selection.
 TEST_F(SurfacePatchLodTest, InvalidInputsPreserveThePreviousSelection)
 {
     auto surface = WideSurface();
@@ -180,6 +183,7 @@ TEST_F(SurfacePatchLodTest, InvalidInputsPreserveThePreviousSelection)
     checkUnchanged();
 }
 
+/// @brief Finite inputs that overflow derived geometry preserve the previous selection.
 TEST_F(SurfacePatchLodTest, FiniteInputsThatOverflowDerivedGeometryPreserveThePreviousSelection)
 {
     renderer::SurfacePatchLodSettings settings;
@@ -227,6 +231,7 @@ TEST_F(SurfacePatchLodTest, FiniteInputsThatOverflowDerivedGeometryPreserveThePr
     checkUnchanged();
 }
 
+/// @brief Extremely large projection requests keep finite geometry and report the quality limit.
 TEST_F(SurfacePatchLodTest, ExtremelyLargeProjectionRequestsKeepFiniteGeometryAndReportTheQualityLimit)
 {
     const auto surface = WideSurface();
@@ -252,6 +257,7 @@ TEST_F(SurfacePatchLodTest, ExtremelyLargeProjectionRequestsKeepFiniteGeometryAn
     ExpectFullBalancedCoverage(selection);
 }
 
+/// @brief All stitch masks keep positive area and a manifold rectangular boundary.
 TEST_F(SurfacePatchLodTest, AllStitchMasksKeepPositiveAreaAndAManifoldRectangularBoundary)
 {
     for (uint32_t cells : { 2u, 4u, 16u }) {
@@ -296,6 +302,7 @@ TEST_F(SurfacePatchLodTest, AllStitchMasksKeepPositiveAreaAndAManifoldRectangula
     }
 }
 
+/// @brief Invalid index requests preserve the previous buffer.
 TEST_F(SurfacePatchLodTest, InvalidIndexRequestsPreserveThePreviousBuffer)
 {
     std::vector<uint32_t> indices = { 17, 23, 42 };
@@ -306,6 +313,7 @@ TEST_F(SurfacePatchLodTest, InvalidIndexRequestsPreserveThePreviousBuffer)
     EXPECT_EQ(indices, (std::vector<uint32_t>{ 17, 23, 42 }));
 }
 
+/// @brief The patch budget keeps complete coverage and balanced edges.
 TEST_F(SurfacePatchLodTest, ThePatchBudgetKeepsCompleteCoverageAndBalancedEdges)
 {
     const auto surface = WideSurface();
@@ -325,6 +333,7 @@ TEST_F(SurfacePatchLodTest, ThePatchBudgetKeepsCompleteCoverageAndBalancedEdges)
     }
 }
 
+/// @brief Near views use more patches and do not change another views selection.
 TEST_F(SurfacePatchLodTest, NearViewsUseMorePatchesAndDoNotChangeAnotherViewsSelection)
 {
     const auto surface = WideSurface();
@@ -351,6 +360,7 @@ TEST_F(SurfacePatchLodTest, NearViewsUseMorePatchesAndDoNotChangeAnotherViewsSel
     }
 }
 
+/// @brief Selection cache reuses only matching surface settings and view values.
 TEST_F(SurfacePatchLodTest, SelectionCacheReusesOnlyMatchingSurfaceSettingsAndViewValues)
 {
     renderer::SurfacePatchSurface surface;
@@ -434,6 +444,7 @@ std::shared_ptr<const renderer::SurfacePatchSelection> StoreSelected(
     return cache.Store(surface, settings, view, std::move(selected));
 }
 
+/// @brief Owned selections survive replacement eviction and clear without retaining sources.
 TEST_F(SurfacePatchLodTest, OwnedSelectionsSurviveReplacementEvictionAndClearWithoutRetainingSources)
 {
     const auto surface = WideSurface();
@@ -463,6 +474,7 @@ TEST_F(SurfacePatchLodTest, OwnedSelectionsSurviveReplacementEvictionAndClearWit
     EXPECT_TRUE(retired.expired());
 }
 
+/// @brief Replacement and oversized capacity respect the retained patch budget.
 TEST_F(SurfacePatchLodTest, ReplacementAndOversizedCapacityRespectTheRetainedPatchBudget)
 {
     const auto surface = WideSurface();
@@ -491,6 +503,7 @@ TEST_F(SurfacePatchLodTest, ReplacementAndOversizedCapacityRespectTheRetainedPat
     EXPECT_EQ(cache.FindOwned(surface, settings, view), retained);
 }
 
+/// @brief Invalid persistent inputs clear the cache and preserve pinned output.
 TEST_F(SurfacePatchLodTest, InvalidPersistentInputsClearTheCacheAndPreservePinnedOutput)
 {
     auto surface = WideSurface();
@@ -512,6 +525,7 @@ TEST_F(SurfacePatchLodTest, InvalidPersistentInputsClearTheCacheAndPreservePinne
     EXPECT_TRUE(unchanged.qualityLimited);
 }
 
+/// @brief Persistent keys distinguish rounding and denormal controls but ignore sticky flags.
 TEST_F(SurfacePatchLodTest, PersistentKeysDistinguishRoundingAndDenormalControlsButIgnoreStickyFlags)
 {
     struct RestoreFp {
@@ -542,6 +556,7 @@ TEST_F(SurfacePatchLodTest, PersistentKeysDistinguishRoundingAndDenormalControls
     EXPECT_EQ(cache.FindOwned(surface, settings, view), pinned);
 }
 
+/// @brief View owner retains scene and game keys across invocations and revalidates epochs.
 TEST_F(SurfacePatchLodTest, ViewOwnerRetainsSceneAndGameKeysAcrossInvocationsAndRevalidatesEpochs)
 {
     const auto surface = WideSurface();
@@ -595,6 +610,7 @@ TEST_F(SurfacePatchLodTest, ViewOwnerRetainsSceneAndGameKeysAcrossInvocationsAnd
     }
 }
 
+/// @brief Active view leases survive nested calls clear and owner eviction.
 TEST_F(SurfacePatchLodTest, ActiveViewLeasesSurviveNestedCallsClearAndOwnerEviction)
 {
     const auto surface = WideSurface();
@@ -651,6 +667,7 @@ TEST_F(SurfacePatchLodTest, ActiveViewLeasesSurviveNestedCallsClearAndOwnerEvict
     }
 }
 
+/// @brief Projection quality and world scale control the cell footprint.
 TEST_F(SurfacePatchLodTest, ProjectionQualityAndWorldScaleControlTheCellFootprint)
 {
     auto surface = WideSurface();
@@ -674,6 +691,7 @@ TEST_F(SurfacePatchLodTest, ProjectionQualityAndWorldScaleControlTheCellFootprin
         EXPECT_LE((std::max)(patch.cellSize.x, patch.cellSize.y) * view.projectionScalePixels, settings.targetCellPixels);
 }
 
+/// @brief Morph padding does not increase refinement beyond the base tile.
 TEST_F(SurfacePatchLodTest, MorphPaddingDoesNotIncreaseRefinementBeyondTheBaseTile)
 {
     renderer::SurfacePatchSurface surface;
@@ -719,6 +737,7 @@ TEST_F(SurfacePatchLodTest, MorphPaddingDoesNotIncreaseRefinementBeyondTheBaseTi
     EXPECT_EQ(depthCounts[4], 0u);
 }
 
+/// @brief Morph expanded bounds retain leaves at the frustum fringe.
 TEST_F(SurfacePatchLodTest, MorphExpandedBoundsRetainLeavesAtTheFrustumFringe)
 {
     renderer::SurfacePatchSurface surface;
@@ -744,6 +763,7 @@ TEST_F(SurfacePatchLodTest, MorphExpandedBoundsRetainLeavesAtTheFrustumFringe)
     EXPECT_NEAR(selection.patches.front().aabbMax.z, 1.0f, 1.0e-6f);
 }
 
+/// @brief Near cell density uses signed rotated nonuniform world scale.
 TEST_F(SurfacePatchLodTest, NearCellDensityUsesSignedRotatedNonuniformWorldScale)
 {
     renderer::SurfacePatchSurface surface;
@@ -777,6 +797,7 @@ TEST_F(SurfacePatchLodTest, NearCellDensityUsesSignedRotatedNonuniformWorldScale
     }
 }
 
+/// @brief A generic surface accepts small finite axis scales.
 TEST_F(SurfacePatchLodTest, AGenericSurfaceAcceptsSmallFiniteAxisScales)
 {
     renderer::SurfacePatchSurface surface;
@@ -797,6 +818,7 @@ TEST_F(SurfacePatchLodTest, AGenericSurfaceAcceptsSmallFiniteAxisScales)
     EXPECT_FALSE(selection.qualityLimited);
 }
 
+/// @brief Checks invisible coarse neighbors still control visible fine patch boundaries.
 TEST_F(SurfacePatchLodTest, InvisibleCoarseNeighborsStillControlVisibleFinePatchBoundaries)
 {
     renderer::SurfacePatchSurface surface;
@@ -844,6 +866,7 @@ TEST_F(SurfacePatchLodTest, InvisibleCoarseNeighborsStillControlVisibleFinePatch
     EXPECT_GT(boundaries, 0u);
 }
 
+/// @brief Including culled leaves keeps the same visible topology and boundary bandwidth.
 TEST_F(SurfacePatchLodTest, IncludingCulledLeavesKeepsTheSameVisibleTopologyAndBoundaryBandwidth)
 {
     renderer::SurfacePatchSurface surface;
@@ -904,6 +927,7 @@ TEST_F(SurfacePatchLodTest, IncludingCulledLeavesKeepsTheSameVisibleTopologyAndB
     ExpectFullBalancedCoverage(all);
 }
 
+/// @brief All shared stitched vertices use the same height sampling bandwidth.
 TEST_F(SurfacePatchLodTest, AllSharedStitchedVerticesUseTheSameHeightSamplingBandwidth)
 {
     const auto surface = WideSurface();
@@ -949,6 +973,7 @@ TEST_F(SurfacePatchLodTest, AllSharedStitchedVerticesUseTheSameHeightSamplingBan
     ExpectFullBalancedCoverage(selection);
 }
 
+/// @brief Culling includes horizontal and vertical displacement bounds.
 TEST_F(SurfacePatchLodTest, CullingIncludesHorizontalAndVerticalDisplacementBounds)
 {
     renderer::SurfacePatchSurface surface;
@@ -977,6 +1002,7 @@ TEST_F(SurfacePatchLodTest, CullingIncludesHorizontalAndVerticalDisplacementBoun
     EXPECT_FLOAT_EQ(selection.patches.front().aabbMax.y, 1.4f);
 }
 
+/// @brief Maximum depth stops refinement without dropping the surface.
 TEST_F(SurfacePatchLodTest, MaximumDepthStopsRefinementWithoutDroppingTheSurface)
 {
     const auto surface = WideSurface();

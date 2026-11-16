@@ -200,6 +200,7 @@ private:
     }
 };
 
+/// @brief Traces submeshes transformed instances and purpose masks after retirement.
 TEST_F(RayTracingTest, TracesSubmeshesTransformedInstancesAndPurposeMasksAfterRetirement)
 {
     struct TestVertex { float padding; math::Vector3 position; };
@@ -248,6 +249,7 @@ TEST_F(RayTracingTest, TracesSubmeshesTransformedInstancesAndPurposeMasksAfterRe
     }
 }
 
+/// @brief Builds from the latest updated vertex data and rejects repeated builds.
 TEST_F(RayTracingTest, BuildsFromTheLatestUpdatedVertexDataAndRejectsRepeatedBuilds)
 {
     const math::Vector3 original[] = {{-0.75f, -0.75f, 3}, {0, 0.75f, 3}, {0.75f, -0.75f, 3}};
@@ -277,6 +279,7 @@ TEST_F(RayTracingTest, BuildsFromTheLatestUpdatedVertexDataAndRejectsRepeatedBui
     EXPECT_NEAR(after[0].w, 7, 0.001f);
 }
 
+/// @brief Rejects builds outside direct frame and with stale inputs.
 TEST_F(RayTracingTest, RejectsBuildsOutsideDirectFrameAndWithStaleInputs)
 {
     auto& resources = *m_resources;
@@ -306,6 +309,7 @@ TEST_F(RayTracingTest, RejectsBuildsOutsideDirectFrameAndWithStaleInputs)
     EndFrame();
 }
 
+/// @brief Rejects invalid geometry ranges and instance transforms.
 TEST_F(RayTracingTest, RejectsInvalidGeometryRangesAndInstanceTransforms)
 {
     auto& resources = *m_resources;
@@ -363,6 +367,7 @@ TEST_F(RayTracingTest, RejectsInvalidGeometryRangesAndInstanceTransforms)
     EndFrame();
 }
 
+/// @brief Reuses geometry across snapshots views and scene generations.
 TEST_F(RayTracingTest, ReusesGeometryAcrossSnapshotsViewsAndSceneGenerations)
 {
     auto& resources = *m_resources;
@@ -448,6 +453,7 @@ TEST_F(RayTracingTest, ReusesGeometryAcrossSnapshotsViewsAndSceneGenerations)
     EndFrame();
 }
 
+/// @brief Reuses immutable tables independently across rigid motion and owner changes.
 TEST_F(RayTracingTest, ReusesImmutableTablesIndependentlyAcrossRigidMotionAndOwnerChanges)
 {
     auto& resources = *m_resources;
@@ -504,6 +510,7 @@ TEST_F(RayTracingTest, ReusesImmutableTablesIndependentlyAcrossRigidMotionAndOwn
     EndFrame();
 }
 
+/// @brief Released tables and manager reset cannot reuse stale handles across views.
 TEST_F(RayTracingTest, ReleasedTablesAndManagerResetCannotReuseStaleHandlesAcrossViews)
 {
     auto& resources = *m_resources;
@@ -573,6 +580,7 @@ TEST_F(RayTracingTest, ReleasedTablesAndManagerResetCannotReuseStaleHandlesAcros
     EndFrame();
 }
 
+/// @brief Failed tlas rebuild does not retire reused immutable tables or publish old scene.
 TEST_F(RayTracingTest, FailedTlasRebuildDoesNotRetireReusedImmutableTablesOrPublishOldScene)
 {
     auto& resources = *m_resources;
@@ -629,6 +637,7 @@ TEST_F(RayTracingTest, FailedTlasRebuildDoesNotRetireReusedImmutableTablesOrPubl
     EndFrame();
 }
 
+/// @brief Same handle texture replacement rejects stale content and updates only the surface table.
 TEST_F(RayTracingTest, SameHandleTextureReplacementRejectsStaleContentAndUpdatesOnlyTheSurfaceTable)
 {
     auto& resources = *m_resources;
@@ -720,6 +729,7 @@ TEST_F(RayTracingTest, SameHandleTextureReplacementRejectsStaleContentAndUpdates
     cache.Release(resources);
 }
 
+/// @brief Displays camera intersections and reads actual transformed triangle normals.
 TEST_F(RayTracingTest, DisplaysCameraIntersectionsAndReadsActualTransformedTriangleNormals)
 {
     auto& resources = *m_resources;
@@ -827,6 +837,7 @@ TEST_F(RayTracingTest, DisplaysCameraIntersectionsAndReadsActualTransformedTrian
     resources.Release(view.rayDebug.constants);
 }
 
+/// @brief Builds current GPU deformation and rejects stale content across frames.
 TEST_F(RayTracingTest, BuildsCurrentGpuDeformationAndRejectsStaleContentAcrossFrames)
 {
     auto& resources = *m_resources;
@@ -907,6 +918,7 @@ TEST_F(RayTracingTest, BuildsCurrentGpuDeformationAndRejectsStaleContentAcrossFr
     cache.Release(resources);
 }
 
+/// @brief Reflection preparation rejects incomplete surface lighting and raster inputs.
 TEST_F(RayTracingTest, ReflectionPreparationRejectsIncompleteSurfaceLightingAndRasterInputs)
 {
     auto& resources = *m_resources;
@@ -1005,6 +1017,7 @@ TEST_F(RayTracingTest, ReflectionPreparationRejectsIncompleteSurfaceLightingAndR
     EndFrame();
 }
 
+/// @brief Disabled and empty debug views do not build acceleration structures.
 TEST_F(RayTracingTest, DisabledAndEmptyDebugViewsDoNotBuildAccelerationStructures)
 {
     auto& resources = *m_resources;

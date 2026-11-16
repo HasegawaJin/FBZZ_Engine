@@ -56,6 +56,7 @@ protected:
 };
 } /// @note namespace
 
+/// @brief Camera shadow and reflection volumes have independent ordered candidates.
 TEST_F(RenderMeshSpatialIndexTest, CameraShadowAndReflectionVolumesHaveIndependentOrderedCandidates)
 {
     auto sources = Sources(1024);
@@ -79,6 +80,7 @@ TEST_F(RenderMeshSpatialIndexTest, CameraShadowAndReflectionVolumesHaveIndepende
     EXPECT_NE(cameraCandidates, shadowCandidates);
 }
 
+/// @brief Surviving volumes restore sibling masks for both partitions.
 TEST_F(RenderMeshSpatialIndexTest, SurvivingVolumesRestoreSiblingMasksForBothPartitions)
 {
     auto sources = Sources(256);
@@ -109,6 +111,7 @@ TEST_F(RenderMeshSpatialIndexTest, SurvivingVolumesRestoreSiblingMasksForBothPar
     }
 }
 
+/// @brief Surviving volumes use current bounds after journal and dense refits.
 TEST_F(RenderMeshSpatialIndexTest, SurvivingVolumesUseCurrentBoundsAfterJournalAndDenseRefits)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -140,6 +143,7 @@ TEST_F(RenderMeshSpatialIndexTest, SurvivingVolumesUseCurrentBoundsAfterJournalA
     EXPECT_EQ(retained, saved);
 }
 
+/// @brief Surviving volumes retain boundary cancellation and unbounded spheres.
 TEST_F(RenderMeshSpatialIndexTest, SurvivingVolumesRetainBoundaryCancellationAndUnboundedSpheres)
 {
     const auto large = View({100000, 100000, 100000}), origin = View({0, 0, 0});
@@ -179,6 +183,7 @@ TEST_F(RenderMeshSpatialIndexTest, SurvivingVolumesRetainBoundaryCancellationAnd
     }
 }
 
+/// @brief Volume mask boundaries and oversized unions keep the last volume.
 TEST_F(RenderMeshSpatialIndexTest, VolumeMaskBoundariesAndOversizedUnionsKeepTheLastVolume)
 {
     auto sources = Sources(128);
@@ -200,6 +205,7 @@ TEST_F(RenderMeshSpatialIndexTest, VolumeMaskBoundariesAndOversizedUnionsKeepThe
     }
 }
 
+/// @brief Late unbounded and unsafe volumes keep fallback visits truthful.
 TEST_F(RenderMeshSpatialIndexTest, LateUnboundedAndUnsafeVolumesKeepFallbackVisitsTruthful)
 {
     auto sources = Sources(64);
@@ -231,6 +237,7 @@ TEST_F(RenderMeshSpatialIndexTest, LateUnboundedAndUnsafeVolumesKeepFallbackVisi
     }
 }
 
+/// @brief Direct bounds writes refit only changed dynamic leaves.
 TEST_F(RenderMeshSpatialIndexTest, DirectBoundsWritesRefitOnlyChangedDynamicLeaves)
 {
     auto sources = Sources(512);
@@ -252,6 +259,7 @@ TEST_F(RenderMeshSpatialIndexTest, DirectBoundsWritesRefitOnlyChangedDynamicLeav
     EXPECT_EQ(unchanged.rebuiltTrees + unchanged.refittedTrees, 0u);
 }
 
+/// @brief Creation deletion reorder and lifetime replacement rebuild current membership.
 TEST_F(RenderMeshSpatialIndexTest, CreationDeletionReorderAndLifetimeReplacementRebuildCurrentMembership)
 {
     auto sources = Sources(128);
@@ -271,6 +279,7 @@ TEST_F(RenderMeshSpatialIndexTest, CreationDeletionReorderAndLifetimeReplacement
     ExpectParity(index, views);
 }
 
+/// @brief Dense movement supports refit rebuild and linear policies.
 TEST_F(RenderMeshSpatialIndexTest, DenseMovementSupportsRefitRebuildAndLinearPolicies)
 {
     auto sources = Sources(96);
@@ -304,6 +313,7 @@ TEST_F(RenderMeshSpatialIndexTest, DenseMovementSupportsRefitRebuildAndLinearPol
     ExpectParity(index, views);
 }
 
+/// @brief Unknown bounds remain candidates and zero consumers return nothing.
 TEST_F(RenderMeshSpatialIndexTest, UnknownBoundsRemainCandidatesAndZeroConsumersReturnNothing)
 {
     auto sources = Sources(64);
@@ -330,6 +340,7 @@ TEST_F(RenderMeshSpatialIndexTest, UnknownBoundsRemainCandidatesAndZeroConsumers
     EXPECT_EQ(output.size(), sources.size());
 }
 
+/// @brief Boundary and large coordinate spheres match current float predicate.
 TEST_F(RenderMeshSpatialIndexTest, BoundaryAndLargeCoordinateSpheresMatchCurrentFloatPredicate)
 {
     const auto view = View({100000, 100000, 100000});
@@ -351,6 +362,7 @@ TEST_F(RenderMeshSpatialIndexTest, BoundaryAndLargeCoordinateSpheresMatchCurrent
     ExpectParity(index, views);
 }
 
+/// @brief Scene lifetime reset cannot change previously returned candidate values.
 TEST_F(RenderMeshSpatialIndexTest, SceneLifetimeResetCannotChangePreviouslyReturnedCandidateValues)
 {
     auto sources = Sources(64);
@@ -369,6 +381,7 @@ TEST_F(RenderMeshSpatialIndexTest, SceneLifetimeResetCannotChangePreviouslyRetur
     ExpectParity(index, views);
 }
 
+/// @brief Giant sphere cancellation retains current float leaf visibility.
 TEST_F(RenderMeshSpatialIndexTest, GiantSphereCancellationRetainsCurrentFloatLeafVisibility)
 {
     const auto view = View({0, 0, 0});
@@ -388,6 +401,7 @@ TEST_F(RenderMeshSpatialIndexTest, GiantSphereCancellationRetainsCurrentFloatLea
     EXPECT_NE(std::find(output.begin(), output.end(), 0u), output.end());
 }
 
+/// @brief Degenerate finite projection falls back to all current sources.
 TEST_F(RenderMeshSpatialIndexTest, DegenerateFiniteProjectionFallsBackToAllCurrentSources)
 {
     auto sources = Sources(64);
@@ -405,6 +419,7 @@ TEST_F(RenderMeshSpatialIndexTest, DegenerateFiniteProjectionFallsBackToAllCurre
     ExpectParity(index, views);
 }
 
+/// @brief Offscreen subtrees skip leaf predicates.
 TEST_F(RenderMeshSpatialIndexTest, OffscreenSubtreesSkipLeafPredicates)
 {
     auto sources = Sources(1024);
@@ -424,6 +439,7 @@ TEST_F(RenderMeshSpatialIndexTest, OffscreenSubtreesSkipLeafPredicates)
     EXPECT_EQ(treeStats.visitedNodes, 1u);
 }
 
+/// @brief Checks stable movement refits the original partition without promotion.
 TEST_F(RenderMeshSpatialIndexTest, StableMovementRefitsTheOriginalPartitionWithoutPromotion)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -445,6 +461,7 @@ TEST_F(RenderMeshSpatialIndexTest, StableMovementRefitsTheOriginalPartitionWitho
     ExpectParity(index, reflectionViews);
 }
 
+/// @brief Stable ordinal reuse tracks replacement and reorder with current bounds.
 TEST_F(RenderMeshSpatialIndexTest, StableOrdinalReuseTracksReplacementAndReorderWithCurrentBounds)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -474,6 +491,7 @@ TEST_F(RenderMeshSpatialIndexTest, StableOrdinalReuseTracksReplacementAndReorder
     ExpectParity(index, views);
 }
 
+/// @brief Stable topology changes and mode switches rebuild current classification.
 TEST_F(RenderMeshSpatialIndexTest, StableTopologyChangesAndModeSwitchesRebuildCurrentClassification)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -505,6 +523,7 @@ TEST_F(RenderMeshSpatialIndexTest, StableTopologyChangesAndModeSwitchesRebuildCu
     ExpectParity(index, views);
 }
 
+/// @brief Stable dense refit scans postorder and sparse refit sorts only ancestors.
 TEST_F(RenderMeshSpatialIndexTest, StableDenseRefitScansPostorderAndSparseRefitSortsOnlyAncestors)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -532,6 +551,7 @@ TEST_F(RenderMeshSpatialIndexTest, StableDenseRefitScansPostorderAndSparseRefitS
     ExpectParity(index, views);
 }
 
+/// @brief Complete journal applies only unique changed ordinals.
 TEST_F(RenderMeshSpatialIndexTest, CompleteJournalAppliesOnlyUniqueChangedOrdinals)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -555,6 +575,7 @@ TEST_F(RenderMeshSpatialIndexTest, CompleteJournalAppliesOnlyUniqueChangedOrdina
     ExpectParity(index, views);
 }
 
+/// @brief Journal rejects invalid lineage and topology before changing current values.
 TEST_F(RenderMeshSpatialIndexTest, JournalRejectsInvalidLineageAndTopologyBeforeChangingCurrentValues)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -584,6 +605,7 @@ TEST_F(RenderMeshSpatialIndexTest, JournalRejectsInvalidLineageAndTopologyBefore
     ExpectParity(index, views);
 }
 
+/// @brief Stable bounds built once preserve varied radius and cancellation visibility.
 TEST_F(RenderMeshSpatialIndexTest, StableBoundsBuiltOncePreserveVariedRadiusAndCancellationVisibility)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -604,6 +626,7 @@ TEST_F(RenderMeshSpatialIndexTest, StableBoundsBuiltOncePreserveVariedRadiusAndC
     ExpectParity(index, views);
 }
 
+/// @brief Stable dense linear fallback requires a full witness before tree recovery.
 TEST_F(RenderMeshSpatialIndexTest, StableDenseLinearFallbackRequiresAFullWitnessBeforeTreeRecovery)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -629,6 +652,7 @@ TEST_F(RenderMeshSpatialIndexTest, StableDenseLinearFallbackRequiresAFullWitness
     ExpectParity(index, views);
 }
 
+/// @brief Disabled debug does not capture or change production candidates.
 TEST_F(RenderMeshSpatialIndexTest, DisabledDebugDoesNotCaptureOrChangeProductionCandidates)
 {
     auto sources = Sources(128);
@@ -655,6 +679,7 @@ TEST_F(RenderMeshSpatialIndexTest, DisabledDebugDoesNotCaptureOrChangeProduction
     EXPECT_EQ(capture.nodes.data(), retained);
 }
 
+/// @brief Debug capture honors depth and node budget from actual tree.
 TEST_F(RenderMeshSpatialIndexTest, DebugCaptureHonorsDepthAndNodeBudgetFromActualTree)
 {
     auto sources = Sources(128);
@@ -703,6 +728,7 @@ TEST_F(RenderMeshSpatialIndexTest, DebugCaptureHonorsDepthAndNodeBudgetFromActua
     EXPECT_FALSE(capture.truncated);
 }
 
+/// @brief Rejected subtree descendants remain unobserved.
 TEST_F(RenderMeshSpatialIndexTest, RejectedSubtreeDescendantsRemainUnobserved)
 {
     auto sources = Sources(64);
@@ -729,6 +755,7 @@ TEST_F(RenderMeshSpatialIndexTest, RejectedSubtreeDescendantsRemainUnobserved)
             : renderer::RenderBvhDebugState::UNOBSERVED);
 }
 
+/// @brief Selected entity path keeps generation and partition identity.
 TEST_F(RenderMeshSpatialIndexTest, SelectedEntityPathKeepsGenerationAndPartitionIdentity)
 {
     auto sources = Sources(64);
@@ -769,6 +796,7 @@ TEST_F(RenderMeshSpatialIndexTest, SelectedEntityPathKeepsGenerationAndPartition
     EXPECT_TRUE(capture.nodes.empty());
 }
 
+/// @brief Candidate leaf states match the actual union and fallback does not invent visits.
 TEST_F(RenderMeshSpatialIndexTest, CandidateLeafStatesMatchTheActualUnionAndFallbackDoesNotInventVisits)
 {
     auto sources = Sources(128);
@@ -806,6 +834,7 @@ TEST_F(RenderMeshSpatialIndexTest, CandidateLeafStatesMatchTheActualUnionAndFall
     EXPECT_EQ(capture.totalNodes, 0u);
 }
 
+/// @brief Debug work budget bounds filtered hierarchy and absent selected lookup.
 TEST_F(RenderMeshSpatialIndexTest, DebugWorkBudgetBoundsFilteredHierarchyAndAbsentSelectedLookup)
 {
     auto sources = Sources(renderer::RENDER_BVH_DEBUG_MAX_SELECTION_SOURCES + 512);

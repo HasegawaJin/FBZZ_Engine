@@ -43,6 +43,7 @@ private:
     profiler::PerformanceCaptureFilter m_previousFilter;
 };
 
+/// @brief Publishes samples only when the frame ends.
 TEST_F(ProfilerTest, PublishesSamplesOnlyWhenTheFrameEnds)
 {
     Profiler::BeginFrame();
@@ -61,6 +62,7 @@ TEST_F(ProfilerTest, PublishesSamplesOnlyWhenTheFrameEnds)
     EXPECT_EQ(records[0].frameIndex, Profiler::GetLastFrameIndex());
 }
 
+/// @brief Keeps the published snapshot until the next frame ends.
 TEST_F(ProfilerTest, KeepsThePublishedSnapshotUntilTheNextFrameEnds)
 {
     Profiler::BeginFrame();
@@ -78,6 +80,7 @@ TEST_F(ProfilerTest, KeepsThePublishedSnapshotUntilTheNextFrameEnds)
     EXPECT_EQ(Profiler::GetLastFrameIndex(), previousIndex + 1);
 }
 
+/// @brief Records nested samples and instant markers at their stack depth.
 TEST_F(ProfilerTest, RecordsNestedSamplesAndInstantMarkersAtTheirStackDepth)
 {
     Profiler::BeginFrame();
@@ -105,6 +108,7 @@ TEST_F(ProfilerTest, RecordsNestedSamplesAndInstantMarkersAtTheirStackDepth)
     EXPECT_EQ(records[3].depth, 0u);
 }
 
+/// @brief Disabling clears published and pending samples and ignores collection.
 TEST_F(ProfilerTest, DisablingClearsPublishedAndPendingSamplesAndIgnoresCollection)
 {
     Profiler::BeginFrame();
@@ -132,6 +136,7 @@ TEST_F(ProfilerTest, DisablingClearsPublishedAndPendingSamplesAndIgnoresCollecti
     EXPECT_TRUE(Profiler::GetLastFrameRecords().empty());
 }
 
+/// @brief Keeps legacy completion order across recursion recovery and unclosed scopes.
 TEST_F(ProfilerTest, KeepsLegacyCompletionOrderAcrossRecursionRecoveryAndUnclosedScopes)
 {
     Profiler::BeginFrame();
@@ -178,6 +183,7 @@ TEST_F(ProfilerTest, KeepsLegacyCompletionOrderAcrossRecursionRecoveryAndUnclose
     EXPECT_EQ(Profiler::GetSnapshot().samples[3].status, profiler::ProfileSampleStatus::ABORTED);
 }
 
+/// @brief Defers legacy reads across descriptor retirement without changing the published frame.
 TEST_F(ProfilerTest, DefersLegacyReadsAcrossDescriptorRetirementWithoutChangingThePublishedFrame)
 {
     const std::string category = "retirement-category-with-owned-storage";
@@ -221,6 +227,7 @@ TEST_F(ProfilerTest, DefersLegacyReadsAcrossDescriptorRetirementWithoutChangingT
     EXPECT_TRUE(Profiler::GetLastFrameRecords().empty());
 }
 
+/// @brief Preserves owned descriptors when consecutive frames share only part of their names.
 TEST_F(ProfilerTest, PreservesOwnedDescriptorsWhenConsecutiveFramesShareOnlyPartOfTheirNames)
 {
     const ProfilerMarker first("first-owned-marker-with-heap-storage", "first-category", 1u);
@@ -260,6 +267,7 @@ TEST_F(ProfilerTest, PreservesOwnedDescriptorsWhenConsecutiveFramesShareOnlyPart
     EXPECT_EQ(original.descriptors[2].name, last.name);
 }
 
+/// @brief Keeps capacity loss visible when legacy reads skip a full frame.
 TEST_F(ProfilerTest, KeepsCapacityLossVisibleWhenLegacyReadsSkipAFullFrame)
 {
     for (uint64_t serial = 1; serial <= 2; ++serial) {
@@ -289,6 +297,7 @@ TEST_F(ProfilerTest, KeepsCapacityLossVisibleWhenLegacyReadsSkipAFullFrame)
     EXPECT_EQ(Profiler::GetSnapshot().droppedSampleCount, 0u);
 }
 
+/// @brief Replacing an open frame keeps the previous publication until the next explicit end.
 TEST_F(ProfilerTest, ReplacingAnOpenFrameKeepsThePreviousPublicationUntilTheNextExplicitEnd)
 {
     Profiler::BeginFrame(1, profiler::ProfileRecorder::NowMs());
@@ -313,6 +322,7 @@ TEST_F(ProfilerTest, ReplacingAnOpenFrameKeepsThePreviousPublicationUntilTheNext
     EXPECT_STREQ(Profiler::GetLastFrameRecords()[0].name, "latest");
 }
 
+/// @brief Filters before descriptor registration and avoids synthetic capacity overflow.
 TEST_F(ProfilerTest, FiltersBeforeDescriptorRegistrationAndAvoidsSyntheticCapacityOverflow)
 {
     ASSERT_TRUE(Profiler::RequestCaptureFilter({"Rendering", "Extract"}));
@@ -338,6 +348,7 @@ TEST_F(ProfilerTest, FiltersBeforeDescriptorRegistrationAndAvoidsSyntheticCapaci
     EXPECT_TRUE(snapshot.complete);
 }
 
+/// @brief Applies filter only at frame boundary and does not change existing tokens.
 TEST_F(ProfilerTest, AppliesFilterOnlyAtFrameBoundaryAndDoesNotChangeExistingTokens)
 {
     Profiler::BeginFrame();
@@ -359,6 +370,7 @@ TEST_F(ProfilerTest, AppliesFilterOnlyAtFrameBoundaryAndDoesNotChangeExistingTok
     EXPECT_EQ(Profiler::GetRequestedCaptureFilter().category, "Rendering");
 }
 
+/// @brief Shares collection filter across threads while keeping stacks and snapshots independent.
 TEST_F(ProfilerTest, SharesCollectionFilterAcrossThreadsWhileKeepingStacksAndSnapshotsIndependent)
 {
     ASSERT_TRUE(Profiler::RequestCaptureFilter({"Rendering", "selected"}));
@@ -385,6 +397,7 @@ TEST_F(ProfilerTest, SharesCollectionFilterAcrossThreadsWhileKeepingStacksAndSna
     }
 }
 
+/// @brief Keeps thousands of boundary frames consistent across reads clear recording and filter requests.
 TEST_F(ProfilerTest, KeepsThousandsOfBoundaryFramesConsistentAcrossReadsClearRecordingAndFilterRequests)
 {
     for (uint64_t serial = 1; serial <= 2048; ++serial) {
@@ -423,6 +436,7 @@ TEST_F(ProfilerTest, KeepsThousandsOfBoundaryFramesConsistentAcrossReadsClearRec
     }
 }
 
+/// @brief Worker frame publication never replaces the owning thread during long recording.
 TEST_F(ProfilerTest, WorkerFramePublicationNeverReplacesTheOwningThreadDuringLongRecording)
 {
     ASSERT_TRUE(Profiler::RequestCaptureFilter({}));
@@ -459,6 +473,7 @@ profiler::detail::ApplicationFrameElapsedModeWitness PassiveOffMode()
 }
 } /// @note namespace
 
+/// @brief Passive observer applies arm and stop at boundaries without inactive publication.
 TEST_F(ProfilerTest, PassiveObserverAppliesArmAndStopAtBoundariesWithoutInactivePublication)
 {
     PassiveObserver observer; const auto mode = PassiveOffMode();
@@ -477,6 +492,7 @@ TEST_F(ProfilerTest, PassiveObserverAppliesArmAndStopAtBoundariesWithoutInactive
     EXPECT_EQ(observer.Read().observerSessionId, restarted); EXPECT_EQ(observer.Read().publicationOrdinal, 1u);
     EXPECT_FALSE(observer.Read().wallFrameIntervalAvailable);
 }
+/// @brief Passive observer distinguishes measured zero from first wall and tracks real begin intervals.
 TEST_F(ProfilerTest, PassiveObserverDistinguishesMeasuredZeroFromFirstWallAndTracksRealBeginIntervals)
 {
     PassiveObserver observer; const auto mode = PassiveOffMode(); ASSERT_NE(observer.Arm(), 0u);
@@ -488,6 +504,7 @@ TEST_F(ProfilerTest, PassiveObserverDistinguishesMeasuredZeroFromFirstWallAndTra
     observer.Begin(3, 26.0, mode); observer.End(31.0, mode);
     EXPECT_DOUBLE_EQ(observer.Read().wallFrameIntervalMs, 16.0); EXPECT_DOUBLE_EQ(observer.Read().cpuFrameElapsedMs, 5.0);
 }
+/// @brief Passive observer rejects nonfinite negative and backward clock without clamping to zero.
 TEST_F(ProfilerTest, PassiveObserverRejectsNonfiniteNegativeAndBackwardClockWithoutClampingToZero)
 {
     PassiveObserver observer; const auto mode = PassiveOffMode(); ASSERT_NE(observer.Arm(), 0u);
@@ -504,6 +521,7 @@ TEST_F(ProfilerTest, PassiveObserverRejectsNonfiniteNegativeAndBackwardClockWith
     observer.Begin(5, 30.0, mode); observer.End(std::numeric_limits<double>::infinity(), mode);
     EXPECT_FALSE(observer.Read().cpuFrameElapsedAvailable);
 }
+/// @brief Passive observer retains aborted scalar and does not publish unmatched or double end.
 TEST_F(ProfilerTest, PassiveObserverRetainsAbortedScalarAndDoesNotPublishUnmatchedOrDoubleEnd)
 {
     PassiveObserver observer; const auto mode = PassiveOffMode(); ASSERT_NE(observer.Arm(), 0u);
@@ -515,6 +533,7 @@ TEST_F(ProfilerTest, PassiveObserverRetainsAbortedScalarAndDoesNotPublishUnmatch
     observer.Begin(2, 26.0, mode); observer.End(27.0, mode);
     EXPECT_FALSE(observer.Read().wallFrameIntervalAvailable);
 }
+/// @brief Passive observer explains replaced begin without fabricating end witness or wall continuity.
 TEST_F(ProfilerTest, PassiveObserverExplainsReplacedBeginWithoutFabricatingEndWitnessOrWallContinuity)
 {
     PassiveObserver observer; const auto mode = PassiveOffMode(); ASSERT_NE(observer.Arm(), 0u);
@@ -525,6 +544,7 @@ TEST_F(ProfilerTest, PassiveObserverExplainsReplacedBeginWithoutFabricatingEndWi
     observer.End(30.0, mode); EXPECT_EQ(observer.Read().publicationOrdinal, 2u);
     EXPECT_EQ(observer.Read().applicationFrameSerial, 2u); EXPECT_FALSE(observer.Read().wallFrameIntervalAvailable);
 }
+/// @brief Passive common boundary publishes fresh off frames without updating stopped native snapshot.
 TEST_F(ProfilerTest, PassiveCommonBoundaryPublishesFreshOffFramesWithoutUpdatingStoppedNativeSnapshot)
 {
     struct RestoreBoundary {
@@ -572,6 +592,7 @@ struct PassiveReviewBoundaryGuard {
 };
 } /// @note namespace
 
+/// @brief Passive pending arm keeps open frame and old latest until next common begin.
 TEST_F(ProfilerTest, PassivePendingArmKeepsOpenFrameAndOldLatestUntilNextCommonBegin)
 {
     PassiveReviewBoundaryGuard restore;
@@ -594,6 +615,7 @@ TEST_F(ProfilerTest, PassivePendingArmKeepsOpenFrameAndOldLatestUntilNextCommonB
     EXPECT_TRUE(restarted.cpuFrameElapsedAvailable); EXPECT_FALSE(restarted.wallFrameIntervalAvailable);
     EXPECT_FALSE(Profiler::GetSnapshot().available); EXPECT_TRUE(Profiler::GetSnapshot().samples.empty());
 }
+/// @brief Passive pending stop closes open frame then leaves latest unchanged while inactive.
 TEST_F(ProfilerTest, PassivePendingStopClosesOpenFrameThenLeavesLatestUnchangedWhileInactive)
 {
     PassiveReviewBoundaryGuard restore;

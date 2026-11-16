@@ -28,12 +28,14 @@ scene::ParticleEmitterSettings GpuEmitter()
 
 } // namespace
 
+/// @brief Plain GPU emitter runs on the GPU.
 TEST(ParticleGpuFallbackTest, PlainGpuEmitterRunsOnTheGpu)
 {
     const asset::ParticleMaterialSettings material;
     EXPECT_EQ(scene::GetParticleGpuFallbackReason(GpuEmitter(), &material), scene::ParticleGpuFallbackReason::None);
 }
 
+/// @brief Frame blending and motion vectors stay on the GPU.
 TEST(ParticleGpuFallbackTest, FrameBlendingAndMotionVectorsStayOnTheGpu)
 {
     asset::ParticleMaterialSettings material;
@@ -46,6 +48,7 @@ TEST(ParticleGpuFallbackTest, FrameBlendingAndMotionVectorsStayOnTheGpu)
     EXPECT_TRUE(scene::CanUseGpuSimulation(GpuEmitter(), &material));
 }
 
+/// @brief Six way maps and point lights stay on the GPU.
 TEST(ParticleGpuFallbackTest, SixWayMapsAndPointLightsStayOnTheGpu)
 {
     asset::ParticleMaterialSettings material;
@@ -54,6 +57,7 @@ TEST(ParticleGpuFallbackTest, SixWayMapsAndPointLightsStayOnTheGpu)
     EXPECT_EQ(scene::GetParticleGpuFallbackReason(GpuEmitter(), &material), scene::ParticleGpuFallbackReason::None);
 }
 
+/// @brief Trail still falls back to the CPU.
 TEST(ParticleGpuFallbackTest, TrailStillFallsBackToTheCpu)
 {
     scene::ParticleEmitterSettings settings = GpuEmitter();

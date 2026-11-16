@@ -271,6 +271,7 @@ private:
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_postCB;
 };
 
+/// @brief Unlit view keeps white ambient instead of using image based lighting.
 TEST_F(HybridHistoryTest, UnlitViewKeepsWhiteAmbientInsteadOfUsingImageBasedLighting)
 {
     for (const bool dynamic : {false, true}) {
@@ -281,6 +282,7 @@ TEST_F(HybridHistoryTest, UnlitViewKeepsWhiteAmbientInsteadOfUsingImageBasedLigh
     }
 }
 
+/// @brief Provider changes and rejected reflection reset GPU feedback without changing earlier submits.
 TEST_F(HybridHistoryTest, ProviderChangesAndRejectedReflectionResetGpuFeedbackWithoutChangingEarlierSubmits)
 {
     renderer::RenderViewResources view;
@@ -299,6 +301,7 @@ TEST_F(HybridHistoryTest, ProviderChangesAndRejectedReflectionResetGpuFeedbackWi
     ExpectBlended(pixels.after);
 }
 
+/// @brief View epochs frame gaps and disabled TAA remain independent.
 TEST_F(HybridHistoryTest, ViewEpochsFrameGapsAndDisabledTaaRemainIndependent)
 {
     renderer::RenderViewResources gameView, sceneView;
@@ -313,6 +316,7 @@ TEST_F(HybridHistoryTest, ViewEpochsFrameGapsAndDisabledTaaRemainIndependent)
     }
 }
 
+/// @brief Screen resolve and actual SSR changes reset feedback during raster fallback.
 TEST_F(HybridHistoryTest, ScreenResolveAndActualSsrChangesResetFeedbackDuringRasterFallback)
 {
     renderer::RenderViewResources view;

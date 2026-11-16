@@ -807,6 +807,7 @@ private:
     float m_cameraFar = 40;
 };
 
+/// @brief Shared water preserves both air fog modes for dry camera views.
 TEST_F(UnderwaterShaderTest, SharedWaterPreservesBothAirFogModesForDryCameraViews)
 {
     for (bool orthographic : {false, true}) for (bool froxel : {false, true}) {
@@ -849,6 +850,7 @@ TEST_F(UnderwaterShaderTest, SharedWaterPreservesBothAirFogModesForDryCameraView
     }
 }
 
+/// @brief Air fog terminates at the nearest water interface or opaque surface.
 TEST_F(UnderwaterShaderTest, AirFogTerminatesAtTheNearestWaterInterfaceOrOpaqueSurface)
 {
     for (bool orthographic : {false, true}) for (bool froxel : {false, true}) {
@@ -879,6 +881,7 @@ TEST_F(UnderwaterShaderTest, AirFogTerminatesAtTheNearestWaterInterfaceOrOpaqueS
     }
 }
 
+/// @brief Wet camera still suppresses both air fog modes.
 TEST_F(UnderwaterShaderTest, WetCameraStillSuppressesBothAirFogModes)
 {
     for (bool orthographic : {false, true}) for (bool shared : {false, true}) {
@@ -898,6 +901,7 @@ TEST_F(UnderwaterShaderTest, WetCameraStillSuppressesBothAirFogModes)
     }
 }
 
+/// @brief Homogeneous RGB absorption matches Beer at physical camera distances.
 TEST_F(UnderwaterShaderTest, HomogeneousRgbAbsorptionMatchesBeerAtPhysicalCameraDistances)
 {
     const auto camera = Camera();
@@ -926,6 +930,7 @@ TEST_F(UnderwaterShaderTest, HomogeneousRgbAbsorptionMatchesBeerAtPhysicalCamera
     }
 }
 
+/// @brief Night point light scatters with legacy linear and clustered inputs.
 TEST_F(UnderwaterShaderTest, NightPointLightScattersWithLegacyLinearAndClusteredInputs)
 {
     const auto water = LocalWater();
@@ -945,6 +950,7 @@ TEST_F(UnderwaterShaderTest, NightPointLightScattersWithLegacyLinearAndClustered
     ExpectBlack(LocalShafts(water, {distant}));
 }
 
+/// @brief Conservative ray bounds preserve wet cells and reject entirely dry views.
 TEST_F(UnderwaterShaderTest, ConservativeRayBoundsPreserveWetCellsAndRejectEntirelyDryViews)
 {
     for (int mode = 0; mode < 3; ++mode) {
@@ -972,6 +978,7 @@ TEST_F(UnderwaterShaderTest, ConservativeRayBoundsPreserveWetCellsAndRejectEntir
     }
 }
 
+/// @brief Finite local source and camera paths apply RGB Beer without creating light in vacuum.
 TEST_F(UnderwaterShaderTest, FiniteLocalSourceAndCameraPathsApplyRgbBeerWithoutCreatingLightInVacuum)
 {
     auto water = LocalWater();
@@ -987,6 +994,7 @@ TEST_F(UnderwaterShaderTest, FiniteLocalSourceAndCameraPathsApplyRgbBeerWithoutC
     ExpectBlack(LocalShafts(water, {Point()}));
 }
 
+/// @brief Spot cone cookie and raw shadow suppress water light even with decorative shadow strength zero.
 TEST_F(UnderwaterShaderTest, SpotConeCookieAndRawShadowSuppressWaterLightEvenWithDecorativeShadowStrengthZero)
 {
     const auto water = LocalWater();
@@ -1006,6 +1014,7 @@ TEST_F(UnderwaterShaderTest, SpotConeCookieAndRawShadowSuppressWaterLightEvenWit
     ExpectBlack(LocalShafts(water, {spot}));
 }
 
+/// @brief Cluster candidates use each water sample depth instead of the opaque endpoint depth.
 TEST_F(UnderwaterShaderTest, ClusterCandidatesUseEachWaterSampleDepthInsteadOfTheOpaqueEndpointDepth)
 {
     const auto water = LocalWater();
@@ -1020,6 +1029,7 @@ TEST_F(UnderwaterShaderTest, ClusterCandidatesUseEachWaterSampleDepthInsteadOfTh
     EXPECT_LT(farMean[0], allMean[0] * 0.8);
 }
 
+/// @brief Sampled water lights preserve all sixteen sources instead of keeping only eight.
 TEST_F(UnderwaterShaderTest, SampledWaterLightsPreserveAllSixteenSourcesInsteadOfKeepingOnlyEight)
 {
     const auto water = LocalWater();
@@ -1031,6 +1041,7 @@ TEST_F(UnderwaterShaderTest, SampledWaterLightsPreserveAllSixteenSourcesInsteadO
     ExpectSame(sampled, expected, 0.004f);
 }
 
+/// @brief Eight strongest water lights bound the work and do not depend on candidate ordering.
 TEST_F(UnderwaterShaderTest, EightStrongestWaterLightsBoundTheWorkAndDoNotDependOnCandidateOrdering)
 {
     const auto water = LocalWater();
@@ -1052,6 +1063,7 @@ TEST_F(UnderwaterShaderTest, EightStrongestWaterLightsBoundTheWorkAndDoNotDepend
     EXPECT_LT(Mean(weakFirst)[0], 0.0001);
 }
 
+/// @brief Missing shadow resources suppress only lights assigned to those resources.
 TEST_F(UnderwaterShaderTest, MissingShadowResourcesSuppressOnlyLightsAssignedToThoseResources)
 {
     const auto water = LocalWater();
@@ -1075,6 +1087,7 @@ TEST_F(UnderwaterShaderTest, MissingShadowResourcesSuppressOnlyLightsAssignedToT
     EXPECT_LT(Mean(mixed)[0], 0.0001);
 }
 
+/// @brief Vacuum and no light do not create an emissive underwater tint.
 TEST_F(UnderwaterShaderTest, VacuumAndNoLightDoNotCreateAnEmissiveUnderwaterTint)
 {
     const auto camera = Camera();
@@ -1093,6 +1106,7 @@ TEST_F(UnderwaterShaderTest, VacuumAndNoLightDoNotCreateAnEmissiveUnderwaterTint
     ExpectBlack(noLight);
 }
 
+/// @brief Checks ambient light produces colored scattering without directional shafts.
 TEST_F(UnderwaterShaderTest, AmbientLightProducesColoredScatteringWithoutDirectionalShafts)
 {
     const auto camera = Camera();
@@ -1110,6 +1124,7 @@ TEST_F(UnderwaterShaderTest, AmbientLightProducesColoredScatteringWithoutDirecti
     ExpectBlack(dark);
 }
 
+/// @brief Clear depth stops at the water surface and respects maximum path length.
 TEST_F(UnderwaterShaderTest, ClearDepthStopsAtTheWaterSurfaceAndRespectsMaximumPathLength)
 {
     auto camera = Camera();
@@ -1132,6 +1147,7 @@ TEST_F(UnderwaterShaderTest, ClearDepthStopsAtTheWaterSurfaceAndRespectsMaximumP
     ExpectSame(capped, capReference);
 }
 
+/// @brief Orthographic pixels share parallel origins and equal optical depth.
 TEST_F(UnderwaterShaderTest, OrthographicPixelsShareParallelOriginsAndEqualOpticalDepth)
 {
     auto camera = Camera();
@@ -1147,6 +1163,7 @@ TEST_F(UnderwaterShaderTest, OrthographicPixelsShareParallelOriginsAndEqualOptic
     ExpectSame(actual, expected);
 }
 
+/// @brief Checks rectangular water yaw changes the ray exit without changing its coefficients.
 TEST_F(UnderwaterShaderTest, RectangularWaterYawChangesTheRayExitWithoutChangingItsCoefficients)
 {
     auto camera = Camera();
@@ -1169,6 +1186,7 @@ TEST_F(UnderwaterShaderTest, RectangularWaterYawChangesTheRayExitWithoutChanging
     ExpectSame(lengthThree, expectedThree);
 }
 
+/// @brief Directional shafts require scattering sunlight and unblocked geometry.
 TEST_F(UnderwaterShaderTest, DirectionalShaftsRequireScatteringSunlightAndUnblockedGeometry)
 {
     const auto camera = Camera();
@@ -1186,6 +1204,7 @@ TEST_F(UnderwaterShaderTest, DirectionalShaftsRequireScatteringSunlightAndUnbloc
     ExpectBlack(noScatter);
 }
 
+/// @brief Shadow depth setup preserves the open clear value and actual blocker depth.
 TEST_F(UnderwaterShaderTest, ShadowDepthSetupPreservesTheOpenClearValueAndActualBlockerDepth)
 {
     const auto open = ShadowDepth(ShadowMask::OPEN);
@@ -1200,6 +1219,7 @@ TEST_F(UnderwaterShaderTest, ShadowDepthSetupPreservesTheOpenClearValueAndActual
         }
 }
 
+/// @brief Air shafts keep shadow gaps and stop at the first water surface.
 TEST_F(UnderwaterShaderTest, AirShaftsKeepShadowGapsAndStopAtTheFirstWaterSurface)
 {
     auto camera = Camera();
@@ -1234,6 +1254,7 @@ TEST_F(UnderwaterShaderTest, AirShaftsKeepShadowGapsAndStopAtTheFirstWaterSurfac
     EXPECT_NEAR(clipped[right], dry[right] * 0.25f, 0.002f);
 }
 
+/// @brief High extinction single scattering is finite and bounded by incident energy.
 TEST_F(UnderwaterShaderTest, HighExtinctionSingleScatteringIsFiniteAndBoundedByIncidentEnergy)
 {
     auto camera = Camera();
@@ -1260,6 +1281,7 @@ TEST_F(UnderwaterShaderTest, HighExtinctionSingleScatteringIsFiniteAndBoundedByI
     EXPECT_LE(maximum, 0.13f);
 }
 
+/// @brief Unready and disabled shafts never reuse the previous frame contribution.
 TEST_F(UnderwaterShaderTest, UnreadyAndDisabledShaftsNeverReuseThePreviousFrameContribution)
 {
     const auto camera = Camera();
@@ -1284,6 +1306,7 @@ TEST_F(UnderwaterShaderTest, UnreadyAndDisabledShaftsNeverReuseThePreviousFrameC
     ExpectBlack(zeroStrength);
 }
 
+/// @brief Phase changes sunward scattering while isotropic transport keeps both views equal.
 TEST_F(UnderwaterShaderTest, PhaseChangesSunwardScatteringWhileIsotropicTransportKeepsBothViewsEqual)
 {
     auto toward = Camera();
@@ -1318,6 +1341,7 @@ TEST_F(UnderwaterShaderTest, PhaseChangesSunwardScatteringWhileIsotropicTranspor
     }
 }
 
+/// @brief Checks caustics need sunlight and receiver visibility and do not illuminate the sky.
 TEST_F(UnderwaterShaderTest, CausticsNeedSunlightAndReceiverVisibilityAndDoNotIlluminateTheSky)
 {
     auto camera = Camera();
@@ -1338,6 +1362,7 @@ TEST_F(UnderwaterShaderTest, CausticsNeedSunlightAndReceiverVisibilityAndDoNotIl
     ExpectBlack(sky);
 }
 
+/// @brief Yawed caustics stay inside the actual rectangular water footprint.
 TEST_F(UnderwaterShaderTest, YawedCausticsStayInsideTheActualRectangularWaterFootprint)
 {
     auto camera = Camera();
@@ -1359,6 +1384,7 @@ TEST_F(UnderwaterShaderTest, YawedCausticsStayInsideTheActualRectangularWaterFoo
     for (double channel : Mean(inside)) EXPECT_GT(channel, 0.0005);
 }
 
+/// @brief Odd half resolution extents keep the final row and column lit.
 TEST_F(UnderwaterShaderTest, OddHalfResolutionExtentsKeepTheFinalRowAndColumnLit)
 {
     ASSERT_TRUE(SetExtent(127, 65));
@@ -1380,6 +1406,7 @@ TEST_F(UnderwaterShaderTest, OddHalfResolutionExtentsKeepTheFinalRowAndColumnLit
     }
 }
 
+/// @brief Odd quarter resolution extents keep the final row and column lit.
 TEST_F(UnderwaterShaderTest, OddQuarterResolutionExtentsKeepTheFinalRowAndColumnLit)
 {
     ASSERT_TRUE(SetExtent(127, 65, 4u));
@@ -1400,6 +1427,7 @@ TEST_F(UnderwaterShaderTest, OddQuarterResolutionExtentsKeepTheFinalRowAndColumn
     }
 }
 
+/// @brief Underwater room captures show shadowed directional light in the volume.
 TEST_F(UnderwaterShaderTest, UnderwaterRoomCapturesShowShadowedDirectionalLightInTheVolume)
 {
     /// @note Controlled underwater-room fixture with an authored custom optical material; both captures use the same geometry and display transform.
@@ -1455,6 +1483,7 @@ TEST_F(UnderwaterShaderTest, UnderwaterRoomCapturesShowShadowedDirectionalLightI
     EXPECT_GT(brightening / (512u * 384u * 3u), 0.01);
 }
 
+/// @brief Checks horizon Beer extends beyond the authored rectangle and retains dry intervals.
 TEST_F(UnderwaterShaderTest, HorizonBeerExtendsBeyondTheAuthoredRectangleAndRetainsDryIntervals)
 {
     auto water = Water();
@@ -1485,6 +1514,7 @@ TEST_F(UnderwaterShaderTest, HorizonBeerExtendsBeyondTheAuthoredRectangleAndReta
     }
 }
 
+/// @brief Certified night camera Beer retains exact overlapping dry intervals.
 TEST_F(UnderwaterShaderTest, CertifiedNightCameraBeerRetainsExactOverlappingDryIntervals)
 {
     auto water = Water();
@@ -1509,6 +1539,7 @@ TEST_F(UnderwaterShaderTest, CertifiedNightCameraBeerRetainsExactOverlappingDryI
     ExpectSame(actual, expected, 0.004f);
 }
 
+/// @brief Certified night view retains general integration at unproven boundaries.
 TEST_F(UnderwaterShaderTest, CertifiedNightViewRetainsGeneralIntegrationAtUnprovenBoundaries)
 {
     auto water = LocalWater();
@@ -1531,6 +1562,7 @@ TEST_F(UnderwaterShaderTest, CertifiedNightViewRetainsGeneralIntegrationAtUnprov
     }
 }
 
+/// @brief Cached night owner preserves ambient wave columns and dry rooms.
 TEST_F(UnderwaterShaderTest, CachedNightOwnerPreservesAmbientWaveColumnsAndDryRooms)
 {
     auto water = LocalWater();
@@ -1552,6 +1584,7 @@ TEST_F(UnderwaterShaderTest, CachedNightOwnerPreservesAmbientWaveColumnsAndDryRo
     ExpectSame(actual, FinishComposite(), 0.001f);
 }
 
+/// @brief Single dry interval matches the general union across transformed room boundaries.
 TEST_F(UnderwaterShaderTest, SingleDryIntervalMatchesTheGeneralUnionAcrossTransformedRoomBoundaries)
 {
     auto water = LocalWater();
@@ -1584,6 +1617,7 @@ TEST_F(UnderwaterShaderTest, SingleDryIntervalMatchesTheGeneralUnionAcrossTransf
     }
 }
 
+/// @brief Cached night owner retains the authored source distance cap.
 TEST_F(UnderwaterShaderTest, CachedNightOwnerRetainsTheAuthoredSourceDistanceCap)
 {
     auto water = LocalWater(); water.underwaterOpticalMode = 2; water.underwaterMaxDistance = 1;
@@ -1599,6 +1633,7 @@ TEST_F(UnderwaterShaderTest, CachedNightOwnerRetainsTheAuthoredSourceDistanceCap
     ExpectSame(actual, FinishComposite(), 0.001f);
 }
 
+/// @brief Specialized rectangle retains wave columns source cap and interface termination.
 TEST_F(UnderwaterShaderTest, SpecializedRectangleRetainsWaveColumnsSourceCapAndInterfaceTermination)
 {
     auto water = LocalWater();
@@ -1626,6 +1661,7 @@ TEST_F(UnderwaterShaderTest, SpecializedRectangleRetainsWaveColumnsSourceCapAndI
     }
 }
 
+/// @brief Specialized rectangle retains dry camera and orthographic water entry.
 TEST_F(UnderwaterShaderTest, SpecializedRectangleRetainsDryCameraAndOrthographicWaterEntry)
 {
     auto water = LocalWater();
@@ -1652,6 +1688,7 @@ TEST_F(UnderwaterShaderTest, SpecializedRectangleRetainsDryCameraAndOrthographic
     }
 }
 
+/// @brief Specialized rectangle clips the ambient source at transformed footprint boundaries.
 TEST_F(UnderwaterShaderTest, SpecializedRectangleClipsTheAmbientSourceAtTransformedFootprintBoundaries)
 {
     auto water = LocalWater();
@@ -1680,6 +1717,7 @@ TEST_F(UnderwaterShaderTest, SpecializedRectangleClipsTheAmbientSourceAtTransfor
     }
 }
 
+/// @brief Specialized rectangle retains overlapping dry rooms from wet and dry cameras.
 TEST_F(UnderwaterShaderTest, SpecializedRectangleRetainsOverlappingDryRoomsFromWetAndDryCameras)
 {
     auto water = LocalWater();
@@ -1706,6 +1744,7 @@ TEST_F(UnderwaterShaderTest, SpecializedRectangleRetainsOverlappingDryRoomsFromW
     }
 }
 
+/// @brief Complementary water passes retain isolated and competing footprint pixels.
 TEST_F(UnderwaterShaderTest, ComplementaryWaterPassesRetainIsolatedAndCompetingFootprintPixels)
 {
     auto water = LocalWater();
@@ -1727,6 +1766,7 @@ TEST_F(UnderwaterShaderTest, ComplementaryWaterPassesRetainIsolatedAndCompetingF
     }
 }
 
+/// @brief Shared dry camera accumulates only water after the dry room exit.
 TEST_F(UnderwaterShaderTest, SharedDryCameraAccumulatesOnlyWaterAfterTheDryRoomExit)
 {
     auto water = Water();
@@ -1752,6 +1792,7 @@ TEST_F(UnderwaterShaderTest, SharedDryCameraAccumulatesOnlyWaterAfterTheDryRoomE
     ExpectSame(missingReceipt, unchanged, 0.001f);
 }
 
+/// @brief Shared visible interface stops camera Beer before opaque behind the water surface.
 TEST_F(UnderwaterShaderTest, SharedVisibleInterfaceStopsCameraBeerBeforeOpaqueBehindTheWaterSurface)
 {
     auto water = Water();
@@ -1772,6 +1813,7 @@ TEST_F(UnderwaterShaderTest, SharedVisibleInterfaceStopsCameraBeerBeforeOpaqueBe
     ExpectSame(actual, expected, 0.004f);
 }
 
+/// @brief Shared footprint miss leaves scene radiance unchanged.
 TEST_F(UnderwaterShaderTest, SharedFootprintMissLeavesSceneRadianceUnchanged)
 {
     auto water = Water();
@@ -1789,6 +1831,7 @@ TEST_F(UnderwaterShaderTest, SharedFootprintMissLeavesSceneRadianceUnchanged)
     ExpectSame(actual, Composite(Camera(), reference, ambient, 5, radiance), 0.001f);
 }
 
+/// @brief Shared zero light strength keeps RGB extinction.
 TEST_F(UnderwaterShaderTest, SharedZeroLightStrengthKeepsRgbExtinction)
 {
     auto water = Water();
@@ -1812,6 +1855,7 @@ TEST_F(UnderwaterShaderTest, SharedZeroLightStrengthKeepsRgbExtinction)
     ExpectSame(actual, expected, 0.004f);
 }
 
+/// @brief Shared air to entry leaves already shaded surface radiance and adds no behind surface shaft.
 TEST_F(UnderwaterShaderTest, SharedAirToEntryLeavesAlreadyShadedSurfaceRadianceAndAddsNoBehindSurfaceShaft)
 {
     auto camera = Camera();
@@ -1839,6 +1883,7 @@ TEST_F(UnderwaterShaderTest, SharedAirToEntryLeavesAlreadyShadedSurfaceRadianceA
     ExpectBlack(FinishShafts());
 }
 
+/// @brief Shared flat water does not create caustics even with a white pattern and high intensity.
 TEST_F(UnderwaterShaderTest, SharedFlatWaterDoesNotCreateCausticsEvenWithAWhitePatternAndHighIntensity)
 {
     auto camera = Camera();
@@ -1854,6 +1899,7 @@ TEST_F(UnderwaterShaderTest, SharedFlatWaterDoesNotCreateCausticsEvenWithAWhiteP
     ExpectBlack(Caustics(camera, water, Sun(), 3, ShadowMask::BLOCKED, &medium));
 }
 
+/// @brief Shared caustics use raised body plane and reject dry volumes and footprint misses.
 TEST_F(UnderwaterShaderTest, SharedCausticsUseRaisedBodyPlaneAndRejectDryVolumesAndFootprintMisses)
 {
     auto camera = Camera();
@@ -1877,6 +1923,7 @@ TEST_F(UnderwaterShaderTest, SharedCausticsUseRaisedBodyPlaneAndRejectDryVolumes
     ExpectBlack(Caustics(camera, water, Sun(), 1, ShadowMask::OPEN, &medium));
 }
 
+/// @brief Shared submerged floor keeps oblique source distance separate from vertical depth.
 TEST_F(UnderwaterShaderTest, SharedSubmergedFloorKeepsObliqueSourceDistanceSeparateFromVerticalDepth)
 {
     auto camera = Camera();
@@ -1894,6 +1941,7 @@ TEST_F(UnderwaterShaderTest, SharedSubmergedFloorKeepsObliqueSourceDistanceSepar
     EXPECT_GT(Mean(lit)[2], 0.05);
 }
 
+/// @brief Shared caustic pattern responds to the actual atlas jacobian.
 TEST_F(UnderwaterShaderTest, SharedCausticPatternRespondsToTheActualAtlasJacobian)
 {
     auto camera = Camera();
@@ -1919,6 +1967,7 @@ TEST_F(UnderwaterShaderTest, SharedCausticPatternRespondsToTheActualAtlasJacobia
     EXPECT_GT(maximum - minimum, 0.1f);
 }
 
+/// @brief Checks controlled shared night spot produces current frame composite light and preview.
 TEST_F(UnderwaterShaderTest, ControlledSharedNightSpotProducesCurrentFrameCompositeLightAndPreview)
 {
     ASSERT_TRUE(SetExtent(512, 384));

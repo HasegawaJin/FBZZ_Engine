@@ -36,6 +36,7 @@ protected:
 
 /// @name 既定値
 
+/// @brief Starts at the origin with unit scale.
 TEST_F(TransformTest, StartsAtTheOriginWithUnitScale)
 {
     EXPECT_VEC3_NEAR(transform.position, math::Vector3::ZERO, testkit::kTolerance);
@@ -46,6 +47,7 @@ TEST_F(TransformTest, StartsAtTheOriginWithUnitScale)
 
 /// @name 基底ベクトル
 
+/// @brief Checks basis vectors come from the world rotation.
 TEST_F(TransformTest, BasisVectorsComeFromTheWorldRotation)
 {
     /// @note ローカル回転ではなくワールド回転から作る。親の回転を無視すると、
@@ -58,6 +60,7 @@ TEST_F(TransformTest, BasisVectorsComeFromTheWorldRotation)
     EXPECT_VEC3_NEAR(transform.Right(), -math::Vector3::FORWARD, testkit::kLooseTolerance);
 }
 
+/// @brief Basis vectors stay orthonormal.
 TEST_F(TransformTest, BasisVectorsStayOrthonormal)
 {
     transform.worldRotation = Rng().NextRotation();
@@ -71,6 +74,7 @@ TEST_F(TransformTest, BasisVectorsStayOrthonormal)
 
 /// @name Translate
 
+/// @brief Translate moves along the local axes by default.
 TEST_F(TransformTest, TranslateMovesAlongTheLocalAxesByDefault)
 {
     transform.rotation = QuarterTurnAboutUp();
@@ -80,6 +84,7 @@ TEST_F(TransformTest, TranslateMovesAlongTheLocalAxesByDefault)
     EXPECT_VEC3_NEAR(transform.position, math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
 
+/// @brief World-space translate ignores the own rotation.
 TEST_F(TransformTest, WorldSpaceTranslateIgnoresTheOwnRotation)
 {
     /// @note 親を持たないなら world 移動は «そのままの向き»。自分の回転で曲がってはいけない。
@@ -91,6 +96,7 @@ TEST_F(TransformTest, WorldSpaceTranslateIgnoresTheOwnRotation)
     EXPECT_VEC3_NEAR(transform.position, math::Vector3::FORWARD, testkit::kLooseTolerance);
 }
 
+/// @brief Checks world-space translate goes through the parent rotation.
 TEST_F(TransformTest, WorldSpaceTranslateGoesThroughTheParentRotation)
 {
     /// @note 親が 90 度回っている子。world で +Z へ動かすと、ローカルでは親の逆回転が掛かる。
@@ -103,6 +109,7 @@ TEST_F(TransformTest, WorldSpaceTranslateGoesThroughTheParentRotation)
     EXPECT_VEC3_NEAR(transform.position, -math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
 
+/// @brief Translate accumulates.
 TEST_F(TransformTest, TranslateAccumulates)
 {
     transform.Translate({ 1.0f, 0.0f, 0.0f });
@@ -113,6 +120,7 @@ TEST_F(TransformTest, TranslateAccumulates)
 
 /// @name Rotate
 
+/// @brief A Y-axis rotation input of 90 produces a quarter-turn about the up axis.
 TEST_F(TransformTest, RotateTakesDegrees)
 {
     transform.Rotate({ 0.0f, 90.0f, 0.0f });
@@ -120,6 +128,7 @@ TEST_F(TransformTest, RotateTakesDegrees)
     EXPECT_QUAT_NEAR(transform.rotation, QuarterTurnAboutUp(), testkit::kLooseTolerance);
 }
 
+/// @brief Rotate accumulates and stays normalised.
 TEST_F(TransformTest, RotateAccumulatesAndStaysNormalised)
 {
     for (int i = 0; i < 36; ++i) transform.Rotate({ 0.0f, 10.0f, 0.0f });
@@ -128,6 +137,7 @@ TEST_F(TransformTest, RotateAccumulatesAndStaysNormalised)
     EXPECT_QUAT_NEAR(transform.rotation, math::Quaternion::Identity(), testkit::kLooseTolerance);
 }
 
+/// @brief Local rotate composes on the right hand side.
 TEST_F(TransformTest, LocalRotateComposesOnTheRightHandSide)
 {
     /// @note ローカル回転は «自分の軸で» 回る。yaw した後に pitch すると、傾いた軸で持ち上がる。
@@ -143,6 +153,7 @@ TEST_F(TransformTest, LocalRotateComposesOnTheRightHandSide)
 
 /// @name LookAt
 
+/// @brief Checks look at points forward at the target.
 TEST_F(TransformTest, LookAtPointsForwardAtTheTarget)
 {
     transform.LookAt({ 10.0f, 0.0f, 0.0f });
@@ -152,6 +163,7 @@ TEST_F(TransformTest, LookAtPointsForwardAtTheTarget)
     EXPECT_VEC3_NEAR(transform.Forward(), math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
 
+/// @brief Checks look at measures from the world position.
 TEST_F(TransformTest, LookAtMeasuresFromTheWorldPosition)
 {
     transform.worldPosition = { 0.0f, 0.0f, 10.0f };
@@ -162,6 +174,7 @@ TEST_F(TransformTest, LookAtMeasuresFromTheWorldPosition)
     EXPECT_VEC3_NEAR(transform.Forward(), math::Vector3::FORWARD, testkit::kLooseTolerance);
 }
 
+/// @brief Checks look at ignores a target on top of itself.
 TEST_F(TransformTest, LookAtIgnoresATargetOnTopOfItself)
 {
     /// @note 追従対象と重なるのは普通に起きる。向きが決まらないだけで、落としてはいけない。
@@ -174,6 +187,7 @@ TEST_F(TransformTest, LookAtIgnoresATargetOnTopOfItself)
 
 /// @name ワールド行列
 
+/// @brief World matrix is built from the world values.
 TEST_F(TransformTest, WorldMatrixIsBuiltFromTheWorldValues)
 {
     /// @note 行列はローカル値ではなくワールド値から作る。ここを間違えると
@@ -190,6 +204,7 @@ TEST_F(TransformTest, WorldMatrixIsBuiltFromTheWorldValues)
                      testkit::kTolerance);
 }
 
+/// @brief World matrix moves a point into world-space.
 TEST_F(TransformTest, WorldMatrixMovesAPointIntoWorldSpace)
 {
     transform.worldPosition = { 1.0f, 2.0f, 3.0f };

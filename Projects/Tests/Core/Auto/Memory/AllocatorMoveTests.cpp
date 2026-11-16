@@ -53,6 +53,7 @@ using MovableAllocators =
     ::testing::Types<core::LinearAllocator, core::StackAllocator, core::PoolAllocator>;
 TYPED_TEST_SUITE(AllocatorMoveTest, MovableAllocators);
 
+/// @brief Move construction takes over the region.
 TYPED_TEST(AllocatorMoveTest, MoveConstructionTakesOverTheRegion)
 {
     TypeParam source;
@@ -67,6 +68,7 @@ TYPED_TEST(AllocatorMoveTest, MoveConstructionTakesOverTheRegion)
     EXPECT_EQ(moved.GetStats().capacity, AllocatorTraits<TypeParam>::kCapacity);
 }
 
+/// @brief Move construction leaves the source empty.
 TYPED_TEST(AllocatorMoveTest, MoveConstructionLeavesTheSourceEmpty)
 {
     TypeParam source;
@@ -79,6 +81,7 @@ TYPED_TEST(AllocatorMoveTest, MoveConstructionLeavesTheSourceEmpty)
     EXPECT_EQ(source.GetStats().capacity, 0u);
 }
 
+/// @brief Move assignment releases the region it already held.
 TYPED_TEST(AllocatorMoveTest, MoveAssignmentReleasesTheRegionItAlreadyHeld)
 {
     TypeParam target;
@@ -95,6 +98,7 @@ TYPED_TEST(AllocatorMoveTest, MoveAssignmentReleasesTheRegionItAlreadyHeld)
     EXPECT_FALSE(source.IsInitialized());   // NOLINT(bugprone-use-after-move)
 }
 
+/// @brief Self move assignment keeps the region usable.
 TYPED_TEST(AllocatorMoveTest, SelfMoveAssignmentKeepsTheRegionUsable)
 {
     TypeParam allocator;
@@ -114,6 +118,7 @@ TYPED_TEST(AllocatorMoveTest, SelfMoveAssignmentKeepsTheRegionUsable)
 
 class AllocatorGuardTest : public testkit::EngineFixture {};
 
+/// @brief Owns rejects null and uninitialised allocators.
 TEST_F(AllocatorGuardTest, OwnsRejectsNullAndUninitialisedAllocators)
 {
     core::LinearAllocator uninitialised;
@@ -127,6 +132,7 @@ TEST_F(AllocatorGuardTest, OwnsRejectsNullAndUninitialisedAllocators)
     EXPECT_FALSE(ready.Owns(&outsider));
 }
 
+/// @brief Freeing null is a no-op for every allocator.
 TEST_F(AllocatorGuardTest, FreeingNullIsANoOpForEveryAllocator)
 {
     core::LinearAllocator linear;
@@ -145,6 +151,7 @@ TEST_F(AllocatorGuardTest, FreeingNullIsANoOpForEveryAllocator)
     EXPECT_EQ(stack.GetStats().freeCount, 0u);
 }
 
+/// @brief Reset on an uninitialised pool does nothing.
 TEST_F(AllocatorGuardTest, ResetOnAnUninitialisedPoolDoesNothing)
 {
     core::PoolAllocator pool;
@@ -155,6 +162,7 @@ TEST_F(AllocatorGuardTest, ResetOnAnUninitialisedPoolDoesNothing)
     EXPECT_EQ(pool.GetStats().capacity, 0u);
 }
 
+/// @brief Pool rejects a request whose total size overflows.
 TEST_F(AllocatorGuardTest, PoolRejectsARequestWhoseTotalSizeOverflows)
 {
     core::PoolAllocator pool;
@@ -165,6 +173,7 @@ TEST_F(AllocatorGuardTest, PoolRejectsARequestWhoseTotalSizeOverflows)
     EXPECT_FALSE(pool.IsInitialized());
 }
 
+/// @brief Stack rejects an allocation that cannot even hold its header.
 TEST_F(AllocatorGuardTest, StackRejectsAnAllocationThatCannotEvenHoldItsHeader)
 {
     core::StackAllocator stack;

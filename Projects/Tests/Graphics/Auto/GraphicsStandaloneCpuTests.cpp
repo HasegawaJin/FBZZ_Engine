@@ -31,6 +31,7 @@ namespace fbzz::tests {
 namespace {
 class GraphicsStandaloneTest : public testkit::Fixture {};
 
+/// @brief Cached far shadow keeps its projection and refreshes on the eighth frame.
 TEST_F(GraphicsStandaloneTest, CachedFarShadowKeepsItsProjectionAndRefreshesOnTheEighthFrame)
 {
     namespace r = renderer;
@@ -58,6 +59,7 @@ TEST_F(GraphicsStandaloneTest, CachedFarShadowKeepsItsProjectionAndRefreshesOnTh
     EXPECT_EQ(cache.updateFrame, 24u);
 }
 
+/// @brief Cached far shadow refreshes when the view or terrain changes.
 TEST_F(GraphicsStandaloneTest, CachedFarShadowRefreshesWhenTheViewOrTerrainChanges)
 {
     namespace r = renderer;
@@ -84,6 +86,7 @@ TEST_F(GraphicsStandaloneTest, CachedFarShadowRefreshesWhenTheViewOrTerrainChang
     EXPECT_TRUE(prepare(7));
 }
 
+/// @brief Middle and far shadow tiles have separate refresh phases.
 TEST_F(GraphicsStandaloneTest, MiddleAndFarShadowTilesHaveSeparateRefreshPhases)
 {
     namespace r = renderer;
@@ -195,6 +198,7 @@ protected:
     renderer::RenderPassHandles m_handles;
 };
 
+/// @brief Occluder interior changes invalidate depth while unchanged inputs reuse the witness.
 TEST_F(TaaDepthWitnessTest, OccluderInteriorChangesInvalidateDepthWhileUnchangedInputsReuseTheWitness)
 {
     const auto scene=Scene();
@@ -212,6 +216,7 @@ TEST_F(TaaDepthWitnessTest, OccluderInteriorChangesInvalidateDepthWhileUnchanged
     EXPECT_FALSE(Build(scene,changed));
 }
 
+/// @brief Leaf motion cannot prove static depth even when material and bounds stay unchanged.
 TEST_F(TaaDepthWitnessTest, LeafMotionCannotProveStaticDepthEvenWhenMaterialAndBoundsStayUnchanged)
 {
     const auto scene=Scene();
@@ -234,6 +239,7 @@ TEST_F(TaaDepthWitnessTest, LeafMotionCannotProveStaticDepthEvenWhenMaterialAndB
     }
 }
 
+/// @brief Opacity contracts and coverage parameters invalidate the depth proof.
 TEST_F(TaaDepthWitnessTest, OpacityContractsAndCoverageParametersInvalidateTheDepthProof)
 {
     const auto scene=Scene();
@@ -260,6 +266,7 @@ TEST_F(TaaDepthWitnessTest, OpacityContractsAndCoverageParametersInvalidateTheDe
     EXPECT_FALSE(Build(scene,changed));
 }
 
+/// @brief GPU frustum estimate keeps the first culling reason when occlusion also rejects.
 TEST_F(TaaDepthWitnessTest, GpuFrustumEstimateKeepsTheFirstCullingReasonWhenOcclusionAlsoRejects)
 {
     m_camera.m_projection=renderer::ProjectionMode::Orthographic;
@@ -281,6 +288,7 @@ TEST_F(TaaDepthWitnessTest, GpuFrustumEstimateKeepsTheFirstCullingReasonWhenOccl
     EXPECT_EQ(context.statsTotalObjects-context.statsFrustumCulled-context.statsOcclusionCulled,0);
 }
 
+/// @brief Agility package accepts host exports and pinned runtime.
 TEST_F(GraphicsStandaloneTest, AgilityPackageAcceptsHostExportsAndPinnedRuntime)
 {
     wchar_t host[32768]{};
@@ -289,6 +297,7 @@ TEST_F(GraphicsStandaloneTest, AgilityPackageAcceptsHostExportsAndPinnedRuntime)
     EXPECT_TRUE(renderer::ValidateGraphicsRuntimePackage(std::filesystem::path(host), reason)) << reason;
 }
 
+/// @brief Agility package rejects missing core even on newer operating system.
 TEST_F(GraphicsStandaloneTest, AgilityPackageRejectsMissingCoreEvenOnNewerOperatingSystem)
 {
     wchar_t host[32768]{};
@@ -305,6 +314,7 @@ TEST_F(GraphicsStandaloneTest, AgilityPackageRejectsMissingCoreEvenOnNewerOperat
     EXPECT_NE(reason.find("D3D12Core.dll"), std::string::npos) << reason;
 }
 
+/// @brief Sky cache captures first signature and reuses unchanged sky.
 TEST_F(GraphicsStandaloneTest, SkyCacheCapturesFirstSignatureAndReusesUnchangedSky)
 {
     renderer::EnvironmentResources environment;
@@ -317,6 +327,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheCapturesFirstSignatureAndReusesUnchangedS
     EXPECT_FALSE(environment.ConsumeDirty(signature, 101.0f, 5));
 }
 
+/// @brief Sky cache captures only once across cameras in one frame.
 TEST_F(GraphicsStandaloneTest, SkyCacheCapturesOnlyOnceAcrossCamerasInOneFrame)
 {
     renderer::EnvironmentResources environment;
@@ -331,6 +342,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheCapturesOnlyOnceAcrossCamerasInOneFrame)
     EXPECT_TRUE(environment.ConsumeDirty(signature, 2.0f, 3));
 }
 
+/// @brief Sky cache cloud configuration changes capture without waiting.
 TEST_F(GraphicsStandaloneTest, SkyCacheCloudConfigurationChangesCaptureWithoutWaiting)
 {
     using CloudVectorMember = math::Vector4 renderer::RenderCloudConstants::*;
@@ -372,6 +384,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheCloudConfigurationChangesCaptureWithoutWa
     EXPECT_EQ(checkedCount, 43u);
 }
 
+/// @brief Sky cache cloud enable and disable capture immediately.
 TEST_F(GraphicsStandaloneTest, SkyCacheCloudEnableAndDisableCaptureImmediately)
 {
     renderer::EnvironmentResources environment;
@@ -387,6 +400,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheCloudEnableAndDisableCaptureImmediately)
     EXPECT_FALSE(environment.ConsumeDirty(signature, 1.0f, 4));
 }
 
+/// @brief Sky cache coalesces animated cloud density and coverage.
 TEST_F(GraphicsStandaloneTest, SkyCacheCoalescesAnimatedCloudDensityAndCoverage)
 {
     renderer::EnvironmentResources environment;
@@ -403,6 +417,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheCoalescesAnimatedCloudDensityAndCoverage)
     EXPECT_TRUE(environment.ConsumeDirty(signature, 0.035f, 6, true));
 }
 
+/// @brief Sky cache moving clouds wait half a second for wind or evolution.
 TEST_F(GraphicsStandaloneTest, SkyCacheMovingCloudsWaitHalfASecondForWindOrEvolution)
 {
     for (const bool useWind : {false, true}) {
@@ -423,6 +438,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheMovingCloudsWaitHalfASecondForWindOrEvolu
     }
 }
 
+/// @brief Sky cache paused cloud time uses real elapsed seconds and capture anchor.
 TEST_F(GraphicsStandaloneTest, SkyCachePausedCloudTimeUsesRealElapsedSecondsAndCaptureAnchor)
 {
     renderer::EnvironmentResources environment;
@@ -443,6 +459,7 @@ TEST_F(GraphicsStandaloneTest, SkyCachePausedCloudTimeUsesRealElapsedSecondsAndC
     EXPECT_TRUE(environment.ConsumeDirty(signature, 11.2f, 7));
 }
 
+/// @brief Sky cache static clouds ignore simulation time changes.
 TEST_F(GraphicsStandaloneTest, SkyCacheStaticCloudsIgnoreSimulationTimeChanges)
 {
     renderer::EnvironmentResources environment;
@@ -455,6 +472,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheStaticCloudsIgnoreSimulationTimeChanges)
     EXPECT_FALSE(environment.ConsumeDirty(signature, 100.0f, 3));
 }
 
+/// @brief Sky cache sun and atmosphere changes wait thirty three milliseconds.
 TEST_F(GraphicsStandaloneTest, SkyCacheSunAndAtmosphereChangesWaitThirtyThreeMilliseconds)
 {
     using Signature = renderer::EnvironmentResources::SkySignature;
@@ -484,6 +502,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheSunAndAtmosphereChangesWaitThirtyThreeMil
     }
 }
 
+/// @brief Sky cache sun motion accumulates from last capture.
 TEST_F(GraphicsStandaloneTest, SkyCacheSunMotionAccumulatesFromLastCapture)
 {
     renderer::EnvironmentResources environment;
@@ -497,6 +516,7 @@ TEST_F(GraphicsStandaloneTest, SkyCacheSunMotionAccumulatesFromLastCapture)
     EXPECT_TRUE(environment.ConsumeDirty(signature, 3.0f, 4));
 }
 
+/// @brief Forward and deferred are available without engine.
 TEST_F(GraphicsStandaloneTest, ForwardAndDeferredAreAvailableWithoutEngine)
 {
     EXPECT_EQ(GetModuleHandleW(L"FBZZEngine.dll"), nullptr);
@@ -514,6 +534,7 @@ TEST_F(GraphicsStandaloneTest, ForwardAndDeferredAreAvailableWithoutEngine)
     }
 }
 
+/// @brief Snapshot owns effect and lighting values.
 TEST_F(GraphicsStandaloneTest, SnapshotOwnsEffectAndLightingValues)
 {
     renderer::RenderScene source;
@@ -529,6 +550,7 @@ TEST_F(GraphicsStandaloneTest, SnapshotOwnsEffectAndLightingValues)
     EXPECT_EQ(snapshot.customPost[0].parameters[0], 12);
 }
 
+/// @brief Meshlet draw eligibility keeps unsupported geometry on indexed path.
 TEST_F(GraphicsStandaloneTest, MeshletDrawEligibilityKeepsUnsupportedGeometryOnIndexedPath)
 {
     renderer::RenderMeshItem item;

@@ -26,12 +26,14 @@ using editor::SceneDirtyTracker;
 
 class SceneDirtyTrackerTest : public testkit::EditorFixture {};
 
+/// @brief Starts clean.
 TEST_F(SceneDirtyTrackerTest, StartsClean)
 {
     SceneDirtyTracker tracker;
     EXPECT_FALSE(tracker.IsDirty());
 }
 
+/// @brief Stays clean when nothing changes.
 TEST_F(SceneDirtyTrackerTest, StaysCleanWhenNothingChanges)
 {
     scene::Scene scene;
@@ -44,6 +46,7 @@ TEST_F(SceneDirtyTrackerTest, StaysCleanWhenNothingChanges)
     EXPECT_FALSE(tracker.IsDirty());
 }
 
+/// @brief Detects an added object.
 TEST_F(SceneDirtyTrackerTest, DetectsAnAddedObject)
 {
     scene::Scene scene;
@@ -55,6 +58,7 @@ TEST_F(SceneDirtyTrackerTest, DetectsAnAddedObject)
     EXPECT_TRUE(tracker.Evaluate(scene));
 }
 
+/// @brief Detects a rename.
 TEST_F(SceneDirtyTrackerTest, DetectsARename)
 {
     scene::Scene scene;
@@ -67,6 +71,7 @@ TEST_F(SceneDirtyTrackerTest, DetectsARename)
     EXPECT_TRUE(tracker.Evaluate(scene));
 }
 
+/// @brief Detects a move.
 TEST_F(SceneDirtyTrackerTest, DetectsAMove)
 {
     scene::Scene scene;
@@ -79,6 +84,7 @@ TEST_F(SceneDirtyTrackerTest, DetectsAMove)
     EXPECT_TRUE(tracker.Evaluate(scene));
 }
 
+/// @brief Detects an active toggle.
 TEST_F(SceneDirtyTrackerTest, DetectsAnActiveToggle)
 {
     scene::Scene scene;
@@ -91,6 +97,7 @@ TEST_F(SceneDirtyTrackerTest, DetectsAnActiveToggle)
     EXPECT_TRUE(tracker.Evaluate(scene));
 }
 
+/// @brief Goes clean again after capturing the new state.
 TEST_F(SceneDirtyTrackerTest, GoesCleanAgainAfterCapturingTheNewState)
 {
     /// @note 保存したら «今の姿» が新しい基準になる。ここが効かないと保存後も促され続ける。
@@ -105,6 +112,7 @@ TEST_F(SceneDirtyTrackerTest, GoesCleanAgainAfterCapturingTheNewState)
     EXPECT_FALSE(tracker.Evaluate(scene));
 }
 
+/// @brief Returns to clean when the edit is undone.
 TEST_F(SceneDirtyTrackerTest, ReturnsToCleanWhenTheEditIsUndone)
 {
     /// @note 追加して消せば元の姿。Undo で戻したのに «変更あり» のままだと嘘になる。
@@ -121,6 +129,7 @@ TEST_F(SceneDirtyTrackerTest, ReturnsToCleanWhenTheEditIsUndone)
     EXPECT_FALSE(tracker.Evaluate(scene));
 }
 
+/// @brief Mark dirty forces the flag without looking at the scene.
 TEST_F(SceneDirtyTrackerTest, MarkDirtyForcesTheFlagWithoutLookingAtTheScene)
 {
     scene::Scene scene;
@@ -132,6 +141,7 @@ TEST_F(SceneDirtyTrackerTest, MarkDirtyForcesTheFlagWithoutLookingAtTheScene)
     EXPECT_TRUE(tracker.IsDirty());
 }
 
+/// @brief Evaluate overrides a manual mark when the scene is unchanged.
 TEST_F(SceneDirtyTrackerTest, EvaluateOverridesAManualMarkWhenTheSceneIsUnchanged)
 {
     /// @note MarkDirty はシリアライズに出ない変更を拾う逃げ道だが、次の Evaluate で
@@ -145,6 +155,7 @@ TEST_F(SceneDirtyTrackerTest, EvaluateOverridesAManualMarkWhenTheSceneIsUnchange
     EXPECT_FALSE(tracker.Evaluate(scene));
 }
 
+/// @brief Reset forgets the baseline.
 TEST_F(SceneDirtyTrackerTest, ResetForgetsTheBaseline)
 {
     scene::Scene scene;
@@ -160,6 +171,7 @@ TEST_F(SceneDirtyTrackerTest, ResetForgetsTheBaseline)
     EXPECT_FALSE(tracker.Evaluate(scene));
 }
 
+/// @brief Checks evaluate without a baseline adopts the current scene.
 TEST_F(SceneDirtyTrackerTest, EvaluateWithoutABaselineAdoptsTheCurrentScene)
 {
     /// @note 基準を取らないまま呼ばれても «変更あり» と言わない。開いた直後がこれ。
@@ -173,6 +185,7 @@ TEST_F(SceneDirtyTrackerTest, EvaluateWithoutABaselineAdoptsTheCurrentScene)
     EXPECT_TRUE(tracker.Evaluate(scene));
 }
 
+/// @brief Prepared save owns the captured values and clean hash.
 TEST_F(SceneDirtyTrackerTest, PreparedSaveOwnsTheCapturedValuesAndCleanHash)
 {
     const auto path = (ProjectRoot() / "captured.scene").generic_string();
@@ -197,6 +210,7 @@ TEST_F(SceneDirtyTrackerTest, PreparedSaveOwnsTheCapturedValuesAndCleanHash)
     EXPECT_TRUE(tracker.Evaluate(scene, path));
 }
 
+/// @brief Prepared save rejects an external file created while saving.
 TEST_F(SceneDirtyTrackerTest, PreparedSaveRejectsAnExternalFileCreatedWhileSaving)
 {
     const auto diskPath = ProjectRoot() / "external.scene";
@@ -215,6 +229,7 @@ TEST_F(SceneDirtyTrackerTest, PreparedSaveRejectsAnExternalFileCreatedWhileSavin
     EXPECT_EQ(text, "external content");
 }
 
+/// @brief Backup includes terrain without writing the asset.
 TEST_F(SceneDirtyTrackerTest, BackupIncludesTerrainWithoutWritingTheAsset)
 {
     const auto path = (ProjectRoot() / "backup.scene").generic_string();
@@ -245,6 +260,7 @@ TEST_F(SceneDirtyTrackerTest, BackupIncludesTerrainWithoutWritingTheAsset)
     EXPECT_FLOAT_EQ(restored->GetHeightAt(0.0f, 0.0f), 0.25f);
 }
 
+/// @brief Prefab subtree capture does not inspect unrelated scripts.
 TEST_F(SceneDirtyTrackerTest, PrefabSubtreeCaptureDoesNotInspectUnrelatedScripts)
 {
     scene::Scene scene;
@@ -267,6 +283,7 @@ TEST_F(SceneDirtyTrackerTest, PrefabSubtreeCaptureDoesNotInspectUnrelatedScripts
     EXPECT_EQ(savedChild->GetParent()->instanceId, root.instanceId);
 }
 
+/// @brief Bulk active edit keeps one undo and preserves editor hiding.
 TEST_F(SceneDirtyTrackerTest, BulkActiveEditKeepsOneUndoAndPreservesEditorHiding)
 {
     scene::Scene scene;

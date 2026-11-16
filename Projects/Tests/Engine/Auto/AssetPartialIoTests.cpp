@@ -89,6 +89,7 @@ std::size_t TemporaryCount(const std::filesystem::path& directory)
 
 std::vector<uint8_t> Bytes(std::initializer_list<uint8_t> values) { return values; }
 
+/// @brief Distribution cache survives relocation and rejects changed source.
 TEST_F(AssetPartialIoTest, DistributionCacheSurvivesRelocationAndRejectsChangedSource)
 {
     const auto source = PathOf("source.tga");
@@ -127,6 +128,7 @@ TEST_F(AssetPartialIoTest, DistributionCacheSurvivesRelocationAndRejectsChangedS
         asset::texturecache::MakeSourceStamp(size + 1, time.time_since_epoch().count()), 0, cached));
 }
 
+/// @brief Distribution bake reports broken textures but skips non textures.
 TEST_F(AssetPartialIoTest, DistributionBakeReportsBrokenTexturesButSkipsNonTextures)
 {
     std::string error;
@@ -208,6 +210,7 @@ void WriteTwoLodModel(const std::string& path)
 
 /// @name チャンク索引付き形式
 
+/// @brief Binary reader rejects wrapped skip without moving either cursor.
 TEST_F(AssetPartialIoTest, BinaryReaderRejectsWrappedSkipWithoutMovingEitherCursor)
 {
     const auto path = PathOf("reader-range.bin");
@@ -227,6 +230,7 @@ TEST_F(AssetPartialIoTest, BinaryReaderRejectsWrappedSkipWithoutMovingEitherCurs
     }
 }
 
+/// @brief Binary reader rejected range preserves destination and both cursors.
 TEST_F(AssetPartialIoTest, BinaryReaderRejectedRangePreservesDestinationAndBothCursors)
 {
     const auto path = PathOf("reader-range-failure.bin");
@@ -250,6 +254,7 @@ TEST_F(AssetPartialIoTest, BinaryReaderRejectedRangePreservesDestinationAndBothC
     }
 }
 
+/// @brief Binary reader keeps end and zero length operations within bounds.
 TEST_F(AssetPartialIoTest, BinaryReaderKeepsEndAndZeroLengthOperationsWithinBounds)
 {
     const auto path = PathOf("reader-end.bin");
@@ -271,6 +276,7 @@ TEST_F(AssetPartialIoTest, BinaryReaderKeepsEndAndZeroLengthOperationsWithinBoun
     }
 }
 
+/// @brief CRC 32 matches the standard check value.
 TEST_F(AssetPartialIoTest, Crc32MatchesTheStandardCheckValue)
 {
     const std::string text = "123456789";
@@ -278,6 +284,7 @@ TEST_F(AssetPartialIoTest, Crc32MatchesTheStandardCheckValue)
     EXPECT_EQ(asset::Crc32(bytes), 0xCBF43926u);
 }
 
+/// @brief Chunk file reads only the requested chunk.
 TEST_F(AssetPartialIoTest, ChunkFileReadsOnlyTheRequestedChunk)
 {
     const std::string path = PathOf("chunks.fztc");
@@ -297,6 +304,7 @@ TEST_F(AssetPartialIoTest, ChunkFileReadsOnlyTheRequestedChunk)
     EXPECT_EQ(chunk.size(), 4096u);
 }
 
+/// @brief Chunk file rejects corrupted chunk.
 TEST_F(AssetPartialIoTest, ChunkFileRejectsCorruptedChunk)
 {
     const std::string path = PathOf("corrupt.fztc");
@@ -315,6 +323,7 @@ TEST_F(AssetPartialIoTest, ChunkFileRejectsCorruptedChunk)
     EXPECT_FALSE(reader.ReadChunk(7, chunk)) << "CRC32 が合わないチャンクは使わない";
 }
 
+/// @brief Chunk file rejects overflowing payload extent.
 TEST_F(AssetPartialIoTest, ChunkFileRejectsOverflowingPayloadExtent)
 {
     const auto path = PathOf("overflow.fztc");
@@ -337,6 +346,7 @@ TEST_F(AssetPartialIoTest, ChunkFileRejectsOverflowingPayloadExtent)
     EXPECT_EQ(reader.Find(7), nullptr);
 }
 
+/// @brief Chunk file failed index does not publish earlier valid entries.
 TEST_F(AssetPartialIoTest, ChunkFileFailedIndexDoesNotPublishEarlierValidEntries)
 {
     const auto path = PathOf("partial-index.fztc");
@@ -370,6 +380,7 @@ TEST_F(AssetPartialIoTest, ChunkFileFailedIndexDoesNotPublishEarlierValidEntries
     EXPECT_TRUE(util::FileSystem::WriteBinary(util::FileSystem::PathFromUtf8(path), payload.data(), payload.size()));
 }
 
+/// @brief Chunk file rejects payload inside index and inconsistent stored size.
 TEST_F(AssetPartialIoTest, ChunkFileRejectsPayloadInsideIndexAndInconsistentStoredSize)
 {
     const auto path = PathOf("invalid-layout.fztc");
@@ -395,6 +406,7 @@ TEST_F(AssetPartialIoTest, ChunkFileRejectsPayloadInsideIndexAndInconsistentStor
     }
 }
 
+/// @brief Chunk file failed reopen clears old header and releases rejected file.
 TEST_F(AssetPartialIoTest, ChunkFileFailedReopenClearsOldHeaderAndReleasesRejectedFile)
 {
     const auto goodPath = PathOf("valid.fztc");
@@ -422,6 +434,7 @@ TEST_F(AssetPartialIoTest, ChunkFileFailedReopenClearsOldHeaderAndReleasesReject
     EXPECT_EQ(chunk, Bytes({42}));
 }
 
+/// @brief Chunk file accepts empty index and empty payload at end of file.
 TEST_F(AssetPartialIoTest, ChunkFileAcceptsEmptyIndexAndEmptyPayloadAtEndOfFile)
 {
     const auto path = PathOf("empty.fztc");
@@ -441,6 +454,7 @@ TEST_F(AssetPartialIoTest, ChunkFileAcceptsEmptyIndexAndEmptyPayloadAtEndOfFile)
     EXPECT_TRUE(chunk.empty());
 }
 
+/// @brief Atomic write replaces an existing file.
 TEST_F(AssetPartialIoTest, AtomicWriteReplacesAnExistingFile)
 {
     const std::string path = PathOf("replace.fztc");
@@ -460,6 +474,7 @@ TEST_F(AssetPartialIoTest, AtomicWriteReplacesAnExistingFile)
     EXPECT_EQ(leftovers, 0u) << "一時ファイルを残さない";
 }
 
+/// @brief Atomic write allows retained readers to read their old snapshot after replacement.
 TEST_F(AssetPartialIoTest, AtomicWriteAllowsRetainedReadersToReadTheirOldSnapshotAfterReplacement)
 {
     const std::string path = PathOf("retained.fztc");
@@ -487,6 +502,7 @@ TEST_F(AssetPartialIoTest, AtomicWriteAllowsRetainedReadersToReadTheirOldSnapsho
     EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
 }
 
+/// @brief Atomic write keeps valid target and unrelated temporary when an external reader blocks rename.
 TEST_F(AssetPartialIoTest, AtomicWriteKeepsValidTargetAndUnrelatedTemporaryWhenAnExternalReaderBlocksRename)
 {
     SetLogLevel(core::LogLevel::WARNING);
@@ -523,6 +539,7 @@ TEST_F(AssetPartialIoTest, AtomicWriteKeepsValidTargetAndUnrelatedTemporaryWhenA
     EXPECT_EQ(preserved, Bytes({42}));
 }
 
+/// @brief Atomic write reports parent creation failure without opening a temporary.
 TEST_F(AssetPartialIoTest, AtomicWriteReportsParentCreationFailureWithoutOpeningATemporary)
 {
     SetLogLevel(core::LogLevel::WARNING);
@@ -542,6 +559,7 @@ TEST_F(AssetPartialIoTest, AtomicWriteReportsParentCreationFailureWithoutOpening
     EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
 }
 
+/// @brief Atomic write supports unicode paths without changing the published bytes.
 TEST_F(AssetPartialIoTest, AtomicWriteSupportsUnicodePathsWithoutChangingThePublishedBytes)
 {
     const auto path = m_temp.Path() / std::filesystem::path(L"共有読み込み_キャッシュ.fztc");
@@ -557,6 +575,7 @@ TEST_F(AssetPartialIoTest, AtomicWriteSupportsUnicodePathsWithoutChangingThePubl
     EXPECT_EQ(bytes, Bytes({0, 128, 255}));
 }
 
+/// @brief Concurrent atomic writers publish one complete payload without leaving temporaries.
 TEST_F(AssetPartialIoTest, ConcurrentAtomicWritersPublishOneCompletePayloadWithoutLeavingTemporaries)
 {
     const std::string path = PathOf("concurrent.fztc");
@@ -586,6 +605,7 @@ TEST_F(AssetPartialIoTest, ConcurrentAtomicWritersPublishOneCompletePayloadWitho
     EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
 }
 
+/// @brief Atomic publication does not clean an unowned temporary after exclusive open failure.
 TEST_F(AssetPartialIoTest, AtomicPublicationDoesNotCleanAnUnownedTemporaryAfterExclusiveOpenFailure)
 {
     AtomicChunkIoFake io;
@@ -603,6 +623,7 @@ TEST_F(AssetPartialIoTest, AtomicPublicationDoesNotCleanAnUnownedTemporaryAfterE
     EXPECT_EQ(io.calls, (std::vector<std::string>{"parent", "open"}));
 }
 
+/// @brief Atomic publication preserves write close and cleanup errors independently.
 TEST_F(AssetPartialIoTest, AtomicPublicationPreservesWriteCloseAndCleanupErrorsIndependently)
 {
     AtomicChunkIoFake io;
@@ -625,6 +646,7 @@ TEST_F(AssetPartialIoTest, AtomicPublicationPreservesWriteCloseAndCleanupErrorsI
     EXPECT_EQ(io.calls, (std::vector<std::string>{"parent", "open", "write", "close", "cleanup"}));
 }
 
+/// @brief Atomic publication rejects flush failure before publishing and still cleans the closed temporary.
 TEST_F(AssetPartialIoTest, AtomicPublicationRejectsFlushFailureBeforePublishingAndStillCleansTheClosedTemporary)
 {
     AtomicChunkIoFake io;
@@ -642,6 +664,7 @@ TEST_F(AssetPartialIoTest, AtomicPublicationRejectsFlushFailureBeforePublishingA
     EXPECT_EQ(io.calls, (std::vector<std::string>{"parent", "open", "write", "flush", "close", "cleanup"}));
 }
 
+/// @brief Atomic publication retains rename failure when temporary cleanup also fails.
 TEST_F(AssetPartialIoTest, AtomicPublicationRetainsRenameFailureWhenTemporaryCleanupAlsoFails)
 {
     AtomicChunkIoFake io;
@@ -662,6 +685,7 @@ TEST_F(AssetPartialIoTest, AtomicPublicationRetainsRenameFailureWhenTemporaryCle
 
 /// @name テクスチャの品質段キャッシュ
 
+/// @brief Checks green flip changes every mip without changing other channels.
 TEST_F(AssetPartialIoTest, GreenFlipChangesEveryMipWithoutChangingOtherChannels)
 {
     DecodedTextureRGBA8 texture;
@@ -678,6 +702,7 @@ TEST_F(AssetPartialIoTest, GreenFlipChangesEveryMipWithoutChangingOtherChannels)
     EXPECT_EQ(texture.mips[1].rgba, original[1].rgba);
 }
 
+/// @brief Checks box downsample averages and rounds.
 TEST_F(AssetPartialIoTest, BoxDownsampleAveragesAndRounds)
 {
     DecodedTextureRGBA8::Mip mip;
@@ -692,6 +717,7 @@ TEST_F(AssetPartialIoTest, BoxDownsampleAveragesAndRounds)
     EXPECT_EQ(half.rgba[3], 64) << "(255+2)/4 = 64.25 を四捨五入";
 }
 
+/// @brief Cache returns the same pixels as selecting from the full image.
 TEST_F(AssetPartialIoTest, CacheReturnsTheSamePixelsAsSelectingFromTheFullImage)
 {
     const std::string path = PathOf("single.fztc");
@@ -709,6 +735,7 @@ TEST_F(AssetPartialIoTest, CacheReturnsTheSamePixelsAsSelectingFromTheFullImage)
     EXPECT_LT(bytesRead, FileSize(path) / 2) << "低い品質段だけを読む";
 }
 
+/// @brief Cache with mip chain reads from the requested level.
 TEST_F(AssetPartialIoTest, CacheWithMipChainReadsFromTheRequestedLevel)
 {
     const std::string path = PathOf("chain.fztc");
@@ -725,6 +752,7 @@ TEST_F(AssetPartialIoTest, CacheWithMipChainReadsFromTheRequestedLevel)
     EXPECT_EQ(cached.mips.size(), 1u) << "最後の段より先へは落とさない";
 }
 
+/// @brief Stale or missing cache is not used.
 TEST_F(AssetPartialIoTest, StaleOrMissingCacheIsNotUsed)
 {
     const std::string path = PathOf("stale.fztc");
@@ -736,6 +764,7 @@ TEST_F(AssetPartialIoTest, StaleOrMissingCacheIsNotUsed)
     EXPECT_FALSE(asset::texturecache::ReadQuality(PathOf("none.fztc"), 5, 0, cached));
 }
 
+/// @brief Empty texture cache write preserves the existing valid cache and reports failure.
 TEST_F(AssetPartialIoTest, EmptyTextureCacheWritePreservesTheExistingValidCacheAndReportsFailure)
 {
     SetLogLevel(core::LogLevel::WARNING);
@@ -755,6 +784,7 @@ TEST_F(AssetPartialIoTest, EmptyTextureCacheWritePreservesTheExistingValidCacheA
     EXPECT_EQ(TemporaryCount(m_temp.Path()), 0u);
 }
 
+/// @brief Cache file name ignores case and separators.
 TEST_F(AssetPartialIoTest, CacheFileNameIgnoresCaseAndSeparators)
 {
     EXPECT_EQ(asset::texturecache::CacheFileName("C:\\Proj\\Assets\\A.png"),
@@ -764,6 +794,7 @@ TEST_F(AssetPartialIoTest, CacheFileNameIgnoresCaseAndSeparators)
 
 /// @name モデルの LOD 部分読み込み
 
+/// @brief Partial import skips higher quality LODs on disk.
 TEST_F(AssetPartialIoTest, PartialImportSkipsHigherQualityLodsOnDisk)
 {
     const std::string path = PathOf("two_lods.fzasset");
@@ -784,6 +815,7 @@ TEST_F(AssetPartialIoTest, PartialImportSkipsHigherQualityLodsOnDisk)
     EXPECT_EQ(bytesRead, FileSize(path) - lod0Payload) << "読まない LOD の本体はディスクから読まない";
 }
 
+/// @brief Partial import keeps the lowest LOD even if asked for less.
 TEST_F(AssetPartialIoTest, PartialImportKeepsTheLowestLodEvenIfAskedForLess)
 {
     const std::string path = PathOf("clamp.fzasset");
@@ -800,6 +832,7 @@ TEST_F(AssetPartialIoTest, PartialImportKeepsTheLowestLodEvenIfAskedForLess)
 
 /// @name 画面サイズからの品質
 
+/// @brief Quality follows screen size with one level of headroom.
 TEST_F(AssetPartialIoTest, QualityFollowsScreenSizeWithOneLevelOfHeadroom)
 {
     using asset::StreamedTextureResolver;

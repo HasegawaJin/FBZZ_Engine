@@ -97,6 +97,7 @@ protected:
     }
 };
 
+/// @brief Unique names do not create internal reference overrides.
 TEST_F(PrefabReferenceOverrideTest, UniqueNamesDoNotCreateInternalReferenceOverrides)
 {
     scene::Scene source;
@@ -120,6 +121,7 @@ TEST_F(PrefabReferenceOverrideTest, UniqueNamesDoNotCreateInternalReferenceOverr
     EXPECT_FALSE(overrides.hasStructuralOverrides);
 }
 
+/// @brief Actual reference change is still an override.
 TEST_F(PrefabReferenceOverrideTest, ActualReferenceChangeIsStillAnOverride)
 {
     scene::Scene source;
@@ -143,6 +145,7 @@ TEST_F(PrefabReferenceOverrideTest, ActualReferenceChangeIsStillAnOverride)
     EXPECT_TRUE(changed);
 }
 
+/// @brief Legacy absolute model path and GUID reference are the same asset.
 TEST_F(PrefabReferenceOverrideTest, LegacyAbsoluteModelPathAndGuidReferenceAreTheSameAsset)
 {
     const std::string model = CreateRegisteredModel("Model.fbx");
@@ -162,6 +165,7 @@ TEST_F(PrefabReferenceOverrideTest, LegacyAbsoluteModelPathAndGuidReferenceAreTh
     EXPECT_FALSE(overrides.hasStructuralOverrides);
 }
 
+/// @brief Renamed asset hint does not create an override for the same GUID.
 TEST_F(PrefabReferenceOverrideTest, RenamedAssetHintDoesNotCreateAnOverrideForTheSameGuid)
 {
     const std::string oldPath = CreateRegisteredModel("OldModel.fbx");
@@ -187,6 +191,7 @@ TEST_F(PrefabReferenceOverrideTest, RenamedAssetHintDoesNotCreateAnOverrideForTh
     EXPECT_FALSE(overrides.hasStructuralOverrides);
 }
 
+/// @brief Different submesh suffix is an override and keeps the original patch value.
 TEST_F(PrefabReferenceOverrideTest, DifferentSubmeshSuffixIsAnOverrideAndKeepsTheOriginalPatchValue)
 {
     const std::string model = CreateRegisteredModel("Submeshes.fbx");

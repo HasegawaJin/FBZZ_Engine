@@ -149,6 +149,7 @@ void SetQueryPlanes(scene::TerrainComponent& terrain,float slope)
         {0,-2,0},{2,-2+slope,0},{0,-2,2},{2,-2+slope,2}}, {0,1,2,2,1,3,4,5,6,6,5,7}));
 }
 } /// @note namespace
+/// @brief Scene cave queries select nearest active surfaces without registered manager or physics.
 TEST_F(ManagedServicesBridgeTest, SceneCaveQueriesSelectNearestActiveSurfacesWithoutRegisteredManagerOrPhysics)
 {
     scene::ScriptRuntime runtime; RuntimeServiceScope scope(runtime);
@@ -180,6 +181,7 @@ TEST_F(ManagedServicesBridgeTest, SceneCaveQueriesSelectNearestActiveSurfacesWit
     EXPECT_EQ(m_result.integer, 77);
     m_caller.SetContext(nullptr, nullptr);
 }
+/// @brief Light and particle use real rows and reject invalid mutation atomically.
 TEST_F(ManagedServicesBridgeTest, LightAndParticleUseRealRowsAndRejectInvalidMutationAtomically)
 {
     scene::ScriptRuntime runtime; RuntimeServiceScope scope(runtime);
@@ -209,6 +211,7 @@ TEST_F(ManagedServicesBridgeTest, LightAndParticleUseRealRowsAndRejectInvalidMut
     EXPECT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_PARTICLE, 0, true), scene::ManagedBridgeStatus::NOT_FOUND);
 }
 
+/// @brief Cursor requests keep priority and cleanup only their owned lifetime.
 TEST_F(ManagedServicesBridgeTest, CursorRequestsKeepPriorityAndCleanupOnlyTheirOwnedLifetime)
 {
     scene::ScriptRuntime runtime; RuntimeServiceScope scope(runtime);
@@ -235,6 +238,7 @@ TEST_F(ManagedServicesBridgeTest, CursorRequestsKeepPriorityAndCleanupOnlyTheirO
     EXPECT_NE(current, first); m_services.RetireGeneration(7); EXPECT_EQ(core::Cursor::GetRequestCount(), 0U);
 }
 
+/// @brief Application environment is independent of play and rejects writes.
 TEST_F(ManagedServicesBridgeTest, ApplicationEnvironmentIsIndependentOfPlayAndRejectsWrites)
 {
     auto& app = core::Application::Get();
@@ -257,6 +261,7 @@ TEST_F(ManagedServicesBridgeTest, ApplicationEnvironmentIsIndependentOfPlayAndRe
     EXPECT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_APPLICATION, 7, true), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
 }
 
+/// @brief Scene queues registered name and quit uses a host lifetime intent.
 TEST_F(ManagedServicesBridgeTest, SceneQueuesRegisteredNameAndQuitUsesAHostLifetimeIntent)
 {
     scene::SceneManager manager; manager.SetScene(&m_scene);
@@ -289,6 +294,7 @@ TEST_F(ManagedServicesBridgeTest, SceneQueuesRegisteredNameAndQuitUsesAHostLifet
     manager.SetScene(nullptr);
 }
 
+/// @brief Asset service uses scene manager prefetch and progress contracts.
 TEST_F(ManagedServicesBridgeTest, AssetServiceUsesSceneManagerPrefetchAndProgressContracts)
 {
     scene::SceneManager manager; manager.SetScene(&m_scene);
@@ -307,6 +313,7 @@ TEST_F(ManagedServicesBridgeTest, AssetServiceUsesSceneManagerPrefetchAndProgres
     manager.SetScene(nullptr);
 }
 
+/// @brief Owner UI cannot write pending text but global pointer reads remain available.
 TEST_F(ManagedServicesBridgeTest, OwnerUiCannotWritePendingTextButGlobalPointerReadsRemainAvailable)
 {
     auto& object = m_scene.CreateGameObject();
@@ -319,6 +326,7 @@ TEST_F(ManagedServicesBridgeTest, OwnerUiCannotWritePendingTextButGlobalPointerR
     EXPECT_EQ(Run(object, scene::ManagedBridgeOp::SERVICE_UI, 9, true), scene::ManagedBridgeStatus::OK);
 }
 
+/// @brief Collider changes invalidate borrowed inertia and reject overflow.
 TEST_F(ManagedServicesBridgeTest, ColliderChangesInvalidateBorrowedInertiaAndRejectOverflow)
 {
     auto& object = m_scene.CreateGameObject("Shape"); auto& sphere = object.AddComponent<scene::SphereColliderComponent>();
@@ -340,6 +348,7 @@ TEST_F(ManagedServicesBridgeTest, ColliderChangesInvalidateBorrowedInertiaAndRej
     EXPECT_EQ(mesh.meshPath, "Assets/Meshes/Body.fbx");
 }
 
+/// @brief Filtered queries respect mask triggers ignore and current ownership.
 TEST_F(ManagedServicesBridgeTest, FilteredQueriesRespectMaskTriggersIgnoreAndCurrentOwnership)
 {
     physics::World world;
@@ -369,6 +378,7 @@ TEST_F(ManagedServicesBridgeTest, FilteredQueriesRespectMaskTriggersIgnoreAndCur
     EXPECT_TRUE(hits.empty());
 }
 
+/// @brief Extended rigid body controls match native point impulse and parent rotation.
 TEST_F(ManagedServicesBridgeTest, ExtendedRigidBodyControlsMatchNativePointImpulseAndParentRotation)
 {
     auto& parent = m_scene.CreateGameObject("Parent"); parent.transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, 0.4f);
@@ -397,6 +407,7 @@ TEST_F(ManagedServicesBridgeTest, ExtendedRigidBodyControlsMatchNativePointImpul
     EXPECT_NEAR(body.GetRotation().x, expected.x, testkit::kTolerance);
 }
 
+/// @brief Animator audio and UI calls reach native components.
 TEST_F(ManagedServicesBridgeTest, AnimatorAudioAndUiCallsReachNativeComponents)
 {
     auto& object = m_scene.CreateGameObject("Actor");
@@ -418,6 +429,7 @@ TEST_F(ManagedServicesBridgeTest, AnimatorAudioAndUiCallsReachNativeComponents)
     EXPECT_EQ(animator.speed, 2);
 }
 
+/// @brief Navigation warp preserves parent local and rejects unrepresentable pose.
 TEST_F(ManagedServicesBridgeTest, NavigationWarpPreservesParentLocalAndRejectsUnrepresentablePose)
 {
     auto& parent = m_scene.CreateGameObject("Parent"); parent.transform.position = {10, 0, 0}; parent.transform.scale = {2, 2, 2};
@@ -435,6 +447,7 @@ TEST_F(ManagedServicesBridgeTest, NavigationWarpPreservesParentLocalAndRejectsUn
     EXPECT_VEC3_NEAR(object.transform.worldPosition, before.worldPosition, testkit::kTolerance);
 }
 
+/// @brief Character mutations validate copies and contact callback exception.
 TEST_F(ManagedServicesBridgeTest, CharacterMutationsValidateCopiesAndContactCallbackException)
 {
     auto& object = m_scene.CreateGameObject("Character"); auto& cc = object.AddComponent<scene::CharacterControllerComponent>();
@@ -454,6 +467,7 @@ TEST_F(ManagedServicesBridgeTest, CharacterMutationsValidateCopiesAndContactCall
     EXPECT_TRUE(cc.IsFiniteState()); EXPECT_TRUE(body.IsFiniteState());
 }
 
+/// @brief Camera DirectX depth round-trips and distance depth stays distinct.
 TEST_F(ManagedServicesBridgeTest, CameraDirectXDepthRoundTripsAndDistanceDepthStaysDistinct)
 {
     auto& object = m_scene.CreateGameObject("Camera"); object.AddComponent<scene::CameraComponent>();
@@ -477,6 +491,7 @@ TEST_F(ManagedServicesBridgeTest, CameraDirectXDepthRoundTripsAndDistanceDepthSt
     EXPECT_EQ(m_result.integer, 0); EXPECT_TRUE(m_result.values.empty());
 }
 
+/// @brief Synth and loop use real caller and lifetime owned handles.
 TEST_F(ManagedServicesBridgeTest, SynthAndLoopUseRealCallerAndLifetimeOwnedHandles)
 {
     auto& owner = m_scene.CreateGameObject("Owner"); m_caller.SetContext(&m_scene, &owner);
@@ -493,6 +508,7 @@ TEST_F(ManagedServicesBridgeTest, SynthAndLoopUseRealCallerAndLifetimeOwnedHandl
     m_services.CancelOwner(9, &m_caller);
     EXPECT_EQ(Run(owner, scene::ManagedBridgeOp::SERVICE_AUDIO, 45, true, handle), scene::ManagedBridgeStatus::NOT_FOUND);
 }
+/// @brief Random stream matches SDK vectors full range and forced tail rejection.
 TEST_F(ManagedServicesBridgeTest, RandomStreamMatchesSdkVectorsFullRangeAndForcedTailRejection)
 {
     util::RandomStream raw(1), range(1);
@@ -519,6 +535,7 @@ TEST_F(ManagedServicesBridgeTest, RandomStreamMatchesSdkVectorsFullRangeAndForce
     EXPECT_FALSE(invalid.Chance(1.1f)); EXPECT_EQ(invalid.state, invalidState);
 }
 
+/// @brief Material never falls back resizes or accepts unknown shared GUID and expires pending.
 TEST_F(ManagedServicesBridgeTest, MaterialNeverFallsBackResizesOrAcceptsUnknownSharedGuidAndExpiresPending)
 {
     auto& target = m_scene.CreateGameObject("MaterialOwner");
@@ -551,6 +568,7 @@ TEST_F(ManagedServicesBridgeTest, MaterialNeverFallsBackResizesOrAcceptsUnknownS
     EXPECT_TRUE(exists); EXPECT_NE(birth, originalBirth);
 }
 
+/// @brief Save load preserves dirty values on corrupt unreadable files and borrowed views.
 TEST_F(ManagedServicesBridgeTest, SaveLoadPreservesDirtyValuesOnCorruptUnreadableFilesAndBorrowedViews)
 {
     testkit::TempDir files("managed-store"); ASSERT_TRUE(files.IsValid());
@@ -570,6 +588,7 @@ TEST_F(ManagedServicesBridgeTest, SaveLoadPreservesDirtyValuesOnCorruptUnreadabl
     EXPECT_FALSE(store.TryGetStringView("score", missing)); EXPECT_EQ(missing, "sentinel");
 }
 
+/// @brief Save and config use actual separate application stores and reject edit mutation.
 TEST_F(ManagedServicesBridgeTest, SaveAndConfigUseActualSeparateApplicationStoresAndRejectEditMutation)
 {
     scene::ScriptRuntime runtime; RuntimeServiceScope runtimeScope(runtime);
@@ -594,6 +613,7 @@ TEST_F(ManagedServicesBridgeTest, SaveAndConfigUseActualSeparateApplicationStore
     EXPECT_EQ(Run(target, scene::ManagedBridgeOp::SERVICE_SAVE, 5, false), scene::ManagedBridgeStatus::INVALID_SCOPE);
     EXPECT_TRUE(app.GetSaveStore().Has("large"));
 }
+/// @brief Store reception publishes once and failed or expired packets preserve clean values.
 TEST_F(ManagedServicesBridgeTest, StoreReceptionPublishesOnceAndFailedOrExpiredPacketsPreserveCleanValues)
 {
     scene::ScriptRuntime runtime; RuntimeServiceScope runtimeScope(runtime);
@@ -631,6 +651,7 @@ TEST_F(ManagedServicesBridgeTest, StoreReceptionPublishesOnceAndFailedOrExpiredP
     EXPECT_EQ(StorePacket(target, 24, changedPath), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
     EXPECT_EQ(store.GetString("value"), "old"); EXPECT_FALSE(store.IsDirty());
 }
+/// @brief Portable documents reject malformed candidates and preserve old value revision and dirty.
 TEST_F(ManagedServicesBridgeTest, PortableDocumentsRejectMalformedCandidatesAndPreserveOldValueRevisionAndDirty)
 {
     testkit::TempDir files("portable-store"); ASSERT_TRUE(files.IsValid());
@@ -666,6 +687,7 @@ TEST_F(ManagedServicesBridgeTest, PortableDocumentsRejectMalformedCandidatesAndP
     EXPECT_FALSE(store.CommitDocument("profile", type, schema, envelope("0"), dirtyRevision, "wrong.toml"));
 }
 
+/// @brief Material render overrides use the explicit slot and reject invalid state without mutation.
 TEST_F(ManagedServicesBridgeTest, MaterialRenderOverridesUseTheExplicitSlotAndRejectInvalidStateWithoutMutation)
 {
     auto& target = m_scene.CreateGameObject("RenderOwner"); auto& component = target.AddComponent<scene::MaterialComponent>(); component.ResizeSlots(2);
@@ -685,6 +707,7 @@ TEST_F(ManagedServicesBridgeTest, MaterialRenderOverridesUseTheExplicitSlotAndRe
     ASSERT_EQ(Run(target, op, 23, false, 1), scene::ManagedBridgeStatus::OK);
     EXPECT_FALSE(component.RawSlotAt(1).Authoring().hasBlendModeOverride); EXPECT_FALSE(component.RawSlotAt(1).Authoring().hasDoubleSidedOverride); EXPECT_FALSE(component.RawSlotAt(1).Authoring().hasRenderQueueOverride);
 }
+/// @brief Render uses only the real play copy and game viewport with atomic validation.
 TEST_F(ManagedServicesBridgeTest, RenderUsesOnlyTheRealPlayCopyAndGameViewportWithAtomicValidation)
 {
     auto& owner = m_scene.CreateGameObject("RenderOwner"); m_caller.SetContext(&m_scene, &owner);
@@ -719,6 +742,7 @@ TEST_F(ManagedServicesBridgeTest, RenderUsesOnlyTheRealPlayCopyAndGameViewportWi
     EXPECT_EQ(Run(foreign, scene::ManagedBridgeOp::SERVICE_RENDER, 2, false, 0, {1}), scene::ManagedBridgeStatus::INVALID_SCOPE);
 }
 
+/// @brief Joint requires fixed update and preserves old settings when any target or axis is invalid.
 TEST_F(ManagedServicesBridgeTest, JointRequiresFixedUpdateAndPreservesOldSettingsWhenAnyTargetOrAxisIsInvalid)
 {
     auto& owner = m_scene.CreateGameObject("JointOwner"); auto& target = m_scene.CreateGameObject("Body");
@@ -736,6 +760,7 @@ TEST_F(ManagedServicesBridgeTest, JointRequiresFixedUpdateAndPreservesOldSetting
     bool exists = false; EXPECT_EQ(scene::managed_detail::ManagedObjectControls::Component(owner, static_cast<uint32_t>(scene::ManagedNativeComponentKind::JOINT), scene::ManagedBridgeOp::COMPONENT_ADD, exists), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
 }
 
+/// @brief Display uses host intent and rejects invalid dimensions without requesting.
 TEST_F(ManagedServicesBridgeTest, DisplayUsesHostIntentAndRejectsInvalidDimensionsWithoutRequesting)
 {
     auto& owner = m_scene.CreateGameObject("DisplayOwner"); m_caller.SetContext(&m_scene, &owner);
@@ -752,6 +777,7 @@ TEST_F(ManagedServicesBridgeTest, DisplayUsesHostIntentAndRejectsInvalidDimensio
     scene::Script::SetInPlayMode(false);
     EXPECT_EQ(Run(owner, scene::ManagedBridgeOp::SERVICE_DISPLAY, 6, false, 1), scene::ManagedBridgeStatus::INVALID_SCOPE); EXPECT_EQ(state.calls, 1);
 }
+/// @brief Joint chain keeps the old row until every target and birth fence passes.
 TEST_F(ManagedServicesBridgeTest, JointChainKeepsTheOldRowUntilEveryTargetAndBirthFencePasses)
 {
     auto& owner = m_scene.CreateGameObject("Chain"); auto& target = m_scene.CreateGameObject("Link");
@@ -789,6 +815,7 @@ TEST_F(ManagedServicesBridgeTest, JointChainKeepsTheOldRowUntilEveryTargetAndBir
     bool exists = false; ASSERT_EQ(scene::managed_detail::ManagedObjectControls::Component(owner, static_cast<uint32_t>(scene::ManagedNativeComponentKind::JOINT), scene::ManagedBridgeOp::COMPONENT_REMOVE, exists), scene::ManagedBridgeStatus::OK);
     EXPECT_EQ(packet(22, token, {}), scene::ManagedBridgeStatus::NOT_FOUND); EXPECT_EQ(joint.distance, 2);
 }
+/// @brief Scene terrain pool matches flat order ties after reorder removal and exchange.
 TEST_F(ManagedServicesBridgeTest, SceneTerrainPoolMatchesFlatOrderTiesAfterReorderRemovalAndExchange)
 {
     auto& observer=m_scene.CreateGameObject("Observer");m_caller.SetContext(&m_scene,&observer);
@@ -809,6 +836,7 @@ TEST_F(ManagedServicesBridgeTest, SceneTerrainPoolMatchesFlatOrderTiesAfterReord
     scene::Scene other;auto& otherObserver=other.CreateGameObject("New observer");m_caller.SetContext(&other,&otherObserver);
     ExpectSceneTerrainEquivalent(other,m_caller,{0,-4,.5f});m_caller.SetContext(nullptr,nullptr);
 }
+/// @brief Scene terrain pool preserves world pose reference Y holes and boundary triangles.
 TEST_F(ManagedServicesBridgeTest, SceneTerrainPoolPreservesWorldPoseReferenceYHolesAndBoundaryTriangles)
 {
     auto& observer=m_scene.CreateGameObject("Observer");m_caller.SetContext(&m_scene,&observer);

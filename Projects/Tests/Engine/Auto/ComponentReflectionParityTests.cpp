@@ -134,6 +134,7 @@ protected:
 /// @name 畳み済みコンポーネント
 /// @note キー一覧は畳む前の手書きコードから抜き出した「出荷済みシーンにあるキー名」。
 
+/// @brief Light keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, LightKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::LightComponent>("LightComponent",
@@ -143,6 +144,7 @@ TEST_F(ComponentReflectionParityTest, LightKeepsItsSceneKeys)
           "sourceLength", "sourceRadius", "type", "useColorTemperature" });
 }
 
+/// @brief NavMesh agent keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, NavMeshAgentKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::NavMeshAgentComponent>("NavMeshAgentComponent",
@@ -151,12 +153,14 @@ TEST_F(ComponentReflectionParityTest, NavMeshAgentKeepsItsSceneKeys)
           "stoppingDistance", "updatePosition", "updateRotation" });
 }
 
+/// @brief NavMesh modifier keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, NavMeshModifierKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::NavMeshModifierComponent>("NavMeshModifierComponent",
         { "areaType", "enabled", "mode" });
 }
 
+/// @brief NavMesh sensor keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, NavMeshSensorKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::NavMeshSensorComponent>("NavMeshSensorComponent",
@@ -164,6 +168,7 @@ TEST_F(ComponentReflectionParityTest, NavMeshSensorKeepsItsSceneKeys)
           "scanInterval", "targetTag", "useLineOfSight", "viewAngleDeg", "viewDistance" });
 }
 
+/// @brief Flow field writes its flow list.
 TEST_F(ComponentReflectionParityTest, FlowFieldWritesItsFlowList)
 {
     /// @note 場は 2026-09-11 に «1 本» から «リスト» になり、2026-09-16 に FlowField へ改名した。
@@ -177,6 +182,7 @@ TEST_F(ComponentReflectionParityTest, FlowFieldWritesItsFlowList)
     ExpectKeysStillWritten<scene::FlowField>("FlowField", { "forces" }, field);
 }
 
+/// @brief Reflection probe keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, ReflectionProbeKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::ReflectionProbeComponent>("ReflectionProbeComponent",
@@ -184,6 +190,7 @@ TEST_F(ComponentReflectionParityTest, ReflectionProbeKeepsItsSceneKeys)
           "enabled", "influenceRadius", "intensity", "updateInterval" });
 }
 
+/// @brief Sky renderer keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, SkyRendererKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::SkyRenderer>("SkyRenderer",
@@ -194,6 +201,7 @@ TEST_F(ComponentReflectionParityTest, SkyRendererKeepsItsSceneKeys)
           "skyScatterIntensity", "skySunsetBrightness", "sunsetColor", "sunsetIntensity" });
 }
 
+/// @brief Sun moon renderer keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, SunMoonRendererKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::SunMoonRenderer>("SunMoonRenderer",
@@ -201,6 +209,7 @@ TEST_F(ComponentReflectionParityTest, SunMoonRendererKeepsItsSceneKeys)
           "sunDiskIntensity", "sunEnabled" });
 }
 
+/// @brief Trail keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, TrailKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::TrailComponent>("TrailComponent",
@@ -210,6 +219,7 @@ TEST_F(ComponentReflectionParityTest, TrailKeepsItsSceneKeys)
           "uvScrollSpeed", "uvTiling", "widthEasing", "widthEnd", "widthStart" });
 }
 
+/// @brief Volume keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, VolumeKeepsItsSceneKeys)
 {
     /// @note buoyancy / drag は «意図して消した» キー。前者は VolumeType::Buoyancy ごと
@@ -222,6 +232,7 @@ TEST_F(ComponentReflectionParityTest, VolumeKeepsItsSceneKeys)
           "type" });
 }
 
+/// @brief Volumetric cloud keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, VolumetricCloudKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::VolumetricCloudComponent>("VolumetricCloudComponent",
@@ -234,6 +245,7 @@ TEST_F(ComponentReflectionParityTest, VolumetricCloudKeepsItsSceneKeys)
           "weatherAmount", "weatherSize", "windDirection", "windSpeed" });
 }
 
+/// @brief Environment light keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, EnvironmentLightKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::EnvironmentLightComponent>("EnvironmentLightComponent",
@@ -241,6 +253,7 @@ TEST_F(ComponentReflectionParityTest, EnvironmentLightKeepsItsSceneKeys)
           "prefilterPath", "source", "specularScale" });
 }
 
+/// @brief Post process volume keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, PostProcessVolumeKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::PostProcessVolumeComponent>("PostProcessVolumeComponent",
@@ -248,6 +261,7 @@ TEST_F(ComponentReflectionParityTest, PostProcessVolumeKeepsItsSceneKeys)
           "profile" });
 }
 
+/// @brief Ragdoll keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, RagdollKeepsItsSceneKeys)
 {
     ExpectKeysStillWritten<scene::RagdollComponent>("RagdollComponent",
@@ -259,6 +273,7 @@ TEST_F(ComponentReflectionParityTest, RagdollKeepsItsSceneKeys)
           "rootAnchorTilt", "rootBoneName", "selfSkip", "simulateInEditor", "substeps" });
 }
 
+/// @brief NavMesh off-mesh link keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, NavMeshOffMeshLinkKeepsItsSceneKeys)
 {
     /// @note enabled は保存されていたのに Reflect に無く、AI バスから見えなかった。
@@ -268,6 +283,7 @@ TEST_F(ComponentReflectionParityTest, NavMeshOffMeshLinkKeepsItsSceneKeys)
           "traversalTime" });
 }
 
+/// @brief Mesh trail keeps its scene keys.
 TEST_F(ComponentReflectionParityTest, MeshTrailKeepsItsSceneKeys)
 {
     /// @note excludedMeshIndices も同じ («保存はされるが Reflect に無い» 側)。
@@ -281,6 +297,7 @@ TEST_F(ComponentReflectionParityTest, MeshTrailKeepsItsSceneKeys)
 /// @note キーが揃っていても «値が落ちない» は別の話。畳んだ経路が実際に値を運ぶことを
 /// @note 通しで確かめる (キー名は上で全件見ているので、ここは代表 1 つでよい)。
 
+/// @brief A folded component keeps its values.
 TEST_F(ComponentReflectionParityTest, AFoldedComponentKeepsItsValues)
 {
     scene::Scene source;
@@ -312,6 +329,7 @@ TEST_F(ComponentReflectionParityTest, AFoldedComponentKeepsItsValues)
     EXPECT_EQ(restored->cubemapPath, "Assets/Ibl/Room.dds");
 }
 
+/// @brief Light probe volume keeps settings but not bake state.
 /// @note Light Probe Volume は設定だけを運ぶ。焼いた結果と焼きの要求はランタイム値で、
 /// @note 読み直したシーンは «未ベイク» から自動で焼き直す (古い GPU ハンドルを復元しない)。
 TEST_F(ComponentReflectionParityTest, LightProbeVolumeKeepsSettingsButNotBakeState)
@@ -353,6 +371,7 @@ TEST_F(ComponentReflectionParityTest, LightProbeVolumeKeepsSettingsButNotBakeSta
     EXPECT_FALSE(restored->runtimeReady);
 }
 
+/// @brief Light probe volume clamps its grid.
 TEST_F(ComponentReflectionParityTest, LightProbeVolumeClampsItsGrid)
 {
     scene::LightProbeVolumeComponent volume{};
@@ -368,6 +387,7 @@ TEST_F(ComponentReflectionParityTest, LightProbeVolumeClampsItsGrid)
 
 /// @name 廃止コンポーネントの移行
 
+/// @brief Legacy wind zone becomes ambient wind forces.
 TEST_F(ComponentReflectionParityTest, LegacyWindZoneBecomesAmbientWindForces)
 {
     /// @note 旧 WindZoneComponent を持つシーンを «手で組んだ TOML» として読ませる。
@@ -408,6 +428,7 @@ pulseFrequency = 3.0
     EXPECT_NEAR(environment.pulseFrequency, 3.0f, testkit::kTolerance);
 }
 
+/// @brief The legacy force field key is still read.
 TEST_F(ComponentReflectionParityTest, TheLegacyForceFieldKeyIsStillRead)
 {
     /// @note 型は ParticleForceField → ForceField → FlowField と変わり、そのたび保存キーも変わった。
@@ -437,6 +458,7 @@ forces = [ { fieldType = 1, strength = 9.0, radius = 3.0 } ]
                 testkit::kTolerance);
 }
 
+/// @brief Legacy flat force field becomes a single flow.
 TEST_F(ComponentReflectionParityTest, LegacyFlatForceFieldBecomesASingleFlow)
 {
     /// @note 場が «1 本» だった頃 (〜2026-09-11) の形。キーが直下にフラットに並ぶ。
@@ -469,6 +491,7 @@ direction = [0.0, 1.0, 0.0]
     EXPECT_NEAR(field->forces[0].radius, 6.0f, testkit::kTolerance);
 }
 
+/// @brief Legacy global wind becomes the scene environment.
 TEST_F(ComponentReflectionParityTest, LegacyGlobalWindBecomesTheSceneEnvironment)
 {
     /// @note [environment] を持たないシーンでは «半径 0 の Uniform (+ Curl)» が環境風だった。
@@ -499,6 +522,7 @@ forces = [ { fieldType = 0, strength = 5.0, radius = 0.0, direction = [1.0, 0.0,
             << "環境流へ写した 2 本を残すと二重に掛かる";
 }
 
+/// @brief The scene environment survives the round trip.
 TEST_F(ComponentReflectionParityTest, TheSceneEnvironmentSurvivesTheRoundTrip)
 {
     scene::Scene scene;
@@ -523,6 +547,7 @@ TEST_F(ComponentReflectionParityTest, TheSceneEnvironmentSurvivesTheRoundTrip)
     EXPECT_NEAR(restored.pulseFrequency, 2.5f, testkit::kTolerance);
 }
 
+/// @brief Legacy string light type survives load.
 /// @note キー名が合っていても «値の書き方» が変わると同じように黙って壊れる。
 /// @note LightComponent::type は手書き時代だけ文字列で、Reflect() は他の enum と同じ int を読む。
 /// @note 移行が抜けると Spot も Tube も既定値の Directional に落ち、次の保存で書き戻されて消える。
@@ -555,6 +580,7 @@ sourceLength = 2.5
     EXPECT_NEAR(light->sourceLength, 2.5f, testkit::kTolerance);
 }
 
+/// @brief Int light type still loads.
 TEST_F(ComponentReflectionParityTest, IntLightTypeStillLoads)
 {
     const std::string current = R"(

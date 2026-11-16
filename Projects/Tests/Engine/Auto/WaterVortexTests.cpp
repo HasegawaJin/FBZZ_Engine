@@ -96,6 +96,7 @@ scene::ActiveFlowField BakedField(const fluid::VectorFieldAsset& asset, math::Ve
 
 class WaterVortexTest : public testkit::Fixture {};
 
+/// @brief Uniform swell moves with the water clock and fades at the field boundary.
 TEST_F(WaterVortexTest, UniformSwellMovesWithTheWaterClockAndFadesAtTheFieldBoundary)
 {
     auto water = FlatWater();
@@ -123,6 +124,7 @@ TEST_F(WaterVortexTest, UniformSwellMovesWithTheWaterClockAndFadesAtTheFieldBoun
     EXPECT_VEC3_NEAR(scene::SampleFlow(center, {&resolved, 1}, field.channels, 0.0f), math::Vector3::ZERO, 0.0001f);
 }
 
+/// @brief Authored vortex keeps its bowl and moves the spiral.
 TEST_F(WaterVortexTest, AuthoredVortexKeepsItsBowlAndMovesTheSpiral)
 {
     auto water = FlatWater();
@@ -146,6 +148,7 @@ TEST_F(WaterVortexTest, AuthoredVortexKeepsItsBowlAndMovesTheSpiral)
 
 /// @name 形
 
+/// @brief The depression is exactly the depth at the center and gone at the radius.
 TEST_F(WaterVortexTest, TheDepressionIsExactlyTheDepthAtTheCenterAndGoneAtTheRadius)
 {
     /// @note 描画の VS も同じ式で頂点を下げる。中心で height、影響半径の外で 0 でなければ、 見えている形の縁に «段» ができる。
@@ -163,6 +166,7 @@ TEST_F(WaterVortexTest, TheDepressionIsExactlyTheDepthAtTheCenterAndGoneAtTheRad
     EXPECT_NEAR(water.GetSurfaceHeightAt(12.0f, -5.0f - 6.0f, 3.0f), 0.0f, 1.0e-3f);
 }
 
+/// @brief The depression is monotone from the center outward.
 TEST_F(WaterVortexTest, TheDepressionIsMonotoneFromTheCenterOutward)
 {
     /// @note (1 - r/R)^p だと r = R で折れる。Gaussian にしたのは C¹ 連続にするためで、 単調に浅くなることまでは形の最低条件。
@@ -181,6 +185,7 @@ TEST_F(WaterVortexTest, TheDepressionIsMonotoneFromTheCenterOutward)
     }
 }
 
+/// @brief Checks sink digs and source lifts with the same bernoulli.
 TEST_F(WaterVortexTest, SinkDigsAndSourceLiftsWithTheSameBernoulli)
 {
     /// @note 排水口は «穴»、湧き上がりは «山»。符号だけが違い、大きさは同じ v^2/2g。
@@ -200,6 +205,7 @@ TEST_F(WaterVortexTest, SinkDigsAndSourceLiftsWithTheSameBernoulli)
     EXPECT_NEAR(water.GetSurfaceHeightAt(0.0f, 5.0f, 0.0f), 0.0f, 1.0e-3f);
 }
 
+/// @brief Checks moving a vortex vertically weakens and removes its depression.
 TEST_F(WaterVortexTest, MovingAVortexVerticallyWeakensAndRemovesItsDepression)
 {
     scene::WaterComponent water = FlatWater();
@@ -234,6 +240,7 @@ TEST_F(WaterVortexTest, MovingAVortexVerticallyWeakensAndRemovesItsDepression)
     }
 }
 
+/// @brief Vertical attenuation uses the water plane and preserves horizontal center.
 TEST_F(WaterVortexTest, VerticalAttenuationUsesTheWaterPlaneAndPreservesHorizontalCenter)
 {
     scene::WaterComponent water = FlatWater();
@@ -258,6 +265,7 @@ TEST_F(WaterVortexTest, VerticalAttenuationUsesTheWaterPlaneAndPreservesHorizont
     EXPECT_FLOAT_EQ(water.surfaceFlows[0].speed, initial.speed);
 }
 
+/// @brief Bounded surface fields outside the water plane leave no slots.
 TEST_F(WaterVortexTest, BoundedSurfaceFieldsOutsideTheWaterPlaneLeaveNoSlots)
 {
     scene::WaterComponent water = FlatWater();
@@ -271,6 +279,7 @@ TEST_F(WaterVortexTest, BoundedSurfaceFieldsOutsideTheWaterPlaneLeaveNoSlots)
     }
 }
 
+/// @brief Checks uniform and curl never shape the surface.
 TEST_F(WaterVortexTest, UniformAndCurlNeverShapeTheSurface)
 {
     /// @note 局所の風はうねりを育てない (吹送距離と時間が要る)。乱流には «高さ» が定義できない。 どちらも流れと質感にだけ出るので、枠は取るが GetSurfaceHeightAt は動かさない。
@@ -291,6 +300,7 @@ TEST_F(WaterVortexTest, UniformAndCurlNeverShapeTheSurface)
     }
 }
 
+/// @brief Checks a baked field digs bernoulli inside its box and nothing outside.
 TEST_F(WaterVortexTest, ABakedFieldDigsBernoulliInsideItsBoxAndNothingOutside)
 {
     /// @note 焼いた場は XZ 成分だけを Bernoulli へ通す。箱の外は «場が無い» ので平ら。 HLSL の WaterBakedDisplacement もこの式でなければ、絵と浮力が別の水面になる。
@@ -308,6 +318,7 @@ TEST_F(WaterVortexTest, ABakedFieldDigsBernoulliInsideItsBoxAndNothingOutside)
     EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(0.0f, 9.0f, 0.0f), 0.0f);
 }
 
+/// @brief A baked field that does not reach the surface plane is dropped.
 TEST_F(WaterVortexTest, ABakedFieldThatDoesNotReachTheSurfacePlaneIsDropped)
 {
     /// @note 箱が水面より下 (または上) に沈んでいれば、基準面での標本は箱の外になる。
@@ -322,6 +333,7 @@ TEST_F(WaterVortexTest, ABakedFieldThatDoesNotReachTheSurfacePlaneIsDropped)
 
 /// @name 帯の原則
 
+/// @brief Checks a coarse vertex grid swallows the vortex entirely.
 TEST_F(WaterVortexTest, ACoarseVertexGridSwallowsTheVortexEntirely)
 {
     /// @note 頂点で刻めない形は «もっと大きい別の起伏» に化ける。波と同じ尺で寝かせること。
@@ -341,6 +353,7 @@ TEST_F(WaterVortexTest, ACoarseVertexGridSwallowsTheVortexEntirely)
     EXPECT_EQ(water.surfaceFlowCount, 0);
 }
 
+/// @brief The depth is capped so the surface cannot turn inside out.
 TEST_F(WaterVortexTest, TheDepthIsCappedSoTheSurfaceCannotTurnInsideOut)
 {
     /// @note Bernoulli をそのまま採ると speed 10 m/s が 5 m の穴を掘り、«底» が見える。
@@ -356,6 +369,7 @@ TEST_F(WaterVortexTest, TheDepthIsCappedSoTheSurfaceCannotTurnInsideOut)
     EXPECT_FLOAT_EQ(water.surfaceFlows[0].height, scene::kMaxWaterSurfaceDisplacement);
 }
 
+/// @brief Lying vortices and unbounded ones do not shape the surface.
 TEST_F(WaterVortexTest, LyingVorticesAndUnboundedOnesDoNotShapeTheSurface)
 {
     /// @note 横倒しの渦は水面を «掘る» のではなく撫でる。半径の無い要素は中心からの距離で 減衰しないので、形の大きさが決まらない。どちらも流速としては効いたままにする。
@@ -368,6 +382,7 @@ TEST_F(WaterVortexTest, LyingVorticesAndUnboundedOnesDoNotShapeTheSurface)
     EXPECT_EQ(water.surfaceFlowCount, 0);
 }
 
+/// @brief Only vortices that reach the rectangle are kept.
 TEST_F(WaterVortexTest, OnlyVorticesThatReachTheRectangleAreKept)
 {
     /// @note 20 x 20、中心は原点
@@ -379,6 +394,7 @@ TEST_F(WaterVortexTest, OnlyVorticesThatReachTheRectangleAreKept)
     EXPECT_EQ(water.surfaceFlowCount, 0);
 }
 
+/// @brief The strongest eight win.
 TEST_F(WaterVortexTest, TheStrongestEightWin)
 {
     scene::WaterComponent water = FlatWater();
@@ -395,6 +411,7 @@ TEST_F(WaterVortexTest, TheStrongestEightWin)
     }
 }
 
+/// @brief Checks a flow with a shape outranks one without.
 TEST_F(WaterVortexTest, AFlowWithAShapeOutranksOneWithout)
 {
     /// @note 形は «その場に無いとシルエットが変わる»。質感は 1 本落ちても画として崩れない。
@@ -417,6 +434,7 @@ TEST_F(WaterVortexTest, AFlowWithAShapeOutranksOneWithout)
 
 /// @name 逆写像には入れない
 
+/// @brief The depression does not enter the inverse mapping.
 TEST_F(WaterVortexTest, TheDepressionDoesNotEnterTheInverseMapping)
 {
     /// @note 形は水平変位を持たないので «変位前の位置» を解く対象ではない。入れると Gerstner の 位相まで穴のぶんずれ、渦の周りだけ波の位相が飛ぶ。
@@ -437,6 +455,7 @@ TEST_F(WaterVortexTest, TheDepressionDoesNotEnterTheInverseMapping)
 
 /// @name 波紋の帯分け
 
+/// @brief The ripple profile is odd around its ring.
 TEST_F(WaterVortexTest, TheRippleProfileIsOddAroundItsRing)
 {
     /// @note 輪は «山と谷» を対で持つ。輪の上 (ring = 0) はちょうどゼロ交差。
@@ -451,6 +470,7 @@ TEST_F(WaterVortexTest, TheRippleProfileIsOddAroundItsRing)
     }
 }
 
+/// @brief Physical ring height is independent of the display mesh fade.
 TEST_F(WaterVortexTest, PhysicalRingHeightIsIndependentOfTheDisplayMeshFade)
 {
     /// @note 表示の帯域制限を変えても、浮力・水域照会の波紋は同じ設定を評価する。
@@ -479,6 +499,7 @@ TEST_F(WaterVortexTest, PhysicalRingHeightIsIndependentOfTheDisplayMeshFade)
     }
 }
 
+/// @brief The emitted ring is measured in metres and starts at zero radius.
 TEST_F(WaterVortexTest, TheEmittedRingIsMeasuredInMetresAndStartsAtZeroRadius)
 {
     scene::WaterComponent water = FlatWater();
@@ -500,6 +521,7 @@ TEST_F(WaterVortexTest, TheEmittedRingIsMeasuredInMetresAndStartsAtZeroRadius)
 
 /// @name 浮いた物を押す流速
 
+/// @brief The flow velocity is the current plus the vortex tangent.
 TEST_F(WaterVortexTest, TheFlowVelocityIsTheCurrentPlusTheVortexTangent)
 {
     /// @note FluidVolume の flowVelocity がこれを返す。場所の関数になって初めて、浮いた物が flowCoupling を立てなくても渦の周りを回る。
@@ -517,6 +539,7 @@ TEST_F(WaterVortexTest, TheFlowVelocityIsTheCurrentPlusTheVortexTangent)
     EXPECT_NEAR(flow.z, -2.0f, 1.0e-5f);
 }
 
+/// @brief The flow velocity carries every field type.
 TEST_F(WaterVortexTest, TheFlowVelocityCarriesEveryFieldType)
 {
     /// @note 形に出ない型 (Uniform / Curl / Source) も流速としては必ず効く。ここが抜けると «見えているさざ波は流れているのに浮いた物が止まっている» になる。
@@ -536,6 +559,7 @@ TEST_F(WaterVortexTest, TheFlowVelocityCarriesEveryFieldType)
     EXPECT_NEAR(flow.z, 3.0f, 1.0e-5f);
 }
 
+/// @brief The flow velocity is purely horizontal.
 TEST_F(WaterVortexTest, TheFlowVelocityIsPurelyHorizontal)
 {
     /// @note 鉛直成分を返すと、浮いた体が浮力と綱引きして水面の上で震える。

@@ -49,6 +49,7 @@ protected:
     }
 };
 
+/// @brief Large queued burst preserves survivor order and delayed objects.
 TEST_F(SceneBulkDestroyTest, LargeQueuedBurstPreservesSurvivorOrderAndDelayedObjects)
 {
     std::vector<scene::EntityID> survivors;
@@ -78,6 +79,7 @@ TEST_F(SceneBulkDestroyTest, LargeQueuedBurstPreservesSurvivorOrderAndDelayedObj
     EXPECT_EQ(m_scene.GameObjectCount(), survivors.size());
 }
 
+/// @brief Callback sees live order and can create reorder and destroy reentrantly.
 TEST_F(SceneBulkDestroyTest, CallbackSeesLiveOrderAndCanCreateReorderAndDestroyReentrantly)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -118,6 +120,7 @@ TEST_F(SceneBulkDestroyTest, CallbackSeesLiveOrderAndCanCreateReorderAndDestroyR
     EXPECT_EQ(LiveIds(), (std::vector<scene::EntityID>{survivorId}));
 }
 
+/// @brief Descendants destroy before parent and duplicate requests do not repeat callbacks.
 TEST_F(SceneBulkDestroyTest, DescendantsDestroyBeforeParentAndDuplicateRequestsDoNotRepeatCallbacks)
 {
     auto& survivor = m_scene.CreateGameObject("Survivor");
@@ -144,6 +147,7 @@ TEST_F(SceneBulkDestroyTest, DescendantsDestroyBeforeParentAndDuplicateRequestsD
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
 }
 
+/// @brief Spawn during child destroy keeps the new root outside the captured subtree.
 TEST_F(SceneBulkDestroyTest, SpawnDuringChildDestroyKeepsTheNewRootOutsideTheCapturedSubtree)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -167,6 +171,7 @@ TEST_F(SceneBulkDestroyTest, SpawnDuringChildDestroyKeepsTheNewRootOutsideTheCap
     EXPECT_EQ(m_scene.Find("Born"), created.front());
 }
 
+/// @brief Owner locations remain correct after moves and scene move.
 TEST_F(SceneBulkDestroyTest, OwnerLocationsRemainCorrectAfterMovesAndSceneMove)
 {
     std::vector<scene::EntityID> ids;

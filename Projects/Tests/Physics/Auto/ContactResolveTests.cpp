@@ -72,6 +72,7 @@ protected:
 
 /// @name 法線方向
 
+/// @brief Stops a body that is moving into the surface.
 TEST_F(ContactResolveTest, StopsABodyThatIsMovingIntoTheSurface)
 {
     const physics::PhysicsMaterial material = MakeMaterial(0.0f, 0.0f);
@@ -83,6 +84,7 @@ TEST_F(ContactResolveTest, StopsABodyThatIsMovingIntoTheSurface)
     EXPECT_NEAR(falling.GetVelocity().y, 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Does not touch a body that is already separating.
 TEST_F(ContactResolveTest, DoesNotTouchABodyThatIsAlreadySeparating)
 {
     /// @note 離れていく接触にインパルスを入れると、跳ね上がった直後にもう一度蹴られる。
@@ -94,6 +96,7 @@ TEST_F(ContactResolveTest, DoesNotTouchABodyThatIsAlreadySeparating)
     EXPECT_NEAR(falling.GetVelocity().y, 5.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Does not drag the body sideways without friction.
 TEST_F(ContactResolveTest, DoesNotDragTheBodySidewaysWithoutFriction)
 {
     const physics::PhysicsMaterial material = MakeMaterial(0.0f, 0.0f);
@@ -104,6 +107,7 @@ TEST_F(ContactResolveTest, DoesNotDragTheBodySidewaysWithoutFriction)
     EXPECT_NEAR(falling.GetVelocity().x, 3.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Leaves a static body where it is.
 TEST_F(ContactResolveTest, LeavesAStaticBodyWhereItIs)
 {
     const physics::PhysicsMaterial material = MakeMaterial(0.0f, 0.0f);
@@ -117,6 +121,7 @@ TEST_F(ContactResolveTest, LeavesAStaticBodyWhereItIs)
 
 /// @name 反発
 
+/// @brief Bounce height follows the restitution.
 TEST_F(ContactResolveTest, BounceHeightFollowsTheRestitution)
 {
     /// @note 材質の値がそのまま «跳ね返る速度の比» になる。
@@ -128,6 +133,7 @@ TEST_F(ContactResolveTest, BounceHeightFollowsTheRestitution)
     EXPECT_NEAR(falling.GetVelocity().y, 4.0f, 0.5f);
 }
 
+/// @brief Checks bouncier materials come back faster.
 TEST_F(ContactResolveTest, BouncierMaterialsComeBackFaster)
 {
     const physics::PhysicsMaterial dull   = MakeMaterial(0.1f, 0.0f);
@@ -143,6 +149,7 @@ TEST_F(ContactResolveTest, BouncierMaterialsComeBackFaster)
     EXPECT_GT(falling.GetVelocity().y, dullSpeed);
 }
 
+/// @brief Takes the less bouncy of the two materials.
 TEST_F(ContactResolveTest, TakesTheLessBouncyOfTheTwoMaterials)
 {
     /// @note 反発の既定の合成規則は Minimum。ゴム玉を粘土の床へ落としても跳ねない。
@@ -160,6 +167,7 @@ TEST_F(ContactResolveTest, TakesTheLessBouncyOfTheTwoMaterials)
 
 /// @name 摩擦
 
+/// @brief Friction slows the slide along the surface.
 TEST_F(ContactResolveTest, FrictionSlowsTheSlideAlongTheSurface)
 {
     const physics::PhysicsMaterial grippy = MakeMaterial(0.0f, 1.0f);
@@ -172,6 +180,7 @@ TEST_F(ContactResolveTest, FrictionSlowsTheSlideAlongTheSurface)
     EXPECT_GE(falling.GetVelocity().x, 0.0f);
 }
 
+/// @brief Grippier materials slow the slide more.
 TEST_F(ContactResolveTest, GrippierMaterialsSlowTheSlideMore)
 {
     const physics::PhysicsMaterial ice    = MakeMaterial(0.0f, 0.02f);
@@ -187,6 +196,7 @@ TEST_F(ContactResolveTest, GrippierMaterialsSlowTheSlideMore)
     EXPECT_LT(falling.GetVelocity().x, onIce);
 }
 
+/// @brief Friction acts on every tangential direction.
 TEST_F(ContactResolveTest, FrictionActsOnEveryTangentialDirection)
 {
     /// @note 接線は 2 軸ある。片方しか解いていないと、斜めに滑ったときだけ止まらない。
@@ -201,6 +211,7 @@ TEST_F(ContactResolveTest, FrictionActsOnEveryTangentialDirection)
 
 /// @name トリガー
 
+/// @brief Trigger contacts leave velocity and position unchanged.
 TEST_F(ContactResolveTest, TriggerContactsLeaveVelocityAndPositionUnchanged)
 {
     /// @note トリガーは «通知するだけ»。速度も位置も動かしてはいけない。
@@ -219,6 +230,7 @@ TEST_F(ContactResolveTest, TriggerContactsLeaveVelocityAndPositionUnchanged)
 
 /// @name 貫通の補正
 
+/// @brief Pushes a deeply overlapping body out along the normal.
 TEST_F(ContactResolveTest, PushesADeeplyOverlappingBodyOutAlongTheNormal)
 {
     const physics::PhysicsMaterial material = MakeMaterial(0.0f, 0.0f);
@@ -228,6 +240,7 @@ TEST_F(ContactResolveTest, PushesADeeplyOverlappingBodyOutAlongTheNormal)
     EXPECT_GT(falling.GetPosition().y, 1.0f);
 }
 
+/// @brief Leaves a shallow overlap alone.
 TEST_F(ContactResolveTest, LeavesAShallowOverlapAlone)
 {
     /// @note 許容量 (slop) 以下の重なりまで押し返すと、接地したものが小刻みに震える。
@@ -238,6 +251,7 @@ TEST_F(ContactResolveTest, LeavesAShallowOverlapAlone)
     EXPECT_NEAR(falling.GetPosition().y, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Deeper overlaps are pushed further.
 TEST_F(ContactResolveTest, DeeperOverlapsArePushedFurther)
 {
     const physics::PhysicsMaterial material = MakeMaterial(0.0f, 0.0f);
@@ -251,6 +265,7 @@ TEST_F(ContactResolveTest, DeeperOverlapsArePushedFurther)
     EXPECT_GT(falling.GetPosition().y - 1.0f, shallowLift);
 }
 
+/// @brief Resolving nothing is harmless.
 TEST_F(ContactResolveTest, ResolvingNothingIsHarmless)
 {
     std::vector<physics::ContactPoint> empty;

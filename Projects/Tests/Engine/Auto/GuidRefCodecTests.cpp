@@ -83,6 +83,7 @@ private:
 
 /// @name Encode
 
+/// @brief Encodes a known asset into a GUID reference.
 TEST_F(GuidRefCodecTest, EncodesAKnownAssetIntoAGuidReference)
 {
     const std::string texture = CreateAsset("Textures/Player.png");
@@ -95,6 +96,7 @@ TEST_F(GuidRefCodecTest, EncodesAKnownAssetIntoAGuidReference)
               asset::AssetDatabase::TryGetGuidFromPath(texture));
 }
 
+/// @brief Writes the project relative path as a hint.
 TEST_F(GuidRefCodecTest, WritesTheProjectRelativePathAsAHint)
 {
     /// @note guid だけだと «どのファイルか» をファイルの中から辿れない。人と grep のために併記する。
@@ -106,6 +108,7 @@ TEST_F(GuidRefCodecTest, WritesTheProjectRelativePathAsAHint)
     EXPECT_EQ(asset::AssetDatabase::HintFromRef(encoded), "Assets/Textures/Player.png");
 }
 
+/// @brief Encoding is idempotent.
 TEST_F(GuidRefCodecTest, EncodingIsIdempotent)
 {
     /// @note Save のたびに掛かる。2 度掛けて "guid:guid:..." になってはいけない。
@@ -116,6 +119,7 @@ TEST_F(GuidRefCodecTest, EncodingIsIdempotent)
     EXPECT_EQ(asset::EncodeGuidRef(once), once);
 }
 
+/// @brief Leaves values that are not asset paths alone.
 TEST_F(GuidRefCodecTest, LeavesValuesThatAreNotAssetPathsAlone)
 {
     /// @note 文書中の全文字列に掛かるため、ここが緩いとスクリプトの設定値が書き換わる。
@@ -127,6 +131,7 @@ TEST_F(GuidRefCodecTest, LeavesValuesThatAreNotAssetPathsAlone)
     EXPECT_EQ(asset::EncodeGuidRef(""), "");
 }
 
+/// @brief Leaves paths that are not registered alone.
 TEST_F(GuidRefCodecTest, LeavesPathsThatAreNotRegisteredAlone)
 {
     /// @note 実体が無い / Assets の外。データを勝手に捨てず、そのまま通す。
@@ -138,6 +143,7 @@ TEST_F(GuidRefCodecTest, LeavesPathsThatAreNotRegisteredAlone)
 
 /// @name Decode
 
+/// @brief Decodes back to the runtime relative path.
 TEST_F(GuidRefCodecTest, DecodesBackToTheRuntimeRelativePath)
 {
     /// @note ランタイムと Inspector は "Assets/..." 前提。ここだけ絶対パスを返すと
@@ -150,6 +156,7 @@ TEST_F(GuidRefCodecTest, DecodesBackToTheRuntimeRelativePath)
     EXPECT_EQ(decoded, "Assets/Textures/Player.png");
 }
 
+/// @brief Round-trips shared engine assets by GUID without copying them into the project.
 TEST_F(GuidRefCodecTest, RoundTripsSharedEngineAssetsByGuidWithoutCopyingThemIntoTheProject)
 {
     const std::string guid = "1234567890abcdef1234567890abcdef";
@@ -166,6 +173,7 @@ TEST_F(GuidRefCodecTest, RoundTripsSharedEngineAssetsByGuidWithoutCopyingThemInt
     EXPECT_EQ(asset::DecodeGuidRef(encoded), shared);
 }
 
+/// @brief Shared GUID decode preserves subasset suffix and survives a project clone.
 TEST_F(GuidRefCodecTest, SharedGuidDecodePreservesSubassetSuffixAndSurvivesAProjectClone)
 {
     const std::string guid = "abcdefabcdefabcdefabcdefabcdefab";
@@ -185,6 +193,7 @@ TEST_F(GuidRefCodecTest, SharedGuidDecodePreservesSubassetSuffixAndSurvivesAProj
     EXPECT_EQ(asset::DecodeGuidRef(encoded), shared + ":2");
 }
 
+/// @brief Project copy wins over shared asset with the same GUID.
 TEST_F(GuidRefCodecTest, ProjectCopyWinsOverSharedAssetWithTheSameGuid)
 {
     const std::string guid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -202,6 +211,7 @@ TEST_F(GuidRefCodecTest, ProjectCopyWinsOverSharedAssetWithTheSameGuid)
               "Assets/Materials/Water/Ocean.mat");
 }
 
+/// @brief Different project and shared assets with one GUID are reported.
 TEST_F(GuidRefCodecTest, DifferentProjectAndSharedAssetsWithOneGuidAreReported)
 {
     const std::string guid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -217,6 +227,7 @@ TEST_F(GuidRefCodecTest, DifferentProjectAndSharedAssetsWithOneGuidAreReported)
     EXPECT_EQ(asset::AssetDatabase::TryGetGuidFromPath(shared), guid);
 }
 
+/// @brief Shared asset without matching metadata remains unresolved and unchanged.
 TEST_F(GuidRefCodecTest, SharedAssetWithoutMatchingMetadataRemainsUnresolvedAndUnchanged)
 {
     const std::string guid = "fedcba0987654321fedcba0987654321";
@@ -232,6 +243,7 @@ TEST_F(GuidRefCodecTest, SharedAssetWithoutMatchingMetadataRemainsUnresolvedAndU
     EXPECT_FALSE(std::filesystem::exists(shared + ".meta"));
 }
 
+/// @brief Different shared assets with one GUID remain ambiguous.
 TEST_F(GuidRefCodecTest, DifferentSharedAssetsWithOneGuidRemainAmbiguous)
 {
     const std::string guid = "0123456789abcdef0123456789abcdef";
@@ -246,6 +258,7 @@ TEST_F(GuidRefCodecTest, DifferentSharedAssetsWithOneGuidRemainAmbiguous)
     EXPECT_EQ(asset::AssetManager::ResolveAssetPath("guid:" + guid), "");
 }
 
+/// @brief Reassigning shared GUID leaves metadata and baked container unchanged.
 TEST_F(GuidRefCodecTest, ReassigningSharedGuidLeavesMetadataAndBakedContainerUnchanged)
 {
     const std::string guid = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -270,6 +283,7 @@ TEST_F(GuidRefCodecTest, ReassigningSharedGuidLeavesMetadataAndBakedContainerUnc
     EXPECT_EQ(metadata, "[meta]\nguid = '" + guid + "'\n");
 }
 
+/// @brief Decoding leaves plain paths alone.
 TEST_F(GuidRefCodecTest, DecodingLeavesPlainPathsAlone)
 {
     InitDatabase();
@@ -279,6 +293,7 @@ TEST_F(GuidRefCodecTest, DecodingLeavesPlainPathsAlone)
     EXPECT_EQ(asset::DecodeGuidRef("Untagged"), "Untagged");
 }
 
+/// @brief Recovers an unresolvable GUID through its path hint.
 TEST_F(GuidRefCodecTest, RecoversAnUnresolvableGuidThroughItsPathHint)
 {
     /// @note .meta を作り直すと guid が変わる。ヒントの実体が残っていれば参照を生かす。
@@ -291,6 +306,7 @@ TEST_F(GuidRefCodecTest, RecoversAnUnresolvableGuidThroughItsPathHint)
     EXPECT_EQ(asset::DecodeGuidRef(broken), "Assets/Textures/Player.png");
 }
 
+/// @brief Keeps an unresolvable reference when nothing can be recovered.
 TEST_F(GuidRefCodecTest, KeepsAnUnresolvableReferenceWhenNothingCanBeRecovered)
 {
     /// @note 引けず、ヒントの実体も無い。空にすると «何を指していたか» が永久に失われる。
@@ -301,6 +317,7 @@ TEST_F(GuidRefCodecTest, KeepsAnUnresolvableReferenceWhenNothingCanBeRecovered)
     EXPECT_EQ(asset::DecodeGuidRef(broken), broken);
 }
 
+/// @brief Survives the full round trip twice.
 TEST_F(GuidRefCodecTest, SurvivesTheFullRoundTripTwice)
 {
     const std::string texture = CreateAsset("Textures/Player.png");
@@ -314,6 +331,7 @@ TEST_F(GuidRefCodecTest, SurvivesTheFullRoundTripTwice)
 
 /// @name TOML ツリー全体
 
+/// @brief Walks nested tables and arrays.
 TEST_F(GuidRefCodecTest, WalksNestedTablesAndArrays)
 {
     /// @note Save 直前に文書全体へ掛ける。入れ子や配列の中の参照を取りこぼすと、
@@ -336,6 +354,7 @@ TEST_F(GuidRefCodecTest, WalksNestedTablesAndArrays)
     EXPECT_EQ(root["layers"][1].value_or(std::string{}), "Untagged");
 }
 
+/// @brief Decodes the whole tree back.
 TEST_F(GuidRefCodecTest, DecodesTheWholeTreeBack)
 {
     const std::string texture = CreateAsset("Textures/Player.png");
@@ -350,6 +369,7 @@ TEST_F(GuidRefCodecTest, DecodesTheWholeTreeBack)
     EXPECT_EQ(root["albedo"].value_or(std::string{}), "Assets/Textures/Player.png");
 }
 
+/// @brief Leaves non string values untouched.
 TEST_F(GuidRefCodecTest, LeavesNonStringValuesUntouched)
 {
     InitDatabase();

@@ -300,6 +300,7 @@ protected:
     uint32_t m_validationFailures = 0;
 };
 
+/// @brief Reuses only diffuse history and adds independent radiance exactly once.
 TEST_F(RayGameTest, ReusesOnlyDiffuseHistoryAndAddsIndependentRadianceExactlyOnce)
 {
     std::array<renderer::RayGameTransportRecord, 4> frame{};
@@ -316,6 +317,7 @@ TEST_F(RayGameTest, ReusesOnlyDiffuseHistoryAndAddsIndependentRadianceExactlyOnc
     const auto counts = Reconstruct(frame, surface, previous, false, true);
     EXPECT_NEAR(counts[0], 8, 0.001f); EXPECT_NEAR(counts[1], 1, 0.001f);
 }
+/// @brief Rejects skinned missing motion full identity changes and disocclusion.
 TEST_F(RayGameTest, RejectsSkinnedMissingMotionFullIdentityChangesAndDisocclusion)
 {
     std::array<renderer::RayGameTransportRecord, 4> frame{};
@@ -333,6 +335,7 @@ TEST_F(RayGameTest, RejectsSkinnedMissingMotionFullIdentityChangesAndDisocclusio
     ASSERT_EQ(result.size(), 16u);
     for (uint32_t i = 0; i < 4; ++i) EXPECT_NEAR(result[i * 4], 1, 0.001f);
 }
+/// @brief Resets history without changing fresh transport or treating uncomputed pixels as black.
 TEST_F(RayGameTest, ResetsHistoryWithoutChangingFreshTransportOrTreatingUncomputedPixelsAsBlack)
 {
     std::array<renderer::RayGameTransportRecord, 4> frame{};
@@ -349,6 +352,7 @@ TEST_F(RayGameTest, ResetsHistoryWithoutChangingFreshTransportOrTreatingUncomput
     const auto border = Reconstruct(frame, surface, previous);
     EXPECT_NEAR(border[0], 1, 0.001f);
 }
+/// @brief Production graph preserves raw component sum and independent view histories.
 TEST_F(RayGameTest, ProductionGraphPreservesRawComponentSumAndIndependentViewHistories)
 {
     auto scene = Scene();
@@ -379,6 +383,7 @@ TEST_F(RayGameTest, ProductionGraphPreservesRawComponentSumAndIndependentViewHis
     EXPECT_NEAR(history[0], 2, 0.001f); EXPECT_NEAR(history[1], 1, 0.001f);
 }
 
+/// @brief Switching profiles in the same view keeps raw history separate and rejects the game frame gap.
 TEST_F(RayGameTest, SwitchingProfilesInTheSameViewKeepsRawHistorySeparateAndRejectsTheGameFrameGap)
 {
     auto scene = Scene();
@@ -399,6 +404,7 @@ TEST_F(RayGameTest, SwitchingProfilesInTheSameViewKeepsRawHistorySeparateAndReje
     EXPECT_EQ(view->rayPath.history.GetSampleCount(), 2u);
 }
 
+/// @brief Constant opaque with an inert alpha cutoff keeps raster primary and accumulates game history.
 TEST_F(RayGameTest, ConstantOpaqueWithAnInertAlphaCutoffKeepsRasterPrimaryAndAccumulatesGameHistory)
 {
     renderer::Camera camera; camera.m_position = {}; camera.m_aspect = 4; camera.m_backgroundColor = {0, 0, 0, 1};
@@ -419,6 +425,7 @@ TEST_F(RayGameTest, ConstantOpaqueWithAnInertAlphaCutoffKeepsRasterPrimaryAndAcc
     }
 }
 
+/// @brief Reprojects rigid previous world and rejects the newly exposed pixel.
 TEST_F(RayGameTest, ReprojectsRigidPreviousWorldAndRejectsTheNewlyExposedPixel)
 {
     auto scene = Scene();
@@ -447,6 +454,7 @@ TEST_F(RayGameTest, ReprojectsRigidPreviousWorldAndRejectsTheNewlyExposedPixel)
     EXPECT_NEAR(counts[4], 2, 0.001f); EXPECT_NEAR(counts[8], 2, 0.001f); EXPECT_NEAR(counts[12], 2, 0.001f);
 }
 
+/// @brief Bounded raster depth error does not move the verified spawn inside the primary surface.
 TEST_F(RayGameTest, BoundedRasterDepthErrorDoesNotMoveTheVerifiedSpawnInsideThePrimarySurface)
 {
     auto scene = Scene();
@@ -478,6 +486,7 @@ TEST_F(RayGameTest, BoundedRasterDepthErrorDoesNotMoveTheVerifiedSpawnInsideTheP
     }
 }
 
+/// @brief Disabling any required raster surface or reconstruction pass falls back the whole view.
 TEST_F(RayGameTest, DisablingAnyRequiredRasterSurfaceOrReconstructionPassFallsBackTheWholeView)
 {
     auto scene = Scene();

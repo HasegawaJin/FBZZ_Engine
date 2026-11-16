@@ -96,6 +96,7 @@ protected:
     }
 };
 
+/// @brief Checks late registration deduplicates kinds and includes disabled inactive and empty renderers.
 TEST_F(SceneRendererIndexTest, LateRegistrationDeduplicatesKindsAndIncludesDisabledInactiveAndEmptyRenderers)
 {
     EXPECT_TRUE(Ids(m_scene).empty());
@@ -116,6 +117,7 @@ TEST_F(SceneRendererIndexTest, LateRegistrationDeduplicatesKindsAndIncludesDisab
     ExpectCurrent(m_scene);
 }
 
+/// @brief Membership copies dense removal and generation reuse invalidate every dependent set.
 TEST_F(SceneRendererIndexTest, MembershipCopiesDenseRemovalAndGenerationReuseInvalidateEveryDependentSet)
 {
     auto& source = m_scene.CreateGameObject("Source");
@@ -156,6 +158,7 @@ TEST_F(SceneRendererIndexTest, MembershipCopiesDenseRemovalAndGenerationReuseInv
     EXPECT_NE(Ids(m_scene).back(), retired);
 }
 
+/// @brief Ownership moves and sibling reorders are visible without membership changes.
 TEST_F(SceneRendererIndexTest, OwnershipMovesAndSiblingReordersAreVisibleWithoutMembershipChanges)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -178,6 +181,7 @@ TEST_F(SceneRendererIndexTest, OwnershipMovesAndSiblingReordersAreVisibleWithout
     ExpectCurrent(m_scene);
 }
 
+/// @brief Clear move assignment and sidecar eviction never reuse another scenes IDs.
 TEST_F(SceneRendererIndexTest, ClearMoveAssignmentAndSidecarEvictionNeverReuseAnotherScenesIds)
 {
     auto& original = m_scene.CreateGameObject("Original");
@@ -209,6 +213,7 @@ TEST_F(SceneRendererIndexTest, ClearMoveAssignmentAndSidecarEvictionNeverReuseAn
     EXPECT_EQ(saved.size(), 1u);
 }
 
+/// @brief Checks destroy callback observes sparse owners and can mutate and query reentrantly.
 TEST_F(SceneRendererIndexTest, DestroyCallbackObservesSparseOwnersAndCanMutateAndQueryReentrantly)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -243,6 +248,7 @@ TEST_F(SceneRendererIndexTest, DestroyCallbackObservesSparseOwnersAndCanMutateAn
     EXPECT_EQ(saved, (std::vector<scene::EntityID>{firstId, secondId, thirdId}));
 }
 
+/// @brief Profile rebuild occurs only when the requested membership or order changes.
 TEST_F(SceneRendererIndexTest, ProfileRebuildOccursOnlyWhenTheRequestedMembershipOrOrderChanges)
 {
     RestoreRendererIndexProfiler restore;
@@ -264,6 +270,7 @@ TEST_F(SceneRendererIndexTest, ProfileRebuildOccursOnlyWhenTheRequestedMembershi
     EXPECT_EQ(Rebuilds([&] { Ids(m_scene); Ids(m_scene); }), 1u);
 }
 
+/// @brief Profile records one selected path and skips unchanged structure after non renderer append.
 TEST_F(SceneRendererIndexTest, ProfileRecordsOneSelectedPathAndSkipsUnchangedStructureAfterNonRendererAppend)
 {
     RestoreRendererIndexProfiler restore;
@@ -285,6 +292,7 @@ TEST_F(SceneRendererIndexTest, ProfileRecordsOneSelectedPathAndSkipsUnchangedStr
     ExpectCurrent(m_scene);
 }
 
+/// @brief Non renderer compaction refreshes skinned owners before other sets are queried.
 TEST_F(SceneRendererIndexTest, NonRendererCompactionRefreshesSkinnedOwnersBeforeOtherSetsAreQueried)
 {
     RestoreRendererIndexProfiler restore;
@@ -310,6 +318,7 @@ TEST_F(SceneRendererIndexTest, NonRendererCompactionRefreshesSkinnedOwnersBefore
     ExpectCurrent(m_scene);
 }
 
+/// @brief Deferred queries and equal counts keep every renderer set current.
 TEST_F(SceneRendererIndexTest, DeferredQueriesAndEqualCountsKeepEveryRendererSetCurrent)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -336,6 +345,7 @@ TEST_F(SceneRendererIndexTest, DeferredQueriesAndEqualCountsKeepEveryRendererSet
     ExpectCurrent(m_scene);
 }
 
+/// @brief Serialized snapshot restoration retires primed membership and owner order.
 TEST_F(SceneRendererIndexTest, SerializedSnapshotRestorationRetiresPrimedMembershipAndOwnerOrder)
 {
     auto& first = m_scene.CreateGameObject("First");

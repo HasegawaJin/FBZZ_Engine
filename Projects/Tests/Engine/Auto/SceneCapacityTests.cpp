@@ -37,6 +37,7 @@ protected:
     std::vector<uint64_t> m_lifetimes;
 };
 
+/// @brief Capacity queries use entity representation without reserving.
 TEST_F(SceneCapacityTest, CapacityQueriesUseEntityRepresentationWithoutReserving)
 {
     EXPECT_EQ(m_scene.EntitySlotCount(), 0u);
@@ -58,6 +59,7 @@ TEST_F(SceneCapacityTest, CapacityQueriesUseEntityRepresentationWithoutReserving
     EXPECT_FALSE(m_scene.CanCreateGameObjects(scene::Scene::MAX_ENTITIES));
 }
 
+/// @brief Growth preserves objects hierarchy components and lifetimes.
 TEST_F(SceneCapacityTest, GrowthPreservesObjectsHierarchyComponentsAndLifetimes)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -87,6 +89,7 @@ TEST_F(SceneCapacityTest, GrowthPreservesObjectsHierarchyComponentsAndLifetimes)
     }
 }
 
+/// @brief Freed slots reuse generations and issue new component lifetimes.
 TEST_F(SceneCapacityTest, FreedSlotsReuseGenerationsAndIssueNewComponentLifetimes)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -119,6 +122,7 @@ TEST_F(SceneCapacityTest, FreedSlotsReuseGenerationsAndIssueNewComponentLifetime
     EXPECT_EQ(m_scene.GetComponentLifetime<scene::LightComponent>(m_ids[0]), m_lifetimes[0]);
 }
 
+/// @brief Invalid entity queries remain safe beyond allocated slots.
 TEST_F(SceneCapacityTest, InvalidEntityQueriesRemainSafeBeyondAllocatedSlots)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -139,6 +143,7 @@ TEST_F(SceneCapacityTest, InvalidEntityQueriesRemainSafeBeyondAllocatedSlots)
     EXPECT_EQ(m_scene.EntitySlotCount(), GROWTH_COUNT);
 }
 
+/// @brief Queued destruction keeps object live until cleanup then reuses slot.
 TEST_F(SceneCapacityTest, QueuedDestructionKeepsObjectLiveUntilCleanupThenReusesSlot)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -159,6 +164,7 @@ TEST_F(SceneCapacityTest, QueuedDestructionKeepsObjectLiveUntilCleanupThenReuses
     EXPECT_EQ(m_scene.EntitySlotCount(), GROWTH_COUNT);
 }
 
+/// @brief Clear and move preserve dynamic storage ownership.
 TEST_F(SceneCapacityTest, ClearAndMovePreserveDynamicStorageOwnership)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -193,6 +199,7 @@ TEST_F(SceneCapacityTest, ClearAndMovePreserveDynamicStorageOwnership)
     EXPECT_NE(moved.GetComponentLifetime<scene::LightComponent>(afterClear->GetID()), m_lifetimes.front());
 }
 
+/// @brief Sparse component rows grow without dense population for every slot.
 TEST_F(SceneCapacityTest, SparseComponentRowsGrowWithoutDensePopulationForEverySlot)
 {
     for (uint32_t index = 0; index < GROWTH_COUNT; ++index)

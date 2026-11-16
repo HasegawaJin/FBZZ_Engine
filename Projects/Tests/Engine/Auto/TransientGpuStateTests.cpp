@@ -56,6 +56,7 @@ protected:
     std::unique_ptr<renderer::ResourceManager> m_resources;
 };
 
+/// @brief Component and undo value copies keep settings without owning the source palette.
 TEST_F(TransientGpuStateTest, ComponentAndUndoValueCopiesKeepSettingsWithoutOwningTheSourcePalette)
 {
     scene::AnimatorComponent source;
@@ -80,6 +81,7 @@ TEST_F(TransientGpuStateTest, ComponentAndUndoValueCopiesKeepSettingsWithoutOwni
     EXPECT_FALSE(source.skinningBuffer.IsValid());
 }
 
+/// @brief Skinned copies retain requested weights and rebuild every GPU output.
 TEST_F(TransientGpuStateTest, SkinnedCopiesRetainRequestedWeightsAndRebuildEveryGpuOutput)
 {
     scene::SkinnedMeshRenderer source;
@@ -102,6 +104,7 @@ TEST_F(TransientGpuStateTest, SkinnedCopiesRetainRequestedWeightsAndRebuildEvery
     EXPECT_TRUE(source.morphVertexBuffers.empty());
 }
 
+/// @brief Particle copies restart CPU history and reset owned and borrowed GPU state.
 TEST_F(TransientGpuStateTest, ParticleCopiesRestartCpuHistoryAndResetOwnedAndBorrowedGpuState)
 {
     scene::ParticleEmitter source;
@@ -128,6 +131,7 @@ TEST_F(TransientGpuStateTest, ParticleCopiesRestartCpuHistoryAndResetOwnedAndBor
     EXPECT_NE(m_resources->Get(source.runtime.gpuParticleBuffer), nullptr);
 }
 
+/// @brief Trail and sample copies recreate buffers without an external cleanup list.
 TEST_F(TransientGpuStateTest, TrailAndSampleCopiesRecreateBuffersWithoutAnExternalCleanupList)
 {
     scene::TrailComponent trail;
@@ -150,6 +154,7 @@ TEST_F(TransientGpuStateTest, TrailAndSampleCopiesRecreateBuffersWithoutAnExtern
     EXPECT_NEAR(copy.duration, source.duration, testkit::kTolerance);
 }
 
+/// @brief Probe copies reset publication and return replaced textures.
 TEST_F(TransientGpuStateTest, ProbeCopiesResetPublicationAndReturnReplacedTextures)
 {
     scene::ReflectionProbeComponent source;
@@ -176,6 +181,7 @@ TEST_F(TransientGpuStateTest, ProbeCopiesResetPublicationAndReturnReplacedTextur
     EXPECT_EQ(volume.runtimeCursor, 0);
 }
 
+/// @brief Double buffered mesh copy assignment move and destruction return both slots.
 TEST_F(TransientGpuStateTest, DoubleBufferedMeshCopyAssignmentMoveAndDestructionReturnBothSlots)
 {
     scene::DoubleBufferedMesh source, target;
@@ -195,6 +201,7 @@ TEST_F(TransientGpuStateTest, DoubleBufferedMeshCopyAssignmentMoveAndDestruction
     EXPECT_EQ(m_device.m_buffersAlive, 0u);
 }
 
+/// @brief Scene copies do not borrow another entity runtime mesh and removal unlinks its view.
 TEST_F(TransientGpuStateTest, SceneCopiesDoNotBorrowAnotherEntityRuntimeMeshAndRemovalUnlinksItsView)
 {
     scene::Scene source, destination;
@@ -215,6 +222,7 @@ TEST_F(TransientGpuStateTest, SceneCopiesDoNotBorrowAnotherEntityRuntimeMeshAndR
     EXPECT_EQ(m_device.m_buffersAlive, 0u);
 }
 
+/// @brief Component outliving its resource manager cannot release another owners resources.
 TEST_F(TransientGpuStateTest, ComponentOutlivingItsResourceManagerCannotReleaseAnotherOwnersResources)
 {
     scene::AnimatorComponent component;

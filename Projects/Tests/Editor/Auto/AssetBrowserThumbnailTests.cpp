@@ -27,6 +27,7 @@ protected:
     }
 };
 
+/// @brief Original icon categories leave real preview types available.
 TEST_F(AssetBrowserThumbnailTest, OriginalIconCategoriesLeaveRealPreviewTypesAvailable)
 {
     using namespace editor::assetthumbnail;
@@ -43,6 +44,7 @@ TEST_F(AssetBrowserThumbnailTest, OriginalIconCategoriesLeaveRealPreviewTypesAva
     EXPECT_EQ(TypeIcon(".mp3"), TypeIcon(".flac"));
 }
 
+/// @brief Shrinks source without losing source aspect and alpha.
 TEST_F(AssetBrowserThumbnailTest, ShrinksSourceWithoutLosingSourceAspectAndAlpha)
 {
     /// @note A deterministic uncompressed RGBA TGA verifies the decoder without a GPU or external fixture.
@@ -60,6 +62,7 @@ TEST_F(AssetBrowserThumbnailTest, ShrinksSourceWithoutLosingSourceAspectAndAlpha
     EXPECT_EQ(image.rgba[2], 20); EXPECT_EQ(image.rgba[3], 128);
 }
 
+/// @brief Distinguishes missing corrupt unsupported and large files.
 TEST_F(AssetBrowserThumbnailTest, DistinguishesMissingCorruptUnsupportedAndLargeFiles)
 {
     using namespace editor::assetthumbnail;
@@ -75,6 +78,7 @@ TEST_F(AssetBrowserThumbnailTest, DistinguishesMissingCorruptUnsupportedAndLarge
     EXPECT_EQ(Decode(path).state, State::UNSUPPORTED);
 }
 
+/// @brief Rejects huge image header before pixel allocation.
 TEST_F(AssetBrowserThumbnailTest, RejectsHugeImageHeaderBeforePixelAllocation)
 {
     std::vector<uint8_t> bytes(18, 0);

@@ -65,6 +65,7 @@ protected:
 };
 } /// @note namespace
 
+/// @brief Checks queue only changes values and cleanup feeds the existing particle simulator.
 TEST_F(WaterInteractionTest, QueueOnlyChangesValuesAndCleanupFeedsTheExistingParticleSimulator)
 {
     scene::Scene source;
@@ -98,6 +99,7 @@ TEST_F(WaterInteractionTest, QueueOnlyChangesValuesAndCleanupFeedsTheExistingPar
     EXPECT_GT(emitter->runtime.particles.front().position.y, -1.0f);
 }
 
+/// @brief Pending capacity and invalid input reject without changing the queue.
 TEST_F(WaterInteractionTest, PendingCapacityAndInvalidInputRejectWithoutChangingTheQueue)
 {
     scene::Scene source;
@@ -118,6 +120,7 @@ TEST_F(WaterInteractionTest, PendingCapacityAndInvalidInputRejectWithoutChanging
     EXPECT_EQ(source.GameObjectCount(), 1u);
 }
 
+/// @brief Checks excluded outside and disabled water never receive an impulse.
 TEST_F(WaterInteractionTest, ExcludedOutsideAndDisabledWaterNeverReceiveAnImpulse)
 {
     scene::Scene source;
@@ -136,6 +139,7 @@ TEST_F(WaterInteractionTest, ExcludedOutsideAndDisabledWaterNeverReceiveAnImpuls
     EXPECT_TRUE(source.GetComponent<scene::WaterComponent>(owner)->interactionRuntime.pending.empty());
 }
 
+/// @brief Repeated events reuse two emitters and respect particle and plume budgets.
 TEST_F(WaterInteractionTest, RepeatedEventsReuseTwoEmittersAndRespectParticleAndPlumeBudgets)
 {
     scene::Scene source;
@@ -163,6 +167,7 @@ TEST_F(WaterInteractionTest, RepeatedEventsReuseTwoEmittersAndRespectParticleAnd
     }
 }
 
+/// @brief Pause preserves the immutable frame and resume advects and expires its plume.
 TEST_F(WaterInteractionTest, PausePreservesTheImmutableFrameAndResumeAdvectsAndExpiresItsPlume)
 {
     scene::Scene source;
@@ -191,6 +196,7 @@ TEST_F(WaterInteractionTest, PausePreservesTheImmutableFrameAndResumeAdvectsAndE
     EXPECT_TRUE(scene::WaterInteractionSnapshot(*water)->plumes.empty());
 }
 
+/// @brief Verified contact survives catch-up steps but does not repeat without another contact.
 TEST_F(WaterInteractionTest, VerifiedContactSurvivesCatchupStepsButDoesNotRepeatWithoutAnotherContact)
 {
     scene::Scene source;
@@ -216,6 +222,7 @@ TEST_F(WaterInteractionTest, VerifiedContactSurvivesCatchupStepsButDoesNotRepeat
     EXPECT_EQ(countSediment(scene::WaterInteractionSnapshot(*water)), 1);
 }
 
+/// @brief Wall contact and untracked actors cannot invent bed sediment.
 TEST_F(WaterInteractionTest, WallContactAndUntrackedActorsCannotInventBedSediment)
 {
     scene::Scene source;
@@ -233,6 +240,7 @@ TEST_F(WaterInteractionTest, WallContactAndUntrackedActorsCannotInventBedSedimen
         [](const auto& plume) { return plume.kind == scene::WaterInteractionKind::SEDIMENT; }));
 }
 
+/// @brief Motion is rate limited and surface foam uses the existing surface position.
 TEST_F(WaterInteractionTest, MotionIsRateLimitedAndSurfaceFoamUsesTheExistingSurfacePosition)
 {
     scene::Scene source;
@@ -247,6 +255,7 @@ TEST_F(WaterInteractionTest, MotionIsRateLimitedAndSurfaceFoamUsesTheExistingSur
     EXPECT_EQ(water->interactionRuntime.pending.back().kind, scene::WaterInteractionKind::SURFACE_FOAM);
 }
 
+/// @brief Owner deletion retires its emitter and a replacement component starts empty.
 TEST_F(WaterInteractionTest, OwnerDeletionRetiresItsEmitterAndAReplacementComponentStartsEmpty)
 {
     scene::Scene source;
@@ -265,6 +274,7 @@ TEST_F(WaterInteractionTest, OwnerDeletionRetiresItsEmitterAndAReplacementCompon
     EXPECT_EQ(scene::WaterInteractionSnapshot(*water), nullptr);
 }
 
+/// @brief Pause retires deleted removed and disabled owners without advancing healthy effects.
 TEST_F(WaterInteractionTest, PauseRetiresDeletedRemovedAndDisabledOwnersWithoutAdvancingHealthyEffects)
 {
     for (int mutation = 0; mutation < 3; ++mutation) {
@@ -289,6 +299,7 @@ TEST_F(WaterInteractionTest, PauseRetiresDeletedRemovedAndDisabledOwnersWithoutA
     }
 }
 
+/// @brief Mixed event lifetimes remain distinct inside one reused particle emitter.
 TEST_F(WaterInteractionTest, MixedEventLifetimesRemainDistinctInsideOneReusedParticleEmitter)
 {
     scene::Scene source;
@@ -324,6 +335,7 @@ TEST_F(WaterInteractionTest, MixedEventLifetimesRemainDistinctInsideOneReusedPar
         [](const auto& particle) { return particle.lifetime == 5; }));
 }
 
+/// @brief Emitter creation after large scene growth keeps owner and snapshot identity.
 TEST_F(WaterInteractionTest, EmitterCreationAfterLargeSceneGrowthKeepsOwnerAndSnapshotIdentity)
 {
     scene::Scene source;
@@ -356,6 +368,7 @@ TEST_F(WaterInteractionTest, EmitterCreationAfterLargeSceneGrowthKeepsOwnerAndSn
         EXPECT_NE(source.GetComponent<scene::ParticleEmitter>(emitterState.id), nullptr);
 }
 
+/// @brief Checks explicit surface foam feeds the existing ripple foam path without duplicating native ripples.
 TEST_F(WaterInteractionTest, ExplicitSurfaceFoamFeedsTheExistingRippleFoamPathWithoutDuplicatingNativeRipples)
 {
     scene::Scene source;
@@ -374,6 +387,7 @@ TEST_F(WaterInteractionTest, ExplicitSurfaceFoamFeedsTheExistingRippleFoamPathWi
     EXPECT_EQ(water->ripples.size(), 1u);
 }
 
+/// @brief Scene deactivation returns generated objects and cannot leak into another scene.
 TEST_F(WaterInteractionTest, SceneDeactivationReturnsGeneratedObjectsAndCannotLeakIntoAnotherScene)
 {
     scene::Scene source;
@@ -391,6 +405,7 @@ TEST_F(WaterInteractionTest, SceneDeactivationReturnsGeneratedObjectsAndCannotLe
     EXPECT_EQ(scene::WaterInteractionSnapshot(*destination.GetComponent<scene::WaterComponent>(other)), nullptr);
 }
 
+/// @brief Moving dry volume prunes both owned emitters on resume without advancing pause.
 TEST_F(WaterInteractionTest, MovingDryVolumePrunesBothOwnedEmittersOnResumeWithoutAdvancingPause)
 {
     scene::Scene source;
@@ -428,6 +443,7 @@ TEST_F(WaterInteractionTest, MovingDryVolumePrunesBothOwnedEmittersOnResumeWitho
     EXPECT_EQ(scene::WaterInteractionSnapshot(*source.GetComponent<scene::WaterComponent>(owner)), nullptr);
 }
 
+/// @brief Advected particles leaving their water footprint are pruned without creating another emitter.
 TEST_F(WaterInteractionTest, AdvectedParticlesLeavingTheirWaterFootprintArePrunedWithoutCreatingAnotherEmitter)
 {
     scene::Scene source;
@@ -452,6 +468,7 @@ TEST_F(WaterInteractionTest, AdvectedParticlesLeavingTheirWaterFootprintArePrune
     EXPECT_EQ(source.GameObjectCount(), 2u);
 }
 
+/// @brief Save and passive copy keep settings but omit runtime and generated emitters.
 TEST_F(WaterInteractionTest, SaveAndPassiveCopyKeepSettingsButOmitRuntimeAndGeneratedEmitters)
 {
     scene::Scene source;
@@ -478,6 +495,7 @@ TEST_F(WaterInteractionTest, SaveAndPassiveCopyKeepSettingsButOmitRuntimeAndGene
     EXPECT_EQ(restored->GetEntities<scene::ParticleEmitter>().size(), 0u);
 }
 
+/// @brief Rectangle carrier advects plumes and owned particles while zero flow and pause remain still.
 TEST_F(WaterInteractionTest, RectangleCarrierAdvectsPlumesAndOwnedParticlesWhileZeroFlowAndPauseRemainStill)
 {
     scene::Scene source;
@@ -502,6 +520,7 @@ TEST_F(WaterInteractionTest, RectangleCarrierAdvectsPlumesAndOwnedParticlesWhile
     EXPECT_NEAR(after.x - before.x, 0.4f, testkit::kTolerance);
 }
 
+/// @brief Spline local flow replaces material current for plume and particle carrier.
 TEST_F(WaterInteractionTest, SplineLocalFlowReplacesMaterialCurrentForPlumeAndParticleCarrier)
 {
     scene::Scene source;
@@ -530,6 +549,7 @@ TEST_F(WaterInteractionTest, SplineLocalFlowReplacesMaterialCurrentForPlumeAndPa
     EXPECT_NEAR(after.z, before.z, 0.002f);
 }
 
+/// @brief Checks scene flow advects plume and relaxes particle velocity once beside the water carrier.
 TEST_F(WaterInteractionTest, SceneFlowAdvectsPlumeAndRelaxesParticleVelocityOnceBesideTheWaterCarrier)
 {
     scene::Scene source;

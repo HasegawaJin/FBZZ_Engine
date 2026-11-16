@@ -73,11 +73,13 @@ protected:
 
 class DeveloperModeLaunchTest : public testkit::Fixture {};
 
+/// @brief Is disabled by default.
 TEST_F(DeveloperModeTest, IsDisabledByDefault)
 {
     EXPECT_FALSE(core::DeveloperMode::IsEnabled());
 }
 
+/// @brief Preference enables it.
 TEST_F(DeveloperModeTest, PreferenceEnablesIt)
 {
     core::DeveloperMode::SetPreference(true);
@@ -86,6 +88,7 @@ TEST_F(DeveloperModeTest, PreferenceEnablesIt)
     EXPECT_FALSE(core::DeveloperMode::IsForcedByLaunch());
 }
 
+/// @brief Launch force keeps it enabled without changing the preference.
 TEST_F(DeveloperModeTest, LaunchForceKeepsItEnabledWithoutChangingThePreference)
 {
     ASSERT_TRUE(SetEnvironmentVariableW(ENVIRONMENT_NAME, L"1"));
@@ -98,12 +101,14 @@ TEST_F(DeveloperModeTest, LaunchForceKeepsItEnabledWithoutChangingThePreference)
     EXPECT_FALSE(core::DeveloperMode::Preference());
 }
 
+/// @brief Finds the launch flag as a separate argument.
 TEST_F(DeveloperModeLaunchTest, FindsTheLaunchFlagAsASeparateArgument)
 {
     EXPECT_TRUE(core::detail::HasDeveloperLaunchFlag(L"FBZZEditor.exe --project C:\\p --developer"));
     EXPECT_TRUE(core::detail::HasDeveloperLaunchFlag(L"\"C:\\Program Files\\FBZZEditor.exe\" --developer"));
 }
 
+/// @brief Ignores the flag inside a quoted path or as the executable.
 TEST_F(DeveloperModeLaunchTest, IgnoresTheFlagInsideAQuotedPathOrAsTheExecutable)
 {
     EXPECT_FALSE(core::detail::HasDeveloperLaunchFlag(L"FBZZEditor.exe --project \"C:\\a --developer\""));
@@ -111,6 +116,7 @@ TEST_F(DeveloperModeLaunchTest, IgnoresTheFlagInsideAQuotedPathOrAsTheExecutable
     EXPECT_FALSE(core::detail::HasDeveloperLaunchFlag(L"FBZZEditor.exe --developer-extra"));
 }
 
+/// @brief Environment variable forces it at startup.
 TEST_F(DeveloperModeTest, EnvironmentVariableForcesItAtStartup)
 {
     ASSERT_TRUE(SetEnvironmentVariableW(ENVIRONMENT_NAME, L"1"));
@@ -122,6 +128,7 @@ TEST_F(DeveloperModeTest, EnvironmentVariableForcesItAtStartup)
     EXPECT_FALSE(core::DeveloperMode::Preference());
 }
 
+/// @brief Environment variable is ignored unless it is exactly one.
 TEST_F(DeveloperModeTest, EnvironmentVariableIsIgnoredUnlessItIsExactlyOne)
 {
     /// @note "0" も "11" も無効。うっかり «空でなければ有効» にすると配布物で開いてしまう。

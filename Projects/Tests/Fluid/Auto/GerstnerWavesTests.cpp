@@ -24,6 +24,7 @@ bool SameWave(const fluid::GerstnerWave& a, const fluid::GerstnerWave& b)
 
 class GerstnerWavesTest : public testkit::Fixture {};
 
+/// @brief Fixed seed produces the same variable count wave set.
 TEST_F(GerstnerWavesTest, FixedSeedProducesTheSameVariableCountWaveSet)
 {
     fluid::GerstnerWaveGenerationSettings settings;
@@ -38,6 +39,7 @@ TEST_F(GerstnerWavesTest, FixedSeedProducesTheSameVariableCountWaveSet)
     EXPECT_FALSE(SameWave(first[0], second[0]));
 }
 
+/// @brief Generated count and configured ranges are honored.
 TEST_F(GerstnerWavesTest, GeneratedCountAndConfiguredRangesAreHonored)
 {
     fluid::GerstnerWaveGenerationSettings settings;
@@ -60,6 +62,7 @@ TEST_F(GerstnerWavesTest, GeneratedCountAndConfiguredRangesAreHonored)
     }
 }
 
+/// @brief Invalid generation settings leave the output unchanged.
 TEST_F(GerstnerWavesTest, InvalidGenerationSettingsLeaveTheOutputUnchanged)
 {
     std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> waves{};
@@ -75,6 +78,7 @@ TEST_F(GerstnerWavesTest, InvalidGenerationSettingsLeaveTheOutputUnchanged)
     for (size_t i = 0; i < waves.size(); ++i) EXPECT_TRUE(SameWave(waves[i], before[i]));
 }
 
+/// @brief Limiter bounds scaled grouped spread waves and rejects invalid input atomically.
 TEST_F(GerstnerWavesTest, LimiterBoundsScaledGroupedSpreadWavesAndRejectsInvalidInputAtomically)
 {
     fluid::GerstnerWaveGenerationSettings settings;

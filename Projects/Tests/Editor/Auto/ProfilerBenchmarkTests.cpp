@@ -106,6 +106,7 @@ protected:
     }
 };
 
+/// @brief Skips baseline and warmup then retains exactly the requested distinct frames.
 TEST_F(ProfilerBenchmarkTest, SkipsBaselineAndWarmupThenRetainsExactlyTheRequestedDistinctFrames)
 {
     static_assert(std::is_trivially_copyable_v<editor::PerformanceBenchmarkRow>);
@@ -133,6 +134,7 @@ TEST_F(ProfilerBenchmarkTest, SkipsBaselineAndWarmupThenRetainsExactlyTheRequest
     EXPECT_EQ(m_capture.Rows().back().drawCalls, 23);
 }
 
+/// @brief Retains long windows independently of UI history and uses nearest rank percentiles.
 TEST_F(ProfilerBenchmarkTest, RetainsLongWindowsIndependentlyOfUiHistoryAndUsesNearestRankPercentiles)
 {
     ASSERT_TRUE(m_capture.Start("long", 0, 1800, {}));
@@ -148,6 +150,7 @@ TEST_F(ProfilerBenchmarkTest, RetainsLongWindowsIndependentlyOfUiHistoryAndUsesN
     EXPECT_TRUE(editor::GetPerformanceHistory().frames.empty());
 }
 
+/// @brief Preserves incomplete and unavailable metadata without fabricating timing or rendering.
 TEST_F(ProfilerBenchmarkTest, PreservesIncompleteAndUnavailableMetadataWithoutFabricatingTimingOrRendering)
 {
     ASSERT_TRUE(m_capture.Start("metadata", 0, 100, {}));
@@ -177,6 +180,7 @@ TEST_F(ProfilerBenchmarkTest, PreservesIncompleteAndUnavailableMetadataWithoutFa
     EXPECT_FALSE(m_capture.Rows()[5].complete);
 }
 
+/// @brief Physics counts world steps and only outermost system scopes across nested names.
 TEST_F(ProfilerBenchmarkTest, PhysicsCountsWorldStepsAndOnlyOutermostSystemScopesAcrossNestedNames)
 {
     ASSERT_TRUE(m_capture.Start("physics_nested", 0, 1, {}));
@@ -215,6 +219,7 @@ TEST_F(ProfilerBenchmarkTest, PhysicsCountsWorldStepsAndOnlyOutermostSystemScope
     EXPECT_DOUBLE_EQ(summary.scopes[static_cast<size_t>(editor::PhysicsBenchmarkScope::WORLD_STEP)].msPerStep.p50Ms, 2.5);
 }
 
+/// @brief Physics includes zero step frames but normalizes only frames with completed steps.
 TEST_F(ProfilerBenchmarkTest, PhysicsIncludesZeroStepFramesButNormalizesOnlyFramesWithCompletedSteps)
 {
     ASSERT_TRUE(m_capture.Start("physics_steps", 0, 3, {}));
@@ -244,6 +249,7 @@ TEST_F(ProfilerBenchmarkTest, PhysicsIncludesZeroStepFramesButNormalizesOnlyFram
     EXPECT_EQ(m_capture.PhysicsSummary().scopes[static_cast<size_t>(editor::PhysicsBenchmarkScope::WORLD_STEP)].msPerStep.count, 0u);
 }
 
+/// @brief Physics retains fault counters and excludes partial or invalid frames from distributions.
 TEST_F(ProfilerBenchmarkTest, PhysicsRetainsFaultCountersAndExcludesPartialOrInvalidFramesFromDistributions)
 {
     ASSERT_TRUE(m_capture.Start("physics_partial", 0, 8, {}));
@@ -287,6 +293,7 @@ TEST_F(ProfilerBenchmarkTest, PhysicsRetainsFaultCountersAndExcludesPartialOrInv
     EXPECT_EQ(m_capture.Rows()[3].physics.stepCount, 0u);
 }
 
+/// @brief Rejects overlaps and never mixes capture sessions or rewound frames.
 TEST_F(ProfilerBenchmarkTest, RejectsOverlapsAndNeverMixesCaptureSessionsOrRewoundFrames)
 {
     EXPECT_FALSE(m_capture.Start("", 0, 1, {}));
@@ -315,6 +322,7 @@ TEST_F(ProfilerBenchmarkTest, RejectsOverlapsAndNeverMixesCaptureSessionsOrRewou
     EXPECT_EQ(m_capture.Status().state, editor::PerformanceBenchmarkState::CANCELLED);
 }
 
+/// @brief Waits for disabled baseline then samples exactly one hundred twenty frames after warmup.
 TEST_F(ProfilerBenchmarkTest, WaitsForDisabledBaselineThenSamplesExactlyOneHundredTwentyFramesAfterWarmup)
 {
     auto baseline = Frame(10); baseline.recording = false; baseline.available = false;
@@ -338,6 +346,7 @@ TEST_F(ProfilerBenchmarkTest, WaitsForDisabledBaselineThenSamplesExactlyOneHundr
     EXPECT_EQ(m_capture.Status().captureSessionId, 8u);
 }
 
+/// @brief Stopping before the first accepted frame never leaves a waiting capture active.
 TEST_F(ProfilerBenchmarkTest, StoppingBeforeTheFirstAcceptedFrameNeverLeavesAWaitingCaptureActive)
 {
     const auto baseline = Frame(10);
@@ -358,6 +367,7 @@ TEST_F(ProfilerBenchmarkTest, StoppingBeforeTheFirstAcceptedFrameNeverLeavesAWai
     EXPECT_FALSE(m_capture.IsActive());
 }
 
+/// @brief Consecutive captures override pending stops and restore the prior requested state.
 TEST_F(ProfilerBenchmarkTest, ConsecutiveCapturesOverridePendingStopsAndRestoreThePriorRequestedState)
 {
     profiler::Profiler::SetEnabled(true);
@@ -394,6 +404,7 @@ TEST_F(ProfilerBenchmarkTest, ConsecutiveCapturesOverridePendingStopsAndRestoreT
     EXPECT_FALSE(profiler::Profiler::IsEnabled());
 }
 
+/// @brief Operators expose cheap status and paginated rows only after completion.
 TEST_F(ProfilerBenchmarkTest, OperatorsExposeCheapStatusAndPaginatedRowsOnlyAfterCompletion)
 {
     EXPECT_EQ(m_registry.Find("profiler.benchmark.start")->kind, editor::OpKind::Action);
@@ -450,6 +461,7 @@ TEST_F(ProfilerBenchmarkTest, OperatorsExposeCheapStatusAndPaginatedRowsOnlyAfte
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Compares only completed captures with matching declared and observed conditions.
 TEST_F(ProfilerBenchmarkTest, ComparesOnlyCompletedCapturesWithMatchingDeclaredAndObservedConditions)
 {
     const editor::PerformanceBenchmarkConditions conditions{"sea-1km/replay-v1", "fixed-camera-v1", "dt=1/60 seed=42 quality=high pacing=off build=Development"};
@@ -482,6 +494,7 @@ TEST_F(ProfilerBenchmarkTest, ComparesOnlyCompletedCapturesWithMatchingDeclaredA
     EXPECT_FALSE(editor::ComparePerformanceBenchmarks(before, changed).comparable);
 }
 
+/// @brief Detects observed viewport changes and does not fabricate filtered physics costs.
 TEST_F(ProfilerBenchmarkTest, DetectsObservedViewportChangesAndDoesNotFabricateFilteredPhysicsCosts)
 {
     profiler::PerformanceSnapshot baseline;
@@ -500,6 +513,7 @@ TEST_F(ProfilerBenchmarkTest, DetectsObservedViewportChangesAndDoesNotFabricateF
     EXPECT_FALSE(m_capture.Start("too_large", 0, 60001, {}));
 }
 
+/// @brief Operators expose loss reasons collection range and incomplete comparison warnings.
 TEST_F(ProfilerBenchmarkTest, OperatorsExposeLossReasonsCollectionRangeAndIncompleteComparisonWarnings)
 {
     profiler::Profiler::SetEnabled(false);
@@ -538,6 +552,7 @@ TEST_F(ProfilerBenchmarkTest, OperatorsExposeLossReasonsCollectionRangeAndIncomp
     EXPECT_NE(json.find("sampleCapacity"), std::string::npos);
 }
 
+/// @brief Merges full capacity repeated scopes without discarding a complete CPU frame.
 TEST_F(ProfilerBenchmarkTest, MergesFullCapacityRepeatedScopesWithoutDiscardingACompleteCpuFrame)
 {
     const auto snapshot = RepeatedCpuFrame(1, profiler::ProfileRecorder::MAX_SAMPLES - 1);
@@ -554,6 +569,7 @@ TEST_F(ProfilerBenchmarkTest, MergesFullCapacityRepeatedScopesWithoutDiscardingA
     EXPECT_DOUBLE_EQ(tree.nodes[0].totalMs, 20.0);
 }
 
+/// @brief Keeps merged CPU series across thousands of frames descriptor turnover and slow display updates.
 TEST_F(ProfilerBenchmarkTest, KeepsMergedCpuSeriesAcrossThousandsOfFramesDescriptorTurnoverAndSlowDisplayUpdates)
 {
     editor::PerformanceHistory captures;
@@ -597,6 +613,7 @@ TEST_F(ProfilerBenchmarkTest, KeepsMergedCpuSeriesAcrossThousandsOfFramesDescrip
     EXPECT_EQ(projected.cursor.serial, captures.selected->applicationFrameSerial);
 }
 
+/// @brief Distinguishes measured zero absent complete scope missing range and unfinished intervals.
 TEST_F(ProfilerBenchmarkTest, DistinguishesMeasuredZeroAbsentCompleteScopeMissingRangeAndUnfinishedIntervals)
 {
     editor::detail::AnalysisProfHistory history;
@@ -640,6 +657,7 @@ TEST_F(ProfilerBenchmarkTest, DistinguishesMeasuredZeroAbsentCompleteScopeMissin
         EXPECT_TRUE(std::isnan(value));
 }
 
+/// @brief Preserves partial scope rows and reliable frame scalar when unique rows reach the budget.
 TEST_F(ProfilerBenchmarkTest, PreservesPartialScopeRowsAndReliableFrameScalarWhenUniqueRowsReachTheBudget)
 {
     auto snapshot = Frame(1, 10.0);
@@ -667,6 +685,7 @@ TEST_F(ProfilerBenchmarkTest, PreservesPartialScopeRowsAndReliableFrameScalarWhe
     EXPECT_FLOAT_EQ(history.elapsedMs.front(), 10.0f);
 }
 
+/// @brief Updates owned CPU history throughout benchmark warmup and sampling without duplicate frames.
 TEST_F(ProfilerBenchmarkTest, UpdatesOwnedCpuHistoryThroughoutBenchmarkWarmupAndSamplingWithoutDuplicateFrames)
 {
     profiler::Profiler::SetEnabled(false); profiler::Profiler::SetEnabled(true);
@@ -695,6 +714,7 @@ TEST_F(ProfilerBenchmarkTest, UpdatesOwnedCpuHistoryThroughoutBenchmarkWarmupAnd
     EXPECT_EQ(editor::GetPerformanceBenchmarkCapture().Status().capturedFrames, 64u);
 }
 
+/// @brief Keeps temporary recording enabled through sampling then restores the stopped state.
 TEST_F(ProfilerBenchmarkTest, KeepsTemporaryRecordingEnabledThroughSamplingThenRestoresTheStoppedState)
 {
     profiler::Profiler::SetEnabled(false);
@@ -723,6 +743,7 @@ TEST_F(ProfilerBenchmarkTest, KeepsTemporaryRecordingEnabledThroughSamplingThenR
 }
 
 
+/// @brief Distinguishes same name nested inclusive from elapsed and preserves canonical outer scope after rename.
 TEST_F(ProfilerBenchmarkTest, DistinguishesSameNameNestedInclusiveFromElapsedAndPreservesCanonicalOuterScopeAfterRename)
 {
     auto legacy = Frame(1, 150.0);
@@ -786,6 +807,7 @@ renderer::RenderDebugOverlay::Snapshot PassiveRendering(uint64_t serial)
 }
 } /// @note namespace
 
+/// @brief Passive capture retains exact warmup 120 and 300 distinct frames with nearest rank.
 TEST_F(ProfilerBenchmarkTest, PassiveCaptureRetainsExactWarmup120And300DistinctFramesWithNearestRank)
 {
     profiler::detail::ApplicationFrameElapsedObserver observer; const auto session = observer.Arm();
@@ -803,6 +825,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveCaptureRetainsExactWarmup120And300DistinctF
     EXPECT_DOUBLE_EQ(capture.Report().cpu.p99Ms, 297.0 / 128.0); EXPECT_DOUBLE_EQ(capture.Report().wall.p50Ms, 16.0);
     EXPECT_TRUE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
 }
+/// @brief Passive capture rejects recording session runtime and dll changes at either boundary.
 TEST_F(ProfilerBenchmarkTest, PassiveCaptureRejectsRecordingSessionRuntimeAndDllChangesAtEitherBoundary)
 {
     for (int change = 0; change < 8; ++change) {
@@ -822,6 +845,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveCaptureRejectsRecordingSessionRuntimeAndDll
         EXPECT_TRUE(capture.Report().failureFrameAvailable); EXPECT_TRUE(capture.Rows().empty());
     }
 }
+/// @brief Passive capture counts publication and serial gaps and rejects rewind.
 TEST_F(ProfilerBenchmarkTest, PassiveCaptureCountsPublicationAndSerialGapsAndRejectsRewind)
 {
     editor::PassiveFrameElapsedCapture capture; ASSERT_TRUE(capture.Start("gaps", 0, 2, 17, PassiveMode(), PassiveConditions()));
@@ -834,6 +858,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveCaptureCountsPublicationAndSerialGapsAndRej
     capture.Feed(PassiveFrame(5, 1, 18), PassiveRendering(5)); capture.Feed(PassiveFrame(4, 2, 18), PassiveRendering(4));
     EXPECT_EQ(capture.Status().failure, editor::PassiveFrameElapsedFailure::FRAME_ORDER_CHANGED);
 }
+/// @brief Passive capture retains aborted timing and leaves stale or changed rendering unavailable.
 TEST_F(ProfilerBenchmarkTest, PassiveCaptureRetainsAbortedTimingAndLeavesStaleOrChangedRenderingUnavailable)
 {
     editor::PassiveFrameElapsedCapture capture; ASSERT_TRUE(capture.Start("aborted", 0, 1, 17, PassiveMode(), PassiveConditions()));
@@ -855,6 +880,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveCaptureRetainsAbortedTimingAndLeavesStaleOr
     capture.Feed(PassiveFrame(1, 1, 20), PassiveRendering(0)); capture.Feed(PassiveFrame(2, 2, 20), PassiveRendering(2));
     EXPECT_EQ(capture.Status().missingWarmupRenderingMetadataFrames, 1u); EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(capture.Report()));
 }
+/// @brief Checks passive operators paginate actual zero and null missing values without scope or physics zeros.
 TEST_F(ProfilerBenchmarkTest, PassiveOperatorsPaginateActualZeroAndNullMissingValuesWithoutScopeOrPhysicsZeros)
 {
     auto& capture = editor::GetPassiveFrameElapsedCapture(); ASSERT_TRUE(capture.Start("ops", 0, 2, 17, PassiveMode(), PassiveConditions()));
@@ -877,6 +903,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveOperatorsPaginateActualZeroAndNullMissingVa
     page.Set("offset", 3); EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.result", page).errorCode, "BAD_ARG");
     page.Set("offset", 0); page.Set("count", 257); EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.result", page).errorCode, "BAD_ARG");
 }
+/// @brief Passive capture bounds requests and rejects incomplete references and stopped play.
 TEST_F(ProfilerBenchmarkTest, PassiveCaptureBoundsRequestsAndRejectsIncompleteReferencesAndStoppedPlay)
 {
     editor::PassiveFrameElapsedCapture capture;
@@ -890,6 +917,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveCaptureBoundsRequestsAndRejectsIncompleteRe
     editor::OpArgs start; start.Set("label", std::string("ordinary")); start.Set("warmupFrames", 0); start.Set("sampleFrames", 1);
     EXPECT_EQ(editor::InvokeOperator(Context(), "profiler.frame_elapsed.start", start).errorCode, "OFF_PLAY_REQUIRED");
 }
+/// @brief Passive comparison requires observed conditions and allows recorded build hash to differ.
 TEST_F(ProfilerBenchmarkTest, PassiveComparisonRequiresObservedConditionsAndAllowsRecordedBuildHashToDiffer)
 {
     static_assert(!std::is_convertible_v<editor::PerformanceBenchmarkReport, editor::PassiveFrameElapsedReport>);
@@ -906,6 +934,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveComparisonRequiresObservedConditionsAndAllo
     changed = after.Report(); ++changed.rendering.resourceEpoch;
     EXPECT_FALSE(editor::ArePassiveFrameElapsedComparable(before.Report(), changed));
 }
+/// @brief Passive cancel and overlap never force or restore collector recording.
 TEST_F(ProfilerBenchmarkTest, PassiveCancelAndOverlapNeverForceOrRestoreCollectorRecording)
 {
     const bool native = profiler::Profiler::IsEnabled(), requested = profiler::Profiler::IsRecordingRequested();
@@ -944,6 +973,7 @@ struct PassiveReviewBoundaryGuard {
 };
 } /// @note namespace
 
+/// @brief Passive eligibility rejects invalid output and modified mode or availability reports.
 TEST_F(ProfilerBenchmarkTest, PassiveEligibilityRejectsInvalidOutputAndModifiedModeOrAvailabilityReports)
 {
     editor::PassiveFrameElapsedCapture valid;
@@ -972,6 +1002,7 @@ TEST_F(ProfilerBenchmarkTest, PassiveEligibilityRejectsInvalidOutputAndModifiedM
     EXPECT_TRUE(invalidOutput.Report().cpu.available); EXPECT_TRUE(invalidOutput.Report().wall.available);
     EXPECT_FALSE(editor::IsPassiveFrameElapsedEligible(invalidOutput.Report()));
 }
+/// @brief Passive capture ignores old latest and open frame completion across stop and rearm.
 TEST_F(ProfilerBenchmarkTest, PassiveCaptureIgnoresOldLatestAndOpenFrameCompletionAcrossStopAndRearm)
 {
     PassiveReviewBoundaryGuard restore;

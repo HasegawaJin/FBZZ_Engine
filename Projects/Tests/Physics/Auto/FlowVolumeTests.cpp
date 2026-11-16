@@ -48,6 +48,7 @@ class FlowVolumeTest : public testkit::Fixture {};
 
 /// @name 誰が受けるか
 
+/// @brief Leaves a body without coupling untouched.
 TEST_F(FlowVolumeTest, LeavesABodyWithoutCouplingUntouched)
 {
     physics::RigidBody body = MakeBody(0.0f);
@@ -60,6 +61,7 @@ TEST_F(FlowVolumeTest, LeavesABodyWithoutCouplingUntouched)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Leaves a static body untouched.
 TEST_F(FlowVolumeTest, LeavesAStaticBodyUntouched)
 {
     physics::RigidBody body = MakeBody(kCoupling);
@@ -72,6 +74,7 @@ TEST_F(FlowVolumeTest, LeavesAStaticBodyUntouched)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Contains is `true` everywhere.
 TEST_F(FlowVolumeTest, ContainsIsTrueEverywhere)
 {
     physics::FlowVolume volume(UniformFlow(kFlow));
@@ -83,6 +86,7 @@ TEST_F(FlowVolumeTest, ContainsIsTrueEverywhere)
 
 /// @name 結合
 
+/// @brief Accelerates a resting body along the flow.
 TEST_F(FlowVolumeTest, AcceleratesARestingBodyAlongTheFlow)
 {
     physics::RigidBody body = MakeBody(kCoupling);
@@ -95,6 +99,7 @@ TEST_F(FlowVolumeTest, AcceleratesARestingBodyAlongTheFlow)
     EXPECT_VEC3_NEAR(body.GetVelocity(), kFlow * (kCoupling * kUnitDt), testkit::kTolerance);
 }
 
+/// @brief Converges to the flow velocity.
 TEST_F(FlowVolumeTest, ConvergesToTheFlowVelocity)
 {
     constexpr float kDt    = 0.02f;  ///< 固定ステップ [s]
@@ -114,6 +119,7 @@ TEST_F(FlowVolumeTest, ConvergesToTheFlowVelocity)
     EXPECT_VEC3_NEAR(body.GetVelocity(), kFlow, kConvergedTolerance);
 }
 
+/// @brief Does not push a body already moving with the flow.
 TEST_F(FlowVolumeTest, DoesNotPushABodyAlreadyMovingWithTheFlow)
 {
     physics::RigidBody body = MakeBody(kCoupling);
@@ -128,6 +134,7 @@ TEST_F(FlowVolumeTest, DoesNotPushABodyAlreadyMovingWithTheFlow)
 
 /// @name 共有している式
 
+/// @brief Shares the coupling formula with fluid volume.
 TEST_F(FlowVolumeTest, SharesTheCouplingFormulaWithFluidVolume)
 {
     const math::Vector3 velocity{ 1.0f, 2.0f, 3.0f };

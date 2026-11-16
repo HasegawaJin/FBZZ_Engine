@@ -36,6 +36,7 @@ protected:
 
 /// @name 配送内容
 
+/// @brief Delivers formatted entries to registered sink.
 TEST_F(LoggerTest, DeliversFormattedEntriesToRegisteredSink)
 {
     testkit::ScopedLogSink scoped(&sink);
@@ -47,6 +48,7 @@ TEST_F(LoggerTest, DeliversFormattedEntriesToRegisteredSink)
     EXPECT_NE(sink.entries.front().message.find("42"), std::string::npos);
 }
 
+/// @brief Filters entries below the minimum level.
 TEST_F(LoggerTest, FiltersEntriesBelowTheMinimumLevel)
 {
     testkit::ScopedLogSink scoped(&sink);
@@ -63,6 +65,7 @@ TEST_F(LoggerTest, FiltersEntriesBelowTheMinimumLevel)
     EXPECT_EQ(sink.CountOf(core::LogLevel::INFO), 0u);
 }
 
+/// @brief Remove sink stops further delivery.
 TEST_F(LoggerTest, RemoveSinkStopsFurtherDelivery)
 {
     core::Logger::AddSink(&sink);
@@ -75,6 +78,7 @@ TEST_F(LoggerTest, RemoveSinkStopsFurtherDelivery)
     EXPECT_EQ(sink.Find("after"), nullptr);
 }
 
+/// @brief At functions keep the message usable.
 TEST_F(LoggerTest, AtFunctionsKeepTheMessageUsable)
 {
     testkit::ScopedLogSink scoped(&sink);
@@ -99,6 +103,7 @@ protected:
     testkit::MockLogSink mock;
 };
 
+/// @brief Does not call the sink for entries below the minimum level.
 TEST_F(LoggerCallTest, DoesNotCallTheSinkForEntriesBelowTheMinimumLevel)
 {
     /// @note 配送しない契約は呼ばれた時点で検出する。
@@ -112,6 +117,7 @@ TEST_F(LoggerCallTest, DoesNotCallTheSinkForEntriesBelowTheMinimumLevel)
     core::Logger::Warn("dropped");
 }
 
+/// @brief Delivers each entry to the sink exactly once.
 TEST_F(LoggerCallTest, DeliversEachEntryToTheSinkExactlyOnce)
 {
     testkit::ScopedLogSink scoped(&mock);
@@ -121,6 +127,7 @@ TEST_F(LoggerCallTest, DeliversEachEntryToTheSinkExactlyOnce)
     core::Logger::Warn("once");
 }
 
+/// @brief Delivers entries in the order they were logged.
 TEST_F(LoggerCallTest, DeliversEntriesInTheOrderTheyWereLogged)
 {
     testkit::ScopedLogSink scoped(&mock);
@@ -135,6 +142,7 @@ TEST_F(LoggerCallTest, DeliversEntriesInTheOrderTheyWereLogged)
     core::Logger::Error("third");
 }
 
+/// @brief Delivers the same entry to every registered sink.
 TEST_F(LoggerCallTest, DeliversTheSameEntryToEveryRegisteredSink)
 {
     /// @note 配送以外の mock 呼び出しはこの契約の対象外。
@@ -149,6 +157,7 @@ TEST_F(LoggerCallTest, DeliversTheSameEntryToEveryRegisteredSink)
     core::Logger::Error("broadcast");
 }
 
+/// @brief Completes owner thread observers before sink delivery.
 TEST_F(LoggerCallTest, CompletesOwnerThreadObserversBeforeSinkDelivery)
 {
     testkit::ScopedLogSink registered(&mock);
@@ -176,6 +185,7 @@ TEST_F(LoggerCallTest, CompletesOwnerThreadObserversBeforeSinkDelivery)
     core::Logger::Info("outer scope remains active");
 }
 
+/// @brief Filtered entries do not complete pending work.
 TEST_F(LoggerCallTest, FilteredEntriesDoNotCompletePendingWork)
 {
     testkit::ScopedLogSink registered(&mock);
@@ -190,6 +200,7 @@ TEST_F(LoggerCallTest, FilteredEntriesDoNotCompletePendingWork)
     EXPECT_EQ(observations, 0);
 }
 
+/// @brief Observer scopes stay on their owner thread.
 TEST_F(LoggerCallTest, ObserverScopesStayOnTheirOwnerThread)
 {
     int ownerObservations = 0;

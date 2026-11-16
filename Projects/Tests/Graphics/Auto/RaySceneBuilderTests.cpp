@@ -60,6 +60,7 @@ protected:
     }
 };
 
+/// @brief Keeps off-screen and raster invisible candidates but filters layers.
 TEST_F(RaySceneBuilderTest, KeepsOffscreenAndRasterInvisibleCandidatesButFiltersLayers)
 {
     AddObject();
@@ -78,6 +79,7 @@ TEST_F(RaySceneBuilderTest, KeepsOffscreenAndRasterInvisibleCandidatesButFilters
     m_scene.objects[0].layer = 32;
     EXPECT_TRUE(renderer::BuildRayScene(m_scene, {1u << 7}).instances.empty());
 }
+/// @brief Resident instances diagnose exact owner and respect layers and inactive placements.
 TEST_F(RaySceneBuilderTest, ResidentInstancesDiagnoseExactOwnerAndRespectLayersAndInactivePlacements)
 {
     auto data=std::make_shared<renderer::InstanceSetData>();data->placements.push_back({1,{},{},{1,1,1},true});
@@ -90,6 +92,7 @@ TEST_F(RaySceneBuilderTest, ResidentInstancesDiagnoseExactOwnerAndRespectLayersA
     data->placements[0].active=false;EXPECT_TRUE(renderer::BuildRayScene(m_scene,{1u<<7}).diagnostics.empty());
 }
 
+/// @brief Reads shared geometry after the original view retires.
 TEST_F(RaySceneBuilderTest, ReadsSharedGeometryAfterTheOriginalViewRetires)
 {
     AddObject(12, 3);
@@ -108,6 +111,7 @@ TEST_F(RaySceneBuilderTest, ReadsSharedGeometryAfterTheOriginalViewRetires)
     EXPECT_TRUE(secondView.IsObjectSelected(0));
 }
 
+/// @brief Effect sources diagnose full owners without raster draws and respect layers.
 TEST_F(RaySceneBuilderTest, EffectSourcesDiagnoseFullOwnersWithoutRasterDrawsAndRespectLayers)
 {
     m_scene.rayUnsupportedEffects.push_back({0xFEDCBA98, 0x87654321, 1u << 7,
@@ -126,6 +130,7 @@ TEST_F(RaySceneBuilderTest, EffectSourcesDiagnoseFullOwnersWithoutRasterDrawsAnd
     EXPECT_EQ(renderer::BuildRayScene(m_scene, {1u << 7}).diagnostics.size(), 1u);
 }
 
+/// @brief Partial particle metadata cannot suppress another owner or layer draw list.
 TEST_F(RaySceneBuilderTest, PartialParticleMetadataCannotSuppressAnotherOwnerOrLayerDrawList)
 {
     m_scene.rayUnsupportedEffects.push_back({11, 3, 1u << 7,
@@ -140,6 +145,7 @@ TEST_F(RaySceneBuilderTest, PartialParticleMetadataCannotSuppressAnotherOwnerOrL
     EXPECT_TRUE(renderer::BuildRayScene(m_scene, {1u << 2}).diagnostics.empty());
 }
 
+/// @brief Mesh fiber metadata cannot suppress another layer terrain legacy source.
 TEST_F(RaySceneBuilderTest, MeshFiberMetadataCannotSuppressAnotherLayerTerrainLegacySource)
 {
     m_scene.rayUnsupportedEffects.push_back({11, 3, 1u << 7,
@@ -159,6 +165,7 @@ TEST_F(RaySceneBuilderTest, MeshFiberMetadataCannotSuppressAnotherLayerTerrainLe
     EXPECT_TRUE(renderer::BuildRayScene(m_scene, {1u << 2}).diagnostics.empty());
 }
 
+/// @brief Resolved fiber counts prove emptiness without using camera or LOD.
 TEST_F(RaySceneBuilderTest, ResolvedFiberCountsProveEmptinessWithoutUsingCameraOrLod)
 {
     auto& fiber = m_scene.fibers.emplace_back();
@@ -203,6 +210,7 @@ TEST_F(RaySceneBuilderTest, ResolvedFiberCountsProveEmptinessWithoutUsingCameraO
     EXPECT_EQ(renderer::BuildRayScene(m_scene).diagnostics.size(), 1u);
 }
 
+/// @brief Preserves complete object IDs across dense submesh instances.
 TEST_F(RaySceneBuilderTest, PreservesCompleteObjectIdsAcrossDenseSubmeshInstances)
 {
     AddObject();
@@ -227,6 +235,7 @@ TEST_F(RaySceneBuilderTest, PreservesCompleteObjectIdsAcrossDenseSubmeshInstance
     EXPECT_NE(renderer::BuildRayScene(m_scene).instances[0].objectId, result.instances[0].objectId);
 }
 
+/// @brief Disables only shadow purpose and honors explicit slot visibility.
 TEST_F(RaySceneBuilderTest, DisablesOnlyShadowPurposeAndHonorsExplicitSlotVisibility)
 {
     AddObject();
@@ -241,6 +250,7 @@ TEST_F(RaySceneBuilderTest, DisablesOnlyShadowPurposeAndHonorsExplicitSlotVisibi
     EXPECT_TRUE(hidden.diagnostics.empty());
 }
 
+/// @brief Reuses only matching buffer generations content versions and opacity layout.
 TEST_F(RaySceneBuilderTest, ReusesOnlyMatchingBufferGenerationsContentVersionsAndOpacityLayout)
 {
     AddObject();
@@ -263,6 +273,7 @@ TEST_F(RaySceneBuilderTest, ReusesOnlyMatchingBufferGenerationsContentVersionsAn
     EXPECT_EQ(renderer::BuildRayScene(m_scene).geometries.size(), 2u);
 }
 
+/// @brief Uses only versioned current deformation and canonical LOD.
 TEST_F(RaySceneBuilderTest, UsesOnlyVersionedCurrentDeformationAndCanonicalLod)
 {
     AddObject();
@@ -288,6 +299,7 @@ TEST_F(RaySceneBuilderTest, UsesOnlyVersionedCurrentDeformationAndCanonicalLod)
     EXPECT_EQ(ambiguous.diagnostics[0].issue, renderer::RaySceneIssue::LOD_SELECTION_UNRESOLVED);
 }
 
+/// @brief Candidate alpha requires validated surface and non opaque blas.
 TEST_F(RaySceneBuilderTest, CandidateAlphaRequiresValidatedSurfaceAndNonOpaqueBlas)
 {
     AddObject();
@@ -301,6 +313,7 @@ TEST_F(RaySceneBuilderTest, CandidateAlphaRequiresValidatedSurfaceAndNonOpaqueBl
     EXPECT_FALSE(clipped.geometries[0].triangles.opaque);
 }
 
+/// @brief Diagnoses unsupported geometry without using raster route as proof.
 TEST_F(RaySceneBuilderTest, DiagnosesUnsupportedGeometryWithoutUsingRasterRouteAsProof)
 {
     AddObject();
@@ -326,6 +339,7 @@ TEST_F(RaySceneBuilderTest, DiagnosesUnsupportedGeometryWithoutUsingRasterRouteA
     EXPECT_EQ(result.diagnostics[2].objectId.index, 2u);
 }
 
+/// @brief Rejects missing identity malformed ranges and unavailable content.
 TEST_F(RaySceneBuilderTest, RejectsMissingIdentityMalformedRangesAndUnavailableContent)
 {
     AddObject();
@@ -350,6 +364,7 @@ TEST_F(RaySceneBuilderTest, RejectsMissingIdentityMalformedRangesAndUnavailableC
     EXPECT_EQ(result.diagnostics[0].issue, renderer::RaySceneIssue::INVALID_TRANSFORM);
 }
 
+/// @brief Diagnoses only in layer unsupported effects.
 TEST_F(RaySceneBuilderTest, DiagnosesOnlyInLayerUnsupportedEffects)
 {
     m_scene.water.emplace_back().layer = 7;
@@ -359,6 +374,7 @@ TEST_F(RaySceneBuilderTest, DiagnosesOnlyInLayerUnsupportedEffects)
     EXPECT_EQ(result.diagnostics[0].issue, renderer::RaySceneIssue::NONMESH_GEOMETRY_UNSUPPORTED);
 }
 
+/// @brief Collects nonindexed triangles with no index content version.
 TEST_F(RaySceneBuilderTest, CollectsNonindexedTrianglesWithNoIndexContentVersion)
 {
     AddObject();
@@ -372,6 +388,7 @@ TEST_F(RaySceneBuilderTest, CollectsNonindexedTrianglesWithNoIndexContentVersion
     EXPECT_TRUE(result.diagnostics.empty());
 }
 
+/// @brief Proves opaque only for known constant alpha and keeps empty coverage empty.
 TEST_F(RaySceneBuilderTest, ProvesOpaqueOnlyForKnownConstantAlphaAndKeepsEmptyCoverageEmpty)
 {
     const auto resolve = [](bool standard, renderer::BlendMode blend, float alpha, float cutoff, bool texture) {
@@ -391,6 +408,7 @@ TEST_F(RaySceneBuilderTest, ProvesOpaqueOnlyForKnownConstantAlphaAndKeepsEmptyCo
     EXPECT_TRUE(result.diagnostics.empty());
 }
 
+/// @brief Resolves linear constant PBR into dense instance surface records.
 TEST_F(RaySceneBuilderTest, ResolvesLinearConstantPbrIntoDenseInstanceSurfaceRecords)
 {
     AddObject();
@@ -413,6 +431,7 @@ TEST_F(RaySceneBuilderTest, ResolvesLinearConstantPbrIntoDenseInstanceSurfaceRec
     EXPECT_FLOAT_EQ(record.attenuationDistance, 1);
 }
 
+/// @brief Separates unsupported hit shading from intersection coverage.
 TEST_F(RaySceneBuilderTest, SeparatesUnsupportedHitShadingFromIntersectionCoverage)
 {
     AddObject();
@@ -439,6 +458,7 @@ TEST_F(RaySceneBuilderTest, SeparatesUnsupportedHitShadingFromIntersectionCovera
     }
 }
 
+/// @brief Detects exact surface changes without using frame or snapshot serial.
 TEST_F(RaySceneBuilderTest, DetectsExactSurfaceChangesWithoutUsingFrameOrSnapshotSerial)
 {
     AddObject();
@@ -456,6 +476,7 @@ TEST_F(RaySceneBuilderTest, DetectsExactSurfaceChangesWithoutUsingFrameOrSnapsho
         renderer::MakeRaySurfaceRecord(initial.instances[0].surface));
 }
 
+/// @brief Rejects nonfinite and overflowed emission before GPU packing.
 TEST_F(RaySceneBuilderTest, RejectsNonfiniteAndOverflowedEmissionBeforeGpuPacking)
 {
     AddObject();
@@ -474,6 +495,7 @@ TEST_F(RaySceneBuilderTest, RejectsNonfiniteAndOverflowedEmissionBeforeGpuPackin
     EXPECT_FALSE(ResolveSurface().standardSurfaceSupported);
 }
 
+/// @brief Collects smooth solid dielectric only with path opt in.
 TEST_F(RaySceneBuilderTest, CollectsSmoothSolidDielectricOnlyWithPathOptIn)
 {
     AddObject();
@@ -508,6 +530,7 @@ TEST_F(RaySceneBuilderTest, CollectsSmoothSolidDielectricOnlyWithPathOptIn)
     EXPECT_EQ(alphaBlend.diagnostics[0].issue, renderer::RaySceneIssue::TRANSPARENT_UNSUPPORTED);
 }
 
+/// @brief Hybrid candidates separate glass from opaque and alpha geometry.
 TEST_F(RaySceneBuilderTest, HybridCandidatesSeparateGlassFromOpaqueAndAlphaGeometry)
 {
     AddObject(10, 1);
@@ -552,6 +575,7 @@ TEST_F(RaySceneBuilderTest, HybridCandidatesSeparateGlassFromOpaqueAndAlphaGeome
     EXPECT_FALSE(m_scene.items[1].material.doubleSided);
 }
 
+/// @brief Hybrid policy switch preserves reference flags and creates distinct keys.
 TEST_F(RaySceneBuilderTest, HybridPolicySwitchPreservesReferenceFlagsAndCreatesDistinctKeys)
 {
     AddObject(10, 1);
@@ -589,6 +613,7 @@ TEST_F(RaySceneBuilderTest, HybridPolicySwitchPreservesReferenceFlagsAndCreatesD
     }
 }
 
+/// @brief Hybrid candidate policy retains dielectric opt in and unsupported diagnostics.
 TEST_F(RaySceneBuilderTest, HybridCandidatePolicyRetainsDielectricOptInAndUnsupportedDiagnostics)
 {
     AddObject();
@@ -617,6 +642,7 @@ TEST_F(RaySceneBuilderTest, HybridCandidatePolicyRetainsDielectricOptInAndUnsupp
     }
 }
 
+/// @brief Accepts rough solid and smooth thin but rejects partial metal emissive and alpha dielectrics.
 TEST_F(RaySceneBuilderTest, AcceptsRoughSolidAndSmoothThinButRejectsPartialMetalEmissiveAndAlphaDielectrics)
 {
     AddObject();
@@ -672,6 +698,7 @@ TEST_F(RaySceneBuilderTest, AcceptsRoughSolidAndSmoothThinButRejectsPartialMetal
     EXPECT_EQ(ResolveSurface(true, false, false, glass).issue, renderer::SurfaceMaterialIssue::INVALID_CONSTANTS);
 }
 
+/// @brief Hybrid opt in accepts rough solids and marks every authored dielectric.
 TEST_F(RaySceneBuilderTest, HybridOptInAcceptsRoughSolidsAndMarksEveryAuthoredDielectric)
 {
     AddObject();
@@ -715,6 +742,7 @@ TEST_F(RaySceneBuilderTest, HybridOptInAcceptsRoughSolidsAndMarksEveryAuthoredDi
     }
 }
 
+/// @brief Canonical draw marker does not mutate material bytes or leak between surfaces.
 TEST_F(RaySceneBuilderTest, CanonicalDrawMarkerDoesNotMutateMaterialBytesOrLeakBetweenSurfaces)
 {
     AddObject();

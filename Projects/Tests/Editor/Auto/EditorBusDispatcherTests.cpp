@@ -139,6 +139,7 @@ protected:
     }
 };
 
+/// @brief Resolves built-in material and reports missing GUID.
 TEST_F(SceneMaterialValidationTest, ResolvesBuiltInMaterialAndReportsMissingGuid)
 {
     const auto engineAssets = File("EngineAssets");
@@ -174,6 +175,7 @@ TEST_F(SceneMaterialValidationTest, ResolvesBuiltInMaterialAndReportsMissingGuid
     EXPECT_EQ(issues.front().Find("name")->AsString(), "Missing material");
 }
 
+/// @brief Survives every command without a scene.
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
 {
     /// @note 本題。1 つでもガードが抜けていれば、ここでプロセスごと落ちる。
@@ -183,12 +185,14 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
     ExpectRegisteredHandlersRespond(dispatcher);
 }
 
+/// @brief Survives every command as a dry run command.
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandAsADryRunCommand)
 {
     EditorBusDispatcher dispatcher(Context());
     ExpectRegisteredHandlersRespond(dispatcher, true);
 }
 
+/// @brief Survives every command with a scene attached.
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
 {
     /// @note シーンが «有る» 側も通す。無い側だけ守っても、シーンはあるが中身が空という
@@ -200,6 +204,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
     ExpectRegisteredHandlersRespond(dispatcher);
 }
 
+/// @brief Survives every command on an empty scene.
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
 {
     /// @note GameObject が 1 つも無いシーン。«先頭を取る» 類の実装がここで落ちる。
@@ -209,6 +214,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
     ExpectRegisteredHandlersRespond(dispatcher);
 }
 
+/// @brief Survives when the scene is detached mid session.
 TEST_F(EditorBusDispatcherTest, SurvivesWhenTheSceneIsDetachedMidSession)
 {
     /// @note Play 中の LoadScene が起こす順序。繋がった状態で一度使ってから切れる。
@@ -223,6 +229,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesWhenTheSceneIsDetachedMidSession)
     ExpectRegisteredHandlersRespond(dispatcher);
 }
 
+/// @brief Reports an error for an unknown command.
 TEST_F(EditorBusDispatcherTest, ReportsAnErrorForAnUnknownCommand)
 {
     EditorBusDispatcher dispatcher(Context());
@@ -240,6 +247,7 @@ TEST_F(EditorBusDispatcherTest, ReportsAnErrorForAnUnknownCommand)
     EXPECT_EQ(code->AsString(), "UNKNOWN_COMMAND");
 }
 
+/// @brief Answers even when the line is not JSON.
 TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
 {
     /// @note 相関 id を取り出せなくても «壊れている» ことは返す。黙ると送信側は
@@ -256,6 +264,7 @@ TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
     EXPECT_EQ(parsed->Find("error")->Find("code")->AsString(), "BAD_JSON");
 }
 
+/// @brief Stays silent on a blank line.
 TEST_F(EditorBusDispatcherTest, StaysSilentOnABlankLine)
 {
     /// @note 空行は NDJSON の区切りとして正常。要求ではないのでエラーを返さない。
@@ -266,6 +275,7 @@ TEST_F(EditorBusDispatcherTest, StaysSilentOnABlankLine)
     EXPECT_TRUE(dispatcher.Handle("\r\n").empty());
 }
 
+/// @brief Answers with an error when the ID is readable.
 TEST_F(EditorBusDispatcherTest, AnswersWithAnErrorWhenTheIdIsReadable)
 {
     /// @note エンベロープが壊れていても、id が読めればそれを載せて «誰への失敗か» を言う。
@@ -287,6 +297,7 @@ TEST_F(EditorBusDispatcherTest, AnswersWithAnErrorWhenTheIdIsReadable)
     EXPECT_EQ(parsed->Find("id")->AsString(), "test-1");
 }
 
+/// @brief Keeps working after a failed request.
 TEST_F(EditorBusDispatcherTest, KeepsWorkingAfterAFailedRequest)
 {
     /// @note 1 回の失敗で内部状態が壊れると、以降 «何を送っても落ちる» になる。
@@ -298,6 +309,7 @@ TEST_F(EditorBusDispatcherTest, KeepsWorkingAfterAFailedRequest)
     ExpectSuccessfulResult(dispatcher.Handle(MakeRequest("editor.catalog")));
 }
 
+/// @brief Handles the same query repeatedly.
 TEST_F(EditorBusDispatcherTest, HandlesTheSameQueryRepeatedly)
 {
     /// @note MCP は同じ問い合わせを繰り返す。呼ぶたびに状態が積み上がらないこと。
@@ -307,6 +319,7 @@ TEST_F(EditorBusDispatcherTest, HandlesTheSameQueryRepeatedly)
         ASSERT_NO_FATAL_FAILURE(ExpectSuccessfulResult(dispatcher.Handle(MakeRequest("editor.catalog"))));
 }
 
+/// @brief Accepts a query carrying extra fields.
 TEST_F(EditorBusDispatcherTest, AcceptsAQueryCarryingExtraFields)
 {
     /// @note 送信側が新しい項目を足しても、古いエディターが落ちてはいけない。
@@ -412,6 +425,7 @@ protected:
     std::unique_ptr<EditorBusDispatcher> m_dispatcher;
 };
 
+/// @brief Creates a recipe and reads it back.
 TEST_F(EditorBusFluidTest, CreatesARecipeAndReadsItBack)
 {
     const JsonValue created = Send(FluidPayload("fluid.create", kSmokePath));
@@ -433,6 +447,7 @@ TEST_F(EditorBusFluidTest, CreatesARecipeAndReadsItBack)
     EXPECT_EQ(got.Find("result")->Find("bakeMode")->AsString(), volume ? "3d" : "2d");
 }
 
+/// @brief Set changes a nested key and undo restores it.
 TEST_F(EditorBusFluidTest, SetChangesANestedKeyAndUndoRestoresIt)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -465,6 +480,7 @@ TEST_F(EditorBusFluidTest, SetChangesANestedKeyAndUndoRestoresIt)
     EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, 3.25f);
 }
 
+/// @brief Set reports unknown keys and writes nothing.
 TEST_F(EditorBusFluidTest, SetReportsUnknownKeysAndWritesNothing)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -486,6 +502,7 @@ TEST_F(EditorBusFluidTest, SetReportsUnknownKeysAndWritesNothing)
     EXPECT_FLOAT_EQ(LoadRecipe(kSmokePath).gas.buoyancy, original);
 }
 
+/// @brief Create refuses to overwrite unless asked.
 TEST_F(EditorBusFluidTest, CreateRefusesToOverwriteUnlessAsked)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -510,6 +527,7 @@ TEST_F(EditorBusFluidTest, CreateRefusesToOverwriteUnlessAsked)
                     asset::MakeFluidPreset(asset::FluidPreset::Smoke).gas.buoyancy);
 }
 
+/// @brief Create undo removes the file it created.
 TEST_F(EditorBusFluidTest, CreateUndoRemovesTheFileItCreated)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -519,6 +537,7 @@ TEST_F(EditorBusFluidTest, CreateUndoRemovesTheFileItCreated)
     EXPECT_FALSE(std::filesystem::exists(File(kSmokePath)));
 }
 
+/// @brief Bake and preview need the service.
 TEST_F(EditorBusFluidTest, BakeAndPreviewNeedTheService)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -541,6 +560,7 @@ TEST_F(EditorBusFluidTest, BakeAndPreviewNeedTheService)
     EXPECT_TRUE(std::filesystem::is_regular_file(File("Assets/VFX/Fluid/Puff.fluid")));
 }
 
+/// @brief Job status reports an unknown job.
 TEST_F(EditorBusFluidTest, JobStatusReportsAnUnknownJob)
 {
     JsonValue payload = FluidPayload("fluid.jobStatus", "");
@@ -551,6 +571,7 @@ TEST_F(EditorBusFluidTest, JobStatusReportsAnUnknownJob)
     EXPECT_EQ(ErrorCode(response), "FLUID_JOB_NOT_FOUND");
 }
 
+/// @brief Transaction refuses bake but accepts edits.
 TEST_F(EditorBusFluidTest, TransactionRefusesBakeButAcceptsEdits)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -613,6 +634,7 @@ bool ArrayHasString(const JsonValue* array, const std::string& wanted)
 
 } /// @note namespace
 
+/// @brief Add operator inserts a typed part and undo removes it.
 TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -653,6 +675,7 @@ TEST_F(EditorBusFluidTest, AddOperatorInsertsATypedPartAndUndoRemovesIt)
     EXPECT_EQ(LoadRecipe(kSmokePath).forces.back().type, fluid::FluidForceType::Vortex);
 }
 
+/// @brief Remove and move operators are undoable.
 TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -700,6 +723,7 @@ TEST_F(EditorBusFluidTest, RemoveAndMoveOperatorsAreUndoable)
     EXPECT_EQ(LoadRecipe(kSmokePath).sources.size(), count);
 }
 
+/// @brief Add operator rejects unknown lists types and a full list.
 TEST_F(EditorBusFluidTest, AddOperatorRejectsUnknownListsTypesAndAFullList)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -727,6 +751,7 @@ TEST_F(EditorBusFluidTest, AddOperatorRejectsUnknownListsTypesAndAFullList)
     EXPECT_EQ(LoadRecipe(kSmokePath).forces.size(), static_cast<std::size_t>(fluid::kMaxFluidForces));
 }
 
+/// @brief Set accepts force type labels and motion key arrays.
 TEST_F(EditorBusFluidTest, SetAcceptsForceTypeLabelsAndMotionKeyArrays)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -764,6 +789,7 @@ TEST_F(EditorBusFluidTest, SetAcceptsForceTypeLabelsAndMotionKeyArrays)
     EXPECT_FLOAT_EQ(recipe.sources[0].motion.keys[1].offset.y, 0.25f);
 }
 
+/// @brief Checks schema lists the fields of each operator type.
 TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
 {
     const JsonValue response = Send(FluidPayload("fluid.schema", ""), "query");
@@ -828,6 +854,7 @@ TEST_F(EditorBusFluidTest, SchemaListsTheFieldsOfEachOperatorType)
     EXPECT_EQ(limits->Find("collider")->AsInt(), fluid::kMaxFluidColliders);
 }
 
+/// @brief Colliders can be added moved and removed with undo.
 TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -882,6 +909,7 @@ TEST_F(EditorBusFluidTest, CollidersCanBeAddedMovedAndRemovedWithUndo)
     EXPECT_EQ(LoadRecipe(kSmokePath).colliders.back().shape, fluid::FluidColliderShape::Box);
 }
 
+/// @brief Collider list stops at its limit and takes shape labels.
 TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -918,6 +946,7 @@ TEST_F(EditorBusFluidTest, ColliderListStopsAtItsLimitAndTakesShapeLabels)
     EXPECT_EQ(LoadRecipe(kSmokePath).colliders.size(), limit);
 }
 
+/// @brief Texture source with a missing image is written with a warning.
 TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -962,6 +991,7 @@ TEST_F(EditorBusFluidTest, TextureSourceWithAMissingImageIsWrittenWithAWarning)
     EXPECT_EQ(LoadRecipe(kSmokePath).sources[index].texture, "Assets/Textures/Logo.png");
 }
 
+/// @brief Set writes per source color key and the albedo ramp.
 TEST_F(EditorBusFluidTest, SetWritesPerSourceColorKeyAndTheAlbedoRamp)
 {
     ASSERT_TRUE(IsOk(Send(FluidPayload("fluid.create", kSmokePath))));
@@ -1171,6 +1201,7 @@ protected:
     std::string                         m_reloadNode;
 };
 
+/// @brief Reports unavailable observation sections without a scene.
 TEST_F(EditorBusReliabilityTest, ReportsUnavailableObservationSectionsWithoutAScene)
 {
     const JsonValue response = Send(ReliablePayload("editor.observation"), "query");
@@ -1192,6 +1223,7 @@ TEST_F(EditorBusReliabilityTest, ReportsUnavailableObservationSectionsWithoutASc
     EXPECT_EQ(result->Find("guard"), nullptr);
 }
 
+/// @brief Observes the scene selection and exact guard together.
 TEST_F(EditorBusReliabilityTest, ObservesTheSceneSelectionAndExactGuardTogether)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1244,6 +1276,7 @@ TEST_F(EditorBusReliabilityTest, ObservesTheSceneSelectionAndExactGuardTogether)
     EXPECT_EQ(result->Find("componentIdsRequested")->AsInt(), 1);
 }
 
+/// @brief Preserves all selected IDs when component inspection exceeds its bound.
 TEST_F(EditorBusReliabilityTest, PreservesAllSelectedIdsWhenComponentInspectionExceedsItsBound)
 {
     auto& scene = AttachScene();
@@ -1288,6 +1321,7 @@ TEST_F(EditorBusReliabilityTest, PreservesAllSelectedIdsWhenComponentInspectionE
     EXPECT_NE(result->Find("guard"), nullptr);
 }
 
+/// @brief Rejects more than 128 explicit observation IDs.
 TEST_F(EditorBusReliabilityTest, RejectsMoreThan128ExplicitObservationIds)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1305,6 +1339,7 @@ TEST_F(EditorBusReliabilityTest, RejectsMoreThan128ExplicitObservationIds)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Reports unavailable node inspection in the aggregate component check.
 TEST_F(EditorBusReliabilityTest, ReportsUnavailableNodeInspectionInTheAggregateComponentCheck)
 {
     AttachScene().CreateGameObject("Original").instanceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -1332,6 +1367,7 @@ TEST_F(EditorBusReliabilityTest, ReportsUnavailableNodeInspectionInTheAggregateC
     ExpectReliableCheck(*checks, "components", "unverified");
 }
 
+/// @brief Rejects checked mutation without a scene.
 TEST_F(EditorBusReliabilityTest, RejectsCheckedMutationWithoutAScene)
 {
     const JsonValue response = Send(Checked(JsonValue::MakeObject(), { RenamePayload("missing", "Changed") }));
@@ -1342,6 +1378,7 @@ TEST_F(EditorBusReliabilityTest, RejectsCheckedMutationWithoutAScene)
     EXPECT_FALSE(Context().sceneDirty);
 }
 
+/// @brief Preflights changes without mutating scene history or receipt.
 TEST_F(EditorBusReliabilityTest, PreflightsChangesWithoutMutatingSceneHistoryOrReceipt)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1371,6 +1408,7 @@ TEST_F(EditorBusReliabilityTest, PreflightsChangesWithoutMutatingSceneHistoryOrR
     EXPECT_EQ(node.name, "Changed");
 }
 
+/// @brief Rejects a stale guard after a history mutation.
 TEST_F(EditorBusReliabilityTest, RejectsAStaleGuardAfterAHistoryMutation)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1387,6 +1425,7 @@ TEST_F(EditorBusReliabilityTest, RejectsAStaleGuardAfterAHistoryMutation)
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief Rejects a stale guard after a direct scene mutation without history.
 TEST_F(EditorBusReliabilityTest, RejectsAStaleGuardAfterADirectSceneMutationWithoutHistory)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1403,6 +1442,7 @@ TEST_F(EditorBusReliabilityTest, RejectsAStaleGuardAfterADirectSceneMutationWith
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Rejects reliable editor execution while a managed build is busy.
 TEST_F(EditorBusReliabilityTest, RejectsReliableEditorExecutionWhileAManagedBuildIsBusy)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1418,6 +1458,7 @@ TEST_F(EditorBusReliabilityTest, RejectsReliableEditorExecutionWhileAManagedBuil
     EXPECT_FALSE(Context().sceneDirty);
 }
 
+/// @brief Rejects reliable editor execution while play restoration is pending.
 TEST_F(EditorBusReliabilityTest, RejectsReliableEditorExecutionWhilePlayRestorationIsPending)
 {
     auto& scene = AttachScene();
@@ -1439,6 +1480,7 @@ TEST_F(EditorBusReliabilityTest, RejectsReliableEditorExecutionWhilePlayRestorat
     EXPECT_FALSE(Context().sceneDirty);
 }
 
+/// @brief Rejects rollback by another owner and allows the original owner.
 TEST_F(EditorBusReliabilityTest, RejectsRollbackByAnotherOwnerAndAllowsTheOriginalOwner)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1458,6 +1500,7 @@ TEST_F(EditorBusReliabilityTest, RejectsRollbackByAnotherOwnerAndAllowsTheOrigin
     EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_CONSUMED");
 }
 
+/// @brief Preserves direct edits when rollback snapshot no longer matches.
 TEST_F(EditorBusReliabilityTest, PreservesDirectEditsWhenRollbackSnapshotNoLongerMatches)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1476,6 +1519,7 @@ TEST_F(EditorBusReliabilityTest, PreservesDirectEditsWhenRollbackSnapshotNoLonge
     EXPECT_EQ(m_undo.GetCursor(), 1u);
 }
 
+/// @brief Preserves later authors changes when rollback is no longer the last edit.
 TEST_F(EditorBusReliabilityTest, PreservesLaterAuthorsChangesWhenRollbackIsNoLongerTheLastEdit)
 {
     auto& scene = AttachScene();
@@ -1499,6 +1543,7 @@ TEST_F(EditorBusReliabilityTest, PreservesLaterAuthorsChangesWhenRollbackIsNoLon
     EXPECT_EQ(ErrorCode(Send(Rollback())), "ROLLBACK_CONFLICT");
 }
 
+/// @brief Verifies the final batch value and restores the initial value.
 TEST_F(EditorBusReliabilityTest, VerifiesTheFinalBatchValueAndRestoresTheInitialValue)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1525,6 +1570,7 @@ TEST_F(EditorBusReliabilityTest, VerifiesTheFinalBatchValueAndRestoresTheInitial
     EXPECT_EQ(node.name, "Original");
 }
 
+/// @brief Normalizes uuid case for checked batch deduplication and rollback.
 TEST_F(EditorBusReliabilityTest, NormalizesUuidCaseForCheckedBatchDeduplicationAndRollback)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1556,6 +1602,7 @@ TEST_F(EditorBusReliabilityTest, NormalizesUuidCaseForCheckedBatchDeduplicationA
     EXPECT_EQ(node.instanceId, CANONICAL_ID);
 }
 
+/// @brief Rejects receipt replay without repeating mutation.
 TEST_F(EditorBusReliabilityTest, RejectsReceiptReplayWithoutRepeatingMutation)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1572,6 +1619,7 @@ TEST_F(EditorBusReliabilityTest, RejectsReceiptReplayWithoutRepeatingMutation)
     EXPECT_EQ(m_undo.GetCursor(), 1u);
 }
 
+/// @brief Verifies supported node transform and native component fields in one batch.
 TEST_F(EditorBusReliabilityTest, VerifiesSupportedNodeTransformAndNativeComponentFieldsInOneBatch)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1620,6 +1668,7 @@ TEST_F(EditorBusReliabilityTest, VerifiesSupportedNodeTransformAndNativeComponen
     EXPECT_FLOAT_EQ(light->intensity, 2.0f);
 }
 
+/// @brief Rejects fractional layer before applying any batch command.
 TEST_F(EditorBusReliabilityTest, RejectsFractionalLayerBeforeApplyingAnyBatchCommand)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1637,6 +1686,7 @@ TEST_F(EditorBusReliabilityTest, RejectsFractionalLayerBeforeApplyingAnyBatchCom
     EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_NOT_FOUND");
 }
 
+/// @brief Rolls back its own batch when native readback differs from the request.
 TEST_F(EditorBusReliabilityTest, RollsBackItsOwnBatchWhenNativeReadbackDiffersFromTheRequest)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1662,6 +1712,7 @@ TEST_F(EditorBusReliabilityTest, RollsBackItsOwnBatchWhenNativeReadbackDiffersFr
     EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_NOT_FOUND");
 }
 
+/// @brief Preflights rollback without moving history or consuming the receipt.
 TEST_F(EditorBusReliabilityTest, PreflightsRollbackWithoutMovingHistoryOrConsumingTheReceipt)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1679,6 +1730,7 @@ TEST_F(EditorBusReliabilityTest, PreflightsRollbackWithoutMovingHistoryOrConsumi
     EXPECT_EQ(node.name, "Original");
 }
 
+/// @brief Rejects unsupported file build and creation commands without side effects.
 TEST_F(EditorBusReliabilityTest, RejectsUnsupportedFileBuildAndCreationCommandsWithoutSideEffects)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1703,6 +1755,7 @@ TEST_F(EditorBusReliabilityTest, RejectsUnsupportedFileBuildAndCreationCommandsW
     }
 }
 
+/// @brief Rejects an invalid later batch command before any write.
 TEST_F(EditorBusReliabilityTest, RejectsAnInvalidLaterBatchCommandBeforeAnyWrite)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1720,6 +1773,7 @@ TEST_F(EditorBusReliabilityTest, RejectsAnInvalidLaterBatchCommandBeforeAnyWrite
     EXPECT_FALSE(Context().sceneDirty);
 }
 
+/// @brief Requires save before reload without calling the host.
 TEST_F(EditorBusReliabilityTest, RequiresSaveBeforeReloadWithoutCallingTheHost)
 {
     AttachScene().CreateGameObject("Original");
@@ -1733,6 +1787,7 @@ TEST_F(EditorBusReliabilityTest, RequiresSaveBeforeReloadWithoutCallingTheHost)
     EXPECT_FALSE(std::filesystem::exists(File("Assets/Scenes/Reliability.scene")));
 }
 
+/// @brief Rejects finalize with a stale guard before any disk operation.
 TEST_F(EditorBusReliabilityTest, RejectsFinalizeWithAStaleGuardBeforeAnyDiskOperation)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1749,6 +1804,7 @@ TEST_F(EditorBusReliabilityTest, RejectsFinalizeWithAStaleGuardBeforeAnyDiskOper
     EXPECT_FALSE(std::filesystem::exists(File("Assets/Scenes/Reliability.scene")));
 }
 
+/// @brief Saves then reloads the fixture scene and reports the observed round trip.
 TEST_F(EditorBusReliabilityTest, SavesThenReloadsTheFixtureSceneAndReportsTheObservedRoundtrip)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1775,6 +1831,7 @@ TEST_F(EditorBusReliabilityTest, SavesThenReloadsTheFixtureSceneAndReportsTheObs
     EXPECT_EQ(ErrorCode(Send(Rollback())), "RECEIPT_NOT_FOUND");
 }
 
+/// @brief Does not reload when save fails.
 TEST_F(EditorBusReliabilityTest, DoesNotReloadWhenSaveFails)
 {
     auto& node = AttachScene().CreateGameObject("Unsaved");
@@ -1794,6 +1851,7 @@ TEST_F(EditorBusReliabilityTest, DoesNotReloadWhenSaveFails)
     ExpectReliableCheck(*result, "reload", "unverified");
 }
 
+/// @brief Does not treat a still dirty scene as a successful save.
 TEST_F(EditorBusReliabilityTest, DoesNotTreatAStillDirtySceneAsASuccessfulSave)
 {
     AttachScene().CreateGameObject("Unsaved");
@@ -1812,6 +1870,7 @@ TEST_F(EditorBusReliabilityTest, DoesNotTreatAStillDirtySceneAsASuccessfulSave)
     ExpectReliableCheck(*result, "reload", "unverified");
 }
 
+/// @brief Reports failure when reload changes the observed snapshot.
 TEST_F(EditorBusReliabilityTest, ReportsFailureWhenReloadChangesTheObservedSnapshot)
 {
     auto& node = AttachScene().CreateGameObject("Original");
@@ -1834,6 +1893,7 @@ TEST_F(EditorBusReliabilityTest, ReportsFailureWhenReloadChangesTheObservedSnaps
     EXPECT_EQ(loaded->name, "Changed by host");
 }
 
+/// @brief Does not write or reload during finalize dry run.
 TEST_F(EditorBusReliabilityTest, DoesNotWriteOrReloadDuringFinalizeDryRun)
 {
     AttachScene().CreateGameObject("Original");
@@ -1897,6 +1957,7 @@ private:
     renderer::RenderDebugOverlay::Snapshot m_previousRendering;
 };
 
+/// @brief Visible object count includes distance and small object rejections.
 TEST_F(EditorBusProfilerSnapshotTest, VisibleObjectCountIncludesDistanceAndSmallObjectRejections)
 {
     renderer::RenderDebugOverlay::Snapshot rendering;
@@ -1921,6 +1982,7 @@ TEST_F(EditorBusProfilerSnapshotTest, VisibleObjectCountIncludesDistanceAndSmall
     EXPECT_DOUBLE_EQ(result->Find("smallObjectCulled")->AsNumber(),15);
 }
 
+/// @brief GPU visibility is unknown instead of reporting candidates as visible.
 TEST_F(EditorBusProfilerSnapshotTest, GpuVisibilityIsUnknownInsteadOfReportingCandidatesAsVisible)
 {
     renderer::RenderDebugOverlay::Snapshot rendering;
@@ -1941,6 +2003,7 @@ TEST_F(EditorBusProfilerSnapshotTest, GpuVisibilityIsUnknownInsteadOfReportingCa
     EXPECT_DOUBLE_EQ(result->Find("gpuVisibilityUnknownObjects")->AsNumber(),100);
 }
 
+/// @brief Preserves legacy fields and samples alongside complete capture diagnostics.
 TEST_F(EditorBusProfilerSnapshotTest, PreservesLegacyFieldsAndSamplesAlongsideCompleteCaptureDiagnostics)
 {
     ASSERT_TRUE(profiler::Profiler::RequestCaptureFilter({ "McpContract", "" }));
@@ -2017,6 +2080,7 @@ TEST_F(EditorBusProfilerSnapshotTest, PreservesLegacyFieldsAndSamplesAlongsideCo
     EXPECT_TRUE(warning->AsString().empty());
 }
 
+/// @brief Warns when no CPU capture is available.
 TEST_F(EditorBusProfilerSnapshotTest, WarnsWhenNoCpuCaptureIsAvailable)
 {
     profiler::Profiler::SetEnabled(false);
@@ -2043,6 +2107,7 @@ TEST_F(EditorBusProfilerSnapshotTest, WarnsWhenNoCpuCaptureIsAvailable)
     EXPECT_TRUE(samples->AsArray().empty());
 }
 
+/// @brief Warns about an aborted capture even when no sample was dropped.
 TEST_F(EditorBusProfilerSnapshotTest, WarnsAboutAnAbortedCaptureEvenWhenNoSampleWasDropped)
 {
     profiler::Profiler::BeginFrame();
@@ -2067,6 +2132,7 @@ TEST_F(EditorBusProfilerSnapshotTest, WarnsAboutAnAbortedCaptureEvenWhenNoSample
     EXPECT_NE(result->Find("cpuCaptureWarning")->AsString().find("partial"), std::string::npos);
 }
 
+/// @brief Exposes capacity loss separately from the top samples display limit.
 TEST_F(EditorBusProfilerSnapshotTest, ExposesCapacityLossSeparatelyFromTheTopSamplesDisplayLimit)
 {
     profiler::Profiler::BeginFrame();
@@ -2132,6 +2198,7 @@ protected:
     int m_calls = 0;
 };
 
+/// @brief Play control uses automation source.
 TEST_F(AutomationPlayDispatchTest, PlayControlUsesAutomationSource)
 {
     EditorBusDispatcher dispatcher(Context());
@@ -2142,6 +2209,7 @@ TEST_F(AutomationPlayDispatchTest, PlayControlUsesAutomationSource)
     EXPECT_EQ(m_source, editor::OpInvocationSource::AUTOMATION);
 }
 
+/// @brief Direct play operators are automated but UI invocation remains interactive.
 TEST_F(AutomationPlayDispatchTest, DirectPlayOperatorsAreAutomatedButUiInvocationRemainsInteractive)
 {
     for (const char* id : {"play.start", "play.toggle"}) {

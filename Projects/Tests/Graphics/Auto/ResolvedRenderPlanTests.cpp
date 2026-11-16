@@ -66,6 +66,7 @@ void ExpectRequestUnchanged(const renderer::RenderModeRequest& request,
     EXPECT_EQ(request.rayDiffuseGi, saved.rayDiffuseGi);
 }
 
+/// @brief Developer gate disables every ray mode without changing the request.
 TEST_F(ResolvedRenderPlanTest, DeveloperGateDisablesEveryRayModeWithoutChangingTheRequest)
 {
     EXPECT_FALSE(renderer::RenderAvailability{}.experimentalRayTracingEnabled);
@@ -95,6 +96,7 @@ TEST_F(ResolvedRenderPlanTest, DeveloperGateDisablesEveryRayModeWithoutChangingT
     }
 }
 
+/// @brief Developer gate keeps its reason when raster fallback is unavailable.
 TEST_F(ResolvedRenderPlanTest, DeveloperGateKeepsItsReasonWhenRasterFallbackIsUnavailable)
 {
     renderer::RenderSettings settings;
@@ -116,6 +118,7 @@ TEST_F(ResolvedRenderPlanTest, DeveloperGateKeepsItsReasonWhenRasterFallbackIsUn
     }
 }
 
+/// @brief Checks developer permission resumes the same saved ray request.
 TEST_F(ResolvedRenderPlanTest, DeveloperPermissionResumesTheSameSavedRayRequest)
 {
     renderer::RenderSettings settings;
@@ -137,6 +140,7 @@ TEST_F(ResolvedRenderPlanTest, DeveloperPermissionResumesTheSameSavedRayRequest)
     }
 }
 
+/// @brief Unprepared output never publishes a valid plan.
 TEST_F(ResolvedRenderPlanTest, UnpreparedOutputNeverPublishesAValidPlan)
 {
     renderer::RenderSettings settings;
@@ -153,6 +157,7 @@ TEST_F(ResolvedRenderPlanTest, UnpreparedOutputNeverPublishesAValidPlan)
     }
 }
 
+/// @brief Raster does not demand ray resources even with saved effect requests.
 TEST_F(ResolvedRenderPlanTest, RasterDoesNotDemandRayResourcesEvenWithSavedEffectRequests)
 {
     renderer::RenderSettings settings;
@@ -180,6 +185,7 @@ TEST_F(ResolvedRenderPlanTest, RasterDoesNotDemandRayResourcesEvenWithSavedEffec
     }
 }
 
+/// @brief Ray pipeline support does not substitute for inline support.
 TEST_F(ResolvedRenderPlanTest, RayPipelineSupportDoesNotSubstituteForInlineSupport)
 {
     renderer::RenderSettings settings;
@@ -198,6 +204,7 @@ TEST_F(ResolvedRenderPlanTest, RayPipelineSupportDoesNotSubstituteForInlineSuppo
     EXPECT_EQ(request.mode, renderer::RenderMode::HYBRID);
 }
 
+/// @brief Initial ray materials require bindless in addition to inline.
 TEST_F(ResolvedRenderPlanTest, InitialRayMaterialsRequireBindlessInAdditionToInline)
 {
     renderer::RenderSettings settings;
@@ -210,6 +217,7 @@ TEST_F(ResolvedRenderPlanTest, InitialRayMaterialsRequireBindlessInAdditionToInl
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Coverage and pipeline failures are isolated by effect.
 TEST_F(ResolvedRenderPlanTest, CoverageAndPipelineFailuresAreIsolatedByEffect)
 {
     renderer::RenderSettings settings;
@@ -229,6 +237,7 @@ TEST_F(ResolvedRenderPlanTest, CoverageAndPipelineFailuresAreIsolatedByEffect)
     EXPECT_TRUE(plan.NeedsRayScene());
 }
 
+/// @brief Missing shared ray scene disables every ray consumer.
 TEST_F(ResolvedRenderPlanTest, MissingSharedRaySceneDisablesEveryRayConsumer)
 {
     renderer::RenderSettings settings;
@@ -245,6 +254,7 @@ TEST_F(ResolvedRenderPlanTest, MissingSharedRaySceneDisablesEveryRayConsumer)
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Hybrid without requested effects keeps raster and no ray demand.
 TEST_F(ResolvedRenderPlanTest, HybridWithoutRequestedEffectsKeepsRasterAndNoRayDemand)
 {
     renderer::RenderSettings settings;
@@ -258,6 +268,7 @@ TEST_F(ResolvedRenderPlanTest, HybridWithoutRequestedEffectsKeepsRasterAndNoRayD
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Unprepared hybrid pipelines do not create any ray demand.
 TEST_F(ResolvedRenderPlanTest, UnpreparedHybridPipelinesDoNotCreateAnyRayDemand)
 {
     renderer::RenderSettings settings;
@@ -276,6 +287,7 @@ TEST_F(ResolvedRenderPlanTest, UnpreparedHybridPipelinesDoNotCreateAnyRayDemand)
     EXPECT_FALSE(plan.diffuseGi.enabled);
 }
 
+/// @brief Missing cluster resources do not change deferred primary visibility.
 TEST_F(ResolvedRenderPlanTest, MissingClusterResourcesDoNotChangeDeferredPrimaryVisibility)
 {
     renderer::RenderSettings settings;
@@ -289,6 +301,7 @@ TEST_F(ResolvedRenderPlanTest, MissingClusterResourcesDoNotChangeDeferredPrimary
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Checks hybrid needs its raster primary pipeline.
 TEST_F(ResolvedRenderPlanTest, HybridNeedsItsRasterPrimaryPipeline)
 {
     renderer::RenderSettings settings;
@@ -301,6 +314,7 @@ TEST_F(ResolvedRenderPlanTest, HybridNeedsItsRasterPrimaryPipeline)
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Reference uses camera rays without a deferred primary surface.
 TEST_F(ResolvedRenderPlanTest, ReferenceUsesCameraRaysWithoutADeferredPrimarySurface)
 {
     renderer::RenderSettings settings;
@@ -320,6 +334,7 @@ TEST_F(ResolvedRenderPlanTest, ReferenceUsesCameraRaysWithoutADeferredPrimarySur
     EXPECT_FALSE(plan.diffuseGi.enabled);
 }
 
+/// @brief Game path uses dedicated complete raster surface inputs.
 TEST_F(ResolvedRenderPlanTest, GamePathUsesDedicatedCompleteRasterSurfaceInputs)
 {
     renderer::RenderSettings settings;
@@ -345,6 +360,7 @@ TEST_F(ResolvedRenderPlanTest, GamePathUsesDedicatedCompleteRasterSurfaceInputs)
     EXPECT_FALSE(missingSurface.NeedsRayScene());
 }
 
+/// @brief Game dedicated surface does not require deferred direct lighting.
 TEST_F(ResolvedRenderPlanTest, GameDedicatedSurfaceDoesNotRequireDeferredDirectLighting)
 {
     renderer::RenderSettings settings;
@@ -361,6 +377,7 @@ TEST_F(ResolvedRenderPlanTest, GameDedicatedSurfaceDoesNotRequireDeferredDirectL
     EXPECT_TRUE(plan.NeedsRayScene());
 }
 
+/// @brief Path coverage failure does not leave some ray effects active.
 TEST_F(ResolvedRenderPlanTest, PathCoverageFailureDoesNotLeaveSomeRayEffectsActive)
 {
     renderer::RenderSettings settings;
@@ -379,6 +396,7 @@ TEST_F(ResolvedRenderPlanTest, PathCoverageFailureDoesNotLeaveSomeRayEffectsActi
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Hardware and coverage alone do not enable an unprepared path pipeline.
 TEST_F(ResolvedRenderPlanTest, HardwareAndCoverageAloneDoNotEnableAnUnpreparedPathPipeline)
 {
     renderer::RenderSettings settings;
@@ -392,6 +410,7 @@ TEST_F(ResolvedRenderPlanTest, HardwareAndCoverageAloneDoNotEnableAnUnpreparedPa
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Missing fallback resources keep the original reason and fail the frame.
 TEST_F(ResolvedRenderPlanTest, MissingFallbackResourcesKeepTheOriginalReasonAndFailTheFrame)
 {
     renderer::RenderSettings settings;
@@ -406,6 +425,7 @@ TEST_F(ResolvedRenderPlanTest, MissingFallbackResourcesKeepTheOriginalReasonAndF
     EXPECT_FALSE(plan.NeedsRayScene());
 }
 
+/// @brief Invalid modes and profiles resolve to prepared raster.
 TEST_F(ResolvedRenderPlanTest, InvalidModesAndProfilesResolveToPreparedRaster)
 {
     renderer::RenderSettings settings;

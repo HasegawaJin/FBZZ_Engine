@@ -30,6 +30,7 @@ protected:
         ASSERT_TRUE(solver.Step(0.01f));
     }
 };
+/// @brief Signed dihedral relaxes both fold directions and keeps pins.
 TEST_F(ClothAdvancedTest, SignedDihedralRelaxesBothFoldDirectionsAndKeepsPins)
 {
     for (float sign : {-1.0f,1.0f}) {
@@ -52,6 +53,7 @@ TEST_F(ClothAdvancedTest, SignedDihedralRelaxesBothFoldDirectionsAndKeepsPins)
         for (size_t i = 1; i < 4; ++i) EXPECT_VEC3_NEAR(solver.Positions()[i],p[i],1.0e-6f);
     }
 }
+/// @brief Dihedral preserves non planar rest and does not resist planar stretch.
 TEST_F(ClothAdvancedTest, DihedralPreservesNonPlanarRestAndDoesNotResistPlanarStretch)
 {
     physics::ClothSolver solver;
@@ -73,6 +75,7 @@ TEST_F(ClothAdvancedTest, DihedralPreservesNonPlanarRestAndDoesNotResistPlanarSt
     ASSERT_TRUE(solver.Step(0.01f));
     for (size_t i = 0; i < 4; ++i) EXPECT_VEC3_NEAR(solver.Positions()[i],p[i]*2,1.0e-5f);
 }
+/// @brief Small valid triangles remain supported with either bending model.
 TEST_F(ClothAdvancedTest, SmallValidTrianglesRemainSupportedWithEitherBendingModel)
 {
     const std::array<math::Vector3,4> p{{{0,0.0002f,0},{0,-0.0002f,0},{0,0,0},{0.0002f,0,0}}};
@@ -87,6 +90,7 @@ TEST_F(ClothAdvancedTest, SmallValidTrianglesRemainSupportedWithEitherBendingMod
         for (size_t i = 0; i < p.size(); ++i) EXPECT_VEC3_NEAR(solver.Positions()[i],p[i],1.0e-8f);
     }
 }
+/// @brief Checks contact response balances linear and angular impulse.
 TEST_F(ClothAdvancedTest, ContactResponseBalancesLinearAndAngularImpulse)
 {
     physics::ClothSolver solver;
@@ -112,6 +116,7 @@ TEST_F(ClothAdvancedTest, ContactResponseBalancesLinearAndAngularImpulse)
     EXPECT_FALSE(solver.Step(0.1f,{&plane,1}));
     EXPECT_TRUE(solver.ContactResponses().empty());
 }
+/// @brief Friction uses rotating surface velocity.
 TEST_F(ClothAdvancedTest, FrictionUsesRotatingSurfaceVelocity)
 {
     physics::ClothSolver solver;
@@ -125,6 +130,7 @@ TEST_F(ClothAdvancedTest, FrictionUsesRotatingSurfaceVelocity)
     EXPECT_NEAR(solver.Velocities()[0].z,-2,1.0e-5f);
     EXPECT_NEAR(solver.Velocities()[1].z,-4,1.0e-5f);
 }
+/// @brief Inter collision separates by mass and honors masks.
 TEST_F(ClothAdvancedTest, InterCollisionSeparatesByMassAndHonorsMasks)
 {
     physics::ClothSolver a,b;
@@ -138,6 +144,7 @@ TEST_F(ClothAdvancedTest, InterCollisionSeparatesByMassAndHonorsMasks)
     EXPECT_NEAR(a.Positions()[0].z+2*b.Positions()[0].z,0.04f,1.0e-5f);
     EXPECT_VEC3_NEAR(a.Velocities()[0]+b.Velocities()[0]*2,math::Vector3{},1.0e-5f);
 }
+/// @brief Inter collision keeps anchors and rejects invalid group transactionally.
 TEST_F(ClothAdvancedTest, InterCollisionKeepsAnchorsAndRejectsInvalidGroupTransactionally)
 {
     physics::ClothSolver a,b;

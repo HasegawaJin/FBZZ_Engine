@@ -53,6 +53,7 @@ protected:
     }
 };
 
+/// @brief Checks explicit mapping sews seam without changing u vs.
 TEST_F(ClothAssetTest, ExplicitMappingSewsSeamWithoutChangingUVs)
 {
     auto cloth = Sewn();
@@ -63,6 +64,7 @@ TEST_F(ClothAssetTest, ExplicitMappingSewsSeamWithoutChangingUVs)
     EXPECT_TRUE(asset::ValidateClothAsset(cloth));
 }
 
+/// @brief Identity mapping does not weld coincident disconnected cloth.
 TEST_F(ClothAssetTest, IdentityMappingDoesNotWeldCoincidentDisconnectedCloth)
 {
     asset::ClothAsset cloth;
@@ -71,6 +73,7 @@ TEST_F(ClothAssetTest, IdentityMappingDoesNotWeldCoincidentDisconnectedCloth)
     EXPECT_NE(cloth.renderToParticle[2], cloth.renderToParticle[3]);
 }
 
+/// @brief Round trip preserves mapping pins and vertex attributes.
 TEST_F(ClothAssetTest, RoundTripPreservesMappingPinsAndVertexAttributes)
 {
     auto cloth = Sewn();
@@ -92,6 +95,7 @@ TEST_F(ClothAssetTest, RoundTripPreservesMappingPinsAndVertexAttributes)
     EXPECT_GT(loaded.revision, revision);
 }
 
+/// @brief Invalid mapping and pins are rejected.
 TEST_F(ClothAssetTest, InvalidMappingAndPinsAreRejected)
 {
     auto cloth = Sewn();
@@ -110,6 +114,7 @@ TEST_F(ClothAssetTest, InvalidMappingAndPinsAreRejected)
     EXPECT_FALSE(asset::ValidateClothAsset(cloth));
 }
 
+/// @brief Invalid geometry does not replace existing asset.
 TEST_F(ClothAssetTest, InvalidGeometryDoesNotReplaceExistingAsset)
 {
     auto cloth = Sewn();
@@ -122,6 +127,7 @@ TEST_F(ClothAssetTest, InvalidGeometryDoesNotReplaceExistingAsset)
     EXPECT_FALSE(asset::ValidateClothAsset(cloth));
 }
 
+/// @brief Failed save and load preserve previous content.
 TEST_F(ClothAssetTest, FailedSaveAndLoadPreservePreviousContent)
 {
     auto cloth = Sewn();
@@ -141,6 +147,7 @@ TEST_F(ClothAssetTest, FailedSaveAndLoadPreservePreviousContent)
     EXPECT_EQ(cloth.particles.size(), 4u);
 }
 
+/// @brief Skin weights transfer merge normalize and blend inverse bind.
 TEST_F(ClothAssetTest, SkinWeightsTransferMergeNormalizeAndBlendInverseBind)
 {
     const auto skeleton = SkinMesh();
@@ -160,6 +167,7 @@ TEST_F(ClothAssetTest, SkinWeightsTransferMergeNormalizeAndBlendInverseBind)
     EXPECT_NE(cloth.vertices[2].uv.x, cloth.vertices[3].uv.x);
 }
 
+/// @brief Skin round trip preserves names matrices and weights.
 TEST_F(ClothAssetTest, SkinRoundTripPreservesNamesMatricesAndWeights)
 {
     const auto skeleton = SkinMesh();
@@ -179,6 +187,7 @@ TEST_F(ClothAssetTest, SkinRoundTripPreservesNamesMatricesAndWeights)
     EXPECT_VEC3_NEAR(loaded.skinWeights[0].position, cloth.skinWeights[0].position, 1.0e-6f);
 }
 
+/// @brief Invalid skin weights names and seam reject without replacing output.
 TEST_F(ClothAssetTest, InvalidSkinWeightsNamesAndSeamRejectWithoutReplacingOutput)
 {
     auto skeleton = SkinMesh();
@@ -200,6 +209,7 @@ TEST_F(ClothAssetTest, InvalidSkinWeightsNamesAndSeamRejectWithoutReplacingOutpu
     EXPECT_EQ(cloth.particles.size(), 4u);
 }
 
+/// @brief Invalid skin pose does not partially replace positions.
 TEST_F(ClothAssetTest, InvalidSkinPoseDoesNotPartiallyReplacePositions)
 {
     const auto skeleton = SkinMesh();
@@ -215,6 +225,7 @@ TEST_F(ClothAssetTest, InvalidSkinPoseDoesNotPartiallyReplacePositions)
     EXPECT_FALSE(asset::ValidateClothAsset(cloth));
 }
 
+/// @brief Version one static cloth remains readable.
 TEST_F(ClothAssetTest, VersionOneStaticClothRemainsReadable)
 {
     auto cloth = Sewn();

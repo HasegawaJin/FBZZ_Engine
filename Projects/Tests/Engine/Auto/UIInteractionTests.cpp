@@ -63,6 +63,7 @@ protected:
     bool m_pointerActive = false, m_pressed = false;
 };
 
+/// @brief Headless click survives repeated views and is read on the next update.
 TEST_F(UIInteractionTest, HeadlessClickSurvivesRepeatedViewsAndIsReadOnTheNextUpdate)
 {
     Step(true);
@@ -77,6 +78,7 @@ TEST_F(UIInteractionTest, HeadlessClickSurvivesRepeatedViewsAndIsReadOnTheNextUp
     EXPECT_FALSE(m_button->onClick);
 }
 
+/// @brief Text metrics resolve without page textures and define the interactive rect.
 TEST_F(UIInteractionTest, TextMetricsResolveWithoutPageTexturesAndDefineTheInteractiveRect)
 {
     testkit::TempDir temp("ui-cpu-font");
@@ -97,6 +99,7 @@ TEST_F(UIInteractionTest, TextMetricsResolveWithoutPageTexturesAndDefineTheInter
     for (const auto& [key, font] : m_context.fontMetricsCache) EXPECT_FALSE(font.GetTexture().IsValid());
 }
 
+/// @brief Failed GPU initialization still processes input and scene view does not erase notification.
 TEST_F(UIInteractionTest, FailedGpuInitializationStillProcessesInputAndSceneViewDoesNotEraseNotification)
 {
     testkit::ResourceTrackingRenderer device;
@@ -119,6 +122,7 @@ TEST_F(UIInteractionTest, FailedGpuInitializationStillProcessesInputAndSceneView
     scene::UISystemReleaseGpuResources(context);
 }
 
+/// @brief Losing depth after input cancels that canvas even within the same frame.
 TEST_F(UIInteractionTest, LosingDepthAfterInputCancelsThatCanvasEvenWithinTheSameFrame)
 {
     auto* canvasObject = m_buttonObject->GetParent();
@@ -137,6 +141,7 @@ TEST_F(UIInteractionTest, LosingDepthAfterInputCancelsThatCanvasEvenWithinTheSam
     EXPECT_FALSE(m_button->onClick);
 }
 
+/// @brief Headless navigation focus uses the resolved button rectangle.
 TEST_F(UIInteractionTest, HeadlessNavigationFocusUsesTheResolvedButtonRectangle)
 {
     auto* canvasObject = m_buttonObject->GetParent();
@@ -155,6 +160,7 @@ TEST_F(UIInteractionTest, HeadlessNavigationFocusUsesTheResolvedButtonRectangle)
     EXPECT_FALSE(scene::UIPointer::IsActive());
 }
 
+/// @brief Checks reusing context for another scene in the same frame processes the new scene.
 TEST_F(UIInteractionTest, ReusingContextForAnotherSceneInTheSameFrameProcessesTheNewScene)
 {
     Step(true);

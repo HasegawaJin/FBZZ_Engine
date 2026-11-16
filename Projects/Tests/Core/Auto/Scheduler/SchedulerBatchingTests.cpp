@@ -230,6 +230,7 @@ protected:
 
 /// @name 競合からの直列化
 
+/// @brief Serialises systems that write the same component.
 TEST_F(SchedulerBatchingTest, SerialisesSystemsThatWriteTheSameComponent)
 {
     scheduler.AddSystem<WriteA>();
@@ -243,6 +244,7 @@ TEST_F(SchedulerBatchingTest, SerialisesSystemsThatWriteTheSameComponent)
     EXPECT_EQ(Trail(), (std::vector<std::string>{ "WriteA", "WriteB" }));
 }
 
+/// @brief Serialises an unrestricted system against every other.
 TEST_F(SchedulerBatchingTest, SerialisesAnUnrestrictedSystemAgainstEveryOther)
 {
     scheduler.AddSystem<TouchesEverything>();
@@ -255,6 +257,7 @@ TEST_F(SchedulerBatchingTest, SerialisesAnUnrestrictedSystemAgainstEveryOther)
     EXPECT_EQ(Trail(), (std::vector<std::string>{ "TouchesEverything", "ReadPosition" }));
 }
 
+/// @brief Undeclared access is serialised against explicit component access.
 TEST_F(SchedulerBatchingTest, UndeclaredAccessIsSerialisedAgainstExplicitComponentAccess)
 {
     SetLogLevel(core::LogLevel::INFO);
@@ -272,6 +275,7 @@ TEST_F(SchedulerBatchingTest, UndeclaredAccessIsSerialisedAgainstExplicitCompone
     EXPECT_EQ(Trail(), (std::vector<std::string>{"Leader", "ReadPosition"}));
 }
 
+/// @brief Runs systems with disjoint access together.
 TEST_F(SchedulerBatchingTest, RunsSystemsWithDisjointAccessTogether)
 {
     scheduler.AddSystem<ReadPosition>();
@@ -288,6 +292,7 @@ TEST_F(SchedulerBatchingTest, RunsSystemsWithDisjointAccessTogether)
 
 /// @name 順序宣言
 
+/// @brief Honours an after hint even against registration order.
 TEST_F(SchedulerBatchingTest, HonoursAnAfterHintEvenAgainstRegistrationOrder)
 {
     scheduler.AddSystem<FollowerAfterLeader>();
@@ -300,6 +305,7 @@ TEST_F(SchedulerBatchingTest, HonoursAnAfterHintEvenAgainstRegistrationOrder)
     EXPECT_EQ(Trail(), (std::vector<std::string>{ "Leader", "FollowerAfterLeader" }));
 }
 
+/// @brief Honours a before hint even against registration order.
 TEST_F(SchedulerBatchingTest, HonoursABeforeHintEvenAgainstRegistrationOrder)
 {
     scheduler.AddSystem<Closer>();
@@ -311,6 +317,7 @@ TEST_F(SchedulerBatchingTest, HonoursABeforeHintEvenAgainstRegistrationOrder)
     EXPECT_EQ(Trail(), (std::vector<std::string>{ "OpenerBeforeCloser", "Closer" }));
 }
 
+/// @brief Respects transitive ordering when conflicting endpoints were registered backwards.
 TEST_F(SchedulerBatchingTest, RespectsTransitiveOrderingWhenConflictingEndpointsWereRegisteredBackwards)
 {
     scheduler.AddSystem<ChainedFirst>();
@@ -321,6 +328,7 @@ TEST_F(SchedulerBatchingTest, RespectsTransitiveOrderingWhenConflictingEndpoints
     EXPECT_EQ(Trail(), (std::vector<std::string>{"Last", "Middle", "First"}));
 }
 
+/// @brief Rejects cycles before initializing any system.
 TEST_F(SchedulerBatchingTest, RejectsCyclesBeforeInitializingAnySystem)
 {
     scheduler.AddSystem<CyclicFirst>();
@@ -332,6 +340,7 @@ TEST_F(SchedulerBatchingTest, RejectsCyclesBeforeInitializingAnySystem)
 
 /// @name 固定ステップ
 
+/// @brief Runs a fixed step phase once per elapsed interval.
 TEST_F(SchedulerBatchingTest, RunsAFixedStepPhaseOncePerElapsedInterval)
 {
     scheduler.ConfigurePhase(Phase::Physics, PhaseConfig{ true, 60, 8.0f });
@@ -344,6 +353,7 @@ TEST_F(SchedulerBatchingTest, RunsAFixedStepPhaseOncePerElapsedInterval)
     EXPECT_EQ(CountOf("FixedStepCounter"), 3u);
 }
 
+/// @brief Clamps the fixed step catch up after a long stall.
 TEST_F(SchedulerBatchingTest, ClampsTheFixedStepCatchUpAfterALongStall)
 {
     scheduler.ConfigurePhase(Phase::Physics, PhaseConfig{ true, 60, 3.5f });
@@ -357,6 +367,7 @@ TEST_F(SchedulerBatchingTest, ClampsTheFixedStepCatchUpAfterALongStall)
     EXPECT_EQ(CountOf("FixedStepCounter"), 3u);
 }
 
+/// @brief Runs exactly one fixed step while single stepping.
 TEST_F(SchedulerBatchingTest, RunsExactlyOneFixedStepWhileSingleStepping)
 {
     scheduler.ConfigurePhase(Phase::Physics, PhaseConfig{ true, 60, 8.0f });
@@ -371,6 +382,7 @@ TEST_F(SchedulerBatchingTest, RunsExactlyOneFixedStepWhileSingleStepping)
     EXPECT_EQ(CountOf("FixedStepCounter"), 1u);
 }
 
+/// @brief Reset accumulator drops the leftover fraction.
 TEST_F(SchedulerBatchingTest, ResetAccumulatorDropsTheLeftoverFraction)
 {
     scheduler.ConfigurePhase(Phase::Physics, PhaseConfig{ true, 60, 8.0f });
@@ -390,6 +402,7 @@ TEST_F(SchedulerBatchingTest, ResetAccumulatorDropsTheLeftoverFraction)
 
 /// @name LateUpdate
 
+/// @brief Update skips the late update phase.
 TEST_F(SchedulerBatchingTest, UpdateSkipsTheLateUpdatePhase)
 {
     scheduler.AddSystem<Leader>();
@@ -402,6 +415,7 @@ TEST_F(SchedulerBatchingTest, UpdateSkipsTheLateUpdatePhase)
     EXPECT_EQ(CountOf("LateOnly"), 0u);
 }
 
+/// @brief Late update runs only the late update phase.
 TEST_F(SchedulerBatchingTest, LateUpdateRunsOnlyTheLateUpdatePhase)
 {
     scheduler.AddSystem<Leader>();
@@ -415,6 +429,7 @@ TEST_F(SchedulerBatchingTest, LateUpdateRunsOnlyTheLateUpdatePhase)
     EXPECT_EQ(CountOf("Leader"), 0u);
 }
 
+/// @brief Late update reports how far the fixed step has progressed.
 TEST_F(SchedulerBatchingTest, LateUpdateReportsHowFarTheFixedStepHasProgressed)
 {
     scheduler.ConfigurePhase(Phase::Physics, PhaseConfig{ true, 60, 8.0f });
@@ -436,6 +451,7 @@ TEST_F(SchedulerBatchingTest, LateUpdateReportsHowFarTheFixedStepHasProgressed)
 
 /// @name デバッグ出力
 
+/// @brief Dump graph names every scheduled system.
 TEST_F(SchedulerBatchingTest, DumpGraphNamesEveryScheduledSystem)
 {
     /// @note EngineFixture は既定でログを ERROR まで絞る。DumpGraph は INFO で出るので開ける。

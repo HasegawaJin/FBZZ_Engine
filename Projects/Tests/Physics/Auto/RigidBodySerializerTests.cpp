@@ -39,6 +39,7 @@ class RigidBodySerializerTest : public testkit::Fixture {};
 
 /// @name 往復
 
+/// @brief Restores the state it saved.
 TEST_F(RigidBodySerializerTest, RestoresTheStateItSaved)
 {
     const physics::RigidBody original = MakeDistinctBody();
@@ -54,6 +55,7 @@ TEST_F(RigidBodySerializerTest, RestoresTheStateItSaved)
     EXPECT_QUAT_NEAR(restored.GetRotation(), original.GetRotation(), testkit::kTolerance);
 }
 
+/// @brief Restores the settings it saved.
 TEST_F(RigidBodySerializerTest, RestoresTheSettingsItSaved)
 {
     const physics::RigidBody original = MakeDistinctBody();
@@ -69,6 +71,7 @@ TEST_F(RigidBodySerializerTest, RestoresTheSettingsItSaved)
                 testkit::kTolerance);
 }
 
+/// @brief Restores the static flag.
 TEST_F(RigidBodySerializerTest, RestoresTheStaticFlag)
 {
     physics::RigidBody original;
@@ -83,6 +86,7 @@ TEST_F(RigidBodySerializerTest, RestoresTheStaticFlag)
     EXPECT_NEAR(restored.GetInvMass(), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Checks saving twice produces the same text.
 TEST_F(RigidBodySerializerTest, SavingTwiceProducesTheSameText)
 {
     /// @note 出力が安定していないと、何も触っていないのに .scene の差分が出る。
@@ -92,6 +96,7 @@ TEST_F(RigidBodySerializerTest, SavingTwiceProducesTheSameText)
               physics::RigidBodySerializer::Serialize(original));
 }
 
+/// @brief A second round trip changes nothing.
 TEST_F(RigidBodySerializerTest, ASecondRoundTripChangesNothing)
 {
     const std::string first = physics::RigidBodySerializer::Serialize(MakeDistinctBody());
@@ -102,6 +107,7 @@ TEST_F(RigidBodySerializerTest, ASecondRoundTripChangesNothing)
     EXPECT_EQ(physics::RigidBodySerializer::Serialize(restored), first);
 }
 
+/// @brief Inverse mass follows the restored mass.
 TEST_F(RigidBodySerializerTest, InverseMassFollowsTheRestoredMass)
 {
     physics::RigidBody original;
@@ -117,6 +123,7 @@ TEST_F(RigidBodySerializerTest, InverseMassFollowsTheRestoredMass)
 
 /// @name 欠けた入力・壊れた入力
 
+/// @brief Fills missing keys with defaults.
 TEST_F(RigidBodySerializerTest, FillsMissingKeysWithDefaults)
 {
     /// @note 古いシーンには新しいキーが無い。読めなくなるのではなく既定値で埋める。
@@ -130,6 +137,7 @@ TEST_F(RigidBodySerializerTest, FillsMissingKeysWithDefaults)
     EXPECT_FALSE(body.IsStatic());
 }
 
+/// @brief Accepts an empty document.
 TEST_F(RigidBodySerializerTest, AcceptsAnEmptyDocument)
 {
     physics::RigidBody body;
@@ -139,6 +147,7 @@ TEST_F(RigidBodySerializerTest, AcceptsAnEmptyDocument)
     EXPECT_NEAR(body.GetMass(), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Rejects text that is not TOML.
 TEST_F(RigidBodySerializerTest, RejectsTextThatIsNotToml)
 {
     /// @note 壊れたファイルは «読めなかった» と答える。既定値で上書きして
@@ -152,6 +161,7 @@ TEST_F(RigidBodySerializerTest, RejectsTextThatIsNotToml)
     EXPECT_EQ(physics::RigidBodySerializer::Serialize(body), original);
 }
 
+/// @brief Keeps the rotation normalised.
 TEST_F(RigidBodySerializerTest, KeepsTheRotationNormalised)
 {
     /// @note 保存された成分は丸められている。読んだまま使うと回転行列がスケールを持つ。

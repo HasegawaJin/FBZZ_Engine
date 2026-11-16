@@ -106,6 +106,7 @@ protected:
     }
 };
 
+/// @brief Ragdoll shape determines sole height instead of manual ankle offset.
 TEST_F(FootIKTest, RagdollShapeDeterminesSoleHeightInsteadOfManualAnkleOffset)
 {
     auto& ragdoll=m_actor->AddComponent<scene::RagdollComponent>();
@@ -168,6 +169,7 @@ TEST_F(FootIKTest, RagdollShapeDeterminesSoleHeightInsteadOfManualAnkleOffset)
     EXPECT_FALSE(Chain().runtimePhysicsFootShape);
     EXPECT_NEAR(m_nodes[3]->transform.worldPosition.y,0.2f,1.0e-5f);
 }
+/// @brief Swing release fades physical foot offset without snapping to FK.
 TEST_F(FootIKTest, SwingReleaseFadesPhysicalFootOffsetWithoutSnappingToFk)
 {
     auto& ragdoll = m_actor->AddComponent<scene::RagdollComponent>();
@@ -258,6 +260,7 @@ TEST_F(FootIKTest, SwingReleaseFadesPhysicalFootOffsetWithoutSnappingToFk)
     }
 }
 
+/// @brief Ground loss fades sole rotation without snapping to FK.
 TEST_F(FootIKTest, GroundLossFadesSoleRotationWithoutSnappingToFk)
 {
     const float slopeAngle = 0.2f;
@@ -297,6 +300,7 @@ TEST_F(FootIKTest, GroundLossFadesSoleRotationWithoutSnappingToFk)
         EXPECT_VEC3_NEAR(m_nodes[foot]->transform.worldRotation * math::Vector3::UP, math::Vector3::UP, 1.0e-5f);
 }
 
+/// @brief Auto pole crosses preferred hemisphere without knee jump.
 TEST_F(FootIKTest, AutoPoleCrossesPreferredHemisphereWithoutKneeJump)
 {
     m_fk[1] = {0, 1, 0};
@@ -325,6 +329,7 @@ TEST_F(FootIKTest, AutoPoleCrossesPreferredHemisphereWithoutKneeJump)
     EXPECT_VEC3_NEAR(m_nodes[2]->transform.worldPosition, m_fk[2], 1.0e-5f);
 }
 
+/// @brief Uneven ground does not misclassify the lower ground foot as swinging.
 TEST_F(FootIKTest, UnevenGroundDoesNotMisclassifyTheLowerGroundFootAsSwinging)
 {
     const float angle=0.5235987756f;
@@ -341,6 +346,7 @@ TEST_F(FootIKTest, UnevenGroundDoesNotMisclassifyTheLowerGroundFootAsSwinging)
     EXPECT_NEAR(m_nodes[7]->transform.worldPosition.y,0.1f+0.057735f,0.0001f);
 }
 
+/// @brief Both feet above ground keep the airborne pose even when rays hit.
 TEST_F(FootIKTest, BothFeetAboveGroundKeepTheAirbornePoseEvenWhenRaysHit)
 {
     Chain().smoothTime = 0.1f;
@@ -359,6 +365,7 @@ TEST_F(FootIKTest, BothFeetAboveGroundKeepTheAirbornePoseEvenWhenRaysHit)
     }
 }
 
+/// @brief Airborne feet gain weight gradually as the soles approach ground.
 TEST_F(FootIKTest, AirborneFeetGainWeightGraduallyAsTheSolesApproachGround)
 {
     Chain().adjustHip = false;
@@ -380,6 +387,7 @@ TEST_F(FootIKTest, AirborneFeetGainWeightGraduallyAsTheSolesApproachGround)
     EXPECT_NEAR(m_nodes[3]->transform.worldPosition.y, m_fk[3].y - 0.01f, 1.0e-5f);
 }
 
+/// @brief Raised swing foot releases while the other foot remains planted.
 TEST_F(FootIKTest, RaisedSwingFootReleasesWhileTheOtherFootRemainsPlanted)
 {
     Step();
@@ -392,6 +400,7 @@ TEST_F(FootIKTest, RaisedSwingFootReleasesWhileTheOtherFootRemainsPlanted)
     EXPECT_VEC3_NEAR(m_nodes[3]->transform.worldPosition, m_fk[3], 1.0e-5f);
 }
 
+/// @brief Flat ground preserves FK hip and leg lengths without artificial bend reserve.
 TEST_F(FootIKTest, FlatGroundPreservesFkHipAndLegLengthsWithoutArtificialBendReserve)
 {
     Chain().maxExtension=0.5f;
@@ -402,6 +411,7 @@ TEST_F(FootIKTest, FlatGroundPreservesFkHipAndLegLengthsWithoutArtificialBendRes
         (m_fk[2]-m_fk[1]).Length(),1.0e-5f);
     EXPECT_NEAR(Solver().runtimeHipOffset,0,1.0e-5f);
 }
+/// @brief Downward terrain correction cannot exceed independent hip limit.
 TEST_F(FootIKTest, DownwardTerrainCorrectionCannotExceedIndependentHipLimit)
 {
     Ground(-0.3f, true); Chain().maxHipLowering=0.06f;
@@ -412,6 +422,7 @@ TEST_F(FootIKTest, DownwardTerrainCorrectionCannotExceedIndependentHipLimit)
     Chain().hipWeight=0; Step();
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1,1.0e-5f);
 }
+/// @brief Raising is opt in and respects its own limit.
 TEST_F(FootIKTest, RaisingIsOptInAndRespectsItsOwnLimit)
 {
     Ground(0.2f); Step();
@@ -419,6 +430,7 @@ TEST_F(FootIKTest, RaisingIsOptInAndRespectsItsOwnLimit)
     Chain().maxHipRaising=0.03f; Step();
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1.03f,1.0e-5f);
 }
+/// @brief Explicit bend reserve and weight remain inside the hip budget.
 TEST_F(FootIKTest, ExplicitBendReserveAndWeightRemainInsideTheHipBudget)
 {
     Chain().hipBendReserve=0.08f; Chain().maxHipLowering=0.03f; Chain().weight=0.5f;
@@ -429,6 +441,7 @@ TEST_F(FootIKTest, ExplicitBendReserveAndWeightRemainInsideTheHipBudget)
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1,1.0e-5f);
     EXPECT_NEAR(Chain().runtimeAppliedHip,0,1.0e-5f);
 }
+/// @brief Tightening limit and disabling hip discard out-of-range history immediately.
 TEST_F(FootIKTest, TighteningLimitAndDisablingHipDiscardOutOfRangeHistoryImmediately)
 {
     Ground(-0.3f, true); Chain().smoothTime=0.1f;
@@ -442,6 +455,7 @@ TEST_F(FootIKTest, TighteningLimitAndDisablingHipDiscardOutOfRangeHistoryImmedia
     Solver().enabled=true; Ground(0); Step();
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1,1.0e-5f);
 }
+/// @brief Missing hip and missing ground never apply phantom hip displacement.
 TEST_F(FootIKTest, MissingHipAndMissingGroundNeverApplyPhantomHipDisplacement)
 {
     Chain().hipBoneName="Missing"; Ground(-0.3f, true); Step();
@@ -452,6 +466,7 @@ TEST_F(FootIKTest, MissingHipAndMissingGroundNeverApplyPhantomHipDisplacement)
     EXPECT_FALSE(Solver().runtimeRightFootGrounded);
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1,1.0e-5f);
 }
+/// @brief Hip tuning survives scene round trip without persisting runtime state.
 TEST_F(FootIKTest, HipTuningSurvivesSceneRoundTripWithoutPersistingRuntimeState)
 {
     Chain().hipWeight=0.4f; Chain().maxHipLowering=0.03f;
@@ -470,12 +485,14 @@ TEST_F(FootIKTest, HipTuningSurvivesSceneRoundTripWithoutPersistingRuntimeState)
     EXPECT_NEAR(chain.hipBendReserve,0.01f,1.0e-6f);
     EXPECT_NEAR(chain.runtimeAppliedHip,0,1.0e-6f);
 }
+/// @brief A foot IK weight of 0.5 applies half of the full foot correction.
 TEST_F(FootIKTest, HalfWeightProducesHalfFootCorrectionRatherThanQuarterCorrection)
 {
     Chain().adjustHip=false; Chain().weight=0.5f; Ground(0.2f);
     Step();
     EXPECT_NEAR(m_nodes[3]->transform.worldPosition.y,0.2f,1.0e-5f);
 }
+/// @brief Invalid saved tuning remains finite and bounded at evaluation.
 TEST_F(FootIKTest, InvalidSavedTuningRemainsFiniteAndBoundedAtEvaluation)
 {
     Chain().maxHipLowering=-1; Chain().hipWeight=std::numeric_limits<float>::quiet_NaN();
@@ -483,6 +500,7 @@ TEST_F(FootIKTest, InvalidSavedTuningRemainsFiniteAndBoundedAtEvaluation)
     EXPECT_NEAR(m_nodes[0]->transform.worldPosition.y,1,1.0e-5f);
     EXPECT_TRUE(std::isfinite(Solver().runtimeHipOffset));
 }
+/// @brief Hip correction moves toe descendants exactly once.
 TEST_F(FootIKTest, HipCorrectionMovesToeDescendantsExactlyOnce)
 {
     Chain().footPlantDistance = 0.18f;
@@ -499,6 +517,7 @@ TEST_F(FootIKTest, HipCorrectionMovesToeDescendantsExactlyOnce)
         EXPECT_VEC3_NEAR(m_nodes[4]->transform.worldPosition,toePosition,1.0e-5f);
     }
 }
+/// @brief Foot place then spine and aim do not apply hip correction again.
 TEST_F(FootIKTest, FootPlaceThenSpineAndAimDoNotApplyHipCorrectionAgain)
 {
     Chain().footPlantDistance = 0.18f;
@@ -517,6 +536,7 @@ TEST_F(FootIKTest, FootPlaceThenSpineAndAimDoNotApplyHipCorrectionAgain)
     for (const int node : {1,2,3,4})
         EXPECT_VEC3_NEAR(m_nodes[node]->transform.worldPosition,m_fk[node]+math::Vector3(0,-0.05f,0),1.0e-5f);
 }
+/// @brief Foot weights preserve both leg lengths and rotation directions.
 TEST_F(FootIKTest, FootWeightsPreserveBothLegLengthsAndRotationDirections)
 {
     Chain().adjustHip=false; Ground(0.2f);
@@ -527,6 +547,7 @@ TEST_F(FootIKTest, FootWeightsPreserveBothLegLengthsAndRotationDirections)
         ExpectLegLengthsAndDirections(5,6,7);
     }
 }
+/// @brief Reduced foot correction limit immediately bounds smoothed output.
 TEST_F(FootIKTest, ReducedFootCorrectionLimitImmediatelyBoundsSmoothedOutput)
 {
     Chain().adjustHip=false; Chain().smoothTime=0.1f; Ground(0.2f);
@@ -537,6 +558,7 @@ TEST_F(FootIKTest, ReducedFootCorrectionLimitImmediatelyBoundsSmoothedOutput)
     Chain().maxCorrection=0; Step();
     EXPECT_VEC3_NEAR(m_nodes[3]->transform.worldPosition,m_fk[3],1.0e-5f);
 }
+/// @brief Two bone and hand weights preserve length at the weighted target for either pole.
 TEST_F(FootIKTest, TwoBoneAndHandWeightsPreserveLengthAtTheWeightedTargetForEitherPole)
 {
     auto& target=Target("LimbTarget",{0.4f,0.6f,0.15f});
@@ -564,6 +586,7 @@ TEST_F(FootIKTest, TwoBoneAndHandWeightsPreserveLengthAtTheWeightedTargetForEith
         }
     }
 }
+/// @brief Unreachable inner target and full body rotation limit keep fixed lengths.
 TEST_F(FootIKTest, UnreachableInnerTargetAndFullBodyRotationLimitKeepFixedLengths)
 {
     m_fk[1]={0,0,0}; m_fk[2]={1,0,0}; m_fk[3]={1.5f,0,0}; m_fk[4]={1.5f,0,0.1f};
@@ -590,6 +613,7 @@ TEST_F(FootIKTest, UnreachableInnerTargetAndFullBodyRotationLimitKeepFixedLength
     Solver().chains[1].fullBodyIterations=16; Step();
     ExpectLegLengthsAndDirections(1,2,3);
 }
+/// @brief Opposite pole blends continuously through half weight with fixed tip and lengths.
 TEST_F(FootIKTest, OppositePoleBlendsContinuouslyThroughHalfWeightWithFixedTipAndLengths)
 {
     const float kneeHeight=std::sqrt(0.75f);
@@ -618,6 +642,7 @@ TEST_F(FootIKTest, OppositePoleBlendsContinuouslyThroughHalfWeightWithFixedTipAn
     Chain().weight=0; Step();
     EXPECT_VEC3_NEAR(m_nodes[2]->transform.worldPosition,m_fk[2],1.0e-5f);
 }
+/// @brief Checks full body look at advances the whole frame even without position effectors.
 TEST_F(FootIKTest, FullBodyLookAtAdvancesTheWholeFrameEvenWithoutPositionEffectors)
 {
     auto& target=Target("LookTarget",m_fk[0]+math::Vector3{1,0,1});
@@ -633,6 +658,7 @@ TEST_F(FootIKTest, FullBodyLookAtAdvancesTheWholeFrameEvenWithoutPositionEffecto
     EXPECT_VEC3_NEAR(m_nodes[0]->transform.worldRotation*math::Vector3::FORWARD,onePassDirection,1.0e-5f);
     EXPECT_EQ(Solver().runtimeFullBodyIterations,1);
 }
+/// @brief Full body look at weight and angle limit remain independent of iteration count.
 TEST_F(FootIKTest, FullBodyLookAtWeightAndAngleLimitRemainIndependentOfIterationCount)
 {
     auto& target=Target("WeightedLookTarget",m_fk[4]+math::Vector3::RIGHT);

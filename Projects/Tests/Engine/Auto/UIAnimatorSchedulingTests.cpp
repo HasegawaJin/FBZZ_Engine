@@ -28,6 +28,7 @@ private:
 } /// @note namespace
 class UIAnimatorSchedulingTest : public testkit::EngineFixture {};
 
+/// @brief Serialises the transform reader without depending on the world transform barrier.
 TEST_F(UIAnimatorSchedulingTest, SerialisesTheTransformReaderWithoutDependingOnTheWorldTransformBarrier)
 {
     SetLogLevel(core::LogLevel::INFO);

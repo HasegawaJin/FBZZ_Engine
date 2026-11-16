@@ -91,6 +91,7 @@ protected:
     bool m_previousPlay = false;
 };
 
+/// @brief Bulk creation validates every pose before mutation.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkCreationValidatesEveryPoseBeforeMutation)
 {
     auto& original = m_scene.CreateGameObject("Original");
@@ -104,6 +105,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkCreationValidatesEveryPoseBeforeMut
     EXPECT_EQ(output.front(), &original);
 }
 
+/// @brief Bulk creation and destruction keep five thousand unique object lifetimes.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkCreationAndDestructionKeepFiveThousandUniqueObjectLifetimes)
 {
     constexpr size_t objectCount = 5001;
@@ -136,6 +138,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkCreationAndDestructionKeepFiveThous
     for (scene::EntityID identity : identities) EXPECT_NE(replacement->GetID(), identity);
 }
 
+/// @brief Bulk prefab creation grows past the former capacity with all descendants.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkPrefabCreationGrowsPastTheFormerCapacityWithAllDescendants)
 {
     const std::string prefab = Prefab();
@@ -156,6 +159,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkPrefabCreationGrowsPastTheFormerCap
     }
 }
 
+/// @brief Bulk failure rolls back previously created roots.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkFailureRollsBackPreviouslyCreatedRoots)
 {
     const std::string prefab = Prefab();
@@ -174,6 +178,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkFailureRollsBackPreviouslyCreatedRo
     EXPECT_EQ(output.front(), &original);
 }
 
+/// @brief Bulk prefab names preserve suffix holes and independent source identities.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkPrefabNamesPreserveSuffixHolesAndIndependentSourceIdentities)
 {
     const std::string prefab = Prefab();
@@ -206,6 +211,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkPrefabNamesPreserveSuffixHolesAndIn
     }
 }
 
+/// @brief Checks bulk injected delegate observes each invocation and names created between instances.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedDelegateObservesEachInvocationAndNamesCreatedBetweenInstances)
 {
     const std::string prefab = Prefab();
@@ -227,6 +233,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedDelegateObservesEachInvocat
     EXPECT_EQ(m_scene.GameObjectCount(), 6u);
 }
 
+/// @brief Bulk injected hierarchy cannot annex an earlier spawn or existing objects.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedHierarchyCannotAnnexAnEarlierSpawnOrExistingObjects)
 {
     const std::string prefab = Prefab();
@@ -268,6 +275,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedHierarchyCannotAnnexAnEarli
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{11, 21, 31}), testkit::kTolerance);
 }
 
+/// @brief Bulk injected delegate uses an asset changed during the batch.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedDelegateUsesAnAssetChangedDuringTheBatch)
 {
     const std::string prefab = Prefab();
@@ -308,6 +316,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedDelegateUsesAnAssetChangedD
     EXPECT_NE(output[0]->prefabSourceSnapshot, output[1]->prefabSourceSnapshot);
 }
 
+/// @brief Bulk injected hierarchy cannot annex an earlier auxiliary object.
 TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedHierarchyCannotAnnexAnEarlierAuxiliaryObject)
 {
     const std::string prefab = Prefab();
@@ -333,6 +342,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, BulkInjectedHierarchyCannotAnnexAnEarli
     EXPECT_EQ(m_scene.Find("Auxiliary"), nullptr);
 }
 
+/// @brief Creates owned root with normalized pose and rejects invalid input before mutation.
 TEST_F(ManagedObjectLifecycleKernelTest, CreatesOwnedRootWithNormalizedPoseAndRejectsInvalidInputBeforeMutation)
 {
     auto& unchanged = m_scene.CreateGameObject("Unchanged");
@@ -360,6 +370,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, CreatesOwnedRootWithNormalizedPoseAndRe
     EXPECT_EQ(m_scene.GameObjectCount(), count);
 }
 
+/// @brief Growth keeps existing objects and pending destruction alive until cleanup.
 TEST_F(ManagedObjectLifecycleKernelTest, GrowthKeepsExistingObjectsAndPendingDestructionAliveUntilCleanup)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -379,6 +390,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, GrowthKeepsExistingObjectsAndPendingDes
     EXPECT_EQ(m_scene.GetGameObject(ownerId), nullptr);
 }
 
+/// @brief Prefab malformed failures keep the scene and valid instantiation grows.
 TEST_F(ManagedObjectLifecycleKernelTest, PrefabMalformedFailuresKeepTheSceneAndValidInstantiationGrows)
 {
     auto& caller = m_scene.CreateGameObject("Caller");
@@ -401,6 +413,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, PrefabMalformedFailuresKeepTheSceneAndV
     EXPECT_EQ(m_scene.Find("PrefabRoot"), output);
 }
 
+/// @brief Failed injected prefab append rolls back only new objects.
 TEST_F(ManagedObjectLifecycleKernelTest, FailedInjectedPrefabAppendRollsBackOnlyNewObjects)
 {
     auto& caller = m_scene.CreateGameObject("Caller");
@@ -418,6 +431,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, FailedInjectedPrefabAppendRollsBackOnly
     EXPECT_EQ(m_scene.Find("PartialAppend"), nullptr);
 }
 
+/// @brief Prefab world overflow rolls back the new hierarchy without changing existing transforms.
 TEST_F(ManagedObjectLifecycleKernelTest, PrefabWorldOverflowRollsBackTheNewHierarchyWithoutChangingExistingTransforms)
 {
     auto& caller = m_scene.CreateGameObject("Caller");
@@ -461,6 +475,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, PrefabWorldOverflowRollsBackTheNewHiera
     EXPECT_EQ(m_scene.Find("OverflowChild"), nullptr);
 }
 
+/// @brief Rejected injected hierarchy restores existing parents sibling and flat order before recursive destroy.
 TEST_F(ManagedObjectLifecycleKernelTest, RejectedInjectedHierarchyRestoresExistingParentsSiblingAndFlatOrderBeforeRecursiveDestroy)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -504,6 +519,7 @@ TEST_F(ManagedObjectLifecycleKernelTest, RejectedInjectedHierarchyRestoresExisti
     EXPECT_EQ(m_scene.Find("InjectedRoot"), nullptr);
 }
 
+/// @brief Delayed destroy and destroy many are atomic until existing cleanup.
 TEST_F(ManagedObjectLifecycleKernelTest, DelayedDestroyAndDestroyManyAreAtomicUntilExistingCleanup)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -630,6 +646,7 @@ protected:
     bool m_previousPlay = false;
 };
 
+/// @brief Actual callbacks create instantiate and destroy without replacing the caller.
 TEST_F(ManagedObjectLifecycleRuntimeTest, ActualCallbacksCreateInstantiateAndDestroyWithoutReplacingTheCaller)
 {
     ASSERT_TRUE(m_caller->ApplySettingsJson(R"({"operation":1,"usePose":true,"rotationW":2})"));
@@ -700,6 +717,7 @@ TEST_F(ManagedObjectLifecycleRuntimeTest, ActualCallbacksCreateInstantiateAndDes
     EXPECT_EQ(scene::ManagedScriptRuntime::Instance().FindAdapter(m_owner->GetComponent<scene::ScriptComponent>()->scripts[0].script.get()), m_caller);
 }
 
+/// @brief Actual managed creation and query return five thousand unique objects.
 TEST_F(ManagedObjectLifecycleRuntimeTest, ActualManagedCreationAndQueryReturnFiveThousandUniqueObjects)
 {
     ASSERT_TRUE(m_caller->ApplySettingsJson(R"({"operation":5,"requestedCapacity":5001,"objectName":"BulkManaged"})"));
@@ -727,6 +745,7 @@ TEST_F(ManagedObjectLifecycleRuntimeTest, ActualManagedCreationAndQueryReturnFiv
     EXPECT_EQ(m_scene.GetGameObject(m_owner->GetID()), m_owner);
 }
 
+/// @brief Bulk managed prefabs keep per instance references and defer awake until the next snapshot.
 TEST_F(ManagedObjectLifecycleRuntimeTest, BulkManagedPrefabsKeepPerInstanceReferencesAndDeferAwakeUntilTheNextSnapshot)
 {
     const std::string reference = ManagedPrefab();
@@ -763,6 +782,7 @@ TEST_F(ManagedObjectLifecycleRuntimeTest, BulkManagedPrefabsKeepPerInstanceRefer
     }
 }
 
+/// @brief Edit callback cannot mutate world through the new lifecycle bridge.
 TEST_F(ManagedObjectLifecycleRuntimeTest, EditCallbackCannotMutateWorldThroughTheNewLifecycleBridge)
 {
     ASSERT_TRUE(m_caller->ApplySettingsJson(R"({"operation":1})"));
@@ -772,6 +792,7 @@ TEST_F(ManagedObjectLifecycleRuntimeTest, EditCallbackCannotMutateWorldThroughTh
     EXPECT_EQ(m_scene.Find("ManagedCreated"), nullptr);
 }
 
+/// @brief Actual destroy many skips restored missing GUID and queues the live target.
 TEST_F(ManagedObjectLifecycleRuntimeTest, ActualDestroyManySkipsRestoredMissingGuidAndQueuesTheLiveTarget)
 {
     auto& target = m_scene.CreateGameObject("DestroyTarget");

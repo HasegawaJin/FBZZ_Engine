@@ -9,6 +9,7 @@
 #include <cmath>
 
 namespace fbzz::tests {
+/// @brief Reuses unchanged geometry and rebuilds only changed inputs.
 TEST_F(StaticMeshRenderReuseTest, ReusesUnchangedGeometryAndRebuildsOnlyChangedInputs)
 {
     auto& first = Object(m_scene);
@@ -34,6 +35,7 @@ TEST_F(StaticMeshRenderReuseTest, ReusesUnchangedGeometryAndRebuildsOnlyChangedI
     EXPECT_VEC3_NEAR(original.items[1].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Scene bounds observe type membership and direct terrain height writes.
 TEST_F(StaticMeshRenderReuseTest, SceneBoundsObserveTypeMembershipAndDirectTerrainHeightWrites)
 {
     const auto bounds = [&] { return scene::shadow_preparation_detail::ComputeSceneBounds(m_scene, Layer::Everything); };
@@ -72,6 +74,7 @@ TEST_F(StaticMeshRenderReuseTest, SceneBoundsObserveTypeMembershipAndDirectTerra
     EXPECT_FLOAT_EQ(replacement.radius, 1);
 }
 
+/// @brief Scene bounds respect current layer activation and renderer enabled state.
 TEST_F(StaticMeshRenderReuseTest, SceneBoundsRespectCurrentLayerActivationAndRendererEnabledState)
 {
     auto& object = Object(m_scene);
@@ -95,6 +98,7 @@ TEST_F(StaticMeshRenderReuseTest, SceneBoundsRespectCurrentLayerActivationAndRen
     EXPECT_TRUE(bounds(uint32_t{1} << 4).valid);
 }
 
+/// @brief Scene bounds keep mixed renderer scene order.
 TEST_F(StaticMeshRenderReuseTest, SceneBoundsKeepMixedRendererSceneOrder)
 {
     m_mesh.boundsCenter = math::Vector3::ZERO; m_mesh.boundsRadius = 1;
@@ -111,6 +115,7 @@ TEST_F(StaticMeshRenderReuseTest, SceneBoundsKeepMixedRendererSceneOrder)
     EXPECT_NEAR(bounds.radius, 4.236068f, testkit::kTolerance);
 }
 
+/// @brief Observes raw pose mesh and presentation writes without notifications.
 TEST_F(StaticMeshRenderReuseTest, ObservesRawPoseMeshAndPresentationWritesWithoutNotifications)
 {
     auto& object = Object(m_scene);
@@ -147,6 +152,7 @@ TEST_F(StaticMeshRenderReuseTest, ObservesRawPoseMeshAndPresentationWritesWithou
     EXPECT_TRUE(original.items[0].reliableOccluder);
 }
 
+/// @brief Rebuilds rotated bounds and separates skinned mesh inputs.
 TEST_F(StaticMeshRenderReuseTest, RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs)
 {
     auto& object = Object(m_scene);
@@ -165,6 +171,7 @@ TEST_F(StaticMeshRenderReuseTest, RebuildsRotatedBoundsAndSeparatesSkinnedMeshIn
     EXPECT_VEC3_NEAR(restored.items[0].boundsCenter, (math::Vector3{-1, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Advances previous world on reuse and resets after missing frames.
 TEST_F(StaticMeshRenderReuseTest, AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames)
 {
     auto& object = Object(m_scene);
@@ -184,6 +191,7 @@ TEST_F(StaticMeshRenderReuseTest, AdvancesPreviousWorldOnReuseAndResetsAfterMiss
     EXPECT_FLOAT_EQ(gap.Objects()[0].previousWorld.m[0][3], 9);
 }
 
+/// @brief Separates component entity and scene lifetimes.
 TEST_F(StaticMeshRenderReuseTest, SeparatesComponentEntityAndSceneLifetimes)
 {
     auto& object = Object(m_scene);
@@ -207,6 +215,7 @@ TEST_F(StaticMeshRenderReuseTest, SeparatesComponentEntityAndSceneLifetimes)
     EXPECT_VEC3_NEAR(retained.items[0].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Observes parent motion reparenting and hierarchy activation.
 TEST_F(StaticMeshRenderReuseTest, ObservesParentMotionReparentingAndHierarchyActivation)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -232,6 +241,7 @@ TEST_F(StaticMeshRenderReuseTest, ObservesParentMotionReparentingAndHierarchyAct
     EXPECT_VEC3_NEAR(moved.items[0].boundsCenter, (math::Vector3{13, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Keeps unchanged geometry when an early renderer leaves and rejoins.
 TEST_F(StaticMeshRenderReuseTest, KeepsUnchangedGeometryWhenAnEarlyRendererLeavesAndRejoins)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -269,6 +279,7 @@ TEST_F(StaticMeshRenderReuseTest, KeepsUnchangedGeometryWhenAnEarlyRendererLeave
     EXPECT_EQ(SampleCount("RenderSceneExtractor::DenseGeometryFallback"), 0u);
 }
 
+/// @brief Revalidates after bounded scene eviction and renderer reordering.
 TEST_F(StaticMeshRenderReuseTest, RevalidatesAfterBoundedSceneEvictionAndRendererReordering)
 {
     const auto firstId = Object(m_scene).GetID();

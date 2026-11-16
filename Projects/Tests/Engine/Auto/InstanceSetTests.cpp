@@ -45,6 +45,7 @@ protected:
     std::array<renderer::InstancePlacement,2> m_placements{{{7,{1,2,3},{0,0.1f,0},{1,2,1},true},{21,{-4,0,5},{},{-1,1,1},true}}};
 };
 
+/// @brief Shared asset round-trips parts and placements without republishing on save.
 TEST_F(InstanceSetTest, SharedAssetRoundTripsPartsAndPlacementsWithoutRepublishingOnSave)
 {
     auto* asset=Asset(); const auto before=asset->Snapshot(); ASSERT_NE(before,nullptr);
@@ -59,6 +60,7 @@ TEST_F(InstanceSetTest, SharedAssetRoundTripsPartsAndPlacementsWithoutRepublishi
     EXPECT_VEC3_NEAR(asset->Snapshot()->placements[0].position,before->placements[0].position,0.00001f);
 }
 
+/// @brief Invalid replacement leaves published asset unchanged.
 TEST_F(InstanceSetTest, InvalidReplacementLeavesPublishedAssetUnchanged)
 {
     const auto snapshot=Asset()->Snapshot(); auto placements=m_placements;
@@ -70,6 +72,7 @@ TEST_F(InstanceSetTest, InvalidReplacementLeavesPublishedAssetUnchanged)
     EXPECT_EQ(Asset()->Snapshot(),snapshot);
 }
 
+/// @brief Play copies and retained render snapshots remain immutable.
 TEST_F(InstanceSetTest, PlayCopiesAndRetainedRenderSnapshotsRemainImmutable)
 {
     auto edit=Component(); auto play=edit; const auto authored=edit.Snapshot();
@@ -85,6 +88,7 @@ TEST_F(InstanceSetTest, PlayCopiesAndRetainedRenderSnapshotsRemainImmutable)
     play.ResetOverrides(); EXPECT_EQ(play.Snapshot(),authored);
 }
 
+/// @brief Checks resolved snapshots observe authored changes without replacing runtime overrides.
 TEST_F(InstanceSetTest, ResolvedSnapshotsObserveAuthoredChangesWithoutReplacingRuntimeOverrides)
 {
     auto edit=Component(); auto play=edit;
@@ -113,6 +117,7 @@ TEST_F(InstanceSetTest, ResolvedSnapshotsObserveAuthoredChangesWithoutReplacingR
     EXPECT_VEC3_NEAR(overridden->placements[0].position,math::Vector3(6,5,4),0.00001f);
 }
 
+/// @brief Resolved snapshots use new references and keep previous snapshots alive.
 TEST_F(InstanceSetTest, ResolvedSnapshotsUseNewReferencesAndKeepPreviousSnapshotsAlive)
 {
     auto component=Component();
@@ -148,6 +153,7 @@ TEST_F(InstanceSetTest, ResolvedSnapshotsUseNewReferencesAndKeepPreviousSnapshot
     EXPECT_VEC3_NEAR(overridden->placements[1].position,math::Vector3(-4,0,5),0.00001f);
 }
 
+/// @brief Multiple edits preserve dirty slots and removed IDs are never reused.
 TEST_F(InstanceSetTest, MultipleEditsPreserveDirtySlotsAndRemovedIdsAreNeverReused)
 {
     auto component=Component(); const auto authored=component.Snapshot();
@@ -163,6 +169,7 @@ TEST_F(InstanceSetTest, MultipleEditsPreserveDirtySlotsAndRemovedIdsAreNeverReus
     ASSERT_TRUE(component.Remove(id)); EXPECT_EQ(component.Add({},{},{1,1,1}),23u);
 }
 
+/// @brief Invalid runtime transforms and missing assets have no observable changes.
 TEST_F(InstanceSetTest, InvalidRuntimeTransformsAndMissingAssetsHaveNoObservableChanges)
 {
     auto component=Component(); const auto before=component.Snapshot();
@@ -171,6 +178,7 @@ TEST_F(InstanceSetTest, InvalidRuntimeTransformsAndMissingAssetsHaveNoObservable
     component.m_instanceSetRef.path=""; EXPECT_EQ(component.Snapshot(),nullptr);
     EXPECT_FALSE(component.Remove(7)); EXPECT_EQ(component.Add({},{},{1,1,1}),0u);
 }
+/// @brief Scene serialization preserves authoring and does not persist runtime overrides.
 TEST_F(InstanceSetTest, SceneSerializationPreservesAuthoringAndDoesNotPersistRuntimeOverrides)
 {
     scene::Scene source; auto& owner=source.CreateGameObject("TreesAndDetails");
@@ -184,6 +192,7 @@ TEST_F(InstanceSetTest, SceneSerializationPreservesAuthoringAndDoesNotPersistRun
     ASSERT_NE(restored,nullptr); EXPECT_FALSE(restored->m_castShadows); EXPECT_FLOAT_EQ(restored->m_maxDistance,85);
     ASSERT_NE(restored->Snapshot(),nullptr); EXPECT_VEC3_NEAR(restored->Snapshot()->placements[0].position,m_placements[0].position,0.00001f);
 }
+/// @brief Canonical path aliases share reloads and restored snapshots.
 /// @note Canonical and lexical aliases must share the same authored asset through reload and undo.
 TEST_F(InstanceSetTest, CanonicalPathAliasesShareReloadsAndRestoredSnapshots)
 {
@@ -212,6 +221,7 @@ TEST_F(InstanceSetTest, CanonicalPathAliasesShareReloadsAndRestoredSnapshots)
     EXPECT_TRUE(asset::DataAssetRegistry::Save(aliases[3]));
 }
 
+/// @brief Fallback paths preserve UTF-8 and distinct asset identity.
 /// @note UTF-8 and spaces retain the general conversion path and distinct persistent identities.
 TEST_F(InstanceSetTest, FallbackPathsPreserveUtf8AndDistinctAssetIdentity)
 {
@@ -239,6 +249,7 @@ TEST_F(InstanceSetTest, FallbackPathsPreserveUtf8AndDistinctAssetIdentity)
     EXPECT_VEC3_NEAR(second->Snapshot()->placements[0].position, m_placements[0].position, 0.00001f);
 }
 
+/// @brief Missing aliases recover through create and cache retirement.
 /// @note A failed alias remains failed until creation publishes a valid asset or the cache is retired.
 TEST_F(InstanceSetTest, MissingAliasesRecoverThroughCreateAndCacheRetirement)
 {
@@ -275,6 +286,7 @@ protected:
     std::string m_reference;
 };
 
+/// @brief Warm GUID sees reload undo and cache retirement.
 TEST_F(InstanceSetGuidTest, WarmGuidSeesReloadUndoAndCacheRetirement)
 {
     auto* first = static_cast<asset::InstanceSetAsset*>(asset::DataAssetRegistry::Resolve(m_reference));
@@ -294,6 +306,7 @@ TEST_F(InstanceSetGuidTest, WarmGuidSeesReloadUndoAndCacheRetirement)
     EXPECT_VEC3_NEAR(current->Snapshot()->placements[0].position, math::Vector3(11, 12, 13), 0.00001f);
 }
 
+/// @brief Warm GUID follows index moves removal and project retirement.
 TEST_F(InstanceSetGuidTest, WarmGuidFollowsIndexMovesRemovalAndProjectRetirement)
 {
     ASSERT_TRUE(asset::DataAssetRegistry::Save(File()));

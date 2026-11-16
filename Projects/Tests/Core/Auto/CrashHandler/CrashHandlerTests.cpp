@@ -62,6 +62,7 @@ protected:
 
 /// @name 書き出し
 
+/// @brief Write report leaves dump reason and log tail.
 TEST_F(CrashHandlerTest, WriteReportLeavesDumpReasonAndLogTail)
 {
     ASSERT_TRUE(temp.IsValid());
@@ -79,6 +80,7 @@ TEST_F(CrashHandlerTest, WriteReportLeavesDumpReasonAndLogTail)
     EXPECT_NE(report.find("marker-before-report 42"), std::string::npos);
 }
 
+/// @brief Write report returns empty when not installed.
 TEST_F(CrashHandlerTest, WriteReportReturnsEmptyWhenNotInstalled)
 {
     const std::filesystem::path dir = core::CrashHandler::WriteReport("not installed");
@@ -87,6 +89,7 @@ TEST_F(CrashHandlerTest, WriteReportReturnsEmptyWhenNotInstalled)
     EXPECT_FALSE(std::filesystem::exists(CrashesDir()));
 }
 
+/// @brief Log tail stops after uninstall.
 TEST_F(CrashHandlerTest, LogTailStopsAfterUninstall)
 {
     ASSERT_TRUE(core::CrashHandler::Install(temp.Path(), "CrashTest"));
@@ -102,6 +105,7 @@ TEST_F(CrashHandlerTest, LogTailStopsAfterUninstall)
 
 /// @name わざと落とす
 
+/// @brief Trigger refuses outside developer mode.
 TEST_F(CrashHandlerTest, TriggerRefusesOutsideDeveloperMode)
 {
     ASSERT_TRUE(core::CrashHandler::Install(temp.Path(), "CrashTest"));
@@ -111,6 +115,7 @@ TEST_F(CrashHandlerTest, TriggerRefusesOutsideDeveloperMode)
     EXPECT_FALSE(triggered);
 }
 
+/// @brief Report trigger writes without crashing in developer mode.
 TEST_F(CrashHandlerTest, ReportTriggerWritesWithoutCrashingInDeveloperMode)
 {
     ASSERT_TRUE(core::CrashHandler::Install(temp.Path(), "CrashTest"));
@@ -122,6 +127,7 @@ TEST_F(CrashHandlerTest, ReportTriggerWritesWithoutCrashingInDeveloperMode)
     EXPECT_EQ(core::CrashHandler::FindUnreported(temp.Path()).size(), 1u);
 }
 
+/// @brief Trigger names round trip through parse.
 TEST_F(CrashHandlerTest, TriggerNamesRoundTripThroughParse)
 {
     const std::vector<std::string>& names = core::CrashHandler::TriggerNames();
@@ -137,6 +143,7 @@ TEST_F(CrashHandlerTest, TriggerNamesRoundTripThroughParse)
 
 /// @name 次回起動の通知
 
+/// @brief Checks find unreported lists newest first and skips reported.
 TEST_F(CrashHandlerTest, FindUnreportedListsNewestFirstAndSkipsReported)
 {
     PlaceReport("2026-09-18_10-00-00_100", "older");
@@ -150,6 +157,7 @@ TEST_F(CrashHandlerTest, FindUnreportedListsNewestFirstAndSkipsReported)
     EXPECT_EQ(records[1].summary, "older");
 }
 
+/// @brief Mark reported hides the record from the next search.
 TEST_F(CrashHandlerTest, MarkReportedHidesTheRecordFromTheNextSearch)
 {
     PlaceReport("2026-09-19_10-00-00_200", "shown once");
@@ -161,6 +169,7 @@ TEST_F(CrashHandlerTest, MarkReportedHidesTheRecordFromTheNextSearch)
     EXPECT_TRUE(core::CrashHandler::FindUnreported(temp.Path()).empty());
 }
 
+/// @brief Non interactive notify leaves records unreported.
 TEST_F(CrashHandlerTest, NonInteractiveNotifyLeavesRecordsUnreported)
 {
     PlaceReport("2026-09-19_10-00-00_200", "seen by batch");
@@ -171,11 +180,13 @@ TEST_F(CrashHandlerTest, NonInteractiveNotifyLeavesRecordsUnreported)
     EXPECT_EQ(core::CrashHandler::FindUnreported(temp.Path()).size(), 1u);
 }
 
+/// @brief Find unreported is empty without crash directory.
 TEST_F(CrashHandlerTest, FindUnreportedIsEmptyWithoutCrashDirectory)
 {
     EXPECT_TRUE(core::CrashHandler::FindUnreported(temp.Path()).empty());
 }
 
+/// @brief Find unreported skips entries that hold no report.
 TEST_F(CrashHandlerTest, FindUnreportedSkipsEntriesThatHoldNoReport)
 {
     PlaceReport("2026-09-19_10-00-00_200", "the only real one");
@@ -189,6 +200,7 @@ TEST_F(CrashHandlerTest, FindUnreportedSkipsEntriesThatHoldNoReport)
     EXPECT_EQ(records.front().summary, "the only real one");
 }
 
+/// @brief Summary is empty when the report carries no reason.
 TEST_F(CrashHandlerTest, SummaryIsEmptyWhenTheReportCarriesNoReason)
 {
     /// @note 書き出しの途中で切れたレポート。`what:` の後ろが空白だけでも CR を «何が起きたか» に混ぜない。
@@ -200,6 +212,7 @@ TEST_F(CrashHandlerTest, SummaryIsEmptyWhenTheReportCarriesNoReason)
     EXPECT_TRUE(records.front().summary.empty()) << "summary=" << records.front().summary;
 }
 
+/// @brief Notify unreported counts nothing without records.
 TEST_F(CrashHandlerTest, NotifyUnreportedCountsNothingWithoutRecords)
 {
     EXPECT_EQ(core::CrashHandler::NotifyUnreported(temp.Path(), "CrashTest", false), 0u);

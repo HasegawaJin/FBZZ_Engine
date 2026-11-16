@@ -38,6 +38,7 @@ protected:
     }
 };
 
+/// @brief Preserves measured zero without inventing frame total.
 TEST_F(AnalysisProfilerGpuTest, PreservesMeasuredZeroWithoutInventingFrameTotal)
 {
     m_snapshot.passes = {Pass(0.0)};
@@ -53,6 +54,7 @@ TEST_F(AnalysisProfilerGpuTest, PreservesMeasuredZeroWithoutInventingFrameTotal)
     EXPECT_DOUBLE_EQ(groups.front().gpuMs, 0.0);
 }
 
+/// @brief Keeps GPU frame total separate from pass sum.
 TEST_F(AnalysisProfilerGpuTest, KeepsGpuFrameTotalSeparateFromPassSum)
 {
     m_snapshot.passes = {Pass(2.0), Pass(3.0)};
@@ -69,6 +71,7 @@ TEST_F(AnalysisProfilerGpuTest, KeepsGpuFrameTotalSeparateFromPassSum)
     EXPECT_TRUE(editor::detail::SummarizeGpuDisplay(m_snapshot, 102).totalAvailable);
 }
 
+/// @brief Rejects stale payload when snapshot is unavailable or unsupported.
 TEST_F(AnalysisProfilerGpuTest, RejectsStalePayloadWhenSnapshotIsUnavailableOrUnsupported)
 {
     m_snapshot.passes = {Pass(8.0)};
@@ -88,6 +91,7 @@ TEST_F(AnalysisProfilerGpuTest, RejectsStalePayloadWhenSnapshotIsUnavailableOrUn
     EXPECT_FALSE(summary.ageAvailable);
 }
 
+/// @brief Adds all same name intervals before history deduplication.
 TEST_F(AnalysisProfilerGpuTest, AddsAllSameNameIntervalsBeforeHistoryDeduplication)
 {
     m_snapshot.passes = {Pass(2.0), Pass(3.0), Pass(0.0)};
@@ -103,6 +107,7 @@ TEST_F(AnalysisProfilerGpuTest, AddsAllSameNameIntervalsBeforeHistoryDeduplicati
     EXPECT_DOUBLE_EQ(repeated.front().gpuMs, 5.0);
 }
 
+/// @brief Marks missing intervals and dropped capture as partial.
 TEST_F(AnalysisProfilerGpuTest, MarksMissingIntervalsAndDroppedCaptureAsPartial)
 {
     m_snapshot.passes = {Pass(2.0), Pass(999.0, false), Pass(3.0)};
@@ -125,6 +130,7 @@ TEST_F(AnalysisProfilerGpuTest, MarksMissingIntervalsAndDroppedCaptureAsPartial)
     EXPECT_TRUE(editor::detail::SummarizeGpuDisplay(m_snapshot, 104).partial);
 }
 
+/// @brief Leaves empty and entirely missing captures unavailable.
 TEST_F(AnalysisProfilerGpuTest, LeavesEmptyAndEntirelyMissingCapturesUnavailable)
 {
     EXPECT_FALSE(editor::detail::SummarizeGpuDisplay(m_snapshot, 104).passSumAvailable);
@@ -135,6 +141,7 @@ TEST_F(AnalysisProfilerGpuTest, LeavesEmptyAndEntirelyMissingCapturesUnavailable
     EXPECT_FALSE(summary.ageAvailable);
 }
 
+/// @brief Retains measured siblings when first interval is unavailable.
 TEST_F(AnalysisProfilerGpuTest, RetainsMeasuredSiblingsWhenFirstIntervalIsUnavailable)
 {
     m_snapshot.passes = {Pass(999.0, false), Pass(2.0), Pass(3.0)};
@@ -146,6 +153,7 @@ TEST_F(AnalysisProfilerGpuTest, RetainsMeasuredSiblingsWhenFirstIntervalIsUnavai
     EXPECT_DOUBLE_EQ(groups.front().gpuMs, 5.0);
 }
 
+/// @brief Keeps every view and generation in group and series identity.
 TEST_F(AnalysisProfilerGpuTest, KeepsEveryViewAndGenerationInGroupAndSeriesIdentity)
 {
     const auto first = Pass(1.0);
@@ -169,6 +177,7 @@ TEST_F(AnalysisProfilerGpuTest, KeepsEveryViewAndGenerationInGroupAndSeriesIdent
     }
 }
 
+/// @brief Uses stable series but distinct row identity for source frames.
 TEST_F(AnalysisProfilerGpuTest, UsesStableSeriesButDistinctRowIdentityForSourceFrames)
 {
     const auto first = Pass(1.0);
@@ -184,6 +193,7 @@ TEST_F(AnalysisProfilerGpuTest, UsesStableSeriesButDistinctRowIdentityForSourceF
     EXPECT_NE(editor::detail::GpuPassRowKey(first), editor::detail::GpuPassRowKey(next));
 }
 
+/// @brief Reports age range and rejects unknown or future age.
 TEST_F(AnalysisProfilerGpuTest, ReportsAgeRangeAndRejectsUnknownOrFutureAge)
 {
     auto older = Pass(2.0);
@@ -200,6 +210,7 @@ TEST_F(AnalysisProfilerGpuTest, ReportsAgeRangeAndRejectsUnknownOrFutureAge)
     EXPECT_FALSE(editor::detail::SummarizeGpuDisplay(m_snapshot, 0).ageAvailable);
 }
 
+/// @brief Rejects invalid durations and mismatched physical sources.
 TEST_F(AnalysisProfilerGpuTest, RejectsInvalidDurationsAndMismatchedPhysicalSources)
 {
     m_snapshot.passes = {Pass(-1.0), Pass((std::numeric_limits<double>::infinity)()),
@@ -217,6 +228,7 @@ TEST_F(AnalysisProfilerGpuTest, RejectsInvalidDurationsAndMismatchedPhysicalSour
     EXPECT_FALSE(editor::detail::SummarizeGpuDisplay(m_snapshot, 104).totalAvailable);
 }
 
+/// @brief Keeps display identity across new sources and changing interval counts.
 TEST_F(AnalysisProfilerGpuTest, KeepsDisplayIdentityAcrossNewSourcesAndChangingIntervalCounts)
 {
     m_snapshot.passes = {Pass(1.0)};
@@ -241,6 +253,7 @@ TEST_F(AnalysisProfilerGpuTest, KeepsDisplayIdentityAcrossNewSourcesAndChangingI
     EXPECT_DOUBLE_EQ(after.front().gpuMs, 6.0);
 }
 
+/// @brief Keeps same named contexts and concurrent source slots distinct.
 TEST_F(AnalysisProfilerGpuTest, KeepsSameNamedContextsAndConcurrentSourceSlotsDistinct)
 {
     auto older = Pass(2.0); older.metadata.applicationFrameSerial = 99;
@@ -258,6 +271,7 @@ TEST_F(AnalysisProfilerGpuTest, KeepsSameNamedContextsAndConcurrentSourceSlotsDi
     EXPECT_NE(rows[0].seriesKey, rows[1].seriesKey);
 }
 
+/// @brief Retains delayed GPU values without refreshing age or inventing zero.
 TEST_F(AnalysisProfilerGpuTest, RetainsDelayedGpuValuesWithoutRefreshingAgeOrInventingZero)
 {
     m_snapshot.passes = {Pass(0.0)};
@@ -278,6 +292,7 @@ TEST_F(AnalysisProfilerGpuTest, RetainsDelayedGpuValuesWithoutRefreshingAgeOrInv
     EXPECT_TRUE(rows.Rows().empty());
 }
 
+/// @brief Leaves missing and repeated GPU observations as plot gaps.
 TEST_F(AnalysisProfilerGpuTest, LeavesMissingAndRepeatedGpuObservationsAsPlotGaps)
 {
     const std::vector<editor::detail::GpuHistoryDisplaySample> samples = {{10, 7, 4, 0.0f}, {13, 10, 5, 8.0f}};
@@ -293,6 +308,7 @@ TEST_F(AnalysisProfilerGpuTest, LeavesMissingAndRepeatedGpuObservationsAsPlotGap
     EXPECT_EQ(plot[3].applicationSerial, 10u);
 }
 
+/// @brief Keeps all distinct sources observed at one capture in the plot.
 TEST_F(AnalysisProfilerGpuTest, KeepsAllDistinctSourcesObservedAtOneCaptureInThePlot)
 {
     const std::vector<editor::detail::GpuHistoryDisplaySample> samples = {{10, 7, 4, 2.0f}, {10, 8, 4, 3.0f}};

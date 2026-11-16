@@ -50,6 +50,7 @@ std::string Snapshot(scene::Scene& scene)
 }
 } /// @note namespace
 
+/// @brief Template add remove reparent and local overrides merge together.
 TEST(PrefabStructureMerge, TemplateAddRemoveReparentAndLocalOverridesMergeTogether)
 {
     const auto before = Document({Object("root"), Object("a", "root"), Object("b", "root"), Object("c", "root")});
@@ -65,6 +66,7 @@ TEST(PrefabStructureMerge, TemplateAddRemoveReparentAndLocalOverridesMergeTogeth
     EXPECT_NE(FindObject(result.document, "local"), nullptr);
 }
 
+/// @brief Compatible local deletion and reparent are preserved.
 TEST(PrefabStructureMerge, CompatibleLocalDeletionAndReparentArePreserved)
 {
     const auto before = Document({Object("root"), Object("a", "root"), Object("b", "root"), Object("c", "root")});
@@ -76,6 +78,7 @@ TEST(PrefabStructureMerge, CompatibleLocalDeletionAndReparentArePreserved)
     EXPECT_EQ((*FindObject(result.document, "b"))["parentInstanceId"].value_or(std::string{}), "a");
 }
 
+/// @brief Delete versus local edit and local delete versus template edit conflict.
 TEST(PrefabStructureMerge, DeleteVersusLocalEditAndLocalDeleteVersusTemplateEditConflict)
 {
     const auto before = Document({Object("root"), Object("a", "root")});
@@ -89,6 +92,7 @@ TEST(PrefabStructureMerge, DeleteVersusLocalEditAndLocalDeleteVersusTemplateEdit
     EXPECT_EQ(first.conflicts.front().sourceId, "a");
 }
 
+/// @brief Checks divergent reparents and combined cycles conflict.
 TEST(PrefabStructureMerge, DivergentReparentsAndCombinedCyclesConflict)
 {
     const auto before = Document({Object("root"), Object("a", "root"), Object("b", "root"), Object("c", "root")});
@@ -99,6 +103,7 @@ TEST(PrefabStructureMerge, DivergentReparentsAndCombinedCyclesConflict)
     EXPECT_FALSE(editor::MergePrefabStructure(before, local, cycle).CanApply());
 }
 
+/// @brief Local child under deleted parent is not silently deleted or reparented.
 TEST(PrefabStructureMerge, LocalChildUnderDeletedParentIsNotSilentlyDeletedOrReparented)
 {
     const auto before = Document({Object("root"), Object("a", "root")});
@@ -108,6 +113,7 @@ TEST(PrefabStructureMerge, LocalChildUnderDeletedParentIsNotSilentlyDeletedOrRep
     EXPECT_FALSE(result.conflicts.empty());
 }
 
+/// @brief Checks invalid identity missing parent nested boundary and removed reference conflict.
 TEST(PrefabStructureMerge, InvalidIdentityMissingParentNestedBoundaryAndRemovedReferenceConflict)
 {
     const auto before = Document({Object("root"), Object("a", "root")});
@@ -148,6 +154,7 @@ protected:
     }
 };
 
+/// @brief No-op retains sibling order and incoming additions append in template order.
 TEST_F(PrefabStructureMergeTest, NoOpRetainsSiblingOrderAndIncomingAdditionsAppendInTemplateOrder)
 {
     scene::Scene source;
@@ -189,6 +196,7 @@ TEST_F(PrefabStructureMergeTest, NoOpRetainsSiblingOrderAndIncomingAdditionsAppe
     EXPECT_EQ(instance->GetChild(3)->prefabSourceId, "m");
 }
 
+/// @brief Non restorable unrelated mesh rejects preview and apply without changing originals.
 TEST_F(PrefabStructureMergeTest, NonRestorableUnrelatedMeshRejectsPreviewAndApplyWithoutChangingOriginals)
 {
     scene::Scene source;
@@ -266,6 +274,7 @@ protected:
     bool m_registered = false;
 };
 
+/// @brief Changed recovery callback rejects initial apply with live scene untouched.
 TEST_F(PrefabRestoreCallbackTest, ChangedRecoveryCallbackRejectsInitialApplyWithLiveSceneUntouched)
 {
     scene::Scene source;
@@ -292,6 +301,7 @@ TEST_F(PrefabRestoreCallbackTest, ChangedRecoveryCallbackRejectsInitialApplyWith
     Context().undoStack = nullptr;
 }
 
+/// @brief Changed restore callback rejects undo and retains live scene and history.
 TEST_F(PrefabRestoreCallbackTest, ChangedRestoreCallbackRejectsUndoAndRetainsLiveSceneAndHistory)
 {
     scene::Scene source;
@@ -320,6 +330,7 @@ TEST_F(PrefabRestoreCallbackTest, ChangedRestoreCallbackRejectsUndoAndRetainsLiv
     Context().undoStack = nullptr;
 }
 
+/// @brief Addition reparent local reference save load and repeated apply keep stable GUIDs.
 TEST_F(PrefabStructureMergeTest, AdditionReparentLocalReferenceSaveLoadAndRepeatedApplyKeepStableGuids)
 {
     scene::Scene source;
@@ -376,6 +387,7 @@ TEST_F(PrefabStructureMergeTest, AdditionReparentLocalReferenceSaveLoadAndRepeat
     EXPECT_EQ(restored->FindByGuid(localGuid)->GetComponent<scene::CameraFollowComponent>()->target.guid, aGuid);
 }
 
+/// @brief Compatible local delete persists across two template revisions.
 TEST_F(PrefabStructureMergeTest, CompatibleLocalDeletePersistsAcrossTwoTemplateRevisions)
 {
     scene::Scene source;
@@ -408,6 +420,7 @@ TEST_F(PrefabStructureMergeTest, CompatibleLocalDeletePersistsAcrossTwoTemplateR
     }
 }
 
+/// @brief Automatic refusal preserves local topology references and history before explicit apply.
 TEST_F(PrefabStructureMergeTest, AutomaticRefusalPreservesLocalTopologyReferencesAndHistoryBeforeExplicitApply)
 {
     scene::Scene source;
@@ -501,6 +514,7 @@ TEST_F(PrefabStructureMergeTest, AutomaticRefusalPreservesLocalTopologyReference
     EXPECT_EQ(Snapshot(destination), after);
 }
 
+/// @brief Automatic propagation retains incoming topology updates for unchanged local hierarchy.
 TEST_F(PrefabStructureMergeTest, AutomaticPropagationRetainsIncomingTopologyUpdatesForUnchangedLocalHierarchy)
 {
     scene::Scene source;
@@ -539,6 +553,7 @@ TEST_F(PrefabStructureMergeTest, AutomaticPropagationRetainsIncomingTopologyUpda
     EXPECT_EQ(SourceObject(destination, addedSource)->GetParent(), destination.FindByGuid(rootGuid));
 }
 
+/// @brief Explicit apply undo redo restore deleted object and external reference.
 TEST_F(PrefabStructureMergeTest, ExplicitApplyUndoRedoRestoreDeletedObjectAndExternalReference)
 {
     scene::Scene source;
@@ -580,6 +595,7 @@ TEST_F(PrefabStructureMergeTest, ExplicitApplyUndoRedoRestoreDeletedObjectAndExt
     Context().undoStack = nullptr;
 }
 
+/// @brief Stale template and scene reviews fail before mutation.
 TEST_F(PrefabStructureMergeTest, StaleTemplateAndSceneReviewsFailBeforeMutation)
 {
     scene::Scene source;

@@ -94,6 +94,7 @@ protected:
     }
 };
 
+/// @brief Flat bake writes blend textures and grid.
 TEST_F(FluidAssetWritersTest, FlatBakeWritesBlendTexturesAndGrid)
 {
     asset::FluidBakeResult bake;
@@ -136,6 +137,7 @@ TEST_F(FluidAssetWritersTest, FlatBakeWritesBlendTexturesAndGrid)
     EXPECT_FLOAT_EQ(loaded.particle.emissiveScale, 2.0f);
 }
 
+/// @brief Flat bake keeps hand tuned values and drops stale motion.
 /// @note 焼き直しで追従させるのはテクスチャとコマ割りだけ。人が詰めた描画順は残す。
 /// @note MV を焼かなくなったら古い MV は外す (残すと別の流れで warp される)。
 TEST_F(FluidAssetWritersTest, FlatBakeKeepsHandTunedValuesAndDropsStaleMotion)
@@ -177,6 +179,7 @@ TEST_F(FluidAssetWritersTest, FlatBakeKeepsHandTunedValuesAndDropsStaleMotion)
     EXPECT_FALSE(loaded.particle.flipbook.motionVectorFlipbook);
 }
 
+/// @brief Volume bake with six way uses maps and straight alpha.
 TEST_F(FluidAssetWritersTest, VolumeBakeWithSixWayUsesMapsAndStraightAlpha)
 {
     asset::VolumeFlipbookBakeResult result = VolumeResult();
@@ -217,6 +220,7 @@ TEST_F(FluidAssetWritersTest, VolumeBakeWithSixWayUsesMapsAndStraightAlpha)
     EXPECT_EQ(loaded.particle.flipbook.flipbookMode, scene::ParticleFlipbookMode::Lifetime);
 }
 
+/// @brief Fire six way bake uses premultiplied material.
 TEST_F(FluidAssetWritersTest, FireSixWayBakeUsesPremultipliedMaterial)
 {
     asset::VolumeFlipbookBakeResult result = VolumeResult();
@@ -256,6 +260,7 @@ TEST_F(FluidAssetWritersTest, FireSixWayBakeUsesPremultipliedMaterial)
     EXPECT_FLOAT_EQ(loaded.particle.emissiveScale, 1.0f);
 }
 
+/// @brief Volume glow uses additive blend with exposure scale.
 TEST_F(FluidAssetWritersTest, VolumeGlowUsesAdditiveBlendWithExposureScale)
 {
     asset::VolumeFlipbookBakeSettings settings;
@@ -287,6 +292,7 @@ TEST_F(FluidAssetWritersTest, VolumeGlowUsesAdditiveBlendWithExposureScale)
     EXPECT_FLOAT_EQ(loaded.particle.sixWayEmissionScale, 2.0f);
 }
 
+/// @brief Volume bake sets particle path and GUID texture references.
 TEST_F(FluidAssetWritersTest, VolumeBakeSetsParticlePathAndGuidTextureReferences)
 {
     const std::string material = AssetFile("Smoke3D.mat");
@@ -409,6 +415,7 @@ TEST_F(FluidAssetWritersTest, VolumeDistortionLoopIsAlphaBlendedFpsWithoutMotion
     EXPECT_NEAR(loaded.particle.flipbook.flipbookFramesPerSecond, 20.0f, 1.0e-3f);
 }
 
+/// @brief Missing texture fails without overwriting existing material.
 TEST_F(FluidAssetWritersTest, MissingTextureFailsWithoutOverwritingExistingMaterial)
 {
     const std::string material = AssetFile("Protected.mat");
@@ -431,12 +438,14 @@ TEST_F(FluidAssetWritersTest, MissingTextureFailsWithoutOverwritingExistingMater
     EXPECT_TRUE(TextureCleared(loaded, "albedo"));
 }
 
+/// @brief Sibling material sits next to the fluid.
 TEST_F(FluidAssetWritersTest, SiblingMaterialSitsNextToTheFluid)
 {
     const std::string fluid = AssetFile("Smoke.fluid");
     EXPECT_EQ(std::filesystem::path(editor::SiblingMaterialPath(fluid)).generic_string(), AssetFile("Smoke.mat"));
 }
 
+/// @brief Single emitter VFX is prefab format with the material.
 TEST_F(FluidAssetWritersTest, SingleEmitterVfxIsPrefabFormatWithTheMaterial)
 {
     const std::filesystem::path file = File("Preview.vfx");

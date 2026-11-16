@@ -410,6 +410,7 @@ private:
     bool m_frameOpen = false;
 };
 
+/// @brief Normal map uses per vertex inverse transpose and tangent transform for mirrored nonuniform instances.
 TEST_F(RayPathTracingTest, NormalMapUsesPerVertexInverseTransposeAndTangentTransformForMirroredNonuniformInstances)
 {
     std::vector<renderer::Vertex> vertices(3);
@@ -454,6 +455,7 @@ TEST_F(RayPathTracingTest, NormalMapUsesPerVertexInverseTransposeAndTangentTrans
     EXPECT_NEAR(geometry[3], 3, 0.002f);
 }
 
+/// @brief Accumulates constant environment without snapshot reset and resets on light change.
 TEST_F(RayPathTracingTest, AccumulatesConstantEnvironmentWithoutSnapshotResetAndResetsOnLightChange)
 {
     m_lighting.environmentRadiance = {1, 2, 3};
@@ -470,6 +472,7 @@ TEST_F(RayPathTracingTest, AccumulatesConstantEnvironmentWithoutSnapshotResetAnd
     EXPECT_NEAR(changed[0], 2, 0.001f); EXPECT_NEAR(changed[3], 1, 0.001f);
 }
 
+/// @brief Retains raw HDR above half range and outputs center reversed depth.
 TEST_F(RayPathTracingTest, RetainsRawHdrAboveHalfRangeAndOutputsCenterReversedDepth)
 {
     AddTriangle(3, true, {100000, 200000, 300000});
@@ -489,6 +492,7 @@ TEST_F(RayPathTracingTest, RetainsRawHdrAboveHalfRangeAndOutputsCenterReversedDe
     EXPECT_EQ(m_state.history.GetSampleCount(), 1u);
 }
 
+/// @brief Uses bsdf emitter mis without double counting and supports mirrored emission.
 TEST_F(RayPathTracingTest, UsesBsdfEmitterMisWithoutDoubleCountingAndSupportsMirroredEmission)
 {
     AddTriangle(3, true, {});
@@ -507,6 +511,7 @@ TEST_F(RayPathTracingTest, UsesBsdfEmitterMisWithoutDoubleCountingAndSupportsMir
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(noBounce[i], 0, 0.001f);
 }
 
+/// @brief Keeps deterministic sample sequence across dispatch grouping and russian roulette.
 TEST_F(RayPathTracingTest, KeepsDeterministicSampleSequenceAcrossDispatchGroupingAndRussianRoulette)
 {
     AddTriangle(3, true, {}, 0);
@@ -522,6 +527,7 @@ TEST_F(RayPathTracingTest, KeepsDeterministicSampleSequenceAcrossDispatchGroupin
     EXPECT_LT(batch[0], 1.4f);
 }
 
+/// @brief Marks malformed path sticky until content reset without conditional average.
 TEST_F(RayPathTracingTest, MarksMalformedPathStickyUntilContentResetWithoutConditionalAverage)
 {
     AddTriangle(3, true, {2, 4, 6}, 1, math::Matrix4::Identity(), true);
@@ -537,6 +543,7 @@ TEST_F(RayPathTracingTest, MarksMalformedPathStickyUntilContentResetWithoutCondi
     EXPECT_NEAR(repaired[0], 2, 0.001f); EXPECT_NEAR(repaired[3], 1, 0.001f);
 }
 
+/// @brief Applies actual solid distance absorption and resets on optical changes.
 TEST_F(RayPathTracingTest, AppliesActualSolidDistanceAbsorptionAndResetsOnOpticalChanges)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -564,6 +571,7 @@ TEST_F(RayPathTracingTest, AppliesActualSolidDistanceAbsorptionAndResetsOnOptica
     EXPECT_EQ(m_state.history.GetSampleCount(), 4u);
 }
 
+/// @brief Cancels two boundary eta and keeps delta environment outside mis.
 TEST_F(RayPathTracingTest, CancelsTwoBoundaryEtaAndKeepsDeltaEnvironmentOutsideMis)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -591,6 +599,7 @@ TEST_F(RayPathTracingTest, CancelsTwoBoundaryEtaAndKeepsDeltaEnvironmentOutsideM
     EXPECT_NEAR(roulette[0], 2, 0.25f); EXPECT_NEAR(roulette[1], 4, 0.5f); EXPECT_NEAR(roulette[2], 6, 0.75f);
 }
 
+/// @brief Matches closed slab fresnel reflection and index matched zero.
 TEST_F(RayPathTracingTest, MatchesClosedSlabFresnelReflectionAndIndexMatchedZero)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -616,6 +625,7 @@ TEST_F(RayPathTracingTest, MatchesClosedSlabFresnelReflectionAndIndexMatchedZero
     EXPECT_EQ(m_state.history.GetSampleCount(), 64u);
 }
 
+/// @brief Refracts oblique ray to Snell target and restores parallel exit direction.
 TEST_F(RayPathTracingTest, RefractsObliqueRayToSnellTargetAndRestoresParallelExitDirection)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -637,6 +647,7 @@ TEST_F(RayPathTracingTest, RefractsObliqueRayToSnellTargetAndRestoresParallelExi
     EXPECT_NEAR(straight[0], 0, 0.001f); EXPECT_EQ(m_state.history.GetSampleCount(), 16u);
 }
 
+/// @brief Internally reflects above critical angle before leaving closed prism.
 TEST_F(RayPathTracingTest, InternallyReflectsAboveCriticalAngleBeforeLeavingClosedPrism)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -653,6 +664,7 @@ TEST_F(RayPathTracingTest, InternallyReflectsAboveCriticalAngleBeforeLeavingClos
     EXPECT_NEAR(tir[1], 0, 0.001f); EXPECT_NEAR(tir[3], 1, 0.001f);
 }
 
+/// @brief Tracks mirrored closed solid owner across submesh boundary.
 TEST_F(RayPathTracingTest, TracksMirroredClosedSolidOwnerAcrossSubmeshBoundary)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -670,6 +682,7 @@ TEST_F(RayPathTracingTest, TracksMirroredClosedSolidOwnerAcrossSubmeshBoundary)
     EXPECT_NEAR(result[0], 0.5f, 0.002f); EXPECT_NEAR(result[1], 0.25f, 0.002f); EXPECT_NEAR(result[2], 1, 0.002f);
 }
 
+/// @brief Diagnoses missing exit instead of treating open glass as thin transparency.
 TEST_F(RayPathTracingTest, DiagnosesMissingExitInsteadOfTreatingOpenGlassAsThinTransparency)
 {
     m_state.constantsData.maxBounces = 8;
@@ -682,6 +695,7 @@ TEST_F(RayPathTracingTest, DiagnosesMissingExitInsteadOfTreatingOpenGlassAsThinT
     EXPECT_NEAR(invalid[0], 1, 0.001f);
 }
 
+/// @brief Diagnoses camera inside solid without inventing starting medium.
 TEST_F(RayPathTracingTest, DiagnosesCameraInsideSolidWithoutInventingStartingMedium)
 {
     m_state.constantsData.maxBounces = 8;
@@ -692,6 +706,7 @@ TEST_F(RayPathTracingTest, DiagnosesCameraInsideSolidWithoutInventingStartingMed
     EXPECT_NEAR(invalid[0], 1, 0.001f);
 }
 
+/// @brief Tracks nested solid stack and restores enclosing absorption on exit.
 TEST_F(RayPathTracingTest, TracksNestedSolidStackAndRestoresEnclosingAbsorptionOnExit)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -711,6 +726,7 @@ TEST_F(RayPathTracingTest, TracksNestedSolidStackAndRestoresEnclosingAbsorptionO
     EXPECT_NEAR(valid[0], 0, 0.001f);
 }
 
+/// @brief Diagnoses non LIFO overlap and stack capacity instead of silently losing media.
 TEST_F(RayPathTracingTest, DiagnosesNonLifoOverlapAndStackCapacityInsteadOfSilentlyLosingMedia)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -728,6 +744,7 @@ TEST_F(RayPathTracingTest, DiagnosesNonLifoOverlapAndStackCapacityInsteadOfSilen
     EXPECT_NEAR(capacity[0], 1, 0.001f);
 }
 
+/// @brief Nested different indices cancel radiance eta only after returning to air.
 TEST_F(RayPathTracingTest, NestedDifferentIndicesCancelRadianceEtaOnlyAfterReturningToAir)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -743,6 +760,7 @@ TEST_F(RayPathTracingTest, NestedDifferentIndicesCancelRadianceEtaOnlyAfterRetur
     EXPECT_NEAR(result[2], 3, 0.007f);
 }
 
+/// @brief Smooth thin sheet matches two interface fresnel without a closed interior.
 TEST_F(RayPathTracingTest, SmoothThinSheetMatchesTwoInterfaceFresnelWithoutAClosedInterior)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -766,6 +784,7 @@ TEST_F(RayPathTracingTest, SmoothThinSheetMatchesTwoInterfaceFresnelWithoutAClos
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(energy[i], 1, 0.002f);
 }
 
+/// @brief Counts thin shading normal disagreement as null without sticky failure.
 TEST_F(RayPathTracingTest, CountsThinShadingNormalDisagreementAsNullWithoutStickyFailure)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -785,6 +804,7 @@ TEST_F(RayPathTracingTest, CountsThinShadingNormalDisagreementAsNullWithoutStick
     EXPECT_EQ(m_state.history.GetSampleCount(), 128u);
 }
 
+/// @brief Thin sheet transmits point light nee with effective fresnel.
 TEST_F(RayPathTracingTest, ThinSheetTransmitsPointLightNeeWithEffectiveFresnel)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -808,6 +828,7 @@ TEST_F(RayPathTracingTest, ThinSheetTransmitsPointLightNeeWithEffectiveFresnel)
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(result[i], 0.97f * (1 - 2 * 0.04f / 1.04f), 0.003f);
 }
 
+/// @brief Rough solid ggx transport stays finite and matches nee mis and bsdf only estimates.
 TEST_F(RayPathTracingTest, RoughSolidGgxTransportStaysFiniteAndMatchesNeeMisAndBsdfOnlyEstimates)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -837,6 +858,7 @@ TEST_F(RayPathTracingTest, RoughSolidGgxTransportStaysFiniteAndMatchesNeeMisAndB
     EXPECT_NEAR(healthy[1], 1025, 1);
 }
 
+/// @brief Rough shading normal mismatch is a null sample without flipping the physical boundary.
 TEST_F(RayPathTracingTest, RoughShadingNormalMismatchIsANullSampleWithoutFlippingThePhysicalBoundary)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -852,6 +874,7 @@ TEST_F(RayPathTracingTest, RoughShadingNormalMismatchIsANullSampleWithoutFlippin
     EXPECT_NEAR(healthy[0], 0, 0.001f);
 }
 
+/// @brief Rough tinted solid nee uses the outgoing medium and agrees with bsdf only transport.
 TEST_F(RayPathTracingTest, RoughTintedSolidNeeUsesTheOutgoingMediumAndAgreesWithBsdfOnlyTransport)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -883,6 +906,7 @@ TEST_F(RayPathTracingTest, RoughTintedSolidNeeUsesTheOutgoingMediumAndAgreesWith
     EXPECT_NEAR(bsdfHealthy[1], 2049, 2);
 }
 
+/// @brief Far sphere and capsule retain their finite radius and grazing silhouette.
 TEST_F(RayPathTracingTest, FarSphereAndCapsuleRetainTheirFiniteRadiusAndGrazingSilhouette)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -911,6 +935,7 @@ TEST_F(RayPathTracingTest, FarSphereAndCapsuleRetainTheirFiniteRadiusAndGrazingS
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(result[i], 1, 0.002f);
 }
 
+/// @brief Virtual sphere and capsule primary hits use surface radiance and last segment range.
 TEST_F(RayPathTracingTest, VirtualSphereAndCapsulePrimaryHitsUseSurfaceRadianceAndLastSegmentRange)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -939,6 +964,7 @@ TEST_F(RayPathTracingTest, VirtualSphereAndCapsulePrimaryHitsUseSurfaceRadianceA
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(result[i], 0, 0.001f);
 }
 
+/// @brief Checks sphere and capsule nee hit mis agree and their solid surfaces cast shadows.
 TEST_F(RayPathTracingTest, SphereAndCapsuleNeeHitMisAgreeAndTheirSolidSurfacesCastShadows)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -979,6 +1005,7 @@ TEST_F(RayPathTracingTest, SphereAndCapsuleNeeHitMisAgreeAndTheirSolidSurfacesCa
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(blocked[i], 0, 0.001f);
 }
 
+/// @brief Counts grazing smooth normal null events without sticky or excluded samples.
 TEST_F(RayPathTracingTest, CountsGrazingSmoothNormalNullEventsWithoutStickyOrExcludedSamples)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -996,6 +1023,7 @@ TEST_F(RayPathTracingTest, CountsGrazingSmoothNormalNullEventsWithoutStickyOrExc
     EXPECT_EQ(m_state.history.GetSampleCount(), 128u);
 }
 
+/// @brief Closes primitive sphere seam and poles bit exactly and transmits closed solid.
 TEST_F(RayPathTracingTest, ClosesPrimitiveSphereSeamAndPolesBitExactlyAndTransmitsClosedSolid)
 {
     constexpr uint32_t segments = 32, rings = segments / 2;
@@ -1035,6 +1063,7 @@ TEST_F(RayPathTracingTest, ClosesPrimitiveSphereSeamAndPolesBitExactlyAndTransmi
     EXPECT_NEAR(healthy[0], 0, 0.001f); EXPECT_NEAR(healthy[1], 128, 0.001f);
 }
 
+/// @brief Checks index matched grazing normal transmits without numerical total reflection.
 TEST_F(RayPathTracingTest, IndexMatchedGrazingNormalTransmitsWithoutNumericalTotalReflection)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1052,6 +1081,7 @@ TEST_F(RayPathTracingTest, IndexMatchedGrazingNormalTransmitsWithoutNumericalTot
     EXPECT_NEAR(healthy[0], 0, 0.001f); EXPECT_NEAR(healthy[1], 128, 0.001f);
 }
 
+/// @brief Unresolved sphere entry exit tie counts null sample without sticky medium failure.
 TEST_F(RayPathTracingTest, UnresolvedSphereEntryExitTieCountsNullSampleWithoutStickyMediumFailure)
 {
     const auto* sphere = PrimitiveSphere(32);
@@ -1084,6 +1114,7 @@ TEST_F(RayPathTracingTest, UnresolvedSphereEntryExitTieCountsNullSampleWithoutSt
     EXPECT_EQ(m_state.history.GetSampleCount(), 128u);
 }
 
+/// @brief Evaluates all directional and point spot delta sources with distance and cone profiles.
 TEST_F(RayPathTracingTest, EvaluatesAllDirectionalAndPointSpotDeltaSourcesWithDistanceAndConeProfiles)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1137,6 +1168,7 @@ TEST_F(RayPathTracingTest, EvaluatesAllDirectionalAndPointSpotDeltaSourcesWithDi
     EXPECT_EQ(m_state.pathScene.deltaLights.size(), 3u);
 }
 
+/// @brief Traces virtual area primary radiance sidedness range and zero intensity.
 TEST_F(RayPathTracingTest, TracesVirtualAreaPrimaryRadianceSidednessRangeAndZeroIntensity)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1171,6 +1203,7 @@ TEST_F(RayPathTracingTest, TracesVirtualAreaPrimaryRadianceSidednessRangeAndZero
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(disabled[i], 0, 0.001f);
 }
 
+/// @brief Diagnoses unrepresentable virtual area intersection instead of missing the light.
 TEST_F(RayPathTracingTest, DiagnosesUnrepresentableVirtualAreaIntersectionInsteadOfMissingTheLight)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1189,6 +1222,7 @@ TEST_F(RayPathTracingTest, DiagnosesUnrepresentableVirtualAreaIntersectionInstea
     EXPECT_NEAR(diagnostic[1], 65504, 0.001f);
 }
 
+/// @brief Reaches virtual area through mirror and glass with consistent emitter mis.
 TEST_F(RayPathTracingTest, ReachesVirtualAreaThroughMirrorAndGlassWithConsistentEmitterMis)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1224,6 +1258,7 @@ TEST_F(RayPathTracingTest, ReachesVirtualAreaThroughMirrorAndGlassWithConsistent
     }
 }
 
+/// @brief Replaces linked area material emission and keeps other owner faces dark.
 TEST_F(RayPathTracingTest, ReplacesLinkedAreaMaterialEmissionAndKeepsOtherOwnerFacesDark)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1251,6 +1286,7 @@ TEST_F(RayPathTracingTest, ReplacesLinkedAreaMaterialEmissionAndKeepsOtherOwnerF
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(zero[i], 0, 0.001f);
 }
 
+/// @brief Checks shadows finite area sources against all scene geometry with partial visibility.
 TEST_F(RayPathTracingTest, ShadowsFiniteAreaSourcesAgainstAllSceneGeometryWithPartialVisibility)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1294,6 +1330,7 @@ TEST_F(RayPathTracingTest, ShadowsFiniteAreaSourcesAgainstAllSceneGeometryWithPa
     EXPECT_NEAR(pointShadowed[0], 0, 0.001f);
 }
 
+/// @brief Resolves high contrast background through clear sphere without opaque white lobe.
 TEST_F(RayPathTracingTest, ResolvesHighContrastBackgroundThroughClearSphereWithoutOpaqueWhiteLobe)
 {
     m_camera.m_position = {0.3f, 0, 0};
@@ -1326,6 +1363,7 @@ TEST_F(RayPathTracingTest, ResolvesHighContrastBackgroundThroughClearSphereWitho
     EXPECT_NEAR(healthy[0], 0, 0.001f);
 }
 
+/// @brief Keeps virtual area shared edge at large coordinates and near grazing incidence.
 TEST_F(RayPathTracingTest, KeepsVirtualAreaSharedEdgeAtLargeCoordinatesAndNearGrazingIncidence)
 {
     m_lighting.useSceneLights = true;
@@ -1359,6 +1397,7 @@ TEST_F(RayPathTracingTest, KeepsVirtualAreaSharedEdgeAtLargeCoordinatesAndNearGr
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(grazingEdge[i], 2, 0.002f);
 }
 
+/// @brief Stops virtual area visibility at target before rear wall within endpoint error.
 TEST_F(RayPathTracingTest, StopsVirtualAreaVisibilityAtTargetBeforeRearWallWithinEndpointError)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1392,6 +1431,7 @@ TEST_F(RayPathTracingTest, StopsVirtualAreaVisibilityAtTargetBeforeRearWallWithi
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(frontWall[i], 0, 0.001f);
 }
 
+/// @brief Preserves finite large distance point spot energy without squared distance or inverse underflow.
 TEST_F(RayPathTracingTest, PreservesFiniteLargeDistancePointSpotEnergyWithoutSquaredDistanceOrInverseUnderflow)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1424,6 +1464,7 @@ TEST_F(RayPathTracingTest, PreservesFiniteLargeDistancePointSpotEnergyWithoutSqu
     EXPECT_NEAR(healthy[1], 2, 0.001f);
 }
 
+/// @brief Diagnoses unrepresentable delta distance and area density instead of discarding lights.
 TEST_F(RayPathTracingTest, DiagnosesUnrepresentableDeltaDistanceAndAreaDensityInsteadOfDiscardingLights)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1450,6 +1491,7 @@ TEST_F(RayPathTracingTest, DiagnosesUnrepresentableDeltaDistanceAndAreaDensityIn
     EXPECT_EQ(m_state.history.GetSampleCount(), 1u);
 }
 
+/// @brief Uses actual finite primary area distance when squared range would overflow.
 TEST_F(RayPathTracingTest, UsesActualFinitePrimaryAreaDistanceWhenSquaredRangeWouldOverflow)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;
@@ -1479,6 +1521,7 @@ TEST_F(RayPathTracingTest, UsesActualFinitePrimaryAreaDistanceWhenSquaredRangeWo
     EXPECT_NEAR(ranged[3], 1, 0.001f);
 }
 
+/// @brief Preserves delta clamp zero subnormal recovery and maximum while diagnosing final overflow.
 TEST_F(RayPathTracingTest, PreservesDeltaClampZeroSubnormalRecoveryAndMaximumWhileDiagnosingFinalOverflow)
 {
     m_camera.m_projection = renderer::ProjectionMode::Orthographic;

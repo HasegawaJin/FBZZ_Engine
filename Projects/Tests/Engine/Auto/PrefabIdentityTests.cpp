@@ -55,6 +55,7 @@ protected:
     std::string m_reference;
 };
 
+/// @brief Scene round trip preserves GUID and opaque source snapshot.
 TEST_F(PrefabIdentityTest, SceneRoundTripPreservesGuidAndOpaqueSourceSnapshot)
 {
     scene::Scene source;
@@ -76,6 +77,7 @@ TEST_F(PrefabIdentityTest, SceneRoundTripPreservesGuidAndOpaqueSourceSnapshot)
     EXPECT_EQ(loaded->prefabSourceSnapshot, snapshot);
 }
 
+/// @brief Append preserves prefab metadata and unrelated objects.
 TEST_F(PrefabIdentityTest, AppendPreservesPrefabMetadataAndUnrelatedObjects)
 {
     scene::Scene source;
@@ -98,6 +100,7 @@ TEST_F(PrefabIdentityTest, AppendPreservesPrefabMetadataAndUnrelatedObjects)
     EXPECT_EQ(destination.GetGameObject(unrelatedId), &unrelated);
 }
 
+/// @brief Legacy assets path is promoted to registered GUID.
 TEST_F(PrefabIdentityTest, LegacyAssetsPathIsPromotedToRegisteredGuid)
 {
     const auto canonical = scene::CanonicalPrefabAssetRef("Assets/Original.prefab");
@@ -114,6 +117,7 @@ TEST_F(PrefabIdentityTest, LegacyAssetsPathIsPromotedToRegisteredGuid)
     EXPECT_EQ(scene::PrefabAssetKey(object->prefabAssetPath), scene::PrefabAssetKey(m_reference));
 }
 
+/// @brief Old GUID hint still resolves after move and scene reload.
 TEST_F(PrefabIdentityTest, OldGuidHintStillResolvesAfterMoveAndSceneReload)
 {
     scene::Scene source;
@@ -131,6 +135,7 @@ TEST_F(PrefabIdentityTest, OldGuidHintStillResolvesAfterMoveAndSceneReload)
     EXPECT_EQ(scene::ResolvePrefabAssetPath(object->prefabAssetPath), movedPath);
 }
 
+/// @brief Missing GUID keeps identity and never uses existing hint.
 TEST_F(PrefabIdentityTest, MissingGuidKeepsIdentityAndNeverUsesExistingHint)
 {
     const std::string missing = "guid:ffffffffffffffffffffffffffffffff|Assets/Original.prefab";
@@ -146,6 +151,7 @@ TEST_F(PrefabIdentityTest, MissingGuidKeepsIdentityAndNeverUsesExistingHint)
     EXPECT_TRUE(scene::ResolvePrefabAssetPath(object->prefabAssetPath).empty());
 }
 
+/// @brief Pool reuses same bucket and limit across GUID hint changes.
 TEST_F(PrefabIdentityTest, PoolReusesSameBucketAndLimitAcrossGuidHintChanges)
 {
     scene::Scene source;
@@ -170,6 +176,7 @@ TEST_F(PrefabIdentityTest, PoolReusesSameBucketAndLimitAcrossGuidHintChanges)
 }
 
 
+/// @brief Destroyed scene address and entity ID cannot revive an old pool entry.
 TEST_F(PrefabIdentityTest, DestroyedSceneAddressAndEntityIdCannotReviveAnOldPoolEntry)
 {
     std::optional<scene::Scene> storage(std::in_place);
@@ -188,6 +195,7 @@ TEST_F(PrefabIdentityTest, DestroyedSceneAddressAndEntityIdCannotReviveAnOldPool
     EXPECT_FALSE(unrelated.activeSelf()); EXPECT_EQ(unrelated.name, "Unrelated");
 }
 
+/// @brief Clear and move do not carry pool entries into another scene lifetime.
 TEST_F(PrefabIdentityTest, ClearAndMoveDoNotCarryPoolEntriesIntoAnotherSceneLifetime)
 {
     scene::Scene source, destination;
@@ -203,6 +211,7 @@ TEST_F(PrefabIdentityTest, ClearAndMoveDoNotCarryPoolEntriesIntoAnotherSceneLife
     EXPECT_EQ(scene::PrefabPool::LiveCount(destination, m_reference), 0u);
 }
 
+/// @brief Rejects returning an object owned by another scene.
 TEST_F(PrefabIdentityTest, RejectsReturningAnObjectOwnedByAnotherScene)
 {
     scene::Scene source, other;

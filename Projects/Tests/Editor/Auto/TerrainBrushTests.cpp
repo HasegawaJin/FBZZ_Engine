@@ -43,6 +43,7 @@ constexpr float kEps = 1e-4f;
 
 /// @name 減衰カーブ
 
+/// @brief Is full strength at the centre.
 TEST(TerrainBrushWeightTest, IsFullStrengthAtTheCentre)
 {
     for (const auto falloff : { TerrainFalloff::Linear, TerrainFalloff::Smooth,
@@ -51,6 +52,7 @@ TEST(TerrainBrushWeightTest, IsFullStrengthAtTheCentre)
     }
 }
 
+/// @brief Is zero at and beyond the edge.
 TEST(TerrainBrushWeightTest, IsZeroAtAndBeyondTheEdge)
 {
     /// @note 縁で 0 にならないと、塗った範囲の外周に段差が残る。
@@ -63,6 +65,7 @@ TEST(TerrainBrushWeightTest, IsZeroAtAndBeyondTheEdge)
     }
 }
 
+/// @brief Linear, smooth and Gaussian brush weights never increase as the sampled distance from the center increases.
 TEST(TerrainBrushWeightTest, DecreasesMonotonicallyOutward)
 {
     for (const auto falloff : { TerrainFalloff::Linear, TerrainFalloff::Smooth,
@@ -77,6 +80,7 @@ TEST(TerrainBrushWeightTest, DecreasesMonotonicallyOutward)
     }
 }
 
+/// @brief Linear falls off proportionally.
 TEST(TerrainBrushWeightTest, LinearFallsOffProportionally)
 {
     const TerrainBrush brush = MakeBrush(10.0f, TerrainFalloff::Linear);
@@ -86,6 +90,7 @@ TEST(TerrainBrushWeightTest, LinearFallsOffProportionally)
     EXPECT_NEAR(TerrainBrushWeight(brush, 7.5f), 0.25f, kEps);
 }
 
+/// @brief Smooth is flat at both ends.
 TEST(TerrainBrushWeightTest, SmoothIsFlatAtBothEnds)
 {
     /// @note smoothstep の要点は端の傾きが 0 になること。中心と縁で «急に変わらない»。
@@ -99,6 +104,7 @@ TEST(TerrainBrushWeightTest, SmoothIsFlatAtBothEnds)
               TerrainBrushWeight(MakeBrush(10.0f, TerrainFalloff::Linear), 1.0f));
 }
 
+/// @brief Gaussian keeps a thin tail at the edge.
 TEST(TerrainBrushWeightTest, GaussianKeepsAThinTailAtTheEdge)
 {
     /// @note exp(-3) ≒ 0.0498。縁を «0 にする» 側の打ち切りが効いていることも同時に見る。
@@ -108,6 +114,7 @@ TEST(TerrainBrushWeightTest, GaussianKeepsAThinTailAtTheEdge)
     EXPECT_FLOAT_EQ(TerrainBrushWeight(brush, 10.0f), 0.0f);
 }
 
+/// @brief Scales with the radius.
 TEST(TerrainBrushWeightTest, ScalesWithTheRadius)
 {
     /// @note 同じ «相対位置» なら半径が変わっても重みは同じ。
@@ -117,6 +124,7 @@ TEST(TerrainBrushWeightTest, ScalesWithTheRadius)
     EXPECT_NEAR(small, large, kEps);
 }
 
+/// @brief Is zero for a degenerate radius.
 TEST(TerrainBrushWeightTest, IsZeroForADegenerateRadius)
 {
     /// @note 半径 0 で 1.0 を返すと、1 点だけ無限に盛り上がる。
@@ -124,6 +132,7 @@ TEST(TerrainBrushWeightTest, IsZeroForADegenerateRadius)
     EXPECT_FLOAT_EQ(TerrainBrushWeight(MakeBrush(-1.0f, TerrainFalloff::Smooth), 0.0f), 0.0f);
 }
 
+/// @brief Stays within the unit range.
 TEST(TerrainBrushWeightTest, StaysWithinTheUnitRange)
 {
     for (const auto falloff : { TerrainFalloff::Linear, TerrainFalloff::Smooth,
@@ -139,6 +148,7 @@ TEST(TerrainBrushWeightTest, StaysWithinTheUnitRange)
 
 /// @name 座標変換
 
+/// @brief Is identity for an untransformed terrain.
 TEST(TerrainTransform, IsIdentityForAnUntransformedTerrain)
 {
     scene::Transform transform;
@@ -150,6 +160,7 @@ TEST(TerrainTransform, IsIdentityForAnUntransformedTerrain)
     EXPECT_NEAR(local.z, 5.0f, kEps);
 }
 
+/// @brief Subtracts the terrain position.
 TEST(TerrainTransform, SubtractsTheTerrainPosition)
 {
     scene::Transform transform;
@@ -162,6 +173,7 @@ TEST(TerrainTransform, SubtractsTheTerrainPosition)
     EXPECT_NEAR(local.z, 2.0f, kEps);
 }
 
+/// @brief Round-trips through local and back.
 TEST(TerrainTransform, RoundTripsThroughLocalAndBack)
 {
     /// @note 片道でもずれると «クリックした場所と盛り上がる場所» が食い違う。
@@ -180,6 +192,7 @@ TEST(TerrainTransform, RoundTripsThroughLocalAndBack)
     EXPECT_NEAR(back.z, world.z, 1e-3f);
 }
 
+/// @brief Round-trips with scale only.
 TEST(TerrainTransform, RoundTripsWithScaleOnly)
 {
     scene::Transform transform;
@@ -240,6 +253,7 @@ class TerrainBrushKernelTest : public testkit::Fixture {};
 
 } // namespace
 
+/// @brief Paint reaches a sixth layer on a vertex holding four layers.
 TEST_F(TerrainBrushKernelTest, PaintReachesASixthLayerOnAVertexHoldingFourLayers)
 {
     scene::TerrainComponent terrain = MakeFlatTerrain(17, 17);
@@ -257,6 +271,7 @@ TEST_F(TerrainBrushKernelTest, PaintReachesASixthLayerOnAVertexHoldingFourLayers
     EXPECT_NEAR(terrain.GetLayerWeightAtGrid(8, 8, 0), 0.0f, 1.0f / 255.0f);
 }
 
+/// @brief Paint ignores a layer beyond the layer count.
 TEST_F(TerrainBrushKernelTest, PaintIgnoresALayerBeyondTheLayerCount)
 {
     scene::TerrainComponent terrain = MakeFlatTerrain(9, 9);
@@ -269,6 +284,7 @@ TEST_F(TerrainBrushKernelTest, PaintIgnoresALayerBeyondTheLayerCount)
     EXPECT_EQ(terrain.splatWeights, before);
 }
 
+/// @brief Noise is deterministic and stays inside the radius.
 TEST_F(TerrainBrushKernelTest, NoiseIsDeterministicAndStaysInsideTheRadius)
 {
     scene::TerrainComponent a = MakeFlatTerrain(33, 33);
@@ -297,6 +313,7 @@ TEST_F(TerrainBrushKernelTest, NoiseIsDeterministicAndStaysInsideTheRadius)
     EXPECT_TRUE(changedInside);
 }
 
+/// @brief Terrace with full sharpness snaps heights to steps.
 TEST_F(TerrainBrushKernelTest, TerraceWithFullSharpnessSnapsHeightsToSteps)
 {
     scene::TerrainComponent terrain = MakeFlatTerrain(9, 9);
@@ -321,6 +338,7 @@ TEST_F(TerrainBrushKernelTest, TerraceWithFullSharpnessSnapsHeightsToSteps)
         }
 }
 
+/// @brief Thermal erosion reduces the steepest slope of a spike.
 TEST_F(TerrainBrushKernelTest, ThermalErosionReducesTheSteepestSlopeOfASpike)
 {
     scene::TerrainComponent terrain = MakeFlatTerrain(17, 17);
@@ -343,6 +361,7 @@ TEST_F(TerrainBrushKernelTest, ThermalErosionReducesTheSteepestSlopeOfASpike)
     EXPECT_NEAR(sumAfter, sumBefore, testkit::kLooseTolerance);
 }
 
+/// @brief Hydraulic erosion is deterministic and stays in range.
 TEST_F(TerrainBrushKernelTest, HydraulicErosionIsDeterministicAndStaysInRange)
 {
     scene::TerrainComponent source = MakeFlatTerrain(33, 33);
@@ -372,6 +391,7 @@ TEST_F(TerrainBrushKernelTest, HydraulicErosionIsDeterministicAndStaysInRange)
     }
 }
 
+/// @brief Checks ramp produces a monotonic profile along the segment.
 TEST_F(TerrainBrushKernelTest, RampProducesAMonotonicProfileAlongTheSegment)
 {
     scene::TerrainComponent terrain = MakeFlatTerrain(17, 17);
@@ -391,6 +411,7 @@ TEST_F(TerrainBrushKernelTest, RampProducesAMonotonicProfileAlongTheSegment)
     EXPECT_FLOAT_EQ(HeightAt(terrain, 8, 11), 0.0f);
 }
 
+/// @brief Hole brush cuts cells whose centre is inside and erase fills them.
 TEST_F(TerrainBrushKernelTest, HoleBrushCutsCellsWhoseCentreIsInsideAndEraseFillsThem)
 {
     scene::TerrainComponent terrain = MakeFlatTerrain(17, 17);

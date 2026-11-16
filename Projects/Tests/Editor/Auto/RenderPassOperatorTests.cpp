@@ -19,6 +19,7 @@ protected:
     editor::OpResult Configure(const editor::OpData& settings) { editor::OpArgs args; args.Set("settings", settings); return Invoke("renderpass.configure", args); }
     editor::RenderPassViewerPanel m_panel; editor::OperatorRegistry m_registry; editor::UndoStack m_undo;
 };
+/// @brief Hidden panel can capture the explicit view and release it.
 TEST_F(RenderPassOperatorTest, HiddenPanelCanCaptureTheExplicitViewAndReleaseIt)
 {
     auto settings = editor::OpData::MakeObject(); settings.Set("enabled", editor::OpData(true)); settings.Set("view", editor::OpData("game"));
@@ -27,6 +28,7 @@ TEST_F(RenderPassOperatorTest, HiddenPanelCanCaptureTheExplicitViewAndReleaseIt)
     settings = editor::OpData::MakeObject(); settings.Set("enabled", editor::OpData(false)); ASSERT_TRUE(Configure(settings).ok);
     m_panel.PrepareFrame(); EXPECT_EQ(m_panel.CaptureForView(true), nullptr);
 }
+/// @brief Invalid partial settings keep the whole request unchanged.
 TEST_F(RenderPassOperatorTest, InvalidPartialSettingsKeepTheWholeRequestUnchanged)
 {
     auto settings = editor::OpData::MakeObject(); settings.Set("enabled", editor::OpData(true)); settings.Set("view", editor::OpData("missing"));
@@ -34,6 +36,7 @@ TEST_F(RenderPassOperatorTest, InvalidPartialSettingsKeepTheWholeRequestUnchange
     const auto result = Invoke("renderpass.inspect"); ASSERT_TRUE(result.ok);
     EXPECT_FALSE(result.data.Find("settings")->Find("enabled")->AsBool()); EXPECT_EQ(m_panel.CaptureForView(false), nullptr);
 }
+/// @brief Unknown nested view fields and empty ranges are rejected.
 TEST_F(RenderPassOperatorTest, UnknownNestedViewFieldsAndEmptyRangesAreRejected)
 {
     auto settings = editor::OpData::MakeObject(); auto view = editor::OpData::MakeObject();
@@ -41,6 +44,7 @@ TEST_F(RenderPassOperatorTest, UnknownNestedViewFieldsAndEmptyRangesAreRejected)
     view = editor::OpData::MakeObject(); view.Set("rangeMin", editor::OpData(1.0f)); view.Set("rangeMax", editor::OpData(1.0f));
     settings.Set("viewSettings", view); EXPECT_FALSE(Configure(settings).ok);
 }
+/// @brief Directional shadow mode preserves omitted distance and supports undo.
 TEST_F(RenderPassOperatorTest, DirectionalShadowModePreservesOmittedDistanceAndSupportsUndo)
 {
     editor::RegisterRenderOperators(m_registry);

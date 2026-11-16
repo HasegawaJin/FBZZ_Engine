@@ -227,16 +227,19 @@ protected:
     }
 };
 
+/// @brief Ordered groups preserve static skinned and view values without temporary allocation.
 TEST_F(GBufferParameterReuseTest, OrderedGroupsPreserveStaticSkinnedAndViewValuesWithoutTemporaryAllocation)
 {
     CheckGroups(false);
 }
 
+/// @brief Threaded groups own update bytes across views frames and resource reset.
 TEST_F(GBufferParameterReuseTest, ThreadedGroupsOwnUpdateBytesAcrossViewsFramesAndResourceReset)
 {
     CheckGroups(true);
 }
 
+/// @brief Missing view buffer retains creation failure and next pass recovery.
 TEST_F(GBufferParameterReuseTest, MissingViewBufferRetainsCreationFailureAndNextPassRecovery)
 {
     GBufferParameterTrace trace;
@@ -260,6 +263,7 @@ TEST_F(GBufferParameterReuseTest, MissingViewBufferRetainsCreationFailureAndNext
     EXPECT_EQ(trace.attempted, 2u); EXPECT_EQ(trace.created, 1u);
 }
 
+/// @brief Prepared material keeps per instance overrides and rejects stale resource generations.
 TEST_F(GraphicsQualityShaderTest, PreparedMaterialKeepsPerInstanceOverridesAndRejectsStaleResourceGenerations)
 {
     const auto shaderPath = m_temp.File("PreparedMaterial.hlsl").generic_string();
@@ -333,6 +337,7 @@ TEST_F(GraphicsQualityShaderTest, PreparedMaterialKeepsPerInstanceOverridesAndRe
     verify(red, 0, 0.75f); verify(green, 1, 0.75f);
 }
 
+/// @brief Checks g buffer groups equal values without mutating instance material buffers.
 TEST_F(GraphicsQualityShaderTest, GBufferGroupsEqualValuesWithoutMutatingInstanceMaterialBuffers)
 {
     m_camera.m_aspect = 1.0f;
@@ -421,6 +426,7 @@ TEST_F(GraphicsQualityShaderTest, GBufferGroupsEqualValuesWithoutMutatingInstanc
     r::ReleaseInstanceBatchCaches(*m_resources);
 }
 
+/// @brief TAA resources are lazy retired and recreated without old history.
 TEST_F(GraphicsQualityShaderTest, TaaResourcesAreLazyRetiredAndRecreatedWithoutOldHistory)
 {
     auto& rendering = m_resources->Rendering();
@@ -448,6 +454,7 @@ TEST_F(GraphicsQualityShaderTest, TaaResourcesAreLazyRetiredAndRecreatedWithoutO
     EXPECT_EQ(m_resources->Get(newA), nullptr);
     EXPECT_FALSE(view.taaHistoryA.IsValid()); EXPECT_FALSE(view.taaHistoryB.IsValid());
 }
+/// @brief Sampled HDR composite is lazy and switching modes rejects old history.
 TEST_F(GraphicsQualityShaderTest, SampledHdrCompositeIsLazyAndSwitchingModesRejectsOldHistory)
 {
     auto& rendering = m_resources->Rendering();
@@ -474,6 +481,7 @@ TEST_F(GraphicsQualityShaderTest, SampledHdrCompositeIsLazyAndSwitchingModesReje
     EXPECT_EQ(m_resources->Get(view.ldr)->GetColorCount(), 1u);
     EXPECT_FALSE(view.taaHistoryA.IsValid());
 }
+/// @brief Terrain renders when managers alternate and one resets.
 TEST_F(GraphicsQualityShaderTest, TerrainRendersWhenManagersAlternateAndOneResets)
 {
     r::ResourceManager second(*m_bundle.renderer);
@@ -533,6 +541,7 @@ TEST_F(GraphicsQualityShaderTest, TerrainRendersWhenManagersAlternateAndOneReset
     }
 }
 
+/// @brief Forward skinned surface receives environment specular.
 TEST_F(GraphicsQualityShaderTest, ForwardSkinnedSurfaceReceivesEnvironmentSpecular)
 {
     const auto shader = m_resources->LoadShader("Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl");
@@ -587,6 +596,7 @@ TEST_F(GraphicsQualityShaderTest, ForwardSkinnedSurfaceReceivesEnvironmentSpecul
     EXPECT_GT(pixels[center+2], 0.5f); EXPECT_GT(pixels[center+2], pixels[center+1] * 1.5f);
 }
 
+/// @brief TAA ignores old velocity until the current view writes it.
 TEST_F(GraphicsQualityShaderTest, TaaIgnoresOldVelocityUntilTheCurrentViewWritesIt)
 {
     const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
@@ -616,6 +626,7 @@ TEST_F(GraphicsQualityShaderTest, TaaIgnoresOldVelocityUntilTheCurrentViewWrites
     }
 }
 
+/// @brief Moving cutout velocity preserves texture and material holes.
 TEST_F(GraphicsQualityShaderTest, MovingCutoutVelocityPreservesTextureAndMaterialHoles)
 {
     const r::Vertex vertices[] = {
@@ -680,6 +691,7 @@ TEST_F(GraphicsQualityShaderTest, MovingCutoutVelocityPreservesTextureAndMateria
     }
 }
 
+/// @brief Motion blur removes raster jitter and preserves camera motion.
 TEST_F(GraphicsQualityShaderTest, MotionBlurRemovesRasterJitterAndPreservesCameraMotion)
 {
     std::array<uint8_t, 8 * 8 * 4> source{};
@@ -735,6 +747,7 @@ TEST_F(GraphicsQualityShaderTest, MotionBlurRemovesRasterJitterAndPreservesCamer
     }
 }
 
+/// @brief Motion blur ignores old velocity until the current view writes it.
 TEST_F(GraphicsQualityShaderTest, MotionBlurIgnoresOldVelocityUntilTheCurrentViewWritesIt)
 {
     const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
@@ -764,6 +777,7 @@ TEST_F(GraphicsQualityShaderTest, MotionBlurIgnoresOldVelocityUntilTheCurrentVie
     }
 }
 
+/// @brief View graph keeps TAA and motion blur working when velocity is disabled.
 TEST_F(GraphicsQualityShaderTest, ViewGraphKeepsTaaAndMotionBlurWorkingWhenVelocityIsDisabled)
 {
     auto& rendering = m_resources->Rendering();
@@ -800,6 +814,7 @@ TEST_F(GraphicsQualityShaderTest, ViewGraphKeepsTaaAndMotionBlurWorkingWhenVeloc
     EXPECT_FALSE(context.velocityWritten);
 }
 
+/// @brief View graph declares water resources for the first water frame.
 TEST_F(GraphicsQualityShaderTest, ViewGraphDeclaresWaterResourcesForTheFirstWaterFrame)
 {
     auto& rendering = m_resources->Rendering();
@@ -882,6 +897,7 @@ TEST_F(GraphicsQualityShaderTest, ViewGraphDeclaresWaterResourcesForTheFirstWate
     ASSERT_TRUE(executeFrame());
 }
 
+/// @brief Auto exposure resumes at current brightness after settings or pass disable.
 TEST_F(GraphicsQualityShaderTest, AutoExposureResumesAtCurrentBrightnessAfterSettingsOrPassDisable)
 {
     auto& rendering = m_resources->Rendering();
@@ -918,6 +934,7 @@ TEST_F(GraphicsQualityShaderTest, AutoExposureResumesAtCurrentBrightnessAfterSet
     }
 }
 
+/// @brief Brdf bake and custom blend remain valid across managers and reset.
 TEST_F(GraphicsQualityShaderTest, BrdfBakeAndCustomBlendRemainValidAcrossManagersAndReset)
 {
     r::ResourceManager first(*m_bundle.renderer);
@@ -973,6 +990,7 @@ TEST_F(GraphicsQualityShaderTest, BrdfBakeAndCustomBlendRemainValidAcrossManager
     }
 }
 
+/// @brief Clear keeps its bound owner and recovers after that manager is destroyed.
 TEST_F(GraphicsQualityShaderTest, ClearKeepsItsBoundOwnerAndRecoversAfterThatManagerIsDestroyed)
 {
     auto other = std::make_unique<r::ResourceManager>(*m_bundle.renderer);

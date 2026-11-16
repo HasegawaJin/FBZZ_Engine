@@ -91,6 +91,7 @@ struct JointRig {
 
 } // namespace
 
+/// @brief Socket keeps bodies connected.
 TEST_F(XPBDJointTest, SocketKeepsBodiesConnected)
 {
     JointRig rig;
@@ -98,6 +99,7 @@ TEST_F(XPBDJointTest, SocketKeepsBodiesConnected)
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
+/// @brief Checks limpless joint hangs straight down.
 /// 脱力した関節は真下までぶら下がる。制限もドライブも無い状態の基準。
 TEST_F(XPBDJointTest, LimplessJointHangsStraightDown)
 {
@@ -110,6 +112,7 @@ TEST_F(XPBDJointTest, LimplessJointHangsStraightDown)
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
+/// @brief Swing limit stops the bone.
 /// 可動域は «そこで止まる» こと。膝が逆に折れないのはこの拘束。
 TEST_F(XPBDJointTest, SwingLimitStopsTheBone)
 {
@@ -132,6 +135,7 @@ TEST_F(XPBDJointTest, SwingLimitStopsTheBone)
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
+/// @brief Asymmetric swing limit is respected.
 /// 非対称な可動域。«片方向にしか曲がらない» が書けることの確認。
 TEST_F(XPBDJointTest, AsymmetricSwingLimitIsRespected)
 {
@@ -154,6 +158,7 @@ TEST_F(XPBDJointTest, AsymmetricSwingLimitIsRespected)
     EXPECT_NEAR(rig.DroopAngle(), 0.0f, 0.02f);
 }
 
+/// @brief Drive holds the target against gravity.
 /// ドライブは目標姿勢を保つ。定常たわみは compliance × トルクで決まる。
 TEST_F(XPBDJointTest, DriveHoldsTheTargetAgainstGravity)
 {
@@ -169,6 +174,7 @@ TEST_F(XPBDJointTest, DriveHoldsTheTargetAgainstGravity)
     EXPECT_FALSE(rig.joint->IsDriveSaturated());
 }
 
+/// @brief Torque limit makes the drive give way.
 /// M2 の核心その 1。支え切れずに «明らかに» 垂れること。どこまで垂れるかは下のテストが見る。
 TEST_F(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
 {
@@ -187,6 +193,7 @@ TEST_F(XPBDJointTest, TorqueLimitMakesTheDriveGiveWay)
     EXPECT_TRUE(rig.joint->IsDriveSaturated());
 }
 
+/// @brief Torque limit balances at the analytic angle.
 /// M2 の核心その 2。垂れるほど腕の «てこ» が短くなり、必要トルクが m·g·L·cos(θ) へ落ちる。
 /// cos(θ) = τ_max/(m·g·L) を満たす角度で釣り合うこと ─ 上限の «値» が効いている証拠。
 TEST_F(XPBDJointTest, TorqueLimitBalancesAtTheAnalyticAngle)
@@ -208,6 +215,7 @@ TEST_F(XPBDJointTest, TorqueLimitBalancesAtTheAnalyticAngle)
     EXPECT_LT(rig.SocketError(), 1.0e-3f);
 }
 
+/// @brief Saturated drive moves toward the balance from both sides.
 /// 上の «動かない» が偶然でないこと。釣り合いより上に置けば落ち、下に置けば持ち上がる。
 TEST_F(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
 {
@@ -234,6 +242,7 @@ TEST_F(XPBDJointTest, SaturatedDriveMovesTowardTheBalanceFromBothSides)
     EXPECT_LT(settle(balance + 0.15f), balance + 0.15f);
 }
 
+/// @brief High torque limit still holds.
 /// 上限を十分に上げれば同じ設定で支え切る。上の結果がトルク上限由来だと固定する。
 TEST_F(XPBDJointTest, HighTorqueLimitStillHolds)
 {
@@ -249,6 +258,7 @@ TEST_F(XPBDJointTest, HighTorqueLimitStillHolds)
     EXPECT_LT(std::abs(rig.DroopAngle()), 0.05f);
 }
 
+/// @brief Disabled drive falls like limp joint.
 /// ドライブを切れば脱力する。Passive / Active の切り替えはこのフラグだけ。
 TEST_F(XPBDJointTest, DisabledDriveFallsLikeLimpJoint)
 {
@@ -263,6 +273,7 @@ TEST_F(XPBDJointTest, DisabledDriveFallsLikeLimpJoint)
     EXPECT_GT(rig.DroopAngle(), 1.4f);
 }
 
+/// @brief Drive follows a moving target.
 /// ドライブの目標を動かすと骨が付いてくる。Active の «クリップを追う» 経路。
 TEST_F(XPBDJointTest, DriveFollowsAMovingTarget)
 {
@@ -279,6 +290,7 @@ TEST_F(XPBDJointTest, DriveFollowsAMovingTarget)
     EXPECT_NEAR(rig.DroopAngle(), -0.5f, 0.05f);
 }
 
+/// @brief Twist limit stops rotation about the bone.
 TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
 {
     JointRig rig;
@@ -304,6 +316,7 @@ TEST_F(XPBDJointTest, TwistLimitStopsRotationAboutTheBone)
 /// 崩れ方を調べるための «絵» だけが実際の関節と食い違い、コードは正しいのに
 /// 見ている図が嘘という、最も切り分けの難しい状態になる。
 
+/// @brief Reports the parent joint frame following the parent rotation.
 TEST_F(XPBDJointTest, ReportsTheParentJointFrameFollowingTheParentRotation)
 {
     /// @note Build() は «今の姿勢» をたわみ 0 に据える。ワールド版が組み立て時の値を返すと、
@@ -316,6 +329,7 @@ TEST_F(XPBDJointTest, ReportsTheParentJointFrameFollowingTheParentRotation)
     EXPECT_QUAT_NEAR(rig.joint->GetParentFrameWorld(), turn, testkit::kTolerance);
 }
 
+/// @brief Reports the child joint frame following the child rotation.
 TEST_F(XPBDJointTest, ReportsTheChildJointFrameFollowingTheChildRotation)
 {
     JointRig               rig;
@@ -327,6 +341,7 @@ TEST_F(XPBDJointTest, ReportsTheChildJointFrameFollowingTheChildRotation)
     EXPECT_QUAT_NEAR(rig.joint->GetChildFrameWorld(), turn, testkit::kTolerance);
 }
 
+/// @brief Exposes the same limits and drive through const access.
 TEST_F(XPBDJointTest, ExposesTheSameLimitsAndDriveThroughConstAccess)
 {
     /// @note const 版が値のコピーを返すと «設定したのに表示は初期値» になり、調整している側からは

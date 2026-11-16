@@ -87,6 +87,7 @@ protected:
     testkit::TempDir m_temp{"WaterWavesAsset"};
 };
 
+/// @brief Builtin asset round-trips reflected values and reloads the shared instance.
 TEST_F(WaterWavesAssetTest, BuiltinAssetRoundTripsReflectedValuesAndReloadsTheSharedInstance)
 {
     ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
@@ -136,6 +137,7 @@ TEST_F(WaterWavesAssetTest, BuiltinAssetRoundTripsReflectedValuesAndReloadsTheSh
         EXPECT_TRUE(SameWave(reloaded[i], expected[i]));
 }
 
+/// @brief Asset resolution keeps eight base waves and limits scaled contraction.
 TEST_F(WaterWavesAssetTest, AssetResolutionKeepsEightBaseWavesAndLimitsScaledContraction)
 {
     asset::WaterWavesAsset source;
@@ -165,6 +167,7 @@ TEST_F(WaterWavesAssetTest, AssetResolutionKeepsEightBaseWavesAndLimitsScaledCon
         water.waveGrouping, water.waveSpread), 0.95f);
 }
 
+/// @brief Invalid asset settings fail without changing the resolved wave source.
 TEST_F(WaterWavesAssetTest, InvalidAssetSettingsFailWithoutChangingTheResolvedWaveSource)
 {
     asset::WaterWavesAsset source;
@@ -183,6 +186,7 @@ TEST_F(WaterWavesAssetTest, InvalidAssetSettingsFailWithoutChangingTheResolvedWa
     EXPECT_FLOAT_EQ(water.waves[0].phaseOffsetRadians, before.phaseOffsetRadians);
 }
 
+/// @brief Shared material publication keeps per water scale and immediate edits.
 TEST_F(WaterWavesAssetTest, SharedMaterialPublicationKeepsPerWaterScaleAndImmediateEdits)
 {
     asset::MaterialAsset material;
@@ -216,6 +220,7 @@ TEST_F(WaterWavesAssetTest, SharedMaterialPublicationKeepsPerWaterScaleAndImmedi
     EXPECT_FLOAT_EQ(retained->Data().params.at(scene::water_keys::kWaveAmplitude[0])[0], 1.0f);
 }
 
+/// @brief Material preparation eviction and mutable authoring keep current values.
 TEST_F(WaterWavesAssetTest, MaterialPreparationEvictionAndMutableAuthoringKeepCurrentValues)
 {
     std::array<asset::MaterialAsset, 40> materials;
@@ -242,6 +247,7 @@ TEST_F(WaterWavesAssetTest, MaterialPreparationEvictionAndMutableAuthoringKeepCu
     EXPECT_FLOAT_EQ(water.waves[0].amplitude, 9.0f);
 }
 
+/// @brief CPU surface query uses the phase offset and only active waves.
 TEST_F(WaterWavesAssetTest, CpuSurfaceQueryUsesThePhaseOffsetAndOnlyActiveWaves)
 {
     scene::WaterComponent water;
@@ -277,6 +283,7 @@ TEST_F(WaterWavesAssetTest, CpuSurfaceQueryUsesThePhaseOffsetAndOnlyActiveWaves)
     ASSERT_FALSE(scene::IsWaterSurfaceSupported(water, transform));
 }
 
+/// @brief Update keeps same reference last good and clears it when the reference changes.
 TEST_F(WaterWavesAssetTest, UpdateKeepsSameReferenceLastGoodAndClearsItWhenTheReferenceChanges)
 {
     ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
@@ -305,6 +312,7 @@ TEST_F(WaterWavesAssetTest, UpdateKeepsSameReferenceLastGoodAndClearsItWhenTheRe
     EXPECT_EQ(water.waveCount, 0u);
 }
 
+/// @brief Update does not carry last good waves across scene generations.
 TEST_F(WaterWavesAssetTest, UpdateDoesNotCarryLastGoodWavesAcrossSceneGenerations)
 {
     ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
@@ -335,6 +343,7 @@ TEST_F(WaterWavesAssetTest, UpdateDoesNotCarryLastGoodWavesAcrossSceneGeneration
     EXPECT_EQ(secondWater.waveCount, 0u);
 }
 
+/// @brief Sea heading keeps the seeded wave pattern and adds independent cross swell.
 TEST_F(WaterWavesAssetTest, SeaHeadingKeepsTheSeededWavePatternAndAddsIndependentCrossSwell)
 {
     scene::Scene scene;
@@ -368,6 +377,7 @@ TEST_F(WaterWavesAssetTest, SeaHeadingKeepsTheSeededWavePatternAndAddsIndependen
     EXPECT_EQ(water.current, math::Vector2::ZERO);
 }
 
+/// @brief Reflected appearance keeps legacy missing key defaults without assuming offsets.
 TEST_F(WaterWavesAssetTest, ReflectedAppearanceKeepsLegacyMissingKeyDefaultsWithoutAssumingOffsets)
 {
     renderer::ShaderDescriptor descriptor;

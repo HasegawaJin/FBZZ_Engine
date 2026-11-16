@@ -130,6 +130,7 @@ protected:
 };
 }
 
+/// @brief Captured clipboard values have no runtime and apply preserves target effects.
 TEST_F(WaterInspectorRuntimeTest, CapturedClipboardValuesHaveNoRuntimeAndApplyPreservesTargetEffects)
 {
     const auto sourceId = Water("Source", 1);
@@ -150,6 +151,7 @@ TEST_F(WaterInspectorRuntimeTest, CapturedClipboardValuesHaveNoRuntimeAndApplyPr
     EXPECT_EQ(frame->owner, targetId);
 }
 
+/// @brief Registered reset and undo preserve current water runtime.
 TEST_F(WaterInspectorRuntimeTest, RegisteredResetAndUndoPreserveCurrentWaterRuntime)
 {
     const auto id = Water("Target", -1);
@@ -175,6 +177,7 @@ TEST_F(WaterInspectorRuntimeTest, RegisteredResetAndUndoPreserveCurrentWaterRunt
     EXPECT_EQ(scene::WaterInteractionSnapshot(*water), current);
 }
 
+/// @brief Undoing and redoing Reset preserves the target's live water simulation state.
 TEST_F(WaterInspectorRuntimeTest, ResetMenuUndoAndRedoRetainTheCurrentTargetRuntimeRatherThanItsOldSnapshot)
 {
     const auto id = Water("Target", -1);
@@ -196,6 +199,7 @@ TEST_F(WaterInspectorRuntimeTest, ResetMenuUndoAndRedoRetainTheCurrentTargetRunt
     EXPECT_EQ(scene::WaterInteractionSnapshot(*water), current);
 }
 
+/// @brief Edit clipboard paste never shares another owners frame or orphans its emitter.
 TEST_F(WaterInspectorRuntimeTest, EditClipboardPasteNeverSharesAnotherOwnersFrameOrOrphansItsEmitter)
 {
     const auto a = Water("Source", 1);
@@ -223,6 +227,7 @@ TEST_F(WaterInspectorRuntimeTest, EditClipboardPasteNeverSharesAnotherOwnersFram
     EXPECT_EQ(scene::WaterInteractionSnapshot(*second), current);
 }
 
+/// @brief Play shows only managed settings and does not offer native water menus.
 TEST_F(WaterInspectorRuntimeTest, PlayShowsOnlyManagedSettingsAndDoesNotOfferNativeWaterMenus)
 {
     auto& edit = *AttachedScene();

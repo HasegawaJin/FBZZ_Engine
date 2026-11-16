@@ -150,6 +150,7 @@ protected:
     const math::Vector3 m_far{2000, 0, 32};
 };
 
+/// @brief Publishes near and HLOD exclusively and keeps old representation while pending.
 TEST_F(WorldPartitionTest, PublishesNearAndHlodExclusivelyAndKeepsOldRepresentationWhilePending)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -176,6 +177,7 @@ TEST_F(WorldPartitionTest, PublishesNearAndHlodExclusivelyAndKeepsOldRepresentat
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
 }
 
+/// @brief Distance hysteresis prevents repeated near HLOD and unload transitions.
 TEST_F(WorldPartitionTest, DistanceHysteresisPreventsRepeatedNearHlodAndUnloadTransitions)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -199,6 +201,7 @@ TEST_F(WorldPartitionTest, DistanceHysteresisPreventsRepeatedNearHlodAndUnloadTr
     EXPECT_EQ(m_runtime->Status().residentNear + m_runtime->Status().residentHlod, 0u);
 }
 
+/// @brief Explicit override can be cleared and unknown cells are rejected.
 TEST_F(WorldPartitionTest, ExplicitOverrideCanBeClearedAndUnknownCellsAreRejected)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -213,6 +216,7 @@ TEST_F(WorldPartitionTest, ExplicitOverrideCanBeClearedAndUnknownCellsAreRejecte
     EXPECT_EQ(m_scene.GameObjectCount(), 0u);
 }
 
+/// @brief Invalid configuration preserves published objects and manifest.
 TEST_F(WorldPartitionTest, InvalidConfigurationPreservesPublishedObjectsAndManifest)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -231,6 +235,7 @@ TEST_F(WorldPartitionTest, InvalidConfigurationPreservesPublishedObjectsAndManif
     EXPECT_TRUE(m_runtime->Status().configured);
 }
 
+/// @brief Rejects nonfinite distances and zero budgets.
 TEST_F(WorldPartitionTest, RejectsNonfiniteDistancesAndZeroBudgets)
 {
     std::string diagnostic;
@@ -257,6 +262,7 @@ TEST_F(WorldPartitionTest, RejectsNonfiniteDistancesAndZeroBudgets)
     EXPECT_FALSE(scene::ValidateWorldPartitionSettings(settings, diagnostic));
 }
 
+/// @brief Completed cancelled read cannot resurrect an unloaded cell.
 TEST_F(WorldPartitionTest, CompletedCancelledReadCannotResurrectAnUnloadedCell)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -273,6 +279,7 @@ TEST_F(WorldPartitionTest, CompletedCancelledReadCannotResurrectAnUnloadedCell)
     EXPECT_EQ(m_runtime->Status().loadsInFlight, 0u);
 }
 
+/// @brief Moving far before read completion does not publish the near representation.
 TEST_F(WorldPartitionTest, MovingFarBeforeReadCompletionDoesNotPublishTheNearRepresentation)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -287,6 +294,7 @@ TEST_F(WorldPartitionTest, MovingFarBeforeReadCompletionDoesNotPublishTheNearRep
     EXPECT_EQ(m_scene.GameObjectCount(), 0u);
 }
 
+/// @brief Scene clear discards an outstanding completion from the old generation.
 TEST_F(WorldPartitionTest, SceneClearDiscardsAnOutstandingCompletionFromTheOldGeneration)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -306,6 +314,7 @@ TEST_F(WorldPartitionTest, SceneClearDiscardsAnOutstandingCompletionFromTheOldGe
     EXPECT_EQ(m_runtime->Status().residentNear, 0u);
 }
 
+/// @brief Runtime destruction does not leave worker jobs referencing its scene.
 TEST_F(WorldPartitionTest, RuntimeDestructionDoesNotLeaveWorkerJobsReferencingItsScene)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -320,6 +329,7 @@ TEST_F(WorldPartitionTest, RuntimeDestructionDoesNotLeaveWorkerJobsReferencingIt
     EXPECT_EQ(m_scene.FindByGuid("survivor-root"), &survivor);
 }
 
+/// @brief Near hierarchy keeps saved GUIDs and unload retires only owned roots.
 TEST_F(WorldPartitionTest, NearHierarchyKeepsSavedGuidsAndUnloadRetiresOnlyOwnedRoots)
 {
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("near-root", "Near Root")
@@ -342,6 +352,7 @@ TEST_F(WorldPartitionTest, NearHierarchyKeepsSavedGuidsAndUnloadRetiresOnlyOwned
     EXPECT_EQ(m_scene.GetGameObject(manualId), &manual);
 }
 
+/// @brief Rejects external parents and existing GUID collisions without mutating the scene.
 TEST_F(WorldPartitionTest, RejectsExternalParentsAndExistingGuidCollisionsWithoutMutatingTheScene)
 {
     auto& manual = m_scene.CreateGameObject("Manual");
@@ -363,6 +374,7 @@ TEST_F(WorldPartitionTest, RejectsExternalParentsAndExistingGuidCollisionsWithou
     ExpectNearCellFailed(::testing::AllOf(::testing::HasSubstr("identity"), ::testing::HasSubstr("manual-root")));
 }
 
+/// @brief Rejects cross cell duplicate GUIDs without overwriting the first resident.
 TEST_F(WorldPartitionTest, RejectsCrossCellDuplicateGuidsWithoutOverwritingTheFirstResident)
 {
     m_manifest.cells.push_back(Cell({1, 0}, "Assets/World/second.scene"));
@@ -382,6 +394,7 @@ TEST_F(WorldPartitionTest, RejectsCrossCellDuplicateGuidsWithoutOverwritingTheFi
         ::testing::AllOf(::testing::HasSubstr("identity"), ::testing::HasSubstr("near-root")));
 }
 
+/// @brief Preserves custom terrain data through the prepared cell append.
 TEST_F(WorldPartitionTest, PreservesCustomTerrainDataThroughThePreparedCellAppend)
 {
     scene::Scene source;
@@ -415,6 +428,7 @@ TEST_F(WorldPartitionTest, PreservesCustomTerrainDataThroughThePreparedCellAppen
     EXPECT_EQ(data->surfaceIndices, std::vector<uint32_t>({0, 1, 2}));
 }
 
+/// @brief Resident cell and publish budgets remain bounded.
 TEST_F(WorldPartitionTest, ResidentCellAndPublishBudgetsRemainBounded)
 {
     m_manifest.cells.push_back(Cell({1, 0}, "Assets/World/second.scene"));
@@ -445,6 +459,7 @@ TEST_F(WorldPartitionTest, ResidentCellAndPublishBudgetsRemainBounded)
     EXPECT_EQ(m_scene.GameObjectCount(), 2u);
 }
 
+/// @brief Oversized payload fails without publishing any partial cell.
 TEST_F(WorldPartitionTest, OversizedPayloadFailsWithoutPublishingAnyPartialCell)
 {
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("near-root", "Near Root") + "\n#" + std::string(2048, 'x') + "\n"));
@@ -457,6 +472,7 @@ TEST_F(WorldPartitionTest, OversizedPayloadFailsWithoutPublishingAnyPartialCell)
     ExpectNearCellFailed(::testing::HasSubstr("maxCellBytes"));
 }
 
+/// @brief Authored sources require explicit retirement authorization.
 TEST_F(WorldPartitionTest, AuthoredSourcesRequireExplicitRetirementAuthorization)
 {
     auto& source = m_scene.CreateGameObject("Authored Source");
@@ -471,6 +487,7 @@ TEST_F(WorldPartitionTest, AuthoredSourcesRequireExplicitRetirementAuthorization
     EXPECT_THAT(m_diagnostic, ::testing::HasSubstr("Play"));
 }
 
+/// @brief Authorized sources retire only after all near payloads pass preflight.
 TEST_F(WorldPartitionTest, AuthorizedSourcesRetireOnlyAfterAllNearPayloadsPassPreflight)
 {
     auto& source = m_scene.CreateGameObject("Authored Source");
@@ -506,6 +523,7 @@ TEST_F(WorldPartitionTest, AuthorizedSourcesRetireOnlyAfterAllNearPayloadsPassPr
     EXPECT_EQ(m_scene.GetGameObject(manualId), &manual);
 }
 
+/// @brief Unload retires owned children that escaped under persistent parents.
 TEST_F(WorldPartitionTest, UnloadRetiresOwnedChildrenThatEscapedUnderPersistentParents)
 {
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("near-root", "Near Root")
@@ -531,6 +549,7 @@ TEST_F(WorldPartitionTest, UnloadRetiresOwnedChildrenThatEscapedUnderPersistentP
     EXPECT_EQ(m_runtime->Status().residentNear, 0u);
 }
 
+/// @brief Foreign descendants block unload and keep cell leases until detached.
 TEST_F(WorldPartitionTest, ForeignDescendantsBlockUnloadAndKeepCellLeasesUntilDetached)
 {
     asset::AssetStreamer streamer([this](std::function<void()> job) { m_jobs.push_back(std::move(job)); });
@@ -590,6 +609,7 @@ TEST_F(WorldPartitionTest, ForeignDescendantsBlockUnloadAndKeepCellLeasesUntilDe
     m_runtime.reset();
 }
 
+/// @brief Reset refuses foreign descendants and retains configuration until safe.
 TEST_F(WorldPartitionTest, ResetRefusesForeignDescendantsAndRetainsConfigurationUntilSafe)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -616,6 +636,7 @@ TEST_F(WorldPartitionTest, ResetRefusesForeignDescendantsAndRetainsConfiguration
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
 }
 
+/// @brief Unsafe destructor hands residency to the scene until explicit scene clear.
 TEST_F(WorldPartitionTest, UnsafeDestructorHandsResidencyToTheSceneUntilExplicitSceneClear)
 {
     ASSERT_TRUE(Configure()) << m_diagnostic;
@@ -642,6 +663,7 @@ TEST_F(WorldPartitionTest, UnsafeDestructorHandsResidencyToTheSceneUntilExplicit
     RunQueued();
 }
 
+/// @brief Scene move transfers resident ownership and safe unload to the new scene.
 TEST_F(WorldPartitionTest, SceneMoveTransfersResidentOwnershipAndSafeUnloadToTheNewScene)
 {
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("near-root", "Near Root")

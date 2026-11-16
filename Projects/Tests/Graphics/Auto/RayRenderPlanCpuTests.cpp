@@ -23,6 +23,7 @@ protected:
     }
 };
 
+/// @brief Inserts ray reflection after surface and before lighting only for deferred.
 TEST_F(RayRenderPlanTest, InsertsRayReflectionAfterSurfaceAndBeforeLightingOnlyForDeferred)
 {
     for (const auto path : {renderer::OpaqueRenderPath::FORWARD, renderer::OpaqueRenderPath::DEFERRED}) {

@@ -33,6 +33,7 @@ class TrailMultiKeyTest : public testkit::EngineFixture {};
 
 /// @name 瞬間移動の切断
 
+/// @brief Never breaks with the default threshold.
 TEST_F(TrailMultiKeyTest, NeverBreaksWithTheDefaultThreshold)
 {
     const scene::TrailComponent trail;
@@ -41,6 +42,7 @@ TEST_F(TrailMultiKeyTest, NeverBreaksWithTheDefaultThreshold)
     EXPECT_FALSE(scene::TrailIsDiscontinuous(trail, { 0.0f, 0.0f, 0.0f }, { 900.0f, 0.0f, 0.0f }));
 }
 
+/// @brief Breaks only beyond the threshold.
 TEST_F(TrailMultiKeyTest, BreaksOnlyBeyondTheThreshold)
 {
     scene::TrailComponent trail;
@@ -51,6 +53,7 @@ TEST_F(TrailMultiKeyTest, BreaksOnlyBeyondTheThreshold)
     EXPECT_TRUE(scene::TrailIsDiscontinuous(trail, { 0.0f, 0.0f, 0.0f }, { 2.1f, 0.0f, 0.0f }));
 }
 
+/// @brief Measures the jump in three dimensions.
 TEST_F(TrailMultiKeyTest, MeasuresTheJumpInThreeDimensions)
 {
     scene::TrailComponent trail;
@@ -62,6 +65,7 @@ TEST_F(TrailMultiKeyTest, MeasuresTheJumpInThreeDimensions)
 
 /// @name 多キーの幅
 
+/// @brief Falls back to the two endpoints by default.
 TEST_F(TrailMultiKeyTest, FallsBackToTheTwoEndpointsByDefault)
 {
     scene::TrailComponent trail;
@@ -76,6 +80,7 @@ TEST_F(TrailMultiKeyTest, FallsBackToTheTwoEndpointsByDefault)
     EXPECT_NEAR(scene::TrailWidthAt(trail, 0.5f, 0.5f), 0.11f, testkit::kTolerance);
 }
 
+/// @brief Keeps the two endpoints when the curve has too few keys.
 TEST_F(TrailMultiKeyTest, KeepsTheTwoEndpointsWhenTheCurveHasTooFewKeys)
 {
     scene::TrailComponent trail;
@@ -88,6 +93,7 @@ TEST_F(TrailMultiKeyTest, KeepsTheTwoEndpointsWhenTheCurveHasTooFewKeys)
     EXPECT_NEAR(scene::TrailWidthAt(trail, 0.5f, 0.5f), 0.11f, testkit::kTolerance);
 }
 
+/// @brief Scales the curve by width start.
 TEST_F(TrailMultiKeyTest, ScalesTheCurveByWidthStart)
 {
     scene::TrailComponent trail;
@@ -103,6 +109,7 @@ TEST_F(TrailMultiKeyTest, ScalesTheCurveByWidthStart)
     EXPECT_NEAR(scene::TrailWidthAt(trail, 1.0f, 0.0f), 0.40f, testkit::kTolerance);
 }
 
+/// @brief Ignores the eased age while the curve is used.
 TEST_F(TrailMultiKeyTest, IgnoresTheEasedAgeWhileTheCurveIsUsed)
 {
     scene::TrailComponent trail;
@@ -117,6 +124,7 @@ TEST_F(TrailMultiKeyTest, IgnoresTheEasedAgeWhileTheCurveIsUsed)
 
 /// @name 多キーの色
 
+/// @brief Leaves the color gradient off by default.
 TEST_F(TrailMultiKeyTest, LeavesTheColorGradientOffByDefault)
 {
     const scene::TrailComponent trail;
@@ -125,6 +133,7 @@ TEST_F(TrailMultiKeyTest, LeavesTheColorGradientOffByDefault)
     EXPECT_FALSE(scene::TrailUsesColorGradient(trail));
 }
 
+/// @brief Needs two keys before the gradient takes over.
 TEST_F(TrailMultiKeyTest, NeedsTwoKeysBeforeTheGradientTakesOver)
 {
     scene::TrailComponent trail;
@@ -138,6 +147,7 @@ TEST_F(TrailMultiKeyTest, NeedsTwoKeysBeforeTheGradientTakesOver)
 
 /// @name 画面効果の既定
 
+/// @brief Leaves the shock ring disabled by default.
 TEST_F(TrailMultiKeyTest, LeavesTheShockRingDisabledByDefault)
 {
     const renderer::PostProcessSettings settings;

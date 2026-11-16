@@ -45,6 +45,7 @@ protected:
         text.replace(offset, before.size(), after); Write(path, text);
     }
 };
+/// @brief Published editor infers own unicode SDK and actual configuration inside repository.
 TEST_F(ManagedSdkBindingTest, PublishedEditorInfersOwnUnicodeSdkAndActualConfigurationInsideRepository)
 {
     const auto repo = Repository("Repo"); const auto root = repo / util::FileSystem::PathFromUtf8("SDK/工房/0.9.1"); const auto executable = Sdk(root);
@@ -54,6 +55,7 @@ TEST_F(ManagedSdkBindingTest, PublishedEditorInfersOwnUnicodeSdkAndActualConfigu
     EXPECT_EQ(result.agentBuild, result.root / "Tools/AgentBuild.ps1"); EXPECT_EQ(result.hostDirectory, executable.parent_path() / "Managed");
     EXPECT_EQ(result.apiPath, result.hostDirectory / "Fbzz.ScriptApi.dll");
 }
+/// @brief Missing manifest or owned tool never falls back to ancestor repository.
 TEST_F(ManagedSdkBindingTest, MissingManifestOrOwnedToolNeverFallsBackToAncestorRepository)
 {
     const auto repo = Repository("Repo"); const auto root = repo / "SDK/0.9.1"; const auto executable = Sdk(root);
@@ -65,6 +67,7 @@ TEST_F(ManagedSdkBindingTest, MissingManifestOrOwnedToolNeverFallsBackToAncestor
     EXPECT_FALSE(editor::ResolveManagedSdkBinding(executable, repo, {}, "Debug", result, diagnostic)); EXPECT_EQ(result.root, "unchanged");
     EXPECT_NE(diagnostic.find("SDK manifest unavailable"), std::string::npos);
 }
+/// @brief Explicit different SDK and ancestor repository are rejected.
 TEST_F(ManagedSdkBindingTest, ExplicitDifferentSdkAndAncestorRepositoryAreRejected)
 {
     const auto repo = Repository("Repo"); const auto first = repo / "SDK/First", second = repo / "SDK/Second";
@@ -75,6 +78,7 @@ TEST_F(ManagedSdkBindingTest, ExplicitDifferentSdkAndAncestorRepositoryAreReject
     ASSERT_TRUE(editor::ResolveManagedSdkBinding(executable, repo, first / ".", "Debug", result, diagnostic)) << diagnostic;
     EXPECT_EQ(result.root, std::filesystem::weakly_canonical(first));
 }
+/// @brief Changed API and pair records reject before choosing host.
 TEST_F(ManagedSdkBindingTest, ChangedApiAndPairRecordsRejectBeforeChoosingHost)
 {
     const auto root = ProjectRoot() / "Sdk"; const auto executable = Sdk(root);
@@ -88,6 +92,7 @@ TEST_F(ManagedSdkBindingTest, ChangedApiAndPairRecordsRejectBeforeChoosingHost)
     EXPECT_FALSE(editor::ResolveManagedSdkBinding(executable, ProjectRoot(), {}, "Debug", result, diagnostic));
     EXPECT_NE(diagnostic.find("pair records disagree"), std::string::npos);
 }
+/// @brief Unvalidated configuration and compiler pin mismatch are rejected.
 TEST_F(ManagedSdkBindingTest, UnvalidatedConfigurationAndCompilerPinMismatchAreRejected)
 {
     const auto root = ProjectRoot() / "Sdk"; const auto executable = Sdk(root);
@@ -101,6 +106,7 @@ TEST_F(ManagedSdkBindingTest, UnvalidatedConfigurationAndCompilerPinMismatchAreR
     EXPECT_FALSE(editor::ResolveManagedSdkBinding(executable, ProjectRoot(), {}, "Debug", result, diagnostic));
     EXPECT_NE(diagnostic.find("compiler pin"), std::string::npos);
 }
+/// @brief Source repository discovery remains available before managed host build.
 TEST_F(ManagedSdkBindingTest, SourceRepositoryDiscoveryRemainsAvailableBeforeManagedHostBuild)
 {
     const auto repo = Repository("Source"); const auto executable = repo / "build/Debug/FBZZEditor.exe"; Write(executable);
@@ -111,6 +117,7 @@ TEST_F(ManagedSdkBindingTest, SourceRepositoryDiscoveryRemainsAvailableBeforeMan
     const auto other = Repository("Other");
     EXPECT_FALSE(editor::ResolveManagedSdkBinding(executable, ProjectRoot(), other, "Debug", result, diagnostic));
 }
+/// @brief Environment selection wins and project legacy root is validated when it is used.
 TEST_F(ManagedSdkBindingTest, EnvironmentSelectionWinsAndProjectLegacyRootIsValidatedWhenItIsUsed)
 {
     const auto root = ProjectRoot() / "Sdk"; const auto executable = Sdk(root);

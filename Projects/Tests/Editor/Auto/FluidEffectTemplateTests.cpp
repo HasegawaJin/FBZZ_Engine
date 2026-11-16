@@ -36,6 +36,7 @@ protected:
     }
 };
 
+/// @brief Every template creates independent recipes and reserves all layers.
 TEST_F(FluidEffectTemplateTest, EveryTemplateCreatesIndependentRecipesAndReservesAllLayers)
 {
     for (int i = 0; i < static_cast<int>(editor::FluidEffectTemplate::COUNT); ++i) {
@@ -70,6 +71,7 @@ TEST_F(FluidEffectTemplateTest, EveryTemplateCreatesIndependentRecipesAndReserve
     }
 }
 
+/// @brief Rejects traversal and unknown template before writing.
 TEST_F(FluidEffectTemplateTest, RejectsTraversalAndUnknownTemplateBeforeWriting)
 {
     editor::FluidBakeService service;
@@ -83,6 +85,7 @@ TEST_F(FluidEffectTemplateTest, RejectsTraversalAndUnknownTemplateBeforeWriting)
     EXPECT_FALSE(std::filesystem::exists(ProjectRoot() / "Assets/Invalid"));
 }
 
+/// @brief VFX preserves layer timing single bursts and distinct materials.
 TEST_F(FluidEffectTemplateTest, VfxPreservesLayerTimingSingleBurstsAndDistinctMaterials)
 {
     const auto layers = editor::MakeFluidEffectLayers(editor::FluidEffectTemplate::CHARGE_RELEASE);
@@ -130,6 +133,7 @@ TEST_F(FluidEffectTemplateTest, VfxPreservesLayerTimingSingleBurstsAndDistinctMa
     EXPECT_FALSE(editor::WriteLayeredFluidVfx(File("Incomplete.vfx"), "Incomplete", layers, materials, error));
     EXPECT_FALSE(std::filesystem::exists(File("Incomplete.vfx")));
 }
+/// @brief New material presets round trip and inject finite density.
 TEST_F(FluidEffectTemplateTest, NewMaterialPresetsRoundTripAndInjectFiniteDensity)
 {
     for (auto preset : { asset::FluidPreset::GroundRing, asset::FluidPreset::ColdMist,

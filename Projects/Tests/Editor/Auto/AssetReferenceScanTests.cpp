@@ -64,6 +64,7 @@ protected:
     testkit::TempDir m_temp{"asset-reference-scan"};
 };
 
+/// @brief Finds codec GUID and nested path values with owner and field evidence.
 TEST_F(AssetReferenceScanTest, FindsCodecGuidAndNestedPathValuesWithOwnerAndFieldEvidence)
 {
     ASSERT_TRUE(Write("Assets/Textures/船 Boat.png", "source"));
@@ -93,6 +94,7 @@ TEST_F(AssetReferenceScanTest, FindsCodecGuidAndNestedPathValuesWithOwnerAndFiel
     EXPECT_EQ(report.owners[1].evidence[0].field, "entities[0].renderer.textures[0]");
 }
 
+/// @brief Finds dependencies in dedicated paint and placement formats.
 /// @see Docs/design/terrain-scatter.md 専用形式は mesh.parts に GUID 参照を保存する。
 TEST_F(AssetReferenceScanTest, FindsDependenciesInDedicatedPaintAndPlacementFormats)
 {
@@ -121,6 +123,7 @@ TEST_F(AssetReferenceScanTest, FindsDependenciesInDedicatedPaintAndPlacementForm
         ::testing::Pair(Path("Assets/Pine.meshinstances"), "Mesh instances")));
 }
 
+/// @brief Ignores comments substrings script loads and unknown GUID suffixes.
 TEST_F(AssetReferenceScanTest, IgnoresCommentsSubstringsScriptLoadsAndUnknownGuidSuffixes)
 {
     ASSERT_TRUE(Write("Assets/Boat.png", "source"));
@@ -141,6 +144,7 @@ TEST_F(AssetReferenceScanTest, IgnoresCommentsSubstringsScriptLoadsAndUnknownGui
     EXPECT_EQ(scan.Result().parsed, 1u);
 }
 
+/// @brief Keeps GUID authority separate from an unresolved hint.
 TEST_F(AssetReferenceScanTest, KeepsGuidAuthoritySeparateFromAnUnresolvedHint)
 {
     ASSERT_TRUE(Write("Assets/Boat.png", "source"));
@@ -162,6 +166,7 @@ TEST_F(AssetReferenceScanTest, KeepsGuidAuthoritySeparateFromAnUnresolvedHint)
     EXPECT_EQ(scan.Result().unresolvedHints, 1u);
 }
 
+/// @brief Resolves texture sidecar aliases and keeps selected sprite suffix exact.
 TEST_F(AssetReferenceScanTest, ResolvesTextureSidecarAliasesAndKeepsSelectedSpriteSuffixExact)
 {
     ASSERT_TRUE(Write("Assets/Atlas.png", "source"));
@@ -187,6 +192,7 @@ TEST_F(AssetReferenceScanTest, ResolvesTextureSidecarAliasesAndKeepsSelectedSpri
     EXPECT_FALSE(util::FileSystem::Exists(Path("Assets/Atlas.png.meta")));
 }
 
+/// @brief Reports only recorded import metadata without filename classification.
 TEST_F(AssetReferenceScanTest, ReportsOnlyRecordedImportMetadataWithoutFilenameClassification)
 {
     ASSERT_TRUE(Write("Assets/Imported_Verification_Blender.fbx", "source"));
@@ -206,6 +212,7 @@ TEST_F(AssetReferenceScanTest, ReportsOnlyRecordedImportMetadataWithoutFilenameC
     EXPECT_EQ(scan.Result().metadata.importerVersion, 4);
 }
 
+/// @brief Refresh replaces the owned snapshot and completed scans do not read again.
 TEST_F(AssetReferenceScanTest, RefreshReplacesTheOwnedSnapshotAndCompletedScansDoNotReadAgain)
 {
     ASSERT_TRUE(Write("Assets/Boat.png", "source"));
@@ -237,6 +244,7 @@ TEST_F(AssetReferenceScanTest, RefreshReplacesTheOwnedSnapshotAndCompletedScansD
     EXPECT_TRUE(scan.Result().owners.empty());
 }
 
+/// @brief Reports missing malformed and oversized files without creating metadata.
 TEST_F(AssetReferenceScanTest, ReportsMissingMalformedAndOversizedFilesWithoutCreatingMetadata)
 {
     ASSERT_TRUE(Write("Assets/Boat.png", "source"));
@@ -256,6 +264,7 @@ TEST_F(AssetReferenceScanTest, ReportsMissingMalformedAndOversizedFilesWithoutCr
     EXPECT_FALSE(util::FileSystem::Exists(Path("Assets/Boat.png.meta")));
 }
 
+/// @brief Uses existing derived GUID mapping for a direct generated target.
 TEST_F(AssetReferenceScanTest, UsesExistingDerivedGuidMappingForADirectGeneratedTarget)
 {
     constexpr const char* SOURCE_GUID = "1234567890abcdef1234567890abcdef";

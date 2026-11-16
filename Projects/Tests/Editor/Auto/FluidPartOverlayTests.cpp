@@ -70,6 +70,7 @@ void ExpectScreenNear(const ImVec2& actual, const ImVec2& expected)
 
 } // namespace
 
+/// @brief Mapping round-trips and puts the domain corners on the square.
 TEST(FluidPartOverlay, MappingRoundTripsAndPutsTheDomainCornersOnTheSquare)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -84,6 +85,7 @@ TEST(FluidPartOverlay, MappingRoundTripsAndPutsTheDomainCornersOnTheSquare)
     EXPECT_NEAR(mapping.ToPixels(2.0f), 400.0f, kScreenEps);
 }
 
+/// @brief Selected sphere source has center and size but no direction.
 TEST(FluidPartOverlay, SelectedSphereSourceHasCenterAndSizeButNoDirection)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -109,6 +111,7 @@ TEST(FluidPartOverlay, SelectedSphereSourceHasCenterAndSizeButNoDirection)
     EXPECT_EQ(FindHandle(handles, FluidSelectionKind::Source, 1, FluidHandleKind::Size), nullptr);
 }
 
+/// @brief Picks the nearest handle and prefers the selected part on ties.
 TEST(FluidPartOverlay, PicksTheNearestHandleAndPrefersTheSelectedPartOnTies)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -132,6 +135,7 @@ TEST(FluidPartOverlay, PicksTheNearestHandleAndPrefersTheSelectedPartOnTies)
     EXPECT_EQ(editor::PickFluidPartHandle(handles, mapping.ToScreen({ -0.8f, 0.8f, 0.0f })), nullptr);
 }
 
+/// @brief Dragging the center puts the part under the cursor and keeps depth.
 TEST(FluidPartOverlay, DraggingTheCenterPutsThePartUnderTheCursorAndKeepsDepth)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -148,6 +152,7 @@ TEST(FluidPartOverlay, DraggingTheCenterPutsThePartUnderTheCursorAndKeepsDepth)
     EXPECT_NEAR(recipe.sources[0].center.z, 0.35f, kDomainEps);
 }
 
+/// @brief Checks dragging the center of a moving part lands its current pose on the cursor.
 TEST(FluidPartOverlay, DraggingTheCenterOfAMovingPartLandsItsCurrentPoseOnTheCursor)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -177,6 +182,7 @@ TEST(FluidPartOverlay, DraggingTheCenterOfAMovingPartLandsItsCurrentPoseOnTheCur
     EXPECT_NEAR(recipe.sources[0].motion.keys[1].offset.y, 0.2f, kDomainEps);
 }
 
+/// @brief Resizes a sphere from the distance and clamps at the center.
 TEST(FluidPartOverlay, ResizesASphereFromTheDistanceAndClampsAtTheCenter)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -194,6 +200,7 @@ TEST(FluidPartOverlay, ResizesASphereFromTheDistanceAndClampsAtTheCenter)
     EXPECT_NEAR(recipe.sources[0].size.x, 0.005f, kDomainEps);
 }
 
+/// @brief Resizes a box per axis and keeps depth.
 TEST(FluidPartOverlay, ResizesABoxPerAxisAndKeepsDepth)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -211,6 +218,7 @@ TEST(FluidPartOverlay, ResizesABoxPerAxisAndKeepsDepth)
     EXPECT_NEAR(recipe.sources[0].size.z, 0.3f, kDomainEps);
 }
 
+/// @brief Rotates a cone from the handle at its base.
 TEST(FluidPartOverlay, RotatesAConeFromTheHandleAtItsBase)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -234,6 +242,7 @@ TEST(FluidPartOverlay, RotatesAConeFromTheHandleAtItsBase)
     EXPECT_NEAR(recipe.sources[0].size.x, 0.1f, kDomainEps);
 }
 
+/// @brief Direction drag keeps the depth component unless it faces the view.
 TEST(FluidPartOverlay, DirectionDragKeepsTheDepthComponentUnlessItFacesTheView)
 {
     fluid::FluidRecipe recipe;
@@ -261,6 +270,7 @@ TEST(FluidPartOverlay, DirectionDragKeepsTheDepthComponentUnlessItFacesTheView)
     EXPECT_NEAR(recipe.sources[1].direction.z, 0.0f, kDomainEps);
 }
 
+/// @brief Moves a motion key relative to the base center.
 TEST(FluidPartOverlay, MovesAMotionKeyRelativeToTheBaseCenter)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -290,6 +300,7 @@ TEST(FluidPartOverlay, MovesAMotionKeyRelativeToTheBaseCenter)
     EXPECT_NEAR(posed.y, 0.5f, kDomainEps);
 }
 
+/// @brief Picks the source drawn above a collider and nothing outside.
 TEST(FluidPartOverlay, PicksTheSourceDrawnAboveAColliderAndNothingOutside)
 {
     const FluidViewMapping mapping = MakeMapping();
@@ -316,6 +327,7 @@ TEST(FluidPartOverlay, PicksTheSourceDrawnAboveAColliderAndNothingOutside)
     EXPECT_EQ(outside.kind, FluidSelectionKind::None);
 }
 
+/// @brief Hidden parts cannot be picked or grabbed.
 TEST(FluidPartOverlay, HiddenPartsCannotBePickedOrGrabbed)
 {
     const FluidViewMapping mapping = MakeMapping();

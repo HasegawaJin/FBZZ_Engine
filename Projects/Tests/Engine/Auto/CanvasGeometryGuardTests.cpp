@@ -32,6 +32,7 @@ protected:
     }
 };
 
+/// @brief No canvas does not visit unrelated geometry.
 TEST_F(CanvasGeometryGuardTest, NoCanvasDoesNotVisitUnrelatedGeometry)
 {
     for (int index = 0; index < 128; ++index)
@@ -42,6 +43,7 @@ TEST_F(CanvasGeometryGuardTest, NoCanvasDoesNotVisitUnrelatedGeometry)
     EXPECT_TRUE(CanShare());
 }
 
+/// @brief Disabled and inactive canvas roots are excluded.
 TEST_F(CanvasGeometryGuardTest, DisabledAndInactiveCanvasRootsAreExcluded)
 {
     auto& disabled = m_scene.CreateGameObject("Disabled");
@@ -64,6 +66,7 @@ TEST_F(CanvasGeometryGuardTest, DisabledAndInactiveCanvasRootsAreExcluded)
     EXPECT_FALSE(CanShare());
 }
 
+/// @brief Root renderer presence includes disabled empty components.
 TEST_F(CanvasGeometryGuardTest, RootRendererPresenceIncludesDisabledEmptyComponents)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -76,6 +79,7 @@ TEST_F(CanvasGeometryGuardTest, RootRendererPresenceIncludesDisabledEmptyCompone
     EXPECT_FALSE(CanShare());
 }
 
+/// @brief Inactive children and disabled nested canvases are not pruned.
 TEST_F(CanvasGeometryGuardTest, InactiveChildrenAndDisabledNestedCanvasesAreNotPruned)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -90,6 +94,7 @@ TEST_F(CanvasGeometryGuardTest, InactiveChildrenAndDisabledNestedCanvasesAreNotP
     EXPECT_FALSE(CanShare());
 }
 
+/// @brief Checks nested canvases probe every reachable node once.
 TEST_F(CanvasGeometryGuardTest, NestedCanvasesProbeEveryReachableNodeOnce)
 {
     constexpr std::size_t NODE_COUNT = 128;
@@ -112,6 +117,7 @@ TEST_F(CanvasGeometryGuardTest, NestedCanvasesProbeEveryReachableNodeOnce)
     EXPECT_FALSE(CanShare());
 }
 
+/// @brief Proven child cannot hide geometry in a later ancestor root.
 TEST_F(CanvasGeometryGuardTest, ProvenChildCannotHideGeometryInALaterAncestorRoot)
 {
     auto& root = m_scene.CreateGameObject("LaterRoot");
@@ -132,6 +138,7 @@ TEST_F(CanvasGeometryGuardTest, ProvenChildCannotHideGeometryInALaterAncestorRoo
     EXPECT_EQ(probes, 3u);
 }
 
+/// @brief Disjoint and wide subtrees visit only their union.
 TEST_F(CanvasGeometryGuardTest, DisjointAndWideSubtreesVisitOnlyTheirUnion)
 {
     for (int tree = 0; tree < 3; ++tree) {
@@ -148,6 +155,7 @@ TEST_F(CanvasGeometryGuardTest, DisjointAndWideSubtreesVisitOnlyTheirUnion)
     EXPECT_EQ(probes, 3u * 65u);
 }
 
+/// @brief Same count renderer replacement is observed on next call.
 TEST_F(CanvasGeometryGuardTest, SameCountRendererReplacementIsObservedOnNextCall)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -165,6 +173,7 @@ TEST_F(CanvasGeometryGuardTest, SameCountRendererReplacementIsObservedOnNextCall
     EXPECT_TRUE(CanShare());
 }
 
+/// @brief Reparenting into and out of canvas is observed on next call.
 TEST_F(CanvasGeometryGuardTest, ReparentingIntoAndOutOfCanvasIsObservedOnNextCall)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -178,6 +187,7 @@ TEST_F(CanvasGeometryGuardTest, ReparentingIntoAndOutOfCanvasIsObservedOnNextCal
     EXPECT_TRUE(CanShare());
 }
 
+/// @brief Deleted entity slot replacement cannot inherit earlier visit.
 TEST_F(CanvasGeometryGuardTest, DeletedEntitySlotReplacementCannotInheritEarlierVisit)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -195,6 +205,7 @@ TEST_F(CanvasGeometryGuardTest, DeletedEntitySlotReplacementCannotInheritEarlier
     EXPECT_FALSE(CanShare());
 }
 
+/// @brief Clear and other scenes cannot reuse visited state.
 TEST_F(CanvasGeometryGuardTest, ClearAndOtherScenesCannotReuseVisitedState)
 {
     auto& original = m_scene.CreateGameObject("Original");
@@ -216,6 +227,7 @@ TEST_F(CanvasGeometryGuardTest, ClearAndOtherScenesCannotReuseVisitedState)
     EXPECT_FALSE(CanShare());
 }
 
+/// @brief Checks serialized scene replacement observes restored hierarchy.
 TEST_F(CanvasGeometryGuardTest, SerializedSceneReplacementObservesRestoredHierarchy)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -239,6 +251,7 @@ TEST_F(CanvasGeometryGuardTest, SerializedSceneReplacementObservesRestoredHierar
     EXPECT_FALSE(CanShare());
 }
 
+/// @brief World canvas depth and surface offset survive scene round trip.
 TEST_F(CanvasGeometryGuardTest, WorldCanvasDepthAndSurfaceOffsetSurviveSceneRoundTrip)
 {
     auto& root = m_scene.CreateGameObject("MountedDisplay");
@@ -257,6 +270,7 @@ TEST_F(CanvasGeometryGuardTest, WorldCanvasDepthAndSurfaceOffsetSurviveSceneRoun
     EXPECT_EQ(saved->renderMode, scene::UIRenderMode::WorldSpace);
 }
 
+/// @brief Legacy world canvas uses scene depth without moving its surface.
 TEST_F(CanvasGeometryGuardTest, LegacyWorldCanvasUsesSceneDepthWithoutMovingItsSurface)
 {
     auto& canvas = m_scene.CreateGameObject("LegacyDisplay").AddComponent<scene::UICanvas>();

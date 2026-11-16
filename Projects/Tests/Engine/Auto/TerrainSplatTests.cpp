@@ -187,6 +187,7 @@ public:
 
 class TerrainSplatTest : public testkit::EngineFixture {};
 
+/// @brief Checks canonicalize produces canonical form for arbitrary input.
 TEST_F(TerrainSplatTest, CanonicalizeProducesCanonicalFormForArbitraryInput)
 {
     for (int seed = 0; seed < 64; ++seed) {
@@ -205,6 +206,7 @@ TEST_F(TerrainSplatTest, CanonicalizeProducesCanonicalFormForArbitraryInput)
     }
 }
 
+/// @brief Canonicalize falls back to layer zero when all weights are zero.
 TEST_F(TerrainSplatTest, CanonicalizeFallsBackToLayerZeroWhenAllWeightsAreZero)
 {
     const int layers[] = { 3, 5 };
@@ -217,6 +219,7 @@ TEST_F(TerrainSplatTest, CanonicalizeFallsBackToLayerZeroWhenAllWeightsAreZero)
     EXPECT_EQ(w, (Slots{ 255, 0, 0, 0 }));
 }
 
+/// @brief Canonicalize is idempotent on canonical input.
 TEST_F(TerrainSplatTest, CanonicalizeIsIdempotentOnCanonicalInput)
 {
     Slots idx{ 4, 1, 1, 7 }, w{ 30, 90, 60, 75 };
@@ -230,6 +233,7 @@ TEST_F(TerrainSplatTest, CanonicalizeIsIdempotentOnCanonicalInput)
     EXPECT_EQ(w, wOnce);
 }
 
+/// @brief From legacy RGBA keeps every channel weight.
 TEST_F(TerrainSplatTest, FromLegacyRgbaKeepsEveryChannelWeight)
 {
     const std::uint8_t rgba[] = { 100, 50, 105, 0 };
@@ -242,6 +246,7 @@ TEST_F(TerrainSplatTest, FromLegacyRgbaKeepsEveryChannelWeight)
         EXPECT_FLOAT_EQ(scene::terrain_splat::WeightOf(idx.data(), w.data(), channel), rgba[channel] / 255.0f);
 }
 
+/// @brief Blend toward with tiny step advances every call until full.
 TEST_F(TerrainSplatTest, BlendTowardWithTinyStepAdvancesEveryCallUntilFull)
 {
     Slots idx{ 0, 0, 0, 0 }, w{ 255, 0, 0, 0 };
@@ -261,6 +266,7 @@ TEST_F(TerrainSplatTest, BlendTowardWithTinyStepAdvancesEveryCallUntilFull)
     EXPECT_EQ(calls, 255);
 }
 
+/// @brief Blend toward inserts fifth layer into full vertex.
 TEST_F(TerrainSplatTest, BlendTowardInsertsFifthLayerIntoFullVertex)
 {
     Slots idx{ 0, 1, 2, 3 }, w{ 70, 65, 60, 60 };
@@ -277,6 +283,7 @@ TEST_F(TerrainSplatTest, BlendTowardInsertsFifthLayerIntoFullVertex)
     EXPECT_GT(scene::terrain_splat::WeightOf(idxTiny.data(), wTiny.data(), 4), 0.0f);
 }
 
+/// @brief Set weight shares the rest in proportion.
 TEST_F(TerrainSplatTest, SetWeightSharesTheRestInProportion)
 {
     Slots idx{ 0, 1, 0, 0 }, w{ 170, 85, 0, 0 };
@@ -289,6 +296,7 @@ TEST_F(TerrainSplatTest, SetWeightSharesTheRestInProportion)
     EXPECT_NEAR(scene::terrain_splat::WeightOf(idx.data(), w.data(), 1), 0.2f, kSplatStep);
 }
 
+/// @brief Remap drops layer and renumbers the rest.
 TEST_F(TerrainSplatTest, RemapDropsLayerAndRenumbersTheRest)
 {
     Slots idx{ 0, 1, 2, 0 }, w{ 100, 100, 55, 0 };
@@ -302,6 +310,7 @@ TEST_F(TerrainSplatTest, RemapDropsLayerAndRenumbersTheRest)
     EXPECT_FLOAT_EQ(scene::terrain_splat::WeightOf(idx.data(), w.data(), 2), 0.0f);
 }
 
+/// @brief Remap dropping every layer falls back to layer zero.
 TEST_F(TerrainSplatTest, RemapDroppingEveryLayerFallsBackToLayerZero)
 {
     Slots idx{ 3, 0, 0, 0 }, w{ 255, 0, 0, 0 };
@@ -312,6 +321,7 @@ TEST_F(TerrainSplatTest, RemapDroppingEveryLayerFallsBackToLayerZero)
     EXPECT_EQ(w, (Slots{ 255, 0, 0, 0 }));
 }
 
+/// @brief Checks remove layer redistributes only the removed weight.
 TEST_F(TerrainSplatTest, RemoveLayerRedistributesOnlyTheRemovedWeight)
 {
     scene::TerrainComponent tc = SixLayerTerrain();
@@ -331,6 +341,7 @@ TEST_F(TerrainSplatTest, RemoveLayerRedistributesOnlyTheRemovedWeight)
     }
 }
 
+/// @brief Move layer keeps weights per material.
 TEST_F(TerrainSplatTest, MoveLayerKeepsWeightsPerMaterial)
 {
     scene::TerrainComponent tc = SixLayerTerrain();
@@ -343,6 +354,7 @@ TEST_F(TerrainSplatTest, MoveLayerKeepsWeightsPerMaterial)
     EXPECT_EQ(WeightsByMaterial(tc), before);
 }
 
+/// @brief Resize keeps splat and holes inside the overlap.
 TEST_F(TerrainSplatTest, ResizeKeepsSplatAndHolesInsideTheOverlap)
 {
     scene::TerrainComponent tc = SixLayerTerrain();
@@ -366,6 +378,7 @@ protected:
     testkit::TempDir m_temp{"terrain"};
 };
 
+/// @brief V 2 round trip preserves layers splat and holes.
 TEST_F(TerrainAssetSerializerTest, V2RoundTripPreservesLayersSplatAndHoles)
 {
     ASSERT_TRUE(m_temp.IsValid());
@@ -390,6 +403,7 @@ TEST_F(TerrainAssetSerializerTest, V2RoundTripPreservesLayersSplatAndHoles)
     EXPECT_TRUE(loaded.heightDirty && loaded.splatDirty && loaded.colliderDirty);
 }
 
+/// @brief V 1 file migrates RGBA splat without changing weights.
 TEST_F(TerrainAssetSerializerTest, V1FileMigratesRgbaSplatWithoutChangingWeights)
 {
     ASSERT_TRUE(m_temp.IsValid());
@@ -416,6 +430,7 @@ TEST_F(TerrainAssetSerializerTest, V1FileMigratesRgbaSplatWithoutChangingWeights
         EXPECT_TRUE(IsCanonical(&loaded.splatIndices[v * 4], &loaded.splatWeights[v * 4])) << "vertex " << v;
 }
 
+/// @brief Fztn current round trip preserves layers splat and holes.
 TEST_F(TerrainAssetSerializerTest, FztnCurrentRoundTripPreservesLayersSplatAndHoles)
 {
     ASSERT_TRUE(m_temp.IsValid());
@@ -443,6 +458,7 @@ TEST_F(TerrainAssetSerializerTest, FztnCurrentRoundTripPreservesLayersSplatAndHo
     EXPECT_EQ(loaded.holeCells, (std::vector<uint32_t>{ 1, 11 }));
 }
 
+/// @brief Fztn replaces unicode asset without leaving temporary files.
 TEST_F(TerrainAssetSerializerTest, FztnReplacesUnicodeAssetWithoutLeavingTemporaryFiles)
 {
     const auto file = m_temp.Path() / L"地形.terrain";
@@ -462,6 +478,7 @@ TEST_F(TerrainAssetSerializerTest, FztnReplacesUnicodeAssetWithoutLeavingTempora
     EXPECT_EQ(util::FileSystem::ListAll(util::FileSystem::PathToUtf8(m_temp.Path())).size(), 1u);
 }
 
+/// @brief Fztn failed replacement preserves original asset.
 TEST_F(TerrainAssetSerializerTest, FztnFailedReplacementPreservesOriginalAsset)
 {
     const auto file = m_temp.File("locked.terrain");
@@ -485,6 +502,7 @@ TEST_F(TerrainAssetSerializerTest, FztnFailedReplacementPreservesOriginalAsset)
     EXPECT_EQ(util::FileSystem::ListAll(util::FileSystem::PathToUtf8(m_temp.Path())).size(), 1u);
 }
 
+/// @brief Fztn v 1 dense weights fold into top four layers.
 TEST_F(TerrainAssetSerializerTest, FztnV1DenseWeightsFoldIntoTopFourLayers)
 {
     ASSERT_TRUE(m_temp.IsValid());
@@ -523,6 +541,7 @@ TEST_F(TerrainAssetSerializerTest, FztnV1DenseWeightsFoldIntoTopFourLayers)
 }
 
 
+/// @brief Cave floor does not select exterior ground and ceiling is separate.
 TEST_F(TerrainAssetSerializerTest, CaveFloorDoesNotSelectExteriorGroundAndCeilingIsSeparate)
 {
     const auto tc = CaveTerrain();
@@ -541,6 +560,7 @@ TEST_F(TerrainAssetSerializerTest, CaveFloorDoesNotSelectExteriorGroundAndCeilin
     ASSERT_TRUE(scene::TrySampleTerrainWorld(tc, transform, 6, 2, top));
     EXPECT_NEAR(top.position.y, -3, 1e-5f);
 }
+/// @brief Hole and missing floor return `false` without changing outputs.
 TEST_F(TerrainAssetSerializerTest, HoleAndMissingFloorReturnFalseWithoutChangingOutputs)
 {
     auto tc = CaveTerrain();
@@ -558,6 +578,7 @@ TEST_F(TerrainAssetSerializerTest, HoleAndMissingFloorReturnFalseWithoutChanging
     EXPECT_TRUE(scene::TrySampleTerrainWorld(tc, transform, 1, 7, sample));
     EXPECT_FLOAT_EQ(sample.position.y, 0);
 }
+/// @brief Cave floor and ceiling respect world pose and geometry bounds.
 TEST_F(TerrainAssetSerializerTest, CaveFloorAndCeilingRespectWorldPoseAndGeometryBounds)
 {
     const auto tc = CaveTerrain();
@@ -569,6 +590,7 @@ TEST_F(TerrainAssetSerializerTest, CaveFloorAndCeilingRespectWorldPoseAndGeometr
     ASSERT_TRUE(scene::TrySampleTerrainCeilingWorld(tc, pose, {112,8,-22}, 10, sample));
     EXPECT_FLOAT_EQ(sample.position.y, 14);
 }
+/// @brief Cave collider has open entrance solid walls floor and ceiling.
 TEST_F(TerrainAssetSerializerTest, CaveColliderHasOpenEntranceSolidWallsFloorAndCeiling)
 {
     scene::Scene scene;
@@ -590,6 +612,7 @@ TEST_F(TerrainAssetSerializerTest, CaveColliderHasOpenEntranceSolidWallsFloorAnd
     ASSERT_TRUE(scene::PrepareCollider(scene, go, col));
     EXPECT_EQ(col.collider->GetType(), physics::ColliderType::HEIGHT_FIELD);
 }
+/// @brief Cave TOML binary and inline scene round-trips preserve topology.
 TEST_F(TerrainAssetSerializerTest, CaveTomlBinaryAndInlineSceneRoundTripsPreserveTopology)
 {
     const auto source = CaveTerrain();
@@ -623,6 +646,7 @@ TEST_F(TerrainAssetSerializerTest, CaveTomlBinaryAndInlineSceneRoundTripsPreserv
     ASSERT_TRUE(scene::TrySampleTerrainFloorWorld(*inlineTerrain,{}, {6,-4,7},10,floor));
     EXPECT_FLOAT_EQ(floor.position.y,-6);
 }
+/// @brief Cave invalid geometry is rejected transactionally.
 TEST_F(TerrainAssetSerializerTest, CaveInvalidGeometryIsRejectedTransactionally)
 {
     auto tc=CaveTerrain(); const auto original=tc.surfaceIndices; const auto revision=tc.surfaceRevision;
@@ -634,6 +658,7 @@ TEST_F(TerrainAssetSerializerTest, CaveInvalidGeometryIsRejectedTransactionally)
     EXPECT_EQ(tc.surfaceIndices,original);
 }
 
+/// @brief Fztn v 2 clears cave geometry and keeps hole mask.
 TEST_F(TerrainAssetSerializerTest, FztnV2ClearsCaveGeometryAndKeepsHoleMask)
 {
     const auto file = m_temp.File("old-v2.fztn").string();
@@ -661,6 +686,7 @@ TEST_F(TerrainAssetSerializerTest, FztnV2ClearsCaveGeometryAndKeepsHoleMask)
     EXPECT_TRUE(loaded.surfaceMaterial.empty()); EXPECT_EQ(loaded.holeCells, std::vector<uint32_t>{0});
     ASSERT_EQ(loaded.heightData.size(), 4u); EXPECT_FLOAT_EQ(loaded.heightData[3], .3f);
 }
+/// @brief Invalid fztn v 3 leaves existing output untouched.
 TEST_F(TerrainAssetSerializerTest, InvalidFztnV3LeavesExistingOutputUntouched)
 {
     const auto file = m_temp.File("truncated-v3.fztn").string();
@@ -678,6 +704,7 @@ TEST_F(TerrainAssetSerializerTest, InvalidFztnV3LeavesExistingOutputUntouched)
     EXPECT_EQ(loaded.columns, 77u); EXPECT_EQ(loaded.heightData, std::vector<float>{42});
     EXPECT_EQ(loaded.surfaceMaterial, "keep");
 }
+/// @brief Cave sphere can travel through entrance and stops at walls floor and roof.
 TEST_F(TerrainAssetSerializerTest, CaveSphereCanTravelThroughEntranceAndStopsAtWallsFloorAndRoof)
 {
     scene::Scene source;
@@ -710,6 +737,7 @@ TEST_F(TerrainAssetSerializerTest, CaveSphereCanTravelThroughEntranceAndStopsAtW
     for (int i = 0; i < 120; ++i) world.Step(1.0f / 60.0f);
     EXPECT_NEAR(body.GetPosition().y, -2.4f, .02f);
 }
+/// @brief Surface outside heightfield and exact contact are queryable.
 TEST_F(TerrainAssetSerializerTest, SurfaceOutsideHeightfieldAndExactContactAreQueryable)
 {
     auto terrain = CaveTerrain();
@@ -720,6 +748,7 @@ TEST_F(TerrainAssetSerializerTest, SurfaceOutsideHeightfieldAndExactContactAreQu
     EXPECT_FALSE(scene::TrySampleTerrainCeilingWorld(terrain, {}, {20.5f,-6,4.5f}, 100, floor));
 }
 
+/// @brief Cave render patch bounds include underground floor and ceiling normals.
 TEST_F(TerrainAssetSerializerTest, CaveRenderPatchBoundsIncludeUndergroundFloorAndCeilingNormals)
 {
     const auto terrain = CaveTerrain();
@@ -735,6 +764,7 @@ TEST_F(TerrainAssetSerializerTest, CaveRenderPatchBoundsIncludeUndergroundFloorA
     EXPECT_TRUE(hasFloor); EXPECT_TRUE(hasCeiling);
 }
 
+/// @brief Preserves first triangle normals at shared floor and roof seams.
 TEST_F(TerrainSplatTest, PreservesFirstTriangleNormalsAtSharedFloorAndRoofSeams)
 {
     auto terrain = SurfaceOnlyTerrain();
@@ -766,6 +796,7 @@ TEST_F(TerrainSplatTest, PreservesFirstTriangleNormalsAtSharedFloorAndRoofSeams)
     EXPECT_VEC3_NEAR(top.normal, ceiling.normal, testkit::kTolerance);
 }
 
+/// @brief Reflects raw surface and pose changes across alternating terrains.
 TEST_F(TerrainSplatTest, ReflectsRawSurfaceAndPoseChangesAcrossAlternatingTerrains)
 {
     auto terrain = SurfaceOnlyTerrain();
@@ -807,6 +838,7 @@ TEST_F(TerrainSplatTest, ReflectsRawSurfaceAndPoseChangesAcrossAlternatingTerrai
     EXPECT_FLOAT_EQ(sample.position.y, 4);
 }
 
+/// @brief Preserves sloped surface height and normal under yaw pitch roll and nonuniform scale.
 TEST_F(TerrainSplatTest, PreservesSlopedSurfaceHeightAndNormalUnderYawPitchRollAndNonuniformScale)
 {
     auto terrain = SurfaceOnlyTerrain();
@@ -838,6 +870,7 @@ TEST_F(TerrainSplatTest, PreservesSlopedSurfaceHeightAndNormalUnderYawPitchRollA
     EXPECT_VEC3_NEAR(sample.normal, -expectedNormal, testkit::kTolerance);
 }
 
+/// @brief Skips unused world overflow but rejects unused nan without changing outputs.
 TEST_F(TerrainSplatTest, SkipsUnusedWorldOverflowButRejectsUnusedNanWithoutChangingOutputs)
 {
     auto terrain = SurfaceOnlyTerrain();
@@ -867,6 +900,7 @@ TEST_F(TerrainSplatTest, SkipsUnusedWorldOverflowButRejectsUnusedNanWithoutChang
     EXPECT_FLOAT_EQ(sample.position.y, 1);
 }
 
+/// @brief Preserves high index queries at 512 and 513 surface vertices.
 TEST_F(TerrainSplatTest, PreservesHighIndexQueriesAt512And513SurfaceVertices)
 {
     for (const uint32_t vertexCount : {512u,513u}) {
@@ -897,6 +931,7 @@ TEST_F(TerrainSplatTest, PreservesHighIndexQueriesAt512And513SurfaceVertices)
     }
 }
 
+/// @brief Matches large surface fallback bits across repeated floor ceiling and top queries.
 TEST_F(TerrainSplatTest, MatchesLargeSurfaceFallbackBitsAcrossRepeatedFloorCeilingAndTopQueries)
 {
     auto small = SurfaceOnlyTerrain();
@@ -934,6 +969,7 @@ TEST_F(TerrainSplatTest, MatchesLargeSurfaceFallbackBitsAcrossRepeatedFloorCeili
     }
 }
 
+/// @brief Preserves projection `epsilon` and determinant boundaries across repeated queries.
 TEST_F(TerrainSplatTest, PreservesProjectionEpsilonAndDeterminantBoundariesAcrossRepeatedQueries)
 {
     auto small = SurfaceOnlyTerrain();
@@ -977,6 +1013,7 @@ TEST_F(TerrainSplatTest, PreservesProjectionEpsilonAndDeterminantBoundariesAcros
     ExpectSurfaceBits(smallSample, largeSample);
 }
 
+/// @brief Projection miss rejection preserves edge slack and large surface oracle.
 TEST_F(TerrainSplatTest, ProjectionMissRejectionPreservesEdgeSlackAndLargeSurfaceOracle)
 {
     auto small = SurfaceOnlyTerrain();
@@ -1018,6 +1055,7 @@ TEST_F(TerrainSplatTest, ProjectionMissRejectionPreservesEdgeSlackAndLargeSurfac
     }
 }
 
+/// @brief Projection blocks keep partial blocks and first triangle height ties.
 TEST_F(TerrainSplatTest, ProjectionBlocksKeepPartialBlocksAndFirstTriangleHeightTies)
 {
     auto small = SurfaceOnlyTerrain();
@@ -1062,6 +1100,7 @@ TEST_F(TerrainSplatTest, ProjectionBlocksKeepPartialBlocksAndFirstTriangleHeight
     }
 }
 
+/// @brief Uncertain projection keeps its whole block searchable.
 TEST_F(TerrainSplatTest, UncertainProjectionKeepsItsWholeBlockSearchable)
 {
     auto small=SurfaceOnlyTerrain();
@@ -1086,6 +1125,7 @@ TEST_F(TerrainSplatTest, UncertainProjectionKeepsItsWholeBlockSearchable)
     }
 }
 
+/// @brief Revalidates same size invalid indices and unused nan on the next query.
 TEST_F(TerrainSplatTest, RevalidatesSameSizeInvalidIndicesAndUnusedNanOnTheNextQuery)
 {
     auto terrain = SurfaceOnlyTerrain();
@@ -1124,6 +1164,7 @@ TEST_F(TerrainSplatTest, RevalidatesSameSizeInvalidIndicesAndUnusedNanOnTheNextQ
     EXPECT_EQ(terrain.surfaceRevision, revision);
 }
 
+/// @brief Preserves queries across 2046 and 2049 surface indices.
 TEST_F(TerrainSplatTest, PreservesQueriesAcross2046And2049SurfaceIndices)
 {
     for (const size_t indexCount : {2046u,2049u}) {
@@ -1149,6 +1190,7 @@ TEST_F(TerrainSplatTest, PreservesQueriesAcross2046And2049SurfaceIndices)
     }
 }
 
+/// @brief Rejects callback mutated geometry after nested query without changing outputs.
 TEST_F(TerrainSplatTest, RejectsCallbackMutatedGeometryAfterNestedQueryWithoutChangingOutputs)
 {
     scene::TerrainComponent outer;
@@ -1191,6 +1233,7 @@ TEST_F(TerrainSplatTest, RejectsCallbackMutatedGeometryAfterNestedQueryWithoutCh
     EXPECT_FLOAT_EQ(sample.position.y, 2);
 }
 
+/// @brief Scene terrain proxy keeps ancestor activity first tie and `false` outputs.
 TEST_F(TerrainSplatTest, SceneTerrainProxyKeepsAncestorActivityFirstTieAndFalseOutputs)
 {
     scene::Scene queryScene;

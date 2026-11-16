@@ -50,6 +50,7 @@ PrefabOverride MakeOverride(const char* sourceId, const char* path)
 
 /// @name パス解決 (読み)
 
+/// @brief Finds a top level key.
 TEST(PrefabPathLookup, FindsATopLevelKey)
 {
     const toml::table table = MakeNestedTable();
@@ -60,6 +61,7 @@ TEST(PrefabPathLookup, FindsATopLevelKey)
     EXPECT_EQ(node->value_or(std::string{}), "Player");
 }
 
+/// @brief Finds a nested key.
 TEST(PrefabPathLookup, FindsANestedKey)
 {
     const toml::table table = MakeNestedTable();
@@ -70,6 +72,7 @@ TEST(PrefabPathLookup, FindsANestedKey)
     EXPECT_DOUBLE_EQ(node->value_or(0.0), 1.0);
 }
 
+/// @brief Finds an intermediate table.
 TEST(PrefabPathLookup, FindsAnIntermediateTable)
 {
     const toml::table table = MakeNestedTable();
@@ -80,6 +83,7 @@ TEST(PrefabPathLookup, FindsAnIntermediateTable)
     EXPECT_NE(node->as_table(), nullptr);
 }
 
+/// @brief Returns null for a missing key.
 TEST(PrefabPathLookup, ReturnsNullForAMissingKey)
 {
     const toml::table table = MakeNestedTable();
@@ -89,6 +93,7 @@ TEST(PrefabPathLookup, ReturnsNullForAMissingKey)
     EXPECT_EQ(FindNodeAtPath(table, "transform.position.z"), nullptr);
 }
 
+/// @brief Returns null when a mid segment is not a table.
 TEST(PrefabPathLookup, ReturnsNullWhenAMidSegmentIsNotATable)
 {
     /// @note "name" は文字列。その先を辿ろうとしたら «無い» と答えるしかない。
@@ -97,6 +102,7 @@ TEST(PrefabPathLookup, ReturnsNullWhenAMidSegmentIsNotATable)
     EXPECT_EQ(FindNodeAtPath(table, "name.x"), nullptr);
 }
 
+/// @brief Returns null for an empty path.
 TEST(PrefabPathLookup, ReturnsNullForAnEmptyPath)
 {
     const toml::table table = MakeNestedTable();
@@ -106,6 +112,7 @@ TEST(PrefabPathLookup, ReturnsNullForAnEmptyPath)
 
 /// @name パス解決 (書き)
 
+/// @brief Replaces a top level value.
 TEST(PrefabPathAssign, ReplacesATopLevelValue)
 {
     toml::table table = MakeNestedTable();
@@ -116,6 +123,7 @@ TEST(PrefabPathAssign, ReplacesATopLevelValue)
     EXPECT_EQ(table["name"].value_or(std::string{}), "Enemy");
 }
 
+/// @brief Replaces a nested value.
 TEST(PrefabPathAssign, ReplacesANestedValue)
 {
     toml::table table = MakeNestedTable();
@@ -126,6 +134,7 @@ TEST(PrefabPathAssign, ReplacesANestedValue)
     EXPECT_DOUBLE_EQ(table["transform"]["position"]["x"].value_or(0.0), 42.0);
 }
 
+/// @brief Leaves siblings alone.
 TEST(PrefabPathAssign, LeavesSiblingsAlone)
 {
     /// @note 1 つ書き換えたときに隣の値まで消えると、差分適用で他の項目が既定値へ戻る。
@@ -138,6 +147,7 @@ TEST(PrefabPathAssign, LeavesSiblingsAlone)
     EXPECT_EQ(table["name"].value_or(std::string{}), "Player");
 }
 
+/// @brief Adds a missing leaf key.
 TEST(PrefabPathAssign, AddsAMissingLeafKey)
 {
     /// @note 末尾のキーは無くても作る (プレハブに無い項目をインスタンスが持つ場合)。
@@ -149,6 +159,7 @@ TEST(PrefabPathAssign, AddsAMissingLeafKey)
     EXPECT_DOUBLE_EQ(table["transform"]["position"]["z"].value_or(0.0), 3.0);
 }
 
+/// @brief Checks changes the value type.
 TEST(PrefabPathAssign, ChangesTheValueType)
 {
     /// @note 型が変わっても «置き換え» として通ること (bool だった項目が文字列になる等)。
@@ -160,6 +171,7 @@ TEST(PrefabPathAssign, ChangesTheValueType)
     EXPECT_EQ(table["active"].value_or(std::string{}), "yes");
 }
 
+/// @brief Refuses to create missing intermediate tables.
 TEST(PrefabPathAssign, RefusesToCreateMissingIntermediateTables)
 {
     /// @note 途中のテーブルまで作ると «想定外の形» を静かに生やす。ここは失敗させる。
@@ -170,6 +182,7 @@ TEST(PrefabPathAssign, RefusesToCreateMissingIntermediateTables)
     EXPECT_EQ(FindNodeAtPath(table, "physics"), nullptr);
 }
 
+/// @brief Refuses when a mid segment is not a table.
 TEST(PrefabPathAssign, RefusesWhenAMidSegmentIsNotATable)
 {
     toml::table table = MakeNestedTable();
@@ -178,6 +191,7 @@ TEST(PrefabPathAssign, RefusesWhenAMidSegmentIsNotATable)
     EXPECT_FALSE(SetNodeAtPath(table, "name.x", value));
 }
 
+/// @brief Round-trips through find.
 TEST(PrefabPathAssign, RoundTripsThroughFind)
 {
     toml::table table = MakeNestedTable();
@@ -192,6 +206,7 @@ TEST(PrefabPathAssign, RoundTripsThroughFind)
 
 /// @name 差分一覧
 
+/// @brief Removes the matching entry.
 TEST(PrefabOverrideSetOps, RemovesTheMatchingEntry)
 {
     PrefabOverrideSet set;
@@ -206,6 +221,7 @@ TEST(PrefabOverrideSetOps, RemovesTheMatchingEntry)
     EXPECT_EQ(result.entries[0].path, "transform.position.x");
 }
 
+/// @brief Keeps entries with the same path on another object.
 TEST(PrefabOverrideSetOps, KeepsEntriesWithTheSamePathOnAnotherObject)
 {
     /// @note パスだけで消すと、別オブジェクトの同名プロパティまで巻き添えになる。
@@ -220,6 +236,7 @@ TEST(PrefabOverrideSetOps, KeepsEntriesWithTheSamePathOnAnotherObject)
     EXPECT_EQ(result.entries[0].prefabSourceId, "go-2");
 }
 
+/// @brief Keeps the asset path and instance tables.
 TEST(PrefabOverrideSetOps, KeepsTheAssetPathAndInstanceTables)
 {
     PrefabOverrideSet set;
@@ -235,6 +252,7 @@ TEST(PrefabOverrideSetOps, KeepsTheAssetPathAndInstanceTables)
     EXPECT_TRUE(result.Empty());
 }
 
+/// @brief Checks removing an absent entry changes nothing.
 TEST(PrefabOverrideSetOps, RemovingAnAbsentEntryChangesNothing)
 {
     PrefabOverrideSet set;
@@ -246,6 +264,7 @@ TEST(PrefabOverrideSetOps, RemovingAnAbsentEntryChangesNothing)
     EXPECT_EQ(result.entries.size(), 1u);
 }
 
+/// @brief Empty reflects the entry count only.
 TEST(PrefabOverrideSetOps, EmptyReflectsTheEntryCountOnly)
 {
     PrefabOverrideSet set;
@@ -261,11 +280,13 @@ TEST(PrefabOverrideSetOps, EmptyReflectsTheEntryCountOnly)
 
 /// @name 表示整形
 
+/// @brief Shows a placeholder for a missing node.
 TEST(PrefabOverrideDisplay, ShowsAPlaceholderForAMissingNode)
 {
     EXPECT_EQ(FormatNodeForDisplay(nullptr), "(none)");
 }
 
+/// @brief Renders scalar values.
 TEST(PrefabOverrideDisplay, RendersScalarValues)
 {
     const toml::value<std::string> text{ std::string("Player") };
@@ -277,6 +298,7 @@ TEST(PrefabOverrideDisplay, RendersScalarValues)
     EXPECT_FALSE(FormatNodeForDisplay(&flag).empty());
 }
 
+/// @brief Collapses a value onto one line.
 TEST(PrefabOverrideDisplay, CollapsesAValueOntoOneLine)
 {
     /// @note 差分一覧は 1 行で並ぶ。改行が残ると行が崩れて後続が読めなくなる。
@@ -291,6 +313,7 @@ TEST(PrefabOverrideDisplay, CollapsesAValueOntoOneLine)
     EXPECT_EQ(shown.find('\t'), std::string::npos) << shown;
 }
 
+/// @brief Truncates a long value.
 TEST(PrefabOverrideDisplay, TruncatesALongValue)
 {
     const toml::value<std::string> text{ std::string(500, 'x') };
@@ -300,6 +323,7 @@ TEST(PrefabOverrideDisplay, TruncatesALongValue)
     EXPECT_LT(shown.size(), 200u) << shown.size();
 }
 
+/// @brief Does not cut in the middle of a multi byte character.
 TEST(PrefabOverrideDisplay, DoesNotCutInTheMiddleOfAMultiByteCharacter)
 {
     /// @note バイトで切ると日本語の値が «□» で終わる。文字境界まで戻すこと。

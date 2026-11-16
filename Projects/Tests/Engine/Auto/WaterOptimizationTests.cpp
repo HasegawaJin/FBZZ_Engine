@@ -72,6 +72,7 @@ float OriginalHeight(const scene::WaterComponent& water, float x, float z, float
 class WaterOptimizationTest : public testkit::Fixture {};
 }
 
+/// @brief Cached waves match original and detect direct edits.
 TEST_F(WaterOptimizationTest, CachedWavesMatchOriginalAndDetectDirectEdits)
 {
     scene::WaterComponent water;
@@ -98,6 +99,7 @@ TEST_F(WaterOptimizationTest, CachedWavesMatchOriginalAndDetectDirectEdits)
     EXPECT_FLOAT_EQ(water.GetSurfaceHeightAt(1.0f, 2.0f, 3.0f), 0.0f);
 }
 
+/// @brief Active wave count limits evaluation and ignores inactive edits.
 TEST_F(WaterOptimizationTest, ActiveWaveCountLimitsEvaluationAndIgnoresInactiveEdits)
 {
     scene::WaterComponent water;
@@ -130,6 +132,7 @@ TEST_F(WaterOptimizationTest, ActiveWaveCountLimitsEvaluationAndIgnoresInactiveE
     }
 }
 
+/// @brief Bounds contain flow and ripple displacement.
 TEST_F(WaterOptimizationTest, BoundsContainFlowAndRippleDisplacement)
 {
     scene::WaterComponent water;
@@ -149,6 +152,7 @@ TEST_F(WaterOptimizationTest, BoundsContainFlowAndRippleDisplacement)
         EXPECT_LE(std::abs(water.GetSurfaceHeightAt(i * 0.2f, 0.0f, i * 0.3f)), water.SurfaceHeightBound());
 }
 
+/// @brief Culling uses live particle positions and keeps baked coverage.
 TEST_F(WaterOptimizationTest, CullingUsesLiveParticlePositionsAndKeepsBakedCoverage)
 {
     scene::ParticleEmitter emitter;
@@ -181,6 +185,7 @@ TEST_F(WaterOptimizationTest, CullingUsesLiveParticlePositionsAndKeepsBakedCover
     EXPECT_EQ(originalCovered, culledCovered);
 }
 
+/// @brief GPU bounds and rotated baked box cull conservatively.
 TEST_F(WaterOptimizationTest, GpuBoundsAndRotatedBakedBoxCullConservatively)
 {
     scene::ParticleEmitter emitter;

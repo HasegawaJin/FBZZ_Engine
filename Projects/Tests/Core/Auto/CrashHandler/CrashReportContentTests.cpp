@@ -52,6 +52,7 @@ protected:
     testkit::TempDir temp{ "CrashReportContent" };
 };
 
+/// @brief Records the thread that asked for the report.
 TEST_F(CrashReportContentTest, RecordsTheThreadThatAskedForTheReport)
 {
     const std::filesystem::path dir = core::CrashHandler::WriteReport("thread on the main thread");
@@ -62,6 +63,7 @@ TEST_F(CrashReportContentTest, RecordsTheThreadThatAskedForTheReport)
     EXPECT_NE(ReadAll(dir / "report.txt").find(expected.str()), std::string::npos);
 }
 
+/// @brief Records the worker thread when the report is asked for there.
 TEST_F(CrashReportContentTest, RecordsTheWorkerThreadWhenTheReportIsAskedForThere)
 {
     /// @note ダンプは «落ちたスレッド» を軸に開く。呼んだスレッドが載らないと突き合わせられない。
@@ -80,6 +82,7 @@ TEST_F(CrashReportContentTest, RecordsTheWorkerThreadWhenTheReportIsAskedForTher
     EXPECT_NE(ReadAll(dir / "report.txt").find(expected.str()), std::string::npos);
 }
 
+/// @brief Names the dump file when the dump was written.
 TEST_F(CrashReportContentTest, NamesTheDumpFileWhenTheDumpWasWritten)
 {
     const std::filesystem::path dir = core::CrashHandler::WriteReport("dump heading");
@@ -90,6 +93,7 @@ TEST_F(CrashReportContentTest, NamesTheDumpFileWhenTheDumpWasWritten)
     EXPECT_EQ(report.find("dump:    failed"), std::string::npos);
 }
 
+/// @brief Records the engine version and the command line.
 TEST_F(CrashReportContentTest, RecordsTheEngineVersionAndTheCommandLine)
 {
     const std::filesystem::path dir = core::CrashHandler::WriteReport("build identity");
@@ -104,6 +108,7 @@ TEST_F(CrashReportContentTest, RecordsTheEngineVersionAndTheCommandLine)
     EXPECT_GT(report.find("\r\n", command), command + std::string("command: ").size());
 }
 
+/// @brief Does not overwrite an earlier report written in the same second.
 TEST_F(CrashReportContentTest, DoesNotOverwriteAnEarlierReportWrittenInTheSameSecond)
 {
     const std::filesystem::path first  = core::CrashHandler::WriteReport("first report");
@@ -116,6 +121,7 @@ TEST_F(CrashReportContentTest, DoesNotOverwriteAnEarlierReportWrittenInTheSameSe
     EXPECT_NE(ReadAll(second / "report.txt").find("what:    second report"), std::string::npos);
 }
 
+/// @brief Returns empty when the report directory cannot be created.
 TEST_F(CrashReportContentTest, ReturnsEmptyWhenTheReportDirectoryCannotBeCreated)
 {
     const auto blocker = temp.Path() / "Saved";

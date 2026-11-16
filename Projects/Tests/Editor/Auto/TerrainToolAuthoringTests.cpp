@@ -188,6 +188,7 @@ protected:
     std::string m_text;
 };
 
+/// @brief Multiple terrains require an explicit choice.
 TEST_F(TerrainToolAuthoringTest, MultipleTerrainsRequireAnExplicitChoice)
 {
     AddTerrain("First", 3, 4);
@@ -197,6 +198,7 @@ TEST_F(TerrainToolAuthoringTest, MultipleTerrainsRequireAnExplicitChoice)
     EXPECT_EQ(m_text.find("Resolution:"), std::string::npos) << m_text;
 }
 
+/// @brief One terrain shows its dimensions without an extra choice.
 TEST_F(TerrainToolAuthoringTest, OneTerrainShowsItsDimensionsWithoutAnExtraChoice)
 {
     AddTerrain("Mountain", 5, 6);
@@ -207,6 +209,7 @@ TEST_F(TerrainToolAuthoringTest, OneTerrainShowsItsDimensionsWithoutAnExtraChoic
     EXPECT_NE(m_text.find("Local Size: 16.0 x 20.0 m"), std::string::npos) << m_text;
 }
 
+/// @brief Explicit choice survives hierarchy reordering.
 TEST_F(TerrainToolAuthoringTest, ExplicitChoiceSurvivesHierarchyReordering)
 {
     AddTerrain("First", 3, 4);
@@ -219,6 +222,7 @@ TEST_F(TerrainToolAuthoringTest, ExplicitChoiceSurvivesHierarchyReordering)
     EXPECT_NE(m_text.find("Resolution: 5 x 6"), std::string::npos) << m_text;
 }
 
+/// @brief Deleted choice does not select the remaining terrain.
 TEST_F(TerrainToolAuthoringTest, DeletedChoiceDoesNotSelectTheRemainingTerrain)
 {
     AddTerrain("First", 3, 4);
@@ -231,6 +235,7 @@ TEST_F(TerrainToolAuthoringTest, DeletedChoiceDoesNotSelectTheRemainingTerrain)
     EXPECT_EQ(m_text.find("Resolution:"), std::string::npos) << m_text;
 }
 
+/// @brief Scene clear resets an earlier choice.
 TEST_F(TerrainToolAuthoringTest, SceneClearResetsAnEarlierChoice)
 {
     AddTerrain("Original", 3, 4);
@@ -243,6 +248,7 @@ TEST_F(TerrainToolAuthoringTest, SceneClearResetsAnEarlierChoice)
     EXPECT_EQ(m_text.find("Resolution:"), std::string::npos) << m_text;
 }
 
+/// @brief Paint undo preserves geometry revisions and saved reference.
 TEST_F(TerrainToolAuthoringTest, PaintUndoPreservesGeometryRevisionsAndSavedReference)
 {
     const auto id = AddTerrain("Painted terrain", 5, 5);
@@ -274,6 +280,7 @@ TEST_F(TerrainToolAuthoringTest, PaintUndoPreservesGeometryRevisionsAndSavedRefe
     EXPECT_TRUE(terrain.HasPendingSplatUpdate());
 }
 
+/// @brief Sculpt undo invalidates geometry with a new revision.
 TEST_F(TerrainToolAuthoringTest, SculptUndoInvalidatesGeometryWithANewRevision)
 {
     const auto id = AddTerrain("Sculpted terrain", 5, 5);
@@ -291,6 +298,7 @@ TEST_F(TerrainToolAuthoringTest, SculptUndoInvalidatesGeometryWithANewRevision)
     EXPECT_TRUE(terrain.colliderDirty);
 }
 
+/// @brief Diagonal sculpt dabs undo and redo together.
 TEST_F(TerrainToolAuthoringTest, DiagonalSculptDabsUndoAndRedoTogether)
 {
     const auto id = AddTerrain("Diagonal stroke", 9, 9);
@@ -315,6 +323,7 @@ TEST_F(TerrainToolAuthoringTest, DiagonalSculptDabsUndoAndRedoTogether)
     EXPECT_EQ(terrain.heightData, sculptedHeight);
 }
 
+/// @brief Saturated paint does not invalidate terrain or record history.
 TEST_F(TerrainToolAuthoringTest, SaturatedPaintDoesNotInvalidateTerrainOrRecordHistory)
 {
     const auto id = AddTerrain("Fully painted terrain", 5, 5);
@@ -331,6 +340,7 @@ TEST_F(TerrainToolAuthoringTest, SaturatedPaintDoesNotInvalidateTerrainOrRecordH
     EXPECT_FALSE(terrain.HasPendingSplatUpdate());
 }
 
+/// @brief Brush ray passes through hole to negative height terrain.
 TEST_F(TerrainToolAuthoringTest, BrushRayPassesThroughHoleToNegativeHeightTerrain)
 {
     const auto upper = AddTerrain("Upper terrain", 5, 5);
@@ -357,6 +367,7 @@ TEST_F(TerrainToolAuthoringTest, BrushRayPassesThroughHoleToNegativeHeightTerrai
     EXPECT_NEAR(hit.y, -10.0f, 0.001f);
 }
 
+/// @brief Checks brush ray hits small cells at shallow angle.
 TEST_F(TerrainToolAuthoringTest, BrushRayHitsSmallCellsAtShallowAngle)
 {
     const auto id = AddTerrain("Fine terrain", 17, 17);
@@ -381,6 +392,7 @@ TEST_F(TerrainToolAuthoringTest, BrushRayHitsSmallCellsAtShallowAngle)
     EXPECT_NEAR(hit.y, 0.0f, 0.00001f);
 }
 
+/// @brief Stroke undo rejects a replaced component.
 TEST_F(TerrainToolAuthoringTest, StrokeUndoRejectsAReplacedComponent)
 {
     const auto id = AddTerrain("Painted terrain", 5, 5);
@@ -395,6 +407,7 @@ TEST_F(TerrainToolAuthoringTest, StrokeUndoRejectsAReplacedComponent)
     EXPECT_EQ(replacement.heightData, height);
 }
 
+/// @brief Stroke undo rejects authored conflicts and detached scene.
 TEST_F(TerrainToolAuthoringTest, StrokeUndoRejectsAuthoredConflictsAndDetachedScene)
 {
     const auto id = AddTerrain("Painted terrain", 5, 5);
@@ -412,6 +425,7 @@ TEST_F(TerrainToolAuthoringTest, StrokeUndoRejectsAuthoredConflictsAndDetachedSc
     EXPECT_EQ(terrain.splatWeights, weights);
 }
 
+/// @brief Repeated strokes validate shared and changed blocks.
 TEST_F(TerrainToolAuthoringTest, RepeatedStrokesValidateSharedAndChangedBlocks)
 {
     const auto id = AddTerrain("Shared terrain history", 129, 129);
@@ -448,6 +462,7 @@ TEST_F(TerrainToolAuthoringTest, RepeatedStrokesValidateSharedAndChangedBlocks)
     EXPECT_EQ(terrain.splatWeights, secondWeights);
 }
 
+/// @brief Hole dab publishes regional topology and defers collision.
 TEST_F(TerrainToolAuthoringTest, HoleDabPublishesRegionalTopologyAndDefersCollision)
 {
     const auto id = AddTerrain("Terrain with cutout", 9, 9);
@@ -472,6 +487,7 @@ TEST_F(TerrainToolAuthoringTest, HoleDabPublishesRegionalTopologyAndDefersCollis
     EXPECT_GT(terrain.CountHoles(), 0u);
 }
 
+/// @brief Scene clear during stroke does not record an edit on the new scene.
 TEST_F(TerrainToolAuthoringTest, SceneClearDuringStrokeDoesNotRecordAnEditOnTheNewScene)
 {
     AddTerrain("Original terrain", 5, 5);
@@ -489,6 +505,7 @@ TEST_F(TerrainToolAuthoringTest, SceneClearDuringStrokeDoesNotRecordAnEditOnTheN
     EXPECT_EQ(terrain.splatWeights, weights);
 }
 
+/// @brief Height map paint pastes once per click and undoes as one edit.
 TEST_F(TerrainToolAuthoringTest, HeightMapPaintPastesOncePerClickAndUndoesAsOneEdit)
 {
     const auto id = AddTerrain("Stamped terrain", 5, 5);
@@ -526,6 +543,7 @@ TEST_F(TerrainToolAuthoringTest, HeightMapPaintPastesOncePerClickAndUndoesAsOneE
     EXPECT_FALSE(terrain.splatDirty);
 }
 
+/// @brief Missing stamp image does not fall through to material painting.
 TEST_F(TerrainToolAuthoringTest, MissingStampImageDoesNotFallThroughToMaterialPainting)
 {
     const auto id = AddTerrain("Unchanged terrain", 5, 5);

@@ -22,6 +22,7 @@ protected:
         ASSERT_TRUE(solver.SetSettings(settings));
     }
 };
+/// @brief Constant sampler adds to the existing uniform wind.
 TEST_F(ClothWindTest, ConstantSamplerAddsToTheExistingUniformWind)
 {
     physics::ClothSolver reference,sampled;
@@ -34,6 +35,7 @@ TEST_F(ClothWindTest, ConstantSamplerAddsToTheExistingUniformWind)
         EXPECT_VEC3_NEAR(sampled.Velocities()[i],reference.Velocities()[i],1.0e-6f);
     }
 }
+/// @brief Samples current triangle centers each substep and keeps pins.
 TEST_F(ClothWindTest, SamplesCurrentTriangleCentersEachSubstepAndKeepsPins)
 {
     physics::ClothSolver solver;
@@ -52,6 +54,7 @@ TEST_F(ClothWindTest, SamplesCurrentTriangleCentersEachSubstepAndKeepsPins)
     ASSERT_TRUE(solver.Step(0.01f));
     EXPECT_EQ(centers.size(),8u);
 }
+/// @brief Invalid sample rolls back earlier triangles and can recover.
 TEST_F(ClothWindTest, InvalidSampleRollsBackEarlierTrianglesAndCanRecover)
 {
     physics::ClothSolver solver;

@@ -61,6 +61,7 @@ physics::FluidVolumeDesc FlatFluid(const physics::RigidBody& body)
 
 class FluidVolumeTest : public testkit::Fixture {};
 
+/// @brief Height band skips only unambiguous queries.
 TEST_F(FluidVolumeTest, HeightBandSkipsOnlyUnambiguousQueries)
 {
     auto body = MakeBody({ 0.0f, -5.0f, 0.0f });
@@ -80,6 +81,7 @@ TEST_F(FluidVolumeTest, HeightBandSkipsOnlyUnambiguousQueries)
     EXPECT_EQ(calls, 2);
 }
 
+/// @brief Unknown height bound keeps the exact callback.
 TEST_F(FluidVolumeTest, UnknownHeightBoundKeepsTheExactCallback)
 {
     auto body = MakeBody({ 0.0f, 80.0f, 0.0f });
@@ -91,6 +93,7 @@ TEST_F(FluidVolumeTest, UnknownHeightBoundKeepsTheExactCallback)
 
 /// @name 揚力
 
+/// @brief Lifts a fully submerged body by the configured acceleration.
 TEST_F(FluidVolumeTest, LiftsAFullySubmergedBodyByTheConfiguredAcceleration)
 {
     physics::RigidBody body = MakeBody(math::Vector3(0.0f, -5.0f, 0.0f));
@@ -106,6 +109,7 @@ TEST_F(FluidVolumeTest, LiftsAFullySubmergedBodyByTheConfiguredAcceleration)
     EXPECT_VEC3_NEAR(body.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Applies a torque that restores the horizontal for a tilted body.
 TEST_F(FluidVolumeTest, AppliesATorqueThatRestoresTheHorizontalForATiltedBody)
 {
     constexpr float kTiltDeg = 30.0f;
@@ -133,6 +137,7 @@ TEST_F(FluidVolumeTest, AppliesATorqueThatRestoresTheHorizontalForATiltedBody)
 
 /// @name 流れの抵抗
 
+/// @brief Drag carries a resting body along the flow.
 TEST_F(FluidVolumeTest, DragCarriesARestingBodyAlongTheFlow)
 {
     constexpr float kDrag = 0.5f;
@@ -155,6 +160,7 @@ TEST_F(FluidVolumeTest, DragCarriesARestingBodyAlongTheFlow)
 
 /// @name 内外判定
 
+/// @brief Contains spans from one body radius above the surface to the depth limit.
 TEST_F(FluidVolumeTest, ContainsSpansFromOneBodyRadiusAboveTheSurfaceToTheDepthLimit)
 {
     physics::RigidBody body = MakeBody(math::Vector3::ZERO);
@@ -169,6 +175,7 @@ TEST_F(FluidVolumeTest, ContainsSpansFromOneBodyRadiusAboveTheSurfaceToTheDepthL
     EXPECT_FALSE(volume.Contains(math::Vector3(0.0f, -kDepthLimit - 0.5f, 0.0f)));
 }
 
+/// @brief Contains is `false` outside the rectangle.
 TEST_F(FluidVolumeTest, ContainsIsFalseOutsideTheRectangle)
 {
     physics::RigidBody body = MakeBody(math::Vector3::ZERO);
@@ -179,6 +186,7 @@ TEST_F(FluidVolumeTest, ContainsIsFalseOutsideTheRectangle)
     EXPECT_FALSE(volume.Contains(math::Vector3(0.0f, 0.0f, kHalfExtent + 1.0f)));
 }
 
+/// @brief Shape callback uses the same substep clock as the surface.
 TEST_F(FluidVolumeTest, ShapeCallbackUsesTheSameSubstepClockAsTheSurface)
 {
     auto body = MakeBody({0.0f, -5.0f, 0.0f});
@@ -195,6 +203,7 @@ TEST_F(FluidVolumeTest, ShapeCallbackUsesTheSameSubstepClockAsTheSurface)
     EXPECT_FALSE(volume.Contains({-1.0f, -5.0f, 0.0f}));
 }
 
+/// @brief Clips individual buoyancy probes to the authored shape.
 TEST_F(FluidVolumeTest, ClipsIndividualBuoyancyProbesToTheAuthoredShape)
 {
     auto body = MakeBody({0.0f, -5.0f, 0.0f});
@@ -208,6 +217,7 @@ TEST_F(FluidVolumeTest, ClipsIndividualBuoyancyProbesToTheAuthoredShape)
     EXPECT_GT(body.GetAngularVelocity().z, 0.0f);
 }
 
+/// @brief Does not lift probes outside the authored shape.
 TEST_F(FluidVolumeTest, DoesNotLiftProbesOutsideTheAuthoredShape)
 {
     auto body = MakeBody({0.0f, -5.0f, 0.0f});
@@ -221,6 +231,7 @@ TEST_F(FluidVolumeTest, DoesNotLiftProbesOutsideTheAuthoredShape)
     EXPECT_VEC3_NEAR(body.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Excluded center still lifts at allowed probes when intersection is enabled.
 TEST_F(FluidVolumeTest, ExcludedCenterStillLiftsAtAllowedProbesWhenIntersectionIsEnabled)
 {
     auto body = MakeBody({0.0f, -5.0f, 0.0f});
@@ -237,6 +248,7 @@ TEST_F(FluidVolumeTest, ExcludedCenterStillLiftsAtAllowedProbesWhenIntersectionI
     EXPECT_VEC3_NEAR(body.GetVelocity(), expected, testkit::kTolerance);
 }
 
+/// @brief Uses spatial depth limits for membership and each buoyancy probe.
 TEST_F(FluidVolumeTest, UsesSpatialDepthLimitsForMembershipAndEachBuoyancyProbe)
 {
     auto body = MakeBody({0.0f, -1.5f, 0.0f});
@@ -250,6 +262,7 @@ TEST_F(FluidVolumeTest, UsesSpatialDepthLimitsForMembershipAndEachBuoyancyProbe)
     EXPECT_NEAR(body.GetVelocity().y, kBuoyancy * 0.8125f, testkit::kTolerance);
 }
 
+/// @brief Does not lift when the surface callback returns nonfinite height.
 TEST_F(FluidVolumeTest, DoesNotLiftWhenTheSurfaceCallbackReturnsNonfiniteHeight)
 {
     auto body = MakeBody({0.0f, -0.5f, 0.0f});

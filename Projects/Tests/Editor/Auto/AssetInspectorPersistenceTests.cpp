@@ -186,6 +186,7 @@ protected:
     }
 };
 
+/// @brief Imports glTF GLB and OBJ without FBX unit conversion.
 TEST_F(AssetInspectorPersistenceTest, ImportsGltfGlbAndObjWithoutFbxUnitConversion)
 {
     std::string binary(36, '\0');
@@ -235,6 +236,7 @@ TEST_F(AssetInspectorPersistenceTest, ImportsGltfGlbAndObjWithoutFbxUnitConversi
     }
 }
 
+/// @brief All model sources resolve their own baked containers and materials.
 TEST_F(AssetInspectorPersistenceTest, AllModelSourcesResolveTheirOwnBakedContainersAndMaterials)
 {
     int sourceIndex = 0;
@@ -266,6 +268,7 @@ TEST_F(AssetInspectorPersistenceTest, AllModelSourcesResolveTheirOwnBakedContain
     }
 }
 
+/// @brief Save all keeps distinct terrain values after selection changes.
 TEST_F(AssetInspectorPersistenceTest, SaveAllKeepsDistinctTerrainValuesAfterSelectionChanges)
 {
     const auto first = Path("First.terrain"), second = Path("Second.terrain");
@@ -290,6 +293,7 @@ TEST_F(AssetInspectorPersistenceTest, SaveAllKeepsDistinctTerrainValuesAfterSele
     EXPECT_FLOAT_EQ(savedSecond.heightBlendDepth, 0.35f);
 }
 
+/// @brief Texture draft survives revisit and apply.
 TEST_F(AssetInspectorPersistenceTest, TextureDraftSurvivesRevisitAndApply)
 {
     const auto first = Path("First.png"), second = Path("Second.png");
@@ -315,6 +319,7 @@ TEST_F(AssetInspectorPersistenceTest, TextureDraftSurvivesRevisitAndApply)
     EXPECT_FALSE(editor::AssetDirtyRegistry::IsDirty(first + ".meta"));
 }
 
+/// @brief Model draft survives revisit and apply.
 TEST_F(AssetInspectorPersistenceTest, ModelDraftSurvivesRevisitAndApply)
 {
     const auto first = Path("First.obj"), second = Path("Second.obj");
@@ -336,6 +341,7 @@ TEST_F(AssetInspectorPersistenceTest, ModelDraftSurvivesRevisitAndApply)
     EXPECT_FALSE(saved.generateNormals);
 }
 
+/// @brief Mask draft survives revisit and apply.
 TEST_F(AssetInspectorPersistenceTest, MaskDraftSurvivesRevisitAndApply)
 {
     const auto first = Path("First.mask"), second = Path("Second.mask");
@@ -354,6 +360,7 @@ TEST_F(AssetInspectorPersistenceTest, MaskDraftSurvivesRevisitAndApply)
     EXPECT_FALSE(saved.defaultInclude);
 }
 
+/// @brief Discard reloads visible draft without saving it.
 TEST_F(AssetInspectorPersistenceTest, DiscardReloadsVisibleDraftWithoutSavingIt)
 {
     const auto path = Path("Discard.terrain");
@@ -371,6 +378,7 @@ TEST_F(AssetInspectorPersistenceTest, DiscardReloadsVisibleDraftWithoutSavingIt)
     EXPECT_FLOAT_EQ(saved.heightBlendDepth, 0.35f);
 }
 
+/// @brief Physics failure keeps dirty value and save all retries after selection change.
 TEST_F(AssetInspectorPersistenceTest, PhysicsFailureKeepsDirtyValueAndSaveAllRetriesAfterSelectionChange)
 {
     const auto first = Path("First.physmat"), second = Path("Second.physmat");
@@ -401,6 +409,7 @@ TEST_F(AssetInspectorPersistenceTest, PhysicsFailureKeepsDirtyValueAndSaveAllRet
     EXPECT_FALSE(editor::AssetDirtyRegistry::HasAny());
 }
 
+/// @brief Hidden physics inspector still flushes its queued save.
 TEST_F(AssetInspectorPersistenceTest, HiddenPhysicsInspectorStillFlushesItsQueuedSave)
 {
     const auto path = Path("Hidden.physmat");
@@ -420,6 +429,7 @@ TEST_F(AssetInspectorPersistenceTest, HiddenPhysicsInspectorStillFlushesItsQueue
     EXPECT_FALSE(editor::AssetDirtyRegistry::HasAny());
 }
 
+/// @brief Every asset serializer preserves locked original and can retry.
 TEST_F(AssetInspectorPersistenceTest, EveryAssetSerializerPreservesLockedOriginalAndCanRetry)
 {
     asset::MaterialAssetAuthoring material;
@@ -458,6 +468,7 @@ TEST_F(AssetInspectorPersistenceTest, EveryAssetSerializerPreservesLockedOrigina
     }
 }
 
+/// @brief Material UI publishes and persists exact undo redo values.
 TEST_F(AssetInspectorPersistenceTest, MaterialUiPublishesAndPersistsExactUndoRedoValues)
 {
     const auto path = Path("MaterialUndo.mat");
@@ -492,6 +503,7 @@ TEST_F(AssetInspectorPersistenceTest, MaterialUiPublishesAndPersistsExactUndoRed
     EXPECT_TRUE(published->Data().doubleSided);
 }
 
+/// @brief Unchanged material UI does not publish or mark dirty.
 TEST_F(AssetInspectorPersistenceTest, UnchangedMaterialUiDoesNotPublishOrMarkDirty)
 {
     const auto path = Path("UnchangedMaterial.mat");
@@ -511,6 +523,7 @@ TEST_F(AssetInspectorPersistenceTest, UnchangedMaterialUiDoesNotPublishOrMarkDir
     EXPECT_FALSE(editor::AssetDirtyRegistry::IsDirty(path));
 }
 
+/// @brief Checks reload conflicts with owned editor draft without overwriting new asset.
 TEST_F(AssetInspectorPersistenceTest, ReloadConflictsWithOwnedEditorDraftWithoutOverwritingNewAsset)
 {
     const auto path = Path("ReloadConflict.mat");
@@ -538,6 +551,7 @@ TEST_F(AssetInspectorPersistenceTest, ReloadConflictsWithOwnedEditorDraftWithout
     EXPECT_FALSE(editor::AssetDirtyRegistry::IsDirty(path));
 }
 
+/// @brief Draft aliases cannot change published values used by dirty save.
 TEST_F(AssetInspectorPersistenceTest, DraftAliasesCannotChangePublishedValuesUsedByDirtySave)
 {
     const auto path = Path("DraftAlias.mat");
@@ -565,6 +579,7 @@ TEST_F(AssetInspectorPersistenceTest, DraftAliasesCannotChangePublishedValuesUse
 }
 
 
+/// @brief Material UI rejects a stale draft after native shader callback.
 TEST_F(AssetInspectorPersistenceTest, MaterialUiRejectsAStaleDraftAfterNativeShaderCallback)
 {
     const auto path = Path("UiNativeConflict.mat");
@@ -596,6 +611,7 @@ TEST_F(AssetInspectorPersistenceTest, MaterialUiRejectsAStaleDraftAfterNativeSha
 }
 
 
+/// @brief Accepted same path element retires runtime and property caches.
 TEST_F(AssetInspectorPersistenceTest, AcceptedSamePathElementRetiresRuntimeAndPropertyCaches)
 {
     AttachScene();
@@ -633,6 +649,7 @@ TEST_F(AssetInspectorPersistenceTest, AcceptedSamePathElementRetiresRuntimeAndPr
 }
 
 
+/// @brief Material override rejects scene switch during native shader creation.
 TEST_F(AssetInspectorPersistenceTest, MaterialOverrideRejectsSceneSwitchDuringNativeShaderCreation)
 {
     AttachScene();
@@ -680,6 +697,7 @@ TEST_F(AssetInspectorPersistenceTest, MaterialOverrideRejectsSceneSwitchDuringNa
     EXPECT_EQ(otherMaterial.ReadAuthoring(), otherBefore);
 }
 
+/// @brief Material override rejects replacement owner during native shader creation.
 TEST_F(AssetInspectorPersistenceTest, MaterialOverrideRejectsReplacementOwnerDuringNativeShaderCreation)
 {
     AttachScene();

@@ -28,6 +28,7 @@ namespace fbzz::tests {
 
 class WaterSplineTest : public testkit::Fixture {};
 
+/// @brief Samples variable river height depth and signed world flow from shared triangles.
 TEST_F(WaterSplineTest, SamplesVariableRiverHeightDepthAndSignedWorldFlowFromSharedTriangles)
 {
     scene::WaterComponent water;
@@ -91,6 +92,7 @@ TEST_F(WaterSplineTest, SamplesVariableRiverHeightDepthAndSignedWorldFlowFromSha
     EXPECT_VEC3_NEAR(surface.flowVelocity, math::Vector3(-3.0f, 0.0f, 2.0f), testkit::kTolerance);
 }
 
+/// @brief Triangulates concave lake and rejects degenerate input without changing output.
 TEST_F(WaterSplineTest, TriangulatesConcaveLakeAndRejectsDegenerateInputWithoutChangingOutput)
 {
     const std::array<math::Vector2, 6> outline{{
@@ -156,6 +158,7 @@ TEST_F(WaterSplineTest, TriangulatesConcaveLakeAndRejectsDegenerateInputWithoutC
     EXPECT_EQ(unchanged.vertices.size(), 1u);
 }
 
+/// @brief Reprepares after world pose changes and supports dry spline surfaces.
 TEST_F(WaterSplineTest, RepreparesAfterWorldPoseChangesAndSupportsDrySplineSurfaces)
 {
     scene::WaterComponent water;
@@ -190,6 +193,7 @@ TEST_F(WaterSplineTest, RepreparesAfterWorldPoseChangesAndSupportsDrySplineSurfa
     EXPECT_EQ(height.waterDepthLimit, 0.0f);
 }
 
+/// @brief Invalid selected spline does not fall back to rectangle.
 TEST_F(WaterSplineTest, InvalidSelectedSplineDoesNotFallBackToRectangle)
 {
     scene::WaterComponent water;
@@ -202,6 +206,7 @@ TEST_F(WaterSplineTest, InvalidSelectedSplineDoesNotFallBackToRectangle)
     EXPECT_EQ(water.splineSnapshot, nullptr);
 }
 
+/// @brief Simulation surface publication stays stable while live geometry changes.
 TEST_F(WaterSplineTest, SimulationSurfacePublicationStaysStableWhileLiveGeometryChanges)
 {
     scene::Scene world;
@@ -256,6 +261,7 @@ TEST_F(WaterSplineTest, SimulationSurfacePublicationStaysStableWhileLiveGeometry
         mutablePublishedWater->splineSnapshot->signature);
 }
 
+/// @brief Rejects finite geometry whose shared local extent would overflow.
 TEST_F(WaterSplineTest, RejectsFiniteGeometryWhoseSharedLocalExtentWouldOverflow)
 {
     std::array<scene::WaterSplinePoint, 2> points{};
@@ -286,6 +292,7 @@ TEST_F(WaterSplineTest, RejectsFiniteGeometryWhoseSharedLocalExtentWouldOverflow
     EXPECT_EQ(unchanged.vertices.size(), 1u);
 }
 
+/// @brief Reflection clone keeps spline fields and maximum reflectable stable ID.
 TEST_F(WaterSplineTest, ReflectionCloneKeepsSplineFieldsAndMaximumReflectableStableID)
 {
     scene::WaterComponent source;
@@ -320,6 +327,7 @@ TEST_F(WaterSplineTest, ReflectionCloneKeepsSplineFieldsAndMaximumReflectableSta
     EXPECT_EQ(clone.splinePoints[1].id, source.splinePoints[1].id);
 }
 
+/// @brief Lake island contours survive reflection and exclude water queries.
 TEST_F(WaterSplineTest, LakeIslandContoursSurviveReflectionAndExcludeWaterQueries)
 {
     scene::WaterComponent source;
@@ -348,6 +356,7 @@ TEST_F(WaterSplineTest, LakeIslandContoursSurviveReflectionAndExcludeWaterQuerie
     EXPECT_EQ(mesh.signature, signature);
 }
 
+/// @brief Point object reflection keeps ordered bindings without inline position copies.
 TEST_F(WaterSplineTest, PointObjectReflectionKeepsOrderedBindingsWithoutInlinePositionCopies)
 {
     scene::WaterComponent waterSource;
@@ -400,6 +409,7 @@ TEST_F(WaterSplineTest, PointObjectReflectionKeepsOrderedBindingsWithoutInlinePo
     EXPECT_EQ(splineClone.pointBindings[1].target.guid, "guid:second-spline-point");
 }
 
+/// @brief Static bakes remain valid when clone remaps point GUIDs at the same numeric positions.
 TEST_F(WaterSplineTest, StaticBakesRemainValidWhenCloneRemapsPointGuidsAtTheSameNumericPositions)
 {
     scene::Scene world;
@@ -511,6 +521,7 @@ TEST_F(WaterSplineTest, StaticBakesRemainValidWhenCloneRemapsPointGuidsAtTheSame
     EXPECT_TRUE(scene::ValidateStaticControlPointBakes(world));
 }
 
+/// @brief Static bake validation rejects changed water and spline authoring.
 TEST_F(WaterSplineTest, StaticBakeValidationRejectsChangedWaterAndSplineAuthoring)
 {
     scene::Scene world;
@@ -581,6 +592,7 @@ TEST_F(WaterSplineTest, StaticBakeValidationRejectsChangedWaterAndSplineAuthorin
     EXPECT_TRUE(staleSpline.closed);
 }
 
+/// @brief Static runtime reads numeric bakes without resolving moved or missing markers.
 TEST_F(WaterSplineTest, StaticRuntimeReadsNumericBakesWithoutResolvingMovedOrMissingMarkers)
 {
     scene::Scene world;
@@ -681,6 +693,7 @@ TEST_F(WaterSplineTest, StaticRuntimeReadsNumericBakesWithoutResolvingMovedOrMis
         world, ownerId, spline, scene::ControlPointReadContext::RUNTIME).valid);
 }
 
+/// @brief TOML int reflection rejects out-of-range values and preserves signed masks.
 TEST_F(WaterSplineTest, TomlIntReflectionRejectsOutOfRangeValuesAndPreservesSignedMasks)
 {
     toml::table table;
@@ -718,6 +731,7 @@ TEST_F(WaterSplineTest, TomlIntReflectionRejectsOutOfRangeValuesAndPreservesSign
     EXPECT_EQ(integerList[2], -1);
 }
 
+/// @brief Oversized control point enums and binding i ds remain invalid after reflection.
 TEST_F(WaterSplineTest, OversizedControlPointEnumsAndBindingIDsRemainInvalidAfterReflection)
 {
     toml::array waterBindings;

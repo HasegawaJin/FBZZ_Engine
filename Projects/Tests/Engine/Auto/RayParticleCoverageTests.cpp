@@ -62,6 +62,7 @@ protected:
     }
 };
 
+/// @brief Disabled experimental session skips particle coverage without changing particles.
 TEST_F(RayParticleCoverageTest, DisabledExperimentalSessionSkipsParticleCoverageWithoutChangingParticles)
 {
     const auto id = AddEmitter();
@@ -75,6 +76,7 @@ TEST_F(RayParticleCoverageTest, DisabledExperimentalSessionSkipsParticleCoverage
     EXPECT_EQ(emitter->runtime.lastCpuSimulationFrame, simulationFrame);
 }
 
+/// @brief Offscreen non light particles keep their owner and do not mutate raster state.
 TEST_F(RayParticleCoverageTest, OffscreenNonLightParticlesKeepTheirOwnerAndDoNotMutateRasterState)
 {
     const auto id = AddEmitter();
@@ -99,6 +101,7 @@ TEST_F(RayParticleCoverageTest, OffscreenNonLightParticlesKeepTheirOwnerAndDoNot
     EXPECT_TRUE(renderer::BuildRayScene(snapshot, {1u << 1}).diagnostics.empty());
 }
 
+/// @brief Inactive disabled empty and non drawn CPU mesh sources are excluded.
 TEST_F(RayParticleCoverageTest, InactiveDisabledEmptyAndNonDrawnCpuMeshSourcesAreExcluded)
 {
     const auto id = AddEmitter();
@@ -120,6 +123,7 @@ TEST_F(RayParticleCoverageTest, InactiveDisabledEmptyAndNonDrawnCpuMeshSourcesAr
     EXPECT_EQ(Snapshot().rayUnsupportedEffects.size(), 1u);
 }
 
+/// @brief Positive GPU draw capacity cannot prove zero alive particles but zero capacity can.
 TEST_F(RayParticleCoverageTest, PositiveGpuDrawCapacityCannotProveZeroAliveParticlesButZeroCapacityCan)
 {
     const auto id = AddEmitter(true);
@@ -257,6 +261,7 @@ protected:
     }
 };
 
+/// @brief Environment keeps first eligible sky and sun across layer and parent changes.
 TEST_F(SparseRenderCollectionTest, EnvironmentKeepsFirstEligibleSkyAndSunAcrossLayerAndParentChanges)
 {
     AddDecoys();
@@ -296,6 +301,7 @@ TEST_F(SparseRenderCollectionTest, EnvironmentKeepsFirstEligibleSkyAndSunAcrossL
     EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 22);
 }
 
+/// @brief Environment rebuilds after scene reorder dense removal and slot reuse.
 TEST_F(SparseRenderCollectionTest, EnvironmentRebuildsAfterSceneReorderDenseRemovalAndSlotReuse)
 {
     const auto first = AddEnvironment(10, 10);
@@ -333,6 +339,7 @@ TEST_F(SparseRenderCollectionTest, EnvironmentRebuildsAfterSceneReorderDenseRemo
     EXPECT_FLOAT_EQ(output.sunMoon->sunDiskIntensity, 40);
 }
 
+/// @brief Particle priority distance and equal distance scene order survive component changes.
 TEST_F(SparseRenderCollectionTest, ParticlePriorityDistanceAndEqualDistanceSceneOrderSurviveComponentChanges)
 {
     AddDecoys();
@@ -370,6 +377,7 @@ TEST_F(SparseRenderCollectionTest, ParticlePriorityDistanceAndEqualDistanceScene
     EXPECT_FALSE(output.particles[3].gpu);
 }
 
+/// @brief Particle eligibility and empty collections remain fresh between calls.
 TEST_F(SparseRenderCollectionTest, ParticleEligibilityAndEmptyCollectionsRemainFreshBetweenCalls)
 {
     AddDecoys();
@@ -406,6 +414,7 @@ TEST_F(SparseRenderCollectionTest, ParticleEligibilityAndEmptyCollectionsRemainF
     EXPECT_EQ(output.particles[0].position, (math::Vector3{9, 0, 0}));
 }
 
+/// @brief Bounded candidate membership uses conservative fallback for unknown and nested slots.
 TEST_F(SparseRenderCollectionTest, BoundedCandidateMembershipUsesConservativeFallbackForUnknownAndNestedSlots)
 {
     const std::array<scene::EntityID, 2> sky{{{1, 1}, {65, 1}}};
@@ -439,6 +448,7 @@ TEST_F(SparseRenderCollectionTest, BoundedCandidateMembershipUsesConservativeFal
     EXPECT_FALSE(empty.MayContain({130, 1}));
 }
 
+/// @brief Candidate capacity boundary and malformed typed IDs keep original scan available.
 TEST_F(SparseRenderCollectionTest, CandidateCapacityBoundaryAndMalformedTypedIdsKeepOriginalScanAvailable)
 {
     constexpr auto capacity = scene::detail::RenderEntitySlotMask::kSlotCapacity;
@@ -520,6 +530,7 @@ protected:
     }
 };
 
+/// @brief Disabled experimental session skips fiber coverage without uploading geometry.
 TEST_F(RayFiberCoverageTest, DisabledExperimentalSessionSkipsFiberCoverageWithoutUploadingGeometry)
 {
     const auto id = AddFiber();
@@ -531,6 +542,7 @@ TEST_F(RayFiberCoverageTest, DisabledExperimentalSessionSkipsFiberCoverageWithou
     EXPECT_EQ(m_scene.GetComponent<scene::FiberComponent>(id)->m_renderIdentity, 0u);
 }
 
+/// @brief Offscreen renderer LOD does not drop fiber owner or change raster visibility.
 TEST_F(RayFiberCoverageTest, OffscreenRendererLodDoesNotDropFiberOwnerOrChangeRasterVisibility)
 {
     const auto id = AddFiber();
@@ -553,6 +565,7 @@ TEST_F(RayFiberCoverageTest, OffscreenRendererLodDoesNotDropFiberOwnerOrChangeRa
     EXPECT_EQ(Snapshot().rayUnsupportedEffects.size(), 1u);
 }
 
+/// @brief Disabled inactive zero density length and root count are excluded.
 TEST_F(RayFiberCoverageTest, DisabledInactiveZeroDensityLengthAndRootCountAreExcluded)
 {
     const auto id = AddFiber();
@@ -588,6 +601,7 @@ TEST_F(RayFiberCoverageTest, DisabledInactiveZeroDensityLengthAndRootCountAreExc
     EXPECT_EQ(m_renderer.bufferCreations, 0u);
 }
 
+/// @brief Fin and blade count proof matches empty nonmanifold and producer budgets without uploads.
 TEST_F(RayFiberCoverageTest, FinAndBladeCountProofMatchesEmptyNonmanifoldAndProducerBudgetsWithoutUploads)
 {
     const auto id = AddFiber();
@@ -629,6 +643,7 @@ TEST_F(RayFiberCoverageTest, FinAndBladeCountProofMatchesEmptyNonmanifoldAndProd
     EXPECT_EQ(m_renderer.bufferCreations, 0u);
 }
 
+/// @brief Skinned shell keeps LOD hidden sources but respects explicit slot visibility.
 TEST_F(RayFiberCoverageTest, SkinnedShellKeepsLodHiddenSourcesButRespectsExplicitSlotVisibility)
 {
     const auto id = AddFiber();
@@ -650,6 +665,7 @@ TEST_F(RayFiberCoverageTest, SkinnedShellKeepsLodHiddenSourcesButRespectsExplici
     EXPECT_EQ(m_renderer.bufferCreations, 0u);
 }
 
+/// @brief Terrain uses already resolved seeded blade counts without generating another shape.
 TEST_F(RayFiberCoverageTest, TerrainUsesAlreadyResolvedSeededBladeCountsWithoutGeneratingAnotherShape)
 {
     const auto id = AddFiber();

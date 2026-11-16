@@ -182,6 +182,7 @@ protected:
     bool m_frameOpen = false;
 };
 
+/// @brief Terrain paint library renders its mesh and refreshes after material reload.
 TEST_F(MaterialPreviewShaderTest, TerrainPaintLibraryRendersItsMeshAndRefreshesAfterMaterialReload)
 {
     struct ImGuiScope {
@@ -255,6 +256,7 @@ TEST_F(MaterialPreviewShaderTest, TerrainPaintLibraryRendersItsMeshAndRefreshesA
     EXPECT_GT(difference, 1.0);
 }
 
+/// @brief Paint mix thumbnails reflect weights and viewport picking selects one instance.
 TEST_F(MaterialPreviewShaderTest, PaintMixThumbnailsReflectWeightsAndViewportPickingSelectsOneInstance)
 {
     struct ImGuiScope{ImGuiContext* previous=ImGui::GetCurrentContext();ImGuiContext* current=ImGui::CreateContext();~ImGuiScope(){ImGui::DestroyContext(current);ImGui::SetCurrentContext(previous);}} imgui;
@@ -309,6 +311,7 @@ TEST_F(MaterialPreviewShaderTest, PaintMixThumbnailsReflectWeightsAndViewportPic
     context.activeScene=nullptr;
 }
 
+/// @brief Sun has natural angular size and follows the observer horizon.
 TEST_F(MaterialPreviewShaderTest, SunHasNaturalAngularSizeAndFollowsTheObserverHorizon)
 {
     const auto shaderRoot=m_project/"Assets/Shaders";
@@ -353,6 +356,7 @@ float4 PSMain(float4 pixel:SV_POSITION):SV_Target0
     EXPECT_GT(flux(render(-0.1f,100))/energy,0.90);EXPECT_LT(flux(render(-1,0)),0.001);
 }
 
+/// @brief Highlight compression keeps white and brightness ordering.
 TEST_F(MaterialPreviewShaderTest, HighlightCompressionKeepsWhiteAndBrightnessOrdering)
 {
     const auto shaderRoot=m_project/"Assets/Shaders";
@@ -385,6 +389,7 @@ float4 PSMain(float4 pixel:SV_POSITION):SV_Target0 { float value=saturate((pixel
     }
 }
 
+/// @brief Builtin particle material preserves tint lighting and output gain.
 TEST_F(MaterialPreviewShaderTest, BuiltinParticleMaterialPreservesTintLightingAndOutputGain)
 {
     asset::MaterialAssetAuthoring particle;
@@ -412,6 +417,7 @@ TEST_F(MaterialPreviewShaderTest, BuiltinParticleMaterialPreservesTintLightingAn
     EXPECT_LT(RgbEnergy(dark), 0.001f);
 }
 
+/// @brief Water preview uses the authored waves instead of fixed small waves.
 TEST_F(MaterialPreviewShaderTest, WaterPreviewUsesTheAuthoredWavesInsteadOfFixedSmallWaves)
 {
     asset::MaterialAssetAuthoring water;
@@ -427,6 +433,7 @@ TEST_F(MaterialPreviewShaderTest, WaterPreviewUsesTheAuthoredWavesInsteadOfFixed
     for (size_t index = 0; index < flat.size(); ++index) difference += std::abs(flat[index] - waves[index]);
     EXPECT_GT(difference, 1.0);
 }
+/// @brief Project water appearance uses reflected tint and canonical texture after save reload.
 TEST_F(MaterialPreviewShaderTest, ProjectWaterAppearanceUsesReflectedTintAndCanonicalTextureAfterSaveReload)
 {
     asset::MaterialAssetAuthoring water;
@@ -467,6 +474,7 @@ TEST_F(MaterialPreviewShaderTest, ProjectWaterAppearanceUsesReflectedTintAndCano
     EXPECT_GT(textureDifference, 1.0);
 }
 
+/// @brief Unsupported water vertex preview uses shared geometry after save reload.
 TEST_F(MaterialPreviewShaderTest, UnsupportedWaterVertexPreviewUsesSharedGeometryAfterSaveReload)
 {
     asset::MaterialAssetAuthoring water;
@@ -536,6 +544,7 @@ float4 PSMain(Pixel p) : SV_Target0 { return unsafeColor; }
     }
 }
 
+/// @brief Project fiber families compile shared geometry across every pass.
 TEST_F(MaterialPreviewShaderTest, ProjectFiberFamiliesCompileSharedGeometryAcrossEveryPass)
 {
     for (const char* family : {"MeadowBlade", "StripeFur", "StripeFurFin"}) {
@@ -569,6 +578,7 @@ TEST_F(MaterialPreviewShaderTest, ProjectFiberFamiliesCompileSharedGeometryAcros
     }
 }
 
+/// @brief Project grass and fur appearance edit reload preserves coverage.
 TEST_F(MaterialPreviewShaderTest, ProjectGrassAndFurAppearanceEditReloadPreservesCoverage)
 {
     for (const char* family : {"MeadowBlade", "StripeFur"}) {
@@ -614,6 +624,7 @@ TEST_F(MaterialPreviewShaderTest, ProjectGrassAndFurAppearanceEditReloadPreserve
     }
 }
 
+/// @brief Project hybrid preview uses shell and fin appearance after material save reload.
 TEST_F(MaterialPreviewShaderTest, ProjectHybridPreviewUsesShellAndFinAppearanceAfterMaterialSaveReload)
 {
     namespace preview = editor::matpreview;
@@ -659,6 +670,7 @@ TEST_F(MaterialPreviewShaderTest, ProjectHybridPreviewUsesShellAndFinAppearanceA
     EXPECT_GT(finDifference, 0.01);
 }
 
+/// @brief Incomplete hybrid preview falls back as one compatible family.
 TEST_F(MaterialPreviewShaderTest, IncompleteHybridPreviewFallsBackAsOneCompatibleFamily)
 {
     namespace preview = editor::matpreview;
@@ -704,6 +716,7 @@ TEST_F(MaterialPreviewShaderTest, IncompleteHybridPreviewFallsBackAsOneCompatibl
     EXPECT_LE(maximumError, 0.000001);
 }
 
+/// @brief Hybrid preview uses the independent project fin appearance.
 TEST_F(MaterialPreviewShaderTest, HybridPreviewUsesTheIndependentProjectFinAppearance)
 {
     namespace preview = editor::matpreview;
@@ -769,6 +782,7 @@ TEST_F(MaterialPreviewShaderTest, HybridPreviewUsesTheIndependentProjectFinAppea
 
 /// @note Insert inside namespace fbzz::tests in MaterialPreviewShaderTests.cpp after the fixture definition.
 
+/// @brief Surface example families compile with shared capabilities and typed fields.
 TEST_F(MaterialPreviewShaderTest, SurfaceExampleFamiliesCompileWithSharedCapabilitiesAndTypedFields)
 {
     const auto root = m_root / "Assets/Shaders/Samples/SurfaceExamples";
@@ -808,6 +822,7 @@ TEST_F(MaterialPreviewShaderTest, SurfaceExampleFamiliesCompileWithSharedCapabil
     }
 }
 
+/// @brief Surface example material edit save reload changes color and retains coverage.
 TEST_F(MaterialPreviewShaderTest, SurfaceExampleMaterialEditSaveReloadChangesColorAndRetainsCoverage)
 {
     namespace preview = editor::matpreview;
@@ -865,6 +880,7 @@ TEST_F(MaterialPreviewShaderTest, SurfaceExampleMaterialEditSaveReloadChangesCol
     }
 }
 
+/// @brief Checks standard PBR parallax changes shading and preserves coverage.
 TEST_F(MaterialPreviewShaderTest, StandardPbrParallaxChangesShadingAndPreservesCoverage)
 {
     const auto heightMap = (m_root / "Assets/Terrain/Alpine/Rock_Height.png").generic_string();
@@ -911,6 +927,7 @@ TEST_F(MaterialPreviewShaderTest, StandardPbrParallaxChangesShadingAndPreservesC
     EXPECT_EQ(Capture(material, "ParallaxMissingHeightMap"), flat);
 }
 
+/// @brief Surface example scene save reload retains shared geometry settings.
 TEST_F(MaterialPreviewShaderTest, SurfaceExampleSceneSaveReloadRetainsSharedGeometrySettings)
 {
     auto source = scene::SceneSerializer::LoadData((m_root / "Assets/Samples/SurfaceExamples/SurfaceExamples.scene").generic_string());

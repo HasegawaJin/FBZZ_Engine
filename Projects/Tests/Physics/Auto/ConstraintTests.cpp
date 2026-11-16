@@ -48,6 +48,7 @@ class ConstraintTest : public testkit::Fixture {};
 
 /// @name 距離
 
+/// @brief Distance pulls the dynamic body to the rest length.
 TEST_F(ConstraintTest, DistancePullsTheDynamicBodyToTheRestLength)
 {
     physics::RigidBody anchor  = MakeStaticAt(math::Vector3::ZERO);
@@ -61,6 +62,7 @@ TEST_F(ConstraintTest, DistancePullsTheDynamicBodyToTheRestLength)
     EXPECT_VEC3_NEAR(anchor.GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Distance pushes apart when too close.
 TEST_F(ConstraintTest, DistancePushesApartWhenTooClose)
 {
     physics::RigidBody anchor  = MakeStaticAt(math::Vector3::ZERO);
@@ -73,6 +75,7 @@ TEST_F(ConstraintTest, DistancePushesApartWhenTooClose)
                      testkit::kTolerance);
 }
 
+/// @brief Distance splits the correction by inverse mass.
 TEST_F(ConstraintTest, DistanceSplitsTheCorrectionByInverseMass)
 {
     /// @note 重い側ほど動かない。等質量なら半分ずつ。
@@ -87,6 +90,7 @@ TEST_F(ConstraintTest, DistanceSplitsTheCorrectionByInverseMass)
     EXPECT_NEAR(heavy.GetPosition().x, 3.5f, testkit::kTolerance);
 }
 
+/// @brief Distance does nothing when both bodies are static.
 TEST_F(ConstraintTest, DistanceDoesNothingWhenBothBodiesAreStatic)
 {
     physics::RigidBody a = MakeStaticAt(math::Vector3::ZERO);
@@ -98,6 +102,7 @@ TEST_F(ConstraintTest, DistanceDoesNothingWhenBothBodiesAreStatic)
     EXPECT_VEC3_NEAR(b.GetPosition(), math::Vector3(9.0f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Distance reports its type.
 TEST_F(ConstraintTest, DistanceReportsItsType)
 {
     physics::RigidBody a;
@@ -111,6 +116,7 @@ TEST_F(ConstraintTest, DistanceReportsItsType)
 
 /// @name ロープ
 
+/// @brief Rope leaves slack alone.
 TEST_F(ConstraintTest, RopeLeavesSlackAlone)
 {
     /// @note たるみを表現できることがロープの存在理由。縮めたら «棒» になる。
@@ -124,6 +130,7 @@ TEST_F(ConstraintTest, RopeLeavesSlackAlone)
                      testkit::kTolerance);
 }
 
+/// @brief Rope clamps to the maximum length.
 TEST_F(ConstraintTest, RopeClampsToTheMaximumLength)
 {
     physics::RigidBody anchor  = MakeStaticAt(math::Vector3::ZERO);
@@ -138,6 +145,7 @@ TEST_F(ConstraintTest, RopeClampsToTheMaximumLength)
 
 /// @name バネ
 
+/// @brief Spring is at rest at the rest length.
 TEST_F(ConstraintTest, SpringIsAtRestAtTheRestLength)
 {
     physics::RigidBody a = MakeDynamicAt(math::Vector3::ZERO);
@@ -152,6 +160,7 @@ TEST_F(ConstraintTest, SpringIsAtRestAtTheRestLength)
     EXPECT_VEC3_NEAR(b.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Spring pulls the bodies together when stretched.
 TEST_F(ConstraintTest, SpringPullsTheBodiesTogetherWhenStretched)
 {
     physics::RigidBody a = MakeDynamicAt(math::Vector3::ZERO);
@@ -166,6 +175,7 @@ TEST_F(ConstraintTest, SpringPullsTheBodiesTogetherWhenStretched)
     EXPECT_LT(b.GetVelocity().x, 0.0f);
 }
 
+/// @brief Spring pushes the bodies apart when compressed.
 TEST_F(ConstraintTest, SpringPushesTheBodiesApartWhenCompressed)
 {
     physics::RigidBody a = MakeDynamicAt(math::Vector3::ZERO);
@@ -180,6 +190,7 @@ TEST_F(ConstraintTest, SpringPushesTheBodiesApartWhenCompressed)
     EXPECT_GT(b.GetVelocity().x, 0.0f);
 }
 
+/// @brief Checks spring damping opposes the separation speed.
 TEST_F(ConstraintTest, SpringDampingOpposesTheSeparationSpeed)
 {
     /// @note 伸びは 0 なのでバネ力は 0。残るのは減衰だけで、離れる動きを止める向きに働く。
@@ -196,6 +207,7 @@ TEST_F(ConstraintTest, SpringDampingOpposesTheSeparationSpeed)
 
 /// @name 鎖
 
+/// @brief Checks chain converges to the segment length between neighbours.
 TEST_F(ConstraintTest, ChainConvergesToTheSegmentLengthBetweenNeighbours)
 {
     physics::RigidBody a = MakeDynamicAt(math::Vector3::ZERO);
@@ -209,6 +221,7 @@ TEST_F(ConstraintTest, ChainConvergesToTheSegmentLengthBetweenNeighbours)
     EXPECT_NEAR((c.GetPosition() - b.GetPosition()).Length(), 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Chain keeps the centre of mass when every body is dynamic.
 TEST_F(ConstraintTest, ChainKeepsTheCentreOfMassWhenEveryBodyIsDynamic)
 {
     /// @note 補正は逆質量の比で分けるので、外力なしに全体が横滑りしてはいけない。
@@ -221,6 +234,7 @@ TEST_F(ConstraintTest, ChainKeepsTheCentreOfMassWhenEveryBodyIsDynamic)
     EXPECT_NEAR((a.GetPosition().x + b.GetPosition().x) * 0.5f, 2.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Chain ignores null and single body configurations.
 TEST_F(ConstraintTest, ChainIgnoresNullAndSingleBodyConfigurations)
 {
     physics::RigidBody only = MakeDynamicAt({5.0f, 0.0f, 0.0f});
@@ -235,6 +249,7 @@ TEST_F(ConstraintTest, ChainIgnoresNullAndSingleBodyConfigurations)
 
 /// @name スライダー
 
+/// @brief Slider removes the off axis offset and keeps the axial one.
 TEST_F(ConstraintTest, SliderRemovesTheOffAxisOffsetAndKeepsTheAxialOne)
 {
     physics::RigidBody rail    = MakeStaticAt(math::Vector3::ZERO);
@@ -247,6 +262,7 @@ TEST_F(ConstraintTest, SliderRemovesTheOffAxisOffsetAndKeepsTheAxialOne)
                      testkit::kTolerance);
 }
 
+/// @brief Slider clamps travel to the configured limits.
 TEST_F(ConstraintTest, SliderClampsTravelToTheConfiguredLimits)
 {
     physics::RigidBody rail     = MakeStaticAt(math::Vector3::ZERO);
@@ -260,6 +276,7 @@ TEST_F(ConstraintTest, SliderClampsTravelToTheConfiguredLimits)
                      testkit::kTolerance);
 }
 
+/// @brief Slider limits are order independent.
 TEST_F(ConstraintTest, SliderLimitsAreOrderIndependent)
 {
     physics::RigidBody rail     = MakeStaticAt(math::Vector3::ZERO);
@@ -273,6 +290,7 @@ TEST_F(ConstraintTest, SliderLimitsAreOrderIndependent)
     EXPECT_NEAR(constraint.m_maxDistance, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Slider travel is unbounded after clearing limits.
 TEST_F(ConstraintTest, SliderTravelIsUnboundedAfterClearingLimits)
 {
     physics::RigidBody rail     = MakeStaticAt(math::Vector3::ZERO);
@@ -289,6 +307,7 @@ TEST_F(ConstraintTest, SliderTravelIsUnboundedAfterClearingLimits)
 
 /// @name 溶接
 
+/// @brief Fixed restores the offset captured at construction.
 TEST_F(ConstraintTest, FixedRestoresTheOffsetCapturedAtConstruction)
 {
     physics::RigidBody parent = MakeStaticAt(math::Vector3::ZERO);
@@ -301,6 +320,7 @@ TEST_F(ConstraintTest, FixedRestoresTheOffsetCapturedAtConstruction)
     EXPECT_VEC3_NEAR(child.GetPosition(), math::Vector3(2.0f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Fixed carries the child around when the parent rotates.
 TEST_F(ConstraintTest, FixedCarriesTheChildAroundWhenTheParentRotates)
 {
     physics::RigidBody parent = MakeStaticAt(math::Vector3::ZERO);
@@ -317,6 +337,7 @@ TEST_F(ConstraintTest, FixedCarriesTheChildAroundWhenTheParentRotates)
     EXPECT_QUAT_NEAR(child.GetRotation(), turn, testkit::kLooseTolerance);
 }
 
+/// @brief Fixed keeps the static parent in place.
 TEST_F(ConstraintTest, FixedKeepsTheStaticParentInPlace)
 {
     physics::RigidBody parent = MakeStaticAt(math::Vector3::ZERO);
@@ -331,6 +352,7 @@ TEST_F(ConstraintTest, FixedKeepsTheStaticParentInPlace)
 
 /// @name ヒンジ
 
+/// @brief Hinge brings both anchors to the same world point.
 TEST_F(ConstraintTest, HingeBringsBothAnchorsToTheSameWorldPoint)
 {
     physics::RigidBody door  = MakeDynamicAt({5.0f, 0.0f, 0.0f});
@@ -346,6 +368,7 @@ TEST_F(ConstraintTest, HingeBringsBothAnchorsToTheSameWorldPoint)
     EXPECT_VEC3_NEAR(anchorDoor, anchorFrame, testkit::kTolerance);
 }
 
+/// @brief Hinge leaves the rotation alone when no limit is set.
 TEST_F(ConstraintTest, HingeLeavesTheRotationAloneWhenNoLimitIsSet)
 {
     physics::RigidBody frame = MakeStaticAt(math::Vector3::ZERO);
@@ -361,6 +384,7 @@ TEST_F(ConstraintTest, HingeLeavesTheRotationAloneWhenNoLimitIsSet)
     EXPECT_QUAT_NEAR(door.GetRotation(), opened, testkit::kTolerance);
 }
 
+/// @brief Hinge rotates the body back inside its angular limit.
 TEST_F(ConstraintTest, HingeRotatesTheBodyBackInsideItsAngularLimit)
 {
     physics::RigidBody frame = MakeStaticAt(math::Vector3::ZERO);
@@ -380,6 +404,7 @@ TEST_F(ConstraintTest, HingeRotatesTheBodyBackInsideItsAngularLimit)
     EXPECT_NEAR(angle, 10.0f, 0.5f);
 }
 
+/// @brief Checks hinge motor spins the driven body towards the target speed.
 TEST_F(ConstraintTest, HingeMotorSpinsTheDrivenBodyTowardsTheTargetSpeed)
 {
     physics::RigidBody frame = MakeStaticAt(math::Vector3::ZERO);
@@ -394,6 +419,7 @@ TEST_F(ConstraintTest, HingeMotorSpinsTheDrivenBodyTowardsTheTargetSpeed)
     EXPECT_GT(door.GetAngularVelocity().y, 0.0f);
 }
 
+/// @brief Hinge applies no torque without a motor.
 TEST_F(ConstraintTest, HingeAppliesNoTorqueWithoutAMotor)
 {
     physics::RigidBody frame = MakeStaticAt(math::Vector3::ZERO);
@@ -407,6 +433,7 @@ TEST_F(ConstraintTest, HingeAppliesNoTorqueWithoutAMotor)
     EXPECT_VEC3_NEAR(door.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Hinge stops driving after the motor is cleared.
 TEST_F(ConstraintTest, HingeStopsDrivingAfterTheMotorIsCleared)
 {
     physics::RigidBody frame = MakeStaticAt(math::Vector3::ZERO);

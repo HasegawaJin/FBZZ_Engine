@@ -88,6 +88,7 @@ protected:
 
 /// @name シーン往復
 
+/// @brief Keeps every authored field across a save.
 TEST_F(JointComponentTest, KeepsEveryAuthoredFieldAcrossASave)
 {
     scene::Scene source;
@@ -147,6 +148,7 @@ TEST_F(JointComponentTest, KeepsEveryAuthoredFieldAcrossASave)
     EXPECT_NEAR(restored->motorMaxTorque, 6.5f, testkit::kTolerance);
 }
 
+/// @brief Keeps the connected body reference.
 TEST_F(JointComponentTest, KeepsTheConnectedBodyReference)
 {
     /// @note 相手は EntityID (実行時の添字) ではなく instanceId で保存される。
@@ -176,6 +178,7 @@ TEST_F(JointComponentTest, KeepsTheConnectedBodyReference)
     EXPECT_EQ(resolved->name, "Anchor");
 }
 
+/// @brief Keeps the chain body list.
 TEST_F(JointComponentTest, KeepsTheChainBodyList)
 {
     scene::Scene source;
@@ -207,6 +210,7 @@ TEST_F(JointComponentTest, KeepsTheChainBodyList)
     EXPECT_EQ(second->name, "Tail");
 }
 
+/// @brief Does not keep the runtime handle when copied.
 TEST_F(JointComponentTest, DoesNotKeepTheRuntimeHandleWhenCopied)
 {
     /// @note 複製で同じスロットを 2 つのコンポーネントが指すと、片方を消したときに
@@ -223,6 +227,7 @@ TEST_F(JointComponentTest, DoesNotKeepTheRuntimeHandleWhenCopied)
 
 /// @name 物理への橋渡し
 
+/// @brief Registers one constraint in the world.
 TEST_F(JointComponentTest, RegistersOneConstraintInTheWorld)
 {
     scene::Scene scene;
@@ -246,6 +251,7 @@ TEST_F(JointComponentTest, RegistersOneConstraintInTheWorld)
     EXPECT_TRUE(live->connected);
 }
 
+/// @brief Does not grow the constraint count across frames.
 TEST_F(JointComponentTest, DoesNotGrowTheConstraintCountAcrossFrames)
 {
     /// @note 毎フレーム «作り直す» と、基準姿勢を抱える Fixed / Hinge が効かなくなる。
@@ -265,6 +271,7 @@ TEST_F(JointComponentTest, DoesNotGrowTheConstraintCountAcrossFrames)
     EXPECT_EQ(world.GetConstraints().size(), 1u);
 }
 
+/// @brief Releases the constraint when the joint is disabled.
 TEST_F(JointComponentTest, ReleasesTheConstraintWhenTheJointIsDisabled)
 {
     scene::Scene scene;
@@ -287,6 +294,7 @@ TEST_F(JointComponentTest, ReleasesTheConstraintWhenTheJointIsDisabled)
     EXPECT_FALSE(hanging.GetComponent<scene::JointComponent>()->connected);
 }
 
+/// @brief Does not connect when the partner has no rigid body.
 TEST_F(JointComponentTest, DoesNotConnectWhenThePartnerHasNoRigidBody)
 {
     scene::Scene scene;
@@ -307,6 +315,7 @@ TEST_F(JointComponentTest, DoesNotConnectWhenThePartnerHasNoRigidBody)
 
 /// @name 距離が保たれる
 
+/// @brief A distance joint holds the gap while falling.
 TEST_F(JointComponentTest, ADistanceJointHoldsTheGapWhileFalling)
 {
     scene::Scene scene;
@@ -330,6 +339,7 @@ TEST_F(JointComponentTest, ADistanceJointHoldsTheGapWhileFalling)
     EXPECT_NEAR(body->GetPosition().Length(), 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief A rope joint clamps only the maximum length.
 TEST_F(JointComponentTest, ARopeJointClampsOnlyTheMaximumLength)
 {
     scene::Scene scene;
@@ -353,6 +363,7 @@ TEST_F(JointComponentTest, ARopeJointClampsOnlyTheMaximumLength)
     EXPECT_NEAR(BodyOf(hanging)->GetPosition().Length(), 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Auto distance takes the gap at the moment it is tied.
 TEST_F(JointComponentTest, AutoDistanceTakesTheGapAtTheMomentItIsTied)
 {
     scene::Scene scene;
@@ -375,6 +386,7 @@ TEST_F(JointComponentTest, AutoDistanceTakesTheGapAtTheMomentItIsTied)
     EXPECT_NEAR(BodyOf(hanging)->GetPosition().Length(), 2.75f, testkit::kLooseTolerance);
 }
 
+/// @brief A chain holds every segment length.
 TEST_F(JointComponentTest, AChainHoldsEverySegmentLength)
 {
     scene::Scene scene;
@@ -406,6 +418,7 @@ TEST_F(JointComponentTest, AChainHoldsEverySegmentLength)
     EXPECT_NEAR((tailPos - midPos).Length(), 1.0f, kChainTolerance);
 }
 
+/// @brief Chain recipe survives save and pending body removal releases its constraint.
 TEST_F(JointComponentTest, ChainRecipeSurvivesSaveAndPendingBodyRemovalReleasesItsConstraint)
 {
     scene::Scene scene;
@@ -445,6 +458,7 @@ TEST_F(JointComponentTest, ChainRecipeSurvivesSaveAndPendingBodyRemovalReleasesI
     EXPECT_TRUE(world.GetConstraints().empty());
 }
 
+/// @brief Finds the partner through the parent when none is named.
 TEST_F(JointComponentTest, FindsThePartnerThroughTheParentWhenNoneIsNamed)
 {
     /// @note EntityRef は Prefab に保存できないので、«吊り元は親» の宣言だけで組める必要がある。

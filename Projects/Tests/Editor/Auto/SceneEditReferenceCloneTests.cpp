@@ -37,6 +37,7 @@ protected:
     editor::UndoStack m_undo;
 };
 
+/// @brief Duplicate selection remaps references across root objects.
 TEST_F(SceneEditReferenceCloneTest, DuplicateSelectionRemapsReferencesAcrossRootObjects)
 {
     scene::Scene& scene = AttachScene();
@@ -77,6 +78,7 @@ TEST_F(SceneEditReferenceCloneTest, DuplicateSelectionRemapsReferencesAcrossRoot
     EXPECT_EQ(sourceSpline->pointBindings[0].target.id, target.GetID());
 }
 
+/// @brief Missing script with saved fields rejects clone before creating objects.
 TEST_F(SceneEditReferenceCloneTest, MissingScriptWithSavedFieldsRejectsCloneBeforeCreatingObjects)
 {
     scene::Scene& scene = AttachScene();
@@ -103,6 +105,7 @@ TEST_F(SceneEditReferenceCloneTest, MissingScriptWithSavedFieldsRejectsCloneBefo
               "target = \"target-guid\"\n");
 }
 
+/// @brief Missing script without fields remains cloneable metadata.
 TEST_F(SceneEditReferenceCloneTest, MissingScriptWithoutFieldsRemainsCloneableMetadata)
 {
     scene::Scene& scene = AttachScene();
@@ -127,6 +130,7 @@ TEST_F(SceneEditReferenceCloneTest, MissingScriptWithoutFieldsRemainsCloneableMe
     EXPECT_TRUE(clonedScripts->scripts[0].serialized->fieldsToml.empty());
 }
 
+/// @brief Paste synchronizes world transforms for destination hierarchy.
 TEST_F(SceneEditReferenceCloneTest, PasteSynchronizesWorldTransformsForDestinationHierarchy)
 {
     scene::Scene& scene = AttachScene();
@@ -148,6 +152,7 @@ TEST_F(SceneEditReferenceCloneTest, PasteSynchronizesWorldTransformsForDestinati
                      (math::Vector3{102.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
+/// @brief Clone clears water runtime state but keeps zone authoring.
 TEST_F(SceneEditReferenceCloneTest, CloneClearsWaterRuntimeStateButKeepsZoneAuthoring)
 {
     scene::Scene& scene = AttachScene();

@@ -221,6 +221,7 @@ protected:
     ImGuiContext* m_imgui = nullptr;
 };
 
+/// @brief Marker click claims selection and overlay or read-only frames do not select.
 TEST_F(ControlPointViewportTest, MarkerClickClaimsSelectionAndOverlayOrReadOnlyFramesDoNotSelect)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -240,6 +241,7 @@ TEST_F(ControlPointViewportTest, MarkerClickClaimsSelectionAndOverlayOrReadOnlyF
     Frame(850.0f, 300.0f, false);
 }
 
+/// @brief Behind near far outside and nonfinite markers are not picked.
 TEST_F(ControlPointViewportTest, BehindNearFarOutsideAndNonfiniteMarkersAreNotPicked)
 {
     const std::array<math::Vector3, 5> invalidPositions{{
@@ -259,6 +261,7 @@ TEST_F(ControlPointViewportTest, BehindNearFarOutsideAndNonfiniteMarkersAreNotPi
     Frame(400.0f, 300.0f, false);
 }
 
+/// @brief Gizmo drag previews without mutation then commits one undo.
 TEST_F(ControlPointViewportTest, GizmoDragPreviewsWithoutMutationThenCommitsOneUndo)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -275,6 +278,7 @@ TEST_F(ControlPointViewportTest, GizmoDragPreviewsWithoutMutationThenCommitsOneU
     EXPECT_VEC3_NEAR(marker.transform.position, initial, testkit::kTolerance);
 }
 
+/// @brief Rotate and scale modes use the transform gizmo for target points.
 TEST_F(ControlPointViewportTest, RotateAndScaleModesUseTheTransformGizmoForTargetPoints)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -335,6 +339,7 @@ TEST_F(ControlPointViewportTest, RotateAndScaleModesUseTheTransformGizmoForTarge
     }
 }
 
+/// @brief Changing mode cancels an in flight target point transform gizmo.
 TEST_F(ControlPointViewportTest, ChangingModeCancelsAnInFlightTargetPointTransformGizmo)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -363,6 +368,7 @@ TEST_F(ControlPointViewportTest, ChangingModeCancelsAnInFlightTargetPointTransfo
     Frame(start.x - 20.0f, start.y + 20.0f, false);
 }
 
+/// @brief Locked target point cannot start or continue transform gizmo.
 TEST_F(ControlPointViewportTest, LockedTargetPointCannotStartOrContinueTransformGizmo)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -410,6 +416,7 @@ TEST_F(ControlPointViewportTest, LockedTargetPointCannotStartOrContinueTransform
     Frame(endX, endY, false);
 }
 
+/// @brief Center scale handle wins over the coincident marker click.
 TEST_F(ControlPointViewportTest, CenterScaleHandleWinsOverTheCoincidentMarkerClick)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -438,6 +445,7 @@ TEST_F(ControlPointViewportTest, CenterScaleHandleWinsOverTheCoincidentMarkerCli
     EXPECT_VEC3_NEAR(marker.transform.scale, before.scale, testkit::kTolerance);
 }
 
+/// @brief Frame gap cancels an uncommitted gizmo candidate.
 TEST_F(ControlPointViewportTest, FrameGapCancelsAnUncommittedGizmoCandidate)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -452,6 +460,7 @@ TEST_F(ControlPointViewportTest, FrameGapCancelsAnUncommittedGizmoCandidate)
     Frame(400.0f + static_cast<float>(offset + 12), 300.0f, false);
 }
 
+/// @brief Escape and scene replacement cancel an uncommitted gizmo candidate.
 TEST_F(ControlPointViewportTest, EscapeAndSceneReplacementCancelAnUncommittedGizmoCandidate)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -475,6 +484,7 @@ TEST_F(ControlPointViewportTest, EscapeAndSceneReplacementCancelAnUncommittedGiz
     Frame(400.0f + static_cast<float>(nextOffset + 8), 300.0f, false);
 }
 
+/// @brief Releasing outside viewport cancels the gizmo candidate.
 TEST_F(ControlPointViewportTest, ReleasingOutsideViewportCancelsTheGizmoCandidate)
 {
     auto& marker = MakeMarker("Target Point", {0.0f, 0.0f, 0.0f});
@@ -487,6 +497,7 @@ TEST_F(ControlPointViewportTest, ReleasingOutsideViewportCancelsTheGizmoCandidat
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Clicking inline river point selects the corresponding gizmo target.
 TEST_F(ControlPointViewportTest, ClickingInlineRiverPointSelectsTheCorrespondingGizmoTarget)
 {
     auto& owner = AttachedScene()->CreateGameObject("River");
@@ -513,6 +524,7 @@ TEST_F(ControlPointViewportTest, ClickingInlineRiverPointSelectsTheCorresponding
     EXPECT_EQ(water.pointSourceMode, scene::ControlPointSourceMode::INLINE);
 }
 
+/// @brief Scene overlay converts inline owners starts editing and supports point gizmo undo.
 TEST_F(ControlPointViewportTest, SceneOverlayConvertsInlineOwnersStartsEditingAndSupportsPointGizmoUndo)
 {
     auto runConversion = [this](scene::GameObject& owner, const char* kind) {
@@ -610,6 +622,7 @@ TEST_F(ControlPointViewportTest, SceneOverlayConvertsInlineOwnersStartsEditingAn
     runConversion(linkOwner, "nav_link");
 }
 
+/// @brief Blocked overlay keeps point drawing and cancels in flight candidate.
 TEST_F(ControlPointViewportTest, BlockedOverlayKeepsPointDrawingAndCancelsInFlightCandidate)
 {
     auto& owner = AttachedScene()->CreateGameObject("Editable Water");
@@ -665,6 +678,7 @@ TEST_F(ControlPointViewportTest, BlockedOverlayKeepsPointDrawingAndCancelsInFlig
     Frame(20.0f, 50.0f, false, false, false, false, true);
 }
 
+/// @brief Overlay capture ends when mouse released while card is not drawn.
 TEST_F(ControlPointViewportTest, OverlayCaptureEndsWhenMouseReleasedWhileCardIsNotDrawn)
 {
     auto& owner = AttachedScene()->CreateGameObject("Spline Owner");
@@ -681,6 +695,7 @@ TEST_F(ControlPointViewportTest, OverlayCaptureEndsWhenMouseReleasedWhileCardIsN
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Invalid inline points cannot be converted from the scene overlay.
 TEST_F(ControlPointViewportTest, InvalidInlinePointsCannotBeConvertedFromTheSceneOverlay)
 {
     auto& owner = AttachedScene()->CreateGameObject("Invalid River");
@@ -702,6 +717,7 @@ TEST_F(ControlPointViewportTest, InvalidInlinePointsCannotBeConvertedFromTheScen
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief World line and patrol point clicks keep independent owner routes visible.
 TEST_F(ControlPointViewportTest, WorldLineAndPatrolPointClicksKeepIndependentOwnerRoutesVisible)
 {
     const auto convertAndSelect = [this](scene::GameObject& owner, const char* kind,
@@ -774,6 +790,7 @@ TEST_F(ControlPointViewportTest, WorldLineAndPatrolPointClicksKeepIndependentOwn
     convertAndSelect(patrolOwner, "patrol", "patrol", 640.0f);
 }
 
+/// @brief Owner local water and spline points remain distinct at large world origins.
 TEST_F(ControlPointViewportTest, OwnerLocalWaterAndSplinePointsRemainDistinctAtLargeWorldOrigins)
 {
     constexpr float kOriginX = 100000000.0f;
@@ -848,6 +865,7 @@ TEST_F(ControlPointViewportTest, OwnerLocalWaterAndSplinePointsRemainDistinctAtL
     selectPair(splineOwner, splineFirst, splineSecond, 120.0f);
 }
 
+/// @brief Play rejects stale static bake without parking or cloning edit scene.
 TEST_F(ControlPointViewportTest, PlayRejectsStaleStaticBakeWithoutParkingOrCloningEditScene)
 {
     auto& owner = AttachedScene()->CreateGameObject("Stale Spline");
@@ -867,6 +885,7 @@ TEST_F(ControlPointViewportTest, PlayRejectsStaleStaticBakeWithoutParkingOrCloni
     EXPECT_FALSE(play.Diagnostic().empty());
 }
 
+/// @brief Valid play uses an independent scene clone.
 TEST_F(ControlPointViewportTest, ValidPlayUsesAnIndependentSceneClone)
 {
     auto& owner = AttachedScene()->CreateGameObject("Clone Boundary");
@@ -888,6 +907,7 @@ TEST_F(ControlPointViewportTest, ValidPlayUsesAnIndependentSceneClone)
     EXPECT_FALSE(AttachedScene()->IsExecutionParked());
 }
 
+/// @brief Scene manager startup gate skips runtime systems for stale bake.
 TEST_F(ControlPointViewportTest, SceneManagerStartupGateSkipsRuntimeSystemsForStaleBake)
 {
     auto& owner = AttachedScene()->CreateGameObject("Stale Spline");

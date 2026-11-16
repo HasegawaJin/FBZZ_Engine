@@ -331,6 +331,7 @@ protected:
     float m_previousTime = 0.0f;
 };
 
+/// @brief Dynamic production vertex matches world queries at moving ship probe locations.
 TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingShipProbeLocations)
 {
     SyncErrors errors;
@@ -445,6 +446,7 @@ TEST_F(WaterRenderSyncTest, DynamicProductionVertexMatchesWorldQueriesAtMovingSh
     RecordProperty("fixedWorldTemporalMaxXZDriftMetres", std::to_string(maximumSentinelDrift));
 }
 
+/// @brief Local flow swell matches production height and normal.
 TEST_F(WaterRenderSyncTest, LocalFlowSwellMatchesProductionHeightAndNormal)
 {
     scene::Scene source;
@@ -494,6 +496,7 @@ TEST_F(WaterRenderSyncTest, LocalFlowSwellMatchesProductionHeightAndNormal)
     }
 }
 
+/// @brief Production horizon raster tracks near ship height and reports coarse LOD error.
 TEST_F(WaterRenderSyncTest, ProductionHorizonRasterTracksNearShipHeightAndReportsCoarseLodError)
 {
     const std::array<const char*, 5> names{"finiteNear", "horizonNear", "horizonOffshore", "horizonCoarse", "horizonOffshoreLargerRippleExtent"};

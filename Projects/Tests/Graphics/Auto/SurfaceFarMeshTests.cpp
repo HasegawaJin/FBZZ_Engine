@@ -83,6 +83,7 @@ void ExpectRingCoverage(const renderer::SurfacePatchSurface& inner, const std::v
     }
 }
 
+/// @brief Strips and corners cover only the extended rectangle.
 TEST_F(SurfaceFarMeshTest, StripsAndCornersCoverOnlyTheExtendedRectangle)
 {
     const auto inner = InnerSurface();
@@ -96,6 +97,7 @@ TEST_F(SurfaceFarMeshTest, StripsAndCornersCoverOnlyTheExtendedRectangle)
     EXPECT_EQ(far.size() * indices.size() / 3u, 256u);
 }
 
+/// @brief Unequal near leaf strips share exact positions and the same height sampling bandwidth.
 TEST_F(SurfaceFarMeshTest, UnequalNearLeafStripsShareExactPositionsAndTheSameHeightSamplingBandwidth)
 {
     auto inner = InnerSurface();
@@ -150,6 +152,7 @@ TEST_F(SurfaceFarMeshTest, UnequalNearLeafStripsShareExactPositionsAndTheSameHei
     EXPECT_GT(farFarShared, 0u);
 }
 
+/// @brief One sided and zero extensions keep the other sides finite.
 TEST_F(SurfaceFarMeshTest, OneSidedAndZeroExtensionsKeepTheOtherSidesFinite)
 {
     const auto inner = InnerSurface();
@@ -163,6 +166,7 @@ TEST_F(SurfaceFarMeshTest, OneSidedAndZeroExtensionsKeepTheOtherSidesFinite)
     EXPECT_TRUE(far.empty());
 }
 
+/// @brief Invalid boundaries and overflow leave the previous mesh unchanged.
 TEST_F(SurfaceFarMeshTest, InvalidBoundariesAndOverflowLeaveThePreviousMeshUnchanged)
 {
     auto inner = InnerSurface();

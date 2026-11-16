@@ -24,12 +24,14 @@ protected:
     }
 };
 
+/// @brief Returns the result of a value task.
 TEST_F(TaskSystemSubmitTest, ReturnsTheResultOfAValueTask)
 {
     auto result = fbzz::TaskSystem::Submit([] { return 42; });
     EXPECT_EQ(result.get(), 42);
 }
 
+/// @brief Forwards arguments to the task.
 TEST_F(TaskSystemSubmitTest, ForwardsArgumentsToTheTask)
 {
     auto result = fbzz::TaskSystem::Submit([](int left, int right) {
@@ -39,6 +41,7 @@ TEST_F(TaskSystemSubmitTest, ForwardsArgumentsToTheTask)
     EXPECT_EQ(result.get(), 42);
 }
 
+/// @brief Supports void tasks.
 TEST_F(TaskSystemSubmitTest, SupportsVoidTasks)
 {
     bool completed = false;

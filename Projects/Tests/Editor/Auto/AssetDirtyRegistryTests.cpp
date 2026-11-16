@@ -120,12 +120,14 @@ protected:
     }
 };
 
+/// @brief Starts empty.
 TEST_F(AssetDirtyRegistryTest, StartsEmpty)
 {
     EXPECT_FALSE(AssetDirtyRegistry::HasAny());
     EXPECT_FALSE(AssetDirtyRegistry::IsDirty("C:/a.mat"));
 }
 
+/// @brief Register marks the asset dirty.
 TEST_F(AssetDirtyRegistryTest, RegisterMarksTheAssetDirty)
 {
     RegisterOk("C:/a.mat");
@@ -135,6 +137,7 @@ TEST_F(AssetDirtyRegistryTest, RegisterMarksTheAssetDirty)
     EXPECT_EQ(AssetDirtyRegistry::GetAll().size(), 1u);
 }
 
+/// @brief Registering the same path twice keeps one entry.
 TEST_F(AssetDirtyRegistryTest, RegisteringTheSamePathTwiceKeepsOneEntry)
 {
     /// @note 編集のたびに登録されるので、同じアセットが何度も並んではいけない。
@@ -144,6 +147,7 @@ TEST_F(AssetDirtyRegistryTest, RegisteringTheSamePathTwiceKeepsOneEntry)
     EXPECT_EQ(AssetDirtyRegistry::GetAll().size(), 1u);
 }
 
+/// @brief Re registering replaces the save action.
 TEST_F(AssetDirtyRegistryTest, ReRegisteringReplacesTheSaveAction)
 {
     bool firstCalled  = false;
@@ -156,6 +160,7 @@ TEST_F(AssetDirtyRegistryTest, ReRegisteringReplacesTheSaveAction)
     EXPECT_TRUE(secondCalled);
 }
 
+/// @brief Mark clean removes the entry.
 TEST_F(AssetDirtyRegistryTest, MarkCleanRemovesTheEntry)
 {
     RegisterOk("C:/a.mat");
@@ -165,6 +170,7 @@ TEST_F(AssetDirtyRegistryTest, MarkCleanRemovesTheEntry)
     EXPECT_FALSE(AssetDirtyRegistry::HasAny());
 }
 
+/// @brief Mark clean of an unknown path is harmless.
 TEST_F(AssetDirtyRegistryTest, MarkCleanOfAnUnknownPathIsHarmless)
 {
     RegisterOk("C:/a.mat");
@@ -173,6 +179,7 @@ TEST_F(AssetDirtyRegistryTest, MarkCleanOfAnUnknownPathIsHarmless)
     EXPECT_TRUE(AssetDirtyRegistry::IsDirty("C:/a.mat"));
 }
 
+/// @brief Save runs the action and clears the entry.
 TEST_F(AssetDirtyRegistryTest, SaveRunsTheActionAndClearsTheEntry)
 {
     bool called = false;
@@ -183,6 +190,7 @@ TEST_F(AssetDirtyRegistryTest, SaveRunsTheActionAndClearsTheEntry)
     EXPECT_FALSE(AssetDirtyRegistry::IsDirty("C:/a.mat"));
 }
 
+/// @brief A failed save leaves the asset dirty.
 TEST_F(AssetDirtyRegistryTest, AFailedSaveLeavesTheAssetDirty)
 {
     /// @note ここを clean にすると «保存したつもり» で閉じられ、編集内容が消える。
@@ -192,11 +200,13 @@ TEST_F(AssetDirtyRegistryTest, AFailedSaveLeavesTheAssetDirty)
     EXPECT_TRUE(AssetDirtyRegistry::IsDirty("C:/a.mat"));
 }
 
+/// @brief Saving an unknown path fails.
 TEST_F(AssetDirtyRegistryTest, SavingAnUnknownPathFails)
 {
     EXPECT_FALSE(AssetDirtyRegistry::Save("C:/nope.mat"));
 }
 
+/// @brief Save all reports how many failed.
 TEST_F(AssetDirtyRegistryTest, SaveAllReportsHowManyFailed)
 {
     RegisterOk("C:/a.mat");
@@ -206,6 +216,7 @@ TEST_F(AssetDirtyRegistryTest, SaveAllReportsHowManyFailed)
     EXPECT_EQ(AssetDirtyRegistry::SaveAll(), 1);
 }
 
+/// @brief Save all keeps only the failed ones dirty.
 TEST_F(AssetDirtyRegistryTest, SaveAllKeepsOnlyTheFailedOnesDirty)
 {
     RegisterOk("C:/a.mat");
@@ -217,6 +228,7 @@ TEST_F(AssetDirtyRegistryTest, SaveAllKeepsOnlyTheFailedOnesDirty)
     EXPECT_TRUE(AssetDirtyRegistry::IsDirty("C:/b.mat"));
 }
 
+/// @brief Discard all drops everything without saving.
 TEST_F(AssetDirtyRegistryTest, DiscardAllDropsEverythingWithoutSaving)
 {
     bool called = false;
@@ -229,6 +241,7 @@ TEST_F(AssetDirtyRegistryTest, DiscardAllDropsEverythingWithoutSaving)
     EXPECT_FALSE(called);
 }
 
+/// @brief Discard runs the latest rollback after clearing entries and advancing the epoch.
 TEST_F(AssetDirtyRegistryTest, DiscardRunsTheLatestRollbackAfterClearingEntriesAndAdvancingTheEpoch)
 {
     const auto epoch = AssetDirtyRegistry::DiscardEpoch();
@@ -245,6 +258,7 @@ TEST_F(AssetDirtyRegistryTest, DiscardRunsTheLatestRollbackAfterClearingEntriesA
     EXPECT_TRUE(AssetDirtyRegistry::IsDirty("C:/b.mat"));
 }
 
+/// @brief Keeps the type label for display.
 TEST_F(AssetDirtyRegistryTest, KeepsTheTypeLabelForDisplay)
 {
     AssetDirtyRegistry::Register("C:/a.animcontroller", "Assets/a.animcontroller",
@@ -323,6 +337,7 @@ protected:
     editor::InspectorPanel m_panel;
 };
 
+/// @brief Relative absolute and GUID paths share edits saves and undo snapshots.
 TEST_F(InspectorDataAssetSaveTest, RelativeAbsoluteAndGuidPathsShareEditsSavesAndUndoSnapshots)
 {
     const auto absolute = Path("Aliases.fzdata");
@@ -356,6 +371,7 @@ TEST_F(InspectorDataAssetSaveTest, RelativeAbsoluteAndGuidPathsShareEditsSavesAn
     EXPECT_EQ(Resolve(relative), shared);
 }
 
+/// @brief Flushes old selection and hidden inspector without losing either path.
 TEST_F(InspectorDataAssetSaveTest, FlushesOldSelectionAndHiddenInspectorWithoutLosingEitherPath)
 {
     const auto first = Path("First.fzdata");
@@ -390,6 +406,7 @@ TEST_F(InspectorDataAssetSaveTest, FlushesOldSelectionAndHiddenInspectorWithoutL
     EXPECT_FALSE(Resolve(second)->Settings().shadowEnabled);
 }
 
+/// @brief Defers current active input until release.
 TEST_F(InspectorDataAssetSaveTest, DefersCurrentActiveInputUntilRelease)
 {
     const auto path = Path("Active.fzdata");
@@ -408,6 +425,7 @@ TEST_F(InspectorDataAssetSaveTest, DefersCurrentActiveInputUntilRelease)
     EXPECT_FALSE(AssetDirtyRegistry::IsDirty(path));
 }
 
+/// @brief Respects discard and does not carry pending writes across shutdown or projects.
 TEST_F(InspectorDataAssetSaveTest, RespectsDiscardAndDoesNotCarryPendingWritesAcrossShutdownOrProjects)
 {
     const auto path = Path("Discard.fzdata");
@@ -434,6 +452,7 @@ TEST_F(InspectorDataAssetSaveTest, RespectsDiscardAndDoesNotCarryPendingWritesAc
     EXPECT_EQ(Text(path), disk);
 }
 
+/// @brief Invalid typed edit keeps valid disk and dirty failure.
 TEST_F(InspectorDataAssetSaveTest, InvalidTypedEditKeepsValidDiskAndDirtyFailure)
 {
     const auto path = Path("Invalid.fzdata");
@@ -451,6 +470,7 @@ TEST_F(InspectorDataAssetSaveTest, InvalidTypedEditKeepsValidDiskAndDirtyFailure
     EXPECT_EQ(Text(path), disk);
 }
 
+/// @brief Schema failure retries only after another edit or explicit save.
 TEST_F(InspectorDataAssetSaveTest, SchemaFailureRetriesOnlyAfterAnotherEditOrExplicitSave)
 {
     const auto path = Path("Future.fzdata");
@@ -475,6 +495,7 @@ TEST_F(InspectorDataAssetSaveTest, SchemaFailureRetriesOnlyAfterAnotherEditOrExp
     EXPECT_FALSE(AssetDirtyRegistry::IsDirty(path));
 }
 
+/// @brief Save all uses path only callbacks and keeps only actual failures.
 TEST_F(InspectorDataAssetSaveTest, SaveAllUsesPathOnlyCallbacksAndKeepsOnlyActualFailures)
 {
     const auto first = Path("Saved.fzdata");
@@ -509,6 +530,7 @@ TEST_F(InspectorDataAssetSaveTest, SaveAllUsesPathOnlyCallbacksAndKeepsOnlyActua
 
 /// @name 既定マテリアルパス
 
+/// @brief Returns a path for every terrain layer.
 TEST(TerrainWaterDefaults, ReturnsAPathForEveryTerrainLayer)
 {
     for (int layer = 0; layer < 4; ++layer) {
@@ -518,6 +540,7 @@ TEST(TerrainWaterDefaults, ReturnsAPathForEveryTerrainLayer)
     }
 }
 
+/// @brief Layers have distinct paths.
 TEST(TerrainWaterDefaults, LayersHaveDistinctPaths)
 {
     /// @note 全レイヤーが同じマテリアルを指すと、塗り分けても見た目が変わらない。
@@ -527,6 +550,7 @@ TEST(TerrainWaterDefaults, LayersHaveDistinctPaths)
                  editor::DefaultTerrainLayerMaterialPath(3));
 }
 
+/// @brief Returns an empty string outside the layer range.
 TEST(TerrainWaterDefaults, ReturnsAnEmptyStringOutsideTheLayerRange)
 {
     /// @note 範囲外で配列の外を読むと、そのまま «存在しないパス» を掴んで落ちる。
@@ -535,6 +559,7 @@ TEST(TerrainWaterDefaults, ReturnsAnEmptyStringOutsideTheLayerRange)
     EXPECT_STREQ(editor::DefaultTerrainLayerMaterialPath(9999), "");
 }
 
+/// @brief Water material path is an assets path.
 TEST(TerrainWaterDefaults, WaterMaterialPathIsAnAssetsPath)
 {
     const std::string path = editor::DefaultWaterMaterialPath();
@@ -542,6 +567,7 @@ TEST(TerrainWaterDefaults, WaterMaterialPathIsAnAssetsPath)
     EXPECT_EQ(path.rfind("Assets/", 0), 0u);
 }
 
+/// @brief Water presets start with the default and point at distinct materials.
 TEST(TerrainWaterDefaults, WaterPresetsStartWithTheDefaultAndPointAtDistinctMaterials)
 {
     const auto presets = editor::WaterMaterialPresets();

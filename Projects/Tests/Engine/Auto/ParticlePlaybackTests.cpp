@@ -51,6 +51,7 @@ protected:
     uint64_t m_frame = 0;
 };
 
+/// @brief Checks timed burst without duration fires once in playback and scrub.
 TEST_F(ParticlePlaybackTest, TimedBurstWithoutDurationFiresOnceInPlaybackAndScrub)
 {
     auto& emitter = Create("Continuous");
@@ -70,6 +71,7 @@ TEST_F(ParticlePlaybackTest, TimedBurstWithoutDurationFiresOnceInPlaybackAndScru
     }
 }
 
+/// @brief Compacts expired and killed particles in their original order.
 TEST_F(ParticlePlaybackTest, CompactsExpiredAndKilledParticlesInTheirOriginalOrder)
 {
     auto& emitter = Create("Compact");
@@ -94,6 +96,7 @@ TEST_F(ParticlePlaybackTest, CompactsExpiredAndKilledParticlesInTheirOriginalOrd
     EXPECT_EQ(emitter.runtime.collisionCountThisFrame, 1);
 }
 
+/// @brief Delay loop and prewarm use the same playback step.
 TEST_F(ParticlePlaybackTest, DelayLoopAndPrewarmUseTheSamePlaybackStep)
 {
     auto& emitter = Create("Loop");
@@ -116,6 +119,7 @@ TEST_F(ParticlePlaybackTest, DelayLoopAndPrewarmUseTheSamePlaybackStep)
     EXPECT_NEAR(emitter.runtime.playTime, playTime, testkit::kTolerance);
 }
 
+/// @brief Repeated playback in one frame does not advance time or repeat burst.
 TEST_F(ParticlePlaybackTest, RepeatedPlaybackInOneFrameDoesNotAdvanceTimeOrRepeatBurst)
 {
     auto& emitter = Create("FrameGuard");
@@ -129,6 +133,7 @@ TEST_F(ParticlePlaybackTest, RepeatedPlaybackInOneFrameDoesNotAdvanceTimeOrRepea
     EXPECT_EQ(emitter.runtime.burstPending, 2);
 }
 
+/// @brief Rounded whole frame scrub does not lose the last emission.
 TEST_F(ParticlePlaybackTest, RoundedWholeFrameScrubDoesNotLoseTheLastEmission)
 {
     auto& emitter = Create("RoundedFrame");
@@ -144,6 +149,7 @@ TEST_F(ParticlePlaybackTest, RoundedWholeFrameScrubDoesNotLoseTheLastEmission)
     for (size_t index = 0; index < particles.size(); ++index)
         EXPECT_VEC3_NEAR(emitter.runtime.particles[index].position, particles[index].position, testkit::kTolerance);
 }
+/// @brief Scheduler updates CPU particles without render context or any viewport.
 /// @see Docs/design/particle-authoring.md 描画ビューが無くても LateUpdate で CPU 粒子を進める。
 TEST_F(ParticlePlaybackTest, SchedulerUpdatesCpuParticlesWithoutRenderContextOrAnyViewport)
 {
@@ -175,6 +181,7 @@ TEST_F(ParticlePlaybackTest, SchedulerUpdatesCpuParticlesWithoutRenderContextOrA
     EXPECT_FALSE(emitter.runtime.gpuParticleBuffer.IsValid());
 }
 
+/// @brief Headless simulation reads flipbook settings before any GPU material preparation.
 TEST_F(ParticlePlaybackTest, HeadlessSimulationReadsFlipbookSettingsBeforeAnyGpuMaterialPreparation)
 {
     testkit::TempDir temp("particle-cpu-material");
@@ -205,6 +212,7 @@ TEST_F(ParticlePlaybackTest, HeadlessSimulationReadsFlipbookSettingsBeforeAnyGpu
     EXPECT_EQ(device.m_constantsAlive, 0u);
 }
 
+/// @brief Render extraction consumes CPU snapshot without advancing playback or collision.
 TEST_F(ParticlePlaybackTest, RenderExtractionConsumesCpuSnapshotWithoutAdvancingPlaybackOrCollision)
 {
     testkit::TempDir temp("particle-cpu-snapshot");

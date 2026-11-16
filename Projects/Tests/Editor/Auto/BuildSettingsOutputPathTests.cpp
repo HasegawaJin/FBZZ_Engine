@@ -54,11 +54,13 @@ protected:
     testkit::TempDir m_temp{ "buildoutput" };
 };
 
+/// @brief Accepts the default output directory.
 TEST_F(BuildOutputPathTest, AcceptsTheDefaultOutputDirectory)
 {
     EXPECT_TRUE(Accepts("Builds/MyGame"));
 }
 
+/// @brief Rejects an empty output directory.
 TEST_F(BuildOutputPathTest, RejectsAnEmptyOutputDirectory)
 {
     /// @note 空欄は projectRoot へ解決される。ここを通すとプロジェクトごと消える。
@@ -67,18 +69,21 @@ TEST_F(BuildOutputPathTest, RejectsAnEmptyOutputDirectory)
     EXPECT_FALSE(reason.empty());
 }
 
+/// @brief Rejects paths that resolve to the project root.
 TEST_F(BuildOutputPathTest, RejectsPathsThatResolveToTheProjectRoot)
 {
     EXPECT_FALSE(Accepts("."));
     EXPECT_FALSE(Accepts(ProjectRoot()));
 }
 
+/// @brief Rejects an ancestor of the project.
 TEST_F(BuildOutputPathTest, RejectsAnAncestorOfTheProject)
 {
     /// @note 親を指すと remove_all がプロジェクトを巻き込む。
     EXPECT_FALSE(Accepts(".."));
 }
 
+/// @brief Rejects project data directories.
 TEST_F(BuildOutputPathTest, RejectsProjectDataDirectories)
 {
     EXPECT_FALSE(Accepts("Assets"));
@@ -88,6 +93,7 @@ TEST_F(BuildOutputPathTest, RejectsProjectDataDirectories)
     EXPECT_FALSE(Accepts("ProjectSettings"));
 }
 
+/// @brief Allows a directory whose name merely shares a prefix.
 TEST_F(BuildOutputPathTest, AllowsADirectoryWhoseNameMerelySharesAPrefix)
 {
     /// @note "Build" は保護対象、"Builds" は別物。前方一致で巻き込まないこと。
@@ -95,6 +101,7 @@ TEST_F(BuildOutputPathTest, AllowsADirectoryWhoseNameMerelySharesAPrefix)
     EXPECT_TRUE(Accepts("Builds"));
 }
 
+/// @brief Rejects an existing folder that is not a previous build.
 TEST_F(BuildOutputPathTest, RejectsAnExistingFolderThatIsNotAPreviousBuild)
 {
     /// @note Browse... でデスクトップや素材置き場を選んだ状況。
@@ -104,6 +111,7 @@ TEST_F(BuildOutputPathTest, RejectsAnExistingFolderThatIsNotAPreviousBuild)
     EXPECT_NE(reason.find("game.manifest.toml"), std::string::npos) << reason;
 }
 
+/// @brief Accepts an existing previous build.
 TEST_F(BuildOutputPathTest, AcceptsAnExistingPreviousBuild)
 {
     /// @note 再ビルドは通す。前回の配布物は game.manifest.toml を持つ。
@@ -112,12 +120,14 @@ TEST_F(BuildOutputPathTest, AcceptsAnExistingPreviousBuild)
     EXPECT_TRUE(Accepts("Dist"));
 }
 
+/// @brief Accepts an existing empty folder.
 TEST_F(BuildOutputPathTest, AcceptsAnExistingEmptyFolder)
 {
     std::filesystem::create_directories(m_temp.Path() / "Empty");
     EXPECT_TRUE(Accepts("Empty"));
 }
 
+/// @brief Rejects protected roots with different windows casing.
 TEST_F(BuildOutputPathTest, RejectsProtectedRootsWithDifferentWindowsCasing)
 {
     for (const char* path : { "assets", "aSSeTs/Dist", "library/ManagedScripts/New", "PROJECTSETTINGS/Dist",
@@ -129,6 +139,7 @@ TEST_F(BuildOutputPathTest, RejectsProtectedRootsWithDifferentWindowsCasing)
     EXPECT_TRUE(Accepts("builds/ManagedSmoke/New"));
 }
 
+/// @brief Rejects canonical project and ancestor aliases.
 TEST_F(BuildOutputPathTest, RejectsCanonicalProjectAndAncestorAliases)
 {
     std::string lower = ProjectRoot();
@@ -139,6 +150,7 @@ TEST_F(BuildOutputPathTest, RejectsCanonicalProjectAndAncestorAliases)
     EXPECT_TRUE(Accepts((m_temp.Path() / "Builds/ManagedSmoke/New").generic_string()));
 }
 
+/// @brief Rejects nul and existing file parents without changing them.
 TEST_F(BuildOutputPathTest, RejectsNulAndExistingFileParentsWithoutChangingThem)
 {
     EXPECT_FALSE(Accepts(std::string("Builds/Game\0Ignored", 19)));
@@ -152,6 +164,7 @@ TEST_F(BuildOutputPathTest, RejectsNulAndExistingFileParentsWithoutChangingThem)
     EXPECT_EQ(text, "x");
 }
 
+/// @brief Does not treat a manifest directory as a previous package.
 TEST_F(BuildOutputPathTest, DoesNotTreatAManifestDirectoryAsAPreviousPackage)
 {
     std::filesystem::create_directories(m_temp.File("Dist/game.manifest.toml"));
@@ -159,6 +172,7 @@ TEST_F(BuildOutputPathTest, DoesNotTreatAManifestDirectoryAsAPreviousPackage)
     EXPECT_TRUE(std::filesystem::is_directory(m_temp.File("Dist/game.manifest.toml")));
 }
 
+/// @brief Preserves an external managed folder and allows an external previous package.
 TEST_F(BuildOutputPathTest, PreservesAnExternalManagedFolderAndAllowsAnExternalPreviousPackage)
 {
     testkit::TempDir external{ "external-managed-output" };
@@ -178,6 +192,7 @@ TEST_F(BuildOutputPathTest, PreservesAnExternalManagedFolderAndAllowsAnExternalP
     EXPECT_TRUE(std::filesystem::is_regular_file(external.File("Package/Managed/Project.Scripts.dll")));
 }
 
+/// @brief Rejects links into protected folders and the project root.
 /// @note Windows の symlink 作成権限が無い環境では明示的に skip し、字面の検査成功を実体検査と取り違えない。
 /// @see https://learn.microsoft.com/cpp/standard-library/filesystem-functions#create_directory_symlink ディレクトリ参照の作成。
 /// @see https://learn.microsoft.com/windows/win32/debug/system-error-codes--1300-1699- ERROR_PRIVILEGE_NOT_HELD。

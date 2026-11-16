@@ -119,6 +119,7 @@ protected:
     std::shared_ptr<CpuValueChannel<asset::MaterialAsset>> m_materials;
 };
 
+/// @brief Placement requests decode before publication and resolve without synchronous pins.
 TEST_F(CellAssetStreamingTest, PlacementRequestsDecodeBeforePublicationAndResolveWithoutSynchronousPins)
 {
     auto lease = m_streamer->Request<asset::MeshInstancesAsset>(Path());
@@ -148,6 +149,7 @@ TEST_F(CellAssetStreamingTest, PlacementRequestsDecodeBeforePublicationAndResolv
     EXPECT_EQ(m_renderer.m_buffersAlive, 0u);
 }
 
+/// @brief Explicit retirement requires every lease and preserves retained immutable snapshots.
 TEST_F(CellAssetStreamingTest, ExplicitRetirementRequiresEveryLeaseAndPreservesRetainedImmutableSnapshots)
 {
     auto first = m_streamer->Request<asset::MeshInstancesAsset>(Path());
@@ -169,6 +171,7 @@ TEST_F(CellAssetStreamingTest, ExplicitRetirementRequiresEveryLeaseAndPreservesR
     EXPECT_EQ(snapshot->placements.front().id, 7u);
 }
 
+/// @brief Parent placement dependency leases protect models until the parent is retired.
 TEST_F(CellAssetStreamingTest, ParentPlacementDependencyLeasesProtectModelsUntilTheParentIsRetired)
 {
     auto lease = m_streamer->Request<asset::MeshInstancesAsset>(Path());
@@ -182,6 +185,7 @@ TEST_F(CellAssetStreamingTest, ParentPlacementDependencyLeasesProtectModelsUntil
     EXPECT_TRUE(m_streamer->EvictUnusedRaw(modelType, "Assets/Models/Tree.fzasset"));
 }
 
+/// @brief Synchronously pinned shared placement assets are never unpinned by retirement.
 TEST_F(CellAssetStreamingTest, SynchronouslyPinnedSharedPlacementAssetsAreNeverUnpinnedByRetirement)
 {
     const auto handle = asset::AssetManager::Load<asset::MeshInstancesAsset>(Path());
@@ -196,6 +200,7 @@ TEST_F(CellAssetStreamingTest, SynchronouslyPinnedSharedPlacementAssetsAreNeverU
     EXPECT_TRUE(asset::AssetStore<asset::MeshInstancesAsset>::Get().IsPinned(handle));
 }
 
+/// @brief Cancellation drops a worker result without publishing or pinning.
 TEST_F(CellAssetStreamingTest, CancellationDropsAWorkerResultWithoutPublishingOrPinning)
 {
     auto lease = m_streamer->Request<asset::MeshInstancesAsset>(Path());
@@ -210,6 +215,7 @@ TEST_F(CellAssetStreamingTest, CancellationDropsAWorkerResultWithoutPublishingOr
     EXPECT_GT(m_streamer->GetStats().staleCompletionsDropped, 0u);
 }
 
+/// @brief Invalid placement data fails without publishing and can be explicitly retired.
 TEST_F(CellAssetStreamingTest, InvalidPlacementDataFailsWithoutPublishingAndCanBeExplicitlyRetired)
 {
     ASSERT_TRUE(util::FileSystem::WriteText(Path(), "format = 'fbzz.meshinstances'\nversion = 99\n"));
@@ -224,6 +230,7 @@ TEST_F(CellAssetStreamingTest, InvalidPlacementDataFailsWithoutPublishingAndCanB
     EXPECT_EQ(m_streamer->GetStatus(handle).state, asset::AssetLoadState::None);
 }
 
+/// @brief Engine retirement wrapper honors the global lease without creating a second store.
 TEST_F(CellAssetStreamingTest, EngineRetirementWrapperHonorsTheGlobalLeaseWithoutCreatingASecondStore)
 {
     asset::AssetJobInput input;

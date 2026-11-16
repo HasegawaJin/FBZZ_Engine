@@ -116,6 +116,7 @@ class ColliderDebugGeometryTest : public testkit::Fixture {};
 
 /// @name 箱
 
+/// @brief Draws twelve edges on the corners of an AABB.
 TEST_F(ColliderDebugGeometryTest, DrawsTwelveEdgesOnTheCornersOfAnAABB)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 2.0f, 3.0f));
@@ -128,6 +129,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsTwelveEdgesOnTheCornersOfAnAABB)
         EXPECT_TRUE(IsCornerOf(point, box.GetAABB()));
 }
 
+/// @brief Draws the rotated corners of an OBB.
 TEST_F(ColliderDebugGeometryTest, DrawsTheRotatedCornersOfAnOBB)
 {
     physics::OBBCollider obb(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -151,6 +153,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsTheRotatedCornersOfAnOBB)
 
 /// @name 球
 
+/// @brief Draws three closed circles on the sphere surface.
 TEST_F(ColliderDebugGeometryTest, DrawsThreeClosedCirclesOnTheSphereSurface)
 {
     physics::SphereCollider sphere(2.0f);
@@ -164,6 +167,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsThreeClosedCirclesOnTheSphereSurface)
         EXPECT_NEAR((point - center).Length(), sphere.m_radius, testkit::kTolerance);
 }
 
+/// @brief Draws the three sphere circles on orthogonal planes.
 TEST_F(ColliderDebugGeometryTest, DrawsTheThreeSphereCirclesOnOrthogonalPlanes)
 {
     physics::SphereCollider sphere(1.0f);
@@ -187,6 +191,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsTheThreeSphereCirclesOnOrthogonalPlanes)
 
 /// @name カプセル
 
+/// @brief Keeps every capsule endpoint on the capsule surface.
 TEST_F(ColliderDebugGeometryTest, KeepsEveryCapsuleEndpointOnTheCapsuleSurface)
 {
     physics::CapsuleCollider capsule(0.5f, 1.5f);
@@ -205,6 +210,7 @@ TEST_F(ColliderDebugGeometryTest, KeepsEveryCapsuleEndpointOnTheCapsuleSurface)
     }
 }
 
+/// @brief Falls back to a box when the capsule axis is degenerate.
 TEST_F(ColliderDebugGeometryTest, FallsBackToABoxWhenTheCapsuleAxisIsDegenerate)
 {
     physics::CapsuleCollider capsule(0.5f, 0.0f);
@@ -217,6 +223,7 @@ TEST_F(ColliderDebugGeometryTest, FallsBackToABoxWhenTheCapsuleAxisIsDegenerate)
 
 /// @name 円柱
 
+/// @brief Keeps every cylinder endpoint on the cap rims.
 TEST_F(ColliderDebugGeometryTest, KeepsEveryCylinderEndpointOnTheCapRims)
 {
     physics::CylinderCollider cylinder(0.75f, 2.0f);
@@ -236,6 +243,7 @@ TEST_F(ColliderDebugGeometryTest, KeepsEveryCylinderEndpointOnTheCapRims)
     }
 }
 
+/// @brief Falls back to a box when the cylinder axis is degenerate.
 TEST_F(ColliderDebugGeometryTest, FallsBackToABoxWhenTheCylinderAxisIsDegenerate)
 {
     physics::CylinderCollider cylinder(0.75f, 0.0f);
@@ -246,6 +254,7 @@ TEST_F(ColliderDebugGeometryTest, FallsBackToABoxWhenTheCylinderAxisIsDegenerate
 
 /// @name 三角メッシュ / ハイトフィールド
 
+/// @brief Draws three edges per triangle of a small mesh.
 TEST_F(ColliderDebugGeometryTest, DrawsThreeEdgesPerTriangleOfASmallMesh)
 {
     std::vector<math::Vector3> positions;
@@ -260,6 +269,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsThreeEdgesPerTriangleOfASmallMesh)
     EXPECT_EQ(geometry.lines.size(), mesh.GetBVH().triangles.size() * 3);
 }
 
+/// @brief Draws nothing for a mesh without triangles.
 TEST_F(ColliderDebugGeometryTest, DrawsNothingForAMeshWithoutTriangles)
 {
     physics::TriangleMeshCollider mesh({}, {});
@@ -268,6 +278,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsNothingForAMeshWithoutTriangles)
     EXPECT_TRUE(physics::BuildColliderDebugGeometry(mesh).lines.empty());
 }
 
+/// @brief Samples a large mesh down to the line budget.
 TEST_F(ColliderDebugGeometryTest, SamplesALargeMeshDownToTheLineBudget)
 {
     std::vector<math::Vector3> positions;
@@ -284,6 +295,7 @@ TEST_F(ColliderDebugGeometryTest, SamplesALargeMeshDownToTheLineBudget)
     EXPECT_EQ(geometry.lines.size(), kMeshLineCap);
 }
 
+/// @brief Draws three edges per triangle of a height field.
 TEST_F(ColliderDebugGeometryTest, DrawsThreeEdgesPerTriangleOfAHeightField)
 {
     const std::vector<float> heights(9, 0.0f);
@@ -298,6 +310,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsThreeEdgesPerTriangleOfAHeightField)
 
 /// @name 凸包
 
+/// @brief Draws each convex hull edge only once.
 TEST_F(ColliderDebugGeometryTest, DrawsEachConvexHullEdgeOnlyOnce)
 {
     physics::ConvexHullCollider hull(CubePoints(1.0f));
@@ -326,6 +339,7 @@ TEST_F(ColliderDebugGeometryTest, DrawsEachConvexHullEdgeOnlyOnce)
     }
 }
 
+/// @brief Draws nothing for a hull without vertices.
 TEST_F(ColliderDebugGeometryTest, DrawsNothingForAHullWithoutVertices)
 {
     physics::ConvexHullCollider hull({});

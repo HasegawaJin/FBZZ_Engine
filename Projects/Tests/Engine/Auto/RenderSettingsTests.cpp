@@ -59,6 +59,7 @@ RenderSettings MakeEveryDiagnosticOn()
 
 } /// @note namespace
 
+/// @brief Checks strip debug visualization turns off every diagnostic view.
 TEST_F(RenderSettingsTest, StripDebugVisualizationTurnsOffEveryDiagnosticView)
 {
     RenderSettings settings = MakeEveryDiagnosticOn();
@@ -95,6 +96,7 @@ TEST_F(RenderSettingsTest, StripDebugVisualizationTurnsOffEveryDiagnosticView)
     EXPECT_FALSE(settings.clustered.debugHeatmap);
 }
 
+/// @brief Strip debug visualization keeps UI rects.
 TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsUIRects)
 {
     /// @note UI の当たり判定を試すクリックは Game View で行う。ここで消すと矩形を見ながら押せない。
@@ -104,6 +106,7 @@ TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsUIRects)
     EXPECT_TRUE(settings.showUIRects);
 }
 
+/// @brief Script gizmos are off by default.
 TEST_F(RenderSettingsTest, ScriptGizmosAreOffByDefault)
 {
     /// @note 配布ビルドは Strip を通さず既定値で描くので、既定が true だとゲーム画面にギズモが乗る。
@@ -111,6 +114,7 @@ TEST_F(RenderSettingsTest, ScriptGizmosAreOffByDefault)
     EXPECT_FALSE(settings.showScriptGizmos);
 }
 
+/// @brief Strip debug visualization keeps skeleton filter mode.
 TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsSkeletonFilterMode)
 {
     /// @note «選択中だけ» は表示ではなくモード。Scene View へ戻ったときに選び直させない。
@@ -121,6 +125,7 @@ TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsSkeletonFilterMode)
     EXPECT_FALSE(settings.skeletonSelectedOnly);
 }
 
+/// @brief Is selected matches index and generation.
 TEST_F(RenderSettingsTest, IsSelectedMatchesIndexAndGeneration)
 {
     RenderSettings settings;
@@ -131,6 +136,7 @@ TEST_F(RenderSettingsTest, IsSelectedMatchesIndexAndGeneration)
     EXPECT_FALSE(settings.IsSelected(8u, 3u));
 }
 
+/// @brief Strip debug visualization keeps look settings.
 TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsLookSettings)
 {
     RenderSettings settings;
@@ -150,6 +156,7 @@ TEST_F(RenderSettingsTest, StripDebugVisualizationKeepsLookSettings)
     EXPECT_FLOAT_EQ(settings.clustered.maxDistance, 90.0f);
 }
 
+/// @brief Hybrid workload presets are valid and leave other settings alone.
 TEST_F(RenderSettingsTest, HybridWorkloadPresetsAreValidAndLeaveOtherSettingsAlone)
 {
     RenderSettings settings;
@@ -171,6 +178,7 @@ TEST_F(RenderSettingsTest, HybridWorkloadPresetsAreValidAndLeaveOtherSettingsAlo
     EXPECT_EQ(renderer::DetectHybridQualityPreset(settings.hybridQuality), renderer::HybridQualityPreset::CUSTOM);
 }
 
+/// @brief Hybrid workload rejects unsafe counts and non-finite targets.
 TEST_F(RenderSettingsTest, HybridWorkloadRejectsUnsafeCountsAndNonFiniteTargets)
 {
     renderer::HybridQualitySettings quality;
@@ -190,6 +198,7 @@ TEST_F(RenderSettingsTest, HybridWorkloadRejectsUnsafeCountsAndNonFiniteTargets)
     EXPECT_FALSE(renderer::IsHybridQualityValid(quality));
 }
 
+/// @brief Performance quality limits transport and keeps legacy defaults.
 TEST_F(RenderSettingsTest, PerformanceQualityLimitsTransportAndKeepsLegacyDefaults)
 {
     const renderer::HybridQualitySettings legacy;

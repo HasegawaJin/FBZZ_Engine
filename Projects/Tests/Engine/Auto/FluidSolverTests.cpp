@@ -74,6 +74,7 @@ float MinColliderDistance(const fluid::FluidLiquidSolver& solver, const fluid::F
 
 } /// @note namespace
 
+/// @brief Projection removes most of the divergence.
 TEST(FluidGasSolverTest, ProjectionRemovesMostOfTheDivergence)
 {
     fluid::FluidRecipe recipe;
@@ -97,6 +98,7 @@ TEST(FluidGasSolverTest, ProjectionRemovesMostOfTheDivergence)
     EXPECT_LT(after, before * 0.5f);
 }
 
+/// @brief The vertical centroid of the smoke density moves upward as the simulation advances.
 TEST(FluidGasSolverTest, HotSmokeRises)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Smoke);
@@ -111,6 +113,7 @@ TEST(FluidGasSolverTest, HotSmokeRises)
     EXPECT_TRUE(AllFinite(solver.VelocityY()));
 }
 
+/// @brief Same seed gives the same result.
 TEST(FluidGasSolverTest, SameSeedGivesTheSameResult)
 {
     /// @note 焼き直すたびに絵が変わると、パラメーターを 1 つ変えた効果を見比べられない。
@@ -126,6 +129,7 @@ TEST(FluidGasSolverTest, SameSeedGivesTheSameResult)
     EXPECT_EQ(a.Density(), b.Density());
 }
 
+/// @brief Checks combustion turns fuel into smoke.
 TEST(FluidGasSolverTest, CombustionTurnsFuelIntoSmoke)
 {
     /// @note 炎のプリセットは煤を直接注入しない。煤があるなら燃焼が働いている。
@@ -138,6 +142,7 @@ TEST(FluidGasSolverTest, CombustionTurnsFuelIntoSmoke)
     EXPECT_GT(solver.TotalDensity(), 0.0f);
 }
 
+/// @brief Volume solve stays finite.
 TEST(FluidGasSolverTest, VolumeSolveStaysFinite)
 {
     const fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Explosion);
@@ -150,6 +155,7 @@ TEST(FluidGasSolverTest, VolumeSolveStaysFinite)
     EXPECT_TRUE(AllFinite(solver.VelocityZ()));
 }
 
+/// @brief Checks particles settle on the floor without collapsing.
 TEST(FluidLiquidSolverTest, ParticlesSettleOnTheFloorWithoutCollapsing)
 {
     fluid::FluidRecipe recipe;
@@ -184,6 +190,7 @@ TEST(FluidLiquidSolverTest, ParticlesSettleOnTheFloorWithoutCollapsing)
     EXPECT_GT(maxX - minX, solver.ParticleRadius() * 10.0f);
 }
 
+/// @brief Density stays near rest.
 TEST(FluidLiquidSolverTest, DensityStaysNearRest)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::LavaBlob);
@@ -200,6 +207,7 @@ TEST(FluidLiquidSolverTest, DensityStaysNearRest)
     EXPECT_LT(average, 1.6f);
 }
 
+/// @brief Checks every preset produces a visible frame.
 TEST(FluidRecipeTest, EveryPresetProducesAVisibleFrame)
 {
     /// @note プリセットの数値を触ったときに «焼いたら真っ白 / 真っ透明» を見逃さないための網。
@@ -229,6 +237,7 @@ TEST(FluidRecipeTest, EveryPresetProducesAVisibleFrame)
     }
 }
 
+/// @brief Round-trips through TOML.
 TEST(FluidRecipeTest, RoundTripsThroughToml)
 {
     testkit::TempDir temp{ "fluidrecipe" };
@@ -269,6 +278,7 @@ TEST(FluidRecipeTest, RoundTripsThroughToml)
     EXPECT_FLOAT_EQ(loadedLiquid.liquid.particleLifetime, liquid.liquid.particleLifetime);
 }
 
+/// @brief Detail layers cross fade without popping.
 TEST(FluidGasSolverTest, DetailLayersCrossFadeWithoutPopping)
 {
     /// @note 層を初期位置へ戻す瞬間にその層の重みが 0 でないと、細部のノイズがコマ間で «跳ぶ»。
@@ -288,6 +298,7 @@ TEST(FluidGasSolverTest, DetailLayersCrossFadeWithoutPopping)
     }
 }
 
+/// @brief Detail coordinates move with the flow.
 TEST(FluidGasSolverTest, DetailCoordinatesMoveWithTheFlow)
 {
     /// @note 右へ一様に流れていれば、原点にある細部の座標は «少し左から運ばれてきたもの» になる。
@@ -308,6 +319,7 @@ TEST(FluidGasSolverTest, DetailCoordinatesMoveWithTheFlow)
     EXPECT_FALSE(fluid::FluidGasSolver{}.HasDetail());
 }
 
+/// @brief Volume solve has no detail layers.
 TEST(FluidGasSolverTest, VolumeSolveHasNoDetailLayers)
 {
     /// @note 3D (速度場 PNG) は速度しか焼かない。細部の座標を持つとメモリだけ 2 倍になる。
@@ -319,6 +331,7 @@ TEST(FluidGasSolverTest, VolumeSolveHasNoDetailLayers)
 
 /// @name 障害物
 
+/// @brief Sphere collider keeps smoke out and the flow projected.
 TEST(FluidGasSolverTest, SphereColliderKeepsSmokeOutAndTheFlowProjected)
 {
     fluid::FluidCollider collider;
@@ -381,6 +394,7 @@ TEST(FluidGasSolverTest, SphereColliderKeepsSmokeOutAndTheFlowProjected)
     EXPECT_TRUE(AllFinite(blocked.VelocityY()));
 }
 
+/// @brief Moving collider pushes the air ahead.
 TEST(FluidGasSolverTest, MovingColliderPushesTheAirAhead)
 {
     const auto solve = [](bool inheritVelocity) {
@@ -414,6 +428,7 @@ TEST(FluidGasSolverTest, MovingColliderPushesTheAirAhead)
     EXPECT_NEAR(still, 0.0f, 1.0e-6f);
 }
 
+/// @brief Particles never end inside a sphere collider.
 TEST(FluidLiquidSolverTest, ParticlesNeverEndInsideASphereCollider)
 {
     fluid::FluidRecipe recipe;
@@ -439,6 +454,7 @@ TEST(FluidLiquidSolverTest, ParticlesNeverEndInsideASphereCollider)
         EXPECT_TRUE(std::isfinite(particle.x) && std::isfinite(particle.y));
 }
 
+/// @brief Checks tilted plane collider catches the particles.
 TEST(FluidLiquidSolverTest, TiltedPlaneColliderCatchesTheParticles)
 {
     fluid::FluidRecipe recipe;
@@ -467,6 +483,7 @@ TEST(FluidLiquidSolverTest, TiltedPlaneColliderCatchesTheParticles)
     EXPECT_LT(meanX, 0.3);
 }
 
+/// @brief Texture source without an image still fills the plate.
 TEST(FluidRecipeTest, TextureSourceWithoutAnImageStillFillsThePlate)
 {
     /// @note 画像が読めないマスクは 1 として引く。«何も起きない» より原因に気付きやすい。
@@ -497,6 +514,7 @@ TEST(FluidRecipeTest, TextureSourceWithoutAnImageStillFillsThePlate)
     EXPECT_EQ(liquidSolver.Particles().size(), 100u);
 }
 
+/// @brief Auto grid follows the frame size.
 TEST(FluidRecipeTest, AutoGridFollowsTheFrameSize)
 {
     fluid::FluidRecipe recipe;
@@ -512,6 +530,7 @@ TEST(FluidRecipeTest, AutoGridFollowsTheFrameSize)
 
 /// @name 色の鍵
 
+/// @brief Color key stays with its source.
 TEST(FluidGasSolverTest, ColorKeyStaysWithItsSource)
 {
     /// @note 鍵 0 と鍵 1 の発生源を離して置く。煙の量で重み付けした鍵なので、それぞれの芯は自分の鍵になる。
@@ -543,6 +562,7 @@ TEST(FluidGasSolverTest, ColorKeyStaysWithItsSource)
                             [](float k) { return std::isfinite(k) && k >= 0.0f && k <= 1.0f; }));
 }
 
+/// @brief Color key does not change the flow.
 TEST(FluidGasSolverTest, ColorKeyDoesNotChangeTheFlow)
 {
     /// @note 鍵は «描く色を選ぶ» だけ。付けても付けなくても流れ (密度・温度) は 1 ビットも変わらない。
@@ -565,6 +585,7 @@ TEST(FluidGasSolverTest, ColorKeyDoesNotChangeTheFlow)
     EXPECT_EQ(a.SampleColorKey(0.0f, 0.0f), 0.0f);
 }
 
+/// @brief Fuel only fire carries its key into the soot.
 TEST(FluidGasSolverTest, FuelOnlyFireCarriesItsKeyIntoTheSoot)
 {
     /// @note 炎のプリセットは煙を注がない (density 0・fuel > 0)。煤は «燃えた燃料の鍵» で生まれるので、
@@ -603,6 +624,7 @@ TEST(FluidGasSolverTest, FuelOnlyFireCarriesItsKeyIntoTheSoot)
 
 /// @name 部品の差し替え (Fluid Editor のプレビュー)
 
+/// @brief Replace operators keeps the field and applies the new parts.
 TEST(FluidGasSolverTest, ReplaceOperatorsKeepsTheFieldAndAppliesTheNewParts)
 {
     fluid::FluidRecipe recipe;
@@ -636,6 +658,7 @@ TEST(FluidGasSolverTest, ReplaceOperatorsKeepsTheFieldAndAppliesTheNewParts)
     EXPECT_LT(solver.SampleDensity(-0.5f, -0.6f), leftBefore);
 }
 
+/// @brief Replace operators refuses what the field depends on.
 TEST(FluidGasSolverTest, ReplaceOperatorsRefusesWhatTheFieldDependsOn)
 {
     const fluid::FluidRecipe recipe;
@@ -660,6 +683,7 @@ TEST(FluidGasSolverTest, ReplaceOperatorsRefusesWhatTheFieldDependsOn)
     EXPECT_FALSE(solver.ReplaceOperators(liquid));
 }
 
+/// @brief Replace operators keeps the particles and the emitted counts.
 TEST(FluidLiquidSolverTest, ReplaceOperatorsKeepsTheParticlesAndTheEmittedCounts)
 {
     fluid::FluidRecipe recipe;

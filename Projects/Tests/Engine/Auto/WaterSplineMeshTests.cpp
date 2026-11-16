@@ -14,6 +14,7 @@
 namespace fbzz::tests {
 class WaterSplineMeshTest : public testkit::Fixture {};
 
+/// @brief Interior refinement keeps the original height depth and directed flow.
 TEST_F(WaterSplineMeshTest, InteriorRefinementKeepsTheOriginalHeightDepthAndDirectedFlow)
 {
     const std::array<scene::WaterSplinePoint, 2> points{{
@@ -39,6 +40,7 @@ TEST_F(WaterSplineMeshTest, InteriorRefinementKeepsTheOriginalHeightDepthAndDire
     }
 }
 
+/// @brief Large world origin keeps the last valid mesh when midpoints lose precision.
 TEST_F(WaterSplineMeshTest, LargeWorldOriginKeepsTheLastValidMeshWhenMidpointsLosePrecision)
 {
     const std::array<scene::WaterSplinePoint, 2> points{{
@@ -65,6 +67,7 @@ TEST_F(WaterSplineMeshTest, LargeWorldOriginKeepsTheLastValidMeshWhenMidpointsLo
     }
 }
 
+/// @brief Long reach does not subdivide already dense upstream triangles.
 TEST_F(WaterSplineMeshTest, LongReachDoesNotSubdivideAlreadyDenseUpstreamTriangles)
 {
     const std::array<scene::WaterSplinePoint, 4> points{{
@@ -85,6 +88,7 @@ TEST_F(WaterSplineMeshTest, LongReachDoesNotSubdivideAlreadyDenseUpstreamTriangl
     EXPECT_EQ(upstreamVertices, 4u);
 }
 
+/// @brief Sloped river normal includes the horizontal wave inverse map.
 TEST_F(WaterSplineMeshTest, SlopedRiverNormalIncludesTheHorizontalWaveInverseMap)
 {
     scene::WaterComponent water;

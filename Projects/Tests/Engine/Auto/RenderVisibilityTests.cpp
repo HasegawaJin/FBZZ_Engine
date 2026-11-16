@@ -18,6 +18,7 @@ using renderer::VisibilityResult;
 
 class RenderVisibilityTest : public testkit::Fixture {};
 
+/// @brief Unknown bounds remain visible.
 TEST_F(RenderVisibilityTest, UnknownBoundsRemainVisible)
 {
     const auto frustum = math::Frustum::FromViewProjection(math::Matrix4::Identity());
@@ -30,6 +31,7 @@ TEST_F(RenderVisibilityTest, UnknownBoundsRemainVisible)
                   VisibilityResult::VISIBLE);
 }
 
+/// @brief Distance uses nearest sphere point and keeps boundary.
 TEST_F(RenderVisibilityTest, DistanceUsesNearestSpherePointAndKeepsBoundary)
 {
     RenderCullingView view;
@@ -44,6 +46,7 @@ TEST_F(RenderVisibilityTest, DistanceUsesNearestSpherePointAndKeepsBoundary)
     EXPECT_EQ(EvaluateVisibility(view, item), VisibilityResult::VISIBLE);
 }
 
+/// @brief Spherical and depth distances use the selected view.
 TEST_F(RenderVisibilityTest, SphericalAndDepthDistancesUseTheSelectedView)
 {
     RenderCullingView view;
@@ -55,6 +58,7 @@ TEST_F(RenderVisibilityTest, SphericalAndDepthDistancesUseTheSelectedView)
     EXPECT_EQ(EvaluateVisibility(view, item), VisibilityResult::DISTANCE_CULLED);
 }
 
+/// @brief Orthographic size does not shrink with distance.
 TEST_F(RenderVisibilityTest, OrthographicSizeDoesNotShrinkWithDistance)
 {
     RenderCullingView view;
@@ -66,6 +70,7 @@ TEST_F(RenderVisibilityTest, OrthographicSizeDoesNotShrinkWithDistance)
     EXPECT_EQ(EvaluateVisibility(view, item), VisibilityResult::VISIBLE);
 }
 
+/// @brief Screen size boundary and nonpositive depth remain visible.
 TEST_F(RenderVisibilityTest, ScreenSizeBoundaryAndNonpositiveDepthRemainVisible)
 {
     RenderCullingView view;
@@ -82,6 +87,7 @@ TEST_F(RenderVisibilityTest, ScreenSizeBoundaryAndNonpositiveDepthRemainVisible)
     EXPECT_EQ(EvaluateVisibility(view, item), VisibilityResult::VISIBLE);
 }
 
+/// @brief First rejection reason is stable.
 TEST_F(RenderVisibilityTest, FirstRejectionReasonIsStable)
 {
     const auto frustum = math::Frustum::FromViewProjection(math::Matrix4::Identity());
@@ -99,6 +105,7 @@ TEST_F(RenderVisibilityTest, FirstRejectionReasonIsStable)
     EXPECT_EQ(EvaluateVisibility(view, item), VisibilityResult::VISIBLE);
 }
 
+/// @brief Frustum uses sphere intersection.
 TEST_F(RenderVisibilityTest, FrustumUsesSphereIntersection)
 {
     const auto frustum = math::Frustum::FromViewProjection(math::Matrix4::Identity());
@@ -110,6 +117,7 @@ TEST_F(RenderVisibilityTest, FrustumUsesSphereIntersection)
               VisibilityResult::FRUSTUM_CULLED);
 }
 
+/// @brief Distance only query ignores size and frustum.
 TEST_F(RenderVisibilityTest, DistanceOnlyQueryIgnoresSizeAndFrustum)
 {
     const auto frustum = math::Frustum::FromViewProjection(math::Matrix4::Identity());

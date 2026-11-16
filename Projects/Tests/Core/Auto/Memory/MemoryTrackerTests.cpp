@@ -13,6 +13,7 @@ namespace fbzz::tests {
 
 class MemoryTrackerTest : public testkit::EngineFixture {};
 
+/// @brief Records and frees allocation info.
 TEST_F(MemoryTrackerTest, RecordsAndFreesAllocationInfo)
 {
     core::MemoryTracker tracker;
@@ -37,6 +38,7 @@ TEST_F(MemoryTrackerTest, RecordsAndFreesAllocationInfo)
     EXPECT_EQ(tracker.GetStats(core::MemoryTag::CORE).used, 0u);
 }
 
+/// @brief Rejects null duplicate and unknown frees.
 TEST_F(MemoryTrackerTest, RejectsNullDuplicateAndUnknownFrees)
 {
     core::MemoryTracker tracker;
@@ -54,6 +56,7 @@ TEST_F(MemoryTrackerTest, RejectsNullDuplicateAndUnknownFrees)
     EXPECT_TRUE(tracker.RecordFree(&value));
 }
 
+/// @brief Maps unknown tags to unknown statistics.
 TEST_F(MemoryTrackerTest, MapsUnknownTagsToUnknownStatistics)
 {
     core::MemoryTracker tracker;
@@ -65,6 +68,7 @@ TEST_F(MemoryTrackerTest, MapsUnknownTagsToUnknownStatistics)
     EXPECT_STREQ(tracker.GetTagName(invalidTag), "Unknown");
 }
 
+/// @brief Aggregates tags and clamps excess frees without underflow.
 TEST_F(MemoryTrackerTest, AggregatesTagsAndClampsExcessFreesWithoutUnderflow)
 {
     core::MemoryTracker tracker;
@@ -84,6 +88,7 @@ TEST_F(MemoryTrackerTest, AggregatesTagsAndClampsExcessFreesWithoutUnderflow)
     EXPECT_EQ(tracker.GetStats(core::MemoryTag::CORE).activeCount, 0u);
 }
 
+/// @brief Enumerates live allocations across freed slots.
 TEST_F(MemoryTrackerTest, EnumeratesLiveAllocationsAcrossFreedSlots)
 {
     core::MemoryTracker tracker;
@@ -104,6 +109,7 @@ TEST_F(MemoryTrackerTest, EnumeratesLiveAllocationsAcrossFreedSlots)
     EXPECT_EQ(tracker.GetLeak(2), nullptr);
 }
 
+/// @brief Keeps aggregate statistics when the pointer ledger is full.
 TEST_F(MemoryTrackerTest, KeepsAggregateStatisticsWhenThePointerLedgerIsFull)
 {
     auto tracker = std::make_unique<core::MemoryTracker>();

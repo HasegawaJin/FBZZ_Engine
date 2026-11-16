@@ -53,6 +53,7 @@ uint32_t ReadUint32(const std::vector<uint8_t>& blob, size_t offset)
     return value;
 }
 
+/// @brief Cluster LOD reduces triangles and keeps every mixed LOD boundary.
 TEST_F(MeshletGeometryBuilderTest, ClusterLodReducesTrianglesAndKeepsEveryMixedLodBoundary)
 {
     std::vector<renderer::Vertex> vertices;
@@ -154,6 +155,7 @@ TEST_F(MeshletGeometryBuilderTest, ClusterLodReducesTrianglesAndKeepsEveryMixedL
     }
 }
 
+/// @brief Keeps triangle order degenerates and bounds across meshlet splits.
 TEST_F(MeshletGeometryBuilderTest, KeepsTriangleOrderDegeneratesAndBoundsAcrossMeshletSplits)
 {
     std::vector<uint8_t> vertices(3u * kVertexStride);
@@ -216,6 +218,7 @@ TEST_F(MeshletGeometryBuilderTest, KeepsTriangleOrderDegeneratesAndBoundsAcrossM
     }
 }
 
+/// @brief Rejects misaligned stride short ranges bad indices and non-finite positions.
 TEST_F(MeshletGeometryBuilderTest, RejectsMisalignedStrideShortRangesBadIndicesAndNonFinitePositions)
 {
     std::vector<uint8_t> vertices(4u * 16u);
@@ -254,6 +257,7 @@ TEST_F(MeshletGeometryBuilderTest, RejectsMisalignedStrideShortRangesBadIndicesA
                            validIndexBytes.data(), validIndexBytes.size(), 3);
 }
 
+/// @brief Allows triangle degeneracy and rejects incomplete triangle lists.
 TEST_F(MeshletGeometryBuilderTest, AllowsTriangleDegeneracyAndRejectsIncompleteTriangleLists)
 {
     std::vector<uint8_t> vertices(1u * kVertexStride);
@@ -284,6 +288,7 @@ TEST_F(MeshletGeometryBuilderTest, AllowsTriangleDegeneracyAndRejectsIncompleteT
     EXPECT_EQ(meshletCount, 1u);
 }
 
+/// @brief Starts a new meshlet before exceeding the unique vertex limit.
 TEST_F(MeshletGeometryBuilderTest, StartsANewMeshletBeforeExceedingTheUniqueVertexLimit)
 {
     std::vector<uint8_t> vertices(66u * kVertexStride);

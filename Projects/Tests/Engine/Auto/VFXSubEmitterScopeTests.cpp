@@ -60,6 +60,7 @@ protected:
     }
 };
 
+/// @brief Emitters under a root are scoped to that root.
 TEST_F(VFXSubEmitterScopeTest, EmittersUnderARootAreScopedToThatRoot)
 {
     const scene::EntityID root = MakeEffect("Firework");
@@ -69,6 +70,7 @@ TEST_F(VFXSubEmitterScopeTest, EmittersUnderARootAreScopedToThatRoot)
     EXPECT_EQ(ScopeOf("Firework Burst"), root);
 }
 
+/// @brief Two instances do not share a scope.
 TEST_F(VFXSubEmitterScopeTest, TwoInstancesDoNotShareAScope)
 {
     /// @note 同じ .vfx を 2 つ置いた状態。名前は同じでも、参照先は自分の枝でなければならない。
@@ -88,6 +90,7 @@ TEST_F(VFXSubEmitterScopeTest, TwoInstancesDoNotShareAScope)
                   ->settings.subEmitterScopeRoot, second);
 }
 
+/// @brief A nested root owns its own branch.
 TEST_F(VFXSubEmitterScopeTest, ANestedRootOwnsItsOwnBranch)
 {
     /// @note 入れ子の VFX は自分が範囲になる。外側の範囲を配られると、内側の 2 段目を
@@ -109,6 +112,7 @@ TEST_F(VFXSubEmitterScopeTest, ANestedRootOwnsItsOwnBranch)
     EXPECT_EQ(ScopeOf("Outer Shell"), outer);
 }
 
+/// @brief An emitter outside any VFX keeps scene wide lookup.
 TEST_F(VFXSubEmitterScopeTest, AnEmitterOutsideAnyVfxKeepsSceneWideLookup)
 {
     /// @note シーンへ手で置いた Emitter は従来どおりシーン全体から引く (範囲は INVALID のまま)。

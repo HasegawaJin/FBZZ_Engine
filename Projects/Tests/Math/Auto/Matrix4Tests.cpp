@@ -35,6 +35,7 @@ class Matrix4Test : public testkit::Fixture {};
 
 /// @name 基本の変換
 
+/// @brief Identity leaves points unchanged.
 TEST_F(Matrix4Test, IdentityLeavesPointsUnchanged)
 {
     const math::Vector3 p(1.0f, -2.0f, 3.0f);
@@ -42,6 +43,7 @@ TEST_F(Matrix4Test, IdentityLeavesPointsUnchanged)
     EXPECT_VEC3_NEAR(TransformPoint(math::Matrix4::Identity(), p), p, testkit::kTolerance);
 }
 
+/// @brief Translate moves points but not directions.
 TEST_F(Matrix4Test, TranslateMovesPointsButNotDirections)
 {
     const math::Matrix4 m = math::Matrix4::Translate(math::Vector3(10.0f, 0.0f, -5.0f));
@@ -51,6 +53,7 @@ TEST_F(Matrix4Test, TranslateMovesPointsButNotDirections)
     EXPECT_VEC3_NEAR(TransformDirection(m, v), v, testkit::kTolerance);
 }
 
+/// @brief Scale multiplies each axis independently.
 TEST_F(Matrix4Test, ScaleMultipliesEachAxisIndependently)
 {
     const math::Matrix4 m = math::Matrix4::Scale(math::Vector3(2.0f, 3.0f, -1.0f));
@@ -59,6 +62,7 @@ TEST_F(Matrix4Test, ScaleMultipliesEachAxisIndependently)
                      math::Vector3(2.0f, 3.0f, -1.0f), testkit::kTolerance);
 }
 
+/// @brief Rotate agrees with the quaternion it was built from.
 TEST_F(Matrix4Test, RotateAgreesWithTheQuaternionItWasBuiltFrom)
 {
     for (int i = 0; i < 32; ++i) {
@@ -72,6 +76,7 @@ TEST_F(Matrix4Test, RotateAgreesWithTheQuaternionItWasBuiltFrom)
 
 /// @name 合成順
 
+/// @brief TRS applies scale then rotation then translation.
 TEST_F(Matrix4Test, TRSAppliesScaleThenRotationThenTranslation)
 {
     const math::Vector3    t(5.0f, 0.0f, 0.0f);
@@ -85,6 +90,7 @@ TEST_F(Matrix4Test, TRSAppliesScaleThenRotationThenTranslation)
                      t + (r * (point * 2.0f)), testkit::kLooseTolerance);
 }
 
+/// @brief Multiplication is associative.
 TEST_F(Matrix4Test, MultiplicationIsAssociative)
 {
     const math::Matrix4 a = math::Matrix4::Translate(Rng().NextVector3(-5.0f, 5.0f));
@@ -94,6 +100,7 @@ TEST_F(Matrix4Test, MultiplicationIsAssociative)
     EXPECT_MAT4_NEAR((a * b) * c, a * (b * c), testkit::kLooseTolerance);
 }
 
+/// @brief Multiplication applies the right operand first.
 TEST_F(Matrix4Test, MultiplicationAppliesTheRightOperandFirst)
 {
     const math::Matrix4 translate = math::Matrix4::Translate(math::Vector3(1.0f, 0.0f, 0.0f));
@@ -107,6 +114,7 @@ TEST_F(Matrix4Test, MultiplicationAppliesTheRightOperandFirst)
 
 /// @name 逆行列と転置
 
+/// @brief Inverse times original is identity.
 TEST_F(Matrix4Test, InverseTimesOriginalIsIdentity)
 {
     /// @note 引数の評価順は未規定なので、乱数は必ず別の文で取り出す。
@@ -119,6 +127,7 @@ TEST_F(Matrix4Test, InverseTimesOriginalIsIdentity)
                      testkit::kLooseTolerance);
 }
 
+/// @brief Transpose is its own inverse operation.
 TEST_F(Matrix4Test, TransposeIsItsOwnInverseOperation)
 {
     const math::Vector3    translation = Rng().NextVector3(-5.0f, 5.0f);
@@ -129,6 +138,7 @@ TEST_F(Matrix4Test, TransposeIsItsOwnInverseOperation)
     EXPECT_MAT4_NEAR(m.Transposed().Transposed(), m, testkit::kTolerance);
 }
 
+/// @brief Inverse transpose affine matches the upper left of the full inverse transpose.
 TEST_F(Matrix4Test, InverseTransposeAffineMatchesTheUpperLeftOfTheFullInverseTranspose)
 {
     const math::Quaternion rotation = Rng().NextRotation();
@@ -146,6 +156,7 @@ TEST_F(Matrix4Test, InverseTransposeAffineMatchesTheUpperLeftOfTheFullInverseTra
     }
 }
 
+/// @brief Inverse transpose affine returns identity for a degenerate scale.
 TEST_F(Matrix4Test, InverseTransposeAffineReturnsIdentityForADegenerateScale)
 {
     /// @note スケール 0 はエディタ操作として普通に起きる。停止せず素通しする契約。
@@ -157,6 +168,7 @@ TEST_F(Matrix4Test, InverseTransposeAffineReturnsIdentityForADegenerateScale)
 
 /// @name ビューと投影
 
+/// @brief The LookAt matrix maps the eye position to the view-space origin.
 TEST_F(Matrix4Test, LookAtPlacesTheEyeAtTheViewOrigin)
 {
     const math::Vector3 eye(0.0f, 0.0f, -5.0f);
@@ -165,6 +177,7 @@ TEST_F(Matrix4Test, LookAtPlacesTheEyeAtTheViewOrigin)
     EXPECT_VEC3_NEAR(TransformPoint(view, eye), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief The LookAt matrix maps the target onto the positive view-space Z axis.
 TEST_F(Matrix4Test, LookAtPutsTheTargetOnThePositiveZAxis)
 {
     /// @note 左手系なので «見ている先» はビュー空間の +Z。距離はそのまま残る。
@@ -175,6 +188,7 @@ TEST_F(Matrix4Test, LookAtPutsTheTargetOnThePositiveZAxis)
                      testkit::kTolerance);
 }
 
+/// @brief Perspective maps the near plane to zero and the far plane to one.
 TEST_F(Matrix4Test, PerspectiveMapsTheNearPlaneToZeroAndTheFarPlaneToOne)
 {
     /// @note DirectX の深度範囲は 0..1。OpenGL の -1..1 と取り違えると近景だけが破綻する。
@@ -192,6 +206,7 @@ TEST_F(Matrix4Test, PerspectiveMapsTheNearPlaneToZeroAndTheFarPlaneToOne)
     EXPECT_NEAR(atFar.z / atFar.w, 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Checks perspective divides W by view-space depth.
 TEST_F(Matrix4Test, PerspectiveDividesWByViewSpaceDepth)
 {
     const math::Matrix4 proj =
@@ -202,6 +217,7 @@ TEST_F(Matrix4Test, PerspectiveDividesWByViewSpaceDepth)
     EXPECT_NEAR(clip.w, 4.0f, testkit::kTolerance);
 }
 
+/// @brief Orthographic maps the box corners to the NDC cube.
 TEST_F(Matrix4Test, OrthographicMapsTheBoxCornersToTheNdcCube)
 {
     const math::Matrix4 proj = math::Matrix4::Orthographic(-2.0f, 2.0f, -1.0f, 1.0f, 0.0f, 10.0f);
@@ -212,6 +228,7 @@ TEST_F(Matrix4Test, OrthographicMapsTheBoxCornersToTheNdcCube)
                      math::Vector3(-1.0f, -1.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Perspective reversed Z maps the near plane to one and the far plane to zero.
 TEST_F(Matrix4Test, PerspectiveReversedZMapsTheNearPlaneToOneAndTheFarPlaneToZero)
 {
     constexpr float     kNear = 0.1f;
@@ -228,6 +245,7 @@ TEST_F(Matrix4Test, PerspectiveReversedZMapsTheNearPlaneToOneAndTheFarPlaneToZer
     EXPECT_NEAR(atFar.z / atFar.w, 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Perspective reversed Z keeps XY and W of perspective.
 TEST_F(Matrix4Test, PerspectiveReversedZKeepsXYAndWOfPerspective)
 {
     const math::Matrix4 standard = math::Matrix4::Perspective(math::ToRad(60.0f), 1.5f, 0.1f, 100.0f);
@@ -242,6 +260,7 @@ TEST_F(Matrix4Test, PerspectiveReversedZKeepsXYAndWOfPerspective)
     EXPECT_NEAR(b.z / b.w, 1.0f - a.z / a.w, testkit::kLooseTolerance);
 }
 
+/// @brief Orthographic reversed Z maps the near plane to one and the far plane to zero.
 TEST_F(Matrix4Test, OrthographicReversedZMapsTheNearPlaneToOneAndTheFarPlaneToZero)
 {
     const math::Matrix4 proj = math::Matrix4::OrthographicReversedZ(-2.0f, 2.0f, -1.0f, 1.0f, 0.0f, 10.0f);

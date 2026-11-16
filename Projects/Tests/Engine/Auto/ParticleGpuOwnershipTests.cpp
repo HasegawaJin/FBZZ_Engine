@@ -92,6 +92,7 @@ protected:
     float m_delta = 0.0f;
 };
 
+/// @brief Clear restart and capacity change return owned buffers and keep borrowed pool buffers.
 TEST_F(ParticleGpuOwnershipTest, ClearRestartAndCapacityChangeReturnOwnedBuffersAndKeepBorrowedPoolBuffers)
 {
     auto previous = Extract(m_device, *m_resources);
@@ -118,6 +119,7 @@ TEST_F(ParticleGpuOwnershipTest, ClearRestartAndCapacityChangeReturnOwnedBuffers
     EXPECT_NE(m_resources->Get(previous.runtime.gpuSpawnBuffer), nullptr);
 }
 
+/// @brief Checks alternating managers recreate emitter buffers and retain per owner material.
 TEST_F(ParticleGpuOwnershipTest, AlternatingManagersRecreateEmitterBuffersAndRetainPerOwnerMaterial)
 {
     testkit::ResourceTrackingRenderer otherDevice;
@@ -143,6 +145,7 @@ TEST_F(ParticleGpuOwnershipTest, AlternatingManagersRecreateEmitterBuffersAndRet
     EXPECT_EQ(otherDevice.m_constantsAlive, 0u);
 }
 
+/// @brief Checks reset recreates emitter and material resources without releasing unrelated buffers.
 TEST_F(ParticleGpuOwnershipTest, ResetRecreatesEmitterAndMaterialResourcesWithoutReleasingUnrelatedBuffers)
 {
     const auto initial = Extract(m_device, *m_resources);
@@ -160,6 +163,7 @@ TEST_F(ParticleGpuOwnershipTest, ResetRecreatesEmitterAndMaterialResourcesWithou
     m_resources->Release(unrelated);
 }
 
+/// @brief Shader reload without parameters returns old material buffer.
 TEST_F(ParticleGpuOwnershipTest, ShaderReloadWithoutParametersReturnsOldMaterialBuffer)
 {
     const auto initial = Extract(m_device, *m_resources);

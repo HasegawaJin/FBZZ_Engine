@@ -5,6 +5,7 @@
 #include "../Fixtures/StaticMeshRenderReuseFixture.hpp"
 
 namespace fbzz::tests {
+/// @brief Keeps moving geometry current and reenters reuse after motion stops.
 TEST_F(StaticMeshRenderReuseTest, KeepsMovingGeometryCurrentAndReentersReuseAfterMotionStops)
 {
     auto& owner = Object(m_scene);
@@ -30,6 +31,7 @@ TEST_F(StaticMeshRenderReuseTest, KeepsMovingGeometryCurrentAndReentersReuseAfte
     EXPECT_FLOAT_EQ(retained.Objects()[0].world.m[0][3], 0);
 }
 
+/// @brief Leaves cold scenes on the original path before creating reusable values.
 TEST_F(StaticMeshRenderReuseTest, LeavesColdScenesOnTheOriginalPathBeforeCreatingReusableValues)
 {
     scene::Scene cold;
@@ -45,6 +47,7 @@ TEST_F(StaticMeshRenderReuseTest, LeavesColdScenesOnTheOriginalPathBeforeCreatin
     }
 }
 
+/// @brief Rechecks volatile scenes within a bounded number of builds after motion stops.
 TEST_F(StaticMeshRenderReuseTest, RechecksVolatileScenesWithinABoundedNumberOfBuildsAfterMotionStops)
 {
     std::array<scene::EntityID, 128> entities;

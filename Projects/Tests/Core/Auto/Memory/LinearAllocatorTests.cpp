@@ -11,6 +11,7 @@ namespace fbzz::tests {
 
 class LinearAllocatorTest : public testkit::EngineFixture {};
 
+/// @brief Initializes and allocates within capacity.
 TEST_F(LinearAllocatorTest, InitializesAndAllocatesWithinCapacity)
 {
     core::LinearAllocator allocator;
@@ -27,6 +28,7 @@ TEST_F(LinearAllocatorTest, InitializesAndAllocatesWithinCapacity)
     EXPECT_FALSE(allocator.IsInitialized());
 }
 
+/// @brief Reset reuses the whole region.
 TEST_F(LinearAllocatorTest, ResetReusesTheWholeRegion)
 {
     core::LinearAllocator allocator;
@@ -40,6 +42,7 @@ TEST_F(LinearAllocatorTest, ResetReusesTheWholeRegion)
     allocator.Shutdown();
 }
 
+/// @brief Rejects an allocation that exceeds capacity.
 TEST_F(LinearAllocatorTest, RejectsAnAllocationThatExceedsCapacity)
 {
     core::LinearAllocator allocator;

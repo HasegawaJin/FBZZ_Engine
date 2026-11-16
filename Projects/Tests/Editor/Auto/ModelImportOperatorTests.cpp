@@ -59,6 +59,7 @@ protected:
     editor::UndoStack m_undo;
 };
 
+/// @brief Inspect reports source contents without creating baked outputs.
 TEST_F(ModelImportOperatorTest, InspectReportsSourceContentsWithoutCreatingBakedOutputs)
 {
     const auto result = Invoke("asset.model.inspect", Args());
@@ -71,6 +72,7 @@ TEST_F(ModelImportOperatorTest, InspectReportsSourceContentsWithoutCreatingBaked
     EXPECT_FALSE(std::filesystem::exists(File("Library/Baked")));
 }
 
+/// @brief Configure preserves unspecified options and the source GUID.
 TEST_F(ModelImportOperatorTest, ConfigurePreservesUnspecifiedOptionsAndTheSourceGuid)
 {
     editor::FbxImportOptions original;
@@ -94,6 +96,7 @@ TEST_F(ModelImportOperatorTest, ConfigurePreservesUnspecifiedOptionsAndTheSource
     EXPECT_EQ(asset::AssetDatabase::GuidFromPath(File("Assets/Triangle.obj").generic_string()), guid);
 }
 
+/// @brief Invalid partial settings leave the whole sidecar unchanged.
 TEST_F(ModelImportOperatorTest, InvalidPartialSettingsLeaveTheWholeSidecarUnchanged)
 {
     const auto meta = File("Assets/Triangle.obj.meta");
@@ -111,6 +114,7 @@ TEST_F(ModelImportOperatorTest, InvalidPartialSettingsLeaveTheWholeSidecarUnchan
     EXPECT_EQ(Read(meta), before);
 }
 
+/// @brief Rejects sources outside assets without creating metadata.
 TEST_F(ModelImportOperatorTest, RejectsSourcesOutsideAssetsWithoutCreatingMetadata)
 {
     std::ofstream(File("Outside.obj")) << Read(File("Assets/Triangle.obj"));
@@ -124,6 +128,7 @@ TEST_F(ModelImportOperatorTest, RejectsSourcesOutsideAssetsWithoutCreatingMetada
     EXPECT_FALSE(std::filesystem::exists(File("Outside.obj.meta")));
 }
 
+/// @brief Rejects unknown clip selection before changing settings or outputs.
 TEST_F(ModelImportOperatorTest, RejectsUnknownClipSelectionBeforeChangingSettingsOrOutputs)
 {
     const std::string before = Read(File("Assets/Triangle.obj.meta"));
@@ -140,6 +145,7 @@ TEST_F(ModelImportOperatorTest, RejectsUnknownClipSelectionBeforeChangingSetting
     EXPECT_FALSE(std::filesystem::exists(File("Library/Baked")));
 }
 
+/// @brief Import completes without opening a panel and publishes outputs.
 TEST_F(ModelImportOperatorTest, ImportCompletesWithoutOpeningAPanelAndPublishesOutputs)
 {
     TaskSystem::Init(1);

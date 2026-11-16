@@ -18,6 +18,7 @@ namespace fbzz::tests {
 
 class UuidTest : public testkit::EngineFixture {};
 
+/// @brief Has the canonical layout.
 TEST_F(UuidTest, HasTheCanonicalLayout)
 {
     const std::string id = util::GenerateUUID();
@@ -29,6 +30,7 @@ TEST_F(UuidTest, HasTheCanonicalLayout)
     EXPECT_EQ(id[23], '-');
 }
 
+/// @brief Uses only lower case hex outside the separators.
 TEST_F(UuidTest, UsesOnlyLowerCaseHexOutsideTheSeparators)
 {
     const std::string id = util::GenerateUUID();
@@ -43,6 +45,7 @@ TEST_F(UuidTest, UsesOnlyLowerCaseHexOutsideTheSeparators)
     }
 }
 
+/// @brief Marks version four and the rfc variant.
 TEST_F(UuidTest, MarksVersionFourAndTheRfcVariant)
 {
     /// @note 版とバリアントが立っていないと、外部ツールから «UUID ではない» と扱われる。
@@ -54,6 +57,7 @@ TEST_F(UuidTest, MarksVersionFourAndTheRfcVariant)
         << "variant = '" << variant << "'";
 }
 
+/// @brief Generates a different value every time.
 TEST_F(UuidTest, GeneratesADifferentValueEveryTime)
 {
     /// @note 同じフレームで何十個も作る (プレファブの一括生成)。そこで衝突すると

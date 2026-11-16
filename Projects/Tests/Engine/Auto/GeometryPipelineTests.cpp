@@ -32,6 +32,7 @@ renderer::RenderSettings SettingsWithoutScreenSpaceEffects()
 
 class GeometryPipelineTest : public testkit::Fixture {};
 
+/// @brief Lighting list choice does not change the opaque technique.
 TEST_F(GeometryPipelineTest, LightingListChoiceDoesNotChangeTheOpaqueTechnique)
 {
     const OpaqueRenderAvailability available{ true, true, true };
@@ -58,6 +59,7 @@ TEST_F(GeometryPipelineTest, LightingListChoiceDoesNotChangeTheOpaqueTechnique)
     }
 }
 
+/// @brief Each deferred resource is required before selecting deferred.
 TEST_F(GeometryPipelineTest, EachDeferredResourceIsRequiredBeforeSelectingDeferred)
 {
     auto settings = SettingsWithoutScreenSpaceEffects();
@@ -73,6 +75,7 @@ TEST_F(GeometryPipelineTest, EachDeferredResourceIsRequiredBeforeSelectingDeferr
     }
 }
 
+/// @brief Deferred fallback can still provide forward screen-space inputs.
 TEST_F(GeometryPipelineTest, DeferredFallbackCanStillProvideForwardScreenSpaceInputs)
 {
     auto settings = SettingsWithoutScreenSpaceEffects();
@@ -90,6 +93,7 @@ TEST_F(GeometryPipelineTest, DeferredFallbackCanStillProvideForwardScreenSpaceIn
               OpaqueRenderPath::FORWARD);
 }
 
+/// @brief Checks every screen-space consumer requests the forward prepass.
 TEST_F(GeometryPipelineTest, EveryScreenSpaceConsumerRequestsTheForwardPrepass)
 {
     for (int effect = 0; effect < 4; ++effect) {
@@ -107,6 +111,7 @@ TEST_F(GeometryPipelineTest, EveryScreenSpaceConsumerRequestsTheForwardPrepass)
     }
 }
 
+/// @brief Unlit skips only the forward screen-space prepass.
 TEST_F(GeometryPipelineTest, UnlitSkipsOnlyTheForwardScreenSpacePrepass)
 {
     auto settings = SettingsWithoutScreenSpaceEffects();
@@ -120,6 +125,7 @@ TEST_F(GeometryPipelineTest, UnlitSkipsOnlyTheForwardScreenSpacePrepass)
               OpaqueRenderPath::DEFERRED);
 }
 
+/// @brief Wireframe uses forward color without an opaque prepass.
 TEST_F(GeometryPipelineTest, WireframeUsesForwardColorWithoutAnOpaquePrepass)
 {
     auto settings = SettingsWithoutScreenSpaceEffects();
@@ -135,6 +141,7 @@ TEST_F(GeometryPipelineTest, WireframeUsesForwardColorWithoutAnOpaquePrepass)
     }
 }
 
+/// @brief Registration preserves the existing pass order for every path.
 TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPath)
 {
     /// @note 媒体 atlas は照明前、界面は体積光前、SSR の解決は透明描画前に登録する。
@@ -187,6 +194,7 @@ TEST_F(GeometryPipelineTest, RegistrationPreservesTheExistingPassOrderForEveryPa
     }
 }
 
+/// @brief Checks hybrid screen first freezes baseline before tracing and resolves before transparency.
 TEST_F(GeometryPipelineTest, HybridScreenFirstFreezesBaselineBeforeTracingAndResolvesBeforeTransparency)
 {
     scene::RenderPipeline pipeline;
@@ -208,6 +216,7 @@ TEST_F(GeometryPipelineTest, HybridScreenFirstFreezesBaselineBeforeTracingAndRes
         std::find(names.begin(), names.end(), "VolumetricCloud"));
 }
 
+/// @brief Switching technique rebuilds without leaving the previous path.
 TEST_F(GeometryPipelineTest, SwitchingTechniqueRebuildsWithoutLeavingThePreviousPath)
 {
     scene::RenderPipeline pipeline;

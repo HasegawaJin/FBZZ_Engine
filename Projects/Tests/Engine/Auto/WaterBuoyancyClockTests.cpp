@@ -85,6 +85,7 @@ protected:
     physics::World* m_previousWorld = nullptr;
 };
 
+/// @brief Ends one and four buoyancy substeps at the published scene wave time.
 TEST_F(WaterBuoyancyClockTest, EndsOneAndFourBuoyancySubstepsAtThePublishedSceneWaveTime)
 {
     float maximumError = 0.0f, minimumOldClockSeparation = 1.0f;

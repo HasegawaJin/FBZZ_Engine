@@ -32,6 +32,7 @@ protected:
 };
 } /// @note namespace
 
+/// @brief Bake streams an animated three dimensional surface.
 TEST_F(WaterfallFluidClipTest, BakeStreamsAnAnimatedThreeDimensionalSurface)
 {
     auto input = MakeInput();
@@ -62,6 +63,7 @@ TEST_F(WaterfallFluidClipTest, BakeStreamsAnAnimatedThreeDimensionalSurface)
     EXPECT_EQ(first.frame, 0);
 }
 
+/// @brief Cancel leaves an existing asset untouched.
 TEST_F(WaterfallFluidClipTest, CancelLeavesAnExistingAssetUntouched)
 {
     const auto file = m_temp.File("impact.wfall");

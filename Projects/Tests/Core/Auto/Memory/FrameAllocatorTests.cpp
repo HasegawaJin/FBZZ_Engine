@@ -11,6 +11,7 @@ namespace fbzz::tests {
 
 class FrameAllocatorTest : public testkit::EngineFixture {};
 
+/// @brief End frame resets temporary allocations.
 TEST_F(FrameAllocatorTest, EndFrameResetsTemporaryAllocations)
 {
     core::FrameAllocator allocator;
@@ -27,6 +28,7 @@ TEST_F(FrameAllocatorTest, EndFrameResetsTemporaryAllocations)
     allocator.Shutdown();
 }
 
+/// @brief Can reuse capacity across frames.
 TEST_F(FrameAllocatorTest, CanReuseCapacityAcrossFrames)
 {
     core::FrameAllocator allocator;

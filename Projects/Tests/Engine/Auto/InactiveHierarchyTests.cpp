@@ -37,6 +37,7 @@ protected:
     }
 };
 
+/// @brief Child reports inactive while its own flag stays on.
 TEST_F(InactiveHierarchyTest, ChildReportsInactiveWhileItsOwnFlagStaysOn)
 {
     auto [parent, child] = ParentAndChild();
@@ -47,6 +48,7 @@ TEST_F(InactiveHierarchyTest, ChildReportsInactiveWhileItsOwnFlagStaysOn)
     EXPECT_TRUE(child->activeInHierarchy());
 }
 
+/// @brief Weather under inactive parent does not advance.
 TEST_F(InactiveHierarchyTest, WeatherUnderInactiveParentDoesNotAdvance)
 {
     auto [parent, child] = ParentAndChild();
@@ -68,6 +70,7 @@ TEST_F(InactiveHierarchyTest, WeatherUnderInactiveParentDoesNotAdvance)
     EXPECT_GT(child->GetComponent<scene::WeatherComponent>()->wetness, 0.4f);
 }
 
+/// @brief Camera follow under inactive parent stays put.
 TEST_F(InactiveHierarchyTest, CameraFollowUnderInactiveParentStaysPut)
 {
     auto [parent, child] = ParentAndChild();
@@ -92,6 +95,7 @@ TEST_F(InactiveHierarchyTest, CameraFollowUnderInactiveParentStaysPut)
     EXPECT_GT(child->transform.worldPosition.x, 1.0f);
 }
 
+/// @brief Render weather preserves scene order and current hierarchy and enabled state.
 TEST_F(InactiveHierarchyTest, RenderWeatherPreservesSceneOrderAndCurrentHierarchyAndEnabledState)
 {
     for (int index = 0; index < 100; ++index) m_scene.CreateGameObject("NonWeather");
@@ -118,6 +122,7 @@ TEST_F(InactiveHierarchyTest, RenderWeatherPreservesSceneOrderAndCurrentHierarch
     EXPECT_FLOAT_EQ(scene::FindActiveWeather(m_scene).wetness, 0.75f);
 }
 
+/// @brief Render weather refreshes removed and recreated candidates without reordering live owners.
 TEST_F(InactiveHierarchyTest, RenderWeatherRefreshesRemovedAndRecreatedCandidatesWithoutReorderingLiveOwners)
 {
     auto& first = m_scene.CreateGameObject("RemovedWeather");

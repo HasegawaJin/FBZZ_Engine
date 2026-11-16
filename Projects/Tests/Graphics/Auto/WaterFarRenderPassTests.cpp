@@ -380,6 +380,7 @@ protected:
     renderer::ResourceHandle<renderer::ShaderTag> m_shader;
 };
 
+/// @brief Nested execution preserves outer groups queue distance and transparent ties.
 TEST_F(ForwardScratchPassTest, NestedExecutionPreservesOuterGroupsQueueDistanceAndTransparentTies)
 {
     const auto outer = Scene({{true, true, 4, 3000}, {false, true, 4, 3000},
@@ -409,6 +410,7 @@ TEST_F(ForwardScratchPassTest, NestedExecutionPreservesOuterGroupsQueueDistanceA
     ExpectItems(0, *outer, {9, 4, 2, 10, 5, 3, 0, 1, 7, 6, 8});
 }
 
+/// @brief Keeps snapshot alive when submit replaces the same context and drops the last external owner.
 TEST_F(ForwardScratchPassTest, KeepsSnapshotAliveWhenSubmitReplacesTheSameContextAndDropsTheLastExternalOwner)
 {
     for (const bool transparent : {false, true}) {
@@ -453,6 +455,7 @@ TEST_F(ForwardScratchPassTest, KeepsSnapshotAliveWhenSubmitReplacesTheSameContex
     }
 }
 
+/// @brief Oversized and empty scenes do not leak entries into later views or retained snapshots.
 TEST_F(ForwardScratchPassTest, OversizedAndEmptyScenesDoNotLeakEntriesIntoLaterViewsOrRetainedSnapshots)
 {
     const auto retained = Scene({{true, true, 2, 3000}, {false, false, 1, 2000},
@@ -487,6 +490,7 @@ TEST_F(ForwardScratchPassTest, OversizedAndEmptyScenesDoNotLeakEntriesIntoLaterV
     ExpectItems(0, *retained, {1, 2, 3, 0});
 }
 
+/// @brief Null buffer lookup does not synchronize the render thread.
 TEST_F(WaterFarRenderPassTest, NullBufferLookupDoesNotSynchronizeTheRenderThread)
 {
     FarPassRenderer backend;
@@ -496,6 +500,7 @@ TEST_F(WaterFarRenderPassTest, NullBufferLookupDoesNotSynchronizeTheRenderThread
     EXPECT_EQ(backend.threadChecks, calls);
 }
 
+/// @brief Rejects unproven occluders before resolving native mesh buffers.
 TEST_F(WaterFarRenderPassTest, RejectsUnprovenOccludersBeforeResolvingNativeMeshBuffers)
 {
     FarPassRenderer backend;
@@ -602,6 +607,7 @@ TEST_F(WaterFarRenderPassTest, RejectsUnprovenOccludersBeforeResolvingNativeMesh
     backend.renderThread = true;
 }
 
+/// @brief Rejects same version culler replacement during native preparation.
 TEST_F(WaterFarRenderPassTest, RejectsSameVersionCullerReplacementDuringNativePreparation)
 {
     FarPassRenderer backend;
@@ -677,6 +683,7 @@ TEST_F(WaterFarRenderPassTest, RejectsSameVersionCullerReplacementDuringNativePr
     }
 }
 
+/// @brief Forward groups keep per object bindings and refresh shared resources for each view.
 TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshSharedResourcesForEachView)
 {
     FarPassRenderer backend;
@@ -765,6 +772,7 @@ TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshShare
     }
 }
 
+/// @brief Late release after renderer detach never calls the expired renderer.
 TEST_F(WaterFarRenderPassTest, LateReleaseAfterRendererDetachNeverCallsTheExpiredRenderer)
 {
     FarPassRenderer backend;
@@ -868,6 +876,7 @@ void ExecuteVolumetricLight(renderer::RenderPassContext& context)
     context.passResources = nullptr;
 }
 
+/// @brief Persistent horizon plan keeps fresh time and survives same context callback eviction.
 TEST_F(WaterFarRenderPassTest, PersistentHorizonPlanKeepsFreshTimeAndSurvivesSameContextCallbackEviction)
 {
     FarPassRenderer backend;
@@ -997,6 +1006,7 @@ TEST_F(WaterFarRenderPassTest, PersistentHorizonPlanKeepsFreshTimeAndSurvivesSam
     }
 }
 
+/// @brief Auxiliary passes pin their water inputs across snapshot replacement.
 TEST_F(WaterFarRenderPassTest, AuxiliaryPassesPinTheirWaterInputsAcrossSnapshotReplacement)
 {
     for (uint32_t mode = 0; mode < 3; ++mode) {
@@ -1074,6 +1084,7 @@ TEST_F(WaterFarRenderPassTest, AuxiliaryPassesPinTheirWaterInputsAcrossSnapshotR
     }
 }
 
+/// @brief Continuous height field columns cull across tiles without closing holes or underground views.
 TEST_F(WaterFarRenderPassTest, ContinuousHeightFieldColumnsCullAcrossTilesWithoutClosingHolesOrUndergroundViews)
 {
     FarPassRenderer backend; renderer::ResourceManager resources(backend);
@@ -1132,6 +1143,7 @@ TEST_F(WaterFarRenderPassTest, ContinuousHeightFieldColumnsCullAcrossTilesWithou
     EXPECT_TRUE(culler.TestAndRaster({-1,3,20},0.05f));
 }
 
+/// @brief Reuses immutable height field proof across view masks and LOD choices.
 TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAndLodChoices)
 {
     struct RestoreProfiler {
@@ -1250,6 +1262,7 @@ TEST_F(WaterFarRenderPassTest, ReusesImmutableHeightFieldProofAcrossViewMasksAnd
     EXPECT_EQ(std::memcmp(refitted.data(), rebuilt.data(), rebuilt.size() * sizeof(math::Vector4)), 0);
 }
 
+/// @brief Height field box faces preserve the six face depth reference across eye boundaries.
 TEST_F(WaterFarRenderPassTest, HeightFieldBoxFacesPreserveTheSixFaceDepthReferenceAcrossEyeBoundaries)
 {
     FarPassRenderer backend;
@@ -1357,6 +1370,7 @@ TEST_F(WaterFarRenderPassTest, HeightFieldBoxFacesPreserveTheSixFaceDepthReferen
     }
 }
 
+/// @brief Overlapping height field columns preserve the six face depth reference.
 TEST_F(WaterFarRenderPassTest, OverlappingHeightFieldColumnsPreserveTheSixFaceDepthReference)
 {
     FarPassRenderer backend;
@@ -1456,6 +1470,7 @@ TEST_F(WaterFarRenderPassTest, OverlappingHeightFieldColumnsPreserveTheSixFaceDe
     }
 }
 
+/// @brief Height field cache rejects internal chunk cracks and recovers after repair.
 TEST_F(WaterFarRenderPassTest, HeightFieldCacheRejectsInternalChunkCracksAndRecoversAfterRepair)
 {
     FarPassRenderer backend;
@@ -1530,6 +1545,7 @@ TEST_F(WaterFarRenderPassTest, HeightFieldCacheRejectsInternalChunkCracksAndReco
     EXPECT_FALSE(visible());
 }
 
+/// @brief Height field columns respect selected LOD draw counts and topology.
 TEST_F(WaterFarRenderPassTest, HeightFieldColumnsRespectSelectedLodDrawCountsAndTopology)
 {
     FarPassRenderer backend;
@@ -1639,6 +1655,7 @@ TEST_F(WaterFarRenderPassTest, HeightFieldColumnsRespectSelectedLodDrawCountsAnd
     EXPECT_FALSE(visible());
 }
 
+/// @brief Orthographic parallel rays do not use perspective height field columns.
 TEST_F(WaterFarRenderPassTest, OrthographicParallelRaysDoNotUsePerspectiveHeightFieldColumns)
 {
     FarPassRenderer backend;
@@ -1698,6 +1715,7 @@ TEST_F(WaterFarRenderPassTest, OrthographicParallelRaysDoNotUsePerspectiveHeight
     EXPECT_TRUE(culler.TestAndRaster(visible, 0.01f));
 }
 
+/// @brief Terrain occlusion bridges internal tessellation but preserves a real hole.
 TEST_F(WaterFarRenderPassTest, TerrainOcclusionBridgesInternalTessellationButPreservesARealHole)
 {
     FarPassRenderer backend;
@@ -1769,6 +1787,7 @@ TEST_F(WaterFarRenderPassTest, TerrainOcclusionBridgesInternalTessellationButPre
     EXPECT_TRUE(culler.TestAndRaster({-1,3,40},0.05f));
 }
 
+/// @brief River handoff uses the ocean only when its view draws it.
 TEST_F(WaterFarRenderPassTest, RiverHandoffUsesTheOceanOnlyWhenItsViewDrawsIt)
 {
     FarPassRenderer backend;
@@ -1823,6 +1842,7 @@ TEST_F(WaterFarRenderPassTest, RiverHandoffUsesTheOceanOnlyWhenItsViewDrawsIt)
     EXPECT_FLOAT_EQ(scene->water[0].constants.riverHorizonCaps[0].z, 12.0f);
 }
 
+/// @brief Occluded river patches skip submission and keep displaced waves and a reset view.
 TEST_F(WaterFarRenderPassTest, OccludedRiverPatchesSkipSubmissionAndKeepDisplacedWavesAndAResetView)
 {
     FarPassRenderer backend;
@@ -1873,6 +1893,7 @@ TEST_F(WaterFarRenderPassTest, OccludedRiverPatchesSkipSubmissionAndKeepDisplace
     EXPECT_FALSE(backend.draws.empty());
 }
 
+/// @brief Adaptive ocean and horizon patches use occlusion and reappear for the next view.
 TEST_F(WaterFarRenderPassTest, AdaptiveOceanAndHorizonPatchesUseOcclusionAndReappearForTheNextView)
 {
     FarPassRenderer backend; renderer::ResourceManager resources(backend);
@@ -1931,6 +1952,7 @@ TEST_F(WaterFarRenderPassTest, AdaptiveOceanAndHorizonPatchesUseOcclusionAndReap
     }
 }
 
+/// @brief GPU candidates outside the CPU view do not increase occlusion statistics.
 TEST_F(WaterFarRenderPassTest, GpuCandidatesOutsideTheCpuViewDoNotIncreaseOcclusionStatistics)
 {
     FarPassRenderer backend; backend.supportsIndirect=true;
@@ -1975,6 +1997,7 @@ TEST_F(WaterFarRenderPassTest, GpuCandidatesOutsideTheCpuViewDoNotIncreaseOcclus
     EXPECT_EQ(context.statsOcclusionCulled,0);
 }
 
+/// @brief Rejected water cull draw keeps the original draw and following group constants.
 TEST_F(WaterFarRenderPassTest, RejectedWaterCullDrawKeepsTheOriginalDrawAndFollowingGroupConstants)
 {
     FarPassRenderer backend;
@@ -2031,6 +2054,7 @@ TEST_F(WaterFarRenderPassTest, RejectedWaterCullDrawKeepsTheOriginalDrawAndFollo
     EXPECT_TRUE(waterDraws[1].indirectArguments.IsValid());
 }
 
+/// @brief Crest spray reads depth after every standard horizon surface.
 TEST_F(WaterFarRenderPassTest, CrestSprayReadsDepthAfterEveryStandardHorizonSurface)
 {
     FarPassRenderer backend;
@@ -2128,6 +2152,7 @@ TEST_F(WaterFarRenderPassTest, CrestSprayReadsDepthAfterEveryStandardHorizonSurf
     depthCopy.Release(resources);
 }
 
+/// @brief A visible far ocean is submitted when the finite water body is outside the view.
 TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBodyIsOutsideTheView)
 {
     FarPassRenderer backend;
@@ -2292,6 +2317,7 @@ TEST_F(WaterFarRenderPassTest, AVisibleFarOceanIsSubmittedWhenTheFiniteWaterBody
     depthCopy.Release(resources);
 }
 
+/// @brief Spline clusters reduce distant triangles and match the selection mask.
 TEST_F(WaterFarRenderPassTest, SplineClustersReduceDistantTrianglesAndMatchTheSelectionMask)
 {
     FarPassRenderer backend;
@@ -2377,6 +2403,7 @@ TEST_F(WaterFarRenderPassTest, SplineClustersReduceDistantTrianglesAndMatchTheSe
     depthCopy.Release(resources);
 }
 
+/// @brief Underwater volume is recorded before composite and bound only after success.
 TEST_F(WaterFarRenderPassTest, UnderwaterVolumeIsRecordedBeforeCompositeAndBoundOnlyAfterSuccess)
 {
     FarPassRenderer backend;
@@ -2413,6 +2440,7 @@ TEST_F(WaterFarRenderPassTest, UnderwaterVolumeIsRecordedBeforeCompositeAndBound
     EXPECT_EQ(composite.texture21, context.handles.volumetricResult);
 }
 
+/// @brief Missing directional shadow does not stop optical local light dispatch.
 TEST_F(WaterFarRenderPassTest, MissingDirectionalShadowDoesNotStopOpticalLocalLightDispatch)
 {
     FarPassRenderer backend;
@@ -2438,6 +2466,7 @@ TEST_F(WaterFarRenderPassTest, MissingDirectionalShadowDoesNotStopOpticalLocalLi
     EXPECT_FALSE(context.underwaterLightPassActive);
 }
 
+/// @brief Rectangle composite specialization requires the current views single uniform owner.
 TEST_F(WaterFarRenderPassTest, RectangleCompositeSpecializationRequiresTheCurrentViewsSingleUniformOwner)
 {
     FarPassRenderer backend;
@@ -2489,6 +2518,7 @@ TEST_F(WaterFarRenderPassTest, RectangleCompositeSpecializationRequiresTheCurren
     }
 }
 
+/// @brief Numeric optical medium runs from a dry camera and requires both current frame receipts.
 TEST_F(WaterFarRenderPassTest, NumericOpticalMediumRunsFromADryCameraAndRequiresBothCurrentFrameReceipts)
 {
     FarPassRenderer backend;
@@ -2549,6 +2579,7 @@ TEST_F(WaterFarRenderPassTest, NumericOpticalMediumRunsFromADryCameraAndRequires
     EXPECT_FALSE(context.underwaterLightPassActive);
 }
 
+/// @brief Disabled or failed underwater light never publishes the persistent volume.
 TEST_F(WaterFarRenderPassTest, DisabledOrFailedUnderwaterLightNeverPublishesThePersistentVolume)
 {
     {
@@ -2633,6 +2664,7 @@ TEST_F(WaterFarRenderPassTest, DisabledOrFailedUnderwaterLightNeverPublishesTheP
     }
 }
 
+/// @brief Failed air upsample does not submit the HDR additive copy.
 TEST_F(WaterFarRenderPassTest, FailedAirUpsampleDoesNotSubmitTheHdrAdditiveCopy)
 {
     FarPassRenderer backend;
@@ -2656,6 +2688,7 @@ TEST_F(WaterFarRenderPassTest, FailedAirUpsampleDoesNotSubmitTheHdrAdditiveCopy)
     EXPECT_TRUE(backend.drawSnapshots.empty());
 }
 
+/// @brief Non bindless volumetric dispatch keeps the legacy two call path.
 TEST_F(WaterFarRenderPassTest, NonBindlessVolumetricDispatchKeepsTheLegacyTwoCallPath)
 {
     FarPassRenderer backend;
@@ -2677,6 +2710,7 @@ TEST_F(WaterFarRenderPassTest, NonBindlessVolumetricDispatchKeepsTheLegacyTwoCal
     EXPECT_TRUE(context.underwaterLightPassActive);
 }
 
+/// @brief Composite omits optical volume read when post process or its writer is disabled.
 TEST_F(WaterFarRenderPassTest, CompositeOmitsOpticalVolumeReadWhenPostProcessOrItsWriterIsDisabled)
 {
     for (bool overrideOff : {false, true}) {
@@ -2737,6 +2771,7 @@ TEST_F(WaterFarRenderPassTest, CompositeOmitsOpticalVolumeReadWhenPostProcessOrI
     }
 }
 
+/// @brief Legacy underwater mode keeps the air volumetric HDR additive path.
 TEST_F(WaterFarRenderPassTest, LegacyUnderwaterModeKeepsTheAirVolumetricHdrAdditivePath)
 {
     FarPassRenderer backend;
@@ -2773,6 +2808,7 @@ TEST_F(WaterFarRenderPassTest, LegacyUnderwaterModeKeepsTheAirVolumetricHdrAddit
     EXPECT_FALSE(composite->texture21.IsValid());
 }
 
+/// @brief Post process opt in is required for air and both optical water inputs.
 TEST_F(WaterFarRenderPassTest, PostProcessOptInIsRequiredForAirAndBothOpticalWaterInputs)
 {
     for (int mode = 0; mode < 3; ++mode) {
@@ -2817,6 +2853,7 @@ TEST_F(WaterFarRenderPassTest, PostProcessOptInIsRequiredForAirAndBothOpticalWat
     }
 }
 
+/// @brief Optical volume respects the post process budget and gain.
 TEST_F(WaterFarRenderPassTest, OpticalVolumeRespectsThePostProcessBudgetAndGain)
 {
     for (bool shared : {false, true}) {
@@ -2853,6 +2890,7 @@ TEST_F(WaterFarRenderPassTest, OpticalVolumeRespectsThePostProcessBudgetAndGain)
     }
 }
 
+/// @brief Empty or invalid post process budgets never dispatch or publish.
 TEST_F(WaterFarRenderPassTest, EmptyOrInvalidPostProcessBudgetsNeverDispatchOrPublish)
 {
     for (int mode = 0; mode < 6; ++mode) {
@@ -2880,6 +2918,7 @@ TEST_F(WaterFarRenderPassTest, EmptyOrInvalidPostProcessBudgetsNeverDispatchOrPu
     }
 }
 
+/// @brief Volume textures follow explicit enable and retire at the same output size.
 TEST_F(WaterFarRenderPassTest, VolumeTexturesFollowExplicitEnableAndRetireAtTheSameOutputSize)
 {
     FarPassRenderer backend;

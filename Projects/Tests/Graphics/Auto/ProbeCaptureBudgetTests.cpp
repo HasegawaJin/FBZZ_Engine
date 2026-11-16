@@ -13,6 +13,7 @@ protected:
     renderer::ProbeCaptureBudget m_budget;
 };
 
+/// @brief Views and scenes share the same physical frame limit.
 TEST_F(ProbeCaptureBudgetTest, ViewsAndScenesShareTheSamePhysicalFrameLimit)
 {
     EXPECT_TRUE(m_budget.CanAttempt(0, 7, 1));
@@ -25,6 +26,7 @@ TEST_F(ProbeCaptureBudgetTest, ViewsAndScenesShareTheSamePhysicalFrameLimit)
     EXPECT_FALSE(m_budget.CanAttempt(1, 7, 1));
 }
 
+/// @brief Failed attempts advance the cursor and spend the slot.
 TEST_F(ProbeCaptureBudgetTest, FailedAttemptsAdvanceTheCursorAndSpendTheSlot)
 {
     EXPECT_TRUE(m_budget.IsAfterCursor(10, 0, 0));
@@ -41,6 +43,7 @@ TEST_F(ProbeCaptureBudgetTest, FailedAttemptsAdvanceTheCursorAndSpendTheSlot)
     EXPECT_FALSE(m_budget.IsAfterCursor(10, 3, 1));
 }
 
+/// @brief Resource epoch change and frame rewind do not keep spent slots.
 TEST_F(ProbeCaptureBudgetTest, ResourceEpochChangeAndFrameRewindDoNotKeepSpentSlots)
 {
     ASSERT_TRUE(m_budget.CanAttempt(100, 7, 1));
@@ -52,6 +55,7 @@ TEST_F(ProbeCaptureBudgetTest, ResourceEpochChangeAndFrameRewindDoNotKeepSpentSl
     EXPECT_TRUE(m_budget.CanAttempt(1, 8, 1));
 }
 
+/// @brief Zero disables attempts and lowering limit cannot refund work.
 TEST_F(ProbeCaptureBudgetTest, ZeroDisablesAttemptsAndLoweringLimitCannotRefundWork)
 {
     EXPECT_FALSE(m_budget.CanAttempt(1, 7, 0));

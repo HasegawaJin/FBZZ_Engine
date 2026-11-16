@@ -143,6 +143,7 @@ float MeanX(const fluid::FluidLiquidSolver& solver)
 
 /// @name 動き
 
+/// @brief Motion without keys does not move.
 TEST(FluidOperatorEvalTest, MotionWithoutKeysDoesNotMove)
 {
     const fluid::FluidMotionSample sample = fluid::SampleFluidMotion({}, 1.0f);
@@ -150,6 +151,7 @@ TEST(FluidOperatorEvalTest, MotionWithoutKeysDoesNotMove)
     EXPECT_EQ(Length(sample.velocity), 0.0f);
 }
 
+/// @brief Motion holds the end keys outside its range.
 TEST(FluidOperatorEvalTest, MotionHoldsTheEndKeysOutsideItsRange)
 {
     const fluid::FluidMotion motion = TwoKeyMotion();
@@ -168,6 +170,7 @@ TEST(FluidOperatorEvalTest, MotionHoldsTheEndKeysOutsideItsRange)
     EXPECT_EQ(Length(fluid::SampleFluidMotion(single, 2.0f).velocity), 0.0f);
 }
 
+/// @brief Motion interpolates between keys and reports the slope.
 TEST(FluidOperatorEvalTest, MotionInterpolatesBetweenKeysAndReportsTheSlope)
 {
     const fluid::FluidMotionSample sample = fluid::SampleFluidMotion(TwoKeyMotion(), 1.0f);
@@ -178,6 +181,7 @@ TEST(FluidOperatorEvalTest, MotionInterpolatesBetweenKeysAndReportsTheSlope)
     EXPECT_EQ(sample.velocity.z, 0.0f);
 }
 
+/// @brief Pose adds the motion and inherits its velocity only when asked.
 TEST(FluidOperatorEvalTest, PoseAddsTheMotionAndInheritsItsVelocityOnlyWhenAsked)
 {
     FluidSource source;
@@ -204,6 +208,7 @@ TEST(FluidOperatorEvalTest, PoseAddsTheMotionAndInheritsItsVelocityOnlyWhenAsked
     EXPECT_NEAR(forcePose.motionVelocity.y, 2.0f, 1.0e-5f);
 }
 
+/// @brief Checks emitting and active windows.
 TEST(FluidOperatorEvalTest, EmittingAndActiveWindows)
 {
     FluidSource source;
@@ -232,6 +237,7 @@ TEST(FluidOperatorEvalTest, EmittingAndActiveWindows)
 
 /// @name 発生源の形
 
+/// @brief Sphere weight matches the legacy gas formula.
 TEST(FluidOperatorEvalTest, SphereWeightMatchesTheLegacyGasFormula)
 {
     const FluidSource source = MakeSource(FluidSourceShape::Sphere);
@@ -255,6 +261,7 @@ TEST(FluidOperatorEvalTest, SphereWeightMatchesTheLegacyGasFormula)
     EXPECT_GT(fluid::FluidSourceWeight(tiny, c, { c.x + 0.05f, c.y, c.z }, 0.1f, true), 0.0f);
 }
 
+/// @brief Box weight matches the legacy gas formula.
 TEST(FluidOperatorEvalTest, BoxWeightMatchesTheLegacyGasFormula)
 {
     const FluidSource source = MakeSource(FluidSourceShape::Box);
@@ -270,6 +277,7 @@ TEST(FluidOperatorEvalTest, BoxWeightMatchesTheLegacyGasFormula)
     EXPECT_EQ(fluid::FluidSourceWeight(source, c, { c.x, c.y + 0.21f, c.z }, 0.01f, true), 0.0f);
 }
 
+/// @brief Cone weight opens from the apex along the direction.
 TEST(FluidOperatorEvalTest, ConeWeightOpensFromTheApexAlongTheDirection)
 {
     /// @note R = 0.2, L = 0.5, 上向き
@@ -292,6 +300,7 @@ TEST(FluidOperatorEvalTest, ConeWeightOpensFromTheApexAlongTheDirection)
     EXPECT_EQ(at(0.51f, 0.0f), 0.0f);
 }
 
+/// @brief Ring weight peaks on the ring and is empty in the middle.
 TEST(FluidOperatorEvalTest, RingWeightPeaksOnTheRingAndIsEmptyInTheMiddle)
 {
     /// @note R = 0.4, r = 0.1, 法線は上
@@ -304,6 +313,7 @@ TEST(FluidOperatorEvalTest, RingWeightPeaksOnTheRingAndIsEmptyInTheMiddle)
     EXPECT_EQ(fluid::FluidSourceWeight(source, c, { c.x + 0.4f, c.y + 0.11f, c.z }, 0.01f, true), 0.0f);
 }
 
+/// @brief Flat weight ignores depth.
 TEST(FluidOperatorEvalTest, FlatWeightIgnoresDepth)
 {
     const FluidSource source = MakeSource(FluidSourceShape::Sphere);
@@ -313,6 +323,7 @@ TEST(FluidOperatorEvalTest, FlatWeightIgnoresDepth)
     EXPECT_EQ(fluid::FluidSourceWeight(source, c, { c.x + 0.1f, c.y, c.z + 5.0f }, 0.01f, true), 0.0f);
 }
 
+/// @brief Sampled points land inside every shape.
 TEST(FluidOperatorEvalTest, SampledPointsLandInsideEveryShape)
 {
     std::vector<FluidSource> sources = { MakeSource(FluidSourceShape::Sphere), MakeSource(FluidSourceShape::Box),
@@ -381,6 +392,7 @@ TEST(FluidOperatorEvalTest, SampledPointsLandInsideEveryShape)
 
 /// @name テクスチャ発生源
 
+/// @brief Texture plate faces the viewer by default.
 TEST(FluidOperatorEvalTest, TexturePlateFacesTheViewerByDefault)
 {
     FluidSource plate = MakeSource(FluidSourceShape::Texture);
@@ -413,6 +425,7 @@ TEST(FluidOperatorEvalTest, TexturePlateFacesTheViewerByDefault)
     ExpectVectorNear(up, { 0.0f, 1.0f, 0.0f });
 }
 
+/// @brief Texture weight follows the mask.
 TEST(FluidOperatorEvalTest, TextureWeightFollowsTheMask)
 {
     /// @note 半幅 0.4・半高さ 0.3・厚み 0.05
@@ -446,6 +459,7 @@ TEST(FluidOperatorEvalTest, TextureWeightFollowsTheMask)
     EXPECT_GT(fluid::FluidTextureSourceWeight(plate, c, { c.x - 0.2f, c.y, c.z + 0.06f }, 0.01f, false, mask), 0.0f);
 }
 
+/// @brief Texture sampling rejects where the mask is empty.
 TEST(FluidOperatorEvalTest, TextureSamplingRejectsWhereTheMaskIsEmpty)
 {
     const FluidSource plate = MakeSource(FluidSourceShape::Texture);
@@ -478,6 +492,7 @@ TEST(FluidOperatorEvalTest, TextureSamplingRejectsWhereTheMaskIsEmpty)
 
 /// @name 障害物
 
+/// @brief Collider pose and window follow the source rules.
 TEST(FluidOperatorEvalTest, ColliderPoseAndWindowFollowTheSourceRules)
 {
     FluidCollider collider = MakeCollider(FluidColliderShape::Sphere);
@@ -500,6 +515,7 @@ TEST(FluidOperatorEvalTest, ColliderPoseAndWindowFollowTheSourceRules)
     EXPECT_FALSE(fluid::FluidColliderActive(collider, 0.6f));
 }
 
+/// @brief Collider distance is signed and crosses zero on the surface.
 TEST(FluidOperatorEvalTest, ColliderDistanceIsSignedAndCrossesZeroOnTheSurface)
 {
     /// @note 半径 0.3
@@ -541,6 +557,7 @@ TEST(FluidOperatorEvalTest, ColliderDistanceIsSignedAndCrossesZeroOnTheSurface)
     EXPECT_LT(Distance(box, { 0.1f, 0.1f, 5.0f }, false), 0.0f);
 }
 
+/// @brief Collider normals point out of the surface.
 TEST(FluidOperatorEvalTest, ColliderNormalsPointOutOfTheSurface)
 {
     const FluidCollider sphere = MakeCollider(FluidColliderShape::Sphere);
@@ -580,6 +597,7 @@ TEST(FluidOperatorEvalTest, ColliderNormalsPointOutOfTheSurface)
 
 /// @name 力
 
+/// @brief Wind pushes along its direction.
 TEST(FluidOperatorEvalTest, WindPushesAlongItsDirection)
 {
     FluidForce wind = MakeForce(FluidForceType::Wind);
@@ -597,6 +615,7 @@ TEST(FluidOperatorEvalTest, WindPushesAlongItsDirection)
     EXPECT_EQ(Length(Delta(wind, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true)), 0.0f);
 }
 
+/// @brief Attract and repulse point toward and away from the center.
 TEST(FluidOperatorEvalTest, AttractAndRepulsePointTowardAndAwayFromTheCenter)
 {
     const math::Vector3 p = { 0.5f, 0.0f, 0.0f };
@@ -609,6 +628,7 @@ TEST(FluidOperatorEvalTest, AttractAndRepulsePointTowardAndAwayFromTheCenter)
     EXPECT_EQ(Length(Delta(MakeForce(FluidForceType::Attract), { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true)), 0.0f);
 }
 
+/// @brief Checks vortex turns counter clockwise around its axis.
 TEST(FluidOperatorEvalTest, VortexTurnsCounterClockwiseAroundItsAxis)
 {
     /// @note 2D の軸は常に画面の奥行き
@@ -629,6 +649,7 @@ TEST(FluidOperatorEvalTest, VortexTurnsCounterClockwiseAroundItsAxis)
     EXPECT_EQ(Length(Delta(upright, { 0.0f, 0.7f, 0.0f }, { 0.0f, 0.0f, 0.0f }, true)), 0.0f);
 }
 
+/// @brief Noise follows the curl noise formula.
 TEST(FluidOperatorEvalTest, NoiseFollowsTheCurlNoiseFormula)
 {
     FluidForce noise = MakeForce(FluidForceType::Noise);
@@ -651,6 +672,7 @@ TEST(FluidOperatorEvalTest, NoiseFollowsTheCurlNoiseFormula)
     EXPECT_GT(Length(dv - other), 0.0f);
 }
 
+/// @brief Drag reduces the velocity without reversing its direction even for a very long simulation step.
 TEST(FluidOperatorEvalTest, DragNeverOvershoots)
 {
     FluidForce drag = MakeForce(FluidForceType::Drag);
@@ -667,6 +689,7 @@ TEST(FluidOperatorEvalTest, DragNeverOvershoots)
     EXPECT_EQ(Length(Delta(drag, { 0.1f, 0.1f, 0.1f }, v, true, 0.5f)), 0.0f);
 }
 
+/// @brief Negative strength reverses the flat vortex.
 TEST(FluidOperatorEvalTest, NegativeStrengthReversesTheFlatVortex)
 {
     FluidForce vortex = MakeForce(FluidForceType::Vortex);
@@ -674,6 +697,7 @@ TEST(FluidOperatorEvalTest, NegativeStrengthReversesTheFlatVortex)
     EXPECT_NEAR(Delta(vortex, { 0.5f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, false).y, -0.2f, 1.0e-6f);
 }
 
+/// @brief Influence falls off with the radius.
 TEST(FluidOperatorEvalTest, InfluenceFallsOffWithTheRadius)
 {
     FluidForce wind = MakeForce(FluidForceType::Wind);
@@ -690,6 +714,7 @@ TEST(FluidOperatorEvalTest, InfluenceFallsOffWithTheRadius)
     EXPECT_NEAR(Delta(wind, { 0.5f, 0.0f, 3.0f }, zero, false).x, atHalf, 1.0e-6f);
 }
 
+/// @brief Flat forces keep depth at zero.
 TEST(FluidOperatorEvalTest, FlatForcesKeepDepthAtZero)
 {
     const math::Vector3 p = { 0.2f, 0.3f, 0.4f };
@@ -705,6 +730,7 @@ TEST(FluidOperatorEvalTest, FlatForcesKeepDepthAtZero)
 
 /// @name ソルバーが力を使うこと
 
+/// @brief Gas vortex force stirs the grid.
 TEST(FluidOperatorEvalTest, GasVortexForceStirsTheGrid)
 {
     fluid::FluidRecipe recipe;
@@ -737,6 +763,7 @@ TEST(FluidOperatorEvalTest, GasVortexForceStirsTheGrid)
     EXPECT_NEAR(InnerCurl(disabled), 0.0f, 1.0e-6f);
 }
 
+/// @brief Liquid wind force pushes the particles.
 TEST(FluidOperatorEvalTest, LiquidWindForcePushesTheParticles)
 {
     fluid::FluidRecipe recipe;
@@ -774,6 +801,7 @@ TEST(FluidOperatorEvalTest, LiquidWindForcePushesTheParticles)
 
 /// @name 液体の発生源の «広げ»
 
+/// @brief Emit scale widens only a crowded source.
 TEST(FluidOperatorEvalTest, EmitScaleWidensOnlyACrowdedSource)
 {
     const fluid::FluidLiquidSettings liquid;
@@ -797,6 +825,7 @@ TEST(FluidOperatorEvalTest, EmitScaleWidensOnlyACrowdedSource)
     EXPECT_NEAR(scale, std::sqrt(needed / area), 1.0e-2f);
 }
 
+/// @brief Emit scale is the size the solver actually emits into.
 TEST(FluidOperatorEvalTest, EmitScaleIsTheSizeTheSolverActuallyEmitsInto)
 {
     /// @note Inspector に出す «実際に湧く大きさ» がソルバーの中の広げ方とずれていないことを見る。

@@ -145,6 +145,7 @@ protected:
     }
 };
 
+/// @brief Grid moves in wind but top edge stays attached.
 TEST_F(ClothSystemTest, GridMovesInWindButTopEdgeStaysAttached)
 {
     for (int i = 0; i < 120; ++i) Tick();
@@ -160,6 +161,7 @@ TEST_F(ClothSystemTest, GridMovesInWindButTopEdgeStaysAttached)
         EXPECT_TRUE(std::isfinite(position.z));
     }
 }
+/// @brief Painted distance limits static cloth and invalid entries freeze step.
 TEST_F(ClothSystemTest, PaintedDistanceLimitsStaticClothAndInvalidEntriesFreezeStep)
 {
     Cloth().maxDistances = {{80,0.0f},{79,0.02f}};
@@ -178,6 +180,7 @@ TEST_F(ClothSystemTest, PaintedDistanceLimitsStaticClothAndInvalidEntriesFreezeS
     EXPECT_FALSE(state.failed);
     EXPECT_GT((state.solver.Positions()[80]-before[80]).Length(),0.001f);
 }
+/// @brief Painted distance overrides skin default and attachments override paint.
 TEST_F(ClothSystemTest, PaintedDistanceOverridesSkinDefaultAndAttachmentsOverridePaint)
 {
     scene::EntityID owner,left,right;
@@ -193,6 +196,7 @@ TEST_F(ClothSystemTest, PaintedDistanceOverridesSkinDefaultAndAttachmentsOverrid
     Tick();
     EXPECT_NEAR(Cloth().runtime.solver.Positions()[1].z,0.0f,1.0e-5f);
 }
+/// @brief Checks low resolution physics transfers interpolated pose to render mesh.
 TEST_F(ClothSystemTest, LowResolutionPhysicsTransfersInterpolatedPoseToRenderMesh)
 {
     scene::EntityID owner,left,right;
@@ -217,6 +221,7 @@ TEST_F(ClothSystemTest, LowResolutionPhysicsTransfersInterpolatedPoseToRenderMes
     EXPECT_NEAR(mesh->boundsCenter.z+mesh->boundsExtents.z,0.2f,1.0e-5f);
 }
 
+/// @brief Pause does not advance and teleport rebuilds at new origin.
 TEST_F(ClothSystemTest, PauseDoesNotAdvanceAndTeleportRebuildsAtNewOrigin)
 {
     Tick();
@@ -230,6 +235,7 @@ TEST_F(ClothSystemTest, PauseDoesNotAdvanceAndTeleportRebuildsAtNewOrigin)
     EXPECT_GT(Cloth().runtime.solver.Positions().back().x, 98.0f);
 }
 
+/// @brief Ground contact supports the free edge.
 TEST_F(ClothSystemTest, GroundContactSupportsTheFreeEdge)
 {
     Cloth().groundEnabled = true;
@@ -240,6 +246,7 @@ TEST_F(ClothSystemTest, GroundContactSupportsTheFreeEdge)
         EXPECT_GE(p.y, 1.5f + Cloth().settings.thickness - 1.0e-4f);
 }
 
+/// @brief Copy keeps settings but drops simulation state.
 TEST_F(ClothSystemTest, CopyKeepsSettingsButDropsSimulationState)
 {
     Tick();
@@ -252,6 +259,7 @@ TEST_F(ClothSystemTest, CopyKeepsSettingsButDropsSimulationState)
     EXPECT_FALSE(copy.runtimeMesh.HasMesh());
 }
 
+/// @brief Scene round trip keeps settings without runtime state.
 TEST_F(ClothSystemTest, SceneRoundTripKeepsSettingsWithoutRuntimeState)
 {
     const auto target = m_scene.CreateGameObject("BoneTarget").GetID();
@@ -313,6 +321,7 @@ TEST_F(ClothSystemTest, SceneRoundTripKeepsSettingsWithoutRuntimeState)
     EXPECT_FLOAT_EQ(cloth->settings.selfCollisionDistance, 0.05f);
 }
 
+/// @brief Pin override rebuilds and empty override releases all.
 TEST_F(ClothSystemTest, PinOverrideRebuildsAndEmptyOverrideReleasesAll)
 {
     Cloth().overridePins = true;
@@ -326,6 +335,7 @@ TEST_F(ClothSystemTest, PinOverrideRebuildsAndEmptyOverrideReleasesAll)
     EXPECT_LT(Cloth().runtime.solver.Positions()[0].y, 3.0f);
 }
 
+/// @brief Invalid pin stops and valid edit recovers.
 TEST_F(ClothSystemTest, InvalidPinStopsAndValidEditRecovers)
 {
     Tick();
@@ -341,6 +351,7 @@ TEST_F(ClothSystemTest, InvalidPinStopsAndValidEditRecovers)
     EXPECT_EQ(Cloth().runtime.renderToParticle.size(), 81u);
 }
 
+/// @brief Bone attachment overrides owner pin and pauses.
 TEST_F(ClothSystemTest, BoneAttachmentOverridesOwnerPinAndPauses)
 {
     const auto targetId = m_scene.CreateGameObject("BoneTarget").GetID();
@@ -365,6 +376,7 @@ TEST_F(ClothSystemTest, BoneAttachmentOverridesOwnerPinAndPauses)
     EXPECT_VEC3_NEAR(Cloth().runtime.solver.Positions()[0], (math::Vector3{-1, 3, 0}), 1.0e-5f);
 }
 
+/// @brief Positive distance bounds particle around moving target.
 TEST_F(ClothSystemTest, PositiveDistanceBoundsParticleAroundMovingTarget)
 {
     const auto targetId = m_scene.CreateGameObject("BoneTarget").GetID();
@@ -381,6 +393,7 @@ TEST_F(ClothSystemTest, PositiveDistanceBoundsParticleAroundMovingTarget)
     }
 }
 
+/// @brief Invalid attachment stops atomically and correction recovers.
 TEST_F(ClothSystemTest, InvalidAttachmentStopsAtomicallyAndCorrectionRecovers)
 {
     Tick();
@@ -402,6 +415,7 @@ TEST_F(ClothSystemTest, InvalidAttachmentStopsAtomicallyAndCorrectionRecovers)
     EXPECT_VEC3_NEAR(Cloth().runtime.solver.Positions()[0], target.worldPosition, 1.0e-5f);
 }
 
+/// @brief Skinning resolves names blends bones and allows explicit override.
 TEST_F(ClothSystemTest, SkinningResolvesNamesBlendsBonesAndAllowsExplicitOverride)
 {
     scene::EntityID owner, left, right;
@@ -427,6 +441,7 @@ TEST_F(ClothSystemTest, SkinningResolvesNamesBlendsBonesAndAllowsExplicitOverrid
     EXPECT_NEAR(Cloth().runtime.solver.Velocities()[0].z, 18.0f, 0.002f);
 }
 
+/// @brief Missing skin bone stops and valid mapping recovers.
 TEST_F(ClothSystemTest, MissingSkinBoneStopsAndValidMappingRecovers)
 {
     scene::EntityID owner, left, right;
@@ -446,6 +461,7 @@ TEST_F(ClothSystemTest, MissingSkinBoneStopsAndValidMappingRecovers)
     EXPECT_TRUE(Cloth().runtime.skinCenters.empty());
 }
 
+/// @brief Cloth target topology signature tracks indices and rejects stale particle ranges.
 TEST_F(ClothSystemTest, ClothTargetTopologySignatureTracksIndicesAndRejectsStaleParticleRanges)
 {
     asset::ClothAsset source;

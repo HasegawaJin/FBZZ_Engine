@@ -57,6 +57,7 @@ protected:
     scene::managed_detail::ManagedComponentTransfers m_transfers;
     bool m_previousPlay = false;
 };
+/// @brief Motion warp normalizes pose and rejects degenerate input before mutation.
 TEST_F(ManagedComponentServicesTest, MotionWarpNormalizesPoseAndRejectsDegenerateInputBeforeMutation)
 {
     auto& warp = m_object->AddComponent<scene::MotionWarpComponent>();
@@ -70,6 +71,7 @@ TEST_F(ManagedComponentServicesTest, MotionWarpNormalizesPoseAndRejectsDegenerat
     EXPECT_EQ(Run(ComponentOp::SERVICE_MOTION_WARP, 9, true), ComponentStatus::INVALID_ARGUMENT); EXPECT_TRUE(warp.target.active);
     ASSERT_EQ(Run(ComponentOp::SERVICE_MOTION_WARP, 9, false), ComponentStatus::OK); EXPECT_FALSE(warp.target.active);
 }
+/// @brief IK retarget checks scene and retains named chain and clamping.
 TEST_F(ManagedComponentServicesTest, IkRetargetChecksSceneAndRetainsNamedChainAndClamping)
 {
     auto& ik = m_object->AddComponent<scene::IKSolverComponent>(); ik.chains.emplace_back(); ik.chains[0].targetName = "Hand";
@@ -83,6 +85,7 @@ TEST_F(ManagedComponentServicesTest, IkRetargetChecksSceneAndRetainsNamedChainAn
     EXPECT_NEAR(ik.chains[0].weight, 1, testkit::kTolerance);
     ASSERT_EQ(Run(ComponentOp::SERVICE_IK, 8, false, 0, {}, name), ComponentStatus::OK); EXPECT_EQ(ik.chains[0].targetEntity, scene::EntityID::INVALID);
 }
+/// @brief Foot tuning round-trips and rejects invalid packets atomically.
 TEST_F(ManagedComponentServicesTest, FootTuningRoundTripsAndRejectsInvalidPacketsAtomically)
 {
     auto& ik=m_object->AddComponent<scene::IKSolverComponent>();
@@ -107,6 +110,7 @@ TEST_F(ManagedComponentServicesTest, FootTuningRoundTripsAndRejectsInvalidPacket
     EXPECT_EQ(m_result.integer,0);
 }
 
+/// @brief Ragdoll simulation settings are fixed only and atomic.
 TEST_F(ManagedComponentServicesTest, RagdollSimulationSettingsAreFixedOnlyAndAtomic)
 {
     auto& ragdoll=m_object->AddComponent<scene::RagdollComponent>();
@@ -122,6 +126,7 @@ TEST_F(ManagedComponentServicesTest, RagdollSimulationSettingsAreFixedOnlyAndAto
     ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL,67,false,140,drag,{},true),ComponentStatus::OK);
     EXPECT_EQ(ragdoll.substeps,12); EXPECT_TRUE(ragdoll.allowRest);
 }
+/// @brief Ragdoll commands are fixed only and preserve native pending requests.
 TEST_F(ManagedComponentServicesTest, RagdollCommandsAreFixedOnlyAndPreserveNativePendingRequests)
 {
     auto& ragdoll = m_object->AddComponent<scene::RagdollComponent>(); const std::array<float, 3> begin{2, 0.4f, 0};
@@ -135,6 +140,7 @@ TEST_F(ManagedComponentServicesTest, RagdollCommandsAreFixedOnlyAndPreserveNativ
     EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 15, false, 0, {}, {}, true), ComponentStatus::INVALID_SCOPE);
     EXPECT_FALSE(ragdoll.endRequested);
 }
+/// @brief Body drive overrides are fixed only validated and restorable.
 TEST_F(ManagedComponentServicesTest, BodyDriveOverridesAreFixedOnlyValidatedAndRestorable)
 {
     auto& ragdoll=m_object->AddComponent<scene::RagdollComponent>();
@@ -164,6 +170,7 @@ TEST_F(ManagedComponentServicesTest, BodyDriveOverridesAreFixedOnlyValidatedAndR
     EXPECT_NEAR(ragdoll.friction,0.4f,1.0e-6f);
 }
 
+/// @brief Body controls validate scope and current target lifetime.
 TEST_F(ManagedComponentServicesTest, BodyControlsValidateScopeAndCurrentTargetLifetime)
 {
     auto& ragdoll=m_object->AddComponent<scene::RagdollComponent>();
@@ -199,6 +206,7 @@ TEST_F(ManagedComponentServicesTest, BodyControlsValidateScopeAndCurrentTargetLi
     EXPECT_EQ(m_result.values.size(),24U);EXPECT_EQ(m_result.integer&1,1);
 }
 
+/// @brief Spring chains reuse native creation force and reset semantics.
 TEST_F(ManagedComponentServicesTest, SpringChainsReuseNativeCreationForceAndResetSemantics)
 {
     auto& spring = m_object->AddComponent<scene::SpringBoneComponent>(); const std::array<std::string, 1> root{"Tail"};
@@ -210,6 +218,7 @@ TEST_F(ManagedComponentServicesTest, SpringChainsReuseNativeCreationForceAndRese
     ASSERT_EQ(Run(ComponentOp::SERVICE_SPRING_BONE, 13, false), ComponentStatus::OK); EXPECT_FALSE(spring.hasLastOwnerPosition);
     ASSERT_EQ(Run(ComponentOp::SERVICE_SPRING_BONE, 12, false, 0, {}, root), ComponentStatus::OK); EXPECT_NEAR(spring.chains[0].gravityPower, 0, testkit::kTolerance);
 }
+/// @brief UI tweens expose rotation fill material and stop one channel in edit.
 TEST_F(ManagedComponentServicesTest, UiTweensExposeRotationFillMaterialAndStopOneChannelInEdit)
 {
     auto& ui = m_object->AddComponent<scene::UIAnimator>(); scene::Script::SetInPlayMode(false);
@@ -223,6 +232,7 @@ TEST_F(ManagedComponentServicesTest, UiTweensExposeRotationFillMaterialAndStopOn
     EXPECT_FALSE(ui.rotationTween.active); EXPECT_TRUE(ui.fillTween.active);
     EXPECT_EQ(Run(ComponentOp::SERVICE_UI_ANIMATOR, 8, false, 16, tween, property), ComponentStatus::INVALID_ARGUMENT);
 }
+/// @brief Patrol waypoint outputs and spline restart use real rows.
 TEST_F(ManagedComponentServicesTest, PatrolWaypointOutputsAndSplineRestartUseRealRows)
 {
     auto& patrol = m_object->AddComponent<scene::NavMeshPatrolComponent>(); const std::array<float, 5> waypoint{2, 3, 4, 0.5f, 7};
@@ -237,6 +247,7 @@ TEST_F(ManagedComponentServicesTest, PatrolWaypointOutputsAndSplineRestartUseRea
     const std::array<float, 1> position{-2}; ASSERT_EQ(Run(ComponentOp::SERVICE_SPLINE_FOLLOWER, 6, false, 0, position), ComponentStatus::OK);
     EXPECT_NEAR(follower.normalizedPosition, 0, testkit::kTolerance);
 }
+/// @brief Camera controls keep exact priority and native shake clamp.
 TEST_F(ManagedComponentServicesTest, CameraControlsKeepExactPriorityAndNativeShakeClamp)
 {
     auto& shake = m_object->AddComponent<scene::CameraShakeComponent>(); const std::array<float, 2> start{-1, 0.5f};
@@ -249,6 +260,7 @@ TEST_F(ManagedComponentServicesTest, CameraControlsKeepExactPriorityAndNativeSha
     const std::array<float, 1> invalid{std::numeric_limits<float>::quiet_NaN()};
     EXPECT_EQ(Run(ComponentOp::SERVICE_VIRTUAL_CAMERA, 6, false, 0, invalid), ComponentStatus::INVALID_ARGUMENT); EXPECT_NEAR(camera.fovY, 179, testkit::kTolerance);
 }
+/// @brief Audio send and flow channels preserve all bits and baked read identity.
 TEST_F(ManagedComponentServicesTest, AudioSendAndFlowChannelsPreserveAllBitsAndBakedReadIdentity)
 {
     auto& audio = m_object->AddComponent<scene::AudioMixerSendComponent>(); const std::array<float, 1> level{2}; const std::array<std::string, 1> bus{"SE"};
@@ -262,6 +274,7 @@ TEST_F(ManagedComponentServicesTest, AudioSendAndFlowChannelsPreserveAllBitsAndB
     flow.forces.clear(); EXPECT_EQ(Run(ComponentOp::SERVICE_FLOW_FIELD, 0, true), ComponentStatus::NOT_FOUND);
     ASSERT_EQ(Run(ComponentOp::SERVICE_FLOW_FIELD, 16, true), ComponentStatus::OK); EXPECT_EQ(m_result.integer, 0); EXPECT_TRUE(flow.forces.empty());
 }
+/// @brief Bone recipes stage beyond packet count and commit only once.
 TEST_F(ManagedComponentServicesTest, BoneRecipesStageBeyondPacketCountAndCommitOnlyOnce)
 {
     auto& ragdoll = m_object->AddComponent<scene::RagdollComponent>(); ragdoll.rootBoneName = "Original"; ragdoll.maxDepth = 2;

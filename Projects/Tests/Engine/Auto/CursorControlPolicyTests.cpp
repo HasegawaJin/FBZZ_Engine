@@ -15,6 +15,7 @@ protected:
     const core::CursorPolicy m_locked{core::CursorLockMode::Locked, true};
 };
 
+/// @brief Locked hides effective cursor without changing requested visibility.
 TEST_F(CursorControlPolicyTest, LockedHidesEffectiveCursorWithoutChangingRequestedVisibility)
 {
     const auto state = m_control.Resolve(m_locked, false);
@@ -24,6 +25,7 @@ TEST_F(CursorControlPolicyTest, LockedHidesEffectiveCursorWithoutChangingRequest
     EXPECT_EQ(state.inputOwner, core::CursorInputOwner::GAME);
 }
 
+/// @brief Locked mouse accumulates relative packets once per frame.
 TEST_F(CursorControlPolicyTest, LockedMouseAccumulatesRelativePacketsOncePerFrame)
 {
     core::cursor_detail::LockedMouseMotion motion;
@@ -36,6 +38,7 @@ TEST_F(CursorControlPolicyTest, LockedMouseAccumulatesRelativePacketsOncePerFram
     EXPECT_FALSE(motion.Take());
 }
 
+/// @brief Locked mouse distinguishes cancelled motion from no relative packets.
 TEST_F(CursorControlPolicyTest, LockedMouseDistinguishesCancelledMotionFromNoRelativePackets)
 {
     core::cursor_detail::LockedMouseMotion motion;
@@ -49,6 +52,7 @@ TEST_F(CursorControlPolicyTest, LockedMouseDistinguishesCancelledMotionFromNoRel
     EXPECT_FLOAT_EQ(delta->y, 0.0f);
 }
 
+/// @brief Visibility and movement restriction do not decide input ownership.
 TEST_F(CursorControlPolicyTest, VisibilityAndMovementRestrictionDoNotDecideInputOwnership)
 {
     for (auto mode : {core::CursorLockMode::None, core::CursorLockMode::Confined, core::CursorLockMode::Locked}) {
@@ -61,6 +65,7 @@ TEST_F(CursorControlPolicyTest, VisibilityAndMovementRestrictionDoNotDecideInput
     }
 }
 
+/// @brief Focus return requires explicit acquisition.
 TEST_F(CursorControlPolicyTest, FocusReturnRequiresExplicitAcquisition)
 {
     m_control.SetWindowActive(false);
@@ -75,6 +80,7 @@ TEST_F(CursorControlPolicyTest, FocusReturnRequiresExplicitAcquisition)
     EXPECT_EQ(m_control.Resolve(m_locked, false).effective.lockMode, core::CursorLockMode::Locked);
 }
 
+/// @brief Release pause view loss and window change preserve request until explicit click.
 TEST_F(CursorControlPolicyTest, ReleasePauseViewLossAndWindowChangePreserveRequestUntilExplicitClick)
 {
     for (auto reason : {core::CursorSuspendReason::RELEASED, core::CursorSuspendReason::PAUSED,
@@ -92,6 +98,7 @@ TEST_F(CursorControlPolicyTest, ReleasePauseViewLossAndWindowChangePreserveReque
     }
 }
 
+/// @brief Cursor only override does not take game input ownership.
 TEST_F(CursorControlPolicyTest, CursorOnlyOverrideDoesNotTakeGameInputOwnership)
 {
     const auto state = m_control.Resolve(m_locked, true);
@@ -101,6 +108,7 @@ TEST_F(CursorControlPolicyTest, CursorOnlyOverrideDoesNotTakeGameInputOwnership)
     EXPECT_EQ(state.effective.lockMode, core::CursorLockMode::None);
 }
 
+/// @brief Missing target restores visible free cursor.
 TEST_F(CursorControlPolicyTest, MissingTargetRestoresVisibleFreeCursor)
 {
     const auto state = m_control.Resolve(m_locked, false, false);
@@ -109,6 +117,7 @@ TEST_F(CursorControlPolicyTest, MissingTargetRestoresVisibleFreeCursor)
     EXPECT_EQ(state.effective.lockMode, core::CursorLockMode::None);
 }
 
+/// @brief Automation denies capture even after focus changes or explicit acquire.
 TEST_F(CursorControlPolicyTest, AutomationDeniesCaptureEvenAfterFocusChangesOrExplicitAcquire)
 {
     m_control.SetPhysicalInputAllowed(false);
@@ -127,6 +136,7 @@ TEST_F(CursorControlPolicyTest, AutomationDeniesCaptureEvenAfterFocusChangesOrEx
     EXPECT_FALSE(m_control.Acquire());
 }
 
+/// @brief Manual play after automation requires fresh explicit acquisition.
 TEST_F(CursorControlPolicyTest, ManualPlayAfterAutomationRequiresFreshExplicitAcquisition)
 {
     m_control.SetPhysicalInputAllowed(false);
@@ -139,6 +149,7 @@ TEST_F(CursorControlPolicyTest, ManualPlayAfterAutomationRequiresFreshExplicitAc
     EXPECT_FALSE(m_control.OwnsGameInput());
 }
 
+/// @brief Automation preserves injected buttons without physical input.
 TEST_F(CursorControlPolicyTest, AutomationPreservesInjectedButtonsWithoutPhysicalInput)
 {
     using Filter = input::input_detail::GameInputConsumption;
@@ -153,6 +164,7 @@ protected:
     input::input_detail::GameInputConsumption m_consumption;
 };
 
+/// @brief Acquisition click remains consumed through release frame.
 TEST_F(GameInputConsumptionTest, AcquisitionClickRemainsConsumedThroughReleaseFrame)
 {
     m_consumption.BlockMouse(0, true);
@@ -163,6 +175,7 @@ TEST_F(GameInputConsumptionTest, AcquisitionClickRemainsConsumedThroughReleaseFr
     EXPECT_FALSE(m_consumption.MouseBlocked(0));
 }
 
+/// @brief Held host controls do not block fresh unrelated controls.
 TEST_F(GameInputConsumptionTest, HeldHostControlsDoNotBlockFreshUnrelatedControls)
 {
     m_consumption.BlockKey(65, true);
@@ -175,6 +188,7 @@ TEST_F(GameInputConsumptionTest, HeldHostControlsDoNotBlockFreshUnrelatedControl
     EXPECT_TRUE(m_consumption.KeyBlocked(65));
 }
 
+/// @brief Checks motion consumption lasts one frame without changing buttons.
 TEST_F(GameInputConsumptionTest, MotionConsumptionLastsOneFrameWithoutChangingButtons)
 {
     m_consumption.BlockMotion();
@@ -187,6 +201,7 @@ TEST_F(GameInputConsumptionTest, MotionConsumptionLastsOneFrameWithoutChangingBu
     EXPECT_FALSE(m_consumption.MouseBlocked(0));
 }
 
+/// @brief Hidden automation uses explicit injection without owning physical input.
 TEST_F(GameInputConsumptionTest, HiddenAutomationUsesExplicitInjectionWithoutOwningPhysicalInput)
 {
     using Filter = input::input_detail::GameInputConsumption;

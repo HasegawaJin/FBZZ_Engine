@@ -102,6 +102,7 @@ protected:
     }
 };
 
+/// @brief Transfers typed values and live scope without physics or frame time authority.
 TEST_F(ManagedEngineNotificationTest, TransfersTypedValuesAndLiveScopeWithoutPhysicsOrFrameTimeAuthority)
 {
     ASSERT_TRUE(m_adapter->ApplySettingsJson(R"({"verifyScope":true})"));
@@ -142,6 +143,7 @@ TEST_F(ManagedEngineNotificationTest, TransfersTypedValuesAndLiveScopeWithoutPhy
     EXPECT_TRUE(scene::ManagedScriptRuntime::Instance().IsDispatchIdle());
 }
 
+/// @brief Navigation callbacks can grow agent storage without losing original notifications.
 TEST_F(ManagedEngineNotificationTest, NavigationCallbacksCanGrowAgentStorageWithoutLosingOriginalNotifications)
 {
     auto& surfaceObject = m_scene.CreateGameObject("DisconnectedSurface");
@@ -177,6 +179,7 @@ TEST_F(ManagedEngineNotificationTest, NavigationCallbacksCanGrowAgentStorageWith
     EXPECT_EQ(Read(*thirdAdapter, "failedCount").integer, 1);
 }
 
+/// @brief Skips edit inactive and pending removal notifications.
 TEST_F(ManagedEngineNotificationTest, SkipsEditInactiveAndPendingRemovalNotifications)
 {
     const scene::AnimationEventInfo info{"Cue", 1, 2, 3};
@@ -197,6 +200,7 @@ TEST_F(ManagedEngineNotificationTest, SkipsEditInactiveAndPendingRemovalNotifica
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Owns both sequence channels through disable enable and reload.
 TEST_F(ManagedEngineNotificationTest, OwnsBothSequenceChannelsThroughDisableEnableAndReload)
 {
     ASSERT_EQ(scene::ScriptEventBus::SubscriptionCount(), m_previousSubscriptions + 2);
@@ -226,6 +230,7 @@ TEST_F(ManagedEngineNotificationTest, OwnsBothSequenceChannelsThroughDisableEnab
     EXPECT_TRUE(runtime.IsDispatchIdle());
 }
 
+/// @brief Managed failure returns `false` preserves its cause and cancels both subscriptions.
 TEST_F(ManagedEngineNotificationTest, ManagedFailureReturnsFalsePreservesItsCauseAndCancelsBothSubscriptions)
 {
     ASSERT_TRUE(m_adapter->ApplySettingsJson(R"({"throwOnAnimation":true})"));
@@ -239,6 +244,7 @@ TEST_F(ManagedEngineNotificationTest, ManagedFailureReturnsFalsePreservesItsCaus
     EXPECT_EQ(Count("animationCount"), 1);
 }
 
+/// @brief Native global failure stops only its receiver and releases its channels.
 TEST_F(ManagedEngineNotificationTest, NativeGlobalFailureStopsOnlyItsReceiverAndReleasesItsChannels)
 {
     auto& healthyObject = m_scene.CreateGameObject("HealthyReceiver");
@@ -254,6 +260,7 @@ TEST_F(ManagedEngineNotificationTest, NativeGlobalFailureStopsOnlyItsReceiverAnd
     EXPECT_TRUE(scene::ManagedScriptRuntime::Instance().IsDispatchIdle());
 }
 
+/// @brief Rejects invalid native payload without executing managed code.
 TEST_F(ManagedEngineNotificationTest, RejectsInvalidNativePayloadWithoutExecutingManagedCode)
 {
     const scene::AnimationEventInfo invalid{"Cue", 1, std::numeric_limits<float>::quiet_NaN(), 3};

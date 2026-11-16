@@ -25,6 +25,7 @@ protected:
     }
 };
 
+/// @brief Checks cube solid angles cover sphere and symmetric cells.
 TEST_F(RayEnvironmentTest, CubeSolidAnglesCoverSphereAndSymmetricCells)
 {
     constexpr double pi = 3.14159265358979323846;
@@ -39,6 +40,7 @@ TEST_F(RayEnvironmentTest, CubeSolidAnglesCoverSphereAndSymmetricCells)
         EXPECT_NEAR(total, 4 * pi, 1e-10);
     }
 }
+/// @brief Black cube retains full sampling support at maximum table size.
 TEST_F(RayEnvironmentTest, BlackCubeRetainsFullSamplingSupportAtMaximumTableSize)
 {
     renderer::RayEnvironmentDistribution result;
@@ -52,6 +54,7 @@ TEST_F(RayEnvironmentTest, BlackCubeRetainsFullSamplingSupportAtMaximumTableSize
     EXPECT_FLOAT_EQ(previous, 1);
     EXPECT_EQ(result.contentVersion, 7u);
 }
+/// @brief Bright texel importance uses luminance and rounded interval.
 TEST_F(RayEnvironmentTest, BrightTexelImportanceUsesLuminanceAndRoundedInterval)
 {
     auto input = MakeInput(1, {0, 0, 0});
@@ -67,6 +70,7 @@ TEST_F(RayEnvironmentTest, BrightTexelImportanceUsesLuminanceAndRoundedInterval)
     EXPECT_NEAR(renderer::RayEnvironmentDirectionPdf(result, {0, 0, -1}, halfPi),
         result.records[0].selectionPdf * 0.25f, 1e-6f);
 }
+/// @brief Direction PDF integrates to one with cube jacobian.
 TEST_F(RayEnvironmentTest, DirectionPdfIntegratesToOneWithCubeJacobian)
 {
     renderer::RayEnvironmentDistribution result;
@@ -82,6 +86,7 @@ TEST_F(RayEnvironmentTest, DirectionPdfIntegratesToOneWithCubeJacobian)
         }
     EXPECT_NEAR(integral, 1, 3e-4);
 }
+/// @brief Invalid input leaves published distribution unchanged.
 TEST_F(RayEnvironmentTest, InvalidInputLeavesPublishedDistributionUnchanged)
 {
     auto input = MakeInput(1, {1, 1, 1});
@@ -107,6 +112,7 @@ TEST_F(RayEnvironmentTest, InvalidInputLeavesPublishedDistributionUnchanged)
     EXPECT_FALSE(renderer::BuildRayEnvironmentDistribution(input, result));
 }
 
+/// @brief Resolves linear HDR camera radiance independently of background alpha.
 TEST_F(RayEnvironmentTest, ResolvesLinearHdrCameraRadianceIndependentlyOfBackgroundAlpha)
 {
     renderer::RenderEnvironmentInput environment;
@@ -120,6 +126,7 @@ TEST_F(RayEnvironmentTest, ResolvesLinearHdrCameraRadianceIndependentlyOfBackgro
     EXPECT_VEC3_NEAR(radiance, (math::Vector3{2, 4, 8}), 0.0f);
 }
 
+/// @brief Explicit black sky overrides camera RGB but depth only without sky is unknown.
 TEST_F(RayEnvironmentTest, ExplicitBlackSkyOverridesCameraRgbButDepthOnlyWithoutSkyIsUnknown)
 {
     renderer::RenderEnvironmentInput environment;
@@ -134,6 +141,7 @@ TEST_F(RayEnvironmentTest, ExplicitBlackSkyOverridesCameraRgbButDepthOnlyWithout
     EXPECT_VEC3_NEAR(radiance, math::Vector3::ZERO, 0.0f);
 }
 
+/// @brief Checks raw environment requests never become constant when pending or ready.
 TEST_F(RayEnvironmentTest, RawEnvironmentRequestsNeverBecomeConstantWhenPendingOrReady)
 {
     renderer::RenderEnvironmentInput environment;
@@ -147,6 +155,7 @@ TEST_F(RayEnvironmentTest, RawEnvironmentRequestsNeverBecomeConstantWhenPendingO
     }
 }
 
+/// @brief Emitting celestial bodies and cloud leave constant environment unknown.
 TEST_F(RayEnvironmentTest, EmittingCelestialBodiesAndCloudLeaveConstantEnvironmentUnknown)
 {
     renderer::Camera camera;
@@ -184,6 +193,7 @@ TEST_F(RayEnvironmentTest, EmittingCelestialBodiesAndCloudLeaveConstantEnvironme
     EXPECT_TRUE(renderer::ResolveRayConstantEnvironment(environment, camera, radiance));
 }
 
+/// @brief Invalid camera RGB or active sky intensity does not modify output.
 TEST_F(RayEnvironmentTest, InvalidCameraRgbOrActiveSkyIntensityDoesNotModifyOutput)
 {
     for (float invalid : {-1.0f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()}) {

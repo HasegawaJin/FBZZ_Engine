@@ -18,6 +18,7 @@ class SchedulerDeclarationTest : public testkit::EngineFixture {};
 struct Position {};
 struct Velocity {};
 
+/// @brief Records read and write component types.
 TEST_F(SchedulerDeclarationTest, RecordsReadAndWriteComponentTypes)
 {
     fbzz::ComponentAccess access;
@@ -29,6 +30,7 @@ TEST_F(SchedulerDeclarationTest, RecordsReadAndWriteComponentTypes)
     EXPECT_EQ(access.writes.front(), std::type_index(typeid(Velocity)));
 }
 
+/// @brief Supports unrestricted access.
 TEST_F(SchedulerDeclarationTest, SupportsUnrestrictedAccess)
 {
     fbzz::ComponentAccess access;
@@ -36,6 +38,7 @@ TEST_F(SchedulerDeclarationTest, SupportsUnrestrictedAccess)
     EXPECT_TRUE(access.unrestricted);
 }
 
+/// @brief Records ordering hints.
 TEST_F(SchedulerDeclarationTest, RecordsOrderingHints)
 {
     fbzz::OrderingHints hints;
@@ -47,6 +50,7 @@ TEST_F(SchedulerDeclarationTest, RecordsOrderingHints)
     EXPECT_EQ(hints.before.front(), std::type_index(typeid(Velocity)));
 }
 
+/// @brief Exposes the configured phase defaults.
 TEST_F(SchedulerDeclarationTest, ExposesTheConfiguredPhaseDefaults)
 {
     const fbzz::PhaseConfig config{};

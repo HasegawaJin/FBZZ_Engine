@@ -47,6 +47,7 @@ protected:
     editor::ConsoleSink m_sink; editor::ConsolePanel m_console{m_sink}; editor::FluidEditorPanel m_fluid;
     editor::VFXTimelinePanel m_vfx; editor::MapEditorPanel m_map; editor::OperatorRegistry m_registry; editor::UndoStack m_undo;
 };
+/// @brief Fluid edits stay unsaved and undo before explicit save.
 TEST_F(DirectPanelOperatorTest, FluidEditsStayUnsavedAndUndoBeforeExplicitSave)
 {
     OpenFluid(); auto patch = editor::OpData::MakeObject(); patch.Set("seed", editor::OpData(42));
@@ -56,6 +57,7 @@ TEST_F(DirectPanelOperatorTest, FluidEditsStayUnsavedAndUndoBeforeExplicitSave)
     ASSERT_TRUE(m_undo.Redo()); ASSERT_TRUE(Invoke("fluid.editor.save").ok);
     ASSERT_TRUE(asset::LoadFluidRecipe(File("Assets/Test.fluid").generic_string(), disk)); EXPECT_EQ(disk.seed, 42u);
 }
+/// @brief Fluid clear lists and reject unknown fields atomically.
 TEST_F(DirectPanelOperatorTest, FluidClearListsAndRejectUnknownFieldsAtomically)
 {
     OpenFluid(); auto patch = editor::OpData::MakeObject(); patch.Set("source", editor::OpData::MakeArray());
@@ -65,11 +67,13 @@ TEST_F(DirectPanelOperatorTest, FluidClearListsAndRejectUnknownFieldsAtomically)
     EXPECT_NE(Invoke("fluid.editor.inspect").data.Find("recipe")->Find("seed")->AsInt(), 42);
     EXPECT_FALSE(Invoke("fluid.editor.close").ok); editor::OpArgs discard; discard.Set("discard", true); EXPECT_TRUE(Invoke("fluid.editor.close", discard).ok);
 }
+/// @brief Invalid fluid control does not partially change playback.
 TEST_F(DirectPanelOperatorTest, InvalidFluidControlDoesNotPartiallyChangePlayback)
 {
     OpenFluid(); auto patch = editor::OpData::MakeObject(); patch.Set("playing", editor::OpData(true)); patch.Set("quality", editor::OpData(99));
     EXPECT_FALSE(Patch("fluid.editor.control", patch).ok); EXPECT_FALSE(Invoke("fluid.editor.inspect").data.Find("playback")->Find("playing")->AsBool());
 }
+/// @brief Console selection uses stable sequences and clear removes rows.
 TEST_F(DirectPanelOperatorTest, ConsoleSelectionUsesStableSequencesAndClearRemovesRows)
 {
     m_sink.OnLog({core::LogLevel::INFO, "first"}); m_sink.OnLog({core::LogLevel::WARNING, "second"});
@@ -80,6 +84,7 @@ TEST_F(DirectPanelOperatorTest, ConsoleSelectionUsesStableSequencesAndClearRemov
     ASSERT_TRUE(Invoke("console.clear").ok); EXPECT_EQ(Invoke("console.inspect").data.Find("total")->AsInt(), 0);
     EXPECT_FALSE(Invoke("console.select", args).ok);
 }
+/// @brief Hidden VFX seek is held until released.
 TEST_F(DirectPanelOperatorTest, HiddenVfxSeekIsHeldUntilReleased)
 {
     auto& root = AttachedScene()->CreateGameObject("Effect"); root.AddComponent<scene::VFXComponent>();
@@ -88,6 +93,7 @@ TEST_F(DirectPanelOperatorTest, HiddenVfxSeekIsHeldUntilReleased)
     const auto* vfx = root.GetComponent<scene::VFXComponent>(); EXPECT_FLOAT_EQ(vfx->editorScrubTime, 0.75f); EXPECT_EQ(vfx->editorScrubFrame, Time::frameCount);
     args.Set("action", std::string("release")); ASSERT_TRUE(Invoke("vfx.timeline.control", args).ok); EXPECT_FLOAT_EQ(vfx->editorScrubTime, -1);
 }
+/// @brief Grid resize preserves coordinates and rejects occupied truncation.
 TEST_F(DirectPanelOperatorTest, GridResizePreservesCoordinatesAndRejectsOccupiedTruncation)
 {
     ASSERT_TRUE(Invoke("map.grid.create").ok); auto patch = editor::OpData::MakeObject(); patch.Set("cellCountX", editor::OpData(2)); patch.Set("cellCountZ", editor::OpData(1));
@@ -98,6 +104,7 @@ TEST_F(DirectPanelOperatorTest, GridResizePreservesCoordinatesAndRejectsOccupied
     patch.Set("cellCountX", editor::OpData(3)); ASSERT_TRUE(Patch("map.grid.configure", patch).ok); EXPECT_EQ(grid->GetCell(1, 0), terrain);
     args.Set("action", std::string("remove")); ASSERT_TRUE(Invoke("map.grid.cell", args).ok); EXPECT_FALSE(AttachedScene()->IsValid(grid->GetCell(1, 0))); EXPECT_TRUE(AttachedScene()->IsValid(terrain));
 }
+/// @brief Profiler history capture without frames does not freeze.
 TEST_F(DirectPanelOperatorTest, ProfilerHistoryCaptureWithoutFramesDoesNotFreeze)
 {
     editor::OpArgs args; args.Set("action", std::string("capture")); EXPECT_FALSE(Invoke("profiler.script.history_control", args).ok);
@@ -105,6 +112,7 @@ TEST_F(DirectPanelOperatorTest, ProfilerHistoryCaptureWithoutFramesDoesNotFreeze
     args.Set("action", std::string("freeze")); ASSERT_TRUE(Invoke("profiler.script.history_control", args).ok); EXPECT_TRUE(Invoke("profiler.script.history").data.Find("frozen")->AsBool());
     args.Set("action", std::string("resume")); ASSERT_TRUE(Invoke("profiler.script.history_control", args).ok); EXPECT_FALSE(Invoke("profiler.script.history").data.Find("frozen")->AsBool());
 }
+/// @brief Controller creation connects with GUID and undo keeps asset.
 TEST_F(DirectPanelOperatorTest, ControllerCreationConnectsWithGuidAndUndoKeepsAsset)
 {
     auto& go = AttachedScene()->CreateGameObject("Character"); go.AddComponent<scene::AnimatorComponent>();
@@ -115,12 +123,14 @@ TEST_F(DirectPanelOperatorTest, ControllerCreationConnectsWithGuidAndUndoKeepsAs
     EXPECT_TRUE(std::filesystem::exists(File("Assets/Character.animcontroller")));
     EXPECT_FALSE(Invoke("component.animator.create_controller", args).ok);
 }
+/// @brief Light probe bake without renderer does not queue.
 TEST_F(DirectPanelOperatorTest, LightProbeBakeWithoutRendererDoesNotQueue)
 {
     auto& go = AttachedScene()->CreateGameObject("Probes"); auto& probes = go.AddComponent<scene::LightProbeVolumeComponent>();
     editor::OpArgs args; args.Set("node", go.instanceId); EXPECT_FALSE(Invoke("component.light_probe.bake", args).ok);
     EXPECT_FALSE(probes.bakeRequested);
 }
+/// @brief Fluid save as copies unsaved changes without overwriting source.
 TEST_F(DirectPanelOperatorTest, FluidSaveAsCopiesUnsavedChangesWithoutOverwritingSource)
 {
     OpenFluid(); auto patch = editor::OpData::MakeObject(); patch.Set("seed", editor::OpData(42)); ASSERT_TRUE(Patch("fluid.editor.configure", patch).ok);
@@ -130,6 +140,7 @@ TEST_F(DirectPanelOperatorTest, FluidSaveAsCopiesUnsavedChangesWithoutOverwritin
     EXPECT_NE(original.seed, 42u); EXPECT_EQ(copy.seed, 42u); EXPECT_FALSE(Invoke("fluid.editor.inspect").data.Find("dirty")->AsBool());
     EXPECT_FALSE(Invoke("fluid.editor.save_as", args).ok);
 }
+/// @brief Vector field rebake keeps GUID and rejects overwrite without request.
 TEST_F(DirectPanelOperatorTest, VectorFieldRebakeKeepsGuidAndRejectsOverwriteWithoutRequest)
 {
     editor::OpArgs args; args.Set("path", std::string("Assets/Velocity.png")); args.Set("recipe", std::string("Sphere")); args.Set("resolution", 8);
@@ -141,6 +152,7 @@ TEST_F(DirectPanelOperatorTest, VectorFieldRebakeKeepsGuidAndRejectsOverwriteWit
     const auto after = Invoke("asset.vector_field.inspect", inspect); ASSERT_TRUE(after.ok); EXPECT_EQ(after.data.Find("reference")->AsString(), reference);
     EXPECT_GT(after.data.Find("sampleCount")->AsInt64(), 0);
 }
+/// @brief History jump uses document undo and rejects stale clear.
 TEST_F(DirectPanelOperatorTest, HistoryJumpUsesDocumentUndoAndRejectsStaleClear)
 {
     OpenFluid(); auto patch = editor::OpData::MakeObject(); patch.Set("seed", editor::OpData(42)); ASSERT_TRUE(Patch("fluid.editor.configure", patch).ok);
@@ -152,11 +164,13 @@ TEST_F(DirectPanelOperatorTest, HistoryJumpUsesDocumentUndoAndRejectsStaleClear)
     editor::OpArgs validClear; validClear.Set("action", std::string("clear")); ASSERT_TRUE(Invoke("edit.history.control", validClear).ok);
     EXPECT_TRUE(Invoke("edit.history.inspect").data.Find("entries")->AsArray().empty());
 }
+/// @brief Invalid client permission is rejected before external configuration.
 TEST_F(DirectPanelOperatorTest, InvalidClientPermissionIsRejectedBeforeExternalConfiguration)
 {
     editor::OpArgs args; args.Set("permission", std::string("administrator"));
     EXPECT_FALSE(Invoke("ai.setup.register_desktop", args).ok);
 }
+/// @brief Procedural flipbook assigns GUID and material undo keeps output.
 TEST_F(DirectPanelOperatorTest, ProceduralFlipbookAssignsGuidAndMaterialUndoKeepsOutput)
 {
     ASSERT_TRUE(asset::SaveMaterialAssetToFile(File("Assets/Particle.mat").generic_string(), asset::MaterialAssetAuthoring{}));
@@ -188,6 +202,7 @@ TEST_F(DirectPanelOperatorTest, ProceduralFlipbookAssignsGuidAndMaterialUndoKeep
     EXPECT_TRUE(material.textures["albedo"].empty());
     EXPECT_TRUE(std::filesystem::is_regular_file(util::FileSystem::PathFromUtf8(output)));
 }
+/// @brief Sequence scan orders numbers and atlas rejects single frame before writing.
 TEST_F(DirectPanelOperatorTest, SequenceScanOrdersNumbersAndAtlasRejectsSingleFrameBeforeWriting)
 {
     fluid::VectorFieldAsset field; fluid::BakeVectorField(fluid::VectorFieldRecipe::Sphere, 8, {1, 1, 1}, 1, 1, field);
@@ -200,6 +215,7 @@ TEST_F(DirectPanelOperatorTest, SequenceScanOrdersNumbersAndAtlasRejectsSingleFr
     EXPECT_EQ(baked.data.Find("frameCount")->AsInt(), 2); EXPECT_TRUE(std::filesystem::exists(File("Assets/Atlas.png")));
 }
 
+/// @brief Atlas with a conflicting GUID leaves the material and undo history unchanged.
 /// @see Docs/design/EditorDirectApi.md Flipbook generation connects the generated image to the material.
 TEST_F(DirectPanelOperatorTest, AtlasWithAConflictingGuidLeavesTheMaterialAndUndoHistoryUnchanged)
 {

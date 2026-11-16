@@ -9,6 +9,7 @@
 #include <limits>
 namespace fbzz::tests {
 class XPBDGripTest:public testkit::Fixture {};
+/// @brief Checks external reaction conserves momentum without moving external pose.
 TEST_F(XPBDGripTest, ExternalReactionConservesMomentumWithoutMovingExternalPose)
 {
     physics::RigidBody a,b;a.SetMass(2);b.SetMass(3);
@@ -22,6 +23,7 @@ TEST_F(XPBDGripTest, ExternalReactionConservesMomentumWithoutMovingExternalPose)
     EXPECT_VEC3_NEAR(b.GetPosition(),math::Vector3::ZERO,1.0e-6f);
     EXPECT_LE(g.Force(),s.maxForce);
 }
+/// @brief Reach failure preserves old grip and release stops forces.
 TEST_F(XPBDGripTest, ReachFailurePreservesOldGripAndReleaseStopsForces)
 {
     physics::RigidBody a;physics::XPBDGrip g;physics::XPBDGripSettings s;
@@ -34,6 +36,7 @@ TEST_F(XPBDGripTest, ReachFailurePreservesOldGripAndReleaseStopsForces)
     EXPECT_NEAR(a.GetVelocity().x,1,1.0e-6f);
     EXPECT_EQ(g.Status(),physics::XPBDGripStatus::RELEASED);
 }
+/// @brief Distinct break reasons and expired body never dereferences.
 TEST_F(XPBDGripTest, DistinctBreakReasonsAndExpiredBodyNeverDereferences)
 {
     physics::RigidBody a;physics::XPBDGrip g;physics::XPBDGripSettings s;
@@ -50,6 +53,7 @@ TEST_F(XPBDGripTest, DistinctBreakReasonsAndExpiredBodyNeverDereferences)
     g.SolveVelocity(0.01f);
     EXPECT_VEC3_NEAR(g.Target(),math::Vector3::ZERO,1.0e-6f);
 }
+/// @brief Rotation lock is optional and torque limited.
 TEST_F(XPBDGripTest, RotationLockIsOptionalAndTorqueLimited)
 {
     float freeSpeed=0.0f;
@@ -65,6 +69,7 @@ TEST_F(XPBDGripTest, RotationLockIsOptionalAndTorqueLimited)
         else {freeSpeed=a.GetAngularVelocity().y;EXPECT_NEAR(freeSpeed,3,1.0e-3f);}
     }
 }
+/// @brief Push pull remains bounded across mass ratios and substeps.
 TEST_F(XPBDGripTest, PushPullRemainsBoundedAcrossMassRatiosAndSubsteps)
 {
     for (float mass:{0.001f,0.01f,0.1f,1.0f,10.0f,100.0f,1000.0f}) for (int steps:{1,12,24}) {
@@ -88,6 +93,7 @@ TEST_F(XPBDGripTest, PushPullRemainsBoundedAcrossMassRatiosAndSubsteps)
         solver.ClearTransient(); solver.ClearBodies();
     }
 }
+/// @brief Checks world grip settles under gravity across substeps.
 TEST_F(XPBDGripTest, WorldGripSettlesUnderGravityAcrossSubsteps)
 {
     for(int steps:{1,4,12}) {

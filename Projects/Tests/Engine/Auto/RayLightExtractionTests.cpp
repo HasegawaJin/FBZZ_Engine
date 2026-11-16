@@ -16,6 +16,7 @@ namespace fbzz::tests {
 namespace {
 class RayLightExtractionTest : public testkit::EngineFixture {};
 
+/// @brief Disabled experimental session keeps raster lights without ray lists or diagnostics.
 TEST_F(RayLightExtractionTest, DisabledExperimentalSessionKeepsRasterLightsWithoutRayListsOrDiagnostics)
 {
     scene::Scene source;
@@ -48,6 +49,7 @@ TEST_F(RayLightExtractionTest, DisabledExperimentalSessionKeepsRasterLightsWitho
     EXPECT_EQ(settings.modeRequest.mode, renderer::RenderMode::PATH_TRACING);
 }
 
+/// @brief Ray input is scene complete beyond raster limit and retains every directional owner.
 TEST_F(RayLightExtractionTest, RayInputIsSceneCompleteBeyondRasterLimitAndRetainsEveryDirectionalOwner)
 {
     scene::Scene source;
@@ -80,6 +82,7 @@ TEST_F(RayLightExtractionTest, RayInputIsSceneCompleteBeyondRasterLimitAndRetain
     EXPECT_EQ(input.rayLights[pointCount].objectId.generation, owner.generation);
 }
 
+/// @brief Ray input preserves raw area values and declared cookie before GPU readiness.
 TEST_F(RayLightExtractionTest, RayInputPreservesRawAreaValuesAndDeclaredCookieBeforeGpuReadiness)
 {
     scene::Scene source;
@@ -106,6 +109,7 @@ TEST_F(RayLightExtractionTest, RayInputPreservesRawAreaValuesAndDeclaredCookieBe
     EXPECT_EQ(input.lightCookieViewCount, 0);
 }
 
+/// @brief Ray input reports particle source without requiring live CPU particles.
 TEST_F(RayLightExtractionTest, RayInputReportsParticleSourceWithoutRequiringLiveCpuParticles)
 {
     scene::Scene source;
@@ -125,6 +129,7 @@ TEST_F(RayLightExtractionTest, RayInputReportsParticleSourceWithoutRequiringLive
     EXPECT_TRUE(scene::ExtractRenderLights(source, camera, settings, 1024, true).rayLights.empty());
 }
 
+/// @brief Ray input keeps every owner shadow setting independent of selected directional.
 TEST_F(RayLightExtractionTest, RayInputKeepsEveryOwnerShadowSettingIndependentOfSelectedDirectional)
 {
     scene::Scene source;
@@ -155,6 +160,7 @@ TEST_F(RayLightExtractionTest, RayInputKeepsEveryOwnerShadowSettingIndependentOf
     }
 }
 
+/// @brief Black sky day night curve is explicitly unsupported with or without directional owner.
 TEST_F(RayLightExtractionTest, BlackSkyDayNightCurveIsExplicitlyUnsupportedWithOrWithoutDirectionalOwner)
 {
     scene::Scene source;

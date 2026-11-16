@@ -65,6 +65,7 @@ class AnimationSamplingTest : public testkit::EngineFixture {};
 
 /// @name 空・1 本
 
+/// @brief Checks empty keys fall back to the given value.
 TEST_F(AnimationSamplingTest, EmptyKeysFallBackToTheGivenValue)
 {
     /// @note キーが無いチャンネルは «触らない» が正。0 を返すとボーンが原点へ吸われる。
@@ -77,6 +78,7 @@ TEST_F(AnimationSamplingTest, EmptyKeysFallBackToTheGivenValue)
                      math::Quaternion::Identity(), testkit::kTolerance);
 }
 
+/// @brief A single key holds its value forever.
 TEST_F(AnimationSamplingTest, ASingleKeyHoldsItsValueForever)
 {
     const std::vector<asset::VectorKey> single{ { 5.0, { 7.0f, 8.0f, 9.0f } } };
@@ -89,6 +91,7 @@ TEST_F(AnimationSamplingTest, ASingleKeyHoldsItsValueForever)
 
 /// @name 端点と範囲外
 
+/// @brief Returns the endpoints exactly.
 TEST_F(AnimationSamplingTest, ReturnsTheEndpointsExactly)
 {
     const auto keys = VectorRamp();
@@ -99,6 +102,7 @@ TEST_F(AnimationSamplingTest, ReturnsTheEndpointsExactly)
                      math::Vector3(10.0f, 20.0f, -30.0f), testkit::kTolerance);
 }
 
+/// @brief Clamps outside the key range.
 TEST_F(AnimationSamplingTest, ClampsOutsideTheKeyRange)
 {
     /// @note 尺の外を «ループの先頭» や «外挿» にしない。繰り返しは呼び出し側の仕事。
@@ -112,6 +116,7 @@ TEST_F(AnimationSamplingTest, ClampsOutsideTheKeyRange)
 
 /// @name 補間
 
+/// @brief Interpolates linearly between two keys.
 TEST_F(AnimationSamplingTest, InterpolatesLinearlyBetweenTwoKeys)
 {
     const auto keys = VectorRamp();
@@ -122,6 +127,7 @@ TEST_F(AnimationSamplingTest, InterpolatesLinearlyBetweenTwoKeys)
                      math::Vector3(2.5f, 5.0f, -7.5f), testkit::kTolerance);
 }
 
+/// @brief Step interpolation holds the previous key.
 TEST_F(AnimationSamplingTest, StepInterpolationHoldsThePreviousKey)
 {
     /// @note 表情の切り替えやフラグは «途中の値» を作ってはいけない。
@@ -132,6 +138,7 @@ TEST_F(AnimationSamplingTest, StepInterpolationHoldsThePreviousKey)
         math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Picks the right segment among many keys.
 TEST_F(AnimationSamplingTest, PicksTheRightSegmentAmongManyKeys)
 {
     /// @note upper_bound の境界。1 つずれると «常に前のキーの値» になる。
@@ -150,6 +157,7 @@ TEST_F(AnimationSamplingTest, PicksTheRightSegmentAmongManyKeys)
                 testkit::kTolerance);
 }
 
+/// @brief Survives two keys at the same time.
 TEST_F(AnimationSamplingTest, SurvivesTwoKeysAtTheSameTime)
 {
     /// @note 書き出し側が同じ時刻へ 2 本置くことがある。0 除算で NaN を返さないこと。
@@ -167,6 +175,7 @@ TEST_F(AnimationSamplingTest, SurvivesTwoKeysAtTheSameTime)
 
 /// @name クォータニオン
 
+/// @brief Slerps rotations and keeps them normalised.
 TEST_F(AnimationSamplingTest, SlerpsRotationsAndKeepsThemNormalised)
 {
     const std::vector<asset::QuaternionKey> keys{
@@ -183,6 +192,7 @@ TEST_F(AnimationSamplingTest, SlerpsRotationsAndKeepsThemNormalised)
     EXPECT_NEAR(mid.Length(), 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Rotation step holds the previous key.
 TEST_F(AnimationSamplingTest, RotationStepHoldsThePreviousKey)
 {
     const std::vector<asset::QuaternionKey> keys{
@@ -197,6 +207,7 @@ TEST_F(AnimationSamplingTest, RotationStepHoldsThePreviousKey)
 
 /// @name スカラー
 
+/// @brief Samples floats linearly.
 TEST_F(AnimationSamplingTest, SamplesFloatsLinearly)
 {
     const auto keys = FloatRamp();
@@ -205,12 +216,14 @@ TEST_F(AnimationSamplingTest, SamplesFloatsLinearly)
                 testkit::kTolerance);
 }
 
+/// @brief Empty float keys give zero.
 TEST_F(AnimationSamplingTest, EmptyFloatKeysGiveZero)
 {
     EXPECT_NEAR(asset::SampleFloatKeys({}, 5.0, asset::AnimInterp::Linear), 0.0f,
                 testkit::kTolerance);
 }
 
+/// @brief Cubic matches linear at the keys themselves.
 TEST_F(AnimationSamplingTest, CubicMatchesLinearAtTheKeysThemselves)
 {
     /// @note 接線が何であれ、キー上の値はキーの値。ここがずれると «キーを打った瞬間だけ飛ぶ»。
@@ -222,6 +235,7 @@ TEST_F(AnimationSamplingTest, CubicMatchesLinearAtTheKeysThemselves)
                 testkit::kLooseTolerance);
 }
 
+/// @brief Cubic with flat tangents stays inside the range.
 TEST_F(AnimationSamplingTest, CubicWithFlatTangentsStaysInsideTheRange)
 {
     /// @note 接線 0 の Hermite は行き過ぎない。オーバーシュートすると
@@ -238,6 +252,7 @@ TEST_F(AnimationSamplingTest, CubicWithFlatTangentsStaysInsideTheRange)
 }
 
 
+/// @brief Observation requires finalized matching source identity.
 /// @note Observation metadata must never attach raw counts to an unfinalized or discontinuous source frame.
 TEST_F(AnimationSamplingTest, ObservationRequiresFinalizedMatchingSourceIdentity)
 {
@@ -254,6 +269,7 @@ TEST_F(AnimationSamplingTest, ObservationRequiresFinalizedMatchingSourceIdentity
         EXPECT_EQ(changed.poseRefreshEntered, 7u);
     }
 }
+/// @brief Observation mismatch cannot be hidden by repeated finalization or legacy column mutation.
 TEST_F(AnimationSamplingTest, ObservationMismatchCannotBeHiddenByRepeatedFinalizationOrLegacyColumnMutation)
 {
     scene::AnimationWorkRow row; row.BeginSource(10, 20, 30); row.FinalizeSource(11, 20, 30);
@@ -261,6 +277,7 @@ TEST_F(AnimationSamplingTest, ObservationMismatchCannotBeHiddenByRepeatedFinaliz
     scene::AnimationWorkRow coherent; coherent.BeginSource(10, 20, 30); coherent.FinalizeSource(10, 20, 30);
     coherent.resourceFrame = 11; EXPECT_FALSE(coherent.HasCompleteSourceIdentity()); EXPECT_FALSE(coherent.MatchesCompleteSource(11, 20, 30));
 }
+/// @brief Observation refresh entry does not claim clip evaluation or bone work.
 TEST_F(AnimationSamplingTest, ObservationRefreshEntryDoesNotClaimClipEvaluationOrBoneWork)
 {
     scene::AnimationWorkRow row;
@@ -272,6 +289,7 @@ TEST_F(AnimationSamplingTest, ObservationRefreshEntryDoesNotClaimClipEvaluationO
     row.bindPaletteUpdateCalls = 1; row.bindPaletteApiBytes = 8192; row.poseBindFallbackActors = 1;
     EXPECT_EQ(row.poseLegacyFkCalls, 0u); EXPECT_EQ(row.poseBakedSuccesses, 0u); EXPECT_EQ(row.legacyEvaluatedBoneWrites, 0u);
 }
+/// @brief Observation defaults are unavailable and observed zero is representable.
 TEST_F(AnimationSamplingTest, ObservationDefaultsAreUnavailableAndObservedZeroIsRepresentable)
 {
     scene::AnimationWorkRow row;
@@ -346,6 +364,7 @@ std::vector<std::string> ActorTraceTestColumns(const std::string& line)
     return columns;
 }
 }
+/// @brief Actor collector integration preserves first and second held snapshot updates.
 /// @note OFF validates real snapshot/update behavior; ON CSV assertions require a fresh process with warmup=0 and samples=3.
 TEST_F(AnimationSamplingTest, ActorCollectorIntegrationPreservesFirstAndSecondHeldSnapshotUpdates)
 {
@@ -413,6 +432,7 @@ TEST_F(AnimationSamplingTest, ActorCollectorIntegrationPreservesFirstAndSecondHe
         EXPECT_FALSE(static_cast<bool>(std::getline(input,line)));
     }
 }
+/// @brief Actor collector integration rejects nested frame and removed component.
 /// @note ON exercises the real collector overlap/finalization boundary in a fresh process with warmup=0 and samples=1.
 TEST_F(AnimationSamplingTest, ActorCollectorIntegrationRejectsNestedFrameAndRemovedComponent)
 {
@@ -440,6 +460,7 @@ TEST_F(AnimationSamplingTest, ActorCollectorIntegrationRejectsNestedFrameAndRemo
     } else worldScene.RemoveComponent<scene::AnimatorComponent>(entity);
     EXPECT_EQ(worldScene.GetComponentLifetime<scene::AnimatorComponent>(entity),0u);
 }
+/// @brief Actor palette equality distinguishes first and second held after refresh.
 TEST_F(AnimationSamplingTest, ActorPaletteEqualityDistinguishesFirstAndSecondHeldAfterRefresh)
 {
     const auto a=math::Matrix4::Identity(), b=math::Matrix4::Translate({1.0f,0.0f,0.0f});
@@ -450,6 +471,7 @@ TEST_F(AnimationSamplingTest, ActorPaletteEqualityDistinguishesFirstAndSecondHel
     previous=current;
     EXPECT_TRUE(scene::animation_actor_detail::CompareEffectivePalettes(current,previous).equal);
 }
+/// @brief Actor palette equality compares identity tails and clamps at 128.
 TEST_F(AnimationSamplingTest, ActorPaletteEqualityComparesIdentityTailsAndClampsAt128)
 {
     std::vector<math::Matrix4> small{math::Matrix4::Identity()}, padded(128,math::Matrix4::Identity());
@@ -461,6 +483,7 @@ TEST_F(AnimationSamplingTest, ActorPaletteEqualityComparesIdentityTailsAndClamps
     EXPECT_TRUE(result.equal); EXPECT_EQ(result.currentClampedCount,1u); EXPECT_EQ(result.previousClampedCount,128u);
     EXPECT_EQ(result.compareArgumentBytes,128u*sizeof(math::Matrix4));
 }
+/// @brief Actor palette equality preserves signed zero and nan payload bits.
 TEST_F(AnimationSamplingTest, ActorPaletteEqualityPreservesSignedZeroAndNanPayloadBits)
 {
     std::vector<math::Matrix4> a{math::Matrix4::Identity()}, b=a;
@@ -472,6 +495,7 @@ TEST_F(AnimationSamplingTest, ActorPaletteEqualityPreservesSignedZeroAndNanPaylo
     std::memcpy(&b[0].m[0][1],&nanB,sizeof(nanB));
     EXPECT_FALSE(scene::animation_actor_detail::CompareEffectivePalettes(a,b).equal);
 }
+/// @brief Checks actor held history needs observed fresh for exact streak.
 TEST_F(AnimationSamplingTest, ActorHeldHistoryNeedsObservedFreshForExactStreak)
 {
     using namespace scene::animation_actor_detail;
@@ -497,6 +521,7 @@ TEST_F(AnimationSamplingTest, ActorHeldHistoryNeedsObservedFreshForExactStreak)
     EXPECT_FALSE(invalid.consecutiveHeldAtLeast2Available); EXPECT_FALSE(invalid.cpuSameDesiredPotentialAvailable);
     auto recovery=make(9,false); history.Observe(recovery); EXPECT_FALSE(recovery.previousHeldAvailable); EXPECT_FALSE(recovery.heldStreakExactAvailable);
 }
+/// @brief Checks actor invalid duplicate and unknown decision cut history.
 TEST_F(AnimationSamplingTest, ActorInvalidDuplicateAndUnknownDecisionCutHistory)
 {
     using namespace scene::animation_actor_detail;
@@ -513,6 +538,7 @@ TEST_F(AnimationSamplingTest, ActorInvalidDuplicateAndUnknownDecisionCutHistory)
     newKey=oldKey; newKey.resourceEpoch=1; EXPECT_FALSE(oldKey==newKey);
     newKey=oldKey; newKey.previousHandleGeneration=1; EXPECT_FALSE(oldKey==newKey);
 }
+/// @brief Actor capacity refuses overflow without replacing accepted rows.
 TEST_F(AnimationSamplingTest, ActorCapacityRefusesOverflowWithoutReplacingAcceptedRows)
 {
     using namespace scene::animation_actor_detail;
@@ -523,6 +549,7 @@ TEST_F(AnimationSamplingTest, ActorCapacityRefusesOverflowWithoutReplacingAccept
     EXPECT_GT(uint64_t{1217}*FRAME_CAPACITY,ACTOR_CAPACITY);
     EXPECT_LT(uint64_t{1217}*120,ACTOR_CAPACITY);
 }
+/// @brief Actor identity replacement reset and frame gaps do not extend held streak.
 TEST_F(AnimationSamplingTest, ActorIdentityReplacementResetAndFrameGapsDoNotExtendHeldStreak)
 {
     using namespace scene::animation_actor_detail;
@@ -556,6 +583,7 @@ TEST_F(AnimationSamplingTest, ActorIdentityReplacementResetAndFrameGapsDoNotExte
         EXPECT_EQ(held.heldSuffixLowerBound,1u) << dimension;
     }
 }
+/// @brief Checks actor null scope shadows active TLS and restores.
 TEST_F(AnimationSamplingTest, ActorNullScopeShadowsActiveTlsAndRestores)
 {
     scene::animation_actor_detail::ActorRow row;
@@ -568,6 +596,7 @@ TEST_F(AnimationSamplingTest, ActorNullScopeShadowsActiveTlsAndRestores)
     }
     EXPECT_EQ(scene::CurrentAnimationActorRow(),nullptr);
 }
+/// @brief Actor capture ownership rejects reentry and releases only owned lease.
 TEST_F(AnimationSamplingTest, ActorCaptureOwnershipRejectsReentryAndReleasesOnlyOwnedLease)
 {
     using namespace scene::animation_actor_detail;
@@ -601,6 +630,7 @@ PhaseKeyType PhaseTestKey()
     return {};
 }
 }
+/// @brief Phase credit is deterministic bounded and lifetime specific.
 TEST_F(AnimationSamplingTest, PhaseCreditIsDeterministicBoundedAndLifetimeSpecific)
 {
     using namespace scene::animation_phase_detail;
@@ -613,6 +643,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditIsDeterministicBoundedAndLifetimeSpecif
     EXPECT_FALSE(CreditDue(true,0.20f,0.25f,credit));EXPECT_FALSE(CreditDue(false,0,0.25f,0));
     EXPECT_FALSE(CreditDue(false,0.1f,0.25f,0.25f));EXPECT_FALSE(CreditDue(false,-1,0.25f,credit));
 }
+/// @brief Phase credit requires successful legacy and consumes any refresh once.
 TEST_F(AnimationSamplingTest, PhaseCreditRequiresSuccessfulLegacyAndConsumesAnyRefreshOnce)
 {
     using namespace scene::animation_phase_detail;Ledger ledger(2);const auto key=PhaseTestKey();float credit=-1;
@@ -623,11 +654,12 @@ TEST_F(AnimationSamplingTest, PhaseCreditRequiresSuccessfulLegacyAndConsumesAnyR
     EXPECT_TRUE(ledger.Complete(ticket,{true,true},true,credit));EXPECT_EQ(credit,InitialCredit(key,0.25f));
     ticket=ledger.Prepare(key,PhaseTestSource(3),0.25f,true);EXPECT_FALSE(ticket.canSeed);EXPECT_EQ(ticket.credit,credit);
     EXPECT_TRUE(CreditDue(false,0.10f,0.25f,ticket.credit));
-    // A forced fallback refresh also consumes pending credit; it cannot re-seed the issued lifetime.
+    /// @note A forced fallback refresh also consumes pending credit; it cannot re-seed the issued lifetime.
     EXPECT_FALSE(ledger.Complete(ticket,{true,false},true,credit));
     ticket=ledger.Prepare(key,PhaseTestSource(4),0.25f,true);EXPECT_EQ(ticket.credit,0);EXPECT_FALSE(ticket.canSeed);
     EXPECT_FALSE(ledger.Complete(ticket,{true,true},true,credit));
 }
+/// @brief Phase credit invalidation keeps issued lifetime marker.
 TEST_F(AnimationSamplingTest, PhaseCreditInvalidationKeepsIssuedLifetimeMarker)
 {
     using namespace scene::animation_phase_detail;const auto key=PhaseTestKey();
@@ -642,6 +674,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditInvalidationKeepsIssuedLifetimeMarker)
         ticket=ledger.Prepare(key,PhaseTestSource(4),0.25f,true);EXPECT_EQ(ticket.credit,0);EXPECT_FALSE(ticket.canSeed);
     }
 }
+/// @brief Phase credit cancel duplicate and stale ticket cannot reseed.
 TEST_F(AnimationSamplingTest, PhaseCreditCancelDuplicateAndStaleTicketCannotReseed)
 {
     using namespace scene::animation_phase_detail;Ledger ledger(1);const auto key=PhaseTestKey();float credit=0;
@@ -651,6 +684,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditCancelDuplicateAndStaleTicketCannotRese
     auto next=ledger.Prepare(key,PhaseTestSource(2),0.25f,true);EXPECT_EQ(next.credit,0);EXPECT_FALSE(next.canSeed);
     EXPECT_FALSE(ledger.Complete(next,{true,true},false,credit));
 }
+/// @brief Phase credit source config and renderer replacement invalidate without reseed.
 TEST_F(AnimationSamplingTest, PhaseCreditSourceConfigAndRendererReplacementInvalidateWithoutReseed)
 {
     using namespace scene::animation_phase_detail;const auto key=PhaseTestKey();
@@ -665,7 +699,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditSourceConfigAndRendererReplacementInval
         ticket=ledger.Prepare(key,source,.25f,true);EXPECT_EQ(ticket.credit,0);EXPECT_FALSE(ticket.canSeed);
         EXPECT_FALSE(ledger.Complete(ticket,{true,true},true,credit));
     }
-    // Real component replacement gets a fresh global lifetime even when the Entity key stays the same.
+    /// @note Real component replacement gets a fresh global lifetime even when the Entity key stays the same.
     scene::Scene worldScene;auto& object=worldScene.CreateGameObject("Actor");object.AddComponent<scene::AnimatorComponent>();
     object.AddComponent<scene::SkinnedMeshRenderer>();const auto id=object.GetID();
     const auto animatorLife=worldScene.GetComponentLifetime<scene::AnimatorComponent>(id);
@@ -676,6 +710,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditSourceConfigAndRendererReplacementInval
     object.RemoveComponent<scene::AnimatorComponent>();EXPECT_EQ(worldScene.GetComponentLifetime<scene::AnimatorComponent>(id),0u);
     object.AddComponent<scene::AnimatorComponent>();EXPECT_NE(worldScene.GetComponentLifetime<scene::AnimatorComponent>(id),animatorLife);
 }
+/// @brief Phase credit replacement clone and capacity fallback do not evict.
 TEST_F(AnimationSamplingTest, PhaseCreditReplacementCloneAndCapacityFallbackDoNotEvict)
 {
     using namespace scene::animation_phase_detail;Ledger ledger(2);const auto key=PhaseTestKey();float credit=0;
@@ -688,10 +723,11 @@ TEST_F(AnimationSamplingTest, PhaseCreditReplacementCloneAndCapacityFallbackDoNo
     EXPECT_TRUE(retained.tracked);EXPECT_FALSE(retained.canSeed);EXPECT_EQ(retained.credit,0);
     Ledger invalid(0);EXPECT_TRUE(invalid.Prepare(key,PhaseTestSource(1),0.25f,true).capacityRejected);
 }
+/// @brief Phase credit cadence has one early cycle then original reset zero.
 TEST_F(AnimationSamplingTest, PhaseCreditCadenceHasOneEarlyCycleThenOriginalResetZero)
 {
     using namespace scene::animation_phase_detail;const auto key=PhaseTestKey();
-    // The variable dt case models the measured .25s cohort; these are source arithmetic, not performance measurements.
+    /// @note The variable dt case models the measured .25s cohort; these are source arithmetic, not performance measurements.
     const std::vector<float> varied={.041f,.046f,.039f,.050f,.044f,.043f,.038f,.047f,.049f,.040f,.045f,.042f};
     for(bool variable:{false,true}) {
         Ledger ledger(1);float legacyElapsed=0,phaseElapsed=0,credit=0;uint32_t legacyCount=1,phaseCount=1;
@@ -716,10 +752,11 @@ TEST_F(AnimationSamplingTest, PhaseCreditCadenceHasOneEarlyCycleThenOriginalRese
         EXPECT_GT(firstEarly,0u);EXPECT_LT(firstEarly,5u);
         EXPECT_GE(phaseCount,legacyCount);EXPECT_LE(phaseCount,legacyCount+1u);
         if(!variable){EXPECT_EQ(phaseCount,25u);EXPECT_EQ(legacyCount,25u);}
-        // No residual credit or overshoot is carried after the one early refresh.
+        /// @note No residual credit or overshoot is carried after the one early refresh.
         auto end=ledger.Prepare(key,PhaseTestSource(122),.25f,true);EXPECT_EQ(end.credit,0);EXPECT_FALSE(end.canSeed);
     }
 }
+/// @brief Phase credit integration preserves initial pose and full previous palette.
 /// @note Real AnimatorSystem, live valid hierarchy, and full native buffer writes. Run fresh with mode=0 and mode=1 separately; trace collectors stay OFF.
 TEST_F(AnimationSamplingTest, PhaseCreditIntegrationPreservesInitialPoseAndFullPreviousPalette)
 {
@@ -768,6 +805,7 @@ TEST_F(AnimationSamplingTest, PhaseCreditIntegrationPreservesInitialPoseAndFullP
     EXPECT_EQ(previous,24u);EXPECT_EQ(current,expectedCount);
 }
 
+/// @brief Checks phase credit integration rig renderer and same value LOD invalidations.
 /// @note Real pending-credit invalidations: same-value LOD setter stays immediate, child rig and renderer replacement cancel credit permanently for this lifetime.
 TEST_F(AnimationSamplingTest, PhaseCreditIntegrationRigRendererAndSameValueLodInvalidations)
 {

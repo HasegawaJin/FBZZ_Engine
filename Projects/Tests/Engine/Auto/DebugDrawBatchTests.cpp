@@ -22,6 +22,7 @@ constexpr int kLine[2] = { 1, 2 };
 
 } // namespace
 
+/// @brief Appends without flush while capacity remains.
 TEST_F(DebugDrawBatchTest, AppendsWithoutFlushWhileCapacityRemains)
 {
     std::vector<int> batch;
@@ -34,6 +35,7 @@ TEST_F(DebugDrawBatchTest, AppendsWithoutFlushWhileCapacityRemains)
     EXPECT_EQ(batch.size(), 2u);
 }
 
+/// @brief Flushes before appending when full.
 TEST_F(DebugDrawBatchTest, FlushesBeforeAppendingWhenFull)
 {
     std::vector<int> batch = { 9, 9, 9, 9 };
@@ -50,6 +52,7 @@ TEST_F(DebugDrawBatchTest, FlushesBeforeAppendingWhenFull)
     EXPECT_EQ(batch[1], 2);
 }
 
+/// @brief Keeps primitive whole across flush.
 TEST_F(DebugDrawBatchTest, KeepsPrimitiveWholeAcrossFlush)
 {
     /// @note 3 頂点残っている上限 4 のバッチへ線 (2 頂点) を積むと、1 頂点だけ前の Flush へ入ってはいけない。
@@ -65,6 +68,7 @@ TEST_F(DebugDrawBatchTest, KeepsPrimitiveWholeAcrossFlush)
     EXPECT_EQ(batch.size(), 2u);
 }
 
+/// @brief Every primitive survives many flushes.
 TEST_F(DebugDrawBatchTest, EveryPrimitiveSurvivesManyFlushes)
 {
     std::vector<int> batch;
@@ -77,6 +81,7 @@ TEST_F(DebugDrawBatchTest, EveryPrimitiveSurvivesManyFlushes)
     EXPECT_EQ(submittedVertices, 2000u);
 }
 
+/// @brief Refuses when flush cannot make room.
 TEST_F(DebugDrawBatchTest, RefusesWhenFlushCannotMakeRoom)
 {
     std::vector<int> batch = { 9, 9, 9, 9 };
@@ -86,6 +91,7 @@ TEST_F(DebugDrawBatchTest, RefusesWhenFlushCannotMakeRoom)
     EXPECT_EQ(batch.size(), 4u);
 }
 
+/// @brief Unbounded append ignores capacity and never flushes.
 TEST_F(DebugDrawBatchTest, UnboundedAppendIgnoresCapacityAndNeverFlushes)
 {
     std::vector<int> batch = { 9, 9, 9, 9 };

@@ -45,6 +45,7 @@ public:
 };
 }
 class ReflectionStandaloneTest : public testkit::EngineFixture {};
+/// @brief Reflects declared fields in order without a script runtime.
 TEST_F(ReflectionStandaloneTest, ReflectsDeclaredFieldsInOrderWithoutAScriptRuntime)
 {
     ReflectedValue value;

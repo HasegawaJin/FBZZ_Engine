@@ -99,6 +99,7 @@ float MeanX(const fluid::FluidLiquidSolver& solver)
 
 /// @name 倍率の式
 
+/// @brief Empty keys are always one.
 TEST(FluidAmountEnvelopeTest, EmptyKeysAreAlwaysOne)
 {
     const fluid::FluidAmount empty;
@@ -110,6 +111,7 @@ TEST(FluidAmountEnvelopeTest, EmptyKeysAreAlwaysOne)
     EXPECT_EQ(fluid::FluidForceAmount(FluidForce{}, 0.7f), 1.0f);
 }
 
+/// @brief Holds its end keys outside the range.
 TEST(FluidAmountEnvelopeTest, HoldsItsEndKeysOutsideTheRange)
 {
     const fluid::FluidAmount amount = Envelope({ { 0.5f, 2.0f }, { 1.5f, 0.25f } });
@@ -124,6 +126,7 @@ TEST(FluidAmountEnvelopeTest, HoldsItsEndKeysOutsideTheRange)
     EXPECT_FLOAT_EQ(fluid::SampleFluidAmount(single, 5.0f), 0.5f);
 }
 
+/// @brief Interpolates linearly between keys.
 TEST(FluidAmountEnvelopeTest, InterpolatesLinearlyBetweenKeys)
 {
     const fluid::FluidAmount amount = Envelope({ { 0.0f, 1.0f }, { 2.0f, 0.0f } });
@@ -145,6 +148,7 @@ TEST(FluidAmountEnvelopeTest, InterpolatesLinearlyBetweenKeys)
 
 /// @name 掛ける先
 
+/// @brief Scales the injected amount but not the flow velocity.
 TEST(FluidAmountEnvelopeTest, ScalesTheInjectedAmountButNotTheFlowVelocity)
 {
     /// @note 倍率 0.5 の発生源 = 基準の量を半分にした発生源。掛ける順まで同じなら 1 ビットも違わない。
@@ -170,6 +174,7 @@ TEST(FluidAmountEnvelopeTest, ScalesTheInjectedAmountButNotTheFlowVelocity)
     EXPECT_EQ(packed.velocity[3], 1.0f);
 }
 
+/// @brief Force delta scales the strength before the falloff.
 TEST(FluidAmountEnvelopeTest, ForceDeltaScalesTheStrengthBeforeTheFalloff)
 {
     const math::Vector3 noOffset = { 0.0f, 0.0f, 0.0f };
@@ -210,6 +215,7 @@ TEST(FluidAmountEnvelopeTest, ForceDeltaScalesTheStrengthBeforeTheFalloff)
     EXPECT_EQ(Length(fluid::FluidForceDelta(wind, wind.center, p, v, 0.0f, 0.1f, noOffset, 0, true, 0.0f)), 0.0f);
 }
 
+/// @brief Gas solver silences a force with a zero envelope.
 TEST(FluidAmountEnvelopeTest, GasSolverSilencesAForceWithAZeroEnvelope)
 {
     fluid::FluidRecipe recipe = LinearGasRecipe(2.0f);
@@ -237,6 +243,7 @@ TEST(FluidAmountEnvelopeTest, GasSolverSilencesAForceWithAZeroEnvelope)
     EXPECT_FLOAT_EQ(solve(recipe), blowing);
 }
 
+/// @brief Liquid force follows the envelope but emission does not.
 TEST(FluidAmountEnvelopeTest, LiquidForceFollowsTheEnvelopeButEmissionDoesNot)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -270,6 +277,7 @@ TEST(FluidAmountEnvelopeTest, LiquidForceFollowsTheEnvelopeButEmissionDoesNot)
 
 /// @name CPU と GPU
 
+/// @brief CPU and GPU fold the same amounts.
 TEST(FluidAmountEnvelopeTest, CpuAndGpuFoldTheSameAmounts)
 {
     fluid::FluidRecipe recipe;
@@ -307,6 +315,7 @@ TEST(FluidAmountEnvelopeTest, CpuAndGpuFoldTheSameAmounts)
     EXPECT_EQ(outside.forceCount, 1u);
 }
 
+/// @brief Packing without keys is bit identical to the raw values.
 TEST(FluidAmountEnvelopeTest, PackingWithoutKeysIsBitIdenticalToTheRawValues)
 {
     fluid::FluidRecipe recipe;
@@ -328,6 +337,7 @@ TEST(FluidAmountEnvelopeTest, PackingWithoutKeysIsBitIdenticalToTheRawValues)
 
 /// @name ファイル
 
+/// @brief Amount keys round trip through TOML.
 TEST(FluidAmountEnvelopeTest, AmountKeysRoundTripThroughToml)
 {
     testkit::TempDir temp{ "fluidamount" };
@@ -359,6 +369,7 @@ TEST(FluidAmountEnvelopeTest, AmountKeysRoundTripThroughToml)
     EXPECT_FLOAT_EQ(loaded.forces[0].amount.keys[1].scale, 2.5f);
 }
 
+/// @brief Amountless parts write no amount section.
 TEST(FluidAmountEnvelopeTest, AmountlessPartsWriteNoAmountSection)
 {
     testkit::TempDir temp{ "fluidamount" };
@@ -381,6 +392,7 @@ TEST(FluidAmountEnvelopeTest, AmountlessPartsWriteNoAmountSection)
     EXPECT_TRUE(loaded.forces[0].amount.keys.empty());
 }
 
+/// @brief Hand written keys are sorted and capped.
 TEST(FluidAmountEnvelopeTest, HandWrittenKeysAreSortedAndCapped)
 {
     testkit::TempDir temp{ "fluidamount" };

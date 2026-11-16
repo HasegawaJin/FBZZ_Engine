@@ -64,6 +64,7 @@ protected:
     }
 };
 
+/// @brief Starts unavailable and does not invent whole frame or preparation timings.
 TEST_F(GpuProfilerTest, StartsUnavailableAndDoesNotInventWholeFrameOrPreparationTimings)
 {
     const auto& empty = m_ledger.GetSnapshot();
@@ -85,6 +86,7 @@ TEST_F(GpuProfilerTest, StartsUnavailableAndDoesNotInventWholeFrameOrPreparation
     EXPECT_FALSE(result.perQueueGpuTimeAvailable);
 }
 
+/// @brief Keeps both view scopes and captured metadata in one physical frame.
 TEST_F(GpuProfilerTest, KeepsBothViewScopesAndCapturedMetadataInOnePhysicalFrame)
 {
     auto firstView = View(0);
@@ -135,6 +137,7 @@ TEST_F(GpuProfilerTest, KeepsBothViewScopesAndCapturedMetadataInOnePhysicalFrame
     }
 }
 
+/// @brief Never publishes recording or finished queries before actual submission.
 TEST_F(GpuProfilerTest, NeverPublishesRecordingOrFinishedQueriesBeforeActualSubmission)
 {
     ASSERT_TRUE(m_ledger.BeginFrame(0, 1, DEVICE_EPOCH));
@@ -157,6 +160,7 @@ TEST_F(GpuProfilerTest, NeverPublishesRecordingOrFinishedQueriesBeforeActualSubm
     EXPECT_EQ(m_ledger.GetSnapshot().physicalFrameSerial, 1u);
 }
 
+/// @brief Waits for each captured fence and does not reuse an unconsumed slot.
 TEST_F(GpuProfilerTest, WaitsForEachCapturedFenceAndDoesNotReuseAnUnconsumedSlot)
 {
     RecordFrame(0, 1, View(11), "First", 10, 110, 100);
@@ -179,6 +183,7 @@ TEST_F(GpuProfilerTest, WaitsForEachCapturedFenceAndDoesNotReuseAnUnconsumedSlot
     EXPECT_TRUE(m_ledger.BeginFrame(0, 3, DEVICE_EPOCH));
 }
 
+/// @brief Selects only latest completed serial regardless of ring slot order.
 TEST_F(GpuProfilerTest, SelectsOnlyLatestCompletedSerialRegardlessOfRingSlotOrder)
 {
     RecordFrame(1, 40, View(11), "Older", 100, 200, 100);
@@ -194,6 +199,7 @@ TEST_F(GpuProfilerTest, SelectsOnlyLatestCompletedSerialRegardlessOfRingSlotOrde
     EXPECT_TRUE(m_ledger.BeginFrame(1, 42, DEVICE_EPOCH));
 }
 
+/// @brief Consumes each submitted range once without rereading changed mapped bytes.
 TEST_F(GpuProfilerTest, ConsumesEachSubmittedRangeOnceWithoutRereadingChangedMappedBytes)
 {
     RecordFrame(0, 1, View(), "Stable", 100, 350, 100);
@@ -211,6 +217,7 @@ TEST_F(GpuProfilerTest, ConsumesEachSubmittedRangeOnceWithoutRereadingChangedMap
     EXPECT_TRUE(m_ledger.BeginFrame(0, 2, DEVICE_EPOCH));
 }
 
+/// @brief Marks capacity overflow incomplete without overwriting recorded queries.
 TEST_F(GpuProfilerTest, MarksCapacityOverflowIncompleteWithoutOverwritingRecordedQueries)
 {
     ASSERT_TRUE(m_ledger.BeginFrame(0, 1, DEVICE_EPOCH));
@@ -239,6 +246,7 @@ TEST_F(GpuProfilerTest, MarksCapacityOverflowIncompleteWithoutOverwritingRecorde
     }
 }
 
+/// @brief Unmatched end at exact capacity marks otherwise complete recorded pairs partial.
 TEST_F(GpuProfilerTest, UnmatchedEndAtExactCapacityMarksOtherwiseCompleteRecordedPairsPartial)
 {
     ASSERT_TRUE(m_ledger.BeginFrame(0, 1, DEVICE_EPOCH));
@@ -265,6 +273,7 @@ TEST_F(GpuProfilerTest, UnmatchedEndAtExactCapacityMarksOtherwiseCompleteRecorde
     }
 }
 
+/// @brief Keeps valid passes but marks reversed timestamps unavailable and partial.
 TEST_F(GpuProfilerTest, KeepsValidPassesButMarksReversedTimestampsUnavailableAndPartial)
 {
     ASSERT_TRUE(m_ledger.BeginFrame(0, 1, DEVICE_EPOCH));
@@ -286,6 +295,7 @@ TEST_F(GpuProfilerTest, KeepsValidPassesButMarksReversedTimestampsUnavailableAnd
     EXPECT_DOUBLE_EQ(result.passes[1].gpuMs, 0.3);
 }
 
+/// @brief Treats zero timestamp and zero duration as valid submitted measurements.
 TEST_F(GpuProfilerTest, TreatsZeroTimestampAndZeroDurationAsValidSubmittedMeasurements)
 {
     RecordFrame(0, 1, View(), "Zero", 0, 0, 100);
@@ -297,6 +307,7 @@ TEST_F(GpuProfilerTest, TreatsZeroTimestampAndZeroDurationAsValidSubmittedMeasur
     EXPECT_DOUBLE_EQ(result.passes[0].gpuMs, 0.0);
 }
 
+/// @brief Reports GPU timing as unavailable when a timestamp is missing or the frequency is zero.
 TEST_F(GpuProfilerTest, MarksMissingTimestampOrZeroFrequencyUnavailableRatherThanAZeroMeasurement)
 {
     RecordFrame(1, 1, View(), "Missing", 100, 200, 100);
@@ -319,6 +330,7 @@ TEST_F(GpuProfilerTest, MarksMissingTimestampOrZeroFrequencyUnavailableRatherTha
     EXPECT_FALSE(result.passes[0].available);
 }
 
+/// @brief Failed submission discards only its range and keeps published snapshot.
 TEST_F(GpuProfilerTest, FailedSubmissionDiscardsOnlyItsRangeAndKeepsPublishedSnapshot)
 {
     RecordFrame(0, 1, View(), "Published", 100, 200, 100);
@@ -339,6 +351,7 @@ TEST_F(GpuProfilerTest, FailedSubmissionDiscardsOnlyItsRangeAndKeepsPublishedSna
     EXPECT_TRUE(m_ledger.BeginFrame(1, 3, DEVICE_EPOCH));
 }
 
+/// @brief Rejects invalid frame identity without replacing recorded or submitted state.
 TEST_F(GpuProfilerTest, RejectsInvalidFrameIdentityWithoutReplacingRecordedOrSubmittedState)
 {
     EXPECT_FALSE(m_ledger.BeginFrame(2, 1, DEVICE_EPOCH));
@@ -358,6 +371,7 @@ TEST_F(GpuProfilerTest, RejectsInvalidFrameIdentityWithoutReplacingRecordedOrSub
     EXPECT_TRUE(m_ledger.GetSnapshot().available);
 }
 
+/// @brief Unclosed or mismatched scopes do not expose unpaired queries.
 TEST_F(GpuProfilerTest, UnclosedOrMismatchedScopesDoNotExposeUnpairedQueries)
 {
     ASSERT_TRUE(m_ledger.BeginFrame(0, 1, DEVICE_EPOCH));
@@ -382,6 +396,7 @@ TEST_F(GpuProfilerTest, UnclosedOrMismatchedScopesDoNotExposeUnpairedQueries)
     EXPECT_TRUE(result.passes.empty());
 }
 
+/// @brief Device reset discards pending and published results and requires current epoch.
 TEST_F(GpuProfilerTest, DeviceResetDiscardsPendingAndPublishedResultsAndRequiresCurrentEpoch)
 {
     RecordFrame(0, 1, View(), "Published", 100, 200, 100);
@@ -411,6 +426,7 @@ TEST_F(GpuProfilerTest, DeviceResetDiscardsPendingAndPublishedResultsAndRequires
     EXPECT_EQ(result.passes[0].name, "Recovered");
 }
 
+/// @brief Device removal fence sentinel invalidates pending and published measurements.
 TEST_F(GpuProfilerTest, DeviceRemovalFenceSentinelInvalidatesPendingAndPublishedMeasurements)
 {
     RecordFrame(0, 1, View(), "Published", 100, 200, 100);
@@ -428,6 +444,7 @@ TEST_F(GpuProfilerTest, DeviceRemovalFenceSentinelInvalidatesPendingAndPublished
     EXPECT_FALSE(m_ledger.GetSnapshot().available);
 }
 
+/// @brief Cancels only an open pair and keeps completed passes before and after it.
 TEST_F(GpuProfilerTest, CancelsOnlyAnOpenPairAndKeepsCompletedPassesBeforeAndAfterIt)
 {
     EXPECT_FALSE(m_ledger.CancelOpenPass());
@@ -461,6 +478,7 @@ TEST_F(GpuProfilerTest, CancelsOnlyAnOpenPairAndKeepsCompletedPassesBeforeAndAft
     EXPECT_DOUBLE_EQ(result.passes[1].gpuMs, 0.2);
 }
 
+/// @brief View compatibility distinguishes exact capture delayed display and future samples.
 TEST_F(GpuProfilerTest, ViewCompatibilityDistinguishesExactCaptureDelayedDisplayAndFutureSamples)
 {
     auto current = View();
@@ -485,6 +503,7 @@ TEST_F(GpuProfilerTest, ViewCompatibilityDistinguishesExactCaptureDelayedDisplay
     EXPECT_FALSE(renderer::IsGpuProfilerViewCompatible(sample, current, std::numeric_limits<uint64_t>::max()));
 }
 
+/// @brief View compatibility requires every captured source field and a resolved plan.
 TEST_F(GpuProfilerTest, ViewCompatibilityRequiresEveryCapturedSourceFieldAndAResolvedPlan)
 {
     auto current = View();

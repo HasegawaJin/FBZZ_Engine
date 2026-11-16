@@ -362,6 +362,7 @@ private:
     uint32_t m_validationFailures = 0;
 };
 
+/// @brief Stationary mirror arithmetic mean preserves HDR energy and reduces variance.
 TEST_F(RayReflectionReconstructionTest, StationaryMirrorArithmeticMeanPreservesHdrEnergyAndReducesVariance)
 {
     renderer::RayReflectionViewResources view;
@@ -380,6 +381,7 @@ TEST_F(RayReflectionReconstructionTest, StationaryMirrorArithmeticMeanPreservesH
     EXPECT_LT(Variance(result), 0.0001f);
 }
 
+/// @brief Checks half transport reconstructs coherent rough cells including odd extent edges.
 TEST_F(RayReflectionReconstructionTest, HalfTransportReconstructsCoherentRoughCellsIncludingOddExtentEdges)
 {
     renderer::RayReflectionViewResources view;
@@ -399,6 +401,7 @@ TEST_F(RayReflectionReconstructionTest, HalfTransportReconstructsCoherentRoughCe
     }
 }
 
+/// @brief Half transport rejects whole cells with different primary identity or raster surface.
 TEST_F(RayReflectionReconstructionTest, HalfTransportRejectsWholeCellsWithDifferentPrimaryIdentityOrRasterSurface)
 {
     HalfFramePixels half{};
@@ -432,6 +435,7 @@ TEST_F(RayReflectionReconstructionTest, HalfTransportRejectsWholeCellsWithDiffer
     }
 }
 
+/// @brief Half transport keeps uncomputed coverage separate from valid black history.
 TEST_F(RayReflectionReconstructionTest, HalfTransportKeepsUncomputedCoverageSeparateFromValidBlackHistory)
 {
     renderer::RayReflectionViewResources view;
@@ -457,6 +461,7 @@ TEST_F(RayReflectionReconstructionTest, HalfTransportKeepsUncomputedCoverageSepa
     }
 }
 
+/// @brief Half transport preserves sharp and dielectric full raw and never invents their coverage.
 TEST_F(RayReflectionReconstructionTest, HalfTransportPreservesSharpAndDielectricFullRawAndNeverInventsTheirCoverage)
 {
     renderer::RayReflectionViewResources view;
@@ -482,6 +487,7 @@ TEST_F(RayReflectionReconstructionTest, HalfTransportPreservesSharpAndDielectric
     ExpectColor(result[8], {});
 }
 
+/// @brief History limit uses bounded ema after thirty two arithmetic samples.
 TEST_F(RayReflectionReconstructionTest, HistoryLimitUsesBoundedEmaAfterThirtyTwoArithmeticSamples)
 {
     renderer::RayReflectionViewResources view;
@@ -492,6 +498,7 @@ TEST_F(RayReflectionReconstructionTest, HistoryLimitUsesBoundedEmaAfterThirtyTwo
     for (const auto& pixel : result) ExpectColor(pixel, {9, 8.5f, 17, 1});
 }
 
+/// @brief Dielectric temporal kinds stay isolated and never blur spatially.
 TEST_F(RayReflectionReconstructionTest, DielectricTemporalKindsStayIsolatedAndNeverBlurSpatially)
 {
     renderer::RayReflectionViewResources view;
@@ -514,6 +521,7 @@ TEST_F(RayReflectionReconstructionTest, DielectricTemporalKindsStayIsolatedAndNe
     for (const auto& pixel : continued) ExpectColor(pixel, {12, 6, 3, 1});
 }
 
+/// @brief Static glass uses thirty two arithmetic samples then bounded ema.
 TEST_F(RayReflectionReconstructionTest, StaticGlassUsesThirtyTwoArithmeticSamplesThenBoundedEma)
 {
     renderer::RayReflectionViewResources view;
@@ -535,6 +543,7 @@ TEST_F(RayReflectionReconstructionTest, StaticGlassUsesThirtyTwoArithmeticSample
     for (const auto& pixel : result) ExpectColor(pixel, {9, 8.5f, 17, 2});
 }
 
+/// @brief Glass rejects invalid current samples kind mismatch reset and unknown temporal content.
 TEST_F(RayReflectionReconstructionTest, GlassRejectsInvalidCurrentSamplesKindMismatchResetAndUnknownTemporalContent)
 {
     renderer::RayReflectionViewResources view;
@@ -561,6 +570,7 @@ TEST_F(RayReflectionReconstructionTest, GlassRejectsInvalidCurrentSamplesKindMis
     for (const auto& pixel : forbidden) ExpectColor(pixel, {16, 8, 4, 2});
 }
 
+/// @brief Checks hybrid glass subset prepares typed graph and rejects unsupported or unrecorded results.
 TEST_F(RayReflectionReconstructionTest, HybridGlassSubsetPreparesTypedGraphAndRejectsUnsupportedOrUnrecordedResults)
 {
     if (!m_bundle.renderer->GetCapabilities().inlineRayQuery) GTEST_SKIP();
@@ -668,6 +678,7 @@ TEST_F(RayReflectionReconstructionTest, HybridGlassSubsetPreparesTypedGraphAndRe
     }
 }
 
+/// @brief Normalized g buffer snapshots belong to their view and manager across handle collisions.
 TEST_F(RayReflectionReconstructionTest, NormalizedGBufferSnapshotsBelongToTheirViewAndManagerAcrossHandleCollisions)
 {
     renderer::ResourceManager firstManager(*m_bundle.renderer);
@@ -702,6 +713,7 @@ TEST_F(RayReflectionReconstructionTest, NormalizedGBufferSnapshotsBelongToTheirV
     second.ReleaseView(12);
 }
 
+/// @brief Ping pong HDR history retains bounded ema across two hundred fifty six frames.
 TEST_F(RayReflectionReconstructionTest, PingPongHdrHistoryRetainsBoundedEmaAcrossTwoHundredFiftySixFrames)
 {
     renderer::RayReflectionViewResources view;
@@ -733,6 +745,7 @@ TEST_F(RayReflectionReconstructionTest, PingPongHdrHistoryRetainsBoundedEmaAcros
     EXPECT_GT(expected, 27);
 }
 
+/// @brief Spatial filtering reduces rough noise but does not blur mirror samples.
 TEST_F(RayReflectionReconstructionTest, SpatialFilteringReducesRoughNoiseButDoesNotBlurMirrorSamples)
 {
     renderer::RayReflectionViewResources view;
@@ -758,6 +771,7 @@ TEST_F(RayReflectionReconstructionTest, SpatialFilteringReducesRoughNoiseButDoes
     for (uint32_t pixel = 0; pixel < kPixelCount; ++pixel) ExpectColor(continued[pixel], expected[pixel]);
 }
 
+/// @brief Spatial filter stops at full owner material normal roughness and depth boundaries.
 TEST_F(RayReflectionReconstructionTest, SpatialFilterStopsAtFullOwnerMaterialNormalRoughnessAndDepthBoundaries)
 {
     renderer::RayReflectionViewResources view;
@@ -784,6 +798,7 @@ TEST_F(RayReflectionReconstructionTest, SpatialFilterStopsAtFullOwnerMaterialNor
     }
 }
 
+/// @brief Invalid alpha pixels are never filled from history or spatial neighbours.
 TEST_F(RayReflectionReconstructionTest, InvalidAlphaPixelsAreNeverFilledFromHistoryOrSpatialNeighbours)
 {
     renderer::RayReflectionViewResources view;
@@ -806,6 +821,7 @@ TEST_F(RayReflectionReconstructionTest, InvalidAlphaPixelsAreNeverFilledFromHist
         if (pixel != kCenter) ExpectColor(isolated[pixel], {});
 }
 
+/// @brief Raster roughness and metallic boundaries stop same material spatial reuse.
 TEST_F(RayReflectionReconstructionTest, RasterRoughnessAndMetallicBoundariesStopSameMaterialSpatialReuse)
 {
     renderer::RayReflectionViewResources view;
@@ -824,6 +840,7 @@ TEST_F(RayReflectionReconstructionTest, RasterRoughnessAndMetallicBoundariesStop
     }
 }
 
+/// @brief Changed surface and explicit reset use only current HDR samples.
 TEST_F(RayReflectionReconstructionTest, ChangedSurfaceAndExplicitResetUseOnlyCurrentHdrSamples)
 {
     renderer::RayReflectionViewResources view;
@@ -852,6 +869,7 @@ TEST_F(RayReflectionReconstructionTest, ChangedSurfaceAndExplicitResetUseOnlyCur
     for (const auto& pixel : current) ExpectColor(pixel, {16, 8, 4, 1});
 }
 
+/// @brief Separate views never share temporal radiance or history indices.
 TEST_F(RayReflectionReconstructionTest, SeparateViewsNeverShareTemporalRadianceOrHistoryIndices)
 {
     renderer::RayReflectionViewResources game, scene;
@@ -869,6 +887,7 @@ TEST_F(RayReflectionReconstructionTest, SeparateViewsNeverShareTemporalRadianceO
     EXPECT_NE(game.reconstruction.output, scene.reconstruction.output);
 }
 
+/// @brief Static TAA jitter retains HDR history without accepting another depth layer.
 TEST_F(RayReflectionReconstructionTest, StaticTaaJitterRetainsHdrHistoryWithoutAcceptingAnotherDepthLayer)
 {
     renderer::RayReflectionViewResources view;
@@ -888,6 +907,7 @@ TEST_F(RayReflectionReconstructionTest, StaticTaaJitterRetainsHdrHistoryWithoutA
     for (const auto& pixel : anotherLayer) ExpectColor(pixel, {32, 16, 8, 1});
 }
 
+/// @brief Missing or rejected dispatch keeps raw reflection and invalidates history.
 TEST_F(RayReflectionReconstructionTest, MissingOrRejectedDispatchKeepsRawReflectionAndInvalidatesHistory)
 {
     renderer::RayReflectionViewResources view;
@@ -914,6 +934,7 @@ TEST_F(RayReflectionReconstructionTest, MissingOrRejectedDispatchKeepsRawReflect
     }
 }
 
+/// @brief Metadata overwrite and failed receipts never commit or reuse partially updated history.
 TEST_F(RayReflectionReconstructionTest, MetadataOverwriteAndFailedReceiptsNeverCommitOrReusePartiallyUpdatedHistory)
 {
     renderer::RayReflectionViewResources view;
@@ -952,6 +973,7 @@ TEST_F(RayReflectionReconstructionTest, MetadataOverwriteAndFailedReceiptsNeverC
     }
 }
 
+/// @brief Preparation reuses exact sized split resources and invalidates history on resize or lost storage.
 TEST_F(RayReflectionReconstructionTest, PreparationReusesExactSizedSplitResourcesAndInvalidatesHistoryOnResizeOrLostStorage)
 {
     renderer::RenderViewResources view;
@@ -1080,6 +1102,7 @@ TEST_F(RayReflectionReconstructionTest, PreparationReusesExactSizedSplitResource
     for (const auto& pixel : continued) ExpectColor(pixel, {20, 10, 5, 1});
 }
 
+/// @brief Preparation rejects changed content frame gaps and unknown ibl but validates camera motion.
 TEST_F(RayReflectionReconstructionTest, PreparationRejectsChangedContentFrameGapsAndUnknownIblButValidatesCameraMotion)
 {
     renderer::RenderViewResources view;
@@ -1207,6 +1230,7 @@ TEST_F(RayReflectionReconstructionTest, PreparationRejectsChangedContentFrameGap
     EXPECT_FALSE(context.rayReflectionReconstructionPrepared);
 }
 
+/// @brief Camera motion uses actual terminal correspondence for opaque and thin glass.
 TEST_F(RayReflectionReconstructionTest, CameraMotionUsesActualTerminalCorrespondenceForOpaqueAndThinGlass)
 {
     for (bool thin : {false, true}) {
@@ -1233,6 +1257,7 @@ TEST_F(RayReflectionReconstructionTest, CameraMotionUsesActualTerminalCorrespond
     }
 }
 
+/// @brief Moving history rejects changed terminal and unproven multipath without filling holes.
 TEST_F(RayReflectionReconstructionTest, MovingHistoryRejectsChangedTerminalAndUnprovenMultipathWithoutFillingHoles)
 {
     for (bool thin : {false, true}) for (uint32_t change = 0; change < 6; ++change) {
@@ -1261,6 +1286,7 @@ TEST_F(RayReflectionReconstructionTest, MovingHistoryRejectsChangedTerminalAndUn
     }
 }
 
+/// @brief Half rounded thin demodulation failure retains finite raw history.
 TEST_F(RayReflectionReconstructionTest, HalfRoundedThinDemodulationFailureRetainsFiniteRawHistory)
 {
     renderer::RayReflectionViewResources view;
@@ -1276,6 +1302,7 @@ TEST_F(RayReflectionReconstructionTest, HalfRoundedThinDemodulationFailureRetain
     ExpectColor(result[kCenter], {32.0f / 13.0f, 6, 4, 2});
 }
 
+/// @brief Failed moving stages discard partial history before the next successful frame.
 TEST_F(RayReflectionReconstructionTest, FailedMovingStagesDiscardPartialHistoryBeforeTheNextSuccessfulFrame)
 {
     for (auto failure : {StageFailure::RAW_NOT_RECORDED, StageFailure::NON_COMPUTE_TEMPORAL,
@@ -1301,6 +1328,7 @@ TEST_F(RayReflectionReconstructionTest, FailedMovingStagesDiscardPartialHistoryB
     }
 }
 
+/// @brief History budget retires an allocated group and quality changes reset its estimator.
 TEST_F(RayReflectionReconstructionTest, HistoryBudgetRetiresAnAllocatedGroupAndQualityChangesResetItsEstimator)
 {
     renderer::RenderViewResources view;
@@ -1340,6 +1368,7 @@ TEST_F(RayReflectionReconstructionTest, HistoryBudgetRetiresAnAllocatedGroupAndQ
     EXPECT_EQ(state.constantsData.resetHistory, 1u);
 }
 
+/// @brief Consumed gi requires live immutable publication and exact probe content.
 TEST_F(RayReflectionReconstructionTest, ConsumedGiRequiresLiveImmutablePublicationAndExactProbeContent)
 {
     renderer::RenderViewResources view;

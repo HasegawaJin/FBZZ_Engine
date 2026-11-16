@@ -26,6 +26,7 @@ bool SameImageExtensions(std::string_view withSprites, std::string_view plain)
 
 } // namespace
 
+/// @brief Only declared fields accept sprite references.
 TEST(SpriteFieldFilterTest, OnlyDeclaredFieldsAcceptSpriteReferences)
 {
     /// @note 矩形を読む経路を持つ欄。
@@ -45,6 +46,7 @@ TEST(SpriteFieldFilterTest, OnlyDeclaredFieldsAcceptSpriteReferences)
     EXPECT_TRUE(editor::widgets::FilterAcceptsSprites(nullptr));
 }
 
+/// @brief Sprite filter carries the same image extensions.
 TEST(SpriteFieldFilterTest, SpriteFilterCarriesTheSameImageExtensions)
 {
     EXPECT_TRUE(SameImageExtensions(editor::widgets::kSpriteAssetFilter,

@@ -212,6 +212,7 @@ protected:
 
 /// @name 受付と重複集約
 
+/// @brief Request reserves a handle without running any job.
 TEST_F(AssetStreamingTest, RequestReservesAHandleWithoutRunningAnyJob)
 {
     const auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -222,6 +223,7 @@ TEST_F(AssetStreamingTest, RequestReservesAHandleWithoutRunningAnyJob)
     EXPECT_TRUE(m_jobs.empty());
 }
 
+/// @brief Duplicate requests share one handle and one job.
 TEST_F(AssetStreamingTest, DuplicateRequestsShareOneHandleAndOneJob)
 {
     const auto first = m_streamer->Request<StreamTestAsset>("A");
@@ -232,6 +234,7 @@ TEST_F(AssetStreamingTest, DuplicateRequestsShareOneHandleAndOneJob)
     EXPECT_EQ(m_jobs.size(), 1u);
 }
 
+/// @brief Publishes at the frame boundary after the job completes.
 TEST_F(AssetStreamingTest, PublishesAtTheFrameBoundaryAfterTheJobCompletes)
 {
     const auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -247,6 +250,7 @@ TEST_F(AssetStreamingTest, PublishesAtTheFrameBoundaryAfterTheJobCompletes)
     EXPECT_EQ(StateOf(lease), AssetLoadState::Ready);
 }
 
+/// @brief Unregistered type is rejected with a reason.
 TEST_F(AssetStreamingTest, UnregisteredTypeIsRejectedWithAReason)
 {
     auto lease = m_streamer->Request<int>("A");
@@ -255,6 +259,7 @@ TEST_F(AssetStreamingTest, UnregisteredTypeIsRejectedWithAReason)
     EXPECT_EQ(lease.RequestError(), AssetLoadError::NoChannel);
 }
 
+/// @brief Ledger capacity rejects new keys with budget exceeded.
 TEST_F(AssetStreamingTest, LedgerCapacityRejectsNewKeysWithBudgetExceeded)
 {
     AssetStreamer::Config config;
@@ -271,6 +276,7 @@ TEST_F(AssetStreamingTest, LedgerCapacityRejectsNewKeysWithBudgetExceeded)
     EXPECT_EQ(second.RequestError(), AssetLoadError::BudgetExceeded);
 }
 
+/// @brief Jobs in flight are bounded and higher priority goes first.
 TEST_F(AssetStreamingTest, JobsInFlightAreBoundedAndHigherPriorityGoesFirst)
 {
     AssetStreamer::Config config;
@@ -292,6 +298,7 @@ TEST_F(AssetStreamingTest, JobsInFlightAreBoundedAndHigherPriorityGoesFirst)
 
 /// @name キャンセルと古い結果の棄却
 
+/// @brief Releasing one of two leases keeps the load going.
 TEST_F(AssetStreamingTest, ReleasingOneOfTwoLeasesKeepsTheLoadGoing)
 {
     auto first = m_streamer->Request<StreamTestAsset>("A");
@@ -305,6 +312,7 @@ TEST_F(AssetStreamingTest, ReleasingOneOfTwoLeasesKeepsTheLoadGoing)
     EXPECT_EQ(StateOf(second), AssetLoadState::Ready);
 }
 
+/// @brief Releasing every lease cancels and drops the late result.
 TEST_F(AssetStreamingTest, ReleasingEveryLeaseCancelsAndDropsTheLateResult)
 {
     auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -322,6 +330,7 @@ TEST_F(AssetStreamingTest, ReleasingEveryLeaseCancelsAndDropsTheLateResult)
     EXPECT_EQ(m_channel->uploads, 0);
 }
 
+/// @brief Rerequest right after cancel ignores the old attempt.
 TEST_F(AssetStreamingTest, RerequestRightAfterCancelIgnoresTheOldAttempt)
 {
     auto first = m_streamer->Request<StreamTestAsset>("A");
@@ -343,6 +352,7 @@ TEST_F(AssetStreamingTest, RerequestRightAfterCancelIgnoresTheOldAttempt)
     EXPECT_NE(first.Handle(), second.Handle()) << "返したスロットの世代は進む";
 }
 
+/// @brief Project switch drops in flight results.
 TEST_F(AssetStreamingTest, ProjectSwitchDropsInFlightResults)
 {
     const auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -358,6 +368,7 @@ TEST_F(AssetStreamingTest, ProjectSwitchDropsInFlightResults)
     EXPECT_EQ(m_streamer->GetStats().jobsInFlight, 0u);
 }
 
+/// @brief Store clear does not revive old handles.
 TEST_F(AssetStreamingTest, StoreClearDoesNotReviveOldHandles)
 {
     auto& store = asset::AssetStore<StreamTestAsset>::Get();
@@ -372,6 +383,7 @@ TEST_F(AssetStreamingTest, StoreClearDoesNotReviveOldHandles)
 
 /// @name 失敗と再試行
 
+/// @brief Failure is kept until an explicit retry.
 TEST_F(AssetStreamingTest, FailureIsKeptUntilAnExplicitRetry)
 {
     m_channel->scripts["A"].fail = true;
@@ -396,6 +408,7 @@ TEST_F(AssetStreamingTest, FailureIsKeptUntilAnExplicitRetry)
 
 /// @name 読み直し (ホットリロード)
 
+/// @brief Reloads completing in reverse order keep the newest.
 TEST_F(AssetStreamingTest, ReloadsCompletingInReverseOrderKeepTheNewest)
 {
     const auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -420,6 +433,7 @@ TEST_F(AssetStreamingTest, ReloadsCompletingInReverseOrderKeepTheNewest)
     EXPECT_EQ(m_streamer->GetStatus(lease.Handle()).publishedRevision, 3u);
 }
 
+/// @brief Failed reload keeps the published content.
 TEST_F(AssetStreamingTest, FailedReloadKeepsThePublishedContent)
 {
     const auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -442,6 +456,7 @@ TEST_F(AssetStreamingTest, FailedReloadKeepsThePublishedContent)
 
 /// @name 依存
 
+/// @brief Parent waits for required dependency then publishes.
 TEST_F(AssetStreamingTest, ParentWaitsForRequiredDependencyThenPublishes)
 {
     m_channel->scripts["Parent"].dependencies = { { std::string(asset::AssetStreamTypeName<StreamTestAsset>()), "Child", true } };
@@ -456,6 +471,7 @@ TEST_F(AssetStreamingTest, ParentWaitsForRequiredDependencyThenPublishes)
     EXPECT_EQ(StateOf(parent), AssetLoadState::Ready);
 }
 
+/// @brief Required dependency failure fails the parent.
 TEST_F(AssetStreamingTest, RequiredDependencyFailureFailsTheParent)
 {
     const std::string type(asset::AssetStreamTypeName<StreamTestAsset>());
@@ -469,6 +485,7 @@ TEST_F(AssetStreamingTest, RequiredDependencyFailureFailsTheParent)
     EXPECT_EQ(m_streamer->GetStatus(parent.Handle()).error, AssetLoadError::DependencyFailed);
 }
 
+/// @brief Optional dependency failure does not block the parent.
 TEST_F(AssetStreamingTest, OptionalDependencyFailureDoesNotBlockTheParent)
 {
     const std::string type(asset::AssetStreamTypeName<StreamTestAsset>());
@@ -481,6 +498,7 @@ TEST_F(AssetStreamingTest, OptionalDependencyFailureDoesNotBlockTheParent)
     EXPECT_EQ(StateOf(parent), AssetLoadState::Ready);
 }
 
+/// @brief Required dependency cycle fails without deadlock.
 TEST_F(AssetStreamingTest, RequiredDependencyCycleFailsWithoutDeadlock)
 {
     const std::string type(asset::AssetStreamTypeName<StreamTestAsset>());
@@ -498,6 +516,7 @@ TEST_F(AssetStreamingTest, RequiredDependencyCycleFailsWithoutDeadlock)
 
 /// @name GPU 転送
 
+/// @brief Publishes only after the upload completes.
 TEST_F(AssetStreamingTest, PublishesOnlyAfterTheUploadCompletes)
 {
     m_channel->asyncUpload = true;
@@ -515,6 +534,7 @@ TEST_F(AssetStreamingTest, PublishesOnlyAfterTheUploadCompletes)
     EXPECT_EQ(StateOf(lease), AssetLoadState::Ready);
 }
 
+/// @brief Device reset during upload reuploads from CPU data.
 TEST_F(AssetStreamingTest, DeviceResetDuringUploadReuploadsFromCpuData)
 {
     m_channel->asyncUpload = true;
@@ -536,6 +556,7 @@ TEST_F(AssetStreamingTest, DeviceResetDuringUploadReuploadsFromCpuData)
     EXPECT_EQ(StateOf(lease), AssetLoadState::Ready);
 }
 
+/// @brief Cancel during upload discards the candidate.
 TEST_F(AssetStreamingTest, CancelDuringUploadDiscardsTheCandidate)
 {
     m_channel->asyncUpload = true;
@@ -550,6 +571,7 @@ TEST_F(AssetStreamingTest, CancelDuringUploadDiscardsTheCandidate)
     EXPECT_EQ(m_channel->discardsAfterDeviceLoss, 0);
 }
 
+/// @brief Upload bytes per pump are bounded but one large item still proceeds.
 TEST_F(AssetStreamingTest, UploadBytesPerPumpAreBoundedButOneLargeItemStillProceeds)
 {
     AssetStreamer::Config config;
@@ -571,6 +593,7 @@ TEST_F(AssetStreamingTest, UploadBytesPerPumpAreBoundedButOneLargeItemStillProce
 
 /// @name 同期 API との共存
 
+/// @brief Sync fill while loading drops the async result.
 TEST_F(AssetStreamingTest, SyncFillWhileLoadingDropsTheAsyncResult)
 {
     const auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -592,6 +615,7 @@ TEST_F(AssetStreamingTest, SyncFillWhileLoadingDropsTheAsyncResult)
     EXPECT_EQ(m_streamer->GetStats().staleCompletionsDropped, 1u);
 }
 
+/// @brief Request for an already loaded asset is ready immediately.
 TEST_F(AssetStreamingTest, RequestForAnAlreadyLoadedAssetIsReadyImmediately)
 {
     auto& store = asset::AssetStore<StreamTestAsset>::Get();
@@ -607,6 +631,7 @@ TEST_F(AssetStreamingTest, RequestForAnAlreadyLoadedAssetIsReadyImmediately)
     EXPECT_TRUE(m_jobs.empty());
 }
 
+/// @brief Complete now publishes synchronously and drops the async result.
 TEST_F(AssetStreamingTest, CompleteNowPublishesSynchronouslyAndDropsTheAsyncResult)
 {
     const auto lease = m_streamer->Request<StreamTestAsset>("A");
@@ -625,6 +650,7 @@ TEST_F(AssetStreamingTest, CompleteNowPublishesSynchronouslyAndDropsTheAsyncResu
 
 /// @name 常駐と解放
 
+/// @brief Unused asset stays resident without grace or budget.
 TEST_F(AssetStreamingTest, UnusedAssetStaysResidentWithoutGraceOrBudget)
 {
     auto lease = LoadReady("A");
@@ -635,6 +661,7 @@ TEST_F(AssetStreamingTest, UnusedAssetStaysResidentWithoutGraceOrBudget)
     EXPECT_EQ(m_streamer->GetStatus(handle).state, AssetLoadState::Ready) << "既定では解放しない";
 }
 
+/// @brief Unused asset is evicted after the grace period.
 TEST_F(AssetStreamingTest, UnusedAssetIsEvictedAfterTheGracePeriod)
 {
     AssetStreamer::Config config;
@@ -653,6 +680,7 @@ TEST_F(AssetStreamingTest, UnusedAssetIsEvictedAfterTheGracePeriod)
     EXPECT_EQ(m_streamer->GetStats().evictions, 1u);
 }
 
+/// @brief Leased asset is never evicted.
 TEST_F(AssetStreamingTest, LeasedAssetIsNeverEvicted)
 {
     AssetStreamer::Config config;
@@ -667,6 +695,7 @@ TEST_F(AssetStreamingTest, LeasedAssetIsNeverEvicted)
     EXPECT_TRUE(m_streamer->GetStats().overBudget) << "固定物だけで溢れていることを報告する";
 }
 
+/// @brief Checks over budget evicts the least recently released first.
 TEST_F(AssetStreamingTest, OverBudgetEvictsTheLeastRecentlyReleasedFirst)
 {
     AssetStreamer::Config config;
@@ -689,6 +718,7 @@ TEST_F(AssetStreamingTest, OverBudgetEvictsTheLeastRecentlyReleasedFirst)
     EXPECT_FALSE(m_streamer->GetStats().overBudget);
 }
 
+/// @brief Sync pinned asset is not evicted.
 TEST_F(AssetStreamingTest, SyncPinnedAssetIsNotEvicted)
 {
     AssetStreamer::Config config;
@@ -705,6 +735,7 @@ TEST_F(AssetStreamingTest, SyncPinnedAssetIsNotEvicted)
     EXPECT_EQ(m_channel->evictions, 0);
 }
 
+/// @brief Over budget defers prefetch and rejects new keys.
 TEST_F(AssetStreamingTest, OverBudgetDefersPrefetchAndRejectsNewKeys)
 {
     AssetStreamer::Config config;
@@ -733,6 +764,7 @@ TEST_F(AssetStreamingTest, OverBudgetDefersPrefetchAndRejectsNewKeys)
 
 /// @name 品質段
 
+/// @brief Desired quality is applied only after the hold period.
 TEST_F(AssetStreamingTest, DesiredQualityIsAppliedOnlyAfterTheHoldPeriod)
 {
     m_channel->qualitySupported = true;
@@ -757,6 +789,7 @@ TEST_F(AssetStreamingTest, DesiredQualityIsAppliedOnlyAfterTheHoldPeriod)
     EXPECT_EQ(status.residentBytes, 2u);
 }
 
+/// @brief Quality aggregates to the best among leases.
 TEST_F(AssetStreamingTest, QualityAggregatesToTheBestAmongLeases)
 {
     m_channel->qualitySupported = true;
@@ -773,6 +806,7 @@ TEST_F(AssetStreamingTest, QualityAggregatesToTheBestAmongLeases)
     EXPECT_EQ(m_streamer->TryGet(fine.Handle())->quality, 1) << "初回ロードから最も高い希望品質で作る";
 }
 
+/// @brief Checks persistent over budget lowers quality of leased assets.
 TEST_F(AssetStreamingTest, PersistentOverBudgetLowersQualityOfLeasedAssets)
 {
     m_channel->qualitySupported = true;

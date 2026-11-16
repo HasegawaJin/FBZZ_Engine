@@ -88,6 +88,7 @@ protected:
     void ExpectUnpublished() { EXPECT_TRUE(std::all_of(m_output.begin(), m_output.end(), [](char byte) { return byte == '\x7f'; })); }
 };
 
+/// @brief Commits thousand independent poses and retains caller tail.
 TEST_F(ManagedAiPoseTransferTest, CommitsThousandIndependentPosesAndRetainsCallerTail)
 {
     Begin();
@@ -110,6 +111,7 @@ TEST_F(ManagedAiPoseTransferTest, CommitsThousandIndependentPosesAndRetainsCalle
     EXPECT_EQ(m_output.back(), '\x7f');
 }
 
+/// @brief Preserves ordered duplicates and skips unset and expired slots.
 TEST_F(ManagedAiPoseTransferTest, PreservesOrderedDuplicatesAndSkipsUnsetAndExpiredSlots)
 {
     auto& object = m_scene.CreateGameObject("Fish");
@@ -126,6 +128,7 @@ TEST_F(ManagedAiPoseTransferTest, PreservesOrderedDuplicatesAndSkipsUnsetAndExpi
     EXPECT_QUAT_NEAR(object.transform.worldRotation, math::Quaternion::FromEuler({0.2f, 0.3f, 0.4f}), testkit::kTolerance);
 }
 
+/// @brief Synchronizes rotated scaled parent and inactive descendant.
 TEST_F(ManagedAiPoseTransferTest, SynchronizesRotatedScaledParentAndInactiveDescendant)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -146,6 +149,7 @@ TEST_F(ManagedAiPoseTransferTest, SynchronizesRotatedScaledParentAndInactiveDesc
     EXPECT_VEC3_NEAR(child.transform.worldPosition, expected.worldPosition, testkit::kTolerance);
 }
 
+/// @brief Rejects ancestor descendant pairs in either order without mutation.
 TEST_F(ManagedAiPoseTransferTest, RejectsAncestorDescendantPairsInEitherOrderWithoutMutation)
 {
     auto& parent = m_scene.CreateGameObject("Parent"); auto& child = m_scene.CreateGameObject("Child");
@@ -159,6 +163,7 @@ TEST_F(ManagedAiPoseTransferTest, RejectsAncestorDescendantPairsInEitherOrderWit
     }
 }
 
+/// @brief Rejects late invalid quaternion foreign scene and live physics body.
 TEST_F(ManagedAiPoseTransferTest, RejectsLateInvalidQuaternionForeignSceneAndLivePhysicsBody)
 {
     auto& first = m_scene.CreateGameObject("First"); auto& second = m_scene.CreateGameObject("Second");
@@ -181,6 +186,7 @@ TEST_F(ManagedAiPoseTransferTest, RejectsLateInvalidQuaternionForeignSceneAndLiv
     EXPECT_VEC3_NEAR(first.transform.position, (math::Vector3{5, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Rejects descendant overflow without repairing ancestor caches.
 TEST_F(ManagedAiPoseTransferTest, RejectsDescendantOverflowWithoutRepairingAncestorCaches)
 {
     auto& ancestor = m_scene.CreateGameObject("Ancestor"); auto& target = m_scene.CreateGameObject("Target");
@@ -195,6 +201,7 @@ TEST_F(ManagedAiPoseTransferTest, RejectsDescendantOverflowWithoutRepairingAnces
     EXPECT_VEC3_NEAR(child.transform.worldPosition, beforeChild.worldPosition, testkit::kTolerance);
 }
 
+/// @brief Rejects insufficient capacity before computation and malformed packets.
 TEST_F(ManagedAiPoseTransferTest, RejectsInsufficientCapacityBeforeComputationAndMalformedPackets)
 {
     auto& object = m_scene.CreateGameObject("Fish");
@@ -211,6 +218,7 @@ TEST_F(ManagedAiPoseTransferTest, RejectsInsufficientCapacityBeforeComputationAn
     EXPECT_EQ(Run(), scene::ManagedBridgeStatus::INVALID_ARGUMENT); ExpectUnpublished();
 }
 
+/// @brief Rejects unused request fields and overlapping packets.
 TEST_F(ManagedAiPoseTransferTest, RejectsUnusedRequestFieldsAndOverlappingPackets)
 {
     auto& object = m_scene.CreateGameObject("Fish");
@@ -235,6 +243,7 @@ TEST_F(ManagedAiPoseTransferTest, RejectsUnusedRequestFieldsAndOverlappingPacket
     EXPECT_VEC3_NEAR(object.transform.position, math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Static pose driven body keeps AI authority and confirmed collider pose.
 TEST_F(ManagedAiPoseTransferTest, StaticPoseDrivenBodyKeepsAiAuthorityAndConfirmedColliderPose)
 {
     auto& object = m_scene.CreateGameObject("PoseDrivenFish");
@@ -266,6 +275,7 @@ TEST_F(ManagedAiPoseTransferTest, StaticPoseDrivenBodyKeepsAiAuthorityAndConfirm
     EXPECT_VEC3_NEAR(object.transform.worldPosition, (math::Vector3{6, 7, 8}), testkit::kTolerance);
 }
 
+/// @brief Pose driven requires static opt in and retains failure atomicity.
 TEST_F(ManagedAiPoseTransferTest, PoseDrivenRequiresStaticOptInAndRetainsFailureAtomicity)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -289,6 +299,7 @@ TEST_F(ManagedAiPoseTransferTest, PoseDrivenRequiresStaticOptInAndRetainsFailure
     EXPECT_TRUE(assigned.poseDriven);
 }
 
+/// @brief Pose driven survives scene text and defaults `false` for legacy scene.
 TEST_F(ManagedAiPoseTransferTest, PoseDrivenSurvivesSceneTextAndDefaultsFalseForLegacyScene)
 {
     auto& object = m_scene.CreateGameObject("PoseDriverRoundTrip");
@@ -317,6 +328,7 @@ TEST_F(ManagedAiPoseTransferTest, PoseDrivenSurvivesSceneTextAndDefaultsFalseFor
     EXPECT_FALSE(oldBody->poseDriven);
 }
 
+/// @brief Pose driven survives append objects text path.
 TEST_F(ManagedAiPoseTransferTest, PoseDrivenSurvivesAppendObjectsTextPath)
 {
     auto& object = m_scene.CreateGameObject("AppendedPoseDriver");
@@ -338,6 +350,7 @@ TEST_F(ManagedAiPoseTransferTest, PoseDrivenSurvivesAppendObjectsTextPath)
     EXPECT_TRUE(appendedBody->rigidBody->IsStatic());
 }
 
+/// @brief Shared ancestors preserve interleaved duplicates and inactive descendants.
 TEST_F(ManagedAiPoseTransferTest, SharedAncestorsPreserveInterleavedDuplicatesAndInactiveDescendants)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -372,6 +385,7 @@ TEST_F(ManagedAiPoseTransferTest, SharedAncestorsPreserveInterleavedDuplicatesAn
     EXPECT_EQ(m_output.back(), '\x7f');
 }
 
+/// @brief Shared ancestor arithmetic expires after failed packet and parent edit.
 TEST_F(ManagedAiPoseTransferTest, SharedAncestorArithmeticExpiresAfterFailedPacketAndParentEdit)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -400,6 +414,7 @@ TEST_F(ManagedAiPoseTransferTest, SharedAncestorArithmeticExpiresAfterFailedPack
     EXPECT_EQ(Status(0), scene::ManagedObjectStatus::VALID); EXPECT_EQ(Status(1), scene::ManagedObjectStatus::VALID);
 }
 
+/// @brief Shared ancestor arithmetic does not cross scenes with matching entity slots.
 TEST_F(ManagedAiPoseTransferTest, SharedAncestorArithmeticDoesNotCrossScenesWithMatchingEntitySlots)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -436,6 +451,7 @@ TEST_F(ManagedAiPoseTransferTest, SharedAncestorArithmeticDoesNotCrossScenesWith
     EXPECT_EQ(Status(0), scene::ManagedObjectStatus::VALID); EXPECT_EQ(Status(1), scene::ManagedObjectStatus::VALID);
     EXPECT_EQ(m_output.back(), '\x7f');
 }
+/// @brief Warm world reuse repairs world caches and observes direct local and parent edits.
 TEST_F(ManagedAiPoseTransferTest, WarmWorldReuseRepairsWorldCachesAndObservesDirectLocalAndParentEdits)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -461,6 +477,7 @@ TEST_F(ManagedAiPoseTransferTest, WarmWorldReuseRepairsWorldCachesAndObservesDir
     EXPECT_VEC3_NEAR(child.transform.worldScale, next.worldScale, testkit::kTolerance);
 }
 
+/// @brief Warm world reuse does not publish after invalid descendant or overflow.
 TEST_F(ManagedAiPoseTransferTest, WarmWorldReuseDoesNotPublishAfterInvalidDescendantOrOverflow)
 {
     auto& target = m_scene.CreateGameObject("Fish");
@@ -479,6 +496,7 @@ TEST_F(ManagedAiPoseTransferTest, WarmWorldReuseDoesNotPublishAfterInvalidDescen
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{12, 22, 33}), testkit::kTolerance);
 }
 
+/// @brief Warm world reuse distinguishes root and identity parent for nonunit rotation.
 TEST_F(ManagedAiPoseTransferTest, WarmWorldReuseDistinguishesRootAndIdentityParentForNonunitRotation)
 {
     auto& ancestor = m_scene.CreateGameObject("Ancestor");
@@ -493,6 +511,7 @@ TEST_F(ManagedAiPoseTransferTest, WarmWorldReuseDistinguishesRootAndIdentityPare
     EXPECT_VEC3_NEAR(target.transform.worldPosition, (math::Vector3{4, 5, 6}), testkit::kTolerance);
 }
 
+/// @brief Staged descendant overflow after movement remains atomic with warm traversal.
 TEST_F(ManagedAiPoseTransferTest, StagedDescendantOverflowAfterMovementRemainsAtomicWithWarmTraversal)
 {
     auto& target = m_scene.CreateGameObject("Fish");
@@ -510,6 +529,7 @@ TEST_F(ManagedAiPoseTransferTest, StagedDescendantOverflowAfterMovementRemainsAt
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{11, 22, 33}), testkit::kTolerance);
 }
 
+/// @brief Scene flush uses AI world math without ignoring edited inputs or failed poses.
 TEST_F(ManagedAiPoseTransferTest, SceneFlushUsesAiWorldMathWithoutIgnoringEditedInputsOrFailedPoses)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -530,6 +550,7 @@ TEST_F(ManagedAiPoseTransferTest, SceneFlushUsesAiWorldMathWithoutIgnoringEdited
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{16, 8, 10}), testkit::kTolerance);
 }
 
+/// @brief Scene flush does not reuse world math across changed rounding control.
 TEST_F(ManagedAiPoseTransferTest, SceneFlushDoesNotReuseWorldMathAcrossChangedRoundingControl)
 {
     const uint32_t saved = _mm_getcsr();
@@ -548,6 +569,7 @@ TEST_F(ManagedAiPoseTransferTest, SceneFlushDoesNotReuseWorldMathAcrossChangedRo
     EXPECT_EQ(child.transform.worldPosition.x, expected.worldPosition.x);
 }
 
+/// @brief Validated arithmetic reuse repairs world writes and observes local and parent edits.
 TEST_F(ManagedAiPoseTransferTest, ValidatedArithmeticReuseRepairsWorldWritesAndObservesLocalAndParentEdits)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -578,6 +600,7 @@ TEST_F(ManagedAiPoseTransferTest, ValidatedArithmeticReuseRepairsWorldWritesAndO
     EXPECT_VEC3_NEAR(child.transform.worldPosition, child.transform.position, 0.0f);
 }
 
+/// @brief Arithmetic reuse invalidates for floating point control changes.
 TEST_F(ManagedAiPoseTransferTest, ArithmeticReuseInvalidatesForFloatingPointControlChanges)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -600,6 +623,7 @@ TEST_F(ManagedAiPoseTransferTest, ArithmeticReuseInvalidatesForFloatingPointCont
 }
 
 
+/// @brief Validated quaternion products match ordinary hierarchy arithmetic bitwise.
 TEST_F(ManagedAiPoseTransferTest, ValidatedQuaternionProductsMatchOrdinaryHierarchyArithmeticBitwise)
 {
     Begin();
@@ -628,6 +652,7 @@ TEST_F(ManagedAiPoseTransferTest, ValidatedQuaternionProductsMatchOrdinaryHierar
 }
 
 
+/// @brief Shared topology matches sequential set world pose bitwise.
 TEST_F(ManagedAiPoseTransferTest, SharedTopologyMatchesSequentialSetWorldPoseBitwise)
 {
     std::vector<scene::GameObject*> nodes;
@@ -705,6 +730,7 @@ TEST_F(ManagedAiPoseTransferTest, SharedTopologyMatchesSequentialSetWorldPoseBit
     EXPECT_EQ(m_reply.index, static_cast<uint32_t>(rows.size()));
 }
 
+/// @brief Repeated target still rejects intermediate descendant overflow.
 TEST_F(ManagedAiPoseTransferTest, RepeatedTargetStillRejectsIntermediateDescendantOverflow)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -730,6 +756,7 @@ TEST_F(ManagedAiPoseTransferTest, RepeatedTargetStillRejectsIntermediateDescenda
     EXPECT_FLOAT_EQ(child.transform.worldPosition.x, large);
 }
 
+/// @brief Topology build observes late resolver hierarchy and raw transform edits.
 TEST_F(ManagedAiPoseTransferTest, TopologyBuildObservesLateResolverHierarchyAndRawTransformEdits)
 {
     auto& oldParent = m_scene.CreateGameObject("OldParent");
@@ -773,6 +800,7 @@ TEST_F(ManagedAiPoseTransferTest, TopologyBuildObservesLateResolverHierarchyAndR
     EXPECT_EQ(std::memcmp(&expected, &child.transform, sizeof(scene::Transform)), 0);
 }
 
+/// @brief Validated pose factors match set world pose bitwise.
 TEST_F(ManagedAiPoseTransferTest, ValidatedPoseFactorsMatchSetWorldPoseBitwise)
 {
     const float edge = 1e-6f;
@@ -818,6 +846,7 @@ TEST_F(ManagedAiPoseTransferTest, ValidatedPoseFactorsMatchSetWorldPoseBitwise)
         EXPECT_EQ(std::memcmp(&expected[index], &targets[index]->transform, sizeof(scene::Transform)), 0);
 }
 
+/// @brief Quaternion factors do not cross resolver floating point control changes.
 TEST_F(ManagedAiPoseTransferTest, QuaternionFactorsDoNotCrossResolverFloatingPointControlChanges)
 {
     const uint32_t saved = _mm_getcsr();

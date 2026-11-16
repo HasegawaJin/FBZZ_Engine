@@ -44,6 +44,7 @@ fluid::FluidRecipe RecipeWithNamedSources(const std::vector<std::string>& names)
 
 } // namespace
 
+/// @brief Unique name adds serial within the same list.
 TEST(FluidPartClipboardTest, UniqueNameAddsSerialWithinTheSameList)
 {
     const fluid::FluidRecipe recipe = RecipeWithNamedSources({ "Vortex", "Vortex (1)", "Jet" });
@@ -63,6 +64,7 @@ TEST(FluidPartClipboardTest, UniqueNameAddsSerialWithinTheSameList)
     EXPECT_EQ(fluidpanel::MakeUniqueFluidPartName(recipe, FluidSelectionKind::Force, "Vortex", -1), "Vortex");
 }
 
+/// @brief Paste carries the part into another recipe.
 TEST(FluidPartClipboardTest, PasteCarriesThePartIntoAnotherRecipe)
 {
     const fluid::FluidRecipe from = RecipeWithNamedSources({ "Bystander", "Vortex" });
@@ -89,6 +91,7 @@ TEST(FluidPartClipboardTest, PasteCarriesThePartIntoAnotherRecipe)
     EXPECT_EQ(into.sources[2].name, "Vortex (2)");
 }
 
+/// @brief Paste rejects other kinds and full lists.
 TEST(FluidPartClipboardTest, PasteRejectsOtherKindsAndFullLists)
 {
     const fluid::FluidRecipe from = RecipeWithNamedSources({ "Vortex" });
@@ -106,6 +109,7 @@ TEST(FluidPartClipboardTest, PasteRejectsOtherKindsAndFullLists)
     EXPECT_EQ(into.sources.size(), static_cast<std::size_t>(fluid::kMaxFluidSources));
 }
 
+/// @brief Hidden and solo follow their part.
 TEST(FluidVisibilityRemapTest, HiddenAndSoloFollowTheirPart)
 {
     FluidDocument document;

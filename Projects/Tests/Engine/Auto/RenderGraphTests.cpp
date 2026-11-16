@@ -70,6 +70,7 @@ RG::ResourceDesc ImportedRT(uint32_t width = 1920, uint32_t height = 1080)
 
 class RenderGraphTest : public testkit::Fixture {};
 
+/// @brief Capture hook runs after profiling and before the next overwrite.
 TEST_F(RenderGraphTest, CaptureHookRunsAfterProfilingAndBeforeTheNextOverwrite)
 {
     RG graph;
@@ -95,6 +96,7 @@ TEST_F(RenderGraphTest, CaptureHookRunsAfterProfilingAndBeforeTheNextOverwrite)
     EXPECT_EQ(graph.GetLastReport().culledPasses, (std::vector<size_t>{ 1 }));
 }
 
+/// @brief Failed plan does not invoke capture hook.
 TEST_F(RenderGraphTest, FailedPlanDoesNotInvokeCaptureHook)
 {
     RG graph;
@@ -109,6 +111,7 @@ TEST_F(RenderGraphTest, FailedPlanDoesNotInvokeCaptureHook)
 
 /// @name 実行順
 
+/// @brief Executes live passes in registration order.
 TEST_F(RenderGraphTest, ExecutesLivePassesInRegistrationOrder)
 {
     RG graph;
@@ -125,6 +128,7 @@ TEST_F(RenderGraphTest, ExecutesLivePassesInRegistrationOrder)
               (std::vector<std::string>{ "Geometry", "Bloom", "Composite" }));
 }
 
+/// @brief Keeps relative order of existing passes when another is inserted.
 TEST_F(RenderGraphTest, KeepsRelativeOrderOfExistingPassesWhenAnotherIsInserted)
 {
     /// @note 「追加順 = 優先度」の約束。ここが崩れると、パスを 1 本足しただけで
@@ -151,6 +155,7 @@ TEST_F(RenderGraphTest, KeepsRelativeOrderOfExistingPassesWhenAnotherIsInserted)
               (std::vector<std::string>{ "Geometry", "Decal", "Particle", "Composite" }));
 }
 
+/// @brief Produces identical order across repeated plans.
 TEST_F(RenderGraphTest, ProducesIdenticalOrderAcrossRepeatedPlans)
 {
     /// @note producer / readersSinceLastWrite / byName が unordered_map を経由するので、
@@ -174,6 +179,7 @@ TEST_F(RenderGraphTest, ProducesIdenticalOrderAcrossRepeatedPlans)
 
 /// @name ハザード
 
+/// @brief Does not deadlock when a pass reads and writes the same resource.
 TEST_F(RenderGraphTest, DoesNotDeadlockWhenAPassReadsAndWritesTheSameResource)
 {
     /// @note ReadWrite は RAW と WAR の両方の辺を張るが、自分自身への辺は張ってはいけない。
@@ -194,6 +200,7 @@ TEST_F(RenderGraphTest, DoesNotDeadlockWhenAPassReadsAndWritesTheSameResource)
               (std::vector<std::string>{ "Geometry", "Tonemap", "Present" }));
 }
 
+/// @brief Orders overwriting pass after every reader of the previous generation.
 TEST_F(RenderGraphTest, OrdersOverwritingPassAfterEveryReaderOfThePreviousGeneration)
 {
     /// @note WAR: HDR を読む Bloom / SSAO を追い越して HDR を上書きしてはいけない。
@@ -219,6 +226,7 @@ TEST_F(RenderGraphTest, OrdersOverwritingPassAfterEveryReaderOfThePreviousGenera
 
 /// @name カリング
 
+/// @brief Culls passes that no output depends on.
 TEST_F(RenderGraphTest, CullsPassesThatNoOutputDependsOn)
 {
     RG graph;
@@ -236,6 +244,7 @@ TEST_F(RenderGraphTest, CullsPassesThatNoOutputDependsOn)
     EXPECT_EQ(OrderedNames(graph), (std::vector<std::string>{ "Geometry", "Present" }));
 }
 
+/// @brief Keeps passes that opted out of culling even when unreachable.
 TEST_F(RenderGraphTest, KeepsPassesThatOptedOutOfCullingEvenWhenUnreachable)
 {
     /// @note 外部副作用だけが目的のパス (IBL の BRDF LUT 焼き付けなど) の受け皿。
@@ -254,6 +263,7 @@ TEST_F(RenderGraphTest, KeepsPassesThatOptedOutOfCullingEvenWhenUnreachable)
               (std::vector<std::string>{ "Geometry", "BakeLut", "Present" }));
 }
 
+/// @brief Keeps every pass when no output is declared.
 TEST_F(RenderGraphTest, KeepsEveryPassWhenNoOutputIsDeclared)
 {
     RG graph;
@@ -269,6 +279,7 @@ TEST_F(RenderGraphTest, KeepsEveryPassWhenNoOutputIsDeclared)
 
 /// @name エラー
 
+/// @brief Rejects plan when no live pass writes a required output.
 TEST_F(RenderGraphTest, RejectsPlanWhenNoLivePassWritesARequiredOutput)
 {
     /// @note 実際に起きた不具合の回帰。Composite の «出力先を LDR にするか Output にするか» の
@@ -288,6 +299,7 @@ TEST_F(RenderGraphTest, RejectsPlanWhenNoLivePassWritesARequiredOutput)
     EXPECT_NE(logged.find("Output"), std::string::npos);
 }
 
+/// @brief Rejects plan when a read resource has no producer and is not imported.
 TEST_F(RenderGraphTest, RejectsPlanWhenAReadResourceHasNoProducerAndIsNotImported)
 {
     RG graph;
@@ -303,6 +315,7 @@ TEST_F(RenderGraphTest, RejectsPlanWhenAReadResourceHasNoProducerAndIsNotImporte
     EXPECT_NE(logged.find("Missing"), std::string::npos);
 }
 
+/// @brief Ignores unresolved reads of passes that get culled.
 TEST_F(RenderGraphTest, IgnoresUnresolvedReadsOfPassesThatGetCulled)
 {
     /// @note 申告を契約にするのは «実際に実行されるパス» だけ。刈られるパスの申告漏れで
@@ -321,6 +334,7 @@ TEST_F(RenderGraphTest, IgnoresUnresolvedReadsOfPassesThatGetCulled)
     EXPECT_EQ(CulledNames(graph), (std::vector<std::string>{ "Orphan" }));
 }
 
+/// @brief Allows reading an imported resource without any producer.
 TEST_F(RenderGraphTest, AllowsReadingAnImportedResourceWithoutAnyProducer)
 {
     RG graph;
@@ -332,6 +346,7 @@ TEST_F(RenderGraphTest, AllowsReadingAnImportedResourceWithoutAnyProducer)
     EXPECT_TRUE(graph.Plan());
 }
 
+/// @brief Schedules producer before consumer even when registered later.
 TEST_F(RenderGraphTest, SchedulesProducerBeforeConsumerEvenWhenRegisteredLater)
 {
     /// @note 登録順は正しいトポロジカル順でなくてよい。依存が順序を決める。
@@ -347,6 +362,7 @@ TEST_F(RenderGraphTest, SchedulesProducerBeforeConsumerEvenWhenRegisteredLater)
     EXPECT_EQ(OrderedNames(graph), (std::vector<std::string>{ "ShadowMap", "Present" }));
 }
 
+/// @brief Culls independently of registration order.
 TEST_F(RenderGraphTest, CullsIndependentlyOfRegistrationOrder)
 {
     /// @note 生存判定も «後ろから前へ 1 回» の走査ではなく、出力から辿れるかで決まる。
@@ -366,6 +382,7 @@ TEST_F(RenderGraphTest, CullsIndependentlyOfRegistrationOrder)
     EXPECT_EQ(OrderedNames(graph), (std::vector<std::string>{ "Geometry", "Present" }));
 }
 
+/// @brief Rejects plan when passes form a cycle.
 TEST_F(RenderGraphTest, RejectsPlanWhenPassesFormACycle)
 {
     /// @note 並べ替えができるようになった以上、循環は本当に作れる。
@@ -386,6 +403,7 @@ TEST_F(RenderGraphTest, RejectsPlanWhenPassesFormACycle)
     EXPECT_NE(logged.find("cycle"), std::string::npos);
 }
 
+/// @brief Linearises mutually dependent passes by write generation.
 TEST_F(RenderGraphTest, LinearisesMutuallyDependentPassesByWriteGeneration)
 {
     /// @note 相互参照«に見える»構成でも循環にはならない。依存辺は必ず自分より前に登録された
@@ -430,6 +448,7 @@ void BuildTwoIndependentChains(RG& graph)
 
 } // namespace
 
+/// @brief Falls back to registration order when dependencies leave the choice open.
 TEST_F(RenderGraphTest, FallsBackToRegistrationOrderWhenDependenciesLeaveTheChoiceOpen)
 {
     RG graph;
@@ -442,6 +461,7 @@ TEST_F(RenderGraphTest, FallsBackToRegistrationOrderWhenDependenciesLeaveTheChoi
               (std::vector<std::string>{ "MakeA", "MakeB", "UseA", "UseB", "Combine" }));
 }
 
+/// @brief Interleaves chains to shorten lifetimes under minimize lifetimes.
 TEST_F(RenderGraphTest, InterleavesChainsToShortenLifetimesUnderMinimizeLifetimes)
 {
     /// @note A は UseA で死ぬ。先に UseA まで走らせてしまえば、B を作る時点で A は既に居ない。
@@ -456,6 +476,7 @@ TEST_F(RenderGraphTest, InterleavesChainsToShortenLifetimesUnderMinimizeLifetime
               (std::vector<std::string>{ "MakeA", "UseA", "MakeB", "UseB", "Combine" }));
 }
 
+/// @brief Keeps write generation order regardless of policy.
 TEST_F(RenderGraphTest, KeepsWriteGenerationOrderRegardlessOfPolicy)
 {
     /// @note 同じリソースへの書き込み順は «意図» なので、どの方針でも動かしてはいけない。
@@ -485,6 +506,7 @@ TEST_F(RenderGraphTest, KeepsWriteGenerationOrderRegardlessOfPolicy)
     }
 }
 
+/// @brief Agrees between policies when the order is fully constrained.
 TEST_F(RenderGraphTest, AgreesBetweenPoliciesWhenTheOrderIsFullyConstrained)
 {
     /// @note 依存が一本道なら方針は結果に影響しない。
@@ -508,6 +530,7 @@ TEST_F(RenderGraphTest, AgreesBetweenPoliciesWhenTheOrderIsFullyConstrained)
 
 /// @name 構成テキスト
 
+/// @brief Describes execution order culled passes and lifetimes.
 TEST_F(RenderGraphTest, DescribesExecutionOrderCulledPassesAndLifetimes)
 {
     RG graph;
@@ -531,6 +554,7 @@ TEST_F(RenderGraphTest, DescribesExecutionOrderCulledPassesAndLifetimes)
     EXPECT_NE(described.find("res Output first=1 last=1 alias=-1"), std::string::npos);
 }
 
+/// @brief Omits timing from the description so diffs stay stable.
 TEST_F(RenderGraphTest, OmitsTimingFromTheDescriptionSoDiffsStayStable)
 {
     /// @note 計測値が混ざるとフレームごとに差分が出て、順序の変化が埋もれる。
@@ -553,6 +577,7 @@ TEST_F(RenderGraphTest, OmitsTimingFromTheDescriptionSoDiffsStayStable)
 
 /// @name Execute
 
+/// @brief Invokes callbacks of live passes only and in execution order.
 TEST_F(RenderGraphTest, InvokesCallbacksOfLivePassesOnlyAndInExecutionOrder)
 {
     RG graph;
@@ -571,6 +596,7 @@ TEST_F(RenderGraphTest, InvokesCallbacksOfLivePassesOnlyAndInExecutionOrder)
     EXPECT_EQ(invoked, (std::vector<std::string>{ "Geometry", "Present" }));
 }
 
+/// @brief Reuses an injected plan instead of replanning.
 TEST_F(RenderGraphTest, ReusesAnInjectedPlanInsteadOfReplanning)
 {
     /// @note RenderPipeline がトポロジ不変フレームで Plan をスキップする経路。
@@ -596,6 +622,7 @@ TEST_F(RenderGraphTest, ReusesAnInjectedPlanInsteadOfReplanning)
     EXPECT_EQ(invoked, (std::vector<std::string>{ "Geometry", "Present" }));
 }
 
+/// @brief Clears profiles when a plan is injected.
 TEST_F(RenderGraphTest, ClearsProfilesWhenAPlanIsInjected)
 {
     /// @note profiles は Execute が毎回書き直す。注入元の計測値が混ざると
@@ -615,6 +642,7 @@ TEST_F(RenderGraphTest, ClearsProfilesWhenAPlanIsInjected)
     EXPECT_TRUE(graph.GetLastReport().profiles.empty());
 }
 
+/// @brief Transfers plan ownership and executes only current callbacks and profiles.
 TEST_F(RenderGraphTest, TransfersPlanOwnershipAndExecutesOnlyCurrentCallbacksAndProfiles)
 {
     RG source;

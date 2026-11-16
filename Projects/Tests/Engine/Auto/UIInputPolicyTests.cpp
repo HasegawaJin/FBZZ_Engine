@@ -31,6 +31,7 @@ protected:
     { scene::ui_detail::UpdateButton(m_button, m_position, m_size, pointer, pressed); }
 };
 
+/// @brief Owned pointer click still uses the production button handler.
 TEST_F(UIInputPolicyTest, OwnedPointerClickStillUsesTheProductionButtonHandler)
 {
     Update(m_inside, true);
@@ -40,6 +41,7 @@ TEST_F(UIInputPolicyTest, OwnedPointerClickStillUsesTheProductionButtonHandler)
     EXPECT_TRUE(m_button.onClick);
 }
 
+/// @brief Ownership loss cancels an existing press without click or release event.
 TEST_F(UIInputPolicyTest, OwnershipLossCancelsAnExistingPressWithoutClickOrReleaseEvent)
 {
     Update(m_inside, true);
@@ -52,6 +54,7 @@ TEST_F(UIInputPolicyTest, OwnershipLossCancelsAnExistingPressWithoutClickOrRelea
     EXPECT_FALSE(m_button.onClick);
 }
 
+/// @brief Acquisition click is consumed and does not activate button on release.
 TEST_F(UIInputPolicyTest, AcquisitionClickIsConsumedAndDoesNotActivateButtonOnRelease)
 {
     using Filter = input::input_detail::GameInputConsumption;
@@ -64,6 +67,7 @@ TEST_F(UIInputPolicyTest, AcquisitionClickIsConsumedAndDoesNotActivateButtonOnRe
     EXPECT_TRUE(m_button.onClick);
 }
 
+/// @brief Checks explicit scripted pointer click bypasses physical pointer availability.
 TEST_F(UIInputPolicyTest, ExplicitScriptedPointerClickBypassesPhysicalPointerAvailability)
 {
     scene::UIPointer::Set(m_inside, true);
@@ -74,6 +78,7 @@ TEST_F(UIInputPolicyTest, ExplicitScriptedPointerClickBypassesPhysicalPointerAva
     scene::UIPointer::Clear();
 }
 
+/// @brief Client position injection cannot enable live physical viewport coordinates for host.
 TEST_F(UIInputPolicyTest, ClientPositionInjectionCannotEnableLivePhysicalViewportCoordinatesForHost)
 {
     using Filter = input::input_detail::GameInputConsumption;
@@ -98,6 +103,7 @@ TEST_F(UIInputPolicyTest, ClientPositionInjectionCannotEnableLivePhysicalViewpor
     input::Input::ClearInjected();
 }
 
+/// @brief Handoff cancels drag toggle field and trigger without submit or drop.
 TEST_F(UIInputPolicyTest, HandoffCancelsDragToggleFieldAndTriggerWithoutSubmitOrDrop)
 {
     scene::UIDragSource drag;
@@ -123,6 +129,7 @@ TEST_F(UIInputPolicyTest, HandoffCancelsDragToggleFieldAndTriggerWithoutSubmitOr
     EXPECT_FALSE(trigger.endDrag);
 }
 
+/// @brief Injected mouse down cannot become an explicit physical acquisition gesture.
 TEST_F(UIInputPolicyTest, InjectedMouseDownCannotBecomeAnExplicitPhysicalAcquisitionGesture)
 {
     constexpr unsigned int LEFT_BUTTON_UP = 0x0202;
@@ -133,6 +140,7 @@ TEST_F(UIInputPolicyTest, InjectedMouseDownCannotBecomeAnExplicitPhysicalAcquisi
     input::Input::ClearInjected();
 }
 
+/// @brief Interaction revision remains monotonic across mask reset.
 TEST_F(UIInputPolicyTest, InteractionRevisionRemainsMonotonicAcrossMaskReset)
 {
     input::input_detail::GameInputConsumption consumption;
@@ -195,6 +203,7 @@ protected:
     }
 };
 
+/// @brief Current query works without render and does not consume click state.
 TEST_F(UIQueryTest, CurrentQueryWorksWithoutRenderAndDoesNotConsumeClickState)
 {
     scene::Scene scene;
@@ -211,6 +220,7 @@ TEST_F(UIQueryTest, CurrentQueryWorksWithoutRenderAndDoesNotConsumeClickState)
     EXPECT_FALSE(scene::UIPointerOverUI(scene, View()));
 }
 
+/// @brief Runtime query uses active scene lifetime before rendering across frames.
 TEST_F(UIQueryTest, RuntimeQueryUsesActiveSceneLifetimeBeforeRenderingAcrossFrames)
 {
     scene::Scene first, second;
@@ -231,6 +241,7 @@ TEST_F(UIQueryTest, RuntimeQueryUsesActiveSceneLifetimeBeforeRenderingAcrossFram
     runtime.BindExternalScene(nullptr);
 }
 
+/// @brief Masks and group raycast policy apply before any draw.
 TEST_F(UIQueryTest, MasksAndGroupRaycastPolicyApplyBeforeAnyDraw)
 {
     scene::Scene scene;
@@ -250,6 +261,7 @@ TEST_F(UIQueryTest, MasksAndGroupRaycastPolicyApplyBeforeAnyDraw)
     EXPECT_TRUE(scene::UIPointerOverUI(scene, View()));
 }
 
+/// @brief Scroll offset and viewport scaling use current values.
 TEST_F(UIQueryTest, ScrollOffsetAndViewportScalingUseCurrentValues)
 {
     scene::Scene scene;

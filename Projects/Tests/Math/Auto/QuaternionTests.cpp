@@ -19,6 +19,7 @@ class QuaternionTest : public testkit::Fixture {};
 
 /// @name 回転作用
 
+/// @brief Identity leaves vectors unchanged.
 TEST_F(QuaternionTest, IdentityLeavesVectorsUnchanged)
 {
     const math::Vector3 v(1.0f, -2.0f, 3.0f);
@@ -26,6 +27,7 @@ TEST_F(QuaternionTest, IdentityLeavesVectorsUnchanged)
     EXPECT_VEC3_NEAR(math::Quaternion::Identity() * v, v, testkit::kTolerance);
 }
 
+/// @brief Rotation around right by ninety degrees maps up to forward.
 TEST_F(QuaternionTest, RotationAroundRightByNinetyDegreesMapsUpToForward)
 {
     /// @note 左手系の基底の向きそのもの。反転するとキャラクターの前後が入れ替わる。
@@ -34,6 +36,7 @@ TEST_F(QuaternionTest, RotationAroundRightByNinetyDegreesMapsUpToForward)
     EXPECT_VEC3_NEAR(q * math::Vector3::UP, math::Vector3::FORWARD, testkit::kTolerance);
 }
 
+/// @brief Rotation leaves the axis itself.
 TEST_F(QuaternionTest, RotationLeavesTheAxisItself)
 {
     const math::Vector3    axis = Rng().NextUnitVector3();
@@ -42,6 +45,7 @@ TEST_F(QuaternionTest, RotationLeavesTheAxisItself)
     EXPECT_VEC3_NEAR(q * axis, axis, testkit::kTolerance);
 }
 
+/// @brief Rotation preserves length.
 TEST_F(QuaternionTest, RotationPreservesLength)
 {
     for (int i = 0; i < 32; ++i) {
@@ -52,6 +56,7 @@ TEST_F(QuaternionTest, RotationPreservesLength)
     }
 }
 
+/// @brief Conjugate undoes the rotation of a unit quaternion.
 TEST_F(QuaternionTest, ConjugateUndoesTheRotationOfAUnitQuaternion)
 {
     for (int i = 0; i < 32; ++i) {
@@ -62,6 +67,7 @@ TEST_F(QuaternionTest, ConjugateUndoesTheRotationOfAUnitQuaternion)
     }
 }
 
+/// @brief Inverse times original is identity.
 TEST_F(QuaternionTest, InverseTimesOriginalIsIdentity)
 {
     const math::Quaternion q = Rng().NextRotation();
@@ -71,6 +77,7 @@ TEST_F(QuaternionTest, InverseTimesOriginalIsIdentity)
 
 /// @name 合成
 
+/// @brief Multiplication applies the right operand first.
 TEST_F(QuaternionTest, MultiplicationAppliesTheRightOperandFirst)
 {
     const math::Quaternion a = Rng().NextRotation();
@@ -80,6 +87,7 @@ TEST_F(QuaternionTest, MultiplicationAppliesTheRightOperandFirst)
     EXPECT_VEC3_NEAR((a * b) * v, a * (b * v), testkit::kLooseTolerance);
 }
 
+/// @brief Multiplication is not commutative.
 TEST_F(QuaternionTest, MultiplicationIsNotCommutative)
 {
     const math::Quaternion a = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::HALF_PI);
@@ -88,6 +96,7 @@ TEST_F(QuaternionTest, MultiplicationIsNotCommutative)
     EXPECT_FALSE(a * b == b * a);
 }
 
+/// @brief From euler composes yaw then pitch then roll.
 TEST_F(QuaternionTest, FromEulerComposesYawThenPitchThenRoll)
 {
     /// @note YXZ 内因順 (Qy * Qx * Qz)。ここが変わるとエディタで入力した角度の意味が変わる。
@@ -103,6 +112,7 @@ TEST_F(QuaternionTest, FromEulerComposesYawThenPitchThenRoll)
 
 /// @name 正規化
 
+/// @brief Normalizing a nonzero input produces a unit-length result.
 TEST_F(QuaternionTest, NormalizedProducesUnitLength)
 {
     const math::Quaternion q(1.0f, 2.0f, 3.0f, 4.0f);
@@ -112,6 +122,7 @@ TEST_F(QuaternionTest, NormalizedProducesUnitLength)
 
 /// @name 補間
 
+/// @brief Slerp returns the endpoints at zero and one.
 TEST_F(QuaternionTest, SlerpReturnsTheEndpointsAtZeroAndOne)
 {
     const math::Quaternion a = Rng().NextRotation();
@@ -121,6 +132,7 @@ TEST_F(QuaternionTest, SlerpReturnsTheEndpointsAtZeroAndOne)
     EXPECT_QUAT_NEAR(math::Quaternion::Slerp(a, b, 1.0f), b, testkit::kLooseTolerance);
 }
 
+/// @brief Slerp at midpoint is half the angle.
 TEST_F(QuaternionTest, SlerpAtMidpointIsHalfTheAngle)
 {
     const math::Quaternion a = math::Quaternion::Identity();
@@ -131,6 +143,7 @@ TEST_F(QuaternionTest, SlerpAtMidpointIsHalfTheAngle)
     EXPECT_QUAT_NEAR(math::Quaternion::Slerp(a, b, 0.5f), expected, testkit::kLooseTolerance);
 }
 
+/// @brief Slerp takes the shorter arc when the endpoints face away.
 TEST_F(QuaternionTest, SlerpTakesTheShorterArcWhenTheEndpointsFaceAway)
 {
     /// @note b は a と同じ回転を表す «符号違い»。遠回りすると 1 回転ぶん余計に回る。
@@ -142,6 +155,7 @@ TEST_F(QuaternionTest, SlerpTakesTheShorterArcWhenTheEndpointsFaceAway)
     EXPECT_QUAT_NEAR(mid, a, testkit::kLooseTolerance);
 }
 
+/// @brief Lerp result is normalized.
 TEST_F(QuaternionTest, LerpResultIsNormalized)
 {
     const math::Quaternion a = Rng().NextRotation();
@@ -152,6 +166,7 @@ TEST_F(QuaternionTest, LerpResultIsNormalized)
 
 /// @name 行列との往復
 
+/// @brief Round-trips through a rotation matrix.
 TEST_F(QuaternionTest, RoundTripsThroughARotationMatrix)
 {
     for (int i = 0; i < 32; ++i) {
@@ -165,6 +180,7 @@ TEST_F(QuaternionTest, RoundTripsThroughARotationMatrix)
 
 /// @name LookRotation
 
+/// @brief Look rotation aligns forward with the given direction.
 TEST_F(QuaternionTest, LookRotationAlignsForwardWithTheGivenDirection)
 {
     for (int i = 0; i < 32; ++i) {
@@ -175,6 +191,7 @@ TEST_F(QuaternionTest, LookRotationAlignsForwardWithTheGivenDirection)
     }
 }
 
+/// @brief Look rotation returns identity for a zero direction.
 TEST_F(QuaternionTest, LookRotationReturnsIdentityForAZeroDirection)
 {
     /// @note 追従対象へ重なった / 速度が 0 になった、は正常系に含まれる。
@@ -182,6 +199,7 @@ TEST_F(QuaternionTest, LookRotationReturnsIdentityForAZeroDirection)
                      math::Quaternion::Identity(), testkit::kTolerance);
 }
 
+/// @brief Look rotation still aligns forward when the direction is parallel to up.
 TEST_F(QuaternionTest, LookRotationStillAlignsForwardWhenTheDirectionIsParallelToUp)
 {
     /// @note 真上を向く。既定の up と平行なので基底が作れず、代替 up に落ちる縮退ケース。

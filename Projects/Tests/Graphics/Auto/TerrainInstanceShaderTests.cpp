@@ -256,6 +256,7 @@ protected:
     r::ResourceHandle<r::ShaderTag> m_cpuTerrain, m_gpuTerrain, m_instance, m_directInstance;
 };
 
+/// @brief GPU terrain matches CPU attributes for two patch offsets and LODs.
 TEST_F(TerrainInstanceShaderTest, GpuTerrainMatchesCpuAttributesForTwoPatchOffsetsAndLods)
 {
     auto& resources = *m_resources;
@@ -322,6 +323,7 @@ TEST_F(TerrainInstanceShaderTest, GpuTerrainMatchesCpuAttributesForTwoPatchOffse
     }
 }
 
+/// @brief GPU instances cull compact and reset across views and frames.
 TEST_F(TerrainInstanceShaderTest, GpuInstancesCullCompactAndResetAcrossViewsAndFrames)
 {
     auto& resources=*m_resources; auto& device=*m_bundle.renderer;
@@ -360,6 +362,7 @@ TEST_F(TerrainInstanceShaderTest, GpuInstancesCullCompactAndResetAcrossViewsAndF
     culling.Release(resources);
 }
 
+/// @brief Invalid bounds and closed frame leave instance fallback unchanged.
 TEST_F(TerrainInstanceShaderTest, InvalidBoundsAndClosedFrameLeaveInstanceFallbackUnchanged)
 {
     auto& resources=*m_resources; auto& device=*m_bundle.renderer;
@@ -377,11 +380,15 @@ TEST_F(TerrainInstanceShaderTest, InvalidBoundsAndClosedFrameLeaveInstanceFallba
     (void)Finish();
 }
 
+/// @brief Instance batch preserves pixels for GPU small batch and invalid bounds fallback.
 TEST_F(TerrainInstanceShaderTest, InstanceBatchPreservesPixelsForGpuSmallBatchAndInvalidBoundsFallback) { VerifyStaticBatch(); }
 
 class TerrainThreadedInstanceShaderTest : public TerrainInstanceShaderTest { protected: bool UseRenderThread() const override { return true; } };
+/// @brief Deformed indirect preserves order descriptors and frame view buffers.
 TEST_F(TerrainInstanceShaderTest, DeformedIndirectPreservesOrderDescriptorsAndFrameViewBuffers) { VerifyDeformedIndirect(); }
+/// @brief Queued static batch submits once and matches direct.
 TEST_F(TerrainThreadedInstanceShaderTest, QueuedStaticBatchSubmitsOnceAndMatchesDirect) { VerifyStaticBatch(); }
+/// @brief Queued deformed indirect owns inputs and matches direct.
 TEST_F(TerrainThreadedInstanceShaderTest, QueuedDeformedIndirectOwnsInputsAndMatchesDirect) { VerifyDeformedIndirect(); }
 } /// @note namespace
 } /// @note namespace fbzz::tests

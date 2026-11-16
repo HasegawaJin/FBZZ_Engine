@@ -119,6 +119,7 @@ private:
 };
 }
 
+/// @brief Thousand phases speeds and blends match CPU across frame lanes.
 TEST_F(BakedBoneReplayTest, ThousandPhasesSpeedsAndBlendsMatchCpuAcrossFrameLanes)
 {
     for (uint32_t lane = 0; lane < 6; ++lane) {
@@ -148,6 +149,7 @@ TEST_F(BakedBoneReplayTest, ThousandPhasesSpeedsAndBlendsMatchCpuAcrossFrameLane
     }
 }
 
+/// @brief Invalid offsets and stale owner publish no palette.
 TEST_F(BakedBoneReplayTest, InvalidOffsetsAndStaleOwnerPublishNoPalette)
 {
     Begin(); renderer::BoneReplayRow row;

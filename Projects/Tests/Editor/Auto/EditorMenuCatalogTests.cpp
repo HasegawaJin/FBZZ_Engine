@@ -33,6 +33,7 @@ private:
 
 class EditorMenuCatalogTest : public testkit::Fixture {};
 
+/// @brief Lists every eligible instance exactly once regardless of visibility or registration order.
 TEST_F(EditorMenuCatalogTest, ListsEveryEligibleInstanceExactlyOnceRegardlessOfVisibilityOrRegistrationOrder)
 {
     std::vector<std::unique_ptr<editor::IPanel>> panels;
@@ -59,6 +60,7 @@ TEST_F(EditorMenuCatalogTest, ListsEveryEligibleInstanceExactlyOnceRegardlessOfV
     EXPECT_STREQ(panels[0]->GetWindowName(), "Analysis");
 }
 
+/// @brief Places common panels at the root and keeps additional browsers distinct.
 TEST_F(EditorMenuCatalogTest, PlacesCommonPanelsAtTheRootAndKeepsAdditionalBrowsersDistinct)
 {
     std::vector<std::unique_ptr<editor::IPanel>> panels;
@@ -77,6 +79,7 @@ TEST_F(EditorMenuCatalogTest, PlacesCommonPanelsAtTheRootAndKeepsAdditionalBrows
     EXPECT_STREQ(groups.back().entries.front().panel->GetWindowName(), "Asset Browser 2");
 }
 
+/// @brief Preserves declared categories for new panels and omits empty groups.
 TEST_F(EditorMenuCatalogTest, PreservesDeclaredCategoriesForNewPanelsAndOmitsEmptyGroups)
 {
     std::vector<std::unique_ptr<editor::IPanel>> panels;

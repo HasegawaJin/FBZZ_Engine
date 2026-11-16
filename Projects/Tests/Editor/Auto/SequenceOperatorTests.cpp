@@ -44,6 +44,7 @@ protected:
     editor::OperatorRegistry m_registry;
     editor::UndoStack m_undo;
 };
+/// @brief Hidden document edits support history and save.
 TEST_F(SequenceOperatorTest, HiddenDocumentEditsSupportHistoryAndSave)
 {
     ASSERT_TRUE(Duration(3.0f).ok); ASSERT_TRUE(Invoke("sequence.undo").ok);
@@ -52,6 +53,7 @@ TEST_F(SequenceOperatorTest, HiddenDocumentEditsSupportHistoryAndSave)
     asset::SequenceAsset loaded; ASSERT_TRUE(asset::LoadSequenceAsset(File("Assets/Test.sequence").generic_string(), loaded));
     EXPECT_DOUBLE_EQ(loaded.duration, 3.0); EXPECT_FALSE(m_panel.visible);
 }
+/// @brief Unknown fields and negative time reject without changing document.
 TEST_F(SequenceOperatorTest, UnknownFieldsAndNegativeTimeRejectWithoutChangingDocument)
 {
     EXPECT_FALSE(Duration(3.0f, true).ok); EXPECT_FALSE(Duration(-1.0f).ok);
@@ -59,6 +61,7 @@ TEST_F(SequenceOperatorTest, UnknownFieldsAndNegativeTimeRejectWithoutChangingDo
     EXPECT_DOUBLE_EQ(state.data.Find("duration")->AsDouble(), 2.0);
     EXPECT_FALSE(state.data.Find("dirty")->AsBool()); EXPECT_EQ(state.data.Find("undoCount")->AsInt(), 0);
 }
+/// @brief Playback advances without rendering the panel.
 TEST_F(SequenceOperatorTest, PlaybackAdvancesWithoutRenderingThePanel)
 {
     editor::OpArgs play; play.Set("action", std::string("play")); play.Set("preview", false);
@@ -69,6 +72,7 @@ TEST_F(SequenceOperatorTest, PlaybackAdvancesWithoutRenderingThePanel)
     state = Invoke("sequence.inspect"); EXPECT_DOUBLE_EQ(state.data.Find("time")->AsDouble(), 2.0);
     EXPECT_FALSE(state.data.Find("playing")->AsBool()); EXPECT_FALSE(m_panel.visible);
 }
+/// @brief Close requires explicit discard for unsaved changes.
 TEST_F(SequenceOperatorTest, CloseRequiresExplicitDiscardForUnsavedChanges)
 {
     ASSERT_TRUE(Duration(3.0f).ok); EXPECT_FALSE(Invoke("sequence.close").ok);
@@ -76,6 +80,7 @@ TEST_F(SequenceOperatorTest, CloseRequiresExplicitDiscardForUnsavedChanges)
     editor::OpArgs close; close.Set("discard", true); ASSERT_TRUE(Invoke("sequence.close", close).ok);
     EXPECT_TRUE(Invoke("sequence.inspect").data.Find("path")->AsString().empty());
 }
+/// @brief Hidden preview feeds the player and release restores its ownership.
 TEST_F(SequenceOperatorTest, HiddenPreviewFeedsThePlayerAndReleaseRestoresItsOwnership)
 {
     auto& world = AttachScene(); auto& owner = world.CreateGameObject("Sequence Target");

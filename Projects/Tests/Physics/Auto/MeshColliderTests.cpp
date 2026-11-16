@@ -54,6 +54,7 @@ physics::AABB BoundsOf(const physics::BVHTree& bvh)
 
 class TriangleMeshColliderTest : public testkit::Fixture {};
 
+/// @brief Builds one triangle per index triple.
 TEST_F(TriangleMeshColliderTest, BuildsOneTrianglePerIndexTriple)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -62,6 +63,7 @@ TEST_F(TriangleMeshColliderTest, BuildsOneTrianglePerIndexTriple)
     EXPECT_EQ(mesh.GetBVH().triangles.size(), 2u);
 }
 
+/// @brief Reports its type.
 TEST_F(TriangleMeshColliderTest, ReportsItsType)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -69,6 +71,7 @@ TEST_F(TriangleMeshColliderTest, ReportsItsType)
     EXPECT_EQ(mesh.GetType(), physics::ColliderType::TRIANGLE_MESH);
 }
 
+/// @brief Places triangles at the world transform.
 TEST_F(TriangleMeshColliderTest, PlacesTrianglesAtTheWorldTransform)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -80,6 +83,7 @@ TEST_F(TriangleMeshColliderTest, PlacesTrianglesAtTheWorldTransform)
     EXPECT_VEC3_NEAR(bounds.max, math::Vector3(11.0f, 5.0f, 1.0f), testkit::kLooseTolerance);
 }
 
+/// @brief Rotates the triangles with the transform.
 TEST_F(TriangleMeshColliderTest, RotatesTheTrianglesWithTheTransform)
 {
     /// @note 板を X 軸まわりに 90 度倒すと、床だった面が壁になる。
@@ -93,6 +97,7 @@ TEST_F(TriangleMeshColliderTest, RotatesTheTrianglesWithTheTransform)
     EXPECT_NEAR(bounds.max.z - bounds.min.z, 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Scales the triangles.
 TEST_F(TriangleMeshColliderTest, ScalesTheTriangles)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -105,6 +110,7 @@ TEST_F(TriangleMeshColliderTest, ScalesTheTriangles)
     EXPECT_NEAR(bounds.max.z, 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Bounds enclose every triangle.
 TEST_F(TriangleMeshColliderTest, BoundsEncloseEveryTriangle)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -120,6 +126,7 @@ TEST_F(TriangleMeshColliderTest, BoundsEncloseEveryTriangle)
     EXPECT_GE(reported.max.z, actual.max.z - testkit::kLooseTolerance);
 }
 
+/// @brief Survives an empty mesh.
 TEST_F(TriangleMeshColliderTest, SurvivesAnEmptyMesh)
 {
     /// @note インポート途中や «コライダーだけ付けた» 状態は普通に通る。
@@ -129,6 +136,7 @@ TEST_F(TriangleMeshColliderTest, SurvivesAnEmptyMesh)
     EXPECT_TRUE(mesh.GetBVH().triangles.empty());
 }
 
+/// @brief Ignores a trailing partial triangle.
 TEST_F(TriangleMeshColliderTest, IgnoresATrailingPartialTriangle)
 {
     /// @note インデックスが 3 の倍数でないデータが来ても、途中まで使って落ちないこと。
@@ -141,6 +149,7 @@ TEST_F(TriangleMeshColliderTest, IgnoresATrailingPartialTriangle)
 /// 以下 3 本は «2 回目以降の Update»。スケールが変わらない移動・回転は BVH を組み直さず
 /// refit で済ませる経路に入るので、組み直した場合と同じ結果になることを見る。
 
+/// @brief Refit and rebuild agree after a move.
 TEST_F(TriangleMeshColliderTest, RefitAndRebuildAgreeAfterAMove)
 {
     physics::TriangleMeshCollider refitted(QuadPositions(), QuadIndices());
@@ -162,6 +171,7 @@ TEST_F(TriangleMeshColliderTest, RefitAndRebuildAgreeAfterAMove)
                      testkit::kLooseTolerance);
 }
 
+/// @brief Refit follows a rotation after the first update.
 TEST_F(TriangleMeshColliderTest, RefitFollowsARotationAfterTheFirstUpdate)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -175,6 +185,7 @@ TEST_F(TriangleMeshColliderTest, RefitFollowsARotationAfterTheFirstUpdate)
     EXPECT_NEAR(bounds.max.z - bounds.min.z, 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Rebuilds instead of refitting when the scale changes.
 TEST_F(TriangleMeshColliderTest, RebuildsInsteadOfRefittingWhenTheScaleChanges)
 {
     /// @note refit しない。非一様スケールは三角形どうしの相対配置ごと変えるため、構築時に選んだ
@@ -194,6 +205,7 @@ TEST_F(TriangleMeshColliderTest, RebuildsInsteadOfRefittingWhenTheScaleChanges)
 
 class HeightFieldColliderTest : public testkit::Fixture {};
 
+/// @brief Builds two triangles per cell.
 TEST_F(HeightFieldColliderTest, BuildsTwoTrianglesPerCell)
 {
     /// @note 3x3 の格子は 2x2 のセル = 8 三角形。枚数が違うと地形に穴か重なりができる。
@@ -203,6 +215,7 @@ TEST_F(HeightFieldColliderTest, BuildsTwoTrianglesPerCell)
     EXPECT_EQ(field.GetBVH().triangles.size(), 8u);
 }
 
+/// @brief Reports its grid settings.
 TEST_F(HeightFieldColliderTest, ReportsItsGridSettings)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 2.0f, 10.0f);
@@ -214,6 +227,7 @@ TEST_F(HeightFieldColliderTest, ReportsItsGridSettings)
     EXPECT_EQ(field.GetType(), physics::ColliderType::HEIGHT_FIELD);
 }
 
+/// @brief Spans cell size times the cell count.
 TEST_F(HeightFieldColliderTest, SpansCellSizeTimesTheCellCount)
 {
     /// @note 格子の原点は隅。cellSize 2 の 2x2 セルなら [0, 4] に広がる。
@@ -226,6 +240,7 @@ TEST_F(HeightFieldColliderTest, SpansCellSizeTimesTheCellCount)
     EXPECT_VEC3_NEAR(bounds.max, math::Vector3(4.0f, 0.0f, 4.0f), testkit::kLooseTolerance);
 }
 
+/// @brief Scales the stored heights by max height.
 TEST_F(HeightFieldColliderTest, ScalesTheStoredHeightsByMaxHeight)
 {
     /// @note heights は [-1, 1] の正規化値。maxHeight を掛け忘れると地形が平らになる。
@@ -238,6 +253,7 @@ TEST_F(HeightFieldColliderTest, ScalesTheStoredHeightsByMaxHeight)
     EXPECT_NEAR(bounds.max.y, 10.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Places the grid at the world transform.
 TEST_F(HeightFieldColliderTest, PlacesTheGridAtTheWorldTransform)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 2.0f, 1.0f);
@@ -249,6 +265,7 @@ TEST_F(HeightFieldColliderTest, PlacesTheGridAtTheWorldTransform)
     EXPECT_VEC3_NEAR(bounds.max, math::Vector3(2.0f, 3.0f, 2.0f), testkit::kLooseTolerance);
 }
 
+/// @brief Rebuild replaces the terrain shape.
 TEST_F(HeightFieldColliderTest, RebuildReplacesTheTerrainShape)
 {
     /// @note 地形を彫った後に呼ぶ経路。呼んでも高さが変わらないと «見えない古い地面» が残る。
@@ -261,6 +278,7 @@ TEST_F(HeightFieldColliderTest, RebuildReplacesTheTerrainShape)
     EXPECT_NEAR(BoundsOf(field.GetBVH()).max.y, 10.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Rebuild can change the resolution.
 TEST_F(HeightFieldColliderTest, RebuildCanChangeTheResolution)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
@@ -276,6 +294,7 @@ TEST_F(HeightFieldColliderTest, RebuildCanChangeTheResolution)
 /// 以下 4 本は «2 回目以降の Update» を見る。初回の Update は BVH の «構築» 経路を通るため、
 /// 1 回しか呼ばないテストでは transform 追従を確かめたことにならない。
 
+/// @brief Follows a move after the first update.
 TEST_F(HeightFieldColliderTest, FollowsAMoveAfterTheFirstUpdate)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
@@ -289,6 +308,7 @@ TEST_F(HeightFieldColliderTest, FollowsAMoveAfterTheFirstUpdate)
     EXPECT_VEC3_NEAR(bounds.max, math::Vector3(102.0f, 5.0f, -18.0f), testkit::kLooseTolerance);
 }
 
+/// @brief Follows a rotation after the first update.
 TEST_F(HeightFieldColliderTest, FollowsARotationAfterTheFirstUpdate)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
@@ -304,6 +324,7 @@ TEST_F(HeightFieldColliderTest, FollowsARotationAfterTheFirstUpdate)
     EXPECT_NEAR(bounds.max.x - bounds.min.x, 2.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Follows a scale change after the first update.
 TEST_F(HeightFieldColliderTest, FollowsAScaleChangeAfterTheFirstUpdate)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
@@ -316,6 +337,7 @@ TEST_F(HeightFieldColliderTest, FollowsAScaleChangeAfterTheFirstUpdate)
     EXPECT_NEAR(bounds.max.z, 6.0f, testkit::kLooseTolerance);
 }
 
+/// @brief BVH nodes and bounds follow the move too.
 TEST_F(HeightFieldColliderTest, BVHNodesAndBoundsFollowTheMoveToo)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
@@ -342,6 +364,7 @@ TEST_F(HeightFieldColliderTest, BVHNodesAndBoundsFollowTheMoveToo)
 /// @name 穴
 /// @see Docs/design/terrain-layers.md §4 穴
 
+/// @brief Hole cells build no triangles.
 TEST_F(HeightFieldColliderTest, HoleCellsBuildNoTriangles)
 {
     /// @note 2x2 セルのうち (1, 0) だけ穴。index = cz * (cols - 1) + cx。
@@ -356,6 +379,7 @@ TEST_F(HeightFieldColliderTest, HoleCellsBuildNoTriangles)
         EXPECT_NE(tri.index / 2u, 1u) << "穴セルの三角形が残っている";
 }
 
+/// @brief Mismatched hole mask is ignored.
 TEST_F(HeightFieldColliderTest, MismatchedHoleMaskIsIgnored)
 {
     /// @note セル数と合わない穴マスクを部分的に読むと格子とずれた位置に穴が開く。
@@ -366,6 +390,7 @@ TEST_F(HeightFieldColliderTest, MismatchedHoleMaskIsIgnored)
     EXPECT_TRUE(field.GetHoles().empty());
 }
 
+/// @brief Refit after move keeps hole cells empty.
 TEST_F(HeightFieldColliderTest, RefitAfterMoveKeepsHoleCellsEmpty)
 {
     /// @note RefitTransform は Triangle::index から格子を逆算する。穴で index を進め忘れると
@@ -387,6 +412,7 @@ TEST_F(HeightFieldColliderTest, RefitAfterMoveKeepsHoleCellsEmpty)
     EXPECT_EQ(field.GetBVH().triangles.size(), 6u);
 }
 
+/// @brief Rebuild can clear holes.
 TEST_F(HeightFieldColliderTest, RebuildCanClearHoles)
 {
     physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f, { 1, 1, 1, 1 });

@@ -18,6 +18,7 @@ class CCDTest : public testkit::Fixture {};
 
 /// @name 球 × 球
 
+/// @brief Finds the time of impact for an approaching sphere.
 TEST_F(CCDTest, FindsTheTimeOfImpactForAnApproachingSphere)
 {
     /// @note 1 フレームで 10 進む球。中心間 10、半径の和 2 なので 8 進んだところで接触する。
@@ -29,6 +30,7 @@ TEST_F(CCDTest, FindsTheTimeOfImpactForAnApproachingSphere)
     EXPECT_NEAR(result.toi, 0.8f, testkit::kLooseTolerance);
 }
 
+/// @brief Reports the normal pointing from the target to the mover.
 TEST_F(CCDTest, ReportsTheNormalPointingFromTheTargetToTheMover)
 {
     const physics::CCDResult result = physics::CCDSolver::SweptSphereSphere(
@@ -41,6 +43,7 @@ TEST_F(CCDTest, ReportsTheNormalPointingFromTheTargetToTheMover)
                      testkit::kLooseTolerance);
 }
 
+/// @brief Misses a sphere that the path passes beside.
 TEST_F(CCDTest, MissesASphereThatThePathPassesBeside)
 {
     const physics::CCDResult result = physics::CCDSolver::SweptSphereSphere(
@@ -50,6 +53,7 @@ TEST_F(CCDTest, MissesASphereThatThePathPassesBeside)
     EXPECT_FALSE(result.hit);
 }
 
+/// @brief Misses when the frame is too short to reach the target.
 TEST_F(CCDTest, MissesWhenTheFrameIsTooShortToReachTheTarget)
 {
     /// @note 同じ速度でも dt が短ければ届かない。TOI が 1 を超える解は採らない。
@@ -60,6 +64,7 @@ TEST_F(CCDTest, MissesWhenTheFrameIsTooShortToReachTheTarget)
     EXPECT_FALSE(result.hit);
 }
 
+/// @brief Misses when the mover is standing still.
 TEST_F(CCDTest, MissesWhenTheMoverIsStandingStill)
 {
     /// @note 動いていなければ通り抜けようが無い。ここで解こうとすると 0 除算になる。
@@ -70,6 +75,7 @@ TEST_F(CCDTest, MissesWhenTheMoverIsStandingStill)
     EXPECT_FALSE(result.hit);
 }
 
+/// @brief Misses when the mover is travelling away.
 TEST_F(CCDTest, MissesWhenTheMoverIsTravellingAway)
 {
     const physics::CCDResult result = physics::CCDSolver::SweptSphereSphere(
@@ -79,6 +85,7 @@ TEST_F(CCDTest, MissesWhenTheMoverIsTravellingAway)
     EXPECT_FALSE(result.hit);
 }
 
+/// @brief Time of impact shrinks as the mover gets faster.
 TEST_F(CCDTest, TimeOfImpactShrinksAsTheMoverGetsFaster)
 {
     const physics::CCDResult slow = physics::CCDSolver::SweptSphereSphere(
@@ -93,6 +100,7 @@ TEST_F(CCDTest, TimeOfImpactShrinksAsTheMoverGetsFaster)
     EXPECT_LT(fast.toi, slow.toi);
 }
 
+/// @brief Larger radii make contact happen earlier.
 TEST_F(CCDTest, LargerRadiiMakeContactHappenEarlier)
 {
     const physics::CCDResult thin = physics::CCDSolver::SweptSphereSphere(
@@ -109,6 +117,7 @@ TEST_F(CCDTest, LargerRadiiMakeContactHappenEarlier)
 
 /// @name 球 × 平面
 
+/// @brief Finds the time of impact against a ground plane.
 TEST_F(CCDTest, FindsTheTimeOfImpactAgainstAGroundPlane)
 {
     /// @note 高さ 10 から 1 フレームで 20 落ちる。半径 1 なので高さ 1 で接触 = 9 落ちた時点。
@@ -120,6 +129,7 @@ TEST_F(CCDTest, FindsTheTimeOfImpactAgainstAGroundPlane)
     EXPECT_NEAR(result.toi, 0.45f, testkit::kLooseTolerance);
 }
 
+/// @brief Contact with a plane sits one radius below the centre.
 TEST_F(CCDTest, ContactWithAPlaneSitsOneRadiusBelowTheCentre)
 {
     const physics::CCDResult result = physics::CCDSolver::SweptSpherePlane(
@@ -131,6 +141,7 @@ TEST_F(CCDTest, ContactWithAPlaneSitsOneRadiusBelowTheCentre)
     EXPECT_VEC3_NEAR(result.contactPoint, math::Vector3::ZERO, testkit::kLooseTolerance);
 }
 
+/// @brief Misses a plane it is moving away from.
 TEST_F(CCDTest, MissesAPlaneItIsMovingAwayFrom)
 {
     const physics::CCDResult result = physics::CCDSolver::SweptSpherePlane(
@@ -140,6 +151,7 @@ TEST_F(CCDTest, MissesAPlaneItIsMovingAwayFrom)
     EXPECT_FALSE(result.hit);
 }
 
+/// @brief Misses a plane it cannot reach this frame.
 TEST_F(CCDTest, MissesAPlaneItCannotReachThisFrame)
 {
     const physics::CCDResult result = physics::CCDSolver::SweptSpherePlane(
@@ -149,6 +161,7 @@ TEST_F(CCDTest, MissesAPlaneItCannotReachThisFrame)
     EXPECT_FALSE(result.hit);
 }
 
+/// @brief Honours the plane offset.
 TEST_F(CCDTest, HonoursThePlaneOffset)
 {
     /// @note 高さ 5 に持ち上げた床。同じ落下でも接触は早くなる。
@@ -164,6 +177,7 @@ TEST_F(CCDTest, HonoursThePlaneOffset)
 
 /// @name 適用するかの判定
 
+/// @brief Needs CCD only when a frame moves more than half the radius.
 TEST_F(CCDTest, NeedsCCDOnlyWhenAFrameMovesMoreThanHalfTheRadius)
 {
     /// @note しきい値は «1 フレームの移動量 > 半径 * 0.5»。ここを緩めると穴が開き、
@@ -176,6 +190,7 @@ TEST_F(CCDTest, NeedsCCDOnlyWhenAFrameMovesMoreThanHalfTheRadius)
     EXPECT_FALSE(physics::CCDSolver::NeedsCCD(body, 1.0f, testkit::kFixedDeltaTime));
 }
 
+/// @brief Does not need CCD while standing still.
 TEST_F(CCDTest, DoesNotNeedCCDWhileStandingStill)
 {
     physics::RigidBody body;
@@ -183,6 +198,7 @@ TEST_F(CCDTest, DoesNotNeedCCDWhileStandingStill)
     EXPECT_FALSE(physics::CCDSolver::NeedsCCD(body, 0.5f, testkit::kFixedDeltaTime));
 }
 
+/// @brief Needs CCD is independent of the direction of travel.
 TEST_F(CCDTest, NeedsCCDIsIndependentOfTheDirectionOfTravel)
 {
     physics::RigidBody forward;

@@ -60,6 +60,7 @@ protected:
 
 /// @name 剛体
 
+/// @brief Sync body rejects a null body.
 TEST_F(WorldSceneSyncTest, SyncBodyRejectsANullBody)
 {
     world.BeginSceneSync();
@@ -69,6 +70,7 @@ TEST_F(WorldSceneSyncTest, SyncBodyRejectsANullBody)
     EXPECT_FALSE(handle.IsValid());
 }
 
+/// @brief Sync body keeps the handle across frames.
 TEST_F(WorldSceneSyncTest, SyncBodyKeepsTheHandleAcrossFrames)
 {
     physics::RigidBody body;
@@ -86,6 +88,7 @@ TEST_F(WorldSceneSyncTest, SyncBodyKeepsTheHandleAcrossFrames)
     EXPECT_EQ(second.generation, first.generation);
 }
 
+/// @brief Sync body reattaches a known body when the handle is lost.
 TEST_F(WorldSceneSyncTest, SyncBodyReattachesAKnownBodyWhenTheHandleIsLost)
 {
     physics::RigidBody body;
@@ -103,6 +106,7 @@ TEST_F(WorldSceneSyncTest, SyncBodyReattachesAKnownBodyWhenTheHandleIsLost)
     EXPECT_EQ(rebound.slot, first.slot);
 }
 
+/// @brief End scene sync releases the slot of a body that stopped syncing.
 TEST_F(WorldSceneSyncTest, EndSceneSyncReleasesTheSlotOfABodyThatStoppedSyncing)
 {
     physics::RigidBody removed;
@@ -128,6 +132,7 @@ TEST_F(WorldSceneSyncTest, EndSceneSyncReleasesTheSlotOfABodyThatStoppedSyncing)
 
 /// @name コライダー
 
+/// @brief Sync collider rejects an instance without a shape.
 TEST_F(WorldSceneSyncTest, SyncColliderRejectsAnInstanceWithoutAShape)
 {
     world.BeginSceneSync();
@@ -137,6 +142,7 @@ TEST_F(WorldSceneSyncTest, SyncColliderRejectsAnInstanceWithoutAShape)
     EXPECT_FALSE(handle.IsValid());
 }
 
+/// @brief Sync collider keeps the handle across frames.
 TEST_F(WorldSceneSyncTest, SyncColliderKeepsTheHandleAcrossFrames)
 {
     physics::SphereCollider sphere(1.0f);
@@ -154,6 +160,7 @@ TEST_F(WorldSceneSyncTest, SyncColliderKeepsTheHandleAcrossFrames)
     EXPECT_EQ(second.generation, first.generation);
 }
 
+/// @brief Sync collider reattaches a known shape when the handle is lost.
 TEST_F(WorldSceneSyncTest, SyncColliderReattachesAKnownShapeWhenTheHandleIsLost)
 {
     physics::SphereCollider sphere(1.0f);
@@ -171,6 +178,7 @@ TEST_F(WorldSceneSyncTest, SyncColliderReattachesAKnownShapeWhenTheHandleIsLost)
     EXPECT_EQ(rebound.slot, first.slot);
 }
 
+/// @brief End scene sync releases the slot of a collider that stopped syncing.
 TEST_F(WorldSceneSyncTest, EndSceneSyncReleasesTheSlotOfAColliderThatStoppedSyncing)
 {
     physics::SphereCollider removed(1.0f);
@@ -191,6 +199,7 @@ TEST_F(WorldSceneSyncTest, EndSceneSyncReleasesTheSlotOfAColliderThatStoppedSync
     EXPECT_NE(reused.generation, first.generation);
 }
 
+/// @brief Sync collider pushes the shape inertia into its body.
 TEST_F(WorldSceneSyncTest, SyncColliderPushesTheShapeInertiaIntoItsBody)
 {
     physics::SphereCollider small(1.0f);
@@ -213,6 +222,7 @@ TEST_F(WorldSceneSyncTest, SyncColliderPushesTheShapeInertiaIntoItsBody)
     EXPECT_GT(smallBody.GetAngularVelocity().y, largeBody.GetAngularVelocity().y);
 }
 
+/// @brief Moving synced static trigger emits exit without an active body.
 TEST_F(WorldSceneSyncTest, MovingSyncedStaticTriggerEmitsExitWithoutAnActiveBody)
 {
     physics::SphereCollider trigger(1.0f);
@@ -278,6 +288,7 @@ TEST_F(WorldSceneSyncTest, MovingSyncedStaticTriggerEmitsExitWithoutAnActiveBody
 
 /// @name Volume
 
+/// @brief Sync volume rejects a null volume.
 TEST_F(WorldSceneSyncTest, SyncVolumeRejectsANullVolume)
 {
     world.BeginSceneSync();
@@ -287,6 +298,7 @@ TEST_F(WorldSceneSyncTest, SyncVolumeRejectsANullVolume)
     EXPECT_FALSE(handle.IsValid());
 }
 
+/// @brief End scene sync destroys volumes that stopped syncing.
 TEST_F(WorldSceneSyncTest, EndSceneSyncDestroysVolumesThatStoppedSyncing)
 {
     int alive = 0;
@@ -304,6 +316,7 @@ TEST_F(WorldSceneSyncTest, EndSceneSyncDestroysVolumesThatStoppedSyncing)
     EXPECT_EQ(alive, 0);
 }
 
+/// @brief Sync volume replaces the instance in that slot without leaking.
 TEST_F(WorldSceneSyncTest, SyncVolumeReplacesTheInstanceInThatSlotWithoutLeaking)
 {
     int alive = 0;
@@ -325,6 +338,7 @@ TEST_F(WorldSceneSyncTest, SyncVolumeReplacesTheInstanceInThatSlotWithoutLeaking
 
 /// @name 制約
 
+/// @brief Add constraint takes ownership of the constraint.
 TEST_F(WorldSceneSyncTest, AddConstraintTakesOwnershipOfTheConstraint)
 {
     physics::RigidBody a;
@@ -337,6 +351,7 @@ TEST_F(WorldSceneSyncTest, AddConstraintTakesOwnershipOfTheConstraint)
     EXPECT_EQ(world.GetConstraints()[0]->GetType(), physics::ConstraintType::DISTANCE);
 }
 
+/// @brief Add constraint survives a scene sync.
 TEST_F(WorldSceneSyncTest, AddConstraintSurvivesASceneSync)
 {
     /// @note AddConstraint は «置いたら消えない» 側。同期の掃除に巻き込まれると、
@@ -351,6 +366,7 @@ TEST_F(WorldSceneSyncTest, AddConstraintSurvivesASceneSync)
     EXPECT_EQ(world.GetConstraints().size(), 1u);
 }
 
+/// @brief Sync constraint reuses the same slot every frame.
 TEST_F(WorldSceneSyncTest, SyncConstraintReusesTheSameSlotEveryFrame)
 {
     physics::RigidBody a;
@@ -373,6 +389,7 @@ TEST_F(WorldSceneSyncTest, SyncConstraintReusesTheSameSlotEveryFrame)
     EXPECT_EQ(world.FindConstraint(first), live);
 }
 
+/// @brief An unclaimed synced constraint is dropped.
 TEST_F(WorldSceneSyncTest, AnUnclaimedSyncedConstraintIsDropped)
 {
     physics::RigidBody a;
@@ -394,6 +411,7 @@ TEST_F(WorldSceneSyncTest, AnUnclaimedSyncedConstraintIsDropped)
     EXPECT_FALSE(world.KeepConstraint(handle));
 }
 
+/// @brief Remove constraint frees the slot for reuse.
 TEST_F(WorldSceneSyncTest, RemoveConstraintFreesTheSlotForReuse)
 {
     physics::RigidBody a;
@@ -413,6 +431,7 @@ TEST_F(WorldSceneSyncTest, RemoveConstraintFreesTheSlotForReuse)
     EXPECT_EQ(world.GetConstraints().size(), 1u);
 }
 
+/// @brief Broad phase debug disabled does not read additional shape bounds or publish.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugDisabledDoesNotReadAdditionalShapeBoundsOrPublish)
 {
     struct CountedSphere final : physics::SphereCollider {
@@ -453,6 +472,7 @@ TEST_F(WorldSceneSyncTest, BroadPhaseDebugDisabledDoesNotReadAdditionalShapeBoun
     EXPECT_EQ(world.GetBroadPhaseDebugSnapshot(), nullptr);
 }
 
+/// @brief Broad phase debug reports actual grouped hierarchy and caps all content.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugReportsActualGroupedHierarchyAndCapsAllContent)
 {
     std::array<physics::SphereCollider, 12> shapes{
@@ -499,6 +519,7 @@ TEST_F(WorldSceneSyncTest, BroadPhaseDebugReportsActualGroupedHierarchyAndCapsAl
     EXPECT_LE(snapshot->examinedNodes, physics::BROAD_PHASE_DEBUG_MAX_WORK);
 }
 
+/// @brief Broad phase debug selection uses actual ancestors and honors depth and hard limits.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugSelectionUsesActualAncestorsAndHonorsDepthAndHardLimits)
 {
     std::array<physics::SphereCollider, 6> shapes{
@@ -536,6 +557,7 @@ TEST_F(WorldSceneSyncTest, BroadPhaseDebugSelectionUsesActualAncestorsAndHonorsD
         EXPECT_TRUE(pair.handleA.slot == request.selected.slot || pair.handleB.slot == request.selected.slot);
 }
 
+/// @brief Broad phase debug invalid bounds describe brute force without fabricating hierarchy.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugInvalidBoundsDescribeBruteForceWithoutFabricatingHierarchy)
 {
     physics::SphereCollider invalid(1.0f);
@@ -564,6 +586,7 @@ TEST_F(WorldSceneSyncTest, BroadPhaseDebugInvalidBoundsDescribeBruteForceWithout
     EXPECT_TRUE(snapshot->candidatePairsAvailable);
 }
 
+/// @brief Broad phase debug zero budgets keep metadata and clear on scene sync.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugZeroBudgetsKeepMetadataAndClearOnSceneSync)
 {
     physics::SphereCollider first(1.0f);
@@ -597,6 +620,7 @@ TEST_F(WorldSceneSyncTest, BroadPhaseDebugZeroBudgetsKeepMetadataAndClearOnScene
     EXPECT_EQ(snapshot->totalPairs, 1u);
 }
 
+/// @brief Broad phase debug rejects reused generation and retains only values.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugRejectsReusedGenerationAndRetainsOnlyValues)
 {
     auto removed = std::make_unique<physics::SphereCollider>(1.0f);
@@ -634,6 +658,7 @@ TEST_F(WorldSceneSyncTest, BroadPhaseDebugRejectsReusedGenerationAndRetainsOnlyV
     EXPECT_FLOAT_EQ(retained->proxies.front().bounds.max.x, 1.0f);
 }
 
+/// @brief Broad phase debug world reset rejects the same slot and generation from old world.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugWorldResetRejectsTheSameSlotAndGenerationFromOldWorld)
 {
     physics::SphereCollider sphere(1.0f);
@@ -667,6 +692,7 @@ TEST_F(WorldSceneSyncTest, BroadPhaseDebugWorldResetRejectsTheSameSlotAndGenerat
     EXPECT_FLOAT_EQ(retained->proxies.front().bounds.max.x, 1.0f);
 }
 
+/// @brief Broad phase debug skipped pass does not publish stale candidate pairs.
 TEST_F(WorldSceneSyncTest, BroadPhaseDebugSkippedPassDoesNotPublishStaleCandidatePairs)
 {
     physics::SphereCollider first(1.0f);

@@ -27,6 +27,7 @@ int ColumnOf(float x, const GraphLayoutOptions& options = {})
 
 } // namespace
 
+/// @brief Returns nothing for an empty graph.
 TEST(GraphLayout, ReturnsNothingForAnEmptyGraph)
 {
     /// @note 空の中括弧だと «根の一覧» と «options» のどちらにも見えて解決できない。
@@ -40,6 +41,7 @@ TEST(GraphLayout, ReturnsNothingForAnEmptyGraph)
     EXPECT_TRUE(positions.empty());
 }
 
+/// @brief Places every node exactly once.
 TEST(GraphLayout, PlacesEveryNodeExactlyOnce)
 {
     const std::vector<int> nodes{ 1, 2, 3 };
@@ -52,6 +54,7 @@ TEST(GraphLayout, PlacesEveryNodeExactlyOnce)
         EXPECT_NE(positions.find(id), positions.end()) << "missing node " << id;
 }
 
+/// @brief Lays children to the right of their parent.
 TEST(GraphLayout, LaysChildrenToTheRightOfTheirParent)
 {
     const std::vector<int> nodes{ 1, 2, 3 };
@@ -63,6 +66,7 @@ TEST(GraphLayout, LaysChildrenToTheRightOfTheirParent)
     EXPECT_LT(positions.at(2).x, positions.at(3).x);
 }
 
+/// @brief Uses the longest path so arrows never point backwards.
 TEST(GraphLayout, UsesTheLongestPathSoArrowsNeverPointBackwards)
 {
     /// @note 1->2->3 と 1->3 の両方がある。最短で置くと 3 が 2 と同じ列に来て矢印が逆流する。
@@ -76,6 +80,7 @@ TEST(GraphLayout, UsesTheLongestPathSoArrowsNeverPointBackwards)
     EXPECT_EQ(ColumnOf(positions.at(3).x), 2);
 }
 
+/// @brief Siblings share a column and stack vertically.
 TEST(GraphLayout, SiblingsShareAColumnAndStackVertically)
 {
     const std::vector<int> nodes{ 1, 2, 3 };
@@ -87,6 +92,7 @@ TEST(GraphLayout, SiblingsShareAColumnAndStackVertically)
     EXPECT_NE(positions.at(2).y, positions.at(3).y);
 }
 
+/// @brief Keeps the given order within a column.
 TEST(GraphLayout, KeepsTheGivenOrderWithinAColumn)
 {
     /// @note 整列のたびに上下が入れ替わると、覚えた位置関係が壊れる。
@@ -98,6 +104,7 @@ TEST(GraphLayout, KeepsTheGivenOrderWithinAColumn)
     EXPECT_LT(positions.at(2).y, positions.at(3).y);
 }
 
+/// @brief Is stable across repeated runs.
 TEST(GraphLayout, IsStableAcrossRepeatedRuns)
 {
     const std::vector<int> nodes{ 1, 2, 3, 4 };
@@ -112,6 +119,7 @@ TEST(GraphLayout, IsStableAcrossRepeatedRuns)
     }
 }
 
+/// @brief Puts unreachable nodes past the deepest column.
 TEST(GraphLayout, PutsUnreachableNodesPastTheDeepestColumn)
 {
     /// @note どこからも辿れないノードを根と同じ列に置くと、根と見分けが付かなくなる。
@@ -123,6 +131,7 @@ TEST(GraphLayout, PutsUnreachableNodesPastTheDeepestColumn)
     EXPECT_GT(positions.at(99).x, positions.at(2).x);
 }
 
+/// @brief Terminates on a cycle.
 TEST(GraphLayout, TerminatesOnACycle)
 {
     /// @note 循環があっても «深さの更新» が止まらなくなってはいけない。
@@ -135,6 +144,7 @@ TEST(GraphLayout, TerminatesOnACycle)
     EXPECT_EQ(positions.size(), 3u);
 }
 
+/// @brief Terminates on a self loop.
 TEST(GraphLayout, TerminatesOnASelfLoop)
 {
     const std::vector<int> nodes{ 1 };
@@ -145,6 +155,7 @@ TEST(GraphLayout, TerminatesOnASelfLoop)
     EXPECT_EQ(positions.size(), 1u);
 }
 
+/// @brief Ignores edges pointing at unknown nodes.
 TEST(GraphLayout, IgnoresEdgesPointingAtUnknownNodes)
 {
     /// @note 削除済みノードを指す辺が残っていても、整列ごと壊れてはいけない。
@@ -157,6 +168,7 @@ TEST(GraphLayout, IgnoresEdgesPointingAtUnknownNodes)
     EXPECT_EQ(positions.find(404), positions.end());
 }
 
+/// @brief Ignores roots that are not in the graph.
 TEST(GraphLayout, IgnoresRootsThatAreNotInTheGraph)
 {
     const std::vector<int> nodes{ 1, 2 };
@@ -168,6 +180,7 @@ TEST(GraphLayout, IgnoresRootsThatAreNotInTheGraph)
     EXPECT_EQ(positions.size(), 2u);
 }
 
+/// @brief Derives roots from nodes with no incoming edge.
 TEST(GraphLayout, DerivesRootsFromNodesWithNoIncomingEdge)
 {
     /// @note 根を渡さない版。入次数 0 を根とみなす。
@@ -181,6 +194,7 @@ TEST(GraphLayout, DerivesRootsFromNodesWithNoIncomingEdge)
     EXPECT_LT(positions.at(2).x, positions.at(3).x);
 }
 
+/// @brief Honours the spacing options.
 TEST(GraphLayout, HonoursTheSpacingOptions)
 {
     GraphLayoutOptions options;
@@ -200,6 +214,7 @@ TEST(GraphLayout, HonoursTheSpacingOptions)
     EXPECT_FLOAT_EQ(positions.at(2).x, 110.0f);
 }
 
+/// @brief Centering only shifts the shorter column.
 TEST(GraphLayout, CenteringOnlyShiftsTheShorterColumn)
 {
     GraphLayoutOptions centered;

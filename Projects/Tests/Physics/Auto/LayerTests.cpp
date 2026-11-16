@@ -15,6 +15,7 @@ class LayerTest : public testkit::Fixture {};
 
 /// @name マスク
 
+/// @brief Mask sets exactly the bit for the layer.
 TEST_F(LayerTest, MaskSetsExactlyTheBitForTheLayer)
 {
     EXPECT_EQ(Layer::Mask(0), 1u);
@@ -22,6 +23,7 @@ TEST_F(LayerTest, MaskSetsExactlyTheBitForTheLayer)
     EXPECT_EQ(Layer::Mask(31), 1u << 31);
 }
 
+/// @brief Mask wraps layer indices into the 32 bit range.
 TEST_F(LayerTest, MaskWrapsLayerIndicesIntoThe32BitRange)
 {
     /// @note 添字は 0-31。範囲外で未定義シフトにせず、丸めて必ずビットを 1 本返す。
@@ -29,6 +31,7 @@ TEST_F(LayerTest, MaskWrapsLayerIndicesIntoThe32BitRange)
     EXPECT_EQ(Layer::Mask(33), Layer::Mask(1));
 }
 
+/// @brief Contains finds only the layers in the mask.
 TEST_F(LayerTest, ContainsFindsOnlyTheLayersInTheMask)
 {
     const LayerMask mask = Layer::Mask(Layer::Water) | Layer::Mask(Layer::UI);
@@ -38,6 +41,7 @@ TEST_F(LayerTest, ContainsFindsOnlyTheLayersInTheMask)
     EXPECT_FALSE(Layer::Contains(mask, Layer::Default));
 }
 
+/// @brief Everything contains all layers and nothing contains none.
 TEST_F(LayerTest, EverythingContainsAllLayersAndNothingContainsNone)
 {
     for (int layer = 0; layer < 32; ++layer) {
@@ -46,6 +50,7 @@ TEST_F(LayerTest, EverythingContainsAllLayersAndNothingContainsNone)
     }
 }
 
+/// @brief Built-in layer indices are distinct.
 TEST_F(LayerTest, BuiltInLayerIndicesAreDistinct)
 {
     /// @note 番号はシーンファイルに焼かれている。重複させると別レイヤーが混ざる。
@@ -64,6 +69,7 @@ TEST_F(LayerTest, BuiltInLayerIndicesAreDistinct)
 
 /// @name 衝突行列
 
+/// @brief Every pair collides by default.
 TEST_F(LayerTest, EveryPairCollidesByDefault)
 {
     const LayerCollisionMatrix matrix;
@@ -73,6 +79,7 @@ TEST_F(LayerTest, EveryPairCollidesByDefault)
             ASSERT_TRUE(matrix.CanCollide(a, b)) << a << " vs " << b;
 }
 
+/// @brief Disabling a pair updates both directions.
 TEST_F(LayerTest, DisablingAPairUpdatesBothDirections)
 {
     LayerCollisionMatrix matrix;
@@ -83,6 +90,7 @@ TEST_F(LayerTest, DisablingAPairUpdatesBothDirections)
     EXPECT_FALSE(matrix.CanCollide(Layer::UI, Layer::Water));
 }
 
+/// @brief Disabling a pair leaves other pairs alone.
 TEST_F(LayerTest, DisablingAPairLeavesOtherPairsAlone)
 {
     LayerCollisionMatrix matrix;
@@ -94,6 +102,7 @@ TEST_F(LayerTest, DisablingAPairLeavesOtherPairsAlone)
     EXPECT_TRUE(matrix.CanCollide(Layer::Water, Layer::Water));
 }
 
+/// @brief Re enabling a pair restores both directions.
 TEST_F(LayerTest, ReEnablingAPairRestoresBothDirections)
 {
     LayerCollisionMatrix matrix;
@@ -105,6 +114,7 @@ TEST_F(LayerTest, ReEnablingAPairRestoresBothDirections)
     EXPECT_TRUE(matrix.CanCollide(Layer::UI, Layer::Water));
 }
 
+/// @brief A layer can be made to ignore itself.
 TEST_F(LayerTest, ALayerCanBeMadeToIgnoreItself)
 {
     LayerCollisionMatrix matrix;

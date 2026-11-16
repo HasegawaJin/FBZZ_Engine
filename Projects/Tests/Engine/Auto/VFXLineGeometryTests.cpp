@@ -31,6 +31,7 @@ bool SamePoint(const math::Vector3& a, const math::Vector3& b)
 
 } /// @note namespace
 
+/// @brief Lightning starts and ends on the endpoints.
 TEST(VFXLineGeometryTest, LightningStartsAndEndsOnTheEndpoints)
 {
     scene::VFXLineComponent line;
@@ -45,6 +46,7 @@ TEST(VFXLineGeometryTest, LightningStartsAndEndsOnTheEndpoints)
     EXPECT_TRUE(SamePoint(strands.front().points.back(), to));
 }
 
+/// @brief Same strike gives the same bolt and a new strike changes it.
 TEST(VFXLineGeometryTest, SameStrikeGivesTheSameBoltAndANewStrikeChangesIt)
 {
     scene::VFXLineComponent line;
@@ -68,6 +70,7 @@ TEST(VFXLineGeometryTest, SameStrikeGivesTheSameBoltAndANewStrikeChangesIt)
     EXPECT_TRUE(differs);
 }
 
+/// @brief Bolt stays within the chaos band.
 TEST(VFXLineGeometryTest, BoltStaysWithinTheChaosBand)
 {
     scene::VFXLineComponent line;
@@ -85,6 +88,7 @@ TEST(VFXLineGeometryTest, BoltStaysWithinTheChaosBand)
     for (const auto& point : strands.front().points) EXPECT_LE(DistanceToSegment(point, from, to), limit);
 }
 
+/// @brief Branches start on the trunk and thin to a tip.
 TEST(VFXLineGeometryTest, BranchesStartOnTheTrunkAndThinToATip)
 {
     scene::VFXLineComponent line;
@@ -104,6 +108,7 @@ TEST(VFXLineGeometryTest, BranchesStartOnTheTrunkAndThinToATip)
     }
 }
 
+/// @brief Beam sags in the middle and keeps its ends.
 TEST(VFXLineGeometryTest, BeamSagsInTheMiddleAndKeepsItsEnds)
 {
     scene::VFXLineComponent line;
@@ -120,6 +125,7 @@ TEST(VFXLineGeometryTest, BeamSagsInTheMiddleAndKeepsItsEnds)
     EXPECT_NEAR(points[4].y, -1.0f, 1.0e-5f);
 }
 
+/// @brief Envelope fades in and out.
 TEST(VFXLineGeometryTest, EnvelopeFadesInAndOut)
 {
     scene::VFXLineComponent line;
@@ -135,6 +141,7 @@ TEST(VFXLineGeometryTest, EnvelopeFadesInAndOut)
     EXPECT_NEAR(scene::VFXLineEnvelope(line, 1.5f), 1.0f, 1.0e-5f);
 }
 
+/// @brief Presets keep where the line is placed.
 TEST(VFXLineGeometryTest, PresetsKeepWhereTheLineIsPlaced)
 {
     scene::VFXLineComponent line;

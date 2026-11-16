@@ -45,6 +45,7 @@ protected:
     }
 };
 
+/// @brief Faces and edges fill gaps between particle spheres.
 TEST_F(ClothInterCollisionTest, FacesAndEdgesFillGapsBetweenParticleSpheres)
 {
     for (bool edge : {false,true}) for (bool faces : {false,true}) {
@@ -56,6 +57,7 @@ TEST_F(ClothInterCollisionTest, FacesAndEdgesFillGapsBetweenParticleSpheres)
         for (size_t i = 0; i < 3; ++i) EXPECT_VEC3_NEAR(m_solvers[0].Positions()[i],m_floor[i],1.0e-6f);
     }
 }
+/// @brief Continuous contacts stop fast point and edge tunneling.
 TEST_F(ClothInterCollisionTest, ContinuousContactsStopFastPointAndEdgeTunneling)
 {
     for (bool edge : {false,true}) for (bool continuous : {false,true}) {
@@ -67,6 +69,7 @@ TEST_F(ClothInterCollisionTest, ContinuousContactsStopFastPointAndEdgeTunneling)
         else EXPECT_LT(Height(edge),0);
     }
 }
+/// @brief CCD uses whole fixed step and implies face contacts.
 TEST_F(ClothInterCollisionTest, CcdUsesWholeFixedStepAndImpliesFaceContacts)
 {
     Prepare(false,0.2f,-5000,false,true,16);
@@ -75,6 +78,7 @@ TEST_F(ClothInterCollisionTest, CcdUsesWholeFixedStepAndImpliesFaceContacts)
     ASSERT_TRUE(physics::ClothSolver::SolveInterCollision(m_group,DT));
     EXPECT_GE(Height(false),0.0499f);
 }
+/// @brief Moving pinned face pushes other cloth and keeps its targets.
 TEST_F(ClothInterCollisionTest, MovingPinnedFacePushesOtherClothAndKeepsItsTargets)
 {
     Prepare(false,0.2f,0,true,true);
@@ -84,6 +88,7 @@ TEST_F(ClothInterCollisionTest, MovingPinnedFacePushesOtherClothAndKeepsItsTarge
     EXPECT_GE(Height(false),0.5499f);
     for (size_t i = 0; i < 3; ++i) EXPECT_VEC3_NEAR(m_solvers[0].Positions()[i],(m_floor[i]+math::Vector3{0,0.5f,0}),1.0e-6f);
 }
+/// @brief Masks and zero distance exclude primitive CCD.
 TEST_F(ClothInterCollisionTest, MasksAndZeroDistanceExcludePrimitiveCcd)
 {
     for (bool zeroDistance : {false,true}) {
@@ -96,6 +101,7 @@ TEST_F(ClothInterCollisionTest, MasksAndZeroDistanceExcludePrimitiveCcd)
         for (size_t i = 0; i < 3; ++i) EXPECT_VEC3_NEAR(m_solvers[1].Positions()[i],before[i],1.0e-6f);
     }
 }
+/// @brief Primitive corrections preserve momentum of free cloths.
 TEST_F(ClothInterCollisionTest, PrimitiveCorrectionsPreserveMomentumOfFreeCloths)
 {
     Prepare(false,0.02f,0,true,false,1,true);
@@ -107,6 +113,7 @@ TEST_F(ClothInterCollisionTest, PrimitiveCorrectionsPreserveMomentumOfFreeCloths
     EXPECT_VEC3_NEAR(momentum,math::Vector3{},1.0e-4f);
     EXPECT_GT(Height(false),0.02f);
 }
+/// @brief Motion limit wins over incompatible continuous contact.
 TEST_F(ClothInterCollisionTest, MotionLimitWinsOverIncompatibleContinuousContact)
 {
     Prepare(false,0.2f,-2000,true,true);
@@ -118,6 +125,7 @@ TEST_F(ClothInterCollisionTest, MotionLimitWinsOverIncompatibleContinuousContact
     ASSERT_TRUE(physics::ClothSolver::SolveInterCollision(m_group,DT));
     EXPECT_LE((m_solvers[1].Positions()[0]-center).Length(),0.01001f);
 }
+/// @brief Continuous contacts are reproducible.
 TEST_F(ClothInterCollisionTest, ContinuousContactsAreReproducible)
 {
     Prepare(true,0.2f,-2000,true,true);
@@ -129,6 +137,7 @@ TEST_F(ClothInterCollisionTest, ContinuousContactsAreReproducible)
     ASSERT_TRUE(physics::ClothSolver::SolveInterCollision(m_group,DT));
     for (size_t i = 0; i < 3; ++i) EXPECT_VEC3_NEAR(m_solvers[1].Positions()[i],first[i],1.0e-6f);
 }
+/// @brief Coplanar motion cannot enter triangle through its boundary.
 TEST_F(ClothInterCollisionTest, CoplanarMotionCannotEnterTriangleThroughItsBoundary)
 {
     Prepare(false,0,0,true,true);
@@ -143,6 +152,7 @@ TEST_F(ClothInterCollisionTest, CoplanarMotionCannotEnterTriangleThroughItsBound
     const auto& point = m_solvers[1].Positions()[0];
     EXPECT_GE(point.x+point.z,1.07f);
 }
+/// @brief Nearly parallel edges still have a continuous contact.
 TEST_F(ClothInterCollisionTest, NearlyParallelEdgesStillHaveAContinuousContact)
 {
     Prepare(true,0.2f,-2000,true,true);
@@ -157,6 +167,7 @@ TEST_F(ClothInterCollisionTest, NearlyParallelEdgesStillHaveAContinuousContact)
     ASSERT_TRUE(physics::ClothSolver::SolveInterCollision(m_group,DT));
     EXPECT_GE(Height(true),0.000009f);
 }
+/// @brief Primitive budget failure restores every participant.
 TEST_F(ClothInterCollisionTest, PrimitiveBudgetFailureRestoresEveryParticipant)
 {
     Prepare(false,0.02f,0,true,false,1,true);

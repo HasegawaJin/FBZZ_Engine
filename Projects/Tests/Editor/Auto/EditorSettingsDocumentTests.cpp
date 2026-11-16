@@ -9,6 +9,7 @@
 
 namespace fbzz::tests {
 class EditorSettingsDocumentTest : public testkit::EditorFixture {};
+/// @brief Memory round trip includes shared and local values without disk writes.
 TEST_F(EditorSettingsDocumentTest, MemoryRoundTripIncludesSharedAndLocalValuesWithoutDiskWrites)
 {
     editor::EditorSettings source;
@@ -31,6 +32,7 @@ TEST_F(EditorSettingsDocumentTest, MemoryRoundTripIncludesSharedAndLocalValuesWi
     EXPECT_FALSE(std::filesystem::exists(File("Library/EditorLocalState.toml")));
     EXPECT_EQ(loaded.ToToml(root), text);
 }
+/// @brief Memory load never overlays personal state from disk.
 TEST_F(EditorSettingsDocumentTest, MemoryLoadNeverOverlaysPersonalStateFromDisk)
 {
     editor::EditorSettings disk; disk.cameraLastPx = 999.0f;
@@ -41,6 +43,7 @@ TEST_F(EditorSettingsDocumentTest, MemoryLoadNeverOverlaysPersonalStateFromDisk)
     ASSERT_TRUE(loaded.LoadFromToml(source.ToToml(root), root));
     EXPECT_FLOAT_EQ(loaded.cameraLastPx, 2.0f);
 }
+/// @brief Split serialization keeps personal values out of shared settings.
 TEST_F(EditorSettingsDocumentTest, SplitSerializationKeepsPersonalValuesOutOfSharedSettings)
 {
     editor::EditorSettings source; source.cameraLastPx = 125.5f; source.showGrid = false;

@@ -52,6 +52,7 @@ const JsonValue* FindKeyEvent(const JsonValue& events, const std::string& key, b
 
 } // namespace
 
+/// @brief Records key press and release on the frames they changed.
 TEST_F(InputRecorderTest, RecordsKeyPressAndReleaseOnTheFramesTheyChanged)
 {
     InputRecorder recorder;
@@ -77,6 +78,7 @@ TEST_F(InputRecorderTest, RecordsKeyPressAndReleaseOnTheFramesTheyChanged)
     EXPECT_EQ(result.Find("frames")->AsInt(), 4);
 }
 
+/// @brief Captures nothing when not recording.
 TEST_F(InputRecorderTest, CapturesNothingWhenNotRecording)
 {
     InputRecorder recorder;
@@ -87,6 +89,7 @@ TEST_F(InputRecorderTest, CapturesNothingWhenNotRecording)
     EXPECT_EQ(recorder.Stop().Find("events")->AsArray().size(), 0u);
 }
 
+/// @brief Stop ends the recording.
 TEST_F(InputRecorderTest, StopEndsTheRecording)
 {
     InputRecorder recorder;

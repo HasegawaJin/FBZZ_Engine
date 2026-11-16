@@ -27,6 +27,7 @@ protected:
         m_rig.Build(m_bones,profile);m_rig.Capture(m_bones);m_rig.SetGravity(math::Vector3::ZERO);m_rig.SetDrive(false,1,1,1);
     }
 };
+/// @brief World collision does not repeat the impact on a light body across substeps.
 TEST_F(RagdollControlsTest, WorldCollisionDoesNotRepeatTheImpactOnALightBodyAcrossSubsteps)
 {
     for (float mass:{0.002f,0.2f,2.0f,200.0f,2000.0f}) for (int steps:{1,6,12,24,48}) {
@@ -51,6 +52,7 @@ TEST_F(RagdollControlsTest, WorldCollisionDoesNotRepeatTheImpactOnALightBodyAcro
         EXPECT_VEC3_NEAR(other.GetPosition(),(math::Vector3{0.195f,1,0}),testkit::kTolerance);
     }
 }
+/// @brief Enumerates physical com and applies point impulse.
 TEST_F(RagdollControlsTest, EnumeratesPhysicalComAndAppliesPointImpulse)
 {
     Build();auto& c=m_rig.Controls();
@@ -60,6 +62,7 @@ TEST_F(RagdollControlsTest, EnumeratesPhysicalComAndAppliesPointImpulse)
     ASSERT_TRUE(c.Impulse("Body0",{2,0,0},&point));
     auto after=c.BodyState("Body0");EXPECT_NEAR(after.velocity.x,1,1.0e-6f);EXPECT_NEAR(after.angularVelocity.z,-2,1.0e-6f);
 }
+/// @brief Finite duration force is independent of substeps and expires.
 TEST_F(RagdollControlsTest, FiniteDurationForceIsIndependentOfSubstepsAndExpires)
 {
     for(int steps:{1,4,12}) {
@@ -71,6 +74,7 @@ TEST_F(RagdollControlsTest, FiniteDurationForceIsIndependentOfSubstepsAndExpires
         EXPECT_FALSE(m_rig.Controls().Force("Missing",{1,0,0},1));
     }
 }
+/// @brief Continuous torque and off center force produce angular impulse.
 TEST_F(RagdollControlsTest, ContinuousTorqueAndOffCenterForceProduceAngularImpulse)
 {
     Build();auto& c=m_rig.Controls();
@@ -85,6 +89,7 @@ TEST_F(RagdollControlsTest, ContinuousTorqueAndOffCenterForceProduceAngularImpul
     EXPECT_LT(c.BodyState("Body0").angularVelocity.z,-0.09f);
 }
 
+/// @brief Manual target moves body and clear restores animation.
 TEST_F(RagdollControlsTest, ManualTargetMovesBodyAndClearRestoresAnimation)
 {
     Build();m_rig.SetDrive(true,1,1,1);
@@ -98,6 +103,7 @@ TEST_F(RagdollControlsTest, ManualTargetMovesBodyAndClearRestoresAnimation)
     EXPECT_NEAR(m_rig.Controls().BodyState("Body0").position.x,0,0.01f);
 }
 
+/// @brief Preserves guard root transport on the first positive target sample.
 TEST_F(RagdollControlsTest, PreservesGuardRootTransportOnTheFirstPositiveTargetSample)
 {
     Build(2);
@@ -118,6 +124,7 @@ TEST_F(RagdollControlsTest, PreservesGuardRootTransportOnTheFirstPositiveTargetS
     }
 }
 
+/// @brief Preserves guard root transport when target samples resume after static steps.
 TEST_F(RagdollControlsTest, PreservesGuardRootTransportWhenTargetSamplesResumeAfterStaticSteps)
 {
     Build(2);
@@ -140,6 +147,7 @@ TEST_F(RagdollControlsTest, PreservesGuardRootTransportWhenTargetSamplesResumeAf
     }
 }
 
+/// @brief Preserves circular world drive motion across animation sample rates.
 TEST_F(RagdollControlsTest, PreservesCircularWorldDriveMotionAcrossAnimationSampleRates)
 {
     scene::RagdollProfile profile;
@@ -210,6 +218,7 @@ TEST_F(RagdollControlsTest, PreservesCircularWorldDriveMotionAcrossAnimationSamp
     EXPECT_LT(maximumVelocityDifference, 0.003f);
 }
 
+/// @brief Grips remain independent and rebuild drops runtime controls.
 TEST_F(RagdollControlsTest, GripsRemainIndependentAndRebuildDropsRuntimeControls)
 {
     Build(2);auto& c=m_rig.Controls();physics::XPBDGripSettings s;s.breakForce=0;
@@ -222,6 +231,7 @@ TEST_F(RagdollControlsTest, GripsRemainIndependentAndRebuildDropsRuntimeControls
     EXPECT_TRUE(c.HasGrabs());c.ReleaseAll();EXPECT_FALSE(c.HasGrabs());
     m_rig.Clear();EXPECT_EQ(c.GrabState("Body1").status,physics::XPBDGripStatus::NONE);
 }
+/// @brief Support margins and capture point respond to velocity.
 TEST_F(RagdollControlsTest, SupportMarginsAndCapturePointRespondToVelocity)
 {
     Build();m_rig.SetGravity({0,-9.81f,0});
@@ -241,6 +251,7 @@ TEST_F(RagdollControlsTest, SupportMarginsAndCapturePointRespondToVelocity)
     world.BeginSceneSync();world.EndSceneSync();
 }
 
+/// @brief Translating and rotating support uses relative capture velocity.
 TEST_F(RagdollControlsTest, TranslatingAndRotatingSupportUsesRelativeCaptureVelocity)
 {
     scene::RagdollProfile profile;
@@ -311,6 +322,7 @@ TEST_F(RagdollControlsTest, TranslatingAndRotatingSupportUsesRelativeCaptureVelo
     world.EndSceneSync();
 }
 
+/// @brief Box contacts preserve the support polygon from narrow phase.
 TEST_F(RagdollControlsTest, BoxContactsPreserveTheSupportPolygonFromNarrowPhase)
 {
     Build(); m_rig.SetSubsteps(1);
@@ -331,6 +343,7 @@ TEST_F(RagdollControlsTest, BoxContactsPreserveTheSupportPolygonFromNarrowPhase)
     world.BeginSceneSync(); world.EndSceneSync();
 }
 
+/// @brief Held body contacts return only after the last hand releases.
 TEST_F(RagdollControlsTest, HeldBodyContactsReturnOnlyAfterTheLastHandReleases)
 {
     Build(2);
@@ -363,6 +376,7 @@ TEST_F(RagdollControlsTest, HeldBodyContactsReturnOnlyAfterTheLastHandReleases)
     EXPECT_EQ(m_rig.GetContactCount(),original);
     c.ReleaseAll();world.BeginSceneSync();world.EndSceneSync();
 }
+/// @brief Moving held collider does not accumulate owner contact reactions.
 TEST_F(RagdollControlsTest, MovingHeldColliderDoesNotAccumulateOwnerContactReactions)
 {
     Build();m_rig.SetDrive(true,1,1,1);m_rig.SetSubsteps(12);
@@ -398,6 +412,7 @@ TEST_F(RagdollControlsTest, MovingHeldColliderDoesNotAccumulateOwnerContactReact
     world.BeginSceneSync();world.EndSceneSync();
 }
 
+/// @brief Plane support and airborne snapshots have explicit validity.
 TEST_F(RagdollControlsTest, PlaneSupportAndAirborneSnapshotsHaveExplicitValidity)
 {
     Build();auto a=m_rig.Controls().Balance();EXPECT_TRUE(a.valid);EXPECT_FALSE(a.hasSupport);EXPECT_FALSE(a.captureValid);

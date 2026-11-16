@@ -100,6 +100,7 @@ protected:
     const std::type_info* m_clipboardType = nullptr;
 };
 
+/// @brief Hierarchy roots and generated badges refresh after direct scene changes.
 TEST_F(EditorIdleWorkTest, HierarchyRootsAndGeneratedBadgesRefreshAfterDirectSceneChanges)
 {
     auto& world = *AttachedScene();
@@ -117,6 +118,7 @@ TEST_F(EditorIdleWorkTest, HierarchyRootsAndGeneratedBadgesRefreshAfterDirectSce
     EXPECT_NE(Frame(draw).find("Hidden child"), std::string::npos);
 }
 
+/// @brief Mesh ray index keeps triangle order and refreshes on publication.
 TEST_F(EditorIdleWorkTest, MeshRayIndexKeepsTriangleOrderAndRefreshesOnPublication)
 {
     renderer::Mesh mesh;
@@ -145,6 +147,7 @@ TEST_F(EditorIdleWorkTest, MeshRayIndexKeepsTriangleOrderAndRefreshesOnPublicati
     EXPECT_TRUE(offsets.empty());
 }
 
+/// @brief Dependency view publishes only the latest selection.
 TEST_F(EditorIdleWorkTest, DependencyViewPublishesOnlyTheLatestSelection)
 {
     auto& context = Context();
@@ -176,6 +179,7 @@ TEST_F(EditorIdleWorkTest, DependencyViewPublishesOnlyTheLatestSelection)
     asset::AssetDatabase::Shutdown();
 }
 
+/// @brief Terrain idle frames do not create undo and clear holes restores full data.
 TEST_F(EditorIdleWorkTest, TerrainIdleFramesDoNotCreateUndoAndClearHolesRestoresFullData)
 {
     auto& object = AttachedScene()->CreateGameObject("Terrain");
@@ -199,6 +203,7 @@ TEST_F(EditorIdleWorkTest, TerrainIdleFramesDoNotCreateUndoAndClearHolesRestores
     EXPECT_TRUE(terrain.holeData.empty());
 }
 
+/// @brief Initialize flat records height change even when settings stay equal.
 TEST_F(EditorIdleWorkTest, InitializeFlatRecordsHeightChangeEvenWhenSettingsStayEqual)
 {
     auto& object = AttachedScene()->CreateGameObject("Terrain");
@@ -217,6 +222,7 @@ TEST_F(EditorIdleWorkTest, InitializeFlatRecordsHeightChangeEvenWhenSettingsStay
     for (const auto height : terrain.heightData) EXPECT_FLOAT_EQ(height, 0);
 }
 
+/// @brief Asset metadata remains cached until refresh and then updates.
 TEST_F(EditorIdleWorkTest, AssetMetadataRemainsCachedUntilRefreshAndThenUpdates)
 {
     const auto directory = File("Assets");
@@ -242,6 +248,7 @@ TEST_F(EditorIdleWorkTest, AssetMetadataRemainsCachedUntilRefreshAndThenUpdates)
     EXPECT_NE(Frame(draw).find("New.txt"), std::string::npos);
 }
 
+/// @brief Hierarchy hidden counts follow generated visibility each frame.
 TEST_F(EditorIdleWorkTest, HierarchyHiddenCountsFollowGeneratedVisibilityEachFrame)
 {
     auto& source = *AttachedScene();

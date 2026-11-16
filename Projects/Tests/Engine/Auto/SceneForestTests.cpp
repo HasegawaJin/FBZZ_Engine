@@ -159,6 +159,7 @@ protected:
     bool m_registered = false;
 };
 
+/// @brief Passive preparation keeps settings without constructing scripts.
 TEST_F(SceneForestTest, PassivePreparationKeepsSettingsWithoutConstructingScripts)
 {
     auto prepared = scene::SceneSerializer::LoadPassiveDataFromText(ScriptedForest(), {});
@@ -177,6 +178,7 @@ TEST_F(SceneForestTest, PassivePreparationKeepsSettingsWithoutConstructingScript
     EXPECT_EQ(SceneForestLifecycleScript::validate, 0);
 }
 
+/// @brief Structural preflight returns ordered identities without creating scripts.
 TEST_F(SceneForestTest, StructuralPreflightReturnsOrderedIdentitiesWithoutCreatingScripts)
 {
     std::vector<std::string> ids{"stale"};
@@ -191,6 +193,7 @@ TEST_F(SceneForestTest, StructuralPreflightReturnsOrderedIdentitiesWithoutCreati
     EXPECT_FALSE(error.empty());
 }
 
+/// @brief Scripts are constructed once after all owners and world transforms exist.
 TEST_F(SceneForestTest, ScriptsAreConstructedOnceAfterAllOwnersAndWorldTransformsExist)
 {
     scene::Scene destination;
@@ -215,6 +218,7 @@ TEST_F(SceneForestTest, ScriptsAreConstructedOnceAfterAllOwnersAndWorldTransform
     EXPECT_EQ(destination.FindByGuid("existing")->tag, "Preserved");
 }
 
+/// @brief Inline terrain and grid references survive publication and owned unload.
 TEST_F(SceneForestTest, InlineTerrainAndGridReferencesSurvivePublicationAndOwnedUnload)
 {
     scene::Scene source;
@@ -284,6 +288,7 @@ TEST_F(SceneForestTest, InlineTerrainAndGridReferencesSurvivePublicationAndOwned
     EXPECT_EQ(SceneForestLifecycleScript::constructors, 0);
 }
 
+/// @brief Duplicate and external hierarchy identities reject before changing the scene.
 TEST_F(SceneForestTest, DuplicateAndExternalHierarchyIdentitiesRejectBeforeChangingTheScene)
 {
     scene::Scene destination;
@@ -296,6 +301,7 @@ TEST_F(SceneForestTest, DuplicateAndExternalHierarchyIdentitiesRejectBeforeChang
     ExpectRejected(destination, ForestDocument({{"a", "A", "a", "A"}}));
 }
 
+/// @brief Unsupported structure and nonfinite data reject without callbacks.
 TEST_F(SceneForestTest, UnsupportedStructureAndNonfiniteDataRejectWithoutCallbacks)
 {
     scene::Scene destination;
@@ -316,6 +322,7 @@ TEST_F(SceneForestTest, UnsupportedStructureAndNonfiniteDataRejectWithoutCallbac
     ExpectRejected(destination, ForestDocument({{"new", "New", {}, {}}}) + "[gameobjects.transform]\nrotation=[0.0,0.0,1.0]\n");
 }
 
+/// @brief Invalid terrain grid dimensions reject before allocation.
 TEST_F(SceneForestTest, InvalidTerrainGridDimensionsRejectBeforeAllocation)
 {
     scene::Scene destination;
@@ -334,6 +341,7 @@ TEST_F(SceneForestTest, InvalidTerrainGridDimensionsRejectBeforeAllocation)
     }
 }
 
+/// @brief Invalid saved script identity is rejected during passive preparation.
 TEST_F(SceneForestTest, InvalidSavedScriptIdentityIsRejectedDuringPassivePreparation)
 {
     scene::Scene destination;
@@ -350,6 +358,7 @@ TEST_F(SceneForestTest, InvalidSavedScriptIdentityIsRejectedDuringPassivePrepara
     ExpectRejected(destination, document);
 }
 
+/// @brief Legacy parent names are canonicalized only when unambiguous inside the forest.
 TEST_F(SceneForestTest, LegacyParentNamesAreCanonicalizedOnlyWhenUnambiguousInsideTheForest)
 {
     scene::Scene destination;
@@ -363,6 +372,7 @@ TEST_F(SceneForestTest, LegacyParentNamesAreCanonicalizedOnlyWhenUnambiguousInsi
     ExpectRejected(destination, ForestDocument({{"a", "SameName", {}, {}}, {"b", "SameName", {}, {}}, {"c", "Child", {}, "SameName"}}));
 }
 
+/// @brief Project relative terrain assets use the cell source path.
 TEST_F(SceneForestTest, ProjectRelativeTerrainAssetsUseTheCellSourcePath)
 {
     scene::TerrainComponent terrain;
@@ -393,6 +403,7 @@ TEST_F(SceneForestTest, ProjectRelativeTerrainAssetsUseTheCellSourcePath)
     EXPECT_FLOAT_EQ(loaded->cellSize, 3.0f);
 }
 
+/// @brief Missing or invalid terrain never publishes fallback geometry.
 TEST_F(SceneForestTest, MissingOrInvalidTerrainNeverPublishesFallbackGeometry)
 {
     scene::Scene destination;
@@ -407,6 +418,7 @@ TEST_F(SceneForestTest, MissingOrInvalidTerrainNeverPublishesFallbackGeometry)
         + "[gameobjects.TerrainComponent]\nterrainAssetPath=\"" + broken.generic_string() + "\"\n");
 }
 
+/// @brief Embedded terrain snapshot publishes without reading external asset.
 TEST_F(SceneForestTest, EmbeddedTerrainSnapshotPublishesWithoutReadingExternalAsset)
 {
     scene::Scene source;
@@ -432,6 +444,7 @@ TEST_F(SceneForestTest, EmbeddedTerrainSnapshotPublishesWithoutReadingExternalAs
     EXPECT_FALSE(restored->enabled);
 }
 
+/// @brief Legacy ambient flow remains owned by its forest object.
 TEST_F(SceneForestTest, LegacyAmbientFlowRemainsOwnedByItsForestObject)
 {
     const auto document = ForestDocument({{"wind", "Wind", {}, {}}})
@@ -449,6 +462,7 @@ TEST_F(SceneForestTest, LegacyAmbientFlowRemainsOwnedByItsForestObject)
     EXPECT_FLOAT_EQ(field->forces.front().strength, 3.0f);
 }
 
+/// @brief Data only publication retains render references without resolving models.
 TEST_F(SceneForestTest, DataOnlyPublicationRetainsRenderReferencesWithoutResolvingModels)
 {
     const auto document = ForestDocument({{"render", "Render", {}, {}}})

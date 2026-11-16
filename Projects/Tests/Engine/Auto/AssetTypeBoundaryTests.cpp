@@ -34,6 +34,7 @@ protected:
     std::unique_ptr<renderer::ResourceManager> m_resources;
 };
 
+/// @brief Client loads vector field registered by engine and reloads the same handle.
 TEST_F(AssetTypeBoundaryTest, ClientLoadsVectorFieldRegisteredByEngineAndReloadsTheSameHandle)
 {
     const auto path = m_temp.File("Field.fga").generic_string();
@@ -54,6 +55,7 @@ TEST_F(AssetTypeBoundaryTest, ClientLoadsVectorFieldRegisteredByEngineAndReloads
     EXPECT_NE(asset::AssetManager::Load<fluid::VectorFieldAsset>(path), handle);
 }
 
+/// @brief Failed curve load can recover through engine flush and project switch invalidates the handle.
 TEST_F(AssetTypeBoundaryTest, FailedCurveLoadCanRecoverThroughEngineFlushAndProjectSwitchInvalidatesTheHandle)
 {
     const auto path = m_temp.File("Shape.curve").generic_string();
@@ -75,6 +77,7 @@ TEST_F(AssetTypeBoundaryTest, FailedCurveLoadCanRecoverThroughEngineFlushAndProj
     EXPECT_NE(reloaded, handle);
 }
 
+/// @brief Client importer registration is used by engine reload.
 TEST_F(AssetTypeBoundaryTest, ClientImporterRegistrationIsUsedByEngineReload)
 {
     class Importer final : public asset::IAssetImporter<fluid::VectorFieldAsset> {

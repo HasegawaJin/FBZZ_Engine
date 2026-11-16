@@ -66,6 +66,7 @@ protected:
     int m_dirtyCalls = 0;
 };
 
+/// @brief Registers all world operations with their permission kinds.
 TEST_F(WorldPartitionOperatorTest, RegistersAllWorldOperationsWithTheirPermissionKinds)
 {
     struct ExpectedOperation {
@@ -99,6 +100,7 @@ TEST_F(WorldPartitionOperatorTest, RegistersAllWorldOperationsWithTheirPermissio
     }
 }
 
+/// @brief Read bridge rejects mutations and file actions without changing the scene.
 TEST_F(WorldPartitionOperatorTest, ReadBridgeRejectsMutationsAndFileActionsWithoutChangingTheScene)
 {
     for (const char* id : {"worldcell.configure", "pcg.generate", "pcg.profile.save", "worldcell.bake", "hlod.build", "worldcell.stream_control"}) {
@@ -112,6 +114,7 @@ TEST_F(WorldPartitionOperatorTest, ReadBridgeRejectsMutationsAndFileActionsWitho
     EXPECT_FALSE(std::filesystem::exists(File("Assets/World")));
 }
 
+/// @brief Dry run rejects undeclared inputs and invalid numeric ranges before services run.
 TEST_F(WorldPartitionOperatorTest, DryRunRejectsUndeclaredInputsAndInvalidNumericRangesBeforeServicesRun)
 {
     for (const float cellSize : {0.5f, 65537.0f}) {
@@ -135,6 +138,7 @@ TEST_F(WorldPartitionOperatorTest, DryRunRejectsUndeclaredInputsAndInvalidNumeri
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Preview and generation require bounded samples and a plan fingerprint.
 TEST_F(WorldPartitionOperatorTest, PreviewAndGenerationRequireBoundedSamplesAndAPlanFingerprint)
 {
     editor::OpArgs args;
@@ -152,6 +156,7 @@ TEST_F(WorldPartitionOperatorTest, PreviewAndGenerationRequireBoundedSamplesAndA
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief AI partial partition configuration preserves omitted fields.
 TEST_F(WorldPartitionOperatorTest, AiPartialPartitionConfigurationPreservesOmittedFields)
 {
     auto request = Request("worldcell.configure");
@@ -198,6 +203,7 @@ TEST_F(WorldPartitionOperatorTest, AiPartialPartitionConfigurationPreservesOmitt
     EXPECT_EQ(partition->streamInEditor, before.streamInEditor);
 }
 
+/// @brief Unknown streaming actions are rejected before any work is queued.
 TEST_F(WorldPartitionOperatorTest, UnknownStreamingActionsAreRejectedBeforeAnyWorkIsQueued)
 {
     editor::OpArgs args;
@@ -209,6 +215,7 @@ TEST_F(WorldPartitionOperatorTest, UnknownStreamingActionsAreRejectedBeforeAnyWo
     EXPECT_TRUE(AttachedScene()->GetRootGameObjects().empty());
 }
 
+/// @brief AI partial volume configuration preserves omitted overrides.
 TEST_F(WorldPartitionOperatorTest, AiPartialVolumeConfigurationPreservesOmittedOverrides)
 {
     scene::WorldPcgProfile profile;
@@ -249,6 +256,7 @@ TEST_F(WorldPartitionOperatorTest, AiPartialVolumeConfigurationPreservesOmittedO
     EXPECT_EQ(volume.boundsMax, before.boundsMax);
 }
 
+/// @brief Disabled undo prevents mutations without blocking inspection and file actions.
 TEST_F(WorldPartitionOperatorTest, DisabledUndoPreventsMutationsWithoutBlockingInspectionAndFileActions)
 {
     m_undo.SetRecordingEnabled(false);
@@ -261,6 +269,7 @@ TEST_F(WorldPartitionOperatorTest, DisabledUndoPreventsMutationsWithoutBlockingI
     EXPECT_TRUE(AttachedScene()->GetRootGameObjects().empty());
 }
 
+/// @brief Profile authoring does not require an open scene.
 TEST_F(WorldPartitionOperatorTest, ProfileAuthoringDoesNotRequireAnOpenScene)
 {
     DetachScene();
@@ -293,6 +302,7 @@ TEST_F(WorldPartitionOperatorTest, ProfileAuthoringDoesNotRequireAnOpenScene)
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Managed build blocks authoring while streaming remains inspectable.
 TEST_F(WorldPartitionOperatorTest, ManagedBuildBlocksAuthoringWhileStreamingRemainsInspectable)
 {
     Context().managedBuildBusy = true;
@@ -308,6 +318,7 @@ TEST_F(WorldPartitionOperatorTest, ManagedBuildBlocksAuthoringWhileStreamingRema
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Play allows streaming but blocks authoring and pending restore blocks both.
 TEST_F(WorldPartitionOperatorTest, PlayAllowsStreamingButBlocksAuthoringAndPendingRestoreBlocksBoth)
 {
     Context().playMode = &m_play;

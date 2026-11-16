@@ -162,6 +162,7 @@ std::vector<scene::WaterZoneSource> MakeSources(
 
 } /// @note namespace
 
+/// @brief Builds one non overlapping union and splits partial shared edges.
 TEST_F(WaterZoneTest, BuildsOneNonOverlappingUnionAndSplitsPartialSharedEdges)
 {
     const auto owner = MakeRectangle(0.0f, 4.0f, 0.0f, 4.0f, 0.0f);
@@ -190,6 +191,7 @@ TEST_F(WaterZoneTest, BuildsOneNonOverlappingUnionAndSplitsPartialSharedEdges)
     }
 }
 
+/// @brief Preserves holes and disconnected bodies.
 TEST_F(WaterZoneTest, PreservesHolesAndDisconnectedBodies)
 {
     std::vector<scene::WaterZoneSource> sources{
@@ -212,6 +214,7 @@ TEST_F(WaterZoneTest, PreservesHolesAndDisconnectedBodies)
     EXPECT_FALSE(ContainsPoint(zone.geometry, 5.0f, 1.0f));
 }
 
+/// @brief Higher priority contained sources win regardless of which is the owner.
 TEST_F(WaterZoneTest, HigherPriorityContainedSourcesWinRegardlessOfWhichIsTheOwner)
 {
     scene::Transform transform;
@@ -239,6 +242,7 @@ TEST_F(WaterZoneTest, HigherPriorityContainedSourcesWinRegardlessOfWhichIsTheOwn
     EXPECT_NEAR(sample.baseHeightOffset, 5.0f, testkit::kTolerance);
 }
 
+/// @brief River mouth blends at its endpoint and blend length at default priority.
 TEST_F(WaterZoneTest, RiverMouthBlendsAtItsEndpointAndBlendLengthAtDefaultPriority)
 {
     const auto owner = MakeRectangle(-5.0f, 5.0f, -5.0f, 5.0f, 0.0f,
@@ -298,6 +302,7 @@ TEST_F(WaterZoneTest, RiverMouthBlendsAtItsEndpointAndBlendLengthAtDefaultPriori
     EXPECT_NEAR(sample.worldVelocity.x, 6.0f, 0.05f);
 }
 
+/// @brief Tributary uses the specified receiver in the same zone.
 TEST_F(WaterZoneTest, TributaryUsesTheSpecifiedReceiverInTheSameZone)
 {
     const auto owner = MakeRectangle(-8.0f, -6.0f, -2.0f, 2.0f, 0.0f,
@@ -331,6 +336,7 @@ TEST_F(WaterZoneTest, TributaryUsesTheSpecifiedReceiverInTheSameZone)
     EXPECT_NEAR(sample.worldVelocity.x, 6.0f, testkit::kTolerance);
 }
 
+/// @brief Relative surface offsets survive large world height and translated small geometry.
 TEST_F(WaterZoneTest, RelativeSurfaceOffsetsSurviveLargeWorldHeightAndTranslatedSmallGeometry)
 {
     constexpr float baseY = 100000000.0f;
@@ -383,6 +389,7 @@ TEST_F(WaterZoneTest, RelativeSurfaceOffsetsSurviveLargeWorldHeightAndTranslated
     ASSERT_TRUE(scene::TrySampleWaterSpline(tinyZone.geometry, 0.200005f, 0.000005f, sample));
 }
 
+/// @brief Supports separate river mouths at both endpoints.
 TEST_F(WaterZoneTest, SupportsSeparateRiverMouthsAtBothEndpoints)
 {
     const auto owner = MakeRectangle(-6.0f, 6.0f, -5.0f, 5.0f, 0.0f);
@@ -428,6 +435,7 @@ TEST_F(WaterZoneTest, SupportsSeparateRiverMouthsAtBothEndpoints)
     EXPECT_NEAR(sample.baseHeightOffset, 0.0f, testkit::kTolerance);
 }
 
+/// @brief Preserves float representable thin member adjacent to owner.
 TEST_F(WaterZoneTest, PreservesFloatRepresentableThinMemberAdjacentToOwner)
 {
     const auto owner = MakeRectangle(0.0f, 10.0f, -1.0f, 0.0f, 0.0f);
@@ -445,6 +453,7 @@ TEST_F(WaterZoneTest, PreservesFloatRepresentableThinMemberAdjacentToOwner)
     EXPECT_NEAR(SurfaceArea(zone.geometry), 10.0 + 1.0e-12, 1.0e-13);
 }
 
+/// @brief Canonicalizes equivalent clipping intersections for transformed members.
 TEST_F(WaterZoneTest, CanonicalizesEquivalentClippingIntersectionsForTransformedMembers)
 {
     struct Case {
@@ -478,6 +487,7 @@ TEST_F(WaterZoneTest, CanonicalizesEquivalentClippingIntersectionsForTransformed
     }
 }
 
+/// @brief Rejects unsupported owner rotation without changing output.
 TEST_F(WaterZoneTest, RejectsUnsupportedOwnerRotationWithoutChangingOutput)
 {
     const auto owner = MakeRectangle(-2.0f, 2.0f, -2.0f, 2.0f, 0.0f);
@@ -496,6 +506,7 @@ TEST_F(WaterZoneTest, RejectsUnsupportedOwnerRotationWithoutChangingOutput)
     EXPECT_EQ(out.geometry.vertices.size(), 1u);
 }
 
+/// @brief Accepts dry water and rejects ambiguous translated oblique intersections atomically.
 TEST_F(WaterZoneTest, AcceptsDryWaterAndRejectsAmbiguousTranslatedObliqueIntersectionsAtomically)
 {
     const auto dryOwner = MakeRectangle(0.0f, 4.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f);

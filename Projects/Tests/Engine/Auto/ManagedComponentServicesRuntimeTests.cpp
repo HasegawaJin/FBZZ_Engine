@@ -77,6 +77,7 @@ protected:
         scene::ManagedBridgeReply reply; EXPECT_TRUE(scene::ManagedScriptRuntime::Instance().Dispatch(request, reply)); return reply;
     }
 };
+/// @brief Actual CLR runtime facades change rows and return queries.
 TEST_F(ManagedComponentServicesRuntimeTest, ActualClrRuntimeFacadesChangeRowsAndReturnQueries)
 {
     ASSERT_TRUE(Call(1)) << m_adapter->FaultDiagnostic();
@@ -114,6 +115,7 @@ TEST_F(ManagedComponentServicesRuntimeTest, ActualClrRuntimeFacadesChangeRowsAnd
     EXPECT_FLOAT_EQ(ragdoll->activationWeight, 0.6f); EXPECT_FLOAT_EQ(ragdoll->activationGravity, 0); ASSERT_EQ(ragdoll->pendingImpulses.size(), 1U);
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
+/// @brief Actual CLR wrong phase ragdoll request leaves row untouched.
 TEST_F(ManagedComponentServicesRuntimeTest, ActualClrWrongPhaseRagdollRequestLeavesRowUntouched)
 {
     auto* ragdoll = m_owner->GetComponent<scene::RagdollComponent>(); ASSERT_NE(ragdoll, nullptr);
@@ -123,6 +125,7 @@ TEST_F(ManagedComponentServicesRuntimeTest, ActualClrWrongPhaseRagdollRequestLea
     EXPECT_FLOAT_EQ(ragdoll->activationWeight, 1); EXPECT_FLOAT_EQ(ragdoll->activationGravity, 1);
     EXPECT_EQ(m_scene.GetComponentLifetime<scene::RagdollComponent>(m_owner->GetID()), birth); EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
+/// @brief Actual CLR related object rejects foreign scene without clearing existing IK target.
 TEST_F(ManagedComponentServicesRuntimeTest, ActualClrRelatedObjectRejectsForeignSceneWithoutClearingExistingIkTarget)
 {
     ASSERT_TRUE(Call(3)) << m_adapter->FaultDiagnostic();
@@ -135,6 +138,7 @@ TEST_F(ManagedComponentServicesRuntimeTest, ActualClrRelatedObjectRejectsForeign
     EXPECT_NE(Field("relatedRejected").integer, 0); EXPECT_EQ(ik->chains[0].targetEntity, m_related->GetID());
     EXPECT_NE(Field("parentRejected").integer, 0); EXPECT_EQ(m_owner->GetParent(), m_related); EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
+/// @brief Actual CLR cached flow and saved reference do not reattach after removal.
 TEST_F(ManagedComponentServicesRuntimeTest, ActualClrCachedFlowAndSavedReferenceDoNotReattachAfterRemoval)
 {
     ASSERT_TRUE(Call(1)) << m_adapter->FaultDiagnostic();
@@ -146,6 +150,7 @@ TEST_F(ManagedComponentServicesRuntimeTest, ActualClrCachedFlowAndSavedReference
     EXPECT_NE(m_scene.GetComponentLifetime<scene::FlowField>(m_owner->GetID()), original); EXPECT_FLOAT_EQ(Field("observedFlowSpeed").x, 5);
     const auto* flow = m_owner->GetComponent<scene::FlowField>(); ASSERT_NE(flow, nullptr); ASSERT_EQ(flow->forces.size(), 1U); EXPECT_FLOAT_EQ(flow->forces[0].strength, 5);
 }
+/// @brief Actual CLR particle settings GPU queries and rejected assets reach native emitter.
 TEST_F(ManagedComponentServicesRuntimeTest, ActualClrParticleSettingsGpuQueriesAndRejectedAssetsReachNativeEmitter)
 {
     auto* particle = m_owner->GetComponent<scene::ParticleEmitter>(); ASSERT_NE(particle, nullptr);

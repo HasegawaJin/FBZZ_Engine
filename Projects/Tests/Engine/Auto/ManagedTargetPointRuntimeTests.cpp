@@ -82,6 +82,7 @@ protected:
     }
 };
 
+/// @brief Actual CLR capture and IK pole use persistent GUID without changing chain label.
 TEST_F(ManagedTargetPointRuntimeTest, ActualClrCaptureAndIkPoleUsePersistentGuidWithoutChangingChainLabel)
 {
     m_point->transform.position = {4.0f, 2.0f, -6.0f};
@@ -108,6 +109,7 @@ TEST_F(ManagedTargetPointRuntimeTest, ActualClrCaptureAndIkPoleUsePersistentGuid
     EXPECT_FALSE(chain.targetEntity.IsValid()); EXPECT_FALSE(chain.poleEntity.IsValid()); EXPECT_EQ(chain.targetName, "Hand");
 }
 
+/// @brief Actual CLR live refresh keeps remaining time and numeric warp overrides its source.
 TEST_F(ManagedTargetPointRuntimeTest, ActualClrLiveRefreshKeepsRemainingTimeAndNumericWarpOverridesItsSource)
 {
     ASSERT_TRUE(Call(9)) << m_adapter->FaultDiagnostic();
@@ -126,6 +128,7 @@ TEST_F(ManagedTargetPointRuntimeTest, ActualClrLiveRefreshKeepsRemainingTimeAndN
     EXPECT_VEC3_NEAR(warp.target.position, (math::Vector3{2.0f, 3.0f, 4.0f}), testkit::kTolerance);
 }
 
+/// @brief Actual CLR rejects live descendant without replacing existing captured warp.
 TEST_F(ManagedTargetPointRuntimeTest, ActualClrRejectsLiveDescendantWithoutReplacingExistingCapturedWarp)
 {
     ASSERT_TRUE(Call(8)) << m_adapter->FaultDiagnostic();
@@ -146,6 +149,7 @@ TEST_F(ManagedTargetPointRuntimeTest, ActualClrRejectsLiveDescendantWithoutRepla
     EXPECT_QUAT_NEAR(warp.target.rotation, before.rotation, testkit::kTolerance);
 }
 
+/// @brief Actual CLR rejects expired cached point before changing warp connection.
 TEST_F(ManagedTargetPointRuntimeTest, ActualClrRejectsExpiredCachedPointBeforeChangingWarpConnection)
 {
     ASSERT_TRUE(Call(8)) << m_adapter->FaultDiagnostic();
@@ -157,6 +161,7 @@ TEST_F(ManagedTargetPointRuntimeTest, ActualClrRejectsExpiredCachedPointBeforeCh
     EXPECT_EQ(m_owner->GetComponent<scene::MotionWarpComponent>()->targetReference.guid, guid);
 }
 
+/// @brief Actual CLR instantiate at uses signed ancestor scale and rotation offset then stays independent.
 TEST_F(ManagedTargetPointRuntimeTest, ActualClrInstantiateAtUsesSignedAncestorScaleAndRotationOffsetThenStaysIndependent)
 {
     const auto prefab = Prefab(); ASSERT_FALSE(prefab.empty());
@@ -186,6 +191,7 @@ TEST_F(ManagedTargetPointRuntimeTest, ActualClrInstantiateAtUsesSignedAncestorSc
     EXPECT_NE(Field("spawnRejected").integer, 0); EXPECT_EQ(m_scene.GameObjectCount(), count - 1);
 }
 
+/// @brief Actual CLR instantiate at zero offset does not require invertible scale.
 TEST_F(ManagedTargetPointRuntimeTest, ActualClrInstantiateAtZeroOffsetDoesNotRequireInvertibleScale)
 {
     const auto prefab = Prefab(); ASSERT_FALSE(prefab.empty());
@@ -198,6 +204,7 @@ TEST_F(ManagedTargetPointRuntimeTest, ActualClrInstantiateAtZeroOffsetDoesNotReq
     EXPECT_VEC3_NEAR(spawned->transform.worldPosition, (math::Vector3{4.0f, 5.0f, 6.0f}), testkit::kTolerance);
 }
 
+/// @brief Checks actual CLR instantiate at rejects foreign scene reference before creating objects.
 TEST_F(ManagedTargetPointRuntimeTest, ActualClrInstantiateAtRejectsForeignSceneReferenceBeforeCreatingObjects)
 {
     const auto prefab = Prefab(); ASSERT_FALSE(prefab.empty());

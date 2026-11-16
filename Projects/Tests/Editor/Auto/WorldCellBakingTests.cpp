@@ -262,6 +262,7 @@ protected:
     renderer::ResourceManager m_resources{m_device};
 };
 
+/// @brief Partition configuration uses checked undo and rejects invalid inputs without changes.
 TEST_F(WorldCellBakingTest, PartitionConfigurationUsesCheckedUndoAndRejectsInvalidInputsWithoutChanges)
 {
     auto& manual = AttachedScene()->CreateGameObject("Manual");
@@ -308,6 +309,7 @@ TEST_F(WorldCellBakingTest, PartitionConfigurationUsesCheckedUndoAndRejectsInval
     EXPECT_EQ(AttachedScene()->GameObjectCount(), 1u);
 }
 
+/// @brief Checks generated cells persist near and HLOD with source ownership and preserve authoring scene.
 TEST_F(WorldCellBakingTest, GeneratedCellsPersistNearAndHlodWithSourceOwnershipAndPreserveAuthoringScene)
 {
     GenerateForest();
@@ -347,6 +349,7 @@ TEST_F(WorldCellBakingTest, GeneratedCellsPersistNearAndHlodWithSourceOwnershipA
     EXPECT_FALSE(m_generated.contains(m_volume));
 }
 
+/// @brief Persisted PCG cells stream near and HLOD exclusively then unload only owned objects.
 TEST_F(WorldCellBakingTest, PersistedPcgCellsStreamNearAndHlodExclusivelyThenUnloadOnlyOwnedObjects)
 {
     GenerateForest();
@@ -414,6 +417,7 @@ TEST_F(WorldCellBakingTest, PersistedPcgCellsStreamNearAndHlodExclusivelyThenUnl
     EXPECT_EQ(resident.GetGameObject(manualId), &manual);
 }
 
+/// @brief Terrain bake streams shared edges and colliders through near far and unload.
 TEST_F(WorldCellBakingTest, TerrainBakeStreamsSharedEdgesAndCollidersThroughNearFarAndUnload)
 {
     Configure();
@@ -498,6 +502,7 @@ TEST_F(WorldCellBakingTest, TerrainBakeStreamsSharedEdgesAndCollidersThroughNear
     EXPECT_NE(AttachedScene()->FindByGuid(id), nullptr);
 }
 
+/// @brief HLOD rebuild preserves render only terrain near probes and authored proxy.
 TEST_F(WorldCellBakingTest, HlodRebuildPreservesRenderOnlyTerrainNearProbesAndAuthoredProxy)
 {
     Configure();
@@ -552,6 +557,7 @@ TEST_F(WorldCellBakingTest, HlodRebuildPreservesRenderOnlyTerrainNearProbesAndAu
     EXPECT_EQ(PayloadPlacementCount(rebuiltManifest, true), 1u);
 }
 
+/// @brief HLOD rebuild uses persisted near while keeping near paths and source identities.
 TEST_F(WorldCellBakingTest, HlodRebuildUsesPersistedNearWhileKeepingNearPathsAndSourceIdentities)
 {
     GenerateForest();
@@ -604,6 +610,7 @@ TEST_F(WorldCellBakingTest, HlodRebuildUsesPersistedNearWhileKeepingNearPathsAnd
     EXPECT_EQ(Read("Assets/World/Forest.worldcells"), published);
 }
 
+/// @brief Cell and instance budget failures do not publish files or replace the manifest.
 TEST_F(WorldCellBakingTest, CellAndInstanceBudgetFailuresDoNotPublishFilesOrReplaceTheManifest)
 {
     GenerateForest();
@@ -640,6 +647,7 @@ TEST_F(WorldCellBakingTest, CellAndInstanceBudgetFailuresDoNotPublishFilesOrRepl
     EXPECT_EQ(Capture(), authored);
 }
 
+/// @brief Invalid manifest metadata cannot publish a replacement manifest.
 TEST_F(WorldCellBakingTest, InvalidManifestMetadataCannotPublishAReplacementManifest)
 {
     GenerateForest();
@@ -659,6 +667,7 @@ TEST_F(WorldCellBakingTest, InvalidManifestMetadataCannotPublishAReplacementMani
     EXPECT_EQ(Capture(), authored);
 }
 
+/// @brief Malformed persisted near is rejected before terrain grid allocation or manifest publication.
 TEST_F(WorldCellBakingTest, MalformedPersistedNearIsRejectedBeforeTerrainGridAllocationOrManifestPublication)
 {
     GenerateForest();
@@ -681,6 +690,7 @@ TEST_F(WorldCellBakingTest, MalformedPersistedNearIsRejectedBeforeTerrainGridAll
     EXPECT_EQ(Capture(), authored);
 }
 
+/// @brief Streaming controls preserve current source unless explicitly overridden.
 TEST_F(WorldCellBakingTest, StreamingControlsPreserveCurrentSourceUnlessExplicitlyOverridden)
 {
     Configure();

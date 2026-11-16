@@ -38,6 +38,7 @@ class ColliderTest : public testkit::Fixture {};
 
 /// @name Sphere
 
+/// @brief Sphere volume matches the analytic formula.
 TEST_F(ColliderTest, SphereVolumeMatchesTheAnalyticFormula)
 {
     physics::SphereCollider sphere(2.0f);
@@ -45,6 +46,7 @@ TEST_F(ColliderTest, SphereVolumeMatchesTheAnalyticFormula)
     EXPECT_NEAR(sphere.ComputeVolume(), (4.0f / 3.0f) * kPi * 8.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Sphere bounds follow the world position.
 TEST_F(ColliderTest, SphereBoundsFollowTheWorldPosition)
 {
     physics::SphereCollider sphere(1.5f);
@@ -56,6 +58,7 @@ TEST_F(ColliderTest, SphereBoundsFollowTheWorldPosition)
     EXPECT_VEC3_NEAR(bounds.max, math::Vector3(11.5f, -2.5f, 3.5f), testkit::kTolerance);
 }
 
+/// @brief Sphere bounds ignore rotation.
 TEST_F(ColliderTest, SphereBoundsIgnoreRotation)
 {
     /// @note 球は回しても形が変わらない。回転を反映してしまうと境界が無意味に膨らむ。
@@ -68,6 +71,7 @@ TEST_F(ColliderTest, SphereBoundsIgnoreRotation)
     EXPECT_VEC3_NEAR(rotated.GetAABB().max, upright.GetAABB().max, testkit::kTolerance);
 }
 
+/// @brief Sphere reports its type.
 TEST_F(ColliderTest, SphereReportsItsType)
 {
     physics::SphereCollider sphere(1.0f);
@@ -77,6 +81,7 @@ TEST_F(ColliderTest, SphereReportsItsType)
 
 /// @name AABB
 
+/// @brief Axis aligned box volume is eight times the half extent product.
 TEST_F(ColliderTest, AxisAlignedBoxVolumeIsEightTimesTheHalfExtentProduct)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 2.0f, 3.0f));
@@ -84,6 +89,7 @@ TEST_F(ColliderTest, AxisAlignedBoxVolumeIsEightTimesTheHalfExtentProduct)
     EXPECT_NEAR(box.ComputeVolume(), 48.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Axis aligned box ignores rotation.
 TEST_F(ColliderTest, AxisAlignedBoxIgnoresRotation)
 {
     /// @note 「回らない箱」であることが AABBCollider の存在理由。回ってしまうと
@@ -100,6 +106,7 @@ TEST_F(ColliderTest, AxisAlignedBoxIgnoresRotation)
 
 /// @name OBB
 
+/// @brief Oriented box volume is invariant under rotation.
 TEST_F(ColliderTest, OrientedBoxVolumeIsInvariantUnderRotation)
 {
     physics::OBBCollider box(math::Vector3(1.0f, 2.0f, 0.5f));
@@ -111,6 +118,7 @@ TEST_F(ColliderTest, OrientedBoxVolumeIsInvariantUnderRotation)
     EXPECT_NEAR(box.ComputeVolume(), 8.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Oriented box bounds grow when rotated forty five degrees.
 TEST_F(ColliderTest, OrientedBoxBoundsGrowWhenRotatedFortyFiveDegrees)
 {
     /// @note 一辺 2 の立方体を Y 回りに 45 度回すと、XZ の外接幅が sqrt(2) 倍になる。
@@ -125,6 +133,7 @@ TEST_F(ColliderTest, OrientedBoxBoundsGrowWhenRotatedFortyFiveDegrees)
     EXPECT_VEC3_NEAR(bounds.min, math::Vector3(-kRoot2, -1.0f, -kRoot2), testkit::kLooseTolerance);
 }
 
+/// @brief Oriented box axes are orthonormal after update.
 TEST_F(ColliderTest, OrientedBoxAxesAreOrthonormalAfterUpdate)
 {
     physics::OBBCollider   box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -138,6 +147,7 @@ TEST_F(ColliderTest, OrientedBoxAxesAreOrthonormalAfterUpdate)
     EXPECT_NEAR(math::Vector3::Dot(box.GetAxis(2), box.GetAxis(0)), 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Oriented box corners are all inside its bounds.
 TEST_F(ColliderTest, OrientedBoxCornersAreAllInsideItsBounds)
 {
     physics::OBBCollider   box(math::Vector3(1.0f, 2.0f, 0.5f));
@@ -155,6 +165,7 @@ TEST_F(ColliderTest, OrientedBoxCornersAreAllInsideItsBounds)
     }
 }
 
+/// @brief Oriented box support point is the farthest corner.
 TEST_F(ColliderTest, OrientedBoxSupportPointIsTheFarthestCorner)
 {
     physics::OBBCollider box(math::Vector3(1.0f, 2.0f, 3.0f));
@@ -167,6 +178,7 @@ TEST_F(ColliderTest, OrientedBoxSupportPointIsTheFarthestCorner)
                      math::Vector3(-1.0f, -2.0f, -3.0f), testkit::kTolerance);
 }
 
+/// @brief Oriented box support point is never beaten by any corner.
 TEST_F(ColliderTest, OrientedBoxSupportPointIsNeverBeatenByAnyCorner)
 {
     physics::OBBCollider   box(math::Vector3(1.0f, 2.0f, 0.5f));
@@ -185,6 +197,7 @@ TEST_F(ColliderTest, OrientedBoxSupportPointIsNeverBeatenByAnyCorner)
 
 /// @name Capsule
 
+/// @brief Capsule volume is the cylinder plus one whole sphere.
 TEST_F(ColliderTest, CapsuleVolumeIsTheCylinderPlusOneWholeSphere)
 {
     physics::CapsuleCollider capsule(0.5f, 1.0f);
@@ -195,6 +208,7 @@ TEST_F(ColliderTest, CapsuleVolumeIsTheCylinderPlusOneWholeSphere)
     EXPECT_NEAR(capsule.ComputeVolume(), cylinder + hemispheres, testkit::kLooseTolerance);
 }
 
+/// @brief Capsule segment runs along the local up axis.
 TEST_F(ColliderTest, CapsuleSegmentRunsAlongTheLocalUpAxis)
 {
     physics::CapsuleCollider capsule(0.5f, 2.0f);
@@ -205,6 +219,7 @@ TEST_F(ColliderTest, CapsuleSegmentRunsAlongTheLocalUpAxis)
     EXPECT_VEC3_NEAR(capsule.GetSegmentEnd(), math::Vector3(1.0f, 7.0f, -3.0f), testkit::kTolerance);
 }
 
+/// @brief Capsule segment follows rotation.
 TEST_F(ColliderTest, CapsuleSegmentFollowsRotation)
 {
     /// @note X 回りに 90 度回すと、中心線は Y 軸から Z 軸へ倒れる。
@@ -218,6 +233,7 @@ TEST_F(ColliderTest, CapsuleSegmentFollowsRotation)
                      testkit::kLooseTolerance);
 }
 
+/// @brief Capsule bounds include the radius around the segment.
 TEST_F(ColliderTest, CapsuleBoundsIncludeTheRadiusAroundTheSegment)
 {
     physics::CapsuleCollider capsule(0.5f, 2.0f);
@@ -231,6 +247,7 @@ TEST_F(ColliderTest, CapsuleBoundsIncludeTheRadiusAroundTheSegment)
 
 /// @name 基底クラスの既定
 
+/// @brief Default volume falls back to the bounding box.
 TEST_F(ColliderTest, DefaultVolumeFallsBackToTheBoundingBox)
 {
     /// @note 三角メッシュや凸包は厳密な体積を出さず、外接箱で近似する契約。
@@ -240,6 +257,7 @@ TEST_F(ColliderTest, DefaultVolumeFallsBackToTheBoundingBox)
     EXPECT_NEAR(collider.ComputeVolume(), 48.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Default volume is zero for degenerate bounds.
 TEST_F(ColliderTest, DefaultVolumeIsZeroForDegenerateBounds)
 {
     /// @note 厚みのない境界で負や NaN を返すと、質量計算がそのまま壊れる。

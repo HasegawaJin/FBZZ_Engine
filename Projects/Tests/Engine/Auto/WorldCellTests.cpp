@@ -30,6 +30,7 @@ protected:
     }
 };
 
+/// @brief Grid validation accepts inclusive cell size limits and clears old diagnostic.
 TEST_F(WorldCellTest, GridValidationAcceptsInclusiveCellSizeLimitsAndClearsOldDiagnostic)
 {
     for (const float cellSize : std::array{1.0f, 256.0f, 65536.0f}) {
@@ -40,6 +41,7 @@ TEST_F(WorldCellTest, GridValidationAcceptsInclusiveCellSizeLimitsAndClearsOldDi
     }
 }
 
+/// @brief Invalid grid reports failure without changing output cell.
 TEST_F(WorldCellTest, InvalidGridReportsFailureWithoutChangingOutputCell)
 {
     const float infinity = std::numeric_limits<float>::infinity();
@@ -62,6 +64,7 @@ TEST_F(WorldCellTest, InvalidGridReportsFailureWithoutChangingOutputCell)
     }
 }
 
+/// @brief Half open ownership uses floor across positive and negative boundaries.
 TEST_F(WorldCellTest, HalfOpenOwnershipUsesFloorAcrossPositiveAndNegativeBoundaries)
 {
     const scene::WorldCellGrid grid;
@@ -74,6 +77,7 @@ TEST_F(WorldCellTest, HalfOpenOwnershipUsesFloorAcrossPositiveAndNegativeBoundar
     ExpectCell(grid, {-512.0f, 0.0f, 512.0f}, {-2, 2});
 }
 
+/// @brief Shifted grid ownership ignores finite altitude.
 TEST_F(WorldCellTest, ShiftedGridOwnershipIgnoresFiniteAltitude)
 {
     const scene::WorldCellGrid grid{{1000.0f, 7.0f, -3000.0f}, 128.0f};
@@ -84,6 +88,7 @@ TEST_F(WorldCellTest, ShiftedGridOwnershipIgnoresFiniteAltitude)
     ExpectCell(grid, {std::nextafter(872.0f, 0.0f), 0.0f, -3128.0f}, {-2, -1});
 }
 
+/// @brief Nonfinite world positions never partially publish coordinates.
 TEST_F(WorldCellTest, NonfiniteWorldPositionsNeverPartiallyPublishCoordinates)
 {
     const scene::WorldCellGrid grid;
@@ -95,6 +100,7 @@ TEST_F(WorldCellTest, NonfiniteWorldPositionsNeverPartiallyPublishCoordinates)
     }
 }
 
+/// @brief Signed cell index limits are checked before conversion.
 TEST_F(WorldCellTest, SignedCellIndexLimitsAreCheckedBeforeConversion)
 {
     const scene::WorldCellGrid grid{{}, 1.0f};
@@ -108,6 +114,7 @@ TEST_F(WorldCellTest, SignedCellIndexLimitsAreCheckedBeforeConversion)
     ExpectRejected(grid, {(std::numeric_limits<float>::max)(), 0.0f, 0.0f});
 }
 
+/// @brief Cell origin and footprint use the shared grid origin.
 TEST_F(WorldCellTest, CellOriginAndFootprintUseTheSharedGridOrigin)
 {
     const scene::WorldCellGrid grid{{100.0f, 4.0f, -20.0f}, 10.0f};
@@ -121,6 +128,7 @@ TEST_F(WorldCellTest, CellOriginAndFootprintUseTheSharedGridOrigin)
     ExpectCell(grid, {90.0f, 0.0f, 20.0f}, {-1, 4});
 }
 
+/// @brief Streaming distance measures the closest footprint point and ignores altitude.
 TEST_F(WorldCellTest, StreamingDistanceMeasuresTheClosestFootprintPointAndIgnoresAltitude)
 {
     const scene::WorldCellGrid grid{{100.0f, 4.0f, -20.0f}, 10.0f};
@@ -131,6 +139,7 @@ TEST_F(WorldCellTest, StreamingDistanceMeasuresTheClosestFootprintPointAndIgnore
     EXPECT_NEAR(scene::WorldCellDistanceXZ(grid, id, {76.0f, 4.0f, 7.0f}), 5.0f, testkit::kTolerance);
 }
 
+/// @brief Cell names and ordering retain signed coordinates.
 TEST_F(WorldCellTest, CellNamesAndOrderingRetainSignedCoordinates)
 {
     EXPECT_EQ(scene::WorldCellName({-2, 3}), "-2_3");
@@ -141,6 +150,7 @@ TEST_F(WorldCellTest, CellNamesAndOrderingRetainSignedCoordinates)
     EXPECT_FALSE((scene::WorldCellId{2, 0} < scene::WorldCellId{2, 0}));
 }
 
+/// @brief Generation seeds are repeatable and separate signed cell and stream inputs.
 TEST_F(WorldCellTest, GenerationSeedsAreRepeatableAndSeparateSignedCellAndStreamInputs)
 {
     const auto expected = scene::WorldCellSeed(12345, {-7, 19}, 4);
@@ -151,12 +161,14 @@ TEST_F(WorldCellTest, GenerationSeedsAreRepeatableAndSeparateSignedCellAndStream
     EXPECT_NE(scene::WorldCellSeed(12345, {-7, 19}, 5), expected);
 }
 
+/// @brief Cell coordinates and generation streams have distinct hash domains.
 TEST_F(WorldCellTest, CellCoordinatesAndGenerationStreamsHaveDistinctHashDomains)
 {
     EXPECT_NE(scene::WorldCellSeed(12345, {0, 1}, 0), scene::WorldCellSeed(12345, {0, 0}, 1));
     EXPECT_NE(scene::WorldCellSeed(12345, {0, 7}, 19), scene::WorldCellSeed(12345, {0, 19}, 7));
 }
 
+/// @brief Generation seed golden values remain compatible across builds.
 TEST_F(WorldCellTest, GenerationSeedGoldenValuesRemainCompatibleAcrossBuilds)
 {
     EXPECT_EQ(scene::WorldCellSeed(0, {0, 0}, 0), 0x5f50503c0e654b8cull);

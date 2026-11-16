@@ -92,6 +92,7 @@ protected:
     std::string m_diagnostic;
 };
 
+/// @brief Separate types keep stable IDs and unknown metadata.
 TEST_F(ManagedScriptMetadataTest, SeparateTypesKeepStableIdsAndUnknownMetadata)
 {
     Write("Assets/Scripts/Actors.cs", "abc");
@@ -113,6 +114,7 @@ TEST_F(ManagedScriptMetadataTest, SeparateTypesKeepStableIdsAndUnknownMetadata)
     EXPECT_EQ(Read("Library/Candidate/Test.Scripts.dll.scripts.json"), firstManifest);
 }
 
+/// @brief Partial requires one explicit primary and does not guess first file.
 TEST_F(ManagedScriptMetadataTest, PartialRequiresOneExplicitPrimaryAndDoesNotGuessFirstFile)
 {
     Write("Assets/Scripts/A.cs", "abc");
@@ -130,6 +132,7 @@ TEST_F(ManagedScriptMetadataTest, PartialRequiresOneExplicitPrimaryAndDoesNotGue
     EXPECT_EQ(record.Find("primarySource")->AsString(), "Assets/Scripts/Z.cs");
 }
 
+/// @brief Duplicate partial mappings are rejected without overwriting files.
 TEST_F(ManagedScriptMetadataTest, DuplicatePartialMappingsAreRejectedWithoutOverwritingFiles)
 {
     Write("Assets/Scripts/A.cs", "abc");
@@ -143,6 +146,7 @@ TEST_F(ManagedScriptMetadataTest, DuplicatePartialMappingsAreRejectedWithoutOver
     EXPECT_EQ(Read("Assets/Scripts/Z.cs.meta"), second);
 }
 
+/// @brief Explicit rename and orphan restore keep type ID.
 TEST_F(ManagedScriptMetadataTest, ExplicitRenameAndOrphanRestoreKeepTypeId)
 {
     Write("Assets/Scripts/Actor.cs", "abc");
@@ -163,6 +167,7 @@ TEST_F(ManagedScriptMetadataTest, ExplicitRenameAndOrphanRestoreKeepTypeId)
     EXPECT_EQ(Manifest().Find("types")->AsArray()[0].Find("id")->AsString(), std::string("cs:") + TYPE_GUID);
 }
 
+/// @brief Seeds display name for unregistered managed type.
 TEST_F(ManagedScriptMetadataTest, SeedsDisplayNameForUnregisteredManagedType)
 {
     const std::string typeKey = std::string("cs:") + TYPE_GUID;
@@ -174,6 +179,7 @@ TEST_F(ManagedScriptMetadataTest, SeedsDisplayNameForUnregisteredManagedType)
     EXPECT_EQ(scene::ScriptFactory::DisplayName(typeKey), "CandidateActor");
 }
 
+/// @brief Stale checksum and malformed metadata preserve existing candidate.
 TEST_F(ManagedScriptMetadataTest, StaleChecksumAndMalformedMetadataPreserveExistingCandidate)
 {
     Write("Assets/Scripts/Actor.cs", "abc");
@@ -190,6 +196,7 @@ TEST_F(ManagedScriptMetadataTest, StaleChecksumAndMalformedMetadataPreserveExist
     EXPECT_EQ(Read("Library/Candidate/Test.Scripts.dll.scripts.json"), manifest);
 }
 
+/// @brief UTF-8 BOM is part of the compiled checksum.
 TEST_F(ManagedScriptMetadataTest, Utf8BomIsPartOfTheCompiledChecksum)
 {
     Write("Assets/Scripts/Actor.cs", "\xEF\xBB\xBF" "abc");
@@ -198,12 +205,14 @@ TEST_F(ManagedScriptMetadataTest, Utf8BomIsPartOfTheCompiledChecksum)
     EXPECT_NE(m_diagnostic.find("checksum differs"), std::string::npos);
 }
 
+/// @brief Source outside assets cannot create metadata.
 TEST_F(ManagedScriptMetadataTest, SourceOutsideAssetsCannotCreateMetadata)
 {
     EXPECT_FALSE(Prepare({ Type("Actor", { Declaration("Assets/../Actor.cs") }) }));
     EXPECT_FALSE(util::FileSystem::Exists(m_temp.File("Actor.cs.meta")));
 }
 
+/// @brief Rename history cannot ambiguously own another type name.
 TEST_F(ManagedScriptMetadataTest, RenameHistoryCannotAmbiguouslyOwnAnotherTypeName)
 {
     Write("Assets/Scripts/Actor.cs", "abc");
@@ -214,6 +223,7 @@ TEST_F(ManagedScriptMetadataTest, RenameHistoryCannotAmbiguouslyOwnAnotherTypeNa
     EXPECT_NE(m_diagnostic.find("Ambiguous"), std::string::npos);
 }
 
+/// @brief Uppercase source extension keeps existing type ID.
 TEST_F(ManagedScriptMetadataTest, UppercaseSourceExtensionKeepsExistingTypeId)
 {
     Write("Assets/Scripts/Actor.CS", "abc");
@@ -222,6 +232,7 @@ TEST_F(ManagedScriptMetadataTest, UppercaseSourceExtensionKeepsExistingTypeId)
     EXPECT_EQ(Manifest().Find("types")->AsArray()[0].Find("id")->AsString(), std::string("cs:") + TYPE_GUID);
 }
 
+/// @brief Invalid source catalog cannot replace prepared sidecar.
 TEST_F(ManagedScriptMetadataTest, InvalidSourceCatalogCannotReplacePreparedSidecar)
 {
     Write("Assets/Scripts/Actor.cs", "abc");
@@ -234,6 +245,7 @@ TEST_F(ManagedScriptMetadataTest, InvalidSourceCatalogCannotReplacePreparedSidec
     EXPECT_EQ(Read("Assets/Scripts/Actor.cs.meta"), metadata);
 }
 
+/// @brief Object reference write preserves scene identifiers and null slots.
 TEST_F(ManagedScriptMetadataTest, ObjectReferenceWritePreservesSceneIdentifiersAndNullSlots)
 {
     editor::ai::JsonValue reference = editor::ai::JsonValue::MakeObject();
@@ -253,6 +265,7 @@ TEST_F(ManagedScriptMetadataTest, ObjectReferenceWritePreservesSceneIdentifiersA
     EXPECT_EQ(values[0].id, scene::EntityID::INVALID);
 }
 
+/// @brief Primitive array schema includes actual default values.
 TEST_F(ManagedScriptMetadataTest, PrimitiveArraySchemaIncludesActualDefaultValues)
 {
     std::vector<float> weights{ 1.0f, 2.0f };

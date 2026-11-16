@@ -34,6 +34,7 @@ protected:
     int m_dirtyCalls = 0;
 };
 
+/// @brief Duplicate and paste preserve hierarchy beyond old capacity.
 TEST_F(SceneEditCapacityTest, DuplicateAndPastePreserveHierarchyBeyondOldCapacity)
 {
     auto& target = AttachScene();
@@ -65,6 +66,7 @@ TEST_F(SceneEditCapacityTest, DuplicateAndPastePreserveHierarchyBeyondOldCapacit
     EXPECT_EQ(pasted->GetChildCount(), 1);
 }
 
+/// @brief Checks parent and child selection duplicates only the original hierarchy after growth.
 TEST_F(SceneEditCapacityTest, ParentAndChildSelectionDuplicatesOnlyTheOriginalHierarchyAfterGrowth)
 {
     auto& target = AttachScene();
@@ -89,6 +91,7 @@ TEST_F(SceneEditCapacityTest, ParentAndChildSelectionDuplicatesOnlyTheOriginalHi
     EXPECT_EQ(m_dirtyCalls, 1);
 }
 
+/// @brief Selected roots keep input order and ignore stale IDs and descendants.
 TEST_F(SceneEditCapacityTest, SelectedRootsKeepInputOrderAndIgnoreStaleIdsAndDescendants)
 {
     auto& target = AttachScene();
@@ -109,6 +112,7 @@ TEST_F(SceneEditCapacityTest, SelectedRootsKeepInputOrderAndIgnoreStaleIdsAndDes
         (std::vector<scene::EntityID>{unrelated, ancestor.GetID()}));
 }
 
+/// @brief UI preset creates automatic canvas beyond old capacity.
 TEST_F(SceneEditCapacityTest, UIPresetCreatesAutomaticCanvasBeyondOldCapacity)
 {
     auto& target = AttachScene();
@@ -135,6 +139,7 @@ TEST_F(SceneEditCapacityTest, UIPresetCreatesAutomaticCanvasBeyondOldCapacity)
     EXPECT_EQ(m_dirtyCalls, 1);
 }
 
+/// @brief Checks object creation and weather preset work after growth.
 TEST_F(SceneEditCapacityTest, ObjectCreationAndWeatherPresetWorkAfterGrowth)
 {
     auto& target = AttachScene();
@@ -154,6 +159,7 @@ TEST_F(SceneEditCapacityTest, ObjectCreationAndWeatherPresetWorkAfterGrowth)
     EXPECT_EQ(target.GameObjectCount(), 4100u);
 }
 
+/// @brief Existing canvas is reused after growth.
 TEST_F(SceneEditCapacityTest, ExistingCanvasIsReusedAfterGrowth)
 {
     auto& target = AttachScene();

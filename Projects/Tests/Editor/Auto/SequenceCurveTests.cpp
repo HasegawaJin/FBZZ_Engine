@@ -37,6 +37,7 @@ asset::SequenceAsset MakeCurve(asset::AnimInterp interp = asset::AnimInterp::Cub
 
 class SequenceCurveTest : public testkit::EditorFixture {};
 
+/// @brief Cubic tangents are derivatives per second and endpoints clamp.
 TEST_F(SequenceCurveTest, CubicTangentsAreDerivativesPerSecondAndEndpointsClamp)
 {
     const auto sequence = MakeCurve();
@@ -50,6 +51,7 @@ TEST_F(SequenceCurveTest, CubicTangentsAreDerivativesPerSecondAndEndpointsClamp)
     EXPECT_FLOAT_EQ(asset::SampleFloatKeys(keys, 0.5, asset::AnimInterp::Step), 0.0f);
 }
 
+/// @brief Reversed scrubbing has no frame history and `NaN` query is safe.
 TEST_F(SequenceCurveTest, ReversedScrubbingHasNoFrameHistoryAndNaNQueryIsSafe)
 {
     const auto keys = MakeCurve().tracks[0].property.floatKeys;
@@ -65,6 +67,7 @@ TEST_F(SequenceCurveTest, ReversedScrubbingHasNoFrameHistoryAndNaNQueryIsSafe)
                                          asset::AnimInterp::Cubic), 2.0f);
 }
 
+/// @brief Duplicate times keep legacy endpoint and interior sampling rules.
 TEST_F(SequenceCurveTest, DuplicateTimesKeepLegacyEndpointAndInteriorSamplingRules)
 {
     const std::vector<asset::FloatKey> keys = {
@@ -76,6 +79,7 @@ TEST_F(SequenceCurveTest, DuplicateTimesKeepLegacyEndpointAndInteriorSamplingRul
     EXPECT_FLOAT_EQ(asset::SampleFloatKeys(keys, 1.5, asset::AnimInterp::Linear), 6.0f);
 }
 
+/// @brief Moving across keys and equal times keeps the same key selected.
 TEST_F(SequenceCurveTest, MovingAcrossKeysAndEqualTimesKeepsTheSameKeySelected)
 {
     auto keys = MakeCurve().tracks[0].property.floatKeys;
@@ -93,6 +97,7 @@ TEST_F(SequenceCurveTest, MovingAcrossKeysAndEqualTimesKeepsTheSameKeySelected)
     EXPECT_FLOAT_EQ(keys[1].value, 9.0f);
 }
 
+/// @brief Linear tangent preset matches a linear ramp with non unit duration.
 TEST_F(SequenceCurveTest, LinearTangentPresetMatchesALinearRampWithNonUnitDuration)
 {
     auto keys = MakeCurve().tracks[0].property.floatKeys;
@@ -105,6 +110,7 @@ TEST_F(SequenceCurveTest, LinearTangentPresetMatchesALinearRampWithNonUnitDurati
     EXPECT_NEAR(asset::SampleFloatKeys(keys, 0.5, asset::AnimInterp::Cubic), 0.5f, 1.0e-6f);
 }
 
+/// @brief Save load retains tangents and all legacy interpolation modes.
 TEST_F(SequenceCurveTest, SaveLoadRetainsTangentsAndAllLegacyInterpolationModes)
 {
     const auto path = File("curve.sequence").generic_string();
@@ -125,6 +131,7 @@ TEST_F(SequenceCurveTest, SaveLoadRetainsTangentsAndAllLegacyInterpolationModes)
     }
 }
 
+/// @brief Legacy missing tangents load flat and invalid keys never reach sampling.
 TEST_F(SequenceCurveTest, LegacyMissingTangentsLoadFlatAndInvalidKeysNeverReachSampling)
 {
     const auto path = File("legacy.sequence").generic_string();
@@ -148,6 +155,7 @@ floatKeys = [{time=2.0,value=2.0},{time=nan,value=4.0},{time=0.0,value=0.0},{tim
     EXPECT_FLOAT_EQ(asset::SampleFloatKeys(keys, 1.0, asset::AnimInterp::Cubic), 1.0f);
 }
 
+/// @brief Invalid save preserves the last good file.
 TEST_F(SequenceCurveTest, InvalidSavePreservesTheLastGoodFile)
 {
     const auto path = File("safe.sequence").generic_string();
@@ -246,6 +254,7 @@ protected:
     }
 };
 
+/// @brief Add delete undo redo and reload use the actual panel and saved runtime curve.
 TEST_F(SequenceCurveUiTest, AddDeleteUndoRedoAndReloadUseTheActualPanelAndSavedRuntimeCurve)
 {
     const auto path = File("ui.sequence").generic_string();

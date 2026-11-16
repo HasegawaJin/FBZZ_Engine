@@ -60,6 +60,7 @@ protected:
 
 /// @name 有効・無効
 
+/// @brief Holds the body at its target under gravity.
 TEST_F(XPBDPoseAnchorTest, HoldsTheBodyAtItsTargetUnderGravity)
 {
     AddAnchor();
@@ -69,6 +70,7 @@ TEST_F(XPBDPoseAnchorTest, HoldsTheBodyAtItsTargetUnderGravity)
     EXPECT_NEAR(m_body.GetPosition().y, 5.0f, 0.05f);
 }
 
+/// @brief Lets the body fall when disabled.
 TEST_F(XPBDPoseAnchorTest, LetsTheBodyFallWhenDisabled)
 {
     /// @note 脱力して倒れる間は切る。切れていないと «力が抜けたのに胴だけ宙に留まる»。
@@ -80,6 +82,7 @@ TEST_F(XPBDPoseAnchorTest, LetsTheBodyFallWhenDisabled)
     EXPECT_LT(m_body.GetPosition().y, 1.0f);
 }
 
+/// @brief Starts disabled until it is turned on.
 TEST_F(XPBDPoseAnchorTest, StartsDisabledUntilItIsTurnedOn)
 {
     /// @note 既定は «繋ぎ止めない»。組んだ瞬間に勝手に吊られていると、
@@ -97,6 +100,7 @@ TEST_F(XPBDPoseAnchorTest, StartsDisabledUntilItIsTurnedOn)
 
 /// @name 目標の移動
 
+/// @brief Follows a target that moves.
 TEST_F(XPBDPoseAnchorTest, FollowsATargetThatMoves)
 {
     /// @note Active なラグドールは毎フレーム目標をクリップへ乗せ替える。付いて回ること。
@@ -108,6 +112,7 @@ TEST_F(XPBDPoseAnchorTest, FollowsATargetThatMoves)
     EXPECT_NEAR(m_body.GetPosition().x, 3.0f, 0.1f);
 }
 
+/// @brief Pulls the rotation towards the target.
 TEST_F(XPBDPoseAnchorTest, PullsTheRotationTowardsTheTarget)
 {
     physics::XPBDPoseAnchor& anchor = AddAnchor();
@@ -122,6 +127,7 @@ TEST_F(XPBDPoseAnchorTest, PullsTheRotationTowardsTheTarget)
 
 /// @name 強さと飽和
 
+/// @brief Sags below the target when the force limit is too low.
 TEST_F(XPBDPoseAnchorTest, SagsBelowTheTargetWhenTheForceLimitIsTooLow)
 {
     /// @note 上限を «自重より弱く» すると支え切れない。押されたぶんだけ沈む挙動の芯。
@@ -133,6 +139,7 @@ TEST_F(XPBDPoseAnchorTest, SagsBelowTheTargetWhenTheForceLimitIsTooLow)
     EXPECT_LT(m_body.GetPosition().y, 5.0f);
 }
 
+/// @brief Reports saturation when it cannot hold.
 TEST_F(XPBDPoseAnchorTest, ReportsSaturationWhenItCannotHold)
 {
     physics::XPBDPoseAnchor& weak = AddAnchor(1.0f, 1000.0f);
@@ -142,6 +149,7 @@ TEST_F(XPBDPoseAnchorTest, ReportsSaturationWhenItCannotHold)
     EXPECT_TRUE(weak.IsSaturated());
 }
 
+/// @brief Does not report saturation while it holds.
 TEST_F(XPBDPoseAnchorTest, DoesNotReportSaturationWhileItHolds)
 {
     physics::XPBDPoseAnchor& strong = AddAnchor(1000.0f, 1000.0f);
@@ -151,6 +159,7 @@ TEST_F(XPBDPoseAnchorTest, DoesNotReportSaturationWhileItHolds)
     EXPECT_FALSE(strong.IsSaturated());
 }
 
+/// @brief Reports how far it is from the target.
 TEST_F(XPBDPoseAnchorTest, ReportsHowFarItIsFromTheTarget)
 {
     /// @note 「どれだけ引き止め切れていないか」の物差し。0 なら目標どおり。
@@ -166,6 +175,7 @@ TEST_F(XPBDPoseAnchorTest, ReportsHowFarItIsFromTheTarget)
     EXPECT_GT(strong.GetOffset(), 1.0f);
 }
 
+/// @brief Treats a non positive limit as unlimited.
 TEST_F(XPBDPoseAnchorTest, TreatsANonPositiveLimitAsUnlimited)
 {
     /// @note 0 以下は «上限なし»。«0 = 力を出さない» と読み替えると、
@@ -177,6 +187,7 @@ TEST_F(XPBDPoseAnchorTest, TreatsANonPositiveLimitAsUnlimited)
     EXPECT_NEAR(m_body.GetPosition().y, 5.0f, 0.05f);
 }
 
+/// @brief Finite zero linear force does not disable angular support.
 TEST_F(XPBDPoseAnchorTest, FiniteZeroLinearForceDoesNotDisableAngularSupport)
 {
     auto& anchor = AddAnchor();
@@ -188,6 +199,7 @@ TEST_F(XPBDPoseAnchorTest, FiniteZeroLinearForceDoesNotDisableAngularSupport)
     EXPECT_QUAT_NEAR(m_body.GetRotation(), turned, 0.05f);
 }
 
+/// @brief Finite zero torque does not lock rotation or disable linear support.
 TEST_F(XPBDPoseAnchorTest, FiniteZeroTorqueDoesNotLockRotationOrDisableLinearSupport)
 {
     auto& anchor = AddAnchor();

@@ -40,6 +40,7 @@ scene::GameObject& AddUniformField(scene::Scene& scene, const char* name, float 
 
 class FlowFieldFrameTest : public testkit::EngineFixture {};
 
+/// @brief Consumers share an immutable snapshot across regather.
 TEST_F(FlowFieldFrameTest, ConsumersShareAnImmutableSnapshotAcrossRegather)
 {
     scene::Scene scene;
@@ -54,6 +55,7 @@ TEST_F(FlowFieldFrameTest, ConsumersShareAnImmutableSnapshotAcrossRegather)
     EXPECT_EQ(current->size(), 2u);
 }
 
+/// @brief The same frame reuses the gathered flow.
 TEST_F(FlowFieldFrameTest, TheSameFrameReusesTheGatheredFlow)
 {
     scene::Scene scene;
@@ -69,6 +71,7 @@ TEST_F(FlowFieldFrameTest, TheSameFrameReusesTheGatheredFlow)
     EXPECT_EQ(Time::frameCount, frame);
 }
 
+/// @brief Checks a new frame gathers again.
 TEST_F(FlowFieldFrameTest, ANewFrameGathersAgain)
 {
     scene::Scene scene;
@@ -81,6 +84,7 @@ TEST_F(FlowFieldFrameTest, ANewFrameGathersAgain)
         << "フレームが進んだら集め直さないと、動く場が 1 フレーム古いまま凍る";
 }
 
+/// @brief Invalidate forces a gather in the same frame.
 TEST_F(FlowFieldFrameTest, InvalidateForcesAGatherInTheSameFrame)
 {
     scene::Scene scene;
@@ -92,6 +96,7 @@ TEST_F(FlowFieldFrameTest, InvalidateForcesAGatherInTheSameFrame)
     EXPECT_EQ(scene.FlowFrame().fields->size(), 2u);
 }
 
+/// @brief The ambient flow is also a field particles can sample.
 TEST_F(FlowFieldFrameTest, TheAmbientFlowIsAlsoAFieldParticlesCanSample)
 {
     /// @note 環境流を «要約 (雲・水面)» にしか出さないと、粒子だけが風を受けなくなる。
@@ -113,6 +118,7 @@ TEST_F(FlowFieldFrameTest, TheAmbientFlowIsAlsoAFieldParticlesCanSample)
     EXPECT_VEC3_NEAR(flow, math::Vector3(6.0f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Checks scene fields precede the ambient flow.
 TEST_F(FlowFieldFrameTest, SceneFieldsPrecedeTheAmbientFlow)
 {
     /// @note 環境風を AmbientWind で受ける消費者 (繊維) は、先頭 sceneFieldCount 本だけを場として読む。
@@ -138,6 +144,7 @@ TEST_F(FlowFieldFrameTest, SceneFieldsPrecedeTheAmbientFlow)
     EXPECT_EQ(scene.FlowFrame().sceneFieldCount, scene.FlowFrame().fields->size());
 }
 
+/// @brief A point outside every radius is not covered.
 TEST_F(FlowFieldFrameTest, APointOutsideEveryRadiusIsNotCovered)
 {
     /// @note «場が無い» は «流速 0 の静止した空気» ではない。ここを覆いとして数えると、

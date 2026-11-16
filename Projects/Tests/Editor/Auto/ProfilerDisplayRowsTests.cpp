@@ -34,6 +34,7 @@ protected:
     }
 };
 
+/// @brief Keeps measured zero distinct from missing and unavailable.
 TEST_F(ProfilerDisplayRowsTest, KeepsMeasuredZeroDistinctFromMissingAndUnavailable)
 {
     m_rows.Update(1, 100, "scene", false, {{"a", "Same", 0.0, true}, {"b", "Same", 0.0, false}});
@@ -48,6 +49,7 @@ TEST_F(ProfilerDisplayRowsTest, KeepsMeasuredZeroDistinctFromMissingAndUnavailab
     EXPECT_FALSE(m_rows.Rows()[1].value.available);
 }
 
+/// @brief Preserves identity and position across alternating absence.
 TEST_F(ProfilerDisplayRowsTest, PreservesIdentityAndPositionAcrossAlternatingAbsence)
 {
     m_rows.Update(1, 1, "scene", false, {{"a", "Same", 2.0}});
@@ -63,6 +65,7 @@ TEST_F(ProfilerDisplayRowsTest, PreservesIdentityAndPositionAcrossAlternatingAbs
     EXPECT_DOUBLE_EQ(m_rows.Rows()[0].value.ms, 80.0);
 }
 
+/// @brief Expires after the inclusive frame ttl without retargeting the selected key.
 TEST_F(ProfilerDisplayRowsTest, ExpiresAfterTheInclusiveFrameTtlWithoutRetargetingTheSelectedKey)
 {
     const std::string selected = "a";
@@ -77,6 +80,7 @@ TEST_F(ProfilerDisplayRowsTest, ExpiresAfterTheInclusiveFrameTtlWithoutRetargeti
     EXPECT_EQ(m_rows.Rows().front().value.key, "b");
 }
 
+/// @brief Does not age or replace the same paused capture.
 TEST_F(ProfilerDisplayRowsTest, DoesNotAgeOrReplaceTheSamePausedCapture)
 {
     m_rows.Update(1, 100, "scene", false, {{"a", "A", 2.0}});
@@ -88,6 +92,7 @@ TEST_F(ProfilerDisplayRowsTest, DoesNotAgeOrReplaceTheSamePausedCapture)
     EXPECT_EQ(m_rows.Rows().front().lastSeenFrame, 100u);
 }
 
+/// @brief Shows only the selected capture on freeze seek and resume.
 TEST_F(ProfilerDisplayRowsTest, ShowsOnlyTheSelectedCaptureOnFreezeSeekAndResume)
 {
     m_rows.Update(1, 100, "scene", false, {{"future", "Future", 20.0}});
@@ -104,6 +109,7 @@ TEST_F(ProfilerDisplayRowsTest, ShowsOnlyTheSelectedCaptureOnFreezeSeekAndResume
     EXPECT_EQ(m_rows.Generation(), generation);
 }
 
+/// @brief Clears old rows and widget identity when session changes.
 TEST_F(ProfilerDisplayRowsTest, ClearsOldRowsAndWidgetIdentityWhenSessionChanges)
 {
     m_rows.Update(1, 100, "scene", false, {{"a", "A", 2.0}});
@@ -116,6 +122,7 @@ TEST_F(ProfilerDisplayRowsTest, ClearsOldRowsAndWidgetIdentityWhenSessionChanges
     EXPECT_GT(m_rows.Generation(), generation);
 }
 
+/// @brief Clears retained rows when scene or view context changes.
 TEST_F(ProfilerDisplayRowsTest, ClearsRetainedRowsWhenSceneOrViewContextChanges)
 {
     m_rows.Update(1, 100, "scene1/view1", false, {{"a", "A", 2.0}});
@@ -128,6 +135,7 @@ TEST_F(ProfilerDisplayRowsTest, ClearsRetainedRowsWhenSceneOrViewContextChanges)
     EXPECT_TRUE(m_rows.Rows().empty());
 }
 
+/// @brief Makes explicit clear effective even at the same frame.
 TEST_F(ProfilerDisplayRowsTest, MakesExplicitClearEffectiveEvenAtTheSameFrame)
 {
     m_rows.Update(1, 100, "scene", false, {{"a", "A", 2.0}});
@@ -138,6 +146,7 @@ TEST_F(ProfilerDisplayRowsTest, MakesExplicitClearEffectiveEvenAtTheSameFrame)
     EXPECT_TRUE(m_rows.Rows().empty());
 }
 
+/// @brief Bounds row count and makes room after expiry.
 TEST_F(ProfilerDisplayRowsTest, BoundsRowCountAndMakesRoomAfterExpiry)
 {
     Rows rows(2, 16 * 1024);
@@ -154,6 +163,7 @@ TEST_F(ProfilerDisplayRowsTest, BoundsRowCountAndMakesRoomAfterExpiry)
     EXPECT_FALSE(rows.Limited());
 }
 
+/// @brief Rejects oversized owned strings without inventing a row.
 TEST_F(ProfilerDisplayRowsTest, RejectsOversizedOwnedStringsWithoutInventingARow)
 {
     Rows rows(2, 2048);
@@ -164,6 +174,7 @@ TEST_F(ProfilerDisplayRowsTest, RejectsOversizedOwnedStringsWithoutInventingARow
     EXPECT_TRUE(rows.Limited());
 }
 
+/// @brief Updates values immediately and paces only display rank.
 TEST_F(ProfilerDisplayRowsTest, UpdatesValuesImmediatelyAndPacesOnlyDisplayRank)
 {
     std::vector<DisplayRow> rows = {{"a", "A", 1.0}, {"b", "B", 2.0}};
@@ -179,6 +190,7 @@ TEST_F(ProfilerDisplayRowsTest, UpdatesValuesImmediatelyAndPacesOnlyDisplayRank)
     EXPECT_EQ(rows.front().key, "a");
 }
 
+/// @brief Applies user sort changes before the refresh deadline.
 TEST_F(ProfilerDisplayRowsTest, AppliesUserSortChangesBeforeTheRefreshDeadline)
 {
     std::vector<DisplayRow> rows = {{"a", "A", 1.0}, {"b", "B", 2.0}};
@@ -191,6 +203,7 @@ TEST_F(ProfilerDisplayRowsTest, AppliesUserSortChangesBeforeTheRefreshDeadline)
     EXPECT_EQ(rows.front().key, "b");
 }
 
+/// @brief Keeps tie order stable when input enumeration changes.
 TEST_F(ProfilerDisplayRowsTest, KeepsTieOrderStableWhenInputEnumerationChanges)
 {
     std::vector<DisplayRow> rows = {{"b", "Same", 2.0}, {"a", "Same", 2.0}};
@@ -202,6 +215,7 @@ TEST_F(ProfilerDisplayRowsTest, KeepsTieOrderStableWhenInputEnumerationChanges)
     EXPECT_EQ(rows.front().key, "b");
 }
 
+/// @brief Keeps same named CPU scopes under different parents distinct across record IDs.
 TEST_F(ProfilerDisplayRowsTest, KeepsSameNamedCpuScopesUnderDifferentParentsDistinctAcrossRecordIds)
 {
     profiler::PerformanceSnapshot snapshot;
@@ -232,6 +246,7 @@ TEST_F(ProfilerDisplayRowsTest, KeepsSameNamedCpuScopesUnderDifferentParentsDist
     EXPECT_EQ(before.nodes[3].key, after.nodes[3].key);
 }
 
+/// @brief Keeps parent topology for contiguous sparse duplicate and unordered sample IDs.
 TEST_F(ProfilerDisplayRowsTest, KeepsParentTopologyForContiguousSparseDuplicateAndUnorderedSampleIds)
 {
     const uint64_t maximum = (std::numeric_limits<uint64_t>::max)();
@@ -261,6 +276,7 @@ TEST_F(ProfilerDisplayRowsTest, KeepsParentTopologyForContiguousSparseDuplicateA
     }
 }
 
+/// @brief Does not publish skipped contiguous samples as parents.
 TEST_F(ProfilerDisplayRowsTest, DoesNotPublishSkippedContiguousSamplesAsParents)
 {
     for (const uint64_t skippedParent : {uint64_t{0}, uint64_t{2}, uint64_t{3}, uint64_t{99}}) {

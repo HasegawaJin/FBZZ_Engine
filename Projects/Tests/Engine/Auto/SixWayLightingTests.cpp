@@ -22,6 +22,7 @@ float WeightSum(const asset::SixWayWeights& w)
 
 } // namespace
 
+/// @brief Checks weights of a unit direction sum to one.
 TEST(SixWayLightingTest, WeightsOfAUnitDirectionSumToOne)
 {
     const math::Vector3 directions[] = {
@@ -32,6 +33,7 @@ TEST(SixWayLightingTest, WeightsOfAUnitDirectionSumToOne)
         EXPECT_NEAR(WeightSum(asset::ComputeSixWayWeights(direction)), 1.0f, 1.0e-4f);
 }
 
+/// @brief Axis aligned light reads exactly one channel.
 TEST(SixWayLightingTest, AxisAlignedLightReadsExactlyOneChannel)
 {
     /// @note 並びは Positive = (右, 上, 奥) / Negative = (左, 下, 手前)。
@@ -45,6 +47,7 @@ TEST(SixWayLightingTest, AxisAlignedLightReadsExactlyOneChannel)
     EXPECT_NEAR(asset::EvaluateSixWay(positiveMap, negativeMap, { 0.0f, 0.0f, -1.0f }), 0.6f, 1.0e-6f);
 }
 
+/// @brief Diagonal light blends the two facing channels.
 TEST(SixWayLightingTest, DiagonalLightBlendsTheTwoFacingChannels)
 {
     /// @note 右上 45 度から来る光は «右» と «上» を半分ずつ読む。反対側 (左・下) は読まない。
@@ -56,6 +59,7 @@ TEST(SixWayLightingTest, DiagonalLightBlendsTheTwoFacingChannels)
     EXPECT_NEAR(w.negative.y, 0.0f, 1.0e-6f);
 }
 
+/// @brief Uniform maps respond the same from every direction.
 TEST(SixWayLightingTest, UniformMapsRespondTheSameFromEveryDirection)
 {
     /// @note 全方向が同じ明るさなら、光の向きを回しても明るさは変わらない (重みの和が 1 だから)。

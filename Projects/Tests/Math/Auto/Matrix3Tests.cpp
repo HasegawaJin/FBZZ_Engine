@@ -32,6 +32,7 @@ class Matrix3Test : public testkit::Fixture {};
 
 /// @name 単位元と積
 
+/// @brief Identity leaves a matrix unchanged.
 TEST_F(Matrix3Test, IdentityLeavesAMatrixUnchanged)
 {
     const math::Matrix3 mat = MakeAsymmetric();
@@ -40,6 +41,7 @@ TEST_F(Matrix3Test, IdentityLeavesAMatrixUnchanged)
     EXPECT_MAT3_NEAR(math::Matrix3::Identity() * mat, mat, testkit::kTolerance);
 }
 
+/// @brief Identity leaves a vector unchanged.
 TEST_F(Matrix3Test, IdentityLeavesAVectorUnchanged)
 {
     const math::Vector3 v = Rng().NextVector3(-10.0f, 10.0f);
@@ -47,6 +49,7 @@ TEST_F(Matrix3Test, IdentityLeavesAVectorUnchanged)
     EXPECT_VEC3_NEAR(math::Matrix3::Identity() * v, v, testkit::kTolerance);
 }
 
+/// @brief Multiplication applies the right hand operand first.
 TEST_F(Matrix3Test, MultiplicationAppliesTheRightHandOperandFirst)
 {
     /// @note (A * B) * v == A * (B * v)。ここが逆だと変換の適用順が全部裏返る。
@@ -60,6 +63,7 @@ TEST_F(Matrix3Test, MultiplicationAppliesTheRightHandOperandFirst)
     EXPECT_VEC3_NEAR((a * b) * v, a * (b * v), testkit::kTolerance);
 }
 
+/// @brief Multiplication is associative.
 TEST_F(Matrix3Test, MultiplicationIsAssociative)
 {
     const math::Matrix3 a = MakeAsymmetric();
@@ -71,6 +75,7 @@ TEST_F(Matrix3Test, MultiplicationIsAssociative)
 
 /// @name 転置
 
+/// @brief Transpose swaps rows and columns.
 TEST_F(Matrix3Test, TransposeSwapsRowsAndColumns)
 {
     const math::Matrix3 mat = MakeAsymmetric();
@@ -82,6 +87,7 @@ TEST_F(Matrix3Test, TransposeSwapsRowsAndColumns)
             EXPECT_NEAR(transposed.m[r][c], mat.m[c][r], testkit::kTolerance);
 }
 
+/// @brief Transpose applied twice is the original.
 TEST_F(Matrix3Test, TransposeAppliedTwiceIsTheOriginal)
 {
     const math::Matrix3 mat = MakeAsymmetric();
@@ -90,6 +96,7 @@ TEST_F(Matrix3Test, TransposeAppliedTwiceIsTheOriginal)
                      testkit::kTolerance);
 }
 
+/// @brief Transpose of a product reverses the operands.
 TEST_F(Matrix3Test, TransposeOfAProductReversesTheOperands)
 {
     const math::Matrix3 a = MakeAsymmetric();
@@ -100,6 +107,7 @@ TEST_F(Matrix3Test, TransposeOfAProductReversesTheOperands)
                      testkit::kTolerance);
 }
 
+/// @brief Transpose of a rotation is its inverse.
 TEST_F(Matrix3Test, TransposeOfARotationIsItsInverse)
 {
     const math::Matrix3 rotation = math::Matrix3::FromMatrix4(
@@ -111,6 +119,7 @@ TEST_F(Matrix3Test, TransposeOfARotationIsItsInverse)
 
 /// @name Matrix4 からの切り出し
 
+/// @brief From matrix 4 takes the upper left block.
 TEST_F(Matrix3Test, FromMatrix4TakesTheUpperLeftBlock)
 {
     const math::Matrix4 mat = math::Matrix4::TRS({10.0f, -20.0f, 30.0f},
@@ -124,6 +133,7 @@ TEST_F(Matrix3Test, FromMatrix4TakesTheUpperLeftBlock)
             EXPECT_NEAR(linear.m[r][c], mat.m[r][c], testkit::kTolerance);
 }
 
+/// @brief From matrix 4 discards translation.
 TEST_F(Matrix3Test, FromMatrix4DiscardsTranslation)
 {
     /// @note 法線変換に使う型なので、平行移動を拾ってはならない。
@@ -133,6 +143,7 @@ TEST_F(Matrix3Test, FromMatrix4DiscardsTranslation)
                      testkit::kTolerance);
 }
 
+/// @brief Rotating a vector matches the equivalent quaternion.
 TEST_F(Matrix3Test, RotatingAVectorMatchesTheEquivalentQuaternion)
 {
     const math::Quaternion rotation =

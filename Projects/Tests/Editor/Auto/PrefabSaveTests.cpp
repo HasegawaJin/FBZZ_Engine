@@ -106,6 +106,7 @@ protected:
     }
 };
 
+/// @brief Refuses an empty selection.
 TEST_F(PrefabSaveTest, RefusesAnEmptySelection)
 {
     scene::Scene scene;
@@ -114,6 +115,7 @@ TEST_F(PrefabSaveTest, RefusesAnEmptySelection)
     EXPECT_FALSE(std::filesystem::exists(PrefabPath()));
 }
 
+/// @brief Refuses a selection of unknown entities.
 TEST_F(PrefabSaveTest, RefusesASelectionOfUnknownEntities)
 {
     scene::Scene scene;
@@ -122,6 +124,7 @@ TEST_F(PrefabSaveTest, RefusesASelectionOfUnknownEntities)
     EXPECT_FALSE(PrefabSerializer::SaveSelection(scene, bogus, PrefabPathUtf8()));
 }
 
+/// @brief Rejects external point bindings before replacing an existing prefab.
 TEST_F(PrefabSaveTest, RejectsExternalPointBindingsBeforeReplacingAnExistingPrefab)
 {
     scene::Scene scene;
@@ -155,6 +158,7 @@ TEST_F(PrefabSaveTest, RejectsExternalPointBindingsBeforeReplacingAnExistingPref
     EXPECT_EQ(SavedText(), original);
 }
 
+/// @brief Rejects missing null and unsaved point targets without changing their GUID.
 TEST_F(PrefabSaveTest, RejectsMissingNullAndUnsavedPointTargetsWithoutChangingTheirGuid)
 {
     scene::Scene scene;
@@ -182,6 +186,7 @@ TEST_F(PrefabSaveTest, RejectsMissingNullAndUnsavedPointTargetsWithoutChangingTh
     EXPECT_EQ(spline.pointBindings.front().target.guid, target.instanceId);
 }
 
+/// @brief Saves shared point closure and remaps each prefab instance internally.
 TEST_F(PrefabSaveTest, SavesSharedPointClosureAndRemapsEachPrefabInstanceInternally)
 {
     scene::Scene source;
@@ -231,6 +236,7 @@ TEST_F(PrefabSaveTest, SavesSharedPointClosureAndRemapsEachPrefabInstanceInterna
     }
 }
 
+/// @brief Water interaction settings survive prefab instantiation without runtime state.
 TEST_F(PrefabSaveTest, WaterInteractionSettingsSurvivePrefabInstantiationWithoutRuntimeState)
 {
     scene::Scene source;
@@ -290,6 +296,7 @@ TEST_F(PrefabSaveTest, WaterInteractionSettingsSurvivePrefabInstantiationWithout
     EXPECT_NE(exclusion->waters.front().guid, sourceObject.instanceId);
 }
 
+/// @brief Saves line and patrol point references in each prefab instance.
 TEST_F(PrefabSaveTest, SavesLineAndPatrolPointReferencesInEachPrefabInstance)
 {
     scene::Scene source;
@@ -344,6 +351,7 @@ TEST_F(PrefabSaveTest, SavesLineAndPatrolPointReferencesInEachPrefabInstance)
               findSource(secondRoots, point.instanceId)->instanceId);
 }
 
+/// @brief Rejects external typed navigation and motion warp markers before replacing prefab.
 TEST_F(PrefabSaveTest, RejectsExternalTypedNavigationAndMotionWarpMarkersBeforeReplacingPrefab)
 {
     scene::Scene scene;
@@ -383,6 +391,7 @@ TEST_F(PrefabSaveTest, RejectsExternalTypedNavigationAndMotionWarpMarkersBeforeR
     expectRejected();
 }
 
+/// @brief Marker backed legacy and IK references require their target in the saved closure.
 TEST_F(PrefabSaveTest, MarkerBackedLegacyAndIKReferencesRequireTheirTargetInTheSavedClosure)
 {
     scene::Scene scene;
@@ -446,6 +455,7 @@ TEST_F(PrefabSaveTest, MarkerBackedLegacyAndIKReferencesRequireTheirTargetInTheS
     EXPECT_TRUE(PrefabSerializer::SaveSelection(scene, {owner.GetID()}, PrefabPathUtf8()));
 }
 
+/// @brief Keeps legacy cloth entity references and inactive inline rows saveable.
 TEST_F(PrefabSaveTest, KeepsLegacyClothEntityReferencesAndInactiveInlineRowsSaveable)
 {
     scene::Scene scene;
@@ -462,6 +472,7 @@ TEST_F(PrefabSaveTest, KeepsLegacyClothEntityReferencesAndInactiveInlineRowsSave
     EXPECT_TRUE(std::filesystem::exists(PrefabPath()));
 }
 
+/// @brief Saves an explicit cloth target without requiring a marker.
 TEST_F(PrefabSaveTest, SavesAnExplicitClothTargetWithoutRequiringAMarker)
 {
     scene::Scene scene;
@@ -477,6 +488,7 @@ TEST_F(PrefabSaveTest, SavesAnExplicitClothTargetWithoutRequiringAMarker)
     EXPECT_TRUE(std::filesystem::exists(PrefabPath()));
 }
 
+/// @brief Writes a file for a single object.
 TEST_F(PrefabSaveTest, WritesAFileForASingleObject)
 {
     scene::Scene scene;
@@ -488,6 +500,7 @@ TEST_F(PrefabSaveTest, WritesAFileForASingleObject)
     EXPECT_TRUE(ContainsName(ObjectNames(SavedText()), "Player"));
 }
 
+/// @brief Records the prefab format header.
 TEST_F(PrefabSaveTest, RecordsThePrefabFormatHeader)
 {
     scene::Scene scene;
@@ -500,6 +513,7 @@ TEST_F(PrefabSaveTest, RecordsThePrefabFormatHeader)
     EXPECT_EQ(parsed.table()["prefab"]["root_count"].value_or(0), 1);
 }
 
+/// @brief Includes descendants of the selected root.
 TEST_F(PrefabSaveTest, IncludesDescendantsOfTheSelectedRoot)
 {
     /// @note 親だけ選んでも、子はプレハブの一部として付いてこなければならない。
@@ -515,6 +529,7 @@ TEST_F(PrefabSaveTest, IncludesDescendantsOfTheSelectedRoot)
     EXPECT_TRUE(ContainsName(names, "Child"));
 }
 
+/// @brief Excludes objects outside the selection.
 TEST_F(PrefabSaveTest, ExcludesObjectsOutsideTheSelection)
 {
     scene::Scene scene;
@@ -526,6 +541,7 @@ TEST_F(PrefabSaveTest, ExcludesObjectsOutsideTheSelection)
     EXPECT_FALSE(ContainsName(ObjectNames(SavedText()), "Unrelated"));
 }
 
+/// @brief Counts only top level roots when a whole branch is selected.
 TEST_F(PrefabSaveTest, CountsOnlyTopLevelRootsWhenAWholeBranchIsSelected)
 {
     /// @note 親と子を «両方» 選んでも、プレハブの根は親 1 つ。
@@ -543,6 +559,7 @@ TEST_F(PrefabSaveTest, CountsOnlyTopLevelRootsWhenAWholeBranchIsSelected)
     EXPECT_EQ(parsed.table()["prefab"]["root_count"].value_or(0), 1);
 }
 
+/// @brief Counts several independent roots.
 TEST_F(PrefabSaveTest, CountsSeveralIndependentRoots)
 {
     scene::Scene scene;
@@ -557,6 +574,7 @@ TEST_F(PrefabSaveTest, CountsSeveralIndependentRoots)
     EXPECT_EQ(parsed.table()["prefab"]["root_count"].value_or(0), 2);
 }
 
+/// @brief Saving only a child makes that child the root.
 TEST_F(PrefabSaveTest, SavingOnlyAChildMakesThatChildTheRoot)
 {
     /// @note 子だけを選んだら、その子が根のプレハブになる (親は含まれない)。
@@ -572,6 +590,7 @@ TEST_F(PrefabSaveTest, SavingOnlyAChildMakesThatChildTheRoot)
     EXPECT_FALSE(ContainsName(names, "Parent"));
 }
 
+/// @brief Keeps the asset ID of an already connected object.
 TEST_F(PrefabSaveTest, KeepsTheAssetIdOfAnAlreadyConnectedObject)
 {
     /// @note Apply を繰り返してもアセット側の id が入れ替わらないこと。ここが動くと、
@@ -592,6 +611,7 @@ TEST_F(PrefabSaveTest, KeepsTheAssetIdOfAnAlreadyConnectedObject)
     EXPECT_EQ((*first)["instanceId"].value_or(std::string{}), "stable-asset-id");
 }
 
+/// @brief Does not reuse the same asset ID twice.
 TEST_F(PrefabSaveTest, DoesNotReuseTheSameAssetIdTwice)
 {
     /// @note インスタンス内で子を複製すると prefabSourceId が重複する。
@@ -618,6 +638,7 @@ TEST_F(PrefabSaveTest, DoesNotReuseTheSameAssetIdTwice)
     EXPECT_NE(idA, idB);
 }
 
+/// @brief Produces the same file for the same scene.
 TEST_F(PrefabSaveTest, ProducesTheSameFileForTheSameScene)
 {
     /// @note 保存し直すたびに中身が揺れると、触っていないプレハブが git の差分に出る。
@@ -634,6 +655,7 @@ TEST_F(PrefabSaveTest, ProducesTheSameFileForTheSameScene)
     EXPECT_EQ(SavedText("A.prefab"), SavedText("B.prefab"));
 }
 
+/// @brief Keeps the transform of the saved object.
 TEST_F(PrefabSaveTest, KeepsTheTransformOfTheSavedObject)
 {
     scene::Scene scene;
@@ -647,6 +669,7 @@ TEST_F(PrefabSaveTest, KeepsTheTransformOfTheSavedObject)
     EXPECT_NE(text.find("1.5"), std::string::npos) << text;
 }
 
+/// @brief Apply updates untouched values and keeps individual overrides.
 TEST_F(PrefabSaveTest, ApplyUpdatesUntouchedValuesAndKeepsIndividualOverrides)
 {
     scene::Scene scene;
@@ -675,6 +698,7 @@ TEST_F(PrefabSaveTest, ApplyUpdatesUntouchedValuesAndKeepsIndividualOverrides)
     EXPECT_FLOAT_EQ(adjusted->range, 20.0f);
 }
 
+/// @brief Disk propagation uses the saved baseline after scene reload.
 TEST_F(PrefabSaveTest, DiskPropagationUsesTheSavedBaselineAfterSceneReload)
 {
     scene::Scene scene;
@@ -691,6 +715,7 @@ TEST_F(PrefabSaveTest, DiskPropagationUsesTheSavedBaselineAfterSceneReload)
     EXPECT_FLOAT_EQ(restored->GetRootGameObjects().front()->GetComponent<scene::LightComponent>()->intensity, 2.0f);
 }
 
+/// @brief Revert missing file leaves hierarchy and references unchanged.
 TEST_F(PrefabSaveTest, RevertMissingFileLeavesHierarchyAndReferencesUnchanged)
 {
     scene::Scene scene;
@@ -718,6 +743,7 @@ TEST_F(PrefabSaveTest, RevertMissingFileLeavesHierarchyAndReferencesUnchanged)
     EXPECT_TRUE(replaced.empty());
 }
 
+/// @brief Revert rejects cyclic hierarchy before touching existing objects.
 TEST_F(PrefabSaveTest, RevertRejectsCyclicHierarchyBeforeTouchingExistingObjects)
 {
     scene::Scene scene;
@@ -734,6 +760,7 @@ TEST_F(PrefabSaveTest, RevertRejectsCyclicHierarchyBeforeTouchingExistingObjects
     EXPECT_EQ(scene.GameObjectCount(), 1u);
 }
 
+/// @brief Revert moves external reference to the replacement entity.
 TEST_F(PrefabSaveTest, RevertMovesExternalReferenceToTheReplacementEntity)
 {
     scene::Scene source;
@@ -769,6 +796,7 @@ TEST_F(PrefabSaveTest, RevertMovesExternalReferenceToTheReplacementEntity)
     EXPECT_FLOAT_EQ(replacement->GetChild(0)->transform.worldPosition.x, 32.0f);
 }
 
+/// @brief Renaming a prefab keeps its GUID source connection.
 TEST_F(PrefabSaveTest, RenamingAPrefabKeepsItsGuidSourceConnection)
 {
     const auto oldPath = File("Assets/Lamp.prefab");
@@ -790,6 +818,7 @@ TEST_F(PrefabSaveTest, RenamingAPrefabKeepsItsGuidSourceConnection)
     EXPECT_EQ(PrefabSerializer::CountInstances(scene, newPath.generic_string()), 1);
 }
 
+/// @brief Applying a connected prefab saves internal references with asset IDs.
 TEST_F(PrefabSaveTest, ApplyingAConnectedPrefabSavesInternalReferencesWithAssetIds)
 {
     scene::Scene scene;
@@ -811,6 +840,7 @@ TEST_F(PrefabSaveTest, ApplyingAConnectedPrefabSavesInternalReferencesWithAssetI
     EXPECT_EQ((*childTable)["SocketAttachmentComponent"]["target"].value_or(std::string{}), "root-asset-id");
 }
 
+/// @brief Automatic propagation keeps locally added children.
 TEST_F(PrefabSaveTest, AutomaticPropagationKeepsLocallyAddedChildren)
 {
     scene::Scene source;
@@ -839,6 +869,7 @@ TEST_F(PrefabSaveTest, AutomaticPropagationKeepsLocallyAddedChildren)
     EXPECT_EQ(scene.GetGameObject(explicitRevert.front())->GetChildCount(), 0);
 }
 
+/// @brief Automatic propagation keeps locally deleted children.
 TEST_F(PrefabSaveTest, AutomaticPropagationKeepsLocallyDeletedChildren)
 {
     scene::Scene source;
@@ -864,6 +895,7 @@ TEST_F(PrefabSaveTest, AutomaticPropagationKeepsLocallyDeletedChildren)
     EXPECT_FLOAT_EQ(root->GetComponent<scene::LightComponent>()->intensity, 1.0f);
 }
 
+/// @brief Automatic propagation keeps locally reparented children.
 TEST_F(PrefabSaveTest, AutomaticPropagationKeepsLocallyReparentedChildren)
 {
     scene::Scene source;
@@ -893,6 +925,7 @@ TEST_F(PrefabSaveTest, AutomaticPropagationKeepsLocallyReparentedChildren)
     EXPECT_EQ(parentA->GetChildCount(), 0);
 }
 
+/// @brief Legacy name parents receive stable source IDs and keep their hierarchy.
 TEST_F(PrefabSaveTest, LegacyNameParentsReceiveStableSourceIdsAndKeepTheirHierarchy)
 {
     ASSERT_TRUE(util::FileSystem::WriteText(PrefabPathUtf8(),
@@ -915,6 +948,7 @@ TEST_F(PrefabSaveTest, LegacyNameParentsReceiveStableSourceIdsAndKeepTheirHierar
     EXPECT_EQ(scene.FindByGuid(childGuid)->GetParent(), scene.GetGameObject(roots.front()));
 }
 
+/// @brief Legacy name cycles and ambiguous parents do not change the scene.
 TEST_F(PrefabSaveTest, LegacyNameCyclesAndAmbiguousParentsDoNotChangeTheScene)
 {
     scene::Scene scene;
@@ -940,6 +974,7 @@ TEST_F(PrefabSaveTest, LegacyNameCyclesAndAmbiguousParentsDoNotChangeTheScene)
     EXPECT_EQ(scene.GameObjectCount(), 1u);
 }
 
+/// @brief Renderer only prefab keeps its external shared skeleton.
 TEST_F(PrefabSaveTest, RendererOnlyPrefabKeepsItsExternalSharedSkeleton)
 {
     scene::Scene scene;
@@ -960,6 +995,7 @@ TEST_F(PrefabSaveTest, RendererOnlyPrefabKeepsItsExternalSharedSkeleton)
               skeleton.GetID());
 }
 
+/// @brief Multiple roots connect to the exact saved source IDs and refuse single root replacement.
 TEST_F(PrefabSaveTest, MultipleRootsConnectToTheExactSavedSourceIdsAndRefuseSingleRootReplacement)
 {
     scene::Scene scene;
@@ -993,6 +1029,7 @@ TEST_F(PrefabSaveTest, MultipleRootsConnectToTheExactSavedSourceIdsAndRefuseSing
     EXPECT_EQ(SavedText(), saved);
 }
 
+/// @brief Empty save and missing GUID apply fail without changing the instance.
 TEST_F(PrefabSaveTest, EmptySaveAndMissingGuidApplyFailWithoutChangingTheInstance)
 {
     scene::Scene scene;

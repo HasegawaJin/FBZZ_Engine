@@ -35,6 +35,7 @@ RgbaImage Solid(uint32_t width, uint32_t height, uint8_t r, uint8_t g, uint8_t b
 
 } /// @note namespace
 
+/// @brief Identical images have no difference.
 TEST(ImageCompare, IdenticalImagesHaveNoDifference)
 {
     const RgbaImage image = Solid(8, 4, 40, 80, 120);
@@ -47,6 +48,7 @@ TEST(ImageCompare, IdenticalImagesHaveNoDifference)
     EXPECT_EQ(result.badPixels, 0u);
 }
 
+/// @brief Counts only pixels beyond the threshold.
 TEST(ImageCompare, CountsOnlyPixelsBeyondTheThreshold)
 {
     const RgbaImage baseline = Solid(10, 10, 100, 100, 100);
@@ -65,6 +67,7 @@ TEST(ImageCompare, CountsOnlyPixelsBeyondTheThreshold)
     EXPECT_NEAR(result.meanDiff, (155.0 + 99.0 * 5.0) / (100.0 * 3.0 * 255.0), 1.0e-12);
 }
 
+/// @brief Marks different pixels red in the diff image.
 TEST(ImageCompare, MarksDifferentPixelsRedInTheDiffImage)
 {
     const RgbaImage baseline = Solid(2, 1, 0, 0, 0);
@@ -79,12 +82,14 @@ TEST(ImageCompare, MarksDifferentPixelsRedInTheDiffImage)
     EXPECT_EQ(result.diff.pixels[0], 0) << "変わっていない画素を赤くしない";
 }
 
+/// @brief Refuses to compare different sizes.
 TEST(ImageCompare, RefusesToCompareDifferentSizes)
 {
     const auto result = CompareImages(Solid(4, 4, 0, 0, 0), Solid(4, 5, 0, 0, 0), ImageDiffSettings{});
     EXPECT_FALSE(result.comparable);
 }
 
+/// @brief Ignores alpha.
 TEST(ImageCompare, IgnoresAlpha)
 {
     const RgbaImage baseline = Solid(3, 3, 10, 20, 30);
@@ -98,6 +103,7 @@ TEST(ImageCompare, IgnoresAlpha)
     EXPECT_DOUBLE_EQ(result.meanDiff, 0.0);
 }
 
+/// @brief PNG round trip keeps pixels.
 TEST(ImageCompare, PngRoundTripKeepsPixels)
 {
     RgbaImage image = Solid(5, 3, 1, 2, 3);
@@ -113,6 +119,7 @@ TEST(ImageCompare, PngRoundTripKeepsPixels)
     EXPECT_EQ(decoded.pixels, image.pixels);
 }
 
+/// @brief Decode rejects garbage.
 TEST(ImageCompare, DecodeRejectsGarbage)
 {
     RgbaImage out;

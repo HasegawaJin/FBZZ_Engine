@@ -22,6 +22,7 @@ static_assert(!HasSlotRequest<asset::AnimationSlotDefinition>);
 
 namespace fbzz::tests {
 class AnimatorControllerDefinitionTest : public testkit::EngineFixture {};
+/// @brief Saving live animator retains authored fields and drops transient state.
 TEST_F(AnimatorControllerDefinitionTest, SavingLiveAnimatorRetainsAuthoredFieldsAndDropsTransientState)
 {
     testkit::TempDir temp("controller-definition");
@@ -103,6 +104,7 @@ TEST_F(AnimatorControllerDefinitionTest, SavingLiveAnimatorRetainsAuthoredFields
     ASSERT_EQ(restoredLayer.retargetMappings.size(), 1u);
     EXPECT_NEAR(restoredLayer.retargetMappings.front().translationScale, 1.2f, testkit::kTolerance);
 }
+/// @brief Reapplying same controller keeps playback for existing states.
 TEST_F(AnimatorControllerDefinitionTest, ReapplyingSameControllerKeepsPlaybackForExistingStates)
 {
     asset::AnimatorControllerAsset definition;

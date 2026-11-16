@@ -298,6 +298,7 @@ protected:
     std::filesystem::file_time_type m_time;
 };
 
+/// @brief Project appearance object macro reloads without changing the wrapper.
 TEST_F(ShaderDependencyMacroTest, ProjectAppearanceObjectMacroReloadsWithoutChangingTheWrapper)
 {
     Write("Root.hlsl", "#define APPEARANCE \"Appearance.hlsli\"\n#include APPEARANCE\n");
@@ -307,6 +308,7 @@ TEST_F(ShaderDependencyMacroTest, ProjectAppearanceObjectMacroReloadsWithoutChan
     EXPECT_TRUE(Stale());
 }
 
+/// @brief Nested includes share object macro definitions and resolve shader root paths.
 TEST_F(ShaderDependencyMacroTest, NestedIncludesShareObjectMacroDefinitionsAndResolveShaderRootPaths)
 {
     Write("Root.hlsl", "#include \"Config.hlsli\"\n#include \"Fiber/Surface.hlsli\"\n");
@@ -318,6 +320,7 @@ TEST_F(ShaderDependencyMacroTest, NestedIncludesShareObjectMacroDefinitionsAndRe
     EXPECT_TRUE(Stale());
 }
 
+/// @brief Optional undefined appearance preserves builtin shader caching.
 TEST_F(ShaderDependencyMacroTest, OptionalUndefinedAppearancePreservesBuiltinShaderCaching)
 {
     Write("Root.hlsl", "#include \"Surface.hlsli\"\n");
@@ -328,6 +331,7 @@ TEST_F(ShaderDependencyMacroTest, OptionalUndefinedAppearancePreservesBuiltinSha
     EXPECT_TRUE(Stale());
 }
 
+/// @brief Literal includes behind compiler defined guards retain conservative tracking.
 TEST_F(ShaderDependencyMacroTest, LiteralIncludesBehindCompilerDefinedGuardsRetainConservativeTracking)
 {
     Write("Root.hlsl", "#ifdef COMPILER_PLATFORM\n#include \"Platform.hlsli\"\n#endif\n");
@@ -337,6 +341,7 @@ TEST_F(ShaderDependencyMacroTest, LiteralIncludesBehindCompilerDefinedGuardsReta
     EXPECT_TRUE(Stale());
 }
 
+/// @brief Unknown and cyclic include macros require recompilation.
 TEST_F(ShaderDependencyMacroTest, UnknownAndCyclicIncludeMacrosRequireRecompilation)
 {
     Write("Root.hlsl", "#include UNKNOWN_APPEARANCE\n");
@@ -347,6 +352,7 @@ TEST_F(ShaderDependencyMacroTest, UnknownAndCyclicIncludeMacrosRequireRecompilat
     EXPECT_TRUE(Stale());
 }
 
+/// @brief Unknown conditional branches keep every possible appearance dependency.
 TEST_F(ShaderDependencyMacroTest, UnknownConditionalBranchesKeepEveryPossibleAppearanceDependency)
 {
     Write("Root.hlsl", "#if USER_SETTING\n#define LOOK \"First.hlsli\"\n#else\n#define LOOK \"Second.hlsli\"\n#endif\n#include LOOK\n");
@@ -360,6 +366,7 @@ TEST_F(ShaderDependencyMacroTest, UnknownConditionalBranchesKeepEveryPossibleApp
     EXPECT_TRUE(Stale());
 }
 
+/// @brief Repeated include rescans after macro changes and literal cycles terminate.
 TEST_F(ShaderDependencyMacroTest, RepeatedIncludeRescansAfterMacroChangesAndLiteralCyclesTerminate)
 {
     Write("Root.hlsl", "#define LOOK \"First.hlsli\"\n#include \"Surface.hlsli\"\n#undef LOOK\n#define LOOK \"Second.hlsli\"\n#include \"Surface.hlsli\"\n");
@@ -378,6 +385,7 @@ TEST_F(ShaderDependencyMacroTest, RepeatedIncludeRescansAfterMacroChangesAndLite
 
 
 
+/// @brief Shadow bounds keep scene order and every renderer kind on a dual owner.
 TEST_F(ShaderReloadTest, ShadowBoundsKeepSceneOrderAndEveryRendererKindOnADualOwner)
 {
     scene::Scene testScene;
@@ -420,6 +428,7 @@ TEST_F(ShaderReloadTest, ShadowBoundsKeepSceneOrderAndEveryRendererKindOnADualOw
     testScene.Clear();
 }
 
+/// @brief Shadow terrain bounds observe direct height and scale changes without a revision bump.
 TEST_F(ShaderReloadTest, ShadowTerrainBoundsObserveDirectHeightAndScaleChangesWithoutARevisionBump)
 {
     scene::Scene testScene;
@@ -486,6 +495,7 @@ protected:
     testkit::TempDir m_temp{"shader-capability-reload"};
 };
 
+/// @brief Failed reloads freeze capabilities together with every loaded shader.
 TEST_F(ShaderCapabilityReloadTest, FailedReloadsFreezeCapabilitiesTogetherWithEveryLoadedShader)
 {
     ASSERT_TRUE(WriteShader("First.hlsl", kSurfaceShaderDeclaration));
@@ -537,6 +547,7 @@ TEST_F(ShaderCapabilityReloadTest, FailedReloadsFreezeCapabilitiesTogetherWithEv
     EXPECT_EQ(backend.prepareCalls, 2);
 }
 
+/// @brief Successful reloads commit capabilities and released handles cannot keep them.
 TEST_F(ShaderCapabilityReloadTest, SuccessfulReloadsCommitCapabilitiesAndReleasedHandlesCannotKeepThem)
 {
     ASSERT_TRUE(WriteShader("First.hlsl", kSurfaceShaderDeclaration));
@@ -606,6 +617,7 @@ TEST_F(ShaderCapabilityReloadTest, SuccessfulReloadsCommitCapabilitiesAndRelease
     ExpectUnknownShaderCapabilities(resources.GetShaderCapabilities(second));
 }
 
+/// @brief Standard PBR declaration requires compatible writable loaded constants.
 TEST_F(ShaderCapabilityReloadTest, StandardPbrDeclarationRequiresCompatibleWritableLoadedConstants)
 {
     ReloadRenderer backend;
@@ -649,6 +661,7 @@ TEST_F(ShaderCapabilityReloadTest, StandardPbrDeclarationRequiresCompatibleWrita
     ExpectUnknownShaderCapabilities(resources.GetShaderCapabilities(valid));
 }
 
+/// @brief Wireframe preserves material sidedness blend and depth bias.
 TEST_F(ShaderReloadTest, WireframePreservesMaterialSidednessBlendAndDepthBias)
 {
     ReloadRenderer backend;
@@ -685,6 +698,7 @@ TEST_F(ShaderReloadTest, WireframePreservesMaterialSidednessBlendAndDepthBias)
     EXPECT_EQ(resources.Get(wire)->GetDesc().rasterizer, r::RasterizerMode::WIREFRAME);
 }
 
+/// @brief Failed batch keeps every old shader and version.
 TEST_F(ShaderReloadTest, FailedBatchKeepsEveryOldShaderAndVersion)
 {
     ReloadRenderer backend;
@@ -705,6 +719,7 @@ TEST_F(ShaderReloadTest, FailedBatchKeepsEveryOldShaderAndVersion)
     EXPECT_EQ(backend.prepareCalls, 0);
 }
 
+/// @brief Successful batch synchronizes before replacing and keeps handles.
 TEST_F(ShaderReloadTest, SuccessfulBatchSynchronizesBeforeReplacingAndKeepsHandles)
 {
     ReloadRenderer backend;
@@ -727,6 +742,7 @@ TEST_F(ShaderReloadTest, SuccessfulBatchSynchronizesBeforeReplacingAndKeepsHandl
     EXPECT_EQ(resources.GetShaderVersion(), version + 1);
 }
 
+/// @brief Renderer rejection keeps previous state.
 TEST_F(ShaderReloadTest, RendererRejectionKeepsPreviousState)
 {
     ReloadRenderer backend;
@@ -743,6 +759,7 @@ TEST_F(ShaderReloadTest, RendererRejectionKeepsPreviousState)
     EXPECT_EQ(resources.GetShaderVersion(), version);
 }
 
+/// @brief Single reload normalizes path separators.
 TEST_F(ShaderReloadTest, SingleReloadNormalizesPathSeparators)
 {
     ReloadRenderer backend;
@@ -756,6 +773,7 @@ TEST_F(ShaderReloadTest, SingleReloadNormalizesPathSeparators)
     EXPECT_EQ(resources.Get(shader)->GetDescriptor().cbufferSize, 32u);
 }
 
+/// @brief Released shader is loaded with a new generation and stale release keeps current cache.
 TEST_F(ShaderReloadTest, ReleasedShaderIsLoadedWithANewGenerationAndStaleReleaseKeepsCurrentCache)
 {
     ReloadRenderer backend;
@@ -784,6 +802,7 @@ TEST_F(ShaderReloadTest, ReleasedShaderIsLoadedWithANewGenerationAndStaleRelease
     EXPECT_EQ(backend.prepareCalls, 0);
 }
 
+/// @brief Released shader is excluded from batch reload and single reload creates a live handle.
 TEST_F(ShaderReloadTest, ReleasedShaderIsExcludedFromBatchReloadAndSingleReloadCreatesALiveHandle)
 {
     ReloadRenderer backend;
@@ -813,6 +832,7 @@ TEST_F(ShaderReloadTest, ReleasedShaderIsExcludedFromBatchReloadAndSingleReloadC
     EXPECT_EQ(resources.GetShaderVersion(), version + 1);
 }
 
+/// @brief Material grows GPU buffer after CPU layout has already changed.
 TEST_F(ShaderReloadTest, MaterialGrowsGpuBufferAfterCpuLayoutHasAlreadyChanged)
 {
     ReloadRenderer backend;
@@ -880,6 +900,7 @@ protected:
     scene::MaterialComponent* m_material = nullptr;
 };
 
+/// @brief Missing and unassigned materials use embedded fallback without changing references.
 TEST_F(MaterialScriptIntegrationTest, MissingAndUnassignedMaterialsUseEmbeddedFallbackWithoutChangingReferences)
 {
     const auto fallback = m_resources->GetErrorMaterial(false);
@@ -902,6 +923,7 @@ TEST_F(MaterialScriptIntegrationTest, MissingAndUnassignedMaterialsUseEmbeddedFa
     EXPECT_EQ(scene::SyncMaterial(*m_material, *m_resources), nullptr);
 }
 
+/// @brief Malformed material recovers after reimport and empty shader uses fallback.
 TEST_F(MaterialScriptIntegrationTest, MalformedMaterialRecoversAfterReimportAndEmptyShaderUsesFallback)
 {
     const auto path = m_temp.File("broken.mat").generic_string();
@@ -922,6 +944,7 @@ TEST_F(MaterialScriptIntegrationTest, MalformedMaterialRecoversAfterReimportAndE
     EXPECT_EQ(scene::SyncMaterial(*m_material, *m_resources), m_resources->GetErrorMaterial(false));
 }
 
+/// @brief Missing component is visible without adding it to the scene.
 TEST_F(MaterialScriptIntegrationTest, MissingComponentIsVisibleWithoutAddingItToTheScene)
 {
     auto& go = m_scene.CreateGameObject("No material component");
@@ -942,6 +965,7 @@ TEST_F(MaterialScriptIntegrationTest, MissingComponentIsVisibleWithoutAddingItTo
     EXPECT_EQ(go.GetComponent<scene::MaterialComponent>(), nullptr);
 }
 
+/// @brief Wrong mesh type or render path uses error material.
 TEST_F(MaterialScriptIntegrationTest, WrongMeshTypeOrRenderPathUsesErrorMaterial)
 {
     ASSERT_TRUE(m_material->EnsureMaterialAsset());
@@ -957,6 +981,7 @@ TEST_F(MaterialScriptIntegrationTest, WrongMeshTypeOrRenderPathUsesErrorMaterial
     }
 }
 
+/// @brief Constant buffer failure uses error shader without requiring a constant buffer.
 TEST_F(MaterialScriptIntegrationTest, ConstantBufferFailureUsesErrorShaderWithoutRequiringAConstantBuffer)
 {
     m_backend.failConstantBuffers = true;
@@ -970,6 +995,7 @@ TEST_F(MaterialScriptIntegrationTest, ConstantBufferFailureUsesErrorShaderWithou
     EXPECT_EQ(repaired->shaderPath, "typed.hlsl");
 }
 
+/// @brief Failed shader recovers with the same material reference.
 TEST_F(MaterialScriptIntegrationTest, FailedShaderRecoversWithTheSameMaterialReference)
 {
     m_backend.failedShaderPath = "typed.hlsl";
@@ -983,6 +1009,7 @@ TEST_F(MaterialScriptIntegrationTest, FailedShaderRecoversWithTheSameMaterialRef
     EXPECT_NE(m_resources->Get(repaired->paramsBuffer), nullptr);
 }
 
+/// @brief Broken primary slot does not hide other submeshes or carry invisible overrides.
 TEST_F(MaterialScriptIntegrationTest, BrokenPrimarySlotDoesNotHideOtherSubmeshesOrCarryInvisibleOverrides)
 {
     asset::Model model;
@@ -1036,6 +1063,7 @@ TEST_F(MaterialScriptIntegrationTest, BrokenPrimarySlotDoesNotHideOtherSubmeshes
     EXPECT_FALSE(context.renderScene->objects[0].colorEligible);
 }
 
+/// @brief Surface material on skinned mesh uses embedded skinned shader.
 TEST_F(MaterialScriptIntegrationTest, SurfaceMaterialOnSkinnedMeshUsesEmbeddedSkinnedShader)
 {
     ASSERT_TRUE(m_material->EnsureMaterialAsset());
@@ -1049,6 +1077,7 @@ TEST_F(MaterialScriptIntegrationTest, SurfaceMaterialOnSkinnedMeshUsesEmbeddedSk
     EXPECT_FALSE(m_resources->GetShaderCapabilities(material->shader).SupportsGBuffer());
 }
 
+/// @brief Embedded materials are independent per manager and recreated after reset.
 TEST_F(MaterialScriptIntegrationTest, EmbeddedMaterialsAreIndependentPerManagerAndRecreatedAfterReset)
 {
     auto* first = m_resources->GetErrorMaterial(false);
@@ -1065,6 +1094,7 @@ TEST_F(MaterialScriptIntegrationTest, EmbeddedMaterialsAreIndependentPerManagerA
     EXPECT_NE(other.GetErrorMaterial(false), restored);
 }
 
+/// @brief Missing particle material clears previous shader tint and auxiliary textures.
 TEST_F(MaterialScriptIntegrationTest, MissingParticleMaterialClearsPreviousShaderTintAndAuxiliaryTextures)
 {
     auto& emitter = m_scene.CreateGameObject("Particle").AddComponent<scene::ParticleEmitter>();
@@ -1097,6 +1127,7 @@ TEST_F(MaterialScriptIntegrationTest, MissingParticleMaterialClearsPreviousShade
     EXPECT_TRUE(emitter.runtime.loadedSixWayEmissionColorTexturePath.empty());
 }
 
+/// @brief Particle shader retries failed load with an unchanged path.
 TEST_F(MaterialScriptIntegrationTest, ParticleShaderRetriesFailedLoadWithAnUnchangedPath)
 {
     asset::MaterialAssetAuthoring authored;
@@ -1124,6 +1155,7 @@ TEST_F(MaterialScriptIntegrationTest, ParticleShaderRetriesFailedLoadWithAnUncha
     EXPECT_EQ(emitter.runtime.loadedShaderPath, authored.shaderPath);
 }
 
+/// @brief Typed setters and getters match uploaded values.
 TEST_F(MaterialScriptIntegrationTest, TypedSettersAndGettersMatchUploadedValues)
 {
     const auto instance = m_proxy.Instance();
@@ -1165,6 +1197,7 @@ TEST_F(MaterialScriptIntegrationTest, TypedSettersAndGettersMatchUploadedValues)
     EXPECT_TRUE(m_material->Authoring().paramOverrides.empty());
 }
 
+/// @brief Legacy fiber property names read write and clear the same runtime value.
 TEST_F(MaterialScriptIntegrationTest, LegacyFiberPropertyNamesReadWriteAndClearTheSameRuntimeValue)
 {
     bool reload = false;
@@ -1199,6 +1232,7 @@ TEST_F(MaterialScriptIntegrationTest, LegacyFiberPropertyNamesReadWriteAndClearT
     }
 }
 
+/// @brief Shader reload invalidates previously valid property types.
 TEST_F(MaterialScriptIntegrationTest, ShaderReloadInvalidatesPreviouslyValidPropertyTypes)
 {
     const auto instance = m_proxy.Instance();
@@ -1211,6 +1245,7 @@ TEST_F(MaterialScriptIntegrationTest, ShaderReloadInvalidatesPreviouslyValidProp
     EXPECT_FALSE(m_material->Authoring().integerParamOverrides.contains("mode"));
 }
 
+/// @brief Explicit capability normalizes different 96 byte constant layouts.
 TEST_F(MaterialScriptIntegrationTest, ExplicitCapabilityNormalizesDifferent96ByteConstantLayouts)
 {
     const auto shaderPath = m_temp.File("RenamedSurface.hlsl").generic_string();
@@ -1270,6 +1305,7 @@ TEST_F(MaterialScriptIntegrationTest, ExplicitCapabilityNormalizesDifferent96Byt
     EXPECT_FLOAT_EQ(value(64), 0.7f);
 }
 
+/// @brief Extracts rough solid and smooth thin runtime values while rejecting rough thin and alpha overrides.
 TEST_F(MaterialScriptIntegrationTest, ExtractsRoughSolidAndSmoothThinRuntimeValuesWhileRejectingRoughThinAndAlphaOverrides)
 {
     m_backend.shaderVars = StandardPbrVariables();
@@ -1489,6 +1525,7 @@ protected:
     }
 };
 
+/// @brief Shadows off still publishes the original fit to a native consumer.
 TEST_F(ShadowPreparationRenderTest, ShadowsOffStillPublishesTheOriginalFitToANativeConsumer)
 {
     auto& object = AddObject(0);
@@ -1515,6 +1552,7 @@ TEST_F(ShadowPreparationRenderTest, ShadowsOffStillPublishesTheOriginalFitToANat
     EXPECT_MAT4_NEAR(observer.snapshot->lighting.lightVP, current.lightVP, testkit::kTolerance);
 }
 
+/// @brief Late native consumer keeps the initial fit without reextracting geometry.
 TEST_F(ShadowPreparationRenderTest, LateNativeConsumerKeepsTheInitialFitWithoutReextractingGeometry)
 {
     r::RenderSettings settings;
@@ -1549,6 +1587,7 @@ TEST_F(ShadowPreparationRenderTest, LateNativeConsumerKeepsTheInitialFitWithoutR
     EXPECT_MAT4_NEAR(lateObserver->snapshot->lighting.lightVP, expected.lightVP, testkit::kTolerance);
 }
 
+/// @brief Uses current pose bounds for skinned directional and punctual shadows.
 TEST_F(ShadowPreparationRenderTest, UsesCurrentPoseBoundsForSkinnedDirectionalAndPunctualShadows)
 {
     r::RenderSettings settings;
@@ -1620,6 +1659,7 @@ TEST_F(ShadowPreparationRenderTest, UsesCurrentPoseBoundsForSkinnedDirectionalAn
     }
 }
 
+/// @brief Filters opaque coverage in forward and g buffer occlusion passes.
 TEST_F(MaterialExtractionSharingTest, FiltersOpaqueCoverageInForwardAndGBufferOcclusionPasses)
 {
     m_backend.allowRenderTargets = true;
@@ -1771,6 +1811,7 @@ TEST_F(MaterialExtractionSharingTest, FiltersOpaqueCoverageInForwardAndGBufferOc
     }
 }
 
+/// @brief Invalidates CPU and GPU occlusion witness after view or snapshot changes.
 TEST_F(MaterialExtractionSharingTest, InvalidatesCpuAndGpuOcclusionWitnessAfterViewOrSnapshotChanges)
 {
     r::RenderPassHandles handles;
@@ -1875,6 +1916,7 @@ TEST_F(MaterialExtractionSharingTest, InvalidatesCpuAndGpuOcclusionWitnessAfterV
     }
 }
 
+/// @brief Occluders follow executed passes across plan cache overrides and graph culling.
 TEST_F(MaterialExtractionSharingTest, OccludersFollowExecutedPassesAcrossPlanCacheOverridesAndGraphCulling)
 {
     std::array<r::Vertex, 8> vertices{};
@@ -2051,6 +2093,7 @@ protected:
     asset::Model m_skinnedModel;
 };
 
+/// @brief Keeps managed views independent without publishing frame geometry.
 TEST_F(ManagedFrameGeometryTest, KeepsManagedViewsIndependentWithoutPublishingFrameGeometry)
 {
     auto& mesh = AddObject(2);
@@ -2109,6 +2152,7 @@ TEST_F(ManagedFrameGeometryTest, KeepsManagedViewsIndependentWithoutPublishingFr
     EXPECT_EQ(secondDeformed->items[skinnedObject->firstItem].deformedVertexBuffer, secondBuffer);
 }
 
+/// @brief Retires no script geometry across native mutation and removal within the same frame.
 TEST_F(ManagedFrameGeometryTest, RetiresNoScriptGeometryAcrossNativeMutationAndRemovalWithinTheSameFrame)
 {
     auto& firstOwner = AddObject(2);
@@ -2176,6 +2220,7 @@ TEST_F(ManagedFrameGeometryTest, RetiresNoScriptGeometryAcrossNativeMutationAndR
     EXPECT_FLOAT_EQ(changed->sortPosition.x, 10);
 }
 
+/// @brief Rejects any script presence and protects all canvas geometry descendants.
 TEST_F(ManagedFrameGeometryTest, RejectsAnyScriptPresenceAndProtectsAllCanvasGeometryDescendants)
 {
     auto& mesh = AddObject(2);
@@ -2240,6 +2285,7 @@ TEST_F(ManagedFrameGeometryTest, RejectsAnyScriptPresenceAndProtectsAllCanvasGeo
     EXPECT_EQ(cache.geometry, disabledCanvasGeometry);
 }
 
+/// @brief Rebuilds UI geometry after layout runs for an overlay outside its target view.
 TEST_F(ManagedFrameGeometryTest, RebuildsUiGeometryAfterLayoutRunsForAnOverlayOutsideItsTargetView)
 {
     auto& canvasOwner = m_scene.CreateGameObject("Overlay layout");
@@ -2272,6 +2318,7 @@ TEST_F(ManagedFrameGeometryTest, RebuildsUiGeometryAfterLayoutRunsForAnOverlayOu
     EXPECT_FLOAT_EQ(Object(*first, child.GetID())->sortPosition.x, 700);
     EXPECT_FLOAT_EQ(Object(*second, child.GetID())->sortPosition.x, 1100);
 }
+/// @brief Rebuilds color eligibility for direct material enabled changes and component lifetime.
 TEST_F(ManagedFrameGeometryTest, RebuildsColorEligibilityForDirectMaterialEnabledChangesAndComponentLifetime)
 {
     auto& owner = AddObject(2);
@@ -2359,6 +2406,7 @@ TEST_F(ManagedFrameGeometryTest, RebuildsColorEligibilityForDirectMaterialEnable
     EXPECT_FLOAT_EQ(Roughness(directEnabled->items[0].material), 0.87f);
     EXPECT_FALSE(addedDisabled->Objects()[0].colorEligible);
 }
+/// @brief Shares defaults once and reevaluates material edits in the next view.
 TEST_F(MaterialExtractionSharingTest, SharesDefaultsOnceAndReevaluatesMaterialEditsInTheNextView)
 {
     for (int i = 0; i < 8; ++i) AddObject(static_cast<float>(i + 2));
@@ -2384,6 +2432,7 @@ TEST_F(MaterialExtractionSharingTest, SharesDefaultsOnceAndReevaluatesMaterialEd
     EXPECT_FLOAT_EQ(Roughness(first->items[0].material), 0.65f);
 }
 
+/// @brief Overrides and presentation remain independent of shared defaults.
 TEST_F(MaterialExtractionSharingTest, OverridesAndPresentationRemainIndependentOfSharedDefaults)
 {
     AddObject(); AddObject();
@@ -2420,6 +2469,7 @@ TEST_F(MaterialExtractionSharingTest, OverridesAndPresentationRemainIndependentO
     EXPECT_EQ(flags, UINT32_MAX);
 }
 
+/// @brief Packing plan keeps distinct overrides beyond the variant limit across reload and reset.
 TEST_F(MaterialExtractionSharingTest, PackingPlanKeepsDistinctOverridesBeyondTheVariantLimitAcrossReloadAndReset)
 {
     std::vector<scene::EntityID> owners;
@@ -2472,6 +2522,7 @@ TEST_F(MaterialExtractionSharingTest, PackingPlanKeepsDistinctOverridesBeyondThe
     ASSERT_NO_FATAL_FAILURE(verify(Extract(), true));
 }
 
+/// @brief Packing plan rechecks in place native type changes and successful reload.
 TEST_F(MaterialExtractionSharingTest, PackingPlanRechecksInPlaceNativeTypeChangesAndSuccessfulReload)
 {
     m_backend.shaderVars.push_back({"normalStrength", 68, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::UInt});
@@ -2523,6 +2574,7 @@ TEST_F(MaterialExtractionSharingTest, PackingPlanRechecksInPlaceNativeTypeChange
     EXPECT_EQ(output->items[0].material.shader, shader);
 }
 
+/// @brief Material state resolves lazy assets and keeps missing component ordinals independent.
 TEST_F(MaterialExtractionSharingTest, MaterialStateResolvesLazyAssetsAndKeepsMissingComponentOrdinalsIndependent)
 {
     AddObject().RemoveComponent<scene::MaterialComponent>();
@@ -2584,6 +2636,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialStateResolvesLazyAssetsAndKeepsMis
     EXPECT_FLOAT_EQ(output->items[3].material.depthBiasSlope, 0.0f);
 }
 
+/// @brief Material state rejects moved slot edits and same handle replacement during earlier slot synchronization.
 TEST_F(MaterialExtractionSharingTest, MaterialStateRejectsMovedSlotEditsAndSameHandleReplacementDuringEarlierSlotSynchronization)
 {
     AddObject();
@@ -2651,6 +2704,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialStateRejectsMovedSlotEditsAndSameH
     EXPECT_FLOAT_EQ(assetState.depthBiasSlope, -0.75f);
 }
 
+/// @brief Material state rechecks shader capabilities after native reload within the extraction.
 TEST_F(MaterialExtractionSharingTest, MaterialStateRechecksShaderCapabilitiesAfterNativeReloadWithinTheExtraction)
 {
     AddObject();
@@ -2672,6 +2726,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialStateRechecksShaderCapabilitiesAft
     EXPECT_FALSE(output->items[1].material.valid);
 }
 
+/// @brief Keeps projected texture requests and skin contracts distinct.
 TEST_F(MaterialExtractionSharingTest, KeepsProjectedTextureRequestsAndSkinContractsDistinct)
 {
     auto* material = asset::AssetManager::Get<asset::MaterialAsset>(m_asset);
@@ -2697,6 +2752,7 @@ TEST_F(MaterialExtractionSharingTest, KeepsProjectedTextureRequestsAndSkinContra
     EXPECT_EQ(m_resources->Get(output->items[1].material.shader)->GetPath(), r::ERROR_SKINNED_SHADER);
 }
 
+/// @brief Ray inputs keep per object synchronization and canonical surface values.
 TEST_F(MaterialExtractionSharingTest, RayInputsKeepPerObjectSynchronizationAndCanonicalSurfaceValues)
 {
     AddObject(); AddObject();
@@ -2710,6 +2766,7 @@ TEST_F(MaterialExtractionSharingTest, RayInputsKeepPerObjectSynchronizationAndCa
     EXPECT_FLOAT_EQ(output->items[0].material.surface.roughness, 0.65f);
 }
 
+/// @brief Shader reload and resource reset cannot reuse previous extraction bindings.
 TEST_F(MaterialExtractionSharingTest, ShaderReloadAndResourceResetCannotReusePreviousExtractionBindings)
 {
     AddObject(); AddObject();
@@ -2732,6 +2789,7 @@ TEST_F(MaterialExtractionSharingTest, ShaderReloadAndResourceResetCannotReusePre
     EXPECT_FLOAT_EQ(Roughness(reset->items[0].material), 0.65f);
 }
 
+/// @brief Shader capabilities reconsider non GUID project priority after raw fallback was prepared.
 TEST_F(MaterialExtractionSharingTest, ShaderCapabilitiesReconsiderNonGuidProjectPriorityAfterRawFallbackWasPrepared)
 {
     const auto rawRoot = m_temp.File("RawFallback");
@@ -2774,6 +2832,7 @@ TEST_F(MaterialExtractionSharingTest, ShaderCapabilitiesReconsiderNonGuidProject
     EXPECT_EQ(asset::ResolveShaderCapabilities(reference).surface, r::ShaderSurfaceContract::LAMBERT);
 }
 
+/// @brief Instance parts share material bindings and preserve placement and LOD identity.
 TEST_F(MaterialExtractionSharingTest, InstancePartsShareMaterialBindingsAndPreservePlacementAndLodIdentity)
 {
     auto* materialAsset = asset::AssetManager::Get<asset::MaterialAsset>(m_asset);
@@ -2821,6 +2880,7 @@ TEST_F(MaterialExtractionSharingTest, InstancePartsShareMaterialBindingsAndPrese
     EXPECT_FLOAT_EQ(Roughness(output->instances[0].parts[0].mesh.material), 0.65f);
 }
 
+/// @brief Paint preview is view local and leaves scene and shared geometry unchanged.
 TEST_F(MaterialExtractionSharingTest, PaintPreviewIsViewLocalAndLeavesSceneAndSharedGeometryUnchanged)
 {
     const auto file = m_temp.File("Preview.fzdata").generic_string();
@@ -2851,6 +2911,7 @@ TEST_F(MaterialExtractionSharingTest, PaintPreviewIsViewLocalAndLeavesSceneAndSh
     EXPECT_TRUE(context.renderScene->instances.empty());
 }
 
+/// @brief Leaf wind parameters pack into the standard prefix and default to rigid.
 TEST_F(MaterialExtractionSharingTest, LeafWindParametersPackIntoTheStandardPrefixAndDefaultToRigid)
 {
     m_backend.shaderVars.push_back({"leafWindStrength", 68, 4, 1, 1, r::ShaderVarClass::Scalar, r::ShaderVarType::Float});
@@ -2871,6 +2932,7 @@ TEST_F(MaterialExtractionSharingTest, LeafWindParametersPackIntoTheStandardPrefi
     EXPECT_FLOAT_EQ(scalar(Extract()->items[0].material, 68), 0.0f);
 }
 
+/// @brief Retained CPU templates restore runtime bytes and reject same handle asset replacement.
 TEST_F(MaterialExtractionSharingTest, RetainedCpuTemplatesRestoreRuntimeBytesAndRejectSameHandleAssetReplacement)
 {
     auto& component = *AddObject().GetComponent<scene::MaterialComponent>();
@@ -2898,6 +2960,7 @@ TEST_F(MaterialExtractionSharingTest, RetainedCpuTemplatesRestoreRuntimeBytesAnd
     EXPECT_NE(m_resources->Get(changed->items[0].material.paramsBuffer), nullptr);
 }
 
+/// @brief Live fallback and slot relocation use the current selected template owner.
 TEST_F(MaterialExtractionSharingTest, LiveFallbackAndSlotRelocationUseTheCurrentSelectedTemplateOwner)
 {
     auto& component = *AddObject().GetComponent<scene::MaterialComponent>();
@@ -2927,6 +2990,7 @@ TEST_F(MaterialExtractionSharingTest, LiveFallbackAndSlotRelocationUseTheCurrent
 }
 
 
+/// @brief Material demand skips masked bindings and restores them for the next view.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandSkipsMaskedBindingsAndRestoresThemForTheNextView)
 {
     struct RestoreFrameCount {
@@ -2959,6 +3023,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandSkipsMaskedBindingsAndRestor
     EXPECT_FALSE(skipped->items[0].material.valid);
 }
 
+/// @brief Material demand restores omissions when the resource frame advances during extraction.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresOmissionsWhenTheResourceFrameAdvancesDuringExtraction)
 {
     auto& masked = AddObject(10);
@@ -2985,6 +3050,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresOmissionsWhenTheReso
     EXPECT_TRUE(output->items[1].material.valid);
 }
 
+/// @brief Material demand preserves off camera shadow bindings.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandPreservesOffCameraShadowBindings)
 {
     auto& object = AddObject(10);
@@ -3010,6 +3076,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandPreservesOffCameraShadowBind
     EXPECT_GT(m_backend.constantBufferUpdates, 0u);
 }
 
+/// @brief Material demand preserves static reflection and light probe bindings.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandPreservesStaticReflectionAndLightProbeBindings)
 {
     auto& object = AddObject(10);
@@ -3037,6 +3104,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandPreservesStaticReflectionAnd
     EXPECT_TRUE(light->items[0].material.valid);
 }
 
+/// @brief Material demand keeps unscoped and nested extraction bindings.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandKeepsUnscopedAndNestedExtractionBindings)
 {
     AddObject(10);
@@ -3051,6 +3119,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandKeepsUnscopedAndNestedExtrac
     EXPECT_TRUE(nested->items[0].material.valid);
 }
 
+/// @brief Material demand keeps native setup hooks and object mask fallback.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandKeepsNativeSetupHooksAndObjectMaskFallback)
 {
     auto& object = AddObject(10);
@@ -3071,6 +3140,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandKeepsNativeSetupHooksAndObje
     EXPECT_TRUE(mask->items[0].material.valid);
 }
 
+/// @brief Material demand keeps ray inputs outside the raster mask.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandKeepsRayInputsOutsideTheRasterMask)
 {
     AddObject(10);
@@ -3085,6 +3155,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandKeepsRayInputsOutsideTheRast
     EXPECT_TRUE(ray->items[0].material.valid);
 }
 
+/// @brief Material demand restores earlier masked binding after later slot changes the view.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresEarlierMaskedBindingAfterLaterSlotChangesTheView)
 {
     auto& masked=AddObject(10);masked.layer=1;AddObject(10);
@@ -3098,6 +3169,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresEarlierMaskedBinding
     EXPECT_TRUE(output->items[0].material.valid);EXPECT_TRUE(output->items[1].material.valid);
 }
 
+/// @brief Material demand restores earlier off camera binding after later slot adds a probe.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresEarlierOffCameraBindingAfterLaterSlotAddsAProbe)
 {
     auto& outside=AddObject(10);outside.transform.position=outside.transform.worldPosition={0,-10,10};AddObject(10);
@@ -3114,6 +3186,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresEarlierOffCameraBind
     EXPECT_TRUE(output->items[0].material.valid);EXPECT_TRUE(output->items[1].material.valid);
 }
 
+/// @brief Material demand restores earlier binding after later slot adds a native setup hook.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresEarlierBindingAfterLaterSlotAddsANativeSetupHook)
 {
     auto& masked=AddObject(10);masked.layer=1;auto& visible=AddObject(10);
@@ -3129,6 +3202,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresEarlierBindingAfterL
     EXPECT_TRUE(output->items[0].material.valid);EXPECT_TRUE(output->items[1].material.valid);
 }
 
+/// @brief Material demand restores binding after a different extractor changes the view.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresBindingAfterADifferentExtractorChangesTheView)
 {
     auto& masked=AddObject(10);masked.layer=1;
@@ -3144,6 +3218,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRestoresBindingAfterADiffere
     EXPECT_TRUE(output->items[0].material.valid);
 }
 
+/// @brief Material demand late completion copies the published snapshot and restores all omissions once.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandLateCompletionCopiesThePublishedSnapshotAndRestoresAllOmissionsOnce)
 {
     AddObject(10);AddObject(20);
@@ -3179,6 +3254,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandLateCompletionCopiesThePubli
     EXPECT_EQ(context.renderScene,completed);EXPECT_EQ(m_backend.constantBufferUpdates,updates);
 }
 
+/// @brief Material demand late native setup hook completes a previously published snapshot.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandLateNativeSetupHookCompletesAPreviouslyPublishedSnapshot)
 {
     auto& object=AddObject(10);
@@ -3195,6 +3271,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandLateNativeSetupHookCompletes
     EXPECT_FALSE(original->items[0].material.valid);
 }
 
+/// @brief Material demand rechecks in place frustum edits after repeated no demand boundaries.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksInPlaceFrustumEditsAfterRepeatedNoDemandBoundaries)
 {
     AddObject(20);
@@ -3223,6 +3300,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksInPlaceFrustumEditsA
     EXPECT_FALSE(original->items[0].material.valid);
 }
 
+/// @brief Checks material demand rechecks layer distance after no demand boundaries.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksLayerDistanceAfterNoDemandBoundaries)
 {
     AddObject(20);
@@ -3247,6 +3325,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksLayerDistanceAfterNo
     EXPECT_FALSE(original->items[0].material.valid);
 }
 
+/// @brief Checks material demand rechecks resource frame after no demand boundaries.
 TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksResourceFrameAfterNoDemandBoundaries)
 {
     AddObject(20);
@@ -3270,6 +3349,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandRechecksResourceFrameAfterNo
     EXPECT_FALSE(original->items[0].material.valid);
 }
 
+/// @brief Computed skinning demand keeps off camera shadow casters.
 TEST_F(MaterialExtractionSharingTest, ComputedSkinningDemandKeepsOffCameraShadowCasters)
 {
     r::RenderSettings settings;
@@ -3295,6 +3375,7 @@ TEST_F(MaterialExtractionSharingTest, ComputedSkinningDemandKeepsOffCameraShadow
     EXPECT_FALSE(r::RequiresComputedSkinning(context, object));
 }
 
+/// @brief Computed skinning demand keeps punctual shadows when directional strength is zero.
 TEST_F(MaterialExtractionSharingTest, ComputedSkinningDemandKeepsPunctualShadowsWhenDirectionalStrengthIsZero)
 {
     r::RenderSettings settings;
@@ -3319,6 +3400,7 @@ TEST_F(MaterialExtractionSharingTest, ComputedSkinningDemandKeepsPunctualShadows
     EXPECT_FALSE(r::RequiresComputedSkinning(context, object));
 }
 
+/// @brief Computed skinning demand preserves unknown consumers and unavailable bounds.
 TEST_F(MaterialExtractionSharingTest, ComputedSkinningDemandPreservesUnknownConsumersAndUnavailableBounds)
 {
     r::RenderSettings settings;

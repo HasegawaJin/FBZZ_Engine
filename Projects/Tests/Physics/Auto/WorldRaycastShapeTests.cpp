@@ -76,6 +76,7 @@ protected:
 
 /// @name AABB
 
+/// @brief Checks raycast hits the near face of a box.
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheNearFaceOfABox)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -89,6 +90,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheNearFaceOfABox)
     EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::FORWARD, testkit::kLooseTolerance);
 }
 
+/// @brief Raycast misses a box when travelling alongside an axis.
 TEST_F(WorldRaycastShapeTest, RaycastMissesABoxWhenTravellingAlongsideAnAxis)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -101,6 +103,7 @@ TEST_F(WorldRaycastShapeTest, RaycastMissesABoxWhenTravellingAlongsideAnAxis)
                                math::Vector3::RIGHT, 100.0f, hit));
 }
 
+/// @brief Raycast reports zero distance from inside a box.
 TEST_F(WorldRaycastShapeTest, RaycastReportsZeroDistanceFromInsideABox)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -114,6 +117,7 @@ TEST_F(WorldRaycastShapeTest, RaycastReportsZeroDistanceFromInsideABox)
     EXPECT_NEAR(hit.distance, 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Ray starting on a box face reports that faces outward normal.
 /// @see Physics/World.hpp RaycastHit::normal はヒット面の外向き法線。
 TEST_F(WorldRaycastShapeTest, RayStartingOnABoxFaceReportsThatFacesOutwardNormal)
 {
@@ -135,6 +139,7 @@ TEST_F(WorldRaycastShapeTest, RayStartingOnABoxFaceReportsThatFacesOutwardNormal
 
 /// @name OBB
 
+/// @brief Raycast follows the rotation of an OBB.
 TEST_F(WorldRaycastShapeTest, RaycastFollowsTheRotationOfAnOBB)
 {
     physics::OBBCollider obb(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -154,6 +159,7 @@ TEST_F(WorldRaycastShapeTest, RaycastFollowsTheRotationOfAnOBB)
 
 /// @name カプセル
 
+/// @brief Checks raycast hits the cylindrical side of a capsule.
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheCylindricalSideOfACapsule)
 {
     physics::CapsuleCollider capsule(0.5f, 1.0f);
@@ -167,6 +173,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheCylindricalSideOfACapsule)
     EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
 
+/// @brief Raycast hits the rounded end of a capsule.
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheRoundedEndOfACapsule)
 {
     physics::CapsuleCollider capsule(0.5f, 1.0f);
@@ -183,6 +190,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheRoundedEndOfACapsule)
 
 /// @name 円柱
 
+/// @brief Checks raycast hits the side of a cylinder.
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheSideOfACylinder)
 {
     physics::CylinderCollider cylinder(1.0f, 1.0f);
@@ -196,6 +204,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheSideOfACylinder)
     EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
 
+/// @brief Checks raycast hits the flat cap of a cylinder.
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheFlatCapOfACylinder)
 {
     physics::CylinderCollider cylinder(1.0f, 1.0f);
@@ -209,6 +218,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheFlatCapOfACylinder)
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
+/// @brief Raycast misses a cylinder outside its rim.
 TEST_F(WorldRaycastShapeTest, RaycastMissesACylinderOutsideItsRim)
 {
     physics::CylinderCollider cylinder(1.0f, 1.0f);
@@ -221,6 +231,7 @@ TEST_F(WorldRaycastShapeTest, RaycastMissesACylinderOutsideItsRim)
 
 /// @name 三角メッシュ / ハイトフィールド
 
+/// @brief Checks raycast hits a triangle mesh through its BVH.
 TEST_F(WorldRaycastShapeTest, RaycastHitsATriangleMeshThroughItsBVH)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -234,6 +245,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsATriangleMeshThroughItsBVH)
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
+/// @brief Raycast misses a triangle mesh beside the path.
 TEST_F(WorldRaycastShapeTest, RaycastMissesATriangleMeshBesideThePath)
 {
     physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
@@ -243,6 +255,7 @@ TEST_F(WorldRaycastShapeTest, RaycastMissesATriangleMeshBesideThePath)
     EXPECT_FALSE(world.Raycast(math::Vector3(5.0f, 5.0f, 5.0f), kDown, 100.0f, hit));
 }
 
+/// @brief Checks raycast hits a height field.
 TEST_F(WorldRaycastShapeTest, RaycastHitsAHeightField)
 {
     const std::vector<float> flat(9, 0.0f);
@@ -257,6 +270,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsAHeightField)
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
+/// @brief Raycast falls through a height field hole but hits the neighbor cell.
 TEST_F(WorldRaycastShapeTest, RaycastFallsThroughAHeightFieldHoleButHitsTheNeighborCell)
 {
     /// @note セル (0, 0) だけ穴。穴は三角形を作らないことで表す。
@@ -273,6 +287,7 @@ TEST_F(WorldRaycastShapeTest, RaycastFallsThroughAHeightFieldHoleButHitsTheNeigh
 
 /// @name 凸包
 
+/// @brief Checks raycast hits the face of a convex hull.
 TEST_F(WorldRaycastShapeTest, RaycastHitsTheFaceOfAConvexHull)
 {
     physics::ConvexHullCollider hull(CubePoints(1.0f));
@@ -288,6 +303,7 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsTheFaceOfAConvexHull)
 
 /// @name SphereCast
 
+/// @brief Sphere cast finds a box that a zero width ray passes beside.
 TEST_F(WorldRaycastShapeTest, SphereCastFindsABoxThatAZeroWidthRayPassesBeside)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -303,6 +319,7 @@ TEST_F(WorldRaycastShapeTest, SphereCastFindsABoxThatAZeroWidthRayPassesBeside)
     EXPECT_NEAR(hit.distance, 8.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Sphere cast finds a capsule that a zero width ray passes beside.
 TEST_F(WorldRaycastShapeTest, SphereCastFindsACapsuleThatAZeroWidthRayPassesBeside)
 {
     physics::CapsuleCollider capsule(0.5f, 1.0f);
@@ -316,6 +333,7 @@ TEST_F(WorldRaycastShapeTest, SphereCastFindsACapsuleThatAZeroWidthRayPassesBesi
     EXPECT_EQ(hit.collider, static_cast<const physics::Collider*>(&capsule));
 }
 
+/// @brief Sphere cast still misses what is farther than the cast radius.
 TEST_F(WorldRaycastShapeTest, SphereCastStillMissesWhatIsFartherThanTheCastRadius)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -329,6 +347,7 @@ TEST_F(WorldRaycastShapeTest, SphereCastStillMissesWhatIsFartherThanTheCastRadiu
 
 /// @name OverlapSphere
 
+/// @brief Overlap sphere measures the nearest point on a box.
 TEST_F(WorldRaycastShapeTest, OverlapSphereMeasuresTheNearestPointOnABox)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -340,6 +359,7 @@ TEST_F(WorldRaycastShapeTest, OverlapSphereMeasuresTheNearestPointOnABox)
     EXPECT_TRUE(world.OverlapSphere(math::Vector3(2.5f, 0.0f, 0.0f), 1.0f).empty());
 }
 
+/// @brief Overlap sphere measures distance to the capsule segment.
 TEST_F(WorldRaycastShapeTest, OverlapSphereMeasuresDistanceToTheCapsuleSegment)
 {
     physics::CapsuleCollider capsule(0.5f, 1.0f);
@@ -350,6 +370,7 @@ TEST_F(WorldRaycastShapeTest, OverlapSphereMeasuresDistanceToTheCapsuleSegment)
     EXPECT_TRUE(world.OverlapSphere(math::Vector3(0.0f, 3.0f, 0.0f), 1.0f).empty());
 }
 
+/// @brief Overlap sphere uses the closest point on a cylinder.
 TEST_F(WorldRaycastShapeTest, OverlapSphereUsesTheClosestPointOnACylinder)
 {
     physics::CylinderCollider cylinder(1.0f, 1.0f);
@@ -360,6 +381,7 @@ TEST_F(WorldRaycastShapeTest, OverlapSphereUsesTheClosestPointOnACylinder)
     EXPECT_TRUE(world.OverlapSphere(math::Vector3(2.0f, 0.0f, 0.0f), 0.5f).empty());
 }
 
+/// @brief Overlap sphere approximates a convex hull with its bounds.
 TEST_F(WorldRaycastShapeTest, OverlapSphereApproximatesAConvexHullWithItsBounds)
 {
     physics::ConvexHullCollider hull(CubePoints(1.0f));
@@ -371,6 +393,7 @@ TEST_F(WorldRaycastShapeTest, OverlapSphereApproximatesAConvexHullWithItsBounds)
     EXPECT_TRUE(world.OverlapSphere(math::Vector3(3.0f, 0.0f, 0.0f), 0.5f).empty());
 }
 
+/// @brief Overlap sphere includes translated and scaled height field bounds.
 TEST_F(WorldRaycastShapeTest, OverlapSphereIncludesTranslatedAndScaledHeightFieldBounds)
 {
     const std::vector<float> flat(4, 0.0f);

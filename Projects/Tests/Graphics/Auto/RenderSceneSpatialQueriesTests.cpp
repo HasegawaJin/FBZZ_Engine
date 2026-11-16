@@ -65,6 +65,7 @@ protected:
 };
 } /// @note namespace
 
+/// @brief Linear default skips projection and index maintenance.
 TEST_F(RenderSceneSpatialQueriesTest, LinearDefaultSkipsProjectionAndIndexMaintenance)
 {
     auto snapshot = Snapshot(1, 1);
@@ -79,6 +80,7 @@ TEST_F(RenderSceneSpatialQueriesTest, LinearDefaultSkipsProjectionAndIndexMainte
     EXPECT_EQ(batch.ObjectIndex(127), 127u);
 }
 
+/// @brief Opt in null snapshot returns legacy fallback without index access.
 TEST_F(RenderSceneSpatialQueriesTest, OptInNullSnapshotReturnsLegacyFallbackWithoutIndexAccess)
 {
     RenderSceneSpatialCache cache;
@@ -91,6 +93,7 @@ TEST_F(RenderSceneSpatialQueriesTest, OptInNullSnapshotReturnsLegacyFallbackWith
     EXPECT_EQ(batch.update.sources, 0u);
 }
 
+/// @brief Later snapshot and old snapshot reentry keep independent batches.
 TEST_F(RenderSceneSpatialQueriesTest, LaterSnapshotAndOldSnapshotReentryKeepIndependentBatches)
 {
     auto oldSnapshot = Snapshot(2, 10);
@@ -109,6 +112,7 @@ TEST_F(RenderSceneSpatialQueriesTest, LaterSnapshotAndOldSnapshotReentryKeepInde
     EXPECT_FALSE(reentered.validationMismatch);
 }
 
+/// @brief Same publication shares index but padding is an independent witness.
 TEST_F(RenderSceneSpatialQueriesTest, SamePublicationSharesIndexButPaddingIsAnIndependentWitness)
 {
     auto snapshot = Snapshot(3, 20);
@@ -126,6 +130,7 @@ TEST_F(RenderSceneSpatialQueriesTest, SamePublicationSharesIndexButPaddingIsAnIn
     EXPECT_FALSE(padded.validationMismatch);
 }
 
+/// @brief Pooled publication with same owner requires new serial witness.
 TEST_F(RenderSceneSpatialQueriesTest, PooledPublicationWithSameOwnerRequiresNewSerialWitness)
 {
     auto pooled = Snapshot(4, 30);
@@ -144,6 +149,7 @@ TEST_F(RenderSceneSpatialQueriesTest, PooledPublicationWithSameOwnerRequiresNewS
     EXPECT_FALSE(current.validationMismatch);
 }
 
+/// @brief Checks more than four live scenes evict only private values.
 TEST_F(RenderSceneSpatialQueriesTest, MoreThanFourLiveScenesEvictOnlyPrivateValues)
 {
     RenderSceneSpatialCache cache;
@@ -161,6 +167,7 @@ TEST_F(RenderSceneSpatialQueriesTest, MoreThanFourLiveScenesEvictOnlyPrivateValu
     }
 }
 
+/// @brief Independent cache owners never share mutable trees.
 TEST_F(RenderSceneSpatialQueriesTest, IndependentCacheOwnersNeverShareMutableTrees)
 {
     RenderSceneSpatialCache firstOwner, secondOwner;
@@ -176,6 +183,7 @@ TEST_F(RenderSceneSpatialQueriesTest, IndependentCacheOwnersNeverShareMutableTre
     EXPECT_EQ(unchanged.ordinals, second.ordinals);
 }
 
+/// @brief Stable journal updates only the changed current ordinal.
 TEST_F(RenderSceneSpatialQueriesTest, StableJournalUpdatesOnlyTheChangedCurrentOrdinal)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -201,6 +209,7 @@ TEST_F(RenderSceneSpatialQueriesTest, StableJournalUpdatesOnlyTheChangedCurrentO
     EXPECT_EQ(previous.snapshot, initial);
 }
 
+/// @brief Empty journal and shared geometry version reuse need no full witness.
 TEST_F(RenderSceneSpatialQueriesTest, EmptyJournalAndSharedGeometryVersionReuseNeedNoFullWitness)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -226,6 +235,7 @@ TEST_F(RenderSceneSpatialQueriesTest, EmptyJournalAndSharedGeometryVersionReuseN
     EXPECT_FALSE(shared.validationMismatch);
 }
 
+/// @brief Journal gaps replacement and unknown version require full current witness.
 TEST_F(RenderSceneSpatialQueriesTest, JournalGapsReplacementAndUnknownVersionRequireFullCurrentWitness)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -256,6 +266,7 @@ TEST_F(RenderSceneSpatialQueriesTest, JournalGapsReplacementAndUnknownVersionReq
     EXPECT_FALSE(zero.validationMismatch);
 }
 
+/// @brief Checks invalid journal ordinal and classification changes fall back to full witness.
 TEST_F(RenderSceneSpatialQueriesTest, InvalidJournalOrdinalAndClassificationChangesFallBackToFullWitness)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -288,6 +299,7 @@ TEST_F(RenderSceneSpatialQueriesTest, InvalidJournalOrdinalAndClassificationChan
     EXPECT_FALSE(changedClass.validationMismatch);
 }
 
+/// @brief Padding options and scene lifetime invalidate journal reuse.
 TEST_F(RenderSceneSpatialQueriesTest, PaddingOptionsAndSceneLifetimeInvalidateJournalReuse)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -314,6 +326,7 @@ TEST_F(RenderSceneSpatialQueriesTest, PaddingOptionsAndSceneLifetimeInvalidateJo
     EXPECT_FALSE(changedScene.validationMismatch);
 }
 
+/// @brief Legacy update mode ignores producer journal reuse.
 TEST_F(RenderSceneSpatialQueriesTest, LegacyUpdateModeIgnoresProducerJournalReuse)
 {
     auto initial = Snapshot(19, 190);
@@ -332,6 +345,7 @@ TEST_F(RenderSceneSpatialQueriesTest, LegacyUpdateModeIgnoresProducerJournalReus
     EXPECT_FALSE(current.validationMismatch);
 }
 
+/// @brief Validation rejects omitted current bounds and retires the journal lineage.
 TEST_F(RenderSceneSpatialQueriesTest, ValidationRejectsOmittedCurrentBoundsAndRetiresTheJournalLineage)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -357,6 +371,7 @@ TEST_F(RenderSceneSpatialQueriesTest, ValidationRejectsOmittedCurrentBoundsAndRe
     EXPECT_FALSE(recovered.validationMismatch);
 }
 
+/// @brief Validation uses current snapshot when geometry version is reused.
 TEST_F(RenderSceneSpatialQueriesTest, ValidationUsesCurrentSnapshotWhenGeometryVersionIsReused)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -375,6 +390,7 @@ TEST_F(RenderSceneSpatialQueriesTest, ValidationUsesCurrentSnapshotWhenGeometryV
     EXPECT_TRUE(rejected.ordinals.empty());
 }
 
+/// @brief Debug snapshot owns only bounded values across scene deletion and replacement.
 TEST_F(RenderSceneSpatialQueriesTest, DebugSnapshotOwnsOnlyBoundedValuesAcrossSceneDeletionAndReplacement)
 {
     auto initial = Snapshot(22, 220);
@@ -411,6 +427,7 @@ TEST_F(RenderSceneSpatialQueriesTest, DebugSnapshotOwnsOnlyBoundedValuesAcrossSc
     EXPECT_GT(current.nodes[0].low.x, previous.nodes[0].low.x + 9000);
 }
 
+/// @brief Debug capture off and wrong scene do not touch the diagnostic output.
 TEST_F(RenderSceneSpatialQueriesTest, DebugCaptureOffAndWrongSceneDoNotTouchTheDiagnosticOutput)
 {
     RenderSceneSpatialCache cache;
@@ -431,6 +448,7 @@ TEST_F(RenderSceneSpatialQueriesTest, DebugCaptureOffAndWrongSceneDoNotTouchTheD
     EXPECT_EQ(capture.nodes.data(), retained);
 }
 
+/// @brief Validation failure retires captured hierarchy.
 TEST_F(RenderSceneSpatialQueriesTest, ValidationFailureRetiresCapturedHierarchy)
 {
     options.updateMode = UpdateMode::STABLE;
@@ -453,6 +471,7 @@ TEST_F(RenderSceneSpatialQueriesTest, ValidationFailureRetiresCapturedHierarchy)
     EXPECT_TRUE(capture.nodes.empty());
 }
 
+/// @brief Debug mailbox invalidation rejects in flight and different scene publications.
 TEST_F(RenderSceneSpatialQueriesTest, DebugMailboxInvalidationRejectsInFlightAndDifferentScenePublications)
 {
     BvhDebugPublication mailbox;
@@ -495,6 +514,7 @@ TEST_F(RenderSceneSpatialQueriesTest, DebugMailboxInvalidationRejectsInFlightAnd
     EXPECT_EQ(retained->sceneGeneration, 27u);
 }
 
+/// @brief Debug mailbox rejects over budget older and retired selection captures.
 TEST_F(RenderSceneSpatialQueriesTest, DebugMailboxRejectsOverBudgetOlderAndRetiredSelectionCaptures)
 {
     BvhDebugPublication mailbox;
@@ -534,6 +554,7 @@ TEST_F(RenderSceneSpatialQueriesTest, DebugMailboxRejectsOverBudgetOlderAndRetir
     EXPECT_FALSE(mailbox.Snapshot());
 }
 
+/// @brief Debug mailbox accepts only the requested view and output generation.
 TEST_F(RenderSceneSpatialQueriesTest, DebugMailboxAcceptsOnlyTheRequestedViewAndOutputGeneration)
 {
     BvhDebugPublication mailbox;

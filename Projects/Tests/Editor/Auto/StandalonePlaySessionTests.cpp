@@ -75,6 +75,7 @@ protected:
     std::shared_ptr<ProcessObservation> m_observation = std::make_shared<ProcessObservation>();
 };
 
+/// @brief Missing executable rejects before launching and does not save the scene.
 TEST_F(StandalonePlaySessionTest, MissingExecutableRejectsBeforeLaunchingAndDoesNotSaveTheScene)
 {
     editor::StandalonePlaySession session(Process());
@@ -88,6 +89,7 @@ TEST_F(StandalonePlaySessionTest, MissingExecutableRejectsBeforeLaunchingAndDoes
     EXPECT_EQ(text, "scene fixture remains unchanged");
 }
 
+/// @brief Failed launch does not acquire ownership and can be retried.
 TEST_F(StandalonePlaySessionTest, FailedLaunchDoesNotAcquireOwnershipAndCanBeRetried)
 {
     editor::StandalonePlaySession session(Process());
@@ -106,6 +108,7 @@ TEST_F(StandalonePlaySessionTest, FailedLaunchDoesNotAcquireOwnershipAndCanBeRet
     EXPECT_EQ(session.LogPath(), m_request.log);
 }
 
+/// @brief Double start and stop are idempotent and stop polls without waiting.
 TEST_F(StandalonePlaySessionTest, DoubleStartAndStopAreIdempotentAndStopPollsWithoutWaiting)
 {
     editor::StandalonePlaySession session(Process());
@@ -129,6 +132,7 @@ TEST_F(StandalonePlaySessionTest, DoubleStartAndStopAreIdempotentAndStopPollsWit
     EXPECT_FALSE(session.Failed());
 }
 
+/// @brief Normal exit allows replay and abnormal exit retains code and log.
 TEST_F(StandalonePlaySessionTest, NormalExitAllowsReplayAndAbnormalExitRetainsCodeAndLog)
 {
     editor::StandalonePlaySession session(Process());
@@ -148,6 +152,7 @@ TEST_F(StandalonePlaySessionTest, NormalExitAllowsReplayAndAbnormalExitRetainsCo
     EXPECT_FALSE(session.Tick(10.0f));
 }
 
+/// @brief Poll failure retains ownership until explicit shutdown.
 TEST_F(StandalonePlaySessionTest, PollFailureRetainsOwnershipUntilExplicitShutdown)
 {
     editor::StandalonePlaySession session(Process());
@@ -161,6 +166,7 @@ TEST_F(StandalonePlaySessionTest, PollFailureRetainsOwnershipUntilExplicitShutdo
     EXPECT_FALSE(session.IsActive());
 }
 
+/// @brief Editor exit terminates only its own launch.
 TEST_F(StandalonePlaySessionTest, EditorExitTerminatesOnlyItsOwnLaunch)
 {
     auto other = std::make_shared<ProcessObservation>();
@@ -176,6 +182,7 @@ TEST_F(StandalonePlaySessionTest, EditorExitTerminatesOnlyItsOwnLaunch)
     EXPECT_TRUE(otherSession.IsActive());
 }
 
+/// @brief Windows command line preserves exact project scene and log operands.
 TEST_F(StandalonePlaySessionTest, WindowsCommandLinePreservesExactProjectSceneAndLogOperands)
 {
     m_request.project = L"C:\\Project With Spaces\\";
@@ -196,6 +203,7 @@ TEST_F(StandalonePlaySessionTest, WindowsCommandLinePreservesExactProjectSceneAn
     LocalFree(argv);
 }
 
+/// @brief Automated play command line preserves operands and disables physical input.
 TEST_F(StandalonePlaySessionTest, AutomatedPlayCommandLinePreservesOperandsAndDisablesPhysicalInput)
 {
     m_request.allowPhysicalInput = false;
@@ -216,6 +224,7 @@ TEST_F(StandalonePlaySessionTest, AutomatedPlayCommandLinePreservesOperandsAndDi
     LocalFree(argv);
 }
 
+/// @brief Automated input policy reaches process without changing later manual play.
 TEST_F(StandalonePlaySessionTest, AutomatedInputPolicyReachesProcessWithoutChangingLaterManualPlay)
 {
     editor::StandalonePlaySession session(Process());
@@ -235,6 +244,7 @@ TEST_F(StandalonePlaySessionTest, AutomatedInputPolicyReachesProcessWithoutChang
         L"--play-no-physical-input"), std::wstring::npos);
 }
 
+/// @brief Settings keep execution mode independent of maximized display policy.
 TEST_F(StandalonePlaySessionTest, SettingsKeepExecutionModeIndependentOfMaximizedDisplayPolicy)
 {
     const auto config = m_request.project / L"Assets" / L"EditorConfig" / L"editor_settings.toml";
@@ -249,6 +259,7 @@ TEST_F(StandalonePlaySessionTest, SettingsKeepExecutionModeIndependentOfMaximize
     EXPECT_EQ(restored.playExecutionMode, 1);
 }
 
+/// @brief Execution mode cannot switch while the owned child is running.
 TEST_F(StandalonePlaySessionTest, ExecutionModeCannotSwitchWhileTheOwnedChildIsRunning)
 {
     editor::StandalonePlaySession session(Process());

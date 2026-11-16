@@ -24,6 +24,7 @@ protected:
         EXPECT_TRUE(response.has_value()) << error; return response.value_or(JsonValue{});
     }
 };
+/// @brief Every object beyond five hundred is reachable in stable request order.
 TEST_F(SceneFindPaginationTest, EveryObjectBeyondFiveHundredIsReachableInStableRequestOrder)
 {
     using editor::ai::JsonValue; std::vector<std::string> expected, observed;
@@ -43,6 +44,7 @@ TEST_F(SceneFindPaginationTest, EveryObjectBeyondFiveHundredIsReachableInStableR
     const auto beyond = Find(JsonValue(int64_t{1001})); ASSERT_TRUE(beyond.Find("ok")->AsBool());
     EXPECT_TRUE(beyond.Find("result")->Find("matches")->AsArray().empty()); EXPECT_TRUE(beyond.Find("result")->Find("nextOffset")->IsNull());
 }
+/// @brief Invalid offsets cannot alias the first page.
 TEST_F(SceneFindPaginationTest, InvalidOffsetsCannotAliasTheFirstPage)
 {
     AttachedScene()->CreateGameObject("Reachable");

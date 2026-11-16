@@ -153,6 +153,7 @@ private:
     asset::StreamedTextureResolver::MissPolicy m_savedPolicy = asset::StreamedTextureResolver::MissPolicy::Synchronous;
 };
 
+/// @brief Disabled experimental session skips raw assets and clears CPU cache for resume.
 TEST_F(RayEnvironmentExtractionTest, DisabledExperimentalSessionSkipsRawAssetsAndClearsCpuCacheForResume)
 {
     const auto owner = AddEnvironment("RawEnvironment", m_firstPath);
@@ -182,6 +183,7 @@ TEST_F(RayEnvironmentExtractionTest, DisabledExperimentalSessionSkipsRawAssetsAn
     EXPECT_NE(resumed.pixels, enabled.pixels);
 }
 
+/// @brief Streamed native cube preserves linear HDR and selected owner settings.
 TEST_F(RayEnvironmentExtractionTest, StreamedNativeCubePreservesLinearHdrAndSelectedOwnerSettings)
 {
     const auto inactive = AddEnvironment("Inactive", m_secondPath);
@@ -219,6 +221,7 @@ TEST_F(RayEnvironmentExtractionTest, StreamedNativeCubePreservesLinearHdrAndSele
     EXPECT_NEAR(next.rotationRadians, -0.78539816339f, 1e-6f);
 }
 
+/// @brief First active incomplete or absent raw source never selects another owner.
 TEST_F(RayEnvironmentExtractionTest, FirstActiveIncompleteOrAbsentRawSourceNeverSelectsAnotherOwner)
 {
     const auto first = AddEnvironment("FirstActive", m_temp.File("Missing.dds"));
@@ -243,6 +246,7 @@ TEST_F(RayEnvironmentExtractionTest, FirstActiveIncompleteOrAbsentRawSourceNever
     ExpectHdr(Extract(), 4);
 }
 
+/// @brief Same handle native reload updates extraction with unchanged stream revision.
 TEST_F(RayEnvironmentExtractionTest, SameHandleNativeReloadUpdatesExtractionWithUnchangedStreamRevision)
 {
     AddEnvironment("RawEnvironment", m_firstPath);
@@ -271,6 +275,7 @@ TEST_F(RayEnvironmentExtractionTest, SameHandleNativeReloadUpdatesExtractionWith
 }
 
 
+/// @brief Case aliases share texture publication pins and flip variants.
 /// @note A streamed publication and a mixed-case direct lookup must share ownership; green-flipped variants remain separate.
 TEST_F(RayEnvironmentExtractionTest, CaseAliasesShareTexturePublicationPinsAndFlipVariants)
 {
@@ -301,6 +306,7 @@ TEST_F(RayEnvironmentExtractionTest, CaseAliasesShareTexturePublicationPinsAndFl
     EXPECT_FALSE(m_resources->FindCachedTexture(aliasPath, true).IsValid());
 }
 
+/// @brief Case alias folder eviction preserves sibling and removes both variants.
 /// @note Case folding applies to folder eviction too, without allowing a similarly prefixed sibling folder to match.
 TEST_F(RayEnvironmentExtractionTest, CaseAliasFolderEvictionPreservesSiblingAndRemovesBothVariants)
 {

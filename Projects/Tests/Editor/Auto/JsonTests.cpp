@@ -32,6 +32,7 @@ JsonValue MustParse(const std::string& text)
 
 /// @name 解析
 
+/// @brief Reads each scalar type.
 TEST(JsonParse, ReadsEachScalarType)
 {
     EXPECT_TRUE(MustParse("null").IsNull());
@@ -41,6 +42,7 @@ TEST(JsonParse, ReadsEachScalarType)
     EXPECT_EQ(MustParse("\"hello\"").AsString(), "hello");
 }
 
+/// @brief Reads negative and fractional numbers.
 TEST(JsonParse, ReadsNegativeAndFractionalNumbers)
 {
     EXPECT_DOUBLE_EQ(MustParse("-17").AsNumber(), -17.0);
@@ -49,6 +51,7 @@ TEST(JsonParse, ReadsNegativeAndFractionalNumbers)
     EXPECT_DOUBLE_EQ(MustParse("1e3").AsNumber(), 1000.0);
 }
 
+/// @brief Preserves Int64 tokens across serialization.
 TEST(JsonParse, PreservesInt64TokensAcrossSerialization)
 {
     const JsonValue low = MustParse("-9223372036854775808");
@@ -63,6 +66,7 @@ TEST(JsonParse, PreservesInt64TokensAcrossSerialization)
     EXPECT_FALSE(ParseJson("-9223372036854775809").has_value());
 }
 
+/// @brief Checks narrow integer access.
 TEST(JsonValueBuild, ChecksNarrowIntegerAccess)
 {
     int value = 71;
@@ -75,6 +79,7 @@ TEST(JsonValueBuild, ChecksNarrowIntegerAccess)
     EXPECT_FALSE(JsonValue(4.5).TryGetInt32(value));
 }
 
+/// @brief Preserves double round trip precision.
 TEST(JsonSerialize, PreservesDoubleRoundTripPrecision)
 {
     constexpr double value = 1.2345678901234567;
@@ -83,6 +88,7 @@ TEST(JsonSerialize, PreservesDoubleRoundTripPrecision)
     EXPECT_FALSE(roundTrip.IsInteger());
 }
 
+/// @brief Reads an object and finds members by key.
 TEST(JsonParse, ReadsAnObjectAndFindsMembersByKey)
 {
     const JsonValue root = MustParse(R"({"t":"ping","n":3,"ok":true})");
@@ -95,6 +101,7 @@ TEST(JsonParse, ReadsAnObjectAndFindsMembersByKey)
     EXPECT_EQ(root.Find("missing"), nullptr);
 }
 
+/// @brief Reads nested arrays and objects.
 TEST(JsonParse, ReadsNestedArraysAndObjects)
 {
     const JsonValue root = MustParse(R"({"items":[{"id":1},{"id":2}]})");
@@ -105,6 +112,7 @@ TEST(JsonParse, ReadsNestedArraysAndObjects)
     EXPECT_EQ(items->AsArray()[1].Find("id")->AsInt(), 2);
 }
 
+/// @brief Ignores whitespace between tokens.
 TEST(JsonParse, IgnoresWhitespaceBetweenTokens)
 {
     const JsonValue root = MustParse("  {\n \"a\" : [ 1 , 2 ]\t}\r\n");
@@ -112,12 +120,14 @@ TEST(JsonParse, IgnoresWhitespaceBetweenTokens)
     EXPECT_EQ(root.Find("a")->AsArray().size(), 2u);
 }
 
+/// @brief Reads escape sequences in strings.
 TEST(JsonParse, ReadsEscapeSequencesInStrings)
 {
     const JsonValue root = MustParse(R"({"s":"a\"b\\c\nd\tE"})");
     EXPECT_EQ(root.Find("s")->AsString(), "a\"b\\c\nd\tE");
 }
 
+/// @brief Reads raw UTF-8 in strings.
 TEST(JsonParse, ReadsRawUtf8InStrings)
 {
     /// @note MCP はパス・アセット名に日本語を載せる。ここが壊れると名前が化ける。
@@ -126,6 +136,7 @@ TEST(JsonParse, ReadsRawUtf8InStrings)
     EXPECT_EQ(root.Find("s")->AsString(), "\xE3\x81\x82");
 }
 
+/// @brief Decodes unicode escapes to UTF-8.
 TEST(JsonParse, DecodesUnicodeEscapesToUtf8)
 {
     /// @note 送信側が \uXXXX で寄こす場合。生の UTF-8 と同じ結果にならなければならない。
@@ -133,6 +144,7 @@ TEST(JsonParse, DecodesUnicodeEscapesToUtf8)
     EXPECT_EQ(root.Find("s")->AsString(), "\xE3\x81\x82");
 }
 
+/// @brief Decodes ascii and two byte unicode escapes.
 TEST(JsonParse, DecodesAsciiAndTwoByteUnicodeEscapes)
 {
     /// @note 1 バイト
@@ -141,6 +153,7 @@ TEST(JsonParse, DecodesAsciiAndTwoByteUnicodeEscapes)
     EXPECT_EQ(MustParse(R"("\u00E9")").AsString(), "\xC3\xA9");
 }
 
+/// @brief Combines surrogate pairs.
 TEST(JsonParse, CombinesSurrogatePairs)
 {
     /// @note 絵文字は上位 + 下位の 2 つ組で来る。片方だけを文字にすると化ける。
@@ -149,6 +162,7 @@ TEST(JsonParse, CombinesSurrogatePairs)
     EXPECT_EQ(root.AsString(), "\xF0\x9F\x98\x80");
 }
 
+/// @brief Rejects a broken surrogate pair.
 TEST(JsonParse, RejectsABrokenSurrogatePair)
 {
     /// @note 上位だけ、あるいは下位が下位でない組み合わせ。黙って化けさせない。
@@ -156,12 +170,14 @@ TEST(JsonParse, RejectsABrokenSurrogatePair)
     EXPECT_FALSE(ParseJson(R"("\uD83DA")", nullptr).has_value());
 }
 
+/// @brief Rejects a short unicode escape.
 TEST(JsonParse, RejectsAShortUnicodeEscape)
 {
     EXPECT_FALSE(ParseJson(R"("\u30")", nullptr).has_value());
     EXPECT_FALSE(ParseJson(R"("\uZZZZ")", nullptr).has_value());
 }
 
+/// @brief Reads an empty container.
 TEST(JsonParse, ReadsAnEmptyContainer)
 {
     EXPECT_TRUE(MustParse("{}").IsObject());
@@ -169,6 +185,7 @@ TEST(JsonParse, ReadsAnEmptyContainer)
     EXPECT_EQ(MustParse("[]").AsArray().size(), 0u);
 }
 
+/// @brief Rejects malformed input instead of guessing.
 TEST(JsonParse, RejectsMalformedInputInsteadOfGuessing)
 {
     /// @note 中途半端に読めた «つもり» で返すと、欠けた値が既定値として通ってしまう。
@@ -182,6 +199,7 @@ TEST(JsonParse, RejectsMalformedInputInsteadOfGuessing)
     }
 }
 
+/// @brief Reports a reason when it fails.
 TEST(JsonParse, ReportsAReasonWhenItFails)
 {
     std::string error;
@@ -189,6 +207,7 @@ TEST(JsonParse, ReportsAReasonWhenItFails)
     EXPECT_FALSE(error.empty());
 }
 
+/// @brief Works without an error sink.
 TEST(JsonParse, WorksWithoutAnErrorSink)
 {
     /// @note error は省略可能。null 渡しで落ちないこと。
@@ -198,6 +217,7 @@ TEST(JsonParse, WorksWithoutAnErrorSink)
 
 /// @name 直列化
 
+/// @brief Round-trips an object.
 TEST(JsonSerialize, RoundTripsAnObject)
 {
     const std::string text = R"({"t":"cmd","n":3,"ok":true,"arr":[1,2],"nil":null})";
@@ -211,6 +231,7 @@ TEST(JsonSerialize, RoundTripsAnObject)
     EXPECT_TRUE(twice.Find("nil")->IsNull());
 }
 
+/// @brief Escapes characters that would break the document.
 TEST(JsonSerialize, EscapesCharactersThatWouldBreakTheDocument)
 {
     JsonValue root = JsonValue::MakeObject();
@@ -221,6 +242,7 @@ TEST(JsonSerialize, EscapesCharactersThatWouldBreakTheDocument)
     EXPECT_EQ(back.Find("s")->AsString(), "quote\" back\\ newline\n tab\t");
 }
 
+/// @brief Keeps UTF-8 intact.
 TEST(JsonSerialize, KeepsUtf8Intact)
 {
     JsonValue root = JsonValue::MakeObject();
@@ -230,6 +252,7 @@ TEST(JsonSerialize, KeepsUtf8Intact)
     EXPECT_EQ(back.Find("s")->AsString(), "日本語のアセット名");
 }
 
+/// @brief Writes empty containers.
 TEST(JsonSerialize, WritesEmptyContainers)
 {
     EXPECT_EQ(SerializeJson(JsonValue::MakeObject()), "{}");
@@ -238,6 +261,7 @@ TEST(JsonSerialize, WritesEmptyContainers)
 
 /// @name 値の組み立て
 
+/// @brief Set replaces an existing key in place.
 TEST(JsonValueBuild, SetReplacesAnExistingKeyInPlace)
 {
     JsonValue root = JsonValue::MakeObject();
@@ -248,6 +272,7 @@ TEST(JsonValueBuild, SetReplacesAnExistingKeyInPlace)
     EXPECT_EQ(root.Find("a")->AsInt(), 2);
 }
 
+/// @brief Checks push turns the value into an array.
 TEST(JsonValueBuild, PushTurnsTheValueIntoAnArray)
 {
     JsonValue value;
@@ -258,6 +283,7 @@ TEST(JsonValueBuild, PushTurnsTheValueIntoAnArray)
     EXPECT_EQ(value.AsArray().size(), 1u);
 }
 
+/// @brief Checks accessors fall back when the type differs.
 TEST(JsonValueBuild, AccessorsFallBackWhenTheTypeDiffers)
 {
     /// @note 相手の型を取り違えても «それらしい値» を返さず、指定した既定値に落ちること。
@@ -272,6 +298,7 @@ TEST(JsonValueBuild, AccessorsFallBackWhenTheTypeDiffers)
 
 /// @name Base64
 
+/// @brief Matches the known vectors.
 TEST(JsonBase64, MatchesTheKnownVectors)
 {
     /// @note RFC 4648 の例。スクリーンショット転送が化けたときに «どちら側か» を切り分けられる。
@@ -288,6 +315,7 @@ TEST(JsonBase64, MatchesTheKnownVectors)
     EXPECT_EQ(encode("foobar"), "Zm9vYmFy");
 }
 
+/// @brief Encodes bytes above ascii.
 TEST(JsonBase64, EncodesBytesAboveAscii)
 {
     const std::vector<std::uint8_t> bytes{ 0x00, 0xFF, 0x80, 0x7F };

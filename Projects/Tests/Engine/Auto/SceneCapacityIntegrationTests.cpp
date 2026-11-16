@@ -28,6 +28,7 @@ protected:
     scene::Scene m_scene;
 };
 
+/// @brief Append grows beyond old capacity and preserves existing identity.
 TEST_F(SceneCapacityIntegrationTest, AppendGrowsBeyondOldCapacityAndPreservesExistingIdentity)
 {
     auto& existing = m_scene.CreateGameObject("Existing");
@@ -47,6 +48,7 @@ TEST_F(SceneCapacityIntegrationTest, AppendGrowsBeyondOldCapacityAndPreservesExi
     EXPECT_EQ(m_scene.GameObjectCount(), 4100u);
 }
 
+/// @brief Loading grows and skipped runtime names do not consume slots.
 TEST_F(SceneCapacityIntegrationTest, LoadingGrowsAndSkippedRuntimeNamesDoNotConsumeSlots)
 {
     const std::string text = SceneText(8193) + "[[gameobjects]]\nname = '__RuntimeGenerated'\n";

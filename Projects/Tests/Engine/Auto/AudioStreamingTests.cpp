@@ -110,6 +110,7 @@ protected:
     }
 };
 
+/// @brief Decodes bounded blocks without losing samples and rewinds.
 TEST_F(AudioStreamingTest, DecodesBoundedBlocksWithoutLosingSamplesAndRewinds)
 {
     constexpr size_t blockBytes = audio::AudioStreamReader::BLOCK_BYTES;
@@ -141,6 +142,7 @@ TEST_F(AudioStreamingTest, DecodesBoundedBlocksWithoutLosingSamplesAndRewinds)
     EXPECT_EQ(block, (std::vector<uint8_t>(expected.begin(), expected.begin() + block.size())));
 }
 
+/// @brief Rejects missing and non audio files.
 TEST_F(AudioStreamingTest, RejectsMissingAndNonAudioFiles)
 {
     audio::AudioStreamReader reader;
@@ -149,6 +151,7 @@ TEST_F(AudioStreamingTest, RejectsMissingAndNonAudioFiles)
     EXPECT_FALSE(reader.Open(m_temp.File("broken.wav").generic_string()));
 }
 
+/// @brief Native stream stops while paused and rebuilds buses without keeping buffers.
 TEST_F(AudioStreamingTest, NativeStreamStopsWhilePausedAndRebuildsBusesWithoutKeepingBuffers)
 {
     /// @note 出力デバイスのないランナーだけを除外し、デバイスがある環境での初期化失敗は検出する。
@@ -187,6 +190,7 @@ TEST_F(AudioStreamingTest, NativeStreamStopsWhilePausedAndRebuildsBusesWithoutKe
     EXPECT_EQ(device.PlayStream(m_temp.File("missing.wav").generic_string(), false, 0), 0u);
 }
 
+/// @brief Bgm streams and retains pause fade and stop lifecycle.
 TEST_F(AudioStreamingTest, BgmStreamsAndRetainsPauseFadeAndStopLifecycle)
 {
     m_audio.PlayBGM("long.wav", true, 1.0f);
@@ -212,6 +216,7 @@ TEST_F(AudioStreamingTest, BgmStreamsAndRetainsPauseFadeAndStopLifecycle)
     EXPECT_EQ(m_audio.ActiveVoiceCount(), 0u);
 }
 
+/// @brief Mixer send uses named bus without reducing dry volume and can be removed.
 TEST_F(AudioStreamingTest, MixerSendUsesNamedBusWithoutReducingDryVolumeAndCanBeRemoved)
 {
     scene::Scene scene;
@@ -247,6 +252,7 @@ TEST_F(AudioStreamingTest, MixerSendUsesNamedBusWithoutReducingDryVolumeAndCanBe
     EXPECT_FLOAT_EQ(m_device.voices.at(id).sendLevel, 1.0f);
 }
 
+/// @brief Streaming and send settings survive scene serialization.
 TEST_F(AudioStreamingTest, StreamingAndSendSettingsSurviveSceneSerialization)
 {
     scene::Scene source;

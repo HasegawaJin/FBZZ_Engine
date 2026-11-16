@@ -21,6 +21,7 @@ class SceneAssetReferencesTest : public testkit::EngineFixture {};
 
 } /// @note namespace
 
+/// @brief Collects all model source formats including GUID hints.
 TEST_F(SceneAssetReferencesTest, CollectsAllModelSourceFormatsIncludingGuidHints)
 {
     for (const std::string extension : { ".fbx", ".gltf", ".glb", ".obj", ".GLTF", ".GLB", ".OBJ" }) {
@@ -37,6 +38,7 @@ TEST_F(SceneAssetReferencesTest, CollectsAllModelSourceFormatsIncludingGuidHints
     }
 }
 
+/// @brief Classifies by extension.
 TEST_F(SceneAssetReferencesTest, ClassifiesByExtension)
 {
     const auto references = CollectSceneAssetReferences(R"(
@@ -55,6 +57,7 @@ name = "Rock"
     EXPECT_EQ(references, expected) << "submesh 添字を落とし、拡張子の大小を問わない";
 }
 
+/// @brief Keeps GUID references and uses the hint for the kind.
 TEST_F(SceneAssetReferencesTest, KeepsGuidReferencesAndUsesTheHintForTheKind)
 {
     const auto references = CollectSceneAssetReferences(
@@ -65,6 +68,7 @@ TEST_F(SceneAssetReferencesTest, KeepsGuidReferencesAndUsesTheHintForTheKind)
     EXPECT_EQ(references[0].reference, "guid:0123456789abcdef0123456789abcdef|Assets/Models/Boss.fbx");
 }
 
+/// @brief Resolves hintless GUID through the callback.
 TEST_F(SceneAssetReferencesTest, ResolvesHintlessGuidThroughTheCallback)
 {
     const auto references = CollectSceneAssetReferences(
@@ -76,6 +80,7 @@ TEST_F(SceneAssetReferencesTest, ResolvesHintlessGuidThroughTheCallback)
     EXPECT_EQ(references[0].reference, "guid:0123456789abcdef0123456789abcdef");
 }
 
+/// @brief Checks sprite reference prefetches the parent texture once.
 TEST_F(SceneAssetReferencesTest, SpriteReferencePrefetchesTheParentTextureOnce)
 {
     const auto references = CollectSceneAssetReferences(R"(
@@ -87,6 +92,7 @@ b = "Assets/UI/Atlas.png::sprite::Key_S"
     EXPECT_EQ(references[0].reference, "Assets/UI/Atlas.png");
 }
 
+/// @brief Ignores comments unknown extensions and absolute drive colons.
 TEST_F(SceneAssetReferencesTest, IgnoresCommentsUnknownExtensionsAndAbsoluteDriveColons)
 {
     const auto references = CollectSceneAssetReferences(R"(

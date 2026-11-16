@@ -20,6 +20,7 @@ private:
     physics::RigidBody& m_body;
 };
 }
+/// @brief Geometric rotation does not pump anisotropic kinetic energy.
 TEST_F(XPBDJointVelocityTest, GeometricRotationDoesNotPumpAnisotropicKineticEnergy)
 {
     physics::RigidBody body; body.SetMass(1);
@@ -35,6 +36,7 @@ TEST_F(XPBDJointVelocityTest, GeometricRotationDoesNotPumpAnisotropicKineticEner
     EXPECT_LE(energy,0.020001f);
     solver.ClearConstraints(); solver.ClearBodies();
 }
+/// @brief Free anisotropic rotation retains its physical energy.
 TEST_F(XPBDJointVelocityTest, FreeAnisotropicRotationRetainsItsPhysicalEnergy)
 {
     for (int steps:{1,12,24,48}) {
@@ -51,6 +53,7 @@ TEST_F(XPBDJointVelocityTest, FreeAnisotropicRotationRetainsItsPhysicalEnergy)
         solver.ClearBodies();
     }
 }
+/// @brief Passive socket preserves free rotation and angular momentum.
 TEST_F(XPBDJointVelocityTest, PassiveSocketPreservesFreeRotationAndAngularMomentum)
 {
     physics::RigidBody parent,child;
@@ -70,6 +73,7 @@ TEST_F(XPBDJointVelocityTest, PassiveSocketPreservesFreeRotationAndAngularMoment
     EXPECT_GT(angular.z,0.1f);
     EXPECT_NEAR(velocity.y+angular.z,1,testkit::kLooseTolerance);
 }
+/// @brief Limit stops only outward angular velocity.
 TEST_F(XPBDJointVelocityTest, LimitStopsOnlyOutwardAngularVelocity)
 {
     physics::RigidBody parent,child;
@@ -85,6 +89,7 @@ TEST_F(XPBDJointVelocityTest, LimitStopsOnlyOutwardAngularVelocity)
     child.SetAngularVelocity({-2,0,0}); joint.SolveVelocity(1.0f/60);
     EXPECT_NEAR(child.GetAngularVelocity().x,-2,testkit::kTolerance);
 }
+/// @brief Soft constraints retain their spring motion.
 TEST_F(XPBDJointVelocityTest, SoftConstraintsRetainTheirSpringMotion)
 {
     physics::RigidBody parent,child;
@@ -100,6 +105,7 @@ TEST_F(XPBDJointVelocityTest, SoftConstraintsRetainTheirSpringMotion)
     EXPECT_NEAR(child.GetVelocity().y,1,testkit::kTolerance);
     EXPECT_NEAR(child.GetAngularVelocity().x,2,testkit::kTolerance);
 }
+/// @brief Socket projection does not restart outward motion at a swing limit.
 TEST_F(XPBDJointVelocityTest, SocketProjectionDoesNotRestartOutwardMotionAtASwingLimit)
 {
     physics::RigidBody parent,child;
@@ -118,6 +124,7 @@ TEST_F(XPBDJointVelocityTest, SocketProjectionDoesNotRestartOutwardMotionAtASwin
     EXPECT_LT(child.GetAngularVelocity().y,0.001f);
     EXPECT_LT(anchorVelocity.Length(),0.001f);
 }
+/// @brief Hard joint projection does not create free swing energy.
 TEST_F(XPBDJointVelocityTest, HardJointProjectionDoesNotCreateFreeSwingEnergy)
 {
     for (int steps:{1,12,24,48}) {
@@ -134,6 +141,7 @@ TEST_F(XPBDJointVelocityTest, HardJointProjectionDoesNotCreateFreeSwingEnergy)
         solver.ClearConstraints(); solver.ClearBodies();
     }
 }
+/// @brief Large rotational corrections stay inside the linearization region.
 TEST_F(XPBDJointVelocityTest, LargeRotationalCorrectionsStayInsideTheLinearizationRegion)
 {
     const auto turn=physics::IntegrateRotation(math::Quaternion::Identity(),{0,10000,0},0.001f);
@@ -142,6 +150,7 @@ TEST_F(XPBDJointVelocityTest, LargeRotationalCorrectionsStayInsideTheLinearizati
     const auto small=physics::IntegrateRotation(math::Quaternion::Identity(),{0,1,0},0.01f);
     EXPECT_NEAR(small.y,0.005f,1.0e-6f);
 }
+/// @brief Bent joint preserves twist inside the swing limits.
 TEST_F(XPBDJointVelocityTest, BentJointPreservesTwistInsideTheSwingLimits)
 {
     for (float angle:{0.0f,0.00001f,1.57079632679f}) {
@@ -162,6 +171,7 @@ TEST_F(XPBDJointVelocityTest, BentJointPreservesTwistInsideTheSwingLimits)
         EXPECT_VEC3_NEAR(child.GetAngularVelocity(),velocity,testkit::kTolerance);
     }
 }
+/// @brief Mixed swing limit stops only the outward angle rate and preserves momentum.
 TEST_F(XPBDJointVelocityTest, MixedSwingLimitStopsOnlyTheOutwardAngleRateAndPreservesMomentum)
 {
     physics::RigidBody parent,child;
@@ -189,6 +199,7 @@ TEST_F(XPBDJointVelocityTest, MixedSwingLimitStopsOnlyTheOutwardAngleRateAndPres
     EXPECT_VEC3_NEAR(child.GetAngularVelocity(),math::Vector3(2,0,0),testkit::kTolerance);
     EXPECT_VEC3_NEAR(parent.GetAngularVelocity(),math::Vector3::ZERO,testkit::kTolerance);
 }
+/// @brief Bent twist limit uses the derivative of the twist angle.
 TEST_F(XPBDJointVelocityTest, BentTwistLimitUsesTheDerivativeOfTheTwistAngle)
 {
     physics::RigidBody parent,child;
@@ -209,6 +220,7 @@ TEST_F(XPBDJointVelocityTest, BentTwistLimitUsesTheDerivativeOfTheTwistAngle)
     EXPECT_LE(2.0f*std::atan2(twist.x,twist.w),0.20001f);
     EXPECT_GT(child.GetAngularVelocity().Length(),0.5f);
 }
+/// @brief Antipodal swing does not generate nonfinite velocity.
 TEST_F(XPBDJointVelocityTest, AntipodalSwingDoesNotGenerateNonfiniteVelocity)
 {
     for (float angle:{3.1415f,3.14159265359f}) {
@@ -225,6 +237,7 @@ TEST_F(XPBDJointVelocityTest, AntipodalSwingDoesNotGenerateNonfiniteVelocity)
         EXPECT_LE(child.GetAngularVelocity().LengthSq(),14.0001f);
     }
 }
+/// @brief Legacy drive shares the torque budget with damping and returns reaction.
 TEST_F(XPBDJointVelocityTest, LegacyDriveSharesTheTorqueBudgetWithDampingAndReturnsReaction)
 {
     constexpr float h=0.001f;

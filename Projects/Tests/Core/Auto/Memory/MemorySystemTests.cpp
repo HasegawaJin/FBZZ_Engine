@@ -13,6 +13,7 @@ namespace fbzz::tests {
 
 class MemorySystemTest : public testkit::EngineFixture {};
 
+/// @brief Initializes and shuts down its frame allocator.
 TEST_F(MemorySystemTest, InitializesAndShutsDownItsFrameAllocator)
 {
     core::MemorySystem memory;
@@ -29,6 +30,7 @@ TEST_F(MemorySystemTest, InitializesAndShutsDownItsFrameAllocator)
     EXPECT_FALSE(memory.IsInitialized());
 }
 
+/// @brief Reports no leak while nothing is tracked.
 TEST_F(MemorySystemTest, ReportsNoLeakWhileNothingIsTracked)
 {
     core::MemorySystem memory;
@@ -40,6 +42,7 @@ TEST_F(MemorySystemTest, ReportsNoLeakWhileNothingIsTracked)
     EXPECT_FALSE(memory.HasLeaks());
 }
 
+/// @brief Move construction takes over the frame allocator.
 TEST_F(MemorySystemTest, MoveConstructionTakesOverTheFrameAllocator)
 {
     core::MemorySystem source;
@@ -53,6 +56,7 @@ TEST_F(MemorySystemTest, MoveConstructionTakesOverTheFrameAllocator)
     EXPECT_FALSE(source.IsInitialized());   // NOLINT(bugprone-use-after-move)
 }
 
+/// @brief Move assignment replaces the system it already held.
 TEST_F(MemorySystemTest, MoveAssignmentReplacesTheSystemItAlreadyHeld)
 {
     core::MemorySystem target;
@@ -66,6 +70,7 @@ TEST_F(MemorySystemTest, MoveAssignmentReplacesTheSystemItAlreadyHeld)
     EXPECT_FALSE(source.IsInitialized());   // NOLINT(bugprone-use-after-move)
 }
 
+/// @brief Self move assignment keeps the system usable.
 TEST_F(MemorySystemTest, SelfMoveAssignmentKeepsTheSystemUsable)
 {
     core::MemorySystem memory;

@@ -64,6 +64,7 @@ protected:
     testkit::TempDir m_temp{"SaveStoreReflection"};
 };
 
+/// @brief Write keeps the key selected before reflection.
 TEST_F(SaveStoreReflectionTest, WriteKeepsTheKeySelectedBeforeReflection)
 {
     util::SaveStore store("unused.toml");
@@ -80,6 +81,7 @@ TEST_F(SaveStoreReflectionTest, WriteKeepsTheKeySelectedBeforeReflection)
     ExpectValue(loaded, source);
 }
 
+/// @brief Read keeps nested values when reflection replaces the same key.
 TEST_F(SaveStoreReflectionTest, ReadKeepsNestedValuesWhenReflectionReplacesTheSameKey)
 {
     util::SaveStore store("unused.toml");
@@ -97,6 +99,7 @@ TEST_F(SaveStoreReflectionTest, ReadKeepsNestedValuesWhenReflectionReplacesTheSa
     ExpectValue(current, replacement);
 }
 
+/// @brief Read keeps its snapshot across nested read and clear.
 TEST_F(SaveStoreReflectionTest, ReadKeepsItsSnapshotAcrossNestedReadAndClear)
 {
     util::SaveStore store("unused.toml");
@@ -120,6 +123,7 @@ TEST_F(SaveStoreReflectionTest, ReadKeepsItsSnapshotAcrossNestedReadAndClear)
     EXPECT_EQ(store.GetString("survivor"), "new state");
 }
 
+/// @brief Missing fields and non table sources preserve defaults.
 TEST_F(SaveStoreReflectionTest, MissingFieldsAndNonTableSourcesPreserveDefaults)
 {
     util::SaveStore store("unused.toml");
@@ -141,6 +145,7 @@ TEST_F(SaveStoreReflectionTest, MissingFieldsAndNonTableSourcesPreserveDefaults)
     ExpectValue(loaded, expected);
 }
 
+/// @brief Read keeps its snapshot when reflection loads another disk revision.
 TEST_F(SaveStoreReflectionTest, ReadKeepsItsSnapshotWhenReflectionLoadsAnotherDiskRevision)
 {
     ASSERT_TRUE(m_temp.IsValid());

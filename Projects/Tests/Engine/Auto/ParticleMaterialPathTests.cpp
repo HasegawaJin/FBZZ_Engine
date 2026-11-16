@@ -17,6 +17,7 @@
 
 namespace fbzz::tests {
 
+/// @brief Accepts supported texture extensions regardless of letter case.
 TEST(ParticleMaterialPathTest, RecognisesTextureExtensions)
 {
     EXPECT_TRUE(asset::IsParticleTexturePath("Assets/Textures/Particles/flame.png"));
@@ -31,6 +32,7 @@ TEST(ParticleMaterialPathTest, RecognisesTextureExtensions)
     EXPECT_FALSE(asset::IsParticleTexturePath("Assets/v1.2/Flame"));
 }
 
+/// @brief Wraps a texture into a deterministic material name.
 TEST(ParticleMaterialPathTest, WrapsATextureIntoADeterministicMaterialName)
 {
     /// @note 区切りを落として各語の頭を大文字にする。同梱の 25 枚と同じ名前へ落ちるのが狙い。
@@ -45,6 +47,7 @@ TEST(ParticleMaterialPathTest, WrapsATextureIntoADeterministicMaterialName)
               "Assets/Materials/Particles/Smoke_Alpha.mat");
 }
 
+/// @brief The same texture always maps to the same material.
 TEST(ParticleMaterialPathTest, TheSameTextureAlwaysMapsToTheSameMaterial)
 {
     /// @note 呼ぶたびに別名になると、同じ素材の .mat が二重に増える。
@@ -58,6 +61,7 @@ TEST(ParticleMaterialPathTest, TheSameTextureAlwaysMapsToTheSameMaterial)
     EXPECT_FALSE(first.empty());
 }
 
+/// @brief Returns nothing when there is no usable name.
 TEST(ParticleMaterialPathTest, ReturnsNothingWhenThereIsNoUsableName)
 {
     EXPECT_TRUE(asset::ParticleMaterialPathForTexture("", scene::ParticleBlendMode::Additive).empty());

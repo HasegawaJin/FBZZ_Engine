@@ -103,6 +103,7 @@ protected:
     }
 };
 
+/// @brief Preserves inherited updates and cleanup with known absent fixed and late callbacks.
 TEST_F(ManagedScriptRuntimeTest, PreservesInheritedUpdatesAndCleanupWithKnownAbsentFixedAndLateCallbacks)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -137,6 +138,7 @@ TEST_F(ManagedScriptRuntimeTest, PreservesInheritedUpdatesAndCleanupWithKnownAbs
     }
 }
 
+/// @brief Reloads update presence and reactivates its retained generation without replacing adapters.
 TEST_F(ManagedScriptRuntimeTest, ReloadsUpdatePresenceAndReactivatesItsRetainedGenerationWithoutReplacingAdapters)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -186,6 +188,7 @@ TEST_F(ManagedScriptRuntimeTest, ReloadsUpdatePresenceAndReactivatesItsRetainedG
     EXPECT_FALSE(runtime.Invoke(*adapter, scene::ManagedCallback::UPDATE));
 }
 
+/// @brief Does not hide host only faults behind an absent update after owner rebinding.
 TEST_F(ManagedScriptRuntimeTest, DoesNotHideHostOnlyFaultsBehindAnAbsentUpdateAfterOwnerRebinding)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -216,6 +219,7 @@ TEST_F(ManagedScriptRuntimeTest, DoesNotHideHostOnlyFaultsBehindAnAbsentUpdateAf
     EXPECT_EQ(Fields(*adapter)["destroyCount"].value_or(int64_t{}), 1);
 }
 
+/// @brief Missing updates still reject detached owners worker threads and released instances.
 TEST_F(ManagedScriptRuntimeTest, MissingUpdatesStillRejectDetachedOwnersWorkerThreadsAndReleasedInstances)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -242,6 +246,7 @@ TEST_F(ManagedScriptRuntimeTest, MissingUpdatesStillRejectDetachedOwnersWorkerTh
     EXPECT_FALSE(runtime.Invoke(*adapter, scene::ManagedCallback::UPDATE));
 }
 
+/// @brief Rejects invalid save fields without changing earlier snapshots or the existing file.
 TEST_F(ManagedScriptRuntimeTest, RejectsInvalidSaveFieldsWithoutChangingEarlierSnapshotsOrTheExistingFile)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -295,6 +300,7 @@ TEST_F(ManagedScriptRuntimeTest, RejectsInvalidSaveFieldsWithoutChangingEarlierS
     EXPECT_NE(firstEntry.serialized->fieldsToml.find("futureSetting"), std::string::npos);
 }
 
+/// @brief Rejects new before serialize fault but can save valid settings from the stopped script.
 TEST_F(ManagedScriptRuntimeTest, RejectsNewBeforeSerializeFaultButCanSaveValidSettingsFromTheStoppedScript)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -319,6 +325,7 @@ TEST_F(ManagedScriptRuntimeTest, RejectsNewBeforeSerializeFaultButCanSaveValidSe
     EXPECT_FALSE(scene::SceneSerializer::SaveToText(m_scene).empty());
 }
 
+/// @brief Runs saves reloads and rejects invalid code without replacing adapters.
 /// @note 一つの縦断経路で世代を二つだけ使用する。GC 待ち上限を試験都合で解除せず、失敗候補も含めて通常の解放契約を通す。
 TEST_F(ManagedScriptRuntimeTest, RunsSavesReloadsAndRejectsInvalidCodeWithoutReplacingAdapters)
 {
@@ -501,6 +508,7 @@ TEST_F(ManagedScriptRuntimeTest, RunsSavesReloadsAndRejectsInvalidCodeWithoutRep
     EXPECT_TRUE(runtime.Shutdown()) << runtime.LastDiagnostic();
 }
 
+/// @brief Preserves reference slots and arrays and rejects stale objects and partial settings.
 TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStaleObjectsAndPartialSettings)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -662,6 +670,7 @@ TEST_F(ManagedScriptRuntimeTest, PreservesReferenceSlotsAndArraysAndRejectsStale
     EXPECT_TRUE(runtime.Shutdown()) << runtime.LastDiagnostic();
 }
 
+/// @brief Rebinds only saved references when scene ownership moves.
 TEST_F(ManagedScriptRuntimeTest, RebindsOnlySavedReferencesWhenSceneOwnershipMoves)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -709,6 +718,7 @@ TEST_F(ManagedScriptRuntimeTest, RebindsOnlySavedReferencesWhenSceneOwnershipMov
     EXPECT_TRUE(runtime.Shutdown());
 }
 
+/// @brief Validates required references and keeps unknown and renamed saved fields.
 TEST_F(ManagedScriptRuntimeTest, ValidatesRequiredReferencesAndKeepsUnknownAndRenamedSavedFields)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();

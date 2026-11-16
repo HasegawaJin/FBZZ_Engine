@@ -94,6 +94,7 @@ protected:
     float m_unscaled = 0;
 };
 
+/// @brief Owned jobs and synchronous events use the real host and stop on disable.
 TEST_F(ManagedCompletionTest, OwnedJobsAndSynchronousEventsUseTheRealHostAndStopOnDisable)
 {
     auto& caller = m_scene.CreateGameObject("Caller");
@@ -139,6 +140,7 @@ TEST_F(ManagedCompletionTest, OwnedJobsAndSynchronousEventsUseTheRealHostAndStop
     EXPECT_EQ(Read(*first, "timelineCount").integer, 2);
 }
 
+/// @brief Play reload keeps state and entry flags without repeating awake start.
 TEST_F(ManagedCompletionTest, PlayReloadKeepsStateAndEntryFlagsWithoutRepeatingAwakeStart)
 {
     auto& object = m_scene.CreateGameObject("Owner");
@@ -202,6 +204,7 @@ TEST_F(ManagedCompletionTest, PlayReloadKeepsStateAndEntryFlagsWithoutRepeatingA
     EXPECT_EQ(Read(*adapter, "jobCount").integer, 0);
 }
 
+/// @brief Play reload resolves entries after adding scripts to the same and later objects.
 TEST_F(ManagedCompletionTest, PlayReloadResolvesEntriesAfterAddingScriptsToTheSameAndLaterObjects)
 {
     auto& sameObject = m_scene.CreateGameObject("Same");
@@ -269,6 +272,7 @@ TEST_F(ManagedCompletionTest, PlayReloadResolvesEntriesAfterAddingScriptsToTheSa
     }
 }
 
+/// @brief Structured settings remap only typed prefab references.
 TEST_F(ManagedCompletionTest, StructuredSettingsRemapOnlyTypedPrefabReferences)
 {
     const std::string source = "source-object";
@@ -291,6 +295,7 @@ TEST_F(ManagedCompletionTest, StructuredSettingsRemapOnlyTypedPrefabReferences)
     EXPECT_NE(saved.text.find(R"("tokenText":"{\"$go\":\"source-object\"}")"), std::string::npos);
 }
 
+/// @brief Failed connect never publishes and faulted owner never reconnects.
 TEST_F(ManagedCompletionTest, FailedConnectNeverPublishesAndFaultedOwnerNeverReconnects)
 {
     auto& publisherObject = m_scene.CreateGameObject("Publisher");
@@ -316,6 +321,7 @@ TEST_F(ManagedCompletionTest, FailedConnectNeverPublishesAndFaultedOwnerNeverRec
     EXPECT_EQ(Read(*failed, "eventSum").integer, 0);
 }
 
+/// @brief Explicit resume retries failed stages and revalidates required settings.
 TEST_F(ManagedCompletionTest, ExplicitResumeRetriesFailedStagesAndRevalidatesRequiredSettings)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -353,6 +359,7 @@ TEST_F(ManagedCompletionTest, ExplicitResumeRetriesFailedStagesAndRevalidatesReq
     }
 }
 
+/// @brief Resume clears required block without repeating successful awake.
 TEST_F(ManagedCompletionTest, ResumeClearsRequiredBlockWithoutRepeatingSuccessfulAwake)
 {
     auto& object = m_scene.CreateGameObject("Blocked");
@@ -373,6 +380,7 @@ TEST_F(ManagedCompletionTest, ResumeClearsRequiredBlockWithoutRepeatingSuccessfu
     EXPECT_EQ(Read(*adapter, "connectCount").integer, 1);
 }
 
+/// @brief Checks resume revalidates after cancelling a routine that changes required settings.
 TEST_F(ManagedCompletionTest, ResumeRevalidatesAfterCancellingARoutineThatChangesRequiredSettings)
 {
     auto& object = m_scene.CreateGameObject("DisposeRecovery");
@@ -396,6 +404,7 @@ TEST_F(ManagedCompletionTest, ResumeRevalidatesAfterCancellingARoutineThatChange
     EXPECT_EQ(Read(*adapter, "routineDisposeCount").integer, 1);
 }
 
+/// @brief Disabled resume keeps cancelled jobs and reconnects exactly once when enabled.
 TEST_F(ManagedCompletionTest, DisabledResumeKeepsCancelledJobsAndReconnectsExactlyOnceWhenEnabled)
 {
     auto& object = m_scene.CreateGameObject("Recovery");
@@ -424,6 +433,7 @@ TEST_F(ManagedCompletionTest, DisabledResumeKeepsCancelledJobsAndReconnectsExact
     EXPECT_EQ(Read(*adapter, "jobCount").integer, 0);
 }
 
+/// @brief Resume defers reconnect while the game object is inactive.
 TEST_F(ManagedCompletionTest, ResumeDefersReconnectWhileTheGameObjectIsInactive)
 {
     auto& object = m_scene.CreateGameObject("InactiveRecovery");
@@ -442,6 +452,7 @@ TEST_F(ManagedCompletionTest, ResumeDefersReconnectWhileTheGameObjectIsInactive)
     EXPECT_EQ(Read(*adapter, "awakeCount").integer, 1); EXPECT_EQ(Read(*adapter, "startCount").integer, 1);
 }
 
+/// @brief Resume also clears owned job and event failures without replaying their work.
 TEST_F(ManagedCompletionTest, ResumeAlsoClearsOwnedJobAndEventFailuresWithoutReplayingTheirWork)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -468,6 +479,7 @@ TEST_F(ManagedCompletionTest, ResumeAlsoClearsOwnedJobAndEventFailuresWithoutRep
     }
 }
 
+/// @brief Invalid UTF-16 exception message keeps the original failure and does not replay the callback.
 TEST_F(ManagedCompletionTest, InvalidUtf16ExceptionMessageKeepsTheOriginalFailureAndDoesNotReplayTheCallback)
 {
     auto& object = m_scene.CreateGameObject("InvalidMessage");
@@ -486,6 +498,7 @@ TEST_F(ManagedCompletionTest, InvalidUtf16ExceptionMessageKeepsTheOriginalFailur
     EXPECT_EQ(Read(*adapter, "updateCount").integer, 1);
 }
 
+/// @brief Reload keeps fault latched until explicit resume and long diagnostic keeps its cause.
 TEST_F(ManagedCompletionTest, ReloadKeepsFaultLatchedUntilExplicitResumeAndLongDiagnosticKeepsItsCause)
 {
     auto& object = m_scene.CreateGameObject("LongFailure");
@@ -513,6 +526,7 @@ TEST_F(ManagedCompletionTest, ReloadKeepsFaultLatchedUntilExplicitResumeAndLongD
     EXPECT_EQ(Read(*adapter, "connectCount").integer, 2);
 }
 
+/// @brief Loads data asset and round-trips structured settings through the real host.
 TEST_F(ManagedCompletionTest, LoadsDataAssetAndRoundTripsStructuredSettingsThroughTheRealHost)
 {
     const auto path = m_temp.Path() / "weapon.fzdata";
@@ -556,6 +570,7 @@ TEST_F(ManagedCompletionTest, LoadsDataAssetAndRoundTripsStructuredSettingsThrou
     EXPECT_NEAR(restoredTarget->transform.position.x, 1, testkit::kTolerance);
 }
 
+/// @brief Connection uses shared callback policy and rejects world mutations.
 TEST_F(ManagedCompletionTest, ConnectionUsesSharedCallbackPolicyAndRejectsWorldMutations)
 {
     EXPECT_STREQ(scene::ManagedCallbackPolicy(scene::ManagedCallback::CONNECT), "subscription_only");
@@ -575,6 +590,7 @@ TEST_F(ManagedCompletionTest, ConnectionUsesSharedCallbackPolicyAndRejectsWorldM
     EXPECT_FALSE(runtime.LastDiagnostic().empty());
 }
 
+/// @brief Typed requirements report missing types without adding and use assignable same owner scripts.
 TEST_F(ManagedCompletionTest, TypedRequirementsReportMissingTypesWithoutAddingAndUseAssignableSameOwnerScripts)
 {
     auto& owner = m_scene.CreateGameObject("TypedRequirements");
@@ -605,6 +621,7 @@ TEST_F(ManagedCompletionTest, TypedRequirementsReportMissingTypesWithoutAddingAn
     EXPECT_EQ(Read(*dependent, "updates").integer, 1);
 }
 
+/// @brief Earlier removal stops required dependent in same frame for script and native rows.
 TEST_F(ManagedCompletionTest, EarlierRemovalStopsRequiredDependentInSameFrameForScriptAndNativeRows)
 {
     for (const int command : {1, 2}) {
@@ -625,6 +642,7 @@ TEST_F(ManagedCompletionTest, EarlierRemovalStopsRequiredDependentInSameFrameFor
     }
 }
 
+/// @brief Managed execution order metadata controls native scheduler and survives reload.
 TEST_F(ManagedCompletionTest, ManagedExecutionOrderMetadataControlsNativeSchedulerAndSurvivesReload)
 {
     auto& owner = m_scene.CreateGameObject("ManagedOrdered");
@@ -640,6 +658,7 @@ TEST_F(ManagedCompletionTest, ManagedExecutionOrderMetadataControlsNativeSchedul
     EXPECT_NEAR(owner.transform.position.x, 110.0f, testkit::kTolerance);
 }
 
+/// @brief Missing typed peer blocks awake without faulting user code.
 TEST_F(ManagedCompletionTest, MissingTypedPeerBlocksAwakeWithoutFaultingUserCode)
 {
     auto& owner = m_scene.CreateGameObject("MissingPeerBeforeAwake");
@@ -678,6 +697,7 @@ protected:
 };
 } /// @note namespace
 
+/// @brief Nested and successive scenes keep independent identity and execution order.
 TEST_F(ScriptSnapshotWorkspaceTest, NestedAndSuccessiveScenesKeepIndependentIdentityAndExecutionOrder)
 {
     std::vector<int> record;
@@ -713,6 +733,7 @@ TEST_F(ScriptSnapshotWorkspaceTest, NestedAndSuccessiveScenesKeepIndependentIden
     EXPECT_EQ(record, (std::vector<int>{9}));
 }
 
+/// @brief Delayed disable stops the turn and later reenable runs pending work on the next turn.
 TEST_F(ScriptSnapshotWorkspaceTest, DelayedDisableStopsTheTurnAndLaterReenableRunsPendingWorkOnTheNextTurn)
 {
     std::vector<int> record;
@@ -736,6 +757,7 @@ TEST_F(ScriptSnapshotWorkspaceTest, DelayedDisableStopsTheTurnAndLaterReenableRu
     EXPECT_EQ(record, (std::vector<int>{3001,3,4}));
 }
 
+/// @brief Script snapshot preserves long distinct entry IDs across arena growth.
 TEST_F(ManagedCompletionTest, ScriptSnapshotPreservesLongDistinctEntryIdsAcrossArenaGrowth)
 {
     scene::Script::SetInPlayMode(true);
@@ -763,6 +785,7 @@ TEST_F(ManagedCompletionTest, ScriptSnapshotPreservesLongDistinctEntryIdsAcrossA
     EXPECT_VEC3_NEAR(owner.transform.position, (math::Vector3{6, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Cached owner binding restores after direct host unbinding.
 TEST_F(ManagedCompletionTest, CachedOwnerBindingRestoresAfterDirectHostUnbinding)
 {
     scene::Script::SetInPlayMode(true);
@@ -789,6 +812,7 @@ TEST_F(ManagedCompletionTest, CachedOwnerBindingRestoresAfterDirectHostUnbinding
     EXPECT_VEC3_NEAR(owner.transform.position, (math::Vector3{1, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Cached owner binding rejects direct release without owner ID.
 TEST_F(ManagedCompletionTest, CachedOwnerBindingRejectsDirectReleaseWithoutOwnerId)
 {
     auto& owner = m_scene.CreateGameObject("ReleasedCachedBinding");
@@ -806,6 +830,7 @@ TEST_F(ManagedCompletionTest, CachedOwnerBindingRejectsDirectReleaseWithoutOwner
     EXPECT_FALSE(adapter->RefreshOwnerBinding());
 }
 
+/// @brief Cached owner binding retargets an existing script entry.
 TEST_F(ManagedCompletionTest, CachedOwnerBindingRetargetsAnExistingScriptEntry)
 {
     scene::Script::SetInPlayMode(true);
@@ -825,6 +850,7 @@ TEST_F(ManagedCompletionTest, CachedOwnerBindingRetargetsAnExistingScriptEntry)
     EXPECT_VEC3_NEAR(second.transform.position, (math::Vector3{1, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Cached owner binding rejects another scene inside managed callback.
 TEST_F(ManagedCompletionTest, CachedOwnerBindingRejectsAnotherSceneInsideManagedCallback)
 {
     auto& publisher = m_scene.CreateGameObject("BindingScopePublisher");
@@ -864,6 +890,7 @@ TEST_F(ManagedCompletionTest, CachedOwnerBindingRejectsAnotherSceneInsideManaged
     other.Clear();
 }
 
+/// @brief Empty gizmo callbacks preserve capacity context and thread rejection.
 TEST_F(ManagedCompletionTest, EmptyGizmoCallbacksPreserveCapacityContextAndThreadRejection)
 {
     auto& owner = m_scene.CreateGameObject("NoGizmoCallbacks");
@@ -897,6 +924,7 @@ TEST_F(ManagedCompletionTest, EmptyGizmoCallbacksPreserveCapacityContextAndThrea
     EXPECT_FALSE(adapter->IsRuntimeFaulted());
 }
 
+/// @brief Empty gizmo capture rejects nested managed event scope and preserves publication.
 TEST_F(ManagedCompletionTest, EmptyGizmoCaptureRejectsNestedManagedEventScopeAndPreservesPublication)
 {
     auto& publisher = m_scene.CreateGameObject("GizmoScopePublisher");
@@ -942,6 +970,7 @@ TEST_F(ManagedCompletionTest, EmptyGizmoCaptureRejectsNestedManagedEventScopeAnd
     EXPECT_TRUE(commands.empty());
 }
 
+/// @brief Empty gizmo callbacks reject deleted owner after entity slot reuse.
 TEST_F(ManagedCompletionTest, EmptyGizmoCallbacksRejectDeletedOwnerAfterEntitySlotReuse)
 {
     auto& owner = m_scene.CreateGameObject("ExpiredGizmoOwner");
@@ -966,6 +995,7 @@ TEST_F(ManagedCompletionTest, EmptyGizmoCallbacksRejectDeletedOwnerAfterEntitySl
     EXPECT_EQ(m_scene.GetGameObject(identity), nullptr);
 }
 
+/// @brief Gizmo callback presence follows reload and retained generation activation.
 TEST_F(ManagedCompletionTest, GizmoCallbackPresenceFollowsReloadAndRetainedGenerationActivation)
 {
     auto& owner = m_scene.CreateGameObject("OriginalGizmoGeneration");
@@ -1015,6 +1045,7 @@ TEST_F(ManagedCompletionTest, GizmoCallbackPresenceFollowsReloadAndRetainedGener
     play.Clear();
 }
 
+/// @brief Gizmos use detached settings read-only native scope and bounded world commands.
 TEST_F(ManagedCompletionTest, GizmosUseDetachedSettingsReadOnlyNativeScopeAndBoundedWorldCommands)
 {
     auto& owner = m_scene.CreateGameObject("GizmoPreview");
@@ -1051,6 +1082,7 @@ TEST_F(ManagedCompletionTest, GizmosUseDetachedSettingsReadOnlyNativeScopeAndBou
     EXPECT_EQ(Read(*adapter, "radius").x, 1);
 }
 
+/// @brief World families use actual CLR facades fixed geometry and readonly draw.
 TEST_F(ManagedCompletionTest, WorldFamiliesUseActualClrFacadesFixedGeometryAndReadonlyDraw)
 {
     scene::Script::SetInPlayMode(true);
@@ -1092,6 +1124,7 @@ TEST_F(ManagedCompletionTest, WorldFamiliesUseActualClrFacadesFixedGeometryAndRe
     EXPECT_FALSE(adapter->IsRuntimeFaulted());
 }
 
+/// @brief Retained edit generation activates without replacing parked CLR instances.
 TEST_F(ManagedCompletionTest, RetainedEditGenerationActivatesWithoutReplacingParkedClrInstances)
 {
     auto& originalOwner = m_scene.CreateGameObject("ParkedEditOwner");
@@ -1125,6 +1158,7 @@ TEST_F(ManagedCompletionTest, RetainedEditGenerationActivatesWithoutReplacingPar
     play.Clear();
 }
 
+/// @brief Initial play fork isolates managed statics and restores original without reload callbacks.
 TEST_F(ManagedCompletionTest, InitialPlayForkIsolatesManagedStaticsAndRestoresOriginalWithoutReloadCallbacks)
 {
     auto& owner = m_scene.CreateGameObject("StaticDomainOwner");
@@ -1179,6 +1213,7 @@ TEST_F(ManagedCompletionTest, InitialPlayForkIsolatesManagedStaticsAndRestoresOr
     EXPECT_EQ(Read(*original, "reloadCallbacks").integer, 0);
 }
 
+/// @brief Typed references load forward peers and reload exact births.
 TEST_F(ManagedCompletionTest, TypedReferencesLoadForwardPeersAndReloadExactBirths)
 {
     auto& owner = m_scene.CreateGameObject("TypedOwner");
@@ -1227,6 +1262,7 @@ TEST_F(ManagedCompletionTest, TypedReferencesLoadForwardPeersAndReloadExactBirth
     EXPECT_NE(snapshot.find("\"scriptInstanceId\":\"" + std::to_string(second->InstanceId()) + "\""), std::string::npos);
 }
 
+/// @brief Runtime data asset load streams large japanese path without running constructor.
 TEST_F(ManagedCompletionTest, RuntimeDataAssetLoadStreamsLargeJapanesePathWithoutRunningConstructor)
 {
     const auto path = m_temp.Path() / std::filesystem::path(u8"大きな設定.fzdata");

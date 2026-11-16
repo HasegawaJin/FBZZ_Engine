@@ -42,6 +42,7 @@ protected:
     }
 };
 
+/// @brief Translating the whole chain does not stretch bones.
 TEST_F(StandingPoseTest, TranslatingTheWholeChainDoesNotStretchBones)
 {
     for (auto& position : m_positions) position.y += 0.3f;
@@ -51,6 +52,7 @@ TEST_F(StandingPoseTest, TranslatingTheWholeChainDoesNotStretchBones)
     EXPECT_NEAR(m_positions[1].y, 1.0f, 1.0e-5f);
 }
 
+/// @brief Repeated large rotations stay within standing envelope.
 TEST_F(StandingPoseTest, RepeatedLargeRotationsStayWithinStandingEnvelope)
 {
     for (int frame = 0; frame < 100; ++frame) {
@@ -65,6 +67,7 @@ TEST_F(StandingPoseTest, RepeatedLargeRotationsStayWithinStandingEnvelope)
     }
 }
 
+/// @brief Crossing the limit does not halve the response.
 TEST_F(StandingPoseTest, CrossingTheLimitDoesNotHalveTheResponse)
 {
     m_targets.resize(1);
@@ -78,6 +81,7 @@ TEST_F(StandingPoseTest, CrossingTheLimitDoesNotHalveTheResponse)
     EXPECT_NEAR(angle, 0.25f, 0.0001f);
 }
 
+/// @brief Uses the requested angle without a game specific cap.
 TEST_F(StandingPoseTest, UsesTheRequestedAngleWithoutAGameSpecificCap)
 {
     m_targets.resize(1);
@@ -90,6 +94,7 @@ TEST_F(StandingPoseTest, UsesTheRequestedAngleWithoutAGameSpecificCap)
     EXPECT_QUAT_NEAR(m_rotations[0], candidate, 0.0001f);
 }
 
+/// @brief Invalid bone restores the entire chain.
 TEST_F(StandingPoseTest, InvalidBoneRestoresTheEntireChain)
 {
     m_positions[2].x = std::numeric_limits<float>::infinity();
@@ -101,6 +106,7 @@ TEST_F(StandingPoseTest, InvalidBoneRestoresTheEntireChain)
     }
 }
 
+/// @brief Partial blending preserves bone lengths.
 TEST_F(StandingPoseTest, PartialBlendingPreservesBoneLengths)
 {
     const auto rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, 0.25f);
@@ -113,6 +119,7 @@ TEST_F(StandingPoseTest, PartialBlendingPreservesBoneLengths)
         EXPECT_NEAR((m_positions[i] - m_positions[i - 1]).Length(), 1.0f, 1.0e-5f);
 }
 
+/// @brief Excluded descendants inherit the final parent transform.
 TEST_F(StandingPoseTest, ExcludedDescendantsInheritTheFinalParentTransform)
 {
     asset::Skeleton skeleton;

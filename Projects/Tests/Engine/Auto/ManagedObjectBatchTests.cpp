@@ -146,6 +146,7 @@ protected:
     }
 };
 
+/// @brief Reads current world and preserves missing slots and output tails.
 TEST_F(ManagedObjectBatchTest, ReadsCurrentWorldAndPreservesMissingSlotsAndOutputTails)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -176,6 +177,7 @@ TEST_F(ManagedObjectBatchTest, ReadsCurrentWorldAndPreservesMissingSlotsAndOutpu
     EXPECT_EQ(child.transform.worldPosition.x, 12);
 }
 
+/// @brief Applies parent child duplicates in input order and synchronizes descendants.
 TEST_F(ManagedObjectBatchTest, AppliesParentChildDuplicatesInInputOrderAndSynchronizesDescendants)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -224,6 +226,7 @@ TEST_F(ManagedObjectBatchTest, AppliesParentChildDuplicatesInInputOrderAndSynchr
     EXPECT_VEC3_NEAR(child.transform.scale, localScale, testkit::kTolerance);
 }
 
+/// @brief Rejects late invalid and intermediate overflow without partial mutation.
 TEST_F(ManagedObjectBatchTest, RejectsLateInvalidAndIntermediateOverflowWithoutPartialMutation)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -262,6 +265,7 @@ TEST_F(ManagedObjectBatchTest, RejectsLateInvalidAndIntermediateOverflowWithoutP
     EXPECT_EQ(descendant.transform.worldPosition.x, 0);
 }
 
+/// @brief Retains expired identity and ignores unused non-finite position.
 TEST_F(ManagedObjectBatchTest, RetainsExpiredIdentityAndIgnoresUnusedNonFinitePosition)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -282,6 +286,7 @@ TEST_F(ManagedObjectBatchTest, RetainsExpiredIdentityAndIgnoresUnusedNonFinitePo
     EXPECT_EQ(recreated.transform.worldPosition.x, 0);
 }
 
+/// @brief Repairs unused stale caches but rejects non-finite translate input atomically.
 TEST_F(ManagedObjectBatchTest, RepairsUnusedStaleCachesButRejectsNonFiniteTranslateInputAtomically)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -323,6 +328,7 @@ TEST_F(ManagedObjectBatchTest, RepairsUnusedStaleCachesButRejectsNonFiniteTransl
     EXPECT_VEC3_NEAR(first.transform.worldScale, math::Vector3::ONE, testkit::kTolerance);
 }
 
+/// @brief Skips inactive hierarchy but rejects active physics and foreign scenes.
 TEST_F(ManagedObjectBatchTest, SkipsInactiveHierarchyButRejectsActivePhysicsAndForeignScenes)
 {
     auto& ordinary = m_scene.CreateGameObject("Ordinary");
@@ -372,6 +378,7 @@ TEST_F(ManagedObjectBatchTest, SkipsInactiveHierarchyButRejectsActivePhysicsAndF
     otherScene.Clear();
 }
 
+/// @brief Accepts repeated references beyond former scene and batch caps.
 TEST_F(ManagedObjectBatchTest, AcceptsRepeatedReferencesBeyondFormerSceneAndBatchCaps)
 {
     auto& target = m_scene.CreateGameObject("Repeated");
@@ -435,6 +442,7 @@ protected:
     { return m_transfers.Run(m_scene, request, reply, m_kernel, &Resolve, this); }
 };
 
+/// @brief Paged candidate commits five thousand distinct objects only after complete validation.
 TEST_F(ManagedObjectBatchKernelTest, PagedCandidateCommitsFiveThousandDistinctObjectsOnlyAfterCompleteValidation)
 {
     constexpr uint32_t count = 5001;
@@ -491,6 +499,7 @@ TEST_F(ManagedObjectBatchKernelTest, PagedCandidateCommitsFiveThousandDistinctOb
         EXPECT_EQ(m_objects[index].second->transform.worldPosition.x, static_cast<float>(index + 1));
 }
 
+/// @brief Reparent and transform services synchronize every descendant beyond former capacity.
 TEST_F(ManagedObjectBatchKernelTest, ReparentAndTransformServicesSynchronizeEveryDescendantBeyondFormerCapacity)
 {
     auto& destination = m_scene.CreateGameObject("Destination");
@@ -521,6 +530,7 @@ TEST_F(ManagedObjectBatchKernelTest, ReparentAndTransformServicesSynchronizeEver
     for (scene::GameObject* child : children) EXPECT_EQ(child->transform.worldPosition.x, 21);
 }
 
+/// @brief Large ordered candidate keeps the world unchanged until one complete commit.
 TEST_F(ManagedObjectBatchKernelTest, LargeOrderedCandidateKeepsTheWorldUnchangedUntilOneCompleteCommit)
 {
     auto& object = m_scene.CreateGameObject("Repeated"); m_objects.emplace_back(1, &object);
@@ -542,6 +552,7 @@ TEST_F(ManagedObjectBatchKernelTest, LargeOrderedCandidateKeepsTheWorldUnchanged
     EXPECT_EQ(Phase(request, reply), scene::ManagedBridgeStatus::INVALID_ARGUMENT); EXPECT_EQ(object.transform.position.x, 40001);
 }
 
+/// @brief Invalid late row and incomplete candidate cannot publish an earlier prefix.
 TEST_F(ManagedObjectBatchKernelTest, InvalidLateRowAndIncompleteCandidateCannotPublishAnEarlierPrefix)
 {
     auto& object = m_scene.CreateGameObject("Atomic"); m_objects.emplace_back(1, &object);
@@ -563,6 +574,7 @@ TEST_F(ManagedObjectBatchKernelTest, InvalidLateRowAndIncompleteCandidateCannotP
     EXPECT_EQ(Phase(request, reply), scene::ManagedBridgeStatus::INVALID_ARGUMENT); EXPECT_EQ(object.transform.position.x, 0);
 }
 
+/// @brief A failed second result page and changed reference proof leave the physical world unchanged.
 TEST_F(ManagedObjectBatchKernelTest, AFailedSecondResultPageAndChangedReferenceProofLeaveThePhysicalWorldUnchanged)
 {
     auto& object = m_scene.CreateGameObject("BeforePublication"); m_objects.emplace_back(1, &object);
@@ -593,6 +605,7 @@ TEST_F(ManagedObjectBatchKernelTest, AFailedSecondResultPageAndChangedReferenceP
     EXPECT_EQ(Phase(request, reply), scene::ManagedBridgeStatus::INVALID_SCOPE); EXPECT_EQ(object.transform.position.x, 0);
 }
 
+/// @brief Rejects malformed rows flags and output capacity before any writes.
 TEST_F(ManagedObjectBatchKernelTest, RejectsMalformedRowsFlagsAndOutputCapacityBeforeAnyWrites)
 {
     auto& object = m_scene.CreateGameObject("Target");
@@ -636,6 +649,7 @@ TEST_F(ManagedObjectBatchKernelTest, RejectsMalformedRowsFlagsAndOutputCapacityB
     EXPECT_EQ(reply.outputBytes, 0u);
 }
 
+/// @brief Decodes unaligned rows and rejects foreign tokens without touching output.
 TEST_F(ManagedObjectBatchKernelTest, DecodesUnalignedRowsAndRejectsForeignTokensWithoutTouchingOutput)
 {
     static_assert(std::endian::native == std::endian::little);
@@ -699,6 +713,7 @@ TEST_F(ManagedObjectBatchKernelTest, DecodesUnalignedRowsAndRejectsForeignTokens
     EXPECT_EQ(output, std::string(64, 'x'));
 }
 
+/// @brief Rejects zero and tiny quaternion before math contracts and preserves earlier rows.
 TEST_F(ManagedObjectBatchKernelTest, RejectsZeroAndTinyQuaternionBeforeMathContractsAndPreservesEarlierRows)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -747,6 +762,7 @@ TEST_F(ManagedObjectBatchKernelTest, RejectsZeroAndTinyQuaternionBeforeMathContr
     EXPECT_EQ(parent.transform.rotation.w, 1e-4f);
 }
 
+/// @brief Rejects offset overflow hidden by zero scale before committing earlier rows.
 TEST_F(ManagedObjectBatchKernelTest, RejectsOffsetOverflowHiddenByZeroScaleBeforeCommittingEarlierRows)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -799,6 +815,7 @@ TEST_F(ManagedObjectBatchKernelTest, RejectsOffsetOverflowHiddenByZeroScaleBefor
     EXPECT_EQ(parent.transform.rotation.x, 0.002f);
 }
 
+/// @brief Distinct roots stage cached world positions before publishing any transform.
 TEST_F(ManagedObjectBatchKernelTest, DistinctRootsStageCachedWorldPositionsBeforePublishingAnyTransform)
 {
     constexpr uint32_t count = 129;
@@ -854,6 +871,7 @@ TEST_F(ManagedObjectBatchKernelTest, DistinctRootsStageCachedWorldPositionsBefor
         EXPECT_EQ(m_objects[index].second->transform.worldPosition.x, 1001 + static_cast<float>(index));
 }
 
+/// @brief Ordered duplicates and parent child moves work after distinct root staging.
 TEST_F(ManagedObjectBatchKernelTest, OrderedDuplicatesAndParentChildMovesWorkAfterDistinctRootStaging)
 {
     auto& independent = m_scene.CreateGameObject("Independent");

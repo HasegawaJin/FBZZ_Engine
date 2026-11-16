@@ -106,6 +106,7 @@ protected:
 
 } /// @note namespace
 
+/// @brief Captures command results and preserves types in later requests and assertions.
 TEST_F(PlaytestRunnerTest, CapturesCommandResultsAndPreservesTypesInLaterRequestsAndAssertions)
 {
     PlaytestRunner runner;
@@ -127,6 +128,7 @@ TEST_F(PlaytestRunnerTest, CapturesCommandResultsAndPreservesTypesInLaterRequest
     EXPECT_TRUE(steps[0].Find("result")->Find("n")->IsNumber());
 }
 
+/// @brief Wait capture uses only the satisfied response and start clears old values.
 TEST_F(PlaytestRunnerTest, WaitCaptureUsesOnlyTheSatisfiedResponseAndStartClearsOldValues)
 {
     PlaytestRunner runner;
@@ -148,6 +150,7 @@ TEST_F(PlaytestRunnerTest, WaitCaptureUsesOnlyTheSatisfiedResponseAndStartClears
     EXPECT_NE(runner.Report().Find("failure")->AsString().find("ready"), std::string::npos);
 }
 
+/// @brief Rejects invalid capture and unresolved reference before calling bus.
 TEST_F(PlaytestRunnerTest, RejectsInvalidCaptureAndUnresolvedReferenceBeforeCallingBus)
 {
     const char* scenarios[] = {
@@ -170,6 +173,7 @@ TEST_F(PlaytestRunnerTest, RejectsInvalidCaptureAndUnresolvedReferenceBeforeCall
     }
 }
 
+/// @brief Missing capture path stops following mutation.
 TEST_F(PlaytestRunnerTest, MissingCapturePathStopsFollowingMutation)
 {
     PlaytestRunner runner;
@@ -188,6 +192,7 @@ TEST_F(PlaytestRunnerTest, MissingCapturePathStopsFollowingMutation)
     EXPECT_EQ(step.Find("result")->Find("n")->AsInt(), 1);
 }
 
+/// @brief Rejects scenario without steps.
 TEST_F(PlaytestRunnerTest, RejectsScenarioWithoutSteps)
 {
     PlaytestRunner runner;
@@ -197,6 +202,7 @@ TEST_F(PlaytestRunnerTest, RejectsScenarioWithoutSteps)
     EXPECT_FALSE(runner.Start(Parse(R"({"steps":[{"nope":1}]})"), {}, m_temp.Path(), m_temp.Path(), PlaytestOptions{}, error));
 }
 
+/// @brief Captures prepared fluid playback frame.
 TEST_F(PlaytestRunnerTest, CapturesPreparedFluidPlaybackFrame)
 {
     PlaytestRunner runner;
@@ -226,6 +232,7 @@ TEST_F(PlaytestRunnerTest, CapturesPreparedFluidPlaybackFrame)
     EXPECT_TRUE(std::filesystem::exists(m_temp.Path() / "out" / "JetFlame_3D_Seam.actual.png"));
 }
 
+/// @brief Rejects empty fluid playback capture.
 TEST_F(PlaytestRunnerTest, RejectsEmptyFluidPlaybackCapture)
 {
     PlaytestRunner runner;
@@ -242,6 +249,7 @@ TEST_F(PlaytestRunnerTest, RejectsEmptyFluidPlaybackCapture)
     EXPECT_EQ(runner.Report().Find("images")->AsArray().front().Find("status")->AsString(), "empty-playback");
 }
 
+/// @brief Frames step waits exactly that many ticks.
 TEST_F(PlaytestRunnerTest, FramesStepWaitsExactlyThatManyTicks)
 {
     PlaytestRunner runner;
@@ -255,6 +263,7 @@ TEST_F(PlaytestRunnerTest, FramesStepWaitsExactlyThatManyTicks)
     EXPECT_EQ(ticks, 7);
 }
 
+/// @brief Zero second wait reports the monotonic clock and completes.
 TEST_F(PlaytestRunnerTest, ZeroSecondWaitReportsTheMonotonicClockAndCompletes)
 {
     PlaytestRunner runner;
@@ -272,6 +281,7 @@ TEST_F(PlaytestRunnerTest, ZeroSecondWaitReportsTheMonotonicClockAndCompletes)
     }
 }
 
+/// @brief Second wait starts while rendering and keeps the following step pending.
 TEST_F(PlaytestRunnerTest, SecondWaitStartsWhileRenderingAndKeepsTheFollowingStepPending)
 {
     PlaytestRunner runner;
@@ -286,6 +296,7 @@ TEST_F(PlaytestRunnerTest, SecondWaitStartsWhileRenderingAndKeepsTheFollowingSte
     runner.Cancel("test completed");
 }
 
+/// @brief Can keep the normal viewport layout until an image is requested.
 TEST_F(PlaytestRunnerTest, CanKeepTheNormalViewportLayoutUntilAnImageIsRequested)
 {
     PlaytestRunner runner;
@@ -308,6 +319,7 @@ TEST_F(PlaytestRunnerTest, CanKeepTheNormalViewportLayoutUntilAnImageIsRequested
     EXPECT_EQ(forcedFrames, 1);
 }
 
+/// @brief Rejects invalid second wait before following steps.
 TEST_F(PlaytestRunnerTest, RejectsInvalidSecondWaitBeforeFollowingSteps)
 {
     for (const auto* seconds : {"-1", "3601", "null"}) {
@@ -320,6 +332,7 @@ TEST_F(PlaytestRunnerTest, RejectsInvalidSecondWaitBeforeFollowingSteps)
     }
 }
 
+/// @brief Wait until polls every frame until the condition holds.
 TEST_F(PlaytestRunnerTest, WaitUntilPollsEveryFrameUntilTheConditionHolds)
 {
     PlaytestRunner runner;
@@ -334,6 +347,7 @@ TEST_F(PlaytestRunnerTest, WaitUntilPollsEveryFrameUntilTheConditionHolds)
     EXPECT_EQ(bus.counter, 4);
 }
 
+/// @brief Wait until fails after the timeout.
 TEST_F(PlaytestRunnerTest, WaitUntilFailsAfterTheTimeout)
 {
     PlaytestRunner runner;
@@ -350,6 +364,7 @@ TEST_F(PlaytestRunnerTest, WaitUntilFailsAfterTheTimeout)
     EXPECT_NE(report.Find("failure")->AsString().find("3"), std::string::npos);
 }
 
+/// @brief Assert stops at the first failure and skips the rest.
 TEST_F(PlaytestRunnerTest, AssertStopsAtTheFirstFailureAndSkipsTheRest)
 {
     PlaytestRunner runner;
@@ -365,6 +380,7 @@ TEST_F(PlaytestRunnerTest, AssertStopsAtTheFirstFailureAndSkipsTheRest)
     EXPECT_EQ(std::count(bus.calls.begin(), bus.calls.end(), "never.called"), 0);
 }
 
+/// @brief Bus step can expect a specific error.
 TEST_F(PlaytestRunnerTest, BusStepCanExpectASpecificError)
 {
     PlaytestRunner runner;
@@ -376,6 +392,7 @@ TEST_F(PlaytestRunnerTest, BusStepCanExpectASpecificError)
     EXPECT_EQ(runner.State(), PlaytestState::PASSED);
 }
 
+/// @brief Bus query result is kept in the report.
 TEST_F(PlaytestRunnerTest, BusQueryResultIsKeptInTheReport)
 {
     /// @note 計測値 (profiler.snapshot 等) をシナリオから取り出すには、query の応答が報告に残る必要がある。command の応答は残さない。
@@ -398,6 +415,7 @@ TEST_F(PlaytestRunnerTest, BusQueryResultIsKeptInTheReport)
     EXPECT_EQ(steps[1].Find("result"), nullptr);
 }
 
+/// @brief Unknown step fails.
 TEST_F(PlaytestRunnerTest, UnknownStepFails)
 {
     PlaytestRunner runner;
@@ -409,6 +427,7 @@ TEST_F(PlaytestRunnerTest, UnknownStepFails)
     EXPECT_EQ(runner.State(), PlaytestState::FAILED);
 }
 
+/// @brief Lockstep is applied while running and released after.
 TEST_F(PlaytestRunnerTest, LockstepIsAppliedWhileRunningAndReleasedAfter)
 {
     PlaytestRunner runner;
@@ -423,6 +442,7 @@ TEST_F(PlaytestRunnerTest, LockstepIsAppliedWhileRunningAndReleasedAfter)
     EXPECT_FLOAT_EQ(fbzz::Time::GetLockstepDelta(), 0.0f);
 }
 
+/// @brief Writes the report file when finished.
 TEST_F(PlaytestRunnerTest, WritesTheReportFileWhenFinished)
 {
     PlaytestRunner runner;
@@ -435,6 +455,7 @@ TEST_F(PlaytestRunnerTest, WritesTheReportFileWhenFinished)
     EXPECT_EQ(runner.Report().Find("state")->AsString(), "passed");
 }
 
+/// @brief Compare image fails when capture is unavailable.
 TEST_F(PlaytestRunnerTest, CompareImageFailsWhenCaptureIsUnavailable)
 {
     PlaytestRunner runner;
@@ -446,6 +467,7 @@ TEST_F(PlaytestRunnerTest, CompareImageFailsWhenCaptureIsUnavailable)
     EXPECT_EQ(runner.State(), PlaytestState::FAILED);
 }
 
+/// @brief Compare image rejects names that escape the golden directory.
 TEST_F(PlaytestRunnerTest, CompareImageRejectsNamesThatEscapeTheGoldenDirectory)
 {
     PlaytestRunner runner;
@@ -457,6 +479,7 @@ TEST_F(PlaytestRunnerTest, CompareImageRejectsNamesThatEscapeTheGoldenDirectory)
     EXPECT_EQ(runner.State(), PlaytestState::FAILED);
 }
 
+/// @brief Cancel ends as failed.
 TEST_F(PlaytestRunnerTest, CancelEndsAsFailed)
 {
     PlaytestRunner runner;

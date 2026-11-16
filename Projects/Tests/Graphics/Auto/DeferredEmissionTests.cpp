@@ -80,6 +80,7 @@ struct GBufferMaterialCB {
 };
 static_assert(sizeof(GBufferMaterialCB) == 96);
 
+/// @brief Forward only background is composited before transparent foreground.
 TEST_F(DeferredEmissionTest, ForwardOnlyBackgroundIsCompositedBeforeTransparentForeground)
 {
     constexpr uint32_t extent = 32;
@@ -216,6 +217,7 @@ TEST_F(DeferredEmissionTest, ForwardOnlyBackgroundIsCompositedBeforeTransparentF
     device.Shutdown();
 }
 
+/// @brief Water particle output gain keeps lighting and emission independent.
 TEST_F(DeferredEmissionTest, WaterParticleOutputGainKeepsLightingAndEmissionIndependent)
 {
     constexpr uint32_t extent = 64;
@@ -350,6 +352,7 @@ TEST_F(DeferredEmissionTest, WaterParticleOutputGainKeepsLightingAndEmissionInde
     device.Shutdown();
 }
 
+/// @brief Sloped receiver avoids pcf self shadow and preserves blocker shadow.
 TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlockerShadow)
 {
     constexpr uint32_t extent = 64;
@@ -550,6 +553,7 @@ TEST_F(DeferredEmissionTest, SlopedReceiverAvoidsPcfSelfShadowAndPreservesBlocke
     device.Shutdown();
 }
 
+/// @brief Preserves HDR texture and occlusion contracts.
 TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
 {
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, 64, 64);
@@ -759,6 +763,7 @@ TEST_F(DeferredEmissionTest, PreservesHdrTextureAndOcclusionContracts)
     device.Shutdown();
 }
 
+/// @brief Consumes final g buffer roughness without filtering across normal boundaries.
 TEST_F(DeferredEmissionTest, ConsumesFinalGBufferRoughnessWithoutFilteringAcrossNormalBoundaries)
 {
     constexpr uint32_t extent = 4;
@@ -872,6 +877,7 @@ TEST_F(DeferredEmissionTest, ConsumesFinalGBufferRoughnessWithoutFilteringAcross
     device.Shutdown();
 }
 
+/// @brief Composite does not reapply resolved screen or ray reflections.
 TEST_F(DeferredEmissionTest, CompositeDoesNotReapplyResolvedScreenOrRayReflections)
 {
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, 64, 64);
@@ -960,6 +966,7 @@ TEST_F(DeferredEmissionTest, CompositeDoesNotReapplyResolvedScreenOrRayReflectio
     device.Shutdown();
 }
 
+/// @brief Resolves screen first specular without blending direct light or emission.
 TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLightOrEmission)
 {
     constexpr uint32_t extent = 4;
@@ -1157,6 +1164,7 @@ TEST_F(DeferredEmissionTest, ResolvesScreenFirstSpecularWithoutBlendingDirectLig
     device.Shutdown();
 }
 
+/// @brief Rejects stale SSR receipt before publishing an old result.
 TEST_F(DeferredEmissionTest, RejectsStaleSsrReceiptBeforePublishingAnOldResult)
 {
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, m_window, 64, 64);
@@ -1209,6 +1217,7 @@ TEST_F(DeferredEmissionTest, RejectsStaleSsrReceiptBeforePublishingAnOldResult)
     device.Shutdown();
 }
 
+/// @brief Produces weighted SSR with material independent confidence and mode specific validation.
 TEST_F(DeferredEmissionTest, ProducesWeightedSsrWithMaterialIndependentConfidenceAndModeSpecificValidation)
 {
     constexpr uint32_t extent = 32;

@@ -16,6 +16,7 @@ protected:
     }
     editor::VolumeFlipbookBakePanel m_panel; editor::OperatorRegistry m_registry; editor::UndoStack m_undo;
 };
+/// @brief Hidden panel can configure nested emitter and look.
 TEST_F(VolumeFlipbookOperatorTest, HiddenPanelCanConfigureNestedEmitterAndLook)
 {
     auto patch = editor::OpData::MakeObject(); patch.Set("source.preset", editor::OpData("Emitter"));
@@ -25,6 +26,7 @@ TEST_F(VolumeFlipbookOperatorTest, HiddenPanelCanConfigureNestedEmitterAndLook)
     EXPECT_EQ(result.data.Find("settings")->Find("source.emitter.count")->AsInt(), 42);
     EXPECT_EQ(result.data.Find("settings")->Find("baseName")->AsString(), "SmokeTest"); EXPECT_FALSE(m_panel.visible);
 }
+/// @brief Invalid ramp ordering keeps all previous settings.
 TEST_F(VolumeFlipbookOperatorTest, InvalidRampOrderingKeepsAllPreviousSettings)
 {
     const auto before = Invoke("volume.flipbook.inspect");
@@ -34,6 +36,7 @@ TEST_F(VolumeFlipbookOperatorTest, InvalidRampOrderingKeepsAllPreviousSettings)
     const auto after = Invoke("volume.flipbook.inspect");
     EXPECT_EQ(after.data.Find("settings")->Find("source.frameCount")->AsInt(), before.data.Find("settings")->Find("source.frameCount")->AsInt());
 }
+/// @brief Unknown fields do not partially start playback.
 TEST_F(VolumeFlipbookOperatorTest, UnknownFieldsDoNotPartiallyStartPlayback)
 {
     auto patch = editor::OpData::MakeObject(); patch.Set("playing", editor::OpData(true)); patch.Set("typo", editor::OpData(1));

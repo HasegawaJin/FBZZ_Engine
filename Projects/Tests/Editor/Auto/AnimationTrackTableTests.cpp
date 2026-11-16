@@ -40,6 +40,7 @@ asset::AnimationClip MakeClip(std::initializer_list<const char*> names)
 
 class AnimationTrackTableTest : public testkit::Fixture {};
 
+/// @brief Exact match precedes canonical match and keeps first duplicate.
 TEST_F(AnimationTrackTableTest, ExactMatchPrecedesCanonicalMatchAndKeepsFirstDuplicate)
 {
     const auto skeleton = MakeSkeleton({ "Hips", "rig:Hips" });
@@ -53,6 +54,7 @@ TEST_F(AnimationTrackTableTest, ExactMatchPrecedesCanonicalMatchAndKeepsFirstDup
     EXPECT_FALSE(tracks.Update(skeleton, &clip, 0));
 }
 
+/// @brief Canonical matching preserves FBX path namespace and helper rules.
 TEST_F(AnimationTrackTableTest, CanonicalMatchingPreservesFbxPathNamespaceAndHelperRules)
 {
     const auto skeleton = MakeSkeleton({ "Hips", "model|rig:Arm_$AssimpFbx$_Rotation", "Missing" });
@@ -66,6 +68,7 @@ TEST_F(AnimationTrackTableTest, CanonicalMatchingPreservesFbxPathNamespaceAndHel
     EXPECT_EQ(tracks[2], nullptr);
 }
 
+/// @brief Asset generation rebinds names edited without moving storage.
 TEST_F(AnimationTrackTableTest, AssetGenerationRebindsNamesEditedWithoutMovingStorage)
 {
     auto skeleton = MakeSkeleton({ "Hips" });
@@ -84,6 +87,7 @@ TEST_F(AnimationTrackTableTest, AssetGenerationRebindsNamesEditedWithoutMovingSt
     EXPECT_EQ(tracks[0], &clip.tracks[0]);
 }
 
+/// @brief Transition clip switch and removal leave primary binding intact.
 TEST_F(AnimationTrackTableTest, TransitionClipSwitchAndRemovalLeavePrimaryBindingIntact)
 {
     const auto skeleton = MakeSkeleton({ "Hips", "Arm" });
@@ -107,6 +111,7 @@ TEST_F(AnimationTrackTableTest, TransitionClipSwitchAndRemovalLeavePrimaryBindin
     EXPECT_EQ(tracksB[1], nullptr);
 }
 
+/// @brief Storage reallocation and skeleton replacement rebuild bindings.
 TEST_F(AnimationTrackTableTest, StorageReallocationAndSkeletonReplacementRebuildBindings)
 {
     auto skeleton = MakeSkeleton({ "Hips" });
@@ -127,6 +132,7 @@ TEST_F(AnimationTrackTableTest, StorageReallocationAndSkeletonReplacementRebuild
     EXPECT_EQ(tracks[1], &clip.tracks[0]);
 }
 
+/// @brief Empty and missing clips clear every node binding.
 TEST_F(AnimationTrackTableTest, EmptyAndMissingClipsClearEveryNodeBinding)
 {
     const auto skeleton = MakeSkeleton({ "Hips", "Arm" });

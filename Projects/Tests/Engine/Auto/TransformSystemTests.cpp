@@ -108,6 +108,7 @@ protected:
     }
 };
 
+/// @brief Late update interpolates world pose without changing local or physics pose.
 TEST_F(TransformSystemTest, LateUpdateInterpolatesWorldPoseWithoutChangingLocalOrPhysicsPose)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -142,6 +143,7 @@ TEST_F(TransformSystemTest, LateUpdateInterpolatesWorldPoseWithoutChangingLocalO
     EXPECT_VEC3_NEAR(child->transform.worldPosition, (math::Vector3{14.0f, 0.0f, 0.0f}), testkit::kLooseTolerance);
 }
 
+/// @brief Empty gameplay pose systems preserve the interpolated hierarchy.
 TEST_F(TransformSystemTest, EmptyGameplayPoseSystemsPreserveTheInterpolatedHierarchy)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -163,6 +165,7 @@ TEST_F(TransformSystemTest, EmptyGameplayPoseSystemsPreserveTheInterpolatedHiera
     ExpectInterpolatedHierarchy(*root, *child);
 }
 
+/// @brief Disabled and unresolved gameplay pose systems preserve the interpolated hierarchy.
 TEST_F(TransformSystemTest, DisabledAndUnresolvedGameplayPoseSystemsPreserveTheInterpolatedHierarchy)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -191,6 +194,7 @@ TEST_F(TransformSystemTest, DisabledAndUnresolvedGameplayPoseSystemsPreserveTheI
     ExpectInterpolatedHierarchy(*root, *child);
 }
 
+/// @brief Animator barrier requires resources and an active enabled owner.
 TEST_F(TransformSystemTest, AnimatorBarrierRequiresResourcesAndAnActiveEnabledOwner)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -227,6 +231,7 @@ TEST_F(TransformSystemTest, AnimatorBarrierRequiresResourcesAndAnActiveEnabledOw
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{22.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
+/// @brief Bone pose producer barrier updates non bone children including resource free ragdoll.
 TEST_F(TransformSystemTest, BonePoseProducerBarrierUpdatesNonBoneChildrenIncludingResourceFreeRagdoll)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -260,6 +265,7 @@ TEST_F(TransformSystemTest, BonePoseProducerBarrierUpdatesNonBoneChildrenIncludi
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{32.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
+/// @brief Checks transform constraints observe the completed socket attachment stage.
 TEST_F(TransformSystemTest, TransformConstraintsObserveTheCompletedSocketAttachmentStage)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -291,6 +297,7 @@ TEST_F(TransformSystemTest, TransformConstraintsObserveTheCompletedSocketAttachm
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{15.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
+/// @brief Spline follower synchronizes its inputs without a constraint pass.
 TEST_F(TransformSystemTest, SplineFollowerSynchronizesItsInputsWithoutAConstraintPass)
 {
     auto& splineParent = m_scene.CreateGameObject("SplineParent");
@@ -323,6 +330,7 @@ TEST_F(TransformSystemTest, SplineFollowerSynchronizesItsInputsWithoutAConstrain
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{20.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
+/// @brief Checks constraint propagates small position changes to inactive children.
 TEST_F(TransformSystemTest, ConstraintPropagatesSmallPositionChangesToInactiveChildren)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -344,6 +352,7 @@ TEST_F(TransformSystemTest, ConstraintPropagatesSmallPositionChangesToInactiveCh
     EXPECT_VEC3_NEAR(child.transform.worldPosition, target.transform.position, 0.00000001f);
 }
 
+/// @brief Camera follow synchronizes current inputs and inactive descendants.
 TEST_F(TransformSystemTest, CameraFollowSynchronizesCurrentInputsAndInactiveDescendants)
 {
     auto& targetParent = m_scene.CreateGameObject("TargetParent");
@@ -375,6 +384,7 @@ TEST_F(TransformSystemTest, CameraFollowSynchronizesCurrentInputsAndInactiveDesc
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{14.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
+/// @brief Disabling camera shake still removes its previously applied pose.
 TEST_F(TransformSystemTest, DisablingCameraShakeStillRemovesItsPreviouslyAppliedPose)
 {
     auto& camera = m_scene.CreateGameObject("Camera");
@@ -403,6 +413,7 @@ TEST_F(TransformSystemTest, DisablingCameraShakeStillRemovesItsPreviouslyApplied
     EXPECT_QUAT_NEAR(shake.appliedRotationOffset, math::Quaternion::Identity(), testkit::kTolerance);
 }
 
+/// @brief Billboard uses the current camera pose and synchronizes inactive descendants.
 TEST_F(TransformSystemTest, BillboardUsesTheCurrentCameraPoseAndSynchronizesInactiveDescendants)
 {
     auto& camera = m_scene.CreateGameObject("Camera");
@@ -424,6 +435,7 @@ TEST_F(TransformSystemTest, BillboardUsesTheCurrentCameraPoseAndSynchronizesInac
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{2.0f, 0.0f, 0.0f}), testkit::kLooseTolerance);
 }
 
+/// @brief Pre physics initializes chunked bodies and preserves existing sync state.
 TEST_F(TransformSystemTest, PrePhysicsInitializesChunkedBodiesAndPreservesExistingSyncState)
 {
     for (int index = 0; index < 129; ++index) {
@@ -454,6 +466,7 @@ TEST_F(TransformSystemTest, PrePhysicsInitializesChunkedBodiesAndPreservesExisti
     }
 }
 
+/// @brief Reuses traversal storage across wide hierarchies and scene replacement.
 TEST_F(TransformSystemTest, ReusesTraversalStorageAcrossWideHierarchiesAndSceneReplacement)
 {
     auto& root = m_scene.CreateGameObject("Wide root");
@@ -480,6 +493,7 @@ TEST_F(TransformSystemTest, ReusesTraversalStorageAcrossWideHierarchiesAndSceneR
 }
 
 } /// @note namespace
+/// @brief Empty optional consumers preserve interpolation and reset renderer visibility.
 TEST_F(TransformSystemTest, EmptyOptionalConsumersPreserveInterpolationAndResetRendererVisibility)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -512,6 +526,7 @@ TEST_F(TransformSystemTest, EmptyOptionalConsumersPreserveInterpolationAndResetR
     ExpectInterpolatedHierarchy(*root, *child);
 }
 
+/// @brief Beam added after an empty update synchronizes the current endpoints.
 TEST_F(TransformSystemTest, BeamAddedAfterAnEmptyUpdateSynchronizesTheCurrentEndpoints)
 {
     auto context = Context();
@@ -536,6 +551,7 @@ TEST_F(TransformSystemTest, BeamAddedAfterAnEmptyUpdateSynchronizesTheCurrentEnd
 }
 
 
+/// @brief Parent first propagation ignores flat storage order and tracks hierarchy edits.
 TEST_F(TransformSystemTest, ParentFirstPropagationIgnoresFlatStorageOrderAndTracksHierarchyEdits)
 {
     auto& leaf = m_scene.CreateGameObject("Leaf");

@@ -84,6 +84,7 @@ protected:
 
 using namespace ai;
 
+/// @brief Traverses direct children after nested subtrees.
 TEST_F(BehaviorTreeRuntimeTest, TraversesDirectChildrenAfterNestedSubtrees)
 {
     ASSERT_TRUE(Prepare({ Node(1, 0, BTNodeType::Sequence), Node(2, 1, BTNodeType::Sequence),
@@ -97,6 +98,7 @@ TEST_F(BehaviorTreeRuntimeTest, TraversesDirectChildrenAfterNestedSubtrees)
     EXPECT_EQ(actions.executed[4], 2);
 }
 
+/// @brief Selects fallback after nested failure.
 TEST_F(BehaviorTreeRuntimeTest, SelectsFallbackAfterNestedFailure)
 {
     ASSERT_TRUE(Prepare({ Node(1, 0, BTNodeType::Selector), Node(2, 1, BTNodeType::Sequence),
@@ -107,6 +109,7 @@ TEST_F(BehaviorTreeRuntimeTest, SelectsFallbackAfterNestedFailure)
     EXPECT_EQ(actions.executed[4], 1);
 }
 
+/// @brief Chooses weighted direct child after nested subtree.
 TEST_F(BehaviorTreeRuntimeTest, ChoosesWeightedDirectChildAfterNestedSubtree)
 {
     auto root = Node(1, 0, BTNodeType::RandomSelector);
@@ -121,6 +124,7 @@ TEST_F(BehaviorTreeRuntimeTest, ChoosesWeightedDirectChildAfterNestedSubtree)
     EXPECT_EQ(actions.executed[4], 2);
 }
 
+/// @brief Aborts every running parallel action exactly once.
 TEST_F(BehaviorTreeRuntimeTest, AbortsEveryRunningParallelActionExactlyOnce)
 {
     ASSERT_TRUE(Prepare({ Node(1, 0, BTNodeType::Parallel), Node(2, 1, BTNodeType::Sequence),
@@ -135,6 +139,7 @@ TEST_F(BehaviorTreeRuntimeTest, AbortsEveryRunningParallelActionExactlyOnce)
     EXPECT_EQ(state.runningLeaf, kInvalidNode);
 }
 
+/// @brief Aborts unfinished parallel branches for either completion policy.
 TEST_F(BehaviorTreeRuntimeTest, AbortsUnfinishedParallelBranchesForEitherCompletionPolicy)
 {
     for (const auto policy : { BTParallelPolicy::RequireAll, BTParallelPolicy::RequireOne }) {
@@ -153,6 +158,7 @@ TEST_F(BehaviorTreeRuntimeTest, AbortsUnfinishedParallelBranchesForEitherComplet
     }
 }
 
+/// @brief Keeps completed parallel children inactive and cooldown across abort.
 TEST_F(BehaviorTreeRuntimeTest, KeepsCompletedParallelChildrenInactiveAndCooldownAcrossAbort)
 {
     ASSERT_TRUE(Prepare({ Node(1, 0, BTNodeType::Parallel), Node(2, 1, BTNodeType::Cooldown),
@@ -169,6 +175,7 @@ TEST_F(BehaviorTreeRuntimeTest, KeepsCompletedParallelChildrenInactiveAndCooldow
     EXPECT_EQ(actions.executed[3], 1);
 }
 
+/// @brief Aborts actions when time limit expires.
 TEST_F(BehaviorTreeRuntimeTest, AbortsActionsWhenTimeLimitExpires)
 {
     auto limit = Node(1, 0, BTNodeType::TimeLimit);
@@ -182,6 +189,7 @@ TEST_F(BehaviorTreeRuntimeTest, AbortsActionsWhenTimeLimitExpires)
     EXPECT_EQ(actions.aborted[2], 1);
 }
 
+/// @brief Aborts actions when condition closes without observer mode.
 TEST_F(BehaviorTreeRuntimeTest, AbortsActionsWhenConditionClosesWithoutObserverMode)
 {
     ASSERT_TRUE(Prepare({ Guard(1, 0), Node(2, 1, BTNodeType::RunScript) }));
@@ -194,6 +202,7 @@ TEST_F(BehaviorTreeRuntimeTest, AbortsActionsWhenConditionClosesWithoutObserverM
     EXPECT_EQ(actions.aborted[2], 1);
 }
 
+/// @brief Observes self leaf guard while sequence cursor skips it.
 TEST_F(BehaviorTreeRuntimeTest, ObservesSelfLeafGuardWhileSequenceCursorSkipsIt)
 {
     for (const auto mode : { AbortMode::Self, AbortMode::None }) {
@@ -212,6 +221,7 @@ TEST_F(BehaviorTreeRuntimeTest, ObservesSelfLeafGuardWhileSequenceCursorSkipsIt)
     }
 }
 
+/// @brief Preempts lower priority through decorator ancestors.
 TEST_F(BehaviorTreeRuntimeTest, PreemptsLowerPriorityThroughDecoratorAncestors)
 {
     ASSERT_TRUE(Prepare({ Node(1, 0, BTNodeType::Selector), Node(2, 1, BTNodeType::TimeLimit),
@@ -230,6 +240,7 @@ TEST_F(BehaviorTreeRuntimeTest, PreemptsLowerPriorityThroughDecoratorAncestors)
     EXPECT_EQ(actions.executed[5], 2);
 }
 
+/// @brief Requires other sequence guards before preempting lower priority.
 TEST_F(BehaviorTreeRuntimeTest, RequiresOtherSequenceGuardsBeforePreemptingLowerPriority)
 {
     ASSERT_TRUE(Prepare({ Node(1, 0, BTNodeType::Selector), Node(2, 1, BTNodeType::Sequence),
@@ -244,6 +255,7 @@ TEST_F(BehaviorTreeRuntimeTest, RequiresOtherSequenceGuardsBeforePreemptingLower
     EXPECT_EQ(actions.executed[6], 2);
 }
 
+/// @brief Shares tree while keeping wait and restart state per instance.
 TEST_F(BehaviorTreeRuntimeTest, SharesTreeWhileKeepingWaitAndRestartStatePerInstance)
 {
     auto wait = Node(1, 0, BTNodeType::Wait);
@@ -262,6 +274,7 @@ TEST_F(BehaviorTreeRuntimeTest, SharesTreeWhileKeepingWaitAndRestartStatePerInst
     EXPECT_EQ(other.rngState, 17u);
 }
 
+/// @brief Compares adjacent large integers without float rounding.
 TEST_F(BehaviorTreeRuntimeTest, ComparesAdjacentLargeIntegersWithoutFloatRounding)
 {
     auto compare = Node(1, 0, BTNodeType::BlackboardCompare);
@@ -277,6 +290,7 @@ TEST_F(BehaviorTreeRuntimeTest, ComparesAdjacentLargeIntegersWithoutFloatRoundin
     EXPECT_EQ(Tick(), BTStatus::Success);
 }
 
+/// @brief Rejects unsafe observers and excessive execution depth.
 TEST_F(BehaviorTreeRuntimeTest, RejectsUnsafeObserversAndExcessiveExecutionDepth)
 {
     BehaviorTreeAsset asset;

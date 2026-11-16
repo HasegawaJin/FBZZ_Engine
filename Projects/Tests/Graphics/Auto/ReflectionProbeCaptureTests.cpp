@@ -318,6 +318,7 @@ private:
     uint32_t m_validationFailures = 0;
 };
 
+/// @brief Ignores previous camera providers and keeps main constants unchanged.
 TEST_F(ReflectionProbeCaptureTest, IgnoresPreviousCameraProvidersAndKeepsMainConstantsUnchanged)
 {
     auto context = Context();
@@ -343,6 +344,7 @@ TEST_F(ReflectionProbeCaptureTest, IgnoresPreviousCameraProvidersAndKeepsMainCon
     End();
     EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{}), 0.001f);
 }
+/// @brief Resident instances match ordinary capture across camera and provider changes.
 TEST_F(ReflectionProbeCaptureTest, ResidentInstancesMatchOrdinaryCaptureAcrossCameraAndProviderChanges)
 {
     auto context=Context();ProbeMaterialConstants material;
@@ -367,6 +369,7 @@ TEST_F(ReflectionProbeCaptureTest, ResidentInstancesMatchOrdinaryCaptureAcrossCa
         EXPECT_EQ(ConstantBytes(m_handles.shadowCB,m_handles.punctualShadowCB),before);
     }
 }
+/// @brief Resident probe owner does not capture itself.
 TEST_F(ReflectionProbeCaptureTest, ResidentProbeOwnerDoesNotCaptureItself)
 {
     auto context=Context();ProbeMaterialConstants material;
@@ -381,6 +384,7 @@ TEST_F(ReflectionProbeCaptureTest, ResidentProbeOwnerDoesNotCaptureItself)
     EXPECT_VEC3_NEAR(CubeColor(),(math::Vector3{}),0.001f);
 }
 
+/// @brief Keeps current cloud and light shape while unbinding camera textures.
 TEST_F(ReflectionProbeCaptureTest, KeepsCurrentCloudAndLightShapeWhileUnbindingCameraTextures)
 {
     auto context = Context();
@@ -440,6 +444,7 @@ TEST_F(ReflectionProbeCaptureTest, KeepsCurrentCloudAndLightShapeWhileUnbindingC
     }
 }
 
+/// @brief Captures later submesh when first material is invalid.
 TEST_F(ReflectionProbeCaptureTest, CapturesLaterSubmeshWhenFirstMaterialIsInvalid)
 {
     const auto second = m_scene->items[0];
@@ -455,6 +460,7 @@ TEST_F(ReflectionProbeCaptureTest, CapturesLaterSubmeshWhenFirstMaterialIsInvali
     EXPECT_GT(CubeColor().x, 0.05f);
 }
 
+/// @brief Hidden material slot does not occlude later visible submesh.
 TEST_F(ReflectionProbeCaptureTest, HiddenMaterialSlotDoesNotOccludeLaterVisibleSubmesh)
 {
     auto second = m_scene->items[0];
@@ -480,6 +486,7 @@ TEST_F(ReflectionProbeCaptureTest, HiddenMaterialSlotDoesNotOccludeLaterVisibleS
     EXPECT_GT(color.y, 1.0f);
 }
 
+/// @brief Opaque capture precedes transparent even when scene order is reversed.
 TEST_F(ReflectionProbeCaptureTest, OpaqueCapturePrecedesTransparentEvenWhenSceneOrderIsReversed)
 {
     auto opaque = m_scene->items[0];
@@ -504,6 +511,7 @@ TEST_F(ReflectionProbeCaptureTest, OpaqueCapturePrecedesTransparentEvenWhenScene
     EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{1,1,0}), 0.01f);
 }
 
+/// @brief Transparent capture uses face depth instead of scene order.
 TEST_F(ReflectionProbeCaptureTest, TransparentCaptureUsesFaceDepthInsteadOfSceneOrder)
 {
     m_scene->items[0].material.capabilities.blend = r::BlendMode::ALPHA_BLEND;
@@ -530,6 +538,7 @@ TEST_F(ReflectionProbeCaptureTest, TransparentCaptureUsesFaceDepthInsteadOfScene
     EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{1,0.5f,0}), 0.01f);
 }
 
+/// @brief Light probe capture includes later opaque slots and respects hidden slots.
 TEST_F(ReflectionProbeCaptureTest, LightProbeCaptureIncludesLaterOpaqueSlotsAndRespectsHiddenSlots)
 {
     auto context = Context(); context.legacyShapedLightCount = 0;
@@ -571,6 +580,7 @@ TEST_F(ReflectionProbeCaptureTest, LightProbeCaptureIncludesLaterOpaqueSlotsAndR
     }
 }
 
+/// @brief Capture buffers are manager owned and recreated after reset.
 TEST_F(ReflectionProbeCaptureTest, CaptureBuffersAreManagerOwnedAndRecreatedAfterReset)
 {
     r::ResourceManager other(*m_bundle.renderer);

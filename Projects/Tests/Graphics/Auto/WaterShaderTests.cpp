@@ -1200,6 +1200,7 @@ protected:
     }
 };
 
+/// @brief Production raster strip matches regular and adaptive water.
 TEST_F(ProductionWaterShaderTest, ProductionRasterStripMatchesRegularAndAdaptiveWater)
 {
     ASSERT_TRUE(PrepareRasterStrips(16));
@@ -1239,6 +1240,7 @@ TEST_F(ProductionWaterShaderTest, ProductionRasterStripMatchesRegularAndAdaptive
     }
 }
 
+/// @brief Checks benchmark water raster list and strip.
 TEST_F(ProductionWaterShaderTest, DISABLED_BenchmarkWaterRasterListAndStrip)
 {
     ASSERT_TRUE(PrepareRasterStrips(16));
@@ -1270,6 +1272,7 @@ TEST_F(ProductionWaterShaderTest, DISABLED_BenchmarkWaterRasterListAndStrip)
     }
 }
 
+/// @brief Production horizon medium atlas follows the camera above and below water.
 TEST_F(WaterShaderTest, ProductionHorizonMediumAtlasFollowsTheCameraAboveAndBelowWater)
 {
     ASSERT_TRUE(PrepareSharedGrid(8));
@@ -1297,6 +1300,7 @@ TEST_F(WaterShaderTest, ProductionHorizonMediumAtlasFollowsTheCameraAboveAndBelo
     }
 }
 
+/// @brief Production horizon with exclusions survives leaving the finite medium.
 TEST_F(WaterShaderTest, ProductionHorizonWithExclusionsSurvivesLeavingTheFiniteMedium)
 {
     ASSERT_TRUE(PrepareSharedGrid(8));
@@ -1326,6 +1330,7 @@ TEST_F(WaterShaderTest, ProductionHorizonWithExclusionsSurvivesLeavingTheFiniteM
     }
 }
 
+/// @brief Production horizon tracks camera and settings with morph and culling.
 TEST_F(WaterShaderTest, ProductionHorizonTracksCameraAndSettingsWithMorphAndCulling)
 {
     ASSERT_TRUE(PrepareSharedGrid(8));
@@ -1358,6 +1363,7 @@ TEST_F(WaterShaderTest, ProductionHorizonTracksCameraAndSettingsWithMorphAndCull
     }
 }
 
+/// @brief Orthographic water uses the distance between surface and bottom.
 TEST_F(WaterShaderTest, OrthographicWaterUsesTheDistanceBetweenSurfaceAndBottom)
 {
     renderer::Camera camera;
@@ -1390,6 +1396,7 @@ TEST_F(WaterShaderTest, OrthographicWaterUsesTheDistanceBetweenSurfaceAndBottom)
     }
 }
 
+/// @brief Selection mask shares focused grid waves and edge discard.
 TEST_F(WaterShaderTest, SelectionMaskSharesFocusedGridWavesAndEdgeDiscard)
 {
     renderer::Camera camera;
@@ -1437,6 +1444,7 @@ TEST_F(WaterShaderTest, SelectionMaskSharesFocusedGridWavesAndEdgeDiscard)
     }
 }
 
+/// @brief Project appearance uses its own reflected buffer and matches indexed and instanced geometry.
 TEST_F(WaterShaderTest, ProjectAppearanceUsesItsOwnReflectedBufferAndMatchesIndexedAndInstancedGeometry)
 {
     auto& resources = Resources();
@@ -1527,6 +1535,7 @@ TEST_F(WaterShaderTest, ProjectAppearanceUsesItsOwnReflectedBufferAndMatchesInde
     EXPECT_GT(tintDifference, 100.0);
 }
 
+/// @brief Production rejects unknown water deformation and isolates its material bindings.
 TEST_F(ProductionWaterShaderTest, ProductionRejectsUnknownWaterDeformationAndIsolatesItsMaterialBindings)
 {
     auto& resources = Resources();
@@ -1619,6 +1628,7 @@ float4 PSMain(Pixel p) : SV_Target0 { return rogueTint; }
     RecordProperty("productionWaterFallback", "undeclared/wrong vertex/wrong surface preserve shared pixels and isolate custom b2/textures");
 }
 
+/// @brief Production declared appearance preserves its reflected parameters.
 TEST_F(ProductionWaterShaderTest, ProductionDeclaredAppearancePreservesItsReflectedParameters)
 {
     auto& resources = Resources();
@@ -1684,6 +1694,7 @@ TEST_F(ProductionWaterShaderTest, ProductionDeclaredAppearancePreservesItsReflec
     RecordProperty("productionWaterAppearance", "declared shared geometry retains custom pixel shader and reflected b2");
 }
 
+/// @brief Whole shared patch preserves the legacy uniform grid output.
 TEST_F(WaterShaderTest, WholeSharedPatchPreservesTheLegacyUniformGridOutput)
 {
     renderer::Camera camera;
@@ -1741,6 +1752,7 @@ TEST_F(WaterShaderTest, WholeSharedPatchPreservesTheLegacyUniformGridOutput)
     EXPECT_LE(maximumDifference, 0.001f);
 }
 
+/// @brief Mixed patch LODs keep the wavy surface watertight and selectable.
 TEST_F(WaterShaderTest, MixedPatchLodsKeepTheWavySurfaceWatertightAndSelectable)
 {
     constexpr uint32_t cells = 4;
@@ -1816,6 +1828,7 @@ TEST_F(WaterShaderTest, MixedPatchLodsKeepTheWavySurfaceWatertightAndSelectable)
     }
 }
 
+/// @brief Instanced patch runs preserve wave morph color and selection pixels.
 TEST_F(WaterShaderTest, InstancedPatchRunsPreserveWaveMorphColorAndSelectionPixels)
 {
     ASSERT_TRUE(PrepareSharedGrid(4));
@@ -1878,6 +1891,7 @@ TEST_F(WaterShaderTest, InstancedPatchRunsPreserveWaveMorphColorAndSelectionPixe
     }
 }
 
+/// @brief Mesh shader matches indexed water for stitched morph patches and dispatch modes.
 TEST_F(WaterShaderTest, MeshShaderMatchesIndexedWaterForStitchedMorphPatchesAndDispatchModes)
 {
     auto& device = *m_bundle.renderer;
@@ -1973,6 +1987,7 @@ TEST_F(WaterShaderTest, MeshShaderMatchesIndexedWaterForStitchedMorphPatchesAndD
     }
 }
 
+/// @brief Selection pass keeps mirrored water despite the shared backface culling state.
 TEST_F(WaterShaderTest, SelectionPassKeepsMirroredWaterDespiteTheSharedBackfaceCullingState)
 {
     renderer::Camera camera;
@@ -2010,6 +2025,7 @@ TEST_F(WaterShaderTest, SelectionPassKeepsMirroredWaterDespiteTheSharedBackfaceC
     EXPECT_LT(visible, EXTENT * EXTENT - 1000u);
 }
 
+/// @brief Checks small waves whiten their crests and preserve the trough color.
 TEST_F(WaterShaderTest, SmallWavesWhitenTheirCrestsAndPreserveTheTroughColor)
 {
     renderer::Camera camera;
@@ -2079,6 +2095,7 @@ TEST_F(WaterShaderTest, SmallWavesWhitenTheirCrestsAndPreserveTheTroughColor)
     EXPECT_LE(independentDifference, 0.001f);
 }
 
+/// @brief Past crests leave a weaker moving trail and foam needs light.
 TEST_F(WaterShaderTest, PastCrestsLeaveAWeakerMovingTrailAndFoamNeedsLight)
 {
     renderer::Camera camera;
@@ -2159,6 +2176,7 @@ TEST_F(WaterShaderTest, PastCrestsLeaveAWeakerMovingTrailAndFoamNeedsLight)
     EXPECT_LE(brightest, 0.0001f);
 }
 
+/// @brief Horizon breaker foam fades in at the crest coverage threshold.
 TEST_F(WaterShaderTest, HorizonBreakerFoamFadesInAtTheCrestCoverageThreshold)
 {
     constexpr float AMPLITUDE = 2.0f;
@@ -2200,6 +2218,7 @@ TEST_F(WaterShaderTest, HorizonBreakerFoamFadesInAtTheCrestCoverageThreshold)
     EXPECT_GT(fullCoverage[center], belowThreshold[center] + 0.10f);
 }
 
+/// @brief Far ocean patches remove the finite edge discard and remain selectable.
 TEST_F(WaterShaderTest, FarOceanPatchesRemoveTheFiniteEdgeDiscardAndRemainSelectable)
 {
     renderer::Camera camera;
@@ -2243,6 +2262,7 @@ TEST_F(WaterShaderTest, FarOceanPatchesRemoveTheFiniteEdgeDiscardAndRemainSelect
     EXPECT_EQ(outsideVisible, 30u * 64u);
 }
 
+/// @brief Far ocean stops repeating the clamped ripple outside the water body.
 TEST_F(WaterShaderTest, FarOceanStopsRepeatingTheClampedRippleOutsideTheWaterBody)
 {
     renderer::Camera camera;
@@ -2295,6 +2315,7 @@ TEST_F(WaterShaderTest, FarOceanStopsRepeatingTheClampedRippleOutsideTheWaterBod
     EXPECT_GT(std::abs(neutralRed / samples - repeatedRed / samples), 0.02);
 }
 
+/// @brief Packed terrain depth keeps byte carries smooth and rejects missing or dry bottoms.
 TEST_F(WaterShaderTest, PackedTerrainDepthKeepsByteCarriesSmoothAndRejectsMissingOrDryBottoms)
 {
     renderer::Camera camera;
@@ -2359,6 +2380,7 @@ TEST_F(WaterShaderTest, PackedTerrainDepthKeepsByteCarriesSmoothAndRejectsMissin
     EXPECT_LE(invalidBottomDifference, 0.001f);
 }
 
+/// @brief Clipped terrain depth does not whiten deep water with a shallow physical depth limit.
 TEST_F(WaterShaderTest, ClippedTerrainDepthDoesNotWhitenDeepWaterWithAShallowPhysicalDepthLimit)
 {
     renderer::Camera camera;
@@ -2395,6 +2417,7 @@ TEST_F(WaterShaderTest, ClippedTerrainDepthDoesNotWhitenDeepWaterWithAShallowPhy
     EXPECT_LE(maximumDifference, 0.001f);
 }
 
+/// @brief Additional wave count and phase offsets change projected coverage.
 TEST_F(WaterShaderTest, AdditionalWaveCountAndPhaseOffsetsChangeProjectedCoverage)
 {
     renderer::Camera camera;
@@ -2467,6 +2490,7 @@ TEST_F(WaterShaderTest, AdditionalWaveCountAndPhaseOffsetsChangeProjectedCoverag
     EXPECT_GT(std::abs(fifthWave.centerY - zeroPhase.centerY), 8.0);
 }
 
+/// @brief Coefficient optics uses zero extinction and RGB Beer lambert transmission.
 TEST_F(WaterShaderTest, CoefficientOpticsUsesZeroExtinctionAndRgbBeerLambertTransmission)
 {
     renderer::Camera camera;
@@ -2521,6 +2545,7 @@ TEST_F(WaterShaderTest, CoefficientOpticsUsesZeroExtinctionAndRgbBeerLambertTran
     }
 }
 
+/// @brief Horizon refraction uses Snell distance and falls back outside the search budget.
 TEST_F(WaterShaderTest, HorizonRefractionUsesSnellDistanceAndFallsBackOutsideTheSearchBudget)
 {
     renderer::Camera camera;
@@ -2558,6 +2583,7 @@ TEST_F(WaterShaderTest, HorizonRefractionUsesSnellDistanceAndFallsBackOutsideThe
     }
 }
 
+/// @brief Horizon refraction rejects foreground color from adjacent texels.
 TEST_F(WaterShaderTest, HorizonRefractionRejectsForegroundColorFromAdjacentTexels)
 {
     renderer::Camera camera;
@@ -2627,6 +2653,7 @@ TEST_F(WaterShaderTest, HorizonRefractionRejectsForegroundColorFromAdjacentTexel
     }
 }
 
+/// @brief Horizon transmission uses dielectric fresnel at normal and oblique incidence.
 TEST_F(WaterShaderTest, HorizonTransmissionUsesDielectricFresnelAtNormalAndObliqueIncidence)
 {
     renderer::Camera camera;
@@ -2656,6 +2683,7 @@ TEST_F(WaterShaderTest, HorizonTransmissionUsesDielectricFresnelAtNormalAndObliq
     }
 }
 
+/// @brief Checks horizon direct scatter accounts for the incident and outgoing Beer paths.
 TEST_F(WaterShaderTest, HorizonDirectScatterAccountsForTheIncidentAndOutgoingBeerPaths)
 {
     renderer::Camera camera;
@@ -2694,6 +2722,7 @@ TEST_F(WaterShaderTest, HorizonDirectScatterAccountsForTheIncidentAndOutgoingBee
     }
 }
 
+/// @brief Horizon deep bottom and open water have matching scattering at grazing incidence.
 TEST_F(WaterShaderTest, HorizonDeepBottomAndOpenWaterHaveMatchingScatteringAtGrazingIncidence)
 {
     renderer::Camera camera;
@@ -2739,6 +2768,7 @@ TEST_F(WaterShaderTest, HorizonDeepBottomAndOpenWaterHaveMatchingScatteringAtGra
         EXPECT_NEAR(pixels[bottom + channel], pixels[open + channel], 0.002f);
 }
 
+/// @brief Checks horizon scattering brightens the sunward swell face.
 TEST_F(WaterShaderTest, HorizonScatteringBrightensTheSunwardSwellFace)
 {
     renderer::Camera camera;
@@ -2777,6 +2807,7 @@ TEST_F(WaterShaderTest, HorizonScatteringBrightensTheSunwardSwellFace)
     }
 }
 
+/// @brief Horizon reflection retains long wave phase beyond the ripple filter.
 TEST_F(WaterShaderTest, HorizonReflectionRetainsLongWavePhaseBeyondTheRippleFilter)
 {
     renderer::Camera camera;
@@ -2823,6 +2854,7 @@ TEST_F(WaterShaderTest, HorizonReflectionRetainsLongWavePhaseBeyondTheRippleFilt
     EXPECT_GT(sumDifference / (32 * 32), 0.001);
 }
 
+/// @brief Horizon open water scattering is independent of the legacy depth tint distance.
 TEST_F(WaterShaderTest, HorizonOpenWaterScatteringIsIndependentOfTheLegacyDepthTintDistance)
 {
     renderer::Camera camera;
@@ -2850,6 +2882,7 @@ TEST_F(WaterShaderTest, HorizonOpenWaterScatteringIsIndependentOfTheLegacyDepthT
     EXPECT_NEAR(shortTint[center + 2], longTint[center + 2], 0.001f);
 }
 
+/// @brief Orthographic coefficient optics keeps equal depth across the plane and camera heights.
 TEST_F(WaterShaderTest, OrthographicCoefficientOpticsKeepsEqualDepthAcrossThePlaneAndCameraHeights)
 {
     renderer::Camera camera;
@@ -2914,6 +2947,7 @@ TEST_F(WaterShaderTest, OrthographicCoefficientOpticsKeepsEqualDepthAcrossThePla
         EXPECT_NEAR(phaseHeights[0][channel], phaseHeights[1][channel], 0.01f);
 }
 
+/// @brief Henyey greenstein scattering tracks forward and backward light.
 TEST_F(WaterShaderTest, HenyeyGreensteinScatteringTracksForwardAndBackwardLight)
 {
     renderer::Camera camera;
@@ -2955,6 +2989,7 @@ TEST_F(WaterShaderTest, HenyeyGreensteinScatteringTracksForwardAndBackwardLight)
     EXPECT_GT(forwardMean, backwardMean * 4.0 + 0.05);
 }
 
+/// @brief Coefficient optics does not emit light into a black scene.
 TEST_F(WaterShaderTest, CoefficientOpticsDoesNotEmitLightIntoABlackScene)
 {
     renderer::Camera camera;
@@ -2984,6 +3019,7 @@ TEST_F(WaterShaderTest, CoefficientOpticsDoesNotEmitLightIntoABlackScene)
     EXPECT_LE(brightest, 0.001f);
 }
 
+/// @brief Rectangle without bottom rejects background transmission and keeps lit scattering.
 TEST_F(WaterShaderTest, RectangleWithoutBottomRejectsBackgroundTransmissionAndKeepsLitScattering)
 {
     renderer::Camera camera;
@@ -3061,6 +3097,7 @@ TEST_F(WaterShaderTest, RectangleWithoutBottomRejectsBackgroundTransmissionAndKe
     }
 }
 
+/// @brief Checks underwater normal view transmits air through the Snell window without self emission.
 TEST_F(WaterShaderTest, UnderwaterNormalViewTransmitsAirThroughTheSnellWindowWithoutSelfEmission)
 {
     renderer::Camera camera;
@@ -3121,6 +3158,7 @@ TEST_F(WaterShaderTest, UnderwaterNormalViewTransmitsAirThroughTheSnellWindowWit
             }
 }
 
+/// @brief Underwater grazing view totally reflects and rejects air color transmission.
 TEST_F(WaterShaderTest, UnderwaterGrazingViewTotallyReflectsAndRejectsAirColorTransmission)
 {
     renderer::Camera camera;
@@ -3173,6 +3211,7 @@ TEST_F(WaterShaderTest, UnderwaterGrazingViewTotallyReflectsAndRejectsAirColorTr
     }
 }
 
+/// @brief Checks horizon terrain foam favors breaking crests over the trough.
 TEST_F(WaterShaderTest, HorizonTerrainFoamFavorsBreakingCrestsOverTheTrough)
 {
     renderer::Camera camera;
@@ -3216,6 +3255,7 @@ TEST_F(WaterShaderTest, HorizonTerrainFoamFavorsBreakingCrestsOverTheTrough)
     EXPECT_LE(noFoam[center], 0.001f);
 }
 
+/// @brief Horizon retreat keeps foam from past breakers with offshore whitecaps disabled.
 TEST_F(WaterShaderTest, HorizonRetreatKeepsFoamFromPastBreakersWithOffshoreWhitecapsDisabled)
 {
     renderer::Camera camera;
@@ -3260,6 +3300,7 @@ TEST_F(WaterShaderTest, HorizonRetreatKeepsFoamFromPastBreakersWithOffshoreWhite
     EXPECT_NEAR(expired[center], instant[center], 0.001f);
 }
 
+/// @brief Horizon shore foam uses nearby opaque depth when terrain atlas is coarse.
 TEST_F(WaterShaderTest, HorizonShoreFoamUsesNearbyOpaqueDepthWhenTerrainAtlasIsCoarse)
 {
     renderer::Camera camera;
@@ -3296,6 +3337,7 @@ TEST_F(WaterShaderTest, HorizonShoreFoamUsesNearbyOpaqueDepthWhenTerrainAtlasIsC
     EXPECT_LE(finite[center], 0.001f);
 }
 
+/// @brief Terrain depth ignores legacy mask red while fallback still produces lit foam.
 TEST_F(WaterShaderTest, TerrainDepthIgnoresLegacyMaskRedWhileFallbackStillProducesLitFoam)
 {
     renderer::Camera camera;
@@ -3350,6 +3392,7 @@ TEST_F(WaterShaderTest, TerrainDepthIgnoresLegacyMaskRedWhileFallbackStillProduc
     EXPECT_GT(fallbackBrightening / static_cast<double>(samples), 0.2);
 }
 
+/// @brief Sharp SSR hit fades monotonically to environment with roughness.
 TEST_F(WaterShaderTest, SharpSsrHitFadesMonotonicallyToEnvironmentWithRoughness)
 {
     renderer::Camera camera;
@@ -3439,6 +3482,7 @@ TEST_F(WaterShaderTest, SharpSsrHitFadesMonotonicallyToEnvironmentWithRoughness)
         EXPECT_NEAR(halfMean[channel], (means[0][channel] + fallbackMean[channel]) * 0.5, 0.001);
 }
 
+/// @brief Detail nyquist cutoff is continuous and filtered slopes still broaden sunlight.
 TEST_F(WaterShaderTest, DetailNyquistCutoffIsContinuousAndFilteredSlopesStillBroadenSunlight)
 {
     renderer::Camera camera;
@@ -3508,6 +3552,7 @@ TEST_F(WaterShaderTest, DetailNyquistCutoffIsContinuousAndFilteredSlopesStillBro
     EXPECT_GT(filteredTail, smoothTail + 0.001);
 }
 
+/// @brief Wave slope remains continuous across fine and coarse patch boundaries.
 TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBoundaries)
 {
     renderer::Camera camera;
@@ -3589,6 +3634,7 @@ TEST_F(WaterShaderTest, WaveSlopeRemainsContinuousAcrossFineAndCoarsePatchBounda
     }
 }
 
+/// @brief Ocean optics comparison produces controlled high resolution captures.
 TEST_F(WaterShaderTest, OceanOpticsComparisonProducesControlledHighResolutionCaptures)
 {
     constexpr uint32_t visualExtent = 512;
@@ -3696,6 +3742,7 @@ TEST_F(WaterShaderTest, OceanOpticsComparisonProducesControlledHighResolutionCap
     EXPECT_GT(luminance / (visualExtent * visualExtent * 3u), 0.005);
 }
 
+/// @brief Shallow terrain depth fades wave geometry and preserves dry missing and clipped semantics.
 TEST_F(WaterShaderTest, ShallowTerrainDepthFadesWaveGeometryAndPreservesDryMissingAndClippedSemantics)
 {
     renderer::Camera camera;
@@ -3761,6 +3808,7 @@ TEST_F(WaterShaderTest, ShallowTerrainDepthFadesWaveGeometryAndPreservesDryMissi
     EXPECT_GT(coverageDifference(partialField, legacyWater), 10u);
 }
 
+/// @brief Checks mixed patch morph changes wave coverage and keeps color and selection aligned.
 TEST_F(WaterShaderTest, MixedPatchMorphChangesWaveCoverageAndKeepsColorAndSelectionAligned)
 {
     constexpr uint32_t cells = 4;
@@ -3849,6 +3897,7 @@ TEST_F(WaterShaderTest, MixedPatchMorphChangesWaveCoverageAndKeepsColorAndSelect
     EXPECT_GT(morphCoverageChanges, 8u);
 }
 
+/// @brief Spline triangle keeps its authored footprint in color and selection.
 TEST_F(WaterShaderTest, SplineTriangleKeepsItsAuthoredFootprintInColorAndSelection)
 {
     renderer::Camera camera;
@@ -3893,6 +3942,7 @@ TEST_F(WaterShaderTest, SplineTriangleKeepsItsAuthoredFootprintInColorAndSelecti
     Resources().Release(buffers.second);
 }
 
+/// @brief Checks spline depth caps optical path and authored flow advects surface detail.
 TEST_F(WaterShaderTest, SplineDepthCapsOpticalPathAndAuthoredFlowAdvectsSurfaceDetail)
 {
     renderer::Camera camera;
@@ -3963,6 +4013,7 @@ TEST_F(WaterShaderTest, SplineDepthCapsOpticalPathAndAuthoredFlowAdvectsSurfaceD
     Resources().Release(flowMesh.second);
     Resources().Release(detailNoise);
 }
+/// @brief Checks spline detail travels at the authored world velocity before octave rotation.
 TEST_F(WaterShaderTest, SplineDetailTravelsAtTheAuthoredWorldVelocityBeforeOctaveRotation)
 {
     renderer::Camera camera;
@@ -4013,6 +4064,7 @@ TEST_F(WaterShaderTest, SplineDetailTravelsAtTheAuthoredWorldVelocityBeforeOctav
     }
     Resources().Release(noise);
 }
+/// @brief Production medium atlas tracks shared wave displacement and releases empty view bindings.
 TEST_F(WaterShaderTest, ProductionMediumAtlasTracksSharedWaveDisplacementAndReleasesEmptyViewBindings)
 {
     auto water = MakeOpticalWater();
@@ -4049,6 +4101,7 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasTracksSharedWaveDisplacementAndRele
     EXPECT_GT(heightChange / covered, 0.05);
 }
 
+/// @brief Production medium atlas keeps flat and sloped terrain bottom fixed while waves move.
 TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsFlatAndSlopedTerrainBottomFixedWhileWavesMove)
 {
     auto water = MakeOpticalWater();
@@ -4093,6 +4146,7 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsFlatAndSlopedTerrainBottomFixe
     }
 }
 
+/// @brief Production medium atlas moves the horizon shoreline across the mean water level.
 TEST_F(WaterShaderTest, ProductionMediumAtlasMovesTheHorizonShorelineAcrossTheMeanWaterLevel)
 {
     auto water = MakeOpticalWater();
@@ -4131,6 +4185,7 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasMovesTheHorizonShorelineAcrossTheMe
     EXPECT_NEAR(trough.pixels[seaPixel + 1], 0.0f, 0.001f);
 }
 
+/// @brief Production medium atlas preserves spline coverage height and explicit zero depth.
 TEST_F(WaterShaderTest, ProductionMediumAtlasPreservesSplineCoverageHeightAndExplicitZeroDepth)
 {
     const auto water = MakeOpticalWater();
@@ -4161,6 +4216,7 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasPreservesSplineCoverageHeightAndExp
     EXPECT_GT(maxHeight, 0.5f);
 }
 
+/// @brief Production medium atlas keeps the water column when a dry box cuts the surface.
 TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsTheWaterColumnWhenADryBoxCutsTheSurface)
 {
     const auto water = MakeOpticalWater();
@@ -4175,6 +4231,7 @@ TEST_F(WaterShaderTest, ProductionMediumAtlasKeepsTheWaterColumnWhenADryBoxCutsT
     EXPECT_GT(excluded.pixels[center + 3], 0.99f);
     EXPECT_NEAR(excluded.pixels[center + 1], 12, 0.001f);
 }
+/// @brief Production interface coverage matches selection after horizontal wave and surface exclusion.
 TEST_F(WaterShaderTest, ProductionInterfaceCoverageMatchesSelectionAfterHorizontalWaveAndSurfaceExclusion)
 {
     auto water = MakeOpticalWater();

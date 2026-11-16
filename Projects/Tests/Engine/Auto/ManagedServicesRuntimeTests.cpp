@@ -101,6 +101,7 @@ protected:
     }
 };
 
+/// @brief Checks update facades transfer animator audio UI camera and parent navigation.
 TEST_F(ManagedServicesRuntimeTest, UpdateFacadesTransferAnimatorAudioUiCameraAndParentNavigation)
 {
     auto& target = m_scene.CreateGameObject("Actor");
@@ -126,6 +127,7 @@ TEST_F(ManagedServicesRuntimeTest, UpdateFacadesTransferAnimatorAudioUiCameraAnd
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Instanced meshes write and read through actual CLR without unsupported.
 TEST_F(ManagedServicesRuntimeTest, InstancedMeshesWriteAndReadThroughActualClrWithoutUnsupported)
 {
     auto& row = m_owner->AddComponent<scene::InstancedMeshComponent>();
@@ -141,6 +143,7 @@ TEST_F(ManagedServicesRuntimeTest, InstancedMeshesWriteAndReadThroughActualClrWi
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Instanced meshes are readable from draw scope.
 TEST_F(ManagedServicesRuntimeTest, InstancedMeshesAreReadableFromDrawScope)
 {
     m_owner->AddComponent<scene::InstancedMeshComponent>();
@@ -153,6 +156,7 @@ TEST_F(ManagedServicesRuntimeTest, InstancedMeshesAreReadableFromDrawScope)
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Instanced meshes mutation remains forbidden from draw scope.
 TEST_F(ManagedServicesRuntimeTest, InstancedMeshesMutationRemainsForbiddenFromDrawScope)
 {
     auto& row = m_owner->AddComponent<scene::InstancedMeshComponent>();
@@ -165,6 +169,7 @@ TEST_F(ManagedServicesRuntimeTest, InstancedMeshesMutationRemainsForbiddenFromDr
     EXPECT_TRUE(row.m_instanceSetRef.path.empty());
 }
 
+/// @brief Fixed facades change collider and body and character through native dispatch.
 TEST_F(ManagedServicesRuntimeTest, FixedFacadesChangeColliderAndBodyAndCharacterThroughNativeDispatch)
 {
     auto& target = m_scene.CreateGameObject("Character");
@@ -182,6 +187,7 @@ TEST_F(ManagedServicesRuntimeTest, FixedFacadesChangeColliderAndBodyAndCharacter
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Checks wrong phase collider mutation faults without changing native shape.
 TEST_F(ManagedServicesRuntimeTest, WrongPhaseColliderMutationFaultsWithoutChangingNativeShape)
 {
     auto& sphere = m_owner->AddComponent<scene::SphereColliderComponent>();
@@ -191,6 +197,7 @@ TEST_F(ManagedServicesRuntimeTest, WrongPhaseColliderMutationFaultsWithoutChangi
     EXPECT_FLOAT_EQ(sphere.radius, before); EXPECT_EQ(sphere.collider.get(), shape);
 }
 
+/// @brief Filtered queries and deferred removal keep borrowed shapes safe until cleanup.
 TEST_F(ManagedServicesRuntimeTest, FilteredQueriesAndDeferredRemovalKeepBorrowedShapesSafeUntilCleanup)
 {
     auto& target = m_scene.CreateGameObject("Hit"); target.layer = 2;
@@ -214,6 +221,7 @@ TEST_F(ManagedServicesRuntimeTest, FilteredQueriesAndDeferredRemovalKeepBorrowed
     m_world.BeginSceneSync(); m_world.EndSceneSync(); m_world.Step(1.0f / 60.0f);
     EXPECT_TRUE(body.IsFiniteState()); EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
+/// @brief Paged component lookup includes all scripts beyond 4096 and keeps insufficient output.
 TEST_F(ManagedServicesRuntimeTest, PagedComponentLookupIncludesAllScriptsBeyond4096AndKeepsInsufficientOutput)
 {
     auto* component = m_owner->GetComponent<scene::ScriptComponent>();
@@ -232,6 +240,7 @@ TEST_F(ManagedServicesRuntimeTest, PagedComponentLookupIncludesAllScriptsBeyond4
     EXPECT_EQ(Field("succeeded").integer, 1);
 }
 
+/// @brief Paged service results handle large blend collections and large text.
 TEST_F(ManagedServicesRuntimeTest, PagedServiceResultsHandleLargeBlendCollectionsAndLargeText)
 {
     auto& animator = m_owner->AddComponent<scene::AnimatorComponent>();
@@ -247,6 +256,7 @@ TEST_F(ManagedServicesRuntimeTest, PagedServiceResultsHandleLargeBlendCollection
     EXPECT_EQ(Field("hitCount").integer, 18 * 1024 * 1024);
 }
 
+/// @brief Light and particle facades reach real component state.
 TEST_F(ManagedServicesRuntimeTest, LightAndParticleFacadesReachRealComponentState)
 {
     auto& light = m_owner->AddComponent<scene::LightComponent>();
@@ -271,6 +281,7 @@ TEST_F(ManagedServicesRuntimeTest, LightAndParticleFacadesReachRealComponentStat
     EXPECT_NE(replacement, original);
 }
 
+/// @brief Scene name uses actual manager and quit only requests the current host.
 TEST_F(ManagedServicesRuntimeTest, SceneNameUsesActualManagerAndQuitOnlyRequestsTheCurrentHost)
 {
     scene::SceneManager manager; manager.SetScene(&m_scene);
@@ -292,6 +303,7 @@ TEST_F(ManagedServicesRuntimeTest, SceneNameUsesActualManagerAndQuitOnlyRequests
     manager.ReleaseOwnedScene(); manager.SetScene(nullptr);
 }
 
+/// @brief Render display and joint services reach their live native state.
 TEST_F(ManagedServicesRuntimeTest, RenderDisplayAndJointServicesReachTheirLiveNativeState)
 {
     auto& app = core::Application::Get();
@@ -331,6 +343,7 @@ TEST_F(ManagedServicesRuntimeTest, RenderDisplayAndJointServicesReachTheirLiveNa
     EXPECT_FLOAT_EQ(joint.distance, 1.25f);
 }
 
+/// @brief Joint mutation outside fixed update faults without changing the row.
 TEST_F(ManagedServicesRuntimeTest, JointMutationOutsideFixedUpdateFaultsWithoutChangingTheRow)
 {
     Body(*m_owner); auto& joint = m_owner->AddComponent<scene::JointComponent>();
@@ -342,6 +355,7 @@ TEST_F(ManagedServicesRuntimeTest, JointMutationOutsideFixedUpdateFaultsWithoutC
     EXPECT_EQ(joint.type, originalType); EXPECT_EQ(joint.distance, 9.0f); EXPECT_FALSE(joint.connected);
 }
 
+/// @brief Retained body expires before cleanup and does not revive after re add.
 TEST_F(ManagedServicesRuntimeTest, RetainedBodyExpiresBeforeCleanupAndDoesNotReviveAfterReAdd)
 {
     Body(*m_owner);
@@ -358,6 +372,7 @@ TEST_F(ManagedServicesRuntimeTest, RetainedBodyExpiresBeforeCleanupAndDoesNotRev
     EXPECT_EQ(Field("succeeded").integer, 0); EXPECT_FLOAT_EQ(Field("observed").x, 0.0f);
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
+/// @brief Borrowed save string pages preserve UTF-8 boundaries and store values.
 TEST_F(ManagedServicesRuntimeTest, BorrowedSaveStringPagesPreserveUtf8BoundariesAndStoreValues)
 {
     auto& app = core::Application::Get();
@@ -376,6 +391,7 @@ TEST_F(ManagedServicesRuntimeTest, BorrowedSaveStringPagesPreserveUtf8Boundaries
     EXPECT_EQ(after.data(), storage); EXPECT_EQ(after, large); EXPECT_EQ(app.GetSaveStore().IsDirty(), dirty);
 }
 
+/// @brief Real material facade uses an explicit slot without changing the main slot.
 TEST_F(ManagedServicesRuntimeTest, RealMaterialFacadeUsesAnExplicitSlotWithoutChangingTheMainSlot)
 {
     auto& material = m_owner->AddComponent<scene::MaterialComponent>(); material.ResizeSlots(2);
@@ -384,6 +400,7 @@ TEST_F(ManagedServicesRuntimeTest, RealMaterialFacadeUsesAnExplicitSlotWithoutCh
     EXPECT_FALSE(material.RawSlotAt(0).visible); EXPECT_TRUE(material.RawSlotAt(1).visible);
     EXPECT_EQ(Field("succeeded").integer, 1); EXPECT_EQ(Field("hitCount").integer, 2);
 }
+/// @brief Public store writes and reads large unicode through one atomic reception.
 TEST_F(ManagedServicesRuntimeTest, PublicStoreWritesAndReadsLargeUnicodeThroughOneAtomicReception)
 {
     auto& app = core::Application::Get(); util::SaveStore previous = std::move(app.GetSaveStore());
@@ -394,6 +411,7 @@ TEST_F(ManagedServicesRuntimeTest, PublicStoreWritesAndReadsLargeUnicodeThroughO
     EXPECT_EQ(Field("succeeded").integer, 1); EXPECT_EQ(Field("hitCount").integer, 2 * 1024 * 1024 + 6);
     EXPECT_EQ(app.GetSaveStore().GetString("uploaded"), text + std::string("\0tail", 5)); EXPECT_TRUE(app.GetSaveStore().IsDirty());
 }
+/// @brief Public structured store preserves large arrays unicode and typed asset references.
 TEST_F(ManagedServicesRuntimeTest, PublicStructuredStorePreservesLargeArraysUnicodeAndTypedAssetReferences)
 {
     auto& app = core::Application::Get(); util::SaveStore previous = std::move(app.GetSaveStore());

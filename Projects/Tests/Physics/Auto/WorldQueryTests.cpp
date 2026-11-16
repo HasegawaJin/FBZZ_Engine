@@ -77,6 +77,7 @@ protected:
 
 /// @name Raycast
 
+/// @brief Checks raycast hits a sphere on its path.
 TEST_F(WorldQueryTest, RaycastHitsASphereOnItsPath)
 {
     Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
@@ -89,6 +90,7 @@ TEST_F(WorldQueryTest, RaycastHitsASphereOnItsPath)
     EXPECT_EQ(hit.collider, target.Collider());
 }
 
+/// @brief Raycast reports the point and the outward normal.
 TEST_F(WorldQueryTest, RaycastReportsThePointAndTheOutwardNormal)
 {
     Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
@@ -101,6 +103,7 @@ TEST_F(WorldQueryTest, RaycastReportsThePointAndTheOutwardNormal)
     EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::FORWARD, testkit::kLooseTolerance);
 }
 
+/// @brief Raycast misses what is beside the path.
 TEST_F(WorldQueryTest, RaycastMissesWhatIsBesideThePath)
 {
     Probe target({ 10.0f, 0.0f, 10.0f }, 1.0f);
@@ -110,6 +113,7 @@ TEST_F(WorldQueryTest, RaycastMissesWhatIsBesideThePath)
     EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
 }
 
+/// @brief Raycast stops at the maximum distance.
 TEST_F(WorldQueryTest, RaycastStopsAtTheMaximumDistance)
 {
     Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
@@ -120,6 +124,7 @@ TEST_F(WorldQueryTest, RaycastStopsAtTheMaximumDistance)
     EXPECT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 50.0f, hit));
 }
 
+/// @brief Raycast returns the nearest of several hits.
 TEST_F(WorldQueryTest, RaycastReturnsTheNearestOfSeveralHits)
 {
     /// @note 一番近いものを返さないと、壁の向こうの敵を掴めてしまう。
@@ -134,6 +139,7 @@ TEST_F(WorldQueryTest, RaycastReturnsTheNearestOfSeveralHits)
     EXPECT_EQ(hit.collider, nearest.Collider());
 }
 
+/// @brief Raycast accepts an unnormalised direction.
 TEST_F(WorldQueryTest, RaycastAcceptsAnUnnormalisedDirection)
 {
     Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
@@ -146,6 +152,7 @@ TEST_F(WorldQueryTest, RaycastAcceptsAnUnnormalisedDirection)
     EXPECT_NEAR(hit.distance, 9.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Raycast misses with a degenerate direction.
 TEST_F(WorldQueryTest, RaycastMissesWithADegenerateDirection)
 {
     /// @note 「対象と重なっていて向きが決まらない」はスクリプトから普通に来る。
@@ -156,12 +163,14 @@ TEST_F(WorldQueryTest, RaycastMissesWithADegenerateDirection)
     EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::ZERO, 100.0f, hit));
 }
 
+/// @brief Raycast misses in an empty world.
 TEST_F(WorldQueryTest, RaycastMissesInAnEmptyWorld)
 {
     physics::World::RaycastHit hit;
     EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
 }
 
+/// @brief Raycast skips what the filter rejects.
 TEST_F(WorldQueryTest, RaycastSkipsWhatTheFilterRejects)
 {
     Probe ignored({ 0.0f, 0.0f, 5.0f }, 1.0f);
@@ -178,6 +187,7 @@ TEST_F(WorldQueryTest, RaycastSkipsWhatTheFilterRejects)
 
 /// @name RaycastAll
 
+/// @brief Raycast all returns every hit in distance order.
 TEST_F(WorldQueryTest, RaycastAllReturnsEveryHitInDistanceOrder)
 {
     Probe first({ 0.0f, 0.0f, 5.0f }, 1.0f);
@@ -194,6 +204,7 @@ TEST_F(WorldQueryTest, RaycastAllReturnsEveryHitInDistanceOrder)
     EXPECT_EQ(hits[2].collider, third.Collider());
 }
 
+/// @brief Raycast all is empty when nothing is on the path.
 TEST_F(WorldQueryTest, RaycastAllIsEmptyWhenNothingIsOnThePath)
 {
     Probe aside({ 10.0f, 0.0f, 10.0f }, 1.0f);
@@ -204,6 +215,7 @@ TEST_F(WorldQueryTest, RaycastAllIsEmptyWhenNothingIsOnThePath)
 
 /// @name SphereCast
 
+/// @brief Sphere cast hits what a ray would miss.
 TEST_F(WorldQueryTest, SphereCastHitsWhatARayWouldMiss)
 {
     /// @note 太さのある弾や «足元の接地» はこちら。半径ぶん外れていても当たる。
@@ -218,6 +230,7 @@ TEST_F(WorldQueryTest, SphereCastHitsWhatARayWouldMiss)
                                  sweepHit));
 }
 
+/// @brief Sphere cast stops short of the surface by its radius.
 TEST_F(WorldQueryTest, SphereCastStopsShortOfTheSurfaceByItsRadius)
 {
     Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
@@ -230,6 +243,7 @@ TEST_F(WorldQueryTest, SphereCastStopsShortOfTheSurfaceByItsRadius)
     EXPECT_NEAR(hit.distance, 8.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Sphere cast skips what the filter rejects.
 TEST_F(WorldQueryTest, SphereCastSkipsWhatTheFilterRejects)
 {
     Probe blocker({ 0.0f, 0.0f, 5.0f }, 1.0f);
@@ -243,6 +257,7 @@ TEST_F(WorldQueryTest, SphereCastSkipsWhatTheFilterRejects)
 
 /// @name OverlapSphere
 
+/// @brief Overlap sphere finds what touches the query.
 TEST_F(WorldQueryTest, OverlapSphereFindsWhatTouchesTheQuery)
 {
     Probe inside({ 1.0f, 0.0f, 0.0f }, 1.0f);
@@ -256,6 +271,7 @@ TEST_F(WorldQueryTest, OverlapSphereFindsWhatTouchesTheQuery)
     EXPECT_EQ(found.front()->collider, inside.Collider());
 }
 
+/// @brief Overlap sphere includes shapes that only reach in.
 TEST_F(WorldQueryTest, OverlapSphereIncludesShapesThatOnlyReachIn)
 {
     /// @note 中心が範囲の外でも、半径で届いていれば «触れている»。索敵で取りこぼさないため。
@@ -265,6 +281,7 @@ TEST_F(WorldQueryTest, OverlapSphereIncludesShapesThatOnlyReachIn)
     EXPECT_EQ(world.OverlapSphere(math::Vector3::ZERO, 2.0f).size(), 1u);
 }
 
+/// @brief Overlap sphere is empty when nothing is in range.
 TEST_F(WorldQueryTest, OverlapSphereIsEmptyWhenNothingIsInRange)
 {
     Probe outside({ 50.0f, 0.0f, 0.0f }, 1.0f);
@@ -273,6 +290,7 @@ TEST_F(WorldQueryTest, OverlapSphereIsEmptyWhenNothingIsInRange)
     EXPECT_TRUE(world.OverlapSphere(math::Vector3::ZERO, 2.0f).empty());
 }
 
+/// @brief Overlap sphere skips what the filter rejects.
 TEST_F(WorldQueryTest, OverlapSphereSkipsWhatTheFilterRejects)
 {
     Probe zone({ 1.0f, 0.0f, 0.0f }, 1.0f);

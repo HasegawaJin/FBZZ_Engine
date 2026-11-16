@@ -44,6 +44,7 @@ protected:
     std::string m_diagnostic;
 };
 
+/// @brief Rejection samples track actual ground failures and cell quota evictions.
 TEST_F(WorldPcgTest, RejectionSamplesTrackActualGroundFailuresAndCellQuotaEvictions)
 {
     m_profile.maxPlacementsPerCell = 2;
@@ -82,6 +83,7 @@ TEST_F(WorldPcgTest, RejectionSamplesTrackActualGroundFailuresAndCellQuotaEvicti
     EXPECT_EQ(captured.fingerprint, baseline.fingerprint);
 }
 
+/// @brief Stone size bias and embedding preserve seeded candidate identity.
 TEST_F(WorldPcgTest, StoneSizeBiasAndEmbeddingPreserveSeededCandidateIdentity)
 {
     scene::WorldPcgResult uniform, stones, repeated;
@@ -111,6 +113,7 @@ TEST_F(WorldPcgTest, StoneSizeBiasAndEmbeddingPreserveSeededCandidateIdentity)
     EXPECT_FALSE(Generate(stones)); EXPECT_EQ(stones.fingerprint, kept);
 }
 
+/// @brief Downhill stone orientation and embedding own the actual storage cell.
 TEST_F(WorldPcgTest, DownhillStoneOrientationAndEmbeddingOwnTheActualStorageCell)
 {
     auto& rule = m_profile.rules.front();
@@ -135,6 +138,7 @@ TEST_F(WorldPcgTest, DownhillStoneOrientationAndEmbeddingOwnTheActualStorageCell
     }
 }
 
+/// @brief Signed water fade retains deep stones and feathers both band edges.
 TEST_F(WorldPcgTest, SignedWaterFadeRetainsDeepStonesAndFeathersBothBandEdges)
 {
     auto& rule = m_profile.rules.front();
@@ -154,6 +158,7 @@ TEST_F(WorldPcgTest, SignedWaterFadeRetainsDeepStonesAndFeathersBothBandEdges)
     EXPECT_FALSE(scene::ValidateWorldPcgProfile(m_profile, m_diagnostic));
 }
 
+/// @brief Rock nature profile round-trips and uses emitted boulders for debris.
 TEST_F(WorldPcgTest, RockNatureProfileRoundTripsAndUsesEmittedBouldersForDebris)
 {
     m_profile = scene::CreateRockNaturePcgProfile("guid:rock", "guid:pebble");
@@ -187,6 +192,7 @@ TEST_F(WorldPcgTest, RockNatureProfileRoundTripsAndUsesEmittedBouldersForDebris)
     }
 }
 
+/// @brief Habitat bands round trip and reject each unavailable or out-of-range input.
 TEST_F(WorldPcgTest, HabitatBandsRoundTripAndRejectEachUnavailableOrOutOfRangeInput)
 {
     m_profile.pathMaterial = "guid:path";
@@ -233,6 +239,7 @@ TEST_F(WorldPcgTest, HabitatBandsRoundTripAndRejectEachUnavailableOrOutOfRangeIn
     EXPECT_TRUE(tapered);
 }
 
+/// @brief Repeat generation preserves every identity and transform.
 TEST_F(WorldPcgTest, RepeatGenerationPreservesEveryIdentityAndTransform)
 {
     scene::WorldPcgResult first,second;ASSERT_TRUE(Generate(first))<<m_diagnostic;ASSERT_TRUE(Generate(second))<<m_diagnostic;
@@ -246,6 +253,7 @@ TEST_F(WorldPcgTest, RepeatGenerationPreservesEveryIdentityAndTransform)
             ASSERT_TRUE(scene::TryLocateWorldCell(m_profile.grid,scene::WorldCellOrigin(m_profile.grid,group.cell)+placement.position,cell));EXPECT_EQ(cell,group.cell);}}
 }
 
+/// @brief Bounds and storage cell changes keep the same world candidates.
 TEST_F(WorldPcgTest, BoundsAndStorageCellChangesKeepTheSameWorldCandidates)
 {
     scene::WorldPcgResult wide,narrow,repartitioned;ASSERT_TRUE(Generate(wide));const auto original=LocatedResults(wide);
@@ -258,6 +266,7 @@ TEST_F(WorldPcgTest, BoundsAndStorageCellChangesKeepTheSameWorldCandidates)
         EXPECT_VEC3_NEAR(p.position,found->second.position,0.00001f);}
 }
 
+/// @brief Density and rule order do not move surviving candidates.
 TEST_F(WorldPcgTest, DensityAndRuleOrderDoNotMoveSurvivingCandidates)
 {
     scene::WorldPcgResult full,thin,reordered;ASSERT_TRUE(Generate(full));const auto original=LocatedResults(full);
@@ -269,6 +278,7 @@ TEST_F(WorldPcgTest, DensityAndRuleOrderDoNotMoveSurvivingCandidates)
     std::reverse(m_profile.rules.begin(),m_profile.rules.end());ASSERT_TRUE(Generate(reordered));EXPECT_EQ(full.fingerprint,reordered.fingerprint);
 }
 
+/// @brief Checks holes water height slope and exclusions account for rejected candidates.
 TEST_F(WorldPcgTest, HolesWaterHeightSlopeAndExclusionsAccountForRejectedCandidates)
 {
     m_profile.bounds={{0,0,0},{48,0,16}};auto& rule=m_profile.rules[0];rule.spacing=2;rule.maxHeight=20;rule.maxSlope=45;rule.protectedDistance=100;
@@ -284,6 +294,7 @@ TEST_F(WorldPcgTest, HolesWaterHeightSlopeAndExclusionsAccountForRejectedCandida
     EXPECT_EQ(manual,before);
 }
 
+/// @brief Many exclusions match direct closed bounds checks.
 TEST_F(WorldPcgTest, ManyExclusionsMatchDirectClosedBoundsChecks)
 {
     m_profile.maxPlacementsPerCell = 32;
@@ -348,6 +359,7 @@ TEST_F(WorldPcgTest, ManyExclusionsMatchDirectClosedBoundsChecks)
     }
 }
 
+/// @brief Biome density water clearance and invalid samples remain separate filters.
 TEST_F(WorldPcgTest, BiomeDensityWaterClearanceAndInvalidSamplesRemainSeparateFilters)
 {
     auto& rule=m_profile.rules[0];rule.biome="Forest";rule.minWaterDistance=4;
@@ -359,6 +371,7 @@ TEST_F(WorldPcgTest, BiomeDensityWaterClearanceAndInvalidSamplesRemainSeparateFi
     ASSERT_TRUE(scene::GenerateWorldPcg(m_profile,invalid,{},result,m_diagnostic));EXPECT_EQ(result.stats.noSurface,result.stats.candidates);
 }
 
+/// @brief Surface alignment and embedding produce serializable cell local transforms.
 TEST_F(WorldPcgTest, SurfaceAlignmentAndEmbeddingProduceSerializableCellLocalTransforms)
 {
     auto& rule=m_profile.rules[0];rule.alignToSurface=true;rule.embedDepth=2;
@@ -371,6 +384,7 @@ TEST_F(WorldPcgTest, SurfaceAlignmentAndEmbeddingProduceSerializableCellLocalTra
             scene::WorldCellId id;ASSERT_TRUE(scene::TryLocateWorldCell(m_profile.grid,world,id));EXPECT_EQ(id,group.cell);}}
 }
 
+/// @brief Candidate and instance budgets reject without publishing partial output.
 TEST_F(WorldPcgTest, CandidateAndInstanceBudgetsRejectWithoutPublishingPartialOutput)
 {
     scene::WorldPcgResult result;result.fingerprint="KeepExisting";size_t calls=0;
@@ -380,6 +394,7 @@ TEST_F(WorldPcgTest, CandidateAndInstanceBudgetsRejectWithoutPublishingPartialOu
     EXPECT_EQ(result.fingerprint,"KeepExisting");EXPECT_TRUE(result.groups.empty());EXPECT_EQ(result.stats.accepted,0u);
 }
 
+/// @brief Shared vegetation budget keeps world placements stable across rules and streaming cells.
 TEST_F(WorldPcgTest, SharedVegetationBudgetKeepsWorldPlacementsStableAcrossRulesAndStreamingCells)
 {
     auto birch = m_profile.rules.front();
@@ -440,6 +455,7 @@ TEST_F(WorldPcgTest, SharedVegetationBudgetKeepsWorldPlacementsStableAcrossRules
     EXPECT_EQ(regrouped.stats.accepted, 28u);
 }
 
+/// @brief Invalid rules references and protected inputs leave output untouched.
 TEST_F(WorldPcgTest, InvalidRulesReferencesAndProtectedInputsLeaveOutputUntouched)
 {
     scene::WorldPcgResult result;result.fingerprint="Preserved";const auto original=m_profile;
@@ -451,6 +467,7 @@ TEST_F(WorldPcgTest, InvalidRulesReferencesAndProtectedInputsLeaveOutputUntouche
     EXPECT_FALSE(scene::GenerateWorldPcg(m_profile,Flat,invalid,result,m_diagnostic));EXPECT_EQ(result.fingerprint,"Preserved");
 }
 
+/// @brief Minimum plant spacing does not move the trees that survive.
 TEST_F(WorldPcgTest, MinimumPlantSpacingDoesNotMoveTheTreesThatSurvive)
 {
     scene::WorldPcgResult full, spaced;
@@ -473,6 +490,7 @@ TEST_F(WorldPcgTest, MinimumPlantSpacingDoesNotMoveTheTreesThatSurvive)
     }
 }
 
+/// @brief Dependent grass uses only trees retained by the cell cap.
 TEST_F(WorldPcgTest, DependentGrassUsesOnlyTreesRetainedByTheCellCap)
 {
     m_profile.bounds = {{0,0,0},{256,0,64}};
@@ -529,6 +547,7 @@ TEST_F(WorldPcgTest, DependentGrassUsesOnlyTreesRetainedByTheCellCap)
     EXPECT_EQ(capped.fingerprint, reordered.fingerprint);
 }
 
+/// @brief Patch bands partition candidates and water fade thins their edge.
 TEST_F(WorldPcgTest, PatchBandsPartitionCandidatesAndWaterFadeThinsTheirEdge)
 {
     auto& rule = m_profile.rules.front();
@@ -572,6 +591,7 @@ TEST_F(WorldPcgTest, PatchBandsPartitionCandidatesAndWaterFadeThinsTheirEdge)
     EXPECT_EQ(faded.stats.accepted, meadow.stats.accepted);
 }
 
+/// @brief Competition priority wins across species and ignores profile row order.
 TEST_F(WorldPcgTest, CompetitionPriorityWinsAcrossSpeciesAndIgnoresProfileRowOrder)
 {
     auto& spruce = m_profile.rules.front();
@@ -601,6 +621,7 @@ TEST_F(WorldPcgTest, CompetitionPriorityWinsAcrossSpeciesAndIgnoresProfileRowOrd
     EXPECT_EQ(switched.groups.front().ruleKey, "Birch");
 }
 
+/// @brief Canopy count combines species after the cell cap.
 TEST_F(WorldPcgTest, CanopyCountCombinesSpeciesAfterTheCellCap)
 {
     m_profile.bounds = {{0,0,0},{256,0,128}};
@@ -654,6 +675,7 @@ TEST_F(WorldPcgTest, CanopyCountCombinesSpeciesAfterTheCellCap)
     EXPECT_EQ(result.fingerprint, fingerprint);
 }
 
+/// @brief Competition can use the actual placement scale.
 TEST_F(WorldPcgTest, CompetitionCanUseTheActualPlacementScale)
 {
     auto& rule = m_profile.rules.front();
@@ -671,6 +693,7 @@ TEST_F(WorldPcgTest, CompetitionCanUseTheActualPlacementScale)
     EXPECT_EQ(scaled.stats.competitionRejected, scaled.stats.candidates - 1);
 }
 
+/// @brief Aspect uses downhill heading and leaves flat ground neutral.
 TEST_F(WorldPcgTest, AspectUsesDownhillHeadingAndLeavesFlatGroundNeutral)
 {
     auto& rule = m_profile.rules.front();
@@ -707,6 +730,7 @@ TEST_F(WorldPcgTest, AspectUsesDownhillHeadingAndLeavesFlatGroundNeutral)
     }
 }
 
+/// @brief Height and slope tapers preserve interior candidates and thin the boundaries.
 TEST_F(WorldPcgTest, HeightAndSlopeTapersPreserveInteriorCandidatesAndThinTheBoundaries)
 {
     auto& rule = m_profile.rules.front();
@@ -735,6 +759,7 @@ TEST_F(WorldPcgTest, HeightAndSlopeTapersPreserveInteriorCandidatesAndThinTheBou
     EXPECT_EQ(faded.stats.slopeRejected, 0u);
 }
 
+/// @brief Text profile round trip preserves all generation inputs and rejects unknown versions.
 TEST_F(WorldPcgTest, TextProfileRoundTripPreservesAllGenerationInputsAndRejectsUnknownVersions)
 {
     m_profile.seed=UINT64_MAX;m_profile.name=R"(Forest "North")";auto& rule=m_profile.rules[0];rule.clusterStrength=0.7f;rule.noiseScale=12;
@@ -760,6 +785,7 @@ TEST_F(WorldPcgTest, TextProfileRoundTripPreservesAllGenerationInputsAndRejectsU
     m_profile.rules[0].density=2;const auto previous=text;EXPECT_FALSE(scene::SerializeWorldPcgProfile(m_profile,text,m_diagnostic));EXPECT_EQ(text,previous);
 }
 
+/// @brief Atomic file profile round-trips and failed save preserves existing file.
 TEST_F(WorldPcgTest, AtomicFileProfileRoundTripsAndFailedSavePreservesExistingFile)
 {
     testkit::TempDir temporary{"WorldPcg"};ASSERT_TRUE(temporary.IsValid());const auto path=temporary.File("Profiles/Woodland.pcg").generic_string();

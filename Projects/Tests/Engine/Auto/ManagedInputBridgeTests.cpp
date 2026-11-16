@@ -63,6 +63,7 @@ protected:
     using Value = scene::ManagedInputValue;
 };
 
+/// @brief Distinguishes registered zero values from unknown names and kinds.
 TEST_F(ManagedInputBridgeTest, DistinguishesRegisteredZeroValuesFromUnknownNamesAndKinds)
 {
     AddButton("Fire");
@@ -89,6 +90,7 @@ TEST_F(ManagedInputBridgeTest, DistinguishesRegisteredZeroValuesFromUnknownNames
     EXPECT_FLOAT_EQ(input::InputActionMap::GetAxis("Horizontal"), 0.0f);
 }
 
+/// @brief Metadata tracks current map and preserves UTF-8 registration order.
 TEST_F(ManagedInputBridgeTest, MetadataTracksCurrentMapAndPreservesUtf8RegistrationOrder)
 {
     AddButton("Fire");
@@ -118,6 +120,7 @@ TEST_F(ManagedInputBridgeTest, MetadataTracksCurrentMapAndPreservesUtf8Registrat
     EXPECT_FLOAT_EQ(reply.x, 0.0f);
 }
 
+/// @brief Invalid queries leave outputs unchanged.
 TEST_F(ManagedInputBridgeTest, InvalidQueriesLeaveOutputsUnchanged)
 {
     scene::ManagedBridgeReply reply;
@@ -132,6 +135,7 @@ TEST_F(ManagedInputBridgeTest, InvalidQueriesLeaveOutputsUnchanged)
     EXPECT_EQ(names, "sentinel");
 }
 
+/// @brief Catalog retains all names beyond former total and single name limits.
 TEST_F(ManagedInputBridgeTest, CatalogRetainsAllNamesBeyondFormerTotalAndSingleNameLimits)
 {
     const std::string giant(1024 * 1024 + 23, 'x'); AddButton("First"); AddButton(giant); AddButton("Last");

@@ -128,6 +128,7 @@ protected:
     }
 };
 
+/// @brief Access violation writes the fault address and terminates.
 TEST_F(CrashHandlerFatalTest, AccessViolationWritesTheFaultAddressAndTerminates)
 {
     VerifyCrash([] {
@@ -137,6 +138,7 @@ TEST_F(CrashHandlerFatalTest, AccessViolationWritesTheFaultAddressAndTerminates)
     }, EXCEPTION_ACCESS_VIOLATION, "EXCEPTION_ACCESS_VIOLATION", "detail:  write to 0x0000000000000000");
 }
 
+/// @brief Stack overflow writes a report with the reserved stack.
 TEST_F(CrashHandlerFatalTest, StackOverflowWritesAReportWithTheReservedStack)
 {
     VerifyCrash([] {
@@ -146,22 +148,26 @@ TEST_F(CrashHandlerFatalTest, StackOverflowWritesAReportWithTheReservedStack)
     }, EXCEPTION_STACK_OVERFLOW, "EXCEPTION_STACK_OVERFLOW");
 }
 
+/// @brief Abort writes its reason and terminates.
 TEST_F(CrashHandlerFatalTest, AbortWritesItsReasonAndTerminates)
 {
     VerifyCrash([] { core::CrashHandler::Trigger(core::CrashTrigger::Abort); }, 3, "abort()");
 }
 
+/// @brief Pure call writes its reason and terminates.
 TEST_F(CrashHandlerFatalTest, PureCallWritesItsReasonAndTerminates)
 {
     VerifyCrash([] { core::CrashHandler::Trigger(core::CrashTrigger::PureCall); }, 3, "pure virtual function call");
 }
 
+/// @brief Invalid parameter writes its reason and terminates.
 TEST_F(CrashHandlerFatalTest, InvalidParameterWritesItsReasonAndTerminates)
 {
     VerifyCrash([] { core::CrashHandler::Trigger(core::CrashTrigger::InvalidParameter); }, 3,
                 "invalid parameter passed to a CRT function");
 }
 
+/// @brief Missing exception information uses the fallback reason and exit code.
 TEST_F(CrashHandlerFatalTest, MissingExceptionInformationUsesTheFallbackReasonAndExitCode)
 {
     VerifyCrash([] {
@@ -181,6 +187,7 @@ struct ExceptionCase {
 class CrashExceptionRecordTest : public CrashHandlerFatalTest,
                                 public testing::WithParamInterface<ExceptionCase> {};
 
+/// @brief Preserves exception code name and address in the report.
 /// @note 合成レコードは例外名とアクセス種別の診断契約を検証する。実際の AV・スタック枯渇は別の TEST_F で起こす。
 /// @see https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-exception_record EXCEPTION_RECORD (ExceptionInformation)
 TEST_P(CrashExceptionRecordTest, PreservesExceptionCodeNameAndAddressInTheReport)

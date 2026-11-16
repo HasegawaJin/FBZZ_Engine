@@ -52,6 +52,7 @@ protected:
     }
     void Reset() { Cloth().runtime = scene::ClothRuntime{}; }
 };
+/// @brief Reception is opt in and channel mask includes the high bit.
 TEST_F(ClothFlowFieldTest, ReceptionIsOptInAndChannelMaskIncludesTheHighBit)
 {
     AddFlow(3,0x80000000u);
@@ -69,6 +70,7 @@ TEST_F(ClothFlowFieldTest, ReceptionIsOptInAndChannelMaskIncludesTheHighBit)
     Tick();
     EXPECT_NEAR(Cloth().runtime.solver.Positions()[4].z,0,1.0e-7f);
 }
+/// @brief Scene flow and additional wind match one uniform wind.
 TEST_F(ClothFlowFieldTest, SceneFlowAndAdditionalWindMatchOneUniformWind)
 {
     AddFlow(3);
@@ -81,6 +83,7 @@ TEST_F(ClothFlowFieldTest, SceneFlowAndAdditionalWindMatchOneUniformWind)
     Tick();
     for (size_t i = 0; i < expected.size(); ++i) EXPECT_VEC3_NEAR(Cloth().runtime.solver.Positions()[i],expected[i],1.0e-6f);
 }
+/// @brief Local field uses world centers and leaves distant faces unaffected.
 TEST_F(ClothFlowFieldTest, LocalFieldUsesWorldCentersAndLeavesDistantFacesUnaffected)
 {
     auto& transform = m_scene.GetGameObject(m_cloth)->transform;
@@ -91,6 +94,7 @@ TEST_F(ClothFlowFieldTest, LocalFieldUsesWorldCentersAndLeavesDistantFacesUnaffe
     EXPECT_GT(Cloth().runtime.solver.Positions()[0].z,2);
     EXPECT_NEAR(Cloth().runtime.solver.Positions()[8].z,2,1.0e-6f);
 }
+/// @brief Ambient wind is included exactly once and inactive fields are ignored.
 TEST_F(ClothFlowFieldTest, AmbientWindIsIncludedExactlyOnceAndInactiveFieldsAreIgnored)
 {
     auto& fieldGo = AddFlow(20);
@@ -107,6 +111,7 @@ TEST_F(ClothFlowFieldTest, AmbientWindIsIncludedExactlyOnceAndInactiveFieldsAreI
     Tick();
     for (size_t i = 0; i < expected.size(); ++i) EXPECT_VEC3_NEAR(Cloth().runtime.solver.Positions()[i],expected[i],1.0e-6f);
 }
+/// @brief Vortex pushes opposite sides in opposite directions.
 TEST_F(ClothFlowFieldTest, VortexPushesOppositeSidesInOppositeDirections)
 {
     auto& go = AddFlow();
@@ -118,6 +123,7 @@ TEST_F(ClothFlowFieldTest, VortexPushesOppositeSidesInOppositeDirections)
     EXPECT_GT(Cloth().runtime.solver.Positions()[0].z,0);
     EXPECT_LT(Cloth().runtime.solver.Positions()[2].z,0);
 }
+/// @brief No field preserves existing wind and drag behavior.
 TEST_F(ClothFlowFieldTest, NoFieldPreservesExistingWindAndDragBehavior)
 {
     Cloth().settings.windVelocity = {0,0,2};
@@ -128,6 +134,7 @@ TEST_F(ClothFlowFieldTest, NoFieldPreservesExistingWindAndDragBehavior)
     Tick();
     for (size_t i = 0; i < expected.size(); ++i) EXPECT_VEC3_NEAR(Cloth().runtime.solver.Positions()[i],expected[i],1.0e-6f);
 }
+/// @brief Shared receiver matches water and particle and preserves snapshot.
 TEST_F(ClothFlowFieldTest, SharedReceiverMatchesWaterAndParticleAndPreservesSnapshot)
 {
     AddFlow(3, 0x80000000u);

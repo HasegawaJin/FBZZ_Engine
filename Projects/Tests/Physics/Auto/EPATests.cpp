@@ -42,6 +42,7 @@ class EPATest : public testkit::Fixture {};
 
 /// @name 法線の向き
 
+/// @brief Normal points from b toward a for spheres overlapping along X.
 TEST_F(EPATest, NormalPointsFromBTowardAForSpheresOverlappingAlongX)
 {
     /// @note 法線は «B を A から引き離す» 向きではなく «B から A へ押し戻す» 向き。
@@ -55,6 +56,7 @@ TEST_F(EPATest, NormalPointsFromBTowardAForSpheresOverlappingAlongX)
     EXPECT_VEC3_NEAR(contact.normal, -math::Vector3::RIGHT, testkit::kLooseTolerance);
 }
 
+/// @brief Normal flips when the operands are swapped.
 TEST_F(EPATest, NormalFlipsWhenTheOperandsAreSwapped)
 {
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
@@ -68,6 +70,7 @@ TEST_F(EPATest, NormalFlipsWhenTheOperandsAreSwapped)
     EXPECT_VEC3_NEAR(swapped.normal, -forward.normal, testkit::kLooseTolerance);
 }
 
+/// @brief Normal is a unit vector.
 TEST_F(EPATest, NormalIsAUnitVector)
 {
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
@@ -81,6 +84,7 @@ TEST_F(EPATest, NormalIsAUnitVector)
 
 /// @name 貫通深度
 
+/// @brief Depth matches the overlap of two spheres.
 TEST_F(EPATest, DepthMatchesTheOverlapOfTwoSpheres)
 {
     /// @note 球どうしの貫通量は «半径の和 - 中心間距離» で解析的に決まる。
@@ -98,6 +102,7 @@ TEST_F(EPATest, DepthMatchesTheOverlapOfTwoSpheres)
     }
 }
 
+/// @brief Depth is always positive for intersecting shapes.
 TEST_F(EPATest, DepthIsAlwaysPositiveForIntersectingShapes)
 {
     for (int i = 0; i < 32; ++i) {
@@ -113,6 +118,7 @@ TEST_F(EPATest, DepthIsAlwaysPositiveForIntersectingShapes)
     }
 }
 
+/// @brief Chooses the shallowest axis for overlapping boxes.
 TEST_F(EPATest, ChoosesTheShallowestAxisForOverlappingBoxes)
 {
     /// @note X と Z は全面重なり、Y だけ 0.2 の重なり。最小移動量は Y 方向。
@@ -126,6 +132,7 @@ TEST_F(EPATest, ChoosesTheShallowestAxisForOverlappingBoxes)
     EXPECT_NEAR(contact.depth, 0.2f, testkit::kLooseTolerance);
 }
 
+/// @brief Chooses the shallowest axis when the overlap is on Z.
 TEST_F(EPATest, ChoosesTheShallowestAxisWhenTheOverlapIsOnZ)
 {
     const testkit::SupportBox a{math::Vector3::ZERO, math::Vector3(2.0f, 2.0f, 2.0f)};
@@ -140,6 +147,7 @@ TEST_F(EPATest, ChoosesTheShallowestAxisWhenTheOverlapIsOnZ)
 
 /// @name 接触点
 
+/// @brief Contact points lie on the surface of each sphere.
 TEST_F(EPATest, ContactPointsLieOnTheSurfaceOfEachSphere)
 {
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
@@ -152,6 +160,7 @@ TEST_F(EPATest, ContactPointsLieOnTheSurfaceOfEachSphere)
     EXPECT_NEAR((contact.contactB - b.center).Length(), b.radius, testkit::kLooseTolerance);
 }
 
+/// @brief Contact points are separated by the depth along the normal.
 TEST_F(EPATest, ContactPointsAreSeparatedByTheDepthAlongTheNormal)
 {
     /// @note contactA は A の表面上で B 側へ最も入り込んだ点、contactB はその逆。
@@ -167,6 +176,7 @@ TEST_F(EPATest, ContactPointsAreSeparatedByTheDepthAlongTheNormal)
                 contact.depth, testkit::kLooseTolerance);
 }
 
+/// @brief Contact point on the sphere faces the other shape.
 TEST_F(EPATest, ContactPointOnTheSphereFacesTheOtherShape)
 {
     const testkit::SupportSphere a{math::Vector3::ZERO, 1.0f};
@@ -181,6 +191,7 @@ TEST_F(EPATest, ContactPointOnTheSphereFacesTheOtherShape)
 
 /// @name 入力の契約
 
+/// @brief Is invalid when the simplex is not a tetrahedron.
 TEST_F(EPATest, IsInvalidWhenTheSimplexIsNotATetrahedron)
 {
     /// @note GJK が四面体まで拡張できなかった場合、EPA はポリトープの初期面を作れない。
@@ -197,6 +208,7 @@ TEST_F(EPATest, IsInvalidWhenTheSimplexIsNotATetrahedron)
     EXPECT_FALSE(contact.valid);
 }
 
+/// @brief Produces a valid contact for every intersecting random pair.
 TEST_F(EPATest, ProducesAValidContactForEveryIntersectingRandomPair)
 {
     /// @note «交差していると GJK が言ったのに EPA が接触を作れない» は、

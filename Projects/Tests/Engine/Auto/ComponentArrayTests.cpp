@@ -40,6 +40,7 @@ protected:
 
 /// @name 追加と取得
 
+/// @brief Starts empty and allocates nothing.
 TEST_F(ComponentArrayTest, StartsEmptyAndAllocatesNothing)
 {
     /// @note 未使用の型は確保すらしない (Scene が全コンポーネント型を束ねるため)。
@@ -48,6 +49,7 @@ TEST_F(ComponentArrayTest, StartsEmptyAndAllocatesNothing)
     EXPECT_TRUE(array.Data().empty());
 }
 
+/// @brief Finds what it stored.
 TEST_F(ComponentArrayTest, FindsWhatItStored)
 {
     array.Add(Entity(3), Probe{ 42 });
@@ -57,6 +59,7 @@ TEST_F(ComponentArrayTest, FindsWhatItStored)
     EXPECT_EQ(array.Count(), 1u);
 }
 
+/// @brief Keeps each entity separate.
 TEST_F(ComponentArrayTest, KeepsEachEntitySeparate)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -69,6 +72,7 @@ TEST_F(ComponentArrayTest, KeepsEachEntitySeparate)
     EXPECT_EQ(array.Count(), 3u);
 }
 
+/// @brief Writes through the returned reference.
 TEST_F(ComponentArrayTest, WritesThroughTheReturnedReference)
 {
     array.Add(Entity(1), Probe{ 1 });
@@ -78,6 +82,7 @@ TEST_F(ComponentArrayTest, WritesThroughTheReturnedReference)
     EXPECT_EQ(array.Get(Entity(1)).value, 7);
 }
 
+/// @brief Does not find an entity it never stored.
 TEST_F(ComponentArrayTest, DoesNotFindAnEntityItNeverStored)
 {
     array.Add(Entity(1), Probe{ 1 });
@@ -86,6 +91,7 @@ TEST_F(ComponentArrayTest, DoesNotFindAnEntityItNeverStored)
     EXPECT_FALSE(array.Has(scene::EntityID::INVALID));
 }
 
+/// @brief Rejects invalid and unallocated indices.
 TEST_F(ComponentArrayTest, RejectsInvalidAndUnallocatedIndices)
 {
     array.Add(Entity(1), Probe{ 1 });
@@ -97,6 +103,7 @@ TEST_F(ComponentArrayTest, RejectsInvalidAndUnallocatedIndices)
 
 /// @name 世代
 
+/// @brief Rejects the same index from an earlier generation.
 TEST_F(ComponentArrayTest, RejectsTheSameIndexFromAnEarlierGeneration)
 {
     /// @note index は再利用される。世代まで見ないと «破棄済みの参照» が生きている
@@ -110,6 +117,7 @@ TEST_F(ComponentArrayTest, RejectsTheSameIndexFromAnEarlierGeneration)
 
 /// @name 削除
 
+/// @brief Forgets what it removed.
 TEST_F(ComponentArrayTest, ForgetsWhatItRemoved)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -120,6 +128,7 @@ TEST_F(ComponentArrayTest, ForgetsWhatItRemoved)
     EXPECT_EQ(array.Count(), 0u);
 }
 
+/// @brief Keeps the other entries reachable after a removal.
 TEST_F(ComponentArrayTest, KeepsTheOtherEntriesReachableAfterARemoval)
 {
     /// @note 末尾と swap して穴を埋める。swap された側の索引を直し忘れると、
@@ -137,6 +146,7 @@ TEST_F(ComponentArrayTest, KeepsTheOtherEntriesReachableAfterARemoval)
     EXPECT_EQ(array.Count(), 2u);
 }
 
+/// @brief Removing the last entry leaves the rest untouched.
 TEST_F(ComponentArrayTest, RemovingTheLastEntryLeavesTheRestUntouched)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -148,6 +158,7 @@ TEST_F(ComponentArrayTest, RemovingTheLastEntryLeavesTheRestUntouched)
     EXPECT_EQ(array.Get(Entity(1)).value, 10);
 }
 
+/// @brief Reuses the slot of a removed entity.
 TEST_F(ComponentArrayTest, ReusesTheSlotOfARemovedEntity)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -159,6 +170,7 @@ TEST_F(ComponentArrayTest, ReusesTheSlotOfARemovedEntity)
     EXPECT_EQ(array.Count(), 1u);
 }
 
+/// @brief Removing entries immediately releases owned resources.
 TEST_F(ComponentArrayTest, RemovingEntriesImmediatelyReleasesOwnedResources)
 {
     scene::ComponentArray<std::shared_ptr<int>> owners;
@@ -173,6 +185,7 @@ TEST_F(ComponentArrayTest, RemovingEntriesImmediatelyReleasesOwnedResources)
     EXPECT_TRUE(second.expired());
 }
 
+/// @brief Survives removing every entry in order.
 TEST_F(ComponentArrayTest, SurvivesRemovingEveryEntryInOrder)
 {
     for (std::uint32_t i = 0; i < 32; ++i) array.Add(Entity(i), Probe{ static_cast<int>(i) });
@@ -183,6 +196,7 @@ TEST_F(ComponentArrayTest, SurvivesRemovingEveryEntryInOrder)
     for (std::uint32_t i = 0; i < 32; ++i) EXPECT_FALSE(array.Has(Entity(i)));
 }
 
+/// @brief Survives removing every entry in reverse.
 TEST_F(ComponentArrayTest, SurvivesRemovingEveryEntryInReverse)
 {
     for (std::uint32_t i = 0; i < 32; ++i) array.Add(Entity(i), Probe{ static_cast<int>(i) });
@@ -192,6 +206,7 @@ TEST_F(ComponentArrayTest, SurvivesRemovingEveryEntryInReverse)
     EXPECT_EQ(array.Count(), 0u);
 }
 
+/// @brief Keeps every remaining value through interleaved removals.
 TEST_F(ComponentArrayTest, KeepsEveryRemainingValueThroughInterleavedRemovals)
 {
     /// @note 1 つ飛ばしで消す。swap が絡む一番ややこしい並びで、残りが全部引けること。
@@ -208,6 +223,7 @@ TEST_F(ComponentArrayTest, KeepsEveryRemainingValueThroughInterleavedRemovals)
 
 /// @name 走査
 
+/// @brief The component and entity arrays share the same index for each stored entry.
 TEST_F(ComponentArrayTest, DataAndEntitiesLineUp)
 {
     /// @note System は Data() と Entities() を添字で対応づけて走査する。ずれると
@@ -225,6 +241,7 @@ TEST_F(ComponentArrayTest, DataAndEntitiesLineUp)
         EXPECT_EQ(values[i].value, array.Get(ids[i]).value);
 }
 
+/// @brief Walks every stored entry exactly once.
 TEST_F(ComponentArrayTest, WalksEveryStoredEntryExactlyOnce)
 {
     for (std::uint32_t i = 0; i < 10; ++i) array.Add(Entity(i), Probe{ static_cast<int>(i) });
@@ -242,6 +259,7 @@ TEST_F(ComponentArrayTest, WalksEveryStoredEntryExactlyOnce)
 
 /// @name 参照の安定性
 
+/// @brief Keeps references valid while other entries are added.
 TEST_F(ComponentArrayTest, KeepsReferencesValidWhileOtherEntriesAreAdded)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -271,6 +289,7 @@ TEST_F(ComponentArrayTest, KeepsReferencesValidWhileOtherEntriesAreAdded)
 
 /// @name Clear と move
 
+/// @brief Clearing a populated component array resets its count and removes every entity lookup.
 TEST_F(ComponentArrayTest, ClearForgetsEverything)
 {
     for (std::uint32_t i = 0; i < 8; ++i) array.Add(Entity(i), Probe{ static_cast<int>(i) });
@@ -281,6 +300,7 @@ TEST_F(ComponentArrayTest, ClearForgetsEverything)
     for (std::uint32_t i = 0; i < 8; ++i) EXPECT_FALSE(array.Has(Entity(i)));
 }
 
+/// @brief Can be refilled after clear.
 TEST_F(ComponentArrayTest, CanBeRefilledAfterClear)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -292,6 +312,7 @@ TEST_F(ComponentArrayTest, CanBeRefilledAfterClear)
     EXPECT_EQ(array.Count(), 1u);
 }
 
+/// @brief Clearing an untouched array is harmless.
 TEST_F(ComponentArrayTest, ClearingAnUntouchedArrayIsHarmless)
 {
     array.Clear();
@@ -299,6 +320,7 @@ TEST_F(ComponentArrayTest, ClearingAnUntouchedArrayIsHarmless)
     EXPECT_EQ(array.Count(), 0u);
 }
 
+/// @brief Move takes over the contents.
 TEST_F(ComponentArrayTest, MoveTakesOverTheContents)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -310,6 +332,7 @@ TEST_F(ComponentArrayTest, MoveTakesOverTheContents)
     EXPECT_EQ(moved.Get(Entity(2)).value, 20);
 }
 
+/// @brief The moved from array is empty and reusable.
 TEST_F(ComponentArrayTest, TheMovedFromArrayIsEmptyAndReusable)
 {
     array.Add(Entity(1), Probe{ 10 });
@@ -322,6 +345,7 @@ TEST_F(ComponentArrayTest, TheMovedFromArrayIsEmptyAndReusable)
     EXPECT_EQ(array.Get(Entity(1)).value, 5);
 }
 
+/// @brief Birth token survives swap and moves but never remove readd or clear.
 TEST_F(ComponentArrayTest, BirthTokenSurvivesSwapAndMovesButNeverRemoveReaddOrClear)
 {
     EXPECT_EQ(array.GetLifetime(Entity(1)), 0u);
@@ -352,6 +376,7 @@ TEST_F(ComponentArrayTest, BirthTokenSurvivesSwapAndMovesButNeverRemoveReaddOrCl
     EXPECT_NE(differentType.GetLifetime(Entity(2)), array.GetLifetime(Entity(2)));
 }
 
+/// @brief Chunk spans align with entities across removal and partial tail.
 TEST_F(ComponentArrayTest, ChunkSpansAlignWithEntitiesAcrossRemovalAndPartialTail)
 {
     for (uint32_t index = 0; index < 130; ++index)
@@ -389,6 +414,7 @@ TEST_F(ComponentArrayTest, ChunkSpansAlignWithEntitiesAcrossRemovalAndPartialTai
     EXPECT_EQ(callbacks, 0u);
 }
 
+/// @brief Structure revision changes for membership but not mutable value writes.
 TEST_F(ComponentArrayTest, StructureRevisionChangesForMembershipButNotMutableValueWrites)
 {
     EXPECT_EQ(array.GetStructureRevision(), 0u);
@@ -420,6 +446,7 @@ TEST_F(ComponentArrayTest, StructureRevisionChangesForMembershipButNotMutableVal
     EXPECT_EQ(array.GetStructureRevision(), empty);
 }
 
+/// @brief Checks structure revision transfers with move and retires the replaced contents.
 TEST_F(ComponentArrayTest, StructureRevisionTransfersWithMoveAndRetiresTheReplacedContents)
 {
     array.Add(Entity(1), Probe{1});
@@ -441,6 +468,7 @@ TEST_F(ComponentArrayTest, StructureRevisionTransfersWithMoveAndRetiresTheReplac
     EXPECT_NE(moved.GetStructureRevision(), replacement);
 }
 
+/// @brief Checks data iterator crosses chunk boundaries and keeps captured length.
 TEST_F(ComponentArrayTest, DataIteratorCrossesChunkBoundariesAndKeepsCapturedLength)
 {
     for (uint32_t index = 0; index < 128; ++index)

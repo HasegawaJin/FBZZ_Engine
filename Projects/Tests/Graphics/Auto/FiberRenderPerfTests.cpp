@@ -554,6 +554,7 @@ protected:
     bool m_occlusionSeed = true;
 };
 
+/// @brief Hidden fiber pages skip color but keep their light view shadows and reappear after reset.
 TEST_F(FiberRenderPerfTest, HiddenFiberPagesSkipColorButKeepTheirLightViewShadowsAndReappearAfterReset)
 {
     auto scene = Prepare(1000).scene;
@@ -575,6 +576,7 @@ TEST_F(FiberRenderPerfTest, HiddenFiberPagesSkipColorButKeepTheirLightViewShadow
     m_occlusion = nullptr;
 }
 
+/// @brief Checks shaded blades receive environment light without direct light.
 TEST_F(FiberRenderPerfTest, ShadedBladesReceiveEnvironmentLightWithoutDirectLight)
 {
     auto& prepared = Prepare(10000);
@@ -621,6 +623,7 @@ TEST_F(FiberRenderPerfTest, ShadedBladesReceiveEnvironmentLightWithoutDirectLigh
     m_resources->Release(environment);
 }
 
+/// @brief Collider shape layout compiles for every fiber pass and skinned family.
 TEST_F(FiberRenderPerfTest, ColliderShapeLayoutCompilesForEveryFiberPassAndSkinnedFamily)
 {
     for (const char* family : {"FiberShell", "FiberShellSkinned", "FiberFin", "FiberFinSkinned", "FiberBlade", "GrassCard"})
@@ -632,6 +635,7 @@ TEST_F(FiberRenderPerfTest, ColliderShapeLayoutCompilesForEveryFiberPassAndSkinn
         }
 }
 
+/// @brief Collider shapes bend grass and finite time recovery restores the original image.
 TEST_F(FiberRenderPerfTest, ColliderShapesBendGrassAndFiniteTimeRecoveryRestoresTheOriginalImage)
 {
     auto& prepared = Prepare(10000);
@@ -675,6 +679,7 @@ TEST_F(FiberRenderPerfTest, ColliderShapesBendGrassAndFiniteTimeRecoveryRestores
     }
 }
 
+/// @brief Terrain water clip rejects submerged blade roots across the whole blade.
 TEST_F(FiberRenderPerfTest, TerrainWaterClipRejectsSubmergedBladeRootsAcrossTheWholeBlade)
 {
     auto& prepared = Prepare(10000);
@@ -692,6 +697,7 @@ TEST_F(FiberRenderPerfTest, TerrainWaterClipRejectsSubmergedBladeRootsAcrossTheW
     EXPECT_EQ(ExpectFiniteImage(RenderOnce(prepared.scene, camera), true), coverage);
 }
 
+/// @brief Straight blade shadow depth keeps bounded coverage across segment quality and cast toggle.
 TEST_F(FiberRenderPerfTest, StraightBladeShadowDepthKeepsBoundedCoverageAcrossSegmentQualityAndCastToggle)
 {
     RecordProperty("depthComparison", "zero raster bias; normal-Z world height slab; selected quality is not pixel-equivalent");
@@ -803,6 +809,7 @@ TEST_F(FiberRenderPerfTest, StraightBladeShadowDepthKeepsBoundedCoverageAcrossSe
     m_resources->Release(target); m_resources->Release(state); m_resources->Release(shader);
 }
 
+/// @brief Selected blade quality keeps bounded image error and shadow segment contract.
 TEST_F(FiberRenderPerfTest, SelectedBladeQualityKeepsBoundedImageErrorAndShadowSegmentContract)
 {
     RecordProperty("imageComparison", "default6 exact; selected short-grass foreground coverage 2%, RGB MAE .005, bad RGB pixels 2%; not equal quality");
@@ -847,6 +854,7 @@ TEST_F(FiberRenderPerfTest, SelectedBladeQualityKeepsBoundedImageErrorAndShadowS
     EXPECT_EQ(bounded.shadowTriangles, static_cast<uint64_t>(prepared.roots) * 24);
 }
 
+/// @brief Selected blade quality remains finite and moves with wind across views.
 TEST_F(FiberRenderPerfTest, SelectedBladeQualityRemainsFiniteAndMovesWithWindAcrossViews)
 {
     auto& prepared = Prepare(100000);
@@ -882,6 +890,7 @@ TEST_F(FiberRenderPerfTest, SelectedBladeQualityRemainsFiniteAndMovesWithWindAcr
     }
 }
 
+/// @brief Density LOD boundaries remain independent of blade segment quality.
 TEST_F(FiberRenderPerfTest, DensityLodBoundariesRemainIndependentOfBladeSegmentQuality)
 {
     auto& prepared = Prepare(100000);
@@ -917,6 +926,7 @@ TEST_F(FiberRenderPerfTest, DensityLodBoundariesRemainIndependentOfBladeSegmentQ
     }
 }
 
+/// @brief Instanced blade topologies preserve blade and card coverage.
 TEST_F(FiberRenderPerfTest, InstancedBladeTopologiesPreserveBladeAndCardCoverage)
 {
     auto& prepared = Prepare(10000);
@@ -950,6 +960,7 @@ TEST_F(FiberRenderPerfTest, InstancedBladeTopologiesPreserveBladeAndCardCoverage
     }
 }
 
+/// @brief Blade appearance without instancing capability keeps legacy layout.
 TEST_F(FiberRenderPerfTest, BladeAppearanceWithoutInstancingCapabilityKeepsLegacyLayout)
 {
     auto& prepared = Prepare(10000);
@@ -967,6 +978,7 @@ TEST_F(FiberRenderPerfTest, BladeAppearanceWithoutInstancingCapabilityKeepsLegac
     }
 }
 
+/// @brief Measures resident blade pages with native profiler.
 TEST_F(FiberRenderPerfTest, DISABLED_MeasuresResidentBladePagesWithNativeProfiler)
 {
     const char* configured = std::getenv("FBZZ_FIBER_BENCH_REPORT");

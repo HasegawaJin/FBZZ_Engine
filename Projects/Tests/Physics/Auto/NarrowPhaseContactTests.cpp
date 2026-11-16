@@ -69,6 +69,7 @@ class NarrowPhaseContactTest : public testkit::Fixture {};
 /// 重なりが一番浅い軸を «押し戻す向き» に選び、その軸に垂直な重なり矩形の 4 隅を返す。
 /// 3 軸それぞれを別テストにしているのは、軸の取り違えがテスト名で分かるようにするため。
 
+/// @brief Builds a four point manifold on the X face of two boxes.
 TEST_F(NarrowPhaseContactTest, BuildsAFourPointManifoldOnTheXFaceOfTwoBoxes)
 {
     physics::AABBCollider a = UnitBox(math::Vector3::ZERO);
@@ -82,6 +83,7 @@ TEST_F(NarrowPhaseContactTest, BuildsAFourPointManifoldOnTheXFaceOfTwoBoxes)
     EXPECT_NEAR(contacts[0].depth, 0.5f, testkit::kTolerance);
 }
 
+/// @brief Builds a four point manifold on the Y face of two boxes.
 TEST_F(NarrowPhaseContactTest, BuildsAFourPointManifoldOnTheYFaceOfTwoBoxes)
 {
     physics::AABBCollider a = UnitBox(math::Vector3::ZERO);
@@ -96,6 +98,7 @@ TEST_F(NarrowPhaseContactTest, BuildsAFourPointManifoldOnTheYFaceOfTwoBoxes)
     EXPECT_NEAR(contacts[0].depth, 0.5f, testkit::kTolerance);
 }
 
+/// @brief Builds a four point manifold on the Z face of two boxes.
 TEST_F(NarrowPhaseContactTest, BuildsAFourPointManifoldOnTheZFaceOfTwoBoxes)
 {
     physics::AABBCollider a = UnitBox(math::Vector3::ZERO);
@@ -109,6 +112,7 @@ TEST_F(NarrowPhaseContactTest, BuildsAFourPointManifoldOnTheZFaceOfTwoBoxes)
     EXPECT_NEAR(contacts[0].depth, 0.5f, testkit::kTolerance);
 }
 
+/// @brief Shares the position correction across the manifold.
 TEST_F(NarrowPhaseContactTest, SharesThePositionCorrectionAcrossTheManifold)
 {
     physics::AABBCollider a = UnitBox(math::Vector3::ZERO);
@@ -122,6 +126,7 @@ TEST_F(NarrowPhaseContactTest, SharesThePositionCorrectionAcrossTheManifold)
         EXPECT_NEAR(contact.positionCorrectionWeight, 0.25f, testkit::kTolerance);
 }
 
+/// @brief Chooses the shallowest axis as the push direction.
 TEST_F(NarrowPhaseContactTest, ChoosesTheShallowestAxisAsThePushDirection)
 {
     physics::AABBCollider a = UnitBox(math::Vector3::ZERO);
@@ -140,6 +145,7 @@ TEST_F(NarrowPhaseContactTest, ChoosesTheShallowestAxisAsThePushDirection)
 /// カプセルは «線分同士の最近点» で判定する。線分が点に潰れる (halfHeight = 0) 配置は
 /// エディタで高さを 0 にすれば普通に作れるので、0 除算で落ちないことが契約になる。
 
+/// @brief Collides two capsules whose axes are both degenerate.
 TEST_F(NarrowPhaseContactTest, CollidesTwoCapsulesWhoseAxesAreBothDegenerate)
 {
     physics::CapsuleCollider a(0.5f, 0.0f);
@@ -155,6 +161,7 @@ TEST_F(NarrowPhaseContactTest, CollidesTwoCapsulesWhoseAxesAreBothDegenerate)
     EXPECT_UNIT_LENGTH(contacts[0].normal, testkit::kLooseTolerance);
 }
 
+/// @brief Collides a degenerate capsule against an upright one.
 TEST_F(NarrowPhaseContactTest, CollidesADegenerateCapsuleAgainstAnUprightOne)
 {
     physics::CapsuleCollider flat(0.5f, 0.0f);
@@ -168,6 +175,7 @@ TEST_F(NarrowPhaseContactTest, CollidesADegenerateCapsuleAgainstAnUprightOne)
     EXPECT_UNIT_LENGTH(contacts[0].normal, testkit::kLooseTolerance);
 }
 
+/// @brief Collides an upright capsule against a degenerate one.
 TEST_F(NarrowPhaseContactTest, CollidesAnUprightCapsuleAgainstADegenerateOne)
 {
     physics::CapsuleCollider upright(0.5f, 1.0f);
@@ -182,6 +190,7 @@ TEST_F(NarrowPhaseContactTest, CollidesAnUprightCapsuleAgainstADegenerateOne)
     EXPECT_UNIT_LENGTH(contacts[0].normal, testkit::kLooseTolerance);
 }
 
+/// @brief Clamps to the near end of a crossing capsule.
 TEST_F(NarrowPhaseContactTest, ClampsToTheNearEndOfACrossingCapsule)
 {
     physics::CapsuleCollider upright(0.5f, 1.0f);
@@ -198,6 +207,7 @@ TEST_F(NarrowPhaseContactTest, ClampsToTheNearEndOfACrossingCapsule)
     EXPECT_GT(contacts[0].depth, 0.0f);
 }
 
+/// @brief Clamps to the far end of a crossing capsule.
 TEST_F(NarrowPhaseContactTest, ClampsToTheFarEndOfACrossingCapsule)
 {
     physics::CapsuleCollider upright(0.5f, 1.0f);
@@ -217,6 +227,7 @@ TEST_F(NarrowPhaseContactTest, ClampsToTheFarEndOfACrossingCapsule)
 /// 中心が中に入ると «球の中心から円柱表面へのベクトル» が 0 になり、押し出す向きが
 /// 決まらなくなる。ここで向きを決め損ねると、めり込んだ物が振動するか固まる。
 
+/// @brief Pushes a sphere inside a cylinder out the nearest side.
 TEST_F(NarrowPhaseContactTest, PushesASphereInsideACylinderOutTheNearestSide)
 {
     physics::SphereCollider sphere(0.5f);
@@ -232,6 +243,7 @@ TEST_F(NarrowPhaseContactTest, PushesASphereInsideACylinderOutTheNearestSide)
     EXPECT_NEAR(contacts[0].depth, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Pushes a sphere on the cylinder axis out through a cap.
 TEST_F(NarrowPhaseContactTest, PushesASphereOnTheCylinderAxisOutThroughACap)
 {
     physics::SphereCollider sphere(0.5f);

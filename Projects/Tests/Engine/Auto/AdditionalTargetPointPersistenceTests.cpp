@@ -113,6 +113,7 @@ protected:
     }
 };
 
+/// @brief Point object route and typed references round trip.
 TEST_F(AdditionalTargetPointPersistenceTest, PointObjectRouteAndTypedReferencesRoundTrip)
 {
     const AuthoredRoute saved = MakePointObjectRoute();
@@ -188,6 +189,7 @@ TEST_F(AdditionalTargetPointPersistenceTest, PointObjectRouteAndTypedReferencesR
     EXPECT_FALSE(ik->chains[0].poleReferenceMigrationPending);
 }
 
+/// @brief Canonical null does not revive legacy aliases.
 TEST_F(AdditionalTargetPointPersistenceTest, CanonicalNullDoesNotReviveLegacyAliases)
 {
     scene::Scene source;
@@ -225,6 +227,7 @@ TEST_F(AdditionalTargetPointPersistenceTest, CanonicalNullDoesNotReviveLegacyAli
     EXPECT_FALSE(loaded->chains[1].targetReferenceMigrationPending);
 }
 
+/// @brief Append loads and resolves point object route.
 TEST_F(AdditionalTargetPointPersistenceTest, AppendLoadsAndResolvesPointObjectRoute)
 {
     const AuthoredRoute saved = MakePointObjectRoute();
@@ -267,6 +270,7 @@ TEST_F(AdditionalTargetPointPersistenceTest, AppendLoadsAndResolvesPointObjectRo
     EXPECT_EQ(ik->chains[0].poleReference.id, first->GetID());
 }
 
+/// @brief Legacy inline patrol arrays remain round trippable.
 TEST_F(AdditionalTargetPointPersistenceTest, LegacyInlinePatrolArraysRemainRoundTrippable)
 {
     scene::Scene source;

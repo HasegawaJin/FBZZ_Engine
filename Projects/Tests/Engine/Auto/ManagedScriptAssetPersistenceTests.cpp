@@ -103,6 +103,7 @@ protected:
     std::string m_reference;
 };
 
+/// @brief Missing managed settings keep GUID values and literal paths across scene save and load.
 TEST_F(ManagedScriptAssetPersistenceTest, MissingManagedSettingsKeepGuidValuesAndLiteralPathsAcrossSceneSaveAndLoad)
 {
     scene::Scene source;
@@ -132,6 +133,7 @@ TEST_F(ManagedScriptAssetPersistenceTest, MissingManagedSettingsKeepGuidValuesAn
     ExpectPreservedSettings(*reopenedOwner);
 }
 
+/// @brief Appended managed settings keep GUID values and unrelated objects.
 TEST_F(ManagedScriptAssetPersistenceTest, AppendedManagedSettingsKeepGuidValuesAndUnrelatedObjects)
 {
     scene::Scene source;

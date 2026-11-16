@@ -183,6 +183,7 @@ protected:
     uint32_t m_validationFailures = 0;
 };
 
+/// @brief Samples raster encoded color tint and gl tf metal rough replacement.
 TEST_F(RayTextureTest, SamplesRasterEncodedColorTintAndGlTfMetalRoughReplacement)
 {
     const auto albedo = Texture({128, 64, 255, 128});
@@ -199,6 +200,7 @@ TEST_F(RayTextureTest, SamplesRasterEncodedColorTintAndGlTfMetalRoughReplacement
     EXPECT_NEAR(result[4], 0.8f, 0.0005f); EXPECT_NEAR(result[5], 0.6f, 0.0005f);
     EXPECT_NEAR(result[6], 0.5f + 0.5f * 64 / 255, 0.0005f); EXPECT_NEAR(result[7], 1, 0.0001f);
 }
+/// @brief Applies UV transform wrap and explicit mip without derivatives.
 TEST_F(RayTextureTest, AppliesUvTransformWrapAndExplicitMipWithoutDerivatives)
 {
     const std::array<uint8_t, 8> pixels{255, 255, 255, 255, 255, 0, 0, 255};
@@ -219,6 +221,7 @@ TEST_F(RayTextureTest, AppliesUvTransformWrapAndExplicitMipWithoutDerivatives)
     auto mip = Read({surface}, {mipTexture});
     EXPECT_NEAR(mip[0], 0, 0.0001f); EXPECT_NEAR(mip[1], 1, 0.0005f);
 }
+/// @brief Applies normal strength without changing geometric normal.
 TEST_F(RayTextureTest, AppliesNormalStrengthWithoutChangingGeometricNormal)
 {
     const auto texture = Texture({255, 128, 128, 255});
@@ -237,6 +240,7 @@ TEST_F(RayTextureTest, AppliesNormalStrengthWithoutChangingGeometricNormal)
     auto above = Read({surface}, {texture});
     for (uint32_t channel = 0; channel < 3; ++channel) EXPECT_FLOAT_EQ(above[8 + channel], tilted[8 + channel]);
 }
+/// @brief Falls back to the original normal for exact cancellation and degenerate vertex inputs.
 TEST_F(RayTextureTest, FallsBackToTheOriginalNormalForExactCancellationAndDegenerateVertexInputs)
 {
     const auto normalTexture = m_resources->CreateComputeTexture(4, 1);
@@ -260,6 +264,7 @@ TEST_F(RayTextureTest, FallsBackToTheOriginalNormalForExactCancellationAndDegene
     EXPECT_NEAR(fallback[8], 0.5f, 0.0001f); EXPECT_NEAR(fallback[9], 1, 0.0001f);
     EXPECT_NEAR(fallback[10], 0.5f, 0.0001f); EXPECT_NEAR(fallback[7], 1, 0.0001f);
 }
+/// @brief Rejects alpha candidates before commit for primary and shadow rays.
 TEST_F(RayTextureTest, RejectsAlphaCandidatesBeforeCommitForPrimaryAndShadowRays)
 {
     const auto hole = Texture({255, 255, 255, 0});
@@ -274,6 +279,7 @@ TEST_F(RayTextureTest, RejectsAlphaCandidatesBeforeCommitForPrimaryAndShadowRays
     auto equality = Read({first, second}, {hole}, {{0.5f, 0.5f}, 1}, scene.top, scene.geometries, scene.buffers);
     EXPECT_NEAR(equality[0], 0, 0.0001f); EXPECT_NEAR(equality[1], 2, 0.0001f);
 }
+/// @brief Distinguishes opaque blas variant from candidate alpha variant.
 TEST_F(RayTextureTest, DistinguishesOpaqueBlasVariantFromCandidateAlphaVariant)
 {
     const auto hole = Texture({255, 255, 255, 0});
@@ -282,6 +288,7 @@ TEST_F(RayTextureTest, DistinguishesOpaqueBlasVariantFromCandidateAlphaVariant)
     auto opaque = Read({first, Surface()}, {hole}, {{0.5f, 0.5f}, 1}, scene.top, scene.geometries, scene.buffers);
     EXPECT_NEAR(opaque[0], 0, 0.0001f); EXPECT_NEAR(opaque[1], 2, 0.0001f);
 }
+/// @brief Tracks same handle replacement version and publishes new descriptor.
 TEST_F(RayTextureTest, TracksSameHandleReplacementVersionAndPublishesNewDescriptor)
 {
     const auto initial = Texture({255, 0, 0, 255});
@@ -296,6 +303,7 @@ TEST_F(RayTextureTest, TracksSameHandleReplacementVersionAndPublishesNewDescript
     EXPECT_NEAR(current[0], 0, 0.0001f); EXPECT_NEAR(current[1], 1, 0.0005f);
     EXPECT_NE(oldSurface.textureSrv[0], Surface({initial}).textureSrv[0]);
 }
+/// @brief Rejects stale indirect textures before writing.
 TEST_F(RayTextureTest, RejectsStaleIndirectTexturesBeforeWriting)
 {
     const auto valid = Texture({0, 255, 0, 255});
@@ -308,6 +316,7 @@ TEST_F(RayTextureTest, RejectsStaleIndirectTexturesBeforeWriting)
     ASSERT_EQ(before.size(), after.size());
     for (size_t i = 0; i < before.size(); ++i) EXPECT_FLOAT_EQ(before[i], after[i]);
 }
+/// @brief Rejects missing dynamic inputs and supports immutable textured emission.
 TEST_F(RayTextureTest, RejectsMissingDynamicInputsAndSupportsImmutableTexturedEmission)
 {
     auto params = Params();
@@ -335,6 +344,7 @@ TEST_F(RayTextureTest, RejectsMissingDynamicInputsAndSupportsImmutableTexturedEm
     auto after = material.ResolveRaySurface(params, true, 1, false, false, *m_resources);
     EXPECT_FALSE(before == after);
 }
+/// @brief Samples the same linear textured emission for hit and nee evaluation.
 TEST_F(RayTextureTest, SamplesTheSameLinearTexturedEmissionForHitAndNeeEvaluation)
 {
     const auto texture = Texture({128, 64, 255, 255});

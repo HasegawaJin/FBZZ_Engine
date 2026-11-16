@@ -277,6 +277,7 @@ private:
     std::string m_shaderPath;
 };
 
+/// @brief Material load reacquires relocated and replaced selected slots.
 TEST_F(MaterialPathScratchTest, MaterialLoadReacquiresRelocatedAndReplacedSelectedSlots)
 {
     /// @note This fixture's Init installs MatAssetImporter in the DLL; restore that known dependency on every exit.
@@ -331,6 +332,7 @@ TEST_F(MaterialPathScratchTest, MaterialLoadReacquiresRelocatedAndReplacedSelect
     EXPECT_EQ(m_renderer.materialUpload, current->paramData);
 }
 
+/// @brief Managed transfer reacquires load owners and honors reflection callback cancellation.
 TEST_F(MaterialPathScratchTest, ManagedTransferReacquiresLoadOwnersAndHonorsReflectionCallbackCancellation)
 {
     /// @note This fixture's Init installs MatAssetImporter in the DLL; restore that known dependency on every exit.
@@ -391,6 +393,7 @@ TEST_F(MaterialPathScratchTest, ManagedTransferReacquiresLoadOwnersAndHonorsRefl
     EXPECT_EQ(output, (std::array<double, 4>{-7.0, -7.0, -7.0, -7.0}));
 }
 
+/// @brief Managed numeric write resolves lazy material before its commit fence.
 TEST_F(MaterialPathScratchTest, ManagedNumericWriteResolvesLazyMaterialBeforeItsCommitFence)
 {
     struct RestoreImporter final {
@@ -439,6 +442,7 @@ TEST_F(MaterialPathScratchTest, ManagedNumericWriteResolvesLazyMaterialBeforeIts
     }
 }
 
+/// @brief Managed numeric write rejects owner replacement during lazy load.
 TEST_F(MaterialPathScratchTest, ManagedNumericWriteRejectsOwnerReplacementDuringLazyLoad)
 {
     struct RestoreImporter final {
@@ -480,6 +484,7 @@ TEST_F(MaterialPathScratchTest, ManagedNumericWriteRejectsOwnerReplacementDuring
     EXPECT_FLOAT_EQ(found->second[0], 0.5f);
 }
 
+/// @brief Texture backend callback preserves outer snapshot across mutation and nested sync.
 /// @note Mutating defaults/overrides and reentering from native texture creation must not replace the outer call's already-owned path snapshot.
 TEST_F(MaterialPathScratchTest, TextureBackendCallbackPreservesOuterSnapshotAcrossMutationAndNestedSync)
 {
@@ -535,6 +540,7 @@ TEST_F(MaterialPathScratchTest, TextureBackendCallbackPreservesOuterSnapshotAcro
     EXPECT_FLOAT_EQ(updatedAlbedo,0.9f);
 }
 
+/// @brief Checks late texture callback after empty slots reacquires the replaced slot.
 TEST_F(MaterialPathScratchTest, LateTextureCallbackAfterEmptySlotsReacquiresTheReplacedSlot)
 {
     const auto texture = MakeTexture("LastSlotAfterEmptyTextures.tga");
@@ -585,6 +591,7 @@ TEST_F(MaterialPathScratchTest, LateTextureCallbackAfterEmptySlotsReacquiresTheR
     for (const auto current : material->textures) EXPECT_FALSE(current.IsValid());
 }
 
+/// @brief Short empty and oversized references keep independent bindings.
 /// @note Shorter/removed paths start from an empty snapshot, and distinct oversized references remain untruncated local values.
 TEST_F(MaterialPathScratchTest, ShortEmptyAndOversizedReferencesKeepIndependentBindings)
 {
@@ -633,6 +640,7 @@ TEST_F(MaterialPathScratchTest, ShortEmptyAndOversizedReferencesKeepIndependentB
     EXPECT_EQ(TextureMask(*material),0u);
 }
 
+/// @brief Shader release and resource reset do not reuse retired bindings.
 /// @note The string scratch contains no resource owner; shader release and manager reset still create current shader/CB generations.
 TEST_F(MaterialPathScratchTest, ShaderReleaseAndResourceResetDoNotReuseRetiredBindings)
 {
@@ -664,6 +672,7 @@ TEST_F(MaterialPathScratchTest, ShaderReleaseAndResourceResetDoNotReuseRetiredBi
     EXPECT_EQ(TextureMask(*material),0u);
 }
 
+/// @brief Cache publication failure still uploads and publishes decoded source pixels.
 TEST_F(AssetStreamingIntegrationTest, CachePublicationFailureStillUploadsAndPublishesDecodedSourcePixels)
 {
     SetLogLevel(core::LogLevel::WARNING);
@@ -712,6 +721,7 @@ TEST_F(AssetStreamingIntegrationTest, CachePublicationFailureStillUploadsAndPubl
     EXPECT_EQ(temporaries, 0u);
 }
 
+/// @brief Relative absolute GUID and dot paths share material and unload.
 TEST_F(AssetStreamingIntegrationTest, RelativeAbsoluteGuidAndDotPathsShareMaterialAndUnload)
 {
     const auto absolute = m_temp.File("Assets/Aliases.mat").generic_string();
@@ -737,6 +747,7 @@ TEST_F(AssetStreamingIntegrationTest, RelativeAbsoluteGuidAndDotPathsShareMateri
     EXPECT_EQ(asset::AssetManager::Get<asset::MaterialAsset>(relative), nullptr);
 }
 
+/// @brief Checks consumer lease prevents eviction and reloads after unused frames.
 TEST_F(AssetStreamingIntegrationTest, ConsumerLeasePreventsEvictionAndReloadsAfterUnusedFrames)
 {
     const auto path = TexturePath();
@@ -799,6 +810,7 @@ TEST_F(AssetStreamingIntegrationTest, ConsumerLeasePreventsEvictionAndReloadsAft
     EXPECT_EQ(m_renderer.memoryLoads, 3);
 }
 
+/// @brief Pending texture uses placeholder without synchronous file load.
 TEST_F(AssetStreamingIntegrationTest, PendingTextureUsesPlaceholderWithoutSynchronousFileLoad)
 {
     auto& resolver = asset::StreamedTextureResolver::Engine();
@@ -820,6 +832,7 @@ TEST_F(AssetStreamingIntegrationTest, PendingTextureUsesPlaceholderWithoutSynchr
     resolver.SetMissPolicy(savedPolicy);
 }
 
+/// @brief Managed material numeric pages validate real property shape and publish one candidate.
 TEST_F(AssetStreamingIntegrationTest, ManagedMaterialNumericPagesValidateRealPropertyShapeAndPublishOneCandidate)
 {
     asset::MaterialAssetAuthoring shared; shared.shaderPath = "ManagedMaterialFixture.hlsl";
@@ -877,6 +890,7 @@ TEST_F(AssetStreamingIntegrationTest, ManagedMaterialNumericPagesValidateRealPro
     ASSERT_TRUE(caller.material.Instance().TryGetMatrix(scene::MaterialPropertyId("matrix"), copied)); EXPECT_EQ(copied.m[2][3], 11); EXPECT_EQ(copied.m[3][3], 15);
 }
 
+/// @brief Managed asset leases bind to caller and cancel before owner retirement.
 TEST_F(AssetStreamingIntegrationTest, ManagedAssetLeasesBindToCallerAndCancelBeforeOwnerRetirement)
 {
     const auto path = TexturePath();
@@ -922,6 +936,7 @@ TEST_F(AssetStreamingIntegrationTest, ManagedAssetLeasesBindToCallerAndCancelBef
     services.CancelOwner(9, &caller);
 }
 } /// @note namespace
+/// @brief Nested same slot sync keeps current publication and outer immutable call snapshot.
 TEST_F(MaterialPathScratchTest, NestedSameSlotSyncKeepsCurrentPublicationAndOuterImmutableCallSnapshot)
 {
     const auto first = MakeTexture("TemplateFirst.tga"), previous = MakeTexture("TemplatePrevious.tga");

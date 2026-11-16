@@ -87,6 +87,7 @@ void CreateConnectedWaters(scene::Scene& source)
 }
 } /// @note namespace
 
+/// @brief Horizon link survives reload and shares the simulated mouth height.
 TEST_F(WaterZonePersistenceTest, HorizonLinkSurvivesReloadAndSharesTheSimulatedMouthHeight)
 {
     scene::Scene source;
@@ -129,6 +130,7 @@ TEST_F(WaterZonePersistenceTest, HorizonLinkSurvivesReloadAndSharesTheSimulatedM
     }
 }
 
+/// @brief Passive clone restores nested references and omits runtime state.
 TEST_F(WaterZonePersistenceTest, PassiveCloneRestoresNestedReferencesAndOmitsRuntimeState)
 {
     scene::Scene source;
@@ -167,6 +169,7 @@ TEST_F(WaterZonePersistenceTest, PassiveCloneRestoresNestedReferencesAndOmitsRun
     EXPECT_NE(zone->snapshot, originalOwner->GetComponent<scene::WaterZoneComponent>()->snapshot);
 }
 
+/// @brief Appending waters resolves zone references to new objects.
 TEST_F(WaterZonePersistenceTest, AppendingWatersResolvesZoneReferencesToNewObjects)
 {
     scene::Scene source;
@@ -204,6 +207,7 @@ TEST_F(WaterZonePersistenceTest, AppendingWatersResolvesZoneReferencesToNewObjec
     EXPECT_EQ(destination.GetGameObject(unrelatedID), &unrelated);
 }
 
+/// @brief Appending point object water preserves and validates static bake.
 TEST_F(WaterZonePersistenceTest, AppendingPointObjectWaterPreservesAndValidatesStaticBake)
 {
     scene::Scene source;
@@ -341,6 +345,7 @@ TEST_F(WaterZonePersistenceTest, AppendingPointObjectWaterPreservesAndValidatesS
     EXPECT_EQ(preservedUnrelated->name, "Unrelated");
 }
 
+/// @brief Oversized persisted members cannot become an owner only zone.
 TEST_F(WaterZonePersistenceTest, OversizedPersistedMembersCannotBecomeAnOwnerOnlyZone)
 {
     scene::Scene source;
@@ -360,6 +365,7 @@ TEST_F(WaterZonePersistenceTest, OversizedPersistedMembersCannotBecomeAnOwnerOnl
     EXPECT_FALSE(restoredZone->diagnostic.empty());
 }
 
+/// @brief Connected overlaps apply the same lift as one water.
 TEST_F(WaterZonePhysicsTest, ConnectedOverlapsApplyTheSameLiftAsOneWater)
 {
     const auto oneWater = StepOverlappingWaters(false, false);

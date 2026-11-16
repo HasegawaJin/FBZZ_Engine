@@ -46,6 +46,7 @@ class ColliderVolumeTest : public testkit::Fixture {};
 
 /// @name 内外判定
 
+/// @brief Contains is `false` without a collider.
 TEST_F(ColliderVolumeTest, ContainsIsFalseWithoutACollider)
 {
     physics::ColliderVolume volume(nullptr, SettingsFor(physics::VolumeType::Gravity));
@@ -54,6 +55,7 @@ TEST_F(ColliderVolumeTest, ContainsIsFalseWithoutACollider)
     EXPECT_FALSE(volume.Contains(math::Vector3::ZERO));
 }
 
+/// @brief Contains uses the sphere radius around its world center.
 TEST_F(ColliderVolumeTest, ContainsUsesTheSphereRadiusAroundItsWorldCenter)
 {
     physics::SphereCollider sphere(2.0f);
@@ -64,6 +66,7 @@ TEST_F(ColliderVolumeTest, ContainsUsesTheSphereRadiusAroundItsWorldCenter)
     EXPECT_FALSE(volume.Contains(math::Vector3(7.5f, 0.0f, 0.0f)));
 }
 
+/// @brief Contains treats the AABB boundary as inside.
 TEST_F(ColliderVolumeTest, ContainsTreatsTheAABBBoundaryAsInside)
 {
     physics::AABBCollider box(math::Vector3(1.0f, 1.0f, 1.0f));
@@ -75,6 +78,7 @@ TEST_F(ColliderVolumeTest, ContainsTreatsTheAABBBoundaryAsInside)
     EXPECT_FALSE(volume.Contains(math::Vector3(1.01f, 0.0f, 0.0f)));
 }
 
+/// @brief Contains delegates to the cylinder shape.
 TEST_F(ColliderVolumeTest, ContainsDelegatesToTheCylinderShape)
 {
     physics::CylinderCollider cylinder(1.0f, 2.0f);
@@ -86,6 +90,7 @@ TEST_F(ColliderVolumeTest, ContainsDelegatesToTheCylinderShape)
     EXPECT_FALSE(volume.Contains(math::Vector3(0.9f, 0.0f, 0.9f)));
 }
 
+/// @brief Contains measures distance to the capsule segment.
 TEST_F(ColliderVolumeTest, ContainsMeasuresDistanceToTheCapsuleSegment)
 {
     physics::CapsuleCollider capsule(0.5f, 2.0f);
@@ -102,6 +107,7 @@ TEST_F(ColliderVolumeTest, ContainsMeasuresDistanceToTheCapsuleSegment)
 
 /// @name 効果の適用
 
+/// @brief Gravity applies the configured acceleration scaled by mass.
 TEST_F(ColliderVolumeTest, GravityAppliesTheConfiguredAccelerationScaledByMass)
 {
     physics::SphereCollider sphere(10.0f);
@@ -119,6 +125,7 @@ TEST_F(ColliderVolumeTest, GravityAppliesTheConfiguredAccelerationScaledByMass)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 4.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Gravity does not wake a sleeping body.
 TEST_F(ColliderVolumeTest, GravityDoesNotWakeASleepingBody)
 {
     physics::SphereCollider sphere(10.0f);
@@ -134,6 +141,7 @@ TEST_F(ColliderVolumeTest, GravityDoesNotWakeASleepingBody)
     EXPECT_TRUE(body.IsSleeping());
 }
 
+/// @brief Apply ignores static bodies.
 TEST_F(ColliderVolumeTest, ApplyIgnoresStaticBodies)
 {
     physics::SphereCollider sphere(10.0f);
@@ -158,6 +166,7 @@ TEST_F(ColliderVolumeTest, ApplyIgnoresStaticBodies)
     EXPECT_VEC3_NEAR(body.GetVelocity(), settings.gravity * kUnitDt, testkit::kTolerance);
 }
 
+/// @brief Vortex pushes tangentially around the vertical axis.
 TEST_F(ColliderVolumeTest, VortexPushesTangentiallyAroundTheVerticalAxis)
 {
     physics::SphereCollider sphere(10.0f);
@@ -176,6 +185,7 @@ TEST_F(ColliderVolumeTest, VortexPushesTangentiallyAroundTheVerticalAxis)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 0.0f, -2.0f), testkit::kTolerance);
 }
 
+/// @brief Checks vortex lifts without a swirl direction at the center.
 TEST_F(ColliderVolumeTest, VortexLiftsWithoutASwirlDirectionAtTheCenter)
 {
     physics::SphereCollider sphere(10.0f);
@@ -195,6 +205,7 @@ TEST_F(ColliderVolumeTest, VortexLiftsWithoutASwirlDirectionAtTheCenter)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 3.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Explosion pushes outward as an immediate impulse.
 TEST_F(ColliderVolumeTest, ExplosionPushesOutwardAsAnImmediateImpulse)
 {
     physics::SphereCollider sphere(10.0f);
@@ -210,6 +221,7 @@ TEST_F(ColliderVolumeTest, ExplosionPushesOutwardAsAnImmediateImpulse)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 0.0f, 7.0f), testkit::kTolerance);
 }
 
+/// @brief Explosion pushes upward for a body at the center.
 TEST_F(ColliderVolumeTest, ExplosionPushesUpwardForABodyAtTheCenter)
 {
     physics::SphereCollider sphere(10.0f);
@@ -224,6 +236,7 @@ TEST_F(ColliderVolumeTest, ExplosionPushesUpwardForABodyAtTheCenter)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 7.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Time dilation applies no force.
 TEST_F(ColliderVolumeTest, TimeDilationAppliesNoForce)
 {
     physics::SphereCollider sphere(10.0f);
@@ -240,6 +253,7 @@ TEST_F(ColliderVolumeTest, TimeDilationAppliesNoForce)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Magnetic applies lorentz force scaled by charge.
 TEST_F(ColliderVolumeTest, MagneticAppliesLorentzForceScaledByCharge)
 {
     physics::SphereCollider sphere(10.0f);
@@ -258,6 +272,7 @@ TEST_F(ColliderVolumeTest, MagneticAppliesLorentzForceScaledByCharge)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(1.0f, 0.0f, 2.0f), testkit::kTolerance);
 }
 
+/// @brief Magnetic applies nothing to an uncharged body.
 TEST_F(ColliderVolumeTest, MagneticAppliesNothingToAnUnchargedBody)
 {
     physics::SphereCollider sphere(10.0f);
@@ -274,6 +289,7 @@ TEST_F(ColliderVolumeTest, MagneticAppliesNothingToAnUnchargedBody)
 
 /// @name World へ返す問い合わせ
 
+/// @brief Time scale is neutral for every type except time dilation.
 TEST_F(ColliderVolumeTest, TimeScaleIsNeutralForEveryTypeExceptTimeDilation)
 {
     physics::VolumeSettings dilation = SettingsFor(physics::VolumeType::TimeDilation);
@@ -286,6 +302,7 @@ TEST_F(ColliderVolumeTest, TimeScaleIsNeutralForEveryTypeExceptTimeDilation)
     EXPECT_FLOAT_EQ(physics::ColliderVolume(nullptr, gravity).GetTimeScale(), 1.0f);
 }
 
+/// @brief Checks only the gravity type overrides world gravity.
 TEST_F(ColliderVolumeTest, OnlyTheGravityTypeOverridesWorldGravity)
 {
     EXPECT_TRUE(physics::ColliderVolume(nullptr, SettingsFor(physics::VolumeType::Gravity))
@@ -294,6 +311,7 @@ TEST_F(ColliderVolumeTest, OnlyTheGravityTypeOverridesWorldGravity)
                      .OverridesGravity());
 }
 
+/// @brief Never expires for a negative duration.
 TEST_F(ColliderVolumeTest, NeverExpiresForANegativeDuration)
 {
     physics::VolumeSettings settings = SettingsFor(physics::VolumeType::Gravity);
@@ -305,6 +323,7 @@ TEST_F(ColliderVolumeTest, NeverExpiresForANegativeDuration)
     EXPECT_FALSE(volume.IsExpired());
 }
 
+/// @brief Expires once ticked past its duration.
 TEST_F(ColliderVolumeTest, ExpiresOnceTickedPastItsDuration)
 {
     physics::VolumeSettings settings = SettingsFor(physics::VolumeType::Explosion);

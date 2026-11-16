@@ -37,6 +37,7 @@ protected:
     bool End(uint64_t token) { return m_stack.End(token, Emit()); }
 };
 
+/// @brief Never emits before a recording list successfully opens.
 TEST_F(PixEventStackTest, NeverEmitsBeforeARecordingListSuccessfullyOpens)
 {
     EXPECT_EQ(Begin("Rejected"), 0u);
@@ -51,6 +52,7 @@ TEST_F(PixEventStackTest, NeverEmitsBeforeARecordingListSuccessfullyOpens)
     EXPECT_EQ(m_emissions, (std::vector<PixEmission>{{true, 1, "Actual"}, {false, 1, "Actual"}}));
 }
 
+/// @brief Split ends inner first and reopens outer first with owned names.
 TEST_F(PixEventStackTest, SplitEndsInnerFirstAndReopensOuterFirstWithOwnedNames)
 {
     m_stack.Resume(Emit());
@@ -76,6 +78,7 @@ TEST_F(PixEventStackTest, SplitEndsInnerFirstAndReopensOuterFirstWithOwnedNames)
     EXPECT_EQ(m_stack.GetDepth(), 0u);
 }
 
+/// @brief Failed close or reset discards without reopening retired scopes.
 TEST_F(PixEventStackTest, FailedCloseOrResetDiscardsWithoutReopeningRetiredScopes)
 {
     m_stack.Resume(Emit());
@@ -95,6 +98,7 @@ TEST_F(PixEventStackTest, FailedCloseOrResetDiscardsWithoutReopeningRetiredScope
     EXPECT_EQ(m_emissions.back(), (PixEmission{false, 1, "Next"}));
 }
 
+/// @brief Frame end and shutdown balance every emitted scope once.
 TEST_F(PixEventStackTest, FrameEndAndShutdownBalanceEveryEmittedScopeOnce)
 {
     m_stack.Resume(Emit());
@@ -110,6 +114,7 @@ TEST_F(PixEventStackTest, FrameEndAndShutdownBalanceEveryEmittedScopeOnce)
     EXPECT_FALSE(End(outer));
 }
 
+/// @brief Out of order or unmatched ends do not pop an unrelated scope.
 TEST_F(PixEventStackTest, OutOfOrderOrUnmatchedEndsDoNotPopAnUnrelatedScope)
 {
     m_stack.Resume(Emit());
@@ -125,6 +130,7 @@ TEST_F(PixEventStackTest, OutOfOrderOrUnmatchedEndsDoNotPopAnUnrelatedScope)
     EXPECT_EQ(m_emissions.size(), 4u);
 }
 
+/// @brief Suspended scope can retire before its list reopens.
 TEST_F(PixEventStackTest, SuspendedScopeCanRetireBeforeItsListReopens)
 {
     m_stack.Resume(Emit());
@@ -139,6 +145,7 @@ TEST_F(PixEventStackTest, SuspendedScopeCanRetireBeforeItsListReopens)
     EXPECT_TRUE(End(outer));
 }
 
+/// @brief Event recording has no timestamp query budget.
 TEST_F(PixEventStackTest, EventRecordingHasNoTimestampQueryBudget)
 {
     m_stack.Resume(Emit());
@@ -153,6 +160,7 @@ TEST_F(PixEventStackTest, EventRecordingHasNoTimestampQueryBudget)
     EXPECT_EQ(m_emissions.size(), 514u);
 }
 
+/// @brief Compute list retirement does not alter the graphics list stack.
 TEST_F(PixEventStackTest, ComputeListRetirementDoesNotAlterTheGraphicsListStack)
 {
     renderer::DX12PixEventStack compute;

@@ -26,6 +26,7 @@ namespace fbzz::tests {
 
 class ObjectPresetMenuTest : public testkit::EditorFixture {};
 
+/// @brief Keeps common creation shallow and all preset IDs unique.
 TEST_F(ObjectPresetMenuTest, KeepsCommonCreationShallowAndAllPresetIdsUnique)
 {
     for (const char* id : {"empty", "3d.cube", "3d.sphere", "3d.plane", "camera"}) {
@@ -48,6 +49,7 @@ TEST_F(ObjectPresetMenuTest, KeepsCommonCreationShallowAndAllPresetIdsUnique)
     }
 }
 
+/// @brief Creates a fixed quad and keeps billboard as an explicit choice.
 TEST_F(ObjectPresetMenuTest, CreatesAFixedQuadAndKeepsBillboardAsAnExplicitChoice)
 {
     AttachScene();
@@ -67,6 +69,7 @@ TEST_F(ObjectPresetMenuTest, CreatesAFixedQuadAndKeepsBillboardAsAnExplicitChoic
     EXPECT_NE(billboard->GetComponent<scene::BillboardComponent>(), nullptr);
 }
 
+/// @brief Creates useful spatial ambient and music audio defaults without guessing an asset.
 TEST_F(ObjectPresetMenuTest, CreatesUsefulSpatialAmbientAndMusicAudioDefaultsWithoutGuessingAnAsset)
 {
     AttachScene();
@@ -99,6 +102,7 @@ TEST_F(ObjectPresetMenuTest, CreatesUsefulSpatialAmbientAndMusicAudioDefaultsWit
     EXPECT_TRUE(music->clipPath.empty());
 }
 
+/// @brief Creates at the selected parents local origin and restores selection and GUID through undo redo.
 TEST_F(ObjectPresetMenuTest, CreatesAtTheSelectedParentsLocalOriginAndRestoresSelectionAndGuidThroughUndoRedo)
 {
     auto& target = AttachScene();
@@ -139,6 +143,7 @@ TEST_F(ObjectPresetMenuTest, CreatesAtTheSelectedParentsLocalOriginAndRestoresSe
 }
 
 
+/// @brief Primitive creation and defaults use their explicit resource context.
 TEST_F(ObjectPresetMenuTest, PrimitiveCreationAndDefaultsUseTheirExplicitResourceContext)
 {
     auto& target = AttachScene();
@@ -158,6 +163,7 @@ TEST_F(ObjectPresetMenuTest, PrimitiveCreationAndDefaultsUseTheirExplicitResourc
     Context().resources = nullptr; target.Clear();
 }
 
+/// @brief Scene reload resolves meshes through the scenes bound manager.
 TEST_F(ObjectPresetMenuTest, SceneReloadResolvesMeshesThroughTheScenesBoundManager)
 {
     auto& target = AttachScene();
@@ -178,6 +184,7 @@ TEST_F(ObjectPresetMenuTest, SceneReloadResolvesMeshesThroughTheScenesBoundManag
     target.Clear();
 }
 
+/// @brief Headless scene load does not borrow an unrelated managers resources.
 TEST_F(ObjectPresetMenuTest, HeadlessSceneLoadDoesNotBorrowAnUnrelatedManagersResources)
 {
     auto& target = AttachScene();

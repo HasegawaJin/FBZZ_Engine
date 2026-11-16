@@ -78,6 +78,7 @@ class BVHTest : public testkit::Fixture {};
 
 /// @name 構築
 
+/// @brief Build produces no nodes for an empty mesh.
 TEST_F(BVHTest, BuildProducesNoNodesForAnEmptyMesh)
 {
     physics::BVHTree tree;
@@ -87,6 +88,7 @@ TEST_F(BVHTest, BuildProducesNoNodesForAnEmptyMesh)
     EXPECT_TRUE(tree.triangles.empty());
 }
 
+/// @brief Build keeps every triangle.
 TEST_F(BVHTest, BuildKeepsEveryTriangle)
 {
     physics::BVHTree tree;
@@ -96,6 +98,7 @@ TEST_F(BVHTest, BuildKeepsEveryTriangle)
     EXPECT_FALSE(tree.nodes.empty());
 }
 
+/// @brief Root bounds enclose every triangle.
 TEST_F(BVHTest, RootBoundsEncloseEveryTriangle)
 {
     physics::BVHTree tree;
@@ -116,6 +119,7 @@ TEST_F(BVHTest, RootBoundsEncloseEveryTriangle)
     }
 }
 
+/// @brief Checks every triangle appears in exactly one leaf.
 TEST_F(BVHTest, EveryTriangleAppearsInExactlyOneLeaf)
 {
     /// @note 重複して入っていると同じ三角形と 2 回衝突判定し、押し戻しが二重に効く。
@@ -138,6 +142,7 @@ TEST_F(BVHTest, EveryTriangleAppearsInExactlyOneLeaf)
     }
 }
 
+/// @brief Internal nodes only appear when the leaf limit is exceeded.
 TEST_F(BVHTest, InternalNodesOnlyAppearWhenTheLeafLimitIsExceeded)
 {
     physics::BVHTree small;
@@ -147,6 +152,7 @@ TEST_F(BVHTest, InternalNodesOnlyAppearWhenTheLeafLimitIsExceeded)
     EXPECT_TRUE(small.nodes[0].IsLeaf());
 }
 
+/// @brief Leaves hold no more than the requested triangle count.
 TEST_F(BVHTest, LeavesHoldNoMoreThanTheRequestedTriangleCount)
 {
     constexpr int    kMaxLeafTris = 3;
@@ -163,6 +169,7 @@ TEST_F(BVHTest, LeavesHoldNoMoreThanTheRequestedTriangleCount)
     EXPECT_GE(leafCount, (64u + kMaxLeafTris - 1) / kMaxLeafTris);
 }
 
+/// @brief Child bounds are contained in their parent.
 TEST_F(BVHTest, ChildBoundsAreContainedInTheirParent)
 {
     physics::BVHTree tree;
@@ -189,6 +196,7 @@ TEST_F(BVHTest, ChildBoundsAreContainedInTheirParent)
 
 /// @name 問い合わせ
 
+/// @brief Query on an empty tree visits nothing.
 TEST_F(BVHTest, QueryOnAnEmptyTreeVisitsNothing)
 {
     physics::BVHTree tree;
@@ -200,6 +208,7 @@ TEST_F(BVHTest, QueryOnAnEmptyTreeVisitsNothing)
     EXPECT_EQ(visited, 0);
 }
 
+/// @brief Query finds nothing when the box misses the mesh.
 TEST_F(BVHTest, QueryFindsNothingWhenTheBoxMissesTheMesh)
 {
     physics::BVHTree tree;
@@ -211,6 +220,7 @@ TEST_F(BVHTest, QueryFindsNothingWhenTheBoxMissesTheMesh)
     EXPECT_TRUE(hits.empty());
 }
 
+/// @brief Query finds every triangle when the box covers the mesh.
 TEST_F(BVHTest, QueryFindsEveryTriangleWhenTheBoxCoversTheMesh)
 {
     physics::BVHTree tree;
@@ -222,6 +232,7 @@ TEST_F(BVHTest, QueryFindsEveryTriangleWhenTheBoxCoversTheMesh)
     EXPECT_EQ(hits.size(), 32u);
 }
 
+/// @brief Query finds only the triangles under the box.
 TEST_F(BVHTest, QueryFindsOnlyTheTrianglesUnderTheBox)
 {
     /// @note 三角形 i は x 方向に [i, i+0.8]。問い合わせ [4.9, 5.5] と重なるのは 5 番だけ。
@@ -234,6 +245,7 @@ TEST_F(BVHTest, QueryFindsOnlyTheTrianglesUnderTheBox)
     EXPECT_EQ(hits, std::set<uint32_t>{5u});
 }
 
+/// @brief Query matches a brute force scan for random boxes.
 TEST_F(BVHTest, QueryMatchesABruteForceScanForRandomBoxes)
 {
     /// @note BVH の枝刈りが «結果を変えない» ことが本質。総当たりと突き合わせる。
@@ -252,6 +264,7 @@ TEST_F(BVHTest, QueryMatchesABruteForceScanForRandomBoxes)
     }
 }
 
+/// @brief Query matches a brute force scan for a single triangle.
 TEST_F(BVHTest, QueryMatchesABruteForceScanForASingleTriangle)
 {
     /// @note 三角形 1 枚は «根がそのまま葉» という最小構成。境界条件が壊れやすい。

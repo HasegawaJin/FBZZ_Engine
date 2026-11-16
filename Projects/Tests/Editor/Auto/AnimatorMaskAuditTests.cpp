@@ -45,6 +45,7 @@ float TotalShare(const audit::BoneContribution& contribution)
 
 /// @name 取り分の合成
 
+/// @brief Base keeps everything without layers.
 TEST(AnimatorMaskEvaluate, BaseKeepsEverythingWithoutLayers)
 {
     const auto result = audit::Evaluate({}, "Hips/Spine", "Spine");
@@ -54,6 +55,7 @@ TEST(AnimatorMaskEvaluate, BaseKeepsEverythingWithoutLayers)
     EXPECT_EQ(result.owner, -1);
 }
 
+/// @brief A full weight layer takes everything.
 TEST(AnimatorMaskEvaluate, AFullWeightLayerTakesEverything)
 {
     const std::vector<audit::LayerInfo> layers{ MakeLayer("Upper", 1.0f) };
@@ -65,6 +67,7 @@ TEST(AnimatorMaskEvaluate, AFullWeightLayerTakesEverything)
     EXPECT_EQ(result.owner, 0);
 }
 
+/// @brief A half weight layer splits with the base.
 TEST(AnimatorMaskEvaluate, AHalfWeightLayerSplitsWithTheBase)
 {
     const std::vector<audit::LayerInfo> layers{ MakeLayer("Upper", 0.5f) };
@@ -75,6 +78,7 @@ TEST(AnimatorMaskEvaluate, AHalfWeightLayerSplitsWithTheBase)
     EXPECT_NEAR(result.share[0], 0.5f, kEps);
 }
 
+/// @brief Checks later layers dilute earlier ones.
 TEST(AnimatorMaskEvaluate, LaterLayersDiluteEarlierOnes)
 {
     /// @note Lerp を畳むので、後から積んだ分だけ先の取り分が薄まる。
@@ -92,6 +96,7 @@ TEST(AnimatorMaskEvaluate, LaterLayersDiluteEarlierOnes)
     EXPECT_NEAR(result.baseShare, 0.25f, kEps);
 }
 
+/// @brief Shares always sum to one.
 TEST(AnimatorMaskEvaluate, SharesAlwaysSumToOne)
 {
     const std::vector<audit::LayerInfo> layers{
@@ -105,6 +110,7 @@ TEST(AnimatorMaskEvaluate, SharesAlwaysSumToOne)
     EXPECT_NEAR(TotalShare(result), 1.0f, kEps);
 }
 
+/// @brief A disabled layer takes nothing.
 TEST(AnimatorMaskEvaluate, ADisabledLayerTakesNothing)
 {
     const std::vector<audit::LayerInfo> layers{
@@ -117,6 +123,7 @@ TEST(AnimatorMaskEvaluate, ADisabledLayerTakesNothing)
     EXPECT_NEAR(result.share[0], 0.0f, kEps);
 }
 
+/// @brief A zero-weight layer takes nothing.
 TEST(AnimatorMaskEvaluate, AZeroWeightLayerTakesNothing)
 {
     const std::vector<audit::LayerInfo> layers{ MakeLayer("Idle", 0.0f) };
@@ -127,6 +134,7 @@ TEST(AnimatorMaskEvaluate, AZeroWeightLayerTakesNothing)
     EXPECT_EQ(result.owner, -1);
 }
 
+/// @brief Checks an additive layer steals no share.
 TEST(AnimatorMaskEvaluate, AnAdditiveLayerStealsNoShare)
 {
     /// @note 加算は «上に足す» ので、誰の取り分も奪わない。ここを Override と同じ扱いにすると
@@ -142,6 +150,7 @@ TEST(AnimatorMaskEvaluate, AnAdditiveLayerStealsNoShare)
     EXPECT_NEAR(result.additiveGain[0], 1.0f, kEps);
 }
 
+/// @brief Checks additive and override coexist.
 TEST(AnimatorMaskEvaluate, AdditiveAndOverrideCoexist)
 {
     const std::vector<audit::LayerInfo> layers{
@@ -160,6 +169,7 @@ TEST(AnimatorMaskEvaluate, AdditiveAndOverrideCoexist)
     EXPECT_NEAR(result.share[1], 0.0f, kEps);
 }
 
+/// @brief Reports the dominant owner.
 TEST(AnimatorMaskEvaluate, ReportsTheDominantOwner)
 {
     /// @note «この骨は誰が動かしているか» の表示に使う。多数派が変わったら owner も変わる。
@@ -173,6 +183,7 @@ TEST(AnimatorMaskEvaluate, ReportsTheDominantOwner)
     EXPECT_EQ(result.owner, 1);
 }
 
+/// @brief Owner stays unset when the base wins.
 TEST(AnimatorMaskEvaluate, OwnerStaysUnsetWhenTheBaseWins)
 {
     const std::vector<audit::LayerInfo> layers{ MakeLayer("Weak", 0.1f) };
@@ -183,6 +194,7 @@ TEST(AnimatorMaskEvaluate, OwnerStaysUnsetWhenTheBaseWins)
     EXPECT_GT(result.baseShare, result.share[0]);
 }
 
+/// @brief Clamps an over weighted layer.
 TEST(AnimatorMaskEvaluate, ClampsAnOverWeightedLayer)
 {
     /// @note 1 を超える weight で取り分が負になったり合計が崩れたりしないこと。
@@ -195,6 +207,7 @@ TEST(AnimatorMaskEvaluate, ClampsAnOverWeightedLayer)
     EXPECT_GE(result.baseShare, 0.0f);
 }
 
+/// @brief Sizes the result to the layer count.
 TEST(AnimatorMaskEvaluate, SizesTheResultToTheLayerCount)
 {
     const std::vector<audit::LayerInfo> layers{
@@ -209,6 +222,7 @@ TEST(AnimatorMaskEvaluate, SizesTheResultToTheLayerCount)
 
 /// @name blendDepth の減衰
 
+/// @brief Has one entry per depth plus the root.
 TEST(AnimatorMaskBlendDepth, HasOneEntryPerDepthPlusTheRoot)
 {
     EXPECT_EQ(audit::BlendDepthRamp(1.0f, 0).size(), 1u);
@@ -216,6 +230,7 @@ TEST(AnimatorMaskBlendDepth, HasOneEntryPerDepthPlusTheRoot)
     EXPECT_EQ(audit::BlendDepthRamp(1.0f, 5).size(), 6u);
 }
 
+/// @brief Fades in as it goes deeper.
 TEST(AnimatorMaskBlendDepth, FadesInAsItGoesDeeper)
 {
     /// @note ramp は «根がいちばん薄く、深いほど weight に近づく» 向き
@@ -234,6 +249,7 @@ TEST(AnimatorMaskBlendDepth, FadesInAsItGoesDeeper)
     EXPECT_NEAR(ramp[2], 1.0f, kEps);
 }
 
+/// @brief Scales the whole ramp by the weight.
 TEST(AnimatorMaskBlendDepth, ScalesTheWholeRampByTheWeight)
 {
     /// @note weight は傾斜の «上限»。半分にすれば全段が半分になる。
@@ -246,6 +262,7 @@ TEST(AnimatorMaskBlendDepth, ScalesTheWholeRampByTheWeight)
         EXPECT_NEAR(half[i], full[i] * 0.5f, kEps) << "depth " << i;
 }
 
+/// @brief Reaches the full weight at the deepest step.
 TEST(AnimatorMaskBlendDepth, ReachesTheFullWeightAtTheDeepestStep)
 {
     for (const float weight : { 1.0f, 0.5f }) {
@@ -255,6 +272,7 @@ TEST(AnimatorMaskBlendDepth, ReachesTheFullWeightAtTheDeepestStep)
     }
 }
 
+/// @brief Applies the weight flat without a blend depth.
 TEST(AnimatorMaskBlendDepth, AppliesTheWeightFlatWithoutABlendDepth)
 {
     /// @note blendDepth = 0 は «傾斜なし»。全段そのままの weight。
@@ -264,6 +282,7 @@ TEST(AnimatorMaskBlendDepth, AppliesTheWeightFlatWithoutABlendDepth)
     EXPECT_NEAR(ramp[0], 0.75f, kEps);
 }
 
+/// @brief Stays within the unit range.
 TEST(AnimatorMaskBlendDepth, StaysWithinTheUnitRange)
 {
     for (const int depth : { 0, 1, 2, 5, 10 }) {
@@ -278,6 +297,7 @@ TEST(AnimatorMaskBlendDepth, StaysWithinTheUnitRange)
     }
 }
 
+/// @brief Treats a negative depth as none.
 TEST(AnimatorMaskBlendDepth, TreatsANegativeDepthAsNone)
 {
     /// @note 負の深さで size が壊れる (巨大な reserve など) ことがないこと。
@@ -286,6 +306,7 @@ TEST(AnimatorMaskBlendDepth, TreatsANegativeDepthAsNone)
     EXPECT_EQ(ramp.size(), 1u);
 }
 
+/// @brief A zero-weight stays zero at every depth.
 TEST(AnimatorMaskBlendDepth, AZeroWeightStaysZeroAtEveryDepth)
 {
     const auto ramp = audit::BlendDepthRamp(0.0f, 4);

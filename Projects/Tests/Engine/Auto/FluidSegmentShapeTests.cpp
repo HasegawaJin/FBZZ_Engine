@@ -191,6 +191,7 @@ std::vector<math::Vector3> ProbePoints()
 
 /// @name 形の番号 (既存の .fluid がずれないこと)
 
+/// @brief New shapes sit at the end of the enums.
 TEST(FluidSegmentShapeTest, NewShapesSitAtTheEndOfTheEnums)
 {
     EXPECT_EQ(static_cast<int>(FluidSourceShape::Sphere), 0);
@@ -208,6 +209,7 @@ TEST(FluidSegmentShapeTest, NewShapesSitAtTheEndOfTheEnums)
     EXPECT_EQ(static_cast<int>(FluidColliderShape::Cylinder), 4);
 }
 
+/// @brief Shapes round trip through their TOML labels.
 TEST(FluidSegmentShapeTest, ShapesRoundTripThroughTheirTomlLabels)
 {
     testkit::TempDir temp{ "fluidsegment" };
@@ -238,6 +240,7 @@ TEST(FluidSegmentShapeTest, ShapesRoundTripThroughTheirTomlLabels)
 
 /// @name 発生源の重み
 
+/// @brief Capsule weight measures the distance to its core segment.
 TEST(FluidSegmentShapeTest, CapsuleWeightMeasuresTheDistanceToItsCoreSegment)
 {
     const FluidSource source = MakeSegmentSource(FluidSourceShape::Capsule);
@@ -260,6 +263,7 @@ TEST(FluidSegmentShapeTest, CapsuleWeightMeasuresTheDistanceToItsCoreSegment)
     EXPECT_EQ(Weight(source, { 0.0f, 0.9f, 0.0f }), 0.0f);
 }
 
+/// @brief Capsule with a point core is the sphere formula.
 TEST(FluidSegmentShapeTest, CapsuleWithAPointCoreIsTheSphereFormula)
 {
     FluidSource capsule = MakeSegmentSource(FluidSourceShape::Capsule);
@@ -274,6 +278,7 @@ TEST(FluidSegmentShapeTest, CapsuleWithAPointCoreIsTheSphereFormula)
     EXPECT_EQ(Weight(capsule, { 0.0f, 0.2f, 0.0f }), 0.0f);
 }
 
+/// @brief Cylinder is cut flat at both ends where the capsule bulges.
 TEST(FluidSegmentShapeTest, CylinderIsCutFlatAtBothEndsWhereTheCapsuleBulges)
 {
     const FluidSource capsule = MakeSegmentSource(FluidSourceShape::Capsule);
@@ -301,6 +306,7 @@ TEST(FluidSegmentShapeTest, CylinderIsCutFlatAtBothEndsWhereTheCapsuleBulges)
     EXPECT_EQ(Weight(cylinder, { 0.2f, 0.0f, 0.0f }), 0.0f);
 }
 
+/// @brief Segment weights widen tiny sizes to the cell width.
 TEST(FluidSegmentShapeTest, SegmentWeightsWidenTinySizesToTheCellWidth)
 {
     /// @note 格子より細い棒は «どのセル中心も覆えない» ので、Cone / Ring と同じくセル幅まで広げる。
@@ -312,6 +318,7 @@ TEST(FluidSegmentShapeTest, SegmentWeightsWidenTinySizesToTheCellWidth)
     }
 }
 
+/// @brief Flat segment weight ignores depth.
 TEST(FluidSegmentShapeTest, FlatSegmentWeightIgnoresDepth)
 {
     const FluidSource source = MakeSegmentSource(FluidSourceShape::Capsule, { 1.0f, 0.0f, 0.0f });
@@ -323,6 +330,7 @@ TEST(FluidSegmentShapeTest, FlatSegmentWeightIgnoresDepth)
 
 /// @name 粒子の抽選
 
+/// @brief Sampled points stay inside and reach the hemisphere only for the capsule.
 TEST(FluidSegmentShapeTest, SampledPointsStayInsideAndReachTheHemisphereOnlyForTheCapsule)
 {
     const float us[] = { 0.02f, 0.2f, 0.5f, 0.78f, 0.97f };
@@ -352,6 +360,7 @@ TEST(FluidSegmentShapeTest, SampledPointsStayInsideAndReachTheHemisphereOnlyForT
     }
 }
 
+/// @brief Volumetric capsule samples reach both hemispheres.
 TEST(FluidSegmentShapeTest, VolumetricCapsuleSamplesReachBothHemispheres)
 {
     const FluidSource capsule = MakeSegmentSource(FluidSourceShape::Capsule);
@@ -372,6 +381,7 @@ TEST(FluidSegmentShapeTest, VolumetricCapsuleSamplesReachBothHemispheres)
 
 /// @name 障害物の距離と法線
 
+/// @brief Segment collider distance is negative inside and crosses zero on the surface.
 TEST(FluidSegmentShapeTest, SegmentColliderDistanceIsNegativeInsideAndCrossesZeroOnTheSurface)
 {
     const FluidCollider capsule = MakeSegmentCollider(FluidColliderShape::Capsule);
@@ -402,6 +412,7 @@ TEST(FluidSegmentShapeTest, SegmentColliderDistanceIsNegativeInsideAndCrossesZer
     EXPECT_NEAR(Distance(lying, { 0.0f, 0.8f, 0.0f }), 0.6f, 1.0e-6f);
 }
 
+/// @brief Segment collider normals point out of the surface.
 TEST(FluidSegmentShapeTest, SegmentColliderNormalsPointOutOfTheSurface)
 {
     const FluidCollider capsule = MakeSegmentCollider(FluidColliderShape::Capsule);
@@ -440,6 +451,7 @@ TEST(FluidSegmentShapeTest, SegmentColliderNormalsPointOutOfTheSurface)
 
 /// @name CPU と HLSL の写しが同じ式であること
 
+/// @brief Checks GPU source weight mirrors the CPU formula.
 TEST(FluidSegmentShapeTest, GpuSourceWeightMirrorsTheCpuFormula)
 {
     constexpr float kCellSize = 0.03125f;
@@ -463,6 +475,7 @@ TEST(FluidSegmentShapeTest, GpuSourceWeightMirrorsTheCpuFormula)
     }
 }
 
+/// @brief Checks GPU collider distance and normal mirror the CPU formula.
 TEST(FluidSegmentShapeTest, GpuColliderDistanceAndNormalMirrorTheCpuFormula)
 {
     for (const FluidColliderShape shape : { FluidColliderShape::Capsule, FluidColliderShape::Cylinder }) {
@@ -488,6 +501,7 @@ TEST(FluidSegmentShapeTest, GpuColliderDistanceAndNormalMirrorTheCpuFormula)
     }
 }
 
+/// @brief GPU step carries the shape number and the axis.
 TEST(FluidSegmentShapeTest, GpuStepCarriesTheShapeNumberAndTheAxis)
 {
     fluid::FluidRecipe recipe;
@@ -518,6 +532,7 @@ TEST(FluidSegmentShapeTest, GpuStepCarriesTheShapeNumberAndTheAxis)
 
 /// @name 既存の形が 1 ドットも変わっていないこと
 
+/// @brief Existing source shape weights are unchanged.
 TEST(FluidSegmentShapeTest, ExistingSourceShapeWeightsAreUnchanged)
 {
     const math::Vector3 c{ 0.1f, -0.2f, 0.05f };
@@ -552,6 +567,7 @@ TEST(FluidSegmentShapeTest, ExistingSourceShapeWeightsAreUnchanged)
     EXPECT_EQ(fluid::FluidSourceWeight(ring, c, c, 0.01f, true), 0.0f);
 }
 
+/// @brief Existing collider shapes are unchanged.
 TEST(FluidSegmentShapeTest, ExistingColliderShapesAreUnchanged)
 {
     const math::Vector3 c{ 0.1f, -0.2f, 0.05f };

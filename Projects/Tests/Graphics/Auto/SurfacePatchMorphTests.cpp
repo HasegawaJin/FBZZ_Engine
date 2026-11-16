@@ -119,6 +119,7 @@ renderer::SurfacePatchSurface MorphSurface()
     return surface;
 }
 
+/// @brief Fully morphed children reproduce parent triangles and nonlinear samples.
 TEST_F(SurfacePatchMorphTest, FullyMorphedChildrenReproduceParentTrianglesAndNonlinearSamples)
 {
     for (uint32_t cells : {2u, 4u, 16u}) {
@@ -131,6 +132,7 @@ TEST_F(SurfacePatchMorphTest, FullyMorphedChildrenReproduceParentTrianglesAndNon
     }
 }
 
+/// @brief Spatial density child endpoint matches morphing parent triangles and bands.
 TEST_F(SurfacePatchMorphTest, SpatialDensityChildEndpointMatchesMorphingParentTrianglesAndBands)
 {
     constexpr uint32_t cells = 16u;
@@ -213,6 +215,7 @@ TEST_F(SurfacePatchMorphTest, SpatialDensityChildEndpointMatchesMorphingParentTr
     EXPECT_TRUE(sawVaryingBand);
 }
 
+/// @brief Hierarchical composition keeps retained vertices and nonuniform weights shared.
 TEST_F(SurfacePatchMorphTest, HierarchicalCompositionKeepsRetainedVerticesAndNonuniformWeightsShared)
 {
     renderer::SurfacePatchLodSettings settings;
@@ -258,6 +261,7 @@ TEST_F(SurfacePatchMorphTest, HierarchicalCompositionKeepsRetainedVerticesAndNon
     EXPECT_FLOAT_EQ(fineBand.y, coarseBand.y);
 }
 
+/// @brief Mirrored nonuniform world scales use positive world cell widths.
 TEST_F(SurfacePatchMorphTest, MirroredNonuniformWorldScalesUsePositiveWorldCellWidths)
 {
     auto positive = MorphSurface();
@@ -291,6 +295,7 @@ TEST_F(SurfacePatchMorphTest, MirroredNonuniformWorldScalesUsePositiveWorldCellW
     }
 }
 
+/// @brief Near metric and orthographic density are continuous.
 TEST_F(SurfacePatchMorphTest, NearMetricAndOrthographicDensityAreContinuous)
 {
     renderer::SurfacePatchLodSettings settings;
@@ -323,6 +328,7 @@ TEST_F(SurfacePatchMorphTest, NearMetricAndOrthographicDensityAreContinuous)
     EXPECT_GE(distant, before);
 }
 
+/// @brief Budget limited selection keeps full coverage and reports quality limit.
 TEST_F(SurfacePatchMorphTest, BudgetLimitedSelectionKeepsFullCoverageAndReportsQualityLimit)
 {
     auto surface = MorphSurface();
@@ -346,6 +352,7 @@ TEST_F(SurfacePatchMorphTest, BudgetLimitedSelectionKeepsFullCoverageAndReportsQ
     EXPECT_FLOAT_EQ(selection.patches.front().uvMax.y, 1.0f);
 }
 
+/// @brief Checks accepted coarse selection saturates omitted fine parent vertices.
 TEST_F(SurfacePatchMorphTest, AcceptedCoarseSelectionSaturatesOmittedFineParentVertices)
 {
     auto surface = MorphSurface();
@@ -387,6 +394,7 @@ TEST_F(SurfacePatchMorphTest, AcceptedCoarseSelectionSaturatesOmittedFineParentV
     }
 }
 
+/// @brief Morph bounds contain parent map motion.
 TEST_F(SurfacePatchMorphTest, MorphBoundsContainParentMapMotion)
 {
     auto surface = MorphSurface();
@@ -411,6 +419,7 @@ TEST_F(SurfacePatchMorphTest, MorphBoundsContainParentMapMotion)
     }
 }
 
+/// @brief Far strips inherit their near source hierarchy and corner root.
 TEST_F(SurfacePatchMorphTest, FarStripsInheritTheirNearSourceHierarchyAndCornerRoot)
 {
     auto surface = MorphSurface();
@@ -472,6 +481,7 @@ TEST_F(SurfacePatchMorphTest, FarStripsInheritTheirNearSourceHierarchyAndCornerR
     EXPECT_EQ(checkedCorners, 4u);
 }
 
+/// @brief Far strip tangential map matches near boundary and keeps outer extrema.
 TEST_F(SurfacePatchMorphTest, FarStripTangentialMapMatchesNearBoundaryAndKeepsOuterExtrema)
 {
     math::Vector2 oddCenter;
@@ -510,6 +520,7 @@ TEST_F(SurfacePatchMorphTest, FarStripTangentialMapMatchesNearBoundaryAndKeepsOu
     }
 }
 
+/// @brief Density morph and wave band match across near far inner edges.
 TEST_F(SurfacePatchMorphTest, DensityMorphAndWaveBandMatchAcrossNearFarInnerEdges)
 {
     constexpr float cellsPerPatch = 16.0f;

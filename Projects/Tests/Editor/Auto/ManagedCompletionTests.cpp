@@ -173,6 +173,7 @@ protected:
     }
 };
 
+/// @brief Keeps the editor and dirty baseline when managed snapshot serialization fails.
 TEST_F(ManagedCompletionTest, KeepsTheEditorAndDirtyBaselineWhenManagedSnapshotSerializationFails)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -205,6 +206,7 @@ TEST_F(ManagedCompletionTest, KeepsTheEditorAndDirtyBaselineWhenManagedSnapshotS
     EXPECT_FALSE(tracker.Evaluate(*AttachedScene()));
 }
 
+/// @brief Play parks original objects runtime and managed undo without recreation.
 TEST_F(ManagedCompletionTest, PlayParksOriginalObjectsRuntimeAndManagedUndoWithoutRecreation)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -240,6 +242,7 @@ TEST_F(ManagedCompletionTest, PlayParksOriginalObjectsRuntimeAndManagedUndoWitho
     scene::ScriptEventBus::Unsubscribe(originalSubscription); scene::ScriptEventBus::Unsubscribe(cloneSubscription);
 }
 
+/// @brief Passive play capture and failed clone validation never mutate edit callbacks or snapshots.
 TEST_F(ManagedCompletionTest, PassivePlayCaptureAndFailedCloneValidationNeverMutateEditCallbacksOrSnapshots)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -258,6 +261,7 @@ TEST_F(ManagedCompletionTest, PassivePlayCaptureAndFailedCloneValidationNeverMut
     EXPECT_EQ(page.Find("value")->IsFloat() ? page.Find("value")->AsFloat() : static_cast<float>(page.Find("value")->AsInt()), 1.0f);
 }
 
+/// @brief Common enabled control saves exact script and supports checked undo.
 TEST_F(ManagedCompletionTest, CommonEnabledControlSavesExactScriptAndSupportsCheckedUndo)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -311,6 +315,7 @@ TEST_F(ManagedCompletionTest, CommonEnabledControlSavesExactScriptAndSupportsChe
     Context().markSceneDirty = {};
 }
 
+/// @brief Play enabled control uses temporary history and restores original on stop.
 TEST_F(ManagedCompletionTest, PlayEnabledControlUsesTemporaryHistoryAndRestoresOriginalOnStop)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -352,6 +357,7 @@ TEST_F(ManagedCompletionTest, PlayEnabledControlUsesTemporaryHistoryAndRestoresO
     EXPECT_FALSE(editor::InvokeOperator(Context(), "script.set_enabled", args).ok);
 }
 
+/// @brief Enabled control cannot bypass fault recovery.
 TEST_F(ManagedCompletionTest, EnabledControlCannotBypassFaultRecovery)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -374,6 +380,7 @@ TEST_F(ManagedCompletionTest, EnabledControlCannotBypassFaultRecovery)
     EXPECT_EQ(adapter->FaultDiagnostic(), diagnostic); EXPECT_EQ(m_undo.GetHistorySize(), 0U);
 }
 
+/// @brief Live inspector refreshes callback values without manual action.
 TEST_F(ManagedCompletionTest, LiveInspectorRefreshesCallbackValuesWithoutManualAction)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -414,6 +421,7 @@ TEST_F(ManagedCompletionTest, LiveInspectorRefreshesCallbackValuesWithoutManualA
     EXPECT_EQ(draft->pages.at("/updateCount#0:0").Find("value")->AsInt(), before + 1);
 }
 
+/// @brief Mixed enabled selection uses one undo and preserves individual states.
 TEST_F(ManagedCompletionTest, MixedEnabledSelectionUsesOneUndoAndPreservesIndividualStates)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -451,6 +459,7 @@ TEST_F(ManagedCompletionTest, MixedEnabledSelectionUsesOneUndoAndPreservesIndivi
     EXPECT_FALSE(scripts[0]->enabled); EXPECT_FALSE(scripts[1]->enabled);
 }
 
+/// @brief Enabled batch rejects faulted targets and conflicted undo atomically.
 TEST_F(ManagedCompletionTest, EnabledBatchRejectsFaultedTargetsAndConflictedUndoAtomically)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -488,6 +497,7 @@ TEST_F(ManagedCompletionTest, EnabledBatchRejectsFaultedTargetsAndConflictedUndo
     EXPECT_EQ(m_undo.GetHistorySize(), 0U);
 }
 
+/// @brief Inspector skips off-screen values and refreshes them when visible.
 TEST_F(ManagedCompletionTest, InspectorSkipsOffscreenValuesAndRefreshesThemWhenVisible)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -514,6 +524,7 @@ TEST_F(ManagedCompletionTest, InspectorSkipsOffscreenValuesAndRefreshesThemWhenV
     EXPECT_EQ(m_undo.GetHistorySize(), 0U);
 }
 
+/// @brief Collapsed diagnostics keep long messages out of the settings layout.
 TEST_F(ManagedCompletionTest, CollapsedDiagnosticsKeepLongMessagesOutOfTheSettingsLayout)
 {
     ImGuiFrame frame;
@@ -524,6 +535,7 @@ TEST_F(ManagedCompletionTest, CollapsedDiagnosticsKeepLongMessagesOutOfTheSettin
     EXPECT_NEAR(ImGui::GetCursorPosY() - secondY, secondY - firstY, 0.01f);
 }
 
+/// @brief Mixed header activation enables all while unavailable checks remain read-only.
 TEST_F(ManagedCompletionTest, MixedHeaderActivationEnablesAllWhileUnavailableChecksRemainReadOnly)
 {
     ImGuiFrame frame;
@@ -546,6 +558,7 @@ TEST_F(ManagedCompletionTest, MixedHeaderActivationEnablesAllWhileUnavailableChe
     EXPECT_FALSE(unavailable.enabledChanged); EXPECT_FALSE(enabled); EXPECT_TRUE(unavailable.open);
 }
 
+/// @brief Play managed settings use temporary checked history and discard previews on stop.
 TEST_F(ManagedCompletionTest, PlayManagedSettingsUseTemporaryCheckedHistoryAndDiscardPreviewsOnStop)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -600,6 +613,7 @@ TEST_F(ManagedCompletionTest, PlayManagedSettingsUseTemporaryCheckedHistoryAndDi
     EXPECT_EQ(page.Find("value")->AsInt(), 4);
 }
 
+/// @brief Exact managed batch selects duplicate same type instances and preserves history on conflict.
 TEST_F(ManagedCompletionTest, ExactManagedBatchSelectsDuplicateSameTypeInstancesAndPreservesHistoryOnConflict)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -634,6 +648,7 @@ TEST_F(ManagedCompletionTest, ExactManagedBatchSelectsDuplicateSameTypeInstances
     ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic(); EXPECT_EQ(health(first), 2); EXPECT_EQ(health(second), 6);
 }
 
+/// @brief Mixed settings pages ignore envelope metadata and compare only returned values and exact references.
 TEST_F(ManagedCompletionTest, MixedSettingsPagesIgnoreEnvelopeMetadataAndCompareOnlyReturnedValuesAndExactReferences)
 {
     editor::OpData first, equal, mixed;
@@ -654,6 +669,7 @@ TEST_F(ManagedCompletionTest, MixedSettingsPagesIgnoreEnvelopeMetadataAndCompare
     EXPECT_FALSE(editor::ManagedSettingsPagesEqual(first, equal));
 }
 
+/// @brief Shared primitive widgets read whole real tokens and typed range bounds.
 TEST_F(ManagedCompletionTest, SharedPrimitiveWidgetsReadWholeRealTokensAndTypedRangeBounds)
 {
     editor::OpData values; ASSERT_TRUE(editor::ReadManagedSettingsJson(R"({"one":1,"two":2,"minimum":0,"maximum":100})", values));
@@ -671,6 +687,7 @@ TEST_F(ManagedCompletionTest, SharedPrimitiveWidgetsReadWholeRealTokensAndTypedR
     EXPECT_NE(frame.current->LastItemData.ID, 0U); EXPECT_FALSE(ui.m_changed); EXPECT_EQ(value.AsInt64(), 2);
 }
 
+/// @brief Explicit play capture stop review adoption and checked undo preserve original settings.
 TEST_F(ManagedCompletionTest, ExplicitPlayCaptureStopReviewAdoptionAndCheckedUndoPreserveOriginalSettings)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -706,6 +723,7 @@ TEST_F(ManagedCompletionTest, ExplicitPlayCaptureStopReviewAdoptionAndCheckedUnd
     ASSERT_TRUE(reloaded->ReadSettingsPage("/health", 0, 1, json)); ASSERT_TRUE(editor::ReadManagedSettingsJson(json, page)); EXPECT_EQ(page.Find("value")->AsInt(), 2);
 }
 
+/// @brief Captured play references reject recreated same GUID and remain reviewable after stop.
 TEST_F(ManagedCompletionTest, CapturedPlayReferencesRejectRecreatedSameGuidAndRemainReviewableAfterStop)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -730,6 +748,7 @@ TEST_F(ManagedCompletionTest, CapturedPlayReferencesRejectRecreatedSameGuidAndRe
     EXPECT_TRUE(editor::InvokeOperator(Context(), "script.play_changes.review", args).ok); EXPECT_NE(AttachedScene()->FindByGuid(referenceGuid), nullptr);
 }
 
+/// @brief SDK catalog filters all overloads without executing game callbacks.
 TEST_F(ManagedCompletionTest, SdkCatalogFiltersAllOverloadsWithoutExecutingGameCallbacks)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -744,6 +763,7 @@ TEST_F(ManagedCompletionTest, SdkCatalogFiltersAllOverloadsWithoutExecutingGameC
     EXPECT_FALSE(Query("Fbzz.FutureUnsupportedApi", "Run").Find("ok")->AsBool());
 }
 
+/// @brief Inspector uses exact instance and common validation with one undo.
 TEST_F(ManagedCompletionTest, InspectorUsesExactInstanceAndCommonValidationWithOneUndo)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -775,6 +795,7 @@ TEST_F(ManagedCompletionTest, InspectorUsesExactInstanceAndCommonValidationWithO
     scripts.scripts[1].script->Reflect(second); EXPECT_EQ(second.health, 10);
 }
 
+/// @brief Inspector and AI author incomplete required settings but start validation remains strict.
 TEST_F(ManagedCompletionTest, InspectorAndAiAuthorIncompleteRequiredSettingsButStartValidationRemainsStrict)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -810,6 +831,7 @@ TEST_F(ManagedCompletionTest, InspectorAndAiAuthorIncompleteRequiredSettingsButS
     EXPECT_TRUE(entry.script->RequirementsBlocked());
 }
 
+/// @brief Nested inspector projection preserves live and expired reference identities.
 TEST_F(ManagedCompletionTest, NestedInspectorProjectionPreservesLiveAndExpiredReferenceIdentities)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -847,6 +869,7 @@ TEST_F(ManagedCompletionTest, NestedInspectorProjectionPreservesLiveAndExpiredRe
     EXPECT_FALSE(paths.at("/target").id.IsValid());
 }
 
+/// @brief Structured reference paths remain stable across hidden groups.
 TEST_F(ManagedCompletionTest, StructuredReferencePathsRemainStableAcrossHiddenGroups)
 {
     const auto first = AttachedScene()->CreateGameObject("First").GetID();
@@ -863,6 +886,7 @@ TEST_F(ManagedCompletionTest, StructuredReferencePathsRemainStableAcrossHiddenGr
     EXPECT_EQ(paths.at("/a~1b~0").id, second);
 }
 
+/// @brief Common configure preserves expired siblings until explicit reference rebind.
 TEST_F(ManagedCompletionTest, CommonConfigurePreservesExpiredSiblingsUntilExplicitReferenceRebind)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -911,6 +935,7 @@ TEST_F(ManagedCompletionTest, CommonConfigurePreservesExpiredSiblingsUntilExplic
     EXPECT_FALSE(paths.at("/list/0").id.IsValid()); EXPECT_FALSE(paths.at("/targets/0").id.IsValid());
 }
 
+/// @brief Common configure collection moves preserve expired tokens and reject ambiguity.
 TEST_F(ManagedCompletionTest, CommonConfigureCollectionMovesPreserveExpiredTokensAndRejectAmbiguity)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -970,6 +995,7 @@ TEST_F(ManagedCompletionTest, CommonConfigureCollectionMovesPreserveExpiredToken
     EXPECT_FALSE(paths.at("/target").id.IsValid());
 }
 
+/// @brief Read-only managed reflection never writes edited temporary values.
 TEST_F(ManagedCompletionTest, ReadOnlyManagedReflectionNeverWritesEditedTemporaryValues)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -985,6 +1011,7 @@ TEST_F(ManagedCompletionTest, ReadOnlyManagedReflectionNeverWritesEditedTemporar
     adapter->ReflectReadOnly(read); EXPECT_EQ(read.value, 10);
 }
 
+/// @brief Quaternion structured and asset settings survive configure save and reconfigure.
 TEST_F(ManagedCompletionTest, QuaternionStructuredAndAssetSettingsSurviveConfigureSaveAndReconfigure)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1039,6 +1066,7 @@ TEST_F(ManagedCompletionTest, QuaternionStructuredAndAssetSettingsSurviveConfigu
     restoredAdapter->ReflectReadOnly(read); EXPECT_FLOAT_EQ(read.rotation.w, 2.0f);
 }
 
+/// @brief Batch preparation resolves references but never grants engine authority to candidate callbacks.
 TEST_F(ManagedCompletionTest, BatchPreparationResolvesReferencesButNeverGrantsEngineAuthorityToCandidateCallbacks)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1089,6 +1117,7 @@ TEST_F(ManagedCompletionTest, BatchPreparationResolvesReferencesButNeverGrantsEn
     m_undo.Undo(); firstAdapter->ReflectReadOnly(read); EXPECT_EQ(read.amount, 2); EXPECT_EQ(read.coupled, 4); EXPECT_FALSE(read.target.IsValid());
 }
 
+/// @brief Recoverable inspector failure keeps session for correction and stale draft cannot rebase.
 TEST_F(ManagedCompletionTest, RecoverableInspectorFailureKeepsSessionForCorrectionAndStaleDraftCannotRebase)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1145,6 +1174,7 @@ TEST_F(ManagedCompletionTest, RecoverableInspectorFailureKeepsSessionForCorrecti
     EXPECT_EQ(staleAmount->AsInt(), 8);
 }
 
+/// @brief Leaf undo preserves nested siblings and history on conflicts.
 TEST_F(ManagedCompletionTest, LeafUndoPreservesNestedSiblingsAndHistoryOnConflicts)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1170,6 +1200,7 @@ TEST_F(ManagedCompletionTest, LeafUndoPreservesNestedSiblingsAndHistoryOnConflic
     ASSERT_TRUE(adapter->ReadSettingsSnapshot(json)); ASSERT_TRUE(editor::ReadManagedSettingsJson(json, state));
     EXPECT_EQ(state.Find("settings")->Find("settings")->Find("label")->AsString(), "newer");
 }
+/// @brief Large settings can be edited after discard and history clear without receipt revival.
 TEST_F(ManagedCompletionTest, LargeSettingsCanBeEditedAfterDiscardAndHistoryClearWithoutReceiptRevival)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1201,6 +1232,7 @@ TEST_F(ManagedCompletionTest, LargeSettingsCanBeEditedAfterDiscardAndHistoryClea
     const auto next = editor::ApplyManagedInspectorFields(Context(), target, fields); ASSERT_TRUE(next.ok) << next.message; EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief Caller sized settings save reload and later leaf undo beyond former limits.
 TEST_F(ManagedCompletionTest, CallerSizedSettingsSaveReloadAndLaterLeafUndoBeyondFormerLimits)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1239,6 +1271,7 @@ TEST_F(ManagedCompletionTest, CallerSizedSettingsSaveReloadAndLaterLeafUndoBeyon
     EXPECT_EQ(fields->Find("text")->AsString().size(), 1024u * 1024u + 23);
 }
 
+/// @brief Settings page cursor follows actual ranges and preserves back navigation.
 TEST_F(ManagedCompletionTest, SettingsPageCursorFollowsActualRangesAndPreservesBackNavigation)
 {
     editor::ManagedSettingsPageCursor cursor;
@@ -1259,6 +1292,7 @@ TEST_F(ManagedCompletionTest, SettingsPageCursorFollowsActualRangesAndPreservesB
     EXPECT_FALSE(cursor.CanAdvance(page(62, 64)));
 }
 
+/// @brief Multiple paged text replacements undo redo and survive save reload.
 TEST_F(ManagedCompletionTest, MultiplePagedTextReplacementsUndoRedoAndSurviveSaveReload)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1300,6 +1334,7 @@ TEST_F(ManagedCompletionTest, MultiplePagedTextReplacementsUndoRedoAndSurviveSav
     EXPECT_EQ(roundTrip.substr(9, 8), "tail" + emoji);
 }
 
+/// @brief Visible settings page and inspector never validate unexpanded large parents.
 TEST_F(ManagedCompletionTest, VisibleSettingsPageAndInspectorNeverValidateUnexpandedLargeParents)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1318,6 +1353,7 @@ TEST_F(ManagedCompletionTest, VisibleSettingsPageAndInspectorNeverValidateUnexpa
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Inspector keeps settings visible and reads runtime state only when expanded.
 TEST_F(ManagedCompletionTest, InspectorKeepsSettingsVisibleAndReadsRuntimeStateOnlyWhenExpanded)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1358,6 +1394,7 @@ TEST_F(ManagedCompletionTest, InspectorKeepsSettingsVisibleAndReadsRuntimeStateO
     EXPECT_DOUBLE_EQ(restoredSpeed, 7.0);
 }
 
+/// @brief Inspector runtime collections remain browsable without authoring controls.
 TEST_F(ManagedCompletionTest, InspectorRuntimeCollectionsRemainBrowsableWithoutAuthoringControls)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1408,6 +1445,7 @@ TEST_F(ManagedCompletionTest, InspectorRuntimeCollectionsRemainBrowsableWithoutA
     EXPECT_EQ(scene::SceneSerializer::SaveToText(*AttachedScene()), before);
 }
 
+/// @brief Inspector multi selection keeps inherited settings and does not read private state by default.
 TEST_F(ManagedCompletionTest, InspectorMultiSelectionKeepsInheritedSettingsAndDoesNotReadPrivateStateByDefault)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1428,6 +1466,7 @@ TEST_F(ManagedCompletionTest, InspectorMultiSelectionKeepsInheritedSettingsAndDo
     EXPECT_EQ(scene::SceneSerializer::SaveToText(*AttachedScene()), before);
 }
 
+/// @brief Component reference labels use names and exact duplicate ordinals without changing addresses.
 TEST_F(ManagedCompletionTest, ComponentReferenceLabelsUseNamesAndExactDuplicateOrdinalsWithoutChangingAddresses)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1469,6 +1508,7 @@ TEST_F(ManagedCompletionTest, ComponentReferenceLabelsUseNamesAndExactDuplicateO
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Inspector retains pending inputs across cache eviction and session budget.
 TEST_F(ManagedCompletionTest, InspectorRetainsPendingInputsAcrossCacheEvictionAndSessionBudget)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1555,6 +1595,7 @@ TEST_F(ManagedCompletionTest, InspectorRetainsPendingInputsAcrossCacheEvictionAn
     }
 }
 
+/// @brief Inspector hot reload archives dirty input and releases old widget.
 TEST_F(ManagedCompletionTest, InspectorHotReloadArchivesDirtyInputAndReleasesOldWidget)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1599,6 +1640,7 @@ TEST_F(ManagedCompletionTest, InspectorHotReloadArchivesDirtyInputAndReleasesOld
     }
 }
 
+/// @brief Schema snapshot keeps setting widgets editable and legacy read-only projection disabled.
 TEST_F(ManagedCompletionTest, SchemaSnapshotKeepsSettingWidgetsEditableAndLegacyReadOnlyProjectionDisabled)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1625,6 +1667,7 @@ TEST_F(ManagedCompletionTest, SchemaSnapshotKeepsSettingWidgetsEditableAndLegacy
     adapter->ReflectReadOnly(read); EXPECT_EQ(read.health, 10); EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Managed settings JSON rejects malformed and unbounded values without partial output.
 TEST_F(ManagedCompletionTest, ManagedSettingsJsonRejectsMalformedAndUnboundedValuesWithoutPartialOutput)
 {
     editor::OpData output("unchanged");
@@ -1648,6 +1691,7 @@ TEST_F(ManagedCompletionTest, ManagedSettingsJsonRejectsMalformedAndUnboundedVal
     ASSERT_NE(output.Find("text"), nullptr); EXPECT_EQ(output.Find("text")->AsString(), "\xE6\x97\xA5\xF0\x9F\x98\x80");
     ASSERT_NE(output.Find("values"), nullptr); EXPECT_EQ(output.Find("values")->AsArray().size(), 3u);
 }
+/// @brief Inspector and AI use the same explicit resume and read-only fault status.
 TEST_F(ManagedCompletionTest, InspectorAndAiUseTheSameExplicitResumeAndReadOnlyFaultStatus)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1716,6 +1760,7 @@ TEST_F(ManagedCompletionTest, InspectorAndAiUseTheSameExplicitResumeAndReadOnlyF
     EXPECT_FALSE(editor::CanInvokeOperator(Context(), "script.resume", target));
     EXPECT_FALSE(m_undo.CanUndo());
 }
+/// @brief Inspector editor action uses candidate preview and undo without repeating the method.
 TEST_F(ManagedCompletionTest, InspectorEditorActionUsesCandidatePreviewAndUndoWithoutRepeatingTheMethod)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1749,6 +1794,7 @@ TEST_F(ManagedCompletionTest, InspectorEditorActionUsesCandidatePreviewAndUndoWi
     EXPECT_EQ(read("actionCalls"), 1);
 }
 
+/// @brief Configure preview and review pages bound large values without changing commit or undo.
 TEST_F(ManagedCompletionTest, ConfigurePreviewAndReviewPagesBoundLargeValuesWithoutChangingCommitOrUndo)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1799,6 +1845,7 @@ TEST_F(ManagedCompletionTest, ConfigurePreviewAndReviewPagesBoundLargeValuesWith
     ASSERT_TRUE(m_undo.Redo()); EXPECT_EQ(first.GetComponent<scene::ScriptComponent>()->scripts.size(), 1u);
 }
 
+/// @brief Large play adoption pages later values and survives undo save and reopen.
 TEST_F(ManagedCompletionTest, LargePlayAdoptionPagesLaterValuesAndSurvivesUndoSaveAndReopen)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1852,6 +1899,7 @@ TEST_F(ManagedCompletionTest, LargePlayAdoptionPagesLaterValuesAndSurvivesUndoSa
     EXPECT_EQ(read(*reloaded, "/list/40000").Find("value")->AsInt(), -992); EXPECT_EQ(read(*reloaded, "/text", 1048598).Find("text")->AsString(), "Z");
 }
 
+/// @brief Conflicting adoption keeps draft reviewable and retry uses one checked undo.
 TEST_F(ManagedCompletionTest, ConflictingAdoptionKeepsDraftReviewableAndRetryUsesOneCheckedUndo)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1884,6 +1932,7 @@ TEST_F(ManagedCompletionTest, ConflictingAdoptionKeepsDraftReviewableAndRetryUse
     ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic(); ASSERT_TRUE(original->ReadSettingsPage("/health", 0, 1, wire)); ASSERT_TRUE(editor::ReadManagedSettingsJson(wire, page)); EXPECT_EQ(page.Find("value")->AsInt(), 2);
 }
 
+/// @brief Caller sized atomic settings batch beyond former target limit keeps conflict history.
 TEST_F(ManagedCompletionTest, CallerSizedAtomicSettingsBatchBeyondFormerTargetLimitKeepsConflictHistory)
 {
     ASSERT_NO_FATAL_FAILURE(Load());
@@ -1914,6 +1963,7 @@ TEST_F(ManagedCompletionTest, CallerSizedAtomicSettingsBatchBeyondFormerTargetLi
     EXPECT_EQ(health(0), 2); EXPECT_EQ(health(255), 2); EXPECT_EQ(health(256), 7);
 }
 
+/// @brief Exact primitive values configure undo save and reopen without numeric narrowing.
 TEST_F(ManagedCompletionTest, ExactPrimitiveValuesConfigureUndoSaveAndReopenWithoutNumericNarrowing)
 {
     ASSERT_NO_FATAL_FAILURE(Load());

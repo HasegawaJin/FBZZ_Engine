@@ -36,6 +36,7 @@ void ConfigureWater(scene::WaterComponent& water, float extent = 10.0f)
 
 } /// @note namespace
 
+/// @brief Oriented box uses full world rotation and signed non uniform scale.
 TEST_F(WaterExclusionTest, OrientedBoxUsesFullWorldRotationAndSignedNonUniformScale)
 {
     scene::Scene scene;
@@ -82,6 +83,7 @@ TEST_F(WaterExclusionTest, OrientedBoxUsesFullWorldRotationAndSignedNonUniformSc
     EXPECT_FALSE(box.Contains(outsideWorld));
 }
 
+/// @brief Surface cut point and below box underwater membership remain distinct.
 TEST_F(WaterExclusionTest, SurfaceCutPointAndBelowBoxUnderwaterMembershipRemainDistinct)
 {
     scene::Scene scene;
@@ -120,6 +122,7 @@ TEST_F(WaterExclusionTest, SurfaceCutPointAndBelowBoxUnderwaterMembershipRemainD
     EXPECT_TRUE(outsideBox.underwater);
 }
 
+/// @brief Explicit zone member reference resolves to shared owner snapshot.
 TEST_F(WaterExclusionTest, ExplicitZoneMemberReferenceResolvesToSharedOwnerSnapshot)
 {
     scene::Scene scene;
@@ -148,6 +151,7 @@ TEST_F(WaterExclusionTest, ExplicitZoneMemberReferenceResolvesToSharedOwnerSnaps
     EXPECT_TRUE(ownerWater.exclusionSnapshot->boxes.front().Contains({10.0f, 0.0f, 0.0f}));
 }
 
+/// @brief Target selection persists and inactive object releases its snapshot.
 TEST_F(WaterExclusionTest, TargetSelectionPersistsAndInactiveObjectReleasesItsSnapshot)
 {
     scene::Scene scene;
@@ -173,6 +177,7 @@ TEST_F(WaterExclusionTest, TargetSelectionPersistsAndInactiveObjectReleasesItsSn
     EXPECT_EQ(firstWater.exclusionSnapshot, nullptr);
 }
 
+/// @brief Simulation keeps the published box while live query moves.
 TEST_F(WaterExclusionTest, SimulationKeepsThePublishedBoxWhileLiveQueryMoves)
 {
     scene::Scene scene;
@@ -203,6 +208,7 @@ TEST_F(WaterExclusionTest, SimulationKeepsThePublishedBoxWhileLiveQueryMoves)
     EXPECT_FALSE(live->boxes.front().Contains({0.0f, 0.0f, 0.0f}));
 }
 
+/// @brief Body centered inside exclusion still gets buoyancy from outside probes.
 TEST_F(WaterExclusionTest, BodyCenteredInsideExclusionStillGetsBuoyancyFromOutsideProbes)
 {
     scene::Scene scene;
@@ -253,6 +259,7 @@ TEST_F(WaterExclusionTest, BodyCenteredInsideExclusionStillGetsBuoyancyFromOutsi
     EXPECT_VEC3_NEAR(body.GetVelocity(), expected, testkit::kTolerance);
 }
 
+/// @brief Automatic persistence retains typed water targets.
 TEST_F(WaterExclusionTest, AutomaticPersistenceRetainsTypedWaterTargets)
 {
     scene::Scene source;
@@ -280,6 +287,7 @@ TEST_F(WaterExclusionTest, AutomaticPersistenceRetainsTypedWaterTargets)
     EXPECT_VEC3_NEAR(restoredExclusion->size, expectedSize, 1.0e-5f);
 }
 
+/// @brief Interaction settings persist while save and passive copy drop runtime state.
 TEST_F(WaterExclusionTest, InteractionSettingsPersistWhileSaveAndPassiveCopyDropRuntimeState)
 {
     scene::Scene source;

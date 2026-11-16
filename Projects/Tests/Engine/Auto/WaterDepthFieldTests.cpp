@@ -103,6 +103,7 @@ scene::WaterComponent& AddWater(scene::Scene& source)
 
 class WaterDepthFieldTest : public testkit::EngineFixture {};
 
+/// @brief Horizon follows offshore terrain across mirrored water axes.
 TEST_F(WaterDepthFieldTest, HorizonFollowsOffshoreTerrainAcrossMirroredWaterAxes)
 {
     scene::Scene source;
@@ -151,6 +152,7 @@ TEST_F(WaterDepthFieldTest, HorizonFollowsOffshoreTerrainAcrossMirroredWaterAxes
     EXPECT_TRUE(height.underwater);
 }
 
+/// @brief Checks horizon crest wets a low bank and the trough uncovers it.
 TEST_F(WaterDepthFieldTest, HorizonCrestWetsALowBankAndTheTroughUncoversIt)
 {
     auto water = MakeWater();
@@ -180,6 +182,7 @@ TEST_F(WaterDepthFieldTest, HorizonCrestWetsALowBankAndTheTroughUncoversIt)
     EXPECT_NEAR(sample.displacement, 0.0f, 0.0001f);
 }
 
+/// @brief Handles no bottom dry and both clipped depth signs.
 TEST_F(WaterDepthFieldTest, HandlesNoBottomDryAndBothClippedDepthSigns)
 {
     auto water = MakeWater();
@@ -208,6 +211,7 @@ TEST_F(WaterDepthFieldTest, HandlesNoBottomDryAndBothClippedDepthSigns)
     EXPECT_FLOAT_EQ(sample.factor, 0.0f);
 }
 
+/// @brief Smooths per texel before bilinear filtering and reports analytic gradient.
 TEST_F(WaterDepthFieldTest, SmoothsPerTexelBeforeBilinearFilteringAndReportsAnalyticGradient)
 {
     auto water = MakeWater();
@@ -238,6 +242,7 @@ TEST_F(WaterDepthFieldTest, SmoothsPerTexelBeforeBilinearFilteringAndReportsAnal
     EXPECT_FLOAT_EQ(unchanged.gradient.y, 3.0f);
 }
 
+/// @brief Fades outside continuously and keeps the edge inverse inside.
 TEST_F(WaterDepthFieldTest, FadesOutsideContinuouslyAndKeepsTheEdgeInverseInside)
 {
     auto water = MakeWater();
@@ -294,6 +299,7 @@ TEST_F(WaterDepthFieldTest, FadesOutsideContinuouslyAndKeepsTheEdgeInverseInside
     EXPECT_FLOAT_EQ(deep.GetHorizontalWaveScale(), 1.0f);
 }
 
+/// @brief Maps gradient through yaw and negative non uniform scale.
 TEST_F(WaterDepthFieldTest, MapsGradientThroughYawAndNegativeNonUniformScale)
 {
     auto water = MakeWater();
@@ -315,6 +321,7 @@ TEST_F(WaterDepthFieldTest, MapsGradientThroughYawAndNegativeNonUniformScale)
     EXPECT_NEAR(directionalGradient, -0.5f, 0.001f);
 }
 
+/// @brief Attenuates wave height and horizontal push with the same inverse map.
 TEST_F(WaterDepthFieldTest, AttenuatesWaveHeightAndHorizontalPushWithTheSameInverseMap)
 {
     auto water = MakeWater();
@@ -355,6 +362,7 @@ TEST_F(WaterDepthFieldTest, AttenuatesWaveHeightAndHorizontalPushWithTheSameInve
     EXPECT_GE(scaled.GetHorizontalWaveScale(), 0.0f);
 }
 
+/// @brief Preparation is rendering independent and keys snapshots by terrain lifetime.
 TEST_F(WaterDepthFieldTest, PreparationIsRenderingIndependentAndKeysSnapshotsByTerrainLifetime)
 {
     scene::Scene source;
@@ -433,6 +441,7 @@ TEST_F(WaterDepthFieldTest, PreparationIsRenderingIndependentAndKeysSnapshotsByT
     EXPECT_EQ(water.simulationDepthField, firstField);
 }
 
+/// @brief Paused water system keeps published simulation depth while refreshing live field.
 TEST_F(WaterDepthFieldTest, PausedWaterSystemKeepsPublishedSimulationDepthWhileRefreshingLiveField)
 {
     scene::Scene source;
@@ -460,6 +469,7 @@ TEST_F(WaterDepthFieldTest, PausedWaterSystemKeepsPublishedSimulationDepthWhileR
     EXPECT_EQ(water.EffectiveDepthField(scene::WaterSurfaceReadView::LIVE_QUERY), water.depthField.get());
 }
 
+/// @brief Zone depth field uses shared bounds and reactivates member on disable.
 TEST_F(WaterDepthFieldTest, ZoneDepthFieldUsesSharedBoundsAndReactivatesMemberOnDisable)
 {
     scene::Scene source;

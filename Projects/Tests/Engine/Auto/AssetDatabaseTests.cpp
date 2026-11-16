@@ -48,6 +48,7 @@ void WriteFile(const std::filesystem::path& path, const std::string& text)
 
 class AssetRefTest : public testkit::EngineFixture {};
 
+/// @brief Recognises only the prefixed form.
 TEST_F(AssetRefTest, RecognisesOnlyThePrefixedForm)
 {
     EXPECT_TRUE(AssetDatabase::IsGuidRef("guid:0123456789abcdef0123456789abcdef"));
@@ -55,6 +56,7 @@ TEST_F(AssetRefTest, RecognisesOnlyThePrefixedForm)
     EXPECT_FALSE(AssetDatabase::IsGuidRef(""));
 }
 
+/// @brief Extracts the GUID without the path hint.
 TEST_F(AssetRefTest, ExtractsTheGuidWithoutThePathHint)
 {
     const std::string guid = AssetDatabase::GuidFromRef(
@@ -63,6 +65,7 @@ TEST_F(AssetRefTest, ExtractsTheGuidWithoutThePathHint)
     EXPECT_EQ(guid, "0123456789abcdef0123456789abcdef");
 }
 
+/// @brief Extracts the GUID without a sub asset suffix.
 TEST_F(AssetRefTest, ExtractsTheGuidWithoutASubAssetSuffix)
 {
     /// @note 接尾辞の区切り文字に依存しないよう、hex が続く限りで切る契約。
@@ -72,17 +75,20 @@ TEST_F(AssetRefTest, ExtractsTheGuidWithoutASubAssetSuffix)
     EXPECT_EQ(guid, "0123456789abcdef0123456789abcdef");
 }
 
+/// @brief Normalises the GUID to lower case.
 TEST_F(AssetRefTest, NormalisesTheGuidToLowerCase)
 {
     EXPECT_EQ(AssetDatabase::GuidFromRef("guid:0123456789ABCDEF0123456789ABCDEF"),
               "0123456789abcdef0123456789abcdef");
 }
 
+/// @brief Returns no GUID for a plain path.
 TEST_F(AssetRefTest, ReturnsNoGuidForAPlainPath)
 {
     EXPECT_EQ(AssetDatabase::GuidFromRef("Assets/Textures/Player.png"), "");
 }
 
+/// @brief Extracts the path hint after the separator.
 TEST_F(AssetRefTest, ExtractsThePathHintAfterTheSeparator)
 {
     EXPECT_EQ(AssetDatabase::HintFromRef(
@@ -90,6 +96,7 @@ TEST_F(AssetRefTest, ExtractsThePathHintAfterTheSeparator)
               "Assets/Textures/Player.png");
 }
 
+/// @brief Has no hint when none is written.
 TEST_F(AssetRefTest, HasNoHintWhenNoneIsWritten)
 {
     EXPECT_EQ(AssetDatabase::HintFromRef("guid:0123456789abcdef0123456789abcdef"), "");
@@ -98,16 +105,19 @@ TEST_F(AssetRefTest, HasNoHintWhenNoneIsWritten)
 
 /// @name GUID の生成と導出
 
+/// @brief Generates a 32 digit hex GUID.
 TEST_F(AssetRefTest, GeneratesA32DigitHexGuid)
 {
     EXPECT_TRUE(IsLowerHex32(AssetDatabase::GenerateGuid()));
 }
 
+/// @brief Generates a different GUID each time.
 TEST_F(AssetRefTest, GeneratesADifferentGuidEachTime)
 {
     EXPECT_NE(AssetDatabase::GenerateGuid(), AssetDatabase::GenerateGuid());
 }
 
+/// @brief Derives the same GUID for the same inputs.
 TEST_F(AssetRefTest, DerivesTheSameGuidForTheSameInputs)
 {
     /// @note Library は .gitignore 済み。再インポートで値が変われば参照が全部切れる。
@@ -120,6 +130,7 @@ TEST_F(AssetRefTest, DerivesTheSameGuidForTheSameInputs)
     EXPECT_TRUE(IsLowerHex32(a));
 }
 
+/// @brief Derives a different GUID per sub key.
 TEST_F(AssetRefTest, DerivesADifferentGuidPerSubKey)
 {
     const std::string idle = AssetDatabase::DeriveGuid("0123456789abcdef0123456789abcdef",
@@ -130,6 +141,7 @@ TEST_F(AssetRefTest, DerivesADifferentGuidPerSubKey)
     EXPECT_NE(idle, run);
 }
 
+/// @brief Derives a different GUID per source.
 TEST_F(AssetRefTest, DerivesADifferentGuidPerSource)
 {
     const std::string fromA = AssetDatabase::DeriveGuid("0123456789abcdef0123456789abcdef",
@@ -140,6 +152,7 @@ TEST_F(AssetRefTest, DerivesADifferentGuidPerSource)
     EXPECT_NE(fromA, fromB);
 }
 
+/// @brief Derives nothing from empty inputs.
 TEST_F(AssetRefTest, DerivesNothingFromEmptyInputs)
 {
     EXPECT_EQ(AssetDatabase::DeriveGuid("", "anims/Idle.anim"), "");
@@ -148,6 +161,7 @@ TEST_F(AssetRefTest, DerivesNothingFromEmptyInputs)
 
 /// @name .meta を持つ対象の判定
 
+/// @brief Source assets and documents get meta.
 TEST_F(AssetRefTest, SourceAssetsAndDocumentsGetMeta)
 {
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("player.png"));
@@ -159,12 +173,14 @@ TEST_F(AssetRefTest, SourceAssetsAndDocumentsGetMeta)
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("stage_01.scene"));
 }
 
+/// @brief Dot leading files with a real extension still get meta.
 TEST_F(AssetRefTest, DotLeadingFilesWithARealExtensionStillGetMeta)
 {
     /// @note ".playmode_snapshot.scene" は実アセット。«ドット始まりは全除外» にできない。
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta(".playmode_snapshot.scene"));
 }
 
+/// @brief Generated artefacts do not get meta.
 TEST_F(AssetRefTest, GeneratedArtefactsDoNotGetMeta)
 {
     /// @note 再生成できる派生物の GUID は原本から導出する。独自の .meta を持たせない。
@@ -177,6 +193,7 @@ TEST_F(AssetRefTest, GeneratedArtefactsDoNotGetMeta)
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("playercomponent.generated.hpp"));
 }
 
+/// @brief Atomic save temp files do not get meta.
 TEST_F(AssetRefTest, AtomicSaveTempFilesDoNotGetMeta)
 {
     /// @note 原子的な保存の途中経過。rename で消える相手に .meta を発行すると孤児が残る。
@@ -190,6 +207,7 @@ TEST_F(AssetRefTest, AtomicSaveTempFilesDoNotGetMeta)
     EXPECT_TRUE(AssetDatabase::ShouldHaveMeta("effect.tmpl.mat"));
 }
 
+/// @brief Non file like names do not get meta.
 TEST_F(AssetRefTest, NonFileLikeNamesDoNotGetMeta)
 {
     /// @note EncodeGuidRefs は文書中の全文字列にこの判定を掛ける。
@@ -200,6 +218,7 @@ TEST_F(AssetRefTest, NonFileLikeNamesDoNotGetMeta)
     EXPECT_FALSE(AssetDatabase::ShouldHaveMeta("value.with_underscore"));
 }
 
+/// @brief Authored folders get meta and generated ones do not.
 TEST_F(AssetRefTest, AuthoredFoldersGetMetaAndGeneratedOnesDoNot)
 {
     EXPECT_TRUE(AssetDatabase::ShouldHaveFolderMeta("Textures"));
@@ -212,6 +231,7 @@ TEST_F(AssetRefTest, AuthoredFoldersGetMetaAndGeneratedOnesDoNot)
     EXPECT_FALSE(AssetDatabase::ShouldHaveFolderMeta(""));
 }
 
+/// @brief Folder exclusion ignores case.
 TEST_F(AssetRefTest, FolderExclusionIgnoresCase)
 {
     EXPECT_FALSE(AssetDatabase::ShouldHaveFolderMeta("LIBRARY"));
@@ -248,6 +268,7 @@ private:
     testkit::TempDir m_temp{"assetdb"};
 };
 
+/// @brief Generates meta for assets found during init.
 TEST_F(AssetDatabaseTest, GeneratesMetaForAssetsFoundDuringInit)
 {
     const std::filesystem::path texture = AssetsRoot() / "Textures" / "Player.png";
@@ -259,6 +280,7 @@ TEST_F(AssetDatabaseTest, GeneratesMetaForAssetsFoundDuringInit)
     EXPECT_TRUE(IsLowerHex32(AssetDatabase::TryGetGuidFromPath(Utf8(texture))));
 }
 
+/// @brief Parallel init preserves existing and repaired GUIDs.
 TEST_F(AssetDatabaseTest, ParallelInitPreservesExistingAndRepairedGuids)
 {
     ASSERT_EQ(TaskSystem::WorkerCount(), 0);
@@ -294,6 +316,7 @@ TEST_F(AssetDatabaseTest, ParallelInitPreservesExistingAndRepairedGuids)
     EXPECT_EQ(AssetDatabase::GuidConflictCount(), 0u);
 }
 
+/// @brief Resolves the GUID back to its path.
 TEST_F(AssetDatabaseTest, ResolvesTheGuidBackToItsPath)
 {
     const std::filesystem::path texture = AssetsRoot() / "Textures" / "Player.png";
@@ -306,6 +329,7 @@ TEST_F(AssetDatabaseTest, ResolvesTheGuidBackToItsPath)
     EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(texture));
 }
 
+/// @brief Reuses the GUID written in an existing meta.
 TEST_F(AssetDatabaseTest, ReusesTheGuidWrittenInAnExistingMeta)
 {
     /// @note .meta は git 管理下。索引を作り直しても値を振り直してはいけない。
@@ -320,6 +344,7 @@ TEST_F(AssetDatabaseTest, ReusesTheGuidWrittenInAnExistingMeta)
               "0123456789abcdef0123456789abcdef");
 }
 
+/// @brief Try get does not create meta for unknown assets.
 TEST_F(AssetDatabaseTest, TryGetDoesNotCreateMetaForUnknownAssets)
 {
     /// @note Import 前の FBX に .meta を発行させないための契約。
@@ -333,6 +358,7 @@ TEST_F(AssetDatabaseTest, TryGetDoesNotCreateMetaForUnknownAssets)
     EXPECT_FALSE(std::filesystem::exists(model.string() + ".meta"));
 }
 
+/// @brief GUID from path heals an asset added after init.
 TEST_F(AssetDatabaseTest, GuidFromPathHealsAnAssetAddedAfterInit)
 {
     InitDatabase();
@@ -346,6 +372,7 @@ TEST_F(AssetDatabaseTest, GuidFromPathHealsAnAssetAddedAfterInit)
     EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(texture));
 }
 
+/// @brief Refuses to invent a GUID for a missing file.
 TEST_F(AssetDatabaseTest, RefusesToInventAGuidForAMissingFile)
 {
     InitDatabase();
@@ -353,6 +380,7 @@ TEST_F(AssetDatabaseTest, RefusesToInventAGuidForAMissingFile)
     EXPECT_EQ(AssetDatabase::GuidFromPath(Utf8(AssetsRoot() / "Nope.png")), "");
 }
 
+/// @brief Keeps the GUID when an asset is renamed.
 TEST_F(AssetDatabaseTest, KeepsTheGuidWhenAnAssetIsRenamed)
 {
     const std::filesystem::path before = AssetsRoot() / "Old.png";
@@ -370,6 +398,7 @@ TEST_F(AssetDatabaseTest, KeepsTheGuidWhenAnAssetIsRenamed)
     EXPECT_EQ(AssetDatabase::TryGetGuidFromPath(Utf8(after)), guid);
 }
 
+/// @brief Checks moving a folder repoints everything under it.
 TEST_F(AssetDatabaseTest, MovingAFolderRepointsEverythingUnderIt)
 {
     const std::filesystem::path texture = AssetsRoot() / "Old" / "Player.png";
@@ -384,6 +413,7 @@ TEST_F(AssetDatabaseTest, MovingAFolderRepointsEverythingUnderIt)
     EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(AssetsRoot() / "New" / "Player.png"));
 }
 
+/// @brief Forgets an asset that was deleted.
 TEST_F(AssetDatabaseTest, ForgetsAnAssetThatWasDeleted)
 {
     /// @note 旧 GUID を残すと、同じ場所へ作り直したアセットが古い参照を乗っ取る。
@@ -401,6 +431,7 @@ TEST_F(AssetDatabaseTest, ForgetsAnAssetThatWasDeleted)
     EXPECT_EQ(AssetDatabase::TryGetGuidFromPath(Utf8(texture)), "");
 }
 
+/// @brief Deleting a folder forgets everything under it.
 TEST_F(AssetDatabaseTest, DeletingAFolderForgetsEverythingUnderIt)
 {
     const std::filesystem::path texture = AssetsRoot() / "Doomed" / "Player.png";
@@ -415,6 +446,7 @@ TEST_F(AssetDatabaseTest, DeletingAFolderForgetsEverythingUnderIt)
     EXPECT_EQ(AssetDatabase::PathFromGuid(guid), "");
 }
 
+/// @brief Assets root always ends with a separator.
 TEST_F(AssetDatabaseTest, AssetsRootAlwaysEndsWithASeparator)
 {
     /// @note "Assets/..." 相対化はこの末尾スラッシュ前提で長さを引いている。
@@ -425,6 +457,7 @@ TEST_F(AssetDatabaseTest, AssetsRootAlwaysEndsWithASeparator)
     EXPECT_EQ(root.back(), '/');
 }
 
+/// @brief Project root is the parent of the assets folder.
 TEST_F(AssetDatabaseTest, ProjectRootIsTheParentOfTheAssetsFolder)
 {
     InitDatabase();
@@ -438,6 +471,7 @@ TEST_F(AssetDatabaseTest, ProjectRootIsTheParentOfTheAssetsFolder)
 
 /// @name Library/Baked の掃除
 
+/// @brief Sweep removes baked containers nobody claims.
 TEST_F(AssetDatabaseTest, SweepRemovesBakedContainersNobodyClaims)
 {
     const std::filesystem::path model = AssetsRoot() / "Models" / "Player.fbx";
@@ -462,6 +496,7 @@ TEST_F(AssetDatabaseTest, SweepRemovesBakedContainersNobodyClaims)
     EXPECT_TRUE(std::filesystem::exists(baked / "notaguid"));
 }
 
+/// @brief Sweep dry run reports without deleting.
 TEST_F(AssetDatabaseTest, SweepDryRunReportsWithoutDeleting)
 {
     const std::filesystem::path model = AssetsRoot() / "Models" / "Player.fbx";
@@ -480,6 +515,7 @@ TEST_F(AssetDatabaseTest, SweepDryRunReportsWithoutDeleting)
     EXPECT_TRUE(std::filesystem::exists(baked / "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
 }
 
+/// @brief Sweep refuses to run without an index.
 TEST_F(AssetDatabaseTest, SweepRefusesToRunWithoutAnIndex)
 {
     /// @note 索引を作らずに呼ぶ。«誰も名乗っていない» の判定ができないので 1 件も消さない。
@@ -496,6 +532,7 @@ TEST_F(AssetDatabaseTest, SweepRefusesToRunWithoutAnIndex)
 
 /// @name 同じ guid を名乗る 2 つの実体
 
+/// @brief Copies of the same asset are not reported as duplicates.
 TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
 {
     /// @note エンジンは共通シェーダーをプロジェクトの Assets へ配る。.meta ごとコピーされるので
@@ -521,6 +558,7 @@ TEST_F(AssetDatabaseTest, CopiesOfTheSameAssetAreNotReportedAsDuplicates)
     EXPECT_EQ(AssetDatabase::PathFromGuid(guid), Utf8(projShader));
 }
 
+/// @brief Different assets sharing a GUID are still reported.
 TEST_F(AssetDatabaseTest, DifferentAssetsSharingAGuidAreStillReported)
 {
     /// @note Assets からの相対パスが違う = 別のアセットが同じ guid を名乗っている。
@@ -542,6 +580,7 @@ TEST_F(AssetDatabaseTest, DifferentAssetsSharingAGuidAreStillReported)
 }
 
 
+/// @brief The same file under two spellings is not a duplicate.
 TEST_F(AssetDatabaseTest, TheSameFileUnderTwoSpellingsIsNotADuplicate)
 {
     /// @note 索引には絶対パスが載るが、参照解決は大文字小文字や区切りの違う表記で入ってくる。

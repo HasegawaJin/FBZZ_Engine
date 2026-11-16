@@ -127,6 +127,7 @@ protected:
     }
 };
 
+/// @brief Fixed callbacks drive native body and preserve parent and axis contracts.
 TEST_F(ManagedPhysicsRuntimeTest, FixedCallbacksDriveNativeBodyAndPreserveParentAndAxisContracts)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -170,6 +171,7 @@ TEST_F(ManagedPhysicsRuntimeTest, FixedCallbacksDriveNativeBodyAndPreserveParent
     EXPECT_TRUE(Flag("bodyAlive")); EXPECT_TRUE(Flag("bodyEnabled")); EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Cast wire returns shape hits and references expire without GUID revival.
 TEST_F(ManagedPhysicsRuntimeTest, CastWireReturnsShapeHitsAndReferencesExpireWithoutGuidRevival)
 {
     auto& target = m_scene.CreateGameObject("TwoShapes");
@@ -203,6 +205,7 @@ TEST_F(ManagedPhysicsRuntimeTest, CastWireReturnsShapeHitsAndReferencesExpireWit
     EXPECT_FALSE(Flag("hitFound")); EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Checks update mutation and disabled body fault without partial native effects.
 TEST_F(ManagedPhysicsRuntimeTest, UpdateMutationAndDisabledBodyFaultWithoutPartialNativeEffects)
 {
     auto& body = Body(*m_owner);
@@ -222,6 +225,7 @@ TEST_F(ManagedPhysicsRuntimeTest, UpdateMutationAndDisabledBodyFaultWithoutParti
     EXPECT_TRUE(disabled.IsSleeping()); EXPECT_VEC3_NEAR(disabled.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Cached facade cannot revive a re added component.
 TEST_F(ManagedPhysicsRuntimeTest, CachedFacadeCannotReviveAReAddedComponent)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -240,6 +244,7 @@ TEST_F(ManagedPhysicsRuntimeTest, CachedFacadeCannotReviveAReAddedComponent)
     EXPECT_VEC3_NEAR(replacementBody.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Explicit lookup reconnects re added body but cannot revive destroyed game object.
 TEST_F(ManagedPhysicsRuntimeTest, ExplicitLookupReconnectsReAddedBodyButCannotReviveDestroyedGameObject)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -260,6 +265,7 @@ TEST_F(ManagedPhysicsRuntimeTest, ExplicitLookupReconnectsReAddedBodyButCannotRe
     EXPECT_VEC3_NEAR(newBody.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Real world queries keep all registered hits beyond the former managed cap.
 TEST_F(ManagedPhysicsRuntimeTest, RealWorldQueriesKeepAllRegisteredHitsBeyondTheFormerManagedCap)
 {
     auto& target = m_scene.CreateGameObject("RepeatedWorldCollider"); auto& sphere = target.AddComponent<scene::SphereColliderComponent>();

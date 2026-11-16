@@ -35,6 +35,7 @@ protected:
     scene::managed_detail::ManagedServiceResult m_result;
     bool m_previousPlay = false;
 };
+/// @brief Capacity and simulation commands invalidate native GPU state.
 TEST_F(ManagedParticleServicesTest, CapacityAndSimulationCommandsInvalidateNativeGpuState)
 {
     auto& particle = *m_object->GetComponent<scene::ParticleEmitter>(); particle.runtime.gpuInitialized = true; particle.runtime.gpuCapacity = 300;
@@ -50,6 +51,7 @@ TEST_F(ManagedParticleServicesTest, CapacityAndSimulationCommandsInvalidateNativ
     const std::array<float, 2> collision{0.1f, 0.5f}; ASSERT_EQ(Run(50, false, 1, collision), ParticleStatus::OK);
     EXPECT_EQ(particle.settings.simulationMode, scene::ParticleSimulationMode::Cpu); EXPECT_EQ(particle.settings.collisionMode, scene::ParticleCollisionMode::Physics);
 }
+/// @brief Nonfinite and scope failures leave whole particle groups untouched.
 TEST_F(ManagedParticleServicesTest, NonfiniteAndScopeFailuresLeaveWholeParticleGroupsUntouched)
 {
     auto& settings = m_object->GetComponent<scene::ParticleEmitter>()->settings; settings.colorStart = {1, 2, 3, 4}; settings.colorEnd = {5, 6, 7, 8};
@@ -62,6 +64,7 @@ TEST_F(ManagedParticleServicesTest, NonfiniteAndScopeFailuresLeaveWholeParticleG
     EXPECT_EQ(Run(20, false, 0, acceleration), ParticleStatus::INVALID_SCOPE);
     ASSERT_EQ(Run(19, true), ParticleStatus::OK); ASSERT_EQ(m_result.values.size(), 3U); EXPECT_NEAR(m_result.values[1], -5, testkit::kTolerance);
 }
+/// @brief Prewarm noise sub emitter and channel groups reuse native contracts.
 TEST_F(ManagedParticleServicesTest, PrewarmNoiseSubEmitterAndChannelGroupsReuseNativeContracts)
 {
     auto& particle = *m_object->GetComponent<scene::ParticleEmitter>(); auto& scope = m_scene.CreateGameObject("VFX instance");
@@ -77,6 +80,7 @@ TEST_F(ManagedParticleServicesTest, PrewarmNoiseSubEmitterAndChannelGroupsReuseN
     EXPECT_EQ(particle.settings.birthSubEmitter, "Birth"); EXPECT_TRUE(particle.settings.deathSubEmitter.empty()); EXPECT_EQ(particle.settings.subEmitterScopeRoot, scope.GetID());
     ASSERT_EQ(Run(67, false, 0x80000001LL), ParticleStatus::OK); ASSERT_EQ(Run(66, true), ParticleStatus::OK); EXPECT_EQ(m_result.integer, 0x80000001LL);
 }
+/// @brief Invalid typed assets preserve assignment and mesh cache while empty explicitly clears.
 TEST_F(ManagedParticleServicesTest, InvalidTypedAssetsPreserveAssignmentAndMeshCacheWhileEmptyExplicitlyClears)
 {
     auto& particle = *m_object->GetComponent<scene::ParticleEmitter>(); particle.settings.meshShapePath = "Old.fbx";

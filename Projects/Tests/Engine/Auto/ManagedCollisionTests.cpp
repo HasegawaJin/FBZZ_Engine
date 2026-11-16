@@ -139,6 +139,7 @@ protected:
     }
 };
 
+/// @brief Transfers six typed callbacks and null target with current scope.
 TEST_F(ManagedCollisionTest, TransfersSixTypedCallbacksAndNullTargetWithCurrentScope)
 {
     ASSERT_TRUE(m_adapter->ApplySettingsJson(R"({"readTime":true,"touchTransform":true})"));
@@ -171,6 +172,7 @@ TEST_F(ManagedCollisionTest, TransfersSixTypedCallbacksAndNullTargetWithCurrentS
     EXPECT_TRUE(otherGuid.empty());
 }
 
+/// @brief Actual physics delivers reciprocal managed values and skips edit notifications.
 TEST_F(ManagedCollisionTest, ActualPhysicsDeliversReciprocalManagedValuesAndSkipsEditNotifications)
 {
     auto* otherAdapter = Attach(*m_other);
@@ -200,6 +202,7 @@ TEST_F(ManagedCollisionTest, ActualPhysicsDeliversReciprocalManagedValuesAndSkip
     EXPECT_EQ(Count(*m_adapter, "collisionExitCount"), 1);
 }
 
+/// @brief Actual trigger delivers enter stay exit to both objects.
 TEST_F(ManagedCollisionTest, ActualTriggerDeliversEnterStayExitToBothObjects)
 {
     auto* otherAdapter = Attach(*m_other);
@@ -252,6 +255,7 @@ TEST_F(ManagedCollisionTest, ActualTriggerDeliversEnterStayExitToBothObjects)
     EXPECT_EQ(Count(*otherAdapter, "triggerEnterCount"), 2);
 }
 
+/// @brief Static only trigger movement updates native and managed contact phases.
 TEST_F(ManagedCollisionTest, StaticOnlyTriggerMovementUpdatesNativeAndManagedContactPhases)
 {
     auto* otherAdapter = Attach(*m_other);
@@ -302,6 +306,7 @@ TEST_F(ManagedCollisionTest, StaticOnlyTriggerMovementUpdatesNativeAndManagedCon
     }
 }
 
+/// @brief Managed exception faults only its entry and profiler reports failure.
 TEST_F(ManagedCollisionTest, ManagedExceptionFaultsOnlyItsEntryAndProfilerReportsFailure)
 {
     auto* healthy = Attach(*m_owner);
@@ -331,6 +336,7 @@ TEST_F(ManagedCollisionTest, ManagedExceptionFaultsOnlyItsEntryAndProfilerReport
     EXPECT_EQ(m_adapter->FaultDiagnostic(), failure);
 }
 
+/// @brief Retained other does not revive when the same GUID is recreated.
 TEST_F(ManagedCollisionTest, RetainedOtherDoesNotReviveWhenTheSameGuidIsRecreated)
 {
     ASSERT_TRUE(Call(&scene::Script::OnCollisionEnter, Snapshot(), scene::ScriptCallbackKind::COLLISION_ENTER));

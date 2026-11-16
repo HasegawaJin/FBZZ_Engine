@@ -53,6 +53,7 @@ protected:
     float m_previousDelta = 0.0f, m_previousUnscaled = 0.0f;
 };
 
+/// @brief Does not consume the creation frame.
 TEST_F(TweenCoroutineTest, DoesNotConsumeTheCreationFrame)
 {
     Time::deltaTime = 0.5f;
@@ -65,6 +66,7 @@ TEST_F(TweenCoroutineTest, DoesNotConsumeTheCreationFrame)
     EXPECT_VEC3_NEAR(m_object->transform.position, (math::Vector3{2, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Captures start and target before the proxy or arguments go away.
 TEST_F(TweenCoroutineTest, CapturesStartAndTargetBeforeTheProxyOrArgumentsGoAway)
 {
     m_object->transform.position = {2, 0, 0};
@@ -84,6 +86,7 @@ TEST_F(TweenCoroutineTest, CapturesStartAndTargetBeforeTheProxyOrArgumentsGoAway
     EXPECT_VEC3_NEAR(m_object->transform.position, (math::Vector3{10, 4, 0}), testkit::kTolerance);
 }
 
+/// @brief Relative movement uses the position at creation.
 TEST_F(TweenCoroutineTest, RelativeMovementUsesThePositionAtCreation)
 {
     m_object->transform.position = {1, 2, 3};
@@ -96,6 +99,7 @@ TEST_F(TweenCoroutineTest, RelativeMovementUsesThePositionAtCreation)
     EXPECT_VEC3_NEAR(m_object->transform.position, (math::Vector3{3, 6, 9}), testkit::kTolerance);
 }
 
+/// @brief Scale uses the selected easing and finishes at the exact target.
 TEST_F(TweenCoroutineTest, ScaleUsesTheSelectedEasingAndFinishesAtTheExactTarget)
 {
     m_owner->StartCoroutine(m_owner->tween.ScaleTo({5, 9, 13}, 1.0f, scene::TweenEase::InQuad));
@@ -107,6 +111,7 @@ TEST_F(TweenCoroutineTest, ScaleUsesTheSelectedEasingAndFinishesAtTheExactTarget
     EXPECT_VEC3_NEAR(m_object->transform.scale, (math::Vector3{5, 9, 13}), testkit::kTolerance);
 }
 
+/// @brief Rotation uses slerp and finishes at the target.
 TEST_F(TweenCoroutineTest, RotationUsesSlerpAndFinishesAtTheTarget)
 {
     const auto start = math::Quaternion::Identity();
@@ -122,6 +127,7 @@ TEST_F(TweenCoroutineTest, RotationUsesSlerpAndFinishesAtTheTarget)
         target * math::Vector3::FORWARD, testkit::kTolerance);
 }
 
+/// @brief Scaled time can pause while unscaled time continues.
 TEST_F(TweenCoroutineTest, ScaledTimeCanPauseWhileUnscaledTimeContinues)
 {
     float scaled = -1.0f, unscaled = -1.0f;
@@ -142,6 +148,7 @@ TEST_F(TweenCoroutineTest, ScaledTimeCanPauseWhileUnscaledTimeContinues)
     EXPECT_NEAR(scaled, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Nonpositive duration applies synchronously without an active coroutine.
 TEST_F(TweenCoroutineTest, NonpositiveDurationAppliesSynchronouslyWithoutAnActiveCoroutine)
 {
     EXPECT_TRUE(m_owner->tween.MoveTo({2, 4, 6}, 0).Done());
@@ -162,6 +169,7 @@ TEST_F(TweenCoroutineTest, NonpositiveDurationAppliesSynchronouslyWithoutAnActiv
     EXPECT_EQ(calls, 1);
 }
 
+/// @brief Checks missing owner and missing callback produce completed coroutines.
 TEST_F(TweenCoroutineTest, MissingOwnerAndMissingCallbackProduceCompletedCoroutines)
 {
     scene::ScriptTweenProxy missing;
@@ -178,6 +186,7 @@ TEST_F(TweenCoroutineTest, MissingOwnerAndMissingCallbackProduceCompletedCorouti
     EXPECT_EQ(calls, 0);
 }
 
+/// @brief `NaN` duration preserves immediate completion without entering the wait loop.
 TEST_F(TweenCoroutineTest, NaNDurationPreservesImmediateCompletionWithoutEnteringTheWaitLoop)
 {
     const float duration = std::numeric_limits<float>::quiet_NaN();
@@ -192,6 +201,7 @@ TEST_F(TweenCoroutineTest, NaNDurationPreservesImmediateCompletionWithoutEnterin
     EXPECT_EQ(calls, 1);
 }
 
+/// @brief Completion publishes once per frame and releases captures.
 TEST_F(TweenCoroutineTest, CompletionPublishesOncePerFrameAndReleasesCaptures)
 {
     std::vector<float> published;
@@ -213,6 +223,7 @@ TEST_F(TweenCoroutineTest, CompletionPublishesOncePerFrameAndReleasesCaptures)
     EXPECT_TRUE(observed.expired());
 }
 
+/// @brief Overshooting completion publishes the exact target once.
 TEST_F(TweenCoroutineTest, OvershootingCompletionPublishesTheExactTargetOnce)
 {
     std::vector<float> published;
@@ -226,6 +237,7 @@ TEST_F(TweenCoroutineTest, OvershootingCompletionPublishesTheExactTargetOnce)
     EXPECT_FLOAT_EQ(published.front(), 3.0f);
 }
 
+/// @brief Stopping inside a callback defers destruction and stops further updates.
 TEST_F(TweenCoroutineTest, StoppingInsideACallbackDefersDestructionAndStopsFurtherUpdates)
 {
     int calls = 0;
@@ -244,6 +256,7 @@ TEST_F(TweenCoroutineTest, StoppingInsideACallbackDefersDestructionAndStopsFurth
     EXPECT_TRUE(observed.expired());
 }
 
+/// @brief Destroying the owner releases suspended callbacks without running them.
 TEST_F(TweenCoroutineTest, DestroyingTheOwnerReleasesSuspendedCallbacksWithoutRunningThem)
 {
     int calls = 0;
@@ -259,6 +272,7 @@ TEST_F(TweenCoroutineTest, DestroyingTheOwnerReleasesSuspendedCallbacksWithoutRu
     EXPECT_EQ(calls, 0);
 }
 
+/// @brief A coroutine started during resume waits for the next frame.
 TEST_F(TweenCoroutineTest, ACoroutineStartedDuringResumeWaitsForTheNextFrame)
 {
     bool started = false;
@@ -276,6 +290,7 @@ TEST_F(TweenCoroutineTest, ACoroutineStartedDuringResumeWaitsForTheNextFrame)
     EXPECT_VEC3_NEAR(m_object->transform.position, (math::Vector3{2, 0, 0}), testkit::kTolerance);
 }
 
+/// @brief Shake stays bounded and restores the initial position.
 TEST_F(TweenCoroutineTest, ShakeStaysBoundedAndRestoresTheInitialPosition)
 {
     const math::Vector3 origin{2, 3, 4};

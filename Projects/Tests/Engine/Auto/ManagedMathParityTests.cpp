@@ -82,6 +82,7 @@ protected:
     }
 };
 
+/// @brief Matches signed arithmetic and unclamped interpolation.
 TEST_F(ManagedMathParityTest, MatchesSignedArithmeticAndUnclampedInterpolation)
 {
     struct ScalarCase {
@@ -126,6 +127,7 @@ TEST_F(ManagedMathParityTest, MatchesSignedArithmeticAndUnclampedInterpolation)
     EXPECT_VEC3_NEAR(ReadVector("cross"), -math::Vector3::FORWARD, testkit::kTolerance);
 }
 
+/// @brief Matches normalization at and around the shared `epsilon`.
 TEST_F(ManagedMathParityTest, MatchesNormalizationAtAndAroundTheSharedEpsilon)
 {
     struct NormalizationCase {
@@ -155,6 +157,7 @@ TEST_F(ManagedMathParityTest, MatchesNormalizationAtAndAroundTheSharedEpsilon)
     }
 }
 
+/// @brief Preserves constants and vector layout before any callback.
 TEST_F(ManagedMathParityTest, PreservesConstantsAndVectorLayoutBeforeAnyCallback)
 {
     const math::Vector3 first{2, -3, 4};

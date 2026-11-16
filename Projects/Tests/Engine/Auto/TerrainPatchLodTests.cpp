@@ -12,6 +12,7 @@
 
 namespace fbzz::tests {
 class TerrainPatchLodTest : public testkit::EngineFixture {};
+/// @brief Checks grid strip reconstructs the original oriented LOD 0 triangles.
 TEST_F(TerrainPatchLodTest, GridStripReconstructsTheOriginalOrientedLod0Triangles)
 {
     scene::TerrainComponent terrain;
@@ -43,6 +44,7 @@ TEST_F(TerrainPatchLodTest, GridStripReconstructsTheOriginalOrientedLod0Triangle
     }
 }
 
+/// @brief All LODs share unit border segments including partial patches.
 TEST_F(TerrainPatchLodTest, AllLodsShareUnitBorderSegmentsIncludingPartialPatches)
 {
     scene::TerrainComponent terrain; terrain.columns=18;terrain.rows=14;terrain.InitFlat();
@@ -69,6 +71,7 @@ TEST_F(TerrainPatchLodTest, AllLodsShareUnitBorderSegmentsIncludingPartialPatche
         }
     }
 }
+/// @brief Coarse LODs cover every solid cell center and leave hole centers empty.
 TEST_F(TerrainPatchLodTest, CoarseLodsCoverEverySolidCellCenterAndLeaveHoleCentersEmpty)
 {
     scene::TerrainComponent terrain;terrain.columns=18;terrain.rows=14;terrain.InitFlat();

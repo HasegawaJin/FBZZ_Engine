@@ -12,48 +12,57 @@
 #include <algorithm>
 namespace fbzz::tests {
 namespace {
+/// @brief TAA rejects newly exposed depth.
 TEST_F(GraphicsQualityShaderTest, TaaRejectsNewlyExposedDepth)
 {
     const auto color = Taa(std::log2(1.0f + 2.0f));
     EXPECT_NEAR(color.x, 0, 0.001f); EXPECT_FLOAT_EQ(color.w, 1);
 }
+/// @brief TAA rejects sky history on geometry.
 TEST_F(GraphicsQualityShaderTest, TaaRejectsSkyHistoryOnGeometry)
 {
     EXPECT_NEAR(Taa(-1).x, 0, 0.001f);
 }
+/// @brief TAA accumulates matching depth with opaque output.
 TEST_F(GraphicsQualityShaderTest, TaaAccumulatesMatchingDepthWithOpaqueOutput)
 {
     const float depth = 20.0f - (128.0f / 255.0f) * (20.0f - 0.1f);
     const auto color = Taa(std::log2(1.0f + depth));
     EXPECT_GT(color.x, 0.3f); EXPECT_LT(color.x, 0.7f); EXPECT_FLOAT_EQ(color.w, 1);
 }
+/// @brief TAA accumulates object moving in depth using its previous surface.
 TEST_F(GraphicsQualityShaderTest, TaaAccumulatesObjectMovingInDepthUsingItsPreviousSurface)
 {
     const float previousDepth = 2.0f;
     const float previousNdc = (20.0f - previousDepth) / (20.0f - 0.1f);
     EXPECT_GT(Taa(std::log2(1.0f + previousDepth), false, previousNdc).x, 0.3f);
 }
+/// @brief TAA still rejects different surface with depth motion.
 TEST_F(GraphicsQualityShaderTest, TaaStillRejectsDifferentSurfaceWithDepthMotion)
 {
     const float previousNdc = (20.0f - 3.0f) / (20.0f - 0.1f);
     EXPECT_NEAR(Taa(std::log2(1.0f + 2.0f), false, previousNdc).x, 0.0f, 0.001f);
 }
+/// @brief Particle reactive mask rejects most history.
 TEST_F(GraphicsQualityShaderTest, ParticleReactiveMaskRejectsMostHistory)
 {
     const float depth = 20.0f - (128.0f / 255.0f) * (20.0f - 0.1f);
     EXPECT_LT(Taa(std::log2(1.0f + depth), true).x, 0.15f);
 }
+/// @brief Sampled TAA accumulates spatially constant light estimates.
 TEST_F(GraphicsQualityShaderTest, SampledTaaAccumulatesSpatiallyConstantLightEstimates)
 {
     const float depth = 20.0f - (128.0f / 255.0f) * (20.0f - 0.1f);
     EXPECT_GT(Taa(std::log2(1.0f + depth), false, -1.0f, true).x, 0.3f);
 }
+/// @brief Sampled TAA still rejects disoccluded and reactive history.
 TEST_F(GraphicsQualityShaderTest, SampledTaaStillRejectsDisoccludedAndReactiveHistory)
 {
     EXPECT_NEAR(Taa(std::log2(1.0f + 2.0f), false, -1.0f, true).x, 0.0f, 0.001f);
     const float depth = 20.0f - (128.0f / 255.0f) * (20.0f - 0.1f);
     EXPECT_LT(Taa(std::log2(1.0f + depth), true, -1.0f, true).x, 0.15f);
 }
+/// @brief TAA current output removes raster jitter even without history.
 TEST_F(GraphicsQualityShaderTest, TaaCurrentOutputRemovesRasterJitterEvenWithoutHistory)
 {
     const auto left = TaaCurrentRampAtJitter(-0.375f);
@@ -61,6 +70,7 @@ TEST_F(GraphicsQualityShaderTest, TaaCurrentOutputRemovesRasterJitterEvenWithout
     EXPECT_NEAR(left.x, 4.5f / 8.0f, 0.005f);
     EXPECT_NEAR(right.x, left.x, 0.005f);
 }
+/// @brief TAA stabilizes stationary silhouette across jitter phases.
 TEST_F(GraphicsQualityShaderTest, TaaStabilizesStationarySilhouetteAcrossJitterPhases)
 {
     constexpr std::array<float, 11> EXPECTED_MEANS{
@@ -110,6 +120,7 @@ TEST_F(GraphicsQualityShaderTest, TaaStabilizesStationarySilhouetteAcrossJitterP
         EXPECT_FLOAT_EQ(result.changedColor.back(), 1.0f);
     }
 }
+/// @brief TAA cycle keeps HDR modes and transitions isolated.
 TEST_F(GraphicsQualityShaderTest, TaaCycleKeepsHdrModesAndTransitionsIsolated)
 {
     constexpr std::array<float, 11> EXPECTED_MEANS{
@@ -144,6 +155,7 @@ TEST_F(GraphicsQualityShaderTest, TaaCycleKeepsHdrModesAndTransitionsIsolated)
         EXPECT_NEAR(result.switchedColor.back(), expected, 0.002f);
     }
 }
+/// @brief TAA static proof preserves subpixel lines missing from some jitter phases.
 TEST_F(GraphicsQualityShaderTest, TaaStaticProofPreservesSubpixelLinesMissingFromSomeJitterPhases)
 {
     constexpr std::array<float, 11> EXPECTED_MEANS{
@@ -170,6 +182,7 @@ TEST_F(GraphicsQualityShaderTest, TaaStaticProofPreservesSubpixelLinesMissingFro
         EXPECT_GT(result.phases.front(), 0.3f);
     }
 }
+/// @brief AO blur preserves depth edges and partial thread groups.
 TEST_F(GraphicsQualityShaderTest, AoBlurPreservesDepthEdgesAndPartialThreadGroups)
 {
     constexpr int WIDTH = 13;
@@ -240,6 +253,7 @@ TEST_F(GraphicsQualityShaderTest, AoBlurPreservesDepthEdgesAndPartialThreadGroup
     }
 }
 
+/// @brief Checks GTAO synchronizes static noise with TAA jitter phase.
 TEST_F(GraphicsQualityShaderTest, GtaoSynchronizesStaticNoiseWithTaaJitterPhase)
 {
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
@@ -321,6 +335,7 @@ TEST_F(GraphicsQualityShaderTest, GtaoSynchronizesStaticNoiseWithTaaJitterPhase)
     RecordProperty("taa_phase_difference", std::to_string(phaseDifference));
     RecordProperty("untethered_time_difference", std::to_string(difference(untimed, timed)));
 }
+/// @brief Editor depth grid shares model jitter while overlay remains stable.
 TEST_F(GraphicsQualityShaderTest, EditorDepthGridSharesModelJitterWhileOverlayRemainsStable)
 {
     constexpr uint32_t SIZE = 64u;
@@ -467,6 +482,7 @@ TEST_F(GraphicsQualityShaderTest, EditorDepthGridSharesModelJitterWhileOverlayRe
     }
     RecordProperty("editor_grid_model_phase_max_error", std::to_string(maximumError));
 }
+/// @brief Declared unlit matches opaque standard geometry without filename inference.
 TEST_F(GraphicsQualityShaderTest, DeclaredUnlitMatchesOpaqueStandardGeometryWithoutFilenameInference)
 {
     constexpr uint32_t SIZE = 32u;
@@ -588,6 +604,7 @@ TEST_F(GraphicsQualityShaderTest, DeclaredUnlitMatchesOpaqueStandardGeometryWith
         EXPECT_FLOAT_EQ(actual[(16u * SIZE + 8u) * 4u + 2u], 0.0f);
     }
 }
+/// @brief Checks sampled TAA averages radiance before tone mapping.
 TEST_F(GraphicsQualityShaderTest, SampledTaaAveragesRadianceBeforeToneMapping)
 {
     const float depth = 20.0f - (128.0f / 255.0f) * (20.0f - 0.1f);
@@ -596,6 +613,7 @@ TEST_F(GraphicsQualityShaderTest, SampledTaaAveragesRadianceBeforeToneMapping)
     EXPECT_VEC3_NEAR(accumulated.XYZ(), reference.XYZ(), 0.002f);
     EXPECT_GT(accumulated.x, 0.95f); EXPECT_FLOAT_EQ(accumulated.w, 1);
 }
+/// @brief Sampled HDR TAA retains brightness and fade after accumulation.
 TEST_F(GraphicsQualityShaderTest, SampledHdrTaaRetainsBrightnessAndFadeAfterAccumulation)
 {
     const float depth = 20.0f - (128.0f / 255.0f) * (20.0f - 0.1f);
@@ -603,6 +621,7 @@ TEST_F(GraphicsQualityShaderTest, SampledHdrTaaRetainsBrightnessAndFadeAfterAccu
     const auto reference = CompositeRadiance({10, 2, 0.2f}, 0.7f, 0.4f);
     EXPECT_VEC3_NEAR(accumulated.XYZ(), reference.XYZ(), 0.002f);
 }
+/// @brief Sampled HDR TAA rejects other depth and LDR history.
 TEST_F(GraphicsQualityShaderTest, SampledHdrTaaRejectsOtherDepthAndLdrHistory)
 {
     const auto otherDepth = TaaRadiance({}, {100, 100, 100}, -1.0f - std::log2(3.0f));
@@ -611,10 +630,12 @@ TEST_F(GraphicsQualityShaderTest, SampledHdrTaaRejectsOtherDepthAndLdrHistory)
     EXPECT_VEC3_NEAR(otherDepth.XYZ(), math::Vector3{}, 0.001f);
     EXPECT_VEC3_NEAR(ldrHistory.XYZ(), math::Vector3{}, 0.001f);
 }
+/// @brief Sampled spatial reconstruction reuses neighbor radiance.
 TEST_F(GraphicsQualityShaderTest, SampledSpatialReconstructionReusesNeighborRadiance)
 {
     EXPECT_GT(TaaSpatial(0).x, 0.5f);
 }
+/// @brief Sampled spatial reconstruction preserves material normal and depth edges.
 TEST_F(GraphicsQualityShaderTest, SampledSpatialReconstructionPreservesMaterialNormalAndDepthEdges)
 {
     for (uint32_t edge : {1u, 2u, 3u}) {
@@ -622,6 +643,7 @@ TEST_F(GraphicsQualityShaderTest, SampledSpatialReconstructionPreservesMaterialN
         EXPECT_LT(TaaSpatial(edge).x, 0.005f);
     }
 }
+/// @brief In frame texture updates preserve draw order and retain released storage.
 TEST_F(GraphicsQualityShaderTest, InFrameTextureUpdatesPreserveDrawOrderAndRetainReleasedStorage)
 {
     const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
@@ -648,6 +670,7 @@ TEST_F(GraphicsQualityShaderTest, InFrameTextureUpdatesPreserveDrawOrderAndRetai
     EXPECT_NEAR(second[(4u*8u+4u)*4u],0,0.001f);
     EXPECT_NEAR(second[(4u*8u+4u)*4u+1u],1,0.001f);
 }
+/// @brief Environment specular retains its color.
 TEST_F(GraphicsQualityShaderTest, EnvironmentSpecularRetainsItsColor)
 {
     Begin();
@@ -659,6 +682,7 @@ TEST_F(GraphicsQualityShaderTest, EnvironmentSpecularRetainsItsColor)
     const auto color = Read();
     EXPECT_GT(color.x, 0.5f); EXPECT_NEAR(color.y, 0, 0.001f); EXPECT_NEAR(color.z, 0, 0.001f);
 }
+/// @brief Occluded diffuse does not acquire constant ambient floor.
 TEST_F(GraphicsQualityShaderTest, OccludedDiffuseDoesNotAcquireConstantAmbientFloor)
 {
     Begin();
@@ -668,20 +692,24 @@ TEST_F(GraphicsQualityShaderTest, OccludedDiffuseDoesNotAcquireConstantAmbientFl
     }
     Probe(m_output, {2}); End(); EXPECT_NEAR(Read().x, 0, 0.001f);
 }
+/// @brief Visibility suppresses bright probe behind thin wall.
 TEST_F(GraphicsQualityShaderTest, VisibilitySuppressesBrightProbeBehindThinWall)
 {
     EXPECT_GT(Gi(1, false).x, 0.4f);
     EXPECT_NEAR(Gi(1, true).x, 0.1f, 0.005f);
 }
+/// @brief Entirely occluded cage does not leak sky fallback.
 TEST_F(GraphicsQualityShaderTest, EntirelyOccludedCageDoesNotLeakSkyFallback)
 {
     EXPECT_NEAR(Gi(2, true).x, 0, 0.001f);
 }
+/// @brief Visibility preserves open cage lighting.
 TEST_F(GraphicsQualityShaderTest, VisibilityPreservesOpenCageLighting)
 {
     EXPECT_GT(Gi(0, true).x, 0.1f);
     EXPECT_LT(Gi(0, true).x, 1.0f);
 }
+/// @brief Reflection resolve adds signed specular delta and keeps alpha.
 TEST_F(GraphicsQualityShaderTest, ReflectionResolveAddsSignedSpecularDeltaAndKeepsAlpha)
 {
     m_data.ssrIntensity = 1;
@@ -695,6 +723,7 @@ TEST_F(GraphicsQualityShaderTest, ReflectionResolveAddsSignedSpecularDeltaAndKee
     EXPECT_NEAR(color.z, 0.7f, 0.002f); EXPECT_FLOAT_EQ(color.w, 1);
 }
 
+/// @brief Reflection miss preserves transparent camera background.
 TEST_F(GraphicsQualityShaderTest, ReflectionMissPreservesTransparentCameraBackground)
 {
     m_data.ssrIntensity = 1;
@@ -708,6 +737,7 @@ TEST_F(GraphicsQualityShaderTest, ReflectionMissPreservesTransparentCameraBackgr
     EXPECT_NEAR(color.x, 0.8f, 0.002f); EXPECT_FLOAT_EQ(color.w, 0.25f);
 }
 
+/// @brief Moving later submesh writes velocity when first slot is hidden.
 TEST_F(GraphicsQualityShaderTest, MovingLaterSubmeshWritesVelocityWhenFirstSlotIsHidden)
 {
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
@@ -752,6 +782,7 @@ TEST_F(GraphicsQualityShaderTest, MovingLaterSubmeshWritesVelocityWhenFirstSlotI
     EXPECT_GT(pixels[i], 0.05f); EXPECT_NEAR(pixels[i+2], 1, 0.001f);
 }
 
+/// @brief Terrain gbuffer retains authored roughness and normal strength.
 TEST_F(GraphicsQualityShaderTest, TerrainGbufferRetainsAuthoredRoughnessAndNormalStrength)
 {
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
@@ -814,6 +845,7 @@ TEST_F(GraphicsQualityShaderTest, TerrainGbufferRetainsAuthoredRoughnessAndNorma
     }
 }
 
+/// @brief Compiles terrain reflection and probe production shaders.
 TEST_F(GraphicsQualityShaderTest, CompilesTerrainReflectionAndProbeProductionShaders)
 {
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);

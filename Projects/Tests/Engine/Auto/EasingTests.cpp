@@ -71,6 +71,7 @@ class EasingTest : public testkit::EngineFixture {};
 
 /// @name 端点
 
+/// @brief Every curve starts at zero and ends at one.
 TEST_F(EasingTest, EveryCurveStartsAtZeroAndEndsAtOne)
 {
     /// @note ここが崩れると、演出の開始か終了で必ず 1 フレーム «飛ぶ»。
@@ -80,6 +81,7 @@ TEST_F(EasingTest, EveryCurveStartsAtZeroAndEndsAtOne)
     }
 }
 
+/// @brief Every curve is finite across the unit interval.
 TEST_F(EasingTest, EveryCurveIsFiniteAcrossTheUnitInterval)
 {
     for (const Curve& curve : AllCurves()) {
@@ -93,6 +95,7 @@ TEST_F(EasingTest, EveryCurveIsFiniteAcrossTheUnitInterval)
     }
 }
 
+/// @brief Plain curves stay inside the unit range.
 TEST_F(EasingTest, PlainCurvesStayInsideTheUnitRange)
 {
     /// @note 行き過ぎるのは Back / Elastic / Bounce だけ。ほかが 1 を超えると
@@ -109,6 +112,7 @@ TEST_F(EasingTest, PlainCurvesStayInsideTheUnitRange)
     }
 }
 
+/// @brief Checks plain curves never go backwards.
 TEST_F(EasingTest, PlainCurvesNeverGoBackwards)
 {
     for (const Curve& curve : AllCurves()) {
@@ -127,6 +131,7 @@ TEST_F(EasingTest, PlainCurvesNeverGoBackwards)
 
 /// @name In と Out の関係
 
+/// @brief In and out are mirror images.
 TEST_F(EasingTest, InAndOutAreMirrorImages)
 {
     /// @note Out(t) == 1 - In(1-t) が «同じ形の裏返し» の定義。片方だけ式を直すとここで落ちる。
@@ -150,6 +155,7 @@ TEST_F(EasingTest, InAndOutAreMirrorImages)
     }
 }
 
+/// @brief In out curves pass through the midpoint.
 TEST_F(EasingTest, InOutCurvesPassThroughTheMidpoint)
 {
     const EaseFn inOut[] = {
@@ -162,6 +168,7 @@ TEST_F(EasingTest, InOutCurvesPassThroughTheMidpoint)
     for (const EaseFn fn : inOut) EXPECT_NEAR(fn(0.5f), 0.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Ease in starts slower than linear.
 TEST_F(EasingTest, EaseInStartsSlowerThanLinear)
 {
     /// @note «In» は出だしが遅い。逆になっていると加速と減速が入れ替わる。
@@ -171,6 +178,7 @@ TEST_F(EasingTest, EaseInStartsSlowerThanLinear)
     EXPECT_GT(util::Easing::EaseOutCubic(0.25f), 0.25f);
 }
 
+/// @brief Checks higher powers bite harder.
 TEST_F(EasingTest, HigherPowersBiteHarder)
 {
     /// @note Quad < Cubic < Quart < Quint の順に «出だしが遅い»。式の写し間違いで
@@ -182,6 +190,7 @@ TEST_F(EasingTest, HigherPowersBiteHarder)
     EXPECT_GT(util::Easing::EaseInQuart(t), util::Easing::EaseInQuint(t));
 }
 
+/// @brief Back overshoots past the ends.
 TEST_F(EasingTest, BackOvershootsPastTheEnds)
 {
     /// @note 行き過ぎることが Back の存在理由。抑えると «ただの Cubic» になる。
@@ -189,6 +198,7 @@ TEST_F(EasingTest, BackOvershootsPastTheEnds)
     EXPECT_GT(util::Easing::EaseOutBack(0.7f), 1.0f);
 }
 
+/// @brief Linear is the identity.
 TEST_F(EasingTest, LinearIsTheIdentity)
 {
     for (int step = 0; step <= 10; ++step) {

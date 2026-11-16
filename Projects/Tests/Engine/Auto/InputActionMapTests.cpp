@@ -74,6 +74,7 @@ private:
 
 /// @name 既定のバインド
 
+/// @brief Defaults provide something to play with.
 TEST_F(InputActionMapTest, DefaultsProvideSomethingToPlayWith)
 {
     /// @note 設定ファイルが無い状態でも遊べること。空のまま起動すると何も動かせない。
@@ -83,6 +84,7 @@ TEST_F(InputActionMapTest, DefaultsProvideSomethingToPlayWith)
     EXPECT_FALSE(input::InputActionMap::GetAxes().empty());
 }
 
+/// @brief Initialize preserves project menu bindings.
 TEST_F(InputActionMapTest, InitializePreservesProjectMenuBindings)
 {
     WriteText("menu.inputactions",
@@ -99,6 +101,7 @@ TEST_F(InputActionMapTest, InitializePreservesProjectMenuBindings)
     EXPECT_TRUE(input::InputActionMap::GetAxes().empty());
 }
 
+/// @brief Initialize preserves explicit empty configuration.
 TEST_F(InputActionMapTest, InitializePreservesExplicitEmptyConfiguration)
 {
     WriteText("empty.inputactions", "");
@@ -110,6 +113,7 @@ TEST_F(InputActionMapTest, InitializePreservesExplicitEmptyConfiguration)
     EXPECT_TRUE(input::InputActionMap::GetAxes().empty());
 }
 
+/// @brief Clear removes everything.
 TEST_F(InputActionMapTest, ClearRemovesEverything)
 {
     input::InputActionMap::LoadDefaults();
@@ -122,6 +126,7 @@ TEST_F(InputActionMapTest, ClearRemovesEverything)
 
 /// @name 往復
 
+/// @brief Saves and reloads the default bindings.
 TEST_F(InputActionMapTest, SavesAndReloadsTheDefaultBindings)
 {
     input::InputActionMap::LoadDefaults();
@@ -136,6 +141,7 @@ TEST_F(InputActionMapTest, SavesAndReloadsTheDefaultBindings)
     EXPECT_EQ(input::InputActionMap::GetAxes().size(), axisCount);
 }
 
+/// @brief Project loads attack bindings from japanese export directory.
 TEST_F(InputActionMapTest, ProjectLoadsAttackBindingsFromJapaneseExportDirectory)
 {
     WriteText("attack.inputactions",
@@ -162,6 +168,7 @@ TEST_F(InputActionMapTest, ProjectLoadsAttackBindingsFromJapaneseExportDirectory
     EXPECT_EQ(attack->bindings.front().code, 0u);
 }
 
+/// @brief Keeps action names through a round trip.
 TEST_F(InputActionMapTest, KeepsActionNamesThroughARoundTrip)
 {
     input::InputActionMap::LoadDefaults();
@@ -176,6 +183,7 @@ TEST_F(InputActionMapTest, KeepsActionNamesThroughARoundTrip)
     EXPECT_TRUE(HasAxis(firstAxis));
 }
 
+/// @brief Keeps the bindings of each action.
 TEST_F(InputActionMapTest, KeepsTheBindingsOfEachAction)
 {
     /// @note 名前だけ残ってバインドが空だと、«設定はあるのに反応しない» になる。
@@ -190,6 +198,7 @@ TEST_F(InputActionMapTest, KeepsTheBindingsOfEachAction)
     EXPECT_EQ(input::InputActionMap::GetActions().front().bindings.size(), bindings);
 }
 
+/// @brief Keeps the axis tuning through a round trip.
 TEST_F(InputActionMapTest, KeepsTheAxisTuningThroughARoundTrip)
 {
     /// @note デッドゾーンや戻り速度が落ちると «パッドの効きが変わった» と感じる。
@@ -205,6 +214,7 @@ TEST_F(InputActionMapTest, KeepsTheAxisTuningThroughARoundTrip)
     EXPECT_NEAR(restored.gravity, original.gravity, testkit::kTolerance);
 }
 
+/// @brief Checks saving twice produces the same file.
 TEST_F(InputActionMapTest, SavingTwiceProducesTheSameFile)
 {
     /// @note 触っていないのに設定ファイルの差分が出ると、コミットのたびに紛れ込む。
@@ -222,6 +232,7 @@ TEST_F(InputActionMapTest, SavingTwiceProducesTheSameFile)
 
 /// @name 壊れた設定
 
+/// @brief Keeps the current bindings when the file is missing.
 TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsMissing)
 {
     input::InputActionMap::LoadDefaults();
@@ -232,6 +243,7 @@ TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsMissing)
     EXPECT_EQ(input::InputActionMap::GetActions().size(), before);
 }
 
+/// @brief Keeps the current bindings when the file is broken.
 TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsBroken)
 {
     /// @note 壊れた設定で «全操作不能» にしない。直前のバインドで動き続ける。
@@ -246,6 +258,7 @@ TEST_F(InputActionMapTest, KeepsTheCurrentBindingsWhenTheFileIsBroken)
 
 /// @name 有効・無効
 
+/// @brief Checks disabling silences every action.
 TEST_F(InputActionMapTest, DisablingSilencesEveryAction)
 {
     /// @note 編集中に W を押してプレイヤーが歩き出す事故を防ぐための口。
@@ -263,6 +276,7 @@ TEST_F(InputActionMapTest, DisablingSilencesEveryAction)
     input::InputActionMap::SetEnabled(true);
 }
 
+/// @brief Unregistered input names report inactive actions and a zero axis value.
 TEST_F(InputActionMapTest, UnknownNamesAreSilentRatherThanFatal)
 {
     /// @note スクリプトの綴り間違いは普通に起きる。落とさず «押されていない» を返す。

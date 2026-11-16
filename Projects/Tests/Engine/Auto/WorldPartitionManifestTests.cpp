@@ -47,6 +47,7 @@ protected:
     }
 };
 
+/// @brief Round-trips negative coordinates full revisions and dependencies.
 TEST_F(WorldPartitionManifestTest, RoundTripsNegativeCoordinatesFullRevisionsAndDependencies)
 {
     const auto source = Example();
@@ -75,6 +76,7 @@ TEST_F(WorldPartitionManifestTest, RoundTripsNegativeCoordinatesFullRevisionsAnd
     EXPECT_EQ(again, text);
 }
 
+/// @brief Canonical ordering does not depend on cell or dependency insertion order.
 TEST_F(WorldPartitionManifestTest, CanonicalOrderingDoesNotDependOnCellOrDependencyInsertionOrder)
 {
     auto first = Example();
@@ -93,6 +95,7 @@ TEST_F(WorldPartitionManifestTest, CanonicalOrderingDoesNotDependOnCellOrDepende
     EXPECT_EQ(first.cells[0].id, scene::WorldCellId(-2, 3));
 }
 
+/// @brief Rejects traversal absolute paths and windows aliases without changing output.
 TEST_F(WorldPartitionManifestTest, RejectsTraversalAbsolutePathsAndWindowsAliasesWithoutChangingOutput)
 {
     const std::vector<std::string> badPaths = {"../outside.scene", "Assets/../outside.scene", "Assets/./World/cell.scene",
@@ -110,6 +113,7 @@ TEST_F(WorldPartitionManifestTest, RejectsTraversalAbsolutePathsAndWindowsAliase
     }
 }
 
+/// @brief Rejects duplicate coordinates and payload aliases.
 TEST_F(WorldPartitionManifestTest, RejectsDuplicateCoordinatesAndPayloadAliases)
 {
     auto source = Example();
@@ -125,6 +129,7 @@ TEST_F(WorldPartitionManifestTest, RejectsDuplicateCoordinatesAndPayloadAliases)
     EXPECT_FALSE(scene::ValidateWorldPartitionManifest(source, diagnostic));
 }
 
+/// @brief Source forest identities are optional unique and transactional.
 TEST_F(WorldPartitionManifestTest, SourceForestIdentitiesAreOptionalUniqueAndTransactional)
 {
     auto source = Example();
@@ -145,6 +150,7 @@ TEST_F(WorldPartitionManifestTest, SourceForestIdentitiesAreOptionalUniqueAndTra
     EXPECT_TRUE(output.sourceInstanceIds.empty());
 }
 
+/// @brief Rejects nonfinite and unrepresentable grid and bounds.
 TEST_F(WorldPartitionManifestTest, RejectsNonfiniteAndUnrepresentableGridAndBounds)
 {
     auto source = Example();
@@ -169,6 +175,7 @@ TEST_F(WorldPartitionManifestTest, RejectsNonfiniteAndUnrepresentableGridAndBoun
     EXPECT_FALSE(scene::ValidateWorldPartitionManifest(source, diagnostic));
 }
 
+/// @brief Rejects unsupported malformed and out-of-range documents transactionally.
 TEST_F(WorldPartitionManifestTest, RejectsUnsupportedMalformedAndOutOfRangeDocumentsTransactionally)
 {
     const std::vector<std::string> invalid = {
@@ -188,6 +195,7 @@ TEST_F(WorldPartitionManifestTest, RejectsUnsupportedMalformedAndOutOfRangeDocum
     }
 }
 
+/// @brief Rejects invalid dependency references and canonical GUID duplicates.
 TEST_F(WorldPartitionManifestTest, RejectsInvalidDependencyReferencesAndCanonicalGuidDuplicates)
 {
     const std::vector<scene::WorldPartitionDependency> invalid = {{"", "Assets/tree.fzasset"},
@@ -204,6 +212,7 @@ TEST_F(WorldPartitionManifestTest, RejectsInvalidDependencyReferencesAndCanonica
     EXPECT_FALSE(scene::ValidateWorldPartitionManifest(source, diagnostic));
 }
 
+/// @brief Save and load preserve the prior file when replacement is invalid.
 TEST_F(WorldPartitionManifestTest, SaveAndLoadPreserveThePriorFileWhenReplacementIsInvalid)
 {
     testkit::TempDir temp("WorldPartitionManifest");
@@ -229,6 +238,7 @@ TEST_F(WorldPartitionManifestTest, SaveAndLoadPreserveThePriorFileWhenReplacemen
     EXPECT_EQ(unchanged.revision, source.revision);
 }
 
+/// @brief Supports an empty world and rejects excessive counts.
 TEST_F(WorldPartitionManifestTest, SupportsAnEmptyWorldAndRejectsExcessiveCounts)
 {
     scene::WorldPartitionManifest empty;

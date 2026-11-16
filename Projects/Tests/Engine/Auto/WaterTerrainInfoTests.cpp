@@ -46,6 +46,7 @@ void ExpectSampleUnchanged(const scene::WaterTerrainSample& sample)
 
 class WaterTerrainInfoTest : public testkit::EngineFixture {};
 
+/// @brief Selects the highest terrain even when it is above the water.
 TEST_F(WaterTerrainInfoTest, SelectsTheHighestTerrainEvenWhenItIsAboveTheWater)
 {
     scene::Scene source;
@@ -71,6 +72,7 @@ TEST_F(WaterTerrainInfoTest, SelectsTheHighestTerrainEvenWhenItIsAboveTheWater)
     EXPECT_FLOAT_EQ(sample.shoreFoam, 0.0f);
 }
 
+/// @brief Holes reveal the lower terrain and then explicitly report no bottom.
 TEST_F(WaterTerrainInfoTest, HolesRevealTheLowerTerrainAndThenExplicitlyReportNoBottom)
 {
     scene::Scene source;
@@ -97,6 +99,7 @@ TEST_F(WaterTerrainInfoTest, HolesRevealTheLowerTerrainAndThenExplicitlyReportNo
     EXPECT_FLOAT_EQ(sample.shoreFoam, 0.0f);
 }
 
+/// @brief Respects parent yaw signed scale and water UV world mapping.
 TEST_F(WaterTerrainInfoTest, RespectsParentYawSignedScaleAndWaterUvWorldMapping)
 {
     scene::Scene source;
@@ -136,6 +139,7 @@ TEST_F(WaterTerrainInfoTest, RespectsParentYawSignedScaleAndWaterUvWorldMapping)
     }
 }
 
+/// @brief Uses the existing inclined terrain vertical intersection.
 TEST_F(WaterTerrainInfoTest, UsesTheExistingInclinedTerrainVerticalIntersection)
 {
     scene::Scene source;
@@ -152,6 +156,7 @@ TEST_F(WaterTerrainInfoTest, UsesTheExistingInclinedTerrainVerticalIntersection)
     EXPECT_NEAR(sample.bottomY, 0.5f * std::tan(math::ToRad(30.0f)), testkit::kLooseTolerance);
 }
 
+/// @brief Updates signatures for consumed dirty content geometry pose water and foam.
 TEST_F(WaterTerrainInfoTest, UpdatesSignaturesForConsumedDirtyContentGeometryPoseWaterAndFoam)
 {
     scene::Scene source;
@@ -195,6 +200,7 @@ TEST_F(WaterTerrainInfoTest, UpdatesSignaturesForConsumedDirtyContentGeometryPos
     EXPECT_NE(original, replacement);
 }
 
+/// @brief Packs signed depth at texel centers within the sixteen bit quantization error.
 TEST_F(WaterTerrainInfoTest, PacksSignedDepthAtTexelCentersWithinTheSixteenBitQuantizationError)
 {
     scene::Scene source;
@@ -228,6 +234,7 @@ TEST_F(WaterTerrainInfoTest, PacksSignedDepthAtTexelCentersWithinTheSixteenBitQu
     }
 }
 
+/// @brief Rotated atlas matches individual queries across terrain tiles.
 TEST_F(WaterTerrainInfoTest, RotatedAtlasMatchesIndividualQueriesAcrossTerrainTiles)
 {
     scene::Scene source;
@@ -277,6 +284,7 @@ TEST_F(WaterTerrainInfoTest, RotatedAtlasMatchesIndividualQueriesAcrossTerrainTi
     }
 }
 
+/// @brief Regional height previews match a full atlas rebake.
 TEST_F(WaterTerrainInfoTest, RegionalHeightPreviewsMatchAFullAtlasRebake)
 {
     scene::Scene source;
@@ -337,6 +345,7 @@ TEST_F(WaterTerrainInfoTest, RegionalHeightPreviewsMatchAFullAtlasRebake)
     expectFullBake();
 }
 
+/// @brief Tilting terrain revalidates bounds after its height range shrinks.
 TEST_F(WaterTerrainInfoTest, TiltingTerrainRevalidatesBoundsAfterItsHeightRangeShrinks)
 {
     scene::Scene source;
@@ -365,6 +374,7 @@ TEST_F(WaterTerrainInfoTest, TiltingTerrainRevalidatesBoundsAfterItsHeightRangeS
     EXPECT_VEC3_NEAR(inputs.terrains.front().boundsMax, fresh.terrains.front().boundsMax, 0.00001f);
 }
 
+/// @brief Checks no bottom and inactive terrain produce zero foam and explicit flags.
 TEST_F(WaterTerrainInfoTest, NoBottomAndInactiveTerrainProduceZeroFoamAndExplicitFlags)
 {
     scene::Scene source;
@@ -381,6 +391,7 @@ TEST_F(WaterTerrainInfoTest, NoBottomAndInactiveTerrainProduceZeroFoamAndExplici
     EXPECT_EQ(atlas.rgba[3], 0u);
 }
 
+/// @brief Marks clipped depth without inventing foam or rejecting an exact range endpoint.
 TEST_F(WaterTerrainInfoTest, MarksClippedDepthWithoutInventingFoamOrRejectingAnExactRangeEndpoint)
 {
     scene::Scene source;
@@ -406,6 +417,7 @@ TEST_F(WaterTerrainInfoTest, MarksClippedDepthWithoutInventingFoamOrRejectingAnE
     EXPECT_EQ(atlas.rgba[3], 1u);
 }
 
+/// @brief Revalidates when a terrain component is readded to the same entity and revision.
 TEST_F(WaterTerrainInfoTest, RevalidatesWhenATerrainComponentIsReaddedToTheSameEntityAndRevision)
 {
     scene::Scene source;
@@ -434,6 +446,7 @@ TEST_F(WaterTerrainInfoTest, RevalidatesWhenATerrainComponentIsReaddedToTheSameE
     EXPECT_NEAR(sample.bottomY, point.y, testkit::kLooseTolerance);
 }
 
+/// @brief Invalid terrain content and query inputs keep the previous outputs.
 TEST_F(WaterTerrainInfoTest, InvalidTerrainContentAndQueryInputsKeepThePreviousOutputs)
 {
     scene::Scene source;
@@ -465,6 +478,7 @@ TEST_F(WaterTerrainInfoTest, InvalidTerrainContentAndQueryInputsKeepThePreviousO
     EXPECT_FALSE(scene::TryDecodeWaterTerrainDepth(0, 0, std::numeric_limits<float>::quiet_NaN(), decoded));
     EXPECT_FLOAT_EQ(decoded, 7.0f);
 }
+/// @brief Spline atlas shares the local baseline depth and shape signature.
 TEST_F(WaterTerrainInfoTest, SplineAtlasSharesTheLocalBaselineDepthAndShapeSignature)
 {
     auto water = Water();
@@ -509,6 +523,7 @@ TEST_F(WaterTerrainInfoTest, SplineAtlasSharesTheLocalBaselineDepthAndShapeSigna
     EXPECT_NEAR(depth, 1.0f, 0.001f);
 }
 
+/// @brief Cave surface expands bounds and invalidates exterior depth.
 TEST_F(WaterTerrainInfoTest, CaveSurfaceExpandsBoundsAndInvalidatesExteriorDepth)
 {
     scene::Scene source;

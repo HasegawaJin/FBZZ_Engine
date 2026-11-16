@@ -48,6 +48,7 @@ protected:
     }
 };
 
+/// @brief Checks local setter synchronizes scaled hierarchy and inactive children.
 TEST_F(ManagedTransformPositionTest, LocalSetterSynchronizesScaledHierarchyAndInactiveChildren)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -72,6 +73,7 @@ TEST_F(ManagedTransformPositionTest, LocalSetterSynchronizesScaledHierarchyAndIn
     EXPECT_FLOAT_EQ(target.transform.rotation.w, 2);
 }
 
+/// @brief World setter preserves finite projection through zero parent scale.
 TEST_F(ManagedTransformPositionTest, WorldSetterPreservesFiniteProjectionThroughZeroParentScale)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -95,6 +97,7 @@ TEST_F(ManagedTransformPositionTest, WorldSetterPreservesFiniteProjectionThrough
     EXPECT_FLOAT_EQ(target.transform.rotation.w, 2);
 }
 
+/// @brief Local translation uses local rotation without applying target scale to delta.
 TEST_F(ManagedTransformPositionTest, LocalTranslationUsesLocalRotationWithoutApplyingTargetScaleToDelta)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -126,6 +129,7 @@ TEST_F(ManagedTransformPositionTest, LocalTranslationUsesLocalRotationWithoutApp
     EXPECT_VEC3_NEAR(target.transform.scale, (math::Vector3{5, 6, 7}), testkit::kTolerance);
 }
 
+/// @brief Local setter rejects parent addition overflow without repairing live caches.
 TEST_F(ManagedTransformPositionTest, LocalSetterRejectsParentAdditionOverflowWithoutRepairingLiveCaches)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -149,6 +153,7 @@ TEST_F(ManagedTransformPositionTest, LocalSetterRejectsParentAdditionOverflowWit
     ExpectUnchanged(child.transform, previousChild);
 }
 
+/// @brief Local translation rejects accumulation overflow without mutation.
 TEST_F(ManagedTransformPositionTest, LocalTranslationRejectsAccumulationOverflowWithoutMutation)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -167,6 +172,7 @@ TEST_F(ManagedTransformPositionTest, LocalTranslationRejectsAccumulationOverflow
     ExpectUnchanged(child.transform, previousChild);
 }
 
+/// @brief World setter rejects descendant overflow without changing ancestors or children.
 TEST_F(ManagedTransformPositionTest, WorldSetterRejectsDescendantOverflowWithoutChangingAncestorsOrChildren)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -191,6 +197,7 @@ TEST_F(ManagedTransformPositionTest, WorldSetterRejectsDescendantOverflowWithout
     ExpectUnchanged(child.transform, previousChild);
 }
 
+/// @brief World setter rejects offset overflow hidden by zero parent scale.
 TEST_F(ManagedTransformPositionTest, WorldSetterRejectsOffsetOverflowHiddenByZeroParentScale)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -210,6 +217,7 @@ TEST_F(ManagedTransformPositionTest, WorldSetterRejectsOffsetOverflowHiddenByZer
     ExpectUnchanged(target.transform, previousTarget);
 }
 
+/// @brief Nonfinite input leaves position and world cache unchanged.
 TEST_F(ManagedTransformPositionTest, NonfiniteInputLeavesPositionAndWorldCacheUnchanged)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -230,6 +238,7 @@ TEST_F(ManagedTransformPositionTest, NonfiniteInputLeavesPositionAndWorldCacheUn
     }
 }
 
+/// @brief Preserves existing scalar position support for live physics bodies.
 TEST_F(ManagedTransformPositionTest, PreservesExistingScalarPositionSupportForLivePhysicsBodies)
 {
     auto& target = m_scene.CreateGameObject("Target");

@@ -31,6 +31,7 @@ class RayTest : public testkit::Fixture {};
 
 /// @name パラメータ位置
 
+/// @brief Evaluating the ray at parameter zero returns its origin.
 TEST_F(RayTest, AtReturnsTheOriginForZero)
 {
     const math::Ray ray({1.0f, 2.0f, 3.0f}, math::Vector3::FORWARD);
@@ -38,6 +39,7 @@ TEST_F(RayTest, AtReturnsTheOriginForZero)
     EXPECT_VEC3_NEAR(ray.At(0.0f), ray.origin, testkit::kTolerance);
 }
 
+/// @brief Evaluating the ray at parameter t adds t times its direction to its origin.
 TEST_F(RayTest, AtAdvancesByTAlongTheDirection)
 {
     const math::Ray ray({0.0f, 1.0f, 0.0f}, math::Vector3::FORWARD);
@@ -48,6 +50,7 @@ TEST_F(RayTest, AtAdvancesByTAlongTheDirection)
 
 /// @name 平面
 
+/// @brief Intersect plane returns the distance to the hit point.
 TEST_F(RayTest, IntersectPlaneReturnsTheDistanceToTheHitPoint)
 {
     const math::Ray ray({0.0f, 5.0f, 0.0f}, {0.0f, -1.0f, 0.0f});
@@ -60,6 +63,7 @@ TEST_F(RayTest, IntersectPlaneReturnsTheDistanceToTheHitPoint)
     EXPECT_VEC3_NEAR(ray.At(t), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Intersect plane misses when parallel.
 TEST_F(RayTest, IntersectPlaneMissesWhenParallel)
 {
     const math::Ray ray({0.0f, 5.0f, 0.0f}, math::Vector3::FORWARD);
@@ -69,6 +73,7 @@ TEST_F(RayTest, IntersectPlaneMissesWhenParallel)
     EXPECT_FALSE(ray.IntersectPlane(ground, t));
 }
 
+/// @brief Intersect plane misses when the plane is behind the ray.
 TEST_F(RayTest, IntersectPlaneMissesWhenThePlaneIsBehindTheRay)
 {
     /// @note 後方の交点は «当たっていない» とする。ピッキングでカメラの背後を拾わないため。
@@ -79,6 +84,7 @@ TEST_F(RayTest, IntersectPlaneMissesWhenThePlaneIsBehindTheRay)
     EXPECT_FALSE(ray.IntersectPlane(ground, t));
 }
 
+/// @brief A ray can intersect a plane from its back side.
 TEST_F(RayTest, IntersectPlaneHitsFromTheBackSide)
 {
     /// @note 法線の裏から入っても交差は成立する。片面判定はレイの契約ではない。
@@ -93,6 +99,7 @@ TEST_F(RayTest, IntersectPlaneHitsFromTheBackSide)
 
 /// @name 球
 
+/// @brief Intersect sphere returns the near hit from outside.
 TEST_F(RayTest, IntersectSphereReturnsTheNearHitFromOutside)
 {
     const math::Ray ray({0.0f, 0.0f, -5.0f}, math::Vector3::FORWARD);
@@ -103,6 +110,7 @@ TEST_F(RayTest, IntersectSphereReturnsTheNearHitFromOutside)
     EXPECT_NEAR(t, 4.0f, testkit::kTolerance);
 }
 
+/// @brief Intersect sphere returns the exit hit from inside.
 TEST_F(RayTest, IntersectSphereReturnsTheExitHitFromInside)
 {
     /// @note 手前の交点が背後にあるときは奥の交点を返す。カメラが球の内側にいる場合。
@@ -114,6 +122,7 @@ TEST_F(RayTest, IntersectSphereReturnsTheExitHitFromInside)
     EXPECT_NEAR(t, 2.0f, testkit::kTolerance);
 }
 
+/// @brief Intersect sphere misses when the ray passes beside.
 TEST_F(RayTest, IntersectSphereMissesWhenTheRayPassesBeside)
 {
     const math::Ray ray({0.0f, 10.0f, -5.0f}, math::Vector3::FORWARD);
@@ -122,6 +131,7 @@ TEST_F(RayTest, IntersectSphereMissesWhenTheRayPassesBeside)
     EXPECT_FALSE(ray.IntersectSphere(math::Vector3::ZERO, 1.0f, t));
 }
 
+/// @brief Intersect sphere misses when the sphere is behind.
 TEST_F(RayTest, IntersectSphereMissesWhenTheSphereIsBehind)
 {
     const math::Ray ray({0.0f, 0.0f, 5.0f}, math::Vector3::FORWARD);
@@ -130,6 +140,7 @@ TEST_F(RayTest, IntersectSphereMissesWhenTheSphereIsBehind)
     EXPECT_FALSE(ray.IntersectSphere(math::Vector3::ZERO, 1.0f, t));
 }
 
+/// @brief Intersect sphere hit point lies on the surface.
 TEST_F(RayTest, IntersectSphereHitPointLiesOnTheSurface)
 {
     const math::Vector3 center(1.0f, 2.0f, 3.0f);
@@ -143,6 +154,7 @@ TEST_F(RayTest, IntersectSphereHitPointLiesOnTheSurface)
 
 /// @name 三角形
 
+/// @brief Intersect triangle returns the distance to the face.
 TEST_F(RayTest, IntersectTriangleReturnsTheDistanceToTheFace)
 {
     const math::Ray ray(math::Vector3::ZERO, math::Vector3::FORWARD);
@@ -155,6 +167,7 @@ TEST_F(RayTest, IntersectTriangleReturnsTheDistanceToTheFace)
     EXPECT_NEAR(t, 5.0f, testkit::kTolerance);
 }
 
+/// @brief Intersect triangle misses outside the edges.
 TEST_F(RayTest, IntersectTriangleMissesOutsideTheEdges)
 {
     /// @note 頂点の外側を通る
@@ -166,6 +179,7 @@ TEST_F(RayTest, IntersectTriangleMissesOutsideTheEdges)
                                        {0.0f, -0.5f, 5.0f}, t));
 }
 
+/// @brief A ray intersects the triangle with either vertex winding.
 TEST_F(RayTest, IntersectTriangleHitsRegardlessOfWinding)
 {
     /// @note 裏面カリングはレンダラーの仕事。レイ側で落とすと «裏から選べない» になる。
@@ -181,6 +195,7 @@ TEST_F(RayTest, IntersectTriangleHitsRegardlessOfWinding)
     EXPECT_NEAR(front, back, testkit::kTolerance);
 }
 
+/// @brief Intersect triangle misses when the face is behind.
 TEST_F(RayTest, IntersectTriangleMissesWhenTheFaceIsBehind)
 {
     const math::Ray ray(math::Vector3::ZERO, math::Vector3::FORWARD);
@@ -191,6 +206,7 @@ TEST_F(RayTest, IntersectTriangleMissesWhenTheFaceIsBehind)
                                        {0.0f, 1.0f, -5.0f}, t));
 }
 
+/// @brief Intersect triangle misses when the ray lies in the face plane.
 TEST_F(RayTest, IntersectTriangleMissesWhenTheRayLiesInTheFacePlane)
 {
     /// @note 縮退 (det ≒ 0)。0 除算で NaN を返さないことを固定する。
@@ -204,6 +220,7 @@ TEST_F(RayTest, IntersectTriangleMissesWhenTheRayLiesInTheFacePlane)
 
 /// @name NDC からの生成
 
+/// @brief From NDC starts at the camera position.
 TEST_F(RayTest, FromNDCStartsAtTheCameraPosition)
 {
     const math::Vector3 eye(0.0f, 0.0f, -10.0f);
@@ -213,6 +230,7 @@ TEST_F(RayTest, FromNDCStartsAtTheCameraPosition)
     EXPECT_VEC3_NEAR(ray.origin, eye, testkit::kTolerance);
 }
 
+/// @brief The ray constructed from normalized device coordinates has unit direction.
 TEST_F(RayTest, FromNDCProducesAUnitDirection)
 {
     const math::Vector3 eye(0.0f, 0.0f, -10.0f);
@@ -222,6 +240,7 @@ TEST_F(RayTest, FromNDCProducesAUnitDirection)
     EXPECT_UNIT_LENGTH(ray.direction, testkit::kTolerance);
 }
 
+/// @brief A ray through the NDC center points along the camera view axis.
 TEST_F(RayTest, FromNDCAimsAlongTheViewAxisAtTheScreenCenter)
 {
     const math::Vector3 eye(0.0f, 0.0f, -10.0f);
@@ -231,6 +250,7 @@ TEST_F(RayTest, FromNDCAimsAlongTheViewAxisAtTheScreenCenter)
     EXPECT_VEC3_NEAR(ray.direction, math::Vector3::FORWARD, testkit::kLooseTolerance);
 }
 
+/// @brief From NDC maps positive X to the right and positive Y to up.
 TEST_F(RayTest, FromNDCMapsPositiveXToTheRightAndPositiveYToUp)
 {
     /// @note NDC の上下反転は «掴んだ場所と選択がずれる» という形でしか出ない。
@@ -244,6 +264,7 @@ TEST_F(RayTest, FromNDCMapsPositiveXToTheRightAndPositiveYToUp)
     EXPECT_GT(up.direction.y, 0.0f);
 }
 
+/// @brief The ray projected from NDC hits the ground at the camera target.
 TEST_F(RayTest, FromNDCHitsTheGroundWhereTheCameraLooks)
 {
     /// @note 画面中央のレイは、カメラが見下ろしている点で地面に当たる。

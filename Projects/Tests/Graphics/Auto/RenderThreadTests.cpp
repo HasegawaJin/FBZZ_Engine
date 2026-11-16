@@ -101,6 +101,7 @@ protected:
     bool m_resumed = false;
 };
 
+/// @brief Executes on another thread while next game update proceeds.
 TEST_F(RenderThreadTest, ExecutesOnAnotherThreadWhileNextGameUpdateProceeds)
 {
     const auto producer = std::this_thread::get_id();
@@ -113,6 +114,7 @@ TEST_F(RenderThreadTest, ExecutesOnAnotherThreadWhileNextGameUpdateProceeds)
     EXPECT_TRUE(m_result->sawUpdate);
 }
 
+/// @brief Owns input after producer changes and releases source.
 TEST_F(RenderThreadTest, OwnsInputAfterProducerChangesAndReleasesSource)
 {
     std::vector<int> source{2, 3, 5};
@@ -126,6 +128,7 @@ TEST_F(RenderThreadTest, OwnsInputAfterProducerChangesAndReleasesSource)
     EXPECT_EQ(m_result->values, (std::vector<int>{2, 3, 5}));
 }
 
+/// @brief Completion includes input destruction.
 TEST_F(RenderThreadTest, CompletionIncludesInputDestruction)
 {
     ASSERT_TRUE(m_thread->Submit(2, std::make_unique<OwnedRenderFrame>(std::vector<int>{}, m_result)));
@@ -138,6 +141,7 @@ TEST_F(RenderThreadTest, CompletionIncludesInputDestruction)
     EXPECT_FALSE(m_thread->WaitUntilCompleted(3));
 }
 
+/// @brief Rejects invalid inputs and non increasing serials.
 TEST_F(RenderThreadTest, RejectsInvalidInputsAndNonIncreasingSerials)
 {
     EXPECT_FALSE(m_thread->Submit(0, std::make_unique<OwnedRenderFrame>(std::vector<int>{}, m_result)));
@@ -150,6 +154,7 @@ TEST_F(RenderThreadTest, RejectsInvalidInputsAndNonIncreasingSerials)
     EXPECT_FALSE(m_thread->Submit(9, std::make_unique<OwnedRenderFrame>(std::vector<int>{}, m_result)));
 }
 
+/// @brief Stop drains accepted frame and closes submission.
 TEST_F(RenderThreadTest, StopDrainsAcceptedFrameAndClosesSubmission)
 {
     ASSERT_TRUE(m_thread->Submit(1, std::make_unique<OwnedRenderFrame>(std::vector<int>{11}, m_result)));
@@ -182,6 +187,7 @@ void ObservePreparedPublicationPump()
     }
 }
 
+/// @brief Publishes external boundary before wait pump even when handler fails.
 TEST_F(RenderThreadTest, PublishesExternalBoundaryBeforeWaitPumpEvenWhenHandlerFails)
 {
     ASSERT_TRUE(m_thread->Submit(1, std::make_unique<OwnedRenderFrame>(std::vector<int>{7}, m_result)));
@@ -476,6 +482,7 @@ public:
 
 class TextureCachePathTest : public testkit::Fixture {};
 
+/// @brief Cache identity preserves case sensitive source resolver inputs and reload.
 TEST_F(TextureCachePathTest, CacheIdentityPreservesCaseSensitiveSourceResolverInputsAndReload)
 {
     TexturePathServiceInputs inputs;
@@ -650,6 +657,7 @@ protected:
     ImGuiContext* m_guiContext = nullptr;
 };
 
+/// @brief Queued compute composite owns inputs and preserves transfer order without producer wait.
 TEST_F(ThreadedRhiTest, QueuedComputeCompositeOwnsInputsAndPreservesTransferOrderWithoutProducerWait)
 {
     auto& r = *m_bundle.renderer;
@@ -686,6 +694,7 @@ TEST_F(ThreadedRhiTest, QueuedComputeCompositeOwnsInputsAndPreservesTransferOrde
     EXPECT_EQ(m_result.compositeTargets, 2u);
 }
 
+/// @brief Rejected queued compute does not composite stale output or change target.
 TEST_F(ThreadedRhiTest, RejectedQueuedComputeDoesNotCompositeStaleOutputOrChangeTarget)
 {
     auto& r = *m_bundle.renderer;
@@ -701,6 +710,7 @@ TEST_F(ThreadedRhiTest, RejectedQueuedComputeDoesNotCompositeStaleOutputOrChange
     EXPECT_EQ(m_result.compositeTargets, 0u);
 }
 
+/// @brief Native compute composite also gates draw on current dispatch.
 TEST_F(ThreadedRhiTest, NativeComputeCompositeAlsoGatesDrawOnCurrentDispatch)
 {
     RhiResult result;
@@ -905,6 +915,7 @@ protected:
     { return renderer::skinning_batch_detail::Enabled(); }
 };
 
+/// @brief Deformed readiness reuses lookup without moving completion.
 TEST_F(OwnedSkinningOperationTest, DeformedReadinessReusesLookupWithoutMovingCompletion)
 {
     const SkinningBatchEnvironment environment("1", "0", "1");
@@ -965,6 +976,7 @@ TEST_F(OwnedSkinningOperationTest, DeformedReadinessReusesLookupWithoutMovingCom
     EXPECT_EQ(m_probe.srvReads, 4u);
 }
 
+/// @brief Default owned batch completes distinct groups and legacy input in one operation.
 /// @note Three distinct source groups and an unbatched legacy palette must all finish in one producer-to-worker operation.
 TEST_F(OwnedSkinningOperationTest, DefaultOwnedBatchCompletesDistinctGroupsAndLegacyInputInOneOperation)
 {
@@ -993,6 +1005,7 @@ TEST_F(OwnedSkinningOperationTest, DefaultOwnedBatchCompletesDistinctGroupsAndLe
     }
 }
 
+/// @brief Explicit control preserves multiple group failure fallbacks.
 /// @note Explicit control retains each synchronous group failure and individual fallback instead of silently selecting owned work.
 TEST_F(OwnedSkinningOperationTest, ExplicitControlPreservesMultipleGroupFailureFallbacks)
 {
@@ -1013,6 +1026,7 @@ TEST_F(OwnedSkinningOperationTest, ExplicitControlPreservesMultipleGroupFailureF
     }
 }
 
+/// @brief Owned multiple group failure fallbacks remain inside one operation.
 /// @note The failed group and all individual retries share the same synchronous worker operation.
 TEST_F(OwnedSkinningOperationTest, OwnedMultipleGroupFailureFallbacksRemainInsideOneOperation)
 {
@@ -1033,6 +1047,7 @@ TEST_F(OwnedSkinningOperationTest, OwnedMultipleGroupFailureFallbacksRemainInsid
     }
 }
 
+/// @brief Owned boundary reset does not publish an old resource epoch.
 /// @note Reset at the synchronous boundary invalidates the captured owner before native validation or dispatch.
 TEST_F(OwnedSkinningOperationTest, OwnedBoundaryResetDoesNotPublishAnOldResourceEpoch)
 {
@@ -1050,6 +1065,7 @@ TEST_F(OwnedSkinningOperationTest, OwnedBoundaryResetDoesNotPublishAnOldResource
     EXPECT_TRUE(context.skinningBatchReceipt.writes.empty());
 }
 
+/// @brief Explicit modes and GPU demand keep their original execution boundaries.
 /// @note A GPU-demand experiment retains its original control path; explicit owned selection still has precedence.
 TEST_F(OwnedSkinningOperationTest, ExplicitModesAndGpuDemandKeepTheirOriginalExecutionBoundaries)
 {
@@ -1068,6 +1084,7 @@ TEST_F(OwnedSkinningOperationTest, ExplicitModesAndGpuDemandKeepTheirOriginalExe
     }
 }
 
+/// @brief Owns requests and matrices while queued source bytes reach native dispatch.
 TEST_F(OwnedSkinningOperationTest, OwnsRequestsAndMatricesWhileQueuedSourceBytesReachNativeDispatch)
 {
     renderer::RenderPassContext context{{}, *m_rhi, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1101,6 +1118,7 @@ TEST_F(OwnedSkinningOperationTest, OwnsRequestsAndMatricesWhileQueuedSourceBytes
     EXPECT_EQ(m_probe.begin, 1u); EXPECT_EQ(m_probe.end, 1u);
 }
 
+/// @brief Rejected dispatch closes batch without publishing an old native version.
 TEST_F(OwnedSkinningOperationTest, RejectedDispatchClosesBatchWithoutPublishingAnOldNativeVersion)
 {
     renderer::RenderPassContext context{{}, *m_rhi, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1117,6 +1135,7 @@ TEST_F(OwnedSkinningOperationTest, RejectedDispatchClosesBatchWithoutPublishingA
     EXPECT_EQ(m_resources->Get(context.skinningRequests[0].outputVertices)->GetContentVersion(), 5u);
 }
 
+/// @brief Rejected mesh group uses worker fallback and confirms each independent output.
 TEST_F(OwnedSkinningOperationTest, RejectedMeshGroupUsesWorkerFallbackAndConfirmsEachIndependentOutput)
 {
     m_probe.bindless = true; m_probe.rejectGroup = true;
@@ -1186,6 +1205,7 @@ void ExpectCapturedCircle(const std::vector<renderer::DebugDrawVertex>& vertices
     }
 }
 
+/// @brief Sphere capture preserves three closed 24 segment circles.
 TEST_F(ThreadedRhiTest, SphereCapturePreservesThreeClosed24SegmentCircles)
 {
     const math::Vector3 center{2.25f, -3.5f, 4.75f};
@@ -1207,6 +1227,7 @@ TEST_F(ThreadedRhiTest, SphereCapturePreservesThreeClosed24SegmentCircles)
     ExpectCapturedCircle(capture.overlayLines, 96, center, radius, math::Vector3::Cross(y, z), color, &y, &z);
 }
 
+/// @brief Circle capture preserves non axis normal and per call transform.
 TEST_F(ThreadedRhiTest, CircleCapturePreservesNonAxisNormalAndPerCallTransform)
 {
     const math::Vector3 firstCenter{1.25f, -2.5f, 3.75f};
@@ -1230,6 +1251,7 @@ TEST_F(ThreadedRhiTest, CircleCapturePreservesNonAxisNormalAndPerCallTransform)
     ExpectCapturedCircle(capture.overlayLines, 48, secondCenter, secondRadius, secondNormal, secondColor);
 }
 
+/// @brief Arc and capsule keep their existing segment counts.
 TEST_F(ThreadedRhiTest, ArcAndCapsuleKeepTheirExistingSegmentCounts)
 {
     const float pi = std::acos(-1.0f);
@@ -1248,6 +1270,7 @@ TEST_F(ThreadedRhiTest, ArcAndCapsuleKeepTheirExistingSegmentCounts)
     EXPECT_EQ(capsuleCapture.overlayLines.size(), 200u);
 }
 
+/// @brief Resource summary matches detailed ledger after release.
 TEST_F(ThreadedRhiTest, ResourceSummaryMatchesDetailedLedgerAfterRelease)
 {
     const auto second = m_resources->CreateConstantBuffer(sizeof(int));
@@ -1262,6 +1285,7 @@ TEST_F(ThreadedRhiTest, ResourceSummaryMatchesDetailedLedgerAfterRelease)
     EXPECT_EQ(m_resources->GetLiveDebugResourceBytes(), bytes - sizeof(int));
 }
 
+/// @brief Reuses completed gui buffers without changing captured pixels.
 TEST_F(ThreadedRhiTest, ReusesCompletedGuiBuffersWithoutChangingCapturedPixels)
 {
     InitGui();
@@ -1280,6 +1304,7 @@ TEST_F(ThreadedRhiTest, ReusesCompletedGuiBuffersWithoutChangingCapturedPixels)
     }
 }
 
+/// @brief Checks gui snapshots borrow backend data without owning native viewport.
 TEST_F(ThreadedRhiTest, GuiSnapshotsBorrowBackendDataWithoutOwningNativeViewport)
 {
     InitGui();
@@ -1307,6 +1332,7 @@ TEST_F(ThreadedRhiTest, GuiSnapshotsBorrowBackendDataWithoutOwningNativeViewport
     viewport->RendererUserData = nullptr;
 }
 
+/// @brief Additional viewport owns its input and does not wait during stable frames.
 TEST_F(ThreadedRhiTest, AdditionalViewportOwnsItsInputAndDoesNotWaitDuringStableFrames)
 {
     InitGui();
@@ -1351,6 +1377,7 @@ TEST_F(ThreadedRhiTest, AdditionalViewportOwnsItsInputAndDoesNotWaitDuringStable
     for (const auto thread : m_result.viewportChanges) EXPECT_NE(thread, std::this_thread::get_id());
 }
 
+/// @brief Preserves upload draw order and owns stack transfer data.
 TEST_F(ThreadedRhiTest, PreservesUploadDrawOrderAndOwnsStackTransferData)
 {
     const auto producer = std::this_thread::get_id();
@@ -1365,6 +1392,7 @@ TEST_F(ThreadedRhiTest, PreservesUploadDrawOrderAndOwnsStackTransferData)
     for (const auto id : m_result.threads) EXPECT_NE(id, producer);
 }
 
+/// @brief Coalesces queued commands with sync and preserves receipt order.
 TEST_F(ThreadedRhiTest, CoalescesQueuedCommandsWithSyncAndPreservesReceiptOrder)
 {
     m_result.tryDispatchResult = true;
@@ -1442,6 +1470,7 @@ TEST_F(ThreadedRhiTest, CoalescesQueuedCommandsWithSyncAndPreservesReceiptOrder)
     profiler::Profiler::SetEnabled(false);
 }
 
+/// @brief Wait pump can reenter sync without deadlocking or reordering.
 TEST_F(ThreadedRhiTest, WaitPumpCanReenterSyncWithoutDeadlockingOrReordering)
 {
     m_result.blockFirst = true;
@@ -1476,6 +1505,7 @@ TEST_F(ThreadedRhiTest, WaitPumpCanReenterSyncWithoutDeadlockingOrReordering)
         (std::vector<std::string>{"draw:31", "draw:47", "sync:47", "sync:47", "draw:59"}));
 }
 
+/// @brief Wait for CPU frame drains commands recorded during packet completion wait.
 TEST_F(ThreadedRhiTest, WaitForCpuFrameDrainsCommandsRecordedDuringPacketCompletionWait)
 {
     m_result.blockFirst = true;
@@ -1502,6 +1532,7 @@ TEST_F(ThreadedRhiTest, WaitForCpuFrameDrainsCommandsRecordedDuringPacketComplet
     m_bundle.renderer->WaitForCpuFrame();
 }
 
+/// @brief Allows next game update while previous draw is processing.
 TEST_F(ThreadedRhiTest, AllowsNextGameUpdateWhilePreviousDrawIsProcessing)
 {
     m_result.blockFirst = true;
@@ -1525,6 +1556,7 @@ TEST_F(ThreadedRhiTest, AllowsNextGameUpdateWhilePreviousDrawIsProcessing)
     EXPECT_EQ(m_result.draws, (std::vector<int>{31, 47}));
 }
 
+/// @brief Does not report queued unsupported dispatch as recorded.
 TEST_F(ThreadedRhiTest, DoesNotReportQueuedUnsupportedDispatchAsRecorded)
 {
     m_bundle.renderer->BeginCpuFrame(1);
@@ -1534,6 +1566,7 @@ TEST_F(ThreadedRhiTest, DoesNotReportQueuedUnsupportedDispatchAsRecorded)
     m_bundle.renderer->WaitForCpuFrame();
 }
 
+/// @brief Resource release drains recorded references before destroying handle.
 TEST_F(ThreadedRhiTest, ResourceReleaseDrainsRecordedReferencesBeforeDestroyingHandle)
 {
     m_bundle.renderer->BeginCpuFrame(1);
@@ -1546,6 +1579,7 @@ TEST_F(ThreadedRhiTest, ResourceReleaseDrainsRecordedReferencesBeforeDestroyingH
     m_bundle.renderer->WaitForCpuFrame();
 }
 
+/// @brief Checks grouped buffer states observe queued bytes and reject released generations.
 TEST_F(ThreadedRhiTest, GroupedBufferStatesObserveQueuedBytesAndRejectReleasedGenerations)
 {
     const std::array<uint32_t, 4> original{3, 5, 7, 11};
@@ -1582,6 +1616,7 @@ TEST_F(ThreadedRhiTest, GroupedBufferStatesObserveQueuedBytesAndRejectReleasedGe
     m_bundle.renderer->WaitForCpuFrame();
 }
 
+/// @brief Grouped buffer states resolve on the worker inside an existing operation.
 TEST_F(ThreadedRhiTest, GroupedBufferStatesResolveOnTheWorkerInsideAnExistingOperation)
 {
     const std::array<uint32_t, 2> bytes{31, 47};
@@ -1600,6 +1635,7 @@ TEST_F(ThreadedRhiTest, GroupedBufferStatesResolveOnTheWorkerInsideAnExistingOpe
     EXPECT_EQ(states[1].stride, sizeof(uint32_t));
 }
 
+/// @brief Render recorder does not modify main thread samples.
 TEST_F(ThreadedRhiTest, RenderRecorderDoesNotModifyMainThreadSamples)
 {
     profiler::Profiler::SetEnabled(true);
@@ -1639,6 +1675,7 @@ protected:
     }
 };
 
+/// @brief Idle buffer gets count without diagnostic clocks or profiler records.
 TEST_F(RenderCpuTraceRhiTest, IdleBufferGetsCountWithoutDiagnosticClocksOrProfilerRecords)
 {
     const std::array<uint32_t, 4> source{3, 5, 7, 11};
@@ -1670,6 +1707,7 @@ TEST_F(RenderCpuTraceRhiTest, IdleBufferGetsCountWithoutDiagnosticClocksOrProfil
         EXPECT_EQ(descriptor.name.find("RenderCpuTrace"), std::string::npos);
 }
 
+/// @brief Grouped buffer states drain once without creating an empty packet.
 TEST_F(RenderCpuTraceRhiTest, GroupedBufferStatesDrainOnceWithoutCreatingAnEmptyPacket)
 {
     const uint32_t source = 7;
@@ -1700,6 +1738,7 @@ TEST_F(RenderCpuTraceRhiTest, GroupedBufferStatesDrainOnceWithoutCreatingAnEmpty
     m_bundle.renderer->WaitForCpuFrame();
 }
 
+/// @brief Buffer read scope skips only idle drains and observes previously borrowed native writes.
 TEST_F(RenderCpuTraceRhiTest, BufferReadScopeSkipsOnlyIdleDrainsAndObservesPreviouslyBorrowedNativeWrites)
 {
     m_result.bufferTracksWrites = true;
@@ -1731,6 +1770,7 @@ TEST_F(RenderCpuTraceRhiTest, BufferReadScopeSkipsOnlyIdleDrainsAndObservesPrevi
     EXPECT_EQ(summary.packets, 0u);
 }
 
+/// @brief Buffer read scope invalidates after queue sync mutable get frame and nested read.
 TEST_F(RenderCpuTraceRhiTest, BufferReadScopeInvalidatesAfterQueueSyncMutableGetFrameAndNestedRead)
 {
     m_result.bufferTracksWrites = true;
@@ -1768,6 +1808,7 @@ TEST_F(RenderCpuTraceRhiTest, BufferReadScopeInvalidatesAfterQueueSyncMutableGet
     EXPECT_TRUE(states[0].live);
 }
 
+/// @brief Buffer read scope falls back once when a native getter queues a write.
 TEST_F(ThreadedRhiTest, BufferReadScopeFallsBackOnceWhenANativeGetterQueuesAWrite)
 {
     m_result.bufferTracksWrites = true;
@@ -1789,6 +1830,7 @@ TEST_F(ThreadedRhiTest, BufferReadScopeFallsBackOnceWhenANativeGetterQueuesAWrit
     EXPECT_EQ(copied, updated);
 }
 
+/// @brief Buffer read scope rejects a reset or replaced generation during native getters.
 TEST_F(ThreadedRhiTest, BufferReadScopeRejectsAResetOrReplacedGenerationDuringNativeGetters)
 {
     const uint32_t source = 7;
@@ -1816,6 +1858,7 @@ TEST_F(ThreadedRhiTest, BufferReadScopeRejectsAResetOrReplacedGenerationDuringNa
     EXPECT_FALSE(reads.HasCurrentReadBoundary());
 }
 
+/// @brief Buffer read scope rereads source and output at their original positions after other native getters.
 TEST_F(ThreadedRhiTest, BufferReadScopeRereadsSourceAndOutputAtTheirOriginalPositionsAfterOtherNativeGetters)
 {
     m_result.bufferTracksWrites = true;
@@ -1853,6 +1896,7 @@ TEST_F(ThreadedRhiTest, BufferReadScopeRereadsSourceAndOutputAtTheirOriginalPosi
     EXPECT_EQ(reads.Get(output)->GetContentVersion(), previousVersion);
 }
 
+/// @brief Buffer read scope retains full reads for worker and unregistered facades.
 TEST_F(ThreadedRhiTest, BufferReadScopeRetainsFullReadsForWorkerAndUnregisteredFacades)
 {
     const uint32_t source = 7;
@@ -1873,6 +1917,7 @@ TEST_F(ThreadedRhiTest, BufferReadScopeRetainsFullReadsForWorkerAndUnregisteredF
     EXPECT_TRUE(states[0].live);
 }
 
+/// @brief Disabled trace leaves scopes and idle waits unrecorded.
 TEST_F(RenderCpuTraceRhiTest, DisabledTraceLeavesScopesAndIdleWaitsUnrecorded)
 {
     ASSERT_TRUE(renderer::cpu_trace::DisableForTesting());
@@ -1893,6 +1938,7 @@ TEST_F(RenderCpuTraceRhiTest, DisabledTraceLeavesScopesAndIdleWaitsUnrecorded)
     EXPECT_EQ(summary.cycleQueries, 0u);
 }
 
+/// @brief Selected packet keeps its view and frame after producer advances.
 TEST_F(RenderCpuTraceRhiTest, SelectedPacketKeepsItsViewAndFrameAfterProducerAdvances)
 {
     m_result.blockFirst = true;
@@ -1927,6 +1973,7 @@ TEST_F(RenderCpuTraceRhiTest, SelectedPacketKeepsItsViewAndFrameAfterProducerAdv
     EXPECT_EQ(m_result.draws, (std::vector<int>{71}));
 }
 
+/// @brief Pump reentry preserves order and does not duplicate leaf waits.
 TEST_F(RenderCpuTraceRhiTest, PumpReentryPreservesOrderAndDoesNotDuplicateLeafWaits)
 {
     ASSERT_TRUE(renderer::cpu_trace::ConfigureForTesting(1, 1, 1));
@@ -1978,6 +2025,7 @@ protected:
     }
 };
 
+/// @brief Thread storage reuse issues a new lifetime and completion includes destruction.
 TEST_F(RenderCpuTraceThreadTest, ThreadStorageReuseIssuesANewLifetimeAndCompletionIncludesDestruction)
 {
     std::optional<renderer::RenderThread> worker;
@@ -2012,6 +2060,7 @@ TEST_F(RenderCpuTraceThreadTest, ThreadStorageReuseIssuesANewLifetimeAndCompleti
     EXPECT_TRUE(renderer::cpu_trace::SnapshotSummary().complete);
 }
 
+/// @brief Packet capacity and unavailable CPU are explicit.
 TEST_F(RenderCpuTraceRhiTest, PacketCapacityAndUnavailableCpuAreExplicit)
 {
     ASSERT_TRUE(renderer::cpu_trace::ConfigureForTesting(0, 1, 1, 1, renderer::cpu_trace::TestCpuMode::UNAVAILABLE));
@@ -2035,6 +2084,7 @@ TEST_F(RenderCpuTraceRhiTest, PacketCapacityAndUnavailableCpuAreExplicit)
     EXPECT_EQ(m_result.draws, (std::vector<int>{83, 89}));
 }
 
+/// @brief Regressing CPU counters and excess wait depth stay unavailable.
 TEST_F(RenderCpuTraceRhiTest, RegressingCpuCountersAndExcessWaitDepthStayUnavailable)
 {
     ASSERT_TRUE(renderer::cpu_trace::ConfigureForTesting(0, 1, 1, renderer::cpu_trace::MAX_PACKETS,
@@ -2057,6 +2107,7 @@ TEST_F(RenderCpuTraceRhiTest, RegressingCpuCountersAndExcessWaitDepthStayUnavail
     EXPECT_GT(summary.dropped, 0u);
 }
 
+/// @brief CSV requires stop and retries write failure without inventing rejected execution.
 TEST_F(RenderCpuTraceThreadTest, CsvRequiresStopAndRetriesWriteFailureWithoutInventingRejectedExecution)
 {
     testkit::TempDir temporary("render-cpu-csv");
@@ -2141,6 +2192,7 @@ bool SubmitIdleResourceUpdates(renderer::IRenderer& renderer)
     return false;
 }
 
+/// @brief Nonblocking reservation rejects busy and preserves unpublished serial.
 TEST_F(RenderThreadTest, NonblockingReservationRejectsBusyAndPreservesUnpublishedSerial)
 {
     ASSERT_TRUE(m_thread->Submit(1, std::make_unique<OwnedRenderFrame>(std::vector<int>{11}, m_result)));
@@ -2172,6 +2224,7 @@ TEST_F(RenderThreadTest, NonblockingReservationRejectsBusyAndPreservesUnpublishe
     EXPECT_FALSE(m_thread->TryReserveSubmission(3).IsValid());
 }
 
+/// @brief Early transfers own inputs preserve all late writers and keep frame open.
 TEST_F(ThreadedRhiTest, EarlyTransfersOwnInputsPreserveAllLateWritersAndKeepFrameOpen)
 {
     const std::array<int, 4> initial{1, 2, 3, 4};
@@ -2209,6 +2262,7 @@ TEST_F(ThreadedRhiTest, EarlyTransfersOwnInputsPreserveAllLateWritersAndKeepFram
     EXPECT_EQ(m_result.draws, (std::vector<int>{61}));
 }
 
+/// @brief Skinning read ahead publishes mixed prefix before ordered native buffer read.
 TEST_F(ThreadedRhiTest, SkinningReadAheadPublishesMixedPrefixBeforeOrderedNativeBufferRead)
 {
     m_result.bufferTracksWrites = true;
@@ -2251,6 +2305,7 @@ TEST_F(ThreadedRhiTest, SkinningReadAheadPublishesMixedPrefixBeforeOrderedNative
     m_bundle.renderer->WaitForCpuFrame();
 }
 
+/// @brief Structured opaque and begin frame queues stay in original fallback order.
 TEST_F(ThreadedRhiTest, StructuredOpaqueAndBeginFrameQueuesStayInOriginalFallbackOrder)
 {
     const auto structured = m_resources->CreateStructuredBuffer(nullptr, 1, sizeof(int));
@@ -2291,6 +2346,7 @@ TEST_F(ThreadedRhiTest, StructuredOpaqueAndBeginFrameQueuesStayInOriginalFallbac
     EXPECT_EQ(m_result.draws, (std::vector<int>{59}));
 }
 
+/// @brief Resource classification cannot leak to another facade or native reentry.
 TEST_F(ThreadedRhiTest, ResourceClassificationCannotLeakToAnotherFacadeOrNativeReentry)
 {
     RhiResult probeResult;
@@ -2370,6 +2426,7 @@ void EarlySubmitWaitPump()
     state->attemptResult = renderer::TrySubmitPendingResourceUpdates(*state->renderer);
 }
 
+/// @brief Early submit rejects outer sync reentry after nested drain makes worker idle.
 TEST_F(ThreadedRhiTest, EarlySubmitRejectsOuterSyncReentryAfterNestedDrainMakesWorkerIdle)
 {
     m_result.blockFirst = true;
@@ -2397,6 +2454,7 @@ TEST_F(ThreadedRhiTest, EarlySubmitRejectsOuterSyncReentryAfterNestedDrainMakesW
     m_bundle.renderer->CancelCpuFrame();
 }
 
+/// @brief Cancel discards pending updates and next frame reuses committed value.
 TEST_F(ThreadedRhiTest, CancelDiscardsPendingUpdatesAndNextFrameReusesCommittedValue)
 {
     m_result.blockTransferNumber = 1;
@@ -2423,6 +2481,7 @@ TEST_F(ThreadedRhiTest, CancelDiscardsPendingUpdatesAndNextFrameReusesCommittedV
     EXPECT_EQ(m_result.draws, (std::vector<int>{40}));
 }
 
+/// @brief Release reset and shutdown drain committed transfers before resource destruction.
 TEST_F(ThreadedRhiTest, ReleaseResetAndShutdownDrainCommittedTransfersBeforeResourceDestruction)
 {
     for (int iteration = 0; iteration < 3; ++iteration) {
@@ -2453,6 +2512,7 @@ TEST_F(ThreadedRhiTest, ReleaseResetAndShutdownDrainCommittedTransfersBeforeReso
     EXPECT_FALSE(renderer::TrySubmitPendingResourceUpdates(*m_bundle.renderer));
 }
 
+/// @brief Busy early attempt keeps pending transfer and creates no trace packet.
 TEST_F(RenderCpuTraceRhiTest, BusyEarlyAttemptKeepsPendingTransferAndCreatesNoTracePacket)
 {
     ASSERT_TRUE(renderer::cpu_trace::ConfigureForTesting(0, 1, 2));
@@ -2489,6 +2549,7 @@ TEST_F(RenderCpuTraceRhiTest, BusyEarlyAttemptKeepsPendingTransferAndCreatesNoTr
     m_bundle.renderer->CancelCpuFrame();
 }
 
+/// @brief Registry capacity falls back and released slot can be registered again.
 TEST_F(ThreadedRhiTest, RegistryCapacityFallsBackAndReleasedSlotCanBeRegisteredAgain)
 {
     std::array<RhiResult, 16> results;
@@ -2526,6 +2587,7 @@ TEST_F(ThreadedRhiTest, RegistryCapacityFallsBackAndReleasedSlotCanBeRegisteredA
     replacement.renderer->CancelCpuFrame();
 }
 
+/// @brief Checks opaque origin CSV identifies editor prelude and transfer prefix without allowing early submission.
 TEST_F(RenderCpuTraceRhiTest, OpaqueOriginCsvIdentifiesEditorPreludeAndTransferPrefixWithoutAllowingEarlySubmission)
 {
     InitGui();
@@ -2595,6 +2657,7 @@ TEST_F(RenderCpuTraceRhiTest, OpaqueOriginCsvIdentifiesEditorPreludeAndTransferP
     }
 }
 
+/// @brief Opaque origin counters use no clocks and stay disabled without trace.
 TEST_F(RenderCpuTraceRhiTest, OpaqueOriginCountersUseNoClocksAndStayDisabledWithoutTrace)
 {
     InitGui();
@@ -2780,6 +2843,7 @@ protected:
     renderer::ShaderDescriptor m_descriptor;
 };
 
+/// @brief Shares immutable final payload while keeping owners and ordered draws.
 TEST_F(MaterialTransferPayloadTest, SharesImmutableFinalPayloadWhileKeepingOwnersAndOrderedDraws)
 {
     renderer::Material first, second;
@@ -2814,6 +2878,7 @@ TEST_F(MaterialTransferPayloadTest, SharesImmutableFinalPayloadWhileKeepingOwner
     }
 }
 
+/// @brief Rebuilds exact public bits texture mask and current bindless values.
 TEST_F(MaterialTransferPayloadTest, RebuildsExactPublicBitsTextureMaskAndCurrentBindlessValues)
 {
     renderer::Material first, second;
@@ -2874,6 +2939,7 @@ TEST_F(MaterialTransferPayloadTest, RebuildsExactPublicBitsTextureMaskAndCurrent
     m_resources->Release(texture);
 }
 
+/// @brief Cancellation reset and stale handle keep destination generation checks.
 TEST_F(MaterialTransferPayloadTest, CancellationResetAndStaleHandleKeepDestinationGenerationChecks)
 {
     renderer::Material material;
@@ -2906,6 +2972,7 @@ TEST_F(MaterialTransferPayloadTest, CancellationResetAndStaleHandleKeepDestinati
     EXPECT_EQ(m_result.draws[0].bytes, expected);
 }
 
+/// @brief Nested wait pump keeps outer snapshot and worker uses raw source.
 TEST_F(MaterialTransferPayloadTest, NestedWaitPumpKeepsOuterSnapshotAndWorkerUsesRawSource)
 {
     renderer::Material outer, inner, worker;
@@ -2945,6 +3012,7 @@ TEST_F(MaterialTransferPayloadTest, NestedWaitPumpKeepsOuterSnapshotAndWorkerUse
     for (const auto& update : m_result.updates) EXPECT_EQ(update.bytes, outer.paramData);
 }
 
+/// @brief Bounded and deep nested fallbacks keep every complete update.
 TEST_F(MaterialTransferPayloadTest, BoundedAndDeepNestedFallbacksKeepEveryCompleteUpdate)
 {
     renderer::Material material, oversized;
@@ -2980,6 +3048,7 @@ TEST_F(MaterialTransferPayloadTest, BoundedAndDeepNestedFallbacksKeepEveryComple
     EXPECT_NE(m_result.updates[68].source, m_result.updates[69].source);
 }
 
+/// @brief Scope byte budget different layouts and fresh scopes keep full outputs.
 TEST_F(MaterialTransferPayloadTest, ScopeByteBudgetDifferentLayoutsAndFreshScopesKeepFullOutputs)
 {
     renderer::Material large, small;
@@ -3018,6 +3087,7 @@ TEST_F(MaterialTransferPayloadTest, ScopeByteBudgetDifferentLayoutsAndFreshScope
     EXPECT_NE(m_result.updates[0].source, m_result.updates[19].source);
 }
 
+/// @brief Checks scope never lends eligibility to other manager or rejecting custom facade.
 TEST_F(MaterialTransferPayloadTest, ScopeNeverLendsEligibilityToOtherManagerOrRejectingCustomFacade)
 {
     renderer::Material mainMaterial;
@@ -3117,6 +3187,7 @@ private:
     bool m_executed = false;
 };
 
+/// @brief Idle probe rejects worker execution and live input destruction.
 TEST_F(RenderThreadTest, IdleProbeRejectsWorkerExecutionAndLiveInputDestruction)
 {
     auto state = std::make_shared<IdleProbeLifetimeState>();
@@ -3135,6 +3206,7 @@ TEST_F(RenderThreadTest, IdleProbeRejectsWorkerExecutionAndLiveInputDestruction)
     EXPECT_TRUE(ProbeStoppedIdleThread(*m_thread));
 }
 
+/// @brief Idle probe rejects another producers reservation without committing serial.
 TEST_F(RenderThreadTest, IdleProbeRejectsAnotherProducersReservationWithoutCommittingSerial)
 {
     std::binary_semaphore reserved{0}, release{0};
@@ -3160,6 +3232,7 @@ TEST_F(RenderThreadTest, IdleProbeRejectsAnotherProducersReservationWithoutCommi
     EXPECT_TRUE(ProbeStoppedIdleThread(*m_thread));
 }
 
+/// @brief Empty queue busy worker keeps nested pump guard and drains new records.
 TEST_F(ThreadedRhiTest, EmptyQueueBusyWorkerKeepsNestedPumpGuardAndDrainsNewRecords)
 {
     std::binary_semaphore packetReached{0};
@@ -3224,6 +3297,7 @@ void IdleWaitDestructionPump()
     state->resume->release();
 }
 
+/// @brief Empty queue wait includes submitted command owner destruction.
 TEST_F(ThreadedRhiTest, EmptyQueueWaitIncludesSubmittedCommandOwnerDestruction)
 {
     auto lifetime = std::make_shared<IdleWaitCommandLifetimeState>();
@@ -3251,6 +3325,7 @@ TEST_F(ThreadedRhiTest, EmptyQueueWaitIncludesSubmittedCommandOwnerDestruction)
     EXPECT_NE(lifetime->executionThread, std::this_thread::get_id());
 }
 
+/// @brief Idle wait leaves frame open for another producers later owned record.
 TEST_F(ThreadedRhiTest, IdleWaitLeavesFrameOpenForAnotherProducersLaterOwnedRecord)
 {
     std::binary_semaphore recordNow{0}, recorded{0};
@@ -3303,6 +3378,7 @@ private:
     int m_value;
 };
 
+/// @brief Recycled command storage preserves order and releases owners before sync and frame completion.
 TEST_F(ThreadedRhiTest, RecycledCommandStoragePreservesOrderAndReleasesOwnersBeforeSyncAndFrameCompletion)
 {
     const auto producer = std::this_thread::get_id();

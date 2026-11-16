@@ -24,6 +24,7 @@ asset::ParticleFlipbookSettings Grid(int columns, int rows)
 
 } // namespace
 
+/// @brief Checks end frame zero means play to the last frame.
 TEST(ParticleFlipbookTest, EndFrameZeroMeansPlayToTheLastFrame)
 {
     const auto range = asset::ResolveFlipbookRange(Grid(4, 2));
@@ -31,6 +32,7 @@ TEST(ParticleFlipbookTest, EndFrameZeroMeansPlayToTheLastFrame)
     EXPECT_EQ(range.last, 7);
 }
 
+/// @brief Range is clamped into the atlas.
 TEST(ParticleFlipbookTest, RangeIsClampedIntoTheAtlas)
 {
     auto flipbook = Grid(4, 2);
@@ -47,6 +49,7 @@ TEST(ParticleFlipbookTest, RangeIsClampedIntoTheAtlas)
     EXPECT_EQ(range.last, 5);
 }
 
+/// @brief Non positive grid is a single image.
 TEST(ParticleFlipbookTest, NonPositiveGridIsASingleImage)
 {
     const auto range = asset::ResolveFlipbookRange(Grid(0, 0));
@@ -56,6 +59,7 @@ TEST(ParticleFlipbookTest, NonPositiveGridIsASingleImage)
     EXPECT_EQ(Grid(0, -3).FrameCount(), 1);
 }
 
+/// @brief Lifetime spans the range over the lifetime without wrapping.
 TEST(ParticleFlipbookTest, LifetimeSpansTheRangeOverTheLifetimeWithoutWrapping)
 {
     const auto flipbook = Grid(4, 1);
@@ -68,6 +72,7 @@ TEST(ParticleFlipbookTest, LifetimeSpansTheRangeOverTheLifetimeWithoutWrapping)
     EXPECT_EQ(end.nextFrame, 3);
 }
 
+/// @brief FPS loops and blends into the first frame.
 TEST(ParticleFlipbookTest, FpsLoopsAndBlendsIntoTheFirstFrame)
 {
     auto flipbook = Grid(4, 1);
@@ -84,6 +89,7 @@ TEST(ParticleFlipbookTest, FpsLoopsAndBlendsIntoTheFirstFrame)
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.0f, 1.25f, 0.0f).frame, 1);
 }
 
+/// @brief Checks ping pong plays backwards after the last frame.
 TEST(ParticleFlipbookTest, PingPongPlaysBackwardsAfterTheLastFrame)
 {
     auto flipbook = Grid(4, 1);
@@ -95,6 +101,7 @@ TEST(ParticleFlipbookTest, PingPongPlaysBackwardsAfterTheLastFrame)
     EXPECT_EQ(asset::EvaluateFlipbookFrame(flipbook, 0.0f, 6.2f, 0.0f).frame, 0);
 }
 
+/// @brief Random row stays inside the chosen row.
 TEST(ParticleFlipbookTest, RandomRowStaysInsideTheChosenRow)
 {
     auto flipbook = Grid(4, 3);
@@ -111,6 +118,7 @@ TEST(ParticleFlipbookTest, RandomRowStaysInsideTheChosenRow)
     }
 }
 
+/// @brief Random start frame stays inside the range.
 TEST(ParticleFlipbookTest, RandomStartFrameStaysInsideTheRange)
 {
     auto flipbook = Grid(8, 1);
@@ -125,6 +133,7 @@ TEST(ParticleFlipbookTest, RandomStartFrameStaysInsideTheRange)
     }
 }
 
+/// @brief Random mode never blends.
 TEST(ParticleFlipbookTest, RandomModeNeverBlends)
 {
     auto flipbook = Grid(4, 4);

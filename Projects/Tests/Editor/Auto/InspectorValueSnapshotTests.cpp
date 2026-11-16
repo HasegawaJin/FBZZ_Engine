@@ -53,6 +53,7 @@ struct AuthoredState {
 
 class InspectorValueSnapshotTest : public testkit::Fixture {};
 
+/// @brief Restores pre edit lists and nested object count.
 TEST_F(InspectorValueSnapshotTest, RestoresPreEditListsAndNestedObjectCount)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -73,6 +74,7 @@ TEST_F(InspectorValueSnapshotTest, RestoresPreEditListsAndNestedObjectCount)
     EXPECT_EQ(state.observationCalls, 0);
 }
 
+/// @brief Reused capture keeps exact float bits and new external values.
 TEST_F(InspectorValueSnapshotTest, ReusedCaptureKeepsExactFloatBitsAndNewExternalValues)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -88,6 +90,7 @@ TEST_F(InspectorValueSnapshotTest, ReusedCaptureKeepsExactFloatBitsAndNewExterna
     EXPECT_EQ(state.names[0], "external");
 }
 
+/// @brief Undeclared reflection coverage keeps the full copy contract.
 TEST_F(InspectorValueSnapshotTest, UndeclaredReflectionCoverageKeepsTheFullCopyContract)
 {
     static_assert(!editor::ComponentUndoReflects<scene::ParticleEmitter>::value);
@@ -113,6 +116,7 @@ TEST_F(InspectorValueSnapshotTest, UndeclaredReflectionCoverageKeepsTheFullCopyC
     EXPECT_FLOAT_EQ(emitter.runtime.playTime, 0);
 }
 
+/// @brief Spring bone chain removal and addition restore authored values only.
 TEST_F(InspectorValueSnapshotTest, SpringBoneChainRemovalAndAdditionRestoreAuthoredValuesOnly)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -158,6 +162,7 @@ TEST_F(InspectorValueSnapshotTest, SpringBoneChainRemovalAndAdditionRestoreAutho
     EXPECT_EQ(spring.chains.size(), 2u);
 }
 
+/// @brief Water capture does not normalize or change runtime and dirty state.
 TEST_F(InspectorValueSnapshotTest, WaterCaptureDoesNotNormalizeOrChangeRuntimeAndDirtyState)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -194,6 +199,7 @@ TEST_F(InspectorValueSnapshotTest, WaterCaptureDoesNotNormalizeOrChangeRuntimeAn
     EXPECT_FALSE(water.texDirty);
 }
 
+/// @brief Capture does not run scalar component normalization.
 TEST_F(InspectorValueSnapshotTest, CaptureDoesNotRunScalarComponentNormalization)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -243,6 +249,7 @@ TEST_F(InspectorValueSnapshotTest, CaptureDoesNotRunScalarComponentNormalization
     EXPECT_EQ(light.flickerSeed, 0x80000000u);
 }
 
+/// @brief Collider capture does not clamp combine modes or replace the live shape.
 TEST_F(InspectorValueSnapshotTest, ColliderCaptureDoesNotClampCombineModesOrReplaceTheLiveShape)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -264,6 +271,7 @@ TEST_F(InspectorValueSnapshotTest, ColliderCaptureDoesNotClampCombineModesOrRepl
     EXPECT_EQ(static_cast<int>(collider.material.restitutionCombine), 99);
 }
 
+/// @brief Skinned projection restores authored values without rewinding runtime arrays.
 TEST_F(InspectorValueSnapshotTest, SkinnedProjectionRestoresAuthoredValuesWithoutRewindingRuntimeArrays)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -297,6 +305,7 @@ TEST_F(InspectorValueSnapshotTest, SkinnedProjectionRestoresAuthoredValuesWithou
     EXPECT_EQ(skinned.gpuSkinningContent, (std::vector<std::uint32_t>{4, 5}));
 }
 
+/// @brief Animator projection does not capture runtime clips and palettes.
 TEST_F(InspectorValueSnapshotTest, AnimatorProjectionDoesNotCaptureRuntimeClipsAndPalettes)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -329,6 +338,7 @@ TEST_F(InspectorValueSnapshotTest, AnimatorProjectionDoesNotCaptureRuntimeClipsA
     EXPECT_EQ(animator.boneMatrices.size(), 5u);
 }
 
+/// @brief Trail projection keeps raw enums and current runtime point buffers.
 TEST_F(InspectorValueSnapshotTest, TrailProjectionKeepsRawEnumsAndCurrentRuntimePointBuffers)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -357,6 +367,7 @@ TEST_F(InspectorValueSnapshotTest, TrailProjectionKeepsRawEnumsAndCurrentRuntime
     EXPECT_EQ(trail.ringCount, 2);
 }
 
+/// @brief NavMesh surface projection does not clamp costs or capture bake results.
 TEST_F(InspectorValueSnapshotTest, NavMeshSurfaceProjectionDoesNotClampCostsOrCaptureBakeResults)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -386,6 +397,7 @@ TEST_F(InspectorValueSnapshotTest, NavMeshSurfaceProjectionDoesNotClampCostsOrCa
     EXPECT_TRUE(surface.needsBake);
 }
 
+/// @brief Patrol fallback capture preserves unsigned point IDs.
 TEST_F(InspectorValueSnapshotTest, PatrolFallbackCapturePreservesUnsignedPointIds)
 {
     editor::InspectorValueSnapshot snapshot;
@@ -462,6 +474,7 @@ protected:
     ImGuiContext* m_gui = nullptr;
 };
 
+/// @brief First input mutation restores the value before UI and redo keeps the change.
 TEST_F(InspectorUndoStartTest, FirstInputMutationRestoresTheValueBeforeUiAndRedoKeepsTheChange)
 {
     auto& object = AttachedScene()->CreateGameObject("Light");
@@ -478,6 +491,7 @@ TEST_F(InspectorUndoStartTest, FirstInputMutationRestoresTheValueBeforeUiAndRedo
     EXPECT_FLOAT_EQ(light.intensity, 7.5f);
 }
 
+/// @brief Material session keeps extra slot assignments across undo and redo.
 TEST_F(InspectorUndoStartTest, MaterialSessionKeepsExtraSlotAssignmentsAcrossUndoAndRedo)
 {
     auto& object = AttachedScene()->CreateGameObject("Material");
@@ -501,6 +515,7 @@ TEST_F(InspectorUndoStartTest, MaterialSessionKeepsExtraSlotAssignmentsAcrossUnd
     EXPECT_FALSE(material.RawSlotAt(1).visible);
 }
 
+/// @brief Rigid body session restores the owned body without replacing its pointer.
 TEST_F(InspectorUndoStartTest, RigidBodySessionRestoresTheOwnedBodyWithoutReplacingItsPointer)
 {
     auto& object = AttachedScene()->CreateGameObject("Body");
@@ -528,6 +543,7 @@ TEST_F(InspectorUndoStartTest, RigidBodySessionRestoresTheOwnedBodyWithoutReplac
     EXPECT_FLOAT_EQ(body->m_gravityScale, 1.5f);
 }
 
+/// @brief Edit session keeps its owner while the same input continues.
 TEST_F(InspectorValueSnapshotTest, EditSessionKeepsItsOwnerWhileTheSameInputContinues)
 {
     using Transition = editor::InspectorEditTransition;
@@ -546,6 +562,7 @@ TEST_F(InspectorValueSnapshotTest, EditSessionKeepsItsOwnerWhileTheSameInputCont
 }
 } /// @note namespace
 
+/// @brief Removed material owner rejects pending slot draft.
 TEST_F(InspectorUndoStartTest, RemovedMaterialOwnerRejectsPendingSlotDraft)
 {
     auto& object = AttachedScene()->CreateGameObject("MaterialReplacement");

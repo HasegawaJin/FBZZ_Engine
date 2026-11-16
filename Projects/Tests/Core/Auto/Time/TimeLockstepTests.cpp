@@ -34,6 +34,7 @@ protected:
     }
 };
 
+/// @brief Every tick advances by the fixed delta.
 TEST_F(TimeLockstepTest, EveryTickAdvancesByTheFixedDelta)
 {
     fbzz::Time::SetLockstepDelta(0.02f);
@@ -45,6 +46,7 @@ TEST_F(TimeLockstepTest, EveryTickAdvancesByTheFixedDelta)
     EXPECT_NEAR(fbzz::Time::unscaledTime - start, 0.2f, 1e-5f);
 }
 
+/// @brief Time scale still applies on top of the lockstep.
 TEST_F(TimeLockstepTest, TimeScaleStillAppliesOnTopOfTheLockstep)
 {
     fbzz::Time::SetLockstepDelta(0.02f);
@@ -56,6 +58,7 @@ TEST_F(TimeLockstepTest, TimeScaleStillAppliesOnTopOfTheLockstep)
     EXPECT_FLOAT_EQ(fbzz::Time::unscaledDeltaTime, 0.02f);
 }
 
+/// @brief Zero or negative releases the lockstep.
 TEST_F(TimeLockstepTest, ZeroOrNegativeReleasesTheLockstep)
 {
     fbzz::Time::SetLockstepDelta(0.02f);
@@ -63,6 +66,7 @@ TEST_F(TimeLockstepTest, ZeroOrNegativeReleasesTheLockstep)
     EXPECT_FLOAT_EQ(fbzz::Time::GetLockstepDelta(), 0.0f);
 }
 
+/// @brief Clamps absurdly large steps.
 TEST_F(TimeLockstepTest, ClampsAbsurdlyLargeSteps)
 {
     fbzz::Time::SetLockstepDelta(10.0f);

@@ -16,6 +16,7 @@ namespace fbzz::tests {
 
 class TaskSystemConcurrencyTest : public testkit::EngineFixture {};
 
+/// @brief Uses the requested worker count.
 TEST_F(TaskSystemConcurrencyTest, UsesTheRequestedWorkerCount)
 {
     fbzz::TaskSystem::Init(1);
@@ -23,6 +24,7 @@ TEST_F(TaskSystemConcurrencyTest, UsesTheRequestedWorkerCount)
     fbzz::TaskSystem::Shutdown();
 }
 
+/// @brief Completes all submitted tasks.
 TEST_F(TaskSystemConcurrencyTest, CompletesAllSubmittedTasks)
 {
     fbzz::TaskSystem::Init(2);
@@ -44,6 +46,7 @@ TEST_F(TaskSystemConcurrencyTest, CompletesAllSubmittedTasks)
     fbzz::TaskSystem::Shutdown();
 }
 
+/// @brief Answers zero without a pool.
 TEST_F(TaskSystemConcurrencyTest, AnswersZeroWithoutAPool)
 {
     /// @note 問い合わせは Init の前にも来る (起動途中のシステムが並列度を見る)。落ちずに 0 と答えること。
@@ -53,6 +56,7 @@ TEST_F(TaskSystemConcurrencyTest, AnswersZeroWithoutAPool)
     EXPECT_EQ(fbzz::TaskSystem::PendingCount(), 0);
 }
 
+/// @brief Has no pending tasks right after init.
 TEST_F(TaskSystemConcurrencyTest, HasNoPendingTasksRightAfterInit)
 {
     fbzz::TaskSystem::Init(2);
@@ -62,6 +66,7 @@ TEST_F(TaskSystemConcurrencyTest, HasNoPendingTasksRightAfterInit)
     fbzz::TaskSystem::Shutdown();
 }
 
+/// @brief Reports queued pool work and named external workers.
 TEST_F(TaskSystemConcurrencyTest, ReportsQueuedPoolWorkAndNamedExternalWorkers)
 {
     fbzz::TaskSystem::Init(1);

@@ -28,18 +28,21 @@ protected:
     }
 };
 
+/// @brief Clamps negative time scale to zero.
 TEST_F(TimeConfigurationTest, ClampsNegativeTimeScaleToZero)
 {
     fbzz::Time::SetTimeScale(-1.0f);
     EXPECT_FLOAT_EQ(fbzz::Time::GetTimeScale(), 0.0f);
 }
 
+/// @brief Keeps positive time scale.
 TEST_F(TimeConfigurationTest, KeepsPositiveTimeScale)
 {
     fbzz::Time::SetTimeScale(0.5f);
     EXPECT_FLOAT_EQ(fbzz::Time::GetTimeScale(), 0.5f);
 }
 
+/// @brief Disables non positive target FPS.
 TEST_F(TimeConfigurationTest, DisablesNonPositiveTargetFps)
 {
     fbzz::Time::SetTargetFps(-1);
@@ -48,6 +51,7 @@ TEST_F(TimeConfigurationTest, DisablesNonPositiveTargetFps)
     EXPECT_EQ(fbzz::Time::GetTargetFps(), 0);
 }
 
+/// @brief Clamps positive target FPS to thirty or more.
 TEST_F(TimeConfigurationTest, ClampsPositiveTargetFpsToThirtyOrMore)
 {
     fbzz::Time::SetTargetFps(1);

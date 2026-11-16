@@ -188,6 +188,7 @@ protected:
     uint32_t m_validationFailures = 0;
 };
 
+/// @brief Smooth slab preserves four sample RNG and exact terminal visit order.
 TEST_F(RayHybridGlassTraversalTest, SmoothSlabPreservesFourSampleRngAndExactTerminalVisitOrder)
 {
     for (uint32_t seed : {1u, 17u, 12345u, 0xFFFF1234u}) {
@@ -200,6 +201,7 @@ TEST_F(RayHybridGlassTraversalTest, SmoothSlabPreservesFourSampleRngAndExactTerm
         EXPECT_GT(report[4].x, 0);
     }
 }
+/// @brief Rough single branches preserve sampling null events and seed advancement.
 TEST_F(RayHybridGlassTraversalTest, RoughSingleBranchesPreserveSamplingNullEventsAndSeedAdvancement)
 {
     for (float roughness : {0.2f, 1.0f})
@@ -210,6 +212,7 @@ TEST_F(RayHybridGlassTraversalTest, RoughSingleBranchesPreserveSamplingNullEvent
             ExpectEquivalent(Run(constants, roughness), true);
         }
 }
+/// @brief Nested solids retain LIFO Beer and boundary budget.
 TEST_F(RayHybridGlassTraversalTest, NestedSolidsRetainLifoBeerAndBoundaryBudget)
 {
     TraversalConstants constants; constants.scenario = 1; constants.instanceCount = 3;
@@ -219,6 +222,7 @@ TEST_F(RayHybridGlassTraversalTest, NestedSolidsRetainLifoBeerAndBoundaryBudget)
     constants.glassBoundaryLimit = 8;
     ExpectEquivalent(Run(constants), true);
 }
+/// @brief Thin split branches retain both motion guides and direct transmission.
 TEST_F(RayHybridGlassTraversalTest, ThinSplitBranchesRetainBothMotionGuidesAndDirectTransmission)
 {
     TraversalConstants constants; constants.scenario = 2;
@@ -227,6 +231,7 @@ TEST_F(RayHybridGlassTraversalTest, ThinSplitBranchesRetainBothMotionGuidesAndDi
     EXPECT_GT(report[2].z, 0);
     EXPECT_GT(report[4].x, 0);
 }
+/// @brief Checks total internal reflection continues without changing the work denominator.
 TEST_F(RayHybridGlassTraversalTest, TotalInternalReflectionContinuesWithoutChangingTheWorkDenominator)
 {
     for (uint32_t limit : {1u, 5u, 16u}) {
@@ -239,6 +244,7 @@ TEST_F(RayHybridGlassTraversalTest, TotalInternalReflectionContinuesWithoutChang
         EXPECT_FLOAT_EQ(report[4].x, 0); EXPECT_FLOAT_EQ(report[4].y, 0); EXPECT_FLOAT_EQ(report[4].z, 0);
     }
 }
+/// @brief Zero and finite boundary limits preserve black residual and failure.
 TEST_F(RayHybridGlassTraversalTest, ZeroAndFiniteBoundaryLimitsPreserveBlackResidualAndFailure)
 {
     for (uint32_t limit : {0u, 1u, 2u, 16u}) {
@@ -253,6 +259,7 @@ TEST_F(RayHybridGlassTraversalTest, ZeroAndFiniteBoundaryLimitsPreserveBlackResi
     ExpectEquivalent(nullReport, true);
     EXPECT_FLOAT_EQ(nullReport[2].x, 0); EXPECT_FLOAT_EQ(nullReport[4].x, 0);
 }
+/// @brief Ninth medium mismatched owner and unknown environment remain fail closed.
 TEST_F(RayHybridGlassTraversalTest, NinthMediumMismatchedOwnerAndUnknownEnvironmentRemainFailClosed)
 {
     TraversalConstants ninth; ninth.scenario = 4; ninth.instanceCount = 9; ninth.initialDepth = 8;
@@ -262,6 +269,7 @@ TEST_F(RayHybridGlassTraversalTest, NinthMediumMismatchedOwnerAndUnknownEnvironm
     TraversalConstants unknown; unknown.scenario = 6; unknown.environmentMode = 0;
     ExpectEquivalent(Run(unknown), false);
 }
+/// @brief Five hundred twelve work cap rejects the same incomplete split tree.
 TEST_F(RayHybridGlassTraversalTest, FiveHundredTwelveWorkCapRejectsTheSameIncompleteSplitTree)
 {
     TraversalConstants constants; constants.scenario = 7; constants.instanceCount = 4;
@@ -272,6 +280,7 @@ TEST_F(RayHybridGlassTraversalTest, FiveHundredTwelveWorkCapRejectsTheSameIncomp
     EXPECT_FLOAT_EQ(report[2].x, 511);
 }
 
+/// @brief Single path thin fresnel expectation matches the deterministic split.
 TEST_F(RayHybridGlassTraversalTest, SinglePathThinFresnelExpectationMatchesTheDeterministicSplit)
 {
     TraversalConstants constants; constants.scenario = 2; constants.repeatCount = 1;
@@ -291,6 +300,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathThinFresnelExpectationMatchesTheDe
     EXPECT_NEAR(probability * reflected[4].z + (1 - probability) * transmitted[4].z, reflected[3].z, 0.004f);
 }
 
+/// @brief Single path solid transmission retains Snell Beer and radiance eta compensation.
 TEST_F(RayHybridGlassTraversalTest, SinglePathSolidTransmissionRetainsSnellBeerAndRadianceEtaCompensation)
 {
     TraversalConstants constants; constants.scenario = 9; constants.repeatCount = 1; constants.terminalDraws = 0;
@@ -307,6 +317,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathSolidTransmissionRetainsSnellBeerA
     EXPECT_FLOAT_EQ(report[5].z, 0);
 }
 
+/// @brief Single path total internal reflection and index matched thin consume no roulette draw.
 TEST_F(RayHybridGlassTraversalTest, SinglePathTotalInternalReflectionAndIndexMatchedThinConsumeNoRouletteDraw)
 {
     for (uint32_t limit : {1u, 5u, 16u}) {
@@ -322,6 +333,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathTotalInternalReflectionAndIndexMat
     EXPECT_FLOAT_EQ(report[5].z, 1);
 }
 
+/// @brief Single path inside exit retains uncancelled radiance eta squared.
 TEST_F(RayHybridGlassTraversalTest, SinglePathInsideExitRetainsUncancelledRadianceEtaSquared)
 {
     TraversalConstants constants; constants.scenario = 10; constants.initialDepth = 1;
@@ -337,6 +349,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathInsideExitRetainsUncancelledRadian
     EXPECT_NEAR(report[4].z, 6 * 2.25f, 0.012f);
 }
 
+/// @brief Single path mode preserves rough null sampling and seed advancement.
 TEST_F(RayHybridGlassTraversalTest, SinglePathModePreservesRoughNullSamplingAndSeedAdvancement)
 {
     for (float roughness : {0.2f, 1.0f})
@@ -348,6 +361,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathModePreservesRoughNullSamplingAndS
     ExpectEquivalent(Run(nullInterface), true);
 }
 
+/// @brief Single path visited invalid owner ninth medium and unknown environment fail closed.
 TEST_F(RayHybridGlassTraversalTest, SinglePathVisitedInvalidOwnerNinthMediumAndUnknownEnvironmentFailClosed)
 {
     for (uint32_t scenario : {4u, 5u, 6u}) {
@@ -363,6 +377,7 @@ TEST_F(RayHybridGlassTraversalTest, SinglePathVisitedInvalidOwnerNinthMediumAndU
     EXPECT_FLOAT_EQ(Run(disabled)[4].w, 0);
 }
 
+/// @brief Single path keeps finite boundary residual and avoids the incomplete split tree.
 TEST_F(RayHybridGlassTraversalTest, SinglePathKeepsFiniteBoundaryResidualAndAvoidsTheIncompleteSplitTree)
 {
     TraversalConstants constants; constants.glassStochastic = 1; constants.forcedChoice = 2;

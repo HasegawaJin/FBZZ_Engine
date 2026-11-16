@@ -83,6 +83,7 @@ protected:
     bool m_play = false;
 };
 
+/// @brief Inspector diagnoses defaults without latching and connected settings start.
 TEST_F(ManagedRequiredReferenceTest, InspectorDiagnosesDefaultsWithoutLatchingAndConnectedSettingsStart)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -122,6 +123,7 @@ TEST_F(ManagedRequiredReferenceTest, InspectorDiagnosesDefaultsWithoutLatchingAn
     EXPECT_EQ(Read(*adapter, "updateCount").integer, 1);
 }
 
+/// @brief Deleted required tokens block start even when their GUID is reused.
 TEST_F(ManagedRequiredReferenceTest, DeletedRequiredTokensBlockStartEvenWhenTheirGuidIsReused)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -153,6 +155,7 @@ TEST_F(ManagedRequiredReferenceTest, DeletedRequiredTokensBlockStartEvenWhenThei
     EXPECT_EQ(Read(*adapter, "updateCount").integer, 0);
 }
 
+/// @brief Rechecks nested references after awake before starting.
 TEST_F(ManagedRequiredReferenceTest, RechecksNestedReferencesAfterAwakeBeforeStarting)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -176,6 +179,7 @@ TEST_F(ManagedRequiredReferenceTest, RechecksNestedReferencesAfterAwakeBeforeSta
     EXPECT_EQ(issues.front().fieldKey, "settings");
 }
 
+/// @brief Saves disconnected nested settings and blocks their restored entry.
 TEST_F(ManagedRequiredReferenceTest, SavesDisconnectedNestedSettingsAndBlocksTheirRestoredEntry)
 {
     auto& owner = m_scene.CreateGameObject("Owner");

@@ -36,6 +36,7 @@ std::vector<std::uint8_t> ReadBytes(const std::filesystem::path& path)
 
 } /// @note namespace
 
+/// @brief Rejects atlas whose total pixels exceed budget.
 TEST_F(FluidBakeSafetyTest, RejectsAtlasWhoseTotalPixelsExceedBudget)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::Fire);
@@ -49,6 +50,7 @@ TEST_F(FluidBakeSafetyTest, RejectsAtlasWhoseTotalPixelsExceedBudget)
     EXPECT_NE(error.find("16M"), std::string::npos);
 }
 
+/// @brief Cancelled flat bake does not write output.
 TEST_F(FluidBakeSafetyTest, CancelledFlatBakeDoesNotWriteOutput)
 {
     testkit::TempDir temp{ "fluid-cancel" };
@@ -61,6 +63,7 @@ TEST_F(FluidBakeSafetyTest, CancelledFlatBakeDoesNotWriteOutput)
     EXPECT_FALSE(std::filesystem::exists(temp.File("Cancelled_Flipbook.png")));
 }
 
+/// @brief Staged GUID is indexed only after publication.
 TEST_F(FluidBakeSafetyTest, StagedGuidIsIndexedOnlyAfterPublication)
 {
     testkit::TempDir temp{ "fluid-staged-guid" };
@@ -82,6 +85,7 @@ TEST_F(FluidBakeSafetyTest, StagedGuidIsIndexedOnlyAfterPublication)
     asset::AssetDatabase::OnAssetRemoved(util::FileSystem::PathToUtf8(published));
 }
 
+/// @brief Cancellable compression keeps DDS blocks identical.
 TEST_F(FluidBakeSafetyTest, CancellableCompressionKeepsDdsBlocksIdentical)
 {
     testkit::TempDir temp{ "fluid-dds" };

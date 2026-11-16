@@ -69,6 +69,7 @@ protected:
     std::string m_node;
 };
 
+/// @brief Sets layer bound grass and undo removes new component.
 TEST_F(TerrainGrassOperatorTest, SetsLayerBoundGrassAndUndoRemovesNewComponent)
 {
     const auto result = SetupGrass(4.0f, 1);
@@ -90,6 +91,7 @@ TEST_F(TerrainGrassOperatorTest, SetsLayerBoundGrassAndUndoRemovesNewComponent)
     EXPECT_EQ(Target().GetComponent<scene::FiberComponent>()->m_terrainLayer, 1);
 }
 
+/// @brief Two kilometre terrain accepts dense grass within the view window.
 TEST_F(TerrainGrassOperatorTest, TwoKilometreTerrainAcceptsDenseGrassWithinTheViewWindow)
 {
     auto* terrain = Target().GetComponent<scene::TerrainComponent>();
@@ -105,6 +107,7 @@ TEST_F(TerrainGrassOperatorTest, TwoKilometreTerrainAcceptsDenseGrassWithinTheVi
     EXPECT_LT(result.data.Find("windowPatchUpperBound")->AsInt(), 64 * 64);
 }
 
+/// @brief Bundled alpine height map accepts default dense grass after biome bake.
 TEST_F(TerrainGrassOperatorTest, BundledAlpineHeightMapAcceptsDefaultDenseGrassAfterBiomeBake)
 {
     auto* terrain = Target().GetComponent<scene::TerrainComponent>();
@@ -123,6 +126,7 @@ TEST_F(TerrainGrassOperatorTest, BundledAlpineHeightMapAcceptsDefaultDenseGrassA
     EXPECT_FLOAT_EQ(Target().GetComponent<scene::FiberComponent>()->m_bladeDensity, 4.0f);
 }
 
+/// @brief Rejects too large a view window before adding grass.
 TEST_F(TerrainGrassOperatorTest, RejectsTooLargeAViewWindowBeforeAddingGrass)
 {
     auto* terrain = Target().GetComponent<scene::TerrainComponent>();
@@ -134,6 +138,7 @@ TEST_F(TerrainGrassOperatorTest, RejectsTooLargeAViewWindowBeforeAddingGrass)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Rejects oversized single patch before adding grass.
 TEST_F(TerrainGrassOperatorTest, RejectsOversizedSinglePatchBeforeAddingGrass)
 {
     auto* terrain = Target().GetComponent<scene::TerrainComponent>();
@@ -145,6 +150,7 @@ TEST_F(TerrainGrassOperatorTest, RejectsOversizedSinglePatchBeforeAddingGrass)
     EXPECT_EQ(Target().GetComponent<scene::FiberComponent>(), nullptr);
 }
 
+/// @brief Rejects dense grass when its display window exceeds the budget.
 TEST_F(TerrainGrassOperatorTest, RejectsDenseGrassWhenItsDisplayWindowExceedsTheBudget)
 {
     auto* terrain = Target().GetComponent<scene::TerrainComponent>();
@@ -156,6 +162,7 @@ TEST_F(TerrainGrassOperatorTest, RejectsDenseGrassWhenItsDisplayWindowExceedsThe
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Extending the terrain does not increase the view window budget.
 TEST_F(TerrainGrassOperatorTest, ExtendingTheTerrainDoesNotIncreaseTheViewWindowBudget)
 {
     auto* terrain = Target().GetComponent<scene::TerrainComponent>();
@@ -177,6 +184,7 @@ TEST_F(TerrainGrassOperatorTest, ExtendingTheTerrainDoesNotIncreaseTheViewWindow
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief World scale changes the local coverage of the view window.
 TEST_F(TerrainGrassOperatorTest, WorldScaleChangesTheLocalCoverageOfTheViewWindow)
 {
     Target().GetComponent<scene::TerrainComponent>()->Resize(513, 513);
@@ -198,6 +206,7 @@ TEST_F(TerrainGrassOperatorTest, WorldScaleChangesTheLocalCoverageOfTheViewWindo
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief Rotated mirrored nonuniform terrain preserves the window budget.
 TEST_F(TerrainGrassOperatorTest, RotatedMirroredNonuniformTerrainPreservesTheWindowBudget)
 {
     Target().GetComponent<scene::TerrainComponent>()->Resize(513, 513);
@@ -218,6 +227,7 @@ TEST_F(TerrainGrassOperatorTest, RotatedMirroredNonuniformTerrainPreservesTheWin
     EXPECT_TRUE(transformed.noChange);
 }
 
+/// @brief Tiny nonzero scale uses the whole small terrain budget.
 TEST_F(TerrainGrassOperatorTest, TinyNonzeroScaleUsesTheWholeSmallTerrainBudget)
 {
     Target().transform.scale = { 0.00000001f, 0.00000001f, 0.00000001f };
@@ -228,6 +238,7 @@ TEST_F(TerrainGrassOperatorTest, TinyNonzeroScaleUsesTheWholeSmallTerrainBudget)
     EXPECT_EQ(result.data.Find("windowPatchUpperBound")->AsInt(), 4);
 }
 
+/// @brief Invalid transforms do not add grass or history.
 TEST_F(TerrainGrassOperatorTest, InvalidTransformsDoNotAddGrassOrHistory)
 {
     const auto reject = [&] {
@@ -251,6 +262,7 @@ TEST_F(TerrainGrassOperatorTest, InvalidTransformsDoNotAddGrassOrHistory)
     reject();
 }
 
+/// @brief Overflowing terrain geometry does not add grass.
 TEST_F(TerrainGrassOperatorTest, OverflowingTerrainGeometryDoesNotAddGrass)
 {
     Target().GetComponent<scene::TerrainComponent>()->cellSize = (std::numeric_limits<float>::max)();
@@ -261,6 +273,7 @@ TEST_F(TerrainGrassOperatorTest, OverflowingTerrainGeometryDoesNotAddGrass)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Undo preserves unrelated changes by rejecting a conflicted component.
 TEST_F(TerrainGrassOperatorTest, UndoPreservesUnrelatedChangesByRejectingAConflictedComponent)
 {
     ASSERT_TRUE(SetupGrass().ok);
@@ -271,6 +284,7 @@ TEST_F(TerrainGrassOperatorTest, UndoPreservesUnrelatedChangesByRejectingAConfli
     EXPECT_FLOAT_EQ(Target().GetComponent<scene::FiberComponent>()->m_colorTint.x, 0.5f);
 }
 
+/// @brief Undo restores existing settings.
 TEST_F(TerrainGrassOperatorTest, UndoRestoresExistingSettings)
 {
     auto& old = Target().AddComponent<scene::FiberComponent>();
@@ -290,6 +304,7 @@ TEST_F(TerrainGrassOperatorTest, UndoRestoresExistingSettings)
     EXPECT_FLOAT_EQ(restored->m_lengthScale, 0.5f);
 }
 
+/// @brief Invalid layer does not change an existing fiber.
 TEST_F(TerrainGrassOperatorTest, InvalidLayerDoesNotChangeAnExistingFiber)
 {
     auto& old = Target().AddComponent<scene::FiberComponent>();

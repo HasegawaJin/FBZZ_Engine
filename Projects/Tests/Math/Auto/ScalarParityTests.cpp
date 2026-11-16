@@ -89,6 +89,7 @@ protected:
 
 /// @name Matrix4
 
+/// @brief Matrix product matches the scalar reference.
 TEST_F(ScalarParityTest, MatrixProductMatchesTheScalarReference)
 {
     const std::vector<math::Matrix4> matrices = MakeMatrices();
@@ -100,6 +101,7 @@ TEST_F(ScalarParityTest, MatrixProductMatchesTheScalarReference)
     }
 }
 
+/// @brief Matrix vector product matches the scalar reference.
 TEST_F(ScalarParityTest, MatrixVectorProductMatchesTheScalarReference)
 {
     const std::vector<math::Matrix4> matrices = MakeMatrices();
@@ -111,6 +113,7 @@ TEST_F(ScalarParityTest, MatrixVectorProductMatchesTheScalarReference)
     }
 }
 
+/// @brief Transpose matches the scalar reference.
 TEST_F(ScalarParityTest, TransposeMatchesTheScalarReference)
 {
     /// @note 転置は値を動かすだけなので誤差 0 で一致する。
@@ -118,6 +121,7 @@ TEST_F(ScalarParityTest, TransposeMatchesTheScalarReference)
         EXPECT_MAT4_NEAR(math::Matrix4::Transpose(m), reference::Transpose(m), 0.0f);
 }
 
+/// @brief Inverse matches the scalar reference.
 TEST_F(ScalarParityTest, InverseMatchesTheScalarReference)
 {
     const std::vector<math::Matrix4> matrices = MakeMatrices();
@@ -128,6 +132,7 @@ TEST_F(ScalarParityTest, InverseMatchesTheScalarReference)
     }
 }
 
+/// @brief Inverse of a singular matrix is identity.
 TEST_F(ScalarParityTest, InverseOfASingularMatrixIsIdentity)
 {
     /// @note scale に 0 が入った Transform は Inspector の操作で普通に起きる。契約は «単位行列を返す»。
@@ -136,6 +141,7 @@ TEST_F(ScalarParityTest, InverseOfASingularMatrixIsIdentity)
     EXPECT_MAT4_NEAR(math::Matrix4::Inverse(flat), math::Matrix4::Identity(), 0.0f);
 }
 
+/// @brief Trs matches the product of translate rotate scale.
 TEST_F(ScalarParityTest, TrsMatchesTheProductOfTranslateRotateScale)
 {
     for (int i = 0; i < kCaseCount; ++i) {
@@ -151,6 +157,7 @@ TEST_F(ScalarParityTest, TrsMatchesTheProductOfTranslateRotateScale)
 
 /// @name Frustum
 
+/// @brief Point containment matches the scalar reference.
 TEST_F(ScalarParityTest, PointContainmentMatchesTheScalarReference)
 {
     for (const math::Frustum& frustum : { PerspectiveFrustum(), OrthographicFrustum() }) {
@@ -170,6 +177,7 @@ TEST_F(ScalarParityTest, PointContainmentMatchesTheScalarReference)
     }
 }
 
+/// @brief Sphere culling matches the scalar reference.
 TEST_F(ScalarParityTest, SphereCullingMatchesTheScalarReference)
 {
     for (const math::Frustum& frustum : { PerspectiveFrustum(), OrthographicFrustum() }) {
@@ -191,6 +199,7 @@ TEST_F(ScalarParityTest, SphereCullingMatchesTheScalarReference)
     }
 }
 
+/// @brief Batched sphere culling matches one by one.
 TEST_F(ScalarParityTest, BatchedSphereCullingMatchesOneByOne)
 {
     /// @note 一括版は単体版と式も加算の順序も同じなので、境界ぎりぎりも含めて全件が一致する。
@@ -211,6 +220,7 @@ TEST_F(ScalarParityTest, BatchedSphereCullingMatchesOneByOne)
     }
 }
 
+/// @brief Batched sphere culling writes only what fits.
 TEST_F(ScalarParityTest, BatchedSphereCullingWritesOnlyWhatFits)
 {
     /// @note 出力が短いのは呼び出し側の誤り。報告して入る数だけ判定し、範囲外へは書かない。
@@ -222,6 +232,7 @@ TEST_F(ScalarParityTest, BatchedSphereCullingWritesOnlyWhatFits)
     for (int i = 5; i < 10; ++i) EXPECT_EQ(visible[i], 2) << "sphere " << i;
 }
 
+/// @brief AABB culling matches the scalar reference.
 TEST_F(ScalarParityTest, AabbCullingMatchesTheScalarReference)
 {
     for (const math::Frustum& frustum : { PerspectiveFrustum(), OrthographicFrustum() }) {

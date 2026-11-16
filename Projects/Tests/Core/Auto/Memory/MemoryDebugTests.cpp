@@ -28,6 +28,7 @@ core::AllocationInfo MakeInfo(void* pointer, core::MemoryTag tag, int line)
 
 } /// @note namespace
 
+/// @brief Tracks resource until untracked.
 TEST_F(MemoryDebugTest, TracksResourceUntilUntracked)
 {
     core::MemoryDebug debug;
@@ -44,6 +45,7 @@ TEST_F(MemoryDebugTest, TracksResourceUntilUntracked)
     EXPECT_FALSE(debug.Untrack(&resource));
 }
 
+/// @brief Rejects duplicate pointer.
 TEST_F(MemoryDebugTest, RejectsDuplicatePointer)
 {
     core::MemoryDebug debug;
@@ -54,6 +56,7 @@ TEST_F(MemoryDebugTest, RejectsDuplicatePointer)
     EXPECT_EQ(debug.GetLiveCount(), 1u);
 }
 
+/// @brief Collect live returns every entry.
 TEST_F(MemoryDebugTest, CollectLiveReturnsEveryEntry)
 {
     core::MemoryDebug debug;
@@ -68,6 +71,7 @@ TEST_F(MemoryDebugTest, CollectLiveReturnsEveryEntry)
     EXPECT_EQ(live.size(), 2u);
 }
 
+/// @brief Reset removes all tracked resources.
 TEST_F(MemoryDebugTest, ResetRemovesAllTrackedResources)
 {
     core::MemoryDebug debug;
@@ -81,6 +85,7 @@ TEST_F(MemoryDebugTest, ResetRemovesAllTrackedResources)
     EXPECT_EQ(debug.GetLiveCount(), 0u);
 }
 
+/// @brief Rejects null and enumerates only live slots.
 TEST_F(MemoryDebugTest, RejectsNullAndEnumeratesOnlyLiveSlots)
 {
     core::MemoryDebug debug;
@@ -101,6 +106,7 @@ TEST_F(MemoryDebugTest, RejectsNullAndEnumeratesOnlyLiveSlots)
     EXPECT_EQ(debug.GetLive(2), nullptr);
 }
 
+/// @brief Rejects overflow without counting dropped bytes and reuses freed slots.
 TEST_F(MemoryDebugTest, RejectsOverflowWithoutCountingDroppedBytesAndReusesFreedSlots)
 {
     core::MemoryDebug debug;

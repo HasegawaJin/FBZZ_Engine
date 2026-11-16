@@ -71,6 +71,7 @@ protected:
     }
 };
 
+/// @brief Pins stay fixed and stretch remains bounded.
 TEST_F(ClothSolverTest, PinsStayFixedAndStretchRemainsBounded)
 {
     Simulate(120);
@@ -80,6 +81,7 @@ TEST_F(ClothSolverTest, PinsStayFixedAndStretchRemainsBounded)
     EXPECT_NEAR((m_solver.Positions()[3] - m_solver.Positions()[1]).Length(), 1.0f, 0.01f);
 }
 
+/// @brief Pin targets move and reset restores initial state.
 TEST_F(ClothSolverTest, PinTargetsMoveAndResetRestoresInitialState)
 {
     const math::Vector3 target{0, 2, 0};
@@ -94,6 +96,7 @@ TEST_F(ClothSolverTest, PinTargetsMoveAndResetRestoresInitialState)
     }
 }
 
+/// @brief Invalid topology does not replace existing cloth.
 TEST_F(ClothSolverTest, InvalidTopologyDoesNotReplaceExistingCloth)
 {
     auto invalid = m_indices;
@@ -107,6 +110,7 @@ TEST_F(ClothSolverTest, InvalidTopologyDoesNotReplaceExistingCloth)
     EXPECT_VEC3_NEAR(m_solver.Positions()[0], m_positions[0], 1.0e-6f);
 }
 
+/// @brief Invalid settings and steps leave state untouched.
 TEST_F(ClothSolverTest, InvalidSettingsAndStepsLeaveStateUntouched)
 {
     auto settings = m_solver.Settings();
@@ -125,6 +129,7 @@ TEST_F(ClothSolverTest, InvalidSettingsAndStepsLeaveStateUntouched)
     EXPECT_VEC3_NEAR(m_solver.Positions()[2], m_positions[2], 1.0e-6f);
 }
 
+/// @brief Plane preserves thickness and does not move pins.
 TEST_F(ClothSolverTest, PlanePreservesThicknessAndDoesNotMovePins)
 {
     physics::ClothContact plane;
@@ -136,6 +141,7 @@ TEST_F(ClothSolverTest, PlanePreservesThicknessAndDoesNotMovePins)
     EXPECT_VEC3_NEAR(m_solver.Positions()[0], m_positions[0], 1.0e-6f);
 }
 
+/// @brief Sphere and zero length capsule push particles out.
 TEST_F(ClothSolverTest, SphereAndZeroLengthCapsulePushParticlesOut)
 {
     for (auto type : {physics::ClothContactType::SPHERE, physics::ClothContactType::CAPSULE}) {
@@ -150,6 +156,7 @@ TEST_F(ClothSolverTest, SphereAndZeroLengthCapsulePushParticlesOut)
     }
 }
 
+/// @brief Wind pushes downwind for either triangle winding.
 TEST_F(ClothSolverTest, WindPushesDownwindForEitherTriangleWinding)
 {
     auto settings = m_solver.Settings();
@@ -166,6 +173,7 @@ TEST_F(ClothSolverTest, WindPushesDownwindForEitherTriangleWinding)
     EXPECT_NEAR(m_solver.Positions()[2].z, expected[2].z, 0.002f);
 }
 
+/// @brief Same inputs are reproducible after reset.
 TEST_F(ClothSolverTest, SameInputsAreReproducibleAfterReset)
 {
     Simulate(30);
@@ -176,6 +184,7 @@ TEST_F(ClothSolverTest, SameInputsAreReproducibleAfterReset)
         EXPECT_VEC3_NEAR(m_solver.Positions()[i], first[i], 1.0e-6f);
 }
 
+/// @brief Overflow rolls back the step.
 TEST_F(ClothSolverTest, OverflowRollsBackTheStep)
 {
     auto settings = m_solver.Settings();
@@ -186,6 +195,7 @@ TEST_F(ClothSolverTest, OverflowRollsBackTheStep)
     EXPECT_VEC3_NEAR(m_solver.Velocities()[2], math::Vector3::ZERO, 1.0e-6f);
 }
 
+/// @brief Motion sphere bounds free particle and overrides conflicting contact.
 TEST_F(ClothSolverTest, MotionSphereBoundsFreeParticleAndOverridesConflictingContact)
 {
     physics::ClothMotionConstraint motion{2, {0, 0, 0}, {0, 0, 0}, 0.1f};
@@ -198,6 +208,7 @@ TEST_F(ClothSolverTest, MotionSphereBoundsFreeParticleAndOverridesConflictingCon
     }
 }
 
+/// @brief Zero radius interpolates anchor and restores mass when removed.
 TEST_F(ClothSolverTest, ZeroRadiusInterpolatesAnchorAndRestoresMassWhenRemoved)
 {
     auto settings = m_solver.Settings();
@@ -212,6 +223,7 @@ TEST_F(ClothSolverTest, ZeroRadiusInterpolatesAnchorAndRestoresMassWhenRemoved)
     EXPECT_GT(m_solver.Positions()[2].z, 0.1f);
 }
 
+/// @brief Motion can override pin only with zero radius.
 TEST_F(ClothSolverTest, MotionCanOverridePinOnlyWithZeroRadius)
 {
     physics::ClothMotionConstraint motion{0, m_positions[0], {0, 1.1f, 0}, 0.0f};
@@ -222,6 +234,7 @@ TEST_F(ClothSolverTest, MotionCanOverridePinOnlyWithZeroRadius)
     EXPECT_VEC3_NEAR(m_solver.Positions()[0], motion.center, 1.0e-6f);
 }
 
+/// @brief Invalid motion constraints reject whole step.
 TEST_F(ClothSolverTest, InvalidMotionConstraintsRejectWholeStep)
 {
     std::array<physics::ClothMotionConstraint, 2> motion{{{2, {}, {}, 0.1f}, {2, {}, {}, 0.1f}}};
@@ -240,6 +253,7 @@ TEST_F(ClothSolverTest, InvalidMotionConstraintsRejectWholeStep)
     }
 }
 
+/// @brief Self collision separates folded layers and preserves center of mass.
 TEST_F(ClothSolverTest, SelfCollisionSeparatesFoldedLayersAndPreservesCenterOfMass)
 {
     FoldLayers();
@@ -254,6 +268,7 @@ TEST_F(ClothSolverTest, SelfCollisionSeparatesFoldedLayersAndPreservesCenterOfMa
     for (size_t i = 0; i < first.size(); ++i) EXPECT_VEC3_NEAR(m_solver.Positions()[i], first[i], 1.0e-6f);
 }
 
+/// @brief Self collision does not move pins and can be disabled.
 TEST_F(ClothSolverTest, SelfCollisionDoesNotMovePinsAndCanBeDisabled)
 {
     FoldLayers(true);
@@ -268,6 +283,7 @@ TEST_F(ClothSolverTest, SelfCollisionDoesNotMovePinsAndCanBeDisabled)
     EXPECT_NEAR((m_solver.Positions()[0] - m_solver.Positions()[3]).Length(), 0.0f, 1.0e-6f);
 }
 
+/// @brief Self collision excludes rest neighbors and connected vertices.
 TEST_F(ClothSolverTest, SelfCollisionExcludesRestNeighborsAndConnectedVertices)
 {
     FoldLayers(false, 0.05f);
@@ -285,6 +301,7 @@ TEST_F(ClothSolverTest, SelfCollisionExcludesRestNeighborsAndConnectedVertices)
     EXPECT_VEC3_NEAR(m_solver.Positions()[3], m_solver.Positions()[1], 1.0e-6f);
 }
 
+/// @brief Invalid self collision settings preserve existing settings.
 TEST_F(ClothSolverTest, InvalidSelfCollisionSettingsPreserveExistingSettings)
 {
     auto settings = m_solver.Settings();
@@ -298,6 +315,7 @@ TEST_F(ClothSolverTest, InvalidSelfCollisionSettingsPreserveExistingSettings)
     EXPECT_FLOAT_EQ(m_solver.Settings().selfCollisionDistance, 0.0f);
 }
 
+/// @brief Vertex stops above triangle interior only with face contacts.
 TEST_F(ClothSolverTest, VertexStopsAboveTriangleInteriorOnlyWithFaceContacts)
 {
     for (bool faces : {false, true}) {
@@ -314,6 +332,7 @@ TEST_F(ClothSolverTest, VertexStopsAboveTriangleInteriorOnlyWithFaceContacts)
     }
 }
 
+/// @brief Checks edge rests on crossing edge with face contacts.
 TEST_F(ClothSolverTest, EdgeRestsOnCrossingEdgeWithFaceContacts)
 {
     DropOntoFixedTriangle(true, true, false, -9.81f);
@@ -323,6 +342,7 @@ TEST_F(ClothSolverTest, EdgeRestsOnCrossingEdgeWithFaceContacts)
     EXPECT_LT(middle, 0.2f);
 }
 
+/// @brief Continuous collision stops tunneling through triangle and edge.
 TEST_F(ClothSolverTest, ContinuousCollisionStopsTunnelingThroughTriangleAndEdge)
 {
     for (bool edge : {false, true}) {
@@ -338,6 +358,7 @@ TEST_F(ClothSolverTest, ContinuousCollisionStopsTunnelingThroughTriangleAndEdge)
     }
 }
 
+/// @brief Continuous collision is reproducible.
 TEST_F(ClothSolverTest, ContinuousCollisionIsReproducible)
 {
     DropOntoFixedTriangle(true, true, true, -2000.0f);
@@ -348,6 +369,7 @@ TEST_F(ClothSolverTest, ContinuousCollisionIsReproducible)
     for (size_t i = 0; i < first.size(); ++i) EXPECT_VEC3_NEAR(m_solver.Positions()[i], first[i], 1.0e-6f);
 }
 
+/// @brief Continuous collision stops tunneling through sphere and capsule.
 TEST_F(ClothSolverTest, ContinuousCollisionStopsTunnelingThroughSphereAndCapsule)
 {
     for (auto type : {physics::ClothContactType::SPHERE, physics::ClothContactType::CAPSULE}) {

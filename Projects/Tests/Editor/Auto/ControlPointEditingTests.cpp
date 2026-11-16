@@ -80,6 +80,7 @@ protected:
     }
 };
 
+/// @brief Preview does not mutate and commit creates one undoable move.
 TEST_F(ControlPointEditingTest, PreviewDoesNotMutateAndCommitCreatesOneUndoableMove)
 {
     auto& point = MakePoint("Point", {1.0f, 2.0f, 3.0f});
@@ -106,6 +107,7 @@ TEST_F(ControlPointEditingTest, PreviewDoesNotMutateAndCommitCreatesOneUndoableM
     EXPECT_VEC3_NEAR(point.transform.position, (math::Vector3{3.0f, 1.0f, 7.0f}), testkit::kTolerance);
 }
 
+/// @brief Cancel and no-op commit do not create history.
 TEST_F(ControlPointEditingTest, CancelAndNoOpCommitDoNotCreateHistory)
 {
     auto& point = MakePoint("Point", {1.0f, 0.0f, 2.0f});
@@ -127,6 +129,7 @@ TEST_F(ControlPointEditingTest, CancelAndNoOpCommitDoNotCreateHistory)
     EXPECT_VEC3_NEAR(point.transform.position, (math::Vector3{1.0f, 0.0f, 2.0f}), testkit::kTolerance);
 }
 
+/// @brief World delta converts through signed non uniform parent scale.
 TEST_F(ControlPointEditingTest, WorldDeltaConvertsThroughSignedNonUniformParentScale)
 {
     auto& parent = AttachedScene()->CreateGameObject("Parent");
@@ -143,6 +146,7 @@ TEST_F(ControlPointEditingTest, WorldDeltaConvertsThroughSignedNonUniformParentS
     EXPECT_VEC3_NEAR(point.transform.worldPosition, (math::Vector3{0.0f, 3.0f, 2.0f}), testkit::kTolerance);
 }
 
+/// @brief Small delta survives large world height.
 TEST_F(ControlPointEditingTest, SmallDeltaSurvivesLargeWorldHeight)
 {
     auto& parent = AttachedScene()->CreateGameObject("HighParent");
@@ -160,6 +164,7 @@ TEST_F(ControlPointEditingTest, SmallDeltaSurvivesLargeWorldHeight)
     EXPECT_FLOAT_EQ(point.transform.worldPosition.y, 100000000.0f);
 }
 
+/// @brief Checks parent change aborts candidate.
 TEST_F(ControlPointEditingTest, ParentChangeAbortsCandidate)
 {
     auto& parent = AttachedScene()->CreateGameObject("Parent");
@@ -176,6 +181,7 @@ TEST_F(ControlPointEditingTest, ParentChangeAbortsCandidate)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Checks scene and undo revision changes abort candidate.
 TEST_F(ControlPointEditingTest, SceneAndUndoRevisionChangesAbortCandidate)
 {
     auto& point = MakePoint("Point", {0.0f, 0.0f, 0.0f});
@@ -198,6 +204,7 @@ TEST_F(ControlPointEditingTest, SceneAndUndoRevisionChangesAbortCandidate)
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief Checks marker lifetime and shared owner binding changes abort candidate.
 TEST_F(ControlPointEditingTest, MarkerLifetimeAndSharedOwnerBindingChangesAbortCandidate)
 {
     auto& target = MakePoint("Target", {0.0f, 0.0f, 0.0f});
@@ -234,6 +241,7 @@ TEST_F(ControlPointEditingTest, MarkerLifetimeAndSharedOwnerBindingChangesAbortC
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Motion warp reference to selected descendant aborts on same pose GUID swap.
 TEST_F(ControlPointEditingTest, MotionWarpReferenceToSelectedDescendantAbortsOnSamePoseGuidSwap)
 {
     auto& selectedRoot = MakePoint("SelectedRoot", {0.0f, 0.0f, 0.0f});
@@ -278,6 +286,7 @@ TEST_F(ControlPointEditingTest, MotionWarpReferenceToSelectedDescendantAbortsOnS
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Checks script object reference change aborts candidate.
 TEST_F(ControlPointEditingTest, ScriptObjectReferenceChangeAbortsCandidate)
 {
     auto& target = MakePoint("ScriptTarget", {0.0f, 0.0f, 0.0f});
@@ -303,6 +312,7 @@ TEST_F(ControlPointEditingTest, ScriptObjectReferenceChangeAbortsCandidate)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Rejects non unit quaternion.
 TEST_F(ControlPointEditingTest, RejectsNonUnitQuaternion)
 {
     auto& point = MakePoint("Point", {0.0f, 0.0f, 0.0f});
@@ -316,6 +326,7 @@ TEST_F(ControlPointEditingTest, RejectsNonUnitQuaternion)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Inspect connections finds references but does not treat children as connected.
 TEST_F(ControlPointEditingTest, InspectConnectionsFindsReferencesButDoesNotTreatChildrenAsConnected)
 {
     auto& owner = AttachedScene()->CreateGameObject("Spline Owner");
@@ -362,6 +373,7 @@ TEST_F(ControlPointEditingTest, InspectConnectionsFindsReferencesButDoesNotTreat
     EXPECT_TRUE(looseResult.data.Find("owners")->AsArray().empty());
 }
 
+/// @brief Connection inspection resolves the canonical GUID even when a stale cached ID points to an existing target.
 TEST_F(ControlPointEditingTest, InspectConnectionsUsesCanonicalGuidRatherThanStaleEntityCache)
 {
     const auto pointId = MakePoint("Point", {}).GetID();

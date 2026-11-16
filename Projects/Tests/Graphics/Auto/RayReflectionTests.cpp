@@ -819,6 +819,7 @@ private:
     bool m_allowIblClearMetadataWarning = false;
 };
 
+/// @brief Reflects emissive surface and applies primary fresnel.
 TEST_F(RayReflectionTest, ReflectsEmissiveSurfaceAndAppliesPrimaryFresnel)
 {
     ReflectionCase testCase;
@@ -835,6 +836,7 @@ TEST_F(RayReflectionTest, ReflectsEmissiveSurfaceAndAppliesPrimaryFresnel)
     EXPECT_NEAR(dielectric[3], 1, 0.001f);
 }
 
+/// @brief Rejects unrecorded dispatch without publishing the retained reflection.
 TEST_F(RayReflectionTest, RejectsUnrecordedDispatchWithoutPublishingTheRetainedReflection)
 {
     for (const auto failure : {RejectedDispatch::CLOSED_FRAME, RejectedDispatch::NON_COMPUTE_SHADER,
@@ -848,6 +850,7 @@ TEST_F(RayReflectionTest, RejectsUnrecordedDispatchWithoutPublishingTheRetainedR
     }
 }
 
+/// @brief Returns invalid for miss unsupported surfaces and back face.
 TEST_F(RayReflectionTest, ReturnsInvalidForMissUnsupportedSurfacesAndBackFace)
 {
     for (uint32_t invalidCase = 0; invalidCase < 4; ++invalidCase) {
@@ -863,6 +866,7 @@ TEST_F(RayReflectionTest, ReturnsInvalidForMissUnsupportedSurfacesAndBackFace)
     }
 }
 
+/// @brief Reconstructs large far perspective and orthographic depth with jitter.
 TEST_F(RayReflectionTest, ReconstructsLargeFarPerspectiveAndOrthographicDepthWithJitter)
 {
     ReflectionCase testCase;
@@ -880,6 +884,7 @@ TEST_F(RayReflectionTest, ReconstructsLargeFarPerspectiveAndOrthographicDepthWit
     EXPECT_NEAR(orthographic[3], 1, 0.001f);
 }
 
+/// @brief Matches rasterized shallow triangle across subpixel phases without black fallback.
 TEST_F(RayReflectionTest, MatchesRasterizedShallowTriangleAcrossSubpixelPhasesWithoutBlackFallback)
 {
     ReflectionCase testCase;
@@ -905,6 +910,7 @@ TEST_F(RayReflectionTest, MatchesRasterizedShallowTriangleAcrossSubpixelPhasesWi
     }
 }
 
+/// @brief Rejects different raster layer and ill conditioned grazing depth.
 TEST_F(RayReflectionTest, RejectsDifferentRasterLayerAndIllConditionedGrazingDepth)
 {
     ReflectionCase testCase;
@@ -933,6 +939,7 @@ TEST_F(RayReflectionTest, RejectsDifferentRasterLayerAndIllConditionedGrazingDep
     for (const float component : unconditioned) EXPECT_FLOAT_EQ(component, 0);
 }
 
+/// @brief Checks shadow mask only attenuates directional light and preserves emission ambient.
 TEST_F(RayReflectionTest, ShadowMaskOnlyAttenuatesDirectionalLightAndPreservesEmissionAmbient)
 {
     ReflectionCase testCase;
@@ -961,6 +968,7 @@ TEST_F(RayReflectionTest, ShadowMaskOnlyAttenuatesDirectionalLightAndPreservesEm
     for (size_t i = 0; i < 4; ++i) EXPECT_NEAR(distant[i], shadowed[i], 0.025f);
 }
 
+/// @brief Shades interpolated vertex normals and roughness response.
 TEST_F(RayReflectionTest, ShadesInterpolatedVertexNormalsAndRoughnessResponse)
 {
     ReflectionCase testCase;
@@ -984,6 +992,7 @@ TEST_F(RayReflectionTest, ShadesInterpolatedVertexNormalsAndRoughnessResponse)
     EXPECT_NEAR(rough[3], 1, 0.001f);
 }
 
+/// @brief Rejects finite radiance outside output half range.
 TEST_F(RayReflectionTest, RejectsFiniteRadianceOutsideOutputHalfRange)
 {
     ReflectionCase testCase;
@@ -993,6 +1002,7 @@ TEST_F(RayReflectionTest, RejectsFiniteRadianceOutsideOutputHalfRange)
     for (const float component : result) EXPECT_NEAR(component, 0, 0.001f);
 }
 
+/// @brief Evaluates bound global ibl without scaling emission or applying exposure.
 TEST_F(RayReflectionTest, EvaluatesBoundGlobalIblWithoutScalingEmissionOrApplyingExposure)
 {
     ReflectionCase testCase;
@@ -1041,6 +1051,7 @@ TEST_F(RayReflectionTest, EvaluatesBoundGlobalIblWithoutScalingEmissionOrApplyin
             &doubled, &exposureChanged, &withoutEmission}) EXPECT_NEAR((*result)[3], 1, 0.001f);
 }
 
+/// @brief Full scene directional point spot lights are not capped or double added.
 TEST_F(RayReflectionTest, FullSceneDirectionalPointSpotLightsAreNotCappedOrDoubleAdded)
 {
     constexpr float pi = 3.14159265358979323846f;
@@ -1062,6 +1073,7 @@ TEST_F(RayReflectionTest, FullSceneDirectionalPointSpotLightsAreNotCappedOrDoubl
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(blocked[i], 0, 0.001f);
     EXPECT_NEAR(blocked[3], 1, 0.001f);
 }
+/// @brief Full scene light shadows are independent of the legacy directional setting.
 TEST_F(RayReflectionTest, FullSceneLightShadowsAreIndependentOfTheLegacyDirectionalSetting)
 {
     constexpr float pi = 3.14159265358979323846f;
@@ -1100,6 +1112,7 @@ TEST_F(RayReflectionTest, FullSceneLightShadowsAreIndependentOfTheLegacyDirectio
         EXPECT_NEAR((*result)[3], 1, 0.001f);
 }
 
+/// @brief Finite delta range cone and huge distance match numeric contract.
 TEST_F(RayReflectionTest, FiniteDeltaRangeConeAndHugeDistanceMatchNumericContract)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.emission = {};
@@ -1119,6 +1132,7 @@ TEST_F(RayReflectionTest, FiniteDeltaRangeConeAndHugeDistanceMatchNumericContrac
     const auto cone = Render(testCase);
     ASSERT_EQ(cone.size(), 4u); EXPECT_NEAR(cone[0], 0, 0.001f); EXPECT_NEAR(cone[3], 1, 0.001f);
 }
+/// @brief Virtual area and shape are visible and proxy emission replaces material.
 TEST_F(RayReflectionTest, VirtualAreaAndShapeAreVisibleAndProxyEmissionReplacesMaterial)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.secondary = false;
@@ -1156,6 +1170,7 @@ TEST_F(RayReflectionTest, VirtualAreaAndShapeAreVisibleAndProxyEmissionReplacesM
     const auto tube = Render(testCase);
     ASSERT_EQ(tube.size(), 4u); EXPECT_NEAR(tube[0], 2, 0.03f); EXPECT_NEAR(tube[3], 1, 0.001f);
 }
+/// @brief Area nee at secondary hit uses shadow mask and endpoint.
 TEST_F(RayReflectionTest, AreaNeeAtSecondaryHitUsesShadowMaskAndEndpoint)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.emission = {};
@@ -1171,6 +1186,7 @@ TEST_F(RayReflectionTest, AreaNeeAtSecondaryHitUsesShadowMaskAndEndpoint)
     const auto blocked = Render(testCase);
     ASSERT_EQ(blocked.size(), 4u); EXPECT_NEAR(blocked[0], 0, 0.001f); EXPECT_NEAR(blocked[3], 1, 0.001f);
 }
+/// @brief Area and shape nee use their owner shadow strength.
 TEST_F(RayReflectionTest, AreaAndShapeNeeUseTheirOwnerShadowStrength)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.emission = {}; testCase.shadowStrength = 0;
@@ -1219,6 +1235,7 @@ TEST_F(RayReflectionTest, AreaAndShapeNeeUseTheirOwnerShadowStrength)
     for (const auto* result : {&areaLit, &areaBlocked, &areaShadowOff, &areaFractional,
             &shapeLit, &shapeBlocked, &shapeShadowOff, &shapeFractional}) EXPECT_NEAR((*result)[3], 1, 0.001f);
 }
+/// @brief Unrepresentable finite virtual area falls back instead of leaking environment.
 TEST_F(RayReflectionTest, UnrepresentableFiniteVirtualAreaFallsBackInsteadOfLeakingEnvironment)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.secondary = false; testCase.rawEnvironment = true;
@@ -1236,6 +1253,7 @@ TEST_F(RayReflectionTest, UnrepresentableFiniteVirtualAreaFallsBackInsteadOfLeak
     EXPECT_NEAR(fallback[0], 0, 0.001f); EXPECT_NEAR(fallback[1], 0, 0.001f);
     EXPECT_NEAR(fallback[2], 0, 0.001f); EXPECT_NEAR(fallback[3], 0, 0.001f);
 }
+/// @brief Explicit raw environment miss is linear rotated and not exposure scaled.
 TEST_F(RayReflectionTest, ExplicitRawEnvironmentMissIsLinearRotatedAndNotExposureScaled)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.secondary = false; testCase.rawEnvironment = true;
@@ -1253,6 +1271,7 @@ TEST_F(RayReflectionTest, ExplicitRawEnvironmentMissIsLinearRotatedAndNotExposur
     ASSERT_EQ(scaled.size(), 4u);
     for (size_t i = 0; i < 3; ++i) EXPECT_NEAR(scaled[i], rotated[i] * 0.5f, 0.02f);
 }
+/// @brief Candidate alpha shadow and hit normal map use indirect texture declarations.
 TEST_F(RayReflectionTest, CandidateAlphaShadowAndHitNormalMapUseIndirectTextureDeclarations)
 {
     ReflectionCase testCase; testCase.emission = {}; testCase.lightIntensity = 1; testCase.blocker = true;
@@ -1265,6 +1284,7 @@ TEST_F(RayReflectionTest, CandidateAlphaShadowAndHitNormalMapUseIndirectTextureD
     const auto mapped = Render(testCase);
     ASSERT_EQ(mapped.size(), 4u); EXPECT_LT(mapped[0], clip[0] - 0.1f); EXPECT_NEAR(mapped[3], 1, 0.001f);
 }
+/// @brief Textured emission hit uses linear values and proxy remains authoritative.
 TEST_F(RayReflectionTest, TexturedEmissionHitUsesLinearValuesAndProxyRemainsAuthoritative)
 {
     ReflectionCase testCase; testCase.secondaryEmissionTexture = true;
@@ -1282,10 +1302,12 @@ TEST_F(RayReflectionTest, TexturedEmissionHitUsesLinearValuesAndProxyRemainsAuth
     ASSERT_EQ(authoritative.size(), 4u);
     EXPECT_NEAR(authoritative[0], 2, 0.03f); EXPECT_NEAR(authoritative[2], 6, 0.03f); EXPECT_NEAR(authoritative[3], 1, 0.001f);
 }
+/// @brief Loads actual linear HDR DDS and caches immutable content versions.
 TEST_F(RayReflectionTest, LoadsActualLinearHdrDdsAndCachesImmutableContentVersions)
 {
     CheckRawCubeCache();
 }
+/// @brief Full triangle nee evaluates actual textured emission without changing its PDF.
 TEST_F(RayReflectionTest, FullTriangleNeeEvaluatesActualTexturedEmissionWithoutChangingItsPdf)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.emission = {}; testCase.meshNee = true;
@@ -1304,6 +1326,7 @@ TEST_F(RayReflectionTest, FullTriangleNeeEvaluatesActualTexturedEmissionWithoutC
     EXPECT_NEAR(textured[1], constant[1], 0.005f); EXPECT_NEAR(textured[2], 0, 0.001f); EXPECT_NEAR(textured[3], 1, 0.001f);
 }
 
+/// @brief Checks primary geometry physically occludes mesh emission and raw environment without artist shadows.
 TEST_F(RayReflectionTest, PrimaryGeometryPhysicallyOccludesMeshEmissionAndRawEnvironmentWithoutArtistShadows)
 {
     ReflectionCase testCase; testCase.sceneLighting = true; testCase.emission = {};
@@ -1338,6 +1361,7 @@ TEST_F(RayReflectionTest, PrimaryGeometryPhysicallyOccludesMeshEmissionAndRawEnv
         EXPECT_NEAR((*result)[3], 1, 0.001f);
 }
 
+/// @brief Regularizes tilted primary normal map without changing the reflection provider.
 TEST_F(RayReflectionTest, RegularizesTiltedPrimaryNormalMapWithoutChangingTheReflectionProvider)
 {
     ReflectionCase testCase;
@@ -1360,6 +1384,7 @@ TEST_F(RayReflectionTest, RegularizesTiltedPrimaryNormalMapWithoutChangingTheRef
     EXPECT_NEAR(tilted[3], 1, 0.001f);
 }
 
+/// @brief Regularizes smooth grazing primary without black fallback in bright environment.
 TEST_F(RayReflectionTest, RegularizesSmoothGrazingPrimaryWithoutBlackFallbackInBrightEnvironment)
 {
     ReflectionCase testCase;
@@ -1387,6 +1412,7 @@ TEST_F(RayReflectionTest, RegularizesSmoothGrazingPrimaryWithoutBlackFallbackInB
     EXPECT_GT(matched[0], 0.1f); EXPECT_NEAR(matched[3], 1, 0.001f);
 }
 
+/// @brief Proper below shading normal ggx null samples remain valid without survivor renormalization.
 TEST_F(RayReflectionTest, ProperBelowShadingNormalGgxNullSamplesRemainValidWithoutSurvivorRenormalization)
 {
     ReflectionCase testCase;
@@ -1402,6 +1428,7 @@ TEST_F(RayReflectionTest, ProperBelowShadingNormalGgxNullSamplesRemainValidWitho
     EXPECT_NEAR(rough[3], 1, 0.001f);
 }
 
+/// @brief Integrates partial hit and known black miss with the original sample count.
 TEST_F(RayReflectionTest, IntegratesPartialHitAndKnownBlackMissWithTheOriginalSampleCount)
 {
     ReflectionCase testCase;
@@ -1420,6 +1447,7 @@ TEST_F(RayReflectionTest, IntegratesPartialHitAndKnownBlackMissWithTheOriginalSa
     for (float channel : unknown) EXPECT_NEAR(channel, 0, 0.001f);
 }
 
+/// @brief Known constant environment miss and nee stay finite without doubling radiance.
 TEST_F(RayReflectionTest, KnownConstantEnvironmentMissAndNeeStayFiniteWithoutDoublingRadiance)
 {
     ReflectionCase testCase;
@@ -1439,6 +1467,7 @@ TEST_F(RayReflectionTest, KnownConstantEnvironmentMissAndNeeStayFiniteWithoutDou
     EXPECT_NEAR(black[3], 1, 0.001f);
 }
 
+/// @brief Known black secondary lighting does not substitute raster probe or ambient.
 TEST_F(RayReflectionTest, KnownBlackSecondaryLightingDoesNotSubstituteRasterProbeOrAmbient)
 {
     ReflectionCase testCase;
@@ -1465,6 +1494,7 @@ TEST_F(RayReflectionTest, KnownBlackSecondaryLightingDoesNotSubstituteRasterProb
     EXPECT_NEAR(unknown[3], 1, 0.001f);
 }
 
+/// @brief Primary geometric front face survives shading normal view tangent crossing.
 TEST_F(RayReflectionTest, PrimaryGeometricFrontFaceSurvivesShadingNormalViewTangentCrossing)
 {
     ReflectionCase testCase;
@@ -1491,6 +1521,7 @@ TEST_F(RayReflectionTest, PrimaryGeometricFrontFaceSurvivesShadingNormalViewTang
     for (float value : reversed) EXPECT_NEAR(value, 0, 0.001f);
 }
 
+/// @brief Known black visibility skip preserves area and shape sample streams.
 TEST_F(RayReflectionTest, KnownBlackVisibilitySkipPreservesAreaAndShapeSampleStreams)
 {
     ReflectionCase testCase;
@@ -1523,6 +1554,7 @@ TEST_F(RayReflectionTest, KnownBlackVisibilitySkipPreservesAreaAndShapeSampleStr
     }
 }
 
+/// @brief Traces partial screen confidence but clears raw and metadata for complete confidence.
 TEST_F(RayReflectionTest, TracesPartialScreenConfidenceButClearsRawAndMetadataForCompleteConfidence)
 {
     ReflectionCase testCase;
@@ -1552,6 +1584,7 @@ TEST_F(RayReflectionTest, TracesPartialScreenConfidenceButClearsRawAndMetadataFo
     for (size_t channel = 0; channel < 4; ++channel) EXPECT_NEAR(reducedConfidence[channel], partial[channel], 0.01f);
 }
 
+/// @brief Requires current enabled screen provider before skipping ray tracing.
 TEST_F(RayReflectionTest, RequiresCurrentEnabledScreenProviderBeforeSkippingRayTracing)
 {
     ReflectionCase testCase;
@@ -1579,6 +1612,7 @@ TEST_F(RayReflectionTest, RequiresCurrentEnabledScreenProviderBeforeSkippingRayT
     for (size_t channel = 0; channel < 4; ++channel) EXPECT_NEAR(legacy[channel], inactive[channel], 0.01f);
 }
 
+/// @brief Checks mirror quality receiver traces full screen confidence and keeps current surface metadata.
 TEST_F(RayReflectionTest, MirrorQualityReceiverTracesFullScreenConfidenceAndKeepsCurrentSurfaceMetadata)
 {
     for (float filteredRoughness : {0.045f, 0.1f, 0.2f}) {
@@ -1596,6 +1630,7 @@ TEST_F(RayReflectionTest, MirrorQualityReceiverTracesFullScreenConfidenceAndKeep
     }
 }
 
+/// @brief Glass slab replaces radiance and cannot be skipped by SSR.
 TEST_F(RayReflectionTest, GlassSlabReplacesRadianceAndCannotBeSkippedBySsr)
 {
     ReflectionCase testCase;
@@ -1616,6 +1651,7 @@ TEST_F(RayReflectionTest, GlassSlabReplacesRadianceAndCannotBeSkippedBySsr)
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Glass Beer absorption uses actual boundary distance.
 TEST_F(RayReflectionTest, GlassBeerAbsorptionUsesActualBoundaryDistance)
 {
     for (float thickness : {0.5f, 1.0f, 1.5f}) {
@@ -1638,6 +1674,7 @@ TEST_F(RayReflectionTest, GlassBeerAbsorptionUsesActualBoundaryDistance)
     }
 }
 
+/// @brief Nested glass uses only the current medium absorption.
 TEST_F(RayReflectionTest, NestedGlassUsesOnlyTheCurrentMediumAbsorption)
 {
     ReflectionCase testCase;
@@ -1656,6 +1693,7 @@ TEST_F(RayReflectionTest, NestedGlassUsesOnlyTheCurrentMediumAbsorption)
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Thin glass uses two interfaces without inventing an interior.
 TEST_F(RayReflectionTest, ThinGlassUsesTwoInterfacesWithoutInventingAnInterior)
 {
     ReflectionCase testCase;
@@ -1672,6 +1710,7 @@ TEST_F(RayReflectionTest, ThinGlassUsesTwoInterfacesWithoutInventingAnInterior)
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Checks opaque reflection continues through secondary glass.
 TEST_F(RayReflectionTest, OpaqueReflectionContinuesThroughSecondaryGlass)
 {
     ReflectionCase testCase;
@@ -1685,6 +1724,7 @@ TEST_F(RayReflectionTest, OpaqueReflectionContinuesThroughSecondaryGlass)
     EXPECT_FLOAT_EQ(radiance[3], 1);
 }
 
+/// @brief Open or mismatched glass never publishes partially transported radiance.
 TEST_F(RayReflectionTest, OpenOrMismatchedGlassNeverPublishesPartiallyTransportedRadiance)
 {
     for (bool open : {false, true}) {
@@ -1702,6 +1742,7 @@ TEST_F(RayReflectionTest, OpenOrMismatchedGlassNeverPublishesPartiallyTransporte
     }
 }
 
+/// @brief Glass scene preserves opaque backface environment occlusion.
 TEST_F(RayReflectionTest, GlassScenePreservesOpaqueBackfaceEnvironmentOcclusion)
 {
     ReflectionCase testCase;
@@ -1732,6 +1773,7 @@ TEST_F(RayReflectionTest, GlassScenePreservesOpaqueBackfaceEnvironmentOcclusion)
     for (size_t channel = 0; channel < 4; ++channel) EXPECT_FLOAT_EQ(glassOccluded[channel], opaqueOccluded[channel]);
 }
 
+/// @brief Checks camera glass transmission sees virtual area light after the g buffer surface.
 TEST_F(RayReflectionTest, CameraGlassTransmissionSeesVirtualAreaLightAfterTheGBufferSurface)
 {
     ReflectionCase testCase;
@@ -1766,6 +1808,7 @@ TEST_F(RayReflectionTest, CameraGlassTransmissionSeesVirtualAreaLightAfterTheGBu
     EXPECT_FLOAT_EQ(transmitted[3], 2);
 }
 
+/// @brief Rough index matched solid retains exact transmission and actual Beer distance.
 TEST_F(RayReflectionTest, RoughIndexMatchedSolidRetainsExactTransmissionAndActualBeerDistance)
 {
     for (float roughness : {0.04f, 0.5f, 1.0f}) {
@@ -1787,6 +1830,7 @@ TEST_F(RayReflectionTest, RoughIndexMatchedSolidRetainsExactTransmissionAndActua
     }
 }
 
+/// @brief Rough unequal index solid uses finite shared dielectric transport.
 TEST_F(RayReflectionTest, RoughUnequalIndexSolidUsesFiniteSharedDielectricTransport)
 {
     ReflectionCase testCase;
@@ -1807,6 +1851,7 @@ TEST_F(RayReflectionTest, RoughUnequalIndexSolidUsesFiniteSharedDielectricTransp
     }
 }
 
+/// @brief Opaque terminal within solid receives only its actual camera Beer segment.
 TEST_F(RayReflectionTest, OpaqueTerminalWithinSolidReceivesOnlyItsActualCameraBeerSegment)
 {
     for (float ior : {1.0f, 1.5f}) {
@@ -1828,6 +1873,7 @@ TEST_F(RayReflectionTest, OpaqueTerminalWithinSolidReceivesOnlyItsActualCameraBe
     }
 }
 
+/// @brief Checks camera inside solid exits before raster receiver and applies Beer from camera.
 TEST_F(RayReflectionTest, CameraInsideSolidExitsBeforeRasterReceiverAndAppliesBeerFromCamera)
 {
     ReflectionCase testCase;
@@ -1846,6 +1892,7 @@ TEST_F(RayReflectionTest, CameraInsideSolidExitsBeforeRasterReceiverAndAppliesBe
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Camera and opaque terminal within solid retain entire inside segment.
 TEST_F(RayReflectionTest, CameraAndOpaqueTerminalWithinSolidRetainEntireInsideSegment)
 {
     ReflectionCase testCase;
@@ -1865,6 +1912,7 @@ TEST_F(RayReflectionTest, CameraAndOpaqueTerminalWithinSolidRetainEntireInsideSe
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Camera inside nested solids initializes outer to inner exact owner order.
 TEST_F(RayReflectionTest, CameraInsideNestedSolidsInitializesOuterToInnerExactOwnerOrder)
 {
     ReflectionCase testCase;
@@ -1884,6 +1932,7 @@ TEST_F(RayReflectionTest, CameraInsideNestedSolidsInitializesOuterToInnerExactOw
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Initial open or non LIFO overlapping media never publishes a completed pixel.
 TEST_F(RayReflectionTest, InitialOpenOrNonLifoOverlappingMediaNeverPublishesACompletedPixel)
 {
     for (bool open : {false, true}) {
@@ -1903,6 +1952,7 @@ TEST_F(RayReflectionTest, InitialOpenOrNonLifoOverlappingMediaNeverPublishesACom
     }
 }
 
+/// @brief Inside total internal reflection retains medium until finite boundary budget.
 TEST_F(RayReflectionTest, InsideTotalInternalReflectionRetainsMediumUntilFiniteBoundaryBudget)
 {
     ReflectionCase testCase;
@@ -1919,6 +1969,7 @@ TEST_F(RayReflectionTest, InsideTotalInternalReflectionRetainsMediumUntilFiniteB
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Inside opaque emission and point light use distinct actual Beer distances.
 TEST_F(RayReflectionTest, InsideOpaqueEmissionAndPointLightUseDistinctActualBeerDistances)
 {
     ReflectionCase testCase;
@@ -1959,6 +2010,7 @@ TEST_F(RayReflectionTest, InsideOpaqueEmissionAndPointLightUseDistinctActualBeer
     EXPECT_FLOAT_EQ(outside[3], 2);
 }
 
+/// @brief Explicit trace distance rejects unproven miss and keeps reachable hit.
 TEST_F(RayReflectionTest, ExplicitTraceDistanceRejectsUnprovenMissAndKeepsReachableHit)
 {
     ReflectionCase testCase;
@@ -1980,6 +2032,7 @@ TEST_F(RayReflectionTest, ExplicitTraceDistanceRejectsUnprovenMissAndKeepsReacha
     for (size_t channel = 0; channel < 4; ++channel) EXPECT_NEAR(unbounded[channel], reachable[channel], 0.002f);
 }
 
+/// @brief Quality sample budget and invalid runtime settings use production constants.
 TEST_F(RayReflectionTest, QualitySampleBudgetAndInvalidRuntimeSettingsUseProductionConstants)
 {
     ReflectionCase testCase;
@@ -2006,6 +2059,7 @@ TEST_F(RayReflectionTest, QualitySampleBudgetAndInvalidRuntimeSettingsUseProduct
     for (size_t channel = 0; channel < 4; ++channel) EXPECT_FLOAT_EQ(invalid[channel], four[channel]);
 }
 
+/// @brief Initial medium exit before camera near plane remains an optical boundary.
 TEST_F(RayReflectionTest, InitialMediumExitBeforeCameraNearPlaneRemainsAnOpticalBoundary)
 {
     ReflectionCase testCase;
@@ -2025,6 +2079,7 @@ TEST_F(RayReflectionTest, InitialMediumExitBeforeCameraNearPlaneRemainsAnOptical
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Rough dielectric shading normal null has zero energy without provider failure.
 TEST_F(RayReflectionTest, RoughDielectricShadingNormalNullHasZeroEnergyWithoutProviderFailure)
 {
     ReflectionCase testCase;
@@ -2041,6 +2096,7 @@ TEST_F(RayReflectionTest, RoughDielectricShadingNormalNullHasZeroEnergyWithoutPr
     EXPECT_FLOAT_EQ(radiance[3], 2);
 }
 
+/// @brief Glass boundary quality limit drops only unfinished transport.
 TEST_F(RayReflectionTest, GlassBoundaryQualityLimitDropsOnlyUnfinishedTransport)
 {
     ReflectionCase testCase;
@@ -2064,6 +2120,7 @@ TEST_F(RayReflectionTest, GlassBoundaryQualityLimitDropsOnlyUnfinishedTransport)
     EXPECT_FLOAT_EQ(completed[3], 2);
 }
 
+/// @brief Inside unknown lighting never publishes an air approximation.
 TEST_F(RayReflectionTest, InsideUnknownLightingNeverPublishesAnAirApproximation)
 {
     for (bool sceneLighting : {false, true}) {
@@ -2081,6 +2138,7 @@ TEST_F(RayReflectionTest, InsideUnknownLightingNeverPublishesAnAirApproximation)
     }
 }
 
+/// @brief Smooth thin motion metadata uses actual terminal and current index.
 TEST_F(RayReflectionTest, SmoothThinMotionMetadataUsesActualTerminalAndCurrentIndex)
 {
     for (float ior : {1.0f, 1.5f}) {
@@ -2102,6 +2160,7 @@ TEST_F(RayReflectionTest, SmoothThinMotionMetadataUsesActualTerminalAndCurrentIn
     }
 }
 
+/// @brief Proven camera air keeps glass radiance and sample sequence.
 TEST_F(RayReflectionTest, ProvenCameraAirKeepsGlassRadianceAndSampleSequence)
 {
     for (float roughness : {0.0f, 0.25f}) {
@@ -2125,6 +2184,7 @@ TEST_F(RayReflectionTest, ProvenCameraAirKeepsGlassRadianceAndSampleSequence)
     }
 }
 
+/// @brief Proven camera air does not initialize secondary glass as air.
 TEST_F(RayReflectionTest, ProvenCameraAirDoesNotInitializeSecondaryGlassAsAir)
 {
     ReflectionCase testCase;
@@ -2142,6 +2202,7 @@ TEST_F(RayReflectionTest, ProvenCameraAirDoesNotInitializeSecondaryGlassAsAir)
         EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
 }
 
+/// @brief Orthographic and changed camera reject preparation time air proof.
 TEST_F(RayReflectionTest, OrthographicAndChangedCameraRejectPreparationTimeAirProof)
 {
     for (bool orthographic : {false, true}) {
@@ -2167,6 +2228,7 @@ TEST_F(RayReflectionTest, OrthographicAndChangedCameraRejectPreparationTimeAirPr
     }
 }
 
+/// @brief Proven camera air preserves SSR early out and thin motion metadata.
 TEST_F(RayReflectionTest, ProvenCameraAirPreservesSsrEarlyOutAndThinMotionMetadata)
 {
     ReflectionCase testCase;
@@ -2199,6 +2261,7 @@ TEST_F(RayReflectionTest, ProvenCameraAirPreservesSsrEarlyOutAndThinMotionMetada
         EXPECT_FLOAT_EQ(optimized[channel], original[channel]);
 }
 
+/// @brief Hybrid candidate policy keeps solid thin and rough radiance.
 TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsSolidThinAndRoughRadiance)
 {
     for (bool secondary : {false, true}) {
@@ -2230,6 +2293,7 @@ TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsSolidThinAndRoughRadiance)
     }
 }
 
+/// @brief Hybrid candidate policy keeps initial nested and secondary media.
 TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsInitialNestedAndSecondaryMedia)
 {
     for (uint32_t mediumCase = 0; mediumCase < 4; ++mediumCase) {
@@ -2256,6 +2320,7 @@ TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsInitialNestedAndSecondaryMed
     }
 }
 
+/// @brief Hybrid candidate policy preserves backface and alpha shadow queries.
 TEST_F(RayReflectionTest, HybridCandidatePolicyPreservesBackfaceAndAlphaShadowQueries)
 {
     for (uint8_t mask : {uint8_t{2}, uint8_t{4}}) {
@@ -2292,6 +2357,7 @@ TEST_F(RayReflectionTest, HybridCandidatePolicyPreservesBackfaceAndAlphaShadowQu
     }
 }
 
+/// @brief Hybrid candidate policy keeps texture evaluation and thin motion.
 TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsTextureEvaluationAndThinMotion)
 {
     for (uint32_t textureCase = 0; textureCase < 3; ++textureCase) {
@@ -2317,6 +2383,7 @@ TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsTextureEvaluationAndThinMoti
     }
 }
 
+/// @brief Hybrid candidate policy keeps unsupported glass fail closed.
 TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsUnsupportedGlassFailClosed)
 {
     for (uint32_t invalidCase = 0; invalidCase < 4; ++invalidCase) {
@@ -2341,6 +2408,7 @@ TEST_F(RayReflectionTest, HybridCandidatePolicyKeepsUnsupportedGlassFailClosed)
     }
 }
 
+/// @brief Performance preserves sharp and glass overrides at odd extent.
 TEST_F(RayReflectionTest, PerformancePreservesSharpAndGlassOverridesAtOddExtent)
 {
     for (bool glass : {false, true}) {
@@ -2366,6 +2434,7 @@ TEST_F(RayReflectionTest, PerformancePreservesSharpAndGlassOverridesAtOddExtent)
     }
 }
 
+/// @brief Half rough transport keeps SSR holes when representative is screen covered.
 TEST_F(RayReflectionTest, HalfRoughTransportKeepsSsrHolesWhenRepresentativeIsScreenCovered)
 {
     ReflectionCase testCase;

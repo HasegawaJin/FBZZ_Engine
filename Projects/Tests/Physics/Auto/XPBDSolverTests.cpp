@@ -40,6 +40,7 @@ std::unique_ptr<physics::RigidBody> MakeBody(const math::Vector3& position, floa
 
 } /// @note namespace
 
+/// @brief Free fall matches analytic drop.
 TEST_F(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
 {
     physics::XPBDSolver solver;
@@ -58,6 +59,7 @@ TEST_F(XPBDSolverTest, FreeFallMatchesAnalyticDrop)
     solver.ClearBodies();
 }
 
+/// @brief Plane contact stops the body.
 TEST_F(XPBDSolverTest, PlaneContactStopsTheBody)
 {
     physics::XPBDSolver solver;
@@ -76,6 +78,7 @@ TEST_F(XPBDSolverTest, PlaneContactStopsTheBody)
     solver.ClearBodies();
 }
 
+/// @brief Resting height is independent of substep count.
 /// M1 の核心。刻みを変えても釣り合いの位置が動かないこと。
 TEST_F(XPBDSolverTest, RestingHeightIsIndependentOfSubstepCount)
 {
@@ -100,6 +103,7 @@ TEST_F(XPBDSolverTest, RestingHeightIsIndependentOfSubstepCount)
     EXPECT_NEAR(coarse, fine, 1.0e-4f);
 }
 
+/// @brief Off center contact generates rotation.
 TEST_F(XPBDSolverTest, OffCenterContactGeneratesRotation)
 {
     physics::XPBDSolver solver;
@@ -120,6 +124,7 @@ TEST_F(XPBDSolverTest, OffCenterContactGeneratesRotation)
     solver.ClearBodies();
 }
 
+/// @brief Static body is not integrated.
 TEST_F(XPBDSolverTest, StaticBodyIsNotIntegrated)
 {
     physics::XPBDSolver solver;
@@ -135,6 +140,7 @@ TEST_F(XPBDSolverTest, StaticBodyIsNotIntegrated)
     solver.ClearBodies();
 }
 
+/// @brief Restores sleep setting when removed.
 TEST_F(XPBDSolverTest, RestoresSleepSettingWhenRemoved)
 {
     physics::XPBDSolver solver;
@@ -149,6 +155,7 @@ TEST_F(XPBDSolverTest, RestoresSleepSettingWhenRemoved)
     EXPECT_EQ(solver.GetBodyCount(), 0);
 }
 
+/// @brief Ignores duplicate body registration.
 TEST_F(XPBDSolverTest, IgnoresDuplicateBodyRegistration)
 {
     physics::XPBDSolver solver;
@@ -161,6 +168,7 @@ TEST_F(XPBDSolverTest, IgnoresDuplicateBodyRegistration)
     solver.ClearBodies();
 }
 
+/// @brief Final projection is included in derived velocity.
 TEST_F(XPBDSolverTest, FinalProjectionIsIncludedInDerivedVelocity)
 {
     physics::XPBDSolver solver;
@@ -178,6 +186,7 @@ TEST_F(XPBDSolverTest, FinalProjectionIsIncludedInDerivedVelocity)
     solver.ClearBodies();
 }
 
+/// @brief Limit projection stops outward motion without creating velocity.
 TEST_F(XPBDSolverTest, LimitProjectionStopsOutwardMotionWithoutCreatingVelocity)
 {
     for (float outwardSpeed : {0.0f, 0.25f}) {

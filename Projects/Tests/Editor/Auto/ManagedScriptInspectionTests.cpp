@@ -101,6 +101,7 @@ protected:
     }
 };
 
+/// @brief Returns safe fields and original fault without running user getters.
 /// @note 一世代内で disabled、fault、field 読み取り失敗、失効参照を検証し、試験都合の GC 待ちを追加しない。
 TEST_F(ManagedScriptInspectionTest, ReturnsSafeFieldsAndOriginalFaultWithoutRunningUserGetters)
 {
@@ -279,6 +280,7 @@ TEST_F(ManagedScriptInspectionTest, ReturnsSafeFieldsAndOriginalFaultWithoutRunn
     EXPECT_EQ(healthyResult.Find("fields")->Find("updateCount")->AsInt(), 0);
 }
 
+/// @brief Large array summary and snapshot pages use the actual bus without truncating stored values.
 TEST_F(ManagedScriptInspectionTest, LargeArraySummaryAndSnapshotPagesUseTheActualBusWithoutTruncatingStoredValues)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();
@@ -324,6 +326,7 @@ TEST_F(ManagedScriptInspectionTest, LargeArraySummaryAndSnapshotPagesUseTheActua
     EXPECT_EQ(Send("script.inspect", owner.instanceId, handle, &page).Find("result"), nullptr);
 }
 
+/// @brief Public saved script IDs reacquire duplicate types after reload and scene restore.
 TEST_F(ManagedScriptInspectionTest, PublicSavedScriptIdsReacquireDuplicateTypesAfterReloadAndSceneRestore)
 {
     auto& runtime = scene::ManagedScriptRuntime::Instance();

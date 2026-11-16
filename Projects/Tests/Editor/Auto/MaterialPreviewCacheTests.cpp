@@ -66,6 +66,7 @@ public:
 
 class MaterialPreviewCacheTest : public testkit::Fixture {};
 
+/// @brief Direct parameter edits and undo are compared by their actual values.
 TEST_F(MaterialPreviewCacheTest, DirectParameterEditsAndUndoAreComparedByTheirActualValues)
 {
     asset::MaterialAssetAuthoring source;
@@ -86,6 +87,7 @@ TEST_F(MaterialPreviewCacheTest, DirectParameterEditsAndUndoAreComparedByTheirAc
     EXPECT_FALSE(mp::MaterialPreviewValuesEqual(source, edited));
 }
 
+/// @brief Hash map order does not change material identity.
 TEST_F(MaterialPreviewCacheTest, HashMapOrderDoesNotChangeMaterialIdentity)
 {
     asset::MaterialAssetAuthoring a, b;
@@ -102,6 +104,7 @@ TEST_F(MaterialPreviewCacheTest, HashMapOrderDoesNotChangeMaterialIdentity)
     EXPECT_TRUE(mp::MaterialPreviewValuesEqual(a, b));
 }
 
+/// @brief Shader texture render state particle and dielectric edits invalidate identity.
 TEST_F(MaterialPreviewCacheTest, ShaderTextureRenderStateParticleAndDielectricEditsInvalidateIdentity)
 {
     const asset::MaterialAssetAuthoring source;
@@ -125,6 +128,7 @@ TEST_F(MaterialPreviewCacheTest, ShaderTextureRenderStateParticleAndDielectricEd
     EXPECT_FALSE(mp::MaterialPreviewValuesEqual(source, edited));
 }
 
+/// @brief Stable nan bits do not force unchanged material to rebuild.
 TEST_F(MaterialPreviewCacheTest, StableNanBitsDoNotForceUnchangedMaterialToRebuild)
 {
     asset::MaterialAssetAuthoring source;
@@ -138,6 +142,7 @@ TEST_F(MaterialPreviewCacheTest, StableNanBitsDoNotForceUnchangedMaterialToRebui
     EXPECT_FALSE(mp::MaterialPreviewValuesEqual(source, edited));
 }
 
+/// @brief Resource reset replacement shader reload and project switch invalidate GPU key.
 TEST_F(MaterialPreviewCacheTest, ResourceResetReplacementShaderReloadAndProjectSwitchInvalidateGpuKey)
 {
     mp::PreviewGpuKey source;
@@ -166,6 +171,7 @@ TEST_F(MaterialPreviewCacheTest, ResourceResetReplacementShaderReloadAndProjectS
     EXPECT_FALSE(cache.IsCurrent(changed));
 }
 
+/// @brief Texture reload keeping its handle still invalidates GPU key.
 TEST_F(MaterialPreviewCacheTest, TextureReloadKeepingItsHandleStillInvalidatesGpuKey)
 {
     mp::PreviewGpuKey source;
@@ -184,6 +190,7 @@ TEST_F(MaterialPreviewCacheTest, TextureReloadKeepingItsHandleStillInvalidatesGp
     EXPECT_FALSE(cache.IsCurrent(reloaded));
 }
 
+/// @brief Camera light shape channel and fiber inputs invalidate the rendered frame.
 TEST_F(MaterialPreviewCacheTest, CameraLightShapeChannelAndFiberInputsInvalidateTheRenderedFrame)
 {
     mp::RenderDesc desc;
@@ -216,6 +223,7 @@ TEST_F(MaterialPreviewCacheTest, CameraLightShapeChannelAndFiberInputsInvalidate
     EXPECT_FALSE(cache.IsCurrent(mp::MakePreviewFrameKey(1, desc, mp::Shape::Sphere, false)));
 }
 
+/// @brief Every time dependent preview remains dynamic until animation is paused.
 TEST_F(MaterialPreviewCacheTest, EveryTimeDependentPreviewRemainsDynamicUntilAnimationIsPaused)
 {
     for (const auto flavor : { mp::Flavor::Water, mp::Flavor::Fiber,
@@ -228,6 +236,7 @@ TEST_F(MaterialPreviewCacheTest, EveryTimeDependentPreviewRemainsDynamicUntilAni
         EXPECT_FALSE(mp::UsesPreviewTime(flavor, true));
 }
 
+/// @brief An invalidated frame cannot be reused before another successful commit.
 TEST_F(MaterialPreviewCacheTest, AnInvalidatedFrameCannotBeReusedBeforeAnotherSuccessfulCommit)
 {
     mp::RenderDesc desc;
@@ -243,6 +252,7 @@ TEST_F(MaterialPreviewCacheTest, AnInvalidatedFrameCannotBeReusedBeforeAnotherSu
     EXPECT_TRUE(cache.IsCurrent(key));
 }
 
+/// @brief Skinned shape recreates live buffers after resource reset.
 TEST_F(MaterialPreviewCacheTest, SkinnedShapeRecreatesLiveBuffersAfterResourceReset)
 {
     PreviewLifetimeRenderer renderer;
@@ -261,6 +271,7 @@ TEST_F(MaterialPreviewCacheTest, SkinnedShapeRecreatesLiveBuffersAfterResourceRe
     EXPECT_NE(rebuilt->vertexBuffer, previousVertex);
 }
 
+/// @brief Skinned shape does not reuse another managers numeric handles.
 TEST_F(MaterialPreviewCacheTest, SkinnedShapeDoesNotReuseAnotherManagersNumericHandles)
 {
     PreviewLifetimeRenderer renderer;
@@ -279,6 +290,7 @@ TEST_F(MaterialPreviewCacheTest, SkinnedShapeDoesNotReuseAnotherManagersNumericH
     EXPECT_NE(first.Get(previousVertex), nullptr);
 }
 
+/// @brief Surface shape recreates live buffers after resource reset.
 TEST_F(MaterialPreviewCacheTest, SurfaceShapeRecreatesLiveBuffersAfterResourceReset)
 {
     PreviewLifetimeRenderer renderer;
@@ -297,6 +309,7 @@ TEST_F(MaterialPreviewCacheTest, SurfaceShapeRecreatesLiveBuffersAfterResourceRe
     EXPECT_NE(rebuilt->vertexBuffer, previousVertex);
 }
 
+/// @brief Surface shape does not reuse another managers numeric handles.
 TEST_F(MaterialPreviewCacheTest, SurfaceShapeDoesNotReuseAnotherManagersNumericHandles)
 {
     PreviewLifetimeRenderer renderer;
@@ -315,6 +328,7 @@ TEST_F(MaterialPreviewCacheTest, SurfaceShapeDoesNotReuseAnotherManagersNumericH
     EXPECT_NE(first.Get(previousVertex), nullptr);
 }
 
+/// @brief Terrain and water mesh caches reuse then rebuild after resource reset.
 TEST_F(MaterialPreviewCacheTest, TerrainAndWaterMeshCachesReuseThenRebuildAfterResourceReset)
 {
     PreviewLifetimeRenderer renderer;
@@ -339,6 +353,7 @@ TEST_F(MaterialPreviewCacheTest, TerrainAndWaterMeshCachesReuseThenRebuildAfterR
     }
 }
 
+/// @brief Terrain and water mesh caches keep each managers resources alive.
 TEST_F(MaterialPreviewCacheTest, TerrainAndWaterMeshCachesKeepEachManagersResourcesAlive)
 {
     PreviewLifetimeRenderer renderer;

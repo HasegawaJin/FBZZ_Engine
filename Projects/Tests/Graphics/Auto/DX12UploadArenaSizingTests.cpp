@@ -14,6 +14,7 @@ using namespace renderer::upload_arena_detail;
 class DX12UploadArenaSizingTest : public testkit::Fixture {};
 } /// @note namespace
 
+/// @brief Unset preserves default without warning.
 TEST_F(DX12UploadArenaSizingTest, UnsetPreservesDefaultWithoutWarning)
 {
     constexpr auto sizing = ParseUploadArenaMiB({}, false);
@@ -23,6 +24,7 @@ TEST_F(DX12UploadArenaSizingTest, UnsetPreservesDefaultWithoutWarning)
     EXPECT_FALSE(sizing.specified);
 }
 
+/// @brief Accepts only four bounded capacities.
 TEST_F(DX12UploadArenaSizingTest, AcceptsOnlyFourBoundedCapacities)
 {
     constexpr std::array<std::string_view, 4> tokens{"16", "32", "64", "128"};
@@ -36,6 +38,7 @@ TEST_F(DX12UploadArenaSizingTest, AcceptsOnlyFourBoundedCapacities)
     }
 }
 
+/// @brief Checks invalid explicit tokens fall back to 16 mi b.
 TEST_F(DX12UploadArenaSizingTest, InvalidExplicitTokensFallBackTo16MiB)
 {
     constexpr std::array<std::string_view, 20> tokens{

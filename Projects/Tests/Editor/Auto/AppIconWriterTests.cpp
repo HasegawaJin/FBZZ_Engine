@@ -142,6 +142,7 @@ protected:
     testkit::TempDir m_temp{ "appicon" };
 };
 
+/// @brief Reports the source size without decoding.
 TEST_F(AppIconWriterTest, ReportsTheSourceSizeWithoutDecoding)
 {
     const std::filesystem::path image = m_temp.File("icon.tga");
@@ -155,6 +156,7 @@ TEST_F(AppIconWriterTest, ReportsTheSourceSizeWithoutDecoding)
     EXPECT_FALSE(info.isIco);
 }
 
+/// @brief Rejects a file that is not an image.
 TEST_F(AppIconWriterTest, RejectsAFileThatIsNotAnImage)
 {
     const std::filesystem::path notAnImage = m_temp.File("notes.txt");
@@ -166,6 +168,7 @@ TEST_F(AppIconWriterTest, RejectsAFileThatIsNotAnImage)
     EXPECT_FALSE(error.empty());
 }
 
+/// @brief Rejects a missing file.
 TEST_F(AppIconWriterTest, RejectsAMissingFile)
 {
     AppIconWriter::SourceInfo info;
@@ -173,6 +176,7 @@ TEST_F(AppIconWriterTest, RejectsAMissingFile)
     EXPECT_FALSE(AppIconWriter::Inspect(m_temp.File("gone.png"), info, error));
 }
 
+/// @brief Writes every generated size into the executable.
 TEST_F(AppIconWriterTest, WritesEveryGeneratedSizeIntoTheExe)
 {
     const std::filesystem::path image = m_temp.File("icon.tga");
@@ -221,6 +225,7 @@ TEST_F(AppIconWriterTest, WritesEveryGeneratedSizeIntoTheExe)
     EXPECT_FALSE(ReadIconImage(exe, last.id).empty());
 }
 
+/// @brief Keeps the executable runnable shape when applied twice.
 TEST_F(AppIconWriterTest, KeepsTheExeRunnableShapeWhenAppliedTwice)
 {
     const std::filesystem::path image = m_temp.File("icon.tga");
@@ -242,6 +247,7 @@ TEST_F(AppIconWriterTest, KeepsTheExeRunnableShapeWhenAppliedTwice)
     EXPECT_EQ(header.count, 6);
 }
 
+/// @brief Writes icons when the executable has no existing resources.
 TEST_F(AppIconWriterTest, WritesIconsWhenTheExeHasNoExistingResources)
 {
     const std::filesystem::path image = m_temp.File("icon.tga");

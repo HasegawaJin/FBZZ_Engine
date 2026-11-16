@@ -15,6 +15,7 @@
 
 namespace fbzz::tests {
 
+/// @brief Packs sources for the active time window and omits them outside that window.
 TEST(FluidGpuStepTest, SourcesTurnOnAndOffWithTheirWindow)
 {
     fluid::FluidRecipe recipe;
@@ -32,6 +33,7 @@ TEST(FluidGpuStepTest, SourcesTurnOnAndOffWithTheirWindow)
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 64, 9.0f, 0.01f, 1.0f, 1.0f).sources[1].amounts[3], 1.0f);
 }
 
+/// @brief Dissipation is converted to the step length.
 TEST(FluidGpuStepTest, DissipationIsConvertedToTheStepLength)
 {
     fluid::FluidRecipe recipe;
@@ -41,6 +43,7 @@ TEST(FluidGpuStepTest, DissipationIsConvertedToTheStepLength)
     EXPECT_NEAR(step.cellSize, 2.0f / 32.0f, 1.0e-7f);
 }
 
+/// @brief Tiny sources grow to one cell.
 TEST(FluidGpuStepTest, TinySourcesGrowToOneCell)
 {
     fluid::FluidRecipe recipe;
@@ -52,6 +55,7 @@ TEST(FluidGpuStepTest, TinySourcesGrowToOneCell)
     EXPECT_NEAR(step.sources[0].sizeNoise[2], step.cellSize, 1.0e-7f);
 }
 
+/// @brief Sphere radius is replicated on every axis.
 TEST(FluidGpuStepTest, SphereRadiusIsReplicatedOnEveryAxis)
 {
     fluid::FluidRecipe recipe;
@@ -66,6 +70,7 @@ TEST(FluidGpuStepTest, SphereRadiusIsReplicatedOnEveryAxis)
     EXPECT_EQ(step.sources[0].sizeNoise[2], 0.3f);
 }
 
+/// @brief Moving source packs the posed center and its speed.
 TEST(FluidGpuStepTest, MovingSourcePacksThePosedCenterAndItsSpeed)
 {
     fluid::FluidRecipe recipe;
@@ -98,6 +103,7 @@ TEST(FluidGpuStepTest, MovingSourcePacksThePosedCenterAndItsSpeed)
     EXPECT_EQ(still.sources[0].velocity[3], 0.0f);
 }
 
+/// @brief Disabled parts are skipped.
 TEST(FluidGpuStepTest, DisabledPartsAreSkipped)
 {
     fluid::FluidRecipe recipe;
@@ -120,6 +126,7 @@ TEST(FluidGpuStepTest, DisabledPartsAreSkipped)
     EXPECT_EQ(step.forces[0].centerType[3], static_cast<float>(fluid::FluidForceType::Drag));
 }
 
+/// @brief Color key packs into extra and follows the enabled sources.
 TEST(FluidGpuStepTest, ColorKeyPacksIntoExtraAndFollowsTheEnabledSources)
 {
     fluid::FluidRecipe recipe;
@@ -143,6 +150,7 @@ TEST(FluidGpuStepTest, ColorKeyPacksIntoExtraAndFollowsTheEnabledSources)
     EXPECT_EQ(step.sources[2].extra[0], 0.0f);
 }
 
+/// @brief Cone and ring pack their shape and a normalized axis.
 TEST(FluidGpuStepTest, ConeAndRingPackTheirShapeAndANormalizedAxis)
 {
     fluid::FluidRecipe recipe;
@@ -172,6 +180,7 @@ TEST(FluidGpuStepTest, ConeAndRingPackTheirShapeAndANormalizedAxis)
     EXPECT_EQ(step.sources[1].sizeNoise[1], 0.1f);
 }
 
+/// @brief Forces pack type strength and params.
 TEST(FluidGpuStepTest, ForcesPackTypeStrengthAndParams)
 {
     fluid::FluidRecipe recipe;
@@ -212,6 +221,7 @@ TEST(FluidGpuStepTest, ForcesPackTypeStrengthAndParams)
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 1.5f, 0.01f, 1.0f, 1.0f).forceCount, 2u);
 }
 
+/// @brief Moving force packs the posed center.
 TEST(FluidGpuStepTest, MovingForcePacksThePosedCenter)
 {
     fluid::FluidRecipe recipe;
@@ -225,6 +235,7 @@ TEST(FluidGpuStepTest, MovingForcePacksThePosedCenter)
     EXPECT_NEAR(step.forces[0].centerType[1], 0.5f, 1.0e-6f);
 }
 
+/// @brief Extra parts are dropped.
 TEST(FluidGpuStepTest, ExtraPartsAreDropped)
 {
     fluid::FluidRecipe recipe;
@@ -235,6 +246,7 @@ TEST(FluidGpuStepTest, ExtraPartsAreDropped)
     EXPECT_EQ(step.forceCount, static_cast<std::uint32_t>(fluid::kMaxFluidGpuForces));
 }
 
+/// @brief Colliders pack shape widened size and normal.
 TEST(FluidGpuStepTest, CollidersPackShapeWidenedSizeAndNormal)
 {
     fluid::FluidRecipe recipe;
@@ -283,6 +295,7 @@ TEST(FluidGpuStepTest, CollidersPackShapeWidenedSizeAndNormal)
     EXPECT_EQ(step.colliders[3].normal[2], 0.0f);
 }
 
+/// @brief Packs colliders only during their active time window.
 TEST(FluidGpuStepTest, CollidersComeAndGoWithTheirWindow)
 {
     fluid::FluidRecipe recipe;
@@ -298,6 +311,7 @@ TEST(FluidGpuStepTest, CollidersComeAndGoWithTheirWindow)
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 32, 0.9f, 0.01f, 1.0f, 1.0f).colliderCount, 1u);
 }
 
+/// @brief Moving collider packs the posed center and its speed.
 TEST(FluidGpuStepTest, MovingColliderPacksThePosedCenterAndItsSpeed)
 {
     fluid::FluidRecipe recipe;
@@ -325,6 +339,7 @@ TEST(FluidGpuStepTest, MovingColliderPacksThePosedCenterAndItsSpeed)
     EXPECT_EQ(still.colliders[0].velocity[2], 0.0f);
 }
 
+/// @brief Disabled and extra colliders are dropped.
 TEST(FluidGpuStepTest, DisabledAndExtraCollidersAreDropped)
 {
     fluid::FluidRecipe recipe;
@@ -345,6 +360,7 @@ TEST(FluidGpuStepTest, DisabledAndExtraCollidersAreDropped)
               static_cast<std::uint32_t>(fluid::kMaxFluidGpuColliders));
 }
 
+/// @brief Texture sources take atlas tiles in packing order.
 TEST(FluidGpuStepTest, TextureSourcesTakeAtlasTilesInPackingOrder)
 {
     fluid::FluidRecipe recipe;
@@ -375,6 +391,7 @@ TEST(FluidGpuStepTest, TextureSourcesTakeAtlasTilesInPackingOrder)
     EXPECT_EQ(fluid::FluidGpuMaskPaths(recipe), expected);
 }
 
+/// @brief Texture source axis is the basis normal.
 TEST(FluidGpuStepTest, TextureSourceAxisIsTheBasisNormal)
 {
     fluid::FluidRecipe recipe;
@@ -396,6 +413,7 @@ TEST(FluidGpuStepTest, TextureSourceAxisIsTheBasisNormal)
     EXPECT_NEAR(step.sources[1].axis[2], 1.0f, 1.0e-6f);
 }
 
+/// @brief Mask paths stop at the source limit.
 TEST(FluidGpuStepTest, MaskPathsStopAtTheSourceLimit)
 {
     fluid::FluidRecipe recipe;
@@ -414,6 +432,7 @@ TEST(FluidGpuStepTest, MaskPathsStopAtTheSourceLimit)
     EXPECT_EQ(fluid::PackFluidGpuStep(recipe, 16, 0.0f, 0.01f, 1.0f, 1.0f).sources[3].axis[3], 0.0f);
 }
 
+/// @brief Noise offset depends only on the seed.
 TEST(FluidGpuStepTest, NoiseOffsetDependsOnlyOnTheSeed)
 {
     const math::Vector3 a = fluid::FluidNoiseOffset(7);

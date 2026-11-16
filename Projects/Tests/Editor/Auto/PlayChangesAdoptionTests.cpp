@@ -64,6 +64,7 @@ protected:
     editor::UndoStack m_editUndo;
     int m_dirty = 0;
 };
+/// @brief Play uses independent unsaved terrain snapshots without reading assets.
 TEST_F(PlayChangesAdoptionTests, PlayUsesIndependentUnsavedTerrainSnapshotsWithoutReadingAssets) {
     struct TerrainReadLog final : core::ILogSink {
         TerrainReadLog() { core::Logger::AddSink(this); }
@@ -122,6 +123,7 @@ TEST_F(PlayChangesAdoptionTests, PlayUsesIndependentUnsavedTerrainSnapshotsWitho
     EXPECT_TRUE(edited.IsHoleCell(0, 0));
     EXPECT_FALSE(edited.colliderDirty);
 }
+/// @brief Selected native fields preserve original objects and unselected components.
 TEST_F(PlayChangesAdoptionTests, SelectedNativeFieldsPreserveOriginalObjectsAndUnselectedComponents) {
     auto& original = AttachedScene()->CreateGameObject("Authoring");
     const auto id = original.GetID(); const auto guid = original.instanceId; auto* address = &original;
@@ -138,6 +140,7 @@ TEST_F(PlayChangesAdoptionTests, SelectedNativeFieldsPreserveOriginalObjectsAndU
     ASSERT_TRUE(m_editUndo.Undo()); EXPECT_FLOAT_EQ(original.transform.position.x, 0.0f);
     ASSERT_TRUE(m_editUndo.Redo()); EXPECT_FLOAT_EQ(original.transform.position.x, 2.0f); EXPECT_EQ(&original, address);
 }
+/// @brief Generated forest preserves parents references and persistence across undo redo.
 TEST_F(PlayChangesAdoptionTests, GeneratedForestPreservesParentsReferencesAndPersistenceAcrossUndoRedo) {
     auto& anchor = AttachedScene()->CreateGameObject("Anchor"); const auto anchorGuid = anchor.instanceId;
     Start(); auto& runtime = *m_play.PlayScene();
@@ -167,12 +170,14 @@ TEST_F(PlayChangesAdoptionTests, GeneratedForestPreservesParentsReferencesAndPer
     ASSERT_TRUE(m_editUndo.Redo()); adopted = AttachedScene()->FindByGuid(rootGuid); ASSERT_NE(adopted, nullptr);
     EXPECT_NE(adopted->GetID(), firstBirth); EXPECT_EQ(adopted->GetComponent<scene::TransformConstraintComponent>()->target.Resolve(*AttachedScene()), AttachedScene()->FindByGuid(childGuid));
 }
+/// @brief Generated unsupported component rejects the whole capture.
 TEST_F(PlayChangesAdoptionTests, GeneratedUnsupportedComponentRejectsTheWholeCapture) {
     AttachedScene()->CreateGameObject("Initial"); Start();
     auto& root = m_play.PlayScene()->CreateGameObject("Unsupported"); root.AddComponent<scene::BoxColliderComponent>();
     const auto result = Capture(Generated(root.instanceId)); EXPECT_FALSE(result.ok); EXPECT_EQ(result.errorCode, "UNSUPPORTED_GENERATED");
     EXPECT_NE(result.message.find("BoxColliderComponent"), std::string::npos); Stop(); EXPECT_EQ(AttachedScene()->GameObjectCount(), 1u); EXPECT_EQ(m_dirty, 0);
 }
+/// @brief Unselected generated reference requires explicit graph selection.
 TEST_F(PlayChangesAdoptionTests, UnselectedGeneratedReferenceRequiresExplicitGraphSelection) {
     AttachedScene()->CreateGameObject("Initial"); Start(); auto& runtime = *m_play.PlayScene();
     auto& root = runtime.CreateGameObject("Root"); auto& target = runtime.CreateGameObject("OtherRoot");
@@ -181,12 +186,14 @@ TEST_F(PlayChangesAdoptionTests, UnselectedGeneratedReferenceRequiresExplicitGra
     auto selection = Generated(root.instanceId); auto roots = *selection.Find("generatedRoots"); roots.Push(target.instanceId); selection.Set("generatedRoots", roots);
     EXPECT_TRUE(Capture(selection).ok);
 }
+/// @brief Unsupported native path and readded component are rejected.
 TEST_F(PlayChangesAdoptionTests, UnsupportedNativePathAndReaddedComponentAreRejected) {
     auto& owner = AttachedScene()->CreateGameObject("Camera"); const auto guid = owner.instanceId; owner.AddComponent<scene::CameraComponent>(); Start();
     EXPECT_EQ(Capture(Selection(guid, {"CameraComponent.aspectRatio"})).errorCode, "UNSUPPORTED_PATH");
     auto* source = m_play.PlayScene()->FindByGuid(guid); source->RemoveComponent<scene::CameraComponent>(); source->AddComponent<scene::CameraComponent>();
     EXPECT_EQ(Capture(Selection(guid, {"CameraComponent.fovY"})).errorCode, "STALE_COMPONENT");
 }
+/// @brief Checks stop without capture and cancellation never adopt runtime values.
 TEST_F(PlayChangesAdoptionTests, StopWithoutCaptureAndCancellationNeverAdoptRuntimeValues) {
     auto& owner = AttachedScene()->CreateGameObject("Original"); const auto guid = owner.instanceId;
     Start(); m_play.PlayScene()->FindByGuid(guid)->transform.position.x = 8.0f;
@@ -196,6 +203,7 @@ TEST_F(PlayChangesAdoptionTests, StopWithoutCaptureAndCancellationNeverAdoptRunt
     m_play.Cancel(); Context().activeScene = AttachedScene(); Context().undoStack = &m_editUndo;
     EXPECT_FALSE(Invoke("prepare", draft).ok); EXPECT_FLOAT_EQ(owner.transform.position.x, 0.0f); EXPECT_EQ(m_dirty, 0);
 }
+/// @brief Deleted owner and reloaded scene cannot receive an old draft.
 TEST_F(PlayChangesAdoptionTests, DeletedOwnerAndReloadedSceneCannotReceiveAnOldDraft) {
     auto& owner = AttachedScene()->CreateGameObject("Original"); const auto guid = owner.instanceId; const auto id = owner.GetID();
     Start(); m_play.PlayScene()->FindByGuid(guid)->transform.position.x = 5.0f;
@@ -205,6 +213,7 @@ TEST_F(PlayChangesAdoptionTests, DeletedOwnerAndReloadedSceneCannotReceiveAnOldD
     EXPECT_FALSE(Invoke("prepare", draft).ok); EXPECT_FLOAT_EQ(replacement.transform.position.x, 0.0f);
     AttachedScene()->Clear(); AttachedScene()->CreateGameObject("OtherScene"); EXPECT_FALSE(Invoke("prepare", draft).ok); EXPECT_EQ(m_dirty, 0);
 }
+/// @brief Name and ID conflicts leave every selected target unchanged.
 TEST_F(PlayChangesAdoptionTests, NameAndIdConflictsLeaveEverySelectedTargetUnchanged) {
     auto& owner = AttachedScene()->CreateGameObject("Original"); const auto guid = owner.instanceId;
     Start(); m_play.PlayScene()->FindByGuid(guid)->transform.position.x = 6.0f;
@@ -215,6 +224,7 @@ TEST_F(PlayChangesAdoptionTests, NameAndIdConflictsLeaveEverySelectedTargetUncha
     EXPECT_FLOAT_EQ(owner.transform.position.x, 0.0f); collision.name = "DifferentName"; collision.instanceId = generatedGuid;
     EXPECT_FALSE(Invoke("prepare", draft).ok); EXPECT_FLOAT_EQ(owner.transform.position.x, 0.0f); EXPECT_EQ(m_editUndo.GetHistorySize(), 0u); EXPECT_EQ(m_dirty, 0);
 }
+/// @brief Stale prepared history requires fresh review and undo conflict keeps cursor.
 TEST_F(PlayChangesAdoptionTests, StalePreparedHistoryRequiresFreshReviewAndUndoConflictKeepsCursor) {
     auto& owner = AttachedScene()->CreateGameObject("Original"); const auto guid = owner.instanceId;
     Start(); m_play.PlayScene()->FindByGuid(guid)->transform.position.x = 6.0f;
@@ -226,6 +236,7 @@ TEST_F(PlayChangesAdoptionTests, StalePreparedHistoryRequiresFreshReviewAndUndoC
     const auto cursor = m_editUndo.GetCursor(), revision = m_editUndo.GetRevision(); owner.transform.position.x = 7.0f;
     EXPECT_FALSE(m_editUndo.Undo()); EXPECT_EQ(m_editUndo.GetCursor(), cursor); EXPECT_EQ(m_editUndo.GetRevision(), revision); EXPECT_FLOAT_EQ(owner.transform.position.x, 7.0f);
 }
+/// @brief Generated undo refuses to destroy new unowned children.
 TEST_F(PlayChangesAdoptionTests, GeneratedUndoRefusesToDestroyNewUnownedChildren) {
     AttachedScene()->CreateGameObject("Initial"); Start(); auto& generated = m_play.PlayScene()->CreateGameObject("Generated"); const auto guid = generated.instanceId;
     const auto captured = Capture(Generated(guid)); ASSERT_TRUE(captured.ok); const auto draft = Id(captured); Stop();
@@ -233,6 +244,7 @@ TEST_F(PlayChangesAdoptionTests, GeneratedUndoRefusesToDestroyNewUnownedChildren
     auto* adopted = AttachedScene()->FindByGuid(guid); auto& added = AttachedScene()->CreateGameObject("LaterChild"); ASSERT_TRUE(added.SetParent(adopted));
     const auto cursor = m_editUndo.GetCursor(); EXPECT_FALSE(m_editUndo.Undo()); EXPECT_EQ(m_editUndo.GetCursor(), cursor); EXPECT_EQ(added.GetParent(), adopted);
 }
+/// @brief Draft IDs do not alias later play sessions and discard does not mutate edit.
 TEST_F(PlayChangesAdoptionTests, DraftIdsDoNotAliasLaterPlaySessionsAndDiscardDoesNotMutateEdit) {
     auto& owner = AttachedScene()->CreateGameObject("Original"); const auto guid = owner.instanceId;
     Start(); m_play.PlayScene()->FindByGuid(guid)->transform.position.x = 1.0f;
@@ -242,6 +254,7 @@ TEST_F(PlayChangesAdoptionTests, DraftIdsDoNotAliasLaterPlaySessionsAndDiscardDo
     const auto second = Capture(Selection(guid, {"Transform.position"})); ASSERT_TRUE(second.ok); EXPECT_NE(Id(second), firstId);
     EXPECT_FALSE(Invoke("review", firstId).ok); Stop(); EXPECT_FLOAT_EQ(owner.transform.position.x, 0.0f);
 }
+/// @brief Generated root groups append after existing siblings in play order across redo.
 TEST_F(PlayChangesAdoptionTests, GeneratedRootGroupsAppendAfterExistingSiblingsInPlayOrderAcrossRedo) {
     auto& anchor = AttachedScene()->CreateGameObject("Anchor"); const auto anchorGuid = anchor.instanceId;
     auto& existing = AttachedScene()->CreateGameObject("ExistingChild"); ASSERT_TRUE(existing.SetParent(&anchor));
@@ -265,6 +278,7 @@ TEST_F(PlayChangesAdoptionTests, GeneratedRootGroupsAppendAfterExistingSiblingsI
     ASSERT_EQ(anchor.GetChildCount(), 1); EXPECT_EQ(anchor.GetChild(0), &existing);
     ASSERT_TRUE(m_editUndo.Redo()) << m_editUndo.LastDiagnostic(); verifyOrder();
 }
+/// @brief Generated undo rejects new outside entity and custom codec references without advancing history.
 TEST_F(PlayChangesAdoptionTests, GeneratedUndoRejectsNewOutsideEntityAndCustomCodecReferencesWithoutAdvancingHistory) {
     auto& outside = AttachedScene()->CreateGameObject("Outside"); outside.AddComponent<scene::NavMeshAgentComponent>();
     Start(); auto& generated = m_play.PlayScene()->CreateGameObject("Generated"); const auto guid = generated.instanceId;
@@ -285,6 +299,7 @@ TEST_F(PlayChangesAdoptionTests, GeneratedUndoRejectsNewOutsideEntityAndCustomCo
     EXPECT_TRUE(lod.levels.back().renderers.front().instanceId.empty()); EXPECT_EQ(lod.levels.back().renderers.front().entity, adopted->GetID());
     lod.levels.clear(); ASSERT_TRUE(m_editUndo.Undo()) << m_editUndo.LastDiagnostic(); EXPECT_EQ(AttachedScene()->FindByGuid(guid), nullptr);
 }
+/// @brief Generated undo allows only the exact owned reference leaf being restored.
 TEST_F(PlayChangesAdoptionTests, GeneratedUndoAllowsOnlyTheExactOwnedReferenceLeafBeingRestored) {
     auto& owner = AttachedScene()->CreateGameObject("Original"); owner.AddComponent<scene::TransformConstraintComponent>(); const auto ownerGuid = owner.instanceId;
     Start(); auto& generated = m_play.PlayScene()->CreateGameObject("Generated"); const auto guid = generated.instanceId;
@@ -299,6 +314,7 @@ TEST_F(PlayChangesAdoptionTests, GeneratedUndoAllowsOnlyTheExactOwnedReferenceLe
     ASSERT_TRUE(m_editUndo.Redo()) << m_editUndo.LastDiagnostic();
     EXPECT_EQ(owner.GetComponent<scene::TransformConstraintComponent>()->target.Resolve(*AttachedScene()), AttachedScene()->FindByGuid(guid));
 }
+/// @brief Generated undo fails closed when passive reference proof omits an outside owner.
 TEST_F(PlayChangesAdoptionTests, GeneratedUndoFailsClosedWhenPassiveReferenceProofOmitsAnOutsideOwner) {
     AttachedScene()->CreateGameObject("Initial"); Start(); auto& generated = m_play.PlayScene()->CreateGameObject("Generated"); const auto guid = generated.instanceId;
     const auto captured = Capture(Generated(guid)); ASSERT_TRUE(captured.ok); const auto draft = Id(captured); Stop();

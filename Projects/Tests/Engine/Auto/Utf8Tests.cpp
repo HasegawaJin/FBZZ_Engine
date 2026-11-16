@@ -32,12 +32,14 @@ class Utf8Test : public testkit::EngineFixture {};
 
 /// @name 復号
 
+/// @brief Decodes ascii as itself.
 TEST_F(Utf8Test, DecodesAsciiAsItself)
 {
     EXPECT_EQ(DecodeFirst("A"), U'A');
     EXPECT_EQ(DecodeFirst("~"), U'~');
 }
 
+/// @brief Decodes two three and four byte sequences.
 TEST_F(Utf8Test, DecodesTwoThreeAndFourByteSequences)
 {
     /// @note é
@@ -48,6 +50,7 @@ TEST_F(Utf8Test, DecodesTwoThreeAndFourByteSequences)
     EXPECT_EQ(DecodeFirst("\xF0\x9F\x8E\xAE"), 0x1F3AEu);
 }
 
+/// @brief Advances the offset by the sequence length.
 TEST_F(Utf8Test, AdvancesTheOffsetByTheSequenceLength)
 {
     const std::string text = "a\xC3\xA9\xE3\x81\x82\xF0\x9F\x8E\xAE";
@@ -63,6 +66,7 @@ TEST_F(Utf8Test, AdvancesTheOffsetByTheSequenceLength)
     EXPECT_EQ(offset, 10u);
 }
 
+/// @brief Decodes zero past the end.
 TEST_F(Utf8Test, DecodesZeroPastTheEnd)
 {
     std::size_t offset = 3;
@@ -71,33 +75,39 @@ TEST_F(Utf8Test, DecodesZeroPastTheEnd)
 
 /// @name 壊れた入力
 
+/// @brief Replaces a continuation byte that starts a sequence.
 TEST_F(Utf8Test, ReplacesAContinuationByteThatStartsASequence)
 {
     /// @note 文字の途中から読み始めた場合。ここで戻らずに «読めなかった» と伝える。
     EXPECT_EQ(DecodeFirst("\xA0"), util::UTF8_REPLACEMENT_CHAR);
 }
 
+/// @brief Replaces a truncated sequence.
 TEST_F(Utf8Test, ReplacesATruncatedSequence)
 {
     EXPECT_EQ(DecodeFirst("\xE3\x81"), util::UTF8_REPLACEMENT_CHAR);
 }
 
+/// @brief Replaces an overlong encoding.
 TEST_F(Utf8Test, ReplacesAnOverlongEncoding)
 {
     /// @note "/" を 2 バイトで書いたもの。通すとパス比較をすり抜ける古典的な穴になる。
     EXPECT_EQ(DecodeFirst("\xC0\xAF"), util::UTF8_REPLACEMENT_CHAR);
 }
 
+/// @brief Replaces a surrogate half.
 TEST_F(Utf8Test, ReplacesASurrogateHalf)
 {
     EXPECT_EQ(DecodeFirst("\xED\xA0\x80"), util::UTF8_REPLACEMENT_CHAR);
 }
 
+/// @brief Replaces a code point beyond unicode.
 TEST_F(Utf8Test, ReplacesACodePointBeyondUnicode)
 {
     EXPECT_EQ(DecodeFirst("\xF5\x80\x80\x80"), util::UTF8_REPLACEMENT_CHAR);
 }
 
+/// @brief Always advances at least one byte on broken input.
 TEST_F(Utf8Test, AlwaysAdvancesAtLeastOneByteOnBrokenInput)
 {
     /// @note これが最も大事な契約。1 バイトも進めない経路があると、その文字列の描画で固まる。
@@ -116,6 +126,7 @@ TEST_F(Utf8Test, AlwaysAdvancesAtLeastOneByteOnBrokenInput)
 
 /// @name 文字数
 
+/// @brief Counts code points not bytes.
 TEST_F(Utf8Test, CountsCodePointsNotBytes)
 {
     /// @note "あA🎮" は 3 文字 8 バイト。バイト数で折り返すとカーソルが文字の途中へ入る。
@@ -124,6 +135,7 @@ TEST_F(Utf8Test, CountsCodePointsNotBytes)
     EXPECT_EQ(Utf8::Length("abc"), 3u);
 }
 
+/// @brief Counts broken bytes as one character each.
 TEST_F(Utf8Test, CountsBrokenBytesAsOneCharacterEach)
 {
     EXPECT_EQ(Utf8::Length("\xA0\xA0"), 2u);
@@ -131,6 +143,7 @@ TEST_F(Utf8Test, CountsBrokenBytesAsOneCharacterEach)
 
 /// @name 符号化
 
+/// @brief Appends each sequence length.
 TEST_F(Utf8Test, AppendsEachSequenceLength)
 {
     std::string out;
@@ -146,6 +159,7 @@ TEST_F(Utf8Test, AppendsEachSequenceLength)
     EXPECT_EQ(out, "\xF0\x9F\x8E\xAE");
 }
 
+/// @brief Append writes the replacement char for invalid code points.
 TEST_F(Utf8Test, AppendWritesTheReplacementCharForInvalidCodePoints)
 {
     std::string surrogate;
@@ -157,6 +171,7 @@ TEST_F(Utf8Test, AppendWritesTheReplacementCharForInvalidCodePoints)
     EXPECT_EQ(DecodeFirst(tooLarge), util::UTF8_REPLACEMENT_CHAR);
 }
 
+/// @brief Encoding round-trips through decoding.
 TEST_F(Utf8Test, EncodingRoundTripsThroughDecoding)
 {
     const char32_t samples[] = { U'A', 0x00E9u, 0x3042u, 0xFFFDu, 0x1F3AEu, 0x10FFFFu };

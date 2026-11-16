@@ -98,6 +98,7 @@ protected:
     bool m_open = false;
 };
 
+/// @brief Records real draw and keeps submitted constant bytes.
 TEST_F(ThreadedRenderingTest, RecordsRealDrawAndKeepsSubmittedConstantBytes)
 {
     const auto* material = m_resources->GetErrorMaterial(false);
@@ -139,6 +140,7 @@ TEST_F(ThreadedRenderingTest, RecordsRealDrawAndKeepsSubmittedConstantBytes)
     EXPECT_NEAR(second.z, 0.0f, 0.02f);
 }
 
+/// @brief Queued compute composite uses current pixels and skips rejected dispatch.
 TEST_F(ThreadedRenderingTest, QueuedComputeCompositeUsesCurrentPixelsAndSkipsRejectedDispatch)
 {
     testkit::TempDir temporary;
@@ -190,6 +192,7 @@ cbuffer Input : register(b5) { float4 tint; };
     }
 }
 
+/// @brief Color attachments preserve selection after rejection and restore ordinary targets.
 TEST_F(ThreadedRenderingTest, ColorAttachmentsPreserveSelectionAfterRejectionAndRestoreOrdinaryTargets)
 {
     auto& r = *m_bundle.renderer;
@@ -259,6 +262,7 @@ TEST_F(ThreadedRenderingTest, ColorAttachmentsPreserveSelectionAfterRejectionAnd
     EXPECT_NEAR(retainedColor.x, 1, 0.002f); EXPECT_NEAR(retainedColor.z, 0, 0.002f);
 }
 
+/// @brief Recorded profiler views keep pixels and rejected view out of completed snapshot.
 TEST_F(ThreadedRenderingTest, RecordedProfilerViewsKeepPixelsAndRejectedViewOutOfCompletedSnapshot)
 {
     auto& r = *m_bundle.renderer;
@@ -302,6 +306,7 @@ TEST_F(ThreadedRenderingTest, RecordedProfilerViewsKeepPixelsAndRejectedViewOutO
     }
 }
 
+/// @brief ImGui frame survives next UI frame on producer.
 TEST_F(ThreadedRenderingTest, ImGuiFrameSurvivesNextUiFrameOnProducer)
 {
     m_context.reset(ImGui::CreateContext());
@@ -336,6 +341,7 @@ TEST_F(ThreadedRenderingTest, ImGuiFrameSurvivesNextUiFrameOnProducer)
     EXPECT_NEAR(second.z, 1.0f, 0.02f);
 }
 
+/// @brief Additional native window can render resize and close.
 TEST_F(ThreadedRenderingTest, AdditionalNativeWindowCanRenderResizeAndClose)
 {
     m_context.reset(ImGui::CreateContext());

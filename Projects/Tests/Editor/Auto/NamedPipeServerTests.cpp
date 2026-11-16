@@ -101,6 +101,7 @@ protected:
     }
 };
 
+/// @brief Delivers the whole response before client disconnect.
 TEST_F(NamedPipeServerTest, DeliversTheWholeResponseBeforeClientDisconnect)
 {
     const HANDLE client = Connect();
@@ -111,6 +112,7 @@ TEST_F(NamedPipeServerTest, DeliversTheWholeResponseBeforeClientDisconnect)
     EXPECT_EQ(ReadLine(client), response + "\n");
 }
 
+/// @brief Stop cancels partial request and joins before restart.
 TEST_F(NamedPipeServerTest, StopCancelsPartialRequestAndJoinsBeforeRestart)
 {
     for (int index = 0; index < 8; ++index) {
@@ -129,6 +131,7 @@ TEST_F(NamedPipeServerTest, StopCancelsPartialRequestAndJoinsBeforeRestart)
     EXPECT_EQ(ReadLine(client), "after-restart\n");
 }
 
+/// @brief Checks stop unblocks a response larger than an unread pipe buffer.
 TEST_F(NamedPipeServerTest, StopUnblocksAResponseLargerThanAnUnreadPipeBuffer)
 {
     const HANDLE client = Connect();
@@ -145,6 +148,7 @@ TEST_F(NamedPipeServerTest, StopUnblocksAResponseLargerThanAnUnreadPipeBuffer)
     ASSERT_TRUE(m_server.Start(m_name));
 }
 
+/// @brief Handler can stop without waiting for its own response.
 TEST_F(NamedPipeServerTest, HandlerCanStopWithoutWaitingForItsOwnResponse)
 {
     const HANDLE client = Connect();
@@ -155,6 +159,7 @@ TEST_F(NamedPipeServerTest, HandlerCanStopWithoutWaitingForItsOwnResponse)
     ASSERT_TRUE(m_server.Start(m_name));
 }
 
+/// @brief Stop joins concurrent connections waiting for main thread.
 TEST_F(NamedPipeServerTest, StopJoinsConcurrentConnectionsWaitingForMainThread)
 {
     for (int index = 0; index < 8; ++index) {
@@ -169,6 +174,7 @@ TEST_F(NamedPipeServerTest, StopJoinsConcurrentConnectionsWaitingForMainThread)
     EXPECT_EQ(handled, 0u);
 }
 
+/// @brief Destruction stops a connected client waiting for more input.
 TEST_F(NamedPipeServerTest, DestructionStopsAConnectedClientWaitingForMoreInput)
 {
     const std::wstring name = m_name + L"-destructor";

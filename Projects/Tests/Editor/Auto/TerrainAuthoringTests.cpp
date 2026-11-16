@@ -80,6 +80,7 @@ const editor::OpData* FindNatureIssue(const editor::OpResult& result, std::strin
 
 } /// @note namespace
 
+/// @brief River rules allow high ground and follow signed flow.
 TEST_F(TerrainAuthoringTest, RiverRulesAllowHighGroundAndFollowSignedFlow)
 {
     auto& ground = MakeTerrain();
@@ -121,6 +122,7 @@ TEST_F(TerrainAuthoringTest, RiverRulesAllowHighGroundAndFollowSignedFlow)
     EXPECT_EQ(FindNatureIssue(result, "UPHILL"), nullptr);
 }
 
+/// @brief River rules find ridge between points and report missing ground.
 TEST_F(TerrainAuthoringTest, RiverRulesFindRidgeBetweenPointsAndReportMissingGround)
 {
     auto& ground = MakeTerrain();
@@ -145,6 +147,7 @@ TEST_F(TerrainAuthoringTest, RiverRulesFindRidgeBetweenPointsAndReportMissingGro
     EXPECT_NE(FindNatureIssue(result, "MISSING_TERRAIN"), nullptr);
 }
 
+/// @brief Checks river rules check outlet footprint and height tolerance.
 TEST_F(TerrainAuthoringTest, RiverRulesCheckOutletFootprintAndHeightTolerance)
 {
     MakeTerrain();
@@ -177,6 +180,7 @@ TEST_F(TerrainAuthoringTest, RiverRulesCheckOutletFootprintAndHeightTolerance)
     EXPECT_NE(FindNatureIssue(result, "OUTLET_OUTSIDE"), nullptr);
 }
 
+/// @brief River rules measure drop width and depth per world meter.
 TEST_F(TerrainAuthoringTest, RiverRulesMeasureDropWidthAndDepthPerWorldMeter)
 {
     MakeTerrain();
@@ -208,6 +212,7 @@ TEST_F(TerrainAuthoringTest, RiverRulesMeasureDropWidthAndDepthPerWorldMeter)
     EXPECT_EQ(FindNatureIssue(result, "ABRUPT_DEPTH"), nullptr);
 }
 
+/// @brief River bank rule finds only the low side of the valley.
 TEST_F(TerrainAuthoringTest, RiverBankRuleFindsOnlyTheLowSideOfTheValley)
 {
     auto& terrain = *MakeTerrain().GetComponent<scene::TerrainComponent>();
@@ -233,6 +238,7 @@ TEST_F(TerrainAuthoringTest, RiverBankRuleFindsOnlyTheLowSideOfTheValley)
     EXPECT_EQ(result.data.Find("issueCount")->AsInt(), result.data.Find("sampleCount")->AsInt());
 }
 
+/// @brief Relief rules measure scaled spikes and pits without treating holes as terrain.
 TEST_F(TerrainAuthoringTest, ReliefRulesMeasureScaledSpikesAndPitsWithoutTreatingHolesAsTerrain)
 {
     auto& ground = MakeTerrain();
@@ -259,6 +265,7 @@ TEST_F(TerrainAuthoringTest, ReliefRulesMeasureScaledSpikesAndPitsWithoutTreatin
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Checks seam rule checks extra fine vertices and reports world height difference.
 TEST_F(TerrainAuthoringTest, SeamRuleChecksExtraFineVerticesAndReportsWorldHeightDifference)
 {
     auto& first = MakeTerrain("West");
@@ -289,6 +296,7 @@ TEST_F(TerrainAuthoringTest, SeamRuleChecksExtraFineVerticesAndReportsWorldHeigh
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Seam rule detects a reversed slope even when all edge heights match.
 TEST_F(TerrainAuthoringTest, SeamRuleDetectsAReversedSlopeEvenWhenAllEdgeHeightsMatch)
 {
     auto& first = MakeTerrain("West");
@@ -326,6 +334,7 @@ TEST_F(TerrainAuthoringTest, SeamRuleDetectsAReversedSlopeEvenWhenAllEdgeHeights
     EXPECT_TRUE(result.data.Find("valid")->AsBool());
 }
 
+/// @brief Seam blend changes only the selected interior and undoes in one step.
 TEST_F(TerrainAuthoringTest, SeamBlendChangesOnlyTheSelectedInteriorAndUndoesInOneStep)
 {
     auto& first = MakeTerrain("West");
@@ -373,6 +382,7 @@ TEST_F(TerrainAuthoringTest, SeamBlendChangesOnlyTheSelectedInteriorAndUndoesInO
     EXPECT_EQ(east.heightData, reference);
 }
 
+/// @brief Sculpt ridge uses different flanks and preserves tile edges through undo.
 TEST_F(TerrainAuthoringTest, SculptRidgeUsesDifferentFlanksAndPreservesTileEdgesThroughUndo)
 {
     auto& owner = MakeTerrain();
@@ -423,6 +433,7 @@ TEST_F(TerrainAuthoringTest, SculptRidgeUsesDifferentFlanksAndPreservesTileEdges
     EXPECT_TRUE(terrain.colliderDirty);
 }
 
+/// @brief Repeated ridge edits check raw terrain changes across undo branches.
 TEST_F(TerrainAuthoringTest, RepeatedRidgeEditsCheckRawTerrainChangesAcrossUndoBranches)
 {
     auto& owner = MakeTerrain();
@@ -455,6 +466,7 @@ TEST_F(TerrainAuthoringTest, RepeatedRidgeEditsCheckRawTerrainChangesAcrossUndoB
     EXPECT_FALSE(m_undo.Undo());
 }
 
+/// @brief Fit lake shore follows concavity and rejects an open search.
 TEST_F(TerrainAuthoringTest, FitLakeShoreFollowsConcavityAndRejectsAnOpenSearch)
 {
     editor::RegisterControlPointOperators(m_registry);
@@ -501,6 +513,7 @@ TEST_F(TerrainAuthoringTest, FitLakeShoreFollowsConcavityAndRejectsAnOpenSearch)
     EXPECT_EQ(water.splineSamplesPerSegment, 8u);
 }
 
+/// @brief Massif adds seeded branch relief and preserves hole vertices.
 TEST_F(TerrainAuthoringTest, MassifAddsSeededBranchReliefAndPreservesHoleVertices)
 {
     auto& ground = MakeTerrain();
@@ -532,6 +545,7 @@ TEST_F(TerrainAuthoringTest, MassifAddsSeededBranchReliefAndPreservesHoleVertice
     EXPECT_EQ(terrain.heightData, shaped);
 }
 
+/// @brief River carve previews depth and preserves protected ground through undo.
 TEST_F(TerrainAuthoringTest, RiverCarvePreviewsDepthAndPreservesProtectedGroundThroughUndo)
 {
     auto& ground = MakeTerrain();
@@ -588,6 +602,7 @@ TEST_F(TerrainAuthoringTest, RiverCarvePreviewsDepthAndPreservesProtectedGroundT
     EXPECT_EQ(terrain.splatWeights, beforeSplat);
 }
 
+/// @brief Drainage fit uses downhill route and accumulates area.
 TEST_F(TerrainAuthoringTest, DrainageFitUsesDownhillRouteAndAccumulatesArea)
 {
     editor::RegisterControlPointOperators(m_registry);
@@ -629,6 +644,7 @@ TEST_F(TerrainAuthoringTest, DrainageFitUsesDownhillRouteAndAccumulatesArea)
     EXPECT_EQ(water.surfaceShape, scene::WaterSurfaceShape::RECTANGLE);
 }
 
+/// @brief River profile does not use the depression fill as its surface.
 TEST_F(TerrainAuthoringTest, RiverProfileDoesNotUseTheDepressionFillAsItsSurface)
 {
     auto& ground = MakeTerrain();
@@ -664,6 +680,7 @@ TEST_F(TerrainAuthoringTest, RiverProfileDoesNotUseTheDepressionFillAsItsSurface
     }
 }
 
+/// @brief Waterfall rule requires an actual cliff and a lake fed reach.
 TEST_F(TerrainAuthoringTest, WaterfallRuleRequiresAnActualCliffAndALakeFedReach)
 {
     std::array sections{
@@ -685,6 +702,7 @@ TEST_F(TerrainAuthoringTest, WaterfallRuleRequiresAnActualCliffAndALakeFedReach)
     EXPECT_TRUE(editor::FindTerrainWaterfallLips(sections, 3.0f, 0.85f).empty());
 }
 
+/// @brief Checks drainage crosses terrain tile boundary.
 TEST_F(TerrainAuthoringTest, DrainageCrossesTerrainTileBoundary)
 {
     editor::RegisterControlPointOperators(m_registry);
@@ -724,6 +742,7 @@ TEST_F(TerrainAuthoringTest, DrainageCrossesTerrainTileBoundary)
     EXPECT_FLOAT_EQ(water.splinePoints.back().localPosition.z, 8.0f);
 }
 
+/// @brief Lake uses spill height and keeps the island dry.
 TEST_F(TerrainAuthoringTest, LakeUsesSpillHeightAndKeepsTheIslandDry)
 {
     editor::RegisterControlPointOperators(m_registry);
@@ -763,6 +782,7 @@ TEST_F(TerrainAuthoringTest, LakeUsesSpillHeightAndKeepsTheIslandDry)
     EXPECT_TRUE(water.lakeIslandPoints.empty());
 }
 
+/// @brief Flat lowland and snowline use world height.
 TEST_F(TerrainAuthoringTest, FlatLowlandAndSnowlineUseWorldHeight)
 {
     auto& go = MakeTerrain();
@@ -783,6 +803,7 @@ TEST_F(TerrainAuthoringTest, FlatLowlandAndSnowlineUseWorldHeight)
     EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(1, 1, 2), 1.0f);
 }
 
+/// @brief Steep slope leaves rock and preserves height and holes.
 TEST_F(TerrainAuthoringTest, SteepSlopeLeavesRockAndPreservesHeightAndHoles)
 {
     auto& go = MakeTerrain();
@@ -800,6 +821,7 @@ TEST_F(TerrainAuthoringTest, SteepSlopeLeavesRockAndPreservesHeightAndHoles)
     EXPECT_EQ(terrain.holeData, holes);
 }
 
+/// @brief Invalid settings and singular transform leave splat unchanged.
 TEST_F(TerrainAuthoringTest, InvalidSettingsAndSingularTransformLeaveSplatUnchanged)
 {
     auto& go = MakeTerrain();
@@ -819,6 +841,7 @@ TEST_F(TerrainAuthoringTest, InvalidSettingsAndSingularTransformLeaveSplatUnchan
     EXPECT_EQ(terrain.splatWeights, weights);
 }
 
+/// @brief World slope includes nonuniform scale and rotation.
 TEST_F(TerrainAuthoringTest, WorldSlopeIncludesNonuniformScaleAndRotation)
 {
     auto& go = MakeTerrain();
@@ -834,6 +857,7 @@ TEST_F(TerrainAuthoringTest, WorldSlopeIncludesNonuniformScaleAndRotation)
     EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(1, 1, 1), 1.0f);
 }
 
+/// @brief Biome operator creates one undo and does not touch other terrain.
 TEST_F(TerrainAuthoringTest, BiomeOperatorCreatesOneUndoAndDoesNotTouchOtherTerrain)
 {
     auto& first = MakeTerrain("First");
@@ -851,6 +875,7 @@ TEST_F(TerrainAuthoringTest, BiomeOperatorCreatesOneUndoAndDoesNotTouchOtherTerr
     EXPECT_FLOAT_EQ(first.GetComponent<scene::TerrainComponent>()->GetLayerWeightAtGrid(1, 1, 2), 1.0f);
 }
 
+/// @brief Failed import does not apply resize or create undo.
 TEST_F(TerrainAuthoringTest, FailedImportDoesNotApplyResizeOrCreateUndo)
 {
     auto& go = MakeTerrain();
@@ -866,6 +891,7 @@ TEST_F(TerrainAuthoringTest, FailedImportDoesNotApplyResizeOrCreateUndo)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Replaced terrain rejects undo without moving history.
 TEST_F(TerrainAuthoringTest, ReplacedTerrainRejectsUndoWithoutMovingHistory)
 {
     auto& go = MakeTerrain();
@@ -883,6 +909,7 @@ TEST_F(TerrainAuthoringTest, ReplacedTerrainRejectsUndoWithoutMovingHistory)
     EXPECT_EQ(replacement.heightData, heights);
 }
 
+/// @brief External terrain edit rejects undo without overwriting it.
 TEST_F(TerrainAuthoringTest, ExternalTerrainEditRejectsUndoWithoutOverwritingIt)
 {
     auto& go = MakeTerrain();
@@ -899,6 +926,7 @@ TEST_F(TerrainAuthoringTest, ExternalTerrainEditRejectsUndoWithoutOverwritingIt)
     EXPECT_FLOAT_EQ(terrain.GetLayerWeightAtGrid(1, 1, 2), 1.0f);
 }
 
+/// @brief Undo and redo preserve saved reference and runtime revisions.
 TEST_F(TerrainAuthoringTest, UndoAndRedoPreserveSavedReferenceAndRuntimeRevisions)
 {
     auto& go = MakeTerrain();
@@ -929,6 +957,7 @@ TEST_F(TerrainAuthoringTest, UndoAndRedoPreserveSavedReferenceAndRuntimeRevision
     EXPECT_FALSE(terrain.colliderDirty);
 }
 
+/// @brief Sixteen bit import retains adjacent samples and bipolar mapping.
 TEST_F(TerrainAuthoringTest, SixteenBitImportRetainsAdjacentSamplesAndBipolarMapping)
 {
     auto& go = MakeTerrain();
@@ -951,6 +980,7 @@ TEST_F(TerrainAuthoringTest, SixteenBitImportRetainsAdjacentSamplesAndBipolarMap
     EXPECT_EQ(terrain.heightData, expected);
 }
 
+/// @brief Mask white paints and black preserves without changing height.
 TEST_F(TerrainAuthoringTest, MaskWhitePaintsAndBlackPreservesWithoutChangingHeight)
 {
     auto& go = MakeTerrain();
@@ -980,6 +1010,7 @@ TEST_F(TerrainAuthoringTest, MaskWhitePaintsAndBlackPreservesWithoutChangingHeig
     EXPECT_EQ(terrain.surfaceRevision, revision);
 }
 
+/// @brief Checks height stamp changes only its rectangle and preserves other authoring.
 TEST_F(TerrainAuthoringTest, HeightStampChangesOnlyItsRectangleAndPreservesOtherAuthoring)
 {
     auto& go = MakeTerrain();
@@ -1012,6 +1043,7 @@ TEST_F(TerrainAuthoringTest, HeightStampChangesOnlyItsRectangleAndPreservesOther
     EXPECT_TRUE(terrain.colliderDirty);
 }
 
+/// @brief Rotated rectangular stamp uses image orientation and clips at terrain edge.
 TEST_F(TerrainAuthoringTest, RotatedRectangularStampUsesImageOrientationAndClipsAtTerrainEdge)
 {
     auto& terrain = *MakeTerrain().GetComponent<scene::TerrainComponent>();
@@ -1033,6 +1065,7 @@ TEST_F(TerrainAuthoringTest, RotatedRectangularStampUsesImageOrientationAndClips
     EXPECT_FLOAT_EQ(terrain.GetHeightAt(0.0f, 0.0f), 0.0f);
 }
 
+/// @brief Stamp fade blends into existing terrain and supports height blend modes.
 TEST_F(TerrainAuthoringTest, StampFadeBlendsIntoExistingTerrainAndSupportsHeightBlendModes)
 {
     auto& terrain = *MakeTerrain().GetComponent<scene::TerrainComponent>();
@@ -1064,6 +1097,7 @@ TEST_F(TerrainAuthoringTest, StampFadeBlendsIntoExistingTerrainAndSupportsHeight
     EXPECT_FLOAT_EQ(terrain.GetHeightAt(40.0f, 40.0f), -terrain.maxHeight);
 }
 
+/// @brief Invalid stamp leaves all heights and revision unchanged.
 TEST_F(TerrainAuthoringTest, InvalidStampLeavesAllHeightsAndRevisionUnchanged)
 {
     auto& terrain = *MakeTerrain().GetComponent<scene::TerrainComponent>();
@@ -1085,6 +1119,7 @@ TEST_F(TerrainAuthoringTest, InvalidStampLeavesAllHeightsAndRevisionUnchanged)
     EXPECT_EQ(terrain.surfaceRevision, revision);
 }
 
+/// @brief Stamp operator transforms world center and persists with one undo.
 TEST_F(TerrainAuthoringTest, StampOperatorTransformsWorldCenterAndPersistsWithOneUndo)
 {
     auto& go = MakeTerrain("Stamped");
@@ -1124,6 +1159,7 @@ TEST_F(TerrainAuthoringTest, StampOperatorTransformsWorldCenterAndPersistsWithOn
     EXPECT_EQ(terrain.surfaceRevision, 102u);
 }
 
+/// @brief Stamp operator keeps sixteen bit precision and bipolar heights.
 TEST_F(TerrainAuthoringTest, StampOperatorKeepsSixteenBitPrecisionAndBipolarHeights)
 {
     auto& go = MakeTerrain();
@@ -1147,6 +1183,7 @@ TEST_F(TerrainAuthoringTest, StampOperatorKeepsSixteenBitPrecisionAndBipolarHeig
         EXPECT_NEAR(terrain.heightData[i], image.heightData[i] * 2.0f - 1.0f, 2.0f / 65535.0f);
 }
 
+/// @brief Failed and no-op stamps do not dirty terrain or create history.
 TEST_F(TerrainAuthoringTest, FailedAndNoOpStampsDoNotDirtyTerrainOrCreateHistory)
 {
     auto& go = MakeTerrain();
@@ -1177,6 +1214,7 @@ TEST_F(TerrainAuthoringTest, FailedAndNoOpStampsDoNotDirtyTerrainOrCreateHistory
     Context().markSceneDirty = [] {};
 }
 
+/// @brief Terrain maps separate planar slopes from local relief.
 TEST_F(TerrainAuthoringTest, TerrainMapsSeparatePlanarSlopesFromLocalRelief)
 {
     auto& ground = MakeTerrain();
@@ -1200,6 +1238,7 @@ TEST_F(TerrainAuthoringTest, TerrainMapsSeparatePlanarSlopesFromLocalRelief)
     EXPECT_GT(raster.Sample(0.5f, 0.5f), 0.5f);
 }
 
+/// @brief Terrain flow map carries upstream area across tile edges.
 TEST_F(TerrainAuthoringTest, TerrainFlowMapCarriesUpstreamAreaAcrossTileEdges)
 {
     auto& upstream = MakeTerrain("Upstream");
@@ -1226,6 +1265,7 @@ TEST_F(TerrainAuthoringTest, TerrainFlowMapCarriesUpstreamAreaAcrossTileEdges)
     EXPECT_GT(b.Sample(0.5f, 0.5f), local.Sample(0.5f, 0.5f));
 }
 
+/// @brief Density map bake preserves hole borders and supports undo.
 TEST_F(TerrainAuthoringTest, DensityMapBakePreservesHoleBordersAndSupportsUndo)
 {
     auto& ground = MakeTerrain();
@@ -1270,6 +1310,7 @@ TEST_F(TerrainAuthoringTest, DensityMapBakePreservesHoleBordersAndSupportsUndo)
     EXPECT_EQ(terrain.splatWeights, before.splatWeights);
 }
 
+/// @brief Refined flow carve carries catchment from outside the detail region.
 TEST_F(TerrainAuthoringTest, RefinedFlowCarveCarriesCatchmentFromOutsideTheDetailRegion)
 {
     auto& ground = MakeTerrain();
@@ -1294,6 +1335,7 @@ TEST_F(TerrainAuthoringTest, RefinedFlowCarveCarriesCatchmentFromOutsideTheDetai
     EXPECT_FALSE(plan.vertices.empty());
 }
 
+/// @brief Flow channel preview and cut limit keep terrain unchanged until apply.
 TEST_F(TerrainAuthoringTest, FlowChannelPreviewAndCutLimitKeepTerrainUnchangedUntilApply)
 {
     auto& ground = MakeTerrain();
@@ -1325,6 +1367,7 @@ TEST_F(TerrainAuthoringTest, FlowChannelPreviewAndCutLimitKeepTerrainUnchangedUn
     EXPECT_EQ(terrain.heightData, before);
 }
 
+/// @brief Checks gentle flow bank deposits above water within the requested budget.
 TEST_F(TerrainAuthoringTest, GentleFlowBankDepositsAboveWaterWithinTheRequestedBudget)
 {
     auto& ground = MakeTerrain();
@@ -1347,6 +1390,7 @@ TEST_F(TerrainAuthoringTest, GentleFlowBankDepositsAboveWaterWithinTheRequestedB
     EXPECT_FALSE(plan.materials.empty());
 }
 
+/// @brief Terrain material rules blend together and protect painted weights.
 TEST_F(TerrainAuthoringTest, TerrainMaterialRulesBlendTogetherAndProtectPaintedWeights)
 {
     auto& ground = MakeTerrain();
@@ -1366,6 +1410,7 @@ TEST_F(TerrainAuthoringTest, TerrainMaterialRulesBlendTogetherAndProtectPaintedW
     EXPECT_NE(terrain.splatWeights, before);
 }
 
+/// @brief Checks habitat patches agree on the shared world-space tile edge.
 TEST_F(TerrainAuthoringTest, HabitatPatchesAgreeOnTheSharedWorldSpaceTileEdge)
 {
     auto& west = MakeTerrain("West");
@@ -1395,6 +1440,7 @@ TEST_F(TerrainAuthoringTest, HabitatPatchesAgreeOnTheSharedWorldSpaceTileEdge)
     EXPECT_NE(b, different.data.Find("previewGray8Hex")->AsString());
 }
 
+/// @brief Flow network shares bank heights and undoes river creation with terrain.
 TEST_F(TerrainAuthoringTest, FlowNetworkSharesBankHeightsAndUndoesRiverCreationWithTerrain)
 {
     auto& west = MakeTerrain("West");
@@ -1478,6 +1524,7 @@ TEST_F(TerrainAuthoringTest, FlowNetworkSharesBankHeightsAndUndoesRiverCreationW
     for (const auto& guid : rivers) EXPECT_NE(AttachedScene()->FindByGuid(guid.AsString()), nullptr);
 }
 
+/// @brief Flow network builds and undoes a connected waterfall.
 TEST_F(TerrainAuthoringTest, FlowNetworkBuildsAndUndoesAConnectedWaterfall)
 {
     auto& owner = MakeTerrain("Cliff valley");
@@ -1560,6 +1607,7 @@ TEST_F(TerrainAuthoringTest, FlowNetworkBuildsAndUndoesAConnectedWaterfall)
     for (const auto& id : ids) EXPECT_NE(AttachedScene()->FindByGuid(id.AsString()), nullptr);
 }
 
+/// @brief Checks river bed between terrain vertices still excavates the center.
 TEST_F(TerrainAuthoringTest, RiverBedBetweenTerrainVerticesStillExcavatesTheCenter)
 {
     auto& owner = MakeTerrain();
@@ -1583,6 +1631,7 @@ TEST_F(TerrainAuthoringTest, RiverBedBetweenTerrainVerticesStillExcavatesTheCent
     EXPECT_NEAR(sample.position.y, 10.0f, 0.001f);
 }
 
+/// @brief Terrain recipe restores arguments and remaps material references.
 TEST_F(TerrainAuthoringTest, TerrainRecipeRestoresArgumentsAndRemapsMaterialReferences)
 {
     auto& first = MakeTerrain("Recipe source");
@@ -1628,6 +1677,7 @@ TEST_F(TerrainAuthoringTest, TerrainRecipeRestoresArgumentsAndRemapsMaterialRefe
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Flow network water preview extends tributaries onto the downstream reach.
 TEST_F(TerrainAuthoringTest, FlowNetworkWaterPreviewExtendsTributariesOntoTheDownstreamReach)
 {
     auto& owner = MakeTerrain();

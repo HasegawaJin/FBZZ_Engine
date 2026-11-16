@@ -22,6 +22,7 @@ protected:
     renderer::RendererBundle m_bundle;
 };
 
+/// @brief Owns metadata and names until worker executes in order.
 TEST_F(RecordedGpuProfilerViewTest, OwnsMetadataAndNamesUntilWorkerExecutesInOrder)
 {
     auto& r = *m_bundle.renderer;
@@ -37,6 +38,7 @@ TEST_F(RecordedGpuProfilerViewTest, OwnsMetadataAndNamesUntilWorkerExecutesInOrd
     EXPECT_EQ(m_result.events, (std::vector<std::string>{"frame", "begin:7", "pass:owned", "draw", "end-pass:owned", "end", "end-frame"}));
 }
 
+/// @brief Rejects native view without dropping draws or ending another view.
 TEST_F(RecordedGpuProfilerViewTest, RejectsNativeViewWithoutDroppingDrawsOrEndingAnotherView)
 {
     m_result.reject = true;
@@ -46,6 +48,7 @@ TEST_F(RecordedGpuProfilerViewTest, RejectsNativeViewWithoutDroppingDrawsOrEndin
     EXPECT_EQ(m_result.clears, 1u); EXPECT_EQ(m_result.passes, 0u); EXPECT_EQ(m_result.ends, 0u);
 }
 
+/// @brief Suppresses rejected nested scope and restores parent markers.
 TEST_F(RecordedGpuProfilerViewTest, SuppressesRejectedNestedScopeAndRestoresParentMarkers)
 {
     auto& r = *m_bundle.renderer;
@@ -57,6 +60,7 @@ TEST_F(RecordedGpuProfilerViewTest, SuppressesRejectedNestedScopeAndRestoresPare
     EXPECT_EQ(m_result.events, (std::vector<std::string>{"frame", "begin:1", "pass:before", "draw", "end-pass:before", "begin:2", "draw", "pass:after", "draw", "end-pass:after", "end", "end-frame"}));
 }
 
+/// @brief Preserves real dispatch receipt across packet split.
 TEST_F(RecordedGpuProfilerViewTest, PreservesRealDispatchReceiptAcrossPacketSplit)
 {
     auto& r = *m_bundle.renderer;
@@ -69,6 +73,7 @@ TEST_F(RecordedGpuProfilerViewTest, PreservesRealDispatchReceiptAcrossPacketSpli
     EXPECT_EQ(m_result.events[5], "dispatch-receipt");
 }
 
+/// @brief Cancels unsubmitted scope without native side effects.
 TEST_F(RecordedGpuProfilerViewTest, CancelsUnsubmittedScopeWithoutNativeSideEffects)
 {
     auto& r = *m_bundle.renderer;
@@ -76,6 +81,7 @@ TEST_F(RecordedGpuProfilerViewTest, CancelsUnsubmittedScopeWithoutNativeSideEffe
     r.CancelCpuFrame(); r.WaitForCpuFrame(); EXPECT_TRUE(m_result.events.empty());
 }
 
+/// @brief Closes scope whose pending end was cancelled after synchronous split.
 TEST_F(RecordedGpuProfilerViewTest, ClosesScopeWhosePendingEndWasCancelledAfterSynchronousSplit)
 {
     auto& r = *m_bundle.renderer;
@@ -86,6 +92,7 @@ TEST_F(RecordedGpuProfilerViewTest, ClosesScopeWhosePendingEndWasCancelledAfterS
     EXPECT_EQ(m_result.events, (std::vector<std::string>{"frame", "begin:1", "end", "frame", "begin:2", "pass:work", "draw", "end-pass:work", "end", "end-frame"}));
 }
 
+/// @brief Records next view while previous packet is still executing.
 TEST_F(RecordedGpuProfilerViewTest, RecordsNextViewWhilePreviousPacketIsStillExecuting)
 {
     auto& r = *m_bundle.renderer;
@@ -97,6 +104,7 @@ TEST_F(RecordedGpuProfilerViewTest, RecordsNextViewWhilePreviousPacketIsStillExe
     EXPECT_TRUE(accepted); Finish(); EXPECT_EQ(m_result.ends, 1u); EXPECT_EQ(m_result.clears, 2u);
 }
 
+/// @brief Keeps synchronous begin result and native fallback contract.
 TEST_F(RecordedGpuProfilerViewTest, KeepsSynchronousBeginResultAndNativeFallbackContract)
 {
     m_result.reject = true;
@@ -108,6 +116,7 @@ TEST_F(RecordedGpuProfilerViewTest, KeepsSynchronousBeginResultAndNativeFallback
     EXPECT_EQ(m_result.ends, 1u);
 }
 
+/// @brief Pipeline records view and graph hooks while previous packet is executing.
 TEST_F(RecordedGpuProfilerViewTest, PipelineRecordsViewAndGraphHooksWhilePreviousPacketIsExecuting)
 {
     auto& r = *m_bundle.renderer;

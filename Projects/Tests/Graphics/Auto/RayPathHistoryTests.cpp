@@ -38,6 +38,7 @@ protected:
     }
 };
 
+/// @brief Advances only committed samples and preserves unchanged history.
 TEST_F(RayPathHistoryTest, AdvancesOnlyCommittedSamplesAndPreservesUnchangedHistory)
 {
     EXPECT_FALSE(m_history.Commit(1));
@@ -55,6 +56,7 @@ TEST_F(RayPathHistoryTest, AdvancesOnlyCommittedSamplesAndPreservesUnchangedHist
     EXPECT_FALSE(m_history.Commit(1));
 }
 
+/// @brief Resets for scene device shader and internal extent.
 TEST_F(RayPathHistoryTest, ResetsForSceneDeviceShaderAndInternalExtent)
 {
     ASSERT_TRUE(m_history.Prepare(Key()));
@@ -66,6 +68,7 @@ TEST_F(RayPathHistoryTest, ResetsForSceneDeviceShaderAndInternalExtent)
     ExpectReset(Key(640, 360, 2, 2));
 }
 
+/// @brief Uses exact unjittered camera and projection inputs.
 TEST_F(RayPathHistoryTest, UsesExactUnjitteredCameraAndProjectionInputs)
 {
     ASSERT_TRUE(m_history.Prepare(Key()));
@@ -79,6 +82,7 @@ TEST_F(RayPathHistoryTest, UsesExactUnjitteredCameraAndProjectionInputs)
     m_camera.m_orthoHeight = 15; ExpectReset(Key());
 }
 
+/// @brief Resets for integrator and sampler meaning but not post color controls.
 TEST_F(RayPathHistoryTest, ResetsForIntegratorAndSamplerMeaningButNotPostColorControls)
 {
     ASSERT_TRUE(m_history.Prepare(Key()));
@@ -96,6 +100,7 @@ TEST_F(RayPathHistoryTest, ResetsForIntegratorAndSamplerMeaningButNotPostColorCo
     m_integrator.radianceClamp = 10; ExpectReset(Key());
 }
 
+/// @brief Rejects sample counter overflow without changing the average denominator.
 TEST_F(RayPathHistoryTest, RejectsSampleCounterOverflowWithoutChangingTheAverageDenominator)
 {
     ASSERT_TRUE(m_history.Prepare(Key()));

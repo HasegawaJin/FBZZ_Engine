@@ -111,6 +111,7 @@ protected:
     editor::UndoStack m_undo;
 };
 
+/// @brief Superseded compilation cannot publish or revive the old request.
 TEST_F(ManagedScriptBuildTest, SupersededCompilationCannotPublishOrReviveTheOldRequest)
 {
     editor::ManagedBuildHistory history;
@@ -136,6 +137,7 @@ TEST_F(ManagedScriptBuildTest, SupersededCompilationCannotPublishOrReviveTheOldR
     EXPECT_EQ(history.Find(second)->appliedGeneration, 8u);
 }
 
+/// @brief Content fingerprint ignores output and detects same timestamp imports.
 TEST_F(ManagedScriptBuildTest, ContentFingerprintIgnoresOutputAndDetectsSameTimestampImports)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -157,6 +159,7 @@ TEST_F(ManagedScriptBuildTest, ContentFingerprintIgnoresOutputAndDetectsSameTime
     EXPECT_NE(initial, changed);
 }
 
+/// @brief Evaluated reference sources and imported props invalidate the fingerprint.
 TEST_F(ManagedScriptBuildTest, EvaluatedReferenceSourcesAndImportedPropsInvalidateTheFingerprint)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Game/Assets")));
@@ -193,6 +196,7 @@ TEST_F(ManagedScriptBuildTest, EvaluatedReferenceSourcesAndImportedPropsInvalida
     EXPECT_EQ(deleted, stable);
 }
 
+/// @brief Import directory descriptors are bounded and case insensitive.
 TEST_F(ManagedScriptBuildTest, ImportDirectoryDescriptorsAreBoundedAndCaseInsensitive)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Game")));
@@ -222,6 +226,7 @@ TEST_F(ManagedScriptBuildTest, ImportDirectoryDescriptorsAreBoundedAndCaseInsens
     EXPECT_EQ(recursive, generated);
 }
 
+/// @brief Source change also terminates a play deferred request.
 TEST_F(ManagedScriptBuildTest, SourceChangeAlsoTerminatesAPlayDeferredRequest)
 {
     editor::ManagedBuildHistory history;
@@ -237,6 +242,7 @@ TEST_F(ManagedScriptBuildTest, SourceChangeAlsoTerminatesAPlayDeferredRequest)
     EXPECT_EQ(history.Find(replacement)->state, editor::ManagedBuildState::QUEUED);
 }
 
+/// @brief Compile failure keeps previous generation and structured C# diagnostics.
 TEST_F(ManagedScriptBuildTest, CompileFailureKeepsPreviousGenerationAndStructuredCSharpDiagnostics)
 {
     editor::ManagedBuildHistory history;
@@ -263,6 +269,7 @@ TEST_F(ManagedScriptBuildTest, CompileFailureKeepsPreviousGenerationAndStructure
     EXPECT_EQ(result->state, editor::ManagedBuildState::FAILED);
 }
 
+/// @brief Retains every parsed diagnostic and reports the retained log tail.
 TEST_F(ManagedScriptBuildTest, RetainsEveryParsedDiagnosticAndReportsTheRetainedLogTail)
 {
     editor::ManagedBuildHistory history;
@@ -286,6 +293,7 @@ TEST_F(ManagedScriptBuildTest, RetainsEveryParsedDiagnosticAndReportsTheRetained
     EXPECT_NE(result->log.find("[earlier output truncated]"), std::string::npos);
 }
 
+/// @brief Shared build contention retries one request instead of reporting a compile failure.
 TEST_F(ManagedScriptBuildTest, SharedBuildContentionRetriesOneRequestInsteadOfReportingACompileFailure)
 {
     editor::ManagedBuildHistory history;
@@ -302,6 +310,7 @@ TEST_F(ManagedScriptBuildTest, SharedBuildContentionRetriesOneRequestInsteadOfRe
     EXPECT_EQ(history.Find(request)->candidateId, "second-attempt");
 }
 
+/// @brief Checks generated metadata changes effective version without changing the requested version.
 TEST_F(ManagedScriptBuildTest, GeneratedMetadataChangesEffectiveVersionWithoutChangingTheRequestedVersion)
 {
     editor::ManagedBuildHistory history;
@@ -317,6 +326,7 @@ TEST_F(ManagedScriptBuildTest, GeneratedMetadataChangesEffectiveVersionWithoutCh
     EXPECT_EQ(history.Find(request)->state, editor::ManagedBuildState::APPLIED);
 }
 
+/// @brief Evaluated graph expansion preserves root input version but same mtime root edits do not.
 TEST_F(ManagedScriptBuildTest, EvaluatedGraphExpansionPreservesRootInputVersionButSameMtimeRootEditsDoNot)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -356,6 +366,7 @@ TEST_F(ManagedScriptBuildTest, EvaluatedGraphExpansionPreservesRootInputVersionB
     EXPECT_NE(deleted.rootInputFingerprint, rootChanged.rootInputFingerprint);
 }
 
+/// @brief Cold dependency discovery retries the original request exactly once.
 TEST_F(ManagedScriptBuildTest, ColdDependencyDiscoveryRetriesTheOriginalRequestExactlyOnce)
 {
     editor::ManagedBuildHistory history;
@@ -385,6 +396,7 @@ TEST_F(ManagedScriptBuildTest, ColdDependencyDiscoveryRetriesTheOriginalRequestE
     EXPECT_EQ(history.Find(request)->appliedGeneration, 8U);
 }
 
+/// @brief Cold graph discovery cannot hide known root edits or failed receipts.
 TEST_F(ManagedScriptBuildTest, ColdGraphDiscoveryCannotHideKnownRootEditsOrFailedReceipts)
 {
     editor::ManagedBuildHistory history;
@@ -405,6 +417,7 @@ TEST_F(ManagedScriptBuildTest, ColdGraphDiscoveryCannotHideKnownRootEditsOrFaile
     EXPECT_FALSE(history.CanRetryDiscoveredGraph(next, captured, changed));
 }
 
+/// @brief A discovered graph still rejects later dependency changes.
 TEST_F(ManagedScriptBuildTest, ADiscoveredGraphStillRejectsLaterDependencyChanges)
 {
     editor::ManagedBuildHistory history;
@@ -421,6 +434,7 @@ TEST_F(ManagedScriptBuildTest, ADiscoveredGraphStillRejectsLaterDependencyChange
     EXPECT_EQ(history.Find(request)->appliedGeneration, 0U);
 }
 
+/// @brief Bounded history does not resolve an expired request as the latest.
 TEST_F(ManagedScriptBuildTest, BoundedHistoryDoesNotResolveAnExpiredRequestAsTheLatest)
 {
     editor::ManagedBuildHistory history;
@@ -433,6 +447,7 @@ TEST_F(ManagedScriptBuildTest, BoundedHistoryDoesNotResolveAnExpiredRequestAsThe
     EXPECT_NE(history.Latest()->managedRequestId, oldest);
 }
 
+/// @brief Missing managed service and unknown request are explicit errors.
 TEST_F(ManagedScriptBuildTest, MissingManagedServiceAndUnknownRequestAreExplicitErrors)
 {
     editor::ai::JsonValue run = editor::ai::JsonValue::MakeObject();
@@ -450,6 +465,7 @@ TEST_F(ManagedScriptBuildTest, MissingManagedServiceAndUnknownRequestAreExplicit
     EXPECT_EQ(unknown.Find("error")->Find("code")->AsString(), "MANAGED_REQUEST_NOT_FOUND");
 }
 
+/// @brief Default managed build op returns the request that status observes.
 TEST_F(ManagedScriptBuildTest, DefaultManagedBuildOpReturnsTheRequestThatStatusObserves)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -490,6 +506,7 @@ TEST_F(ManagedScriptBuildTest, DefaultManagedBuildOpReturnsTheRequestThatStatusO
     Context().managedScripts = nullptr;
 }
 
+/// @brief Automatic source monitoring supersedes the explicit request before starting any build.
 TEST_F(ManagedScriptBuildTest, AutomaticSourceMonitoringSupersedesTheExplicitRequestBeforeStartingAnyBuild)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -522,6 +539,7 @@ TEST_F(ManagedScriptBuildTest, AutomaticSourceMonitoringSupersedesTheExplicitReq
     service.Shutdown(nullptr);
 }
 
+/// @brief Source request waits for its refresh ticket and never starts from an older snapshot.
 TEST_F(ManagedScriptBuildTest, SourceRequestWaitsForItsRefreshTicketAndNeverStartsFromAnOlderSnapshot)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -553,6 +571,7 @@ TEST_F(ManagedScriptBuildTest, SourceRequestWaitsForItsRefreshTicketAndNeverStar
     service.Shutdown(nullptr);
 }
 
+/// @brief Stop requires explicit edit apply for scanning and queued play requests.
 TEST_F(ManagedScriptBuildTest, StopRequiresExplicitEditApplyForScanningAndQueuedPlayRequests)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -601,6 +620,7 @@ TEST_F(ManagedScriptBuildTest, StopRequiresExplicitEditApplyForScanningAndQueued
     }
 }
 
+/// @brief Stop requires explicit edit apply while compiled play output awaits verification.
 TEST_F(ManagedScriptBuildTest, StopRequiresExplicitEditApplyWhileCompiledPlayOutputAwaitsVerification)
 {
     editor::ManagedScriptPublicationState publication;
@@ -633,6 +653,7 @@ TEST_F(ManagedScriptBuildTest, StopRequiresExplicitEditApplyWhileCompiledPlayOut
     EXPECT_FALSE(unchanged.RequiresExplicitEditApply());
 }
 
+/// @brief Stop verifies unobserved play source edits before automatic edit apply.
 TEST_F(ManagedScriptBuildTest, StopVerifiesUnobservedPlaySourceEditsBeforeAutomaticEditApply)
 {
     editor::ManagedScriptPublicationState publication;
@@ -691,6 +712,7 @@ protected:
     }
 };
 
+/// @brief Generation cleanup does not wait for disk and removes only recorded outputs inside the exact output root.
 TEST_F(ManagedGenerationCleanupTest, GenerationCleanupDoesNotWaitForDiskAndRemovesOnlyRecordedOutputsInsideTheExactOutputRoot)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -759,6 +781,7 @@ TEST_F(ManagedGenerationCleanupTest, GenerationCleanupDoesNotWaitForDiskAndRemov
     service.Shutdown(nullptr);
 }
 
+/// @brief Locked generation remains owned and is retried after the file closes.
 TEST_F(ManagedGenerationCleanupTest, LockedGenerationRemainsOwnedAndIsRetriedAfterTheFileCloses)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -795,6 +818,7 @@ TEST_F(ManagedGenerationCleanupTest, LockedGenerationRemainsOwnedAndIsRetriedAft
     service.Shutdown(nullptr);
 }
 
+/// @brief Shutdown drains queued cleanup before returning.
 TEST_F(ManagedGenerationCleanupTest, ShutdownDrainsQueuedCleanupBeforeReturning)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -825,6 +849,7 @@ TEST_F(ManagedGenerationCleanupTest, ShutdownDrainsQueuedCleanupBeforeReturning)
     EXPECT_TRUE(saved.empty());
 }
 
+/// @brief Content receipt failure retries the request and preserves the previous generation.
 TEST_F(ManagedScriptBuildTest, ContentReceiptFailureRetriesTheRequestAndPreservesThePreviousGeneration)
 {
     editor::ManagedBuildHistory history;
@@ -839,6 +864,7 @@ TEST_F(ManagedScriptBuildTest, ContentReceiptFailureRetriesTheRequestAndPreserve
     EXPECT_EQ(history.Find(request)->errorCode, "SOURCE_CHANGED_DURING_BUILD");
 }
 
+/// @brief Project added after initialization becomes available without restart.
 TEST_F(ManagedScriptBuildTest, ProjectAddedAfterInitializationBecomesAvailableWithoutRestart)
 {
     ASSERT_TRUE(util::FileSystem::EnsureDirectory(File("Assets/Scripts")));
@@ -852,6 +878,7 @@ TEST_F(ManagedScriptBuildTest, ProjectAddedAfterInitializationBecomesAvailableWi
     service.Shutdown(nullptr);
 }
 
+/// @brief Default cache scope keeps legacy manifest root.
 TEST_F(ManagedScriptBuildTest, DefaultCacheScopeKeepsLegacyManifestRoot)
 {
     ScopedManagedCacheEnvironment environment(nullptr);
@@ -868,6 +895,7 @@ TEST_F(ManagedScriptBuildTest, DefaultCacheScopeKeepsLegacyManifestRoot)
     service.Shutdown(nullptr);
 }
 
+/// @brief Explicit cache scope uses separate manifest and preserves legacy receipt.
 TEST_F(ManagedScriptBuildTest, ExplicitCacheScopeUsesSeparateManifestAndPreservesLegacyReceipt)
 {
     ScopedManagedCacheEnvironment environment(L"world-ui-preview");
@@ -892,6 +920,7 @@ TEST_F(ManagedScriptBuildTest, ExplicitCacheScopeUsesSeparateManifestAndPreserve
     service.Shutdown(nullptr);
 }
 
+/// @brief Invalid cache scope never starts the source watcher.
 TEST_F(ManagedScriptBuildTest, InvalidCacheScopeNeverStartsTheSourceWatcher)
 {
     ASSERT_TRUE(util::FileSystem::WriteText(File("Fixture.Scripts.csproj"), "<Project />"));
@@ -911,6 +940,7 @@ TEST_F(ManagedScriptBuildTest, InvalidCacheScopeNeverStartsTheSourceWatcher)
     }
 }
 
+/// @brief Scoped cleanup never removes another editors legacy generation.
 TEST_F(ManagedGenerationCleanupTest, ScopedCleanupNeverRemovesAnotherEditorsLegacyGeneration)
 {
     ScopedManagedCacheEnvironment environment(L"world-ui-preview");

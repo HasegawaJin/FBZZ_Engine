@@ -35,6 +35,7 @@ std::set<std::array<float,3>> Positions(const renderer::FiberPlacementCache& cac
 }
 } /// @note namespace
 
+/// @brief Places more than legacy mesh limit across chunks.
 TEST_F(FiberPlacementTest, PlacesMoreThanLegacyMeshLimitAcrossChunks)
 {
     const auto mesh = Ground(20);
@@ -48,6 +49,7 @@ TEST_F(FiberPlacementTest, PlacesMoreThanLegacyMeshLimitAcrossChunks)
     EXPECT_GT(cache.chunks.size(),1u);
     for (const auto& chunk : cache.chunks) EXPECT_LE(chunk.roots.size(),renderer::FIBER_MAX_BLADES);
 }
+/// @brief Empty paint does not allocate roots and brush is idempotent.
 TEST_F(FiberPlacementTest, EmptyPaintDoesNotAllocateRootsAndBrushIsIdempotent)
 {
     const auto mesh = Ground();
@@ -71,6 +73,7 @@ TEST_F(FiberPlacementTest, EmptyPaintDoesNotAllocateRootsAndBrushIsIdempotent)
     ASSERT_TRUE(renderer::PaintFiberSurface(mesh,options.world,stroke,paint,changed));
     EXPECT_TRUE(paint == erased); EXPECT_EQ(changed,0u);
 }
+/// @brief Builds approximately one million blades within an explicit budget.
 TEST_F(FiberPlacementTest, BuildsApproximatelyOneMillionBladesWithinAnExplicitBudget)
 {
     const auto mesh = Ground(50);
@@ -83,6 +86,7 @@ TEST_F(FiberPlacementTest, BuildsApproximatelyOneMillionBladesWithinAnExplicitBu
     EXPECT_GT(cache.chunks.size(),100u);
     EXPECT_LE(cache.bladeCount,options.maxBlades);
 }
+/// @brief Updates only touched chunks and keeps other root positions.
 TEST_F(FiberPlacementTest, UpdatesOnlyTouchedChunksAndKeepsOtherRootPositions)
 {
     const auto mesh = Ground(12);
@@ -105,6 +109,7 @@ TEST_F(FiberPlacementTest, UpdatesOnlyTouchedChunksAndKeepsOtherRootPositions)
     ASSERT_TRUE(renderer::UpdateFiberPlacement(mesh,paint,options,cache));
     EXPECT_EQ(cache.revision,revision);
 }
+/// @brief World density and width respect non uniform scale.
 TEST_F(FiberPlacementTest, WorldDensityAndWidthRespectNonUniformScale)
 {
     const auto mesh = Ground(1);
@@ -120,6 +125,7 @@ TEST_F(FiberPlacementTest, WorldDensityAndWidthRespectNonUniformScale)
         EXPECT_NEAR(math::Vector3(width.x,width.y,width.z).Length(),options.width*0.5f,1.0e-6f);
     }
 }
+/// @brief Overlapping UV surfaces have independent paint.
 TEST_F(FiberPlacementTest, OverlappingUvSurfacesHaveIndependentPaint)
 {
     auto mesh = Ground(2);
@@ -137,6 +143,7 @@ TEST_F(FiberPlacementTest, OverlappingUvSurfacesHaveIndependentPaint)
     EXPECT_GT(cache.bladeCount,0u);
     for (const auto& chunk : cache.chunks) for (const auto& root : chunk.roots) EXPECT_NEAR(root.m_position.y,0.0f,1.0e-6f);
 }
+/// @brief Rejects budget topology and non-finite input without replacing cache.
 TEST_F(FiberPlacementTest, RejectsBudgetTopologyAndNonFiniteInputWithoutReplacingCache)
 {
     auto mesh = Ground(); renderer::FiberPaintData paint;
@@ -153,6 +160,7 @@ TEST_F(FiberPlacementTest, RejectsBudgetTopologyAndNonFiniteInputWithoutReplacin
     EXPECT_FALSE(renderer::UpdateFiberPlacement(mesh,paint,options,cache));
     EXPECT_EQ(Positions(cache),positions);
 }
+/// @brief Saves paint and rejects malformed data without overwriting output.
 TEST_F(FiberPlacementTest, SavesPaintAndRejectsMalformedDataWithoutOverwritingOutput)
 {
     testkit::TempDir temp{"fiber-paint"}; const auto file = temp.File("Ground.fiberpaint").generic_string();
@@ -168,6 +176,7 @@ TEST_F(FiberPlacementTest, SavesPaintAndRejectsMalformedDataWithoutOverwritingOu
     EXPECT_FALSE(asset::LoadFiberPaintAssetFromFile(file,restored));
     EXPECT_TRUE(restored.data == before.data); EXPECT_EQ(restored.revision,before.revision);
 }
+/// @brief Saves new component settings and preserves legacy defaults.
 TEST_F(FiberPlacementTest, SavesNewComponentSettingsAndPreservesLegacyDefaults)
 {
     testkit::TempDir temp{"fiber-component"}; scene::Scene scene;

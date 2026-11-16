@@ -84,6 +84,7 @@ void ExpectCurrent(physics::PhysicsSolver& solver, const std::vector<physics::Co
 
 class BroadPhaseIncrementalTest : public testkit::Fixture {};
 
+/// @brief Refits one moved leaf and its shared ancestors.
 TEST_F(BroadPhaseIncrementalTest, RefitsOneMovedLeafAndItsSharedAncestors)
 {
     Input input(96);
@@ -98,6 +99,7 @@ TEST_F(BroadPhaseIncrementalTest, RefitsOneMovedLeafAndItsSharedAncestors)
     ExpectCurrent(solver, input.instances);
 }
 
+/// @brief Direct radius changes refresh the retained bounds.
 TEST_F(BroadPhaseIncrementalTest, DirectRadiusChangesRefreshTheRetainedBounds)
 {
     Input input(32);
@@ -110,6 +112,7 @@ TEST_F(BroadPhaseIncrementalTest, DirectRadiusChangesRefreshTheRetainedBounds)
     ExpectCurrent(solver, input.instances);
 }
 
+/// @brief Dense motion and teleports keep exactly the brute force candidates.
 TEST_F(BroadPhaseIncrementalTest, DenseMotionAndTeleportsKeepExactlyTheBruteForceCandidates)
 {
     Input input(64);
@@ -124,6 +127,7 @@ TEST_F(BroadPhaseIncrementalTest, DenseMotionAndTeleportsKeepExactlyTheBruteForc
     }
 }
 
+/// @brief Rechecks sleep static trigger shared body and layer state without motion.
 TEST_F(BroadPhaseIncrementalTest, RechecksSleepStaticTriggerSharedBodyAndLayerStateWithoutMotion)
 {
     Input input(16);
@@ -147,6 +151,7 @@ TEST_F(BroadPhaseIncrementalTest, RechecksSleepStaticTriggerSharedBodyAndLayerSt
     ExpectCurrent(solver, input.instances, filter);
 }
 
+/// @brief Removal insertion reordering and vector relocation use only current instances.
 TEST_F(BroadPhaseIncrementalTest, RemovalInsertionReorderingAndVectorRelocationUseOnlyCurrentInstances)
 {
     Input input(32);
@@ -169,6 +174,7 @@ TEST_F(BroadPhaseIncrementalTest, RemovalInsertionReorderingAndVectorRelocationU
     ExpectCurrent(solver, input.instances);
 }
 
+/// @brief Replacement at the same index does not retain old shape or body pointers.
 TEST_F(BroadPhaseIncrementalTest, ReplacementAtTheSameIndexDoesNotRetainOldShapeOrBodyPointers)
 {
     Input input(32);
@@ -180,6 +186,7 @@ TEST_F(BroadPhaseIncrementalTest, ReplacementAtTheSameIndexDoesNotRetainOldShape
     ExpectCurrent(solver, input.instances);
 }
 
+/// @brief Independent copied and moved solvers do not share mutable trees.
 TEST_F(BroadPhaseIncrementalTest, IndependentCopiedAndMovedSolversDoNotShareMutableTrees)
 {
     Input first(32);
@@ -200,6 +207,7 @@ TEST_F(BroadPhaseIncrementalTest, IndependentCopiedAndMovedSolversDoNotShareMuta
     ExpectCurrent(moved, first.instances);
 }
 
+/// @brief Invalid bounds do not hide valid pairs and can recover.
 TEST_F(BroadPhaseIncrementalTest, InvalidBoundsDoNotHideValidPairsAndCanRecover)
 {
     Input input(16);
@@ -214,6 +222,7 @@ TEST_F(BroadPhaseIncrementalTest, InvalidBoundsDoNotHideValidPairsAndCanRecover)
     ExpectCurrent(solver, input.instances);
 }
 
+/// @brief Appends pairs without discarding the callers existing output.
 TEST_F(BroadPhaseIncrementalTest, AppendsPairsWithoutDiscardingTheCallersExistingOutput)
 {
     Input input(2);

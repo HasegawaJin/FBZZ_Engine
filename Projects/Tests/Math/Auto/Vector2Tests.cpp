@@ -16,6 +16,7 @@ class Vector2Test : public testkit::Fixture {};
 
 /// @name 長さと正規化
 
+/// @brief Length squared matches length squared.
 TEST_F(Vector2Test, LengthSquaredMatchesLengthSquared)
 {
     const math::Vector2 v(3.0f, 4.0f);
@@ -24,6 +25,7 @@ TEST_F(Vector2Test, LengthSquaredMatchesLengthSquared)
     EXPECT_NEAR(v.Length(), 5.0f, testkit::kTolerance);
 }
 
+/// @brief Normalizing a nonzero input produces a unit-length result.
 TEST_F(Vector2Test, NormalizedProducesUnitLength)
 {
     for (int i = 0; i < 64; ++i) {
@@ -34,6 +36,7 @@ TEST_F(Vector2Test, NormalizedProducesUnitLength)
     }
 }
 
+/// @brief Normalized preserves direction.
 TEST_F(Vector2Test, NormalizedPreservesDirection)
 {
     const math::Vector2 v(0.0f, -7.5f);
@@ -43,11 +46,13 @@ TEST_F(Vector2Test, NormalizedPreservesDirection)
 
 /// @name 内積
 
+/// @brief Dot is zero for perpendicular axes.
 TEST_F(Vector2Test, DotIsZeroForPerpendicularAxes)
 {
     EXPECT_NEAR(math::Vector2::Dot({1.0f, 0.0f}, {0.0f, 1.0f}), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Dot is commutative.
 TEST_F(Vector2Test, DotIsCommutative)
 {
     for (int i = 0; i < 64; ++i) {
@@ -58,6 +63,7 @@ TEST_F(Vector2Test, DotIsCommutative)
     }
 }
 
+/// @brief The dot product of a vector with itself equals its squared length.
 TEST_F(Vector2Test, DotWithItselfEqualsLengthSquared)
 {
     const math::Vector2 v = Rng().NextVector2(-10.0f, 10.0f);
@@ -67,6 +73,7 @@ TEST_F(Vector2Test, DotWithItselfEqualsLengthSquared)
 
 /// @name 補間と演算子
 
+/// @brief Lerp returns the endpoints at zero and one.
 TEST_F(Vector2Test, LerpReturnsTheEndpointsAtZeroAndOne)
 {
     const math::Vector2 a(1.0f, 2.0f);
@@ -76,6 +83,7 @@ TEST_F(Vector2Test, LerpReturnsTheEndpointsAtZeroAndOne)
     EXPECT_VEC2_NEAR(math::Vector2::Lerp(a, b, 1.0f), b, testkit::kTolerance);
 }
 
+/// @brief Lerp at midpoint is the average.
 TEST_F(Vector2Test, LerpAtMidpointIsTheAverage)
 {
     const math::Vector2 a(0.0f, 0.0f);
@@ -85,6 +93,7 @@ TEST_F(Vector2Test, LerpAtMidpointIsTheAverage)
                      testkit::kTolerance);
 }
 
+/// @brief Compound assignment matches the binary operator.
 TEST_F(Vector2Test, CompoundAssignmentMatchesTheBinaryOperator)
 {
     const math::Vector2 a(1.0f, 2.0f);
@@ -99,6 +108,7 @@ TEST_F(Vector2Test, CompoundAssignmentMatchesTheBinaryOperator)
     EXPECT_VEC2_NEAR(difference, a - b, testkit::kTolerance);
 }
 
+/// @brief Division is the inverse of scaling.
 TEST_F(Vector2Test, DivisionIsTheInverseOfScaling)
 {
     const math::Vector2 v(3.0f, -8.0f);
@@ -108,6 +118,7 @@ TEST_F(Vector2Test, DivisionIsTheInverseOfScaling)
 
 /// @name 等値判定
 
+/// @brief Equality accepts a component difference below epsilon.
 TEST_F(Vector2Test, EqualityToleratesDifferencesBelowEpsilon)
 {
     /// @note operator== は誤差込みの比較。ビット一致ではないことを契約として固定する。
@@ -118,6 +129,7 @@ TEST_F(Vector2Test, EqualityToleratesDifferencesBelowEpsilon)
     EXPECT_FALSE(a != b);
 }
 
+/// @brief Equality rejects differences above `epsilon`.
 TEST_F(Vector2Test, EqualityRejectsDifferencesAboveEpsilon)
 {
     const math::Vector2 a(0.0f, 0.0f);

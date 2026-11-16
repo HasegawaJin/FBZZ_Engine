@@ -20,6 +20,7 @@ class PhysicsMaterialTest : public testkit::Fixture {};
 
 /// @name 合成規則
 
+/// @brief Checks combine implements each rule.
 TEST_F(PhysicsMaterialTest, CombineImplementsEachRule)
 {
     EXPECT_NEAR(PhysicsMaterial::Combine(PhysicsMaterialCombine::Average, 0.2f, 0.8f), 0.5f,
@@ -34,6 +35,7 @@ TEST_F(PhysicsMaterialTest, CombineImplementsEachRule)
                 testkit::kTolerance);
 }
 
+/// @brief Combine is symmetric in its operands.
 TEST_F(PhysicsMaterialTest, CombineIsSymmetricInItsOperands)
 {
     /// @note 接触ペアの «どちらが A か» はブロードフェーズの都合で決まる。
@@ -49,6 +51,7 @@ TEST_F(PhysicsMaterialTest, CombineIsSymmetricInItsOperands)
                     PhysicsMaterial::Combine(mode, 0.7f, 0.3f), testkit::kTolerance);
 }
 
+/// @brief Resolve combine takes the stronger rule.
 TEST_F(PhysicsMaterialTest, ResolveCombineTakesTheStrongerRule)
 {
     /// @note 列挙の並び順がそのまま優先度。折衷せず «強く指定した側» を勝たせる。
@@ -63,6 +66,7 @@ TEST_F(PhysicsMaterialTest, ResolveCombineTakesTheStrongerRule)
               PhysicsMaterialCombine::Minimum);
 }
 
+/// @brief Resolve combine is identity for equal rules.
 TEST_F(PhysicsMaterialTest, ResolveCombineIsIdentityForEqualRules)
 {
     EXPECT_EQ(PhysicsMaterial::ResolveCombine(PhysicsMaterialCombine::Multiply,
@@ -72,6 +76,7 @@ TEST_F(PhysicsMaterialTest, ResolveCombineIsIdentityForEqualRules)
 
 /// @name 既定の合成
 
+/// @brief Default restitution rule is minimum.
 TEST_F(PhysicsMaterialTest, DefaultRestitutionRuleIsMinimum)
 {
     PhysicsMaterial soft;
@@ -82,6 +87,7 @@ TEST_F(PhysicsMaterialTest, DefaultRestitutionRuleIsMinimum)
     EXPECT_NEAR(PhysicsMaterial::CombineRestitution(soft, bouncy), 0.1f, testkit::kTolerance);
 }
 
+/// @brief Default friction rule is the geometric mean.
 TEST_F(PhysicsMaterialTest, DefaultFrictionRuleIsTheGeometricMean)
 {
     PhysicsMaterial a;
@@ -92,6 +98,7 @@ TEST_F(PhysicsMaterialTest, DefaultFrictionRuleIsTheGeometricMean)
     EXPECT_NEAR(PhysicsMaterial::CombineFriction(a, b), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Checks rubber overrides the rule when it asks for maximum.
 TEST_F(PhysicsMaterialTest, RubberOverridesTheRuleWhenItAsksForMaximum)
 {
     /// @note 「相手が何でも噛む」ゴムの指定が、既定規則の材質と当たっても生き残ること。
@@ -104,6 +111,7 @@ TEST_F(PhysicsMaterialTest, RubberOverridesTheRuleWhenItAsksForMaximum)
     EXPECT_NEAR(PhysicsMaterial::CombineFriction(slippery, grippy), 0.9f, testkit::kTolerance);
 }
 
+/// @brief Static and dynamic friction use the same rule but different values.
 TEST_F(PhysicsMaterialTest, StaticAndDynamicFrictionUseTheSameRuleButDifferentValues)
 {
     PhysicsMaterial a;
@@ -117,6 +125,7 @@ TEST_F(PhysicsMaterialTest, StaticAndDynamicFrictionUseTheSameRuleButDifferentVa
     EXPECT_NEAR(PhysicsMaterial::CombineFriction(a, b), 3.0f, testkit::kTolerance);
 }
 
+/// @brief Restitution and friction rules are independent.
 TEST_F(PhysicsMaterialTest, RestitutionAndFrictionRulesAreIndependent)
 {
     /// @note 反発だけ Maximum にした材質が、摩擦の規則まで持って行かないこと。
@@ -134,6 +143,7 @@ TEST_F(PhysicsMaterialTest, RestitutionAndFrictionRulesAreIndependent)
 
 /// @name プリセット
 
+/// @brief Every preset index resolves to a name and a value.
 TEST_F(PhysicsMaterialTest, EveryPresetIndexResolvesToANameAndAValue)
 {
     for (int i = 0; i < PhysicsMaterial::PRESET_COUNT; ++i) {
@@ -144,6 +154,7 @@ TEST_F(PhysicsMaterialTest, EveryPresetIndexResolvesToANameAndAValue)
     }
 }
 
+/// @brief Preset name round-trips through find preset.
 TEST_F(PhysicsMaterialTest, PresetNameRoundTripsThroughFindPreset)
 {
     /// @note Editor のメニューとスクリプトが同じ表を引くための契約。
@@ -154,6 +165,7 @@ TEST_F(PhysicsMaterialTest, PresetNameRoundTripsThroughFindPreset)
     }
 }
 
+/// @brief Out-of-range indices are rejected.
 TEST_F(PhysicsMaterialTest, OutOfRangeIndicesAreRejected)
 {
     EXPECT_EQ(PhysicsMaterial::PresetAt(-1), nullptr);
@@ -162,12 +174,14 @@ TEST_F(PhysicsMaterialTest, OutOfRangeIndicesAreRejected)
     EXPECT_STREQ(PhysicsMaterial::PresetName(PhysicsMaterial::PRESET_COUNT), "");
 }
 
+/// @brief Unknown and null names are rejected.
 TEST_F(PhysicsMaterialTest, UnknownAndNullNamesAreRejected)
 {
     EXPECT_EQ(PhysicsMaterial::FindPreset("Adamantium"), nullptr);
     EXPECT_EQ(PhysicsMaterial::FindPreset(nullptr), nullptr);
 }
 
+/// @brief Presets rank as their names suggest.
 TEST_F(PhysicsMaterialTest, PresetsRankAsTheirNamesSuggest)
 {
     /// @note 数値そのものではなく «氷は滑る・ゴムは跳ねる» という順序関係を守らせる。
@@ -177,6 +191,7 @@ TEST_F(PhysicsMaterialTest, PresetsRankAsTheirNamesSuggest)
     EXPECT_GT(PhysicsMaterial::Metal.density, PhysicsMaterial::Wood.density);
 }
 
+/// @brief Default constructed material matches the default preset.
 TEST_F(PhysicsMaterialTest, DefaultConstructedMaterialMatchesTheDefaultPreset)
 {
     const PhysicsMaterial fresh;

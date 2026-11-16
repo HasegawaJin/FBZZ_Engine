@@ -30,6 +30,7 @@ void Fill(std::vector<std::uint8_t>& rgba, std::uint32_t width, std::uint32_t x0
 
 } // namespace
 
+/// @brief Level count stops before tiles get too small or odd.
 TEST(FlipbookMipsTest, LevelCountStopsBeforeTilesGetTooSmallOrOdd)
 {
     /// @note 256 → 4
@@ -40,6 +41,7 @@ TEST(FlipbookMipsTest, LevelCountStopsBeforeTilesGetTooSmallOrOdd)
     EXPECT_EQ(asset::FlipbookMipLevelCount(6, 6), 1u);
 }
 
+/// @brief Neighbouring tiles do not bleed.
 TEST(FlipbookMipsTest, NeighbouringTilesDoNotBleed)
 {
     constexpr std::uint32_t kWidth = 16, kHeight = 8;
@@ -63,6 +65,7 @@ TEST(FlipbookMipsTest, NeighbouringTilesDoNotBleed)
     }
 }
 
+/// @brief Straight alpha ignores the colour of transparent texels.
 TEST(FlipbookMipsTest, StraightAlphaIgnoresTheColourOfTransparentTexels)
 {
     /// @note 2x2 のうち 1 画素だけ不透明な白、残りは透明な黒。素直に平均すると灰色の縁になる。
@@ -74,6 +77,7 @@ TEST(FlipbookMipsTest, StraightAlphaIgnoresTheColourOfTransparentTexels)
     EXPECT_EQ(levels[1].rgba[3], 64);
 }
 
+/// @brief Premultiplied colour is averaged in linear space.
 TEST(FlipbookMipsTest, PremultipliedColourIsAveragedInLinearSpace)
 {
     std::vector<std::uint8_t> rgba(8 * 8 * 4, 0);
@@ -88,6 +92,7 @@ TEST(FlipbookMipsTest, PremultipliedColourIsAveragedInLinearSpace)
     EXPECT_EQ(levels[1].rgba[3], 255);
 }
 
+/// @brief Grid that does not divide the atlas keeps only the base level.
 TEST(FlipbookMipsTest, GridThatDoesNotDivideTheAtlasKeepsOnlyTheBaseLevel)
 {
     std::vector<std::uint8_t> rgba(12 * 8 * 4, 128);

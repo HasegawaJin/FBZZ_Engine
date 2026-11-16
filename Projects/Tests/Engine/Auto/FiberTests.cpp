@@ -35,6 +35,7 @@ renderer::Mesh FiberTriangle()
 }
 } /// @note namespace
 
+/// @brief Clamps material and rejects non-finite values.
 TEST_F(FiberTest, ClampsMaterialAndRejectsNonFiniteValues)
 {
     asset::MaterialAssetAuthoring material;
@@ -52,6 +53,7 @@ TEST_F(FiberTest, ClampsMaterialAndRejectsNonFiniteValues)
     EXPECT_FLOAT_EQ(settings.m_rootColor.x, defaults.m_rootColor.x);
 }
 
+/// @brief Strand look parameters default off and clamp.
 TEST_F(FiberTest, StrandLookParametersDefaultOffAndClamp)
 {
     const auto defaults = asset::ResolveFiberMaterial(nullptr);
@@ -67,6 +69,7 @@ TEST_F(FiberTest, StrandLookParametersDefaultOffAndClamp)
     EXPECT_FLOAT_EQ(settings.m_specularShift, defaults.m_specularShift);
 }
 
+/// @brief Legacy shader and overrides keep their values with canonical priority.
 TEST_F(FiberTest, LegacyShaderAndOverridesKeepTheirValuesWithCanonicalPriority)
 {
     for (const char* name : {"grassShading", "planarShading"}) {
@@ -98,6 +101,7 @@ TEST_F(FiberTest, LegacyShaderAndOverridesKeepTheirValuesWithCanonicalPriority)
     }
 }
 
+/// @brief Legacy shading key loads and saves canonically without changing its value.
 TEST_F(FiberTest, LegacyShadingKeyLoadsAndSavesCanonicallyWithoutChangingItsValue)
 {
     testkit::TempDir temp{"fiber-shading-migration"};
@@ -118,6 +122,7 @@ TEST_F(FiberTest, LegacyShadingKeyLoadsAndSavesCanonicallyWithoutChangingItsValu
     EXPECT_FLOAT_EQ(asset::ResolveFiberMaterial(reloaded).m_planarShading, 0.75f);
 }
 
+/// @brief Canonical shading key wins over legacy and invalid values use the default.
 TEST_F(FiberTest, CanonicalShadingKeyWinsOverLegacyAndInvalidValuesUseTheDefault)
 {
     asset::MaterialAssetAuthoring material;
@@ -129,6 +134,7 @@ TEST_F(FiberTest, CanonicalShadingKeyWinsOverLegacyAndInvalidValuesUseTheDefault
     EXPECT_FLOAT_EQ(asset::ResolveFiberMaterial(material).m_planarShading, 0.0f);
 }
 
+/// @brief Component defaults fit character budget.
 TEST_F(FiberTest, ComponentDefaultsFitCharacterBudget)
 {
     const scene::FiberComponent fiber;
@@ -140,6 +146,7 @@ TEST_F(FiberTest, ComponentDefaultsFitCharacterBudget)
     EXPECT_EQ(fiber.m_shadowBladeSegments, 0);
 }
 
+/// @brief Rejects wrong parameter arity.
 TEST_F(FiberTest, RejectsWrongParameterArity)
 {
     asset::MaterialAssetAuthoring material;
@@ -151,6 +158,7 @@ TEST_F(FiberTest, RejectsWrongParameterArity)
     EXPECT_FLOAT_EQ(settings.m_tipColor.y, defaults.m_tipColor.y);
 }
 
+/// @brief Builds boundary fins with fixed roots and unit height tips.
 TEST_F(FiberTest, BuildsBoundaryFinsWithFixedRootsAndUnitHeightTips)
 {
     const auto mesh = FiberTriangle();
@@ -167,6 +175,7 @@ TEST_F(FiberTest, BuildsBoundaryFinsWithFixedRootsAndUnitHeightTips)
     for (auto index : fins.m_indices) EXPECT_LT(index, fins.m_vertices.size());
 }
 
+/// @brief Welds UV seams without duplicating shared edges.
 TEST_F(FiberTest, WeldsUvSeamsWithoutDuplicatingSharedEdges)
 {
     auto mesh = FiberTriangle();
@@ -183,6 +192,7 @@ TEST_F(FiberTest, WeldsUvSeamsWithoutDuplicatingSharedEdges)
     EXPECT_EQ(fins.m_indices.size(), 120u);
 }
 
+/// @brief Keeps output when indices are invalid.
 TEST_F(FiberTest, KeepsOutputWhenIndicesAreInvalid)
 {
     auto mesh = FiberTriangle();
@@ -194,6 +204,7 @@ TEST_F(FiberTest, KeepsOutputWhenIndicesAreInvalid)
     EXPECT_EQ(fins.m_indices[0], 17u);
 }
 
+/// @brief Rejects non manifold edges and non-finite positions.
 TEST_F(FiberTest, RejectsNonManifoldEdgesAndNonFinitePositions)
 {
     auto mesh = FiberTriangle();
@@ -205,6 +216,7 @@ TEST_F(FiberTest, RejectsNonManifoldEdgesAndNonFinitePositions)
     EXPECT_FALSE(renderer::BuildFiberFins(mesh, fins));
 }
 
+/// @brief Skips degenerate faces and rejects skinned input.
 TEST_F(FiberTest, SkipsDegenerateFacesAndRejectsSkinnedInput)
 {
     auto mesh = FiberTriangle();
@@ -217,6 +229,7 @@ TEST_F(FiberTest, SkipsDegenerateFacesAndRejectsSkinnedInput)
     EXPECT_FALSE(renderer::BuildFiberFins(mesh, fins));
 }
 
+/// @brief Preserves fiber modes and material through scene save.
 TEST_F(FiberTest, PreservesFiberModesAndMaterialThroughSceneSave)
 {
     testkit::TempDir temp{"fiber"};
@@ -272,6 +285,7 @@ TEST_F(FiberTest, PreservesFiberModesAndMaterialThroughSceneSave)
     EXPECT_TRUE(legacy->GetComponent<scene::FiberComponent>(legacyEntities[0])->m_castShadows);
 }
 
+/// @brief Advances wind history even when world is static.
 TEST_F(FiberTest, AdvancesWindHistoryEvenWhenWorldIsStatic)
 {
     renderer::FiberMotionHistory history;
@@ -289,6 +303,7 @@ TEST_F(FiberTest, AdvancesWindHistoryEvenWhenWorldIsStatic)
     EXPECT_FLOAT_EQ(history.m_current.m_wind.x, 2.0f);
 }
 
+/// @brief Does not advance history twice in one frame.
 TEST_F(FiberTest, DoesNotAdvanceHistoryTwiceInOneFrame)
 {
     renderer::FiberMotionHistory history;
@@ -304,6 +319,7 @@ TEST_F(FiberTest, DoesNotAdvanceHistoryTwiceInOneFrame)
     EXPECT_FLOAT_EQ(history.m_current.m_time, 2.0f);
 }
 
+/// @brief Resets history after gap rewind and topology changes.
 TEST_F(FiberTest, ResetsHistoryAfterGapRewindAndTopologyChanges)
 {
     renderer::FiberMotionHistory history;
@@ -327,6 +343,7 @@ TEST_F(FiberTest, ResetsHistoryAfterGapRewindAndTopologyChanges)
     EXPECT_FALSE(history.m_valid);
 }
 
+/// @brief Keeps independent view history.
 TEST_F(FiberTest, KeepsIndependentViewHistory)
 {
     renderer::FiberMotionHistory first;
@@ -343,6 +360,7 @@ TEST_F(FiberTest, KeepsIndependentViewHistory)
     EXPECT_FLOAT_EQ(second.m_previous.m_time, 2.0f);
 }
 
+/// @brief Carries bone weights into every fin height.
 TEST_F(FiberTest, CarriesBoneWeightsIntoEveryFinHeight)
 {
     auto mesh=FiberTriangle();
@@ -368,6 +386,7 @@ TEST_F(FiberTest, CarriesBoneWeightsIntoEveryFinHeight)
     }
 }
 
+/// @brief Builds continuous blades over triangle interior.
 TEST_F(FiberTest, BuildsContinuousBladesOverTriangleInterior)
 {
     const auto mesh=FiberTriangle();
@@ -397,6 +416,7 @@ TEST_F(FiberTest, BuildsContinuousBladesOverTriangleInterior)
     EXPECT_EQ(sizeof(renderer::FiberBladeRoot),64u);
 }
 
+/// @brief Vertex alpha density keeps white mesh roots identical.
 TEST_F(FiberTest, VertexAlphaDensityKeepsWhiteMeshRootsIdentical)
 {
     const auto mesh=FiberTriangle();
@@ -414,6 +434,7 @@ TEST_F(FiberTest, VertexAlphaDensityKeepsWhiteMeshRootsIdentical)
     }
 }
 
+/// @brief Vertex alpha density drops blades where alpha is zero.
 TEST_F(FiberTest, VertexAlphaDensityDropsBladesWhereAlphaIsZero)
 {
     auto mesh=FiberTriangle();
@@ -426,6 +447,7 @@ TEST_F(FiberTest, VertexAlphaDensityDropsBladesWhereAlphaIsZero)
     EXPECT_EQ(ignored.size(),20u) << "フラグが false なら A を読まない";
 }
 
+/// @brief Rejects invalid blade input without replacing output.
 TEST_F(FiberTest, RejectsInvalidBladeInputWithoutReplacingOutput)
 {
     auto mesh=FiberTriangle();
@@ -439,6 +461,7 @@ TEST_F(FiberTest, RejectsInvalidBladeInputWithoutReplacingOutput)
     EXPECT_FLOAT_EQ(output[0].m_rank,0.25f);
 }
 
+/// @brief Distance LOD is bounded and monotonic.
 TEST_F(FiberTest, DistanceLodIsBoundedAndMonotonic)
 {
     int last=64;
@@ -453,6 +476,7 @@ TEST_F(FiberTest, DistanceLodIsBoundedAndMonotonic)
     EXPECT_EQ(renderer::FiberLodShellCount(0,90,10,10,10),1);
 }
 
+/// @brief Contact counts stop at the last slot that can still bend.
 TEST_F(FiberTest, ContactCountsStopAtTheLastSlotThatCanStillBend)
 {
     scene::FiberContactCB data;
@@ -479,6 +503,7 @@ TEST_F(FiberTest, ContactCountsStopAtTheLastSlotThatCanStillBend)
     EXPECT_EQ(data.m_count, 0u) << "回復しきった枠だけなら走査しない";
 }
 
+/// @brief Saves blade terrain LOD and interactor settings.
 TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
 {
     testkit::TempDir temp{"fiber-blade"};
@@ -531,6 +556,7 @@ TEST_F(FiberTest, SavesBladeTerrainLodAndInteractorSettings)
 }
 
 
+/// @brief Project appearance keeps typed extensions through material save reload.
 TEST_F(FiberTest, ProjectAppearanceKeepsTypedExtensionsThroughMaterialSaveReload)
 {
     testkit::TempDir temp{"fiber-project-appearance"};
@@ -580,6 +606,7 @@ TEST_F(FiberTest, ProjectAppearanceKeepsTypedExtensionsThroughMaterialSaveReload
     EXPECT_EQ(bytes[0], 0u);
 }
 
+/// @brief Project appearance geometry contract requires complete hybrid and rejects wrong shape.
 TEST_F(FiberTest, ProjectAppearanceGeometryContractRequiresCompleteHybridAndRejectsWrongShape)
 {
     using renderer::ShaderVertexContract;
@@ -595,6 +622,7 @@ TEST_F(FiberTest, ProjectAppearanceGeometryContractRequiresCompleteHybridAndReje
 }
 
 
+/// @brief Project family rejects different extended fields and texture bindings.
 TEST_F(FiberTest, ProjectFamilyRejectsDifferentExtendedFieldsAndTextureBindings)
 {
     renderer::ShaderDescriptor shell;

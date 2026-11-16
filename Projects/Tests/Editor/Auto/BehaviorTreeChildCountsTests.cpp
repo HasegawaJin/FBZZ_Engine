@@ -20,6 +20,7 @@ protected:
     }
 };
 
+/// @brief Counts sparse and invalid parents without sorting or filtering.
 TEST_F(BehaviorTreeChildCountsTest, CountsSparseAndInvalidParentsWithoutSortingOrFiltering)
 {
     ai::BehaviorTreeAsset asset;
@@ -39,6 +40,7 @@ TEST_F(BehaviorTreeChildCountsTest, CountsSparseAndInvalidParentsWithoutSortingO
     EXPECT_EQ(asset.nodes[2].id, 200);
 }
 
+/// @brief Checks reparent and subtree removal appear in the next snapshot.
 TEST_F(BehaviorTreeChildCountsTest, ReparentAndSubtreeRemovalAppearInTheNextSnapshot)
 {
     ai::BehaviorTreeAsset asset;
@@ -62,6 +64,7 @@ TEST_F(BehaviorTreeChildCountsTest, ReparentAndSubtreeRemovalAppearInTheNextSnap
     EXPECT_FALSE(removedCounts.contains(2));
 }
 
+/// @brief Duplicate and undo replacement cannot reuse stale counts.
 TEST_F(BehaviorTreeChildCountsTest, DuplicateAndUndoReplacementCannotReuseStaleCounts)
 {
     ai::BehaviorTreeAsset asset;
@@ -85,6 +88,7 @@ TEST_F(BehaviorTreeChildCountsTest, DuplicateAndUndoReplacementCannotReuseStaleC
     EXPECT_TRUE(editor::btops::BuildChildCounts(ai::BehaviorTreeAsset{}).empty());
 }
 
+/// @brief Link targets match per node rules for both drag directions.
 TEST_F(BehaviorTreeChildCountsTest, LinkTargetsMatchPerNodeRulesForBothDragDirections)
 {
     ai::BehaviorTreeAsset asset;

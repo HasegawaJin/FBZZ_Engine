@@ -40,6 +40,7 @@ protected:
     }
 };
 
+/// @brief Synchronizes rotated scaled hierarchy and inactive descendants.
 TEST_F(ManagedTransformPoseKernelTest, SynchronizesRotatedScaledHierarchyAndInactiveDescendants)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -66,6 +67,7 @@ TEST_F(ManagedTransformPoseKernelTest, SynchronizesRotatedScaledHierarchyAndInac
     EXPECT_VEC3_NEAR(child.transform.position, (math::Vector3{1, 2, 3}), testkit::kTolerance);
 }
 
+/// @brief Rejects descendant overflow without repairing any live cache.
 TEST_F(ManagedTransformPoseKernelTest, RejectsDescendantOverflowWithoutRepairingAnyLiveCache)
 {
     auto& ancestor = m_scene.CreateGameObject("Ancestor");
@@ -88,6 +90,7 @@ TEST_F(ManagedTransformPoseKernelTest, RejectsDescendantOverflowWithoutRepairing
     EXPECT_QUAT_NEAR(target.transform.rotation, originalTarget.rotation, testkit::kTolerance);
 }
 
+/// @brief Reads world cache and rejects malformed selectors without mutation.
 TEST_F(ManagedTransformPoseKernelTest, ReadsWorldCacheAndRejectsMalformedSelectorsWithoutMutation)
 {
     auto& object = m_scene.CreateGameObject("Target");
@@ -116,6 +119,7 @@ TEST_F(ManagedTransformPoseKernelTest, ReadsWorldCacheAndRejectsMalformedSelecto
     EXPECT_QUAT_NEAR(object.transform.worldRotation, cached, testkit::kTolerance);
 }
 
+/// @brief Checks rotate look at match existing math and guard live physics body.
 TEST_F(ManagedTransformPoseKernelTest, RotateLookAtMatchExistingMathAndGuardLivePhysicsBody)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -202,6 +206,7 @@ protected:
     }
 };
 
+/// @brief Pure quaternion matches native math before any callback.
 TEST_F(ManagedTransformPoseTest, PureQuaternionMatchesNativeMathBeforeAnyCallback)
 {
     auto& entry = m_owner->GetComponent<scene::ScriptComponent>()->scripts.emplace_back();
@@ -255,6 +260,7 @@ TEST_F(ManagedTransformPoseTest, PureQuaternionMatchesNativeMathBeforeAnyCallbac
     EXPECT_NEAR(readFloat(scalarBytes, 12), 30, testkit::kTolerance);
 }
 
+/// @brief Reads local and interpolated world rotation through core CLR.
 TEST_F(ManagedTransformPoseTest, ReadsLocalAndInterpolatedWorldRotationThroughCoreClr)
 {
     const math::Quaternion local = math::Quaternion::FromEuler({0.4f, -0.7f, 0.2f});
@@ -274,6 +280,7 @@ TEST_F(ManagedTransformPoseTest, ReadsLocalAndInterpolatedWorldRotationThroughCo
     EXPECT_QUAT_NEAR(m_owner->transform.worldRotation, world, testkit::kTolerance);
 }
 
+/// @brief Writes target scale and synchronizes children through core CLR.
 TEST_F(ManagedTransformPoseTest, WritesTargetScaleAndSynchronizesChildrenThroughCoreClr)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -294,6 +301,7 @@ TEST_F(ManagedTransformPoseTest, WritesTargetScaleAndSynchronizesChildrenThrough
     EXPECT_VEC3_NEAR(target.transform.Forward(), math::Vector3::RIGHT, testkit::kTolerance);
 }
 
+/// @brief Failed descendant preflight retains original scene and fault diagnostic.
 TEST_F(ManagedTransformPoseTest, FailedDescendantPreflightRetainsOriginalSceneAndFaultDiagnostic)
 {
     auto& child = m_scene.CreateGameObject("Child");
@@ -307,6 +315,7 @@ TEST_F(ManagedTransformPoseTest, FailedDescendantPreflightRetainsOriginalSceneAn
     EXPECT_VEC3_NEAR(child.transform.worldPosition, math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Cached transform rejects destroyed target with reused entity and GUID.
 TEST_F(ManagedTransformPoseTest, CachedTransformRejectsDestroyedTargetWithReusedEntityAndGuid)
 {
     auto& target = m_scene.CreateGameObject("Target");

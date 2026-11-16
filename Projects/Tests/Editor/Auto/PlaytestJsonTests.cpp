@@ -35,6 +35,7 @@ bool Holds(const JsonValue& root, const std::string& path, const std::string& op
 
 } /// @note namespace
 
+/// @brief Resolves qualified observation keys for numeric conditions.
 TEST_F(PlaytestJsonPointerTest, ResolvesQualifiedObservationKeysForNumericConditions)
 {
     const JsonValue root = Parse(R"({"fields":{"ImportedSamples.OceanEcosystem.MarineEcosystemComponent.observedSeconds":30.5}})");
@@ -46,6 +47,7 @@ TEST_F(PlaytestJsonPointerTest, ResolvesQualifiedObservationKeysForNumericCondit
     EXPECT_EQ(ResolveJsonPath(root, "fields.observedSeconds"), nullptr);
 }
 
+/// @brief Decodes escaped tokens once and resolves array elements.
 TEST_F(PlaytestJsonPointerTest, DecodesEscapedTokensOnceAndResolvesArrayElements)
 {
     const JsonValue root = Parse(R"({"a/b":{"m~n":["first",{"~1":42}]}})");
@@ -59,6 +61,7 @@ TEST_F(PlaytestJsonPointerTest, DecodesEscapedTokensOnceAndResolvesArrayElements
     EXPECT_EQ(escaped->AsInt(), 42);
 }
 
+/// @brief Resolves empty tokens and preserves empty root path.
 TEST_F(PlaytestJsonPointerTest, ResolvesEmptyTokensAndPreservesEmptyRootPath)
 {
     const JsonValue root = Parse(R"({"":{"":7},"nodes":[{"":9}]})");
@@ -72,6 +75,7 @@ TEST_F(PlaytestJsonPointerTest, ResolvesEmptyTokensAndPreservesEmptyRootPath)
     EXPECT_EQ(ResolveJsonPath(root, "/nodes/0/")->AsInt(), 9);
 }
 
+/// @brief Rejects malformed escapes and invalid array indices.
 TEST_F(PlaytestJsonPointerTest, RejectsMalformedEscapesAndInvalidArrayIndices)
 {
     const JsonValue root = Parse(R"({"nodes":[{"name":"Player"}],"a~":1,"a~2":2})");
@@ -82,6 +86,7 @@ TEST_F(PlaytestJsonPointerTest, RejectsMalformedEscapesAndInvalidArrayIndices)
     }
 }
 
+/// @brief Preserves dotted paths without pointer decoding.
 TEST_F(PlaytestJsonPointerTest, PreservesDottedPathsWithoutPointerDecoding)
 {
     const JsonValue root = Parse(R"({"nodes":[{"name":"Player"},{"name":"Boss"}],"a~1b":{"count":3},"a/b":{"count":4}})");
@@ -95,6 +100,7 @@ TEST_F(PlaytestJsonPointerTest, PreservesDottedPathsWithoutPointerDecoding)
     EXPECT_EQ(ResolveJsonPath(root, "a/b.count")->AsInt(), 4);
 }
 
+/// @brief Resolves object keys and array indices.
 TEST(PlaytestJsonPath, ResolvesObjectKeysAndArrayIndices)
 {
     const JsonValue root = Parse(R"({"nodes":[{"name":"Player"},{"name":"Boss"}],"count":2})");
@@ -105,6 +111,7 @@ TEST(PlaytestJsonPath, ResolvesObjectKeysAndArrayIndices)
     EXPECT_EQ(ResolveJsonPath(root, ""), &root);
 }
 
+/// @brief Returns null for missing or out-of-range segments.
 TEST(PlaytestJsonPath, ReturnsNullForMissingOrOutOfRangeSegments)
 {
     const JsonValue root = Parse(R"({"nodes":[{"name":"Player"}]})");
@@ -115,6 +122,7 @@ TEST(PlaytestJsonPath, ReturnsNullForMissingOrOutOfRangeSegments)
     EXPECT_EQ(ResolveJsonPath(root, "nodes.0.name.deeper"), nullptr);
 }
 
+/// @brief Exists and missing do not need a value.
 TEST(PlaytestJsonCondition, ExistsAndMissingDoNotNeedAValue)
 {
     const JsonValue root = Parse(R"({"a":1})");
@@ -125,6 +133,7 @@ TEST(PlaytestJsonCondition, ExistsAndMissingDoNotNeedAValue)
     EXPECT_TRUE(EvaluateJsonCondition(ResolveJsonPath(root, "b"), "missing", nullptr, detail));
 }
 
+/// @brief Compares numbers with tolerance for round-trips.
 TEST(PlaytestJsonCondition, ComparesNumbersWithToleranceForRoundTrips)
 {
     const JsonValue root = Parse(R"({"hp":0.30000000000000004,"score":120})");
@@ -135,6 +144,7 @@ TEST(PlaytestJsonCondition, ComparesNumbersWithToleranceForRoundTrips)
     EXPECT_TRUE(Holds(root, "score", "!=", "121"));
 }
 
+/// @brief Contains works on strings and arrays.
 TEST(PlaytestJsonCondition, ContainsWorksOnStringsAndArrays)
 {
     const JsonValue root = Parse(R"({"message":"Stage cleared","tags":["Player","Enemy"]})");
@@ -144,6 +154,7 @@ TEST(PlaytestJsonCondition, ContainsWorksOnStringsAndArrays)
     EXPECT_FALSE(Holds(root, "tags", "contains", R"("Boss")"));
 }
 
+/// @brief Length operators count arrays and strings.
 TEST(PlaytestJsonCondition, LengthOperatorsCountArraysAndStrings)
 {
     const JsonValue root = Parse(R"({"entries":[1,2,3],"empty":[]})");
@@ -154,6 +165,7 @@ TEST(PlaytestJsonCondition, LengthOperatorsCountArraysAndStrings)
     EXPECT_FALSE(Holds(root, "entries", "length<=", "2"));
 }
 
+/// @brief Explains why a condition failed.
 TEST(PlaytestJsonCondition, ExplainsWhyAConditionFailed)
 {
     const JsonValue root = Parse(R"({"state":"playing"})");
@@ -164,6 +176,7 @@ TEST(PlaytestJsonCondition, ExplainsWhyAConditionFailed)
     EXPECT_NE(detail.find("playing"), std::string::npos) << detail;
 }
 
+/// @brief Rejects unknown operators.
 TEST(PlaytestJsonCondition, RejectsUnknownOperators)
 {
     const JsonValue root = Parse(R"({"a":1})");

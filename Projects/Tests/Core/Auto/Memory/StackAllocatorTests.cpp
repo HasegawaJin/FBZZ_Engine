@@ -11,6 +11,7 @@ namespace fbzz::tests {
 
 class StackAllocatorTest : public testkit::EngineFixture {};
 
+/// @brief Frees only the most recent allocation.
 TEST_F(StackAllocatorTest, FreesOnlyTheMostRecentAllocation)
 {
     core::StackAllocator allocator;
@@ -34,6 +35,7 @@ TEST_F(StackAllocatorTest, FreesOnlyTheMostRecentAllocation)
     allocator.Shutdown();
 }
 
+/// @brief Rejects an allocation that exceeds capacity.
 TEST_F(StackAllocatorTest, RejectsAnAllocationThatExceedsCapacity)
 {
     core::StackAllocator allocator;

@@ -65,6 +65,7 @@ protected:
     }
 };
 
+/// @brief Bulk creation and component cleanup preserve receiver ownership.
 TEST_F(ManagedObjectControlsRuntimeTest, BulkCreationAndComponentCleanupPreserveReceiverOwnership)
 {
     ASSERT_TRUE(Update(1)) << m_adapter->FaultDiagnostic();

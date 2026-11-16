@@ -56,6 +56,7 @@ protected:
     testkit::TempDir m_temp{"geometry-material"};
 };
 
+/// @brief Missing asset keeps blend override and stays forward.
 TEST_F(GeometryMaterialExtractionTest, MissingAssetKeepsBlendOverrideAndStaysForward)
 {
     scene::MaterialSlot slot;
@@ -70,6 +71,7 @@ TEST_F(GeometryMaterialExtractionTest, MissingAssetKeepsBlendOverrideAndStaysFor
     EXPECT_EQ(slot.material, nullptr);
 }
 
+/// @brief Blend override takes precedence over shared asset.
 TEST_F(GeometryMaterialExtractionTest, BlendOverrideTakesPrecedenceOverSharedAsset)
 {
     asset::MaterialAssetAuthoring material;
@@ -84,6 +86,7 @@ TEST_F(GeometryMaterialExtractionTest, BlendOverrideTakesPrecedenceOverSharedAss
     EXPECT_EQ(material.blendMode, renderer::BlendMode::ALPHA_BLEND);
 }
 
+/// @brief Lobe overrides can enable and disable shared features.
 TEST_F(GeometryMaterialExtractionTest, LobeOverridesCanEnableAndDisableSharedFeatures)
 {
     for (const char* name : { "clearcoat", "sheen", "anisotropy" }) {
@@ -104,6 +107,7 @@ TEST_F(GeometryMaterialExtractionTest, LobeOverridesCanEnableAndDisableSharedFea
     }
 }
 
+/// @brief Cloth remains forward when sheen is zero.
 TEST_F(GeometryMaterialExtractionTest, ClothRemainsForwardWhenSheenIsZero)
 {
     asset::MaterialAssetAuthoring material;
@@ -115,6 +119,7 @@ TEST_F(GeometryMaterialExtractionTest, ClothRemainsForwardWhenSheenIsZero)
     EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardOpaque);
 }
 
+/// @brief Snapshot survives material editing and destruction.
 TEST_F(GeometryMaterialExtractionTest, SnapshotSurvivesMaterialEditingAndDestruction)
 {
     renderer::GeometryMaterialInput saved;
@@ -133,6 +138,7 @@ TEST_F(GeometryMaterialExtractionTest, SnapshotSurvivesMaterialEditingAndDestruc
     EXPECT_EQ(ResolveGeometryRoute(saved, false), GeometryRoute::ForwardOpaque);
 }
 
+/// @brief Submesh slots keep independent routes across views.
 TEST_F(GeometryMaterialExtractionTest, SubmeshSlotsKeepIndependentRoutesAcrossViews)
 {
     asset::MaterialAssetAuthoring material;
@@ -159,6 +165,7 @@ TEST_F(GeometryMaterialExtractionTest, SubmeshSlotsKeepIndependentRoutesAcrossVi
     EXPECT_TRUE(material.params.empty());
 }
 
+/// @brief Unknown shader does not become standard PBR.
 TEST_F(GeometryMaterialExtractionTest, UnknownShaderDoesNotBecomeStandardPbr)
 {
     asset::MaterialAssetAuthoring material;

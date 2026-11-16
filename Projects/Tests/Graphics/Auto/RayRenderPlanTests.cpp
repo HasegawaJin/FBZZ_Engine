@@ -37,6 +37,7 @@ protected:
     }
 };
 
+/// @brief Hybrid screen first overrides keep current receipts and independent views.
 TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndependentViews)
 {
     struct ComScope {
@@ -210,6 +211,7 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
     EXPECT_EQ(diagnostics.failures, 0u);
 }
 
+/// @brief Reference path keeps accumulating after another view prepares derived probes.
 TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPreparesDerivedProbes)
 {
     struct ComScope {
@@ -459,6 +461,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
     EXPECT_EQ(diagnostics.failures, 0u);
 }
 
+/// @brief Ray resources and path readback are available without engine.
 TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
 {
     struct ComScope {

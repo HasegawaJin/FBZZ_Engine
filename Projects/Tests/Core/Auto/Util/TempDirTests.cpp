@@ -24,6 +24,7 @@ using UniqueHandle = std::unique_ptr<void, HandleCloser>;
 
 class TempDirTest : public testkit::EngineFixture {};
 
+/// @brief Same label in another process preserves the parent files.
 TEST_F(TempDirTest, SameLabelInAnotherProcessPreservesTheParentFiles)
 {
     const std::wstring commandLine = GetCommandLineW();
@@ -80,6 +81,7 @@ TEST_F(TempDirTest, SameLabelInAnotherProcessPreservesTheParentFiles)
     EXPECT_EQ(content, "parent");
 }
 
+/// @brief Destruction removes only its own directory.
 TEST_F(TempDirTest, DestructionRemovesOnlyItsOwnDirectory)
 {
     testkit::TempDir first("SameLabel");

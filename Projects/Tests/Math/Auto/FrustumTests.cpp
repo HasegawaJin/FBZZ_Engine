@@ -35,6 +35,7 @@ protected:
 
 /// @name 平面の性質
 
+/// @brief Extracted planes are normalized.
 TEST_F(FrustumTest, ExtractedPlanesAreNormalized)
 {
     /// @note 正規化されていないと SignedDistanceTo が «スケール込みの距離» になり、
@@ -43,6 +44,7 @@ TEST_F(FrustumTest, ExtractedPlanesAreNormalized)
         EXPECT_NEAR(frustum.GetPlane(i).normal.Length(), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Every plane normal points inward.
 TEST_F(FrustumTest, EveryPlaneNormalPointsInward)
 {
     /// @note 視錐台の «内側» にある点は、6 枚すべてに対して正の側にいる。
@@ -54,21 +56,25 @@ TEST_F(FrustumTest, EveryPlaneNormalPointsInward)
 
 /// @name 点
 
+/// @brief Contains a point in front of the camera.
 TEST_F(FrustumTest, ContainsAPointInFrontOfTheCamera)
 {
     EXPECT_TRUE(frustum.Contains(math::Vector3::ZERO));
 }
 
+/// @brief Rejects a point behind the camera.
 TEST_F(FrustumTest, RejectsAPointBehindTheCamera)
 {
     EXPECT_FALSE(frustum.Contains(eye - math::Vector3::FORWARD));
 }
 
+/// @brief Rejects a point beyond the far plane.
 TEST_F(FrustumTest, RejectsAPointBeyondTheFarPlane)
 {
     EXPECT_FALSE(frustum.Contains(eye + math::Vector3::FORWARD * (kFar + 1.0f)));
 }
 
+/// @brief Reversed Z keeps world-space bounds accurate at long range.
 TEST_F(FrustumTest, ReversedZKeepsWorldSpaceBoundsAccurateAtLongRange)
 {
     constexpr float FAR_Z = 24000.0f;
@@ -89,6 +95,7 @@ TEST_F(FrustumTest, ReversedZKeepsWorldSpaceBoundsAccurateAtLongRange)
     EXPECT_TRUE(longFrustum.IntersectsSphere(beyond, 3.0f));
 }
 
+/// @brief Rejects a point outside the side walls.
 TEST_F(FrustumTest, RejectsAPointOutsideTheSideWalls)
 {
     /// @note カメラから 10 の距離で、半視野角 30 度の外側 (半幅は tan(30°)*10 ≒ 5.77)。
@@ -99,11 +106,13 @@ TEST_F(FrustumTest, RejectsAPointOutsideTheSideWalls)
 
 /// @name 球
 
+/// @brief Intersects a sphere fully inside.
 TEST_F(FrustumTest, IntersectsASphereFullyInside)
 {
     EXPECT_TRUE(frustum.IntersectsSphere(math::Vector3::ZERO, 1.0f));
 }
 
+/// @brief Intersects a sphere whose center is outside but overlaps.
 TEST_F(FrustumTest, IntersectsASphereWhoseCenterIsOutsideButOverlaps)
 {
     /// @note 中心は視野の外。半径で届くなら «交差している» としなければ、
@@ -111,11 +120,13 @@ TEST_F(FrustumTest, IntersectsASphereWhoseCenterIsOutsideButOverlaps)
     EXPECT_TRUE(frustum.IntersectsSphere({7.0f, 0.0f, 0.0f}, 3.0f));
 }
 
+/// @brief Rejects a sphere fully behind the camera.
 TEST_F(FrustumTest, RejectsASphereFullyBehindTheCamera)
 {
     EXPECT_FALSE(frustum.IntersectsSphere(eye - math::Vector3::FORWARD * 10.0f, 0.5f));
 }
 
+/// @brief Accepts a sphere behind the camera that reaches into the view.
 TEST_F(FrustumTest, AcceptsASphereBehindTheCameraThatReachesIntoTheView)
 {
     EXPECT_TRUE(frustum.IntersectsSphere(eye - math::Vector3::FORWARD * 10.0f, 20.0f));
@@ -123,23 +134,27 @@ TEST_F(FrustumTest, AcceptsASphereBehindTheCameraThatReachesIntoTheView)
 
 /// @name AABB
 
+/// @brief Intersects an AABB fully inside.
 TEST_F(FrustumTest, IntersectsAnAABBFullyInside)
 {
     EXPECT_TRUE(frustum.IntersectsAABB(math::Vector3::ZERO, {1.0f, 1.0f, 1.0f}));
 }
 
+/// @brief Rejects a small AABB behind the camera.
 TEST_F(FrustumTest, RejectsASmallAABBBehindTheCamera)
 {
     EXPECT_FALSE(frustum.IntersectsAABB(eye - math::Vector3::FORWARD * 10.0f,
                                         {1.0f, 1.0f, 1.0f}));
 }
 
+/// @brief Accepts a large AABB that encloses the frustum.
 TEST_F(FrustumTest, AcceptsALargeAABBThatEnclosesTheFrustum)
 {
     EXPECT_TRUE(frustum.IntersectsAABB(eye - math::Vector3::FORWARD * 10.0f,
                                        {50.0f, 50.0f, 50.0f}));
 }
 
+/// @brief Projects half extents onto the slanted side walls.
 TEST_F(FrustumTest, ProjectsHalfExtentsOntoTheSlantedSideWalls)
 {
     /// @note 側面の法線は斜め。half-extent をそのまま半径として使うと、
@@ -152,6 +167,7 @@ TEST_F(FrustumTest, ProjectsHalfExtentsOntoTheSlantedSideWalls)
 
 /// @name 正投影
 
+/// @brief Extracts a box from an orthographic projection.
 TEST_F(FrustumTest, ExtractsABoxFromAnOrthographicProjection)
 {
     /// @note 影のカスケードは正投影で組む。深度 [0,1] の near 平面を取り違えると、
@@ -166,6 +182,7 @@ TEST_F(FrustumTest, ExtractsABoxFromAnOrthographicProjection)
     EXPECT_FALSE(ortho.Contains({0.0f, 0.0f, 11.0f}));
 }
 
+/// @brief Orthographic side walls are axis aligned.
 TEST_F(FrustumTest, OrthographicSideWallsAreAxisAligned)
 {
     const math::Frustum ortho = math::Frustum::FromViewProjection(

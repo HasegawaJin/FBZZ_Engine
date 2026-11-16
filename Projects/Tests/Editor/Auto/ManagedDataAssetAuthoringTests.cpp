@@ -185,6 +185,7 @@ protected:
     ImGuiContext* m_imgui = nullptr;
 };
 
+/// @brief Selection changes preserve both drafts and save all writes their values.
 TEST_F(ManagedDataAssetInspectorTest, SelectionChangesPreserveBothDraftsAndSaveAllWritesTheirValues)
 {
     const auto first = Path("First.fzdata"), second = Path("Second.fzdata");
@@ -202,6 +203,7 @@ TEST_F(ManagedDataAssetInspectorTest, SelectionChangesPreserveBothDraftsAndSaveA
     EXPECT_EQ(Document(second).Find("fields")->Find("amount")->AsInt64(), 66);
 }
 
+/// @brief Failed save survives selection change and can retry after unlock.
 TEST_F(ManagedDataAssetInspectorTest, FailedSaveSurvivesSelectionChangeAndCanRetryAfterUnlock)
 {
     const auto first = Path("LockedDraft.fzdata"), second = Path("Other.fzdata");
@@ -223,6 +225,7 @@ TEST_F(ManagedDataAssetInspectorTest, FailedSaveSurvivesSelectionChangeAndCanRet
     EXPECT_EQ(Document(first).Find("fields")->Find("amount")->AsInt64(), 55);
 }
 
+/// @brief Long text uses observed page boundaries and keeps head tail drafts across retry undo redo.
 TEST_F(ManagedDataAssetInspectorTest, LongTextUsesObservedPageBoundariesAndKeepsHeadTailDraftsAcrossRetryUndoRedo)
 {
     const auto path = Path("PagedText.fzdata"), other = Path("PagedTextOther.fzdata");
@@ -270,6 +273,7 @@ TEST_F(ManagedDataAssetInspectorTest, LongTextUsesObservedPageBoundariesAndKeeps
     EXPECT_EQ(Document(path).Find("fields")->Find("text")->AsString(), expected);
 }
 
+/// @brief Explicit discard and shutdown do not resume old draft saves.
 TEST_F(ManagedDataAssetInspectorTest, ExplicitDiscardAndShutdownDoNotResumeOldDraftSaves)
 {
     const auto path = Path("Discarded.fzdata");
@@ -286,6 +290,7 @@ TEST_F(ManagedDataAssetInspectorTest, ExplicitDiscardAndShutdownDoNotResumeOldDr
     EXPECT_EQ(Bytes(path), original);
 }
 
+/// @brief Project close releases draft before runtime shutdown and reopens current schema.
 TEST_F(ManagedDataAssetInspectorTest, ProjectCloseReleasesDraftBeforeRuntimeShutdownAndReopensCurrentSchema)
 {
     const auto first = Path("ClosingProject.fzdata"), second = Path("ReopenedProject.fzdata");
@@ -309,6 +314,7 @@ TEST_F(ManagedDataAssetInspectorTest, ProjectCloseReleasesDraftBeforeRuntimeShut
     EXPECT_FALSE(editor::AssetDirtyRegistry::HasAny());
 }
 
+/// @brief Saves crlf assets and undo restores exact resident and spooled bytes.
 TEST_F(ManagedDataAssetAuthoringTest, SavesCrlfAssetsAndUndoRestoresExactResidentAndSpooledBytes)
 {
     for (const bool large : {false, true}) {
@@ -334,6 +340,7 @@ TEST_F(ManagedDataAssetAuthoringTest, SavesCrlfAssetsAndUndoRestoresExactResiden
         EXPECT_EQ(Bytes(path), after);
     }
 }
+/// @brief Creates normalizes reopens and restores exact file bytes without rerunning callbacks.
 TEST_F(ManagedDataAssetAuthoringTest, CreatesNormalizesReopensAndRestoresExactFileBytesWithoutRerunningCallbacks)
 {
     const std::string path = Path("profile.fzdata"); auto created = Preview(path, true, 900); ASSERT_TRUE(created.ok) << created.message;
@@ -349,6 +356,7 @@ TEST_F(ManagedDataAssetAuthoringTest, CreatesNormalizesReopensAndRestoresExactFi
     editor::OpArgs inspect; inspect.Set("path", "guid:" + guid); auto page = Invoke("asset.data.inspect", inspect); ASSERT_TRUE(page.ok) << page.message;
     EXPECT_EQ(page.data.Find("type")->AsString(), "cs-internal:ManagedFixtures.PortableProfileDataAsset");
 }
+/// @brief File and meta conflicts preserve disk and history cursor.
 TEST_F(ManagedDataAssetAuthoringTest, FileAndMetaConflictsPreserveDiskAndHistoryCursor)
 {
     const auto path = Path("conflict.fzdata"); auto create = Preview(path, true); ASSERT_TRUE(create.ok); ASSERT_TRUE(Commit(create).ok);
@@ -360,6 +368,7 @@ TEST_F(ManagedDataAssetAuthoringTest, FileAndMetaConflictsPreserveDiskAndHistory
     const std::string foreign = "[meta]\nguid = 'foreign'\n"; ASSERT_TRUE(util::FileSystem::WriteText(other + ".meta", foreign));
     EXPECT_FALSE(Commit(planned).ok); EXPECT_FALSE(util::FileSystem::Exists(other)); ASSERT_TRUE(util::FileSystem::ReadText(other + ".meta", actual)); EXPECT_EQ(actual, foreign);
 }
+/// @brief Locked meta and failed atomic replacement preserve original files and cursor.
 TEST_F(ManagedDataAssetAuthoringTest, LockedMetaAndFailedAtomicReplacementPreserveOriginalFilesAndCursor)
 {
     const auto path = Path("locked.fzdata"); auto create = Preview(path, true); ASSERT_TRUE(create.ok); ASSERT_TRUE(Commit(create).ok);
@@ -375,6 +384,7 @@ TEST_F(ManagedDataAssetAuthoringTest, LockedMetaAndFailedAtomicReplacementPreser
     ASSERT_TRUE(m_undo.Undo()) << m_undo.LastDiagnostic(); EXPECT_FALSE(util::FileSystem::Exists(path)); EXPECT_FALSE(util::FileSystem::Exists(path + ".meta"));
     ASSERT_TRUE(m_undo.Redo()) << m_undo.LastDiagnostic(); ASSERT_TRUE(util::FileSystem::ReadText(path, actual)); EXPECT_EQ(actual, original);
 }
+/// @brief Identical data with new meta GUID rejects stale displayed identity.
 TEST_F(ManagedDataAssetAuthoringTest, IdenticalDataWithNewMetaGuidRejectsStaleDisplayedIdentity)
 {
     const auto path = Path("identity.fzdata"); auto create = Preview(path, true); ASSERT_TRUE(create.ok); ASSERT_TRUE(Commit(create).ok);
@@ -386,6 +396,7 @@ TEST_F(ManagedDataAssetAuthoringTest, IdenticalDataWithNewMetaGuidRejectsStaleDi
     EXPECT_FALSE(rejected.ok); EXPECT_NE(rejected.message.find("ASSET_IDENTITY_CHANGED"), std::string::npos); EXPECT_EQ(m_undo.GetRevision(), revision);
     std::string actual; ASSERT_TRUE(util::FileSystem::ReadText(path, actual)); EXPECT_EQ(actual, before);
 }
+/// @brief Large asset save reopen later leaf and undo retain beyond 16 mi b.
 TEST_F(ManagedDataAssetAuthoringTest, LargeAssetSaveReopenLaterLeafAndUndoRetainBeyond16MiB)
 {
     const auto path = Path("large.fzdata"); auto create = Preview(path, true, 7, "cs-internal:ManagedFixtures.LargePortableProfileDataAsset"); ASSERT_TRUE(create.ok) << create.message; ASSERT_TRUE(Commit(create).ok);

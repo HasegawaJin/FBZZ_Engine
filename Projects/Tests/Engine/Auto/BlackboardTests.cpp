@@ -57,6 +57,7 @@ protected:
 
 /// @name 領域
 
+/// @brief Reset creates one entry per definition.
 TEST_F(BlackboardTest, ResetCreatesOneEntryPerDefinition)
 {
     EXPECT_EQ(board.Size(), MixedLayout().size());
@@ -64,12 +65,14 @@ TEST_F(BlackboardTest, ResetCreatesOneEntryPerDefinition)
     EXPECT_FALSE(board.IsValidKey(kString + 1));
 }
 
+/// @brief Remembers the declared type of each key.
 TEST_F(BlackboardTest, RemembersTheDeclaredTypeOfEachKey)
 {
     EXPECT_EQ(board.TypeOf(kBool), ai::BlackboardType::Bool);
     EXPECT_EQ(board.TypeOf(kVector), ai::BlackboardType::Vector3);
 }
 
+/// @brief Reset replaces the whole layout.
 TEST_F(BlackboardTest, ResetReplacesTheWholeLayout)
 {
     board.Reset({ Define("only", ai::BlackboardType::Float) });
@@ -80,6 +83,7 @@ TEST_F(BlackboardTest, ResetReplacesTheWholeLayout)
 
 /// @name 読み書き
 
+/// @brief Reads back every type it wrote.
 TEST_F(BlackboardTest, ReadsBackEveryTypeItWrote)
 {
     const scene::EntityID entity{ 7, 2 };
@@ -112,6 +116,7 @@ TEST_F(BlackboardTest, ReadsBackEveryTypeItWrote)
     EXPECT_EQ(label, "alerted");
 }
 
+/// @brief Overwriting keeps the latest value.
 TEST_F(BlackboardTest, OverwritingKeepsTheLatestValue)
 {
     board.SetInt(kInt, 1);
@@ -124,6 +129,7 @@ TEST_F(BlackboardTest, OverwritingKeepsTheLatestValue)
 
 /// @name 型の守り
 
+/// @brief Refuses to write the wrong type.
 TEST_F(BlackboardTest, RefusesToWriteTheWrongType)
 {
     /// @note アセットとスクリプトが別々に編集された結果のオーサリングミス。
@@ -138,6 +144,7 @@ TEST_F(BlackboardTest, RefusesToWriteTheWrongType)
     EXPECT_NEAR(ratio, 1.5f, testkit::kTolerance);
 }
 
+/// @brief Refuses to read the wrong type and leaves the output alone.
 TEST_F(BlackboardTest, RefusesToReadTheWrongTypeAndLeavesTheOutputAlone)
 {
     board.SetFloat(kFloat, 1.5f);
@@ -147,6 +154,7 @@ TEST_F(BlackboardTest, RefusesToReadTheWrongTypeAndLeavesTheOutputAlone)
     EXPECT_EQ(count, 42);
 }
 
+/// @brief Rejects keys outside the layout.
 TEST_F(BlackboardTest, RejectsKeysOutsideTheLayout)
 {
     const ai::BlackboardKey missing = static_cast<ai::BlackboardKey>(board.Size() + 10);
@@ -159,6 +167,7 @@ TEST_F(BlackboardTest, RejectsKeysOutsideTheLayout)
 
 /// @name 未設定の区別
 
+/// @brief Starts with nothing written.
 TEST_F(BlackboardTest, StartsWithNothingWritten)
 {
     /// @note 「まだ一度も見ていない」と「見て false だった」は別の状態。
@@ -167,6 +176,7 @@ TEST_F(BlackboardTest, StartsWithNothingWritten)
     EXPECT_NEAR(board.GetLastWriteTime(kBool), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Marks a key as set once it is written.
 TEST_F(BlackboardTest, MarksAKeyAsSetOnceItIsWritten)
 {
     /// @note 値が false でも «書かれた» ことは残る
@@ -175,6 +185,7 @@ TEST_F(BlackboardTest, MarksAKeyAsSetOnceItIsWritten)
     EXPECT_TRUE(board.IsSet(kBool));
 }
 
+/// @brief Reset clears the written flags.
 TEST_F(BlackboardTest, ResetClearsTheWrittenFlags)
 {
     board.SetBool(kBool, true);
@@ -184,6 +195,7 @@ TEST_F(BlackboardTest, ResetClearsTheWrittenFlags)
     EXPECT_FALSE(board.IsSet(kBool));
 }
 
+/// @brief A rejected write does not mark the key as set.
 TEST_F(BlackboardTest, ARejectedWriteDoesNotMarkTheKeyAsSet)
 {
     EXPECT_FALSE(board.SetInt(kFloat, 3));
@@ -193,6 +205,7 @@ TEST_F(BlackboardTest, ARejectedWriteDoesNotMarkTheKeyAsSet)
 
 /// @name 書き込み時刻
 
+/// @brief Stamps the current tick and time on write.
 TEST_F(BlackboardTest, StampsTheCurrentTickAndTimeOnWrite)
 {
     /// @note 「最後にプレイヤーを見てから 5 秒」を各ノードが自前タイマーで持たずに済ませるための値。
@@ -205,6 +218,7 @@ TEST_F(BlackboardTest, StampsTheCurrentTickAndTimeOnWrite)
     EXPECT_NEAR(board.GetLastWriteTime(kVector), 3.5f, testkit::kTolerance);
 }
 
+/// @brief The stamp moves forward with each write.
 TEST_F(BlackboardTest, TheStampMovesForwardWithEachWrite)
 {
     board.SetTick(1);
@@ -219,6 +233,7 @@ TEST_F(BlackboardTest, TheStampMovesForwardWithEachWrite)
     EXPECT_NEAR(board.GetLastWriteTime(kFloat), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Reading does not refresh the stamp.
 TEST_F(BlackboardTest, ReadingDoesNotRefreshTheStamp)
 {
     /// @note 読んだだけで «新しい情報» になってしまうと、記憶の減衰が働かない。
@@ -234,6 +249,7 @@ TEST_F(BlackboardTest, ReadingDoesNotRefreshTheStamp)
     EXPECT_EQ(board.GetLastWriteTick(kFloat), 5u);
 }
 
+/// @brief Tracks the clock independently of writes.
 TEST_F(BlackboardTest, TracksTheClockIndependentlyOfWrites)
 {
     board.SetTick(30);
@@ -245,6 +261,7 @@ TEST_F(BlackboardTest, TracksTheClockIndependentlyOfWrites)
 
 /// @name 変更世代
 
+/// @brief Publishes revision for every reset and first write at default values.
 TEST_F(BlackboardTest, PublishesRevisionForEveryResetAndFirstWriteAtDefaultValues)
 {
     ai::Blackboard fresh;
@@ -268,6 +285,7 @@ TEST_F(BlackboardTest, PublishesRevisionForEveryResetAndFirstWriteAtDefaultValue
     EXPECT_FALSE(fresh.IsSet(kBool));
 }
 
+/// @brief Revises typed value changes while same value writes refresh only history.
 TEST_F(BlackboardTest, RevisesTypedValueChangesWhileSameValueWritesRefreshOnlyHistory)
 {
     const auto verify = [&](ai::BlackboardKey key, auto writeInitial, auto writeChanged) {
@@ -301,6 +319,7 @@ TEST_F(BlackboardTest, RevisesTypedValueChangesWhileSameValueWritesRefreshOnlyHi
         [&] { return board.SetString(kString, "alert"); });
 }
 
+/// @brief Leaves revision and write history unchanged for reads and rejected writes.
 TEST_F(BlackboardTest, LeavesRevisionAndWriteHistoryUnchangedForReadsAndRejectedWrites)
 {
     board.SetTick(5);
@@ -321,6 +340,7 @@ TEST_F(BlackboardTest, LeavesRevisionAndWriteHistoryUnchangedForReadsAndRejected
     EXPECT_FALSE(board.IsSet(kBool));
 }
 
+/// @brief Treats signed zero as same value and `NaN` as a change.
 TEST_F(BlackboardTest, TreatsSignedZeroAsSameValueAndNaNAsAChange)
 {
     ASSERT_TRUE(board.SetFloat(kFloat, 0.0f));
@@ -336,6 +356,7 @@ TEST_F(BlackboardTest, TreatsSignedZeroAsSameValueAndNaNAsAChange)
 
 /// @name 予約キー
 
+/// @brief Reserved keys sit at their fixed indices.
 TEST_F(BlackboardTest, ReservedKeysSitAtTheirFixedIndices)
 {
     /// @note PerceptionSystem は名前検索を避けてこの添字へ直接書く。
@@ -349,6 +370,7 @@ TEST_F(BlackboardTest, ReservedKeysSitAtTheirFixedIndices)
     EXPECT_EQ(reserved[ai::bb::Health01].type, ai::BlackboardType::Float);
 }
 
+/// @brief Reserved keys are marked reserved.
 TEST_F(BlackboardTest, ReservedKeysAreMarkedReserved)
 {
     /// @note エディタは予約キーの名前変更と削除を禁じる。その印がここで立っている。

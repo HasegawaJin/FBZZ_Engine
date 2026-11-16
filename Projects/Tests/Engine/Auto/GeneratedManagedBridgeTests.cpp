@@ -113,6 +113,7 @@ protected:
     }
 };
 
+/// @brief Connects all generated calls to native hierarchy input and time.
 TEST_F(GeneratedManagedBridgeTest, ConnectsAllGeneratedCallsToNativeHierarchyInputAndTime)
 {
     ASSERT_TRUE(input::Input::InjectKey('W', true));
@@ -150,6 +151,7 @@ TEST_F(GeneratedManagedBridgeTest, ConnectsAllGeneratedCallsToNativeHierarchyInp
     EXPECT_EQ(Read("updateCount", scene::ManagedValueKind::INT).integer, 3);
 }
 
+/// @brief Typed input discovery distinguishes registered disabled zero from missing names.
 TEST_F(GeneratedManagedBridgeTest, TypedInputDiscoveryDistinguishesRegisteredDisabledZeroFromMissingNames)
 {
     input::InputActionMap::SetEnabled(false);
@@ -165,6 +167,7 @@ TEST_F(GeneratedManagedBridgeTest, TypedInputDiscoveryDistinguishesRegisteredDis
     EXPECT_FLOAT_EQ(Read("axisValue", scene::ManagedValueKind::FLOAT).x, 0.0f);
 }
 
+/// @brief Cached typed input rejects names removed from current map through core CLR.
 TEST_F(GeneratedManagedBridgeTest, CachedTypedInputRejectsNamesRemovedFromCurrentMapThroughCoreClr)
 {
     input::InputActionMap::Clear();
@@ -189,6 +192,7 @@ TEST_F(GeneratedManagedBridgeTest, CachedTypedInputRejectsNamesRemovedFromCurren
     EXPECT_NE(diagnostic.find("GetButtonNames"), std::string::npos);
 }
 
+/// @brief Unknown typed axis includes name and discovery hint through core CLR.
 TEST_F(GeneratedManagedBridgeTest, UnknownTypedAxisIncludesNameAndDiscoveryHintThroughCoreClr)
 {
     ASSERT_TRUE(m_adapter->ApplySettingsJson(R"({"operation":5,"axisName":"Horizontal"})"));
@@ -199,6 +203,7 @@ TEST_F(GeneratedManagedBridgeTest, UnknownTypedAxisIncludesNameAndDiscoveryHintT
     EXPECT_NE(diagnostic.find("GetAxisNames"), std::string::npos);
 }
 
+/// @brief Local position rejects computed overflow through core CLR without partial mutation.
 TEST_F(GeneratedManagedBridgeTest, LocalPositionRejectsComputedOverflowThroughCoreClrWithoutPartialMutation)
 {
     auto* parent = m_child->GetParent();
@@ -219,6 +224,7 @@ TEST_F(GeneratedManagedBridgeTest, LocalPositionRejectsComputedOverflowThroughCo
     EXPECT_VEC3_NEAR(m_descendant->transform.worldPosition, previousChild, testkit::kTolerance);
 }
 
+/// @brief World position rejects offset overflow through core CLR with zero parent scale.
 TEST_F(GeneratedManagedBridgeTest, WorldPositionRejectsOffsetOverflowThroughCoreClrWithZeroParentScale)
 {
     auto* parent = m_child->GetParent();
@@ -240,6 +246,7 @@ TEST_F(GeneratedManagedBridgeTest, WorldPositionRejectsOffsetOverflowThroughCore
     EXPECT_VEC3_NEAR(m_descendant->transform.worldPosition, previousChild, testkit::kTolerance);
 }
 
+/// @brief Local translation rejects accumulation overflow through core CLR.
 TEST_F(GeneratedManagedBridgeTest, LocalTranslationRejectsAccumulationOverflowThroughCoreClr)
 {
     Time::deltaTime = 1.0f;

@@ -19,6 +19,7 @@ protected:
     void TearDown() override { core::Cursor::ResetForEditor(); }
 };
 
+/// @brief Applies and restores cursor state.
 TEST_F(CursorManualTest, AppliesAndRestoresCursorState)
 {
     core::Cursor::SetVisible(true);
@@ -36,6 +37,7 @@ TEST_F(CursorManualTest, AppliesAndRestoresCursorState)
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::None);
 }
 
+/// @brief Lock mode survives TOML round trip.
 TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
 {
     for (core::CursorLockMode mode : { core::CursorLockMode::None,
@@ -47,6 +49,7 @@ TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
     EXPECT_EQ(core::CursorLockModeFromString("bogus"), core::CursorLockMode::None);
 }
 
+/// @brief Shape names survive TOML round trip.
 TEST_F(CursorManualTest, ShapeNamesSurviveTomlRoundTrip)
 {
     for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
@@ -56,6 +59,7 @@ TEST_F(CursorManualTest, ShapeNamesSurviveTomlRoundTrip)
     EXPECT_EQ(core::CursorShapeFromString("bogus"), core::CursorShape::Default);
 }
 
+/// @brief Suppression keeps the game request.
 TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
 {
     /// @note Game View に戻ったときに復元できるよう、OS への反映を抑制している間もゲームの要求を保持する。
@@ -72,6 +76,7 @@ TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
     EXPECT_TRUE(core::Cursor::IsVisible());
 }
 
+/// @brief Policy knows when it takes the cursor.
 TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
 {
     EXPECT_FALSE((core::CursorPolicy{ core::CursorLockMode::None, true }).CapturesCursor());
@@ -79,6 +84,7 @@ TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
     EXPECT_TRUE((core::CursorPolicy{ core::CursorLockMode::Confined, true }).CapturesCursor());
 }
 
+/// @brief Stronger request wins and popping restores the weaker one.
 TEST_F(CursorManualTest, StrongerRequestWinsAndPoppingRestoresTheWeakerOne)
 {
     /// @note メニューを閉じると、視点操作が要求した拘束と表示がスタックから復元される。
@@ -100,6 +106,7 @@ TEST_F(CursorManualTest, StrongerRequestWinsAndPoppingRestoresTheWeakerOne)
     EXPECT_TRUE(core::Cursor::IsVisible());
 }
 
+/// @brief Same priority lets the latest request win.
 TEST_F(CursorManualTest, SamePriorityLetsTheLatestRequestWin)
 {
     const auto first = core::Cursor::Push({ core::CursorLockMode::Confined, true },
@@ -113,6 +120,7 @@ TEST_F(CursorManualTest, SamePriorityLetsTheLatestRequestWin)
     core::Cursor::Release(first);
 }
 
+/// @brief Requests are listed strongest first.
 TEST_F(CursorManualTest, RequestsAreListedStrongestFirst)
 {
     std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
@@ -132,6 +140,7 @@ TEST_F(CursorManualTest, RequestsAreListedStrongestFirst)
     EXPECT_FALSE(below.active);
 }
 
+/// @brief Owner release drops every request from that object.
 TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
 {
     std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
@@ -146,6 +155,7 @@ TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
     EXPECT_FALSE(core::Cursor::IsVisible());
 }
 
+/// @brief Clear requests also resets the base.
 TEST_F(CursorManualTest, ClearRequestsAlsoResetsTheBase)
 {
     /// @note シーン遷移時に基底もリセットし、前のシーンが直接指定した拘束を解除する。
@@ -159,6 +169,7 @@ TEST_F(CursorManualTest, ClearRequestsAlsoResetsTheBase)
     EXPECT_TRUE(core::Cursor::IsVisible());
 }
 
+/// @brief Updating a request keeps its place in the stack.
 TEST_F(CursorManualTest, UpdatingARequestKeepsItsPlaceInTheStack)
 {
     const auto ui = core::Cursor::Push({ core::CursorLockMode::Confined, false },

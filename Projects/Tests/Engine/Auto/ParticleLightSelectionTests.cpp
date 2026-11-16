@@ -36,6 +36,7 @@ scene::ParticleLightSettings EnabledLight()
 
 } // namespace
 
+/// @brief Disabled module emits nothing.
 TEST(ParticleLightSelectionTest, DisabledModuleEmitsNothing)
 {
     std::vector<scene::Particle> particles = { MakeParticle(1.0f, 0.1f) };
@@ -46,6 +47,7 @@ TEST(ParticleLightSelectionTest, DisabledModuleEmitsNothing)
     EXPECT_TRUE(out.empty());
 }
 
+/// @brief Keeps the brightest within max count and budget.
 TEST(ParticleLightSelectionTest, KeepsTheBrightestWithinMaxCountAndBudget)
 {
     std::vector<scene::Particle> particles;
@@ -66,6 +68,7 @@ TEST(ParticleLightSelectionTest, KeepsTheBrightestWithinMaxCountAndBudget)
     EXPECT_EQ(out.size(), 2u);
 }
 
+/// @brief Equal brightness is broken by particle order.
 TEST(ParticleLightSelectionTest, EqualBrightnessIsBrokenByParticleOrder)
 {
     std::vector<scene::Particle> particles = { MakeParticle(1.0f, 0.3f), MakeParticle(1.0f, 0.1f),
@@ -79,6 +82,7 @@ TEST(ParticleLightSelectionTest, EqualBrightnessIsBrokenByParticleOrder)
     EXPECT_NEAR(out[1].position.x, 0.1f, 1.0e-6f);
 }
 
+/// @brief Color and range follow the settings.
 TEST(ParticleLightSelectionTest, ColorAndRangeFollowTheSettings)
 {
     std::vector<scene::Particle> particles = { MakeParticle(1.0f, 0.4f, 3.0f) };
@@ -101,6 +105,7 @@ TEST(ParticleLightSelectionTest, ColorAndRangeFollowTheSettings)
     EXPECT_NEAR(out[0].color.z, 2.0f, 1.0e-6f);
 }
 
+/// @brief Ratio is stable per particle and roughly proportional.
 TEST(ParticleLightSelectionTest, RatioIsStablePerParticleAndRoughlyProportional)
 {
     int passed = 0;
@@ -116,6 +121,7 @@ TEST(ParticleLightSelectionTest, RatioIsStablePerParticleAndRoughlyProportional)
     EXPECT_FALSE(scene::ParticlePassesLightRatio(0.5f, 0.0f));
 }
 
+/// @brief Dead and invisible particles do not shine.
 TEST(ParticleLightSelectionTest, DeadAndInvisibleParticlesDoNotShine)
 {
     scene::Particle dead = MakeParticle(1.0f, 0.1f);

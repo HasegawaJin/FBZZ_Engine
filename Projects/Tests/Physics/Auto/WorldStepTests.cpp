@@ -101,6 +101,7 @@ protected:
 
 /// @name 設定値
 
+/// @brief Gravity is readback as set.
 TEST_F(WorldStepTest, GravityIsReadBackAsSet)
 {
     world.SetGravity(math::Vector3(0.0f, -3.0f, 0.0f));
@@ -108,6 +109,7 @@ TEST_F(WorldStepTest, GravityIsReadBackAsSet)
     EXPECT_VEC3_NEAR(world.GetGravity(), math::Vector3(0.0f, -3.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Local clock keeps player moving while other bodies slow.
 TEST_F(WorldStepTest, LocalClockKeepsPlayerMovingWhileOtherBodiesSlow)
 {
     physics::RigidBody player;
@@ -125,6 +127,7 @@ TEST_F(WorldStepTest, LocalClockKeepsPlayerMovingWhileOtherBodiesSlow)
     EXPECT_VEC3_NEAR(player.GetPosition(), math::Vector3(0.5f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Substep count is clamped to the supported range.
 TEST_F(WorldStepTest, SubstepCountIsClampedToTheSupportedRange)
 {
     /// @note 0 以下で割ると dt が inf になり、1 フレームで世界が消し飛ぶ。上限は計算量の歯止め。
@@ -137,6 +140,7 @@ TEST_F(WorldStepTest, SubstepCountIsClampedToTheSupportedRange)
 
 /// @name 重力
 
+/// @brief Applies world gravity as an acceleration independent of mass.
 TEST_F(WorldStepTest, AppliesWorldGravityAsAnAccelerationIndependentOfMass)
 {
     physics::RigidBody body;
@@ -150,6 +154,7 @@ TEST_F(WorldStepTest, AppliesWorldGravityAsAnAccelerationIndependentOfMass)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, -1.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Leaves static bodies untouched by gravity.
 TEST_F(WorldStepTest, LeavesStaticBodiesUntouchedByGravity)
 {
     physics::RigidBody body;
@@ -163,6 +168,7 @@ TEST_F(WorldStepTest, LeavesStaticBodiesUntouchedByGravity)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Scales gravity per body.
 TEST_F(WorldStepTest, ScalesGravityPerBody)
 {
     physics::RigidBody body;
@@ -176,6 +182,7 @@ TEST_F(WorldStepTest, ScalesGravityPerBody)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, -0.25f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Skips gravity for a body that opts out.
 TEST_F(WorldStepTest, SkipsGravityForABodyThatOptsOut)
 {
     physics::RigidBody body;
@@ -191,6 +198,7 @@ TEST_F(WorldStepTest, SkipsGravityForABodyThatOptsOut)
 
 /// @name サブステップ
 
+/// @brief Checks substeps refine the path without changing the ending velocity.
 TEST_F(WorldStepTest, SubstepsRefineThePathWithoutChangingTheEndingVelocity)
 {
     physics::RigidBody single;
@@ -218,6 +226,7 @@ TEST_F(WorldStepTest, SubstepsRefineThePathWithoutChangingTheEndingVelocity)
 
 /// @name Sleep
 
+/// @brief Puts a motionless body to sleep after the settle time.
 TEST_F(WorldStepTest, PutsAMotionlessBodyToSleepAfterTheSettleTime)
 {
     physics::RigidBody body;
@@ -230,6 +239,7 @@ TEST_F(WorldStepTest, PutsAMotionlessBodyToSleepAfterTheSettleTime)
     EXPECT_TRUE(body.IsSleeping());
 }
 
+/// @brief Keeps a falling body awake.
 TEST_F(WorldStepTest, KeepsAFallingBodyAwake)
 {
     physics::RigidBody body;
@@ -242,6 +252,7 @@ TEST_F(WorldStepTest, KeepsAFallingBodyAwake)
     EXPECT_FALSE(body.IsSleeping());
 }
 
+/// @brief Skips the whole pipeline for a settled scene.
 TEST_F(WorldStepTest, SkipsTheWholePipelineForASettledScene)
 {
     physics::RigidBody body;
@@ -263,6 +274,7 @@ TEST_F(WorldStepTest, SkipsTheWholePipelineForASettledScene)
 
 /// @name Volume
 
+/// @brief Applies a volume to the bodies inside it.
 TEST_F(WorldStepTest, AppliesAVolumeToTheBodiesInsideIt)
 {
     physics::RigidBody body;
@@ -278,6 +290,7 @@ TEST_F(WorldStepTest, AppliesAVolumeToTheBodiesInsideIt)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 4.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Leaves bodies outside a volume alone.
 TEST_F(WorldStepTest, LeavesBodiesOutsideAVolumeAlone)
 {
     physics::RigidBody body;
@@ -294,6 +307,7 @@ TEST_F(WorldStepTest, LeavesBodiesOutsideAVolumeAlone)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Drops expired volumes before they are applied.
 TEST_F(WorldStepTest, DropsExpiredVolumesBeforeTheyAreApplied)
 {
     physics::RigidBody body;
@@ -312,6 +326,7 @@ TEST_F(WorldStepTest, DropsExpiredVolumesBeforeTheyAreApplied)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief A volume that overrides gravity suppresses the world gravity.
 TEST_F(WorldStepTest, AVolumeThatOverridesGravitySuppressesTheWorldGravity)
 {
     physics::RigidBody body;
@@ -328,6 +343,7 @@ TEST_F(WorldStepTest, AVolumeThatOverridesGravitySuppressesTheWorldGravity)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief A time dilation volume shortens the integration step.
 TEST_F(WorldStepTest, ATimeDilationVolumeShortensTheIntegrationStep)
 {
     physics::RigidBody body;
@@ -345,6 +361,7 @@ TEST_F(WorldStepTest, ATimeDilationVolumeShortensTheIntegrationStep)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, -5.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Ticks volumes once per substep.
 TEST_F(WorldStepTest, TicksVolumesOncePerSubstep)
 {
     physics::RigidBody body;
@@ -365,6 +382,7 @@ TEST_F(WorldStepTest, TicksVolumesOncePerSubstep)
     EXPECT_EQ(volume.applyCount, 4);
 }
 
+/// @brief Stops applying volumes to a body once it falls asleep.
 TEST_F(WorldStepTest, StopsApplyingVolumesToABodyOnceItFallsAsleep)
 {
     physics::RigidBody body;
@@ -384,6 +402,7 @@ TEST_F(WorldStepTest, StopsApplyingVolumesToABodyOnceItFallsAsleep)
     EXPECT_EQ(volume.applyCount, 3);
 }
 
+/// @brief Leaves gravity and time untouched for a volume that adds no effect.
 TEST_F(WorldStepTest, LeavesGravityAndTimeUntouchedForAVolumeThatAddsNoEffect)
 {
     /// @note 効果を 1 つだけ持つ Volume は、残りを基底の既定実装に任せて書く (WorldSceneSyncTests の
@@ -406,6 +425,7 @@ TEST_F(WorldStepTest, LeavesGravityAndTimeUntouchedForAVolumeThatAddsNoEffect)
 
 /// @name 制約
 
+/// @brief Solves constraint positions after integrating.
 TEST_F(WorldStepTest, SolvesConstraintPositionsAfterIntegrating)
 {
     physics::RigidBody a;
@@ -421,6 +441,7 @@ TEST_F(WorldStepTest, SolvesConstraintPositionsAfterIntegrating)
     EXPECT_NEAR((b.GetPosition() - a.GetPosition()).Length(), 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Applies constraint forces before integrating.
 TEST_F(WorldStepTest, AppliesConstraintForcesBeforeIntegrating)
 {
     physics::RigidBody a;
@@ -438,6 +459,7 @@ TEST_F(WorldStepTest, AppliesConstraintForcesBeforeIntegrating)
     EXPECT_LT(b.GetVelocity().x, 0.0f);
 }
 
+/// @brief Solves a chain as positions only without injecting velocity.
 TEST_F(WorldStepTest, SolvesAChainAsPositionsOnlyWithoutInjectingVelocity)
 {
     /// @note 鎖は «位置だけ» を直す制約で、力の段では何もしない。ここで速度が出るということは
@@ -465,6 +487,7 @@ TEST_F(WorldStepTest, SolvesAChainAsPositionsOnlyWithoutInjectingVelocity)
 
 /// @name N 体重力
 
+/// @brief Pulls gravitational sources toward each other.
 TEST_F(WorldStepTest, PullsGravitationalSourcesTowardEachOther)
 {
     physics::RigidBody a;
@@ -486,6 +509,7 @@ TEST_F(WorldStepTest, PullsGravitationalSourcesTowardEachOther)
     EXPECT_NEAR(a.GetVelocity().x + b.GetVelocity().x, 0.0f, testkit::kTolerance);
 }
 
+/// @brief Ignores bodies that are not gravitational sources.
 TEST_F(WorldStepTest, IgnoresBodiesThatAreNotGravitationalSources)
 {
     physics::RigidBody source;
@@ -507,6 +531,7 @@ TEST_F(WorldStepTest, IgnoresBodiesThatAreNotGravitationalSources)
 
 /// @name コライダー同期
 
+/// @brief Moves colliders onto their bodies including the center offset.
 TEST_F(WorldStepTest, MovesCollidersOntoTheirBodiesIncludingTheCenterOffset)
 {
     physics::RigidBody body;
@@ -532,6 +557,7 @@ TEST_F(WorldStepTest, MovesCollidersOntoTheirBodiesIncludingTheCenterOffset)
                      testkit::kLooseTolerance);
 }
 
+/// @brief Pairs a body with a bodyless height field.
 TEST_F(WorldStepTest, PairsABodyWithABodylessHeightField)
 {
     /// @note 地形は剛体を持たないコライダーとして World に載る。BroadPhase は AABB だけで
@@ -566,6 +592,7 @@ TEST_F(WorldStepTest, PairsABodyWithABodylessHeightField)
     EXPECT_TRUE(event.colliderA == &field || event.colliderB == &field);
 }
 
+/// @brief Body over a height field hole does not touch the ground.
 TEST_F(WorldStepTest, BodyOverAHeightFieldHoleDoesNotTouchTheGround)
 {
     /// @note 上のテストと同じ配置で、球の真下 2x2 セルを穴にする。球は穴の内側に収まる。
@@ -602,6 +629,7 @@ TEST_F(WorldStepTest, BodyOverAHeightFieldHoleDoesNotTouchTheGround)
 
 /// @name CCD
 
+/// @brief Clamps the velocity of a fast body to its time of impact.
 TEST_F(WorldStepTest, ClampsTheVelocityOfAFastBodyToItsTimeOfImpact)
 {
     physics::RigidBody fast;
@@ -640,6 +668,7 @@ TEST_F(WorldStepTest, ClampsTheVelocityOfAFastBodyToItsTimeOfImpact)
     EXPECT_NEAR(fast.GetPosition().x, -1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Tunnels through the wall when CCD is disabled.
 TEST_F(WorldStepTest, TunnelsThroughTheWallWhenCcdIsDisabled)
 {
     physics::RigidBody fast;

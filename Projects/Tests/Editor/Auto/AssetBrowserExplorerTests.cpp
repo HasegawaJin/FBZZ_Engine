@@ -51,6 +51,7 @@ protected:
     std::filesystem::path m_root;
 };
 
+/// @brief Resolves unicode spaces and commas relative to project.
 TEST_F(AssetBrowserExplorerTest, ResolvesUnicodeSpacesAndCommasRelativeToProject)
 {
     const std::string relative = "Assets/日本語 Folder/対象 File,1.png";
@@ -64,6 +65,7 @@ TEST_F(AssetBrowserExplorerTest, ResolvesUnicodeSpacesAndCommasRelativeToProject
     EXPECT_TRUE(util::FileSystem::PathFromUtf8(target.path).is_absolute());
 }
 
+/// @brief Resolves backslashes and dot segments from project.
 TEST_F(AssetBrowserExplorerTest, ResolvesBackslashesAndDotSegmentsFromProject)
 {
     ASSERT_TRUE(WriteFile("Assets/日本語 Folder/対象 File.png"));
@@ -75,6 +77,7 @@ TEST_F(AssetBrowserExplorerTest, ResolvesBackslashesAndDotSegmentsFromProject)
     EXPECT_FALSE(target.isDirectory);
 }
 
+/// @brief Opens selected folder including assets root and trailing separator.
 TEST_F(AssetBrowserExplorerTest, OpensSelectedFolderIncludingAssetsRootAndTrailingSeparator)
 {
     ASSERT_TRUE(WriteFile("Assets/日本語 Folder/Child.txt"));
@@ -87,6 +90,7 @@ TEST_F(AssetBrowserExplorerTest, OpensSelectedFolderIncludingAssetsRootAndTraili
     }
 }
 
+/// @brief Preserves external absolute mount instead of matching project assets.
 TEST_F(AssetBrowserExplorerTest, PreservesExternalAbsoluteMountInsteadOfMatchingProjectAssets)
 {
     ASSERT_TRUE(WriteFile("Assets/日本語 Folder/File.txt"));
@@ -104,6 +108,7 @@ TEST_F(AssetBrowserExplorerTest, PreservesExternalAbsoluteMountInsteadOfMatching
     EXPECT_FALSE(util::FileSystem::SamePathText(target.path, Path("Assets/日本語 Folder/File.txt")));
 }
 
+/// @brief Preserves imported cache file for absolute and project relative selections.
 TEST_F(AssetBrowserExplorerTest, PreservesImportedCacheFileForAbsoluteAndProjectRelativeSelections)
 {
     const std::string relative = "Library/Baked/0123456789abcdef0123456789abcdef/anims/待機 Idle.anim";
@@ -117,6 +122,7 @@ TEST_F(AssetBrowserExplorerTest, PreservesImportedCacheFileForAbsoluteAndProject
     EXPECT_FALSE(relativeTarget.isDirectory);
 }
 
+/// @brief Resolves virtual mesh and sprite to their source files.
 TEST_F(AssetBrowserExplorerTest, ResolvesVirtualMeshAndSpriteToTheirSourceFiles)
 {
     ASSERT_TRUE(WriteFile("Assets/Models/日本語 Model.fbx"));
@@ -133,6 +139,7 @@ TEST_F(AssetBrowserExplorerTest, ResolvesVirtualMeshAndSpriteToTheirSourceFiles)
     EXPECT_FALSE(sprite.isDirectory);
 }
 
+/// @brief Uses indexed GUID after move and ignores existing stale hint.
 TEST_F(AssetBrowserExplorerTest, UsesIndexedGuidAfterMoveAndIgnoresExistingStaleHint)
 {
     ASSERT_TRUE(WriteFile("Assets/Original.prefab"));
@@ -157,6 +164,7 @@ TEST_F(AssetBrowserExplorerTest, UsesIndexedGuidAfterMoveAndIgnoresExistingStale
         Root(), "guid:ffffffffffffffffffffffffffffffff|Assets/Original.prefab").path.empty());
 }
 
+/// @brief Rejects missing empty and unanchored targets.
 TEST_F(AssetBrowserExplorerTest, RejectsMissingEmptyAndUnanchoredTargets)
 {
     ASSERT_TRUE(WriteFile("Assets/Existing.txt"));

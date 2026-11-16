@@ -66,6 +66,7 @@ private:
     testkit::TempDir m_temp{"editorsettings"};
 };
 
+/// @brief Loading a missing file keeps defaults.
 TEST_F(EditorSettingsTest, LoadingAMissingFileKeepsDefaults)
 {
     /// @note 新規プロジェクトには設定が無い。既定値のまま素通りできること。
@@ -77,6 +78,7 @@ TEST_F(EditorSettingsTest, LoadingAMissingFileKeepsDefaults)
     EXPECT_EQ(settings.showGrid, showGridDefault);
 }
 
+/// @brief Rejects a corrupt file.
 TEST_F(EditorSettingsTest, RejectsACorruptFile)
 {
     WriteFile(ConfigPath(), "this is not = = toml [[[");
@@ -85,6 +87,7 @@ TEST_F(EditorSettingsTest, RejectsACorruptFile)
     EXPECT_FALSE(settings.Load(ConfigPathUtf8(), ProjectRootUtf8()));
 }
 
+/// @brief Round-trips shared view settings.
 TEST_F(EditorSettingsTest, RoundTripsSharedViewSettings)
 {
     EditorSettings saved;
@@ -104,6 +107,7 @@ TEST_F(EditorSettingsTest, RoundTripsSharedViewSettings)
     EXPECT_FLOAT_EQ(loaded.gridSize, 2.5f);
 }
 
+/// @brief Round-trips the baked sweep toggle.
 TEST_F(EditorSettingsTest, RoundTripsTheBakedSweepToggle)
 {
     /// @note 起動時の Library/Baked 掃除。既定は on で、off にしたら残ること。
@@ -119,6 +123,7 @@ TEST_F(EditorSettingsTest, RoundTripsTheBakedSweepToggle)
     EXPECT_FALSE(loaded.sweepOrphanedBakedOnOpen);
 }
 
+/// @brief Round-trips the hot reload toggle.
 TEST_F(EditorSettingsTest, RoundTripsTheHotReloadToggle)
 {
     EditorSettings saved;
@@ -130,6 +135,7 @@ TEST_F(EditorSettingsTest, RoundTripsTheHotReloadToggle)
     EXPECT_FALSE(loaded.hotReloadEnabled);
 }
 
+/// @brief Round-trips the hot reload sound toggle.
 TEST_F(EditorSettingsTest, RoundTripsTheHotReloadSoundToggle)
 {
     EditorSettings saved;
@@ -141,6 +147,7 @@ TEST_F(EditorSettingsTest, RoundTripsTheHotReloadSoundToggle)
     EXPECT_FALSE(loaded.hotReloadSound);
 }
 
+/// @brief Keeps the camera out of the shared file.
 TEST_F(EditorSettingsTest, KeepsTheCameraOutOfTheSharedFile)
 {
     /// @note カメラ位置は人ごとに違う。共有ファイルへ書くと全員の手元が常に差分になる。
@@ -152,6 +159,7 @@ TEST_F(EditorSettingsTest, KeepsTheCameraOutOfTheSharedFile)
     EXPECT_EQ(shared.find("123.5"), std::string::npos) << shared;
 }
 
+/// @brief Writes the camera to the local state file.
 TEST_F(EditorSettingsTest, WritesTheCameraToTheLocalStateFile)
 {
     EditorSettings saved;
@@ -162,6 +170,7 @@ TEST_F(EditorSettingsTest, WritesTheCameraToTheLocalStateFile)
     EXPECT_NE(ReadFile(LocalStatePath()).find("123.5"), std::string::npos);
 }
 
+/// @brief Round-trips the camera through the local state file.
 TEST_F(EditorSettingsTest, RoundTripsTheCameraThroughTheLocalStateFile)
 {
     EditorSettings saved;
@@ -180,6 +189,7 @@ TEST_F(EditorSettingsTest, RoundTripsTheCameraThroughTheLocalStateFile)
     EXPECT_TRUE(loaded.cameraOrthographic);
 }
 
+/// @brief Local state wins over the shared file.
 TEST_F(EditorSettingsTest, LocalStateWinsOverTheSharedFile)
 {
     /// @note 旧 editor_settings.toml に [camera] が残っていても、個人状態が勝つ。
@@ -193,6 +203,7 @@ TEST_F(EditorSettingsTest, LocalStateWinsOverTheSharedFile)
     EXPECT_FLOAT_EQ(loaded.cameraSpeed, 7.0f);
 }
 
+/// @brief Falls back to the shared file when there is no local state.
 TEST_F(EditorSettingsTest, FallsBackToTheSharedFileWhenThereIsNoLocalState)
 {
     /// @note 個人状態がまだ無い手元では、旧形式の値を拾って移行できる必要がある。
@@ -204,6 +215,7 @@ TEST_F(EditorSettingsTest, FallsBackToTheSharedFileWhenThereIsNoLocalState)
     EXPECT_FLOAT_EQ(loaded.cameraSpeed, 99.0f);
 }
 
+/// @brief Unknown keys are ignored not fatal.
 TEST_F(EditorSettingsTest, UnknownKeysAreIgnoredNotFatal)
 {
     /// @note 新しいエディターが書いた設定を古いエディターが読む場合。読める分だけ拾う。
@@ -216,6 +228,7 @@ TEST_F(EditorSettingsTest, UnknownKeysAreIgnoredNotFatal)
     EXPECT_FALSE(loaded.showGrid);
 }
 
+/// @brief Missing keys keep their defaults.
 TEST_F(EditorSettingsTest, MissingKeysKeepTheirDefaults)
 {
     EditorSettings defaults;
@@ -229,6 +242,7 @@ TEST_F(EditorSettingsTest, MissingKeysKeepTheirDefaults)
     EXPECT_EQ(loaded.hotReloadEnabled, defaults.hotReloadEnabled);
 }
 
+/// @brief Save creates the local state directory.
 TEST_F(EditorSettingsTest, SaveCreatesTheLocalStateDirectory)
 {
     /// @note Library/ がまだ無い新規プロジェクトでも、個人状態を書けること。
@@ -241,6 +255,7 @@ TEST_F(EditorSettingsTest, SaveCreatesTheLocalStateDirectory)
     EXPECT_TRUE(std::filesystem::exists(LocalStatePath()));
 }
 
+/// @brief Survives an empty project root.
 TEST_F(EditorSettingsTest, SurvivesAnEmptyProjectRoot)
 {
     /// @note プロジェクト未確定の段階でも落ちないこと (個人状態は素通りする)。

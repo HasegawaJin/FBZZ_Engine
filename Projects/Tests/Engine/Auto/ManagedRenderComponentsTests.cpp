@@ -59,6 +59,7 @@ protected:
     }
 };
 
+/// @brief Rendering rows use births and pending removal above old boundary.
 TEST_F(ManagedRenderComponentServicesTest, RenderingRowsUseBirthsAndPendingRemovalAboveOldBoundary)
 {
     for (const auto kind : std::array<RenderKind, 7>{RenderKind::LINE_RENDERER, RenderKind::SPRITE_RENDERER, RenderKind::SORTING_GROUP,
@@ -77,6 +78,7 @@ TEST_F(ManagedRenderComponentServicesTest, RenderingRowsUseBirthsAndPendingRemov
     }
 }
 
+/// @brief Native line proxy rejects unknown enums and keeps point output on failure.
 TEST_F(ManagedRenderComponentServicesTest, NativeLineProxyRejectsUnknownEnumsAndKeepsPointOutputOnFailure)
 {
     math::Vector3 point{91, 92, 93};
@@ -101,6 +103,7 @@ TEST_F(ManagedRenderComponentServicesTest, NativeLineProxyRejectsUnknownEnumsAnd
     ASSERT_TRUE(m_view.gameplay.TryGetLinePoint(1, point)); EXPECT_VEC3_NEAR(point, (math::Vector3{4, 5, 6}), 0.00001f);
 }
 
+/// @brief Native line proxy reads point objects and numeric writes select inline without deleting targets.
 TEST_F(ManagedRenderComponentServicesTest, NativeLineProxyReadsPointObjectsAndNumericWritesSelectInlineWithoutDeletingTargets)
 {
     auto& line = m_owner->AddComponent<scene::LineRendererComponent>();
@@ -161,6 +164,7 @@ TEST_F(ManagedRenderComponentServicesTest, NativeLineProxyReadsPointObjectsAndNu
     EXPECT_EQ(m_view.gameplay.GetLinePointCount(), 2u);
 }
 
+/// @brief Native patrol proxy reads and materializes point objects for numeric writes.
 TEST_F(ManagedRenderComponentServicesTest, NativePatrolProxyReadsAndMaterializesPointObjectsForNumericWrites)
 {
     auto& patrol = m_owner->AddComponent<scene::NavMeshPatrolComponent>();
@@ -228,6 +232,7 @@ TEST_F(ManagedRenderComponentServicesTest, NativePatrolProxyReadsAndMaterializes
     EXPECT_EQ(m_scene.GameObjectCount(), objectCount);
 }
 
+/// @brief Managed line batch commit selects inline live and retains point metadata.
 TEST_F(ManagedRenderComponentServicesTest, ManagedLineBatchCommitSelectsInlineLiveAndRetainsPointMetadata)
 {
     auto& line = m_owner->AddComponent<scene::LineRendererComponent>();
@@ -276,6 +281,7 @@ TEST_F(ManagedRenderComponentServicesTest, ManagedLineBatchCommitSelectsInlineLi
     EXPECT_NE(target.GetComponent<scene::TargetPointComponent>(), nullptr);
 }
 
+/// @brief Line pairs reject malformed packets and preserve scalar precision.
 TEST_F(ManagedRenderComponentServicesTest, LinePairsRejectMalformedPacketsAndPreserveScalarPrecision)
 {
     auto& line = m_owner->AddComponent<scene::LineRendererComponent>();
@@ -299,6 +305,7 @@ TEST_F(ManagedRenderComponentServicesTest, LinePairsRejectMalformedPacketsAndPre
     EXPECT_FLOAT_EQ(line.startWidth, 0.3f);
 }
 
+/// @brief Trail stop keeps samples when fade was requested and requires play.
 TEST_F(ManagedRenderComponentServicesTest, TrailStopKeepsSamplesWhenFadeWasRequestedAndRequiresPlay)
 {
     auto& trail = m_owner->AddComponent<scene::TrailComponent>(); trail.ringCount = 3;
@@ -315,6 +322,7 @@ TEST_F(ManagedRenderComponentServicesTest, TrailStopKeepsSamplesWhenFadeWasReque
     ASSERT_EQ(Run(RenderOp::SERVICE_TRAIL, 0, true), RenderStatus::OK); EXPECT_EQ(m_result.integer, 0);
 }
 
+/// @brief Static mesh clear removes shape without changing renderer enable.
 TEST_F(ManagedRenderComponentServicesTest, StaticMeshClearRemovesShapeWithoutChangingRendererEnable)
 {
     renderer::Mesh retained;
@@ -324,6 +332,7 @@ TEST_F(ManagedRenderComponentServicesTest, StaticMeshClearRemovesShapeWithoutCha
     EXPECT_EQ(mesh.mesh, nullptr); EXPECT_TRUE(mesh.meshPath.empty()); EXPECT_TRUE(mesh.enabled);
 }
 
+/// @brief Fresh static mesh primitive and model clear do not require a procedural row.
 TEST_F(ManagedRenderComponentServicesTest, FreshStaticMeshPrimitiveAndModelClearDoNotRequireAProceduralRow)
 {
     auto& mesh = m_owner->AddComponent<scene::MeshRenderer>();
@@ -353,6 +362,7 @@ TEST_F(ManagedRenderComponentServicesTest, FreshStaticMeshPrimitiveAndModelClear
     EXPECT_EQ(m_scene.GetEntities<scene::ProceduralMeshComponent>().size(), 1u);
 }
 
+/// @brief Optional removal of absent invalid and expired entities preserves existing rows.
 TEST_F(ManagedRenderComponentServicesTest, OptionalRemovalOfAbsentInvalidAndExpiredEntitiesPreservesExistingRows)
 {
     auto& other = m_scene.CreateGameObject("Live procedural mesh");
@@ -412,6 +422,7 @@ protected:
     }
 };
 
+/// @brief Actual CLR facades reach distinct native rows and return queries.
 TEST_F(ManagedRenderComponentsRuntimeTest, ActualClrFacadesReachDistinctNativeRowsAndReturnQueries)
 {
     auto& trail = *m_owner->GetComponent<scene::TrailComponent>(); trail.ringCount = 3;
@@ -432,6 +443,7 @@ TEST_F(ManagedRenderComponentsRuntimeTest, ActualClrFacadesReachDistinctNativeRo
     EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
 }
 
+/// @brief Removed facade and saved reference never attach to new birth.
 TEST_F(ManagedRenderComponentsRuntimeTest, RemovedFacadeAndSavedReferenceNeverAttachToNewBirth)
 {
     ASSERT_TRUE(Call(1)); ASSERT_TRUE(Call(3)); EXPECT_EQ(Field("cachedIsAlive").integer, 0); EXPECT_NE(Field("savedReferenceMissing").integer, 0);
@@ -442,6 +454,7 @@ TEST_F(ManagedRenderComponentsRuntimeTest, RemovedFacadeAndSavedReferenceNeverAt
     EXPECT_FLOAT_EQ(replacement->startWidth, 0.05f); EXPECT_FLOAT_EQ(replacement->endWidth, 0.05f);
 }
 
+/// @brief Typed facade on another object uses that objects native rows.
 TEST_F(ManagedRenderComponentsRuntimeTest, TypedFacadeOnAnotherObjectUsesThatObjectsNativeRows)
 {
     auto& target = m_scene.CreateGameObject("Remote render target");
@@ -456,6 +469,7 @@ TEST_F(ManagedRenderComponentsRuntimeTest, TypedFacadeOnAnotherObjectUsesThatObj
     EXPECT_TRUE(m_owner->GetComponent<scene::MeshRenderer>()->enabled);
 }
 
+/// @brief Invalid writes and empty shared material are validated through real CLR.
 TEST_F(ManagedRenderComponentsRuntimeTest, InvalidWritesAndEmptySharedMaterialAreValidatedThroughRealClr)
 {
     ASSERT_TRUE(Call(1)); ASSERT_TRUE(Call(5)) << m_adapter->FaultDiagnostic();
@@ -467,6 +481,7 @@ TEST_F(ManagedRenderComponentsRuntimeTest, InvalidWritesAndEmptySharedMaterialAr
     EXPECT_TRUE(m_owner->GetComponent<scene::MeshTrailComponent>()->materialPath.empty());
 }
 
+/// @brief Mesh clear from CLR also clears static primitive reference.
 TEST_F(ManagedRenderComponentsRuntimeTest, MeshClearFromClrAlsoClearsStaticPrimitiveReference)
 {
     auto* mesh = m_owner->GetComponent<scene::MeshRenderer>(); ASSERT_NE(mesh, nullptr);
@@ -475,6 +490,7 @@ TEST_F(ManagedRenderComponentsRuntimeTest, MeshClearFromClrAlsoClearsStaticPrimi
     EXPECT_TRUE(mesh->meshPath.empty()); EXPECT_EQ(mesh->mesh, nullptr); EXPECT_TRUE(mesh->enabled);
 }
 
+/// @brief Actual fresh CLR mesh supports primitive and typed empty model assignment.
 TEST_F(ManagedRenderComponentsRuntimeTest, ActualFreshClrMeshSupportsPrimitiveAndTypedEmptyModelAssignment)
 {
     ASSERT_TRUE(m_scene.GetEntities<scene::ProceduralMeshComponent>().empty());
@@ -500,6 +516,7 @@ TEST_F(ManagedRenderComponentsRuntimeTest, ActualFreshClrMeshSupportsPrimitiveAn
     EXPECT_EQ(mesh->meshPath, "primitive:cube");
 }
 
+/// @brief Catalog and settings snapshot preserve registered render reference identity.
 TEST_F(ManagedRenderComponentsRuntimeTest, CatalogAndSettingsSnapshotPreserveRegisteredRenderReferenceIdentity)
 {
     std::string catalog; ASSERT_TRUE(scene::ManagedScriptRuntime::Instance().GetApiCatalog(catalog));

@@ -80,6 +80,7 @@ private:
     testkit::TempDir m_temp{"importcache"};
 };
 
+/// @brief Saves and reads back every field.
 TEST_F(ImportCacheStoreTest, SavesAndReadsBackEveryField)
 {
     ASSERT_TRUE(ImportCacheStore::Save(kGuidA, MakeEntry("c0ffee", "5e771465", 4096, 987654)));
@@ -92,6 +93,7 @@ TEST_F(ImportCacheStoreTest, SavesAndReadsBackEveryField)
     EXPECT_FALSE(loaded.Empty());
 }
 
+/// @brief Writes the record to disk.
 TEST_F(ImportCacheStoreTest, WritesTheRecordToDisk)
 {
     ASSERT_TRUE(ImportCacheStore::Save(kGuidA, MakeEntry("c0ffee", "5e771465")));
@@ -102,12 +104,14 @@ TEST_F(ImportCacheStoreTest, WritesTheRecordToDisk)
     EXPECT_NE(text.find("content = 'c0ffee'"), std::string::npos);
 }
 
+/// @brief Unknown GUID reads back empty.
 TEST_F(ImportCacheStoreTest, UnknownGuidReadsBackEmpty)
 {
     EXPECT_TRUE(ImportCacheStore::Load(kGuidB).Empty());
     EXPECT_TRUE(ImportCacheStore::Load("").Empty());
 }
 
+/// @brief Rejects a GUID that is not 32 hex.
 TEST_F(ImportCacheStoreTest, RejectsAGuidThatIsNot32Hex)
 {
     /// @note guid をそのまま TOML のキーとして書くため、壊れた値を通すとファイルごと道連れになる。
@@ -115,6 +119,7 @@ TEST_F(ImportCacheStoreTest, RejectsAGuidThatIsNot32Hex)
     EXPECT_FALSE(ImportCacheStore::Save("'; drop = 1", MakeEntry("c0ffee", "5e771465")));
 }
 
+/// @brief Rejects an incomplete entry.
 TEST_F(ImportCacheStoreTest, RejectsAnIncompleteEntry)
 {
     ImportCacheStore::Entry noContent;
@@ -126,6 +131,7 @@ TEST_F(ImportCacheStoreTest, RejectsAnIncompleteEntry)
     EXPECT_FALSE(ImportCacheStore::Save(kGuidA, noSettings));
 }
 
+/// @brief Rekey moves the record to the new GUID.
 TEST_F(ImportCacheStoreTest, RekeyMovesTheRecordToTheNewGuid)
 {
     /// @note guid を振り直すときは生成物 (`Library/Baked/<guid>/`) も移る。記録が付いていかないと焼き上がりが揃っているのに «未 import» と判定される。
@@ -137,12 +143,14 @@ TEST_F(ImportCacheStoreTest, RekeyMovesTheRecordToTheNewGuid)
     EXPECT_EQ(ImportCacheStore::Load(kGuidB).contentHash, "c0ffee");
 }
 
+/// @brief Rekey of an unknown GUID is harmless.
 TEST_F(ImportCacheStoreTest, RekeyOfAnUnknownGuidIsHarmless)
 {
     EXPECT_TRUE(ImportCacheStore::Rekey(kGuidA, kGuidB));
     EXPECT_TRUE(ImportCacheStore::Load(kGuidB).Empty());
 }
 
+/// @brief Forget drops only the named records.
 TEST_F(ImportCacheStoreTest, ForgetDropsOnlyTheNamedRecords)
 {
     ASSERT_TRUE(ImportCacheStore::Save(kGuidA, MakeEntry("aaa", "5e771465")));
@@ -154,6 +162,7 @@ TEST_F(ImportCacheStoreTest, ForgetDropsOnlyTheNamedRecords)
     EXPECT_EQ(ImportCacheStore::Load(kGuidB).contentHash, "bbb");
 }
 
+/// @brief Refresh stamp moves the marker but keeps the hash.
 TEST_F(ImportCacheStoreTest, RefreshStampMovesTheMarkerButKeepsTheHash)
 {
     /// @note 中身を読んで «変わっていなかった» と分かった直後の更新。ここで新しい時刻を覚えないと、
@@ -168,11 +177,13 @@ TEST_F(ImportCacheStoreTest, RefreshStampMovesTheMarkerButKeepsTheHash)
     EXPECT_EQ(loaded.mtime, 2000);
 }
 
+/// @brief Refresh stamp of an unknown GUID does nothing.
 TEST_F(ImportCacheStoreTest, RefreshStampOfAnUnknownGuidDoesNothing)
 {
     EXPECT_FALSE(ImportCacheStore::RefreshStamp(kGuidA, 1, 1));
 }
 
+/// @brief Reads the legacy format into the migration slot.
 TEST_F(ImportCacheStoreTest, ReadsTheLegacyFormatIntoTheMigrationSlot)
 {
     /// @note 旧形式は原本の «中身» ではなくパスと更新時刻から作られていた。値として使えないので、
@@ -190,6 +201,7 @@ TEST_F(ImportCacheStoreTest, ReadsTheLegacyFormatIntoTheMigrationSlot)
     EXPECT_FALSE(loaded.Empty());
 }
 
+/// @brief Survives a corrupt cache file.
 TEST_F(ImportCacheStoreTest, SurvivesACorruptCacheFile)
 {
     /// @note 壊れていても復旧は要らない。空から作り直せば、次の走査で焼き直されるだけ。

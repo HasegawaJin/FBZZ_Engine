@@ -91,6 +91,7 @@ protected:
     scene::managed_detail::ManagedServiceResult m_result;
     bool m_previousPlay = false;
 };
+/// @brief One shot tracks moving source and listener without restart.
 TEST_F(AudioSourceTest, OneShotTracksMovingSourceAndListenerWithoutRestart)
 {
     auto& listener = Listener(); Source().spatialBlend = 1; Source().minDistance = 0; Source().maxDistance = 10;
@@ -118,6 +119,7 @@ TEST_F(AudioSourceTest, OneShotTracksMovingSourceAndListenerWithoutRestart)
 
     EXPECT_EQ(m_device.invalidOperations, 0U);
 }
+/// @brief Missing listener preserves 2D and suppresses 3D contribution.
 TEST_F(AudioSourceTest, MissingListenerPreserves2DAndSuppresses3DContribution)
 {
     Source().volume = 0.8f;
@@ -141,6 +143,7 @@ TEST_F(AudioSourceTest, MissingListenerPreserves2DAndSuppresses3DContribution)
 
     EXPECT_NEAR(m_device.voices.at(id).volume, 0.8f, testkit::kTolerance);
 }
+/// @brief Checks pause resume and stop control owned one shots without restart.
 TEST_F(AudioSourceTest, PauseResumeAndStopControlOwnedOneShotsWithoutRestart)
 {
 
@@ -169,6 +172,7 @@ TEST_F(AudioSourceTest, PauseResumeAndStopControlOwnedOneShotsWithoutRestart)
 
     EXPECT_EQ(m_device.next, 2U);
 }
+/// @brief Bus rebuild clears paused source state and allows replay.
 TEST_F(AudioSourceTest, BusRebuildClearsPausedSourceStateAndAllowsReplay)
 {
 
@@ -194,6 +198,7 @@ TEST_F(AudioSourceTest, BusRebuildClearsPausedSourceStateAndAllowsReplay)
 
     EXPECT_EQ(m_device.voices.size(), 1U);
 }
+/// @brief Disabled source discards queued sounds and stops existing voices.
 TEST_F(AudioSourceTest, DisabledSourceDiscardsQueuedSoundsAndStopsExistingVoices)
 {
     m_view.audio.SetLoop(true);
@@ -214,6 +219,7 @@ TEST_F(AudioSourceTest, DisabledSourceDiscardsQueuedSoundsAndStopsExistingVoices
     EXPECT_TRUE(m_device.voices.empty());
     EXPECT_EQ(m_device.next, 3U);
 }
+/// @brief Explicit stop before first update cancels play on awake and queued effects.
 TEST_F(AudioSourceTest, ExplicitStopBeforeFirstUpdateCancelsPlayOnAwakeAndQueuedEffects)
 {
     Source().playOnAwake = true; Source().clipPath = "effect.wav";
@@ -234,6 +240,7 @@ TEST_F(AudioSourceTest, ExplicitStopBeforeFirstUpdateCancelsPlayOnAwakeAndQueued
 
     EXPECT_TRUE(m_view.audio.IsPlaying());
 }
+/// @brief Removed source and destroyed owner retire their loop and one shots.
 TEST_F(AudioSourceTest, RemovedSourceAndDestroyedOwnerRetireTheirLoopAndOneShots)
 {
     m_view.audio.SetLoop(true);
@@ -261,6 +268,7 @@ TEST_F(AudioSourceTest, RemovedSourceAndDestroyedOwnerRetireTheirLoopAndOneShots
 
     EXPECT_TRUE(m_device.voices.empty());
 }
+/// @brief One shot burst remains bounded and finished voice makes room.
 TEST_F(AudioSourceTest, OneShotBurstRemainsBoundedAndFinishedVoiceMakesRoom)
 {
     for (int frame = 0; frame < 100; ++frame) {
@@ -280,6 +288,7 @@ TEST_F(AudioSourceTest, OneShotBurstRemainsBoundedAndFinishedVoiceMakesRoom)
 
     EXPECT_EQ(m_device.invalidOperations, 0U);
 }
+/// @brief Global priority budget keeps loops and ignores stolen handles.
 TEST_F(AudioSourceTest, GlobalPriorityBudgetKeepsLoopsAndIgnoresStolenHandles)
 {
     m_audio.SetVoiceLimit(4); audio::AudioManager::PlayParams params; params.streaming = true;
@@ -304,6 +313,7 @@ TEST_F(AudioSourceTest, GlobalPriorityBudgetKeepsLoopsAndIgnoresStolenHandles)
     EXPECT_EQ(m_device.voices.size(), 4U);
     EXPECT_EQ(m_device.invalidOperations, 0U);
 }
+/// @brief Nonfinite voice parameters are ignored and doppler pitch keeps backend range.
 TEST_F(AudioSourceTest, NonfiniteVoiceParametersAreIgnoredAndDopplerPitchKeepsBackendRange)
 {
 
@@ -325,6 +335,7 @@ TEST_F(AudioSourceTest, NonfiniteVoiceParametersAreIgnoredAndDopplerPitchKeepsBa
 
     EXPECT_EQ(m_device.invalidOperations, 0U);
 }
+/// @brief New scene generation retires old voices without reusing owner.
 TEST_F(AudioSourceTest, NewSceneGenerationRetiresOldVoicesWithoutReusingOwner)
 {
     m_view.audio.SetLoop(true);
@@ -348,6 +359,7 @@ TEST_F(AudioSourceTest, NewSceneGenerationRetiresOldVoicesWithoutReusingOwner)
 
     EXPECT_EQ(m_device.next, 4U);
 }
+/// @brief Filter fade is local and volume fade remains independent.
 TEST_F(AudioSourceTest, FilterFadeIsLocalAndVolumeFadeRemainsIndependent)
 {
     Source().volume = 0.8f;
@@ -380,6 +392,7 @@ TEST_F(AudioSourceTest, FilterFadeIsLocalAndVolumeFadeRemainsIndependent)
 
     EXPECT_NEAR(m_device.voices.at(id).cutoff, 0.2f, testkit::kTolerance);
 }
+/// @brief Audio settings validate packet and scope before mutation.
 TEST_F(AudioSourceTest, AudioSettingsValidatePacketAndScopeBeforeMutation)
 {
     using Status = scene::ManagedBridgeStatus; const std::array<float, 1> valid{0.3f}, invalid{1.1f}, nan{(std::numeric_limits<float>::quiet_NaN)()};
@@ -442,6 +455,7 @@ TEST_F(AudioSourceTest, AudioSettingsValidatePacketAndScopeBeforeMutation)
 
     EXPECT_NEAR(m_device.voices.begin()->second.cutoff, 0.55f, testkit::kTolerance);
 }
+/// @brief Rejected filter changes preserve an in progress fade.
 TEST_F(AudioSourceTest, RejectedFilterChangesPreserveAnInProgressFade)
 {
 
@@ -466,6 +480,7 @@ TEST_F(AudioSourceTest, RejectedFilterChangesPreserveAnInProgressFade)
 
     EXPECT_NEAR(m_device.voices.at(id).cutoff, 0.3f, testkit::kTolerance);
 }
+/// @brief Filter round-trips and old scene defaults to unfiltered.
 TEST_F(AudioSourceTest, FilterRoundTripsAndOldSceneDefaultsToUnfiltered)
 {
     Source().priority = 30; Source().SetLowPassCutoff(0.3f); Source().FadeLowPassTo(0.8f, 2);
@@ -494,6 +509,7 @@ TEST_F(AudioSourceTest, FilterRoundTripsAndOldSceneDefaultsToUnfiltered)
 
     EXPECT_NEAR(loaded->GetComponent<scene::AudioSourceComponent>(entities[0])->lowPassCutoff, 1, testkit::kTolerance);
 }
+/// @brief Bridge routes new audio settings without changing old selectors.
 TEST_F(AudioSourceTest, BridgeRoutesNewAudioSettingsWithoutChangingOldSelectors)
 {
     scene::managed_detail::ManagedServicesBridge bridge;

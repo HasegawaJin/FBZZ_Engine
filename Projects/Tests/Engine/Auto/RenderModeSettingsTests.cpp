@@ -46,6 +46,7 @@ protected:
     testkit::TempDir m_temp{"render-mode"};
 };
 
+/// @brief Old settings reset an earlier ray request.
 TEST_F(RenderModeSettingsTest, OldSettingsResetAnEarlierRayRequest)
 {
     for (const auto text : { "[render]\npipeline = 'Deferred+'\n", "[physics]\nhz = 60\n" }) {
@@ -58,6 +59,7 @@ TEST_F(RenderModeSettingsTest, OldSettingsResetAnEarlierRayRequest)
     }
 }
 
+/// @brief Invalid keys do not enable ray tracing.
 TEST_F(RenderModeSettingsTest, InvalidKeysDoNotEnableRayTracing)
 {
     Write("[render]\nmode = 'FutureRenderer'\npathProfile = 3\n"
@@ -67,6 +69,7 @@ TEST_F(RenderModeSettingsTest, InvalidKeysDoNotEnableRayTracing)
     ExpectRasterDefault(settings.render.modeRequest);
 }
 
+/// @brief Every mode and profile round-trips dormant effect requests.
 TEST_F(RenderModeSettingsTest, EveryModeAndProfileRoundTripsDormantEffectRequests)
 {
     for (const auto mode : { renderer::RenderMode::RASTER, renderer::RenderMode::HYBRID,
@@ -89,6 +92,7 @@ TEST_F(RenderModeSettingsTest, EveryModeAndProfileRoundTripsDormantEffectRequest
     }
 }
 
+/// @brief Raster fallback does not change the saved request.
 TEST_F(RenderModeSettingsTest, RasterFallbackDoesNotChangeTheSavedRequest)
 {
     ProjectSettings source;
@@ -109,6 +113,7 @@ TEST_F(RenderModeSettingsTest, RasterFallbackDoesNotChangeTheSavedRequest)
     EXPECT_TRUE(restored.render.modeRequest.rayReflection);
 }
 
+/// @brief Developer gate keeps every saved ray mode and dormant effect.
 TEST_F(RenderModeSettingsTest, DeveloperGateKeepsEverySavedRayModeAndDormantEffect)
 {
     for (const auto mode : { renderer::RenderMode::HYBRID, renderer::RenderMode::PATH_TRACING }) {
@@ -149,6 +154,7 @@ TEST_F(RenderModeSettingsTest, DeveloperGateKeepsEverySavedRayModeAndDormantEffe
     }
 }
 
+/// @brief Parse failure preserves the earlier request.
 TEST_F(RenderModeSettingsTest, ParseFailurePreservesTheEarlierRequest)
 {
     Write("[render\nmode = 'Hybrid'\n");

@@ -42,6 +42,7 @@ std::unique_ptr<ICommand> Assign(int& target, int value, int previous,
 
 } /// @note namespace
 
+/// @brief Starts empty.
 TEST(UndoStack, StartsEmpty)
 {
     UndoStack stack;
@@ -52,6 +53,7 @@ TEST(UndoStack, StartsEmpty)
     EXPECT_EQ(stack.GetRedoDescription(), "");
 }
 
+/// @brief Execute runs the command and records it.
 TEST(UndoStack, ExecuteRunsTheCommandAndRecordsIt)
 {
     UndoStack stack;
@@ -63,6 +65,7 @@ TEST(UndoStack, ExecuteRunsTheCommandAndRecordsIt)
     EXPECT_EQ(stack.GetHistorySize(), 1u);
 }
 
+/// @brief Push records without running.
 TEST(UndoStack, PushRecordsWithoutRunning)
 {
     /// @note Push は «すでに適用済み» の操作を履歴へ載せる入口。ここで実行してしまうと二重適用になる。
@@ -74,6 +77,7 @@ TEST(UndoStack, PushRecordsWithoutRunning)
     EXPECT_TRUE(stack.CanUndo());
 }
 
+/// @brief Checks undo and redo walk the history.
 TEST(UndoStack, UndoAndRedoWalkTheHistory)
 {
     UndoStack stack;
@@ -95,6 +99,7 @@ TEST(UndoStack, UndoAndRedoWalkTheHistory)
     EXPECT_FALSE(stack.CanRedo());
 }
 
+/// @brief Extra undo or redo is ignored.
 TEST(UndoStack, ExtraUndoOrRedoIsIgnored)
 {
     UndoStack stack;
@@ -112,6 +117,7 @@ TEST(UndoStack, ExtraUndoOrRedoIsIgnored)
     EXPECT_EQ(value, 1);
 }
 
+/// @brief New work after undo discards the redo branch.
 TEST(UndoStack, NewWorkAfterUndoDiscardsTheRedoBranch)
 {
     /// @note 線形履歴。戻ってから別の操作をしたら、やり直せた側は消える。
@@ -129,6 +135,7 @@ TEST(UndoStack, NewWorkAfterUndoDiscardsTheRedoBranch)
     EXPECT_EQ(stack.GetUndoDescription(), "c");
 }
 
+/// @brief Descriptions follow the cursor.
 TEST(UndoStack, DescriptionsFollowTheCursor)
 {
     UndoStack stack;
@@ -144,6 +151,7 @@ TEST(UndoStack, DescriptionsFollowTheCursor)
     EXPECT_EQ(stack.GetRedoDescription(), "second");
 }
 
+/// @brief History marks which entries are applied.
 TEST(UndoStack, HistoryMarksWhichEntriesAreApplied)
 {
     UndoStack stack;
@@ -159,6 +167,7 @@ TEST(UndoStack, HistoryMarksWhichEntriesAreApplied)
     EXPECT_FALSE(history[1].applied);
 }
 
+/// @brief Checks jump to moves in either direction.
 TEST(UndoStack, JumpToMovesInEitherDirection)
 {
     UndoStack stack;
@@ -178,6 +187,7 @@ TEST(UndoStack, JumpToMovesInEitherDirection)
     EXPECT_EQ(value, 0);
 }
 
+/// @brief Jump to clamps beyond the end.
 TEST(UndoStack, JumpToClampsBeyondTheEnd)
 {
     UndoStack stack;
@@ -189,6 +199,7 @@ TEST(UndoStack, JumpToClampsBeyondTheEnd)
     EXPECT_EQ(value, 1);
 }
 
+/// @brief Clear drops everything.
 TEST(UndoStack, ClearDropsEverything)
 {
     UndoStack stack;
@@ -203,6 +214,7 @@ TEST(UndoStack, ClearDropsEverything)
     EXPECT_EQ(value, 1);
 }
 
+/// @brief Recording disabled still applies but keeps no history.
 TEST(UndoStack, RecordingDisabledStillAppliesButKeepsNoHistory)
 {
     /// @note Play 中の編集はランタイム側の変更なので、履歴に残すと «停止後に戻せてしまう»。
@@ -216,6 +228,7 @@ TEST(UndoStack, RecordingDisabledStillAppliesButKeepsNoHistory)
     EXPECT_FALSE(stack.CanUndo());
 }
 
+/// @brief Recording disabled suppresses undo of earlier work.
 TEST(UndoStack, RecordingDisabledSuppressesUndoOfEarlierWork)
 {
     UndoStack stack;
@@ -231,6 +244,7 @@ TEST(UndoStack, RecordingDisabledSuppressesUndoOfEarlierWork)
     EXPECT_TRUE(stack.CanUndo());
 }
 
+/// @brief Revision advances on recorded work.
 TEST(UndoStack, RevisionAdvancesOnRecordedWork)
 {
     /// @note Revision は «保存が要るか» の判定に使われる。記録が増えたら必ず動く必要がある。
@@ -242,6 +256,7 @@ TEST(UndoStack, RevisionAdvancesOnRecordedWork)
     EXPECT_NE(stack.GetRevision(), before);
 }
 
+/// @brief Drops the oldest entry beyond the history limit.
 TEST(UndoStack, DropsTheOldestEntryBeyondTheHistoryLimit)
 {
     UndoStack stack;
@@ -256,6 +271,7 @@ TEST(UndoStack, DropsTheOldestEntryBeyondTheHistoryLimit)
               "cmd" + std::to_string(UndoStack::MAX_HISTORY + 4));
 }
 
+/// @brief Composite undoes in reverse order.
 TEST(UndoStack, CompositeUndoesInReverseOrder)
 {
     /// @note 親作成 → 子作成 の複合なら、戻すときは 子 → 親 でなければ破棄が壊れる。
@@ -274,6 +290,7 @@ TEST(UndoStack, CompositeUndoesInReverseOrder)
     EXPECT_EQ(log, expected);
 }
 
+/// @brief Composite ignores null members.
 TEST(UndoStack, CompositeIgnoresNullMembers)
 {
     CompositeCommand composite("group");
@@ -282,6 +299,7 @@ TEST(UndoStack, CompositeIgnoresNullMembers)
 }
 
 class CheckedUndoTest : public testkit::Fixture {};
+/// @brief Conflict preserves cursor history and revision and stops jump.
 TEST_F(CheckedUndoTest, ConflictPreservesCursorHistoryAndRevisionAndStopsJump)
 {
     UndoStack stack; int value = 0;
@@ -297,6 +315,7 @@ TEST_F(CheckedUndoTest, ConflictPreservesCursorHistoryAndRevisionAndStopsJump)
     EXPECT_FALSE(stack.Redo()); EXPECT_EQ(stack.GetCursor(), 0u); EXPECT_EQ(stack.GetRevision(), undoneRevision); EXPECT_EQ(value, 3);
     EXPECT_EQ(stack.LastDiagnostic(), "redo conflict");
 }
+/// @brief Unsupported composite rejects every child before mutation.
 TEST_F(CheckedUndoTest, UnsupportedCompositeRejectsEveryChildBeforeMutation)
 {
     UndoStack stack; int value = 0;

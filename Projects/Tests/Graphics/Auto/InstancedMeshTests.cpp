@@ -212,6 +212,7 @@ protected:
     std::function<void(r::OcclusionCuller&)> m_occlusionSetup;
 };
 
+/// @brief GPU culling matches individual and CPU instanced pixels across views.
 TEST_F(InstancedMeshTest, GpuCullingMatchesIndividualAndCpuInstancedPixelsAcrossViews)
 {
     const auto scene=Scene(130);
@@ -221,6 +222,7 @@ TEST_F(InstancedMeshTest, GpuCullingMatchesIndividualAndCpuInstancedPixelsAcross
     }
 }
 
+/// @brief Clustered wind uses CPU and GPU selected placement IDs.
 TEST_F(InstancedMeshTest, ClusteredWindUsesCpuAndGpuSelectedPlacementIds)
 {
     if (!m_bundle.renderer->SupportsMeshShaders() || !m_bundle.renderer->SupportsIndirectDraw())
@@ -266,6 +268,7 @@ TEST_F(InstancedMeshTest, ClusteredWindUsesCpuAndGpuSelectedPlacementIds)
     Same(reference, Render(scene, 5));
 }
 
+/// @brief Checks vegetation cell budgets lower detail without dropping placements or shadows.
 TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlacementsOrShadows)
 {
     if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
@@ -356,6 +359,7 @@ TEST_F(InstancedMeshTest, VegetationCellBudgetsLowerDetailWithoutDroppingPlaceme
     Same(unbudgetedShadow, Render(scene, 2, true, true));
 }
 
+/// @brief Vegetation cells keep edge overhang and reuse placements when panning.
 TEST_F(InstancedMeshTest, VegetationCellsKeepEdgeOverhangAndReusePlacementsWhenPanning)
 {
     if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
@@ -404,6 +408,7 @@ TEST_F(InstancedMeshTest, VegetationCellsKeepEdgeOverhangAndReusePlacementsWhenP
     Same(farBudgeted, Render(scene, 2));
 }
 
+/// @brief GPU visibility batch preserves materials and interleaved CPU sets.
 TEST_F(InstancedMeshTest, GpuVisibilityBatchPreservesMaterialsAndInterleavedCpuSets)
 {
     if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
@@ -443,6 +448,7 @@ TEST_F(InstancedMeshTest, GpuVisibilityBatchPreservesMaterialsAndInterleavedCpuS
     Same(referenceShadow,Render(scene,2,true,true));
 }
 
+/// @brief Current view occlusion matches CPU and indirect without suppressing shadows or reappearing instances.
 TEST_F(InstancedMeshTest, CurrentViewOcclusionMatchesCpuAndIndirectWithoutSuppressingShadowsOrReappearingInstances)
 {
     const auto scene=Scene(256);
@@ -464,6 +470,7 @@ TEST_F(InstancedMeshTest, CurrentViewOcclusionMatchesCpuAndIndirectWithoutSuppre
     Same(baseline,Render(scene,2));
     m_occlusion=nullptr;
 }
+/// @brief Directional cascade batch matches four independent masked wind shadows.
 TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWindShadows)
 {
     if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
@@ -644,6 +651,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     expectFarReduction();
 }
 
+/// @brief Conflicting instance identity keeps both shapes in one shadow batch.
 TEST_F(InstancedMeshTest, ConflictingInstanceIdentityKeepsBothShapesInOneShadowBatch)
 {
     const auto scene = Scene(64);
@@ -679,6 +687,7 @@ TEST_F(InstancedMeshTest, ConflictingInstanceIdentityKeepsBothShapesInOneShadowB
     EXPECT_NE(independent, render());
 }
 
+/// @brief GPU occlusion rows follow projection changes and invalid views fail open.
 TEST_F(InstancedMeshTest, GpuOcclusionRowsFollowProjectionChangesAndInvalidViewsFailOpen)
 {
     const auto scene=Scene(256);
@@ -708,6 +717,7 @@ TEST_F(InstancedMeshTest, GpuOcclusionRowsFollowProjectionChangesAndInvalidViews
     m_occlusion=nullptr;
 }
 
+/// @brief Current GPU depth hi Z rejects covered instances and keeps holes and foreground.
 TEST_F(InstancedMeshTest, CurrentGpuDepthHiZRejectsCoveredInstancesAndKeepsHolesAndForeground)
 {
     if (!m_bundle.renderer->SupportsIndirectDraw()) GTEST_SKIP() << "GPU indirect draws unavailable";
@@ -778,6 +788,7 @@ TEST_F(InstancedMeshTest, CurrentGpuDepthHiZRejectsCoveredInstancesAndKeepsHoles
     m_occlusion=nullptr;
 }
 
+/// @brief Spatial groups rebuild after partial edits and keep unknown bounds visible.
 TEST_F(InstancedMeshTest, SpatialGroupsRebuildAfterPartialEditsAndKeepUnknownBoundsVisible)
 {
     auto scene = Scene(1024);
@@ -805,6 +816,7 @@ TEST_F(InstancedMeshTest, SpatialGroupsRebuildAfterPartialEditsAndKeepUnknownBou
     m_occlusion = nullptr; m_occlusionSetup = {};
 }
 
+/// @brief Masked double sided shadows match across LODs and back views.
 TEST_F(InstancedMeshTest, MaskedDoubleSidedShadowsMatchAcrossLodsAndBackViews)
 {
     const auto scene=Scene(130);
@@ -815,6 +827,7 @@ TEST_F(InstancedMeshTest, MaskedDoubleSidedShadowsMatchAcrossLodsAndBackViews)
         EXPECT_GT(covered,100u); EXPECT_GT(clear,100u);
     }
 }
+/// @brief Unchanged placements upload nothing and one edit uploads one row.
 TEST_F(InstancedMeshTest, UnchangedPlacementsUploadNothingAndOneEditUploadsOneRow)
 {
     auto scene=Scene(130); Render(scene,2); Render(scene,2); EXPECT_EQ(m_uploadBytes,0u);
@@ -827,6 +840,7 @@ TEST_F(InstancedMeshTest, UnchangedPlacementsUploadNothingAndOneEditUploadsOneRo
     added->placements.push_back({1000,{0,0,4},{},{1,1,1},true}); added->dirtySlots={130}; scene->instances[0].data=added;
     const auto actual=Render(scene,2); EXPECT_EQ(m_uploadBytes,208u); Same(actual,Render(scene,0));
 }
+/// @brief Resident rows survive cache sweep through last live frame and reupload after expiry.
 TEST_F(InstancedMeshTest, ResidentRowsSurviveCacheSweepThroughLastLiveFrameAndReuploadAfterExpiry)
 {
     constexpr uint64_t ROW_BYTES=208;
@@ -853,6 +867,7 @@ TEST_F(InstancedMeshTest, ResidentRowsSurviveCacheSweepThroughLastLiveFrameAndRe
     End();
 }
 
+/// @brief Shadow alpha coverage matches standard g buffer including vertex color contract.
 TEST_F(InstancedMeshTest, ShadowAlphaCoverageMatchesStandardGBufferIncludingVertexColorContract)
 {
     const auto scene=Scene(130,0.2f);
@@ -868,6 +883,7 @@ TEST_F(InstancedMeshTest, ShadowAlphaCoverageMatchesStandardGBufferIncludingVert
     EXPECT_GT(covered,100u); EXPECT_EQ(differences,0u);
 }
 
+/// @brief Leaf wind changes pixels without placement uploads and keeps shadow coverage.
 TEST_F(InstancedMeshTest, LeafWindChangesPixelsWithoutPlacementUploadsAndKeepsShadowCoverage)
 {
     const auto scene = Scene(130);
@@ -890,6 +906,7 @@ TEST_F(InstancedMeshTest, LeafWindChangesPixelsWithoutPlacementUploadsAndKeepsSh
     EXPECT_GT(covered, 100u); EXPECT_EQ(differences, 0u);
 }
 
+/// @brief Erase preview does not contribute color or shadows.
 TEST_F(InstancedMeshTest, ErasePreviewDoesNotContributeColorOrShadows)
 {
     const auto scene = Scene(130); scene->instances[0].selectionOnly = true;
@@ -898,12 +915,14 @@ TEST_F(InstancedMeshTest, ErasePreviewDoesNotContributeColorOrShadows)
     const auto depth = Render(scene, 2, true, true);
     for (size_t i = 0; i < depth.size(); i += 4) EXPECT_GE(depth[i], 0.9999f);
 }
+/// @brief Asset replacement with equal revision does not reuse stale rows.
 TEST_F(InstancedMeshTest, AssetReplacementWithEqualRevisionDoesNotReuseStaleRows)
 {
     auto scene=Scene(130); const auto before=Render(scene,2); auto replaced=std::make_shared<r::InstanceSetData>(*scene->instances[0].data);
     for (auto& value : replaced->placements) value.position.x+=50; scene->instances[0].data=replaced;
     const auto gpu=Render(scene,2); Same(gpu,Render(scene,0)); EXPECT_NE(gpu,before);
 }
+/// @brief Camera distance padding small object and layer policies match CPU and GPU.
 TEST_F(InstancedMeshTest, CameraDistancePaddingSmallObjectAndLayerPoliciesMatchCpuAndGpu)
 {
     const auto scene=Scene(130); m_camera.m_position={5,1,-5};m_camera.LookAt({0,0,4});
@@ -917,6 +936,7 @@ TEST_F(InstancedMeshTest, CameraDistancePaddingSmallObjectAndLayerPoliciesMatchC
     for (size_t i=0;i<pixels.size();++i) EXPECT_EQ(pixels[i],0);
 }
 
+/// @brief Deferred forward skips preparing g buffer only instances.
 TEST_F(InstancedMeshTest, DeferredForwardSkipsPreparingGBufferOnlyInstances)
 {
     const auto scene=Scene(130);
@@ -930,6 +950,7 @@ TEST_F(InstancedMeshTest, DeferredForwardSkipsPreparingGBufferOnlyInstances)
     EXPECT_GT(m_draws,0u);
 }
 
+/// @brief Sub tolerance shear keeps an actually visible vertex submitted.
 TEST_F(InstancedMeshTest, SubToleranceShearKeepsAnActuallyVisibleVertexSubmitted)
 {
     const auto scene=Scene(1);
@@ -971,6 +992,7 @@ TEST_F(InstancedMeshTest, SubToleranceShearKeepsAnActuallyVisibleVertexSubmitted
     EXPECT_EQ(m_stats.frustumCulled,0);
 }
 
+/// @brief CPU culling counts each active placement once across parts and LODs.
 TEST_F(InstancedMeshTest, CpuCullingCountsEachActivePlacementOnceAcrossPartsAndLods)
 {
     const auto scene=Scene(5);
@@ -995,6 +1017,7 @@ TEST_F(InstancedMeshTest, CpuCullingCountsEachActivePlacementOnceAcrossPartsAndL
     EXPECT_EQ(m_stats.smallObjectCulled,0);
 }
 
+/// @brief GPU visibility candidates stay unknown and prepass rollback restores them.
 TEST_F(InstancedMeshTest, GpuVisibilityCandidatesStayUnknownAndPrepassRollbackRestoresThem)
 {
     const auto scene=Scene(130);
@@ -1021,6 +1044,7 @@ TEST_F(InstancedMeshTest, GpuVisibilityCandidatesStayUnknownAndPrepassRollbackRe
     End();
 }
 
+/// @brief Entire set outside view skips draws and reenters without uploading placements.
 TEST_F(InstancedMeshTest, EntireSetOutsideViewSkipsDrawsAndReentersWithoutUploadingPlacements)
 {
     const auto scene=Scene(130);
@@ -1044,6 +1068,7 @@ TEST_F(InstancedMeshTest, EntireSetOutsideViewSkipsDrawsAndReentersWithoutUpload
     Same(shadow,Render(scene,0,true,true));
 }
 
+/// @brief Distance rejected set keeps partial edits and inactive rows correct.
 TEST_F(InstancedMeshTest, DistanceRejectedSetKeepsPartialEditsAndInactiveRowsCorrect)
 {
     for (bool spherical : {true,false}) {
@@ -1081,6 +1106,7 @@ TEST_F(InstancedMeshTest, DistanceRejectedSetKeepsPartialEditsAndInactiveRowsCor
     }
 }
 
+/// @brief Measure ten thousand instances with native profiler.
 TEST_F(InstancedMeshTest, DISABLED_MeasureTenThousandInstancesWithNativeProfiler)
 {
     Resize(1920,1080); m_camera.m_aspect=1920.0f/1080; m_camera.m_orthoHeight=14;

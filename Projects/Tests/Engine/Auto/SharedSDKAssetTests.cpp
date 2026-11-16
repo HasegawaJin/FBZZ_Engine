@@ -48,6 +48,7 @@ protected:
     }
 };
 
+/// @brief Loads shared OBJ without project copy or baked container.
 TEST_F(SharedSDKAssetTest, LoadsSharedObjWithoutProjectCopyOrBakedContainer)
 {
     const auto shared = m_temp.File("SDK/Assets/Models/Triangle.obj");
@@ -83,6 +84,7 @@ TEST_F(SharedSDKAssetTest, LoadsSharedObjWithoutProjectCopyOrBakedContainer)
     EXPECT_EQ(saved, meta);
 }
 
+/// @brief Source glTF preserves meter geometry and baked node translation.
 TEST_F(SharedSDKAssetTest, SourceGltfPreservesMeterGeometryAndBakedNodeTranslation)
 {
     const auto source = m_temp.File("Project/Assets/Triangle.GLTF");
@@ -108,6 +110,7 @@ TEST_F(SharedSDKAssetTest, SourceGltfPreservesMeterGeometryAndBakedNodeTranslati
     EXPECT_VEC3_NEAR(mesh.boundsExtents, (math::Vector3{0.5f, 0.5f, 0.0f}), 0.00001f);
 }
 
+/// @brief Shared includes remain cacheable and track SDK changes.
 TEST_F(SharedSDKAssetTest, SharedIncludesRemainCacheableAndTrackSdkChanges)
 {
     const auto source = m_temp.File("Project/Assets/Shaders/Custom/Surface.hlsl");

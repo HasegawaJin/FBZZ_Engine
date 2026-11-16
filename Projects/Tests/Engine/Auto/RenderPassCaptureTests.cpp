@@ -57,6 +57,7 @@ protected:
     }
 };
 
+/// @brief Selection tracks name and occurrence when earlier passes are inserted.
 TEST_F(RenderPassCaptureTest, SelectionTracksNameAndOccurrenceWhenEarlierPassesAreInserted)
 {
     scene::RenderPassCapture capture;
@@ -84,6 +85,7 @@ TEST_F(RenderPassCaptureTest, SelectionTracksNameAndOccurrenceWhenEarlierPassesA
     EXPECT_EQ(capture.Passes()[2].occurrence, 1u);
 }
 
+/// @brief Culled and missing selections never keep the previous index.
 TEST_F(RenderPassCaptureTest, CulledAndMissingSelectionsNeverKeepThePreviousIndex)
 {
     scene::RenderPassCapture capture;
@@ -113,6 +115,7 @@ TEST_F(RenderPassCaptureTest, CulledAndMissingSelectionsNeverKeepThePreviousInde
     EXPECT_NE(capture.Status().find("not active"), std::string::npos);
 }
 
+/// @brief Ambiguous GPU samples stay unavailable.
 TEST_F(RenderPassCaptureTest, AmbiguousGpuSamplesStayUnavailable)
 {
     scene::RenderPassCapture capture;
@@ -144,6 +147,7 @@ TEST_F(RenderPassCaptureTest, AmbiguousGpuSamplesStayUnavailable)
     EXPECT_FALSE(capture.HasPreview());
 }
 
+/// @brief Exact tagged samples require final plan provenance.
 TEST_F(RenderPassCaptureTest, ExactTaggedSamplesRequireFinalPlanProvenance)
 {
     scene::RenderPassCapture capture;
@@ -159,6 +163,7 @@ TEST_F(RenderPassCaptureTest, ExactTaggedSamplesRequireFinalPlanProvenance)
     EXPECT_LT(capture.Passes()[0].gpuMs, 0);
 }
 
+/// @brief Every source metadata difference rejects the delayed GPU sample.
 TEST_F(RenderPassCaptureTest, EverySourceMetadataDifferenceRejectsTheDelayedGpuSample)
 {
     scene::RenderPassCapture capture;
@@ -189,6 +194,7 @@ TEST_F(RenderPassCaptureTest, EverySourceMetadataDifferenceRejectsTheDelayedGpuS
     }
 }
 
+/// @brief Physical frame and device must match the completed snapshot.
 TEST_F(RenderPassCaptureTest, PhysicalFrameAndDeviceMustMatchTheCompletedSnapshot)
 {
     scene::RenderPassCapture capture;
@@ -212,6 +218,7 @@ TEST_F(RenderPassCaptureTest, PhysicalFrameAndDeviceMustMatchTheCompletedSnapsho
     }
 }
 
+/// @brief Partial unavailable and missing snapshots never retain an earlier value.
 TEST_F(RenderPassCaptureTest, PartialUnavailableAndMissingSnapshotsNeverRetainAnEarlierValue)
 {
     scene::RenderPassCapture capture;
@@ -235,6 +242,7 @@ TEST_F(RenderPassCaptureTest, PartialUnavailableAndMissingSnapshotsNeverRetainAn
     }
 }
 
+/// @brief Nonfinite negative and unavailable pass durations are not published.
 TEST_F(RenderPassCaptureTest, NonfiniteNegativeAndUnavailablePassDurationsAreNotPublished)
 {
     scene::RenderPassCapture capture;
@@ -262,6 +270,7 @@ TEST_F(RenderPassCaptureTest, NonfiniteNegativeAndUnavailablePassDurationsAreNot
     EXPECT_DOUBLE_EQ(capture.Passes()[0].gpuMs, 0);
 }
 
+/// @brief Duplicate tagged samples are rejected but another view cannot hide the matching sample.
 TEST_F(RenderPassCaptureTest, DuplicateTaggedSamplesAreRejectedButAnotherViewCannotHideTheMatchingSample)
 {
     scene::RenderPassCapture capture;
@@ -286,6 +295,7 @@ TEST_F(RenderPassCaptureTest, DuplicateTaggedSamplesAreRejectedButAnotherViewCan
     EXPECT_LT(capture.Passes()[0].gpuMs, 0);
 }
 
+/// @brief Culled and invalidated passes never acquire delayed GPU values.
 TEST_F(RenderPassCaptureTest, CulledAndInvalidatedPassesNeverAcquireDelayedGpuValues)
 {
     scene::RenderPassCapture capture;

@@ -55,6 +55,7 @@ protected:
     }
 };
 
+/// @brief Patrol conversion uses world positions and keeps waypoint attributes.
 TEST_F(AdditionalControlPointOperatorTest, PatrolConversionUsesWorldPositionsAndKeepsWaypointAttributes)
 {
     auto& owner = World().CreateGameObject("Patrol");
@@ -116,6 +117,7 @@ TEST_F(AdditionalControlPointOperatorTest, PatrolConversionUsesWorldPositionsAnd
     EXPECT_EQ(patrol.waypointBindings.size(), original.points.size());
 }
 
+/// @brief Patrol attribute edit and removal are undoable without deleting targets.
 TEST_F(AdditionalControlPointOperatorTest, PatrolAttributeEditAndRemovalAreUndoableWithoutDeletingTargets)
 {
     auto& owner = World().CreateGameObject("Patrol");
@@ -145,6 +147,7 @@ TEST_F(AdditionalControlPointOperatorTest, PatrolAttributeEditAndRemovalAreUndoa
     EXPECT_NE(World().FindByGuid(targetGuid), nullptr);
 }
 
+/// @brief Patrol add uses world position and does not follow owner.
 TEST_F(AdditionalControlPointOperatorTest, PatrolAddUsesWorldPositionAndDoesNotFollowOwner)
 {
     auto& owner = World().CreateGameObject("Moving Patrol");
@@ -195,6 +198,7 @@ TEST_F(AdditionalControlPointOperatorTest, PatrolAddUsesWorldPositionAndDoesNotF
     EXPECT_VEC3_NEAR(moved.points[1].worldPosition, secondWorld, testkit::kTolerance);
 }
 
+/// @brief Local line conversion keeps markers under the owner.
 TEST_F(AdditionalControlPointOperatorTest, LocalLineConversionKeepsMarkersUnderTheOwner)
 {
     auto& owner = World().CreateGameObject("Local Line");
@@ -229,6 +233,7 @@ TEST_F(AdditionalControlPointOperatorTest, LocalLineConversionKeepsMarkersUnderT
     EXPECT_EQ(afterMove.points, before.points);
 }
 
+/// @brief Line world conversion and static bake keep their captured space.
 TEST_F(AdditionalControlPointOperatorTest, LineWorldConversionAndStaticBakeKeepTheirCapturedSpace)
 {
     auto& owner = World().CreateGameObject("Line");
@@ -277,6 +282,7 @@ TEST_F(AdditionalControlPointOperatorTest, LineWorldConversionAndStaticBakeKeepT
     ASSERT_TRUE(authoring.valid); EXPECT_TRUE(authoring.bakeStale);
 }
 
+/// @brief Off-mesh link converts both world endpoints and retains shared targets on undo conflict.
 TEST_F(AdditionalControlPointOperatorTest, OffMeshLinkConvertsBothWorldEndpointsAndRetainsSharedTargetsOnUndoConflict)
 {
     auto& owner = World().CreateGameObject("Off-Mesh Link");
@@ -321,6 +327,7 @@ TEST_F(AdditionalControlPointOperatorTest, OffMeshLinkConvertsBothWorldEndpoints
     EXPECT_EQ(link.pointSourceMode, scene::ControlPointSourceMode::POINT_OBJECTS);
 }
 
+/// @brief Structural edits reject prefab instances and capacity failure creates nothing.
 TEST_F(AdditionalControlPointOperatorTest, StructuralEditsRejectPrefabInstancesAndCapacityFailureCreatesNothing)
 {
     auto& prefabOwner = World().CreateGameObject("Prefab Line");
@@ -355,6 +362,7 @@ TEST_F(AdditionalControlPointOperatorTest, StructuralEditsRejectPrefabInstancesA
     EXPECT_EQ(World().GameObjectCount(), fullCount);
 }
 
+/// @brief Existing target pose changes conflict with binding undo.
 TEST_F(AdditionalControlPointOperatorTest, ExistingTargetPoseChangesConflictWithBindingUndo)
 {
     auto& owner = World().CreateGameObject("Off-Mesh Link");
@@ -377,6 +385,7 @@ TEST_F(AdditionalControlPointOperatorTest, ExistingTargetPoseChangesConflictWith
     EXPECT_EQ(link.startTarget.guid, targetGuid);
 }
 
+/// @brief Patrol binding rejects owner descendant targets.
 TEST_F(AdditionalControlPointOperatorTest, PatrolBindingRejectsOwnerDescendantTargets)
 {
     auto& owner = World().CreateGameObject("Patrol");
@@ -399,6 +408,7 @@ TEST_F(AdditionalControlPointOperatorTest, PatrolBindingRejectsOwnerDescendantTa
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Nav link add creates one absolute endpoint and unbind keeps its marker.
 TEST_F(AdditionalControlPointOperatorTest, NavLinkAddCreatesOneAbsoluteEndpointAndUnbindKeepsItsMarker)
 {
     auto& owner = World().CreateGameObject("Off-Mesh Link");

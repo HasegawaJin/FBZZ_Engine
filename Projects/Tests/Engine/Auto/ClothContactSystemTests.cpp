@@ -50,6 +50,7 @@ protected:
     }
 };
 
+/// @brief Both cloth mask and world matrix filter external contacts.
 TEST_F(ClothContactSystemTest, BothClothMaskAndWorldMatrixFilterExternalContacts)
 {
     const auto id = AddCloth();
@@ -70,6 +71,7 @@ TEST_F(ClothContactSystemTest, BothClothMaskAndWorldMatrixFilterExternalContacts
     EXPECT_FALSE(Cloth(id).runtime.failed);
 }
 
+/// @brief Checks transform driven surface transfers tangential velocity.
 TEST_F(ClothContactSystemTest, TransformDrivenSurfaceTransfersTangentialVelocity)
 {
     const auto id = AddCloth();
@@ -86,6 +88,7 @@ TEST_F(ClothContactSystemTest, TransformDrivenSurfaceTransfersTangentialVelocity
     EXPECT_FALSE(Cloth(id).runtime.failed);
 }
 
+/// @brief Reaction is opt in and finds ancestor body.
 TEST_F(ClothContactSystemTest, ReactionIsOptInAndFindsAncestorBody)
 {
     const auto id = AddCloth();
@@ -107,6 +110,7 @@ TEST_F(ClothContactSystemTest, ReactionIsOptInAndFindsAncestorBody)
     EXPECT_FALSE(Cloth(id).runtime.failed);
 }
 
+/// @brief Inter cloth CCD reaches solver without enabling self collision.
 TEST_F(ClothContactSystemTest, InterClothCcdReachesSolverWithoutEnablingSelfCollision)
 {
     const auto a = AddCloth();
@@ -129,6 +133,7 @@ TEST_F(ClothContactSystemTest, InterClothCcdReachesSolverWithoutEnablingSelfColl
         EXPECT_FLOAT_EQ(Cloth(b).settings.selfCollisionDistance,0);
     }
 }
+/// @brief Separate cloths honor mutual masks and fixed particles.
 TEST_F(ClothContactSystemTest, SeparateClothsHonorMutualMasksAndFixedParticles)
 {
     const auto a = AddCloth();

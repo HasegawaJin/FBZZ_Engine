@@ -74,6 +74,7 @@ protected:
     }
 };
 
+/// @brief Prunes distant shapes for all four query families.
 TEST_F(WorldQueryIndexTest, PrunesDistantShapesForAllFourQueryFamilies)
 {
     auto& target = Add({0, 0, 10});
@@ -94,6 +95,7 @@ TEST_F(WorldQueryIndexTest, PrunesDistantShapesForAllFourQueryFamilies)
     EXPECT_LE(ShapeTests(), 4u);
 }
 
+/// @brief Finds every hit and preserves nearest registration tie.
 TEST_F(WorldQueryIndexTest, FindsEveryHitAndPreservesNearestRegistrationTie)
 {
     auto& first = Add({0, 0, 10});
@@ -118,6 +120,7 @@ TEST_F(WorldQueryIndexTest, FindsEveryHitAndPreservesNearestRegistrationTie)
     EXPECT_NE(hit.collider, &tied);
 }
 
+/// @brief Observes direct shape movement and radius changes without an extra step.
 TEST_F(WorldQueryIndexTest, ObservesDirectShapeMovementAndRadiusChangesWithoutAnExtraStep)
 {
     auto& target = Add({30, 0, 10});
@@ -138,6 +141,7 @@ TEST_F(WorldQueryIndexTest, ObservesDirectShapeMovementAndRadiusChangesWithoutAn
     EXPECT_EQ(target.m_shapeTests, 1u);
 }
 
+/// @brief Sphere cast batch checks bounds once and accepts changes before the batch.
 TEST_F(WorldQueryIndexTest, SphereCastBatchChecksBoundsOnceAndAcceptsChangesBeforeTheBatch)
 {
     auto& target = Add({0, 0, 10});
@@ -159,6 +163,7 @@ TEST_F(WorldQueryIndexTest, SphereCastBatchChecksBoundsOnceAndAcceptsChangesBefo
     EXPECT_EQ(hit.collider, &target);
 }
 
+/// @brief Refits moved shapes and removes unregistered shapes.
 TEST_F(WorldQueryIndexTest, RefitsMovedShapesAndRemovesUnregisteredShapes)
 {
     auto& target = Add({0, 0, 10});
@@ -180,6 +185,7 @@ TEST_F(WorldQueryIndexTest, RefitsMovedShapesAndRemovesUnregisteredShapes)
     EXPECT_EQ(hit.collider, &target);
 }
 
+/// @brief Allows nested queries inside a filter without losing candidates.
 TEST_F(WorldQueryIndexTest, AllowsNestedQueriesInsideAFilterWithoutLosingCandidates)
 {
     Add({0, 0, 5});
@@ -197,6 +203,7 @@ TEST_F(WorldQueryIndexTest, AllowsNestedQueriesInsideAFilterWithoutLosingCandida
     EXPECT_EQ(nestedCalls, 2u);
 }
 
+/// @brief Keeps infinite distance and exact boundary hits.
 TEST_F(WorldQueryIndexTest, KeepsInfiniteDistanceAndExactBoundaryHits)
 {
     auto& target = Add({0, 0, 10});
@@ -210,6 +217,7 @@ TEST_F(WorldQueryIndexTest, KeepsInfiniteDistanceAndExactBoundaryHits)
     EXPECT_EQ(m_world.OverlapSphere({0, 0, 8}, 1).size(), 1u);
 }
 } /// @note namespace
+/// @brief Retires destroyed indexed shapes before filters and every query family.
 TEST_F(WorldQueryIndexTest, RetiresDestroyedIndexedShapesBeforeFiltersAndEveryQueryFamily)
 {
     auto* removed = &Add({0, 0, 10});
@@ -234,6 +242,7 @@ TEST_F(WorldQueryIndexTest, RetiresDestroyedIndexedShapesBeforeFiltersAndEveryQu
     EXPECT_TRUE(m_world.OverlapSphere({0, 0, 10}, 1).empty());
 }
 
+/// @brief Reused shape address requires a new registration generation.
 TEST_F(WorldQueryIndexTest, ReusedShapeAddressRequiresANewRegistrationGeneration)
 {
     std::optional<physics::SphereCollider> shape(std::in_place, 1.0f);
@@ -262,6 +271,7 @@ TEST_F(WorldQueryIndexTest, ReusedShapeAddressRequiresANewRegistrationGeneration
     EXPECT_EQ(hit.collider, &*shape);
 }
 
+/// @brief Copies do not keep the original registration alive across world moves.
 TEST_F(WorldQueryIndexTest, CopiesDoNotKeepTheOriginalRegistrationAliveAcrossWorldMoves)
 {
     auto& original = Add({0, 0, 10});
@@ -280,6 +290,7 @@ TEST_F(WorldQueryIndexTest, CopiesDoNotKeepTheOriginalRegistrationAliveAcrossWor
     EXPECT_EQ(hit.collider, &copy);
 }
 
+/// @brief Destroyed body retires its shape and constraint before the next step.
 TEST_F(WorldQueryIndexTest, DestroyedBodyRetiresItsShapeAndConstraintBeforeTheNextStep)
 {
     auto body = std::make_unique<physics::RigidBody>();

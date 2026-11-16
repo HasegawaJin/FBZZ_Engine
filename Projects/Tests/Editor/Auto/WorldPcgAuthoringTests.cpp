@@ -151,6 +151,7 @@ protected:
     testkit::ResourceTrackingRenderer m_device;renderer::ResourceManager m_resources{m_device};
 };
 
+/// @brief Rock nature draft is read-only and requires explicit sources.
 TEST_F(WorldPcgAuthoringTest, RockNatureDraftIsReadOnlyAndRequiresExplicitSources)
 {
     const auto count = AttachedScene()->GameObjectCount();
@@ -214,6 +215,7 @@ protected:
     editor::OperatorRegistry m_operators;
 };
 
+/// @brief Saves duplicated project rule and refuses an external overwrite.
 TEST_F(WorldPcgProfilePanelTest, SavesDuplicatedProjectRuleAndRefusesAnExternalOverwrite)
 {
     auto* volume = AttachedScene()->FindByGuid(m_volume);
@@ -250,6 +252,7 @@ TEST_F(WorldPcgProfilePanelTest, SavesDuplicatedProjectRuleAndRefusesAnExternalO
     EXPECT_EQ(saved.name, "External edit");
 }
 
+/// @brief Live preview coalesces draft edits and refreshes after save.
 TEST_F(WorldPcgProfilePanelTest, LivePreviewCoalescesDraftEditsAndRefreshesAfterSave)
 {
     auto operation = *m_operators.Find("pcg.preview");
@@ -292,6 +295,7 @@ TEST_F(WorldPcgProfilePanelTest, LivePreviewCoalescesDraftEditsAndRefreshesAfter
     EXPECT_TRUE(Owners().empty());
 }
 
+/// @brief Draft preview uses unsaved inputs without issuing a generation token.
 TEST_F(WorldPcgAuthoringTest, DraftPreviewUsesUnsavedInputsWithoutIssuingAGenerationToken)
 {
     const auto before = AttachedScene()->GameObjectCount();
@@ -331,6 +335,7 @@ TEST_F(WorldPcgAuthoringTest, DraftPreviewUsesUnsavedInputsWithoutIssuingAGenera
     EXPECT_FLOAT_EQ(disk.rules.front().density, m_profile.rules.front().density);
 }
 
+/// @brief Volume inspection and preview report effective bounds and rejected sites.
 TEST_F(WorldPcgAuthoringTest, VolumeInspectionAndPreviewReportEffectiveBoundsAndRejectedSites)
 {
     m_profile.rules.front().density = 0.0f;
@@ -362,6 +367,7 @@ TEST_F(WorldPcgAuthoringTest, VolumeInspectionAndPreviewReportEffectiveBoundsAnd
     EXPECT_TRUE(Owners().empty());
 }
 
+/// @brief Preview does not write assets dirty scene or history and repeated generation is no-op.
 TEST_F(WorldPcgAuthoringTest, PreviewDoesNotWriteAssetsDirtySceneOrHistoryAndRepeatedGenerationIsNoOp)
 {
     Context().sceneDirty=false;const auto cursor=m_undo.GetCursor();const auto count=AttachedScene()->GameObjectCount();
@@ -373,6 +379,7 @@ TEST_F(WorldPcgAuthoringTest, PreviewDoesNotWriteAssetsDirtySceneOrHistoryAndRep
     ASSERT_TRUE(m_undo.Undo());EXPECT_TRUE(Owners().empty());ASSERT_TRUE(m_undo.Redo());EXPECT_EQ(Placements(),first);
 }
 
+/// @brief Partial regeneration preserves outside rows in the same cell.
 TEST_F(WorldPcgAuthoringTest, PartialRegenerationPreservesOutsideRowsInTheSameCell)
 {
     ASSERT_TRUE(Generate(Arguments()).ok);const auto original=Placements();m_profile.rules[0].density=0;SaveProfile();
@@ -382,6 +389,7 @@ TEST_F(WorldPcgAuthoringTest, PartialRegenerationPreservesOutsideRowsInTheSameCe
     ASSERT_TRUE(m_undo.Undo());EXPECT_EQ(Placements(),original);ASSERT_TRUE(m_undo.Redo());EXPECT_EQ(Placements(),partial);
 }
 
+/// @brief Terrain stamp refreshes natural placement and shares its undo.
 TEST_F(WorldPcgAuthoringTest, TerrainStampRefreshesNaturalPlacementAndSharesItsUndo)
 {
     RegisterTerrainEditing();
@@ -504,6 +512,7 @@ TEST_F(WorldPcgAuthoringTest, TerrainStampRefreshesNaturalPlacementAndSharesItsU
     checkManual();
 }
 
+/// @brief Terrain material paint updates natural placement without changing heights.
 TEST_F(WorldPcgAuthoringTest, TerrainMaterialPaintUpdatesNaturalPlacementWithoutChangingHeights)
 {
     RegisterTerrainEditing();
@@ -543,6 +552,7 @@ TEST_F(WorldPcgAuthoringTest, TerrainMaterialPaintUpdatesNaturalPlacementWithout
     EXPECT_TRUE(Placements().empty());
 }
 
+/// @brief Local terrain refresh matches full quota across cell boundary.
 TEST_F(WorldPcgAuthoringTest, LocalTerrainRefreshMatchesFullQuotaAcrossCellBoundary)
 {
     RegisterTerrainEditing();
@@ -638,6 +648,7 @@ TEST_F(WorldPcgAuthoringTest, LocalTerrainRefreshMatchesFullQuotaAcrossCellBound
     EXPECT_EQ(Placements(), refreshed);
 }
 
+/// @brief Terrain refresh undo rejects external placement changes.
 TEST_F(WorldPcgAuthoringTest, TerrainRefreshUndoRejectsExternalPlacementChanges)
 {
     RegisterTerrainEditing();
@@ -683,6 +694,7 @@ TEST_F(WorldPcgAuthoringTest, TerrainRefreshUndoRejectsExternalPlacementChanges)
     EXPECT_FLOAT_EQ(terrain->GetHeightAt(16.0f, 16.0f), 2.0f);
 }
 
+/// @brief Reopened terrain refresh keeps generated ownership.
 TEST_F(WorldPcgAuthoringTest, ReopenedTerrainRefreshKeepsGeneratedOwnership)
 {
     RegisterTerrainEditing();
@@ -752,6 +764,7 @@ TEST_F(WorldPcgAuthoringTest, ReopenedTerrainRefreshKeepsGeneratedOwnership)
     EXPECT_EQ(protectedOutput.errorCode, "PCG_MANUAL_OVERRIDE");
 }
 
+/// @brief Material mask uses GUID identity and painted weights across terrain layer orders.
 TEST_F(WorldPcgAuthoringTest, MaterialMaskUsesGuidIdentityAndPaintedWeightsAcrossTerrainLayerOrders)
 {
     auto* first = AttachedScene()->FindByGuid(m_terrain)->GetComponent<scene::TerrainComponent>();
@@ -783,6 +796,7 @@ TEST_F(WorldPcgAuthoringTest, MaterialMaskUsesGuidIdentityAndPaintedWeightsAcros
         EXPECT_GE(point.Find("position")->AsVec3().x, 32.0f);
 }
 
+/// @brief Indexed surface sampling matches full scene queries.
 TEST_F(WorldPcgAuthoringTest, IndexedSurfaceSamplingMatchesFullSceneQueries)
 {
     auto& world = *AttachedScene();
@@ -931,6 +945,7 @@ TEST_F(WorldPcgAuthoringTest, IndexedSurfaceSamplingMatchesFullSceneQueries)
     EXPECT_TRUE(expected.empty());
 }
 
+/// @brief Edited generated owners require detach and detach history survives generated recreation.
 TEST_F(WorldPcgAuthoringTest, EditedGeneratedOwnersRequireDetachAndDetachHistorySurvivesGeneratedRecreation)
 {
     ASSERT_TRUE(Generate(Arguments()).ok);ASSERT_FALSE(Owners().empty());const auto ownerId=Owners().front()->instanceId;
@@ -942,6 +957,7 @@ TEST_F(WorldPcgAuthoringTest, EditedGeneratedOwnersRequireDetachAndDetachHistory
     detached=Call(editor::DetachWorldPcg,detach);ASSERT_TRUE(detached.ok);EXPECT_EQ(restored->GetComponent<scene::WorldPcgGeneratedComponent>(),nullptr);
 }
 
+/// @brief Stale preview rejects before publishing owners.
 TEST_F(WorldPcgAuthoringTest, StalePreviewRejectsBeforePublishingOwners)
 {
     auto args=Arguments();auto preview=Call(editor::PreviewWorldPcg,args);ASSERT_TRUE(preview.ok);
@@ -950,6 +966,7 @@ TEST_F(WorldPcgAuthoringTest, StalePreviewRejectsBeforePublishingOwners)
     auto result=Call(editor::GenerateWorldPcg,args);EXPECT_FALSE(result.ok);EXPECT_EQ(result.errorCode,"PCG_CONFLICT");EXPECT_TRUE(Owners().empty());EXPECT_FALSE(editor::AssetDirtyRegistry::HasAny());
 }
 
+/// @brief Undo refuses to mutate an output that became shared.
 TEST_F(WorldPcgAuthoringTest, UndoRefusesToMutateAnOutputThatBecameShared)
 {
     ASSERT_TRUE(Generate(Arguments()).ok);m_profile.rules[0].density=0;SaveProfile();ASSERT_TRUE(Generate(Arguments()).ok);
@@ -959,6 +976,7 @@ TEST_F(WorldPcgAuthoringTest, UndoRefusesToMutateAnOutputThatBecameShared)
     EXPECT_FALSE(m_undo.Undo());EXPECT_EQ(m_undo.GetCursor(),cursor);EXPECT_EQ(manual.GetComponent<scene::InstancedMeshComponent>()->Snapshot(),before);
 }
 
+/// @brief Profile save uses byte compare and swap.
 TEST_F(WorldPcgAuthoringTest, ProfileSaveUsesByteCompareAndSwap)
 {
     editor::OpArgs inspect;inspect.Set("path",m_path);auto current=Call(editor::InspectWorldPcgProfile,inspect);ASSERT_TRUE(current.ok);
@@ -968,6 +986,7 @@ TEST_F(WorldPcgAuthoringTest, ProfileSaveUsesByteCompareAndSwap)
     EXPECT_FALSE(rejected.ok);EXPECT_EQ(rejected.errorCode,"CONFLICT");std::string after;ASSERT_TRUE(util::FileSystem::ReadText(util::FileSystem::PathFromUtf8(m_path),after));EXPECT_EQ(after,authored);
 }
 
+/// @brief Replacing a profile requires fingerprint while identical save is no change.
 TEST_F(WorldPcgAuthoringTest, ReplacingAProfileRequiresFingerprintWhileIdenticalSaveIsNoChange)
 {
     std::string before;ASSERT_TRUE(util::FileSystem::ReadText(util::FileSystem::PathFromUtf8(m_path),before));
@@ -978,6 +997,7 @@ TEST_F(WorldPcgAuthoringTest, ReplacingAProfileRequiresFingerprintWhileIdentical
     EXPECT_TRUE(identical.noChange);EXPECT_EQ(m_undo.GetCursor(),cursor);
 }
 
+/// @brief Omitted partition uses the unique controller and rejects ambiguity.
 TEST_F(WorldPcgAuthoringTest, OmittedPartitionUsesTheUniqueControllerAndRejectsAmbiguity)
 {
     auto& controller=AttachedScene()->CreateGameObject("World");controller.AddComponent<scene::WorldPartitionComponent>().cellSize=64;
@@ -990,6 +1010,7 @@ TEST_F(WorldPcgAuthoringTest, OmittedPartitionUsesTheUniqueControllerAndRejectsA
     EXPECT_EQ(preview.data.Find("cellCount")->AsInt64(),1);
 }
 
+/// @brief Partial volume configuration preserves omitted values and explicitly resets overrides.
 TEST_F(WorldPcgAuthoringTest, PartialVolumeConfigurationPreservesOmittedValuesAndExplicitlyResetsOverrides)
 {
     editor::OpArgs initial;initial.Set("volume",m_volume);initial.Set("seed",37);initial.Set("protectManual",false);initial.Set("enabled",false);
@@ -1002,6 +1023,7 @@ TEST_F(WorldPcgAuthoringTest, PartialVolumeConfigurationPreservesOmittedValuesAn
     current=AttachedScene()->FindByGuid(m_volume)->GetComponent<scene::WorldPcgVolumeComponent>();EXPECT_FALSE(current->overrideSeed);EXPECT_FALSE(current->overrideBounds);EXPECT_FALSE(current->enabled);EXPECT_FALSE(current->protectManual);
 }
 
+/// @brief Profile save works without an attached scene but refuses managed builds.
 TEST_F(WorldPcgAuthoringTest, ProfileSaveWorksWithoutAnAttachedSceneButRefusesManagedBuilds)
 {
     std::string text,diagnostic;ASSERT_TRUE(scene::SerializeWorldPcgProfile(m_profile,text,diagnostic));editor::OpArgs save;
@@ -1012,6 +1034,7 @@ TEST_F(WorldPcgAuthoringTest, ProfileSaveWorksWithoutAnAttachedSceneButRefusesMa
     Context().managedBuildBusy=false;Context().activeScene=active;Context().editScene=edit;
 }
 
+/// @brief Regeneration after detach keeps manual owner and uses new generated identity.
 TEST_F(WorldPcgAuthoringTest, RegenerationAfterDetachKeepsManualOwnerAndUsesNewGeneratedIdentity)
 {
     ASSERT_TRUE(Generate(Arguments()).ok);ASSERT_FALSE(Owners().empty());auto* manual=Owners().front();const auto manualId=manual->instanceId;

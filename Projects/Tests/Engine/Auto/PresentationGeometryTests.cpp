@@ -117,6 +117,7 @@ protected:
     }
 };
 
+/// @brief Ribbon interpolates full RGBA by distance and keeps end alpha.
 TEST_F(PresentationGeometryTest, RibbonInterpolatesFullRgbaByDistanceAndKeepsEndAlpha)
 {
     const auto line = Line();
@@ -132,6 +133,7 @@ TEST_F(PresentationGeometryTest, RibbonInterpolatesFullRgbaByDistanceAndKeepsEnd
     EXPECT_FLOAT_EQ(m_vertices[2].uv.x, 0.25f);
 }
 
+/// @brief Closed tube duplicates seam with distinct end color.
 TEST_F(PresentationGeometryTest, ClosedTubeDuplicatesSeamWithDistinctEndColor)
 {
     auto line = Line();
@@ -146,6 +148,7 @@ TEST_F(PresentationGeometryTest, ClosedTubeDuplicatesSeamWithDistinctEndColor)
     EXPECT_FLOAT_EQ(m_vertices[15].uv.x, 1);
 }
 
+/// @brief Repeated points do not produce degenerate ribbon indices.
 TEST_F(PresentationGeometryTest, RepeatedPointsDoNotProduceDegenerateRibbonIndices)
 {
     auto line = Line(); line.points = {{0, 0, 0}, {0, 0, 0}, {2, 0, 0}};
@@ -155,6 +158,7 @@ TEST_F(PresentationGeometryTest, RepeatedPointsDoNotProduceDegenerateRibbonIndic
     EXPECT_FLOAT_EQ(m_vertices.back().color.z, 1);
 }
 
+/// @brief World points and width survive rotated nonuniform negative scale.
 TEST_F(PresentationGeometryTest, WorldPointsAndWidthSurviveRotatedNonuniformNegativeScale)
 {
     auto line = Line(); line.points = {{2, 3, 4}, {6, 3, 4}}; line.space = scene::LineSpace::World;
@@ -173,6 +177,7 @@ TEST_F(PresentationGeometryTest, WorldPointsAndWidthSurviveRotatedNonuniformNega
     EXPECT_VEC3_NEAR((c + d) * 0.5f, line.points.back(), 0.00001f);
 }
 
+/// @brief Singular world pose and invalid geometry clear the output.
 TEST_F(PresentationGeometryTest, SingularWorldPoseAndInvalidGeometryClearTheOutput)
 {
     auto line = Line(); line.space = scene::LineSpace::World;
@@ -184,6 +189,7 @@ TEST_F(PresentationGeometryTest, SingularWorldPoseAndInvalidGeometryClearTheOutp
     EXPECT_TRUE(m_vertices.empty()); EXPECT_TRUE(m_indices.empty());
 }
 
+/// @brief Cache inputs preserve point order and every coordinate.
 TEST_F(PresentationGeometryTest, CacheInputsPreservePointOrderAndEveryCoordinate)
 {
     auto line = Line(); std::vector<float> original, changed;
@@ -194,6 +200,7 @@ TEST_F(PresentationGeometryTest, CacheInputsPreservePointOrderAndEveryCoordinate
     scene::CaptureLineGeometryInputs(line, m_transform, nullptr, changed); EXPECT_NE(original, changed);
 }
 
+/// @brief Cache includes space billboard camera and complete world pose.
 TEST_F(PresentationGeometryTest, CacheIncludesSpaceBillboardCameraAndCompleteWorldPose)
 {
     auto line = Line(); line.space = scene::LineSpace::World;
@@ -216,6 +223,7 @@ TEST_F(PresentationGeometryTest, CacheIncludesSpaceBillboardCameraAndCompleteWor
     scene::CaptureLineGeometryInputs(line, m_transform, &camera, changed); EXPECT_EQ(original, changed);
 }
 
+/// @brief Point object lines resolve in order with local and world-space semantics.
 TEST_F(PresentationGeometryTest, PointObjectLinesResolveInOrderWithLocalAndWorldSpaceSemantics)
 {
     scene::Scene scene;
@@ -259,6 +267,7 @@ TEST_F(PresentationGeometryTest, PointObjectLinesResolveInOrderWithLocalAndWorld
     EXPECT_EQ(invalid.status, scene::LineControlPointStatus::RESOLUTION_FAILED);
 }
 
+/// @brief Static point object line uses bake without resolving missing markers.
 TEST_F(PresentationGeometryTest, StaticPointObjectLineUsesBakeWithoutResolvingMissingMarkers)
 {
     scene::Scene scene;
@@ -339,6 +348,7 @@ TEST_F(PresentationGeometryTest, StaticPointObjectLineUsesBakeWithoutResolvingMi
     EXPECT_VEC3_NEAR(authoring.points[1], source.points[1], testkit::kTolerance);
 }
 
+/// @brief Motion warp captures or follows target without resetting its timeline.
 TEST_F(PresentationGeometryTest, MotionWarpCapturesOrFollowsTargetWithoutResettingItsTimeline)
 {
     scene::Scene scene;
@@ -389,6 +399,7 @@ TEST_F(PresentationGeometryTest, MotionWarpCapturesOrFollowsTargetWithoutResetti
     EXPECT_EQ(warp.targetReference.guid, target.instanceId);
 }
 
+/// @brief Live motion warp rejects owner and descendant targets but captured allows children.
 TEST_F(PresentationGeometryTest, LiveMotionWarpRejectsOwnerAndDescendantTargetsButCapturedAllowsChildren)
 {
     scene::Scene scene;
@@ -427,6 +438,7 @@ TEST_F(PresentationGeometryTest, LiveMotionWarpRejectsOwnerAndDescendantTargetsB
     EXPECT_FLOAT_EQ(warp.target.remaining, 0.0f);
 }
 
+/// @brief Presentation system builds whole point object line and hides it on resolution failure.
 TEST_F(PresentationGeometryTest, PresentationSystemBuildsWholePointObjectLineAndHidesItOnResolutionFailure)
 {
     PresentationCpuRenderer renderer;
@@ -467,6 +479,7 @@ TEST_F(PresentationGeometryTest, PresentationSystemBuildsWholePointObjectLineAnd
     EXPECT_EQ(meshRenderer->mesh, nullptr);
 }
 
+/// @brief Point object line and motion warp references round trip without inline shadow points.
 TEST_F(PresentationGeometryTest, PointObjectLineAndMotionWarpReferencesRoundTripWithoutInlineShadowPoints)
 {
     scene::Scene scene;
@@ -507,6 +520,7 @@ TEST_F(PresentationGeometryTest, PointObjectLineAndMotionWarpReferencesRoundTrip
     EXPECT_EQ(restoredWarp->runtimeTargetSource, scene::MotionWarpTargetSource::NUMERIC);
 }
 
+/// @brief Sliced sprite keeps pixel borders and atlas UV.
 TEST_F(PresentationGeometryTest, SlicedSpriteKeepsPixelBordersAndAtlasUv)
 {
     scene::SpriteRendererComponent sprite; sprite.drawMode = scene::SpriteDrawMode::Sliced; sprite.size = {20, 10};
@@ -520,6 +534,7 @@ TEST_F(PresentationGeometryTest, SlicedSpriteKeepsPixelBordersAndAtlasUv)
     EXPECT_NEAR(m_vertices[8].position.x, 9.6f, 0.00001f);
 }
 
+/// @brief Sliced flip swaps asymmetric borders and never samples neighbor sprites.
 TEST_F(PresentationGeometryTest, SlicedFlipSwapsAsymmetricBordersAndNeverSamplesNeighborSprites)
 {
     scene::SpriteRendererComponent sprite; sprite.drawMode = scene::SpriteDrawMode::Sliced; sprite.size = {20, 10};
@@ -534,6 +549,7 @@ TEST_F(PresentationGeometryTest, SlicedFlipSwapsAsymmetricBordersAndNeverSamples
     }
 }
 
+/// @brief Narrow sliced sprite shrinks borders without overlap.
 TEST_F(PresentationGeometryTest, NarrowSlicedSpriteShrinksBordersWithoutOverlap)
 {
     scene::SpriteRendererComponent sprite; sprite.drawMode = scene::SpriteDrawMode::Sliced; sprite.size = {0.3f, 0.2f};
@@ -546,6 +562,7 @@ TEST_F(PresentationGeometryTest, NarrowSlicedSpriteShrinksBordersWithoutOverlap)
     }
 }
 
+/// @brief Sprite cache tracks metadata border and draw mode.
 TEST_F(PresentationGeometryTest, SpriteCacheTracksMetadataBorderAndDrawMode)
 {
     scene::SpriteRendererComponent sprite; auto resolved = Sprite(); std::vector<float> original, changed;
@@ -555,6 +572,7 @@ TEST_F(PresentationGeometryTest, SpriteCacheTracksMetadataBorderAndDrawMode)
     scene::CaptureSpriteGeometryInputs(sprite, resolved, changed); EXPECT_NE(original, changed);
 }
 
+/// @brief Presentation updates preserve every explicit material override.
 TEST_F(PresentationGeometryTest, PresentationUpdatesPreserveEveryExplicitMaterialOverride)
 {
     scene::MaterialComponent material;
@@ -577,6 +595,7 @@ TEST_F(PresentationGeometryTest, PresentationUpdatesPreserveEveryExplicitMateria
     EXPECT_TRUE(material.GetMaterialPath().empty()); EXPECT_TRUE(material.Authoring().presentationTextureDefaults.empty());
 }
 
+/// @brief Presentation system preserves renderer and material state across authoring changes.
 TEST_F(PresentationGeometryTest, PresentationSystemPreservesRendererAndMaterialStateAcrossAuthoringChanges)
 {
     PresentationCpuRenderer renderer; renderer::ResourceManager resources{renderer}; scene::Scene scene; physics::World world;
@@ -599,6 +618,7 @@ TEST_F(PresentationGeometryTest, PresentationSystemPreservesRendererAndMaterialS
     EXPECT_TRUE(mesh.enabled); EXPECT_EQ(mesh.mesh, nullptr);
 }
 
+/// @brief Presentation system rebuilds ordered points and end color.
 TEST_F(PresentationGeometryTest, PresentationSystemRebuildsOrderedPointsAndEndColor)
 {
     PresentationCpuRenderer renderer; renderer::ResourceManager resources{renderer}; scene::Scene scene; physics::World world;
@@ -617,6 +637,7 @@ TEST_F(PresentationGeometryTest, PresentationSystemRebuildsOrderedPointsAndEndCo
     EXPECT_EQ(material->Authoring().presentationParamDefaults.at("albedo"), (std::vector<float>{1, 1, 1, 1}));
 }
 
+/// @brief Checks derived sorting saturates only at final queue and preserves Int32 fields.
 TEST_F(PresentationGeometryTest, DerivedSortingSaturatesOnlyAtFinalQueueAndPreservesInt32Fields)
 {
     PresentationCpuRenderer renderer; renderer::ResourceManager resources{renderer}; scene::Scene scene; physics::World world;
@@ -635,6 +656,7 @@ TEST_F(PresentationGeometryTest, DerivedSortingSaturatesOnlyAtFinalQueueAndPrese
     EXPECT_EQ(group.sortingLayer, INT32_MIN); EXPECT_EQ(group.orderInLayer, INT32_MIN);
 }
 
+/// @brief Vertex only update copies changed topology into alternate buffer slot.
 TEST_F(PresentationGeometryTest, VertexOnlyUpdateCopiesChangedTopologyIntoAlternateBufferSlot)
 {
     PresentationCpuRenderer renderer; renderer::ResourceManager resources{renderer}; scene::Scene scene; physics::World world;
@@ -659,6 +681,7 @@ TEST_F(PresentationGeometryTest, VertexOnlyUpdateCopiesChangedTopologyIntoAltern
     view.SetContext(nullptr, nullptr);
 }
 
+/// @brief Procedural default assignment preserves disabled material and explicit replacement.
 TEST_F(PresentationGeometryTest, ProceduralDefaultAssignmentPreservesDisabledMaterialAndExplicitReplacement)
 {
     PresentationCpuRenderer renderer; renderer::ResourceManager resources{renderer}; scene::Scene scene; physics::World world;

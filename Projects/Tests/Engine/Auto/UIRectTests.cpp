@@ -25,6 +25,7 @@ constexpr math::Vector2 kParent{ 1000.0f, 600.0f };
 
 class UIRectTest : public testkit::EngineFixture {};
 
+/// @brief Canvas worklist retains depth first order instead of component insertion order.
 TEST_F(UIRectTest, CanvasWorklistRetainsDepthFirstOrderInsteadOfComponentInsertionOrder)
 {
     scene::Scene world;
@@ -41,6 +42,7 @@ TEST_F(UIRectTest, CanvasWorklistRetainsDepthFirstOrderInsteadOfComponentInserti
         (std::vector<scene::EntityID>{first.GetID(), firstCanvas.GetID(), secondCanvas.GetID()}));
 }
 
+/// @brief Canvas worklist follows root sibling and parent changes.
 TEST_F(UIRectTest, CanvasWorklistFollowsRootSiblingAndParentChanges)
 {
     scene::Scene world;
@@ -61,6 +63,7 @@ TEST_F(UIRectTest, CanvasWorklistFollowsRootSiblingAndParentChanges)
         (std::vector<scene::EntityID>{c.GetID(), a.GetID(), b.GetID()}));
 }
 
+/// @brief Canvas worklist reevaluates empty single disabled and new members.
 TEST_F(UIRectTest, CanvasWorklistReevaluatesEmptySingleDisabledAndNewMembers)
 {
     scene::Scene world;
@@ -85,6 +88,7 @@ TEST_F(UIRectTest, CanvasWorklistReevaluatesEmptySingleDisabledAndNewMembers)
 
 /// @name 矩形そのもの
 
+/// @brief Centre is the middle of the rect.
 TEST_F(UIRectTest, CentreIsTheMiddleOfTheRect)
 {
     const scene::UIRect rect{ { 10.0f, 20.0f }, { 100.0f, 50.0f } };
@@ -92,6 +96,7 @@ TEST_F(UIRectTest, CentreIsTheMiddleOfTheRect)
     EXPECT_VEC2_NEAR(rect.Center(), math::Vector2(60.0f, 45.0f), testkit::kTolerance);
 }
 
+/// @brief Checks point at maps normalised coordinates.
 TEST_F(UIRectTest, PointAtMapsNormalisedCoordinates)
 {
     /// @note (0,0)=左上 〜 (1,1)=右下。y が下向きであることも含めて固定する。
@@ -103,6 +108,7 @@ TEST_F(UIRectTest, PointAtMapsNormalisedCoordinates)
                      testkit::kTolerance);
 }
 
+/// @brief Contains includes the edges.
 TEST_F(UIRectTest, ContainsIncludesTheEdges)
 {
     const scene::UIRect rect{ { 0.0f, 0.0f }, { 100.0f, 50.0f } };
@@ -116,6 +122,7 @@ TEST_F(UIRectTest, ContainsIncludesTheEdges)
 
 /// @name 既定値 (アンカー導入前との一致)
 
+/// @brief Default anchoring places the rect at the local position.
 TEST_F(UIRectTest, DefaultAnchoringPlacesTheRectAtTheLocalPosition)
 {
     /// @note 既定は「親の左上を基準に、自分の左上を合わせる」。ここが動くと
@@ -131,6 +138,7 @@ TEST_F(UIRectTest, DefaultAnchoringPlacesTheRectAtTheLocalPosition)
 
 /// @name 点アンカー
 
+/// @brief Anchor picks the reference point in the parent.
 TEST_F(UIRectTest, AnchorPicksTheReferencePointInTheParent)
 {
     scene::UIAnchor anchoring;
@@ -143,6 +151,7 @@ TEST_F(UIRectTest, AnchorPicksTheReferencePointInTheParent)
     EXPECT_VEC2_NEAR(rect.position, math::Vector2(1000.0f, 600.0f), testkit::kTolerance);
 }
 
+/// @brief Pivot picks which corner meets the anchor.
 TEST_F(UIRectTest, PivotPicksWhichCornerMeetsTheAnchor)
 {
     /// @note 右下基準・右下合わせ = 画面の右下にぴったり収まる。
@@ -157,6 +166,7 @@ TEST_F(UIRectTest, PivotPicksWhichCornerMeetsTheAnchor)
     EXPECT_VEC2_NEAR(rect.size, math::Vector2(200.0f, 100.0f), testkit::kTolerance);
 }
 
+/// @brief Centre anchor with centre pivot sits in the middle.
 TEST_F(UIRectTest, CentreAnchorWithCentrePivotSitsInTheMiddle)
 {
     scene::UIAnchor anchoring;
@@ -169,6 +179,7 @@ TEST_F(UIRectTest, CentreAnchorWithCentrePivotSitsInTheMiddle)
     EXPECT_VEC2_NEAR(rect.Center(), math::Vector2(500.0f, 300.0f), testkit::kTolerance);
 }
 
+/// @brief Local position offsets from the anchor.
 TEST_F(UIRectTest, LocalPositionOffsetsFromTheAnchor)
 {
     /// @note 「右下から左へ 20px」がアンカーとピボットを分けた理由そのもの。
@@ -182,6 +193,7 @@ TEST_F(UIRectTest, LocalPositionOffsetsFromTheAnchor)
     EXPECT_VEC2_NEAR(rect.position, math::Vector2(780.0f, 490.0f), testkit::kTolerance);
 }
 
+/// @brief Anchored layout follows a resized parent.
 TEST_F(UIRectTest, AnchoredLayoutFollowsAResizedParent)
 {
     /// @note Canvas の解像度が変わっても «右下からの距離» が保たれること。
@@ -200,6 +212,7 @@ TEST_F(UIRectTest, AnchoredLayoutFollowsAResizedParent)
     EXPECT_NEAR(1920.0f - (large.position.x + large.size.x), 20.0f, testkit::kTolerance);
 }
 
+/// @brief Pivot does not change the size.
 TEST_F(UIRectTest, PivotDoesNotChangeTheSize)
 {
     scene::UIAnchor anchoring;
@@ -213,6 +226,7 @@ TEST_F(UIRectTest, PivotDoesNotChangeTheSize)
 
 /// @name ストレッチ
 
+/// @brief Stretching spans the parent width.
 TEST_F(UIRectTest, StretchingSpansTheParentWidth)
 {
     scene::UIAnchor anchoring;
@@ -227,6 +241,7 @@ TEST_F(UIRectTest, StretchingSpansTheParentWidth)
     EXPECT_NEAR(rect.size.x, 1000.0f, testkit::kTolerance);
 }
 
+/// @brief Stretching uses the margins on both sides.
 TEST_F(UIRectTest, StretchingUsesTheMarginsOnBothSides)
 {
     /// @note 「左右 40px を空けた帯」。下限側は position、上限側は offsetMax が担う。
@@ -242,6 +257,7 @@ TEST_F(UIRectTest, StretchingUsesTheMarginsOnBothSides)
     EXPECT_NEAR(rect.size.x, 920.0f, testkit::kTolerance);
 }
 
+/// @brief Stretching is per axis.
 TEST_F(UIRectTest, StretchingIsPerAxis)
 {
     /// @note 横だけ伸ばして高さは指定どおり、が実用上いちばん多い構成。
@@ -257,6 +273,7 @@ TEST_F(UIRectTest, StretchingIsPerAxis)
     EXPECT_NEAR(rect.size.y, 80.0f, testkit::kTolerance);
 }
 
+/// @brief Stretching ignores the pivot.
 TEST_F(UIRectTest, StretchingIgnoresThePivot)
 {
     /// @note ストレッチした軸では «自分のどこを合わせるか» という問いが消える。
@@ -277,6 +294,7 @@ TEST_F(UIRectTest, StretchingIgnoresThePivot)
     EXPECT_NEAR(a.size.x, b.size.x, testkit::kTolerance);
 }
 
+/// @brief Stretching follows a resized parent.
 TEST_F(UIRectTest, StretchingFollowsAResizedParent)
 {
     scene::UIAnchor anchoring;
@@ -293,6 +311,7 @@ TEST_F(UIRectTest, StretchingFollowsAResizedParent)
     EXPECT_NEAR(large.size.x, 1840.0f, testkit::kTolerance);
 }
 
+/// @brief Never produces a negative size.
 TEST_F(UIRectTest, NeverProducesANegativeSize)
 {
     /// @note 余白どうしが行き違ったとき。裏返ると当たり判定が «常に当たる» 側へ倒れる。
@@ -308,6 +327,7 @@ TEST_F(UIRectTest, NeverProducesANegativeSize)
     EXPECT_FALSE(rect.Contains({ 850.0f, 0.0f }));
 }
 
+/// @brief Stretching between partial anchors uses that span.
 TEST_F(UIRectTest, StretchingBetweenPartialAnchorsUsesThatSpan)
 {
     /// @note 親の中央 50% を占める帯。

@@ -246,6 +246,7 @@ class CollisionPairTest : public testkit::Fixture,
 
 /// @name 当たる / 当たらない
 
+/// @brief Reports a contact when the shapes overlap.
 TEST_P(CollisionPairTest, ReportsAContactWhenTheShapesOverlap)
 {
     const ShapePair pair  = GetParam();
@@ -258,6 +259,7 @@ TEST_P(CollisionPairTest, ReportsAContactWhenTheShapesOverlap)
     EXPECT_FALSE(contacts.empty()) << "この形状の組が dispatch から漏れている";
 }
 
+/// @brief Reports no contact when the shapes are apart.
 TEST_P(CollisionPairTest, ReportsNoContactWhenTheShapesAreApart)
 {
     const ShapePair pair  = GetParam();
@@ -270,6 +272,7 @@ TEST_P(CollisionPairTest, ReportsNoContactWhenTheShapesAreApart)
     EXPECT_TRUE(contacts.empty()) << "離れているのに接触が生成された";
 }
 
+/// @brief Reports a contact regardless of the operand order.
 TEST_P(CollisionPairTest, ReportsAContactRegardlessOfTheOperandOrder)
 {
     /// @note dispatch は形状を «正規化された順» に並べ替えてから判定関数を呼ぶ。
@@ -285,6 +288,7 @@ TEST_P(CollisionPairTest, ReportsAContactRegardlessOfTheOperandOrder)
 
 /// @name 接触点の中身
 
+/// @brief Produces a unit normal and a positive depth.
 TEST_P(CollisionPairTest, ProducesAUnitNormalAndAPositiveDepth)
 {
     const ShapePair pair  = GetParam();
@@ -301,6 +305,7 @@ TEST_P(CollisionPairTest, ProducesAUnitNormalAndAPositiveDepth)
     }
 }
 
+/// @brief Orients the normal from body b towards body a.
 TEST_P(CollisionPairTest, OrientsTheNormalFromBodyBTowardsBodyA)
 {
     /// @note ContactPoint の規約: normal は «bodyB から bodyA へ押し戻す» 向き。
@@ -318,6 +323,7 @@ TEST_P(CollisionPairTest, OrientsTheNormalFromBodyBTowardsBodyA)
         EXPECT_GT(math::Vector3::Dot(cp.normal, bToA), 0.0f);
 }
 
+/// @brief Aligns the normal with the axis of separation.
 TEST_P(CollisionPairTest, AlignsTheNormalWithTheAxisOfSeparation)
 {
     /// @note 貫通が一番浅い向きが法線になる。板の上なら鉛直、横にずらした組なら その軸。
@@ -335,6 +341,7 @@ TEST_P(CollisionPairTest, AlignsTheNormalWithTheAxisOfSeparation)
         EXPECT_GT(math::Abs(math::Vector3::Dot(cp.normal, axis)), 0.7f);
 }
 
+/// @brief Flips the normal when the operands are swapped.
 TEST_P(CollisionPairTest, FlipsTheNormalWhenTheOperandsAreSwapped)
 {
     /// @note 剛体を付けない = 最後の «bodyDelta による向き合わせ» が働かない状態。
@@ -359,6 +366,7 @@ INSTANTIATE_TEST_SUITE_P(AllShapeCombinations, CollisionPairTest,
 
 class StaticPairTest : public testkit::Fixture {};
 
+/// @brief Skips trianglemesh against trianglemesh.
 TEST_F(StaticPairTest, SkipsTrianglemeshAgainstTrianglemesh)
 {
     /// @note 両方とも静的な «面»。解いても何も動かないので判定ごと省く。
@@ -368,6 +376,7 @@ TEST_F(StaticPairTest, SkipsTrianglemeshAgainstTrianglemesh)
     EXPECT_TRUE(Collide(a, b).empty());
 }
 
+/// @brief Skips heightfield against heightfield.
 TEST_F(StaticPairTest, SkipsHeightfieldAgainstHeightfield)
 {
     const Actor a(Shape::Field, math::Vector3::ZERO, true);
@@ -376,6 +385,7 @@ TEST_F(StaticPairTest, SkipsHeightfieldAgainstHeightfield)
     EXPECT_TRUE(Collide(a, b).empty());
 }
 
+/// @brief Skips trianglemesh against heightfield.
 TEST_F(StaticPairTest, SkipsTrianglemeshAgainstHeightfield)
 {
     const Actor a(Shape::Mesh, math::Vector3::ZERO, true);
@@ -389,6 +399,7 @@ TEST_F(StaticPairTest, SkipsTrianglemeshAgainstHeightfield)
 
 class ContactWiringTest : public testkit::Fixture {};
 
+/// @brief Carries the colliders and bodies of the pair.
 TEST_F(ContactWiringTest, CarriesTheCollidersAndBodiesOfThePair)
 {
     /// @note ここが取り違うと、衝突コールバックが «別のオブジェクトに当たった» と報告する。
@@ -406,6 +417,7 @@ TEST_F(ContactWiringTest, CarriesTheCollidersAndBodiesOfThePair)
     EXPECT_EQ(contacts.front().materialB, b.Instance().material);
 }
 
+/// @brief Marks the contact as trigger when either side is a trigger.
 TEST_F(ContactWiringTest, MarksTheContactAsTriggerWhenEitherSideIsATrigger)
 {
     /// @note トリガーは «通知するだけ»。片側だけの指定でも押し返してはいけない。
@@ -419,6 +431,7 @@ TEST_F(ContactWiringTest, MarksTheContactAsTriggerWhenEitherSideIsATrigger)
     EXPECT_TRUE(contacts.front().isTrigger);
 }
 
+/// @brief Leaves the contact non trigger when neither side is one.
 TEST_F(ContactWiringTest, LeavesTheContactNonTriggerWhenNeitherSideIsOne)
 {
     const Actor a(Shape::Sphere, math::Vector3::ZERO, true);
@@ -430,6 +443,7 @@ TEST_F(ContactWiringTest, LeavesTheContactNonTriggerWhenNeitherSideIsOne)
     EXPECT_FALSE(contacts.front().isTrigger);
 }
 
+/// @brief Builds a multi point manifold for face contacts.
 TEST_F(ContactWiringTest, BuildsAMultiPointManifoldForFaceContacts)
 {
     /// @note 箱同士が面で当たったときに 1 点しか作らないと、接地した箱がその点を軸に揺れる。
@@ -439,6 +453,7 @@ TEST_F(ContactWiringTest, BuildsAMultiPointManifoldForFaceContacts)
     EXPECT_GT(Collide(a, b).size(), 1u);
 }
 
+/// @brief Reports a deeper overlap as a greater depth.
 TEST_F(ContactWiringTest, ReportsADeeperOverlapAsAGreaterDepth)
 {
     const Actor a(Shape::Sphere, math::Vector3::ZERO, true);
@@ -457,6 +472,7 @@ TEST_F(ContactWiringTest, ReportsADeeperOverlapAsAGreaterDepth)
 
 class DeepOverlapTest : public testkit::Fixture {};
 
+/// @brief Pushes a sphere out of the nearest face when its centre is inside a box.
 TEST_F(DeepOverlapTest, PushesASphereOutOfTheNearestFaceWhenItsCentreIsInsideABox)
 {
     /// @note 壁の中に生成された / 高速に貫通した球。最近点が中心と一致して法線が作れない縮退。
@@ -473,6 +489,7 @@ TEST_F(DeepOverlapTest, PushesASphereOutOfTheNearestFaceWhenItsCentreIsInsideABo
     EXPECT_NEAR(contacts.front().depth, 1.1f, testkit::kLooseTolerance);
 }
 
+/// @brief Pushes a capsule out sideways when its axis spans the whole box.
 TEST_F(DeepOverlapTest, PushesACapsuleOutSidewaysWhenItsAxisSpansTheWholeBox)
 {
     /// @note カプセルの軸が箱を上下に貫いている。端点は上下面へ «接している» ので、
@@ -489,6 +506,7 @@ TEST_F(DeepOverlapTest, PushesACapsuleOutSidewaysWhenItsAxisSpansTheWholeBox)
     EXPECT_NEAR(contacts.front().depth, 0.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Pushes a capsule out along the oriented box axes.
 TEST_F(DeepOverlapTest, PushesACapsuleOutAlongTheOrientedBoxAxes)
 {
     /// @note OBB 版も同じ規則。出口は箱のローカル軸で決まるので、回転を掛けても
@@ -507,6 +525,7 @@ TEST_F(DeepOverlapTest, PushesACapsuleOutAlongTheOrientedBoxAxes)
     EXPECT_NEAR(contacts.front().depth, 0.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Picks the shallowest face for an off centre sphere inside a box.
 TEST_F(DeepOverlapTest, PicksTheShallowestFaceForAnOffCentreSphereInsideABox)
 {
     /// @note 中心が上寄りなら上面が最短。抜ける面は «中心がどこに居るか» で毎回変わる。
@@ -520,6 +539,7 @@ TEST_F(DeepOverlapTest, PicksTheShallowestFaceForAnOffCentreSphereInsideABox)
     EXPECT_NEAR(contacts.front().depth, 1.8f, testkit::kLooseTolerance);
 }
 
+/// @brief Places the contact point between the two shapes.
 TEST_F(ContactWiringTest, PlacesTheContactPointBetweenTheTwoShapes)
 {
     const Actor a(Shape::Sphere, math::Vector3::ZERO, true);

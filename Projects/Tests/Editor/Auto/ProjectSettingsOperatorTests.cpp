@@ -55,6 +55,7 @@ protected:
     bool m_inputEnabled = false;
 };
 
+/// @brief Partial edit keeps other settings and supports undo redo.
 TEST_F(ProjectSettingsOperatorTest, PartialEditKeepsOtherSettingsAndSupportsUndoRedo)
 {
     const std::string before = Context().projectSettings.ToToml();
@@ -70,6 +71,7 @@ TEST_F(ProjectSettingsOperatorTest, PartialEditKeepsOtherSettingsAndSupportsUndo
     EXPECT_EQ(Context().projectSettings.physics.hz, 120);
 }
 
+/// @brief Unknown nested key rejects the whole patch.
 TEST_F(ProjectSettingsOperatorTest, UnknownNestedKeyRejectsTheWholePatch)
 {
     const std::string before = Context().projectSettings.ToToml();
@@ -84,6 +86,7 @@ TEST_F(ProjectSettingsOperatorTest, UnknownNestedKeyRejectsTheWholePatch)
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Clamped numbers are rejected instead of reporting a changed value.
 TEST_F(ProjectSettingsOperatorTest, ClampedNumbersAreRejectedInsteadOfReportingAChangedValue)
 {
     const std::string before = Context().projectSettings.ToToml();
@@ -95,6 +98,7 @@ TEST_F(ProjectSettingsOperatorTest, ClampedNumbersAreRejectedInsteadOfReportingA
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Wrong scalar type is rejected without changes.
 TEST_F(ProjectSettingsOperatorTest, WrongScalarTypeIsRejectedWithoutChanges)
 {
     const std::string before = Context().projectSettings.ToToml();
@@ -108,6 +112,7 @@ TEST_F(ProjectSettingsOperatorTest, WrongScalarTypeIsRejectedWithoutChanges)
     EXPECT_EQ(Context().projectSettings.ToToml(), before);
 }
 
+/// @brief Newly authored collision pairs are validated and saved.
 TEST_F(ProjectSettingsOperatorTest, NewlyAuthoredCollisionPairsAreValidatedAndSaved)
 {
     auto patch = editor::OpData::MakeObject();
@@ -124,6 +129,7 @@ TEST_F(ProjectSettingsOperatorTest, NewlyAuthoredCollisionPairsAreValidatedAndSa
     EXPECT_TRUE(Context().projectSettings.physics.collisionMatrix.CanCollide(1, 3));
 }
 
+/// @brief Undo conflict keeps subsequent settings and the history cursor.
 TEST_F(ProjectSettingsOperatorTest, UndoConflictKeepsSubsequentSettingsAndTheHistoryCursor)
 {
     ASSERT_TRUE(Configure(PhysicsPatch(120)).ok);
@@ -135,6 +141,7 @@ TEST_F(ProjectSettingsOperatorTest, UndoConflictKeepsSubsequentSettingsAndTheHis
     EXPECT_EQ(m_undo.GetCursor(), 1u);
 }
 
+/// @brief Parsing settings values does not reload or clear input bindings.
 TEST_F(ProjectSettingsOperatorTest, ParsingSettingsValuesDoesNotReloadOrClearInputBindings)
 {
     input::InputAction sentinel; sentinel.name = "McpSettingsIsolation";

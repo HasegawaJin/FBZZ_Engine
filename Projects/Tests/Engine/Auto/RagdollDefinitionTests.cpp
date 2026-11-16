@@ -16,6 +16,7 @@
 namespace fbzz::tests {
 class RagdollDefinitionTest : public testkit::EngineFixture {};
 
+/// @brief Round trip retains shapes mass joint frames exclusions and drive.
 TEST_F(RagdollDefinitionTest, RoundTripRetainsShapesMassJointFramesExclusionsAndDrive)
 {
     testkit::TempDir temp("ragdoll");
@@ -56,6 +57,7 @@ TEST_F(RagdollDefinitionTest, RoundTripRetainsShapesMassJointFramesExclusionsAnd
     EXPECT_EQ(loaded.bodies.size(),3U);
 }
 
+/// @brief Invalid definitions are rejected before mutation.
 TEST_F(RagdollDefinitionTest, InvalidDefinitionsAreRejectedBeforeMutation)
 {
     scene::RagdollDefinition value;
@@ -71,6 +73,7 @@ TEST_F(RagdollDefinitionTest, InvalidDefinitionsAreRejectedBeforeMutation)
     EXPECT_FALSE(scene::ValidateRagdollDefinition(value));
 }
 
+/// @brief Explicit leaf shapes and inertia drive actual rigid bodies.
 TEST_F(RagdollDefinitionTest, ExplicitLeafShapesAndInertiaDriveActualRigidBodies)
 {
     std::vector<scene::RagdollBonePose> bones;
@@ -96,6 +99,7 @@ TEST_F(RagdollDefinitionTest, ExplicitLeafShapesAndInertiaDriveActualRigidBodies
     }
 }
 
+/// @brief A quick light limb does not sleep with a supported heavy root.
 TEST_F(RagdollDefinitionTest, AQuickLightLimbDoesNotSleepWithASupportedHeavyRoot)
 {
     scene::RagdollProfile profile; profile.definitionsOnly=true;
@@ -112,6 +116,7 @@ TEST_F(RagdollDefinitionTest, AQuickLightLimbDoesNotSleepWithASupportedHeavyRoot
     EXPECT_GT(rig.GetBody(1)->GetPosition().x,0.19f);
 }
 
+/// @brief Box rests on terrain with multiple supports without rest lock.
 TEST_F(RagdollDefinitionTest, BoxRestsOnTerrainWithMultipleSupportsWithoutRestLock)
 {
     for (int substeps:{12,24}) {
@@ -145,6 +150,7 @@ TEST_F(RagdollDefinitionTest, BoxRestsOnTerrainWithMultipleSupportsWithoutRestLo
     }
 }
 
+/// @brief Continuous world contacts hold static load and slip above friction limit.
 TEST_F(RagdollDefinitionTest, ContinuousWorldContactsHoldStaticLoadAndSlipAboveFrictionLimit)
 {
     for (float horizontal : {1.0f,8.0f}) {
@@ -187,6 +193,7 @@ TEST_F(RagdollDefinitionTest, ContinuousWorldContactsHoldStaticLoadAndSlipAboveF
     }
 }
 
+/// @brief Per body drive works without guard and passive disables it.
 TEST_F(RagdollDefinitionTest, PerBodyDriveWorksWithoutGuardAndPassiveDisablesIt)
 {
     scene::RagdollBodyDefinition body;

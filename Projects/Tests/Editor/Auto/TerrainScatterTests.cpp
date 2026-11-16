@@ -57,6 +57,7 @@ protected:
     std::string m_reason;
 };
 
+/// @brief Water clearance distance matches existing threshold search.
 TEST_F(TerrainScatterTest, WaterClearanceDistanceMatchesExistingThresholdSearch)
 {
     scene::WaterComponent water;
@@ -99,6 +100,7 @@ TEST_F(TerrainScatterTest, WaterClearanceDistanceMatchesExistingThresholdSearch)
     }
 }
 
+/// @brief Combined path clearance preserves shared samples and holes.
 TEST_F(TerrainScatterTest, CombinedPathClearancePreservesSharedSamplesAndHoles)
 {
     m_terrain.layerMaterials = {"ground", "trail-a", "trail-b"};
@@ -127,6 +129,7 @@ TEST_F(TerrainScatterTest, CombinedPathClearancePreservesSharedSamplesAndHoles)
     EXPECT_FALSE(clearance.NearPath({100.0f, 0.0f, 100.0f}, 1.0f));
 }
 
+/// @brief Same seed reproduces transforms and density keeps candidate identity.
 TEST_F(TerrainScatterTest, SameSeedReproducesTransformsAndDensityKeepsCandidateIdentity)
 {
     ASSERT_TRUE(Build()) << m_reason; ASSERT_EQ(m_placements.size(), 16u);
@@ -143,6 +146,7 @@ TEST_F(TerrainScatterTest, SameSeedReproducesTransformsAndDensityKeepsCandidateI
     m_settings.density = 0.0f; ASSERT_TRUE(Build()); EXPECT_TRUE(m_placements.empty());
 }
 
+/// @brief Limits placements in world cells before applying the total limit.
 TEST_F(TerrainScatterTest, LimitsPlacementsInWorldCellsBeforeApplyingTheTotalLimit)
 {
     m_terrainTransform.worldPosition = {-4, 0, -4};
@@ -172,6 +176,7 @@ TEST_F(TerrainScatterTest, LimitsPlacementsInWorldCellsBeforeApplyingTheTotalLim
     for (size_t index = 0; index < previous.size(); ++index) EXPECT_EQ(m_placements[index].id, previous[index].id);
 }
 
+/// @brief Minimum separation and world filter apply to existing and new points.
 TEST_F(TerrainScatterTest, MinimumSeparationAndWorldFilterApplyToExistingAndNewPoints)
 {
     m_settings.spacing = 0.5f; m_settings.minimumDistance = 1.5f;
@@ -192,6 +197,7 @@ TEST_F(TerrainScatterTest, MinimumSeparationAndWorldFilterApplyToExistingAndNewP
     ASSERT_EQ(m_placements.size(), before.size()); EXPECT_EQ(m_placements[0].id, 701u);
 }
 
+/// @brief Polygon fill handles concavity and rejects crossings without changing placements.
 TEST_F(TerrainScatterTest, PolygonFillHandlesConcavityAndRejectsCrossingsWithoutChangingPlacements)
 {
     const std::array<math::Vector3,6> polygon{{{0,0,0},{8,0,0},{8,0,3},{3,0,3},{3,0,8},{0,0,8}}};
@@ -206,6 +212,7 @@ TEST_F(TerrainScatterTest, PolygonFillHandlesConcavityAndRejectsCrossingsWithout
     EXPECT_EQ(m_placements.size(),before.size());
 }
 
+/// @brief Soft boundary is deterministic and diagnostics account for every candidate.
 TEST_F(TerrainScatterTest, SoftBoundaryIsDeterministicAndDiagnosticsAccountForEveryCandidate)
 {
     m_settings.spacing=0.5f;
@@ -223,6 +230,7 @@ TEST_F(TerrainScatterTest, SoftBoundaryIsDeterministicAndDiagnosticsAccountForEv
     ASSERT_EQ(repeated.size(),m_placements.size());for(size_t n=0;n<repeated.size();++n)EXPECT_EQ(repeated[n].id,m_placements[n].id);
 }
 
+/// @brief Long erase stroke matches direct coverage across cells.
 TEST_F(TerrainScatterTest, LongEraseStrokeMatchesDirectCoverageAcrossCells)
 {
     m_terrainTransform.worldPosition = {12.0f, 3.0f, -18.0f};
@@ -254,6 +262,7 @@ TEST_F(TerrainScatterTest, LongEraseStrokeMatchesDirectCoverageAcrossCells)
     EXPECT_EQ(actual, expected);
 }
 
+/// @brief Checks holes height slope and saved layer restrict the same surface.
 TEST_F(TerrainScatterTest, HolesHeightSlopeAndSavedLayerRestrictTheSameSurface)
 {
     ASSERT_TRUE(m_terrain.SetHoleCell(0, 0, true));
@@ -270,6 +279,7 @@ TEST_F(TerrainScatterTest, HolesHeightSlopeAndSavedLayerRestrictTheSameSurface)
     m_settings.maxSlope = 50; ASSERT_TRUE(Build()); EXPECT_EQ(m_placements.size(), 15u);
 }
 
+/// @brief World sampling and normals agree after rotated negative nonuniform terrain transform.
 TEST_F(TerrainScatterTest, WorldSamplingAndNormalsAgreeAfterRotatedNegativeNonuniformTerrainTransform)
 {
     for (int z = 0; z < m_terrain.rows; ++z) for (int x = 0; x < m_terrain.columns; ++x)
@@ -292,6 +302,7 @@ TEST_F(TerrainScatterTest, WorldSamplingAndNormalsAgreeAfterRotatedNegativeNonun
     }
 }
 
+/// @brief Downslope rotation and embedding use the world surface without changing candidate IDs.
 TEST_F(TerrainScatterTest, DownslopeRotationAndEmbeddingUseTheWorldSurfaceWithoutChangingCandidateIds)
 {
     for (int z = 0; z < m_terrain.rows; ++z) for (int x = 0; x < m_terrain.columns; ++x)
@@ -327,6 +338,7 @@ TEST_F(TerrainScatterTest, DownslopeRotationAndEmbeddingUseTheWorldSurfaceWithou
     }
 }
 
+/// @brief Downslope on flat ground uses the existing yaw range.
 TEST_F(TerrainScatterTest, DownslopeOnFlatGroundUsesTheExistingYawRange)
 {
     m_settings.minYaw = 42.0f;
@@ -341,6 +353,7 @@ TEST_F(TerrainScatterTest, DownslopeOnFlatGroundUsesTheExistingYawRange)
         EXPECT_VEC3_NEAR(m_placements[i].eulerRadians, original[i].eulerRadians, 0.0f);
 }
 
+/// @brief Invalid inputs and both budgets preserve previous output.
 TEST_F(TerrainScatterTest, InvalidInputsAndBothBudgetsPreservePreviousOutput)
 {
     ASSERT_TRUE(Build()); const auto before = m_placements;
@@ -421,6 +434,7 @@ protected:
     renderer::ResourceManager m_resources{m_device};
 };
 
+/// @brief Mixed brush shares candidate density and undo across sources.
 TEST_F(TerrainScatterOperatorTest, MixedBrushSharesCandidateDensityAndUndoAcrossSources)
 {
     const auto rockPath = util::FileSystem::PathToUtf8(ProjectRoot() / "Assets" / "Rock.fzdata");
@@ -493,6 +507,7 @@ TEST_F(TerrainScatterOperatorTest, MixedBrushSharesCandidateDensityAndUndoAcross
     EXPECT_EQ(asset::DataAssetRegistry::Snapshot(m_source), m_sourceSnapshot);
 }
 
+/// @brief Empty target gets independent saved asset and undo redo.
 TEST_F(TerrainScatterOperatorTest, EmptyTargetGetsIndependentSavedAssetAndUndoRedo)
 {
     const auto result = Scatter(); ASSERT_TRUE(result.ok) << result.message;
@@ -509,6 +524,7 @@ TEST_F(TerrainScatterOperatorTest, EmptyTargetGetsIndependentSavedAssetAndUndoRe
     EXPECT_EQ(Target()->Snapshot()->placements.size(), 16u);
 }
 
+/// @brief Scatter uses terrain and target transforms edited in the same frame.
 TEST_F(TerrainScatterOperatorTest, ScatterUsesTerrainAndTargetTransformsEditedInTheSameFrame)
 {
     ASSERT_TRUE(Scatter().ok);
@@ -525,6 +541,7 @@ TEST_F(TerrainScatterOperatorTest, ScatterUsesTerrainAndTargetTransformsEditedIn
         EXPECT_VEC3_NEAR(after->placements[i].position, before->placements[i].position + displacement, 0.0001f);
 }
 
+/// @brief Shared original and sibling are unchanged and repeated bakes remain undoable.
 TEST_F(TerrainScatterOperatorTest, SharedOriginalAndSiblingAreUnchangedAndRepeatedBakesRemainUndoable)
 {
     auto& first = AttachedScene()->FindByGuid(m_targetId)->AddComponent<scene::InstancedMeshComponent>();
@@ -540,6 +557,7 @@ TEST_F(TerrainScatterOperatorTest, SharedOriginalAndSiblingAreUnchangedAndRepeat
     EXPECT_EQ(asset::DataAssetRegistry::Snapshot(m_source), m_sourceSnapshot);
 }
 
+/// @brief Failed bake creates no component or history and stale undo is rejected.
 TEST_F(TerrainScatterOperatorTest, FailedBakeCreatesNoComponentOrHistoryAndStaleUndoIsRejected)
 {
     EXPECT_FALSE(Scatter(1).ok); EXPECT_FALSE(Target()); EXPECT_EQ(m_undo.GetHistorySize(), 0u);
@@ -548,6 +566,7 @@ TEST_F(TerrainScatterOperatorTest, FailedBakeCreatesNoComponentOrHistoryAndStale
     EXPECT_EQ(m_undo.GetCursor(), 1u);
 }
 
+/// @brief Scene clear with reused GUID cannot receive old redo.
 TEST_F(TerrainScatterOperatorTest, SceneClearWithReusedGuidCannotReceiveOldRedo)
 {
     ASSERT_TRUE(Scatter().ok); ASSERT_TRUE(m_undo.Undo());
@@ -557,6 +576,7 @@ TEST_F(TerrainScatterOperatorTest, SceneClearWithReusedGuidCannotReceiveOldRedo)
     EXPECT_EQ(m_undo.GetCursor(), 0u);
 }
 
+/// @brief External instance override prevents undo from discarding the edit.
 TEST_F(TerrainScatterOperatorTest, ExternalInstanceOverridePreventsUndoFromDiscardingTheEdit)
 {
     ASSERT_TRUE(Scatter().ok); ASSERT_TRUE(Target());

@@ -96,6 +96,7 @@ protected:
 
 /// @name Enter / Stay / Exit
 
+/// @brief Reports enter on the first frame of an overlap.
 TEST_F(WorldCollisionEventTest, ReportsEnterOnTheFirstFrameOfAnOverlap)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -110,6 +111,7 @@ TEST_F(WorldCollisionEventTest, ReportsEnterOnTheFirstFrameOfAnOverlap)
     EXPECT_TRUE(world.GetExitEvents().empty());
 }
 
+/// @brief Downgrades enter to stay while the overlap continues.
 TEST_F(WorldCollisionEventTest, DowngradesEnterToStayWhileTheOverlapContinues)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -125,6 +127,7 @@ TEST_F(WorldCollisionEventTest, DowngradesEnterToStayWhileTheOverlapContinues)
     EXPECT_EQ(world.GetStayEvents().size(), 1u);
 }
 
+/// @brief Reports exit on the frame the overlap ends.
 TEST_F(WorldCollisionEventTest, ReportsExitOnTheFrameTheOverlapEnds)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -140,6 +143,7 @@ TEST_F(WorldCollisionEventTest, ReportsExitOnTheFrameTheOverlapEnds)
     EXPECT_TRUE(world.GetStayEvents().empty());
 }
 
+/// @brief Reports exit only once after the overlap ends.
 TEST_F(WorldCollisionEventTest, ReportsExitOnlyOnceAfterTheOverlapEnds)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -156,6 +160,7 @@ TEST_F(WorldCollisionEventTest, ReportsExitOnlyOnceAfterTheOverlapEnds)
     EXPECT_TRUE(world.GetExitEvents().empty());
 }
 
+/// @brief Names both colliders on the event.
 TEST_F(WorldCollisionEventTest, NamesBothCollidersOnTheEvent)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -178,6 +183,7 @@ TEST_F(WorldCollisionEventTest, NamesBothCollidersOnTheEvent)
 
 /// @name Trigger
 
+/// @brief Marks an overlap with a trigger as a trigger event.
 TEST_F(WorldCollisionEventTest, MarksAnOverlapWithATriggerAsATriggerEvent)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -191,6 +197,7 @@ TEST_F(WorldCollisionEventTest, MarksAnOverlapWithATriggerAsATriggerEvent)
     EXPECT_TRUE(world.GetEnterEvents()[0].isTrigger);
 }
 
+/// @brief Leaves a solid contact unmarked.
 TEST_F(WorldCollisionEventTest, LeavesASolidContactUnmarked)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -205,6 +212,7 @@ TEST_F(WorldCollisionEventTest, LeavesASolidContactUnmarked)
     EXPECT_FALSE(world.GetEnterEvents()[0].isTrigger);
 }
 
+/// @brief Does not push a body out of a trigger.
 TEST_F(WorldCollisionEventTest, DoesNotPushABodyOutOfATrigger)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -220,6 +228,7 @@ TEST_F(WorldCollisionEventTest, DoesNotPushABodyOutOfATrigger)
 
 /// @name 衝突の強さ
 
+/// @brief Reports the approach speed measured before resolve.
 TEST_F(WorldCollisionEventTest, ReportsTheApproachSpeedMeasuredBeforeResolve)
 {
     /// @note 接触した瞬間に «まだ減速していない» 速度を残す。Resolve の後で測ると、
@@ -236,6 +245,7 @@ TEST_F(WorldCollisionEventTest, ReportsTheApproachSpeedMeasuredBeforeResolve)
     EXPECT_NEAR(world.GetEnterEvents()[0].approachSpeed, 5.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Reports the normal impulse applied by resolve.
 TEST_F(WorldCollisionEventTest, ReportsTheNormalImpulseAppliedByResolve)
 {
     Ball probe(1.0f, math::Vector3(-0.5f, 0.0f, 0.0f));
@@ -251,6 +261,7 @@ TEST_F(WorldCollisionEventTest, ReportsTheNormalImpulseAppliedByResolve)
     EXPECT_GT(world.GetEnterEvents()[0].normalImpulse, 0.0f);
 }
 
+/// @brief Reports no impact for an overlap that is not closing.
 TEST_F(WorldCollisionEventTest, ReportsNoImpactForAnOverlapThatIsNotClosing)
 {
     Ball probe(1.0f, math::Vector3::ZERO);
@@ -267,6 +278,7 @@ TEST_F(WorldCollisionEventTest, ReportsNoImpactForAnOverlapThatIsNotClosing)
     EXPECT_FLOAT_EQ(world.GetEnterEvents()[0].normalImpulse, 0.0f);
 }
 
+/// @brief Clears the impact values on exit events.
 TEST_F(WorldCollisionEventTest, ClearsTheImpactValuesOnExitEvents)
 {
     Ball probe(1.0f, math::Vector3(-0.5f, 0.0f, 0.0f));

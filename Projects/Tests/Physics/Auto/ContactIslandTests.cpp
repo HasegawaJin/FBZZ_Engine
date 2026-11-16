@@ -63,6 +63,7 @@ protected:
 
 /// @name 島の構築
 
+/// @brief Resolves every contact of a connected stack.
 TEST_F(ContactIslandTest, ResolvesEveryContactOfAConnectedStack)
 {
     std::vector<physics::ContactPoint> contacts{ Touching(a, b), Touching(b, c), Touching(c, d) };
@@ -74,6 +75,7 @@ TEST_F(ContactIslandTest, ResolvesEveryContactOfAConnectedStack)
         EXPECT_GT(contact.cachedNormalImpulse, 0.0f);
 }
 
+/// @brief Merges two islands when a later contact bridges them.
 TEST_F(ContactIslandTest, MergesTwoIslandsWhenALaterContactBridgesThem)
 {
     /// @note A-B と C-D を別々に見つけたあとで、B-C が両者を繋ぐ。この «後から合流する»
@@ -86,6 +88,7 @@ TEST_F(ContactIslandTest, MergesTwoIslandsWhenALaterContactBridgesThem)
         EXPECT_GT(contact.cachedNormalImpulse, 0.0f);
 }
 
+/// @brief Resolves independent islands separately.
 TEST_F(ContactIslandTest, ResolvesIndependentIslandsSeparately)
 {
     /// @note 繋がっていない 2 組。合流させずにそれぞれ解けることを見る。
@@ -99,6 +102,7 @@ TEST_F(ContactIslandTest, ResolvesIndependentIslandsSeparately)
 
 /// @name 解かない接触
 
+/// @brief Leaves trigger contacts unresolved.
 TEST_F(ContactIslandTest, LeavesTriggerContactsUnresolved)
 {
     std::vector<physics::ContactPoint> contacts{ Touching(a, b), Touching(c, d) };
@@ -113,6 +117,7 @@ TEST_F(ContactIslandTest, LeavesTriggerContactsUnresolved)
     EXPECT_GT(contacts[1].cachedNormalImpulse, 0.0f);
 }
 
+/// @brief Skips contacts where neither side can move.
 TEST_F(ContactIslandTest, SkipsContactsWhereNeitherSideCanMove)
 {
     a.m_isStatic = true;
@@ -131,6 +136,7 @@ TEST_F(ContactIslandTest, SkipsContactsWhereNeitherSideCanMove)
 
 /// @name 摩擦の基底
 
+/// @brief Builds a friction basis even when the normal is the reference axis.
 TEST_F(ContactIslandTest, BuildsAFrictionBasisEvenWhenTheNormalIsTheReferenceAxis)
 {
     /// @note 壁との接触。法線が基底の作成に使う既定軸と平行なので、外積が 0 に潰れる。
@@ -148,6 +154,7 @@ TEST_F(ContactIslandTest, BuildsAFrictionBasisEvenWhenTheNormalIsTheReferenceAxi
                 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Builds a friction basis for an ordinary normal.
 TEST_F(ContactIslandTest, BuildsAFrictionBasisForAnOrdinaryNormal)
 {
     std::vector<physics::ContactPoint> contacts{ Touching(a, b) };

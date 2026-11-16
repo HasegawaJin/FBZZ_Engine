@@ -41,6 +41,7 @@ class WaterNoiseBakeTest : public testkit::Fixture {};
 
 /// @name ノイズそのもの
 
+/// @brief Checks gradient noise repeats exactly at the period.
 TEST_F(WaterNoiseBakeTest, GradientNoiseRepeatsExactlyAtThePeriod)
 {
     /// @note タイルは WRAP でサンプルされる。周期でぴったり折り返さないと、水面に格子状の継ぎ目が出る。
@@ -61,6 +62,7 @@ TEST_F(WaterNoiseBakeTest, GradientNoiseRepeatsExactlyAtThePeriod)
     }
 }
 
+/// @brief Gradient noise returns its own analytic derivative.
 TEST_F(WaterNoiseBakeTest, GradientNoiseReturnsItsOwnAnalyticDerivative)
 {
     /// @note 勾配は «値を 3 回引いて差分を取る» 代わりに解析で返している。ここがずれると
@@ -86,6 +88,7 @@ TEST_F(WaterNoiseBakeTest, GradientNoiseReturnsItsOwnAnalyticDerivative)
 
 /// @name 焼き上がったタイル
 
+/// @brief Checks mip chain halves down to a single texel.
 TEST_F(WaterNoiseBakeTest, MipChainHalvesDownToASingleTexel)
 {
     const wn::Tile& tile = SharedTile();
@@ -100,6 +103,7 @@ TEST_F(WaterNoiseBakeTest, MipChainHalvesDownToASingleTexel)
     }
 }
 
+/// @brief Each mip is the box average of the previous level.
 TEST_F(WaterNoiseBakeTest, EachMipIsTheBoxAverageOfThePreviousLevel)
 {
     /// @note «縮小 = 勾配の平均» が成り立つことが LOD の土台。ここが別のフィルタになると、
@@ -128,6 +132,7 @@ TEST_F(WaterNoiseBakeTest, EachMipIsTheBoxAverageOfThePreviousLevel)
     }
 }
 
+/// @brief The smallest mip decodes to a flat surface.
 TEST_F(WaterNoiseBakeTest, TheSmallestMipDecodesToAFlatSurface)
 {
     /// @note 周期関数の勾配は 1 周期で積分するとゼロ。最小ミップ = タイル全体の平均なので、
@@ -142,6 +147,7 @@ TEST_F(WaterNoiseBakeTest, TheSmallestMipDecodesToAFlatSurface)
     EXPECT_LT(std::abs(DecodeDerivative(last[1], tile.derivativeScale)), tolerance);
 }
 
+/// @brief Gradient rms matches the target so detail strength keeps its meaning.
 TEST_F(WaterNoiseBakeTest, GradientRmsMatchesTheTargetSoDetailStrengthKeepsItsMeaning)
 {
     /// @note 旧・値ノイズと同じ RMS へ正規化してある。ずれると、ノイズを差し替えただけで
@@ -160,6 +166,7 @@ TEST_F(WaterNoiseBakeTest, GradientRmsMatchesTheTargetSoDetailStrengthKeepsItsMe
     EXPECT_NEAR(rms, EXPECTED_GRADIENT_RMS, EXPECTED_GRADIENT_RMS * 0.05f);
 }
 
+/// @brief Uses normalized peak as the derivative scale.
 TEST_F(WaterNoiseBakeTest, UsesNormalizedPeakAsTheDerivativeScale)
 {
     /// @note 復号係数は «実際に出た最大» でなければならない。大きすぎると 8bit の分解能を捨て、

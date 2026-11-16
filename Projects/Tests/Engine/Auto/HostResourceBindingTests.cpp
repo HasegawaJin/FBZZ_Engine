@@ -27,6 +27,7 @@ protected:
     }
 };
 
+/// @brief Application keeps explicit owner when another manager ends.
 TEST_F(HostResourceBindingTest, ApplicationKeepsExplicitOwnerWhenAnotherManagerEnds)
 {
     testkit::ResourceTrackingRenderer device, otherDevice;
@@ -43,6 +44,7 @@ TEST_F(HostResourceBindingTest, ApplicationKeepsExplicitOwnerWhenAnotherManagerE
     EXPECT_EQ(app.GetResourceManager(), nullptr);
 }
 
+/// @brief Scheduler uploads only to its explicit manager.
 TEST_F(HostResourceBindingTest, SchedulerUploadsOnlyToItsExplicitManager)
 {
     testkit::ResourceTrackingRenderer device, otherDevice;
@@ -66,6 +68,7 @@ TEST_F(HostResourceBindingTest, SchedulerUploadsOnlyToItsExplicitManager)
     manager.SetScene(nullptr);
 }
 
+/// @brief Script uses its scenes manager and never an unrelated fallback.
 TEST_F(HostResourceBindingTest, ScriptUsesItsScenesManagerAndNeverAnUnrelatedFallback)
 {
     testkit::ResourceTrackingRenderer device, otherDevice;
@@ -85,6 +88,7 @@ TEST_F(HostResourceBindingTest, ScriptUsesItsScenesManagerAndNeverAnUnrelatedFal
     script.SetContext(nullptr, nullptr);
 }
 
+/// @brief Runtime binds external and loaded scenes before callbacks.
 TEST_F(HostResourceBindingTest, RuntimeBindsExternalAndLoadedScenesBeforeCallbacks)
 {
     testkit::ResourceTrackingRenderer device, otherDevice;
@@ -107,6 +111,7 @@ TEST_F(HostResourceBindingTest, RuntimeBindsExternalAndLoadedScenesBeforeCallbac
     runtime.BindExternalScene(nullptr);
 }
 
+/// @brief Registered scene files use the current explicit manager at load time.
 TEST_F(HostResourceBindingTest, RegisteredSceneFilesUseTheCurrentExplicitManagerAtLoadTime)
 {
     testkit::ResourceTrackingRenderer device, otherDevice;

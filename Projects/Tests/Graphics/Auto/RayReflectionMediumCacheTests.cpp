@@ -111,6 +111,7 @@ protected:
     }
 };
 
+/// @brief Proves only strictly outside origins and keeps boundary padding unknown.
 TEST_F(RayReflectionMediumCacheTest, ProvesOnlyStrictlyOutsideOriginsAndKeepsBoundaryPaddingUnknown)
 {
     EXPECT_TRUE(Air());
@@ -120,6 +121,7 @@ TEST_F(RayReflectionMediumCacheTest, ProvesOnlyStrictlyOutsideOriginsAndKeepsBou
     EXPECT_TRUE(Air({1.001f, 0, 0}));
 }
 
+/// @brief Reuses exact local snapshot but recomputes current rigid world.
 TEST_F(RayReflectionMediumCacheTest, ReusesExactLocalSnapshotButRecomputesCurrentRigidWorld)
 {
     ASSERT_TRUE(Air());
@@ -131,6 +133,7 @@ TEST_F(RayReflectionMediumCacheTest, ReusesExactLocalSnapshotButRecomputesCurren
     EXPECT_TRUE(Air({6, 0, 0}));
 }
 
+/// @brief Unions every submesh of one owner instead of accepting disjoint part bounds.
 TEST_F(RayReflectionMediumCacheTest, UnionsEverySubmeshOfOneOwnerInsteadOfAcceptingDisjointPartBounds)
 {
     auto sibling = m_scene.instances[0];
@@ -140,6 +143,7 @@ TEST_F(RayReflectionMediumCacheTest, UnionsEverySubmeshOfOneOwnerInsteadOfAccept
     EXPECT_TRUE(Air({9, 0, 0}));
 }
 
+/// @brief Requires outside every solid owner and independent origins for two views.
 TEST_F(RayReflectionMediumCacheTest, RequiresOutsideEverySolidOwnerAndIndependentOriginsForTwoViews)
 {
     auto other = m_scene.instances[0];
@@ -151,6 +155,7 @@ TEST_F(RayReflectionMediumCacheTest, RequiresOutsideEverySolidOwnerAndIndependen
     EXPECT_FALSE(Air({0, 0, 0}));
 }
 
+/// @brief Preserves conservative bounds for shear and negative nonuniform scale.
 TEST_F(RayReflectionMediumCacheTest, PreservesConservativeBoundsForShearAndNegativeNonuniformScale)
 {
     auto world = math::Matrix4::Scale({-2, 3, 0.5f});
@@ -162,6 +167,7 @@ TEST_F(RayReflectionMediumCacheTest, PreservesConservativeBoundsForShearAndNegat
     EXPECT_TRUE(Air({4, 3.01f, 0}));
 }
 
+/// @brief Includes absolute translation cancellation error in outward padding.
 TEST_F(RayReflectionMediumCacheTest, IncludesAbsoluteTranslationCancellationErrorInOutwardPadding)
 {
     for (auto& vertex : m_sourceVertices) vertex.position.x += 10000;
@@ -171,6 +177,7 @@ TEST_F(RayReflectionMediumCacheTest, IncludesAbsoluteTranslationCancellationErro
     EXPECT_TRUE(Air({8, 0, 0}));
 }
 
+/// @brief Keeps large translation ulp neighborhood unknown.
 TEST_F(RayReflectionMediumCacheTest, KeepsLargeTranslationUlpNeighborhoodUnknown)
 {
     m_scene.instances[0].world = math::Matrix4::Translate({1000000, 0, 0});
@@ -178,6 +185,7 @@ TEST_F(RayReflectionMediumCacheTest, KeepsLargeTranslationUlpNeighborhoodUnknown
     EXPECT_TRUE(Air({1000008, 0, 0}));
 }
 
+/// @brief Rejects nonfinite projective singular and ill conditioned transforms.
 TEST_F(RayReflectionMediumCacheTest, RejectsNonfiniteProjectiveSingularAndIllConditionedTransforms)
 {
     ASSERT_TRUE(Air());
@@ -188,6 +196,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsNonfiniteProjectiveSingularAndIllCon
     m_scene.instances[0].world = math::Matrix4::Scale({1e-8f, 1, 1}); EXPECT_FALSE(Air());
 }
 
+/// @brief Rejects unrepresentable outward world bounds and subnormal inputs.
 TEST_F(RayReflectionMediumCacheTest, RejectsUnrepresentableOutwardWorldBoundsAndSubnormalInputs)
 {
     const float maximum = std::numeric_limits<float>::max();
@@ -198,6 +207,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsUnrepresentableOutwardWorldBoundsAnd
     m_scene.instances[0].world.m[0][3] = std::numeric_limits<float>::denorm_min(); EXPECT_FALSE(Air());
 }
 
+/// @brief Rejects stale versions and rebuilds changed same handle geometry.
 TEST_F(RayReflectionMediumCacheTest, RejectsStaleVersionsAndRebuildsChangedSameHandleGeometry)
 {
     ASSERT_TRUE(Air());
@@ -213,6 +223,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsStaleVersionsAndRebuildsChangedSameH
     EXPECT_TRUE(Air({6, 0, 0}));
 }
 
+/// @brief Revalidates reader identity even with same handles and versions.
 TEST_F(RayReflectionMediumCacheTest, RevalidatesReaderIdentityEvenWithSameHandlesAndVersions)
 {
     ASSERT_TRUE(Air());
@@ -225,6 +236,7 @@ TEST_F(RayReflectionMediumCacheTest, RevalidatesReaderIdentityEvenWithSameHandle
     EXPECT_GT(replacement.copies, 2u);
 }
 
+/// @brief Rejects missing reused handles and untracked versions.
 TEST_F(RayReflectionMediumCacheTest, RejectsMissingReusedHandlesAndUntrackedVersions)
 {
     ASSERT_TRUE(Air());
@@ -236,6 +248,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsMissingReusedHandlesAndUntrackedVers
     key.indexContentVersion = 0; EXPECT_FALSE(Air());
 }
 
+/// @brief Cached CPU readability and non UAV ownership must remain live.
 TEST_F(RayReflectionMediumCacheTest, CachedCpuReadabilityAndNonUavOwnershipMustRemainLive)
 {
     ASSERT_TRUE(Air());
@@ -247,6 +260,7 @@ TEST_F(RayReflectionMediumCacheTest, CachedCpuReadabilityAndNonUavOwnershipMustR
     m_indices.uavIndex = renderer::INVALID_BINDLESS_INDEX; EXPECT_TRUE(Air());
 }
 
+/// @brief Rejects capacity only proof and mismatched typed triangle input.
 TEST_F(RayReflectionMediumCacheTest, RejectsCapacityOnlyProofAndMismatchedTypedTriangleInput)
 {
     ASSERT_TRUE(Air());
@@ -257,6 +271,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsCapacityOnlyProofAndMismatchedTypedT
     m_vertices.stride = 16; EXPECT_FALSE(Air());
 }
 
+/// @brief Validates vertex index offsets and rejects out-of-range indices.
 TEST_F(RayReflectionMediumCacheTest, ValidatesVertexIndexOffsetsAndRejectsOutOfRangeIndices)
 {
     m_sourceVertices.insert(m_sourceVertices.begin(), renderer::Vertex{});
@@ -271,6 +286,7 @@ TEST_F(RayReflectionMediumCacheTest, ValidatesVertexIndexOffsetsAndRejectsOutOfR
     EXPECT_FALSE(Air());
 }
 
+/// @brief Supports nonindexed closed geometry.
 TEST_F(RayReflectionMediumCacheTest, SupportsNonindexedClosedGeometry)
 {
     std::vector<renderer::Vertex> expanded;
@@ -282,6 +298,7 @@ TEST_F(RayReflectionMediumCacheTest, SupportsNonindexedClosedGeometry)
     EXPECT_FALSE(Air({0, 0, 0}));
 }
 
+/// @brief Rejects invalid positions normals and nonduplicate collinear geometry.
 TEST_F(RayReflectionMediumCacheTest, RejectsInvalidPositionsNormalsAndNonduplicateCollinearGeometry)
 {
     m_sourceVertices[0].normal = {}; Upload(); EXPECT_FALSE(Air());
@@ -291,6 +308,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsInvalidPositionsNormalsAndNonduplica
     m_sourceVertices[1].position = {1, 0, 0}; m_sourceVertices[2].position = {1, 1, 1}; Upload(); EXPECT_FALSE(Air());
 }
 
+/// @brief Keeps near degenerate normal uncertainty unknown without scene unit `epsilon`.
 TEST_F(RayReflectionMediumCacheTest, KeepsNearDegenerateNormalUncertaintyUnknownWithoutSceneUnitEpsilon)
 {
     m_sourceVertices[0].position = {1, 0, 0}; m_sourceVertices[1].position = {1, 1, 1};
@@ -298,6 +316,7 @@ TEST_F(RayReflectionMediumCacheTest, KeepsNearDegenerateNormalUncertaintyUnknown
     Upload(); EXPECT_FALSE(Air());
 }
 
+/// @brief Supports small well conditioned closed solids without absolute geometry floor.
 TEST_F(RayReflectionMediumCacheTest, SupportsSmallWellConditionedClosedSolidsWithoutAbsoluteGeometryFloor)
 {
     for (auto& vertex : m_sourceVertices) vertex.position = vertex.position * 1e-6f;
@@ -306,6 +325,7 @@ TEST_F(RayReflectionMediumCacheTest, SupportsSmallWellConditionedClosedSolidsWit
     EXPECT_FALSE(Air({0, 0, 0}));
 }
 
+/// @brief Rejects normalized vertex normals whose interpolated length underflows.
 TEST_F(RayReflectionMediumCacheTest, RejectsNormalizedVertexNormalsWhoseInterpolatedLengthUnderflows)
 {
     constexpr float tinyProjection = 2e-38f;
@@ -318,6 +338,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsNormalizedVertexNormalsWhoseInterpol
     EXPECT_FALSE(Air());
 }
 
+/// @brief Measures normalized separation instead of raw normal amplitude.
 TEST_F(RayReflectionMediumCacheTest, MeasuresNormalizedSeparationInsteadOfRawNormalAmplitude)
 {
     constexpr float tinyProjection = 2e-38f;
@@ -330,6 +351,7 @@ TEST_F(RayReflectionMediumCacheTest, MeasuresNormalizedSeparationInsteadOfRawNor
     EXPECT_FALSE(Air());
 }
 
+/// @brief Keeps world normalized interpolation unknown when inverse transform amplifies uncertainty.
 TEST_F(RayReflectionMediumCacheTest, KeepsWorldNormalizedInterpolationUnknownWhenInverseTransformAmplifiesUncertainty)
 {
     for (uint32_t vertex = 16; vertex < 20; ++vertex)
@@ -342,6 +364,7 @@ TEST_F(RayReflectionMediumCacheTest, KeepsWorldNormalizedInterpolationUnknownWhe
     EXPECT_FALSE(Air());
 }
 
+/// @brief Accepts sphere pole duplicate triangles but not an entire degenerate mesh.
 TEST_F(RayReflectionMediumCacheTest, AcceptsSpherePoleDuplicateTrianglesButNotAnEntireDegenerateMesh)
 {
     m_sourceVertices.clear(); m_sourceIndices.clear();
@@ -362,6 +385,7 @@ TEST_F(RayReflectionMediumCacheTest, AcceptsSpherePoleDuplicateTrianglesButNotAn
     m_sourceIndices = {0, 1, 2}; Upload(); EXPECT_FALSE(Air());
 }
 
+/// @brief Rejects mixed opaque thin and mismatched optics within one full owner.
 TEST_F(RayReflectionMediumCacheTest, RejectsMixedOpaqueThinAndMismatchedOpticsWithinOneFullOwner)
 {
     auto sibling = m_scene.instances[0]; sibling.denseInstanceId = 1;
@@ -376,6 +400,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsMixedOpaqueThinAndMismatchedOpticsWi
     surface.solidDielectricSupported = false; surface.standardSurfaceSupported = true; EXPECT_FALSE(Air());
 }
 
+/// @brief Distinguishes owner generations and scene reset before reusing local bounds.
 TEST_F(RayReflectionMediumCacheTest, DistinguishesOwnerGenerationsAndSceneResetBeforeReusingLocalBounds)
 {
     auto opaque = m_scene.instances[0]; opaque.denseInstanceId = 1; ++opaque.objectId.generation;
@@ -391,6 +416,7 @@ TEST_F(RayReflectionMediumCacheTest, DistinguishesOwnerGenerationsAndSceneResetB
     EXPECT_TRUE(Air()); EXPECT_GT(m_vertices.copies, afterGeneration + 2);
 }
 
+/// @brief Rejects invalid solid support and incomplete scene instead of publishing old air.
 TEST_F(RayReflectionMediumCacheTest, RejectsInvalidSolidSupportAndIncompleteSceneInsteadOfPublishingOldAir)
 {
     ASSERT_TRUE(Air());
@@ -403,6 +429,7 @@ TEST_F(RayReflectionMediumCacheTest, RejectsInvalidSolidSupportAndIncompleteScen
     ++m_scene.instances[0].denseInstanceId; EXPECT_FALSE(Air());
 }
 
+/// @brief Checks empty or thin only scene proves air without inventing solid interior.
 TEST_F(RayReflectionMediumCacheTest, EmptyOrThinOnlySceneProvesAirWithoutInventingSolidInterior)
 {
     m_scene.instances[0].surface.dielectric.thinWalled = true;

@@ -29,6 +29,7 @@ protected:
     testkit::TempDir m_temp{"FileSystem"};
 };
 
+/// @brief Enumerates unicode files and directories without depending on order.
 TEST_F(FileSystemTest, EnumeratesUnicodeFilesAndDirectoriesWithoutDependingOnOrder)
 {
     const auto root = m_temp.Path();
@@ -64,6 +65,7 @@ TEST_F(FileSystemTest, EnumeratesUnicodeFilesAndDirectoriesWithoutDependingOnOrd
     EXPECT_TRUE(FileSystem::ListFiles(FileSystem::PathToUtf8(root / "missing")).empty());
 }
 
+/// @brief Copy honors overwrite and creates destination parents.
 TEST_F(FileSystemTest, CopyHonorsOverwriteAndCreatesDestinationParents)
 {
     const auto source = m_temp.File("source.txt");
@@ -81,6 +83,7 @@ TEST_F(FileSystemTest, CopyHonorsOverwriteAndCreatesDestinationParents)
     EXPECT_EQ(text, "changed");
 }
 
+/// @brief Copies nested directories and removes only the copy.
 TEST_F(FileSystemTest, CopiesNestedDirectoriesAndRemovesOnlyTheCopy)
 {
     const auto source = m_temp.File("source");
@@ -101,6 +104,7 @@ TEST_F(FileSystemTest, CopiesNestedDirectoriesAndRemovesOnlyTheCopy)
     EXPECT_TRUE(FileSystem::Exists(source / "nested/file.txt"));
 }
 
+/// @brief Rejects file operations when a parent is a file.
 TEST_F(FileSystemTest, RejectsFileOperationsWhenAParentIsAFile)
 {
     const auto blocker = m_temp.File("blocker");
@@ -121,6 +125,7 @@ TEST_F(FileSystemTest, RejectsFileOperationsWhenAParentIsAFile)
     EXPECT_TRUE(FileSystem::Exists(source));
 }
 
+/// @brief Failed atomic replacement preserves the target and removes the temporary file.
 TEST_F(FileSystemTest, FailedAtomicReplacementPreservesTheTargetAndRemovesTheTemporaryFile)
 {
     const auto target = m_temp.File("target");
@@ -134,6 +139,7 @@ TEST_F(FileSystemTest, FailedAtomicReplacementPreservesTheTargetAndRemovesTheTem
     EXPECT_EQ(text, "original");
 }
 
+/// @brief Resolves existing and missing paths consistently.
 TEST_F(FileSystemTest, ResolvesExistingAndMissingPathsConsistently)
 {
     const auto file = m_temp.File("file.txt");
@@ -155,6 +161,7 @@ TEST_F(FileSystemTest, ResolvesExistingAndMissingPathsConsistently)
     EXPECT_EQ(FileSystem::LastWriteTime(file), expectedTime);
 }
 
+/// @brief Atomic unicode replacement preserves unowned temporary and leaves no owned orphans.
 TEST_F(FileSystemTest, AtomicUnicodeReplacementPreservesUnownedTemporaryAndLeavesNoOwnedOrphans)
 {
     const auto directory = m_temp.Path() / L"日本語の保存先"; const auto target = directory / L"設定データ.toml";
@@ -172,6 +179,7 @@ TEST_F(FileSystemTest, AtomicUnicodeReplacementPreservesUnownedTemporaryAndLeave
     for (const auto& entry : std::filesystem::directory_iterator(directory, error)) { (void)entry; ++files; }
     EXPECT_FALSE(error); EXPECT_EQ(files, 2u);
 }
+/// @brief Atomic binary replacement preserves bytes and locked original.
 TEST_F(FileSystemTest, AtomicBinaryReplacementPreservesBytesAndLockedOriginal)
 {
     const auto target = m_temp.Path() / L"地形.bin";

@@ -136,6 +136,7 @@ protected:
     }
 };
 
+/// @brief Builds world area normal and hit identity for negative nonuniform scale.
 TEST_F(RayPathSceneTest, BuildsWorldAreaNormalAndHitIdentityForNegativeNonuniformScale)
 {
     m_scene.instances[0].world = math::Matrix4::TRS({1, 2, 4}, {}, {-2, 3, 1});
@@ -154,6 +155,7 @@ TEST_F(RayPathSceneTest, BuildsWorldAreaNormalAndHitIdentityForNegativeNonunifor
     EXPECT_FLOAT_EQ(emitter.selectionCdf, 1);
 }
 
+/// @brief Samples power and stores actual cdf mass for emission mis.
 TEST_F(RayPathSceneTest, SamplesPowerAndStoresActualCdfMassForEmissionMis)
 {
     auto second = m_scene.instances[0];
@@ -179,6 +181,7 @@ TEST_F(RayPathSceneTest, SamplesPowerAndStoresActualCdfMassForEmissionMis)
     }
 }
 
+/// @brief Uses submesh vertex offset position offset and relative indices.
 TEST_F(RayPathSceneTest, UsesSubmeshVertexOffsetPositionOffsetAndRelativeIndices)
 {
     m_vertices.SetData(std::vector<std::array<float, 4>>{{9, 9, 9, 9}, {8, 0, 0, 0}, {8, 2, 0, 0}, {8, 0, 3, 0}}, 16);
@@ -196,6 +199,7 @@ TEST_F(RayPathSceneTest, UsesSubmeshVertexOffsetPositionOffsetAndRelativeIndices
     EXPECT_EQ(path.emitters[0].geometricNormal, (std::array<float, 3>{0, 0, 1}));
 }
 
+/// @brief Non indexed primitive IDs remain local to geometry.
 TEST_F(RayPathSceneTest, NonIndexedPrimitiveIdsRemainLocalToGeometry)
 {
     m_vertices.SetData(std::vector<std::array<float, 4>>{
@@ -215,6 +219,7 @@ TEST_F(RayPathSceneTest, NonIndexedPrimitiveIdsRemainLocalToGeometry)
     EXPECT_FLOAT_EQ(path.emitters[1].selectionPdf, 0.5f);
 }
 
+/// @brief Caches CPU triangles by content version and uses latest update.
 TEST_F(RayPathSceneTest, CachesCpuTrianglesByContentVersionAndUsesLatestUpdate)
 {
     const auto first = Build();
@@ -235,6 +240,7 @@ TEST_F(RayPathSceneTest, CachesCpuTrianglesByContentVersionAndUsesLatestUpdate)
     EXPECT_FLOAT_EQ(changed.emitters[0].area, 6);
 }
 
+/// @brief Ignores extraction serial frame stamp previous world and source item.
 TEST_F(RayPathSceneTest, IgnoresExtractionSerialFrameStampPreviousWorldAndSourceItem)
 {
     const auto first = Build();
@@ -247,6 +253,7 @@ TEST_F(RayPathSceneTest, IgnoresExtractionSerialFrameStampPreviousWorldAndSource
     EXPECT_GT(Build().contentRevision, first.contentRevision);
 }
 
+/// @brief Exact content changes reset revision without relying on float tolerance.
 TEST_F(RayPathSceneTest, ExactContentChangesResetRevisionWithoutRelyingOnFloatTolerance)
 {
     auto previous = Build().contentRevision;
@@ -267,6 +274,7 @@ TEST_F(RayPathSceneTest, ExactContentChangesResetRevisionWithoutRelyingOnFloatTo
     ++m_lighting.environmentContentVersion; changed();
 }
 
+/// @brief Unsupported readers partial data invalid indices and ranges fail closed.
 TEST_F(RayPathSceneTest, UnsupportedReadersPartialDataInvalidIndicesAndRangesFailClosed)
 {
     m_vertices.m_readable = false;
@@ -292,6 +300,7 @@ TEST_F(RayPathSceneTest, UnsupportedReadersPartialDataInvalidIndicesAndRangesFai
     EXPECT_FALSE(Build().coverageComplete);
 }
 
+/// @brief Unrepresentable cdf mass degenerate and double sided emitters fail closed.
 TEST_F(RayPathSceneTest, UnrepresentableCdfMassDegenerateAndDoubleSidedEmittersFailClosed)
 {
     auto second = m_scene.instances[0];
@@ -313,6 +322,7 @@ TEST_F(RayPathSceneTest, UnrepresentableCdfMassDegenerateAndDoubleSidedEmittersF
     EXPECT_TRUE(HasIssue(path, renderer::RayPathSceneIssue::INVALID_EMITTER_GEOMETRY));
 }
 
+/// @brief Unsupported surface lighting and invalid constants fail closed.
 TEST_F(RayPathSceneTest, UnsupportedSurfaceLightingAndInvalidConstantsFailClosed)
 {
     m_lighting.direction = {};
@@ -335,6 +345,7 @@ TEST_F(RayPathSceneTest, UnsupportedSurfaceLightingAndInvalidConstantsFailClosed
     EXPECT_FALSE(Build().coverageComplete);
 }
 
+/// @brief Supports solid dielectric and tracks every optical parameter without frame revision.
 TEST_F(RayPathSceneTest, SupportsSolidDielectricAndTracksEveryOpticalParameterWithoutFrameRevision)
 {
     auto& surface = m_scene.instances[0].surface;
@@ -377,6 +388,7 @@ TEST_F(RayPathSceneTest, SupportsSolidDielectricAndTracksEveryOpticalParameterWi
     EXPECT_FALSE(changed().coverageComplete);
 }
 
+/// @brief Collects every directional point and spot with type specific units.
 TEST_F(RayPathSceneTest, CollectsEveryDirectionalPointAndSpotWithTypeSpecificUnits)
 {
     m_scene.instances[0].surface.emission = {};
@@ -410,6 +422,7 @@ TEST_F(RayPathSceneTest, CollectsEveryDirectionalPointAndSpotWithTypeSpecificUni
     EXPECT_GT(Build().contentRevision, revision);
 }
 
+/// @brief Hybrid keeps independent shadow strength across every light table.
 TEST_F(RayPathSceneTest, HybridKeepsIndependentShadowStrengthAcrossEveryLightTable)
 {
     m_lighting.useSceneLights = true;
@@ -447,6 +460,7 @@ TEST_F(RayPathSceneTest, HybridKeepsIndependentShadowStrengthAcrossEveryLightTab
     EXPECT_GT(Build(true).contentRevision, changed);
 }
 
+/// @brief Hybrid clamps finite shadow strength but fails closed on nonfinite input.
 TEST_F(RayPathSceneTest, HybridClampsFiniteShadowStrengthButFailsClosedOnNonfiniteInput)
 {
     m_lighting.useSceneLights = true;
@@ -471,6 +485,7 @@ TEST_F(RayPathSceneTest, HybridClampsFiniteShadowStrengthButFailsClosedOnNonfini
     }
 }
 
+/// @brief Reference ignores artist shadow values without resetting physical lighting.
 TEST_F(RayPathSceneTest, ReferenceIgnoresArtistShadowValuesWithoutResettingPhysicalLighting)
 {
     m_lighting.useSceneLights = true;
@@ -496,6 +511,7 @@ TEST_F(RayPathSceneTest, ReferenceIgnoresArtistShadowValuesWithoutResettingPhysi
     for (const auto& shape : unchanged.shapes) EXPECT_FLOAT_EQ(shape.shadowStrength, 1);
 }
 
+/// @brief Reference ignores hybrid mesh masks but tracks primary visibility.
 TEST_F(RayPathSceneTest, ReferenceIgnoresHybridMeshMasksButTracksPrimaryVisibility)
 {
     auto& instance = m_scene.instances[0];
@@ -525,6 +541,7 @@ TEST_F(RayPathSceneTest, ReferenceIgnoresHybridMeshMasksButTracksPrimaryVisibili
     EXPECT_GT(hybridWithoutShadow.contentRevision, hybrid.contentRevision);
 }
 
+/// @brief Area proxy shadow setting does not change authoritative radiance.
 TEST_F(RayPathSceneTest, AreaProxyShadowSettingDoesNotChangeAuthoritativeRadiance)
 {
     SetThinCubeEmitter();
@@ -552,6 +569,7 @@ TEST_F(RayPathSceneTest, AreaProxyShadowSettingDoesNotChangeAuthoritativeRadianc
     }
 }
 
+/// @brief Virtual area uses two triangles owner range and radiance without pi.
 TEST_F(RayPathSceneTest, VirtualAreaUsesTwoTrianglesOwnerRangeAndRadianceWithoutPi)
 {
     m_scene.instances[0].surface.emission = {};
@@ -579,6 +597,7 @@ TEST_F(RayPathSceneTest, VirtualAreaUsesTwoTrianglesOwnerRangeAndRadianceWithout
     EXPECT_EQ(path.emitters[1].primitiveId, 1u);
 }
 
+/// @brief Proven thin cube area proxy replaces only forward face and retains zero emission control.
 TEST_F(RayPathSceneTest, ProvenThinCubeAreaProxyReplacesOnlyForwardFaceAndRetainsZeroEmissionControl)
 {
     SetThinCubeEmitter();
@@ -609,6 +628,7 @@ TEST_F(RayPathSceneTest, ProvenThinCubeAreaProxyReplacesOnlyForwardFaceAndRetain
     }
 }
 
+/// @brief Ambiguous area proxy dimensions duplicate corners and two sided solid fail closed.
 TEST_F(RayPathSceneTest, AmbiguousAreaProxyDimensionsDuplicateCornersAndTwoSidedSolidFailClosed)
 {
     SetThinCubeEmitter();
@@ -631,6 +651,7 @@ TEST_F(RayPathSceneTest, AmbiguousAreaProxyDimensionsDuplicateCornersAndTwoSided
     EXPECT_TRUE(HasIssue(path, renderer::RayPathSceneIssue::AREA_MESH_BINDING_UNSUPPORTED));
 }
 
+/// @brief A non-emissive mesh that owns an area light is classified as a luminaire.
 TEST_F(RayPathSceneTest, NonemissiveOwnerMeshIsAProvenLuminaireRatherThanAnEmbeddedVirtualLight)
 {
     SetThinCubeEmitter();
@@ -650,6 +671,7 @@ TEST_F(RayPathSceneTest, NonemissiveOwnerMeshIsAProvenLuminaireRatherThanAnEmbed
     }
 }
 
+/// @brief Nonemissive sibling geometry cannot hide an unproven forward boundary.
 TEST_F(RayPathSceneTest, NonemissiveSiblingGeometryCannotHideAnUnprovenForwardBoundary)
 {
     SetThinCubeEmitter();
@@ -671,6 +693,7 @@ TEST_F(RayPathSceneTest, NonemissiveSiblingGeometryCannotHideAnUnprovenForwardBo
     EXPECT_TRUE(HasIssue(path, renderer::RayPathSceneIssue::AREA_MESH_BINDING_UNSUPPORTED));
 }
 
+/// @brief Tiny area rejects much larger cube without an absolute tolerance floor.
 TEST_F(RayPathSceneTest, TinyAreaRejectsMuchLargerCubeWithoutAnAbsoluteToleranceFloor)
 {
     SetThinCubeEmitter();
@@ -685,6 +708,7 @@ TEST_F(RayPathSceneTest, TinyAreaRejectsMuchLargerCubeWithoutAnAbsoluteTolerance
     EXPECT_TRUE(HasIssue(path, renderer::RayPathSceneIssue::AREA_MESH_BINDING_UNSUPPORTED));
 }
 
+/// @brief Tiny matching rectangle is proven without an arbitrary minimum size.
 TEST_F(RayPathSceneTest, TinyMatchingRectangleIsProvenWithoutAnArbitraryMinimumSize)
 {
     SetRectangleEmitter(1e-8f);
@@ -702,6 +726,7 @@ TEST_F(RayPathSceneTest, TinyMatchingRectangleIsProvenWithoutAnArbitraryMinimumS
     }
 }
 
+/// @brief Area proof preserves large translation and negative scale but rejects lost corners.
 TEST_F(RayPathSceneTest, AreaProofPreservesLargeTranslationAndNegativeScaleButRejectsLostCorners)
 {
     SetRectangleEmitter(2);
@@ -720,6 +745,7 @@ TEST_F(RayPathSceneTest, AreaProofPreservesLargeTranslationAndNegativeScaleButRe
     EXPECT_FALSE(Build().coverageComplete);
 }
 
+/// @brief Checks layer filtering precedes unsupported sources and tracks only included light content.
 TEST_F(RayPathSceneTest, LayerFilteringPrecedesUnsupportedSourcesAndTracksOnlyIncludedLightContent)
 {
     m_lighting.useSceneLights = true;
@@ -742,6 +768,7 @@ TEST_F(RayPathSceneTest, LayerFilteringPrecedesUnsupportedSourcesAndTracksOnlyIn
     EXPECT_EQ(included.diagnostics[0].objectId, excluded.objectId);
 }
 
+/// @brief Invalid source domain owner and cookie particle coverage fail closed.
 TEST_F(RayPathSceneTest, InvalidSourceDomainOwnerAndCookieParticleCoverageFailClosed)
 {
     m_lighting.useSceneLights = true;
@@ -774,6 +801,7 @@ TEST_F(RayPathSceneTest, InvalidSourceDomainOwnerAndCookieParticleCoverageFailCl
     EXPECT_FALSE(Build().coverageComplete);
 }
 
+/// @brief Builds sphere and capsule with point flux units and actual rounded selection mass.
 TEST_F(RayPathSceneTest, BuildsSphereAndCapsuleWithPointFluxUnitsAndActualRoundedSelectionMass)
 {
     m_lighting.useSceneLights = true;
@@ -801,6 +829,7 @@ TEST_F(RayPathSceneTest, BuildsSphereAndCapsuleWithPointFluxUnitsAndActualRounde
     EXPECT_EQ(path.shapes[0].objectIndex, sphere.objectId.index);
 }
 
+/// @brief Shape zero energy remains solid and shape domain and mesh binding fail closed.
 TEST_F(RayPathSceneTest, ShapeZeroEnergyRemainsSolidAndShapeDomainAndMeshBindingFailClosed)
 {
     m_lighting.useSceneLights = true;
@@ -827,6 +856,7 @@ TEST_F(RayPathSceneTest, ShapeZeroEnergyRemainsSolidAndShapeDomainAndMeshBinding
     EXPECT_TRUE(path.shapes.empty());
 }
 
+/// @brief Shape texture and environment sampling inputs advance content revision without snapshot reset.
 TEST_F(RayPathSceneTest, ShapeTextureAndEnvironmentSamplingInputsAdvanceContentRevisionWithoutSnapshotReset)
 {
     m_lighting.useSceneLights = true;
@@ -854,6 +884,7 @@ TEST_F(RayPathSceneTest, ShapeTextureAndEnvironmentSamplingInputsAdvanceContentR
     EXPECT_FALSE(Build().coverageComplete);
 }
 
+/// @brief Masked area owner is not proven as a full coverage rectangle.
 TEST_F(RayPathSceneTest, MaskedAreaOwnerIsNotProvenAsAFullCoverageRectangle)
 {
     SetRectangleEmitter(2);
@@ -865,6 +896,7 @@ TEST_F(RayPathSceneTest, MaskedAreaOwnerIsNotProvenAsAFullCoverageRectangle)
     EXPECT_TRUE(HasIssue(Build(), renderer::RayPathSceneIssue::AREA_MESH_BINDING_UNSUPPORTED));
 }
 
+/// @brief Textured mesh emission keeps full triangle base estimate but area proxy rejects the texture.
 TEST_F(RayPathSceneTest, TexturedMeshEmissionKeepsFullTriangleBaseEstimateButAreaProxyRejectsTheTexture)
 {
     auto& surface = m_scene.instances[0].surface;

@@ -49,6 +49,7 @@ protected:
     }
 };
 
+/// @brief Existing consumers accept normal bone and undo only their reference.
 TEST_F(TargetPointReferenceOperatorTest, ExistingConsumersAcceptNormalBoneAndUndoOnlyTheirReference)
 {
     auto& owner = World().CreateGameObject("Consumers");
@@ -77,6 +78,7 @@ TEST_F(TargetPointReferenceOperatorTest, ExistingConsumersAcceptNormalBoneAndUnd
     EXPECT_EQ(owner.GetComponent<scene::NavMeshAgentComponent>()->target.guid, target.instanceId);
 }
 
+/// @brief Create and bind uses one undo and retains GUID across redo.
 TEST_F(TargetPointReferenceOperatorTest, CreateAndBindUsesOneUndoAndRetainsGuidAcrossRedo)
 {
     auto& owner = World().CreateGameObject("Beam"); owner.AddComponent<scene::VFXBeamComponent>();
@@ -97,6 +99,7 @@ TEST_F(TargetPointReferenceOperatorTest, CreateAndBindUsesOneUndoAndRetainsGuidA
     EXPECT_EQ(owner.GetComponent<scene::VFXBeamComponent>()->fromEntity.guid, guid);
 }
 
+/// @brief Same owner second endpoint protects created shared point from undo.
 TEST_F(TargetPointReferenceOperatorTest, SameOwnerSecondEndpointProtectsCreatedSharedPointFromUndo)
 {
     auto& owner = World().CreateGameObject("Beam"); auto& beam = owner.AddComponent<scene::VFXBeamComponent>();
@@ -111,6 +114,7 @@ TEST_F(TargetPointReferenceOperatorTest, SameOwnerSecondEndpointProtectsCreatedS
     EXPECT_EQ(beam.fromEntity.guid, guid);
 }
 
+/// @brief New patrol reference protects created point from undo.
 TEST_F(TargetPointReferenceOperatorTest, NewPatrolReferenceProtectsCreatedPointFromUndo)
 {
     auto& owner = World().CreateGameObject("Beam"); auto& beam = owner.AddComponent<scene::VFXBeamComponent>();
@@ -124,6 +128,7 @@ TEST_F(TargetPointReferenceOperatorTest, NewPatrolReferenceProtectsCreatedPointF
     EXPECT_EQ(beam.fromEntity.guid, guid);
 }
 
+/// @brief Editing created point or replacing consumer rejects undo.
 TEST_F(TargetPointReferenceOperatorTest, EditingCreatedPointOrReplacingConsumerRejectsUndo)
 {
     auto& owner = World().CreateGameObject("Beam"); owner.AddComponent<scene::VFXBeamComponent>();
@@ -139,6 +144,7 @@ TEST_F(TargetPointReferenceOperatorTest, EditingCreatedPointOrReplacingConsumerR
     EXPECT_NE(World().FindByGuid(guid), nullptr);
 }
 
+/// @brief Prefab structure and invalid point fail without creating history.
 TEST_F(TargetPointReferenceOperatorTest, PrefabStructureAndInvalidPointFailWithoutCreatingHistory)
 {
     auto& owner = World().CreateGameObject("Prefab Beam"); owner.AddComponent<scene::VFXBeamComponent>();
@@ -152,6 +158,7 @@ TEST_F(TargetPointReferenceOperatorTest, PrefabStructureAndInvalidPointFailWitho
     EXPECT_TRUE(owner.GetComponent<scene::VFXBeamComponent>()->fromEntity.guid.empty());
 }
 
+/// @brief Missing GUID clear and undo preserve the unresolved GUID.
 TEST_F(TargetPointReferenceOperatorTest, MissingGuidClearAndUndoPreserveTheUnresolvedGuid)
 {
     auto& owner = World().CreateGameObject("Camera"); auto& camera = owner.AddComponent<scene::CameraFollowComponent>();
@@ -165,6 +172,7 @@ TEST_F(TargetPointReferenceOperatorTest, MissingGuidClearAndUndoPreserveTheUnres
     EXPECT_EQ(camera.target.guid, "missing-target-guid");
 }
 
+/// @brief Persistent binding rejects runtime generated target and owner without changes.
 TEST_F(TargetPointReferenceOperatorTest, PersistentBindingRejectsRuntimeGeneratedTargetAndOwnerWithoutChanges)
 {
     auto& owner = World().CreateGameObject("Beam"); auto& beam = owner.AddComponent<scene::VFXBeamComponent>();
@@ -184,6 +192,7 @@ TEST_F(TargetPointReferenceOperatorTest, PersistentBindingRejectsRuntimeGenerate
     EXPECT_EQ(World().GameObjectCount(), parentedCount); EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief IK connection keeps chain label offset and rejects changed chain identity.
 TEST_F(TargetPointReferenceOperatorTest, IkConnectionKeepsChainLabelOffsetAndRejectsChangedChainIdentity)
 {
     auto& owner = World().CreateGameObject("Rig"); auto& solver = owner.AddComponent<scene::IKSolverComponent>();
@@ -203,6 +212,7 @@ TEST_F(TargetPointReferenceOperatorTest, IkConnectionKeepsChainLabelOffsetAndRej
     EXPECT_EQ(chain.targetReference.guid, target.instanceId);
 }
 
+/// @brief LOD and motion warp require markers and restore only authoring source.
 TEST_F(TargetPointReferenceOperatorTest, LodAndMotionWarpRequireMarkersAndRestoreOnlyAuthoringSource)
 {
     auto& owner = World().CreateGameObject("Owner"); auto& lod = owner.AddComponent<scene::LODGroupComponent>();
@@ -226,6 +236,7 @@ TEST_F(TargetPointReferenceOperatorTest, LodAndMotionWarpRequireMarkersAndRestor
     EXPECT_FLOAT_EQ(warp.target.remaining, 0.75f); EXPECT_EQ(warp.runtimeWarpCount, 17u);
 }
 
+/// @brief Pose drivers reject descendant targets.
 TEST_F(TargetPointReferenceOperatorTest, PoseDriversRejectDescendantTargets)
 {
     auto& owner = World().CreateGameObject("Owner"); owner.AddComponent<scene::CameraFollowComponent>();
@@ -240,6 +251,7 @@ TEST_F(TargetPointReferenceOperatorTest, PoseDriversRejectDescendantTargets)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Pose driver creates independent sibling with signed parent transform.
 TEST_F(TargetPointReferenceOperatorTest, PoseDriverCreatesIndependentSiblingWithSignedParentTransform)
 {
     auto& parent = World().CreateGameObject("Parent");
@@ -257,6 +269,7 @@ TEST_F(TargetPointReferenceOperatorTest, PoseDriverCreatesIndependentSiblingWith
     ASSERT_TRUE(m_undo.Undo()); ASSERT_TRUE(m_undo.Redo());
 }
 
+/// @brief Light anchor adds constraint and independent point in one undo.
 TEST_F(TargetPointReferenceOperatorTest, LightAnchorAddsConstraintAndIndependentPointInOneUndo)
 {
     auto& owner = World().CreateGameObject("Light"); auto& light = owner.AddComponent<scene::LightComponent>();
@@ -277,6 +290,7 @@ TEST_F(TargetPointReferenceOperatorTest, LightAnchorAddsConstraintAndIndependent
     EXPECT_NE(World().FindByGuid(guid), nullptr); EXPECT_FLOAT_EQ(light.intensity, 18.0f);
 }
 
+/// @brief Existing anchor undo preserves other constraint and flow field settings.
 TEST_F(TargetPointReferenceOperatorTest, ExistingAnchorUndoPreservesOtherConstraintAndFlowFieldSettings)
 {
     auto& owner = World().CreateGameObject("Flow"); auto& flow = owner.AddComponent<scene::FlowField>();
@@ -296,6 +310,7 @@ TEST_F(TargetPointReferenceOperatorTest, ExistingAnchorUndoPreservesOtherConstra
     EXPECT_VEC3_NEAR(constraint.positionOffset, (math::Vector3{1.0f, 2.0f, 3.0f}), testkit::kTolerance);
 }
 
+/// @brief Added constraint edit prevents destructive undo.
 TEST_F(TargetPointReferenceOperatorTest, AddedConstraintEditPreventsDestructiveUndo)
 {
     auto& owner = World().CreateGameObject("Light"); owner.AddComponent<scene::LightComponent>();

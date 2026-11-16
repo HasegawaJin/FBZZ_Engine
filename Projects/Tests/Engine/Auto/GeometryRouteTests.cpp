@@ -55,11 +55,13 @@ protected:
     testkit::TempDir m_temp{"geometry-route"};
 };
 
+/// @brief Checks standard opaque material goes to the g buffer.
 TEST_F(GeometryRouteTest, StandardOpaqueMaterialGoesToTheGBuffer)
 {
     EXPECT_EQ(ResolveGeometryRoute(GBufferBound(), true), GeometryRoute::GBuffer);
 }
 
+/// @brief Alpha, additive and premultiplied materials take the forward transparent route regardless of GBuffer compatibility.
 /// @note 半透明は GBuffer が表せない。他の条件が何であっても必ず透明経路。
 TEST_F(GeometryRouteTest, TransparencyAlwaysWins)
 {
@@ -80,6 +82,7 @@ TEST_F(GeometryRouteTest, TransparencyAlwaysWins)
     }
 }
 
+/// @brief Forward pipeline never produces g buffer route.
 /// @note Forward パイプラインには GBuffer が無いので、不透明はすべて ForwardOpaque。
 TEST_F(GeometryRouteTest, ForwardPipelineNeverProducesGBufferRoute)
 {
@@ -87,6 +90,7 @@ TEST_F(GeometryRouteTest, ForwardPipelineNeverProducesGBufferRoute)
     EXPECT_EQ(ResolveGeometryRoute(input, false), GeometryRoute::ForwardOpaque);
 }
 
+/// @brief Unknown shader stays forward.
 /// @note GBuffer パスは材質のシェーダーを捨てて GBuffer.hlsl で描く。
 /// @note 知らないシェーダーを通すと、そのシェーディングモデルが黙って PBR に化ける。
 TEST_F(GeometryRouteTest, UnknownShaderStaysForward)
@@ -96,6 +100,7 @@ TEST_F(GeometryRouteTest, UnknownShaderStaysForward)
     EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardOpaque);
 }
 
+/// @brief Advanced lobe stays forward.
 /// @note 拡張ローブは GBuffer 2 枚に接線基底ごと入らない。
 TEST_F(GeometryRouteTest, AdvancedLobeStaysForward)
 {
@@ -104,6 +109,7 @@ TEST_F(GeometryRouteTest, AdvancedLobeStaysForward)
     EXPECT_EQ(ResolveGeometryRoute(input, true), GeometryRoute::ForwardOpaque);
 }
 
+/// @brief Every combination resolves to exactly one route.
 /// @note 4 つのフラグの全組み合わせで、必ずどれか 1 つの経路に落ちること。
 /// @note 規則に穴 (どれにも当たらない) も重なり (2 つに当たる) も無いことの表明。
 TEST_F(GeometryRouteTest, EveryCombinationResolvesToExactlyOneRoute)
@@ -138,11 +144,13 @@ TEST_F(GeometryRouteTest, EveryCombinationResolvesToExactlyOneRoute)
     EXPECT_EQ(forwardOpaque, 7);
 }
 
+/// @brief Empty shader path does not declare g buffer equivalence.
 TEST_F(GeometryRouteTest, EmptyShaderPathDoesNotDeclareGBufferEquivalence)
 {
     EXPECT_FALSE(scene::IsGBufferEquivalentShader(""));
 }
 
+/// @brief Standard PBR shaders are g buffer equivalent.
 TEST_F(GeometryRouteTest, StandardPbrShadersAreGBufferEquivalent)
 {
     EXPECT_TRUE(scene::IsGBufferEquivalentShader(ShaderPath("PBR.hlsl")));
@@ -151,6 +159,7 @@ TEST_F(GeometryRouteTest, StandardPbrShadersAreGBufferEquivalent)
         "guid:ffffffffffffffffffffffffffffffff|Assets/Shaders/Material/Surface/PBR.hlsl"));
 }
 
+/// @brief Non PBR lighting models are not g buffer equivalent.
 /// @note シェーディングモデルが PBR でないものは、不透明でも GBuffer へ入れない。
 TEST_F(GeometryRouteTest, NonPbrLightingModelsAreNotGBufferEquivalent)
 {
@@ -159,6 +168,7 @@ TEST_F(GeometryRouteTest, NonPbrLightingModelsAreNotGBufferEquivalent)
     }
 }
 
+/// @brief Project authored shaders are not g buffer equivalent.
 /// @note プロジェクトが自分で書いたシェーダーは «知らないもの» なので Forward へ倒れること。
 TEST_F(GeometryRouteTest, ProjectAuthoredShadersAreNotGBufferEquivalent)
 {

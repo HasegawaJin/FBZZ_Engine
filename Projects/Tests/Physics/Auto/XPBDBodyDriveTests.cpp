@@ -12,6 +12,7 @@
 namespace fbzz::tests {
 class XPBDBodyDriveTest : public testkit::Fixture {};
 
+/// @brief Holds gravity at same deflection across mass and substeps.
 TEST_F(XPBDBodyDriveTest, HoldsGravityAtSameDeflectionAcrossMassAndSubsteps)
 {
     for (int substeps : {1,4,12}) for (float mass : {1.0f,20.0f}) {
@@ -34,6 +35,7 @@ TEST_F(XPBDBodyDriveTest, HoldsGravityAtSameDeflectionAcrossMassAndSubsteps)
     }
 }
 
+/// @brief Force and torque include damping within single budget.
 TEST_F(XPBDBodyDriveTest, ForceAndTorqueIncludeDampingWithinSingleBudget)
 {
     physics::RigidBody body;
@@ -52,6 +54,7 @@ TEST_F(XPBDBodyDriveTest, ForceAndTorqueIncludeDampingWithinSingleBudget)
     EXPECT_LE(physics::RotationVector(body.GetRotation()).Length(),4.0f/2*h*h+1.0e-6f);
 }
 
+/// @brief Parent drive conserves momentum and leaves uncontrolled axes free.
 TEST_F(XPBDBodyDriveTest, ParentDriveConservesMomentumAndLeavesUncontrolledAxesFree)
 {
     physics::RigidBody child,parent;
@@ -75,6 +78,7 @@ TEST_F(XPBDBodyDriveTest, ParentDriveConservesMomentumAndLeavesUncontrolledAxesF
     EXPECT_VEC3_NEAR(child.GetPosition(),p,1.0e-6f);
 }
 
+/// @brief Matching target velocity avoids drag on animation.
 TEST_F(XPBDBodyDriveTest, MatchingTargetVelocityAvoidsDragOnAnimation)
 {
     physics::RigidBody body;

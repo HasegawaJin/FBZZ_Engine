@@ -70,6 +70,7 @@ class ParticleCodecTest : public testkit::EngineFixture {};
 
 /// @name カーブ
 
+/// @brief Curve keeps its keys through a round trip.
 TEST_F(ParticleCodecTest, CurveKeepsItsKeysThroughARoundTrip)
 {
     const scene::ParticleCurve original = DistinctCurve();
@@ -83,6 +84,7 @@ TEST_F(ParticleCodecTest, CurveKeepsItsKeysThroughARoundTrip)
     }
 }
 
+/// @brief Curve keeps its interpolation mode.
 TEST_F(ParticleCodecTest, CurveKeepsItsInterpolationMode)
 {
     /// @note モードを落とすと «なめらかにしたカーブが折れ線に戻る»。値は合っているので気づけない。
@@ -91,6 +93,7 @@ TEST_F(ParticleCodecTest, CurveKeepsItsInterpolationMode)
     EXPECT_EQ(restored.interpolation, scene::ParticleCurveInterpolation::Smooth);
 }
 
+/// @brief Curve evaluates the same after a round trip.
 TEST_F(ParticleCodecTest, CurveEvaluatesTheSameAfterARoundTrip)
 {
     /// @note 最終的に一致していてほしいのは «同じ時刻で同じ値» であること。
@@ -105,6 +108,7 @@ TEST_F(ParticleCodecTest, CurveEvaluatesTheSameAfterARoundTrip)
     }
 }
 
+/// @brief Deserialising a missing key leaves the target alone.
 TEST_F(ParticleCodecTest, DeserialisingAMissingKeyLeavesTheTargetAlone)
 {
     /// @note 古い .particle には新しい項目が無い。読めなくなるのではなく既定値のまま残す。
@@ -119,6 +123,7 @@ TEST_F(ParticleCodecTest, DeserialisingAMissingKeyLeavesTheTargetAlone)
 
 /// @name グラデーション
 
+/// @brief Gradient keeps every channel through a round trip.
 TEST_F(ParticleCodecTest, GradientKeepsEveryChannelThroughARoundTrip)
 {
     const scene::ParticleGradient original = DistinctGradient();
@@ -134,6 +139,7 @@ TEST_F(ParticleCodecTest, GradientKeepsEveryChannelThroughARoundTrip)
     }
 }
 
+/// @brief Gradient keeps HDR values above one.
 TEST_F(ParticleCodecTest, GradientKeepsHdrValuesAboveOne)
 {
     /// @note RGB は 1 を超えてよい (HDR)。保存時にクランプすると発光が死ぬ。
@@ -142,6 +148,7 @@ TEST_F(ParticleCodecTest, GradientKeepsHdrValuesAboveOne)
     EXPECT_GT(restored.keys[0].color.x, 1.0f);
 }
 
+/// @brief Gradient keeps its interpolation mode.
 TEST_F(ParticleCodecTest, GradientKeepsItsInterpolationMode)
 {
     const scene::ParticleGradient restored = RoundTrip(DistinctGradient());
@@ -149,6 +156,7 @@ TEST_F(ParticleCodecTest, GradientKeepsItsInterpolationMode)
     EXPECT_EQ(restored.interpolation, scene::ParticleCurveInterpolation::Step);
 }
 
+/// @brief Gradient evaluates the same after a round trip.
 TEST_F(ParticleCodecTest, GradientEvaluatesTheSameAfterARoundTrip)
 {
     const scene::ParticleGradient original = DistinctGradient();
@@ -162,6 +170,7 @@ TEST_F(ParticleCodecTest, GradientEvaluatesTheSameAfterARoundTrip)
     }
 }
 
+/// @brief A default curve survives the round trip unchanged.
 TEST_F(ParticleCodecTest, ADefaultCurveSurvivesTheRoundTripUnchanged)
 {
     /// @note 既定値そのものが往復で変わると、触っていないエフェクトの差分が出る。
@@ -186,6 +195,7 @@ const scene::FlowFieldSettings* FindForce(
     return emitter.FindLocalForce(type);
 }
 
+/// @brief Legacy gravity key becomes the emitter gravity.
 TEST_F(ParticleCodecTest, LegacyGravityKeyBecomesTheEmitterGravity)
 {
     toml::table legacy;
@@ -200,6 +210,7 @@ TEST_F(ParticleCodecTest, LegacyGravityKeyBecomesTheEmitterGravity)
         << "重力が流れとして残ると、環境流と二重に掛かる";
 }
 
+/// @brief Checks legacy motion keys become the matching flows.
 TEST_F(ParticleCodecTest, LegacyMotionKeysBecomeTheMatchingFlows)
 {
     toml::table legacy;
@@ -241,6 +252,7 @@ TEST_F(ParticleCodecTest, LegacyMotionKeysBecomeTheMatchingFlows)
     EXPECT_EQ(source->space, scene::FlowFieldSpace::Emitter);
 }
 
+/// @brief Legacy file without motion keys gets no flows.
 TEST_F(ParticleCodecTest, LegacyFileWithoutMotionKeysGetsNoFlows)
 {
     /// @note 旧ファイルが gravity を書いていない = 既定 (0,-5,0) だった、が正しい復元。
@@ -291,6 +303,7 @@ TEST_F(ParticleCodecTest, LegacyAccelerationForcesBecomeFlowSpeeds)
                 10.0f * scene::kLegacyAccelerationToFlowSpeed, testkit::kTolerance);
 }
 
+/// @brief An empty flow list survives the round trip.
 TEST_F(ParticleCodecTest, AnEmptyFlowListSurvivesTheRoundTrip)
 {
     /// @note «流れを全部消した» と «旧ファイル» は区別が要る。前者で既定が復活すると、
@@ -311,6 +324,7 @@ TEST_F(ParticleCodecTest, AnEmptyFlowListSurvivesTheRoundTrip)
     EXPECT_FALSE(restored.randomStartRotation);
 }
 
+/// @brief A baked flow survives the round trip.
 TEST_F(ParticleCodecTest, ABakedFlowSurvivesTheRoundTrip)
 {
     scene::ParticleEmitterSettings original;
@@ -337,6 +351,7 @@ TEST_F(ParticleCodecTest, ABakedFlowSurvivesTheRoundTrip)
 }
 
 
+/// @brief Starters replace conflicting modules and keep identity controls.
 TEST_F(ParticleCodecTest, StartersReplaceConflictingModulesAndKeepIdentityControls)
 {
     for (const auto& preset : asset::ParticleEmitterPresets()) {
@@ -362,6 +377,7 @@ TEST_F(ParticleCodecTest, StartersReplaceConflictingModulesAndKeepIdentityContro
     }
 }
 
+/// @brief Starter modules and material references survive serialization.
 TEST_F(ParticleCodecTest, StarterModulesAndMaterialReferencesSurviveSerialization)
 {
     for (const auto& preset : asset::ParticleEmitterPresets()) {

@@ -23,6 +23,7 @@ protected:
     scene::Scene m_scene;
 };
 
+/// @brief One particle per cycle remains visible at thirty and sixty FPS.
 TEST_F(ParticleLoopInspectionTest, OneParticlePerCycleRemainsVisibleAtThirtyAndSixtyFps)
 {
     scene::GameObject& object = m_scene.CreateGameObject("JetFlame");
@@ -53,6 +54,7 @@ TEST_F(ParticleLoopInspectionTest, OneParticlePerCycleRemainsVisibleAtThirtyAndS
     }
 }
 
+/// @brief Empty atlas is reported as blank.
 TEST_F(ParticleLoopInspectionTest, EmptyAtlasIsReportedAsBlank)
 {
     scene::GameObject& object = m_scene.CreateGameObject("Blank");
@@ -73,6 +75,7 @@ TEST_F(ParticleLoopInspectionTest, EmptyAtlasIsReportedAsBlank)
 }
 
 
+/// @brief Checks every starter produces finite bounded particles and replays deterministically.
 TEST_F(ParticleLoopInspectionTest, EveryStarterProducesFiniteBoundedParticlesAndReplaysDeterministically)
 {
     for (const auto& preset : asset::ParticleEmitterPresets()) {
@@ -100,6 +103,7 @@ TEST_F(ParticleLoopInspectionTest, EveryStarterProducesFiniteBoundedParticlesAnd
     }
 }
 
+/// @brief Checks burst requests saturate without integer overflow.
 TEST_F(ParticleLoopInspectionTest, BurstRequestsSaturateWithoutIntegerOverflow)
 {
     scene::ParticleEmitter emitter;
@@ -128,6 +132,7 @@ TEST_F(ParticleLoopInspectionTest, BurstRequestsSaturateWithoutIntegerOverflow)
     EXPECT_EQ(scheduled.runtime.particles.size(), 16u);
 }
 
+/// @brief Starter simulation requirements are reported.
 TEST_F(ParticleLoopInspectionTest, StarterSimulationRequirementsAreReported)
 {
     scene::ParticleEmitterSettings settings;
@@ -139,6 +144,7 @@ TEST_F(ParticleLoopInspectionTest, StarterSimulationRequirementsAreReported)
 }
 
 
+/// @brief Stretched rotated cards fit the automatic bounds.
 TEST_F(ParticleLoopInspectionTest, StretchedRotatedCardsFitTheAutomaticBounds)
 {
     scene::GameObject& object = m_scene.CreateGameObject("StretchedBounds");
@@ -164,6 +170,7 @@ TEST_F(ParticleLoopInspectionTest, StretchedRotatedCardsFitTheAutomaticBounds)
     EXPECT_LT(emitter.runtime.boundsRadius, 18.0f);
 }
 
+/// @brief Billboard and ribbon history bounds follow simulation space and negative scale.
 TEST_F(ParticleLoopInspectionTest, BillboardAndRibbonHistoryBoundsFollowSimulationSpaceAndNegativeScale)
 {
     for (bool localSpace : {false, true}) {
@@ -201,6 +208,7 @@ TEST_F(ParticleLoopInspectionTest, BillboardAndRibbonHistoryBoundsFollowSimulati
     }
 }
 
+/// @brief Empty pool bounds contain spawn shape and local motion envelope.
 TEST_F(ParticleLoopInspectionTest, EmptyPoolBoundsContainSpawnShapeAndLocalMotionEnvelope)
 {
     scene::GameObject& object = m_scene.CreateGameObject("EmptyBounds");
@@ -225,6 +233,7 @@ TEST_F(ParticleLoopInspectionTest, EmptyPoolBoundsContainSpawnShapeAndLocalMotio
     EXPECT_LT(emitter.runtime.boundsRadius, 23.0f);
 }
 
+/// @brief Non-finite inputs and huge finite distances do not poison bounds.
 TEST_F(ParticleLoopInspectionTest, NonFiniteInputsAndHugeFiniteDistancesDoNotPoisonBounds)
 {
     for (bool invalid : {false, true}) {

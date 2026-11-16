@@ -21,6 +21,7 @@ class StringUtilsTest : public testkit::EngineFixture {};
 
 /// @name 検索
 
+/// @brief Contains is case sensitive and contains CI is not.
 TEST_F(StringUtilsTest, ContainsIsCaseSensitiveAndContainsCIIsNot)
 {
     EXPECT_TRUE(StringUtils::Contains("PlayerComponent", "Component"));
@@ -28,12 +29,14 @@ TEST_F(StringUtilsTest, ContainsIsCaseSensitiveAndContainsCIIsNot)
     EXPECT_TRUE(StringUtils::ContainsCI("PlayerComponent", "component"));
 }
 
+/// @brief Every string contains the empty string.
 TEST_F(StringUtilsTest, EveryStringContainsTheEmptyString)
 {
     EXPECT_TRUE(StringUtils::Contains("abc", ""));
     EXPECT_TRUE(StringUtils::ContainsCI("abc", ""));
 }
 
+/// @brief Prefix and suffix tests match the whole edge.
 TEST_F(StringUtilsTest, PrefixAndSuffixTestsMatchTheWholeEdge)
 {
     EXPECT_TRUE(StringUtils::StartsWith("Assets/Scenes/Main.scene", "Assets/"));
@@ -42,6 +45,7 @@ TEST_F(StringUtilsTest, PrefixAndSuffixTestsMatchTheWholeEdge)
     EXPECT_FALSE(StringUtils::EndsWith("Assets/Scenes/Main.scene", ".mat"));
 }
 
+/// @brief Prefix and suffix reject affixes longer than the string.
 TEST_F(StringUtilsTest, PrefixAndSuffixRejectAffixesLongerThanTheString)
 {
     EXPECT_FALSE(StringUtils::StartsWith("ab", "abc"));
@@ -50,6 +54,7 @@ TEST_F(StringUtilsTest, PrefixAndSuffixRejectAffixesLongerThanTheString)
 
 /// @name 比較と変換
 
+/// @brief Equals CI ignores case on both sides.
 TEST_F(StringUtilsTest, EqualsCIIgnoresCaseOnBothSides)
 {
     EXPECT_TRUE(StringUtils::EqualsCI("Main.Scene", "MAIN.scene"));
@@ -57,12 +62,14 @@ TEST_F(StringUtilsTest, EqualsCIIgnoresCaseOnBothSides)
     EXPECT_FALSE(StringUtils::EqualsCI("Main", "Main2"));
 }
 
+/// @brief Case conversion leaves non letters alone.
 TEST_F(StringUtilsTest, CaseConversionLeavesNonLettersAlone)
 {
     EXPECT_EQ(StringUtils::ToLower("Assets/UI_01.PNG"), "assets/ui_01.png");
     EXPECT_EQ(StringUtils::ToUpper("Assets/UI_01.png"), "ASSETS/UI_01.PNG");
 }
 
+/// @brief Wide conversion round-trips.
 TEST_F(StringUtilsTest, WideConversionRoundTrips)
 {
     /// @note パスは Windows API へ渡すたびにこの往復を通る。落とすとファイルが開けない。
@@ -71,6 +78,7 @@ TEST_F(StringUtilsTest, WideConversionRoundTrips)
     EXPECT_EQ(StringUtils::ToNarrow(StringUtils::ToWide(original)), original);
 }
 
+/// @brief Wide conversion survives an empty string.
 TEST_F(StringUtilsTest, WideConversionSurvivesAnEmptyString)
 {
     EXPECT_TRUE(StringUtils::ToWide("").empty());
@@ -79,6 +87,7 @@ TEST_F(StringUtilsTest, WideConversionSurvivesAnEmptyString)
 
 /// @name 分割
 
+/// @brief Split breaks on every delimiter.
 TEST_F(StringUtilsTest, SplitBreaksOnEveryDelimiter)
 {
     const std::vector<std::string> parts = StringUtils::Split("a,b,c", ',');
@@ -89,6 +98,7 @@ TEST_F(StringUtilsTest, SplitBreaksOnEveryDelimiter)
     EXPECT_EQ(parts[2], "c");
 }
 
+/// @brief Split keeps empty fields in the middle.
 TEST_F(StringUtilsTest, SplitKeepsEmptyFieldsInTheMiddle)
 {
     /// @note "a,,b" は 3 列。空の列を落とすと、CSV 的な並びの列がずれる。
@@ -98,6 +108,7 @@ TEST_F(StringUtilsTest, SplitKeepsEmptyFieldsInTheMiddle)
     EXPECT_TRUE(parts[1].empty());
 }
 
+/// @brief Split drops the empty tail after a trailing delimiter.
 TEST_F(StringUtilsTest, SplitDropsTheEmptyTailAfterATrailingDelimiter)
 {
     /// @note 末尾の区切りは «空の列» を作らない契約。
@@ -107,6 +118,7 @@ TEST_F(StringUtilsTest, SplitDropsTheEmptyTailAfterATrailingDelimiter)
     EXPECT_EQ(parts[1], "b");
 }
 
+/// @brief Split of a text without the delimiter is the text itself.
 TEST_F(StringUtilsTest, SplitOfATextWithoutTheDelimiterIsTheTextItself)
 {
     const std::vector<std::string> parts = StringUtils::Split("abc", ',');
@@ -115,6 +127,7 @@ TEST_F(StringUtilsTest, SplitOfATextWithoutTheDelimiterIsTheTextItself)
     EXPECT_EQ(parts[0], "abc");
 }
 
+/// @brief Split of an empty string is empty.
 TEST_F(StringUtilsTest, SplitOfAnEmptyStringIsEmpty)
 {
     EXPECT_TRUE(StringUtils::Split("", ',').empty());
@@ -122,17 +135,20 @@ TEST_F(StringUtilsTest, SplitOfAnEmptyStringIsEmpty)
 
 /// @name トリム
 
+/// @brief Trim removes surrounding whitespace.
 TEST_F(StringUtilsTest, TrimRemovesSurroundingWhitespace)
 {
     EXPECT_EQ(StringUtils::Trim("  hello  "), "hello");
     EXPECT_EQ(StringUtils::Trim("\t\r\nhello\n"), "hello");
 }
 
+/// @brief Trim keeps inner whitespace.
 TEST_F(StringUtilsTest, TrimKeepsInnerWhitespace)
 {
     EXPECT_EQ(StringUtils::Trim("  a b  "), "a b");
 }
 
+/// @brief Trim of blank text is empty.
 TEST_F(StringUtilsTest, TrimOfBlankTextIsEmpty)
 {
     EXPECT_EQ(StringUtils::Trim("   \t\n"), "");

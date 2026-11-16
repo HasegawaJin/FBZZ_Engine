@@ -48,6 +48,7 @@ protected:
     }
 };
 
+/// @brief Keeps only as many of the newest lines as its capacity.
 TEST_F(CrashLogTailTest, KeepsOnlyAsManyOfTheNewestLinesAsItsCapacity)
 {
     const size_t logged = core::CrashLogTail::LINE_COUNT + 100;
@@ -60,6 +61,7 @@ TEST_F(CrashLogTailTest, KeepsOnlyAsManyOfTheNewestLinesAsItsCapacity)
     EXPECT_EQ(lines.back(), "[INFO]  tail-line-" + std::to_string(logged - 1));
 }
 
+/// @brief Writes the retained lines oldest first.
 TEST_F(CrashLogTailTest, WritesTheRetainedLinesOldestFirst)
 {
     const size_t logged = core::CrashLogTail::LINE_COUNT * 2 + 17;
@@ -72,6 +74,7 @@ TEST_F(CrashLogTailTest, WritesTheRetainedLinesOldestFirst)
         EXPECT_EQ(lines[i], "[INFO]  tail-line-" + std::to_string(logged - lines.size() + i));
 }
 
+/// @brief Truncates a long line on a character boundary.
 TEST_F(CrashLogTailTest, TruncatesALongLineOnACharacterBoundary)
 {
     /// @note 実行文字セットに依存せず、3 バイト文字 U+3042 で上限を超える。
@@ -91,6 +94,7 @@ TEST_F(CrashLogTailTest, TruncatesALongLineOnACharacterBoundary)
     EXPECT_TRUE(IsValidUtf8(lines[0]));
 }
 
+/// @brief Clear discards earlier lines and allows new logging.
 TEST_F(CrashLogTailTest, ClearDiscardsEarlierLinesAndAllowsNewLogging)
 {
     AppendNumberedLines(core::CrashLogTail::LINE_COUNT + 1);

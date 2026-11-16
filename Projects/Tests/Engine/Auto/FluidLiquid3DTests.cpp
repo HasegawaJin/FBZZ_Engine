@@ -42,6 +42,7 @@ void Advance(fluid::FluidLiquidSolver& solver, float seconds)
 
 } // namespace
 
+/// @brief Checks volumetric solve spreads in depth and stays on the floor.
 TEST(FluidLiquid3DTest, VolumetricSolveSpreadsInDepthAndStaysOnTheFloor)
 {
     const fluid::FluidRecipe recipe = SplashRecipe();
@@ -61,6 +62,7 @@ TEST(FluidLiquid3DTest, VolumetricSolveSpreadsInDepthAndStaysOnTheFloor)
     EXPECT_GT(maxDepth, 0.02f);
 }
 
+/// @brief Flat solve keeps depth at zero.
 TEST(FluidLiquid3DTest, FlatSolveKeepsDepthAtZero)
 {
     fluid::FluidRecipe recipe = SplashRecipe();
@@ -73,6 +75,7 @@ TEST(FluidLiquid3DTest, FlatSolveKeepsDepthAtZero)
     for (const auto& particle : solver.Particles()) EXPECT_EQ(particle.z, 0.0f);
 }
 
+/// @brief Packed volume marks liquid only where particles are.
 TEST(FluidLiquid3DTest, PackedVolumeMarksLiquidOnlyWhereParticlesAre)
 {
     fluid::FluidLiquidSolver solver;
@@ -93,6 +96,7 @@ TEST(FluidLiquid3DTest, PackedVolumeMarksLiquidOnlyWhereParticlesAre)
     EXPECT_TRUE(consistent);
 }
 
+/// @brief Particles carry their source color key into the volume.
 TEST(FluidLiquid3DTest, ParticlesCarryTheirSourceColorKeyIntoTheVolume)
 {
     /// @note 鍵 0 と鍵 1 の発生源を左右に離して置く。混ざる前なら、左の液は B = 0・右の液は B = 1。

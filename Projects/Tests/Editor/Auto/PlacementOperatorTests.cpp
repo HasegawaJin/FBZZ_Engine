@@ -55,6 +55,7 @@ protected:
     int m_dirtyCalls = 0;
 };
 
+/// @brief Preview computes from local without changing derived world or history.
 TEST_F(PlacementOperatorTest, PreviewComputesFromLocalWithoutChangingDerivedWorldOrHistory)
 {
     auto& object = AttachedScene()->CreateGameObject("Rock");
@@ -73,6 +74,7 @@ TEST_F(PlacementOperatorTest, PreviewComputesFromLocalWithoutChangingDerivedWorl
     EXPECT_EQ(m_dirtyCalls, 0); EXPECT_FALSE(Context().sceneDirty); EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief World alignment under rotated nonuniform parent preserves pose and synchronizes children.
 TEST_F(PlacementOperatorTest, WorldAlignmentUnderRotatedNonuniformParentPreservesPoseAndSynchronizesChildren)
 {
     auto& parent = AttachedScene()->CreateGameObject("Parent");
@@ -101,6 +103,7 @@ TEST_F(PlacementOperatorTest, WorldAlignmentUnderRotatedNonuniformParentPreserve
     ASSERT_TRUE(m_undo.Redo()); EXPECT_NEAR(object.transform.worldPosition.y, 30.0f, 0.0001f);
 }
 
+/// @brief Distribution sorts world coordinates and preserves endpoints and other axes.
 TEST_F(PlacementOperatorTest, DistributionSortsWorldCoordinatesAndPreservesEndpointsAndOtherAxes)
 {
     auto& left = AttachedScene()->CreateGameObject("Left");
@@ -114,6 +117,7 @@ TEST_F(PlacementOperatorTest, DistributionSortsWorldCoordinatesAndPreservesEndpo
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief Ground uses static mesh bottom including rotation scale and offset.
 TEST_F(PlacementOperatorTest, GroundUsesStaticMeshBottomIncludingRotationScaleAndOffset)
 {
     auto& object = AttachedScene()->CreateGameObject("Rock");
@@ -138,6 +142,7 @@ TEST_F(PlacementOperatorTest, GroundUsesStaticMeshBottomIncludingRotationScaleAn
     EXPECT_EQ(result.data.Find("surface")->AsString(), "horizontal-plane");
 }
 
+/// @brief Ground requires explicit plane and supported anchor.
 TEST_F(PlacementOperatorTest, GroundRequiresExplicitPlaneAndSupportedAnchor)
 {
     auto& object = AttachedScene()->CreateGameObject("Empty");
@@ -151,6 +156,7 @@ TEST_F(PlacementOperatorTest, GroundRequiresExplicitPlaneAndSupportedAnchor)
     EXPECT_VEC3_NEAR(object.transform.worldPosition, math::Vector3(2, 7, 4), 0.0001f);
 }
 
+/// @brief Missing duplicate and parent child targets are rejected before any edit.
 TEST_F(PlacementOperatorTest, MissingDuplicateAndParentChildTargetsAreRejectedBeforeAnyEdit)
 {
     auto& parent = AttachedScene()->CreateGameObject("Parent");
@@ -165,6 +171,7 @@ TEST_F(PlacementOperatorTest, MissingDuplicateAndParentChildTargetsAreRejectedBe
     EXPECT_EQ(m_dirtyCalls, 0); EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Nonfinite and singular parent are rejected.
 TEST_F(PlacementOperatorTest, NonfiniteAndSingularParentAreRejected)
 {
     auto& parent = AttachedScene()->CreateGameObject("Parent");
@@ -178,6 +185,7 @@ TEST_F(PlacementOperatorTest, NonfiniteAndSingularParentAreRejected)
     EXPECT_FALSE(m_undo.CanUndo());
 }
 
+/// @brief Changed arguments or target invalidate preview.
 TEST_F(PlacementOperatorTest, ChangedArgumentsOrTargetInvalidatePreview)
 {
     auto& object = AttachedScene()->CreateGameObject("Rock");
@@ -191,6 +199,7 @@ TEST_F(PlacementOperatorTest, ChangedArgumentsOrTargetInvalidatePreview)
     EXPECT_FLOAT_EQ(object.transform.position.x, 0); EXPECT_EQ(m_dirtyCalls, 0);
 }
 
+/// @brief Undo conflict leaves every target and history cursor unchanged.
 TEST_F(PlacementOperatorTest, UndoConflictLeavesEveryTargetAndHistoryCursorUnchanged)
 {
     auto& first = AttachedScene()->CreateGameObject("First");
@@ -203,6 +212,7 @@ TEST_F(PlacementOperatorTest, UndoConflictLeavesEveryTargetAndHistoryCursorUncha
     EXPECT_FLOAT_EQ(first.transform.position.x, 10); EXPECT_FLOAT_EQ(second.transform.position.x, 8);
 }
 
+/// @brief Undo rejects parent change and replacement with same GUID.
 TEST_F(PlacementOperatorTest, UndoRejectsParentChangeAndReplacementWithSameGuid)
 {
     auto& parent = AttachedScene()->CreateGameObject("Parent");
@@ -218,6 +228,7 @@ TEST_F(PlacementOperatorTest, UndoRejectsParentChangeAndReplacementWithSameGuid)
     EXPECT_FALSE(m_undo.Undo()); EXPECT_FLOAT_EQ(replacement.transform.position.x, 8);
 }
 
+/// @brief No-op does not dirty or add history and disabled history cannot apply.
 TEST_F(PlacementOperatorTest, NoOpDoesNotDirtyOrAddHistoryAndDisabledHistoryCannotApply)
 {
     auto& object = AttachedScene()->CreateGameObject("Rock");
@@ -228,6 +239,7 @@ TEST_F(PlacementOperatorTest, NoOpDoesNotDirtyOrAddHistoryAndDisabledHistoryCann
     EXPECT_EQ(Apply(args).errorCode, "NOT_AVAILABLE"); EXPECT_FLOAT_EQ(object.transform.position.x, 0);
 }
 
+/// @brief Context can be inspected without scene and during play.
 TEST_F(PlacementOperatorTest, ContextCanBeInspectedWithoutSceneAndDuringPlay)
 {
     editor::PlayModeController play;

@@ -104,6 +104,7 @@ protected:
     }
 };
 
+/// @brief Large line pages publish every point only at commit and preserve enabled.
 TEST_F(ManagedRenderTransfersTest, LargeLinePagesPublishEveryPointOnlyAtCommitAndPreserveEnabled)
 {
     constexpr uint32_t count = 5003;
@@ -125,6 +126,7 @@ TEST_F(ManagedRenderTransfersTest, LargeLinePagesPublishEveryPointOnlyAtCommitAn
     EXPECT_EQ(Run(RenderTransferOp::SERVICE_LINE, 52, token), RenderTransferStatus::NOT_FOUND);
 }
 
+/// @brief Edit visual line and procedural mesh commit under live callback scope.
 TEST_F(ManagedRenderTransfersTest, EditVisualLineAndProceduralMeshCommitUnderLiveCallbackScope)
 {
     scene::Script::SetInPlayMode(false);
@@ -145,6 +147,7 @@ TEST_F(ManagedRenderTransfersTest, EditVisualLineAndProceduralMeshCommitUnderLiv
     EXPECT_EQ(Run(RenderTransferOp::SERVICE_MESH, 50, 0, mode), RenderTransferStatus::INVALID_ARGUMENT);
 }
 
+/// @brief Incomplete out of order oversized and nonfinite line pages leave live geometry unchanged.
 TEST_F(ManagedRenderTransfersTest, IncompleteOutOfOrderOversizedAndNonfiniteLinePagesLeaveLiveGeometryUnchanged)
 {
     const std::array<float, 3> point{1, 2, 3};
@@ -165,6 +168,7 @@ TEST_F(ManagedRenderTransfersTest, IncompleteOutOfOrderOversizedAndNonfiniteLine
     EXPECT_EQ(m_result.integer, 987); ExpectOriginalLine();
 }
 
+/// @brief Checks all scope fields and target birth fence one reception without mutating output.
 TEST_F(ManagedRenderTransfersTest, AllScopeFieldsAndTargetBirthFenceOneReceptionWithoutMutatingOutput)
 {
     const int64_t token = BeginLine(1); const auto original = m_request;
@@ -188,6 +192,7 @@ TEST_F(ManagedRenderTransfersTest, AllScopeFieldsAndTargetBirthFenceOneReception
     ExpectOriginalLine();
 }
 
+/// @brief Large mesh pages commit full vertex representation and topology and clear pending path.
 TEST_F(ManagedRenderTransfersTest, LargeMeshPagesCommitFullVertexRepresentationAndTopologyAndClearPendingPath)
 {
     constexpr uint32_t vertices = 257, indices = 771;
@@ -209,6 +214,7 @@ TEST_F(ManagedRenderTransfersTest, LargeMeshPagesCommitFullVertexRepresentationA
     EXPECT_TRUE(renderer->enabled); EXPECT_TRUE(procedural.enabled); EXPECT_TRUE(renderer->meshPath.empty()); EXPECT_FALSE(renderer->meshPathDirty);
 }
 
+/// @brief Malformed mesh indices and vertices never create procedural geometry.
 TEST_F(ManagedRenderTransfersTest, MalformedMeshIndicesAndVerticesNeverCreateProceduralGeometry)
 {
     const std::array<float, 1> mode{0};
@@ -231,6 +237,7 @@ TEST_F(ManagedRenderTransfersTest, MalformedMeshIndicesAndVerticesNeverCreatePro
     EXPECT_EQ(m_object->GetComponent<scene::MeshRenderer>()->meshPath, "Pending.model");
 }
 
+/// @brief Vertex only updates preserve topology enabled and pending full upload.
 TEST_F(ManagedRenderTransfersTest, VertexOnlyUpdatesPreserveTopologyEnabledAndPendingFullUpload)
 {
     int64_t token = BeginMesh(3, 3); StageVertices(token, 3); StageIndices(token, 3, 3);
@@ -258,6 +265,7 @@ TEST_F(ManagedRenderTransfersTest, VertexOnlyUpdatesPreserveTopologyEnabledAndPe
     EXPECT_EQ(replacement.dirty, scene::MeshDirty::None);
 }
 
+/// @brief Abort call owner and generation cleanup reclaim every candidate and resource limit.
 TEST_F(ManagedRenderTransfersTest, AbortCallOwnerAndGenerationCleanupReclaimEveryCandidateAndResourceLimit)
 {
     std::vector<int64_t> tokens;

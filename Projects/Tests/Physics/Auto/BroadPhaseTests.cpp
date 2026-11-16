@@ -130,6 +130,7 @@ class BroadPhaseTest : public testkit::Fixture {};
 
 /// @name 重なり
 
+/// @brief Pairs up two overlapping colliders.
 TEST_F(BroadPhaseTest, PairsUpTwoOverlappingColliders)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -138,6 +139,7 @@ TEST_F(BroadPhaseTest, PairsUpTwoOverlappingColliders)
     EXPECT_EQ(Sweep({ a.Instance(), b.Instance() }).size(), 1u);
 }
 
+/// @brief Ignores colliders whose bounds do not touch.
 TEST_F(BroadPhaseTest, IgnoresCollidersWhoseBoundsDoNotTouch)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -146,6 +148,7 @@ TEST_F(BroadPhaseTest, IgnoresCollidersWhoseBoundsDoNotTouch)
     EXPECT_TRUE(Sweep({ a.Instance(), b.Instance() }).empty());
 }
 
+/// @brief Produces no pairs for a single collider.
 TEST_F(BroadPhaseTest, ProducesNoPairsForASingleCollider)
 {
     Body only({ 0.0f, 0.0f, 0.0f });
@@ -153,11 +156,13 @@ TEST_F(BroadPhaseTest, ProducesNoPairsForASingleCollider)
     EXPECT_TRUE(Sweep({ only.Instance() }).empty());
 }
 
+/// @brief Produces no pairs for an empty world.
 TEST_F(BroadPhaseTest, ProducesNoPairsForAnEmptyWorld)
 {
     EXPECT_TRUE(Sweep({}).empty());
 }
 
+/// @brief Reports each pair exactly once.
 TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnce)
 {
     /// @note 同じ組を 2 回出すと、その接触だけインパルスが二重に入る。
@@ -169,6 +174,7 @@ TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnce)
     ExpectPairs({ a.Instance(), b.Instance(), c.Instance() }, {{0, 1}, {0, 2}, {1, 2}});
 }
 
+/// @brief Finds only the overlapping subset in a crowd.
 TEST_F(BroadPhaseTest, FindsOnlyTheOverlappingSubsetInACrowd)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -179,6 +185,7 @@ TEST_F(BroadPhaseTest, FindsOnlyTheOverlappingSubsetInACrowd)
     ExpectPairs({ a.Instance(), b.Instance(), far1.Instance(), far2.Instance() }, {{0, 1}});
 }
 
+/// @brief Skips entries without a collider.
 TEST_F(BroadPhaseTest, SkipsEntriesWithoutACollider)
 {
     /// @note コンポーネントを外した直後などに null が混ざる。走査ごと落とさないこと。
@@ -191,6 +198,7 @@ TEST_F(BroadPhaseTest, SkipsEntriesWithoutACollider)
 
 /// @name レイヤー
 
+/// @brief Drops pairs rejected by the layer filter.
 TEST_F(BroadPhaseTest, DropsPairsRejectedByTheLayerFilter)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -203,6 +211,7 @@ TEST_F(BroadPhaseTest, DropsPairsRejectedByTheLayerFilter)
     EXPECT_TRUE(pairs.empty());
 }
 
+/// @brief Keeps pairs accepted by the layer filter.
 TEST_F(BroadPhaseTest, KeepsPairsAcceptedByTheLayerFilter)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -215,6 +224,7 @@ TEST_F(BroadPhaseTest, KeepsPairsAcceptedByTheLayerFilter)
     EXPECT_EQ(pairs.size(), 1u);
 }
 
+/// @brief Treats a missing filter as collide everything.
 TEST_F(BroadPhaseTest, TreatsAMissingFilterAsCollideEverything)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -226,6 +236,7 @@ TEST_F(BroadPhaseTest, TreatsAMissingFilterAsCollideEverything)
 
 /// @name 動かない組の間引き
 
+/// @brief Skips two static colliders.
 TEST_F(BroadPhaseTest, SkipsTwoStaticColliders)
 {
     /// @note 解いても両方動かない。地形どうしの接触で BVH を毎 substep 叩くのを避ける。
@@ -237,6 +248,7 @@ TEST_F(BroadPhaseTest, SkipsTwoStaticColliders)
     EXPECT_TRUE(Sweep({ a.Instance(), b.Instance() }).empty());
 }
 
+/// @brief Keeps a dynamic collider against a static one.
 TEST_F(BroadPhaseTest, KeepsADynamicColliderAgainstAStaticOne)
 {
     Body dynamicBody({ 0.0f, 0.0f, 0.0f });
@@ -246,6 +258,7 @@ TEST_F(BroadPhaseTest, KeepsADynamicColliderAgainstAStaticOne)
     EXPECT_EQ(Sweep({ dynamicBody.Instance(), ground.Instance() }).size(), 1u);
 }
 
+/// @brief Skips two sleeping colliders.
 TEST_F(BroadPhaseTest, SkipsTwoSleepingColliders)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -256,6 +269,7 @@ TEST_F(BroadPhaseTest, SkipsTwoSleepingColliders)
     EXPECT_TRUE(Sweep({ a.Instance(), b.Instance() }).empty());
 }
 
+/// @brief Skips a sleeping collider resting on static geometry.
 TEST_F(BroadPhaseTest, SkipsASleepingColliderRestingOnStaticGeometry)
 {
     /// @note 眠った剛体が地形に載っているだけの状態。ここを毎 substep 判定すると
@@ -268,6 +282,7 @@ TEST_F(BroadPhaseTest, SkipsASleepingColliderRestingOnStaticGeometry)
     EXPECT_TRUE(Sweep({ sleeper.Instance(), ground.Instance() }).empty());
 }
 
+/// @brief Waking a sleeper brings the pair back.
 TEST_F(BroadPhaseTest, WakingASleeperBringsThePairBack)
 {
     /// @note 間引きは «今眠っているか» で決まる。起こした次のステップから判定が戻ること。
@@ -281,6 +296,7 @@ TEST_F(BroadPhaseTest, WakingASleeperBringsThePairBack)
     EXPECT_EQ(Sweep({ sleeper.Instance(), ground.Instance() }).size(), 1u);
 }
 
+/// @brief Skips collider only entries that have no body.
 TEST_F(BroadPhaseTest, SkipsColliderOnlyEntriesThatHaveNoBody)
 {
     Body a({ 0.0f, 0.0f, 0.0f });
@@ -291,6 +307,7 @@ TEST_F(BroadPhaseTest, SkipsColliderOnlyEntriesThatHaveNoBody)
     EXPECT_TRUE(Sweep({ a.Instance(), b.Instance() }).empty());
 }
 
+/// @brief Keeps static pairs when either side is a trigger.
 TEST_F(BroadPhaseTest, KeepsStaticPairsWhenEitherSideIsATrigger)
 {
     /// @note トリガーは «動かないけれど通知はしたい» 組。間引きの対象から外す。
@@ -303,6 +320,7 @@ TEST_F(BroadPhaseTest, KeepsStaticPairsWhenEitherSideIsATrigger)
     EXPECT_EQ(Sweep({ zone.Instance(), wall.Instance() }).size(), 1u);
 }
 
+/// @brief Applies the layer filter even to triggers.
 TEST_F(BroadPhaseTest, AppliesTheLayerFilterEvenToTriggers)
 {
     /// @note トリガーは静止ペアの間引きだけを免除される。レイヤー行列より上位ではない。
@@ -322,6 +340,7 @@ TEST_F(BroadPhaseTest, AppliesTheLayerFilterEvenToTriggers)
 /// 4 個以下しか試していないと «割った後の走査» が一度も走らない。実シーンは常に
 /// こちら側なので、以下は «本番でしか通らない経路» を手前に引っ張り出すためのもの。
 
+/// @brief Keeps finding every pair after the tree splits.
 TEST_F(BroadPhaseTest, KeepsFindingEveryPairAfterTheTreeSplits)
 {
     BodySet bodies = MakeSpreadClusters(5, 0);
@@ -330,6 +349,7 @@ TEST_F(BroadPhaseTest, KeepsFindingEveryPairAfterTheTreeSplits)
     EXPECT_EQ(Sweep(InstancesOf(bodies)).size(), 5u);
 }
 
+/// @brief Splits along whichever axis the crowd is spread on.
 TEST_F(BroadPhaseTest, SplitsAlongWhicheverAxisTheCrowdIsSpreadOn)
 {
     BodySet alongY = MakeSpreadClusters(5, 1);
@@ -341,6 +361,7 @@ TEST_F(BroadPhaseTest, SplitsAlongWhicheverAxisTheCrowdIsSpreadOn)
     EXPECT_EQ(Sweep(InstancesOf(alongZ)).size(), 5u);
 }
 
+/// @brief Reports each pair exactly once even when the tree splits.
 TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnceEvenWhenTheTreeSplits)
 {
     /// @note 6 個すべてが互いに重なる。分割後は «左の葉の中» «左と右» «右の葉の中» の
@@ -354,6 +375,7 @@ TEST_F(BroadPhaseTest, ReportsEachPairExactlyOnceEvenWhenTheTreeSplits)
     ExpectPairs(InstancesOf(crowd), expected);
 }
 
+/// @brief Terminates when every collider shares the same centre.
 TEST_F(BroadPhaseTest, TerminatesWhenEveryColliderSharesTheSameCentre)
 {
     /// @note 中心が 1 点に潰れると分割軸の幅が 0 になる。«幅で切る» 作りだと片側が空になり、

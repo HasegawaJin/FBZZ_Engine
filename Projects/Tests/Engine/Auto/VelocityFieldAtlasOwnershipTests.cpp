@@ -25,6 +25,7 @@ protected:
     uint64_t m_frame = 0;
 };
 
+/// @brief Alternating managers reuse their atlas and reset returns all textures.
 TEST_F(VelocityFieldAtlasOwnershipTest, AlternatingManagersReuseTheirAtlasAndResetReturnsAllTextures)
 {
     testkit::ResourceTrackingRenderer firstDevice, secondDevice;
@@ -50,6 +51,7 @@ TEST_F(VelocityFieldAtlasOwnershipTest, AlternatingManagersReuseTheirAtlasAndRes
     EXPECT_EQ(second.Get(other), nullptr);
 }
 
+/// @brief Invalidation rebuilds every owner and retires through the original manager.
 TEST_F(VelocityFieldAtlasOwnershipTest, InvalidationRebuildsEveryOwnerAndRetiresThroughTheOriginalManager)
 {
     testkit::ResourceTrackingRenderer firstDevice, secondDevice;
@@ -78,6 +80,7 @@ TEST_F(VelocityFieldAtlasOwnershipTest, InvalidationRebuildsEveryOwnerAndRetires
     asset::VelocityFieldAtlas::Reset();
 }
 
+/// @brief Reset and early owner destruction preserve the other owner.
 TEST_F(VelocityFieldAtlasOwnershipTest, ResetAndEarlyOwnerDestructionPreserveTheOtherOwner)
 {
     testkit::ResourceTrackingRenderer firstDevice, secondDevice;
@@ -103,6 +106,7 @@ TEST_F(VelocityFieldAtlasOwnershipTest, ResetAndEarlyOwnerDestructionPreserveThe
     EXPECT_EQ(secondDevice.m_texturesAlive, 0u);
 }
 
+/// @brief Unsupported owner does not disable another backend and fallback is returned.
 TEST_F(VelocityFieldAtlasOwnershipTest, UnsupportedOwnerDoesNotDisableAnotherBackendAndFallbackIsReturned)
 {
     testkit::ResourceTrackingRenderer unsupportedDevice, supportedDevice;

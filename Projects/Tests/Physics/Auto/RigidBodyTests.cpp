@@ -24,6 +24,7 @@ protected:
 
 /// @name 積分
 
+/// @brief Integrates velocity from the accumulated force.
 TEST_F(RigidBodyTest, IntegratesVelocityFromTheAccumulatedForce)
 {
     body.SetMass(2.0f);
@@ -34,6 +35,7 @@ TEST_F(RigidBodyTest, IntegratesVelocityFromTheAccumulatedForce)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.5f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Advances position with the updated velocity.
 TEST_F(RigidBodyTest, AdvancesPositionWithTheUpdatedVelocity)
 {
     /// @note 半陰的オイラー: 位置は «更新後» の速度で進む。陽的オイラーなら初速 0 のまま動かない。
@@ -45,6 +47,7 @@ TEST_F(RigidBodyTest, AdvancesPositionWithTheUpdatedVelocity)
     EXPECT_VEC3_NEAR(body.GetPosition(), math::Vector3(0.1f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Consumes the force after a single step.
 TEST_F(RigidBodyTest, ConsumesTheForceAfterASingleStep)
 {
     /// @note 力は «そのフレームだけ» の入力。持ち越すと押し続けたように加速していく。
@@ -58,6 +61,7 @@ TEST_F(RigidBodyTest, ConsumesTheForceAfterASingleStep)
     EXPECT_VEC3_NEAR(body.GetVelocity(), afterFirst, testkit::kTolerance);
 }
 
+/// @brief Moves at constant velocity without forces.
 TEST_F(RigidBodyTest, MovesAtConstantVelocityWithoutForces)
 {
     body.SetVelocity({1.0f, 0.0f, 0.0f});
@@ -67,6 +71,7 @@ TEST_F(RigidBodyTest, MovesAtConstantVelocityWithoutForces)
     EXPECT_VEC3_NEAR(body.GetPosition(), math::Vector3(1.0f, 0.0f, 0.0f), testkit::kLooseTolerance);
 }
 
+/// @brief Linear drag shrinks velocity without reversing it.
 TEST_F(RigidBodyTest, LinearDragShrinksVelocityWithoutReversingIt)
 {
     body.m_linearDrag = 5.0f;
@@ -78,6 +83,7 @@ TEST_F(RigidBodyTest, LinearDragShrinksVelocityWithoutReversingIt)
     EXPECT_GT(body.GetVelocity().x, 0.0f);
 }
 
+/// @brief Static bodies do not integrate.
 TEST_F(RigidBodyTest, StaticBodiesDoNotIntegrate)
 {
     body.m_isStatic = true;
@@ -89,6 +95,7 @@ TEST_F(RigidBodyTest, StaticBodiesDoNotIntegrate)
     EXPECT_VEC3_NEAR(body.GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Keeps the rotation normalized while spinning.
 TEST_F(RigidBodyTest, KeepsTheRotationNormalizedWhileSpinning)
 {
     /// @note q_dot の加算は正規性を壊す。放置すると回転行列がスケールを持ち、モデルが伸びる。
@@ -101,6 +108,7 @@ TEST_F(RigidBodyTest, KeepsTheRotationNormalizedWhileSpinning)
 
 /// @name 質量
 
+/// @brief Inverse mass is the reciprocal of mass.
 TEST_F(RigidBodyTest, InverseMassIsTheReciprocalOfMass)
 {
     body.SetMass(4.0f);
@@ -109,6 +117,7 @@ TEST_F(RigidBodyTest, InverseMassIsTheReciprocalOfMass)
     EXPECT_NEAR(body.GetMass(), 4.0f, testkit::kTolerance);
 }
 
+/// @brief Checks zero mass means infinite mass.
 TEST_F(RigidBodyTest, ZeroMassMeansInfiniteMass)
 {
     body.SetMass(0.0f);
@@ -116,6 +125,7 @@ TEST_F(RigidBodyTest, ZeroMassMeansInfiniteMass)
     EXPECT_NEAR(body.GetInvMass(), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Static bodies report zero inverse mass.
 TEST_F(RigidBodyTest, StaticBodiesReportZeroInverseMass)
 {
     body.m_isStatic = true;
@@ -124,6 +134,7 @@ TEST_F(RigidBodyTest, StaticBodiesReportZeroInverseMass)
     EXPECT_NEAR(body.GetInvMass(), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Negative mass accelerates against the applied force.
 TEST_F(RigidBodyTest, NegativeMassAcceleratesAgainstTheAppliedForce)
 {
     /// @note 反重力演出のために負の質量を許している。0 に丸めていないことを固定する。
@@ -137,6 +148,7 @@ TEST_F(RigidBodyTest, NegativeMassAcceleratesAgainstTheAppliedForce)
 
 /// @name インパルス
 
+/// @brief Checks impulse changes velocity immediately.
 TEST_F(RigidBodyTest, ImpulseChangesVelocityImmediately)
 {
     body.SetMass(2.0f);
@@ -146,6 +158,7 @@ TEST_F(RigidBodyTest, ImpulseChangesVelocityImmediately)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(2.0f, 0.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Impulse at the center of mass does not spin the body.
 TEST_F(RigidBodyTest, ImpulseAtTheCenterOfMassDoesNotSpinTheBody)
 {
     body.SetMass(1.0f);
@@ -155,6 +168,7 @@ TEST_F(RigidBodyTest, ImpulseAtTheCenterOfMassDoesNotSpinTheBody)
     EXPECT_VEC3_NEAR(body.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Checks impulse off the center of mass spins the body.
 TEST_F(RigidBodyTest, ImpulseOffTheCenterOfMassSpinsTheBody)
 {
     /// @note «端を殴れば回る»。重心へ入れると回らずに滑るだけになる。
@@ -166,6 +180,7 @@ TEST_F(RigidBodyTest, ImpulseOffTheCenterOfMassSpinsTheBody)
     EXPECT_GT(body.GetVelocity().y, 0.0f);
 }
 
+/// @brief Checks torque only changes the angular velocity.
 TEST_F(RigidBodyTest, TorqueOnlyChangesTheAngularVelocity)
 {
     body.SetMass(1.0f);
@@ -177,6 +192,7 @@ TEST_F(RigidBodyTest, TorqueOnlyChangesTheAngularVelocity)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Force at a point adds both force and torque.
 TEST_F(RigidBodyTest, ForceAtAPointAddsBothForceAndTorque)
 {
     body.SetMass(1.0f);
@@ -190,6 +206,7 @@ TEST_F(RigidBodyTest, ForceAtAPointAddsBothForceAndTorque)
 
 /// @name 慣性
 
+/// @brief Inertia from a sphere is isotropic.
 TEST_F(RigidBodyTest, InertiaFromASphereIsIsotropic)
 {
     physics::SphereCollider sphere(1.0f);
@@ -202,6 +219,7 @@ TEST_F(RigidBodyTest, InertiaFromASphereIsIsotropic)
     EXPECT_NEAR(x.Length(), y.Length(), testkit::kTolerance);
 }
 
+/// @brief Checks inertia from a box resists the long axis the least.
 TEST_F(RigidBodyTest, InertiaFromABoxResistsTheLongAxisTheLeast)
 {
     /// @note 細長い箱は «長い軸まわり» が一番回りやすい。ここが逆だと転倒の見た目が不自然になる。
@@ -215,6 +233,7 @@ TEST_F(RigidBodyTest, InertiaFromABoxResistsTheLongAxisTheLeast)
     EXPECT_GT(aroundLong.Length(), aroundShort.Length());
 }
 
+/// @brief Static bodies have no inverse inertia.
 TEST_F(RigidBodyTest, StaticBodiesHaveNoInverseInertia)
 {
     body.m_isStatic = true;
@@ -226,6 +245,7 @@ TEST_F(RigidBodyTest, StaticBodiesHaveNoInverseInertia)
 
 /// @name 軸ロック
 
+/// @brief Freezing an axis stops motion along it.
 TEST_F(RigidBodyTest, FreezingAnAxisStopsMotionAlongIt)
 {
     body.SetMass(1.0f);
@@ -238,6 +258,7 @@ TEST_F(RigidBodyTest, FreezingAnAxisStopsMotionAlongIt)
     EXPECT_GT(body.GetPosition().x, 0.0f);
 }
 
+/// @brief Freezing an axis clears existing velocity on that axis.
 TEST_F(RigidBodyTest, FreezingAnAxisClearsExistingVelocityOnThatAxis)
 {
     body.SetVelocity({1.0f, 1.0f, 1.0f});
@@ -248,6 +269,7 @@ TEST_F(RigidBodyTest, FreezingAnAxisClearsExistingVelocityOnThatAxis)
     EXPECT_NEAR(body.GetVelocity().z, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Freezing rotation stops spin on the locked axis only.
 TEST_F(RigidBodyTest, FreezingRotationStopsSpinOnTheLockedAxisOnly)
 {
     body.SetMass(1.0f);
@@ -259,6 +281,7 @@ TEST_F(RigidBodyTest, FreezingRotationStopsSpinOnTheLockedAxisOnly)
     EXPECT_NEAR(body.GetAngularVelocity().y, 5.0f, testkit::kTolerance);
 }
 
+/// @brief Set position keeps the frozen axis where it was.
 TEST_F(RigidBodyTest, SetPositionKeepsTheFrozenAxisWhereItWas)
 {
     body.SetPosition({0.0f, 5.0f, 0.0f});
@@ -271,6 +294,7 @@ TEST_F(RigidBodyTest, SetPositionKeepsTheFrozenAxisWhereItWas)
 
 /// @name スリープ
 
+/// @brief Falls asleep only after staying slow for the full duration.
 TEST_F(RigidBodyTest, FallsAsleepOnlyAfterStayingSlowForTheFullDuration)
 {
     testkit::StepFixed([this](float dt) { body.UpdateSleepState(dt, 0.1f, 0.1f, 0.5f); }, 20);
@@ -281,6 +305,7 @@ TEST_F(RigidBodyTest, FallsAsleepOnlyAfterStayingSlowForTheFullDuration)
     EXPECT_TRUE(body.IsSleeping());
 }
 
+/// @brief Stays awake while moving.
 TEST_F(RigidBodyTest, StaysAwakeWhileMoving)
 {
     body.SetVelocity({10.0f, 0.0f, 0.0f});
@@ -290,6 +315,7 @@ TEST_F(RigidBodyTest, StaysAwakeWhileMoving)
     EXPECT_FALSE(body.IsSleeping());
 }
 
+/// @brief Never sleeps when sleeping is disabled.
 TEST_F(RigidBodyTest, NeverSleepsWhenSleepingIsDisabled)
 {
     body.m_allowSleeping = false;
@@ -299,6 +325,7 @@ TEST_F(RigidBodyTest, NeverSleepsWhenSleepingIsDisabled)
     EXPECT_FALSE(body.IsSleeping());
 }
 
+/// @brief Sleeping bodies report zero inverse mass.
 TEST_F(RigidBodyTest, SleepingBodiesReportZeroInverseMass)
 {
     /// @note ソルバーは «動かせない相手» として扱う。ここが 0 でないと寝た剛体が押し返される。
@@ -311,6 +338,7 @@ TEST_F(RigidBodyTest, SleepingBodiesReportZeroInverseMass)
                      testkit::kTolerance);
 }
 
+/// @brief Sleep clears velocity.
 TEST_F(RigidBodyTest, SleepClearsVelocity)
 {
     body.SetVelocity({5.0f, 0.0f, 0.0f});
@@ -322,6 +350,7 @@ TEST_F(RigidBodyTest, SleepClearsVelocity)
     EXPECT_VEC3_NEAR(body.GetAngularVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Sleeping bodies do not integrate.
 TEST_F(RigidBodyTest, SleepingBodiesDoNotIntegrate)
 {
     body.SetMass(1.0f);
@@ -333,6 +362,7 @@ TEST_F(RigidBodyTest, SleepingBodiesDoNotIntegrate)
     EXPECT_VEC3_NEAR(body.GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Apply force wakes a sleeping body.
 TEST_F(RigidBodyTest, ApplyForceWakesASleepingBody)
 {
     body.Sleep();
@@ -342,6 +372,7 @@ TEST_F(RigidBodyTest, ApplyForceWakesASleepingBody)
     EXPECT_FALSE(body.IsSleeping());
 }
 
+/// @brief Gravity does not wake a sleeping body.
 TEST_F(RigidBodyTest, GravityDoesNotWakeASleepingBody)
 {
     /// @note ApplyForceNoWake が起こしてしまうと、接地した剛体が永久に眠れない。
@@ -352,6 +383,7 @@ TEST_F(RigidBodyTest, GravityDoesNotWakeASleepingBody)
     EXPECT_TRUE(body.IsSleeping());
 }
 
+/// @brief Checks static bodies never sleep.
 TEST_F(RigidBodyTest, StaticBodiesNeverSleep)
 {
     body.m_isStatic = true;
@@ -363,6 +395,7 @@ TEST_F(RigidBodyTest, StaticBodiesNeverSleep)
 
 /// @name 回転の正規化
 
+/// @brief Set rotation normalizes the given quaternion.
 TEST_F(RigidBodyTest, SetRotationNormalizesTheGivenQuaternion)
 {
     body.SetRotation({0.0f, 0.0f, 0.0f, 4.0f});

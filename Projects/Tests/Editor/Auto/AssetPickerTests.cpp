@@ -97,6 +97,7 @@ protected:
     ImGuiID m_popupId = 0;
 };
 
+/// @brief Destroyed working copy receives selection on next draw.
 TEST_F(AssetPickerTest, DestroyedWorkingCopyReceivesSelectionOnNextDraw)
 {
     BeginFrame();
@@ -122,6 +123,7 @@ TEST_F(AssetPickerTest, DestroyedWorkingCopyReceivesSelectionOnNextDraw)
     EndFrame();
 }
 
+/// @brief Selection does not reach another owner or return after owner disappears.
 TEST_F(AssetPickerTest, SelectionDoesNotReachAnotherOwnerOrReturnAfterOwnerDisappears)
 {
     BeginFrame();
@@ -147,6 +149,7 @@ TEST_F(AssetPickerTest, SelectionDoesNotReachAnotherOwnerOrReturnAfterOwnerDisap
     EndFrame();
 }
 
+/// @brief Fluid editor picker is drawn by fluid editor host.
 TEST_F(AssetPickerTest, FluidEditorPickerIsDrawnByFluidEditorHost)
 {
     BeginFrame();

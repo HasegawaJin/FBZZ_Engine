@@ -22,6 +22,7 @@ renderer::RayReconstructionSurface Surface(uint32_t pixel)
     return value;
 }
 
+/// @brief Camera cut separates ordinary motion from projection and large pose changes.
 TEST_F(RayGameContractTest, CameraCutSeparatesOrdinaryMotionFromProjectionAndLargePoseChanges)
 {
     renderer::Camera previous;
@@ -37,6 +38,7 @@ TEST_F(RayGameContractTest, CameraCutSeparatesOrdinaryMotionFromProjectionAndLar
     EXPECT_TRUE(renderer::IsRayGameCameraCut(previous, current));
 }
 
+/// @brief Uses full identity material and camera relative depth for history validation.
 TEST_F(RayGameContractTest, UsesFullIdentityMaterialAndCameraRelativeDepthForHistoryValidation)
 {
     renderer::Camera camera;

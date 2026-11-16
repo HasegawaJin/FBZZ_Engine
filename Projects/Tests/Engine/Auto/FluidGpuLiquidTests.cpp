@@ -48,6 +48,7 @@ float DistanceTo(const asset::GpuLiquidSpawn& spawn, const math::Vector3& center
 
 } // namespace
 
+/// @brief Capacity is the sum of enabled counts clamped.
 TEST(FluidGpuLiquidTest, CapacityIsTheSumOfEnabledCountsClamped)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -69,6 +70,7 @@ TEST(FluidGpuLiquidTest, CapacityIsTheSumOfEnabledCountsClamped)
     EXPECT_TRUE(asset::BuildGpuLiquidEmission(recipe, asset::FluidGpuLiquidSolver::kMaxParticles).empty());
 }
 
+/// @brief Burst spawns every particle at the start time.
 TEST(FluidGpuLiquidTest, BurstSpawnsEveryParticleAtTheStartTime)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -82,6 +84,7 @@ TEST(FluidGpuLiquidTest, BurstSpawnsEveryParticleAtTheStartTime)
     for (const auto& spawn : spawns) EXPECT_EQ(spawn.positionTime[3], 0.3f);
 }
 
+/// @brief Timed source spreads spawns over its duration.
 TEST(FluidGpuLiquidTest, TimedSourceSpreadsSpawnsOverItsDuration)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -99,6 +102,7 @@ TEST(FluidGpuLiquidTest, TimedSourceSpreadsSpawnsOverItsDuration)
     EXPECT_NEAR(spawns[3].positionTime[3], 2.5f, 1.0e-6f);
 }
 
+/// @brief Earliest spawns take the slots when they run out.
 TEST(FluidGpuLiquidTest, EarliestSpawnsTakeTheSlotsWhenTheyRunOut)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -120,6 +124,7 @@ TEST(FluidGpuLiquidTest, EarliestSpawnsTakeTheSlotsWhenTheyRunOut)
     EXPECT_EQ(spawns[11].positionTime[3], 2.0f);
 }
 
+/// @brief Sphere spawns stay inside the shape and carry the color key.
 TEST(FluidGpuLiquidTest, SphereSpawnsStayInsideTheShapeAndCarryTheColorKey)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -139,6 +144,7 @@ TEST(FluidGpuLiquidTest, SphereSpawnsStayInsideTheShapeAndCarryTheColorKey)
     }
 }
 
+/// @brief Box spawns stay inside the box and launch with the source velocity.
 TEST(FluidGpuLiquidTest, BoxSpawnsStayInsideTheBoxAndLaunchWithTheSourceVelocity)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -164,6 +170,7 @@ TEST(FluidGpuLiquidTest, BoxSpawnsStayInsideTheBoxAndLaunchWithTheSourceVelocity
     }
 }
 
+/// @brief Same seed gives the same spawns and another seed differs.
 TEST(FluidGpuLiquidTest, SameSeedGivesTheSameSpawnsAndAnotherSeedDiffers)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -192,6 +199,7 @@ TEST(FluidGpuLiquidTest, SameSeedGivesTheSameSpawnsAndAnotherSeedDiffers)
     EXPECT_TRUE(differs);
 }
 
+/// @brief Overcrowded source is widened like the CPU solver.
 TEST(FluidGpuLiquidTest, OvercrowdedSourceIsWidenedLikeTheCpuSolver)
 {
     /// @note Blood Burst の形 (半径 0.06 に 650 粒)。そのまま出すと静止密度の何十倍にも詰まって爆ぜる。
@@ -209,6 +217,7 @@ TEST(FluidGpuLiquidTest, OvercrowdedSourceIsWidenedLikeTheCpuSolver)
     EXPECT_LE(farthest, 0.06f * 1.71f);
 }
 
+/// @brief Kernel matches the CPU solver.
 TEST(FluidGpuLiquidTest, KernelMatchesTheCpuSolver)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -228,6 +237,7 @@ TEST(FluidGpuLiquidTest, KernelMatchesTheCpuSolver)
     EXPECT_EQ(asset::MakeGpuLiquidKernel(0.0f).radius, 0.002f);
 }
 
+/// @brief Grid covers the CPU bounds with cells of h.
 TEST(FluidGpuLiquidTest, GridCoversTheCpuBoundsWithCellsOfH)
 {
     const asset::GpuLiquidGrid grid = asset::MakeGpuLiquidGrid(0.012f);
@@ -245,6 +255,7 @@ TEST(FluidGpuLiquidTest, GridCoversTheCpuBoundsWithCellsOfH)
     EXPECT_NEAR(asset::MakeGpuLiquidGrid(5.0f).cellSize, 0.4f, 1.0e-7f);
 }
 
+/// @brief Forces pack only while active.
 TEST(FluidGpuLiquidTest, ForcesPackOnlyWhileActive)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -274,6 +285,7 @@ TEST(FluidGpuLiquidTest, ForcesPackOnlyWhileActive)
     EXPECT_EQ(forces[0].directionStrength[3], 0.0f);
 }
 
+/// @brief Colliders pack unwidened sizes and friction keep.
 TEST(FluidGpuLiquidTest, CollidersPackUnwidenedSizesAndFrictionKeep)
 {
     fluid::FluidRecipe recipe = LiquidRecipe();
@@ -308,6 +320,7 @@ TEST(FluidGpuLiquidTest, CollidersPackUnwidenedSizesAndFrictionKeep)
     EXPECT_EQ(colliders[2].sizeActive[3], 1.0f);
 }
 
+/// @brief Sort count is a power of two of at least one block.
 TEST(FluidGpuLiquidTest, SortCountIsAPowerOfTwoOfAtLeastOneBlock)
 {
     EXPECT_EQ(asset::GpuLiquidSortCount(0), asset::kGpuLiquidSortBlock);
@@ -317,6 +330,7 @@ TEST(FluidGpuLiquidTest, SortCountIsAPowerOfTwoOfAtLeastOneBlock)
     EXPECT_EQ(asset::GpuLiquidSortCount(asset::FluidGpuLiquidSolver::kMaxParticles), 32768u);
 }
 
+/// @brief Sort stages switch to the local pass inside one block.
 TEST(FluidGpuLiquidTest, SortStagesSwitchToTheLocalPassInsideOneBlock)
 {
     const auto one = asset::BuildGpuLiquidSortStages(256);

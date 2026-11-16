@@ -58,6 +58,7 @@ protected:
     }
 };
 
+/// @brief Packet output matches direct kernel exactly.
 TEST_F(ManagedAiCrowdTransferTest, PacketOutputMatchesDirectKernelExactly) {
     Pack(1000);
     std::vector<ai::CrowdAgent> expected(agents.size()); ai::CrowdWorkspace workspace; ai::CrowdStats stats;
@@ -70,6 +71,7 @@ TEST_F(ManagedAiCrowdTransferTest, PacketOutputMatchesDirectKernelExactly) {
     ASSERT_EQ(transfer.Run(request, reply), scene::ManagedBridgeStatus::OK);
     EXPECT_EQ(first, output);
 }
+/// @brief Too small output reports exact size without computing or writing.
 TEST_F(ManagedAiCrowdTransferTest, TooSmallOutputReportsExactSizeWithoutComputingOrWriting) {
     Pack(); const auto before = output; request.outputCapacity--;
     ASSERT_EQ(transfer.Run(request, reply), scene::ManagedBridgeStatus::BUFFER_TOO_SMALL);
@@ -80,6 +82,7 @@ TEST_F(ManagedAiCrowdTransferTest, TooSmallOutputReportsExactSizeWithoutComputin
     request.output = output.data(); request.outputCapacity = static_cast<std::uint32_t>(output.size());
     EXPECT_EQ(transfer.Run(request, reply), scene::ManagedBridgeStatus::OK);
 }
+/// @brief Version sizes counts and reserved header are validated.
 TEST_F(ManagedAiCrowdTransferTest, VersionSizesCountsAndReservedHeaderAreValidated) {
     for (std::size_t slot = 0; slot < 7; ++slot) { Pack(); Header(slot, 999); ExpectInvalid(); }
     Pack(); Header(7, UINT32_MAX); ExpectInvalid();
@@ -89,6 +92,7 @@ TEST_F(ManagedAiCrowdTransferTest, VersionSizesCountsAndReservedHeaderAreValidat
     Pack(); Header(10, 257); ExpectInvalid();
     Pack(); Header(11, 1); ExpectInvalid();
 }
+/// @brief Exact length and pointers are validated.
 TEST_F(ManagedAiCrowdTransferTest, ExactLengthAndPointersAreValidated) {
     Pack(); request.inputBytes--; ExpectInvalid();
     Pack(); request.inputBytes++; ExpectInvalid();
@@ -98,6 +102,7 @@ TEST_F(ManagedAiCrowdTransferTest, ExactLengthAndPointersAreValidated) {
     Pack(); request.output = nullptr; ExpectInvalid();
     Pack(); request.outputCapacity = 1024 * 1024 + 1; ExpectInvalid();
 }
+/// @brief Unsupported request fields and nonfinite settings are rejected.
 TEST_F(ManagedAiCrowdTransferTest, UnsupportedRequestFieldsAndNonfiniteSettingsAreRejected) {
     Pack(); request.flags = 1; ExpectInvalid();
     Pack(); request.index = 1; ExpectInvalid();
@@ -108,6 +113,7 @@ TEST_F(ManagedAiCrowdTransferTest, UnsupportedRequestFieldsAndNonfiniteSettingsA
     Pack(); settings.deltaSeconds = std::numeric_limits<float>::quiet_NaN(); std::memcpy(input.data() + 48, &settings, sizeof(settings)); ExpectInvalid();
     Pack(); settings.reserved = 1; std::memcpy(input.data() + 48, &settings, sizeof(settings)); ExpectInvalid();
 }
+/// @brief Invalid later agent does not publish earlier slots.
 TEST_F(ManagedAiCrowdTransferTest, InvalidLaterAgentDoesNotPublishEarlierSlots) {
     Pack(); agents.back().profile = 64;
     const std::size_t offset = 48 + sizeof(settings) + profiles.size() * sizeof(ai::CrowdProfile);
@@ -115,11 +121,13 @@ TEST_F(ManagedAiCrowdTransferTest, InvalidLaterAgentDoesNotPublishEarlierSlots) 
     ExpectInvalid();
     Pack(); EXPECT_EQ(transfer.Run(request, reply), scene::ManagedBridgeStatus::OK);
 }
+/// @brief Overlapping input and output are rejected without changing input.
 TEST_F(ManagedAiCrowdTransferTest, OverlappingInputAndOutputAreRejectedWithoutChangingInput) {
     Pack(); const auto before = input; request.output = input.data();
     EXPECT_EQ(transfer.Run(request, reply), scene::ManagedBridgeStatus::INVALID_ARGUMENT);
     EXPECT_EQ(input, before); EXPECT_EQ(reply.outputBytes, 0U);
 }
+/// @brief Empty and maximum packets succeed within one mi b.
 TEST_F(ManagedAiCrowdTransferTest, EmptyAndMaximumPacketsSucceedWithinOneMiB) {
     Pack(0); ASSERT_EQ(transfer.Run(request, reply), scene::ManagedBridgeStatus::OK);
     EXPECT_EQ(reply.index, 0U); EXPECT_EQ(reply.outputBytes, 44U);

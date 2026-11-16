@@ -47,6 +47,7 @@ asset::PackedFluidVolume SolveByHand(const fluid::FluidRecipe& recipe, int resol
 
 } /// @note namespace
 
+/// @brief Pack keeps the grid layout and scales.
 TEST(VolumeFlipbookFluidTest, PackKeepsTheGridLayoutAndScales)
 {
     const fluid::FluidRecipe recipe = SmokeRecipe();
@@ -77,6 +78,7 @@ TEST(VolumeFlipbookFluidTest, PackKeepsTheGridLayoutAndScales)
     EXPECT_GT(total, 0.0f);
 }
 
+/// @brief Pack carries the gas color key in b.
 TEST(VolumeFlipbookFluidTest, PackCarriesTheGasColorKeyInB)
 {
     /// @note レイマーチは B を albedoRamp の鍵として読む。鍵 1 の煙だけなら、煙のある所は全部 1・無い所は 0。
@@ -104,6 +106,7 @@ TEST(VolumeFlipbookFluidTest, PackCarriesTheGasColorKeyInB)
     EXPECT_TRUE(keyed);
 }
 
+/// @brief Non cubic grid packs nothing.
 TEST(VolumeFlipbookFluidTest, NonCubicGridPacksNothing)
 {
     fluid::FluidGasSolver solver;
@@ -114,6 +117,7 @@ TEST(VolumeFlipbookFluidTest, NonCubicGridPacksNothing)
     EXPECT_TRUE(packed.medium.empty());
 }
 
+/// @brief Temperature scale makes the hottest source one.
 TEST(VolumeFlipbookFluidTest, TemperatureScaleMakesTheHottestSourceOne)
 {
     fluid::FluidRecipe recipe;
@@ -129,6 +133,7 @@ TEST(VolumeFlipbookFluidTest, TemperatureScaleMakesTheHottestSourceOne)
     EXPECT_NEAR(asset::FluidRecipeTemperatureScale(recipe), 0.5f, 1.0e-6f);
 }
 
+/// @brief Stream counts frames like the 2D bake.
 TEST(VolumeFlipbookFluidTest, StreamCountsFramesLikeThe2DBake)
 {
     const fluid::FluidRecipe recipe = SmokeRecipe();
@@ -161,6 +166,7 @@ TEST(VolumeFlipbookFluidTest, StreamCountsFramesLikeThe2DBake)
     EXPECT_TRUE(same);
 }
 
+/// @brief Cancel keeps worker owned solver alive until completion is collected.
 TEST(VolumeFlipbookFluidTest, CancelKeepsWorkerOwnedSolverAliveUntilCompletionIsCollected)
 {
     const fluid::FluidRecipe recipe = SmokeRecipe();
@@ -182,6 +188,7 @@ TEST(VolumeFlipbookFluidTest, CancelKeepsWorkerOwnedSolverAliveUntilCompletionIs
     EXPECT_FALSE(stream.IsOpen());
 }
 
+/// @brief Checks liquid recipe solves in 3D.
 TEST(VolumeFlipbookFluidTest, LiquidRecipeSolvesIn3D)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);

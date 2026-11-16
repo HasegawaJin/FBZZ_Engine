@@ -17,6 +17,7 @@ class PlaneTest : public testkit::Fixture {};
 
 /// @name 符号付き距離
 
+/// @brief Signed distance is positive on the normal side.
 TEST_F(PlaneTest, SignedDistanceIsPositiveOnTheNormalSide)
 {
     const math::Plane ground(math::Vector3::UP, 0.0f);
@@ -25,6 +26,7 @@ TEST_F(PlaneTest, SignedDistanceIsPositiveOnTheNormalSide)
     EXPECT_NEAR(ground.SignedDistanceTo({0.0f, -5.0f, 0.0f}), -5.0f, testkit::kTolerance);
 }
 
+/// @brief Signed distance is zero on the plane.
 TEST_F(PlaneTest, SignedDistanceIsZeroOnThePlane)
 {
     const math::Plane ground(math::Vector3::UP, 0.0f);
@@ -32,6 +34,7 @@ TEST_F(PlaneTest, SignedDistanceIsZeroOnThePlane)
     EXPECT_NEAR(ground.SignedDistanceTo({100.0f, 0.0f, -100.0f}), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Distance offsets the plane against the normal.
 TEST_F(PlaneTest, DistanceOffsetsThePlaneAgainstTheNormal)
 {
     /// @note dot(n,p) + d = 0 なので、d = -3 の平面は法線方向へ +3 だけ動く。
@@ -41,6 +44,7 @@ TEST_F(PlaneTest, DistanceOffsetsThePlaneAgainstTheNormal)
     EXPECT_NEAR(raised.SignedDistanceTo({0.0f, 0.0f, 0.0f}), -3.0f, testkit::kTolerance);
 }
 
+/// @brief Is on positive side includes the plane itself.
 TEST_F(PlaneTest, IsOnPositiveSideIncludesThePlaneItself)
 {
     const math::Plane ground(math::Vector3::UP, 0.0f);
@@ -52,6 +56,7 @@ TEST_F(PlaneTest, IsOnPositiveSideIncludesThePlaneItself)
 
 /// @name 正規化
 
+/// @brief Normalized scales the distance with the normal.
 TEST_F(PlaneTest, NormalizedScalesTheDistanceWithTheNormal)
 {
     /// @note 法線だけ割って distance を放置すると、平面が原点方向へずれる。
@@ -63,6 +68,7 @@ TEST_F(PlaneTest, NormalizedScalesTheDistanceWithTheNormal)
     EXPECT_NEAR(normalized.distance, -2.0f, testkit::kTolerance);
 }
 
+/// @brief Normalized preserves the set of points on the plane.
 TEST_F(PlaneTest, NormalizedPreservesTheSetOfPointsOnThePlane)
 {
     const math::Plane scaled({0.0f, 4.0f, 0.0f}, -8.0f);
@@ -72,6 +78,7 @@ TEST_F(PlaneTest, NormalizedPreservesTheSetOfPointsOnThePlane)
     EXPECT_NEAR(normalized.SignedDistanceTo({0.0f, 2.0f, 0.0f}), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Normalized leaves a degenerate plane untouched.
 TEST_F(PlaneTest, NormalizedLeavesADegeneratePlaneUntouched)
 {
     /// @note 長さ 0 の法線を割ると NaN になる。呼び出し側で分岐させないため、そのまま返す契約。
@@ -85,6 +92,7 @@ TEST_F(PlaneTest, NormalizedLeavesADegeneratePlaneUntouched)
 
 /// @name 生成
 
+/// @brief From points uses the cross product of the two edges.
 TEST_F(PlaneTest, FromPointsUsesTheCrossProductOfTheTwoEdges)
 {
     /// @note p0→p1 と p0→p2 の外積が法線。頂点の順が逆なら平面も裏返る。
@@ -96,6 +104,7 @@ TEST_F(PlaneTest, FromPointsUsesTheCrossProductOfTheTwoEdges)
     EXPECT_NEAR(plane.distance, 0.0f, testkit::kTolerance);
 }
 
+/// @brief From points flips the normal when the winding is reversed.
 TEST_F(PlaneTest, FromPointsFlipsTheNormalWhenTheWindingIsReversed)
 {
     const math::Plane front = math::Plane::FromPoints({0.0f, 0.0f, 0.0f},
@@ -108,6 +117,7 @@ TEST_F(PlaneTest, FromPointsFlipsTheNormalWhenTheWindingIsReversed)
     EXPECT_VEC3_NEAR(back.normal, -front.normal, testkit::kTolerance);
 }
 
+/// @brief From points puts every input point on the plane.
 TEST_F(PlaneTest, FromPointsPutsEveryInputPointOnThePlane)
 {
     const math::Vector3 p0(1.0f, 2.0f, 3.0f);
@@ -121,6 +131,7 @@ TEST_F(PlaneTest, FromPointsPutsEveryInputPointOnThePlane)
     EXPECT_NEAR(plane.SignedDistanceTo(p2), 0.0f, testkit::kTolerance);
 }
 
+/// @brief From normal and point normalizes the given normal.
 TEST_F(PlaneTest, FromNormalAndPointNormalizesTheGivenNormal)
 {
     const math::Plane plane = math::Plane::FromNormalAndPoint({0.0f, 10.0f, 0.0f},
@@ -130,6 +141,7 @@ TEST_F(PlaneTest, FromNormalAndPointNormalizesTheGivenNormal)
     EXPECT_NEAR(plane.distance, -2.0f, testkit::kTolerance);
 }
 
+/// @brief From normal and point puts the point on the plane.
 TEST_F(PlaneTest, FromNormalAndPointPutsThePointOnThePlane)
 {
     const math::Vector3 point(3.0f, -4.0f, 5.0f);
@@ -140,6 +152,7 @@ TEST_F(PlaneTest, FromNormalAndPointPutsThePointOnThePlane)
     EXPECT_NEAR(plane.SignedDistanceTo(point), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Default plane is the ground at the origin.
 TEST_F(PlaneTest, DefaultPlaneIsTheGroundAtTheOrigin)
 {
     const math::Plane plane;

@@ -98,6 +98,7 @@ protected:
     bool m_playing = false;
 };
 
+/// @brief Alternating managers retain material caches and return replaced component buffers.
 TEST_F(MeshTrailRenderResourceTest, AlternatingManagersRetainMaterialCachesAndReturnReplacedComponentBuffers)
 {
     testkit::ResourceTrackingRenderer otherDevice;
@@ -129,6 +130,7 @@ TEST_F(MeshTrailRenderResourceTest, AlternatingManagersRetainMaterialCachesAndRe
     EXPECT_NE(other.Get(switched.shader), nullptr);
 }
 
+/// @brief Checks reset recreates color material and clean skinning buffers with the captured pose.
 TEST_F(MeshTrailRenderResourceTest, ResetRecreatesColorMaterialAndCleanSkinningBuffersWithTheCapturedPose)
 {
     m_object->RemoveComponent<scene::MeshRenderer>();
@@ -160,6 +162,7 @@ TEST_F(MeshTrailRenderResourceTest, ResetRecreatesColorMaterialAndCleanSkinningB
     EXPECT_EQ(m_device.m_constantsAlive, 0u);
 }
 
+/// @brief Shader reload without parameters returns the old material buffer.
 TEST_F(MeshTrailRenderResourceTest, ShaderReloadWithoutParametersReturnsTheOldMaterialBuffer)
 {
     const auto initial = Extract(m_device, *m_resources);
@@ -175,6 +178,7 @@ TEST_F(MeshTrailRenderResourceTest, ShaderReloadWithoutParametersReturnsTheOldMa
     EXPECT_EQ(m_device.m_constantsAlive, 1u);
 }
 
+/// @brief Switching managers reuploads the captured skin and returns its previous buffer.
 TEST_F(MeshTrailRenderResourceTest, SwitchingManagersReuploadsTheCapturedSkinAndReturnsItsPreviousBuffer)
 {
     m_object->RemoveComponent<scene::MeshRenderer>();
@@ -200,6 +204,7 @@ TEST_F(MeshTrailRenderResourceTest, SwitchingManagersReuploadsTheCapturedSkinAnd
     EXPECT_EQ(otherDevice.m_constantsAlive, 0u);
 }
 
+/// @brief Early owner destruction rebuilds for the remaining manager.
 TEST_F(MeshTrailRenderResourceTest, EarlyOwnerDestructionRebuildsForTheRemainingManager)
 {
     const auto initial = Extract(m_device, *m_resources);

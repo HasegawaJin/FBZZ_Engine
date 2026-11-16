@@ -99,6 +99,7 @@ protected:
     testkit::TempDir m_temp{"shader-capabilities"};
 };
 
+/// @brief Shared water and fiber geometry require explicit vertex contracts.
 TEST_F(ShaderCapabilitiesTest, SharedWaterAndFiberGeometryRequireExplicitVertexContracts)
 {
     ASSERT_TRUE(WriteShader("ProjectOcean.hlsl",
@@ -122,6 +123,7 @@ TEST_F(ShaderCapabilitiesTest, SharedWaterAndFiberGeometryRequireExplicitVertexC
         EXPECT_FALSE(fiber.SupportsGBuffer());
     }
 }
+/// @brief Filename does not grant capabilities without a declaration.
 TEST_F(ShaderCapabilitiesTest, FilenameDoesNotGrantCapabilitiesWithoutADeclaration)
 {
     ASSERT_TRUE(util::FileSystem::WriteText(ShaderPath("PBR.hlsl"), "float4 PSMain() : SV_Target { return 1; }\n"));
@@ -134,6 +136,7 @@ TEST_F(ShaderCapabilitiesTest, FilenameDoesNotGrantCapabilitiesWithoutADeclarati
     ExpectUnknown(asset::ResolveShaderCapabilities(""));
 }
 
+/// @brief Checks explicit standard contracts work with any filename.
 TEST_F(ShaderCapabilitiesTest, ExplicitStandardContractsWorkWithAnyFilename)
 {
     ASSERT_TRUE(WriteShader("CustomName.hlsl", kSurfaceDeclaration));
@@ -141,6 +144,7 @@ TEST_F(ShaderCapabilitiesTest, ExplicitStandardContractsWorkWithAnyFilename)
     ExpectStandardSurface(asset::ResolveShaderCapabilities(ShaderPath("CustomName.hlsl")));
 }
 
+/// @brief Standard skinned variants require the matching vertex contract.
 TEST_F(ShaderCapabilitiesTest, StandardSkinnedVariantsRequireTheMatchingVertexContract)
 {
     ASSERT_TRUE(WriteShader("Character.hlsl",
@@ -156,6 +160,7 @@ TEST_F(ShaderCapabilitiesTest, StandardSkinnedVariantsRequireTheMatchingVertexCo
     EXPECT_EQ(capabilities.preview, renderer::ShaderPreviewKind::SKINNED);
 }
 
+/// @brief Surface or geometry alone does not grant g buffer support.
 TEST_F(ShaderCapabilitiesTest, SurfaceOrGeometryAloneDoesNotGrantGBufferSupport)
 {
     ASSERT_TRUE(WriteShader("ForwardPbr.hlsl",
@@ -187,6 +192,7 @@ TEST_F(ShaderCapabilitiesTest, SurfaceOrGeometryAloneDoesNotGrantGBufferSupport)
     EXPECT_FALSE(opaque.SupportsGBuffer());
 }
 
+/// @brief Invalid versions tokens and variant pairs reject the whole declaration.
 TEST_F(ShaderCapabilitiesTest, InvalidVersionsTokensAndVariantPairsRejectTheWholeDeclaration)
 {
     const std::string invalidDeclarations[] = {
@@ -212,6 +218,7 @@ TEST_F(ShaderCapabilitiesTest, InvalidVersionsTokensAndVariantPairsRejectTheWhol
     }
 }
 
+/// @brief GUID authority ignores `false` and unresolved path hints.
 TEST_F(ShaderCapabilitiesTest, GuidAuthorityIgnoresFalseAndUnresolvedPathHints)
 {
     ASSERT_TRUE(WriteShader("Standard.hlsl", kSurfaceDeclaration, kStandardGuid));
@@ -226,6 +233,7 @@ TEST_F(ShaderCapabilitiesTest, GuidAuthorityIgnoresFalseAndUnresolvedPathHints)
     ExpectUnknown(asset::ResolveShaderCapabilities("guid:ffffffffffffffffffffffffffffffff|Assets/Standard.hlsl"));
 }
 
+/// @brief Moving shader and meta keeps the GUID capabilities.
 TEST_F(ShaderCapabilitiesTest, MovingShaderAndMetaKeepsTheGuidCapabilities)
 {
     ASSERT_TRUE(WriteShader("Original.hlsl", kSurfaceDeclaration, kStandardGuid));
@@ -245,6 +253,7 @@ TEST_F(ShaderCapabilitiesTest, MovingShaderAndMetaKeepsTheGuidCapabilities)
     ExpectStandardSurface(asset::ResolveShaderCapabilities(before));
 }
 
+/// @brief Meta timestamp changes and removed files invalidate cached capabilities.
 TEST_F(ShaderCapabilitiesTest, MetaTimestampChangesAndRemovedFilesInvalidateCachedCapabilities)
 {
     ASSERT_TRUE(WriteShader("Changing.hlsl", kSurfaceDeclaration));
@@ -277,6 +286,7 @@ TEST_F(ShaderCapabilitiesTest, MetaTimestampChangesAndRemovedFilesInvalidateCach
     ExpectStandardSurface(asset::ResolveShaderCapabilities(path));
 }
 
+/// @brief Unicode prepared paths keep metadata deletion and restoration fresh.
 TEST_F(ShaderCapabilitiesTest, UnicodePreparedPathsKeepMetadataDeletionAndRestorationFresh)
 {
     const auto nativePath = AssetsRoot() / L"\u6D77\u6D41\u30B7\u30A7\u30FC\u30C0\u30FC.hlsl";
@@ -303,6 +313,7 @@ TEST_F(ShaderCapabilitiesTest, UnicodePreparedPathsKeepMetadataDeletionAndRestor
     ExpectStandardSurface(asset::ResolveShaderCapabilities(path));
 }
 
+/// @brief Missing source with invalid UTF-8 returns unknown.
 TEST_F(ShaderCapabilitiesTest, MissingSourceWithInvalidUtf8ReturnsUnknown)
 {
     std::string reference = ShaderPath("MissingInvalidUtf8");
@@ -313,6 +324,7 @@ TEST_F(ShaderCapabilitiesTest, MissingSourceWithInvalidUtf8ReturnsUnknown)
     ExpectUnknown(asset::ResolveShaderCapabilities(reference));
 }
 
+/// @brief GUID prepared paths follow removal remapping and database reset.
 TEST_F(ShaderCapabilitiesTest, GuidPreparedPathsFollowRemovalRemappingAndDatabaseReset)
 {
     ASSERT_TRUE(WriteShader("First.hlsl", kSurfaceDeclaration, kStandardGuid));
@@ -346,6 +358,7 @@ TEST_F(ShaderCapabilitiesTest, GuidPreparedPathsFollowRemovalRemappingAndDatabas
     ExpectStandardSurface(asset::ResolveShaderCapabilities(reference));
 }
 
+/// @brief Many distinct GUID hints keep metadata queries fresh after reference churn.
 TEST_F(ShaderCapabilitiesTest, ManyDistinctGuidHintsKeepMetadataQueriesFreshAfterReferenceChurn)
 {
     ASSERT_TRUE(WriteShader("ManyHints.hlsl", kSurfaceDeclaration, kStandardGuid));
@@ -364,6 +377,7 @@ TEST_F(ShaderCapabilitiesTest, ManyDistinctGuidHintsKeepMetadataQueriesFreshAfte
         ExpectUnknown(asset::ResolveShaderCapabilities(prefix + std::to_string(i) + ".hlsl"));
 }
 
+/// @brief Prepared shared GUID becomes unknown when the index makes it ambiguous.
 TEST_F(ShaderCapabilitiesTest, PreparedSharedGuidBecomesUnknownWhenTheIndexMakesItAmbiguous)
 {
     const auto sharedRoot = m_temp.File("Shared/Assets");
@@ -385,6 +399,7 @@ TEST_F(ShaderCapabilitiesTest, PreparedSharedGuidBecomesUnknownWhenTheIndexMakes
     ExpectUnknown(asset::ResolveShaderCapabilities(reference));
 }
 
+/// @brief Non GUID input edits during logging cannot overwrite another prepared GUID identity.
 TEST_F(ShaderCapabilitiesTest, NonGuidInputEditsDuringLoggingCannotOverwriteAnotherPreparedGuidIdentity)
 {
     ASSERT_TRUE(WriteShader("Original.hlsl", kSurfaceDeclaration, kStandardGuid));

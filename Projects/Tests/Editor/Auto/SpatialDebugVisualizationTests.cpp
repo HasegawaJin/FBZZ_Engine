@@ -33,6 +33,7 @@ protected:
     }
 };
 
+/// @brief Defaults request no capture and disabled contents never request copies.
 TEST_F(SpatialDebugVisualizationTest, DefaultsRequestNoCaptureAndDisabledContentsNeverRequestCopies)
 {
     auto& state = Context().spatialDebugVisualization;
@@ -55,6 +56,7 @@ TEST_F(SpatialDebugVisualizationTest, DefaultsRequestNoCaptureAndDisabledContent
     EXPECT_FALSE(state.physics.AnyCapture());
 }
 
+/// @brief UI clamps depth order and hard draw budget.
 TEST_F(SpatialDebugVisualizationTest, UiClampsDepthOrderAndHardDrawBudget)
 {
     editor::SpatialDebugTargetSettings settings;
@@ -74,6 +76,7 @@ TEST_F(SpatialDebugVisualizationTest, UiClampsDepthOrderAndHardDrawBudget)
     EXPECT_EQ(settings.maxDrawCommands, 1);
 }
 
+/// @brief Public operator composes physics contents and keeps render independent without scene or undo.
 TEST_F(SpatialDebugVisualizationTest, PublicOperatorComposesPhysicsContentsAndKeepsRenderIndependentWithoutSceneOrUndo)
 {
     editor::OpArgs physics;
@@ -105,6 +108,7 @@ TEST_F(SpatialDebugVisualizationTest, PublicOperatorComposesPhysicsContentsAndKe
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Invalid arguments leave all settings untouched.
 TEST_F(SpatialDebugVisualizationTest, InvalidArgumentsLeaveAllSettingsUntouched)
 {
     auto& state = Context().spatialDebugVisualization;
@@ -132,6 +136,7 @@ TEST_F(SpatialDebugVisualizationTest, InvalidArgumentsLeaveAllSettingsUntouched)
     EXPECT_EQ(state.physics.maxDrawCommands, 512);
 }
 
+/// @brief Debug menu toggles preserve other target and disabled contents.
 TEST_F(SpatialDebugVisualizationTest, DebugMenuTogglesPreserveOtherTargetAndDisabledContents)
 {
     editor::OpArgs on;
@@ -153,6 +158,7 @@ TEST_F(SpatialDebugVisualizationTest, DebugMenuTogglesPreserveOtherTargetAndDisa
     EXPECT_FALSE(state.physics.AnyCapture());
 }
 
+/// @brief Status query reports settings and actual counts without mutation.
 TEST_F(SpatialDebugVisualizationTest, StatusQueryReportsSettingsAndActualCountsWithoutMutation)
 {
     auto& state = Context().spatialDebugVisualization;
@@ -205,6 +211,7 @@ editor::SpatialDebugOverlayContext OverlayContext()
 }
 } /// @note namespace
 
+/// @brief Render builder rejects wrong scene view future and stale snapshots.
 TEST_F(SpatialDebugVisualizationTest, RenderBuilderRejectsWrongSceneViewFutureAndStaleSnapshots)
 {
     auto snapshot = RenderSnapshot();
@@ -228,6 +235,7 @@ TEST_F(SpatialDebugVisualizationTest, RenderBuilderRejectsWrongSceneViewFutureAn
     ASSERT_EQ(commands.size(), 1u);
 }
 
+/// @brief Render builder preserves observed colors and rejects invalid bounds within budget.
 TEST_F(SpatialDebugVisualizationTest, RenderBuilderPreservesObservedColorsAndRejectsInvalidBoundsWithinBudget)
 {
     auto snapshot = RenderSnapshot();
@@ -257,6 +265,7 @@ TEST_F(SpatialDebugVisualizationTest, RenderBuilderPreservesObservedColorsAndRej
     EXPECT_VEC3_NEAR(commands[0].a, (math::Vector3{1, 1, 1}), 1e-6f);
 }
 
+/// @brief Render builder reports unavailable and selection lookup truncation without fabricated geometry.
 TEST_F(SpatialDebugVisualizationTest, RenderBuilderReportsUnavailableAndSelectionLookupTruncationWithoutFabricatedGeometry)
 {
     auto snapshot = RenderSnapshot();
@@ -276,6 +285,7 @@ TEST_F(SpatialDebugVisualizationTest, RenderBuilderReportsUnavailableAndSelectio
     EXPECT_TRUE(commands.empty());
 }
 
+/// @brief Physics builder combines contents within one budget and checks request lifetime.
 TEST_F(SpatialDebugVisualizationTest, PhysicsBuilderCombinesContentsWithinOneBudgetAndChecksRequestLifetime)
 {
     auto broadphase = std::make_shared<physics::BroadPhaseDebugSnapshot>();
@@ -334,6 +344,7 @@ TEST_F(SpatialDebugVisualizationTest, PhysicsBuilderCombinesContentsWithinOneBud
     EXPECT_NE(result.status.find("lookup budget reached"), std::string::npos);
 }
 
+/// @brief Render builder enforces global budget and off build adds nothing.
 TEST_F(SpatialDebugVisualizationTest, RenderBuilderEnforcesGlobalBudgetAndOffBuildAddsNothing)
 {
     auto snapshot = RenderSnapshot();
@@ -350,6 +361,7 @@ TEST_F(SpatialDebugVisualizationTest, RenderBuilderEnforcesGlobalBudgetAndOffBui
     EXPECT_NE(result.status.find("DRAW BUDGET TRUNCATED"), std::string::npos);
 }
 
+/// @brief Disabled shadows reject fresh render snapshot and preserve physics commands.
 TEST_F(SpatialDebugVisualizationTest, DisabledShadowsRejectFreshRenderSnapshotAndPreservePhysicsCommands)
 {
     const auto snapshot = RenderSnapshot();

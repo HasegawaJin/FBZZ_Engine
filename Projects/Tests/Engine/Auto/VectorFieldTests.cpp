@@ -24,6 +24,7 @@ class VectorFieldTest : public testkit::EngineFixture {};
 
 } // namespace
 
+/// @brief Unsupported extensions do not read or overwrite files.
 TEST_F(VectorFieldTest, UnsupportedExtensionsDoNotReadOrOverwriteFiles)
 {
     testkit::TempDir temp{ "vector-format" };
@@ -49,6 +50,7 @@ TEST_F(VectorFieldTest, UnsupportedExtensionsDoNotReadOrOverwriteFiles)
     EXPECT_EQ(extensions[1], ".fga");
 }
 
+/// @brief External fga import remains available.
 TEST_F(VectorFieldTest, ExternalFgaImportRemainsAvailable)
 {
     testkit::TempDir temp{ "vector-fga" };
@@ -64,6 +66,7 @@ TEST_F(VectorFieldTest, ExternalFgaImportRemainsAvailable)
     EXPECT_EQ(imported->sizeX, fluid::kVelocityFieldTileResolution);
 }
 
+/// @brief PNG round trip preserves signed velocity bounds and GUID.
 TEST_F(VectorFieldTest, PngRoundTripPreservesSignedVelocityBoundsAndGuid)
 {
     testkit::TempDir temp{ "vectorpng" };
@@ -97,6 +100,7 @@ TEST_F(VectorFieldTest, PngRoundTripPreservesSignedVelocityBoundsAndGuid)
     EXPECT_VEC3_NEAR(decoded.data[137], source.data[137], testkit::kTolerance);
 }
 
+/// @brief PNG without field metadata fails without changing output.
 TEST_F(VectorFieldTest, PngWithoutFieldMetadataFailsWithoutChangingOutput)
 {
     testkit::TempDir temp{ "vectorpng-invalid" };
@@ -109,6 +113,7 @@ TEST_F(VectorFieldTest, PngWithoutFieldMetadataFailsWithoutChangingOutput)
     EXPECT_FLOAT_EQ(decoded.maxMagnitude, 123.0f);
 }
 
+/// @brief PNG importer does not renormalize zero field quantization.
 TEST_F(VectorFieldTest, PngImporterDoesNotRenormalizeZeroFieldQuantization)
 {
     testkit::TempDir temp{ "vectorpng-zero" };
@@ -125,6 +130,7 @@ TEST_F(VectorFieldTest, PngImporterDoesNotRenormalizeZeroFieldQuantization)
     EXPECT_VEC3_NEAR(decoded->data[0], source.data[0], testkit::kTolerance);
 }
 
+/// @brief Checks normalize resamples to the atlas tile resolution.
 TEST_F(VectorFieldTest, NormalizeResamplesToTheAtlasTileResolution)
 {
     /// @note 焼いた解像度がいくつでも、取り込み後は必ずタイル寸法に揃う。
@@ -144,6 +150,7 @@ TEST_F(VectorFieldTest, NormalizeResamplesToTheAtlasTileResolution)
                   * fluid::kVelocityFieldTileResolution * fluid::kVelocityFieldTileResolution);
 }
 
+/// @brief Normalize is idempotent.
 TEST_F(VectorFieldTest, NormalizeIsIdempotent)
 {
     /// @note 2 回通しても値が動かないこと。動くと、再ベイクのたびに補間が重なって場が鈍る。
@@ -162,6 +169,7 @@ TEST_F(VectorFieldTest, NormalizeIsIdempotent)
         EXPECT_VEC3_NEAR(field.data[i], once[i], testkit::kTolerance) << "index=" << i;
 }
 
+/// @brief CPU data matches what the GPU decodes.
 TEST_F(VectorFieldTest, CpuDataMatchesWhatTheGpuDecodes)
 {
     /// @note CPU が保持する値は «GPU が RGBA8 から復元する値» と一致していなければならない。
@@ -179,6 +187,7 @@ TEST_F(VectorFieldTest, CpuDataMatchesWhatTheGpuDecodes)
     }
 }
 
+/// @brief Sampling outside the bounds returns zero.
 TEST_F(VectorFieldTest, SamplingOutsideTheBoundsReturnsZero)
 {
     /// @note 場の外へ出た粒子が縁の値を引きずり続けないこと。
@@ -193,6 +202,7 @@ TEST_F(VectorFieldTest, SamplingOutsideTheBoundsReturnsZero)
                      testkit::kTolerance);
 }
 
+/// @brief The tile resolution fits the atlas depth limit.
 TEST_F(VectorFieldTest, TheTileResolutionFitsTheAtlasDepthLimit)
 {
     /// @note アトラスは 1 枚の Texture3D に Z 方向でタイルを積む。D3D11 の 3D テクスチャは

@@ -141,6 +141,7 @@ protected:
     bool m_frameOpen = false;
 };
 
+/// @brief Input assembly bindings follow buffer snapshots topology and frame changes.
 TEST_F(BufferReadTest, InputAssemblyBindingsFollowBufferSnapshotsTopologyAndFrameChanges)
 {
     testkit::TempDir temporary("graphics_input_assembly");
@@ -256,6 +257,7 @@ cbuffer Indices : register(b14) { uint4 pixel[8]; uint4 vertex[1]; uint4 uav[2];
     }
 }
 
+/// @brief Consecutive graphics bindings keep every index and survive frame and compute changes.
 TEST_F(BufferReadTest, ConsecutiveGraphicsBindingsKeepEveryIndexAndSurviveFrameAndComputeChanges)
 {
     testkit::TempDir temporary("graphics_bindless_indices");
@@ -462,6 +464,7 @@ protected:
     bool m_sinkAdded = false;
 };
 
+/// @brief Texture and buffer waits keep recording frame retirement pending.
 TEST_F(SynchronousUploadTest, TextureAndBufferWaitsKeepRecordingFrameRetirementPending)
 {
     const std::array<uint8_t, 4> red{255, 0, 0, 255};
@@ -523,6 +526,7 @@ TEST_F(SynchronousUploadTest, TextureAndBufferWaitsKeepRecordingFrameRetirementP
     ExpectColor(newTarget, {0, 0, 1});
 }
 
+/// @brief CPU updates publish new snapshots without changing recorded reads.
 TEST_F(BufferReadTest, CpuUpdatesPublishNewSnapshotsWithoutChangingRecordedReads)
 {
     const math::Vector3 initial{1, 2, 3};
@@ -579,6 +583,7 @@ TEST_F(BufferReadTest, CpuUpdatesPublishNewSnapshotsWithoutChangingRecordedReads
     EXPECT_FLOAT_EQ(result[2].w, static_cast<float>(thirdIndex));
 }
 
+/// @brief Stale indirect dependencies reject the dispatch before writing.
 TEST_F(BufferReadTest, StaleIndirectDependenciesRejectTheDispatchBeforeWriting)
 {
     const math::Vector3 initial{1, 2, 3};

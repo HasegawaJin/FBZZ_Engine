@@ -42,6 +42,7 @@ protected:
 
 /// @name 蓄積インパルスの引き継ぎ
 
+/// @brief Warm start does nothing for an unknown pair.
 TEST_F(ContactCacheTest, WarmStartDoesNothingForAnUnknownPair)
 {
     physics::ContactCache cache;
@@ -54,6 +55,7 @@ TEST_F(ContactCacheTest, WarmStartDoesNothingForAnUnknownPair)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Warm start restores the previous normal impulse.
 TEST_F(ContactCacheTest, WarmStartRestoresThePreviousNormalImpulse)
 {
     physics::ContactCache cache;
@@ -66,6 +68,7 @@ TEST_F(ContactCacheTest, WarmStartRestoresThePreviousNormalImpulse)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 5.0f, testkit::kTolerance);
 }
 
+/// @brief Warm start applies the cached impulse to the body.
 TEST_F(ContactCacheTest, WarmStartAppliesTheCachedImpulseToTheBody)
 {
     physics::ContactCache cache;
@@ -79,6 +82,7 @@ TEST_F(ContactCacheTest, WarmStartAppliesTheCachedImpulseToTheBody)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3(0.0f, 5.0f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Warm start pushes the two bodies in opposite directions.
 TEST_F(ContactCacheTest, WarmStartPushesTheTwoBodiesInOppositeDirections)
 {
     physics::RigidBody other;
@@ -95,6 +99,7 @@ TEST_F(ContactCacheTest, WarmStartPushesTheTwoBodiesInOppositeDirections)
     EXPECT_LT(other.GetVelocity().y, 0.0f);
 }
 
+/// @brief Matches the pair regardless of collider order.
 TEST_F(ContactCacheTest, MatchesThePairRegardlessOfColliderOrder)
 {
     /// @note ブロードフェーズが組を作る順は保証されない。キーは a < b に正規化される。
@@ -111,6 +116,7 @@ TEST_F(ContactCacheTest, MatchesThePairRegardlessOfColliderOrder)
 
 /// @name 一致しない接触
 
+/// @brief Does not reuse an impulse from a distant contact point.
 TEST_F(ContactCacheTest, DoesNotReuseAnImpulseFromADistantContactPoint)
 {
     physics::ContactCache cache;
@@ -124,6 +130,7 @@ TEST_F(ContactCacheTest, DoesNotReuseAnImpulseFromADistantContactPoint)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 0.0f, testkit::kTolerance);
 }
 
+/// @brief Reuses the impulse across a small position jitter.
 TEST_F(ContactCacheTest, ReusesTheImpulseAcrossASmallPositionJitter)
 {
     /// @note 静止接触の «わずかな揺れ» で毎フレーム作り直すと、warm start が一度も効かない。
@@ -138,6 +145,7 @@ TEST_F(ContactCacheTest, ReusesTheImpulseAcrossASmallPositionJitter)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 5.0f, testkit::kTolerance);
 }
 
+/// @brief Drops the cache when the contact normal turns.
 TEST_F(ContactCacheTest, DropsTheCacheWhenTheContactNormalTurns)
 {
     /// @note 床の三角形の境目をまたいだ接触。前フレームの摩擦を持ち込むと横向きに射出される。
@@ -156,6 +164,7 @@ TEST_F(ContactCacheTest, DropsTheCacheWhenTheContactNormalTurns)
     EXPECT_VEC3_NEAR(body.GetVelocity(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Ignores trigger contacts entirely.
 TEST_F(ContactCacheTest, IgnoresTriggerContactsEntirely)
 {
     /// @note トリガーは «通知するだけ» の接触。インパルスを蓄えたら押し返してしまう。
@@ -170,6 +179,7 @@ TEST_F(ContactCacheTest, IgnoresTriggerContactsEntirely)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 0.0f, testkit::kTolerance);
 }
 
+/// @brief Ignores contacts without colliders.
 TEST_F(ContactCacheTest, IgnoresContactsWithoutColliders)
 {
     physics::ContactCache cache;
@@ -187,6 +197,7 @@ TEST_F(ContactCacheTest, IgnoresContactsWithoutColliders)
     EXPECT_NEAR(fresh[1].cachedNormalImpulse, 5.0f, testkit::kTolerance);
 }
 
+/// @brief Forgets the pair when caching is turned off.
 TEST_F(ContactCacheTest, ForgetsThePairWhenCachingIsTurnedOff)
 {
     physics::ContactCache cache;
@@ -205,6 +216,7 @@ TEST_F(ContactCacheTest, ForgetsThePairWhenCachingIsTurnedOff)
 
 /// @name 失効
 
+/// @brief Keeps the cache while the contact is refreshed every frame.
 TEST_F(ContactCacheTest, KeepsTheCacheWhileTheContactIsRefreshedEveryFrame)
 {
     physics::ContactCache cache;
@@ -224,6 +236,7 @@ TEST_F(ContactCacheTest, KeepsTheCacheWhileTheContactIsRefreshedEveryFrame)
     EXPECT_NEAR(fresh[0].cachedNormalImpulse, 5.0f, testkit::kTolerance);
 }
 
+/// @brief Purges entries that were not refreshed.
 TEST_F(ContactCacheTest, PurgesEntriesThatWereNotRefreshed)
 {
     /// @note 接触が離れたのにキャッシュが残ると、次に触れた瞬間に古いインパルスが注入される。

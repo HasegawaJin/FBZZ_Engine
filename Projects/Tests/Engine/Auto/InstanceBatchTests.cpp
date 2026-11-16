@@ -37,11 +37,13 @@ renderer::DrawCall MakeCall()
 
 class InstanceBatchTest : public testkit::Fixture {};
 
+/// @brief Identical calls share a batch.
 TEST_F(InstanceBatchTest, IdenticalCallsShareABatch)
 {
     EXPECT_TRUE(scene::IsSameInstanceBatch(MakeCall(), MakeCall()));
 }
 
+/// @brief Different captured pose rows do not share a batch.
 TEST_F(InstanceBatchTest, DifferentCapturedPoseRowsDoNotShareABatch)
 {
     auto first = MakeCall();
@@ -51,6 +53,7 @@ TEST_F(InstanceBatchTest, DifferentCapturedPoseRowsDoNotShareABatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(first, second));
 }
 
+/// @brief Object constant buffer is ignored.
 /// @note b1 は per-object なので束ね条件に含めない。
 TEST_F(InstanceBatchTest, ObjectConstantBufferIsIgnored)
 {
@@ -59,6 +62,7 @@ TEST_F(InstanceBatchTest, ObjectConstantBufferIsIgnored)
     EXPECT_TRUE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
+/// @brief Instance fields are ignored.
 /// @note インスタンス数とバッファは束ね側が決める。
 TEST_F(InstanceBatchTest, InstanceFieldsAreIgnored)
 {
@@ -68,6 +72,7 @@ TEST_F(InstanceBatchTest, InstanceFieldsAreIgnored)
     EXPECT_TRUE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
+/// @brief Different mesh breaks the batch.
 TEST_F(InstanceBatchTest, DifferentMeshBreaksTheBatch)
 {
     renderer::DrawCall other = MakeCall();
@@ -79,6 +84,7 @@ TEST_F(InstanceBatchTest, DifferentMeshBreaksTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
+/// @brief Independent deformed buffers require the same source and all material bindings.
 TEST_F(InstanceBatchTest, IndependentDeformedBuffersRequireTheSameSourceAndAllMaterialBindings)
 {
     auto first = MakeCall();
@@ -99,6 +105,7 @@ TEST_F(InstanceBatchTest, IndependentDeformedBuffersRequireTheSameSourceAndAllMa
     EXPECT_FALSE(scene::IsSameInstanceBatch(first, second));
 }
 
+/// @brief Different submesh range breaks the batch.
 /// @note 同じメッシュでも submesh の範囲が違えば別の描画。
 TEST_F(InstanceBatchTest, DifferentSubmeshRangeBreaksTheBatch)
 {
@@ -115,6 +122,7 @@ TEST_F(InstanceBatchTest, DifferentSubmeshRangeBreaksTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
+/// @brief Different shader or pipeline state breaks the batch.
 TEST_F(InstanceBatchTest, DifferentShaderOrPipelineStateBreaksTheBatch)
 {
     renderer::DrawCall other = MakeCall();
@@ -126,6 +134,7 @@ TEST_F(InstanceBatchTest, DifferentShaderOrPipelineStateBreaksTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
+/// @brief Any other constant buffer breaks the batch.
 /// @note b1 以外の定数バッファは全枠で一致する必要がある。
 TEST_F(InstanceBatchTest, AnyOtherConstantBufferBreaksTheBatch)
 {
@@ -138,6 +147,7 @@ TEST_F(InstanceBatchTest, AnyOtherConstantBufferBreaksTheBatch)
     }
 }
 
+/// @brief Any texture slot breaks the batch.
 /// @note テクスチャの全枠の一致を要求する。
 TEST_F(InstanceBatchTest, AnyTextureSlotBreaksTheBatch)
 {
@@ -149,6 +159,7 @@ TEST_F(InstanceBatchTest, AnyTextureSlotBreaksTheBatch)
     }
 }
 
+/// @brief Structured buffer slots break the batch.
 TEST_F(InstanceBatchTest, StructuredBufferSlotsBreakTheBatch)
 {
     renderer::DrawCall other = MakeCall();
@@ -160,6 +171,7 @@ TEST_F(InstanceBatchTest, StructuredBufferSlotsBreakTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
+/// @brief Pass specific object constant meaning does not affect the condition.
 /// @note Velocity と ObjectMask の b1 の意味が異なっても束ね条件は共通にする。
 TEST_F(InstanceBatchTest, PassSpecificObjectConstantMeaningDoesNotAffectTheCondition)
 {
@@ -175,6 +187,7 @@ TEST_F(InstanceBatchTest, PassSpecificObjectConstantMeaningDoesNotAffectTheCondi
     EXPECT_FALSE(scene::IsSameInstanceBatch(a, b));
 }
 
+/// @brief Layer and topology break the batch.
 TEST_F(InstanceBatchTest, LayerAndTopologyBreakTheBatch)
 {
     renderer::DrawCall other = MakeCall();
@@ -186,6 +199,7 @@ TEST_F(InstanceBatchTest, LayerAndTopologyBreakTheBatch)
     EXPECT_FALSE(scene::IsSameInstanceBatch(MakeCall(), other));
 }
 
+/// @brief GPU resource bindings and commands break the batch.
 TEST_F(InstanceBatchTest, GpuResourceBindingsAndCommandsBreakTheBatch)
 {
     const auto original = MakeCall();

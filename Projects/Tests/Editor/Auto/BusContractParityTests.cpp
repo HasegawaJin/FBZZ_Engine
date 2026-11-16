@@ -133,6 +133,7 @@ protected:
 
 } /// @note namespace
 
+/// @brief Every contract type has a handler.
 TEST_F(BusContractParityTest, EveryContractTypeHasAHandler)
 {
     std::vector<BusType> registered;
@@ -146,6 +147,7 @@ TEST_F(BusContractParityTest, EveryContractTypeHasAHandler)
     }
 }
 
+/// @brief Every handler is reachable from the contract.
 TEST_F(BusContractParityTest, EveryHandlerIsReachableFromTheContract)
 {
     std::vector<BusType> registered;
@@ -158,6 +160,7 @@ TEST_F(BusContractParityTest, EveryHandlerIsReachableFromTheContract)
     }
 }
 
+/// @brief No type is registered twice.
 TEST_F(BusContractParityTest, NoTypeIsRegisteredTwice)
 {
     std::vector<BusType> registered;
@@ -166,6 +169,7 @@ TEST_F(BusContractParityTest, NoTypeIsRegisteredTwice)
     for (const BusType& entry : registered) EXPECT_TRUE(types.emplace(entry.type, entry.kind).second) << entry.type;
 }
 
+/// @brief Query and command kinds match native handlers.
 TEST_F(BusContractParityTest, QueryAndCommandKindsMatchNativeHandlers)
 {
     std::vector<BusType> registered;
@@ -180,6 +184,7 @@ TEST_F(BusContractParityTest, QueryAndCommandKindsMatchNativeHandlers)
     }
 }
 
+/// @brief Type aliases and runtime schemas declare the same kinds.
 TEST_F(BusContractParityTest, TypeAliasesAndRuntimeSchemasDeclareTheSameKinds)
 {
     const ContractMap types = ContractTypes(false);
@@ -188,6 +193,7 @@ TEST_F(BusContractParityTest, TypeAliasesAndRuntimeSchemasDeclareTheSameKinds)
     EXPECT_EQ(types, schemas);
 }
 
+/// @brief Protocol matches type script and shared cases.
 TEST_F(BusContractParityTest, ProtocolMatchesTypeScriptAndSharedCases)
 {
     const std::string source = ReadSource("Projects/EditorMcp/src/editorContracts.ts");
@@ -203,6 +209,7 @@ TEST_F(BusContractParityTest, ProtocolMatchesTypeScriptAndSharedCases)
     EXPECT_EQ(protocol->AsString(), editor::ai::kEditorProtocol);
 }
 
+/// @brief Shared input cases match native dry run.
 TEST_F(BusContractParityTest, SharedInputCasesMatchNativeDryRun)
 {
     const auto fixture = editor::ai::ParseJson(ReadSource("Projects/EditorMcp/src/tests/fixtures/EditorContractCases.json"));

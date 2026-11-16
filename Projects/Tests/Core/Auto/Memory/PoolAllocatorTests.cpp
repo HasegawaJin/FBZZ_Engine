@@ -11,6 +11,7 @@ namespace fbzz::tests {
 
 class PoolAllocatorTest : public testkit::EngineFixture {};
 
+/// @brief Allocates exactly the configured block count.
 TEST_F(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
 {
     core::PoolAllocator allocator;
@@ -26,6 +27,7 @@ TEST_F(PoolAllocatorTest, AllocatesExactlyTheConfiguredBlockCount)
     allocator.Shutdown();
 }
 
+/// @brief Free and reset return blocks to the free list.
 TEST_F(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
 {
     core::PoolAllocator allocator;
@@ -44,6 +46,7 @@ TEST_F(PoolAllocatorTest, FreeAndResetReturnBlocksToTheFreeList)
     allocator.Shutdown();
 }
 
+/// @brief Accepts any request that fits in the block.
 /// @note 基底 Allocator の契約は «容量不足なら nullptr» のみでサイズの完全一致は求めない。CreateObject<T> は Allocate(sizeof(T), alignof(T)) を呼ぶため、完全一致を要求すると sizeof(T)==blockSize のときしか使えなくなる。
 /// @note blockSize を超える要求は Allocate 内の assert が先に止める。Development 構成は NDEBUG を定義しない (アサート有効) ためその経路はテストから踏めない。
 TEST_F(PoolAllocatorTest, AcceptsAnyRequestThatFitsInTheBlock)

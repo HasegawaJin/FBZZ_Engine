@@ -92,6 +92,7 @@ protected:
     }
 };
 
+/// @brief Normalizes cr lf once without changing comments or TOML values.
 TEST_F(MetaFilePersistenceTest, NormalizesCrLfOnceWithoutChangingCommentsOrTomlValues)
 {
     const std::string path = Path("日本語.png.meta");
@@ -115,6 +116,7 @@ TEST_F(MetaFilePersistenceTest, NormalizesCrLfOnceWithoutChangingCommentsOrTomlV
     ExpectIdentity(path);
 }
 
+/// @brief Creates new metadata with lf even when input uses cr lf.
 TEST_F(MetaFilePersistenceTest, CreatesNewMetadataWithLfEvenWhenInputUsesCrLf)
 {
     const std::string path = Path("New.png.meta");
@@ -122,6 +124,7 @@ TEST_F(MetaFilePersistenceTest, CreatesNewMetadataWithLfEvenWhenInputUsesCrLf)
     EXPECT_EQ(Bytes(path), "[meta]\nguid = '0123456789abcdef0123456789abcdef'\n");
 }
 
+/// @brief Rejects invalid existing or incoming TOML without replacing original.
 TEST_F(MetaFilePersistenceTest, RejectsInvalidExistingOrIncomingTomlWithoutReplacingOriginal)
 {
     const std::string path = Path("Broken.png.meta");
@@ -137,6 +140,7 @@ TEST_F(MetaFilePersistenceTest, RejectsInvalidExistingOrIncomingTomlWithoutRepla
     ExpectUnchanged(path, SeedMeta());
 }
 
+/// @brief Model settings only write when values change and keep other sections.
 TEST_F(MetaFilePersistenceTest, ModelSettingsOnlyWriteWhenValuesChangeAndKeepOtherSections)
 {
     const std::string source = Path("Model.fbx");
@@ -158,6 +162,7 @@ TEST_F(MetaFilePersistenceTest, ModelSettingsOnlyWriteWhenValuesChangeAndKeepOth
     ExpectIdentity(path);
 }
 
+/// @brief Model source timestamp changes only update the local cache.
 TEST_F(MetaFilePersistenceTest, ModelSourceTimestampChangesOnlyUpdateTheLocalCache)
 {
     const std::string source = Path("Model.fbx");
@@ -180,6 +185,7 @@ TEST_F(MetaFilePersistenceTest, ModelSourceTimestampChangesOnlyUpdateTheLocalCac
     EXPECT_FALSE(parsed.table().contains("cache"));
 }
 
+/// @brief Texture settings keep sprite IDs and references across repeated saves.
 TEST_F(MetaFilePersistenceTest, TextureSettingsKeepSpriteIdsAndReferencesAcrossRepeatedSaves)
 {
     const std::string path = Path("Sprite.png.meta");
@@ -207,6 +213,7 @@ TEST_F(MetaFilePersistenceTest, TextureSettingsKeepSpriteIdsAndReferencesAcrossR
     ExpectIdentity(path);
 }
 
+/// @brief Scene metadata has stable order without reordering components.
 TEST_F(MetaFilePersistenceTest, SceneMetadataHasStableOrderWithoutReorderingComponents)
 {
     const std::string scene = Path("Stable.scene");

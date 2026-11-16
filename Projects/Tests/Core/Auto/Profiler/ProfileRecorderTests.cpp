@@ -21,6 +21,7 @@ protected:
     void SetUp() override { EngineFixture::SetUp(); s_profileTimeMs = 0.0; s_profileClockReads = 0; }
 };
 
+/// @brief Computes self and parent links without double counting.
 TEST_F(ProfileRecorderTest, ComputesSelfAndParentLinksWithoutDoubleCounting)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -45,6 +46,7 @@ TEST_F(ProfileRecorderTest, ComputesSelfAndParentLinksWithoutDoubleCounting)
     EXPECT_FALSE(snapshot.wallFrameIntervalAvailable);
 }
 
+/// @brief Ignores foreign stale double and non LIFO tokens.
 TEST_F(ProfileRecorderTest, IgnoresForeignStaleDoubleAndNonLifoTokens)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -70,6 +72,7 @@ TEST_F(ProfileRecorderTest, IgnoresForeignStaleDoubleAndNonLifoTokens)
     EXPECT_TRUE(recorder.GetSnapshot().complete);
 }
 
+/// @brief Recovers only inner scopes and invalidates their tokens.
 TEST_F(ProfileRecorderTest, RecoversOnlyInnerScopesAndInvalidatesTheirTokens)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -91,6 +94,7 @@ TEST_F(ProfileRecorderTest, RecoversOnlyInnerScopesAndInvalidatesTheirTokens)
     EXPECT_FALSE(snapshot.complete);
 }
 
+/// @brief Keeps parallel durations separate from self and instant events.
 TEST_F(ProfileRecorderTest, KeepsParallelDurationsSeparateFromSelfAndInstantEvents)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -110,6 +114,7 @@ TEST_F(ProfileRecorderTest, KeepsParallelDurationsSeparateFromSelfAndInstantEven
     EXPECT_DOUBLE_EQ(snapshot.scopeRootSumMs, 5.0);
 }
 
+/// @brief Completes every retained sample once across faults filtering recovery and frame abort.
 TEST_F(ProfileRecorderTest, CompletesEveryRetainedSampleOnceAcrossFaultsFilteringRecoveryAndFrameAbort)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -154,6 +159,7 @@ TEST_F(ProfileRecorderTest, CompletesEveryRetainedSampleOnceAcrossFaultsFilterin
     EXPECT_TRUE(recorder.GetSnapshot().complete);
 }
 
+/// @brief Bounds output while keeping saved parent and end correspondence.
 TEST_F(ProfileRecorderTest, BoundsOutputWhileKeepingSavedParentAndEndCorrespondence)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -174,6 +180,7 @@ TEST_F(ProfileRecorderTest, BoundsOutputWhileKeepingSavedParentAndEndCorresponde
         EXPECT_EQ(snapshot.samples[i].parentSampleId, snapshot.samples[0].sampleId);
 }
 
+/// @brief Restores suppression checkpoint without closing saved ancestor.
 TEST_F(ProfileRecorderTest, RestoresSuppressionCheckpointWithoutClosingSavedAncestor)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -197,6 +204,7 @@ TEST_F(ProfileRecorderTest, RestoresSuppressionCheckpointWithoutClosingSavedAnce
     EXPECT_EQ(snapshot.samples.front().status, profiler::ProfileSampleStatus::COMPLETE);
 }
 
+/// @brief Applies recording and clear at boundaries and counts unframed calls.
 TEST_F(ProfileRecorderTest, AppliesRecordingAndClearAtBoundariesAndCountsUnframedCalls)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -231,6 +239,7 @@ TEST_F(ProfileRecorderTest, AppliesRecordingAndClearAtBoundariesAndCountsUnframe
     EXPECT_FALSE(recorder.GetSnapshot().wallFrameIntervalAvailable);
 }
 
+/// @brief Old raii token cannot close scope after immediate reset.
 TEST_F(ProfileRecorderTest, OldRaiiTokenCannotCloseScopeAfterImmediateReset)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -250,6 +259,7 @@ TEST_F(ProfileRecorderTest, OldRaiiTokenCannotCloseScopeAfterImmediateReset)
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Foreign checkpoint does not change facade manual stack.
 TEST_F(ProfileRecorderTest, ForeignCheckpointDoesNotChangeFacadeManualStack)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -268,6 +278,7 @@ TEST_F(ProfileRecorderTest, ForeignCheckpointDoesNotChangeFacadeManualStack)
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Manual depth overflow ends without aborting saved scopes.
 TEST_F(ProfileRecorderTest, ManualDepthOverflowEndsWithoutAbortingSavedScopes)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -287,6 +298,7 @@ TEST_F(ProfileRecorderTest, ManualDepthOverflowEndsWithoutAbortingSavedScopes)
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Owns legacy marker names beyond caller buffer mutation.
 TEST_F(ProfileRecorderTest, OwnsLegacyMarkerNamesBeyondCallerBufferMutation)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -302,6 +314,7 @@ TEST_F(ProfileRecorderTest, OwnsLegacyMarkerNamesBeyondCallerBufferMutation)
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Facade recovery preserves compatibility overflow outside fault boundary.
 TEST_F(ProfileRecorderTest, FacadeRecoveryPreservesCompatibilityOverflowOutsideFaultBoundary)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -330,6 +343,7 @@ TEST_F(ProfileRecorderTest, FacadeRecoveryPreservesCompatibilityOverflowOutsideF
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Facade recovery separates native suppression from compatibility overflow depth.
 TEST_F(ProfileRecorderTest, FacadeRecoverySeparatesNativeSuppressionFromCompatibilityOverflowDepth)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -362,6 +376,7 @@ TEST_F(ProfileRecorderTest, FacadeRecoverySeparatesNativeSuppressionFromCompatib
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Facade recovery rejects checkpoint from completed overflow branch.
 TEST_F(ProfileRecorderTest, FacadeRecoveryRejectsCheckpointFromCompletedOverflowBranch)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -391,6 +406,7 @@ TEST_F(ProfileRecorderTest, FacadeRecoveryRejectsCheckpointFromCompletedOverflow
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Rejects closed suppression checkpoint after new deeper branch.
 TEST_F(ProfileRecorderTest, RejectsClosedSuppressionCheckpointAfterNewDeeperBranch)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -410,6 +426,7 @@ TEST_F(ProfileRecorderTest, RejectsClosedSuppressionCheckpointAfterNewDeeperBran
     for (const auto& sample : recorder.GetSnapshot().samples) EXPECT_EQ(sample.status, profiler::ProfileSampleStatus::COMPLETE);
 }
 
+/// @brief Rejects ended nested anchor while keeping same suppression root alive.
 TEST_F(ProfileRecorderTest, RejectsEndedNestedAnchorWhileKeepingSameSuppressionRootAlive)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -433,6 +450,7 @@ TEST_F(ProfileRecorderTest, RejectsEndedNestedAnchorWhileKeepingSameSuppressionR
     for (const auto& sample : recorder.GetSnapshot().samples) EXPECT_EQ(sample.status, profiler::ProfileSampleStatus::COMPLETE);
 }
 
+/// @brief Bounds suppression anchors and preserves existing outer recovery.
 TEST_F(ProfileRecorderTest, BoundsSuppressionAnchorsAndPreservesExistingOuterRecovery)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -459,6 +477,7 @@ TEST_F(ProfileRecorderTest, BoundsSuppressionAnchorsAndPreservesExistingOuterRec
     for (const auto& sample : recorder.GetSnapshot().samples) EXPECT_EQ(sample.status, profiler::ProfileSampleStatus::COMPLETE);
 }
 
+/// @brief Bounds owned string capacities and retires unused marker strings.
 TEST_F(ProfileRecorderTest, BoundsOwnedStringCapacitiesAndRetiresUnusedMarkerStrings)
 {
     const bool enabled = profiler::Profiler::IsEnabled();
@@ -493,6 +512,7 @@ TEST_F(ProfileRecorderTest, BoundsOwnedStringCapacitiesAndRetiresUnusedMarkerStr
     profiler::Profiler::SetEnabled(enabled);
 }
 
+/// @brief Filtered scopes skip the clock and keep matching children and parent correspondence.
 TEST_F(ProfileRecorderTest, FilteredScopesSkipTheClockAndKeepMatchingChildrenAndParentCorrespondence)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -525,6 +545,7 @@ TEST_F(ProfileRecorderTest, FilteredScopesSkipTheClockAndKeepMatchingChildrenAnd
     EXPECT_EQ(s_profileClockReads, 5u);
 }
 
+/// @brief Explains capacity depth descriptor and unclosed scope loss and resets counters.
 TEST_F(ProfileRecorderTest, ExplainsCapacityDepthDescriptorAndUnclosedScopeLossAndResetsCounters)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -557,6 +578,7 @@ TEST_F(ProfileRecorderTest, ExplainsCapacityDepthDescriptorAndUnclosedScopeLossA
     EXPECT_TRUE(recorder.GetSnapshot().complete);
 }
 
+/// @brief Keeps thousands of frames bounded and distinguishes zero from periodic loss and recovery.
 TEST_F(ProfileRecorderTest, KeepsThousandsOfFramesBoundedAndDistinguishesZeroFromPeriodicLossAndRecovery)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -607,6 +629,7 @@ TEST_F(ProfileRecorderTest, KeepsThousandsOfFramesBoundedAndDistinguishesZeroFro
 }
 
 
+/// @brief Nested inclusive sum is not the frame elapsed.
 TEST_F(ProfileRecorderTest, NestedInclusiveSumIsNotTheFrameElapsed)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -625,6 +648,7 @@ TEST_F(ProfileRecorderTest, NestedInclusiveSumIsNotTheFrameElapsed)
     EXPECT_DOUBLE_EQ(frame.samples[0].selfMs + frame.samples[1].selfMs, 5.0);
 }
 
+/// @brief Parallel execution and queue wait sums can exceed frame elapsed.
 TEST_F(ProfileRecorderTest, ParallelExecutionAndQueueWaitSumsCanExceedFrameElapsed)
 {
     profiler::ProfileRecorder recorder(true, ReadProfileTime);
@@ -646,6 +670,7 @@ TEST_F(ProfileRecorderTest, ParallelExecutionAndQueueWaitSumsCanExceedFrameElaps
 
 class FrameTimelineTest : public testkit::EngineFixture {};
 
+/// @brief Keeps the preceding warmup frame and the closing next begin.
 TEST_F(FrameTimelineTest, KeepsThePrecedingWarmupFrameAndTheClosingNextBegin)
 {
     using profiler::frame_timeline::detail::FrameRole;
@@ -659,6 +684,7 @@ TEST_F(FrameTimelineTest, KeepsThePrecedingWarmupFrameAndTheClosingNextBegin)
     EXPECT_EQ(window.Seen(), 6u);
 }
 
+/// @brief Zero warmup begins with a sample and still closes its forward interval.
 TEST_F(FrameTimelineTest, ZeroWarmupBeginsWithASampleAndStillClosesItsForwardInterval)
 {
     using profiler::frame_timeline::detail::FrameRole;
@@ -668,6 +694,7 @@ TEST_F(FrameTimelineTest, ZeroWarmupBeginsWithASampleAndStillClosesItsForwardInt
     EXPECT_EQ(window.Next(), FrameRole::FINISHED);
 }
 
+/// @brief Full passive window has exactly six thousand samples without selecting by timing.
 TEST_F(FrameTimelineTest, FullPassiveWindowHasExactlySixThousandSamplesWithoutSelectingByTiming)
 {
     using profiler::frame_timeline::detail::FrameRole;
@@ -684,6 +711,7 @@ TEST_F(FrameTimelineTest, FullPassiveWindowHasExactlySixThousandSamplesWithoutSe
     EXPECT_EQ(anchors, 1u);
 }
 
+/// @brief Joins CPU and tail to the following passive wall row.
 TEST_F(FrameTimelineTest, JoinsCpuAndTailToTheFollowingPassiveWallRow)
 {
     const profiler::frame_timeline::detail::FrameTimes frame{100, 107, 112, true, true};
@@ -696,6 +724,7 @@ TEST_F(FrameTimelineTest, JoinsCpuAndTailToTheFollowingPassiveWallRow)
     EXPECT_EQ(frame.CpuTicks() + frame.TailTicks(), frame.IntervalTicks());
 }
 
+/// @brief Missing end or next begin remains unavailable instead of becoming a zero cost.
 TEST_F(FrameTimelineTest, MissingEndOrNextBeginRemainsUnavailableInsteadOfBecomingAZeroCost)
 {
     const profiler::frame_timeline::detail::FrameTimes noEnd{100, 0, 112, false, true};
@@ -708,6 +737,7 @@ TEST_F(FrameTimelineTest, MissingEndOrNextBeginRemainsUnavailableInsteadOfBecomi
     EXPECT_FALSE(noNextBegin.TailAvailable());
 }
 
+/// @brief Regressing clock or an end after the next begin rejects the tail.
 TEST_F(FrameTimelineTest, RegressingClockOrAnEndAfterTheNextBeginRejectsTheTail)
 {
     const profiler::frame_timeline::detail::FrameTimes regressing{100, 99, 112, true, true};
@@ -719,6 +749,7 @@ TEST_F(FrameTimelineTest, RegressingClockOrAnEndAfterTheNextBeginRejectsTheTail)
     EXPECT_FALSE(overlapping.TailAvailable());
 }
 
+/// @brief Event capacity counts drops without returning an out-of-range publication slot.
 TEST_F(FrameTimelineTest, EventCapacityCountsDropsWithoutReturningAnOutOfRangePublicationSlot)
 {
     std::atomic<uint64_t> attempted{0}, dropped{0};
@@ -730,6 +761,7 @@ TEST_F(FrameTimelineTest, EventCapacityCountsDropsWithoutReturningAnOutOfRangePu
     EXPECT_EQ(dropped.load(), 2u);
 }
 
+/// @brief Zero capacity cannot publish or silently lose the drop.
 TEST_F(FrameTimelineTest, ZeroCapacityCannotPublishOrSilentlyLoseTheDrop)
 {
     std::atomic<uint64_t> attempted{0}, dropped{0};

@@ -44,6 +44,7 @@ protected:
 
 /// @name 配信
 
+/// @brief Delivers the published event to its subscriber.
 TEST_F(EventBusTest, DeliversThePublishedEventToItsSubscriber)
 {
     int received = 0;
@@ -56,6 +57,7 @@ TEST_F(EventBusTest, DeliversThePublishedEventToItsSubscriber)
     EXPECT_EQ(received, 7);
 }
 
+/// @brief Delivers to every subscriber of that type.
 TEST_F(EventBusTest, DeliversToEverySubscriberOfThatType)
 {
     int first  = 0;
@@ -69,6 +71,7 @@ TEST_F(EventBusTest, DeliversToEverySubscriberOfThatType)
     EXPECT_EQ(second, 3);
 }
 
+/// @brief Delivers in subscription order.
 TEST_F(EventBusTest, DeliversInSubscriptionOrder)
 {
     std::vector<int> order;
@@ -82,6 +85,7 @@ TEST_F(EventBusTest, DeliversInSubscriptionOrder)
     EXPECT_EQ(order[1], 2);
 }
 
+/// @brief Does not deliver to subscribers of another type.
 TEST_F(EventBusTest, DoesNotDeliverToSubscribersOfAnotherType)
 {
     /// @note 型が違えば別の箱。ここが混ざると、無関係な購読者が壊れたデータを読む。
@@ -95,6 +99,7 @@ TEST_F(EventBusTest, DoesNotDeliverToSubscribersOfAnotherType)
     EXPECT_EQ(damage, 0);
 }
 
+/// @brief Publishing without subscribers is harmless.
 TEST_F(EventBusTest, PublishingWithoutSubscribersIsHarmless)
 {
     util::EventBus::Publish(StageCleared{ "Stage_01" });
@@ -102,6 +107,7 @@ TEST_F(EventBusTest, PublishingWithoutSubscribersIsHarmless)
     SUCCEED();
 }
 
+/// @brief Passes the payload through unchanged.
 TEST_F(EventBusTest, PassesThePayloadThroughUnchanged)
 {
     std::string stage;
@@ -114,6 +120,7 @@ TEST_F(EventBusTest, PassesThePayloadThroughUnchanged)
 
 /// @name 解除
 
+/// @brief Stops delivering after unsubscribe.
 TEST_F(EventBusTest, StopsDeliveringAfterUnsubscribe)
 {
     int calls = 0;
@@ -126,6 +133,7 @@ TEST_F(EventBusTest, StopsDeliveringAfterUnsubscribe)
     EXPECT_EQ(calls, 0);
 }
 
+/// @brief Unsubscribe removes only the given subscriber.
 TEST_F(EventBusTest, UnsubscribeRemovesOnlyTheGivenSubscriber)
 {
     int removed = 0;
@@ -141,6 +149,7 @@ TEST_F(EventBusTest, UnsubscribeRemovesOnlyTheGivenSubscriber)
     EXPECT_EQ(kept, 1);
 }
 
+/// @brief Subscriber IDs are unique across types.
 TEST_F(EventBusTest, SubscriberIdsAreUniqueAcrossTypes)
 {
     /// @note ID が型をまたいで衝突すると、解除が別の型の購読者を巻き込む。
@@ -154,6 +163,7 @@ TEST_F(EventBusTest, SubscriberIdsAreUniqueAcrossTypes)
     EXPECT_EQ(survivor, 1);
 }
 
+/// @brief Unsubscribing an unknown ID is harmless.
 TEST_F(EventBusTest, UnsubscribingAnUnknownIdIsHarmless)
 {
     int calls = 0;
@@ -165,6 +175,7 @@ TEST_F(EventBusTest, UnsubscribingAnUnknownIdIsHarmless)
     EXPECT_EQ(calls, 1);
 }
 
+/// @brief Unsubscribing during delivery still finishes the current publish.
 TEST_F(EventBusTest, UnsubscribingDuringDeliveryStillFinishesTheCurrentPublish)
 {
     /// @note 配信中の解除で購読者リストが再確保されると、走査中の参照が壊れる。
@@ -181,6 +192,7 @@ TEST_F(EventBusTest, UnsubscribingDuringDeliveryStillFinishesTheCurrentPublish)
     EXPECT_EQ(calls, 1);
 }
 
+/// @brief Subscribing during delivery does not receive the same event.
 TEST_F(EventBusTest, SubscribingDuringDeliveryDoesNotReceiveTheSameEvent)
 {
     /// @note 配信中に増えた購読者へその場で配ると、同じイベントで無限に増えうる。
@@ -198,6 +210,7 @@ TEST_F(EventBusTest, SubscribingDuringDeliveryDoesNotReceiveTheSameEvent)
 
 /// @name 一括解除
 
+/// @brief Clear removes subscribers of every type.
 TEST_F(EventBusTest, ClearRemovesSubscribersOfEveryType)
 {
     /// @note Play モードの開始 / 終了で必ず呼ぶ。残ると破棄済みのシーンへ配信される。
@@ -214,6 +227,7 @@ TEST_F(EventBusTest, ClearRemovesSubscribersOfEveryType)
     EXPECT_EQ(stages, 0);
 }
 
+/// @brief Stale subscriber ID cannot cancel registration after clear.
 TEST_F(EventBusTest, StaleSubscriberIdCannotCancelRegistrationAfterClear)
 {
     const auto oldId = util::EventBus::Subscribe<DamageTaken>([](const DamageTaken&) {});
@@ -228,6 +242,7 @@ TEST_F(EventBusTest, StaleSubscriberIdCannotCancelRegistrationAfterClear)
     EXPECT_EQ(calls, 1);
 }
 
+/// @brief Preserves mutable handler state across publications.
 TEST_F(EventBusTest, PreservesMutableHandlerStateAcrossPublications)
 {
     std::vector<int> seen;
@@ -238,6 +253,7 @@ TEST_F(EventBusTest, PreservesMutableHandlerStateAcrossPublications)
     EXPECT_EQ(seen, (std::vector<int>{1, 2, 3}));
 }
 
+/// @brief Nested publication uses the same handler state.
 TEST_F(EventBusTest, NestedPublicationUsesTheSameHandlerState)
 {
     std::vector<int> seen;
@@ -255,6 +271,7 @@ TEST_F(EventBusTest, NestedPublicationUsesTheSameHandlerState)
     EXPECT_EQ(seen, (std::vector<int>{1, 2, 3, 4}));
 }
 
+/// @brief Clear during invocation keeps capture alive until return.
 TEST_F(EventBusTest, ClearDuringInvocationKeepsCaptureAliveUntilReturn)
 {
     auto state = std::make_shared<int>(41);
@@ -288,6 +305,7 @@ protected:
     }
 };
 
+/// @brief Preserves mutable handler state across publications.
 TEST_F(ScriptEventBusTest, PreservesMutableHandlerStateAcrossPublications)
 {
     std::vector<int> seen;
@@ -298,6 +316,7 @@ TEST_F(ScriptEventBusTest, PreservesMutableHandlerStateAcrossPublications)
     EXPECT_EQ(seen, (std::vector<int>{1, 2, 3}));
 }
 
+/// @brief Reentrant growth keeps mutable handler state.
 TEST_F(ScriptEventBusTest, ReentrantGrowthKeepsMutableHandlerState)
 {
     std::vector<int> seen;
@@ -315,6 +334,7 @@ TEST_F(ScriptEventBusTest, ReentrantGrowthKeepsMutableHandlerState)
     EXPECT_EQ(seen, (std::vector<int>{1, 2, 3}));
 }
 
+/// @brief Clear during invocation keeps capture alive until return.
 TEST_F(ScriptEventBusTest, ClearDuringInvocationKeepsCaptureAliveUntilReturn)
 {
     auto state = std::make_shared<int>(41);
@@ -334,6 +354,7 @@ TEST_F(ScriptEventBusTest, ClearDuringInvocationKeepsCaptureAliveUntilReturn)
     EXPECT_EQ(received, 42);
 }
 
+/// @brief Stale token cannot cancel registration after clear.
 TEST_F(ScriptEventBusTest, StaleTokenCannotCancelRegistrationAfterClear)
 {
     const auto oldToken = scene::ScriptEventBus::SubscribeRaw(nullptr, "channel", [](const void*) {});
@@ -349,6 +370,7 @@ TEST_F(ScriptEventBusTest, StaleTokenCannotCancelRegistrationAfterClear)
     EXPECT_EQ(scene::ScriptEventBus::SubscriptionCount(), 1u);
 }
 
+/// @brief Clear during nested delivery cancels old callbacks and defers new ones.
 TEST_F(ScriptEventBusTest, ClearDuringNestedDeliveryCancelsOldCallbacksAndDefersNewOnes)
 {
     int oldCalls = 0;
@@ -374,6 +396,7 @@ TEST_F(ScriptEventBusTest, ClearDuringNestedDeliveryCancelsOldCallbacksAndDefers
     EXPECT_EQ(secondNewCalls, 2);
 }
 
+/// @brief Delivery keeps original channel when caller changes its string.
 TEST_F(ScriptEventBusTest, DeliveryKeepsOriginalChannelWhenCallerChangesItsString)
 {
     std::string channel = "main";

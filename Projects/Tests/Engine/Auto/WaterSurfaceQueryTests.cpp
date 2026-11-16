@@ -45,6 +45,7 @@ void ExpectUnchanged(const scene::WaterSurfaceHeightSample& sample)
 
 class WaterSurfaceQueryTest : public testkit::Fixture {};
 
+/// @brief Horizon toggle extends membership but preserves height and depth.
 TEST_F(WaterSurfaceQueryTest, HorizonToggleExtendsMembershipButPreservesHeightAndDepth)
 {
     auto water = FlatWater();
@@ -74,6 +75,7 @@ TEST_F(WaterSurfaceQueryTest, HorizonToggleExtendsMembershipButPreservesHeightAn
     }
 }
 
+/// @brief Horizon raises crossing crests without raising aligned crests or troughs.
 TEST_F(WaterSurfaceQueryTest, HorizonRaisesCrossingCrestsWithoutRaisingAlignedCrestsOrTroughs)
 {
     auto water = FlatWater();
@@ -99,6 +101,7 @@ TEST_F(WaterSurfaceQueryTest, HorizonRaisesCrossingCrestsWithoutRaisingAlignedCr
     EXPECT_NEAR(sample.displacement, 2.0f, testkit::kTolerance);
 }
 
+/// @brief Wave speed updates the cached surface phase.
 TEST_F(WaterSurfaceQueryTest, WaveSpeedUpdatesTheCachedSurfacePhase)
 {
     auto water = FlatWater();
@@ -122,6 +125,7 @@ TEST_F(WaterSurfaceQueryTest, WaveSpeedUpdatesTheCachedSurfacePhase)
     EXPECT_NEAR(sample.displacement, initial.displacement, testkit::kTolerance);
 }
 
+/// @brief Uses world parent pose yaw and signed nonuniform scale.
 TEST_F(WaterSurfaceQueryTest, UsesWorldParentPoseYawAndSignedNonuniformScale)
 {
     const auto water = FlatWater();
@@ -146,6 +150,7 @@ TEST_F(WaterSurfaceQueryTest, UsesWorldParentPoseYawAndSignedNonuniformScale)
     EXPECT_FLOAT_EQ(sample.position.y, 12.0f);
 }
 
+/// @brief Limits underwater to the authored depth and excludes the waterline.
 TEST_F(WaterSurfaceQueryTest, LimitsUnderwaterToTheAuthoredDepthAndExcludesTheWaterline)
 {
     const auto water = FlatWater();
@@ -165,6 +170,7 @@ TEST_F(WaterSurfaceQueryTest, LimitsUnderwaterToTheAuthoredDepthAndExcludesTheWa
     EXPECT_FLOAT_EQ(sample.depth, -1.0f);
 }
 
+/// @brief Inside only height matches the spline query and preserves output on miss.
 TEST_F(WaterSurfaceQueryTest, InsideOnlyHeightMatchesTheSplineQueryAndPreservesOutputOnMiss)
 {
     auto water = FlatWater();
@@ -227,6 +233,7 @@ TEST_F(WaterSurfaceQueryTest, InsideOnlyHeightMatchesTheSplineQueryAndPreservesO
     ExpectUnchanged(filtered);
 }
 
+/// @brief Accepts the horizontal upside down plane.
 TEST_F(WaterSurfaceQueryTest, AcceptsTheHorizontalUpsideDownPlane)
 {
     const auto water = FlatWater();
@@ -243,6 +250,7 @@ TEST_F(WaterSurfaceQueryTest, AcceptsTheHorizontalUpsideDownPlane)
     EXPECT_VEC3_NEAR(sample.normal, math::Vector3::UP, testkit::kTolerance);
 }
 
+/// @brief Rejects tilted singular and nonfinite inputs without changing output.
 TEST_F(WaterSurfaceQueryTest, RejectsTiltedSingularAndNonfiniteInputsWithoutChangingOutput)
 {
     auto water = FlatWater();
@@ -270,6 +278,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsTiltedSingularAndNonfiniteInputsWithoutChan
     ExpectUnchanged(sample);
 }
 
+/// @brief Rejects invalid world extent depth and resolved waves.
 TEST_F(WaterSurfaceQueryTest, RejectsInvalidWorldExtentDepthAndResolvedWaves)
 {
     auto water = FlatWater();
@@ -287,6 +296,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsInvalidWorldExtentDepthAndResolvedWaves)
     EXPECT_FALSE(scene::IsWaterSurfaceSupported(water, pose));
 }
 
+/// @brief Rejects degenerate and overflowing active wave directions.
 TEST_F(WaterSurfaceQueryTest, RejectsDegenerateAndOverflowingActiveWaveDirections)
 {
     auto water = FlatWater();
@@ -305,6 +315,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsDegenerateAndOverflowingActiveWaveDirection
     EXPECT_TRUE(scene::IsWaterSurfaceSupported(water, pose));
 }
 
+/// @brief Inactive waves do not require a direction.
 TEST_F(WaterSurfaceQueryTest, InactiveWavesDoNotRequireADirection)
 {
     auto water = FlatWater();
@@ -318,6 +329,7 @@ TEST_F(WaterSurfaceQueryTest, InactiveWavesDoNotRequireADirection)
     EXPECT_FLOAT_EQ(sample.position.y, 0.0f);
 }
 
+/// @brief Uses world wave height normal and local flow without vertical scale.
 TEST_F(WaterSurfaceQueryTest, UsesWorldWaveHeightNormalAndLocalFlowWithoutVerticalScale)
 {
     auto water = FlatWater();
@@ -342,6 +354,7 @@ TEST_F(WaterSurfaceQueryTest, UsesWorldWaveHeightNormalAndLocalFlowWithoutVertic
     EXPECT_NEAR(sample.height.position.y, 3.5f, testkit::kTolerance);
 }
 
+/// @brief Classifies the displaced boundary through the gerstner inverse.
 TEST_F(WaterSurfaceQueryTest, ClassifiesTheDisplacedBoundaryThroughTheGerstnerInverse)
 {
     auto water = FlatWater();
@@ -356,6 +369,7 @@ TEST_F(WaterSurfaceQueryTest, ClassifiesTheDisplacedBoundaryThroughTheGerstnerIn
     EXPECT_FALSE(scene::WaterSurfaceContainsXZ(water, pose, displacedX(1.1f), 0.0f, 0.0f));
 }
 
+/// @brief Full query keeps output when the flow is invalid.
 TEST_F(WaterSurfaceQueryTest, FullQueryKeepsOutputWhenTheFlowIsInvalid)
 {
     auto water = FlatWater();
@@ -371,6 +385,7 @@ TEST_F(WaterSurfaceQueryTest, FullQueryKeepsOutputWhenTheFlowIsInvalid)
     EXPECT_VEC3_NEAR(sample.flowVelocity, math::Vector3(3.0f, 4.0f, 5.0f), testkit::kTolerance);
 }
 
+/// @brief Preserves the raw displacement at large world height.
 TEST_F(WaterSurfaceQueryTest, PreservesTheRawDisplacementAtLargeWorldHeight)
 {
     auto water = FlatWater();
@@ -383,6 +398,7 @@ TEST_F(WaterSurfaceQueryTest, PreservesTheRawDisplacementAtLargeWorldHeight)
     EXPECT_NEAR(sample.displacement, 0.5f, testkit::kTolerance);
 }
 
+/// @brief Resolves a nonflat normal when the world coordinate ulp exceeds the difference step.
 TEST_F(WaterSurfaceQueryTest, ResolvesANonflatNormalWhenTheWorldCoordinateUlpExceedsTheDifferenceStep)
 {
     auto water = FlatWater();
@@ -408,6 +424,7 @@ TEST_F(WaterSurfaceQueryTest, ResolvesANonflatNormalWhenTheWorldCoordinateUlpExc
     EXPECT_VEC3_NEAR(sample.flowVelocity, math::Vector3(3.0f, 4.0f, 5.0f), testkit::kTolerance);
 }
 
+/// @brief Rejects scale below the supported magnitude and accepts its signed boundary.
 TEST_F(WaterSurfaceQueryTest, RejectsScaleBelowTheSupportedMagnitudeAndAcceptsItsSignedBoundary)
 {
     const auto water = FlatWater();
@@ -430,6 +447,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsScaleBelowTheSupportedMagnitudeAndAcceptsIt
     }
 }
 
+/// @brief Rejects nonfinite live flow shape and preserves output.
 TEST_F(WaterSurfaceQueryTest, RejectsNonfiniteLiveFlowShapeAndPreservesOutput)
 {
     auto water = FlatWater();
@@ -456,6 +474,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsNonfiniteLiveFlowShapeAndPreservesOutput)
     }
 }
 
+/// @brief Rejects nonfinite live ripple shape and preserves output.
 TEST_F(WaterSurfaceQueryTest, RejectsNonfiniteLiveRippleShapeAndPreservesOutput)
 {
     auto water = FlatWater();
@@ -477,6 +496,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsNonfiniteLiveRippleShapeAndPreservesOutput)
     }
 }
 
+/// @brief Rejects invalid baked volume shape before sampling.
 TEST_F(WaterSurfaceQueryTest, RejectsInvalidBakedVolumeShapeBeforeSampling)
 {
     auto water = FlatWater();
@@ -507,6 +527,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsInvalidBakedVolumeShapeBeforeSampling)
     EXPECT_FALSE(scene::IsWaterSurfaceSupported(water, pose));
 }
 
+/// @brief Ignores unused flow slots inactive ripples and shape parameters.
 TEST_F(WaterSurfaceQueryTest, IgnoresUnusedFlowSlotsInactiveRipplesAndShapeParameters)
 {
     auto water = FlatWater();
@@ -535,6 +556,7 @@ TEST_F(WaterSurfaceQueryTest, IgnoresUnusedFlowSlotsInactiveRipplesAndShapeParam
     EXPECT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {}, 0.0f, sample));
 }
 
+/// @brief Rejects nonfinite water depth current and active buoyancy.
 TEST_F(WaterSurfaceQueryTest, RejectsNonfiniteWaterDepthCurrentAndActiveBuoyancy)
 {
     auto water = FlatWater();
@@ -556,6 +578,7 @@ TEST_F(WaterSurfaceQueryTest, RejectsNonfiniteWaterDepthCurrentAndActiveBuoyancy
     EXPECT_TRUE(scene::TrySampleWaterSurfaceHeightWorld(water, pose, {}, 0.0f, sample));
 }
 
+/// @brief Rejects nonfinite flow queries and ignores zero or masked fields.
 TEST_F(WaterSurfaceQueryTest, RejectsNonfiniteFlowQueriesAndIgnoresZeroOrMaskedFields)
 {
     const auto water = FlatWater();

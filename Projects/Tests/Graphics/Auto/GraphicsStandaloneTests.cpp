@@ -37,6 +37,7 @@ namespace fbzz::tests {
 namespace {
 class GraphicsStandaloneTest : public testkit::Fixture {};
 
+/// @brief Embedded error shaders draw without external files and respect skinning.
 TEST_F(GraphicsStandaloneTest, EmbeddedErrorShadersDrawWithoutExternalFilesAndRespectSkinning)
 {
     struct ComScope {
@@ -131,6 +132,7 @@ TEST_F(GraphicsStandaloneTest, EmbeddedErrorShadersDrawWithoutExternalFilesAndRe
     device.Shutdown();
 }
 
+/// @brief GPU profiler keeps physical submission and view plan provenance.
 TEST_F(GraphicsStandaloneTest, GpuProfilerKeepsPhysicalSubmissionAndViewPlanProvenance)
 {
     struct ComScope {
@@ -246,6 +248,7 @@ TEST_F(GraphicsStandaloneTest, GpuProfilerKeepsPhysicalSubmissionAndViewPlanProv
     device.Shutdown();
 }
 
+/// @brief Cube faces keep depth across rebinds and clear each selected mip.
 TEST_F(GraphicsStandaloneTest, CubeFacesKeepDepthAcrossRebindsAndClearEachSelectedMip)
 {
     struct ComScope {
@@ -376,6 +379,7 @@ TEST_F(GraphicsStandaloneTest, CubeFacesKeepDepthAcrossRebindsAndClearEachSelect
     EXPECT_EQ(diagnostics.failures, 0u);
 }
 
+/// @brief Draws and reads back without engine.
 TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
 {
     struct ComScope {

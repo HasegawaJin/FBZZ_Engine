@@ -74,6 +74,7 @@ private:
     scene::EntityID& m_created;
 };
 
+/// @brief Rebuilds occupied buckets after agents move between frames.
 TEST_F(NavigationWorkspaceTest, RebuildsOccupiedBucketsAfterAgentsMoveBetweenFrames)
 {
     Surface(m_scene);
@@ -95,6 +96,7 @@ TEST_F(NavigationWorkspaceTest, RebuildsOccupiedBucketsAfterAgentsMoveBetweenFra
     EXPECT_NEAR(secondAgent.velocity.z, 1, testkit::kTolerance);
 }
 
+/// @brief Indexed polygon queries preserve order for overlaps and nearest ties.
 TEST_F(NavigationWorkspaceTest, IndexedPolygonQueriesPreserveOrderForOverlapsAndNearestTies)
 {
     const auto makePolygon = [](float x, float y) {
@@ -112,6 +114,7 @@ TEST_F(NavigationWorkspaceTest, IndexedPolygonQueriesPreserveOrderForOverlapsAnd
     EXPECT_EQ(scene::FindNearestPolygon(navMesh, {21, 0, 1}), 0);
 }
 
+/// @brief Indexed off mesh links respect direction and agent mask.
 TEST_F(NavigationWorkspaceTest, IndexedOffMeshLinksRespectDirectionAndAgentMask)
 {
     scene::NavMesh navMesh;
@@ -134,6 +137,7 @@ TEST_F(NavigationWorkspaceTest, IndexedOffMeshLinksRespectDirectionAndAgentMask)
     EXPECT_FALSE(scene::FindPolygonPath(navMesh, 0, 1, path, -1, nullptr, 2));
 }
 
+/// @brief Reuses one system across different scenes without retaining surface or agent references.
 TEST_F(NavigationWorkspaceTest, ReusesOneSystemAcrossDifferentScenesWithoutRetainingSurfaceOrAgentReferences)
 {
     Surface(m_scene);
@@ -153,6 +157,7 @@ TEST_F(NavigationWorkspaceTest, ReusesOneSystemAcrossDifferentScenesWithoutRetai
     EXPECT_VEC3_NEAR(replacement.transform.worldPosition, (math::Vector3{-3, 0, -1.9f}), testkit::kTolerance);
 }
 
+/// @brief Preserves the first valid surface for each type and rechecks disabled surfaces.
 TEST_F(NavigationWorkspaceTest, PreservesTheFirstValidSurfaceForEachTypeAndRechecksDisabledSurfaces)
 {
     auto& first = Surface(m_scene);
@@ -180,6 +185,7 @@ TEST_F(NavigationWorkspaceTest, PreservesTheFirstValidSurfaceForEachTypeAndReche
     EXPECT_FLOAT_EQ(secondObject.transform.worldPosition.y, 20);
 }
 
+/// @brief Defers agents added by an arrival notification until the next update.
 TEST_F(NavigationWorkspaceTest, DefersAgentsAddedByAnArrivalNotificationUntilTheNextUpdate)
 {
     Surface(m_scene);

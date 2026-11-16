@@ -51,6 +51,7 @@ protected:
     math::Vector3 Vector(std::string_view field) { const auto value = Read(field, scene::ManagedValueKind::VECTOR3); return {value.x, value.y, value.z}; }
 };
 
+/// @brief Crowd and pose reach native through actual core CLR and preserve scale.
 TEST_F(ManagedAiCohortRuntimeTest, CrowdAndPoseReachNativeThroughActualCoreClrAndPreserveScale) {
     m_owner->transform.scale = {1, 2, 3}; scene::FlushWorldTransforms(m_scene);
     ASSERT_TRUE(Tick()) << scene::ManagedScriptRuntime::Instance().LastDiagnostic();
@@ -64,6 +65,7 @@ TEST_F(ManagedAiCohortRuntimeTest, CrowdAndPoseReachNativeThroughActualCoreClrAn
     EXPECT_QUAT_NEAR(m_owner->transform.worldRotation, math::Quaternion::Identity(), testkit::kTolerance);
 }
 
+/// @brief Terrain floor ceiling component and scene facades use actual core CLR without physics.
 TEST_F(ManagedAiCohortRuntimeTest, TerrainFloorCeilingComponentAndSceneFacadesUseActualCoreClrWithoutPhysics) {
     auto& terrain = m_owner->AddComponent<scene::TerrainComponent>(); terrain.columns = terrain.rows = 2; terrain.cellSize = 2; terrain.InitFlat();
     ASSERT_TRUE(terrain.SetHoleCell(0, 0, true));
@@ -79,6 +81,7 @@ TEST_F(ManagedAiCohortRuntimeTest, TerrainFloorCeilingComponentAndSceneFacadesUs
     EXPECT_TRUE(Bool("miss")); EXPECT_TRUE(Bool("invalidRejected"));
 }
 
+/// @brief AI native calculation rejects edit before publishing any pose.
 TEST_F(ManagedAiCohortRuntimeTest, AiNativeCalculationRejectsEditBeforePublishingAnyPose) {
     scene::Script::SetInPlayMode(false);
     EXPECT_FALSE(Tick());

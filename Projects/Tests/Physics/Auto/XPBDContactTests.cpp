@@ -47,6 +47,7 @@ class XPBDContactTest : public testkit::Fixture {};
 
 /// @name Set が記録するもの
 
+/// @brief Normalizes the contact normal it was given.
 TEST_F(XPBDContactTest, NormalizesTheContactNormalItWasGiven)
 {
     /// @note 法線は押し出しの «向き» としてそのまま長さを持って使われる。正規化を呼び出し側に
@@ -63,6 +64,7 @@ TEST_F(XPBDContactTest, NormalizesTheContactNormalItWasGiven)
                      testkit::kTolerance);
 }
 
+/// @brief Refuses to solve a null other even when asked to.
 TEST_F(XPBDContactTest, RefusesToSolveANullOtherEvenWhenAskedTo)
 {
     /// @note 静的コライダーとの接触は other が null で来る。solveOther をそのまま信じると
@@ -79,6 +81,7 @@ TEST_F(XPBDContactTest, RefusesToSolveANullOtherEvenWhenAskedTo)
 
 /// @name 貫通量の報告
 
+/// @brief Reports no penetration when the contact is already separated.
 TEST_F(XPBDContactTest, ReportsNoPenetrationWhenTheContactIsAlreadySeparated)
 {
     /// @note 貫通量 0 は貫通がないことだけを示す。接触許容を含む IsTouching で支持を別に判定する。
@@ -93,6 +96,7 @@ TEST_F(XPBDContactTest, ReportsNoPenetrationWhenTheContactIsAlreadySeparated)
     EXPECT_VEC3_NEAR(body->GetPosition(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Pushes the body out by the depth and reports it.
 TEST_F(XPBDContactTest, PushesTheBodyOutByTheDepthAndReportsIt)
 {
     auto                 body = MakeBody(math::Vector3::ZERO);
@@ -110,6 +114,7 @@ TEST_F(XPBDContactTest, PushesTheBodyOutByTheDepthAndReportsIt)
 
 /// @name 相手を解く / 解かない
 
+/// @brief Leaves an unsolved other in place and stores the reaction instead.
 TEST_F(XPBDContactTest, LeavesAnUnsolvedOtherInPlaceAndStoresTheReactionInstead)
 {
     /// @note World 側が積分している剛体が相手。ここで動かすと同じフレームで 2 回進む。
@@ -130,6 +135,7 @@ TEST_F(XPBDContactTest, LeavesAnUnsolvedOtherInPlaceAndStoresTheReactionInstead)
     EXPECT_LT(contact.ReactionImpulse().y, 0.0f);
 }
 
+/// @brief Splits the push between both bodies when the other is solved.
 TEST_F(XPBDContactTest, SplitsThePushBetweenBothBodiesWhenTheOtherIsSolved)
 {
     auto                 body  = MakeBody(math::Vector3::ZERO);
@@ -148,6 +154,7 @@ TEST_F(XPBDContactTest, SplitsThePushBetweenBothBodiesWhenTheOtherIsSolved)
     EXPECT_VEC3_NEAR(contact.ReactionImpulse(), math::Vector3::ZERO, testkit::kTolerance);
 }
 
+/// @brief Zero normal impulse does not grant unlimited friction.
 TEST_F(XPBDContactTest, ZeroNormalImpulseDoesNotGrantUnlimitedFriction)
 {
     auto body = MakeBody(math::Vector3::ZERO);
@@ -165,6 +172,7 @@ TEST_F(XPBDContactTest, ZeroNormalImpulseDoesNotGrantUnlimitedFriction)
     EXPECT_VEC3_NEAR(body->GetVelocity(), math::Vector3::RIGHT, testkit::kTolerance);
 }
 
+/// @brief Depenetration does not become launch velocity at smaller substeps.
 TEST_F(XPBDContactTest, DepenetrationDoesNotBecomeLaunchVelocityAtSmallerSubsteps)
 {
     for (int substeps : {6,12,24,48}) {
@@ -177,6 +185,7 @@ TEST_F(XPBDContactTest, DepenetrationDoesNotBecomeLaunchVelocityAtSmallerSubstep
         EXPECT_NEAR(body->GetVelocity().y,0,testkit::kLooseTolerance);
     }
 }
+/// @brief Depenetration preserves intentional separating velocity.
 TEST_F(XPBDContactTest, DepenetrationPreservesIntentionalSeparatingVelocity)
 {
     auto body=MakeBody(math::Vector3::ZERO); body->SetVelocity({0,2,0});
@@ -185,6 +194,7 @@ TEST_F(XPBDContactTest, DepenetrationPreservesIntentionalSeparatingVelocity)
     StepContact(contact,*body,kSubstep);
     EXPECT_NEAR(body->GetVelocity().y,2,testkit::kLooseTolerance);
 }
+/// @brief Restitution uses impact speed instead of projection speed.
 TEST_F(XPBDContactTest, RestitutionUsesImpactSpeedInsteadOfProjectionSpeed)
 {
     auto body=MakeBody(math::Vector3::ZERO); body->SetVelocity({0,-2,0});
@@ -195,6 +205,7 @@ TEST_F(XPBDContactTest, RestitutionUsesImpactSpeedInsteadOfProjectionSpeed)
 }
 
 
+/// @brief Geometry that opens a contact does not cause restitution.
 TEST_F(XPBDContactTest, GeometryThatOpensAContactDoesNotCauseRestitution)
 {
     auto body = MakeBody(math::Vector3::ZERO);
@@ -208,6 +219,7 @@ TEST_F(XPBDContactTest, GeometryThatOpensAContactDoesNotCauseRestitution)
     EXPECT_NEAR(body->GetVelocity().y, -2, testkit::kTolerance);
 }
 
+/// @brief Predictive contact allows closing an actual gap without floating.
 TEST_F(XPBDContactTest, PredictiveContactAllowsClosingAnActualGapWithoutFloating)
 {
     auto body=MakeBody(math::Vector3::ZERO); body->SetVelocity({0,-0.1f,0});
@@ -219,6 +231,7 @@ TEST_F(XPBDContactTest, PredictiveContactAllowsClosingAnActualGapWithoutFloating
     EXPECT_NEAR(body->GetVelocity().y,-0.1f,testkit::kTolerance);
     EXPECT_NEAR(body->GetPosition().y,-0.1f*kSubstep,testkit::kTolerance);
 }
+/// @brief Contact slop maintains near surface velocity without inventing penetration.
 TEST_F(XPBDContactTest, ContactSlopMaintainsNearSurfaceVelocityWithoutInventingPenetration)
 {
     auto body=MakeBody(math::Vector3::ZERO); body->SetVelocity({0,-0.01f,0});
@@ -230,6 +243,7 @@ TEST_F(XPBDContactTest, ContactSlopMaintainsNearSurfaceVelocityWithoutInventingP
     EXPECT_NEAR(body->GetVelocity().y,0,testkit::kTolerance);
     EXPECT_NEAR(body->GetPosition().y,-0.01f*kSubstep,testkit::kTolerance);
 }
+/// @brief External collision respects both masses without integrating the other pose.
 TEST_F(XPBDContactTest, ExternalCollisionRespectsBothMassesWithoutIntegratingTheOtherPose)
 {
     for (float otherMass:{0.002f,0.02f,0.2f,2.0f,20.0f,200.0f,2000.0f}) {
@@ -252,6 +266,7 @@ TEST_F(XPBDContactTest, ExternalCollisionRespectsBothMassesWithoutIntegratingThe
     }
 }
 
+/// @brief Checks external friction conserves momentum across wide mass ratios.
 TEST_F(XPBDContactTest, ExternalFrictionConservesMomentumAcrossWideMassRatios)
 {
     for (float otherMass:{0.002f,0.2f,2.0f,200.0f,2000.0f}) {
@@ -273,6 +288,7 @@ TEST_F(XPBDContactTest, ExternalFrictionConservesMomentumAcrossWideMassRatios)
 }
 
 
+/// @brief Checks iteration retracts an earlier normal impulse without attracting.
 TEST_F(XPBDContactTest, IterationRetractsAnEarlierNormalImpulseWithoutAttracting)
 {
     auto body=MakeBody(math::Vector3::ZERO); body->SetVelocity({0,-1,0});
@@ -284,6 +300,7 @@ TEST_F(XPBDContactTest, IterationRetractsAnEarlierNormalImpulseWithoutAttracting
     body->ApplyImpulse({0,1,0}); contact.SolveVelocity(kSubstep);
     EXPECT_NEAR(body->GetVelocity().y,0.5f,testkit::kTolerance);
 }
+/// @brief Checks opening contact retracts its accumulated friction.
 TEST_F(XPBDContactTest, OpeningContactRetractsItsAccumulatedFriction)
 {
     auto body=MakeBody(math::Vector3::ZERO); body->SetVelocity({2,-2,0});
@@ -294,6 +311,7 @@ TEST_F(XPBDContactTest, OpeningContactRetractsItsAccumulatedFriction)
     body->ApplyImpulse({0,3,0}); contact.SolveVelocity(kSubstep);
     EXPECT_VEC3_NEAR(body->GetVelocity(),(math::Vector3{2,1,0}),testkit::kTolerance);
 }
+/// @brief Checks external velocity iterations converge without repeating the impact.
 TEST_F(XPBDContactTest, ExternalVelocityIterationsConvergeWithoutRepeatingTheImpact)
 {
     for (float ratio:{0.001f,0.01f,0.1f,1.0f,10.0f,100.0f,1000.0f}) for (float restitution:{0.0f,0.5f,1.0f})
@@ -316,6 +334,7 @@ TEST_F(XPBDContactTest, ExternalVelocityIterationsConvergeWithoutRepeatingTheImp
         EXPECT_VEC3_NEAR(contact.TakeReactionImpulse(),math::Vector3::ZERO,testkit::kTolerance);
     }
 }
+/// @brief Restitution retains the incoming speed across geometric iterations.
 TEST_F(XPBDContactTest, RestitutionRetainsTheIncomingSpeedAcrossGeometricIterations)
 {
     auto body=MakeBody(math::Vector3::ZERO); ASSERT_TRUE(body->SetInertiaDiagonal({1,1,1}));
@@ -329,6 +348,7 @@ TEST_F(XPBDContactTest, RestitutionRetainsTheIncomingSpeedAcrossGeometricIterati
     EXPECT_NEAR((body->GetVelocity()+math::Vector3::Cross(body->GetAngularVelocity(),arm)).y,2.5f,testkit::kTolerance);
 }
 
+/// @brief Multiple parts share the updated velocity of one external body.
 TEST_F(XPBDContactTest, MultiplePartsShareTheUpdatedVelocityOfOneExternalBody)
 {
     for (float ratio:{0.001f,1.0f,1000.0f}) {

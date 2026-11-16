@@ -82,6 +82,7 @@ std::vector<int> AllFrames(const fluid::FluidRecipe& recipe)
 
 /// @name 刻みの数え方
 
+/// @brief Warmup is counted in whole frames.
 TEST(FluidSteppingTest, WarmupIsCountedInWholeFrames)
 {
     fluid::FluidRecipe recipe = SmallGasRecipe();
@@ -93,6 +94,7 @@ TEST(FluidSteppingTest, WarmupIsCountedInWholeFrames)
     EXPECT_EQ(plan.substeps, 3);
 }
 
+/// @brief Exact warmup does not gain an extra frame.
 TEST(FluidSteppingTest, ExactWarmupDoesNotGainAnExtraFrame)
 {
     /// @note ちょうど割り切れる warmup で 1 コマ余分に数えると、GPU と CPU で焼き始めがずれる。
@@ -101,6 +103,7 @@ TEST(FluidSteppingTest, ExactWarmupDoesNotGainAnExtraFrame)
     EXPECT_EQ(fluid::FluidWarmupFrames(0.0f, 0.125f), 0);
 }
 
+/// @brief Time snaps to a frame boundary.
 TEST(FluidSteppingTest, TimeSnapsToAFrameBoundary)
 {
     const fluid::FluidStepPlan plan = fluid::MakeFluidStepPlan(SmallGasRecipe());
@@ -112,6 +115,7 @@ TEST(FluidSteppingTest, TimeSnapsToAFrameBoundary)
 
 /// @name 同じ入力 → 同じ絵
 
+/// @brief Same recipe gives the same pixels twice.
 TEST(FluidDeterminismTest, SameRecipeGivesTheSamePixelsTwice)
 {
     const fluid::FluidRecipe recipe = SmallGasRecipe();
@@ -122,6 +126,7 @@ TEST(FluidDeterminismTest, SameRecipeGivesTheSamePixelsTwice)
     EXPECT_EQ(first, second);
 }
 
+/// @brief Checks changing the seed changes the picture.
 TEST(FluidDeterminismTest, ChangingTheSeedChangesThePicture)
 {
     fluid::FluidRecipe recipe = SmallGasRecipe();
@@ -134,6 +139,7 @@ TEST(FluidDeterminismTest, ChangingTheSeedChangesThePicture)
     EXPECT_NE(base.back(), other.back());
 }
 
+/// @brief Liquid is deterministic too.
 TEST(FluidDeterminismTest, LiquidIsDeterministicToo)
 {
     fluid::FluidRecipe recipe = asset::MakeFluidPreset(asset::FluidPreset::WaterSplash);
@@ -153,6 +159,7 @@ TEST(FluidDeterminismTest, LiquidIsDeterministicToo)
 
 /// @name プレビュー = 焼きのそのコマ
 
+/// @brief Preview frame matches the baked frame.
 TEST(FluidDeterminismTest, PreviewFrameMatchesTheBakedFrame)
 {
     const fluid::FluidRecipe recipe = SmallGasRecipe();
@@ -166,6 +173,7 @@ TEST(FluidDeterminismTest, PreviewFrameMatchesTheBakedFrame)
     }
 }
 
+/// @brief Preview matches the baked frame when looping.
 TEST(FluidDeterminismTest, PreviewMatchesTheBakedFrameWhenLooping)
 {
     /// @note ループの先頭コマは «末尾の続き» と混ぜたものが焼かれる。プレビューがこれを再現しないと、
@@ -181,6 +189,7 @@ TEST(FluidDeterminismTest, PreviewMatchesTheBakedFrameWhenLooping)
     EXPECT_EQ(head.front(), baked.front());
 }
 
+/// @brief Supersampling applies to single frames too.
 TEST(FluidDeterminismTest, SupersamplingAppliesToSingleFramesToo)
 {
     /// @note 焼きだけ超解像が掛かっていたころは、プレビューより焼きの方が滑らかだった。
@@ -195,6 +204,7 @@ TEST(FluidDeterminismTest, SupersamplingAppliesToSingleFramesToo)
 
 /// @name 指紋そのもの
 
+/// @brief Different bytes give different digests.
 TEST(BakeFingerprintTest, DifferentBytesGiveDifferentDigests)
 {
     const std::vector<std::uint8_t> a{ 1, 2, 3, 4 };
@@ -204,6 +214,7 @@ TEST(BakeFingerprintTest, DifferentBytesGiveDifferentDigests)
     EXPECT_NE(asset::BakeFingerprintOf(a), asset::BakeFingerprintOf(b));
 }
 
+/// @brief Checks negative zero hashes as zero.
 TEST(BakeFingerprintTest, NegativeZeroHashesAsZero)
 {
     /// @note 同じ絵が «-0 が混ざっているかどうか» で別の指紋になると、変化の検出が嘘になる。
@@ -214,6 +225,7 @@ TEST(BakeFingerprintTest, NegativeZeroHashesAsZero)
 
 /// @name .fluid の書き出し
 
+/// @brief Saving twice gives the same bytes.
 TEST(FluidRecipeWriteTest, SavingTwiceGivesTheSameBytes)
 {
     testkit::TempDir temp{ "fluiddeterminism" };
@@ -229,6 +241,7 @@ TEST(FluidRecipeWriteTest, SavingTwiceGivesTheSameBytes)
     EXPECT_EQ(first, second);
 }
 
+/// @brief Round trip keeps the bytes stable.
 TEST(FluidRecipeWriteTest, RoundTripKeepsTheBytesStable)
 {
     /// @note 読んで書き戻しただけで行が動くと、AI が 1 項目直した差分に無関係な行が混ざる。

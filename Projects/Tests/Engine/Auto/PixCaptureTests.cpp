@@ -14,6 +14,7 @@ namespace fbzz::tests {
 
 class PixCaptureTest : public testkit::EngineFixture {};
 
+/// @brief Ordinary arguments do not request capture.
 TEST_F(PixCaptureTest, OrdinaryArgumentsDoNotRequestCapture)
 {
     const std::array<std::wstring_view, 2> arguments{L"--hidden", L"C:\\Project --pix-capture\\Assets"};
@@ -25,6 +26,7 @@ TEST_F(PixCaptureTest, OrdinaryArgumentsDoNotRequestCapture)
     EXPECT_TRUE(reason.empty());
 }
 
+/// @brief Explicit capture selects the pinned default.
 TEST_F(PixCaptureTest, ExplicitCaptureSelectsThePinnedDefault)
 {
     const std::array<std::wstring_view, 1> arguments{L"--pix-capture"};
@@ -38,6 +40,7 @@ TEST_F(PixCaptureTest, ExplicitCaptureSelectsThePinnedDefault)
     EXPECT_EQ(directory, std::filesystem::path(L"C:\\Program Files\\Microsoft PIX\\2603.25"));
 }
 
+/// @brief Already tokenized directory preserves spaces and unicode.
 TEST_F(PixCaptureTest, AlreadyTokenizedDirectoryPreservesSpacesAndUnicode)
 {
     const std::array<std::wstring_view, 3> arguments{L"--pix-capture", L"--pix-path", L"C:\\PIX \u30c4\u30fc\u30eb\\2603.25"};
@@ -48,6 +51,7 @@ TEST_F(PixCaptureTest, AlreadyTokenizedDirectoryPreservesSpacesAndUnicode)
     EXPECT_EQ(options.installedDirectory, std::filesystem::path(arguments.back()));
 }
 
+/// @brief Explicit directory can precede capture and use equals syntax.
 TEST_F(PixCaptureTest, ExplicitDirectoryCanPrecedeCaptureAndUseEqualsSyntax)
 {
     const std::array<std::wstring_view, 2> arguments{L"--pix-path=C:\\Selected PIX", L"--pix-capture"};
@@ -58,6 +62,7 @@ TEST_F(PixCaptureTest, ExplicitDirectoryCanPrecedeCaptureAndUseEqualsSyntax)
     EXPECT_EQ(options.installedDirectory, std::filesystem::path(L"C:\\Selected PIX"));
 }
 
+/// @brief Directory without opt in is rejected atomically.
 TEST_F(PixCaptureTest, DirectoryWithoutOptInIsRejectedAtomically)
 {
     const std::array<std::wstring_view, 2> arguments{L"--pix-path", L"C:\\Selected PIX"};
@@ -69,6 +74,7 @@ TEST_F(PixCaptureTest, DirectoryWithoutOptInIsRejectedAtomically)
     EXPECT_FALSE(reason.empty());
 }
 
+/// @brief Missing empty relative and duplicate directories are rejected.
 TEST_F(PixCaptureTest, MissingEmptyRelativeAndDuplicateDirectoriesAreRejected)
 {
     const std::array<std::array<std::wstring_view, 5>, 5> invalid{{
@@ -92,6 +98,7 @@ TEST_F(PixCaptureTest, MissingEmptyRelativeAndDuplicateDirectoriesAreRejected)
     EXPECT_FALSE(core::ParsePixCaptureOptions(missing, options, reason));
 }
 
+/// @brief Unrequested resolution requires no installation or program files.
 TEST_F(PixCaptureTest, UnrequestedResolutionRequiresNoInstallationOrProgramFiles)
 {
     std::filesystem::path directory = L"C:\\Old";
@@ -101,6 +108,7 @@ TEST_F(PixCaptureTest, UnrequestedResolutionRequiresNoInstallationOrProgramFiles
     EXPECT_TRUE(reason.empty());
 }
 
+/// @brief Explicit absolute directory does not depend on program files.
 TEST_F(PixCaptureTest, ExplicitAbsoluteDirectoryDoesNotDependOnProgramFiles)
 {
     std::filesystem::path directory;
@@ -109,6 +117,7 @@ TEST_F(PixCaptureTest, ExplicitAbsoluteDirectoryDoesNotDependOnProgramFiles)
     EXPECT_EQ(directory, std::filesystem::path(L"D:\\PIX\\selected"));
 }
 
+/// @brief Missing default and relative explicit directory leave output unchanged.
 TEST_F(PixCaptureTest, MissingDefaultAndRelativeExplicitDirectoryLeaveOutputUnchanged)
 {
     std::filesystem::path directory = L"C:\\Preserved";
@@ -122,6 +131,7 @@ TEST_F(PixCaptureTest, MissingDefaultAndRelativeExplicitDirectoryLeaveOutputUnch
     EXPECT_EQ(directory, std::filesystem::path(L"C:\\Preserved"));
 }
 
+/// @brief Pure parsing and resolution never publish capture readiness.
 TEST_F(PixCaptureTest, PureParsingAndResolutionNeverPublishCaptureReadiness)
 {
     const auto before = core::GetPixCaptureStatus();

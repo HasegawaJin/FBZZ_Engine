@@ -33,6 +33,7 @@ class SpriteReferenceTest : public testkit::EngineFixture {};
 
 /// @name 組み立てと分解
 
+/// @brief Round-trips through make and parse.
 TEST_F(SpriteReferenceTest, RoundTripsThroughMakeAndParse)
 {
     const std::string reference =
@@ -46,6 +47,7 @@ TEST_F(SpriteReferenceTest, RoundTripsThroughMakeAndParse)
     EXPECT_EQ(token, "Key_W");
 }
 
+/// @brief Keeps the path intact when the string is not a sprite reference.
 TEST_F(SpriteReferenceTest, KeepsThePathIntactWhenTheStringIsNotASpriteReference)
 {
     /// @note «Sprite 参照ではない» と答えるときも、入力のパスはそのまま返す。
@@ -58,6 +60,7 @@ TEST_F(SpriteReferenceTest, KeepsThePathIntactWhenTheStringIsNotASpriteReference
     EXPECT_TRUE(token.empty());
 }
 
+/// @brief Rejects a marker with nothing after it.
 TEST_F(SpriteReferenceTest, RejectsAMarkerWithNothingAfterIt)
 {
     std::string texturePath;
@@ -68,6 +71,7 @@ TEST_F(SpriteReferenceTest, RejectsAMarkerWithNothingAfterIt)
     EXPECT_EQ(texturePath, "Assets/UI/Atlas.png::sprite::");
 }
 
+/// @brief Rejects a marker with nothing before it.
 TEST_F(SpriteReferenceTest, RejectsAMarkerWithNothingBeforeIt)
 {
     std::string texturePath;
@@ -76,6 +80,7 @@ TEST_F(SpriteReferenceTest, RejectsAMarkerWithNothingBeforeIt)
     EXPECT_FALSE(asset::ParseSpriteReference("::sprite::Key_W", texturePath, token));
 }
 
+/// @brief Accepts a token that contains colons.
 TEST_F(SpriteReferenceTest, AcceptsATokenThatContainsColons)
 {
     /// @note ID は UUID、名前は人が付ける。区切りの後ろは最後まで丸ごとトークンとして扱う。
@@ -86,6 +91,7 @@ TEST_F(SpriteReferenceTest, AcceptsATokenThatContainsColons)
     EXPECT_EQ(token, "a:b:c");
 }
 
+/// @brief Parses an empty string as not a reference.
 TEST_F(SpriteReferenceTest, ParsesAnEmptyStringAsNotAReference)
 {
     std::string texturePath;
@@ -97,6 +103,7 @@ TEST_F(SpriteReferenceTest, ParsesAnEmptyStringAsNotAReference)
 
 /// @name 検索
 
+/// @brief Finds a sprite by ID.
 TEST_F(SpriteReferenceTest, FindsASpriteById)
 {
     asset::TextureImportSettings settings;
@@ -109,6 +116,7 @@ TEST_F(SpriteReferenceTest, FindsASpriteById)
     EXPECT_EQ(found->name, "Key_A");
 }
 
+/// @brief Finds a sprite by name.
 TEST_F(SpriteReferenceTest, FindsASpriteByName)
 {
     /// @note ID は UUID なので人も AI も手では書けない。名前でも引けないと、
@@ -122,6 +130,7 @@ TEST_F(SpriteReferenceTest, FindsASpriteByName)
     EXPECT_EQ(found->id, "836d2b4d");
 }
 
+/// @brief Prefers the ID when a name collides with another ID.
 TEST_F(SpriteReferenceTest, PrefersTheIdWhenANameCollidesWithAnotherId)
 {
     /// @note ID を先に見る契約。名前が偶然ほかの ID と一致しても、ID の方を返す。
@@ -135,6 +144,7 @@ TEST_F(SpriteReferenceTest, PrefersTheIdWhenANameCollidesWithAnotherId)
     EXPECT_EQ(found->name, "gamma");
 }
 
+/// @brief Finds nothing for an unknown token.
 TEST_F(SpriteReferenceTest, FindsNothingForAnUnknownToken)
 {
     asset::TextureImportSettings settings;
@@ -143,6 +153,7 @@ TEST_F(SpriteReferenceTest, FindsNothingForAnUnknownToken)
     EXPECT_EQ(asset::FindSprite(settings, "Key_Q"), nullptr);
 }
 
+/// @brief Finds nothing for an empty token.
 TEST_F(SpriteReferenceTest, FindsNothingForAnEmptyToken)
 {
     /// @note 空の id / name を持つ矩形に «空トークン» が当たると、無関係な 1 枚を返してしまう。
@@ -152,6 +163,7 @@ TEST_F(SpriteReferenceTest, FindsNothingForAnEmptyToken)
     EXPECT_EQ(asset::FindSprite(settings, ""), nullptr);
 }
 
+/// @brief Finds nothing when there are no sprites.
 TEST_F(SpriteReferenceTest, FindsNothingWhenThereAreNoSprites)
 {
     const asset::TextureImportSettings settings;
@@ -161,6 +173,7 @@ TEST_F(SpriteReferenceTest, FindsNothingWhenThereAreNoSprites)
 
 /// @name 型の推定
 
+/// @brief Guesses the texture type from the file name suffix.
 TEST_F(SpriteReferenceTest, GuessesTheTextureTypeFromTheFileNameSuffix)
 {
     EXPECT_EQ(asset::GuessTextureType("wall_n.png"), asset::TextureType::Normal);
@@ -169,12 +182,14 @@ TEST_F(SpriteReferenceTest, GuessesTheTextureTypeFromTheFileNameSuffix)
     EXPECT_EQ(asset::GuessTextureType("ui_panel.png"), asset::TextureType::UI);
 }
 
+/// @brief Guessing ignores case.
 TEST_F(SpriteReferenceTest, GuessingIgnoresCase)
 {
     EXPECT_EQ(asset::GuessTextureType("WALL_N.PNG"), asset::TextureType::Normal);
     EXPECT_EQ(asset::GuessTextureType("Sky.HDR"), asset::TextureType::HDR);
 }
 
+/// @brief Default settings match the guessed type.
 TEST_F(SpriteReferenceTest, DefaultSettingsMatchTheGuessedType)
 {
     /// @note 法線マップを sRGB で読むと明るさが変わる。既定値がここで決まる。

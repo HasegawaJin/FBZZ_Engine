@@ -46,6 +46,7 @@ class ConvexHullTest : public testkit::Fixture {};
 
 /// @name 構築
 
+/// @brief Keeps every corner of a cube.
 TEST_F(ConvexHullTest, KeepsEveryCornerOfACube)
 {
     physics::ConvexHullCollider hull(CubePoints());
@@ -55,6 +56,7 @@ TEST_F(ConvexHullTest, KeepsEveryCornerOfACube)
     EXPECT_EQ(hull.GetWorldVertices().size(), 8u);
 }
 
+/// @brief Drops points inside the hull.
 TEST_F(ConvexHullTest, DropsPointsInsideTheHull)
 {
     std::vector<math::Vector3> points = CubePoints();
@@ -70,6 +72,7 @@ TEST_F(ConvexHullTest, DropsPointsInsideTheHull)
     EXPECT_EQ(hull.GetWorldVertices().size(), 8u);
 }
 
+/// @brief Ignores duplicated points.
 TEST_F(ConvexHullTest, IgnoresDuplicatedPoints)
 {
     std::vector<math::Vector3> points = CubePoints();
@@ -82,6 +85,7 @@ TEST_F(ConvexHullTest, IgnoresDuplicatedPoints)
     EXPECT_EQ(hull.GetWorldVertices().size(), 8u);
 }
 
+/// @brief Builds faces that reference real vertices.
 TEST_F(ConvexHullTest, BuildsFacesThatReferenceRealVertices)
 {
     physics::ConvexHullCollider hull(CubePoints());
@@ -103,6 +107,7 @@ TEST_F(ConvexHullTest, BuildsFacesThatReferenceRealVertices)
 
 /// @name サポート関数
 
+/// @brief Support point is the farthest corner along the axes.
 TEST_F(ConvexHullTest, SupportPointIsTheFarthestCornerAlongTheAxes)
 {
     physics::ConvexHullCollider hull(CubePoints());
@@ -114,6 +119,7 @@ TEST_F(ConvexHullTest, SupportPointIsTheFarthestCornerAlongTheAxes)
                      math::Vector3(-1.0f, -1.0f, -1.0f), testkit::kTolerance);
 }
 
+/// @brief Support point is never beaten by an input point.
 TEST_F(ConvexHullTest, SupportPointIsNeverBeatenByAnInputPoint)
 {
     const std::vector<math::Vector3> points = {
@@ -127,6 +133,7 @@ TEST_F(ConvexHullTest, SupportPointIsNeverBeatenByAnInputPoint)
     for (int i = 0; i < 64; ++i) ExpectSupportsAtLeast(hull, points, Rng().NextUnitVector3());
 }
 
+/// @brief Support point follows the world rotation.
 TEST_F(ConvexHullTest, SupportPointFollowsTheWorldRotation)
 {
     physics::ConvexHullCollider hull(CubePoints());
@@ -139,6 +146,7 @@ TEST_F(ConvexHullTest, SupportPointFollowsTheWorldRotation)
                 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Support point follows the world position.
 TEST_F(ConvexHullTest, SupportPointFollowsTheWorldPosition)
 {
     physics::ConvexHullCollider hull(CubePoints());
@@ -148,6 +156,7 @@ TEST_F(ConvexHullTest, SupportPointFollowsTheWorldPosition)
                      math::Vector3(11.0f, 1.0f, 1.0f), testkit::kTolerance);
 }
 
+/// @brief Scale stretches the hull.
 TEST_F(ConvexHullTest, ScaleStretchesTheHull)
 {
     physics::ConvexHullCollider hull(CubePoints());
@@ -160,6 +169,7 @@ TEST_F(ConvexHullTest, ScaleStretchesTheHull)
 
 /// @name 境界
 
+/// @brief Bounds enclose every hull vertex.
 TEST_F(ConvexHullTest, BoundsEncloseEveryHullVertex)
 {
     physics::ConvexHullCollider hull(CubePoints(2.0f));
@@ -177,6 +187,7 @@ TEST_F(ConvexHullTest, BoundsEncloseEveryHullVertex)
     }
 }
 
+/// @brief Reports its type and a volume.
 TEST_F(ConvexHullTest, ReportsItsTypeAndAVolume)
 {
     physics::ConvexHullCollider hull(CubePoints());
@@ -189,6 +200,7 @@ TEST_F(ConvexHullTest, ReportsItsTypeAndAVolume)
 
 /// @name 縮退した入力
 
+/// @brief Survives an empty point cloud.
 TEST_F(ConvexHullTest, SurvivesAnEmptyPointCloud)
 {
     /// @note コンポーネントを組み立てる途中で «まだ点が無い» 状態は普通に通る。
@@ -200,6 +212,7 @@ TEST_F(ConvexHullTest, SurvivesAnEmptyPointCloud)
                      testkit::kTolerance);
 }
 
+/// @brief Survives points that all lie on one plane.
 TEST_F(ConvexHullTest, SurvivesPointsThatAllLieOnOnePlane)
 {
     /// @note 板ポリのメッシュから作るとこうなる。体積が無くても落ちないこと。
@@ -213,6 +226,7 @@ TEST_F(ConvexHullTest, SurvivesPointsThatAllLieOnOnePlane)
                 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Survives points on a single line.
 TEST_F(ConvexHullTest, SurvivesPointsOnASingleLine)
 {
     physics::ConvexHullCollider hull(std::vector<math::Vector3>{
@@ -224,6 +238,7 @@ TEST_F(ConvexHullTest, SurvivesPointsOnASingleLine)
                 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Survives many points on a single line.
 /// 4 点以下は «そのまま包み» の近道を通るので、Quickhull 本体は一度も走らない。
 /// 退化した点群が壊すのは初期四面体を組む側なので、そこへ届く点数で当てる。
 TEST_F(ConvexHullTest, SurvivesManyPointsOnASingleLine)
@@ -241,6 +256,7 @@ TEST_F(ConvexHullTest, SurvivesManyPointsOnASingleLine)
         ExpectSupportsAtLeast(hull, line, Rng().NextUnitVector3());
 }
 
+/// @brief Survives many points on one plane.
 TEST_F(ConvexHullTest, SurvivesManyPointsOnOnePlane)
 {
     std::vector<math::Vector3> plane;
@@ -257,6 +273,7 @@ TEST_F(ConvexHullTest, SurvivesManyPointsOnOnePlane)
         ExpectSupportsAtLeast(hull, plane, Rng().NextUnitVector3());
 }
 
+/// @brief Survives many copies of the same point.
 TEST_F(ConvexHullTest, SurvivesManyCopiesOfTheSamePoint)
 {
     const std::vector<math::Vector3> cloud(32, math::Vector3(0.7f, -0.3f, 0.2f));
@@ -268,6 +285,7 @@ TEST_F(ConvexHullTest, SurvivesManyCopiesOfTheSamePoint)
                      math::Vector3(0.7f, -0.3f, 0.2f), testkit::kTolerance);
 }
 
+/// @brief Caps the vertex count.
 TEST_F(ConvexHullTest, CapsTheVertexCount)
 {
     /// @note サポート点探索は頂点数に比例する。上限を外すと、細かいメッシュを 1 つ
@@ -282,6 +300,7 @@ TEST_F(ConvexHullTest, CapsTheVertexCount)
               physics::ConvexHullCollider::MAX_HULL_VERTS);
 }
 
+/// @brief Keeps the outermost points when the cloud exceeds the cap.
 TEST_F(ConvexHullTest, KeepsTheOutermostPointsWhenTheCloudExceedsTheCap)
 {
     /// @note 外周の点を末尾に置く。上限を入力の先頭から掛ける実装だと、この 8 点が丸ごと落ちて
@@ -310,6 +329,7 @@ TEST_F(ConvexHullTest, KeepsTheOutermostPointsWhenTheCloudExceedsTheCap)
               physics::ConvexHullCollider::MAX_HULL_VERTS);
 }
 
+/// @brief Faces reference real vertices when the cloud exceeds the cap.
 TEST_F(ConvexHullTest, FacesReferenceRealVerticesWhenTheCloudExceedsTheCap)
 {
     /// @note 頂点だけ切り詰めて面のインデックスを放置すると範囲外になる。World.cpp の RayConvexHull は
@@ -330,6 +350,7 @@ TEST_F(ConvexHullTest, FacesReferenceRealVerticesWhenTheCloudExceedsTheCap)
     }
 }
 
+/// @brief Orients tetrahedron faces outward for either winding.
 TEST_F(ConvexHullTest, OrientsTetrahedronFacesOutwardForEitherWinding)
 {
     /// @note 4 点だけの経路は入力の並び順をそのまま面にしていた。どちら手の四面体かで法線が

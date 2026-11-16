@@ -36,6 +36,7 @@ JsonValue MakeEnvelope(const char* kind = "query")
 
 } // namespace
 
+/// @brief Accepts a well formed query.
 TEST(EditorBusProtocol, AcceptsAWellFormedQuery)
 {
     std::string error;
@@ -48,6 +49,7 @@ TEST(EditorBusProtocol, AcceptsAWellFormedQuery)
     EXPECT_EQ(request->PayloadType(), "scene.list");
 }
 
+/// @brief Accepts a well formed command.
 TEST(EditorBusProtocol, AcceptsAWellFormedCommand)
 {
     const auto request = ParseBusRequest(MakeEnvelope("command"), nullptr);
@@ -57,6 +59,7 @@ TEST(EditorBusProtocol, AcceptsAWellFormedCommand)
     EXPECT_FALSE(request->IsQuery());
 }
 
+/// @brief Defaults dry run to the safe side.
 TEST(EditorBusProtocol, DefaultsDryRunToTheSafeSide)
 {
     /// @note dryRun の «欠落» を実変更として扱ってはいけない。壊れた送信側や古い
@@ -66,6 +69,7 @@ TEST(EditorBusProtocol, DefaultsDryRunToTheSafeSide)
     EXPECT_TRUE(request->dryRun);
 }
 
+/// @brief Defaults dry run to `true` when it is not a bool.
 TEST(EditorBusProtocol, DefaultsDryRunToTrueWhenItIsNotABool)
 {
     JsonValue root = MakeEnvelope("command");
@@ -77,6 +81,7 @@ TEST(EditorBusProtocol, DefaultsDryRunToTrueWhenItIsNotABool)
     EXPECT_TRUE(request->dryRun);
 }
 
+/// @brief Honours an explicit dry run flag.
 TEST(EditorBusProtocol, HonoursAnExplicitDryRunFlag)
 {
     JsonValue root = MakeEnvelope("command");
@@ -87,6 +92,7 @@ TEST(EditorBusProtocol, HonoursAnExplicitDryRunFlag)
     EXPECT_FALSE(request->dryRun);
 }
 
+/// @brief Rejects a mismatched protocol.
 TEST(EditorBusProtocol, RejectsAMismatchedProtocol)
 {
     JsonValue root = MakeEnvelope();
@@ -97,6 +103,7 @@ TEST(EditorBusProtocol, RejectsAMismatchedProtocol)
     EXPECT_FALSE(error.empty());
 }
 
+/// @brief Rejects a missing or empty ID.
 TEST(EditorBusProtocol, RejectsAMissingOrEmptyId)
 {
     JsonValue missing = MakeEnvelope();
@@ -109,12 +116,14 @@ TEST(EditorBusProtocol, RejectsAMissingOrEmptyId)
     EXPECT_FALSE(ParseBusRequest(empty, nullptr).has_value());
 }
 
+/// @brief Rejects an unknown kind.
 TEST(EditorBusProtocol, RejectsAnUnknownKind)
 {
     JsonValue root = MakeEnvelope("notify");
     EXPECT_FALSE(ParseBusRequest(root, nullptr).has_value());
 }
 
+/// @brief Rejects a payload without a type.
 TEST(EditorBusProtocol, RejectsAPayloadWithoutAType)
 {
     JsonValue root = MakeEnvelope();
@@ -124,6 +133,7 @@ TEST(EditorBusProtocol, RejectsAPayloadWithoutAType)
     EXPECT_FALSE(ParseBusRequest(root, nullptr).has_value());
 }
 
+/// @brief Rejects a payload that is not an object.
 TEST(EditorBusProtocol, RejectsAPayloadThatIsNotAnObject)
 {
     JsonValue root = MakeEnvelope();
@@ -132,12 +142,14 @@ TEST(EditorBusProtocol, RejectsAPayloadThatIsNotAnObject)
     EXPECT_FALSE(ParseBusRequest(root, nullptr).has_value());
 }
 
+/// @brief Rejects an envelope that is not an object.
 TEST(EditorBusProtocol, RejectsAnEnvelopeThatIsNotAnObject)
 {
     EXPECT_FALSE(ParseBusRequest(JsonValue("just a string"), nullptr).has_value());
     EXPECT_FALSE(ParseBusRequest(JsonValue::MakeArray(), nullptr).has_value());
 }
 
+/// @brief Ok response carries the correlation ID.
 TEST(EditorBusProtocol, OkResponseCarriesTheCorrelationId)
 {
     JsonValue result = JsonValue::MakeObject();
@@ -152,6 +164,7 @@ TEST(EditorBusProtocol, OkResponseCarriesTheCorrelationId)
     EXPECT_EQ(response.Find("result")->Find("count")->AsInt(), 3);
 }
 
+/// @brief Error response carries code and message.
 TEST(EditorBusProtocol, ErrorResponseCarriesCodeAndMessage)
 {
     const JsonValue response =

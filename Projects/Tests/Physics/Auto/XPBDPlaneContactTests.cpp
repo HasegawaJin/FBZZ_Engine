@@ -45,6 +45,7 @@ protected:
     physics::XPBDSolver solver;
 };
 
+/// @brief Rests one radius above the plane.
 TEST_F(XPBDPlaneContactTest, RestsOneRadiusAboveThePlane)
 {
     /// @note 太さを持つ点として解く。半径を無視すると足首まで床へ埋まる。
@@ -59,6 +60,7 @@ TEST_F(XPBDPlaneContactTest, RestsOneRadiusAboveThePlane)
     EXPECT_NEAR(body->GetPosition().y, 0.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Honours the plane offset.
 TEST_F(XPBDPlaneContactTest, HonoursThePlaneOffset)
 {
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -72,6 +74,7 @@ TEST_F(XPBDPlaneContactTest, HonoursThePlaneOffset)
     EXPECT_NEAR(body->GetPosition().y, 2.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Offsets the contact point by the local offset.
 TEST_F(XPBDPlaneContactTest, OffsetsTheContactPointByTheLocalOffset)
 {
     /// @note 接触点は重心ではなく «足の裏»。ローカル offset を無視すると体が半分沈む。
@@ -87,6 +90,7 @@ TEST_F(XPBDPlaneContactTest, OffsetsTheContactPointByTheLocalOffset)
     EXPECT_NEAR(body->GetPosition().y, 1.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Does not pull the body down from above.
 TEST_F(XPBDPlaneContactTest, DoesNotPullTheBodyDownFromAbove)
 {
     /// @note 片側拘束。上に居るものを引き寄せてはいけない。
@@ -101,6 +105,7 @@ TEST_F(XPBDPlaneContactTest, DoesNotPullTheBodyDownFromAbove)
     EXPECT_NEAR(body->GetPosition().y, 10.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Reports no penetration while in the air.
 TEST_F(XPBDPlaneContactTest, ReportsNoPenetrationWhileInTheAir)
 {
     auto* body = MakeBody({ 0.0f, 10.0f, 0.0f });
@@ -116,6 +121,7 @@ TEST_F(XPBDPlaneContactTest, ReportsNoPenetrationWhileInTheAir)
     EXPECT_NEAR(probe->GetPenetration(), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Reports the penetration it pushed back.
 TEST_F(XPBDPlaneContactTest, ReportsThePenetrationItPushedBack)
 {
     /// @note 接地しているかの判定にそのまま使える値であること。
@@ -133,6 +139,7 @@ TEST_F(XPBDPlaneContactTest, ReportsThePenetrationItPushedBack)
     EXPECT_GT(probe->GetPenetration(), 0.0f);
 }
 
+/// @brief Slides forever without friction.
 TEST_F(XPBDPlaneContactTest, SlidesForeverWithoutFriction)
 {
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -148,6 +155,7 @@ TEST_F(XPBDPlaneContactTest, SlidesForeverWithoutFriction)
     EXPECT_GT(body->GetPosition().x, 3.0f);
 }
 
+/// @brief Friction shortens the slide.
 TEST_F(XPBDPlaneContactTest, FrictionShortensTheSlide)
 {
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -166,6 +174,7 @@ TEST_F(XPBDPlaneContactTest, FrictionShortensTheSlide)
     EXPECT_GT(body->GetPosition().x, 0.0f);
 }
 
+/// @brief Friction does not drag a standing body sideways.
 TEST_F(XPBDPlaneContactTest, FrictionDoesNotDragAStandingBodySideways)
 {
     solver.SetGravity({ 0.0f, kGravity, 0.0f });
@@ -182,6 +191,7 @@ TEST_F(XPBDPlaneContactTest, FrictionDoesNotDragAStandingBodySideways)
     EXPECT_NEAR(body->GetPosition().z, 0.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Follows the plane when it is moved.
 TEST_F(XPBDPlaneContactTest, FollowsThePlaneWhenItIsMoved)
 {
     /// @note 歩いているキャラクターの足元へ «床を付いて回らせる» 経路。
@@ -200,6 +210,7 @@ TEST_F(XPBDPlaneContactTest, FollowsThePlaneWhenItIsMoved)
     EXPECT_NEAR(body->GetPosition().y, 4.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Supports a non vertical plane.
 TEST_F(XPBDPlaneContactTest, SupportsANonVerticalPlane)
 {
     /// @note 壁として使う。法線方向にだけ押し返し、面に沿っては滑る。
@@ -215,6 +226,7 @@ TEST_F(XPBDPlaneContactTest, SupportsANonVerticalPlane)
     EXPECT_NEAR(body->GetPosition().x, -2.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Penetration correction preserves separating velocity without friction.
 TEST_F(XPBDPlaneContactTest, PenetrationCorrectionPreservesSeparatingVelocityWithoutFriction)
 {
     auto* body=MakeBody({0,0.49f,0});
@@ -229,6 +241,7 @@ TEST_F(XPBDPlaneContactTest, PenetrationCorrectionPreservesSeparatingVelocityWit
     EXPECT_VEC3_NEAR(body->GetVelocity(),math::Vector3(2,1,0),0.0001f);
 }
 
+/// @brief Closing velocity receives only compressive friction.
 TEST_F(XPBDPlaneContactTest, ClosingVelocityReceivesOnlyCompressiveFriction)
 {
     auto* body=MakeBody({0,0.49f,0});

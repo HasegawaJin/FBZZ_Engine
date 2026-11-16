@@ -177,6 +177,7 @@ protected:
     HWND m_window = nullptr; HRESULT m_com = E_FAIL; bool m_open = false;
 };
 
+/// @brief Small light sets match exact lighting.
 TEST_F(ManyLightShaderTest, SmallLightSetsMatchExactLighting)
 {
     const std::vector<renderer::PunctualLightGPU> lights(4, Point());
@@ -185,6 +186,7 @@ TEST_F(ManyLightShaderTest, SmallLightSetsMatchExactLighting)
     for (size_t channel = 0; channel < 3; ++channel) EXPECT_NEAR(sampled[channel], exact[channel], 0.001);
     EXPECT_NEAR(sampled[3], 4, 0.001);
 }
+/// @brief Thousand equal lights keep total energy with eight evaluations.
 TEST_F(ManyLightShaderTest, ThousandEqualLightsKeepTotalEnergyWithEightEvaluations)
 {
     const std::vector<renderer::PunctualLightGPU> lights(1000, Point(0.01f));
@@ -194,6 +196,7 @@ TEST_F(ManyLightShaderTest, ThousandEqualLightsKeepTotalEnergyWithEightEvaluatio
     for (size_t channel = 0; channel < 3; ++channel) EXPECT_NEAR(sampled[channel], exact[channel], exact[channel] * 0.005 + 0.001);
     EXPECT_NEAR(sampled[3], 8, 0.001);
 }
+/// @brief Unequal pool strata preserve energy and respect the budget.
 TEST_F(ManyLightShaderTest, UnequalPoolStrataPreserveEnergyAndRespectTheBudget)
 {
     const std::vector<renderer::PunctualLightGPU> lights(13, Point());
@@ -205,6 +208,7 @@ TEST_F(ManyLightShaderTest, UnequalPoolStrataPreserveEnergyAndRespectTheBudget)
         EXPECT_NEAR(sampled[3], (std::min)(budget, 13u), 0.001);
     }
 }
+/// @brief Shared preparation covers partial and maximum light batches.
 TEST_F(ManyLightShaderTest, SharedPreparationCoversPartialAndMaximumLightBatches)
 {
     for (uint32_t count : {65u, renderer::kMaxPunctualLights}) {
@@ -217,6 +221,7 @@ TEST_F(ManyLightShaderTest, SharedPreparationCoversPartialAndMaximumLightBatches
         EXPECT_NEAR(sampled[3], 8, 0.001);
     }
 }
+/// @brief Important last light is not discarded and stable phase reproduces the image.
 TEST_F(ManyLightShaderTest, ImportantLastLightIsNotDiscardedAndStablePhaseReproducesTheImage)
 {
     std::vector<renderer::PunctualLightGPU> lights(1000, Point(0.001f));
@@ -232,6 +237,7 @@ TEST_F(ManyLightShaderTest, ImportantLastLightIsNotDiscardedAndStablePhaseReprod
     const auto first = Render(lights, renderer::ClusterLightMode::SAMPLED, 8, 1);
     for (size_t channel = 0; channel < 3; ++channel) EXPECT_NEAR(first[channel], exact[channel], exact[channel] * 0.06 + 0.001);
 }
+/// @brief Receiver distance guiding keeps near lights without grain.
 TEST_F(ManyLightShaderTest, ReceiverDistanceGuidingKeepsNearLightsWithoutGrain)
 {
     std::vector<renderer::PunctualLightGPU> lights(32, Point());
@@ -255,6 +261,7 @@ TEST_F(ManyLightShaderTest, ReceiverDistanceGuidingKeepsNearLightsWithoutGrain)
     Render(lights, renderer::ClusterLightMode::SAMPLED, 32);
     EXPECT_LT(RelativeImageError(reference), 1.0e-5);
 }
+/// @brief Receiver cone guiding avoids wasting samples on away facing spots.
 TEST_F(ManyLightShaderTest, ReceiverConeGuidingAvoidsWastingSamplesOnAwayFacingSpots)
 {
     std::vector<renderer::PunctualLightGPU> lights(32, Point());
@@ -280,6 +287,7 @@ TEST_F(ManyLightShaderTest, ReceiverConeGuidingAvoidsWastingSamplesOnAwayFacingS
         for (size_t channel = 0; channel < 3; ++channel)
             EXPECT_EQ(m_pixels[pixel * 4u + channel], 0.0f);
 }
+/// @brief Large pools retain nearby lights among equal power distant lights.
 TEST_F(ManyLightShaderTest, LargePoolsRetainNearbyLightsAmongEqualPowerDistantLights)
 {
     std::vector<renderer::PunctualLightGPU> lights(1024, Point());
@@ -298,6 +306,7 @@ TEST_F(ManyLightShaderTest, LargePoolsRetainNearbyLightsAmongEqualPowerDistantLi
         EXPECT_NEAR(sampled[3], 32, 0.001);
     }
 }
+/// @brief Surface guiding avoids samples behind the receiver.
 TEST_F(ManyLightShaderTest, SurfaceGuidingAvoidsSamplesBehindTheReceiver)
 {
     std::vector<renderer::PunctualLightGPU> lights(32, Point());
@@ -313,6 +322,7 @@ TEST_F(ManyLightShaderTest, SurfaceGuidingAvoidsSamplesBehindTheReceiver)
         EXPECT_NEAR(sampled[channel], exact[channel], exact[channel] * 0.02);
     EXPECT_NEAR(sampled[3], 8, 0.001);
 }
+/// @brief Material guiding preserves metal highlights at the same light budget.
 TEST_F(ManyLightShaderTest, MaterialGuidingPreservesMetalHighlightsAtTheSameLightBudget)
 {
     std::vector<renderer::PunctualLightGPU> lights(32, Point());
@@ -334,6 +344,7 @@ TEST_F(ManyLightShaderTest, MaterialGuidingPreservesMetalHighlightsAtTheSameLigh
         EXPECT_NEAR(sampled[channel], exact[channel], exact[channel] * 0.02);
     EXPECT_NEAR(sampled[3], 8, 0.001);
 }
+/// @brief Checks temporal pool sequence converges without changing total color energy.
 TEST_F(ManyLightShaderTest, TemporalPoolSequenceConvergesWithoutChangingTotalColorEnergy)
 {
     std::vector<renderer::PunctualLightGPU> lights(1000, Point(0.01f));

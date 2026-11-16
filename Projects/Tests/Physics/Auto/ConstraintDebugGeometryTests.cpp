@@ -51,6 +51,7 @@ class ConstraintDebugGeometryTest : public testkit::Fixture {};
 
 /// @name 2 体をつなぐだけの制約
 
+/// @brief Draws one line between the bodies of a distance constraint.
 TEST_F(ConstraintDebugGeometryTest, DrawsOneLineBetweenTheBodiesOfADistanceConstraint)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -64,6 +65,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsOneLineBetweenTheBodiesOfADistanceConst
     EXPECT_TRUE(ConnectsPoints(geometry.lines[0], a.GetPosition(), b.GetPosition()));
 }
 
+/// @brief Draws one line for spring rope and fixed constraints.
 TEST_F(ConstraintDebugGeometryTest, DrawsOneLineForSpringRopeAndFixedConstraints)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -80,6 +82,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsOneLineForSpringRopeAndFixedConstraints
     EXPECT_EQ(physics::BuildConstraintDebugGeometry(fixed).lines.size(), 1u);
 }
 
+/// @brief Draws nothing when one body is missing.
 TEST_F(ConstraintDebugGeometryTest, DrawsNothingWhenOneBodyIsMissing)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -91,6 +94,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsNothingWhenOneBodyIsMissing)
 
 /// @name 鎖
 
+/// @brief Draws one line per adjacent pair of a chain.
 TEST_F(ConstraintDebugGeometryTest, DrawsOneLinePerAdjacentPairOfAChain)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -106,6 +110,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsOneLinePerAdjacentPairOfAChain)
     EXPECT_TRUE(ConnectsPoints(geometry.lines[1], b.GetPosition(), c.GetPosition()));
 }
 
+/// @brief Skips chain segments with a missing body.
 TEST_F(ConstraintDebugGeometryTest, SkipsChainSegmentsWithAMissingBody)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -116,6 +121,7 @@ TEST_F(ConstraintDebugGeometryTest, SkipsChainSegmentsWithAMissingBody)
     EXPECT_TRUE(physics::BuildConstraintDebugGeometry(chain).lines.empty());
 }
 
+/// @brief Draws nothing for a chain with a single body.
 TEST_F(ConstraintDebugGeometryTest, DrawsNothingForAChainWithASingleBody)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -126,6 +132,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsNothingForAChainWithASingleBody)
 
 /// @name ヒンジ
 
+/// @brief Draws the anchor gap and the axis of a hinge.
 TEST_F(ConstraintDebugGeometryTest, DrawsTheAnchorGapAndTheAxisOfAHinge)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -147,6 +154,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsTheAnchorGapAndTheAxisOfAHinge)
     EXPECT_VEC3_NEAR(geometry.lines[1].to,   math::Vector3(1.0f,  0.35f, 0.0f), testkit::kTolerance);
 }
 
+/// @brief Draws nothing for a hinge with a missing body.
 TEST_F(ConstraintDebugGeometryTest, DrawsNothingForAHingeWithAMissingBody)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);
@@ -160,6 +168,7 @@ TEST_F(ConstraintDebugGeometryTest, DrawsNothingForAHingeWithAMissingBody)
 
 /// @name スライダー
 
+/// @brief Draws the slide axis and the body link of a slider.
 TEST_F(ConstraintDebugGeometryTest, DrawsTheSlideAxisAndTheBodyLinkOfASlider)
 {
     physics::RigidBody a = BodyAt(math::Vector3::ZERO);

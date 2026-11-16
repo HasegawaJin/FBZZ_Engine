@@ -85,15 +85,20 @@ protected:
         EXPECT_EQ(device.m_structuredAlive, 0u);
     }
 };
+/// @brief Gas switch returns original resources and destructor cleans up.
 TEST_F(BakeGpuOwnershipTest, GasSwitchReturnsOriginalResourcesAndDestructorCleansUp)
 { SwitchAndRelease<asset::FluidGpuSolver>(fluid::FluidKind::Gas); }
+/// @brief Liquid switch returns original resources and destructor cleans up.
 TEST_F(BakeGpuOwnershipTest, LiquidSwitchReturnsOriginalResourcesAndDestructorCleansUp)
 { SwitchAndRelease<asset::FluidGpuLiquidSolver>(fluid::FluidKind::Liquid); }
+/// @brief Gas reset and failed initialization preserve unrelated resources.
 TEST_F(BakeGpuOwnershipTest, GasResetAndFailedInitializationPreserveUnrelatedResources)
 { ResetAndFailure<asset::FluidGpuSolver>(fluid::FluidKind::Gas); }
+/// @brief Liquid reset and failed initialization preserve unrelated resources.
 TEST_F(BakeGpuOwnershipTest, LiquidResetAndFailedInitializationPreserveUnrelatedResources)
 { ResetAndFailure<asset::FluidGpuLiquidSolver>(fluid::FluidKind::Liquid); }
 
+/// @brief Moving owned handle transfers exactly one release responsibility.
 TEST_F(BakeGpuOwnershipTest, MovingOwnedHandleTransfersExactlyOneReleaseResponsibility)
 {
     testkit::ResourceTrackingRenderer device;
@@ -113,6 +118,7 @@ TEST_F(BakeGpuOwnershipTest, MovingOwnedHandleTransfersExactlyOneReleaseResponsi
     EXPECT_EQ(device.m_constantsAlive, 0u);
 }
 
+/// @brief Solver destruction after owner destruction is safe.
 TEST_F(BakeGpuOwnershipTest, SolverDestructionAfterOwnerDestructionIsSafe)
 {
     testkit::ResourceTrackingRenderer device;
@@ -131,6 +137,7 @@ TEST_F(BakeGpuOwnershipTest, SolverDestructionAfterOwnerDestructionIsSafe)
     EXPECT_EQ(device.m_structuredAlive, 0u);
 }
 
+/// @brief Preview switch reset and destructor return owned resources.
 TEST_F(BakeGpuOwnershipTest, PreviewSwitchResetAndDestructorReturnOwnedResources)
 {
     testkit::ResourceTrackingRenderer firstDevice, secondDevice;
@@ -165,6 +172,7 @@ TEST_F(BakeGpuOwnershipTest, PreviewSwitchResetAndDestructorReturnOwnedResources
     EXPECT_EQ(secondDevice.m_targetsAlive, 0u);
 }
 
+/// @brief Preview allocation failure can retry and returns partially created resources.
 TEST_F(BakeGpuOwnershipTest, PreviewAllocationFailureCanRetryAndReturnsPartiallyCreatedResources)
 {
     testkit::ResourceTrackingRenderer device;

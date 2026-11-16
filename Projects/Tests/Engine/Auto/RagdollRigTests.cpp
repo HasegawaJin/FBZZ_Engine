@@ -89,6 +89,7 @@ float MaxRotationError(const std::vector<scene::RagdollBonePose>& expected,
 
 }
 
+/// @brief Player humanoid profile handles reported bones without fallback.
 TEST_F(RagdollRigTest, PlayerHumanoidProfileHandlesReportedBonesWithoutFallback)
 {
     const auto profile = scene::RagdollProfile::Humanoid();
@@ -118,6 +119,7 @@ TEST_F(RagdollRigTest, PlayerHumanoidProfileHandlesReportedBonesWithoutFallback)
     EXPECT_FALSE(profile.IsExcluded("ShoulderRing"));
 }
 
+/// @brief Builds one body per bone that has a child.
 TEST_F(RagdollRigTest, BuildsOneBodyPerBoneThatHasAChild)
 {
     const auto bones = StraightChain(4);
@@ -133,6 +135,7 @@ TEST_F(RagdollRigTest, BuildsOneBodyPerBoneThatHasAChild)
     EXPECT_EQ(rig.BodyIndexOfBone(3), -1);
 }
 
+/// @brief Capture then write reproduces the pose.
 /// @note 物理ステップなしの捕獲と書き戻しでは元の姿勢と一致すること。
 TEST_F(RagdollRigTest, CaptureThenWriteReproducesThePose)
 {
@@ -150,6 +153,7 @@ TEST_F(RagdollRigTest, CaptureThenWriteReproducesThePose)
     EXPECT_LT(MaxRotationError(bones, rotations), 1.0e-3f);
 }
 
+/// @brief Capture reproduces a pose different from the build pose.
 /// @note 構築時と異なる途中の姿勢を捕獲しても往復できること。
 TEST_F(RagdollRigTest, CaptureReproducesAPoseDifferentFromTheBuildPose)
 {
@@ -176,6 +180,7 @@ TEST_F(RagdollRigTest, CaptureReproducesAPoseDifferentFromTheBuildPose)
     EXPECT_LT(MaxRotationError(bent, rotations), 1.0e-3f);
 }
 
+/// @brief Leaf bone follows its parent body.
 /// @note 剛体を持たない葉の骨も親に追従すること。
 TEST_F(RagdollRigTest, LeafBoneFollowsItsParentBody)
 {
@@ -198,6 +203,7 @@ TEST_F(RagdollRigTest, LeafBoneFollowsItsParentBody)
                 (bones[3].position - bones[2].position).Length(), 0.05f);
 }
 
+/// @brief Joints keep the chain connected while falling.
 TEST_F(RagdollRigTest, JointsKeepTheChainConnectedWhileFalling)
 {
     const auto bones = StraightChain(4);
@@ -219,6 +225,7 @@ TEST_F(RagdollRigTest, JointsKeepTheChainConnectedWhileFalling)
     }
 }
 
+/// @brief Drive holds the animation pose under gravity.
 /// @note 現在の骨からドライブ目標を取り直すと、無負荷の釣り合い点はその姿勢になる。
 TEST_F(RagdollRigTest, DriveHoldsTheAnimationPoseUnderGravity)
 {
@@ -253,6 +260,7 @@ TEST_F(RagdollRigTest, DriveHoldsTheAnimationPoseUnderGravity)
     }
 }
 
+/// @brief Ground plane stops the falling chain.
 /// @note 接触の簡易平面でも床を抜けないこと。
 TEST_F(RagdollRigTest, GroundPlaneStopsTheFallingChain)
 {
@@ -274,6 +282,7 @@ TEST_F(RagdollRigTest, GroundPlaneStopsTheFallingChain)
         EXPECT_GT(positions[i].y, -2.15f) << "bone " << i << " fell through the ground";
 }
 
+/// @brief Lower torque limit sags more and saturates.
 /// @note 同じ荷重で低いトルク上限の関節ほど垂れ、出力が飽和すること。
 TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
 {
@@ -327,6 +336,7 @@ TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
     EXPECT_GT(weakSaturated, 0);
 }
 
+/// @brief Impulse pushes every body.
 TEST_F(RagdollRigTest, ImpulsePushesEveryBody)
 {
     const auto bones = StraightChain(4);
@@ -348,6 +358,7 @@ TEST_F(RagdollRigTest, ImpulsePushesEveryBody)
             << "bone " << i;
 }
 
+/// @brief World collider stops the fall.
 /// @note 簡易平面ではなく、World コライダーと NarrowPhase の接触で落下を止めること。
 TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
 {
@@ -386,6 +397,7 @@ TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
         EXPECT_GT(positions[i].y, -0.2f) << "bone " << i << " fell through the world collider";
 }
 
+/// @brief Checks passive settles on height field without ground plane.
 TEST_F(RagdollRigTest, PassiveSettlesOnHeightFieldWithoutGroundPlane)
 {
     auto bones = HorizontalChain(4);
@@ -454,6 +466,7 @@ TEST_F(RagdollRigTest, PassiveSettlesOnHeightFieldWithoutGroundPlane)
     EXPECT_GT(positions[0].y, fallenY + 0.1f);
 }
 
+/// @brief Checks falling ragdoll kicks a dynamic body.
 /// @note World が積分する剛体を substep で動かさず、フレーム末の反作用の力積で動かすこと。
 TEST_F(RagdollRigTest, FallingRagdollKicksADynamicBody)
 {
@@ -492,6 +505,7 @@ TEST_F(RagdollRigTest, FallingRagdollKicksADynamicBody)
     EXPECT_LT(debris.GetVelocity().y, 0.0f) << "the dynamic body was never pushed";
 }
 
+/// @brief Connected bones do not self collide.
 /// @note 関節で隣接する骨は重なるため、接触の押し返しによる振動を避けて自己衝突から除外する。
 TEST_F(RagdollRigTest, ConnectedBonesDoNotSelfCollide)
 {
@@ -511,6 +525,7 @@ TEST_F(RagdollRigTest, ConnectedBonesDoNotSelfCollide)
     EXPECT_EQ(rig.GetContactCount(), 0);
 }
 
+/// @brief Torque follows the skeleton scale.
 /// @note トルクを自重支持量の倍率で持ち、骨格の大きさが変わってもプロファイルを共用できること。
 TEST_F(RagdollRigTest, TorqueFollowsTheSkeletonScale)
 {
@@ -552,6 +567,7 @@ TEST_F(RagdollRigTest, TorqueFollowsTheSkeletonScale)
     EXPECT_NEAR(large, small, 0.05f) << "small=" << small << " large=" << large;
 }
 
+/// @brief Root anchor holds the whole body up under gravity.
 /// @note 関節は相対姿勢だけを拘束するため、常時アクティブでは根の固定が全身の落下を防ぐ。
 TEST_F(RagdollRigTest, RootAnchorHoldsTheWholeBodyUpUnderGravity)
 {
@@ -586,6 +602,7 @@ TEST_F(RagdollRigTest, RootAnchorHoldsTheWholeBodyUpUnderGravity)
             << "bone " << i << " drifted from the animation pose";
 }
 
+/// @brief Passive releases the root anchor.
 /// @note 脱力時に根の固定も外れ、胴だけが宙に留まらないこと。
 TEST_F(RagdollRigTest, PassiveReleasesTheRootAnchor)
 {
@@ -612,6 +629,7 @@ TEST_F(RagdollRigTest, PassiveReleasesTheRootAnchor)
     EXPECT_LT(positions[0].y, bones[0].position.y - 1.0f);
 }
 
+/// @brief Learning widens limits to fit the clip.
 /// @note クリップの要求角を学習して可動域を広げると、サーボが目標へ到達できること。
 TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
 {
@@ -652,6 +670,7 @@ TEST_F(RagdollRigTest, LearningWidensLimitsToFitTheClip)
     EXPECT_EQ(rig.CountLimitedJoints(), 0);
 }
 
+/// @brief Profile resolves by bone name substring.
 TEST_F(RagdollRigTest, ProfileResolvesByBoneNameSubstring)
 {
     scene::RagdollProfile profile;
@@ -669,6 +688,7 @@ TEST_F(RagdollRigTest, ProfileResolvesByBoneNameSubstring)
     EXPECT_FLOAT_EQ(profile.Resolve("Spine_01").radiusRatio, 0.5f);
 }
 
+/// @brief Checks mech profile covers the boss rig.
 /// @note Resolve は未一致でも fallback を返すため、Mech が Boss_01 の胴と全脚の各部位に一致することを検証する。
 TEST_F(RagdollRigTest, MechProfileCoversTheBossRig)
 {
@@ -708,6 +728,7 @@ TEST_F(RagdollRigTest, MechProfileCoversTheBossRig)
     EXPECT_FLOAT_EQ(knee.limits.swingMinZ, 0.0f);
 }
 
+/// @brief Unmatched bones are named.
 /// @note 一致しない骨は黙って fallback にせず、名前を記録すること。
 TEST_F(RagdollRigTest, UnmatchedBonesAreNamed)
 {
@@ -727,6 +748,7 @@ TEST_F(RagdollRigTest, UnmatchedBonesAreNamed)
     EXPECT_EQ(rig.UnmatchedBones()[0], "Tentacle");
 }
 
+/// @brief Mech profile gives the knee a one way hinge.
 TEST_F(RagdollRigTest, MechProfileGivesTheKneeAOneWayHinge)
 {
     const scene::RagdollProfile profile = scene::RagdollProfile::Mech();
@@ -741,6 +763,7 @@ TEST_F(RagdollRigTest, MechProfileGivesTheKneeAOneWayHinge)
     EXPECT_GT(knee.servo.torqueScale, 0.0f);
 }
 
+/// @brief Center of mass sits inside the chain.
 TEST_F(RagdollRigTest, CenterOfMassSitsInsideTheChain)
 {
     const auto bones = StraightChain(4);
@@ -755,6 +778,7 @@ TEST_F(RagdollRigTest, CenterOfMassSitsInsideTheChain)
     EXPECT_NEAR(com.x, 0.0f, 1.0e-3f);
 }
 
+/// @brief Zero root strength does not become an unlimited anchor.
 TEST_F(RagdollRigTest, ZeroRootStrengthDoesNotBecomeAnUnlimitedAnchor)
 {
     const auto bones = StraightChain(2);
@@ -770,6 +794,7 @@ TEST_F(RagdollRigTest, ZeroRootStrengthDoesNotBecomeAnUnlimitedAnchor)
     EXPECT_LT(rig.BodyOfBone(0)->GetPosition().y, -2.0f);
 }
 
+/// @brief Zero gravity does not turn computed zero force into an unlimited anchor.
 TEST_F(RagdollRigTest, ZeroGravityDoesNotTurnComputedZeroForceIntoAnUnlimitedAnchor)
 {
     const auto bones = StraightChain(2);
@@ -787,6 +812,7 @@ TEST_F(RagdollRigTest, ZeroGravityDoesNotTurnComputedZeroForceIntoAnUnlimitedAnc
     EXPECT_NEAR(rig.BodyOfBone(0)->GetPosition().x, 1.0f, 0.001f);
 }
 
+/// @brief Linear and angular inputs have the same meaning in either guard mode.
 TEST_F(RagdollRigTest, LinearAndAngularInputsHaveTheSameMeaningInEitherGuardMode)
 {
     for (const bool guarded : {false, true}) {
@@ -805,6 +831,7 @@ TEST_F(RagdollRigTest, LinearAndAngularInputsHaveTheSameMeaningInEitherGuardMode
     }
 }
 
+/// @brief Explicit angular input rotates the torso without moving its root.
 TEST_F(RagdollRigTest, ExplicitAngularInputRotatesTheTorsoWithoutMovingItsRoot)
 {
     const auto bones = StraightChain(2);
@@ -826,6 +853,7 @@ TEST_F(RagdollRigTest, ExplicitAngularInputRotatesTheTorsoWithoutMovingItsRoot)
     EXPECT_LE((positions[1] - bones[1].position).Length(), 0.1201f);
 }
 
+/// @brief Standing root motion does not create a spurious impulse.
 TEST_F(RagdollRigTest, StandingRootMotionDoesNotCreateASpuriousImpulse)
 {
     auto bones = StraightChain(4);
@@ -843,6 +871,7 @@ TEST_F(RagdollRigTest, StandingRootMotionDoesNotCreateASpuriousImpulse)
     EXPECT_VEC3_NEAR(rig.BodyOfBone(0)->GetVelocity(), math::Vector3::ZERO, 0.0001f);
 }
 
+/// @brief Standing projection preserves lengths and physical body centers.
 TEST_F(RagdollRigTest, StandingProjectionPreservesLengthsAndPhysicalBodyCenters)
 {
     const auto bones = StraightChain(4);

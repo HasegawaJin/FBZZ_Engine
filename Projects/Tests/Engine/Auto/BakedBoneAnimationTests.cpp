@@ -248,6 +248,7 @@ private:
 }
 class BakedBoneAnimationTest : public testkit::EngineFixture {};
 
+/// @brief Preserves endpoints and the ordinary local trs palette.
 TEST_F(BakedBoneAnimationTest, PreservesEndpointsAndTheOrdinaryLocalTrsPalette)
 {
     const auto s = MakeBoneBakeTestRig(); const auto c = MakeBoneBakeTestSwim(); const auto b = MakeBoneBakeTestAsset(s, c);
@@ -260,6 +261,7 @@ TEST_F(BakedBoneAnimationTest, PreservesEndpointsAndTheOrdinaryLocalTrsPalette)
     }
 }
 
+/// @brief Loop seam uses the endpoint and wraps continuously.
 TEST_F(BakedBoneAnimationTest, LoopSeamUsesTheEndpointAndWrapsContinuously)
 {
     const auto b = MakeBoneBakeTestAsset(); std::vector<math::Matrix4> before, after, g;
@@ -271,6 +273,7 @@ TEST_F(BakedBoneAnimationTest, LoopSeamUsesTheEndpointAndWrapsContinuously)
     EXPECT_EQ(MakeBoneBakeTestFrame(b, 2.0, false).first, b.frameCount - 1);
 }
 
+/// @brief Independent phase speed reverse and paused clocks.
 TEST_F(BakedBoneAnimationTest, IndependentPhaseSpeedReverseAndPausedClocks)
 {
     const auto b = MakeBoneBakeTestAsset(); asset::BakedBoneFrame f;
@@ -280,6 +283,7 @@ TEST_F(BakedBoneAnimationTest, IndependentPhaseSpeedReverseAndPausedClocks)
     EXPECT_EQ(MakeBoneBakeTestFrame(b, -100.0, false).first, 0u); EXPECT_EQ(MakeBoneBakeTestFrame(b, 100.0, false).second, b.frameCount - 1);
 }
 
+/// @brief Thousand independent fish match the key sampler.
 TEST_F(BakedBoneAnimationTest, ThousandIndependentFishMatchTheKeySampler)
 {
     const auto s = MakeBoneBakeTestRig(); const auto c = MakeBoneBakeTestSwim(); const auto b = MakeBoneBakeTestAsset(s, c);
@@ -294,6 +298,7 @@ TEST_F(BakedBoneAnimationTest, ThousandIndependentFishMatchTheKeySampler)
     }
 }
 
+/// @brief Antipodal quaternions do not take the long arc.
 TEST_F(BakedBoneAnimationTest, AntipodalQuaternionsDoNotTakeTheLongArc)
 {
     auto c = MakeBoneBakeTestSwim(); c.tracks[1].rotations = {{0.0, {0.0f, 0.0f, 0.0f, 1.0f}}, {2.0, {0.0f, 0.0f, 0.0f, -1.0f}}};
@@ -302,6 +307,7 @@ TEST_F(BakedBoneAnimationTest, AntipodalQuaternionsDoNotTakeTheLongArc)
     ExpectBoneBakeTestMatrix(p[1], SampleBoneBakeTestReference(MakeBoneBakeTestRig(), c, 0.9)[1]); EXPECT_NEAR(g[2].m[0][0], 1.0f, 0.00001f);
 }
 
+/// @brief Blends local rotations and translations before hierarchy composition.
 TEST_F(BakedBoneAnimationTest, BlendsLocalRotationsAndTranslationsBeforeHierarchyComposition)
 {
     auto c = MakeBoneBakeTestSwim(); c.tracks[0].positions = {{0.0, {2.0f, 0.0f, 0.0f}}};
@@ -316,6 +322,7 @@ TEST_F(BakedBoneAnimationTest, BlendsLocalRotationsAndTranslationsBeforeHierarch
     EXPECT_GE(radius, a.conservativeRadius); EXPECT_GE(radius, b.conservativeRadius);
 }
 
+/// @brief Bounds contain rotating scaled bones and every allowed LOD.
 TEST_F(BakedBoneAnimationTest, BoundsContainRotatingScaledBonesAndEveryAllowedLod)
 {
     auto c = MakeBoneBakeTestSwim(); c.tracks[0].scales = {{0.0, {1.0f, 2.0f, 0.5f}}, {2.0, {2.0f, 0.5f, 1.0f}}};
@@ -331,6 +338,7 @@ TEST_F(BakedBoneAnimationTest, BoundsContainRotatingScaledBonesAndEveryAllowedLo
     EXPECT_EQ(asset::ValidateBoneBakeSource(b, s, c, 3.01f), BoneBakeTestStatus::INCOMPATIBLE_LOD);
 }
 
+/// @brief Reimported keys and bindings invalidate the cache.
 TEST_F(BakedBoneAnimationTest, ReimportedKeysAndBindingsInvalidateTheCache)
 {
     const auto b = MakeBoneBakeTestAsset(); auto s = MakeBoneBakeTestRig(); auto c = MakeBoneBakeTestSwim();
@@ -342,6 +350,7 @@ TEST_F(BakedBoneAnimationTest, ReimportedKeysAndBindingsInvalidateTheCache)
     EXPECT_EQ(asset::ValidateBoneBakeSource(b, s, c, 3.0f), BoneBakeTestStatus::INCOMPATIBLE_SKELETON);
 }
 
+/// @brief Runtime shares content and reimport generation replaces cached pose.
 TEST_F(BakedBoneAnimationTest, RuntimeSharesContentAndReimportGenerationReplacesCachedPose)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -382,6 +391,7 @@ TEST_F(BakedBoneAnimationTest, RuntimeSharesContentAndReimportGenerationReplaces
     for (size_t i = 0; i < retained.size(); ++i) ExpectBoneBakeTestMatrix(first.boneMatrices[i], retained[i], 0);
 }
 
+/// @brief Rejects cycle children mismatch and bone mismatch.
 TEST_F(BakedBoneAnimationTest, RejectsCycleChildrenMismatchAndBoneMismatch)
 {
     auto s = MakeBoneBakeTestRig(); asset::BakedBoneAnimation output; s.nodes[1].parentIndex = 2;
@@ -390,6 +400,7 @@ TEST_F(BakedBoneAnimationTest, RejectsCycleChildrenMismatchAndBoneMismatch)
     s = MakeBoneBakeTestRig(); s.bones[0].nodeIndex = 2; EXPECT_EQ(asset::BakeBoneAnimation(s, MakeBoneBakeTestSwim(), {}, output), BoneBakeTestStatus::INVALID_SKELETON);
 }
 
+/// @brief Unsupported tracks and side effects fall back without publishing.
 TEST_F(BakedBoneAnimationTest, UnsupportedTracksAndSideEffectsFallBackWithoutPublishing)
 {
     auto c = MakeBoneBakeTestSwim(); asset::BakedBoneAnimation out; out.clipFingerprint = 42;
@@ -400,6 +411,7 @@ TEST_F(BakedBoneAnimationTest, UnsupportedTracksAndSideEffectsFallBackWithoutPub
     EXPECT_EQ(out.clipFingerprint, 42u);
 }
 
+/// @brief Rejects bad key order non-finite clocks and capacity overflow.
 TEST_F(BakedBoneAnimationTest, RejectsBadKeyOrderNonFiniteClocksAndCapacityOverflow)
 {
     auto c = MakeBoneBakeTestSwim(); asset::BakedBoneAnimation out; c.tracks[0].positions[1].time = 0.0;
@@ -413,6 +425,7 @@ TEST_F(BakedBoneAnimationTest, RejectsBadKeyOrderNonFiniteClocksAndCapacityOverf
     EXPECT_EQ(f.first, 7u);
 }
 
+/// @brief Invalid frame and blend keep the published palette.
 TEST_F(BakedBoneAnimationTest, InvalidFrameAndBlendKeepThePublishedPalette)
 {
     const auto b = MakeBoneBakeTestAsset(); std::vector<math::Matrix4> p{math::Matrix4::Identity()}, g = p;
@@ -423,6 +436,7 @@ TEST_F(BakedBoneAnimationTest, InvalidFrameAndBlendKeepThePublishedPalette)
     EXPECT_EQ(p.size(), 1u);
 }
 
+/// @brief Reused workspace keeps failure atomic across clip changes.
 TEST_F(BakedBoneAnimationTest, ReusedWorkspaceKeepsFailureAtomicAcrossClipChanges)
 {
     const auto bake = MakeBoneBakeTestAsset();
@@ -441,6 +455,7 @@ TEST_F(BakedBoneAnimationTest, ReusedWorkspaceKeepsFailureAtomicAcrossClipChange
     for (size_t i = 0; i < matrices.size(); ++i) ExpectBoneBakeTestMatrix(matrices[i], reference[i]);
 }
 
+/// @brief Settings survive save and passive clone and legacy scenes stay legacy.
 TEST_F(BakedBoneAnimationTest, SettingsSurviveSaveAndPassiveCloneAndLegacyScenesStayLegacy)
 {
     scene::Scene source;
@@ -473,6 +488,7 @@ TEST_F(BakedBoneAnimationTest, SettingsSurviveSaveAndPassiveCloneAndLegacyScenes
     EXPECT_TRUE(value->boneBakeRequireCpuBones);
 }
 
+/// @brief Codec round trip preserves samples and rejects corrupt or hostile lengths.
 TEST_F(BakedBoneAnimationTest, CodecRoundTripPreservesSamplesAndRejectsCorruptOrHostileLengths)
 {
     const auto b = MakeBoneBakeTestAsset(); std::vector<std::byte> bytes;
@@ -518,6 +534,7 @@ TEST_F(BakedBoneAnimationTest, SharedPoseIsOptInAndCopiesOutputsAcrossActors)
     ASSERT_EQ(memo.Evaluate(3,11,120,source,frame,{},targetFrame,0,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
     EXPECT_FALSE(hit);
 }
+/// @brief Shared pose keys include target clip and blend weight.
 TEST_F(BakedBoneAnimationTest, SharedPoseKeysIncludeTargetClipAndBlendWeight)
 {
     auto clip = MakeBoneBakeTestSwim(); clip.tracks[1].rotations[1].value = math::Quaternion::FromAxisAngle(math::Vector3::UP,2.4f);
@@ -533,6 +550,7 @@ TEST_F(BakedBoneAnimationTest, SharedPoseKeysIncludeTargetClipAndBlendWeight)
     ASSERT_EQ(memo.Evaluate(1,10,120,source,frame,source,other,0.75f,palette,globals,workspace,hit),BoneBakeTestStatus::OK);
     EXPECT_FALSE(hit);
 }
+/// @brief Shared pose quantization bounds reverse pause and seam time error.
 TEST_F(BakedBoneAnimationTest, SharedPoseQuantizationBoundsReversePauseAndSeamTimeError)
 {
     const auto source=MakeBoneBakeTestAsset();
@@ -635,6 +653,7 @@ struct BoneBakeLodTestWorld {
     }
 };
 }
+/// @brief Batched compatibility bytes keep full identity tail and deferred ownership.
 TEST_F(BakedBoneAnimationTest, BatchedCompatibilityBytesKeepFullIdentityTailAndDeferredOwnership)
 {
     BoneBatchTestRenderer renderer;renderer::ResourceManager resources(renderer);
@@ -653,6 +672,7 @@ TEST_F(BakedBoneAnimationTest, BatchedCompatibilityBytesKeepFullIdentityTailAndD
     EXPECT_EQ(renderer.writes[0].bytes,std::vector<uint8_t>(expected.begin(),expected.begin()+8192));
     EXPECT_EQ(renderer.writes[1].bytes,std::vector<uint8_t>(expected.begin()+8192,expected.end()));
 }
+/// @brief Invalid batch byte range publishes no partial update.
 TEST_F(BakedBoneAnimationTest, InvalidBatchByteRangePublishesNoPartialUpdate)
 {
     BoneBatchTestRenderer renderer;renderer::ResourceManager resources(renderer);
@@ -688,6 +708,7 @@ TEST_F(BakedBoneAnimationTest, PureBakedAnimatorAvoidsBoneEntitiesAndCpuReaderRe
     EXPECT_FALSE(animator.boneBake.active);EXPECT_EQ(animator.boneBake.fallback,scene::BoneBakeFallback::CPU_BONES_REQUIRED);
     EXPECT_EQ(scene.GetEntities<scene::BoneComponent>().size(),3u);
 }
+/// @brief Near baked animator keeps ordinary bone hierarchy.
 TEST_F(BakedBoneAnimationTest, NearBakedAnimatorKeepsOrdinaryBoneHierarchy)
 {
     BoneBakeRuntimeTestAssets assets;const auto path=assets.temp.File("Assets/swim.anim").generic_string();
@@ -705,6 +726,7 @@ TEST_F(BakedBoneAnimationTest, NearBakedAnimatorKeepsOrdinaryBoneHierarchy)
     EXPECT_EQ(scene.GetEntities<scene::BoneComponent>().size(),3u);
 }
 
+/// @brief Ragdoll samples fresh animation across distance LOD and bake modes.
 TEST_F(BakedBoneAnimationTest, RagdollSamplesFreshAnimationAcrossDistanceLodAndBakeModes)
 {
     for (const auto mode : {scene::BoneBakeMode::LEGACY, scene::BoneBakeMode::CPU_BAKED,
@@ -741,6 +763,7 @@ TEST_F(BakedBoneAnimationTest, RagdollSamplesFreshAnimationAcrossDistanceLodAndB
     }
 }
 
+/// @brief Adding ragdoll to held bake restores its current CPU targets.
 TEST_F(BakedBoneAnimationTest, AddingRagdollToHeldBakeRestoresItsCurrentCpuTargets)
 {
     for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED,
@@ -773,6 +796,7 @@ TEST_F(BakedBoneAnimationTest, AddingRagdollToHeldBakeRestoresItsCurrentCpuTarge
     }
 }
 
+/// @brief Pause preserves the final IK spring and ragdoll pose until resume.
 TEST_F(BakedBoneAnimationTest, PausePreservesTheFinalIkSpringAndRagdollPoseUntilResume)
 {
     BoneBakeLodTestWorld world(scene::BoneBakeMode::LEGACY);
@@ -875,6 +899,7 @@ TEST_F(BakedBoneAnimationTest, PausePreservesTheFinalIkSpringAndRagdollPoseUntil
     scheduler.Shutdown();
 }
 
+/// @brief Pause keeps the first resumed root motion delta without reviving invalid history.
 TEST_F(BakedBoneAnimationTest, PauseKeepsTheFirstResumedRootMotionDeltaWithoutRevivingInvalidHistory)
 {
     for (int interruption = 0; interruption < 3; ++interruption) {
@@ -918,6 +943,7 @@ TEST_F(BakedBoneAnimationTest, PauseKeepsTheFirstResumedRootMotionDeltaWithoutRe
 }
 
 
+/// @brief CPU bone fallback flushes an owned packet before individual updates.
 TEST_F(BakedBoneAnimationTest, CpuBoneFallbackFlushesAnOwnedPacketBeforeIndividualUpdates)
 {
     BoneBatchTestRenderer renderer;renderer::ResourceManager resources(renderer);
@@ -938,6 +964,7 @@ TEST_F(BakedBoneAnimationTest, CpuBoneFallbackFlushesAnOwnedPacketBeforeIndividu
     for(const auto& write:renderer.writes) EXPECT_EQ(write.bytes.size(),8192u);
 }
 
+/// @brief Immediate compatibility template preserves actual palette and identity tail.
 TEST_F(BakedBoneAnimationTest, ImmediateCompatibilityTemplatePreservesActualPaletteAndIdentityTail)
 {
     BoneBatchTestRenderer renderer;renderer.rendering=true;renderer::ResourceManager resources(renderer);
@@ -951,6 +978,7 @@ TEST_F(BakedBoneAnimationTest, ImmediateCompatibilityTemplatePreservesActualPale
         EXPECT_EQ(std::memcmp(renderer.writes[0].bytes.data()+bone*sizeof(math::Matrix4),&identity,sizeof(identity)),0);
     EXPECT_TRUE(renderer.operations.empty());
 }
+/// @brief Legacy pose reuse keeps weighted trs and distinct actors exact.
 TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsWeightedTrsAndDistinctActorsExact)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1010,6 +1038,7 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsWeightedTrsAndDistinctActorsE
         ExpectBoneBakeTestMatrix(firstAnimator.boneMatrices[i], nextReference[i]);
 }
 
+/// @brief Legacy pose reuse keeps first exact and first canonical track after replacement.
 TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsFirstExactAndFirstCanonicalTrackAfterReplacement)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1048,6 +1077,7 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsFirstExactAndFirstCanonicalTr
     EXPECT_NEAR(body->transform.position.x, 7.0f, 0.0001f);
 }
 
+/// @brief Legacy pose reuse preserves first FK when root motion callback removes a bone.
 TEST_F(BakedBoneAnimationTest, LegacyPoseReusePreservesFirstFkWhenRootMotionCallbackRemovesABone)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1091,6 +1121,7 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReusePreservesFirstFkWhenRootMotionCall
         ExpectBoneBakeTestMatrix(animator.boneMatrices[i], nextReference[i]);
 }
 
+/// @brief Legacy pose reuse keeps inserted parent and inactive non bone child world transforms.
 TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsInsertedParentAndInactiveNonBoneChildWorldTransforms)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1130,6 +1161,7 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsInsertedParentAndInactiveNonB
     EXPECT_EQ(root->GetParent()->GetID(), spacer.GetID());
 }
 
+/// @brief Legacy pose reuse keeps root motion before pose and events after pose.
 TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsRootMotionBeforePoseAndEventsAfterPose)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1179,6 +1211,7 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReuseKeepsRootMotionBeforePoseAndEvents
     EXPECT_FALSE(animator.rootMotionAppliedByEngine);
 }
 
+/// @brief Legacy pose reuse resamples after initial and replacement mask I/O.
 TEST_F(BakedBoneAnimationTest, LegacyPoseReuseResamplesAfterInitialAndReplacementMaskIo)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1209,6 +1242,7 @@ TEST_F(BakedBoneAnimationTest, LegacyPoseReuseResamplesAfterInitialAndReplacemen
     EXPECT_EQ(animator.baseLayerMask.loadedPath, animator.baseLayerMask.path);
 }
 
+/// @brief Legacy track bindings rebind equal size skeletons and reordered tracks across actors.
 TEST_F(BakedBoneAnimationTest, LegacyTrackBindingsRebindEqualSizeSkeletonsAndReorderedTracksAcrossActors)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1245,6 +1279,7 @@ TEST_F(BakedBoneAnimationTest, LegacyTrackBindingsRebindEqualSizeSkeletonsAndReo
     }
 }
 
+/// @brief Legacy track bindings and traversal scratch survive nested mask I/O updates.
 TEST_F(BakedBoneAnimationTest, LegacyTrackBindingsAndTraversalScratchSurviveNestedMaskIoUpdates)
 {
     BoneBakeRuntimeTestAssets assets;
@@ -1296,6 +1331,7 @@ TEST_F(BakedBoneAnimationTest, LegacyTrackBindingsAndTraversalScratchSurviveNest
     for (size_t index = 0; index < nextReference.size(); ++index)
         ExpectBoneBakeTestMatrix(outerAnimator.boneMatrices[index], nextReference[index]);
 }
+/// @brief Baked distance LOD holds pose events and full previous palette for both modes.
 TEST_F(BakedBoneAnimationTest, BakedDistanceLodHoldsPoseEventsAndFullPreviousPaletteForBothModes)
 {
     for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED}) {
@@ -1349,6 +1385,7 @@ TEST_F(BakedBoneAnimationTest, BakedDistanceLodHoldsPoseEventsAndFullPreviousPal
     }
 }
 
+/// @brief Baked distance LOD is opt in and nearest or missing camera refreshes immediately.
 TEST_F(BakedBoneAnimationTest, BakedDistanceLodIsOptInAndNearestOrMissingCameraRefreshesImmediately)
 {
     for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED}) {
@@ -1372,6 +1409,7 @@ TEST_F(BakedBoneAnimationTest, BakedDistanceLodIsOptInAndNearestOrMissingCameraR
     }
 }
 
+/// @brief Baked distance LOD refreshes when CPU bones rig layers or morph become required.
 TEST_F(BakedBoneAnimationTest, BakedDistanceLodRefreshesWhenCpuBonesRigLayersOrMorphBecomeRequired)
 {
     for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED}) {
@@ -1394,6 +1432,7 @@ TEST_F(BakedBoneAnimationTest, BakedDistanceLodRefreshesWhenCpuBonesRigLayersOrM
     }
 }
 
+/// @brief Baked distance LOD revalidates sample rate and model with the same skeleton.
 TEST_F(BakedBoneAnimationTest, BakedDistanceLodRevalidatesSampleRateAndModelWithTheSameSkeleton)
 {
     for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED}) {
@@ -1415,6 +1454,7 @@ TEST_F(BakedBoneAnimationTest, BakedDistanceLodRevalidatesSampleRateAndModelWith
     }
 }
 
+/// @brief Baked distance LOD refreshes reimport and same state clip replacement.
 TEST_F(BakedBoneAnimationTest, BakedDistanceLodRefreshesReimportAndSameStateClipReplacement)
 {
     for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED}) {
@@ -1442,6 +1482,7 @@ TEST_F(BakedBoneAnimationTest, BakedDistanceLodRefreshesReimportAndSameStateClip
     }
 }
 
+/// @brief Baked distance LOD keeps transitions and root motion callbacks at full rate.
 TEST_F(BakedBoneAnimationTest, BakedDistanceLodKeepsTransitionsAndRootMotionCallbacksAtFullRate)
 {
     for (const auto mode : {scene::BoneBakeMode::CPU_BAKED, scene::BoneBakeMode::GPU_SHARED}) {
@@ -1464,6 +1505,7 @@ TEST_F(BakedBoneAnimationTest, BakedDistanceLodKeepsTransitionsAndRootMotionCall
         EXPECT_EQ(moves,2);
     }
 }
+/// @brief GPU pose defers CPU palettes only after successful GPU preparation.
 TEST_F(BakedBoneAnimationTest, GpuPoseDefersCpuPalettesOnlyAfterSuccessfulGpuPreparation)
 {
     BoneBakeLodTestWorld world(scene::BoneBakeMode::GPU_POSE_SHARED);
@@ -1500,6 +1542,7 @@ TEST_F(BakedBoneAnimationTest, GpuPoseDefersCpuPalettesOnlyAfterSuccessfulGpuPre
     for (const auto& write : world.renderer.writes) EXPECT_EQ(write.bytes.size(), 8192u);
 }
 
+/// @brief GPU pose hold snapshots displayed clock without CPU uploads.
 TEST_F(BakedBoneAnimationTest, GpuPoseHoldSnapshotsDisplayedClockWithoutCpuUploads)
 {
     BoneBakeLodTestWorld world(scene::BoneBakeMode::GPU_POSE_SHARED);
@@ -1522,6 +1565,7 @@ TEST_F(BakedBoneAnimationTest, GpuPoseHoldSnapshotsDisplayedClockWithoutCpuUploa
     EXPECT_TRUE(world.renderer.writes.empty());
 }
 
+/// @brief GPU pose CPU reader restores previous palette before legacy fallback.
 TEST_F(BakedBoneAnimationTest, GpuPoseCpuReaderRestoresPreviousPaletteBeforeLegacyFallback)
 {
     BoneBakeLodTestWorld world(scene::BoneBakeMode::GPU_POSE_SHARED);
@@ -1546,6 +1590,7 @@ TEST_F(BakedBoneAnimationTest, GpuPoseCpuReaderRestoresPreviousPaletteBeforeLega
     EXPECT_FALSE(world.SkinnedRenderer().nodeEntities.empty());
 }
 
+/// @brief GPU pose reimport keeps previous history invalid.
 TEST_F(BakedBoneAnimationTest, GpuPoseReimportKeepsPreviousHistoryInvalid)
 {
     BoneBakeLodTestWorld world(scene::BoneBakeMode::GPU_POSE_SHARED);
@@ -1563,6 +1608,7 @@ TEST_F(BakedBoneAnimationTest, GpuPoseReimportKeepsPreviousHistoryInvalid)
     EXPECT_FALSE(animator.prevBoneMatricesValid);
 }
 
+/// @brief Rejected bake mesh can recover after its import generation changes.
 TEST_F(BakedBoneAnimationTest, RejectedBakeMeshCanRecoverAfterItsImportGenerationChanges)
 {
     BoneBakeLodTestWorld world(scene::BoneBakeMode::GPU_POSE_SHARED);
@@ -1577,6 +1623,7 @@ TEST_F(BakedBoneAnimationTest, RejectedBakeMeshCanRecoverAfterItsImportGeneratio
     EXPECT_TRUE(world.Animator().boneBake.active);
 }
 
+/// @brief GPU pose CPU return survives actor retirement in the resource executor.
 TEST_F(BakedBoneAnimationTest, GpuPoseCpuReturnSurvivesActorRetirementInTheResourceExecutor)
 {
     BoneBakeLodTestWorld world(scene::BoneBakeMode::GPU_POSE_SHARED);
@@ -1595,6 +1642,7 @@ TEST_F(BakedBoneAnimationTest, GpuPoseCpuReturnSurvivesActorRetirementInTheResou
     EXPECT_EQ(world.scene.GameObjectCount(), 0u);
 }
 
+/// @brief GPU pose stable CPU fallback keeps the ordinary distance LOD.
 TEST_F(BakedBoneAnimationTest, GpuPoseStableCpuFallbackKeepsTheOrdinaryDistanceLod)
 {
     for (const auto mode : {scene::BoneBakeMode::LEGACY, scene::BoneBakeMode::GPU_POSE_SHARED}) {

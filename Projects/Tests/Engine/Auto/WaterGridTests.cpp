@@ -40,6 +40,7 @@ protected:
 
 }
 
+/// @brief Preserves finite endpoints when the camera is inside or outside.
 TEST_F(WaterGridTest, PreservesFiniteEndpointsWhenTheCameraIsInsideOrOutside)
 {
     constexpr std::array<float, 5> focuses = { -20000.0f, -437.9f, 0.0f, 378.0f, 20000.0f };
@@ -56,6 +57,7 @@ TEST_F(WaterGridTest, PreservesFiniteEndpointsWhenTheCameraIsInsideOrOutside)
     }
 }
 
+/// @brief Keeps all cells positive across camera positions.
 TEST_F(WaterGridTest, KeepsAllCellsPositiveAcrossCameraPositions)
 {
     constexpr std::array<float, 5> focuses = { -20000.0f, -4317.0f, 0.0f, 2741.0f, 20000.0f };
@@ -76,6 +78,7 @@ TEST_F(WaterGridTest, KeepsAllCellsPositiveAcrossCameraPositions)
     }
 }
 
+/// @brief Centers the dense band on the snapped camera.
 TEST_F(WaterGridTest, CentersTheDenseBandOnTheSnappedCamera)
 {
     constexpr float focus = 124.9f;
@@ -91,6 +94,7 @@ TEST_F(WaterGridTest, CentersTheDenseBandOnTheSnappedCamera)
                      math::Vector3(kNearCellSize, kNearCellSize, kNearCellSize), kPositionTolerance);
 }
 
+/// @brief Holds the grid stationary for camera motion within a snap cell.
 TEST_F(WaterGridTest, HoldsTheGridStationaryForCameraMotionWithinASnapCell)
 {
     constexpr float firstFocus = 124.1f;
@@ -106,6 +110,7 @@ TEST_F(WaterGridTest, HoldsTheGridStationaryForCameraMotionWithinASnapCell)
     }
 }
 
+/// @brief Keeps the dense region inside water when the camera is outside.
 TEST_F(WaterGridTest, KeepsTheDenseRegionInsideWaterWhenTheCameraIsOutside)
 {
     constexpr float focus = 20000.0f;
@@ -119,6 +124,7 @@ TEST_F(WaterGridTest, KeepsTheDenseRegionInsideWaterWhenTheCameraIsOutside)
     EXPECT_FLOAT_EQ(nearby.cellSize, kNearCellSize);
 }
 
+/// @brief Preserves uniform spacing when the water is already fine enough.
 TEST_F(WaterGridTest, PreservesUniformSpacingWhenTheWaterIsAlreadyFineEnough)
 {
     constexpr float extent = 64.0f;
@@ -133,6 +139,7 @@ TEST_F(WaterGridTest, PreservesUniformSpacingWhenTheWaterIsAlreadyFineEnough)
     }
 }
 
+/// @brief Measures the largest cell on either side of each vertex.
 TEST_F(WaterGridTest, MeasuresTheLargestCellOnEitherSideOfEachVertex)
 {
     std::array<float, kOceanResolution + 1> positions{};
@@ -152,6 +159,7 @@ TEST_F(WaterGridTest, MeasuresTheLargestCellOnEitherSideOfEachVertex)
     }
 }
 
+/// @brief Restores ocean waves near the camera and filters them at coarse edges.
 TEST_F(WaterGridTest, RestoresOceanWavesNearTheCameraAndFiltersThemAtCoarseEdges)
 {
     constexpr std::array<float, 4> wavelengths = { 9.0f, 14.0f, 18.0f, 22.0f };
@@ -167,6 +175,7 @@ TEST_F(WaterGridTest, RestoresOceanWavesNearTheCameraAndFiltersThemAtCoarseEdges
     }
 }
 
+/// @brief Fades waves gradually across the density transition.
 TEST_F(WaterGridTest, FadesWavesGraduallyAcrossTheDensityTransition)
 {
     constexpr float wavelength = 9.0f;
@@ -188,6 +197,7 @@ TEST_F(WaterGridTest, FadesWavesGraduallyAcrossTheDensityTransition)
     EXPECT_FLOAT_EQ(previousFade, 0.0f);
 }
 
+/// @brief Keeps legacy physical density when camera concentration is disabled.
 TEST_F(WaterGridTest, KeepsLegacyPhysicalDensityWhenCameraConcentrationIsDisabled)
 {
     scene::WaterComponent water;
@@ -204,6 +214,7 @@ TEST_F(WaterGridTest, KeepsLegacyPhysicalDensityWhenCameraConcentrationIsDisable
     EXPECT_VEC2_NEAR(cell, math::Vector2(39.0625f, 9.765625f), testkit::kTolerance);
 }
 
+/// @brief Resolves the focused physical density in world meters.
 TEST_F(WaterGridTest, ResolvesTheFocusedPhysicalDensityInWorldMeters)
 {
     scene::WaterComponent water;
@@ -221,6 +232,7 @@ TEST_F(WaterGridTest, ResolvesTheFocusedPhysicalDensityInWorldMeters)
     EXPECT_VEC2_NEAR(cell, math::Vector2(kNearCellSize, 0.5f), testkit::kTolerance);
 }
 
+/// @brief Matches the dense displayed gerstner wave at displaced world positions.
 TEST_F(WaterGridTest, MatchesTheDenseDisplayedGerstnerWaveAtDisplacedWorldPositions)
 {
     scene::WaterComponent water;
@@ -253,6 +265,7 @@ TEST_F(WaterGridTest, MatchesTheDenseDisplayedGerstnerWaveAtDisplacedWorldPositi
     }
 }
 
+/// @brief Focuses high views on the visible water intersection.
 TEST_F(WaterGridTest, FocusesHighViewsOnTheVisibleWaterIntersection)
 {
     const auto world = math::Matrix4::Translate({ 0.0f, 19.0f, 0.0f });
@@ -265,6 +278,7 @@ TEST_F(WaterGridTest, FocusesHighViewsOnTheVisibleWaterIntersection)
     EXPECT_VEC2_NEAR(focus, math::Vector2(0.0f, -100.0f), kPositionTolerance);
 }
 
+/// @brief Retains near camera density for views just above sea level.
 TEST_F(WaterGridTest, RetainsNearCameraDensityForViewsJustAboveSeaLevel)
 {
     const auto world = math::Matrix4::Translate({ 0.0f, 19.0f, 0.0f });
@@ -277,6 +291,7 @@ TEST_F(WaterGridTest, RetainsNearCameraDensityForViewsJustAboveSeaLevel)
     EXPECT_VEC2_NEAR(focus, math::Vector2(0.0f, -1192.96875f), kPositionTolerance);
 }
 
+/// @brief Limits focus travel when the view approaches the horizon.
 TEST_F(WaterGridTest, LimitsFocusTravelWhenTheViewApproachesTheHorizon)
 {
     const auto world = math::Matrix4::Translate({ 0.0f, 19.0f, 0.0f });
@@ -289,6 +304,7 @@ TEST_F(WaterGridTest, LimitsFocusTravelWhenTheViewApproachesTheHorizon)
     EXPECT_VEC2_NEAR(focus, math::Vector2(0.0f, 408.0f), kPositionTolerance);
 }
 
+/// @brief Keeps the camera footprint when the view faces above water.
 TEST_F(WaterGridTest, KeepsTheCameraFootprintWhenTheViewFacesAboveWater)
 {
     const auto world = math::Matrix4::Translate({ 0.0f, 19.0f, 0.0f });
@@ -301,6 +317,7 @@ TEST_F(WaterGridTest, KeepsTheCameraFootprintWhenTheViewFacesAboveWater)
     EXPECT_VEC2_NEAR(focus, math::Vector2(37.0f, -1200.0f), kPositionTolerance);
 }
 
+/// @brief Keeps focused grid settings across scene save and reload.
 TEST_F(WaterGridPersistenceTest, KeepsFocusedGridSettingsAcrossSceneSaveAndReload)
 {
     scene::Scene source;
@@ -321,6 +338,7 @@ TEST_F(WaterGridPersistenceTest, KeepsFocusedGridSettingsAcrossSceneSaveAndReloa
     EXPECT_FLOAT_EQ(reloaded->nearCellSize, 3.0f);
 }
 
+/// @brief Loads legacy scenes with uniform grid defaults.
 TEST_F(WaterGridPersistenceTest, LoadsLegacyScenesWithUniformGridDefaults)
 {
     const auto path = m_temp.File("legacy.scene").generic_string();
@@ -342,6 +360,7 @@ TEST_F(WaterGridPersistenceTest, LoadsLegacyScenesWithUniformGridDefaults)
     EXPECT_TRUE(water->splinePoints.empty());
 }
 
+/// @brief Physical wave height does not depend on mesh quality.
 TEST_F(WaterGridTest, PhysicalWaveHeightDoesNotDependOnMeshQuality)
 {
     scene::WaterComponent water;
@@ -358,6 +377,7 @@ TEST_F(WaterGridTest, PhysicalWaveHeightDoesNotDependOnMeshQuality)
     }
 }
 
+/// @brief Physical ripple remains when the mesh cannot resolve it.
 TEST_F(WaterGridTest, PhysicalRippleRemainsWhenTheMeshCannotResolveIt)
 {
     scene::WaterComponent water;
@@ -375,6 +395,7 @@ TEST_F(WaterGridTest, PhysicalRippleRemainsWhenTheMeshCannotResolveIt)
     EXPECT_LE(std::abs(height), water.SurfaceHeightBound());
 }
 
+/// @brief Keeps adaptive patch LOD settings across save and reload.
 TEST_F(WaterGridPersistenceTest, KeepsAdaptivePatchLodSettingsAcrossSaveAndReload)
 {
     scene::Scene source;
@@ -418,6 +439,7 @@ TEST_F(WaterGridPersistenceTest, KeepsAdaptivePatchLodSettingsAcrossSaveAndReloa
     EXPECT_FLOAT_EQ(reloaded->farOceanRippleFadeDistance, 7.0f);
 }
 
+/// @brief Keeps spline river point IDs dimensions depth and flow across save and reload.
 TEST_F(WaterGridPersistenceTest, KeepsSplineRiverPointIdsDimensionsDepthAndFlowAcrossSaveAndReload)
 {
     scene::Scene source;

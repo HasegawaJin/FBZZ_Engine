@@ -384,6 +384,7 @@ protected:
     float m_savedTime = 0, m_savedDelta = 0;
 };
 
+/// @brief Capsule contacts use collider center rotation and nonuniform scale.
 TEST_F(TerrainFiberStreamingTest, CapsuleContactsUseColliderCenterRotationAndNonuniformScale)
 {
     CreateTerrain(65, 0.2f);
@@ -409,6 +410,7 @@ TEST_F(TerrainFiberStreamingTest, CapsuleContactsUseColliderCenterRotationAndNon
     EXPECT_GT(found, 0u);
 }
 
+/// @brief Box contacts keep oriented dimensions and collider center.
 TEST_F(TerrainFiberStreamingTest, BoxContactsKeepOrientedDimensionsAndColliderCenter)
 {
     CreateTerrain(65, 0.2f);
@@ -434,6 +436,7 @@ TEST_F(TerrainFiberStreamingTest, BoxContactsKeepOrientedDimensionsAndColliderCe
     EXPECT_GT(found, 0u);
 }
 
+/// @brief Distant actors cannot evict nearby contacts and empty chunks skip the shader loop.
 TEST_F(TerrainFiberStreamingTest, DistantActorsCannotEvictNearbyContactsAndEmptyChunksSkipTheShaderLoop)
 {
     CreateTerrain(1025, 0.2f);
@@ -457,6 +460,7 @@ TEST_F(TerrainFiberStreamingTest, DistantActorsCannotEvictNearbyContactsAndEmpty
     EXPECT_GT(nearby, 0u); EXPECT_GT(empty, 0u);
 }
 
+/// @brief Contacts above the grass do not leak across heights.
 TEST_F(TerrainFiberStreamingTest, ContactsAboveTheGrassDoNotLeakAcrossHeights)
 {
     CreateTerrain(65, 0.2f);
@@ -471,6 +475,7 @@ TEST_F(TerrainFiberStreamingTest, ContactsAboveTheGrassDoNotLeakAcrossHeights)
     }
 }
 
+/// @brief Disabled collider does not fall back to manual sphere and manual mode remains available.
 TEST_F(TerrainFiberStreamingTest, DisabledColliderDoesNotFallBackToManualSphereAndManualModeRemainsAvailable)
 {
     CreateTerrain(65, 0.2f);
@@ -488,6 +493,7 @@ TEST_F(TerrainFiberStreamingTest, DisabledColliderDoesNotFallBackToManualSphereA
     }));
 }
 
+/// @brief Contact snapshots are shared across views and recover after disable.
 TEST_F(TerrainFiberStreamingTest, ContactSnapshotsAreSharedAcrossViewsAndRecoverAfterDisable)
 {
     CreateTerrain(65, 0.2f);
@@ -516,6 +522,7 @@ TEST_F(TerrainFiberStreamingTest, ContactSnapshotsAreSharedAcrossViewsAndRecover
     for (const auto& input : m_output.fibers) { EXPECT_EQ(input.contacts.m_count, 0u); EXPECT_EQ(input.contacts.m_previousCount, 0u); }
 }
 
+/// @brief Checks fast motion stamps intermediate contacts without regenerating grass roots.
 TEST_F(TerrainFiberStreamingTest, FastMotionStampsIntermediateContactsWithoutRegeneratingGrassRoots)
 {
     CreateTerrain(65, 0.2f);
@@ -536,6 +543,7 @@ TEST_F(TerrainFiberStreamingTest, FastMotionStampsIntermediateContactsWithoutReg
     ExpectSamePatchHandles(roots, Snapshot());
 }
 
+/// @brief Discontinuous frames and time rewind reset previous contact snapshots.
 TEST_F(TerrainFiberStreamingTest, DiscontinuousFramesAndTimeRewindResetPreviousContactSnapshots)
 {
     CreateTerrain(65, 0.2f);
@@ -563,6 +571,7 @@ TEST_F(TerrainFiberStreamingTest, DiscontinuousFramesAndTimeRewindResetPreviousC
         EXPECT_FLOAT_EQ(input.contacts.m_times[i].x, -1);
 }
 
+/// @brief Stationary rotated box does not accumulate duplicate contact history.
 TEST_F(TerrainFiberStreamingTest, StationaryRotatedBoxDoesNotAccumulateDuplicateContactHistory)
 {
     CreateTerrain(17, 0.2f);
@@ -580,6 +589,7 @@ TEST_F(TerrainFiberStreamingTest, StationaryRotatedBoxDoesNotAccumulateDuplicate
     EXPECT_GT(count, 0u);
 }
 
+/// @brief Chunk contact budget reports overflow without merging different actors.
 TEST_F(TerrainFiberStreamingTest, ChunkContactBudgetReportsOverflowWithoutMergingDifferentActors)
 {
     CreateTerrain(65, 0.2f);
@@ -595,6 +605,7 @@ TEST_F(TerrainFiberStreamingTest, ChunkContactBudgetReportsOverflowWithoutMergin
     }));
 }
 
+/// @brief Dense grass residency is bounded by view and warm frames reuse allocations.
 TEST_F(TerrainFiberStreamingTest, DenseGrassResidencyIsBoundedByViewAndWarmFramesReuseAllocations)
 {
     CreateTerrain(129, 4.0f);
@@ -627,6 +638,7 @@ TEST_F(TerrainFiberStreamingTest, DenseGrassResidencyIsBoundedByViewAndWarmFrame
     EXPECT_EQ(LiveAllocationKeys(*m_resources), allocations);
 }
 
+/// @brief Sparse terrain LOD uploads only the shared prefix for the far view.
 TEST_F(TerrainFiberStreamingTest, SparseTerrainLodUploadsOnlyTheSharedPrefixForTheFarView)
 {
     CreateTerrain(9, 4.0f);
@@ -656,6 +668,7 @@ TEST_F(TerrainFiberStreamingTest, SparseTerrainLodUploadsOnlyTheSharedPrefixForT
     EXPECT_TRUE(m_output.fibers.empty());
 }
 
+/// @brief Two views remain live until resource frame retirement and return regenerates identical roots.
 TEST_F(TerrainFiberStreamingTest, TwoViewsRemainLiveUntilResourceFrameRetirementAndReturnRegeneratesIdenticalRoots)
 {
     m_renderer.m_captureStructuredBytes = true;
@@ -691,6 +704,7 @@ TEST_F(TerrainFiberStreamingTest, TwoViewsRemainLiveUntilResourceFrameRetirement
     }
 }
 
+/// @brief Height edits rebuild only the local patch and its normal halo.
 TEST_F(TerrainFiberStreamingTest, HeightEditsRebuildOnlyTheLocalPatchAndItsNormalHalo)
 {
     m_renderer.m_captureStructuredBytes = true;
@@ -737,6 +751,7 @@ TEST_F(TerrainFiberStreamingTest, HeightEditsRebuildOnlyTheLocalPatchAndItsNorma
     EXPECT_EQ(changed, 4u);
 }
 
+/// @brief Layer and hole edits update only their grass patch.
 TEST_F(TerrainFiberStreamingTest, LayerAndHoleEditsUpdateOnlyTheirGrassPatch)
 {
     m_renderer.m_captureStructuredBytes = true;
@@ -777,6 +792,7 @@ TEST_F(TerrainFiberStreamingTest, LayerAndHoleEditsUpdateOnlyTheirGrassPatch)
     }
 }
 
+/// @brief Distant height layer and hole edits leave visible grass allocations untouched.
 TEST_F(TerrainFiberStreamingTest, DistantHeightLayerAndHoleEditsLeaveVisibleGrassAllocationsUntouched)
 {
     CreateTerrain(129, 1.0f);
@@ -797,6 +813,7 @@ TEST_F(TerrainFiberStreamingTest, DistantHeightLayerAndHoleEditsLeaveVisibleGras
     EXPECT_EQ(LiveAllocationKeys(*m_resources), allocations);
 }
 
+/// @brief Brush previews refresh shared splat edges and normal halo.
 TEST_F(TerrainFiberStreamingTest, BrushPreviewsRefreshSharedSplatEdgesAndNormalHalo)
 {
     CreateTerrain(129, 1.0f);
@@ -839,6 +856,7 @@ TEST_F(TerrainFiberStreamingTest, BrushPreviewsRefreshSharedSplatEdgesAndNormalH
     EXPECT_EQ(paintedCount, 4u);
 }
 
+/// @brief Interleaved resource owners and reset keep other owner grass alive.
 TEST_F(TerrainFiberStreamingTest, InterleavedResourceOwnersAndResetKeepOtherOwnerGrassAlive)
 {
     CreateTerrain(129, 1.0f);
@@ -866,6 +884,7 @@ TEST_F(TerrainFiberStreamingTest, InterleavedResourceOwnersAndResetKeepOtherOwne
     ExpectSamePatchHandles(other, Snapshot(&otherResources, &otherRenderer));
 }
 
+/// @brief Mirrored nonuniform terrain uses exact world-space LOD centers.
 TEST_F(TerrainFiberStreamingTest, MirroredNonuniformTerrainUsesExactWorldSpaceLodCenters)
 {
     CreateTerrain(129, 1.0f);
@@ -889,6 +908,7 @@ TEST_F(TerrainFiberStreamingTest, MirroredNonuniformTerrainUsesExactWorldSpaceLo
     for (const auto& [coordinate, patch] : actual) EXPECT_TRUE(expected.contains(coordinate));
 }
 
+/// @brief Disabling distance LOD keeps full terrain grass available.
 TEST_F(TerrainFiberStreamingTest, DisablingDistanceLodKeepsFullTerrainGrassAvailable)
 {
     CreateTerrain(129, 0.25f);
@@ -901,17 +921,20 @@ TEST_F(TerrainFiberStreamingTest, DisablingDistanceLodKeepsFullTerrainGrassAvail
     for (const auto& [coordinate, patch] : all) EXPECT_EQ(patch.rootCount, 256u);
 }
 
+/// @brief Measure alpine density one cold warm move edit.
 /// @note Explicit opt-in measurements report time, never use wall-clock duration as a correctness threshold.
 TEST_F(TerrainFiberStreamingTest, DISABLED_MeasureAlpineDensityOneColdWarmMoveEdit)
 {
     MeasureAlpine(1.0f);
 }
 
+/// @brief Measure alpine density four cold warm move edit.
 TEST_F(TerrainFiberStreamingTest, DISABLED_MeasureAlpineDensityFourColdWarmMoveEdit)
 {
     MeasureAlpine(4.0f);
 }
 
+/// @brief Alpine native meshes and placement templates load through asset manager.
 TEST_F(TerrainFiberStreamingTest, AlpineNativeMeshesAndPlacementTemplatesLoadThroughAssetManager)
 {
     const auto source = std::filesystem::path(FBZZ_ENGINE_SHADER_ROOT).parent_path() / "Terrain" / "Alpine";
@@ -968,6 +991,7 @@ TEST_F(TerrainFiberStreamingTest, AlpineNativeMeshesAndPlacementTemplatesLoadThr
     }
 }
 
+/// @brief Disabling fiber shadows preserves grass geometry and residency.
 TEST_F(TerrainFiberStreamingTest, DisablingFiberShadowsPreservesGrassGeometryAndResidency)
 {
     m_renderer.m_captureStructuredBytes = true;
@@ -1002,6 +1026,7 @@ TEST_F(TerrainFiberStreamingTest, DisablingFiberShadowsPreservesGrassGeometryAnd
     ExpectSamePatchHandles(before, Snapshot());
 }
 
+/// @brief Saving terrain writes indexed project material and preserves shared material.
 TEST_F(TerrainFiberStreamingTest, SavingTerrainWritesIndexedProjectMaterialAndPreservesSharedMaterial)
 {
     const auto local = m_temp.File("Assets/Local.mat").generic_string();
@@ -1038,6 +1063,7 @@ TEST_F(TerrainFiberStreamingTest, SavingTerrainWritesIndexedProjectMaterialAndPr
     ASSERT_NE(scene::SceneSerializer::LoadData(scenePath), nullptr);
 }
 
+/// @brief Indexed runtime placements observe edits reload unload and moves.
 TEST_F(TerrainFiberStreamingTest, IndexedRuntimePlacementsObserveEditsReloadUnloadAndMoves)
 {
     const auto disk = m_temp.File("Assets/Trees.meshinstances").generic_string();
@@ -1087,6 +1113,7 @@ TEST_F(TerrainFiberStreamingTest, IndexedRuntimePlacementsObserveEditsReloadUnlo
     EXPECT_FLOAT_EQ(retained->placements[0].position.x, 1);
 }
 
+/// @brief Runtime placement cache separates projects and failed loads recover.
 TEST_F(TerrainFiberStreamingTest, RuntimePlacementCacheSeparatesProjectsAndFailedLoadsRecover)
 {
     asset::MeshInstancesAsset authored;
@@ -1112,6 +1139,7 @@ TEST_F(TerrainFiberStreamingTest, RuntimePlacementCacheSeparatesProjectsAndFaile
     ASSERT_NE(asset::ResolveMeshInstanceDefinition("Assets/Later.meshinstances"), nullptr);
 }
 
+/// @brief Terrain runtime material handles keep current authoring across reload reset and project switch.
 TEST_F(TerrainFiberStreamingTest, TerrainRuntimeMaterialHandlesKeepCurrentAuthoringAcrossReloadResetAndProjectSwitch)
 {
     m_renderer.m_captureStructuredBytes = true;

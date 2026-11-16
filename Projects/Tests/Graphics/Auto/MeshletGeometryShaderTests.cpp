@@ -767,6 +767,7 @@ protected:
     uint32_t m_validationFailures = 0;
 };
 
+/// @brief Production draw adapter preserves counts bindings and pixels.
 TEST_F(MeshletGeometryShaderTest, ProductionDrawAdapterPreservesCountsBindingsAndPixels)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -836,6 +837,7 @@ TEST_F(MeshletGeometryShaderTest, ProductionDrawAdapterPreservesCountsBindingsAn
     EXPECT_EQ(fallback.meshGroupCountX, before.meshGroupCountX);
 }
 
+/// @brief Checks cluster LOD changes depth without opening coverage.
 TEST_F(MeshletGeometryShaderTest, ClusterLodChangesDepthWithoutOpeningCoverage)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -871,6 +873,7 @@ TEST_F(MeshletGeometryShaderTest, ClusterLodChangesDepthWithoutOpeningCoverage)
     }
 }
 
+/// @brief Clustered g buffer rejects only occluded meshlets.
 TEST_F(MeshletGeometryShaderTest, ClusteredGBufferRejectsOnlyOccludedMeshlets)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -904,6 +907,7 @@ TEST_F(MeshletGeometryShaderTest, ClusteredGBufferRejectsOnlyOccludedMeshlets)
     }
 }
 
+/// @brief Streamed clusters keep coverage before fine pages are resident.
 TEST_F(MeshletGeometryShaderTest, StreamedClustersKeepCoverageBeforeFinePagesAreResident)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -938,6 +942,7 @@ TEST_F(MeshletGeometryShaderTest, StreamedClustersKeepCoverageBeforeFinePagesAre
     ExpectSame(indexed, fine, false);
 }
 
+/// @brief Skinned clusters use the current bone palette.
 TEST_F(MeshletGeometryShaderTest, SkinnedClustersUseTheCurrentBonePalette)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -998,6 +1003,7 @@ TEST_F(MeshletGeometryShaderTest, SkinnedClustersUseTheCurrentBonePalette)
     ExpectSame(indexed, actual, true);
 }
 
+/// @brief Production adapter uses meshlets only for meaningful clipping.
 TEST_F(MeshletGeometryShaderTest, ProductionAdapterUsesMeshletsOnlyForMeaningfulClipping)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -1037,6 +1043,7 @@ TEST_F(MeshletGeometryShaderTest, ProductionAdapterUsesMeshletsOnlyForMeaningful
     }
 }
 
+/// @brief Production meshlet cache recovers after release and reset.
 TEST_F(MeshletGeometryShaderTest, ProductionMeshletCacheRecoversAfterReleaseAndReset)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -1065,6 +1072,7 @@ TEST_F(MeshletGeometryShaderTest, ProductionMeshletCacheRecoversAfterReleaseAndR
     EXPECT_TRUE(afterReset.blob.IsValid());
 }
 
+/// @brief Production meshlets preserve opaque and cutout g buffer attachments.
 TEST_F(MeshletGeometryShaderTest, ProductionMeshletsPreserveOpaqueAndCutoutGBufferAttachments)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -1087,6 +1095,7 @@ TEST_F(MeshletGeometryShaderTest, ProductionMeshletsPreserveOpaqueAndCutoutGBuff
     }
 }
 
+/// @brief Production shadow meshlets preserve depth at transformed frustum boundaries.
 TEST_F(MeshletGeometryShaderTest, ProductionShadowMeshletsPreserveDepthAtTransformedFrustumBoundaries)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -1101,6 +1110,7 @@ TEST_F(MeshletGeometryShaderTest, ProductionShadowMeshletsPreserveDepthAtTransfo
     }
 }
 
+/// @brief Disabled frustum culling ignores otherwise rejecting planes.
 TEST_F(MeshletGeometryShaderTest, DisabledFrustumCullingIgnoresOtherwiseRejectingPlanes)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -1114,6 +1124,7 @@ TEST_F(MeshletGeometryShaderTest, DisabledFrustumCullingIgnoresOtherwiseRejectin
     }
 }
 
+/// @brief Updating source buffers rebuilds the production meshlet image.
 TEST_F(MeshletGeometryShaderTest, UpdatingSourceBuffersRebuildsTheProductionMeshletImage)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -1153,6 +1164,7 @@ TEST_F(MeshletGeometryShaderTest, UpdatingSourceBuffersRebuildsTheProductionMesh
     }
 }
 
+/// @brief Invalid meshlet range preserves the caller indexed fallback.
 TEST_F(MeshletGeometryShaderTest, InvalidMeshletRangePreservesTheCallerIndexedFallback)
 {
     const auto grid = Grid(16, 4);
@@ -1171,6 +1183,7 @@ TEST_F(MeshletGeometryShaderTest, InvalidMeshletRangePreservesTheCallerIndexedFa
     EXPECT_GT(coverage, 1000u);
 }
 
+/// @brief Terrain meshlets preserve grazing mirrored and shadow coverage.
 TEST_F(MeshletGeometryShaderTest, TerrainMeshletsPreserveGrazingMirroredAndShadowCoverage)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "DX12 Mesh Shader support required";
@@ -1238,6 +1251,7 @@ TEST_F(MeshletGeometryShaderTest, TerrainMeshletsPreserveGrazingMirroredAndShado
     profiler::Profiler::RequestCaptureFilter(previousFilter);
 }
 
+/// @brief Terrain strip preserves g buffer and shadow coverage.
 TEST_F(MeshletGeometryShaderTest, TerrainStripPreservesGBufferAndShadowCoverage)
 {
     const auto regular = TerrainScene(math::Matrix4::Identity(), true, 32);
@@ -1273,6 +1287,7 @@ TEST_F(MeshletGeometryShaderTest, TerrainStripPreservesGBufferAndShadowCoverage)
     profiler::Profiler::RequestCaptureFilter(previousFilter);
 }
 
+/// @brief Static cascade cache restores depth and draws moved casters on reuse.
 TEST_F(MeshletGeometryShaderTest, StaticCascadeCacheRestoresDepthAndDrawsMovedCastersOnReuse)
 {
     auto& resources = *m_resources;
@@ -1390,6 +1405,7 @@ TEST_F(MeshletGeometryShaderTest, StaticCascadeCacheRestoresDepthAndDrawsMovedCa
     ExpectSame(afterLodChange, render(shadows, true, FAR_BIT), true);
 }
 
+/// @brief Directional shadow bake restores static terrain and keeps moved casters.
 TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndKeepsMovedCasters)
 {
     auto& resources = *m_resources;
@@ -1564,6 +1580,7 @@ TEST_F(MeshletGeometryShaderTest, DirectionalShadowBakeRestoresStaticTerrainAndK
     }
 }
 
+/// @brief Terrain normal cone only rejects proven back faces.
 TEST_F(MeshletGeometryShaderTest, TerrainNormalConeOnlyRejectsProvenBackFaces)
 {
     struct ConeProbe {
@@ -1649,6 +1666,7 @@ TEST_F(MeshletGeometryShaderTest, TerrainNormalConeOnlyRejectsProvenBackFaces)
     }
 }
 
+/// @brief Checks steady high density geometry comparison.
 TEST_F(MeshletGeometryShaderTest, DISABLED_SteadyHighDensityGeometryComparison)
 {
     if (!m_bundle.renderer->SupportsMeshShaders()) GTEST_SKIP() << "Mesh shaders unavailable";
@@ -1675,6 +1693,7 @@ TEST_F(MeshletGeometryShaderTest, DISABLED_SteadyHighDensityGeometryComparison)
     EXPECT_TRUE(SaveBenchmark(results));
 }
 
+/// @brief Checks terrain raster topology comparison.
 TEST_F(MeshletGeometryShaderTest, DISABLED_TerrainRasterTopologyComparison)
 {
     constexpr uint32_t CELLS = 32;

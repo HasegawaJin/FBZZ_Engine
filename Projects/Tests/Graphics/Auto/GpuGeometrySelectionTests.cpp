@@ -176,6 +176,7 @@ protected:
     renderer::ResourceHandle<renderer::StructuredBufferTag> m_instanceBuffer{};
 };
 
+/// @brief Dispatches ordered indexed arguments and culls outside candidates.
 TEST_F(GpuGeometrySelectionTest, DispatchesOrderedIndexedArgumentsAndCullsOutsideCandidates)
 {
     auto& device = *m_bundle.renderer;
@@ -245,6 +246,7 @@ TEST_F(GpuGeometrySelectionTest, DispatchesOrderedIndexedArgumentsAndCullsOutsid
     EXPECT_EQ(bluePixels, 0u);
 }
 
+/// @brief GPU hi Z reduces actual atlas depth and preserves independent view loans.
 TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndependentViewLoans)
 {
     auto& device = *m_bundle.renderer;
@@ -354,6 +356,7 @@ TEST_F(GpuGeometrySelectionTest, GpuHiZReducesActualAtlasDepthAndPreservesIndepe
     }
 }
 
+/// @brief Depth prepass feeds regular mesh indirect draws through the graph.
 TEST_F(GpuGeometrySelectionTest, DepthPrepassFeedsRegularMeshIndirectDrawsThroughTheGraph)
 {
     namespace r = renderer;
@@ -486,6 +489,7 @@ TEST_F(GpuGeometrySelectionTest, DepthPrepassFeedsRegularMeshIndirectDrawsThroug
     device.EndFrame();
 }
 
+/// @brief Mesh shader matches GPU selected indexed LOD and instance rows.
 TEST_F(GpuGeometrySelectionTest, MeshShaderMatchesGpuSelectedIndexedLodAndInstanceRows)
 {
     auto& device = *m_bundle.renderer;
@@ -536,6 +540,7 @@ TEST_F(GpuGeometrySelectionTest, MeshShaderMatchesGpuSelectedIndexedLodAndInstan
         EXPECT_NEAR(indexedPixels[index], meshPixels[index], 0.001f);
 }
 
+/// @brief Resource manager switch and resource failure preserve fallback output.
 TEST_F(GpuGeometrySelectionTest, ResourceManagerSwitchAndResourceFailurePreserveFallbackOutput)
 {
     auto& device = *m_bundle.renderer;

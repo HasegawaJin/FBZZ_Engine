@@ -43,6 +43,7 @@ protected:
     }
 };
 
+/// @brief Loaded waiting tree suppresses autonomous patrol without changing authored enabled.
 TEST_F(BehaviorTreeSystemTest, LoadedWaitingTreeSuppressesAutonomousPatrolWithoutChangingAuthoredEnabled) {
     auto& object = scene.CreateGameObject("Agent"); Route(object);
     auto ctx = Context(0.1f); patrol.Update(ctx);
@@ -54,6 +55,7 @@ TEST_F(BehaviorTreeSystemTest, LoadedWaitingTreeSuppressesAutonomousPatrolWithou
     EXPECT_TRUE(object.GetComponent<scene::NavMeshPatrolComponent>()->enabled);
 }
 
+/// @brief Patrol permission persists between ticks and pause disable stop owned motion.
 TEST_F(BehaviorTreeSystemTest, PatrolPermissionPersistsBetweenTicksAndPauseDisableStopOwnedMotion) {
     auto& object = scene.CreateGameObject("Agent"); Route(object);
     ASSERT_TRUE(Attach(object, ai::BTNodeType::Patrol));
@@ -72,6 +74,7 @@ TEST_F(BehaviorTreeSystemTest, PatrolPermissionPersistsBetweenTicksAndPauseDisab
     EXPECT_TRUE(object.GetComponent<scene::NavMeshPatrolComponent>()->enabled);
 }
 
+/// @brief Changed blackboard wakes early with actual elapsed wait time.
 TEST_F(BehaviorTreeSystemTest, ChangedBlackboardWakesEarlyWithActualElapsedWaitTime) {
     auto& object = scene.CreateGameObject("Agent");
     ASSERT_TRUE(Attach(object, ai::BTNodeType::Wait, 0.35f));
@@ -86,6 +89,7 @@ TEST_F(BehaviorTreeSystemTest, ChangedBlackboardWakesEarlyWithActualElapsedWaitT
     EXPECT_FLOAT_EQ(bt->elapsedTime, 0.4f);
 }
 
+/// @brief Far tick interval yields to wake and to any nearby camera.
 TEST_F(BehaviorTreeSystemTest, FarTickIntervalYieldsToWakeAndToAnyNearbyCamera)
 {
     auto& object = scene.CreateGameObject("Agent");

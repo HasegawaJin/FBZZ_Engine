@@ -1176,42 +1176,61 @@ protected:
     bool m_continueWhenOccluded = true;
 };
 
+/// @brief Project hybrid appearance renders shell and fin with shared coverage.
 TEST_F(RegularMeshRenderPerformanceTest, ProjectHybridAppearanceRendersShellAndFinWithSharedCoverage)
 {
     RunExtendedProjectFiber(true, false, false);
 }
+/// @brief Project animated fur preserves pose depth shadow selection and velocity.
 TEST_F(RegularMeshRenderPerformanceTest, ProjectAnimatedFurPreservesPoseDepthShadowSelectionAndVelocity)
 {
     RunExtendedProjectFiber(false, true, false);
 }
+/// @brief Project hybrid deferred final output uses project appearance.
 TEST_F(RegularMeshRenderPerformanceTest, ProjectHybridDeferredFinalOutputUsesProjectAppearance)
 {
     RunExtendedProjectFiber(true, false, true);
 }
 
+/// @brief Project grass appearance uses scene extraction and production passes.
 TEST_F(RegularMeshRenderPerformanceTest, ProjectGrassAppearanceUsesSceneExtractionAndProductionPasses)
 {
     RunProjectFiberAppearance("MeadowBlade", true);
 }
+/// @brief Project fur appearance uses scene extraction and production passes.
 TEST_F(RegularMeshRenderPerformanceTest, ProjectFurAppearanceUsesSceneExtractionAndProductionPasses)
 {
     RunProjectFiberAppearance("StripeFur", false);
 }
 
+/// @brief Checks shadow submissions and main-view counts with all 10,000 meshes visible.
 TEST_F(RegularMeshRenderPerformanceTest, ShadowAllVisible10000) { RunCase(10000, 100, false, true, false, 0, true); }
+/// @brief Checks shadow submissions and main-view culling with half of 10,000 meshes in view.
 TEST_F(RegularMeshRenderPerformanceTest, ShadowPartial10000) { RunCase(10000, 50, false, true, false, 0, true); }
+/// @brief Checks shadow submissions when the main camera sees only 1% of the 10,000 meshes.
 TEST_F(RegularMeshRenderPerformanceTest, ShadowOffscreenHeavy10000) { RunCase(10000, 1, false, true, false, 0, true); }
 
+/// @brief With all 1,000 meshes visible, the main pass reports 1,000 unbatched draws and zero frustum culls.
 TEST_F(RegularMeshRenderPerformanceTest, AllVisible1000) { RunCase(1000, 100); }
+/// @brief With half of 1,000 meshes in view, draw calls and frustum culls each account for 500 meshes.
 TEST_F(RegularMeshRenderPerformanceTest, Partial1000) { RunCase(1000, 50); }
+/// @brief With 1% of 1,000 meshes in view, the main pass draws 10 meshes and culls the other 990.
 TEST_F(RegularMeshRenderPerformanceTest, OffscreenHeavy1000) { RunCase(1000, 1); }
+/// @brief With all 10,000 meshes visible, the main pass reports one unbatched draw per mesh and zero frustum culls.
 TEST_F(RegularMeshRenderPerformanceTest, AllVisible10000) { RunCase(10000, 100); }
+/// @brief With half of 10,000 meshes in view, the main pass draws and culls 5,000 meshes each.
 TEST_F(RegularMeshRenderPerformanceTest, Partial10000) { RunCase(10000, 50); }
+/// @brief Only the 100 visible meshes contribute main-pass draw calls when the scene contains 10,000 meshes.
 TEST_F(RegularMeshRenderPerformanceTest, OffscreenHeavy10000) { RunCase(10000, 1); }
+/// @brief Checks culling counts and rendered pixels with GPU instancing enabled and half of 10,000 meshes in view.
 TEST_F(RegularMeshRenderPerformanceTest, BatchedControlPartial10000) { RunCase(10000, 50, true); }
+/// @brief Recomputing visibility without the frame cache still draws only the 100 meshes in view.
 TEST_F(RegularMeshRenderPerformanceTest, UncachedSingleViewOffscreenHeavy10000) { RunCase(10000, 1, false, false); }
+/// @brief Opposite views independently cull complementary mesh sets and both produce non-background pixels.
 TEST_F(RegularMeshRenderPerformanceTest, TwoViewsOppositeOffscreenHeavy10000) { RunCase(10000, 1, false, true, true); }
+/// @brief Checks draw and cull counts in the mostly off-screen 10,000-mesh scene with 1% of transforms changing.
 TEST_F(RegularMeshRenderPerformanceTest, OnePercentMovingOffscreenHeavy10000) { RunCase(10000, 1, false, true, false, 1); }
+/// @brief Checks draw and cull counts in the mostly off-screen 10,000-mesh scene with every transform changing.
 TEST_F(RegularMeshRenderPerformanceTest, AllMovingOffscreenHeavy10000) { RunCase(10000, 1, false, true, false, 100); }
 
 } /// @note namespace

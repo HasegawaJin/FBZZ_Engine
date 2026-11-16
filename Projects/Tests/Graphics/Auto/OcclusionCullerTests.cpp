@@ -46,6 +46,7 @@ renderer::Mesh ClosedCube()
 
 class MeshOcclusionTest : public testkit::Fixture {};
 
+/// @brief Proves the unit interior ball across welded vertex seams.
 TEST_F(MeshOcclusionTest, ProvesTheUnitInteriorBallAcrossWeldedVertexSeams)
 {
     const auto cube = ClosedCube();
@@ -66,6 +67,7 @@ TEST_F(MeshOcclusionTest, ProvesTheUnitInteriorBallAcrossWeldedVertexSeams)
     EXPECT_NEAR(split.occlusionRadius, 1.0f, 0.0001f);
 }
 
+/// @brief Rejects open reversed degenerate and nonmanifold surfaces.
 TEST_F(MeshOcclusionTest, RejectsOpenReversedDegenerateAndNonmanifoldSurfaces)
 {
     for (int shape = 0; shape < 4; ++shape) {
@@ -86,6 +88,7 @@ TEST_F(MeshOcclusionTest, RejectsOpenReversedDegenerateAndNonmanifoldSurfaces)
     }
 }
 
+/// @brief Rejects malformed indices and nonfinite geometry.
 TEST_F(MeshOcclusionTest, RejectsMalformedIndicesAndNonfiniteGeometry)
 {
     for (int invalid = 0; invalid < 5; ++invalid) {
@@ -103,6 +106,7 @@ TEST_F(MeshOcclusionTest, RejectsMalformedIndicesAndNonfiniteGeometry)
     }
 }
 
+/// @brief Rejects skinned and morphing geometry.
 TEST_F(MeshOcclusionTest, RejectsSkinnedAndMorphingGeometry)
 {
     for (int deformation = 0; deformation < 3; ++deformation) {
@@ -118,6 +122,7 @@ TEST_F(MeshOcclusionTest, RejectsSkinnedAndMorphingGeometry)
     }
 }
 
+/// @brief Refreshes the interior proof without replacing imported outer bounds.
 TEST_F(MeshOcclusionTest, RefreshesTheInteriorProofWithoutReplacingImportedOuterBounds)
 {
     auto mesh = ClosedCube();
@@ -135,6 +140,7 @@ TEST_F(MeshOcclusionTest, RefreshesTheInteriorProofWithoutReplacingImportedOuter
     EXPECT_FLOAT_EQ(mesh.occlusionRadius, 0.0f);
 }
 
+/// @brief Rejects imported outer bounds that do not enclose the mesh.
 TEST_F(MeshOcclusionTest, RejectsImportedOuterBoundsThatDoNotEncloseTheMesh)
 {
     auto mesh = ClosedCube();
@@ -164,6 +170,7 @@ protected:
     }
 };
 
+/// @brief Keeps the visible sphere beside an orthographic cube while culling its hidden center.
 TEST_F(OcclusionCullerTest, KeepsTheVisibleSphereBesideAnOrthographicCubeWhileCullingItsHiddenCenter)
 {
     const auto cube = ClosedCube();
@@ -176,6 +183,7 @@ TEST_F(OcclusionCullerTest, KeepsTheVisibleSphereBesideAnOrthographicCubeWhileCu
     EXPECT_FALSE(culler.TestAndRaster({0, 0, 20}, 0.05f));
 }
 
+/// @brief Keeps perspective cube edges and uses opaque interiors away from the view axis.
 TEST_F(OcclusionCullerTest, KeepsPerspectiveCubeEdgesAndUsesOpaqueInteriorsAwayFromTheViewAxis)
 {
     const auto cube = ClosedCube();
@@ -193,6 +201,7 @@ TEST_F(OcclusionCullerTest, KeepsPerspectiveCubeEdgesAndUsesOpaqueInteriorsAwayF
     }
 }
 
+/// @brief Enlarging outer bounds does not enlarge opaque coverage.
 TEST_F(OcclusionCullerTest, EnlargingOuterBoundsDoesNotEnlargeOpaqueCoverage)
 {
     const auto cube = ClosedCube();
@@ -213,6 +222,7 @@ TEST_F(OcclusionCullerTest, EnlargingOuterBoundsDoesNotEnlargeOpaqueCoverage)
     }
 }
 
+/// @brief Never registers unknown or unproven opaque interiors.
 TEST_F(OcclusionCullerTest, NeverRegistersUnknownOrUnprovenOpaqueInteriors)
 {
     for (int unknown = 0; unknown < 3; ++unknown) {
@@ -227,6 +237,7 @@ TEST_F(OcclusionCullerTest, NeverRegistersUnknownOrUnprovenOpaqueInteriors)
     }
 }
 
+/// @brief Preserves visibility across the near plane and outside the viewport.
 TEST_F(OcclusionCullerTest, PreservesVisibilityAcrossTheNearPlaneAndOutsideTheViewport)
 {
     for (const auto projection : {renderer::ProjectionMode::Orthographic, renderer::ProjectionMode::Perspective}) {
@@ -242,6 +253,7 @@ TEST_F(OcclusionCullerTest, PreservesVisibilityAcrossTheNearPlaneAndOutsideTheVi
     }
 }
 
+/// @brief Clears old occluders when resetting the view.
 TEST_F(OcclusionCullerTest, ClearsOldOccludersWhenResettingTheView)
 {
     renderer::OcclusionCuller culler;
@@ -255,6 +267,7 @@ TEST_F(OcclusionCullerTest, ClearsOldOccludersWhenResettingTheView)
     EXPECT_TRUE(culler.TestAndRaster({0, 0, 20}, 0.05f));
 }
 
+/// @brief Preserves jittered visibility and clears depth when changing the view jitter.
 TEST_F(OcclusionCullerTest, PreservesJitteredVisibilityAndClearsDepthWhenChangingTheViewJitter)
 {
     for (const auto projection : {renderer::ProjectionMode::Orthographic, renderer::ProjectionMode::Perspective}) {
@@ -292,6 +305,7 @@ TEST_F(OcclusionCullerTest, PreservesJitteredVisibilityAndClearsDepthWhenChangin
     }
 }
 
+/// @brief Invalid bounds remain visible and do not poison later queries.
 TEST_F(OcclusionCullerTest, InvalidBoundsRemainVisibleAndDoNotPoisonLaterQueries)
 {
     for (float invalid : {std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()}) {
@@ -305,6 +319,7 @@ TEST_F(OcclusionCullerTest, InvalidBoundsRemainVisibleAndDoNotPoisonLaterQueries
     }
 }
 
+/// @brief Terrain triangles cull only fully covered cells and keep holes and backfaces.
 TEST_F(OcclusionCullerTest, TerrainTrianglesCullOnlyFullyCoveredCellsAndKeepHolesAndBackfaces)
 {
     renderer::OcclusionCuller culler;
@@ -322,6 +337,7 @@ TEST_F(OcclusionCullerTest, TerrainTrianglesCullOnlyFullyCoveredCellsAndKeepHole
     EXPECT_TRUE(culler.TestAndRaster({0, 0, 20}, 0.05f));
 }
 
+/// @brief Terrain near crossings fail open and GPU snapshot uses the current view.
 TEST_F(OcclusionCullerTest, TerrainNearCrossingsFailOpenAndGpuSnapshotUsesTheCurrentView)
 {
     renderer::OcclusionCuller culler;
@@ -343,6 +359,7 @@ TEST_F(OcclusionCullerTest, TerrainNearCrossingsFailOpenAndGpuSnapshotUsesTheCur
     EXPECT_FLOAT_EQ(rows[9 + center / 4].x, 1.0f);
 }
 
+/// @brief Flat water bounds use their actual height and preserve waves and partial coverage.
 TEST_F(OcclusionCullerTest, FlatWaterBoundsUseTheirActualHeightAndPreserveWavesAndPartialCoverage)
 {
     renderer::OcclusionCuller culler;
@@ -355,6 +372,7 @@ TEST_F(OcclusionCullerTest, FlatWaterBoundsUseTheirActualHeightAndPreserveWavesA
     EXPECT_TRUE(culler.TestAabb({1000, 0, 19}, {1001, 0, 21}));
 }
 
+/// @brief Sloped quads keep nearer objects and cull only their covered background.
 TEST_F(OcclusionCullerTest, SlopedQuadsKeepNearerObjectsAndCullOnlyTheirCoveredBackground)
 {
     for (const auto projection : {renderer::ProjectionMode::Orthographic, renderer::ProjectionMode::Perspective}) {
@@ -370,6 +388,7 @@ TEST_F(OcclusionCullerTest, SlopedQuadsKeepNearerObjectsAndCullOnlyTheirCoveredB
     }
 }
 
+/// @brief Folded quads retain the hole left by their backfacing triangle.
 TEST_F(OcclusionCullerTest, FoldedQuadsRetainTheHoleLeftByTheirBackfacingTriangle)
 {
     renderer::OcclusionCuller culler;
@@ -381,6 +400,7 @@ TEST_F(OcclusionCullerTest, FoldedQuadsRetainTheHoleLeftByTheirBackfacingTriangl
     EXPECT_TRUE(culler.TestAndRaster({0, 1, 20}, 0.05f));
 }
 
+/// @brief Checks subpixel triangles never claim a whole depth cell.
 TEST_F(OcclusionCullerTest, SubpixelTrianglesNeverClaimAWholeDepthCell)
 {
     renderer::OcclusionCuller culler;
@@ -393,6 +413,7 @@ TEST_F(OcclusionCullerTest, SubpixelTrianglesNeverClaimAWholeDepthCell)
     EXPECT_TRUE(culler.TestAndRaster({pixel * 0.5f, -pixel * 0.5f, 20}, pixel * 0.01f));
 }
 
+/// @brief Invalid or near crossing shared corners do not fill either quad triangle.
 TEST_F(OcclusionCullerTest, InvalidOrNearCrossingSharedCornersDoNotFillEitherQuadTriangle)
 {
     for (float invalid : {0.0f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity()}) {
@@ -405,6 +426,7 @@ TEST_F(OcclusionCullerTest, InvalidOrNearCrossingSharedCornersDoNotFillEitherQua
     }
 }
 
+/// @brief Raster boxes match the queried six face depth reference across views and masks.
 TEST_F(OcclusionCullerTest, RasterBoxesMatchTheQueriedSixFaceDepthReferenceAcrossViewsAndMasks)
 {
     constexpr std::array<std::array<int,4>,6> BOX_FACES{{
@@ -545,6 +567,7 @@ protected:
     renderer::RenderSettings m_settings;
 };
 
+/// @brief Uses the drawable selected LOD and keeps its topology holes.
 TEST_F(TerrainOcclusionRasterTest, UsesTheDrawableSelectedLodAndKeepsItsTopologyHoles)
 {
     auto snapshot = Terrain();
@@ -563,6 +586,7 @@ TEST_F(TerrainOcclusionRasterTest, UsesTheDrawableSelectedLodAndKeepsItsTopology
     EXPECT_FALSE(Hidden(snapshot, {-1, -1, 20}));
 }
 
+/// @brief Missing resources or inconsistent grid and draw counts cannot occlude.
 TEST_F(TerrainOcclusionRasterTest, MissingResourcesOrInconsistentGridAndDrawCountsCannotOcclude)
 {
     for (int invalid = 0; invalid < 10; ++invalid) {
@@ -588,6 +612,7 @@ TEST_F(TerrainOcclusionRasterTest, MissingResourcesOrInconsistentGridAndDrawCoun
     }
 }
 
+/// @brief Retains settings and layer exclusions and honors disabled frustum culling.
 TEST_F(TerrainOcclusionRasterTest, RetainsSettingsAndLayerExclusionsAndHonorsDisabledFrustumCulling)
 {
     const auto snapshot = Terrain();
@@ -605,6 +630,7 @@ TEST_F(TerrainOcclusionRasterTest, RetainsSettingsAndLayerExclusionsAndHonorsDis
     }));
 }
 
+/// @brief Nonuniform world transforms preserve coverage and mirrored backfaces.
 TEST_F(TerrainOcclusionRasterTest, NonuniformWorldTransformsPreserveCoverageAndMirroredBackfaces)
 {
     auto snapshot = Terrain();

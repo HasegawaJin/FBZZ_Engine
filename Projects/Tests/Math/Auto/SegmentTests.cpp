@@ -8,6 +8,7 @@
 namespace fbzz::tests {
 class SegmentTest : public testkit::Fixture {};
 
+/// @brief Closest point is clamped to both endpoints.
 TEST_F(SegmentTest, ClosestPointIsClampedToBothEndpoints)
 {
     const math::Vector3 from{1, 2, 3}, to{5, 2, 3};
@@ -18,6 +19,7 @@ TEST_F(SegmentTest, ClosestPointIsClampedToBothEndpoints)
     EXPECT_NEAR(along, 2.0f, 1.0e-6f);
 }
 
+/// @brief Coincident endpoints have zero along distance.
 TEST_F(SegmentTest, CoincidentEndpointsHaveZeroAlongDistance)
 {
     const math::Vector3 point{0, 3, 4};
@@ -27,6 +29,7 @@ TEST_F(SegmentTest, CoincidentEndpointsHaveZeroAlongDistance)
     EXPECT_NEAR(along, 0.0f, 1.0e-6f);
 }
 
+/// @brief Short nonzero segments are not compared to a squared length with linear tolerance.
 TEST_F(SegmentTest, ShortNonzeroSegmentsAreNotComparedToASquaredLengthWithLinearTolerance)
 {
     const math::Vector3 to{0.0001f, 0, 0}, expected{0.00005f, 0, 0};

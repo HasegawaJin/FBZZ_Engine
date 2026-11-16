@@ -60,6 +60,7 @@ asset::FlipbookMotionVectorSettings PairSettings()
 
 } // namespace
 
+/// @brief Recommended strength is the shift in atlas UV.
 TEST_F(FlipbookMotionVectorsTest, RecommendedStrengthIsTheShiftInAtlasUv)
 {
     const std::vector<float> rgba = MakeShiftedPair();
@@ -72,6 +73,7 @@ TEST_F(FlipbookMotionVectorsTest, RecommendedStrengthIsTheShiftInAtlasUv)
     EXPECT_NEAR(analysis.maxObservedFlow, static_cast<float>(kShift), testkit::kTolerance);
 }
 
+/// @brief Encoded motion points against the shift.
 TEST_F(FlipbookMotionVectorsTest, EncodedMotionPointsAgainstTheShift)
 {
     const std::vector<float> rgba = MakeShiftedPair();
@@ -88,6 +90,7 @@ TEST_F(FlipbookMotionVectorsTest, EncodedMotionPointsAgainstTheShift)
     EXPECT_NEAR(decoded.y, 0.0f, 2.0f / 255.0f);
 }
 
+/// @brief Last frame without loop has no motion.
 TEST_F(FlipbookMotionVectorsTest, LastFrameWithoutLoopHasNoMotion)
 {
     const std::vector<float> rgba = MakeShiftedPair();

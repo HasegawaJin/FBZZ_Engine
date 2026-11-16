@@ -206,6 +206,7 @@ protected:
     }
 };
 
+/// @brief Splat preview publishes only dirty rows to both caches.
 TEST_F(TerrainRenderResourceTest, SplatPreviewPublishesOnlyDirtyRowsToBothCaches)
 {
     TerrainCpuRenderer device, otherDevice;
@@ -274,6 +275,7 @@ TEST_F(TerrainRenderResourceTest, SplatPreviewPublishesOnlyDirtyRowsToBothCaches
     EXPECT_NE(fallback.splatWeights, partial.splatWeights);
 }
 
+/// @brief Far grass ground color uses the horizon waterline.
 TEST_F(TerrainRenderResourceTest, FarGrassGroundColorUsesTheHorizonWaterline)
 {
     TerrainCpuRenderer device;
@@ -304,6 +306,7 @@ TEST_F(TerrainRenderResourceTest, FarGrassGroundColorUsesTheHorizonWaterline)
     EXPECT_FLOAT_EQ(inland.grassGroundWaterClip.y, 0.0f);
 }
 
+/// @brief Regular LOD 0 shares strip and keeps hole lists.
 TEST_F(TerrainRenderResourceTest, RegularLod0SharesStripAndKeepsHoleLists)
 {
     TerrainCpuRenderer device;
@@ -342,6 +345,7 @@ TEST_F(TerrainRenderResourceTest, RegularLod0SharesStripAndKeepsHoleLists)
     EXPECT_EQ(device.buffersAlive, 0u);
 }
 
+/// @brief Separates scenes with identical entity IDs and preserves both caches.
 TEST_F(TerrainRenderResourceTest, SeparatesScenesWithIdenticalEntityIdsAndPreservesBothCaches)
 {
     TerrainCpuRenderer device;
@@ -365,6 +369,7 @@ TEST_F(TerrainRenderResourceTest, SeparatesScenesWithIdenticalEntityIdsAndPreser
     EXPECT_EQ(device.buffersAlive, 0u); EXPECT_EQ(device.texturesAlive, 0u);
 }
 
+/// @brief Far LOD opt in rebuilds geometry and preserves legacy indices.
 TEST_F(TerrainRenderResourceTest, FarLodOptInRebuildsGeometryAndPreservesLegacyIndices)
 {
     TerrainCpuRenderer device;
@@ -408,6 +413,7 @@ TEST_F(TerrainRenderResourceTest, FarLodOptInRebuildsGeometryAndPreservesLegacyI
     EXPECT_EQ(resources.Get(farPatch.indexBufferLOD[farLod]), nullptr);
 }
 
+/// @brief Reuses each creation owner and returns all resources on scene clear.
 TEST_F(TerrainRenderResourceTest, ReusesEachCreationOwnerAndReturnsAllResourcesOnSceneClear)
 {
     TerrainCpuRenderer firstDevice, secondDevice;
@@ -429,6 +435,7 @@ TEST_F(TerrainRenderResourceTest, ReusesEachCreationOwnerAndReturnsAllResourcesO
     EXPECT_EQ(secondDevice.buffersAlive, 0u); EXPECT_EQ(secondDevice.texturesAlive, 0u);
 }
 
+/// @brief Rebuilds every owner after an edit consumed by the first extraction.
 TEST_F(TerrainRenderResourceTest, RebuildsEveryOwnerAfterAnEditConsumedByTheFirstExtraction)
 {
     TerrainCpuRenderer firstDevice, secondDevice;
@@ -443,6 +450,7 @@ TEST_F(TerrainRenderResourceTest, RebuildsEveryOwnerAfterAnEditConsumedByTheFirs
     EXPECT_FLOAT_EQ(a.patches[0].aabbMin.y, 6); EXPECT_FLOAT_EQ(b.patches[0].aabbMin.y, 6);
 }
 
+/// @brief Height preview rebuilds only affected patches for each owner.
 TEST_F(TerrainRenderResourceTest, HeightPreviewRebuildsOnlyAffectedPatchesForEachOwner)
 {
     TerrainCpuRenderer firstDevice, secondDevice;
@@ -503,6 +511,7 @@ TEST_F(TerrainRenderResourceTest, HeightPreviewRebuildsOnlyAffectedPatchesForEac
     EXPECT_NE(after.gpuHeights, combined.gpuHeights);
 }
 
+/// @brief Publishes changed patch buffers in one resource operation and retries failure.
 TEST_F(TerrainRenderResourceTest, PublishesChangedPatchBuffersInOneResourceOperationAndRetriesFailure)
 {
     TerrainCpuRenderer device;
@@ -557,6 +566,7 @@ TEST_F(TerrainRenderResourceTest, PublishesChangedPatchBuffersInOneResourceOpera
     EXPECT_EQ(device.resourceOperations, 0u);
 }
 
+/// @brief Height preview refreshes the stitched edge in the same extraction.
 TEST_F(TerrainRenderResourceTest, HeightPreviewRefreshesTheStitchedEdgeInTheSameExtraction)
 {
     TerrainCpuRenderer device;
@@ -594,6 +604,7 @@ TEST_F(TerrainRenderResourceTest, HeightPreviewRefreshesTheStitchedEdgeInTheSame
     EXPECT_EQ(after[1].patches[0].indexBufferLOD, before[1].patches[0].indexBufferLOD);
 }
 
+/// @brief Hole preview reuses height and unaffected topology across owners.
 TEST_F(TerrainRenderResourceTest, HolePreviewReusesHeightAndUnaffectedTopologyAcrossOwners)
 {
     TerrainCpuRenderer device, otherDevice;
@@ -656,6 +667,7 @@ TEST_F(TerrainRenderResourceTest, HolePreviewReusesHeightAndUnaffectedTopologyAc
     EXPECT_FALSE(combined[1].patches[0].occlusion->columns.empty());
 }
 
+/// @brief Height upload updates stitched rows for each owner and falls back on failure.
 TEST_F(TerrainRenderResourceTest, HeightUploadUpdatesStitchedRowsForEachOwnerAndFallsBackOnFailure)
 {
     TerrainCpuRenderer firstDevice, secondDevice;
@@ -713,6 +725,7 @@ TEST_F(TerrainRenderResourceTest, HeightUploadUpdatesStitchedRowsForEachOwnerAnd
     }
 }
 
+/// @brief Removing a component returns its resources before readding at the same entity.
 TEST_F(TerrainRenderResourceTest, RemovingAComponentReturnsItsResourcesBeforeReaddingAtTheSameEntity)
 {
     TerrainCpuRenderer device;
@@ -730,6 +743,7 @@ TEST_F(TerrainRenderResourceTest, RemovingAComponentReturnsItsResourcesBeforeRea
     EXPECT_FLOAT_EQ(replacement.patches[0].aabbMin.y, 8);
 }
 
+/// @brief Destroying an entity releases its terrain buffers.
 TEST_F(TerrainRenderResourceTest, DestroyingAnEntityReleasesItsTerrainBuffers)
 {
     TerrainCpuRenderer device;
@@ -743,6 +757,7 @@ TEST_F(TerrainRenderResourceTest, DestroyingAnEntityReleasesItsTerrainBuffers)
     EXPECT_EQ(device.buffersAlive, 0u);
 }
 
+/// @brief Clear and recreation cannot reuse the previous scene content.
 TEST_F(TerrainRenderResourceTest, ClearAndRecreationCannotReuseThePreviousSceneContent)
 {
     TerrainCpuRenderer device;
@@ -758,6 +773,7 @@ TEST_F(TerrainRenderResourceTest, ClearAndRecreationCannotReuseThePreviousSceneC
     EXPECT_FLOAT_EQ(input.patches[0].aabbMin.y, 9);
 }
 
+/// @brief Reset and early owner destruction do not release into another manager.
 TEST_F(TerrainRenderResourceTest, ResetAndEarlyOwnerDestructionDoNotReleaseIntoAnotherManager)
 {
     TerrainCpuRenderer firstDevice, secondDevice;

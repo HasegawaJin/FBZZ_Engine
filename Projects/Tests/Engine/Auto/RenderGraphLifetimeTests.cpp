@@ -73,6 +73,7 @@ class RenderGraphLifetimeTest : public testkit::Fixture {};
 
 /// @name 寿命
 
+/// @brief Reports lifetime bounds as execution order indices.
 TEST_F(RenderGraphLifetimeTest, ReportsLifetimeBoundsAsExecutionOrderIndices)
 {
     /// @note firstPass / lastPass はカリング後の実行順の番号。
@@ -94,6 +95,7 @@ TEST_F(RenderGraphLifetimeTest, ReportsLifetimeBoundsAsExecutionOrderIndices)
     EXPECT_EQ(hdr->lastPass, 1);
 }
 
+/// @brief Omits resources touched only by culled passes.
 TEST_F(RenderGraphLifetimeTest, OmitsResourcesTouchedOnlyByCulledPasses)
 {
     RG graph;
@@ -110,6 +112,7 @@ TEST_F(RenderGraphLifetimeTest, OmitsResourcesTouchedOnlyByCulledPasses)
     EXPECT_EQ(Find(graph, "Unused"), nullptr);
 }
 
+/// @brief Sorts lifetimes by first use then name.
 TEST_F(RenderGraphLifetimeTest, SortsLifetimesByFirstUseThenName)
 {
     /// @note 構成が同じときに異なる資源へ alias group が配られないよう順序を固定する。
@@ -131,6 +134,7 @@ TEST_F(RenderGraphLifetimeTest, SortsLifetimesByFirstUseThenName)
 
 /// @name エイリアス
 
+/// @brief Shares one group between resources whose lifetimes do not overlap.
 TEST_F(RenderGraphLifetimeTest, SharesOneGroupBetweenResourcesWhoseLifetimesDoNotOverlap)
 {
     /// @note Early は Middle で死に、Late は MakeLate で生まれる。間が 1 段空くので貸し回せる。
@@ -155,6 +159,7 @@ TEST_F(RenderGraphLifetimeTest, SharesOneGroupBetweenResourcesWhoseLifetimesDoNo
     EXPECT_EQ(early->aliasGroup, late->aliasGroup);
 }
 
+/// @brief Separates groups for resources alive at the same time.
 TEST_F(RenderGraphLifetimeTest, SeparatesGroupsForResourcesAliveAtTheSameTime)
 {
     RG graph;
@@ -175,6 +180,7 @@ TEST_F(RenderGraphLifetimeTest, SeparatesGroupsForResourcesAliveAtTheSameTime)
     EXPECT_NE(a->aliasGroup, b->aliasGroup);
 }
 
+/// @brief Refuses to share a group when descriptors differ.
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
 {
     /// @note 寿命が重ならなくても寸法が違う資源は共有できない。
@@ -201,6 +207,7 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenDescriptorsDiffer)
     EXPECT_NE(full->aliasGroup, half->aliasGroup);
 }
 
+/// @brief Refuses to share a group between depth only and colour targets.
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupBetweenDepthOnlyAndColourTargets)
 {
     /// @note 寸法と形式が一致しても colorCount の違う資源は共有できない。
@@ -227,6 +234,7 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupBetweenDepthOnlyAndColourTar
     EXPECT_NE(colour->aliasGroup, depth->aliasGroup);
 }
 
+/// @brief Refuses to share a group when only the depth flag differs.
 TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenOnlyTheDepthFlagDiffers)
 {
     /// @note colorCount も形式も同じで、深度を持つかだけが違う。
@@ -251,6 +259,7 @@ TEST_F(RenderGraphLifetimeTest, RefusesToShareAGroupWhenOnlyTheDepthFlagDiffers)
     EXPECT_NE(withDepth->aliasGroup, noDepth->aliasGroup);
 }
 
+/// @brief Excludes imported and persistent resources from aliasing.
 TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasing)
 {
     /// @note 外部資源と履歴の aliasGroup は -1。
@@ -275,6 +284,7 @@ TEST_F(RenderGraphLifetimeTest, ExcludesImportedAndPersistentResourcesFromAliasi
     EXPECT_GE(hdr->aliasGroup, 0);
 }
 
+/// @brief Shares a group between undeclared resources because they get the default desc.
 TEST_F(RenderGraphLifetimeTest, SharesAGroupBetweenUndeclaredResourcesBecauseTheyGetTheDefaultDesc)
 {
     /// @warning 未宣言資源は既定の Unknown 記述となり、現状では互いに alias できてしまう。
@@ -297,6 +307,7 @@ TEST_F(RenderGraphLifetimeTest, SharesAGroupBetweenUndeclaredResourcesBecauseThe
     EXPECT_EQ(a->aliasGroup, b->aliasGroup);
 }
 
+/// @brief Buffer aliasing requires the same byte size and stride.
 TEST_F(RenderGraphLifetimeTest, BufferAliasingRequiresTheSameByteSizeAndStride)
 {
     RG::ResourceDesc first;
@@ -334,6 +345,7 @@ TEST_F(RenderGraphLifetimeTest, BufferAliasingRequiresTheSameByteSizeAndStride)
     }
 }
 
+/// @brief Explicit no alias resources have no alias group.
 TEST_F(RenderGraphLifetimeTest, ExplicitNoAliasResourcesHaveNoAliasGroup)
 {
     RG graph;
@@ -352,6 +364,7 @@ TEST_F(RenderGraphLifetimeTest, ExplicitNoAliasResourcesHaveNoAliasGroup)
     EXPECT_FALSE(history->desc.allowAliasing);
 }
 
+/// @brief Acceleration structures cannot alias even when requested.
 TEST_F(RenderGraphLifetimeTest, AccelerationStructuresCannotAliasEvenWhenRequested)
 {
     RG graph;
@@ -376,6 +389,7 @@ TEST_F(RenderGraphLifetimeTest, AccelerationStructuresCannotAliasEvenWhenRequest
     }
 }
 
+/// @brief Ray preparation and trace follow declared dependencies.
 TEST_F(RenderGraphLifetimeTest, RayPreparationAndTraceFollowDeclaredDependencies)
 {
     RG graph;
@@ -410,6 +424,7 @@ TEST_F(RenderGraphLifetimeTest, RayPreparationAndTraceFollowDeclaredDependencies
     EXPECT_EQ(graph.GetLastReport().executionOrder, (std::vector<size_t>{ 3, 2, 1, 0 }));
 }
 
+/// @brief Preparation output keeps its producers without a view graph.
 TEST_F(RenderGraphLifetimeTest, PreparationOutputKeepsItsProducersWithoutAViewGraph)
 {
     RG graph;
@@ -427,6 +442,7 @@ TEST_F(RenderGraphLifetimeTest, PreparationOutputKeepsItsProducersWithoutAViewGr
     EXPECT_EQ(graph.GetLastReport().culledPasses, (std::vector<size_t>{ 2 }));
 }
 
+/// @brief Assigns identical alias groups across repeated plans.
 TEST_F(RenderGraphLifetimeTest, AssignsIdenticalAliasGroupsAcrossRepeatedPlans)
 {
     /// @note unordered_map の走査順が alias group の割り当てを変えてはならない。

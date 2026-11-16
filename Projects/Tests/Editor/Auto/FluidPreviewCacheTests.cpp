@@ -87,12 +87,14 @@ std::chrono::milliseconds MillisecondsSince(std::chrono::steady_clock::time_poin
 
 /// @name FluidInvalidationTime
 
+/// @brief Checks nothing changed needs no resolve.
 TEST(FluidInvalidationTime, NothingChangedNeedsNoResolve)
 {
     const fluid::FluidRecipe recipe = RecipeWithSourceAt(0.5f);
     EXPECT_LT(FluidInvalidationTime(recipe, recipe), 0.0f);
 }
 
+/// @brief Checks look only change only redraws.
 TEST(FluidInvalidationTime, LookOnlyChangeOnlyRedraws)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -102,6 +104,7 @@ TEST(FluidInvalidationTime, LookOnlyChangeOnlyRedraws)
     EXPECT_LT(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Bake only change does not touch the preview.
 TEST(FluidInvalidationTime, BakeOnlyChangeDoesNotTouchThePreview)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -113,6 +116,7 @@ TEST(FluidInvalidationTime, BakeOnlyChangeDoesNotTouchThePreview)
     EXPECT_LT(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Checks renaming a part only redraws.
 TEST(FluidInvalidationTime, RenamingAPartOnlyRedraws)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -121,6 +125,7 @@ TEST(FluidInvalidationTime, RenamingAPartOnlyRedraws)
     EXPECT_LT(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Changed source resolves from its start time.
 TEST(FluidInvalidationTime, ChangedSourceResolvesFromItsStartTime)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -129,6 +134,7 @@ TEST(FluidInvalidationTime, ChangedSourceResolvesFromItsStartTime)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.5f);
 }
 
+/// @brief Moving the start time resolves from the earlier one.
 TEST(FluidInvalidationTime, MovingTheStartTimeResolvesFromTheEarlierOne)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -137,6 +143,7 @@ TEST(FluidInvalidationTime, MovingTheStartTimeResolvesFromTheEarlierOne)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.5f);
 }
 
+/// @brief Warmup is subtracted.
 TEST(FluidInvalidationTime, WarmupIsSubtracted)
 {
     fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -146,6 +153,7 @@ TEST(FluidInvalidationTime, WarmupIsSubtracted)
     EXPECT_NEAR(FluidInvalidationTime(before, after), 0.3f, 1.0e-5f);
 }
 
+/// @brief Part active during warmup resolves from the start.
 TEST(FluidInvalidationTime, PartActiveDuringWarmupResolvesFromTheStart)
 {
     fluid::FluidRecipe before = RecipeWithSourceAt(0.1f);
@@ -155,6 +163,7 @@ TEST(FluidInvalidationTime, PartActiveDuringWarmupResolvesFromTheStart)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Motion key resolves no later than the key.
 TEST(FluidInvalidationTime, MotionKeyResolvesNoLaterThanTheKey)
 {
     fluid::FluidRecipe before = RecipeWithSourceAt(0.0f);
@@ -166,6 +175,7 @@ TEST(FluidInvalidationTime, MotionKeyResolvesNoLaterThanTheKey)
     EXPECT_LE(from, 0.3f);
 }
 
+/// @brief Late motion key resolves from the previous key.
 /// キーの間は直線で結ぶので、変えたキーの 1 つ前から道筋が変わる。
 TEST(FluidInvalidationTime, LateMotionKeyResolvesFromThePreviousKey)
 {
@@ -178,6 +188,7 @@ TEST(FluidInvalidationTime, LateMotionKeyResolvesFromThePreviousKey)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.3f);
 }
 
+/// @brief Simulation change resolves everything.
 TEST(FluidInvalidationTime, SimulationChangeResolvesEverything)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -186,6 +197,7 @@ TEST(FluidInvalidationTime, SimulationChangeResolvesEverything)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Output timing change resolves everything.
 TEST(FluidInvalidationTime, OutputTimingChangeResolvesEverything)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -194,6 +206,7 @@ TEST(FluidInvalidationTime, OutputTimingChangeResolvesEverything)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Adding a part resolves everything.
 TEST(FluidInvalidationTime, AddingAPartResolvesEverything)
 {
     const fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -202,6 +215,7 @@ TEST(FluidInvalidationTime, AddingAPartResolvesEverything)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Toggling a part resolves everything.
 /// 有効な部品の中での添字でノイズが決まるため、1 つ消すと他の部品の出方が最初から変わる。
 TEST(FluidInvalidationTime, TogglingAPartResolvesEverything)
 {
@@ -211,6 +225,7 @@ TEST(FluidInvalidationTime, TogglingAPartResolvesEverything)
     EXPECT_FLOAT_EQ(FluidInvalidationTime(before, after), 0.0f);
 }
 
+/// @brief Checks editing a disabled part needs no resolve.
 TEST(FluidInvalidationTime, EditingADisabledPartNeedsNoResolve)
 {
     fluid::FluidRecipe before = RecipeWithSourceAt(0.5f);
@@ -222,6 +237,7 @@ TEST(FluidInvalidationTime, EditingADisabledPartNeedsNoResolve)
 
 /// @name FluidPreviewCache
 
+/// @brief Solves in the background without a renderer.
 TEST(FluidPreviewCache, SolvesInTheBackgroundWithoutARenderer)
 {
     FluidPreviewCache cache;
@@ -239,6 +255,7 @@ TEST(FluidPreviewCache, SolvesInTheBackgroundWithoutARenderer)
     cache.Shutdown(nullptr);
 }
 
+/// @brief Look change keeps showing the solved frames.
 TEST(FluidPreviewCache, LookChangeKeepsShowingTheSolvedFrames)
 {
     FluidPreviewCache cache;
@@ -257,6 +274,7 @@ TEST(FluidPreviewCache, LookChangeKeepsShowingTheSolvedFrames)
     cache.Shutdown(nullptr);
 }
 
+/// @brief Part change drops frames from its start time.
 TEST(FluidPreviewCache, PartChangeDropsFramesFromItsStartTime)
 {
     FluidPreviewCache cache;
@@ -278,6 +296,7 @@ TEST(FluidPreviewCache, PartChangeDropsFramesFromItsStartTime)
     cache.Shutdown(nullptr);
 }
 
+/// @brief Part edit resumes instead of solving from the start.
 /// 部品を触ったら、変わり目の手前の途中経過から続きを解く (頭へは戻らない)。
 TEST(FluidPreviewCache, PartEditResumesInsteadOfSolvingFromTheStart)
 {
@@ -318,6 +337,7 @@ TEST(FluidPreviewCache, PartEditResumesInsteadOfSolvingFromTheStart)
     cache.Shutdown(nullptr);
 }
 
+/// @brief Checks switching kind solves everything again.
 /// 種類が変わると «場» ごと通じないので、続きからは解けない。全コマ捨てて頭から解き直す。
 /// (ソルバーの ReplaceOperators が断るのと同じ条件だが、FluidInvalidationTime が先に 0 を返すため、
 ///  ここでは断られる前に起点そのものが無くなる。)
@@ -344,6 +364,7 @@ TEST(FluidPreviewCache, SwitchingKindSolvesEverythingAgain)
     cache.Shutdown(nullptr);
 }
 
+/// @brief Same revision is ignored.
 TEST(FluidPreviewCache, SameRevisionIsIgnored)
 {
     FluidPreviewCache cache;

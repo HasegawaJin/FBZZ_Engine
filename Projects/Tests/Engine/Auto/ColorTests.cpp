@@ -21,6 +21,7 @@ class ColorTest : public testkit::EngineFixture {};
 
 /// @name 32bit 表現
 
+/// @brief Packs and unpacks in RGBA order.
 TEST_F(ColorTest, PacksAndUnpacksInRgbaOrder)
 {
     /// @note 並びが 1 つずれると赤と青が入れ替わる。0xRRGGBBAA の順を固定する。
@@ -32,6 +33,7 @@ TEST_F(ColorTest, PacksAndUnpacksInRgbaOrder)
     EXPECT_NEAR(color.a, 192.0f / 255.0f, 1.0f / 255.0f);
 }
 
+/// @brief Round-trips through 32 bit.
 TEST_F(ColorTest, RoundTripsThrough32Bit)
 {
     const uint32_t packed[] = { 0x00000000u, 0xFFFFFFFFu, 0x123456F0u, 0xFF8000C0u };
@@ -40,6 +42,7 @@ TEST_F(ColorTest, RoundTripsThrough32Bit)
         EXPECT_EQ(Color::FromRGBA32(value).ToRGBA32(), value);
 }
 
+/// @brief Clamps out-of-range channels when packing.
 TEST_F(ColorTest, ClampsOutOfRangeChannelsWhenPacking)
 {
     /// @note HDR の色をそのまま 8bit へ落とす経路がある。折り返して暗くなってはいけない。
@@ -53,6 +56,7 @@ TEST_F(ColorTest, ClampsOutOfRangeChannelsWhenPacking)
 
 /// @name 16 進数文字列
 
+/// @brief Parses six and eight digit hex.
 TEST_F(ColorTest, ParsesSixAndEightDigitHex)
 {
     const Color rgb  = Color::FromHex("#FF0000");
@@ -64,6 +68,7 @@ TEST_F(ColorTest, ParsesSixAndEightDigitHex)
     EXPECT_NEAR(rgba.a, 128.0f / 255.0f, 1.0f / 255.0f);
 }
 
+/// @brief Hex parsing ignores case and accepts no hash.
 TEST_F(ColorTest, HexParsingIgnoresCaseAndAcceptsNoHash)
 {
     EXPECT_NEAR(Color::FromHex("#00ff00").g, 1.0f, 1.0f / 255.0f);
@@ -72,6 +77,7 @@ TEST_F(ColorTest, HexParsingIgnoresCaseAndAcceptsNoHash)
 
 /// @name Vector4 との往復
 
+/// @brief Round-trips through vector 4.
 TEST_F(ColorTest, RoundTripsThroughVector4)
 {
     const Color original{ 0.25f, 0.5f, 0.75f, 0.125f };
@@ -86,6 +92,7 @@ TEST_F(ColorTest, RoundTripsThroughVector4)
 
 /// @name HSV
 
+/// @brief Builds the primaries from hue.
 TEST_F(ColorTest, BuildsThePrimariesFromHue)
 {
     EXPECT_NEAR(Color::FromHSV(0.0f, 1.0f, 1.0f).r, 1.0f, testkit::kLooseTolerance);
@@ -93,6 +100,7 @@ TEST_F(ColorTest, BuildsThePrimariesFromHue)
     EXPECT_NEAR(Color::FromHSV(240.0f, 1.0f, 1.0f).b, 1.0f, testkit::kLooseTolerance);
 }
 
+/// @brief Zero saturation is grey.
 TEST_F(ColorTest, ZeroSaturationIsGrey)
 {
     const Color grey = Color::FromHSV(200.0f, 0.0f, 0.5f);
@@ -102,6 +110,7 @@ TEST_F(ColorTest, ZeroSaturationIsGrey)
     EXPECT_NEAR(grey.r, 0.5f, testkit::kLooseTolerance);
 }
 
+/// @brief Round-trips through HSV.
 TEST_F(ColorTest, RoundTripsThroughHSV)
 {
     /// @note カラーピッカーは RGB ↔ HSV を往復し続ける。ずれると触るたびに色が流れる。
@@ -116,6 +125,7 @@ TEST_F(ColorTest, RoundTripsThroughHSV)
     EXPECT_NEAR(back.b, original.b, testkit::kLooseTolerance);
 }
 
+/// @brief Hue wraps around the colour wheel.
 TEST_F(ColorTest, HueWrapsAroundTheColourWheel)
 {
     const Color atZero = Color::FromHSV(0.0f, 1.0f, 1.0f);
@@ -128,12 +138,14 @@ TEST_F(ColorTest, HueWrapsAroundTheColourWheel)
 
 /// @name 補間
 
+/// @brief Lerp returns the endpoints.
 TEST_F(ColorTest, LerpReturnsTheEndpoints)
 {
     EXPECT_NEAR(Color::Lerp(Color::Red, Color::Blue, 0.0f).r, 1.0f, testkit::kTolerance);
     EXPECT_NEAR(Color::Lerp(Color::Red, Color::Blue, 1.0f).b, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Lerp clamps outside the unit interval.
 TEST_F(ColorTest, LerpClampsOutsideTheUnitInterval)
 {
     /// @note フェードの t は経過時間から作るので、1 を少し超えることが普通に起きる。
@@ -142,6 +154,7 @@ TEST_F(ColorTest, LerpClampsOutsideTheUnitInterval)
     EXPECT_NEAR(beyond.r, 1.0f, testkit::kTolerance);
 }
 
+/// @brief A color interpolation factor of 2 extrapolates past white and preserves a red component greater than 1.
 TEST_F(ColorTest, LerpUnclampedExtrapolates)
 {
     const Color beyond = Color::LerpUnclamped(Color::Black, Color::White, 2.0f);
@@ -149,6 +162,7 @@ TEST_F(ColorTest, LerpUnclampedExtrapolates)
     EXPECT_NEAR(beyond.r, 2.0f, testkit::kTolerance);
 }
 
+/// @brief With alpha keeps the colour and replaces the alpha.
 TEST_F(ColorTest, WithAlphaKeepsTheColourAndReplacesTheAlpha)
 {
     const Color faded = Color::Red.WithAlpha(0.25f);
@@ -157,6 +171,7 @@ TEST_F(ColorTest, WithAlphaKeepsTheColourAndReplacesTheAlpha)
     EXPECT_NEAR(faded.a, 0.25f, testkit::kTolerance);
 }
 
+/// @brief Named constants are opaque except clear.
 TEST_F(ColorTest, NamedConstantsAreOpaqueExceptClear)
 {
     EXPECT_NEAR(Color::White.a, 1.0f, testkit::kTolerance);

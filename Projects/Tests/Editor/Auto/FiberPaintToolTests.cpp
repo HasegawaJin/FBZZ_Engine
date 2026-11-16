@@ -116,6 +116,7 @@ protected:
         ImGui::End(); ImGui::Render();
     }
 };
+/// @brief Registers meshes with GUID paint and supports undo redo.
 TEST_F(FiberPaintToolTest, RegistersMeshesWithGuidPaintAndSupportsUndoRedo)
 {
     ASSERT_TRUE(Add().ok); ASSERT_TRUE(Fiber()); ASSERT_TRUE(Paint());
@@ -126,6 +127,7 @@ TEST_F(FiberPaintToolTest, RegistersMeshesWithGuidPaintAndSupportsUndoRedo)
     ASSERT_TRUE(m_undo.Undo()); EXPECT_FALSE(Fiber());
     ASSERT_TRUE(m_undo.Redo()); ASSERT_TRUE(Fiber()); EXPECT_EQ(Fiber()->m_paintPath,path);
 }
+/// @brief Adds child meshes as one command.
 TEST_F(FiberPaintToolTest, AddsChildMeshesAsOneCommand)
 {
     auto& root = AttachedScene()->CreateGameObject("Model"); const auto rootId = root.GetID();
@@ -138,6 +140,7 @@ TEST_F(FiberPaintToolTest, AddsChildMeshesAsOneCommand)
     EXPECT_EQ(m_undo.GetHistorySize(),1u);
     ASSERT_TRUE(m_undo.Undo()); EXPECT_FALSE(Fiber()); EXPECT_FALSE(AttachedScene()->GetComponent<scene::FiberComponent>(otherId));
 }
+/// @brief Scaled meshes keep useful world brush resolution and chunk size.
 TEST_F(FiberPaintToolTest, ScaledMeshesKeepUsefulWorldBrushResolutionAndChunkSize)
 {
     auto* go = AttachedScene()->GetGameObject(m_id);
@@ -148,6 +151,7 @@ TEST_F(FiberPaintToolTest, ScaledMeshesKeepUsefulWorldBrushResolutionAndChunkSiz
     EXPECT_LT(Fiber()->m_bladeDensity,200);
     ASSERT_TRUE(Stroke().ok); EXPECT_FALSE(Paint()->data.cells.empty());
 }
+/// @brief Stroke is one undo and saves actual paint across reload.
 TEST_F(FiberPaintToolTest, StrokeIsOneUndoAndSavesActualPaintAcrossReload)
 {
     ASSERT_TRUE(Add().ok); const auto before = Paint()->data;
@@ -161,6 +165,7 @@ TEST_F(FiberPaintToolTest, StrokeIsOneUndoAndSavesActualPaintAcrossReload)
     EXPECT_FALSE(editor::AssetDirtyRegistry::IsDirty(disk));
     ASSERT_GT(asset::AssetManager::ReloadPath(disk),0); EXPECT_TRUE(Paint()->data == after);
 }
+/// @brief Invalid stroke and changed topology do not mutate or create history.
 TEST_F(FiberPaintToolTest, InvalidStrokeAndChangedTopologyDoNotMutateOrCreateHistory)
 {
     ASSERT_TRUE(Add().ok); const auto before = Paint()->data;
@@ -168,6 +173,7 @@ TEST_F(FiberPaintToolTest, InvalidStrokeAndChangedTopologyDoNotMutateOrCreateHis
     m_mesh.cpuVertices[0].position.x += 1;
     EXPECT_FALSE(Stroke().ok); EXPECT_TRUE(Paint()->data == before); EXPECT_EQ(m_undo.GetHistorySize(),1u);
 }
+/// @brief Fill preserves height and clear is reversible.
 TEST_F(FiberPaintToolTest, FillPreservesHeightAndClearIsReversible)
 {
     ASSERT_TRUE(Add(false).ok);
@@ -182,6 +188,7 @@ TEST_F(FiberPaintToolTest, FillPreservesHeightAndClearIsReversible)
     }
     ASSERT_TRUE(m_undo.Undo()); EXPECT_TRUE(Paint()->data == before);
 }
+/// @brief Discard restores disk and rejects stale undo.
 TEST_F(FiberPaintToolTest, DiscardRestoresDiskAndRejectsStaleUndo)
 {
     ASSERT_TRUE(Add().ok); const auto saved = Paint()->data;
@@ -189,6 +196,7 @@ TEST_F(FiberPaintToolTest, DiscardRestoresDiskAndRejectsStaleUndo)
     editor::AssetDirtyRegistry::DiscardAll(); editor::SynchronizeFiberPaintDrafts();
     EXPECT_TRUE(Paint()->data == saved); EXPECT_FALSE(m_undo.Undo());
 }
+/// @brief Visible only does not paint through an occluding mesh.
 TEST_F(FiberPaintToolTest, VisibleOnlyDoesNotPaintThroughAnOccludingMesh)
 {
     ASSERT_TRUE(Add().ok); const auto before = Paint()->data;
@@ -200,6 +208,7 @@ TEST_F(FiberPaintToolTest, VisibleOnlyDoesNotPaintThroughAnOccludingMesh)
     ASSERT_TRUE(editor::InvokeOperator(Context(),"fiber.stroke",args).ok);
     EXPECT_TRUE(Paint()->data == before); EXPECT_EQ(m_undo.GetHistorySize(),1u);
 }
+/// @brief Mouse stroke commits once on release and undo restores it.
 TEST_F(FiberPaintToolTest, MouseStrokeCommitsOnceOnReleaseAndUndoRestoresIt)
 {
     ASSERT_TRUE(Add().ok); const auto before = Paint()->data; BeginUi();
@@ -209,6 +218,7 @@ TEST_F(FiberPaintToolTest, MouseStrokeCommitsOnceOnReleaseAndUndoRestoresIt)
     EXPECT_EQ(m_undo.GetHistorySize(),2u);
     ASSERT_TRUE(m_undo.Undo()); EXPECT_TRUE(Paint()->data == before);
 }
+/// @brief Escape and play interruption discard uncommitted strokes.
 TEST_F(FiberPaintToolTest, EscapeAndPlayInterruptionDiscardUncommittedStrokes)
 {
     ASSERT_TRUE(Add().ok); const auto before = Paint()->data; BeginUi();

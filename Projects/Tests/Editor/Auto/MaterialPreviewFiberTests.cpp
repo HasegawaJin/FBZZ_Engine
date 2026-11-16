@@ -56,6 +56,7 @@ protected:
     testkit::TempDir m_temp{"material-preview-fiber"};
 };
 
+/// @brief Fiber shaders use the fiber flavor instead of the surface sphere.
 TEST_F(MaterialPreviewFiberTest, FiberShadersUseTheFiberFlavorInsteadOfTheSurfaceSphere)
 {
     /// @note Surface へ流すと b5 が 0 のまま全画素 clip され、サムネイルが空になる。
@@ -69,6 +70,7 @@ TEST_F(MaterialPreviewFiberTest, FiberShadersUseTheFiberFlavorInsteadOfTheSurfac
     EXPECT_FALSE(mp::UsesOwnGeometry(mp::Flavor::Fiber));
 }
 
+/// @brief Mode shape and channels follow the material.
 TEST_F(MaterialPreviewFiberTest, ModeShapeAndChannelsFollowTheMaterial)
 {
     EXPECT_EQ(mp::DefaultFiberMode(FiberMaterial(ShaderPath("Shell.hlsl"), 0.0f)), mp::FiberMode::Shell);
@@ -87,6 +89,7 @@ TEST_F(MaterialPreviewFiberTest, ModeShapeAndChannelsFollowTheMaterial)
     EXPECT_STREQ(mp::FiberModeLabel(mp::FiberMode::Hybrid), "Hybrid");
 }
 
+/// @brief Unsupported vertex inputs take precedence over the render path.
 TEST_F(MaterialPreviewFiberTest, UnsupportedVertexInputsTakePrecedenceOverTheRenderPath)
 {
     asset::MaterialAssetAuthoring material;
@@ -100,6 +103,7 @@ TEST_F(MaterialPreviewFiberTest, UnsupportedVertexInputsTakePrecedenceOverTheRen
     EXPECT_STREQ(mp::UnsupportedBadge(material), "PARTICLE");
 }
 
+/// @brief Legacy shading key keeps its preview shape and canonical key wins.
 TEST_F(MaterialPreviewFiberTest, LegacyShadingKeyKeepsItsPreviewShapeAndCanonicalKeyWins)
 {
     asset::MaterialAssetAuthoring material;

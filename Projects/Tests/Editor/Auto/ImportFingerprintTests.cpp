@@ -61,6 +61,7 @@ private:
     testkit::TempDir m_temp{"importfp"};
 };
 
+/// @brief Same bytes give the same hash.
 TEST_F(ImportFingerprintTest, SameBytesGiveTheSameHash)
 {
     const auto a = Model("A.fbx");
@@ -73,6 +74,7 @@ TEST_F(ImportFingerprintTest, SameBytesGiveTheSameHash)
     EXPECT_EQ(first, FbxMetaSerializer::SourceContentHash(Utf8(b)));
 }
 
+/// @brief Different bytes give different hashes.
 TEST_F(ImportFingerprintTest, DifferentBytesGiveDifferentHashes)
 {
     const auto a = Model("A.fbx");
@@ -87,6 +89,7 @@ TEST_F(ImportFingerprintTest, DifferentBytesGiveDifferentHashes)
     EXPECT_NE(first, second);
 }
 
+/// @brief Touching the file does not change the hash.
 TEST_F(ImportFingerprintTest, TouchingTheFileDoesNotChangeTheHash)
 {
     /// @note これが修正の核心。git pull は中身を変えずに更新時刻だけ動かす。
@@ -100,6 +103,7 @@ TEST_F(ImportFingerprintTest, TouchingTheFileDoesNotChangeTheHash)
     EXPECT_EQ(FbxMetaSerializer::SourceContentHash(Utf8(model)), before);
 }
 
+/// @brief Moving the file does not change the hash.
 TEST_F(ImportFingerprintTest, MovingTheFileDoesNotChangeTheHash)
 {
     /// @note 以前はパスを種に混ぜていたため、フォルダを整理しただけで焼き直しが走っていた。
@@ -115,11 +119,13 @@ TEST_F(ImportFingerprintTest, MovingTheFileDoesNotChangeTheHash)
     EXPECT_EQ(FbxMetaSerializer::SourceContentHash(Utf8(to)), before);
 }
 
+/// @brief Content hash is empty for a missing file.
 TEST_F(ImportFingerprintTest, ContentHashIsEmptyForAMissingFile)
 {
     EXPECT_EQ(FbxMetaSerializer::SourceContentHash(Utf8(Model("Nope.fbx"))), "");
 }
 
+/// @brief Hash spans the whole file not just the head.
 TEST_F(ImportFingerprintTest, HashSpansTheWholeFileNotJustTheHead)
 {
     /// @note 先頭だけを見ていると、末尾を差し替えた FBX を «変わっていない» と誤判定する。
@@ -136,6 +142,7 @@ TEST_F(ImportFingerprintTest, HashSpansTheWholeFileNotJustTheHead)
     EXPECT_NE(first, second);
 }
 
+/// @brief Stamp reports size and moves with the write time.
 TEST_F(ImportFingerprintTest, StampReportsSizeAndMovesWithTheWriteTime)
 {
     const auto model = Model("Player.fbx");
@@ -156,6 +163,7 @@ TEST_F(ImportFingerprintTest, StampReportsSizeAndMovesWithTheWriteTime)
     EXPECT_NE(mtime2, mtime);
 }
 
+/// @brief Stamp fails for a missing file.
 TEST_F(ImportFingerprintTest, StampFailsForAMissingFile)
 {
     uint64_t size = 0;
@@ -163,6 +171,7 @@ TEST_F(ImportFingerprintTest, StampFailsForAMissingFile)
     EXPECT_FALSE(FbxMetaSerializer::SourceStamp(Utf8(Model("Nope.fbx")), size, mtime));
 }
 
+/// @brief Legacy stamp still reacts to the write time.
 TEST_F(ImportFingerprintTest, LegacyStampStillReactsToTheWriteTime)
 {
     /// @note 旧形式は «触られたか» を見る値。移行判定に使うので、その性質のまま残っている必要がある。

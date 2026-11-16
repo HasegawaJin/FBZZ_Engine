@@ -140,6 +140,7 @@ protected:
     ImGuiContext* m_imgui = nullptr;
 };
 
+/// @brief Ordinary game object does not show an empty point panel.
 TEST_F(ControlPointInspectorTest, OrdinaryGameObjectDoesNotShowAnEmptyPointPanel)
 {
     auto& object = AttachedScene()->CreateGameObject("Ordinary");
@@ -151,6 +152,7 @@ TEST_F(ControlPointInspectorTest, OrdinaryGameObjectDoesNotShowAnEmptyPointPanel
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Water rectangle explains spline workflow and only point objects can enter point edit.
 TEST_F(ControlPointInspectorTest, WaterRectangleExplainsSplineWorkflowAndOnlyPointObjectsCanEnterPointEdit)
 {
     auto& owner = AttachedScene()->CreateGameObject("Water Owner");
@@ -192,6 +194,7 @@ TEST_F(ControlPointInspectorTest, WaterRectangleExplainsSplineWorkflowAndOnlyPoi
     EXPECT_EQ(m_undo.GetHistorySize(), beforeHistory);
 }
 
+/// @brief Target point shows and confirms its connected consumer.
 TEST_F(ControlPointInspectorTest, TargetPointShowsAndConfirmsItsConnectedConsumer)
 {
     auto& marker = MakeMarker("Camera Target", {1.0f, 2.0f, 3.0f});
@@ -218,6 +221,7 @@ TEST_F(ControlPointInspectorTest, TargetPointShowsAndConfirmsItsConnectedConsume
     ExpectContains(clicked, "接続先を確認");
 }
 
+/// @brief Cloth shows the fixed target creation and connection path.
 TEST_F(ControlPointInspectorTest, ClothShowsTheFixedTargetCreationAndConnectionPath)
 {
     auto& owner = AttachedScene()->CreateGameObject("Cloth Owner");
@@ -263,6 +267,7 @@ TEST_F(ControlPointInspectorTest, ClothShowsTheFixedTargetCreationAndConnectionP
     EXPECT_EQ(m_undo.GetCursor(), 0u);
 }
 
+/// @brief Cloth motion draft applies once and undo resynchronizes the panel.
 TEST_F(ControlPointInspectorTest, ClothMotionDraftAppliesOnceAndUndoResynchronizesThePanel)
 {
     auto& owner = AttachedScene()->CreateGameObject("Adjustable Cloth");
@@ -290,6 +295,7 @@ TEST_F(ControlPointInspectorTest, ClothMotionDraftAppliesOnceAndUndoResynchroniz
     EXPECT_EQ(m_undo.GetCursor(), 0u);
 }
 
+/// @brief Reference and additional consumers render their authoring sections.
 TEST_F(ControlPointInspectorTest, ReferenceAndAdditionalConsumersRenderTheirAuthoringSections)
 {
     auto& owner = AttachedScene()->CreateGameObject("Consumers");
@@ -324,6 +330,7 @@ TEST_F(ControlPointInspectorTest, ReferenceAndAdditionalConsumersRenderTheirAuth
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Play disables point editing and leaves the ImGui frame balanced.
 TEST_F(ControlPointInspectorTest, PlayDisablesPointEditingAndLeavesTheImGuiFrameBalanced)
 {
     auto& owner = AttachedScene()->CreateGameObject("Live Water");

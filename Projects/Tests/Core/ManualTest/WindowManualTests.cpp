@@ -13,6 +13,7 @@ namespace fbzz::tests {
 
 class WindowManualTest : public testkit::Fixture {};
 
+/// @brief Opens and pumps a Win32 window.
 TEST_F(WindowManualTest, OpensAndPumpsAWin32Window)
 {
     core::Window window;

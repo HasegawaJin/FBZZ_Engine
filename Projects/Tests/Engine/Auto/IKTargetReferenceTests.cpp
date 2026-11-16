@@ -23,6 +23,7 @@ protected:
     scene::Scene m_scene;
 };
 
+/// @brief Explicit set accepts marker and bone and preserves chain labels and world offset.
 TEST_F(IKTargetReferenceTest, ExplicitSetAcceptsMarkerAndBoneAndPreservesChainLabelsAndWorldOffset)
 {
     auto& target = m_scene.CreateGameObject("Marker");
@@ -49,6 +50,7 @@ TEST_F(IKTargetReferenceTest, ExplicitSetAcceptsMarkerAndBoneAndPreservesChainLa
     EXPECT_VEC3_NEAR(chain.targetOffset, (math::Vector3{1.0f, 2.0f, 3.0f}), testkit::kTolerance);
 }
 
+/// @brief Invalid explicit set leaves existing connection untouched.
 TEST_F(IKTargetReferenceTest, InvalidExplicitSetLeavesExistingConnectionUntouched)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -65,6 +67,7 @@ TEST_F(IKTargetReferenceTest, InvalidExplicitSetLeavesExistingConnectionUntouche
     EXPECT_EQ(chain.targetEntity, target.GetID());
 }
 
+/// @brief Missing legacy GUID never falls back to matching name or entity.
 TEST_F(IKTargetReferenceTest, MissingLegacyGuidNeverFallsBackToMatchingNameOrEntity)
 {
     auto& decoy = m_scene.CreateGameObject("Grip");
@@ -85,6 +88,7 @@ TEST_F(IKTargetReferenceTest, MissingLegacyGuidNeverFallsBackToMatchingNameOrEnt
     EXPECT_FALSE(chain.poleReferenceMigrationPending);
 }
 
+/// @brief Ambiguous legacy name does not connect after one candidate is removed.
 TEST_F(IKTargetReferenceTest, AmbiguousLegacyNameDoesNotConnectAfterOneCandidateIsRemoved)
 {
     auto& first = m_scene.CreateGameObject("Grip");
@@ -102,6 +106,7 @@ TEST_F(IKTargetReferenceTest, AmbiguousLegacyNameDoesNotConnectAfterOneCandidate
     EXPECT_FALSE(chain.targetEntity.IsValid());
 }
 
+/// @brief Absent legacy name does not connect when an object appears later.
 TEST_F(IKTargetReferenceTest, AbsentLegacyNameDoesNotConnectWhenAnObjectAppearsLater)
 {
     scene::IKSolverComponent solver;
@@ -114,6 +119,7 @@ TEST_F(IKTargetReferenceTest, AbsentLegacyNameDoesNotConnectWhenAnObjectAppearsL
     EXPECT_FALSE(chain.targetEntity.IsValid());
 }
 
+/// @brief Unique legacy name migrates once and survives target rename.
 TEST_F(IKTargetReferenceTest, UniqueLegacyNameMigratesOnceAndSurvivesTargetRename)
 {
     auto& target = m_scene.CreateGameObject("Grip");
@@ -130,6 +136,7 @@ TEST_F(IKTargetReferenceTest, UniqueLegacyNameMigratesOnceAndSurvivesTargetRenam
     EXPECT_EQ(chain.targetName, "Grip");
 }
 
+/// @brief Explicit clear cannot resurrect from legacy fields.
 TEST_F(IKTargetReferenceTest, ExplicitClearCannotResurrectFromLegacyFields)
 {
     auto& target = m_scene.CreateGameObject("Grip");
@@ -155,6 +162,7 @@ TEST_F(IKTargetReferenceTest, ExplicitClearCannotResurrectFromLegacyFields)
     EXPECT_EQ(chain.targetName, "Grip");
 }
 
+/// @brief Deleted target retains GUID and does not attach to new same named object.
 TEST_F(IKTargetReferenceTest, DeletedTargetRetainsGuidAndDoesNotAttachToNewSameNamedObject)
 {
     auto& target = m_scene.CreateGameObject("Grip");
@@ -172,6 +180,7 @@ TEST_F(IKTargetReferenceTest, DeletedTargetRetainsGuidAndDoesNotAttachToNewSameN
     EXPECT_FALSE(chain.targetEntity.IsValid());
 }
 
+/// @brief Cached entity from another scene cannot override the canonical GUID.
 TEST_F(IKTargetReferenceTest, CachedEntityFromAnotherSceneCannotOverrideTheCanonicalGuid)
 {
     scene::Scene previous;
@@ -190,6 +199,7 @@ TEST_F(IKTargetReferenceTest, CachedEntityFromAnotherSceneCannotOverrideTheCanon
     EXPECT_EQ(chain.targetReference.sceneGeneration, m_scene.GetRenderSceneGeneration());
 }
 
+/// @brief Canonical null and missing GUID survive scene save load despite legacy name matches.
 TEST_F(IKTargetReferenceTest, CanonicalNullAndMissingGuidSurviveSceneSaveLoadDespiteLegacyNameMatches)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -224,6 +234,7 @@ TEST_F(IKTargetReferenceTest, CanonicalNullAndMissingGuidSurviveSceneSaveLoadDes
     EXPECT_FALSE(restored->chains[1].poleEntity.IsValid());
 }
 
+/// @brief Clone forest remaps internal GUID and preserves missing external GUID.
 TEST_F(IKTargetReferenceTest, CloneForestRemapsInternalGuidAndPreservesMissingExternalGuid)
 {
     auto& sourceOwner = m_scene.CreateGameObject("Owner");

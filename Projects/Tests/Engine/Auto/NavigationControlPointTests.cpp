@@ -28,6 +28,7 @@ protected:
     scene::Scene m_scene;
 };
 
+/// @brief Inline route preserves legacy world waypoints and fallback attributes.
 TEST_F(NavigationControlPointTest, InlineRoutePreservesLegacyWorldWaypointsAndFallbackAttributes)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -51,6 +52,7 @@ TEST_F(NavigationControlPointTest, InlineRoutePreservesLegacyWorldWaypointsAndFa
     EXPECT_FLOAT_EQ(snapshot.points[1].speed, 0.0f);
 }
 
+/// @brief Point bindings keep identity and attributes with their rows.
 TEST_F(NavigationControlPointTest, PointBindingsKeepIdentityAndAttributesWithTheirRows)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -97,6 +99,7 @@ TEST_F(NavigationControlPointTest, PointBindingsKeepIdentityAndAttributesWithThe
     EXPECT_FLOAT_EQ(snapshot.points[1].speed, 1.5f);
 }
 
+/// @brief Missing point invalidates the whole route and keeps a changed signature.
 TEST_F(NavigationControlPointTest, MissingPointInvalidatesTheWholeRouteAndKeepsAChangedSignature)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -122,6 +125,7 @@ TEST_F(NavigationControlPointTest, MissingPointInvalidatesTheWholeRouteAndKeepsA
     EXPECT_NE(snapshot.inputSignature, 0u);
 }
 
+/// @brief Static runtime uses captured numbers without resolving targets.
 TEST_F(NavigationControlPointTest, StaticRuntimeUsesCapturedNumbersWithoutResolvingTargets)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -173,6 +177,7 @@ TEST_F(NavigationControlPointTest, StaticRuntimeUsesCapturedNumbersWithoutResolv
     EXPECT_NE(authoringCheck.inputSignature, patrol.bakedInputSignature);
 }
 
+/// @brief Static authoring keeps saved bake metadata and numeric validation.
 TEST_F(NavigationControlPointTest, StaticAuthoringKeepsSavedBakeMetadataAndNumericValidation)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -221,6 +226,7 @@ TEST_F(NavigationControlPointTest, StaticAuthoringKeepsSavedBakeMetadataAndNumer
     expectInvalidBake(scene::NavigationControlPointStatus::INVALID_NUMERIC_DATA);
 }
 
+/// @brief Static point object bake survives reference remap with same numeric route.
 TEST_F(NavigationControlPointTest, StaticPointObjectBakeSurvivesReferenceRemapWithSameNumericRoute)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -268,6 +274,7 @@ TEST_F(NavigationControlPointTest, StaticPointObjectBakeSurvivesReferenceRemapWi
     EXPECT_EQ(changedPolicy.inputSignature, patrol.bakedInputSignature);
 }
 
+/// @brief Patrol keeps current binding identity across reorder and removal.
 TEST_F(NavigationControlPointTest, PatrolKeepsCurrentBindingIdentityAcrossReorderAndRemoval)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -314,6 +321,7 @@ TEST_F(NavigationControlPointTest, PatrolKeepsCurrentBindingIdentityAcrossReorde
     EXPECT_FLOAT_EQ(agent.maxSpeed, 1.0f);
 }
 
+/// @brief Stationary live binding does not repath before starting its wait.
 TEST_F(NavigationControlPointTest, StationaryLiveBindingDoesNotRepathBeforeStartingItsWait)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -346,6 +354,7 @@ TEST_F(NavigationControlPointTest, StationaryLiveBindingDoesNotRepathBeforeStart
     EXPECT_FLOAT_EQ(patrol.waitTimer, 1.0f);
 }
 
+/// @brief Off mesh point objects resolve both numeric endpoints.
 TEST_F(NavigationControlPointTest, OffMeshPointObjectsResolveBothNumericEndpoints)
 {
     auto& owner = m_scene.CreateGameObject("Link");
@@ -381,6 +390,7 @@ TEST_F(NavigationControlPointTest, OffMeshPointObjectsResolveBothNumericEndpoint
     EXPECT_EQ(invalidTraversal.status, scene::NavigationControlPointStatus::INVALID_NUMERIC_DATA);
 }
 
+/// @brief Missing assigned agent target halts without falling back or clearing GUID.
 TEST_F(NavigationControlPointTest, MissingAssignedAgentTargetHaltsWithoutFallingBackOrClearingGuid)
 {
     auto& surfaceOwner = m_scene.CreateGameObject("Surface");
@@ -412,6 +422,7 @@ TEST_F(NavigationControlPointTest, MissingAssignedAgentTargetHaltsWithoutFalling
     EXPECT_TRUE(agent.path.empty());
 }
 
+/// @brief Live patrol rejects target within its own hierarchy and stops.
 TEST_F(NavigationControlPointTest, LivePatrolRejectsTargetWithinItsOwnHierarchyAndStops)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -444,6 +455,7 @@ TEST_F(NavigationControlPointTest, LivePatrolRejectsTargetWithinItsOwnHierarchyA
     EXPECT_FALSE(agent.target.IsAssigned());
 }
 
+/// @brief Static patrol uses captured point inside its own hierarchy.
 TEST_F(NavigationControlPointTest, StaticPatrolUsesCapturedPointInsideItsOwnHierarchy)
 {
     auto& owner = m_scene.CreateGameObject("Patrol");
@@ -503,6 +515,7 @@ TEST_F(NavigationControlPointTest, StaticPatrolUsesCapturedPointInsideItsOwnHier
     EXPECT_FLOAT_EQ(unchangedRuntime.points[0].speed, 0.0f);
 }
 
+/// @brief Agent target within its own hierarchy halts and keeps reference.
 TEST_F(NavigationControlPointTest, AgentTargetWithinItsOwnHierarchyHaltsAndKeepsReference)
 {
     auto& surfaceOwner = m_scene.CreateGameObject("Surface");

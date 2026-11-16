@@ -52,6 +52,7 @@ asset::MaterialAsset SingleWaveMaterial(math::Vector2 direction, float amplitude
 
 /// @name .mat と個体の補正
 
+/// @brief Material without wave keys falls back to the default waves.
 TEST(WaterWaves, MaterialWithoutWaveKeysFallsBackToTheDefaultWaves)
 {
     /// @note 波を .mat へ移す前の .mat を開いた瞬間に、海が止まってはいけない。
@@ -63,6 +64,7 @@ TEST(WaterWaves, MaterialWithoutWaveKeysFallsBackToTheDefaultWaves)
                         scene::DefaultWaterWave(i).amplitude) << "wave " << i;
 }
 
+/// @brief Amplitude scale and disable apply on top of the material.
 TEST(WaterWaves, AmplitudeScaleAndDisableApplyOnTopOfTheMaterial)
 {
     const asset::MaterialAsset mat = SingleWaveMaterial({ 1.0f, 0.0f }, 0.4f, 10.0f);
@@ -79,6 +81,7 @@ TEST(WaterWaves, AmplitudeScaleAndDisableApplyOnTopOfTheMaterial)
 
 /// @name 環境風
 
+/// @brief Legacy wind response does not change authored waves.
 TEST(WaterWaves, LegacyWindResponseDoesNotChangeAuthoredWaves)
 {
     asset::MaterialAsset mat = SingleWaveMaterial({ 1.0f, 0.0f }, 0.4f, 10.0f);
@@ -94,6 +97,7 @@ TEST(WaterWaves, LegacyWindResponseDoesNotChangeAuthoredWaves)
     EXPECT_FLOAT_EQ(water.waves[0].steepness, 0.5f);
 }
 
+/// @brief Legacy scene wind ripple mode falls back to material flow.
 TEST(WaterWaves, LegacySceneWindRippleModeFallsBackToMaterialFlow)
 {
     scene::WaterComponent water;
@@ -109,6 +113,7 @@ TEST(WaterWaves, LegacySceneWindRippleModeFallsBackToMaterialFlow)
     EXPECT_FLOAT_EQ(water.rippleDirectionOverride.Length(), 0.0f);
 }
 
+/// @brief Wind does not rotate wave directions.
 TEST(WaterWaves, WindDoesNotRotateWaveDirections)
 {
     /// @note 向きを回すと、原点から遠い点ほど位相が跳んで遠景の波が走る。
@@ -122,6 +127,7 @@ TEST(WaterWaves, WindDoesNotRotateWaveDirections)
 
 /// @name 水流
 
+/// @brief Current follows flow direction at current speed.
 TEST(WaterWaves, CurrentFollowsFlowDirectionAtCurrentSpeed)
 {
     asset::MaterialAsset mat;
@@ -133,6 +139,7 @@ TEST(WaterWaves, CurrentFollowsFlowDirectionAtCurrentSpeed)
     EXPECT_NEAR(water.current.y, 1.5f, 1.0e-5f);
 }
 
+/// @brief Checks no current without current speed.
 TEST(WaterWaves, NoCurrentWithoutCurrentSpeed)
 {
     /// @note flowDirection は見た目 (さざ波の流れ) にも使う。速さを入れない限り物体は押さない。
@@ -145,6 +152,7 @@ TEST(WaterWaves, NoCurrentWithoutCurrentSpeed)
 
 /// @name CPU の水面高さ
 
+/// @brief Surface height is evaluated in world coordinates.
 TEST(WaterWaves, SurfaceHeightIsEvaluatedInWorldCoordinates)
 {
     /// @note シェーダーは位相をワールド XZ で取る。CPU も同じ座標を受けて同じ高さを返すこと。
@@ -160,6 +168,7 @@ TEST(WaterWaves, SurfaceHeightIsEvaluatedInWorldCoordinates)
     EXPECT_NEAR(water.GetSurfaceHeightAt(x, 0.0f, time), 0.5f * std::sin(k * x - omega * time), 1.0e-4f);
 }
 
+/// @brief Checks surface height solves back through the horizontal displacement.
 TEST(WaterWaves, SurfaceHeightSolvesBackThroughTheHorizontalDisplacement)
 {
     /// @note Gerstner 波は «変位前の位置» を位相に取る。変位前の点 x0 の水面が実際に出るのは
@@ -182,6 +191,7 @@ TEST(WaterWaves, SurfaceHeightSolvesBackThroughTheHorizontalDisplacement)
                 0.5f * std::sin(phase), 1.0e-3f);
 }
 
+/// @brief Steep waves stay bounded when the inverse is not unique.
 TEST(WaterWaves, SteepWavesStayBoundedWhenTheInverseIsNotUnique)
 {
     /// @note Ocean.mat のような Sum(Q·k·A) > 1 の設定では逆写像が一意でない。どの枝へ落ちても、
@@ -215,6 +225,7 @@ TEST(WaterWaves, SteepWavesStayBoundedWhenTheInverseIsNotUnique)
 
 /// @name 波の «群»
 
+/// @brief Grouping constants match the angle they encode.
 TEST(WaterWaves, GroupingConstantsMatchTheAngleTheyEncode)
 {
     /// @note 定数は Water.hlsl と二重化している。数値を打ち間違えると、見えている波と浮力が
@@ -224,6 +235,7 @@ TEST(WaterWaves, GroupingConstantsMatchTheAngleTheyEncode)
     EXPECT_NEAR(W::WAVE_GROUP_SIN, std::sin(0.55f), 1.0e-5f);
 }
 
+/// @brief Group envelope is exactly one when grouping is off.
 TEST(WaterWaves, GroupEnvelopeIsExactlyOneWhenGroupingIsOff)
 {
     /// @note 0 にしたら «群の無い従来の波» へ完全に戻ること。既存シーンの見え方を変えない逃げ道。
@@ -235,6 +247,7 @@ TEST(WaterWaves, GroupEnvelopeIsExactlyOneWhenGroupingIsOff)
     }
 }
 
+/// @brief Checks group envelope sweeps the whole grouping depth.
 TEST(WaterWaves, GroupEnvelopeSweepsTheWholeGroupingDepth)
 {
     /// @note 包絡が [1-d, 1+d] に収まり、かつ両端まで実際に振れること。振れなければ «群» にならない。
@@ -254,6 +267,7 @@ TEST(WaterWaves, GroupEnvelopeSweepsTheWholeGroupingDepth)
     EXPECT_GT(highest, 1.0f + depth * 0.95f);
 }
 
+/// @brief Groups travel at half the phase speed.
 TEST(WaterWaves, GroupsTravelAtHalfThePhaseSpeed)
 {
     /// @note 深水波の群速度は位相速度の 1/2。«群はゆっくり進み、波頭がその中を追い越していく»
@@ -281,6 +295,7 @@ TEST(WaterWaves, GroupsTravelAtHalfThePhaseSpeed)
 
 /// @name 方向広がり
 
+/// @brief Wave spread keeps the total energy.
 TEST(WaterWaves, WaveSpreadKeepsTheTotalEnergy)
 {
     /// @note 主成分と伴走成分は振幅を «分け合う»。二乗和が 1 でないと、spread を上げるだけで
@@ -294,6 +309,7 @@ TEST(WaterWaves, WaveSpreadKeepsTheTotalEnergy)
     }
 }
 
+/// @brief Wave spread of zero leaves a single wave.
 TEST(WaterWaves, WaveSpreadOfZeroLeavesASingleWave)
 {
     /// @note 0 にしたら «1 波 1 方向» の従来へ完全に戻ること。既存シーンの逃げ道。
@@ -306,6 +322,7 @@ TEST(WaterWaves, WaveSpreadOfZeroLeavesASingleWave)
     EXPECT_FLOAT_EQ(main.direction.y, 0.8f);
 }
 
+/// @brief Wave spread rotates the companion and alternates its side.
 TEST(WaterWaves, WaveSpreadRotatesTheCompanionAndAlternatesItsSide)
 {
     /// @note 伴走成分は «同じ波数で向きだけ違う» 波。向きを回さなければ短い波頭にならない。

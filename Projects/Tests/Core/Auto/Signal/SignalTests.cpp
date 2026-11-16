@@ -11,6 +11,7 @@ namespace fbzz::tests {
 
 class SignalTest : public testkit::EngineFixture {};
 
+/// @brief Emits arguments to every subscriber.
 TEST_F(SignalTest, EmitsArgumentsToEverySubscriber)
 {
     fbzz::Signal<int> signal;
@@ -26,6 +27,7 @@ TEST_F(SignalTest, EmitsArgumentsToEverySubscriber)
     EXPECT_FALSE(signal.Empty());
 }
 
+/// @brief Disconnect removes only the selected subscriber.
 TEST_F(SignalTest, DisconnectRemovesOnlyTheSelectedSubscriber)
 {
     fbzz::Signal<> signal;
@@ -41,6 +43,7 @@ TEST_F(SignalTest, DisconnectRemovesOnlyTheSelectedSubscriber)
     EXPECT_EQ(second, 1);
 }
 
+/// @brief New subscriptions wait until the next emission.
 TEST_F(SignalTest, NewSubscriptionsWaitUntilTheNextEmission)
 {
     fbzz::Signal<> signal;
@@ -62,6 +65,7 @@ TEST_F(SignalTest, NewSubscriptionsWaitUntilTheNextEmission)
     EXPECT_EQ(late, 1);
 }
 
+/// @brief Clear makes the signal empty.
 TEST_F(SignalTest, ClearMakesTheSignalEmpty)
 {
     fbzz::Signal<int> signal;

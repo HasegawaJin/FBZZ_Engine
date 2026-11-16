@@ -60,6 +60,7 @@ protected:
     editor::OpResult Open() { return editor::InvokeOperator(Context(), "tools.pix_open"); }
 };
 
+/// @brief Registers query and action without undo or scene requirements.
 TEST_F(PixOperatorTest, RegistersQueryAndActionWithoutUndoOrSceneRequirements)
 {
     const auto* status = m_registry.Find("tools.pix_status");
@@ -79,6 +80,7 @@ TEST_F(PixOperatorTest, RegistersQueryAndActionWithoutUndoOrSceneRequirements)
     EXPECT_EQ(Context().activeScene, nullptr);
 }
 
+/// @brief Normal startup does not become ready from existing capturer files.
 TEST_F(PixOperatorTest, NormalStartupDoesNotBecomeReadyFromExistingCapturerFiles)
 {
     WritePlaceholder(m_defaultDirectory / L"WinPix.exe");
@@ -95,6 +97,7 @@ TEST_F(PixOperatorTest, NormalStartupDoesNotBecomeReadyFromExistingCapturerFiles
     EXPECT_FALSE(m_status.ready);
 }
 
+/// @brief Opens only canonical UI from default installation and preserves session.
 TEST_F(PixOperatorTest, OpensOnlyCanonicalUiFromDefaultInstallationAndPreservesSession)
 {
     WritePlaceholder(m_defaultDirectory / L"WinPix.exe");
@@ -114,6 +117,7 @@ TEST_F(PixOperatorTest, OpensOnlyCanonicalUiFromDefaultInstallationAndPreservesS
     EXPECT_FALSE(m_status.ready);
 }
 
+/// @brief Selected boot directory wins without silent default fallback.
 TEST_F(PixOperatorTest, SelectedBootDirectoryWinsWithoutSilentDefaultFallback)
 {
     WritePlaceholder(m_defaultDirectory / L"WinPix.exe");
@@ -133,6 +137,7 @@ TEST_F(PixOperatorTest, SelectedBootDirectoryWinsWithoutSilentDefaultFallback)
     EXPECT_EQ(result.data.Find("reason")->AsString(), m_status.reason);
 }
 
+/// @brief Reports boot readiness independently of UI installation.
 TEST_F(PixOperatorTest, ReportsBootReadinessIndependentlyOfUiInstallation)
 {
     m_status.requested = true;
@@ -151,6 +156,7 @@ TEST_F(PixOperatorTest, ReportsBootReadinessIndependentlyOfUiInstallation)
     EXPECT_TRUE(m_status.ready);
 }
 
+/// @brief Failed launch does not change readiness or publish success.
 TEST_F(PixOperatorTest, FailedLaunchDoesNotChangeReadinessOrPublishSuccess)
 {
     WritePlaceholder(m_defaultDirectory / L"WinPix.exe");
@@ -169,6 +175,7 @@ TEST_F(PixOperatorTest, FailedLaunchDoesNotChangeReadinessOrPublishSuccess)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Missing launch service never falls back to a real application.
 TEST_F(PixOperatorTest, MissingLaunchServiceNeverFallsBackToARealApplication)
 {
     WritePlaceholder(m_defaultDirectory / L"WinPix.exe");
@@ -181,6 +188,7 @@ TEST_F(PixOperatorTest, MissingLaunchServiceNeverFallsBackToARealApplication)
     EXPECT_EQ(m_launchCount, 0);
 }
 
+/// @brief UI resolution rejects relative missing and directory targets atomically.
 TEST_F(PixOperatorTest, UiResolutionRejectsRelativeMissingAndDirectoryTargetsAtomically)
 {
     std::filesystem::path executable = File("Unchanged.exe");

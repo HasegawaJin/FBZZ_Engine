@@ -117,6 +117,7 @@ protected:
     renderer::ResourceManager m_resources{m_device};
 };
 
+/// @brief Dedicated definition round-trips appearance and placement without data asset type.
 TEST_F(TerrainPaintAssetTest, DedicatedDefinitionRoundTripsAppearanceAndPlacementWithoutDataAssetType)
 {
     auto source = MakeAsset();
@@ -139,6 +140,7 @@ TEST_F(TerrainPaintAssetTest, DedicatedDefinitionRoundTripsAppearanceAndPlacemen
     EXPECT_EQ(preserved, text);
 }
 
+/// @brief Dedicated placements round trip IDs transforms and reject the wrong format.
 TEST_F(TerrainPaintAssetTest, DedicatedPlacementsRoundTripIdsTransformsAndRejectTheWrongFormat)
 {
     const auto paint = MakeAsset();
@@ -163,6 +165,7 @@ TEST_F(TerrainPaintAssetTest, DedicatedPlacementsRoundTripIdsTransformsAndReject
     EXPECT_TRUE(asset::MeshInstancesAssetsEqual(source, loaded));
 }
 
+/// @brief Creation indexes the dedicated asset and never overwrites an existing file.
 TEST_F(TerrainPaintAssetTest, CreationIndexesTheDedicatedAssetAndNeverOverwritesAnExistingFile)
 {
     const auto reference = CreateAsset();
@@ -181,6 +184,7 @@ TEST_F(TerrainPaintAssetTest, CreationIndexesTheDedicatedAssetAndNeverOverwrites
     EXPECT_TRUE(indexed);
 }
 
+/// @brief Settings save undoes and rejects an outdated editing session.
 TEST_F(TerrainPaintAssetTest, SettingsSaveUndoesAndRejectsAnOutdatedEditingSession)
 {
     const auto reference = CreateAsset();
@@ -202,6 +206,7 @@ TEST_F(TerrainPaintAssetTest, SettingsSaveUndoesAndRejectsAnOutdatedEditingSessi
     ASSERT_TRUE(asset::LoadTerrainPaintAsset(path, disk)); EXPECT_EQ(disk.name, "External");
 }
 
+/// @brief Painting adds to one dedicated file and undo redo survive its own reload.
 TEST_F(TerrainPaintAssetTest, PaintingAddsToOneDedicatedFileAndUndoRedoSurviveItsOwnReload)
 {
     const auto source = CreateAsset();
@@ -235,6 +240,7 @@ TEST_F(TerrainPaintAssetTest, PaintingAddsToOneDedicatedFileAndUndoRedoSurviveIt
     EXPECT_EQ(instanceFiles, 1u); EXPECT_EQ(dataFiles, 0u);
 }
 
+/// @brief Discard restores the last saved placements and invalidates history.
 TEST_F(TerrainPaintAssetTest, DiscardRestoresTheLastSavedPlacementsAndInvalidatesHistory)
 {
     const auto source = CreateAsset(); auto& terrain = MakeTerrain();
@@ -251,6 +257,7 @@ TEST_F(TerrainPaintAssetTest, DiscardRestoresTheLastSavedPlacementsAndInvalidate
     EXPECT_FALSE(m_undo.Undo());
 }
 
+/// @brief Native placement reference preserves play copy on write.
 TEST_F(TerrainPaintAssetTest, NativePlacementReferencePreservesPlayCopyOnWrite)
 {
     const auto source = CreateAsset(); auto& terrain = MakeTerrain();
@@ -267,6 +274,7 @@ TEST_F(TerrainPaintAssetTest, NativePlacementReferencePreservesPlayCopyOnWrite)
     play.ResetOverrides(); EXPECT_EQ(play.Snapshot(), original);
 }
 
+/// @brief Preview and painting use each sources placement rules.
 TEST_F(TerrainPaintAssetTest, PreviewAndPaintingUseEachSourcesPlacementRules)
 {
     auto tree = MakeAsset(); tree.placement.minScale = tree.placement.maxScale = 2.0f;
@@ -308,6 +316,7 @@ TEST_F(TerrainPaintAssetTest, PreviewAndPaintingUseEachSourcesPlacementRules)
     EXPECT_TRUE(editor::InvokeOperator(Context(), "terrain.paint_instances", args).noChange);
 }
 
+/// @brief Shared placements are copied even when the sibling uses a path alias.
 TEST_F(TerrainPaintAssetTest, SharedPlacementsAreCopiedEvenWhenTheSiblingUsesAPathAlias)
 {
     const auto source = CreateAsset(); auto& terrain = MakeTerrain();
@@ -325,6 +334,7 @@ TEST_F(TerrainPaintAssetTest, SharedPlacementsAreCopiedEvenWhenTheSiblingUsesAPa
     EXPECT_EQ(asset::ResolveMeshInstanceDefinition(originalRef)->Snapshot(), original);
 }
 
+/// @brief GUID only result references remain paintable.
 TEST_F(TerrainPaintAssetTest, GuidOnlyResultReferencesRemainPaintable)
 {
     const auto source = CreateAsset(); auto& terrain = MakeTerrain();
@@ -342,6 +352,7 @@ TEST_F(TerrainPaintAssetTest, GuidOnlyResultReferencesRemainPaintable)
     EXPECT_EQ(asset::AssetDatabase::GuidFromRef(second.data.Find("assetPath")->AsString()), asset::AssetDatabase::GuidFromRef(reference));
 }
 
+/// @brief Erase preserves unselected sources that share the same model.
 TEST_F(TerrainPaintAssetTest, ErasePreservesUnselectedSourcesThatShareTheSameModel)
 {
     const auto first = CreateAsset();
@@ -360,6 +371,7 @@ TEST_F(TerrainPaintAssetTest, ErasePreservesUnselectedSourcesThatShareTheSameMod
     EXPECT_EQ(asset::ResolveMeshInstanceDefinition(secondFile)->Snapshot(), before);
 }
 
+/// @brief Warm native references observe reloads and reacquire unloaded handles.
 TEST_F(TerrainPaintAssetTest, WarmNativeReferencesObserveReloadsAndReacquireUnloadedHandles)
 {
     const auto source = CreateAsset();
@@ -382,6 +394,7 @@ TEST_F(TerrainPaintAssetTest, WarmNativeReferencesObserveReloadsAndReacquireUnlo
     EXPECT_EQ(snapshot->placements.size(), 0u);
 }
 
+/// @brief Changing the source does not replace an existing placements appearance.
 TEST_F(TerrainPaintAssetTest, ChangingTheSourceDoesNotReplaceAnExistingPlacementsAppearance)
 {
     const auto source = CreateAsset(); auto& terrain = MakeTerrain();
@@ -400,6 +413,7 @@ TEST_F(TerrainPaintAssetTest, ChangingTheSourceDoesNotReplaceAnExistingPlacement
     EXPECT_EQ(asset::ResolveMeshInstanceDefinition(reference)->Parts().front().meshPath, oldPart);
 }
 
+/// @brief Migrated placements erase in world-space and preserve IDs transforms and undo.
 TEST_F(TerrainPaintAssetTest, MigratedPlacementsEraseInWorldSpaceAndPreserveIdsTransformsAndUndo)
 {
     const auto source = CreateAsset(); auto& terrain = MakeTerrain();
@@ -430,6 +444,7 @@ TEST_F(TerrainPaintAssetTest, MigratedPlacementsEraseInWorldSpaceAndPreserveIdsT
     EXPECT_EQ(AttachedScene()->FindByGuid(ownerId)->GetComponent<scene::InstancedMeshComponent>()->Snapshot()->placements.size(), 1u);
 }
 
+/// @brief Preview and commit exclude water saved paths and existing mesh bounds.
 TEST_F(TerrainPaintAssetTest, PreviewAndCommitExcludeWaterSavedPathsAndExistingMeshBounds)
 {
     const auto source = CreateAsset(); auto& terrain = MakeTerrain();
@@ -465,6 +480,7 @@ TEST_F(TerrainPaintAssetTest, PreviewAndCommitExcludeWaterSavedPathsAndExistingM
     EXPECT_TRUE(editor::InvokeOperator(Context(), "terrain.paint_instances", args).noChange);
 }
 
+/// @brief Paint mix round-trips rules and use rejects missing sources without changing the brush.
 TEST_F(TerrainPaintAssetTest, PaintMixRoundTripsRulesAndUseRejectsMissingSourcesWithoutChangingTheBrush)
 {
     const auto source = CreateAsset();
@@ -494,6 +510,7 @@ TEST_F(TerrainPaintAssetTest, PaintMixRoundTripsRulesAndUseRejectsMissingSources
     Context().terrainTool = nullptr;
 }
 
+/// @brief Reground uses edited terrain preserves IDs and undoes the whole batch.
 TEST_F(TerrainPaintAssetTest, RegroundUsesEditedTerrainPreservesIdsAndUndoesTheWholeBatch)
 {
     const auto source=CreateAsset();auto& ground=MakeTerrain();
@@ -508,6 +525,7 @@ TEST_F(TerrainPaintAssetTest, RegroundUsesEditedTerrainPreservesIdsAndUndoesTheW
     ASSERT_TRUE(m_undo.Redo());EXPECT_NEAR(AttachedScene()->FindByGuid(owner)->GetComponent<scene::InstancedMeshComponent>()->Snapshot()->placements[1].position.y,3,0.0001f);
 }
 
+/// @brief Thin and resize are source scoped preserve surviving IDs and use one undo.
 TEST_F(TerrainPaintAssetTest, ThinAndResizeAreSourceScopedPreserveSurvivingIdsAndUseOneUndo)
 {
     const auto source=CreateAsset();auto& ground=MakeTerrain();std::vector<renderer::InstancePlacement> items;
@@ -529,6 +547,7 @@ TEST_F(TerrainPaintAssetTest, ThinAndResizeAreSourceScopedPreserveSurvivingIdsAn
     ASSERT_TRUE(m_undo.Undo());EXPECT_FLOAT_EQ(component->Snapshot()->placements[0].scale.y,1);
 }
 
+/// @brief Partial replacement keeps other IDs and restores both assets and owners.
 TEST_F(TerrainPaintAssetTest, PartialReplacementKeepsOtherIdsAndRestoresBothAssetsAndOwners)
 {
     const auto source=CreateAsset();auto& ground=MakeTerrain();
@@ -550,6 +569,7 @@ TEST_F(TerrainPaintAssetTest, PartialReplacementKeepsOtherIdsAndRestoresBothAsse
     ASSERT_TRUE(m_undo.Redo());EXPECT_NE(AttachedScene()->FindByGuid(replacementOwner),nullptr);
 }
 
+/// @brief Individual transform moves matching legacy leaves and trunk together and rejects stale revision.
 TEST_F(TerrainPaintAssetTest, IndividualTransformMovesMatchingLegacyLeavesAndTrunkTogetherAndRejectsStaleRevision)
 {
     const auto source=CreateAsset();auto& ground=MakeTerrain();const auto complete=MakeAsset();asset::InstanceSetAsset trunk,leaves;
@@ -575,6 +595,7 @@ TEST_F(TerrainPaintAssetTest, IndividualTransformMovesMatchingLegacyLeavesAndTru
     ASSERT_TRUE(m_undo.Undo());EXPECT_EQ(component->Snapshot()->placements.size(),1u);
 }
 
+/// @brief Whole terrain thinning and replacement keep split trees together across different leaf batches.
 TEST_F(TerrainPaintAssetTest, WholeTerrainThinningAndReplacementKeepSplitTreesTogetherAcrossDifferentLeafBatches)
 {
     const auto source=CreateAsset();auto& ground=MakeTerrain();const auto complete=MakeAsset();asset::InstanceSetAsset trunk,leaves;
@@ -594,6 +615,7 @@ TEST_F(TerrainPaintAssetTest, WholeTerrainThinningAndReplacementKeepSplitTreesTo
     EXPECT_EQ(AttachedScene()->FindByGuid(trunkOwner)->GetComponent<scene::InstancedMeshComponent>()->Snapshot()->placements.size(),10u);
 }
 
+/// @brief Water margin diagnostics and material reference masks use the same preview as commit.
 TEST_F(TerrainPaintAssetTest, WaterMarginDiagnosticsAndMaterialReferenceMasksUseTheSamePreviewAsCommit)
 {
     auto source=MakeAsset();source.placement.waterClearance=2;
@@ -617,6 +639,7 @@ TEST_F(TerrainPaintAssetTest, WaterMarginDiagnosticsAndMaterialReferenceMasksUse
     for(size_t i=0;i<expected.size();++i)EXPECT_VEC3_NEAR(placed->placements[i].position,expected[i].placement.position,0);
 }
 
+/// @brief Path clearance and material reference masks survive layer reordering.
 TEST_F(TerrainPaintAssetTest, PathClearanceAndMaterialReferenceMasksSurviveLayerReordering)
 {
     auto source=MakeAsset();source.placement.spacing=1;source.placement.pathClearance=2;
@@ -636,6 +659,7 @@ TEST_F(TerrainPaintAssetTest, PathClearanceAndMaterialReferenceMasksSurviveLayer
     ASSERT_EQ(before.size(),after.size());for(size_t i=0;i<before.size();++i)EXPECT_VEC3_NEAR(before[i].position,after[i].position,0);
 }
 
+/// @brief Regrounded rocks follow the edited normal and asset embedding.
 TEST_F(TerrainPaintAssetTest, RegroundedRocksFollowTheEditedNormalAndAssetEmbedding)
 {
     auto source=MakeAsset();source.placement.alignToNormal=true;source.placement.embedDepth=0.2f;
@@ -651,6 +675,7 @@ TEST_F(TerrainPaintAssetTest, RegroundedRocksFollowTheEditedNormalAndAssetEmbedd
     ASSERT_TRUE(m_undo.Undo());EXPECT_VEC3_NEAR(AttachedScene()->FindByGuid(owner)->GetComponent<scene::InstancedMeshComponent>()->Snapshot()->placements.front().position,items.front().position,0);
 }
 
+/// @brief Paint and mix version two round trip new rules and version one remains readable.
 TEST_F(TerrainPaintAssetTest, PaintAndMixVersionTwoRoundTripNewRulesAndVersionOneRemainsReadable)
 {
     auto paint=MakeAsset();paint.placement.waterClearance=3;paint.placement.pathClearance=1.5f;
@@ -703,6 +728,7 @@ protected:
     std::string m_text;
 };
 
+/// @brief Lists dedicated assets and chooses the clicked checkbox.
 TEST_F(TerrainPaintLibraryTest, ListsDedicatedAssetsAndChoosesTheClickedCheckbox)
 {
     const auto source = CreateAsset();
@@ -721,6 +747,7 @@ TEST_F(TerrainPaintLibraryTest, ListsDedicatedAssetsAndChoosesTheClickedCheckbox
     Frame(); EXPECT_NE(m_text.find("Edit Paint Asset"), std::string::npos) << m_text;
 }
 
+/// @brief Checks creation form explains the required model without creating an invalid asset.
 TEST_F(TerrainPaintLibraryTest, CreationFormExplainsTheRequiredModelWithoutCreatingAnInvalidAsset)
 {
     Frame(); Frame("+ Create Paint Asset"); Frame();
@@ -732,6 +759,7 @@ TEST_F(TerrainPaintLibraryTest, CreationFormExplainsTheRequiredModelWithoutCreat
     EXPECT_FALSE(util::FileSystem::Exists(File("Assets/Terrain/Paint/New Paint.terrainpaint")));
 }
 
+/// @brief GUID only palette uses the assets name and placement rules.
 TEST_F(TerrainPaintLibraryTest, GuidOnlyPaletteUsesTheAssetsNameAndPlacementRules)
 {
     auto value = MakeAsset();
@@ -759,6 +787,7 @@ TEST_F(TerrainPaintLibraryTest, GuidOnlyPaletteUsesTheAssetsNameAndPlacementRule
     EXPECT_NE(m_text.find("Area Filters"), std::string::npos) << m_text;
 }
 
+/// @brief Create action opens the terrain tool before any terrain exists.
 TEST_F(TerrainPaintLibraryTest, CreateActionOpensTheTerrainToolBeforeAnyTerrainExists)
 {
     editor::TerrainTool tool; Context().terrainTool = &tool;

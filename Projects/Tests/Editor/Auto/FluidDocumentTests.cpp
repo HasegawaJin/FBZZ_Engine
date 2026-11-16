@@ -118,6 +118,7 @@ protected:
     editor::UndoStack m_undo;
 };
 
+/// @brief Open edit save round trip.
 TEST_F(FluidDocumentTest, OpenEditSaveRoundTrip)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -141,6 +142,7 @@ TEST_F(FluidDocumentTest, OpenEditSaveRoundTrip)
     EXPECT_FLOAT_EQ(LoadRecipe(path).gas.buoyancy, 3.5f);
 }
 
+/// @brief Open fails for missing file.
 TEST_F(FluidDocumentTest, OpenFailsForMissingFile)
 {
     FluidDocument doc;
@@ -150,6 +152,7 @@ TEST_F(FluidDocumentTest, OpenFailsForMissingFile)
     EXPECT_FALSE(error.empty());
 }
 
+/// @brief Edit pushes one undo and undo restores.
 TEST_F(FluidDocumentTest, EditPushesOneUndoAndUndoRestores)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -174,6 +177,7 @@ TEST_F(FluidDocumentTest, EditPushesOneUndoAndUndoRestores)
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 3.5f);
 }
 
+/// @brief Edit detects tiny float changes.
 /// 細かい値の差も «変わった» と見る (to_string の 6 桁で比べると丸まって積まれない)。
 TEST_F(FluidDocumentTest, EditDetectsTinyFloatChanges)
 {
@@ -186,6 +190,7 @@ TEST_F(FluidDocumentTest, EditDetectsTinyFloatChanges)
     EXPECT_EQ(m_undo.GetHistorySize(), 1u);
 }
 
+/// @brief Commit groups changes while an item is active.
 TEST_F(FluidDocumentTest, CommitGroupsChangesWhileAnItemIsActive)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -227,6 +232,7 @@ TEST_F(FluidDocumentTest, CommitGroupsChangesWhileAnItemIsActive)
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 1.5f);
 }
 
+/// @brief Commit skips a group that ends where it started.
 /// ドラッグして元の値へ戻して離しただけなら積まない。
 TEST_F(FluidDocumentTest, CommitSkipsAGroupThatEndsWhereItStarted)
 {
@@ -247,6 +253,7 @@ TEST_F(FluidDocumentTest, CommitSkipsAGroupThatEndsWhereItStarted)
     EXPECT_EQ(m_undo.GetHistorySize(), 0u);
 }
 
+/// @brief Interactive edit pushes once at end.
 TEST_F(FluidDocumentTest, InteractiveEditPushesOnceAtEnd)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -273,6 +280,7 @@ TEST_F(FluidDocumentTest, InteractiveEditPushesOnceAtEnd)
     EXPECT_FLOAT_EQ(doc.Recipe().sources[0].center.x, original.x);
 }
 
+/// @brief Undo after close writes the file.
 /// 閉じた後の Undo はファイルへ書く (どこにも反映されない Undo が一番まずい)。
 TEST_F(FluidDocumentTest, UndoAfterCloseWritesTheFile)
 {
@@ -297,6 +305,7 @@ TEST_F(FluidDocumentTest, UndoAfterCloseWritesTheFile)
     EXPECT_FLOAT_EQ(LoadRecipe(path).gas.buoyancy, 3.5f);
 }
 
+/// @brief Undo finds a reopened document.
 /// 開き直した文書へは Undo がメモリで戻る (ファイルを書き換えて手元と食い違わせない)。
 TEST_F(FluidDocumentTest, UndoFindsAReopenedDocument)
 {
@@ -316,6 +325,7 @@ TEST_F(FluidDocumentTest, UndoFindsAReopenedDocument)
     EXPECT_FLOAT_EQ(LoadRecipe(path).gas.buoyancy, 3.5f);
 }
 
+/// @brief Undo keeps the selection in range.
 TEST_F(FluidDocumentTest, UndoKeepsTheSelectionInRange)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -331,6 +341,7 @@ TEST_F(FluidDocumentTest, UndoKeepsTheSelectionInRange)
     EXPECT_EQ(doc.selection.index, 2);
 }
 
+/// @brief External change reloads when clean.
 TEST_F(FluidDocumentTest, ExternalChangeReloadsWhenClean)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -350,6 +361,7 @@ TEST_F(FluidDocumentTest, ExternalChangeReloadsWhenClean)
     EXPECT_GT(doc.Revision(), revision);
 }
 
+/// @brief Checks external change conflicts when dirty.
 TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -387,6 +399,7 @@ TEST_F(FluidDocumentTest, ExternalChangeConflictsWhenDirty)
     EXPECT_FLOAT_EQ(doc.Recipe().gas.buoyancy, 5.0f);
 }
 
+/// @brief Own save is not an external change.
 /// 自分の Save は外からの変更ではない (読み直しで Revision が進むとプレビューが無駄に解き直される)。
 TEST_F(FluidDocumentTest, OwnSaveIsNotAnExternalChange)
 {
@@ -403,6 +416,7 @@ TEST_F(FluidDocumentTest, OwnSaveIsNotAnExternalChange)
     EXPECT_EQ(doc.Revision(), revision);
 }
 
+/// @brief Preview recipe honours hide and solo.
 TEST_F(FluidDocumentTest, PreviewRecipeHonoursHideAndSolo)
 {
     const std::string path = WriteRecipe("Smoke.fluid", ThreeSourcesTwoForces());
@@ -438,6 +452,7 @@ TEST_F(FluidDocumentTest, PreviewRecipeHonoursHideAndSolo)
     EXPECT_TRUE(doc.PreviewRecipe().sources[1].enabled);
 }
 
+/// @brief Stale hidden and solo entries are harmless.
 /// 部品を消した後に残った隠し・ソロの記録で落ちない (消えた部品を指すソロは無視する)。
 TEST_F(FluidDocumentTest, StaleHiddenAndSoloEntriesAreHarmless)
 {

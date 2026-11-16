@@ -35,6 +35,7 @@ class ParticleCurveTest : public testkit::EngineFixture {};
 
 /// @name 端点と範囲外
 
+/// @brief Returns the endpoints at both ends.
 TEST_F(ParticleCurveTest, ReturnsTheEndpointsAtBothEnds)
 {
     const scene::ParticleCurve curve = Ramp();
@@ -43,6 +44,7 @@ TEST_F(ParticleCurveTest, ReturnsTheEndpointsAtBothEnds)
     EXPECT_NEAR(curve.Evaluate(1.0f), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Clamps outside the key range.
 TEST_F(ParticleCurveTest, ClampsOutsideTheKeyRange)
 {
     /// @note 寿命 0..1 の外へ出る呼び方は普通に起きる (寿命が伸びる演出)。外挿しない。
@@ -52,6 +54,7 @@ TEST_F(ParticleCurveTest, ClampsOutsideTheKeyRange)
     EXPECT_NEAR(curve.Evaluate(2.0f), 1.0f, testkit::kTolerance);
 }
 
+/// @brief A single key is constant.
 TEST_F(ParticleCurveTest, ASingleKeyIsConstant)
 {
     scene::ParticleCurve curve;
@@ -62,6 +65,7 @@ TEST_F(ParticleCurveTest, ASingleKeyIsConstant)
     EXPECT_NEAR(curve.Evaluate(1.0f), 0.75f, testkit::kTolerance);
 }
 
+/// @brief Treats a zero key count as one.
 TEST_F(ParticleCurveTest, TreatsAZeroKeyCountAsOne)
 {
     /// @note 壊れたアセットや初期化途中で 0 が来る。0 除算や範囲外参照へ落ちないこと。
@@ -71,6 +75,7 @@ TEST_F(ParticleCurveTest, TreatsAZeroKeyCountAsOne)
     EXPECT_NEAR(curve.Evaluate(0.5f), curve.keys[0].value, testkit::kTolerance);
 }
 
+/// @brief Ignores a key count beyond the capacity.
 TEST_F(ParticleCurveTest, IgnoresAKeyCountBeyondTheCapacity)
 {
     scene::ParticleCurve curve = Ramp();
@@ -82,6 +87,7 @@ TEST_F(ParticleCurveTest, IgnoresAKeyCountBeyondTheCapacity)
 
 /// @name 補間モード
 
+/// @brief Linear interpolates evenly.
 TEST_F(ParticleCurveTest, LinearInterpolatesEvenly)
 {
     const scene::ParticleCurve curve = Ramp();
@@ -90,6 +96,7 @@ TEST_F(ParticleCurveTest, LinearInterpolatesEvenly)
     EXPECT_NEAR(curve.Evaluate(0.5f), 0.5f, testkit::kTolerance);
 }
 
+/// @brief Step holds the previous value.
 TEST_F(ParticleCurveTest, StepHoldsThePreviousValue)
 {
     /// @note フリップブックの段階切替や点滅。区間の途中で中間値を作ってはいけない。
@@ -99,6 +106,7 @@ TEST_F(ParticleCurveTest, StepHoldsThePreviousValue)
     EXPECT_NEAR(curve.Evaluate(0.99f), 0.0f, testkit::kTolerance);
 }
 
+/// @brief Checks step switches exactly on the next key.
 TEST_F(ParticleCurveTest, StepSwitchesExactlyOnTheNextKey)
 {
     /// @note 区間は [前のキー, 次のキー)。次のキーへ到達した時点で切り替わる。
@@ -111,6 +119,7 @@ TEST_F(ParticleCurveTest, StepSwitchesExactlyOnTheNextKey)
     EXPECT_NEAR(curve.Evaluate(1.0f), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Step shows every key of a flipbook.
 TEST_F(ParticleCurveTest, StepShowsEveryKeyOfAFlipbook)
 {
     /// @note 4 コマのフリップブック。どのコマも «自分のキー時刻ちょうど» で出ること。
@@ -130,6 +139,7 @@ TEST_F(ParticleCurveTest, StepShowsEveryKeyOfAFlipbook)
     EXPECT_NEAR(curve.Evaluate(0.4f), 1.0f, testkit::kTolerance);
 }
 
+/// @brief Smooth eases in and out but keeps the midpoint.
 TEST_F(ParticleCurveTest, SmoothEasesInAndOutButKeepsTheMidpoint)
 {
     const scene::ParticleCurve curve = Ramp(scene::ParticleCurveInterpolation::Smooth);
@@ -141,6 +151,7 @@ TEST_F(ParticleCurveTest, SmoothEasesInAndOutButKeepsTheMidpoint)
     EXPECT_GT(curve.Evaluate(0.75f), 0.75f);
 }
 
+/// @brief Smooth stays inside the key values.
 TEST_F(ParticleCurveTest, SmoothStaysInsideTheKeyValues)
 {
     /// @note smoothstep は行き過ぎない。1 を超えると加算パーティクルが白飛びする。
@@ -154,6 +165,7 @@ TEST_F(ParticleCurveTest, SmoothStaysInsideTheKeyValues)
     }
 }
 
+/// @brief Interpolation helper matches each mode.
 TEST_F(ParticleCurveTest, InterpolationHelperMatchesEachMode)
 {
     /// @note GPU 側 (ParticleGpuSim.cs.hlsl の ApplyCurveInterpolation) と同じ式であることを、
@@ -176,6 +188,7 @@ TEST_F(ParticleCurveTest, InterpolationHelperMatchesEachMode)
 
 /// @name 複数キー
 
+/// @brief Picks the right segment among many keys.
 TEST_F(ParticleCurveTest, PicksTheRightSegmentAmongManyKeys)
 {
     /// @note 「立ち上がり → 保持 → 減衰」。区間の選び方が 1 つずれると保持が消える。
@@ -191,6 +204,7 @@ TEST_F(ParticleCurveTest, PicksTheRightSegmentAmongManyKeys)
     EXPECT_NEAR(curve.Evaluate(0.9f), 0.5f, testkit::kTolerance);
 }
 
+/// @brief Survives two keys at the same time.
 TEST_F(ParticleCurveTest, SurvivesTwoKeysAtTheSameTime)
 {
     /// @note Editor でキーを重ねると起きる。0 除算で NaN を出さないこと。
@@ -208,6 +222,7 @@ TEST_F(ParticleCurveTest, SurvivesTwoKeysAtTheSameTime)
 
 /// @name グラデーション
 
+/// @brief Gradient interpolates every channel.
 TEST_F(ParticleCurveTest, GradientInterpolatesEveryChannel)
 {
     scene::ParticleGradient gradient;
@@ -220,6 +235,7 @@ TEST_F(ParticleCurveTest, GradientInterpolatesEveryChannel)
     EXPECT_VEC4_NEAR(mid, math::Vector4(0.5f, 0.5f, 0.0f, 0.5f), testkit::kLooseTolerance);
 }
 
+/// @brief Gradient clamps outside the key range.
 TEST_F(ParticleCurveTest, GradientClampsOutsideTheKeyRange)
 {
     scene::ParticleGradient gradient;
@@ -233,6 +249,7 @@ TEST_F(ParticleCurveTest, GradientClampsOutsideTheKeyRange)
                      testkit::kTolerance);
 }
 
+/// @brief Gradient step switches exactly on the next key.
 TEST_F(ParticleCurveTest, GradientStepSwitchesExactlyOnTheNextKey)
 {
     /// @note 色も同じ規則。「炎から煙へ切り替わる瞬間」を作るのが Step の用途なので、
@@ -249,6 +266,7 @@ TEST_F(ParticleCurveTest, GradientStepSwitchesExactlyOnTheNextKey)
                      testkit::kLooseTolerance);
 }
 
+/// @brief Linearised gradient is darker than the authored colour.
 TEST_F(ParticleCurveTest, LinearisedGradientIsDarkerThanTheAuthoredColour)
 {
     /// @note キーは «カラーピッカーに見える値» (sRGB)。シェーダーへ渡る直前に一度だけ
@@ -267,6 +285,7 @@ TEST_F(ParticleCurveTest, LinearisedGradientIsDarkerThanTheAuthoredColour)
 }
 
 
+/// @brief Runtime gradient reflects interpolation only edits.
 TEST_F(ParticleCurveTest, RuntimeGradientReflectsInterpolationOnlyEdits)
 {
     scene::ParticleEmitter emitter;
@@ -280,6 +299,7 @@ TEST_F(ParticleCurveTest, RuntimeGradientReflectsInterpolationOnlyEdits)
     EXPECT_NEAR(emitter.runtime.runtimeGradient.Evaluate(0.5f).w, 1.0f, testkit::kTolerance);
 }
 
+/// @brief Runtime gradient reflects color space only edits.
 TEST_F(ParticleCurveTest, RuntimeGradientReflectsColorSpaceOnlyEdits)
 {
     scene::ParticleEmitter emitter;
@@ -293,6 +313,7 @@ TEST_F(ParticleCurveTest, RuntimeGradientReflectsColorSpaceOnlyEdits)
     EXPECT_NEAR(emitter.runtime.runtimeGradient.EvaluateLinear(0.5f).x, 0.5f, testkit::kTolerance);
 }
 
+/// @brief Blackbody reflects temperature interpolation only edits.
 TEST_F(ParticleCurveTest, BlackbodyReflectsTemperatureInterpolationOnlyEdits)
 {
     scene::ParticleEmitter emitter;
@@ -311,6 +332,7 @@ TEST_F(ParticleCurveTest, BlackbodyReflectsTemperatureInterpolationOnlyEdits)
 }
 
 
+/// @brief Blackbody constant temperature keeps brightness across color spaces.
 TEST_F(ParticleCurveTest, BlackbodyConstantTemperatureKeepsBrightnessAcrossColorSpaces)
 {
     scene::ParticleEmitter emitter;

@@ -16,6 +16,7 @@
 
 namespace fbzz::tests {
 
+/// @brief Captures only the first value.
 TEST(VFXCapturedTest, CapturesOnlyTheFirstValue)
 {
     /// @note 2 回目以降の Capture は無視される。ここが素通しだと、書き換えた後の値を
@@ -30,6 +31,7 @@ TEST(VFXCapturedTest, CapturesOnlyTheFirstValue)
     EXPECT_NEAR(captured.value, 10.0f, testkit::kTolerance);
 }
 
+/// @brief Restores the captured value.
 TEST(VFXCapturedTest, RestoresTheCapturedValue)
 {
     scene::VFXCaptured<float> captured;
@@ -42,6 +44,7 @@ TEST(VFXCapturedTest, RestoresTheCapturedValue)
     EXPECT_NEAR(live, 10.0f, testkit::kTolerance);
 }
 
+/// @brief Does nothing when nothing was captured.
 TEST(VFXCapturedTest, DoesNothingWhenNothingWasCaptured)
 {
     /// @note 一度も適用されていないエンベロープが、初期値 (0) を «元の値» として
@@ -53,6 +56,7 @@ TEST(VFXCapturedTest, DoesNothingWhenNothingWasCaptured)
     EXPECT_NEAR(live, 4.5f, testkit::kTolerance);
 }
 
+/// @brief Restoring twice keeps the same value.
 TEST(VFXCapturedTest, RestoringTwiceKeepsTheSameValue)
 {
     /// @note 復元は何度呼んでも同じ結果。SetElementActive は窓の出入りで繰り返し呼ぶ。
@@ -66,6 +70,7 @@ TEST(VFXCapturedTest, RestoringTwiceKeepsTheSameValue)
     EXPECT_VEC3_NEAR(live, math::Vector3(2.0f, 2.0f, 2.0f), testkit::kTolerance);
 }
 
+/// @brief Carries every field of a composite capture.
 TEST(VFXCapturedTest, CarriesEveryFieldOfACompositeCapture)
 {
     /// @note 複数フィールドを 1 つの箱で持つ形 (Light は intensity と color)。

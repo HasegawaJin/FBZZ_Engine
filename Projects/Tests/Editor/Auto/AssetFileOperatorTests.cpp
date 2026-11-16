@@ -33,6 +33,7 @@ protected:
     }
     editor::OperatorRegistry m_registry; editor::UndoStack m_undo; std::vector<std::string> m_dirtyPaths;
 };
+/// @brief Move keeps GUID and its import settings.
 TEST_F(AssetFileOperatorTest, MoveKeepsGuidAndItsImportSettings)
 {
     const std::string original = File("Assets/Color.png").generic_string();
@@ -46,6 +47,7 @@ TEST_F(AssetFileOperatorTest, MoveKeepsGuidAndItsImportSettings)
     asset::TextureAsset moved; ASSERT_TRUE(asset::TexDescSerializer{}.Load(File("Assets/Moved.png.meta").generic_string(), moved));
     EXPECT_EQ(moved.settings.maxSize, 512u);
 }
+/// @brief Duplicate assigns another GUID and preserves import settings.
 TEST_F(AssetFileOperatorTest, DuplicateAssignsAnotherGuidAndPreservesImportSettings)
 {
     const std::string original = File("Assets/Color.png").generic_string();
@@ -58,6 +60,7 @@ TEST_F(AssetFileOperatorTest, DuplicateAssignsAnotherGuidAndPreservesImportSetti
     asset::TextureAsset loaded; ASSERT_TRUE(asset::TexDescSerializer{}.Load(copy + ".meta", loaded));
     EXPECT_EQ(loaded.settings.maxSize, 512u);
 }
+/// @brief Existing destination sidecar prevents partial move.
 TEST_F(AssetFileOperatorTest, ExistingDestinationSidecarPreventsPartialMove)
 {
     std::ofstream(File("Assets/Destination.png.meta")) << "reserved";
@@ -65,6 +68,7 @@ TEST_F(AssetFileOperatorTest, ExistingDestinationSidecarPreventsPartialMove)
     EXPECT_TRUE(std::filesystem::exists(File("Assets/Color.png")));
     EXPECT_FALSE(std::filesystem::exists(File("Assets/Destination.png")));
 }
+/// @brief Trash keeps body and GUID together and removes the live index.
 TEST_F(AssetFileOperatorTest, TrashKeepsBodyAndGuidTogetherAndRemovesTheLiveIndex)
 {
     const std::string guid = asset::AssetDatabase::GuidFromPath(File("Assets/Color.png").generic_string());
@@ -75,6 +79,7 @@ TEST_F(AssetFileOperatorTest, TrashKeepsBodyAndGuidTogetherAndRemovesTheLiveInde
     EXPECT_TRUE(asset::AssetDatabase::PathFromGuid(guid).empty());
     EXPECT_FALSE(std::filesystem::exists(File("Assets/Color.png")));
 }
+/// @brief Dirty assets and project root cannot be moved or trashed.
 TEST_F(AssetFileOperatorTest, DirtyAssetsAndProjectRootCannotBeMovedOrTrashed)
 {
     const std::string original = File("Assets/Color.png").generic_string();
@@ -84,6 +89,7 @@ TEST_F(AssetFileOperatorTest, DirtyAssetsAndProjectRootCannotBeMovedOrTrashed)
     EXPECT_FALSE(Invoke("asset.move", "Assets/Color.png", "Assets/../Outside.png").ok);
     EXPECT_TRUE(std::filesystem::exists(File("Assets/Color.png")));
 }
+/// @brief Creation does not overwrite existing assets or create wrong formats.
 TEST_F(AssetFileOperatorTest, CreationDoesNotOverwriteExistingAssetsOrCreateWrongFormats)
 {
     editor::OpArgs args; args.Set("path", std::string("Assets/Test.sequence")); args.Set("kind", std::string("sequence"));
@@ -92,6 +98,7 @@ TEST_F(AssetFileOperatorTest, CreationDoesNotOverwriteExistingAssetsOrCreateWron
     args.Set("path", std::string("Assets/Wrong.png")); EXPECT_FALSE(m_registry.Invoke("asset.create", context, args).ok);
     EXPECT_FALSE(std::filesystem::exists(File("Assets/Wrong.png")));
 }
+/// @brief HLSL creation rejects traversal and keeps existing source.
 TEST_F(AssetFileOperatorTest, HlslCreationRejectsTraversalAndKeepsExistingSource)
 {
     editor::OpContext context{Context(), m_undo}; editor::OpArgs args; args.Set("name", std::string("SmokeCompute")); args.Set("kind", std::string("compute"));

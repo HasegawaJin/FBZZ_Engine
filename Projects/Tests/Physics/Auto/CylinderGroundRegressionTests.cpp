@@ -55,6 +55,7 @@ protected:
     physics::ColliderInstance m_falling;
 };
 
+/// @brief Bodyless floor contact pushes cylinder up in both operand orders.
 TEST_F(CylinderGroundRegressionTest, BodylessFloorContactPushesCylinderUpInBothOperandOrders)
 {
     Prepare(0.24f);
@@ -77,6 +78,7 @@ TEST_F(CylinderGroundRegressionTest, BodylessFloorContactPushesCylinderUpInBothO
     }
 }
 
+/// @brief Falling cylinder stays above bodyless large floor for 181 fixed steps.
 TEST_F(CylinderGroundRegressionTest, FallingCylinderStaysAboveBodylessLargeFloorFor181FixedSteps)
 {
     Prepare(2.0f);

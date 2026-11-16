@@ -354,6 +354,7 @@ protected:
     bool m_assetManagerInitialized = false;
 };
 
+/// @brief Point query and RGB Beer share the packed medium.
 TEST_F(WaterMediumShaderTest, PointQueryAndRGBBeerShareThePackedMedium)
 {
     WaterMediumProbeBody body;
@@ -373,6 +374,7 @@ TEST_F(WaterMediumShaderTest, PointQueryAndRGBBeerShareThePackedMedium)
     EXPECT_NEAR(beer.w, 1.0f, 0.001f);
 }
 
+/// @brief Checks production scene extraction feeds the water atlas and medium probe.
 TEST_F(WaterMediumShaderTest, ProductionSceneExtractionFeedsTheWaterAtlasAndMediumProbe)
 {
     ASSERT_TRUE(m_temp.IsValid());
@@ -549,6 +551,7 @@ TEST_F(WaterMediumShaderTest, ProductionSceneExtractionFeedsTheWaterAtlasAndMedi
     m_bodyCount = 0;
 }
 
+/// @brief Checks production PBR receiver attenuates incoming light but not emission.
 TEST_F(WaterMediumShaderTest, ProductionPbrReceiverAttenuatesIncomingLightButNotEmission)
 {
     WaterMediumProbeBody body;
@@ -579,6 +582,7 @@ TEST_F(WaterMediumShaderTest, ProductionPbrReceiverAttenuatesIncomingLightButNot
     EXPECT_NEAR(dryWithWaterData.z, dryWithoutWaterData.z, 0.001f);
 }
 
+/// @brief Terrain receiver boundary keeps volume depth dry boxes and uniform spline exact.
 TEST_F(WaterMediumShaderTest, TerrainReceiverBoundaryKeepsVolumeDepthDryBoxesAndUniformSplineExact)
 {
     WaterMediumProbeBody body;
@@ -618,6 +622,7 @@ TEST_F(WaterMediumShaderTest, TerrainReceiverBoundaryKeepsVolumeDepthDryBoxesAnd
     EXPECT_VEC4_NEAR(Query({0, -5, 0}, 4), dry, 0.001f);
 }
 
+/// @brief Highest priority overlap owns the point sample.
 TEST_F(WaterMediumShaderTest, HighestPriorityOverlapOwnsThePointSample)
 {
     WaterMediumProbeBody low;
@@ -639,6 +644,7 @@ TEST_F(WaterMediumShaderTest, HighestPriorityOverlapOwnsThePointSample)
     EXPECT_NEAR(selectedAttributes.w, 1.0f, 0.001f);
 }
 
+/// @brief Source Beer stops at the surface and physical bottom.
 TEST_F(WaterMediumShaderTest, SourceBeerStopsAtTheSurfaceAndPhysicalBottom)
 {
     WaterMediumProbeBody body;
@@ -656,6 +662,7 @@ TEST_F(WaterMediumShaderTest, SourceBeerStopsAtTheSurfaceAndPhysicalBottom)
     EXPECT_NEAR(downward.z, std::exp(-0.35f * 3.0f), 0.015f);
 }
 
+/// @brief Equal priority uses stable owner key ordering.
 TEST_F(WaterMediumShaderTest, EqualPriorityUsesStableOwnerKeyOrdering)
 {
     WaterMediumProbeBody later;
@@ -674,6 +681,7 @@ TEST_F(WaterMediumShaderTest, EqualPriorityUsesStableOwnerKeyOrdering)
     EXPECT_NEAR(sample.w, 1.0f, 0.001f);
 }
 
+/// @brief Vertical column retains lower surface peers and exact dry intervals.
 TEST_F(WaterMediumShaderTest, VerticalColumnRetainsLowerSurfacePeersAndExactDryIntervals)
 {
     WaterMediumProbeBody ocean;
@@ -698,6 +706,7 @@ TEST_F(WaterMediumShaderTest, VerticalColumnRetainsLowerSurfacePeersAndExactDryI
     }
 }
 
+/// @brief Vertical column retains a higher priority owner above the receiver.
 TEST_F(WaterMediumShaderTest, VerticalColumnRetainsAHigherPriorityOwnerAboveTheReceiver)
 {
     WaterMediumProbeBody ocean;
@@ -715,6 +724,7 @@ TEST_F(WaterMediumShaderTest, VerticalColumnRetainsAHigherPriorityOwnerAboveTheR
     EXPECT_NEAR(beer.z, std::exp(-0.35f - 0.9f * 2), 0.003f);
 }
 
+/// @brief Vertical column retains lower priority water beyond the initial surface.
 TEST_F(WaterMediumShaderTest, VerticalColumnRetainsLowerPriorityWaterBeyondTheInitialSurface)
 {
     WaterMediumProbeBody ocean;
@@ -732,6 +742,7 @@ TEST_F(WaterMediumShaderTest, VerticalColumnRetainsLowerPriorityWaterBeyondTheIn
     EXPECT_NEAR(beer.z, std::exp(-0.35f * 2 - 0.9f), 0.003f);
 }
 
+/// @brief Three dimensional exclusion dries its box but preserves water below it.
 TEST_F(WaterMediumShaderTest, ThreeDimensionalExclusionDriesItsBoxButPreservesWaterBelowIt)
 {
     WaterMediumProbeBody body;
@@ -750,6 +761,7 @@ TEST_F(WaterMediumShaderTest, ThreeDimensionalExclusionDriesItsBoxButPreservesWa
     EXPECT_NEAR(Query({0.0f, 0.2f, 0.0f}, 0.0f).w, 0.0f, 0.001f);
 }
 
+/// @brief Updated wave atlas values drive surface depth and compression.
 TEST_F(WaterMediumShaderTest, UpdatedWaveAtlasValuesDriveSurfaceDepthAndCompression)
 {
     WaterMediumProbeBody body;
@@ -778,6 +790,7 @@ TEST_F(WaterMediumShaderTest, UpdatedWaveAtlasValuesDriveSurfaceDepthAndCompress
     EXPECT_NEAR(Query({0.0f, -4.1f, 0.0f}, 0.0f).w, 0.0f, 0.001f);
 }
 
+/// @brief Dry exclusion intervals do not accumulate water source Beer.
 TEST_F(WaterMediumShaderTest, DryExclusionIntervalsDoNotAccumulateWaterSourceBeer)
 {
     WaterMediumProbeBody body;
@@ -796,6 +809,7 @@ TEST_F(WaterMediumShaderTest, DryExclusionIntervalsDoNotAccumulateWaterSourceBee
     EXPECT_NEAR(beer.w, 1.0f, 0.001f);
 }
 
+/// @brief Certified deep source keeps exact dry intervals.
 TEST_F(WaterMediumShaderTest, CertifiedDeepSourceKeepsExactDryIntervals)
 {
     WaterMediumProbeBody body;
@@ -808,6 +822,7 @@ TEST_F(WaterMediumShaderTest, CertifiedDeepSourceKeepsExactDryIntervals)
     EXPECT_NEAR(beer.z, std::exp(-0.35f * 8), 0.02f);
 }
 
+/// @brief Certified source still clips the surface and bottom.
 TEST_F(WaterMediumShaderTest, CertifiedSourceStillClipsTheSurfaceAndBottom)
 {
     WaterMediumProbeBody body; body.certifiedWaveDisplacement = 0.5f;
@@ -816,6 +831,7 @@ TEST_F(WaterMediumShaderTest, CertifiedSourceStillClipsTheSurfaceAndBottom)
     EXPECT_NEAR(Query({0,-2,0}, 1, {0,-1,0}, 8).x, std::exp(-0.3f * 3), 0.015f);
 }
 
+/// @brief Certified source rejects variable depth proofs.
 TEST_F(WaterMediumShaderTest, CertifiedSourceRejectsVariableDepthProofs)
 {
     WaterMediumProbeBody body; body.certifiedWaveDisplacement = 0.5f; body.variableDepth = true;
@@ -823,6 +839,7 @@ TEST_F(WaterMediumShaderTest, CertifiedSourceRejectsVariableDepthProofs)
     EXPECT_NEAR(Query({0,-1,0}, 1, {0,-1,0}, 8).x, std::exp(-0.3f), 0.02f);
 }
 
+/// @brief Unsupported table version fails closed.
 TEST_F(WaterMediumShaderTest, UnsupportedTableVersionFailsClosed)
 {
     WaterMediumProbeBody body;
@@ -836,6 +853,7 @@ TEST_F(WaterMediumShaderTest, UnsupportedTableVersionFailsClosed)
     EXPECT_NEAR(sample.w, 0.0f, 0.001f);
 }
 
+/// @brief Plume scattering has finite support and adds RGB source extinction only inside water.
 TEST_F(WaterMediumShaderTest, PlumeScatteringHasFiniteSupportAndAddsRgbSourceExtinctionOnlyInsideWater)
 {
     WaterMediumProbeBody body;
@@ -864,6 +882,7 @@ TEST_F(WaterMediumShaderTest, PlumeScatteringHasFiniteSupportAndAddsRgbSourceExt
     EXPECT_LT(withPlume.z, withoutPlume.z);
 }
 
+/// @brief Dry exclusion suppresses plume at the receiver and along its source path.
 TEST_F(WaterMediumShaderTest, DryExclusionSuppressesPlumeAtTheReceiverAndAlongItsSourcePath)
 {
     WaterMediumProbeBody body;
@@ -884,6 +903,7 @@ TEST_F(WaterMediumShaderTest, DryExclusionSuppressesPlumeAtTheReceiverAndAlongIt
     EXPECT_NEAR(withPlume.z, withoutPlume.z, 0.002f);
 }
 
+/// @brief Partial dry box keeps wet subintervals of rectangle plume cells.
 TEST_F(WaterMediumShaderTest, PartialDryBoxKeepsWetSubintervalsOfRectanglePlumeCells)
 {
     WaterMediumProbeBody body;
@@ -907,6 +927,7 @@ TEST_F(WaterMediumShaderTest, PartialDryBoxKeepsWetSubintervalsOfRectanglePlumeC
     EXPECT_NEAR(source.w, 1.0f, 0.001f);
 }
 
+/// @brief Terrain depth rectangle uses sampled atlas depth for source Beer.
 TEST_F(WaterMediumShaderTest, TerrainDepthRectangleUsesSampledAtlasDepthForSourceBeer)
 {
     WaterMediumProbeBody body;
@@ -928,6 +949,7 @@ TEST_F(WaterMediumShaderTest, TerrainDepthRectangleUsesSampledAtlasDepthForSourc
     EXPECT_NEAR(variableDepth.w, 1.0f, 0.001f);
 }
 
+/// @brief Nonanalytic shallow source clips the wet interval before bounded sampling.
 TEST_F(WaterMediumShaderTest, NonanalyticShallowSourceClipsTheWetIntervalBeforeBoundedSampling)
 {
     WaterMediumProbeBody body;
@@ -940,6 +962,7 @@ TEST_F(WaterMediumShaderTest, NonanalyticShallowSourceClipsTheWetIntervalBeforeB
     EXPECT_NEAR(source.z, std::exp(-0.35f * 2), 0.015f);
 }
 
+/// @brief Multiple body shallow source keeps its receiving owner and dry intervals.
 TEST_F(WaterMediumShaderTest, MultipleBodyShallowSourceKeepsItsReceivingOwnerAndDryIntervals)
 {
     WaterMediumProbeBody body;
@@ -956,6 +979,7 @@ TEST_F(WaterMediumShaderTest, MultipleBodyShallowSourceKeepsItsReceivingOwnerAnd
     EXPECT_NEAR(source.z, std::exp(-0.35f), 0.015f);
 }
 
+/// @brief Vertical source keeps raised wave column and overlapping dry intervals.
 TEST_F(WaterMediumShaderTest, VerticalSourceKeepsRaisedWaveColumnAndOverlappingDryIntervals)
 {
     WaterMediumProbeBody body;

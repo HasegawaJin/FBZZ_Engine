@@ -201,6 +201,7 @@ protected:
     testkit::TempDir m_temp{"RenderPipelineAsset"};
 };
 
+/// @brief Geometry mode persists through project and asset resolution.
 TEST_F(RenderPipelineAssetTest, GeometryModePersistsThroughProjectAndAssetResolution)
 {
     ProjectSettings source;
@@ -219,6 +220,7 @@ TEST_F(RenderPipelineAssetTest, GeometryModePersistsThroughProjectAndAssetResolu
     EXPECT_EQ(source.render.geometryDrawMode, renderer::GeometryDrawMode::GPU_INSTANCE_INDIRECT);
 }
 
+/// @brief Captures persistent fields without overwriting transient or volume settings.
 TEST_F(RenderPipelineAssetTest, CapturesPersistentFieldsWithoutOverwritingTransientOrVolumeSettings)
 {
     auto source = Distinct();
@@ -256,6 +258,7 @@ TEST_F(RenderPipelineAssetTest, CapturesPersistentFieldsWithoutOverwritingTransi
     EXPECT_EQ(target.selectedObjects[0].generation, 7u);
 }
 
+/// @brief Native registry round trip preserves every owned setting.
 TEST_F(RenderPipelineAssetTest, NativeRegistryRoundTripPreservesEveryOwnedSetting)
 {
     const auto source = Distinct();
@@ -277,6 +280,7 @@ TEST_F(RenderPipelineAssetTest, NativeRegistryRoundTripPreservesEveryOwnedSettin
     EXPECT_EQ(Text(File()), firstSave);
 }
 
+/// @brief Copying editor diagnostics preserves runtime owned and volume settings.
 TEST_F(RenderPipelineAssetTest, CopyingEditorDiagnosticsPreservesRuntimeOwnedAndVolumeSettings)
 {
     using Settings = renderer::RenderSettings;
@@ -348,6 +352,7 @@ TEST_F(RenderPipelineAssetTest, CopyingEditorDiagnosticsPreservesRuntimeOwnedAnd
     ExpectOwned(runtime, before);
 }
 
+/// @brief Empty or missing assignment returns the unchanged inline fallback.
 TEST_F(RenderPipelineAssetTest, EmptyOrMissingAssignmentReturnsTheUnchangedInlineFallback)
 {
     auto fallback = Distinct();
@@ -361,6 +366,7 @@ TEST_F(RenderPipelineAssetTest, EmptyOrMissingAssignmentReturnsTheUnchangedInlin
     ExpectOwned(resolved, fallback);
 }
 
+/// @brief Resolving then detaching does not change the inline fallback.
 TEST_F(RenderPipelineAssetTest, ResolvingThenDetachingDoesNotChangeTheInlineFallback)
 {
     const auto source = Distinct();
@@ -377,6 +383,7 @@ TEST_F(RenderPipelineAssetTest, ResolvingThenDetachingDoesNotChangeTheInlineFall
     ExpectOwned(resolved, fallback);
 }
 
+/// @brief Removing a GUID assigned file falls back until the same file is restored.
 TEST_F(RenderPipelineAssetTest, RemovingAGuidAssignedFileFallsBackUntilTheSameFileIsRestored)
 {
     ASSERT_TRUE(asset::CreateRenderPipelineAsset(File(), Distinct()));
@@ -405,6 +412,7 @@ TEST_F(RenderPipelineAssetTest, RemovingAGuidAssignedFileFallsBackUntilTheSameFi
     ExpectOwned(resolved, Distinct());
 }
 
+/// @brief Create never overwrites existing content and invalid capture creates nothing.
 TEST_F(RenderPipelineAssetTest, CreateNeverOverwritesExistingContentAndInvalidCaptureCreatesNothing)
 {
     Write(File(), "existing bytes\n");
@@ -420,6 +428,7 @@ TEST_F(RenderPipelineAssetTest, CreateNeverOverwritesExistingContentAndInvalidCa
     ExpectOwned(asset.Settings(), Distinct());
 }
 
+/// @brief Checks wrong types unknown schemas and invalid numeric inputs fall back without writing.
 TEST_F(RenderPipelineAssetTest, WrongTypesUnknownSchemasAndInvalidNumericInputsFallBackWithoutWriting)
 {
     const std::string prefix = "type='RenderPipelineAsset'\nschemaVersion=1\n";
@@ -442,6 +451,7 @@ TEST_F(RenderPipelineAssetTest, WrongTypesUnknownSchemasAndInvalidNumericInputsF
     }
 }
 
+/// @brief Hot reload keeps the address and last good values on typed failure.
 TEST_F(RenderPipelineAssetTest, HotReloadKeepsTheAddressAndLastGoodValuesOnTypedFailure)
 {
     ASSERT_TRUE(asset::CreateRenderPipelineAsset(File(), Distinct()));
@@ -473,6 +483,7 @@ TEST_F(RenderPipelineAssetTest, HotReloadKeepsTheAddressAndLastGoodValuesOnTyped
     EXPECT_TRUE(asset::DataAssetRegistry::Save(File()));
 }
 
+/// @brief Snapshot restore is typed atomic and preserves the shared address.
 TEST_F(RenderPipelineAssetTest, SnapshotRestoreIsTypedAtomicAndPreservesTheSharedAddress)
 {
     ASSERT_TRUE(asset::CreateRenderPipelineAsset(File(), Distinct()));
@@ -489,6 +500,7 @@ TEST_F(RenderPipelineAssetTest, SnapshotRestoreIsTypedAtomicAndPreservesTheShare
     ExpectOwned(pipeline->Settings(), Distinct());
 }
 
+/// @brief Unknown schema one fields survive known field edits and save.
 TEST_F(RenderPipelineAssetTest, UnknownSchemaOneFieldsSurviveKnownFieldEditsAndSave)
 {
     Write(File(), "type='RenderPipelineAsset'\nschemaVersion=1\nfutureRoot='kept'\n[shadow]\nfutureTuning=7\n"
@@ -513,6 +525,7 @@ TEST_F(RenderPipelineAssetTest, UnknownSchemaOneFieldsSurviveKnownFieldEditsAndS
     EXPECT_EQ((*pass)["future"].value_or(0), 9);
 }
 
+/// @brief GUID project reference round-trips without losing inline settings.
 TEST_F(RenderPipelineAssetTest, GuidProjectReferenceRoundTripsWithoutLosingInlineSettings)
 {
     ASSERT_TRUE(asset::CreateRenderPipelineAsset(File(), Distinct()));
@@ -547,6 +560,7 @@ TEST_F(RenderPipelineAssetTest, GuidProjectReferenceRoundTripsWithoutLosingInlin
     EXPECT_EQ(resolved.shadow.mapResolution, 1024u);
 }
 
+/// @brief Project token type failure preserves previous state and old files clear the assignment.
 TEST_F(RenderPipelineAssetTest, ProjectTokenTypeFailurePreservesPreviousStateAndOldFilesClearTheAssignment)
 {
     ProjectSettings settings;
@@ -563,6 +577,7 @@ TEST_F(RenderPipelineAssetTest, ProjectTokenTypeFailurePreservesPreviousStateAnd
     EXPECT_EQ(settings.render.pipeline, renderer::RenderingPipeline::Deferred);
 }
 
+/// @brief Builtin registration survives script factory unregistration.
 TEST_F(RenderPipelineAssetTest, BuiltinRegistrationSurvivesScriptFactoryUnregistration)
 {
     asset::DataAssetFactory::UnregisterScriptTypes();
@@ -570,6 +585,7 @@ TEST_F(RenderPipelineAssetTest, BuiltinRegistrationSurvivesScriptFactoryUnregist
     ASSERT_NE(Resolve(File()), nullptr);
 }
 
+/// @brief Reflected list addition persists and snapshot undo keeps the shared asset.
 TEST_F(RenderPipelineAssetTest, ReflectedListAdditionPersistsAndSnapshotUndoKeepsTheSharedAsset)
 {
     const auto before = Distinct();
@@ -597,6 +613,7 @@ TEST_F(RenderPipelineAssetTest, ReflectedListAdditionPersistsAndSnapshotUndoKeep
     ExpectOwned(pipeline->Settings(), after);
 }
 
+/// @brief Reflected list move preserves every field and rejects invalid indices.
 TEST_F(RenderPipelineAssetTest, ReflectedListMovePreservesEveryFieldAndRejectsInvalidIndices)
 {
     auto source = Distinct();
@@ -633,6 +650,7 @@ TEST_F(RenderPipelineAssetTest, ReflectedListMovePreservesEveryFieldAndRejectsIn
     ExpectOwned(pipeline->Settings(), source);
 }
 
+/// @brief Reflected list deletion persists and suppresses concurrent move.
 TEST_F(RenderPipelineAssetTest, ReflectedListDeletionPersistsAndSuppressesConcurrentMove)
 {
     auto source = Distinct();
@@ -655,6 +673,7 @@ TEST_F(RenderPipelineAssetTest, ReflectedListDeletionPersistsAndSuppressesConcur
     ExpectOwned(pipeline->Settings(), removed);
 }
 
+/// @brief Duplicate name moves and deletions preserve the original unknown entry.
 TEST_F(RenderPipelineAssetTest, DuplicateNameMovesAndDeletionsPreserveTheOriginalUnknownEntry)
 {
     Write(File(), "type='RenderPipelineAsset'\nschemaVersion=1\n[graph]\npassOverrides=["
@@ -693,6 +712,7 @@ TEST_F(RenderPipelineAssetTest, DuplicateNameMovesAndDeletionsPreserveTheOrigina
     ExpectPassUnknownFields({nullptr, nullptr, nullptr});
 }
 
+/// @brief Renaming to an existing name and adding an old name never mix unknown fields.
 TEST_F(RenderPipelineAssetTest, RenamingToAnExistingNameAndAddingAnOldNameNeverMixUnknownFields)
 {
     Write(File(), "type='RenderPipelineAsset'\nschemaVersion=1\n[graph]\npassOverrides=["
@@ -719,6 +739,7 @@ TEST_F(RenderPipelineAssetTest, RenamingToAnExistingNameAndAddingAnOldNameNeverM
     ExpectPassUnknownFields({nullptr, nullptr});
 }
 
+/// @brief Empty name addition can commit one restorable snapshot pair after valid input.
 TEST_F(RenderPipelineAssetTest, EmptyNameAdditionCanCommitOneRestorableSnapshotPairAfterValidInput)
 {
     const auto source = Distinct();
@@ -754,6 +775,7 @@ TEST_F(RenderPipelineAssetTest, EmptyNameAdditionCanCommitOneRestorableSnapshotP
     ExpectOwned(pipeline->Settings(), expected);
 }
 
+/// @brief Hybrid quality uses the same codec for asset and inline fallback.
 TEST_F(RenderPipelineAssetTest, HybridQualityUsesTheSameCodecForAssetAndInlineFallback)
 {
     const auto source = Distinct();
@@ -773,6 +795,7 @@ TEST_F(RenderPipelineAssetTest, HybridQualityUsesTheSameCodecForAssetAndInlineFa
     EXPECT_EQ(parsed.table()["render"]["hybrid"]["reflectionSamples"].value<int64_t>(), 2);
 }
 
+/// @brief Invalid hybrid quality rejects without changing settings or disk.
 TEST_F(RenderPipelineAssetTest, InvalidHybridQualityRejectsWithoutChangingSettingsOrDisk)
 {
     auto source = Distinct();
@@ -807,6 +830,7 @@ TEST_F(RenderPipelineAssetTest, InvalidHybridQualityRejectsWithoutChangingSettin
     EXPECT_EQ(Text(projectFile), "[project]\nname='MustNotApply'\n[render.hybrid]\nhistoryLimit=0\n");
 }
 
+/// @brief Legacy hybrid quality defaults and unknown fields survive round trip.
 TEST_F(RenderPipelineAssetTest, LegacyHybridQualityDefaultsAndUnknownFieldsSurviveRoundTrip)
 {
     Write(File(), "type='RenderPipelineAsset'\nschemaVersion=1\n[hybrid]\nfuturePolicy='keep'\n");
@@ -825,6 +849,7 @@ TEST_F(RenderPipelineAssetTest, LegacyHybridQualityDefaultsAndUnknownFieldsSurvi
     EXPECT_EQ(reused.render.hybridQuality, renderer::HybridQualitySettings{});
 }
 
+/// @brief Performance quality round-trips in asset and project without changing scene scale.
 TEST_F(RenderPipelineAssetTest, PerformanceQualityRoundTripsInAssetAndProjectWithoutChangingSceneScale)
 {
     auto source = Distinct();

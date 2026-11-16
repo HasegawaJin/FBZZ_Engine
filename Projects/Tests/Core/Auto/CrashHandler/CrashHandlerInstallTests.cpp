@@ -52,6 +52,7 @@ protected:
     testkit::TempDir second{ "CrashInstallSecond" };
 };
 
+/// @brief Is installed follows install and uninstall.
 TEST_F(CrashHandlerInstallTest, IsInstalledFollowsInstallAndUninstall)
 {
     EXPECT_FALSE(core::CrashHandler::IsInstalled());
@@ -63,6 +64,7 @@ TEST_F(CrashHandlerInstallTest, IsInstalledFollowsInstallAndUninstall)
     EXPECT_FALSE(core::CrashHandler::IsInstalled());
 }
 
+/// @brief Refuses a root whose path does not fit the writer buffer.
 TEST_F(CrashHandlerInstallTest, RefusesARootWhosePathDoesNotFitTheWriterBuffer)
 {
     /// @note 書き出しはヒープを使えないので固定長で持つ。入らない根は Install の時点で断る。
@@ -72,6 +74,7 @@ TEST_F(CrashHandlerInstallTest, RefusesARootWhosePathDoesNotFitTheWriterBuffer)
     EXPECT_FALSE(core::CrashHandler::IsInstalled());
 }
 
+/// @brief Second install moves the reports without losing the log tail.
 TEST_F(CrashHandlerInstallTest, SecondInstallMovesTheReportsWithoutLosingTheLogTail)
 {
     ASSERT_TRUE(core::CrashHandler::Install(first.Path(), "FirstApp"));
@@ -89,6 +92,7 @@ TEST_F(CrashHandlerInstallTest, SecondInstallMovesTheReportsWithoutLosingTheLogT
     EXPECT_NE(report.find("logged-before-the-second-install"), std::string::npos);
 }
 
+/// @brief Trigger refuses before install even in developer mode.
 TEST_F(CrashHandlerInstallTest, TriggerRefusesBeforeInstallEvenInDeveloperMode)
 {
     core::DeveloperMode::SetPreference(true);

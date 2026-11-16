@@ -75,6 +75,7 @@ double FrameDifference(const RgbaImage& image, int first, int second)
 
 } /// @note namespace
 
+/// @brief Two dimensional bake rises and closes at the seam.
 TEST_F(FluidJetFlamePlaybackTest, TwoDimensionalBakeRisesAndClosesAtTheSeam)
 {
     RgbaImage image;
@@ -86,6 +87,7 @@ TEST_F(FluidJetFlamePlaybackTest, TwoDimensionalBakeRisesAndClosesAtTheSeam)
     EXPECT_LT(FrameDifference(image, 63, 0), (std::max)(0.015, typical * 2.5));
 }
 
+/// @brief Three dimensional six way bake rises and closes at the seam.
 TEST_F(FluidJetFlamePlaybackTest, ThreeDimensionalSixWayBakeRisesAndClosesAtTheSeam)
 {
     RgbaImage positive;
