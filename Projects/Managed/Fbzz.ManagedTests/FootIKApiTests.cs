@@ -41,10 +41,18 @@ internal static class FootIKApiTests
         var ik=types.Single(t=>t.GetProperty("name").GetString()=="Fbzz.IKSolver");
         var members=ik.GetProperty("members").EnumerateArray();
         var write=members.Single(m=>m.GetProperty("name").GetString()=="SetFootSettings").GetProperty("contract");
-        Program.Check(write.GetProperty("runModes").EnumerateArray().All(v=>v.GetString()=="Play"),"Foot tuning must declare Play-only mutation.");
+        Program.Check(write.GetProperty("runModes").EnumerateArray().Select(mode => mode.GetString()).SequenceEqual(["Play"]),
+            "Foot tuning must declare Play-only mutation.");
         foreach(string name in new[]{"Fbzz.FootIKSettings","Fbzz.FootIKState"})
-            foreach(var member in types.Single(t=>t.GetProperty("name").GetString()==name).GetProperty("members").EnumerateArray().Where(m=>m.GetProperty("kind").GetString()=="field"))
+        {
+            var fields = types.Single(t=>t.GetProperty("name").GetString()==name).GetProperty("members").EnumerateArray()
+                .Where(m=>m.GetProperty("kind").GetString()=="field").ToArray();
+            string requiredField = name == "Fbzz.FootIKSettings" ? "SurfaceOffset" : "HipTarget";
+            Program.Check(fields.Any(field => field.GetProperty("name").GetString() == requiredField),
+                $"{name} must declare {requiredField}.");
+            foreach(var member in fields)
                 Program.Check(member.GetProperty("contract").GetProperty("pure").GetBoolean(),"Owned tuning and diagnostic fields must be pure.");
+        }
     }
     sealed class Fixture:IDisposable,IScriptComponentLookup
     {

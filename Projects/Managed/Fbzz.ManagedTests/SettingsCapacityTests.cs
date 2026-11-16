@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Fbzz;
 using Fbzz.ManagedHost;
@@ -44,6 +45,7 @@ internal static class SettingsCapacityTests
     static void Pages()
     {
         Large source = new(); source.references = [new GameObject(202, 9, "same"), new GameObject(303, 8, "same")];
+        string originalText = source.text;
         using ImmutableValueSnapshot small = ImmutableValueSnapshot.Capture(17, typeof(int));
         Program.Check(!small.IsSpooled, "Small values should remain lightweight in resident storage.");
         using ImmutableValueSnapshot directSpool = ImmutableValueSnapshot.Capture(new int[10000], typeof(int[]), new(ResidentBytes: 1));
@@ -76,15 +78,24 @@ internal static class SettingsCapacityTests
         try { using ImmutableValueSnapshot invalid = ImmutableValueSnapshot.CaptureFields([("a/b~", (object?)new[] { float.NaN }, typeof(float[]))]); }
         catch (InvalidDataException exception) { pathReported = exception.Message.Contains("/a~1b~0/0", StringComparison.Ordinal); }
         Program.Check(pathReported, "Error paths remain RFC 6901 escaped and materialize only when validation fails.");
+        int expectedBytes = Encoding.UTF8.GetByteCount(originalText);
         long offset = 0, bytes = 0;
         while (true) {
             using JsonDocument chunk = JsonDocument.Parse(JsonSerializer.Serialize(snapshot.ReadPage("/text", offset, 777, 4096)));
-            string text = chunk.RootElement.GetProperty("text").GetString()!;
-            Program.Check(text.All(character => character == '文'), "Text chunks must retain whole UTF-8 characters.");
-            bytes += chunk.RootElement.GetProperty("returned").GetInt32();
-            JsonElement next = chunk.RootElement.GetProperty("nextStart"); if (next.ValueKind == JsonValueKind.Null) break; offset = next.GetInt64();
+            JsonElement pageText = chunk.RootElement;
+            string text = pageText.GetProperty("text").GetString()!;
+            int returned = pageText.GetProperty("returned").GetInt32();
+            Program.Check(text.Length > 0 && text.All(character => character == '文')
+                && returned == Encoding.UTF8.GetByteCount(text), "Text chunks must retain whole UTF-8 characters and their byte counts.");
+            bytes += returned;
+            JsonElement next = pageText.GetProperty("nextStart");
+            if (next.ValueKind == JsonValueKind.Null) break;
+            long nextOffset = next.GetInt64();
+            Program.Check(nextOffset == offset + returned && nextOffset < expectedBytes,
+                "Text continuation must advance by exactly the bytes returned.");
+            offset = nextOffset;
         }
-        Program.Check(bytes > 1024 * 1024, "Text chunk continuation must cover the entire oversized string.");
+        Program.Check(bytes == expectedBytes, "Text chunk continuation must cover the entire oversized string.");
         Program.Throws<IOException>(() => ImmutableValueSnapshot.Capture(new int[40001], typeof(int[]), new(ResidentBytes: 0, SpoolBytes: 128)));
         GameObject?[] sparse = new GameObject?[1500]; sparse[0] = new GameObject(404, 8, "first"); sparse[^1] = new GameObject(505, 8, "last");
         using ImmutableValueSnapshot sparseSnapshot = ImmutableValueSnapshot.Capture(sparse, typeof(GameObject[]), new(ResidentBytes: 8192));
@@ -128,12 +139,13 @@ internal static class SettingsCapacityTests
         Program.Check(runtime.PublishSettings(1, token, true).Success && actor.settings.values[^1] == 40000 && actor.settings.list[^1] == 888, "Large document Undo restores the selected leaf while retaining unrelated later values.");
         Program.Check(runtime.PublishSettings(1, token, false).Success && actor.settings.values[^1] == -123 && actor.settings.text.Length > 300000, "Redo must preserve all omitted oversized settings.");
         runtime.DiscardSettings(1, token);
+        string originalText = actor.settings.text;
         string changedText = new('x', 1024 * 1024 + 23);
         request = JsonSerializer.Serialize(new { targets = new[] { new { instanceId = "1", expectedRevision = Revision(), fields = new Dictionary<string, object?>(), patches = new[] { new { path = "/settings/text", value = changedText } } } } });
         prepared = runtime.PrepareSettings(1, request, out token); Program.Check(prepared.Success, prepared.Message);
         Program.Check(runtime.PublishSettings(1, token, false).Success && actor.settings.text == changedText && runtime.SettingsTransactionBytes < 200000,
             "Oversized changed values use owned spill storage; resident history does not grow with the full string length.");
-        Program.Check(runtime.PublishSettings(1, token, true).Success && actor.settings.text.All(character => character == '文'), "Spilled Undo restores the complete prior oversized value.");
+        Program.Check(runtime.PublishSettings(1, token, true).Success && actor.settings.text == originalText, "Spilled Undo restores the complete prior oversized value.");
         Program.Check(runtime.PublishSettings(1, token, false).Success && actor.settings.text == changedText, "Spilled Redo restores the complete normalized value without callbacks.");
         runtime.DiscardSettings(1, token); runtime.ReleaseInstance(1, 1);
     }

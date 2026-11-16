@@ -135,7 +135,7 @@ internal static class AuthoringReferenceTests
             Program.Check(!invalid.Success && world.Value("settings") == before,
                 "Unknown, non-reference, token-member or duplicated paths must reject the complete transaction.");
             object retained = world.Field("settings").Read(world.Instance)!;
-            Program.Check(StructuredFieldCodec.ReferenceIdentities(retained, retained.GetType(), 1).All(static (ulong id) => id == 202),
+            Program.Check(StructuredFieldCodec.ReferenceIdentities(retained, retained.GetType(), 1).SequenceEqual([202UL, 202UL, 202UL]),
                 "Rejected intents must not replace any existing reference identity.");
         }
         ManagedRuntimeResult preview = world.Runtime.ConfigureFields(1, world.Id, SETTINGS, true,
@@ -149,7 +149,7 @@ internal static class AuthoringReferenceTests
         Program.Check(world.Runtime.ConfigureFields(1, world.Id, SETTINGS, false, SettingsValidationPurpose.SNAPSHOT).Success,
             "Snapshot restore must keep its existing GUID restoration contract.");
         settings = world.Field("settings").Read(world.Instance)!;
-        Program.Check(StructuredFieldCodec.ReferenceIdentities(settings, settings.GetType(), 1).All(static (ulong id) => id == 303),
+        Program.Check(StructuredFieldCodec.ReferenceIdentities(settings, settings.GetType(), 1).SequenceEqual([303UL, 303UL, 303UL]),
             "Internal snapshot restore must resolve its saved GUID values.");
     }
 
