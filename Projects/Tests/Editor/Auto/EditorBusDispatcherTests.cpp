@@ -18,10 +18,13 @@
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/SceneIO.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
 #include <Engine/Profiler/Profiler.hpp>
 #include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -126,6 +129,50 @@ const std::vector<std::string>& AllCommandTypes()
 
 /// @note 既定は «何も繋がっていない» 文脈。Play 中にシーンが差し替わる谷間そのもの。
 class EditorBusDispatcherTest : public testkit::EditorFixture {};
+
+class SceneMaterialValidationTest : public testkit::EditorFixture {
+protected:
+    void TearDown() override
+    {
+        asset::AssetDatabase::Shutdown();
+        EditorFixture::TearDown();
+    }
+};
+
+TEST_F(SceneMaterialValidationTest, ResolvesBuiltInMaterialAndReportsMissingGuid)
+{
+    const auto engineAssets = File("EngineAssets");
+    const auto materialPath = engineAssets / "Materials" / "Water" / "WaterfallSurface.mat";
+    std::filesystem::create_directories(materialPath.parent_path());
+    const auto materialFile = util::FileSystem::PathToUtf8(materialPath);
+    ASSERT_TRUE(util::FileSystem::WriteText(materialFile, "version = 1\n"));
+    ASSERT_TRUE(util::FileSystem::WriteText(materialFile + ".meta",
+        "[meta]\nguid = '4d940c1f438a4b968274ef36d2da9598'\n"));
+    asset::AssetDatabase::Init(File("Assets").generic_string(), engineAssets.generic_string());
+
+    Context().projectRoot = ProjectRoot().generic_string();
+    auto& scene = AttachScene();
+    auto& waterfall = scene.CreateGameObject("Waterfall Surface");
+    waterfall.SetRuntimeGenerated(true);
+    waterfall.AddComponent<scene::MaterialComponent>().SetMaterialPath(
+        "guid:4d940c1f438a4b968274ef36d2da9598|Assets/Materials/Water/WaterfallSurface.mat");
+    EditorBusDispatcher dispatcher(Context());
+    const auto valid = ParseJson(dispatcher.Handle(MakeRequest("scene.validate")));
+    ASSERT_TRUE(valid.has_value());
+    ASSERT_TRUE(valid->Find("ok")->AsBool());
+    EXPECT_TRUE(valid->Find("result")->Find("valid")->AsBool());
+
+    auto& missing = scene.CreateGameObject("Missing material");
+    missing.AddComponent<scene::MaterialComponent>().SetMaterialPath(
+        "guid:ffffffffffffffffffffffffffffffff|Assets/Materials/Water/WaterfallSurface.mat");
+    const auto invalid = ParseJson(dispatcher.Handle(MakeRequest("scene.validate")));
+    ASSERT_TRUE(invalid.has_value());
+    ASSERT_TRUE(invalid->Find("ok")->AsBool());
+    const auto& issues = invalid->Find("result")->Find("issues")->AsArray();
+    ASSERT_EQ(issues.size(), 1u);
+    EXPECT_EQ(issues.front().Find("code")->AsString(), "BROKEN_MATERIAL");
+    EXPECT_EQ(issues.front().Find("name")->AsString(), "Missing material");
+}
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
 {
