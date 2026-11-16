@@ -138,7 +138,9 @@ protected:
     void TearDown() override
     {
         m_undo.Clear(); m_registry.Clear();
-        scene::ManagedScriptRuntime::Instance().Unload(AttachedScene());
+        auto& runtime = scene::ManagedScriptRuntime::Instance();
+        runtime.Unload(AttachedScene());
+        EXPECT_TRUE(runtime.Shutdown()) << runtime.LastDiagnostic();
         EditorFixture::TearDown();
     }
     void Load()
@@ -173,27 +175,29 @@ protected:
 
 TEST_F(ManagedCompletionTest, KeepsTheEditorAndDirtyBaselineWhenManagedSnapshotSerializationFails)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("InvalidSnapshot");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.SaveFailureComponent", entry.savedScriptId);
     ASSERT_NE(entry.script, nullptr);
     auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
     ASSERT_NE(adapter, nullptr);
+    ASSERT_FALSE(editor::SceneIO::Serialize(*AttachedScene()).empty());
     editor::SceneDirtyTracker tracker;
     tracker.CaptureClean(*AttachedScene());
     ASSERT_FALSE(tracker.IsDirty());
     ASSERT_NE(entry.serialized, nullptr);
     const std::string preserved = entry.serialized->fieldsToml;
     ASSERT_TRUE(adapter->ApplySettingsJson("{\"failureMode\":1}"));
+    ASSERT_TRUE(tracker.Evaluate(*AttachedScene()));
     editor::PlayModeController play;
 
     play.Play(*AttachedScene());
-    tracker.CaptureClean(*AttachedScene());
 
     EXPECT_TRUE(play.IsInEditor());
     EXPECT_FALSE(play.HasPendingRestore());
     EXPECT_TRUE(editor::SceneIO::Serialize(*AttachedScene()).empty());
+    ASSERT_NE(entry.serialized, nullptr);
     EXPECT_EQ(entry.serialized->fieldsToml, preserved);
     EXPECT_TRUE(tracker.IsDirty());
     EXPECT_TRUE(tracker.Evaluate(*AttachedScene()));
@@ -203,7 +207,8 @@ TEST_F(ManagedCompletionTest, KeepsTheEditorAndDirtyBaselineWhenManagedSnapshotS
 
 TEST_F(ManagedCompletionTest, PlayParksOriginalObjectsRuntimeAndManagedUndoWithoutRecreation)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("ParkedOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("ParkedOwner");
     const auto ownerId = owner.GetID(); const auto lifetime = AttachedScene()->GetRenderSceneGeneration(); const std::string guid = owner.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
@@ -237,7 +242,8 @@ TEST_F(ManagedCompletionTest, PlayParksOriginalObjectsRuntimeAndManagedUndoWitho
 
 TEST_F(ManagedCompletionTest, PassivePlayCaptureAndFailedCloneValidationNeverMutateEditCallbacksOrSnapshots)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("PassiveParkSource");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("PassiveParkSource");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.SaveFailureComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* original = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_NE(original, nullptr);
@@ -254,7 +260,7 @@ TEST_F(ManagedCompletionTest, PassivePlayCaptureAndFailedCloneValidationNeverMut
 
 TEST_F(ManagedCompletionTest, CommonEnabledControlSavesExactScriptAndSupportsCheckedUndo)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("EnabledOwner");
     auto& component = owner.AddComponent<scene::ScriptComponent>();
     for (int index = 0; index < 2; ++index) {
@@ -307,7 +313,7 @@ TEST_F(ManagedCompletionTest, CommonEnabledControlSavesExactScriptAndSupportsChe
 
 TEST_F(ManagedCompletionTest, PlayEnabledControlUsesTemporaryHistoryAndRestoresOriginalOnStop)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("PlayEnabledOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId);
@@ -348,7 +354,7 @@ TEST_F(ManagedCompletionTest, PlayEnabledControlUsesTemporaryHistoryAndRestoresO
 
 TEST_F(ManagedCompletionTest, EnabledControlCannotBypassFaultRecovery)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("FaultedEnabledOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.FaultRecoveryComponent", entry.savedScriptId);
@@ -370,7 +376,7 @@ TEST_F(ManagedCompletionTest, EnabledControlCannotBypassFaultRecovery)
 
 TEST_F(ManagedCompletionTest, LiveInspectorRefreshesCallbackValuesWithoutManualAction)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("LiveInspectorOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.FaultRecoveryComponent", entry.savedScriptId);
@@ -410,7 +416,7 @@ TEST_F(ManagedCompletionTest, LiveInspectorRefreshesCallbackValuesWithoutManualA
 
 TEST_F(ManagedCompletionTest, MixedEnabledSelectionUsesOneUndoAndPreservesIndividualStates)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     std::vector<editor::ManagedSettingsTarget> targets;
     std::vector<scene::Script*> scripts;
     for (int index = 0; index < 2; ++index) {
@@ -447,7 +453,7 @@ TEST_F(ManagedCompletionTest, MixedEnabledSelectionUsesOneUndoAndPreservesIndivi
 
 TEST_F(ManagedCompletionTest, EnabledBatchRejectsFaultedTargetsAndConflictedUndoAtomically)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     std::vector<editor::ManagedSettingsTarget> targets;
     auto& healthy = AttachedScene()->CreateGameObject("HealthyEnabled");
     auto& first = healthy.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
@@ -484,7 +490,7 @@ TEST_F(ManagedCompletionTest, EnabledBatchRejectsFaultedTargetsAndConflictedUndo
 
 TEST_F(ManagedCompletionTest, InspectorSkipsOffscreenValuesAndRefreshesThemWhenVisible)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("ClippedInspector");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId);
@@ -542,7 +548,8 @@ TEST_F(ManagedCompletionTest, MixedHeaderActivationEnablesAllWhileUnavailableChe
 
 TEST_F(ManagedCompletionTest, PlayManagedSettingsUseTemporaryCheckedHistoryAndDiscardPreviewsOnStop)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("TemporarySettingsOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("TemporarySettingsOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     const std::string guid = owner.instanceId;
@@ -595,7 +602,8 @@ TEST_F(ManagedCompletionTest, PlayManagedSettingsUseTemporaryCheckedHistoryAndDi
 
 TEST_F(ManagedCompletionTest, ExactManagedBatchSelectsDuplicateSameTypeInstancesAndPreservesHistoryOnConflict)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("DuplicateBatchOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("DuplicateBatchOwner");
     auto& component = owner.AddComponent<scene::ScriptComponent>();
     for (int index = 0; index < 2; ++index) { auto& entry = component.scripts.emplace_back(); entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr); }
     auto* first = scene::ManagedScriptRuntime::Instance().FindAdapter(component.scripts[0].script.get());
@@ -665,7 +673,8 @@ TEST_F(ManagedCompletionTest, SharedPrimitiveWidgetsReadWholeRealTokensAndTypedR
 
 TEST_F(ManagedCompletionTest, ExplicitPlayCaptureStopReviewAdoptionAndCheckedUndoPreserveOriginalSettings)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("AdoptionOwner"); const std::string guid = owner.instanceId;
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("AdoptionOwner"); const std::string guid = owner.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     const std::string saved = entry.savedScriptId; auto* original = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
@@ -699,7 +708,8 @@ TEST_F(ManagedCompletionTest, ExplicitPlayCaptureStopReviewAdoptionAndCheckedUnd
 
 TEST_F(ManagedCompletionTest, CapturedPlayReferencesRejectRecreatedSameGuidAndRemainReviewableAfterStop)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("ReferenceAdoptionOwner"); auto& reference = AttachedScene()->CreateGameObject("InitialReference");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("ReferenceAdoptionOwner"); auto& reference = AttachedScene()->CreateGameObject("InitialReference");
     const std::string ownerGuid = owner.instanceId, referenceGuid = reference.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back(); entry.script = Create(owner, "ManagedFixtures.ReferenceComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* original = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_TRUE(original->ApplySettingsJson("{\"target\":\"" + referenceGuid + "\"}"));
@@ -722,7 +732,7 @@ TEST_F(ManagedCompletionTest, CapturedPlayReferencesRejectRecreatedSameGuidAndRe
 
 TEST_F(ManagedCompletionTest, SdkCatalogFiltersAllOverloadsWithoutExecutingGameCallbacks)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     const auto response = Query("Fbzz.ScriptScene", "Create");
     ASSERT_NE(response.Find("ok"), nullptr);
     ASSERT_TRUE(response.Find("ok")->AsBool()) << editor::ai::SerializeJson(response);
@@ -736,7 +746,7 @@ TEST_F(ManagedCompletionTest, SdkCatalogFiltersAllOverloadsWithoutExecutingGameC
 
 TEST_F(ManagedCompletionTest, InspectorUsesExactInstanceAndCommonValidationWithOneUndo)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("HealthOwner");
     auto& scripts = owner.AddComponent<scene::ScriptComponent>();
     for (int index = 0; index < 2; ++index) { auto& added = scripts.scripts.emplace_back(); added.script = Create(owner, "ManagedFixtures.HealthComponent", added.savedScriptId); }
@@ -767,7 +777,7 @@ TEST_F(ManagedCompletionTest, InspectorUsesExactInstanceAndCommonValidationWithO
 
 TEST_F(ManagedCompletionTest, InspectorAndAiAuthorIncompleteRequiredSettingsButStartValidationRemainsStrict)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& targetObject = AttachedScene()->CreateGameObject("RequiredTarget");
     const std::string guid = targetObject.instanceId;
     auto& owner = AttachedScene()->CreateGameObject("RequiredAuthor");
@@ -802,7 +812,7 @@ TEST_F(ManagedCompletionTest, InspectorAndAiAuthorIncompleteRequiredSettingsButS
 
 TEST_F(ManagedCompletionTest, NestedInspectorProjectionPreservesLiveAndExpiredReferenceIdentities)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& targetObject = AttachedScene()->CreateGameObject("NestedTarget");
     const std::string guid = targetObject.instanceId;
     const auto targetId = targetObject.GetID();
@@ -855,7 +865,7 @@ TEST_F(ManagedCompletionTest, StructuredReferencePathsRemainStableAcrossHiddenGr
 
 TEST_F(ManagedCompletionTest, CommonConfigurePreservesExpiredSiblingsUntilExplicitReferenceRebind)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& targetObject = AttachedScene()->CreateGameObject("OriginalTarget");
     const std::string guid = targetObject.instanceId;
     const auto expiredId = targetObject.GetID();
@@ -903,7 +913,7 @@ TEST_F(ManagedCompletionTest, CommonConfigurePreservesExpiredSiblingsUntilExplic
 
 TEST_F(ManagedCompletionTest, CommonConfigureCollectionMovesPreserveExpiredTokensAndRejectAmbiguity)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& original = AttachedScene()->CreateGameObject("MovingExpiredTarget");
     const auto expiredId = original.GetID(); const std::string guid = original.instanceId;
     auto& live = AttachedScene()->CreateGameObject("RetainedLiveTarget");
@@ -962,7 +972,7 @@ TEST_F(ManagedCompletionTest, CommonConfigureCollectionMovesPreserveExpiredToken
 
 TEST_F(ManagedCompletionTest, ReadOnlyManagedReflectionNeverWritesEditedTemporaryValues)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("HealthOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId);
@@ -977,7 +987,7 @@ TEST_F(ManagedCompletionTest, ReadOnlyManagedReflectionNeverWritesEditedTemporar
 
 TEST_F(ManagedCompletionTest, QuaternionStructuredAndAssetSettingsSurviveConfigureSaveAndReconfigure)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& targetObject = AttachedScene()->CreateGameObject("Target");
     const std::string targetGuid = targetObject.instanceId;
     auto& owner = AttachedScene()->CreateGameObject("CompletionOwner");
@@ -1031,7 +1041,7 @@ TEST_F(ManagedCompletionTest, QuaternionStructuredAndAssetSettingsSurviveConfigu
 
 TEST_F(ManagedCompletionTest, BatchPreparationResolvesReferencesButNeverGrantsEngineAuthorityToCandidateCallbacks)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& first = AttachedScene()->CreateGameObject("AuthorA");
     auto& second = AttachedScene()->CreateGameObject("AuthorB");
     auto& targetObject = AttachedScene()->CreateGameObject("AuthorTarget");
@@ -1081,7 +1091,8 @@ TEST_F(ManagedCompletionTest, BatchPreparationResolvesReferencesButNeverGrantsEn
 
 TEST_F(ManagedCompletionTest, RecoverableInspectorFailureKeepsSessionForCorrectionAndStaleDraftCannotRebase)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("DraftRetryOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("DraftRetryOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.AuthoringTransactionComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_NE(adapter, nullptr);
@@ -1136,7 +1147,8 @@ TEST_F(ManagedCompletionTest, RecoverableInspectorFailureKeepsSessionForCorrecti
 
 TEST_F(ManagedCompletionTest, LeafUndoPreservesNestedSiblingsAndHistoryOnConflicts)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("LeafUndoOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("LeafUndoOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.CompletionComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_NE(adapter, nullptr);
@@ -1160,7 +1172,8 @@ TEST_F(ManagedCompletionTest, LeafUndoPreservesNestedSiblingsAndHistoryOnConflic
 }
 TEST_F(ManagedCompletionTest, LargeSettingsCanBeEditedAfterDiscardAndHistoryClearWithoutReceiptRevival)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("BudgetOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("BudgetOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.CompletionComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_NE(adapter, nullptr);
@@ -1190,7 +1203,8 @@ TEST_F(ManagedCompletionTest, LargeSettingsCanBeEditedAfterDiscardAndHistoryClea
 
 TEST_F(ManagedCompletionTest, CallerSizedSettingsSaveReloadAndLaterLeafUndoBeyondFormerLimits)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("LargeSettingsOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("LargeSettingsOwner");
     const std::string ownerGuid = owner.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.CapacitySettingsComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
@@ -1247,7 +1261,8 @@ TEST_F(ManagedCompletionTest, SettingsPageCursorFollowsActualRangesAndPreservesB
 
 TEST_F(ManagedCompletionTest, MultiplePagedTextReplacementsUndoRedoAndSurviveSaveReload)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("PagedTextOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("PagedTextOwner");
     const std::string ownerGuid = owner.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.CapacitySettingsComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
@@ -1287,7 +1302,8 @@ TEST_F(ManagedCompletionTest, MultiplePagedTextReplacementsUndoRedoAndSurviveSav
 
 TEST_F(ManagedCompletionTest, VisibleSettingsPageAndInspectorNeverValidateUnexpandedLargeParents)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("PagedDisplayOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("PagedDisplayOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.CapacitySettingsComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_NE(adapter, nullptr);
@@ -1304,7 +1320,8 @@ TEST_F(ManagedCompletionTest, VisibleSettingsPageAndInspectorNeverValidateUnexpa
 
 TEST_F(ManagedCompletionTest, InspectorKeepsSettingsVisibleAndReadsRuntimeStateOnlyWhenExpanded)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("SettingsOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("SettingsOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.SettingsComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_NE(adapter, nullptr);
@@ -1343,7 +1360,8 @@ TEST_F(ManagedCompletionTest, InspectorKeepsSettingsVisibleAndReadsRuntimeStateO
 
 TEST_F(ManagedCompletionTest, InspectorRuntimeCollectionsRemainBrowsableWithoutAuthoringControls)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("RuntimeCollectionsOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("RuntimeCollectionsOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.InspectorPresentationComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     auto* adapter = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()); ASSERT_NE(adapter, nullptr);
@@ -1392,7 +1410,7 @@ TEST_F(ManagedCompletionTest, InspectorRuntimeCollectionsRemainBrowsableWithoutA
 
 TEST_F(ManagedCompletionTest, InspectorMultiSelectionKeepsInheritedSettingsAndDoesNotReadPrivateStateByDefault)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     std::vector<std::pair<scene::GameObject*, const scene::ScriptEntry*>> selection;
     for (int index = 0; index < 2; ++index) {
         auto& owner = AttachedScene()->CreateGameObject("InheritedSettingsOwner" + std::to_string(index));
@@ -1412,7 +1430,8 @@ TEST_F(ManagedCompletionTest, InspectorMultiSelectionKeepsInheritedSettingsAndDo
 
 TEST_F(ManagedCompletionTest, ComponentReferenceLabelsUseNamesAndExactDuplicateOrdinalsWithoutChangingAddresses)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("Fish School"); const std::string ownerGuid = owner.instanceId;
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("Fish School"); const std::string ownerGuid = owner.instanceId;
     auto& scripts = owner.AddComponent<scene::ScriptComponent>().scripts;
     for (int index = 0; index < 2; ++index) {
         auto& entry = scripts.emplace_back();
@@ -1452,7 +1471,7 @@ TEST_F(ManagedCompletionTest, ComponentReferenceLabelsUseNamesAndExactDuplicateO
 
 TEST_F(ManagedCompletionTest, InspectorRetainsPendingInputsAcrossCacheEvictionAndSessionBudget)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     ImGuiFrame frame;
     std::vector<std::pair<scene::GameObject*, scene::ScriptEntry*>> selections;
     selections.reserve(70);
@@ -1538,7 +1557,7 @@ TEST_F(ManagedCompletionTest, InspectorRetainsPendingInputsAcrossCacheEvictionAn
 
 TEST_F(ManagedCompletionTest, InspectorHotReloadArchivesDirtyInputAndReleasesOldWidget)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("ReloadDraftOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.AuthoringTransactionComponent", entry.savedScriptId);
@@ -1582,7 +1601,7 @@ TEST_F(ManagedCompletionTest, InspectorHotReloadArchivesDirtyInputAndReleasesOld
 
 TEST_F(ManagedCompletionTest, SchemaSnapshotKeepsSettingWidgetsEditableAndLegacyReadOnlyProjectionDisabled)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("DraftOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
@@ -1631,7 +1650,7 @@ TEST_F(ManagedCompletionTest, ManagedSettingsJsonRejectsMalformedAndUnboundedVal
 }
 TEST_F(ManagedCompletionTest, InspectorAndAiUseTheSameExplicitResumeAndReadOnlyFaultStatus)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& object = AttachedScene()->CreateGameObject("Recovery");
     auto& entry = object.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(object, "ManagedFixtures.FaultRecoveryComponent", entry.savedScriptId);
@@ -1699,7 +1718,7 @@ TEST_F(ManagedCompletionTest, InspectorAndAiUseTheSameExplicitResumeAndReadOnlyF
 }
 TEST_F(ManagedCompletionTest, InspectorEditorActionUsesCandidatePreviewAndUndoWithoutRepeatingTheMethod)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& owner = AttachedScene()->CreateGameObject("EditorActionOwner");
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.CompletionComponent", entry.savedScriptId);
@@ -1732,7 +1751,7 @@ TEST_F(ManagedCompletionTest, InspectorEditorActionUsesCandidatePreviewAndUndoWi
 
 TEST_F(ManagedCompletionTest, ConfigurePreviewAndReviewPagesBoundLargeValuesWithoutChangingCommitOrUndo)
 {
-    Load();
+    ASSERT_NO_FATAL_FAILURE(Load());
     auto& first = AttachedScene()->CreateGameObject("BoundedReviewA"); first.tag = "BoundedReview";
     auto& second = AttachedScene()->CreateGameObject("BoundedReviewB"); second.tag = "BoundedReview";
     editor::OpData objects = editor::OpData::MakeObject(); objects.Set("scope", "scene"); objects.Set("tag", "BoundedReview");
@@ -1782,7 +1801,8 @@ TEST_F(ManagedCompletionTest, ConfigurePreviewAndReviewPagesBoundLargeValuesWith
 
 TEST_F(ManagedCompletionTest, LargePlayAdoptionPagesLaterValuesAndSurvivesUndoSaveAndReopen)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("CapacityAdoptionOwner"); const std::string guid = owner.instanceId;
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("CapacityAdoptionOwner"); const std::string guid = owner.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.CapacitySettingsComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     const std::string saved = entry.savedScriptId; auto* original = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
@@ -1834,7 +1854,8 @@ TEST_F(ManagedCompletionTest, LargePlayAdoptionPagesLaterValuesAndSurvivesUndoSa
 
 TEST_F(ManagedCompletionTest, ConflictingAdoptionKeepsDraftReviewableAndRetryUsesOneCheckedUndo)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("AdoptionConflictOwner"); const std::string guid = owner.instanceId;
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("AdoptionConflictOwner"); const std::string guid = owner.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.HealthComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     const std::string saved = entry.savedScriptId; auto* original = scene::ManagedScriptRuntime::Instance().FindAdapter(entry.script.get());
@@ -1865,7 +1886,8 @@ TEST_F(ManagedCompletionTest, ConflictingAdoptionKeepsDraftReviewableAndRetryUse
 
 TEST_F(ManagedCompletionTest, CallerSizedAtomicSettingsBatchBeyondFormerTargetLimitKeepsConflictHistory)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("BatchCapacityOwner");
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("BatchCapacityOwner");
     auto& scripts = owner.AddComponent<scene::ScriptComponent>(); scripts.scripts.reserve(257);
     editor::OpData targets = editor::OpData::MakeArray();
     for (int index = 0; index < 257; ++index) {
@@ -1894,7 +1916,8 @@ TEST_F(ManagedCompletionTest, CallerSizedAtomicSettingsBatchBeyondFormerTargetLi
 
 TEST_F(ManagedCompletionTest, ExactPrimitiveValuesConfigureUndoSaveAndReopenWithoutNumericNarrowing)
 {
-    Load(); auto& owner = AttachedScene()->CreateGameObject("PrimitiveOwner"); const std::string guid = owner.instanceId;
+    ASSERT_NO_FATAL_FAILURE(Load());
+    auto& owner = AttachedScene()->CreateGameObject("PrimitiveOwner"); const std::string guid = owner.instanceId;
     auto& entry = owner.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
     entry.script = Create(owner, "ManagedFixtures.PrimitiveSettingsComponent", entry.savedScriptId); ASSERT_NE(entry.script, nullptr);
     const std::string saved = entry.savedScriptId;

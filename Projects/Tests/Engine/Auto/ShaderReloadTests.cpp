@@ -1980,7 +1980,9 @@ protected:
 
     void TearDown() override
     {
-        scene::ManagedScriptRuntime::Instance().Unload(&m_scene);
+        auto& runtime = scene::ManagedScriptRuntime::Instance();
+        runtime.Unload(&m_scene);
+        EXPECT_TRUE(runtime.Shutdown()) << runtime.LastDiagnostic();
         scene::UISystemReleaseGpuResources(m_ui, *m_resources);
         scene::UISystemFlushCache(m_ui, m_resources.get());
         Time::frameCount = m_previousFrame;

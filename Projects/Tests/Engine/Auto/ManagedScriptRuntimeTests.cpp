@@ -53,8 +53,10 @@ protected:
 
     void TearDown() override
     {
-        scene::ManagedScriptRuntime::Instance().Unload(&m_scene);
+        auto& runtime = scene::ManagedScriptRuntime::Instance();
+        runtime.Unload(&m_scene);
         m_scene.Clear();
+        EXPECT_TRUE(runtime.Shutdown()) << runtime.LastDiagnostic();
         Time::deltaTime = m_previousDelta;
         scene::Script::SetInPlayMode(m_previousPlay);
         scene::ScriptProfiler::RequestRecording(m_previousScriptRecording);

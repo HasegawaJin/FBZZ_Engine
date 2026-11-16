@@ -56,7 +56,9 @@ protected:
 
     void TearDown() override
     {
-        scene::ManagedScriptRuntime::Instance().Unload(AttachedScene());
+        auto& runtime = scene::ManagedScriptRuntime::Instance();
+        runtime.Unload(AttachedScene());
+        EXPECT_TRUE(runtime.Shutdown()) << runtime.LastDiagnostic();
         scene::Script::SetInPlayMode(m_previousPlay);
         EditorFixture::TearDown();
     }
