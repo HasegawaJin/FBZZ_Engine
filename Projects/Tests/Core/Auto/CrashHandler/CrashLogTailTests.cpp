@@ -84,6 +84,7 @@ TEST_F(CrashLogTailTest, TruncatesALongLineOnACharacterBoundary)
 
     ASSERT_EQ(lines.size(), 1u);
     const std::string expected = "[INFO]  " + message;
+    EXPECT_TRUE(lines[0].starts_with("[INFO]  utf8-tail-\xE3\x81\x82"));
     EXPECT_LT(lines[0].size(), core::CrashLogTail::LINE_BYTES);
     EXPECT_LT(lines[0].size(), expected.size());
     EXPECT_EQ(expected.compare(0, lines[0].size(), lines[0]), 0);
