@@ -44,7 +44,7 @@ void WriteFile(const std::filesystem::path& path, const std::string& bytes)
     return !ec && after != before;
 }
 
-} // namespace
+} /// @note namespace
 
 class ImportFingerprintTest : public testkit::EngineFixture {
 protected:
@@ -68,8 +68,9 @@ TEST_F(ImportFingerprintTest, SameBytesGiveTheSameHash)
     WriteFile(a, "the same bytes");
     WriteFile(b, "the same bytes");
 
-    EXPECT_EQ(FbxMetaSerializer::SourceContentHash(Utf8(a)),
-              FbxMetaSerializer::SourceContentHash(Utf8(b)));
+    const auto first = FbxMetaSerializer::SourceContentHash(Utf8(a));
+    ASSERT_FALSE(first.empty());
+    EXPECT_EQ(first, FbxMetaSerializer::SourceContentHash(Utf8(b)));
 }
 
 TEST_F(ImportFingerprintTest, DifferentBytesGiveDifferentHashes)
@@ -79,8 +80,11 @@ TEST_F(ImportFingerprintTest, DifferentBytesGiveDifferentHashes)
     WriteFile(a, "aaaa");
     WriteFile(b, "aaab");
 
-    EXPECT_NE(FbxMetaSerializer::SourceContentHash(Utf8(a)),
-              FbxMetaSerializer::SourceContentHash(Utf8(b)));
+    const auto first = FbxMetaSerializer::SourceContentHash(Utf8(a));
+    const auto second = FbxMetaSerializer::SourceContentHash(Utf8(b));
+    ASSERT_FALSE(first.empty());
+    ASSERT_FALSE(second.empty());
+    EXPECT_NE(first, second);
 }
 
 TEST_F(ImportFingerprintTest, TouchingTheFileDoesNotChangeTheHash)
@@ -89,6 +93,7 @@ TEST_F(ImportFingerprintTest, TouchingTheFileDoesNotChangeTheHash)
     const auto model = Model("Player.fbx");
     WriteFile(model, "unchanged content");
     const std::string before = FbxMetaSerializer::SourceContentHash(Utf8(model));
+    ASSERT_FALSE(before.empty());
 
     ASSERT_TRUE(TouchOnly(model));
 
@@ -102,6 +107,7 @@ TEST_F(ImportFingerprintTest, MovingTheFileDoesNotChangeTheHash)
     const auto to   = Model("Models/Player.fbx");
     WriteFile(from, "unchanged content");
     const std::string before = FbxMetaSerializer::SourceContentHash(Utf8(from));
+    ASSERT_FALSE(before.empty());
 
     std::filesystem::create_directories(to.parent_path());
     std::filesystem::rename(from, to);
@@ -123,8 +129,11 @@ TEST_F(ImportFingerprintTest, HashSpansTheWholeFileNotJustTheHead)
     WriteFile(a, head + "tail-one");
     WriteFile(b, head + "tail-two");
 
-    EXPECT_NE(FbxMetaSerializer::SourceContentHash(Utf8(a)),
-              FbxMetaSerializer::SourceContentHash(Utf8(b)));
+    const auto first = FbxMetaSerializer::SourceContentHash(Utf8(a));
+    const auto second = FbxMetaSerializer::SourceContentHash(Utf8(b));
+    ASSERT_FALSE(first.empty());
+    ASSERT_FALSE(second.empty());
+    EXPECT_NE(first, second);
 }
 
 TEST_F(ImportFingerprintTest, StampReportsSizeAndMovesWithTheWriteTime)
@@ -160,10 +169,13 @@ TEST_F(ImportFingerprintTest, LegacyStampStillReactsToTheWriteTime)
     const auto model = Model("Player.fbx");
     WriteFile(model, "unchanged content");
     const std::string before = FbxMetaSerializer::LegacyStampHash(Utf8(model));
+    ASSERT_FALSE(before.empty());
 
     ASSERT_TRUE(TouchOnly(model));
 
-    EXPECT_NE(FbxMetaSerializer::LegacyStampHash(Utf8(model)), before);
+    const auto after = FbxMetaSerializer::LegacyStampHash(Utf8(model));
+    ASSERT_FALSE(after.empty());
+    EXPECT_NE(after, before);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

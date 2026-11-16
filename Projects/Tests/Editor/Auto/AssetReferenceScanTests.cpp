@@ -93,12 +93,14 @@ TEST_F(AssetReferenceScanTest, FindsCodecGuidAndNestedPathValuesWithOwnerAndFiel
     EXPECT_EQ(report.owners[1].evidence[0].field, "entities[0].renderer.textures[0]");
 }
 
+/// @see Docs/design/terrain-scatter.md 専用形式は mesh.parts に GUID 参照を保存する。
 TEST_F(AssetReferenceScanTest, FindsDependenciesInDedicatedPaintAndPlacementFormats)
 {
     ASSERT_TRUE(Write("Assets/Pine.fbx", "mesh"));
+    const std::string guid = "1234567890abcdef1234567890abcdef";
+    ASSERT_TRUE(Write("Assets/Pine.fbx.meta", "[meta]\nguid = '" + guid + "'\n"));
     asset::AssetDatabase::Init(Path("Assets"));
-    const auto guid = asset::AssetDatabase::TryGetGuidFromPath(Path("Assets/Pine.fbx"));
-    ASSERT_FALSE(guid.empty());
+    ASSERT_EQ(asset::AssetDatabase::TryGetGuidFromPath(Path("Assets/Pine.fbx")), guid);
     const auto reference = "guid:" + guid;
     ASSERT_TRUE(Write("Assets/Pine.terrainpaint", "[[mesh.parts]]\nmesh='" + reference + "'\n"));
     ASSERT_TRUE(Write("Assets/Pine.meshinstances", "[[mesh.parts]]\nmesh='" + reference + "'\n"));
@@ -107,11 +109,16 @@ TEST_F(AssetReferenceScanTest, FindsDependenciesInDedicatedPaintAndPlacementForm
     Finish(scan);
     ASSERT_EQ(scan.Result().owners.size(), 2u);
     EXPECT_EQ(scan.Result().unsupported, 0u);
+    std::vector<std::pair<std::string, std::string>> owners;
     for (const auto& owner : scan.Result().owners) {
-        EXPECT_TRUE(owner.kind == "Terrain paint" || owner.kind == "Mesh instances");
+        owners.emplace_back(owner.path, owner.kind);
         ASSERT_EQ(owner.evidence.size(), 1u);
+        EXPECT_EQ(owner.evidence[0].kind, "GUID value");
         EXPECT_EQ(owner.evidence[0].field, "mesh.parts[0].mesh");
     }
+    EXPECT_THAT(owners, ::testing::UnorderedElementsAre(
+        ::testing::Pair(Path("Assets/Pine.terrainpaint"), "Terrain paint"),
+        ::testing::Pair(Path("Assets/Pine.meshinstances"), "Mesh instances")));
 }
 
 TEST_F(AssetReferenceScanTest, IgnoresCommentsSubstringsScriptLoadsAndUnknownGuidSuffixes)

@@ -77,52 +77,52 @@ void ExpectWellFormedResponse(const std::string& line, const std::string& what)
     EXPECT_EQ(id->AsString(), "test-1") << what << ": 相関 id が返らない";
 }
 
-/// @brief Dispatcher が受け付ける payload.t の一覧。
-/// @note 実装の文字列リテラルから拾った 137 種。増えたらここへ足す。
-const std::vector<std::string>& AllCommandTypes()
+void ExpectSuccessfulResult(const std::string& response)
 {
-    static const std::vector<std::string> types = {
-        /// @note @@COMMANDS_BEGIN
-        "animation.addLayer", "animation.addMotion", "animation.addParameter",
-        "animation.addState", "animation.addTransition", "animation.blendTree",
-        "animation.control", "animation.graph", "animation.playSlot", "animation.pose",
-        "animation.removeLayer", "animation.removeMotion", "animation.removeParameter",
-        "animation.removeState", "animation.removeTransition", "animation.setCondition",
-        "animation.setLayer", "animation.setMotion", "animation.setParameter",
-        "animation.setState", "animation.state", "animation.stopSlot", "asset.findUnused",
-        "asset.import", "asset.inspect", "asset.list", "asset.thumbnail", "audio.control",
-        "audio.inspect", "avatarMask.get", "avatarMask.write", "bt.autoLayout",
-        "bt.blackboard.add", "bt.blackboard.remove", "bt.diff", "bt.guide", "bt.lint",
-        "bt.node.add", "bt.node.duplicate", "bt.node.remove", "bt.node.setField",
-        "bt.node.setOrder", "bt.node.setParent", "bt.nodeField", "bt.repair", "bt.runtime",
-        "bt.schema", "bt.template.apply", "bt.templateCatalog", "bt.tree", "build.run",
-        "build.status", "component.add", "component.remove", "component.set", "console.logs",
-        "edit.redo", "edit.undo", "editor.catalog", "editor.catalog.search",
-        "editor.op.invoke", "editor.op.list", "editor.op.query", "editor.redo", "editor.state",
-        "editor.checked", "editor.finalize", "editor.observation", "editor.rollback",
-        "editor.transaction", "editor.undo", "editor.undoHistory", "environment.inspect",
-        "fluid.addOperator", "fluid.bake", "fluid.cancel", "fluid.create", "fluid.createEffect",
-        "fluid.get", "fluid.jobStatus", "fluid.moveOperator", "fluid.preview",
-        "fluid.removeOperator", "fluid.schema", "fluid.set",
-        "input.inject", "material.asset.setShader", "material.assign", "material.inspect",
-        "material.override", "navmesh.bake", "navmesh.path", "navmesh.sample", "navmesh.state",
-        "node.components", "node.create", "node.delete", "node.duplicate", "node.rename",
-        "node.reparent", "node.setActive", "node.setLayer", "node.setTag", "physics.events",
-        "physics.overlapSphere", "physics.raycast", "play.control", "prefab.apply",
-        "prefab.create", "prefab.instantiate", "prefab.revert", "preset.catalog",
-        "preset.create", "profiler.snapshot", "scene.find", "scene.list", "scene.open",
-        "scene.save", "scene.selection", "scene.snapshot", "scene.tree", "scene.validate",
-        "script.inspect", "script.catalog", "selection.set", "shader.diagnostics", "shader.inspect",
-        "sprite.list", "sprite.rename", "sprite.slice", "sprite.thumbnail", "terrain.hole",
-        "terrain.inspect", "terrain.paint", "terrain.ramp", "terrain.sample", "terrain.sculpt",
-        "terrain.setLayerMaterial",
-        "transform.set", "ui.inspect", "vfx.generateMotionVectors", "viewport.camera",
-        "viewport.capture", "viewport.semantic",
-        "editor.bus.list", "input.record", "playtest.cancel", "playtest.list", "playtest.run",
-        "playtest.status", "visual.compare",
-        /// @note @@COMMANDS_END
-    };
-    return types;
+    ASSERT_NO_FATAL_FAILURE(ExpectWellFormedResponse(response, "successful request"));
+    const auto parsed = ParseJson(response);
+    ASSERT_TRUE(parsed->Find("ok")->AsBool()) << response;
+    ASSERT_NE(parsed->Find("result"), nullptr) << response;
+}
+
+void ExpectRegisteredHandlersRespond(EditorBusDispatcher& dispatcher, bool commandsOnly = false)
+{
+    const auto response = dispatcher.Handle(MakeRequest("editor.bus.list"));
+    ASSERT_NO_FATAL_FAILURE(ExpectSuccessfulResult(response));
+    const auto catalog = ParseJson(response);
+    const auto* types = catalog->Find("result")->Find("types");
+    ASSERT_TRUE(types && types->IsArray());
+    ASSERT_FALSE(types->AsArray().empty());
+
+    size_t exercised = 0;
+    for (const auto& entry : types->AsArray()) {
+        const auto* type = entry.Find("t");
+        const auto* kind = entry.Find("kind");
+        ASSERT_TRUE(type && type->IsString() && !type->AsString().empty());
+        ASSERT_TRUE(kind && kind->IsString());
+        const auto& name = type->AsString();
+        const bool query = kind->AsString() == "query";
+        ASSERT_TRUE(query || kind->AsString() == "command" || kind->AsString() == "undoable") << name;
+        if (commandsOnly && query) continue;
+        ++exercised;
+
+        SCOPED_TRACE(name);
+        const auto reply = dispatcher.Handle(MakeRequest(name, query ? "query" : "command"));
+        ASSERT_NO_FATAL_FAILURE(ExpectWellFormedResponse(reply, name));
+        const auto parsed = ParseJson(reply);
+        if (parsed->Find("ok")->AsBool()) {
+            EXPECT_NE(parsed->Find("result"), nullptr);
+        } else {
+            const auto* error = parsed->Find("error");
+            ASSERT_NE(error, nullptr) << reply;
+            const auto* code = error->Find("code");
+            ASSERT_TRUE(code && code->IsString() && !code->AsString().empty()) << reply;
+            EXPECT_NE(code->AsString(), "UNKNOWN_QUERY") << reply;
+            EXPECT_NE(code->AsString(), "UNKNOWN_COMMAND") << reply;
+            EXPECT_NE(code->AsString(), "BAD_REQUEST") << reply;
+        }
+    }
+    EXPECT_GT(exercised, 0u);
 }
 
 } /// @note namespace
@@ -180,24 +180,13 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithoutAScene)
     EditorBusDispatcher dispatcher(Context());
     ASSERT_EQ(Context().activeScene, nullptr);
 
-    for (const std::string& type : AllCommandTypes()) {
-        const std::string response = dispatcher.Handle(MakeRequest(type, "query"));
-        ExpectWellFormedResponse(response, type);
-        if (::testing::Test::HasFatalFailure()) return;
-    }
+    ExpectRegisteredHandlersRespond(dispatcher);
 }
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandAsADryRunCommand)
 {
-    /// @note query だけでなく command 側の分岐も通す。dryRun なので実変更は起きない。
     EditorBusDispatcher dispatcher(Context());
-
-    for (const std::string& type : AllCommandTypes()) {
-        const std::string response =
-            dispatcher.Handle(MakeRequest(type, "command", true));
-        ExpectWellFormedResponse(response, type + " (command)");
-        if (::testing::Test::HasFatalFailure()) return;
-    }
+    ExpectRegisteredHandlersRespond(dispatcher, true);
 }
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
@@ -208,11 +197,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandWithASceneAttached)
     scene.CreateGameObject("Player");
 
     EditorBusDispatcher dispatcher(Context());
-    for (const std::string& type : AllCommandTypes()) {
-        const std::string response = dispatcher.Handle(MakeRequest(type, "query"));
-        ExpectWellFormedResponse(response, type + " (with scene)");
-        if (::testing::Test::HasFatalFailure()) return;
-    }
+    ExpectRegisteredHandlersRespond(dispatcher);
 }
 
 TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
@@ -221,11 +206,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesEveryCommandOnAnEmptyScene)
     AttachScene();
 
     EditorBusDispatcher dispatcher(Context());
-    for (const std::string& type : AllCommandTypes()) {
-        const std::string response = dispatcher.Handle(MakeRequest(type, "query"));
-        ExpectWellFormedResponse(response, type + " (empty scene)");
-        if (::testing::Test::HasFatalFailure()) return;
-    }
+    ExpectRegisteredHandlersRespond(dispatcher);
 }
 
 TEST_F(EditorBusDispatcherTest, SurvivesWhenTheSceneIsDetachedMidSession)
@@ -235,27 +216,28 @@ TEST_F(EditorBusDispatcherTest, SurvivesWhenTheSceneIsDetachedMidSession)
     scene.CreateGameObject("Player");
 
     EditorBusDispatcher dispatcher(Context());
-    ASSERT_FALSE(dispatcher.Handle(MakeRequest("scene.tree")).empty());
+    ASSERT_NO_FATAL_FAILURE(ExpectSuccessfulResult(dispatcher.Handle(MakeRequest("scene.tree"))));
 
     DetachScene();
 
-    for (const std::string& type : AllCommandTypes()) {
-        const std::string response = dispatcher.Handle(MakeRequest(type, "query"));
-        ExpectWellFormedResponse(response, type + " (detached)");
-        if (::testing::Test::HasFatalFailure()) return;
-    }
+    ExpectRegisteredHandlersRespond(dispatcher);
 }
 
 TEST_F(EditorBusDispatcherTest, ReportsAnErrorForAnUnknownCommand)
 {
     EditorBusDispatcher dispatcher(Context());
 
-    const std::string response = dispatcher.Handle(MakeRequest("no.such.command"));
+    const std::string response = dispatcher.Handle(MakeRequest("no.such.command", "command"));
 
-    ExpectWellFormedResponse(response, "unknown");
+    ASSERT_NO_FATAL_FAILURE(ExpectWellFormedResponse(response, "unknown"));
     const auto parsed = ParseJson(response, nullptr);
     ASSERT_TRUE(parsed.has_value());
     EXPECT_FALSE(parsed->Find("ok")->AsBool());
+    const auto* error = parsed->Find("error");
+    ASSERT_NE(error, nullptr);
+    const auto* code = error->Find("code");
+    ASSERT_NE(code, nullptr);
+    EXPECT_EQ(code->AsString(), "UNKNOWN_COMMAND");
 }
 
 TEST_F(EditorBusDispatcherTest, AnswersEvenWhenTheLineIsNotJson)
@@ -313,20 +295,19 @@ TEST_F(EditorBusDispatcherTest, KeepsWorkingAfterAFailedRequest)
     dispatcher.Handle("garbage");
     dispatcher.Handle(MakeRequest("no.such.command"));
 
-    ExpectWellFormedResponse(dispatcher.Handle(MakeRequest("editor.catalog")), "after failures");
+    ExpectSuccessfulResult(dispatcher.Handle(MakeRequest("editor.catalog")));
 }
 
-TEST_F(EditorBusDispatcherTest, HandlesTheSameCommandRepeatedly)
+TEST_F(EditorBusDispatcherTest, HandlesTheSameQueryRepeatedly)
 {
     /// @note MCP は同じ問い合わせを繰り返す。呼ぶたびに状態が積み上がらないこと。
     EditorBusDispatcher dispatcher(Context());
 
     for (int i = 0; i < 5; ++i)
-        ExpectWellFormedResponse(dispatcher.Handle(MakeRequest("editor.catalog")),
-                                 "repeat " + std::to_string(i));
+        ASSERT_NO_FATAL_FAILURE(ExpectSuccessfulResult(dispatcher.Handle(MakeRequest("editor.catalog"))));
 }
 
-TEST_F(EditorBusDispatcherTest, SurvivesACommandCarryingUnexpectedFields)
+TEST_F(EditorBusDispatcherTest, AcceptsAQueryCarryingExtraFields)
 {
     /// @note 送信側が新しい項目を足しても、古いエディターが落ちてはいけない。
     EditorBusDispatcher dispatcher(Context());
@@ -344,7 +325,7 @@ TEST_F(EditorBusDispatcherTest, SurvivesACommandCarryingUnexpectedFields)
     root.Set("kind", JsonValue("query"));
     root.Set("payload", std::move(payload));
 
-    ExpectWellFormedResponse(dispatcher.Handle(SerializeJson(root)), "extra fields");
+    ExpectSuccessfulResult(dispatcher.Handle(SerializeJson(root)));
 }
 
 /// @name 流体 (.fluid)

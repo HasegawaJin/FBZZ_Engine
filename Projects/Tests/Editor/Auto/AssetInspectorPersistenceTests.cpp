@@ -471,6 +471,8 @@ TEST_F(AssetInspectorPersistenceTest, MaterialUiPublishesAndPersistsExactUndoRed
         editor::UndoStack* previous;
         ~RestoreUndo() { context.undoStack = previous; }
     } restore{Context(), std::exchange(Context().undoStack, &undo)};
+    Click(path, "Render Settings");
+    ASSERT_NE(Draw(path).find("Double Sided"), std::string::npos);
     Click(path, "Double Sided");
     (void)Draw(path);
     const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);

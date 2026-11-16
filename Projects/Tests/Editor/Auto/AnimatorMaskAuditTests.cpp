@@ -41,7 +41,7 @@ float TotalShare(const audit::BoneContribution& contribution)
     return total;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name 取り分の合成
 
@@ -108,7 +108,7 @@ TEST(AnimatorMaskEvaluate, SharesAlwaysSumToOne)
 TEST(AnimatorMaskEvaluate, ADisabledLayerTakesNothing)
 {
     const std::vector<audit::LayerInfo> layers{
-        MakeLayer("Off", 1.0f, /*additive=*/false, /*enabled=*/false),
+        MakeLayer("Off", 1.0f, false, false),
     };
 
     const auto result = audit::Evaluate(layers, "Hips/Spine", "Spine");
@@ -132,7 +132,7 @@ TEST(AnimatorMaskEvaluate, AnAdditiveLayerStealsNoShare)
     /// @note 加算は «上に足す» ので、誰の取り分も奪わない。ここを Override と同じ扱いにすると
     ///       Base が消えて、足すつもりの動きが置き換えになる。
     const std::vector<audit::LayerInfo> layers{
-        MakeLayer("Hit", 1.0f, /*additive=*/true),
+        MakeLayer("Hit", 1.0f, true),
     };
 
     const auto result = audit::Evaluate(layers, "Hips/Spine", "Spine");
@@ -145,8 +145,8 @@ TEST(AnimatorMaskEvaluate, AnAdditiveLayerStealsNoShare)
 TEST(AnimatorMaskEvaluate, AdditiveAndOverrideCoexist)
 {
     const std::vector<audit::LayerInfo> layers{
-        MakeLayer("Upper", 1.0f, /*additive=*/false),
-        MakeLayer("Hit",   0.5f, /*additive=*/true),
+        MakeLayer("Upper", 1.0f),
+        MakeLayer("Hit",   0.5f, true),
     };
 
     const auto result = audit::Evaluate(layers, "Hips/Spine", "Spine");
@@ -240,15 +240,19 @@ TEST(AnimatorMaskBlendDepth, ScalesTheWholeRampByTheWeight)
     const std::vector<float> full = audit::BlendDepthRamp(1.0f, 3);
     const std::vector<float> half = audit::BlendDepthRamp(0.5f, 3);
 
-    ASSERT_EQ(full.size(), half.size());
+    ASSERT_EQ(full.size(), 4u);
+    ASSERT_EQ(half.size(), 4u);
     for (std::size_t i = 0; i < full.size(); ++i)
         EXPECT_NEAR(half[i], full[i] * 0.5f, kEps) << "depth " << i;
 }
 
 TEST(AnimatorMaskBlendDepth, ReachesTheFullWeightAtTheDeepestStep)
 {
-    EXPECT_NEAR(audit::BlendDepthRamp(1.0f, 3).back(), 1.0f, kEps);
-    EXPECT_NEAR(audit::BlendDepthRamp(0.5f, 3).back(), 0.5f, kEps);
+    for (const float weight : { 1.0f, 0.5f }) {
+        const auto ramp = audit::BlendDepthRamp(weight, 3);
+        ASSERT_EQ(ramp.size(), 4u);
+        EXPECT_NEAR(ramp.back(), weight, kEps);
+    }
 }
 
 TEST(AnimatorMaskBlendDepth, AppliesTheWeightFlatWithoutABlendDepth)
@@ -264,7 +268,9 @@ TEST(AnimatorMaskBlendDepth, StaysWithinTheUnitRange)
 {
     for (const int depth : { 0, 1, 2, 5, 10 }) {
         for (const float weight : { 0.0f, 0.5f, 1.0f, 5.0f }) {
-            for (const float value : audit::BlendDepthRamp(weight, depth)) {
+            const auto ramp = audit::BlendDepthRamp(weight, depth);
+            ASSERT_EQ(ramp.size(), static_cast<size_t>(depth + 1));
+            for (const float value : ramp) {
                 EXPECT_GE(value, 0.0f) << "depth=" << depth << " weight=" << weight;
                 EXPECT_LE(value, 1.0f) << "depth=" << depth << " weight=" << weight;
             }
@@ -282,8 +288,10 @@ TEST(AnimatorMaskBlendDepth, TreatsANegativeDepthAsNone)
 
 TEST(AnimatorMaskBlendDepth, AZeroWeightStaysZeroAtEveryDepth)
 {
-    for (const float value : audit::BlendDepthRamp(0.0f, 4))
+    const auto ramp = audit::BlendDepthRamp(0.0f, 4);
+    ASSERT_EQ(ramp.size(), 5u);
+    for (const float value : ramp)
         EXPECT_NEAR(value, 0.0f, kEps);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

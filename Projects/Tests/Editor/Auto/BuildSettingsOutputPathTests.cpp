@@ -9,6 +9,9 @@
 
 #include <Editor/BuildSettings.hpp>
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -177,12 +180,14 @@ TEST_F(BuildOutputPathTest, PreservesAnExternalManagedFolderAndAllowsAnExternalP
 
 /// @note Windows の symlink 作成権限が無い環境では明示的に skip し、字面の検査成功を実体検査と取り違えない。
 /// @see https://learn.microsoft.com/cpp/standard-library/filesystem-functions#create_directory_symlink ディレクトリ参照の作成。
+/// @see https://learn.microsoft.com/windows/win32/debug/system-error-codes--1300-1699- ERROR_PRIVILEGE_NOT_HELD。
 TEST_F(BuildOutputPathTest, RejectsLinksIntoProtectedFoldersAndTheProjectRoot)
 {
     std::filesystem::create_directories(m_temp.File("Library"));
     std::error_code error;
     std::filesystem::create_directory_symlink(m_temp.File("Library"), m_temp.File("LibraryAlias"), error);
-    if (error == std::errc::operation_not_permitted || error == std::errc::permission_denied)
+    if (error == std::errc::operation_not_permitted || error == std::errc::permission_denied ||
+        error == std::error_code(ERROR_PRIVILEGE_NOT_HELD, std::system_category()))
         GTEST_SKIP() << "Directory symlink creation requires a Windows capability: " << error.message();
     ASSERT_FALSE(static_cast<bool>(error));
     EXPECT_FALSE(Accepts("LibraryAlias/NewPackage"));

@@ -33,7 +33,7 @@ RgbaImage Solid(uint32_t width, uint32_t height, uint8_t r, uint8_t g, uint8_t b
     return image;
 }
 
-} // namespace
+} /// @note namespace
 
 TEST(ImageCompare, IdenticalImagesHaveNoDifference)
 {
@@ -62,7 +62,7 @@ TEST(ImageCompare, CountsOnlyPixelsBeyondTheThreshold)
     ASSERT_TRUE(result.comparable);
     EXPECT_EQ(result.badPixels, 1u);
     EXPECT_DOUBLE_EQ(result.badPixelRatio, 0.01);
-    EXPECT_GT(result.meanDiff, 0.0);
+    EXPECT_NEAR(result.meanDiff, (155.0 + 99.0 * 5.0) / (100.0 * 3.0 * 255.0), 1.0e-12);
 }
 
 TEST(ImageCompare, MarksDifferentPixelsRedInTheDiffImage)
@@ -92,7 +92,10 @@ TEST(ImageCompare, IgnoresAlpha)
     for (size_t index = 3; index < actual.pixels.size(); index += 4) actual.pixels[index] = 0;
 
     const auto result = CompareImages(actual, baseline, ImageDiffSettings{});
+    ASSERT_TRUE(result.comparable);
     EXPECT_EQ(result.badPixels, 0u);
+    EXPECT_DOUBLE_EQ(result.badPixelRatio, 0.0);
+    EXPECT_DOUBLE_EQ(result.meanDiff, 0.0);
 }
 
 TEST(ImageCompare, PngRoundTripKeepsPixels)
@@ -117,4 +120,4 @@ TEST(ImageCompare, DecodeRejectsGarbage)
     EXPECT_FALSE(DecodePng({}, out));
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests
