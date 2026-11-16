@@ -78,6 +78,7 @@ TEST_F(WorldPartitionOperatorTest, RegistersAllWorldOperationsWithTheirPermissio
         {"pcg.profile.inspect", editor::OpKind::Query},
         {"pcg.profile.save", editor::OpKind::Action},
         {"pcg.volume.configure", editor::OpKind::Mutation},
+        {"pcg.volume.inspect", editor::OpKind::Query},
         {"pcg.preview", editor::OpKind::Query},
         {"pcg.generate", editor::OpKind::Mutation},
         {"pcg.detach", editor::OpKind::Mutation},

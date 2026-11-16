@@ -22,6 +22,7 @@
 #include <Engine/Scene/WorldCell.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <algorithm>
 #include <array>
 #include <limits>
 #include <map>
@@ -36,6 +37,19 @@ protected:
         m_terrain.InitFlat(); m_settings.spacing = 2.0f;
     }
     bool Build() { return editor::BuildTerrainScatter(m_terrain, m_terrainTransform, m_targetTransform, m_settings, m_placements, m_reason); }
+    /// @see Docs/design/terrain-scatter.md 密度や個数上限を変更しても採用された格子 ID の姿勢を保持する。
+    void ExpectPreservedPlacement(const renderer::InstancePlacement& placement,
+        const std::vector<renderer::InstancePlacement>& original) const
+    {
+        SCOPED_TRACE(placement.id);
+        ASSERT_GT(placement.id, 0u);
+        const auto previous = std::find_if(original.begin(), original.end(),
+            [&](const auto& candidate) { return candidate.id == placement.id; });
+        ASSERT_NE(previous, original.end());
+        EXPECT_VEC3_NEAR(placement.position, previous->position, 0.0f);
+        EXPECT_VEC3_NEAR(placement.eulerRadians, previous->eulerRadians, 0.0f);
+        EXPECT_VEC3_NEAR(placement.scale, previous->scale, 0.0f);
+    }
     scene::TerrainComponent m_terrain;
     scene::Transform m_terrainTransform, m_targetTransform;
     editor::TerrainScatterSettings m_settings;
@@ -125,7 +139,7 @@ TEST_F(TerrainScatterTest, SameSeedReproducesTransformsAndDensityKeepsCandidateI
         EXPECT_VEC3_NEAR(m_placements[i].scale, before[i].scale, 0.0f);
     }
     m_settings.density = 0.5f; ASSERT_TRUE(Build()); ASSERT_FALSE(m_placements.empty()); EXPECT_LT(m_placements.size(), before.size());
-    for (const auto& placement : m_placements) EXPECT_VEC3_NEAR(placement.position, before[placement.id - 1].position, 0.0f);
+    for (const auto& placement : m_placements) ExpectPreservedPlacement(placement, before);
     m_settings.density = 0.0f; ASSERT_TRUE(Build()); EXPECT_TRUE(m_placements.empty());
 }
 
@@ -143,10 +157,7 @@ TEST_F(TerrainScatterTest, LimitsPlacementsInWorldCellsBeforeApplyingTheTotalLim
     std::map<scene::WorldCellId, size_t> cells;
     const scene::WorldCellGrid grid{{}, scene::VEGETATION_BUDGET_CELL_SIZE};
     for (const auto& placement : m_placements) {
-        ASSERT_GT(placement.id, 0u);
-        ASSERT_LE(placement.id, unrestricted.size());
-        EXPECT_VEC3_NEAR(placement.position, unrestricted[placement.id - 1].position, 0.0f);
-        EXPECT_VEC3_NEAR(placement.scale, unrestricted[placement.id - 1].scale, 0.0f);
+        ASSERT_NO_FATAL_FAILURE(ExpectPreservedPlacement(placement, unrestricted));
         scene::WorldCellId cell;
         ASSERT_TRUE(scene::TryLocateWorldCell(grid, placement.position, cell));
         ++cells[cell];

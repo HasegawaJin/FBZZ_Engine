@@ -130,13 +130,12 @@ protected:
         m_runtime->Update(source);
     }
 
-    bool HasFailed() const
+    void ExpectNearCellFailed(const ::testing::Matcher<const std::string&>& diagnostic) const
     {
         const auto status = m_runtime->Status();
-        if (!status.diagnostic.empty()) return true;
-        for (const auto& cell : status.cells)
-            if (cell.state == scene::WorldCellLoadState::FAILED || !cell.diagnostic.empty()) return true;
-        return false;
+        ASSERT_FALSE(status.cells.empty());
+        EXPECT_EQ(status.cells.front().state, scene::WorldCellLoadState::FAILED);
+        EXPECT_THAT(status.cells.front().diagnostic, diagnostic);
     }
 
     testkit::TempDir m_temp{"WorldPartition"};
@@ -348,25 +347,28 @@ TEST_F(WorldPartitionTest, RejectsExternalParentsAndExistingGuidCollisionsWithou
     auto& manual = m_scene.CreateGameObject("Manual");
     manual.instanceId = "manual-root";
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("near-root", "Near Root", 8, 8, "manual-root", "Manual")));
-    if (Configure()) Drive(m_near);
+    ASSERT_TRUE(Configure()) << m_diagnostic;
+    Drive(m_near);
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
     EXPECT_EQ(m_scene.FindByGuid("manual-root"), &manual);
     EXPECT_EQ(m_scene.FindByGuid("near-root"), nullptr);
-    EXPECT_TRUE(HasFailed() || !m_diagnostic.empty());
+    ExpectNearCellFailed(::testing::AllOf(::testing::HasSubstr("parent"), ::testing::HasSubstr("manual-root")));
     m_runtime->Reset();
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("manual-root", "Collision")));
-    if (Configure()) Drive(m_near);
+    ASSERT_TRUE(Configure()) << m_diagnostic;
+    Drive(m_near);
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
     EXPECT_EQ(m_scene.FindByGuid("manual-root"), &manual);
     EXPECT_EQ(manual.name, "Manual");
-    EXPECT_TRUE(HasFailed() || !m_diagnostic.empty());
+    ExpectNearCellFailed(::testing::AllOf(::testing::HasSubstr("identity"), ::testing::HasSubstr("manual-root")));
 }
 
 TEST_F(WorldPartitionTest, RejectsCrossCellDuplicateGuidsWithoutOverwritingTheFirstResident)
 {
     m_manifest.cells.push_back(Cell({1, 0}, "Assets/World/second.scene"));
     ASSERT_TRUE(Write("Assets/World/second.scene", Object("near-root", "Duplicate Cell", 72, 8)));
-    if (Configure()) Drive({64, 0, 32});
+    ASSERT_TRUE(Configure()) << m_diagnostic;
+    Drive({64, 0, 32});
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
     EXPECT_EQ(m_runtime->Status().residentNear, 1u);
     const auto* original = m_scene.FindByGuid("near-root");
@@ -376,7 +378,8 @@ TEST_F(WorldPartitionTest, RejectsCrossCellDuplicateGuidsWithoutOverwritingTheFi
     ASSERT_EQ(status.cells.size(), 2u);
     EXPECT_EQ(status.cells[0].state, scene::WorldCellLoadState::RESIDENT);
     EXPECT_EQ(status.cells[1].state, scene::WorldCellLoadState::FAILED);
-    EXPECT_TRUE(HasFailed() || !m_diagnostic.empty());
+    EXPECT_THAT(status.cells[1].diagnostic,
+        ::testing::AllOf(::testing::HasSubstr("identity"), ::testing::HasSubstr("near-root")));
 }
 
 TEST_F(WorldPartitionTest, PreservesCustomTerrainDataThroughThePreparedCellAppend)
@@ -447,10 +450,11 @@ TEST_F(WorldPartitionTest, OversizedPayloadFailsWithoutPublishingAnyPartialCell)
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("near-root", "Near Root") + "\n#" + std::string(2048, 'x') + "\n"));
     m_settings.maxCellBytes = 1024;
     m_settings.maxResidentBytes = 4096;
-    if (Configure()) Drive(m_near);
+    ASSERT_TRUE(Configure()) << m_diagnostic;
+    Drive(m_near);
     EXPECT_EQ(m_scene.GameObjectCount(), 0u);
     EXPECT_EQ(m_runtime->Status().residentNear, 0u);
-    EXPECT_TRUE(HasFailed() || !m_diagnostic.empty());
+    ExpectNearCellFailed(::testing::HasSubstr("maxCellBytes"));
 }
 
 TEST_F(WorldPartitionTest, AuthoredSourcesRequireExplicitRetirementAuthorization)
@@ -459,11 +463,12 @@ TEST_F(WorldPartitionTest, AuthoredSourcesRequireExplicitRetirementAuthorization
     source.instanceId = "authored-source";
     m_manifest.sourceInstanceIds = {source.instanceId};
     m_settings.retireSourceObjects = false;
-    if (Configure()) Drive(m_near);
+    EXPECT_FALSE(Configure());
+    EXPECT_FALSE(m_runtime->Status().configured);
     EXPECT_EQ(m_scene.FindByGuid("authored-source"), &source);
     EXPECT_EQ(m_scene.FindByGuid("near-root"), nullptr);
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
-    EXPECT_TRUE(HasFailed() || !m_diagnostic.empty());
+    EXPECT_THAT(m_diagnostic, ::testing::HasSubstr("Play"));
 }
 
 TEST_F(WorldPartitionTest, AuthorizedSourcesRetireOnlyAfterAllNearPayloadsPassPreflight)
@@ -476,7 +481,10 @@ TEST_F(WorldPartitionTest, AuthorizedSourcesRetireOnlyAfterAllNearPayloadsPassPr
     m_manifest.cells.push_back(Cell({1, 0}, "Assets/World/second.scene"));
     ASSERT_TRUE(Write("Assets/World/near.scene", Object("authored-source", "Baked Source")));
     ASSERT_TRUE(Write("Assets/World/second.scene", Object("second-root", "Invalid", 72, 8, "absent-parent", "Absent")));
-    if (Configure()) Drive(m_near);
+    ASSERT_TRUE(Configure()) << m_diagnostic;
+    Drive(m_near);
+    EXPECT_THAT(m_runtime->Status().diagnostic,
+        ::testing::AllOf(::testing::HasSubstr("parent"), ::testing::HasSubstr("absent-parent")));
     EXPECT_NE(m_scene.FindByGuid("authored-source"), nullptr);
     EXPECT_EQ(m_scene.GetGameObject(originalIdentity), &source);
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
