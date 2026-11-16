@@ -48,6 +48,7 @@ internal static class PrimitiveCodecTests
     }
     static object? Decode(string json, Type type)
     { using JsonDocument document = JsonDocument.Parse(json); return StructuredFieldCodec.DecodeValue(document.RootElement, type, _ => throw new InvalidDataException("Unexpected reference.")); }
+    /// @brief Wire encoding must follow the declared primitive schema.
     static void Scalars()
     {
         object[] values = [sbyte.MinValue, byte.MaxValue, short.MinValue, ushort.MaxValue, int.MinValue, uint.MaxValue,
@@ -77,6 +78,7 @@ internal static class PrimitiveCodecTests
             Program.Check(encoded == JsonSerializer.Serialize(canonical) && Equals(value, Decode(encoded, typeof(decimal))), "Decimal scale/zero normalization must retain the exact value and canonical extremal strings.");
         }
     }
+    /// @brief Enum values must retain their exact underlying type.
     static void Enums()
     {
         object[] values = [Signed8.LOW, Signed8.HIGH, Unsigned8.HIGH, Signed16.LOW, Unsigned16.HIGH, Signed32.LOW, Unsigned32.HIGH,
@@ -93,6 +95,7 @@ internal static class PrimitiveCodecTests
         Program.Check(restored.signed == original.signed && restored.unsigned == original.unsigned && restored.real == original.real && restored.money == original.money
             && restored.code == original.code && restored.list.SequenceEqual(original.list) && restored.flags.SequenceEqual(original.flags), "Recursive helper/List/array paths use the same lossless primitive codec.");
     }
+    /// @brief Hidden/inert defaults must satisfy exact typed ranges independently of rendering.
     static void Ranges()
     {
         foreach (string name in new[] { "signed", "unsigned", "money", "precise", "single" }) {

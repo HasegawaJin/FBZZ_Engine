@@ -40,6 +40,7 @@ internal static class DataAssetDocumentTests
         do { Success(runtime.ReadPreparedDataAssetBytes(1, id, start, 65536, out byte[] page, out total)); bytes.Write(page); start += page.Length; } while (start < total);
         return bytes.ToArray();
     }
+    /// @brief Passive schema/document defaults must not execute a constructor.
     static void CreateAndEdit()
     {
         using ManagedScriptRuntime runtime = Runtime();
@@ -64,6 +65,7 @@ internal static class DataAssetDocumentTests
             "A later invalid field rejects the whole candidate without changing the retained source.");
         Success(runtime.CloseDataAssetDocument(1, edit)); Success(runtime.CloseDataAssetDocument(1, create));
     }
+    /// @brief The persisted document must cross the former generic16MiB boundary.
     static void LargeTransfer()
     {
         using ManagedScriptRuntime runtime = Runtime(); ulong create = Open(runtime, LARGE, true); Prepare(runtime, create, "{}");
@@ -79,6 +81,7 @@ internal static class DataAssetDocumentTests
         Success(runtime.ReadPreparedDataAssetReview(1, reopened, "{\"count\":1,\"wireBytes\":2048}", out string review));
         Program.Check(Encoding.UTF8.GetByteCount(review) <= 2048, "Candidate review must bound aggregate returned JSON without limiting retained values.");
     }
+    /// @brief Retiring a generation closes its data asset documents and snapshots and rejects reads through the old handles.
     static void Retirement()
     {
         using ManagedScriptRuntime runtime = Runtime(); ulong id = Open(runtime, SMALL, true); Prepare(runtime, id, "{}");
@@ -88,6 +91,7 @@ internal static class DataAssetDocumentTests
             "Retirement closes owned documents/snapshots and invalidates old handles without pinning the collectible type graph.");
     }
     [Serializable] public sealed class SceneCarrier { public ComponentRef<Camera> camera = default; }
+    /// @brief Nested scene-bound refs require an actionable asset portability diagnostic, not unresolved-null persistence.
     static void PortableSchema()
     {
         AssemblyBuilder assembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("PortableAssetSchemaProbe"), AssemblyBuilderAccess.RunAndCollect);

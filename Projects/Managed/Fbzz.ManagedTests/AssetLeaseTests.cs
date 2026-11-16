@@ -16,6 +16,7 @@ internal static class AssetLeaseTests
         (nameof(ReleaseIsIdempotentAndRetirementNeedsNoCallback), ReleaseIsIdempotentAndRetirementNeedsNoCallback)
     ];
 
+    /// @brief Asset status rejects malformed transport values.
     static void AssetStatusRejectsMalformedTransportValues()
     {
         AssetLoadStatus status = AssetLease.ParseStatus(new([6, 0, 1, 0, 7], ["18446744073709551615", "ready"], 42, null));
@@ -33,6 +34,7 @@ internal static class AssetLeaseTests
         }) Program.Throws<InvalidOperationException>(() => AssetLease.ParseStatus(invalid));
     }
 
+    /// @brief Foreign script assets cannot acquire an orphaned lease.
     static void ForeignScriptAssetsCannotAcquireAnOrphanedLease()
     {
         IScriptComponentLookup components = new EmptyComponents();
@@ -53,6 +55,7 @@ internal static class AssetLeaseTests
         finally { ScriptApiRuntime.Current = previous; }
     }
 
+    /// @brief Release is idempotent and retirement needs no callback.
     static void ReleaseIsIdempotentAndRetirementNeedsNoCallback()
     {
         IScriptComponentLookup components = new EmptyComponents(); AssetBridge bridge = new();

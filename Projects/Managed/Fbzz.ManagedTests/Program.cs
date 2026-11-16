@@ -78,6 +78,7 @@ static class Program
 
     internal static string FixturePath(string version) => Path.Combine(AppContext.BaseDirectory, "Fixtures", version, "Fbzz.ManagedFixtures.dll");
 
+    /// @brief The host exposes public and attributed private settings with their declared metadata and preserves values after invalid writes.
     static void PublicAndPrivateSettings()
     {
         using HostFixture fixture = new();
@@ -104,6 +105,7 @@ static class Program
         Check(!type.Fields.Any((ScriptFieldDescriptor field) => field.Name == "GetterTrap"), "Catalog must exclude properties without executing their getter.");
     }
 
+    /// @brief Host dispatch calls lifecycle overrides without manual registration and supplies the callback scope used for movement.
     static void OverriddenLifecycleAndScope()
     {
         using HostFixture fixture = new();
@@ -125,6 +127,7 @@ static class Program
         Check(Equals(Field(type, "destroyCount").Read(instance), 1), "Cleanup callbacks must use the same discovered lifecycle path.");
     }
 
+    /// @brief The host constructs derived scripts and dispatches the most-derived lifecycle method.
     static void InheritedLifecycleAndConstructor()
     {
         using HostFixture fixture = new();
@@ -147,6 +150,7 @@ static class Program
         Check(Equals(count.GetValue(null), 1) && Equals(Field(constructor, "value").Read(constructed), 7), "A non-public parameterless constructor must work.");
     }
 
+    /// @brief Catalog rejects invalid contracts.
     static void CatalogRejectsInvalidContracts()
     {
         ModuleBuilder module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("InvalidCatalogFixture"), AssemblyBuilderAccess.RunAndCollect).DefineDynamicModule("main");
@@ -177,6 +181,7 @@ static class Program
             "NUL in a current or previous saved field key must fail before the binary separator protocol is used.");
     }
 
+    /// @brief Fault clears scope and stops entry.
     static void FaultClearsScopeAndStopsEntry()
     {
         using HostFixture fixture = new();
@@ -191,6 +196,7 @@ static class Program
         Check(fixture.Runtime.TryInvoke(1, id, 101, 3, ScriptCallback.ON_DESTROY).Success, "Fault cleanup must remain allowed.");
     }
 
+    /// @brief Candidate failure keeps old generation.
     static void CandidateFailureKeepsOldGeneration()
     {
         using HostFixture fixture = new();
@@ -208,6 +214,7 @@ static class Program
         Check(Equals(Field(next, "speed").Read(next.CreateInstance()), 8f), "V2 must retain the same full type name with changed defaults.");
     }
 
+    /// @brief A zero callback token must be rejected.
     static void ThreadAndGenerationChecks()
     {
         using HostFixture fixture = new();
@@ -222,6 +229,7 @@ static class Program
         Check(!fixture.Runtime.TryInvoke(1, id, 101, 1, ScriptCallback.UPDATE).Success, "Released instances must reject stale dispatch.");
     }
 
+    /// @brief Retired context can be collected.
     static void RetiredContextCanBeCollected()
     {
         using ManagedScriptRuntime runtime = new(new RecordingBridge());
@@ -338,6 +346,7 @@ static class Program
         return weak;
     }
 
+    /// @brief Automatic collection allows rapid reload.
     static void AutomaticCollectionAllowsRapidReload()
     {
         using ManagedScriptRuntime runtime = new(new RecordingBridge());
@@ -366,6 +375,7 @@ static class Program
         return pin;
     }
 
+    /// @brief Pinned contexts enforce limit.
     static void PinnedContextsEnforceLimit()
     {
         RecordingBridge bridge = new();
@@ -405,6 +415,7 @@ static class Program
         GC.KeepAlive(pins);
     }
 
+    /// @brief Live candidate capacity does not request collection.
     static void LiveCandidateCapacityDoesNotRequestCollection()
     {
         using ManagedScriptRuntime runtime = new(new RecordingBridge());

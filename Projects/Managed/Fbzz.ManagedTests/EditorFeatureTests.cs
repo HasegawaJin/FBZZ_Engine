@@ -18,6 +18,7 @@ internal static class EditorFeatureTests
         ("GizmoPreviewIsolatesSettingsAndReportsLinearCloneCost", Gizmos),
         ("CallbackSuccessRemainsImmutableAcrossOwnedCleanupAndFailures", CallbackResults)
     ];
+    /// @brief Passive catalog must expose a stable action ID without invoking it.
     static void Actions()
     {
         using World world = new("ManagedFixtures.CompletionComponent");
@@ -39,6 +40,7 @@ internal static class EditorFeatureTests
             "Redo must restore the committed snapshot without re-running the action against the after value.");
         world.Runtime.DiscardSettings(1, token);
     }
+    /// @brief Line/Sphere/Box must produce a bounded fixed-size command packet through a real draw candidate.
     static void Gizmos()
     {
         using World world = new("ManagedFixtures.GizmoProbeComponent");
@@ -68,6 +70,7 @@ internal static class EditorFeatureTests
         Program.Check(catalog.RootElement.GetProperty("gizmoPreview").GetProperty("cost").GetString() == "linear_in_total_settings_size",
             "Catalog consumers must see the cost and absence of private runtime caches.");
     }
+    /// @brief An absent Update callback must retain its successful result.
     static void CallbackResults()
     {
         using World world = new("ManagedFixtures.HealthComponent");

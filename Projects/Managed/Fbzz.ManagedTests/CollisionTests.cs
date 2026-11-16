@@ -21,6 +21,7 @@ internal static class CollisionTests
         ("PhysicsCallbackFaultAndReferenceLifetime", FaultAndReferenceLifetime)
     ];
 
+    /// @brief All six private typed callbacks must be discovered without registration or override.
     static void Signatures()
     {
         using World world = new();
@@ -51,6 +52,7 @@ internal static class CollisionTests
         _ = type.CreateType();
     }
 
+    /// @brief Callback options must configure normally.
     static void SnapshotsAndScope()
     {
         using World world = new();
@@ -83,6 +85,7 @@ internal static class CollisionTests
             "Foreign scene payloads must be rejected without entering the callback.");
     }
 
+    /// @brief A cached event target must expire without reviving its GUID or resolving again.
     static void FaultAndReferenceLifetime()
     {
         using World world = new();

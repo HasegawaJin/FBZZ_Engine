@@ -19,6 +19,7 @@ internal static class RuntimeTextureTests
     static ScriptExecutionScope Scope(TextureBridge bridge, ulong generation = 1, ulong instance = 9, ulong owner = 101)
         => new(bridge, new EmptyComponents(), generation, instance, owner, 13, 42, ScriptCallback.UPDATE);
 
+    /// @brief Texture rectangle validation preserves pitch and bytes.
     static void TextureRectangleValidationPreservesPitchAndBytes()
     {
         TextureBridge bridge = new(); ScriptExecutionScope? previous = ScriptApiRuntime.Current;
@@ -44,6 +45,7 @@ internal static class RuntimeTextureTests
         finally { ScriptApiRuntime.Current = previous; }
     }
 
+    /// @brief Texture ownership and disposal never retain callback authority.
     static void TextureOwnershipAndDisposalNeverRetainCallbackAuthority()
     {
         TextureBridge bridge = new(); ScriptExecutionScope? previous = ScriptApiRuntime.Current;
@@ -75,6 +77,7 @@ internal static class RuntimeTextureTests
         finally { ScriptApiRuntime.Current = previous; }
     }
 
+    /// @brief A replacement Material cannot be modified through an old facade.
     static void RuntimeTextureMaterialBindingChecksReceiverLifetime()
     {
         TextureBridge bridge = new(); ScriptExecutionScope? previous = ScriptApiRuntime.Current;

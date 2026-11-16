@@ -29,6 +29,7 @@ internal static unsafe class ObjectControlsBridgeTests
         ("ObjectTextReadsAllocateOnlyReturnedStrings", TextReadAllocation)
     ];
     static readonly byte[] s_guid = Encoding.UTF8.GetBytes("01234567-89ab-cdef-0123-456789abcdef");
+    /// @brief Wrappers for the same lifetime must compare equally without a Script scope.
     static void Equality()
     {
         GameObject first = new(11, 3, "same-guid");
@@ -49,6 +50,7 @@ internal static unsafe class ObjectControlsBridgeTests
     static bool s_trailingBytes;
     static bool s_numericPacket, s_numericWireValid;
     static byte[]? s_textReply;
+    /// @brief Numeric object writes must retain the exact eight-byte packet without allocating transfer arrays.
     /// @note Verify the real marshaller; the fake endpoint performs no managed decoding or recording allocation.
     static void NumericPacketAllocation()
     {
@@ -61,6 +63,7 @@ internal static unsafe class ObjectControlsBridgeTests
             Program.Check(allocated == 0 && s_numericWireValid, "Numeric object writes must retain the exact eight-byte packet without allocating transfer arrays.");
         } finally { s_numericPacket = false; }
     }
+    /// @brief Text read allocation.
     static void TextReadAllocation()
     {
         using Fixture fixture = new(); s_count = 0; s_status = BridgeStatus.OK;
@@ -79,6 +82,7 @@ internal static unsafe class ObjectControlsBridgeTests
             }
         } finally { s_textReply = null; }
     }
+    /// @brief Capacity failure must leave all caller slots unchanged.
     static void QueryBuffer()
     {
         using Fixture fixture = new();
@@ -107,6 +111,7 @@ internal static unsafe class ObjectControlsBridgeTests
             "A failed query must not publish partial caller output.");
         s_status = BridgeStatus.OK;
     }
+    /// @brief Mutation failures cannot replay or modify caller output.
     static void Spawn()
     {
         using Fixture fixture = new();
@@ -125,6 +130,7 @@ internal static unsafe class ObjectControlsBridgeTests
         Program.Check(fixture.Script.Scene.CreateMany("Enemy", poses, output).Status == BatchStatus.INVALID_ARGUMENT && s_calls == 0,
             "Every pose must pass validation before dispatch.");
     }
+    /// @brief Large query capacity failures must report the whole collection without publishing a prefix.
     static void LargeCollections()
     {
         using Fixture fixture = new();
@@ -160,6 +166,7 @@ internal static unsafe class ObjectControlsBridgeTests
             && ReferenceEquals(output[0], first), "A native resource failure must not be replayed or publish caller output.");
         s_status = BridgeStatus.OK;
     }
+    /// @brief Invalid counts.
     static void InvalidCounts()
     {
         using Fixture fixture = new();
@@ -180,6 +187,7 @@ internal static unsafe class ObjectControlsBridgeTests
         }
         finally { s_truncated = false; s_unrepresentableBytes = false; }
     }
+    /// @brief Pool capacity must follow successfully created objects beyond4096.
     static void Pool()
     {
         using Fixture fixture = new();
@@ -190,6 +198,7 @@ internal static unsafe class ObjectControlsBridgeTests
         GameObject? rented = pool.Rent();
         Program.Check(rented is not null && pool.Return(rented), "A large pool must retain normal rental and return semantics.");
     }
+    /// @brief Query cache.
     static void QueryCache()
     {
         using Fixture fixture = new();

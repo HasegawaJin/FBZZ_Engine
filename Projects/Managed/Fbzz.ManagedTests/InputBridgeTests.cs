@@ -56,6 +56,7 @@ internal static unsafe class InputBridgeTests
         s_buttons.Add("Fire", [true, false, true]); s_axes.Add("MoveX", 0f);
     }
 
+    /// @brief Typed input and current names.
     static void TypedInputAndCurrentNames()
     {
         using ApiFixture fixture = new();
@@ -78,6 +79,7 @@ internal static unsafe class InputBridgeTests
             "Snapshots stay immutable while later queries observe the current map.");
     }
 
+    /// @brief Removed handles must be revalidated by the native value request.
     static void NameDiagnostics()
     {
         using ApiFixture fixture = new();
@@ -93,6 +95,7 @@ internal static unsafe class InputBridgeTests
         Program.Check(s_wireValid, "Removed handles must be revalidated by the native value request.");
     }
 
+    /// @brief A handle must not retain permission after its callback ends.
     static void CurrentAuthority()
     {
         using ApiFixture fixture = new();
@@ -111,6 +114,7 @@ internal static unsafe class InputBridgeTests
             "Named input is global map identity and must use the current caller instead of captured generation or owner authority.");
     }
 
+    /// @brief Invalid names.
     static void InvalidNames()
     {
         using ApiFixture fixture = new();
@@ -128,6 +132,7 @@ internal static unsafe class InputBridgeTests
         Program.Check(output.SequenceEqual(new[] { "unchanged", "tail" }) && s_nameSnapshot is null, "Malformed replies must not partially change caller output or retain the owned query.");
     }
 
+    /// @brief Later page failure.
     static void LaterPageFailure()
     {
         using ApiFixture fixture = new();
@@ -149,6 +154,7 @@ internal static unsafe class InputBridgeTests
         ExpectMalformed(() => fixture.Script.Input.GetButtonNames(output)); CheckUntouched();
     }
 
+    /// @brief Caller sized names.
     static void CallerSizedNames()
     {
         using ApiFixture fixture = new(); Reset(); s_buttons.Clear();
@@ -192,6 +198,7 @@ internal static unsafe class InputBridgeTests
         throw new InvalidOperationException("A malformed native input catalog was accepted.");
     }
 
+    /// @brief Short stack and warmed long multibyte pool packets must preserve exact input without transient arrays.
     /// @note The fake native endpoint compares borrowed UTF8 directly so its own string decoding cannot hide Host allocation regressions.
     static void InputPacketAllocation()
     {
@@ -207,6 +214,7 @@ internal static unsafe class InputBridgeTests
                 "Short stack and warmed long multibyte pool packets must preserve exact input without transient arrays.");
         }
     }
+    /// @brief A nested scope and long packet must not overwrite or capture the outer caller's borrowed storage.
     static void InputPacketReentry()
     {
         using ApiFixture fixture = new(); Reset(); s_fastInput = true;

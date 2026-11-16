@@ -15,12 +15,14 @@ namespace Fbzz.ManagedTests;
 
 internal static class ManagedDiagnosticsTests
 {
+    /// @brief Verify ordinary-path allocation, real batch coverage, bounded overflow and GC/assembly evidence output.
     internal static void Run()
     {
         DisabledBatchDoesNotAllocate();
         ActualCallsReportGroupsTailsAndOverflow();
         SessionWritesGcAndActualAssemblyIdentity();
     }
+    /// @brief Disabled batch does not allocate.
     static void DisabledBatchDoesNotAllocate()
     {
         Program.Check(BatchMathDiagnostics.Capture is null, "Ordinary tests must not have an active diagnostic capture.");
@@ -33,6 +35,7 @@ internal static class ManagedDiagnosticsTests
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Program.Check(allocated == 0 && BatchMathDiagnostics.Capture is null, "OFF batch calls must not allocate or create a diagnostic session.");
     }
+    /// @brief Actual calls report groups tails and overflow.
     static void ActualCallsReportGroupsTailsAndOverflow()
     {
         BatchMathCapture capture = new(8);
@@ -60,6 +63,7 @@ internal static class ManagedDiagnosticsTests
         finally { BatchMathDiagnostics.Stop(bounded); }
         Program.Check(bounded.Count == 1 && bounded.Dropped == 1 && bounded.TryRead(0, out _), "Overflow must be visible without overwriting captured rows.");
     }
+    /// @brief Session writes gc and actual assembly identity.
     static void SessionWritesGcAndActualAssemblyIdentity()
     {
         string directory = Path.Combine(Path.GetTempPath(), "FbzzManagedDiagnostics-" + Guid.NewGuid().ToString("N"));

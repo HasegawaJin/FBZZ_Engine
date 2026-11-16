@@ -16,6 +16,7 @@ internal static class AudioSourceApiTests
         (nameof(AudioSourceSettingsRejectExpiredAndNonfiniteCalls), AudioSourceSettingsRejectExpiredAndNonfiniteCalls),
         (nameof(AudioSourceSettingsCatalogSeparatesQueriesAndPlayWrites), AudioSourceSettingsCatalogSeparatesQueriesAndPlayWrites)
     ];
+    /// @brief Audio source settings use reserved selectors and exact lifetime.
     static void AudioSourceSettingsUseReservedSelectorsAndExactLifetime()
     {
         using Fixture f = new(); AudioSource source = new(f.Target, 91);
@@ -30,6 +31,7 @@ internal static class AudioSourceApiTests
         source.FadeLowPassTo(0.2f, 0.8f); f.Assert(56, false, values: [0.2f, 0.8f]);
         source.SetVolume(0.7f); f.Assert(14, false, values: [0.7f]);
     }
+    /// @brief Audio source settings reject expired and nonfinite calls.
     static void AudioSourceSettingsRejectExpiredAndNonfiniteCalls()
     {
         using Fixture f = new(); AudioSource source = new(f.Target, 91); int calls = f.Bridge.Calls;
@@ -42,6 +44,7 @@ internal static class AudioSourceApiTests
         Program.Throws<InvalidOperationException>(() => { _ = source.LowPassCutoff; });
         Program.Check(f.Bridge.Calls == calls, "AudioSource must not retain callback authority.");
     }
+    /// @brief Audio source settings catalog separates queries and play writes.
     static void AudioSourceSettingsCatalogSeparatesQueriesAndPlayWrites()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);

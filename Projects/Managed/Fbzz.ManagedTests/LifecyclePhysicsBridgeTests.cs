@@ -41,6 +41,7 @@ internal static unsafe class LifecyclePhysicsBridgeTests
     static bool s_scopeAccessRejected;
     static ScriptExecutionScope? s_expectedScope;
 
+    /// @brief Creation must suspend managed Engine access while preserving caller IDs and the returned lifetime reference.
     static void CreationScope()
     {
         using ApiFixture fixture = new();
@@ -83,6 +84,7 @@ internal static unsafe class LifecyclePhysicsBridgeTests
         Program.Check(s_dispatches == 0, "Creation cannot borrow a scope that is not currently active.");
     }
 
+    /// @brief BUFFER_TOO_SMALL must never replay creation, destruction or a physics mutation.
     static void MutationsNeverReplay()
     {
         using ApiFixture fixture = new();
@@ -116,6 +118,7 @@ internal static unsafe class LifecyclePhysicsBridgeTests
             "DestroyMany must return the original failure after one borrowed request, preserving null and duplicate slots.");
     }
 
+    /// @brief Raycast must retain world values, variable-length GUID and the caller's lifetime in one dispatch.
     static void QueryWireAndRetry()
     {
         using ApiFixture fixture = new();
@@ -151,6 +154,7 @@ internal static unsafe class LifecyclePhysicsBridgeTests
             && s_dispatches == 1, "A valid zero-count reply must produce no hit.");
     }
 
+    /// @brief Invalid query replies.
     static void InvalidQueryReplies()
     {
         using ApiFixture fixture = new();
@@ -188,6 +192,7 @@ internal static unsafe class LifecyclePhysicsBridgeTests
         Program.Throws<InvalidDataException>(() => fixture.Script.Physics.OverlapSphere(Vector3.ZERO, 1f));
         Program.Check(s_dispatches == 1, "A success reply cannot exceed the caller's borrowed buffer.");
     }
+    /// @brief Large query buffers.
     static void LargeQueryBuffers()
     {
         using ApiFixture fixture = new(); const int count = 32769;
@@ -212,6 +217,7 @@ internal static unsafe class LifecyclePhysicsBridgeTests
             "A malformed late hit must leave caller-owned output unchanged.");
     }
 
+    /// @brief Fixed update only.
     static void FixedUpdateOnly()
     {
         using ApiFixture fixture = new();

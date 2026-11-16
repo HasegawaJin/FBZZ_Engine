@@ -11,6 +11,7 @@ namespace Fbzz.ManagedTests;
 
 internal static class QuaternionTests
 {
+    /// @brief 純 C# 回転の単位・成分順・退化境界・補間契約を検証する。
     internal static void Run()
     {
         Program.Check(Marshal.SizeOf<Quaternion>() == 16 && Marshal.OffsetOf<Quaternion>(nameof(Quaternion.W)).ToInt32() == 12,
@@ -53,6 +54,7 @@ internal static class QuaternionTests
         SimdQuaternionContracts();
     }
 
+    /// @brief SIMD conjugation must flip only XYZ sign bits, preserving the real NaN payload.
     /// @note Scalar golden expressions verify XYZW arithmetic and signed-zero recovery across mixed rotations, extrapolation and non-finite inputs.
     static void SimdQuaternionContracts()
     {

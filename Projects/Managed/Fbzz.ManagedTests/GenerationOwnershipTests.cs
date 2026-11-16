@@ -14,6 +14,7 @@ internal static class GenerationOwnershipTests
         ("OwnedEditGenerationSurvivesPlayReloadCandidates", RetainedEdit),
         ("GenerationLeaseCountsAndResourceSlotsRemainExplicit", LeaseCounts)
     ];
+    /// @brief An owned Edit context and both unowned Play/candidate contexts must coexist without replacing original CLR instances.
     static void RetainedEdit()
     {
         using ManagedScriptRuntime runtime = new(new Program.RecordingBridge());
@@ -39,6 +40,7 @@ internal static class GenerationOwnershipTests
         Success(runtime.RetireGeneration(1));
         Program.Check(runtime.GetCatalog(1) is null && !runtime.TryInstance(1, original, out _), "Explicit retirement is valid only after ownership is released.");
     }
+    /// @brief Lease counts.
     static void LeaseCounts()
     {
         using ManagedScriptRuntime runtime = new();

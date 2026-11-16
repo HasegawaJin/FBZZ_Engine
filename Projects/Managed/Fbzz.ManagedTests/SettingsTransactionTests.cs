@@ -95,6 +95,7 @@ internal static class SettingsTransactionTests
         public void Dispose() { foreach (ulong id in Records.Keys.ToArray()) Runtime.ReleaseInstance(1, id); Runtime.Dispose(); }
     }
     static void Success(ManagedRuntimeResult result) => Program.Check(result.Success, result.Message);
+    /// @brief Preparation must normalize a detached constructor-free candidate exactly once without touching the live instance.
     static void Normalization()
     {
         using World world = new();
@@ -112,6 +113,7 @@ internal static class SettingsTransactionTests
         Success(world.Runtime.DiscardSettings(1, token));
         Program.Check(!world.Runtime.PublishSettings(1, token, true).Success, "Discarded previews must not remain usable.");
     }
+    /// @brief A later callback failure must leave every target and shared nested graph unchanged.
     static void Atomicity()
     {
         using World world = new();
@@ -132,6 +134,7 @@ internal static class SettingsTransactionTests
         Program.Check(!world.Runtime.PublishSettings(1, token, false).Success && world.Value(1).amount == 2 && world.Value(2).amount == 2,
             "The full snapshot comparison must catch direct public field writes even without a revision counter update, before any target is written.");
     }
+    /// @brief Reference moves.
     static void ReferenceMoves()
     {
         using World world = new();
@@ -146,6 +149,7 @@ internal static class SettingsTransactionTests
         Success(world.Runtime.PublishSettings(1, token, false));
         Program.Check(world.Value(1).targets[0].ObjectId == 303, "Redo must retain the same exact token movement.");
     }
+    /// @brief Fresh add replacement identities must remain distinct and a duplicate destination must reject the whole batch before any write.
     static void AddRedo()
     {
         using World world = new();
@@ -167,6 +171,7 @@ internal static class SettingsTransactionTests
         Program.Check(!world.Runtime.PublishSettings(1, batch, false, duplicate).Success && world.Value(4).amount == 2,
             "Fresh add replacement identities must remain distinct and a duplicate destination must reject the whole batch before any write.");
     }
+    /// @brief Live mutable graphs must not alias the immutable token; a newer edited value conflicts instead of overwriting it.
     static void UndoIsolation()
     {
         using World world = new();
@@ -185,6 +190,7 @@ internal static class SettingsTransactionTests
         }], out ulong token);
         Success(result); return token;
     }
+    /// @brief Undo must preserve unrelated nested leaves and math axes in the same root field.
     static void LeafPatches()
     {
         using World world = new();
@@ -207,6 +213,7 @@ internal static class SettingsTransactionTests
         Program.Check(!world.Runtime.PublishSettings(1, token, false).Success && world.Value(1).nodes[0].value == 9,
             "First publication still compares every target's full current snapshot rather than accepting unreviewed concurrent changes.");
     }
+    /// @brief Explicit create.
     static void ExplicitCreate()
     {
         using World world = new();
@@ -221,6 +228,7 @@ internal static class SettingsTransactionTests
         Program.Check(world.Value(1).nodes.Count == 2 && world.Value(1).nodes[1].value == 2 && world.Value(1).counts.SequenceEqual(new uint[] { 1 }),
             "List-item create honors helper initializers and uses range-valid scalar defaults.");
     }
+    /// @brief One response budget must include all target, change and exact-reference metadata.
     static void BoundedReview()
     {
         using World world = new();
@@ -279,6 +287,7 @@ internal static class SettingsTransactionTests
         Program.Check(!world.Runtime.ReadPreparedReview(1, token, detail, out _).Success, "Discard must invalidate review access and reclaim retained snapshots.");
     }
 
+    /// @brief Explicit preview discard must reclaim all retained resident and spool capacity.
     static void LedgerBudget()
     {
         using World world = new(); world.Value(1).large = new string('x', 120000);

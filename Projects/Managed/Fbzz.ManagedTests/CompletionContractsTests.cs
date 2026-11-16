@@ -16,6 +16,7 @@ namespace Fbzz.ManagedTests;
 
 internal static class CompletionContractsTests
 {
+    /// @brief 本物 Host による複合保存・候補 rollback・receiver 所有・イベント・待機の検証。
     internal static void Run()
     {
         StructuredAtomicity();
@@ -26,6 +27,7 @@ internal static class CompletionContractsTests
         SelfCancellationDoesNotReregister();
         AssetCopiesAndTypeSafety();
     }
+    /// @brief Serializable classes, List and Quaternion must use real supported codecs.
     static void StructuredAtomicity()
     {
         using World world = new();
@@ -83,6 +85,7 @@ internal static class CompletionContractsTests
             diagnostic.Code == "CS_STRUCTURED_SCHEMA" && diagnostic.MemberName == "options" && diagnostic.Message.Contains("'$go'", StringComparison.Ordinal)),
             "Reserved nested field keys must reject discovery with an explicit schema diagnostic before any Scene or Prefab write.");
     }
+    /// @brief Initial cache discovery must run.
     static void PlayStateAndCacheReconnect()
     {
         using World world = new();
@@ -110,6 +113,7 @@ internal static class CompletionContractsTests
         Program.Check(world.Runtime.TryInvoke(1, id, 101, 4, ScriptCallback.UPDATE).Success, "Rejected preparation must leave old code executable.");
         Program.Check(world.Runtime.RetireGeneration(1).Success, "Old instances must retire after commit.");
     }
+    /// @brief List caches use exact saved identity.
     static void ListCachesUseExactSavedIdentity()
     {
         using World world = new();
@@ -171,6 +175,7 @@ internal static class CompletionContractsTests
         Program.Check(world.Runtime.RestoreReload(2, candidate, snapshot).Success && Cache("m_healthCaches")[2] is null,
             "A saved Script ID and GUID must not revive a cache on a replacement GameObject.");
     }
+    /// @brief Typed requirements use exact physical presence and inherited metadata.
     static void TypedRequirementsUseExactPhysicalPresenceAndInheritedMetadata()
     {
         using World world = new();
@@ -203,6 +208,7 @@ internal static class CompletionContractsTests
         Program.Check(!rejected.Success && rejected.Diagnostics.Any(value => value.Code == "CS_COMPONENT_REQUIREMENT"),
             "Host discovery must reject an unsupported required type even when analyzer checks are bypassed.");
     }
+    /// @brief Owned callback must use B scope.
     static void ReceiverOwnershipAndConnections()
     {
         using World world = new();
@@ -236,6 +242,7 @@ internal static class CompletionContractsTests
             && world.Runtime.InvokeOwned(1, receiverId, 202, 7, eventToken, true, "{\"$version\":1,\"value\":1}", 0, false).Status == BridgeStatus.NOT_FOUND,
             "Owner cleanup must remove every managed delegate token.");
     }
+    /// @brief Self cancellation does not reregister.
     static void SelfCancellationDoesNotReregister()
     {
         using World world = new();
@@ -294,6 +301,7 @@ internal static class CompletionContractsTests
         public void Dispose() { Disposals++; }
     }
 
+    /// @brief Asset copies and type safety.
     static void AssetCopiesAndTypeSafety()
     {
         using World world = new();

@@ -32,6 +32,7 @@ internal static class ScriptCallbackContractsTests
         , ("ValueScopeWitnessesRemainDistinctAcrossGenerationReload", ScopeReload)
     ];
 
+    /// @brief Async engine delegates reject before registration.
     private static void AsyncEngineDelegatesRejectBeforeRegistration()
     {
         using World world = new();
@@ -55,6 +56,7 @@ internal static class ScriptCallbackContractsTests
             "Async delegates must be rejected before any invocation, token registration or native reservation.");
     }
 
+    /// @brief Host rejects async multicast targets.
     private static void HostRejectsAsyncMulticastTargets()
     {
         using World world = new();
@@ -76,6 +78,7 @@ internal static class ScriptCallbackContractsTests
             "Host-side safety must reject every async multicast target even when the public facade is bypassed.");
     }
 
+    /// @brief Synchronous owned callbacks still run and cancel.
     private static void SynchronousOwnedCallbacksStillRunAndCancel()
     {
         using World world = new();
@@ -99,6 +102,7 @@ internal static class ScriptCallbackContractsTests
             "A canceled subscription must not deliver again.");
     }
 
+    /// @brief Timeline failed start can retry.
     private static void TimelineFailedStartCanRetry()
     {
         using World world = new();
@@ -115,6 +119,7 @@ internal static class ScriptCallbackContractsTests
         Program.Check(world.Bridge.Registrations.Count == 1, "A successfully started Timeline remains a single-use object.");
     }
 
+    /// @brief Timeline reentrancy and invalid steps are rejected.
     private static void TimelineReentrancyAndInvalidStepsAreRejected()
     {
         using World world = new();
@@ -139,6 +144,7 @@ internal static class ScriptCallbackContractsTests
         Program.Check(reentrancyRejected == 1 && world.Bridge.RegisterCount == 2, "A started Timeline must reject recursive Play and edits inside its first step.");
     }
 
+    /// @brief Timeline step failure faults owner and cancels children.
     private static void TimelineStepFailureFaultsOwnerAndCancelsChildren()
     {
         using World world = new();
@@ -155,6 +161,7 @@ internal static class ScriptCallbackContractsTests
         Program.Check(ScriptApiRuntime.Current is null, "The fault path must restore the ambient callback scope.");
     }
 
+    /// @brief Routine first and later steps use receiver job scope.
     private static void RoutineFirstAndLaterStepsUseReceiverJobScope()
     {
         using World world = new();
@@ -183,6 +190,7 @@ internal static class ScriptCallbackContractsTests
             "Both initial and resumed routine work must have receiver identity, JOB restrictions and bounded scope lifetime.");
     }
 
+    /// @brief Lifecycle defaults and hidden methods are not callbacks.
     private static void LifecycleDefaultsAndHiddenMethodsAreNotCallbacks()
     {
         using World world = new();
@@ -203,6 +211,7 @@ internal static class ScriptCallbackContractsTests
         }
     }
 
+    /// @brief Connect publication must be rejected before reaching a permissive fallback bridge.
     private static void SharedPolicyProtectsManagedFallbacks()
     {
         using World world = new();
@@ -223,6 +232,7 @@ internal static class ScriptCallbackContractsTests
         Program.Check(world.Bridge.PublishCount == 0, "Connect publication must be rejected before reaching a permissive fallback bridge.");
     }
 
+    /// @brief Engine notification payloads share exact contracts and sequence codec.
     private static void EngineNotificationPayloadsShareExactContractsAndSequenceCodec()
     {
         Bridge bridge = new();
@@ -253,6 +263,7 @@ internal static class ScriptCallbackContractsTests
             "Managed publication and native subscription must share the same exact typed Sequence value.");
     }
 
+    /// @brief Nested callbacks must restore every outer scope field and identity.
     /// @note Retaining a value witness must not turn reused native IDs into a new callback's permission.
     static void ValueScopeAuthority()
     {
@@ -282,6 +293,7 @@ internal static class ScriptCallbackContractsTests
             Program.Throws<InvalidOperationException>(() => ((IScriptComponentLookup)world.Runtime).GetComponents(retained, world.Instance.GameObject, typeof(Script)));
         });
     }
+    /// @brief Warmed callback dispatch allocates zero bytes on the calling thread and clears callback authority after returning.
     /// @note This verifies managed allocation only, not timing; the real fixture performs Update plus two time reads and a Transform call.
     static void ScopeAllocation()
     {
@@ -301,6 +313,7 @@ internal static class ScriptCallbackContractsTests
         Program.Check(success && allocated == 0,
             $"Absent callbacks must preserve their existing allocation-free success path. bytes={allocated}; calls=256; success={success}; currentIsNull={ScriptApiRuntime.Current is null}.");
     }
+    /// @brief Scope reload.
     static void ScopeReload()
     {
         using World world = new(); ScriptExecutionScope original = default;

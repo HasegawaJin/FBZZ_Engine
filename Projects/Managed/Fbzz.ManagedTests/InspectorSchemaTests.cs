@@ -57,6 +57,7 @@ internal static class InspectorSchemaTests
         using JsonDocument json = JsonDocument.Parse(value);
         return ScriptFieldCodec.DecodeJson(json.RootElement, field, _ => throw new InvalidDataException("Unexpected reference."));
     }
+    /// @brief Sparse and negative enum values must retain their actual persisted integers.
     static void EnumContract()
     {
         ScriptFieldDescriptor mode = Field("mode"), options = Field("options");
@@ -78,6 +79,7 @@ internal static class InspectorSchemaTests
         Nested bad = new() { options = (Options)2 };
         Program.Check(!StructuredFieldCodec.Validate(bad, typeof(Nested)), "Nested Flags must reject undeclared bits.");
     }
+    /// @brief Nested settings metadata must expose visibility, range, help, group, and unit independently of persistence.
     static void Metadata()
     {
         using JsonDocument schema = JsonDocument.Parse(JsonSerializer.Serialize(StructuredFieldCodec.Schema(typeof(Nested))));
@@ -98,6 +100,7 @@ internal static class InspectorSchemaTests
         using JsonDocument invalid = JsonDocument.Parse("{\"speed\":9}");
         Program.Throws<InvalidDataException>(() => StructuredFieldCodec.DecodeValue(invalid.RootElement, typeof(Nested), _ => throw new InvalidDataException()));
     }
+    /// @brief List order.
     static void ListOrder()
     {
         List<Nested> items = [new() { speed = 1 }, new() { speed = 4 }, new() { speed = 2 }];
@@ -120,6 +123,7 @@ internal static class InspectorSchemaTests
         public List<Vector4> colors = [new(1, 2, 3, 4)];
         public List<uint> counts = [0, 2147483648U, uint.MaxValue];
     }
+    /// @brief Vector2/4, uint and their arrays/Lists must preserve exact values through the shared codec.
     static void AuthoringValues()
     {
         AuthoringSettings original = new();
@@ -143,6 +147,7 @@ internal static class InspectorSchemaTests
             "Range constraints must apply to uint List elements through the same validator as scalar fields.");
         Program.Throws<InvalidDataException>(() => Decode("[11]", Field("counts")));
     }
+    /// @brief Snapshot paths must distinguish same-GUID tokens and preserve uint values without float conversion.
     static void SnapshotReferences()
     {
         Settings settings = new() { targets = [new GameObject(202, 1, "same-guid"), new GameObject(303, 1, "same-guid")] };
@@ -170,6 +175,7 @@ internal static class InspectorSchemaTests
         [ValueRange(1, 5)] public int count = 3;
         public ConstructorProbe? next = null;
     }
+    /// @brief Discovery is inert.
     static void DiscoveryIsInert()
     {
         ConstructorProbe.Calls = 0;
@@ -189,6 +195,7 @@ internal static class InspectorSchemaTests
         Program.Check(!unsupported.RootElement.GetProperty("supported").GetBoolean() && unsupported.RootElement.GetProperty("enumValues").ValueKind == JsonValueKind.Null,
             "Unrecognized framework values must retain an explicit inert unsupported schema.");
     }
+    /// @brief Repeated schema discovery and codec use must preserve deterministic metadata, exact enum bits, and nested values.
     static void RepeatedNestedSchema()
     {
         string first = JsonSerializer.Serialize(ManagedFieldSchema.Build(typeof(Nested)));

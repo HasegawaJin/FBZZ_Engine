@@ -25,6 +25,7 @@ public static class BindingGeneratorTests
     private static readonly CSharpParseOptions PARSE_OPTIONS = new(LanguageVersion.Latest);
     private static readonly ImmutableArray<MetadataReference> REFERENCES = PlatformReferences();
 
+    /// @brief 共通 ABI の全配置・数値 ID・単純 marshaller と生成対象の診断を検証する。
     public static void RunAll()
     {
         (string Name, Action Test)[] tests =
@@ -46,6 +47,7 @@ public static class BindingGeneratorTests
         Console.WriteLine($"BINDING GENERATOR TESTS passed={tests.Length} failed=0");
     }
 
+    /// @brief The managed bridge contract requires x64.
     private static void CanonicalHostLayoutAndIds()
     {
         Assembly assembly = Compile("Host", Contract());
@@ -83,6 +85,7 @@ public static class BindingGeneratorTests
         Check(assembly.GetType("Fbzz.ManagedHost.ScriptCallback") is null, "SDK types must not be emitted into Host.");
     }
 
+    /// @brief Host wire structures must not leak into the public SDK.
     private static void CanonicalSdkEnums()
     {
         Assembly assembly = Compile("Sdk", Contract());
@@ -104,6 +107,7 @@ public static class BindingGeneratorTests
         CheckEnum(assembly, "Fbzz.AssetLoadError", "NONE=0 NO_CHANNEL=1 NOT_FOUND=2 DECODE_FAILED=3 UPLOAD_FAILED=4 DEPENDENCY_FAILED=5 DEPENDENCY_CYCLE=6 BUDGET_EXCEEDED=7 SHUTTING_DOWN=8");
     }
 
+    /// @brief Generated calls pack and dispatch once.
     private static void GeneratedCallsPackAndDispatchOnce()
     {
         Assembly assembly = Compile("Host", Contract(), probe: true);
@@ -112,6 +116,7 @@ public static class BindingGeneratorTests
         Check((bool?)run.Invoke(null, null) == true, "Generated methods must preserve operation, payload, caller provenance and exactly one dispatch.");
     }
 
+    /// @brief Game compilation skips bindings.
     private static void GameCompilationSkipsBindings()
     {
         Run(null, [new ContractText("FBZZ_MANAGED_UNKNOWN()")], out Compilation output, out ImmutableArray<Diagnostic> diagnostics, out GeneratorDriverRunResult result);
@@ -119,6 +124,7 @@ public static class BindingGeneratorTests
         Check(!output.GetDiagnostics().Any(static value => value.Severity == DiagnosticSeverity.Error), "Skipping bindings must keep ordinary C# valid.");
     }
 
+    /// @brief Missing and invalid targets are diagnosed.
     private static void MissingAndInvalidTargetsAreDiagnosed()
     {
         Run("Host", [], out _, out ImmutableArray<Diagnostic> missing, out _);
@@ -129,6 +135,7 @@ public static class BindingGeneratorTests
         Check(invalid.Any(static value => value.Id == "FBZZ1012"), "Unknown target spellings must be rejected.");
     }
 
+    /// @brief Malformed contracts are diagnosed.
     private static void MalformedContractsAreDiagnosed()
     {
         string valid = "FBZZ_MANAGED_ENUM_BEGIN(NativeOp, BridgeOp, uint32_t, uint, HOST, public)\nFBZZ_MANAGED_ENUM_VALUE(TIME, TIME, 104)\nFBZZ_MANAGED_ENUM_END()\n";
@@ -165,6 +172,7 @@ public static class BindingGeneratorTests
         }
     }
 
+    /// @brief Quoted call fragments remain intact.
     private static void QuotedCallFragmentsRemainIntact()
     {
         string schema = string.Join('\n', Contract().Split('\n').Where(static line => !line.StartsWith("FBZZ_MANAGED_CALL(", StringComparison.Ordinal))) + "\n" +
@@ -178,6 +186,7 @@ public static class BindingGeneratorTests
         Check(calls.Contains("return \"a,\\\"b\\\"\";", StringComparison.Ordinal), "Generated C# must decode the contract string exactly once.");
     }
 
+    /// @brief Cross target enum names remain independent.
     private static void CrossTargetEnumNamesRemainIndependent()
     {
         string schema = Contract() + "\nFBZZ_MANAGED_ENUM_BEGIN(OtherNativeOp, BridgeOp, uint32_t, uint, SDK, public)\nFBZZ_MANAGED_ENUM_VALUE(OTHER, OTHER, 1)\nFBZZ_MANAGED_ENUM_END()\n";

@@ -37,6 +37,7 @@ internal static unsafe class ServicesApiTests
     static int s_materialPages, s_materialCloses, s_materialWriteChunks, s_materialCommits, s_materialFailPage;
     static byte[] s_displaySnapshot = [];
     static int s_displayPages, s_displayCloses;
+    /// @brief 公開 Component facade と Host packet の caller/target 分離・拒否・再送禁止を検証する。
     internal static void Run()
     {
         using ApiFixture fixture = new();

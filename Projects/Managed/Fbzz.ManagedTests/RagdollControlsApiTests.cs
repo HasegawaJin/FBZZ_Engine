@@ -16,6 +16,7 @@ internal static class RagdollControlsApiTests
         (nameof(PhysicalSnapshotsDecodeFullValuePackets),PhysicalSnapshotsDecodeFullValuePackets),
         (nameof(BalanceHelperIsPlanarBoundedAndRelativeToSupport),BalanceHelperIsPlanarBoundedAndRelativeToSupport),
         (nameof(ControlCatalogPreservesFixedWritesAndPureMath),ControlCatalogPreservesFixedWritesAndPureMath)];
+    /// @brief Body target weights and World quaternion must retain packet order.
     static void BodyTargetsAndGripsTransferExactFramesAndLifetime()
     {
         using Fixture f=new();Ragdoll r=new(f.Target,91);f.Bridge.Reply=new([],[],1,null);
@@ -37,6 +38,7 @@ internal static class RagdollControlsApiTests
         Program.Throws<ArgumentOutOfRangeException>(()=>r.SetSimulation(65,0,0));
         f.Bridge.Birth=92;Program.Throws<InvalidOperationException>(()=>r.ReleaseAllGrabs());
     }
+    /// @brief Physical snapshots decode full value packets.
     static void PhysicalSnapshotsDecodeFullValuePackets()
     {
         using Fixture f=new();Ragdoll r=new(f.Target,91);
@@ -53,6 +55,7 @@ internal static class RagdollControlsApiTests
         Program.Check(contact.Valid&&contact.Self&&contact.Dynamic&&contact.OtherBone=="Other"&&contact.OtherVelocity.Y==5,
             "Contact normal, other velocity and self/dynamic flags must remain independent.");
     }
+    /// @brief Balance helper is planar bounded and relative to support.
     static void BalanceHelperIsPlanarBoundedAndRelativeToSupport()
     {
         ScriptApiRuntime.Current=null;
@@ -68,6 +71,7 @@ internal static class RagdollControlsApiTests
         s.HasSupport=false;Program.Check(RagdollBalanceUtility.ComputeAcceleration(s,Vector3.ONE).Length==0,"Airborne observations must not invent support.");
         Program.Throws<ArgumentOutOfRangeException>(()=>RagdollBalanceUtility.ComputeAcceleration(s,Vector3.ZERO,-1));
     }
+    /// @brief Control catalog preserves fixed writes and pure math.
     static void ControlCatalogPreservesFixedWritesAndPureMath()
     {
         using JsonDocument doc=JsonDocument.Parse(ApiCatalog.Json);

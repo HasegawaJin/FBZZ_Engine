@@ -49,6 +49,7 @@ public static class GeneratorTests
         return failures == 0 ? 0 : 1;
     }
 
+    /// @brief Empty types and every partial declaration must produce an attribute.
     private static void EmptyAndPartialSourceDeclarations()
     {
         SyntaxTree first = Tree("using Fbzz; namespace Actors; internal class EmptyActor : Script {} internal partial class PartialActor : Script {}", "Actors.cs");
@@ -65,6 +66,7 @@ public static class GeneratorTests
             "Paths must be project relative with forward slashes.");
     }
 
+    /// @brief Same line partial declarations share one location.
     private static void SameLinePartialDeclarationsShareOneLocation()
     {
         SyntaxTree tree = Tree("using Fbzz; internal partial class Actor : Script {} internal partial class Actor {}", "Actor.cs");
@@ -73,6 +75,7 @@ public static class GeneratorTests
         Check(Sources(output).Length == 1, "A location without column metadata must not produce a duplicate path/line attribute.");
     }
 
+    /// @brief Compiled checksum includes UTF-8 BOM.
     private static void CompiledChecksumIncludesUtf8Bom()
     {
         byte[] content = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("using Fbzz; internal class BomActor : Script {}" )).ToArray();
@@ -86,6 +89,7 @@ public static class GeneratorTests
             "Metadata checksum must match the original source bytes, including the BOM.");
     }
 
+    /// @brief Supported derived type metadata must compile.
     private static void ConcreteDerivedSourceAndExcludedTypes()
     {
         SyntaxTree source = Tree("""
@@ -102,6 +106,7 @@ public static class GeneratorTests
             "Only concrete, nongeneric, unnested Script types belong to source metadata.");
     }
 
+    /// @brief Invalid source metadata is diagnosed.
     private static void InvalidSourceMetadataIsDiagnosed()
     {
         CSharpCompilation compilation = Create(Tree("using Fbzz; internal class Actor : Script {}", "Actor.cs"));
@@ -112,6 +117,7 @@ public static class GeneratorTests
         Check(wrongChecksum.Any(static diagnostic => diagnostic.Id == "FBZZ1001"), "SHA1 must not silently replace the SHA256 contract.");
     }
 
+    /// @brief DataAsset source metadata must compile.
     private static void DataAssetSourceDeclarations()
     {
         Compilation output = Generate(Create(Tree("using Fbzz; internal class WeaponData : DataAsset {}", "WeaponData.cs")),
@@ -121,6 +127,7 @@ public static class GeneratorTests
             "DataAsset identities need the same source metadata as Script identities.");
     }
 
+    /// @brief Inspector settings suppress only cs 0649.
     private static void InspectorSettingsSuppressOnlyCs0649()
     {
         SyntaxTree source = Tree("""

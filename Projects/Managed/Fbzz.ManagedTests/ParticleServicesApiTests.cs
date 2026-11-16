@@ -16,6 +16,7 @@ internal static class ParticleServicesApiTests
         (nameof(ParticleDiagnosticsAndCatalogKeepRequestedAndActualPathsDistinct), ParticleDiagnosticsAndCatalogKeepRequestedAndActualPathsDistinct),
         (nameof(ParticleSnapshotPropertiesArePureStoredValues), ParticleSnapshotPropertiesArePureStoredValues)
     ];
+    /// @brief Particle masks must preserve the high uint32 bit in the exact service packet.
     static void ParticleGroupsTransferExactEnumsAssetsAndMasks()
     {
         using Fixture fixture = new(); ParticleSystem particle = new(fixture.Target, 91);
@@ -39,6 +40,7 @@ internal static class ParticleServicesApiTests
         Program.Throws<InvalidOperationException>(() => particle.SetSphereShape(1));
         Program.Check(fixture.Bridge.Calls == calls, "A retained facade must not mutate a replacement Particle row.");
     }
+    /// @brief Particle diagnostics and catalog keep requested and actual paths distinct.
     static void ParticleDiagnosticsAndCatalogKeepRequestedAndActualPathsDistinct()
     {
         using Fixture fixture = new(); ParticleSystem particle = new(fixture.Target, 91);
@@ -61,6 +63,7 @@ internal static class ParticleServicesApiTests
         Program.Check((int)ParticleGpuFallbackReason.RESERVED_VECTOR_FIELD == 11 && (int)ParticleGpuFallbackReason.LIGHT == 12,
             "New GPU fallback reasons must preserve reserved ABI values.");
     }
+    /// @brief Particle snapshot properties are pure stored values.
     static void ParticleSnapshotPropertiesArePureStoredValues()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);

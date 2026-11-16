@@ -16,6 +16,7 @@ public static class ApiCatalogTests
     static void Require(bool valid, string message) { if (!valid) throw new InvalidOperationException(message); }
     static JsonElement Type(JsonElement root, string name) => root.GetProperty("types").EnumerateArray().Single((JsonElement value) => value.GetProperty("name").GetString() == name);
     static JsonElement Member(JsonElement type, string name) => type.GetProperty("members").EnumerateArray().First((JsonElement value) => value.GetProperty("name").GetString() == name);
+    /// @brief Public SDK metadata contains exact signatures without internal services.
     static void PublicSdkMetadataContainsExactSignaturesWithoutInternalServices()
     {
         string first = ApiCatalog.Json;
@@ -46,6 +47,7 @@ public static class ApiCatalogTests
         }
     }
 
+    /// @brief Structured contracts distinguish pure math space and callback restrictions.
     static void StructuredContractsDistinguishPureMathSpaceAndCallbackRestrictions()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);

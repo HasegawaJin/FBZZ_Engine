@@ -8,6 +8,7 @@ using Fbzz;
 namespace Fbzz.ManagedTests;
 internal static class RandomStreamTests
 {
+    /// @brief Native と同じ固定 vector、全 int 範囲、棄却と default state の検証。
     internal static void Run()
     {
         ulong[] words = [0x47E4CE4B896CDD1DUL, 0xABCFA6A8E079651DUL, 0xB9D10D8FEB731F57UL,

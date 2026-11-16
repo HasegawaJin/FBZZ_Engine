@@ -20,6 +20,7 @@ internal static class ObservationTests
         ("ObservationTextChunksKeepUtf8Boundaries", LargeText),
         ("ObservationHandlesHaveExactLifetimeAndResourceOwnership", Lifetime)
     ];
+    /// @brief A list beyond 32768 nodes must capture without whole-list JSON encoding.
     static void LargeList()
     {
         using World world = new();
@@ -51,6 +52,7 @@ internal static class ObservationTests
         Program.Check(token.GetProperty("objectId").GetString() == "202" && token.GetProperty("sceneLifetime").GetString() == "1",
             "Returned exact reference paths must include the selected root and retained runtime lifetime.");
     }
+    /// @brief A string larger than 1 MiB must capture in spool storage.
     static void LargeText()
     {
         using World world = new();
@@ -71,6 +73,7 @@ internal static class ObservationTests
         using JsonDocument component = world.Page(scalar, "/rotation/3", 0, 1);
         Program.Check(component.RootElement.GetProperty("value").GetSingle() == 1f, "Known SDK Quaternion components must be read without user getters.");
     }
+    /// @brief A bounded resource policy must permit its first snapshot.
     static void Lifetime()
     {
         using World world = new();

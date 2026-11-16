@@ -14,6 +14,7 @@ namespace Fbzz.ManagedTests;
 
 internal static class QuaternionBatchTests
 {
+    /// @brief Cross-agent SIMD rotation parity, alias safety and generated API contracts.
     internal static void Run()
     {
         LookRotationMatchesScalarAcrossBranchesAndTails();
@@ -23,6 +24,7 @@ internal static class QuaternionBatchTests
         Program.Check(ScriptApiRuntime.Current is null, "Batch math must not create an Engine callback scope.");
     }
 
+    /// @brief Look rotation matches scalar across branches and tails.
     /// @note Four simultaneous basis rotations force trace/X/Y/Z branches; counts cover every scalar tail and nonzero array offset.
     static void LookRotationMatchesScalarAcrossBranchesAndTails()
     {
@@ -56,6 +58,7 @@ internal static class QuaternionBatchTests
         Program.Check(Marshal.SizeOf<Vector3>() == 12 && Marshal.SizeOf<Quaternion>() == 16, "Batch operations must preserve value ABI.");
     }
 
+    /// @brief Slerp matches scalar for mixed arcs and normalization.
     /// @note Scalar golden expressions retain reduction order, near-arc Lerp, unclamped t and the caller's optional second normalization.
     static void SlerpMatchesScalarForMixedArcsAndNormalization()
     {
@@ -98,6 +101,7 @@ internal static class QuaternionBatchTests
         }
     }
 
+    /// @brief Buffers validate before writes and support exact in place.
     static void BuffersValidateBeforeWritesAndSupportExactInPlace()
     {
         Quaternion guard = new(11, 13, 17, 19);
@@ -123,6 +127,7 @@ internal static class QuaternionBatchTests
         for (int i = 0; i < a.Length; ++i) { Same(exactA[i], golden[i], "in-place from"); Same(exactB[i], golden[i], "in-place to"); }
     }
 
+    /// @brief Metadata publishes managed span contracts.
     static void MetadataPublishesManagedSpanContracts()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);

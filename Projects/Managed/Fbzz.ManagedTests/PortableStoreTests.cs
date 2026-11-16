@@ -23,6 +23,7 @@ internal static class PortableStoreTests
     }
     [Serializable] sealed class SceneBound { public GameObject? owner = default; }
     static int ConstructorCalls;
+    /// @brief Portable 保存値の large graph・資産 GUID・passive 復元・失敗 defaults 保護。
     internal static void Run()
     {
         Profile source = new() { coins = 17, note = new string('x', 2 * 1024 * 1024), skin = new MaterialAssetRef("11111111111111111111111111111111") };

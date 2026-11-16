@@ -49,6 +49,7 @@ internal static class Stage2Tests
         ("SourceDiscoveryAndStableManifest", SourceDiscoveryAndStableManifest)
     ];
 
+    /// @brief Array schema and binary round trip.
     static void ArraySchemaAndBinaryRoundtrip()
     {
         using World world = new();
@@ -76,6 +77,7 @@ internal static class Stage2Tests
         Program.Throws<InvalidDataException>(() => ScriptFieldCodec.DecodeArray(malformed, targets, (string guid) => new GameObject(0, 1, guid)));
     }
 
+    /// @brief A preview must validate every field without requiring a user getter.
     static void AtomicConfigureAndRequiredReferences()
     {
         using World world = new();
@@ -192,6 +194,7 @@ internal static class Stage2Tests
         return (int)reply->Status;
     }
 
+    /// @brief Live lookup binds only current scene metadata.
     static void LiveLookupBindsOnlyCurrentSceneMetadata()
     {
         using World world = new();
@@ -220,6 +223,7 @@ internal static class Stage2Tests
         world.Bridge.DuringTranslate = null;
     }
 
+    /// @brief An empty caller buffer must report the full collection beyond4096.
     static void ManagedComponentPagingContracts()
     {
         using World world = new();
@@ -255,6 +259,7 @@ internal static class Stage2Tests
         world.Bridge.DuringTranslate = null;
     }
 
+    /// @brief Managed component malformed copy page preserves caller.
     static void ManagedComponentMalformedCopyPagePreservesCaller()
     {
         MalformedComponentBridge bridge = new();
@@ -295,6 +300,7 @@ internal static class Stage2Tests
         }
     }
 
+    /// @brief Typed lookup must preserve ScriptEntry order and include stopped entries.
     static void RetainedLookupAndCallerScope()
     {
         using World world = new();
@@ -335,6 +341,7 @@ internal static class Stage2Tests
         Program.Check(world.Runtime.TryInvoke(1, caller, 101, 1, ScriptCallback.UPDATE).Status == BridgeStatus.CALLBACK_FAILED, "Stale native access must stop the caller entry instead of changing a replacement entity.");
     }
 
+    /// @brief Script lifetime is distinct from object lifetime.
     static void ScriptLifetimeIsDistinctFromObjectLifetime()
     {
         using World world = new();
@@ -362,6 +369,7 @@ internal static class Stage2Tests
         world.Bridge.DuringTranslate = null;
     }
 
+    /// @brief Authoring lookup must expose readable names without requiring GUID syntax.
     static void NamedLookupAndMovementHelpers()
     {
         using World world = new();
@@ -386,6 +394,7 @@ internal static class Stage2Tests
         Program.Throws<InvalidOperationException>(() => { _ = retained!.WorldPosition; });
     }
 
+    /// @brief Plain helper uses caller scope.
     static void PlainHelperUsesCallerScope()
     {
         using World world = new();
@@ -414,6 +423,7 @@ internal static class Stage2Tests
             "Calling the same helper after the callback must reject Engine access before changing the target.");
     }
 
+    /// @brief Utility lookup retains generation identity.
     static void UtilityLookupRetainsGenerationIdentity()
     {
         string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "Dependency", "Fbzz.ManagedDependencyFixtures.dll");
@@ -456,9 +466,11 @@ internal static class Stage2Tests
         GC.KeepAlive(oldBase);
     }
 
+    /// @brief Source declaration generation and the limited Inspector-field warning suppressor must pass their real Roslyn tests.
     static void GeneratorContracts()
         => Program.Check(Fbzz.ScriptGeneratorTests.GeneratorTests.RunAll() == 0, "Source declaration generation and the limited Inspector-field warning suppressor must pass their real Roslyn tests.");
 
+    /// @brief Source discovery must read generated declarations without loading a game context.
     static void SourceDiscoveryAndStableManifest()
     {
         IReadOnlyList<ScriptSourceEntry> sources = ScriptManifest.ReadSources(Program.FixturePath("V1"));

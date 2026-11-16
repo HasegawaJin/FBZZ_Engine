@@ -10,6 +10,7 @@ namespace Fbzz.ManagedTests;
 
 internal static class ObjectBatchApiTests
 {
+    /// @brief 一括 Script API の呼び出し権限・参照スロット・再利用バッファ契約を検証する。
     internal static void Run()
     {
         BufferedRequestsUseOneBridgeCall();
@@ -19,6 +20,7 @@ internal static class ObjectBatchApiTests
         EmptyAndLargeRequestsStillDispatch();
     }
 
+    /// @brief Buffered requests use one bridge call.
     static void BufferedRequestsUseOneBridgeCall()
     {
         using ApiFixture fixture = new();
@@ -58,6 +60,7 @@ internal static class ObjectBatchApiTests
             "Translate must forward activeOnly and expose native batch counts through one call.");
     }
 
+    /// @brief Invalid requests do not dispatch.
     static void InvalidRequestsDoNotDispatch()
     {
         using ApiFixture fixture = new();
@@ -85,6 +88,7 @@ internal static class ObjectBatchApiTests
             Program.Check(positions[index].Equals(sentinel) && statuses[index] == (ObjectStatus)88, "Preflight failures must retain every output slot.");
     }
 
+    /// @brief Native failures retain outputs.
     static void NativeFailuresRetainOutputs()
     {
         using ApiFixture fixture = new();
@@ -108,6 +112,7 @@ internal static class ObjectBatchApiTests
             Program.Check(positions[index].Equals(sentinel) && statuses[index] == (ObjectStatus)99, "Native whole-request failures must retain outputs and tails.");
     }
 
+    /// @brief Services require current scope.
     static void ServicesRequireCurrentScope()
     {
         using ApiFixture fixture = new();
@@ -132,6 +137,7 @@ internal static class ObjectBatchApiTests
         Program.Check(fixture.Bridge.Calls == 0, "A retained service must never dispatch without a live matching receiver and callback scope, even for empty requests.");
     }
 
+    /// @brief Empty and large requests still dispatch.
     static void EmptyAndLargeRequestsStillDispatch()
     {
         using ApiFixture fixture = new();

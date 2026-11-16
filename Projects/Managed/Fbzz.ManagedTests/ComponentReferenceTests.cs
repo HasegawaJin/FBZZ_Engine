@@ -26,6 +26,7 @@ internal static class ComponentReferenceTests
         ("WorldFamilyReferencesKeepExactEpochAndPortableAddressesBeyondKind32", WorldFamilyReferences)
         , ("RenderingReferencesReloadSpoolAndReaddPreserveExactBirths", RenderingReferences)
     ];
+    /// @brief Pending/absent rows must expire without GUID lookup.
     static void NativeEpoch()
     {
         Bridge bridge = new(); using ManagedScriptRuntime runtime = new(bridge);
@@ -41,6 +42,7 @@ internal static class ComponentReferenceTests
         Program.Check(default(ComponentRef<Component>).IsEmpty, "Empty checks require no Engine scope.");
         Program.Throws<InvalidOperationException>(() => held.TryGet(out _));
     }
+    /// @brief VFX, SequencePlayer, Terrain and Water references keep their typed facade and require explicit resolution after re-addition.
     static void WorldFamilyReferences()
     {
         Bridge bridge = new(); using ManagedScriptRuntime runtime = new(bridge);
@@ -70,6 +72,7 @@ internal static class ComponentReferenceTests
             "COUNT is an exclusive bound and never a fabricated Component.");
         ScriptApiRuntime.Current = null;
     }
+    /// @brief Script reload.
     static void ScriptReload()
     {
         Bridge bridge = new(); using ManagedScriptRuntime runtime = new(bridge);
@@ -105,6 +108,7 @@ internal static class ComponentReferenceTests
             "Undo/redo-style recreation with the same saved ID and new birth must not be adopted as reload lineage.");
         ScriptApiRuntime.Current = null;
     }
+    /// @brief Line settings must store the stable native address and keep runtime births out of saved data.
     static void RenderingReferences()
     {
         Bridge bridge = new(); using ManagedScriptRuntime runtime = new(bridge);
@@ -159,6 +163,7 @@ internal static class ComponentReferenceTests
         }
         ScriptApiRuntime.Current = null;
     }
+    /// @brief Saved component references omit runtime epochs while immutable snapshots restore exact identities and null entries.
     static void Codec()
     {
         ComponentReferenceIdentity identity = new("native", "owner", 1, "", "", 202, 9, 41);

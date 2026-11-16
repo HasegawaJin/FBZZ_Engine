@@ -23,6 +23,7 @@ internal static class SdkDocumentationTests
     static XDocument Read() => XDocument.Load(Path.ChangeExtension(typeof(Script).Assembly.Location, ".xml"));
     static XElement Member(XDocument document, string id) => document.Descendants("member").Single(value => (string?)value.Attribute("name") == id);
 
+    /// @brief Distributed XML contains standard descriptions and parameter units.
     static void DistributedXmlContainsStandardDescriptionsAndParameterUnits()
     {
         XDocument document = Read();
@@ -58,6 +59,7 @@ internal static class SdkDocumentationTests
         }
     }
 
+    /// @brief XML and catalog use the same declared failure and unit contracts.
     static void XmlAndCatalogUseTheSameDeclaredFailureAndUnitContracts()
     {
         XDocument xml = Read();
@@ -74,6 +76,7 @@ internal static class SdkDocumentationTests
             "World bounds metres must survive the distribution build.");
     }
 
+    /// @brief Doxygen comments keep math units and generic reference contracts.
     static void DoxygenCommentsKeepMathUnitsAndGenericReferenceContracts()
     {
         XDocument document = Read();

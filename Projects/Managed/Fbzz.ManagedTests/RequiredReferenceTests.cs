@@ -30,6 +30,7 @@ internal static class RequiredReferenceTests
          "optional":null,"optionalList":[null,"missing-guid"]}
         """;
 
+    /// @brief Defaults and binding.
     static void DefaultsAndBinding()
     {
         using World world = new(bind: false);
@@ -49,6 +50,7 @@ internal static class RequiredReferenceTests
         world.Configure("{\"branches\":[],\"optionalList\":[]}");
     }
 
+    /// @brief Configure is atomic.
     static void ConfigureIsAtomic()
     {
         using World world = new();
@@ -91,6 +93,7 @@ internal static class RequiredReferenceTests
         }
     }
 
+    /// @brief Tokens do not resurrect.
     static void TokensDoNotResurrect()
     {
         using World world = new();
@@ -118,6 +121,7 @@ internal static class RequiredReferenceTests
         world.Configure(VALID);
     }
 
+    /// @brief Reload capture must retain the representable missing-reference state.
     static void SnapshotPreparation()
     {
         using World world = new();
@@ -144,6 +148,7 @@ internal static class RequiredReferenceTests
             "The same candidate must pass publication checks after explicit live reference connection.");
     }
 
+    /// @brief Invalid nested RequiredReference types must reject discovery with a schema diagnostic.
     static void SchemaDiagnostics()
     {
         ModuleBuilder module = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName("RequiredReferenceSchemaFixture"),

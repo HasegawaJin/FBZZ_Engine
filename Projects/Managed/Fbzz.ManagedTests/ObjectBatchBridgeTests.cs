@@ -35,6 +35,7 @@ internal static unsafe class ObjectBatchBridgeTests
     private static BridgeReply s_preparedReply;
     private static int s_resultPages, s_failResultPage, s_publications;
 
+    /// @brief 本物の NativeBridge で一括 payload・借用 buffer・失敗時未変更と再送禁止を検証する。
     internal static void Run()
     {
         (string Name, Action Test)[] tests =
@@ -54,6 +55,7 @@ internal static unsafe class ObjectBatchBridgeTests
         Console.WriteLine($"OBJECT BATCH BRIDGE TESTS passed={tests.Length} failed=0");
     }
 
+    /// @brief Read must use fixed per-slot rows and one dispatch.
     private static void WireSlotsAndCallerTails()
     {
         IScriptNativeBridge bridge = CreateBridge();
@@ -105,6 +107,7 @@ internal static unsafe class ObjectBatchBridgeTests
             "A nonfinite valid world position must reject before modifying caller output.");
     }
 
+    /// @brief Expected failures preserve caller buffers.
     private static void ExpectedFailuresPreserveCallerBuffers()
     {
         IScriptNativeBridge bridge = CreateBridge(); ScriptExecutionScope scope = Scope(bridge);
@@ -129,6 +132,7 @@ internal static unsafe class ObjectBatchBridgeTests
         }
     }
 
+    /// @brief Invalid replies preserve caller buffers.
     private static void InvalidRepliesPreserveCallerBuffers()
     {
         IScriptNativeBridge bridge = CreateBridge(); ScriptExecutionScope scope = Scope(bridge);
@@ -156,6 +160,7 @@ internal static unsafe class ObjectBatchBridgeTests
             "A protocol exception must release the scratch lease for later calls.");
     }
 
+    /// @brief Preflight bounds and empty dispatch.
     private static void PreflightBoundsAndEmptyDispatch()
     {
         IScriptNativeBridge bridge = CreateBridge(); ScriptExecutionScope scope = Scope(bridge);
@@ -185,6 +190,7 @@ internal static unsafe class ObjectBatchBridgeTests
         Program.Check(s_dispatches == 1, "An empty request must not bypass a native scope refusal.");
     }
 
+    /// @brief Scratch reuse has no warm allocations.
     private static void ScratchReuseHasNoWarmAllocations()
     {
         IScriptNativeBridge bridge = CreateBridge(); ScriptExecutionScope scope = Scope(bridge);
@@ -280,6 +286,7 @@ internal static unsafe class ObjectBatchBridgeTests
         if (phase == 6) { s_publications++; *reply = s_preparedReply; return (int)reply->Status; }
         return 0;
     }
+    /// @brief Late result page failure cannot publish mutation.
     private static void LateResultPageFailureCannotPublishMutation()
     {
         IScriptNativeBridge bridge = CreateBridge(); ScriptExecutionScope scope = Scope(bridge);

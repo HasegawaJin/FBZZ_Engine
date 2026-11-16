@@ -32,6 +32,7 @@ internal static class SettingsCapacityTests
         public string text = new('文', 1024 * 1024 / 3 + 23);
         public GameObject[] references = [];
     }
+    /// @brief Saved arrays/lists/text retain every value beyond former display and transfer limits.
     static void Roundtrip()
     {
         Large source = new();
@@ -42,6 +43,7 @@ internal static class SettingsCapacityTests
             && restored.list.Count == 40001 && restored.list[^1] == 40000 && restored.text == source.text,
             "Saved arrays/lists/text retain every value beyond former display and transfer limits.");
     }
+    /// @brief Pages.
     static void Pages()
     {
         Large source = new(); source.references = [new GameObject(202, 9, "same"), new GameObject(303, 8, "same")];
@@ -121,6 +123,7 @@ internal static class SettingsCapacityTests
     {
         public Large settings = new();
     }
+    /// @brief A leaf beyond former cutoffs must publish atomically.
     static void Transactions()
     {
         using ManagedScriptRuntime runtime = new(new Program.RecordingBridge());
@@ -162,6 +165,7 @@ internal static class SettingsCapacityTests
         type.GetField("values")!.SetValue(value, Enumerable.Range(0, 40001).ToArray());
         return (ImmutableValueSnapshot.Capture(value, type, new(ResidentBytes: 32768)), new WeakReference(type));
     }
+    /// @brief Spool page caching must remain budgeted while retaining no collectible user metadata.
     static void StorageAndTypes()
     {
         byte[] expected = Enumerable.Range(0, 65537).Select(index => (byte)(index * 31 + 7)).ToArray();

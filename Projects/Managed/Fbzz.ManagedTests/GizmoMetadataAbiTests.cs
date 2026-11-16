@@ -69,6 +69,7 @@ internal static unsafe class GizmoMetadataAbiTests
         return types;
     }
 
+    /// @brief Distinguishes callbacks.
     static void DistinguishesCallbacks()
     {
         Initialize();
@@ -95,6 +96,7 @@ internal static unsafe class GizmoMetadataAbiTests
         } finally { Shutdown(); }
     }
 
+    /// @brief Keeps generation masks.
     static void KeepsGenerationMasks()
     {
         Initialize();
@@ -118,6 +120,7 @@ internal static unsafe class GizmoMetadataAbiTests
         } finally { Shutdown(); }
     }
 
+    /// @brief Base lifecycle defaults must advertise known absence for all three updates.
     static void LifecyclePresence()
     {
         Initialize();
@@ -146,6 +149,7 @@ internal static unsafe class GizmoMetadataAbiTests
         } finally { Shutdown(); }
     }
 
+    /// @brief A retained first generation must keep its Update-only callback presence.
     static void LifecycleGenerations()
     {
         Initialize();
@@ -163,6 +167,7 @@ internal static unsafe class GizmoMetadataAbiTests
         } finally { Shutdown(); }
     }
 
+    /// @brief Rejects undefined callbacks.
     static void RejectsUndefinedCallbacks()
     {
         Initialize();

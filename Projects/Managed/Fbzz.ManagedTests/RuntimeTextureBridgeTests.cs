@@ -31,6 +31,7 @@ internal static unsafe class RuntimeTextureBridgeTests
         (nameof(RuntimeTextureHostAbortsBeforeFailedTransferCanCommit), RuntimeTextureHostAbortsBeforeFailedTransferCanCommit)
     ];
 
+    /// @brief Runtime texture host creates for current object.
     static void RuntimeTextureHostCreatesForCurrentObject()
     {
         IScriptNativeBridge bridge = CreateBridge();
@@ -49,6 +50,7 @@ internal static unsafe class RuntimeTextureBridgeTests
         } finally { ScriptApiRuntime.Current = previous; }
     }
 
+    /// @brief A padded R8 transfer larger than the packet limit must commit successfully.
     static void RuntimeTextureHostChunksExactPaddedBytes()
     {
         IScriptNativeBridge bridge = CreateBridge(); ScriptExecutionScope scope = Scope(bridge);
@@ -67,6 +69,7 @@ internal static unsafe class RuntimeTextureBridgeTests
             "Native consumption must finish synchronously before the caller may reuse its input span.");
     }
 
+    /// @brief Runtime texture host aborts before failed transfer can commit.
     static void RuntimeTextureHostAbortsBeforeFailedTransferCanCommit()
     {
         IScriptNativeBridge bridge = CreateBridge(); ScriptExecutionScope scope = Scope(bridge);

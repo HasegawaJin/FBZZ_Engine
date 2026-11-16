@@ -22,6 +22,7 @@ internal static unsafe class TransformPoseApiTests
     static BridgeStatus s_rejection;
     static bool s_alive;
 
+    /// @brief 回転・拡縮 facade と生成 Host marshaller の対象寿命・拒否・単発配送を検証する。
     internal static void Run()
     {
         IScriptNativeBridge bridge = CreateBridge();

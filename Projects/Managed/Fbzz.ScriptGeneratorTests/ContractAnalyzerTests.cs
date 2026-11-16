@@ -17,6 +17,7 @@ namespace Fbzz.ScriptGeneratorTests;
 
 internal static class ContractAnalyzerTests
 {
+    /// @brief Compile real SDK authoring examples and check contract diagnostics and source locations.
     public static void RunAll()
     {
         (string Name, Action Test)[] tests =
@@ -43,12 +44,14 @@ internal static class ContractAnalyzerTests
         Console.WriteLine($"CONTRACT ANALYZER TESTS passed={tests.Length} failed=0");
     }
 
+    /// @brief Typed asset values are pure authoring dependencies.
     private static void TypedAssetValuesArePureAuthoringDependencies()
     {
         Compilation compilation = Compile("using Fbzz; public class Profile : DataAsset { public MaterialAssetRef material; public TextureAssetRef texture; protected override void OnValidate() { material = new MaterialAssetRef(\"material-guid\"); texture = new TextureAssetRef(material.Reference); _ = texture.IsEmpty; } }");
         Check(!compilation.GetDiagnostics().Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error) && Analyze(compilation).Length == 0,
             "Pure typed asset GUID constructors/properties must be usable in settings-only authoring callbacks.");
     }
+    /// @brief World queries allow draw while playback and geometry mutations are diagnosed.
     private static void WorldQueriesAllowDrawWhilePlaybackAndGeometryMutationsAreDiagnosed()
     {
         const string accepted = "using Fbzz; [RequireComponent(typeof(Terrain),typeof(Water),typeof(VFX),typeof(SequencePlayer))] public class Actor : Script { protected override void DrawGizmos() { _ = GetComponent<Terrain>()!.TrySampleWorld(1,2,out var surface); _ = surface.Position; _ = GetComponent<Water>()!.GetSurfaceHeightWorld(1,2,0); } }";
@@ -59,6 +62,7 @@ internal static class ContractAnalyzerTests
         Check(Analyze(Compile(forbidden)).Count(value => value.Id == "FBZZ2010") == 2,
             "Readonly draw must still reject actual playback and geometry writes.");
     }
+    /// @brief Every lifecycle override compiles.
     private static void EveryLifecycleOverrideCompiles()
     {
         string methods = string.Join("\n", ScriptLifecycleContract.Callbacks.Select(static callback =>
@@ -68,6 +72,7 @@ internal static class ContractAnalyzerTests
         Check(Analyze(compilation).Length == 0, "Valid SDK overrides must not receive contract diagnostics.");
     }
 
+    /// @brief Sequence completion string aliases use exact system type.
     private static void SequenceCompletionStringAliasesUseExactSystemType()
     {
         foreach (string spelling in new[] { "string", "System.String" }) {
@@ -78,6 +83,7 @@ internal static class ContractAnalyzerTests
         Check(Analyze(Compile("using Fbzz; public class Actor : Script { protected override void OnSequenceFinished(object value) { } }")).Any(value => value.Id == "FBZZ2001"),
             "An object payload must still be rejected as a different notification type.");
     }
+    /// @brief High facade requirements and model references remain authorable.
     private static void HighFacadeRequirementsAndModelReferencesRemainAuthorable()
     {
         const string source = "using Fbzz; [RequireComponent(typeof(LineRenderer),typeof(MotionWarp),typeof(FlowField))] public class Actor : Script { public ComponentRef<LineRenderer> line; public ComponentRef<MotionWarp> warp; public ModelAssetRef model; protected override void OnValidate() { model = new ModelAssetRef(\"model-guid\"); } protected override void DrawGizmos() { if (line.TryGet(out var renderer)) _ = renderer.PositionCount; } }";
@@ -87,6 +93,7 @@ internal static class ContractAnalyzerTests
             "High facade requirements, typed saved references, pure model GUID authoring and readonly Line queries must compile without special authoring declarations.\n"
                 + string.Join("\n", errors.Select(value => value.ToString())));
     }
+    /// @brief Draw property reads distinguish assignment targets.
     private static void DrawPropertyReadsDistinguishAssignmentTargets()
     {
         Compilation accepted = Compile("using Fbzz; public class Actor : Script { public ComponentRef<LineRenderer> line; protected override void DrawGizmos() { if (line.TryGet(out var renderer)) { _ = renderer.PositionCount; int count = renderer.PositionCount; Gizmos.Sphere(Vector3.ZERO, count); } } }");
@@ -97,6 +104,7 @@ internal static class ContractAnalyzerTests
             "Assigning a native property's target must still reject mutation inside DrawGizmos.");
     }
 
+    /// @brief Invalid overrides and typos have locations.
     private static void InvalidOverridesAndTyposHaveLocations()
     {
         const string source = """
@@ -121,6 +129,7 @@ internal static class ContractAnalyzerTests
             "Authoring diagnostics must identify the actual member's file and line.");
     }
 
+    /// @brief Every reserved name rejects hiding.
     private static void EveryReservedNameRejectsHiding()
     {
         string methods = string.Join("\n", ScriptLifecycleContract.Callbacks.Select(static callback =>
@@ -130,6 +139,7 @@ internal static class ContractAnalyzerTests
             "The analyzer must consume every generated SDK lifecycle rather than a partial handwritten name list.");
     }
 
+    /// @brief Async engine delegates are rejected.
     private static void AsyncEngineDelegatesAreRejected()
     {
         const string source = """
@@ -161,6 +171,7 @@ internal static class ContractAnalyzerTests
         Check(diagnostics.All(static value => value.Location.IsInSource), "Each asynchronous callback diagnostic needs an editable source location.");
     }
 
+    /// @brief Ordinary async work remains available.
     private static void OrdinaryAsyncWorkRemainsAvailable()
     {
         const string source = """
@@ -185,6 +196,7 @@ internal static class ContractAnalyzerTests
         Check(Analyze(compilation).Length == 0, "The analyzer must leave ordinary C# tasks and unrelated helper methods available.");
     }
 
+    /// @brief Persisted field mistakes are diagnosed.
     private static void PersistedFieldMistakesAreDiagnosed()
     {
         const string source = """
@@ -210,6 +222,7 @@ internal static class ContractAnalyzerTests
         Check(diagnostics.Count(static value => value.Id == "FBZZ2008") == 1, "Only the unsupported public persisted candidate should warn; explicit transient state remains valid.");
     }
 
+    /// @brief Supported settings remain accepted.
     private static void SupportedSettingsRemainAccepted()
     {
         const string source = """
@@ -240,6 +253,7 @@ internal static class ContractAnalyzerTests
             "Supported structured settings, nullable unconnected defaults and runtime-only state must retain their contracts.");
     }
 
+    /// @brief Concrete type requirements are diagnosed.
     private static void ConcreteTypeRequirementsAreDiagnosed()
     {
         const string source = """
@@ -254,6 +268,7 @@ internal static class ContractAnalyzerTests
             "Concrete invalid types should be diagnosed while abstract generic bases and their valid concrete descendants remain supported.");
     }
 
+    /// @brief Primitive widths and range overloads remain exact.
     private static void PrimitiveWidthsAndRangeOverloadsRemainExact()
     {
         const string valid = """
@@ -295,6 +310,7 @@ internal static class ContractAnalyzerTests
             "Invalid exact wide/string/nonfinite bounds must retain located errors without double rounding or diagnostic suppression.");
     }
 
+    /// @brief Authoring callbacks reject runtime and engine dependencies.
     private static void AuthoringCallbacksRejectRuntimeAndEngineDependencies()
     {
         const string source = """
@@ -318,6 +334,7 @@ internal static class ContractAnalyzerTests
             "Private cache, mutable static, I/O and both Engine property accesses must receive located authoring dependency errors; settings/constants/math remain accepted.");
     }
 
+    /// @brief Typed component requirements have located diagnostics.
     private static void TypedComponentRequirementsHaveLocatedDiagnostics()
     {
         const string source = """
@@ -336,6 +353,7 @@ internal static class ContractAnalyzerTests
             "Unsupported type, empty requirement and non-Script execution order must have exact source diagnostics; typed inherited requirements remain valid.");
     }
 
+    /// @brief Editor actions validate signature and settings only dependencies.
     private static void EditorActionsValidateSignatureAndSettingsOnlyDependencies()
     {
         const string source = """

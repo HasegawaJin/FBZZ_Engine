@@ -11,6 +11,7 @@ namespace Fbzz.ManagedTests;
 
 internal static class MathTests
 {
+    /// @brief Host に依存しない数学 API の通常値・境界値・非有限値の検証。
     internal static void Run()
     {
         Program.Check(ScriptApiRuntime.Current is null, "Pure mathematical values must work without a Host callback scope.");
@@ -20,6 +21,7 @@ internal static class MathTests
         SimdLaneContracts();
     }
 
+    /// @brief Managed vector products, interpolation and arithmetic preserve native signs, axes and non-finite results.
     static void VectorContracts()
     {
         Vector3 a = new(2f, -3f, 4f);
@@ -51,6 +53,7 @@ internal static class MathTests
         Program.Check(nan.Equals(new Vector3(float.NaN, 0f, 0f)), "The existing component-wise C# Equals semantics must remain unchanged.");
     }
 
+    /// @brief Directions below epsilon use the supplied fallback while a vector at epsilon still normalizes.
     static void NormalizationContracts()
     {
         Vector3 fallback = new(9f, -2f, 7f);
@@ -73,6 +76,7 @@ internal static class MathTests
             "Float32 length overflow must not silently switch to double precision normalization.");
     }
 
+    /// @brief Published constants must retain the native float32 values and normalization threshold.
     static void ScalarContracts()
     {
         Program.Check(BitConverter.SingleToInt32Bits(Mathf.PI) == 0x40490FDB
@@ -106,6 +110,7 @@ internal static class MathTests
             && float.IsNegativeInfinity(Mathf.ToDegrees(float.NegativeInfinity)), "Angle conversions must preserve native non-finite arithmetic.");
     }
 
+    /// @brief SIMD must not pad or reorder the twelve-byte public Vector3.
     /// @note Check all public components against independent scalar expressions, including cancellation, zero signs, overflow and non-finite arithmetic.
     static void SimdLaneContracts()
     {

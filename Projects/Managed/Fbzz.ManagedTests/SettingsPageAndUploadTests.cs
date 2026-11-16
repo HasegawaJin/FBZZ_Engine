@@ -61,6 +61,7 @@ internal static class SettingsPageAndUploadTests
         public void Dispose() { Runtime.ReleaseInstance(1, 1); Runtime.Dispose(); }
     }
     static void Success(ManagedRuntimeResult result) => Program.Check(result.Success, result.Message);
+    /// @brief Collapsed arrays expose a bounded descriptor and their tail values can be read without traversing unrelated invalid fields.
     static void LivePages()
     {
         using World world = new(); Node cyclic = new(); cyclic.next = cyclic; world.Value.broken = cyclic;
@@ -120,6 +121,7 @@ internal static class SettingsPageAndUploadTests
     static string Packet(long offset, byte[] bytes, bool final, string? hash = null) => JsonSerializer.Serialize(new {
         offset, data = Convert.ToBase64String(bytes), sha256 = hash ?? Convert.ToHexString(SHA256.HashData(bytes)), final
     });
+    /// @brief Bad checksums must not retain staged bytes or change live settings.
     static void Upload()
     {
         using World world = new(); Success(world.Runtime.OpenSettingsEdit(1, 1, out ulong session, out string revision));
@@ -157,6 +159,7 @@ internal static class SettingsPageAndUploadTests
         Success(world.Runtime.ReleaseInstance(1, 1)); Program.Check(world.Runtime.SettingsEditSessionCount == 0 && world.Runtime.SettingsEditStorageBytes == 0,
             "Deleting an exact target disposes every owned incomplete upload.");
     }
+    /// @brief A move preserves exact reference tokens and undo rejects a concurrent token change before replacing any values.
     static void Structural()
     {
         using World world = new(); world.Value.targets = [new GameObject(202, 9, "same"), new GameObject(303, 8, "same")];
@@ -169,6 +172,7 @@ internal static class SettingsPageAndUploadTests
         Program.Check(!world.Runtime.PublishSettings(1, prepared, true).Success && world.Value.targets[1].ObjectId == 202,
             "Structural Undo compares the complete collection and all exact tokens before replacing any values.");
     }
+    /// @brief A preparation failure releases the staged spool and session IDs cannot wrap after the last valid handle.
     static void FailedStorage()
     {
         using World world = new(); Success(world.Runtime.OpenSettingsEdit(1, 1, out ulong session, out string revision));
@@ -188,6 +192,7 @@ internal static class SettingsPageAndUploadTests
         Program.Check(!world.Runtime.OpenSettingsEdit(1, 1, out session, out _).Success && session == 0,
             "Exhausted edit handles are latched; closing the final session must not allow zero/wrapped handle reuse.");
     }
+    /// @brief Validation accepts 32,769 explicit reconnect paths and leaves the live reference array empty.
     static void ReconnectPaths()
     {
         using World world = new();
@@ -197,6 +202,7 @@ internal static class SettingsPageAndUploadTests
         Program.Check(result.Success && world.Value.targets.Length == 0, result.Message.Length == 0
             ? "Explicit reconnect path capacity must follow the caller-sized array and remain nonmutating during validation." : result.Message);
     }
+    /// @brief A late conflict prevents every staged write, and a successful batch undoes and redoes only the changed leaves.
     static void MultiTarget()
     {
         using World world = new(); Actor second = new();
@@ -235,6 +241,7 @@ internal static class SettingsPageAndUploadTests
         Success(world.Runtime.ReleaseInstance(1, 2));
         Program.Check(world.Runtime.SettingsEditSessionCount == 0 && world.Runtime.SettingsTransactionCount == 0, "Multi-target upload and retained history handles must be explicitly reclaimable.");
     }
+    /// @brief Pages and exported patches preserve selected values after live edits and spill large leaves within the resident budget.
     static void AdoptionCapture()
     {
         using World world = new();
@@ -264,6 +271,7 @@ internal static class SettingsPageAndUploadTests
         Program.Check(overlapping && world.Value.values[^1] == -7 && world.Value.text == "changed-after-capture" && world.Value.validations == 0,
             "Overlapping adoption selections reject the whole capture and leave every live value and callback state unchanged.");
     }
+    /// @brief Adoption import.
     static void AdoptionImport()
     {
         const string saved = "11111111-1111-1111-1111-111111111111", originalBirth = "22222222-2222-2222-2222-222222222222";

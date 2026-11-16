@@ -29,6 +29,7 @@ internal static class AuthoringReferenceTests
         {"settings":{"target":"target-guid","targets":["target-guid"],"list":["target-guid"],"speed":2}}
         """;
 
+    /// @brief One connected required reference must remain editable while runtime validation rejects the other missing references.
     static void ReferencesInStages()
     {
         using World world = new();
@@ -48,6 +49,7 @@ internal static class AuthoringReferenceTests
             false, SettingsValidationPurpose.SNAPSHOT).Success, "Undo must restore an incomplete setting state.");
     }
 
+    /// @brief Values remain atomic.
     static void ValuesRemainAtomic()
     {
         using World world = new();
@@ -63,6 +65,7 @@ internal static class AuthoringReferenceTests
             "An unknown validation purpose must be rejected.");
     }
 
+    /// @brief A nested required single-reference failure must name the leaf.
     static void LeafDiagnostics()
     {
         using World world = new();
@@ -82,6 +85,7 @@ internal static class AuthoringReferenceTests
             "Nested schema must expose the required condition and validation stage to Inspector and AI.");
     }
 
+    /// @brief Reference projections must follow JSON token order, preserving duplicated references.
     static void ProjectionIdentity()
     {
         using World world = new();
@@ -101,6 +105,7 @@ internal static class AuthoringReferenceTests
             "A token from another Scene must remain unresolved in the display projection.");
     }
 
+    /// @brief Sibling edits retain tokens.
     static void SiblingEditsRetainTokens()
     {
         using World world = new();
@@ -121,6 +126,7 @@ internal static class AuthoringReferenceTests
             "Changing a reference GUID must bind that changed leaf, retaining its unchanged siblings.");
     }
 
+    /// @brief Rebind is explicit and atomic.
     static void RebindIsExplicitAndAtomic()
     {
         using World world = new(); world.Edit(SETTINGS);
@@ -153,6 +159,7 @@ internal static class AuthoringReferenceTests
             "Internal snapshot restore must resolve its saved GUID values.");
     }
 
+    /// @brief Array/List reorder must retain unique live and expired tokens when their canonical leaf paths move.
     static void MovedCollectionTokens()
     {
         using World world = new();
@@ -172,6 +179,7 @@ internal static class AuthoringReferenceTests
             && world.Bridge.ResolveCount == resolves, "Removing an earlier array/List element must preserve the shifted expired token.");
     }
 
+    /// @brief Ambiguous moves reject.
     static void AmbiguousMovesReject()
     {
         using World world = new(); world.Edit(SETTINGS);

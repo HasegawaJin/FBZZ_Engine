@@ -29,6 +29,7 @@ internal static class ApiContractMetadataTests
     static JsonElement Member(JsonElement root, string type, string name) => root.GetProperty("types").EnumerateArray()
         .Single(value => value.GetProperty("name").GetString() == type).GetProperty("members").EnumerateArray()
         .First(value => value.GetProperty("name").GetString() == name);
+    /// @brief Typed asset values are pure and available without callbacks.
     static void TypedAssetValuesArePureAndAvailableWithoutCallbacks()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);
@@ -44,6 +45,7 @@ internal static class ApiContractMetadataTests
     static bool Allows(JsonElement member, string access, string callback) => member.GetProperty("contract")
         .GetProperty("allowedCallbacks").GetProperty(access).EnumerateArray().Any(value => value.GetString() == callback);
 
+    /// @brief Native lookup draw authority is explicit and conditional.
     static void NativeLookupDrawAuthorityIsExplicitAndConditional()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);
@@ -74,6 +76,7 @@ internal static class ApiContractMetadataTests
             "Explicit persistent re-resolution must not inherit native held-reference draw permission.");
     }
 
+    /// @brief Render display and joint queries match native availability.
     static void RenderDisplayAndJointQueriesMatchNativeAvailability()
     {
         Program.Check(NativeComponentFactory.GetKind(typeof(Joint)) == (uint)NativeComponentKind.JOINT
@@ -111,6 +114,7 @@ internal static class ApiContractMetadataTests
         }
     }
 
+    /// @brief World family queries expose readonly draw and fixed geometry boundaries.
     static void WorldFamilyQueriesExposeReadonlyDrawAndFixedGeometryBoundaries()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);
@@ -130,6 +134,7 @@ internal static class ApiContractMetadataTests
             "Adding query alias must preserve existing read catalog boundaries.");
     }
 
+    /// @brief Catalog lifecycle and generic constraints match compiled SDK.
     static void CatalogLifecycleAndGenericConstraintsMatchCompiledSdk()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);
@@ -154,6 +159,7 @@ internal static class ApiContractMetadataTests
             "A catalog-only author must know the generic type constraint, not only method constraints.");
     }
 
+    /// @brief Read and mutation scopes describe connect separately.
     static void ReadAndMutationScopesDescribeConnectSeparately()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);
@@ -175,6 +181,7 @@ internal static class ApiContractMetadataTests
             .GetProperty("synchronousCallback").GetBoolean(), "Synchronous delegate constraints must describe the actual annotated parameter.");
     }
 
+    /// @brief Bounds read works in update while shape mutation requires fixed update.
     static void BoundsReadWorksInUpdateWhileShapeMutationRequiresFixedUpdate()
     {
         using ScopeFixture fixture = new();
@@ -189,6 +196,7 @@ internal static class ApiContractMetadataTests
         Program.Check(!fixture.Bridge.LastReadOnly && fixture.Bridge.Calls == 2, "The same facade mutates only in FixedUpdate.");
     }
 
+    /// @brief Try conversions expose their actual failure outputs.
     static void TryConversionsExposeTheirActualFailureOutputs()
     {
         using ScopeFixture fixture = new(); fixture.Bridge.ConversionSucceeded = false;
@@ -203,6 +211,7 @@ internal static class ApiContractMetadataTests
                 .GetProperty("contract").GetString()!.Contains("to_zero", StringComparison.Ordinal), "Failure output behavior must survive metadata export.");
     }
 
+    /// @brief Important numerical contracts remain on their declarations.
     static void ImportantNumericalContractsRemainOnTheirDeclarations()
     {
         using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);

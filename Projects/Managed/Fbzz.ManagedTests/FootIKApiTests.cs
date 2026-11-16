@@ -14,6 +14,7 @@ internal static class FootIKApiTests
     internal static IReadOnlyList<(string Name,Action Run)> Cases => [
         (nameof(FootSettingsAndStateRetainEveryValueAndFlag),FootSettingsAndStateRetainEveryValueAndFlag),
         (nameof(FootCatalogDeclaresRuntimeTuningAndWorldDiagnostics),FootCatalogDeclaresRuntimeTuningAndWorldDiagnostics)];
+    /// @brief Foot settings and state retain every value and flag.
     static void FootSettingsAndStateRetainEveryValueAndFlag()
     {
         using Fixture f=new(); IKSolver ik=new(f.Target,91);
@@ -34,6 +35,7 @@ internal static class FootIKApiTests
         Program.Check(f.Bridge.Calls==calls,"Nonfinite settings must never reach the engine.");
         f.Bridge.Birth=92; Program.Throws<InvalidOperationException>(()=>ik.GetFootState("Feet"));
     }
+    /// @brief Foot catalog declares runtime tuning and world diagnostics.
     static void FootCatalogDeclaresRuntimeTuningAndWorldDiagnostics()
     {
         using JsonDocument doc=JsonDocument.Parse(ApiCatalog.Json);
