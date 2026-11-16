@@ -102,6 +102,7 @@ async function CreateHarness(permission: PermissionMode) {
 }
 
 
+/// @brief read mode は Query と capture だけを公開する。
 test('read mode は Query と capture だけを公開する', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -198,6 +199,7 @@ test('read mode は Query と capture だけを公開する', async () => {
     }
 });
 
+/// @brief `editor_catalog` と `scene_find` は推測なしの発見Queryへ写像する。
 test('editor_catalog と scene_find は推測なしの発見Queryへ写像する', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -229,6 +231,7 @@ test('editor_catalog と scene_find は推測なしの発見Queryへ写像する
 });
 
 
+/// @brief `editor_perceive` は Scene 状態と viewport image を1応答へまとめる。
 test('editor_perceive は Scene 状態と viewport image を1応答へまとめる', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -252,6 +255,7 @@ test('editor_perceive は Scene 状態と viewport image を1応答へまとめ�
     }
 });
 
+/// @brief dry-run mode は Command を公開し dryRun=true を強制する。
 test('dry-run mode は Command を公開し dryRun=true を強制する', async () => {
     const harness = await CreateHarness('dry-run');
     try {
@@ -270,6 +274,7 @@ test('dry-run mode は Command を公開し dryRun=true を強制する', async 
     }
 });
 
+/// @brief Operator ゲートウェイは目録 Query と実行 Command へ写像する。
 test('Operator ゲートウェイは目録 Query と実行 Command へ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -315,6 +320,7 @@ test('Operator ゲートウェイは目録 Query と実行 Command へ写像す�
 });
 
 
+/// @brief Behavior Tree の照会・規約・検証は引数の少ない Query 面へ写像する。
 test('Behavior Tree の照会・規約・検証は引数の少ない Query 面へ写像する', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -332,6 +338,7 @@ test('Behavior Tree の照会・規約・検証は引数の少ない Query 面�
     }
 });
 
+/// @brief Behavior Tree の編集はUndo可能なCommandへ写像する。
 test('Behavior Tree の編集はUndo可能なCommandへ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -359,6 +366,7 @@ test('Behavior Tree の編集はUndo可能なCommandへ写像する', async () =
     }
 });
 
+/// @brief Behavior Tree のスキーマ・現在値・実行状態・差分は読み取り面へ写像する。
 test('Behavior Tree のスキーマ・現在値・実行状態・差分は読み取り面へ写像する', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -391,6 +399,7 @@ test('Behavior Tree のスキーマ・現在値・実行状態・差分は読み
     }
 });
 
+/// @brief Behavior Tree の複製・修復・Template適用はUndo可能なCommandへ写像する。
 test('Behavior Tree の複製・修復・Template適用はUndo可能なCommandへ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -422,6 +431,7 @@ test('Behavior Tree の複製・修復・Template適用はUndo可能なCommand�
 });
 
 
+/// @brief `scene_get_tree` は既定で生成物を要求しない。
 test('scene_get_tree は既定で生成物を要求しない', async () => {
     /// @note 既定で includeGenerated を送ってしまうと、C++ 側の既定 (除外) を上書きして
         /// @note AI の context へ実行時生成物が流れ込む。省略されることを固定する。
@@ -439,6 +449,7 @@ test('scene_get_tree は既定で生成物を要求しない', async () => {
 });
 
 
+/// @brief `vfx_generate_motion_vectors` は任意引数を省略した形で写像する。
 test('vfx_generate_motion_vectors は任意引数を省略した形で写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -466,6 +477,7 @@ test('vfx_generate_motion_vectors は任意引数を省略した形で写像す�
     }
 });
 
+/// @brief `node_duplicate` は親・名前を保ったUndo対応Commandへ写像する。
 test('node_duplicate は親・名前を保ったUndo対応Commandへ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -484,6 +496,7 @@ test('node_duplicate は親・名前を保ったUndo対応Commandへ写像する
     }
 });
 
+/// @brief GameObjectプロパティ設定 (active/tag/layer) は専用 Editor Command へ写像する。
 test('GameObjectプロパティ設定 (active/tag/layer) は専用 Editor Command へ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -501,6 +514,7 @@ test('GameObjectプロパティ設定 (active/tag/layer) は専用 Editor Comman
     }
 });
 
+/// @brief Play・Prefab・カメラ操作は専用 Editor Command へ写像する。
 test('Play・Prefab・カメラ操作は専用 Editor Command へ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -525,6 +539,7 @@ test('Play・Prefab・カメラ操作は専用 Editor Command へ写像する', 
     }
 });
 
+/// @brief `playtest_run` は今回のログ・性能・意味付き画像を評価し、入力状態を必ず解除する。
 test('playtest_run は今回のログ・性能・意味付き画像を評価し、入力状態を必ず解除する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -557,6 +572,7 @@ test('playtest_run は今回のログ・性能・意味付き画像を評価し�
     }
 });
 
+/// @brief `playtest_run` dry-run は待機せず全入力と復元Commandを検証する。
 test('playtest_run dry-run は待機せず全入力と復元Commandを検証する', async () => {
     const harness = await CreateHarness('dry-run');
     try {
@@ -581,6 +597,7 @@ test('playtest_run dry-run は待機せず全入力と復元Commandを検証す�
     }
 });
 
+/// @brief `viewport_capture` は engine の PNG を MCP image content に変換する。
 test('viewport_capture は engine の PNG を MCP image content に変換する', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -602,6 +619,7 @@ test('viewport_capture は engine の PNG を MCP image content に変換する'
 });
 
 
+/// @brief `viewport_capture_semantic` は画像とNodeId付き投影座標を同時に返す。
 test('viewport_capture_semantic は画像とNodeId付き投影座標を同時に返す', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -619,6 +637,7 @@ test('viewport_capture_semantic は画像とNodeId付き投影座標を同時に
     }
 });
 
+/// @brief 入力・マテリアル・アニメーション操作は専用Commandへ写像する。
 test('入力・マテリアル・アニメーション操作は専用Commandへ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -695,6 +714,7 @@ test('入力・マテリアル・アニメーション操作は専用Commandへ�
     }
 });
 
+/// @brief C# ビルド要求と要求別照会を共通バスへ転送する。
 test('C# ビルド要求と要求別照会を共通バスへ転送する', async () => {
     const writer = await CreateHarness('write');
     try {
@@ -712,6 +732,7 @@ test('C# ビルド要求と要求別照会を共通バスへ転送する', async
     }
 });
 
+/// @brief 配布開始・要求別状態・取消を既存ツールと共通Opへ転送する。
 test('配布開始・要求別状態・取消を既存ツールと共通Opへ転送する', async () => {
     const writer = await CreateHarness('write');
     const options = { outputDirectory: 'Builds/Game', productName: 'Game', developmentBuild: false, runAfterBuild: false };
@@ -738,6 +759,7 @@ test('配布開始・要求別状態・取消を既存ツールと共通Opへ転
     }
 });
 
+/// @brief ワールドオーサリングの照会は引数の少ない Query 面へ写像する。
 test('ワールドオーサリングの照会は引数の少ない Query 面へ写像する', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -771,6 +793,7 @@ test('ワールドオーサリングの照会は引数の少ない Query 面へ�
     }
 });
 
+/// @brief 流体の照会は fluid.* Query へ写像し、省略引数は載せない。
 test('流体の照会は fluid.* Query へ写像し、省略引数は載せない', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -796,6 +819,7 @@ test('流体の照会は fluid.* Query へ写像し、省略引数は載せな�
     }
 });
 
+/// @brief `fluid_job_status` はプレビュー画像を MCP image content へ移し、text に base64 を残さない。
 test('fluid_job_status はプレビュー画像を MCP image content へ移し、text に base64 を残さない', async () => {
     const harness = await CreateHarness('read');
     try {
@@ -829,6 +853,7 @@ test('fluid_job_status はプレビュー画像を MCP image content へ移し�
     }
 });
 
+/// @brief 流体の作成・編集・プレビュー・焼き・中止は fluid.* Command へ写像する。
 test('流体の作成・編集・プレビュー・焼き・中止は fluid.* Command へ写像する', async () => {
     const harness = await CreateHarness('write');
     try {
@@ -907,6 +932,7 @@ test('流体の作成・編集・プレビュー・焼き・中止は fluid.* Co
     }
 });
 
+/// @brief dry-run mode では流体の焼きも dryRun=true で送られ、実ファイルに触れない。
 test('dry-run mode では流体の焼きも dryRun=true で送られ、実ファイルに触れない', async () => {
     const harness = await CreateHarness('dry-run');
     try {
@@ -922,6 +948,7 @@ test('dry-run mode では流体の焼きも dryRun=true で送られ、実ファ
     }
 });
 
+/// @brief 地形・NavMesh・シーン入出力は Undo 単位の Command へ写像する。
 test('地形・NavMesh・シーン入出力は Undo 単位の Command へ写像する', async () => {
     const harness = await CreateHarness('write');
     try {

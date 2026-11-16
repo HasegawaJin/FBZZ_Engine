@@ -10,6 +10,7 @@ import type { EditorBus } from '../busClient.js';
 import { EditorQuerySchema, type EditorQuery } from '../editorContracts.js';
 import { CreateEditorMcpServer } from '../server.js';
 
+/// @brief Script queries require a lifetime handle and reject unknown fields.
 test('Script queries require a lifetime handle and reject unknown fields', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id }).success, false);
@@ -25,6 +26,7 @@ test('Script queries require a lifetime handle and reject unknown fields', () =>
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.api.catalog', invoke: true }).success, false);
 });
 
+/// @brief Read connections can inspect and catalog scripts without commands.
 test('Read connections can inspect and catalog scripts without commands', async () => {
     const queries: EditorQuery[] = [];
     const bus: EditorBus = {

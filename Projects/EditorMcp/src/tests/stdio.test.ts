@@ -1,6 +1,7 @@
-// FBZZ Engine
-// stdio.test.ts | EditorMcp
-// 実子プロセスの stdio 上で MCP 初期化と tool discovery を検証する
+/// @file    stdio.test.ts
+/// @brief   子プロセスの標準入出力を使い、MCP の初期化とツール発見を検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 import assert from 'node:assert/strict';
 import { dirname, resolve } from 'node:path';
 import test from 'node:test';
@@ -8,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
+/// @brief stdio entry は外部サーバー無しで起動し read tools を公開する。
 test('stdio entry は外部サーバー無しで起動し read tools を公開する', { timeout: 10000 }, async () => {
     const currentDirectory = dirname(fileURLToPath(import.meta.url));
     const entryPath = resolve(currentDirectory, '..', 'stdio.js');

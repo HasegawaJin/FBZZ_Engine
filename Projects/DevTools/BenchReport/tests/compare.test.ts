@@ -1,6 +1,7 @@
-// FBZZ Engine
-// compare.test.ts | Projects/DevTools/BenchReport
-// 集計・判定・描画の単体テスト。実行: node --test "Projects/DevTools/BenchReport/tests/*.test.ts"
+/// @file    compare.test.ts
+/// @brief   ベンチマーク結果の集計・判定・描画の契約を検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-09-18
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -31,11 +32,13 @@ function Run(label: string, values: Record<string, number>, cpu = 'Test CPU'): B
 
 const META = { title: 'テスト <比較> & 検証', date: '2026-09-18', designLink: '../../design/benchmark-report.md' };
 
+/// @brief 並べ替え前の値を渡しても、奇数個では中央の値、偶数個では中央の二つの平均が返る。
 test('Median は奇数個なら中央、偶数個なら中央 2 つの平均', () => {
     assert.equal(Median([3, 1, 2]), 2);
     assert.equal(Median([4, 1, 3, 2]), 2.5);
 });
 
+/// @brief 改善と注意の境界はそれぞれ -3% と +3% を含み、+5% からは悪化と判定する。
 test('Classify は ±3% を変化なし、+3〜5% を注意、+5% 以上を悪化にする', () => {
     assert.equal(Classify(-0.03), 'improved');
     assert.equal(Classify(-0.029), 'neutral');
@@ -45,6 +48,7 @@ test('Classify は ±3% を変化なし、+3〜5% を注意、+5% 以上を悪�
     assert.equal(Classify(0.05), 'regressed');
 });
 
+/// @brief 実行間の集計には各実行の中央値を使い、無処理項目を除外したうえで差分率を求める。
 test('Compare は実行ごとの中央値の中央値で比べ、何もしていない項目を外す', () => {
     const runs = [
         Run('base', { A: 10, B: 1.0, Idle: 0.01, 'micro:M': 4 }),
@@ -70,11 +74,13 @@ test('Compare は実行ごとの中央値の中央値で比べ、何もしてい
     assert.deepEqual(comparison.mismatches, []);
 });
 
+/// @brief Compare は CPU が食い違えば不一致として報告する。
 test('Compare は CPU が食い違えば不一致として報告する', () => {
     const [baseline, candidate] = GroupByLabel([Run('base', { A: 1 }, 'CPU X'), Run('cand', { A: 1 }, 'CPU Y')]);
     assert.deepEqual(Compare(baseline, candidate).mismatches, ['CPU: CPU X / CPU Y']);
 });
 
+/// @brief 描画結果は項目名と題名をエスケープする。
 test('描画結果は項目名と題名をエスケープする', () => {
     const [baseline, candidate] = GroupByLabel([Run('base', { 'A<b>&c': 10 }), Run('cand', { 'A<b>&c': 8 })]);
     const comparison = Compare(baseline, candidate);
@@ -95,6 +101,7 @@ test('描画結果は項目名と題名をエスケープする', () => {
     assert.ok(listing.includes('[テスト <比較> & 検証](2026-09-18-test/report.md)'));
 });
 
+/// @brief ParseRun は fbzz-bench/1 と /2 を比較へ渡し、v2 の optional fields を保つ。
 test('ParseRun は fbzz-bench/1 と /2 を比較へ渡し、v2 の optional fields を保つ', () => {
     const makeText = (schema: string, label: string, resultFields: Record<string, unknown>) => JSON.stringify({
         schema,
@@ -141,6 +148,7 @@ test('ParseRun は fbzz-bench/1 と /2 を比較へ渡し、v2 の optional fiel
     assert.equal(comparison.rows[0].candidate.value, 3);
 });
 
+/// @brief ParseRun は未対応の schema を拒む。
 test('ParseRun は未対応の schema を拒む', () => {
     assert.throws(() => ParseRun('{"schema":"fbzz-bench/0"}', 'x.json'), /未対応の schema/);
     assert.throws(() => ParseRun('not json', 'y.json'), /JSON として読めない/);

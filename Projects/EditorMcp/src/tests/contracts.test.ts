@@ -7,6 +7,7 @@ import test from 'node:test';
 import { IsEditorPipeEndpoint, LoadConfig } from '../config.js';
 import { EditorCommandSchema, EditorQuerySchema } from '../editorContracts.js';
 
+/// @brief C# ビルドの対象と要求 ID を C++ の既存入力から区別する。
 test('C# ビルドの対象と要求 ID を C++ の既存入力から区別する', () => {
     assert.equal(EditorCommandSchema.safeParse({ t: 'build.run' }).success, true);
 assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'managed' }).success, true);
@@ -19,6 +20,7 @@ assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'managed' }
     assert.equal(EditorQuerySchema.safeParse({ t: 'build.status', requestId: 'managed:42' }).success, false);
 });
 
+/// @brief 配布ビルド設定と要求 ID を検証し曖昧な追加キーを拒否する。
 test('配布ビルド設定と要求 ID を検証し曖昧な追加キーを拒否する', () => {
     const options = { outputDirectory: 'Builds/Game', productName: 'Game', developmentBuild: false,
         scenes: [{ path: 'Assets/Scenes/Main.scene', enabled: true }], runAfterBuild: false };
@@ -31,6 +33,7 @@ assert.equal(EditorCommandSchema.safeParse({ t: 'build.run', target: 'managed', 
         assert.equal(EditorQuerySchema.safeParse({ t: 'build.status', packageRequestId }).success, false);
 });
 
+/// @brief Material の行列・配列と uint32 の最大値を丸めず受け付ける。
 test('Material の行列・配列と uint32 の最大値を丸めず受け付ける', () => {
     const base = { t: 'material.override', id: '11111111-1111-4111-8111-111111111111', parameter: 'values' };
     for (const value of [Array(16).fill(1), [4294967295], Array(64).fill(0)]) {
@@ -43,6 +46,7 @@ test('Material の行列・配列と uint32 の最大値を丸めず受け付け
     assert.equal(EditorCommandSchema.safeParse({ ...base, value: Array(16385).fill(0) }).success, false);
 });
 
+/// @brief Command Bus は FBZZ 専用 Named Pipe だけを許可する。
 test('Command Bus は FBZZ 専用 Named Pipe だけを許可する', () => {
     assert.equal(IsEditorPipeEndpoint('\\\\.\\pipe\\FBZZEditorCommandBus'), true);
     assert.equal(IsEditorPipeEndpoint('\\\\.\\pipe\\FBZZEditorTest'), true);
@@ -50,6 +54,7 @@ test('Command Bus は FBZZ 専用 Named Pipe だけを許可する', () => {
     assert.equal(IsEditorPipeEndpoint('C:\\temp\\FBZZEditorCommandBus'), false);
 });
 
+/// @brief 不正な環境変数は read と loopback の安全な既定値へ戻る。
 test('不正な環境変数は read と loopback の安全な既定値へ戻る', () => {
     const config = LoadConfig({
         FBZZ_EDITOR_PIPE: '\\\\server\\pipe\\Editor',
@@ -61,6 +66,7 @@ test('不正な環境変数は read と loopback の安全な既定値へ戻る'
     assert.equal(config.requestTimeoutMs, 60000);
 });
 
+/// @brief 空の transform.set は拒否し、有効な transaction は受理する。
 test('空の transform.set は拒否し、有効な transaction は受理する', () => {
     const nodeId = '11111111-1111-4111-8111-111111111111';
     assert.equal(EditorCommandSchema.safeParse({ t: 'transform.set', id: nodeId }).success, false);
@@ -74,6 +80,7 @@ test('空の transform.set は拒否し、有効な transaction は受理する'
     }).success, true);
 });
 
+/// @brief Operator ゲートウェイの契約を検証する。
 test('Operator ゲートウェイの契約を検証する', () => {
     /// @note 目録は絞り込み条件なしでも引ける (全操作の一覧が出発点になる)。
     assert.equal(EditorQuerySchema.safeParse({ t: 'editor.op.list' }).success, true);
@@ -98,6 +105,7 @@ test('Operator ゲートウェイの契約を検証する', () => {
     assert.equal(EditorCommandSchema.safeParse({ t: 'editor.op.invoke', id: '' }).success, false);
 });
 
+/// @brief fluid.* の Query / Command 契約を検証する。
 test('fluid.* の Query / Command 契約を検証する', () => {
     const path = 'Assets/VFX/Fluid/Smoke.fluid';
     assert.equal(EditorQuerySchema.safeParse({ t: 'fluid.schema' }).success, true);
@@ -153,6 +161,7 @@ test('fluid.* の Query / Command 契約を検証する', () => {
     assert.equal(EditorCommandSchema.safeParse({ t: 'fluid.createEffect', name: 'a/b' }).success, false);
 });
 
+/// @brief `viewport.capture` は既定上限を超える要求を拒否する。
 test('viewport.capture は既定上限を超える要求を拒否する', () => {
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540 }).success, true);
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 960, h: 540, view: 'game' }).success, true);
@@ -161,6 +170,7 @@ test('viewport.capture は既定上限を超える要求を拒否する', () => 
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.capture', w: 3840, h: 2160 }).success, false);
 });
 
+/// @brief catalog・`scene.find`・node.duplicate の契約を検証する。
 test('catalog・scene.find・node.duplicate の契約を検証する', () => {
     const nodeId = '11111111-1111-4111-8111-111111111111';
     assert.equal(EditorQuerySchema.safeParse({ t: 'editor.catalog' }).success, true);
@@ -183,6 +193,7 @@ test('catalog・scene.find・node.duplicate の契約を検証する', () => {
     assert.equal(EditorCommandSchema.safeParse({ t: 'node.setLayer', id: nodeId, layer: 99 }).success, false);
 });
 
+/// @brief 実行制御・物理Query・Prefab・検索フィルタの契約を検証する。
 test('実行制御・物理Query・Prefab・検索フィルタの契約を検証する', () => {
     const nodeId = '11111111-1111-4111-8111-111111111111';
     assert.equal(EditorQuerySchema.safeParse({ t: 'editor.state' }).success, true);
@@ -209,6 +220,7 @@ test('実行制御・物理Query・Prefab・検索フィルタの契約を検証
     assert.equal(EditorCommandSchema.safeParse({ t: 'viewport.camera', targetId: nodeId }).success, true);
 });
 
+/// @brief 意味付き知覚・診断Queryと入力・マテリアル・アニメーションCommandを検証する。
 test('意味付き知覚・診断Queryと入力・マテリアル・アニメーションCommandを検証する', () => {
     const nodeId = '11111111-1111-4111-8111-111111111111';
     assert.equal(EditorQuerySchema.safeParse({ t: 'viewport.semantic', w: 960, h: 540 }).success, true);

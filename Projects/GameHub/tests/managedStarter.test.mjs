@@ -95,6 +95,7 @@ async function PublishedManagedFixture(configuration, run) {
 }
 
 for (const templateId of ['empty', 'standard']) {
+  /// @brief Each template creates a launchable C# project without native Script scaffolding.
   test(`${templateId} creates a launchable C# project without native Script scaffolding`, async () => {
     const { TemplateService, ProjectService } = await services;
     await Fixture(async (root, sdk) => {
@@ -126,6 +127,7 @@ for (const templateId of ['empty', 'standard']) {
   });
 }
 
+/// @brief C# project inspection requires launch settings and scene rather than native authoring folders.
 test('C# project inspection requires launch settings and scene rather than native authoring folders', async () => {
   const { TemplateService, ProjectService } = await services;
   await Fixture(async (root, sdk) => {
@@ -151,6 +153,7 @@ test('C# project inspection requires launch settings and scene rather than nativ
   });
 });
 
+/// @brief Each advertised configuration needs its own complete published managed authoring pair.
 test('each advertised configuration needs its own complete published managed authoring pair', async () => {
   for (const configuration of ['Debug', 'Development', 'Release']) {
     await PublishedManagedFixture(configuration, async (root, files) => {
@@ -169,6 +172,7 @@ test('each advertised configuration needs its own complete published managed aut
   }
 });
 
+/// @brief Same metadata with stale bytes and mismatched published pairs cannot advertise managed support.
 test('same metadata with stale bytes and mismatched published pairs cannot advertise managed support', async () => {
   await PublishedManagedFixture('Release', async (root, files) => {
     const host = 'tools/Release/Editor/Managed/Fbzz.ManagedHost.dll';
@@ -183,6 +187,7 @@ test('same metadata with stale bytes and mismatched published pairs cannot adver
   });
 });
 
+/// @brief Selected SDK creates a project from canonical sources and escapes local SDK properties.
 test('selected SDK creates a project from canonical sources and escapes local SDK properties', async () => {
   await Fixture(async (root, sdk) => {
     const starter = await LoadManagedStarter(sdk, 'Development');
@@ -200,6 +205,7 @@ test('selected SDK creates a project from canonical sources and escapes local SD
   });
 });
 
+/// @brief Missing generator and mismatched compiler pin fail before project creation.
 test('missing generator and mismatched compiler pin fail before project creation', async () => {
   await Fixture(async (_root, sdk) => {
     await rm(path.join(sdk, 'bin/Development/Managed/Fbzz.ScriptGenerator.dll'));
@@ -210,6 +216,7 @@ test('missing generator and mismatched compiler pin fail before project creation
   });
 });
 
+/// @brief Existing user files prevent every starter write.
 test('existing user files prevent every starter write', async () => {
   await Fixture(async (root, sdk) => {
     const project = path.join(root, 'MyGame');

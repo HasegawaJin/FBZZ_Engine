@@ -185,6 +185,7 @@ async function Connected(t: TestContext, bus: EditorBus, permission: PermissionM
     return client;
 }
 
+/// @brief Read MCP registration and legacy queries remain registry-free and expose no reliability mutation tools.
 test('read MCP registration and legacy queries remain registry-free and expose no reliability mutation tools', async t => {
     const directory = Fixture(t);
     const previous = { TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR };
@@ -209,6 +210,7 @@ test('read MCP registration and legacy queries remain registry-free and expose n
     }
 });
 
+/// @brief Native structured observation preserves section availability, selections, components, references, build and cursors.
 test('native structured observation preserves section availability, selections, components, references, build and cursors', async t => {
     const { bus, session, control } = SessionFixture(t, 'read');
     const expected = bus.Observation();
@@ -220,6 +222,7 @@ test('native structured observation preserves section availability, selections, 
     assert.deepEqual(await control.Inspect(), []);
 });
 
+/// @brief Old Editor observation fallback is multi-call unverified and cannot make a checked plan.
 test('old Editor observation fallback is multi-call unverified and cannot make a checked plan', async t => {
     const { bus, session, control } = SessionFixture(t);
     bus.native = false;
@@ -236,6 +239,7 @@ test('old Editor observation fallback is multi-call unverified and cannot make a
     assert.deepEqual(await control.Inspect(), []);
 });
 
+/// @brief MCP transport errors report unverified without automatic replay.
 test('MCP transport errors report unverified without automatic replay', async t => {
     const bus = new NativeFixtureBus();
     bus.failObservation = true;
@@ -250,6 +254,7 @@ test('MCP transport errors report unverified without automatic replay', async t 
     assert.equal(bus.commands.length, 0);
 });
 
+/// @brief Dry-run plans and trial ownership never mutate or acquire a lease.
 test('dry-run plans and trial ownership never mutate or acquire a lease', async t => {
     const { bus, session, control } = SessionFixture(t, 'dry-run');
     const plan = await session.Plan(Rename(), 'review only');
@@ -267,6 +272,7 @@ test('dry-run plans and trial ownership never mutate or acquire a lease', async 
     assert.deepEqual(await control.Inspect(), []);
 });
 
+/// @brief Dry-run MCP plans expose reviewed differences while checked apply sends no mutation.
 test('dry-run MCP plans expose reviewed differences while checked apply sends no mutation', async t => {
     const bus = new NativeFixtureBus();
     const client = await Connected(t, bus, 'dry-run');
@@ -285,6 +291,7 @@ test('dry-run MCP plans expose reviewed differences while checked apply sends no
     assert.equal(bus.commands[0].dryRun, true);
 });
 
+/// @brief Checked preflight requires both native success and dry-run acknowledgement before a plan exists.
 test('checked preflight requires both native success and dry-run acknowledgement before a plan exists', async t => {
     for (const preview of [
         { dryRun: true, preflight: { status: 'failure' } },
@@ -300,6 +307,7 @@ test('checked preflight requires both native success and dry-run acknowledgement
     });
 });
 
+/// @brief Plans bind immutable commands and guard despite caller and dry-run bus mutation; tokens are single-use.
 test('plans bind immutable commands and guard despite caller and dry-run bus mutation; tokens are single-use', async t => {
     const { bus, session, control } = SessionFixture(t);
     const cmds: EditorCommand[] = [{ t: 'component.set', id: NODE, comp: 'Transform', field: 'position', value: [1, 2, 3] }];
@@ -327,6 +335,7 @@ test('plans bind immutable commands and guard despite caller and dry-run bus mut
     assert.deepEqual(await control.Inspect(), []);
 });
 
+/// @brief Plan expiry uses its exact fixture clock and sends no mutation at the deadline.
 test('plan expiry uses its exact fixture clock and sends no mutation at the deadline', async t => {
     let now = 100000;
     const { bus, session } = SessionFixture(t, 'write', () => now);
@@ -338,6 +347,7 @@ test('plan expiry uses its exact fixture clock and sends no mutation at the dead
     await session.Release(lease);
 });
 
+/// @brief Apply requires the correct enforced capability, owner and target coverage before native dispatch.
 test('apply requires the correct enforced capability, owner and target coverage before native dispatch', async t => {
     const { bus, session, control } = SessionFixture(t);
     const other = new ReliabilitySession(bus, 'write', control);
@@ -357,6 +367,7 @@ test('apply requires the correct enforced capability, owner and target coverage 
     await session.Release(lease);
 });
 
+/// @brief Node UUID case aliases conflict across distinct authors and retain one canonical owner.
 test('node UUID case aliases conflict across distinct authors and retain one canonical owner', async t => {
     const id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
     for (const firstId of [id, id.toUpperCase()]) await t.test(`first claim ${firstId}`, async child => {
@@ -382,6 +393,7 @@ test('node UUID case aliases conflict across distinct authors and retain one can
     });
 });
 
+/// @brief Node UUID case aliases share checked plan ownership in both spelling directions.
 test('node UUID case aliases share checked plan ownership in both spelling directions', async t => {
     const id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
     for (const claimId of [id.toUpperCase(), id]) await t.test(`claim ${claimId}`, async child => {
@@ -406,6 +418,7 @@ test('node UUID case aliases share checked plan ownership in both spelling direc
     });
 });
 
+/// @brief Native stale guard rejects apply, consumes the plan and releases target and execution leases.
 test('native stale guard rejects apply, consumes the plan and releases target and execution leases', async t => {
     const { bus, session, control } = SessionFixture(t);
     const plan = await session.Plan(Rename(), 'stale fixture');
@@ -420,6 +433,7 @@ test('native stale guard rejects apply, consumes the plan and releases target an
     assert.equal(bus.commands.filter(call => !call.dryRun).length, 1);
 });
 
+/// @brief Failed checked dispatch releases pins and ownership without retrying an ambiguous mutation.
 test('failed checked dispatch releases pins and ownership without retrying an ambiguous mutation', async t => {
     const { bus, session, control } = SessionFixture(t);
     const plan = await session.Plan(Rename(), 'failed fixture');
@@ -431,6 +445,7 @@ test('failed checked dispatch releases pins and ownership without retrying an am
     assert.equal(bus.commands.filter(call => !call.dryRun).length, 1);
 });
 
+/// @brief Post-observation timeout retains a completed mutation success with unverified postconditions.
 test('post-observation timeout retains a completed mutation success with unverified postconditions', async t => {
     const { bus, session, control } = SessionFixture(t);
     const plan = await session.Plan(Rename(), 'post-observation fixture');
@@ -448,6 +463,7 @@ test('post-observation timeout retains a completed mutation success with unverif
     await session.Release(lease);
 });
 
+/// @brief Receipt handles are session-owned and another author change cannot be rolled back.
 test('receipt handles are session-owned and another author change cannot be rolled back', async t => {
     const { bus, session, control, lease, receipt } = await Applied(t);
     const other = new ReliabilitySession(bus, 'write', control);
@@ -466,6 +482,7 @@ test('receipt handles are session-owned and another author change cannot be roll
     await session.Release(lease);
 });
 
+/// @brief Successful author rollback restores only its memory and releases target ownership.
 test('successful author rollback restores only its memory and releases target ownership', async t => {
     const { bus, session, control, lease, receipt } = await Applied(t);
     const result = await session.Rollback(receipt, lease);
@@ -478,6 +495,7 @@ test('successful author rollback restores only its memory and releases target ow
     await assert.rejects(session.Rollback(receipt, lease), /not owned by this MCP session/);
 });
 
+/// @brief Successful author rollback keeps native Undo success when its lease expires before ownership release.
 test('successful author rollback keeps native Undo success when its lease expires before ownership release', async t => {
     let now = 100000;
     const { bus, session, control } = SessionFixture(t, 'write', () => now);
@@ -500,6 +518,7 @@ test('successful author rollback keeps native Undo success when its lease expire
     await assert.rejects(session.Rollback(String(applied.receipt), lease), /not owned by this MCP session/);
 });
 
+/// @brief Successful author rollback keeps native Undo success when target ownership release throws.
 test('successful author rollback keeps native Undo success when target ownership release throws', async t => {
     const { bus, session, control, lease, receipt } = await Applied(t);
     const originalRelease = control.Release.bind(control);
@@ -527,6 +546,7 @@ test('successful author rollback keeps native Undo success when target ownership
     assert.deepEqual(await control.Inspect(), []);
 });
 
+/// @brief Verification distinguishes complete errors, dropped and truncated streams and never asserts image freshness.
 test('verification distinguishes complete errors, dropped and truncated streams and never asserts image freshness', async t => {
     const cases = [
         { name: 'complete', logs: { cursor: 21, count: 0, entries: [], dropped: false }, errors: 'success', status: 'unverified' },
@@ -552,6 +572,7 @@ test('verification distinguishes complete errors, dropped and truncated streams 
     });
 });
 
+/// @brief MCP verification emits image content once and leaves only capture metadata in its reports.
 test('MCP verification emits image content once and leaves only capture metadata in its reports', async t => {
     const directory = Fixture(t);
     const previous = { TEMP: process.env.TEMP, TMP: process.env.TMP, TMPDIR: process.env.TMPDIR };
@@ -607,6 +628,7 @@ test('MCP verification emits image content once and leaves only capture metadata
     }
 });
 
+/// @brief Validation and capture failures remain failures; automatic rollback uses exact author and releases pins.
 test('validation and capture failures remain failures; automatic rollback uses exact author and releases pins', async t => {
     for (const failure of ['validation', 'capture'] as const) await t.test(failure, async child => {
         const { bus, session, control, lease, receipt } = await Applied(child);
@@ -625,6 +647,7 @@ test('validation and capture failures remain failures; automatic rollback uses e
     });
 });
 
+/// @brief Conflicted verification cannot undo a newer author change and still releases ownership.
 test('conflicted verification cannot undo a newer author change and still releases ownership', async t => {
     const { bus, session, control, lease, receipt } = await Applied(t);
     bus.guard.revision = 'newer author revision';
@@ -637,6 +660,7 @@ test('conflicted verification cannot undo a newer author change and still releas
     assert.deepEqual(await control.Inspect(), []);
 });
 
+/// @brief A missing pre-edit log cursor cannot verify absence of new errors.
 test('a missing pre-edit log cursor cannot verify absence of new errors', async t => {
     const { session, lease, receipt } = await Applied(t, bus => { delete bus.logs.cursor; });
     const result = await session.Verify(receipt, lease, { save: true, reload: true, render: false, rollbackOnFailure: false });
@@ -646,6 +670,7 @@ test('a missing pre-edit log cursor cannot verify absence of new errors', async 
     assert.equal(CheckStatus(result.checks, 'reload'), 'success');
 });
 
+/// @brief Save and reload require explicit flags; verified persistence consumes receipt and releases ownership.
 test('save and reload require explicit flags; verified persistence consumes receipt and releases ownership', async t => {
     const { bus, session, control, lease, receipt } = await Applied(t);
     const result = await session.Verify(receipt, lease, { save: true, reload: true, render: false, rollbackOnFailure: true });
@@ -663,7 +688,9 @@ test('save and reload require explicit flags; verified persistence consumes rece
     await assert.rejects(session.Rollback(receipt, lease), /not owned by this MCP session/);
 });
 
+/// @brief Reload without save fails explicitly and persisted verification failure never undoes saved disk.
 test('reload without save fails explicitly and persisted verification failure never undoes saved disk', async t => {
+    /// @brief Reload requires save.
     await t.test('reload requires save', async child => {
         const { bus, session, control, lease, receipt } = await Applied(child);
         const result = await session.Verify(receipt, lease, { save: false, reload: true, render: false, rollbackOnFailure: true });
@@ -673,6 +700,7 @@ test('reload without save fails explicitly and persisted verification failure ne
         assert.equal(bus.commands.some(call => call.command.t === 'editor.rollback'), false);
         assert.deepEqual(await control.Inspect(), []);
     });
+    /// @brief Verification leaves the saved snapshot available after a later check fails, while explicit rollback restores live state.
     await t.test('saved failure', async child => {
         const { bus, session, control, lease, receipt } = await Applied(child);
         bus.validation.errors = 1;
@@ -692,6 +720,7 @@ test('reload without save fails explicitly and persisted verification failure ne
     });
 });
 
+/// @brief Verification transport failure releases execution pins and target lease.
 test('verification transport failure releases execution pins and target lease', async t => {
     const { bus, session, control, lease, receipt } = await Applied(t);
     bus.failObservation = true;
@@ -701,6 +730,7 @@ test('verification transport failure releases execution pins and target lease', 
     assert.equal(bus.commands.some(call => call.command.t === 'editor.rollback'), false);
 });
 
+/// @brief Managed asynchronous execution stays pinned until its exact request is terminal and uses opaque jobs.
 test('managed asynchronous execution stays pinned until its exact request is terminal and uses opaque jobs', async t => {
     const { bus, session, control } = SessionFixture(t);
     const other = new ReliabilitySession(bus, 'write', control);
@@ -742,6 +772,7 @@ test('managed asynchronous execution stays pinned until its exact request is ter
     }
 });
 
+/// @brief Managed build startup timeout never resends and remains unverified until backend idle releases pin.
 test('managed build startup timeout never resends and remains unverified until backend idle releases pin', async t => {
     const { bus, session, control } = SessionFixture(t);
     const idle = Deferred<unknown>();
@@ -775,7 +806,9 @@ test('managed build startup timeout never resends and remains unverified until b
     }
 });
 
+/// @brief Managed terminal failure and busy admission release execution and do not claim success.
 test('managed terminal failure and busy admission release execution and do not claim success', async t => {
+    /// @brief Terminal verification failure releases the held resources.
     await t.test('terminal failure', async child => {
         const { bus, session, control } = SessionFixture(child);
         bus.queryHook = async query => query.t === 'editor.state' ? { playState: 'editor' } : {
@@ -786,6 +819,7 @@ test('managed terminal failure and busy admission release execution and do not c
         await Eventually(async () => session.Job(String(job.jobId)).state === 'complete' && (await control.Inspect()).length === 0, 'Failed build did not release execution');
         assert.equal(session.Job(String(job.jobId)).status, 'failure');
     });
+    /// @brief Busy Editor admission.
     await t.test('busy Editor admission', async child => {
         const { bus, session, control } = SessionFixture(child);
         bus.queryHook = async query => query.t === 'editor.state' ? { playState: 'playing' } : { building: false, managed: { busy: false } };

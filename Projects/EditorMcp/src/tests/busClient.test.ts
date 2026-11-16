@@ -1,6 +1,7 @@
-// FBZZ Engine
-// busClient.test.ts | EditorMcp
-// 実 loopback Named Pipe で request/response 相関と wire envelope を検証する
+/// @file    busClient.test.ts
+/// @brief   実際の名前付きパイプを使い、要求と応答の相関およびエンベロープを検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
@@ -8,12 +9,13 @@ import test from 'node:test';
 import { EditorBusClient } from '../busClient.js';
 import { EDITOR_PROTOCOL } from '../editorContracts.js';
 
+/// @brief EditorBusClient は Named Pipe 上で query 応答を request ID に相関する。
 test('EditorBusClient は Named Pipe 上で query 応答を request ID に相関する', { timeout: 5000 }, async () => {
-    // テスト毎に一意なパイプ名を使い、同時実行や前回残骸との衝突を避ける。
+    /// @note テスト毎に一意なパイプ名を使い、同時実行や前回残骸との衝突を避ける。
     const pipePath = `\\\\.\\pipe\\FBZZEditorTest-${process.pid}-${Date.now()}`;
     let received: Record<string, unknown> | undefined;
 
-    // busClient と同じ NDJSON プロトコルを話す最小 loopback サーバ。受信 ID をそのまま応答へ相関させる。
+    /// @note busClient と同じ NDJSON プロトコルを話す最小 loopback サーバ。受信 ID をそのまま応答へ相関させる。
     const server = createServer((socket) => {
         socket.setEncoding('utf8');
         let buffer = '';

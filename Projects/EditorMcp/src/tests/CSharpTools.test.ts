@@ -37,6 +37,7 @@ const RenameRunner: AnalysisRunner = async request => {
 };
 const Position = { file: 'Assets/Scripts/Test.cs', line: 1, column: 15, newName: 'count' };
 
+/// @brief Rename applies only reviewed bytes and preserves UTF-8 BOM, line endings and meta.
 test('rename applies only reviewed bytes and preserves UTF-8 BOM, line endings and meta', async () => {
     const fixture = await Fixture('\uFEFFclass A {\r\n int value; int Read() => value;\r\n}\r\n');
     try {
@@ -51,6 +52,7 @@ test('rename applies only reviewed bytes and preserves UTF-8 BOM, line endings a
     } finally { await fixture.Close(); }
 });
 
+/// @brief A new source file invalidates the full-snapshot rename guard.
 test('a new source file invalidates the full-snapshot rename guard', async () => {
     const fixture = await Fixture();
     try {
@@ -62,6 +64,7 @@ test('a new source file invalidates the full-snapshot rename guard', async () =>
     } finally { await fixture.Close(); }
 });
 
+/// @brief Concurrent applies cannot publish the same plan twice.
 test('concurrent applies cannot publish the same plan twice', async () => {
     const fixture = await Fixture();
     try {
@@ -74,6 +77,7 @@ test('concurrent applies cannot publish the same plan twice', async () => {
     } finally { await fixture.Close(); }
 });
 
+/// @brief Metadata content changes invalidate rename plans.
 test('metadata content changes invalidate rename plans', async () => {
     const fixture = await Fixture();
     try {
@@ -86,6 +90,7 @@ test('metadata content changes invalidate rename plans', async () => {
     } finally { await fixture.Close(); }
 });
 
+/// @brief Dry-run and read permissions never write C# sources.
 test('dry-run and read permissions never write C# sources', async () => {
     const fixture = await Fixture();
     try {
@@ -101,6 +106,7 @@ test('dry-run and read permissions never write C# sources', async () => {
     } finally { await fixture.Close(); }
 });
 
+/// @brief Plans are session-owned, expire deterministically and reject project switches.
 test('plans are session-owned, expire deterministically and reject project switches', async () => {
     const fixture = await Fixture();
     const second = await Fixture();
@@ -118,6 +124,7 @@ test('plans are session-owned, expire deterministically and reject project switc
     } finally { await fixture.Close(); await second.Close(); }
 });
 
+/// @brief Source and reference path escapes are rejected before invoking the helper.
 test('source and reference path escapes are rejected before invoking the helper', async () => {
     const fixture = await Fixture();
     try {
@@ -129,6 +136,7 @@ test('source and reference path escapes are rejected before invoking the helper'
     } finally { await fixture.Close(); }
 });
 
+/// @brief Public MCP surface exposes source analysis in read mode and apply only in editing modes.
 test('public MCP surface exposes source analysis in read mode and apply only in editing modes', async () => {
     for (const permission of ['read', 'dry-run', 'write'] as const) {
         const fixture = await Fixture();
@@ -148,6 +156,7 @@ test('public MCP surface exposes source analysis in read mode and apply only in 
     }
 });
 
+/// @brief Real Roslyn helper resolves symbols and keeps unrelated same-name fields untouched.
 test('real Roslyn helper resolves symbols and keeps unrelated same-name fields untouched', async () => {
     const source = 'class A { int value; int Read() => value; } class B { int value; int Read() => value; }';
     const result = await RunRoslyn({ operation: 'references', sources: [{ file: 'Assets/Scripts/Test.cs', content: source }], file: 'Assets/Scripts/Test.cs', line: 1, column: source.indexOf('value') + 1 });
@@ -162,6 +171,7 @@ test('real Roslyn helper resolves symbols and keeps unrelated same-name fields u
     } finally { await fixture.Close(); }
 });
 
+/// @brief Real UTF-8 helper preserves Japanese text, LF/CRLF and UTF-16 positions through rename publication.
 test('real UTF-8 helper preserves Japanese text, LF/CRLF and UTF-16 positions through rename publication', async () => {
     const lines = [
         '/// @file    日本語Probe.cs',
