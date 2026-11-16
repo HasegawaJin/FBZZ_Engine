@@ -10,6 +10,8 @@
 #include <Math/MathUtils.hpp>
 #include <Math/Vector3.hpp>
 
+#include <limits>
+
 namespace fbzz::tests {
 
 class Vector3Test : public testkit::Fixture {};
@@ -190,4 +192,16 @@ TEST_F(Vector3Test, EqualityRejectsDifferencesAboveEpsilon)
     EXPECT_TRUE(a != b);
 }
 
-} // namespace fbzz::tests
+TEST_F(Vector3Test, ApproximateAssertionsRejectNonFiniteComponents)
+{
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float infinity = std::numeric_limits<float>::infinity();
+    const auto compareWithZero = [](const math::Vector3& actual, float tolerance) {
+        return testkit::CompareVector3("actual", "zero", "tolerance", actual, math::Vector3::ZERO, tolerance);
+    };
+    EXPECT_FALSE(compareWithZero({0.0f, nan, 0.0f}, testkit::kTolerance));
+    EXPECT_FALSE(compareWithZero({infinity, 0.0f, 0.0f}, infinity));
+    EXPECT_TRUE(compareWithZero(math::Vector3::ZERO, testkit::kTolerance));
+}
+
+} /// @note namespace fbzz::tests

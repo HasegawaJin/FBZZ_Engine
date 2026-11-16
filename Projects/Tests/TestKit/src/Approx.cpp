@@ -26,6 +26,11 @@ namespace {
 struct ComponentDiff {
     float       worst = 0.0f;
     std::string name;
+
+    bool IsWithin(float tolerance) const
+    {
+        return std::isfinite(worst) && std::isfinite(tolerance) && worst <= tolerance;
+    }
 };
 
 ComponentDiff WorstOf(std::initializer_list<std::pair<const char*, float>> diffs)
@@ -33,6 +38,7 @@ ComponentDiff WorstOf(std::initializer_list<std::pair<const char*, float>> diffs
     ComponentDiff result;
     for (const auto& [name, diff] : diffs) {
         const float magnitude = std::fabs(diff);
+        if (!std::isfinite(magnitude)) return {magnitude, name};
         if (magnitude > result.worst) {
             result.worst = magnitude;
             result.name  = name;
@@ -48,9 +54,10 @@ ComponentDiff WorstOfMatrix(const float (&actual)[N][N], const float (&expected)
     for (int row = 0; row < N; ++row) {
         for (int col = 0; col < N; ++col) {
             const float magnitude = std::fabs(actual[row][col] - expected[row][col]);
-            if (magnitude > result.worst) {
+            if (!std::isfinite(magnitude) || magnitude > result.worst) {
                 result.worst = magnitude;
                 result.name  = "m[" + std::to_string(row) + "][" + std::to_string(col) + "]";
+                if (!std::isfinite(magnitude)) return result;
             }
         }
     }
@@ -78,7 +85,7 @@ std::string Describe(const T& value)
            << " (許容 " << toleranceExpr << " = " << tolerance << ")";
 }
 
-} // namespace
+} /// @note namespace
 
 ::testing::AssertionResult CompareVector2(const char* actualExpr,
                                           const char* expectedExpr,
@@ -89,7 +96,7 @@ std::string Describe(const T& value)
 {
     const ComponentDiff diff = WorstOf({{"x", actual.x - expected.x},
                                         {"y", actual.y - expected.y}});
-    if (diff.worst <= tolerance) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -104,7 +111,7 @@ std::string Describe(const T& value)
     const ComponentDiff diff = WorstOf({{"x", actual.x - expected.x},
                                         {"y", actual.y - expected.y},
                                         {"z", actual.z - expected.z}});
-    if (diff.worst <= tolerance) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -120,7 +127,7 @@ std::string Describe(const T& value)
                                         {"y", actual.y - expected.y},
                                         {"z", actual.z - expected.z},
                                         {"w", actual.w - expected.w}});
-    if (diff.worst <= tolerance) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -141,7 +148,7 @@ std::string Describe(const T& value)
                                         {"y", actual.y - aligned.y},
                                         {"z", actual.z - aligned.z},
                                         {"w", actual.w - aligned.w}});
-    if (diff.worst <= tolerance) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
 
     const float clamped  = std::clamp(std::fabs(math::Quaternion::Dot(actual, expected)), 0.0f, 1.0f);
     const float angleDeg = 2.0f * std::acos(clamped) * 57.2957795f;
@@ -158,7 +165,7 @@ std::string Describe(const T& value)
                                           float tolerance)
 {
     const ComponentDiff diff = WorstOfMatrix(actual.m, expected.m);
-    if (diff.worst <= tolerance) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -171,7 +178,7 @@ std::string Describe(const T& value)
                                           float tolerance)
 {
     const ComponentDiff diff = WorstOfMatrix(actual.m, expected.m);
-    if (diff.worst <= tolerance) return ::testing::AssertionSuccess();
+    if (diff.IsWithin(tolerance)) return ::testing::AssertionSuccess();
     return Failed(actualExpr, expectedExpr, toleranceExpr,
                   Describe(actual), Describe(expected), diff, tolerance);
 }
@@ -182,7 +189,8 @@ std::string Describe(const T& value)
                                            float tolerance)
 {
     const float length = actual.Length();
-    if (std::fabs(length - 1.0f) <= tolerance) return ::testing::AssertionSuccess();
+    if (std::isfinite(length) && std::isfinite(tolerance) && std::fabs(length - 1.0f) <= tolerance)
+        return ::testing::AssertionSuccess();
 
     return ::testing::AssertionFailure()
            << "\n  " << actualExpr << " = " << Describe(actual)
@@ -190,4 +198,4 @@ std::string Describe(const T& value)
            << tolerance << ")";
 }
 
-} // namespace fbzz::testkit
+} /// @note namespace fbzz::testkit
