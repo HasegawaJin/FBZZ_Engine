@@ -175,7 +175,6 @@ Prefab の定義やアセットの内容を編集する場合は、それぞれ�
 
 IBL は `ibl.bake` の後に `ibl.inspect` の `state` を確認する。描画パスは
 `renderpass.configure` で捕捉を有効にし、対象ビューの描画後に `inspect/capture` を呼ぶ。
-出力名・ビュー・表示設定が一致しない古い画像を、現在の要求の結果として返さない。
 撮影結果の `data.provenance` にシーン・カメラ、パス名と出現順、解決済み出力、描画フレームが入る。
 `capture.args.minFrame` に `editor_get_state.frameIndex` を渡すと、そのフレーム以降の画像だけを受け付ける。
 編集、シーンの入れ替え、ビューのリサイズなどで撮影元が無効なときは `CAPTURE_NOT_READY` を返し、PNG は書き出さない。
@@ -187,6 +186,7 @@ Game View がノードのカメラで描かれた場合は `cameraId`、Editor �
 `cameraKind` で判別する。Play 中に登録シーンへ遷移した場合、`sceneName` と `sceneGeneration` が描画元を示す。
 MCP は要求時点のアプリケーションフレーム以降の描画を待つ。撮影ツールの `minFrame` でさらに下限を指定できる。
 意味付き撮影のノード情報は、同じビューの描画入力時点の値を使う。
+出力名・ビュー・表示設定が一致しない古い画像を、現在の要求の結果として返さない。
 
 参照検索は保存済みファイルのスナップショットであり、動的参照・未保存・外部所有者・
 推移参照を証明しない。`finished/limited/stale` と未読・未対応・解析失敗の件数を確認する。

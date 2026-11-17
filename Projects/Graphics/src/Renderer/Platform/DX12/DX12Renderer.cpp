@@ -1512,7 +1512,8 @@ bool DX12Renderer::BakeSkyLight(
 
 std::unique_ptr<IIblBaker> DX12Renderer::CreateIblBaker()
 {
-    return std::make_unique<DX12HdriBaker>(m_context.GetDevice(), m_psoCache.GetComputeRootSignature());
+    /// @note Editor が所有する一時ベイカー。m_context / m_psoCache はレンダラー寿命内で有効。
+    return std::make_unique<DX12HdriBaker>(&m_context, &m_psoCache);
 }
 
 /// @note RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。

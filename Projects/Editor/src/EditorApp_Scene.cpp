@@ -234,7 +234,6 @@ void EditorApp::CaptureCleanScene()
     RemoveEditorHiding();
     m_dirtyTracker.CaptureClean(*m_ctx.editScene, m_ctx.currentScenePath);
     RestoreEditorHiding();
-    ++m_ctx.captureRevision;
     m_ctx.sceneDirty = m_dirtyTracker.IsDirty();
     UpdateWindowTitle();
 }
@@ -250,6 +249,7 @@ void EditorApp::CheckSceneDirtyForStandalone()
 
 void EditorApp::MarkSceneDirty()
 {
+    ++m_ctx.captureRevision;
     /// @note Dirty tracking belongs to the parked Edit document; temporary Play changes never authorize its save state.
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
     /// @note Prefab 編集モード中の変更は「シーン」ではなく「プレファブアセット」への変更。 ここで sceneDirty を立てると、編集面を抜けて元シーンへ戻った後も未保存扱いが残る。 退避したシーンの dirty 状態は ExitPrefabEditMode がそのまま復元する。

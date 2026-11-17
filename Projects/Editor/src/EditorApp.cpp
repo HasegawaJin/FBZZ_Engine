@@ -1890,6 +1890,8 @@ void EditorApp::ResizeViewportRTsIfNeeded()
         resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth, m_ctx.viewportHeight);
     m_gameViewportRTRecreated =
         resizeRT(m_gameViewportRT, m_gameViewportPanel, m_ctx.gameViewportWidth, m_ctx.gameViewportHeight);
+    if (m_sceneViewportRTRecreated) m_ctx.viewportCaptureFrames[0] = {};
+    if (m_gameViewportRTRecreated) m_ctx.viewportCaptureFrames[1] = {};
     /// @note UI Viewport は専用 RT を持たず、Game View の完成済み RT を参照する。
     /// @note        リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
     if (m_uiViewportPanel)
@@ -1906,8 +1908,6 @@ bool EditorApp::OnInit()
     m_runtime.ApplySettings(m_ctx.projectSettings);
     m_runtime.ApplyAdditionalUIContext(m_ctx.projectSettings, m_sceneUICtx);
     m_runtime.BindExternalScene(m_scene.get());
-    if (m_sceneViewportRTRecreated) m_ctx.viewportCaptureFrames[0] = {};
-    if (m_gameViewportRTRecreated) m_ctx.viewportCaptureFrames[1] = {};
     m_runtime.RegisterScenes(util::FileSystem::PathFromUtf8(m_ctx.projectRoot), *m_resources);
 
     /// @note OpenProject() 時点では editorCamera が nullptr なので、確定した OnInit() で適用する。
@@ -2401,22 +2401,6 @@ void EditorApp::UpdateFocusAnim(float dt)
     }
 }
 
-void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
-                                scene::RenderFrameGeometryCache* frameGeometry)
-{
-    FBZZ_PROFILE_SCOPE("EditorApp::RenderSceneView");
-    const auto sceneRT = m_sceneViewportRT;
-    m_renderer->SetRenderTarget(sceneRT, *m_resources);
-    m_renderer->Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
-
-    renderer::RenderSettings sceneRenderSettings;
-    if (m_playMode.IsInEditor()) {
-        (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
-            m_ctx.projectSettings.renderPipelineAssetPath, sceneRenderSettings);
-    } else {
-        sceneRenderSettings = m_playRenderSettings;
-        sceneRenderSettings.CopyDebugVisualizationFrom(m_ctx.projectSettings.render);
-    }
 namespace {
 RenderCaptureFrame BeginCaptureFrame(const EditorContext& ctx, scene::Scene& scene,
     renderer::ResourceHandle<renderer::RenderTargetTag> target, const renderer::Camera& camera,
@@ -2464,6 +2448,22 @@ void PublishCaptureFrame(EditorContext& ctx, RenderCaptureFrame capture)
 }
 } /// @note namespace
 
+void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
+                                scene::RenderFrameGeometryCache* frameGeometry)
+{
+    FBZZ_PROFILE_SCOPE("EditorApp::RenderSceneView");
+    const auto sceneRT = m_sceneViewportRT;
+    m_renderer->SetRenderTarget(sceneRT, *m_resources);
+    m_renderer->Clear({ 0.05f, 0.05f, 0.08f, 1.0f });
+
+    renderer::RenderSettings sceneRenderSettings;
+    if (m_playMode.IsInEditor()) {
+        (void)asset::ResolveRenderPipelineSettings(m_ctx.projectSettings.render,
+            m_ctx.projectSettings.renderPipelineAssetPath, sceneRenderSettings);
+    } else {
+        sceneRenderSettings = m_playRenderSettings;
+        sceneRenderSettings.CopyDebugVisualizationFrom(m_ctx.projectSettings.render);
+    }
     sceneRenderSettings.selectedObjects.clear();
     /// @note 親を選んだら子孫も選択へ展開する。輪郭と «選択中だけ» の診断表示が同じ集合を見る。
     const auto appendHierarchy = [&](auto&& self, scene::GameObject& object) -> void {
@@ -2524,37 +2524,37 @@ void PublishCaptureFrame(EditorContext& ctx, RenderCaptureFrame capture)
         BuildSpatialDebugOverlay(m_ctx, *sceneViewScene, sceneRT.id, sceneRT.gen,
             m_resources->FrameStamp(), spatialDebugCommands, sceneRenderSettings.shadowEnabled);
         uiOptions.spatialDebugCommands = spatialDebugCommands;
+        auto captureFrame = BeginCaptureFrame(m_ctx, *sceneViewScene, sceneRT, sceneViewCamera, false, {},
+            m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
         scene::RenderSystem(*sceneViewScene, *m_renderer, *m_resources,
                             sceneViewCamera, sceneRT, &sceneRenderSettings,
                         fbzz::Layer::Everything, &uiOptions, &ActiveRuntime().GetPhysicsWorld(),
                         &sceneViewCulling,
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(false) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
+        PublishCaptureFrame(m_ctx, std::move(captureFrame));
         if (m_ctx.showStats && m_sceneViewportPanel) m_sceneViewportPanel->CaptureStats();
     }
 }
 
 void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
+                               const std::string& cameraId,
                                scene::RenderFrameGeometryCache* frameGeometry)
 {
     FBZZ_PROFILE_SCOPE("EditorApp::RenderGameView");
     const auto gameRT = m_gameViewportRT;
     if (!gameRT.IsValid()) return;
-        auto captureFrame = BeginCaptureFrame(m_ctx, *sceneViewScene, sceneRT, sceneViewCamera, false, {},
-            m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
 
     /// @note Play 中に LoadScene でシーン遷移すると SceneManager が新シーンを所有するため、
     /// @note        m_scene (遷移前) ではなく GetActive() を参照してゲームビューに正しいシーンを描く。
     scene::Scene* renderScene = !m_playMode.IsInEditor()
         ? ActiveRuntime().GetActiveScene()
         : m_scene.get();
-        PublishCaptureFrame(m_ctx, std::move(captureFrame));
     if (!renderScene) return;
 
     m_renderer->SetRenderTarget(gameRT, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
 
-                               const std::string& cameraId,
     float w = 1920.0f, h = 1080.0f;
     if (auto* rt = m_resources->Get(gameRT)) {
         w = static_cast<float>(rt->GetWidth());
@@ -2585,16 +2585,16 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
         gameRenderSettings = m_playRenderSettings;
     }
     gameRenderSettings.StripDebugVisualization();
+    auto captureFrame = BeginCaptureFrame(m_ctx, *renderScene, gameRT, gameCamera, true, cameraId,
+        m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
     scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
                         gameCamera, gameRT,
                         &gameRenderSettings,
                         gameCullingMask, &uiOptions, nullptr, nullptr,
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(true) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
+    PublishCaptureFrame(m_ctx, std::move(captureFrame));
     if (m_ctx.showStats && m_gameViewportPanel) m_gameViewportPanel->CaptureStats();
 }
 
 } /// @note namespace fbzz::editor
-    auto captureFrame = BeginCaptureFrame(m_ctx, *renderScene, gameRT, gameCamera, true, cameraId,
-        m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
-    PublishCaptureFrame(m_ctx, std::move(captureFrame));
