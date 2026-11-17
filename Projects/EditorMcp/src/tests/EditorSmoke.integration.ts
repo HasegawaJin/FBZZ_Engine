@@ -40,6 +40,69 @@ async function ExpectName(client: Client, name: string) {
     assert.equal(found.matches[0].name, name);
 }
 
+async function VerifyAssetDependencies(client: Client, project: string, context: { diagnostic(message: string): void }) {
+    const sceneGuid = 'f80303554b7b4e60ba5ffec609443d46';
+    const prefabGuid = '2a1fa7667132420cb07ac83286a6ac8e';
+    const materialGuid = '594487bc968b4bfd91fe7cb0db658c32';
+    const original = 'Assets/Dependencies/Surface.mat';
+    const renamed = 'Assets/Dependencies/RenamedSurface.mat';
+    const query = async (job: number, direction: 'incoming' | 'outgoing', offset = 0, limit = 100) =>
+        Call(client, 'asset_dependencies_status', { job, direction, offset, limit, maxFiles: 4 });
+    const scan = async (guid: string, direction: 'incoming' | 'outgoing', limit = 100) => {
+        const started = await Call(client, 'asset_dependencies_scan', { guid, maxDepth: 4 });
+        for (let n = 0; n < 32; ++n) {
+            const result = await query(started.job, direction, 0, limit);
+            if (result.finished) {
+                assert.equal(result.stale, false);
+                assert.equal(result.limited, false);
+                return result;
+            }
+        }
+        assert.fail('The small fixture graph did not finish');
+    };
+    const edgesOf = (report: { edges: Array<{ source: { guid: string }; target: { guid: string }; distance: number }> }) =>
+        report.edges.map(edge => [edge.source.guid, edge.target.guid, edge.distance]);
+
+    const forward = await scan('guid:' + sceneGuid, 'outgoing', 1);
+    assert.equal(forward.root.kind, 'Scene');
+    assert.equal(forward.totalEdges, 2);
+    assert.deepEqual(edgesOf(forward), [[sceneGuid, prefabGuid, 1]]);
+    const next = await query(forward.job, 'outgoing', 1, 1);
+    assert.deepEqual(edgesOf(next), [[prefabGuid, materialGuid, 2]]);
+    assert.equal(next.edges[0].target.path, original);
+    assert.equal(next.edges[0].field, 'gameobjects[0].MaterialComponent.materialPath');
+    assert.ok(next.edges[0].line > 0);
+    assert.equal(forward.brokenCount, 0);
+
+    const impact = await scan(materialGuid, 'incoming');
+    assert.deepEqual(edgesOf(impact), [[prefabGuid, materialGuid, 1], [sceneGuid, prefabGuid, 2]]);
+    assert.equal(impact.relatedCount, 2);
+    context.diagnostic('GUID impact: Material has one direct Prefab and one indirect Scene dependent.');
+
+    await Call(client, 'editor_op_invoke', { id: 'asset.move', args: { path: 'guid:' + materialGuid, destination: renamed } });
+    assert.equal((await query(forward.job, 'outgoing')).stale, true);
+    const moved = await scan(sceneGuid, 'outgoing');
+    assert.equal(moved.brokenCount, 0);
+    assert.equal(moved.edges[1].target.path, renamed);
+    assert.equal(moved.edges[1].target.guid, materialGuid);
+    assert.equal(moved.edges[1].hint, original);
+    context.diagnostic('The renamed Material resolves by its unchanged GUID even with an outdated saved path hint.');
+
+    await Call(client, 'editor_op_invoke', { id: 'asset.trash', args: { path: 'guid:' + materialGuid } });
+    await assert.rejects(readFile(join(project, renamed)), { code: 'ENOENT' });
+    await assert.rejects(readFile(join(project, renamed + '.meta')), { code: 'ENOENT' });
+    const broken = await scan(sceneGuid, 'outgoing');
+    assert.equal(broken.brokenCount, 1);
+    assert.equal(broken.edges[1].target.state, 'missingGuid');
+    assert.equal(broken.edges[1].target.guid, materialGuid);
+    assert.equal(broken.edges[1].source.guid, prefabGuid);
+    const brokenImpact = await scan(materialGuid, 'incoming');
+    assert.equal(brokenImpact.root.state, 'missingGuid');
+    assert.deepEqual(edgesOf(brokenImpact), edgesOf(impact));
+    context.diagnostic('Deleting the Material produced a missing GUID at the saved Prefab field; reverse impact still reached the Scene.');
+    await writeFile(join(project, '..', 'DependencyGraph.json'), JSON.stringify({ forward, next, impact, moved, broken, brokenImpact }, null, 2));
+}
+
 async function CaptureGame(client: Client, project: string, name: string, minFrame?: number) {
     const reply = CallToolResultSchema.parse(await client.callTool({
         name: 'viewport_capture_semantic',
@@ -335,6 +398,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
         await assert.rejects(readFile(join(project, 'Library', 'Captures', 'RejectedStalePass.png')), { code: 'ENOENT' });
         await ExpectName(client, SAVED_NAME);
         context.diagnostic('Real Editor refused both the viewport and pass PNG in the same frame as a scene edit; a later rendered pass succeeded.');
+        await VerifyAssetDependencies(client, project, context);
         await VerifyAssetMoveBatch(client, project, context);
     } finally {
         try {

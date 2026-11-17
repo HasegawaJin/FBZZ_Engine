@@ -1,0 +1,6 @@
+# @file    Assembly.prefab.meta
+# @brief   参照される Prefab の GUID。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[meta]
+guid = '2a1fa7667132420cb07ac83286a6ac8e'

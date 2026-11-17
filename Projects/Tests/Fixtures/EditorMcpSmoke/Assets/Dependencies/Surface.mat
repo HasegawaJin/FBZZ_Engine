@@ -1,0 +1,5 @@
+# @file    Surface.mat
+# @brief   Prefab から参照される検証用 Material。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[material]
