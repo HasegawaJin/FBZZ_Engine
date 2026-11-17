@@ -8,9 +8,15 @@
 `editor_op_list`、`editor_op_query`、`editor_op_invoke` を使う。画面を開く要求や
 座標指定のクリックを、設定変更・変換・保存の代わりに使わない。
 
-`editor_op_list` の `params`、`kind`、実行可否を最初に確認する。`query` は照会、
+`editor_op_list` の `params`、`kind`、`availability` を最初に確認する。`query` は照会、
 `action` は作業状態やファイル操作、`mutation` は共通 Undo に載る編集である。
 設定の入れ子は各 `inspect` の結果を正本にし、フィールド名を推測しない。
+
+`requiredArgs` は必須引数名の配列。`available` は引数なしで評価した実行条件を表す。
+`availability.code` は `READY`、`ARGUMENTS_REQUIRED`、`POLL_REJECTED`、`DIALOG_REQUIRED` を返す。
+`dialog` は `none`、`possible`、`required`、書き込み操作の宣言が無ければ `unknown` を返す。
+実際の引数で変更操作を確かめるときは `editor_op_invoke` に `dryRun=true` を渡す。
+たとえば `scene.open` の Operator はファイル選択を必要とし、`scene_open` はパス指定で開ける。
 
 ## 操作群
 

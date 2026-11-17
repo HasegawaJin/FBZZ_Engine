@@ -22,17 +22,17 @@ export function RegisterEditorQueryTools(server: McpServer, bus: EditorBus): voi
         description: 'Editor に登録された操作 (Operator) の目録を返します。'
             + 'メニュー・ホットキー・コマンドパレットが読むのと同じ登録簿なので、'
             + '「人が UI からできること」と一致します。'
-            + '各項目の available は実行可能条件 (poll) の評価結果で、'
-            + '実行前に「今できない理由がある」ことを判別できます。'
+            + 'available は引数省略時の実行条件、requiredArgs は必須引数、dialog はダイアログの要否を示します。'
+            + 'availability.code と message で、引数待ち・状態不一致・ダイアログ入力を区別できます。'
             + 'kind は query / action / mutation で、mutation だけが Undo 履歴に残ります。'
-            + 'params が付いている操作は editor_op_invoke の args にその名前で渡します。',
+            + 'params の名前で args を組み、変更操作の可否は editor_op_invoke の dryRun=true で確認します。',
         inputSchema: {
             search: z.string().min(1).max(128).optional()
                 .describe('id / label / desc の部分一致 (大小無視)'),
             category: z.string().min(1).max(64).optional()
                 .describe('File / Edit / Selection / Viewport / Gizmo / Play / Tools / Panels'),
             includeUnavailable: z.boolean().optional()
-                .describe('既定 true。false にすると今実行できる操作だけを返す'),
+                .describe('既定 true。false にすると引数省略時の実行条件を満たす操作だけを返す'),
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ search, category, includeUnavailable }) => Safely(async () => TextResult(await bus.Query({
@@ -181,7 +181,7 @@ export function RegisterEditorQueryTools(server: McpServer, bus: EditorBus): voi
 
     server.registerTool('editor_bus_list', {
         description: 'Editor が受け付ける Command Bus の型名と種別 (query / command / undoable) を返します。'
-            + 'undoable と transaction=true の型だけが editor_transaction に混ぜられます。'
+            + 'undoable と transaction=true の型だけを run_transaction に渡せます。'
             + 'ツールが UNKNOWN_COMMAND / UNKNOWN_QUERY で失敗したら、Editor のビルドが MCP より古い可能性をここで確かめます。',
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: false },
@@ -201,19 +201,20 @@ export function RegisterEditorCommandTools(server: McpServer, bus: EditorBus, pe
             + 'メニューやホットキーが呼ぶのと同一の実体を通るため、人が UI で行った場合と結果が一致します。'
             + '実行可能条件を満たさない場合は NOT_AVAILABLE で拒否され、シーンには触れません。'
             + 'args は operator が宣言した params の名前で渡します (未宣言のキーはエラー)。'
-            + 'dry-run 権限では引数検証と実行可否の判定だけを行います。',
+            + 'dryRun=true または dry-run 権限では引数、実行条件、ダイアログの要否を確認します。',
         inputSchema: {
             id: z.string().min(1).max(128)
                 .describe('operator の id (例: "scene.save" / "gizmo.move")'),
             args: z.record(z.string(), z.unknown()).optional()
                 .describe('editor_op_list の params に対応する引数。引数なしの操作では省略する'),
+            dryRun: z.boolean().optional().describe('true で事前確認。dry-run 権限では常に事前確認'),
         },
         annotations: writeAnnotations,
-    }, ({ id, args }) => run({
+    }, ({ id, args, dryRun: preview }) => run({
         t: 'editor.op.invoke',
         id,
         ...(args === undefined ? {} : { args }),
-    }));
+    }, preview));
 
     server.registerTool('editor_undo', {
         description: '直前の Editor Command を取り消します。',

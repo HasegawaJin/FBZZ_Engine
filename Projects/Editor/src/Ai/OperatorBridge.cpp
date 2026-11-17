@@ -279,6 +279,37 @@ bool ConvertArgs(const EditorOperator& op, const JsonValue* argsValue,
     return true;
 }
 
+const char* DialogName(const EditorOperator& op)
+{
+    switch (op.dialog) {
+    case OpDialog::NONE: return "none";
+    case OpDialog::POSSIBLE: return "possible";
+    case OpDialog::REQUIRED: return "required";
+    case OpDialog::UNSPECIFIED: return op.kind == OpKind::Query ? "none" : "unknown";
+    }
+    return "unknown";
+}
+
+JsonValue AvailabilityToJson(const EditorOperator& op, bool available, bool missingArgs)
+{
+    const char* code = "READY";
+    const char* message = "実行条件を満たしています";
+    if (missingArgs) {
+        code = "ARGUMENTS_REQUIRED";
+        message = "requiredArgs の引数を渡して実行条件を確認してください";
+    } else if (!available) {
+        code = "POLL_REJECTED";
+        message = "現在の編集状態または指定した対象では実行条件を満たしません";
+    } else if (op.dialog == OpDialog::REQUIRED) {
+        code = "DIALOG_REQUIRED";
+        message = "操作を完了するにはダイアログでの入力が必要です";
+    }
+    JsonValue result = JsonValue::MakeObject();
+    result.Set("code", JsonValue(code));
+    result.Set("message", JsonValue(message));
+    return result;
+}
+
 JsonValue OperatorToJson(const EditorOperator& op, bool available,
                          const OpContext& opContext)
 {
@@ -288,14 +319,19 @@ JsonValue OperatorToJson(const EditorOperator& op, bool available,
     entry.Set("category", JsonValue(op.category));
     entry.Set("kind", JsonValue(KindName(op.kind)));
     entry.Set("available", JsonValue(available));
+    entry.Set("dialog", JsonValue(DialogName(op)));
+    JsonValue requiredArgs = JsonValue::MakeArray();
+    for (const OpParam& param : op.params) {
+        if (param.required) requiredArgs.Push(JsonValue(param.name));
+    }
+    const bool missingArgs = !requiredArgs.AsArray().empty();
+    entry.Set("requiredArgs", std::move(requiredArgs));
+    entry.Set("availability", AvailabilityToJson(op, available, missingArgs));
     /// @note トグル操作の現在値。メニューのチェックマークと同じ式から出る。無いと
     ///       「切り替えられるのに今どちらか読めない」ままになる。必須引数を持つ操作は
     ///       目録では評価しない。対象不定のまま false を出すと「OFF」と誤読されるため、
     ///       確定は invoke の dryRun で行う。
-    const bool checkableWithoutArgs = std::none_of(
-        op.params.begin(), op.params.end(),
-        [](const OpParam& p) { return p.required; });
-    if (op.checked && checkableWithoutArgs) {
+    if (op.checked && !missingArgs) {
         const OpArgs noArgs;
         entry.Set("checked", JsonValue(op.checked(opContext, noArgs)));
     }
@@ -409,6 +445,8 @@ OperatorBridgeResult InvokeOperator(editor::EditorContext& context,
         result.Set("label", JsonValue(op->label));
         result.Set("kind", JsonValue(KindName(op->kind)));
         result.Set("available", JsonValue(available));
+        result.Set("dialog", JsonValue(DialogName(*op)));
+        result.Set("availability", AvailabilityToJson(*op, available, false));
         result.Set("dryRun", JsonValue(true));
         /// @note 渡された引数での現在状態。排他選択 (set_view_mode 等) は
         ///       「その値が今の値か」がここで初めて確定する。
@@ -502,4 +540,4 @@ OperatorBridgeResult QueryOperator(editor::EditorContext& context, const JsonVal
     return OperatorBridgeResult::Ok(std::move(result));
 }
 
-} // namespace fbzz::editor::ai
+} /// @note namespace fbzz::editor::ai

@@ -109,6 +109,22 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
         assert.equal(authoring.sceneDirty, false);
         await ExpectName(client, ORIGINAL_NAME);
 
+        const openOperators = await Call(client, 'editor_op_list', { search: 'scene.open' });
+        const dialog = openOperators.operators.find((operator: { id: string }) => operator.id === 'scene.open');
+        assert.equal(dialog.dialog, 'required');
+        assert.equal(dialog.availability.code, 'DIALOG_REQUIRED');
+        const preview = await Call(client, 'editor_op_invoke', { id: 'scene.open', dryRun: true });
+        assert.equal(preview.dryRun, true);
+        assert.equal(preview.availability.code, 'DIALOG_REQUIRED');
+        const emptyUndo = await Call(client, 'editor_op_invoke', { id: 'edit.undo', dryRun: true });
+        assert.equal(emptyUndo.availability.code, 'POLL_REJECTED');
+
+        const importOperators = await Call(client, 'editor_op_list', { search: 'asset.model.import' });
+        const modelImport = importOperators.operators.find((operator: { id: string }) => operator.id === 'asset.model.import');
+        assert.deepEqual(modelImport.requiredArgs, ['path']);
+        assert.equal(modelImport.dialog, 'none');
+        assert.equal(modelImport.availability.code, 'ARGUMENTS_REQUIRED');
+
         await Call(client, 'node_rename', { id: OBJECT_ID, name: SAVED_NAME });
         await ExpectName(client, SAVED_NAME);
         assert.equal((await Call(client, 'editor_get_state')).sceneDirty, true);

@@ -90,6 +90,9 @@ enum class OpKind {
 /// @brief Invocation source is supplied by the host, never by serialized operator arguments.
 enum class OpInvocationSource { INTERACTIVE, AUTOMATION };
 
+/// @brief 操作の完了に選択ダイアログや確認が必要になる条件。
+enum class OpDialog { UNSPECIFIED, NONE, POSSIBLE, REQUIRED };
+
 struct OpContext {
     EditorContext& ctx;
     UndoStack&     undo;
@@ -159,6 +162,7 @@ struct EditorOperator {
     OpPoll  poll;      ///< null なら常に実行可能
     OpCheck checked;   ///< null なら状態を持たない (トグルではない) 操作
     OpExec  exec;
+    OpDialog dialog = OpDialog::UNSPECIFIED;
 };
 
 /// 宣言された制約 (required / enumValues / range) を検証する。

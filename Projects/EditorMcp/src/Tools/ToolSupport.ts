@@ -64,7 +64,8 @@ export async function Safely(operation: () => Promise<CallToolResult>): Promise<
 /// @note dry-run 権限は入力値に関係なく強制し、全領域で同じ Command 契約を検証する。
 export function CreateCommandContext(bus: EditorBus, permission: PermissionMode) {
     const dryRun = permission !== 'write';
-    const run = (command: EditorCommand) => Safely(async () => TextResult(await bus.Command(EditorCommandSchema.parse(command), dryRun)));
+    const run = (command: EditorCommand, preview = false) => Safely(async () =>
+        TextResult(await bus.Command(EditorCommandSchema.parse(command), dryRun || preview)));
     const writeAnnotations = {
         readOnlyHint: false,
         destructiveHint: permission === 'write',

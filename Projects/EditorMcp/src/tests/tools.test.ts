@@ -320,6 +320,27 @@ test('Operator ゲートウェイは目録 Query と実行 Command へ写像す�
 });
 
 
+/// @brief write でも操作ごとに事前確認でき、dry-run 権限では実行を指定しても変更しない。
+test('Operator invocation supports per-call dry-run without elevating permissions', async () => {
+    for (const permission of ['write', 'dry-run'] as const) {
+        const harness = await CreateHarness(permission);
+        try {
+            const id = 'node.set_tag';
+            const args = { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' };
+            const response = await harness.client.callTool({
+                name: 'editor_op_invoke', arguments: { id, args, dryRun: permission === 'write' },
+            });
+            assert.equal(response.isError, undefined);
+            assert.deepEqual(harness.bus.commands.at(-1), {
+                command: { t: 'editor.op.invoke', id, args },
+                dryRun: true,
+            });
+        } finally {
+            await harness.close();
+        }
+    }
+});
+
 /// @brief Behavior Tree の照会・規約・検証は引数の少ない Query 面へ写像する。
 test('Behavior Tree の照会・規約・検証は引数の少ない Query 面へ写像する', async () => {
     const harness = await CreateHarness('read');

@@ -39,7 +39,7 @@ void EditorApp::RegisterBuiltinOperators()
     /// @note 引数付き操作は params を宣言し、EditorContext だけで完結する操作は OperatorGroups へ置く。
     auto add = [this](const char* id, const char* label, const char* category,
                       const char* desc, OpKind kind,
-                      OpExec exec, OpPoll poll = {}, OpCheck checked = {}) {
+                      OpExec exec, OpPoll poll = {}, OpCheck checked = {}, OpDialog dialog = OpDialog::UNSPECIFIED) {
         EditorOperator op;
         op.id       = id;
         op.label    = label;
@@ -49,6 +49,7 @@ void EditorApp::RegisterBuiltinOperators()
         op.exec     = std::move(exec);
         op.poll     = std::move(poll);
         op.checked  = std::move(checked);
+        op.dialog   = dialog;
         m_operators.Register(std::move(op));
     };
 
@@ -102,13 +103,14 @@ void EditorApp::RegisterBuiltinOperators()
         "編集中のシーンを閉じて新しいシーンを作る。未保存の変更があれば確認する。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { RequestNewScene(); return OpResult::Ok(); },
-        [inPrefabEdit](const OpContext& c, const OpArgs& a) { return !inPrefabEdit(c, a); });
+        [inPrefabEdit](const OpContext& c, const OpArgs& a) { return !inPrefabEdit(c, a); }, {}, OpDialog::POSSIBLE);
 
     add("scene.open", "Open Scene...", "File",
         "ファイルダイアログからシーンを開く。未保存の変更があれば確認する。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { RequestOpenSceneFromDialog(); return OpResult::Ok(); },
-        [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); });
+        [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); },
+        {}, OpDialog::REQUIRED);
 
     /// @note Prefab 編集中は SaveScene が SavePrefabEdit へ読み替わるため、ここでは禁じない。
     /// @note Ctrl+S はインライン編集した未保存アセットも一緒に保存する。
@@ -121,13 +123,14 @@ void EditorApp::RegisterBuiltinOperators()
             SaveScene(true);
             return OpResult::Ok();
         },
-        hasScene);
+        hasScene, {}, OpDialog::POSSIBLE);
 
     add("scene.save_as", "Save Scene As...", "File",
         "保存先を選び直してシーンを保存する。",
         OpKind::Action,
         [this](OpContext&, const OpArgs&) { SaveSceneAsDialog(true); return OpResult::Ok(); },
-        [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); });
+        [hasScene, inPrefabEdit](const OpContext& c, const OpArgs& a) { return hasScene(c, a) && !inPrefabEdit(c, a); },
+        {}, OpDialog::REQUIRED);
 
     add("asset.save_all", "Save All Assets", "File",
         "未保存の編集を持つアセットをまとめて保存する。",
@@ -138,7 +141,7 @@ void EditorApp::RegisterBuiltinOperators()
     add("app.exit", "Exit", "File",
         "エディターを終了する。未保存の変更があれば確認する。",
         OpKind::Action,
-        [this](OpContext&, const OpArgs&) { RequestExit(); return OpResult::Ok(); });
+        [this](OpContext&, const OpArgs&) { RequestExit(); return OpResult::Ok(); }, {}, {}, OpDialog::POSSIBLE);
 
     /// @name Edit
     add("edit.undo", "Undo", "Edit",
