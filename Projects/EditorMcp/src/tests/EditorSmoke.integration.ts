@@ -260,7 +260,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
         const beforeImage = await CaptureGame(client, project, 'BeforeEdit');
         const beforeSource = beforeImage.provenance as Record<string, unknown>;
         assert.equal(await realpath(String(beforeSource.scenePath)), await realpath(join(project, SCENE_PATH)));
-        assert.equal(beforeSource.sceneGeneration, authoring.sceneGeneration);
+        assert.equal(String(beforeSource.sceneGeneration), authoring.sceneGeneration);
         assert.equal(beforeSource.cameraId, CAMERA_ID);
         assert.equal(beforeSource.view, 'game');
         assert.equal(beforeSource.renderPass, 'ViewportOutput');
