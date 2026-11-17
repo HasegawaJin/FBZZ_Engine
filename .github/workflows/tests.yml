@@ -174,10 +174,9 @@ jobs:
             -DFBZZ_BUILD_JOBS=4
           exit $LASTEXITCODE
 
-      # @brief テスト exe と MCP の実機検証で起動する Editor を建てる。
-      # @warning 既定スイートを足したら --target にも足す。漏れると «ビルドされないだけ» で通り、CTest に NOT_BUILT が 1 件出るだけになる。
-      # @note GraphicsStandalone / RayTracing / RayTracingEngine は明示実行専用。通常の CI ビルドには含めない。
-      - name: Build test targets
+      # @note CTest の結果に依存せず Editor MCP の合否を取得し、同じビルドを後続テストで再利用する。
+      - name: Build Editor for MCP smoke test
+        id: editor-build
         shell: pwsh
         run: |
           . ./Tools/VsEnvironment.ps1
@@ -185,27 +184,7 @@ jobs:
           sccache --zero-stats
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel 4 `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsAuto FBZZManagedTests FBZZEditorLauncher
-
-      # @note テスト失敗時もヒット・ミス・キャッシュ不可の件数を残し、キャッシュが働かない理由を切り分ける。
-      - name: Report compiler cache
-        if: always() && steps.compiler-cache.outcome == 'success'
-        shell: pwsh
-        run: |
-          $stats = sccache --show-stats
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $stats | Write-Host
-          @('### Compiler cache', '```text') + $stats + @('```') |
-            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-
-      # @note --timeout で止まったテストを打ち切り残りを走らせる。無いと 1 件のハングでジョブ上限まで待つ。
-      # @note --no-tests=error でテストが 1 件も登録されていない状態を成功にしない。
-      # @note GraphicsStandalone / RayTracing / RayTracingEngine は CTest 未登録なので、ここでは実行しない。
-      - name: Run tests
-        shell: pwsh
-        run: >
-          ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG
-          --output-on-failure --timeout 30 --no-tests=error
+            --target FBZZEditorLauncher
 
       - uses: actions/setup-node@v5
         with:
@@ -234,6 +213,39 @@ jobs:
           path: |
             build/agent/editor-mcp-smoke/*/Editor.log
             build/agent/editor-mcp-smoke/*/Project/Library/Playtests/**
+
+      # @warning 既定スイートを足したら --target にも足す。漏れると «ビルドされないだけ» で通り、CTest に NOT_BUILT が 1 件出るだけになる。
+      # @note GraphicsStandalone / RayTracing / RayTracingEngine は明示実行専用。通常の CI ビルドには含めない。
+      - name: Build test targets
+        id: native-test-build
+        if: ${{ !cancelled() && steps.editor-build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          . ./Tools/VsEnvironment.ps1
+          Import-VisualStudioEnvironment
+          cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel 4 `
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsAuto FBZZManagedTests
+
+      # @note テスト失敗時もヒット・ミス・キャッシュ不可の件数を残し、キャッシュが働かない理由を切り分ける。
+      - name: Report compiler cache
+        if: always() && steps.compiler-cache.outcome == 'success'
+        shell: pwsh
+        run: |
+          $stats = sccache --show-stats
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $stats | Write-Host
+          @('### Compiler cache', '```text') + $stats + @('```') |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      # @note --timeout で止まったテストを打ち切り残りを走らせる。無いと 1 件のハングでジョブ上限まで待つ。
+      # @note --no-tests=error でテストが 1 件も登録されていない状態を成功にしない。
+      # @note GraphicsStandalone / RayTracing / RayTracingEngine は CTest 未登録なので、ここでは実行しない。
+      - name: Run tests
+        if: ${{ !cancelled() && steps.native-test-build.outcome == 'success' }}
+        shell: pwsh
+        run: >
+          ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG
+          --output-on-failure --timeout 30 --no-tests=error
 
       - name: Install OpenCppCoverage
         if: steps.scope.outputs.measure == 'true'
