@@ -8,3 +8,9 @@ targetFps = 60
 
 [runtime]
 start_scene = "Assets/Scenes/Smoke.scene"
+
+# @note 描画物のないシーンを WARP で回すため、シャドウ用 RT を最小構成にする。
+[render]
+shadow = false
+shadowResolution = 256
+clusteredEnabled = false
