@@ -31,6 +31,7 @@
 | `asset.move_batch.preview/apply` | Prefab を含む複数の GUID 付きファイルについて、移動・改名前に本体と meta の新旧パスを確認する。実行中の失敗では、移動済みファイルを逆順に戻す。 |
 | `asset.guid.inspect/repair` | Asset Maintenance と同じグループと修復規則を使う。最古の meta を保持し、生成物と import fingerprint も追従させる。 |
 | `asset.references.scan/status` | Find References と同じ保存済み TOML の直接参照を、根拠のフィールド・行番号付きで返す。 |
+| `asset.dependencies.scan/status` | GUID 起点の保存済み参照を双方向にたどり、間接的な影響範囲・参照切れ・根拠を返す。詳しくは [参照調査](asset-reference-visibility.md#guid-を起点にたどる-mcp-操作)。 |
 | `project.settings.inspect/configure/reset/reload/save` | プロジェクト設定を部分編集する。編集・初期化・再読込は共通 Undo に載る。 |
 | `input.bindings.inspect/configure/reset/reload/save/rebind/cancel_rebind/preview` | 入力設定の編集・保存とリバインドを扱う。編集・初期化・再読込は共通 Undo に載る。 |
 | `workspace.settings.inspect/configure/reload/save` | エディター設定、ホットキー、パネル設定をライブ状態へ反映する。 |

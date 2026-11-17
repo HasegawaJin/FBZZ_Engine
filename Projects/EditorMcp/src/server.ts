@@ -34,6 +34,7 @@ export function CreateEditorMcpServer(bus: EditorBus, permission: PermissionMode
             `現在の権限モードは ${permission} です。`,
             'editor_op_list で操作の種類・必須引数・ダイアログの要否を調べ、照会操作は editor_op_query で呼び出します。',
             'Prefab を含む一括移動・改名は asset.move_batch.preview で本体と .meta の新旧パス・GUID を確認します。',
+            'GUID の参照先・影響する参照元と参照切れは asset_dependencies_scan と asset_dependencies_status で調べます。',
             'コンポーネントの型とフィールドは editor_catalog、対象の ID と状態は scene_find と node_get_components で確認します。',
             'VFX の操作は editor_op_list で検索し、流体の設定項目は fluid_schema で確認します。',
             'シーンの状態は scene_validate、見た目は editor_perceive、Playtest の一覧と結果は scenario_list と scenario_status で確認します。',

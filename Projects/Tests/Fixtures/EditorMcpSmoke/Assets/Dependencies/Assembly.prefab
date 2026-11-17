@@ -5,10 +5,14 @@
 [scene]
 format_version = 1
 
+[prefab]
+format_version = 1
+root_count = 1
+
 [[gameobjects]]
 active = true
 instanceId = '7d16d515-63ee-4179-aa88-0cd766cc6be0'
 name = 'AssemblyRoot'
 
     [gameobjects.MaterialComponent]
-    materialPath = 'guid:594487bc968b4bfd91fe7cb0db658c32|Assets/Dependencies/Surface.mat'
+    material = 'guid:594487bc968b4bfd91fe7cb0db658c32|Assets/Dependencies/Surface.mat'

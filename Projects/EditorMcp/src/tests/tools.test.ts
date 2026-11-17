@@ -20,6 +20,10 @@ class FakeEditorBus implements EditorBus {
 
     async Query(query: EditorQuery): Promise<unknown> {
         this.queries.push(query);
+        if (query.t === 'editor.op.query' && query.id === 'asset.dependencies.scan')
+            return { data: { job: 7, finished: false } };
+        if (query.t === 'editor.op.query' && query.id === 'asset.dependencies.status')
+            return { data: { job: 7, finished: true, edges: [] } };
         if (query.t === 'viewport.capture' || query.t === 'viewport.semantic') {
             const view = query.view ?? 'scene';
             const capture = {
@@ -77,6 +81,32 @@ class FakeEditorBus implements EditorBus {
 
     Close(): void {}
 }
+
+/// @brief GUID の調査は read 権限でも開始できる。ページを取得しても Command は送らない。
+test('GUID dependency graph runs through read-only MCP queries', async () => {
+    const harness = await CreateHarness('read');
+    try {
+        const started = await harness.client.callTool({
+            name: 'asset_dependencies_scan', arguments: { guid: 'guid:2a1fa7667132420cb07ac83286a6ac8e', maxDepth: 3 },
+        });
+        assert.notEqual(started.isError, true, JSON.stringify(started.content));
+        assert.equal(CallToolResultSchema.parse(started).structuredContent?.job, 7);
+        const status = await harness.client.callTool({
+            name: 'asset_dependencies_status', arguments: { job: 7, direction: 'incoming', offset: 1, limit: 2, maxFiles: 4 },
+        });
+        assert.equal(CallToolResultSchema.parse(status).structuredContent?.finished, true);
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'editor.op.query', id: 'asset.dependencies.scan', args: { guid: 'guid:2a1fa7667132420cb07ac83286a6ac8e', maxDepth: 3 } },
+            { t: 'editor.op.query', id: 'asset.dependencies.status', args: { job: 7, direction: 'incoming', offset: 1, limit: 2, maxFiles: 4 } },
+        ]);
+        const invalid = await harness.client.callTool({ name: 'asset_dependencies_scan', arguments: { guid: 'Assets/Other.prefab' } });
+        assert.equal(invalid.isError, true);
+        assert.equal(harness.bus.queries.length, 2);
+        assert.deepEqual(harness.bus.commands, []);
+    } finally {
+        await harness.close();
+    }
+});
 
 /// @note 実 transport と同じ JSON-RPC 経路をメモリ内で通し、登録だけのテストにしない。
 async function CreateHarness(permission: PermissionMode) {

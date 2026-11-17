@@ -48,14 +48,17 @@ async function VerifyAssetDependencies(client: Client, project: string, context:
     const renamed = 'Assets/Dependencies/RenamedSurface.mat';
     const query = async (job: number, direction: 'incoming' | 'outgoing', offset = 0, limit = 100) =>
         Call(client, 'asset_dependencies_status', { job, direction, offset, limit, maxFiles: 4 });
-    const scan = async (guid: string, direction: 'incoming' | 'outgoing', limit = 100) => {
-        const started = await Call(client, 'asset_dependencies_scan', { guid, maxDepth: 4 });
-        for (let n = 0; n < 32; ++n) {
-            const result = await query(started.job, direction, 0, limit);
-            if (result.finished) {
-                assert.equal(result.stale, false);
-                assert.equal(result.limited, false);
-                return result;
+    const scan = async (guid: string, direction: 'incoming' | 'outgoing', limit = 100, maxDepth = 4) => {
+        /// @note 外部変更の通知が届いた検索は、同じジョブを進めず新しい索引世代でやり直す。
+        for (let attempt = 0; attempt < 3; ++attempt) {
+            const started = await Call(client, 'asset_dependencies_scan', { guid, maxDepth });
+            for (let n = 0; n < 32; ++n) {
+                const result = await query(started.job, direction, 0, limit);
+                if (result.stale) break;
+                if (result.finished) {
+                    assert.equal(result.limited, false);
+                    return result;
+                }
             }
         }
         assert.fail('The small fixture graph did not finish');
@@ -70,7 +73,7 @@ async function VerifyAssetDependencies(client: Client, project: string, context:
     const next = await query(forward.job, 'outgoing', 1, 1);
     assert.deepEqual(edgesOf(next), [[prefabGuid, materialGuid, 2]]);
     assert.equal(next.edges[0].target.path, original);
-    assert.equal(next.edges[0].field, 'gameobjects[0].MaterialComponent.materialPath');
+    assert.equal(next.edges[0].field, 'gameobjects[0].MaterialComponent.material');
     assert.ok(next.edges[0].line > 0);
     assert.equal(forward.brokenCount, 0);
 
@@ -80,7 +83,9 @@ async function VerifyAssetDependencies(client: Client, project: string, context:
     context.diagnostic('GUID impact: Material has one direct Prefab and one indirect Scene dependent.');
 
     await Call(client, 'editor_op_invoke', { id: 'asset.move', args: { path: 'guid:' + materialGuid, destination: renamed } });
-    assert.equal((await query(forward.job, 'outgoing')).stale, true);
+    const outdated = await query(forward.job, 'outgoing');
+    assert.equal(outdated.stale, true);
+    assert.deepEqual(outdated.edges, []);
     const moved = await scan(sceneGuid, 'outgoing');
     assert.equal(moved.brokenCount, 0);
     assert.equal(moved.edges[1].target.path, renamed);
@@ -99,8 +104,11 @@ async function VerifyAssetDependencies(client: Client, project: string, context:
     const brokenImpact = await scan(materialGuid, 'incoming');
     assert.equal(brokenImpact.root.state, 'missingGuid');
     assert.deepEqual(edgesOf(brokenImpact), edgesOf(impact));
+    const directOnly = await scan(materialGuid, 'incoming', 100, 1);
+    assert.equal(directOnly.depthLimited, true);
+    assert.deepEqual(edgesOf(directOnly), [[prefabGuid, materialGuid, 1]]);
     context.diagnostic('Deleting the Material produced a missing GUID at the saved Prefab field; reverse impact still reached the Scene.');
-    await writeFile(join(project, '..', 'DependencyGraph.json'), JSON.stringify({ forward, next, impact, moved, broken, brokenImpact }, null, 2));
+    await writeFile(join(project, '..', 'DependencyGraph.json'), JSON.stringify({ forward, next, impact, moved, broken, brokenImpact, directOnly }, null, 2));
 }
 
 async function CaptureGame(client: Client, project: string, name: string, minFrame?: number) {

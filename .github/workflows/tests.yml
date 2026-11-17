@@ -218,6 +218,7 @@ jobs:
             build/agent/editor-mcp-smoke/*/Editor.log
             build/agent/editor-mcp-smoke/*/Stacks.log
             build/agent/editor-mcp-smoke/*/*.png
+            build/agent/editor-mcp-smoke/*/DependencyGraph.json
             build/agent/editor-mcp-smoke/*/Project/Library/Captures/*.png
             build/agent/editor-mcp-smoke/*/Project/Library/Playtests/**
 

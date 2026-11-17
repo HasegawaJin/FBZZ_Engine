@@ -42,6 +42,7 @@ helperのビルド出力にある依存DLL、runtimeconfig、depsも保持する
 | `editor_op_invoke` → `authoring.placement.apply` | previewの計画状態を照合し、共通Undoへ一括適用する。 |
 | `editor_op_query` → `asset.move_batch.preview` | Prefab を含む複数ファイルの移動・改名前に、本体と meta の新旧パスと GUID を確認する。 |
 | `editor_op_invoke` → `asset.move_batch.apply` | preview の `receipt` を使い、確認済みの移動・改名を実行する。 |
+| `asset_dependencies_scan` / `asset_dependencies_status` | GUID から保存済み参照をたどり、参照切れや変更の影響範囲をフィールド・行番号付きで確認する。 |
 | `sql_index_refresh` | 現在Scene等の読み取り用索引を更新する。 |
 | `sql_index_status` / `sql_index_schema` | 取得範囲・世代・欠測と、問い合わせ可能な表を確認する。 |
 | `sql_query` | 索引に単一SELECT/CTEを実行する。 |
