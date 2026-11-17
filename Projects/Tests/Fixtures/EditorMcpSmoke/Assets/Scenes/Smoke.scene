@@ -1,0 +1,43 @@
+# @file    Smoke.scene
+# @brief   Editor MCP の保存・再読込・Play 確認用シーン。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'fa025438-3c92-45ee-95e8-0a91cc3095c0'
+layer = 0
+name = 'MainCamera'
+parentInstanceId = ''
+prefabAssetPath = ''
+tag = 'MainCamera'
+
+    [gameobjects.CameraComponent]
+    aspectRatio = 1.777778
+    cullingMask = 4294967295
+    enabled = true
+    farZ = 100.0
+    fovY = 60.0
+    isMain = true
+    nearZ = 0.1
+
+    [gameobjects.transform]
+    position = [ 0.0, 2.0, -6.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]
+
+[[gameobjects]]
+active = true
+instanceId = '6a4efced-4563-4cbe-9e3d-7c7212cf6d2b'
+layer = 0
+name = 'McpSmokeBefore'
+parentInstanceId = ''
+prefabAssetPath = ''
+tag = 'Untagged'
+
+    [gameobjects.transform]
+    position = [ 0.0, 0.0, 0.0 ]
+    rotation = [ 0.0, 0.0, 0.0, 1.0 ]
+    scale = [ 1.0, 1.0, 1.0 ]

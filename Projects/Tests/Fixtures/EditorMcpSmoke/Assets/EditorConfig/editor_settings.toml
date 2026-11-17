@@ -1,0 +1,6 @@
+# @file    editor_settings.toml
+# @brief   テスト用 Editor の Command Bus をプロジェクトを開くときに開始する。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[misc]
+ai_command_bus = true

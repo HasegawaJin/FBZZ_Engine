@@ -1,0 +1,8 @@
+# @file    .fbzz_proj
+# @brief   Editor MCP の実機検証プロジェクト。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[project]
+name = "EditorMcpSmoke"
+default_scene = "Assets/Scenes/Smoke.scene"
+settings_path = "ProjectSettings/ProjectSettings.toml"

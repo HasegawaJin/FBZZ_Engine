@@ -27,6 +27,7 @@ concurrency:
 env:
   BUILD_DIR: build/ci
   BUILD_CONFIG: Debug
+  EDITOR_MCP_NODE_VERSION: '24.16.0'
 
 jobs:
   # @brief 規約 (AGENTS.md «絶対制約» とコメント形式) の機械検査。数秒で終わるので 40 分のビルドより前に落とす。
@@ -64,13 +65,21 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: ${{ env.EDITOR_MCP_NODE_VERSION }}
+
+      - name: Set up the pinned managed SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: Projects/Managed/global.json
 
       - name: EditorMcp tests
         shell: pwsh
         working-directory: Projects/EditorMcp
         run: |
           npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:analysis
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm test
 
   managed-authoring:
@@ -163,8 +172,7 @@ jobs:
             -DFBZZ_BUILD_JOBS=4
           exit $LASTEXITCODE
 
-      # @brief テスト exe とその依存だけを建てる (Sandbox / EditorLauncher は建てない)。
-      # @note  EditorAuto が FBZZEditor をリンクするので Editor も建つ。AI 連携や import 判定は起動しないと分からない壊れ方をするため CI で押さえる。
+      # @brief テスト exe と MCP の実機検証で起動する Editor を建てる。
       # @warning 既定スイートを足したら --target にも足す。漏れると «ビルドされないだけ» で通り、CTest に NOT_BUILT が 1 件出るだけになる。
       # @note GraphicsStandalone / RayTracing / RayTracingEngine は明示実行専用。通常の CI ビルドには含めない。
       - name: Build test targets
@@ -175,7 +183,7 @@ jobs:
           sccache --zero-stats
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build "$env:BUILD_DIR" --config $env:BUILD_CONFIG --parallel 4 `
-            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsAuto FBZZManagedTests
+            --target FBZZTestsMathAuto FBZZTestsCoreAuto FBZZTestsPhysicsAuto FBZZTestsFluidAuto FBZZTestsEngineAuto FBZZTestsEditorAuto FBZZTestsGraphicsAuto FBZZManagedTests FBZZEditorLauncher
 
       # @note テスト失敗時もヒット・ミス・キャッシュ不可の件数を残し、キャッシュが働かない理由を切り分ける。
       - name: Report compiler cache
@@ -196,6 +204,34 @@ jobs:
         run: >
           ctest --test-dir "$env:BUILD_DIR" -C $env:BUILD_CONFIG
           --output-on-failure --timeout 30 --no-tests=error
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.EDITOR_MCP_NODE_VERSION }}
+
+      # @note WARP の Editor をテスト用プロジェクトで起動し、MCP の stdio と Named Pipe を両方通す。
+      - name: Run Editor MCP smoke test
+        id: editor-smoke
+        timeout-minutes: 7
+        shell: pwsh
+        working-directory: Projects/EditorMcp
+        run: |
+          $env:FBZZ_SMOKE_EDITOR = Join-Path $env:GITHUB_WORKSPACE "$env:BUILD_DIR/Binaries/$env:BUILD_CONFIG/Editor/FBZZEditor.exe"
+          $env:FBZZ_SMOKE_OUTPUT = Join-Path $env:GITHUB_WORKSPACE 'build/agent/editor-mcp-smoke'
+          npm install --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test dist/tests/EditorSmoke.integration.js
+
+      - name: Upload Editor MCP smoke evidence
+        if: always() && (steps.editor-smoke.outcome == 'success' || steps.editor-smoke.outcome == 'failure')
+        uses: actions/upload-artifact@v6
+        with:
+          name: editor-mcp-smoke
+          path: |
+            build/agent/editor-mcp-smoke/*/Editor.log
+            build/agent/editor-mcp-smoke/*/Project/Library/Playtests/**
 
       - name: Install OpenCppCoverage
         if: steps.scope.outputs.measure == 'true'
