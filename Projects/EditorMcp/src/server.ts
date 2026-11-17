@@ -33,6 +33,7 @@ export function CreateEditorMcpServer(bus: EditorBus, permission: PermissionMode
             'FBZZ Editor をローカル Command Bus 経由で操作します。',
             `現在の権限モードは ${permission} です。`,
             'editor_op_list で操作の種類・必須引数・ダイアログの要否を調べ、照会操作は editor_op_query で呼び出します。',
+            'Prefab を含む一括移動・改名は asset.move_batch.preview で本体と .meta の新旧パス・GUID を確認します。',
             'コンポーネントの型とフィールドは editor_catalog、対象の ID と状態は scene_find と node_get_components で確認します。',
             'VFX の操作は editor_op_list で検索し、流体の設定項目は fluid_schema で確認します。',
             'シーンの状態は scene_validate、見た目は editor_perceive、Playtest の一覧と結果は scenario_list と scenario_status で確認します。',
@@ -40,6 +41,7 @@ export function CreateEditorMcpServer(bus: EditorBus, permission: PermissionMode
                 '変更操作は editor_op_invoke の dryRun=true で引数と実行条件を確認します。ファイルを直接指定してシーンを開くには scene_open、保存には scene_save を使います。',
             ]),
             ...(permission === 'write' ? [
+                '確認済みの一括移動・改名は asset.move_batch.apply に直近の preview が返した receipt を渡して実行します。',
                 'ファイルに保存された Playtest は scenario_run で開始し、scenario_status で今回の合否を確認します。',
                 '新規の流体エフェクトは fluid_create_effect で作り、fluid_preview と fluid_job_status で見た目を確認してから fluid_bake を実行します。',
             ] : []),

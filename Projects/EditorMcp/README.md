@@ -40,11 +40,14 @@ helperのビルド出力にある依存DLL、runtimeconfig、depsも保持する
 | `editor_op_query` → `authoring.context` | 接続先project・Scene世代・現在のSDK配置先を取得する。 |
 | `editor_op_query` → `authoring.placement.preview` | world整列・等間隔・水平面への配置の差分を取得する。 |
 | `editor_op_invoke` → `authoring.placement.apply` | previewの計画状態を照合し、共通Undoへ一括適用する。 |
+| `editor_op_query` → `asset.move_batch.preview` | Prefab を含む複数ファイルの移動・改名前に、本体と meta の新旧パスと GUID を確認する。 |
+| `editor_op_invoke` → `asset.move_batch.apply` | preview の `receipt` を使い、確認済みの移動・改名を実行する。 |
 | `sql_index_refresh` | 現在Scene等の読み取り用索引を更新する。 |
 | `sql_index_status` / `sql_index_schema` | 取得範囲・世代・欠測と、問い合わせ可能な表を確認する。 |
 | `sql_query` | 索引に単一SELECT/CTEを実行する。 |
 
 配置の引数は `editor_op_list`のparamsから取得する。applyにはpreviewが返す`expected`を渡す。
+一括移動の引数例と失敗時の復元範囲は [Editor 直接 API](../../Docs/design/EditorDirectApi.md#prefab-とアセットの一括移動改名) を参照。
 平面への配置は地形のraycast接地を意味しない。meshBottomは対応する静的メッシュの底面を使い、
 形状が解決できないときは成功として扱わない。
 

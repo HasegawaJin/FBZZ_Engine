@@ -28,6 +28,7 @@
 | `asset.texture.inspect/configure/reset/import/trim` | テクスチャの全インポート設定と Sprite 矩形を扱う。型の変更でも既存の矩形と ID を保持する。 |
 | `asset.creation_catalog`、`asset.create` | 種類・拡張子・プリセットを照会し、通常の Create と同じ既定内容を生成する。 |
 | `asset.move/rename/duplicate/extract/trash` | 本体と meta をまとめて扱う。移動は GUID を維持し、複写は再発行する。既存の出力は上書きしない。 |
+| `asset.move_batch.preview/apply` | Prefab を含む複数の GUID 付きファイルについて、移動・改名前に本体と meta の新旧パスを確認する。実行中の失敗では、移動済みファイルを逆順に戻す。 |
 | `asset.guid.inspect/repair` | Asset Maintenance と同じグループと修復規則を使う。最古の meta を保持し、生成物と import fingerprint も追従させる。 |
 | `asset.references.scan/status` | Find References と同じ保存済み TOML の直接参照を、根拠のフィールド・行番号付きで返す。 |
 | `project.settings.inspect/configure/reset/reload/save` | プロジェクト設定を部分編集する。編集・初期化・再読込は共通 Undo に載る。 |
@@ -125,6 +126,40 @@ Sequence の履歴はドキュメント固有なので `sequence.undo/redo` を�
 保存する。`asset.trash` は `.fbzz/Trash` の退避先を返し、元の meta も保持する。
 
 ## 変換・撮影の完了
+### Prefab とアセットの一括移動・改名
+
+`editor_op_query` で `asset.move_batch.preview` に `args.moves` を渡す。各項目の
+`path` はプロジェクト相対の `Assets/...` または既存の `guid:...` 参照、
+`destination` はプロジェクト相対の移動先。移動先の親フォルダは先に作成する。
+
+```json
+{
+  "id": "asset.move_batch.preview",
+  "args": {
+    "moves": [
+      { "path": "Assets/Props/Lamp.prefab", "destination": "Assets/Lighting/Lamp.prefab" },
+      { "path": "Assets/Props/Lamp.mat", "destination": "Assets/Lighting/LampBody.mat" }
+    ]
+  }
+}
+```
+
+`data.moves` に GUID、`source`、`destination`、`sourceMeta`、`destinationMeta` が順に並ぶ。
+内容を確認したら書き込み権限の `editor_op_invoke` で `asset.move_batch.apply` に
+`args.receipt` を渡す。レシートは直近のプレビューに対して 1 回使える。実行直前にも
+移動元本体のサイズと更新時刻、meta のバイト列と GUID、移動先の空きを検査する。
+条件が変わった場合はプレビューからやり直す。
+
+1 回につき 1〜32 件の既存ファイルを扱う。保存・登録済みで GUID のある通常ファイルが対象。
+フォルダ、モデル原本、編集中のシーン、別形式への変更、出力の上書きは拒否する。
+移動は同一ボリュームで行い、通常の GUID 参照は同じアセットを指し続ける。
+Prefab の定義やアセットの内容を編集する場合は、それぞれの保存操作を使う。
+
+全件成功してから GUID 索引を更新する。移動途中の失敗では、本体と meta を含め、
+移動済みの全ファイルをその呼び出し内で逆順に戻す。復元も OS に拒否された場合は、
+元に戻せなかったパスをエラーに含める。移動の完了後、元に戻すには逆向きの計画を作る。
+プロセス中断や電源断からの自動復元は対象外。
+
 
 モデル変換は `asset.model.import` が返す `job` を `asset.model.status` へ渡す。
 `state=done` と `imported/optionsSaved/cacheSaved` を確認し、`outputs` の `reference` を

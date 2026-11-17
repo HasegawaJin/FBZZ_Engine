@@ -4,7 +4,8 @@
 /// @date    2026-11-17
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { cp, mkdir, mkdtemp, open, readFile, realpath, writeFile } from 'node:fs/promises';
+import { once } from 'node:events';
+import { cp, mkdir, mkdtemp, open, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -35,6 +36,121 @@ async function ExpectName(client: Client, name: string) {
     assert.equal(found.count, 1, name);
     assert.equal(found.matches[0].id, OBJECT_ID);
     assert.equal(found.matches[0].name, name);
+}
+
+async function VerifyAssetMoveBatch(client: Client, project: string, context: { diagnostic(message: string): void }) {
+    const prefab = 'Assets/Prefabs/Smoke.prefab';
+    const material = 'Assets/Materials/Smoke.mat';
+    const movedPrefab = 'Assets/Reviewed/Renamed.prefab';
+    const movedMaterial = 'Assets/Reviewed/Renamed.mat';
+    await mkdir(join(project, 'Assets', 'Prefabs'), { recursive: true });
+    await mkdir(join(project, 'Assets', 'Materials'), { recursive: true });
+    await mkdir(join(project, 'Assets', 'Reviewed'), { recursive: true });
+    await Call(client, 'prefab_create', { path: prefab, ids: [OBJECT_ID] });
+    await Call(client, 'editor_op_invoke', { id: 'asset.create', args: { path: material, kind: 'material' } });
+
+    const readPair = async (path: string) => ({
+        body: await readFile(join(project, path)),
+        meta: await readFile(join(project, path + '.meta')),
+    });
+    const guidOf = (meta: Buffer) => {
+        const guid = meta.toString('utf8').match(/^guid\s*=\s*['"]([\da-f-]+)['"]/m)?.[1];
+        assert.ok(guid, 'The normal Editor save must have written a GUID');
+        return guid;
+    };
+    const prefabBefore = await readPair(prefab);
+    const materialBefore = await readPair(material);
+    const prefabGuid = guidOf(prefabBefore.meta);
+    const materialGuid = guidOf(materialBefore.meta);
+    const moves = [
+        { path: 'guid:' + prefabGuid, destination: movedPrefab },
+        { path: material, destination: movedMaterial },
+    ];
+    const files = [
+        { guid: prefabGuid, source: prefab, destination: movedPrefab, sourceMeta: prefab + '.meta', destinationMeta: movedPrefab + '.meta' },
+        { guid: materialGuid, source: material, destination: movedMaterial, sourceMeta: material + '.meta', destinationMeta: movedMaterial + '.meta' },
+    ];
+    const preview = async (items = moves) => (await Call(client, 'editor_op_query', {
+        id: 'asset.move_batch.preview', args: { moves: items },
+    })).data;
+    const apply = async (receipt: string) => Call(client, 'editor_op_invoke', {
+        id: 'asset.move_batch.apply', args: { receipt },
+    });
+    const expectMissingPair = async (path: string) => {
+        await assert.rejects(readFile(join(project, path)), { code: 'ENOENT' });
+        await assert.rejects(readFile(join(project, path + '.meta')), { code: 'ENOENT' });
+    };
+
+    await assert.rejects(preview([moves[0], { ...moves[0], destination: 'Assets/Reviewed/Again.prefab' }]), /repeats a source GUID/i);
+    await assert.rejects(preview([{ ...moves[0], destination: 'Assets/../Outside.prefab' }]), /under Assets/i);
+
+    const reviewed = await preview();
+    assert.deepEqual(reviewed.moves, files);
+    assert.ok(reviewed.receipt);
+    assert.deepEqual(await readPair(prefab), prefabBefore);
+    assert.deepEqual(await readPair(material), materialBefore);
+    await expectMissingPair(movedPrefab);
+    await expectMissingPair(movedMaterial);
+
+    /// @note 読み取りは許可し、2件目のmetaを移す段階で Windows の共有違反を起こす。
+    /// @see https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew FILE_SHARE_DELETE
+    const lock = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', [
+        '$stream = [IO.File]::Open($env:FBZZ_SMOKE_LOCK_PATH, "Open", "Read", "ReadWrite")',
+        'if ($null -eq $stream) { exit 1 }',
+        'try { [Console]::WriteLine("locked"); [Console]::ReadLine() | Out-Null } finally { $stream.Dispose() }',
+    ].join('; ')], {
+        env: { ...process.env, FBZZ_SMOKE_LOCK_PATH: join(project, material + '.meta') },
+        stdio: ['pipe', 'pipe', 'inherit'],
+        windowsHide: true,
+    });
+    const lockStopped = once(lock, 'close');
+    try {
+        const ready = await Promise.race([
+            once(lock.stdout, 'data').then(([data]) => String(data).trim()),
+            lockStopped.then(([code]) => `exited (${code})`),
+        ]);
+        assert.equal(ready, 'locked');
+        await assert.rejects(apply(reviewed.receipt), (failure: Error) => {
+            assert.match(failure.message, /1 prior pair.*restored.*Smoke\.mat\.meta/i);
+            context.diagnostic(failure.message);
+            return true;
+        });
+        assert.deepEqual(await readPair(prefab), prefabBefore);
+        assert.deepEqual(await readPair(material), materialBefore);
+        await expectMissingPair(movedPrefab);
+        await expectMissingPair(movedMaterial);
+        await assert.rejects(apply(reviewed.receipt), /review.*again/i);
+        context.diagnostic('Asset move batch: the second sidecar rename failed; both original file/meta pairs were restored byte for byte, including their GUIDs.');
+    } finally {
+        lock.stdin.end();
+        await lockStopped;
+    }
+
+    const rechecked = await preview();
+    assert.deepEqual(rechecked.moves, files);
+    await writeFile(join(project, movedMaterial + '.meta'), materialBefore.meta);
+    try {
+        await assert.rejects(apply(rechecked.receipt), /changed.*review.*again/i);
+        assert.deepEqual(await readPair(prefab), prefabBefore);
+        assert.deepEqual(await readPair(material), materialBefore);
+        assert.deepEqual(await readFile(join(project, movedMaterial + '.meta')), materialBefore.meta);
+    } finally {
+        await unlink(join(project, movedMaterial + '.meta'));
+    }
+
+    const accepted = await preview();
+    const applied = await apply(accepted.receipt);
+    assert.deepEqual(applied.data.moves, files);
+    await expectMissingPair(prefab);
+    await expectMissingPair(material);
+    assert.deepEqual(await readPair(movedPrefab), prefabBefore);
+    assert.deepEqual(await readPair(movedMaterial), materialBefore);
+    const reverse = await preview([
+        { path: 'guid:' + prefabGuid, destination: prefab },
+        { path: 'guid:' + materialGuid, destination: material },
+    ]);
+    assert.deepEqual(reverse.moves.map((move: { source: string }) => move.source), [movedPrefab, movedMaterial]);
+    context.diagnostic('Asset move batch: confirmed the stale review was rejected without writes and both GUIDs resolve to the new paths after success.');
 }
 
 /// @brief 起動待ちが終わらない場合に、CI が起動した Editor のスレッド位置を保存する。
@@ -152,6 +268,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
         const persisted = JSON.parse(await readFile(join(project, 'Library', 'Playtests', SCENARIO_NAME, 'report.json'), 'utf8'));
         assert.deepEqual(persisted, report);
         assert.equal((await Call(client, 'editor_get_state')).playState, 'editor');
+        await VerifyAssetMoveBatch(client, project, context);
     } finally {
         try {
             await client.close();
