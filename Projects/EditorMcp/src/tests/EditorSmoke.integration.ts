@@ -64,10 +64,9 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
     context.diagnostic(`Editor log: ${join(run, 'Editor.log')}`);
 
     const log = await open(join(run, 'Editor.log'), 'w');
-    const editor = spawn(executable, ['--project', project, '--hidden', '--warp'], {
+    const editor = spawn(executable, ['--project', project, '--hidden', '--warp', '--no-viewports'], {
         cwd: project,
-        /// @note WARP 上で描画のデバッグ検査を外し、Editor のメインループと Command Bus を検証する。
-        env: { ...process.env, FBZZ_JOB_BREAKAWAY_DONE: '1', FBZZ_GPU_VALIDATION: '0', FBZZ_SDK_ROOT: '' },
+        env: { ...process.env, FBZZ_JOB_BREAKAWAY_DONE: '1', FBZZ_SDK_ROOT: '' },
         stdio: ['ignore', log.fd, log.fd],
         windowsHide: true,
     });

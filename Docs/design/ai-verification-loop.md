@@ -106,7 +106,9 @@ AI がエディターを操作する口 (Command Bus / MCP / Operator) は揃っ
 
 ### Editor MCP の実機スモークテスト
 
-CI の `Run Editor MCP smoke test` は `FBZZEditorLauncher` をビルドし、テスト用プロジェクトを `build/agent/editor-mcp-smoke/` に複製する。通常の Editor を WARP で起動し、MCP の stdio と Named Pipe を経由して接続する。最初に接続先のプロジェクトとシーンを照合する。
+CI の `Run Editor MCP smoke test` は `FBZZEditorLauncher` をビルドし、テスト用プロジェクトを `build/agent/editor-mcp-smoke/` に複製する。Editor を `--hidden --warp --no-viewports` で起動し、MCP の stdio と Named Pipe を経由して接続する。最初に接続先のプロジェクトとシーンを照合する。
+
+`--no-viewports` は画像を必要としない Editor 自動検証用の起動引数。Scene / Game の Render Target 確保と描画を省く。Editor のフレーム更新、Command Bus、Playtest Runner でシーン編集とゲーム進行を検証できる。Scene / Game の撮影は `NO_VIEWPORT` を返す。
 
 テストは同じ GUID のオブジェクトを改名して保存し、シーンの再読込で名前が保持されることを確認する。続けて `scenario_run` と `scenario_status` で Play 中にもそのオブジェクトが存在することと、Stop 後に復元が完了することを検証する。Editor のログと Playtest レポートは CI の `editor-mcp-smoke` 成果物に残る。
 

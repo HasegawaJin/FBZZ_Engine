@@ -62,6 +62,7 @@ struct LaunchArgs {
     bool                  updateBaselines = false;
     bool                  skipImages = false;
     bool                  hidden = false;  ///< @note --hidden: 窓を出さない
+    bool                  enableViewports = true;
     core::PixCaptureOptions pixCapture;
     std::string argumentError;
 };
@@ -130,6 +131,8 @@ LaunchArgs ParseArgs()
             args.skipImages = true;
         else if (arg == L"--hidden")
             args.hidden = true;
+        else if (arg == L"--no-viewports")
+            args.enableViewports = false;
         else if (arg == L"--pix-path") {
             pixArguments.emplace_back(argv[i]);
             if (i + 1 < argc) pixArguments.emplace_back(argv[++i]);
@@ -167,6 +170,7 @@ LaunchArgs ParseArgs()
 
     /// @note バッチは «エディターと同じ実装» で回すのが目的なので Standalone に倒さない。既定プロジェクトの補完より後に置く。
     if (!args.batchScenario.empty()) args.standalone = false;
+    if (args.standalone && !args.enableViewports) args.argumentError = "--no-viewports requires Editor mode.";
 
     return args;
 }
@@ -315,8 +319,8 @@ int Run()
 
         auto& renderer    = app.GetRenderer();
         auto& imguiRenderer = app.GetImGuiRenderer();
-        /// @note 非表示起動とバッチは window が occluded でも offscreen RT を描く。
-        renderer.SetRenderWhenOccluded(args.hidden || batch);
+        /// @note バッチは window が occluded でも offscreen RT を描く。通常 Editor は DXGI の occlusion 休止を維持する。
+        renderer.SetRenderWhenOccluded(batch);
         renderer::ResourceManager resources(renderer);
         app.SetResourceManager(&resources);
 
@@ -328,7 +332,7 @@ int Run()
 
         editor::EditorApp editorApp;
         const int startupFailure = args.batchScenario.empty() ? 1 : 2;
-        if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow())) return startupFailure;
+        if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow(), args.enableViewports)) return startupFailure;
         if (!editorApp.OpenProject(StringUtils::PathToUtf8(project.root),
                                    StringUtils::PathToUtf8(project.settingsFile),
                                    StringUtils::PathToUtf8(project.sceneFile))) return startupFailure;

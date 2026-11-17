@@ -337,7 +337,8 @@ void EditorApp::StopAiCommandBus()
     m_ctx.aiCommandBusRunning = false;
 }
 
-bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window)
+bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer,
+                     renderer::ResourceManager& resources, core::Window& window, bool enableViewports)
 {
     if (m_implotContext) {
         FBZZ_LOG_ERROR("EditorApp is already initialized");
@@ -349,6 +350,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_renderer      = &renderer;
     m_imguiRenderer = &imguiRenderer;
     m_resources     = &resources;
+    m_viewportsEnabled = enableViewports;
     m_runtime.GetSceneManager().SetResourceManager(&resources);
 
     /// @note ゲーム入力のアクション層は編集中は止め、Play 開始時に PlayModeController が有効化する。
@@ -640,9 +642,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     RegisterDefaultHotkeys();
     /// @note 保存済みオーバーライドの適用は OpenProject()。ここではまだ設定を読んでいない。
 
-    /// @note 初回 RT をウィンドウサイズで生成する
-    m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
-    m_gameViewportRT  = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    if (m_viewportsEnabled) {
+        /// @note 初回はパネルのサイズが確定していないため、ウィンドウの寸法で確保する。
+        m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+        m_gameViewportRT  = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    }
     if (m_sceneViewportPanel) {
         m_sceneViewportPanel->hdrRT     = m_sceneViewportRT;
         m_sceneViewportPanel->renderer  = &renderer;
@@ -1851,7 +1855,7 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 {
     m_sceneViewportRTRecreated = false;
     m_gameViewportRTRecreated  = false;
-    if (!m_renderer) return;
+    if (!m_viewportsEnabled || !m_renderer) return;
 
     auto resizeRT = [this](renderer::ResourceHandle<renderer::RenderTargetTag>& rt,
                            ViewportPanel* panel,
@@ -1924,8 +1928,10 @@ bool EditorApp::OnInit()
         m_debugCamera.camera.m_aspect =
             static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
-    const core::Window::LoadingScope loading(*m_window, L"Preparing scene rendering");
-    WarmupRenderResources();
+    if (m_viewportsEnabled) {
+        const core::Window::LoadingScope loading(*m_window, L"Preparing scene rendering");
+        WarmupRenderResources();
+    }
     return true;
 }
 
@@ -2179,13 +2185,13 @@ void EditorApp::OnRender()
     /// @note        残る。WasContentRendered() は 1 フレーム遅れて寸法変化時に false になりうるため、
     /// @note        そのフレームを飛ばすとパネルが未初期化の RT を貼り、止まった絵と重なって出る。
     const bool fluidPlaybackCapture = m_playtest.IsFluidPlaybackCaptureStep();
-    const bool needSceneView = !fluidPlaybackCapture
+    const bool needSceneView = m_viewportsEnabled && !fluidPlaybackCapture
         && (isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive
             || m_sceneViewportRTRecreated
             || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(false)));
     /// @note Game View の RT は UI Viewport が背景として共有する (m_uiViewportPanel->hdrRT = m_gameViewportRT)。
     /// @note        どちらか一方でも出ていれば描かないと、UI 編集画面が止まった絵のままになる。
-    const bool needGameView = !fluidPlaybackCapture
+    const bool needGameView = m_viewportsEnabled && !fluidPlaybackCapture
         && (isViewportShowing(m_gameViewportPanel)
             || isViewportShowing(m_uiViewportPanel)
             || m_pendingShadowBakePlayScene
