@@ -6,5 +6,12 @@
 renderer = "dx12"
 targetFps = 60
 
+[window]
+width = 640
+height = 360
+
 [runtime]
 start_scene = "Assets/Scenes/Smoke.scene"
+
+[render]
+pipelineAsset = "Assets/Smoke.fzdata"

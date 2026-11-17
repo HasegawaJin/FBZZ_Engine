@@ -18,6 +18,7 @@ const SCENE_PATH = 'Assets/Scenes/Smoke.scene';
 const SCENARIO_PATH = 'Tests/Playtests/Smoke.playtest.json';
 const SCENARIO_NAME = 'EditorMcpSmoke';
 const OBJECT_ID = '6a4efced-4563-4cbe-9e3d-7c7212cf6d2b';
+const CAMERA_ID = 'fa025438-3c92-45ee-95e8-0a91cc3095c0';
 const ORIGINAL_NAME = 'McpSmokeBefore';
 const SAVED_NAME = 'McpSmokeAfter';
 const BUS_TIMEOUT_MS = 20000;
@@ -36,6 +37,20 @@ async function ExpectName(client: Client, name: string) {
     assert.equal(found.count, 1, name);
     assert.equal(found.matches[0].id, OBJECT_ID);
     assert.equal(found.matches[0].name, name);
+}
+
+async function CaptureGame(client: Client, project: string, name: string, minFrame?: number) {
+    const reply = CallToolResultSchema.parse(await client.callTool({
+        name: 'viewport_capture_semantic',
+        arguments: { view: 'game', w: 320, h: 180, visibleOnly: false, minFrame },
+    }, CallToolResultSchema, { timeout: BUS_TIMEOUT_MS + 5000 }));
+    assert.ok(!reply.isError, JSON.stringify(reply.content));
+    const image = reply.content.find(item => item.type === 'image');
+    const result = reply.structuredContent;
+    assert.ok(image && result?.provenance, 'PNG must include source provenance');
+    assert.equal(image.mimeType, 'image/png');
+    await writeFile(join(project, '..', name + '.png'), Buffer.from(image.data, 'base64'));
+    return result;
 }
 
 async function VerifyAssetMoveBatch(client: Client, project: string, context: { diagnostic(message: string): void }) {
@@ -180,7 +195,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
     context.diagnostic(`Editor log: ${join(run, 'Editor.log')}`);
 
     const log = await open(join(run, 'Editor.log'), 'w');
-    const editor = spawn(executable, ['--project', project, '--hidden', '--warp', '--no-viewports'], {
+    const editor = spawn(executable, ['--project', project, '--hidden', '--warp'], {
         cwd: project,
         env: { ...process.env, FBZZ_JOB_BREAKAWAY_DONE: '1', FBZZ_SDK_ROOT: '' },
         stdio: ['ignore', log.fd, log.fd],
@@ -224,6 +239,18 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
         assert.equal(authoring.mode, 'edit');
         assert.equal(authoring.sceneDirty, false);
         await ExpectName(client, ORIGINAL_NAME);
+        const beforeImage = await CaptureGame(client, project, 'BeforeEdit');
+        const beforeSource = beforeImage.provenance as Record<string, unknown>;
+        assert.equal(await realpath(String(beforeSource.scenePath)), await realpath(join(project, SCENE_PATH)));
+        assert.equal(beforeSource.sceneGeneration, authoring.sceneGeneration);
+        assert.equal(beforeSource.cameraId, CAMERA_ID);
+        assert.equal(beforeSource.view, 'game');
+        assert.equal(beforeSource.renderPass, 'ViewportOutput');
+        assert.ok((beforeSource.passes as string[]).includes('UIPass'));
+        assert.ok(Number.isSafeInteger(beforeSource.frame));
+        await Call(client, 'editor_op_invoke', {
+            id: 'renderpass.configure', args: { settings: { view: 'game', pass: 'UIPass', output: 'Output' } },
+        });
 
         const openOperators = await Call(client, 'editor_op_list', { search: 'scene.open' });
         const dialog = openOperators.operators.find((operator: { id: string }) => operator.id === 'scene.open');
@@ -243,7 +270,28 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
 
         await Call(client, 'node_rename', { id: OBJECT_ID, name: SAVED_NAME });
         await ExpectName(client, SAVED_NAME);
-        assert.equal((await Call(client, 'editor_get_state')).sceneDirty, true);
+        const editedState = await Call(client, 'editor_get_state');
+        assert.equal(editedState.sceneDirty, true);
+        const afterImage = await CaptureGame(client, project, 'AfterEdit', editedState.frameIndex);
+        const afterSource = afterImage.provenance as Record<string, unknown>;
+        assert.equal(afterSource.sceneGeneration, beforeSource.sceneGeneration);
+        assert.equal(afterSource.cameraId, CAMERA_ID);
+        assert.ok(Number(afterSource.frame) >= editedState.frameIndex && Number(afterSource.frame) > Number(beforeSource.frame));
+        const objects = afterImage.objects as Array<{ id: string; name: string }>;
+        assert.equal(objects.find(object => object.id === OBJECT_ID)?.name, SAVED_NAME);
+        const passArgs = { id: 'renderpass.capture', args: { name: 'GameUi.png', minFrame: editedState.frameIndex } };
+        const pass = (await Call(client, 'editor_op_invoke', passArgs)).data;
+        assert.equal(pass.provenance.cameraId, CAMERA_ID);
+        assert.equal(pass.provenance.sceneGeneration, beforeSource.sceneGeneration);
+        assert.equal(pass.provenance.renderPass, 'UIPass');
+        assert.equal(pass.provenance.output, 'Output');
+        assert.ok(pass.provenance.frame >= editedState.frameIndex);
+        await assert.rejects(Call(client, 'editor_op_invoke', {
+            id: 'renderpass.capture', args: { name: 'Stale.png', minFrame: Number.MAX_SAFE_INTEGER },
+        }), /CAPTURE_NOT_READY/);
+        await assert.rejects(readFile(join(project, 'Library', 'Captures', 'Stale.png')), { code: 'ENOENT' });
+        context.diagnostic(`UIPass frame ${pass.provenance.frame} was confirmed, while a readback below the requested frame was refused.`);
+        context.diagnostic(`Viewport source advanced from frame ${beforeSource.frame} to ${afterSource.frame} after same-scene edit.`);
         assert.equal((await Call(client, 'scene_save')).dirty, false);
         const opened = await Call(client, 'scene_open', { path: SCENE_PATH });
         assert.equal(opened.opened, SCENE_PATH);
