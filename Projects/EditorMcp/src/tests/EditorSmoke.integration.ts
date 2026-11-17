@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-17
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { cp, mkdir, mkdtemp, open, readFile, realpath } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { cp, mkdir, mkdtemp, open, readFile, realpath, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -35,6 +35,19 @@ async function ExpectName(client: Client, name: string) {
     assert.equal(found.count, 1, name);
     assert.equal(found.matches[0].id, OBJECT_ID);
     assert.equal(found.matches[0].name, name);
+}
+
+/// @brief 起動待ちが終わらない場合に、CI が起動した Editor のスレッド位置を保存する。
+/// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/cdb-command-line-options CDB の非侵襲接続。
+async function CaptureStartupStacks(pid: number, executable: string, run: string) {
+    const programFiles = process.env['ProgramFiles(x86)'];
+    if (!programFiles) return;
+    const cdb = join(programFiles, 'Windows Kits', '10', 'Debuggers', 'x64', 'cdb.exe');
+    const symbols = `${dirname(executable)};${dirname(dirname(executable))}`;
+    const result = spawnSync(cdb, ['-pv', '-p', String(pid), '-y', symbols, '-c', '~* kc 24; q'], {
+        encoding: 'utf8', timeout: 15000, windowsHide: true,
+    });
+    await writeFile(join(run, 'Stacks.log'), [result.stdout, result.stderr, result.error?.message].filter(Boolean).join('\n'));
 }
 
 /// @note CI で起動したプロセスが開いた作業コピーを照合してから、書き込みを送る。
@@ -89,6 +102,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
                 await delay(250);
             }
         }
+        if (!authoring && editor.pid && editor.exitCode === null) await CaptureStartupStacks(editor.pid, executable, run);
         assert.ok(authoring, 'Editor opening the test project did not respond within 90 seconds');
         assert.equal(await realpath(authoring.projectRoot), await realpath(project), 'Connected Editor must own the fixture copy');
         assert.equal(await realpath(authoring.scenePath), await realpath(join(project, SCENE_PATH)));
