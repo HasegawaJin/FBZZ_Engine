@@ -37,6 +37,7 @@ export function CreateEditorMcpServer(bus: EditorBus, permission: PermissionMode
             'コンポーネントの型とフィールドは editor_catalog、対象の ID と状態は scene_find と node_get_components で確認します。',
             'VFX の操作は editor_op_list で検索し、流体の設定項目は fluid_schema で確認します。',
             'シーンの状態は scene_validate、見た目は editor_perceive、Playtest の一覧と結果は scenario_list と scenario_status で確認します。',
+            'viewport_capture と viewport_capture_semantic の provenance で、描画元のシーン・カメラ・パス・フレームを確認します。',
             ...(permission === 'read' ? [] : [
                 '変更操作は editor_op_invoke の dryRun=true で引数と実行条件を確認します。ファイルを直接指定してシーンを開くには scene_open、保存には scene_save を使います。',
             ]),

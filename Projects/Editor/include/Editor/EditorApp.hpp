@@ -135,6 +135,7 @@ private:
                          scene::RenderFrameGeometryCache* frameGeometry);
     void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
                         scene::RenderFrameGeometryCache* frameGeometry);
+                        const std::string& cameraId,
 
     std::unique_ptr<scene::Scene>  m_scene;
     scene::ProjectRuntime          m_runtime;

@@ -4,9 +4,9 @@
 /// @date    2026-11-06
 import * as z from 'zod/v4';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { EditorBus } from '../busClient.js';
+import { EditorBusError, type EditorBus } from '../busClient.js';
 import type { PermissionMode } from '../config.js';
-import { EditorCommandSchema, type EditorCommand } from '../editorContracts.js';
+import { EditorCommandSchema, type EditorCommand, type EditorQuery, type ViewportCaptureResult } from '../editorContracts.js';
 
 export const NameSchema = z.string().min(1).max(128);
 
@@ -41,6 +41,33 @@ export function DiffSceneSnapshots(beforeValue: unknown, afterValue: unknown): R
 }
 
 export const Delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+/// @note 要求後に描画されたフレームを待つ。古い成功応答に現在の状態を付け替えない。
+export async function ReadViewport<T extends ViewportCaptureResult>(bus: EditorBus,
+    query: Extract<EditorQuery, { t: 'viewport.capture' | 'viewport.semantic' }>,
+    schema: { parse(input: unknown): T }, state?: unknown): Promise<T & { provenance: NonNullable<T['provenance']> }> {
+    const current = state ?? await bus.Query({ t: 'editor.state' });
+    const index = current && typeof current === 'object' && 'frameIndex' in current ? current.frameIndex : undefined;
+    const generation = current && typeof current === 'object' && 'sceneGeneration' in current ? current.sceneGeneration : undefined;
+    const minFrame = Math.max(query.minFrame ?? 0, typeof index === 'number' && Number.isSafeInteger(index) ? index : 0);
+    const deadline = performance.now() + 3000;
+    for (;;) {
+        try {
+            const capture = schema.parse(await bus.Query({ ...query, ...(minFrame ? { minFrame } : {}) }));
+            const source = capture.provenance;
+            if (!source || source.frame < minFrame || source.view !== (query.view ?? 'scene')
+                || source.renderPass !== 'ViewportOutput'
+                || (query.t === 'viewport.capture' && query.cameraId !== undefined && source.cameraId !== query.cameraId)
+                || (typeof generation === 'number' && source.sceneGeneration !== generation))
+                throw new EditorBusError('STALE_CAPTURE', '指定したビューとフレームの出自を確認できません。');
+            return { ...capture, provenance: source };
+        } catch (error) {
+            if (!(error instanceof EditorBusError) || error.code !== 'CAPTURE_NOT_READY' || performance.now() >= deadline)
+                throw error;
+            await Delay(40);
+        }
+    }
+}
 
 export function TextResult(value: unknown): CallToolResult {
     return {

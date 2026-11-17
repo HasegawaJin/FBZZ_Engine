@@ -91,6 +91,7 @@
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -1905,6 +1906,8 @@ bool EditorApp::OnInit()
     m_runtime.ApplySettings(m_ctx.projectSettings);
     m_runtime.ApplyAdditionalUIContext(m_ctx.projectSettings, m_sceneUICtx);
     m_runtime.BindExternalScene(m_scene.get());
+    if (m_sceneViewportRTRecreated) m_ctx.viewportCaptureFrames[0] = {};
+    if (m_gameViewportRTRecreated) m_ctx.viewportCaptureFrames[1] = {};
     m_runtime.RegisterScenes(util::FileSystem::PathFromUtf8(m_ctx.projectRoot), *m_resources);
 
     /// @note OpenProject() 時点では editorCamera が nullptr なので、確定した OnInit() で適用する。
@@ -2164,7 +2167,8 @@ void EditorApp::OnRender()
     /// @note        SceneManager::GetActive() を優先する。
     scene::Scene* const resolveScene     = (!m_playMode.IsInEditor() && ActiveRuntime().GetActiveScene())
                                               ? ActiveRuntime().GetActiveScene() : m_scene.get();
-    const renderer::Camera  gameCamera       = scene::ResolveEditorGameCamera(*resolveScene, m_debugCamera.camera, gameAspect);
+    std::string gameCameraId;
+    const renderer::Camera  gameCamera       = scene::ResolveEditorGameCamera(*resolveScene, m_debugCamera.camera, gameAspect, &gameCameraId);
     const fbzz::LayerMask   gameCullingMask  = scene::ResolveGameCullingMask(*resolveScene);
 
     m_renderer->BeginFrame();
@@ -2206,7 +2210,7 @@ void EditorApp::OnRender()
     if (needSceneView)
         RenderSceneView(gameCamera, gameCullingMask, sharedGeometry);
     if (needGameView)
-        RenderGameView(gameCamera, gameCullingMask, sharedGeometry);
+        RenderGameView(gameCamera, gameCullingMask, gameCameraId, sharedGeometry);
 
     /// @note 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
     /// @note        パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
@@ -2413,6 +2417,53 @@ void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
         sceneRenderSettings = m_playRenderSettings;
         sceneRenderSettings.CopyDebugVisualizationFrom(m_ctx.projectSettings.render);
     }
+namespace {
+RenderCaptureFrame BeginCaptureFrame(const EditorContext& ctx, scene::Scene& scene,
+    renderer::ResourceHandle<renderer::RenderTargetTag> target, const renderer::Camera& camera,
+    bool gameView, const std::string& cameraId, const std::string& runtimeSceneName)
+{
+    RenderCaptureFrame capture;
+    capture.gameView = gameView;
+    capture.target = target;
+    capture.frame = Time::frameCount;
+    capture.revision = ctx.captureRevision;
+    capture.resourceOwner = ctx.resources->GetInstanceId();
+    capture.resourceEpoch = ctx.resources->GetResetVersion();
+    capture.sceneGeneration = scene.GetRenderSceneGeneration();
+    capture.sceneName = runtimeSceneName;
+    if (runtimeSceneName.empty())
+        capture.scenePath = ctx.InPrefabEditMode() ? ctx.prefabEditPath : ctx.currentScenePath;
+    capture.camera = camera;
+    capture.cameraId = cameraId;
+    const auto semanticUntil = ctx.semanticCaptureUntilFrame[gameView ? 1 : 0];
+    capture.hasSemantic = semanticUntil != 0 && capture.frame <= semanticUntil;
+    if (capture.hasSemantic) {
+        for (auto& object : scene.GameObjects()) {
+            const auto* parent = object.GetParent();
+            capture.objects.push_back({object.instanceId, object.name, parent ? parent->instanceId : "",
+                object.transform.worldPosition});
+        }
+    }
+    return capture;
+}
+
+void PublishCaptureFrame(EditorContext& ctx, RenderCaptureFrame capture)
+{
+    const auto& snapshot = renderer::RenderDebugOverlay::GetLastSnapshot();
+    const auto& source = snapshot.gpuCurrentView;
+    auto& destination = ctx.viewportCaptureFrames[capture.gameView ? 1 : 0];
+    if (source.applicationFrameSerial != ctx.resources->FrameStamp() ||
+        source.sceneGeneration != capture.sceneGeneration || source.resourceEpoch != capture.resourceEpoch ||
+        source.outputId != capture.target.id || source.outputGeneration != capture.target.gen) {
+        destination = {};
+        return;
+    }
+    capture.passes.reserve(snapshot.passTimings.size());
+    for (const auto& pass : snapshot.passTimings) capture.passes.push_back(pass.first);
+    destination = std::move(capture);
+}
+} /// @note namespace
+
     sceneRenderSettings.selectedObjects.clear();
     /// @note 親を選んだら子孫も選択へ展開する。輪郭と «選択中だけ» の診断表示が同じ集合を見る。
     const auto appendHierarchy = [&](auto&& self, scene::GameObject& object) -> void {
@@ -2489,17 +2540,21 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
     FBZZ_PROFILE_SCOPE("EditorApp::RenderGameView");
     const auto gameRT = m_gameViewportRT;
     if (!gameRT.IsValid()) return;
+        auto captureFrame = BeginCaptureFrame(m_ctx, *sceneViewScene, sceneRT, sceneViewCamera, false, {},
+            m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
 
     /// @note Play 中に LoadScene でシーン遷移すると SceneManager が新シーンを所有するため、
     /// @note        m_scene (遷移前) ではなく GetActive() を参照してゲームビューに正しいシーンを描く。
     scene::Scene* renderScene = !m_playMode.IsInEditor()
         ? ActiveRuntime().GetActiveScene()
         : m_scene.get();
+        PublishCaptureFrame(m_ctx, std::move(captureFrame));
     if (!renderScene) return;
 
     m_renderer->SetRenderTarget(gameRT, *m_resources);
     m_renderer->Clear({ 0.02f, 0.02f, 0.05f, 1.0f });
 
+                               const std::string& cameraId,
     float w = 1920.0f, h = 1080.0f;
     if (auto* rt = m_resources->Get(gameRT)) {
         w = static_cast<float>(rt->GetWidth());
@@ -2540,3 +2595,6 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
 }
 
 } /// @note namespace fbzz::editor
+    auto captureFrame = BeginCaptureFrame(m_ctx, *renderScene, gameRT, gameCamera, true, cameraId,
+        m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
+    PublishCaptureFrame(m_ctx, std::move(captureFrame));

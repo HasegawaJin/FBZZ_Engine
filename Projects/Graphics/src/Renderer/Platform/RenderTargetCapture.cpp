@@ -3,7 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-20
 #include "RenderTargetCapture.hpp"
+#include "ScopedComApartment.hpp"
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <objbase.h>
+#include <Core/Logger.hpp>
 #include <DirectXTex.h>
 
 #include <cstring>
@@ -13,12 +18,28 @@
 
 namespace fbzz::renderer::detail {
 
+/// @note S_FALSE も解除が必要。既存の STA でも WIC は使用できる。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex Return value
+ScopedComApartment::ScopedComApartment()
+{
+    const HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    m_ownsApartment = SUCCEEDED(result);
+    m_usable = m_ownsApartment || result == RPC_E_CHANGED_MODE;
+}
+
+ScopedComApartment::~ScopedComApartment()
+{
+    if (m_ownsApartment) CoUninitialize();
+}
+
 bool EncodeCapturedImageToPng(const DirectX::ScratchImage& captured,
                               std::vector<std::uint8_t>& outPng,
                               std::uint32_t& outWidth, std::uint32_t& outHeight)
 {
     const DirectX::Image* source = captured.GetImage(0, 0, 0);
     if (source == nullptr) return false;
+    const ScopedComApartment apartment;
+    if (!apartment.IsUsable()) return false;
 
     /// @note PNG は 8bit 前提。Scene View RT は HDR (R16G16B16A16_FLOAT) なので UNORM へ変換する。
     /// @note       変換は [0,1] へクランプする (トーンマップは行わない ― AI へのプレビュー用途として十分)。
@@ -39,7 +60,10 @@ bool EncodeCapturedImageToPng(const DirectX::ScratchImage& captured,
     DirectX::Blob blob;
     const HRESULT hr = DirectX::SaveToWICMemory(*toSave, DirectX::WIC_FLAGS_NONE,
                                                 DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), blob);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        FBZZ_LOG_ERROR("RenderTargetCapture: WIC PNG encoding failed (0x%08X)", static_cast<unsigned>(hr));
+        return false;
+    }
 
     const auto* bytes = static_cast<const std::uint8_t*>(blob.GetBufferPointer());
     outPng.assign(bytes, bytes + blob.GetBufferSize());

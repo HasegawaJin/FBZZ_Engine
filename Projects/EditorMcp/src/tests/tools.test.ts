@@ -16,25 +16,20 @@ import type { PermissionMode } from '../config.js';
 class FakeEditorBus implements EditorBus {
     queries: EditorQuery[] = [];
     commands: Array<{ command: EditorCommand; dryRun: boolean }> = [];
+    captureFrame = 11;
 
     async Query(query: EditorQuery): Promise<unknown> {
         this.queries.push(query);
-        if (query.t === 'viewport.capture') {
-            return {
-                mimeType: 'image/png',
-                base64: 'iVBORw0KGgo=',
-                width: query.w,
-                height: query.h,
-                view: query.view ?? 'scene',
+        if (query.t === 'viewport.capture' || query.t === 'viewport.semantic') {
+            const view = query.view ?? 'scene';
+            const capture = {
+                mimeType: 'image/png', base64: 'iVBORw0KGgo=', width: query.w, height: query.h, view,
+                provenance: { frame: this.captureFrame, sceneGeneration: 1, scenePath: 'Assets/Scenes/Test.scene',
+                    sceneName: '', view, cameraKind: view === 'game' ? 'editorFallback' : 'editor',
+                    renderPass: 'ViewportOutput', occurrence: 0, output: 'Output', passes: ['UIPass'] },
             };
-        }
-        if (query.t === 'viewport.semantic') {
-            return {
-                mimeType: 'image/png',
-                base64: 'iVBORw0KGgo=',
-                width: query.w,
-                height: query.h,
-                view: query.view ?? 'scene',
+            if (query.t === 'viewport.capture') return capture;
+            return { ...capture,
                 cameraPosition: [0, 2, -8],
                 objects: [{
                     id: '11111111-1111-4111-8111-111111111111',
@@ -248,7 +243,7 @@ test('editor_perceive は Scene 状態と viewport image を1応答へまとめ�
             { t: 'scene.tree' },
             { t: 'scene.selection' },
             { t: 'console.logs', minLevel: 'warning', limit: 50 },
-            { t: 'viewport.capture', w: 640, h: 360 },
+            { t: 'viewport.capture', w: 640, h: 360, minFrame: 10 },
         ]);
     } finally {
         await harness.close();
@@ -633,7 +628,9 @@ test('viewport_capture は engine の PNG を MCP image content に変換する'
             assert.equal(result.content[0].mimeType, 'image/png');
             assert.equal(result.content[0].data, 'iVBORw0KGgo=');
         }
-        assert.deepEqual(harness.bus.queries[0], { t: 'viewport.capture', w: 960, h: 540, view: 'scene' });
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'editor.state' }, { t: 'viewport.capture', w: 960, h: 540, view: 'scene', minFrame: 10 },
+        ]);
     } finally {
         await harness.close();
     }
@@ -652,7 +649,28 @@ test('viewport_capture_semantic は画像とNodeId付き投影座標を同時に
         assert.equal(result.isError, undefined);
         assert.equal(result.content.some((item) => item.type === 'image'), true);
         assert.equal(result.content.some((item) => item.type === 'text'), true);
-        assert.deepEqual(harness.bus.queries[0], { t: 'viewport.semantic', w: 640, h: 360, view: 'scene' });
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'editor.state' }, { t: 'viewport.semantic', w: 640, h: 360, view: 'scene', minFrame: 10 },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+/// @brief 編集済みの応答へ要求フレーム以前の画像を添えない。
+test('run_transaction_and_observe reports the edit and omits an older PNG', async () => {
+    const harness = await CreateHarness('write');
+    harness.bus.captureFrame = 9;
+    try {
+        const result = CallToolResultSchema.parse(await harness.client.callTool({
+            name: 'run_transaction_and_observe',
+            arguments: { label: 'Rename Cube', cmds: [{ t: 'node.rename', id: '11111111-1111-4111-8111-111111111111', name: 'Renamed' }] },
+        }));
+        assert.equal(result.isError, undefined);
+        assert.equal(result.content.some(item => item.type === 'image'), false);
+        assert.equal(result.structuredContent?.captureStatus, 'unverified');
+        assert.deepEqual(result.structuredContent?.commandResult, { accepted: true, dryRun: false });
+        assert.equal(harness.bus.commands.length, 1);
     } finally {
         await harness.close();
     }

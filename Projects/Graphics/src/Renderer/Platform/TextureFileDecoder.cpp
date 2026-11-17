@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <objbase.h>
+#include "ScopedComApartment.hpp"
 
 #include <Graphics/Renderer/TextureFileDecoder.hpp>
 #include <Core/Util/StringUtils.hpp>
@@ -20,27 +21,6 @@
 namespace fbzz::renderer {
 
 namespace {
-
-/// @brief 呼び出しの間だけ COM を MTA で初期化する。既に初期化済みのスレッドでは何もしない。
-/// @note RPC_E_CHANGED_MODE は «既に STA で初期化済み» で、WIC はそのまま使えるので失敗扱いにしない。
-/// @see https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex CoInitializeEx «Return value»
-class ScopedComApartment {
-public:
-    ScopedComApartment()
-    {
-        const HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        m_ownsApartment = SUCCEEDED(result);
-    }
-    ~ScopedComApartment()
-    {
-        if (m_ownsApartment) CoUninitialize();
-    }
-    ScopedComApartment(const ScopedComApartment&) = delete;
-    ScopedComApartment& operator=(const ScopedComApartment&) = delete;
-
-private:
-    bool m_ownsApartment = false;
-};
 
 bool EndsWithCI(const std::string& text, const char* suffix)
 {
@@ -92,7 +72,7 @@ bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out, s
     out.mips.clear();
     out.sourceWidth = 0;
     out.sourceHeight = 0;
-    const ScopedComApartment apartment;
+    const detail::ScopedComApartment apartment;
 
     DirectX::ScratchImage source;
     const std::wstring widePath = util::StringUtils::ToWide(path);

@@ -1512,12 +1512,11 @@ bool DX12Renderer::BakeSkyLight(
 
 std::unique_ptr<IIblBaker> DX12Renderer::CreateIblBaker()
 {
-    /// @note Editor が所有する一時ベイカー。m_context / m_psoCache はレンダラー寿命内で有効。
-    return std::make_unique<DX12HdriBaker>(&m_context, &m_psoCache);
+    return std::make_unique<DX12HdriBaker>(m_context.GetDevice(), m_psoCache.GetComputeRootSignature());
 }
 
 /// @note RT のカラーを CPU 側 ScratchImage として掴む。PNG 化と数値評価で同じ読み戻しを共有する。
-static bool CaptureDX12RenderTargetImage(DX12Context& context, IRenderTarget* base,
+static bool CaptureDX12RenderTargetImage(DX12Context& context, const DX12StateTracker& tracker, IRenderTarget* base,
                                          DirectX::ScratchImage& outImage)
 {
     auto* target = static_cast<DX12RenderTarget*>(base);
@@ -1525,19 +1524,20 @@ static bool CaptureDX12RenderTargetImage(DX12Context& context, IRenderTarget* ba
     ID3D12Resource* resource = target->GetColorResource(0);
     if (resource == nullptr) return false;
 
-    /// @note Scene View RT は直前フレームで ImGui サンプリング用に PIXEL_SHADER_RESOURCE へ遷移済み。
-    /// @note       CaptureTexture は自前の CommandQueue/フェンス同期で COPY_SOURCE へ遷移→読み戻し→元状態へ戻す。
-    /// @note       呼び出しはフレーム外 (OnUpdate) なのでレンダラーの CommandList とは競合しない。
-    return SUCCEEDED(DirectX::CaptureTexture(context.GetCommandQueue(), resource, false, outImage,
-                                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE));
+    D3D12_RESOURCE_STATES state;
+    if (!tracker.ReadState(resource, state)) return false;
+    /// @note 非表示ビューは ImGui がサンプリングしない。実際の状態を渡し、同期読み戻し後に同じ状態へ戻す。
+    const HRESULT result = DirectX::CaptureTexture(context.GetCommandQueue(), resource, false, outImage, state, state);
+    if (FAILED(result))
+        FBZZ_LOG_ERROR("DX12Renderer: Render target readback failed (0x%08X)", static_cast<unsigned>(result));
+    return SUCCEEDED(result);
 }
 
 bool DX12Renderer::CaptureRenderTargetToPng(ResourceHandle<RenderTargetTag> rt, ResourceManager& resources,
                                             std::vector<uint8_t>& outPng, uint32_t& outWidth, uint32_t& outHeight)
 {
     DirectX::ScratchImage captured;
-    if (!CaptureDX12RenderTargetImage(m_context, resources.Get(rt), captured)) return false;
+    if (!CaptureDX12RenderTargetImage(m_context, m_stateTracker, resources.Get(rt), captured)) return false;
     return detail::EncodeCapturedImageToPng(captured, outPng, outWidth, outHeight);
 }
 
@@ -1545,7 +1545,7 @@ bool DX12Renderer::CaptureRenderTargetToLinearRGBA(ResourceHandle<RenderTargetTa
                                                    std::vector<float>& outRgba, uint32_t& outWidth, uint32_t& outHeight)
 {
     DirectX::ScratchImage captured;
-    if (!CaptureDX12RenderTargetImage(m_context, resources.Get(rt), captured)) return false;
+    if (!CaptureDX12RenderTargetImage(m_context, m_stateTracker, resources.Get(rt), captured)) return false;
     return detail::ReadCapturedImageAsLinearRGBA(captured, outRgba, outWidth, outHeight);
 }
 

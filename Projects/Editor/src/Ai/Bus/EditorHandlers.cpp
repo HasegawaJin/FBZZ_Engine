@@ -255,6 +255,7 @@ Outcome DoEditorState(const editor::EditorContext& ctx)
     result.Set("sceneDirty", JsonValue(ctx.sceneDirty));
     result.Set("managedBuildBusy", JsonValue(ctx.managedBuildBusy));
     result.Set("frameIndex", JsonValue(static_cast<std::int64_t>(Time::frameCount)));
+    if (ctx.activeScene) result.Set("sceneGeneration", JsonValue(static_cast<std::int64_t>(ctx.activeScene->GetRenderSceneGeneration())));
     return Outcome::Ok(std::move(result));
 }
 

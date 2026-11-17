@@ -49,41 +49,16 @@ Outcome DoViewportCapture(editor::EditorContext& ctx, renderer::ResourceHandle<r
     return Outcome::Ok(std::move(result));
 }
 
-/// @brief Game View の実 RT と同じアスペクト比・カメラ解決規則で、意味付き投影用 Camera を再構成する。
-/// @note Scene View カメラや独自の CameraComponent 選択を使うと、描画画像と pixel 座標が一致しない。
-bool BuildGameViewportCamera(editor::EditorContext& ctx,
-                             renderer::ResourceHandle<renderer::RenderTargetTag> rt,
-                             renderer::Camera& camera)
+/// @brief PNG に描画入力時点の GameObject 座標と投影ピクセル位置を添える。
+void AddSemanticViewportData(JsonValue& result, const RenderCaptureFrame& source)
 {
-    if (ctx.activeScene == nullptr || ctx.editorCamera == nullptr || ctx.resources == nullptr || !rt.IsValid()) {
-        return false;
-    }
-    const auto* renderTarget = ctx.resources->Get(rt);
-    if (renderTarget == nullptr || renderTarget->GetHeight() == 0) return false;
-    const float aspect = static_cast<float>(renderTarget->GetWidth())
-        / static_cast<float>(renderTarget->GetHeight());
-    camera = scene::ResolveEditorGameCamera(*ctx.activeScene, *ctx.editorCamera, aspect);
-    return true;
-}
-
-/// @brief PNG に各 GameObject のワールド座標と投影ピクセル座標を添える。
-Outcome DoSemanticViewportCapture(editor::EditorContext& ctx,
-                                  renderer::ResourceHandle<renderer::RenderTargetTag> rt,
-                                  const renderer::Camera& camera,
-                                  const char* viewName)
-{
-    Outcome capture = DoViewportCapture(ctx, rt);
-    if (!capture.ok) return capture;
-    if (ctx.activeScene == nullptr) return Outcome::Err("NO_SCENE", "アクティブシーンがありません");
-    const JsonValue* widthValue = capture.result.Find("width");
-    const JsonValue* heightValue = capture.result.Find("height");
-    const float width = widthValue != nullptr ? static_cast<float>(widthValue->AsNumber()) : 0.0f;
-    const float height = heightValue != nullptr ? static_cast<float>(heightValue->AsNumber()) : 0.0f;
-    const math::Matrix4 viewProjection = camera.GetViewProjection();
+    const float width = static_cast<float>(result.Find("width")->AsNumber());
+    const float height = static_cast<float>(result.Find("height")->AsNumber());
+    const math::Matrix4 viewProjection = source.camera.GetViewProjection();
 
     JsonValue objects = JsonValue::MakeArray();
-    for (GameObject& go : ctx.activeScene->GameObjects()) {
-        const math::Vector3 worldPosition = go.transform.worldPosition;
+    for (const auto& go : source.objects) {
+        const math::Vector3 worldPosition = go.position;
         const math::Vector4 clip = viewProjection * math::Vector4(worldPosition, 1.0f);
         const bool inFront = clip.w > 0.00001f;
         const float ndcX = inFront ? clip.x / clip.w : 0.0f;
@@ -93,7 +68,7 @@ Outcome DoSemanticViewportCapture(editor::EditorContext& ctx,
             && ndcY >= -1.0f && ndcY <= 1.0f && ndcZ >= 0.0f && ndcZ <= 1.0f;
 
         JsonValue object = JsonValue::MakeObject();
-        object.Set("id", JsonValue(go.instanceId));
+        object.Set("id", JsonValue(go.id));
         object.Set("name", JsonValue(go.name));
         object.Set("worldPosition", VectorToJson(worldPosition));
         object.Set("visible", JsonValue(visible));
@@ -102,13 +77,11 @@ Outcome DoSemanticViewportCapture(editor::EditorContext& ctx,
         pixel.Push(JsonValue((ndcX * 0.5f + 0.5f) * width));
         pixel.Push(JsonValue((1.0f - (ndcY * 0.5f + 0.5f)) * height));
         object.Set("pixel", std::move(pixel));
-        if (GameObject* parent = go.GetParent()) object.Set("parent", JsonValue(parent->instanceId));
+        if (!go.parent.empty()) object.Set("parent", JsonValue(go.parent));
         objects.Push(std::move(object));
     }
-    capture.result.Set("objects", std::move(objects));
-    capture.result.Set("cameraPosition", VectorToJson(camera.m_position));
-    capture.result.Set("view", JsonValue(viewName));
-    return capture;
+    result.Set("objects", std::move(objects));
+    result.Set("cameraPosition", VectorToJson(source.camera.m_position));
 }
 
 /// @brief Play 中のゲームへ仮想入力を注入する (input.inject)。
@@ -249,61 +222,43 @@ Outcome DoViewportCamera(editor::EditorContext& ctx, const JsonValue& payload, b
     return Outcome::Ok(std::move(result));
 }
 
-/// @brief Scene / Game ビューの RT を PNG で返す。隠れているビューも数フレーム描かせる。
-Outcome DoViewportCaptureQuery(BusCall& call)
+Outcome ReadViewportFrame(BusCall& call, bool semantic)
 {
-    editor::EditorContext& ctx = call.ctx;
-    const JsonValue& payload = call.payload;
-    Outcome outcome = Outcome::Err("UNKNOWN", "未対応の要求です");
-    std::string view = StringField(payload, "view");
+    auto& ctx = call.ctx;
+    std::string view = StringField(call.payload, "view");
     if (view.empty()) view = "scene";
-    /// @note .vfx はプレファブになり Prefab 編集モードで通常のシーンとして開くため、専用のプレビュー面がなく撮る対象も scene ビューになる。
-    if (view != "scene" && view != "game") {
-        outcome = Outcome::Err("BAD_ARG", "view は scene か game で指定してください");
-    } else {
-        /// @note EditorApp は画面に出ているビューポートしか描かない。キャプチャ中は隠れているビューも描き続けさせ、連続キャプチャで古い絵を掴まないための猶予にする。
-        ctx.aiViewportRenderUntilFrame = Time::frameCount + 8;
-        const auto target = view == "game" ? call.state.gameViewportRT : call.state.sceneViewportRT;
-        outcome = DoViewportCapture(ctx, target);
-        if (outcome.ok) outcome.result.Set("view", JsonValue(view));
-    }
-    return outcome;
-}
-
-Outcome DoViewportSemanticQuery(BusCall& call)
-{
-    editor::EditorContext& ctx = call.ctx;
-    const JsonValue& payload = call.payload;
-    Outcome outcome = Outcome::Err("UNKNOWN", "未対応の要求です");
-    std::string view = StringField(payload, "view");
-    if (view.empty()) view = "scene";
-    /// @note viewport.capture と同じ理由で、隠れているビューも描き続けさせる。
+    if (view != "scene" && view != "game") return Outcome::Err("BAD_ARG", "view は scene か game で指定してください");
+    const auto* requestedFrame = call.payload.Find("minFrame");
+    if (requestedFrame && (!requestedFrame->IsInteger() || requestedFrame->AsInt64() < 0))
+        return Outcome::Err("BAD_ARG", "minFrame は非負の整数です");
+    const auto minFrame = requestedFrame ? static_cast<std::uint64_t>(requestedFrame->AsInt64()) : 0;
+    const bool gameView = view == "game";
+    const auto target = gameView ? call.state.gameViewportRT : call.state.sceneViewportRT;
+    if (!target.IsValid()) return Outcome::Err("NO_VIEWPORT", "選択したビューの Render Target が未生成です");
+    const auto index = gameView ? 1 : 0;
     ctx.aiViewportRenderUntilFrame = Time::frameCount + 8;
-    if (view != "scene" && view != "game") {
-        outcome = Outcome::Err("BAD_ARG", "view は scene または game で指定してください");
-    } else if (view == "scene" && ctx.editorCamera == nullptr) {
-        outcome = Outcome::Err("NO_CAMERA", "Scene Viewカメラが未設定です");
-    } else if (view == "scene") {
-        outcome = DoSemanticViewportCapture(ctx,
-            call.state.sceneViewportRT, *ctx.editorCamera, "scene");
-    } else if (ctx.activeScene == nullptr) {
-        outcome = Outcome::Err("NO_SCENE", "アクティブシーンがありません");
-    } else {
-        renderer::Camera gameCamera;
-        if (!BuildGameViewportCamera(ctx, call.state.gameViewportRT, gameCamera)) {
-            outcome = Outcome::Err("NO_CAMERA", "Game ViewカメラまたはRenderTargetが未設定です");
-        } else {
-            outcome = DoSemanticViewportCapture(ctx, call.state.gameViewportRT, gameCamera, "game");
-        }
-    }
+    if (semantic) ctx.semanticCaptureUntilFrame[index] = ctx.aiViewportRenderUntilFrame;
+    const auto& source = ctx.viewportCaptureFrames[index];
+    if (!CanReadCaptureFrame(ctx, source, target, minFrame) || (semantic && !source.hasSemantic))
+        return Outcome::Err("CAPTURE_NOT_READY", "CAPTURE_NOT_READY: 指定フレーム以降の描画完了を待っています");
+    const auto cameraId = StringField(call.payload, "cameraId");
+    if (!cameraId.empty() && cameraId != source.cameraId)
+        return Outcome::Err("CAMERA_MISMATCH", "指定したカメラはこのビューの描画に使われていません");
+
+    auto outcome = DoViewportCapture(ctx, target);
+    if (!outcome.ok) return outcome;
+    outcome.result.Set("view", JsonValue(view));
+    if (!semantic && !source.cameraId.empty()) outcome.result.Set("cameraId", JsonValue(source.cameraId));
+    outcome.result.Set("provenance", source.Describe<JsonValue>("ViewportOutput", "Output"));
+    if (semantic) AddSemanticViewportData(outcome.result, source);
     return outcome;
 }
 } /// @note namespace
 
 void RegisterPlayHandlers(BusHandlerTable& table)
 {
-    table.AddQuery("viewport.capture", DoViewportCaptureQuery);
-    table.AddQuery("viewport.semantic", DoViewportSemanticQuery);
+    table.AddQuery("viewport.capture", [](BusCall& call) { return ReadViewportFrame(call, false); });
+    table.AddQuery("viewport.semantic", [](BusCall& call) { return ReadViewportFrame(call, true); });
 
     table.AddCommand("input.inject", [](BusCall& call) { return DoInputInject(call.ctx, call.payload, call.dryRun); });
     table.AddCommand("play.control", [](BusCall& call) { return DoPlayControl(call.ctx, call.payload, call.dryRun); });

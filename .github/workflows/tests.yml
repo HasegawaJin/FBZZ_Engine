@@ -217,6 +217,8 @@ jobs:
             build/agent/editor-mcp-smoke/Test.log
             build/agent/editor-mcp-smoke/*/Editor.log
             build/agent/editor-mcp-smoke/*/Stacks.log
+            build/agent/editor-mcp-smoke/*/*.png
+            build/agent/editor-mcp-smoke/*/Project/Library/Captures/*.png
             build/agent/editor-mcp-smoke/*/Project/Library/Playtests/**
 
       # @warning 既定スイートを足したら --target にも足す。漏れると «ビルドされないだけ» で通り、CTest に NOT_BUILT が 1 件出るだけになる。

@@ -13,6 +13,7 @@
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
 #include <Editor/Util/HotkeyScope.hpp>
+#include <Editor/Util/RenderCaptureFrame.hpp>
 #include <Editor/Util/ScriptRequirementReview.hpp>
 #include <Editor/Util/SpatialDebugVisualization.hpp>
 #include <Engine/Audio/SynthSpec.hpp>
@@ -100,6 +101,9 @@ struct EditorContext {
     /// @note  EditorApp は画面に出ているビューポートだけを描くので、隠れている側をキャプチャすると
     /// @note  描画が止まった RT の古い内容を読んでしまう。
     std::uint64_t     aiViewportRenderUntilFrame = 0;
+    std::uint64_t     captureRevision = 0;
+    std::array<std::uint64_t, 2> semanticCaptureUntilFrame{};
+    std::array<RenderCaptureFrame, 2> viewportCaptureFrames;
     renderer::Camera* editorCamera = nullptr;
     /// @note  DebugCamera が持つオービット中心と注視距離のミラー (EditorApp が毎フレーム更新)。
     /// @note ナビゲーションギズモは「ピボットを動かさず視点だけ回す」ため、カメラ位置から復元できない DebugCamera 内部の中心・距離を必要とする。

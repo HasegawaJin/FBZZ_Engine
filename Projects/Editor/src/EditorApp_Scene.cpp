@@ -234,6 +234,7 @@ void EditorApp::CaptureCleanScene()
     RemoveEditorHiding();
     m_dirtyTracker.CaptureClean(*m_ctx.editScene, m_ctx.currentScenePath);
     RestoreEditorHiding();
+    ++m_ctx.captureRevision;
     m_ctx.sceneDirty = m_dirtyTracker.IsDirty();
     UpdateWindowTitle();
 }

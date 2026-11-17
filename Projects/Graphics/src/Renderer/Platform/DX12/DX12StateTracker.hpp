@@ -16,6 +16,15 @@ public:
     FBZZ_GRAPHICS_API void Register(ID3D12Resource* resource, D3D12_RESOURCE_STATES initialState);
     FBZZ_GRAPHICS_API void Remove(ID3D12Resource* resource);
 
+    /// @note フレーム外の読み戻しは、現在の状態から遷移して同じ状態に復帰する。
+    [[nodiscard]] bool ReadState(ID3D12Resource* resource, D3D12_RESOURCE_STATES& state) const
+    {
+        const auto found = m_states.find(resource);
+        if (found == m_states.end()) return false;
+        state = found->second;
+        return true;
+    }
+
     /// @note 単発の遷移。QueueTransition + FlushBarriers を即座に行う (1 リソース = 1 ResourceBarrier 呼び出し)。
     FBZZ_GRAPHICS_API void Transition(ID3D12GraphicsCommandList* commands, ID3D12Resource* resource,
                     D3D12_RESOURCE_STATES requiredState);

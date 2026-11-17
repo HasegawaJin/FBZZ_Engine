@@ -8,7 +8,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import type { EditorBus } from '../busClient.js';
 import type { PermissionMode } from '../config.js';
 import { EditorCommandSchema, JsonValueSchema, NodeIdSchema, SemanticViewportResultSchema, type EditorCommand } from '../editorContracts.js';
-import { Delay, TextResult, Safely, CreateCommandContext } from './ToolSupport.js';
+import { Delay, TextResult, Safely, CreateCommandContext, ReadViewport } from './ToolSupport.js';
 
 const InputInjectionShape = {
     kind: z.enum(['key', 'axis', 'gamepadButton', 'gamepadAxis', 'mouseButton', 'mousePosition', 'mouseDelta', 'mouseScroll', 'clear']),
@@ -171,18 +171,17 @@ export function RegisterPlaytestCommandTools(server: McpServer, bus: EditorBus, 
             }
             if (settleMs > 0) await Delay(settleMs);
 
-            const [rawState, rawLogs, rawProfiler, rawPhysicsEvents, rawCapture] = await Promise.all([
+            const [rawState, rawLogs, rawProfiler, rawPhysicsEvents] = await Promise.all([
                 bus.Query({ t: 'editor.state' }),
                 bus.Query({ t: 'console.logs', minLevel: 'debug', limit: 512, afterSequence: baselineCursor }),
                 bus.Query({ t: 'profiler.snapshot', limit: 20 }),
                 bus.Query({ t: 'physics.events' }),
-                bus.Query({ t: 'viewport.semantic', w, h, view }),
             ]);
             state = rawState as Record<string, unknown>;
             logs = rawLogs as Record<string, unknown>;
             profiler = rawProfiler as Record<string, unknown>;
             physicsEvents = rawPhysicsEvents;
-            capture = SemanticViewportResultSchema.parse(rawCapture);
+            capture = await ReadViewport(bus, { t: 'viewport.semantic', w, h, view }, SemanticViewportResultSchema, state);
         } catch (error) {
             operationError = error;
         } finally {
@@ -256,6 +255,7 @@ export function RegisterPlaytestCommandTools(server: McpServer, bus: EditorBus, 
                 view: capture.view ?? view,
                 cameraPosition: capture.cameraPosition,
                 objects: capture.objects,
+                provenance: capture.provenance,
             },
         };
         return {

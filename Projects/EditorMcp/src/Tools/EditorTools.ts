@@ -7,7 +7,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { EditorBus } from '../busClient.js';
 import type { PermissionMode } from '../config.js';
 import { EditorCommandSchema, SemanticViewportResultSchema, ViewportCaptureResultSchema } from '../editorContracts.js';
-import { DiffSceneSnapshots, Delay, TextResult, Safely, CreateCommandContext } from './ToolSupport.js';
+import { DiffSceneSnapshots, Delay, TextResult, Safely, CreateCommandContext, ReadViewport } from './ToolSupport.js';
 
 export function RegisterEditorQueryTools(server: McpServer, bus: EditorBus): void {
     server.registerTool('editor_catalog', {
@@ -112,20 +112,19 @@ export function RegisterEditorQueryTools(server: McpServer, bus: EditorBus): voi
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ w, h }) => Safely(async () => {
-        const [state, tree, selection, logs, rawCapture] = await Promise.all([
+        const [state, tree, selection, logs] = await Promise.all([
             bus.Query({ t: 'editor.state' }),
             bus.Query({ t: 'scene.tree' }),
             bus.Query({ t: 'scene.selection' }),
             bus.Query({ t: 'console.logs', minLevel: 'warning', limit: 50 }),
-            bus.Query({ t: 'viewport.capture', w, h }),
         ]);
-        const capture = ViewportCaptureResultSchema.parse(rawCapture);
+        const capture = await ReadViewport(bus, { t: 'viewport.capture', w, h }, ViewportCaptureResultSchema, state);
         return {
             content: [
-                { type: 'text', text: JSON.stringify({ state, tree, selection, logs }, null, 2) },
+                { type: 'text', text: JSON.stringify({ state, tree, selection, logs, provenance: capture.provenance }, null, 2) },
                 { type: 'image', data: capture.base64, mimeType: capture.mimeType },
             ],
-            structuredContent: { state, tree, selection, logs, width: capture.width, height: capture.height },
+            structuredContent: { state, tree, selection, logs, width: capture.width, height: capture.height, provenance: capture.provenance },
         };
     }));
 
@@ -249,24 +248,30 @@ export function RegisterEditorCommandTools(server: McpServer, bus: EditorBus, pe
     }, ({ label, cmds, w, h }) => Safely(async () => {
         const before = await bus.Query({ t: 'scene.snapshot' });
         const commandResult = await bus.Command(EditorCommandSchema.parse({ t: 'editor.transaction', label, cmds }), dryRun);
-        const [after, validation, state, logs, rawCapture] = await Promise.all([
+        const [after, validation, state, logs] = await Promise.all([
             bus.Query({ t: 'scene.snapshot' }),
             bus.Query({ t: 'scene.validate' }),
             bus.Query({ t: 'editor.state' }),
             bus.Query({ t: 'console.logs', minLevel: 'warning', limit: 100 }),
-            bus.Query({ t: 'viewport.semantic', w, h }),
         ]);
-        const capture = SemanticViewportResultSchema.parse(rawCapture);
-        const diff = DiffSceneSnapshots(before, after);
+        const details = { commandResult, diff: DiffSceneSnapshots(before, after), validation, state, logs };
+        let capture;
+        try {
+            capture = await ReadViewport(bus, { t: 'viewport.semantic', w, h }, SemanticViewportResultSchema, state);
+        } catch (error) {
+            const evidence = { ...details, captureStatus: 'unverified', captureReason: String(error) };
+            return { ...TextResult(evidence), structuredContent: evidence };
+        }
+        const evidence = { ...details, captureStatus: 'verified', provenance: capture.provenance, objects: capture.objects };
         return {
             content: [
-                { type: 'text', text: JSON.stringify({ commandResult, diff, validation, state, logs, objects: capture.objects }, null, 2) },
+                { type: 'text', text: JSON.stringify(evidence, null, 2) },
                 { type: 'image', data: capture.base64, mimeType: capture.mimeType },
             ],
             structuredContent: {
-                commandResult, diff, validation, state, logs,
+                ...evidence,
                 width: capture.width, height: capture.height,
-                cameraPosition: capture.cameraPosition, objects: capture.objects,
+                cameraPosition: capture.cameraPosition,
             },
         };
     }));

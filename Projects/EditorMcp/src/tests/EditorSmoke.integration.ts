@@ -17,6 +17,7 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 const SCENE_PATH = 'Assets/Scenes/Smoke.scene';
 const SCENARIO_PATH = 'Tests/Playtests/Smoke.playtest.json';
 const SCENARIO_NAME = 'EditorMcpSmoke';
+const CAPTURE_SCENARIO = 'Tests/Playtests/CaptureFreshness.playtest.json';
 const OBJECT_ID = '6a4efced-4563-4cbe-9e3d-7c7212cf6d2b';
 const CAMERA_ID = 'fa025438-3c92-45ee-95e8-0a91cc3095c0';
 const ORIGINAL_NAME = 'McpSmokeBefore';
@@ -49,8 +50,25 @@ async function CaptureGame(client: Client, project: string, name: string, minFra
     const result = reply.structuredContent;
     assert.ok(image && result?.provenance, 'PNG must include source provenance');
     assert.equal(image.mimeType, 'image/png');
-    await writeFile(join(project, '..', name + '.png'), Buffer.from(image.data, 'base64'));
+    const png = Buffer.from(image.data, 'base64');
+    assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    await writeFile(join(project, '..', name + '.png'), png);
     return result;
+}
+
+async function WaitForScenario(client: Client, path: string, name: string) {
+    const launched = await Call(client, 'scenario_run', { path });
+    assert.equal(launched.started, true);
+    assert.equal(launched.name, name);
+    const deadline = performance.now() + 60000;
+    let report = await Call(client, 'scenario_status');
+    while (report.state === 'running' && performance.now() < deadline) {
+        await delay(250);
+        report = await Call(client, 'scenario_status');
+    }
+    assert.equal(report.name, name);
+    assert.equal(report.state, 'passed', JSON.stringify(report));
+    return report;
 }
 
 async function VerifyAssetMoveBatch(client: Client, project: string, context: { diagnostic(message: string): void }) {
@@ -249,7 +267,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
         assert.ok((beforeSource.passes as string[]).includes('UIPass'));
         assert.ok(Number.isSafeInteger(beforeSource.frame));
         await Call(client, 'editor_op_invoke', {
-            id: 'renderpass.configure', args: { settings: { view: 'game', pass: 'UIPass', output: 'Output' } },
+            id: 'renderpass.configure', args: { settings: { view: 'game', pass: 'UIPass', output: 'Output / Color 0' } },
         });
 
         const openOperators = await Call(client, 'editor_op_list', { search: 'scene.open' });
@@ -284,7 +302,7 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
         assert.equal(pass.provenance.cameraId, CAMERA_ID);
         assert.equal(pass.provenance.sceneGeneration, beforeSource.sceneGeneration);
         assert.equal(pass.provenance.renderPass, 'UIPass');
-        assert.equal(pass.provenance.output, 'Output');
+        assert.equal(pass.provenance.output, 'Output / Color 0');
         assert.ok(pass.provenance.frame >= editedState.frameIndex);
         await assert.rejects(Call(client, 'editor_op_invoke', {
             id: 'renderpass.capture', args: { name: 'Stale.png', minFrame: Number.MAX_SAFE_INTEGER },
@@ -302,20 +320,21 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
 
         const listed = await Call(client, 'scenario_list');
         assert.ok(listed.playtests.some((item: { path: string }) => item.path === SCENARIO_PATH));
-        const launched = await Call(client, 'scenario_run', { path: SCENARIO_PATH });
-        assert.equal(launched.started, true);
-        assert.equal(launched.name, SCENARIO_NAME);
-        const playDeadline = performance.now() + 60000;
-        let report = await Call(client, 'scenario_status');
-        while (report.state === 'running' && performance.now() < playDeadline) {
-            await delay(250);
-            report = await Call(client, 'scenario_status');
-        }
-        assert.equal(report.name, SCENARIO_NAME);
-        assert.equal(report.state, 'passed', JSON.stringify(report));
+        const report = await WaitForScenario(client, SCENARIO_PATH, SCENARIO_NAME);
         const persisted = JSON.parse(await readFile(join(project, 'Library', 'Playtests', SCENARIO_NAME, 'report.json'), 'utf8'));
         assert.deepEqual(persisted, report);
         assert.equal((await Call(client, 'editor_get_state')).playState, 'editor');
+        const freshness = await WaitForScenario(client, CAPTURE_SCENARIO, 'EditorMcpCaptureFreshness');
+        const [before, renamed, viewport, renderpass] = freshness.steps.slice(1, 5);
+        assert.equal(renamed.frame, before.frame);
+        assert.equal(viewport.frame, renamed.frame);
+        assert.equal(renderpass.frame, renamed.frame);
+        assert.equal(viewport.message, 'expected CAPTURE_NOT_READY');
+        assert.equal(renderpass.message, 'expected CAPTURE_NOT_READY');
+        assert.ok(freshness.steps[6].result.data.provenance.frame > before.result.data.provenance.frame);
+        await assert.rejects(readFile(join(project, 'Library', 'Captures', 'RejectedStalePass.png')), { code: 'ENOENT' });
+        await ExpectName(client, SAVED_NAME);
+        context.diagnostic('Real Editor refused both the viewport and pass PNG in the same frame as a scene edit; a later rendered pass succeeded.');
         await VerifyAssetMoveBatch(client, project, context);
     } finally {
         try {
