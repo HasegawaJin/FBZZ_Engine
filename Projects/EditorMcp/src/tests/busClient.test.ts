@@ -51,3 +51,39 @@ test('EditorBusClient は Named Pipe 上で query 応答を request ID に相関
         await new Promise<void>((resolve) => server.close(() => resolve()));
     }
 });
+
+/// @brief 応答が途絶えた要求を再送せず、後続要求だけを新しい接続へ送る。
+test('EditorBusClient reconnects after a request times out', { timeout: 5000 }, async () => {
+    const pipePath = `\\\\.\\pipe\\FBZZEditorTestTimeout-${process.pid}`;
+    let connections = 0;
+    const requests: string[] = [];
+    const server = createServer(socket => {
+        const responds = ++connections === 2;
+        socket.setEncoding('utf8');
+        let buffer = '';
+        socket.on('data', (chunk: string) => {
+            buffer += chunk;
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            for (const line of lines) {
+                const request = JSON.parse(line);
+                requests.push(request.payload.t);
+                if (responds) {
+                    socket.write(`${JSON.stringify({ protocol: EDITOR_PROTOCOL, id: request.id, ok: true, result: { ready: true } })}\n`);
+                }
+            }
+        });
+    });
+    server.listen(pipePath);
+    await once(server, 'listening');
+    const client = new EditorBusClient(pipePath, 500);
+    try {
+        await assert.rejects(client.Query({ t: 'editor.state' }), { code: 'BUS_TIMEOUT' });
+        assert.deepEqual(await client.Query({ t: 'scene.tree' }), { ready: true });
+        assert.deepEqual(requests, ['editor.state', 'scene.tree']);
+        assert.equal(connections, 2);
+    } finally {
+        client.Close();
+        await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+});

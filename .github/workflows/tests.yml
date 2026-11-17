@@ -203,7 +203,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run build
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --test dist/tests/EditorSmoke.integration.js
+          New-Item -ItemType Directory -Force -Path $env:FBZZ_SMOKE_OUTPUT | Out-Null
+          node --test dist/tests/EditorSmoke.integration.js 2>&1 |
+            Tee-Object -FilePath (Join-Path $env:FBZZ_SMOKE_OUTPUT 'Test.log')
+          exit $LASTEXITCODE
 
       - name: Upload Editor MCP smoke evidence
         if: always() && (steps.editor-smoke.outcome == 'success' || steps.editor-smoke.outcome == 'failure')
@@ -211,6 +214,7 @@ jobs:
         with:
           name: editor-mcp-smoke
           path: |
+            build/agent/editor-mcp-smoke/Test.log
             build/agent/editor-mcp-smoke/*/Editor.log
             build/agent/editor-mcp-smoke/*/Project/Library/Playtests/**
 

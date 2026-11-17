@@ -19,9 +19,12 @@ const SCENARIO_NAME = 'EditorMcpSmoke';
 const OBJECT_ID = '6a4efced-4563-4cbe-9e3d-7c7212cf6d2b';
 const ORIGINAL_NAME = 'McpSmokeBefore';
 const SAVED_NAME = 'McpSmokeAfter';
+const BUS_TIMEOUT_MS = 20000;
 
 async function Call(client: Client, name: string, args: Record<string, unknown> = {}) {
-    const reply = CallToolResultSchema.parse(await client.callTool({ name, arguments: args }, CallToolResultSchema, { timeout: 15000 }));
+    const reply = CallToolResultSchema.parse(await client.callTool(
+        { name, arguments: args }, CallToolResultSchema, { timeout: BUS_TIMEOUT_MS + 5000 },
+    ));
     const body = reply.content.find(item => item.type === 'text')?.text;
     assert.ok(!reply.isError, `${name}: ${body ?? 'no error detail'}`);
     return reply.structuredContent ?? JSON.parse(body ?? '{}');
@@ -61,7 +64,11 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
     const transport = new StdioClientTransport({
         command: process.execPath,
         args: [fileURLToPath(new URL('../stdio.js', import.meta.url))],
-        env: { FBZZ_MCP_PERMISSION: 'write', FBZZ_EDITOR_PIPE: '\\\\.\\pipe\\FBZZEditorCommandBus', FBZZ_EDITOR_BUS_TIMEOUT_MS: '10000' },
+        env: {
+            FBZZ_MCP_PERMISSION: 'write',
+            FBZZ_EDITOR_PIPE: '\\\\.\\pipe\\FBZZEditorCommandBus',
+            FBZZ_EDITOR_BUS_TIMEOUT_MS: String(BUS_TIMEOUT_MS),
+        },
         stderr: 'inherit',
     });
 
@@ -76,7 +83,8 @@ test('Editor MCP connects, edits, saves, reloads and runs a Playtest', { timeout
                 authoring = (await Call(client, 'editor_op_query', { id: 'authoring.context' })).data;
                 break;
             } catch (error) {
-                if (!/ENOENT|EBUSY|timeout|応答が .* 超えました/i.test(String(error))) throw error;
+                /// @note WARP はパイプの起動後も初回描画の準備を続ける。照会だけを再試行する。
+                if (!/ENOENT|EBUSY|timeout|timed out|応答が \d+ms を超えました/i.test(String(error))) throw error;
                 await delay(250);
             }
         }
