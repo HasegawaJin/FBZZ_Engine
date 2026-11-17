@@ -92,7 +92,9 @@ jobs:
           node-version: 24
       - name: SDK-only C# starter tests
         working-directory: Projects/GameHub
-        run: npm run test:authoring
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run test:authoring
 
   test:
     runs-on: windows-latest
