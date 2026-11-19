@@ -64,11 +64,7 @@ struct SkinningCB {
     math::Matrix4 boneMatrices[asset::MAX_SKINNING_BONES];
 };
 
-struct NodeLocalPose {
-    math::Vector3 translation = math::Vector3::ZERO;
-    math::Quaternion rotation = math::Quaternion::Identity();
-    math::Vector3 scale = math::Vector3::ONE;
-};
+using NodeLocalPose = AnimatorNodeLocalPose;
 
 float WrapTime(float time, float duration)
 {
@@ -1623,7 +1619,9 @@ NodeLocalPose BlendNodePose(const asset::SkeletonNode& node,
 /// @note マスク IO のログ sink が再入しても、外側の保存域を移動・上書きしない。
 class BlendedLocalPoseWorkspace {
 public:
-    BlendedLocalPoseWorkspace(const asset::Skeleton& skeleton, const std::vector<WeightedClip>& clips)
+    BlendedLocalPoseWorkspace(const asset::Skeleton& skeleton, const std::vector<WeightedClip>& clips,
+                              std::span<const NodeLocalPose> source = {}, float targetWeight = 1.0f)
+        : m_source(source), m_targetWeight(targetWeight)
     {
         auto& pool = GetPool();
         if (pool.depth == pool.entries.size())
@@ -1667,9 +1665,10 @@ public:
     NodeLocalPose Sample(size_t nodeIndex, const asset::SkeletonNode& node,
                          const std::vector<WeightedClip>& clips)
     {
-        if (!m_reuse) return BlendNodePose(node, clips);
+        if (!m_reuse) return BlendSource(nodeIndex, BlendNodePose(node, clips));
         if (m_storage->resolved[nodeIndex] == 0) {
-            m_storage->poses[nodeIndex] = BlendNodePose(node, clips, &m_storage->trackBindings, nodeIndex);
+            m_storage->poses[nodeIndex] = BlendSource(
+                nodeIndex, BlendNodePose(node, clips, &m_storage->trackBindings, nodeIndex));
             m_storage->resolved[nodeIndex] = 1;
         }
         return m_storage->poses[nodeIndex];
@@ -1682,6 +1681,18 @@ public:
     std::vector<uint8_t>& PropagationVisited() { return m_storage->propagationVisited; }
 
 private:
+    NodeLocalPose BlendSource(size_t index, const NodeLocalPose& target) const
+    {
+        if (m_source.empty()) return target;
+        const auto& source = m_source[index];
+        if (m_targetWeight == 0.0f) return source;
+        return {
+            math::Vector3::Lerp(source.translation, target.translation, m_targetWeight),
+            math::Quaternion::Slerp(source.rotation, target.rotation, m_targetWeight).Normalized(),
+            math::Vector3::Lerp(source.scale, target.scale, m_targetWeight),
+        };
+    }
+
     struct Storage {
         std::vector<NodeLocalPose> poses;
         std::vector<uint8_t> resolved;
@@ -1703,6 +1714,8 @@ private:
     }
     Storage* m_storage = nullptr;
     bool m_reuse = true;
+    std::span<const NodeLocalPose> m_source;
+    float m_targetWeight;
 };
 
 void EvaluateNBlendedNodeRecursive(const asset::Skeleton& skeleton,
@@ -1906,44 +1919,49 @@ void InitStateMachine(AnimatorComponent& animator)
     InitStateMachineScoped(BaseScope(animator));
 }
 
-/// @brief 最初に成立した遷移のクロスフェードを開始する。
-/// @param animator パラメーターはレイヤー間で共有なので scope ではなく animator から読む。
-/// @return 遷移を開始したら true。
-bool TryStartTransitionScoped(AnimatorComponent& animator,
-                              StateMachineScope scope,
-                              const std::vector<AnimationTransition>& transitions,
-                              float normalizedTime)
+const AnimationTransition* FindEligibleTransition(
+    AnimatorComponent& animator, const std::vector<AnimationState>& states,
+    const AnimationState& source, const std::vector<AnimationTransition>& transitions,
+    float normalizedTime, bool interruption = false)
 {
     for (const auto& tr : transitions) {
+        if (interruption && !tr.interruptActiveBlend) continue;
         if (tr.toStateName.empty()) continue;
         /// @note 自己遷移は開始しない。継続条件で毎フレーム成立すると再生時刻が 0 へ戻り続ける。
-        if (tr.toStateName == scope.currentStateName) continue;
-        if (!FindStateIn(scope.states, tr.toStateName)) continue;
-        if (!EvaluateTransition(tr, animator, normalizedTime)) continue;
-
-        scope.blendToState = tr.toStateName;
-        scope.blendToTime  = 0.0f;
-        scope.blendWeight  = 0.0f;
-        if (auto* targetState = FindMutableStateIn(scope.states, tr.toStateName)) {
-            targetState->blendTree1D.normalizedPhase = 0.0f;
-            targetState->blendTree1D.normalizedPhaseInitialized = false;
-            targetState->blendTree2D.normalizedPhase = 0.0f;
-            targetState->blendTree2D.normalizedPhaseInitialized = false;
-        }
-        /// @note 正規化指定は遷移元ステート長で実秒へ換算する。クリップを差し替えても同じ割合で混ざる。
-        const AnimationState* currentState =
-            FindStateIn(scope.states, scope.currentStateName);
-        const float sourceDuration = currentState
-            ? GetStateDuration(animator, *currentState)
-            : 0.0f;
-        scope.blendDuration = tr.fixedDuration
-            ? tr.transitionDuration
-            : tr.transitionDuration * sourceDuration;
-        scope.blendDuration = (std::max)(scope.blendDuration, 0.0f);
-        ConsumeTriggers(animator, tr);
-        return true;
+        if (tr.toStateName == source.name) continue;
+        if (FindStateIn(states, tr.toStateName) && EvaluateTransition(tr, animator, normalizedTime))
+            return &tr;
     }
-    return false;
+    return nullptr;
+}
+
+void StartTransition(AnimatorComponent& animator, StateMachineScope scope,
+                     const AnimationTransition& transition, float sourceDuration)
+{
+    scope.blendToState = transition.toStateName;
+    scope.blendToTime = 0.0f;
+    scope.blendWeight = 0.0f;
+    if (auto* target = FindMutableStateIn(scope.states, transition.toStateName)) {
+        target->blendTree1D.normalizedPhase = 0.0f;
+        target->blendTree1D.normalizedPhaseInitialized = false;
+        target->blendTree2D.normalizedPhase = 0.0f;
+        target->blendTree2D.normalizedPhaseInitialized = false;
+    }
+    /// @note 正規化指定は遷移元ステート長で実秒へ換算する。
+    scope.blendDuration = (std::max)(0.0f, transition.fixedDuration
+        ? transition.transitionDuration : transition.transitionDuration * sourceDuration);
+    ConsumeTriggers(animator, transition);
+}
+
+bool TryStartTransitionScoped(AnimatorComponent& animator,
+                              StateMachineScope scope, const AnimationState& source,
+                              const std::vector<AnimationTransition>& transitions,
+                              float normalizedTime, float sourceDuration)
+{
+    const auto* transition = FindEligibleTransition(animator, scope.states, source, transitions, normalizedTime);
+    if (!transition) return false;
+    StartTransition(animator, scope, *transition, sourceDuration);
+    return true;
 }
 
 /// @brief BlendTree の入力値を時定数 dampTime [s] の指数補間で平滑化する。
@@ -2105,13 +2123,77 @@ void UpdateStateMachineScoped(AnimatorComponent& animator, StateMachineScope sco
         : 0.0f;
 
     /// @note 通常遷移を優先し、成立しなかったときだけ AnyState を評価する。
-    if (!TryStartTransitionScoped(animator, scope, curSt->transitions, normalizedTime))
-        TryStartTransitionScoped(animator, scope, scope.anyStateTransitions, normalizedTime);
+    if (!TryStartTransitionScoped(animator, scope, *curSt, curSt->transitions, normalizedTime, duration))
+        TryStartTransitionScoped(animator, scope, *curSt, scope.anyStateTransitions, normalizedTime, duration);
 }
 
 void UpdateStateMachine(AnimatorComponent& animator, float dt)
 {
     UpdateStateMachineScoped(animator, BaseScope(animator), dt);
+}
+
+void AppendBlendedClips(std::vector<WeightedClip>& source, std::vector<WeightedClip>& target,
+                        float targetWeight)
+{
+    for (auto& clip : source) clip.weight *= 1.0f - targetWeight;
+    for (auto& clip : target) clip.weight *= targetWeight;
+    source.insert(source.end(), target.begin(), target.end());
+}
+
+/// @note この経路はベースの骨姿勢を保持する。ルート移動・イベント・プロパティの時計は従来の遷移で扱う。
+bool SupportsPoseInterruption(const AnimatorComponent& animator, const AnimationState& state)
+{
+    if (state.mode != AnimationStateMode::Clip) return false;
+    const auto* clip = FindClipForState(animator, state);
+    return clip && clip->GetDurationSeconds() > 0.0 && clip->events.empty() &&
+           clip->propertyTracks.empty();
+}
+
+bool TryInterruptPoseBlend(AnimatorComponent& animator, const asset::Skeleton& skeleton)
+{
+    if (!animator.playing || animator.blendToState.empty() || animator.externalPose ||
+        animator.rootMotion.Extracts() || skeleton.nodes.empty()) return false;
+
+    const auto* activeTarget = FindState(animator, animator.blendToState);
+    if (!activeTarget) return false;
+    const float duration = GetStateDuration(animator, *activeTarget);
+    const float normalizedTime = duration > 0.0f
+        ? std::clamp(animator.blendToTime / duration, 0.0f, 1.0f) : 0.0f;
+    const auto* transition = FindEligibleTransition(animator, animator.states, *activeTarget,
+        activeTarget->transitions, normalizedTime, true);
+    if (!transition) transition = FindEligibleTransition(animator, animator.states, *activeTarget,
+        animator.anyStateTransitions, normalizedTime, true);
+    if (!transition) return false;
+
+    const auto* source = FindState(animator, animator.currentStateName);
+    const auto* target = FindState(animator, transition->toStateName);
+    if (!source || !target || !SupportsPoseInterruption(animator, *source) ||
+        !SupportsPoseInterruption(animator, *activeTarget) || !SupportsPoseInterruption(animator, *target))
+        return false;
+
+    auto& snapshot = animator.interruptedPose;
+    const float targetWeight = std::clamp(animator.blendWeight, 0.0f, 1.0f);
+    auto clips = BuildStateClips(animator, *activeTarget, animator.blendToTime);
+    if (snapshot.nodes.empty()) {
+        auto sourceClips = BuildStateClips(animator, *source, animator.stateTime);
+        AppendBlendedClips(sourceClips, clips, targetWeight);
+        clips = std::move(sourceClips);
+    }
+    /// @note 各ノードは自身の旧姿勢だけを読むので、連続割り込みでも同じ保存領域へ書き戻せる。
+    BlendedLocalPoseWorkspace localPoses(skeleton, clips, snapshot.nodes, targetWeight);
+    snapshot.nodes.resize(skeleton.nodes.size());
+    for (size_t i = 0; i < skeleton.nodes.size(); ++i)
+        snapshot.nodes[i] = localPoses.Sample(i, skeleton.nodes[i], clips);
+    snapshot.skeleton = &skeleton;
+    snapshot.clipWeights = animator.currentBlendWeights;
+    snapshot.ikWeight = animator.currentIKWeight;
+
+    const float previousSourceTime = animator.stateTime;
+    animator.currentStateName = activeTarget->name;
+    animator.stateTime = animator.blendToTime;
+    StartTransition(animator, BaseScope(animator), *transition, duration);
+    if (target == source) animator.blendToTime = previousSourceTime;
+    return true;
 }
 
 /// @brief 加重クリップ集合からルートモーションを合成する。位置は線形加重、回転は逐次 Slerp。
@@ -2934,8 +3016,13 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     {
     AnimationWorkScope stateWork(AnimationWorkPart::STATE_MACHINE);
     InitStateMachine(animator);
+    auto& snapshot = animator.interruptedPose;
+    if (animator.blendToState.empty() || snapshot.skeleton != &skeleton ||
+        snapshot.nodes.size() != skeleton.nodes.size()) snapshot.nodes.clear();
+    const bool interrupted = TryInterruptPoseBlend(animator, skeleton);
     UpdateBlendTreeDamping(animator, dt);
-    UpdateStateMachine(animator, dt);
+    if (!interrupted) UpdateStateMachine(animator, dt);
+    if (animator.blendToState.empty()) snapshot.nodes.clear();
     if (auto* currentState = FindMutableState(animator, animator.currentStateName))
         AdvanceBlendTreePhase(animator, *currentState, animator.stateTime, dt);
     if (!animator.blendToState.empty()) {
@@ -3046,9 +3133,15 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     }
 
     std::vector<WeightedClip> currentClips;
+    const auto& snapshot = animator.interruptedPose;
+    const bool hasSnapshot = !snapshot.nodes.empty();
+    const float targetWeight = std::clamp(animator.blendWeight, 0.0f, 1.0f);
     {
         AnimationWorkScope clipWork(AnimationWorkPart::CLIP_SELECTION);
-        currentClips = BuildStateClips(animator, *curSt, animator.stateTime);
+        const auto* sampleState = hasSnapshot ? FindState(animator, animator.blendToState) : curSt;
+        if (sampleState)
+            currentClips = BuildStateClips(animator, *sampleState,
+                hasSnapshot ? animator.blendToTime : animator.stateTime);
     }
     if (currentClips.empty()) {
         applyRestPose();
@@ -3057,9 +3150,9 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     }
 
     animator.currentBlendDuration = GetStateDuration(animator, *curSt);
-    bool exposeBlendWeights = curSt->mode != AnimationStateMode::Clip;
+    bool exposeBlendWeights = hasSnapshot || curSt->mode != AnimationStateMode::Clip;
 
-    if (!animator.blendToState.empty()) {
+    if (!hasSnapshot && !animator.blendToState.empty()) {
         const AnimationState* nextSt = FindState(animator, animator.blendToState);
         exposeBlendWeights = true;
         auto nextClips = nextSt
@@ -3067,10 +3160,7 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
             : std::vector<WeightedClip>{};
 
         if (!nextClips.empty()) {
-            const float w = std::clamp(animator.blendWeight, 0.0f, 1.0f);
-            for (auto& clip : currentClips) clip.weight *= 1.0f - w;
-            for (auto& clip : nextClips) clip.weight *= w;
-            currentClips.insert(currentClips.end(), nextClips.begin(), nextClips.end());
+            AppendBlendedClips(currentClips, nextClips, targetWeight);
         } else {
             /// @note 遷移先クリップが無ければ遷移を打ち切り、現クリップ単独で続ける。
             animator.blendToState.clear();
@@ -3080,8 +3170,16 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
 
     /// @note 最終姿勢への実寄与率を公開する。遷移元と遷移先で同じクリップを使う場合は合算する。
     if (exposeBlendWeights) {
+        if (hasSnapshot) {
+            for (const auto& [name, weight] : snapshot.clipWeights) {
+                const float contribution = weight * (1.0f - targetWeight);
+                if (contribution > math::EPSILON)
+                    animator.currentBlendWeights.emplace_back(name, contribution);
+            }
+        }
         for (const auto& weighted : currentClips) {
-            if (!weighted.clip || weighted.weight <= math::EPSILON) continue;
+            const float contribution = weighted.weight * (hasSnapshot ? targetWeight : 1.0f);
+            if (!weighted.clip || contribution <= math::EPSILON) continue;
             const std::string& name =
                 weighted.motion && !weighted.motion->clipName.empty()
                 ? weighted.motion->clipName
@@ -3091,15 +3189,17 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
                 animator.currentBlendWeights.end(),
                 [&name](const auto& entry) { return entry.first == name; });
             if (existing != animator.currentBlendWeights.end())
-                existing->second += weighted.weight;
+                existing->second += contribution;
             else
-                animator.currentBlendWeights.emplace_back(name, weighted.weight);
+                animator.currentBlendWeights.emplace_back(name, contribution);
         }
     }
 
     animator.currentIKWeight = 0.0f;
     for (const auto& weighted : currentClips)
         animator.currentIKWeight += weighted.ikWeight * weighted.weight;
+    if (hasSnapshot)
+        animator.currentIKWeight = std::lerp(snapshot.ikWeight, animator.currentIKWeight, targetWeight);
     animator.currentIKWeight = std::clamp(animator.currentIKWeight, 0.0f, 1.0f);
 
     /// @note 遷移中は currentClips に遷移元・遷移先が weight 付きで入るので、移動量も姿勢と同じ比率で混ざる。
@@ -3109,7 +3209,8 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     }
     ProcessRootMotion(scene, animator, go, currentClips, dt);
 
-    if (allowBoneBake) {
+    if (allowBoneBake && hasSnapshot) animator.boneBake.fallback = BoneBakeFallback::INVALID_SOURCE;
+    if (allowBoneBake && !hasSnapshot) {
         std::vector<BoneBakeClipInput> bakeClips;
         bakeClips.reserve(currentClips.size());
         for (const auto& weighted : currentClips) {
@@ -3126,7 +3227,7 @@ static void RunStateMachineAnimatorPath(AnimatorComponent& animator,
     if (!ensureHierarchy()) {
         UploadBindPose(animator,resources,&skeleton); ProcessRootMotion(scene,animator,go,{},dt); return;
     }
-    BlendedLocalPoseWorkspace localPoses(skeleton, currentClips);
+    BlendedLocalPoseWorkspace localPoses(skeleton, currentClips, snapshot.nodes, targetWeight);
     auto& evaluationVisited = localPoses.EvaluationVisited();
     {
     AnimationWorkScope fkWork(AnimationWorkPart::LEGACY_FK);

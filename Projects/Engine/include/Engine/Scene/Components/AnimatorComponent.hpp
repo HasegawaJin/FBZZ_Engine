@@ -30,6 +30,12 @@ namespace fbzz::asset { struct Model; }
 
 namespace fbzz::scene {
 
+struct AnimatorNodeLocalPose {
+    math::Vector3 translation = math::Vector3::ZERO;
+    math::Quaternion rotation = math::Quaternion::Identity();
+    math::Vector3 scale = math::Vector3::ONE;
+};
+
 /// @brief AnimatorSystem が当該フレームに通過した Event。
 /// @note VFXGraph など Script 以外の購読者も利用する。
 struct FiredAnimationEvent {
@@ -431,6 +437,13 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     float       blendToTime   = 0.0f;  ///< @note 遷移先ステートの再生秒数
     float       blendWeight   = 0.0f;  ///< @note 0=現ステート, 1=遷移先
     float       blendDuration = 0.25f; ///< @note 今回の遷移のクロスフェード時間キャッシュ
+    /// @note 割り込み時のベース姿勢。IK や追加レイヤー適用前のローカル TRS を保持する。
+    struct InterruptedPose {
+        const asset::Skeleton* skeleton = nullptr;
+        std::vector<AnimatorNodeLocalPose> nodes;
+        std::vector<std::pair<std::string, float>> clipWeights;
+        float ikWeight = 1.0f;
+    } interruptedPose;
     /// @note Animation Event の区間評価に使う前フレーム時刻。
     float       previousEventTime = 0.0f;
     std::string previousEventClipName;

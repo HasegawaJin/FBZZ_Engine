@@ -2122,6 +2122,7 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
                     trTbl.insert("exitTime",           (double)tr.exitTime);
                     trTbl.insert("fixedDuration",      tr.fixedDuration);
                     trTbl.insert("transitionDuration", (double)tr.transitionDuration);
+                    if (tr.interruptActiveBlend) trTbl.insert("interruptActiveBlend", true);
                     toml::array condArr;
                     for (const auto& c : tr.conditions) {
                         toml::table cTbl;
@@ -2188,6 +2189,7 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
                 trTbl.insert("exitTime",           (double)tr.exitTime);
                 trTbl.insert("fixedDuration",      tr.fixedDuration);
                 trTbl.insert("transitionDuration", (double)tr.transitionDuration);
+                if (tr.interruptActiveBlend) trTbl.insert("interruptActiveBlend", true);
                 toml::array condArr;
                 for (const auto& c : tr.conditions) {
                     toml::table cTbl;
@@ -3184,6 +3186,7 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
                             /// @note 旧シーンは秒指定のみなので true として読み込む。
                             tr.fixedDuration      = (*trTbl)["fixedDuration"].value_or(true);
                             tr.transitionDuration = (float)(*trTbl)["transitionDuration"].value_or(0.25);
+                            tr.interruptActiveBlend = (*trTbl)["interruptActiveBlend"].value_or(false);
                             if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
                                 for (const auto& cElem : *condArr) {
                                     const auto* cTbl = cElem.as_table();
@@ -3260,6 +3263,7 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
                     tr.fixedDuration = (*trTbl)["fixedDuration"].value_or(true);
                     tr.transitionDuration =
                         (float)(*trTbl)["transitionDuration"].value_or(0.25);
+                    tr.interruptActiveBlend = (*trTbl)["interruptActiveBlend"].value_or(false);
                     if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
                         for (const auto& cElem : *condArr) {
                             const auto* cTbl = cElem.as_table();

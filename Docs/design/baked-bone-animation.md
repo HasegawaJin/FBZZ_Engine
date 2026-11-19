@@ -42,6 +42,12 @@ GPU は samples / parent / binding を GPU-local StructuredBuffer に置き、32
 
 Inspector の playback 設定と理由表示、`animation.state` の `boneBakeMode / boneBakeActive / boneBakeFallback / boneBakeStatus` を追加する。保存と passive Play clone は四つの設定だけを保存し、GPU handle / workspace / 実行中 palette は保存しない。
 
+## ベース姿勢の補間を途中で切り替える
+
+`interruptActiveBlend = true` の遷移は、補間中の遷移先ステートを起点に評価する。通常遷移を Any State より先に評価する。切り替えが確定したフレームで補間済みのローカル TRS を保持し、その姿勢を新しい補間の開始点にする。直前のステートへ戻る場合は再生位置を引き継ぐ。再度切り替えた場合も、その時点の TRS を同じ領域に保存する。IK と追加レイヤーは新しいベース姿勢へ従来どおり適用する。
+
+対象はベースレイヤーの Clip ステートで、ルート移動を適用せず、イベントとプロパティトラックを持たないスケルタルアニメーション。保持した姿勢から補間するフレームは通常の CPU 姿勢評価を使う。設定は Controller と Scene／Prefab に保存し、未指定時は補間を完了してから次の遷移を評価する。
+
 ## 距離による姿勢更新の間引き
 
 明示的に `poseLodEnabled=true` とした対応個体は、CPU ベイク・GPU 共有再生にも既存の距離と更新間隔を使う。全有効 CameraComponent のうち最も近いカメラを基準とし、カメラがない場合は毎フレーム評価する。既定の LOD 無効設定は維持する。状態時計・BlendTree 位相・遷移判定・イベントは毎フレーム進め、更新時はその時点の再生時刻を評価する。

@@ -3785,6 +3785,10 @@ static void DrawTransitionEditor(EditorContext& ctx,
         destinationLength);
 
     ImGui::SeparatorText("Settings");
+    if (ImGui::Checkbox("Interrupt Active Blend", &transition.interruptActiveBlend))
+        MarkDirty(ctx);
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("The base skeletal clip can leave the active blend's destination.\nThe current blended pose becomes the new source for in-place clips without events or property tracks.");
     if (ImGui::Checkbox("Has Exit Time", &transition.hasExitTime)) MarkDirty(ctx);
     ImGui::BeginDisabled(!transition.hasExitTime);
     ImGui::SetNextItemWidth(140.0f);

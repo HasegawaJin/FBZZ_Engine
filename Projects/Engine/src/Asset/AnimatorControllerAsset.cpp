@@ -95,6 +95,7 @@ toml::table WriteTransition(const scene::AnimationTransition& transition)
     table.insert("exitTime", static_cast<double>(transition.exitTime));
     table.insert("fixedDuration", transition.fixedDuration);
     table.insert("transitionDuration", static_cast<double>(transition.transitionDuration));
+    if (transition.interruptActiveBlend) table.insert("interruptActiveBlend", true);
     toml::array conditions;
     for (const auto& condition : transition.conditions) {
         toml::table conditionTable;
@@ -130,6 +131,7 @@ scene::AnimationTransition ReadTransition(const toml::table& table)
     transition.fixedDuration = table["fixedDuration"].value_or(true);
     transition.transitionDuration =
         static_cast<float>(table["transitionDuration"].value_or(0.25));
+    transition.interruptActiveBlend = table["interruptActiveBlend"].value_or(false);
     if (const auto* conditions = table["conditions"].as_array()) {
         for (const auto& element : *conditions) {
             const auto* conditionTable = element.as_table();

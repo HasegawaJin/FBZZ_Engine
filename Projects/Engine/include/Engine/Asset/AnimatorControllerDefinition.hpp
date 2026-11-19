@@ -30,6 +30,8 @@ struct AnimationTransition {
     bool                           fixedDuration      = true;
     float                          transitionDuration = 0.25f;
     std::vector<AnimatorCondition> conditions;
+    /// @note ベースのその場再生で、補間先ステートからこの遷移へ姿勢を引き継げる。
+    bool                           interruptActiveBlend = false;
 };
 
 struct BlendTreeMotion {

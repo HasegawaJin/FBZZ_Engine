@@ -260,6 +260,7 @@ JsonValue TransitionToJson(const scene::AnimationTransition& transition)
     entry.Set("exitTime", JsonValue(transition.exitTime));
     entry.Set("fixedDuration", JsonValue(transition.fixedDuration));
     entry.Set("transitionDuration", JsonValue(transition.transitionDuration));
+    entry.Set("interruptActiveBlend", JsonValue(transition.interruptActiveBlend));
     JsonValue conditions = JsonValue::MakeArray();
     for (const auto& condition : transition.conditions) {
         JsonValue conditionJson = JsonValue::MakeObject();
@@ -1138,6 +1139,7 @@ std::unique_ptr<ICommand> BuildAnimatorGraphCommand([[maybe_unused]] editor::Edi
             if (const JsonValue* v = payload.Find("exitTime"); v != nullptr && v->IsNumber()) prototype.exitTime = static_cast<float>(v->AsNumber());
             if (const JsonValue* v = payload.Find("fixedDuration"); v != nullptr && v->IsBool()) prototype.fixedDuration = v->AsBool();
             if (const JsonValue* v = payload.Find("transitionDuration"); v != nullptr && v->IsNumber()) prototype.transitionDuration = static_cast<float>(v->AsNumber());
+            if (const JsonValue* v = payload.Find("interruptActiveBlend"); v != nullptr && v->IsBool()) prototype.interruptActiveBlend = v->AsBool();
 
             return MakeAnimatorEditCommand(scene, id, "AI: Add Animator Transition", markDirty,
                 [isAnyState, fromName, prototype, layerName](scene::AnimatorComponent& a) {
