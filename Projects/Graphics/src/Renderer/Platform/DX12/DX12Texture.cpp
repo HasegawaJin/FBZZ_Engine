@@ -9,6 +9,7 @@
 #include "DX12StateTracker.hpp"
 #include <Core/Logger.hpp>
 #include <Graphics/Renderer/TextureFileDecoder.hpp>
+#include <Graphics/Renderer/AssetPathService.hpp>
 #include <Core/Util/StringUtils.hpp>
 #include <DirectXTex.h>
 #include <algorithm>
@@ -86,7 +87,8 @@ bool DX12Texture::Init(DX12Context* context, const std::string& path)
     /// @note 展開は非同期ストリーミングと同じ関数を通す。経路ごとに変換を書くと同じ画像の画素が食い違う。
     DecodedTextureRGBA8 decoded;
     std::string error;
-    if (!DecodeTextureFileRGBA8(path, decoded, &error)) {
+    if (!DecodeTextureFileRGBA8(path, decoded, &error)
+        || !PrepareTextureMipmaps(path, decoded, ResolveTextureMipSettings(path), &error)) {
         FBZZ_LOG_ERROR("DX12Texture: %s", error.c_str());
         return false;
     }

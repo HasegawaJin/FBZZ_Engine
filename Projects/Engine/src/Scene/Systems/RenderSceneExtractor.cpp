@@ -1984,7 +1984,9 @@ void RestoreMaterialBindings(RenderPassContext& ctx, renderer::RenderScene& snap
         auto& material = item.material;
         cache.ApplyState(slot, material);
         if (!object.colorEligible || !item.visible) continue;
-        const bool projected = !ctx.isDeferred || renderer::ResolveGeometryRoute(material.capabilities, true) == renderer::GeometryRoute::GBuffer;
+        /// @note レイの反射や画面外のヒットには、カメラに投影した大きさを使えない。
+        const bool projected = !rayInputs
+            && renderer::ResolveGeometryRoute(material.capabilities, true) == renderer::GeometryRoute::GBuffer;
         const float pixels = projected ? EstimateRenderTexturePixels(object, item, ctx.camera.m_position,
             ctx.cullProjScaleY, ctx.height, ctx.cullOrthographic) : 0.0f;
         if (trace) {
@@ -2340,8 +2342,8 @@ void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeometryCache* frameG
                 }
                 MaterialPhaseTimer<DIAGNOSTICS_ENABLED> projectionReuseTimer(projectionReuseNs);
                 float screenPixels = 0.0f;
-                const bool projectedTextureRequest = !ctx.isDeferred ||
-                    renderer::ResolveGeometryRoute(material.capabilities, true) == renderer::GeometryRoute::GBuffer;
+                const bool projectedTextureRequest = !rayTracingInputs
+                    && renderer::ResolveGeometryRoute(material.capabilities, true) == renderer::GeometryRoute::GBuffer;
                 /// @note スキンドメッシュはアニメーション姿勢を含む物体全体の境界を使い、参照姿勢の submesh 境界へ戻さない。
                 if (projectedTextureRequest)
                     screenPixels = EstimateRenderTexturePixels(object, item, ctx.camera.m_position,

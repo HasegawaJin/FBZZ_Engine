@@ -277,7 +277,7 @@ public:
             std::string texturePath;
             std::string spriteToken;
             decoded->dependencies.push_back({ textureType,
-                ParseSpriteReference(reference, texturePath, spriteToken) ? texturePath : reference, false });
+                ParseSpriteReference(reference, texturePath, spriteToken) ? texturePath : reference, false, std::nullopt });
         }
         result.decoded = std::move(decoded);
         return result;
@@ -293,7 +293,7 @@ public:
     }
 };
 
-} // namespace
+} /// @note namespace
 
 std::shared_ptr<IAssetStreamChannel> CreateMaterialStreamChannel()
 {

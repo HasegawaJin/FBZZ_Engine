@@ -11,6 +11,15 @@
 #include <vector>
 
 namespace fbzz::renderer {
+/// @note Asset 層が .meta と型の既定値から決め、ワーカーへは Snapshot 時点の値を渡す。
+struct TextureMipSettings {
+    bool enabled = true;
+    bool srgb = true;
+};
+
+/// @return 自動ミップ生成を行う PNG / JPG / JPEG なら true。DDS の既存ミップは変更しない。
+[[nodiscard]] FBZZ_GRAPHICS_API bool SupportsAutomaticTextureMips(const std::string& path);
+
 /// @brief RGBA8 の 2D 経路で表現できない DDS (キューブ・配列・浮動小数点) かをヘッダーから判定する。
 [[nodiscard]] FBZZ_GRAPHICS_API bool RequiresNativeTextureUpload(const std::string& path);
 
@@ -36,7 +45,15 @@ struct DecodedTextureRGBA8 {
     [[nodiscard]] FBZZ_GRAPHICS_API bool ToMipData(std::vector<TextureMipData>& out) const;
 };
 
-/// @brief 2x2 の平均で半分に縮める (RGBA8、各段 1 以上)。品質段の縮小はすべてこれを通す。
+/// @brief 対応する画像の 0 段目から 1x1 までミップを生成し、元画像寸法と 0 段目の画素を保つ。
+/// @return 生成できなければ false (理由は outError、null 可)。失敗時は texture を変更しない。
+/// @note OFF・対応外の形式・既存ミップ列・1x1 は変更しない。sRGB はリニア空間で縮小する。
+/// @note スレッドセーフ。CPU 展開後、品質段の選択およびキャッシュ保存より前に呼ぶ。
+/// @see https://github.com/microsoft/DirectXTex/wiki/GenerateMipMaps levels=0 は 1x1 までの全段を生成する。
+[[nodiscard]] FBZZ_GRAPHICS_API bool PrepareTextureMipmaps(const std::string& path, DecodedTextureRGBA8& texture,
+    const TextureMipSettings& settings, std::string* outError = nullptr);
+
+/// @brief 2x2 の平均で半分に縮める (RGBA8、各段 1 以上)。ミップを持たない画像の品質段縮小に使う。
 [[nodiscard]] FBZZ_GRAPHICS_API DecodedTextureRGBA8::Mip DownsampleRGBA8Box2x(const DecodedTextureRGBA8::Mip& source);
 
 /// @brief DDS / TGA / WIC 形式の画像を RGBA8 へ展開する。DDS のミップは全段、他は 0 段目のみ。

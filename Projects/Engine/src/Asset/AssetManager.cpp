@@ -48,6 +48,7 @@
 #include <Engine/Asset/StreamedTextureResolver.hpp>
 #include <Engine/Asset/TextureStreamChannel.hpp>
 #include <Engine/Renderer/AssetPathService.hpp>
+#include <Engine/Renderer/TextureFileDecoder.hpp>
 #include <Engine/Asset/ShaderCapabilities.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
 #include <Engine/Util/EngineAssetPath.hpp>
@@ -245,6 +246,11 @@ std::unique_ptr<Model> LoadFzMeshModel(
     service.normalizeTextureKey = [](std::string_view reference, std::string& outTexturePath) {
         std::string spriteName;
         (void)ParseSpriteReference(reference, outTexturePath, spriteName);
+    };
+    service.resolveTextureMipSettings = [](std::string_view sourcePath) {
+        TextureImportSettings settings = DefaultSettingsForType(GuessTextureType(sourcePath));
+        (void)GetCachedTextureImportSettings(sourcePath, settings);
+        return renderer::TextureMipSettings{settings.mipmaps, settings.srgb};
     };
     renderer::SetAssetPathService(service);
     return true;

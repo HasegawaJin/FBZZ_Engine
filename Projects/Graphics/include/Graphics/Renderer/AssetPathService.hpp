@@ -9,6 +9,7 @@
 #include <string_view>
 
 namespace fbzz::renderer {
+struct TextureMipSettings;
 
 /// @brief Asset 層が差し込むパス解決規則。
 /// @note "guid:" 参照や ".meta" サイドカーの解釈は Asset 層が持ち、Renderer は規則の形だけを
@@ -27,6 +28,9 @@ struct AssetPathService {
 
     /// @note Shader の .meta 解釈は Asset 層に閉じる。未登録時は未知の能力として扱う。
     ShaderCapabilities (*resolveShaderCapabilities)(std::string_view reference) = nullptr;
+
+    /// @note .meta の解釈は Asset 層に閉じる。未登録時は Color の既定値 (ON / sRGB) を使う。
+    TextureMipSettings (*resolveTextureMipSettings)(std::string_view sourcePath) = nullptr;
 };
 
 /// @brief 解決規則を差し込む。
@@ -37,5 +41,6 @@ FBZZ_GRAPHICS_API void SetAssetPathService(const AssetPathService& service);
 FBZZ_GRAPHICS_API std::string ResolveAssetPath(const std::string& path);
 [[nodiscard]] FBZZ_GRAPHICS_API bool ResolveTextureSource(std::string_view texturePath, std::string& outSourcePath);
 [[nodiscard]] FBZZ_GRAPHICS_API std::string NormalizeTextureKey(std::string_view reference);
+[[nodiscard]] FBZZ_GRAPHICS_API TextureMipSettings ResolveTextureMipSettings(std::string_view sourcePath);
 
 } /// @note namespace fbzz::renderer

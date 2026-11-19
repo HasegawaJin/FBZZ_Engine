@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-03
 #include <Graphics/Renderer/AssetPathService.hpp>
+#include <Graphics/Renderer/TextureFileDecoder.hpp>
 
 namespace fbzz::renderer {
 
@@ -21,6 +22,12 @@ AssetPathService& Service()
 void SetAssetPathService(const AssetPathService& service)
 {
     Service() = service;
+}
+
+TextureMipSettings ResolveTextureMipSettings(std::string_view sourcePath)
+{
+    const auto& service = Service();
+    return service.resolveTextureMipSettings ? service.resolveTextureMipSettings(sourcePath) : TextureMipSettings{};
 }
 
 ShaderCapabilities ResolveShaderCapabilities(std::string_view reference)

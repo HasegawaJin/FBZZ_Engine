@@ -16,12 +16,12 @@
 | 世代照合 | projectEpoch・attempt・contentRevision・deviceEpoch | slotGeneration はハンドルの gen。`AssetStore::Clear` は世代を床へ畳み旧ハンドルを蘇らせない |
 | 依存 | 必須 / 任意、循環は経路付きで失敗 | Material がテクスチャを任意依存として宣言する |
 | 経路 | Texture / Model / ModelAsset / MaterialAsset | Model は公開中の差し替えをしない (MeshRenderer が `Mesh*` を持つため)。.mesh と DCC 直読みは同期 importer へ倒す |
-| Texture の CPU 展開 | `renderer::DecodeTextureFileRGBA8` | 同期経路 (DX12Texture::Init) も同じ関数を通し、画素を一致させる |
+| Texture の CPU 展開 | `renderer::DecodeTextureFileRGBA8` / `PrepareTextureMipmaps` | 同期経路も同じ展開・生成処理を通し、画素を一致させる |
 | GPU 転送 | `ResourceManager::BeginTextureUpload` / `IsUploadComplete` / `PublishTexture` / `ReplaceTextureContents` | 品質変更はハンドルを保ったまま中身を差し替え、旧実体と bindless 枠はフェンス付きで回収 |
 | 専用コピーキュー | `DX12Context` の COPY キューと専用フェンス | 転送先は COMMON で作り、コピー後の COMMON → PIXEL_SHADER_RESOURCE はフレーム冒頭で描画キューに記録。作れない機械・`FBZZ_COPY_QUEUE=0` では描画キューへ倒す。転送先は PendingUpload が持ち、コピー完了前に破棄されても消えない |
 | チャンク索引・部分 I/O | `Engine/Format/FzChunkFormat.hpp` (.fztc: 索引 = offset・格納サイズ・展開サイズ・CRC32) と `ChunkFileReader` | テクスチャは品質段ごとのチャンクを `<Project>/Library/StreamCache` に持ち、要る段だけ読む。元画像の大きさ・更新時刻・展開規則の版が変われば捨てる。書き込みは一時ファイル → 置き換え |
 | モデルの部分 I/O | `ModelAssetImporter::ImportPartial` | .fzasset は submesh ヘッダーから本体の大きさが決まるので、索引無しで高品質 LOD の本体をシークで飛ばす (形式の版は上げない) |
-| 品質の自動選択 | `StreamedTextureResolver::SetAutoQuality`・`EstimateScreenPixels` | マテリアルを描く物体の投影直径から品質段を決める (テクスチャ長辺 / 直径 の log2 − 1)。既定は無効 |
+| 品質の自動選択 | `StreamedTextureResolver::SetAutoQuality`・`EstimateRenderTexturePixels` | 描画メッシュの投影直径から自動生成ミップの常駐段を選ぶ。既定で有効 |
 | フレーム境界 | `Application::Run(IModule&)` が OnUpdate の前に `Pump()` | レンダラーのフレーム外 |
 | 同期 `Load<T>` との共存 | 同期 Load が配ったスロットは固定 (`AssetStore::Pin`) し自動解放しない | 予約中スロットを同期 Load が埋めたら非同期結果を棄却して計数・警告 |
 | 常駐予算・LRU 解放 | `Config::residentBudgetBytes` / `evictionGracePumps` | 既定は予算も猶予も 0 (解放しない)。解放した物の再利用が同期ロードの引っかかりになるため、プロジェクトが `Configure` で明示的に有効にする |
@@ -48,6 +48,18 @@ BuildPipeline はコピーした 2D 画像から全品質段を生成し、生�
 保持していた GPU ハンドルは使用前に resolver から引き直す。別ビューでの使用は同じ利用権を延長し、非表示・破棄後は resolver の猶予と AssetStreamer の常駐予算に従う。UI の材質テクスチャもキャッシュヒット時に利用権を更新する。生成した白テクスチャ・スプラット等は ResourceManager の生成資源として維持する。
 
 キューブ・配列・浮動小数点 DDS は 2D RGBA8 に変換しない。利用権は同じ台帳で管理し、ネイティブ形式の同期 GPU ロードを固定せずに使用する。この形式の部分 mip 常駐・非同期ネイティブ転送は本段の対象ではない。2D RGBA8 の非同期転送と品質制御は既存経路を使う。
+
+### PNG / JPEG の自動ミップ生成 (2026-11-18)
+
+PNG / JPG / JPEG は `.meta` の `texture.mipmaps` が ON なら、CPU 展開後に 1x1 までのミップ列を生成する。設定がなければ画像型の既定値を使い、Color は ON、UI / Sprite は OFF とする。0 段目と元画像寸法は維持する。DDS の既存ミップは変更しない。
+
+Graphics は `.meta` を解釈せず、`AssetPathService` を通じて Engine が確定した生成有無と sRGB 設定を受け取る。ストリーミングでは Snapshot 時点の設定をワーカーへ渡す。同期ロード、再インポート、ストリーミング、配布キャッシュは共通の `PrepareTextureMipmaps` を使う。sRGB はリニア空間で縮小し、生成には DirectXTex の非 WIC 既定フィルター (2 冪寸法は Box、それ以外は Linear) を使う。Mip Filter / Sharpen / Normalize の個別設定の接続は本変更の範囲外とする。
+
+生成は品質段の選択とキャッシュ保存より前に行い、品質段 q は同じ列の q 段目以降を使う。`.fztc` の世代にはミップ生成有無・sRGB・展開規則の版を含め、設定変更や旧キャッシュからの読込みで 1 段の画像を再利用しない。配布時はコピー元の設定を使い、meta のコピー順による生成結果の違いを防ぐ。
+
+GBuffer 対応の標準 PBR マテリアルをラスタライズするときは、描画対象メッシュの投影直径に応じて、高解像度の mip を最大 4 段外す。メッシュの LOD 番号は頂点密度を表すため、テクスチャの品質段は投影直径から別に決める。1 段の余裕を残し、UV の一部を拡大する場合は必要な解像度を引き上げる。GPU は常駐している段の中からサンプリング時に mip を選ぶ。
+
+同じ画像を複数の描画先で使う場合は最も高い品質に合わせる。レイ描画、投影サイズが不明な用途、UI / Sprite、Mipmaps OFF は、画面サイズによる縮小を要求しない。マテリアル・シーン・セルのテクスチャ先読みは利用権を維持し、希望品質は描画に委ねる。品質の切り替えは既存の保持期間と非同期転送を使い、転送完了時に同じハンドルの GPU 実体を差し替える。
 
 ### 組込み型の DLL ストア境界 (2026-10-31)
 

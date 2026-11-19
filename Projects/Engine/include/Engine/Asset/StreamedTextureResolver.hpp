@@ -44,7 +44,8 @@ public:
     [[nodiscard]] FBZZ_ENGINE_API static AssetQuality QualityForScreenSize(uint32_t textureWidth, uint32_t textureHeight,
                                                            float screenPixels, AssetQuality lowest);
 
-    /// @brief 画面上の大きさによる品質の自動選択を有効にする。既定は無効 (既存の絵を変えないため)。
+    /// @brief 画面上の大きさによる品質の自動選択を切り替える。既定は有効。
+    /// @note 自動ミップを有効にした PNG / JPEG が対象。UI / Sprite と投影サイズが不明な利用は原寸を要求する。
     /// @note 有効にしても、切り替えは台帳のヒステリシス (qualityHoldPumps) を経てから起きる。
     void SetAutoQuality(bool enabled) { m_autoQuality = enabled; }
     [[nodiscard]] bool GetAutoQuality() const { return m_autoQuality; }
@@ -91,7 +92,7 @@ private:
     std::uint64_t m_frame = 0;
     std::uint32_t m_releaseAfterFrames = 300;
     MissPolicy    m_missPolicy = MissPolicy::Placeholder;
-    bool          m_autoQuality = false;
+    bool          m_autoQuality = true;
 };
 
 } /// @note namespace fbzz::asset

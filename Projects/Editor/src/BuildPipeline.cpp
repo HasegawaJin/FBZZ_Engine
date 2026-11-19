@@ -1059,7 +1059,8 @@ bool BuildPipeline::TickCopyOneFile()
         return false;
     }
     std::string cacheError;
-    if (!asset::texturecache::BakeDistributionTexture(util::FileSystem::PathToUtf8(job.dst), cacheError)) {
+    if (!asset::texturecache::BakeDistributionTexture(util::FileSystem::PathToUtf8(job.dst), cacheError,
+                                                     util::FileSystem::PathToUtf8(job.src))) {
         SetFailed("Failed to bake streaming texture: " + cacheError);
         return false;
     }

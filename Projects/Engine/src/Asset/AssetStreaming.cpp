@@ -34,7 +34,7 @@ struct CompletionQueue {
     std::vector<Completion> items;
 };
 
-/// 解放を断られたアセットを試し直すまでの Pump 数。
+/// @note 解放を断られたアセットを試し直すまでの Pump 数。
 constexpr std::uint64_t kEvictionRetryPumps = 120;
 
 enum class Phase : std::uint8_t {
@@ -77,9 +77,9 @@ struct AssetStreamer::Impl {
         AssetPriority  priority = AssetPriority::Background;
         std::uint64_t  enqueuedPump = 0;
 
-        /// 要求実行ごとに進む。キャンセル後の再要求で旧ジョブの結果を拾わない。
+        /// @note キャンセル後の再要求で旧ジョブの結果を拾わない。
         std::uint64_t  attempt = 1;
-        /// 読み直しのたびに進む。これより古い結果は公開しない。
+        /// @note これより古い読み直しの結果は公開しない。
         std::uint32_t  requestedRevision = 1;
         std::uint32_t  publishedRevision = 0;
 
@@ -96,16 +96,16 @@ struct AssetStreamer::Impl {
 
         /// @name 品質と常駐
         /// @{
-        /// 次のジョブで作る品質。公開されると residentQuality になる。
+        /// @note 次のジョブで作る品質。公開時に residentQuality へ反映する。
         AssetQuality   requestedQuality = 0;
         AssetQuality   residentQuality = 0;
-        /// 利用権から集約した希望品質と、その値になった Pump。ヒステリシスの起点。
+        /// @note 利用権から集約した希望品質と、その値になった Pump。ヒステリシスの起点。
         AssetQuality   desiredQuality = 0;
         std::uint64_t  desiredSincePump = 0;
         std::uint64_t  residentBytes = 0;
-        /// 利用権がゼロになった Pump。LRU の順序と猶予の起点。
+        /// @note 利用権がゼロになった Pump。LRU の順序と猶予の起点。
         std::uint64_t  releasedAtPump = 0;
-        /// 解放を断られた Pump。猶予の間は試し直さない。
+        /// @note 解放を断られた Pump。猶予の間は試し直さない。
         std::uint64_t  evictionRefusedAtPump = 0;
         bool           evictionRefused = false;
         /// @}
@@ -114,8 +114,8 @@ struct AssetStreamer::Impl {
     struct Lease {
         std::uint64_t entryId = 0;
         AssetPriority priority = AssetPriority::Visible;
-        AssetQuality  quality = 0;
-        /// 他のアセットの依存として台帳自身が持つ利用権。
+        std::optional<AssetQuality> quality;
+        /// @note 他のアセットの依存として台帳自身が持つ利用権。
         std::uint64_t ownerEntryId = 0;
     };
 
@@ -141,11 +141,11 @@ struct AssetStreamer::Impl {
     std::uint64_t syncLoads = 0;
     std::uint64_t evictions = 0;
     std::uint32_t deferredPrefetches = 0;
-    /// 公開済み実体 + 保持中の CPU 成果物。Pump のたびに数え直す。
+    /// @note 公開済み実体 + 保持中の CPU 成果物。Pump のたびに数え直す。
     std::uint64_t residentBytes = 0;
     bool          overBudget = false;
     bool          overBudgetReported = false;
-    /// 予算超過が続く間、全アセットの希望品質へ上乗せする段数。
+    /// @note 予算超過が続く間、全アセットの希望品質へ上乗せする段数。
     AssetQuality  qualityBias = 0;
     std::uint64_t qualityBiasChangedPump = 0;
     std::unordered_set<std::string> reportedSyncMisses;
@@ -198,18 +198,18 @@ struct AssetStreamer::Impl {
     void RecomputePriority(Entry& entry)
     {
         AssetPriority best = AssetPriority::Background;
-        AssetQuality  quality = 0xFF;
+        std::optional<AssetQuality> quality;
         for (const std::uint64_t leaseId : entry.leaseIds) {
             const auto it = leases.find(leaseId);
             if (it == leases.end()) continue;
             if (it->second.priority < best) best = it->second.priority;
-            quality = (std::min)(quality, it->second.quality);
+            const auto requested = it->second.quality;
+            if (requested && (!quality || *requested < *quality)) quality = requested;
         }
         entry.priority = best;
-        /// @note 利用権が無いときは希望を動かさない。直前の品質のまま猶予を待って解放される。
-        if (entry.leaseIds.empty()) return;
-        if (quality != entry.desiredQuality) {
-            entry.desiredQuality = quality;
+        /// @note 保持だけの利用権しかなければ、直前の希望品質 (初回は 0) を使う。
+        if (quality && *quality != entry.desiredQuality) {
+            entry.desiredQuality = *quality;
             entry.desiredSincePump = pumpIndex;
         }
     }
@@ -331,7 +331,8 @@ struct AssetStreamer::Impl {
         }
     }
 
-    std::uint64_t AddLease(Entry& entry, AssetPriority priority, AssetQuality quality, std::uint64_t ownerEntryId)
+    std::uint64_t AddLease(Entry& entry, AssetPriority priority, std::optional<AssetQuality> quality,
+                           std::uint64_t ownerEntryId)
     {
         const std::uint64_t leaseId = nextLeaseId++;
         leases[leaseId] = Lease{ entry.id, priority, quality, ownerEntryId };
@@ -341,7 +342,7 @@ struct AssetStreamer::Impl {
     }
 
     RawRequest Request(std::string_view typeName, const std::string& reference,
-                       AssetPriority priority, AssetQuality quality, std::uint64_t ownerEntryId)
+                       AssetPriority priority, std::optional<AssetQuality> quality, std::uint64_t ownerEntryId)
     {
         const auto channelIt = channels.find(std::string(typeName));
         if (channelIt == channels.end()) return { 0, {}, AssetLoadError::NoChannel };
@@ -446,7 +447,8 @@ struct AssetStreamer::Impl {
         entry.candidateQuality = quality;
 
         for (const AssetDependency& dependency : entry.decoded->dependencies) {
-            const RawRequest request = Request(dependency.typeName, dependency.reference, entry.priority, 0, entry.id);
+            const RawRequest request = Request(dependency.typeName, dependency.reference, entry.priority,
+                                               dependency.quality, entry.id);
             if (request.leaseId == 0) {
                 if (!dependency.required) continue;
                 Fail(entry, AssetLoadError::DependencyFailed,

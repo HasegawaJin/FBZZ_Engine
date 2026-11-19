@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-19
 #include <Engine/Asset/TextureStreamCache.hpp>
+#include <Graphics/Renderer/AssetPathService.hpp>
 #include <Engine/Asset/ChunkFile.hpp>
 #include <Engine/Core/Logger.hpp>
 
@@ -62,11 +63,14 @@ bool DecodeMip(const std::vector<uint8_t>& bytes, renderer::DecodedTextureRGBA8:
 
 } /// @note namespace
 
-uint64_t MakeSourceStamp(uint64_t sourceSize, int64_t sourceWriteTime)
+uint64_t MakeSourceStamp(uint64_t sourceSize, int64_t sourceWriteTime,
+                         const renderer::TextureMipSettings& settings)
 {
     uint64_t hash = Fnv1a(&sourceSize, sizeof(sourceSize));
     hash = Fnv1a(&sourceWriteTime, sizeof(sourceWriteTime), hash);
-    return Fnv1a(&kDecodeRulesVersion, sizeof(kDecodeRulesVersion), hash);
+    hash = Fnv1a(&kDecodeRulesVersion, sizeof(kDecodeRulesVersion), hash);
+    const uint8_t flags = (settings.enabled ? 1u : 0u) | (settings.srgb ? 2u : 0u);
+    return Fnv1a(&flags, sizeof(flags), hash);
 }
 
 std::string CacheFileName(const std::string& sourcePath)
@@ -98,7 +102,8 @@ renderer::DecodedTextureRGBA8 SelectQuality(const renderer::DecodedTextureRGBA8&
     return result;
 }
 
-bool BakeDistributionTexture(const std::string& sourcePath, std::string& outError)
+bool BakeDistributionTexture(const std::string& sourcePath, std::string& outError,
+                             const std::string& settingsSourcePath)
 {
     const auto path = util::FileSystem::PathFromUtf8(sourcePath);
     auto extension = path.extension().string();
@@ -112,8 +117,10 @@ bool BakeDistributionTexture(const std::string& sourcePath, std::string& outErro
     const auto time = error ? std::filesystem::file_time_type{} : std::filesystem::last_write_time(path, error);
     if (error) { outError = error.message(); return false; }
     renderer::DecodedTextureRGBA8 decoded;
-    if (!renderer::DecodeTextureFileRGBA8(sourcePath, decoded, &outError)) return false;
-    if (!Write(sourcePath + ".fztc", MakeSourceStamp(size, time.time_since_epoch().count()), decoded, 4)) {
+    const auto settings = renderer::ResolveTextureMipSettings(settingsSourcePath.empty() ? sourcePath : settingsSourcePath);
+    if (!renderer::DecodeTextureFileRGBA8(sourcePath, decoded, &outError)
+        || !renderer::PrepareTextureMipmaps(sourcePath, decoded, settings, &outError)) return false;
+    if (!Write(sourcePath + ".fztc", MakeSourceStamp(size, time.time_since_epoch().count(), settings), decoded, 4)) {
         outError = "Failed to write texture stream cache: " + sourcePath;
         return false;
     }

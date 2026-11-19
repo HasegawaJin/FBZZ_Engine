@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <objbase.h>
+#include "ScopedComApartment.hpp"
 
 #include <Graphics/Renderer/TextureFileDecoder.hpp>
 #include <Core/Util/StringUtils.hpp>
@@ -13,6 +14,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
 
 /// @note DirectXTex/WIC が内部で CoCreateInstance を呼ぶため ole32.lib をリンクする。
 #pragma comment(lib, "ole32.lib")
@@ -20,27 +22,6 @@
 namespace fbzz::renderer {
 
 namespace {
-
-/// @brief 呼び出しの間だけ COM を MTA で初期化する。既に初期化済みのスレッドでは何もしない。
-/// @note RPC_E_CHANGED_MODE は «既に STA で初期化済み» で、WIC はそのまま使えるので失敗扱いにしない。
-/// @see https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex CoInitializeEx «Return value»
-class ScopedComApartment {
-public:
-    ScopedComApartment()
-    {
-        const HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        m_ownsApartment = SUCCEEDED(result);
-    }
-    ~ScopedComApartment()
-    {
-        if (m_ownsApartment) CoUninitialize();
-    }
-    ScopedComApartment(const ScopedComApartment&) = delete;
-    ScopedComApartment& operator=(const ScopedComApartment&) = delete;
-
-private:
-    bool m_ownsApartment = false;
-};
 
 bool EndsWithCI(const std::string& text, const char* suffix)
 {
@@ -55,6 +36,68 @@ void SetError(std::string* outError, const char* message, const std::string& pat
 }
 
 } /// @note namespace
+
+bool SupportsAutomaticTextureMips(const std::string& path)
+{
+    return EndsWithCI(path, ".png") || EndsWithCI(path, ".jpg") || EndsWithCI(path, ".jpeg");
+}
+
+bool PrepareTextureMipmaps(const std::string& path, DecodedTextureRGBA8& texture,
+                          const TextureMipSettings& settings, std::string* outError)
+{
+    if (!settings.enabled || !SupportsAutomaticTextureMips(path)) return true;
+    if (texture.mips.empty()) {
+        SetError(outError, "ミップ生成元の画像がありません", path);
+        return false;
+    }
+    if (texture.mips.size() > 1) return true;
+    auto& base = texture.mips[0];
+    const std::size_t rowBytes = static_cast<std::size_t>(base.width) * 4u;
+    if (base.width == 0 || base.height == 0 || rowBytes / 4u != base.width
+        || rowBytes > (std::numeric_limits<std::size_t>::max)() / base.height
+        || base.rgba.size() != rowBytes * base.height) {
+        SetError(outError, "ミップ生成元の画素数が不正です", path);
+        return false;
+    }
+    if (base.width == 1 && base.height == 1) return true;
+
+    DirectX::Image image{};
+    image.width = base.width;
+    image.height = base.height;
+    image.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    image.rowPitch = rowBytes;
+    image.slicePitch = base.rgba.size();
+    image.pixels = base.rgba.data();
+    /// @note 非 WIC の既定フィルターは 2 冪寸法に Box、それ以外に Linear を使い、sRGB とアルファを独立に扱う。
+    /// @see https://github.com/microsoft/DirectXTex/wiki/Filter-Flags Color space / WIC usage / Algorithm
+    const auto filter = static_cast<DirectX::TEX_FILTER_FLAGS>(DirectX::TEX_FILTER_FORCE_NON_WIC
+        | (settings.srgb ? DirectX::TEX_FILTER_SRGB : DirectX::TEX_FILTER_DEFAULT));
+    DirectX::ScratchImage chain;
+    if (FAILED(DirectX::GenerateMipMaps(image, filter, 0, chain))) {
+        SetError(outError, "ミップ生成に失敗しました", path);
+        return false;
+    }
+
+    std::vector<DecodedTextureRGBA8::Mip> levels;
+    levels.reserve(chain.GetMetadata().mipLevels);
+    levels.push_back(base);
+    for (std::size_t level = 1; level < chain.GetMetadata().mipLevels; ++level) {
+        const DirectX::Image* source = chain.GetImage(level, 0, 0);
+        if (!source) {
+            SetError(outError, "生成したミップを取得できません", path);
+            return false;
+        }
+        auto& mip = levels.emplace_back();
+        mip.width = static_cast<std::uint32_t>(source->width);
+        mip.height = static_cast<std::uint32_t>(source->height);
+        const std::size_t pitch = source->width * 4u;
+        mip.rgba.resize(pitch * source->height);
+        for (std::size_t row = 0; row < source->height; ++row)
+            std::memcpy(mip.rgba.data() + row * pitch, source->pixels + row * source->rowPitch, pitch);
+    }
+    texture.mips = std::move(levels);
+    return true;
+}
 
 std::size_t DecodedTextureRGBA8::ByteSize() const
 {
@@ -92,7 +135,7 @@ bool DecodeTextureFileRGBA8(const std::string& path, DecodedTextureRGBA8& out, s
     out.mips.clear();
     out.sourceWidth = 0;
     out.sourceHeight = 0;
-    const ScopedComApartment apartment;
+    const detail::ScopedComApartment apartment;
 
     DirectX::ScratchImage source;
     const std::wstring widePath = util::StringUtils::ToWide(path);

@@ -22,20 +22,23 @@ inline constexpr uint32_t kContentKind = MakeFourCC('T', 'X', 'Q', 'L');
 /// @note 付帯情報チャンクの ID。品質段のチャンクは 0 から番号を振る。
 inline constexpr uint32_t kMetaChunkId = 0xFFFFFFFFu;
 /// @note 展開規則の版。展開や縮小のやり方を変えたら上げる (古いキャッシュを捨てさせる)。
-inline constexpr uint32_t kDecodeRulesVersion = 1;
+inline constexpr uint32_t kDecodeRulesVersion = 2;
 
-/// @brief 元画像の大きさと更新時刻から世代を作る。どちらかが変われば別の値になる。
-[[nodiscard]] FBZZ_ENGINE_API uint64_t MakeSourceStamp(uint64_t sourceSize, int64_t sourceWriteTime);
+/// @brief 元画像の大きさ・更新時刻・ミップ生成設定から世代を作る。どれかが変われば別の値になる。
+[[nodiscard]] FBZZ_ENGINE_API uint64_t MakeSourceStamp(uint64_t sourceSize, int64_t sourceWriteTime,
+    const renderer::TextureMipSettings& settings = {});
 
 /// @brief 元画像パスからキャッシュのファイル名 (拡張子込み) を作る。大小と区切り文字の違いは同じ名前になる。
 [[nodiscard]] FBZZ_ENGINE_API std::string CacheFileName(const std::string& sourcePath);
 /// @brief 配布先の元画像の隣に品質キャッシュを生成する。対応外の拡張子・ネイティブ DDS は何もせず成功する。
 /// @note 出力先で世代を計算するため、開発 PC の絶対パスへ依存しない。
-[[nodiscard]] FBZZ_ENGINE_API bool BakeDistributionTexture(const std::string& sourcePath, std::string& outError);
+/// @param settingsSourcePath 空でなければコピー元の画像パス。meta のコピー順に依存せず生成設定を取得する。
+[[nodiscard]] FBZZ_ENGINE_API bool BakeDistributionTexture(const std::string& sourcePath, std::string& outError,
+    const std::string& settingsSourcePath = {});
 
 /// @brief 全段展開した画像から、品質段ごとの表現を作る。
 /// @note ミップ付きの画像は «q 段目以降のミップ列»、1 段の画像は «q 回縮小した 1 段» が品質段 q の表現。
-/// @note 同期経路 (DecodeTextureFileRGBA8 の dropTopLevels) と同じ画素になる。
+/// @note 自動ミップ生成を行う画像は PrepareTextureMipmaps の結果を渡し、同期経路と同じ列から選ぶ。
 [[nodiscard]] FBZZ_ENGINE_API renderer::DecodedTextureRGBA8 SelectQuality(const renderer::DecodedTextureRGBA8& full, AssetQuality quality);
 
 /// @brief 全品質段 [0, lowest] を書き出す。書けなくても読み込みは続けてよい (キャッシュは任意)。

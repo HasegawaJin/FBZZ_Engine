@@ -161,6 +161,23 @@ void ApplyAlbedoSpriteUv(std::string_view albedoReference,
     std::memcpy(paramData.data() + offsetVar->offset, offset, sizeof(offset));
 }
 
+/// @note UV の一部分を拡大して描くとテクスチャ全体に必要な解像度が上がる。繰り返しは品質を落とす根拠にしない。
+float TextureRequestPixels(float pixels, const renderer::ShaderDescriptor& descriptor,
+                           const std::vector<uint8_t>& params)
+{
+    if (pixels <= 0.0f) return pixels;
+    const auto* tilingVar = descriptor.FindVar("uvTiling");
+    if (!tilingVar) return pixels;
+    if (tilingVar->varType != renderer::ShaderVarType::Float || tilingVar->columns != 2
+        || static_cast<size_t>(tilingVar->offset) + 2 * sizeof(float) > params.size())
+        return 0.0f;
+    float tiling[2];
+    std::memcpy(tiling, params.data() + tilingVar->offset, sizeof(tiling));
+    if (!std::isfinite(tiling[0]) || !std::isfinite(tiling[1])) return 0.0f;
+    const float coverage = std::min({1.0f, std::abs(tiling[0]), std::abs(tiling[1])});
+    return coverage > 0.0f ? pixels / coverage : 0.0f;
+}
+
 }
 
 AnimatorComponent* FindAnimator(GameObject& go)
@@ -387,10 +404,16 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
         ApplyAlbedoSpriteUv(effective->texturePaths[0], *effective->descriptor, resources, viewBytes);
         if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
         auto& resolver = asset::StreamedTextureResolver::Engine();
+        float texturePixels = 0.0f;
+        bool hasTextureRequest = false;
         for (size_t i = 0; i < effective->texturePaths.size(); ++i) {
             /// @note Empty paths call no resolver or callback; the final check still covers the complete texture pass.
             if (effective->texturePaths[i].empty()) continue;
-            viewTextures[i] = resolver.ResolveGpu(resources, effective->texturePaths[i], screenPixels);
+            if (!hasTextureRequest) {
+                texturePixels = TextureRequestPixels(screenPixels, *effective->descriptor, viewBytes);
+                hasTextureRequest = true;
+            }
+            viewTextures[i] = resolver.ResolveGpu(resources, effective->texturePaths[i], texturePixels);
             if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) break;
         }
         if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;

@@ -322,14 +322,15 @@ void ResourceManager::Reset()
 std::unique_ptr<ITexture> ResourceManager::CreateTextureForPath(const std::string& sourcePath,
                                                                  bool flipGreen)
 {
-    if (!flipGreen) return m_renderer.CreateNativeTexture(sourcePath);
+    if (!flipGreen && !SupportsAutomaticTextureMips(sourcePath)) return m_renderer.CreateNativeTexture(sourcePath);
     DecodedTextureRGBA8 decoded;
     std::string error;
-    if (!DecodeTextureFileRGBA8(sourcePath, decoded, &error)) {
-        FBZZ_LOG_ERROR("Texture green flip decode failed: %s", error.c_str());
+    if (!DecodeTextureFileRGBA8(sourcePath, decoded, &error)
+        || !PrepareTextureMipmaps(sourcePath, decoded, ResolveTextureMipSettings(sourcePath), &error)) {
+        FBZZ_LOG_ERROR("Texture decode failed: %s", error.c_str());
         return nullptr;
     }
-    FlipTextureGreen(decoded);
+    if (flipGreen) FlipTextureGreen(decoded);
     std::vector<TextureMipData> mips;
     if (!decoded.ToMipData(mips)) return nullptr;
     return m_renderer.CreateNativeTextureFromDataMips(mips.data(), static_cast<uint32_t>(mips.size()));

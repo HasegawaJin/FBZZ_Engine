@@ -180,6 +180,8 @@ bool SceneManager::AcquireSceneLeases(const std::string& name, asset::AssetPrior
     options.priority = priority;
     for (const SceneAssetReference& reference : references) {
         /// @note 拒否 (経路未登録・予算超過) はその分が同期ロードになるだけなので、先読みは続ける。
+        if (reference.kind == SceneAssetKind::Texture) options.quality.reset();
+        else options.quality = asset::AssetQuality{0};
         (void)leases.Add(StreamTypeNameOf(reference.kind), reference.reference, options);
     }
     m_sceneLeases.emplace(name, std::move(leases));

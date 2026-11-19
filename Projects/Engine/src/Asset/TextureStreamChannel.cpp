@@ -127,7 +127,8 @@ public:
                 if (!cacheDir.empty()) context->cachePath = cacheDir + "/" + texturecache::CacheFileName(sourcePath);
                 context->packagedCachePath = sourcePath + ".fztc";
                 context->sourceStamp = texturecache::MakeSourceStamp(
-                    static_cast<uint64_t>(size), static_cast<int64_t>(writeTime.time_since_epoch().count()));
+                    static_cast<uint64_t>(size), static_cast<int64_t>(writeTime.time_since_epoch().count()),
+                    {context->settings.mipmaps, context->settings.srgb});
             }
         }
 
@@ -156,7 +157,7 @@ public:
     }
 
     /// @brief ワーカー: 品質段キャッシュから要る段だけを読む。無ければ元画像を全体展開してキャッシュを作る。
-    /// @note 最高品質で元画像から読む場合は、同期経路と同じ関数 (DecodeTextureFileRGBA8) を通す。
+    /// @note 元画像の展開とミップ生成は同期経路と共通の DecodeTextureFileRGBA8 / PrepareTextureMipmaps を通す。
     static bool DecodePixels(const AssetJobInput& input, const TextureJobContext& context,
                              renderer::DecodedTextureRGBA8& out, std::string& outError)
     {
@@ -167,7 +168,9 @@ public:
             && texturecache::ReadQuality(context.cachePath, context.sourceStamp, input.quality, out))
             return true;
         renderer::DecodedTextureRGBA8 full;
-        if (!renderer::DecodeTextureFileRGBA8(input.resolvedPath, full, &outError)) return false;
+        if (!renderer::DecodeTextureFileRGBA8(input.resolvedPath, full, &outError)
+            || !renderer::PrepareTextureMipmaps(input.resolvedPath, full,
+                {context.settings.mipmaps, context.settings.srgb}, &outError)) return false;
         if (!context.cachePath.empty()
             && !texturecache::Write(context.cachePath, context.sourceStamp, full, kLowestTextureQuality)) {
             /// @note The optional cache failure must not turn successfully decoded source pixels into a missing texture.

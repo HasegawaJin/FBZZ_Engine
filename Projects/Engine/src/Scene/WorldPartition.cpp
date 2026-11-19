@@ -462,6 +462,8 @@ struct WorldPartitionRuntime::Impl {
         asset::AssetRequestOptions options;
         options.priority = cell.pendingRepresentation == WorldCellRepresentation::NEAR ? asset::AssetPriority::Visible : asset::AssetPriority::Prefetch;
         for (const auto& [type, reference] : dependencies) {
+            if (type == asset::AssetStreamTypeName<asset::TextureAsset>()) options.quality.reset();
+            else options.quality = asset::AssetQuality{0};
             const auto error = cell.pendingLeases.Add(type, reference, options);
             if (error != asset::AssetLoadError::None) { Fail(cell, "Asset dependency request refused: " + type + " " + reference); return false; }
         }

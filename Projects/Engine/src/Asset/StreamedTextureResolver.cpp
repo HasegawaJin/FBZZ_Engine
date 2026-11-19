@@ -6,6 +6,7 @@
 #include <Engine/Asset/TextureAsset.hpp>
 #include <Engine/Renderer/ITexture.hpp>
 #include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Renderer/TextureFileDecoder.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -66,8 +67,8 @@ AssetQuality StreamedTextureResolver::QualityForScreenSize(uint32_t textureWidth
                                                            float screenPixels, AssetQuality lowest)
 {
     const uint32_t longest = (std::max)(textureWidth, textureHeight);
-    if (screenPixels <= 0.0f || longest == 0) return 0;
-    const float ratio = static_cast<float>(longest) / screenPixels;
+    if (!(screenPixels > 0.0f) || !std::isfinite(screenPixels) || longest == 0) return 0;
+    const float ratio = static_cast<float>(longest) / (std::max)(screenPixels, 1.0f);
     if (ratio <= 1.0f) return 0;
     /// @note 1 段の余裕: 拡大縮小や UV の繰り返しで画面上のテクセル密度は物体の大きさより高くなりがちで、
     /// @note ぴったりの段を選ぶとぼけが目に見える。
@@ -88,8 +89,8 @@ renderer::ResourceHandle<renderer::TextureTag> StreamedTextureResolver::ResolveG
         return resources.LoadTexture(reference, flipGreen);
     }
     /// @note 同じテクスチャを貼った物体のうち最も大きく映るものに合わせる。1 つでも大きさ不明なら最高品質。
-    if (screenPixels <= 0.0f) entry->screenSizeKnown = false;
-    entry->maxScreenPixels = (std::max)(entry->maxScreenPixels, screenPixels);
+    if (!(screenPixels > 0.0f) || !std::isfinite(screenPixels)) entry->screenSizeKnown = false;
+    else entry->maxScreenPixels = (std::max)(entry->maxScreenPixels, screenPixels);
     const TextureAsset* asset = Complete(*entry);
     return asset ? asset->gpuHandle : resources.GetWhiteTexture();
 }
@@ -138,9 +139,14 @@ void StreamedTextureResolver::EndFrame()
         if (entry.lastUsedFrame == m_frame) {
             AssetQuality quality = 0;
             if (m_autoQuality && entry.screenSizeKnown) {
-                if (const TextureAsset* asset = streamer.TryGet(entry.lease.Handle()))
+                if (const TextureAsset* asset = streamer.TryGet(entry.lease.Handle()); asset
+                    && asset->settings.mipmaps && asset->settings.type != TextureType::UI
+                    && asset->settings.type != TextureType::Sprite) {
                     quality = QualityForScreenSize(asset->sourceWidth, asset->sourceHeight,
                                                    entry.maxScreenPixels, kAutoQualityLowest);
+                    if (quality != 0 && !renderer::SupportsAutomaticTextureMips(asset->sourcePath))
+                        quality = 0;
+                }
             }
             if (quality != entry.appliedQuality) {
                 entry.lease.SetDesiredQuality(quality);

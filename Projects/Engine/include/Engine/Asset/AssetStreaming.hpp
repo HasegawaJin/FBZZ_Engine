@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <typeinfo>
@@ -53,8 +54,8 @@ using AssetQuality = std::uint8_t;
 
 struct AssetRequestOptions {
     AssetPriority priority = AssetPriority::Visible;
-    /// @note 希望品質。同じアセットの利用権の中で最も高い (小さい) 値に集約する。
-    AssetQuality  quality = 0;
+    /// @note 希望品質。nullopt は保持・先読みだけ行い、描画などの品質要求と競合しない。
+    std::optional<AssetQuality> quality = AssetQuality{0};
 };
 
 struct AssetLoadStatus {
@@ -86,6 +87,8 @@ struct AssetDependency {
     std::string reference;
     /// @note false の依存は失敗しても親を止めず、完成も待たない (型別の代替表示に任せる)。
     bool        required = true;
+    /// @note nullopt は依存先を保持するが品質は要求しない。
+    std::optional<AssetQuality> quality = AssetQuality{0};
 };
 
 /// @brief ワーカーが作る GPU 非依存の成果物。
