@@ -94,6 +94,13 @@ async function PublishedManagedFixture(configuration, run) {
   }
 }
 
+/// @brief The new-project dialog uses the first compatible template as its default.
+test('the default new project uses Standard', async () => {
+  const { TemplateService } = await services;
+  const templates = await new TemplateService().listTemplates();
+  assert.equal(templates.find((template) => template.compatible)?.id, 'standard');
+});
+
 for (const templateId of ['empty', 'standard']) {
   /// @brief Each template creates a launchable C# project without native Script scaffolding.
   test(`${templateId} creates a launchable C# project without native Script scaffolding`, async () => {
@@ -123,6 +130,29 @@ for (const templateId of ['empty', 'standard']) {
       }
       const cmake = await readFile(path.join(project, 'CMakeLists.txt'), 'utf8');
       assert.doesNotMatch(cmake, /ScriptsDll|ScriptModules|REGISTER_SCRIPT|PRIVATE Assets Include Src/);
+      assert.equal(metadata.default_scene, 'Assets/Scenes/Main.scene');
+      if (templateId === 'standard') {
+        for (const relative of [
+          'Assets/Scenes/ActiveRagdollSample.scene',
+          'Assets/Scenes/ActiveRagdollSample.scene.meta',
+          'Assets/Scripts/Managed/ActiveRagdollSampleComponent.cs',
+          'Assets/Scripts/Managed/ActiveRagdollSampleComponent.cs.meta',
+          'Assets/ActiveRagdollSample/Walker.glb',
+          'Assets/ActiveRagdollSample/Walker.glb.meta',
+          'Assets/ActiveRagdollSample/Walker.ragdoll',
+          'Assets/ActiveRagdollSample/Walker.ragdoll.meta',
+          ...['Walker', 'Ground', 'Step', 'TripBar', 'Crate'].flatMap((material) => [
+            `Assets/ActiveRagdollSample/${material}.mat`, `Assets/ActiveRagdollSample/${material}.mat.meta`,
+          ]),
+          ...['', 'Turn', 'Steps', 'Trip', 'Jump', 'Crate', 'Prone', 'Supine']
+            .map((suffix) => `Tests/Playtests/ActiveRagdollSample${suffix}.playtest.json`),
+        ]) {
+          const generated = await readFile(path.join(project, relative));
+          assert.deepEqual(generated, await readFile(path.join(gameHubRoot, 'Templates/standard', relative)));
+        }
+      } else {
+        await assert.rejects(access(path.join(project, 'Assets/Scenes/ActiveRagdollSample.scene')), /ENOENT/);
+      }
     });
   });
 }

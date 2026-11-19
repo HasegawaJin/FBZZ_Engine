@@ -1,0 +1,354 @@
+# @file    Walker.ragdoll
+# @brief   サンプル人型の物理形状、駆動、関節可動域。
+# @author  Hasegawa Jin
+# @date    2026-11-18
+[ragdoll]
+version = 1
+name = 'Walker'
+skeleton_source = 'guid:5706f32284c2451289857ea81ad702fa'
+definitions_only = true
+
+[[bodies]]
+bone = 'Hips'
+shape = 'box'
+center = [0, 0.035, 0]
+half_extents = [0.1472, 0.0874, 0.0966]
+mass = 12
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 14
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 2520
+max_torque = 408
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'Torso'
+shape = 'box'
+center = [0, 0.17, 0]
+half_extents = [0.1886, 0.1656, 0.1058]
+mass = 17
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 14
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 3570
+max_torque = 578
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'Head'
+shape = 'box'
+center = [0, 0.095, 0]
+half_extents = [0.092, 0.1012, 0.0874]
+mass = 4
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 14
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 840
+max_torque = 136
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'LeftThigh'
+shape = 'box'
+center = [0, -0.2, 0.025]
+half_extents = [0.0621, 0.1771, 0.0667]
+mass = 6
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 8
+angular_frequency = 11
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 1260
+max_torque = 204
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'LeftShin'
+shape = 'box'
+center = [0, -0.2, -0.023]
+half_extents = [0.0483, 0.1725, 0.0483]
+mass = 3.5
+limits_enabled = true
+twist_min = -12
+twist_max = 120
+swing_y_min = -12
+swing_y_max = 12
+swing_z_min = -12
+swing_z_max = 12
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 8
+angular_frequency = 11
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 735
+max_torque = 119
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'LeftFoot'
+shape = 'box'
+center = [0, -0.04, 0.055]
+half_extents = [0.0598, 0.045, 0.1127]
+mass = 1.1
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 27
+angular_frequency = 30
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 2800
+max_torque = 230
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'LeftUpperArm'
+shape = 'box'
+center = [-0.035, -0.123, 0]
+half_extents = [0.0506, 0.11592, 0.0483]
+mass = 2
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 14
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 420
+max_torque = 68
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'LeftForearm'
+shape = 'box'
+center = [-0.012, -0.102, 0.012]
+half_extents = [0.0437, 0.09384, 0.0414]
+mass = 1.5
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 14
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 315
+max_torque = 51
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'LeftHand'
+shape = 'box'
+center = [0, -0.051, 0.012]
+half_extents = [0.0414, 0.05152, 0.0391]
+mass = 0.7
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 19
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 450
+max_torque = 24
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'RightThigh'
+shape = 'box'
+center = [0, -0.2, 0.025]
+half_extents = [0.0621, 0.1771, 0.0667]
+mass = 6
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 8
+angular_frequency = 11
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 1260
+max_torque = 204
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'RightShin'
+shape = 'box'
+center = [0, -0.2, -0.023]
+half_extents = [0.0483, 0.1725, 0.0483]
+mass = 3.5
+limits_enabled = true
+twist_min = -12
+twist_max = 120
+swing_y_min = -12
+swing_y_max = 12
+swing_z_min = -12
+swing_z_max = 12
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 8
+angular_frequency = 11
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 735
+max_torque = 119
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'RightFoot'
+shape = 'box'
+center = [0, -0.04, 0.055]
+half_extents = [0.0598, 0.045, 0.1127]
+mass = 1.1
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 27
+angular_frequency = 30
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 2800
+max_torque = 230
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'RightUpperArm'
+shape = 'box'
+center = [0.035, -0.123, 0]
+half_extents = [0.0506, 0.11592, 0.0483]
+mass = 2
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 14
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 420
+max_torque = 68
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'RightForearm'
+shape = 'box'
+center = [0.012, -0.102, 0.012]
+half_extents = [0.0437, 0.09384, 0.0414]
+mass = 1.5
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 14
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 315
+max_torque = 51
+target_velocity_multiplier = 1.0
+
+[[bodies]]
+bone = 'RightHand'
+shape = 'box'
+center = [0, -0.051, 0.012]
+half_extents = [0.0414, 0.05152, 0.0391]
+mass = 0.7
+limits_enabled = true
+twist_min = -105
+twist_max = 105
+swing_y_min = -80
+swing_y_max = 80
+swing_z_min = -80
+swing_z_max = 80
+drive_enabled = true
+drive_space = 'world'
+linear_frequency = 19
+angular_frequency = 20
+linear_damping_ratio = 1.2
+angular_damping_ratio = 1.1
+max_force = 450
+max_torque = 24
+target_velocity_multiplier = 1.0

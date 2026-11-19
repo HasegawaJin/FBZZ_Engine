@@ -100,7 +100,9 @@ export class TemplateService {
         return null;
       }
     }));
-    return templates.filter((template): template is TemplateInfo => template !== null);
+    /// @note 新規作成は最初の互換テンプレートを選ぶ。既定の Standard をディレクトリの列挙順に依存させない。
+    return templates.filter((template): template is TemplateInfo => template !== null)
+      .sort((left, right) => Number(right.id === 'standard') - Number(left.id === 'standard'));
   }
 
   async create(request: CreateProjectRequest, sdkId: string, sdkRoot = '', sdkConfiguration: SdkBuildConfiguration = 'Development'): Promise<string> {

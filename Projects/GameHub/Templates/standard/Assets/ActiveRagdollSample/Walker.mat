@@ -1,0 +1,10 @@
+# @file    Walker.mat
+# @brief   Active Ragdoll 練習コースの色。
+# @author  Hasegawa Jin
+# @date    2026-11-18
+version = 1
+shader = 'guid:00582a147be04cfc812145aa2dbf1a3e'
+blend_mode = 'Opaque'
+mesh_type = 'skinned'
+[params]
+albedo = [0.08, 0.63, 0.65, 1.0]

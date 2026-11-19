@@ -7,7 +7,9 @@
 
 エンジン内部ソースを用意する必要はありません。.NET SDKは同梱された `Projects/Managed/global.json` の版をインストールしてください。ゲーム実行にはx64 .NET 10 runtimeが必要です。製品パッケージはframework-dependentで、runtime本体を同梱しません。
 
-GameHubでSDKを選択して新規作成すると、ゲームテンプレートに `<Project>.Scripts.csproj` と `MoveForwardComponent.cs` を追加します。ゲーム作者向けスクリプトは C# です。C#のサンプルは自動でシーンにアタッチされません。EditorでGameObjectに追加し、Playで動作を確認してください。
+GameHubでSDKを選択して新規作成すると、ゲームテンプレートに `<Project>.Scripts.csproj` と `MoveForwardComponent.cs` を追加します。Editorで `MoveForwardComponent` をGameObjectに追加し、Playで動作を確認してください。
+
+新規作成時の既定テンプレートは Standard です。`Assets/Scenes/ActiveRagdollSample.scene` を開くと、セットアップ済みの人型をそのまま Play できます。WASD、段差、ジャンプ、箱の押し引き、転倒復帰も C# と公開 SDK で実装しています。操作は [Active Ragdoll の C# サンプル](design/active-ragdoll-sample.md) を参照してください。
 
 既存プロジェクトには、SDKの `share/fbzz/managed/ManagedStarter/` の中身をプロジェクト直下へコピーし、`Starter.Scripts.csproj` を `<Project>.Scripts.csproj` に改名してください。既存ファイルを上書きせず、ルートの `*.Scripts.csproj` は一つにします。`FBZZ_SDK_ROOT` に選択SDKのルートを設定するとIDEにも同じ公開APIとAnalyzerが見えます。GameHubで作成したプロジェクトでは `Fbzz.Sdk.props` が選択SDKを記録します。SDKを移動した場合は、この設定を更新するか環境変数/明示プロパティで上書きしてください。
 

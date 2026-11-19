@@ -1,0 +1,10 @@
+# @file    Ground.mat
+# @brief   Active Ragdoll 練習コースの色。
+# @author  Hasegawa Jin
+# @date    2026-11-18
+version = 1
+shader = 'guid:b8a759120fac41289126bed4eabc9a3d'
+blend_mode = 'Opaque'
+mesh_type = 'surface'
+[params]
+albedo = [0.36, 0.43, 0.48, 1.0]

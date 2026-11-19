@@ -134,13 +134,18 @@ Thumbs.db
 # @note .meta は追跡する: AssetDatabase の GUID を保持するため (Unity と同じ)。
 # @note クローン先で GUID が再発行されると guid: 参照が全て切れるので必ずコミットする。
 
-# @note 例外: GameHub のテンプレートだけは .meta を持たない。
+# @note GameHub の従来テンプレートは、参照を直接パスで持つため .meta を生成する。
 # @note テンプレートは «内容» を配るもので、guid (そのプロジェクト内の識別子) は配れない。
 # @note 新規プロジェクトでは .meta が作り直されて guid が変わるため、テンプレートに
 # @note guid を残すと参照が全て切れる (実際 Player.animcontroller が一度そうなった)。
 # @note テンプレート内の参照は素のパスで持ち、初回保存でそのプロジェクトの guid へ
 # @note 再エンコードさせる。.meta 自体は AssetDatabase が起動時に自動生成する。
 Projects/GameHub/Templates/**/*.meta
+# @note Active Ragdoll の練習シーンはモデル・物理定義・C# の型を GUID で参照するので、対応する .meta を一緒に配る。
+!Projects/GameHub/Templates/standard/Assets/ActiveRagdollSample.meta
+!Projects/GameHub/Templates/standard/Assets/ActiveRagdollSample/*.meta
+!Projects/GameHub/Templates/standard/Assets/Scenes/ActiveRagdollSample.scene.meta
+!Projects/GameHub/Templates/standard/Assets/Scripts/Managed/ActiveRagdollSampleComponent.cs.meta
 **/Assets/**/*.mesh
 **/Assets/**/*.fzasset
 **/Assets/**/*.skel

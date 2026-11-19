@@ -1,6 +1,6 @@
 [template]
 id = "standard"
 display_name = "Standard"
-description = "Title/Load/Main/Result の4シーンと、地形・水面・パーティクルのプリセット素材が入った構成。"
+description = "Title/Load/Main/Result、Active Ragdoll の C# 練習シーン、地形・水面・パーティクルのプリセットを含む構成。"
 thumbnail = ""
 engine_version_min = "0.1.0"

@@ -1,0 +1,141 @@
+# @file    ActiveRagdollSample.scene
+# @brief   C# の足運びと接触反応を試せる練習コース。
+# @author  Hasegawa Jin
+# @date    2026-11-18
+[scene]
+format_version = 2
+
+[[gameobjects]]
+name = 'MainCamera'
+tag = 'MainCamera'
+instanceId = 'd31faa63-017c-4d4d-ba9c-f83dc42f536d'
+[gameobjects.CameraComponent]
+enabled = true
+isMain = true
+fovY = 42.0
+nearZ = 0.05
+farZ = 100.0
+backgroundColor = [0.08, 0.13, 0.18, 1.0]
+[gameobjects.transform]
+position = [3.7, 2.7, -5.5]
+rotation = [0.139, -0.247, 0.036, 0.958]
+scale = [1.0, 1.0, 1.0]
+
+[[gameobjects]]
+name = 'Sun'
+instanceId = '1f911773-216f-4708-86fd-cce39366d0b2'
+[gameobjects.LightComponent]
+enabled = true
+type = 'Directional'
+intensity = 2.0
+castShadows = true
+color = [1.0, 0.94, 0.82]
+[gameobjects.transform]
+position = [0, 3, 0]
+rotation = [0.53, -0.21, 0.14, 0.81]
+scale = [1, 1, 1]
+
+[[gameobjects]]
+name = 'Walker'
+instanceId = 'ffd42ff8-0acd-412b-ab0c-17340dcba5ca'
+[gameobjects.transform]
+position = [0.0, 0.0, 0.0]
+rotation = [0.0, 0.0, 0.0, 1.0]
+scale = [1.0, 1.0, 1.0]
+[gameobjects.SkinnedMeshRenderer]
+enabled = true
+modelPath = 'guid:5706f32284c2451289857ea81ad702fa'
+[gameobjects.MaterialComponent]
+material = 'guid:30c4065ff1414f35988ff35e80431d'
+[gameobjects.AnimatorComponent]
+enabled = true
+playing = false
+rootMotionMode = 0
+[gameobjects.RagdollComponent]
+enabled = true
+physicsAssetPath = 'guid:7da57657b9e1447b95c781bf27632537'
+rootBoneName = 'Hips'
+activateOnStart = false
+gravity = 9.81
+collapseDistance = 0.0
+standingGuard = false
+learnLimits = false
+groundPlane = false
+staticFriction = 1.0
+dynamicFriction = 0.7
+contactWorld = true
+contactWhileActive = true
+contactDynamic = true
+contactSelf = true
+[[gameobjects.ScriptComponents]]
+enabled = true
+savedScriptId = '0701aad7-5640-4740-888a-085502a2ecee'
+type = 'cs:848804e641794eb4a61dd9dd35647d41'
+
+[[gameobjects]]
+name = 'Ground'
+instanceId = '2348a3dd-bad5-49b1-8bad-865e785d1dad'
+[gameobjects.transform]
+position = [1.5, -0.24, 2.0]
+scale = [18.0, 0.48, 16.0]
+[gameobjects.MeshRenderer]
+mesh = 'primitive:cube'
+[gameobjects.MaterialComponent]
+material = 'guid:ae18b938ccf44704803d0c4664164e'
+[gameobjects.MeshColliderComponent]
+meshPath = 'primitive:cube'
+useTransformScale = true
+[gameobjects.MeshColliderComponent.material]
+restitution = 0.0
+staticFriction = 0.9
+dynamicFriction = 0.6
+
+[[gameobjects]]
+name = 'PracticeStep'
+instanceId = 'e10d4b53-7454-4359-b3b0-bcaef09f4a24'
+[gameobjects.transform]
+position = [3.0, 0.075, 1.27]
+scale = [1.4, 0.15, 1.24]
+[gameobjects.MeshRenderer]
+mesh = 'primitive:cube'
+[gameobjects.MaterialComponent]
+material = 'guid:a533d3ef2f27440f9af99d34982863'
+[gameobjects.BoxColliderComponent.shape]
+halfExtents = [0.5, 0.5, 0.5]
+
+[[gameobjects]]
+name = 'TripBar'
+instanceId = '09561248-d506-46a1-bf2c-ff20ad7eb1a2'
+[gameobjects.transform]
+position = [-3.0, 0.039, 0.60]
+scale = [1.4, 0.078, 0.09]
+[gameobjects.MeshRenderer]
+mesh = 'primitive:cube'
+[gameobjects.MaterialComponent]
+material = 'guid:47c9de3101e74c6b9c863f79d5d146'
+[gameobjects.BoxColliderComponent.shape]
+halfExtents = [0.5, 0.5, 0.5]
+
+[[gameobjects]]
+name = 'PracticeCrate'
+instanceId = '7ffa5205-891a-4522-b947-9eca6dcfc42f'
+[gameobjects.transform]
+position = [6.0, 0.49, 0.685]
+scale = [0.78, 0.98, 0.56]
+[gameobjects.MeshRenderer]
+mesh = 'primitive:cube'
+[gameobjects.MaterialComponent]
+material = 'guid:6501369c269c4bb594b9fd64b8dc68'
+[gameobjects.BoxColliderComponent.shape]
+halfExtents = [0.5, 0.5, 0.5]
+[gameobjects.BoxColliderComponent.material]
+staticFriction = 0.35
+dynamicFriction = 0.25
+restitution = 0.0
+[gameobjects.RigidBodyComponent]
+enabled = true
+mass = 28.0
+useGravity = true
+freezeRotation = [1, 1, 1]
+linearDrag = 0.4
+allowSleeping = true
