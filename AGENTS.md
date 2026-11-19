@@ -106,7 +106,10 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 
 - 検証の標準出力・標準エラーを手動保存する場合も `build/agent/` 配下へ置く。リポジトリ直下に `*-console.log` 等の検証ログを生成しない。通常は AgentBuild が返す `log=` を利用し、追加の保存が必要な場合は出力先を絶対パスで指定する。
 - AI の検証ループ (`Docs/design/ai-verification-loop.md`): C++ を変えたら `powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check <変えたファイル...>` でコンパイルだけ通す (リンクしないので起動中のエディターと衝突しない)。`build <target>` / `test -Filter <regex>` も同じ入口。出力は `ERROR path:line CODE msg` と `RESULT` 行、全文は `RESULT` 行の log= (最新は `build/agent/last-<verb>.txt` が指す)
-- 動作の確認はシナリオ (`<Project>/Tests/Playtests/*.playtest.json`) で表明する。エディター起動中は MCP の `scenario_run` → `scenario_status`、起動せずに回すなら `FBZZEditor.exe --project <p> --batch <scenario> --hidden [--report <json>] [--update-baselines] [--warp]` (終了コード 0 合格 / 1 不合格 / 2 起動失敗)。基準画像は `<Project>/Tests/Golden/`、出力は `<Project>/Library/Playtests/`
+- 動作の確認はシナリオ (`<Project>/Tests/Playtests/*.playtest.json`) で表明する。基準画像は `<Project>/Tests/Golden/`、出力は `<Project>/Library/Playtests/`。
+- Playtest は、すでに開いている対象プロジェクトの Editor に MCP で接続し、`scenario_run` → `scenario_status` で実行する。MCP が応答しない場合は、接続先と Editor の `AI Command Bus` の状態を確認する。Editor が起動していない場合は、画面に表示される通常起動を使う。
+- AI が Editor で行う Playtest の操作入力は、Editor MCP の `scenario_run` で実行するシナリオ経由に限定する。MCP が利用できない場合は、ComputerUse での代替を禁止し、検証を進められない理由を報告する。
+- Codex の通常作業では、検証用に別の Editor を起動しない。`FBZZEditor.exe --batch ... --hidden` は、ユーザーが非表示実行を明示した場合や、既存の CI で非表示実行が指定されている場合に限る。
 - **ビルドは同時に 1 本だけ。** SDK 公開 (`CMake: Build SDK` / `GameHub + SDK`) も `build/<Config>` を使うので、人のタスク・別エージェントと重なりうる。`RESULT busy` や `HINT CONTENDED` (C1041 / `C1083 Permission denied` / LNK1104 / MSB3491 / "being used by another process") は**コードの誤りではない**。コードを直さず、プロセスを止めず、`build/` を消さず、終わるのを待つかユーザーに確かめてから 1 回だけ再実行する。別ツリー (`-Preset`) へ逃げない (全体の再コンパイルになる)
 - フルビルドやエディターの再起動が要る変更 (DLL を掴まれてリンクできない) はユーザーに VS Code タスク (`CMake: Build All (Debug)` / `Tests: Build & Run Suite (Debug)` 等) を依頼する。VS 更新後に configure が落ちたら `build/<Config>/` を消して再 configure
 - ビルド時間は前処理行数で決まる。標準ヘッダーは `fbzz_use_std_pch` に任せ、ヘッダーオンリーの重い実装 (`toml++` 等) を公開ヘッダーに載せない。詳細 `Docs/conventions/build-performance.md`
