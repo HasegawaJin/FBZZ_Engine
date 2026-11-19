@@ -5,6 +5,7 @@
 #include <Engine/Scene/Ragdoll/RagdollRig.hpp>
 #include <Engine/Scene/Ragdoll/RagdollControls.hpp>
 #include <Engine/Scene/Ragdoll/StandingPose.hpp>
+#include <Engine/Profiler/ProfileScope.hpp>
 
 #include <Math/MathUtils.hpp>
 #include <Physics/ColliderDebugGeometry.hpp>
@@ -15,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace fbzz::scene {
@@ -22,6 +24,45 @@ namespace fbzz::scene {
 namespace {
 
 constexpr float kMinBoneLength = 1.0e-4f;
+
+bool ValidBodyDrive(const RagdollBodyDrive& settings)
+{
+    const float values[] = {settings.linearFrequency, settings.angularFrequency, settings.linearDampingRatio,
+        settings.angularDampingRatio, settings.maxForce, settings.maxTorque, settings.targetVelocityMultiplier};
+    return (settings.space == RagdollDriveSpace::PARENT || settings.space == RagdollDriveSpace::WORLD)
+        && std::all_of(std::begin(values), std::end(values), [](float value) { return std::isfinite(value) && value >= 0.0f; });
+}
+
+RagdollBodyDrive ResolveDrivePatch(const RagdollBodyDrive& base, const RagdollBodyDrivePatch& patch)
+{
+    return {
+        patch.enabled.value_or(base.enabled),
+        patch.space.value_or(base.space),
+        patch.linearFrequency.value_or(base.linearFrequency),
+        patch.angularFrequency.value_or(base.angularFrequency),
+        patch.linearDampingRatio.value_or(base.linearDampingRatio),
+        patch.angularDampingRatio.value_or(base.angularDampingRatio),
+        patch.maxForce.value_or(base.maxForce),
+        patch.maxTorque.value_or(base.maxTorque),
+        patch.targetVelocityMultiplier.value_or(base.targetVelocityMultiplier),
+    };
+}
+
+RagdollBodyDrive BlendBodyDrive(const RagdollBodyDrive& from, const RagdollBodyDrive& to, float weight)
+{
+    /// @note on/off を切り替える間は出力上限を 0 から補間し、最後に目標の enabled と値へ揃える。
+    return {
+        from.enabled || to.enabled,
+        to.space,
+        std::lerp(from.linearFrequency, to.linearFrequency, weight),
+        std::lerp(from.angularFrequency, to.angularFrequency, weight),
+        std::lerp(from.linearDampingRatio, to.linearDampingRatio, weight),
+        std::lerp(from.angularDampingRatio, to.angularDampingRatio, weight),
+        std::lerp(from.enabled ? from.maxForce : 0.0f, to.enabled ? to.maxForce : 0.0f, weight),
+        std::lerp(from.enabled ? from.maxTorque : 0.0f, to.enabled ? to.maxTorque : 0.0f, weight),
+        std::lerp(from.targetVelocityMultiplier, to.targetVelocityMultiplier, weight),
+    };
+}
 
 /// @note 箱の頂点球で近接点を探し、プローブの余白を除いた実形状の深さで支持を取る。
 class RagdollBoxCollider final : public physics::OBBCollider {
@@ -48,31 +89,89 @@ public:
 /// @note 隣の関節の射影で変わった速度を木全体へ伝える。有限モーターは再実行しない。
 class RagdollJointVelocityProjection final : public physics::XPBDConstraint {
 public:
-    std::vector<physics::XPBDJoint*> m_joints;
-    std::vector<physics::XPBDContact>* m_contacts=nullptr;
+    explicit RagdollJointVelocityProjection(std::vector<physics::XPBDContact>& contacts)
+        : m_contacts(contacts)
+    {
+    }
+
+    void AddJoint(physics::XPBDJoint& joint) { m_joints.push_back({&joint}); }
     void ResetLambda() override {}
     void SolvePosition(float) override {}
     void SolveVelocity(float h) override
     {
-        if (m_joints.empty()) return;
-        for (int pass=0;pass<4;++pass) {
-            for (auto* joint:m_joints) if (!joint->Drive().enabled) joint->SolveVelocity(h);
-            for (auto iterator=m_joints.rbegin();iterator!=m_joints.rend();++iterator)
-                if (!(*iterator)->Drive().enabled) (*iterator)->SolveVelocity(h);
+        if (m_joints.empty() || h <= 0.0f) return;
+        FBZZ_PROFILE_SCOPE("RagdollRig::ProjectJointVelocities");
+        /// @note このパスでは姿勢が固定され、Rig の剛体は休止しない。接触も速度だけを変える。
+        for (auto& entry : m_joints) {
+            entry.passive = !entry.joint->Drive().enabled;
+            if (entry.passive) entry.prepared = entry.joint->PrepareVelocityProjection();
+        }
+        for (int pass = 0; pass < 4; ++pass) {
+            for (auto& entry : m_joints)
+                if (entry.passive) entry.joint->ProjectVelocity(entry.prepared);
+            for (auto iterator = m_joints.rbegin(); iterator != m_joints.rend(); ++iterator)
+                if (iterator->passive) iterator->joint->ProjectVelocity(iterator->prepared);
             /// @note 接触の速度補正と関節を交互に解き、小慣性の首・手へ残る接続点の誤差を減らす。
-            if (m_contacts) {
-                /// @note 接触ごとに World の速度へ反映し、同じ物体に当たる次の部位へ更新済み速度を渡す。
-                for (auto& contact:*m_contacts) {
-                    contact.SolveVelocity(h);
-                    auto* other=contact.GetOther();
-                    if (!other || contact.IsOtherSolved()) continue;
-                    const auto impulse=contact.TakeReactionImpulse();
-                    if (!other->IsStatic() && impulse.LengthSq()>0.0f)
-                        other->ApplyImpulseAtPoint(impulse,contact.ContactPointWorld());
-                }
+            /// @note 接触ごとに World の速度へ反映し、同じ物体に当たる次の部位へ更新済み速度を渡す。
+            for (auto& contact : m_contacts) {
+                contact.SolveVelocity(h);
+                auto* other = contact.GetOther();
+                if (!other || contact.IsOtherSolved()) continue;
+                const auto impulse = contact.TakeReactionImpulse();
+                if (!other->IsStatic() && impulse.LengthSq() > 0.0f)
+                    other->ApplyImpulseAtPoint(impulse, contact.ContactPointWorld());
             }
         }
     }
+
+private:
+    struct JointProjection {
+        physics::XPBDJoint* joint;
+        physics::XPBDJoint::VelocityProjection prepared;
+        bool passive = false;
+    };
+
+    std::vector<JointProjection> m_joints;
+    std::vector<physics::XPBDContact>& m_contacts;
+};
+
+/// @note 無効な抜け止めの平面を仮の有限高さに置くと、その下へ移動した剛体まで押し戻してしまう。
+constexpr float kNoGround = -std::numeric_limits<float>::infinity();
+
+/// @note 抜け止めの平面が無効なら、全支持点の拘束を一度にスキップする。
+class RagdollGroundPlane final : public physics::XPBDConstraint {
+public:
+    explicit RagdollGroundPlane(const float& height) : m_height(height) {}
+
+    void AddContact(std::unique_ptr<physics::XPBDPlaneContact> contact)
+    {
+        m_contacts.push_back(std::move(contact));
+    }
+
+    void ResetLambda() override
+    {
+        if (m_height == kNoGround) return;
+        for (auto& contact : m_contacts) contact->ResetLambda();
+    }
+
+    void SolvePosition(float h) override
+    {
+        if (m_height == kNoGround) return;
+        for (auto& contact : m_contacts) contact->SolvePosition(h);
+    }
+
+    void SolvePhysicalPosition(float) override {}
+    void SolveCorrectionPosition(float h) override { SolvePosition(h); }
+
+    void SolveVelocity(float h) override
+    {
+        if (m_height == kNoGround) return;
+        for (auto& contact : m_contacts) contact->SolveVelocity(h);
+    }
+
+private:
+    const float& m_height;
+    std::vector<std::unique_ptr<physics::XPBDPlaneContact>> m_contacts;
 };
 
 /// @note 1 フレームに解く接触の上限。倒れた関節体が地形の凹みへ嵌ると際限なく増えるので、
@@ -89,11 +188,6 @@ bool IsFlatSupportContact(const physics::XPBDContact& contact, const physics::Co
     return (type == physics::ColliderType::AABB || type == physics::ColliderType::OBB)
         && math::Vector3::Dot(contact.GetNormal(), up) >= 1.0f - 1.0e-5f;
 }
-
-/// @note 接地面を «届かない所» へ置いておくための高さ。SetGround を呼ぶまで、あるいは
-/// @note DisableGround の後は床が無いのと同じになる。拘束を後から足せないソルバなので、
-/// @note 器だけ先に用意して面を下げる形にしてある。
-constexpr float kNoGround = -1.0e9f;
 
 physics::AABB ExpandAABB(const physics::AABB& box, float margin)
 {
@@ -141,7 +235,10 @@ float RagdollRig::BodyLink::Bottom(const math::Vector3& p, const math::Quaternio
     return p.y - std::abs((q * math::Vector3::UP).y)*halfHeight - radius;
 }
 
-RagdollRig::RagdollRig():m_controls(std::make_unique<RagdollControls>(*this)) {}
+RagdollRig::RagdollRig()
+    : m_controls(std::make_unique<RagdollControls>(*this)), m_groundHeight(kNoGround)
+{
+}
 
 RagdollRig::~RagdollRig()
 {
@@ -175,6 +272,8 @@ void RagdollRig::Clear()
     m_selfOverlapAtBuild.clear();
     m_unmatchedBones.clear();
     m_bodies.clear();
+    m_driveProfileTransitions.clear();
+    m_driveProfileElapsed = m_driveProfileDuration = 0.0;
     m_boneToBody.clear();
     m_standingTargets.clear();
     m_ownerHistory = false;
@@ -434,15 +533,15 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
     }
     for (const BodyLink& link : m_bodies) m_totalMass += link.mass;
 
-    auto velocityProjection=std::make_unique<RagdollJointVelocityProjection>();
-    velocityProjection->m_contacts=&m_contacts;
-    for (const auto& link:m_joints) velocityProjection->m_joints.push_back(link.joint);
+    auto velocityProjection = std::make_unique<RagdollJointVelocityProjection>(m_contacts);
+    for (const auto& link : m_joints) velocityProjection->AddJoint(*link.joint);
     m_solver.AddConstraint(std::move(velocityProjection));
 
     /// @note 接地はカプセルの両端で取る。中心 1 点だと寝かせた胴が床へ半分めり込む。ソルバは
     /// @note 登録順に解き Gauss-Seidel は後に解いた方が勝つため、床は関節より後に足す:
     /// @note «骨がわずかに伸びてでも床から出る» になり、逆だと骨の長さを守るために
     /// @note 足が床へ沈んで接地が毎フレーム負ける。
+    auto ground = std::make_unique<RagdollGroundPlane>(m_groundHeight);
     for (const BodyLink& link : m_bodies) {
         std::vector<math::Vector3> points;
         if (link.shape == RagdollBodyShape::BOX) {
@@ -458,9 +557,10 @@ void RagdollRig::Build(const std::vector<RagdollBonePose>& bones, const RagdollP
                 math::Vector3::UP, m_groundHeight);
             contact->SetFriction(m_groundFriction);
             m_ground.push_back(contact.get());
-            m_solver.AddConstraint(std::move(contact));
+            ground->AddContact(std::move(contact));
         }
     }
+    m_solver.AddConstraint(std::move(ground));
 
     BuildShapeInstances();
 
@@ -535,6 +635,7 @@ void RagdollRig::BuildShapeInstances()
 
 void RagdollRig::ApplyDrive()
 {
+    FBZZ_PROFILE_SCOPE("RagdollRig::ApplyDrive");
     const float gravity = m_solver.GetGravity().Length();
     for (auto& link : m_bodies) {
         if (!link.drive) continue;
@@ -567,7 +668,8 @@ void RagdollRig::ApplyDrive()
         /// @note XPBD の上限 0 は無制限を意味する。自重比から算出した出力 0 は明示的に切る。
         m_anchors[a]->SetEnabled(m_driveEnabled && anchorStrength > 0.0f && gravity > 0.0f
             && !m_bodies[static_cast<std::size_t>(m_anchorBody[a])].authoredDrive
-            && !m_bodies[static_cast<std::size_t>(m_anchorBody[a])].customDrive);
+            && !m_bodies[static_cast<std::size_t>(m_anchorBody[a])].customDrive
+            && !m_bodies[static_cast<std::size_t>(m_anchorBody[a])].profileDrive);
     }
 
     for (JointLink& link : m_joints) {
@@ -583,7 +685,8 @@ void RagdollRig::ApplyDrive()
         drive.target  = target;
         drive.enabled = link.baseServo.enabled && m_driveEnabled && strength > 0.0f
             && !m_bodies[static_cast<std::size_t>(link.childBody)].authoredDrive
-            && !m_bodies[static_cast<std::size_t>(link.childBody)].customDrive;
+            && !m_bodies[static_cast<std::size_t>(link.childBody)].customDrive
+            && !m_bodies[static_cast<std::size_t>(link.childBody)].profileDrive;
         if (!drive.enabled) continue;
 
         /// @note «その先を支えるのに要るトルク» に倍率を掛けたものが上限になる。骨格の
@@ -603,15 +706,17 @@ void RagdollRig::ApplyDrive()
     }
 }
 
+void RagdollRig::SetEffectiveDrive(BodyLink& link, const RagdollBodyDrive& settings)
+{
+    if (link.activeDrive.space != settings.space) link.targetHistory = false;
+    link.activeDrive = settings;
+}
+
 bool RagdollRig::SetBodyDrive(std::string_view bone, const RagdollBodyDrive& settings)
 {
-    const float values[]={settings.linearFrequency,settings.angularFrequency,settings.linearDampingRatio,
-        settings.angularDampingRatio,settings.maxForce,settings.maxTorque,settings.targetVelocityMultiplier};
-    for (float f:values) if (!std::isfinite(f)||f<0.0f) return false;
-    if (settings.space!=RagdollDriveSpace::PARENT && settings.space!=RagdollDriveSpace::WORLD) return false;
+    if (!ValidBodyDrive(settings)) return false;
     for (auto& link:m_bodies) if (link.name==bone) {
-        if (link.activeDrive.space!=settings.space) link.targetHistory=false;
-        link.activeDrive=settings;
+        SetEffectiveDrive(link, settings);
         link.customDrive=true;
         ResetRest();
         ApplyDrive();
@@ -623,12 +728,62 @@ bool RagdollRig::SetBodyDrive(std::string_view bone, const RagdollBodyDrive& set
 bool RagdollRig::ClearBodyDrive(std::string_view bone)
 {
     for (auto& link:m_bodies) if (link.name==bone) {
-        const bool result=SetBodyDrive(bone,link.baseDrive);
-        link.customDrive=false;
+        link.customDrive = false;
+        SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
+        ResetRest();
         ApplyDrive();
-        return result;
+        return true;
     }
     return false;
+}
+
+bool RagdollRig::ApplyDriveProfile(std::span<const RagdollBodyDriveEntry> entries, float transitionSeconds)
+{
+    if (!std::isfinite(transitionSeconds) || transitionSeconds < 0.0f || entries.size() > m_bodies.size()) return false;
+    std::vector<std::optional<RagdollBodyDrive>> targets(m_bodies.size());
+    for (const auto& entry : entries) {
+        const auto body = std::find_if(m_bodies.begin(), m_bodies.end(),
+            [&entry](const BodyLink& link) { return link.name == entry.bone; });
+        if (entry.bone.empty() || body == m_bodies.end()) return false;
+        auto& target = targets[static_cast<std::size_t>(body - m_bodies.begin())];
+        if (target) return false;
+        target = ResolveDrivePatch(body->baseDrive, entry.patch);
+        if (!ValidBodyDrive(*target)) return false;
+    }
+
+    m_driveProfileTransitions.clear();
+    m_driveProfileElapsed = 0.0;
+    m_driveProfileDuration = transitionSeconds;
+    for (std::size_t i = 0; i < m_bodies.size(); ++i) {
+        auto& link = m_bodies[i];
+        if (!targets[i] && !link.profileDrive) continue;
+        if (transitionSeconds > 0.0f) {
+            const auto from = link.profileDrive.value_or(link.baseDrive);
+            m_driveProfileTransitions.push_back({i, from, targets[i]});
+        } else {
+            link.profileDrive = targets[i];
+            if (!link.customDrive) SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
+        }
+    }
+    ResetRest();
+    ApplyDrive();
+    return true;
+}
+
+void RagdollRig::AdvanceDriveProfile(float dt)
+{
+    if (m_driveProfileTransitions.empty()) return;
+    m_driveProfileElapsed += static_cast<double>(dt);
+    const bool finished = m_driveProfileElapsed >= m_driveProfileDuration;
+    const float weight = static_cast<float>(std::min(1.0, m_driveProfileElapsed / m_driveProfileDuration));
+    for (const auto& transition : m_driveProfileTransitions) {
+        auto& link = m_bodies[transition.bodyIndex];
+        link.profileDrive = finished ? transition.to : std::optional{
+            BlendBodyDrive(transition.from, transition.to.value_or(link.baseDrive), weight)};
+        if (!link.customDrive) SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
+    }
+    if (finished) m_driveProfileTransitions.clear();
+    ApplyDrive();
 }
 
 void RagdollRig::SetDrive(bool enabled, float scale, float falloff, float damping)
@@ -660,6 +815,7 @@ void RagdollRig::RefreshContacts(physics::World* world)
 
 void RagdollRig::RebuildContacts(physics::World* world)
 {
+    FBZZ_PROFILE_SCOPE("RagdollRig::RebuildContacts");
     m_solver.ClearTransient();
     for (std::size_t i=0;i<m_contacts.size() && i<m_contactCache.size();++i) m_contactCache[i].contact=m_contacts[i];
     m_controls->RegisterGrabs(m_solver);
@@ -693,12 +849,16 @@ void RagdollRig::RebuildContacts(physics::World* world)
 
     /// @note PhysicsSolver は状態を持たないので、呼ぶたびに作ってよい。
     physics::PhysicsSolver narrowPhase;
-    narrowPhase.NarrowPhase(m_pairs, m_contactPoints);
+    {
+        FBZZ_PROFILE_SCOPE("RagdollRig::NarrowPhase");
+        narrowPhase.NarrowPhase(m_pairs, m_contactPoints);
+    }
     MakeContacts();
 }
 
 void RagdollRig::CollectWorldPairs(physics::World& world)
 {
+    FBZZ_PROFILE_SCOPE("RagdollRig::CollectWorldPairs");
     m_controls->UpdateContactExclusions(world);
     /// @note 全身を包む球で 1 回だけ問い合わせる。OverlapSphere は全コライダーを線形に走査する
     /// @note ため、剛体ごと (骨 20 個) に引くと 20 往復で «コライダー総数 × 20» になり、
@@ -743,11 +903,15 @@ void RagdollRig::CollectSelfPairs()
     /// @note 報告することになり、押し戻しがそのぶん硬くなる。
     /// @note BuildShapeInstances が «剛体 1 個につきカプセル → 端 → 端» の順で並べるので、
     /// @note 本体の ColliderInstance は各剛体の instanceIndex で引く。
-    for (std::size_t a = 0; a < m_bodies.size(); ++a) {
-        for (std::size_t b = a + 1; b < m_bodies.size(); ++b) {
+    const std::size_t count = m_bodies.size();
+    m_selfContactBounds.resize(count);
+    for (std::size_t i = 0; i < count; ++i)
+        m_selfContactBounds[i] = m_bodies[i].collider->GetAABB();
+
+    for (std::size_t a = 0; a < count; ++a) {
+        for (std::size_t b = a + 1; b < count; ++b) {
+            if (!m_selfContactBounds[a].Overlaps(m_selfContactBounds[b])) continue;
             if (!AllowsSelfContact(static_cast<int>(a), static_cast<int>(b))) continue;
-            if (!m_bodies[a].collider->GetAABB().Overlaps(m_bodies[b].collider->GetAABB()))
-                continue;
             m_pairs.push_back(physics::CollisionPair{ &m_instances[m_bodies[a].instanceIndex], &m_instances[m_bodies[b].instanceIndex] });
         }
     }
@@ -775,6 +939,7 @@ bool RagdollRig::AllowsSelfContact(int a, int b) const
 
 void RagdollRig::MakeContacts()
 {
+    FBZZ_PROFILE_SCOPE("RagdollRig::MakeContacts");
     for (const physics::ContactPoint& point : m_contactPoints) {
         if (point.isTrigger) continue;
         if (m_contacts.size() >= kMaxContacts) break;
@@ -794,32 +959,42 @@ void RagdollRig::MakeContacts()
         float depth=point.depth;
         const auto& ownLink=m_bodies[static_cast<std::size_t>(indexA>=0 ? indexA : indexB)];
         const auto* ownCollider=indexA>=0 ? point.colliderA : point.colliderB;
-        const auto* terrainCollider=indexA>=0 ? point.colliderB : point.colliderA;
-        if (!solveOther && ownLink.shape==RagdollBodyShape::BOX && ownCollider!=ownLink.collider.get()
-            && ownCollider && ownCollider->GetType()==physics::ColliderType::SPHERE
-            && terrainCollider && terrainCollider->GetType()==physics::ColliderType::HEIGHT_FIELD) {
-            /// @note 補助球の中心だけが地形裏側へ入っても、箱本体と反対へ押さない。複合形状の面の側を本体へ揃える。
-            for (const auto& primary:m_contactPoints) {
-                const bool ownA=primary.bodyA==body && primary.colliderA==ownLink.collider.get() && primary.colliderB==terrainCollider;
-                const bool ownB=primary.bodyB==body && primary.colliderB==ownLink.collider.get() && primary.colliderA==terrainCollider;
-                if (!ownA && !ownB) continue;
-                const auto primaryNormal=ownA ? primary.normal : -primary.normal;
-                if (math::Vector3::Dot(normal,primaryNormal)<0.0f) {
-                    normal=-normal;
-                    depth=2.0f*static_cast<const physics::SphereCollider&>(*ownCollider).m_radius-depth;
+        const auto* otherCollider = indexA >= 0 ? point.colliderB : point.colliderA;
+        const bool externalBox = !solveOther && ownLink.shape == RagdollBodyShape::BOX;
+        if (externalBox && ownCollider && ownCollider != ownLink.collider.get()
+            && ownCollider->GetType() == physics::ColliderType::SPHERE) {
+            const auto& box = static_cast<const RagdollBoxCollider&>(*ownLink.collider);
+            const auto& probe = static_cast<const physics::SphereCollider&>(*ownCollider);
+            const bool heightField = otherCollider && otherCollider->GetType() == physics::ColliderType::HEIGHT_FIELD;
+            const bool crossedMeshFace = otherCollider && otherCollider->GetType() == physics::ColliderType::TRIANGLE_MESH
+                && math::Vector3::Dot(normal, box.GetCenter() - worldPoint) < 0.0f;
+            if (heightField || crossedMeshFace) {
+                /// @note 面をまたいだ頂点の補助球は、箱本体と同じ側へ押し戻す。
+                for (const auto& primary : m_contactPoints) {
+                    const bool ownA = primary.bodyA == body && primary.colliderA == &box && primary.colliderB == otherCollider;
+                    const bool ownB = primary.bodyB == body && primary.colliderB == &box && primary.colliderA == otherCollider;
+                    if (!ownA && !ownB) continue;
+                    const auto primaryNormal = ownA ? primary.normal : -primary.normal;
+                    const float alignment = math::Vector3::Dot(normal, primaryNormal);
+                    if (alignment >= 0.0f) break;
+                    if (crossedMeshFace) {
+                        /// @note メッシュ内の別の面を反転しないよう、SAT の押し戻し先と補助球の接触面を照合する。
+                        const auto support = box.SupportPoint(-primaryNormal);
+                        const float planeOffset = math::Vector3::Dot(worldPoint - support, primaryNormal) - primary.depth;
+                        if (alignment > -0.9999f || std::abs(planeOffset) > 0.001f) break;
+                    }
+                    normal = -normal;
+                    depth = 2.0f * probe.m_radius - depth;
+                    break;
                 }
-                break;
             }
+            depth -= box.m_probeMargin;
         }
-        if (!solveOther && ownLink.shape==RagdollBodyShape::BOX && ownCollider!=ownLink.collider.get()
-            && ownCollider && ownCollider->GetType()==physics::ColliderType::SPHERE)
-            depth-=static_cast<const RagdollBoxCollider&>(*ownLink.collider).m_probeMargin;
-        if (!solveOther && ownLink.shape==RagdollBodyShape::BOX && ownCollider==ownLink.collider.get()) {
+        if (externalBox && ownCollider == ownLink.collider.get()) {
             /// @note NarrowPhase の支持面を1点へ潰さない。自身の頂点なら、各頂点の高さで貫通を評価する。
             const auto corners=static_cast<const physics::OBBCollider&>(*ownCollider).GetCorners();
             float lowest=math::Vector3::Dot(corners[0],normal);
             for (const auto& corner:corners) lowest=std::min(lowest,math::Vector3::Dot(corner,normal));
-            const auto* otherCollider=indexA>=0 ? point.colliderB : point.colliderA;
             bool projectToSurface=false;
             if (otherCollider && otherCollider->GetType()==physics::ColliderType::HEIGHT_FIELD) {
                 projectToSurface=true;
@@ -909,10 +1084,13 @@ void RagdollRig::ApplyContactReactions()
 
 void RagdollRig::SetGround(float height, float friction)
 {
+    if (m_groundHeight == height && m_groundFriction == friction) return;
+    const bool enabling = m_groundHeight == kNoGround;
     if (m_groundHeight != height) ResetRest();
     m_groundHeight   = height;
     m_groundFriction = friction;
     for (physics::XPBDPlaneContact* contact : m_ground) {
+        if (enabling) contact->ResetHistory();
         contact->SetPlane(math::Vector3::UP, height);
         contact->SetFriction(friction);
     }
@@ -920,7 +1098,9 @@ void RagdollRig::SetGround(float height, float friction)
 
 void RagdollRig::DisableGround()
 {
-    SetGround(kNoGround, 0.0f);
+    if (m_groundHeight == kNoGround) return;
+    m_groundHeight = kNoGround;
+    ResetRest();
 }
 
 float RagdollRig::LowestContactHeight(const std::vector<RagdollBonePose>& bones) const
@@ -1147,6 +1327,7 @@ void RagdollRig::ComposeTargetSample(const TargetSample& sample, std::vector<Rag
 void RagdollRig::SampleDriveTargets(double time)
 {
     if (m_targetSamples.empty() || (!m_driveEnabled && !m_standingGuard)) return;
+    FBZZ_PROFILE_SCOPE("RagdollRig::SampleDriveTargets");
     constexpr double TARGET_TIME_TOLERANCE = 1.0e-7;
     while (m_targetSampleHead + 2 < m_targetSamples.size()
         && m_targetSamples[m_targetSampleHead + 1].time < time - TARGET_TIME_TOLERANCE) {
@@ -1404,6 +1585,7 @@ void RagdollRig::SetStandingGuard(bool enabled, float maxDistance, float maxRadi
 void RagdollRig::ProjectStandingPose()
 {
     if (m_standingTargets.size() != m_boneToBody.size()) return;
+    FBZZ_PROFILE_SCOPE("RagdollRig::ProjectStandingPose");
     WritePose(m_standingTargets, m_standingPositions, m_standingRotations);
     LimitStandingPose(m_standingTargets, m_standingMaxDistance, m_standingMaxRadians,
                       m_standingPositions, m_standingRotations, m_standingLocalRotations);
@@ -1488,7 +1670,7 @@ void RagdollRig::UpdateRest(float dt)
         const auto normal = ownA >= 0 ? contact.GetNormal() : -contact.GetNormal();
         supported = supported || math::Vector3::Dot(normal, up) > 0.25f;
     }
-    if (m_groundHeight > kNoGround * 0.5f) {
+    if (m_groundHeight != kNoGround) {
         for (const auto& link : m_bodies) {
             const float bottom = link.Bottom(link.body->GetPosition(),link.body->GetRotation());
             supported = supported || bottom <= m_groundHeight + 0.002f;
@@ -1532,7 +1714,9 @@ void RagdollRig::UpdateRest(float dt)
 
 void RagdollRig::Step(float dt)
 {
+    FBZZ_PROFILE_SCOPE("RagdollRig::Step");
     if (!std::isfinite(dt) || dt <= 0.0f) return;
+    AdvanceDriveProfile(dt);
     m_controlSubstep=dt/static_cast<float>(m_solver.GetSubsteps());
     m_targetStepTime = m_simulationTime;
     if (!m_resting) CaptureContactPoses();
@@ -1546,18 +1730,20 @@ void RagdollRig::Step(float dt)
             return IsFlatSupportContact(cached.contact, cached.b, up);
         });
     const int correctionIterations = coarsePassiveSupport ? 12 : 8;
+    /// @note 立位制限なしでは、ソルバの投影前後の姿勢保存と速度制限が不要。
+    const auto projectStanding = m_standingGuard ? +[](void* context) {
+        static_cast<RagdollRig*>(context)->ProjectStandingPose();
+    } : nullptr;
     m_solver.Step(dt, [](void* context) {
         auto& rig = *static_cast<RagdollRig*>(context);
+        FBZZ_PROFILE_SCOPE("RagdollRig::PrepareSubstep");
         rig.m_targetStepTime += static_cast<double>(rig.m_controlSubstep);
         rig.SampleDriveTargets(rig.m_targetStepTime);
         rig.m_controls->IntegrateForces(rig.m_controlSubstep);
         /// @note 次の substep は相手の反応済み速度を読む。フレーム末まで溜めると軽い物体へ同じ衝撃を重ねる。
         rig.ApplyContactReactions();
         rig.RebuildContacts(rig.m_contactWorld);
-    }, [](void* context) {
-        auto& rig = *static_cast<RagdollRig*>(context);
-        if (rig.m_standingGuard) rig.ProjectStandingPose();
-    }, this, physics::XPBDProjectionMode::LIMIT, correctionIterations);
+    }, projectStanding, this, physics::XPBDProjectionMode::LIMIT, correctionIterations);
     m_simulationTime += static_cast<double>(dt);
     UpdateRest(dt);
     m_contactWorld = nullptr;
@@ -1635,50 +1821,74 @@ void RagdollRig::BuildDebugLines(std::vector<RagdollDebugLine>& out) const
     };
 
     for (const BodyLink& link : m_bodies) {
-        const physics::ColliderDebugGeometry geometry =
-            physics::BuildColliderDebugGeometry(*link.collider);
-        for (const physics::DebugLine& line : geometry.lines)
-            push(line.from, line.to, Kind::Body);
+        /// @note 接触探索時の姿勢は拘束を解く前のため、形状のコピーを解決後の剛体姿勢で描く。
+        const auto drawBody = [&](auto collider) {
+            collider.Update(link.body->GetPosition(), link.body->GetRotation());
+            const auto geometry = physics::BuildColliderDebugGeometry(collider);
+            for (const auto& line : geometry.lines)
+                push(line.from, line.to, Kind::Body);
+        };
+        switch (link.shape) {
+        case RagdollBodyShape::BOX:
+            drawBody(static_cast<const physics::OBBCollider&>(*link.collider));
+            break;
+        case RagdollBodyShape::SPHERE:
+            drawBody(static_cast<const physics::SphereCollider&>(*link.collider));
+            break;
+        case RagdollBodyShape::CAPSULE:
+            drawBody(static_cast<const physics::CapsuleCollider&>(*link.collider));
+            break;
+        }
     }
 
     for (const JointLink& link : m_joints) {
-        const physics::XPBDJoint&  joint  = *link.joint;
-        const math::Vector3        anchor = joint.GetAnchorParentWorld();
-        const math::Quaternion     frame  = joint.GetParentFrameWorld();
+        const physics::XPBDJoint& joint = *link.joint;
+        const BodyLink& child = m_bodies[static_cast<std::size_t>(link.childBody)];
+        const math::Vector3 anchor = joint.GetAnchorParentWorld();
+        const math::Quaternion frame = joint.GetParentFrameWorld();
         const physics::XPBDJointLimits& limits = joint.Limits();
-        const auto* drive=m_bodies[static_cast<std::size_t>(link.childBody)].drive;
-        const Kind kind = joint.IsDriveSaturated() || (drive && drive->IsSaturated()) ? Kind::JointSaturated : Kind::Joint;
+        const Kind kind = joint.IsDriveSaturated() || (child.drive && child.drive->IsSaturated())
+            ? Kind::JointSaturated : Kind::Joint;
 
-        /// @note 骨の長さに合わせて錐の大きさを決める。固定長にすると、大きい骨では潰れ、
-        /// @note 小さい骨では錐だけが目立って «どの関節の可動域か» が読めなくなる。
-        const float length =
-            std::max(m_bodies[static_cast<std::size_t>(link.childBody)].Reach(),
-                     0.05f);
+        const float length = std::max(child.Reach(), 0.05f);
+        const auto childAnchor = child.body->GetPosition() + child.body->GetRotation() * joint.GetAnchorChild();
 
-        /// @note 中立軸 (関節フレームの X = 骨の向き)。今どこを向いているかは子フレームで出す。
+        /// @note 拘束で両支点が離れても、中立の X 軸と子の X 軸はそれぞれの支点から描く。
         push(anchor, anchor + frame * math::Vector3::RIGHT * length, kind);
-        push(anchor,
-             anchor + joint.GetChildFrameWorld() * math::Vector3::RIGHT * (length * 1.2f),
-             kind);
+        push(childAnchor, childAnchor + joint.GetChildFrameWorld() * math::Vector3::RIGHT * (length * 1.2f), kind);
         if (!limits.enabled) continue;
 
-        /// @note 可動域の «角»。Y/Z それぞれの上下限まで中立軸を倒し、4 本を四角で結ぶ。
-        /// @note 円錐ではなく角錐なのは、可動域そのものが軸ごとの上下限で書かれているため。
-        math::Vector3 corners[4];
-        const float swings[4][2] = {
-            { limits.swingMinY, limits.swingMinZ }, { limits.swingMaxY, limits.swingMinZ },
-            { limits.swingMaxY, limits.swingMaxZ }, { limits.swingMinY, limits.swingMaxZ },
+        /// @note XPBDJoint::SolveLimits はスイングを単一の回転ベクトルで測る。
+        const auto swingTip = [&](const math::Vector3& rotationVector) {
+            const auto swing = math::Quaternion::FromAxisAngle(
+                rotationVector.NormalizedOr(math::Vector3::UP), rotationVector.Length());
+            return anchor + (frame * swing) * math::Vector3::RIGHT * length;
         };
-        for (int i = 0; i < 4; ++i) {
-            const math::Quaternion swing =
-                math::Quaternion::FromAxisAngle(math::Vector3::UP, swings[i][0]) *
-                math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, swings[i][1]);
-            corners[i] = anchor + (frame * swing) * math::Vector3::RIGHT * length;
-        }
-        for (int i = 0; i < 4; ++i) {
-            push(anchor, corners[i], kind);
-            push(corners[i], corners[(i + 1) % 4], kind);
-        }
+        const auto drawSwingEdge = [&](const math::Vector3& fixed, const math::Vector3& axis, float from, float to) {
+            /// @note 最短回転は π まで。境界円上はすべて関節の −X に写る。
+            const float remaining = math::PI * math::PI - fixed.LengthSq();
+            if (remaining < 0.0f) return;
+            const float reach = std::sqrt(remaining);
+            if (std::min(from, to) > reach || std::max(from, to) < -reach) return;
+            const float start = std::clamp(from, -reach, reach);
+            const float end = std::clamp(to, -reach, reach);
+            auto previous = swingTip(fixed + axis * start);
+            push(anchor, previous, kind);
+
+            /// @note 広い屈曲域でも端同士を直線でつないで可動域を横切らないようにする。
+            constexpr float MAX_SEGMENT_ANGLE = 15.0f * math::DEG2RAD;
+            const int segments = static_cast<int>(std::ceil(std::abs(end - start) / MAX_SEGMENT_ANGLE));
+            for (int i = 1; i <= segments; ++i) {
+                const float fraction = static_cast<float>(i) / static_cast<float>(segments);
+                const auto tip = swingTip(fixed + axis * std::lerp(start, end, fraction));
+                push(previous, tip, kind);
+                previous = tip;
+            }
+        };
+        drawSwingEdge(math::Vector3::FORWARD * limits.swingMinZ, math::Vector3::UP, limits.swingMinY, limits.swingMaxY);
+        drawSwingEdge(math::Vector3::UP * limits.swingMaxY, math::Vector3::FORWARD, limits.swingMinZ, limits.swingMaxZ);
+        drawSwingEdge(math::Vector3::FORWARD * limits.swingMaxZ, math::Vector3::UP, limits.swingMaxY, limits.swingMinY);
+        drawSwingEdge(math::Vector3::UP * limits.swingMinY, math::Vector3::FORWARD, limits.swingMaxZ, limits.swingMinZ);
     }
 
     for (const physics::XPBDContact& contact : m_contacts) {

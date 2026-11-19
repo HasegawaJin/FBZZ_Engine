@@ -6,6 +6,32 @@ using System;
 using System.Globalization;
 namespace Fbzz;
 
+/// @note Null は各骨の通常駆動から継承する。数値の 0 と false は明示的な設定。
+public struct RagdollBodyDrivePatch
+{
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED)]
+    public bool? Enabled;
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED)]
+    public RagdollDriveSpace? Space;
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED, Units="Hz")]
+    public float? LinearFrequency, AngularFrequency;
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED)]
+    public float? LinearDampingRatio, AngularDampingRatio, TargetVelocityMultiplier;
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED, Units="N")]
+    public float? MaxForce;
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED, Units="N*m")]
+    public float? MaxTorque;
+}
+
+/// @note Bone は構築済みの物理骨の完全名。
+public struct RagdollBodyDriveEntry
+{
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED)]
+    public string Bone;
+    [ApiContract(Read="any", Write="any", Purity=ApiPurity.MANAGED)]
+    public RagdollBodyDrivePatch Patch;
+}
+
 /// @note Positionは剛体重心。速度はSpaceと同じ空間のm/s・rad/s。両Weightは0〜1。
 public struct RagdollBodyTarget
 {
@@ -115,6 +141,49 @@ public sealed partial class Ragdoll
             MaxForce=r.Value(4),MaxTorque=r.Value(5),TargetVelocityMultiplier=r.Value(6)};
         return (r.Integer&1)!=0;
     }
+    internal const uint APPLY_DRIVE_PROFILE_SELECTOR = 68;
+    internal const int DRIVE_PROFILE_MAX_BODIES = 128;
+    internal const int DRIVE_PROFILE_ENTRY_FLOATS = 10;
+
+    [ApiContract(RunModes=new[]{"Play"}, Call="fixed", ParameterUnits=new[]{"transitionSeconds=s"},
+        Summary="Atomically replaces the drive profile. Omitted settings inherit authored values, and SetBodyDrive overrides the profile. An empty profile restores authored drives. A transition advances in fixed physics time and retargets from current profile values.",
+        Failure="duplicate_or_missing_body_returns_false_without_changes; invalid_input_throws_without_changes")]
+    public bool ApplyDriveProfile(ReadOnlySpan<RagdollBodyDriveEntry> entries, float transitionSeconds = 0f)
+    {
+        if (!float.IsFinite(transitionSeconds) || transitionSeconds < 0f) throw new ArgumentOutOfRangeException(nameof(transitionSeconds));
+        if (entries.Length > DRIVE_PROFILE_MAX_BODIES) throw new ArgumentOutOfRangeException(nameof(entries));
+        string[] bones = new string[entries.Length];
+        float[] values = new float[1 + entries.Length * DRIVE_PROFILE_ENTRY_FLOATS];
+        values[0] = transitionSeconds;
+        for (int index = 0; index < entries.Length; ++index)
+        {
+            var entry = entries[index];
+            if (string.IsNullOrEmpty(entry.Bone) || entry.Bone.Contains('\0'))
+                throw new ArgumentException("A drive profile entry requires a physical bone name.", nameof(entries));
+            bones[index] = entry.Bone;
+            var patch = entry.Patch;
+            Span<float> record = values.AsSpan(1 + index * DRIVE_PROFILE_ENTRY_FLOATS, DRIVE_PROFILE_ENTRY_FLOATS);
+            WriteDriveProfileField(record, 1, patch.Enabled is bool enabled ? enabled ? 1f : 0f : null);
+            WriteDriveProfileField(record, 2, patch.Space is RagdollDriveSpace space ? RuntimeComponentValue.EnumValue(space) : null);
+            WriteDriveProfileField(record, 3, patch.LinearFrequency);
+            WriteDriveProfileField(record, 4, patch.AngularFrequency);
+            WriteDriveProfileField(record, 5, patch.LinearDampingRatio);
+            WriteDriveProfileField(record, 6, patch.AngularDampingRatio);
+            WriteDriveProfileField(record, 7, patch.MaxForce);
+            WriteDriveProfileField(record, 8, patch.MaxTorque);
+            WriteDriveProfileField(record, 9, patch.TargetVelocityMultiplier);
+        }
+        return Invoke(Service, APPLY_DRIVE_PROFILE_SELECTOR, false, values:values, text:bones).Flag;
+    }
+
+    private static void WriteDriveProfileField(Span<float> record, int index, float? value)
+    {
+        if (value is not float number) return;
+        if (!float.IsFinite(number) || number < 0f) throw new ArgumentOutOfRangeException(nameof(value));
+        record[0] += 1 << (index - 1);
+        record[index] = number;
+    }
+
     [ApiContract(RunModes=new[]{"Play"}, Call="fixed", Summary="Blends a manual COM pose/velocity with animation in the selected space. Requires an enabled body drive and Active mode; StandingGuard still limits the final pose. Cleared on rebuild.", Failure="invalid_input_throws_without_changes; missing_body_returns_false")]
     public bool SetBodyTarget(string bone,RagdollBodyTarget target)=>Invoke(Service,51,false,RuntimeComponentValue.EnumValue(target.Space),
         [target.Position.X,target.Position.Y,target.Position.Z,target.Rotation.X,target.Rotation.Y,target.Rotation.Z,target.Rotation.W,

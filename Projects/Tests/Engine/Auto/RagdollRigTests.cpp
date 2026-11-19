@@ -10,6 +10,7 @@
 
 #include <Physics/OBBCollider.hpp>
 #include <Physics/HeightFieldCollider.hpp>
+#include <Physics/TriangleMeshCollider.hpp>
 #include <Physics/World.hpp>
 
 #include <algorithm>
@@ -133,6 +134,88 @@ TEST_F(RagdollRigTest, BuildsOneBodyPerBoneThatHasAChild)
     EXPECT_EQ(rig.GetJointCount(), 2);
     EXPECT_GE(rig.BodyIndexOfBone(0), 0);
     EXPECT_EQ(rig.BodyIndexOfBone(3), -1);
+}
+
+/// @brief The displayed swing boundary uses the same angle coordinates as the limit solver.
+TEST_F(RagdollRigTest, DebugSwingBoundaryMatchesJointLimitCoordinates)
+{
+    const auto bones = HorizontalChain(3);
+    auto profile = SoftProfile();
+    auto& limits = profile.fallback.limits;
+    limits.enabled = true;
+    limits.swingMinY = -1.6f;
+    limits.swingMaxY = 0.2f;
+    limits.swingMinZ = -0.2f;
+    limits.swingMaxZ = 0.35f;
+
+    scene::RagdollRig rig;
+    rig.Build(bones, profile);
+    ASSERT_EQ(rig.GetJointCount(), 1);
+    std::vector<scene::RagdollDebugLine> lines;
+    rig.BuildDebugLines(lines);
+
+    const auto anchor = bones[1].position;
+    const math::Vector3 swingVector{ 0.0f, limits.swingMinY, limits.swingMaxZ };
+    const auto swing = math::Quaternion::FromAxisAngle(swingVector.Normalized(), swingVector.Length());
+    const auto expected = anchor + swing * math::Vector3::RIGHT * 0.5f;
+    float closestError = 1.0f;
+    for (const auto& line : lines) {
+        if (line.kind == scene::RagdollDebugLine::Kind::Joint &&
+            (line.from - anchor).Length() < testkit::kTolerance) {
+            closestError = std::min(closestError, (line.to - expected).Length());
+        }
+    }
+    EXPECT_NEAR(closestError, 0.0f, testkit::kTolerance);
+}
+
+/// @brief The moving axis starts at the moving socket even when the two socket positions differ.
+TEST_F(RagdollRigTest, DebugChildAxisStartsAtActualChildSocket)
+{
+    const auto bones = HorizontalChain(3);
+    scene::RagdollRig rig;
+    rig.Build(bones, SoftProfile());
+    auto* child = rig.BodyOfBone(1);
+    ASSERT_NE(child, nullptr);
+    const auto turn = math::Quaternion::FromAxisAngle(math::Vector3::UP, 0.4f);
+    const auto childAnchor = bones[1].position + math::Vector3{ 0.01f, 0.02f, 0.03f };
+    child->SetPosition(childAnchor + turn * (child->GetPosition() - bones[1].position));
+    child->SetRotation(turn * child->GetRotation());
+
+    std::vector<scene::RagdollDebugLine> lines;
+    rig.BuildDebugLines(lines);
+    const auto childEnd = childAnchor + turn * math::Vector3::RIGHT * 0.6f;
+    EXPECT_TRUE(std::any_of(lines.begin(), lines.end(), [&](const auto& line) {
+        return line.kind == scene::RagdollDebugLine::Kind::Joint &&
+            (line.from - childAnchor).Length() < testkit::kTolerance &&
+            (line.to - childEnd).Length() < testkit::kTolerance;
+    }));
+}
+
+/// @brief The collider wire and the joint wires use the same solved body pose.
+TEST_F(RagdollRigTest, DebugBodyWireUsesCurrentBodyPose)
+{
+    scene::RagdollRig rig;
+    rig.Build(HorizontalChain(2), SoftProfile());
+    auto* body = rig.BodyOfBone(0);
+    ASSERT_NE(body, nullptr);
+    const math::Vector3 solvedCenter{ 0.3f, 0.6f, 0.15f };
+    body->SetPosition(solvedCenter);
+    body->SetRotation(math::Quaternion::Identity());
+
+    std::vector<scene::RagdollDebugLine> lines;
+    rig.BuildDebugLines(lines);
+    ASSERT_FALSE(lines.empty());
+    auto lowest = lines.front().from;
+    auto highest = lowest;
+    for (const auto& line : lines) {
+        EXPECT_EQ(line.kind, scene::RagdollDebugLine::Kind::Body);
+        for (const auto& point : { line.from, line.to }) {
+            if (point.y < lowest.y) lowest = point;
+            if (point.y > highest.y) highest = point;
+        }
+    }
+    EXPECT_VEC3_NEAR(lowest, solvedCenter - math::Vector3::UP * 0.5f, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(highest, solvedCenter + math::Vector3::UP * 0.5f, testkit::kTolerance);
 }
 
 /// @brief Capture then write reproduces the pose.
@@ -282,6 +365,31 @@ TEST_F(RagdollRigTest, GroundPlaneStopsTheFallingChain)
         EXPECT_GT(positions[i].y, -2.15f) << "bone " << i << " fell through the ground";
 }
 
+/// @brief 無効化した平面は大きな負の座標でも反力を発生させず、再有効化すると接触を解く。
+TEST_F(RagdollRigTest, DisabledGroundPlaneDoesNotApplyCorrectionAtAnyHeight)
+{
+    const auto bones = StraightChain(2);
+    scene::RagdollRig rig;
+    rig.Build(bones, SoftProfile());
+    rig.Capture(bones);
+    rig.SetGravity(math::Vector3::ZERO);
+    rig.SetDrive(false, 0.0f, 1.0f, 1.0f);
+    rig.SetGround(0.0f, 0.9f);
+    rig.DisableGround();
+
+    auto* body = rig.GetBody(0);
+    ASSERT_NE(body, nullptr);
+    const math::Vector3 initialPosition{0.0f, -1.5e9f, 0.0f};
+    body->SetPosition(initialPosition);
+    rig.Step(1.0f / 60.0f);
+    EXPECT_VEC3_NEAR(body->GetPosition(), initialPosition, testkit::kTolerance);
+
+    body->SetPosition({0.0f, 0.5f, 0.0f});
+    rig.SetGround(1.0f, 0.9f);
+    rig.Step(1.0f / 60.0f);
+    EXPECT_GE(body->GetPosition().y, 1.0f);
+}
+
 /// @brief Lower torque limit sags more and saturates.
 /// @note 同じ荷重で低いトルク上限の関節ほど垂れ、出力が飽和すること。
 TEST_F(RagdollRigTest, LowerTorqueLimitSagsMoreAndSaturates)
@@ -395,6 +503,102 @@ TEST_F(RagdollRigTest, WorldColliderStopsTheFall)
     EXPECT_GT(rig.GetContactCount(), 0) << "no contact was generated against the world";
     for (std::size_t i = 0; i < positions.size(); ++i)
         EXPECT_GT(positions[i].y, -0.2f) << "bone " << i << " fell through the world collider";
+}
+
+/// @brief 箱の頂点プローブが三角形面をまたいでも、箱全体を進入した側へ押し戻す。
+TEST_F(RagdollRigTest, ResolvesBoxPenetrationOnBothSidesOfTriangleMesh)
+{
+    physics::TriangleMeshCollider floor(
+        {{-2.0f, 0.0f, -2.0f}, {-2.0f, 0.0f, 2.0f}, {2.0f, 0.0f, 2.0f}, {2.0f, 0.0f, -2.0f}},
+        {0, 1, 2, 0, 2, 3});
+    const physics::PhysicsMaterial material;
+    physics::World world;
+    world.BeginSceneSync();
+    world.SyncCollider({}, physics::ColliderInstance{
+        &floor, nullptr, &material, math::Vector3::ZERO, false, 0 });
+    world.EndSceneSync();
+
+    scene::RagdollProfile profile;
+    profile.definitionsOnly = true;
+    scene::RagdollBodyDefinition definition;
+    definition.bone = "Foot";
+    definition.shape = scene::RagdollBodyShape::BOX;
+    definition.halfExtents = {0.20f, 0.10f, 0.15f};
+    definition.mass = 1.0f;
+    profile.bodies.push_back(definition);
+
+    for (const float side : {1.0f, -1.0f}) {
+        SCOPED_TRACE(side);
+        std::vector<scene::RagdollBonePose> bones(1);
+        bones[0].name = definition.bone;
+        bones[0].position = {0.0f, side * 0.097f, 0.0f};
+
+        scene::RagdollRig rig;
+        rig.Build(bones, profile);
+        rig.Capture(bones);
+        rig.SetDrive(false, 1.0f, 1.0f, 1.0f);
+        rig.SetGravity(math::Vector3::ZERO);
+        rig.SetSubsteps(1);
+        rig.DisableGround();
+        rig.RefreshContacts(&world);
+        rig.Step(1.0f / 120.0f);
+        rig.ApplyContactReactions();
+
+        std::vector<math::Vector3> positions;
+        std::vector<math::Quaternion> rotations;
+        rig.WritePose(bones, positions, rotations);
+        ASSERT_EQ(positions.size(), 1u);
+        ASSERT_EQ(rotations.size(), 1u);
+        physics::OBBCollider solvedBox(definition.halfExtents);
+        solvedBox.Update(positions[0], rotations[0]);
+        for (const auto& corner : solvedBox.GetCorners())
+            EXPECT_GE(side * corner.y, -0.001f);
+    }
+}
+
+/// @brief つま先が上がった足には、三角形面上のかかとに支持点を置く。
+TEST_F(RagdollRigTest, SupportsPitchedBoxFootAtItsHeelOnTriangleMesh)
+{
+    physics::TriangleMeshCollider floor(
+        {{-2.0f, 0.0f, -2.0f}, {-2.0f, 0.0f, 2.0f}, {2.0f, 0.0f, 2.0f}, {2.0f, 0.0f, -2.0f}},
+        {0, 1, 2, 0, 2, 3});
+    const physics::PhysicsMaterial material;
+    physics::World world;
+    world.BeginSceneSync();
+    world.SyncCollider({}, physics::ColliderInstance{
+        &floor, nullptr, &material, math::Vector3::ZERO, false, 0 });
+    world.EndSceneSync();
+
+    scene::RagdollProfile profile;
+    profile.definitionsOnly = true;
+    scene::RagdollBodyDefinition definition;
+    definition.bone = "RightFoot";
+    definition.shape = scene::RagdollBodyShape::BOX;
+    definition.halfExtents = {0.05f, 0.035f, 0.12f};
+    definition.mass = 1.0f;
+    profile.bodies.push_back(definition);
+
+    const auto rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, -0.35f);
+    const auto heel = rotation * math::Vector3{0.0f, -definition.halfExtents.y, -definition.halfExtents.z};
+    std::vector<scene::RagdollBonePose> bones(1);
+    bones[0].name = definition.bone;
+    bones[0].rotation = rotation;
+    bones[0].position = {0.0f, -heel.y - 0.003f, 0.0f};
+
+    scene::RagdollRig rig;
+    rig.Build(bones, profile);
+    rig.Capture(bones);
+    rig.SetDrive(true, 1.0f, 1.0f, 1.0f);
+    rig.DisableGround();
+    rig.RefreshContacts(&world);
+
+    math::Vector3 ankle, point, normal;
+    const physics::Collider* support = nullptr;
+    ASSERT_TRUE(rig.TryGetBoneSupport(definition.bone, ankle, point, normal, support));
+    EXPECT_EQ(support, &floor);
+    EXPECT_VEC3_NEAR(normal, math::Vector3::UP, testkit::kTolerance);
+    EXPECT_NEAR(point.y, 0.0f, 0.001f);
+    EXPECT_NEAR(point.z, heel.z, 0.002f);
 }
 
 /// @brief Checks passive settles on height field without ground plane.

@@ -12,6 +12,7 @@
 #include <Math/Quaternion.hpp>
 #include <Math/Vector3.hpp>
 #include <Physics/CapsuleCollider.hpp>
+#include <Physics/Collider.hpp>
 #include <Physics/CollisionPair.hpp>
 #include <Physics/ContactPoint.hpp>
 #include <Physics/PhysicsMaterial.hpp>
@@ -25,6 +26,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -130,6 +132,11 @@ public:
     /// @return 剛体が存在し設定が有効なとき true。失敗時は変更しない。
     [[nodiscard]] FBZZ_ENGINE_API bool SetBodyDrive(std::string_view bone, const RagdollBodyDrive& settings);
     [[nodiscard]] FBZZ_ENGINE_API bool ClearBodyDrive(std::string_view bone);
+    /// @note 選択中のプロファイル全体を更新する。未指定の骨・項目は通常駆動へ戻り、個別上書きを優先する。
+    /// @param transitionSeconds 固定物理時間 [s]。0 は即時。再指示はその時点のプロファイル値から開始する。
+    /// @return 不正な骨・重複・値が含まれる場合は false。駆動と進行中の補間は未変更。
+    [[nodiscard]] FBZZ_ENGINE_API bool ApplyDriveProfile(
+        std::span<const RagdollBodyDriveEntry> entries, float transitionSeconds);
 
     /// @brief サーボの効き方をまとめて決める。プロファイルの値へ倍率として掛かるので、骨格ごとの «どこが強いか» を保ったまま全体の力み具合だけを動かせる。
     /// @param enabled false で完全に脱力する (Passive)。
@@ -253,7 +260,7 @@ public:
     [[nodiscard]] physics::XPBDSolver& Solver() { return m_solver; }
 
     /// @note 剛体・可動域・接触をワイヤーで書き出す。
-    /// @note 形状は RefreshContacts が毎フレーム同期しているので、ここでは読むだけ。
+    /// @note コライダーの表示を解決後の剛体姿勢に合わせ、接触探索用の形状状態は変更しない。
     FBZZ_ENGINE_API void BuildDebugLines(std::vector<RagdollDebugLine>& out) const;
 
 private:
@@ -287,10 +294,22 @@ private:
         bool customDrive = false;
         RagdollBodyDrive baseDrive;
         RagdollBodyDrive activeDrive;
+        std::optional<RagdollBodyDrive> profileDrive;
         bool targetHistory = false;
         [[nodiscard]] float Reach() const { return shape == RagdollBodyShape::BOX ? halfExtents.Length() : halfHeight + radius; }
         [[nodiscard]] float Bottom(const math::Vector3& p, const math::Quaternion& q) const;
     };
+
+    struct DriveProfileTransition {
+        std::size_t bodyIndex;
+        RagdollBodyDrive from;
+        std::optional<RagdollBodyDrive> to;
+    };
+    std::vector<DriveProfileTransition> m_driveProfileTransitions;
+    double m_driveProfileElapsed = 0.0;
+    double m_driveProfileDuration = 0.0;
+    static void SetEffectiveDrive(BodyLink& link, const RagdollBodyDrive& settings);
+    void AdvanceDriveProfile(float dt);
 
     /// @note 関節と、それが繋いでいる剛体の添字。所有は m_solver 側。
     struct JointLink {
@@ -417,6 +436,7 @@ private:
     std::vector<CachedContact> m_contactCache;
     std::vector<CachedContact> m_previousContacts;
     std::vector<physics::CollisionPair>    m_pairs;
+    std::vector<physics::AABB>             m_selfContactBounds;
     std::vector<physics::ContactPoint>     m_contactPoints;
     std::vector<ContactReaction>           m_contactReactions;
     /// @note RefreshContacts から次の Step 終了までの非所有参照。

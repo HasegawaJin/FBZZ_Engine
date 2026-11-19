@@ -204,7 +204,7 @@ ManagedBridgeStatus RunComponentServices(Scene& scene, Script& view, GameObject&
             row->allowRest=(integer&128)!=0;
             break;
         }
-        if(request.index>=50&&request.index<=66) {
+        if ((request.index >= 50 && request.index <= 66) || request.index == APPLY_RAGDOLL_DRIVE_PROFILE) {
             const auto status=RunRagdollControls(*row,target,related,request.index,integer,p,t,output);
             if(status!=ManagedBridgeStatus::OK)return status;
             break;

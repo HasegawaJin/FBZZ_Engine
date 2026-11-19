@@ -84,6 +84,32 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void SolveCorrectionPosition(float h) override;
         FBZZ_PHYSICS_API void SolveVelocity(float h) override;
 
+        class VelocityProjection
+        {
+            friend class XPBDJoint;
+            struct Limit
+            {
+                math::Vector3 axis;
+                bool atLower = false;
+                bool atUpper = false;
+            };
+
+            math::Vector3 m_childArm;
+            math::Vector3 m_parentArm;
+            math::Vector3 m_columnX;
+            math::Vector3 m_columnY;
+            math::Vector3 m_columnZ;
+            math::Vector3 m_cofactorX;
+            float m_determinant = 0.0f;
+            Limit m_limits[3]{};
+            int m_limitCount = 0;
+        };
+
+        /// @note 硬いソケットと可動域の速度射影を準備する。モーターの減衰は SolveVelocity が扱う。
+        [[nodiscard]] FBZZ_PHYSICS_API VelocityProjection PrepareVelocityProjection() const;
+        /// @pre 準備時と同じ関節、姿勢、可動域、有効逆質量・逆慣性を使うこと。速度は変更してよい。
+        FBZZ_PHYSICS_API void ProjectVelocity(const VelocityProjection& projection);
+
         /// @note 直前の substep で測ったたわみ [rad]。可動域の調整と、崩れ方の診断に使う。
         [[nodiscard]] float GetTwistAngle() const { return m_twistAngle; }
         [[nodiscard]] float GetSwingAngleY() const { return m_swingAngleY; }

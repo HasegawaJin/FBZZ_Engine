@@ -116,7 +116,9 @@ public static unsafe partial class EntryPoint
         public NativeServiceResult InvokeService(ScriptExecutionScope scope, ulong objectId, uint service, uint method,
             long integer, ReadOnlySpan<float> values, ReadOnlySpan<string> text, GameObject? related, bool readOnly)
         {
-            if (values.Length > 128 || text.Length > 128) throw new ArgumentException("Service packet exceeds its declared capacity.");
+            int floatCapacity = service == (uint)BridgeOp.SERVICE_RAGDOLL && method == Ragdoll.APPLY_DRIVE_PROFILE_SELECTOR
+                ? 1 + Ragdoll.DRIVE_PROFILE_MAX_BODIES * Ragdoll.DRIVE_PROFILE_ENTRY_FLOATS : 128;
+            if (values.Length > floatCapacity || text.Length > 128) throw new ArgumentException("Service packet exceeds its declared capacity.");
             if (related is not null && (related.SceneLifetime != scope.SceneLifetime || related.ObjectId == 0))
                 throw new InvalidOperationException("Service reference is unresolved or belongs to another scene.");
             int size = checked(24 + values.Length * 4);

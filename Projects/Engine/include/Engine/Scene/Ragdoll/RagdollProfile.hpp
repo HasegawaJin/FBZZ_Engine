@@ -10,6 +10,7 @@
 
 #include <Physics/XPBDJoint.hpp>
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,6 +60,24 @@ struct RagdollBodyDrive {
     float maxForce = 0.0f;
     float maxTorque = 100.0f;
     float targetVelocityMultiplier = 1.0f;
+};
+
+/// @note 未指定の項目は、その骨の通常駆動から継承する。明示した 0 と false は有効。
+struct RagdollBodyDrivePatch {
+    std::optional<bool> enabled;
+    std::optional<RagdollDriveSpace> space;
+    std::optional<float> linearFrequency;
+    std::optional<float> angularFrequency;
+    std::optional<float> linearDampingRatio;
+    std::optional<float> angularDampingRatio;
+    std::optional<float> maxForce;
+    std::optional<float> maxTorque;
+    std::optional<float> targetVelocityMultiplier;
+};
+
+struct RagdollBodyDriveEntry {
+    std::string bone;
+    RagdollBodyDrivePatch patch;
 };
 
 /// @note 形状中心・関節位置はボーンローカルの m、回転は同空間の単位 quaternion。寸法は半径・半高・半辺長。

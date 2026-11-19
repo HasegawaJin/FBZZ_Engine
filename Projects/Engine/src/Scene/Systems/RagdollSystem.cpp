@@ -59,6 +59,7 @@ int FindNode(const asset::Skeleton& skeleton, const std::string& boneName)
 
 void UploadBoneMatrices(AnimatorComponent& animator, renderer::ResourceManager& resources)
 {
+    FBZZ_PROFILE_SCOPE("RagdollSystem::UploadSkinning");
     SkinningCB cb{};
     for (int i = 0; i < asset::MAX_SKINNING_BONES; ++i)
         cb.boneMatrices[i] = math::Matrix4::Identity();
@@ -436,6 +437,8 @@ void RagdollSystem::Update(SystemContext& ctx)
                 runtime.rig->Build(
                     BuildBindPose(runtime, skeleton, go->transform.GetWorldMatrix()), profile);
             }
+            if (!runtime.driveProfile.empty())
+                (void)runtime.rig->ApplyDriveProfile(runtime.driveProfile, 0.0f);
             for (const auto& overrideDrive:runtime.driveOverrides)
                 (void)runtime.rig->SetBodyDrive(overrideDrive.bone,overrideDrive.settings);
             runtime.builtDefinitionRevision = runtime.definitionRevision;
@@ -631,6 +634,7 @@ void RagdollSystem::Update(SystemContext& ctx)
         ragdoll->runtimeStatus     = RagdollStatus::Running;
         if (weight <= 0.0f) continue;
 
+        FBZZ_PROFILE_SCOPE("RagdollSystem::CommitPose");
         const math::Matrix4 ownerInv =
             math::Matrix4::Inverse(go->transform.GetWorldMatrix());
         const auto originalGlobals = animator->nodeGlobalTransforms;

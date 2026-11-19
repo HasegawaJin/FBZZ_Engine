@@ -170,6 +170,100 @@ TEST_F(ManagedComponentServicesTest, BodyDriveOverridesAreFixedOnlyValidatedAndR
     EXPECT_NEAR(ragdoll.friction,0.4f,1.0e-6f);
 }
 
+/// @brief 部位駆動を一括で切り替え、個別上書きの解除と不正要求の原子性を検証する。
+TEST_F(ManagedComponentServicesTest, BodyDriveProfileResolvesPartialSettingsAndOverridesAtomically)
+{
+    auto& ragdoll = m_object->AddComponent<scene::RagdollComponent>();
+    ragdoll.runtime.rig = std::make_unique<scene::RagdollRig>();
+    auto& rig = *ragdoll.runtime.rig;
+    scene::RagdollProfile profile;
+    profile.definitionsOnly = true;
+    std::vector<scene::RagdollBonePose> bones(2);
+    for (std::size_t i = 0; i < bones.size(); ++i) {
+        auto& body = profile.bodies.emplace_back();
+        body.bone = i == 0 ? "Chest" : "Head";
+        body.drive.enabled = true;
+        body.drive.angularFrequency = 12.0f;
+        body.drive.maxTorque = 60.0f;
+        bones[i].name = body.bone;
+    }
+    rig.Build(bones, profile);
+    const std::array<std::string, 2> names{"Chest", "Head"}, missing{"Chest", "Missing"}, duplicate{"Chest", "Chest"};
+    const std::array<std::string, 1> chest{"Chest"};
+    const std::array<float, 21> apply{0, 40, 0, 0, 0, 32, 0, 1.25f, 0, 0, 0,
+        128, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    const std::array<float, 11> next{0, 8, 0, 0, 0, 24, 0, 0, 0, 0, 0};
+    const std::array<float, 7> manual{0, 40, 1, 2, 0, 90, 1};
+    EXPECT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 68, false, 0, apply, names), ComponentStatus::INVALID_SCOPE);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 68, false, 0, apply, names, true), ComponentStatus::OK);
+    ASSERT_EQ(m_result.integer, 1);
+    scene::RagdollBodyDrive drive;
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_TRUE(drive.enabled);
+    EXPECT_FLOAT_EQ(drive.angularFrequency, 32.0f);
+    EXPECT_FLOAT_EQ(drive.angularDampingRatio, 1.25f);
+    EXPECT_FLOAT_EQ(drive.maxTorque, 60.0f);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Head", drive));
+    EXPECT_FLOAT_EQ(drive.maxTorque, 0.0f);
+
+    auto invalid = apply;
+    invalid[5] = 99.0f;
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 68, false, 0, invalid, missing, true), ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer, 0);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 68, false, 0, invalid, duplicate, true), ComponentStatus::OK);
+    EXPECT_EQ(m_result.integer, 0);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_FLOAT_EQ(drive.angularFrequency, 32.0f);
+
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 34, false, 1, manual, chest, true), ComponentStatus::OK);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 68, false, 0, next, chest, true), ComponentStatus::OK);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_FLOAT_EQ(drive.angularFrequency, 40.0f);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 35, false, 0, {}, chest, true), ComponentStatus::OK);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_FLOAT_EQ(drive.angularFrequency, 24.0f);
+    EXPECT_FLOAT_EQ(drive.angularDampingRatio, 1.0f);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Head", drive));
+    EXPECT_FLOAT_EQ(drive.maxTorque, 60.0f);
+}
+
+/// @brief 再指示は固定刻みで補間された現在値から開始する。
+TEST_F(ManagedComponentServicesTest, BodyDriveProfileRetargetsFromCurrentFixedStep)
+{
+    auto& ragdoll = m_object->AddComponent<scene::RagdollComponent>();
+    ragdoll.runtime.rig = std::make_unique<scene::RagdollRig>();
+    auto& rig = *ragdoll.runtime.rig;
+    scene::RagdollProfile profile;
+    profile.definitionsOnly = true;
+    auto& body = profile.bodies.emplace_back();
+    body.bone = "Chest";
+    body.drive.enabled = true;
+    body.drive.angularFrequency = 12.0f;
+    std::vector<scene::RagdollBonePose> bones(1);
+    bones.front().name = body.bone;
+    rig.Build(bones, profile);
+    rig.Capture(bones);
+    rig.SetGravity(math::Vector3::ZERO);
+    const std::array<std::string, 1> name{"Chest"};
+    const std::array<float, 11> first{0.5f, 8, 0, 0, 0, 32, 0, 0, 0, 0, 0};
+    const std::array<float, 11> second{0.5f, 8, 0, 0, 0, 4, 0, 0, 0, 0, 0};
+    scene::RagdollBodyDrive drive;
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 68, false, 0, first, name, true), ComponentStatus::OK);
+    ASSERT_EQ(m_result.integer, 1);
+    for (int i = 0; i < 15; ++i) rig.Step(1.0f / 60.0f);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_NEAR(drive.angularFrequency, 22.0f, 1.0e-5f);
+    ASSERT_EQ(Run(ComponentOp::SERVICE_RAGDOLL, 68, false, 0, second, name, true), ComponentStatus::OK);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_NEAR(drive.angularFrequency, 22.0f, 1.0e-5f);
+    for (int i = 0; i < 15; ++i) rig.Step(1.0f / 60.0f);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_NEAR(drive.angularFrequency, 13.0f, 1.0e-5f);
+    for (int i = 0; i < 15; ++i) rig.Step(1.0f / 60.0f);
+    ASSERT_TRUE(rig.Controls().BodyDrive("Chest", drive));
+    EXPECT_FLOAT_EQ(drive.angularFrequency, 4.0f);
+}
+
 /// @brief Body controls validate scope and current target lifetime.
 TEST_F(ManagedComponentServicesTest, BodyControlsValidateScopeAndCurrentTargetLifetime)
 {

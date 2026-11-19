@@ -89,6 +89,7 @@ struct RagdollRuntime {
     int loadedAssetGeneration = -1;
     bool definitionValid = false;
     RagdollDefinition definition;
+    std::vector<RagdollBodyDriveEntry> driveProfile;
     std::vector<RagdollDriveOverride> driveOverrides;
     std::uint64_t definitionRevision = 0;
     std::uint64_t builtDefinitionRevision = 0;
@@ -116,6 +117,7 @@ struct RagdollRuntime {
         loadedAssetGeneration = -1;
         definitionValid = false;
         definition = {};
+        driveProfile.clear();
         driveOverrides.clear();
         definitionRevision = 0;
         builtDefinitionRevision = 0;

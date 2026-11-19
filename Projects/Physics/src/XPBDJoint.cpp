@@ -5,7 +5,9 @@
 #include <Physics/XPBDJoint.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 
 namespace fbzz::physics
 {
@@ -243,7 +245,7 @@ namespace fbzz::physics
         const math::Vector3 pChild = m_child->GetPosition() + rChild;
         const math::Vector3 rParent =
             m_parent ? m_parent->GetRotation() * m_anchorParent : math::Vector3::ZERO;
-        const math::Vector3 pParent = ParentAnchorWorld();
+        const math::Vector3 pParent = m_parent ? m_parent->GetPosition() + rParent : m_anchorParent;
 
         SolvePositional(m_child, m_parent, rChild, rParent,
                         pChild - pParent, m_socketCompliance, h, m_lambdaSocket);
@@ -253,62 +255,175 @@ namespace fbzz::physics
     {
         if (!m_child || h<=0.0f) return;
         SolveDriveVelocity(h);
+        ProjectVelocity(PrepareVelocityProjection());
+    }
+
+    XPBDJoint::VelocityProjection XPBDJoint::PrepareVelocityProjection() const
+    {
+        VelocityProjection projection;
+        if (!m_child) return projection;
         /// @note 位置射影後の速度も関節の許容運動へ射影する。脱力中も接続点の速度を一致させ、自由回転は残す。
         /// @see https://matthias-research.github.io/pages/publications/PBDBodies.pdf Velocity Update.
-        const auto rChild=m_child->GetRotation()*m_anchorChild;
-        const auto rParent=m_parent ? m_parent->GetRotation()*m_anchorParent : math::Vector3::ZERO;
-        const auto response=[&](const math::Vector3& impulse) {
-            auto value=impulse*(m_child->GetInvMass()+(m_parent ? m_parent->GetInvMass() : 0.0f));
-            value+=math::Vector3::Cross(m_child->ApplyInvInertia(math::Vector3::Cross(rChild,impulse)),rChild);
-            if (m_parent) value+=math::Vector3::Cross(m_parent->ApplyInvInertia(math::Vector3::Cross(rParent,impulse)),rParent);
-            return value;
+        if (m_socketCompliance <= 0.0f) {
+            projection.m_childArm = m_child->GetRotation() * m_anchorChild;
+            projection.m_parentArm = m_parent ? m_parent->GetRotation() * m_anchorParent : math::Vector3::ZERO;
+            const auto response = [&](const math::Vector3& impulse) {
+                const auto& childArm = projection.m_childArm;
+                const auto& parentArm = projection.m_parentArm;
+                auto value = impulse * (m_child->GetInvMass() + (m_parent ? m_parent->GetInvMass() : 0.0f));
+                value += math::Vector3::Cross(m_child->ApplyInvInertia(math::Vector3::Cross(childArm, impulse)), childArm);
+                if (m_parent)
+                    value += math::Vector3::Cross(m_parent->ApplyInvInertia(math::Vector3::Cross(parentArm, impulse)), parentArm);
+                return value;
+            };
+            projection.m_columnX = response(math::Vector3::RIGHT);
+            projection.m_columnY = response(math::Vector3::UP);
+            projection.m_columnZ = response(math::Vector3::FORWARD);
+            projection.m_cofactorX = math::Vector3::Cross(projection.m_columnY, projection.m_columnZ);
+            projection.m_determinant = math::Vector3::Dot(projection.m_columnX, projection.m_cofactorX);
+        }
+        if (m_limits.enabled && m_limits.compliance <= 0.0f) {
+            const auto parentFrame = ParentFrameWorld();
+            const auto deviation = (parentFrame.Inverse() * ChildFrameWorld()).Normalized();
+            math::Quaternion swing, twist;
+            DecomposeSwingTwist(deviation, swing, twist);
+            const auto swingVector = RotationVector(swing);
+            const float twistAngle = TwistAngle(twist);
+            constexpr float tolerance = 0.0001f;
+            const auto atLimit = [](float angle, float low, float high) {
+                return angle <= low + tolerance || angle >= high - tolerance;
+            };
+            const bool limitY = atLimit(swingVector.y, m_limits.swingMinY, m_limits.swingMaxY);
+            const bool limitZ = atLimit(swingVector.z, m_limits.swingMinZ, m_limits.swingMaxZ);
+            const bool limitTwist = atLimit(twistAngle, m_limits.twistMin, m_limits.twistMax);
+            if (limitY || limitZ || limitTwist) {
+                /// @note 速度射影の反復では姿勢が変わらない。上下限に達した軸を一度だけ用意する。
+                const auto jacobians = BuildLimitJacobians(deviation);
+                const auto addLimit = [&](const math::Vector3& gradient, float angle, float low, float high) {
+                    projection.m_limits[projection.m_limitCount++] = {
+                        (parentFrame * gradient).NormalizedOr(math::Vector3::ZERO),
+                        angle <= low + tolerance,
+                        angle >= high - tolerance,
+                    };
+                };
+                if (limitY) addLimit(jacobians.swingY, swingVector.y, m_limits.swingMinY, m_limits.swingMaxY);
+                if (limitZ) addLimit(jacobians.swingZ, swingVector.z, m_limits.swingMinZ, m_limits.swingMaxZ);
+                if (limitTwist) addLimit(jacobians.twist, twistAngle, m_limits.twistMin, m_limits.twistMax);
+            }
+        }
+        return projection;
+    }
+
+    void XPBDJoint::ProjectVelocity(const VelocityProjection& projection)
+    {
+        const bool projectSocket = projection.m_determinant > 1.0e-9f;
+        if (!projectSocket && projection.m_limitCount == 0) return;
+        const auto& rChild = projection.m_childArm;
+        const auto& rParent = projection.m_parentArm;
+        const auto& columnX = projection.m_columnX;
+        const auto& columnY = projection.m_columnY;
+        const auto& columnZ = projection.m_columnZ;
+        const float determinant = projection.m_determinant;
+        constexpr int VELOCITY_PROJECTION_ITERATIONS = 8;
+        constexpr float SOCKET_VELOCITY_TOLERANCE_SQ = 1.0e-12f;
+        const auto solveSocketImpulse = [&](const math::Vector3& relative) {
+            return math::Vector3{
+                math::Vector3::Dot(relative, projection.m_cofactorX) / determinant,
+                math::Vector3::Dot(columnX, math::Vector3::Cross(relative, columnZ)) / determinant,
+                math::Vector3::Dot(columnX, math::Vector3::Cross(columnY, relative)) / determinant};
         };
-        const auto columnX=response(math::Vector3::RIGHT);
-        const auto columnY=response(math::Vector3::UP);
-        const auto columnZ=response(math::Vector3::FORWARD);
-        const float determinant=math::Vector3::Dot(columnX,math::Vector3::Cross(columnY,columnZ));
-        const bool hardLimits=m_limits.enabled && m_limits.compliance<=0.0f;
-        math::Quaternion parentFrame,swing,twist;
-        math::Vector3 swingVector;
-        LimitJacobians jacobians;
-        if (hardLimits) {
-            parentFrame=ParentFrameWorld();
-            const auto deviation=(parentFrame.Inverse()*ChildFrameWorld()).Normalized();
-            DecomposeSwingTwist(deviation,swing,twist);
-            swingVector=RotationVector(swing);
-            jacobians=BuildLimitJacobians(deviation);
+        const auto sameVelocity = [](const math::Vector3& a, const math::Vector3& b) {
+            return std::bit_cast<std::uint32_t>(a.x) == std::bit_cast<std::uint32_t>(b.x)
+                && std::bit_cast<std::uint32_t>(a.y) == std::bit_cast<std::uint32_t>(b.y)
+                && std::bit_cast<std::uint32_t>(a.z) == std::bit_cast<std::uint32_t>(b.z);
+        };
+        const bool socketOnly = projection.m_limitCount == 0;
+        const auto keepsLocalVelocity = [](const RigidBody& body) {
+            const auto positionLock = body.GetFreezePosition();
+            const auto rotationLock = body.GetFreezeRotation();
+            return !body.m_allowSleeping && !body.IsSleeping()
+                && std::bit_cast<std::uint32_t>(body.m_sleepTimer) == 0
+                && !positionLock.x && !positionLock.y && !positionLock.z
+                && !rotationLock.x && !rotationLock.y && !rotationLock.z;
+        };
+        /// @note 休止と軸固定の影響がない二剛体間では、関節内の反復結果だけを先に求めて一度書き戻す。
+        if (socketOnly && m_parent && m_parent != m_child
+            && keepsLocalVelocity(*m_child) && keepsLocalVelocity(*m_parent)) {
+            const float childInverseMass = m_child->GetInvMass();
+            const float parentInverseMass = m_parent->GetInvMass();
+            auto childLinear = m_child->GetVelocity();
+            auto childAngular = m_child->GetAngularVelocity();
+            auto parentLinear = m_parent->GetVelocity();
+            auto parentAngular = m_parent->GetAngularVelocity();
+            for (int iteration = 0; iteration < VELOCITY_PROJECTION_ITERATIONS; ++iteration) {
+                const auto childVelocity = childLinear + math::Vector3::Cross(childAngular, rChild);
+                const auto parentVelocity = parentLinear + math::Vector3::Cross(parentAngular, rParent);
+                const auto relative = childVelocity - parentVelocity;
+                /// @note ソケットの 3×3 解は通常 1 回で収束する。残差が 1 µm/s 以下なら力積の再計算を省く。
+                if (relative.LengthSq() <= SOCKET_VELOCITY_TOLERANCE_SQ) break;
+                const auto impulse = solveSocketImpulse(relative);
+                const auto nextChildLinear = childLinear - impulse * childInverseMass;
+                const auto nextChildAngular = childAngular - m_child->ApplyInvInertia(math::Vector3::Cross(rChild, impulse));
+                const auto nextParentLinear = parentLinear + impulse * parentInverseMass;
+                const auto nextParentAngular = parentAngular + m_parent->ApplyInvInertia(math::Vector3::Cross(rParent, impulse));
+                if (sameVelocity(nextChildLinear, childLinear) && sameVelocity(nextChildAngular, childAngular)
+                    && sameVelocity(nextParentLinear, parentLinear) && sameVelocity(nextParentAngular, parentAngular))
+                    break;
+                childLinear = nextChildLinear;
+                childAngular = nextChildAngular;
+                parentLinear = nextParentLinear;
+                parentAngular = nextParentAngular;
+            }
+            m_child->SetVelocity(childLinear);
+            m_child->SetAngularVelocity(childAngular);
+            m_parent->SetVelocity(parentLinear);
+            m_parent->SetAngularVelocity(parentAngular);
+            return;
         }
         /// @note 可動域とソケットの速度射影を交互に解く。ソケットだけで角速度を再生成して可動域へ突っ込ませない。
-        for (int projection=0;projection<8;++projection) {
-            if (hardLimits) {
-                const auto stopOutward=[&](const math::Vector3& gradient,float angle,float low,float high) {
-                    const auto axis=(parentFrame*gradient).NormalizedOr(math::Vector3::ZERO);
-                    const auto relative=m_child->GetAngularVelocity()-(m_parent ? m_parent->GetAngularVelocity() : math::Vector3::ZERO);
-                    const float speed=math::Vector3::Dot(relative,axis);
-                    if ((angle>=high-0.0001f && speed>0.0f) || (angle<=low+0.0001f && speed<0.0f))
-                        ApplyAngularVelocityChange(m_child,m_parent,axis*speed);
-                };
-                stopOutward(jacobians.swingY,swingVector.y,m_limits.swingMinY,m_limits.swingMaxY);
-                stopOutward(jacobians.swingZ,swingVector.z,m_limits.swingMinZ,m_limits.swingMaxZ);
-                stopOutward(jacobians.twist,
-                    TwistAngle(twist),m_limits.twistMin,m_limits.twistMax);
+        for (int iteration = 0; iteration < VELOCITY_PROJECTION_ITERATIONS; ++iteration) {
+            bool adjustedLimit = false;
+            for (int index = 0; index < projection.m_limitCount; ++index) {
+                const auto& limit = projection.m_limits[index];
+                const auto relative = m_child->GetAngularVelocity() -
+                    (m_parent ? m_parent->GetAngularVelocity() : math::Vector3::ZERO);
+                const float speed = math::Vector3::Dot(relative, limit.axis);
+                if ((limit.atUpper && speed > 0.0f) || (limit.atLower && speed < 0.0f)) {
+                    ApplyAngularVelocityChange(m_child, m_parent, limit.axis * speed);
+                    adjustedLimit = true;
+                }
             }
-            if (m_socketCompliance<=0.0f && determinant>1.0e-9f) {
+            if (projectSocket) {
                 /// @note 3軸を別々に解くと細い肢の大きな逆慣性で収束が遅い。点の3×3有効質量を同時に解く。
-                const auto childVelocity=m_child->GetVelocity()+math::Vector3::Cross(m_child->GetAngularVelocity(),rChild);
-                const auto parentVelocity=m_parent ? m_parent->GetVelocity()+math::Vector3::Cross(m_parent->GetAngularVelocity(),rParent) : math::Vector3::ZERO;
-                const auto relative=childVelocity-parentVelocity;
-                const math::Vector3 impulse{
-                    math::Vector3::Dot(relative,math::Vector3::Cross(columnY,columnZ))/determinant,
-                    math::Vector3::Dot(columnX,math::Vector3::Cross(relative,columnZ))/determinant,
-                    math::Vector3::Dot(columnX,math::Vector3::Cross(columnY,relative))/determinant};
+                const auto oldChildLinear = m_child->GetVelocity();
+                const auto oldChildAngular = m_child->GetAngularVelocity();
+                const auto oldParentLinear = m_parent ? m_parent->GetVelocity() : math::Vector3::ZERO;
+                const auto oldParentAngular = m_parent ? m_parent->GetAngularVelocity() : math::Vector3::ZERO;
+                const bool childSleeping = m_child->IsSleeping();
+                const bool parentSleeping = m_parent && m_parent->IsSleeping();
+                const auto childVelocity = oldChildLinear + math::Vector3::Cross(oldChildAngular, rChild);
+                const auto parentVelocity = m_parent ? oldParentLinear + math::Vector3::Cross(oldParentAngular, rParent) : math::Vector3::ZERO;
+                const auto relative = childVelocity - parentVelocity;
+                if (relative.LengthSq() <= SOCKET_VELOCITY_TOLERANCE_SQ) {
+                    if (!adjustedLimit) break;
+                    continue;
+                }
+                const auto impulse = solveSocketImpulse(relative);
                 m_child->SetVelocity(m_child->GetVelocity()-impulse*m_child->GetInvMass());
                 m_child->SetAngularVelocity(m_child->GetAngularVelocity()-m_child->ApplyInvInertia(math::Vector3::Cross(rChild,impulse)));
                 if (m_parent) {
                     m_parent->SetVelocity(m_parent->GetVelocity()+impulse*m_parent->GetInvMass());
                     m_parent->SetAngularVelocity(m_parent->GetAngularVelocity()+m_parent->ApplyInvInertia(math::Vector3::Cross(rParent,impulse)));
                 }
-            }
+                /// @note ソケットだけを反復するとき、両者の速度と休止状態が同じなら次回も同じ結果になる。
+                if (socketOnly && m_child->IsSleeping() == childSleeping
+                    && sameVelocity(m_child->GetVelocity(), oldChildLinear)
+                    && sameVelocity(m_child->GetAngularVelocity(), oldChildAngular)
+                    && (!m_parent || (m_parent->IsSleeping() == parentSleeping
+                        && sameVelocity(m_parent->GetVelocity(), oldParentLinear)
+                        && sameVelocity(m_parent->GetAngularVelocity(), oldParentAngular))))
+                    break;
+            } else if (!adjustedLimit) break;
         }
     }
 

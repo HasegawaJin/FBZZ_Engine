@@ -16,6 +16,7 @@
 #include "ManagedJointTransfers.hpp"
 #include "ManagedAssetServices.hpp"
 #include "ManagedComponentServices.hpp"
+#include "ManagedRagdollControls.hpp"
 #include "ManagedAudioSourceServices.hpp"
 #include "ManagedComponentTransfers.hpp"
 #include "ManagedRenderComponentServices.hpp"
@@ -76,8 +77,10 @@ bool Parse(const ManagedBridgeRequest& request, Arguments& arguments)
     const std::string_view bytes(request.input, request.inputBytes);
     size_t offset = 0;
     uint32_t floats = 0, strings = 0;
+    const auto floatCapacity = request.op == ManagedBridgeOp::SERVICE_RAGDOLL && request.index == APPLY_RAGDOLL_DRIVE_PROFILE
+        ? 1 + RAGDOLL_DRIVE_PROFILE_MAX_BODIES * RAGDOLL_DRIVE_PROFILE_ENTRY_FLOATS : 128;
     if (!Read(bytes, offset, arguments.relatedId) || !Read(bytes, offset, arguments.integer)
-        || !Read(bytes, offset, floats) || !Read(bytes, offset, strings) || floats > 128 || strings > 128) return false;
+        || !Read(bytes, offset, floats) || !Read(bytes, offset, strings) || floats > floatCapacity || strings > 128) return false;
     arguments.values.resize(floats);
     for (float& value : arguments.values) if (!Read(bytes, offset, value) || !std::isfinite(value)) return false;
     for (uint32_t index = 0; index < strings; ++index) {

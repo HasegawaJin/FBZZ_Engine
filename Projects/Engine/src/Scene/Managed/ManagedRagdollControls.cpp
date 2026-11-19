@@ -12,6 +12,35 @@
 #include <charconv>
 #include <cmath>
 namespace fbzz::scene::managed_detail {
+namespace {
+bool DecodeDriveProfileEntry(std::span<const float> values, RagdollBodyDrivePatch& patch)
+{
+    const float flags = values[0];
+    if (flags < 0.0f || flags > 511.0f || flags != std::floor(flags)) return false;
+    const auto mask = static_cast<uint32_t>(flags);
+    if ((mask & 1U) != 0) {
+        if (values[1] != 0.0f && values[1] != 1.0f) return false;
+        patch.enabled = values[1] != 0.0f;
+    }
+    if ((mask & 2U) != 0) {
+        if (values[2] != 0.0f && values[2] != 1.0f) return false;
+        patch.space = values[2] == 0.0f ? RagdollDriveSpace::PARENT : RagdollDriveSpace::WORLD;
+    }
+    constexpr std::optional<float> RagdollBodyDrivePatch::* FIELDS[] = {
+        &RagdollBodyDrivePatch::linearFrequency, &RagdollBodyDrivePatch::angularFrequency,
+        &RagdollBodyDrivePatch::linearDampingRatio, &RagdollBodyDrivePatch::angularDampingRatio,
+        &RagdollBodyDrivePatch::maxForce, &RagdollBodyDrivePatch::maxTorque, &RagdollBodyDrivePatch::targetVelocityMultiplier
+    };
+    for (std::size_t index = 0; index < std::size(FIELDS); ++index) {
+        if ((mask & (1U << (index + 2))) == 0) continue;
+        const float value = values[index + 3];
+        if (!std::isfinite(value) || value < 0.0f) return false;
+        patch.*FIELDS[index] = value;
+    }
+    return true;
+}
+} /// @note namespace
+
 ManagedBridgeStatus RunRagdollControls(RagdollComponent& row,GameObject& target,GameObject* related,
     uint32_t selector,int64_t integer,std::span<const float> p,std::span<const std::string> t,ManagedServiceResult& output)
 {
@@ -108,6 +137,22 @@ ManagedBridgeStatus RunRagdollControls(RagdollComponent& row,GameObject& target,
     case 66:
         if(!args(0,0,2))return ManagedBridgeStatus::INVALID_ARGUMENT;
         output.text={c ? c->BodyName(static_cast<int>(integer)) : std::string{}};break;
+    case APPLY_RAGDOLL_DRIVE_PROFILE: {
+        if (t.size() > RAGDOLL_DRIVE_PROFILE_MAX_BODIES
+            || !args(1 + t.size() * RAGDOLL_DRIVE_PROFILE_ENTRY_FLOATS, t.size())
+            || !std::isfinite(p[0]) || p[0] < 0.0f) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        std::vector<RagdollBodyDriveEntry> entries;
+        entries.reserve(t.size());
+        for (std::size_t index = 0; index < t.size(); ++index) {
+            auto& entry = entries.emplace_back();
+            entry.bone = t[index];
+            if (!DecodeDriveProfileEntry(p.subspan(1 + index * RAGDOLL_DRIVE_PROFILE_ENTRY_FLOATS,
+                    RAGDOLL_DRIVE_PROFILE_ENTRY_FLOATS), entry.patch)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        }
+        output.integer = row.runtime.rig && row.runtime.rig->ApplyDriveProfile(entries, p[0]);
+        if (output.integer) row.runtime.driveProfile = std::move(entries);
+        break;
+    }
     default:return ManagedBridgeStatus::UNSUPPORTED;
     }
     return ManagedBridgeStatus::OK;

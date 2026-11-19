@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using Fbzz;
 using Fbzz.ManagedHost;
@@ -13,9 +14,57 @@ internal static class RagdollControlsApiTests
 {
     internal static IReadOnlyList<(string Name,Action Run)> Cases=>[
         (nameof(BodyTargetsAndGripsTransferExactFramesAndLifetime),BodyTargetsAndGripsTransferExactFramesAndLifetime),
+        (nameof(StatePolicySelectsAnimationAndActiveStatesWithoutRestarting),StatePolicySelectsAnimationAndActiveStatesWithoutRestarting),
+        (nameof(DriveProfilePacketPreservesOmittedAndExplicitZeroFields),DriveProfilePacketPreservesOmittedAndExplicitZeroFields),
         (nameof(PhysicalSnapshotsDecodeFullValuePackets),PhysicalSnapshotsDecodeFullValuePackets),
         (nameof(BalanceHelperIsPlanarBoundedAndRelativeToSupport),BalanceHelperIsPlanarBoundedAndRelativeToSupport),
         (nameof(ControlCatalogPreservesFixedWritesAndPureMath),ControlCatalogPreservesFixedWritesAndPureMath)];
+
+    /// @brief State rules must switch at the requested boundary while preserving an ongoing blend.
+    static void StatePolicySelectsAnimationAndActiveStatesWithoutRestarting()
+    {
+        using Fixture fixture = new();
+        var assembly = typeof(Ragdoll).Assembly;
+        var controllerType = assembly.GetType("Fbzz.RagdollStateController");
+        var usageType = assembly.GetType("Fbzz.RagdollUsage");
+        Program.Check(controllerType is not null && usageType is not null,
+            "The public C# API must support animation, selected states and always-active ragdoll.");
+        var ragdoll = new Ragdoll(fixture.Target, 91);
+        object controller = Activator.CreateInstance(controllerType!, ragdoll)!;
+        var configure = controllerType!.GetMethod("Configure")!;
+        var evaluate = controllerType.GetMethod("UsesActiveRagdoll")!;
+        var update = controllerType.GetMethod("Update")!;
+        string[] states = ["walking", "hit"];
+        configure.Invoke(controller, [Enum.Parse(usageType!, "SELECTED_STATES"), states, 0.15f, 0.25f]);
+        states[0] = "run";
+        Program.Check((bool)evaluate.Invoke(controller, ["walking"])! && !(bool)evaluate.Invoke(controller, ["run"])!,
+            "Configured state names must be owned by the controller.");
+        update.Invoke(controller, ["idle"]);
+        Program.Check(fixture.Bridge.Methods.SequenceEqual(new uint[] {23,15}),
+            "An inactive state must configure blending and return to animation.");
+        update.Invoke(controller, ["idle"]);
+        Program.Check(fixture.Bridge.Methods.Count == 2, "Unchanged states must not restart the transition.");
+        update.Invoke(controller, ["walking"]);
+        update.Invoke(controller, ["hit"]);
+        Program.Check(fixture.Bridge.Methods.SequenceEqual(new uint[] {23,15,14}),
+            "Adjacent active states must preserve the current physical pose.");
+        update.Invoke(controller, ["idle"]);
+        update.Invoke(controller, ["walking"]);
+        Program.Check(fixture.Bridge.Methods.SequenceEqual(new uint[] {23,15,14,15,14}),
+            "Reentry during blend-out must request active mode from the current pose.");
+        configure.Invoke(controller, [Enum.Parse(usageType!, "ALWAYS"), Array.Empty<string>(), 0.15f, 0.25f]);
+        update.Invoke(controller, ["idle"]);
+        Program.Check(fixture.Bridge.Methods.Count(method => method == 14) == 2,
+            "An always-active policy must retain the running ragdoll.");
+        configure.Invoke(controller, [Enum.Parse(usageType!, "ANIMATION"), Array.Empty<string>(), 0.15f, 0.25f]);
+        Program.Throws<TargetInvocationException>(() =>
+            configure.Invoke(controller, [Enum.ToObject(usageType!, 99), Array.Empty<string>(), 0.15f, 0.25f]));
+        Program.Check(!(bool)evaluate.Invoke(controller, ["walking"])!, "Invalid policies must preserve the previous policy.");
+        update.Invoke(controller, ["walking"]);
+        Program.Check(fixture.Bridge.Methods[^1] == 15, "Animation mode must end the physical contribution.");
+        fixture.Bridge.Birth = 92;
+        Program.Throws<TargetInvocationException>(() => update.Invoke(controller, ["walking"]));
+    }
     /// @brief Body target weights and World quaternion must retain packet order.
     static void BodyTargetsAndGripsTransferExactFramesAndLifetime()
     {
@@ -38,6 +87,26 @@ internal static class RagdollControlsApiTests
         Program.Throws<ArgumentOutOfRangeException>(()=>r.SetSimulation(65,0,0));
         f.Bridge.Birth=92;Program.Throws<InvalidOperationException>(()=>r.ReleaseAllGrabs());
     }
+    /// @brief 部位一括パケットは未指定と明示的な 0 を区別する。
+    static void DriveProfilePacketPreservesOmittedAndExplicitZeroFields()
+    {
+        using Fixture fixture = new();
+        Ragdoll ragdoll = new(fixture.Target, 91);
+        fixture.Bridge.Reply = new([], [], 1, null);
+        RagdollBodyDriveEntry[] entries = Enumerable.Range(0, 20).Select(index => new RagdollBodyDriveEntry
+        {
+            Bone = $"Bone{index}",
+            Patch = new() { Enabled = false, AngularFrequency = 32, MaxTorque = 0 }
+        }).ToArray();
+        Program.Check(ragdoll.ApplyDriveProfile(entries, 0.25f) && fixture.Bridge.Selector == 68
+            && fixture.Bridge.Values.Length == 201 && fixture.Bridge.Text.Length == 20
+            && fixture.Bridge.Values[0] == 0.25f && fixture.Bridge.Values[1] == 137
+            && fixture.Bridge.Values[2] == 0 && fixture.Bridge.Values[5] == 32 && fixture.Bridge.Values[9] == 0,
+            "The profile must encode explicit false and zero even when other fields are omitted.");
+        Program.Check(ragdoll.ApplyDriveProfile([]) && fixture.Bridge.Values.Length == 1 && fixture.Bridge.Text.Length == 0,
+            "An empty profile must reset to authored drive settings.");
+    }
+
     /// @brief Physical snapshots decode full value packets.
     static void PhysicalSnapshotsDecodeFullValuePackets()
     {
@@ -77,7 +146,7 @@ internal static class RagdollControlsApiTests
         using JsonDocument doc=JsonDocument.Parse(ApiCatalog.Json);
         var types=doc.RootElement.GetProperty("types").EnumerateArray();
         var rag=types.Single(t=>t.GetProperty("name").GetString()=="Fbzz.Ragdoll");
-        foreach(var method in rag.GetProperty("members").EnumerateArray().Where(m=>new[]{"SetBodyTarget","ApplyBodyForce","GrabWorld","GrabBody","ReleaseGrab","SetSimulation"}.Contains(m.GetProperty("name").GetString()))) {
+        foreach(var method in rag.GetProperty("members").EnumerateArray().Where(m=>new[]{"SetBodyTarget","ApplyBodyForce","GrabWorld","GrabBody","ReleaseGrab","SetSimulation","ApplyDriveProfile"}.Contains(m.GetProperty("name").GetString()))) {
             var allowed=method.GetProperty("contract").GetProperty("allowedCallbacks").GetProperty("call");
             Program.Check(allowed.GetArrayLength()==1&&allowed[0].GetString()=="FixedUpdate","Physical mutations must declare exact fixed authority.");
         }
@@ -101,6 +170,7 @@ internal static class RagdollControlsApiTests
     {
         internal ulong Birth=91;
         internal int Calls;
+        internal readonly List<uint> Methods = [];
         internal uint Selector;
         internal long Integer;
         internal float[] Values=[];
@@ -110,6 +180,6 @@ internal static class RagdollControlsApiTests
         ulong IScriptNativeBridge.ReadComponentLifetime(ScriptExecutionScope scope,ulong objectId,uint kind)=>objectId==202 ? Birth : objectId==303 ? 72UL : 0UL;
         NativeServiceResult IScriptNativeBridge.InvokeService(ScriptExecutionScope scope,ulong objectId,uint service,uint method,long integer,
             ReadOnlySpan<float> values,ReadOnlySpan<string> text,GameObject? related,bool readOnly)
-        {Calls++;Selector=method;Integer=integer;Values=values.ToArray();Text=text.ToArray();Related=related;return Reply;}
+        {Calls++;Methods.Add(method);Selector=method;Integer=integer;Values=values.ToArray();Text=text.ToArray();Related=related;return Reply;}
     }
 }

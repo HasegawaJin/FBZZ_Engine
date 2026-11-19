@@ -5,7 +5,10 @@
 #include <TestKit/TestKit.hpp>
 #include <Physics/XPBDJoint.hpp>
 #include <Physics/XPBDSolver.hpp>
+#include <array>
+#include <bit>
 #include <cmath>
+#include <cstdint>
 namespace fbzz::tests {
 class XPBDJointVelocityTest : public testkit::Fixture {};
 namespace {
@@ -72,6 +75,40 @@ TEST_F(XPBDJointVelocityTest, PassiveSocketPreservesFreeRotationAndAngularMoment
     EXPECT_VEC3_NEAR(anchorVelocity,math::Vector3::ZERO,testkit::kLooseTolerance);
     EXPECT_GT(angular.z,0.1f);
     EXPECT_NEAR(velocity.y+angular.z,1,testkit::kLooseTolerance);
+}
+
+/// @brief 休止を無効にした剛体の速度射影は、休止可能な剛体と同じ丸め結果になる。
+TEST_F(XPBDJointVelocityTest, SocketProjectionPreservesVelocityBitsWithoutSleeping)
+{
+    const auto project = [](bool allowSleeping) {
+        physics::RigidBody parent, child;
+        parent.m_allowSleeping = child.m_allowSleeping = allowSleeping;
+        parent.SetMass(3.0f);
+        child.SetMass(0.7f);
+        (void)parent.SetInertiaDiagonal({0.29f, 0.12f, 0.34f});
+        (void)child.SetInertiaDiagonal({0.02f, 0.14f, 0.06f});
+        parent.SetPosition({-0.16f, 0.30f, 0.12f});
+        child.SetPosition({0.24f, -0.11f, -0.28f});
+        parent.SetRotation(math::Quaternion::FromAxisAngle(math::Vector3::UP, 0.61f));
+        child.SetRotation(math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, -0.43f));
+        parent.SetVelocity({0.69f, -0.13f, 0.27f});
+        child.SetVelocity({-0.24f, 0.83f, -0.42f});
+        parent.SetAngularVelocity({0.3f, -0.2f, 0.4f});
+        child.SetAngularVelocity({-0.1f, 0.9f, -0.8f});
+
+        physics::XPBDJoint joint(&parent, &child);
+        joint.Build({0.08f, 0.07f, -0.12f}, math::Quaternion::Identity());
+        joint.SolveVelocity(1.0f / 60.0f);
+        using VelocityBits = std::array<std::uint32_t, 3>;
+        return std::array{
+            std::bit_cast<VelocityBits>(parent.GetVelocity()),
+            std::bit_cast<VelocityBits>(parent.GetAngularVelocity()),
+            std::bit_cast<VelocityBits>(child.GetVelocity()),
+            std::bit_cast<VelocityBits>(child.GetAngularVelocity()),
+        };
+    };
+
+    EXPECT_EQ(project(false), project(true));
 }
 /// @brief Limit stops only outward angular velocity.
 TEST_F(XPBDJointVelocityTest, LimitStopsOnlyOutwardAngularVelocity)

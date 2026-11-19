@@ -27,6 +27,39 @@ BeginはPassive、BeginActiveはActiveを明示的に選ぶ。Guardを有効に�
 その場合は筋力駆動なしで、姿勢制約だけが目標に対して働く。
 回転制限はクォータニオンの最短角0〜180度。ゲーム向けの25度／30度上限は置かない。
 
+## C# での適用ステート
+
+`RagdollStateController` は、一つの Ragdoll に対する起動・終了の制御元として使う。
+`Configure` に `RagdollUsage.ANIMATION`、`SELECTED_STATES`、`ALWAYS` を指定し、
+選択するステート名と切り替えの補間秒数を渡す。設定は次の FixedUpdate の `Update(state)` で反映する。
+ステート名は完全一致で判定し、一覧はコピーする。不正な設定では直前の設定を保持する。
+
+ゲームは Animator の現在ステート、または独自の歩行・被弾ステートを渡す。
+Update の戻り値で Active Ragdoll の要求を取得できる。物理の準備と補間後の適用率は、
+`Ragdoll.IsStanding`、`ParticleCount`、`Weight` で確認する。
+同じ要求を連続して渡しても BeginActive / End を再発行せず、補間中に有効へ戻る場合は現在の姿勢から再開する。
+
+初期化時に制御元を作り、使うステートを設定する。
+
+```csharp
+var control = new RagdollStateController(ragdoll);
+control.Configure(RagdollUsage.SELECTED_STATES, ["walking", "hit"], 0.15f, 0.25f);
+```
+
+同じ制御元へ FixedUpdate から現在のステートを渡す。
+
+```csharp
+control.Update(animator.GetCurrentState());
+```
+
+対象の部位は SetRoots / SetExcludedBranches、部位の駆動は ApplyDriveProfile / SetBodyDrive、
+姿勢との変位幅は SetStandingGuard で設定する。
+適用ステートと部位・駆動の設定は独立している。
+
+EngineTestScene の C# 設定に `ragdollUsage` と `activeRagdollStates` を公開する。
+既定は ALWAYS。SELECTED_STATES では初期値の walking に WASD 歩行の開始から最後の着地までを対応させ、
+停止して Idle へ戻ると通常アニメーションへ補間する。
+
 ## モデル別設定と部位別ドライブ（2026-11-03）
 
 `physicsAssetPath` は GUID または `.ragdoll` への参照。空なら従来のプリセットを使う。

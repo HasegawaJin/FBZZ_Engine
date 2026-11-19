@@ -185,7 +185,7 @@ public sealed partial class Ragdoll : NativeComponent
         (settings.Enabled ? 1 : 0) | (RuntimeComponentValue.EnumValue(settings.Space) << 1),
         [settings.LinearFrequency, settings.AngularFrequency, settings.LinearDampingRatio,
          settings.AngularDampingRatio, settings.MaxForce, settings.MaxTorque, settings.TargetVelocityMultiplier], [bone]).Flag;
-    [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", Summary = "Restores the body's authored drive; returns false if the body is unavailable.")]
+    [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", Summary = "Restores the selected profile drive or the authored drive if no profile is selected; returns false if the body is unavailable.")]
     public bool ClearBodyDrive(string bone) => Invoke(Service, 35, false, text: [bone]).Flag;
     [ApiContract(RunModes = new[] { "Play" }, Call = "fixed", ParameterUnits = new[] { "staticFriction=dimensionless", "dynamicFriction=dimensionless", "restitution=0_to_1" })]
     public void SetSurface(float staticFriction, float dynamicFriction, float restitution = 0) => Invoke(Service, 36, false, values: [staticFriction, dynamicFriction, restitution]);

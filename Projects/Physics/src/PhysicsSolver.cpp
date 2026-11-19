@@ -2535,6 +2535,16 @@ namespace fbzz::physics
             ContactPoint cp;
             if (TestAABBTriangle(localBox, localTri, cp) && cp.depth > maxDepth)
             {
+                /// @note SAT の法線上に置いた代表点では、傾いた箱の縁に働く反力の腕を失う。
+                /// @note 最深の支持特徴の中心を三角形へ投影し、接触点を実際の面内に収める。
+                const auto supportCoordinate = [](float axis, float halfExtent) {
+                    return std::abs(axis) <= 1.0e-5f ? 0.0f : std::copysign(halfExtent, -axis);
+                };
+                const math::Vector3 support{
+                    supportCoordinate(cp.normal.x, b.m_halfExtents.x),
+                    supportCoordinate(cp.normal.y, b.m_halfExtents.y),
+                    supportCoordinate(cp.normal.z, b.m_halfExtents.z)};
+                cp.point = ClosestPointOnTriangle(support, localTri);
                 cp.normal = (b.GetRotation() * cp.normal).Normalized();
                 cp.point = b.GetCenter() + b.GetRotation() * cp.point;
                 maxDepth = cp.depth;

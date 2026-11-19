@@ -46,9 +46,17 @@ namespace fbzz::physics
         /// @note q_dot = 0.5 * [ω, 0] * q。RigidBody::Integrate と同じ形にしてある。
         /// @note 線形化した角度補正を 0.5 rad 内へ収め、小慣性部位の単発補正で半回転する不安定化を防ぐ。
         /// @see https://github.com/matthias-research/pages/blob/master/challenges/PBD.js Body.applyRotation の回転増分制限。
-        const double angle = std::hypot(static_cast<double>(angular.x),
-            static_cast<double>(angular.y), static_cast<double>(angular.z)) * std::abs(static_cast<double>(h));
-        const float scale = 0.5f * h * static_cast<float>(angle > 0.5 ? 0.5 / angle : 1.0);
+        const double x = angular.x;
+        const double y = angular.y;
+        const double z = angular.z;
+        const double step = h;
+        /// @note float 入力の二乗は double の範囲内。上限以下の増分ではノルムの平方根も不要。
+        const double angleSquared = (x * x + y * y + z * z) * (step * step);
+        float scale = 0.5f * h;
+        if (angleSquared > 0.25) {
+            const double angle = std::sqrt(angleSquared);
+            scale *= static_cast<float>(0.5 / angle);
+        }
         const math::Quaternion spin =
             math::Quaternion{ angular.x * scale, angular.y * scale, angular.z * scale, 0.0f } * q;
         return math::Quaternion{
