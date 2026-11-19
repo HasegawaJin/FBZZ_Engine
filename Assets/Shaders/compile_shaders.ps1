@@ -16,31 +16,34 @@ param(
 
     [switch]$SummaryOnly,
 
-    [string]$CompilerPath
+    [string]$CompilerPath,
+
+    [string]$ShaderRoot = $PSScriptRoot
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$shaderRoot = Split-Path -Parent $PSCommandPath
+$scriptRoot = $PSScriptRoot
+$shaderRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ShaderRoot)
+$useSharedIncludes = $shaderRoot -ne $scriptRoot
 $logPath = Join-Path $shaderRoot "compile_log.txt"
 $scriptTimestampUtc = (Get-Item -LiteralPath $PSCommandPath).LastWriteTimeUtc
 $directIncludeCache = @{}
 
-# @note Windows PowerShell 5.1にはPath.GetRelativePathがないため、ルート配下であることを
-# @note 確認したうえで文字列として相対化し、CMake/Editorの双方から同じ命名規則を使う。
+# @note プロジェクト内のパスは CSO の命名に使い、外部依存は診断・依存署名用に絶対パスを維持する。
 function Get-ShaderRelativePath {
     param([Parameter(Mandatory = $true)][string]$FullPath)
 
     $rootPrefix = $shaderRoot.TrimEnd([char[]]@(92, 47)) + [IO.Path]::DirectorySeparatorChar
-    if (-not $FullPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Shader path is outside the shader root: $FullPath"
+    if ($FullPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        return $FullPath.Substring($rootPrefix.Length).Replace([char]92, [char]47)
     }
 
-    return $FullPath.Substring($rootPrefix.Length).Replace([char]92, [char]47)
+    return $FullPath.Replace([char]92, [char]47)
 }
 
-# @note includeは記述元の隣を優先し、その後シェーダールートを探索する。
+# @note includeは記述元の隣、プロジェクト、スクリプトに隣接する共有シェーダーの順に探索する。
 # @note コンパイラーと同じ探索順にすることで、差分判定と実コンパイルの依存解決を一致させる。
 function Resolve-ShaderInclude {
     param(
@@ -53,6 +56,9 @@ function Resolve-ShaderInclude {
         (Join-Path (Split-Path -Parent $IncludingFile) $normalizedInclude),
         (Join-Path $shaderRoot $normalizedInclude)
     )
+    if ($useSharedIncludes) {
+        $candidates += Join-Path $scriptRoot $normalizedInclude
+    }
 
     foreach ($candidate in $candidates) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) {
@@ -281,7 +287,7 @@ function Find-ShaderCompiler {
     param([Parameter(Mandatory = $true)][string]$TargetBackend)
     $selected = $CompilerPath
     if ([string]::IsNullOrWhiteSpace($selected)) {
-        $ancestor = Get-Item -LiteralPath $shaderRoot
+        $ancestor = Get-Item -LiteralPath $scriptRoot
         while ($null -ne $ancestor) {
             $candidate = Join-Path $ancestor.FullName "ThirdParty/DXC/bin/x64/dxc.exe"
             if (Test-Path -LiteralPath $candidate -PathType Leaf) { $selected = $candidate; break }
@@ -292,7 +298,7 @@ function Find-ShaderCompiler {
         $selected = Get-ShaderSdkCompiler -SdkRoot ([Environment]::GetEnvironmentVariable("FBZZ_SDK_ROOT"))
     }
     if ([string]::IsNullOrWhiteSpace($selected)) {
-        $ancestor = Get-Item -LiteralPath $shaderRoot
+        $ancestor = Get-Item -LiteralPath $scriptRoot
         while ($null -ne $ancestor) {
             $selected = Get-ShaderSdkCompiler -SdkRoot $ancestor.FullName
             if (-not [string]::IsNullOrWhiteSpace($selected)) { break }
@@ -309,7 +315,7 @@ function Find-ShaderCompiler {
     }
     $directory = Split-Path -Parent $selected
     $versionPath = $null
-    foreach ($searchRoot in @($shaderRoot, $directory)) {
+    foreach ($searchRoot in @($scriptRoot, $directory)) {
         $ancestor = Get-Item -LiteralPath $searchRoot
         while ($null -ne $ancestor) {
             foreach ($relativePath in @("ThirdParty/DXC/VERSION", "share/fbzz/licenses/DXC/VERSION")) {
@@ -353,7 +359,13 @@ function Find-ShaderCompiler {
 # @note profile・entry・引数・DXC 一式を成果物の生成契約へ含める。
 function Get-ShaderCompileSignature {
     param([Parameter(Mandatory = $true)][object]$Job)
-    return "$script:compilerSignature|$($Job.Entry)|$($Job.Stage.ToLowerInvariant())_6_8|FBZZ_BACKEND_DX12=1|HV2021`n-O3 -nologo"
+    $signature = "$script:compilerSignature|$($Job.Entry)|$($Job.Stage.ToLowerInvariant())_6_8|FBZZ_BACKEND_DX12=1|HV2021`n-O3 -nologo"
+    if ($useSharedIncludes) {
+        # @note ローカル include の追加・削除で解決先が切り替わる場合は、更新時刻にかかわらず再生成する。
+        $dependencies = $Job.Dependencies.Files | ForEach-Object { Get-ShaderRelativePath -FullPath $_ }
+        $signature += "`n" + ($dependencies -join "`n")
+    }
+    return $signature
 }
 
 function Get-ShaderProfile {
@@ -400,6 +412,9 @@ function Invoke-ShaderJob {
         "-T", $profile, "-E", $Job.Entry,
         "-Fo", $temporaryPath, $Job.SourcePath
     )
+    if ($useSharedIncludes) {
+        $arguments += @("-I", $scriptRoot)
+    }
 
     try {
         # @note Windows PowerShell 5.1はネイティブプロセスのstderrもErrorRecordへ変換する。
@@ -442,6 +457,10 @@ function Write-CompileMessage {
 }
 
 try {
+    if (-not (Test-Path -LiteralPath $shaderRoot -PathType Container)) {
+        Write-Host "[compile_shaders] completed=0 skipped=0"
+        exit 0
+    }
     $selectedCompiler = Find-ShaderCompiler -TargetBackend "DX12"
     $catalog = Get-ShaderJobs
     $failures = New-Object System.Collections.Generic.List[object]

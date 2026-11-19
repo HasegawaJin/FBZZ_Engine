@@ -32,6 +32,12 @@ add_test(NAME SharedSDKTemplates
 set_tests_properties(SharedSDKTemplates PROPERTIES
     WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 120 LABELS "Build")
 
+add_test(NAME ProjectShaderCompilation
+    COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/CMake/ProjectShaderCompilation.cmake")
+set_tests_properties(ProjectShaderCompilation PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" TIMEOUT 60 LABELS "Build")
+
 add_test(NAME EngineModuleBoundaries
     COMMAND "${CMAKE_COMMAND}" "-DSOURCE_ROOT=${CMAKE_SOURCE_DIR}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/CMake/EngineModuleBoundaries.cmake")

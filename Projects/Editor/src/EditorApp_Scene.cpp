@@ -885,57 +885,61 @@ void EditorApp::CheckHotReload()
 
 void EditorApp::InitHlslHotReload()
 {
+    if (m_hlslCompiler.GetState() == Compiler::State::Building) {
+        m_hlslCompiler.Cancel();
+        m_buildConsole.EndBuildCancelled();
+    }
+    m_hlslCompiler.Reset();
     /// @note 旧プロジェクトの結果を捨てる。TaskSystem のジョブは this を保持せず、破棄時にも待機しない。
     m_hlslSourceScan         = {};
+    m_hlslSourceFingerprint  = 0;
+    m_hlslCompilePending     = false;
+    m_hlslDebounceTimer      = 0.0f;
     m_hlslDirtyPollTimer     = 0.0f;
-    m_hlslProjectOwned      = false;
-    m_hlslSourceDir         = util::FileSystem::PathFromUtf8(
-        asset::AssetManager::ResolveAssetPath("Assets/Shaders"));
-    m_compileShadersScript  = m_hlslSourceDir / L"compile_shaders.ps1";
-    m_ctx.hlslSourceDir     = util::FileSystem::PathToUtf8(m_hlslSourceDir);
+    m_hlslSourceDir.clear();
+    m_compileShadersScript.clear();
+    m_ctx.hlslSourceDir = asset::AssetManager::ResolveAssetPath("Assets/Shaders");
+    if (m_ctx.projectRoot.empty()) return;
 
-    if (m_ctx.projectRoot.empty() || m_ctx.hlslSourceDir.empty()) return;
-
-    /// @note 比較の前に絶対化して '..' を畳む。ResolveAssetPath は基準パスを継ぎ足すだけなので、 相対のまま比べると «プロジェクトの中» を «外» と読み違える。
-    const auto absolutize = [](const std::filesystem::path& path) {
-        if (path.is_absolute())
-            return util::FileSystem::PathToUtf8(path.lexically_normal());
-        std::error_code error;
-        const std::filesystem::path full = std::filesystem::absolute(path, error);
-        return util::FileSystem::PathToUtf8((error ? path : full).lexically_normal());
-    };
-    const std::string shaderDirAbs  = absolutize(m_hlslSourceDir);
-    const std::string projectAbs    = absolutize(util::FileSystem::PathFromUtf8(m_ctx.projectRoot));
-
-    if (!util::FileSystem::IsChildPathText(shaderDirAbs, projectAbs)) {
-        FBZZ_LOG_INFO("HLSL: hot reload is off - %s belongs to the shared SDK, not this project. "
-                      "Copy Assets/Shaders into the project to edit shaders live.",
-                      m_ctx.hlslSourceDir.c_str());
-        return;
-    }
-    /// @note 走らせるのは同梱スクリプトなので、無いなら «自前のツリー» とは呼べない。
-    if (!util::FileSystem::Exists(m_compileShadersScript)) {
-        FBZZ_LOG_WARN("HLSL: hot reload is off - compile_shaders.ps1 not found in %s",
-                      m_ctx.hlslSourceDir.c_str());
+    /// @note 未作成の Shaders も監視する。書き込み先がリンクでプロジェクト外へ転送される場合は受け付けない。
+    std::error_code error;
+    const auto projectRoot = std::filesystem::weakly_canonical(
+        util::FileSystem::PathFromUtf8(m_ctx.projectRoot), error);
+    if (error) return;
+    const auto shaderDir = projectRoot / L"Assets" / L"Shaders";
+    const auto realShaderDir = std::filesystem::weakly_canonical(shaderDir, error);
+    if (error || !util::FileSystem::IsChildPathText(util::FileSystem::PathToUtf8(realShaderDir),
+                                                  util::FileSystem::PathToUtf8(projectRoot))) {
+        FBZZ_LOG_WARN("HLSL: cannot monitor project shader directory: %s",
+                      util::FileSystem::PathToUtf8(shaderDir).c_str());
         return;
     }
 
-    m_hlslProjectOwned      = true;
+    auto script = shaderDir / L"compile_shaders.ps1";
+    if (!util::FileSystem::Exists(script)) {
+        const auto engineRoot = util::FileSystem::PathFromUtf8(m_ctx.engineRoot);
+        script = engineRoot / L"share/fbzz/Assets/Shaders/compile_shaders.ps1";
+        if (!util::FileSystem::Exists(script))
+            script = engineRoot / L"Assets/Shaders/compile_shaders.ps1";
+        if (!util::FileSystem::Exists(script)) {
+            FBZZ_LOG_WARN("HLSL: compiler script missing in SDK or source tree: %s", m_ctx.engineRoot.c_str());
+            return;
+        }
+    }
+    m_hlslSourceDir = shaderDir;
+    m_compileShadersScript = std::move(script);
+    if (!m_ctx.hotReloadEnabled) return;
+
+    /// @note 起動していない間に削除されたソースの CSO も差分スクリプトで掃除する。
     m_hlslSourceFingerprint = GetShaderSourceFingerprint(m_hlslSourceDir);
-    if (m_hlslSourceFingerprint != 0) {
-        m_hlslCompilePending = true;
-        m_hlslDebounceTimer  = 0.0f;
-        /// @note 起動していない間の削除も stamp では判定できないため、差分スクリプトを一度走らせる。
-        FBZZ_LOG_INFO("HLSL: hot reload is on for %s; verifying the tree once",
-                      m_ctx.hlslSourceDir.c_str());
-    }
+    m_hlslCompilePending = m_hlslSourceFingerprint != 0
+        || util::FileSystem::Exists(m_hlslSourceDir / L"compiled_dx12");
+    FBZZ_LOG_INFO("HLSL: hot reload is on for %s", util::FileSystem::PathToUtf8(m_hlslSourceDir).c_str());
 }
 
 void EditorApp::CheckHlslDirty()
 {
     if (m_packageBuild.IsRunning()) return;
-    /// @note 共有 SDK の shader を実行中に書き換えてはならない。判定は InitHlslHotReload が持つ。
-    if (!m_hlslProjectOwned) return;
     if (!m_ctx.hotReloadEnabled) return;
     if (m_hlslSourceDir.empty()) return;
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
@@ -957,30 +961,24 @@ void EditorApp::CheckHlslDirty()
     /// @note フレーム内では完了済みの結果だけを受け取り、走査の完了を待たない。
     if (m_hlslSourceScan.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
     const std::uint64_t fingerprint = m_hlslSourceScan.get();
-    if (fingerprint == 0)
-        return;
-
-    if (m_hlslSourceFingerprint == 0) {
-        m_hlslSourceFingerprint = fingerprint;
-        return;
-    }
     if (fingerprint == m_hlslSourceFingerprint) return;
 
     m_hlslSourceFingerprint = fingerprint;
     m_hlslCompilePending = true;
     m_hlslDebounceTimer  = 0.5f;
     FBZZ_LOG_DEBUG("HLSL: change detected in %s; recompiling after 500 ms debounce",
-                   m_ctx.hlslSourceDir.c_str());
+                   util::FileSystem::PathToUtf8(m_hlslSourceDir).c_str());
 }
 
 void EditorApp::TickHlslCompile()
 {
-    if (!m_hlslProjectOwned) return;
+    if (m_hlslSourceDir.empty()) return;
     FBZZ_PROFILE_SCOPE("HotReload::HlslCompile");
 
     if (m_hlslCompilePending) {
         if (m_packageBuild.IsRunning()) return;
-        m_hlslDebounceTimer -= 0.016f;
+        if (!m_ctx.hotReloadEnabled || (m_ctx.playMode && !m_ctx.playMode->IsInEditor())) return;
+        m_hlslDebounceTimer -= ImGui::GetIO().DeltaTime;
         if (m_hlslDebounceTimer > 0.0f) return;
 
         m_hlslCompilePending = false;
@@ -1002,7 +1000,12 @@ void EditorApp::TickHlslCompile()
         config.commandLine = L"\"" + powerShellPath.wstring()
             + L"\" -NoProfile -ExecutionPolicy Bypass -File \""
             + m_compileShadersScript.wstring() + L"\"";
-        config.workingDirectory = m_hlslSourceDir;
+        if (m_compileShadersScript.parent_path() == m_hlslSourceDir) {
+            config.workingDirectory = m_hlslSourceDir;
+        } else {
+            config.commandLine += L" -ShaderRoot \"" + m_hlslSourceDir.wstring() + L"\"";
+            config.workingDirectory = m_hlslSourceDir.parent_path();
+        }
 
         renderer::ClearShaderCompileDiagnostics();
         if (!m_hlslCompiler.Start(config)) {
@@ -1025,10 +1028,8 @@ void EditorApp::TickHlslCompile()
     if (m_hlslCompiler.GetState() == Compiler::State::Done) {
         m_buildConsole.IngestFullLog(m_hlslCompiler.GetLog());
         m_buildConsole.EndBuild(true, 0);
-        if (!SyncCompiledShadersToProject(m_hlslSourceDir, m_ctx.projectRoot)) {
-            FBZZ_LOG_WARN("HLSL: compiled CSO sync failed; renderer may still use stale shader binaries");
-        }
-        if (!SyncCompiledShadersToRuntimeAssets(m_hlslSourceDir)) {
+        if (m_compileShadersScript.parent_path() == m_hlslSourceDir
+            && !SyncCompiledShadersToRuntimeAssets(m_hlslSourceDir)) {
             FBZZ_LOG_WARN("HLSL: runtime CSO sync failed; renderer may still use stale shader binaries");
         }
         if (auto* resources = m_resources;

@@ -426,13 +426,8 @@ private:
 
     std::unique_ptr<ManagedScriptEditor> m_managedScripts;
     /// @brief HLSL ホットリロード
-    std::filesystem::path    m_hlslSourceDir;      ///< @note Assets/shaders/ ディレクトリ
-    std::filesystem::path    m_compileShadersScript; ///< @note compile_shaders.ps1 のパス。
-    /// @brief m_hlslSourceDir が「開いているプロジェクトの持ち物」か。
-    /// @brief 共有 SDK の shader へ解決されたときは false になり、監視も再コンパイルも行わない
-    /// @brief (実行中の Editor が SDK を書き換えると、その SDK を使う他プロジェクトまで巻き込む)。
-    bool                     m_hlslProjectOwned = false;
-    std::uint64_t            m_lastHlslWriteTime = 0; ///< @note HLSL ツリー内で最も新しい更新時刻
+    std::filesystem::path    m_hlslSourceDir;       ///< @note プロジェクト側の Assets/Shaders。監視不可なら空。
+    std::filesystem::path    m_compileShadersScript; ///< @note プロジェクトまたは SDK の compile_shaders.ps1。
     Compiler                 m_hlslCompiler;
     bool                     m_hlslCompilePending = false;
     float                    m_hlslDebounceTimer  = 0.0f;

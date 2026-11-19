@@ -52,11 +52,12 @@ target_link_libraries(FBZZEditorLauncher
         shell32
 )
 
-set(SHADER_SCRIPT "${CMAKE_SOURCE_DIR}/Assets/shaders/compile_shaders.ps1")
+set(EDITOR_LAUNCHER_SHADER_ROOT "${CMAKE_SOURCE_DIR}/Assets/shaders")
+set(SHADER_SCRIPT "${EDITOR_LAUNCHER_SHADER_ROOT}/compile_shaders.ps1")
 
 file(GLOB_RECURSE EDITOR_LAUNCHER_HLSL_FILES CONFIGURE_DEPENDS
-    "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsl"
-    "${CMAKE_SOURCE_DIR}/Assets/shaders/*.hlsli"
+    "${EDITOR_LAUNCHER_SHADER_ROOT}/*.hlsl"
+    "${EDITOR_LAUNCHER_SHADER_ROOT}/*.hlsli"
 )
 
 # @note Visual Studio は .hlsl を既定で FXCompile に渡して main を探すが、
@@ -69,7 +70,8 @@ set_source_files_properties(${EDITOR_LAUNCHER_HLSL_FILES} PROPERTIES
 find_program(FBZZ_POWERSHELL_EXECUTABLE NAMES powershell.exe powershell REQUIRED)
 
 add_custom_target(CompileEditorLauncherShaders
-    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}" -CompilerPath "${FBZZ_DXC_EXECUTABLE}"
+    COMMAND "${FBZZ_POWERSHELL_EXECUTABLE}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_SCRIPT}"
+        -CompilerPath "${FBZZ_DXC_EXECUTABLE}" -ShaderRoot "${EDITOR_LAUNCHER_SHADER_ROOT}"
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Compiling HLSL shaders for FBZZEditor..."
     SOURCES ${EDITOR_LAUNCHER_HLSL_FILES} "${SHADER_SCRIPT}"
