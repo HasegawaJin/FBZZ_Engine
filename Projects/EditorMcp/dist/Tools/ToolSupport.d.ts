@@ -1,8 +1,8 @@
 import * as z from 'zod/v4';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import type { EditorBus } from '../busClient.js';
+import { type EditorBus } from '../busClient.js';
 import type { PermissionMode } from '../config.js';
-import { type EditorCommand } from '../editorContracts.js';
+import { type EditorCommand, type EditorQuery, type ViewportCaptureResult } from '../editorContracts.js';
 export declare const NameSchema: z.ZodString;
 export interface SceneSnapshotLike {
     nodes?: Array<Record<string, unknown>>;
@@ -10,11 +10,18 @@ export interface SceneSnapshotLike {
 }
 export declare function DiffSceneSnapshots(beforeValue: unknown, afterValue: unknown): Record<string, unknown>;
 export declare const Delay: (milliseconds: number) => Promise<void>;
+export declare function ReadViewport<T extends ViewportCaptureResult>(bus: EditorBus, query: Extract<EditorQuery, {
+    t: 'viewport.capture' | 'viewport.semantic';
+}>, schema: {
+    parse(input: unknown): T;
+}, state?: unknown): Promise<T & {
+    provenance: NonNullable<T['provenance']>;
+}>;
 export declare function TextResult(value: unknown): CallToolResult;
 export declare function Safely(operation: () => Promise<CallToolResult>): Promise<CallToolResult>;
 export declare function CreateCommandContext(bus: EditorBus, permission: PermissionMode): {
     dryRun: boolean;
-    run: (command: EditorCommand) => Promise<{
+    run: (command: EditorCommand, preview?: boolean) => Promise<{
         [x: string]: unknown;
         _meta?: {
             [x: string]: unknown;

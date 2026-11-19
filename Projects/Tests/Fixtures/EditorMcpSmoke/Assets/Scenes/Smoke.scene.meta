@@ -1,0 +1,6 @@
+# @file    Smoke.scene.meta
+# @brief   Editor MCP 検証用シーンの GUID。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[meta]
+guid = 'd7e43038-8853-49d2-869f-75f2e8d346d9'

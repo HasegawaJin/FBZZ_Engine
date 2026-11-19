@@ -1,0 +1,245 @@
+{
+  "_file": "EditorViewSettings.playtest.json",
+  "_brief": "Game Viewの最大化・撮影寸法と表示設定の保存・復元を通常のCommand Busから検証する。",
+  "_author": "Hasegawa Jin",
+  "_date": "2026-11-18",
+  "name": "EditorMcpViewSettings",
+  "scene": "Assets/Scenes/Smoke.scene",
+  "steps": [
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "workspace.settings.inspect"
+      },
+      "capture": {
+        "originalSettings": "data.settings"
+      }
+    },
+    {
+      "do": "bus",
+      "kind": "query",
+      "request": {
+        "t": "editor.op.query",
+        "id": "viewport.game.inspect"
+      },
+      "capture": {
+        "originalGame": "data"
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "viewport.game.configure",
+        "args": {
+          "aspect": "1:1",
+          "playFocusMode": "unfocused",
+          "executionMode": "inEditor",
+          "layout": "maximized",
+          "cursorOverride": "free"
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 3
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "viewport.game.inspect"
+      },
+      "path": "data.maximized",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "viewport.capture",
+        "view": "game",
+        "w": 160,
+        "h": 90
+      },
+      "path": "width",
+      "op": "==",
+      "value": 90
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "viewport.capture",
+        "view": "game",
+        "w": 160,
+        "h": 90
+      },
+      "path": "height",
+      "op": "==",
+      "value": 90
+    },
+    {
+      "do": "play"
+    },
+    {
+      "do": "frames",
+      "count": 3
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "viewport.game.input"
+      },
+      "path": "data.physicalInputAllowed",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "viewport.game.inspect"
+      },
+      "path": "data.maximized",
+      "op": "==",
+      "value": true
+    },
+    {
+      "do": "stop"
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "viewport.game.configure",
+        "args": {
+          "layout": "normal"
+        }
+      }
+    },
+    {
+      "do": "frames",
+      "count": 2
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "viewport.game.inspect"
+      },
+      "path": "data.maximized",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "workspace.settings.configure",
+        "args": {
+          "settings": {
+            "fluid_editor_state": {
+              "view": {
+                "checker_background": false,
+                "compare_baked": true,
+                "yaw": 37,
+                "orbit_initialized": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "sfx.editor.configure",
+        "args": {
+          "autoPreview": false
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "workspace.settings.save"
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "workspace.settings.reload"
+      }
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "fluid.editor.inspect"
+      },
+      "path": "data.playback.checkerBackground",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "fluid.editor.inspect"
+      },
+      "path": "data.playback.yaw",
+      "op": "==",
+      "value": 37
+    },
+    {
+      "do": "assert",
+      "query": {
+        "t": "editor.op.query",
+        "id": "sfx.editor.inspect"
+      },
+      "path": "data.autoPreview",
+      "op": "==",
+      "value": false
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "workspace.settings.configure",
+        "args": {
+          "settings": {
+            "$ref": "originalSettings"
+          }
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "viewport.game.configure",
+        "args": {
+          "layout": {
+            "$ref": "originalGame.layout"
+          },
+          "cursorOverride": {
+            "$ref": "originalGame.cursorOverride"
+          }
+        }
+      }
+    },
+    {
+      "do": "bus",
+      "request": {
+        "t": "editor.op.invoke",
+        "id": "workspace.settings.save"
+      }
+    }
+  ]
+}

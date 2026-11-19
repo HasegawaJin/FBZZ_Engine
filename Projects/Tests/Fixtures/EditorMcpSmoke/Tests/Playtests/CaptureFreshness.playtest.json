@@ -1,0 +1,34 @@
+{
+  "_file": "CaptureFreshness.playtest.json",
+  "_brief": "同じ Editor フレーム内の編集後に、編集前の描画を拒否することを検証する。",
+  "_author": "Hasegawa Jin",
+  "_date": "2026-11-17",
+  "name": "EditorMcpCaptureFreshness",
+  "steps": [
+    { "do": "frames", "count": 2 },
+    {
+      "do": "bus",
+      "request": { "t": "editor.op.invoke", "id": "renderpass.capture", "args": { "name": "BeforeSameFrameEdit.png" } },
+      "capture": { "beforeFrame": "data.provenance.frame" }
+    },
+    {
+      "do": "bus",
+      "request": { "t": "node.rename", "id": "6a4efced-4563-4cbe-9e3d-7c7212cf6d2b", "name": "CaptureFreshnessProbe" }
+    },
+    {
+      "do": "bus", "kind": "query", "expectError": "CAPTURE_NOT_READY",
+      "request": { "t": "viewport.capture", "view": "game", "w": 320, "h": 180 }
+    },
+    {
+      "do": "bus", "expectError": "CAPTURE_NOT_READY",
+      "request": { "t": "editor.op.invoke", "id": "renderpass.capture", "args": { "name": "RejectedStalePass.png" } }
+    },
+    { "do": "frames", "count": 2 },
+    {
+      "do": "bus",
+      "request": { "t": "editor.op.invoke", "id": "renderpass.capture", "args": { "name": "AfterSameFrameEdit.png" } },
+      "capture": { "afterFrame": "data.provenance.frame" }
+    },
+    { "do": "bus", "request": { "t": "editor.undo" } }
+  ]
+}

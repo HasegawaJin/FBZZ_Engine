@@ -1,0 +1,17 @@
+# @file    ProjectSettings.toml
+# @brief   WARP で起動する Editor MCP 検証用の設定。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[app]
+renderer = "dx12"
+targetFps = 60
+
+[window]
+width = 640
+height = 360
+
+[runtime]
+start_scene = "Assets/Scenes/Smoke.scene"
+
+[render]
+pipelineAsset = "Assets/Smoke.fzdata"

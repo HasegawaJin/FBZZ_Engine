@@ -8,9 +8,15 @@
 `editor_op_list`、`editor_op_query`、`editor_op_invoke` を使う。画面を開く要求や
 座標指定のクリックを、設定変更・変換・保存の代わりに使わない。
 
-`editor_op_list` の `params`、`kind`、実行可否を最初に確認する。`query` は照会、
+`editor_op_list` の `params`、`kind`、`availability` を最初に確認する。`query` は照会、
 `action` は作業状態やファイル操作、`mutation` は共通 Undo に載る編集である。
 設定の入れ子は各 `inspect` の結果を正本にし、フィールド名を推測しない。
+
+`requiredArgs` は必須引数名の配列。`available` は引数なしで評価した実行条件を表す。
+`availability.code` は `READY`、`ARGUMENTS_REQUIRED`、`POLL_REJECTED`、`DIALOG_REQUIRED` を返す。
+`dialog` は `none`、`possible`、`required`、書き込み操作の宣言が無ければ `unknown` を返す。
+実際の引数で変更操作を確かめるときは `editor_op_invoke` に `dryRun=true` を渡す。
+たとえば `scene.open` の Operator はファイル選択を必要とし、`scene_open` はパス指定で開ける。
 
 ## 操作群
 
@@ -22,16 +28,21 @@
 | `asset.texture.inspect/configure/reset/import/trim` | テクスチャの全インポート設定と Sprite 矩形を扱う。型の変更でも既存の矩形と ID を保持する。 |
 | `asset.creation_catalog`、`asset.create` | 種類・拡張子・プリセットを照会し、通常の Create と同じ既定内容を生成する。 |
 | `asset.move/rename/duplicate/extract/trash` | 本体と meta をまとめて扱う。移動は GUID を維持し、複写は再発行する。既存の出力は上書きしない。 |
+| `asset.move_batch.preview/apply` | Prefab を含む複数の GUID 付きファイルについて、移動・改名前に本体と meta の新旧パスを確認する。実行中の失敗では、移動済みファイルを逆順に戻す。 |
 | `asset.guid.inspect/repair` | Asset Maintenance と同じグループと修復規則を使う。最古の meta を保持し、生成物と import fingerprint も追従させる。 |
 | `asset.references.scan/status` | Find References と同じ保存済み TOML の直接参照を、根拠のフィールド・行番号付きで返す。 |
+| `asset.dependencies.scan/status` | GUID 起点の保存済み参照を双方向にたどり、間接的な影響範囲・参照切れ・根拠を返す。詳しくは [参照調査](asset-reference-visibility.md#guid-を起点にたどる-mcp-操作)。 |
 | `project.settings.inspect/configure/reset/reload/save` | プロジェクト設定を部分編集する。編集・初期化・再読込は共通 Undo に載る。 |
 | `input.bindings.inspect/configure/reset/reload/save/rebind/cancel_rebind/preview` | 入力設定の編集・保存とリバインドを扱う。編集・初期化・再読込は共通 Undo に載る。 |
 | `workspace.settings.inspect/configure/reload/save` | エディター設定、ホットキー、パネル設定をライブ状態へ反映する。 |
 | `workspace.layout.inspect/configure/save` | ドッキング配置の INI 本文を取得・適用・保存する。 |
 | `sequence.inspect/open/configure/save/reload/close/undo/redo/control` | Timeline の作業ドキュメントとパネル内履歴を共有し、非表示でも編集・プレビューできる。 |
 | `animation.preview.inspect/open/control/analyze/capture/status` | 単体クリップ・遷移のプレビュー、再生位置、ルートモーション解析、PNG 撮影を扱う。 |
-| `ibl.inspect/configure/bake` | HDRI ベイクの全設定と要求・完了結果を扱う。 |
+| `ibl.inspect/configure/bake/cancel` | HDRI ベイクの設定・要求・進捗・完了結果を扱う。DDS の書き出しが始まる前に中止できる。 |
 | `renderpass.inspect/configure/capture` | パネル非表示でも描画パス・資源・途中画像を捕捉できる。 |
+| `viewport.overlays.inspect/configure` | Scene View の Overlays にあるコライダー・物理・アニメーション・VFX・ナビゲーション等の表示を照会し、指定した項目だけ変更する。 |
+| `viewport.game.inspect/configure` | Game View の比率、Play表示・実行方式、一時カーソル設定、明示的な最大化を名前付きの選択肢で扱う。 |
+| `sfx.editor.inspect/configure` | SFX Editor の自動試聴を照会・変更し、個人設定へ保存する。 |
 | `volume.flipbook.inspect/configure/reset_look/control/bake/cancel/apply/preview_vfx` | 解析 puff の全設定・再生・比較・ベイク・材質適用をパネルと共有する。 |
 | `fluid.editor.inspect/open/configure/save/save_as/reload/keep_local/close/control/part/bake` | 未保存レシピ・履歴・競合・再生位置・部品表示を Fluid Editor と共有する。 |
 | `vfx.timeline.inspect/control` | トラック一覧と非表示で維持されるスクラブを扱う。 |
@@ -58,6 +69,7 @@
 | `hierarchy.view.inspect/configure` | 検索・マップ絞り込みと、オブジェクト指定による枝の開閉を扱う。 |
 | `sprite.editor.inspect/open/configure/control` | 作業コピー、矩形の編集、選択、パン・ズーム、全体表示、適用と破棄を扱う。 |
 | `asset.browser.{1..4}.inspect/configure` | ブラウザーごとの検索、型フィルター、フォルダー横断検索、Grid/Listを扱う。 |
+| `asset.folder_color.inspect/set/clear` | Asset Browser のフォルダ色を照会・設定・解除する。 `path` は `Assets/Characters` のようなプロジェクト相対パスまたはブラウザー内の絶対パス。 `set` は `color` を `#RRGGBB` で指定し、`set/clear` は `recursive: true` で表示対象のサブフォルダにも適用する。 |
 
 ## 画面別の照合
 
@@ -102,6 +114,30 @@
 
 ## 部分編集と保存
 
+### Game View とプレビューの設定
+
+`viewport.game.configure` は `aspect`、`playFocusMode`、`executionMode`、
+`cursorOverride`、`layout` の指定項目だけを変更する。文字列の候補は操作目録にある。
+Play の表示・実行方式は実行中には変更できない。`layout` の `maximized/normal/automatic` は
+現在の表示への明示要求・復元・通常のPlay設定への復帰であり、Map Mode中は変更できない。
+自動操作の物理入力・フォーカス分離を変更しない。解除すると直前の通常配置へ戻る。
+比率と次回Playのモードは従来の `game_view` に保存し、一時的な最大化とカーソル解除は保存しない。
+`viewport.game.input` は要求値・実効値に加え、要求元、優先度、勝者、カーソル解除設定を返す。
+
+SFX の自動試聴は `sfx_editor.auto_preview`、Fluid の表示・品質・パン・ズーム・編集視点・
+参照平面・ギズモ・ループ設定は `fluid_editor_state.view` として個人状態へ保存する。
+Fluid の実行中ジョブ、再生中フラグ、時刻、入力の所有権、GPU資源は復元しない。
+`fluid.editor.inspect` の `playback` は `control.settings` が受け取る表示項目を全て返す。
+保存済み表示設定のない旧ファイルは従来の既定値で開く。
+編集カメラのyawは度で保持し、ドラッグで一周を超えた値も往復させる。
+パネルの幅・高さは個人設定に含め、大きな表示領域で使った値も復元する。
+
+`viewport_capture` と `viewport_capture_semantic` の `w/h` は出力PNGの上限枠とする。
+指定があれば元画像の縦横比を維持して枠内へリサイズし、片方だけならもう片方を比率から求める。
+両方省略したCommand Bus要求は元の寸法で返す。返却する `width/height` と意味座標は
+同じ出力PNGを指し、`sourceWidth/sourceHeight` は描画元の寸法を示す。
+描画先の寸法、カメラの投影、フレームの出自は撮影サイズの指定では変更しない。
+
 設定オブジェクトは指定キーだけを変更し、配列は全体を置換する。未知キー、型不一致、
 受理後に別の値になる範囲外入力は、ライブ状態・ファイル・履歴を変更する前に拒否する。
 モデル・テクスチャの enum は `inspect` が返す文字列、設定ドキュメントは通常保存のキーを使う。
@@ -117,6 +153,55 @@ Sequence の履歴はドキュメント固有なので `sequence.undo/redo` を�
 
 ファイルの生成・移動・ごみ箱への退避はシーンの Undo と分離する。未保存アセットは先に
 保存する。`asset.trash` は `.fbzz/Trash` の退避先を返し、元の meta も保持する。
+
+### Scene View のオーバーレイ
+
+`editor_op_query` で `viewport.overlays.inspect` を呼ぶと、現在の表示設定が `data` に入る。
+`editor_op_invoke` に次の引数を渡すと Collider のワイヤー表示を有効にできる。
+
+```json
+{ "id": "viewport.overlays.configure", "args": { "colliders": true } }
+```
+
+`colliders: false` で非表示にする。`terrainCollision` や `navMesh` なども同時に指定でき、
+省略した項目は現在値を保つ。対応する項目は `editor_op_list` の `search: "viewport.overlays"` で確認できる。
+描画結果は `viewport_capture` の `view: "scene"` で確認できる。
+NavMesh の描画モードは `render.set_navmesh_draw_mode`、BVH や Broadphase は
+`render.get_spatial_debug` と `render.set_spatial_debug` で扱う。
+
+### Prefab とアセットの一括移動・改名
+
+`editor_op_query` で `asset.move_batch.preview` に `args.moves` を渡す。各項目の
+`path` はプロジェクト相対の `Assets/...` または既存の `guid:...` 参照、
+`destination` はプロジェクト相対の移動先。移動先の親フォルダは先に作成する。
+
+```json
+{
+  "id": "asset.move_batch.preview",
+  "args": {
+    "moves": [
+      { "path": "Assets/Props/Lamp.prefab", "destination": "Assets/Lighting/Lamp.prefab" },
+      { "path": "Assets/Props/Lamp.mat", "destination": "Assets/Lighting/LampBody.mat" }
+    ]
+  }
+}
+```
+
+`data.moves` に GUID、`source`、`destination`、`sourceMeta`、`destinationMeta` が順に並ぶ。
+内容を確認したら書き込み権限の `editor_op_invoke` で `asset.move_batch.apply` に
+`args.receipt` を渡す。レシートは直近のプレビューに対して 1 回使える。実行直前にも
+移動元本体のサイズと更新時刻、meta のバイト列と GUID、移動先の空きを検査する。
+条件が変わった場合はプレビューからやり直す。
+
+1 回につき 1〜32 件の既存ファイルを扱う。保存・登録済みで GUID のある通常ファイルが対象。
+フォルダ、モデル原本、編集中のシーン、別形式への変更、出力の上書きは拒否する。
+移動は同一ボリュームで行い、通常の GUID 参照は同じアセットを指し続ける。
+Prefab の定義やアセットの内容を編集する場合は、それぞれの保存操作を使う。
+
+全件成功してから GUID 索引を更新する。移動途中の失敗では、本体と meta を含め、
+移動済みの全ファイルをその呼び出し内で逆順に戻す。復元も OS に拒否された場合は、
+元に戻せなかったパスをエラーに含める。移動の完了後、元に戻すには逆向きの計画を作る。
+プロセス中断や電源断からの自動復元は対象外。
 
 ## 変換・撮影の完了
 
@@ -134,6 +219,17 @@ Sequence の履歴はドキュメント固有なので `sequence.undo/redo` を�
 
 IBL は `ibl.bake` の後に `ibl.inspect` の `state` を確認する。描画パスは
 `renderpass.configure` で捕捉を有効にし、対象ビューの描画後に `inspect/capture` を呼ぶ。
+撮影結果の `data.provenance` にシーン・カメラ、パス名と出現順、解決済み出力、描画フレームが入る。
+`capture.args.minFrame` に `editor_get_state.frameIndex` を渡すと、そのフレーム以降の画像だけを受け付ける。
+編集、シーンの入れ替え、ビューのリサイズなどで撮影元が無効なときは `CAPTURE_NOT_READY` を返し、PNG は書き出さない。
+リソース一覧から撮った出力には `renderPass: "FrameEnd"` と実行されたパス一覧を返す。
+
+`viewport_capture`、`viewport_capture_semantic`、`editor_perceive` は `provenance` を返す。
+ビューポート全体の撮影は `renderPass: "ViewportOutput"`、実行されたパスは `passes` を読む。
+Game View がノードのカメラで描かれた場合は `cameraId`、Editor カメラを使った場合は
+`cameraKind` で判別する。Play 中に登録シーンへ遷移した場合、`sceneName` と `sceneGeneration` が描画元を示す。
+MCP は要求時点のアプリケーションフレーム以降の描画を待つ。撮影ツールの `minFrame` でさらに下限を指定できる。
+意味付き撮影のノード情報は、同じビューの描画入力時点の値を使う。
 出力名・ビュー・表示設定が一致しない古い画像を、現在の要求の結果として返さない。
 
 参照検索は保存済みファイルのスナップショットであり、動的参照・未保存・外部所有者・

@@ -73,6 +73,7 @@ class NativeFixtureBus implements EditorBus {
     queryHook: ((query: EditorQuery) => Promise<unknown>) | undefined;
     commandHook: ((command: EditorCommand, dryRun: boolean) => Promise<unknown>) | undefined;
     saved: RecordValue | undefined;
+    captureFrame = 11;
     private top: { owner: string; receipt: string; guard: RecordValue; before: RecordValue } | undefined;
 
     Observation(): RecordValue {
@@ -96,7 +97,7 @@ class NativeFixtureBus implements EditorBus {
                 if (!this.native) throw new EditorBusError('UNKNOWN_QUERY', 'Older fixture Editor');
                 if (this.failObservation) throw new EditorBusError('BUS_TIMEOUT', 'Fixture post-observation unavailable');
                 return this.Observation();
-            case 'editor.state': return { playState: 'editor', restorePending: false, managedBuildBusy: false };
+            case 'editor.state': return { playState: 'editor', restorePending: false, managedBuildBusy: false, frameIndex: 10, sceneGeneration: 1 };
             case 'scene.selection': return { ids: [NODE] };
             case 'scene.snapshot': return Clone(this.guard.snapshot);
             case 'scene.validate':
@@ -107,7 +108,9 @@ class NativeFixtureBus implements EditorBus {
             case 'build.status': return { building: false, managedBuildBusy: false, managed: { busy: false } };
             case 'viewport.semantic':
                 if (this.failCapture) throw new Error('Fixture capture failed');
-                return { mimeType: 'image/png', base64: 'AA==', width: 1, height: 1, cameraPosition: [0, 0, 0], objects: [] };
+                return { mimeType: 'image/png', base64: 'AA==', width: 1, height: 1, cameraPosition: [0, 0, 0], objects: [],
+                    provenance: { frame: this.captureFrame, sceneGeneration: 1, scenePath: 'Assets/Scenes/Test.scene', sceneName: '',
+                        view: 'scene', cameraKind: 'editor', renderPass: 'ViewportOutput', occurrence: 0, output: 'Output', passes: ['UIPass'] } };
             default: return { fixture: query.t };
         }
     }
@@ -546,8 +549,8 @@ test('successful author rollback keeps native Undo success when target ownership
     assert.deepEqual(await control.Inspect(), []);
 });
 
-/// @brief Verification distinguishes complete errors, dropped and truncated streams and never asserts image freshness.
-test('verification distinguishes complete errors, dropped and truncated streams and never asserts image freshness', async t => {
+/// @brief Verification distinguishes log completeness and verified image source from pixel assertions.
+test('verification distinguishes complete, dropped and truncated logs and checks the image source', async t => {
     const cases = [
         { name: 'complete', logs: { cursor: 21, count: 0, entries: [], dropped: false }, errors: 'success', status: 'unverified' },
         { name: 'new error', logs: { cursor: 21, count: 1, entries: [{ level: 'error', sequence: 21 }], dropped: false }, errors: 'failure', status: 'failure' },
@@ -564,12 +567,22 @@ test('verification distinguishes complete errors, dropped and truncated streams 
         assert.equal(CheckStatus(result.checks, 'errors'), item.errors);
         assert.equal(CheckStatus(result.checks, 'capture'), 'success');
         assert.equal(CheckStatus(result.checks, 'render'), 'unverified');
-        assert.equal(result.scope, 'render-freshness-unverified');
+        assert.equal(result.scope, 'render-source-verified');
         assert.equal(Record(Record(result.finalized).capture).base64, 'AA==');
         assert.equal(bus.commands.some(call => call.command.t === 'editor.finalize'), false);
         if (item.status === 'failure') assert.deepEqual(await control.Inspect(), []);
         else await session.Release(lease);
     });
+});
+
+/// @brief An image from before the edit is omitted from the checked verification report.
+test('checked verification rejects a PNG older than the current frame barrier', async t => {
+    const { bus, session, lease, receipt } = await Applied(t);
+    bus.captureFrame = 9;
+    const result = await session.Verify(receipt, lease, { save: false, reload: false, render: true, rollbackOnFailure: false });
+    assert.equal(CheckStatus(result.checks, 'capture'), 'failure');
+    assert.equal(result.scope, 'render-freshness-unverified');
+    assert.equal(Record(result.finalized).capture, undefined);
 });
 
 /// @brief MCP verification emits image content once and leaves only capture metadata in its reports.

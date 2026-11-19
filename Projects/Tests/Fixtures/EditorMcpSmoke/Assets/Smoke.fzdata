@@ -1,0 +1,14 @@
+# @file    Smoke.fzdata
+# @brief   WARP で Editor の描画と読み戻しを検証する最小構成。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+type = "RenderPipelineAsset"
+schemaVersion = 1
+
+[shadow]
+enabled = false
+
+# @note ソフトウェア描画では複合ポスト処理を省き、通常の UI 描画パスと Output の読み戻しを検証する。
+[[graph.passOverrides]]
+name = "Composite"
+enabled = false

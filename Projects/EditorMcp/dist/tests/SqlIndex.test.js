@@ -56,6 +56,7 @@ function CreateBus() {
     };
     return { bus, state };
 }
+/// @brief SQL index joins snapshot components, inspected scripts and explicit reference evidence.
 test('SQL index joins snapshot components, inspected scripts and explicit reference evidence', async () => {
     const { bus, state } = CreateBus();
     const index = new SceneSqlIndex();
@@ -70,6 +71,7 @@ test('SQL index joins snapshot components, inspected scripts and explicit refere
     assert.deepEqual((await index.Query(bus, generation, 'SELECT owner_path,target_path,field,line FROM asset_references')).rows, [{ owner_path: 'Assets/Enemy.prefab', target_path: 'Assets/Enemy.mat', field: 'material', line: 12 }]);
     assert.equal(state.commandCalls, 0);
 });
+/// @brief SQL authorizer and statement validation reject writes, external data and multiple statements.
 test('SQL authorizer and statement validation reject writes, external data and multiple statements', async () => {
     const { bus } = CreateBus();
     const index = new SceneSqlIndex();
@@ -85,6 +87,7 @@ test('SQL authorizer and statement validation reject writes, external data and m
     assert.deepEqual((await index.Query(bus, String(status.generation), 'SELECT count(*) AS count FROM nodes')).rows, [{ count: 2 }]);
     assert.deepEqual((await index.Query(bus, String(status.generation), "SELECT 'DELETE; ATTACH' AS text; -- allowed literal\n")).rows, [{ text: 'DELETE; ATTACH' }]);
 });
+/// @brief SQL result limits and 64-bit values remain explicit.
 test('SQL result limits and 64-bit values remain explicit', async () => {
     const { bus } = CreateBus();
     const index = new SceneSqlIndex();
@@ -100,6 +103,7 @@ test('SQL result limits and 64-bit values remain explicit', async () => {
     assert.deepEqual((await index.Query(bus, generation, 'SELECT 9223372036854775807 AS large, 1 AS small')).rows, [{ large: '9223372036854775807', small: 1 }]);
     await assert.rejects(index.Query(bus, generation, 'SELECT id,id FROM nodes'), /SQL_DUPLICATE_COLUMNS/);
 });
+/// @brief SQL infinite recursive aggregate is terminated and later queries still work.
 test('SQL infinite recursive aggregate is terminated and later queries still work', async () => {
     const { bus } = CreateBus();
     const index = new SceneSqlIndex();
@@ -109,6 +113,7 @@ test('SQL infinite recursive aggregate is terminated and later queries still wor
     assert.equal(index.Status().querying, false);
     assert.deepEqual((await index.Query(bus, generation, 'SELECT count(*) AS count FROM nodes')).rows, [{ count: 2 }]);
 });
+/// @brief SQL scope, generation and failed refresh do not silently switch the indexed Scene.
 test('SQL scope, generation and failed refresh do not silently switch the indexed Scene', async () => {
     const { bus, state } = CreateBus();
     const index = new SceneSqlIndex();
@@ -123,6 +128,7 @@ test('SQL scope, generation and failed refresh do not silently switch the indexe
     assert.equal(index.Status().generation, status.generation);
     assert.equal(index.Status().refreshing, false);
 });
+/// @brief SQL partial inspections and reference scans never become complete or healthy defaults.
 test('SQL partial inspections and reference scans never become complete or healthy defaults', async () => {
     const { bus, state } = CreateBus();
     const index = new SceneSqlIndex();
@@ -139,6 +145,7 @@ test('SQL partial inspections and reference scans never become complete or healt
     assert.deepEqual(result.rows, [{ finished: 0, limited: 1, owner_count: 3, owners_indexed: 1 }]);
     assert.equal(result.freshness.scopeVerified, false);
 });
+/// @brief SQL tokenizer distinguishes semicolons in strings, identifiers and comments.
 test('SQL tokenizer distinguishes semicolons in strings, identifiers and comments', () => {
     ValidateReadSql("/* prefix; */ WITH x AS (SELECT ';' AS value) SELECT value FROM x; -- trailing;\n");
     ValidateReadSql('SELECT 1 AS "a;b"');

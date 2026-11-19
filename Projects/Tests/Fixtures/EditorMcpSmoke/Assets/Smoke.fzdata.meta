@@ -1,0 +1,6 @@
+# @file    Smoke.fzdata.meta
+# @brief   WARP 用描画設定の GUID。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[meta]
+guid = 'b523cb5cf6204e62a17c0ed88cc74eaab'

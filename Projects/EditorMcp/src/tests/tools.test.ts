@@ -16,25 +16,26 @@ import type { PermissionMode } from '../config.js';
 class FakeEditorBus implements EditorBus {
     queries: EditorQuery[] = [];
     commands: Array<{ command: EditorCommand; dryRun: boolean }> = [];
+    captureFrame = 11;
+    captureDimensions?: { width: number; height: number; sourceWidth: number; sourceHeight: number };
 
     async Query(query: EditorQuery): Promise<unknown> {
         this.queries.push(query);
-        if (query.t === 'viewport.capture') {
-            return {
-                mimeType: 'image/png',
-                base64: 'iVBORw0KGgo=',
-                width: query.w,
-                height: query.h,
-                view: query.view ?? 'scene',
+        if (query.t === 'editor.op.query' && query.id === 'asset.dependencies.scan')
+            return { data: { job: 7, finished: false } };
+        if (query.t === 'editor.op.query' && query.id === 'asset.dependencies.status')
+            return { data: { job: 7, finished: true, edges: [] } };
+        if (query.t === 'viewport.capture' || query.t === 'viewport.semantic') {
+            const view = query.view ?? 'scene';
+            const capture = {
+                mimeType: 'image/png', base64: 'iVBORw0KGgo=', width: query.w, height: query.h, view,
+                ...this.captureDimensions,
+                provenance: { frame: this.captureFrame, sceneGeneration: 1, scenePath: 'Assets/Scenes/Test.scene',
+                    sceneName: '', view, cameraKind: view === 'game' ? 'editorFallback' : 'editor',
+                    renderPass: 'ViewportOutput', occurrence: 0, output: 'Output', passes: ['UIPass'] },
             };
-        }
-        if (query.t === 'viewport.semantic') {
-            return {
-                mimeType: 'image/png',
-                base64: 'iVBORw0KGgo=',
-                width: query.w,
-                height: query.h,
-                view: query.view ?? 'scene',
+            if (query.t === 'viewport.capture') return capture;
+            return { ...capture,
                 cameraPosition: [0, 2, -8],
                 objects: [{
                     id: '11111111-1111-4111-8111-111111111111',
@@ -42,7 +43,7 @@ class FakeEditorBus implements EditorBus {
                     worldPosition: [0, 0, 0],
                     visible: true,
                     depth: 0.5,
-                    pixel: [query.w / 2, query.h / 2],
+                    pixel: [capture.width / 2, capture.height / 2],
                 }],
             };
         }
@@ -82,6 +83,32 @@ class FakeEditorBus implements EditorBus {
 
     Close(): void {}
 }
+
+/// @brief GUID の調査は read 権限でも開始できる。ページを取得しても Command は送らない。
+test('GUID dependency graph runs through read-only MCP queries', async () => {
+    const harness = await CreateHarness('read');
+    try {
+        const started = await harness.client.callTool({
+            name: 'asset_dependencies_scan', arguments: { guid: 'guid:2a1fa7667132420cb07ac83286a6ac8e', maxDepth: 3 },
+        });
+        assert.notEqual(started.isError, true, JSON.stringify(started.content));
+        assert.equal(CallToolResultSchema.parse(started).structuredContent?.job, 7);
+        const status = await harness.client.callTool({
+            name: 'asset_dependencies_status', arguments: { job: 7, direction: 'incoming', offset: 1, limit: 2, maxFiles: 4 },
+        });
+        assert.equal(CallToolResultSchema.parse(status).structuredContent?.finished, true);
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'editor.op.query', id: 'asset.dependencies.scan', args: { guid: 'guid:2a1fa7667132420cb07ac83286a6ac8e', maxDepth: 3 } },
+            { t: 'editor.op.query', id: 'asset.dependencies.status', args: { job: 7, direction: 'incoming', offset: 1, limit: 2, maxFiles: 4 } },
+        ]);
+        const invalid = await harness.client.callTool({ name: 'asset_dependencies_scan', arguments: { guid: 'Assets/Other.prefab' } });
+        assert.equal(invalid.isError, true);
+        assert.equal(harness.bus.queries.length, 2);
+        assert.deepEqual(harness.bus.commands, []);
+    } finally {
+        await harness.close();
+    }
+});
 
 /// @note 実 transport と同じ JSON-RPC 経路をメモリ内で通し、登録だけのテストにしない。
 async function CreateHarness(permission: PermissionMode) {
@@ -248,7 +275,7 @@ test('editor_perceive は Scene 状態と viewport image を1応答へまとめ�
             { t: 'scene.tree' },
             { t: 'scene.selection' },
             { t: 'console.logs', minLevel: 'warning', limit: 50 },
-            { t: 'viewport.capture', w: 640, h: 360 },
+            { t: 'viewport.capture', w: 640, h: 360, minFrame: 10 },
         ]);
     } finally {
         await harness.close();
@@ -319,6 +346,27 @@ test('Operator ゲートウェイは目録 Query と実行 Command へ写像す�
     }
 });
 
+
+/// @brief write でも操作ごとに事前確認でき、dry-run 権限では実行を指定しても変更しない。
+test('Operator invocation supports per-call dry-run without elevating permissions', async () => {
+    for (const permission of ['write', 'dry-run'] as const) {
+        const harness = await CreateHarness(permission);
+        try {
+            const id = 'node.set_tag';
+            const args = { id: '11111111-1111-4111-8111-111111111111', tag: 'Enemy' };
+            const response = await harness.client.callTool({
+                name: 'editor_op_invoke', arguments: { id, args, dryRun: permission === 'write' },
+            });
+            assert.equal(response.isError, undefined);
+            assert.deepEqual(harness.bus.commands.at(-1), {
+                command: { t: 'editor.op.invoke', id, args },
+                dryRun: true,
+            });
+        } finally {
+            await harness.close();
+        }
+    }
+});
 
 /// @brief Behavior Tree の照会・規約・検証は引数の少ない Query 面へ写像する。
 test('Behavior Tree の照会・規約・検証は引数の少ない Query 面へ写像する', async () => {
@@ -612,12 +660,36 @@ test('viewport_capture は engine の PNG を MCP image content に変換する'
             assert.equal(result.content[0].mimeType, 'image/png');
             assert.equal(result.content[0].data, 'iVBORw0KGgo=');
         }
-        assert.deepEqual(harness.bus.queries[0], { t: 'viewport.capture', w: 960, h: 540, view: 'scene' });
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'editor.state' }, { t: 'viewport.capture', w: 960, h: 540, view: 'scene', minFrame: 10 },
+        ]);
     } finally {
         await harness.close();
     }
 });
 
+
+/// @brief 撮影元とPNGの寸法が異なっても応答を受理し、PNG上の意味座標と出自を保持する。
+test('viewport captures preserve resized dimensions and source dimensions', async () => {
+    const harness = await CreateHarness('read');
+    harness.bus.captureDimensions = { width: 270, height: 540, sourceWidth: 800, sourceHeight: 1600 };
+    try {
+        for (const name of ['viewport_capture', 'viewport_capture_semantic']) {
+            const result = CallToolResultSchema.parse(await harness.client.callTool({ name, arguments: {} }));
+            assert.equal(result.isError, undefined);
+            assert.equal(result.structuredContent?.width, 270);
+            assert.equal(result.structuredContent?.height, 540);
+            assert.equal(result.structuredContent?.sourceWidth, 800);
+            assert.equal(result.structuredContent?.sourceHeight, 1600);
+            if (name === 'viewport_capture_semantic') {
+                const objects = result.structuredContent?.objects as Array<{ pixel: number[] }>;
+                assert.deepEqual(objects[0].pixel, [135, 270]);
+            }
+        }
+    } finally {
+        await harness.close();
+    }
+});
 
 /// @brief `viewport_capture_semantic` は画像とNodeId付き投影座標を同時に返す。
 test('viewport_capture_semantic は画像とNodeId付き投影座標を同時に返す', async () => {
@@ -631,7 +703,28 @@ test('viewport_capture_semantic は画像とNodeId付き投影座標を同時に
         assert.equal(result.isError, undefined);
         assert.equal(result.content.some((item) => item.type === 'image'), true);
         assert.equal(result.content.some((item) => item.type === 'text'), true);
-        assert.deepEqual(harness.bus.queries[0], { t: 'viewport.semantic', w: 640, h: 360, view: 'scene' });
+        assert.deepEqual(harness.bus.queries, [
+            { t: 'editor.state' }, { t: 'viewport.semantic', w: 640, h: 360, view: 'scene', minFrame: 10 },
+        ]);
+    } finally {
+        await harness.close();
+    }
+});
+
+/// @brief 編集済みの応答へ要求フレーム以前の画像を添えない。
+test('run_transaction_and_observe reports the edit and omits an older PNG', async () => {
+    const harness = await CreateHarness('write');
+    harness.bus.captureFrame = 9;
+    try {
+        const result = CallToolResultSchema.parse(await harness.client.callTool({
+            name: 'run_transaction_and_observe',
+            arguments: { label: 'Rename Cube', cmds: [{ t: 'node.rename', id: '11111111-1111-4111-8111-111111111111', name: 'Renamed' }] },
+        }));
+        assert.equal(result.isError, undefined);
+        assert.equal(result.content.some(item => item.type === 'image'), false);
+        assert.equal(result.structuredContent?.captureStatus, 'unverified');
+        assert.deepEqual(result.structuredContent?.commandResult, { accepted: true, dryRun: false });
+        assert.equal(harness.bus.commands.length, 1);
     } finally {
         await harness.close();
     }

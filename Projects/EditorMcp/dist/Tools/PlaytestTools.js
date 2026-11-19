@@ -4,7 +4,7 @@
 /// @date    2026-11-06
 import * as z from 'zod/v4';
 import { EditorCommandSchema, JsonValueSchema, NodeIdSchema, SemanticViewportResultSchema } from '../editorContracts.js';
-import { Delay, TextResult, Safely, CreateCommandContext } from './ToolSupport.js';
+import { Delay, TextResult, Safely, CreateCommandContext, ReadViewport } from './ToolSupport.js';
 const InputInjectionShape = {
     kind: z.enum(['key', 'axis', 'gamepadButton', 'gamepadAxis', 'mouseButton', 'mousePosition', 'mouseDelta', 'mouseScroll', 'clear']),
     key: z.string().min(1).max(32).optional(),
@@ -155,18 +155,17 @@ export function RegisterPlaytestCommandTools(server, bus, permission) {
             }
             if (settleMs > 0)
                 await Delay(settleMs);
-            const [rawState, rawLogs, rawProfiler, rawPhysicsEvents, rawCapture] = await Promise.all([
+            const [rawState, rawLogs, rawProfiler, rawPhysicsEvents] = await Promise.all([
                 bus.Query({ t: 'editor.state' }),
                 bus.Query({ t: 'console.logs', minLevel: 'debug', limit: 512, afterSequence: baselineCursor }),
                 bus.Query({ t: 'profiler.snapshot', limit: 20 }),
                 bus.Query({ t: 'physics.events' }),
-                bus.Query({ t: 'viewport.semantic', w, h, view }),
             ]);
             state = rawState;
             logs = rawLogs;
             profiler = rawProfiler;
             physicsEvents = rawPhysicsEvents;
-            capture = SemanticViewportResultSchema.parse(rawCapture);
+            capture = await ReadViewport(bus, { t: 'viewport.semantic', w, h, view }, SemanticViewportResultSchema, state);
         }
         catch (error) {
             operationError = error;
@@ -247,6 +246,7 @@ export function RegisterPlaytestCommandTools(server, bus, permission) {
                 view: capture.view ?? view,
                 cameraPosition: capture.cameraPosition,
                 objects: capture.objects,
+                provenance: capture.provenance,
             },
         };
         return {

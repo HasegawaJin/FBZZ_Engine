@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { CreateEditorMcpServer } from '../server.js';
 for (const permission of ['read', 'dry-run', 'write']) {
+    /// @brief 照会ツールは全権限で読み取り専用として公開し、rename apply は dry-run と write でだけ公開する。
     test(`制作解析の公開入口は${permission}権限で利用範囲を宣言する`, async () => {
         const bus = {
             async Query() { assert.fail('Discovery must not read Editor state or launch analysis.'); },

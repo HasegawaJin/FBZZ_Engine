@@ -1,0 +1,31 @@
+{
+  "name": "EditorMcpSmoke",
+  "scene": "Assets/Scenes/Smoke.scene",
+  "forceViewportRendering": false,
+  "steps": [
+    { "do": "play" },
+    { "do": "frames", "count": 3 },
+    {
+      "do": "assert",
+      "query": { "t": "editor.state" },
+      "path": "playState",
+      "op": "==",
+      "value": "playing"
+    },
+    {
+      "do": "assert",
+      "query": { "t": "scene.find", "name": "McpSmokeAfter" },
+      "path": "matches.0.id",
+      "op": "==",
+      "value": "6a4efced-4563-4cbe-9e3d-7c7212cf6d2b"
+    },
+    { "do": "stop" },
+    {
+      "do": "assert",
+      "query": { "t": "editor.state" },
+      "path": "restorePending",
+      "op": "==",
+      "value": false
+    }
+  ]
+}

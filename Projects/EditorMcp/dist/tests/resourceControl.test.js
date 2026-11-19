@@ -28,6 +28,7 @@ function Deferred() {
     const promise = new Promise((resolvePromise) => { complete = resolvePromise; });
     return { promise, resolve: complete };
 }
+/// @brief Ownership requires capability; hierarchical targets conflict and namespace scopes remain independent.
 test('ownership requires capability; hierarchical targets conflict and namespace scopes remain independent', async (t) => {
     const directory = Fixture(t);
     const first = new ResourceControl('editor-A/project-A', directory);
@@ -58,6 +59,7 @@ test('ownership requires capability; hierarchical targets conflict and namespace
     await second.Release('AI-B', otherEntity);
     await otherProject.Release('AI-B', isolated);
 });
+/// @brief Expiry and renewal use exact boundaries and never revive an expired lease.
 test('expiry and renewal use exact boundaries and never revive an expired lease', async (t) => {
     let now = 100000;
     const control = new ResourceControl('expiry', Fixture(t), { now: () => now });
@@ -79,6 +81,7 @@ test('expiry and renewal use exact boundaries and never revive an expired lease'
         await assert.rejects(control.Acquire('AI-C', targets, 10), Code('INVALID_ARGUMENT'));
     }
 });
+/// @brief Live operation pins survive expiry, reject early release and same-token overlap, and release after failure.
 test('live operation pins survive expiry, reject early release and same-token overlap, and release after failure', async (t) => {
     let now = 100000;
     const directory = Fixture(t);
@@ -112,6 +115,7 @@ test('live operation pins survive expiry, reject early release and same-token ov
     const replacement = await second.Acquire('AI-B', ['scene'], 100);
     await second.Release('AI-B', replacement);
 });
+/// @brief Disjoint jobs sharing one lease have unique IDs even with identical display names.
 test('disjoint jobs sharing one lease have unique IDs even with identical display names', async (t) => {
     const control = new ResourceControl('job-identities', Fixture(t));
     const lease = await control.Acquire('AI', ['scene'], 30000);
@@ -136,6 +140,7 @@ test('disjoint jobs sharing one lease have unique IDs even with identical displa
     assert.equal((await control.Inspect())[0].operations.length, 0);
     await control.Release('AI', lease);
 });
+/// @brief Build and Editor executions share one target and failure cleanup permits the next job.
 test('build and Editor executions share one target and failure cleanup permits the next job', async (t) => {
     const directory = Fixture(t);
     const build = new ResourceControl('shared-endpoint-project', directory);
@@ -157,6 +162,7 @@ test('build and Editor executions share one target and failure cleanup permits t
     assert.equal(await editor.RunExclusive('editor', 'editor-render', () => 'rendered'), 'rendered');
     assert.deepEqual(await editor.Inspect(), []);
 });
+/// @brief Concurrent acquisition from independent control instances grants exactly one claim.
 test('concurrent acquisition from independent control instances grants exactly one claim', async (t) => {
     const directory = Fixture(t);
     const outcomes = await Promise.all(Array.from({ length: 20 }, (_, index) => {
@@ -204,6 +210,7 @@ function Message(child, type) {
         child.on('exit', exited);
     });
 }
+/// @brief Separate processes racing through atomic generations produce one winner without check-then-acquire.
 test('separate processes racing through atomic generations produce one winner without check-then-acquire', { timeout: 25000 }, async (t) => {
     const directory = Fixture(t);
     const script = `
@@ -230,6 +237,7 @@ test('separate processes racing through atomic generations produce one winner wi
     const state = await new ResourceControl('process-contention', directory).Inspect();
     assert.equal(state.length, 1);
 });
+/// @brief Live subprocess pin cannot be reclaimed after expiry; crashed subprocess pin can.
 test('live subprocess pin cannot be reclaimed after expiry; crashed subprocess pin can', { timeout: 25000 }, async (t) => {
     const directory = Fixture(t);
     const script = `
@@ -254,6 +262,7 @@ test('live subprocess pin cannot be reclaimed after expiry; crashed subprocess p
     assert.equal((await observer.Inspect())[0].owner, 'replacement');
     await observer.Release('replacement', replacement);
 });
+/// @brief Separate processes claiming disjoint targets preserve every concurrent claim.
 test('separate processes claiming disjoint targets preserve every concurrent claim', { timeout: 25000 }, async (t) => {
     const directory = Fixture(t);
     const script = `
@@ -280,6 +289,7 @@ test('separate processes claiming disjoint targets preserve every concurrent cla
     assert.equal(state.length, children.length);
     assert.equal(new Set(state.map((claim) => claim.leaseId)).size, children.length);
 });
+/// @brief Corrupt state fails closed and abandoned unpublished candidates never become claims.
 test('corrupt state fails closed and abandoned unpublished candidates never become claims', async (t) => {
     const directory = Fixture(t);
     const control = new ResourceControl('corruption', directory);
@@ -291,6 +301,7 @@ test('corrupt state fails closed and abandoned unpublished candidates never beco
     writeFileSync(join(namespaceDirectory, generations[generations.length - 1], 'state.json'), '{partial');
     await assert.rejects(control.Acquire('AI-B', ['assets'], 30000), Code('RESOURCE_STATE_INVALID'));
 });
+/// @brief Namespace canonicalization is stable and project-specific.
 test('namespace canonicalization is stable and project-specific', () => {
     const root = fileURLToPath(new URL('../../', import.meta.url));
     assert.equal(ResourceNamespace('pipe-a', root), ResourceNamespace('pipe-a', join(root, '.')));

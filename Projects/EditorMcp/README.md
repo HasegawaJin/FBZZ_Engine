@@ -7,6 +7,17 @@
 EditorのローカルCommand Busをstdio MCPへ接続する。実行中EditorのOperatorRegistryと
 公開C# SDKを正本とし、`read` / `dry-run` / `write`の権限を維持する。
 
+Game View は `editor_op_list(search="viewport.game")` で調べ、
+`viewport.game.inspect/configure` を共通ゲートウェイから呼ぶ。
+`aspect`、`playFocusMode`、`executionMode`、`cursorOverride` は文字列の候補を持つ。
+`layout=maximized/normal/automatic` で表示を最大化・復元・通常動作へ戻せる。
+MCP からの Play は物理入力を取得せず、明示的な最大化でもこの契約は変わらない。
+
+`viewport_capture` の `w/h` は縦横比を保つPNGの上限枠。
+返却する `width/height` と意味座標はPNG、`sourceWidth/sourceHeight` は描画元の寸法を表す。
+SFX の自動試聴と Fluid の表示・視点設定は個人設定へ保存する。
+詳細は [Editor の直接 API](../../Docs/design/EditorDirectApi.md#game-view-とプレビューの設定) を参照。
+
 ## 前提とビルド
 
 - Node.js 24.10以降。SQLは組み込み `node:sqlite` を使う。
@@ -40,11 +51,15 @@ helperのビルド出力にある依存DLL、runtimeconfig、depsも保持する
 | `editor_op_query` → `authoring.context` | 接続先project・Scene世代・現在のSDK配置先を取得する。 |
 | `editor_op_query` → `authoring.placement.preview` | world整列・等間隔・水平面への配置の差分を取得する。 |
 | `editor_op_invoke` → `authoring.placement.apply` | previewの計画状態を照合し、共通Undoへ一括適用する。 |
+| `editor_op_query` → `asset.move_batch.preview` | Prefab を含む複数ファイルの移動・改名前に、本体と meta の新旧パスと GUID を確認する。 |
+| `editor_op_invoke` → `asset.move_batch.apply` | preview の `receipt` を使い、確認済みの移動・改名を実行する。 |
+| `asset_dependencies_scan` / `asset_dependencies_status` | GUID から保存済み参照をたどり、参照切れや変更の影響範囲をフィールド・行番号付きで確認する。 |
 | `sql_index_refresh` | 現在Scene等の読み取り用索引を更新する。 |
 | `sql_index_status` / `sql_index_schema` | 取得範囲・世代・欠測と、問い合わせ可能な表を確認する。 |
 | `sql_query` | 索引に単一SELECT/CTEを実行する。 |
 
 配置の引数は `editor_op_list`のparamsから取得する。applyにはpreviewが返す`expected`を渡す。
+一括移動の引数例と失敗時の復元範囲は [Editor 直接 API](../../Docs/design/EditorDirectApi.md#prefab-とアセットの一括移動改名) を参照。
 平面への配置は地形のraycast接地を意味しない。meshBottomは対応する静的メッシュの底面を使い、
 形状が解決できないときは成功として扱わない。
 

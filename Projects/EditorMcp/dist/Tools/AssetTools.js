@@ -5,7 +5,32 @@
 import * as z from 'zod/v4';
 import { AssetThumbnailResultSchema, SpriteThumbnailResultSchema } from '../editorContracts.js';
 import { TextResult, Safely, CreateCommandContext } from './ToolSupport.js';
+const DependencyResultSchema = z.object({ data: z.record(z.string(), z.unknown()) });
 export function RegisterAssetQueryTools(server, bus) {
+    const dependencyQuery = (id, args) => Safely(async () => {
+        const { data } = DependencyResultSchema.parse(await bus.Query({ t: 'editor.op.query', id, args }));
+        return { ...TextResult(data), structuredContent: data };
+    });
+    server.registerTool('asset_dependencies_scan', {
+        description: 'GUID を起点に保存済み Scene・Prefab・アセットの参照調査を開始します。未解決の GUID も指定できます。',
+        inputSchema: {
+            guid: z.string().regex(/^(?:guid:)?[0-9a-fA-F]{32}$/),
+            maxDepth: z.int().min(1).max(16).default(4),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, (args) => dependencyQuery('asset.dependencies.scan', args));
+    server.registerTool('asset_dependencies_status', {
+        description: 'finished まで調査を進め、参照先（outgoing）または影響する参照元（incoming）を取得します。'
+            + '各辺にフィールド・行番号・距離・参照切れを返します。stale の場合は再調査してください。',
+        inputSchema: {
+            job: z.int().min(1).max(2147483647),
+            direction: z.enum(['incoming', 'outgoing']).default('outgoing'),
+            offset: z.int().min(0).max(4096).default(0),
+            limit: z.int().min(1).max(100).default(100),
+            maxFiles: z.int().min(1).max(32).default(4),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: false },
+    }, (args) => dependencyQuery('asset.dependencies.status', args));
     server.registerTool('asset_list', {
         description: 'プロジェクト内のアセット一覧を取得します。ファイルは変更しません。',
         inputSchema: { dir: z.string().min(1).optional().describe('プロジェクト相対ディレクトリ') },

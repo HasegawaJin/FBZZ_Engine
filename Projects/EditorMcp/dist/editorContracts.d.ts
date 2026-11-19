@@ -221,11 +221,13 @@ export type EditorQuery = {
     h: number;
     cameraId?: string | undefined;
     view?: 'scene' | 'game' | undefined;
+    minFrame?: number | undefined;
 } | {
     t: 'viewport.semantic';
     w: number;
     h: number;
     view?: 'scene' | 'game' | undefined;
+    minFrame?: number | undefined;
 } | {
     t: 'scene.list';
 } | {
@@ -844,16 +846,58 @@ export declare const EditorBusResponseSchema: z.ZodObject<{
     }, z.core.$strip>>;
 }, z.core.$strict>;
 export type EditorBusResponse = z.infer<typeof EditorBusResponseSchema>;
+export declare const CaptureProvenanceSchema: z.ZodObject<{
+    frame: z.ZodInt;
+    sceneGeneration: z.ZodInt;
+    scenePath: z.ZodString;
+    sceneName: z.ZodString;
+    view: z.ZodEnum<{
+        game: "game";
+        scene: "scene";
+    }>;
+    cameraKind: z.ZodEnum<{
+        editor: "editor";
+        editorFallback: "editorFallback";
+        node: "node";
+    }>;
+    cameraId: z.ZodOptional<z.ZodString>;
+    renderPass: z.ZodString;
+    occurrence: z.ZodInt;
+    output: z.ZodString;
+    passes: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
 export declare const ViewportCaptureResultSchema: z.ZodObject<{
     mimeType: z.ZodLiteral<"image/png">;
     base64: z.ZodString;
     width: z.ZodNumber;
     height: z.ZodNumber;
+    sourceWidth: z.ZodOptional<z.ZodNumber>;
+    sourceHeight: z.ZodOptional<z.ZodNumber>;
     cameraId: z.ZodOptional<z.ZodString>;
     view: z.ZodOptional<z.ZodEnum<{
         game: "game";
         scene: "scene";
     }>>;
+    provenance: z.ZodOptional<z.ZodObject<{
+        frame: z.ZodInt;
+        sceneGeneration: z.ZodInt;
+        scenePath: z.ZodString;
+        sceneName: z.ZodString;
+        view: z.ZodEnum<{
+            game: "game";
+            scene: "scene";
+        }>;
+        cameraKind: z.ZodEnum<{
+            editor: "editor";
+            editorFallback: "editorFallback";
+            node: "node";
+        }>;
+        cameraId: z.ZodOptional<z.ZodString>;
+        renderPass: z.ZodString;
+        occurrence: z.ZodInt;
+        output: z.ZodString;
+        passes: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
 }, z.core.$strict>;
 export type ViewportCaptureResult = z.infer<typeof ViewportCaptureResultSchema>;
 export declare const SemanticViewportResultSchema: z.ZodObject<{
@@ -861,11 +905,34 @@ export declare const SemanticViewportResultSchema: z.ZodObject<{
     base64: z.ZodString;
     width: z.ZodNumber;
     height: z.ZodNumber;
-    cameraPosition: z.ZodTuple<[z.ZodNumber, z.ZodNumber, z.ZodNumber], null>;
+    sourceWidth: z.ZodOptional<z.ZodNumber>;
+    sourceHeight: z.ZodOptional<z.ZodNumber>;
+    cameraId: z.ZodOptional<z.ZodString>;
     view: z.ZodOptional<z.ZodEnum<{
         game: "game";
         scene: "scene";
     }>>;
+    provenance: z.ZodOptional<z.ZodObject<{
+        frame: z.ZodInt;
+        sceneGeneration: z.ZodInt;
+        scenePath: z.ZodString;
+        sceneName: z.ZodString;
+        view: z.ZodEnum<{
+            game: "game";
+            scene: "scene";
+        }>;
+        cameraKind: z.ZodEnum<{
+            editor: "editor";
+            editorFallback: "editorFallback";
+            node: "node";
+        }>;
+        cameraId: z.ZodOptional<z.ZodString>;
+        renderPass: z.ZodString;
+        occurrence: z.ZodInt;
+        output: z.ZodString;
+        passes: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    cameraPosition: z.ZodTuple<[z.ZodNumber, z.ZodNumber, z.ZodNumber], null>;
     objects: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         name: z.ZodString;

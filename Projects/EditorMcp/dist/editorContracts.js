@@ -168,12 +168,14 @@ export const EditorQuerySchema = z.discriminatedUnion('t', [
         h: z.number().int().min(90).max(1080),
         cameraId: NodeIdSchema.optional(),
         view: z.enum(['scene', 'game']).optional(),
+        minFrame: z.int().nonnegative().optional(),
     }).strict(),
     z.object({
         t: z.literal('viewport.semantic'),
         w: z.number().int().min(160).max(1920),
         h: z.number().int().min(90).max(1080),
         view: z.enum(['scene', 'game']).optional(),
+        minFrame: z.int().nonnegative().optional(),
     }).strict(),
     /// @note ── ワールドオーサリング ──
     z.object({ t: z.literal('scene.list') }).strict(),
@@ -754,22 +756,33 @@ export const EditorBusResponseSchema = z.object({
         details: z.unknown().optional(),
     }).optional(),
 }).strict();
-/// @note viewport.capture の応答。engine が PNG を base64 化して返し、MCP が image content へ変換する。
+export const CaptureProvenanceSchema = z.object({
+    frame: z.int().positive(),
+    sceneGeneration: z.int().positive(),
+    scenePath: z.string(),
+    sceneName: z.string(),
+    view: z.enum(['scene', 'game']),
+    cameraKind: z.enum(['editor', 'editorFallback', 'node']),
+    cameraId: NodeIdSchema.optional(),
+    renderPass: z.string().min(1),
+    occurrence: z.int().nonnegative(),
+    output: z.string().min(1),
+    passes: z.array(z.string()),
+}).strict().refine(source => (source.cameraKind === 'node') === (source.cameraId !== undefined));
+/// @note Engine が PNG とその出自を同時に返す。古い Editor の応答も診断用に解析できる。
 export const ViewportCaptureResultSchema = z.object({
     mimeType: z.literal('image/png'),
     base64: z.string().min(1),
     width: z.number().int().positive(),
     height: z.number().int().positive(),
+    sourceWidth: z.number().int().positive().optional(),
+    sourceHeight: z.number().int().positive().optional(),
     cameraId: NodeIdSchema.optional(),
     view: z.enum(['scene', 'game']).optional(),
+    provenance: CaptureProvenanceSchema.optional(),
 }).strict();
-export const SemanticViewportResultSchema = z.object({
-    mimeType: z.literal('image/png'),
-    base64: z.string().min(1),
-    width: z.number().int().positive(),
-    height: z.number().int().positive(),
+export const SemanticViewportResultSchema = ViewportCaptureResultSchema.extend({
     cameraPosition: Vec3Schema,
-    view: z.enum(['scene', 'game']).optional(),
     objects: z.array(z.object({
         id: NodeIdSchema,
         name: z.string(),

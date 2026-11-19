@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import * as z from 'zod/v4';
 import { EditorBusError } from '../busClient.js';
 import { EditorCommandSchema, SemanticViewportResultSchema } from '../editorContracts.js';
+import { ReadViewport } from '../Tools/ToolSupport.js';
 import { ResourceControl, ResourceControlError } from './ResourceControl.js';
 const AsRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const Check = (status, reason) => ({ status, reason });
@@ -197,7 +198,7 @@ export class ReliabilitySession {
         try {
             return await this.control.RunWithLease(this.owner, token, known.targets, async () => this.control.RunExclusive(this.owner, 'verify', async () => {
                 const checks = { save: Check('unverified', 'Not requested.'), reload: Check('unverified', 'Not requested.'),
-                    render: Check('unverified', 'Current render frame provenance is unavailable.'), capture: Check('unverified', 'Not requested.'),
+                    render: Check('unverified', 'Visual correctness requires a baseline or a playtest assertion.'), capture: Check('unverified', 'Not requested.'),
                     validation: Check('unverified', 'No validation received.'), errors: Check('unverified', 'No error stream received.') };
                 let finalized = {};
                 if (options.save || options.reload) {
@@ -220,21 +221,27 @@ export class ReliabilitySession {
                     else
                         checks.errors = Check('success', 'No new errors in the complete Editor log cursor range.');
                 }
-                if (options.render) {
+                const observationGuard = observation.guard;
+                /// @note Save/reload may intentionally move history; use finalize's returned guard only after it completed.
+                const expectedGuard = AsRecord(finalized.observation).guard ?? known.guard;
+                checks.state = observationGuard && Fingerprint(observationGuard) === Fingerprint(expectedGuard)
+                    ? Check('success', 'Native guard still matches this operation.') : Check('failure', 'Scene or history changed; receipt verification is conflicted.');
+                if (options.render && AsRecord(checks.state).status === 'success') {
                     try {
-                        const capture = SemanticViewportResultSchema.parse(await this.bus.Query({ t: 'viewport.semantic', w: 960, h: 540, view: 'scene' }));
-                        checks.capture = Check('success', 'PNG and semantic objects returned. Capture freshness and visual correctness need a playtest baseline.');
+                        const capture = await ReadViewport(this.bus, { t: 'viewport.semantic', w: 960, h: 540, view: 'scene' }, SemanticViewportResultSchema);
+                        const postCapture = await this.Observe();
+                        if (Fingerprint(postCapture.guard) !== Fingerprint(expectedGuard))
+                            throw new Error('Scene or history changed while waiting for the image.');
+                        checks.capture = Check('success', 'The image source and frame were verified against the current edit.');
                         finalized.capture = capture;
                     }
                     catch (failure) {
                         checks.capture = Check('failure', String(failure));
                     }
                 }
-                const observationGuard = observation.guard;
-                /// @note Save/reload may intentionally move history; use finalize's returned guard only after it completed.
-                const expectedGuard = AsRecord(finalized.observation).guard ?? known.guard;
-                checks.state = observationGuard && Fingerprint(observationGuard) === Fingerprint(expectedGuard)
-                    ? Check('success', 'Native guard still matches this operation.') : Check('failure', 'Scene or history changed; receipt verification is conflicted.');
+                else if (options.render) {
+                    checks.capture = Check('unverified', 'The scene changed before capture.');
+                }
                 let status = Object.values(checks).some(check => AsRecord(check).status === 'failure') ? 'failure' : 'unverified';
                 if (options.save && options.reload && !options.render && ['save', 'reload', 'validation', 'errors', 'state'].every(key => AsRecord(checks[key]).status === 'success'))
                     status = 'success';
@@ -256,7 +263,10 @@ export class ReliabilitySession {
                 }
                 if (status === 'failure')
                     release = true;
-                return { status, checks, rollback, observation, finalized, atomic: false, scope: options.render ? 'render-freshness-unverified' : 'requested-persistence-and-log-checks' };
+                const scope = options.render
+                    ? finalized.capture ? 'render-source-verified' : 'render-freshness-unverified'
+                    : 'requested-persistence-and-log-checks';
+                return { status, checks, rollback, observation, finalized, atomic: false, scope };
             }));
         }
         catch (error) {

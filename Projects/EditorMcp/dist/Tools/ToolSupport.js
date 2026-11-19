@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-06
 import * as z from 'zod/v4';
+import { EditorBusError } from '../busClient.js';
 import { EditorCommandSchema } from '../editorContracts.js';
 export const NameSchema = z.string().min(1).max(128);
 /// @note NodeId をキーに正規化済み Scene 状態を比較し、追加・削除・変更を小さい差分で返す。
@@ -33,6 +34,31 @@ export function DiffSceneSnapshots(beforeValue, afterValue) {
     };
 }
 export const Delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+/// @note 要求後に描画されたフレームを待つ。古い成功応答に現在の状態を付け替えない。
+export async function ReadViewport(bus, query, schema, state) {
+    const current = state ?? await bus.Query({ t: 'editor.state' });
+    const index = current && typeof current === 'object' && 'frameIndex' in current ? current.frameIndex : undefined;
+    const generation = current && typeof current === 'object' && 'sceneGeneration' in current ? current.sceneGeneration : undefined;
+    const minFrame = Math.max(query.minFrame ?? 0, typeof index === 'number' && Number.isSafeInteger(index) ? index : 0);
+    const deadline = performance.now() + 3000;
+    for (;;) {
+        try {
+            const capture = schema.parse(await bus.Query({ ...query, ...(minFrame ? { minFrame } : {}) }));
+            const source = capture.provenance;
+            if (!source || source.frame < minFrame || source.view !== (query.view ?? 'scene')
+                || source.renderPass !== 'ViewportOutput'
+                || (query.t === 'viewport.capture' && query.cameraId !== undefined && source.cameraId !== query.cameraId)
+                || (typeof generation === 'number' && source.sceneGeneration !== generation))
+                throw new EditorBusError('STALE_CAPTURE', '指定したビューとフレームの出自を確認できません。');
+            return { ...capture, provenance: source };
+        }
+        catch (error) {
+            if (!(error instanceof EditorBusError) || error.code !== 'CAPTURE_NOT_READY' || performance.now() >= deadline)
+                throw error;
+            await Delay(40);
+        }
+    }
+}
 export function TextResult(value) {
     return {
         content: [{ type: 'text', text: JSON.stringify(value, null, 2) }],
@@ -54,7 +80,7 @@ export async function Safely(operation) {
 /// @note dry-run 権限は入力値に関係なく強制し、全領域で同じ Command 契約を検証する。
 export function CreateCommandContext(bus, permission) {
     const dryRun = permission !== 'write';
-    const run = (command) => Safely(async () => TextResult(await bus.Command(EditorCommandSchema.parse(command), dryRun)));
+    const run = (command, preview = false) => Safely(async () => TextResult(await bus.Command(EditorCommandSchema.parse(command), dryRun || preview)));
     const writeAnnotations = {
         readOnlyHint: false,
         destructiveHint: permission === 'write',

@@ -22,6 +22,7 @@ const fixture = z.object({
         payload: z.object({ t: z.string() }).catchall(z.unknown()),
     })).min(1),
 }).parse(JSON.parse(readFileSync(new URL('../../src/tests/fixtures/EditorContractCases.json', import.meta.url), 'utf8')));
+/// @brief C++ と共有する必須値・型・整数範囲・固定長配列の受理結果が wire 契約と一致する。
 test('C++ と共有する必須値・型・整数範囲・固定長配列の受理結果が wire 契約と一致する', () => {
     assert.equal(new Set(fixture.cases.map(entry => entry.name)).size, fixture.cases.length);
     for (const entry of fixture.cases) {
@@ -30,6 +31,7 @@ test('C++ と共有する必須値・型・整数範囲・固定長配列の受�
     }
 });
 for (const permission of ['dry-run', 'write']) {
+    /// @brief the selected case の公開 MCP 入力と転送内容が C++ 共有ケースに一致する。
     test(`${permission} の公開 MCP 入力と転送内容が C++ 共有ケースに一致する`, async () => {
         const dispatched = [];
         const bus = {

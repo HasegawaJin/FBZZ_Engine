@@ -51,7 +51,7 @@ buildの`managedRequestId / packageRequestId`、ログの`afterSequence`を指�
 
 今回のログはplan時のcursorから読み、errorがあればfailure。ログのdrop・truncation・cursor不明はunverified。参照検証のerrorはfailure。取得不能を0件と読み替えない。
 
-`viewport.semantic`のPNG・寸法・objectsが取得できればcaptureはsuccess。現行render Queryに提出frameの正本が無いため、freshな描画や見た目の正しさを`verified`とはしない。renderはunverifiedとして画像を証拠に返す。視覚の合否は既存Playtestのframe手順と`compareImage`、基準画像を使って確認する。既存のGPU/Editor専有担当へその実行を調整する。
+`viewport.semantic` は描画元のシーン、カメラ、実行パス、フレームを PNG と同時に返す。capture の success は、編集後に要求したフレーム以降の画像を、その編集の guard と照合できたことを表す。条件を満たさない画像は実行結果に添付しない。描画内容の合否は Playtest の `compareImage` と基準画像で確認する。
 
 ## 協調所有と実行排他
 

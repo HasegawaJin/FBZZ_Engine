@@ -1,0 +1,6 @@
+# @file    Impact.scene.meta
+# @brief   間接依存の検証用シーンの GUID。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[meta]
+guid = 'f80303554b7b4e60ba5ffec609443d46'

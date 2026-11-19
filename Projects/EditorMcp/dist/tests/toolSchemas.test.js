@@ -1,18 +1,16 @@
-// FBZZ Engine
-// toolSchemas.test.ts | EditorMcp
-// 公開ツールの input_schema が draft 2020-12 として合法であることを検証する
-//
-// WHY: Anthropic Messages API は tool.input_schema を draft 2020-12 で検証し、
-//      1 ツールでも違反すると会話全体が 400 (tools.N.custom.input_schema is invalid)
-//      で落ちる。MCP SDK の既定出力は draft-07 で、z.tuple() が `items: [..]`
-//      になるなど 2020-12 では非合法な形が混ざるため、回帰をここで止める。
+/// @file    toolSchemas.test.ts
+/// @brief   公開ツールが JSON Schema draft 2020-12 に適合する入力スキーマを返すことを検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-08-22
+///
+/// @note MCP SDK の既定出力は draft-07 なので、入力スキーマを draft 2020-12 に変換してクライアントの検証に通す。
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { CreateEditorMcpServer } from '../server.js';
 import { ToDraft2020Schema } from '../jsonSchemaDraft2020.js';
-// スキーマ列挙しかしないので bus は呼ばれない。呼ばれたら明確に失敗させる。
+/// @note スキーマ列挙しかしないので bus は呼ばれない。呼ばれたら明確に失敗させる。
 class UnusedBus {
     async Query() {
         throw new Error('スキーマ検証で bus を呼んではいけません');
@@ -36,7 +34,7 @@ async function ListToolSchemas(permission) {
         await server.close();
     }
 }
-// draft-07 でしか合法でない書き方を再帰的に洗い出す。見つかった箇所を JSON Pointer で返す。
+/// @note draft-07 でしか合法でない書き方を再帰的に洗い出す。見つかった箇所を JSON Pointer で返す。
 function FindDraft07Violations(node, path, found) {
     if (Array.isArray(node)) {
         node.forEach((child, index) => FindDraft07Violations(child, `${path}/${index}`, found));
@@ -67,6 +65,7 @@ function FindDraft07Violations(node, path, found) {
     return found;
 }
 for (const permission of ['read', 'dry-run', 'write']) {
+    /// @brief 各権限モードで、公開ツールの入力スキーマを JSON Schema draft 2020-12 として検証する。
     test(`${permission} モードの全ツールが draft 2020-12 の input_schema を返す`, async () => {
         const tools = await ListToolSchemas(permission);
         assert.ok(tools.length > 0, 'ツールが 1 つも公開されていない');
@@ -80,6 +79,7 @@ for (const permission of ['read', 'dry-run', 'write']) {
         assert.deepEqual(violations, [], `draft-07 固有の書き方が残っている:\n${violations.join('\n')}`);
     });
 }
+/// @brief 流体ツールは照会だけが readOnly で、残りは書き込みとして注釈される。
 test('流体ツールは照会だけが readOnly で、残りは書き込みとして注釈される', async () => {
     const tools = await ListToolSchemas('write');
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
@@ -90,7 +90,7 @@ test('流体ツールは照会だけが readOnly で、残りは書き込みと�
         'fluid_add_operator', 'fluid_remove_operator', 'fluid_move_operator']) {
         assert.equal(byName.get(name)?.annotations?.readOnlyHint, false, name);
     }
-    // list は固定の enum として公開する。自由文字列だと AI が旧名 (gas_source) を書いてくる。
+    /// @note list は固定の enum として公開する。自由文字列だと AI が旧名 (gas_source) を書いてくる。
     const addSchema = byName.get('fluid_add_operator')?.inputSchema;
     assert.deepEqual(addSchema.properties.list?.enum, ['source', 'force', 'collider']);
     for (const name of ['fluid_remove_operator', 'fluid_move_operator']) {
@@ -100,11 +100,12 @@ test('流体ツールは照会だけが readOnly で、残りは書き込みと�
     assert.deepEqual([...(addSchema.required ?? [])].sort(), ['list', 'path']);
     const moveSchema = byName.get('fluid_move_operator')?.inputSchema;
     assert.deepEqual([...(moveSchema.required ?? [])].sort(), ['from', 'list', 'path', 'to']);
-    // fields は任意 JSON の部分レシピ。object として公開されていないと AI が文字列で渡してくる。
+    /// @note fields は任意 JSON の部分レシピ。object として公開されていないと AI が文字列で渡してくる。
     const setSchema = byName.get('fluid_set')?.inputSchema;
     assert.equal(setSchema.properties.fields?.type, 'object');
     assert.deepEqual([...(setSchema.required ?? [])].sort(), ['fields', 'path']);
 });
+/// @brief 固定長タプルは prefixItems と要素数制約へ変換される。
 test('固定長タプルは prefixItems と要素数制約へ変換される', () => {
     const converted = ToDraft2020Schema({
         type: 'object',
@@ -118,6 +119,7 @@ test('固定長タプルは prefixItems と要素数制約へ変換される', (
     assert.equal(origin.minItems, 3);
     assert.equal(origin.maxItems, 3);
 });
+/// @brief rest 付きタプルは additionalItems を items へ移し上限を付けない。
 test('rest 付きタプルは additionalItems を items へ移し上限を付けない', () => {
     const converted = ToDraft2020Schema({
         type: 'array',
@@ -130,6 +132,7 @@ test('rest 付きタプルは additionalItems を items へ移し上限を付け
     assert.equal(converted.minItems, 1);
     assert.equal(converted.maxItems, undefined);
 });
+/// @brief definitions は $defs へ移り $ref も追従する。
 test('definitions は $defs へ移り $ref も追従する', () => {
     const converted = ToDraft2020Schema({
         type: 'object',

@@ -4,7 +4,7 @@
 /// @date    2026-11-06
 import * as z from 'zod/v4';
 import { NodeIdSchema, SemanticViewportResultSchema, Vec3Schema, ViewportCaptureResultSchema } from '../editorContracts.js';
-import { TextResult, Safely, CreateCommandContext } from './ToolSupport.js';
+import { TextResult, Safely, CreateCommandContext, ReadViewport } from './ToolSupport.js';
 export function RegisterRenderingQueryTools(server, bus) {
     server.registerTool('shader_inspect', {
         description: 'シェーダーが公開する変数とテクスチャスロットの目録を返します。'
@@ -34,51 +34,54 @@ export function RegisterRenderingQueryTools(server, bus) {
         annotations: { readOnlyHint: true, openWorldHint: false },
     }, ({ id }) => Safely(async () => TextResult(await bus.Query({ t: 'material.inspect', id }))));
     server.registerTool('viewport_capture', {
-        description: '現在のネイティブ viewport を PNG として取得します。w/h は希望サイズで、応答には実RTサイズが返ります。',
+        description: '要求以降に描画された viewport の PNG と出自を返します。w/h の枠内へ縦横比を保ってリサイズします。width/heightはPNG、sourceWidth/sourceHeightは描画元の寸法です。',
         inputSchema: {
-            w: z.number().int().min(160).max(1920).default(960).describe('PNG 幅'),
-            h: z.number().int().min(90).max(1080).default(540).describe('PNG 高さ'),
+            w: z.number().int().min(160).max(1920).default(960).describe('PNG の最大幅'),
+            h: z.number().int().min(90).max(1080).default(540).describe('PNG の最大高さ'),
             view: z.enum(['scene', 'game']).default('scene').describe('Scene / Game'),
-            cameraId: NodeIdSchema.optional().describe('省略時は active editor camera'),
+            cameraId: NodeIdSchema.optional().describe('描画に使用したカメラがこのノードであることを照合する'),
+            minFrame: z.int().nonnegative().optional().describe('許容する最も古い描画フレーム'),
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ w, h, view, cameraId }) => Safely(async () => {
-        const raw = await bus.Query({
-            t: 'viewport.capture',
-            w,
-            h,
-            view,
-            ...(cameraId === undefined ? {} : { cameraId }),
-        });
-        const capture = ViewportCaptureResultSchema.parse(raw);
+    }, ({ w, h, view, cameraId, minFrame }) => Safely(async () => {
+        const capture = await ReadViewport(bus, { t: 'viewport.capture', w, h, view,
+            ...(cameraId === undefined ? {} : { cameraId }), ...(minFrame === undefined ? {} : { minFrame }) }, ViewportCaptureResultSchema);
         return {
             content: [{ type: 'image', data: capture.base64, mimeType: capture.mimeType }],
             structuredContent: {
                 width: capture.width,
                 height: capture.height,
+                sourceWidth: capture.sourceWidth ?? capture.width,
+                sourceHeight: capture.sourceHeight ?? capture.height,
                 view: capture.view ?? view,
                 ...(capture.cameraId === undefined ? {} : { cameraId: capture.cameraId }),
+                provenance: capture.provenance,
             },
         };
     }));
     server.registerTool('viewport_capture_semantic', {
-        description: 'Viewport PNGと、各GameObjectのNodeId・ワールド座標・画像内ピクセル位置・可視判定を同時取得します。',
+        description: 'w/hの枠内へ縦横比を保ってリサイズしたViewport PNGと、そのPNG上のGameObject座標、シーン・カメラ・描画パス・フレームの出自を取得します。',
         inputSchema: {
             w: z.number().int().min(160).max(1920).default(960),
             h: z.number().int().min(90).max(1080).default(540),
             view: z.enum(['scene', 'game']).default('scene'),
             visibleOnly: z.boolean().default(true),
+            minFrame: z.int().nonnegative().optional(),
         },
         annotations: { readOnlyHint: true, openWorldHint: false },
-    }, ({ w, h, view, visibleOnly }) => Safely(async () => {
-        const capture = SemanticViewportResultSchema.parse(await bus.Query({ t: 'viewport.semantic', w, h, view }));
+    }, ({ w, h, view, visibleOnly, minFrame }) => Safely(async () => {
+        const capture = await ReadViewport(bus, { t: 'viewport.semantic', w, h, view,
+            ...(minFrame === undefined ? {} : { minFrame }) }, SemanticViewportResultSchema);
         const objects = visibleOnly ? capture.objects.filter((object) => object.visible) : capture.objects;
+        const details = { width: capture.width, height: capture.height,
+            sourceWidth: capture.sourceWidth ?? capture.width, sourceHeight: capture.sourceHeight ?? capture.height, view: capture.view ?? view,
+            cameraPosition: capture.cameraPosition, objects, provenance: capture.provenance };
         return {
             content: [
-                { type: 'text', text: JSON.stringify({ width: capture.width, height: capture.height, view: capture.view ?? view, cameraPosition: capture.cameraPosition, objects }, null, 2) },
+                { type: 'text', text: JSON.stringify(details, null, 2) },
                 { type: 'image', data: capture.base64, mimeType: capture.mimeType },
             ],
-            structuredContent: { width: capture.width, height: capture.height, view: capture.view ?? view, cameraPosition: capture.cameraPosition, objects },
+            structuredContent: details,
         };
     }));
 }

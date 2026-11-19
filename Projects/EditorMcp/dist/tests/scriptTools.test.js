@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { EditorQuerySchema } from '../editorContracts.js';
 import { CreateEditorMcpServer } from '../server.js';
+/// @brief Script queries require a lifetime handle and reject unknown fields.
 test('Script queries require a lifetime handle and reject unknown fields', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.inspect', id }).success, false);
@@ -22,6 +23,7 @@ test('Script queries require a lifetime handle and reject unknown fields', () =>
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.api.catalog', type: '' }).success, false);
     assert.equal(EditorQuerySchema.safeParse({ t: 'script.api.catalog', invoke: true }).success, false);
 });
+/// @brief Read connections can inspect and catalog scripts without commands.
 test('Read connections can inspect and catalog scripts without commands', async () => {
     const queries = [];
     const bus = {

@@ -1,6 +1,7 @@
-// FBZZ Engine
-// busClient.ts | EditorMcp
-// Windows Named Pipe 上の Editor Command Bus へ NDJSON 要求を中継する
+/// @file    busClient.ts
+/// @brief   Windows Named Pipe 上の Editor Command Bus へ NDJSON 要求を中継する。
+/// @author  Hasegawa Jin
+/// @date    2026-07-20
 import { randomUUID } from 'node:crypto';
 import { createConnection, type Socket } from 'node:net';
 import {
@@ -11,8 +12,7 @@ import {
     type EditorQuery,
 } from './editorContracts.js';
 
-// Editor 側 (query/command) の実処理へ透過的に橋渡しする最小インターフェース。
-// テストは FakeEditorBus でこれを差し替える。
+/// @brief Editor Command Bus の要求と応答の境界。
 export interface EditorBus {
     Query(query: EditorQuery): Promise<unknown>;
     Command(command: EditorCommand, dryRun: boolean): Promise<unknown>;
@@ -34,7 +34,7 @@ interface PendingRequest {
     timeout: NodeJS.Timeout;
 }
 
-// Named Pipe は同一 Windows セッション内だけに閉じ、Command の自動再送は二重適用防止のため行わない。
+/// @note Named Pipe はローカル限定。結果不明の Command を自動再送すると二重適用になりうる。
 export class EditorBusClient implements EditorBus {
     private readonly endpoint: string;
     private readonly requestTimeoutMs: number;
@@ -42,7 +42,7 @@ export class EditorBusClient implements EditorBus {
     private connectionPromise: Promise<void> | undefined;
     private receiveBuffer = '';
     private readonly pending = new Map<string, PendingRequest>();
-    // Editor Pipe は React と共有するため、1 接続 1 要求で直列化して占有し続けない。
+    /// @note Editor Pipe は React と共有するため、1 接続につき 1 要求に限る。
     private sendQueue: Promise<unknown> = Promise.resolve();
     private isClosing = false;
 
@@ -74,7 +74,7 @@ export class EditorBusClient implements EditorBus {
         completedSocket?.destroy();
     }
 
-    // Editor が後から起動しても、次の tool call で Named Pipe へ再接続する。
+    /// @note 起動前の接続失敗は次のツール呼び出しから復旧できる。
     private async EnsureConnected(): Promise<void> {
         if (this.socket !== undefined && !this.socket.destroyed && this.socket.writable) {
             return;
@@ -128,6 +128,12 @@ export class EditorBusClient implements EditorBus {
         return new Promise<unknown>((resolve, reject) => {
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
+                /// @note サーバーは 1 接続につき 1 要求だけ処理する。遅延応答と受信途中のデータを次の要求へ渡さない。
+                if (this.socket === socket) {
+                    this.socket = undefined;
+                    this.receiveBuffer = '';
+                }
+                socket.destroy();
                 reject(new EditorBusError('BUS_TIMEOUT', `Editor Command Bus 応答が ${this.requestTimeoutMs}ms を超えました`));
             }, this.requestTimeoutMs);
             this.pending.set(id, { resolve, reject, timeout });
@@ -145,7 +151,7 @@ export class EditorBusClient implements EditorBus {
         });
     }
 
-    // Named Pipe の任意分割を吸収し、1行1 JSON の応答単位へ戻す。
+    /// @note Pipe の読み取り境界と NDJSON の行境界は一致しない。
     private HandleData(chunk: string): void {
         this.receiveBuffer += chunk;
         for (;;) {
@@ -183,7 +189,7 @@ export class EditorBusClient implements EditorBus {
         } else {
             pending.reject(new EditorBusError(response.data.error?.code ?? 'ENGINE_REJECTED', response.data.error?.message ?? 'Engine が要求を拒否しました'));
         }
-        // 次のローカル利用者が接続できるよう、応答単位で Pipe を解放する。
+        /// @note 他のローカル利用者に待受を返す。
         const completedSocket = this.socket;
         this.socket = undefined;
         completedSocket?.end();

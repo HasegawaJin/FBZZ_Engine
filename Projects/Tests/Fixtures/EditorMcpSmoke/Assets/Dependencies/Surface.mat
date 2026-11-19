@@ -1,0 +1,10 @@
+# @file    Surface.mat
+# @brief   Prefab から参照される検証用 Material。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+version = 1
+shader = ""
+blend_mode = "Opaque"
+
+[params]
+base_color = [1.0, 1.0, 1.0, 1.0]

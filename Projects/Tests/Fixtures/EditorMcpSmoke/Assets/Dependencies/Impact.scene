@@ -1,0 +1,12 @@
+# @file    Impact.scene
+# @brief   間接依存の検証用シーン。
+# @author  Hasegawa Jin
+# @date    2026-11-17
+[scene]
+format_version = 1
+
+[[gameobjects]]
+active = true
+instanceId = 'a26e6f22-f5fc-4860-b717-f34aa2df77c2'
+name = 'ImpactRoot'
+prefabAssetPath = 'guid:2a1fa7667132420cb07ac83286a6ac8e|Assets/Dependencies/Assembly.prefab'
