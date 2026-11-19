@@ -8,6 +8,7 @@
 /// @note       compiledShadersDir は Assets/Shaders/compiled/ の絶対パス。
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -33,6 +34,9 @@ struct IblBakeInput {
     /// @brief コンパイル済みシェーダー (.cso) ディレクトリの絶対パス。
     /// @note 例: "C:/proj/Assets/Shaders/compiled/"
     std::string compiledShadersDir;
+
+    /// @note ベイクの作業スレッドから進捗率 0..100 を通知する。出力開始前に false を返すと中止する。
+    std::function<bool(int)> reportProgress;
 };
 
 /// @brief ベイク結果。生成された DDS ファイルの絶対パス。
@@ -53,6 +57,7 @@ public:
     /// @param outputDir DDS ファイルを書き出すディレクトリ (存在しない場合は生成する)。
     /// @param baseName  ファイル名の共通プレフィックス (例: "sky" → sky_env.dds 等)。
     /// @return 失敗時は false。例外は投げない。
+    /// @note 1 インスタンスをワーカースレッドに移して実行できる。並行して同じインスタンスを呼ばない。
     [[nodiscard]] virtual bool Bake(
         const IblBakeInput& input,
         const std::string&  outputDir,

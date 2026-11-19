@@ -166,6 +166,8 @@ VolumeGizmoCamera MakeVolumePreviewCamera(const asset::VolumeFlipbookBakeSetting
 void InitializeVolumeOrbit(State& state, const asset::VolumeFlipbookBakeSettings& settings)
 {
     const std::string& path = state.document.Path();
+    if (state.volumeOrbit.initialized && state.volumeOrbit.recipePath.empty())
+        state.volumeOrbit.recipePath = path;
     if (state.volumeOrbit.initialized && state.volumeOrbit.recipePath == path) return;
     state.volumeOrbit = {};
     state.volumeOrbit.recipePath = path;

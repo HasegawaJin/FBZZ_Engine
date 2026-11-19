@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #pragma once
 
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/ClothComponent.hpp>
 #include <Engine/Scene/Components/PresentationComponents.hpp>
@@ -13,6 +14,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/ImGuiReflector.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ColliderFit.hpp>
 #include <Editor/Util/ComponentDefaults.hpp>
@@ -964,14 +966,39 @@ inline void DrawPasteComponentAsNewMenuItem(scene::GameObject& go,
                                             const std::any& clipboard,
                                             const std::type_info* clipboardType);
 
+inline void DrawComponentMenuHeading(const char* label)
+{
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    widgets::LabelEllipsis(label, ImGui::GetFontSize() * 18.0f);
+    ImGui::PopStyleColor();
+    ImGui::Separator();
+}
+
+inline bool DrawPasteComponentValuesMenuItem(const char* label, bool enabled)
+{
+    const bool clicked = ImGui::MenuItem(LOC(label), nullptr, false, enabled);
+    if (!enabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("%s", LOCT("Copy values from the same component type first."));
+    return clicked;
+}
+
+inline bool DrawRemoveComponentMenuItem(bool enabled = true)
+{
+    ImGui::Separator();
+    if (enabled) ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Danger));
+    const bool clicked = ImGui::MenuItem(LOC("Remove Component"), nullptr, false, enabled);
+    if (enabled) ImGui::PopStyleColor();
+    return clicked;
+}
+
 /// @brief "Remove Component" 項目。外すと壊れる相手が居れば淡色にしてツールチップで名指しする。
 /// @return 押されたら true。
 inline bool DrawRemoveComponentMenuItem(scene::GameObject& go, const std::type_info& type)
 {
     const std::string blocker = FindComponentRemovalBlocker(go, type);
-    const bool clicked = ImGui::MenuItem("Remove Component", nullptr, false, blocker.empty());
+    const bool clicked = DrawRemoveComponentMenuItem(blocker.empty());
     if (!blocker.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Required by %s", blocker.c_str());
+        ImGui::SetTooltip(LOCT("Required by %s"), blocker.c_str());
     return clicked;
 }
 
@@ -1044,24 +1071,14 @@ void DrawComponentSection(scene::GameObject* go,
 
     bool removeRequested = false;
     if (ImGui::BeginPopup("##comp_opts")) {
-        if (!internalType && ImGui::MenuItem("Reset")) {
-            const T before = *comp;
-            /// @note Add Component と同じ既定値へ戻す (T{} だと RigidBody の本体や Terrain の格子が消える)。
-            T after = MakeDefaultComponent<T>(*go);
-            CopyComponentEnabledFlag(before, after);
-            ApplyInspectorComponentValues(*go, *comp, after);
-            PushComponentValueCommand(
-                *go, ctx, std::string("Reset ") + label, before, *comp);
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
-        }
-        if (!internalType) ImGui::Separator();
-        if (ImGui::MenuItem("Copy Component"))
-        {
+        DrawComponentMenuHeading(LOCT(label));
+        if (ImGui::MenuItem(LOC("Copy Component"))) {
             compClipboard     = CaptureInspectorComponentValues(*comp);
             compClipboardType = &typeid(T);
         }
-        const bool canPaste = !internalType && compClipboardType && *compClipboardType == typeid(T);
-        if (!internalType && ImGui::MenuItem("Paste Component Values", nullptr, false, canPaste))
+        const bool canPaste = compClipboardType && *compClipboardType == typeid(T)
+                           && compClipboard.type() == typeid(T);
+        if (!internalType && DrawPasteComponentValuesMenuItem("Paste Component Values", canPaste))
         {
             const T before = *comp;
             if constexpr (hasEnabled) {
@@ -1076,11 +1093,21 @@ void DrawComponentSection(scene::GameObject* go,
             if (ctx.markSceneDirty) ctx.markSceneDirty();
         }
         DrawPasteComponentAsNewMenuItem(*go, ctx, compClipboard, compClipboardType);
-        if constexpr (ComponentCardAllowsRemove<T>()) {
+        if constexpr (!internalType) {
             ImGui::Separator();
-            if (DrawRemoveComponentMenuItem(*go, typeid(T)))
-                removeRequested = true;
+            if (ImGui::MenuItem(LOC("Reset to Defaults"))) {
+                const T before = *comp;
+                /// @note Add Component と同じ既定値へ戻す (T{} だと RigidBody の本体や Terrain の格子が消える)。
+                T after = MakeDefaultComponent<T>(*go);
+                CopyComponentEnabledFlag(before, after);
+                ApplyInspectorComponentValues(*go, *comp, after);
+                PushComponentValueCommand(
+                    *go, ctx, std::string("Reset ") + label, before, *comp);
+                if (ctx.markSceneDirty) ctx.markSceneDirty();
+            }
         }
+        if constexpr (ComponentCardAllowsRemove<T>())
+            removeRequested = DrawRemoveComponentMenuItem(*go, typeid(T));
         ImGui::EndPopup();
     }
 
@@ -1304,23 +1331,14 @@ void DrawComponentSectionCustom(
 
     bool removeRequested = false;
     if (ImGui::BeginPopup("##comp_opts")) {
-        if (ImGui::MenuItem("Reset")) {
-            const Snapshot before = captureFn(*comp);
-            const bool wasEnabled = comp->enabled;
-            /// @note Add Component と同じ既定値 (Renderer のメッシュから組み直す) へ戻す。
-            applyFn(*comp, captureFn(MakeDefaultComponent<T>(*go)));
-            comp->enabled = wasEnabled;
-            if (canUndo) pushUndoCmd(std::string("Reset ") + label, before, captureFn(*comp));
-            if (ctx.markSceneDirty) ctx.markSceneDirty();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Copy Component")) {
+        DrawComponentMenuHeading(LOCT(label));
+        if (ImGui::MenuItem(LOC("Copy Component"))) {
             compClipboard     = captureFn(*comp);
             compClipboardType = &typeid(T);
         }
         const bool canPaste = compClipboardType && *compClipboardType == typeid(T)
                            && compClipboard.type() == typeid(Snapshot);
-        if (ImGui::MenuItem("Paste Component Values", nullptr, false, canPaste)) {
+        if (DrawPasteComponentValuesMenuItem("Paste Component Values", canPaste)) {
             const Snapshot before = captureFn(*comp);
             const bool wasEnabled = comp->enabled;
             applyFn(*comp, std::any_cast<Snapshot>(compClipboard));
@@ -1330,8 +1348,16 @@ void DrawComponentSectionCustom(
         }
         DrawPasteComponentAsNewMenuItem(*go, ctx, compClipboard, compClipboardType);
         ImGui::Separator();
-        if (DrawRemoveComponentMenuItem(*go, typeid(T)))
-            removeRequested = true;
+        if (ImGui::MenuItem(LOC("Reset to Defaults"))) {
+            const Snapshot before = captureFn(*comp);
+            const bool wasEnabled = comp->enabled;
+            /// @note Add Component と同じ既定値 (Renderer のメッシュから組み直す) へ戻す。
+            applyFn(*comp, captureFn(MakeDefaultComponent<T>(*go)));
+            comp->enabled = wasEnabled;
+            if (canUndo) pushUndoCmd(std::string("Reset ") + label, before, captureFn(*comp));
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        removeRequested = DrawRemoveComponentMenuItem(*go, typeid(T));
         ImGui::EndPopup();
     }
 
@@ -1414,7 +1440,7 @@ inline void DrawLightFlickerFields(scene::LightComponent& lc)
 
     static constexpr const char* kFlickerModeNames[] = { "Off", "Sine", "Noise", "Curve" };
     int flickerMode = static_cast<int>(lc.flickerMode);
-    if (ImGui::Combo("Flicker Mode", &flickerMode, kFlickerModeNames,
+    if (property::Combo("Flicker Mode", &flickerMode, kFlickerModeNames,
                      IM_ARRAYSIZE(kFlickerModeNames)))
         lc.flickerMode = static_cast<Flicker>(flickerMode);
     if (ImGui::IsItemHovered()) {
@@ -1434,7 +1460,7 @@ inline void DrawLightFlickerFields(scene::LightComponent& lc)
         "揺れの深さ。倍率 = 1 - Amplitude * (1 - 波形)。\n"
         "0 で無効 (常に 1 倍)、1 で消灯まで落ちます。\n"
         "オーサリングした Intensity は «ピーク» として扱われ、上へは振れません。");
-    ImGui::DragFloat("Flicker Frequency", &lc.flickerFrequency, 0.05f, 0.0f, 60.0f, "%.2f Hz");
+    property::DragFloat("Flicker Frequency", &lc.flickerFrequency, 0.05f, 0.0f, 60.0f, "%.2f Hz");
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("1 秒あたりの周期数。Curve モードではカーブ 1 周の速さです。");
     if (lc.flickerFrequency < 0.0f) lc.flickerFrequency = 0.0f;
@@ -1449,7 +1475,7 @@ inline void DrawLightFlickerFields(scene::LightComponent& lc)
         "位相オフセット。同じ設定のライトを並べたとき、揃って光らないようずらします。");
 
     int flickerSeed = static_cast<int>(lc.flickerSeed);
-    if (ImGui::DragInt("Flicker Seed", &flickerSeed, 1.0f, 0, 65535)) {
+    if (property::DragInt("Flicker Seed", &flickerSeed, 1.0f, 0, 65535)) {
         lc.flickerSeed = static_cast<std::uint32_t>(flickerSeed < 0 ? 0 : flickerSeed);
     }
     if (ImGui::IsItemHovered()) {
@@ -1476,14 +1502,14 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
     static constexpr const char* kTypeNames[] = {
         "Directional", "Point", "Spot", "Area (Rect)", "Sphere", "Tube" };
     int typeIdx = static_cast<int>(lc.type);
-    if (ImGui::Combo("Type", &typeIdx, kTypeNames, IM_ARRAYSIZE(kTypeNames)))
+    if (property::Combo("Type", &typeIdx, kTypeNames, IM_ARRAYSIZE(kTypeNames)))
         lc.type = static_cast<scene::LightComponent::Type>(typeIdx);
 
     const bool drivenBySky = dayNightDriven && lc.type == scene::LightComponent::Type::Directional;
     ImGui::BeginDisabled(drivenBySky);
-    ImGui::Checkbox("Use Color Temperature", &lc.useColorTemperature);
+    property::Checkbox("Use Color Temperature", &lc.useColorTemperature);
     if (lc.useColorTemperature) {
-        ImGui::DragFloat("Temperature", &lc.colorTemperature, 25.0f, 1000.0f, 15000.0f, "%.0f K");
+        property::DragFloat("Temperature", &lc.colorTemperature, 25.0f, 1000.0f, 15000.0f, "%.0f K");
         /// @note 温度から作った色をそのまま見せる。数値だけでは何色になるか分からない。
         const math::Vector3 preview = renderer::ColorFromTemperature(lc.colorTemperature);
         ImGui::ColorButton("##tempPreview",
@@ -1497,20 +1523,19 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
     /// @note Area は上限 200 では足りない。単位が「面の輝度」で、小さなパネルほど
     /// @note 大きな値が要るため (LightComponent.hpp の intensity の説明を参照)。
     const bool isArea = (lc.type == scene::LightComponent::Type::Area);
-    ImGui::DragFloat("Intensity", &lc.intensity, isArea ? 1.0f : 0.05f,
+    property::DragFloat("Intensity", &lc.intensity, isArea ? 1.0f : 0.05f,
                      0.0f, isArea ? 2000.0f : 200.0f);
     /// @note タイプごとに単位が違うことを、値を触る場所で明示する。Point の感覚のまま Area へ
     /// @note 10 を入れると albedo x 0.04 でほぼ見えず、«実装が壊れている» と読み違える (実例あり)。
-    ImGui::SameLine();
     switch (lc.type) {
     case scene::LightComponent::Type::Directional:
-        ImGui::TextDisabled("放射照度 (1.0 = albedo そのまま)"); break;
+        ImGui::TextWrapped("放射照度 (1.0 = albedo そのまま)"); break;
     case scene::LightComponent::Type::Area:
         ImGui::TextColored({ 1.0f, 0.80f, 0.40f, 1.0f },
                            "面の輝度。1/d^2 は掛からない — 天井照明なら 100〜200");
         break;
     default:
-        ImGui::TextDisabled("1m 地点の明るさ (1/d^2 減衰)。明るい屋外なら 15〜30");
+        ImGui::TextWrapped("1m 地点の明るさ (1/d^2 減衰)。明るい屋外なら 15〜30");
         break;
     }
     ImGui::EndDisabled();
@@ -1527,27 +1552,27 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         };
         if (widgets::DragAxes("Position", pos, 3, 0.1f))
             go.transform.position = { pos[0], pos[1], pos[2] };
-        ImGui::DragFloat("Range", &lc.range, 0.1f, 0.0f, 500.0f);
+        property::DragFloat("Range", &lc.range, 0.1f, 0.0f, 500.0f);
     }
 
     if (lc.type == scene::LightComponent::Type::Spot) {
-        ImGui::DragFloat("Inner Cone", &lc.innerCone, 0.5f, 0.0f, 89.0f);
-        ImGui::DragFloat("Outer Cone", &lc.outerCone, 0.5f, 0.0f, 89.0f);
+        property::DragFloat("Inner Cone", &lc.innerCone, 0.5f, 0.0f, 89.0f);
+        property::DragFloat("Outer Cone", &lc.outerCone, 0.5f, 0.0f, 89.0f);
     }
 
     if (lc.type == scene::LightComponent::Type::Area) {
-        ImGui::DragFloat("Width",  &lc.areaWidth,  0.05f, 0.01f, 100.0f, "%.2f m");
-        ImGui::DragFloat("Height", &lc.areaHeight, 0.05f, 0.01f, 100.0f, "%.2f m");
-        ImGui::Checkbox("Two Sided", &lc.areaTwoSided);
+        property::DragFloat("Width",  &lc.areaWidth,  0.05f, 0.01f, 100.0f, "%.2f m");
+        property::DragFloat("Height", &lc.areaHeight, 0.05f, 0.01f, 100.0f, "%.2f m");
+        property::Checkbox("Two Sided", &lc.areaTwoSided);
         ImGui::TextDisabled("面の向きは Transform の Forward。板の裏は Two Sided で照らす");
     }
 
     /// @note 発光体の大きさ。Area だけは幅と高さがその役割なので出さない。
     if (lc.type != scene::LightComponent::Type::Directional &&
         lc.type != scene::LightComponent::Type::Area) {
-        ImGui::DragFloat("Source Radius", &lc.sourceRadius, 0.005f, 0.0f, 10.0f, "%.3f m");
+        property::DragFloat("Source Radius", &lc.sourceRadius, 0.005f, 0.0f, 10.0f, "%.3f m");
         if (lc.type == scene::LightComponent::Type::Tube) {
-            ImGui::DragFloat("Source Length", &lc.sourceLength, 0.05f, 0.0f, 50.0f, "%.2f m");
+            property::DragFloat("Source Length", &lc.sourceLength, 0.05f, 0.0f, 50.0f, "%.2f m");
             ImGui::TextDisabled("管の軸は Transform の Right");
         } else if (lc.sourceRadius <= 0.0f) {
             ImGui::TextDisabled("0 = 厳密な点光源。上げるとハイライトと影の縁が柔らかくなる");
@@ -1558,19 +1583,19 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
         lc.type != scene::LightComponent::Type::Sphere) {
         auto fwd = go.transform.forward;
         float dir[3] = { fwd.x, fwd.y, fwd.z };
-        ImGui::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
+        property::InputFloat3("Forward", dir, "%.3f", ImGuiInputTextFlags_ReadOnly);
     }
 
     ImGui::Separator();
     ImGui::SeparatorText("Shadow");
-    ImGui::Checkbox("Cast Shadows", &lc.castShadows);
+    property::Checkbox("Cast Shadows", &lc.castShadows);
     if (lc.castShadows) {
-        ImGui::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
-        ImGui::DragFloat("Shadow Bias",     &lc.shadowBias,     0.05f, 0.1f, 10.0f);
+        property::DragFloat("Shadow Strength", &lc.shadowStrength, 0.01f, 0.0f, 1.0f);
+        property::DragFloat("Shadow Bias",     &lc.shadowBias,     0.05f, 0.1f, 10.0f);
         if (lc.type == scene::LightComponent::Type::Directional) {
             const char* shadowModes[] = {"Realtime", "Auto Bake", "Cached Far Cascade"};
             int shadowMode = static_cast<int>(lc.shadowMode);
-            if (ImGui::Combo("Shadow Mode", &shadowMode, shadowModes, IM_ARRAYSIZE(shadowModes)))
+            if (property::Combo("Shadow Mode", &shadowMode, shadowModes, IM_ARRAYSIZE(shadowModes)))
                 lc.shadowMode = static_cast<scene::LightComponent::ShadowMode>(shadowMode);
             if (lc.shadowMode == scene::LightComponent::ShadowMode::AUTO_BAKE) {
                 const auto drawBakeDirection = [&go](const char* label, math::Vector3& direction) {
@@ -1586,14 +1611,14 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
             if (lc.shadowMode == scene::LightComponent::ShadowMode::CACHED_FAR_CASCADE)
                 ImGui::TextDisabled("Play updates middle/far cascades every 4/8 frames with four cascades.");
             const char* distFmt = (lc.shadowDistance <= 0.0f) ? "Render Settings" : "%.1f m";
-            ImGui::DragFloat("Shadow Distance Override", &lc.shadowDistance,
+            property::DragFloat("Shadow Distance Override", &lc.shadowDistance,
                              5.0f, 0.0f, 2000.0f, distFmt);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("カメラ前方への影の最大距離 [m]。正の値は描画設定より優先されます。\n"
                                   "0 にすると描画設定の Shadow Distance を使います。");
             }
         } else {
-            ImGui::DragFloat("Shadow Near Plane", &lc.shadowNearPlane,
+            property::DragFloat("Shadow Near Plane", &lc.shadowNearPlane,
                              0.01f, 0.01f, 10.0f, "%.2f m");
             /// @note タイルの取り合いは «置いたのに影が出ない» の唯一の原因なので、
             /// @note この型が何枚使うかをその場で出す。
@@ -1614,9 +1639,9 @@ inline void DrawLightFields(scene::GameObject& go, scene::LightComponent& lc,
     if (lc.type == scene::LightComponent::Type::Spot) {
         ImGui::Separator();
         ImGui::SeparatorText("Cookie");
-        widgets::AssetPathField("Cookie", lc.cookiePath, ".png,.jpg,.dds,.tga", projectRoot);
+        property::AssetPathField("Cookie", lc.cookiePath, ".png,.jpg,.dds,.tga", projectRoot);
         if (!lc.cookiePath.empty())
-            ImGui::DragFloat("Cookie Rotation", &lc.cookieRotation, 1.0f, -180.0f, 180.0f, "%.0f deg");
+            property::DragFloat("Cookie Rotation", &lc.cookieRotation, 1.0f, -180.0f, 180.0f, "%.0f deg");
     }
 
     DrawLightFlickerFields(lc);
@@ -1932,7 +1957,11 @@ inline void DrawPasteComponentAsNewMenuItem(scene::GameObject& go,
                                             const std::type_info* clipboardType)
 {
     const bool canPaste = CanPasteComponentAsNew(go, clipboard, clipboardType);
-    if (!ImGui::MenuItem("Paste Component As New", nullptr, false, canPaste)) return;
+    if (!ImGui::MenuItem(LOC("Paste Component As New"), nullptr, false, canPaste)) {
+        if (!canPaste && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", LOCT("Copy an addable component that this object does not have."));
+        return;
+    }
     if (auto command = PasteComponentAsNewWithUndo(go, ctx, clipboard, clipboardType))
         ctx.undoStack->Push(std::move(command));
     if (ctx.markSceneDirty) ctx.markSceneDirty();

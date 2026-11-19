@@ -2,6 +2,7 @@
 /// @brief   Material Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
@@ -178,7 +179,7 @@ void DrawMaterialElementRow(const material_edit_detail::SlotTarget& target,
     ImGui::PushID(static_cast<int>(slotIndex));
     const std::string label = "Element " + std::to_string(slotIndex);
     const std::string originalPath = slotEdit.Draft().materialPath;
-    const bool fieldAccepted = widgets::AssetPathField(label.c_str(), slotEdit.Draft().materialPath, ".mat", ctx.projectRoot);
+    const bool fieldAccepted = property::AssetPathField(label.c_str(), slotEdit.Draft().materialPath, ".mat", ctx.projectRoot);
     if (slotEdit.Draft().materialPath != originalPath)
         slotEdit.Draft().materialAsset = {};
     if (material_edit_detail::FinishSlotPathEdit(target, slotEdit, fieldAccepted) == material_edit_detail::CommitResult::COMMITTED)
@@ -193,7 +194,7 @@ void DrawMaterialElementRow(const material_edit_detail::SlotTarget& target,
         ImGui::TextDisabled("未割当 — Element 0 のマテリアルで描画されます");
     }
     bool visible = displaySlot && displaySlot->visible;
-    if (ImGui::Checkbox("Visible", &visible)) {
+    if (property::Checkbox("Visible", &visible)) {
         if (auto* live = target.Resolve(); live && live->visible != visible) {
             live->visible = visible;
             if (ctx.markSceneDirty) ctx.markSceneDirty();

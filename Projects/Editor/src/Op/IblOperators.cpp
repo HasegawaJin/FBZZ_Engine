@@ -8,6 +8,7 @@
 #include <Editor/PlayModeController.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 
@@ -15,26 +16,32 @@ namespace fbzz::editor {
 void IblBakePanel::OnUpdate(EditorContext& ctx, float dt)
 {
     static_cast<void>(dt);
-    if (!m_bakeRequested) return;
-    m_bakeRequested = false;
-    DoBake(ctx);
-    ctx.requestAssetBrowserRefresh = true;
+    if (m_bakeRequested) {
+        m_bakeRequested = false;
+        StartBake(ctx);
+    }
+    if (m_bake.valid() && m_bake.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        FinishBake(ctx, m_bake.get());
 }
 void IblBakePanel::OnRegisterOperators(OperatorRegistry& registry)
 {
-    for (const char* action : {"inspect", "configure", "bake"}) {
+    for (const char* action : {"inspect", "configure", "bake", "cancel"}) {
         EditorOperator op;
         const std::string name = action;
         op.id = "ibl." + name; op.label = op.id; op.category = "IBL Bake";
         op.kind = name == "inspect" ? OpKind::Query : OpKind::Action;
-        op.desc = "HDRIベイクを画面なしで設定・実行する。bakeはジョブ番号を返し、次の更新でGPU処理を実行する。inspectのstateで完了/失敗を確認する。";
-        if (name != "inspect") {
+        op.desc = "HDRIベイクの設定と非同期実行。inspectで進捗を取得し、出力前はcancelで中止できる。";
+        if (name == "bake" || name == "configure") {
             OpParam settings; settings.name = "settings"; settings.type = OpParamType::Data; settings.required = name == "configure";
             op.params.push_back(std::move(settings));
         }
-        op.poll = [name](const OpContext& context, const OpArgs&) { return name == "inspect" || !context.ctx.playMode || context.ctx.playMode->IsInEditor(); };
+        op.poll = [name](const OpContext& context, const OpArgs&) {
+            return name == "inspect" || name == "cancel" || !context.ctx.playMode || context.ctx.playMode->IsInEditor();
+        };
         op.exec = [this, name](OpContext& context, const OpArgs& args) {
-            if (name != "inspect") {
+            if (name == "cancel") {
+                if (!CancelBake()) return OpResult::Err("IBL_NOT_CANCELLABLE", "出力確定中か実行待ちのベイクがありません。");
+            } else if (name != "inspect") {
                 if (m_status == Status::Baking) return OpResult::Err("IBL_BUSY", "IBLベイクが実行中です。");
                 std::string source = m_hdriPath.data(), output = m_outputDir.data(), base = m_baseName.data();
                 int env = m_envCubemapSize, irradiance = m_irradianceSize, prefiltered = m_prefilteredSize;
@@ -75,10 +82,14 @@ void IblBakePanel::OnRegisterOperators(OperatorRegistry& registry)
                     source = util::FileSystem::PathToUtf8(path);
                     auto destination = util::FileSystem::PathFromUtf8(output);
                     if (destination.is_relative()) destination = util::FileSystem::PathFromUtf8(context.ctx.projectRoot) / destination;
-                    destination = std::filesystem::weakly_canonical(destination, error);
-                    const auto root = std::filesystem::weakly_canonical(util::FileSystem::PathFromUtf8(context.ctx.projectRoot) / "Assets", error);
-                    const auto relative = destination.lexically_relative(root);
-                    if (error || relative.empty() || relative.is_absolute() || *relative.begin() == "..") return OpResult::Err("BAD_PATH", "出力先はAssets配下です。");
+                    if (context.source == OpInvocationSource::AUTOMATION) {
+                        destination = std::filesystem::weakly_canonical(destination, error);
+                        if (error) return OpResult::Err("BAD_PATH", "出力先を解決できません。");
+                        const auto root = std::filesystem::weakly_canonical(util::FileSystem::PathFromUtf8(context.ctx.projectRoot) / "Assets", error);
+                        const auto relative = destination.lexically_relative(root);
+                        if (error || relative.empty() || relative.is_absolute() || *relative.begin() == "..")
+                            return OpResult::Err("BAD_PATH", "出力先はAssets配下です。");
+                    }
                     output = util::FileSystem::PathToUtf8(destination);
                     if (source.size() >= m_hdriPath.size() || output.size() >= m_outputDir.size()) return OpResult::Err("BAD_PATH", "パスが長すぎます。");
                 }
@@ -87,7 +98,7 @@ void IblBakePanel::OnRegisterOperators(OperatorRegistry& registry)
                 std::snprintf(m_baseName.data(), m_baseName.size(), "%s", base.c_str());
                 m_envCubemapSize = env; m_irradianceSize = irradiance; m_prefilteredSize = prefiltered;
                 m_prefilteredMips = mips; m_brdfLutSize = brdf; m_sampleCount = samples;
-                if (name == "bake") { ++m_job; m_bakeRequested = true; m_status = Status::Baking; m_statusMsg = "Queued"; }
+                if (name == "bake") { ++m_job; m_bakeRequested = true; m_status = Status::Baking; m_statusMsg = "Queued"; m_progress = 0; }
                 else { m_status = Status::Idle; m_statusMsg.clear(); }
             }
             OpData settings = OpData::MakeObject();
@@ -96,7 +107,9 @@ void IblBakePanel::OnRegisterOperators(OperatorRegistry& registry)
             settings.Set("irradianceSize", OpData(m_irradianceSize)); settings.Set("prefilteredSize", OpData(m_prefilteredSize));
             settings.Set("prefilteredMips", OpData(m_prefilteredMips)); settings.Set("brdfLutSize", OpData(m_brdfLutSize)); settings.Set("sampleCount", OpData(m_sampleCount));
             OpData data = OpData::MakeObject(); data.Set("settings", std::move(settings)); data.Set("job", OpData(m_job));
-            data.Set("state", OpData(m_bakeRequested ? "queued" : m_status == Status::Baking ? "running" : m_status == Status::Done ? "done" : m_status == Status::Error ? "failed" : "idle"));
+            constexpr const char* states[] = {"idle", "running", "done", "failed", "cancelled"};
+            data.Set("state", OpData(m_bakeRequested ? "queued" : states[static_cast<int>(m_status)]));
+            data.Set("progress", OpData(std::max(0, m_progress.load()) / 100.0f));
             data.Set("message", OpData(m_statusMsg)); return OpResult::Data(std::move(data));
         };
         registry.Register(std::move(op));

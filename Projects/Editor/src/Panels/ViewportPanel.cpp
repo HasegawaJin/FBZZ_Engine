@@ -10,6 +10,7 @@
 #include <Editor/Util/DragDropSet.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/EditorTheme.hpp>
+#include <Editor/Util/GameViewportOptions.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
 #include <Editor/Util/ViewportCamera.hpp>
 #include <Engine/Core/Cursor.hpp>
@@ -21,6 +22,80 @@
 
 namespace fbzz::editor {
 
+namespace {
+
+struct OverlayToggle {
+    const char* key;
+    const char* label;
+    bool& (*value)(EditorContext&);
+};
+
+/// @note 引数の目録と応答は Overlays のチェックボックスが参照するライブ設定を共有する。
+constexpr OverlayToggle OVERLAY_TOGGLES[] = {
+    {"grid", "Grid",
+        [](EditorContext& ctx) -> bool& { return ctx.showGrid; }},
+    {"scriptGizmos", "Script Gizmos",
+        [](EditorContext& ctx) -> bool& { return ctx.showScriptGizmos; }},
+    {"lightRange", "Light Range",
+        [](EditorContext& ctx) -> bool& { return ctx.showLightRange; }},
+    {"decalBounds", "Decal Bounds",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.showDecalBounds; }},
+    {"terrainBounds", "Terrain Bounds",
+        [](EditorContext& ctx) -> bool& { return ctx.showTerrainBounds; }},
+    {"lodBounds", "LOD Bounds",
+        [](EditorContext& ctx) -> bool& { return ctx.showLODBounds; }},
+    {"uiRects", "UI Rects",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.showUIRects; }},
+    {"colliders", "Colliders",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.showColliders; }},
+    {"terrainCollision", "Terrain Collision",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.showTerrainCollision; }},
+    {"constraints", "Constraints",
+        [](EditorContext& ctx) -> bool& { return ctx.showConstraints; }},
+    {"rigidBodies", "Rigid Bodies",
+        [](EditorContext& ctx) -> bool& { return ctx.showRigidBodies; }},
+    {"physicsVolumes", "Physics Volumes",
+        [](EditorContext& ctx) -> bool& { return ctx.showPhysicsVolumes; }},
+    {"waterFlow", "Water Flow",
+        [](EditorContext& ctx) -> bool& { return ctx.showWaterFlow; }},
+    {"ragdoll", "Ragdoll",
+        [](EditorContext& ctx) -> bool& { return ctx.showRagdoll; }},
+    {"skeleton", "Skeleton",
+        [](EditorContext& ctx) -> bool& { return ctx.showSkeleton; }},
+    {"skeletonSelectedOnly", "Skeleton: Selected Only",
+        [](EditorContext& ctx) -> bool& { return ctx.skeletonSelectedOnly; }},
+    {"ikChains", "IK Chains",
+        [](EditorContext& ctx) -> bool& { return ctx.showIK; }},
+    {"springBones", "Spring Bones",
+        [](EditorContext& ctx) -> bool& { return ctx.showSpringBones; }},
+    {"attachments", "Attachments",
+        [](EditorContext& ctx) -> bool& { return ctx.showAttachments; }},
+    {"vfxGizmos", "VFX Gizmos",
+        [](EditorContext& ctx) -> bool& { return ctx.showVFXGizmos; }},
+    {"flowFields", "Flow Fields",
+        [](EditorContext& ctx) -> bool& { return ctx.showFlowFields; }},
+    {"flowSamples", "Flow Samples",
+        [](EditorContext& ctx) -> bool& { return ctx.showFlowSamples; }},
+    {"vfxPaths", "VFX Paths",
+        [](EditorContext& ctx) -> bool& { return ctx.showVFXPaths; }},
+    {"particleOverdraw", "Particle Overdraw",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.particleOverdrawView; }},
+    {"navMesh", "NavMesh",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.showNavMesh; }},
+    {"aiSensors", "AI Sensors",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.showNavSensors; }},
+    {"shadowCascades", "Shadow Cascades",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.shadow.debugVisualizeCascades; }},
+    {"lightClusters", "Light Clusters",
+        [](EditorContext& ctx) -> bool& { return ctx.projectSettings.render.clustered.debugHeatmap; }},
+    {"stats", "Stats",
+        [](EditorContext& ctx) -> bool& { return ctx.showStats; }},
+    {"sceneIcons", "Scene Icons",
+        [](EditorContext& ctx) -> bool& { return ctx.showSceneIcons; }},
+};
+
+} /// @note namespace
+
 void RegisterViewportViewOperators(OperatorRegistry& registry)
 {
     for (const bool configure : {false, true}) {
@@ -29,20 +104,17 @@ void RegisterViewportViewOperators(OperatorRegistry& registry)
         op.label = op.id;
         op.category = "Viewport";
         op.kind = configure ? OpKind::Action : OpKind::Query;
-        op.desc = "SceneとUIのオーバーレイ、シーンアイコンの型別表示を照会・変更する。";
+        op.dialog = OpDialog::NONE;
+        op.desc = "Scene View の Overlays (Colliders、Grid、Skeleton、NavMesh など) と"
+                  "シーンアイコンの型別表示を照会・変更する。指定した項目だけ変更する。";
         if (configure) {
-            op.params = {
-                {"sceneIcons", OpParamType::Bool, "Scene icon visibility", false, {}},
-                {"uiRects", OpParamType::Bool, "UI element rectangles", false, {}},
-                {"shadowCascades", OpParamType::Bool, "Shadow cascade visualization", false, {}},
-                {"lightClusters", OpParamType::Bool, "Clustered lighting heatmap", false, {}},
-                {"iconType", OpParamType::String, "Icon key from inspect", false, {}},
-                {"iconVisible", OpParamType::Bool, "Visibility for iconType", false, {}}
-            };
+            for (const auto& toggle : OVERLAY_TOGGLES)
+                op.params.push_back({toggle.key, OpParamType::Bool, toggle.label, false, {}});
+            op.params.push_back({"iconType", OpParamType::String, "Icon key from inspect", false, {}});
+            op.params.push_back({"iconVisible", OpParamType::Bool, "Visibility for iconType", false, {}});
         }
         op.exec = [configure](OpContext& context, const OpArgs& args) {
             auto& ctx = context.ctx;
-            auto& render = ctx.projectSettings.render;
             if (configure) {
                 if (args.Has("iconType") != args.Has("iconVisible")) return OpResult::Err("BAD_ARG", "iconType/iconVisible");
                 if (args.Has("iconType")) {
@@ -53,16 +125,13 @@ void RegisterViewportViewOperators(OperatorRegistry& registry)
                     if (type == SceneIconTypeCount()) return OpResult::Err("BAD_ARG", "iconType");
                     SetSceneIconTypeVisible(ctx, type, args.GetBool("iconVisible"));
                 }
-                ctx.showSceneIcons = args.GetBool("sceneIcons", ctx.showSceneIcons);
-                render.showUIRects = args.GetBool("uiRects", render.showUIRects);
-                render.shadow.debugVisualizeCascades = args.GetBool("shadowCascades", render.shadow.debugVisualizeCascades);
-                render.clustered.debugHeatmap = args.GetBool("lightClusters", render.clustered.debugHeatmap);
             }
             auto data = OpData::MakeObject();
-            data.Set("sceneIcons", ctx.showSceneIcons);
-            data.Set("uiRects", render.showUIRects);
-            data.Set("shadowCascades", render.shadow.debugVisualizeCascades);
-            data.Set("lightClusters", render.clustered.debugHeatmap);
+            for (const auto& toggle : OVERLAY_TOGGLES) {
+                bool& visible = toggle.value(ctx);
+                if (configure) visible = args.GetBool(toggle.key, visible);
+                data.Set(toggle.key, visible);
+            }
             auto icons = OpData::MakeObject();
             for (int type = 0; type < SceneIconTypeCount(); ++type)
                 icons.Set(SceneIconTypeKey(type), IsSceneIconTypeVisible(ctx, type));
@@ -78,7 +147,7 @@ void RegisterViewportViewOperators(OperatorRegistry& registry)
     input.category = "Viewport";
     input.kind = OpKind::Query;
     input.desc = "ゲーム入力の所有状態、カーソル設定、OSフォーカスを返す。";
-    input.exec = [](OpContext&, const OpArgs&) {
+    input.exec = [](OpContext& context, const OpArgs&) {
         const auto state = core::Cursor::GetState();
         auto data = OpData::MakeObject();
         data.Set("owner", core::ToString(state.inputOwner));
@@ -88,6 +157,23 @@ void RegisterViewportViewOperators(OperatorRegistry& registry)
         data.Set("effectiveVisible", state.effective.visible);
         data.Set("windowActive", state.windowActive);
         data.Set("reason", core::ToString(state.suspendedReason));
+        data.Set("cursorOverride", context.ctx.playCursorOverride == EditorContext::PlayCursorOverride::Free ? "free" : "game");
+        data.Set("physicalInputAllowed", core::Cursor::IsPhysicalInputAllowed());
+        auto requests = OpData::MakeArray();
+        for (std::size_t index = 0; index < core::Cursor::GetRequestCount(); ++index) {
+            core::CursorRequestInfo request;
+            if (!core::Cursor::GetRequest(index, request)) break;
+            auto row = OpData::MakeObject();
+            row.Set("id", request.id);
+            row.Set("owner", request.owner);
+            row.Set("label", request.label);
+            row.Set("priority", request.priority);
+            row.Set("lock", core::ToString(request.policy.lockMode));
+            row.Set("visible", request.policy.visible);
+            row.Set("active", request.active);
+            requests.Push(std::move(row));
+        }
+        data.Set("requests", std::move(requests));
         return OpResult::Data(std::move(data));
     };
     registry.Register(std::move(input));
@@ -195,42 +281,14 @@ bool HandleMapToolHotkeys(EditorContext& ctx)
 
 float GetGameViewportAspectRatio(EditorContext::GameViewportAspect aspect)
 {
-    switch (aspect) {
-    case EditorContext::GameViewportAspect::Ratio16x9:  return 16.0f / 9.0f;
-    case EditorContext::GameViewportAspect::Ratio4x3:   return 4.0f / 3.0f;
-    case EditorContext::GameViewportAspect::Ratio1x1:   return 1.0f;
-    case EditorContext::GameViewportAspect::Ratio9x16:  return 9.0f / 16.0f;
-    case EditorContext::GameViewportAspect::HD:          return 1280.0f / 720.0f;
-    case EditorContext::GameViewportAspect::FullHD:      return 1920.0f / 1080.0f;
-    case EditorContext::GameViewportAspect::QHD:         return 2560.0f / 1440.0f;
-    case EditorContext::GameViewportAspect::UHD4K:       return 3840.0f / 2160.0f;
-    case EditorContext::GameViewportAspect::WXGA:        return 1280.0f / 800.0f;
-    case EditorContext::GameViewportAspect::WUXGA:       return 1920.0f / 1200.0f;
-    case EditorContext::GameViewportAspect::iPhonePortrait:  return 1080.0f / 1920.0f;
-    case EditorContext::GameViewportAspect::iPhoneLandscape: return 1920.0f / 1080.0f;
-    case EditorContext::GameViewportAspect::Free:
-    default:                                            return 0.0f;
-    }
+    const auto index = static_cast<size_t>(aspect);
+    return index < GAME_VIEWPORT_ASPECT_OPTIONS.size() ? GAME_VIEWPORT_ASPECT_OPTIONS[index].ratio : 0.0f;
 }
 
 const char* GetGameViewportAspectLabel(EditorContext::GameViewportAspect aspect)
 {
-    switch (aspect) {
-    case EditorContext::GameViewportAspect::Ratio16x9:  return "16:9";
-    case EditorContext::GameViewportAspect::Ratio4x3:   return "4:3";
-    case EditorContext::GameViewportAspect::Ratio1x1:   return "1:1";
-    case EditorContext::GameViewportAspect::Ratio9x16:  return "9:16";
-    case EditorContext::GameViewportAspect::HD:          return "HD (1280x720)";
-    case EditorContext::GameViewportAspect::FullHD:      return "Full HD (1920x1080)";
-    case EditorContext::GameViewportAspect::QHD:         return "QHD (2560x1440)";
-    case EditorContext::GameViewportAspect::UHD4K:       return "4K UHD (3840x2160)";
-    case EditorContext::GameViewportAspect::WXGA:        return "WXGA (1280x800)";
-    case EditorContext::GameViewportAspect::WUXGA:       return "WUXGA (1920x1200)";
-    case EditorContext::GameViewportAspect::iPhonePortrait:  return "iPhone Portrait";
-    case EditorContext::GameViewportAspect::iPhoneLandscape: return "iPhone Landscape";
-    case EditorContext::GameViewportAspect::Free:
-    default:                                            return "Free";
-    }
+    const auto index = static_cast<size_t>(aspect);
+    return index < GAME_VIEWPORT_ASPECT_OPTIONS.size() ? GAME_VIEWPORT_ASPECT_OPTIONS[index].label : "Free";
 }
 
 void DrawGameViewportAspectControl(EditorContext& ctx)
@@ -253,8 +311,11 @@ void DrawGameViewportAspectControl(EditorContext& ctx)
         };
         for (EditorContext::GameViewportAspect aspect : kAspects) {
             const bool selected = ctx.gameViewportAspect == aspect;
-            if (ImGui::Selectable(GetGameViewportAspectLabel(aspect), selected))
-                ctx.gameViewportAspect = aspect;
+            if (ImGui::Selectable(GetGameViewportAspectLabel(aspect), selected)) {
+                OpArgs args;
+                args.Set("aspect", std::string(GAME_VIEWPORT_ASPECT_OPTIONS[static_cast<size_t>(aspect)].key));
+                InvokeOperator(ctx, "viewport.game.configure", args);
+            }
             if (selected)
                 ImGui::SetItemDefaultFocus();
         }
@@ -291,8 +352,11 @@ void DrawPlayCursorOverrideControl(EditorContext& ctx)
         };
         for (EditorContext::PlayCursorOverride mode : kModes) {
             const bool selected = ctx.playCursorOverride == mode;
-            if (ImGui::Selectable(GetPlayCursorOverrideLabel(mode), selected))
-                ctx.playCursorOverride = mode;
+            if (ImGui::Selectable(GetPlayCursorOverrideLabel(mode), selected)) {
+                OpArgs args;
+                args.Set("cursorOverride", std::string(mode == EditorContext::PlayCursorOverride::Free ? "free" : "game"));
+                InvokeOperator(ctx, "viewport.game.configure", args);
+            }
             if (selected)
                 ImGui::SetItemDefaultFocus();
         }
@@ -400,10 +464,19 @@ void DrawGameViewportToolbar(EditorContext& ctx)
 
     ImGui::SameLine();
     if (ImGui::SmallButton("Focus")) {
-        ctx.requestGameViewportFocus = true;
+        OpArgs args;
+        args.Set("action", std::string("focus"));
+        InvokeOperator(ctx, "viewport.game.input_control", args);
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("Focus Game View");
+
+    ImGui::SameLine();
+    if (ImGui::SmallButton(ctx.gameViewportMaximized ? "Restore" : "Maximize")) {
+        OpArgs args;
+        args.Set("layout", std::string(ctx.gameViewportMaximized ? "normal" : "maximized"));
+        InvokeOperator(ctx, "viewport.game.configure", args);
+    }
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(148.0f);
@@ -420,10 +493,10 @@ void DrawGameViewportToolbar(EditorContext& ctx)
         for (EditorContext::PlayFocusMode mode : kModes) {
             const bool selected = !standaloneSelected && ctx.playFocusMode == mode;
             if (ImGui::Selectable(GetPlayFocusModeLabel(mode), selected)) {
-                ctx.playFocusMode = mode;
                 OpArgs args;
-                args.Set("mode", std::string("inEditor"));
-                InvokeOperator(ctx, "play.set_execution_mode", args);
+                args.Set("playFocusMode", std::string(PLAY_FOCUS_KEYS[static_cast<size_t>(mode)]));
+                args.Set("executionMode", std::string("inEditor"));
+                InvokeOperator(ctx, "viewport.game.configure", args);
             }
             if (selected)
                 ImGui::SetItemDefaultFocus();
@@ -431,8 +504,8 @@ void DrawGameViewportToolbar(EditorContext& ctx)
         ImGui::Separator();
         if (ImGui::Selectable("Standalone Game", standaloneSelected)) {
             OpArgs args;
-            args.Set("mode", std::string("standalone"));
-            InvokeOperator(ctx, "play.set_execution_mode", args);
+            args.Set("executionMode", std::string("standalone"));
+            InvokeOperator(ctx, "viewport.game.configure", args);
         }
         ImGui::EndCombo();
     }
@@ -552,8 +625,8 @@ void DrawViewModeControls(EditorContext& ctx, const ImVec4& overlaySurface)
     static constexpr ModeEntry kModes[] = {
         { "Lit",    "Lit \xe2\x80\x94 full lighting",                   "lit" },
         { "Unlit",  "Unlit \xe2\x80\x94 no lighting",                  "unlit" },
-        { "Wf Lit", "Wireframe Lit \xe2\x80\x94 wireframe + lighting", "wireframe_lit" },
-        { "Wf",     "Wireframe Unlit \xe2\x80\x94 wireframe only",     "wireframe_unlit" },
+        { "Wireframe Lit", "Wireframe Lit \xe2\x80\x94 wireframe + lighting", "wireframe_lit" },
+        { "Wireframe",     "Wireframe Unlit \xe2\x80\x94 wireframe only",     "wireframe_unlit" },
         { "Ray T",  "Ray Hit Distance",                               "ray_hit_distance" },
         { "Ray N",  "Ray Geometric Normal",                           "ray_geometric_normal" },
         { "Ray ID", "Ray Instance ID",                                "ray_instance_id" },
@@ -561,30 +634,56 @@ void DrawViewModeControls(EditorContext& ctx, const ImVec4& overlaySurface)
 
     const auto* modeOperator = ctx.operators ? ctx.operators->Find("render.set_view_mode") : nullptr;
 
+    const auto availableMode = [](const ModeEntry& entry) {
+        return !std::string_view(entry.mode).starts_with("ray_") || core::DeveloperMode::IsEnabled();
+    };
+    const auto isActive = [&](const OpArgs& args) {
+        if (!modeOperator || !modeOperator->checked || !ctx.undoStack) return false;
+        return modeOperator->checked(OpContext{ ctx, *ctx.undoStack }, args);
+    };
+
+    float modesWidth = 0.0f;
+    const ModeEntry* current = &kModes[0];
     for (const auto& entry : kModes) {
-        if (std::string_view(entry.mode).starts_with("ray_") && !core::DeveloperMode::IsEnabled()) continue;
+        if (!availableMode(entry)) continue;
+        modesWidth += ImGui::CalcTextSize(LOCT(entry.label)).x + ImGui::GetStyle().FramePadding.x * 2.0f
+                    + ImGui::GetStyle().ItemSpacing.x;
         OpArgs args;
         args.Set("mode", std::string(entry.mode));
-        bool active = false;
-        if (modeOperator && modeOperator->checked && ctx.undoStack) {
-            const OpContext context{ ctx, *ctx.undoStack };
-            active = modeOperator->checked(context, args);
+        if (isActive(args)) current = &entry;
+    }
+    const bool compact = ImGui::GetContentRegionAvail().x < modesWidth + ImGui::GetFontSize() * 14.0f;
+    if (compact) {
+        const std::string text = std::string(LOCT(current->label)) + " ▾###viewModePicker";
+        if (ImGui::SmallButton(text.c_str())) ImGui::OpenPopup("##viewModes");
+        if (ImGui::BeginPopup("##viewModes")) {
+            for (const auto& entry : kModes) {
+                if (!availableMode(entry)) continue;
+                OpArgs args;
+                args.Set("mode", std::string(entry.mode));
+                if (ImGui::MenuItem(LOC(entry.label), nullptr, &entry == current,
+                        CanInvokeOperator(ctx, "render.set_view_mode", args)))
+                    (void)InvokeOperator(ctx, "render.set_view_mode", args);
+            }
+            ImGui::EndPopup();
         }
-        ImGui::PushStyleColor(ImGuiCol_Button,
-            active ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
-                   : overlaySurface);
-
-        ImGui::BeginDisabled(!CanInvokeOperator(ctx, "render.set_view_mode", args));
-        if (ImGui::SmallButton(entry.label))
-            (void)InvokeOperator(ctx, "render.set_view_mode", args);
-        ImGui::EndDisabled();
-
-        ImGui::PopStyleColor();
-
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("%s", entry.tooltip);
-
         ImGui::SameLine();
+    } else {
+        for (const auto& entry : kModes) {
+            if (!availableMode(entry)) continue;
+            OpArgs args;
+            args.Set("mode", std::string(entry.mode));
+            ImGui::PushStyleColor(ImGuiCol_Button, &entry == current
+                ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive) : overlaySurface);
+            ImGui::BeginDisabled(!CanInvokeOperator(ctx, "render.set_view_mode", args));
+            if (ImGui::SmallButton(LOC(entry.label)))
+                (void)InvokeOperator(ctx, "render.set_view_mode", args);
+            ImGui::EndDisabled();
+            ImGui::PopStyleColor();
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+                ImGui::SetTooltip("%s", LOCT(entry.tooltip));
+            ImGui::SameLine();
+        }
     }
 
     /// @note Overlays ▼ ドロップダウン
@@ -739,6 +838,7 @@ bool DrawViewModeToolbar(EditorContext& ctx, const ImVec2& viewportMin, bool tem
     /// @note Gizmo Mode/Space・Snap の切替は従来ホットキーかメニュー依存だった。シーンビュー上に
     /// @note 置くことで視線移動ゼロでモード切替できる (Unity/Godot のツールバー相当)。
     ImGui::SameLine(0.0f, 10.0f);
+    if (ImGui::GetContentRegionAvail().x < ImGui::GetFontSize() * 14.0f) ImGui::NewLine();
     const auto gizmoBtn = [&](const char* label, EditorContext::GizmoMode mode, const char* tip) {
         const bool active = ctx.gizmoMode == mode;
         ImGui::PushStyleColor(ImGuiCol_Button,

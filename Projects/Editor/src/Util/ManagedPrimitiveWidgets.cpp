@@ -85,7 +85,8 @@ template<class T> bool Integer(ImGuiReflector& ui, const char* label, const OpDa
             const T bound = Unsigned(kind) ? static_cast<T>(limit) : static_cast<T>(std::bit_cast<int64_t>(limit | ((Width(kind) < 64 && (limit & (uint64_t{1} << (Width(kind) - 1)))) ? ~Mask(kind) : 0))); number = std::min(number, bound); } }
         value = Value(kind, static_cast<uint64_t>(number)); ui.m_changed = true;
     }
-    if (kind == "char") { ImGui::SameLine(); ImGui::TextDisabled("UTF-16 U+%04X", static_cast<unsigned>(number)); }
+    if (kind == "char" && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("UTF-16 U+%04X", static_cast<unsigned>(number));
     ui.EndRow(); return true;
 }
 } /// @note namespace

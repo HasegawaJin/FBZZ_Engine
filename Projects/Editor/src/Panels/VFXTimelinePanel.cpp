@@ -17,6 +17,7 @@
 #include <Engine/Scene/Scene.hpp>
 
 #include <imgui.h>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <algorithm>
 #include <cstdio>
 
@@ -199,8 +200,10 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
     /// @name トラック
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 laneOrigin = ImGui::GetCursorScreenPos();
-    const float laneLeft = laneOrigin.x + kLabelWidth;
-    const float laneWidth = (std::max)(ImGui::GetContentRegionAvail().x - kLabelWidth - 8.0f, 40.0f);
+    const float available = ImGui::GetContentRegionAvail().x;
+    const float labelWidth = std::min(kLabelWidth, available * 0.45f);
+    const float laneLeft = laneOrigin.x + labelWidth;
+    const float laneWidth = std::max(1.0f, available - labelWidth - 8.0f);
     const auto timeToX = [&](float t) { return laneLeft + (t / span) * laneWidth; };
 
     for (std::size_t index = 0; index < m_tracks.size(); ++index) {
@@ -208,12 +211,14 @@ void VFXTimelinePanel::OnRenderContent(EditorContext& ctx)
         ImGui::PushID(static_cast<int>(index));
 
         const ImVec2 rowTop = ImGui::GetCursorScreenPos();
-        const float indent = static_cast<float>(track.depth) * kIndentPx;
+        const float indent = std::min(static_cast<float>(track.depth) * kIndentPx, labelWidth * 0.4f);
 
         ImGui::SetCursorScreenPos(ImVec2(rowTop.x + indent, rowTop.y));
-        if (ImGui::Selectable(track.label.c_str(), false, ImGuiSelectableFlags_None,
-                              ImVec2(kLabelWidth - indent, kRowHeight)))
+        const auto label = widgets::ElideToWidth(track.label.c_str(), labelWidth - indent);
+        if (ImGui::Selectable((label + "###track").c_str(), false, ImGuiSelectableFlags_None,
+                              ImVec2(labelWidth - indent, kRowHeight)))
             SelectEntity(ctx, track.entity);
+        if (label != track.label && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", track.label.c_str());
 
         if (track.isGroup) {
             ImGui::SetCursorScreenPos(ImVec2(rowTop.x, rowTop.y + kRowHeight));

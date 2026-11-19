@@ -2,6 +2,8 @@
 /// @brief   アセットの作成・複写・移動・ごみ箱退避を直接APIへ公開する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 #include <Editor/Op/OperatorGroups.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -16,11 +18,19 @@
 #include <Engine/Audio/Synth.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
+#include <Engine/Util/Uuid.hpp>
 #include <Physics/PhysicsMaterial.hpp>
+#include <toml++/toml.hpp>
+#include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 
 namespace fbzz::editor {
 namespace {
+namespace fs = std::filesystem;
+using util::FileSystem;
+
 struct AssetKind { const char* name; const char* extension; };
 constexpr AssetKind KINDS[] = {{"folder", ""}, {"scene", ".scene"}, {"material", ".mat"}, {"vector_field", ".png"},
     {"fluid", ".fluid"}, {"post_process_profile", ".fzdata"}, {"animator_controller", ".animcontroller"},
@@ -58,9 +68,278 @@ OpData ResultPath(const std::string& path)
     const std::string guid = asset::AssetDatabase::TryGetGuidFromPath(path);
     result.Set("reference", OpData(guid.empty() ? "" : "guid:" + guid)); return result;
 }
+
+constexpr std::size_t MAX_BATCH_MOVES = 32;
+constexpr std::size_t MAX_META_BYTES = 1024 * 1024;
+
+struct ReviewedAssetMove {
+    fs::path source;
+    fs::path destination;
+    std::string guid;
+    std::string meta;
+    uintmax_t sourceSize = 0;
+    fs::file_time_type sourceWriteTime;
+
+    bool operator==(const ReviewedAssetMove&) const = default;
+};
+
+struct AssetMoveReview {
+    fs::path project;
+    OpData request;
+    std::vector<ReviewedAssetMove> moves;
+    std::string receipt;
+};
+
+bool CanMoveAssetBatch(const OpContext& context, const OpArgs&)
+{
+    const auto& ctx = context.ctx;
+    return !ctx.projectRoot.empty() && !ctx.InPrefabEditMode() && (!ctx.playMode || ctx.playMode->IsInEditor());
+}
+
+bool SameFilePath(const fs::path& left, const fs::path& right)
+{
+    const auto normalizedLeft = fs::path(left).make_preferred();
+    const auto normalizedRight = fs::path(right).make_preferred();
+    return ::CompareStringOrdinal(normalizedLeft.c_str(), -1, normalizedRight.c_str(), -1, TRUE) == CSTR_EQUAL;
+}
+
+fs::path WithMeta(fs::path path)
+{
+    return path += L".meta";
+}
+
+fs::path ResolveBatchPath(const fs::path& project, std::string input, bool isSource)
+{
+    if (input.empty() || input.size() > 1024) return {};
+    if (isSource && asset::AssetDatabase::IsGuidRef(input)) {
+        const auto indexed = FileSystem::PathFromUtf8(asset::AssetDatabase::PathFromGuid(asset::AssetDatabase::GuidFromRef(input)));
+        if (indexed.empty()) return {};
+        std::error_code error;
+        const auto relative = fs::relative(indexed, project, error);
+        if (error) return {};
+        input = FileSystem::PathToUtf8(relative);
+    }
+
+    if (input.find_first_of(":*?\"<>|") != std::string::npos ||
+        std::any_of(input.begin(), input.end(), [](unsigned char value) { return value < 32; })) return {};
+    const auto relative = FileSystem::PathFromUtf8(input);
+    if (relative.has_root_path() || !relative.has_filename() || relative.parent_path().empty() ||
+        !SameFilePath(*relative.begin(), L"Assets")) return {};
+    for (const auto& component : relative) {
+        const auto& name = component.native();
+        if (name.empty() || name.back() == L'.' || name.back() == L' ') return {};
+    }
+
+    /// @note Assets 配下のジャンクション等を通過すると、レビュー後に別の保管場所を変更するおそれがある。
+    auto parent = project;
+    for (const auto& component : relative.parent_path()) {
+        parent /= component;
+        const DWORD attributes = ::GetFileAttributesW(parent.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY) ||
+            (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) return {};
+    }
+    return fs::path(parent / relative.filename()).make_preferred();
+}
+
+bool IsPlainFile(const fs::path& path)
+{
+    const DWORD attributes = ::GetFileAttributesW(path.c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES && !(attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
+}
+
+bool IsVacant(const fs::path& path)
+{
+    return ::GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES && ::GetLastError() == ERROR_FILE_NOT_FOUND;
+}
+
+bool ReadMoveSnapshot(ReviewedAssetMove& move)
+{
+    const auto sidecar = WithMeta(move.source);
+    if (!IsPlainFile(move.source) || !IsPlainFile(sidecar)) return false;
+    std::error_code error;
+    move.sourceSize = fs::file_size(move.source, error);
+    if (error) return false;
+    move.sourceWriteTime = fs::last_write_time(move.source, error);
+    if (error) return false;
+    const auto metaSize = fs::file_size(sidecar, error);
+    if (error || metaSize == 0 || metaSize > MAX_META_BYTES) return false;
+
+    std::ifstream input(sidecar, std::ios::binary);
+    move.meta.resize(static_cast<std::size_t>(metaSize));
+    if (!input.read(move.meta.data(), static_cast<std::streamsize>(metaSize)) ||
+        input.peek() != std::char_traits<char>::eof() || input.bad()) return false;
+    const auto metadata = toml::parse(std::string_view(move.meta));
+    if (!metadata) return false;
+    const auto guid = metadata.table()["meta"]["guid"].value<std::string>();
+    if (!guid || guid->empty()) return false;
+    move.guid = util::StringUtils::ToLowerCopy(*guid);
+
+    /// @note キャッシュの GUID とディスク上の所有者が一致することを確認する。照会時に GUID は発行しない。
+    const auto indexed = asset::AssetDatabase::PathFromGuid(move.guid);
+    if (indexed.empty()) return false;
+    const auto owner = fs::weakly_canonical(FileSystem::PathFromUtf8(indexed), error);
+    return !error && SameFilePath(owner, move.source);
+}
+
+OpResult BuildMoveReview(EditorContext& ctx, const OpData* request, AssetMoveReview& review)
+{
+    if (!request || !request->IsArray() || request->AsArray().empty() || request->AsArray().size() > MAX_BATCH_MOVES)
+        return OpResult::Err("BAD_ARG", "moves must contain between 1 and 32 objects with path and destination.");
+    if (ctx.modelImportBusy && ctx.modelImportBusy())
+        return OpResult::Err("MODEL_IMPORT_BUSY", "Wait for the model import to finish.");
+
+    std::error_code error;
+    review.project = fs::canonical(FileSystem::PathFromUtf8(ctx.projectRoot), error);
+    if (error) return OpResult::Err("BAD_PATH", "Cannot open the project directory.");
+    fs::path openScene;
+    if (!ctx.currentScenePath.empty()) {
+        const auto current = FileSystem::PathFromUtf8(ctx.currentScenePath);
+        openScene = fs::weakly_canonical(current.is_absolute() ? current : review.project / current, error);
+        if (error) return OpResult::Err("BAD_PATH", "Cannot resolve the open scene.");
+    }
+
+    for (const auto& item : request->AsArray()) {
+        const auto* source = item.Find("path");
+        const auto* destination = item.Find("destination");
+        if (!source || !source->IsString() || !destination || !destination->IsString())
+            return OpResult::Err("BAD_ARG", "Each move requires a path and destination string.");
+
+        ReviewedAssetMove move;
+        move.source = ResolveBatchPath(review.project, source->AsString(), true);
+        move.destination = ResolveBatchPath(review.project, destination->AsString(), false);
+        if (move.source.empty() || move.destination.empty() ||
+            !SameFilePath(move.source.extension(), move.destination.extension()))
+            return OpResult::Err("BAD_PATH", "Use paths under Assets with existing parent folders and the same extension: " +
+                source->AsString() + " -> " + destination->AsString());
+        const auto sourceName = FileSystem::PathToUtf8(move.source);
+        if (!asset::AssetDatabase::ShouldHaveMeta(util::StringUtils::ToLowerCopy(FileSystem::PathToUtf8(move.source.filename()))) ||
+            asset::IsModelSourcePath(sourceName) || SameFilePath(move.source, openScene))
+            return OpResult::Err("UNSUPPORTED_ASSET", "Use a registered asset file outside the open scene and model import pipeline: " + source->AsString());
+        if (HasDirtyAssets(sourceName))
+            return OpResult::Err("UNSAVED_ASSET", "Save the asset before moving it: " + source->AsString());
+        if (!IsVacant(move.destination) || !IsVacant(WithMeta(move.destination)))
+            return OpResult::Err("DESTINATION_OCCUPIED", "The destination or its sidecar is unavailable: " + destination->AsString());
+        if (!ReadMoveSnapshot(move))
+            return OpResult::Err("ASSET_GUID_UNAVAILABLE", "Cannot verify an indexed GUID and its sidecar: " + source->AsString());
+        if (std::any_of(review.moves.begin(), review.moves.end(), [&](const auto& previous) {
+                return previous.guid == move.guid || SameFilePath(previous.destination, move.destination);
+            }))
+            return OpResult::Err("DUPLICATE_MOVE", "The batch repeats a source GUID or destination.");
+        review.moves.push_back(std::move(move));
+    }
+    review.request = *request;
+    return OpResult::Ok();
+}
+
+OpData MoveReviewData(const AssetMoveReview& review)
+{
+    const auto relative = [&review](const fs::path& path) {
+        return FileSystem::PathToUtf8(path.lexically_relative(review.project));
+    };
+    OpData moves = OpData::MakeArray();
+    for (const auto& move : review.moves) {
+        OpData item = OpData::MakeObject();
+        item.Set("guid", move.guid);
+        item.Set("source", relative(move.source));
+        item.Set("destination", relative(move.destination));
+        item.Set("sourceMeta", relative(WithMeta(move.source)));
+        item.Set("destinationMeta", relative(WithMeta(move.destination)));
+        moves.Push(std::move(item));
+    }
+    OpData data = OpData::MakeObject();
+    data.Set("moves", std::move(moves));
+    return data;
+}
+
+OpResult ApplyMoveReview(EditorContext& ctx, const AssetMoveReview& review)
+{
+    std::vector<AssetFileMove> files;
+    files.reserve(review.moves.size() * 2);
+    for (const auto& move : review.moves) {
+        files.push_back({move.source, move.destination});
+        files.push_back({WithMeta(move.source), WithMeta(move.destination)});
+    }
+
+    const auto result = MoveAssetFilesWithRollback(files);
+    if (result.systemError != 0) {
+        std::string message = "Move failed after " + std::to_string(result.movedCount / 2) + " prior pair(s). ";
+        message += result.unrestored.empty() ? "All moved files were restored. " : "Some files could not be restored. ";
+        message += "Failed file: " + FileSystem::PathToUtf8(files[result.movedCount].source) +
+            " (Windows error " + std::to_string(result.systemError) + ").";
+        for (const auto index : result.unrestored) {
+            message += " Restore " + FileSystem::PathToUtf8(files[index].destination) +
+                " to " + FileSystem::PathToUtf8(files[index].source) + ".";
+        }
+        ctx.requestAssetBrowserRefresh = true;
+        return OpResult::Err(result.unrestored.empty() ? "MOVE_FAILED" : "ROLLBACK_INCOMPLETE", std::move(message));
+    }
+
+    for (const auto& move : review.moves)
+        asset::AssetDatabase::OnAssetMoved(FileSystem::PathToUtf8(move.source), FileSystem::PathToUtf8(move.destination));
+    asset::AssetManager::FlushFailed();
+    ctx.requestAssetBrowserRefresh = true;
+    return OpResult::Data(MoveReviewData(review));
+}
+
+void RegisterAssetMoveBatch(OperatorRegistry& registry)
+{
+    const auto review = std::make_shared<std::optional<AssetMoveReview>>();
+    EditorOperator preview;
+    preview.id = "asset.move_batch.preview";
+    preview.label = "Preview Asset Moves";
+    preview.category = "Assets";
+    preview.desc = "List the original and destination files, their .meta sidecars, and unchanged GUIDs before a batch move.";
+    preview.kind = OpKind::Query;
+    preview.dialog = OpDialog::NONE;
+    preview.poll = CanMoveAssetBatch;
+    OpParam moves;
+    moves.name = "moves";
+    moves.type = OpParamType::Data;
+    moves.desc = "Array of 1–32 {path, destination} objects. Source can be an Assets/... path or guid: reference. Destination is an Assets/... path.";
+    preview.params.push_back(std::move(moves));
+    preview.exec = [review](OpContext& context, const OpArgs& args) -> OpResult {
+        AssetMoveReview candidate;
+        auto result = BuildMoveReview(context.ctx, args.GetData("moves"), candidate);
+        if (!result.ok) return result;
+        candidate.receipt = util::GenerateUUID();
+        OpData data = MoveReviewData(candidate);
+        data.Set("receipt", candidate.receipt);
+        *review = std::move(candidate);
+        return OpResult::Data(std::move(data));
+    };
+    registry.Register(std::move(preview));
+
+    EditorOperator apply;
+    apply.id = "asset.move_batch.apply";
+    apply.label = "Apply Reviewed Asset Moves";
+    apply.category = "Assets";
+    apply.desc = "Apply the reviewed file and .meta moves without overwriting; restore completed moves if a move fails.";
+    apply.kind = OpKind::Action;
+    apply.dialog = OpDialog::NONE;
+    apply.poll = CanMoveAssetBatch;
+    OpParam receipt;
+    receipt.name = "receipt";
+    receipt.type = OpParamType::String;
+    receipt.desc = "Single-use receipt from the latest asset.move_batch.preview.";
+    apply.params.push_back(std::move(receipt));
+    apply.exec = [review](OpContext& context, const OpArgs& args) -> OpResult {
+        if (!*review || args.GetString("receipt") != (*review)->receipt)
+            return OpResult::Err("STALE_REVIEW", "Review the moves again before applying.");
+
+        AssetMoveReview reviewed = std::move(**review);
+        review->reset();
+        AssetMoveReview current;
+        const auto validation = BuildMoveReview(context.ctx, &reviewed.request, current);
+        if (!validation.ok || current.project != reviewed.project || current.moves != reviewed.moves)
+            return OpResult::Err("STALE_REVIEW", "The project or files changed. Review the moves again. " + validation.message);
+        return ApplyMoveReview(context.ctx, reviewed);
+    };
+    registry.Register(std::move(apply));
+}
 } /// @note namespace
 void RegisterAssetFileOperators(OperatorRegistry& registry)
 {
+    RegisterAssetMoveBatch(registry);
     {
         EditorOperator op; op.id = "asset.creation_catalog"; op.label = op.id; op.category = "Assets"; op.kind = OpKind::Query;
         op.exec = [](OpContext&, const OpArgs&) {

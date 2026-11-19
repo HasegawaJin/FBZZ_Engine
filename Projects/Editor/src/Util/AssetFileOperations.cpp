@@ -2,6 +2,8 @@
 /// @brief   UIと直接APIで共有するGUID付きアセットのファイル操作。
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 #include <Editor/Util/AssetFileOperations.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/Toast.hpp>
@@ -15,9 +17,41 @@
 #include <Engine/Util/StringUtils.hpp>
 #include <Engine/Util/Uuid.hpp>
 #include <algorithm>
+#include <array>
 #include <ctime>
 #include <filesystem>
 namespace fbzz::editor {
+namespace {
+
+AssetFileMoveResult MoveFilesWithRollback(std::span<const AssetFileMove> files, DWORD flags)
+{
+    AssetFileMoveResult result;
+    result.unrestored.reserve(files.size());
+    /// @note 移動と復元の両方で、後から出現したファイルを上書きしない。
+    /// @see https://learn.microsoft.com/windows/win32/api/winbase/nf-winbase-movefileexw dwFlags
+    for (const auto& file : files) {
+        if (!::MoveFileExW(file.source.c_str(), file.destination.c_str(), flags)) {
+            result.systemError = ::GetLastError();
+            break;
+        }
+        ++result.movedCount;
+    }
+    if (result.systemError == 0) return result;
+
+    for (std::size_t remaining = result.movedCount; remaining > 0; --remaining) {
+        const auto& file = files[remaining - 1];
+        if (!::MoveFileExW(file.destination.c_str(), file.source.c_str(), flags))
+            result.unrestored.push_back(remaining - 1);
+    }
+    return result;
+}
+} /// @note namespace
+
+AssetFileMoveResult MoveAssetFilesWithRollback(std::span<const AssetFileMove> files)
+{
+    return MoveFilesWithRollback(files, 0);
+}
+
 /// @brief アセット本体と "<本体>.meta" サイドカーを一括で移動 / リネームし、GUID 索引を追随させる。
 /// @brief .meta を置き去りにすると移動先で guid が再発行され、guid: 参照が全て切れる。
 /// @brief ディレクトリ移動時は OnAssetMoved が配下の索引をプレフィックス付け替えで追随させる。
@@ -34,20 +68,20 @@ bool MoveAssetWithSidecar(const std::string& fromAbs, const std::string& toAbs, 
     /// @note 本体だけ移動して既存の .meta と結び付くと GUID の所有者が変わるため、先に拒否する。
     if (util::FileSystem::Exists(toMeta)) return false;
 
-    if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(fromAbs),
-                                  util::FileSystem::PathFromUtf8(toAbs)))
-        return false;
-
-    if (hasMeta) {
-        if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(fromMeta),
-                                      util::FileSystem::PathFromUtf8(toMeta))) {
-            /// @note サイドカーを移せない場合は本体を元へ戻し、半端な移動を残さない。
-            if (!util::FileSystem::Rename(util::FileSystem::PathFromUtf8(toAbs),
-                                          util::FileSystem::PathFromUtf8(fromAbs)))
-                FBZZ_LOG_ERROR("AssetBrowser: move rollback failed [%s]", toAbs.c_str());
-            FBZZ_LOG_WARN("AssetBrowser: sidecar move failed [%s]", fromMeta.c_str());
-            return false;
+    const std::array<AssetFileMove, 2> files{{
+        {util::FileSystem::PathFromUtf8(fromAbs), util::FileSystem::PathFromUtf8(toAbs)},
+        {util::FileSystem::PathFromUtf8(fromMeta), util::FileSystem::PathFromUtf8(toMeta)},
+    }};
+    if (!util::FileSystem::EnsureParentDirectory(files.front().destination)) return false;
+    const auto moved = MoveFilesWithRollback(std::span(files).first(hasMeta ? 2 : 1), MOVEFILE_COPY_ALLOWED);
+    if (moved.systemError != 0) {
+        for (const std::size_t index : moved.unrestored) {
+            const auto recoveryPath = util::FileSystem::PathToUtf8(files[index].destination);
+            FBZZ_LOG_ERROR("AssetBrowser: move rollback failed [%s]", recoveryPath.c_str());
         }
+        FBZZ_LOG_WARN("AssetBrowser: move failed [%s] (%lu)",
+            moved.movedCount == 0 ? fromAbs.c_str() : fromMeta.c_str(), moved.systemError);
+        return false;
     }
 
     if (updateIndex) asset::AssetDatabase::OnAssetMoved(fromAbs, toAbs);

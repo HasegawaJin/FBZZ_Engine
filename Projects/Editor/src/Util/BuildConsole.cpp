@@ -59,7 +59,7 @@ std::string StripBuildNodePrefix(const std::string& rawLine)
     return line;
 }
 
-} // namespace
+} /// @note namespace
 
 LogListLine MakeBuildLogLine(const std::string& text, std::uint64_t id)
 {
@@ -166,6 +166,7 @@ void BuildConsole::BeginBuild(BuildRecord::Kind kind)
     rec.kind       = kind;
     rec.result     = BuildRecord::Result::Building;
     rec.startClock = LocalClockString();
+    rec.id = ++m_liveLogGeneration;
 
     m_history.push_back(std::move(rec));
     while (m_history.size() > MAX_HISTORY)
@@ -176,7 +177,6 @@ void BuildConsole::BeginBuild(BuildRecord::Kind kind)
     m_lineBuffer.clear();
     m_liveLog.clear();
     m_liveLogFirstLine = 0;
-    ++m_liveLogGeneration;
     m_currentFile.clear();
     m_startTickMs  = GetTickCount64();
     /// @note ここで通知を消さない: ビルドを始めたことは失敗が直った証拠ではなく、直ったかは EndBuild で分かる。開始時に消すと走っている間だけバーが消えて見える。
@@ -275,6 +275,8 @@ void BuildConsole::EndBuild(bool success, int exitCode)
         rec->result      = success ? BuildRecord::Result::Success : BuildRecord::Result::Failed;
         rec->exitCode    = exitCode;
         rec->durationSec = static_cast<float>(GetTickCount64() - m_startTickMs) / 1000.0f;
+        rec->firstRawLine = m_liveLogFirstLine;
+        rec->rawLog = m_liveLog;
     }
 
     m_building = false;
@@ -292,6 +294,8 @@ void BuildConsole::EndBuildCancelled()
     if (BuildRecord* rec = CurrentRecord()) {
         rec->result      = BuildRecord::Result::Cancelled;
         rec->durationSec = static_cast<float>(GetTickCount64() - m_startTickMs) / 1000.0f;
+        rec->firstRawLine = m_liveLogFirstLine;
+        rec->rawLog = m_liveLog;
     }
     m_building = false;
     m_currentFile.clear();
@@ -346,4 +350,4 @@ void BuildConsole::DismissNotification()
         m_failures[static_cast<size_t>(shown->kind)].dismissed = true;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

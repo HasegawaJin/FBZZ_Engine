@@ -43,6 +43,9 @@ struct BuildRecord {
     int         errorCount  = 0;
     int         warnCount   = 0;
     std::vector<BuildDiagnostic> diagnostics;
+    std::uint64_t id = 0;
+    std::uint64_t firstRawLine = 0;
+    std::string rawLog;
 };
 
 class BuildConsole {
@@ -147,4 +150,4 @@ private:
     bool                    m_hasPartial  = false; ///< 一覧末尾が改行待ちの書きかけ行か
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

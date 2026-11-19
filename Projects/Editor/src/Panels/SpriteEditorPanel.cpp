@@ -1045,7 +1045,7 @@ void SpriteEditorPanel::OnRenderContent(EditorContext& ctx)
     const asset::TextureImportSettings settingsBeforeRender = m_working.settings;
     const ValidationResult validation = Validate(textureWidth, textureHeight);
     const bool applyShortcut = m_dirty
-        && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S);
+        && ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S);
     bool revertedThisFrame = false;
 
     /// @note Unity Sprite Editor と同じ順序で、左に Sprite Rect 操作、右に表示・保存操作を置く。

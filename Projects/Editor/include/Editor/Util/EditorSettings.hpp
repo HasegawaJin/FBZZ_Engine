@@ -189,6 +189,29 @@ struct EditorSettings {
     static constexpr int     kMaxRecentFluids = 10;
     std::vector<std::string> recentFluids;
 
+    /// @note 個人の表示設定だけを保持し、再生中状態・ジョブ・GPU資源は保存しない。
+    struct FluidEditorViewSettings {
+        bool loop = true;
+        bool checkerBackground = true;
+        bool showOverlays = true;
+        bool compareBaked = false;
+        bool showVolumeCenterPlane = true;
+        bool viewModeChosen = false;
+        bool orbitInitialized = false;
+        int quality = 0;
+        int viewMode = 0;
+        int centerPlane = 0;
+        int gizmo = 0;
+        float zoom = 1.0f;
+        float panX = 0.0f, panY = 0.0f;
+        float yaw = 0.0f, pitch = 0.0f;
+        float outlinerWidth = 230.0f;
+        float propertiesWidth = 340.0f;
+        float timelineHeight = 200.0f;
+    };
+    FluidEditorViewSettings fluidEditorView;
+    bool sfxAutoPreview = true;
+
 
     /// @name Camera Bookmarks (最大 9 件 / EditorLocalState.toml)
 

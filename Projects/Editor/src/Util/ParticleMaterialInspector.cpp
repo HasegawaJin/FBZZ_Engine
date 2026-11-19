@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-24
 
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Util/ParticleMaterialInspector.hpp>
 
 #include <Editor/Util/FlipbookInspector.hpp>
@@ -31,7 +32,7 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
             "Inverted Luminance (white = clear)", "Red Channel",
             "Green Channel", "Blue Channel", "Inverted Alpha" };
         int alphaSource = static_cast<int>(particle.alphaSource);
-        if (ImGui::Combo("Alpha Source", &alphaSource, kAlphaItems, IM_ARRAYSIZE(kAlphaItems))) {
+        if (property::Combo("Alpha Source", &alphaSource, kAlphaItems, IM_ARRAYSIZE(kAlphaItems))) {
             particle.alphaSource = static_cast<scene::ParticleAlphaSource>(alphaSource);
             changed = true;
         }
@@ -49,18 +50,18 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
             && material.blendMode != renderer::BlendMode::ADDITIVE)
             ImGui::TextDisabled("黒い矩形が出る場合はアルファ無し素材です。Luminance を試してください。");
 
-        changed |= ImGui::DragFloat("HDR Emissive", &particle.emissiveScale, 0.01f, 0.0f, 100.0f);
+        changed |= property::DragFloat("HDR Emissive", &particle.emissiveScale, 0.01f, 0.0f, 100.0f);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("粒子色に掛かる倍率。1 を超えるとブルームが拾います。");
 
-        changed |= ImGui::Checkbox("Soft Particles", &particle.softParticles);
+        changed |= property::Checkbox("Soft Particles", &particle.softParticles);
         if (particle.softParticles)
-            changed |= ImGui::DragFloat("Soft Fade Distance", &particle.softParticleFadeDistance,
+            changed |= property::DragFloat("Soft Fade Distance", &particle.softParticleFadeDistance,
                                         0.01f, 0.001f, 100.0f);
 
-        changed |= ImGui::DragFloat("Camera Fade Near##pm_camera_fade_near", &particle.cameraFadeNear,
+        changed |= property::DragFloat("Camera Fade Near##pm_camera_fade_near", &particle.cameraFadeNear,
                                     0.01f, 0.0f, 100.0f);
-        changed |= ImGui::DragFloat("Camera Fade Far##pm_camera_fade_far", &particle.cameraFadeFar,
+        changed |= property::DragFloat("Camera Fade Far##pm_camera_fade_far", &particle.cameraFadeFar,
                                     0.01f, 0.0f, 100.0f);
         if (particle.cameraFadeNear >= particle.cameraFadeFar)
             ImGui::TextDisabled("Near >= Far のあいだは無効 (カメラ距離で薄めません)。");
@@ -72,18 +73,18 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
 
     ImGui::SeparatorText("Distortion");
     {
-        changed |= ImGui::Checkbox("Distortion / Heat Haze", &particle.distortion);
+        changed |= property::Checkbox("Distortion / Heat Haze", &particle.distortion);
         if (particle.distortion) {
-            changed |= ImGui::DragFloat("Distortion Strength", &particle.distortionStrength,
+            changed |= property::DragFloat("Distortion Strength", &particle.distortionStrength,
                                         0.001f, 0.0f, 0.25f, "%.4f");
             /// @note 歪み専用マップは [textures] normal。未設定なら albedo の RG へ縮退する。
-            changed |= widgets::AssetPathField("Distortion Map (normal)", material.textures["normal"],
+            changed |= property::AssetPathField("Distortion Map (normal)", material.textures["normal"],
                                                widgets::kTextureAssetFilter, projectRoot);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("歪みの向きを決める RG マップです。\n"
                                   "未設定なら albedo の RG を流用しますが、\n"
                                   "その場合は素材を差し替えると曲がる向きも変わります。");
-            changed |= ImGui::DragFloat("Chromatic Aberration", &particle.distortionChromatic,
+            changed |= property::DragFloat("Chromatic Aberration", &particle.distortionChromatic,
                                         0.01f, 0.0f, 4.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("屈折率の波長依存を RGB のずれで表します。\n"
@@ -93,7 +94,7 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
 
     ImGui::SeparatorText("Smoke Lighting");
     {
-        if (ImGui::Checkbox("Six-way Lit Smoke", &particle.sixWayLighting)) {
+        if (property::Checkbox("Six-way Lit Smoke", &particle.sixWayLighting)) {
             /// @note 役割が重複するため排他にする (両方掛けると二重に陰影が付いて濁る)。
             if (particle.sixWayLighting) particle.volumetric = false;
             changed = true;
@@ -101,25 +102,25 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
         if (particle.sixWayLighting) {
             /// @note シェーダー側が saturate するため 1.0 が上限。それ以上は「元の色を捨てて
             ///       (ambient + N·L) で塗る」だけになり、暗い環境で煙が真っ黒に潰れる。
-            changed |= ImGui::SliderFloat("Lighting Strength", &particle.lightingStrength, 0.0f, 1.0f);
+            changed |= property::SliderFloat("Lighting Strength", &particle.lightingStrength, 0.0f, 1.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("0 = 元の色そのまま / 1 = 完全にライティングで置換");
-            changed |= ImGui::SliderFloat("Smoke Wrap", &particle.smokeWrap, 0.0f, 1.0f);
+            changed |= property::SliderFloat("Smoke Wrap", &particle.smokeWrap, 0.0f, 1.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("陰側への光の回り込みです。\n"
                                   "0 だと不透明な球の陰影になり、明暗の境界が硬く黒く落ちます。");
-            changed |= ImGui::DragFloat("Smoke Transmission", &particle.smokeTransmission,
+            changed |= property::DragFloat("Smoke Transmission", &particle.smokeTransmission,
                                         0.01f, 0.0f, 8.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("逆光透過 (前方散乱) の強さです。\n"
                                   "光源が煙の向こうにあるとき、縁が光って厚みが見えます。\n"
                                   "0 だと炎が煙の背後にあっても煙は暗いままです。");
             if (particle.smokeTransmission > 0.0f)
-                changed |= ImGui::DragFloat("Back Scatter Power", &particle.smokeBackScatterPower,
+                changed |= property::DragFloat("Back Scatter Power", &particle.smokeBackScatterPower,
                                             0.1f, 0.1f, 64.0f);
         }
 
-        changed |= ImGui::Checkbox("Six-way Lightmaps", &particle.sixWayMaps);
+        changed |= property::Checkbox("Six-way Lightmaps", &particle.sixWayMaps);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Volume Flipbook Baker の 6-way 出力で陰影を付けます。\n"
                               "albedo = _6wayP (右/上/奥/α)、emissive = _6wayN (左/下/手前/発光)。\n"
@@ -128,17 +129,17 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
             const auto negative = material.textures.find("emissive");
             if (negative == material.textures.end() || negative->second.empty())
                 ImGui::TextColored({ 1.0f, 0.65f, 0.3f, 1.0f }, "emissive スロットに _6wayN を割り当ててください");
-            changed |= ImGui::ColorEdit3("Six-way Emission", &particle.sixWayEmissionColor.x,
+            changed |= property::ColorEdit3("Six-way Emission", &particle.sixWayEmissionColor.x,
                                          ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("_6wayN の A (発光マスク) に掛ける色です。炎の芯は影の中でも光ります。");
         }
-        changed |= ImGui::Checkbox("Receive Point Lights", &particle.punctualLighting);
+        changed |= property::Checkbox("Receive Point Lights", &particle.punctualLighting);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Point / Spot / 面光源を粒子の中心で受けます (松明の横の煙が照らされる)。\n"
                               "画素ごとにライト一覧を走査するので、画面を覆う煙では重くなります。");
 
-        if (ImGui::Checkbox("Volumetric Smoke", &particle.volumetric)) {
+        if (property::Checkbox("Volumetric Smoke", &particle.volumetric)) {
             if (particle.volumetric) particle.sixWayLighting = false;
             changed = true;
         }
@@ -147,14 +148,14 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
                               "カメラが回り込んでも「紙が回った」ように見えません。\n"
                               "テクスチャは使わず密度場で色を作るため Six-way とは排他です。");
         if (particle.volumetric) {
-            changed |= ImGui::DragInt("Volumetric Steps", &particle.volumetricSteps, 1, 1, 64);
+            changed |= property::DragInt("Volumetric Steps", &particle.volumetricSteps, 1, 1, 64);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("1 ピクセルあたりのループ回数です。増やすほど滑らかですが重くなります。");
-            changed |= ImGui::DragFloat("Density", &particle.volumetricDensity, 0.01f, 0.0f, 20.0f);
-            changed |= ImGui::SliderFloat("Anisotropy", &particle.volumetricAnisotropy, -0.95f, 0.95f);
+            changed |= property::DragFloat("Density", &particle.volumetricDensity, 0.01f, 0.0f, 20.0f);
+            changed |= property::SliderFloat("Anisotropy", &particle.volumetricAnisotropy, -0.95f, 0.95f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("正で前方散乱。逆光のとき煙の縁が光ります。");
-            changed |= ImGui::DragFloat("Noise Scale", &particle.volumetricNoiseScale, 0.05f, 0.0f, 32.0f);
+            changed |= property::DragFloat("Noise Scale", &particle.volumetricNoiseScale, 0.05f, 0.0f, 32.0f);
             if (material.blendMode == renderer::BlendMode::ADDITIVE)
                 ImGui::TextDisabled("出力は事前乗算アルファです。Premultiplied ブレンドを推奨します。");
         }
@@ -162,19 +163,19 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
 
     ImGui::SeparatorText("Shadows");
     {
-        changed |= ImGui::Checkbox("Receive Shadows", &particle.receiveShadows);
+        changed |= property::Checkbox("Receive Shadows", &particle.receiveShadows);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("影の中で粒子を暗くします。\n"
                               "煙・埃が背景から浮いて見える最大の原因がこれです。\n"
                               "発光エフェクト(加算)では通常オフのままにします。");
         if (particle.receiveShadows) {
-            changed |= ImGui::SliderFloat("Shadow Strength", &particle.shadowStrength, 0.0f, 1.0f);
+            changed |= property::SliderFloat("Shadow Strength", &particle.shadowStrength, 0.0f, 1.0f);
             if (material.blendMode == renderer::BlendMode::ADDITIVE)
                 ImGui::TextDisabled("加算ブレンドでは影が暗くしても見えにくくなります。"
                                     "煙は Alpha / Premultiplied を推奨。");
         }
         /// @note 自己影。受け影とは別の現象なので、別のスライダーとして並べる。
-        changed |= ImGui::DragFloat("Self Shadow", &particle.selfShadowStrength,
+        changed |= property::DragFloat("Self Shadow", &particle.selfShadowStrength,
                                     0.01f, 0.0f, 8.0f, "%.2f");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip(
@@ -191,4 +192,4 @@ bool DrawParticleMaterialInspector(asset::MaterialAssetAuthoring& material, cons
     return changed;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -34,14 +34,9 @@
 
 namespace fbzz::renderer {
 
-class DX12Context;
-class DX12PsoCache;
-
 class DX12HdriBaker final : public IIblBaker {
 public:
-    /// @note context / psoCache は DX12Renderer が所有する。本クラスは Editor のベイク中のみ生存する
-    /// @note 一時オブジェクトであり、両者の寿命内で使われる (CreateIblBaker() の呼び出し規約)。
-    FBZZ_GRAPHICS_API DX12HdriBaker(DX12Context* context, DX12PsoCache* psoCache);
+    FBZZ_GRAPHICS_API DX12HdriBaker(ID3D12Device* device, ID3D12RootSignature* rootSignature);
     FBZZ_GRAPHICS_API ~DX12HdriBaker() override;
 
     /// @note HDRI → DDS × 4 + .ibl。失敗時は false (例外は投げない)。
@@ -115,9 +110,9 @@ private:
 
     FBZZ_GRAPHICS_API static std::vector<uint8_t> LoadBinary(const std::string& path);
 
-    DX12Context*  m_context  = nullptr;
-    DX12PsoCache* m_psoCache = nullptr;
-    ID3D12Device* m_device   = nullptr;
+    Microsoft::WRL::ComPtr<ID3D12Device> m_device;
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> m_rootSignature;
+    Microsoft::WRL::ComPtr<ID3D12CommandQueue> m_queue;
 
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator>    m_allocator;
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> m_commandList;

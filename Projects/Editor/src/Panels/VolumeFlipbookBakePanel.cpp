@@ -2,6 +2,7 @@
 /// @brief   Volume Flipbook Baker パネルの ImGui UI とベイク・プレビューの駆動。
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Panels/VolumeFlipbookBakePanel.hpp>
 
 #include "VolumeFlipbookComparePreview.hpp"
@@ -110,35 +111,35 @@ bool DrawRamp(asset::VolumeColorRamp& ramp)
 bool DrawEmitterSettings(asset::VolumeEmitterSettings& e)
 {
     bool changed = false;
-    changed |= ImGui::Checkbox("Burst", &e.burst);
+    changed |= property::Checkbox("Burst", &e.burst);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("オン: 0 コマ目で全部出す一発もの\nオフ: 一定間隔で湧き続ける (Loop できる)");
     changed |= ImGui::DragInt(e.burst ? "Count" : "Count / sec", &e.count, 1.0f, 1, 512);
-    changed |= ImGui::DragFloat3("Origin", &e.origin.x, 0.01f, -1.0f, 1.0f);
-    changed |= ImGui::DragFloat("Origin Radius", &e.originRadius, 0.005f, 0.0f, 0.5f);
-    changed |= ImGui::DragFloat3("Direction", &e.direction.x, 0.01f, -1.0f, 1.0f);
-    changed |= ImGui::SliderFloat("Cone Angle", &e.coneAngleDegrees, 0.0f, 180.0f, "%.0f deg");
-    changed |= ImGui::DragFloat("Speed", &e.speed, 0.01f, 0.0f, 5.0f);
-    changed |= ImGui::SliderFloat("Speed Random", &e.speedRandom, 0.0f, 1.0f);
-    changed |= ImGui::DragFloat3("Gravity", &e.gravity.x, 0.01f, -10.0f, 10.0f);
-    changed |= ImGui::DragFloat("Drag", &e.drag, 0.01f, 0.0f, 10.0f);
-    changed |= ImGui::DragFloat("Lifetime", &e.lifetime, 0.01f, 0.05f, 10.0f, "%.2f s");
-    changed |= ImGui::SliderFloat("Lifetime Random", &e.lifetimeRandom, 0.0f, 1.0f);
-    changed |= ImGui::DragFloat("Fade In", &e.fadeIn, 0.01f, 0.0f, 5.0f, "%.2f s");
-    changed |= ImGui::DragFloat("Fade Out", &e.fadeOut, 0.01f, 0.0f, 5.0f, "%.2f s");
-    changed |= ImGui::DragFloat("Radius", &e.radius, 0.002f, 0.005f, 0.5f);
-    changed |= ImGui::SliderFloat("Radius Random", &e.radiusRandom, 0.0f, 1.0f);
-    changed |= ImGui::DragFloat("Growth", &e.growth, 0.01f, 0.1f, 5.0f, "x%.2f");
-    changed |= ImGui::DragFloat("Spin", &e.spin, 0.05f, 0.0f, 20.0f, "%.2f rad/s");
-    changed |= ImGui::DragFloat("Density", &e.density, 0.01f, 0.0f, 5.0f);
-    changed |= ImGui::SliderFloat("Temperature", &e.temperature, 0.0f, 1.0f);
-    changed |= ImGui::DragFloat("Cooling Time", &e.coolingTime, 0.01f, 0.01f, 10.0f, "%.2f s");
-    changed |= ImGui::SliderFloat("Liquid", &e.liquid, 0.0f, 1.0f);
+    changed |= property::DragFloat3("Origin", &e.origin.x, 0.01f, -1.0f, 1.0f);
+    changed |= property::DragFloat("Origin Radius", &e.originRadius, 0.005f, 0.0f, 0.5f);
+    changed |= property::DragFloat3("Direction", &e.direction.x, 0.01f, -1.0f, 1.0f);
+    changed |= property::SliderFloat("Cone Angle", &e.coneAngleDegrees, 0.0f, 180.0f, "%.0f deg");
+    changed |= property::DragFloat("Speed", &e.speed, 0.01f, 0.0f, 5.0f);
+    changed |= property::SliderFloat("Speed Random", &e.speedRandom, 0.0f, 1.0f);
+    changed |= property::DragFloat3("Gravity", &e.gravity.x, 0.01f, -10.0f, 10.0f);
+    changed |= property::DragFloat("Drag", &e.drag, 0.01f, 0.0f, 10.0f);
+    changed |= property::DragFloat("Lifetime", &e.lifetime, 0.01f, 0.05f, 10.0f, "%.2f s");
+    changed |= property::SliderFloat("Lifetime Random", &e.lifetimeRandom, 0.0f, 1.0f);
+    changed |= property::DragFloat("Fade In", &e.fadeIn, 0.01f, 0.0f, 5.0f, "%.2f s");
+    changed |= property::DragFloat("Fade Out", &e.fadeOut, 0.01f, 0.0f, 5.0f, "%.2f s");
+    changed |= property::DragFloat("Radius", &e.radius, 0.002f, 0.005f, 0.5f);
+    changed |= property::SliderFloat("Radius Random", &e.radiusRandom, 0.0f, 1.0f);
+    changed |= property::DragFloat("Growth", &e.growth, 0.01f, 0.1f, 5.0f, "x%.2f");
+    changed |= property::DragFloat("Spin", &e.spin, 0.05f, 0.0f, 20.0f, "%.2f rad/s");
+    changed |= property::DragFloat("Density", &e.density, 0.01f, 0.0f, 5.0f);
+    changed |= property::SliderFloat("Temperature", &e.temperature, 0.0f, 1.0f);
+    changed |= property::DragFloat("Cooling Time", &e.coolingTime, 0.01f, 0.01f, 10.0f, "%.2f s");
+    changed |= property::SliderFloat("Liquid", &e.liquid, 0.0f, 1.0f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("0 = 煙 / 1 = 液体 (表面と反射を持つ)。描き方は Look > Liquid で決めます。");
-    changed |= ImGui::SliderFloat("Noise Scale", &e.noiseScale, 0.0f, 1.0f);
-    changed |= ImGui::DragFloat("Stretch", &e.stretch, 0.01f, 1.0f, 6.0f);
-    changed |= ImGui::DragFloat("Stretch / Speed", &e.stretchPerSpeed, 0.01f, 0.0f, 5.0f);
+    changed |= property::SliderFloat("Noise Scale", &e.noiseScale, 0.0f, 1.0f);
+    changed |= property::DragFloat("Stretch", &e.stretch, 0.01f, 1.0f, 6.0f);
+    changed |= property::DragFloat("Stretch / Speed", &e.stretchPerSpeed, 0.01f, 0.0f, 5.0f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("進行方向への伸び = Stretch + Stretch/Speed × 速さ。速い液滴ほど細長い筋になります。");
     changed |= ImGui::DragFloatRange2("Color Key", &e.colorKeyMin, &e.colorKeyMax, 0.01f, 0.0f, 1.0f);
@@ -348,21 +349,21 @@ void VolumeFlipbookBakePanel::DrawSourceSettings(EditorContext& /*ctx*/)
     else if (!desc->description.empty())
         ImGui::TextDisabled("%s", desc->description.c_str());
     int seed = static_cast<int>(source.seed);
-    if (ImGui::DragInt("Seed", &seed, 1.0f, 0, 1000000)) {
+    if (property::DragInt("Seed", &seed, 1.0f, 0, 1000000)) {
         source.seed = static_cast<std::uint32_t>((std::max)(seed, 0));
         changed = true;
     }
 
-    changed |= ImGui::DragInt("Frames", &source.frameCount, 1.0f, 2, 256);
-    changed |= ImGui::DragInt("Columns (0 = auto)", &m_settings.columns, 1.0f, 0, 64);
+    changed |= property::DragInt("Frames", &source.frameCount, 1.0f, 2, 256);
+    changed |= property::DragInt("Columns (0 = auto)", &m_settings.columns, 1.0f, 0, 64);
     float framesPerSecond = 1.0f / source.frameDt;
-    if (ImGui::DragFloat("Frames Per Second", &framesPerSecond, 0.5f, 4.0f, 120.0f, "%.1f")) {
+    if (property::DragFloat("Frames Per Second", &framesPerSecond, 0.5f, 4.0f, 120.0f, "%.1f")) {
         source.frameDt = 1.0f / std::clamp(framesPerSecond, 4.0f, 120.0f);
         changed = true;
     }
-    changed |= ImGui::DragFloat("Start Time (-1 = preset)", &source.startTime, 0.01f, -1.0f, 30.0f, "%.2f");
+    changed |= property::DragFloat("Start Time (-1 = preset)", &source.startTime, 0.01f, -1.0f, 30.0f, "%.2f");
     if (asset::VolumeSourceCanLoop(source)) {
-        changed |= ImGui::Checkbox("Loop", &source.loop);
+        changed |= property::Checkbox("Loop", &source.loop);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("最終コマの次が先頭コマに厳密に繋がるよう、湧く間隔を調整します。\n"
                               "マテリアルは FPS モードで再生します。");
@@ -374,9 +375,9 @@ void VolumeFlipbookBakePanel::DrawSourceSettings(EditorContext& /*ctx*/)
     }
     changed |= ComboFromList("Volume Resolution", m_settings.volumeResolution, kVolumeResolutions);
     changed |= ComboFromList("Tile Size", m_settings.tileSize, kTileSizes);
-    changed |= ImGui::DragFloat("Noise Frequency", &m_settings.noise.frequency, 0.05f, 0.25f, 8.0f);
-    changed |= ImGui::SliderFloat("Noise Amplitude", &m_settings.noise.amplitude, 0.0f, 1.0f);
-    ImGui::InputText("Output Name", m_baseName.data(), m_baseName.size());
+    changed |= property::DragFloat("Noise Frequency", &m_settings.noise.frequency, 0.05f, 0.25f, 8.0f);
+    changed |= property::SliderFloat("Noise Amplitude", &m_settings.noise.amplitude, 0.0f, 1.0f);
+    property::InputText("Output Name", m_baseName.data(), m_baseName.size());
 
     const asset::FlipbookGrid grid = asset::ComputeFlipbookGrid(source.frameCount, m_settings.columns);
     ImGui::TextDisabled("Atlas: %d x %d frames / %d x %d px", grid.columns, grid.rows,
@@ -393,53 +394,53 @@ void VolumeFlipbookBakePanel::DrawLookSettings()
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("選んでいるソースの推奨 Look へ戻します (カメラと光の向きはそのまま)。");
-    changed |= ImGui::SliderFloat("Camera Yaw", &m_settings.cameraYawDegrees, -180.0f, 180.0f, "%.0f deg");
-    changed |= ImGui::DragFloat("Framing", &m_settings.halfExtent, 0.01f, 0.3f, 2.0f);
+    changed |= property::SliderFloat("Camera Yaw", &m_settings.cameraYawDegrees, -180.0f, 180.0f, "%.0f deg");
+    changed |= property::DragFloat("Framing", &m_settings.halfExtent, 0.01f, 0.3f, 2.0f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("タイルが写す範囲の半幅。1 で箱 [-1,1] がちょうど収まります。\n"
                           "小さくすると煙が大きく写る代わりに、縁で切れやすくなります。");
-    changed |= ImGui::SliderFloat("Light Yaw", &m_settings.lightYawDegrees, -180.0f, 180.0f, "%.0f deg");
-    changed |= ImGui::SliderFloat("Light Pitch", &m_settings.lightPitchDegrees, -10.0f, 90.0f, "%.0f deg");
-    changed |= ImGui::ColorEdit3("Light Color", &m_settings.lightColor.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
-    changed |= ImGui::ColorEdit3("Ambient", &m_settings.ambient.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
-    changed |= ImGui::DragFloat("Extinction", &m_settings.extinction, 0.1f, 0.0f, 100.0f);
+    changed |= property::SliderFloat("Light Yaw", &m_settings.lightYawDegrees, -180.0f, 180.0f, "%.0f deg");
+    changed |= property::SliderFloat("Light Pitch", &m_settings.lightPitchDegrees, -10.0f, 90.0f, "%.0f deg");
+    changed |= property::ColorEdit3("Light Color", &m_settings.lightColor.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+    changed |= property::ColorEdit3("Ambient", &m_settings.ambient.x, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+    changed |= property::DragFloat("Extinction", &m_settings.extinction, 0.1f, 0.0f, 100.0f);
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("煙の濃さ。液体の濃さは Liquid > Extinction です。");
-    changed |= ImGui::SliderFloat("Anisotropy", &m_settings.anisotropy, -0.9f, 0.9f);
-    changed |= ImGui::DragFloat("Emission", &m_settings.emissionIntensity, 0.1f, 0.0f, 100.0f);
+    changed |= property::SliderFloat("Anisotropy", &m_settings.anisotropy, -0.9f, 0.9f);
+    changed |= property::DragFloat("Emission", &m_settings.emissionIntensity, 0.1f, 0.0f, 100.0f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("不透明な炎の芯 (温度 1) の明るさ。煙の濃さ (Extinction) を変えても明るさは変わりません。");
-    changed |= ImGui::DragFloat("Exposure", &m_settings.exposure, 0.01f, 0.01f, 8.0f);
+    changed |= property::DragFloat("Exposure", &m_settings.exposure, 0.01f, 0.01f, 8.0f);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("HDR の色を 8bit へ落とすときの倍率。\n"
                           "マテリアルの HDR Emissive に 1/Exposure を入れて明るさを戻します。");
-    changed |= ImGui::DragInt("Ray Steps", &m_settings.raySteps, 1.0f, 16, 512);
-    changed |= ImGui::DragInt("Shadow Steps", &m_settings.shadowSteps, 1.0f, 1, 64);
-    changed |= ImGui::Checkbox("Six-way Lightmaps", &m_settings.sixWayLightmaps);
+    changed |= property::DragInt("Ray Steps", &m_settings.raySteps, 1.0f, 16, 512);
+    changed |= property::DragInt("Shadow Steps", &m_settings.shadowSteps, 1.0f, 1, 64);
+    changed |= property::Checkbox("Six-way Lightmaps", &m_settings.sixWayLightmaps);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("色の Atlas に加えて 6 方向ライトマップ (_6wayP / _6wayN) も焼きます。\n"
                           "ランタイムで光の向きを変えても陰影が回り込みます (焼く時間は延びます)。");
 
     if (ImGui::TreeNodeEx("Quality", ImGuiTreeNodeFlags_DefaultOpen)) {
-        changed |= ImGui::SliderInt("Scattering Octaves", &m_settings.scatteringOctaves, 1, 6);
+        changed |= property::SliderInt("Scattering Octaves", &m_settings.scatteringOctaves, 1, 6);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("多重散乱の段数です (1 = 単散乱)。\n"
                               "増やすほど光が煙の奥まで回り込み、内側から明るい柔らかい煙になります。");
-        changed |= ImGui::SliderFloat("Sky Occlusion", &m_settings.skyOcclusion, 0.0f, 1.0f);
+        changed |= property::SliderFloat("Sky Occlusion", &m_settings.skyOcclusion, 0.0f, 1.0f);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("環境光を上に積もった煙が遮る割合です。煙の下側が暗くなり、塊に重さが出ます。");
-        changed |= ImGui::SliderFloat("Detail Strength", &m_settings.detailStrength, 0.0f, 1.0f);
+        changed |= property::SliderFloat("Detail Strength", &m_settings.detailStrength, 0.0f, 1.0f);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("格子より細かい起伏を、流れに乗せたノイズで足します。\n"
                               "低い解像度で解いた流体ほど効きます。");
         if (m_settings.detailStrength > 0.0f) {
-            changed |= ImGui::DragFloat("Detail Scale", &m_settings.detailScale, 0.1f, 1.0f, 32.0f);
-            changed |= ImGui::DragFloat("Detail Period", &m_settings.detailPeriod, 0.01f, 0.1f, 4.0f, "%.2f s");
+            changed |= property::DragFloat("Detail Scale", &m_settings.detailScale, 0.1f, 1.0f, 32.0f);
+            changed |= property::DragFloat("Detail Period", &m_settings.detailPeriod, 0.01f, 0.1f, 4.0f, "%.2f s");
         }
-        changed |= ImGui::SliderInt("Supersampling", &m_settings.supersampling, 1, 3, "x%d");
+        changed |= property::SliderInt("Supersampling", &m_settings.supersampling, 1, 3, "x%d");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("焼くときだけ、1 コマをこの倍率で描いて縮めます (プレビューは等倍)。\n"
                               "縁のギザギザと細い筋のちらつきが消えます。");
-        changed |= ImGui::Checkbox("Blackbody Emission", &m_settings.blackbodyEmission);
+        changed |= property::Checkbox("Blackbody Emission", &m_settings.blackbodyEmission);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("発光の色を温度 → 黒体放射で決めます (輝度は温度の 4 乗)。\n"
                               "芯だけが白く、外へ行くほど暗い赤になる本物の炎の階調です。");
@@ -460,14 +461,14 @@ void VolumeFlipbookBakePanel::DrawLookSettings()
     }
     if (ImGui::TreeNode("Liquid")) {
         auto& liquid = m_settings.liquid;
-        changed |= ImGui::DragFloat("Threshold", &liquid.threshold, 0.005f, 0.05f, 1.5f);
+        changed |= property::DragFloat("Threshold", &liquid.threshold, 0.005f, 0.05f, 1.5f);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("密度がこの値を跨ぐところを液体の表面にします。");
-        changed |= ImGui::DragFloat("Softness", &liquid.softness, 0.002f, 0.005f, 0.5f);
-        changed |= ImGui::DragFloat("Extinction", &liquid.extinction, 0.5f, 0.0f, 200.0f);
+        changed |= property::DragFloat("Softness", &liquid.softness, 0.002f, 0.005f, 0.5f);
+        changed |= property::DragFloat("Extinction", &liquid.extinction, 0.5f, 0.0f, 200.0f);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("大きいほど不透明 (血)、小さいほど透ける (水)。");
-        changed |= ImGui::DragFloat("Specular", &liquid.specular, 0.01f, 0.0f, 4.0f);
-        changed |= ImGui::DragFloat("Gloss", &liquid.gloss, 1.0f, 1.0f, 512.0f);
-        changed |= ImGui::SliderFloat("Fresnel F0", &liquid.fresnelF0, 0.0f, 0.2f, "%.3f");
+        changed |= property::DragFloat("Specular", &liquid.specular, 0.01f, 0.0f, 4.0f);
+        changed |= property::DragFloat("Gloss", &liquid.gloss, 1.0f, 1.0f, 512.0f);
+        changed |= property::SliderFloat("Fresnel F0", &liquid.fresnelF0, 0.0f, 0.2f, "%.3f");
         ImGui::TreePop();
     }
     if (changed) MarkSettingsChanged();
@@ -500,7 +501,7 @@ void VolumeFlipbookBakePanel::DrawDisplayControls()
     static constexpr const char* kSizes[] = { "256", "384", "512", "Fit" };
     int background = static_cast<int>(m_background);
     ImGui::SetNextItemWidth(110.0f);
-    if (ImGui::Combo("Background", &background, kBackgrounds, IM_ARRAYSIZE(kBackgrounds))) {
+    if (property::Combo("Background", &background, kBackgrounds, IM_ARRAYSIZE(kBackgrounds))) {
         m_background = static_cast<asset::VolumePreviewBackground>(background);
         m_previewDirty = true;
     }
@@ -520,14 +521,14 @@ void VolumeFlipbookBakePanel::DrawVolumeTab(EditorContext& ctx)
     ImGui::SetNextItemWidth(90.0f);
     ImGui::DragFloat("Speed", &m_playSpeed, 0.01f, 0.05f, 4.0f, "%.2fx");
     const float duration = BakeDuration();
-    if (ImGui::SliderFloat("Time", &m_previewTime, 0.0f, duration, "%.2f s")) {
+    if (property::SliderFloat("Time", &m_previewTime, 0.0f, duration, "%.2f s")) {
         m_playing = false;
         m_previewDirty = true;
     }
     static constexpr const char* kViews[] = { "Color", "Alpha", "Motion", "6-way +", "6-way -" };
     int view = static_cast<int>(m_view);
     ImGui::SetNextItemWidth(110.0f);
-    if (ImGui::Combo("View", &view, kViews, IM_ARRAYSIZE(kViews))) {
+    if (property::Combo("View", &view, kViews, IM_ARRAYSIZE(kViews))) {
         m_view = static_cast<VolumeView>(view);
         m_previewDirty = true;
     }
@@ -607,12 +608,12 @@ void VolumeFlipbookBakePanel::DrawFlipbookTab(EditorContext& ctx)
     if (ImGui::SmallButton("Baked FPS")) m_compareFps = 1.0f / m_compare->FrameDt();
     const int frames = m_compare->FrameCount();
     float framePosition = m_compareTime * m_compareFps;
-    if (ImGui::SliderFloat("Frame", &framePosition, 0.0f, static_cast<float>((std::max)(frames - 1, 1)), "%.2f")) {
+    if (property::SliderFloat("Frame", &framePosition, 0.0f, static_cast<float>((std::max)(frames - 1, 1)), "%.2f")) {
         m_comparePlaying = false;
         m_compareTime = framePosition / (std::max)(m_compareFps, 0.1f);
     }
     ImGui::SetNextItemWidth(160.0f);
-    ImGui::SliderFloat("MV Strength", &m_strengthScale, 0.0f, 2.0f, "x%.2f");
+    property::SliderFloat("MV Strength", &m_strengthScale, 0.0f, 2.0f, "x%.2f");
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("焼いたときの S に掛ける倍率。1 が正しい値です。\n"
                           "0 で MV なしと同じ、2 で行き過ぎ (輪郭が逆向きに流れる) になります。");
@@ -700,7 +701,7 @@ void VolumeFlipbookBakePanel::DrawBake(EditorContext& ctx)
 void VolumeFlipbookBakePanel::DrawApply(EditorContext& ctx)
 {
     ImGui::SeparatorText("Apply to Material");
-    widgets::AssetPathField("Particle Material", m_materialPath, ".mat", ctx.projectRoot);
+    property::AssetPathField("Particle Material", m_materialPath, ".mat", ctx.projectRoot);
     const bool busy = JobActive(ctx);
     ImGui::BeginDisabled(!m_lastResult.success || m_materialPath.empty() || busy);
     if (ImGui::Button("Apply", { -1.0f, 0.0f })) ApplyToMaterial(ctx);

@@ -7,10 +7,12 @@
 #include "../Util/MaterialAuthoringEditing.hpp"
 #include <Editor/Util/AssetDragPayload.hpp>
 #include <Editor/EditorContext.hpp>
+#include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ColliderFit.hpp>
 #include <Editor/Util/CreateObjectMenu.hpp>
 #include <Editor/Util/DragDropSet.hpp>
+#include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ModelPlacement.hpp>
 #include <Editor/Util/PrefabSerializer.hpp>
 #include <Editor/Op/EditorOperator.hpp>
@@ -410,13 +412,179 @@ struct HierarchyRevealState {
     std::unordered_map<std::string, bool>& expansionRequests;
 };
 
-/// @param rootIndex roots 配列内の位置。Order メニュー用で、ルートのときだけ意味を持つ。
+bool HierarchyMenuItem(EditorContext& ctx, const char* label, const char* operatorId, const OpArgs& args = {})
+{
+    const auto* hotkey = ctx.hotkeyManager ? ctx.hotkeyManager->FindByOperator(operatorId) : nullptr;
+    const auto binding = hotkey ? HotkeyManager::FormatBinding(*hotkey) : std::string{};
+    return ImGui::MenuItem(LOC(label), binding.empty() ? nullptr : binding.c_str(), false,
+                          CanInvokeOperator(ctx, operatorId, args));
+}
+
+void DrawHierarchyOperation(EditorContext& ctx, DeferredHierarchyEdit& deferred, const char* label,
+                            const char* operatorId, OpArgs args = {})
+{
+    if (HierarchyMenuItem(ctx, label, operatorId, args)) {
+        deferred.SetLocal([&ctx, operatorId, args = std::move(args)] {
+            InvokeOperator(ctx, operatorId, args);
+        });
+    }
+}
+
+void DrawHierarchyStateMenu(EditorContext& ctx, DeferredHierarchyEdit& deferred,
+                            const scene::GameObject& object, bool multi, bool canEdit)
+{
+    if (!ImGui::BeginMenu(LOC("Object State"), canEdit || !multi)) return;
+
+    bool anyEnabled = false;
+    bool anyDisabled = false;
+    for (const auto id : ctx.selectedEntities) {
+        if (const auto* selected = ctx.activeScene->GetGameObject(id)) {
+            if (GetAuthoringActive(ctx, *selected)) anyEnabled = true;
+            else anyDisabled = true;
+        }
+    }
+    const auto setActive = [&](const char* label, bool active) {
+        if (ImGui::MenuItem(LOC(label), nullptr, false, canEdit)) {
+            deferred.SetLocal([&ctx, targets = ctx.selectedEntities, label, active] {
+                SetGameObjectsActive(ctx, targets, active, label);
+            });
+        }
+    };
+    if (anyDisabled) setActive(multi ? "Enable Selection" : "Enable Object", true);
+    if (anyEnabled) setActive(multi ? "Disable Selection" : "Disable Object", false);
+
+    if (!multi) {
+        const auto id = object.GetID();
+        ImGui::Separator();
+        const bool hidden = ctx.editorHiddenGuids.contains(object.instanceId);
+        if (ImGui::MenuItem(LOC(hidden ? "Show in Editor" : "Hide in Editor"), nullptr, false, canEdit))
+            deferred.SetLocal([&ctx, id] { ToggleEditorHiding(ctx, id); });
+        if (ImGui::MenuItem(LOC(ctx.IsLocked(id) ? "Unlock Object" : "Lock Object")))
+            ctx.ToggleLock(id);
+    }
+    ImGui::EndMenu();
+}
+
+void DrawHierarchyPrefabMenu(EditorContext& ctx, DeferredHierarchyEdit& deferred,
+                             const scene::GameObject& object, bool multi, bool canEdit)
+{
+    if (!ImGui::BeginMenu(LOC("Prefab"), canEdit)) return;
+
+    if (ImGui::MenuItem(LOC(multi ? "Save Selection as Prefab" : "Save As Prefab"))) {
+        deferred.SetLocal([&ctx, name = object.name] { SaveSelectedAsAsset(ctx, name, "Prefabs", ".prefab"); });
+    }
+    if (!multi && ctx.activeScene->HasComponent<scene::VFXComponent>(object.GetID())
+        && ImGui::MenuItem(LOC("Save As VFX"))) {
+        deferred.SetLocal([&ctx, name = object.name] { SaveSelectedAsAsset(ctx, name, "VFX", ".vfx"); });
+    }
+    if (!multi && !object.prefabAssetPath.empty()) {
+        const auto id = object.GetID();
+        ImGui::Separator();
+        OpArgs args;
+        args.Set("path", object.prefabAssetPath);
+        DrawHierarchyOperation(ctx, deferred, "Open Prefab", "prefab.edit", std::move(args));
+        if (ImGui::MenuItem(LOC("Apply to Prefab"))) {
+            deferred = [&ctx, id] {
+                const int updated = PrefabSerializer::ApplyAndPropagate(*ctx.activeScene, id, ctx.projectRoot);
+                if (updated < 0) return;
+                if (updated > 0) ClearEntitySelection(ctx);
+                ctx.requestAssetBrowserRefresh = true;
+            };
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", LOCT("Save this instance to the source prefab and update other instances."));
+        if (ImGui::MenuItem(LOC("Revert from Prefab"))) {
+            deferred.SetLocal([&ctx, id] {
+                ExecuteSceneEditWithUndo(ctx, "Revert Prefab", [&ctx, id] {
+                    std::vector<scene::EntityID> roots;
+                    if (PrefabSerializer::Revert(*ctx.activeScene, id, roots, ctx.projectRoot) && !roots.empty())
+                        SelectEntities(ctx, std::move(roots), SelectionReveal::Skip);
+                });
+            });
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", LOCT("Discard this instance's changes and restore the source prefab."));
+    }
+    ImGui::EndMenu();
+}
+
+void DrawHierarchyNodeMenu(EditorContext& ctx, const scene::GameObject& object, bool hovered,
+                           HierarchyTraversal& visited, DeferredHierarchyEdit& deferred,
+                           PendingObjectCreate& pendingCreate)
+{
+    constexpr const char* POPUP_ID = "##node_context";
+    const auto id = object.GetID();
+    const auto key = HierarchyTraversal::EntityKey(id);
+    if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
+        if (!visited.selected.contains(key)) {
+            SelectEntity(ctx, id, SelectionReveal::Skip);
+            SetHierarchyMembers(visited.selected, ctx.selectedEntities);
+        }
+        ImGui::OpenPopup(POPUP_ID);
+    }
+    if (!ImGui::BeginPopup(POPUP_ID)) return;
+    if (!visited.selected.contains(key)) {
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+
+    const bool multi = ctx.selectedEntities.size() > 1;
+    const bool canEdit = !ctx.playMode || ctx.playMode->IsInEditor();
+    if (multi)
+        ImGui::TextDisabled(LOCT("%zu objects selected"), ctx.selectedEntities.size());
+    else
+        widgets::LabelEllipsis(object.name.c_str(), ImGui::GetFontSize() * 18.0f);
+    ImGui::Separator();
+
+    const bool canCreate = CanInvokeOperator(ctx, "node.create_empty");
+    if (!multi && ImGui::BeginMenu(LOC("Create Child"), canCreate)) {
+        DrawCreateObjectMenuItems(ctx, object.instanceId, pendingCreate);
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu(LOC("Create at Root"), canCreate)) {
+        DrawCreateObjectMenuItems(ctx, {}, pendingCreate);
+        ImGui::EndMenu();
+    }
+    ImGui::Separator();
+
+    if (!multi && HierarchyMenuItem(ctx, "Rename", "edit.rename")) InvokeOperator(ctx, "edit.rename");
+    DrawHierarchyOperation(ctx, deferred, "Frame Selected", "view.frame_selected");
+    DrawHierarchyOperation(ctx, deferred, "Copy", "edit.copy");
+    DrawHierarchyOperation(ctx, deferred, "Paste at Root", "edit.paste");
+    if (!multi) DrawHierarchyOperation(ctx, deferred, "Paste As Child", "edit.paste_as_child");
+    DrawHierarchyOperation(ctx, deferred, "Duplicate", "edit.duplicate");
+    ImGui::Separator();
+
+    DrawHierarchyStateMenu(ctx, deferred, object, multi, canEdit);
+    if (multi) {
+        DrawHierarchyOperation(ctx, deferred, "Group Selection", "node.group_selection");
+    } else if (ImGui::BeginMenu(LOC("Hierarchy"), canEdit &&
+                              (object.GetParent() || ctx.activeScene->GetRootGameObjects().size() > 1))) {
+        if (object.GetParent() && ImGui::MenuItem(LOC("Set As Root"))) {
+            deferred.SetLocal([&ctx, id] { SetParentWithUndo(ctx, id, {}, "Set GameObject As Root"); });
+            ImGui::Separator();
+        }
+        for (const auto& [label, direction] : {
+                 std::pair{"Move Up", "up"}, std::pair{"Move Down", "down"},
+                 std::pair{"Move To Top", "first"}, std::pair{"Move To Bottom", "last"}}) {
+            OpArgs args;
+            args.Set("node", object.instanceId);
+            args.Set("direction", std::string(direction));
+            DrawHierarchyOperation(ctx, deferred, label, "node.reorder", std::move(args));
+        }
+        ImGui::EndMenu();
+    }
+    DrawHierarchyPrefabMenu(ctx, deferred, object, multi, canEdit);
+    ImGui::Separator();
+    DrawHierarchyOperation(ctx, deferred, multi ? "Delete Selected" : "Delete", "edit.delete_selected");
+    ImGui::EndPopup();
+}
+
 /// @param deferred 描画ループの後でスナップショット Undo に包んで実行する編集。
 /// @param pendingCreate 描画ループの後で呼ぶ生成 Operator (Undo は Operator が積む)。
 void DrawHierarchyNode(EditorContext& ctx,
                        scene::GameObject& go,
-                       size_t rootIndex,
-                       size_t rootCount,
                        HierarchyTraversal& visited,
                        DeferredHierarchyEdit& deferred,
                        PendingObjectCreate& pendingCreate,
@@ -470,7 +638,6 @@ void DrawHierarchyNode(EditorContext& ctx,
     const bool hasChildren    = HasVisibleChild(ctx, go, visited);
     const auto key            = HierarchyTraversal::EntityKey(id);
     const bool selected       = visited.selected.contains(key);
-    const bool isRoot         = go.GetParent() == nullptr;
     const bool isActive       = parentActive && go.activeSelf();
     /// @note 目アイコンとメニューが切り替えるのは自分の値 (activeSelf)。表示もそれに合わせ、親のせいで無効なときだけ薄く描く。
     const bool isActiveSelf   = GetAuthoringActive(ctx, go);
@@ -765,215 +932,13 @@ void DrawHierarchyNode(EditorContext& ctx,
         pendingClick = {};
     }
 
-    /// @note 引数なしの BeginPopupContextItem() は使わない: あれは LastItemData を対象に取るが、
-    /// @note 上の「隠し生成物」バッジ (TextDisabled) は ID を持たない item のため、バッジが出る
-    /// @note ノードでは id == 0 になり ImGui が assert する。開く判定も TreeNodeEx 直後のホバーを使う。
-    static constexpr const char* kNodeMenuId = "##node_context";
-    if (nodeHoveredForMenu && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
-        ImGui::OpenPopup(kNodeMenuId);
-    if (ImGui::BeginPopup(kNodeMenuId)) {
-        /// @note 右クリックした GO が既に複数選択中なら選択を維持する。
-        /// @note そうでなければ単一選択に切り替える。
-        {
-            const bool alreadySelected = visited.selected.contains(key);
-            if (!alreadySelected || ctx.selectedEntities.size() == 1) {
-                SelectEntity(ctx, id, SelectionReveal::Skip);
-                SetHierarchyMembers(visited.selected, ctx.selectedEntities);
-            }
-        }
-        const bool multiSelected = ctx.selectedEntities.size() > 1;
-
-        if (ImGui::MenuItem(multiSelected ? "Hide/Show" : (isActiveSelf ? "Hide" : "Show"))) {
-            if (multiSelected) {
-                const std::vector<scene::EntityID> toToggle = ctx.selectedEntities;
-                deferred.SetLocal([&ctx, toToggle]() {
-                    bool anyActive = false;
-                    for (auto eid : toToggle)
-                        if (auto* g = ctx.activeScene->GetGameObject(eid))
-                            if (GetAuthoringActive(ctx, *g)) { anyActive = true; break; }
-                    SetGameObjectsActive(ctx, toToggle, !anyActive, anyActive ? "Hide GameObjects" : "Show GameObjects");
-                });
-            } else {
-                deferred.SetLocal([&ctx, id, isActiveSelf] {
-                    SetGameObjectsActive(ctx, {&id, 1}, !isActiveSelf,
-                        isActiveSelf ? "Hide GameObject" : "Show GameObject");
-                });
-            }
-        }
-        if (ImGui::MenuItem(isLocked ? "Unlock" : "Lock"))
-            ctx.ToggleLock(id);
-        ImGui::Separator();
-
-        /// @note 親は生成コマンドが guid で付ける。生成後の選択に頼ると Button + Label のような複数生成で親を取り違える。
-        if (ImGui::BeginMenu("Create Child")) {
-            DrawCreateObjectMenuItems(ctx, go.instanceId, pendingCreate);
-            ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("Create at Root")) {
-            DrawCreateObjectMenuItems(ctx, {}, pendingCreate);
-            ImGui::EndMenu();
-        }
-        ImGui::Separator();
-        /// @note operator 経由にする: 同じ Copy / Paste はホットキー・コマンドパレット・AI からも
-        /// @note 呼ばれる。ヘルパーを直接叩くと実行可否の判定がこのファイルにも書かれ面ごとにずれていく。
-        if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
-            InvokeOperator(ctx, "edit.copy");
-        if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
-            deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste"); });
-        if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false,
-                            CanInvokeOperator(ctx, "edit.paste_as_child")))
-            deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste_as_child"); });
-        ImGui::Separator();
-        /// @note operator 経由にする: 旧実装はメニューからの複製が Undo に載っていなかった
-        /// @note (ExecuteSceneEditWithUndo で包んでいなかったため。Ctrl+D は載る)。
-        if (ImGui::MenuItem("Duplicate", nullptr, false,
-                            CanInvokeOperator(ctx, "edit.duplicate"))) {
-            const std::vector<scene::EntityID> toDup =
-                multiSelected ? ctx.selectedEntities : std::vector<scene::EntityID>{ id };
-            deferred.SetLocal([&ctx, toDup]() {
-                SelectEntities(ctx, toDup, SelectionReveal::Skip);
-                InvokeOperator(ctx, "edit.duplicate");
-            });
-        }
-        if (multiSelected) {
-            if (ImGui::MenuItem("Group Selection")) {
-                const std::vector<scene::EntityID> toGroup = ctx.selectedEntities;
-                deferred = [&ctx, toGroup]() {
-                    if (!ctx.activeScene) return;
-                    /// @note 共通親 (全員同じ親を持つ場合) を探す
-                    scene::EntityID commonParentId{};
-                    bool firstItem = true;
-                    for (auto eid : toGroup) {
-                        if (auto* g = ctx.activeScene->GetGameObject(eid)) {
-                            const scene::EntityID pid = g->GetParent()
-                                ? g->GetParent()->GetID() : scene::EntityID{};
-                            if (firstItem) { commonParentId = pid; firstItem = false; }
-                            else if (commonParentId != pid) { commonParentId = {}; break; }
-                        }
-                    }
-                    auto* created = ctx.activeScene->TryCreateGameObject("Group");
-                    if (!created) return;
-                    auto& group = *created;
-                    if (commonParentId.IsValid())
-                        if (auto* cp = ctx.activeScene->GetGameObject(commonParentId))
-                            group.SetParent(cp);
-                    for (auto eid : toGroup)
-                        if (auto* child = ctx.activeScene->GetGameObject(eid))
-                            child->SetParent(&group);
-                    const scene::EntityID groupId = group.GetID();
-                    if (ctx.markSceneDirty) ctx.markSceneDirty();
-                    if (ctx.undoStack) {
-                        scene::Scene* scene = ctx.activeScene;
-                        const std::string groupGuid = group.instanceId;
-                        const auto markDirty = ctx.markSceneDirty;
-                        ctx.undoStack->Push(std::make_unique<LambdaCommand>(
-                            "Group Selection",
-                            /// @note redo: 再実行には deferred が必要で複雑なため省略
-                            []() {},
-                            [scene, groupGuid, markDirty]() {
-                                /// @note undo: 子を解除してグループを削除
-                                if (auto* g = scene->FindByGuid(groupGuid)) {
-                                    while (g->GetChildCount() > 0)
-                                        if (auto* c = g->GetChild(0)) c->ClearParent();
-                                    scene->DestroyGameObject(g->GetID());
-                                }
-                                if (markDirty) markDirty();
-                            }));
-                    }
-                    SelectEntity(ctx, groupId, SelectionReveal::Skip);
-                };
-            }
-        }
-        if (ImGui::MenuItem("Save As Prefab")) {
-            SaveSelectedAsAsset(ctx, go.name, "Prefabs", ".prefab");
-        }
-        /// @note VFX ルートは .vfx として保存する。中身はプレハブと同じだが、
-        /// @note 拡張子で «演出» と分かるようにしておく (VFXRef のドロップ先にもなる)。
-        if (go.GetComponent<scene::VFXComponent>() != nullptr) {
-            if (ImGui::MenuItem("Save As VFX")) {
-                SaveSelectedAsAsset(ctx, go.name, "VFX", ".vfx");
-            }
-        }
-        /// @note プレファブインスタンスには Apply / Revert を提供する (Unity 互換)。Apply は
-        /// @note ディスクへの書き戻しのみでシーンは変わらないため Undo なし。Revert はシーンを
-        /// @note 変更するため ExecuteSceneEditWithUndo が自動的にスナップショット Undo を生成する。
-        if (!go.prefabAssetPath.empty()) {
-            ImGui::Separator();
-            if (ImGui::MenuItem("Apply to Prefab")) {
-                deferred = [&ctx, id]() {
-                    if (!ctx.activeScene) return;
-                    /// @note Apply と伝播は 1 つの操作として閉じてある。
-                    /// @note 各インスタンスの個別調整 (override) は保持される。
-                    const int updated = PrefabSerializer::ApplyAndPropagate(
-                        *ctx.activeScene, id, ctx.projectRoot);
-                    if (updated < 0) return;
-                    if (updated > 0) {
-                        /// @note 作り直しで EntityID が変わるため選択は捨てる。
-                        ClearEntitySelection(ctx);
-                        if (ctx.markSceneDirty) ctx.markSceneDirty();
-                    }
-                    ctx.requestAssetBrowserRefresh = true;
-                };
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Write instance state back to the .prefab asset,\n"
-                                  "then update every other instance in this scene");
-            if (ImGui::MenuItem("Revert from Prefab")) {
-                deferred.SetLocal([&ctx, id]() {
-                    if (!ctx.activeScene) return;
-                    ExecuteSceneEditWithUndo(ctx, "Revert Prefab", [&ctx, id]() {
-                        std::vector<scene::EntityID> newRoots;
-                        if (PrefabSerializer::Revert(*ctx.activeScene, id, newRoots, ctx.projectRoot))
-                            if (!newRoots.empty()) SelectEntities(ctx, newRoots, SelectionReveal::Skip);
-                    });
-                });
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Discard instance changes and restore from the source .prefab asset");
-            if (ImGui::MenuItem("Open Prefab")) {
-                const std::string prefabPath = go.prefabAssetPath;
-                deferred.SetLocal([&ctx, prefabPath] { ctx.requestOpenPrefabEdit = prefabPath; });
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("Edit the .prefab itself in isolation — every instance follows on save");
-        }
-        if (ImGui::BeginMenu("Hierarchy")) {
-            const bool hasParent = go.GetParent() != nullptr;
-            if (ImGui::MenuItem("Set As Root", nullptr, false, hasParent))
-                deferred.SetLocal([&ctx, id]() {
-                    SetParentWithUndo(ctx, id, {}, "Set GameObject As Root");
-                });
-            ImGui::EndMenu();
-        }
-        if (isRoot && ImGui::BeginMenu("Order")) {
-            const bool canMoveUp   = rootIndex > 0;
-            const bool canMoveDown = rootIndex + 1 < rootCount;
-            if (ImGui::MenuItem("Move Up", nullptr, false, canMoveUp))
-                deferred = [&ctx, id]() { ctx.activeScene->MoveGameObject(id, -1); };
-            if (ImGui::MenuItem("Move Down", nullptr, false, canMoveDown))
-                deferred = [&ctx, id]() { ctx.activeScene->MoveGameObject(id, 1); };
-            ImGui::Separator();
-            if (ImGui::MenuItem("Move To Top", nullptr, false, canMoveUp))
-                deferred = [&ctx, id]() { ctx.activeScene->MoveGameObjectToIndex(id, 0); };
-            if (ImGui::MenuItem("Move To Bottom", nullptr, false, canMoveDown))
-                deferred = [&ctx, id]() {
-                    ctx.activeScene->MoveGameObjectToIndex(id, ctx.activeScene->GameObjectCount() - 1);
-                };
-            ImGui::EndMenu();
-        }
-        ImGui::Separator();
-        /// @note operator 経由にする: 旧実装は DestroySelected を直接呼び Undo に載っていなかった。
-        /// @note Delete キー経由は DeleteSelectedWithUndo を通るため取り消せる食い違いがあった。
-        if (ImGui::MenuItem("Delete", nullptr, false,
-                            CanInvokeOperator(ctx, "edit.delete_selected")))
-            deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.delete_selected"); });
-        ImGui::EndPopup();
-    }
+    /// @note バッジは ID のない描画なので、TreeNodeEx 直後に記録したホバーでポップアップを開く。
+    DrawHierarchyNodeMenu(ctx, go, nodeHoveredForMenu, visited, deferred, pendingCreate);
 
     if (hasChildren && opened) {
         for (int i = 0; i < go.GetChildCount(); ++i) {
             if (auto* child = go.GetChild(i))
-                DrawHierarchyNode(ctx, *child, 0, rootCount, visited, deferred, pendingCreate, reveal,
+                DrawHierarchyNode(ctx, *child, visited, deferred, pendingCreate, reveal,
                                   lastClicked, pendingClick, hierarchyDragStarted,
                                   hierarchyNodeHovered, outVisible, prevVisible, rename, isActive);
         }
@@ -992,12 +957,16 @@ void DrawHierarchyBackgroundMenu(EditorContext& ctx, DeferredHierarchyEdit& defe
             ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
         return;
 
-    if (ImGui::MenuItem("Select All", "Ctrl+A", false, CanInvokeOperator(ctx, "select.all")))
-        InvokeOperator(ctx, "select.all");
-    if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
-        deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste"); });
+    ImGui::TextDisabled("%s", LOCT("Scene Root"));
     ImGui::Separator();
-    DrawCreateObjectMenu(ctx, pendingCreate);
+    if (ImGui::BeginMenu(LOC("Create"), CanInvokeOperator(ctx, "node.create_empty"))) {
+        DrawCreateObjectMenuItems(ctx, {}, pendingCreate);
+        ImGui::EndMenu();
+    }
+    DrawHierarchyOperation(ctx, deferred, "Paste at Root", "edit.paste");
+    ImGui::Separator();
+    DrawHierarchyOperation(ctx, deferred, "Select All", "select.all");
+    DrawHierarchyOperation(ctx, deferred, "Clear Selection", "select.clear");
     ImGui::EndPopup();
 }
 
@@ -1190,6 +1159,13 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     widgets::UpdateDragAutoScroll();
 
+    PendingObjectCreate pendingCreate;
+    if (ImGui::Button(LOCT("Create"))) ImGui::OpenPopup("##hierarchyCreate");
+    if (ImGui::BeginPopup("##hierarchyCreate")) {
+        DrawCreateObjectMenu(ctx, pendingCreate);
+        ImGui::EndPopup();
+    }
+
     if (ctx.mapEditingMode) {
         ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
         ImGui::SameLine();
@@ -1222,7 +1198,6 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note 生成は Operator が Undo を積むので、スナップショット Undo で包む deferred とは分けて持つ。
-    PendingObjectCreate pendingCreate;
 
     /// @note 検索中はフラットリスト。キーボード移動の並びもこのリストが正本になる。
     if (m_searchFilter[0] != '\0') {
@@ -1291,34 +1266,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                                     ImGui::GetItemRectMax(),
                                     selected,
                                     ctx.PrimarySelected() == id);
-            if (ImGui::BeginPopupContextItem()) {
-                /// @note 選択を対象にする操作 (Copy / Delete) が右クリックした行を指すよう、先に単一選択にする。
-                SelectEntity(ctx, id, SelectionReveal::Skip);
-                SetHierarchyMembers(visited.selected, ctx.selectedEntities);
-                if (ImGui::MenuItem("Copy", "Ctrl+C", false, CanInvokeOperator(ctx, "edit.copy")))
-                    InvokeOperator(ctx, "edit.copy");
-                if (ImGui::MenuItem("Paste", "Ctrl+V", false, CanInvokeOperator(ctx, "edit.paste")))
-                    deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste"); });
-                if (ImGui::MenuItem("Paste As Child", "Ctrl+Shift+V", false,
-                                    CanInvokeOperator(ctx, "edit.paste_as_child")))
-                    deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.paste_as_child"); });
-                ImGui::Separator();
-                if (ImGui::BeginMenu("Create Child")) {
-                    DrawCreateObjectMenuItems(ctx, go.instanceId, pendingCreate);
-                    ImGui::EndMenu();
-                }
-                ImGui::Separator();
-                if (ImGui::MenuItem("Save As Prefab"))
-                    SaveSelectedAsAsset(ctx, go.name, "Prefabs", ".prefab");
-                if (go.GetComponent<scene::VFXComponent>() != nullptr
-                    && ImGui::MenuItem("Save As VFX"))
-                    SaveSelectedAsAsset(ctx, go.name, "VFX", ".vfx");
-                ImGui::Separator();
-                if (ImGui::MenuItem("Delete", nullptr, false,
-                                    CanInvokeOperator(ctx, "edit.delete_selected")))
-                    deferred.SetLocal([&ctx] { InvokeOperator(ctx, "edit.delete_selected"); });
-                ImGui::EndPopup();
-            }
+            const bool hoveredForMenu = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+            DrawHierarchyNodeMenu(ctx, go, hoveredForMenu, visited, deferred, pendingCreate);
             ImGui::PopID();
         }
 
@@ -1340,7 +1289,6 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         DeferredHierarchyEdit deferred;
 
         const auto& roots = visited.roots;
-        const size_t rootCount = roots.size();
         auto& mapVisible = m_nextVisibleOrder;
         mapVisible.clear();
         for (const auto id : roots) {
@@ -1350,7 +1298,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
                 && !go->GetComponent<scene::TerrainComponent>()
                 && !go->GetComponent<scene::WaterComponent>())
                 continue;
-            DrawHierarchyNode(ctx, *go, 0, rootCount, visited, deferred, pendingCreate,
+            DrawHierarchyNode(ctx, *go, visited, deferred, pendingCreate,
                 HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
                 m_lastClickedEntity, m_pendingClickEntity, m_hierarchyDragStarted,
                 hierarchyNodeHovered, mapVisible, m_visibleOrder,
@@ -1380,9 +1328,8 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     const ImGuiID hierarchyDropId = ImGui::GetID("##hierarchy_drop_target");
 
     const auto& roots = visited.roots;
-    const size_t rootCount = roots.size();
-    for (size_t i = 0; i < roots.size(); ++i)
-        if (auto* root = ctx.activeScene->GetGameObject(roots[i])) DrawHierarchyNode(ctx, *root, i, rootCount, visited, deferred, pendingCreate,
+    for (const auto id : roots)
+        if (auto* root = ctx.activeScene->GetGameObject(id)) DrawHierarchyNode(ctx, *root, visited, deferred, pendingCreate,
             HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
             m_lastClickedEntity, m_pendingClickEntity,
             m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,
@@ -1391,7 +1338,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     /// @note 失効した親を参照する孤立オブジェクトは、通常のルート順の末尾で救済する。
     for (const auto id : visited.recoveredRoots) {
         if (auto* go = ctx.activeScene->GetGameObject(id))
-            DrawHierarchyNode(ctx, *go, 0, 0, visited, deferred, pendingCreate,
+            DrawHierarchyNode(ctx, *go, visited, deferred, pendingCreate,
                 HierarchyRevealState{ m_pendingExpand, m_revealScrollTo, m_expansionRequests },
                 m_lastClickedEntity, m_pendingClickEntity,
                 m_hierarchyDragStarted, hierarchyNodeHovered, outVisible, m_visibleOrder,

@@ -834,18 +834,6 @@ private:
 
 namespace {
 
-class ThreadedIblBaker final : public IIblBaker {
-public:
-    ThreadedIblBaker(ThreadedRenderer& owner, std::unique_ptr<IIblBaker> native)
-        : m_owner(owner), m_native(std::move(native)) {}
-    ~ThreadedIblBaker() override { m_owner.Sync([this] { m_native.reset(); }); }
-    bool Bake(const IblBakeInput& input, const std::string& directory, const std::string& name, IblBakeOutput& output) override
-    { return m_owner.Sync([&] { return m_native->Bake(input, directory, name, output); }); }
-private:
-    ThreadedRenderer& m_owner;
-    std::unique_ptr<IIblBaker> m_native;
-};
-
 class ThreadedImGuiRenderer final : public IImGuiRenderer {
 public:
     ThreadedImGuiRenderer(ThreadedRenderer& owner, std::unique_ptr<IImGuiRenderer> native)
@@ -1070,8 +1058,7 @@ private:
 
 std::unique_ptr<IIblBaker> ThreadedRenderer::CreateIblBaker()
 {
-    auto native = Sync([this] { return m_native->CreateIblBaker(); });
-    return native ? std::make_unique<ThreadedIblBaker>(*this, std::move(native)) : nullptr;
+    return Sync([this] { return m_native->CreateIblBaker(); });
 }
 
 void gpu_cull_detail::SubmitCullDraw(IRenderer& renderer, ResourceManager& resources,

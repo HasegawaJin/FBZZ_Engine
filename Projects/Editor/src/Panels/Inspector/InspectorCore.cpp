@@ -348,6 +348,7 @@ bool& UniformScaleLock() { static bool locked = false; return locked; }
 void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 {
     if (!ImGui::BeginPopup("##transform_hdr_ctx")) return;
+    DrawComponentMenuHeading(LOCT("Transform"));
 
     /// @note 対象は「今 Inspector が映しているノード」。選択と一致しない場合があるため明示する。
     OpArgs args;
@@ -355,12 +356,13 @@ void DrawTransformHeaderMenu(scene::GameObject& go, EditorContext& ctx)
 
     const auto item = [&ctx, &args](const char* operatorId, const char* label) {
         const bool enabled = CanInvokeOperator(ctx, operatorId, args);
-        if (ImGui::MenuItem(label, nullptr, false, enabled))
+        if (ImGui::MenuItem(LOC(label), nullptr, false, enabled))
             InvokeOperator(ctx, operatorId, args);
     };
 
     item("transform.copy", "Copy Transform");
-    item("transform.paste", "Paste Transform");
+    if (DrawPasteComponentValuesMenuItem("Paste Transform", CanInvokeOperator(ctx, "transform.paste", args)))
+        InvokeOperator(ctx, "transform.paste", args);
     ImGui::Separator();
     item("transform.reset", "Reset Transform");
     ImGui::EndPopup();
@@ -407,30 +409,24 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
         ImGui::Spacing();
 
         const bool isUI = scene::IsUIElement(*go);
+        constexpr auto valueAlignment = ImGuiSliderFlags_AlignValueRight;
 
         if (isUI) {
-            const float itemW = (ImGui::GetContentRegionAvail().x
-                                 - ImGui::CalcTextSize("X").x * 2
-                                 - ImGui::GetStyle().ItemSpacing.x * 3) * 0.5f;
-
-            ImGui::Text("Pos");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(itemW);
-            ImGui::DragFloat("##px", &t.position.x, 1.0f, 0.0f, 0.0f, "X %.0f");
-            TrackTransformEdit(*go, ctx, "Change Position X");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(itemW);
-            ImGui::DragFloat("##py", &t.position.y, 1.0f, 0.0f, 0.0f, "Y %.0f");
-            TrackTransformEdit(*go, ctx, "Change Position Y");
+            float position[] = { t.position.x, t.position.y };
+            if (widgets::DragAxes("Position", position, 2, 1.0f, 0.0f, 0.0f, "%.0f px", 0, nullptr, 0,
+                                  valueAlignment)) {
+                t.position.x = position[0];
+                t.position.y = position[1];
+            }
+            TrackTransformEdit(*go, ctx, "Change Position");
 
             math::Vector3 euler = widgets::QuatToEulerDeg(t.rotation);
             float rotZ = euler.z;
-            ImGui::Text("Rot");
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(-1.0f);
-            if (ImGui::DragFloat("##rz", &rotZ, 0.5f, -360.0f, 360.0f, "Z %.1f deg"))
+            const auto rotationRow = widgets::BeginPropertyField("Rotation");
+            if (ImGui::DragFloat("##rz", &rotZ, 0.5f, -360.0f, 360.0f, "Z %.1f deg", valueAlignment))
                 t.rotation = widgets::EulerDegToQuat({ euler.x, euler.y, rotZ });
             TrackTransformEdit(*go, ctx, "Change Rotation");
+            widgets::EndPropertyField(rotationRow);
 
             /// @note 実測サイズの文字以外は scale.xy が矩形そのものなので寸法として出す
             /// @note        (絵を持たない Mask や Scroll View もここでしか大きさを決められない)。
@@ -444,26 +440,14 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             const bool stretchY = uiAnchor && uiAnchor->stretchY;
 
             if (!scene::HasMeasuredUISize(*go)) {
-                ImGui::Text("Size");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(itemW);
-                ImGui::BeginDisabled(stretchX);
-                ImGui::DragFloat("##sw", &t.scale.x, 1.0f, 1.0f, 0.0f,
-                                 stretchX ? "W (stretch)" : "W %.0f");
-                ImGui::EndDisabled();
-                TrackTransformEdit(*go, ctx, "Change Width");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(itemW);
-                ImGui::BeginDisabled(stretchY);
-                ImGui::DragFloat("##sh", &t.scale.y, 1.0f, 1.0f, 0.0f,
-                                 stretchY ? "H (stretch)" : "H %.0f");
-                ImGui::EndDisabled();
-                TrackTransformEdit(*go, ctx, "Change Height");
-                if ((stretchX || stretchY)
-                    && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-                    ImGui::SetTooltip("ストレッチしている軸の大きさは親から決まります。"
-                                      "余白は UI Image / UI Text の offsetMax と position で調整します");
+                float size[] = { t.scale.x, t.scale.y };
+                const unsigned stretched = (stretchX ? 1u : 0u) | (stretchY ? 2u : 0u);
+                if (widgets::DragAxes("Size", size, 2, 1.0f, 0.0f, 0.0f, "%.0f px", 0, nullptr, stretched,
+                                     valueAlignment)) {
+                    t.scale.x = size[0];
+                    t.scale.y = size[1];
                 }
+                TrackTransformEdit(*go, ctx, "Change Size");
             }
 
             if (auto* uiImage = go->GetComponent<scene::UIImage>()) {
@@ -489,22 +473,20 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             /// @note ラベルを左・値を右にそろえ、成分は軸色付き (X 赤 / Y 緑 / Z 青) にする。Transform だけ
             /// @note        ImGui 既定の «値 → ラベル» 順で直下のコンポーネント行と左端が食い違っていたため。
             /// @note        軸色は «どの成分を掴んでいるか» を数え直さずに判別するためのもの。
-            const float column = widgets::PropertyLabelColumnWidth();
+            const float lockSpace = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.x;
 
             /// @note 「地色 + ラベル + 右クリックのリセット要求」までを 1 か所にまとめる。
             /// @note        リセットは値ウィジェットより先に問い合わせる必要がある (ImGui の
             /// @note        コンテキストメニューは「直前のアイテム」= ラベルに紐づくため)。
             const auto beginRow = [&](const char* label,
                                       const char* popupId,
-                                      bool& outResetRequested) {
+                                      bool& outResetRequested,
+                                      float reserve) {
                 ImGui::PushID(label);
                 const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
-                widgets::LabelEllipsis(
-                    label, column - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
+                const float column = widgets::DrawPropertyLabel(LOCT(label));
                 outResetRequested = RowResetRequested(popupId);
-                ImGui::SameLine();
-                if (ImGui::GetCursorPosX() < column) ImGui::SetCursorPosX(column);
-                ImGui::SetNextItemWidth(-FLT_MIN);
+                widgets::PlacePropertyValue(column, reserve);
                 return row;
             };
             const auto endRow = [](const widgets::PropertyRowScope& row) {
@@ -516,8 +498,8 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             {
                 bool resetRequested = false;
                 const widgets::PropertyRowScope row =
-                    beginRow("Position", "##pos_ctx", resetRequested);
-                widgets::DragAxes("##pos", t.position, 0.1f);
+                    beginRow("Position", "##pos_ctx", resetRequested, lockSpace);
+                widgets::DragAxes("##pos", t.position, 0.1f, 0.0f, 0.0f, "%.3f", valueAlignment);
                 TrackTransformEdit(*go, ctx, "Change Position");
                 if (resetRequested) {
                     const scene::Transform before = t;
@@ -531,8 +513,8 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             {
                 bool resetRequested = false;
                 const widgets::PropertyRowScope row =
-                    beginRow("Rotation", "##rot_ctx", resetRequested);
-                widgets::DragQuatEuler3("##rot", t.rotation, 0.5f);
+                    beginRow("Rotation", "##rot_ctx", resetRequested, lockSpace);
+                widgets::DragQuatEuler3("##rot", t.rotation, 0.5f, valueAlignment);
                 TrackTransformEdit(*go, ctx, "Change Rotation");
                 if (resetRequested) {
                     const scene::Transform before = t;
@@ -546,7 +528,7 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
             {
                 bool resetRequested = false;
                 const widgets::PropertyRowScope row =
-                    beginRow("Scale", "##scale_ctx", resetRequested);
+                    beginRow("Scale", "##scale_ctx", resetRequested, 0.0f);
                 widgets::DragScaleAxes("##scale", t.scale, UniformScaleLock(), 0.01f);
                 TrackTransformEdit(*go, ctx, "Change Scale");
                 if (resetRequested) {
@@ -565,16 +547,15 @@ void DrawTransformInspectors(scene::GameObject* go, EditorContext& ctx)
                 const widgets::PropertyRowScope row = widgets::BeginPropertyRow();
 
                 ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
-                widgets::LabelEllipsis(
-                    "World", column - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
+                const float column = widgets::DrawPropertyLabel(LOCT("World"));
                 ImGui::PopStyleColor();
 
-                ImGui::SameLine();
-                if (ImGui::GetCursorPosX() < column) ImGui::SetCursorPosX(column);
-                ImGui::AlignTextToFramePadding();
-                ImGui::TextDisabled("%.2f   %.2f   %.2f",
-                                    t.worldPosition.x, t.worldPosition.y, t.worldPosition.z);
-                if (ImGui::IsItemHovered())
+                widgets::PlacePropertyValue(column, lockSpace);
+                auto worldPosition = t.worldPosition;
+                ImGui::BeginDisabled();
+                widgets::DragAxes("##worldPosition", worldPosition, 0.1f, 0.0f, 0.0f, "%.3f", valueAlignment);
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
                     ImGui::SetTooltip("World position (read-only)\nLocal values above are relative to \"%s\"",
                                       parent->name.c_str());
 
@@ -710,9 +691,9 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 ImGui::OpenPopup("##script_opts");
 
             if (ImGui::BeginPopup("##script_opts")) {
+                DrawComponentMenuHeading(displayName.c_str());
                 drawMoveMenuItems();
-                ImGui::Separator();
-                if (ImGui::MenuItem("Remove Component"))
+                if (DrawRemoveComponentMenuItem())
                     s_scriptFrame.removeIndex = i;
                 ImGui::EndPopup();
             }
@@ -867,9 +848,9 @@ void DrawScriptCard(scene::GameObject* go, EditorContext& ctx, int index)
                 ImGui::OpenPopup("##missing_script_opts");
 
             if (ImGui::BeginPopup("##missing_script_opts")) {
+                DrawComponentMenuHeading(header.c_str());
                 drawMoveMenuItems();
-                ImGui::Separator();
-                if (ImGui::MenuItem("Remove Component"))
+                if (DrawRemoveComponentMenuItem())
                     s_scriptFrame.removeIndex = i;
                 ImGui::EndPopup();
             }

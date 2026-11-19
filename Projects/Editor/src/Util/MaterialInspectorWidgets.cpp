@@ -2,6 +2,7 @@
 /// @brief   .mat 用 Inspector ウィジェット群。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Asset/ShaderCapabilities.hpp>
 #include <Editor/Util/MaterialInspectorWidgets.hpp>
 #include <Editor/Util/AssetPath.hpp>
@@ -55,17 +56,17 @@ bool DrawFloatMaterialValues(const char* label, std::string_view name, float* va
 {
     if (count == 1 && name == "parallaxDepth") {
         float centimetres = values[0] * 100.0f;
-        const bool changed = ImGui::DragFloat(label, &centimetres, 0.1f, 0.0f, 20.0f,
+        const bool changed = property::DragFloat(label, &centimetres, 0.1f, 0.0f, 20.0f,
             "%.1f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::SetItemTooltip("Maximum recess. Zero disables parallax.");
         if (changed) values[0] = centimetres * 0.01f;
         return changed;
     }
-    if (count == 1) return ImGui::DragFloat(label, values, 0.01f);
+    if (count == 1) return property::DragFloat(label, values, 0.01f);
     if (count == 3 && IsMaterialColor(name))
-        return ImGui::ColorEdit3(label, values, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+        return property::ColorEdit3(label, values, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
     if (count == 4 && IsMaterialColor(name))
-        return ImGui::ColorEdit4(label, values, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
+        return property::ColorEdit4(label, values, ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float);
     return widgets::DragAxes(label, values, count, 0.01f);
 }
 
@@ -162,7 +163,7 @@ void DrawReflectedMaterialParam(asset::MaterialAssetAuthoring& material, const r
             switch (variable.varType) {
             case renderer::ShaderVarType::Float: {
                 float value = static_cast<float>(values[i]);
-                changed |= ImGui::DragFloat(fieldLabel, &value, 0.01f);
+                changed |= property::DragFloat(fieldLabel, &value, 0.01f);
                 values[i] = value;
                 break;
             }
@@ -180,7 +181,7 @@ void DrawReflectedMaterialParam(asset::MaterialAssetAuthoring& material, const r
             }
             case renderer::ShaderVarType::Bool: {
                 bool value = values[i] != 0;
-                changed |= ImGui::Checkbox(fieldLabel, &value);
+                changed |= property::Checkbox(fieldLabel, &value);
                 values[i] = value ? 1 : 0;
                 break;
             }
@@ -251,7 +252,7 @@ void DrawStoredMaterialParameters(asset::MaterialAssetAuthoring& material, const
             } else if (ImGui::TreeNode(name.c_str())) {
                 for (size_t i = 0; i < values.size(); ++i) {
                     ImGui::PushID(static_cast<int>(i));
-                    ImGui::DragFloat("Value", &values[i], 0.01f);
+                    property::DragFloat("Value", &values[i], 0.01f);
                     ImGui::PopID();
                 }
                 ImGui::TreePop();
@@ -297,22 +298,22 @@ void DrawMaterialRenderSettings(asset::MaterialAssetAuthoring& material)
     if (!ImGui::CollapsingHeader("Render Settings")) return;
     static constexpr const char* BLEND_NAMES[] = { "Opaque", "Alpha Blend", "Additive", "Premultiplied" };
     int blendIndex = static_cast<int>(material.blendMode);
-    if (ImGui::Combo("Blend", &blendIndex, BLEND_NAMES, IM_ARRAYSIZE(BLEND_NAMES)))
+    if (property::Combo("Blend", &blendIndex, BLEND_NAMES, IM_ARRAYSIZE(BLEND_NAMES)))
         material.blendMode = static_cast<renderer::BlendMode>(blendIndex);
-    ImGui::Checkbox("Double Sided", &material.doubleSided);
-    ImGui::DragInt("Render Queue", &material.renderQueue, 1.0f, 0, 5000);
-    ImGui::DragInt("Depth Bias", &material.depthBias, 0.25f, -1024, 1024);
-    ImGui::DragFloat("Depth Bias Slope", &material.depthBiasSlope, 0.01f, -8.0f, 8.0f);
+    property::Checkbox("Double Sided", &material.doubleSided);
+    property::DragInt("Render Queue", &material.renderQueue, 1.0f, 0, 5000);
+    property::DragInt("Depth Bias", &material.depthBias, 0.25f, -1024, 1024);
+    property::DragFloat("Depth Bias Slope", &material.depthBiasSlope, 0.01f, -8.0f, 8.0f);
     ImGui::SetItemTooltip("Positive values pull this material toward the camera to reduce Z-fighting.");
     static constexpr const char* USAGE_NAMES[] = { "Auto", "Particle", "Trail", "UI", "Decal", "Post Process" };
     static_assert(IM_ARRAYSIZE(USAGE_NAMES) == static_cast<int>(asset::RenderPath::PostProcess) + 1);
     int usageIndex = static_cast<int>(material.renderPath);
-    if (ImGui::Combo("Material Usage", &usageIndex, USAGE_NAMES, IM_ARRAYSIZE(USAGE_NAMES)))
+    if (property::Combo("Material Usage", &usageIndex, USAGE_NAMES, IM_ARRAYSIZE(USAGE_NAMES)))
         material.renderPath = static_cast<asset::RenderPath>(usageIndex);
     ImGui::SetItemTooltip("Forward / Deferred is set in Project Settings.");
     static constexpr const char* MESH_TYPES[] = { "Any", "Surface", "Skinned" };
     int meshType = static_cast<int>(material.meshType);
-    if (ImGui::Combo("Mesh Type", &meshType, MESH_TYPES, IM_ARRAYSIZE(MESH_TYPES)))
+    if (property::Combo("Mesh Type", &meshType, MESH_TYPES, IM_ARRAYSIZE(MESH_TYPES)))
         material.meshType = static_cast<asset::MeshType>(meshType);
 }
 
@@ -355,7 +356,7 @@ bool DrawMaterialFloat(asset::MaterialAssetAuthoring& mat, const char* label, co
                        float speed = 0.01f, float min = 0.0f, float max = 0.0f)
 {
     auto values = ReadFloatParam<1>(mat, key, {def});
-    const bool changed = ImGui::DragFloat(label, values.data(), speed, min, max, "%.3f");
+    const bool changed = property::DragFloat(label, values.data(), speed, min, max, "%.3f");
     return StoreFloatParam(mat, key, values, changed);
 }
 
@@ -363,21 +364,21 @@ bool DrawMaterialFloat2(asset::MaterialAssetAuthoring& mat, const char* label, c
                         math::Vector2 def, float speed = 0.01f)
 {
     auto values = ReadFloatParam<2>(mat, key, {def.x, def.y});
-    const bool changed = ImGui::DragFloat2(label, values.data(), speed);
+    const bool changed = property::DragFloat2(label, values.data(), speed);
     return StoreFloatParam(mat, key, values, changed);
 }
 
 bool DrawMaterialColor3(asset::MaterialAssetAuthoring& mat, const char* label, const char* key, math::Vector3 def)
 {
     auto values = ReadFloatParam<3>(mat, key, {def.x, def.y, def.z});
-    const bool changed = ImGui::ColorEdit3(label, values.data());
+    const bool changed = property::ColorEdit3(label, values.data());
     return StoreFloatParam(mat, key, values, changed);
 }
 
 bool DrawMaterialBoolFloat(asset::MaterialAssetAuthoring& mat, const char* label, const char* key, bool def)
 {
     bool enabled = ReadFloatParam<1>(mat, key, {def ? 1.0f : 0.0f})[0] > 0.5f;
-    const bool changed = ImGui::Checkbox(label, &enabled);
+    const bool changed = property::Checkbox(label, &enabled);
     return StoreFloatParam(mat, key, std::array{enabled ? 1.0f : 0.0f}, changed);
 }
 
@@ -396,7 +397,7 @@ static bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& 
     ImGui::SeparatorText("Dielectric");
     auto& dielectric = material.dielectric;
     bool enabled = dielectric.transmission != 0;
-    bool changed = ImGui::Checkbox("Glass", &enabled);
+    bool changed = property::Checkbox("Glass", &enabled);
     if (changed) {
         dielectric.transmission = enabled ? 1.0f : 0.0f;
         if (enabled) {
@@ -413,17 +414,17 @@ static bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& 
         }
     }
     if (enabled) {
-        const bool thinChanged = ImGui::Checkbox("Thin Walled", &dielectric.thinWalled);
+        const bool thinChanged = property::Checkbox("Thin Walled", &dielectric.thinWalled);
         changed |= thinChanged;
         if (thinChanged && dielectric.thinWalled) {
             /// @note 厚みゼロの初期 BSDF は滑面・無吸収に限定し、固体の距離吸収を持ち込まない。
             EnsureFloatParam(material, "roughness", 1, {0})[0] = 0;
             dielectric.attenuationColor = {1, 1, 1};
         }
-        changed |= ImGui::DragFloat("IOR", &dielectric.ior, 0.01f, 1.0f, 5.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        changed |= property::DragFloat("IOR", &dielectric.ior, 0.01f, 1.0f, 5.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
         if (!dielectric.thinWalled) {
-            changed |= ImGui::ColorEdit3("Attenuation Color", &dielectric.attenuationColor.x);
-            changed |= ImGui::DragFloat("Attenuation Distance [m]", &dielectric.attenuationDistance,
+            changed |= property::ColorEdit3("Attenuation Color", &dielectric.attenuationColor.x);
+            changed |= property::DragFloat("Attenuation Distance [m]", &dielectric.attenuationDistance,
                 0.01f, 0.0001f, 1000.0f, "%.4f", ImGuiSliderFlags_AlwaysClamp);
         }
     }
@@ -433,7 +434,7 @@ static bool DrawSolidDielectricMaterialInspector(asset::MaterialAssetAuthoring& 
 void DrawMaterialAuthoringFields(asset::MaterialAssetAuthoring& material,
     renderer::ResourceManager* resources, const std::string& projectRoot)
 {
-    widgets::AssetPathField("Shader", material.shaderPath, ".hlsl", projectRoot);
+    property::AssetPathField("Shader", material.shaderPath, ".hlsl", projectRoot);
     const auto capabilities = asset::ResolveShaderCapabilities(material.shaderPath);
     if (capabilities.surface == renderer::ShaderSurfaceContract::TERRAIN) {
         DrawTerrainLayerMaterialInspector(material);
@@ -594,11 +595,11 @@ bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
         const bool coefficientOptics = ReadFloatParam<1>(mat, "opticalMode", {0.0f})[0] > 0.5f;
         if (coefficientOptics) {
             auto absorption = ReadFloatParam<3>(mat, "absorptionCoefficients", {0.35f, 0.06f, 0.02f});
-            const bool absorptionChanged = ImGui::DragFloat3("Absorption [1/m]", absorption.data(), 0.01f, 0.0f, 1000.0f, "%.3f");
+            const bool absorptionChanged = property::DragFloat3("Absorption [1/m]", absorption.data(), 0.01f, 0.0f, 1000.0f, "%.3f");
             dirty |= StoreFloatParam(mat, "absorptionCoefficients", absorption, absorptionChanged);
             Tooltip("赤・緑・青の光を水が吸収する強さ。大きいほど水底が暗く見えます。");
             auto scattering = ReadFloatParam<3>(mat, "scatteringCoefficients", {0.02f, 0.035f, 0.045f});
-            const bool scatteringChanged = ImGui::DragFloat3("Scattering [1/m]", scattering.data(), 0.01f, 0.0f, 1000.0f, "%.3f");
+            const bool scatteringChanged = property::DragFloat3("Scattering [1/m]", scattering.data(), 0.01f, 0.0f, 1000.0f, "%.3f");
             dirty |= StoreFloatParam(mat, "scatteringCoefficients", scattering, scatteringChanged);
             Tooltip("水中の粒子で光が散る強さ。大きいほど濁って見えます。");
             dirty |= DrawMaterialFloat(mat, "Scattering Direction", "phaseG", 0.0f, 0.01f, -0.95f, 0.95f);
@@ -615,7 +616,7 @@ bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
             const auto drawUnderwaterParam = [&](const char* label, const char* key, float fallback,
                 float speed, float minimum, float maximum, const char* format) {
                 float value = readUnderwaterParam(key, fallback, minimum, maximum);
-                const bool changed = ImGui::DragFloat(label, &value, speed, minimum, maximum, format,
+                const bool changed = property::DragFloat(label, &value, speed, minimum, maximum, format,
                     ImGuiSliderFlags_AlwaysClamp);
                 return StoreFloatParam(mat, key, std::array{value}, changed);
             };
@@ -628,7 +629,7 @@ bool DrawWaterMaterialInspector(asset::MaterialAssetAuthoring& mat)
             dirty |= drawUnderwaterParam("Distortion", "underwaterDistortion", 0.001f, 0.0001f, 0.0f, 0.01f, "%.4f");
             Tooltip("水の大きな波に連動する水中光のゆらぎ。");
             int lightSteps = static_cast<int>(std::round(readUnderwaterParam("underwaterLightSteps", 48.0f, 16.0f, 64.0f)));
-            const bool stepsChanged = ImGui::SliderInt("Light Steps", &lightSteps, 16, 64);
+            const bool stepsChanged = property::SliderInt("Light Steps", &lightSteps, 16, 64);
             dirty |= StoreFloatParam(mat, "underwaterLightSteps", std::array{static_cast<float>(lightSteps)}, stepsChanged);
             Tooltip("水中の方向光散乱の積分精度。増やすと滑らかになりますが重くなります。");
         }

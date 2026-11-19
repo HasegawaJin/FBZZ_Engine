@@ -502,9 +502,14 @@ void ManagedSettingsReflector::DrawPath(std::string_view path, const char* name,
                                 else { patch.Set("from", static_cast<int64_t>(start + index)); patch.Set("to", destination); }
                                 QueuePatch(std::move(patch));
                             };
-                            if (ImGui::SmallButton("削除")) queue("remove", 0);
-                            if (start + index > 0) { ImGui::SameLine(); if (ImGui::SmallButton("上へ")) queue("move", static_cast<int64_t>(start + index - 1)); }
-                            if (start + index + 1 < static_cast<uint64_t>(total)) { ImGui::SameLine(); if (ImGui::SmallButton("下へ")) queue("move", static_cast<int64_t>(start + index + 1)); }
+                            const float width = widgets::ListRowToolbarWidth(true);
+                            const float space = ImGui::GetContentRegionAvail().x - width;
+                            if (space > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + space);
+                            const int position = static_cast<int>(start + index);
+                            const auto buttons = widgets::ListRowToolbar(position, static_cast<int>(total), true, false);
+                            if (buttons.remove) queue("remove", 0);
+                            if (buttons.moveUp) queue("move", position - 1);
+                            if (buttons.moveDown) queue("move", position + 1);
                             ImGui::PopID(); ImGui::EndDisabled();
                         }
                         EndVisiblePath(childPath, childY, childActive);
@@ -527,8 +532,8 @@ void ManagedSettingsReflector::DrawPath(std::string_view path, const char* name,
     }
     OpData value = summary;
     if (const auto draft = m_draft->values.find(currentPath); draft != m_draft->values.end()) value = draft->second;
-    if (m_draft->mixedPaths.contains(currentPath) && !m_draft->values.contains(currentPath)) ImGui::TextDisabled("%s: 複数の値", name);
     ImGuiReflector ui = static_cast<const ImGuiReflector&>(*this); ui.m_changed = false;
+    ui.m_mixedValue = m_draft->mixedPaths.contains(currentPath) && !m_draft->values.contains(currentPath);
     ui.SetFieldReadOnly(!setting); ImGui::BeginDisabled(!editable);
     if (type == "Fbzz.GameObject") {
         scene::ScriptObjectReference reference{value.Find("$go") ? Text(value, "$go") : std::string{}, scene::EntityID::INVALID};
@@ -556,7 +561,8 @@ void ManagedSettingsReflector::DrawPath(std::string_view path, const char* name,
     } else if ((kind == "vector2" || kind == "vector3" || kind == "vector4" || kind == "quaternion") && value.IsArray()) {
         float numbers[4]{}; const size_t count = value.AsArray().size();
         if (count >= 2 && count <= 4) { for (size_t index = 0; index < count; ++index) numbers[index] = Number(value.AsArray()[index]);
-            if (ui.BeginRow(name)) { const bool changed = count == 2 ? ImGui::DragFloat2("##v", numbers, 0.01f) : count == 3 ? ImGui::DragFloat3("##v", numbers, 0.01f) : ImGui::DragFloat4("##v", numbers, 0.01f);
+            if (ui.BeginRow(name)) { const bool changed = widgets::DragAxes("##v", numbers,
+                    static_cast<int>(count), 0.01f, 0.0f, 0.0f, "%.3f", ui.m_mixedValue ? 0xfu : 0u);
                 if (changed) { value = OpData::MakeArray(); for (size_t index = 0; index < count; ++index) value.Push(numbers[index]); ui.m_changed = true; } ui.EndRow(); } }
     } else if (value.IsBool()) { bool number = value.AsBool(); ui.Field(name, number); value = OpData(number); }
     else if (value.IsString()) { std::string text = value.AsString(); ui.Field(name, text); value = OpData(std::move(text)); }

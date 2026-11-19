@@ -25,6 +25,7 @@ class BehaviorTreePanel final : public IPanel {
 public:
     const char* GetWindowName()        const override { return "Behavior Tree"; }
     bool        GetDefaultVisibility() const override { return false; }
+    HotkeyScope GetHotkeyScope() const override { return m_path.empty() ? HotkeyScope::None : HotkeyScope::BehaviorTree; }
     void OnInit(EditorContext& ctx) override;
     void OnRegisterOperators(OperatorRegistry& registry) override;
     void OnShutdown() override;
@@ -44,6 +45,7 @@ private:
     [[nodiscard]] static int LinkIdOf(int childNodeId) { return childNodeId; }
 
     bool LoadTree(const std::string& path);
+    void RequestLoadTree(const std::string& path);
     [[nodiscard]] bool SaveTree();
     void PushUndo();
     void Undo();
@@ -98,4 +100,4 @@ private:
     /// @}
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

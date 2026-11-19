@@ -55,6 +55,7 @@ struct ImGuiReflector : scene::IReflector {
     bool m_groupOpen = true;
     bool m_rowDisabled = false;
     bool m_changed = false;
+    bool m_mixedValue = false;
 
     /// @note  描画中の行 (ホバー地色の高さ記録用)。行は入れ子にならないので 1 つで足りる。
     widgets::PropertyRowScope m_row{};
@@ -160,16 +161,9 @@ struct ImGuiReflector : scene::IReflector {
                 ImGui::SetScrollFromPosY(ImGui::GetCursorPosY(), 0.3f);
         }
 
-        const float col = ValueColumnX();
-        /// @note ラベル列に収まらない長い名前は末尾を省略し、全文はホバーのツールチップへ回す (以前は値ウィジェットを押し出し左端がずれていた)。
-        widgets::LabelEllipsis(
-            HumanizeName(name).c_str(),
-            col - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
-        ImGui::SameLine();
-        if (ImGui::GetCursorPosX() < col)
-            ImGui::SetCursorPosX(col);
-        /// @note 続く単一ウィジェットを右端まで広げる (複数ボタンのスロットは Button が無視するので無害)。
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        auto caption = HumanizeName(name);
+        if (m_mixedValue) caption += std::string(" · ") + LOCT("Mixed values");
+        widgets::PlacePropertyValue(widgets::DrawPropertyLabel(caption.c_str()));
         m_rowDisabled = !FieldEnabled();
         if (m_rowDisabled) ImGui::BeginDisabled();
         return true;
@@ -197,7 +191,7 @@ struct ImGuiReflector : scene::IReflector {
         const float speed = FieldStep() > 0.0f ? FieldStep() : widgets::AdaptiveDragSpeed(v);
         const float minimum = HasFieldMin() ? FieldMin() : 0.0f;
         const char* format = CurrentFieldHint() == FieldHint::Angle ? "%.1f deg" : "%.3f";
-        if (ImGui::DragFloat("##v", &v, speed, 0.0f, 0.0f, format)) {
+        if (ImGui::DragFloat("##v", &v, speed, 0.0f, 0.0f, format, ImGuiSliderFlags_AlignValueLeft)) {
             if (HasFieldMin()) v = (std::max)(v, minimum);
             m_changed = true;
         }
@@ -242,7 +236,7 @@ struct ImGuiReflector : scene::IReflector {
                 }
                 ImGui::EndCombo();
             }
-        } else if (ImGui::DragInt("##v", &v, static_cast<float>(speed))) {
+        } else if (ImGui::DragInt("##v", &v, static_cast<float>(speed), 0, 0, "%d", ImGuiSliderFlags_AlignValueLeft)) {
             if (HasFieldMin()) v = (std::max)(v, minimum);
             m_changed = true;
         }
@@ -252,7 +246,7 @@ struct ImGuiReflector : scene::IReflector {
     void Field(const char* name, bool& v) override
     {
         if (!BeginRow(name)) return;
-        m_changed |= ImGui::Checkbox("##v", &v);
+        m_changed |= widgets::CheckboxMixed("##v", v, m_mixedValue);
         EndRow();
     }
 
@@ -755,18 +749,19 @@ struct ImGuiReflector : scene::IReflector {
             }
 
             ImGui::SameLine();
-            if (ImGui::GetCursorPosX() < ValueColumnX())
+            if (ImGui::GetCursorPosX() < ValueColumnX() && ImGui::GetContentRegionAvail().x >= ImGui::GetFontSize() * 13.0f)
                 ImGui::SetCursorPosX(ValueColumnX());
 
             /// @note 右端に操作ボタンぶんの余白を確保してから値を描く。参照スロットのように
             /// @note        自分で残り幅を測るウィジェットでも ▲▼✕ が押し出されない。
-            const widgets::RightReserveScope reserve = widgets::BeginRightReserve(toolbarWidth);
+            const bool inlineToolbar = ImGui::GetContentRegionAvail().x - toolbarWidth >= ImGui::GetFontSize() * 7.0f;
+            const widgets::RightReserveScope reserve = widgets::BeginRightReserve(inlineToolbar ? toolbarWidth : 0.0f);
             ImGui::SetNextItemWidth(-FLT_MIN);
             m_changed |= drawValue(values[static_cast<size_t>(index)]);
             widgets::EndRightReserve(reserve);
 
             const widgets::ListRowButtons buttons =
-                widgets::ListRowToolbar(index, count, removable);
+                widgets::ListRowToolbar(index, count, removable, inlineToolbar);
             if (buttons.moveUp)   { moveFrom = index; moveTo = index - 1; }
             if (buttons.moveDown) { moveFrom = index; moveTo = index + 1; }
             if (buttons.remove)   removeIndex = index;

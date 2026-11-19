@@ -52,6 +52,7 @@ namespace fbzz::editor {
 
 class ViewportPanel;
 class BuildOutputPanel;
+class HotkeyEditorPanel;
 class ProjectSettingsPanel;
 class BuildSettingsPanel;
 class AssetBrowserPanel;
@@ -74,8 +75,10 @@ public:
     EditorApp();
     ~EditorApp(); ///< @note TerrainTool の完全型が見えるところ (EditorApp.cpp) で定義する
 
+    /// @param enableViewports false の場合は Scene / Game の描画と撮影を省く。
     /// @return 初期化済みなら false。
-    bool Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window);
+    bool Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer,
+              renderer::ResourceManager& resources, core::Window& window, bool enableViewports = true);
     void Shutdown();
     bool OpenProject(const std::string& projectRoot, const std::string& projectSettingsPath, const std::string& scenePath);
 
@@ -132,6 +135,7 @@ private:
     void RenderSceneView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
                          scene::RenderFrameGeometryCache* frameGeometry);
     void RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
+                        const std::string& cameraId,
                         scene::RenderFrameGeometryCache* frameGeometry);
 
     std::unique_ptr<scene::Scene>  m_scene;
@@ -337,6 +341,7 @@ private:
 
     UndoStack          m_undoStack;
     HotkeyManager      m_hotkeys;
+    HotkeyEditorPanel* m_hotkeyEditorPanel = nullptr;
     OperatorRegistry   m_operators;
     ConsoleSink        m_consoleSink;
     EditorSettings     m_settings;
@@ -517,6 +522,7 @@ private:
     bool   m_guidConflictBarDismissed = false;
     NavigationPanel*                         m_navigationPanel        = nullptr;
     AiSettingsPanel*                         m_aiSettingsPanel        = nullptr;
+    bool m_viewportsEnabled = true;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_sceneViewportRT;
     renderer::ResourceHandle<renderer::RenderTargetTag> m_gameViewportRT;
     /// @brief このフレームで RT を作り直したか。OnRender の «出ているビューだけ描く» 判定へ渡す。

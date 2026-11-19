@@ -7,6 +7,7 @@
 #include <Editor/Panels/SequencePanel.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Asset/SequenceAsset.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -27,6 +28,7 @@ protected:
     void TearDown() override
     {
         editor::OpArgs args; args.Set("discard", true); static_cast<void>(Invoke("sequence.close", args));
+        editor::AssetDirtyRegistry::DiscardAll();
         m_registry.Clear(); m_panel.OnShutdown(); EditorFixture::TearDown();
     }
     editor::OpResult Invoke(const char* id, const editor::OpArgs& args = {})
@@ -79,6 +81,49 @@ TEST_F(SequenceOperatorTest, CloseRequiresExplicitDiscardForUnsavedChanges)
     EXPECT_TRUE(Invoke("sequence.inspect").data.Find("dirty")->AsBool());
     editor::OpArgs close; close.Set("discard", true); ASSERT_TRUE(Invoke("sequence.close", close).ok);
     EXPECT_TRUE(Invoke("sequence.inspect").data.Find("path")->AsString().empty());
+}
+/// @brief アセットブラウザーから別の演出を開く際、未保存の編集は確認を閉じても残る。
+TEST_F(SequenceOperatorTest, RequestedOpenKeepsUnsavedDocumentUntilConfirmed)
+{
+    asset::SequenceAsset next;
+    next.name = "Other";
+    next.duration = 4.0;
+    const auto other = File("Assets/Other.sequence").generic_string();
+    ASSERT_TRUE(asset::SaveSequenceAsset(other, next));
+    ASSERT_TRUE(Duration(3.0f).ok);
+    Context().operators = &m_registry;
+    Context().undoStack = &m_undo;
+
+    auto* previous = ImGui::GetCurrentContext();
+    auto* imgui = ImGui::CreateContext();
+    ImGui::SetCurrentContext(imgui);
+    auto& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = { 1280.0f, 900.0f };
+    unsigned char* pixels = nullptr;
+    int width = 0;
+    int height = 0;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    const auto draw = [&] {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowSize({ 1000.0f, 800.0f });
+        m_panel.OnRender(Context());
+        editor::ModalDialog::OnRender();
+        ImGui::EndFrame();
+    };
+
+    m_panel.visible = true;
+    m_panel.RequestOpen(other);
+    draw();
+    io.AddKeyEvent(ImGuiKey_Escape, true);
+    draw();
+    ImGui::DestroyContext(imgui);
+    ImGui::SetCurrentContext(previous);
+
+    const auto state = Invoke("sequence.inspect");
+    ASSERT_TRUE(state.ok);
+    EXPECT_DOUBLE_EQ(state.data.Find("duration")->AsDouble(), 3.0);
+    EXPECT_TRUE(state.data.Find("dirty")->AsBool());
 }
 /// @brief Hidden preview feeds the player and release restores its ownership.
 TEST_F(SequenceOperatorTest, HiddenPreviewFeedsThePlayerAndReleaseRestoresItsOwnership)

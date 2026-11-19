@@ -20,6 +20,7 @@ class SequencePanel final : public IPanel {
 public:
     const char* GetWindowName()        const override { return "Sequence"; }
     bool        GetDefaultVisibility() const override { return false; }
+    HotkeyScope GetHotkeyScope() const override { return m_path.empty() ? HotkeyScope::None : HotkeyScope::Sequence; }
     void        OnShutdown() override;
     void OnRegisterOperators(OperatorRegistry& registry) override;
     void OnUpdate(EditorContext& ctx, float dt) override;
@@ -43,9 +44,10 @@ private:
         [[nodiscard]] bool HasItem()  const { return track >= 0 && index >= 0; }
     };
 
-    bool Load(const std::string& path);
+    bool Load(EditorContext& ctx, const std::string& path);
     bool Save();
     void CloseDocument(EditorContext& ctx);
+    void RequestDocumentAction(EditorContext& ctx, const char* action, const std::string& path = {});
 
     void PushUndo();
     void Undo();

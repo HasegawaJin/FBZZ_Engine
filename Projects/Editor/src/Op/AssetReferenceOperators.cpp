@@ -16,6 +16,8 @@ namespace fbzz::editor {
 namespace {
 struct ReferenceJob { int id = 0; assetrefs::Scan scan; };
 struct ReferenceJobs { int nextId = 1; std::vector<std::unique_ptr<ReferenceJob>> jobs; };
+struct GraphJob { int id = 0; assetrefs::GraphScan scan; };
+struct GraphJobs { int nextId = 1; std::vector<std::unique_ptr<GraphJob>> jobs; };
 OpData Metadata(const assetrefs::ImportMetadata& metadata)
 {
     OpData data = OpData::MakeObject(); data.Set("sourceDcc", OpData(metadata.sourceDcc)); data.Set("importer", OpData(metadata.importer));
@@ -35,9 +37,166 @@ std::string ResolveTarget(EditorContext& ctx, const std::string& input)
     if (error || relative.empty() || relative.is_absolute() || *relative.begin() == "..") return {};
     return util::FileSystem::PathToUtf8(absolute);
 }
+
+OpData Count(std::size_t value)
+{
+    return OpData(static_cast<std::int64_t>(value));
+}
+
+OpData DescribeNode(const assetrefs::GraphNode& node)
+{
+    const char* state = "unverified";
+    switch (node.state) {
+    case assetrefs::GraphNodeState::RESOLVED: state = "resolved"; break;
+    case assetrefs::GraphNodeState::MISSING_GUID: state = "missingGuid"; break;
+    case assetrefs::GraphNodeState::MISSING_PATH: state = "missingPath"; break;
+    case assetrefs::GraphNodeState::UNVERIFIED: break;
+    }
+    OpData data = OpData::MakeObject();
+    data.Set("guid", node.guid);
+    data.Set("path", node.path);
+    data.Set("kind", node.kind);
+    data.Set("state", state);
+    return data;
+}
+
+OpData DescribeGraph(const GraphJob& job, bool stale, bool incoming, std::size_t offset, std::size_t limit)
+{
+    const auto& report = job.scan.Result();
+    const auto& direction = incoming ? report.incoming : report.outgoing;
+    OpData edges = OpData::MakeArray();
+    if (!stale) {
+        const auto end = std::min(direction.hops.size(), offset + limit);
+        for (std::size_t index = offset; index < end; ++index) {
+            const auto& hop = direction.hops[index];
+            const auto& link = report.edges[hop.edge];
+            OpData row = OpData::MakeObject();
+            row.Set("source", DescribeNode(report.nodes[link.source]));
+            row.Set("target", DescribeNode(report.nodes[link.target]));
+            row.Set("distance", Count(hop.distance));
+            row.Set("field", link.field);
+            row.Set("line", link.line);
+            row.Set("referenceKind", link.kind);
+            row.Set("suffix", link.suffix);
+            row.Set("hint", link.hint);
+            edges.Push(std::move(row));
+        }
+    }
+    OpData coverage = OpData::MakeObject();
+    coverage.Set("candidates", Count(report.candidates));
+    coverage.Set("processed", Count(report.processed));
+    coverage.Set("parsed", Count(report.parsed));
+    coverage.Set("unsupported", Count(report.unsupported));
+    coverage.Set("unreadable", Count(report.unreadable));
+    coverage.Set("oversized", Count(report.oversized));
+    coverage.Set("malformed", Count(report.malformed));
+    OpData data = OpData::MakeObject();
+    data.Set("job", job.id);
+    data.Set("root", DescribeNode(report.nodes[report.root]));
+    data.Set("direction", incoming ? "incoming" : "outgoing");
+    data.Set("scope", "indexed-saved-assets");
+    data.Set("finished", report.finished);
+    data.Set("stale", stale);
+    data.Set("limited", report.limited);
+    data.Set("incomplete", !report.finished || stale || report.limited || report.unreadable != 0 || report.malformed != 0);
+    data.Set("coverage", std::move(coverage));
+    data.Set("maxDepth", Count(report.maxDepth));
+    data.Set("depthLimited", direction.depthLimited);
+    data.Set("totalEdges", Count(direction.hops.size()));
+    data.Set("relatedCount", Count(direction.relatedCount));
+    data.Set("brokenCount", Count(direction.brokenCount));
+    data.Set("unverifiedCount", Count(direction.unverifiedCount));
+    data.Set("edges", std::move(edges));
+    return data;
+}
+
+bool GraphStale(const GraphJob& job)
+{
+    const auto& snapshot = job.scan.Result();
+    return snapshot.searchRevision != AssetSearch::Revision()
+        || snapshot.databaseRevision != asset::AssetDatabase::Revision();
+}
+
+OpParam IntegerOption(std::string name, int defaultValue, float minValue, float maxValue)
+{
+    OpParam value;
+    value.name = std::move(name);
+    value.type = OpParamType::Int;
+    value.required = false;
+    value.defaultValue = defaultValue;
+    value.hasRange = true;
+    value.minValue = minValue;
+    value.maxValue = maxValue;
+    return value;
+}
+
+void RegisterAssetDependencyGraph(OperatorRegistry& registry)
+{
+    const auto state = std::make_shared<GraphJobs>();
+    EditorOperator scan;
+    scan.id = "asset.dependencies.scan";
+    scan.label = "Scan Asset Dependencies";
+    scan.category = "Asset References";
+    scan.desc = "Start a saved-file dependency graph at an asset GUID. Poll status and page outgoing or incoming edges.";
+    scan.kind = OpKind::Query;
+    scan.dialog = OpDialog::NONE;
+    OpParam guid;
+    guid.name = "guid";
+    guid.type = OpParamType::String;
+    guid.desc = "32 hexadecimal digits, optionally prefixed by guid:. Missing GUIDs can be used to find their saved owners.";
+    scan.params = {std::move(guid), IntegerOption("maxDepth", 4, 1, 16)};
+    scan.exec = [state](OpContext& context, const OpArgs& args) {
+        auto& ctx = context.ctx;
+        if (ctx.projectRoot.empty()) return OpResult::Err("NO_PROJECT", "プロジェクトを開いてください。");
+        const auto root = assetrefs::NormalizeGraphGuid(args.GetString("guid"));
+        if (root.empty()) return OpResult::Err("BAD_GUID", "guid は32桁の16進数です。");
+        AssetSearch::SetProjectRoot(ctx.projectRoot);
+        auto job = std::make_unique<GraphJob>();
+        job->id = state->nextId++;
+        job->scan.Begin({ctx.projectRoot, root, AssetSearch::Revision(), asset::AssetDatabase::Revision(), AssetSearch::Entries()},
+            static_cast<std::size_t>(args.GetInt("maxDepth")));
+        auto result = OpResult::Data(DescribeGraph(*job, GraphStale(*job), false, 0, 0));
+        if (state->jobs.size() == 4) state->jobs.erase(state->jobs.begin());
+        state->jobs.push_back(std::move(job));
+        return result;
+    };
+    registry.Register(std::move(scan));
+
+    EditorOperator status;
+    status.id = "asset.dependencies.status";
+    status.label = "Read Asset Dependencies";
+    status.category = "Asset References";
+    status.desc = "Advance a bounded saved-file scan or page the completed graph. Incoming finds impact, outgoing finds dependencies and missing targets.";
+    status.kind = OpKind::Query;
+    status.dialog = OpDialog::NONE;
+    OpParam job;
+    job.name = "job";
+    job.type = OpParamType::Int;
+    OpParam direction;
+    direction.name = "direction";
+    direction.type = OpParamType::String;
+    direction.enumValues = {"incoming", "outgoing"};
+    direction.required = false;
+    direction.defaultValue = std::string("outgoing");
+    status.params = {std::move(job), std::move(direction), IntegerOption("offset", 0, 0, 4096),
+        IntegerOption("limit", 100, 1, 100), IntegerOption("maxFiles", 4, 1, 32)};
+    status.exec = [state](OpContext& context, const OpArgs& args) {
+        const auto id = args.GetInt("job");
+        const auto found = std::find_if(state->jobs.begin(), state->jobs.end(), [id](const auto& candidate) { return candidate->id == id; });
+        if (found == state->jobs.end() ||
+            !util::FileSystem::SamePathText(context.ctx.projectRoot, (*found)->scan.Result().projectRoot))
+            return OpResult::Err("REFERENCE_JOB_NOT_FOUND", "現在のプロジェクトで新しい参照調査を開始してください。");
+        auto& current = **found;
+        if (!GraphStale(current)) current.scan.Advance(static_cast<std::size_t>(args.GetInt("maxFiles")));
+        return OpResult::Data(DescribeGraph(current, GraphStale(current), args.GetString("direction") == "incoming",
+            static_cast<std::size_t>(args.GetInt("offset")), static_cast<std::size_t>(args.GetInt("limit"))));
+    };
+    registry.Register(std::move(status));
+}
 } /// @note namespace
 void RegisterAssetReferenceOperators(OperatorRegistry& registry)
 {
+    RegisterAssetDependencyGraph(registry);
     const auto state = std::make_shared<ReferenceJobs>();
     for (const char* action : {"scan", "status"}) {
         EditorOperator op; const std::string name = action;

@@ -120,6 +120,26 @@ protected:
     }
 };
 
+/// @brief 保存中に同じパスへ届いた編集は、先に保存された版とは別に残る。
+TEST_F(AssetDirtyRegistryTest, SaveKeepsNewerDraftRegisteredBySaveCallback)
+{
+    int newSaveCount = 0;
+    AssetDirtyRegistry::Register("asset.mat", "asset.mat", "MAT", [&] {
+        AssetDirtyRegistry::Register("asset.mat", "asset.mat", "MAT", [&] {
+            ++newSaveCount;
+            return true;
+        });
+        return true;
+    });
+
+    EXPECT_TRUE(AssetDirtyRegistry::Save("asset.mat"));
+
+    EXPECT_TRUE(AssetDirtyRegistry::IsDirty("asset.mat"));
+    EXPECT_EQ(newSaveCount, 0);
+    EXPECT_TRUE(AssetDirtyRegistry::Save("asset.mat"));
+    EXPECT_EQ(newSaveCount, 1);
+}
+
 /// @brief Starts empty.
 TEST_F(AssetDirtyRegistryTest, StartsEmpty)
 {

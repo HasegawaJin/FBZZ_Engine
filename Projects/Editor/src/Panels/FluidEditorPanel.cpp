@@ -177,6 +177,30 @@ void FluidEditorPanel::OnLoadSettings(const EditorSettings& settings)
     if (m_context != nullptr) fluideditor::SetFluidAutoSaveEnabled(*m_context, settings.fluidEditorAutoSave);
     m_followSelection = settings.fluidEditorFollowSelection;
     m_recentFluids = settings.recentFluids;
+    auto& state = *m_state;
+    const auto& view = settings.fluidEditorView;
+    state.loop = view.loop;
+    state.checkerBackground = view.checkerBackground;
+    state.preview.SetCheckerBackground(view.checkerBackground);
+    state.showOverlays = view.showOverlays;
+    state.compareBaked = view.compareBaked;
+    state.showVolumeCenterPlane = view.showVolumeCenterPlane;
+    state.viewModeChosen = view.viewModeChosen;
+    state.viewMode = static_cast<fluideditor::ViewportMode>(view.viewMode);
+    state.volumeCenterPlane = static_cast<fluideditor::VolumeCenterPlane>(view.centerPlane);
+    state.gizmoOp = static_cast<fluideditor::GizmoOp>(view.gizmo);
+    state.preview.SetQuality(static_cast<FluidPreviewQuality>(view.quality));
+    state.zoom = view.zoom;
+    state.pan = {view.panX, view.panY};
+    state.volumeOrbit = {};
+    /// @note 設定の復元後に開く最初の文書へ視点を結び、旧文書のパスで再初期化させない。
+    state.volumeOrbit.recipePath.clear();
+    state.volumeOrbit.initialized = view.orbitInitialized;
+    state.volumeOrbit.yawDegrees = view.yaw;
+    state.volumeOrbit.pitchDegrees = view.pitch;
+    m_outlinerWidth = view.outlinerWidth;
+    m_propertiesWidth = view.propertiesWidth;
+    m_timelineHeight = view.timelineHeight;
 }
 
 void FluidEditorPanel::OnSaveSettings(EditorSettings& settings) const
@@ -184,6 +208,27 @@ void FluidEditorPanel::OnSaveSettings(EditorSettings& settings) const
     if (m_context != nullptr) settings.fluidEditorAutoSave = fluideditor::FluidAutoSaveEnabled(*m_context);
     settings.fluidEditorFollowSelection = m_followSelection;
     settings.recentFluids = m_recentFluids;
+    const auto& state = *m_state;
+    auto& view = settings.fluidEditorView;
+    view.loop = state.loop;
+    view.checkerBackground = state.checkerBackground;
+    view.showOverlays = state.showOverlays;
+    view.compareBaked = state.compareBaked;
+    view.showVolumeCenterPlane = state.showVolumeCenterPlane;
+    view.viewModeChosen = state.viewModeChosen;
+    view.viewMode = static_cast<int>(state.viewMode);
+    view.centerPlane = static_cast<int>(state.volumeCenterPlane);
+    view.gizmo = static_cast<int>(state.gizmoOp);
+    view.quality = static_cast<int>(state.preview.Quality());
+    view.zoom = state.zoom;
+    view.panX = state.pan.x;
+    view.panY = state.pan.y;
+    view.orbitInitialized = state.volumeOrbit.initialized;
+    view.yaw = state.volumeOrbit.yawDegrees;
+    view.pitch = state.volumeOrbit.pitchDegrees;
+    view.outlinerWidth = m_outlinerWidth;
+    view.propertiesWidth = m_propertiesWidth;
+    view.timelineHeight = m_timelineHeight;
 }
 
 /// @name 文書の開閉・保存
@@ -236,8 +281,7 @@ void FluidEditorPanel::OpenNow(EditorContext& ctx, const std::string& absPath)
     state.hasSent = false;
     state.selectedKey = -1;
     state.gizmoActive = false;
-    /// @note 表示は «そのレシピが焼かれる形» から始める (次の描画で recipe.bake.mode を見る)。
-    state.viewModeChosen = false;
+    /// @note 明示選択した表示は個人設定として保持し、未選択の初回だけレシピのBake Modeに合わせる。
     state.volumeRecipeKey = 0;
     RememberRecent(ctx, absPath);
     SetStatus(state, "開きました: " + DisplayPath(ctx, absPath), false);

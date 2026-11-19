@@ -693,17 +693,19 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         const float labelTagW = ImGui::CalcTextSize("Tag").x   + spacing;
         const float labelLayW = ImGui::CalcTextSize("Layer").x + spacing;
         const float comboW    = (ImGui::GetContentRegionAvail().x - labelTagW - labelLayW - spacing) * 0.5f;
+        const bool inlineFields = comboW >= ImGui::GetFontSize() * 7.0f;
 
         /// @note Tag
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Tag");
         ImGui::SameLine();
-        int tagIdx = 0;
+        int tagIdx = -1;
         for (int i = 0; i < (int)ps.game.tags.size(); ++i)
             if (go->tag == ps.game.tags[i]) { tagIdx = i; break; }
-        const char* tagLabel = ps.game.tags.empty() ? "(none)" : ps.game.tags[tagIdx].c_str();
-        ImGui::SetNextItemWidth(comboW);
-        if (ImGui::BeginCombo("##tag", tagLabel)) {
+        const std::string tagLabel = tagIdx >= 0 ? ps.game.tags[tagIdx] : go->tag.empty()
+            ? LOCT("(none)") : go->tag + " (" + LOCT("Unregistered") + ")";
+        ImGui::SetNextItemWidth(inlineFields ? comboW : -FLT_MIN);
+        if (ImGui::BeginCombo("##tag", tagLabel.c_str())) {
             for (int i = 0; i < (int)ps.game.tags.size(); ++i) {
                 bool selected = (i == tagIdx);
                 if (ImGui::Selectable(ps.game.tags[i].c_str(), selected)) {
@@ -722,7 +724,7 @@ void InspectorPanel::OnRenderContent(EditorContext& ctx)
         }
 
         /// @note Layer
-        ImGui::SameLine();
+        if (inlineFields) ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         ImGui::Text("Layer");
         ImGui::SameLine();

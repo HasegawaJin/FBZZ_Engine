@@ -13,6 +13,7 @@
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Util/EditorSceneState.hpp>
 #include <Editor/Util/HotkeyScope.hpp>
+#include <Editor/Util/RenderCaptureFrame.hpp>
 #include <Editor/Util/ScriptRequirementReview.hpp>
 #include <Editor/Util/SpatialDebugVisualization.hpp>
 #include <Engine/Audio/SynthSpec.hpp>
@@ -100,6 +101,9 @@ struct EditorContext {
     /// @note  EditorApp は画面に出ているビューポートだけを描くので、隠れている側をキャプチャすると
     /// @note  描画が止まった RT の古い内容を読んでしまう。
     std::uint64_t     aiViewportRenderUntilFrame = 0;
+    std::uint64_t     captureRevision = 0;
+    std::array<std::uint64_t, 2> semanticCaptureUntilFrame{};
+    std::array<RenderCaptureFrame, 2> viewportCaptureFrames;
     renderer::Camera* editorCamera = nullptr;
     /// @note  DebugCamera が持つオービット中心と注視距離のミラー (EditorApp が毎フレーム更新)。
     /// @note ナビゲーションギズモは「ピボットを動かさず視点だけ回す」ため、カメラ位置から復元できない DebugCamera 内部の中心・距離を必要とする。
@@ -121,24 +125,24 @@ struct EditorContext {
     MemoryLeakDiff*     memoryLeakDiff = nullptr;
     std::string       projectRoot;
     std::string       projectBuildRoot;
-    std::string       engineRoot;          /// @note  @note GameHubが選択したimmutable SDK root (cmake configureへ渡す)
+    std::string       engineRoot;          /// @note GameHubが選択したimmutable SDK root (cmake configureへ渡す)
     std::string       standaloneTargetName = "SandboxStandalone";
-    std::string       projectTargetName;   /// @note  @note .fbzz_proj の target_name (GameHub プロジェクトの識別に使う)
+    std::string       projectTargetName;   /// @note .fbzz_proj の target_name (GameHub プロジェクトの識別に使う)
 
     /// @note  C# スクリプトの作成・一覧に使うソースパス (EditorApp が設定)
-    std::string       scriptsSourceDir;     /// @note  @note Assets/Scripts/ の絶対パス
-    std::string       hlslSourceDir;       /// @note  @note Assets/shaders/ の絶対パス
+    std::string       scriptsSourceDir;     /// @note Assets/Scripts/ の絶対パス
+    std::string       hlslSourceDir;       /// @note Assets/shaders/ の絶対パス
     std::string       currentScenePath;
-    std::string       selectedAssetPath; /// @note  @note アセットブラウザーで選択中のファイル絶対パス (空 = なし)
+    std::string       selectedAssetPath; /// @note アセットブラウザーで選択中のファイル絶対パス (空 = なし)
     bool              sceneDirty = false;
 
     /// @note  OSエクスプローラーからの外部ドラッグ&ドロップ受け渡しチャンネル (プラットフォーム層 → AssetBrowser)。
     /// @note AssetBrowserImport がドロップ確定を遅延処理するため、ドラッグ中のライブ位置と確定ファイル群をフレーム跨ぎで共有する。空のままなら AssetBrowser は何もしない。
-    bool                     externalDragActive = false; /// @note  @note ドラッグ中ハイライト用
-    float                    externalDragX = 0.0f;       /// @note  @note ドラッグ中カーソル位置 (screen space)
+    bool                     externalDragActive = false; /// @note ドラッグ中ハイライト用
+    float                    externalDragX = 0.0f;       /// @note ドラッグ中カーソル位置 (screen space)
     float                    externalDragY = 0.0f;
-    std::vector<std::string> droppedExternalFiles;       /// @note  @note 今フレーム確定したドロップファイルの絶対パス群
-    float                    droppedExternalFilesX = 0.0f; /// @note  @note ドロップ確定位置 (screen space)
+    std::vector<std::string> droppedExternalFiles;       /// @note 今フレーム確定したドロップファイルの絶対パス群
+    float                    droppedExternalFilesX = 0.0f; /// @note ドロップ確定位置 (screen space)
     float                    droppedExternalFilesY = 0.0f;
     /// @note  Animation Graph Editor のノード配置。Editor 専用のため SceneSerializer には渡さない。
     /// @note AnimatorComponent はランタイム構造体なので、キャンバス座標は GO の instanceId または Controller アセットパスをキーにした別データとして保持する。
@@ -196,7 +200,7 @@ struct EditorContext {
         };
 
         Type              type = Type::None;
-        scene::GameObject* gameObject = nullptr; /// @note  @note 非所有。activeScene が所有する。
+        scene::GameObject* gameObject = nullptr; /// @note 非所有。activeScene が所有する。
         std::string        assetPath;
     };
 
@@ -253,7 +257,7 @@ struct EditorContext {
 
     /// @note  ビューポート
     bool  viewportFocused  = false;
-    bool  sceneViewportHovered = false; /// @note  @note シーンビューにマウスが乗っているか (ホイール制御に使う)
+    bool  sceneViewportHovered = false; /// @note シーンビューにマウスが乗っているか (ホイール制御に使う)
     /// @note 空は直接選択、GUIDは所有者の点編集。点の順序や属性は利用側Componentが持つ。
     std::string controlPointOwnerGuid;
     /// @note camera入力は直前の描画frameの占有だけを読む。非表示panelの古い占有を残さない。
@@ -273,6 +277,10 @@ struct EditorContext {
     float viewportWidth   = 1280.0f;
     float viewportHeight  = 720.0f;
     bool  gameViewportFocused = false;
+    /// @note 明示的な一時最大化。物理入力の所有権と自動Playの表示設定から独立し、保存しない。
+    enum class GameViewportLayout { AUTOMATIC, MAXIMIZED, NORMAL };
+    GameViewportLayout gameViewportLayout = GameViewportLayout::AUTOMATIC;
+    bool  gameViewportMaximized = false;
     float gameViewportOriginX = 0.0f;
     float gameViewportOriginY = 0.0f;
     float gameViewportWidth   = 1280.0f;
@@ -280,7 +288,7 @@ struct EditorContext {
     /// @note  Game View がこのフレームに実際に描かれ、上の矩形が «今の画面» を指しているか。
     /// @note 寸法と原点はパネルが描いたときにしか書かれず閉じている間は前回値が残るため、カーソル拘束のような «外れると操作不能» な用途は古い矩形を掴んではいけない。
     bool  gameViewportRectValid = false;
-    bool  requestGameViewportFocus = false; /// @note  @note Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
+    bool  requestGameViewportFocus = false; /// @note Play 開始時に Game ビューへフォーカスを移す one-shot フラグ。ViewportPanel が消費する
     /// @note  Escape で解放したカーソルをゲームへ返す one-shot 要求。Game View をクリックしたときと
     /// @note  オーバーレイの「Click to capture」から立ち、EditorApp が消費する。
     bool  requestGameCursorCapture = false;
@@ -293,27 +301,27 @@ struct EditorContext {
     };
     PlayExecutionMode playExecutionMode = PlayExecutionMode::IN_EDITOR;
     StandalonePlaySession* standalonePlay = nullptr;
-    PlayFocusMode playFocusMode = PlayFocusMode::Maximized; /// @note  @note Unity の Play Focused / Maximized / Unfocused 相当
+    PlayFocusMode playFocusMode = PlayFocusMode::Maximized; /// @note Unity の Play Focused / Maximized / Unfocused 相当
     /// @note  Play 中のカーソル要求を、スクリプトを書き換えずに一時的に外す口。
     /// @note Confined + 非表示のゲームを Editor で触るとき、確認のたびにスクリプトへ手を入れて再ビルドさせたくない。
     enum class PlayCursorOverride {
-        Game,      /// @note  @note ゲーム (cursor.Push / SetLockMode) の要求どおりにする
-        Free       /// @note  @note 常に None + 表示 (デバッグ用)
+        Game,      /// @note ゲーム (cursor.Push / SetLockMode) の要求どおりにする
+        Free       /// @note 常に None + 表示 (デバッグ用)
     };
     PlayCursorOverride playCursorOverride = PlayCursorOverride::Game;
-    bool  mapEditingMode = false; /// @note  @note Scene Viewport 中心の Map 専用 Workspace が有効か
-    bool  requestMapEditingModeToggle = false; /// @note  @note Toolbar/Menu からの Workspace 切替要求
+    bool  mapEditingMode = false; /// @note Scene Viewport 中心の Map 専用 Workspace が有効か
+    bool  requestMapEditingModeToggle = false; /// @note Toolbar/Menu からの Workspace 切替要求
     /// @note  Map Editing Mode の選択中ツール。
     /// @note MapEditorPanel と Scene Viewport のオーバーレイツールバー / 数字キーが同じ選択状態を共有するため、パネルのローカル変数ではなく Context に置く。
     enum class MapTool {
         TerrainSculpt,
         TerrainPaint,
         Grid,
-        TerrainHole, /// @note  @note 保存済み int 値を変えないため末尾に置く
+        TerrainHole, /// @note 保存済み int 値を変えないため末尾に置く
     };
     MapTool mapActiveTool = MapTool::TerrainSculpt;
-    bool  mapHierarchyFilter = true; /// @note  @note Map Mode 中に TerrainGrid/Terrain/Water だけ表示
-    bool  mapInspectorFilter = true; /// @note  @note Map Mode 中に Map 関連 Component だけ表示
+    bool  mapHierarchyFilter = true; /// @note Map Mode 中に TerrainGrid/Terrain/Water だけ表示
+    bool  mapInspectorFilter = true; /// @note Map Mode 中に Map 関連 Component だけ表示
     /// @note  システムが実行時に生成した GameObject (GameObject::runtimeGenerated) を Hierarchy へ出すか。
     /// @note VFX Graph は 1 エフェクトにつきノード数ぶんの GameObject を作るため、既定は非表示にして親 1 行へ畳み、デバッグ時だけ開く。
     bool  showGeneratedObjects = false;
@@ -358,9 +366,9 @@ struct EditorContext {
     bool  showGrid     = true;
     float gridSize     = 1.0f;
     bool  snapEnabled  = false;
-    float snapPos      = 1.0f;    /// @note  @note 位置スナップ (m)
-    float snapRot      = 15.0f;   /// @note  @note 回転スナップ (度)
-    float snapScale    = 0.25f;   /// @note  @note スケールスナップ
+    float snapPos      = 1.0f;    /// @note 位置スナップ (m)
+    float snapRot      = 15.0f;   /// @note 回転スナップ (度)
+    float snapScale    = 0.25f;   /// @note スケールスナップ
 
     /// @note  頂点スナップ / 面スナップ (ViewportPanel が押下状態を反映する)。
     /// @note V 押下中は選択メッシュの頂点を他メッシュの頂点へ吸着し、Ctrl+Shift ドラッグ中はカーソル下のサーフェスへ接地させる (Unity 互換)。
@@ -420,7 +428,7 @@ struct EditorContext {
     /// @note  既定は無効 (編集中は見えているものが見えることを優先)。効きは Stats の Occlusion 行。
     bool sceneViewOcclusionCulling = false;
     bool showStats       = true;  /// @note Scene / Game Viewport に Stats オーバーレイを表示する。
-    bool showTerrainTool = false; /// @note  @note Terrain Tool ウィンドウを表示する
+    bool showTerrainTool = false; /// @note Terrain Tool ウィンドウを表示する
     bool hotReloadEnabled = true;
     /// @brief ホットリロードの完了・失敗を音で知らせるか。@see EditorSettings::hotReloadSound
     bool hotReloadSound   = true;
@@ -428,15 +436,15 @@ struct EditorContext {
     /// @note  スクリプト DLL / HLSL ホットリロード状態 (StatusBar が表示する)
     enum class HotReloadState { Idle, Compiling, Reloading, Done, Failed };
     HotReloadState hotReloadState   = HotReloadState::Idle;
-    std::string    hotReloadMessage;   /// @note  @note StatusBar に表示するテキスト
+    std::string    hotReloadMessage;   /// @note StatusBar に表示するテキスト
     /// @note シェーダー再コンパイルの進捗を 0.0〜1.0 で公開する。
     float          hotReloadProgress = -1.0f;
-    float          hotReloadDoneTimer = 0.0f; /// @note  @note Done / Failed 表示を消すカウントダウン (秒)
+    float          hotReloadDoneTimer = 0.0f; /// @note Done / Failed 表示を消すカウントダウン (秒)
     /// @brief 変更検知 (Compiling へ入った瞬間) の ImGui::GetTime() [s]。経過秒の表示に使う。
     double         hotReloadStartTime  = 0.0;
     /// @brief Done / Failed へ入った瞬間の ImGui::GetTime() [s]。確定後は経過秒をここで止める。
     double         hotReloadFinishTime = 0.0;
-    bool           managedBuildBusy = false;  /// @note  @note C# ビルド/適用中はシーン変更と Play 開始を止める
+    bool           managedBuildBusy = false;  /// @note C# ビルド/適用中はシーン変更と Play 開始を止める
 
     /// @note  ビルドコンソール: ゲーム実行ファイル / HLSL コンパイルの出力・診断・履歴の唯一の情報源。
     /// @note EditorApp が所有し、Build Output パネル・StatusBar・通知バーが読み取る。
@@ -447,17 +455,17 @@ struct EditorContext {
     PackageBuildService* packageBuild = nullptr;
     /// @note パネル外のビルド要求も配布ビルドと排他にする。
     std::function<bool()> packageOtherBuildBusy;
-    bool           requestOpenBuildOutput  = false; /// @note  @note Build Output パネルを開く要求 (StatusBar クリック等)
-    bool           requestFocusBuildError  = false; /// @note  @note 開いた上で最初のエラーへスクロールする要求 (通知バー)
+    bool           requestOpenBuildOutput  = false; /// @note Build Output パネルを開く要求 (StatusBar クリック等)
+    bool           requestFocusBuildError  = false; /// @note 開いた上で最初のエラーへスクロールする要求 (通知バー)
 
     /// @note  パネル間リクエスト (one-shot フラグ: 発行側が true にセット → 受信側が処理後 false にリセット)
     bool requestOpenProjectSettings  = false;
     bool requestOpenBuildSettings    = false;
     bool requestOpenAnalysis         = false;
-    bool requestOpenAnimationGraph   = false; /// @note  @note .animcontroller ダブルクリック → AnimationGraphPanel を開く
-    bool requestOpenBehaviorTree     = false; /// @note  @note .behaviortree ダブルクリック → BehaviorTreePanel を開く
-    bool requestOpenSfxEditor        = false; /// @note  @note .synth ダブルクリック → SfxEditorPanel を開く
-    bool requestOpenSequence         = false; /// @note  @note .sequence ダブルクリック → SequencePanel を開く
+    bool requestOpenAnimationGraph   = false; /// @note .animcontroller ダブルクリック → AnimationGraphPanel を開く
+    bool requestOpenBehaviorTree     = false; /// @note .behaviortree ダブルクリック → BehaviorTreePanel を開く
+    bool requestOpenSfxEditor        = false; /// @note .synth ダブルクリック → SfxEditorPanel を開く
+    bool requestOpenSequence         = false; /// @note .sequence ダブルクリック → SequencePanel を開く
     /// @note  .fluid Inspector の «Bake in 3D» → Volume Flipbook Baker を開き、この .fluid を Fluid ソースにする。
     /// @note  one-shot。消すのはパネル (要求を読んだとき)。
     std::string requestVolumeFlipbookFluid;
@@ -475,10 +483,10 @@ struct EditorContext {
     /// @{
     /// @note  編集中のシーンを一時退避して .prefab だけを開き、閉じるときに戻す。
     /// @note  「インスタンスを選んで Apply」だけだと、シーンに 1 個も置いていないものを直せない。
-    std::string requestOpenPrefabEdit;        /// @note  @note one-shot: 開きたい .prefab (Assets 相対)
+    std::string requestOpenPrefabEdit;        /// @note one-shot: 開きたい .prefab (Assets 相対)
     bool     requestSavePrefabEdit  = false;
-    bool     requestClosePrefabEdit = false;  /// @note  @note 保存せず戻る
-    std::string prefabEditPath;                  /// @note  @note 空でなければ編集モード中 (Assets 相対)
+    bool     requestClosePrefabEdit = false;  /// @note 保存せず戻る
+    std::string prefabEditPath;                  /// @note 空でなければ編集モード中 (Assets 相対)
     bool     prefabEditDirty = false;
     [[nodiscard]] bool InPrefabEditMode() const { return !prefabEditPath.empty(); }
 
@@ -591,9 +599,9 @@ struct EditorContext {
     /// @note  SFX Editor が編集中の手続き効果音。読み書きが同じ場所を指すよう context に置く。
     /// @note  パネルが実体を抱えて Operator が要求を積む形だと、set_param の直後に inspect を
     /// @note  呼んだときパネルがまだ要求を消費しておらず 1 フレーム古い値が返る。
-    std::string      sfxEditorPath;            /// @note  @note 空 = 未保存の下書き
+    std::string      sfxEditorPath;            /// @note 空 = 未保存の下書き
     audio::SynthSpec sfxEditorSpec;
-    std::string      sfxEditorPresetName;      /// @note  @note 由来プリセット名 (空 = 手編集)
+    std::string      sfxEditorPresetName;      /// @note 由来プリセット名 (空 = 手編集)
     bool             sfxEditorDirty = false;
     /// @note  BehaviorTreePanel が開いているドキュメント (パネルが毎フレーム公開する)。
     /// @note  Operator の poll が「今この操作ができるか」を判定するのに使う。
@@ -605,7 +613,7 @@ struct EditorContext {
     /// @note selectedAssetPath への追従だと Asset Browser のクリックだけで編集対象が入れ替わり未保存の変更が確認なしに消えるため、「開く」を明示的な操作として切り出す。
     std::function<void(const std::string&)> openAnimationGraph;
     PlayModeController* playMode    = nullptr;
-    TerrainTool*        terrainTool = nullptr; /// @note  @note EditorApp が所有、ViewportPanel が使用
+    TerrainTool*        terrainTool = nullptr; /// @note EditorApp が所有、ViewportPanel が使用
     /// @note  Inspector セクション折り畳み状態 (EditorSettings ↔ ImGui StateStorage の中継)
     std::vector<std::pair<uint32_t, bool>> inspectorSectionState;
     /// @note  現在の Scene に紐づく Editor 専用メタデータ。Scene 本体には保存しない。
@@ -623,7 +631,7 @@ struct EditorContext {
     std::function<void()>                   markSceneDirty;
     std::function<void(const std::string&)> requestOpenScene;
     bool                                    requestAssetBrowserRefresh = false;
-    bool                                    requestSaveScene = false; /// @note  @note StatusBar の●クリック等から現在シーン保存を要求
+    bool                                    requestSaveScene = false; /// @note StatusBar の●クリック等から現在シーン保存を要求
 
     /// @note  AI (Command Bus の scene.open / scene.save) 専用のシーン入出力。確認モーダルを挟まない。
     /// @note  モーダルを開くとエディタが人のクリック待ちで止まり、バスの drain も止まる。
@@ -632,7 +640,7 @@ struct EditorContext {
     std::function<bool(const std::string&)> openScenePathImmediate;
     std::function<bool(const std::string&)> saveScenePathImmediate;
     /// @note Asset Browser のアイコンサイズ / ツリー幅はここには持たない。パネルは複数開けるので「どのパネルの値か」が決まらず、1 パネルぶんの状態は EditorSettings::assetBrowserPanels[instance] が唯一の持ち場で OnLoadSettings / OnSaveSettings だけで往復する。
-    float                                   editorUiScale              = 1.0f;   /// @note  @note UI 全体スケール (永続化)
+    float                                   editorUiScale              = 1.0f;   /// @note UI 全体スケール (永続化)
     std::vector<std::string>                assetBrowserBookmarks;
     /// @note  フォルダごとの色 (Unreal の Set Color 相当)。キーは絶対パス、値は IM_COL32 の packed 値。
     /// @note Favorites と同じく EditorSettings 経由で永続化され、左ツリー・グリッド・パンくずの複数の描画箇所が同じ 1 つの表を引くため ctx に置く。

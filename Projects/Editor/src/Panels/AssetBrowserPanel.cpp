@@ -7,9 +7,11 @@
 #include "../Tools/TerrainScatter.hpp"
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/InstanceSetAsset.hpp>
 #include <fstream>
+#include <utility>
 #include <Engine/Profiler/ProfileScope.hpp>
 
 namespace fbzz::editor {
@@ -244,13 +246,16 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
 
     /// @note 高さを確保し、ツリー / スプリッター / コンテンツを同じ高さで並べる。
     const float paneH = ImGui::GetContentRegionAvail().y;
+    const float treeLimit = std::max(1.0f, ImGui::GetContentRegionAvail().x * 0.4f);
+    const float treeWidth = std::min(m_treeWidth, treeLimit);
 
-    ImGui::BeginChild("##tree", { m_treeWidth, paneH }, true);
+    ImGui::BeginChild("##tree", { treeWidth, paneH }, true);
 
     /// @note Favorites セクション
     if (!ctx.assetBrowserBookmarks.empty()) {
         sectionHeader("FAVORITES");
         for (const auto& bk : ctx.assetBrowserBookmarks) {
+            ImGui::PushID(bk.c_str());
             const std::string label = util::FileSystem::GetFilename(bk).empty()
                 ? bk : util::FileSystem::GetFilename(bk);
             const bool sel = util::FileSystem::SamePathText(m_currentPath, bk);
@@ -266,17 +271,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 }
             }
             ImGui::PopStyleColor();
-            if (ImGui::BeginPopupContextItem()) {
-                if (ImGui::MenuItem("Remove from Favorites")) {
-                    auto& bks = ctx.assetBrowserBookmarks;
-                    bks.erase(std::remove(bks.begin(), bks.end(), bk), bks.end());
-                    ImGui::CloseCurrentPopup();
-                    ImGui::EndPopup();
-                    /// @note iterator invalidated
-                    break;
-                }
-                ImGui::EndPopup();
-            }
+            DrawEntryContextMenu(Entry{.path = bk, .name = label, .isDir = true}, ctx, false);
+            ImGui::PopID();
         }
     }
 
@@ -327,6 +323,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         m_currentPath = m_rootPath;
         RefreshDirectory();
     }
+    DrawEntryContextMenu(Entry{.path = m_rootPath, .name = "Assets", .isDir = true}, ctx, false);
     /// @note Assets ルートへのドロップ
     if (ImGui::BeginDragDropTarget()) {
         if (SaveHierarchyPayloadAsPrefab(
@@ -371,6 +368,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", mount.path.c_str());
+            DrawEntryContextMenu(Entry{.path = mount.path, .name = mount.name, .isDir = true, .isMount = true}, ctx, false);
             /// @note 外部フォルダへのドロップ → そのフォルダへ Prefab 保存
             if (ImGui::BeginDragDropTarget()) {
                 if (SaveHierarchyPayloadAsPrefab(
@@ -405,7 +403,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     if (splitActive) {
         /// @note 永続化は OnSaveSettings が担当する (パネルごとに別々の値を持つため)。
-        m_treeWidth = std::clamp(m_treeWidth + ImGui::GetIO().MouseDelta.x, 140.0f, 420.0f);
+        m_treeWidth = std::clamp(treeWidth + ImGui::GetIO().MouseDelta.x,
+                                 std::min(140.0f, treeLimit), std::min(420.0f, treeLimit));
     }
     {
         /// @note ホバー / ドラッグ中だけアクセント色の縦線を見せる。
@@ -492,18 +491,22 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         /// @note Filters / Sort
         rightW += btnW(filterLabel) + sp + kComboW + sp;
         if (dirty) rightW += btnW(saveLabel) + sp;
-        rightW += btnW("Create") + sp + btnW("Refresh") + sp + btnW(viewLabel) + sp;
+        rightW += btnW(LOCT("Create")) + sp + btnW("Refresh") + sp + btnW(viewLabel) + sp;
         rightW += ImGui::CalcTextSize(countStr).x;
 
         const float avail   = ImGui::GetContentRegionAvail().x;
-        const float searchW = std::max(120.0f, avail - rightW - sp);
+        const float searchW = avail >= rightW + sp + 120.0f ? avail - rightW - sp : avail;
+        const auto placeNext = [sp](float width) {
+            ImGui::SameLine(0.0f, sp);
+            if (ImGui::GetContentRegionAvail().x < width) ImGui::NewLine();
+        };
 
         ImGui::SetNextItemWidth(searchW);
         ImGui::InputTextWithHint("##search",
                                  m_searchAllFolders ? "Search all assets..."
                                                     : "Search this folder...",
                                  m_searchBuf.data(), m_searchBuf.size());
-        ImGui::SameLine(0.0f, sp);
+        placeNext(btnW(scopeLabel));
 
         /// @note 検索範囲の切り替え。ON の間はアクセント色で状態を示す。状態を控えるのは、Push / Pop の
         /// @note 条件にメンバーを直接使うと間のボタンがその値を反転させ、push していない色を pop して
@@ -524,7 +527,7 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 "This Folder : 現在のフォルダ内だけを名前で絞り込む\n"
                 "All Assets  : プロジェクト全体を横断検索する (略記・部分列も一致)");
         }
-        ImGui::SameLine(0.0f, sp);
+        placeNext(btnW(filterLabel));
 
         /// @note Filters: 種別を複数同時に有効化できるドロップダウン (Unreal と同じ方式)。
         if (m_typeFilterMask != 0)
@@ -537,32 +540,34 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
             DrawFilterMenu();
             ImGui::EndPopup();
         }
-        ImGui::SameLine(0.0f, sp);
+        placeNext(kComboW);
 
         ImGui::SetNextItemWidth(kComboW);
         { int sm = static_cast<int>(m_sortMode);
           if (ImGui::Combo("##sort", &sm, kSortLabels, 4)) { m_sortMode = static_cast<SortMode>(sm); RefreshDirectory(); } }
-        ImGui::SameLine(0.0f, sp);
-
         if (dirty) {
-        ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Warning));
+            placeNext(btnW(saveLabel));
+            ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Warning));
             if (ImGui::Button(saveLabel)) {
                 m_showSaveModifiedDialog = true;
-                m_saveModifiedSelected.assign(AssetDirtyRegistry::GetAll().size(), true);
             }
             ImGui::PopStyleColor();
-            ImGui::SameLine(0.0f, sp);
         }
 
-        if (ImGui::Button("Create")) ImGui::OpenPopup("##content_ctx");
-        ImGui::SameLine(0.0f, sp);
+        placeNext(btnW(LOCT("Create")));
+        if (ImGui::Button(LOC("Create"))) ImGui::OpenPopup("##create_asset");
+        if (ImGui::BeginPopup("##create_asset")) {
+            DrawCreateMenu(ctx, m_currentPath);
+            ImGui::EndPopup();
+        }
+        placeNext(btnW("Refresh"));
         if (ImGui::Button("Refresh")) RefreshDirectory();
-        ImGui::SameLine(0.0f, sp);
+        placeNext(btnW(viewLabel));
         if (ImGui::Button(viewLabel))
             m_viewMode = (m_viewMode == ViewMode::Grid) ? ViewMode::List : ViewMode::Grid;
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Grid size: Ctrl + Mouse Wheel");
-        ImGui::SameLine(0.0f, sp);
+        placeNext(ImGui::CalcTextSize(countStr).x);
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("%s", countStr);
     }
@@ -705,19 +710,20 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
         RefreshDirectory();
     }
 
-    /// @note 右クリック: Create メニュー。BeginPopupContextWindow は OpenPopup と混ぜるとボタン起動が
-    /// @note 安定しないため、右クリック検出と popup 描画を分け、空白右クリックとツールバー Create を
-    /// @note 同じ経路にする。
+    /// @note 一覧テーブルの子ウィンドウで行が無い場所も、表示中のフォルダを対象にする。
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
-        ImGui::IsMouseClicked(ImGuiMouseButton_Right) &&
+        ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
         !ImGui::IsAnyItemHovered()) {
         ImGui::OpenPopup("##content_ctx");
     }
     if (ImGui::BeginPopup("##content_ctx")) {
-        if (ImGui::BeginMenu("Create")) {
-            DrawCreateMenu(ctx);
-            ImGui::EndMenu();
-        }
+        const auto directory = m_currentPath;
+        widgets::LabelEllipsis(NormalizeAssetPath(directory).c_str(), ImGui::GetFontSize() * 20.0f);
+        ImGui::Separator();
+        DrawFolderDestinationMenu(ctx, directory);
+        ImGui::Separator();
+        if (ImGui::MenuItem(LOC("Refresh"))) m_pendingMenuAction = [this] { RefreshDirectory(); };
+        DrawAssetLocationMenu(ctx, directory);
         ImGui::EndPopup();
     }
 
@@ -748,6 +754,10 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     if (m_externalDrop.active)
         FinalizeExternalDrop();
     FinalizePendingAssetMove(ctx);
+    if (m_pendingMenuAction) {
+        auto action = std::exchange(m_pendingMenuAction, {});
+        action();
+    }
 }
 
 void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
@@ -1200,15 +1210,17 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
 
 void AssetBrowserPanel::DrawSaveModifiedDialog()
 {
-    if (!m_showSaveModifiedDialog) return;
-    ImGui::OpenPopup("##save_modified_dlg");
-    m_showSaveModifiedDialog = false;
+    if (m_showSaveModifiedDialog) {
+        ImGui::OpenPopup("##save_modified_dlg");
+        m_showSaveModifiedDialog = false;
+        m_saveModifiedExcluded.clear();
+        m_saveModifiedFailures = 0;
+    }
 
     const auto& dirty = AssetDirtyRegistry::GetAll();
-    if (m_saveModifiedSelected.size() != dirty.size())
-        m_saveModifiedSelected.assign(dirty.size(), true);
-
-    ImGui::SetNextWindowSize({ 480.0f, 0.0f }, ImGuiCond_Always);
+    const auto viewSize = ImGui::GetMainViewport()->WorkSize;
+    ImGui::SetNextWindowSize({ std::min(480.0f, viewSize.x * 0.9f), 0.0f }, ImGuiCond_Always);
+    ImGui::SetNextWindowSizeConstraints({ 0.0f, 0.0f }, { viewSize.x * 0.9f, viewSize.y * 0.9f });
     if (ImGui::BeginPopupModal("##save_modified_dlg", nullptr,
                                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_AlwaysAutoResize))
     {
@@ -1218,30 +1230,40 @@ void AssetBrowserPanel::DrawSaveModifiedDialog()
         ImGui::TextDisabled("(%d)", count);
         ImGui::Separator();
 
-        for (int i = 0; i < count; ++i) {
-            ImGui::PushID(i);
-            bool sel = m_saveModifiedSelected[i];
-            if (ImGui::Checkbox("##chk", &sel)) m_saveModifiedSelected[i] = sel;
+        std::vector<std::string> selectedPaths;
+        for (const auto& item : dirty) {
+            ImGui::PushID(item.path.c_str());
+            bool sel = std::find(m_saveModifiedExcluded.begin(), m_saveModifiedExcluded.end(), item.path)
+                == m_saveModifiedExcluded.end();
+            if (ImGui::Checkbox("##chk", &sel)) {
+                if (sel) std::erase(m_saveModifiedExcluded, item.path);
+                else m_saveModifiedExcluded.push_back(item.path);
+            }
+            if (sel) selectedPaths.push_back(item.path);
             ImGui::SameLine();
-            ImGui::TextColored({ 1.0f, 0.75f, 0.2f, 1.0f }, "[%s]", dirty[i].typeLabel.c_str());
+            ImGui::TextColored({ 1.0f, 0.75f, 0.2f, 1.0f }, "[%s]", item.typeLabel.c_str());
             ImGui::SameLine();
-            ImGui::TextUnformatted(dirty[i].displayPath.c_str());
+            ImGui::TextWrapped("%s", item.displayPath.c_str());
             ImGui::PopID();
         }
 
+        if (m_saveModifiedFailures > 0)
+            ImGui::TextWrapped("Could not save %d asset(s). The edits are still pending.", m_saveModifiedFailures);
         ImGui::Separator();
+        ImGui::BeginDisabled(selectedPaths.empty());
         if (ImGui::Button("Save Selected")) {
-            std::vector<std::string> toClean;
-            for (int i = 0; i < count; ++i)
-                if (m_saveModifiedSelected[i] && dirty[i].saveFunc())
-                    toClean.push_back(dirty[i].path);
-            for (const auto& p : toClean) AssetDirtyRegistry::MarkClean(p);
-            ImGui::CloseCurrentPopup();
+            m_saveModifiedFailures = 0;
+            for (const auto& path : selectedPaths) {
+                if (AssetDirtyRegistry::IsDirty(path) && !AssetDirtyRegistry::Save(path))
+                    ++m_saveModifiedFailures;
+            }
+            if (m_saveModifiedFailures == 0) ImGui::CloseCurrentPopup();
         }
+        ImGui::EndDisabled();
         ImGui::SameLine();
         if (ImGui::Button("Save All")) {
-            AssetDirtyRegistry::SaveAll();
-            ImGui::CloseCurrentPopup();
+            m_saveModifiedFailures = AssetDirtyRegistry::SaveAll();
+            if (m_saveModifiedFailures == 0 && !AssetDirtyRegistry::HasAny()) ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
         if (ImGui::Button("Discard All")) {
@@ -1249,7 +1271,7 @@ void AssetBrowserPanel::DrawSaveModifiedDialog()
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
 
         ImGui::EndPopup();
     }

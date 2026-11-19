@@ -15,12 +15,13 @@
 namespace fbzz::scene {
 class GameObject;
 struct AnimatorComponent;
-} // namespace fbzz::scene
+} /// @note namespace fbzz::scene
 
 namespace fbzz::editor {
 
 class AnimationGraphPanel final : public IPanel {
 public:
+    HotkeyScope GetHotkeyScope() const override { return HotkeyScope::AnimationGraph; }
     const char* GetWindowName()        const override { return "Animation Graph"; }
     bool        GetDefaultVisibility() const override { return false; }
     void OnInit(EditorContext& ctx) override;
@@ -210,4 +211,4 @@ private:
     /// @}
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

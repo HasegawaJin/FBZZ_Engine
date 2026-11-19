@@ -67,7 +67,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     if (m_commandPaletteOpen) {
         m_commandPaletteOpen = false;
         m_commandPaletteQuery[0] = '\0';
-        m_commandPaletteSel = 0;
+        m_commandPaletteSel = -1;
         m_commandPaletteFocus = true;
         /// @note 開いた瞬間のアセット一覧をスナップショット
         RefreshPaletteAssetIndex();
@@ -79,7 +79,8 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     ImGui::SetNextWindowPos(
         { vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + vp->WorkSize.y * 0.22f },
         ImGuiCond_Appearing, { 0.5f, 0.0f });
-    ImGui::SetNextWindowSize({ 520.0f, 0.0f }, ImGuiCond_Appearing);
+    const float paletteWidth = std::min(vp->WorkSize.x * 0.94f, ImGui::GetFontSize() * 40.0f);
+    ImGui::SetNextWindowSize({ paletteWidth, 0.0f }, ImGuiCond_Always);
 
     if (!ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove))
         return;
@@ -93,11 +94,13 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         std::string           label;
         std::function<void()> action;
         bool                  enabled = true;
+        std::string           context;
     };
     std::vector<Command> cmds;
     const auto add = [&](const char* cat, std::string label,
-                         std::function<void()> fn, bool enabled = true) {
-        cmds.push_back({ cat, std::move(label), std::move(fn), enabled });
+                         std::function<void()> fn, bool enabled = true, std::string context = {}) {
+        if (!context.empty() && (context.back() == '/' || context.back() == '\\')) context.pop_back();
+        cmds.push_back({ cat, std::move(label), std::move(fn), enabled, std::move(context) });
     };
 
     /// @note クエリが空のときは Recent Scenes を先頭に提示し、素早い再オープンを可能にする。
@@ -105,7 +108,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         for (const std::string& sp : m_settings.recentScenes) {
             const bool exists = util::FileSystem::Exists(sp);
             add("Recent", util::FileSystem::GetFilename(sp),
-                [this, sp] { RequestOpenScenePath(sp); }, exists);
+                [this, sp] { RequestOpenScenePath(sp); }, exists, util::FileSystem::GetDirectory(sp));
         }
     }
 
@@ -189,8 +192,9 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         m_commandPaletteFocus = false;
     }
     ImGui::SetNextItemWidth(-1.0f);
+    const std::string previousQuery = m_commandPaletteQuery;
     const bool entered = ImGui::InputTextWithHint(
-        "##cmd_query", "Type a command...  (Enter to run, Esc to close)",
+        "##cmd_query", LOCT("Search commands, objects and assets..."),
         m_commandPaletteQuery, sizeof(m_commandPaletteQuery),
         ImGuiInputTextFlags_EnterReturnsTrue);
 
@@ -200,6 +204,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
     /// @name Go to Anything: クエリ入力時のみアセット / GameObject を動的に候補追加する
     /// @note 空クエリで全アセット/全オブジェクトを並べると膨大になるため、絞り込み時だけ列挙する。
     if (!query.empty()) {
+        const bool pathQuery = query.find_first_of("/\\") != std::string::npos;
         /// @note アセット (ファイル名の部分一致)。開き方の振り分けは asset.open が持つ。
         ///       同じ振り分けを複数箇所へ書き写すと拡張子ごとに抜けが出るため、
         ///       operator へ一本化して足すと全経路へ同時に効くようにする。
@@ -208,20 +213,25 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
             /// @note 候補が溢れないよう上限を設ける
             if (assetHits >= 50) break;
             const std::string name = util::FileSystem::GetFilename(path);
-            if (!util::StringUtils::ContainsCI(name, query)) continue;
+            if (!util::StringUtils::ContainsCI(pathQuery ? path : name, query)) continue;
             ++assetHits;
             add("Asset", name, [this, path] {
                 OpArgs args;
                 args.Set("path", path);
                 InvokeOperator("asset.open", args);
-            });
+            }, true, util::FileSystem::GetDirectory(path));
         }
         /// @note GameObject (名前の部分一致)。選択してビューをフォーカスする。
         if (ctx.activeScene) {
             int goHits = 0;
             for (auto& go : ctx.activeScene->GameObjects()) {
                 if (goHits >= 50) break;
-                if (!util::StringUtils::ContainsCI(go.name, query)) continue;
+                if (!pathQuery && !util::StringUtils::ContainsCI(go.name, query)) continue;
+                std::string parentPath;
+                for (auto* parent = go.GetParent(); parent; parent = parent->GetParent())
+                    parentPath = parent->name + (parentPath.empty() ? "" : "/" + parentPath);
+                const std::string objectPath = parentPath.empty() ? go.name : parentPath + "/" + go.name;
+                if (pathQuery && !util::StringUtils::ContainsCI(objectPath, query)) continue;
                 ++goHits;
                 const scene::EntityID id = go.GetID();
                 const math::Vector3   wp = go.transform.worldPosition;
@@ -231,7 +241,7 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
                     /// @note バウンズ不明時は既定距離フォーカス
                     ctx.focusTargetRadius      = 0.0f;
                     ctx.requestFocusOnSelected = true;
-                });
+                }, true, std::move(parentPath));
             }
         }
     }
@@ -246,20 +256,32 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
             || util::StringUtils::ContainsCI(cmds[i].label, query)
             || util::StringUtils::ContainsCI(LOCT(cmds[i].label.c_str()), query)
             || util::StringUtils::ContainsCI(cmds[i].category, query)
+            || util::StringUtils::ContainsCI(cmds[i].context + "/" + cmds[i].label, query)
             || util::StringUtils::ContainsCI(LOCT(cmds[i].category.c_str()), query))
             filtered.push_back(i);
     }
 
     /// @note 選択インデックスをクランプし、上下キーで移動する。
-    if (filtered.empty())
-        m_commandPaletteSel = 0;
-    else {
-        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))
-            m_commandPaletteSel = (m_commandPaletteSel + 1) % static_cast<int>(filtered.size());
-        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))
-            m_commandPaletteSel = (m_commandPaletteSel - 1 + static_cast<int>(filtered.size()))
-                                  % static_cast<int>(filtered.size());
-        m_commandPaletteSel = std::clamp(m_commandPaletteSel, 0, static_cast<int>(filtered.size()) - 1);
+    const int resultCount = static_cast<int>(filtered.size());
+    const auto moveSelection = [&](int direction) {
+        int row = m_commandPaletteSel;
+        if (row < 0 && direction < 0) row = 0;
+        for (int i = 0; i < resultCount; ++i) {
+            row = (row + direction + resultCount) % resultCount;
+            if (cmds[filtered[row]].enabled) {
+                m_commandPaletteSel = row;
+                return;
+            }
+        }
+        m_commandPaletteSel = -1;
+    };
+    const bool up = ImGui::IsKeyPressed(ImGuiKey_UpArrow);
+    const bool down = ImGui::IsKeyPressed(ImGuiKey_DownArrow);
+    if (query != previousQuery || m_commandPaletteSel >= resultCount) {
+        m_commandPaletteSel = -1;
+        if (!query.empty()) moveSelection(1);
+    } else if (down || up) {
+        moveSelection(down ? 1 : -1);
     }
 
     /// @note 実行ヘルパー。
@@ -267,14 +289,15 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         if (m_commandPaletteSel < 0 || m_commandPaletteSel >= static_cast<int>(filtered.size()))
             return;
         const Command& c = cmds[filtered[m_commandPaletteSel]];
-        if (c.enabled && c.action) c.action();
+        if (!c.enabled || !c.action) return;
+        c.action();
         ImGui::CloseCurrentPopup();
     };
 
     ImGui::Separator();
 
     /// @name 結果リスト
-    const float listH = std::min(320.0f, ImGui::GetTextLineHeightWithSpacing() * 12.0f);
+    const float listH = std::min(vp->WorkSize.y * 0.55f, ImGui::GetTextLineHeightWithSpacing() * 12.0f);
     ImGui::BeginChild("##cmd_list", { 0.0f, listH }, false);
     for (int row = 0; row < static_cast<int>(filtered.size()); ++row) {
         const Command& c = cmds[filtered[row]];
@@ -306,12 +329,18 @@ void EditorApp::DrawCommandPalette(EditorContext& ctx)
         ImDrawList* drawList = ImGui::GetWindowDrawList();
         drawList->AddText(rowPos, catColor,
                           widgets::ElideToWidth(LOCT(c.category.c_str()), catWidth).c_str());
-        drawList->AddText({ rowPos.x + catWidth + gap, rowPos.y }, labelColor,
-                          widgets::ElideToWidth(LOCT(c.label.c_str()), labelWidth).c_str());
+        const std::string label = c.context.empty() ? LOCT(c.label.c_str())
+            : std::string(LOCT(c.label.c_str())) + "  ·  " + c.context;
+        const auto displayLabel = widgets::ElideToWidth(label.c_str(), labelWidth);
+        drawList->AddText({ rowPos.x + catWidth + gap, rowPos.y }, labelColor, displayLabel.c_str());
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && (!c.enabled || displayLabel != label)) {
+            if (c.enabled) ImGui::SetTooltip("%s", label.c_str());
+            else ImGui::SetTooltip("%s\n%s", label.c_str(), LOCT("Unavailable with the current selection or mode."));
+        }
         if (!c.enabled) ImGui::EndDisabled();
 
         /// @note 選択行が見えるようスクロール追従する。
-        if (selected && (ImGui::IsKeyPressed(ImGuiKey_UpArrow) || ImGui::IsKeyPressed(ImGuiKey_DownArrow)))
+        if (selected && (up || down || query != previousQuery))
             ImGui::SetScrollHereY(0.5f);
         ImGui::PopID();
     }

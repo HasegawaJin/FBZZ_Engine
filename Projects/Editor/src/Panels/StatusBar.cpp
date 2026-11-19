@@ -54,7 +54,7 @@ float LastItemEndX()
     return ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
 }
 
-} // namespace
+} /// @note namespace
 
 /// 下端ドロワーの開閉ボタン。開いている間は押下色にして状態を一目で分かるようにする。
 /// @note どのレイアウトからでも同じ位置で開閉できることに価値がある (Unreal の Content Drawer 同様)。
@@ -256,13 +256,15 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     ImGui::PushStyleColor(ImGuiCol_Text,
         ctx.snapEnabled ? EditorTheme::Color(ThemeColor::Accent)
                         : EditorTheme::Color(ThemeColor::TextMuted));
-    ImGui::Checkbox("Snap", &ctx.snapEnabled);
+    const bool pixelSnap = ctx.uiViewportFocused;
+    ImGui::Checkbox(pixelSnap ? "Pixel Snap###Snap" : "Snap", &ctx.snapEnabled);
     ImGui::PopStyleColor();
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Toggle gizmo snapping\nRight-click each value for presets");
+        ImGui::SetTooltip("%s", pixelSnap ? "Snap UI position and size to whole canvas pixels. Hold Ctrl to snap temporarily."
+                                           : "Toggle 3D gizmo snapping\nRight-click each value for presets");
     /// @note 左側を削っても入力欄 3 つ分が残らない極端な幅では、チェックボックスだけ残す。
     const bool roomForSnapFields = (windowW - rightW - LastItemEndX()) >= SnapFieldsWidth();
-    if (ctx.snapEnabled && roomForSnapFields) {
+    if (ctx.snapEnabled && roomForSnapFields && !pixelSnap) {
         /// @note Position
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextDisabled("Pos");
@@ -379,4 +381,4 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     ImGui::EndChild();
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

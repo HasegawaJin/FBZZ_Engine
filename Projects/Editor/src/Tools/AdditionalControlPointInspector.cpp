@@ -2,6 +2,7 @@
 /// @brief   Patrol、Line、Off-Mesh Linkの制御点sourceとordered bindingをInspectorへ表示する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Tools/AdditionalControlPointEditing.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
@@ -249,11 +250,11 @@ bool DrawPatrolRows(EditorContext& ctx, scene::GameObject& owner,
         }
         if (!handled) {
             float wait = row.waitTime, speed = row.speed;
-            if (ImGui::InputFloat("待ち時間 (s)", &wait, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if (property::InputFloat("待ち時間 (s)", &wait, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
                 args.Set("waitTime", wait); args.Set("speed", speed);
                 handled = Invoke(ctx, state, "control_points.set_patrol_attributes", args);
             }
-            if (!handled && ImGui::InputFloat("移動速度 (m/s)", &speed, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if (!handled && property::InputFloat("移動速度 (m/s)", &speed, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
                 args.Set("waitTime", wait); args.Set("speed", speed);
                 handled = Invoke(ctx, state, "control_points.set_patrol_attributes", args);
             }
@@ -341,7 +342,7 @@ bool DrawAdditionalControlPointInspector(EditorContext& ctx, scene::GameObject& 
         if (!handled && patrol->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS)
             handled = DrawPatrolRows(ctx, object, *patrol, state);
         if (!handled && patrol->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS) {
-            ImGui::InputFloat3("新しい巡回点のワールド位置", &state.newPosition.x);
+            property::InputFloat3("新しい巡回点のワールド位置", &state.newPosition.x);
             auto args = OwnerArgs(object, "patrol"); args.Set("worldPosition", state.newPosition);
             args.Set("waitTime", patrol->waitTime); args.Set("speed", 0.0f);
             handled = Button(ctx, state, "巡回点を追加", "control_points.add", args);

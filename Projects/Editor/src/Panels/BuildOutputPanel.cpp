@@ -70,15 +70,14 @@ LogListLine MakeDiagnosticLine(const BuildDiagnostic& d, std::uint64_t id)
     return line;
 }
 
-} // namespace
+} /// @note namespace
 
 void BuildOutputPanel::SyncDiagnostics(const BuildRecord* rec)
 {
     /// @note 別レコードへ切り替えたら選択は持ち越さない (id は診断の添字なので別物を指してしまう)。
-    const std::string clock = rec ? rec->startClock : std::string();
-    if (rec != m_diagRecord || clock != m_diagRecordClock) {
-        m_diagRecord      = rec;
-        m_diagRecordClock = clock;
+    const std::uint64_t id = rec ? rec->id : 0;
+    if (id != m_diagRecord) {
+        m_diagRecord = id;
         m_diagCount       = ~static_cast<std::size_t>(0);
         m_diagView.ClearSelection();
     }
@@ -112,7 +111,7 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
     const float       sp = st.ItemSpacing.x;
     const auto btnW = [&](const char* s) { return ImGui::CalcTextSize(s).x + st.FramePadding.x * 2.0f; };
 
-    if (console.IsBuilding()) {
+    if (console.IsBuilding() && rec == console.Latest()) {
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "Building...");
         if (!console.CurrentFile().empty()) {
             ImGui::SameLine();
@@ -135,7 +134,7 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
     /// @note 右側: 履歴 / Rebuild / Clear。幅が足りなければ次の行へ回す。
     const auto& history = console.History();
     const float comboW  = (std::min)(320.0f, (std::max)(160.0f, ImGui::GetContentRegionAvail().x * 0.4f));
-    const float rightW  = (history.empty() ? 0.0f : comboW + sp) + btnW("Rebuild") + sp + btnW("Clear");
+    const float rightW  = (history.empty() ? 0.0f : comboW + sp) + btnW("Clear");
     ImGui::SameLine();
     const float avail = ImGui::GetContentRegionAvail().x;
     if (avail > rightW) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - rightW);
@@ -143,18 +142,18 @@ void BuildOutputPanel::DrawHeader(EditorContext& ctx, BuildConsole& console, con
 
     if (!history.empty()) {
         ImGui::SetNextItemWidth(comboW);
-        const bool viewingLatest = m_viewHistoryIndex < 0 || m_viewHistoryIndex >= static_cast<int>(history.size());
+        const bool viewingLatest = !rec || m_selectedBuild != rec->id;
         const std::string current = viewingLatest
             ? std::string("Latest: ") + RecordLabel(history.back())
-            : RecordLabel(history[static_cast<size_t>(m_viewHistoryIndex)]);
+            : RecordLabel(*rec);
         if (ImGui::BeginCombo("##BuildHistory", current.c_str())) {
             if (ImGui::Selectable("Latest (follow new builds)", viewingLatest))
-                m_viewHistoryIndex = -1;
+                m_selectedBuild = 0;
             ImGui::Separator();
-            for (int i = static_cast<int>(history.size()) - 1; i >= 0; --i) {
-                ImGui::PushID(i);
-                if (ImGui::Selectable(RecordLabel(history[static_cast<size_t>(i)]).c_str(), m_viewHistoryIndex == i))
-                    m_viewHistoryIndex = i;
+            for (auto entry = history.rbegin(); entry != history.rend(); ++entry) {
+                ImGui::PushID(static_cast<int>(entry->id));
+                if (ImGui::Selectable(RecordLabel(*entry).c_str(), m_selectedBuild == entry->id))
+                    m_selectedBuild = entry->id;
                 ImGui::PopID();
             }
             ImGui::EndCombo();
@@ -202,7 +201,12 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     SyncDiagnostics(rec);
     m_diagView.SetInfoToggleVisible(false);
     m_rawView.SetEmptyText("No output yet.");
-    m_rawFeed.Sync(console->LiveLog(), console->LiveLogGeneration(), console->LiveLogFirstLine(), m_rawView);
+    if (rec && rec->result == BuildRecord::Result::Building)
+        m_rawFeed.Sync(console->LiveLog(), rec->id, console->LiveLogFirstLine(), m_rawView);
+    else if (rec)
+        m_rawFeed.Sync(rec->rawLog, rec->id, rec->firstRawLine, m_rawView);
+    else
+        m_rawFeed.Sync({}, 0, 0, m_rawView);
 
     if (m_focusFirstError && rec) {
         for (std::size_t i = 0; i < rec->diagnostics.size(); ++i) {
@@ -231,10 +235,7 @@ void BuildOutputPanel::OnRenderContent(EditorContext& ctx)
     DrawSplitter();
 
     ImGui::AlignTextToFramePadding();
-    /// @note レコードは生ログ全文を持たない (メモリ節約) ため、過去レコード表示中も生ログは
-    ///       最新のものを出す。取り違えないようラベルで明示する。
-    const bool viewingPast = rec != nullptr && rec != console->Latest();
-    ImGui::TextDisabled("%s", viewingPast ? "Output (latest build)" : "Output");
+    ImGui::TextDisabled("Output");
     ImGui::SameLine();
     m_rawView.DrawToolbar();
     m_rawView.DrawList({ 0.0f, 0.0f });

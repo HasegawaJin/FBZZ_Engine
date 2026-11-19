@@ -43,6 +43,11 @@ FBZZ_ENGINE_API void ApplyUISettings(const ProjectSettings& settings, UIInteract
                                                        const renderer::Camera& editorFallback,
                                                        float aspectRatio);
 
+/// @param cameraId 描画に選んだノードの GUID。Editor カメラへフォールバックした場合は空。
+[[nodiscard]] FBZZ_ENGINE_API renderer::Camera ResolveEditorGameCamera(Scene& scene,
+                                                       const renderer::Camera& editorFallback,
+                                                       float aspectRatio, std::string* cameraId);
+
 /// @brief シーン内のメイン CameraComponent の背景色を返す。見つからなければ既定色を返す。
 /// @note Scene View はデバッグカメラの視点なのでカリング設定は持ち込まないが、背景色は «シーンがどう見えるか» そのものなので、この関数を通して本番と同じ色を出す。
 [[nodiscard]] FBZZ_ENGINE_API math::Vector4 ResolveGameBackgroundColor(Scene& scene);

@@ -7,7 +7,11 @@
 #include <Editor/Panels/AssetBrowserPanel.hpp>
 #include <Editor/Panels/DependencyViewPanel.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
+#include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Op/OperatorGroups.hpp>
 #include <Editor/Util/EditorSettings.hpp>
+#include <Editor/Util/Localization.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Editor/Util/UndoStack.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -116,6 +120,138 @@ TEST_F(EditorIdleWorkTest, HierarchyRootsAndGeneratedBadgesRefreshAfterDirectSce
     EXPECT_EQ(Frame(draw).find("+1"), std::string::npos);
     ASSERT_TRUE(child.ClearParent());
     EXPECT_NE(Frame(draw).find("Hidden child"), std::string::npos);
+}
+
+/// @brief 検索の有無に関係なく、同じ行を右クリックして名前変更と画面へのフォーカスができる。
+TEST_F(EditorIdleWorkTest, HierarchyTreeAndSearchShowTheSameObjectActions)
+{
+    auto& object = AttachedScene()->CreateGameObject("Context target");
+    IdleHierarchy panel;
+    editor::OperatorRegistry registry;
+    panel.OnRegisterOperators(registry);
+    editor::RegisterNodeOperators(registry);
+    for (const char* id : { "edit.rename", "view.frame_selected", "edit.paste_as_child" }) {
+        editor::EditorOperator operation;
+        operation.id = id;
+        operation.exec = [](editor::OpContext&, const editor::OpArgs&) { return editor::OpResult::Ok(); };
+        registry.Register(std::move(operation));
+    }
+    Context().operators = &registry;
+    ImVec2 rowCenter;
+    const auto draw = [&] {
+        panel.Draw(Context());
+        const auto lo = ImGui::GetItemRectMin();
+        const auto hi = ImGui::GetItemRectMax();
+        rowCenter = { lo.x + 40.0f, (lo.y + hi.y) * 0.5f };
+    };
+    const auto openMenu = [&] {
+        Frame(draw);
+        ImGui::GetIO().AddMousePosEvent(rowCenter.x, rowCenter.y);
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        Frame(draw);
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        /// @note 初回はポップアップの寸法計測中なので、表示が確定した次フレームを読む。
+        Frame(draw);
+        return Frame(draw);
+    };
+
+    const auto tree = openMenu();
+    EXPECT_EQ(Context().PrimarySelected(), object.GetID());
+    EXPECT_NE(tree.find(LOCT("Rename")), std::string::npos) << tree;
+    EXPECT_NE(tree.find(LOCT("Frame Selected")), std::string::npos) << tree;
+    EXPECT_NE(tree.find(LOCT("Paste As Child")), std::string::npos) << tree;
+
+    ImGui::ClosePopupToLevel(0, false);
+    editor::OpArgs search;
+    search.Set("search", std::string("Context target"));
+    editor::OpContext operation{Context(), m_undo};
+    ASSERT_TRUE(registry.Invoke("hierarchy.view.configure", operation, search).ok);
+    const auto results = openMenu();
+    EXPECT_NE(results.find(LOCT("Rename")), std::string::npos) << results;
+    EXPECT_NE(results.find(LOCT("Frame Selected")), std::string::npos) << results;
+
+    ImGui::ClosePopupToLevel(0, false);
+    const auto sibling = AttachedScene()->CreateGameObject("Other selected object").GetID();
+    const std::vector selected{ sibling, object.GetID() };
+    editor::SelectEntities(Context(), selected, editor::SelectionReveal::Skip);
+    const auto multiple = openMenu();
+    EXPECT_EQ(Context().selectedEntities, selected);
+    EXPECT_NE(multiple.find(LOCT("Group Selection")), std::string::npos) << multiple;
+    EXPECT_EQ(multiple.find(LOCT("Create Child")), std::string::npos) << multiple;
+    EXPECT_EQ(multiple.find(LOCT("Paste As Child")), std::string::npos) << multiple;
+    Context().operators = nullptr;
+}
+
+/// @brief 選択が残っていても空白の右クリックはシーンルートを対象とする。
+TEST_F(EditorIdleWorkTest, HierarchyBackgroundMenuUsesSceneRootWithASelection)
+{
+    auto& object = AttachedScene()->CreateGameObject("Selected parent");
+    editor::SelectEntity(Context(), object.GetID(), editor::SelectionReveal::Skip);
+    IdleHierarchy panel;
+    const auto draw = [&] { panel.Draw(Context()); };
+    Frame(draw);
+    ImGui::GetIO().AddMousePosEvent(400.0f, 400.0f);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+    Frame(draw);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+    const auto menu = Frame(draw);
+    EXPECT_NE(menu.find(LOCT("Scene Root")), std::string::npos) << menu;
+    EXPECT_EQ(menu.find("Create under"), std::string::npos) << menu;
+    EXPECT_EQ(Context().PrimarySelected(), object.GetID());
+}
+
+/// @brief ルートの「下へ」は子が間に並ぶシーンでも隣のルートと入れ替える。
+TEST_F(EditorIdleWorkTest, HierarchyReorderMovesBetweenSiblingRows)
+{
+    auto& world = *AttachedScene();
+    auto& first = world.CreateGameObject("First");
+    auto& child = world.CreateGameObject("Child");
+    child.SetParent(first);
+    world.CreateGameObject("Second");
+    editor::OperatorRegistry registry;
+    editor::RegisterNodeOperators(registry);
+    editor::OpContext operation{Context(), m_undo};
+    editor::OpArgs args;
+    args.Set("node", first.instanceId);
+    args.Set("direction", std::string("down"));
+
+    const auto result = registry.Invoke("node.reorder", operation, args);
+    ASSERT_TRUE(result.ok) << result.message;
+    ASSERT_EQ(world.GetRootGameObjects().size(), 2u);
+    EXPECT_EQ(world.GetRootGameObjects()[0]->name, "Second");
+    EXPECT_EQ(child.GetParent(), &first);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(world.GetRootGameObjects()[0]->name, "First");
+}
+
+/// @brief 親子をまとめてグループ化しても子は親の下に残り、一度の Undo と Redo で往復できる。
+TEST_F(EditorIdleWorkTest, HierarchyGroupKeepsSelectedDescendantsAndSupportsRedo)
+{
+    auto& world = *AttachedScene();
+    auto& first = world.CreateGameObject("Parent");
+    auto& child = world.CreateGameObject("Child");
+    child.SetParent(first);
+    const auto childGuid = child.instanceId;
+    const auto sibling = world.CreateGameObject("Sibling").GetID();
+    editor::SelectEntities(Context(), {first.GetID(), child.GetID(), sibling}, editor::SelectionReveal::Skip);
+    editor::OperatorRegistry registry;
+    editor::RegisterNodeOperators(registry);
+    editor::OpContext operation{Context(), m_undo};
+
+    const auto result = registry.Invoke("node.group_selection", operation);
+    ASSERT_TRUE(result.ok) << result.message;
+    ASSERT_NE(Context().GetSelectedGO(), nullptr);
+    const auto groupGuid = Context().GetSelectedGO()->instanceId;
+    EXPECT_EQ(child.GetParent(), &first);
+    EXPECT_EQ(first.GetParent(), Context().GetSelectedGO());
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(world.FindByGuid(groupGuid), nullptr);
+    EXPECT_FALSE(m_undo.CanUndo());
+    ASSERT_TRUE(m_undo.Redo());
+    const auto* restoredChild = world.FindByGuid(childGuid);
+    ASSERT_TRUE(restoredChild && restoredChild->GetParent());
+    EXPECT_EQ(restoredChild->GetParent()->GetParent(), world.FindByGuid(groupGuid));
+    EXPECT_NE(world.FindByGuid(groupGuid), nullptr);
 }
 
 /// @brief Mesh ray index keeps triangle order and refreshes on publication.
@@ -246,6 +382,87 @@ TEST_F(EditorIdleWorkTest, AssetMetadataRemainsCachedUntilRefreshAndThenUpdates)
     { std::ofstream output(directory / "New.txt"); output << "new"; }
     Context().requestAssetBrowserRefresh = true;
     EXPECT_NE(Frame(draw).find("New.txt"), std::string::npos);
+}
+
+/// @brief ファイルではそのファイルの操作、フォルダと空白では各フォルダへの操作を表示する。
+TEST_F(EditorIdleWorkTest, AssetBrowserMenusDistinguishFileFolderAndBackground)
+{
+    const auto directory = File("Assets/Menu");
+    std::filesystem::create_directories(directory / "Destination");
+    std::ofstream(directory / "Source.txt") << "data";
+    const auto root = util::FileSystem::PathToUtf8(directory);
+    IdleAssetBrowser browser(root);
+    editor::EditorSettings settings;
+    auto& state = settings.AssetBrowserPanelAt(1);
+    state.viewMode = 1;
+    state.currentFolder = root;
+    browser.OnLoadSettings(settings);
+    Context().projectRoot = ProjectRoot().generic_string();
+    Context().scriptsSourceDir = root;
+    Context().hlslSourceDir = root;
+    const auto draw = [&] { browser.Draw(Context()); };
+    Frame(draw);
+    Frame(draw);
+
+    ImGuiWindow* content = nullptr;
+    for (auto* window : m_gui->Windows) {
+        const std::string_view name(window->Name);
+        const auto separator = name.rfind('/');
+        if (separator != std::string_view::npos && name.substr(separator + 1).starts_with("##content_")) {
+            content = window;
+            break;
+        }
+    }
+    ASSERT_NE(content, nullptr);
+    const auto* table = ImGui::TableFindByID(content->GetID("##list"));
+    ASSERT_NE(table, nullptr);
+    const float x = table->OuterRect.Min.x + 30.0f;
+    const float fileY = (table->RowPosY1 + table->RowPosY2) * 0.5f;
+    const float folderY = fileY - (table->RowPosY2 - table->RowPosY1);
+    const auto menuAt = [&](float y) {
+        ImGui::GetIO().AddMousePosEvent(x, y);
+        Frame(draw);
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        Frame(draw);
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        Frame(draw);
+        return Frame(draw);
+    };
+    const auto activateMenuItem = [&](const char* label) {
+        ASSERT_FALSE(m_gui->OpenPopupStack.empty());
+        ImGuiWindow* popup = m_gui->OpenPopupStack.back().Window;
+        ASSERT_NE(popup, nullptr);
+        const auto id = popup->GetID(LOC(label));
+        Frame([&] {
+            m_gui->NavActivateId = id;
+            m_gui->NavActivateDownId = id;
+            m_gui->NavActivatePressedId = id;
+            m_gui->NavActivateFlags = ImGuiActivateFlags_None;
+            draw();
+        });
+    };
+
+    const auto file = menuAt(fileY);
+    EXPECT_NE(file.find(LOCT("Find References...")), std::string::npos) << file;
+    EXPECT_EQ(file.find(LOCT("Paste Here")), std::string::npos) << file;
+    activateMenuItem("Copy");
+    ASSERT_TRUE(m_gui->OpenPopupStack.empty());
+
+    const auto folder = menuAt(folderY);
+    ASSERT_NE(folder.find("Assets/Menu/Destination"), std::string::npos) << folder;
+    EXPECT_NE(folder.find(LOCT("Open Folder")), std::string::npos) << folder;
+    EXPECT_NE(folder.find(LOCT("Create Here")), std::string::npos) << folder;
+    EXPECT_NE(folder.find(LOCT("Paste Here")), std::string::npos) << folder;
+    activateMenuItem("Paste Here");
+    ASSERT_TRUE(m_gui->OpenPopupStack.empty()) << folder;
+    EXPECT_TRUE(std::filesystem::is_regular_file(directory / "Destination" / "Source.txt"))
+        << "Selection: " << Context().selectedAssetPath << '\n' << folder;
+    EXPECT_FALSE(std::filesystem::exists(directory / "Source(2).txt"));
+
+    const auto background = menuAt(fileY + 150.0f);
+    EXPECT_NE(background.find(LOCT("Paste Here")), std::string::npos) << background;
+    EXPECT_NE(background.find(LOCT("Create Here")), std::string::npos) << background;
+    EXPECT_EQ(background.find(LOCT("Find References...")), std::string::npos) << background;
 }
 
 /// @brief Hierarchy hidden counts follow generated visibility each frame.

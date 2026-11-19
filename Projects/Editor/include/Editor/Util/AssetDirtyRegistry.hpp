@@ -21,6 +21,7 @@ struct DirtyAsset {
     std::function<bool()> saveFunc;
     std::any draft;                   ///< @note 型付き shared_ptr の所有者。保存完了または明示破棄まで保持する。
     std::function<void()> discardFunc;
+    std::uint64_t revision = 0;
 };
 
 /// @note Editor のメインスレッド専用。保存失敗時は値と callback を保持する。
@@ -74,6 +75,7 @@ public:
 private:
     static std::vector<DirtyAsset> s_dirty;
     static std::uint64_t s_discardEpoch;
+    static std::uint64_t s_nextRevision;
 };
 
 } /// @note namespace fbzz::editor

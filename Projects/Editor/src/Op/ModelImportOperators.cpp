@@ -239,6 +239,7 @@ void RegisterModelImportOperators(OperatorRegistry& registry)
         const bool inspect = op.id == "asset.model.inspect";
         const bool configure = op.id == "asset.model.configure";
         op.kind = inspect ? OpKind::Query : OpKind::Action;
+        op.dialog = OpDialog::NONE;
         op.desc = inspect ? "モデル原本のメッシュ・クリップ・保存済み変換設定・生成物とGUIDを読む。"
             : configure ? "モデル変換設定の指定項目を保存する。変換はasset.model.importで実行する。"
             : "保存済み設定とoptionsでモデル原本を変換し、成功後に設定・キャッシュ・索引を更新する。";

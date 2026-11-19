@@ -5,6 +5,8 @@
 #include <Editor/Panels/UndoHistoryPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/UndoStack.hpp>
+#include <Editor/Util/ModalDialog.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <imgui.h>
 
@@ -22,8 +24,16 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
     /// @note Clear ボタン
     const bool canClear = stack.GetHistorySize() > 0;
     if (!canClear) ImGui::BeginDisabled();
-    if (ImGui::Button("Clear History"))
-        { OpArgs args; args.Set("action", std::string("clear")); InvokeOperator(ctx, "edit.history.control", args); }
+    if (ImGui::Button(LOCT("Clear History"))) {
+        const auto revision = stack.GetRevision();
+        ModalDialog::OpenConfirm(LOCT("Clear History"), LOCT("Clear this undo and redo history?"),
+            [&ctx, expectedStack = &stack, revision] {
+                if (ctx.undoStack != expectedStack || expectedStack->GetRevision() != revision) return;
+                OpArgs args;
+                args.Set("action", std::string("clear"));
+                InvokeOperator(ctx, "edit.history.control", args);
+            });
+    }
     if (!canClear) ImGui::EndDisabled();
 
     ImGui::SameLine();
@@ -41,6 +51,8 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
             isCurrent ? ImVec4(0.4f, 0.9f, 0.4f, 1.0f) : ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
         if (ImGui::Selectable("<Initial State>", isCurrent))
             { OpArgs args; args.Set("action", std::string("jump")); args.Set("index", 0); InvokeOperator(ctx, "edit.history.control", args); }
+        if (isCurrent && stack.GetRevision() != m_lastRevision)
+            ImGui::SetScrollHereY(0.5f);
         ImGui::PopStyleColor();
     }
 
@@ -64,15 +76,14 @@ void UndoHistoryPanel::OnRenderContent(EditorContext& ctx)
             { OpArgs args; args.Set("action", std::string("jump")); args.Set("index", static_cast<int>(i + 1)); InvokeOperator(ctx, "edit.history.control", args); }
         ImGui::PopStyleColor();
 
+        if (isCurrent && stack.GetRevision() != m_lastRevision)
+            ImGui::SetScrollHereY(0.5f);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Jump to this state");
     }
 
     /// @note 現在位置が画面外のとき自動スクロール
-    if (stack.GetRevision() != m_lastRevision) {
-        m_lastRevision = stack.GetRevision();
-        ImGui::SetScrollHereY(0.5f);
-    }
+    m_lastRevision = stack.GetRevision();
 }
 
 } /// @note namespace fbzz::editor

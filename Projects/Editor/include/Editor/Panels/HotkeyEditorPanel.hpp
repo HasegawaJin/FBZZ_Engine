@@ -13,6 +13,8 @@ public:
     const char* GetWindowName()        const override { return "Hotkey Editor"; }
     const char* GetViewMenuName()      const override { return "Hotkey Editor"; }
     bool        GetDefaultVisibility() const override { return false; }
+    HotkeyScope GetHotkeyScope() const override { return HotkeyScope::HotkeyEditor; }
+    bool IsCapturingKeyboard() const { return visible && !m_rebindTarget.empty(); }
     void OnRegisterOperators(OperatorRegistry& registry) override;
 
 protected:
@@ -22,7 +24,7 @@ private:
     /// リバインド待ち状態
     std::string m_rebindTarget;     ///< 待機中のホットキー名 (空 = 待機していない)
     /// 直前のリバインドで既存の割り当てとぶつかった場合の警告文 (空 = 警告なし)。
-    /// @note 割り当ては通したうえで知らせる。拒否すると理由が分からず、黙って通すと後から気づく。
+    /// @note 競合の理由を表示して別のキーを待つ。
     std::string m_conflictNote;
 };
 

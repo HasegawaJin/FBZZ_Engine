@@ -44,6 +44,7 @@ void RegisterBehaviorTreeOperators(OperatorRegistry& registry);
 
 /// @brief デバッグ表示とビューモード。
 void RegisterRenderOperators(OperatorRegistry& registry);
+void RegisterGameViewportOperators(OperatorRegistry& registry);
 
 /// @brief GameObject の操作と Undo 記録。
 void RegisterNodeOperators(OperatorRegistry& registry);

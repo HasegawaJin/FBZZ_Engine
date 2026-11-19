@@ -187,6 +187,11 @@ std::string EditorBusDispatcher::Handle(const std::string& requestLine)
         outcome = RunBuilder(call, *entry);
     }
 
+    /// @note 途中で失敗した操作もシーンを更新した可能性がある。画像の読み戻しと比較だけは描画状態を変えない。
+    if (!request->IsQuery() && !request->dryRun && entry && entry->kind != BusKind::QUERY
+        && type != "visual.compare"
+        && !(type == "editor.op.invoke" && bus::StringField(request->payload, "id") == "renderpass.capture"))
+        ++m_context.captureRevision;
     if (outcome.ok) return SerializeJson(MakeOkResponse(request->id, std::move(outcome.result)));
     return SerializeJson(MakeErrorResponse(request->id, outcome.code, outcome.message));
 }

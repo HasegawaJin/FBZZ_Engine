@@ -2,6 +2,7 @@
 /// @brief   制御点の接続、変換、Bakeを登録済みOpから編集するInspector。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/Tools/AdditionalControlPointEditing.hpp>
 #include <Editor/Tools/TargetPointReferenceEditing.hpp>
@@ -120,7 +121,7 @@ bool ChooseTarget(EditorContext& ctx, PanelState& state, const OpArgs& ownerArgs
 {
     auto* target = reference.guid.empty() ? nullptr : ctx.activeScene->FindByGuid(reference.guid);
     const char* label = target ? target->name.c_str() : reference.guid.empty() ? "未接続" : "参照先が見つかりません";
-    if (ImGui::BeginCombo("TargetPoint", label)) {
+    if (property::BeginCombo("TargetPoint", label)) {
         bool handled = false;
         for (auto& point : ctx.activeScene->GameObjects()) {
             if (!point.GetComponent<scene::TargetPointComponent>()) continue;
@@ -192,9 +193,9 @@ bool DrawPointOwner(EditorContext& ctx, scene::GameObject& object, Component& co
             if (!handled) {
                 float width = row.width, depth = row.depth, speed = row.flowSpeed;
                 if (component.surfaceShape == scene::WaterSurfaceShape::SPLINE_RIVER
-                    && ImGui::InputFloat("幅 (ローカル)", &width, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) { action.Set("width", width); handled = Invoke(ctx, state, "control_points.set_water_attributes", action); }
-                if (!handled && ImGui::InputFloat("水深 (m)", &depth, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) { action.Set("depth", depth); handled = Invoke(ctx, state, "control_points.set_water_attributes", action); }
-                if (!handled && ImGui::InputFloat("流速 (m/s)", &speed, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) { action.Set("flowSpeed", speed); handled = Invoke(ctx, state, "control_points.set_water_attributes", action); }
+                    && property::InputFloat("幅 (ローカル)", &width, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) { action.Set("width", width); handled = Invoke(ctx, state, "control_points.set_water_attributes", action); }
+                if (!handled && property::InputFloat("水深 (m)", &depth, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) { action.Set("depth", depth); handled = Invoke(ctx, state, "control_points.set_water_attributes", action); }
+                if (!handled && property::InputFloat("流速 (m/s)", &speed, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) { action.Set("flowSpeed", speed); handled = Invoke(ctx, state, "control_points.set_water_attributes", action); }
             }
         }
         ImGui::TreePop();
@@ -205,8 +206,8 @@ bool DrawPointOwner(EditorContext& ctx, scene::GameObject& object, Component& co
             float position[]{state.newPosition.x, state.newPosition.z};
             ImGui::InputFloat2("新しい点のローカルXZ", position);
             state.newPosition = {position[0], component.lakePlaneHeight, position[1]};
-        } else ImGui::InputFloat3("新しい点のローカル位置", &state.newPosition.x);
-    } else ImGui::InputFloat3("新しい点のローカル位置", &state.newPosition.x);
+        } else property::InputFloat3("新しい点のローカル位置", &state.newPosition.x);
+    } else property::InputFloat3("新しい点のローカル位置", &state.newPosition.x);
     auto add = args; add.Set("localPosition", state.newPosition);
     return Button(ctx, state, "点を追加", "control_points.add", add);
 }
@@ -228,10 +229,10 @@ bool DrawClothMotion(EditorContext& ctx, scene::GameObject& object, const scene:
     }
     ImGui::SeparatorText("Cloth 揺れ方");
     ImGui::TextWrapped("曲げ・伸びは右ほど柔らかく、揺れの収まりは右ほど早く静止します。適用後、Playで確認できます。");
-    ImGui::SliderFloat("曲がりやすさ", &state.motionDraft.bendCompliance, 0.0f, 0.1f, "%.5f", ImGuiSliderFlags_Logarithmic);
-    ImGui::SliderFloat("伸びやすさ", &state.motionDraft.stretchCompliance, 0.0f, 0.001f, "%.8f", ImGuiSliderFlags_Logarithmic);
-    ImGui::SliderFloat("揺れの収まり", &state.motionDraft.damping, 0.0f, 20.0f, "%.2f");
-    ImGui::InputFloat3("風 (ワールド m/s)", &state.motionDraft.windVelocity.x);
+    property::SliderFloat("曲がりやすさ", &state.motionDraft.bendCompliance, 0.0f, 0.1f, "%.5f", ImGuiSliderFlags_Logarithmic);
+    property::SliderFloat("伸びやすさ", &state.motionDraft.stretchCompliance, 0.0f, 0.001f, "%.8f", ImGuiSliderFlags_Logarithmic);
+    property::SliderFloat("揺れの収まり", &state.motionDraft.damping, 0.0f, 20.0f, "%.2f");
+    property::InputFloat3("風 (ワールド m/s)", &state.motionDraft.windVelocity.x);
     if (ImGui::SmallButton("標準値を下書きに戻す")) state.motionDraft = physics::ClothSettings{};
     OpArgs motion; motion.Set("node", object.instanceId);
     motion.Set("bendCompliance", state.motionDraft.bendCompliance);
@@ -275,11 +276,11 @@ bool DrawClothAnchors(EditorContext& ctx, scene::GameObject& object, scene::Clot
         auto remove = OwnerArgs(object, "cloth"); remove.Set("id", static_cast<int>(row.bindingId)); remove.Set("particle", row.particle);
         if (Button(ctx, state, "接続を解除", "control_points.unbind", remove)) return true;
     }
-    ImGui::InputInt("接続する質点", &state.particle);
-    ImGui::InputFloat("最大移動距離 (m)", &state.radius);
-    ImGui::InputFloat3("固定先のローカルoffset", &state.offset.x);
+    property::InputInt("接続する質点", &state.particle);
+    property::InputFloat("最大移動距離 (m)", &state.radius);
+    property::InputFloat3("固定先のローカルoffset", &state.offset.x);
     auto* selected = state.target.empty() ? nullptr : ctx.activeScene->FindByGuid(state.target);
-    if (ImGui::BeginCombo("固定先", selected ? selected->name.c_str() : "TargetPointを選択")) {
+    if (property::BeginCombo("固定先", selected ? selected->name.c_str() : "TargetPointを選択")) {
         for (auto& point : ctx.activeScene->GameObjects()) {
             IdScope pointId(point.instanceId.c_str());
             if (ImGui::Selectable(point.name.c_str(), point.instanceId == state.target)) state.target = point.instanceId;
@@ -291,7 +292,7 @@ bool DrawClothAnchors(EditorContext& ctx, scene::GameObject& object, scene::Clot
     bind.Set("localPosition", state.offset); bind.Set("maxDistance", state.radius);
     if (Button(ctx, state, "固定先へ接続 / 再接続", "control_points.bind", bind)) return true;
     if (ImGui::SmallButton("新しい接続")) { state.attachmentId = 0; state.target.clear(); state.offset = {}; }
-    ImGui::InputFloat3("作成する固定点のローカル位置", &state.newPosition.x);
+    property::InputFloat3("作成する固定点のローカル位置", &state.newPosition.x);
     auto create = OwnerArgs(object, "cloth");
     create.Set("particle", state.particle); create.Set("localPosition", state.offset);
     create.Set("maxDistance", state.radius); create.Set("markerPosition", state.newPosition);
@@ -335,7 +336,7 @@ bool DrawControlPointInspector(EditorContext& ctx, scene::GameObject& object)
         if (!handled && water->pointSourceMode == scene::ControlPointSourceMode::POINT_OBJECTS
             && water->surfaceShape == scene::WaterSurfaceShape::SPLINE_LAKE) {
             float height = water->lakePlaneHeight;
-            if (ImGui::InputFloat("湖の高さ", &height, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if (property::InputFloat("湖の高さ", &height, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue)) {
                 auto args = OwnerArgs(object, "water"); args.Set("height", height);
                 handled = Invoke(ctx, state, "control_points.set_lake_height", args);
             }

@@ -468,6 +468,7 @@ void ProjectSettingsPanel::DrawSaveStatus(EditorContext& ctx)
             ImGui::SameLine();
             if (ImGui::SmallButton(LOC("Retry"))) {
                 m_inputDirty = true;
+                m_inputSaveState = InputSaveState::Pending;
                 m_inputIdle  = kInputSaveDelay;
             }
             break;
@@ -691,14 +692,15 @@ void ProjectSettingsPanel::TickInputAutoSave(EditorContext& ctx)
     }
     m_wasRebinding = rebinding;
     if (!m_inputDirty) return;
+    if (m_inputSaveState == InputSaveState::Failed && m_inputIdle >= kInputSaveDelay) return;
 
     m_inputSaveState = InputSaveState::Pending;
     m_inputIdle += ImGui::GetIO().DeltaTime;
     /// @note 待機の途中でファイルへ落とすと、次の起動が壊れたバインドで立ち上がる。
     if (rebinding || ImGui::IsAnyItemActive() || m_inputIdle < kInputSaveDelay) return;
 
-    m_inputDirty = false;
     if (input::InputActionMap::SaveToFile(m_inputPath)) {
+        m_inputDirty = false;
         m_inputSaveState  = InputSaveState::Saved;
         m_inputSavedClock = LocalClockNow();
     } else {

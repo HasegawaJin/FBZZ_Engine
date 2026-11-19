@@ -20,6 +20,7 @@
 #include <Engine/Scene/ComponentRegistry.hpp>
 
 #include <imgui.h>
+#include <array>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -331,79 +332,71 @@ std::vector<scene::Transform> TransformsOf(const std::vector<scene::GameObject*>
 /// @note 「全員を同じ値にする」モード。従来の挙動をそのまま踏襲する。
 void DrawTransformSetMode(EditorContext& ctx, const std::vector<scene::GameObject*>& gos)
 {
-    const auto& refT = gos.front()->transform;
-
-    bool posAllSame = true, rotAllSame = true, scaleAllSame = true;
-    for (std::size_t i = 1; i < gos.size(); ++i) {
-        const auto& t = gos[i]->transform;
-        if (t.position.x != refT.position.x || t.position.y != refT.position.y ||
-            t.position.z != refT.position.z)
-            posAllSame = false;
-        if (t.rotation.x != refT.rotation.x || t.rotation.y != refT.rotation.y ||
-            t.rotation.z != refT.rotation.z || t.rotation.w != refT.rotation.w)
-            rotAllSame = false;
-        if (t.scale.x != refT.scale.x || t.scale.y != refT.scale.y || t.scale.z != refT.scale.z)
-            scaleAllSame = false;
-    }
-
-    /// @note ドラッグ 1 回を 1 コマンドにまとめるための編集状態。
-    struct MultiTransformEdit {
-        std::vector<std::string>      guids;
+    struct AxisEdit {
+        const scene::Scene* scene = nullptr;
+        std::vector<std::string> guids;
         std::vector<scene::Transform> before;
-        bool                          active = false;
+        std::vector<scene::Transform> after;
     };
-    static MultiTransformEdit edit;
+    static std::array<AxisEdit, 3> edits;
+    const auto guids = GuidsOf(gos);
 
-    auto track = [&](bool changed, const char* description) {
-        if (ImGui::IsItemActivated()) {
-            edit.guids  = GuidsOf(gos);
+    const auto draw = [&](int index, const char* label, const char* undo,
+                          auto get, auto set, float speed, float min, float max, const char* format) {
+        auto& edit = edits[static_cast<std::size_t>(index)];
+        if (edit.scene != ctx.activeScene) edit = {};
+        const auto finish = [&] {
+            if (!edit.after.empty()) PushBulkTransformUndo(ctx, edit.guids, edit.before, edit.after, undo);
+            edit = {};
+        };
+        if (edit.guids != guids) finish();
+
+        const math::Vector3 first = get(gos.front()->transform);
+        unsigned mixed = 0;
+        for (const auto* go : gos) {
+            const math::Vector3 current = get(go->transform);
+            if (current.x != first.x) mixed |= 1u;
+            if (current.y != first.y) mixed |= 2u;
+            if (current.z != first.z) mixed |= 4u;
+        }
+
+        float values[] = { first.x, first.y, first.z };
+        unsigned changedAxes = 0;
+        const auto row = widgets::BeginPropertyField(label);
+        const bool changed = widgets::DragAxes("##axes", values, 3, speed, min, max, format, mixed, &changedAxes, 0,
+                                             ImGuiSliderFlags_AlignValueRight);
+        if ((ImGui::IsItemActivated() || changed) && edit.before.empty()) {
+            edit.scene = ctx.activeScene;
+            edit.guids = guids;
             edit.before = TransformsOf(gos);
-            edit.active = true;
         }
-        if (!changed && !ImGui::IsItemDeactivatedAfterEdit()) return;
-        /// @note 反映は各フィールドの changed ハンドラ側で済ませている。ここで transform 全体を
-        /// @note コピーすると、Position を触っただけで他の回転・スケールまで潰れる。
-        if (!ImGui::IsItemDeactivatedAfterEdit()) return;
-        if (edit.active)
-            PushBulkTransformUndo(ctx, edit.guids, edit.before, TransformsOf(gos), description);
-        if (ctx.markSceneDirty) ctx.markSceneDirty();
-        edit.active = false;
+        if (changed) {
+            for (auto* go : gos) {
+                auto value = get(go->transform);
+                if ((changedAxes & 1u) != 0) value.x = values[0];
+                if ((changedAxes & 2u) != 0) value.y = values[1];
+                if ((changedAxes & 4u) != 0) value.z = values[2];
+                set(go->transform, value);
+            }
+            edit.after = TransformsOf(gos);
+            if (ctx.markSceneDirty) ctx.markSceneDirty();
+        }
+        if (!ImGui::IsItemActive()) finish();
+        widgets::EndPropertyField(row);
     };
 
-    const ImVec4 mutedColor = EditorTheme::Color(ThemeColor::TextMuted);
-
-    float pos[3] = { refT.position.x, refT.position.y, refT.position.z };
-    if (!posAllSame) ImGui::PushStyleColor(ImGuiCol_Text, mutedColor);
-    const bool posChanged =
-        widgets::DragAxes(posAllSame ? "Position" : "Position (---)", pos, 3, 0.1f);
-    if (!posAllSame) ImGui::PopStyleColor();
-    if (posChanged)
-        for (auto* g : gos) g->transform.position = { pos[0], pos[1], pos[2] };
-    track(posChanged, "Move (Multi)");
-
-    {
-        const math::Vector3 euler = widgets::QuatToEulerDeg(refT.rotation);
-        float rot[3] = { euler.x, euler.y, euler.z };
-        if (!rotAllSame) ImGui::PushStyleColor(ImGuiCol_Text, mutedColor);
-        const bool rotChanged =
-            widgets::DragAxes(rotAllSame ? "Rotation" : "Rotation (---)", rot, 3, 0.5f,
-                              0.0f, 0.0f, "%.1f");
-        if (!rotAllSame) ImGui::PopStyleColor();
-        if (rotChanged) {
-            const auto newRot = widgets::EulerDegToQuat({ rot[0], rot[1], rot[2] });
-            for (auto* g : gos) g->transform.rotation = newRot;
-        }
-        track(rotChanged, "Rotate (Multi)");
-    }
-
-    float scale[3] = { refT.scale.x, refT.scale.y, refT.scale.z };
-    if (!scaleAllSame) ImGui::PushStyleColor(ImGuiCol_Text, mutedColor);
-    const bool scaleChanged =
-        widgets::DragAxes(scaleAllSame ? "Scale" : "Scale (---)", scale, 3, 0.01f, 0.001f, 1000.0f);
-    if (!scaleAllSame) ImGui::PopStyleColor();
-    if (scaleChanged)
-        for (auto* g : gos) g->transform.scale = { scale[0], scale[1], scale[2] };
-    track(scaleChanged, "Scale (Multi)");
+    draw(0, "Position", "Move (Multi)",
+         [](const scene::Transform& t) { return t.position; },
+         [](scene::Transform& t, const math::Vector3& value) { t.position = value; },
+         0.1f, 0.0f, 0.0f, "%.3f");
+    draw(1, "Rotation", "Rotate (Multi)",
+         [](const scene::Transform& t) { return widgets::QuatToEulerDeg(t.rotation); },
+         [](scene::Transform& t, const math::Vector3& value) { t.rotation = widgets::EulerDegToQuat(value); },
+         0.5f, 0.0f, 0.0f, "%.1f");
+    draw(2, "Scale", "Scale (Multi)",
+         [](const scene::Transform& t) { return t.scale; },
+         [](scene::Transform& t, const math::Vector3& value) { t.scale = value; },
+         0.01f, 0.001f, 1000.0f, "%.3f");
 }
 
 /// @brief 「全員に相対的な差分を加える」モード。
@@ -427,17 +420,28 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
         if (ctx.markSceneDirty) ctx.markSceneDirty();
     };
 
-    widgets::DragAxes("Move by", moveDelta, 3, 0.1f);
-    ImGui::SameLine();
-    if (ImGui::Button("Apply##move")) {
+    const auto drawOffset = [](const char* label, float* values, float speed,
+                               float min, float max, const char* format) {
+        const auto row = widgets::BeginPropertyField(label);
+        const float gap = ImGui::GetStyle().ItemSpacing.x;
+        const float buttonWidth = ImGui::CalcTextSize(LOCT("Apply")).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        const float available = ImGui::GetContentRegionAvail().x;
+        const bool inlineApply = available - buttonWidth - gap >= ImGui::GetFontSize() * 13.0f;
+        if (inlineApply) ImGui::SetNextItemWidth(available - buttonWidth - gap);
+        widgets::DragAxes("##axes", values, 3, speed, min, max, format, 0, nullptr, 0, ImGuiSliderFlags_AlignValueRight);
+        if (inlineApply) ImGui::SameLine();
+        const bool apply = ImGui::Button(LOCT("Apply"));
+        widgets::EndPropertyField(row);
+        return apply;
+    };
+
+    if (drawOffset("Move by", moveDelta, 0.1f, 0.0f, 0.0f, "%.3f")) {
         const math::Vector3 d{ moveDelta[0], moveDelta[1], moveDelta[2] };
         applyBulk("Move by Offset (Multi)", [d](scene::Transform& t) { t.position = t.position + d; });
         moveDelta[0] = moveDelta[1] = moveDelta[2] = 0.0f;
     }
 
-    widgets::DragAxes("Rotate by", rotDelta, 3, 0.5f, 0.0f, 0.0f, "%.1f");
-    ImGui::SameLine();
-    if (ImGui::Button("Apply##rot")) {
+    if (drawOffset("Rotate by", rotDelta, 0.5f, 0.0f, 0.0f, "%.1f")) {
         /// @note ワールド軸まわりの回転を左から掛けることで、各オブジェクトの現在の向きに
         /// @note 関係なく「同じ方向へ同じ角度だけ回す」になる。
         const math::Quaternion delta =
@@ -448,9 +452,7 @@ void DrawTransformOffsetMode(EditorContext& ctx, const std::vector<scene::GameOb
         rotDelta[0] = rotDelta[1] = rotDelta[2] = 0.0f;
     }
 
-    widgets::DragAxes("Scale x", scaleMul, 3, 0.01f, 0.001f, 1000.0f);
-    ImGui::SameLine();
-    if (ImGui::Button("Apply##scale")) {
+    if (drawOffset("Scale x", scaleMul, 0.01f, 0.001f, 1000.0f, "%.3f")) {
         const math::Vector3 m{ scaleMul[0], scaleMul[1], scaleMul[2] };
         applyBulk("Scale by Factor (Multi)", [m](scene::Transform& t) {
             t.scale = { t.scale.x * m.x, t.scale.y * m.y, t.scale.z * m.z };

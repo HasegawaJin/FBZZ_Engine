@@ -168,21 +168,6 @@ int ReconcileStalePrefabInstances(scene::Scene& scene,
     return updated;
 }
 
-/// @brief HLSL の再コンパイル結果を現在開いているプロジェクトへ反映する。
-/// @note compile_shaders.ps1 はエンジンソース側へ CSO を出力するが、実行中の renderer は プロジェクト側 Assets/shaders を読むため、ReloadAllShaders() の前に同期が要る。
-bool SyncCompiledShadersToProject(const std::filesystem::path& hlslSourceDir,
-                                  const std::string& projectRoot)
-{
-    if (hlslSourceDir.empty() || projectRoot.empty()) return false;
-
-    const std::filesystem::path shaderDestination =
-        util::FileSystem::PathFromUtf8(projectRoot) / L"Assets" / L"shaders";
-    bool copiedAny = false;
-    for (const std::filesystem::path directory : {L"compiled", L"compiled_dx12"}) {
-    }
-    return copiedAny;
-}
-
 /// @brief HLSL の再コンパイル結果を renderer の実際の読込先へ反映する。
 /// @note EditorLauncher / sandbox は起動時にカレントディレクトリを exe 隣へ変更し、Renderer は バックエンド別 compiled ディレクトリを相対パスで開くため、ここにも同期が要る。
 bool SyncCompiledShadersToRuntimeAssets(const std::filesystem::path& hlslSourceDir)
@@ -249,6 +234,7 @@ void EditorApp::CheckSceneDirtyForStandalone()
 
 void EditorApp::MarkSceneDirty()
 {
+    ++m_ctx.captureRevision;
     /// @note Dirty tracking belongs to the parked Edit document; temporary Play changes never authorize its save state.
     if (m_ctx.playMode && !m_ctx.playMode->IsInEditor()) return;
     /// @note Prefab 編集モード中の変更は「シーン」ではなく「プレファブアセット」への変更。 ここで sceneDirty を立てると、編集面を抜けて元シーンへ戻った後も未保存扱いが残る。 退避したシーンの dirty 状態は ExitPrefabEditMode がそのまま復元する。
@@ -297,7 +283,10 @@ void EditorApp::ConfirmDiscardUnsaved(const std::string& actionName, std::functi
 
     ModalDialog::OpenUnsavedChanges(actionName, msg,
         [this, action]() {
-            AssetDirtyRegistry::SaveAll();
+            if (AssetDirtyRegistry::SaveAll() != 0 || AssetDirtyRegistry::HasAny()) {
+                Toast::Error(LOCT("Some assets could not be saved. Retry or cancel to keep editing."));
+                return false;
+            }
             if (m_ctx.sceneDirty) return SaveScene(true, action);
             if (action) action();
             return true;

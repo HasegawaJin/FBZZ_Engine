@@ -469,7 +469,8 @@ void DrawValue(EditorContext& context, AssetView& view, const std::string& path,
     else if (value.IsArray()) {
         float next[4]{}; const auto count = value.AsArray().size(); if (count >= 2 && count <= 4 && ui.BeginRow(label.c_str())) {
             for (size_t index = 0; index < count; ++index) next[index] = value.AsArray()[index].IsInt() ? static_cast<float>(value.AsArray()[index].AsInt64()) : static_cast<float>(value.AsArray()[index].AsDouble());
-            ui.m_changed = count == 2 ? ImGui::DragFloat2("##value", next, 0.01f) : count == 3 ? ImGui::DragFloat3("##value", next, 0.01f) : ImGui::DragFloat4("##value", next, 0.01f); ui.EndRow();
+            ui.m_changed = widgets::DragAxes("##value", next, static_cast<int>(count), 0.01f);
+            ui.EndRow();
             if (ui.m_changed) { value = OpData::MakeArray(); for (size_t index = 0; index < count; ++index) value.Push(next[index]); }
         }
     } else if (kind == "materialAssetRef" || kind == "textureAssetRef" || kind == "modelAssetRef" || kind == "dataAssetRef") {

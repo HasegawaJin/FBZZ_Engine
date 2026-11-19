@@ -2,6 +2,7 @@
 /// @brief   World authoring controls share operation validation, transactions and streaming services with AI.
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Panels/WorldAuthoringPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -77,7 +78,7 @@ bool DrawRulePresentation(EditorContext& context, scene::WorldPcgRule& rule)
 {
     bool changed = false;
     if (rule.parts.empty()) {
-        changed |= widgets::AssetPathField("Placement asset", rule.prototypeRef, ".terrainpaint,.meshinstances,.fzdata",
+        changed |= property::AssetPathField("Placement asset", rule.prototypeRef, ".terrainpaint,.meshinstances,.fzdata",
             context.projectRoot, PROFILE_PICKER_HOST);
     }
     if (!ImGui::TreeNode("Mesh parts and LOD")) return changed;
@@ -85,7 +86,7 @@ bool DrawRulePresentation(EditorContext& context, scene::WorldPcgRule& rule)
     else {
         for (std::size_t index = 0; index < rule.lodHeights.size(); ++index) {
             ImGui::PushID(static_cast<int>(index));
-            changed |= ImGui::InputFloat("LOD screen height", &rule.lodHeights[index], 0, 0, "%.4f");
+            changed |= property::InputFloat("LOD screen height", &rule.lodHeights[index], 0, 0, "%.4f");
             ImGui::PopID();
         }
         ImGui::BeginDisabled(rule.lodHeights.size() >= 4);
@@ -115,11 +116,11 @@ bool DrawRulePresentation(EditorContext& context, scene::WorldPcgRule& rule)
         ImGui::PushID(static_cast<int>(index));
         const std::string title = "Part " + std::to_string(index + 1);
         if (ImGui::TreeNode(title.c_str())) {
-            changed |= widgets::AssetPathField("Mesh", part.meshPath, ".mesh,.fbx,.obj,.gltf,.glb,.fzasset",
+            changed |= property::AssetPathField("Mesh", part.meshPath, ".mesh,.fbx,.obj,.gltf,.glb,.fzasset",
                 context.projectRoot, PROFILE_PICKER_HOST);
-            changed |= widgets::AssetPathField("Material", part.materialPath, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
+            changed |= property::AssetPathField("Material", part.materialPath, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
             int lod = static_cast<int>(part.lod);
-            if (ImGui::SliderInt("LOD", &lod, 0, static_cast<int>(rule.lodHeights.size()) - 1)) {
+            if (property::SliderInt("LOD", &lod, 0, static_cast<int>(rule.lodHeights.size()) - 1)) {
                 part.lod = static_cast<std::uint32_t>(lod);
                 changed = true;
             }
@@ -150,37 +151,37 @@ bool DrawRuleConditions(EditorContext& context, scene::WorldPcgRule& rule, const
         changed |= EditProfileLabel("Biome", rule.biome);
         changed |= EditProfileRange("Elevation (m)", rule.minHeight, rule.maxHeight);
         changed |= EditProfileRange("Slope (deg)", rule.minSlope, rule.maxSlope);
-        changed |= ImGui::InputFloat("Elevation fade (m)", &rule.heightFade);
-        changed |= ImGui::InputFloat("Slope fade (deg)", &rule.slopeFade);
+        changed |= property::InputFloat("Elevation fade (m)", &rule.heightFade);
+        changed |= property::InputFloat("Slope fade (deg)", &rule.slopeFade);
         changed |= EditProfileRange("Shore distance (m)", rule.minWaterDistance, rule.maxWaterDistance);
-        changed |= ImGui::InputFloat("Shore distance fade (m)", &rule.waterFade);
-        if (ImGui::Checkbox("Filter by water level", &rule.useWaterLevel)) {
+        changed |= property::InputFloat("Shore distance fade (m)", &rule.waterFade);
+        if (property::Checkbox("Filter by water level", &rule.useWaterLevel)) {
             if (!rule.useWaterLevel) rule.waterLevelFade = 0.0f;
             changed = true;
         }
         if (rule.useWaterLevel) {
             changed |= EditProfileRange("Height from water (m)", rule.minWaterOffset, rule.maxWaterOffset);
-            changed |= ImGui::InputFloat("Water level fade (m)", &rule.waterLevelFade);
+            changed |= property::InputFloat("Water level fade (m)", &rule.waterLevelFade);
             ImGui::TextDisabled("Negative heights select submerged ground.");
         }
-        changed |= ImGui::InputFloat("Distance below cliff (m)", &rule.maxCliffDistance);
-        if (rule.maxCliffDistance > 0.0f) changed |= ImGui::InputFloat("Scale at far edge", &rule.cliffFarScale);
+        changed |= property::InputFloat("Distance below cliff (m)", &rule.maxCliffDistance);
+        if (rule.maxCliffDistance > 0.0f) changed |= property::InputFloat("Scale at far edge", &rule.cliffFarScale);
         ImGui::TreePop();
     }
     if (ImGui::TreeNode("Terrain materials")) {
-        changed |= widgets::AssetPathField("Required material", rule.includeMaterial, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
-        if (!rule.includeMaterial.empty()) changed |= ImGui::InputFloat("Minimum material weight", &rule.minMaterialWeight);
-        changed |= widgets::AssetPathField("Excluded material", rule.excludeMaterial, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
-        if (!rule.excludeMaterial.empty()) changed |= ImGui::InputFloat("Excluded material weight", &rule.excludeMaterialWeight);
+        changed |= property::AssetPathField("Required material", rule.includeMaterial, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
+        if (!rule.includeMaterial.empty()) changed |= property::InputFloat("Minimum material weight", &rule.minMaterialWeight);
+        changed |= property::AssetPathField("Excluded material", rule.excludeMaterial, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
+        if (!rule.excludeMaterial.empty()) changed |= property::InputFloat("Excluded material weight", &rule.excludeMaterialWeight);
         if (!profile.pathMaterial.empty() || rule.UsesPathBand()) {
             changed |= EditProfileRange("Path distance (m)", rule.minPathDistance, rule.maxPathDistance);
-            changed |= ImGui::InputFloat("Path fade (m)", &rule.pathFade);
+            changed |= property::InputFloat("Path fade (m)", &rule.pathFade);
         }
         ImGui::TreePop();
     }
     if (ImGui::TreeNode("Clustering and neighbors")) {
-        changed |= ImGui::InputFloat("Cluster strength", &rule.clusterStrength);
-        changed |= ImGui::InputFloat("Cluster size (m)", &rule.noiseScale);
+        changed |= property::InputFloat("Cluster strength", &rule.clusterStrength);
+        changed |= property::InputFloat("Cluster size (m)", &rule.noiseScale);
         changed |= EditProfileLabel("Shared patch group", rule.patchGroup);
         changed |= EditProfileRange("Patch range", rule.minPatch, rule.maxPatch);
         if (ImGui::BeginCombo("Neighbor rule", rule.neighborRule.empty() ? "None" : rule.neighborRule.c_str())) {
@@ -435,7 +436,7 @@ void WorldAuthoringPanel::DrawPartition(EditorContext& context)
 {
     if (!ImGui::CollapsingHeader("World cells", ImGuiTreeNodeFlags_DefaultOpen)) return;
     ImGui::SetNextItemWidth(-110);
-    if (ImGui::InputText("Partition", m_partition, sizeof(m_partition))) { ClearPreview(); m_partitionData = {}; }
+    if (property::InputText("Partition", m_partition, sizeof(m_partition))) { ClearPreview(); m_partitionData = {}; }
     if (ImGui::Button("Use selected partition")) {
         if (auto* selected = context.GetSelectedGO()) { CopyText(m_partition, selected->instanceId); ClearPreview(); InspectPartition(context); }
     }
@@ -447,15 +448,15 @@ void WorldAuthoringPanel::DrawPartition(EditorContext& context)
         ImGui::TextWrapped("Manifest: %s", String(m_partitionData, "manifest"));
     }
     if (ImGui::TreeNode("Grid and loading distances")) {
-        ImGui::InputText("Manifest path", m_manifest, sizeof(m_manifest));
-        ImGui::InputFloat3("Grid origin (m)", m_origin);
-        ImGui::InputFloat("Cell size (m)", &m_cellSize);
-        ImGui::InputFloat("Near distance (m)", &m_nearDistance);
-        ImGui::InputFloat("HLOD distance (m)", &m_hlodDistance);
-        ImGui::InputFloat("Hysteresis (m)", &m_hysteresis);
-        ImGui::InputInt("Concurrent reads", &m_reads);
-        ImGui::InputInt("Commits per update", &m_commits);
-        ImGui::Checkbox("Stream in editor", &m_streamInEditor);
+        property::InputText("Manifest path", m_manifest, sizeof(m_manifest));
+        property::InputFloat3("Grid origin (m)", m_origin);
+        property::InputFloat("Cell size (m)", &m_cellSize);
+        property::InputFloat("Near distance (m)", &m_nearDistance);
+        property::InputFloat("HLOD distance (m)", &m_hlodDistance);
+        property::InputFloat("Hysteresis (m)", &m_hysteresis);
+        property::InputInt("Concurrent reads", &m_reads);
+        property::InputInt("Commits per update", &m_commits);
+        property::Checkbox("Stream in editor", &m_streamInEditor);
         auto args = PartitionArgs();
         args.Set("manifest", std::string(m_manifest)); args.Set("origin", Vector(m_origin));
         args.Set("cellSize", m_cellSize); args.Set("nearDistance", m_nearDistance);
@@ -467,12 +468,12 @@ void WorldAuthoringPanel::DrawPartition(EditorContext& context)
         }
         ImGui::TreePop();
     }
-    ImGui::Checkbox("Include scene content", &m_includeScene);
-    ImGui::SameLine(); ImGui::Checkbox("Build HLOD on bake", &m_buildHlod);
+    property::Checkbox("Include scene content", &m_includeScene);
+    property::Checkbox("Build HLOD on bake", &m_buildHlod);
     ImGui::Checkbox("Stream terrain tiles", &m_includeTerrain);
     ImGui::Checkbox("Stream near light probes", &m_includeLightProbes);
     if (m_includeTerrain) {
-        ImGui::Checkbox("Render-only HLOD terrain", &m_omitTerrainCollisionInHlod);
+        property::Checkbox("Render-only HLOD terrain", &m_omitTerrainCollisionInHlod);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Enable only when physics actors stay in near cells.");
     }
     auto bake = PartitionArgs();
@@ -491,7 +492,7 @@ void WorldAuthoringPanel::DrawPartition(EditorContext& context)
 void WorldAuthoringPanel::DrawPcg(EditorContext& context)
 {
     if (!ImGui::CollapsingHeader("PCG", ImGuiTreeNodeFlags_DefaultOpen)) return;
-    if (ImGui::InputText("Volume", m_volume, sizeof(m_volume))) { ClearPreview(); m_volumeBounds = {}; m_volumeDraft = false; }
+    if (property::InputText("Volume", m_volume, sizeof(m_volume))) { ClearPreview(); m_volumeBounds = {}; m_volumeDraft = false; }
     if (ImGui::Button("Use selected volume")) {
         if (auto* selected = context.GetSelectedGO()) {
             CopyText(m_volume, selected->instanceId);
@@ -514,13 +515,13 @@ void WorldAuthoringPanel::DrawPcg(EditorContext& context)
     }
     DrawPcgProfile(context);
     if (ImGui::TreeNode("Volume settings")) {
-        bool changed = widgets::AssetPathField("Profile", m_profile, ".pcg", context.projectRoot, PROFILE_PICKER_HOST);
-        changed |= ImGui::Checkbox("Override bounds", &m_overrideBounds);
-        changed |= ImGui::InputFloat3("Bounds minimum (m)", m_boundsMin);
-        changed |= ImGui::InputFloat3("Bounds maximum (m)", m_boundsMax);
-        changed |= ImGui::InputInt("Seed (-1 = profile)", &m_seed);
-        changed |= ImGui::Checkbox("Protect manual edits", &m_protectManual);
-        changed |= ImGui::Checkbox("Enabled", &m_enabled);
+        bool changed = property::AssetPathField("Profile", m_profile, ".pcg", context.projectRoot, PROFILE_PICKER_HOST);
+        changed |= property::Checkbox("Override bounds", &m_overrideBounds);
+        changed |= property::InputFloat3("Bounds minimum (m)", m_boundsMin);
+        changed |= property::InputFloat3("Bounds maximum (m)", m_boundsMax);
+        changed |= property::InputInt("Seed (-1 = profile)", &m_seed);
+        changed |= property::Checkbox("Protect manual edits", &m_protectManual);
+        changed |= property::Checkbox("Enabled", &m_enabled);
         if (changed) { m_volumeDraft = true; ClearPreview(); }
         OpArgs args; if (m_volume[0]) args.Set("volume", std::string(m_volume));
         args.Set("profile", m_profile); args.Set("seed", m_seed);
@@ -538,7 +539,7 @@ void WorldAuthoringPanel::DrawPcg(EditorContext& context)
         }
         ImGui::TreePop();
     }
-    if (ImGui::Checkbox("Update only these bounds", &m_partialUpdate)) {
+    if (property::Checkbox("Update only these bounds", &m_partialUpdate)) {
         if (m_partialUpdate) {
             const auto* minimum = m_volumeBounds.Find("boundsMin");
             const auto* maximum = m_volumeBounds.Find("boundsMax");
@@ -550,12 +551,12 @@ void WorldAuthoringPanel::DrawPcg(EditorContext& context)
         ClearPreview();
     }
     if (m_partialUpdate) {
-        bool changed = ImGui::InputFloat3("Update minimum (m)", m_updateBoundsMin);
-        changed |= ImGui::InputFloat3("Update maximum (m)", m_updateBoundsMax);
+        bool changed = property::InputFloat3("Update minimum (m)", m_updateBoundsMin);
+        changed |= property::InputFloat3("Update maximum (m)", m_updateBoundsMax);
         if (changed) ClearPreview();
     }
-    if (ImGui::SliderInt("Preview samples", &m_maxPoints, 1, 1024)) ClearPreview();
-    if (ImGui::Checkbox("Live preview", &m_livePreview) && m_livePreview) ClearPreview();
+    if (property::SliderInt("Preview samples", &m_maxPoints, 1, 1024)) ClearPreview();
+    if (property::Checkbox("Live preview", &m_livePreview) && m_livePreview) ClearPreview();
     const auto previewArgs = PreviewArgs();
     ImGui::BeginDisabled(!m_volume[0] || !CanInvokeOperator(context, "pcg.preview", previewArgs));
     if (ImGui::Button("Preview")) RefreshPcgPreview(context, false);
@@ -600,10 +601,10 @@ void WorldAuthoringPanel::DrawPcg(EditorContext& context)
 void WorldAuthoringPanel::DrawPcgDebugControls(EditorContext& context)
 {
     if (!ImGui::TreeNode("Scene visualization")) return;
-    ImGui::Checkbox("PCG bounds and exclusions", &m_showPcgBounds);
-    ImGui::Checkbox("All biome volumes", &m_showBiomeBounds);
-    ImGui::Checkbox("Accepted sites", &m_showAccepted);
-    ImGui::Checkbox("Rejected sites", &m_showRejected);
+    property::Checkbox("PCG bounds and exclusions", &m_showPcgBounds);
+    property::Checkbox("All biome volumes", &m_showBiomeBounds);
+    property::Checkbox("Accepted sites", &m_showAccepted);
+    property::Checkbox("Rejected sites", &m_showRejected);
     OpArgs inspect; inspect.Set("volume", std::string(m_volume));
     ImGui::BeginDisabled(!m_volume[0]);
     ActionButton(context, "Refresh volume bounds", "pcg.volume.inspect", inspect, &m_volumeBounds);
@@ -661,7 +662,7 @@ bool WorldAuthoringPanel::DrawPcgProfileRules(EditorContext& context, scene::Wor
         changed |= ImGui::InputScalar("Placement cap per 128 m cell", ImGuiDataType_U32, &profile.maxPlacementsPerCell);
         changed |= ImGui::InputScalar("Total instance limit", ImGuiDataType_U32, &profile.maxInstances);
         changed |= ImGui::InputScalar("Candidate limit", ImGuiDataType_U64, &profile.maxCandidates);
-        changed |= widgets::AssetPathField("Path material", profile.pathMaterial, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
+        changed |= property::AssetPathField("Path material", profile.pathMaterial, ".mat", context.projectRoot, PROFILE_PICKER_HOST);
         ImGui::TreePop();
     }
 
@@ -709,20 +710,20 @@ bool WorldAuthoringPanel::DrawPcgProfileRules(EditorContext& context, scene::Wor
     changed |= EditProfileLabel("Rule name", rule.name);
     ImGui::TextDisabled("Rule key  %s", rule.key.c_str());
     changed |= DrawRulePresentation(context, rule);
-    changed |= ImGui::InputFloat("Candidate spacing (m)", &rule.spacing);
-    changed |= ImGui::SliderFloat("Density", &rule.density, 0.0f, 1.0f);
-    changed |= ImGui::InputFloat("Minimum separation (m)", &rule.minSpacing);
-    changed |= ImGui::InputFloat("Manual object clearance (m)", &rule.protectedDistance);
+    changed |= property::InputFloat("Candidate spacing (m)", &rule.spacing);
+    changed |= property::SliderFloat("Density", &rule.density, 0.0f, 1.0f);
+    changed |= property::InputFloat("Minimum separation (m)", &rule.minSpacing);
+    changed |= property::InputFloat("Manual object clearance (m)", &rule.protectedDistance);
     if (ImGui::TreeNode("Size and orientation")) {
         changed |= EditProfileRange("Scale", rule.minScale, rule.maxScale);
-        changed |= ImGui::InputFloat("Size bias", &rule.scaleBias);
+        changed |= property::InputFloat("Size bias", &rule.scaleBias);
         changed |= EditProfileRange("Yaw (deg)", rule.minYaw, rule.maxYaw);
-        changed |= ImGui::Checkbox("Align to terrain", &rule.alignToSurface);
-        changed |= ImGui::Checkbox("Align downhill", &rule.alignDownslope);
-        if (rule.alignDownslope) changed |= ImGui::InputFloat("Downhill jitter (deg)", &rule.downslopeJitter);
-        changed |= ImGui::InputFloat("Embed depth (m)", &rule.embedDepth);
-        changed |= ImGui::InputFloat("Embed variation (m)", &rule.embedJitter);
-        changed |= ImGui::Checkbox("Include in distant HLOD", &rule.includeHlod);
+        changed |= property::Checkbox("Align to terrain", &rule.alignToSurface);
+        changed |= property::Checkbox("Align downhill", &rule.alignDownslope);
+        if (rule.alignDownslope) changed |= property::InputFloat("Downhill jitter (deg)", &rule.downslopeJitter);
+        changed |= property::InputFloat("Embed depth (m)", &rule.embedDepth);
+        changed |= property::InputFloat("Embed variation (m)", &rule.embedJitter);
+        changed |= property::Checkbox("Include in distant HLOD", &rule.includeHlod);
         ImGui::TreePop();
     }
     changed |= DrawRuleConditions(context, rule, profile);
@@ -733,7 +734,7 @@ bool WorldAuthoringPanel::DrawPcgProfileRules(EditorContext& context, scene::Wor
 void WorldAuthoringPanel::DrawPcgProfile(EditorContext& context)
 {
     if (!ImGui::TreeNode("Project placement profiles")) return;
-    if (widgets::AssetPathField("Profile file", m_profileFile, ".pcg", context.projectRoot, PROFILE_PICKER_HOST) && m_profileDirty)
+    if (property::AssetPathField("Profile file", m_profileFile, ".pcg", context.projectRoot, PROFILE_PICKER_HOST) && m_profileDirty)
         ClearPreview();
     ImGui::BeginDisabled(m_profileDirty);
     if (ImGui::Button("New profile")) {
@@ -770,8 +771,8 @@ void WorldAuthoringPanel::DrawPcgProfile(EditorContext& context)
     }
 
     if (ImGui::TreeNode("Rock nature preset")) {
-        widgets::AssetPathField("Rock", m_rockSource, ".terrainpaint", context.projectRoot, PROFILE_PICKER_HOST);
-        widgets::AssetPathField("Pebbles", m_pebbleSource, ".terrainpaint", context.projectRoot, PROFILE_PICKER_HOST);
+        property::AssetPathField("Rock", m_rockSource, ".terrainpaint", context.projectRoot, PROFILE_PICKER_HOST);
+        property::AssetPathField("Pebbles", m_pebbleSource, ".terrainpaint", context.projectRoot, PROFILE_PICKER_HOST);
         OpArgs rockArgs; rockArgs.Set("preset", std::string("rocks"));
         rockArgs.Set("rockSource", m_rockSource); rockArgs.Set("pebbleSource", m_pebbleSource);
         ImGui::BeginDisabled(m_profileDirty || m_rockSource.empty() || m_pebbleSource.empty());
@@ -849,12 +850,12 @@ void WorldAuthoringPanel::DrawStreaming(EditorContext& context)
     const char* diagnostic = String(m_streamData, "diagnostic");
     if (diagnostic[0]) ImGui::TextWrapped("%s", diagnostic);
     if (!m_streamError.empty()) ImGui::TextWrapped("%s", m_streamError.c_str());
-    if (ImGui::Checkbox("Override source position", &m_overrideSource) && m_overrideSource) {
+    if (property::Checkbox("Override source position", &m_overrideSource) && m_overrideSource) {
         if (const auto* source = m_streamData.Find("source"); source && source->IsVec3()) {
             const auto value = source->AsVec3(); m_source[0] = value.x; m_source[1] = value.y; m_source[2] = value.z;
         }
     }
-    if (m_overrideSource) ImGui::InputFloat3("Source position (m)", m_source);
+    if (m_overrideSource) property::InputFloat3("Source position (m)", m_source);
     ImGui::InputInt2("Cell (X, Z)", m_cell);
     const auto control = [this, &context](const char* label, const char* action) {
         auto args = PartitionArgs(); args.Set("action", std::string(action));

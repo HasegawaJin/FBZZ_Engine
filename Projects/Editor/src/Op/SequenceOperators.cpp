@@ -152,12 +152,7 @@ void SequencePanel::OnRegisterOperators(OperatorRegistry& registry)
             if (name == "open") {
                 const std::string path = ResolveSequence(ctx, args.GetString("path"));
                 if (path.empty()) return OpResult::Err("BAD_PATH", "Assets配下の.sequenceを指定してください。");
-                asset::SequenceAsset candidate;
-                if (!asset::LoadSequenceAsset(path, candidate)) return OpResult::Err("LOAD_FAILED", "Sequenceを解析できません。");
-                const std::string previousPath = m_path;
-                ReleasePreview(ctx);
-                if (!Load(path)) return OpResult::Err("LOAD_FAILED", m_error);
-                AssetDirtyRegistry::MarkClean(previousPath);
+                if (!Load(ctx, path)) return OpResult::Err("LOAD_FAILED", m_error);
             } else if (name != "inspect" && m_path.empty()) return OpResult::Err("NO_DOCUMENT", "Sequenceを開いてください。");
             if (name == "configure") {
                 std::string before, text, canonical;
@@ -176,9 +171,8 @@ void SequencePanel::OnRegisterOperators(OperatorRegistry& registry)
                 if (!Save()) return OpResult::Err("SAVE_FAILED", m_error);
                 ctx.requestAssetBrowserRefresh = true;
             } else if (name == "reload") {
-                ReleasePreview(ctx);
-                if (!Load(m_path)) return OpResult::Err("LOAD_FAILED", m_error);
-            } else if (name == "close") { AssetDirtyRegistry::MarkClean(m_path); CloseDocument(ctx); }
+                if (!Load(ctx, m_path)) return OpResult::Err("LOAD_FAILED", m_error);
+            } else if (name == "close") CloseDocument(ctx);
             else if (name == "undo") { if (m_undoStack.empty()) return OpResult::Err("NO_HISTORY", "Undo履歴がありません。"); Undo(); }
             else if (name == "redo") { if (m_redoStack.empty()) return OpResult::Err("NO_HISTORY", "Redo履歴がありません。"); Redo(); }
             else if (name == "control") {

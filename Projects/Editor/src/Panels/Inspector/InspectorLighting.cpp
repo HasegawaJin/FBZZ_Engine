@@ -2,6 +2,7 @@
 /// @brief   Light / Camera 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/Components/CameraComponent.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
 #include <Engine/Scene/Components/SkyRenderer.hpp>
@@ -40,14 +41,14 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 
     DrawComponentSection<scene::CameraComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Camera",
         [](scene::CameraComponent& cc, EditorContext& c) {
-            ImGui::Checkbox("Is Main", &cc.isMain);
-            ImGui::DragFloat("FOV", &cc.fovY, 0.5f, 1.0f, 170.0f);
-            ImGui::DragFloat("Near", &cc.nearZ, 0.001f, 0.001f, 10.0f);
-            ImGui::DragFloat("Far", &cc.farZ, 10.0f, 1.0f, 100000.0f, "%.0f m");
+            property::Checkbox("Is Main", &cc.isMain);
+            property::DragFloat("FOV", &cc.fovY, 0.5f, 1.0f, 170.0f);
+            property::DragFloat("Near", &cc.nearZ, 0.001f, 0.001f, 10.0f);
+            property::DragFloat("Far", &cc.farZ, 10.0f, 1.0f, 100000.0f, "%.0f m");
 
             const char* clearItems[] = { "Solid Color", "Depth Only" };
             int clearMode = static_cast<int>(cc.clearMode);
-            if (ImGui::Combo("Clear", &clearMode, clearItems, 2))
+            if (property::Combo("Clear", &clearMode, clearItems, 2))
                 cc.clearMode = static_cast<renderer::CameraClearMode>(clearMode);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
@@ -75,13 +76,13 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             const char* maskLabel = cc.cullingMask == fbzz::Layer::Everything ? "Everything"
                                   : cc.cullingMask == fbzz::Layer::Nothing    ? "Nothing"
                                   : "Mixed...";
-            const bool maskComboOpen = ImGui::BeginCombo("Culling Mask", maskLabel);
+            const bool maskComboOpen = property::BeginCombo("Culling Mask", maskLabel);
             /// @note ホバー判定はコンボを開く前に取る。BeginCombo が true を返すと「直前のアイテム」が
             /// @note 中身のチェックボックスへ移り、EndCombo 後の IsItemHovered() は本体を指さない。
             const bool maskHovered = ImGui::IsItemHovered();
             if (maskComboOpen) {
                 bool all = cc.cullingMask == fbzz::Layer::Everything;
-                if (ImGui::Checkbox("Everything", &all))
+                if (property::Checkbox("Everything", &all))
                     cc.cullingMask = all ? fbzz::Layer::Everything : fbzz::Layer::Nothing;
                 ImGui::Separator();
                 for (int i = 0; i < scene::kCullLayerCount; ++i) {
@@ -98,7 +99,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             if (maskHovered)
                 ImGui::SetTooltip("Which layers this camera renders.");
 
-            ImGui::Checkbox("Frustum Culling", &cc.frustumCulling);
+            property::Checkbox("Frustum Culling", &cc.frustumCulling);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
                     "Skip objects whose bounding sphere is outside the view frustum.\n"
@@ -107,7 +108,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
                     "Applies to meshes, skinned meshes, terrain and water chunks.");
             }
 
-            ImGui::Checkbox("Occlusion Culling", &cc.occlusionCulling);
+            property::Checkbox("Occlusion Culling", &cc.occlusionCulling);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
                     "Cull objects hidden behind opaque geometry in this view.\n"
@@ -117,7 +118,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
 
             /// @note 余白は「バインドポーズ球からはみ出すモーション」への実務的な逃げ道。
             /// @note Inspector からしか触れないと気付けないので、意図をツールチップに残す。
-            ImGui::DragFloat("Culling Bounds Padding", &cc.cullingBoundsPadding,
+            property::DragFloat("Culling Bounds Padding", &cc.cullingBoundsPadding,
                              0.05f, 0.0f, 50.0f, "%.2f m");
             if (cc.cullingBoundsPadding < 0.0f) cc.cullingBoundsPadding = 0.0f;
             if (ImGui::IsItemHovered()) {
@@ -133,7 +134,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             ImGui::Spacing();
 
             /// @name 距離カリング
-            ImGui::DragFloat("Max Draw Distance", &cc.maxDrawDistance,
+            property::DragFloat("Max Draw Distance", &cc.maxDrawDistance,
                              1.0f, 0.0f, 100000.0f, "%.0f m");
             if (cc.maxDrawDistance < 0.0f) cc.maxDrawDistance = 0.0f;
             if (ImGui::IsItemHovered()) {
@@ -149,7 +150,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             }
 
             int distanceMode = cc.cullDistanceSpherical ? 0 : 1;
-            if (ImGui::Combo("Distance Mode", &distanceMode, "Spherical\0Planar (depth)\0"))
+            if (property::Combo("Distance Mode", &distanceMode, "Spherical\0Planar (depth)\0"))
                 cc.cullDistanceSpherical = (distanceMode == 0);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
@@ -184,7 +185,7 @@ void DrawLightingInspectors(scene::GameObject* go, EditorContext& ctx, std::any&
             ImGui::Spacing();
 
             /// @name 極小オブジェクトカリング
-            ImGui::DragFloat("Small Object Culling", &cc.smallObjectScreenHeight,
+            property::DragFloat("Small Object Culling", &cc.smallObjectScreenHeight,
                              0.0005f, 0.0f, 0.5f, "%.4f");
             if (cc.smallObjectScreenHeight < 0.0f) cc.smallObjectScreenHeight = 0.0f;
             if (ImGui::IsItemHovered()) {

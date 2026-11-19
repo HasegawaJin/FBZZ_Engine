@@ -10,12 +10,15 @@
 #include <Editor/Util/ObjectCreation.hpp>
 #include <Editor/Util/ObjectPresets.hpp>
 #include <Editor/Util/SceneEditUtils.hpp>
+#include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptFactory.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -78,6 +81,92 @@ void RegisterRenameOperator(OperatorRegistry& registry)
     };
 
     registry.Register(std::move(op));
+}
+
+int ReorderDestination(const scene::Scene& scene, const scene::GameObject& node, std::string_view direction)
+{
+    int index;
+    int count;
+    if (const auto* parent = node.GetParent()) {
+        index = node.GetSiblingIndex();
+        count = parent->GetChildCount();
+    } else {
+        const auto roots = scene.GetRootGameObjects();
+        const auto found = std::find(roots.begin(), roots.end(), &node);
+        if (found == roots.end()) return -1;
+        index = static_cast<int>(found - roots.begin());
+        count = static_cast<int>(roots.size());
+    }
+    if (direction == "up" && index > 0) return index - 1;
+    if (direction == "down" && index + 1 < count) return index + 1;
+    if (direction == "first" && index > 0) return 0;
+    if (direction == "last" && index + 1 < count) return count - 1;
+    return -1;
+}
+
+void RegisterHierarchyNodeOperators(OperatorRegistry& registry)
+{
+    EditorOperator reorder;
+    reorder.id = "node.reorder";
+    reorder.label = "Reorder GameObject";
+    reorder.category = "Hierarchy";
+    reorder.desc = "親を保ったまま同じ階層内で並べ替える。ルートは他のルートとの順序を使う。";
+    reorder.kind = OpKind::Mutation;
+    reorder.undoLabel = "Reorder GameObject";
+    reorder.params = {
+        {"node", OpParamType::NodeId, "GameObject to reorder", true, {}},
+        {"direction", OpParamType::String, "Direction within the sibling list", true, {}}
+    };
+    reorder.params.back().enumValues = {"up", "down", "first", "last"};
+    reorder.poll = [](const OpContext& context, const OpArgs& args) {
+        const auto* node = ResolveNode(context, args.GetString("node"));
+        return node && ReorderDestination(*context.ctx.activeScene, *node, args.GetString("direction")) >= 0;
+    };
+    reorder.exec = [](OpContext& context, const OpArgs& args) {
+        auto* node = ResolveNode(context, args.GetString("node"));
+        const int destination = ReorderDestination(*context.ctx.activeScene, *node, args.GetString("direction"));
+        OpResult result;
+        result.command = MakeSceneEditCommand(context.ctx, "Reorder GameObject", [node, destination] {
+            node->SetSiblingIndex(destination);
+        });
+        return result;
+    };
+    registry.Register(std::move(reorder));
+
+    EditorOperator group;
+    group.id = "node.group_selection";
+    group.label = "Group Selection";
+    group.category = "Hierarchy";
+    group.desc = "選択したオブジェクトを新しい Group の子にする。選択内の親子関係は維持する。";
+    group.kind = OpKind::Mutation;
+    group.undoLabel = "Group Selection";
+    group.poll = [](const OpContext& context, const OpArgs&) {
+        return context.ctx.activeScene && context.ctx.selectedEntities.size() > 1;
+    };
+    group.exec = [](OpContext& context, const OpArgs&) {
+        auto& world = *context.ctx.activeScene;
+        const auto roots = CollectHierarchyRoots(world, context.ctx.selectedEntities);
+        if (roots.empty() || !world.CanCreateGameObjects(1))
+            return OpResult::Err("GROUP_UNAVAILABLE", "選択したオブジェクトのグループを作成できません。");
+        const auto* commonParent = world.GetGameObject(roots.front())->GetParent();
+        for (const auto root : roots) {
+            if (world.GetGameObject(root)->GetParent() == commonParent) continue;
+            commonParent = nullptr;
+            break;
+        }
+        const auto parentId = commonParent ? commonParent->GetID() : scene::EntityID{};
+        OpResult result;
+        result.command = MakeSceneEditCommand(context.ctx, "Group Selection", [&] {
+            auto* created = world.TryCreateGameObject("Group");
+            if (!created) return;
+            if (auto* parent = world.GetGameObject(parentId)) created->SetParent(parent);
+            for (const auto root : roots)
+                if (auto* child = world.GetGameObject(root)) child->SetParent(created);
+            SelectEntity(context.ctx, created->GetID(), SelectionReveal::Skip);
+        });
+        return result;
+    };
+    registry.Register(std::move(group));
 }
 
 /// @brief 生成系 Operator に共通の引数 (parent / name / position / placeInView)。
@@ -244,6 +333,7 @@ void RegisterNodeOperators(OperatorRegistry& registry)
     RegisterPlacementOperators(registry);
     RegisterRenameOperator(registry);
     RegisterCreateOperators(registry);
+    RegisterHierarchyNodeOperators(registry);
 }
 
 } /// @note namespace fbzz::editor

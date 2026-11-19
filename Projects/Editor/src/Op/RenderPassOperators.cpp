@@ -53,6 +53,10 @@ void RenderPassViewerPanel::OnRegisterOperators(OperatorRegistry& registry)
         if (name == "configure") { OpParam settings; settings.name = "settings"; settings.type = OpParamType::Data; op.params.push_back(std::move(settings)); }
         if (name == "capture") {
             for (const char* field : {"name", "resource"}) { OpParam value; value.name = field; value.type = OpParamType::String; value.required = false; op.params.push_back(std::move(value)); }
+            OpParam frame;
+            frame.name = "minFrame"; frame.type = OpParamType::Data; frame.required = false;
+            frame.desc = "Minimum application frame of the captured image, inclusive.";
+            op.params.push_back(std::move(frame));
         }
         op.exec = [this, name](OpContext& context, const OpArgs& args) {
             if (name == "configure") {
@@ -81,8 +85,14 @@ void RenderPassViewerPanel::OnRegisterOperators(OperatorRegistry& registry)
             if (name == "capture") {
                 auto& ctx = context.ctx;
                 if (!ctx.renderer || !ctx.resources || ctx.projectRoot.empty()) return OpResult::Err("NO_RENDERER", "描画デバイスまたはプロジェクトがありません。");
+                const auto* frameArg = args.GetData("minFrame");
+                if (frameArg && (!frameArg->IsInt() || frameArg->AsInt64() < 0))
+                    return OpResult::Err("BAD_ARG", "minFrame は非負の整数です。");
+                const auto minFrame = frameArg ? static_cast<std::uint64_t>(frameArg->AsInt64()) : 0;
+                const auto& source = ctx.viewportCaptureFrames[m_gameView ? 1 : 0];
                 const std::string resource = args.GetString("resource");
                 auto target = m_capture.Preview(); bool available = m_capture.HasPreview();
+                std::string output = m_capture.ResolvedOutputName();
                 const auto& captured = m_capture.CapturedRequest(); const auto& request = m_capture.request;
                 available = available && m_capturedGameView == m_gameView && captured.passName == request.passName
                     && captured.occurrence == request.occurrence && captured.outputName == request.outputName
@@ -92,10 +102,11 @@ void RenderPassViewerPanel::OnRegisterOperators(OperatorRegistry& registry)
                     if (m_capture.galleryEnabled && !m_capture.Passes().empty()
                         && m_capture.CapturedGalleryView() == m_capture.galleryView && m_capturedGameView == m_gameView)
                         for (const auto& tile : m_capture.Gallery()) if (tile.label == resource && tile.hasImage) {
-                            target = tile.image.Handle(); available = true; break;
+                            target = tile.image.Handle(); output = tile.label; available = true; break;
                         }
                 }
-                if (!available) return OpResult::Err("CAPTURE_NOT_READY", "指定ビュー・パス・表示設定の描画を待ってください。resourceはinspectのgallery.labelです。");
+                if (!available || !CanReadCaptureFrame(ctx, source, source.target, minFrame))
+                    return OpResult::Err("CAPTURE_NOT_READY", "CAPTURE_NOT_READY: 指定フレーム以降のビュー・パス・表示設定の描画を待ってください。");
                 const std::string filename = args.GetString("name", "RenderPass.png");
                 if (filename.empty() || filename.size() > 128 || filename.find_first_of("/\\:*?\"<>|") != std::string::npos
                     || util::FileSystem::PathFromUtf8(filename).extension() != ".png") return OpResult::Err("BAD_ARG", "nameはPNGファイル名です。");
@@ -105,7 +116,10 @@ void RenderPassViewerPanel::OnRegisterOperators(OperatorRegistry& registry)
                 if (!util::FileSystem::EnsureDirectory(directory) || !util::FileSystem::WriteBinaryAtomic(directory / util::FileSystem::PathFromUtf8(filename), png.data(), png.size()))
                     return OpResult::Err("CAPTURE_WRITE_FAILED", "PNGを保存できません。");
                 OpData data = OpData::MakeObject(); data.Set("path", OpData(util::FileSystem::PathToUtf8(directory / util::FileSystem::PathFromUtf8(filename))));
-                data.Set("width", OpData(width)); data.Set("height", OpData(height)); return OpResult::Data(std::move(data));
+                data.Set("width", OpData(width)); data.Set("height", OpData(height));
+                data.Set("provenance", source.Describe<OpData>(resource.empty() ? captured.passName : "FrameEnd",
+                    std::move(output), resource.empty() ? static_cast<std::int64_t>(captured.occurrence) : 0));
+                return OpResult::Data(std::move(data));
             }
             SyncSnapshot();
             OpData settings = OpData::MakeObject(); settings.Set("enabled", OpData(m_apiCapture)); settings.Set("view", OpData(m_gameView ? "game" : "scene"));

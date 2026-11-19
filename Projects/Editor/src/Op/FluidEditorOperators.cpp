@@ -16,6 +16,7 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 namespace fbzz::editor {
 namespace {
 std::string ResolveFluid(const EditorContext& ctx, std::string path, bool create = false)
@@ -113,6 +114,7 @@ void FluidEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
                     const auto* patch = args.GetData("settings"); if (!patch || !patch->IsObject()) return OpResult::Err("BAD_ARG", "settings");
                     bool enabled = m_apiPreview, playing = state.playing, loop = state.loop, checker = state.checkerBackground, overlays = state.showOverlays, compare = state.compareBaked, plane = state.showVolumeCenterPlane;
                     float time = state.playhead, zoom = state.zoom, panX = state.pan.x, panY = state.pan.y, yaw = state.volumeOrbit.yawDegrees, pitch = state.volumeOrbit.pitchDegrees;
+                    float outlinerWidth = m_outlinerWidth, propertiesWidth = m_propertiesWidth, timelineHeight = m_timelineHeight;
                     int mode = static_cast<int>(state.viewMode), quality = static_cast<int>(state.preview.Quality()), center = static_cast<int>(state.volumeCenterPlane), gizmo = static_cast<int>(state.gizmoOp);
                     for (const auto& [key, value] : patch->AsObject()) {
                         if (key == "enabled" || key == "playing" || key == "loop" || key == "checkerBackground" || key == "showOverlays" || key == "compareBaked" || key == "showVolumeCenterPlane") {
@@ -126,8 +128,11 @@ void FluidEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
                             else if (key == "zoom" && number >= 0.1 && number <= 20) zoom = static_cast<float>(number);
                             else if (key == "panX" && std::abs(number) <= 100000) panX = static_cast<float>(number);
                             else if (key == "panY" && std::abs(number) <= 100000) panY = static_cast<float>(number);
-                            else if (key == "yaw" && std::abs(number) <= 360) yaw = static_cast<float>(number);
+                            else if (key == "yaw" && std::abs(number) <= std::numeric_limits<float>::max()) yaw = static_cast<float>(number);
                             else if (key == "pitch" && std::abs(number) <= 89) pitch = static_cast<float>(number);
+                            else if (key == "outlinerWidth" && number >= 140 && number <= 100000) outlinerWidth = static_cast<float>(number);
+                            else if (key == "propertiesWidth" && number >= 220 && number <= 100000) propertiesWidth = static_cast<float>(number);
+                            else if (key == "timelineHeight" && number >= 32 && number <= 100000) timelineHeight = static_cast<float>(number);
                             else if (std::floor(number) == number && key == "viewMode" && number >= 0 && number <= 1) mode = static_cast<int>(number);
                             else if (std::floor(number) == number && key == "quality" && number >= 0 && number <= 2) quality = static_cast<int>(number);
                             else if (std::floor(number) == number && key == "centerPlane" && number >= 0 && number <= 2) center = static_cast<int>(number);
@@ -137,9 +142,17 @@ void FluidEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
                     }
                     m_apiPreview = enabled; state.playing = playing; state.loop = loop; state.playhead = time; state.zoom = zoom; state.pan = {panX, panY};
                     state.checkerBackground = checker; state.preview.SetCheckerBackground(checker); state.showOverlays = overlays; state.compareBaked = compare;
-                    state.viewMode = static_cast<fluideditor::ViewportMode>(mode); state.viewModeChosen = true; state.preview.SetQuality(static_cast<FluidPreviewQuality>(quality));
+                    state.viewMode = static_cast<fluideditor::ViewportMode>(mode);
+                    if (patch->Find("viewMode")) state.viewModeChosen = true;
+                    state.preview.SetQuality(static_cast<FluidPreviewQuality>(quality));
                     state.volumeCenterPlane = static_cast<fluideditor::VolumeCenterPlane>(center); state.showVolumeCenterPlane = plane; state.gizmoOp = static_cast<fluideditor::GizmoOp>(gizmo);
-                    state.volumeOrbit.yawDegrees = yaw; state.volumeOrbit.pitchDegrees = pitch; state.volumeOrbit.initialized = true; state.volumeOrbit.animActive = false;
+                    if (patch->Find("yaw") || patch->Find("pitch")) {
+                        state.volumeOrbit.yawDegrees = yaw; state.volumeOrbit.pitchDegrees = pitch;
+                        state.volumeOrbit.initialized = true; state.volumeOrbit.animActive = false;
+                        state.volumeOrbit.recipePath = document.Path();
+                    }
+                    m_outlinerWidth = outlinerWidth; m_propertiesWidth = propertiesWidth; m_timelineHeight = timelineHeight;
+                    ctx.requestEditorSettingsSave = true;
                 } else if (name == "part") {
                     FluidSelection selection{SelectionKind(args.GetString("kind")), args.GetInt("index", -1)}; const auto action = args.GetString("action");
                     if (selection.IsPart() && (selection.index < 0 || selection.index >= CountFluidParts(document.Recipe(), selection.kind))) return OpResult::Err("BAD_ARG", "部品indexが範囲外です。");
@@ -166,6 +179,10 @@ void FluidEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
             OpData playback = OpData::MakeObject(); playback.Set("enabled", OpData(m_apiPreview)); playback.Set("time", OpData(state.playhead));
             playback.Set("playing", OpData(state.playing)); playback.Set("loop", OpData(state.loop)); playback.Set("solvedUntil", OpData(state.preview.SolvedUntil()));
             playback.Set("quality", OpData(static_cast<int>(state.preview.Quality()))); playback.Set("viewMode", OpData(static_cast<int>(state.viewMode)));
+            playback.Set("checkerBackground", state.checkerBackground); playback.Set("showOverlays", state.showOverlays);
+            playback.Set("compareBaked", state.compareBaked); playback.Set("showVolumeCenterPlane", state.showVolumeCenterPlane);
+            playback.Set("centerPlane", static_cast<int>(state.volumeCenterPlane)); playback.Set("gizmo", static_cast<int>(state.gizmoOp));
+            playback.Set("outlinerWidth", m_outlinerWidth); playback.Set("propertiesWidth", m_propertiesWidth); playback.Set("timelineHeight", m_timelineHeight);
             playback.Set("zoom", OpData(state.zoom)); playback.Set("panX", OpData(state.pan.x)); playback.Set("panY", OpData(state.pan.y));
             playback.Set("yaw", OpData(state.volumeOrbit.yawDegrees)); playback.Set("pitch", OpData(state.volumeOrbit.pitchDegrees)); data.Set("playback", std::move(playback));
             return OpResult::Data(std::move(data));

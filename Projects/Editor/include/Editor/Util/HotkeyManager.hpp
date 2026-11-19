@@ -85,7 +85,8 @@ public:
     ///       EditorApp::BeginFrame でパネル描画より先に走るため、次フレームの ProcessInput に向けて先出しする。
     void SuppressOperatorThisFrame(std::string_view operatorId);
 
-    void ProcessInput();  ///< 毎フレーム EditorApp から呼ぶ
+    /// @note キーを再割り当てするフレームは既存コマンドを実行しない。
+    void ProcessInput(bool capture = false);
     void Clear();
 
     const std::vector<Hotkey>& GetHotkeys() const { return m_hotkeys; }
@@ -124,4 +125,4 @@ private:
     std::vector<std::string>         m_suppressedOperators;
 };
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

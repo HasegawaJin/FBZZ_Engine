@@ -2,6 +2,7 @@
 /// @brief   専用 Paint 素材を検索・選択し、同じ材質プレビューで作成・編集する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-05
+#include <Editor/Util/PropertyControls.hpp>
 #include "TerrainPaintLibrary.hpp"
 #include "TerrainPaintEditing.hpp"
 #include "TerrainTool.hpp"
@@ -70,11 +71,11 @@ bool DrawForm(EditorContext& ctx, PaintForm& form, bool modal)
     widgets::InputString("Name", form.value.name);
     constexpr const char* categories[]{"Grass", "Tree", "Rock", "Other"};
     int category = static_cast<int>(form.value.category);
-    if (ImGui::Combo("Category", &category, categories, IM_ARRAYSIZE(categories)))
+    if (property::Combo("Category", &category, categories, IM_ARRAYSIZE(categories)))
         form.value.category = static_cast<asset::TerrainPaintCategory>(category);
     if (form.create) widgets::InputString("Save Path", form.path);
     if (ImGui::CollapsingHeader("Import Existing Definition")) {
-        widgets::AssetPathField("Source", form.importSource, ".fzdata,.terrainpaint,.meshinstances", ctx.projectRoot);
+        property::AssetPathField("Source", form.importSource, ".fzdata,.terrainpaint,.meshinstances", ctx.projectRoot);
         if (ImGui::Button("Copy Model / Materials / LOD")) {
             if (const auto* source = asset::ResolveMeshInstanceDefinition(form.importSource)) {
                 form.parts.assign(source->Parts().begin(), source->Parts().end());
@@ -86,10 +87,10 @@ bool DrawForm(EditorContext& ctx, PaintForm& form, bool modal)
     for (size_t i = 0; i < form.parts.size(); ++i) {
         ImGui::PushID(static_cast<int>(i));
         ImGui::Text("Part %zu", i + 1);
-        widgets::AssetPathField("Mesh", form.parts[i].meshPath, ".fbx,.gltf,.glb,.obj,.mesh,.fzasset", ctx.projectRoot);
-        widgets::AssetPathField("Material", form.parts[i].materialPath, ".mat", ctx.projectRoot);
+        property::AssetPathField("Mesh", form.parts[i].meshPath, ".fbx,.gltf,.glb,.obj,.mesh,.fzasset", ctx.projectRoot);
+        property::AssetPathField("Material", form.parts[i].materialPath, ".mat", ctx.projectRoot);
         int lod = static_cast<int>(form.parts[i].lod);
-        if (ImGui::SliderInt("LOD", &lod, 0, static_cast<int>(form.heights.size()) - 1)) form.parts[i].lod = static_cast<uint32_t>(lod);
+        if (property::SliderInt("LOD", &lod, 0, static_cast<int>(form.heights.size()) - 1)) form.parts[i].lod = static_cast<uint32_t>(lod);
         if (form.parts.size() > 1 && ImGui::SmallButton("Remove Part")) {
             form.parts.erase(form.parts.begin() + i);
             ImGui::PopID(); break;
@@ -100,7 +101,7 @@ bool DrawForm(EditorContext& ctx, PaintForm& form, bool modal)
     if (ImGui::CollapsingHeader("LOD Thresholds")) {
         for (size_t i = 0; i < form.heights.size(); ++i) {
             ImGui::PushID(static_cast<int>(i));
-            ImGui::DragFloat("Screen Height", &form.heights[i], 0.01f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            property::DragFloat("Screen Height", &form.heights[i], 0.01f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
             ImGui::PopID();
         }
         if (form.heights.size() < 4 && ImGui::SmallButton("Add LOD")) {
@@ -118,17 +119,17 @@ bool DrawForm(EditorContext& ctx, PaintForm& form, bool modal)
     }
     ImGui::SeparatorText("Placement Defaults");
     auto& p = form.value.placement;
-    ImGui::DragFloat("Spacing [m]", &p.spacing, 0.1f, 0.25f, 10000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::SliderFloat("Density", &p.density, 0.0f, 1.0f);
+    property::DragFloat("Spacing [m]", &p.spacing, 0.1f, 0.25f, 10000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    property::SliderFloat("Density", &p.density, 0.0f, 1.0f);
     ImGui::DragFloatRange2("Scale Range", &p.minScale, &p.maxScale, 0.01f, 0.01f, 100.0f);
     ImGui::DragFloatRange2("Yaw [deg]", &p.minYaw, &p.maxYaw, 1.0f, -360.0f, 360.0f);
     ImGui::DragFloatRange2("Slope [deg]", &p.minSlope, &p.maxSlope, 0.5f, 0.0f, 90.0f);
-    ImGui::Checkbox("Align to Surface", &p.alignToNormal);
-    ImGui::Checkbox("Face Downslope", &p.alignDownslope);
-    if (p.alignDownslope) ImGui::SliderFloat("Downslope Jitter [deg]", &p.downslopeJitter, 0.0f, 180.0f);
-    ImGui::DragFloat("Embed Depth [m]", &p.embedDepth, 0.01f, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Water Clearance [m]", &p.waterClearance, 0.1f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Path Clearance [m]", &p.pathClearance, 0.1f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    property::Checkbox("Align to Surface", &p.alignToNormal);
+    property::Checkbox("Face Downslope", &p.alignDownslope);
+    if (p.alignDownslope) property::SliderFloat("Downslope Jitter [deg]", &p.downslopeJitter, 0.0f, 180.0f);
+    property::DragFloat("Embed Depth [m]", &p.embedDepth, 0.01f, 0.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    property::DragFloat("Water Clearance [m]", &p.waterClearance, 0.1f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    property::DragFloat("Path Clearance [m]", &p.pathClearance, 0.1f, 0.0f, 1000.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     asset::TerrainPaintAsset candidate = form.value;
     const bool valid = candidate.definition.Replace(form.parts, form.heights, {}) && asset::ValidateTerrainPaintAsset(candidate);
     if (!valid) ImGui::TextWrapped("Assign every mesh and material. Each LOD needs a part and descending screen-height thresholds.");
@@ -357,7 +358,7 @@ bool TerrainPaintLibrary::Draw(EditorContext& ctx, std::span<const std::string> 
     ImGui::SeparatorText("Paint Library");
     widgets::InputString("Search Paint Assets", state.search);
     constexpr const char* categories[]{"All", "Grass", "Trees", "Rocks", "Other"};
-    ImGui::Combo("Filter", &state.category, categories, IM_ARRAYSIZE(categories));
+    property::Combo("Filter", &state.category, categories, IM_ARRAYSIZE(categories));
     if (ImGui::Button("+ Create Paint Asset")) {
         OpenCreate("Assets/Terrain/Paint");
     }

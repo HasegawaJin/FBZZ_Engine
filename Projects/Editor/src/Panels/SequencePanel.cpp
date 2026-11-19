@@ -8,6 +8,7 @@
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/Scene/Components/SequencePlayerComponent.hpp>
@@ -371,13 +372,15 @@ std::string TrackRowLabel(const SequenceTrack& track)
 
 /// @name ドキュメント
 
-bool SequencePanel::Load(const std::string& path)
+bool SequencePanel::Load(EditorContext& ctx, const std::string& path)
 {
     asset::SequenceAsset loaded;
     if (!asset::LoadSequenceAsset(path, loaded)) {
         m_error = "Sequence を読み込めませんでした: " + path;
         return false;
     }
+    ReleasePreview(ctx);
+    AssetDirtyRegistry::MarkClean(m_path);
     m_asset      = std::move(loaded);
     m_path       = path;
     m_assetPath  = NormalizeAssetPath(path);
@@ -419,6 +422,7 @@ bool SequencePanel::Save()
 void SequencePanel::CloseDocument(EditorContext& ctx)
 {
     ReleasePreview(ctx);
+    AssetDirtyRegistry::MarkClean(m_path);
     m_asset = {};
     m_apiPreview = false;
     m_playing = false;
@@ -429,6 +433,27 @@ void SequencePanel::CloseDocument(EditorContext& ctx)
     m_undoStack.clear();
     m_redoStack.clear();
     m_dirty = false;
+}
+
+void SequencePanel::RequestDocumentAction(EditorContext& ctx, const char* action, const std::string& path)
+{
+    const bool close = std::string_view(action) == "close";
+    const auto change = [this, &ctx, close, path, expected = m_path] {
+        if (m_path != expected) return;
+        if (close) CloseDocument(ctx);
+        else (void)Load(ctx, path.empty() ? m_path : path);
+    };
+    if (!m_dirty) {
+        change();
+        return;
+    }
+    ModalDialog::OpenUnsavedChanges(LOCT("Unsaved Sequence"),
+        m_assetPath + "\n" + LOCT("Save changes before continuing?"),
+        [this, change] {
+            if (!Save()) return false;
+            change();
+            return true;
+        }, change);
 }
 
 void SequencePanel::PushUndo()
@@ -598,21 +623,21 @@ void SequencePanel::OnAfterEnd(EditorContext& ctx)
 void SequencePanel::DrawToolbar(EditorContext& ctx)
 {
     std::string path = m_path;
-    ImGui::SetNextItemWidth(360.0f);
+    ImGui::SetNextItemWidth(std::min(360.0f, ImGui::GetContentRegionAvail().x * 0.8f));
     if (widgets::AssetPathField("Sequence", path, ".sequence", ctx.projectRoot)) {
         if (!path.empty() && path != m_path) {
             /// @note 別の演出へ移る前に、今出しているスクラブを畳んで姿勢を戻す。
-            ReleasePreview(ctx);
-            Load(path);
+            RequestDocumentAction(ctx, "open", path);
         }
     }
 
-    ImGui::SameLine();
+    ImGui::BeginDisabled(m_path.empty());
     if (ImGui::Button("Save")) (void)Save();
     ImGui::SameLine();
-    if (ImGui::Button("Reload") && !m_path.empty()) Load(m_path);
+    if (ImGui::Button("Reload")) RequestDocumentAction(ctx, "reload");
     ImGui::SameLine();
-    if (ImGui::Button("Close")) CloseDocument(ctx);
+    if (ImGui::Button("Close")) RequestDocumentAction(ctx, "close");
+    ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(m_undoStack.empty());
     if (ImGui::Button("Undo")) Undo();
@@ -1471,10 +1496,7 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
     if (!m_requestedPath.empty()) {
         const std::string requested = std::move(m_requestedPath);
         m_requestedPath.clear();
-        if (requested != m_path) {
-            ReleasePreview(ctx);
-            Load(requested);
-        }
+        if (requested != m_path) RequestDocumentAction(ctx, "open", requested);
     }
 
     DrawToolbar(ctx);
@@ -1516,7 +1538,7 @@ void SequencePanel::OnRenderContent(EditorContext& ctx)
 
     if (!ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive()) {
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z)) Undo();
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y)) Redo();
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) Redo();
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S)) (void)Save();
         if (ImGui::Shortcut(ImGuiKey_Space)) m_playing = !m_playing;
         if (ImGui::Shortcut(ImGuiKey_Delete) && m_selection.HasItem()

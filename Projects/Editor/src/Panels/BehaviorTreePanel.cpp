@@ -8,6 +8,7 @@
 #include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
+#include <Editor/Util/ModalDialog.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
@@ -133,6 +134,7 @@ bool BehaviorTreePanel::LoadTree(const std::string& path)
         return false;
     }
     fbzz::ai::EnsureReservedBlackboardKeys(loaded);
+    AssetDirtyRegistry::MarkClean(m_path);
     m_asset = std::move(loaded);
     m_path = path;
     m_dirty = false;
@@ -146,6 +148,18 @@ bool BehaviorTreePanel::LoadTree(const std::string& path)
     m_graphCanvas.RequestFrameAll();
     RefreshValidation();
     return true;
+}
+
+void BehaviorTreePanel::RequestLoadTree(const std::string& path)
+{
+    if (!m_dirty) {
+        (void)LoadTree(path);
+        return;
+    }
+    ModalDialog::OpenUnsavedChanges(LOCT("Unsaved Behavior Tree"),
+        m_path + "\n" + LOCT("Save changes before continuing?"),
+        [this, path, expected = m_path] { return m_path == expected && SaveTree() && LoadTree(path); },
+        [this, path, expected = m_path] { if (m_path == expected) (void)LoadTree(path); });
 }
 
 
@@ -631,7 +645,7 @@ void BehaviorTreePanel::DrawToolbar(EditorContext& ctx)
     ImGui::SameLine();
     if (ImGui::Button("Save") && inEditor) (void)SaveTree();
     ImGui::SameLine();
-    if (ImGui::Button("Reload") && !m_path.empty()) (void)LoadTree(m_path);
+    if (ImGui::Button("Reload") && !m_path.empty()) RequestLoadTree(m_path);
     ImGui::SameLine();
     if (ImGui::Button("Auto Layout")) AutoLayout();
     ImGui::SameLine();
@@ -838,7 +852,7 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
     if (!m_requestedPath.empty()) {
         const std::string requested = m_requestedPath;
         m_requestedPath.clear();
-        if (requested != m_path) (void)LoadTree(requested);
+        if (requested != m_path) RequestLoadTree(requested);
     } else if (m_path.empty() && !ctx.selectedAssetPath.empty()
                && ctx.selectedAssetPath.ends_with(".behaviortree")) {
         (void)LoadTree(ctx.selectedAssetPath);
@@ -911,7 +925,7 @@ void BehaviorTreePanel::OnRenderContent(EditorContext& ctx)
     /// @note ショートカット。キャンバスは意図だけを返すので、Undo はここが持つ。
     if (config.editable && !ImGui::GetIO().WantTextInput) {
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Z)) Undo();
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y)) Redo();
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Y) || ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) Redo();
         if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S)) (void)SaveTree();
     }
     /// @note 未保存を「保存待ちアセット」へ載せる。エディタ終了時の一括保存ダイアログが

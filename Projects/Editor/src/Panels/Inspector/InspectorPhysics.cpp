@@ -2,6 +2,7 @@
 /// @brief   Physics 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/Components/CharacterControllerComponent.hpp>
 #include <Engine/Scene/Components/ColliderComponent.hpp>
 #include <Engine/Scene/Components/JointComponent.hpp>
@@ -24,7 +25,7 @@ void DrawPhysicsMaterialPresetMenu(physics::PhysicsMaterial& material)
 {
     /// @note 選択結果を保持しない「適用するだけ」のコンボ。適用後に値を手で触れるため、プリセット名を
     /// @note 出すと実際の値と食い違ったまま表示が残る。適用の入口としてだけ機能させる。
-    if (!ImGui::BeginCombo("Preset", "Apply preset..."))
+    if (!property::BeginCombo("Preset", "Apply preset..."))
         return;
     for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
         const char* name = physics::PhysicsMaterial::PresetName(i);
@@ -40,11 +41,11 @@ void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
                         const std::string& projectRoot)
 {
     widgets::DragVec3("Center", col.center, 0.01f, -1000.0f, 1000.0f);
-    ImGui::Checkbox("Is Trigger", &col.isTrigger);
+    property::Checkbox("Is Trigger", &col.isTrigger);
 
     /// @note 共有 .physmat スロット。割り当てるとインライン編集を閉じる。変更検知の戻り値は使わない。
     /// @note 参照がある間はどのみち毎フレーム解決するため、解決口を 1 つに絞る。
-    widgets::AssetPathField("Physics Material", col.physicsMaterialPath, ".physmat", projectRoot);
+    property::AssetPathField("Physics Material", col.physicsMaterialPath, ".physmat", projectRoot);
 
     const bool usesSharedAsset = !col.physicsMaterialPath.empty();
     if (usesSharedAsset) {
@@ -78,10 +79,10 @@ void DrawColliderCommon(scene::ColliderComponent& col, scene::GameObject& go,
     }
 
     DrawPhysicsMaterialPresetMenu(col.material);
-    ImGui::DragFloat("Restitution", &col.material.restitution, 0.01f, 0.0f, 1.0f);
-    ImGui::DragFloat("Static Friction", &col.material.staticFriction, 0.01f, 0.0f, 10.0f);
-    ImGui::DragFloat("Dynamic Friction", &col.material.dynamicFriction, 0.01f, 0.0f, 10.0f);
-    ImGui::DragFloat("Density", &col.material.density, 0.01f, 0.0f, 100000.0f);
+    property::DragFloat("Restitution", &col.material.restitution, 0.01f, 0.0f, 1.0f);
+    property::DragFloat("Static Friction", &col.material.staticFriction, 0.01f, 0.0f, 10.0f);
+    property::DragFloat("Dynamic Friction", &col.material.dynamicFriction, 0.01f, 0.0f, 10.0f);
+    property::DragFloat("Density", &col.material.density, 0.01f, 0.0f, 100000.0f);
 }
 
 void DrawAabbCollider(scene::AabbColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
@@ -102,7 +103,7 @@ void DrawBoxCollider(scene::BoxColliderComponent& col, scene::GameObject& go, co
 void DrawSphereCollider(scene::SphereColliderComponent& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col, go, projectRoot);
-    ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
+    property::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
 }
 
@@ -110,8 +111,8 @@ template<typename ColliderT>
 void DrawAxialCollider(ColliderT& col, scene::GameObject& go, const std::string& projectRoot)
 {
     DrawColliderCommon(col, go, projectRoot);
-    ImGui::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
-    ImGui::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
+    property::DragFloat("Radius", &col.radius, 0.01f, 0.001f, 1000.0f);
+    property::DragFloat("Half Height", &col.halfHeight, 0.01f, 0.001f, 1000.0f);
     SyncColliderPreview(go, col);
 }
 
@@ -128,9 +129,9 @@ void DrawCylinderCollider(scene::CylinderColliderComponent& col, scene::GameObje
 void DrawMeshCollider(scene::MeshColliderComponent& col, scene::GameObject& go, EditorContext& ctx)
 {
     DrawColliderCommon(col, go, ctx.projectRoot);
-    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", ctx.projectRoot);
-    ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
-    ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
+    property::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", ctx.projectRoot);
+    property::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
+    property::Checkbox("Use Transform Scale", &col.useTransformScale);
     const auto rebuild = [&](const char* source) {
         OpArgs args; args.Set("node", go.instanceId); args.Set("component", std::string("MeshCollider")); args.Set("source", std::string(source));
         const auto result = InvokeOperator(ctx, "component.collider.rebuild", args);
@@ -155,9 +156,9 @@ void DrawTerrainCollider(scene::TerrainColliderComponent& col, scene::GameObject
 void DrawConvexHullCollider(scene::ConvexHullColliderComponent& col, scene::GameObject& go, EditorContext& ctx)
 {
     DrawColliderCommon(col, go, ctx.projectRoot);
-    widgets::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", ctx.projectRoot);
-    ImGui::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
-    ImGui::Checkbox("Use Transform Scale", &col.useTransformScale);
+    property::AssetPathField("Mesh Path", col.meshPath, ".fbx,.fzmodel,.obj,.gltf,.glb", ctx.projectRoot);
+    property::DragInt("Mesh Index", &col.meshIndex, 1.0f, 0, 1024);
+    property::Checkbox("Use Transform Scale", &col.useTransformScale);
     const auto rebuild = [&](const char* source) {
         OpArgs args; args.Set("node", go.instanceId); args.Set("component", std::string("ConvexHullCollider")); args.Set("source", std::string(source));
         const auto result = InvokeOperator(ctx, "component.collider.rebuild", args);
@@ -394,7 +395,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
             auto& body = *rb.rigidBody;
             bool isStatic = body.IsStatic();
-            if (ImGui::Checkbox("Static", &isStatic)) {
+            if (property::Checkbox("Static", &isStatic)) {
                 body.m_isStatic = isStatic;
                 body.SetMass(body.GetMass());
             }
@@ -403,16 +404,16 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             /// @note PhysicsSystem が毎フレーム算出して上書きするため、ここでは手入力させない。
             static constexpr const char* kMassModeLabels[] = { "Manual", "From Density" };
             int massModeIndex = static_cast<int>(rb.massMode);
-            if (ImGui::Combo("Mass Mode", &massModeIndex, kMassModeLabels, 2))
+            if (property::Combo("Mass Mode", &massModeIndex, kMassModeLabels, 2))
                 rb.massMode = static_cast<scene::MassMode>(massModeIndex);
 
             float mass = body.GetMass();
             if (rb.massMode == scene::MassMode::FromDensity) {
                 ImGui::BeginDisabled();
-                ImGui::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f);
+                property::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f);
                 ImGui::EndDisabled();
                 ImGui::TextDisabled("コライダー体積 x 密度から算出 (Play 中も追従)");
-            } else if (ImGui::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f)) {
+            } else if (property::DragFloat("Mass", &mass, 0.05f, 0.0f, 100000.0f)) {
                 body.SetMass(mass);
             }
 
@@ -425,7 +426,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 body.SetAngularVelocity(angularVelocity);
 
             auto freezePosition = body.GetFreezePosition();
-            if (ImGui::Checkbox("Freeze Position X", &freezePosition.x))
+            if (property::Checkbox("Freeze Position X", &freezePosition.x))
                 body.SetFreezePosition(freezePosition);
             ImGui::SameLine();
             if (ImGui::Checkbox("Y##FreezePosition", &freezePosition.y))
@@ -435,7 +436,7 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
                 body.SetFreezePosition(freezePosition);
 
             auto freezeRotation = body.GetFreezeRotation();
-            if (ImGui::Checkbox("Freeze Rotation X", &freezeRotation.x))
+            if (property::Checkbox("Freeze Rotation X", &freezeRotation.x))
                 body.SetFreezeRotation(freezeRotation);
             ImGui::SameLine();
             if (ImGui::Checkbox("Y##FreezeRotation", &freezeRotation.y))
@@ -444,20 +445,20 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             if (ImGui::Checkbox("Z##FreezeRotation", &freezeRotation.z))
                 body.SetFreezeRotation(freezeRotation);
 
-            ImGui::Checkbox("Use Gravity", &body.m_useGravity);
-            ImGui::DragFloat("Gravity Scale", &body.m_gravityScale, 0.01f, -100.0f, 100.0f);
-            ImGui::DragFloat("Linear Drag", &body.m_linearDrag, 0.01f, 0.0f, 1000.0f);
-            ImGui::DragFloat("Angular Drag", &body.m_angularDrag, 0.01f, 0.0f, 1000.0f);
+            property::Checkbox("Use Gravity", &body.m_useGravity);
+            property::DragFloat("Gravity Scale", &body.m_gravityScale, 0.01f, -100.0f, 100.0f);
+            property::DragFloat("Linear Drag", &body.m_linearDrag, 0.01f, 0.0f, 1000.0f);
+            property::DragFloat("Angular Drag", &body.m_angularDrag, 0.01f, 0.0f, 1000.0f);
             /// @note 流れ (Flow Field / 環境流) との結合係数。0 = 受けない (オプトイン)。
             /// @note 正本はコンポーネント側で、PhysicsSystem が毎フレーム剛体へ押し込む。
             widgets::RangeField("Flow Coupling", rb.flowCoupling, 0.0f, 20.0f, "%.2f",
                                 "流れに引きずられる強さ [1/s]。0 で風も水流も受けない");
-            ImGui::Checkbox("Allow Sleeping", &body.m_allowSleeping);
-            ImGui::Checkbox("Use CCD", &body.m_useCCD);
-            ImGui::DragFloat("CCD Radius", &body.m_ccdRadius, 0.01f, 0.001f, 1000.0f);
-            ImGui::DragFloat("Charge", &body.m_charge, 0.01f, -1000.0f, 1000.0f);
-            ImGui::Checkbox("Gravity Source", &body.m_isGravitationalSource);
-            ImGui::DragFloat("Gravity Mass", &body.m_gravitationalMass, 0.05f, 0.0f, 100000.0f);
+            property::Checkbox("Allow Sleeping", &body.m_allowSleeping);
+            property::Checkbox("Use CCD", &body.m_useCCD);
+            property::DragFloat("CCD Radius", &body.m_ccdRadius, 0.01f, 0.001f, 1000.0f);
+            property::DragFloat("Charge", &body.m_charge, 0.01f, -1000.0f, 1000.0f);
+            property::Checkbox("Gravity Source", &body.m_isGravitationalSource);
+            property::DragFloat("Gravity Mass", &body.m_gravitationalMass, 0.05f, 0.0f, 100000.0f);
         });
 
     DrawComponentSection<scene::JointComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Joint",
@@ -484,44 +485,44 @@ void DrawPhysicsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             int typeIdx = 0;
             for (int i = 0; i < kVolumeTypeCount; ++i)
                 if (kVolumeTypes[i] == volume.type) typeIdx = i;
-            if (ImGui::Combo("Type", &typeIdx, kVolumeNames, kVolumeTypeCount))
+            if (property::Combo("Type", &typeIdx, kVolumeNames, kVolumeTypeCount))
                 volume.type = kVolumeTypes[std::clamp(typeIdx, 0, kVolumeTypeCount - 1)];
 
             widgets::DragVec3("Gravity", volume.gravity, 0.05f);
             widgets::DragVec3("Magnetic Field", volume.magneticField, 0.05f);
-            ImGui::DragFloat("Swirl", &volume.swirlStrength, 0.05f, 0.0f, 1000.0f);
-            ImGui::DragFloat("Inward", &volume.inwardStrength, 0.05f, 0.0f, 1000.0f);
-            ImGui::DragFloat("Lift", &volume.liftStrength, 0.05f, 0.0f, 1000.0f);
+            property::DragFloat("Swirl", &volume.swirlStrength, 0.05f, 0.0f, 1000.0f);
+            property::DragFloat("Inward", &volume.inwardStrength, 0.05f, 0.0f, 1000.0f);
+            property::DragFloat("Lift", &volume.liftStrength, 0.05f, 0.0f, 1000.0f);
             /// @note Drag は撤去した。どの VolumeType も読んでいなかった死んだノブで、
             /// @note 流れの抵抗は Rigid Body の Flow Coupling が持つ。
-            ImGui::DragFloat("Explosion Impulse", &volume.explosionImpulse, 0.05f, 0.0f, 1000.0f);
-            ImGui::DragFloat("Time Scale", &volume.timeScale, 0.01f, 0.0f, 10.0f);
-            ImGui::DragFloat("Duration", &volume.duration, 0.05f, -1.0f, 1000.0f);
+            property::DragFloat("Explosion Impulse", &volume.explosionImpulse, 0.05f, 0.0f, 1000.0f);
+            property::DragFloat("Time Scale", &volume.timeScale, 0.01f, 0.0f, 10.0f);
+            property::DragFloat("Duration", &volume.duration, 0.05f, -1.0f, 1000.0f);
         });
 
     DrawComponentSection<scene::CharacterControllerComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Character Controller",
         [](scene::CharacterControllerComponent& cc, EditorContext&) {
-            ImGui::Checkbox("Enabled", &cc.enabled);
+            property::Checkbox("Enabled", &cc.enabled);
             static constexpr const char* kGroundingModeLabels[] = {
                 "Automatic", "Forced Grounded", "Forced Airborne"
             };
             int groundingMode = static_cast<int>(cc.groundingMode);
-            if (ImGui::Combo("Grounding Mode", &groundingMode, kGroundingModeLabels, 3))
+            if (property::Combo("Grounding Mode", &groundingMode, kGroundingModeLabels, 3))
                 cc.SetGroundingMode(static_cast<scene::CharacterGroundingMode>(
                     std::clamp(groundingMode, 0, 2)));
-            ImGui::DragFloat("Jump Min Air Time",        &cc.jumpMinAirTime,          0.01f, 0.0f, 2.0f);
-            ImGui::DragFloat("Fall Vel Threshold",       &cc.fallVelThreshold,        0.1f, -50.0f, 0.0f);
-            ImGui::DragFloat("Ground Vel Threshold",     &cc.groundVelThreshold,      0.01f, 0.0f, 5.0f);
-            ImGui::DragFloat("Ledge Fall Threshold",     &cc.ledgeFallThreshold,      0.1f, -50.0f, 0.0f);
-            ImGui::DragFloat("Min Ground Normal Y",      &cc.minGroundNormalY,        0.01f, 0.0f, 1.0f);
-            ImGui::DragFloat("Ground Contact Grace",     &cc.groundContactGrace,      0.01f, 0.0f, 1.0f);
-            ImGui::DragFloat("Jump Ground Ignore Time",  &cc.jumpGroundIgnoreTime,    0.01f, 0.0f, 1.0f);
-            ImGui::DragFloat("Grounded Vel Snap",        &cc.groundedVelSnap,         0.01f, 0.0f, 5.0f);
-            ImGui::DragFloat("Intentional Jump MaxTime", &cc.intentionalJumpMaxTime,  0.05f, 0.0f, 5.0f);
+            property::DragFloat("Jump Min Air Time",        &cc.jumpMinAirTime,          0.01f, 0.0f, 2.0f);
+            property::DragFloat("Fall Vel Threshold",       &cc.fallVelThreshold,        0.1f, -50.0f, 0.0f);
+            property::DragFloat("Ground Vel Threshold",     &cc.groundVelThreshold,      0.01f, 0.0f, 5.0f);
+            property::DragFloat("Ledge Fall Threshold",     &cc.ledgeFallThreshold,      0.1f, -50.0f, 0.0f);
+            property::DragFloat("Min Ground Normal Y",      &cc.minGroundNormalY,        0.01f, 0.0f, 1.0f);
+            property::DragFloat("Ground Contact Grace",     &cc.groundContactGrace,      0.01f, 0.0f, 1.0f);
+            property::DragFloat("Jump Ground Ignore Time",  &cc.jumpGroundIgnoreTime,    0.01f, 0.0f, 1.0f);
+            property::DragFloat("Grounded Vel Snap",        &cc.groundedVelSnap,         0.01f, 0.0f, 5.0f);
+            property::DragFloat("Intentional Jump MaxTime", &cc.intentionalJumpMaxTime,  0.05f, 0.0f, 5.0f);
             ImGui::Spacing();
             ImGui::BeginDisabled();
-            ImGui::Checkbox("Is Grounded (runtime)", &cc.isGrounded);
-            ImGui::DragFloat("Vertical Speed (runtime)", &cc.verticalSpeed, 0.0f);
+            property::Checkbox("Is Grounded (runtime)", &cc.isGrounded);
+            property::DragFloat("Vertical Speed (runtime)", &cc.verticalSpeed, 0.0f);
             ImGui::EndDisabled();
         });
 

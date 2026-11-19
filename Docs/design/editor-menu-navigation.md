@@ -47,6 +47,10 @@ File、Edit、GameObject、Help、およびPlayツールバーの役割は維持
 
 ## Hierarchy Create
 
+ツリーと検索結果の右クリックは同じ項目を表示する。空白からの作成・貼り付け先はシーン直下。
+単体の行では名前変更と子への作成・貼り付けを使える。選択済みの行を右クリックしても複数選択は維持し、
+一括操作を表示する。並べ替えは同じ親の子同士、シーン直下ではルート同士の順序で行う。
+
 Hierarchyの右クリック・上端CreateとGameObjectメニューは同じ `CreateObjectMenu` を使う。
 Empty GameObject、Cube、Sphere、Plane、Camera、Target Pointを直下へ置き、
 3D Object、Rendering、Light、Camera Rig、Environment、Terrain、Navigation、Effects、VFX、
@@ -71,6 +75,13 @@ Audioへ以下の実装済みAudioSource設定を使ったプリセットを追�
 UI要素は既存Canvasか自動Canvasへ入り、自動生成した子とCanvasも同じUndoで戻る。
 Redoで同じGUIDを復元する契約も維持する。
 Script Objectの説明はC#と必須コンポーネントへ修正する。
+
+## Asset Browser の右クリック
+
+ファイルのメニューは編集・参照・保存場所の操作を表示する。フォルダのメニューはツリーと一覧で共通とし、
+作成・貼り付けにはクリックしたフォルダを使う。空白からの作成・貼り付けには現在表示中のフォルダを使う。
+複数選択中にその中の項目を右クリックすると、選択に対するコピー・複製・ごみ箱への移動を表示する。
+C# と HLSL の作成メニューには、それぞれ既定の作成先を明記する。
 
 ## 検証
 

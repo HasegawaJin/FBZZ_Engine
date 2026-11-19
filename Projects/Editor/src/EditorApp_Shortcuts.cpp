@@ -11,6 +11,7 @@
 #include <Editor/Util/Selection.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <imgui.h>
+#include <algorithm>
 #include <string>
 
 namespace fbzz::editor {
@@ -26,14 +27,14 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Appearing, { 0.5f, 0.5f });
-    ImGui::SetNextWindowSize({ 620.0f, 640.0f }, ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize({ std::min(620.0f, vp->WorkSize.x * 0.9f),
+                               std::min(640.0f, vp->WorkSize.y * 0.9f) }, ImGuiCond_Appearing);
     ImGui::SetNextWindowBgAlpha(0.96f);
 
     bool open = true;
-    if (ImGui::Begin("Keyboard Shortcuts", &open, ImGuiWindowFlags_NoCollapse)) {
-        ImGui::TextDisabled("Press F1 or Esc to close");
-        ImGui::SameLine();
-        ImGui::TextDisabled("|  greyed-out rows are not available right now");
+    if (ImGui::Begin("Keyboard Shortcuts", &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        ImGui::TextDisabled("%s", LOCT("Press Esc to close"));
+        ImGui::TextWrapped("%s", LOCT("Greyed-out shortcuts are unavailable for the current selection or panel."));
         ImGui::Separator();
 
         if (!ctx.hotkeyManager) {
@@ -63,7 +64,7 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
                     if (!ImGui::BeginTable(HotkeyManager::CategoryLabel(category), 2, kFlags))
                         break;
                     ImGui::TableSetupColumn("Action",   ImGuiTableColumnFlags_WidthStretch);
-                    ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthFixed, 210.0f);
+                    ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch);
                     headerDrawn = true;
                 }
 
@@ -81,9 +82,7 @@ void EditorApp::DrawShortcutsOverlay(EditorContext& ctx)
 
                 ImGui::TableSetColumnIndex(1);
                 const std::string binding = HotkeyManager::FormatBinding(hk);
-                if (hk.infoOnly)
-                    ImGui::TextDisabled("%s", binding.c_str());
-                else if (active)
+                if (active)
                     ImGui::TextColored({ 0.55f, 0.80f, 1.0f, 1.0f }, "%s", binding.c_str());
                 else
                     ImGui::TextDisabled("%s", binding.c_str());
@@ -145,4 +144,4 @@ void EditorApp::NavigateSelectionHistory(int dir)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

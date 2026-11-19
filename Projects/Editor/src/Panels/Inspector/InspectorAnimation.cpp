@@ -2,6 +2,7 @@
 /// @brief   Animation / IK 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/BoneComponent.hpp>
 #include <Engine/Scene/Components/IKSolverComponent.hpp>
@@ -112,7 +113,7 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
         char nodeName[128] = {};
         std::snprintf(nodeName, sizeof(nodeName), "%s",
                       anim.rootMotion.nodeName.c_str());
-        if (ImGui::InputText("Node", nodeName, sizeof(nodeName))) {
+        if (property::InputText("Node", nodeName, sizeof(nodeName))) {
             anim.rootMotion.nodeName = nodeName;
             anim.rootMotionSamples.clear();
         }
@@ -122,7 +123,7 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     char targetPath[128] = {};
     std::snprintf(targetPath, sizeof(targetPath), "%s",
                   anim.rootMotion.targetPath.c_str());
-    if (ImGui::InputText("Target", targetPath, sizeof(targetPath)))
+    if (property::InputText("Target", targetPath, sizeof(targetPath)))
         anim.rootMotion.targetPath = targetPath;
     ImGui::TextDisabled("空 = この GameObject。\"..\" で親 (RigidBody が親にある構成)。");
 
@@ -131,9 +132,9 @@ void DrawRootMotionSettings(scene::AnimatorComponent& anim)
     DrawRootMotionEnum("Vertical (Y)", anim.rootMotion.applyY, kAxisNames);
     DrawRootMotionEnum("Rotation", anim.rootMotion.applyRotation, kAxisNames);
 
-    ImGui::DragFloat("Position Scale", &anim.rootMotion.positionScale,
+    property::DragFloat("Position Scale", &anim.rootMotion.positionScale,
                      0.01f, 0.0f, 10.0f);
-    ImGui::DragFloat("Rotation Scale", &anim.rootMotion.rotationScale,
+    property::DragFloat("Rotation Scale", &anim.rootMotion.rotationScale,
                      0.01f, 0.0f, 1.0f);
 
     /// @note 実行中の値。歩幅とゲーム速度が合っているかはここを見ながら詰める。
@@ -169,7 +170,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
     };
 
     /// @note Base Layer 自身のマスク。外したボーンはバインドポーズのまま残り、上のレイヤーだけが動かす。
-    if (widgets::AssetPathField("Base Layer Mask", anim.baseLayerMask.path,
+    if (property::AssetPathField("Base Layer Mask", anim.baseLayerMask.path,
                                 ".mask", ctx.projectRoot)) {
         anim.baseLayerMask.Invalidate();
         markLayerDirty();
@@ -205,7 +206,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
         if (open) {
             char nameBuffer[128];
             std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", layer.name.c_str());
-            if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+            if (property::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
                 const std::string oldName = layer.name;
                 const std::string newName = nameBuffer;
                 const bool duplicate = std::any_of(
@@ -228,7 +229,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
 
             static constexpr const char* kModeNames[] = { "Override", "Additive" };
             int modeIndex = static_cast<int>(layer.mode);
-            if (ImGui::Combo("Blending", &modeIndex, kModeNames, 2)) {
+            if (property::Combo("Blending", &modeIndex, kModeNames, 2)) {
                 layer.mode = static_cast<scene::AnimationLayerMode>(modeIndex);
                 if (layer.mode == scene::AnimationLayerMode::Override)
                     layer.weight = std::min(layer.weight, 1.0f);
@@ -241,7 +242,7 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
             }
 
             /// @name Mask
-            if (widgets::AssetPathField("Mask", layer.mask.path, ".mask", ctx.projectRoot)) {
+            if (property::AssetPathField("Mask", layer.mask.path, ".mask", ctx.projectRoot)) {
                 /// @note 次フレームの AnimatorSystem に読み直させる。
                 layer.mask.Invalidate();
                 markLayerDirty();
@@ -257,17 +258,17 @@ void DrawAnimatorLayers(scene::AnimatorComponent& anim, EditorContext& ctx)
                 /// @note 基準ポーズも通常の Source と同じ種類のアセットを受ける。
                 /// @note .anim だけ弾いていると、クリップ単体で持っている基準ポーズ
                 /// @note (Pose_XXX.anim 等) をドロップで割り当てられない。
-                if (widgets::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
+                if (property::AssetPathField("Ref Source", layer.additiveReference.sourcePath,
                                             ".anim,.asset,.fzasset,.fbx,.obj,.gltf,.glb", ctx.projectRoot))
                     markLayerDirty();
                 char clipBuffer[128];
                 std::snprintf(clipBuffer, sizeof(clipBuffer), "%s",
                               layer.additiveReference.clipName.c_str());
-                if (ImGui::InputText("Ref Clip", clipBuffer, sizeof(clipBuffer))) {
+                if (property::InputText("Ref Clip", clipBuffer, sizeof(clipBuffer))) {
                     layer.additiveReference.clipName = clipBuffer;
                     markLayerDirty();
                 }
-                if (ImGui::DragFloat("Ref Time", &layer.additiveReference.time,
+                if (property::DragFloat("Ref Time", &layer.additiveReference.time,
                                      0.01f, 0.0f, 600.0f, "%.2f s"))
                     markLayerDirty();
             }
@@ -334,8 +335,8 @@ void DrawSpringBoneInspector(scene::GameObject* go,
     DrawComponentSection<scene::SpringBoneComponent>(
         go, ctx, m_componentClipboard, m_componentClipboardType, "Spring Bone",
         [](scene::SpringBoneComponent& spring, EditorContext&) {
-            ImGui::Checkbox("Simulate In Editor", &spring.simulateInEditor);
-            ImGui::DragFloat("Teleport Reset", &spring.teleportResetDistance,
+            property::Checkbox("Simulate In Editor", &spring.simulateInEditor);
+            property::DragFloat("Teleport Reset", &spring.teleportResetDistance,
                              0.05f, 0.0f, 100.0f, "%.2f m");
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("この距離を超えて 1 フレームで移動したら慣性を捨てる");
@@ -373,27 +374,27 @@ void DrawSpringBoneInspector(scene::GameObject* go,
 
                     char rootName[128];
                     std::snprintf(rootName, sizeof(rootName), "%s", chain.rootBoneName.c_str());
-                    if (ImGui::InputText("Root Bone", rootName, sizeof(rootName))) {
+                    if (property::InputText("Root Bone", rootName, sizeof(rootName))) {
                         chain.rootBoneName = rootName;
                         chain.nodes.clear();
                         chain.builtSkeleton = nullptr;
                     }
-                    if (ImGui::DragInt("Max Depth", &chain.maxDepth, 1.0f, 0, 32))
+                    if (property::DragInt("Max Depth", &chain.maxDepth, 1.0f, 0, 32))
                         chain.nodes.clear();
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("0 = 葉まで揺らす");
 
-                    ImGui::DragFloat("Stiffness", &chain.stiffness, 0.01f, 0.0f, 1.0f, "%.2f");
-                    ImGui::DragFloat("Damping",   &chain.damping,   0.01f, 0.0f, 1.0f, "%.2f");
-                    ImGui::DragFloat("Weight",    &chain.weight,    0.01f, 0.0f, 1.0f, "%.2f");
-                    ImGui::DragFloat("Gravity",   &chain.gravityPower,
+                    property::DragFloat("Stiffness", &chain.stiffness, 0.01f, 0.0f, 1.0f, "%.2f");
+                    property::DragFloat("Damping",   &chain.damping,   0.01f, 0.0f, 1.0f, "%.2f");
+                    property::DragFloat("Weight",    &chain.weight,    0.01f, 0.0f, 1.0f, "%.2f");
+                    property::DragFloat("Gravity",   &chain.gravityPower,
                                      0.05f, 0.0f, 50.0f, "%.2f m/s2");
                     widgets::DragVec3("Gravity Dir", chain.gravityDirection, 0.01f, -1.0f, 1.0f);
-                    ImGui::DragFloat("Collision Radius", &chain.radius,
+                    property::DragFloat("Collision Radius", &chain.radius,
                                      0.001f, 0.0f, 1.0f, "%.3f m");
-                    ImGui::DragFloat("Limit Angle", &chain.limitAngle,
+                    property::DragFloat("Limit Angle", &chain.limitAngle,
                                      1.0f, 0.0f, 180.0f, "%.1f deg");
-                    if (ImGui::DragFloat("Leaf Tail Length", &chain.leafTailLength,
+                    if (property::DragFloat("Leaf Tail Length", &chain.leafTailLength,
                                          0.001f, 0.001f, 1.0f, "%.3f m"))
                         chain.nodes.clear();
 
@@ -440,21 +441,21 @@ void DrawSpringBoneInspector(scene::GameObject* go,
                 if (open) {
                     char boneName[128];
                     std::snprintf(boneName, sizeof(boneName), "%s", collider.boneName.c_str());
-                    if (ImGui::InputText("Bone", boneName, sizeof(boneName)))
+                    if (property::InputText("Bone", boneName, sizeof(boneName)))
                         collider.boneName = boneName;
                     if (ImGui::IsItemHovered())
                         ImGui::SetTooltip("空欄でオーナー Transform 基準");
 
                     const char* shapeNames[] = { "Sphere", "Capsule" };
                     int shape = static_cast<int>(collider.shape);
-                    if (ImGui::Combo("Shape", &shape, shapeNames, 2))
+                    if (property::Combo("Shape", &shape, shapeNames, 2))
                         collider.shape = static_cast<scene::SpringBoneColliderShape>(shape);
 
                     widgets::DragVec3("Offset", collider.offset, 0.005f, -10.0f, 10.0f);
                     if (collider.shape == scene::SpringBoneColliderShape::Capsule)
                         widgets::DragVec3("Tail Offset", collider.tailOffset,
                                           0.005f, -10.0f, 10.0f);
-                    ImGui::DragFloat("Radius", &collider.radius, 0.005f, 0.001f, 5.0f, "%.3f m");
+                    property::DragFloat("Radius", &collider.radius, 0.005f, 0.001f, 5.0f, "%.3f m");
                     ImGui::TreePop();
                 }
                 ImGui::PopID();
@@ -481,7 +482,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
     /// @note Controller 未設定はサポート対象外の過渡状態として扱い、割り当てを促す。
     DrawComponentSection<scene::AnimatorComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Animator",
         [go](scene::AnimatorComponent& anim, EditorContext& ctx) {
-            if (widgets::AssetPathField("Controller", anim.controllerPath,
+            if (property::AssetPathField("Controller", anim.controllerPath,
                                         ".animcontroller", ctx.projectRoot)) {
                 anim.loadedControllerPath.clear();
                 if (ctx.markSceneDirty) ctx.markSceneDirty();
@@ -528,9 +529,9 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 ctx.requestOpenAnimationGraph = true;
             }
 
-            ImGui::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
-            ImGui::Checkbox("Playing", &anim.playing);
-            ImGui::Checkbox("External Pose", &anim.externalPose);
+            property::DragFloat("Speed", &anim.speed, 0.01f, -10.0f, 10.0f);
+            property::Checkbox("Playing", &anim.playing);
+            property::Checkbox("External Pose", &anim.externalPose);
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
                     "Script が骨のローカルを毎フレーム書く構成。\n"
@@ -614,7 +615,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.5f);
 
                     int type = static_cast<int>(chain.type);
-                    if (ImGui::Combo("Solver Type", &type, solverNames, 6)) {
+                    if (property::Combo("Solver Type", &type, solverNames, 6)) {
                         chain.type = static_cast<scene::IKSolverType>(type);
                         chain.lookAtHasState = false;
                         if (chain.type == scene::IKSolverType::FootPlace) chain.order = 0;
@@ -630,17 +631,17 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         if (chain.type == scene::IKSolverType::AimAt && chain.boneNames.size() != 1)
                             chain.boneNames.resize(1);
                     }
-                    ImGui::DragInt("Order", &chain.order, 1.0f);
-                    ImGui::DragFloat("Weight", &chain.weight, 0.01f, 0.0f, 1.0f, "%.2f");
+                    property::DragInt("Order", &chain.order, 1.0f);
+                    property::DragFloat("Weight", &chain.weight, 0.01f, 0.0f, 1.0f, "%.2f");
 
                     if (chain.type == scene::IKSolverType::FullBodyBiped) {
                         ImGui::SeparatorText("Full Body Biped");
-                        ImGui::DragInt("Iterations", &chain.fullBodyIterations,
+                        property::DragInt("Iterations", &chain.fullBodyIterations,
                                        1.0f, 1, 16);
-                        ImGui::DragFloat("Max Joint Correction",
+                        property::DragFloat("Max Joint Correction",
                                          &chain.fullBodyMaxRotationDegrees,
                                          1.0f, 1.0f, 180.0f, "%.1f deg");
-                        ImGui::DragFloat("Tolerance", &chain.fullBodyTolerance,
+                        property::DragFloat("Tolerance", &chain.fullBodyTolerance,
                                          0.0005f, 0.0001f, 0.1f, "%.4f m");
                         ImGui::TextDisabled(
                             "Runs FootPlace -> FABRIK -> AimAt -> HandPlace repeatedly.");
@@ -675,19 +676,19 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         {
                         char buf[256];
                         std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[0].c_str());
-                        if (ImGui::InputText("Root", buf, sizeof(buf)))
+                        if (property::InputText("Root", buf, sizeof(buf)))
                             chain.boneNames[0] = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
                             chain.boneNames[0] = dropped->name;
 
                         std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[1].c_str());
-                        if (ImGui::InputText("Mid",  buf, sizeof(buf)))
+                        if (property::InputText("Mid",  buf, sizeof(buf)))
                             chain.boneNames[1] = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
                             chain.boneNames[1] = dropped->name;
 
                         std::snprintf(buf, sizeof(buf), "%s", chain.boneNames[2].c_str());
-                        if (ImGui::InputText("Tip",  buf, sizeof(buf)))
+                        if (property::InputText("Tip",  buf, sizeof(buf)))
                             chain.boneNames[2] = buf;
                         if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
                             chain.boneNames[2] = dropped->name;
@@ -750,7 +751,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         ImGui::TextUnformatted("Target");
 
                         /// @note Auto Pole: ON のとき Pole フィールドを非活性化し、IKSystem が自動計算する。
-                        ImGui::Checkbox("Auto Pole##ap", &chain.autoPole);
+                        property::Checkbox("Auto Pole##ap", &chain.autoPole);
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip(
                                 "Automatically compute pole direction from owner rotation or FK bend angle.\n"
@@ -777,11 +778,11 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
                     /// @name Settings
                         ImGui::SeparatorText("Settings");
-                        ImGui::DragFloat("Max Extension", &chain.maxExtension,
+                        property::DragFloat("Max Extension", &chain.maxExtension,
                                          0.005f, 0.5f, 1.0f, "%.3f");
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip("Limits how far the chain can stretch (ratio of total bone length)");
-                        ImGui::DragFloat("Softness", &chain.softness,
+                        property::DragFloat("Softness", &chain.softness,
                                          0.005f, 0.0f, 0.5f, "%.3f");
                         if (ImGui::IsItemHovered())
                             ImGui::SetTooltip("Exponential ease-out before max extension (0 = off)");
@@ -796,7 +797,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             ImGui::SeparatorText("Hand Placement");
                             widgets::DragQuatEuler3(
                                 "Rotation Offset", chain.handRotationOffset, 0.5f);
-                            ImGui::DragFloat("Rotation Weight", &chain.handRotationWeight,
+                            property::DragFloat("Rotation Weight", &chain.handRotationWeight,
                                              0.01f, 0.0f, 1.0f, "%.2f");
                         }
                     }
@@ -806,7 +807,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         auto DrawTargetField = [&]() {
                             char targetName[256];
                             std::snprintf(targetName, sizeof(targetName), "%s", chain.targetName.c_str());
-                            if (ImGui::InputText("Target", targetName, sizeof(targetName))) {
+                            if (property::InputText("Target", targetName, sizeof(targetName))) {
                                 chain.targetName = targetName;
                                 chain.targetGuid.clear();
                                 chain.targetEntity = scene::EntityID::INVALID;
@@ -837,7 +838,7 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                             if (chain.boneNames.size() != 1) chain.boneNames.resize(1);
                             char boneName[256];
                             std::snprintf(boneName, sizeof(boneName), "%s", chain.boneNames[0].c_str());
-                            if (ImGui::InputText("Bone", boneName, sizeof(boneName)))
+                            if (property::InputText("Bone", boneName, sizeof(boneName)))
                                 chain.boneNames[0] = boneName;
                             if (auto* dropped = AcceptHierarchyDrop(ctx.activeScene))
                                 chain.boneNames[0] = dropped->name;
@@ -869,11 +870,11 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         widgets::DragVec3("Target Offset", chain.targetOffset, 0.001f, 0.0f, 0.0f);
                         if (chain.type == scene::IKSolverType::FABRIK) {
                             ImGui::SeparatorText("Auto Slope Weight");
-                            ImGui::Checkbox("Auto Slope Weight", &chain.spineAutoWeight);
+                            property::Checkbox("Auto Slope Weight", &chain.spineAutoWeight);
                             if (chain.spineAutoWeight) {
-                                ImGui::DragFloat("Flat Weight", &chain.spineFlatWeight,
+                                property::DragFloat("Flat Weight", &chain.spineFlatWeight,
                                                  0.005f, 0.0f, 1.0f, "%.3f");
-                                ImGui::DragFloat("Slope Ramp (m)", &chain.spineSlopeRampMeters,
+                                property::DragFloat("Slope Ramp (m)", &chain.spineSlopeRampMeters,
                                                  0.005f, 0.001f, 1.0f, "%.3f m");
                                 ImGui::TextDisabled("Flat %.3f -> Slope %.3f at %.3f m",
                                     chain.spineFlatWeight, chain.weight,
@@ -883,29 +884,29 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                         if (chain.type == scene::IKSolverType::AimAt) {
                             widgets::DragVec3("Look Axis", chain.lookAtAxis, 0.01f, -1.0f, 1.0f);
                             widgets::DragVec3("Up Axis", chain.lookAtUpAxis, 0.01f, -1.0f, 1.0f);
-                            ImGui::DragFloat("Clamp Angle", &chain.lookAtClampAngle,
+                            property::DragFloat("Clamp Angle", &chain.lookAtClampAngle,
                                              1.0f, 0.0f, 180.0f, "%.1f deg");
-                            ImGui::DragFloat("Response Speed", &chain.lookAtSpeed,
+                            property::DragFloat("Response Speed", &chain.lookAtSpeed,
                                              0.1f, 0.0f, 100.0f, "%.1f");
                         }
                     }
 
                     if (chain.type == scene::IKSolverType::FootPlace) {
                         ImGui::SeparatorText("Foot Placement");
-                        ImGui::Checkbox("Use Animator IK Weight", &chain.useAnimatorIKWeight);
-                        ImGui::Checkbox("Use Ragdoll Foot Shape", &chain.useRagdollFootShape);
+                        property::Checkbox("Use Animator IK Weight", &chain.useAnimatorIKWeight);
+                        property::Checkbox("Use Ragdoll Foot Shape", &chain.useRagdollFootShape);
                         ImGui::Text("Physics foot shape: %s", chain.runtimePhysicsFootShape ? "active" : "manual offset");
-                        ImGui::DragFloat("Ray Up Ratio", &chain.rayUpRatio, 0.01f, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-                        ImGui::DragFloat("Ray Down Ratio", &chain.rayDownRatio, 0.01f, 0.0f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-                        ImGui::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
-                        ImGui::DragFloat("Dead Zone", &chain.correctionDeadZone, 0.001f, 0.0f, 0.25f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
-                        ImGui::DragFloat("Max Correction", &chain.maxCorrection, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
-                        ImGui::DragFloat("Plant Distance", &chain.footPlantDistance,
+                        property::DragFloat("Ray Up Ratio", &chain.rayUpRatio, 0.01f, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                        property::DragFloat("Ray Down Ratio", &chain.rayDownRatio, 0.01f, 0.0f, 4.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                        property::DragFloat("Surface Offset", &chain.footSurfaceOffset, 0.001f, 0.0f, 0.5f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                        property::DragFloat("Dead Zone", &chain.correctionDeadZone, 0.001f, 0.0f, 0.25f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                        property::DragFloat("Max Correction", &chain.maxCorrection, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                        property::DragFloat("Plant Distance", &chain.footPlantDistance,
                                          0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
-                        ImGui::DragFloat("Smooth Time", &chain.smoothTime, 0.005f, 0.0f, 1.0f, "%.3f s", ImGuiSliderFlags_AlwaysClamp);
+                        property::DragFloat("Smooth Time", &chain.smoothTime, 0.005f, 0.0f, 1.0f, "%.3f s", ImGuiSliderFlags_AlwaysClamp);
                         ImGui::TextWrapped("Surface Offset is manual ankle height; Ragdoll Foot Shape uses the physical sole instead.");
                         ImGui::TextWrapped("Keep Bend Reserve at zero to preserve the animation's knee bend.");
-                        ImGui::Checkbox("Adjust Hip", &chain.adjustHip);
+                        property::Checkbox("Adjust Hip", &chain.adjustHip);
                         if (chain.adjustHip) {
                             if (ImGui::Button("Animation Priority")) {
                                 chain.hipWeight = 0.5f;
@@ -913,13 +914,13 @@ void DrawAnimationInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                                 chain.maxHipRaising = 0.0f;
                                 chain.hipBendReserve = 0.0f;
                             }
-                            ImGui::SliderFloat("Hip Weight", &chain.hipWeight, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-                            ImGui::DragFloat("Max Hip Lowering", &chain.maxHipLowering, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
-                            ImGui::DragFloat("Max Hip Raising", &chain.maxHipRaising, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
-                            ImGui::DragFloat("Bend Reserve", &chain.hipBendReserve, 0.001f, 0.0f, 0.25f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                            property::SliderFloat("Hip Weight", &chain.hipWeight, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+                            property::DragFloat("Max Hip Lowering", &chain.maxHipLowering, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                            property::DragFloat("Max Hip Raising", &chain.maxHipRaising, 0.001f, 0.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+                            property::DragFloat("Bend Reserve", &chain.hipBendReserve, 0.001f, 0.0f, 0.25f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
                             char hipName[128];
                             std::snprintf(hipName, sizeof(hipName), "%s", chain.hipBoneName.c_str());
-                            if (ImGui::InputText("Hip Bone", hipName, sizeof(hipName)))
+                            if (property::InputText("Hip Bone", hipName, sizeof(hipName)))
                                 chain.hipBoneName = hipName;
                         }
                         widgets::DragVec3("Foot Normal Axis", chain.footNormalAxis, 0.01f, -1.0f, 1.0f);

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Util/AssetPath.hpp>
 #include <Editor/Util/AssetSearch.hpp>
 #include <Editor/Util/EditorTheme.hpp>
@@ -34,6 +35,25 @@
 
 /// @note `imgui_internal.h` は SetNextItemColorMarker (軸色マーカー) が internal 側にあるため取り込む。
 namespace fbzz::editor::widgets {
+
+namespace {
+/// @note UTF-8 の文字境界で先頭を省略し、接尾辞を残す。
+std::string ElideLeadingToWidth(std::string_view value, float width)
+{
+    constexpr std::string_view ellipsis = "…";
+    if (width < ImGui::CalcTextSize(ellipsis.data()).x) return {};
+    const char* end = value.data() + value.size();
+    if (ImGui::CalcTextSize(value.data(), end).x <= width) return std::string(value);
+    const float suffixWidth = width - ImGui::CalcTextSize(ellipsis.data()).x;
+    while (!value.empty()) {
+        value.remove_prefix(1);
+        while (!value.empty() && (static_cast<unsigned char>(value.front()) & 0xc0) == 0x80)
+            value.remove_prefix(1);
+        if (ImGui::CalcTextSize(value.data(), end).x <= suffixWidth) break;
+    }
+    return std::string(ellipsis) + std::string(value);
+}
+} /// @note namespace
 
 /// @name AssetPathField / DrawAssetPickerModal
 
@@ -613,8 +633,9 @@ bool AssetPathField(const char* label, std::string& path,
     /// @note InputText 幅を CalcItemWidth() ベースにすることで、
     /// @note ラベルが ImGui 標準のラベル列（右側 ~35% 幅）に収まるようにする。
     /// @note GetContentRegionAvail() を使うとラベルがウィンドウ外に押し出される。
-    const float inputW = std::max(40.0f,
-        ImGui::CalcItemWidth() - kBtnW - style.ItemSpacing.x);
+    const float totalWidth = ImGui::CalcItemWidth();
+    const bool pickerInline = totalWidth >= kBtnW + style.ItemSpacing.x + ImGui::GetFontSize() * 3.0f;
+    const float inputW = pickerInline ? totalWidth - kBtnW - style.ItemSpacing.x : totalWidth;
     /// @note ピッカー位置決め用
     const float fieldLeft = ImGui::GetCursorScreenPos().x;
 
@@ -703,14 +724,7 @@ bool AssetPathField(const char* label, std::string& path,
         }
         /// @note 右端に収まらない場合は先頭を "…" で省略し、常にファイル名の末尾が見えるようにする。
         const float availTextW = boxMax.x - style.FramePadding.x - tx;
-        std::string shown = stem.empty() ? path : stem;
-        bool truncated = false;
-        while (ImGui::CalcTextSize(shown.c_str()).x > availTextW && shown.size() > 1) {
-            shown.erase(0, 1);
-            truncated = true;
-        }
-        /// @note "…"
-        if (truncated) shown = "\xE2\x80\xA6" + shown;
+        const std::string shown = ElideLeadingToWidth(stem.empty() ? path : stem, availTextW);
         dl->AddText({ tx, ty }, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
 
         if (hovered) {
@@ -766,7 +780,7 @@ bool AssetPathField(const char* label, std::string& path,
         }
     }
 
-    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    if (pickerInline) ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                         { 3.0f, style.FramePadding.y });
     const bool browse = ImGui::Button("...", { kBtnW, 0.0f });
@@ -1196,13 +1210,7 @@ void DrawAssetPickerModal(renderer::ResourceManager* resources,
         {
             const float availW = std::max(ImGui::GetFontSize(),
                                           rowMin.x + rowW - rowPad * 2.0f - textLeft);
-            std::string shown = reference;
-            bool truncated = false;
-            while (ImGui::CalcTextSize(shown.c_str()).x > availW && shown.size() > 1) {
-                shown.erase(0, 1);
-                truncated = true;
-            }
-            if (truncated) shown = "\xE2\x80\xA6" + shown;
+            const std::string shown = ElideLeadingToWidth(reference, availW);
             drawList->AddText({ textLeft, nameY + lineH + gapY },
                               EditorTheme::ColorU32(ThemeColor::TextFaint), shown.c_str());
         }
@@ -1293,8 +1301,24 @@ bool DragVec3(const char* label, math::Vector3& v, float speed, float min, float
 bool ColorEdit3(const char* label, math::Vector3& color)
 {
     float arr[3] = { color.x, color.y, color.z };
-    bool changed = ImGui::ColorEdit3(label, arr);
+    const bool changed = property::ColorEdit3(label, arr);
     if (changed) { color.x = arr[0]; color.y = arr[1]; color.z = arr[2]; }
+    return changed;
+}
+
+bool ColorEdit4(const char* label, math::Vector4& color)
+{
+    float values[] = { color.x, color.y, color.z, color.w };
+    if (!property::ColorEdit4(label, values)) return false;
+    color = { values[0], values[1], values[2], values[3] };
+    return true;
+}
+
+bool CheckboxMixed(const char* label, bool& value, bool mixed)
+{
+    ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, mixed);
+    const bool changed = ImGui::Checkbox(label, &value);
+    ImGui::PopItemFlag();
     return changed;
 }
 
@@ -1388,10 +1412,11 @@ bool EvaluateExpression(const char* text, float& out)
     return true;
 }
 
-bool DragFloatExpr(const char* id, float& value, float speed, float min, float max,
-                   const char* fmt, ImGuiSliderFlags flags)
+static bool DrawFloatExpression(const char* id, float& value, float speed, float min, float max,
+                                const char* fmt, ImGuiSliderFlags flags, bool mixed)
 {
     const ImGuiID itemId = ImGui::GetID(id);
+    const bool alignRight = (flags & ImGuiSliderFlags_AlignValueRight) != 0;
 
     if (s_expressionEditId == itemId) {
         ImGui::PushID(id);
@@ -1401,7 +1426,8 @@ bool DragFloatExpr(const char* id, float& value, float speed, float min, float m
         }
         const bool submitted = ImGui::InputText(
             "##expr", s_expressionBuffer, sizeof(s_expressionBuffer),
-            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll |
+            (alignRight ? ImGuiInputTextFlags_AlignRight : 0));
         /// @note Enter だけでなくフォーカスが外れたときも確定する。打ちっぱなしで
         /// @note 別の欄へ移ったときに «入力欄が残り続ける» のを避ける。
         const bool finished = submitted || ImGui::IsItemDeactivated();
@@ -1412,13 +1438,14 @@ bool DragFloatExpr(const char* id, float& value, float speed, float min, float m
         float parsed = value;
         if (!EvaluateExpression(s_expressionBuffer, parsed)) return false;
         if (max > min) parsed = std::clamp(parsed, min, max);
-        if (parsed == value) return false;
+        if (parsed == value && !mixed) return false;
         value = parsed;
         return true;
     }
 
-    const bool changed = ImGui::DragFloat(id, &value, speed, min, max, fmt ? fmt : "%.3f",
-                                          flags | ImGuiSliderFlags_NoInput);
+    const char* display = mixed ? "—" : (fmt ? fmt : "%.3f");
+    const bool changed = ImGui::DragFloat(id, &value, speed, min, max, display,
+        flags | ImGuiSliderFlags_NoInput | (alignRight ? 0 : ImGuiSliderFlags_AlignValueLeft));
 
     /// @note タイプ入力へ入る条件は ImGui の既定 (Ctrl+Click) に、ダブルクリックを足したもの。
     const ImGuiIO& io = ImGui::GetIO();
@@ -1428,9 +1455,15 @@ bool DragFloatExpr(const char* id, float& value, float speed, float min, float m
     if (wantsTyping) {
         s_expressionEditId     = itemId;
         s_expressionJustOpened = true;
-        std::snprintf(s_expressionBuffer, sizeof(s_expressionBuffer), fmt ? fmt : "%.3f", value);
+        std::snprintf(s_expressionBuffer, sizeof(s_expressionBuffer), "%.9g", static_cast<double>(value));
     }
     return changed;
+}
+
+bool DragFloatExpr(const char* id, float& value, float speed, float min, float max,
+                   const char* fmt, ImGuiSliderFlags flags)
+{
+    return DrawFloatExpression(id, value, speed, min, max, fmt, flags, false);
 }
 
 bool DragIntExpr(const char* id, int& value, float speed, int min, int max,
@@ -1481,6 +1514,9 @@ bool DragIntExpr(const char* id, int& value, float speed, int min, int max,
 bool RangeField(const char* label, float& value, float min, float max, const char* fmt,
                 const char* tooltip)
 {
+    if (!(label[0] == '#' && label[1] == '#')) {
+        return property::Draw(label, [&](const char* id) { return RangeField(id, value, min, max, fmt, tooltip); });
+    }
     ImGui::PushID(label);
     bool changed = false;
     bool hovered = false;
@@ -1489,7 +1525,15 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     /// @note 入力ボックス幅は「符号付き 4 桁 + 小数」がちょうど収まる実測値から取る: 固定 58px だと UI スケールを上げた途端に数字が切れて読めなくなるが、フォント実寸から求めればスケール設定に自動追従する。
     const float inputW = ImGui::CalcTextSize("-8888.888").x + style.FramePadding.x * 2.0f;
     const float total   = ImGui::CalcItemWidth();
-    const float sliderW = std::max(40.0f, total - inputW - style.ItemSpacing.x);
+    const float sliderW = total - inputW - style.ItemSpacing.x;
+    const float dragSpeed = (max > min) ? (max - min) * 0.005f : 0.01f;
+    if (sliderW < ImGui::GetFontSize() * 2.5f) {
+        ImGui::SetNextItemWidth(total);
+        changed = DragFloatExpr("##input", value, dragSpeed, min, max, fmt, ImGuiSliderFlags_AlwaysClamp);
+        if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+        ImGui::PopID();
+        return changed;
+    }
 
     /// @note ゲージ (バー)。数値は右の入力ボックスで表示するため、バー上の数値は消す ("")。
     ImGui::SetNextItemWidth(sliderW);
@@ -1516,21 +1560,11 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
     /// @note スライダーが端に張り付いたまま実値がずれる状態になるため。
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::SetNextItemWidth(inputW);
-    const float dragSpeed = (max > min) ? (max - min) * 0.005f : 0.01f;
     if (DragFloatExpr("##input", value, dragSpeed, min, max, fmt, ImGuiSliderFlags_AlwaysClamp))
         changed = true;
     hovered |= ImGui::IsItemHovered();
 
-    /// @note ラベルを右に配置する。ただし "##" 始まりは「ラベル非表示」指定として描画を省く
-    /// @note (呼び出し側が左カラムへ別途ラベルを描くレイアウトで使う)。
-    if (!(label[0] == '#' && label[1] == '#')) {
-        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
-        ImGui::TextUnformatted(label);
-        hovered |= ImGui::IsItemHovered();
-    }
-
-    /// @note 説明はウィジェット側で出す。この 1 行はスライダー / 入力ボックス / ラベルの
-    /// @note 3 アイテムなので、呼び出し側の IsItemHovered() では最後のものしか拾えない。
+    /// @note スライダーと数値欄のどちらからも範囲の説明を読める。
     if (tooltip && tooltip[0] && hovered)
         ImGui::SetTooltip("%s", tooltip);
 
@@ -1541,6 +1575,9 @@ bool RangeField(const char* label, float& value, float min, float max, const cha
 bool RangeField(const char* label, int& value, int min, int max, const char* fmt,
                 const char* tooltip)
 {
+    if (!(label[0] == '#' && label[1] == '#')) {
+        return property::Draw(label, [&](const char* id) { return RangeField(id, value, min, max, fmt, tooltip); });
+    }
     /// @note 構成は float 版と同じ「塗り付きゲージ + 数値ボックス」。
     /// @note 書式指定子は型と対なので、整数を float スライダーへ通すと "%d" が使えない。
     /// @note 見た目の規則だけを共有し、型は分けて扱う。
@@ -1551,7 +1588,16 @@ bool RangeField(const char* label, int& value, int min, int max, const char* fmt
     const ImGuiStyle& style = ImGui::GetStyle();
     const float inputW  = ImGui::CalcTextSize("-8888.888").x + style.FramePadding.x * 2.0f;
     const float total   = ImGui::CalcItemWidth();
-    const float sliderW = std::max(40.0f, total - inputW - style.ItemSpacing.x);
+    const float sliderW = total - inputW - style.ItemSpacing.x;
+    const float span = static_cast<float>(max) - static_cast<float>(min);
+    const float dragSpeed = std::max(1.0f, span * 0.005f);
+    if (sliderW < ImGui::GetFontSize() * 2.5f) {
+        ImGui::SetNextItemWidth(total);
+        changed = DragIntExpr("##input", value, dragSpeed, min, max, fmt ? fmt : "%d", ImGuiSliderFlags_AlwaysClamp);
+        if (tooltip && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+        ImGui::PopID();
+        return changed;
+    }
 
     ImGui::SetNextItemWidth(sliderW);
     if (ImGui::SliderInt("##slider", &value, min, max, "")) changed = true;
@@ -1560,8 +1606,7 @@ bool RangeField(const char* label, int& value, int min, int max, const char* fmt
     if (max > min && !ImGui::TempInputIsActive(ImGui::GetItemID())) {
         const ImVec2 lo = ImGui::GetItemRectMin();
         const ImVec2 hi = ImGui::GetItemRectMax();
-        const float t = std::clamp(static_cast<float>(value - min) /
-                                   static_cast<float>(max - min), 0.0f, 1.0f);
+        const float t = std::clamp((static_cast<float>(value) - static_cast<float>(min)) / span, 0.0f, 1.0f);
         if (t > 0.0f) {
             ImGui::GetWindowDrawList()->AddRectFilled(
                 lo, { lo.x + (hi.x - lo.x) * t, hi.y },
@@ -1573,18 +1618,11 @@ bool RangeField(const char* label, int& value, int min, int max, const char* fmt
 
     ImGui::SameLine(0.0f, style.ItemSpacing.x);
     ImGui::SetNextItemWidth(inputW);
-    /// @note 刻みは範囲の 0.5% (最低 1)。広い範囲でもドラッグ 1 往復で端まで届く。
-    const float dragSpeed = std::max(1.0f, static_cast<float>(max - min) * 0.005f);
     if (DragIntExpr("##input", value, dragSpeed, min, max, fmt ? fmt : "%d",
                     ImGuiSliderFlags_AlwaysClamp))
         changed = true;
     hovered |= ImGui::IsItemHovered();
 
-    if (!(label[0] == '#' && label[1] == '#')) {
-        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
-        ImGui::TextUnformatted(label);
-        hovered |= ImGui::IsItemHovered();
-    }
     if (tooltip && tooltip[0] && hovered)
         ImGui::SetTooltip("%s", tooltip);
 
@@ -1638,81 +1676,62 @@ void DrawLockGlyph(ImDrawList* drawList, ImVec2 center, float size, bool locked,
 }
 
 bool DragAxes(const char* id, float* values, int count,
-              float speed, float min, float max, const char* fmt)
+              float speed, float min, float max, const char* fmt, unsigned mixedAxes,
+              unsigned* changedAxes, unsigned disabledAxes, ImGuiSliderFlags flags)
 {
-    if (!values || count <= 0) return false;
+    if (changedAxes) *changedAxes = 0;
+    if (!values || count <= 0 || count > 4) return false;
+    if (!(id[0] == '#' && id[1] == '#')) {
+        return property::Draw(id, [&](const char* hidden) {
+            return DragAxes(hidden, values, count, speed, min, max, fmt, mixedAxes, changedAxes, disabledAxes, flags);
+        });
+    }
 
-    const ImGuiStyle& style = ImGui::GetStyle();
-    /// @note ラベルを右に描くぶんの幅を先に確保しておく (ImGui::DragFloat3 と同じ見た目にするため)。
-    const bool showLabel = !(id[0] == '#' && id[1] == '#');
-    const float labelW = showLabel
-        ? ImGui::CalcTextSize(id, nullptr, true).x + style.ItemInnerSpacing.x
-        : 0.0f;
-
-    /// @note 呼び出し側の SetNextItemWidth (-FLT_MIN など) を解決してから成分数で等分する。
-    /// @note 成分間は ItemInnerSpacing (ImGui の DragFloat3 と同じ) にして、3 つで 1 つの値だと分かる詰め方にする。
-    const float gap   = style.ItemInnerSpacing.x;
-    const float total = std::max(ImGui::GetFontSize() * 6.0f, ImGui::CalcItemWidth() - labelW);
-
-    /// @note 頭文字は枠の「外」に置く。1 成分あたりこのスロット幅を先に取り、残りを数値欄に回す。
-    /// @note 書式へ埋め込むと枠内で中央寄せされ、桁数で数値の左端がばらつく。
-    /// @note X/Y/Z/W で字幅が違うと数値欄の幅までずれるため、最も広い字で固定幅を取る。
-    float letterGlyphW = 0.0f;
+    const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float total = ImGui::CalcItemWidth();
+    float letterWidth = 0.0f;
     for (int i = 0; i < count; ++i)
-        letterGlyphW = std::max(letterGlyphW, ImGui::CalcTextSize(AxisLetter(i)).x);
-    const float letterSlotW = letterGlyphW + style.ItemInnerSpacing.x;
+        letterWidth = std::max(letterWidth, ImGui::CalcTextSize(AxisLetter(i)).x);
+    const float letterSlot = letterWidth + gap;
+    const float inlineWidth = (total - gap * static_cast<float>(count - 1)) / static_cast<float>(count) - letterSlot;
+    /// @note 狭いペインでも色だけに頼らず、軸名を残す。
+    const bool inlineAxes = inlineWidth >= ImGui::GetFontSize() * 3.25f;
+    const float inputWidth = std::max(1.0f, inlineAxes ? inlineWidth : total - letterSlot);
 
-    /// @note 数値が読める幅を確保できないときは頭文字を落として数字を優先する。
-    /// @note そのときは枠の左端に軸色のマーカーを出すので、色だけでも X / Y / Z は判別できる。
-    const float sampleW = ImGui::CalcTextSize("-8888.888").x + style.FramePadding.x * 2.0f;
-    const float span    = total - gap * static_cast<float>(count - 1);
-    const float withLetter =
-        (span - letterSlotW * static_cast<float>(count)) / static_cast<float>(count);
-    const bool  showAxisLetter = withLetter >= sampleW;
-    const float each = std::max(ImGui::GetFontSize() * 2.0f,
-                                showAxisLetter ? withLetter : span / static_cast<float>(count));
-
-    /// @note BeginGroup で囲むのが必須。個別の DragFloat のままだと IsItemDeactivatedAfterEdit()
-    /// @note が最後の成分だけを見るため、X や Y の操作が Undo に積まれない。
+    /// @note Undo は軸個別の状態をグループ経由で見る。
     ImGui::BeginGroup();
+    const float startX = ImGui::GetCursorPosX();
     ImGui::PushID(id);
-    bool changed = false;
+    unsigned changes = 0;
     for (int i = 0; i < count; ++i) {
-        if (i > 0) ImGui::SameLine(0.0f, gap);
+        if (i > 0 && inlineAxes) ImGui::SameLine(0.0f, gap);
+        else if (i > 0) ImGui::SetCursorPosX(startX);
 
-        /// @note 頭文字を枠の左隣へ描く。字幅が違っても数値欄の左端がそろうよう、
-        /// @note 描いた後はスロット幅ぶん進めた位置へカーソルを置き直す。
-        if (showAxisLetter) {
-            const float slotX = ImGui::GetCursorPosX();
-            ImGui::AlignTextToFramePadding();
-            ImGui::PushStyleColor(ImGuiCol_Text, AxisMarkerColor(i));
-            ImGui::TextUnformatted(AxisLetter(i));
-            ImGui::PopStyleColor();
-            ImGui::SameLine(0.0f, 0.0f);
-            ImGui::SetCursorPosX(slotX + letterSlotW);
-        }
+        const float slotX = ImGui::GetCursorPosX();
+        ImGui::AlignTextToFramePadding();
+        ImGui::PushStyleColor(ImGuiCol_Text, AxisMarkerColor(i));
+        ImGui::TextUnformatted(AxisLetter(i));
+        ImGui::PopStyleColor();
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::SetCursorPosX(slotX + letterSlot);
 
         char label[16];
         std::snprintf(label, sizeof(label), "##axis%d", i);
-
         const float axisSpeed = speed > 0.0f ? speed : AdaptiveDragSpeed(values[i]);
-        ImGui::SetNextItemWidth(each);
-        /// @note 頭文字を出せない狭さのときだけ、枠内の軸色マーカーで成分を示す。
-        /// @note 自前で後描きすると枠線の上に乗り、UI スケールにも追従しない。
-        if (!showAxisLetter) ImGui::SetNextItemColorMarker(AxisMarkerColor(i));
-        if (DragFloatExpr(label, values[i], axisSpeed, min, max, fmt ? fmt : "%.3f"))
-            changed = true;
+        const unsigned axis = 1u << i;
+        const bool disabled = (disabledAxes & axis) != 0;
+        ImGui::BeginDisabled(disabled);
+        ImGui::SetNextItemWidth(inputWidth);
+        if (DrawFloatExpression(label, values[i], axisSpeed, min, max, fmt, flags, (mixedAxes & axis) != 0))
+            changes |= axis;
+        if (disabled && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("%s", LOCT("This axis is controlled by its anchors."));
+        ImGui::EndDisabled();
     }
     ImGui::PopID();
-
-    /// @note ImGui::DragFloat3 と同じく "##" 始まりでないラベルは右側へ描く: これがあると既存の DragFloat3 呼び出しをそのまま差し替えられる。
-    if (showLabel) {
-        ImGui::SameLine(0.0f, style.ItemInnerSpacing.x);
-        ImGui::TextEx(id, ImGui::FindRenderedTextEnd(id));
-    }
-
     ImGui::EndGroup();
-    return changed;
+    if (changedAxes) *changedAxes = changes;
+    return changes != 0;
 }
 
 bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform, float speed)
@@ -1723,8 +1742,16 @@ bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform, float sp
 
     ImGui::PushID(id);
 
-    /// @note リンクボタン。押下は即トグルなので、Push/Pop の対称を保つため描画前の状態で判定する。
+    ImGui::BeginGroup();
+    const math::Vector3 before = scale;
     const bool wasLocked = uniform;
+    float arr[3] = { scale.x, scale.y, scale.z };
+    ImGui::SetNextItemWidth(std::max(1.0f, total - lockW - style.ItemSpacing.x));
+    const bool edited = DragAxes("##xyz", arr, 3, speed, 0.0f, 0.0f, "%.3f", 0, nullptr, 0,
+                                 ImGuiSliderFlags_AlignValueRight);
+    ImGui::SameLine(0.0f, style.ItemSpacing.x);
+    if (ImGui::GetContentRegionAvail().x < lockW) ImGui::NewLine();
+
     ImGui::PushStyleColor(ImGuiCol_Button,
         EditorTheme::Color(wasLocked ? ThemeColor::AccentSoft : ThemeColor::Field));
     const bool lockClicked = ImGui::Button("##uniform", { lockW, lockW });
@@ -1741,13 +1768,7 @@ bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform, float sp
             : "Uniform scale: OFF\nEach axis is edited independently");
     if (lockClicked) uniform = !wasLocked;
 
-    ImGui::SameLine(0.0f, style.ItemSpacing.x);
-
-    const math::Vector3 before = scale;
-    float arr[3] = { scale.x, scale.y, scale.z };
-    ImGui::SetNextItemWidth(std::max(ImGui::GetFontSize() * 6.0f,
-                                    total - lockW - style.ItemSpacing.x));
-    const bool edited = DragAxes("##xyz", arr, 3, speed);
+    ImGui::EndGroup();
     ImGui::PopID();
 
     if (!edited) return false;
@@ -1779,10 +1800,11 @@ bool DragScaleAxes(const char* id, math::Vector3& scale, bool& uniform, float sp
 
 std::string ElideToWidth(const char* text, float maxWidth, const char* ellipsis)
 {
-    if (!text) return {};
-    if (maxWidth <= 0.0f || ImGui::CalcTextSize(text).x <= maxWidth) return text;
+    if (!text || maxWidth <= 0.0f) return {};
+    if (ImGui::CalcTextSize(text).x <= maxWidth) return text;
 
     const float       ellipsisW = ImGui::CalcTextSize(ellipsis).x;
+    if (ellipsisW > maxWidth) return {};
     const std::size_t length    = std::strlen(text);
 
     std::size_t fit = 0;
@@ -1857,13 +1879,28 @@ PropertyRowScope BeginPropertyField(const char* label)
     ImGui::PushID(label);
     const PropertyRowScope row = BeginPropertyRow();
 
-    const float column = PropertyLabelColumnWidth();
-    LabelEllipsis(label, column - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
-    ImGui::SameLine();
-    if (ImGui::GetCursorPosX() < column)
-        ImGui::SetCursorPosX(column);
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    PlacePropertyValue(DrawPropertyLabel(LOCT(label)));
     return row;
+}
+
+float DrawPropertyLabel(const char* label)
+{
+    const float column = PropertyLabelColumnWidth();
+    const float available = ImGui::GetContentRegionAvail().x;
+    const float font = ImGui::GetFontSize();
+    const float labelWidth = column - ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x;
+    const bool horizontal = labelWidth >= font * 3.0f && available - labelWidth >= font * 10.0f;
+    LabelEllipsis(label, horizontal ? labelWidth : available);
+    return horizontal ? column : 0.0f;
+}
+
+void PlacePropertyValue(float column, float trailingWidth)
+{
+    if (column > 0.0f) {
+        ImGui::SameLine();
+        if (ImGui::GetCursorPosX() < column) ImGui::SetCursorPosX(column);
+    }
+    ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - trailingWidth));
 }
 
 void EndPropertyField(const PropertyRowScope& row)
@@ -2098,7 +2135,8 @@ bool BeginReferenceSlot(const char* id, const char* text, ReferenceSlotState sta
 
     float width = ImGui::GetContentRegionAvail().x
                 - (buttonSize + style.ItemSpacing.x) * static_cast<float>((std::max)(0, trailing));
-    width = (std::max)(width, ImGui::GetFontSize() * 3.0f);
+    if (width < ImGui::GetFontSize() * 3.0f) width = ImGui::GetContentRegionAvail().x;
+    width = std::max(width, 1.0f);
 
     const ImVec2 boxMin = ImGui::GetCursorScreenPos();
     const ImVec2 boxMax = { boxMin.x + width, boxMin.y + height };
@@ -2144,13 +2182,7 @@ bool BeginReferenceSlot(const char* id, const char* text, ReferenceSlotState sta
     /// @note 本文。あふれたら先頭を省略して、名前の末尾 (識別に効く側) を残す。
     const float textLeft = dotCenter.x + dotRadius + style.ItemInnerSpacing.x;
     const float availW   = (std::max)(8.0f, boxMax.x - style.FramePadding.x - textLeft);
-    std::string shown    = text ? text : "";
-    bool truncated = false;
-    while (ImGui::CalcTextSize(shown.c_str()).x > availW && shown.size() > 1) {
-        shown.erase(0, 1);
-        truncated = true;
-    }
-    if (truncated) shown = "\xE2\x80\xA6" + shown;
+    const std::string shown = text ? ElideLeadingToWidth(text, availW) : std::string{};
 
     drawList->AddText(ImVec2{ textLeft, boxMin.y + (height - ImGui::GetTextLineHeight()) * 0.5f },
                       EditorTheme::ColorU32(state == ReferenceSlotState::Empty
@@ -2168,6 +2200,7 @@ ReferenceSlotButtons EndReferenceSlot(bool showPick, bool showClear)
 
     const auto glyphButton = [&](const char* id, bool isPick, const char* tip) {
         ImGui::SameLine(0.0f, style.ItemSpacing.x);
+        if (ImGui::GetContentRegionAvail().x < buttonSize) ImGui::NewLine();
         const bool pressed = ImGui::Button(id, ImVec2{ buttonSize, buttonSize });
         const ImVec2 center = {
             (ImGui::GetItemRectMin().x + ImGui::GetItemRectMax().x) * 0.5f,
@@ -2626,7 +2659,9 @@ void ColoredText(const char* text, ImVec4 color)
 
 void ReadOnlyText(const char* label, const char* text)
 {
-    ImGui::LabelText(label, "%s", text);
+    const auto row = BeginPropertyField(label);
+    LabelEllipsis(text, ImGui::GetContentRegionAvail().x);
+    EndPropertyField(row);
 }
 
 }

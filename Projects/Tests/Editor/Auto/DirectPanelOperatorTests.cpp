@@ -14,6 +14,7 @@
 #include <Editor/Util/UndoStack.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
+#include <Editor/Ai/OperatorBridge.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
 #include <Engine/Asset/FluidRecipeCodec.hpp>
@@ -47,6 +48,84 @@ protected:
     editor::ConsoleSink m_sink; editor::ConsolePanel m_console{m_sink}; editor::FluidEditorPanel m_fluid;
     editor::VFXTimelinePanel m_vfx; editor::MapEditorPanel m_map; editor::OperatorRegistry m_registry; editor::UndoStack m_undo;
 };
+
+TEST_F(DirectPanelOperatorTest, FolderColorMcpReadsSetsAndClearsVisibleFolders)
+{
+    namespace ai = editor::ai;
+    const auto folder = File("Assets/ColorFolder");
+    ASSERT_TRUE(std::filesystem::create_directories(folder / "Child"));
+    ASSERT_TRUE(std::filesystem::create_directories(folder / ".Hidden" / "Child"));
+    ASSERT_TRUE(std::filesystem::create_directories(File("MountedShaders/Tools")));
+    ASSERT_TRUE(std::filesystem::create_directories(File("Library/OutsideAssets")));
+    ASSERT_TRUE(util::FileSystem::WriteText(File("Assets/NotAFolder.txt").generic_string(), "test"));
+    Context().hlslSourceDir = File("MountedShaders").generic_string();
+    Context().operators = &m_registry;
+    editor::RegisterAssetBrowserOperators(m_registry);
+
+    const auto payload = [](const char* id, std::string path) {
+        auto request = ai::JsonValue::MakeObject();
+        auto args = ai::JsonValue::MakeObject();
+        args.Set("path", ai::JsonValue(std::move(path)));
+        request.Set("id", ai::JsonValue(std::string(id)));
+        request.Set("args", std::move(args));
+        return request;
+    };
+    auto set = payload("asset.folder_color.set", "Assets/ColorFolder");
+    auto setArgs = *set.Find("args");
+    setArgs.Set("color", ai::JsonValue("#a0B1c2"));
+    setArgs.Set("recursive", ai::JsonValue(true));
+    set.Set("args", setArgs);
+    const auto dryRun = ai::InvokeOperator(Context(), set, true);
+    ASSERT_TRUE(dryRun.ok) << dryRun.message;
+    ASSERT_TRUE(dryRun.result.Find("available")->AsBool());
+    EXPECT_TRUE(Context().assetBrowserFolderColors.empty());
+    EXPECT_FALSE(Context().requestEditorSettingsSave);
+    EXPECT_FALSE(ai::QueryOperator(Context(), set).ok);
+
+    const auto applied = ai::InvokeOperator(Context(), set, false);
+    ASSERT_TRUE(applied.ok) << applied.message;
+    EXPECT_EQ(applied.result.Find("data")->Find("changedCount")->AsInt(), 2);
+    EXPECT_TRUE(Context().requestEditorSettingsSave);
+    EXPECT_EQ(Context().assetBrowserFolderColors.size(), 2u);
+    ASSERT_EQ(Context().assetBrowserRecentFolderColors.size(), 1u);
+    EXPECT_FALSE(m_undo.CanUndo());
+
+    const auto child = payload("asset.folder_color.inspect", (folder / "Child").generic_string());
+    const auto inspected = ai::QueryOperator(Context(), child);
+    ASSERT_TRUE(inspected.ok) << inspected.message;
+    EXPECT_EQ(inspected.result.Find("data")->Find("color")->AsString(), "#A0B1C2");
+    for (const char* invalidPath : {"Assets/NotAFolder.txt", "Assets/../Library/OutsideAssets", "Assets/ColorFolder/.Hidden/Child"}) {
+        const auto invalid = payload("asset.folder_color.clear", invalidPath);
+        EXPECT_FALSE(ai::InvokeOperator(Context(), invalid, false).ok) << invalidPath;
+    }
+    setArgs.Set("color", ai::JsonValue("#FFF"));
+    set.Set("args", std::move(setArgs));
+    EXPECT_FALSE(ai::InvokeOperator(Context(), set, false).ok);
+    EXPECT_EQ(Context().assetBrowserFolderColors.size(), 2u);
+
+    Context().requestEditorSettingsSave = false;
+    auto clear = payload("asset.folder_color.clear", "Assets/ColorFolder");
+    auto clearArgs = *clear.Find("args");
+    clearArgs.Set("recursive", ai::JsonValue(true));
+    clear.Set("args", std::move(clearArgs));
+    ASSERT_TRUE(ai::InvokeOperator(Context(), clear, false).ok);
+    const auto cleared = ai::QueryOperator(Context(), child);
+    ASSERT_TRUE(cleared.ok) << cleared.message;
+    EXPECT_TRUE(cleared.result.Find("data")->Find("color")->IsNull());
+    EXPECT_TRUE(Context().assetBrowserFolderColors.empty());
+    EXPECT_TRUE(Context().requestEditorSettingsSave);
+
+    auto mount = payload("asset.folder_color.set", File("MountedShaders/Tools").generic_string());
+    auto mountArgs = *mount.Find("args");
+    mountArgs.Set("color", ai::JsonValue("#4F8CFF"));
+    mount.Set("args", std::move(mountArgs));
+    ASSERT_TRUE(ai::InvokeOperator(Context(), mount, false).ok);
+    const auto mounted = ai::QueryOperator(Context(),
+        payload("asset.folder_color.inspect", File("MountedShaders/tools").generic_string()));
+    ASSERT_TRUE(mounted.ok) << mounted.message;
+    EXPECT_EQ(mounted.result.Find("data")->Find("color")->AsString(), "#4F8CFF");
+    EXPECT_EQ(Context().assetBrowserFolderColors.size(), 1u);
+}
 /// @brief Fluid edits stay unsaved and undo before explicit save.
 TEST_F(DirectPanelOperatorTest, FluidEditsStayUnsavedAndUndoBeforeExplicitSave)
 {

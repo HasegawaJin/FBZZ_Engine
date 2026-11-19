@@ -2,6 +2,7 @@
 /// @brief   Rendering 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
@@ -56,7 +57,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             for (int i = 1; i < kPrimitiveCount; ++i)
                 if (mr.meshPath == kPrimitivePaths[i]) { sel = i; break; }
 
-            if (ImGui::Combo("Mesh", &sel, kPrimitiveNames, kPrimitiveCount)) {
+            if (property::Combo("Mesh", &sel, kPrimitiveNames, kPrimitiveCount)) {
                 if (sel > 0) {
                     mr.meshPath = kPrimitivePaths[sel];
                     if (auto* res = ctx.resources) {
@@ -79,7 +80,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
             }
 
             if (sel == 0) {
-                widgets::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fbx,.obj,.gltf,.glb", ctx.projectRoot,
+                property::AssetPathFieldWithLoad("Mesh Path", mr.meshPath, ".fbx,.obj,.gltf,.glb", ctx.projectRoot,
                     [&mr]() {
                         if (!mr.meshPath.empty())
                             if (auto* model = asset::AssetManager::LoadAndGet<asset::Model>(mr.meshPath))
@@ -88,7 +89,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     });
             }
 
-            ImGui::Checkbox("Cast Shadows", &mr.castShadows);
+            property::Checkbox("Cast Shadows", &mr.castShadows);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip(
                     "ShadowPass はシーンを光源視点でもう一度描く。\n"
@@ -96,7 +97,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                     "見た目を変えずにシャドウ描画量をそのぶん減らせる。");
 
             if (mr.castShadows) {
-                ImGui::Checkbox("Bake Static Shadow", &mr.bakeStaticShadow);
+                property::Checkbox("Bake Static Shadow", &mr.bakeStaticShadow);
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Include this stationary mesh in directional Auto Bake.");
             }
@@ -106,7 +107,7 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
 
     DrawComponentSection<scene::SkinnedMeshRenderer>(go, ctx, m_componentClipboard, m_componentClipboardType, "Skinned Mesh Renderer",
         [](scene::SkinnedMeshRenderer& smr, EditorContext& ctx) {
-            widgets::AssetPathFieldWithLoad("Model", smr.modelPath, ".fbx,.obj,.gltf,.glb", ctx.projectRoot,
+            property::AssetPathFieldWithLoad("Model", smr.modelPath, ".fbx,.obj,.gltf,.glb", ctx.projectRoot,
                 [&smr]() {
                     smr.model = nullptr;
                     if (!smr.modelPath.empty())
@@ -123,14 +124,14 @@ void DrawRenderingInspectors(scene::GameObject* go, EditorContext& ctx, std::any
                 DrawRendererMaterialStatus(ctx, meshCount, true);
             }
 
-            ImGui::Checkbox("Cast Shadows", &smr.castShadows);
+            property::Checkbox("Cast Shadows", &smr.castShadows);
         });
 
     DrawComponentSection<scene::LODGroupComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "LOD Group",
         [](scene::LODGroupComponent& group, EditorContext& ctx) {
-            ImGui::DragFloat("Size", &group.size, 0.05f, 0.001f, 100000.0f);
-            ImGui::Checkbox("Cull Below Last LOD", &group.cullBelowLastLevel);
-            ImGui::DragFloat("Fade Duration", &group.fadeDuration, 0.01f, 0.0f, 2.0f, "%.2f s");
+            property::DragFloat("Size", &group.size, 0.05f, 0.001f, 100000.0f);
+            property::Checkbox("Cull Below Last LOD", &group.cullBelowLastLevel);
+            property::DragFloat("Fade Duration", &group.fadeDuration, 0.01f, 0.0f, 2.0f, "%.2f s");
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("LOD を入れ替えるときのディザクロスフェード時間。0 で即差し替え");
 

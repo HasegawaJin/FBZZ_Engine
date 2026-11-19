@@ -2564,7 +2564,7 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         const bool savePressed = ImGui::Button("Save Controller");
         const bool saveShortcut =
             allowEditing && controllerDirty &&
-            ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S);
+            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S);
         if (savePressed || saveShortcut) {
             /// @note LayerGraphScope は描画中の states を選択 Layerへ差し替えているため、
             /// @note       保存時だけ必ず Base + layers の正規形へ戻す。これをしないと空の新規 Layerを

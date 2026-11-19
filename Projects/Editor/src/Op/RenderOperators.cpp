@@ -243,6 +243,7 @@ EditorOperator MakeContextToggle(const char* id, const char* label, const char* 
 void RegisterRenderOperators(OperatorRegistry& registry)
 {
     RegisterViewportViewOperators(registry);
+    RegisterGameViewportOperators(registry);
     {
         EditorOperator op;
         op.id = "water.set_wave_heading";

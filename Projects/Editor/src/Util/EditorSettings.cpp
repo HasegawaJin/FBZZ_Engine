@@ -7,6 +7,8 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <filesystem>
 #include <sstream>
 
@@ -106,6 +108,9 @@ bool EditorSettings::LoadFromToml(const std::string& text, const std::string& pr
     auto parsed = toml::parse(text);
     if (!parsed) return false;
     auto& tbl = parsed.table();
+    /// @note 旧ファイルや別プロジェクトの欠落項目に、直前の個人表示設定を引き継がない。
+    fluidEditorView = FluidEditorViewSettings{};
+    sfxAutoPreview = true;
     /// @note カメラ
     if (auto v = tbl["camera"]["speed"].value<float>())        cameraSpeed        = *v;
     if (auto v = tbl["camera"]["sensitivity"].value<float>())  cameraSensitivity  = *v;
@@ -435,6 +440,33 @@ bool EditorSettings::LoadFromToml(const std::string& text, const std::string& pr
     if (auto v = tbl["autosave"]["interval_sec"].value<int64_t>()) autoSaveIntervalSec = static_cast<int>(*v);
     if (auto v = tbl["autosave"]["fluid_editor"].value<bool>())   fluidEditorAutoSave = *v;
     if (auto v = tbl["fluid_editor"]["follow_selection"].value<bool>()) fluidEditorFollowSelection = *v;
+    if (auto v = tbl["sfx_editor"]["auto_preview"].value<bool>()) sfxAutoPreview = *v;
+    const auto fluidView = tbl["fluid_editor_state"]["view"];
+    if (auto v = fluidView["loop"].value<bool>()) fluidEditorView.loop = *v;
+    if (auto v = fluidView["checker_background"].value<bool>()) fluidEditorView.checkerBackground = *v;
+    if (auto v = fluidView["show_overlays"].value<bool>()) fluidEditorView.showOverlays = *v;
+    if (auto v = fluidView["compare_baked"].value<bool>()) fluidEditorView.compareBaked = *v;
+    if (auto v = fluidView["show_volume_center_plane"].value<bool>()) fluidEditorView.showVolumeCenterPlane = *v;
+    if (auto v = fluidView["view_mode_chosen"].value<bool>()) fluidEditorView.viewModeChosen = *v;
+    if (auto v = fluidView["orbit_initialized"].value<bool>()) fluidEditorView.orbitInitialized = *v;
+    const auto readViewInt = [&fluidView](const char* key, int& target, int upper) {
+        if (auto v = fluidView[key].value<int64_t>(); v && *v >= 0 && *v <= upper) target = static_cast<int>(*v);
+    };
+    const auto readViewFloat = [&fluidView](const char* key, float& target, float lower, float upper) {
+        if (auto v = fluidView[key].value<float>(); v && std::isfinite(*v) && *v >= lower && *v <= upper) target = *v;
+    };
+    readViewInt("quality", fluidEditorView.quality, 2);
+    readViewInt("view_mode", fluidEditorView.viewMode, 1);
+    readViewInt("center_plane", fluidEditorView.centerPlane, 2);
+    readViewInt("gizmo", fluidEditorView.gizmo, 2);
+    readViewFloat("zoom", fluidEditorView.zoom, 0.1f, 20.0f);
+    readViewFloat("pan_x", fluidEditorView.panX, -100000.0f, 100000.0f);
+    readViewFloat("pan_y", fluidEditorView.panY, -100000.0f, 100000.0f);
+    readViewFloat("yaw", fluidEditorView.yaw, std::numeric_limits<float>::lowest(), std::numeric_limits<float>::max());
+    readViewFloat("pitch", fluidEditorView.pitch, -89.0f, 89.0f);
+    readViewFloat("outliner_width", fluidEditorView.outlinerWidth, 140.0f, 100000.0f);
+    readViewFloat("properties_width", fluidEditorView.propertiesWidth, 220.0f, 100000.0f);
+    readViewFloat("timeline_height", fluidEditorView.timelineHeight, 32.0f, 100000.0f);
 
     /// @note 最近 Fluid Editor で開いた .fluid
     recentFluids.clear();
@@ -721,6 +753,27 @@ void EditorSettings::SerializeToml(std::string& shared, std::string& local, cons
     /// @note 履歴は個人の作業状態。共有ファイルへ置くと、同じプロジェクトを触る全員がこの行で衝突する
     /// @note (recentScenes が [scene] で local 側に居るのと同じ理由)。
     toml::table fluidEditorStateTbl;
+    toml::table fluidViewTbl;
+    fluidViewTbl.insert("loop", fluidEditorView.loop);
+    fluidViewTbl.insert("checker_background", fluidEditorView.checkerBackground);
+    fluidViewTbl.insert("show_overlays", fluidEditorView.showOverlays);
+    fluidViewTbl.insert("compare_baked", fluidEditorView.compareBaked);
+    fluidViewTbl.insert("show_volume_center_plane", fluidEditorView.showVolumeCenterPlane);
+    fluidViewTbl.insert("view_mode_chosen", fluidEditorView.viewModeChosen);
+    fluidViewTbl.insert("orbit_initialized", fluidEditorView.orbitInitialized);
+    fluidViewTbl.insert("quality", fluidEditorView.quality);
+    fluidViewTbl.insert("view_mode", fluidEditorView.viewMode);
+    fluidViewTbl.insert("center_plane", fluidEditorView.centerPlane);
+    fluidViewTbl.insert("gizmo", fluidEditorView.gizmo);
+    fluidViewTbl.insert("zoom", fluidEditorView.zoom);
+    fluidViewTbl.insert("pan_x", fluidEditorView.panX);
+    fluidViewTbl.insert("pan_y", fluidEditorView.panY);
+    fluidViewTbl.insert("yaw", fluidEditorView.yaw);
+    fluidViewTbl.insert("pitch", fluidEditorView.pitch);
+    fluidViewTbl.insert("outliner_width", fluidEditorView.outlinerWidth);
+    fluidViewTbl.insert("properties_width", fluidEditorView.propertiesWidth);
+    fluidViewTbl.insert("timeline_height", fluidEditorView.timelineHeight);
+    fluidEditorStateTbl.insert("view", std::move(fluidViewTbl));
     {
         toml::array recentArr;
         for (const auto& p : recentFluids) recentArr.push_back(toRelProjectPath(p));
@@ -815,6 +868,9 @@ void EditorSettings::SerializeToml(std::string& shared, std::string& local, cons
     localRoot.insert("animation_preview",  std::move(animPreviewTbl));
     localRoot.insert("inspector_sections", std::move(inspectorTbl));
     localRoot.insert("fluid_editor_state", std::move(fluidEditorStateTbl));
+    toml::table sfxEditorTbl;
+    sfxEditorTbl.insert("auto_preview", sfxAutoPreview);
+    localRoot.insert("sfx_editor", std::move(sfxEditorTbl));
 
     /// @note 個人状態は共有ファイルより先に片付ける。ここが失敗しても共有側の保存は続ける
     /// @note (作業状態を落とすだけで、ビルド設定やホットキーまで巻き添えにする理由が無い)。

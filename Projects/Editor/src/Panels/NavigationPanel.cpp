@@ -2,6 +2,7 @@
 /// @brief   NavMesh Surface 一覧・一括ベイク・ベイク診断・オーバーレイ設定の ImGui 実装。
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Panels/NavigationPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -105,7 +106,7 @@ bool ErosionIsInactive(const scene::NavMeshSurfaceComponent& surface)
     return static_cast<int>((std::max(0.0f, surface.agentRadius) / cellSize) * 2.0f) <= 0;
 }
 
-} // namespace
+} /// @note namespace
 
 void NavigationPanel::OnRenderContent(EditorContext& ctx)
 {
@@ -161,14 +162,14 @@ void NavigationPanel::DrawOverlaySettings(EditorContext& ctx)
 {
     auto& render = ctx.projectSettings.render;
 
-    ImGui::Checkbox("Show NavMesh", &render.showNavMesh);
+    property::Checkbox("Show NavMesh", &render.showNavMesh);
     ImGui::SameLine();
     ImGui::Checkbox("AI Sensors", &render.showNavSensors);
 
     ImGui::BeginDisabled(!render.showNavMesh);
     int mode = static_cast<int>(render.navMeshDrawMode);
     ImGui::SetNextItemWidth(160.0f);
-    if (ImGui::Combo("Draw Mode", &mode, kDrawModeNames, static_cast<int>(std::size(kDrawModeNames))))
+    if (property::Combo("Draw Mode", &mode, kDrawModeNames, static_cast<int>(std::size(kDrawModeNames))))
         render.navMeshDrawMode = static_cast<renderer::NavMeshDrawMode>(mode);
     ImGui::SetItemTooltip(
         "Solid: 面と外周を読む既定値\n"
@@ -178,7 +179,7 @@ void NavigationPanel::DrawOverlaySettings(EditorContext& ctx)
         "Voxels: ベイクのセル判定そのものを見る (ベイク時の格子が残っている場合のみ)");
 
     ImGui::SetNextItemWidth(160.0f);
-    ImGui::DragFloat("Draw Distance", &render.navMeshDrawDistance, 1.0f, 0.0f, 2000.0f, "%.0f m");
+    property::DragFloat("Draw Distance", &render.navMeshDrawDistance, 1.0f, 0.0f, 2000.0f, "%.0f m");
     ImGui::SetItemTooltip(
         "オーバーレイを描くカメラからの距離。0 で無制限。\n"
         "広いシーンで遠くまで描くと、遠景の細かいポリゴンが画面を埋めて\n"
@@ -267,7 +268,7 @@ void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
             static constexpr const char* kCollectNames[] = { "This Object", "Volume" };
             int collectIdx = static_cast<int>(surface->collectObjects);
             ImGui::SetNextItemWidth(160.0f);
-            if (ImGui::Combo("Collect Objects", &collectIdx, kCollectNames, 2)) {
+            if (property::Combo("Collect Objects", &collectIdx, kCollectNames, 2)) {
                 surface->collectObjects = static_cast<scene::NavMeshCollectObjects>(collectIdx);
                 changed = true;
             }
@@ -275,21 +276,21 @@ void NavigationPanel::DrawSurfaceList(EditorContext& ctx)
                 changed |= widgets::DragVec3("Size", surface->size, 0.5f);
 
             ImGui::SetNextItemWidth(160.0f);
-            changed |= ImGui::DragFloat("Cell Size", &surface->cellSize, 0.05f, 0.1f, 10.0f, "%.2f m");
+            changed |= property::DragFloat("Cell Size", &surface->cellSize, 0.05f, 0.1f, 10.0f, "%.2f m");
             ImGui::SetNextItemWidth(160.0f);
-            changed |= ImGui::DragFloat("Max Slope", &surface->maxSlopeAngleDeg, 0.5f, 0.0f, 89.0f, "%.1f deg");
+            changed |= property::DragFloat("Max Slope", &surface->maxSlopeAngleDeg, 0.5f, 0.0f, 89.0f, "%.1f deg");
             ImGui::SetNextItemWidth(160.0f);
-            changed |= ImGui::DragFloat("Agent Radius", &surface->agentRadius, 0.05f, 0.0f, 5.0f, "%.2f m");
+            changed |= property::DragFloat("Agent Radius", &surface->agentRadius, 0.05f, 0.0f, 5.0f, "%.2f m");
             ImGui::SetItemTooltip("歩行可能面をこの幅だけ内側へ削ります (Recast の walkableRadius)。");
             ImGui::SetNextItemWidth(160.0f);
-            changed |= ImGui::DragFloat("Agent Height", &surface->agentHeight, 0.05f, 0.1f, 10.0f, "%.2f m");
+            changed |= property::DragFloat("Agent Height", &surface->agentHeight, 0.05f, 0.1f, 10.0f, "%.2f m");
             ImGui::SetNextItemWidth(160.0f);
-            changed |= ImGui::DragFloat("Max Climb", &surface->maxClimb, 0.02f, 0.0f, 5.0f, "%.2f m");
+            changed |= property::DragFloat("Max Climb", &surface->maxClimb, 0.02f, 0.0f, 5.0f, "%.2f m");
             ImGui::SetItemTooltip(
                 "Walkable Modifier の縁でこの高さを超える段差があるセルを歩行不可にします\n"
                 "(Recast の walkableClimb)。0 にすると崖の上下が地続きになります。");
             ImGui::SetNextItemWidth(160.0f);
-            changed |= ImGui::DragInt("Agent Type ID", &surface->agentTypeId, 1, 0, 31);
+            changed |= property::DragInt("Agent Type ID", &surface->agentTypeId, 1, 0, 31);
 
             if (ErosionIsInactive(*surface) && surface->agentRadius > 0.0f) {
                 ImGui::TextColored(kWarnColor,
@@ -381,4 +382,4 @@ void NavigationPanel::DrawAgentDiagnostics(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

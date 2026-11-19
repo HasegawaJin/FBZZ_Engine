@@ -28,6 +28,29 @@ Reads use the file size as an allocation/read bound, reject extra bytes and reje
 
 Index/GUID generation changes label the snapshot stale but do not silently start a new scan. AssetSearch's path index does not advance its revision for content-only modifications. The UI therefore always labels the result an on-demand saved-file snapshot and asks the user to save and refresh after edits. Files read at different moments are not an atomic project snapshot. Metadata is read only when the request begins or an owner is detected, not during normal completed-result rendering.
 
+## GUID を起点にたどる MCP 操作
+
+`asset_dependencies_scan(guid, maxDepth)` で一度調査し、返された `job` を
+`asset_dependencies_status(job, direction, offset, limit)` に渡す。どちらも read 権限で使える。
+GUID は32桁の16進数で `guid:` を付けてもよい。既に参照先が失われた GUID も起点にできる。
+`finished=true` までステータスを取得し、同じジョブで `direction` を切り替えられる。
+
+- `outgoing` は保存済みの参照先をたどる。シーンから Prefab を経由して Material に至る場合、Material への辺は `distance=2`。
+- `incoming` は保存済みの参照元を逆にたどる。変更する Material を起点にすると、直接参照する Prefab と、その Prefab を参照するシーンが分かる。
+- 辺には `source`、`target`、`field`、`line`、`referenceKind` がある。循環や同じアセットを指す複数のフィールドも根拠として残し、各ノードの探索は一度だけ行う。
+- `target.state` の `missingGuid` と `missingPath` が参照切れ。読み取り権限などで存在を確定できない場合は `unverified`。GUID 付きの `hint` は保存時の情報として返す。移動後も GUID で解決し、GUID が消えた場合にヒントのファイルをたどることはない。
+
+`totalEdges` はページ全体の件数、`relatedCount` は起点を除いた到達ノード数、
+`brokenCount` は到達した参照切れの辺数。幅優先で近い辺から返し、`offset` で続きに進む。
+深さは既定4、最大16。深さ上限の先に辺がある場合は `depthLimited` を返す。
+`stale=true` のジョブは辺を返さない。保存・移動・削除後は新しい調査を開始する。
+
+対象は上記の保存済み TOML と索引済みの `Assets/`。パスだけを持つ旧形式の保存値も扱う。
+GUID で解決した共有・生成アセットも参照先に表示できる。参照元の本文はプロジェクト内の対応ファイルだけから読む。
+スキャン上限、読み取り失敗、構文エラーは `limited`、`incomplete` と `coverage` で確認する。
+動的・未保存・バイナリ内の参照は調査範囲外。サブメッシュ番号や Sprite の接尾辞は `suffix` に返し、
+存在確認はアセット本体まで行う。
+
 ## Validation status
 
 CPU regression code is provided in `AssetReferenceScanTests.cpp`, using the same private scanner as the production modal and existing TestKit fixtures. Cases cover actual `EncodeGuidRefs` serialization, nested field/line evidence, comments and substring rejection, script/dynamic scope, GUID authority versus unresolved hints, image-sidecar aliases, exact sprite suffixes, unknown versus recorded import settings, incremental/finished scan behavior, explicit refresh and generation changes, malformed/missing/oversize files, no metadata creation and existing derived GUID mappings for generated targets. No public test-only API is added.

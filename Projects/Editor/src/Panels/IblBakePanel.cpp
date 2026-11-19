@@ -2,6 +2,9 @@
 /// @brief   HDRI → IBL ベイクパネル ImGui UI 実装。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
+#include <Editor/Util/PropertyControls.hpp>
+#include <Editor/Op/EditorOperator.hpp>
+#include <Engine/Util/FileSystem.hpp>
 #include <Editor/Panels/IblBakePanel.hpp>
 #include <Editor/Import/HdriLoader.hpp>
 #include <Editor/Util/FileDialog.hpp>
@@ -49,6 +52,7 @@ bool BrowseForFolder(std::string& outPath)
 
 void IblBakePanel::OnRenderContent(EditorContext& ctx)
 {
+    ImGui::BeginDisabled(m_status == Status::Baking);
     /// @name HDRI ファイル
     ImGui::Text("HDRI File (.hdr / .exr)");
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 88.0f);
@@ -105,7 +109,7 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
             int sel = 2;
             for (int i = 0; i < 4; ++i) if (s_cubeSizeVals[i] == m_envCubemapSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
-            if (ImGui::Combo("Env Cubemap Size", &sel, s_cubeSizeLabels, 4))
+            if (property::Combo("Env Cubemap Size", &sel, s_cubeSizeLabels, 4))
                 m_envCubemapSize = s_cubeSizeVals[sel];
         }
         /// @note Irradiance サイズ
@@ -114,7 +118,7 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
             int sel = 1;
             for (int i = 0; i < 3; ++i) if (s_irrSizeVals[i] == m_irradianceSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
-            if (ImGui::Combo("Irradiance Size", &sel, s_irrSizeLabels, 3))
+            if (property::Combo("Irradiance Size", &sel, s_irrSizeLabels, 3))
                 m_irradianceSize = s_irrSizeVals[sel];
         }
         /// @note Prefiltered サイズ
@@ -123,23 +127,25 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
             int sel = 1;
             for (int i = 0; i < 4; ++i) if (s_cubeSizeVals[i] == m_prefilteredSize) sel = i;
             ImGui::SetNextItemWidth(100.0f);
-            if (ImGui::Combo("Prefiltered Size", &sel, s_cubeSizeLabels, 4))
+            if (property::Combo("Prefiltered Size", &sel, s_cubeSizeLabels, 4))
                 m_prefilteredSize = s_cubeSizeVals[sel];
         }
         ImGui::SetNextItemWidth(100.0f);
-        ImGui::DragInt("Prefiltered Mips", &m_prefilteredMips, 1.0f, 3, 8);
+        property::DragInt("Prefiltered Mips", &m_prefilteredMips, 1.0f, 3, 8);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("Mip 0 = roughness 0 (mirror), Mip N-1 = roughness 1 (diffuse-like)");
         ImGui::SetNextItemWidth(100.0f);
-        ImGui::DragInt("BRDF LUT Size", &m_brdfLutSize, 1.0f, 128, 512);
+        property::DragInt("BRDF LUT Size", &m_brdfLutSize, 1.0f, 128, 512);
         ImGui::SetNextItemWidth(100.0f);
-        ImGui::DragInt("Sample Count",  &m_sampleCount, 4.0f, 256, 4096);
+        property::DragInt("Sample Count",  &m_sampleCount, 4.0f, 256, 4096);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("GGX 重点サンプリング数。大きいほど高品質だがベイクが遅くなる");
     }
 
     ImGui::Separator();
     ImGui::Spacing();
+
+    ImGui::EndDisabled();
 
     /// @name ベイクボタン
     const bool canBake = m_hdriPath[0] != '\0'
@@ -149,9 +155,23 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
                       && m_status       != Status::Baking;
 
     ImGui::BeginDisabled(!canBake);
-    if (ImGui::Button("Bake IBL", ImVec2(120.0f, 0.0f)))
-        DoBake(ctx);
+    if (ImGui::Button(LOCT("Bake IBL"), ImVec2(120.0f, 0.0f))) {
+        const auto result = InvokeOperator(ctx, "ibl.bake");
+        if (!result.ok) {
+            m_status = Status::Error;
+            m_statusMsg = result.message;
+        }
+    }
     ImGui::EndDisabled();
+    if (m_status == Status::Baking) {
+        const int progress = m_progress.load();
+        ImGui::ProgressBar(std::max(0, progress) / 100.0f, { -1.0f, 0.0f },
+            progress < 0 ? LOCT("Cancelling...") : progress >= SAVE_PROGRESS ? LOCT("Saving files...")
+            : progress >= 25 ? LOCT("Baking IBL...") : LOCT("Preparing HDRI..."));
+        ImGui::BeginDisabled(progress < 0 || progress >= SAVE_PROGRESS);
+        if (ImGui::Button(LOCT("Cancel"))) (void)InvokeOperator(ctx, "ibl.cancel");
+        ImGui::EndDisabled();
+    }
 
     /// @note ステータス表示
     if (!m_statusMsg.empty()) {
@@ -166,74 +186,103 @@ void IblBakePanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-void IblBakePanel::DoBake(EditorContext& ctx)
+void IblBakePanel::StartBake(EditorContext& ctx)
 {
-    m_status    = Status::Baking;
-    m_statusMsg = "ベイク中...";
-
-    /// @name Step 1: HDRI 読み込み
-    HdriPixels pixels = HdriLoader::Load(m_hdriPath.data());
-    if (!pixels.IsValid()) {
-        FBZZ_LOG_ERROR("IblBakePanel: HDRI 読み込み失敗 [%s]", m_hdriPath.data());
-        m_status    = Status::Error;
-        m_statusMsg = "HDRI 読み込み失敗 (コンソールを確認)";
-        return;
-    }
-
-    /// @name Step 2: IblBaker 生成
-    /// @note 具象は各バックエンドが返す。上位レイヤーは IIblBaker* としてだけ扱う。
-    auto baker = ctx.renderer->CreateIblBaker();
+    auto baker = ctx.renderer ? ctx.renderer->CreateIblBaker() : nullptr;
     if (!baker) {
-        FBZZ_LOG_ERROR("IblBakePanel: CreateIblBaker() が nullptr を返しました");
-        m_status    = Status::Error;
-        m_statusMsg = "IblBaker 生成失敗";
+        m_status = Status::Error;
+        m_statusMsg = LOCT("IBL Baker is unavailable.");
         return;
     }
-
-    /// @name Step 3: ベイク実行
-    /// @note DXIL の出力先。DX11 (DXBC を compiled/ へ出していた) を v1.0 で撤去したため
-    /// @note 分岐は無くなったが、出力先の決定をここへ残しておく。
-    /// @see  Docs/design/dx11-removal.md
-    const std::string compiledDir = ctx.hlslSourceDir + "/compiled_dx12/";
 
     renderer::IblBakeInput input;
-    input.pixels              = pixels.Pixels();
-    input.equirectW           = pixels.width;
-    input.equirectH           = pixels.height;
-    input.envCubemapSize      = static_cast<uint32_t>(m_envCubemapSize);
-    input.irradianceSize      = static_cast<uint32_t>(m_irradianceSize);
-    input.prefilteredSize     = static_cast<uint32_t>(m_prefilteredSize);
-    input.prefilteredMipCount = static_cast<uint32_t>(m_prefilteredMips);
-    input.sampleCount         = static_cast<uint32_t>(m_sampleCount);
-    input.brdfLutSize         = static_cast<uint32_t>(m_brdfLutSize);
-    input.compiledShadersDir  = compiledDir;
+    input.envCubemapSize = static_cast<std::uint32_t>(m_envCubemapSize);
+    input.irradianceSize = static_cast<std::uint32_t>(m_irradianceSize);
+    input.prefilteredSize = static_cast<std::uint32_t>(m_prefilteredSize);
+    input.prefilteredMipCount = static_cast<std::uint32_t>(m_prefilteredMips);
+    input.sampleCount = static_cast<std::uint32_t>(m_sampleCount);
+    input.brdfLutSize = static_cast<std::uint32_t>(m_brdfLutSize);
+    input.compiledShadersDir = ctx.hlslSourceDir + "/compiled_dx12/";
+    input.reportProgress = [this](int progress) {
+        int observed = m_progress.load();
+        while (observed >= 0) {
+            if (m_progress.compare_exchange_weak(observed, progress)) return true;
+        }
+        return false;
+    };
 
-    renderer::IblBakeOutput output;
-    if (!baker->Bake(input, m_outputDir.data(), m_baseName.data(), output)) {
-        m_status    = Status::Error;
-        m_statusMsg = "ベイク失敗 (コンソールを確認)";
+    m_statusMsg.clear();
+    m_bake = std::async(std::launch::async, [baker = std::move(baker), input = std::move(input),
+        path = std::string(m_hdriPath.data()), directory = std::string(m_outputDir.data()),
+        name = std::string(m_baseName.data())]() mutable {
+        BakeResult result;
+        if (!input.reportProgress(5)) return result;
+        HdriPixels pixels = HdriLoader::Load(path);
+        if (!input.reportProgress(18)) return result;
+        if (!pixels.IsValid()) {
+            result.message = "Could not read the HDRI file.";
+            return result;
+        }
+        input.pixels = pixels.Pixels();
+        input.equirectW = pixels.width;
+        input.equirectH = pixels.height;
+        if (!baker->Bake(input, directory, name, result.output)) {
+            result.message = "IBL bake failed. See Console for details.";
+            return result;
+        }
+        const auto descriptor = util::FileSystem::PathFromUtf8(directory) / (name + ".ibl");
+        result.success = asset::WriteIblDescriptor(descriptor, result.output);
+        result.message = result.success ? name + ".ibl" : "Could not save the IBL descriptor.";
+        return result;
+    });
+}
+
+bool IblBakePanel::CancelBake()
+{
+    if (m_bakeRequested) {
+        m_bakeRequested = false;
+        m_status = Status::Cancelled;
+        m_statusMsg = LOCT("IBL bake cancelled.");
+        return true;
+    }
+    if (m_status != Status::Baking) return false;
+    int observed = m_progress.load();
+    while (observed >= 0 && observed < SAVE_PROGRESS) {
+        if (m_progress.compare_exchange_weak(observed, -1)) return true;
+    }
+    return false;
+}
+
+void IblBakePanel::FinishBake(EditorContext& ctx, const BakeResult& result)
+{
+    if (m_progress.load() < 0) {
+        m_status = Status::Cancelled;
+        m_statusMsg = LOCT("IBL bake cancelled.");
         return;
     }
-
-    if (!asset::WriteIblDescriptor(std::filesystem::path(m_outputDir.data()) / (std::string(m_baseName.data()) + ".ibl"), output)) {
+    if (!result.success) {
         m_status = Status::Error;
-        m_statusMsg = "IBL 記述子の保存に失敗";
+        m_statusMsg = LOCT(result.message.c_str());
         return;
     }
 
-    /// @note 同名 DDS を上書きした場合も新しいベイク結果を即時反映する。LoadTexture のパスキャッシュを
-    /// @note 放置すると、ディスク更新後も古い IBL が表示され続ける。
+    /// @note 描画リソースの更新は Editor フレームで行う。
     if (ctx.resources) {
-        ctx.resources->ReloadTexture(output.envCubemapPath);
-        ctx.resources->ReloadTexture(output.irradiancePath);
-        ctx.resources->ReloadTexture(output.prefilteredPath);
-        ctx.resources->ReloadTexture(output.brdfLutPath);
+        ctx.resources->ReloadTexture(result.output.envCubemapPath);
+        ctx.resources->ReloadTexture(result.output.irradiancePath);
+        ctx.resources->ReloadTexture(result.output.prefilteredPath);
+        ctx.resources->ReloadTexture(result.output.brdfLutPath);
     }
+    m_progress = 100;
+    m_status = Status::Done;
+    m_statusMsg = std::string(LOCT("Saved")) + " " + result.message;
+    ctx.requestAssetBrowserRefresh = true;
+}
 
-    m_status    = Status::Done;
-    m_statusMsg = std::string("完了: ") + m_baseName.data() + ".ibl";
-    FBZZ_LOG_INFO("IblBakePanel: ベイク完了 → [%s/%s.ibl]",
-                  m_outputDir.data(), m_baseName.data());
+void IblBakePanel::OnShutdown()
+{
+    (void)CancelBake();
+    if (m_bake.valid()) m_bake.wait();
 }
 
 } /// @note namespace fbzz::editor

@@ -55,6 +55,7 @@ Command Bus `play.control` and `editor.op.invoke` (`play.start` / `play.toggle`)
 
 - Automated sessions keep physical game input owned by the host. Cursor requests remain inspectable, but `AcquireGameInput` cannot apply them, even after focus changes or a Game View click. Explicit `input.inject` continues to work.
 - Automatic Game View focus, maximization and focus-on-appearing are disabled for the session. Interactive toolbar, shortcut and menu Play retain their saved focus behavior.
+- An explicit `viewport.game.configure` request with `layout=maximized/normal` changes only the panel layout; `automatic` restores the existing Play layout policy. It never enables physical input or requests OS focus. The override and `cursorOverride` are temporary and are not serialized.
 - Deferred shadow baking and standalone save confirmation preserve the startup policy. Standalone passes `--play-no-physical-input` with `--editor-play`, applies the policy before window creation, and uses non-activating show/resize/fullscreen operations.
 - `Cursor::ResetForEditor` never re-enables physical input. The in-editor session restores its previous host policy on completion or failed startup, preserving an injected-only batch host. A later interactive Play explicitly enables physical input without acquiring it until the existing handoff rules allow acquisition.
 - Existing application focus checks and detached Game View targeting remain unchanged. Isolation does not depend on the cached foreground flag.

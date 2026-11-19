@@ -387,6 +387,14 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
         InvokePendingObjectCreate(ctx, pendingCreate);
     }
 
+    if (ImGui::BeginMenu(LOC("Play"))) {
+        MenuItemOp("play.start");
+        MenuItemOp("play.stop");
+        MenuItemOp("play.pause");
+        MenuItemOp("play.step");
+        ImGui::EndMenu();
+    }
+
     /// @name View
     if (ImGui::BeginMenu(LOC("View"))) {
         /// @note 分類はネイティブメニューとパレットも共有し、設定に使うウィンドウ ID を保持する。
@@ -537,6 +545,7 @@ void EditorApp::BuildMenuBar(EditorContext& ctx)
     }
 
     if (ImGui::BeginMenu(LOC("Help"))) {
+        MenuItemOp("panel.shortcut_list");
         if (ImGui::MenuItem(LOC("About FBZZ Studio..."))) m_aboutRequested = true;
         ImGui::EndMenu();
     }
@@ -652,7 +661,7 @@ void EditorApp::BuildPlayToolbar(EditorContext& ctx)
         m_pendingShadowBakePlayScene ? "Cancel pending Play" : "Stop",
         PlayToolbarIcon::Stop,
         CanInvokeOperator("play.stop"),
-        isEditor,
+        m_pendingShadowBakePlayScene != 0,
         stopColor,
         BUTTON_SIZE)) {
         InvokeOperator("play.stop");
@@ -1196,6 +1205,12 @@ void EditorApp::RegisterDefaultHotkeys()
     m_hotkeys.RegisterInfo("Delete selected part", "Delete",       Cat::Edit, Scope::FluidEditor);
     m_hotkeys.RegisterInfo("Insert motion key at playhead", "K",   Cat::Edit, Scope::FluidEditor);
     m_hotkeys.RegisterInfo("Rename selected part", "F2",           Cat::Edit, Scope::FluidEditor);
+    m_hotkeys.RegisterInfo("Save sequence", "Ctrl+S", Cat::File, Scope::Sequence);
+    m_hotkeys.RegisterInfo("Save behavior tree", "Ctrl+S", Cat::File, Scope::BehaviorTree);
+    m_hotkeys.RegisterInfo("Save sprites", "Ctrl+S", Cat::File, Scope::SpriteEditor);
+    m_hotkeys.RegisterInfo("Save animation controller", "Ctrl+S", Cat::File, Scope::AnimationGraph);
+    m_hotkeys.RegisterInfo("Undo document edit", "Ctrl+Z", Cat::Edit, Scope::Sequence | Scope::BehaviorTree);
+    m_hotkeys.RegisterInfo("Redo document edit", "Ctrl+Y / Ctrl+Shift+Z", Cat::Edit, Scope::Sequence | Scope::BehaviorTree);
 
     /// @note 保存済みリバインドの適用は EditorApp::OpenProject が行う (設定を読むのがそこ)。
     /// @note        Rebind は既定値を全部積んだ後でないと対象を引けないので、順序はここより後。

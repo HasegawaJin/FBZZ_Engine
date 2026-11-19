@@ -2714,6 +2714,23 @@ static bool TempInputIsClampEnabled(ImGuiSliderFlags flags, ImGuiDataType data_t
     return false;
 }
 
+static void RenderScalarValue(ImRect frame, const char* value, const char* value_end, ImGuiSliderFlags flags)
+{
+    const float padding = ImGui::GetStyle().FramePadding.x;
+    float alignment = 0.5f;
+    if (flags & ImGuiSliderFlags_AlignValueRight)
+    {
+        frame.Max.x = ImMax(frame.Min.x, frame.Max.x - padding);
+        alignment = 1.0f;
+    }
+    else if (flags & ImGuiSliderFlags_AlignValueLeft)
+    {
+        frame.Min.x += padding;
+        alignment = 0.0f;
+    }
+    ImGui::RenderTextClipped(frame.Min, frame.Max, value, value_end, NULL, ImVec2(alignment, 0.5f));
+}
+
 // Note: p_data, p_min and p_max are _pointers_ to a memory address holding the data. For a Drag widget, p_min and p_max are optional.
 // Read code of e.g. DragFloat(), DragInt() etc. or examples in 'Demo->Widgets->Data Types' to understand how to use this function directly.
 bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data, float v_speed, const void* p_min, const void* p_max, const char* format, ImGuiSliderFlags flags)
@@ -2781,7 +2798,8 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
     if (temp_input_is_active)
     {
         const bool clamp_enabled = TempInputIsClampEnabled(flags, data_type, p_min, p_max);
-        return TempInputScalar(frame_bb, id, label, data_type, p_data, format, clamp_enabled ? p_min : NULL, clamp_enabled ? p_max : NULL);
+        const ImGuiInputTextFlags input_flags = (flags & ImGuiSliderFlags_AlignValueRight) ? ImGuiInputTextFlags_AlignRight : 0;
+        return TempInputScalar(frame_bb, id, label, data_type, p_data, format, clamp_enabled ? p_min : NULL, clamp_enabled ? p_max : NULL, input_flags);
     }
 
     // Draw frame
@@ -2802,7 +2820,7 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
     const char* value_buf_end = value_buf + DataTypeFormatString(value_buf, IM_COUNTOF(value_buf), data_type, p_data, format);
     if (g.LogEnabled)
         LogSetNextTextDecoration("{", "}");
-    RenderTextClipped(frame_bb.Min, frame_bb.Max, value_buf, value_buf_end, NULL, ImVec2(0.5f, 0.5f));
+    RenderScalarValue(frame_bb, value_buf, value_buf_end, flags);
 
     if (label_size.x > 0.0f)
         RenderText(ImVec2(frame_bb.Max.x + style.ItemInnerSpacing.x, frame_bb.Min.y + style.FramePadding.y), label, label_end, false);
@@ -3374,7 +3392,8 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
     {
         // Only clamp Ctrl+Click input when ImGuiSliderFlags_ClampOnInput is set (generally via ImGuiSliderFlags_AlwaysClamp)
         const bool clamp_enabled = (flags & ImGuiSliderFlags_ClampOnInput) != 0; // Don't use TempInputIsClampEnabled()
-        return TempInputScalar(frame_bb, id, label, data_type, p_data, format, clamp_enabled ? p_min : NULL, clamp_enabled ? p_max : NULL);
+        const ImGuiInputTextFlags input_flags = (flags & ImGuiSliderFlags_AlignValueRight) ? ImGuiInputTextFlags_AlignRight : 0;
+        return TempInputScalar(frame_bb, id, label, data_type, p_data, format, clamp_enabled ? p_min : NULL, clamp_enabled ? p_max : NULL, input_flags);
     }
 
     // Draw frame
@@ -3400,7 +3419,7 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
     const char* value_buf_end = value_buf + DataTypeFormatString(value_buf, IM_COUNTOF(value_buf), data_type, p_data, format);
     if (g.LogEnabled)
         LogSetNextTextDecoration("{", "}");
-    RenderTextClipped(frame_bb.Min, frame_bb.Max, value_buf, value_buf_end, NULL, ImVec2(0.5f, 0.5f));
+    RenderScalarValue(frame_bb, value_buf, value_buf_end, flags);
 
     if (label_size.x > 0.0f)
         RenderText(ImVec2(frame_bb.Max.x + style.ItemInnerSpacing.x, frame_bb.Min.y + style.FramePadding.y), label, label_end, false);
@@ -3751,7 +3770,7 @@ bool ImGui::TempInputText(const ImRect& bb, ImGuiID id, const char* label, char*
 // Note that Drag/Slider functions are only forwarding the min/max values clamping values if the ImGuiSliderFlags_AlwaysClamp flag is set!
 // This is intended: this way we allow Ctrl+Click manual input to set a value out of bounds, for maximum flexibility.
 // However this may not be ideal for all uses, as some user code may break on out of bound values.
-bool ImGui::TempInputScalar(const ImRect& bb, ImGuiID id, const char* label, ImGuiDataType data_type, void* p_data, const char* format, const void* p_clamp_min, const void* p_clamp_max)
+bool ImGui::TempInputScalar(const ImRect& bb, ImGuiID id, const char* label, ImGuiDataType data_type, void* p_data, const char* format, const void* p_clamp_min, const void* p_clamp_max, ImGuiInputTextFlags flags)
 {
     // FIXME: May need to clarify display behavior if format doesn't contain %.
     // "%d" -> "%d" / "There are %d items" -> "%d" / "items" -> "%d" (fallback). Also see #6405
@@ -3765,7 +3784,7 @@ bool ImGui::TempInputScalar(const ImRect& bb, ImGuiID id, const char* label, ImG
     DataTypeFormatString(data_buf, IM_COUNTOF(data_buf), data_type, p_data, format);
     ImStrTrimBlanks(data_buf);
 
-    ImGuiInputTextFlags flags = ImGuiInputTextFlags_AutoSelectAll | (ImGuiInputTextFlags)ImGuiInputTextFlags_LocalizeDecimalPoint;
+    flags |= ImGuiInputTextFlags_AutoSelectAll | (ImGuiInputTextFlags)ImGuiInputTextFlags_LocalizeDecimalPoint;
     g.LastItemData.ItemFlags |= ImGuiItemFlags_NoMarkEdited; // Because TempInputText() uses ImGuiInputTextFlags_MergedItem it doesn't submit a new item, so we poke LastItemData.
     if (!TempInputText(bb, id, label, data_buf, IM_COUNTOF(data_buf), flags))
         return false;
@@ -4733,6 +4752,10 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
 
     const ImRect frame_bb(window->DC.CursorPos, window->DC.CursorPos + frame_size);
     const ImRect total_bb(frame_bb.Min, frame_bb.Min + total_size);
+    const bool align_right = !is_multiline && (flags & ImGuiInputTextFlags_AlignRight) != 0;
+    const auto right_align_offset = [&](const char* text, const char* text_end) {
+        return ImMax(0.0f, frame_size.x - style.FramePadding.x * 2.0f - CalcTextSize(text, text_end).x);
+    };
 
     ImGuiWindow* draw_window = window;
     ImVec2 inner_size = frame_size;
@@ -5004,7 +5027,8 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
         g.ActiveIdAllowOverlap = !io.MouseDown[0];
 
         // Edit in progress
-        const float mouse_x = (io.MousePos.x - frame_bb.Min.x - style.FramePadding.x) + state->Scroll.x;
+        const float text_offset_x = align_right ? right_align_offset(is_readonly ? buf : state->TextA.Data, NULL) : 0.0f;
+        const float mouse_x = (io.MousePos.x - frame_bb.Min.x - style.FramePadding.x - text_offset_x) + state->Scroll.x;
         const float mouse_y = (is_multiline ? (io.MousePos.y - draw_window->DC.CursorPos.y) : (g.FontSize * 0.5f));
 
         if (select_all)
@@ -5495,6 +5519,14 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
             buf_display_end = NULL; // Inactive multi-line: end of buffer will be output by InputTextLineIndexBuild() special strchr() path.
         else
             buf_display_end = buf_display + ImStrlen(buf_display);
+    }
+
+    if (align_right && buf_display_end - buf_display < buf_display_max_length)
+    {
+        const float offset = right_align_offset(buf_display, buf_display_end);
+        draw_pos.x += offset;
+        if (offset > 0.0f && state)
+            state->Scroll.x = 0.0f;
     }
 
     // Calculate visibility

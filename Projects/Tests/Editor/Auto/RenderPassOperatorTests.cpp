@@ -4,6 +4,7 @@
 /// @date    2026-11-04
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
+#include <Editor/Ai/OperatorBridge.hpp>
 #include <Editor/Panels/RenderPassViewerPanel.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
@@ -74,5 +75,61 @@ TEST_F(RenderPassOperatorTest, DirectionalShadowModePreservesOmittedDistanceAndS
     ASSERT_TRUE(m_undo.Redo());
     EXPECT_EQ(light.shadowMode, scene::LightComponent::ShadowMode::REALTIME);
     EXPECT_FLOAT_EQ(light.shadowDistance, 320.0f);
+}
+
+TEST_F(RenderPassOperatorTest, ViewportOverlaysInspectAndConfigureShareLiveVisibility)
+{
+    namespace ai = editor::ai;
+    editor::RegisterRenderOperators(m_registry);
+    auto& ctx = Context();
+    ctx.operators = &m_registry;
+    ctx.undoStack = &m_undo;
+    ctx.projectSettings.render.showColliders = false;
+    ctx.projectSettings.render.showTerrainCollision = false;
+    ctx.showSkeleton = false;
+
+    auto inspect = ai::JsonValue::MakeObject();
+    inspect.Set("id", ai::JsonValue("viewport.overlays.inspect"));
+    const auto before = ai::QueryOperator(ctx, inspect);
+    ASSERT_TRUE(before.ok) << before.message;
+    const auto* colliders = before.result.Find("data")->Find("colliders");
+    ASSERT_NE(colliders, nullptr);
+    ASSERT_TRUE(colliders->IsBool());
+    EXPECT_FALSE(colliders->AsBool());
+
+    auto configure = ai::JsonValue::MakeObject();
+    configure.Set("id", ai::JsonValue("viewport.overlays.configure"));
+    auto args = ai::JsonValue::MakeObject();
+    args.Set("colliders", ai::JsonValue(true));
+    args.Set("terrainCollision", ai::JsonValue(true));
+    args.Set("skeleton", ai::JsonValue(true));
+    configure.Set("args", args);
+
+    const auto preview = ai::InvokeOperator(ctx, configure, true);
+    ASSERT_TRUE(preview.ok) << preview.message;
+    EXPECT_FALSE(ctx.projectSettings.render.showColliders);
+    EXPECT_FALSE(ctx.showSkeleton);
+
+    const auto enabled = ai::InvokeOperator(ctx, configure, false);
+    ASSERT_TRUE(enabled.ok) << enabled.message;
+    EXPECT_TRUE(enabled.result.Find("data")->Find("colliders")->AsBool());
+    EXPECT_TRUE(ctx.projectSettings.render.showColliders);
+    EXPECT_TRUE(ctx.projectSettings.render.showTerrainCollision);
+    EXPECT_TRUE(ctx.showSkeleton);
+
+    args = ai::JsonValue::MakeObject();
+    args.Set("colliders", ai::JsonValue(false));
+    configure.Set("args", args);
+    const auto disabled = ai::InvokeOperator(ctx, configure, false);
+    ASSERT_TRUE(disabled.ok) << disabled.message;
+    EXPECT_FALSE(ctx.projectSettings.render.showColliders);
+    EXPECT_TRUE(ctx.projectSettings.render.showTerrainCollision);
+    EXPECT_TRUE(ctx.showSkeleton);
+    EXPECT_FALSE(m_undo.CanUndo());
+
+    const auto after = ai::QueryOperator(ctx, inspect);
+    ASSERT_TRUE(after.ok) << after.message;
+    EXPECT_FALSE(after.result.Find("data")->Find("colliders")->AsBool());
+    EXPECT_TRUE(after.result.Find("data")->Find("skeleton")->AsBool());
 }
 } /// @note namespace fbzz::tests

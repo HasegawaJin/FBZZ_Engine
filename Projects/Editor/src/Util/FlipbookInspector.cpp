@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Util/FlipbookInspector.hpp>
 
 #include <Editor/Util/AssetPath.hpp>
@@ -475,17 +476,17 @@ void DrawPreviewControls(const asset::FlipbookFrameSample& live)
         s_preview.time    = cycleStart + age;
     }
     ImGui::SetNextItemWidth(width);
-    ImGui::DragFloat("Lifetime##preview", &s_preview.lifetime, 0.01f, 0.05f, 30.0f, "%.2fs");
+    property::DragFloat("Lifetime##preview", &s_preview.lifetime, 0.01f, 0.05f, 30.0f, "%.2fs");
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("プレビュー専用の寿命です。実際の寿命は ParticleEmitter の Lifetime が決めます。\n"
                           "Lifetime モードでは、この長さで再生範囲を 1 回流します。");
-    ImGui::Checkbox("Lock Seed", &s_preview.lockSeed);
+    property::Checkbox("Lock Seed", &s_preview.lockSeed);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("外すと周回ごとに別の粒子として乱数を引き直します。\n"
                           "Random Row / Random Start / Random のばらけ方を確認するときは外したままにします。");
     if (s_preview.lockSeed) {
         ImGui::SetNextItemWidth(width);
-        ImGui::SliderFloat("Seed##preview", &s_preview.seed, 0.0f, 1.0f, "%.2f");
+        property::SliderFloat("Seed##preview", &s_preview.seed, 0.0f, 1.0f, "%.2f");
     }
     if (live.blend > 0.0f)
         ImGui::Text("Frame %d > %d  (%.0f%%)", live.frame, live.nextFrame, live.blend * 100.0f);
@@ -643,7 +644,7 @@ bool DrawSequenceBaker(asset::MaterialAssetAuthoring& material, const std::strin
     SequenceBakeState& state = s_sequenceBake;
     ParticleFlipbookSettings& flipbook = material.particle.flipbook;
 
-    widgets::AssetPathField("First Frame", state.firstFrame, widgets::kTextureAssetFilter, projectRoot);
+    property::AssetPathField("First Frame", state.firstFrame, widgets::kTextureAssetFilter, projectRoot);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("連番の 1 枚目 (例: Explosion_000.png) を指定します。\n"
                           "同じフォルダーの同じ接頭辞・同じ拡張子の画像を番号順に集めます。");
@@ -662,10 +663,10 @@ bool DrawSequenceBaker(asset::MaterialAssetAuthoring& material, const std::strin
                     FileNameOf(state.frames.front()).c_str(), FileNameOf(state.frames.back()).c_str());
     }
 
-    ImGui::DragInt("Columns##bake", &state.columns, 0.1f, 0, 64, state.columns == 0 ? "Auto" : "%d");
+    property::DragInt("Columns##bake", &state.columns, 0.1f, 0, 64, state.columns == 0 ? "Auto" : "%d");
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("0 (Auto) なら正方形に近い並びを選びます。行数はコマ数から決まります。");
-    ImGui::Checkbox("Overwrite##bake", &state.overwrite);
+    property::Checkbox("Overwrite##bake", &state.overwrite);
 
     const std::string outputPath = state.frames.empty() ? std::string{} : SequenceAtlasOutputPath(state.frames.front());
     if (!outputPath.empty()) ImGui::TextDisabled("Output: %s", FileNameOf(outputPath).c_str());
@@ -706,17 +707,17 @@ bool DrawProceduralGenerator(asset::MaterialAssetAuthoring& material, const std:
     ParticleFlipbookSettings& flipbook = particle.flipbook;
 
     static constexpr const char* kPresetNames[] = { "Smoke", "Fire", "Explosion", "Distortion" };
-    ImGui::Combo("Preset", &procedural.preset, kPresetNames, IM_ARRAYSIZE(kPresetNames));
-    ImGui::DragInt("Frame Size", &procedural.frameSize, 8.0f, 32, 512);
-    ImGui::DragInt("Frames", &procedural.columns, 1.0f, 2, 32);
-    ImGui::DragInt("Variants", &procedural.rows, 1.0f, 1, 16);
-    ImGui::DragInt("Seed", &procedural.seed, 1.0f, 0, 1000000);
-    ImGui::DragFloat("Noise Scale", &procedural.noiseScale, 0.05f, 0.25f, 32.0f);
-    ImGui::DragFloat("Warp Strength", &procedural.warpStrength, 0.01f, 0.0f, 3.0f);
+    property::Combo("Preset", &procedural.preset, kPresetNames, IM_ARRAYSIZE(kPresetNames));
+    property::DragInt("Frame Size", &procedural.frameSize, 8.0f, 32, 512);
+    property::DragInt("Frames", &procedural.columns, 1.0f, 2, 32);
+    property::DragInt("Variants", &procedural.rows, 1.0f, 1, 16);
+    property::DragInt("Seed", &procedural.seed, 1.0f, 0, 1000000);
+    property::DragFloat("Noise Scale", &procedural.noiseScale, 0.05f, 0.25f, 32.0f);
+    property::DragFloat("Warp Strength", &procedural.warpStrength, 0.01f, 0.0f, 3.0f);
     const bool distortionPreset =
         procedural.preset == static_cast<int>(asset::ProceduralFlipbookPreset::Distortion);
     ImGui::BeginDisabled(distortionPreset);
-    ImGui::Checkbox("Generate Motion Vectors", &procedural.generateMotionVectors);
+    property::Checkbox("Generate Motion Vectors", &procedural.generateMotionVectors);
     ImGui::EndDisabled();
     if (distortionPreset)
         ImGui::TextDisabled("Distortion は RG 自体が変位なので Motion Vector を生成しません。");
@@ -796,16 +797,16 @@ bool DrawMotionVectorSection(asset::MaterialAssetAuthoring& material, const std:
     bool changed = false;
     ParticleFlipbookSettings& flipbook = material.particle.flipbook;
 
-    changed |= ImGui::Checkbox("Motion Vector Blending", &flipbook.motionVectorFlipbook);
+    changed |= property::Checkbox("Motion Vector Blending", &flipbook.motionVectorFlipbook);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("コマ間を速度場で warp してブレンドします。少ないコマ数でも滑らかに流れます。\n"
                           "有効にすると GPU シミュレーションは使えません (CPU へ縮退)。");
     if (!flipbook.motionVectorFlipbook) return changed;
 
     /// @note アトラスは [textures] tex5。ParticlePass が同じスロットから読む。
-    changed |= widgets::AssetPathField("Motion Vector Atlas (tex5)", material.textures["tex5"],
+    changed |= property::AssetPathField("Motion Vector Atlas (tex5)", material.textures["tex5"],
                                        widgets::kTextureAssetFilter, projectRoot);
-    changed |= ImGui::DragFloat("Motion Strength", &flipbook.motionVectorStrength, 0.0002f, 0.0f, 1.0f, "%.4f");
+    changed |= property::DragFloat("Motion Strength", &flipbook.motionVectorStrength, 0.0002f, 0.0f, 1.0f, "%.4f");
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("MV アトラスの最大移動量 (Atlas UV)。生成時に自動で設定されます。\n"
                           "生成した値以外にすると、コマの補間が行き過ぎたり足りなくなったりします。");
@@ -883,7 +884,7 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
 
     /// @name グリッド
     int grid[2] = { flipbook.spriteColumns, flipbook.spriteRows };
-    if (ImGui::DragInt2("Columns / Rows", grid, 0.1f, 1, 64)) {
+    if (property::DragInt2("Columns / Rows", grid, 0.1f, 1, 64)) {
         flipbook.spriteColumns = std::clamp(grid[0], 1, 64);
         flipbook.spriteRows    = std::clamp(grid[1], 1, 64);
         changed = true;
@@ -930,12 +931,12 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
     const bool rowDriven  = flipbook.spriteRandomRow && range.rows > 1;
     ImGui::BeginDisabled(rowDriven || frameCount <= 1);
     bool toLast = flipbook.spriteEndFrame <= 0;
-    if (ImGui::Checkbox("Play To Last Frame", &toLast)) {
+    if (property::Checkbox("Play To Last Frame", &toLast)) {
         flipbook.spriteEndFrame = toLast ? 0 : (std::max)(range.last, 1);
         changed = true;
     }
     if (toLast) {
-        changed |= ImGui::DragInt("Start Frame", &flipbook.spriteStartFrame, 0.1f, 0, frameCount - 1);
+        changed |= property::DragInt("Start Frame", &flipbook.spriteStartFrame, 0.1f, 0, frameCount - 1);
     } else {
         int first = flipbook.spriteStartFrame;
         int last  = flipbook.spriteEndFrame;
@@ -959,7 +960,7 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
     /// @name 再生のしかた
     static constexpr const char* kModeItems[] = { "Lifetime", "FPS", "Random", "Ping Pong" };
     int mode = static_cast<int>(flipbook.flipbookMode);
-    if (ImGui::Combo("Mode", &mode, kModeItems, IM_ARRAYSIZE(kModeItems))) {
+    if (property::Combo("Mode", &mode, kModeItems, IM_ARRAYSIZE(kModeItems))) {
         flipbook.flipbookMode = static_cast<ParticleFlipbookMode>(mode);
         changed = true;
     }
@@ -969,18 +970,18 @@ bool DrawFlipbookInspector(asset::MaterialAssetAuthoring& material, const std::s
                           "Random   : 粒子ごとに 1 コマを固定 (破片・バリエーション)\n"
                           "Ping Pong: 往復再生 (明滅・脈動)");
     if (IsTimedMode(flipbook.flipbookMode))
-        changed |= ImGui::DragFloat("FPS", &flipbook.flipbookFramesPerSecond, 0.1f, 0.0f, 240.0f, "%.1f");
+        changed |= property::DragFloat("FPS", &flipbook.flipbookFramesPerSecond, 0.1f, 0.0f, 240.0f, "%.1f");
 
-    changed |= ImGui::Checkbox("Frame Blending", &flipbook.flipbookFrameBlending);
+    changed |= property::Checkbox("Frame Blending", &flipbook.flipbookFrameBlending);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("隣接コマを線形補間します。\n"
                           "有効にすると GPU シミュレーションは使えません (CPU へ縮退)。");
-    changed |= ImGui::Checkbox("Random Start Frame", &flipbook.spriteRandomStartFrame);
+    changed |= property::Checkbox("Random Start Frame", &flipbook.spriteRandomStartFrame);
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("粒子ごとに再生位相をずらします。\n"
                           "同時に湧いた煙が全部同じコマで回って一枚板に見えるのを防ぎます。");
     ImGui::BeginDisabled(range.rows <= 1 && !flipbook.spriteRandomRow);
-    changed |= ImGui::Checkbox("Random Row", &flipbook.spriteRandomRow);
+    changed |= property::Checkbox("Random Row", &flipbook.spriteRandomRow);
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("アトラスの各行を別バリエーションとして扱い、粒子ごとに 1 行を選びます。\n"

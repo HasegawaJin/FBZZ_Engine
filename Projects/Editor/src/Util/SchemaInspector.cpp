@@ -2,6 +2,7 @@
 /// @brief   ITypeSchema 走査による汎用 Inspector の実装。
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Util/SchemaInspector.hpp>
 
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -64,7 +65,7 @@ bool DrawFloat(const PropertyDesc& property, void* owner, const char* label)
     float value = ReadValue<float>(property, owner, 0.0f);
     const bool changed = property.range.enabled
         ? RangeField(label, value, property.range.minimum, property.range.maximum)
-        : ImGui::DragFloat(label, &value, 0.01f);
+        : property::DragFloat(label, &value, 0.01f);
     return changed && WriteValue(property, owner, value);
 }
 
@@ -79,7 +80,7 @@ bool DrawInt(const PropertyDesc& property, void* owner, const char* label)
         const int maximum = static_cast<int>(property.range.maximum);
         changed = RangeField(label, value, minimum, maximum);
     } else {
-        changed = ImGui::DragInt(label, &value);
+        changed = property::DragInt(label, &value);
     }
     return changed && WriteValue(property, owner, value);
 }
@@ -125,7 +126,7 @@ bool DrawLeaf(const PropertyDesc& property, void* owner, const std::string& proj
         return DrawEnum(property, owner, label);
     case PropertyType::Bool: {
         bool value = ReadValue<bool>(property, owner, false);
-        return ImGui::Checkbox(label, &value) && WriteValue(property, owner, value);
+        return property::Checkbox(label, &value) && WriteValue(property, owner, value);
     }
     case PropertyType::Vector3: {
         math::Vector3 value = ReadValue<math::Vector3>(property, owner, {});
@@ -139,7 +140,7 @@ bool DrawLeaf(const PropertyDesc& property, void* owner, const std::string& proj
         std::string value = ReadValue<std::string>(property, owner, {});
         char buffer[256] = {};
         std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
-        if (!ImGui::InputText(label, buffer, sizeof(buffer))) return false;
+        if (!property::InputText(label, buffer, sizeof(buffer))) return false;
         return WriteValue(property, owner, std::string(buffer));
     }
     case PropertyType::AssetRef: {
@@ -216,7 +217,7 @@ bool DrawArray(const PropertyDesc& property, void* owner, const std::string& pro
     return changed;
 }
 
-} // namespace
+} /// @note namespace
 
 bool DrawSchemaProperties(const reflection::ITypeSchema& schema, void* owner,
                           const std::string& projectRoot,
@@ -250,4 +251,4 @@ bool DrawSchemaProperties(const reflection::ITypeSchema& schema, void* owner,
     return changed;
 }
 
-} // namespace fbzz::editor::widgets
+} /// @note namespace fbzz::editor::widgets

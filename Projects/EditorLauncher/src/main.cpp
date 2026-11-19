@@ -31,10 +31,15 @@
 #endif
 #include <Windows.h>
 #include <shellapi.h>
+#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
+#ifdef _DEBUG
+#include <crtdbg.h>
+#endif
 
 namespace fbzz::editor_launcher {
 
@@ -57,6 +62,7 @@ struct LaunchArgs {
     bool                  updateBaselines = false;
     bool                  skipImages = false;
     bool                  hidden = false;  ///< @note --hidden: 窓を出さない
+    bool                  enableViewports = true;
     core::PixCaptureOptions pixCapture;
     std::string argumentError;
 };
@@ -125,6 +131,8 @@ LaunchArgs ParseArgs()
             args.skipImages = true;
         else if (arg == L"--hidden")
             args.hidden = true;
+        else if (arg == L"--no-viewports")
+            args.enableViewports = false;
         else if (arg == L"--pix-path") {
             pixArguments.emplace_back(argv[i]);
             if (i + 1 < argc) pixArguments.emplace_back(argv[++i]);
@@ -162,6 +170,7 @@ LaunchArgs ParseArgs()
 
     /// @note バッチは «エディターと同じ実装» で回すのが目的なので Standalone に倒さない。既定プロジェクトの補完より後に置く。
     if (!args.batchScenario.empty()) args.standalone = false;
+    if (args.standalone && !args.enableViewports) args.argumentError = "--no-viewports requires Editor mode.";
 
     return args;
 }
@@ -175,6 +184,20 @@ int Run()
     const LaunchArgs args = ParseArgs();
     /// @note バッチは終了コードが結果そのもの。起動し直すと呼び出し側が受け取るのは «0 で抜けた親» の値になる。
     const bool batch = !args.batchScenario.empty();
+    if (args.hidden) {
+        /// @note CI はダイアログに応答できない。強制終了時も直前の診断を残す。
+        /// @see Projects/Tests/TestKit/src/Console.cpp SuppressBlockingErrorDialogs
+        std::setvbuf(stdout, nullptr, _IONBF, 0);
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+        _set_error_mode(_OUT_TO_STDERR);
+        _set_abort_behavior(_WRITE_ABORT_MSG, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#ifdef _DEBUG
+        for (const int reportType : { _CRT_ASSERT, _CRT_ERROR, _CRT_WARN }) {
+            _CrtSetReportMode(reportType, _CRTDBG_MODE_FILE);
+            _CrtSetReportFile(reportType, _CRTDBG_FILE_STDERR);
+        }
+#endif
+    }
     if (!args.argumentError.empty()) {
         FBZZ_LOG_ERROR("EditorLauncher: %s", args.argumentError.c_str());
         return batch ? 2 : 1;
@@ -197,9 +220,11 @@ int Run()
 
     fbzz::ProjectResolver resolver;
     if (!resolver.Resolve(args.projectPath)) {
-        /// @note バッチでモーダルを出すと CI が人のクリックを待って固まる。
-        if (batch) return 2;
-        if (args.editorPlay) { FBZZ_LOG_ERROR("Standalone Play project resolution failed."); return 1; }
+        /// @note 無人起動でプロジェクト解決に失敗した場合は stderr / stdout の診断で終了する。
+        if (batch || args.hidden || args.editorPlay) {
+            FBZZ_LOG_ERROR("EditorLauncher: %ls", resolver.ErrorMessage().c_str());
+            return batch ? 2 : 1;
+        }
         MessageBoxW(nullptr, resolver.ErrorMessage().c_str(), L"FBZZ", MB_OK | MB_ICONERROR);
         return 1;
     }
@@ -224,7 +249,7 @@ int Run()
     /// @see Docs/design/crash-report.md
     const std::string crashAppName = args.standalone ? StringUtils::PathToUtf8(project.root.filename()) : "FBZZ Editor";
     core::CrashHandler::Install(workingDirectory, crashAppName);
-    core::CrashHandler::NotifyUnreported(workingDirectory, crashAppName, !batch && !args.editorPlay);
+    core::CrashHandler::NotifyUnreported(workingDirectory, crashAppName, !batch && !args.hidden && !args.editorPlay);
     core::DeveloperMode::InitFromCommandLine();
 
     auto& app = core::Application::Get();
@@ -295,7 +320,7 @@ int Run()
         auto& renderer    = app.GetRenderer();
         auto& imguiRenderer = app.GetImGuiRenderer();
         /// @note バッチは window が occluded でも offscreen RT を描く。通常 Editor は DXGI の occlusion 休止を維持する。
-        renderer.SetRenderWhenOccluded(!args.batchScenario.empty());
+        renderer.SetRenderWhenOccluded(batch);
         renderer::ResourceManager resources(renderer);
         app.SetResourceManager(&resources);
 
@@ -307,7 +332,7 @@ int Run()
 
         editor::EditorApp editorApp;
         const int startupFailure = args.batchScenario.empty() ? 1 : 2;
-        if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow())) return startupFailure;
+        if (!editorApp.Init(renderer, imguiRenderer, resources, app.GetWindow(), args.enableViewports)) return startupFailure;
         if (!editorApp.OpenProject(StringUtils::PathToUtf8(project.root),
                                    StringUtils::PathToUtf8(project.settingsFile),
                                    StringUtils::PathToUtf8(project.sceneFile))) return startupFailure;

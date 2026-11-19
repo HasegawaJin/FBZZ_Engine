@@ -2,9 +2,11 @@
 /// @brief   .synth の編集・プレビュー・書き出し UI。
 /// @author  Hasegawa Jin
 /// @date    2026-08-23
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Panels/SfxEditorPanel.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
+#include <Editor/Util/EditorSettings.hpp>
 #include <Engine/Asset/SynthAsset.hpp>
 #include <Engine/Audio/Synth.hpp>
 #include <Engine/Core/Logger.hpp>
@@ -20,7 +22,7 @@ constexpr int kWaveformResolution = 512;
 
 const char* const kWaveLabels[] = { "Sine", "Square", "Saw", "Triangle", "Noise" };
 
-/// パネルのボタンはすべて Operator を呼ぶ。人と AI で実装を分けない。
+/// @note パネルのボタンはすべて Operator を呼ぶ。人と AI で実装を分けない。
 void Invoke(EditorContext& ctx, const char* id, const OpArgs& args = {})
 {
     const OpResult result = InvokeOperator(ctx, id, args);
@@ -36,7 +38,17 @@ bool Slider(const char* label, float& value, float min, float max, const char* t
     return changed;
 }
 
-} // namespace
+} /// @note namespace
+
+void SfxEditorPanel::OnLoadSettings(const EditorSettings& settings)
+{
+    m_autoPreview = settings.sfxAutoPreview;
+}
+
+void SfxEditorPanel::OnSaveSettings(EditorSettings& settings) const
+{
+    settings.sfxAutoPreview = m_autoPreview;
+}
 
 void SfxEditorPanel::EnsureWaveform(const EditorContext& ctx)
 {
@@ -61,7 +73,7 @@ void SfxEditorPanel::EnsureWaveform(const EditorContext& ctx)
     };
 
     /// @note 最大値で間引く: 平均を取ると高い周波数の波形が打ち消し合ってほぼ直線に見え、
-    ///       「音が出ているのか」すら読めなくなる。
+    /// @note 「音が出ているのか」すら読めなくなる。
     const size_t buckets = (std::min)(static_cast<size_t>(kWaveformResolution), m_sampleCount);
     m_waveform.resize(buckets);
     for (size_t i = 0; i < buckets; ++i) {
@@ -88,7 +100,7 @@ void SfxEditorPanel::LoadRequested(EditorContext& ctx)
         return;
     }
     /// @note 未保存の下書きは開いた時点で失われる (Behavior Tree / Animation Graph と同じ)。
-    ///       黙って消えると原因が追えないので、せめて Console には残す。
+    /// @note 黙って消えると原因が追えないので、せめて Console には残す。
     if (ctx.sfxEditorDirty) {
         FBZZ_LOG_WARN("SFX Editor: 未保存の変更を破棄して [%s] を開きます", path.c_str());
     }
@@ -105,7 +117,7 @@ bool SfxEditorPanel::DrawParameters(EditorContext& ctx)
     bool changed = false;
 
     int wave = static_cast<int>(spec.wave);
-    if (ImGui::Combo("Wave", &wave, kWaveLabels, IM_ARRAYSIZE(kWaveLabels))) {
+    if (property::Combo("Wave", &wave, kWaveLabels, IM_ARRAYSIZE(kWaveLabels))) {
         OpArgs args;
         args.Set("wave", std::string(audio::WaveToString(static_cast<audio::SynthWave>(wave))));
         Invoke(ctx, "sfx.set_wave", args);
@@ -113,8 +125,8 @@ bool SfxEditorPanel::DrawParameters(EditorContext& ctx)
     }
 
     /// @note スライダーは Operator を通さない: ドラッグ中は毎フレーム値が変わり、1 フレームごとに
-    ///       sfx.set_param を呼ぶと AI 向けの粒度の操作が秒間 60 回走る。実体は同じ
-    ///       ctx.sfxEditorSpec なので直接書き、離した時点の状態を Operator 経由と揃える。
+    /// @note sfx.set_param を呼ぶと AI 向けの粒度の操作が秒間 60 回走る。実体は同じ
+    /// @note ctx.sfxEditorSpec なので直接書き、離した時点の状態を Operator 経由と揃える。
     if (ImGui::CollapsingHeader("Envelope", ImGuiTreeNodeFlags_DefaultOpen)) {
         changed |= Slider("Attack",  spec.attack,  0.0f, 1.0f, "立ち上がりにかける秒数");
         changed |= Slider("Sustain", spec.sustain, 0.0f, 2.0f, "最大音量を保つ秒数");
@@ -124,9 +136,9 @@ bool SfxEditorPanel::DrawParameters(EditorContext& ctx)
     }
 
     if (ImGui::CollapsingHeader("Pitch", ImGuiTreeNodeFlags_DefaultOpen)) {
-        changed |= ImGui::DragFloat("Start Frequency", &spec.startFrequency,
+        changed |= property::DragFloat("Start Frequency", &spec.startFrequency,
                                     2.0f, 20.0f, 18000.0f, "%.0f Hz");
-        changed |= ImGui::DragFloat("Min Frequency", &spec.minFrequency,
+        changed |= property::DragFloat("Min Frequency", &spec.minFrequency,
                                     2.0f, 0.0f, 18000.0f, "%.0f Hz");
         changed |= Slider("Slide", spec.slide, -16.0f, 16.0f,
                           "1 秒あたりのオクターブ変化。負で下降");
@@ -156,7 +168,7 @@ bool SfxEditorPanel::DrawParameters(EditorContext& ctx)
     if (ImGui::CollapsingHeader("Output", ImGuiTreeNodeFlags_DefaultOpen)) {
         changed |= Slider("Amplitude", spec.amplitude, 0.0f, 1.0f);
         int seed = static_cast<int>(spec.seed);
-        if (ImGui::DragInt("Seed", &seed, 1.0f, 0, 999999)) {
+        if (property::DragInt("Seed", &seed, 1.0f, 0, 999999)) {
             spec.seed = static_cast<uint32_t>((std::max)(seed, 0));
             changed = true;
         }
@@ -215,7 +227,12 @@ void SfxEditorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::SameLine();
     if (ImGui::Button("Play")) Invoke(ctx, "sfx.preview");
     ImGui::SameLine();
-    ImGui::Checkbox("Auto", &m_autoPreview);
+    bool autoPreview = m_autoPreview;
+    if (ImGui::Checkbox("Auto", &autoPreview)) {
+        OpArgs args;
+        args.Set("autoPreview", autoPreview);
+        Invoke(ctx, "sfx.editor.configure", args);
+    }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("値を変えるたびに自動で鳴らす");
 
     EnsureWaveform(ctx);
@@ -241,4 +258,4 @@ void SfxEditorPanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

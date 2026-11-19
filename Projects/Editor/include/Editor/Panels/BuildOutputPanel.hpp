@@ -23,7 +23,7 @@ public:
     void OnRegisterOperators(OperatorRegistry& registry) override;
 
     /// 外部 (通知バー / StatusBar クリック) から呼ばれ、パネルを開いて最初のエラーへスクロールさせる。
-    void RequestFocusFirstError() { visible = true; m_focusFirstError = true; m_viewHistoryIndex = -1; }
+    void RequestFocusFirstError() { visible = true; m_focusFirstError = true; m_selectedBuild = 0; }
 
 private:
     void OnRenderContent(EditorContext& ctx) override;
@@ -37,7 +37,7 @@ private:
     /// 診断と生ログの境界。ドラッグで m_splitRatio を動かす。
     void DrawSplitter();
 
-    int   m_viewHistoryIndex = -1;    ///< -1 = 最新 (ライブ)。それ以外は History() のインデックス
+    std::uint64_t m_selectedBuild = 0; ///< @note 0 は最新への追従。履歴の入れ替わりで別のビルドを選ばない。
     bool  m_focusFirstError  = false; ///< 次フレームで最初のエラー行へスクロール
     float m_splitRatio       = 0.45f; ///< 診断一覧が占める高さの比率
 
@@ -45,8 +45,7 @@ private:
     LogListView  m_rawView{ "build_raw_output" };
     BuildLogFeed m_rawFeed;
 
-    const BuildRecord* m_diagRecord = nullptr;
-    std::string        m_diagRecordClock;
+    std::uint64_t      m_diagRecord = 0;
     std::size_t        m_diagCount  = ~static_cast<std::size_t>(0);
 };
 

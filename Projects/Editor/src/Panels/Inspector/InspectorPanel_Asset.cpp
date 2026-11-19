@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 /// @brief Undo 記録可否の判定 (CanRecordEditorUndo) など、Inspector 共通ヘルパーを使う。
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include "InspectorCommon.hpp"
 #include "../../Util/MaterialAuthoringEditing.hpp"
@@ -304,7 +305,17 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
     }
 
     ImGui::TextUnformatted(filename.c_str());
-    ImGui::TextDisabled("%s", assetPath.c_str());
+    ImGui::TextWrapped("%s", assetPath.c_str());
+    const char* saveMode = nullptr;
+    if (ext == ".mat" || ext == ".physmat") saveMode = LOCT("Changes are saved when editing finishes.");
+    else if (isModelSource || isTextureSource || ext == ".mask") saveMode = LOCT("Use Apply to save changes.");
+    else if (ext == ".terrain") saveMode = LOCT("Use Save to write changes to disk.");
+    if (saveMode) {
+        const bool modified = AssetDirtyRegistry::IsDirty(absPath);
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(modified ? ThemeColor::Warning : ThemeColor::TextMuted));
+        ImGui::TextWrapped("%s%s%s", modified ? LOCT("Unsaved changes") : "", modified ? " · " : "", saveMode);
+        ImGui::PopStyleColor();
+    }
     ImGui::Separator();
 
     if (ext == ".mat") {
@@ -572,11 +583,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             const auto handle = asset::AssetManager::Load<asset::ModelAsset>(absPath);
             if (const auto* m = asset::AssetManager::Get(handle)) {
                 ImGui::SeparatorText("Info");
-                ImGui::LabelText("LODs",      "%u",  m->LodCount());
-                ImGui::LabelText("Skinned",   "%s",  m->IsSkinned() ? "Yes" : "No");
-                ImGui::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
+                property::LabelText("LODs",      "%u",  m->LodCount());
+                property::LabelText("Skinned",   "%s",  m->IsSkinned() ? "Yes" : "No");
+                property::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
                 if (m->IsSkinned() && m->skeleton)
-                    ImGui::LabelText("Skeleton Nodes", "%zu", m->skeleton->nodes.size());
+                    property::LabelText("Skeleton Nodes", "%zu", m->skeleton->nodes.size());
             }
 
             /// @note クリップを持つスキンモデルはその場で再生確認できるようにする。
@@ -601,14 +612,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Load failed");
         } else if (const auto* m = asset::AssetManager::Get(handle)) {
             ImGui::SeparatorText("Info");
-            ImGui::LabelText("LODs",      "%u",  m->LodCount());
-            ImGui::LabelText("Skinned",   "%s",  m->IsSkinned() ? "Yes" : "No");
-            ImGui::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
+            property::LabelText("LODs",      "%u",  m->LodCount());
+            property::LabelText("Skinned",   "%s",  m->IsSkinned() ? "Yes" : "No");
+            property::LabelText("Mat Slots", "%zu", m->materialSlotNames.size());
 
             /// @name スケルトン情報
             if (m->IsSkinned() && m->skeleton) {
                 ImGui::SeparatorText("Skeleton");
-                ImGui::LabelText("Nodes", "%zu", m->skeleton->nodes.size());
+                property::LabelText("Nodes", "%zu", m->skeleton->nodes.size());
             }
 
             /// @name LOD / サブメッシュ一覧
@@ -689,33 +700,33 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::TextColored({1.0f, 0.3f, 0.3f, 1.0f}, "Load failed");
         } else if (const auto* clip = asset::AssetManager::Get(handle)) {
             ImGui::SeparatorText("Info");
-            ImGui::LabelText("Name",         "%s",    clip->name.c_str());
-            ImGui::LabelText("Duration",     "%.3f s", clip->GetDurationSeconds());
-            ImGui::LabelText("FPS",          "%.1f",  clip->frameRate);
-            ImGui::LabelText("Tracks",       "%zu",   clip->tracks.size());
+            property::LabelText("Name",         "%s",    clip->name.c_str());
+            property::LabelText("Duration",     "%.3f s", clip->GetDurationSeconds());
+            property::LabelText("FPS",          "%.1f",  clip->frameRate);
+            property::LabelText("Tracks",       "%zu",   clip->tracks.size());
             /// @note Loop Time は .anim へ焼かれた値。.anim は再インポートで上書きされる生成物のため
             /// @note ここでは編集させず、原本の FBX 側で行う設定であることだけ明示する。
-            ImGui::LabelText("Loop Time", "%s", clip->loop ? "On" : "Off");
+            property::LabelText("Loop Time", "%s", clip->loop ? "On" : "Off");
             ImGui::TextDisabled("Edit in the source FBX > Animation.");
 
             /// @name Root Motion
             /// @note "Yes / No" だけだと No のとき専用ノード不在か候補未検出かを切り分けられないため、
             /// @note 解決済みノード名と自動検出の候補を並べて提示する。
-            ImGui::LabelText("Root Motion", "%s",
+            property::LabelText("Root Motion", "%s",
                              clip->hasRootMotion ? "Yes (clip defined)" : "No");
             if (clip->hasRootMotion) {
-                ImGui::LabelText("  Node", "%s",
+                property::LabelText("  Node", "%s",
                                  clip->rootMotionNodeName.empty()
                                      ? "(unnamed)"
                                      : clip->rootMotionNodeName.c_str());
-                ImGui::LabelText("  Axes", "XZ:%s  Y:%s  Rot:%s",
+                property::LabelText("  Axes", "XZ:%s  Y:%s  Rot:%s",
                                  clip->rootMotionApplyXZ ? "on" : "off",
                                  clip->rootMotionApplyY ? "on" : "off",
                                  clip->rootMotionApplyRotation ? "on" : "off");
             } else {
                 const uint32_t candidate = asset::AutoDetectRootMotionTrackIndex(*clip);
                 if (candidate < clip->tracks.size()) {
-                    ImGui::LabelText("  Candidate", "%s",
+                    property::LabelText("  Candidate", "%s",
                                      clip->tracks[candidate].nodeName.c_str());
                     ImGui::TextDisabled(
                         "Animator の Root Motion Source を Auto Detect にすると使えます。");
@@ -832,13 +843,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 ImGui::TextDisabled("No saved model settings; using defaults.");
             static constexpr const char* kSourceDccNames[] = { "Auto Detect", "Maya / FBX SDK", "Blender" };
             int sourceDccIdx = static_cast<int>(s_modelOptions.sourceDcc);
-            if (ImGui::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3)) {
+            if (property::Combo("Source DCC", &sourceDccIdx, kSourceDccNames, 3)) {
                 s_modelOptions.sourceDcc = static_cast<FbxSourceDcc>(sourceDccIdx);
                 dirty = true;
             }
 
             ImGui::SetNextItemWidth(140.0f);
-            dirty |= ImGui::DragFloat("Unit Scale", &s_modelOptions.unitScaleMultiplier,
+            dirty |= property::DragFloat("Unit Scale", &s_modelOptions.unitScaleMultiplier,
                                       0.01f, 0.001f, 100.0f, "%.3fx");
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
                 ImGui::SetTooltip("FBX の自動単位変換後に掛ける倍率。");
@@ -846,20 +857,19 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             static constexpr const char* kUpAxisNames[] = { "Auto", "Y Up", "Z Up" };
             int upAxisIdx = static_cast<int>(s_modelOptions.upAxis);
             ImGui::SetNextItemWidth(140.0f);
-            if (ImGui::Combo("Source Up Axis", &upAxisIdx, kUpAxisNames, 3)) {
+            if (property::Combo("Source Up Axis", &upAxisIdx, kUpAxisNames, 3)) {
                 s_modelOptions.upAxis = static_cast<FbxUpAxis>(upAxisIdx);
                 dirty = true;
             }
 
-            dirty |= ImGui::Checkbox("Generate Normals", &s_modelOptions.generateNormals);
-            ImGui::SameLine();
-            dirty |= ImGui::Checkbox("Generate Tangents", &s_modelOptions.generateTangents);
+            dirty |= property::Checkbox("Generate Normals", &s_modelOptions.generateNormals);
+            dirty |= property::Checkbox("Generate Tangents", &s_modelOptions.generateTangents);
 
-            dirty |= ImGui::Checkbox("Auto-generate texture .meta", &s_modelOptions.generateTexDescriptors);
+            dirty |= property::Checkbox("Auto-generate texture .meta", &s_modelOptions.generateTexDescriptors);
 
             static constexpr const char* kConventionNames[] = { "DirectX", "OpenGL" };
             int conventionIdx = static_cast<int>(s_modelOptions.normalMapConvention);
-            if (ImGui::Combo("Normal Map Convention", &conventionIdx, kConventionNames, 2)) {
+            if (property::Combo("Normal Map Convention", &conventionIdx, kConventionNames, 2)) {
                 s_modelOptions.normalMapConvention = static_cast<NormalMapConvention>(conventionIdx);
                 dirty = true;
             }
@@ -868,7 +878,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 "Auto", "BC1", "BC3", "BC4", "BC5", "BC6H", "BC7", "None"
             };
             int compressionIdx = static_cast<int>(s_modelOptions.defaultCompression);
-            if (ImGui::Combo("Default Texture Compression", &compressionIdx, kCompressionNames, 8)) {
+            if (property::Combo("Default Texture Compression", &compressionIdx, kCompressionNames, 8)) {
                 s_modelOptions.defaultCompression = static_cast<asset::TextureCompression>(compressionIdx);
                 dirty = true;
             }
@@ -973,7 +983,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 char rootMotionBuffer[256] = {};
                 std::snprintf(rootMotionBuffer, sizeof(rootMotionBuffer), "%s",
                               s_modelOptions.rootMotionNodeName.c_str());
-                if (ImGui::InputTextWithHint("Root Motion Node", "Auto Detect",
+                if (property::InputTextWithHint("Root Motion Node", "Auto Detect",
                                              rootMotionBuffer, sizeof(rootMotionBuffer))) {
                     s_modelOptions.rootMotionNodeName = rootMotionBuffer;
                     dirty = true;
@@ -1162,13 +1172,13 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
         /// @note sRGB はガンマ付きカラーにしか意味がない。法線・データマスク・HDR では出さない。
         if (texMask.srgb)
-            dirty |= ImGui::Checkbox("sRGB", &s.srgb);
+            dirty |= property::Checkbox("sRGB", &s.srgb);
 
         if (texMask.sprite) {
             ImGui::SeparatorText("Sprite");
             static constexpr const char* kSpriteModeNames[] = { "Single", "Multiple" };
             int spriteMode = static_cast<int>(s.spriteMode);
-            if (ImGui::Combo("Sprite Mode", &spriteMode, kSpriteModeNames, 2)) {
+            if (property::Combo("Sprite Mode", &spriteMode, kSpriteModeNames, 2)) {
                 s.spriteMode = static_cast<asset::SpriteMode>(spriteMode);
                 dirty = true;
             }
@@ -1196,9 +1206,9 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 static int s_sliceRows = 1;
                 ImGui::SeparatorText("Slice");
                 ImGui::SetNextItemWidth(90.0f);
-                ImGui::InputInt("Columns", &s_sliceColumns);
+                property::InputInt("Columns", &s_sliceColumns);
                 ImGui::SetNextItemWidth(90.0f);
-                ImGui::InputInt("Rows", &s_sliceRows);
+                property::InputInt("Rows", &s_sliceRows);
                 s_sliceColumns = std::clamp(s_sliceColumns, 1, 64);
                 s_sliceRows = std::clamp(s_sliceRows, 1, 64);
 
@@ -1267,7 +1277,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", sprite.name.c_str());
                     const std::string nameBeforeEdit = sprite.name;
                     const bool spriteNameChanged =
-                        ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer));
+                        property::InputText("Name", nameBuffer, sizeof(nameBuffer));
                     if (spriteNameChanged) {
                         sprite.name = nameBuffer;
                         dirty = true;
@@ -1297,7 +1307,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                         sprite.borderLeft, sprite.borderTop,
                         sprite.borderRight, sprite.borderBottom
                     };
-                    if (ImGui::DragFloat4("Border (L,T,R,B)", border, 1.0f, 0.0f, 16384.0f)) {
+                    if (property::DragFloat4("Border (L,T,R,B)", border, 1.0f, 0.0f, 16384.0f)) {
                         sprite.borderLeft = std::max(0.0f, border[0]);
                         sprite.borderTop = std::max(0.0f, border[1]);
                         sprite.borderRight = std::max(0.0f, border[2]);
@@ -1327,7 +1337,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                 dirty = true;
             static constexpr const char* kQualNames[] = { "Fast", "Normal", "High" };
             int qualIdx = static_cast<int>(s.compressionQuality);
-            if (ImGui::Combo("Quality", &qualIdx, kQualNames, 3)) {
+            if (property::Combo("Quality", &qualIdx, kQualNames, 3)) {
                 s.compressionQuality = static_cast<asset::CompQuality>(qualIdx);
                 dirty = true;
             }
@@ -1336,26 +1346,26 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @name Mipmaps
         if (texMask.mipmaps) {
             ImGui::SeparatorText("Mipmaps");
-            dirty |= ImGui::Checkbox("Mipmaps", &s.mipmaps);
+            dirty |= property::Checkbox("Mipmaps", &s.mipmaps);
             if (texMask.mipDetail) {
                 static constexpr const char* kMipFilterNames[] = { "Box", "Kaiser", "Lanczos" };
                 int mipFIdx = static_cast<int>(s.mipFilter);
-                if (ImGui::Combo("Mip Filter", &mipFIdx, kMipFilterNames, 3)) {
+                if (property::Combo("Mip Filter", &mipFIdx, kMipFilterNames, 3)) {
                     s.mipFilter = static_cast<asset::MipFilter>(mipFIdx);
                     dirty = true;
                 }
-                dirty |= ImGui::DragFloat("Mip Sharpen", &s.mipSharpen, 0.01f, 0.0f, 4.0f);
-                dirty |= ImGui::DragFloat("Mip Bias",    &s.mipBias,    0.01f, -4.0f, 4.0f);
+                dirty |= property::DragFloat("Mip Sharpen", &s.mipSharpen, 0.01f, 0.0f, 4.0f);
+                dirty |= property::DragFloat("Mip Bias",    &s.mipBias,    0.01f, -4.0f, 4.0f);
             }
             /// @note 縮小で崩れた法線の再正規化。法線マップ以外では効果がない。
             if (texMask.normalizeMips)
-                dirty |= ImGui::Checkbox("Normalize Mipmaps", &s.normalizeMipmaps);
+                dirty |= property::Checkbox("Normalize Mipmaps", &s.normalizeMipmaps);
         }
 
         /// @name Normal Map
         if (texMask.flipGreen) {
             ImGui::SeparatorText("Normal Map");
-            dirty |= ImGui::Checkbox("Flip Green (OpenGL)", &s.flipGreen);
+            dirty |= property::Checkbox("Flip Green (OpenGL)", &s.flipGreen);
         }
 
         /// @name Sampling
@@ -1365,10 +1375,10 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             static constexpr const char* kWrapNames[] = { "Repeat", "Clamp", "Mirror", "Border" };
             int wrapU = static_cast<int>(s.wrapU);
             int wrapV = static_cast<int>(s.wrapV);
-            if (ImGui::Combo("Wrap U", &wrapU, kWrapNames, 4)) { s.wrapU = static_cast<asset::TextureWrap>(wrapU); dirty = true; }
-            if (ImGui::Combo("Wrap V", &wrapV, kWrapNames, 4)) { s.wrapV = static_cast<asset::TextureWrap>(wrapV); dirty = true; }
+            if (property::Combo("Wrap U", &wrapU, kWrapNames, 4)) { s.wrapU = static_cast<asset::TextureWrap>(wrapU); dirty = true; }
+            if (property::Combo("Wrap V", &wrapV, kWrapNames, 4)) { s.wrapV = static_cast<asset::TextureWrap>(wrapV); dirty = true; }
             int anisoLv = static_cast<int>(s.anisoLevel);
-            if (ImGui::SliderInt("Aniso Level", &anisoLv, 1, 16)) {
+            if (property::SliderInt("Aniso Level", &anisoLv, 1, 16)) {
                 s.anisoLevel = static_cast<uint32_t>(anisoLv);
                 dirty = true;
             }
@@ -1378,7 +1388,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (texMask.maxSize) {
             ImGui::SeparatorText("Resolution");
             int maxSize = static_cast<int>(s.maxSize);
-            if (ImGui::InputInt("Max Size", &maxSize)) {
+            if (property::InputInt("Max Size", &maxSize)) {
                 s.maxSize = static_cast<uint32_t>(std::max(1, maxSize));
                 dirty = true;
             }
@@ -1390,11 +1400,11 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             ImGui::SeparatorText("Alpha");
             static constexpr const char* kAlphaNames[] = { "Straight", "Premultiplied", "None" };
             int alphaIdx = static_cast<int>(s.alphaMode);
-            if (ImGui::Combo("Alpha Mode", &alphaIdx, kAlphaNames, 3)) {
+            if (property::Combo("Alpha Mode", &alphaIdx, kAlphaNames, 3)) {
                 s.alphaMode = static_cast<asset::AlphaMode>(alphaIdx);
                 dirty = true;
             }
-            dirty |= ImGui::Checkbox("Alpha Dither", &s.alphaDither);
+            dirty |= property::Checkbox("Alpha Dither", &s.alphaDither);
         }
 
         ImGui::Spacing();
@@ -1773,7 +1783,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         ImGui::SeparatorText("Mask");
         /// @note defaultInclude を切り替えると「列挙したボーンだけ有効」と「列挙したボーンだけ無効」が
         /// @note 反転する。上半身マスクは前者、指だけ抜くマスクは後者が書きやすい。
-        if (ImGui::Checkbox("Default Include (未列挙のボーンも有効にする)", &s_mask.defaultInclude))
+        if (property::Checkbox("Default Include (未列挙のボーンも有効にする)", &s_mask.defaultInclude))
             maskDirty = true;
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
             ImGui::SetTooltip(
@@ -1785,7 +1795,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         /// @note FBX を指定すると同じスケルトンをツリーで編集できる。AssetPathField は
         /// @note ピッカー・拡張子検証・Asset Browser からの D&D を共通で提供する。
         ImGui::SeparatorText("Skeleton Source");
-        if (widgets::AssetPathField("Skeleton Source", s_mask.skeletonSourcePath,
+        if (property::AssetPathField("Skeleton Source", s_mask.skeletonSourcePath,
                                      ".fbx,.obj,.gltf,.glb", ctx.projectRoot)) {
             s_mask.skeletonSourceSignature.clear();
             maskDirty = true;
@@ -1812,7 +1822,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         }
 
         ImGui::SeparatorText("Saved Presets");
-        widgets::AssetPathField("Preset File", s_maskPresetPath,
+        property::AssetPathField("Preset File", s_maskPresetPath,
                                 ".maskpreset,.mask", ctx.projectRoot);
         ImGui::SameLine();
         if (ImGui::Button("Load Preset") && !s_maskPresetPath.empty()) {
@@ -2244,13 +2254,17 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         if (ImGui::BeginTable("##mask_advanced_rules", 6,
                               ImGuiTableFlags_BordersInnerV |
                               ImGuiTableFlags_SizingStretchProp |
-                              ImGuiTableFlags_NoSavedSettings)) {
+                              ImGuiTableFlags_NoSavedSettings |
+                              ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY,
+                              { 0.0f, ImGui::GetFrameHeightWithSpacing() * 9.0f },
+                              std::max(ImGui::GetContentRegionAvail().x, 454.0f + ImGui::GetFontSize() * 12.0f))) {
             ImGui::TableSetupColumn("Bone", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("Weight", ImGuiTableColumnFlags_WidthFixed, 104.0f);
             ImGui::TableSetupColumn("Depth", ImGuiTableColumnFlags_WidthFixed, 94.0f);
             ImGui::TableSetupColumn("Ramp", ImGuiTableColumnFlags_WidthFixed, 150.0f);
             ImGui::TableSetupColumn("Children", ImGuiTableColumnFlags_WidthFixed, 78.0f);
             ImGui::TableSetupColumn("##remove", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+            ImGui::TableSetupScrollFreeze(1, 1);
             ImGui::TableHeadersRow();
 
             for (int i = 0; i < static_cast<int>(s_mask.entries.size()); ++i) {
@@ -2511,14 +2525,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
             auto& ta = *terrainDraft;
 
             ImGui::SeparatorText("Geometry");
-            ImGui::LabelText("Columns",    "%d", ta.columns);
-            ImGui::LabelText("Rows",       "%d", ta.rows);
-            ImGui::LabelText("Cell Size",  "%.2f m", ta.cellSize);
-            ImGui::LabelText("Max Height", "%.2f m", ta.maxHeight);
-            ImGui::LabelText("Chunk Size", "%d", ta.chunkSize);
+            property::LabelText("Columns",    "%d", ta.columns);
+            property::LabelText("Rows",       "%d", ta.rows);
+            property::LabelText("Cell Size",  "%.2f m", ta.cellSize);
+            property::LabelText("Max Height", "%.2f m", ta.maxHeight);
+            property::LabelText("Chunk Size", "%d", ta.chunkSize);
             const float worldW = static_cast<float>(ta.columns - 1) * ta.cellSize;
             const float worldH = static_cast<float>(ta.rows    - 1) * ta.cellSize;
-            ImGui::LabelText("World Size", "%.0f m × %.0f m", worldW, worldH);
+            property::LabelText("World Size", "%.0f m × %.0f m", worldW, worldH);
 
             if (!ta.heightData.empty()) {
                 ImGui::SeparatorText("Height Data");
@@ -2528,23 +2542,23 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
                     if (v > hMax) hMax = v;
                 }
                 const float hRange = ta.maxHeight;
-                ImGui::LabelText("Points", "%zu", ta.heightData.size());
-                ImGui::LabelText("Min",    "%.2f m", hMin * hRange);
-                ImGui::LabelText("Max",    "%.2f m", hMax * hRange);
+                property::LabelText("Points", "%zu", ta.heightData.size());
+                property::LabelText("Min",    "%.2f m", hMin * hRange);
+                property::LabelText("Max",    "%.2f m", hMax * hRange);
             }
 
             ImGui::SeparatorText("Holes");
-            ImGui::LabelText("Hole Cells", "%zu / %zu", ta.CountHoles(), ta.CellCount());
+            property::LabelText("Hole Cells", "%zu / %zu", ta.CountHoles(), ta.CellCount());
 
             ImGui::SeparatorText("Layer Materials");
-            ImGui::LabelText("Layers", "%d", ta.LayerCount());
-            if (ImGui::SliderFloat("Height Blend Depth", &ta.heightBlendDepth, 0.01f, 1.0f, "%.2f"))
+            property::LabelText("Layers", "%d", ta.LayerCount());
+            if (property::SliderFloat("Height Blend Depth", &ta.heightBlendDepth, 0.01f, 1.0f, "%.2f"))
                 terrainDirty = true;
             int pendingRemove = -1;
             for (int li = 0; li < ta.LayerCount(); ++li) {
                 ImGui::PushID(li);
                 const std::string layerLabel = "Layer " + std::to_string(li);
-                if (widgets::AssetPathField(layerLabel.c_str(), ta.layerMaterials[static_cast<size_t>(li)], ".mat", ctx.projectRoot))
+                if (property::AssetPathField(layerLabel.c_str(), ta.layerMaterials[static_cast<size_t>(li)], ".mat", ctx.projectRoot))
                     terrainDirty = true;
                 ImGui::BeginDisabled(ta.LayerCount() <= 1);
                 if (ImGui::SmallButton("Remove")) pendingRemove = li;
@@ -2932,7 +2946,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         const ImGuiID activeBefore = ImGui::GetActiveID();
 
         bool editedByPreset = false;
-        if (ImGui::BeginCombo("Preset", physicsMaterial->presetName.empty()
+        if (property::BeginCombo("Preset", physicsMaterial->presetName.empty()
                                             ? "(custom)"
                                             : physicsMaterial->presetName.c_str())) {
             for (int i = 0; i < physics::PhysicsMaterial::PRESET_COUNT; ++i) {
@@ -3072,14 +3086,14 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         static int   s_seed       = 1;
         static float s_strength   = 1.0f;
 
-        ImGui::Combo("Recipe", &s_recipe, kRecipeLabels, IM_ARRAYSIZE(kRecipeLabels));
-        ImGui::SliderInt("Resolution", &s_resolution, 8, 64);
+        property::Combo("Recipe", &s_recipe, kRecipeLabels, IM_ARRAYSIZE(kRecipeLabels));
+        property::SliderInt("Resolution", &s_resolution, 8, 64);
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("1 辺のテクセル数。64 で 262144 ベクトルになります。\n"
                               "粒子の乱流としては 32 前後で十分で、細かくしても絵には出ません。");
-        ImGui::DragFloat3("Extents [m]", s_extents, 0.05f, 0.01f, 1000.0f);
-        ImGui::DragInt("Seed", &s_seed, 1, 1, 100000);
-        ImGui::DragFloat("Strength", &s_strength, 0.01f, -100.0f, 100.0f);
+        property::DragFloat3("Extents [m]", s_extents, 0.05f, 0.01f, 1000.0f);
+        property::DragInt("Seed", &s_seed, 1, 1, 100000);
+        property::DragFloat("Strength", &s_strength, 0.01f, -100.0f, 100.0f);
 
         if (ImGui::Button("Bake and Save")) {
             fluid::VectorFieldAsset baked;

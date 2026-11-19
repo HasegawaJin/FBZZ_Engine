@@ -207,6 +207,10 @@ Outcome DoVisualCompare(BusCall& call)
     ctx.aiViewportRenderUntilFrame = std::max<std::uint64_t>(ctx.aiViewportRenderUntilFrame, fbzz::Time::frameCount + 8);
     const auto target = view == "game" ? call.state.gameViewportRT : call.state.sceneViewportRT;
     if (!target.IsValid()) return Outcome::Err("NO_VIEWPORT", view + " ビューの RT が未生成です");
+    if (call.dryRun && ReadOption(call.payload, "updateBaseline")) return DryRunPreview(call.type + ":updateBaseline");
+    const auto& source = ctx.viewportCaptureFrames[view == "game" ? 1 : 0];
+    if (!CanReadCaptureFrame(ctx, source, target, 0))
+        return Outcome::Err("CAPTURE_NOT_READY", "CAPTURE_NOT_READY: 比較対象のビューが描画されるまで待ってください");
     std::vector<uint8_t> png;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -217,9 +221,9 @@ Outcome DoVisualCompare(BusCall& call)
     const fs::path outputDirectory = PlaytestOutputRoot(ctx) / "_visual";
     JsonValue result = JsonValue::MakeObject();
     result.Set("baseline", JsonValue(baselinePath.generic_string()));
+    result.Set("provenance", source.Describe<JsonValue>("ViewportOutput", "Output"));
 
     if (ReadOption(call.payload, "updateBaseline")) {
-        if (call.dryRun) return DryRunPreview(call.type + ":updateBaseline");
         if (!playtest::WriteBinaryFile(baselinePath, png)) return Outcome::Err("WRITE_FAILED", "基準画像を書けません");
         result.Set("status", JsonValue("updated"));
         return Outcome::Ok(std::move(result));

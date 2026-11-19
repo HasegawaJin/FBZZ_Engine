@@ -7,7 +7,10 @@
 /// @note IIblBaker::Bake() → 4 DDS + .ibl バイナリ記述子
 #pragma once
 #include <Editor/Panels/IPanel.hpp>
+#include <Engine/Renderer/IIblBaker.hpp>
 #include <array>
+#include <atomic>
+#include <future>
 #include <string>
 
 namespace fbzz::editor {
@@ -20,6 +23,7 @@ public:
     bool        GetDefaultVisibility() const override { return false; }
     void OnRegisterOperators(OperatorRegistry& registry) override;
     void OnUpdate(EditorContext& ctx, float dt) override;
+    void OnShutdown() override;
 
 protected:
     void OnRenderContent(EditorContext& ctx) override;
@@ -37,14 +41,25 @@ private:
     int m_brdfLutSize     = 256;
     int m_sampleCount     = 1024;
 
-    enum class Status { Idle, Baking, Done, Error };
+    enum class Status { Idle, Baking, Done, Error, Cancelled };
     bool m_bakeRequested = false;
     int m_job = 0;
     Status      m_status = Status::Idle;
     std::string m_statusMsg;
 
-    /// @note ベイク実行 (同期。大きい HDRI の場合 UI がフリーズする点に注意)
-    void DoBake(EditorContext& ctx);
+    struct BakeResult {
+        renderer::IblBakeOutput output;
+        std::string message;
+        bool success = false;
+    };
+    /// @note -1 は中止要求。90% で DDS 出力を確定するため、それ以降は中止を受け付けない。
+    std::atomic<int> m_progress{ 0 };
+    std::future<BakeResult> m_bake;
+    static constexpr int SAVE_PROGRESS = 90;
+
+    void StartBake(EditorContext& ctx);
+    void FinishBake(EditorContext& ctx, const BakeResult& result);
+    bool CancelBake();
 };
 
 } /// @note namespace fbzz::editor

@@ -3,7 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Editor/Util/ModalDialog.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <imgui.h>
+#include <algorithm>
 #include <cstring>
 #include <utility>
 
@@ -61,13 +63,21 @@ void ModalDialog::OnRender()
 
     ImVec2 center = ImGui::GetMainViewport()->GetCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, { 0.5f, 0.5f });
+    const auto available = ImGui::GetMainViewport()->WorkSize;
+    ImGui::SetNextWindowSizeConstraints({ 0.0f, 0.0f },
+        { available.x * 0.9f, available.y * 0.9f });
 
     if (ImGui::BeginPopupModal(s_state.title.c_str(), nullptr,
                                ImGuiWindowFlags_AlwaysAutoResize))
     {
+        const auto& style = ImGui::GetStyle();
+        const float maxContentWidth = std::max(1.0f, available.x * 0.9f - style.WindowPadding.x * 2.0f);
+        const auto buttonWidth = [&](int count) {
+            return std::clamp((maxContentWidth - style.ItemSpacing.x * (count - 1)) / count, 1.0f, 120.0f);
+        };
         /// @note テキスト入力ダイアログ
         if (s_state.isInput) {
-            ImGui::SetNextItemWidth(320.0f);
+            ImGui::SetNextItemWidth(std::min(320.0f, maxContentWidth));
             /// @note 初回フォーカスを InputText に当てる
             if (s_state.inputNeedsFocus) {
                 ImGui::SetKeyboardFocusHere();
@@ -80,9 +90,9 @@ void ModalDialog::OnRender()
                 ImGui::TextDisabled("%s", s_state.note.c_str());
             }
             ImGui::Spacing();
-            const bool ok = ImGui::Button("Create", { 120, 0 }) || entered;
+            const bool ok = ImGui::Button(LOCT("Create"), { buttonWidth(2), 0 }) || entered;
             ImGui::SameLine();
-            const bool cancel = ImGui::Button("Cancel", { 120, 0 });
+            const bool cancel = ImGui::Button(LOCT("Cancel"), { buttonWidth(2), 0 }) || ImGui::IsKeyPressed(ImGuiKey_Escape);
             if (ok && s_state.inputBuf[0] != '\0') {
                 if (s_state.onInput) s_state.onInput(s_state.inputBuf);
                 s_state.pending = false;
@@ -97,11 +107,13 @@ void ModalDialog::OnRender()
             return;
         }
 
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + available.x * 0.55f);
         ImGui::TextUnformatted(s_state.message.c_str());
+        ImGui::PopTextWrapPos();
         ImGui::Spacing();
 
         if (s_state.onSave || s_state.onDiscard) {
-            if (ImGui::Button("Save", { 120, 0 })) {
+            if (ImGui::Button(LOCT("Save"), { buttonWidth(3), 0 })) {
                 const bool saved = s_state.onSave ? s_state.onSave() : true;
                 if (saved) {
                     s_state.pending = false;
@@ -110,27 +122,27 @@ void ModalDialog::OnRender()
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button("Discard", { 120, 0 })) {
+            if (ImGui::Button(LOCT("Discard"), { buttonWidth(3), 0 })) {
                 if (s_state.onDiscard) s_state.onDiscard();
                 s_state.pending = false;
                 s_state.opened = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", { 120, 0 })) {
+            if (ImGui::Button(LOCT("Cancel"), { buttonWidth(3), 0 }) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
                 s_state.pending = false;
                 s_state.opened = false;
                 ImGui::CloseCurrentPopup();
             }
         } else {
-            if (ImGui::Button("OK", { 120, 0 })) {
+            if (ImGui::Button("OK", { buttonWidth(2), 0 })) {
                 if (s_state.onConfirm) s_state.onConfirm();
                 s_state.pending = false;
                 s_state.opened = false;
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel", { 120, 0 })) {
+            if (ImGui::Button(LOCT("Cancel"), { buttonWidth(2), 0 }) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
                 s_state.pending = false;
                 s_state.opened = false;
                 ImGui::CloseCurrentPopup();
@@ -144,4 +156,4 @@ void ModalDialog::OnRender()
     }
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

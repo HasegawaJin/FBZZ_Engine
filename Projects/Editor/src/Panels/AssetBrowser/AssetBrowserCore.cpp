@@ -195,7 +195,18 @@ bool IsModelPackageDirectory(const std::filesystem::path& dirPath)
     return util::FileSystem::Exists(asset::AssetManager::ResolveAssetPath(logical));
 }
 
+std::string AssetBrowserFolderKey(const std::string& path)
+{
+    return util::StringUtils::ToLower(util::FileSystem::NormalizePathSeparators(path));
+}
 
+bool IsVisibleAssetBrowserFolder(const std::string& path)
+{
+    const auto name = util::FileSystem::GetFilename(path);
+    return !name.starts_with('.') &&
+           !AssetBrowserFolderKey(path).ends_with("/shaders/compiled") &&
+           !IsModelPackageDirectory(util::FileSystem::PathFromUtf8(path));
+}
 
 AssetBrowserPanel::AssetBrowserPanel(const std::string& rootPath, std::size_t instanceIndex)
     : m_rootPath(util::FileSystem::NormalizePathSeparators(rootPath)),
@@ -360,7 +371,31 @@ void AssetBrowserPanel::HandleRevealRequest(EditorContext& ctx)
         ClearEntitySelection(ctx);
 }
 
-void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
+namespace {
+
+std::string ResolveFallbackAssetDir(const std::string& assetsRoot, const char* childDirName)
+{
+    auto current = util::FileSystem::PathFromUtf8(assetsRoot);
+
+    /// @note ホットリロードが無効でも、祖先の Assets から Scripts / Shaders を探して表示する。
+    for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
+        const auto candidate = current / "Assets" / childDirName;
+        if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(candidate)))
+            return util::FileSystem::PathToUtf8(candidate);
+
+        if (current.filename() == "Assets") {
+            const auto sibling = current / childDirName;
+            if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(sibling)))
+                return util::FileSystem::PathToUtf8(sibling);
+        }
+        current = current.parent_path();
+    }
+    return {};
+}
+
+} /// @note namespace
+
+std::vector<AssetMount> ResolveAssetBrowserMounts(const EditorContext& ctx, const std::string& assetsRoot)
 {
     std::vector<AssetMount> next;
 
@@ -368,15 +403,14 @@ void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
         if (name.empty() || path.empty() || !util::FileSystem::IsDirectory(path)) return;
 
         const std::string normalizedPath = util::FileSystem::NormalizePathSeparators(path);
-        const std::string rootChild = util::FileSystem::NormalizePathSeparators(m_rootPath + "/" + name);
+        const std::string rootChild = util::FileSystem::NormalizePathSeparators(assetsRoot + "/" + name);
 
         /// @note プロジェクト Assets 側に実フォルダがある場合はそれを正とする。ただし空フォルダだけがあるケースでは、実体側 Scripts/HLSL が見えなくなるためマウントを許可する。
         if (util::FileSystem::IsDirectory(rootChild) &&
             !util::FileSystem::ListAll(rootChild).empty()) {
             return;
         }
-        if (util::FileSystem::SamePathText(normalizedPath, m_rootPath) ||
-            util::FileSystem::IsChildPathText(m_rootPath, normalizedPath)) return;
+        if (util::FileSystem::IsChildPathText(assetsRoot, normalizedPath)) return;
         for (const AssetMount& mount : next) {
             if (util::FileSystem::SamePathText(mount.path, normalizedPath) || mount.name == name) return;
         }
@@ -385,14 +419,19 @@ void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
 
     /// @note Scripts / shaders はプロジェクトテンプレート、エンジン内蔵 Assets、外部プロジェクト Assets のどこに置かれても編集対象として見える必要がある。
     const std::string scriptsDir = ctx.scriptsSourceDir.empty()
-        ? ResolveFallbackAssetDir("Scripts")
+        ? ResolveFallbackAssetDir(assetsRoot, "Scripts")
         : ctx.scriptsSourceDir;
     const std::string hlslDir = ctx.hlslSourceDir.empty()
-        ? ResolveFallbackAssetDir("Shaders")
+        ? ResolveFallbackAssetDir(assetsRoot, "Shaders")
         : ctx.hlslSourceDir;
     addMount("Scripts", scriptsDir);
     addMount("Shaders", hlslDir);
+    return next;
+}
 
+void AssetBrowserPanel::UpdateMounts(const EditorContext& ctx)
+{
+    auto next = ResolveAssetBrowserMounts(ctx, m_rootPath);
     const bool changed = next.size() != m_mounts.size()
         || !std::equal(next.begin(), next.end(), m_mounts.begin(),
             [](const AssetMount& a, const AssetMount& b) {
@@ -551,19 +590,11 @@ void AssetBrowserPanel::RefreshDirectory()
 bool AssetBrowserPanel::ShouldDisplayEntry(
     const std::string& path, const std::string& name, bool isDir)
 {
+    if (isDir) return IsVisibleAssetBrowserFolder(path);
     const std::string lowerName = util::StringUtils::ToLower(name);
-    const std::string lowerPath = util::StringUtils::ToLower(
-        util::FileSystem::NormalizePathSeparators(path));
 
     /// @note OS・VCS の管理ファイルはアセットではないため、ドット始まりを共通で隠す。
     if (!lowerName.empty() && lowerName.front() == '.') return false;
-
-    /// @note compiled は HLSL から再生成できる実行時バイナリ置き場であり、ユーザーが Asset Browser から開いたり移動したりする対象ではない。
-    if (isDir) {
-        if (util::StringUtils::EndsWith(lowerPath, "/shaders/compiled")) return false;
-        if (IsModelPackageDirectory(util::FileSystem::PathFromUtf8(path))) return false;
-        return true;
-    }
 
     /// @note Header Tool、FBX importer、Shader compiler が生成する派生ファイルを隠し、原本の .hpp / .fbx / .hlsl だけを操作対象にする。
     static constexpr const char* kGeneratedSuffixes[] = {
@@ -645,31 +676,6 @@ std::string AssetBrowserPanel::ParentPath() const
             return m_rootPath;
     }
     return parent;
-}
-
-std::string AssetBrowserPanel::ResolveFallbackAssetDir(const std::string& childDirName) const
-{
-    if (childDirName.empty()) return {};
-
-    std::filesystem::path current = util::FileSystem::PathFromUtf8(
-        util::FileSystem::NormalizePathSeparators(m_rootPath));
-
-    /// @note ctx.scriptsSourceDir は hot reload の ToolchainLocator 成功後にだけ入る (ctx.hlslSourceDir は ToolchainLocator に依存しなくなったが、hotReloadEnabled が false なら依然として空)。AssetBrowser は hot reload なしでも使うため、現在の Assets ルートから親をたどってリポジトリ側 Assets/Scripts や Assets/Shaders を見つける。
-    for (int depth = 0; depth < 8 && !current.empty(); ++depth) {
-        const std::filesystem::path candidate = current / "Assets" / childDirName;
-        if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(candidate)))
-            return util::FileSystem::PathToUtf8(candidate);
-
-        if (current.filename() == "Assets") {
-            const std::filesystem::path sibling = current.parent_path() / "Assets" / childDirName;
-            if (util::FileSystem::IsDirectory(util::FileSystem::PathToUtf8(sibling)))
-                return util::FileSystem::PathToUtf8(sibling);
-        }
-
-        current = current.parent_path();
-    }
-
-    return {};
 }
 
 bool AssetBrowserPanel::IsMountedRoot(const std::string& path) const

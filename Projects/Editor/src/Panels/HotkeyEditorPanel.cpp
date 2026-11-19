@@ -9,9 +9,38 @@
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
+#include <Editor/Util/Localization.hpp>
 #include <imgui.h>
 
 namespace fbzz::editor {
+
+namespace {
+
+std::string ScopeLabel(HotkeyScope scope)
+{
+    if (HasScope(scope, HotkeyScope::Global)) return LOCT("Anywhere");
+    struct Entry { HotkeyScope scope; const char* label; };
+    constexpr Entry scopes[] = {
+        { HotkeyScope::SceneViewport, "Scene View" },
+        { HotkeyScope::Hierarchy, "Hierarchy" },
+        { HotkeyScope::AssetBrowser, "Assets" },
+        { HotkeyScope::FluidEditor, "Fluid Editor" },
+        { HotkeyScope::Sequence, "Sequence" },
+        { HotkeyScope::BehaviorTree, "Behavior Tree" },
+        { HotkeyScope::SpriteEditor, "Sprite Editor" },
+        { HotkeyScope::AnimationGraph, "Animation Graph" },
+        { HotkeyScope::HotkeyEditor, "Hotkey Editor" },
+    };
+    std::string text;
+    for (const auto& entry : scopes) {
+        if (!HasScope(scope, entry.scope)) continue;
+        if (!text.empty()) text += " / ";
+        text += LOCT(entry.label);
+    }
+    return text;
+}
+
+} /// @note namespace
 
 void HotkeyEditorPanel::OnRegisterOperators(OperatorRegistry& registry)
 {
@@ -75,28 +104,32 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
             m_rebindTarget.c_str());
         ImGui::Separator();
 
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (!ctx.PanelScopeFocused(HotkeyScope::HotkeyEditor)) {
+            ImGui::TextDisabled("Focus this panel to enter the new shortcut.");
+        } else if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             m_rebindTarget.clear();
             m_conflictNote.clear();
         } else {
-            for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; ++k) {
+            for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_GamepadStart; ++k) {
                 if (k == ImGuiKey_Escape) continue;
                 if (k == ImGuiKey_LeftCtrl  || k == ImGuiKey_RightCtrl)  continue;
                 if (k == ImGuiKey_LeftShift || k == ImGuiKey_RightShift) continue;
                 if (k == ImGuiKey_LeftAlt   || k == ImGuiKey_RightAlt)   continue;
-                if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k))) continue;
+                if (k == ImGuiKey_LeftSuper || k == ImGuiKey_RightSuper) continue;
+                if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k), false)) continue;
 
                 const bool ctrl  = ImGui::IsKeyDown(ImGuiKey_LeftCtrl)  || ImGui::IsKeyDown(ImGuiKey_RightCtrl);
                 const bool shift = ImGui::IsKeyDown(ImGuiKey_LeftShift) || ImGui::IsKeyDown(ImGuiKey_RightShift);
                 const bool alt   = ImGui::IsKeyDown(ImGuiKey_LeftAlt)   || ImGui::IsKeyDown(ImGuiKey_RightAlt);
 
-                /// @note 既存の割り当てを黙って潰すと後で気づけないため、割り当ては行ったうえで警告を残す。
                 const std::string conflict =
                     ctx.hotkeyManager->FindConflict(m_rebindTarget, k, ctrl, shift, alt);
+                if (!conflict.empty()) {
+                    m_conflictNote = "This shortcut is already used by \"" + conflict + "\".";
+                    break;
+                }
                 ctx.hotkeyManager->Rebind(m_rebindTarget, k, ctrl, shift, alt);
-                m_conflictNote = conflict.empty()
-                    ? std::string{}
-                    : ("\"" + m_rebindTarget + "\" now shares its binding with \"" + conflict + "\"");
+                m_conflictNote.clear();
                 m_rebindTarget.clear();
                 break;
             }
@@ -134,17 +167,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
             /// @note どこにフォーカスがあるとき効くのかを出す。同じ Delete が複数のスコープで効くことが
             ///       分からないと「効いたり効かなかったりする」ように見える。
             ImGui::TableSetColumnIndex(1);
-            std::string scopeText;
-            if (HasScope(hk.scope, HotkeyScope::Global))        scopeText = "Anywhere";
-            else {
-                if (HasScope(hk.scope, HotkeyScope::SceneViewport)) scopeText += "Scene View";
-                if (HasScope(hk.scope, HotkeyScope::Hierarchy))
-                    scopeText += scopeText.empty() ? "Hierarchy" : " / Hierarchy";
-                if (HasScope(hk.scope, HotkeyScope::AssetBrowser))
-                    scopeText += scopeText.empty() ? "Assets" : " / Assets";
-                if (HasScope(hk.scope, HotkeyScope::FluidEditor))
-                    scopeText += scopeText.empty() ? "Fluid Editor" : " / Fluid Editor";
-            }
+            const std::string scopeText = ScopeLabel(hk.scope);
             ImGui::TextDisabled("%s", scopeText.c_str());
 
             ImGui::TableSetColumnIndex(2);
@@ -174,4 +197,4 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
     ImGui::TextDisabled("Rebinds are saved to editor_settings.toml when the editor exits.");
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

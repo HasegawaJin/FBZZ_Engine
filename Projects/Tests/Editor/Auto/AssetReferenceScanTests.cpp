@@ -64,6 +64,55 @@ protected:
     testkit::TempDir m_temp{"asset-reference-scan"};
 };
 
+/// @brief Cycles retain their evidence, do not revisit nodes and never turn a GUID hint into a resolved edge.
+TEST_F(AssetReferenceScanTest, GraphKeepsCyclesAndUnresolvedAuthority)
+{
+    const std::string prefabGuid = "11111111111111111111111111111111";
+    const std::string materialGuid = "22222222222222222222222222222222";
+    const std::string missingGuid = "33333333333333333333333333333333";
+    ASSERT_TRUE(Write("Assets/Root.prefab", "material = 'Assets/Other.mat'\n"));
+    ASSERT_TRUE(Write("Assets/Root.prefab.meta", "[meta]\nguid = '" + prefabGuid + "'\n"));
+    ASSERT_TRUE(Write("Assets/Other.mat",
+        "root = 'guid:" + prefabGuid + "'\n"
+        "missing = 'guid:" + missingGuid + ":4|Assets/Root.prefab'\n"
+        "legacy_missing = 'Assets/Missing.mat'\n"
+        "note = 'Assets/Missing.mat in the old demo'\n"
+        "bad_suffix = 'guid:" + materialGuid + "extra'\n"));
+    ASSERT_TRUE(Write("Assets/Other.mat.meta", "[meta]\nguid = '" + materialGuid + "'\n"));
+    asset::AssetDatabase::Init(Path("Assets"));
+
+    editor::assetrefs::GraphScan graph;
+    graph.Begin({Root(), prefabGuid, 17, asset::AssetDatabase::Revision(),
+        {Entry("Assets/Other.mat"), Entry("Assets/Root.prefab")}}, 4);
+    graph.Advance(1);
+    EXPECT_FALSE(graph.Result().finished);
+    graph.Advance(1);
+    const auto& report = graph.Result();
+    ASSERT_TRUE(report.finished);
+    EXPECT_FALSE(report.limited);
+    ASSERT_EQ(report.outgoing.hops.size(), 4u);
+    EXPECT_EQ(report.outgoing.relatedCount, 3u);
+    EXPECT_EQ(report.outgoing.brokenCount, 2u);
+    EXPECT_FALSE(report.outgoing.depthLimited);
+    const auto& first = report.edges[report.outgoing.hops[0].edge];
+    EXPECT_EQ(first.kind, "path");
+    EXPECT_EQ(report.nodes[first.target].guid, materialGuid);
+    for (const auto& hop : report.outgoing.hops) {
+        const auto& edge = report.edges[hop.edge];
+        if (edge.field == "legacy_missing") {
+            EXPECT_EQ(report.nodes[edge.target].state, editor::assetrefs::GraphNodeState::MISSING_PATH);
+            EXPECT_EQ(report.nodes[edge.target].path, "Assets/Missing.mat");
+        }
+        if (edge.field != "missing") continue;
+        EXPECT_EQ(hop.distance, 2u);
+        EXPECT_EQ(edge.suffix, ":4");
+        EXPECT_EQ(edge.hint, "Assets/Root.prefab");
+        EXPECT_EQ(report.nodes[edge.target].guid, missingGuid);
+        EXPECT_TRUE(report.nodes[edge.target].path.empty());
+        EXPECT_EQ(report.nodes[edge.target].state, editor::assetrefs::GraphNodeState::MISSING_GUID);
+    }
+}
+
 /// @brief Finds codec GUID and nested path values with owner and field evidence.
 TEST_F(AssetReferenceScanTest, FindsCodecGuidAndNestedPathValuesWithOwnerAndFieldEvidence)
 {

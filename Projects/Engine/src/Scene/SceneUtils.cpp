@@ -92,12 +92,21 @@ renderer::Camera ResolveEditorGameCamera(Scene& scene,
                                          const renderer::Camera& editorFallback,
                                          float aspectRatio)
 {
+    return ResolveEditorGameCamera(scene, editorFallback, aspectRatio, nullptr);
+}
+
+renderer::Camera ResolveEditorGameCamera(Scene& scene,
+                                         const renderer::Camera& editorFallback,
+                                         float aspectRatio, std::string* cameraId)
+{
     renderer::Camera camera = editorFallback;
     camera.m_aspect = aspectRatio;
+    if (cameraId) cameraId->clear();
 
     if (auto* owner = FindMainCameraOwner(scene)) {
         auto& go = *owner;
         auto* cam = go.GetComponent<CameraComponent>();
+        if (cameraId) *cameraId = go.instanceId;
 
         camera.m_position = go.transform.worldPosition;
         camera.m_rotation = go.transform.worldRotation;

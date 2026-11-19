@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 
+#include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/Components/MeshTrailComponent.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/TrailComponent.hpp>
@@ -63,12 +64,12 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
 
     DrawComponentSection<scene::TrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Trail",
         [](scene::TrailComponent& trail, EditorContext& ctx) {
-            ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
-            ImGui::DragInt("Max Points", &trail.maxPoints, 1, 2, 512);
-            ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
-            ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
+            property::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
+            property::DragInt("Max Points", &trail.maxPoints, 1, 2, 512);
+            property::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
+            property::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
             /// @note 瞬間移動の切断。0 は «切らない» で、既存シーンの見た目を保つ既定。
-            ImGui::DragFloat("Break Distance", &trail.breakDistance, 0.01f, 0.0f, 500.0f);
+            property::DragFloat("Break Distance", &trail.breakDistance, 0.01f, 0.0f, 500.0f);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Cut the trail when it jumps farther than this in one frame. 0 = never cut.");
 
@@ -76,78 +77,78 @@ void DrawEffectsInspectors(scene::GameObject* go, EditorContext& ctx, std::any& 
             /// @note curveChanged を拾うのは、カーブ / グラデーションのキードラッグ編集は ImGui の
             /// @note ActiveID 追跡が拾えず、捨てると dirty マークが立たず保存し忘れで消えるため。
             bool curveChanged = false;
-            ImGui::Checkbox("Use Width Curve", &trail.widthCurveEnabled);
+            property::Checkbox("Use Width Curve", &trail.widthCurveEnabled);
             if (trail.widthCurveEnabled) {
-                ImGui::DragFloat("Width Scale", &trail.widthStart, 0.001f, 0.0f, 10.0f);
+                property::DragFloat("Width Scale", &trail.widthStart, 0.001f, 0.0f, 10.0f);
                 curveChanged |= widgets::CurveEditor("Width Curve", trail.widthCurve, 1.0f, 96.0f, &ctx.projectRoot);
             } else {
-                ImGui::DragFloat("Width Start", &trail.widthStart, 0.001f, 0.0f, 10.0f);
-                ImGui::DragFloat("Width End", &trail.widthEnd, 0.001f, 0.0f, 10.0f);
+                property::DragFloat("Width Start", &trail.widthStart, 0.001f, 0.0f, 10.0f);
+                property::DragFloat("Width End", &trail.widthEnd, 0.001f, 0.0f, 10.0f);
                 const char* widthEasingItems[] = { "Linear", "Ease In", "Ease Out", "Ease In Out" };
                 int widthEasing = static_cast<int>(trail.widthEasing);
-                if (ImGui::Combo("Width Easing", &widthEasing, widthEasingItems, 4))
+                if (property::Combo("Width Easing", &widthEasing, widthEasingItems, 4))
                     trail.widthEasing = static_cast<scene::TrailWidthEasing>(widthEasing);
             }
 
-            ImGui::Checkbox("Use Color Gradient", &trail.colorGradientEnabled);
+            property::Checkbox("Use Color Gradient", &trail.colorGradientEnabled);
             if (trail.colorGradientEnabled) {
                 curveChanged |= widgets::GradientEditor("Color Gradient", trail.colorGradient, &ctx.projectRoot);
             } else {
                 float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
-                if (ImGui::ColorEdit4("Color Start", cs))
+                if (property::ColorEdit4("Color Start", cs))
                     trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
                 float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
-                if (ImGui::ColorEdit4("Color End", ce))
+                if (property::ColorEdit4("Color End", ce))
                     trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
             }
             if (curveChanged && ctx.markSceneDirty) ctx.markSceneDirty();
 
             const char* alignmentItems[] = { "Camera Facing", "World Up" };
             int alignment = static_cast<int>(trail.alignment);
-            if (ImGui::Combo("Alignment", &alignment, alignmentItems, 2))
+            if (property::Combo("Alignment", &alignment, alignmentItems, 2))
                 trail.alignment = static_cast<scene::TrailAlignment>(alignment);
 
-            ImGui::DragInt("Smooth Subdivisions", &trail.smoothSubdivisions, 1, 0, 8);
+            property::DragInt("Smooth Subdivisions", &trail.smoothSubdivisions, 1, 0, 8);
             char boneBuf[256];
             std::snprintf(boneBuf, sizeof(boneBuf), "%s", trail.attachBone.c_str());
-            if (ImGui::InputText("Attach Bone", boneBuf, sizeof(boneBuf)))
+            if (property::InputText("Attach Bone", boneBuf, sizeof(boneBuf)))
                 trail.attachBone = boneBuf;
             widgets::DragVec3("Attach Offset", trail.attachOffset, 0.001f);
-            ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
+            property::Checkbox("Clear On Disable", &trail.clearOnDisable);
             /// @note .mat アセット参照。albedo テクスチャを .mat から解決する。
             /// @note 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
-            if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
+            if (property::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
                 trail.loadedMaterialPath.clear();
                 trail.texture = {};
                 trail.loadedTexturePath.clear();
             }
             const char* uvModeItems[] = { "Stretch", "Tile" };
             int uvMode = static_cast<int>(trail.uvMode);
-            if (ImGui::Combo("UV Mode", &uvMode, uvModeItems, 2))
+            if (property::Combo("UV Mode", &uvMode, uvModeItems, 2))
                 trail.uvMode = static_cast<scene::TrailUVMode>(uvMode);
-            ImGui::DragFloat("UV Scroll Speed", &trail.uvScrollSpeed, 0.001f, -20.0f, 20.0f);
-            ImGui::DragFloat("UV Tiling", &trail.uvTiling, 0.001f, 0.001f, 100.0f);
+            property::DragFloat("UV Scroll Speed", &trail.uvScrollSpeed, 0.001f, -20.0f, 20.0f);
+            property::DragFloat("UV Tiling", &trail.uvTiling, 0.001f, 0.001f, 100.0f);
         });
 
     DrawComponentSection<scene::MeshTrailComponent>(go, ctx, m_componentClipboard, m_componentClipboardType, "Mesh Trail",
         [](scene::MeshTrailComponent& trail, EditorContext& ctx) {
-            ImGui::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
-            ImGui::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
-            ImGui::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
-            ImGui::DragInt("Max Samples", &trail.maxSamples, 1, 1, 128);
+            property::DragFloat("Duration", &trail.duration, 0.01f, 0.01f, 30.0f);
+            property::DragFloat("Sample Interval", &trail.sampleInterval, 0.001f, 0.0f, 1.0f);
+            property::DragFloat("Min Vertex Dist", &trail.minVertexDist, 0.001f, 0.0f, 10.0f);
+            property::DragInt("Max Samples", &trail.maxSamples, 1, 1, 128);
 
             float cs[4] = { trail.colorStart.x, trail.colorStart.y, trail.colorStart.z, trail.colorStart.w };
-            if (ImGui::ColorEdit4("Color Start", cs))
+            if (property::ColorEdit4("Color Start", cs))
                 trail.colorStart = { cs[0], cs[1], cs[2], cs[3] };
             float ce[4] = { trail.colorEnd.x, trail.colorEnd.y, trail.colorEnd.z, trail.colorEnd.w };
-            if (ImGui::ColorEdit4("Color End", ce))
+            if (property::ColorEdit4("Color End", ce))
                 trail.colorEnd = { ce[0], ce[1], ce[2], ce[3] };
 
-            ImGui::Checkbox("Double Sided", &trail.doubleSided);
-            ImGui::Checkbox("Clear On Disable", &trail.clearOnDisable);
+            property::Checkbox("Double Sided", &trail.doubleSided);
+            property::Checkbox("Clear On Disable", &trail.clearOnDisable);
             /// @note .mat アセット参照。albedo テクスチャと doubleSided を .mat から解決する。
             /// @note 変更時はキャッシュを無効化してレンダーパスに再ロードさせる。
-            if (widgets::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
+            if (property::AssetPathField("Material (.mat)", trail.materialPath, ".mat", ctx.projectRoot)) {
                 trail.loadedMaterialPath.clear();
                 trail.texture = {};
                 trail.loadedTexturePath.clear();

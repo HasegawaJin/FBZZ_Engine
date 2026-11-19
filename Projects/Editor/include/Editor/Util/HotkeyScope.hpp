@@ -20,6 +20,11 @@ enum class HotkeyScope : std::uint32_t {
     Hierarchy     = 1u << 2,
     AssetBrowser  = 1u << 3,
     FluidEditor   = 1u << 4,   ///< Fluid Editor パネルにフォーカスがあるとき
+    Sequence      = 1u << 5,
+    BehaviorTree  = 1u << 6,
+    SpriteEditor  = 1u << 7,
+    AnimationGraph = 1u << 8,
+    HotkeyEditor  = 1u << 9,
 };
 
 constexpr HotkeyScope operator|(HotkeyScope a, HotkeyScope b)
@@ -31,4 +36,4 @@ constexpr bool HasScope(HotkeyScope set, HotkeyScope test)
     return (static_cast<std::uint32_t>(set) & static_cast<std::uint32_t>(test)) != 0;
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor

@@ -4,6 +4,7 @@
 /// @date    2026-05-21
 #pragma once
 #include <Editor/AssetFileWatcher.hpp>
+#include <Editor/Util/AssetBrowserFolders.hpp>
 #include <Editor/Util/AssetQueryCache.hpp>
 #include <Editor/Import/FbxImportTool.hpp>
 #include <Editor/Panels/IPanel.hpp>
@@ -21,6 +22,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -84,11 +86,6 @@ private:
         uint32_t    spriteIndex = 0; /// @note .meta 内 sprites 配列の添字
     };
 
-    struct AssetMount {
-        std::string name;
-        std::string path;
-    };
-
     /// @note 展開した親アセットとそのサブアセットを 1 本の帯で繋ぐための隣接情報。
     /// @note グリッドは折り返すため「親 → 子 → 子 …」を 1 つの矩形では描けない。タイルごとに帯を描き、
     /// @note 同じ行で隣接する帯をセル間の中点で接合することで途切れのない 1 本に見せる
@@ -116,12 +113,13 @@ private:
     /// @note 左ツリーのファイル 1 行 (m_treeShowFiles が有効なときだけ描かれる葉)。
     void DrawTreeFileRow(const Entry& e, EditorContext& ctx);
     void DrawEntry(const Entry& e, EditorContext& ctx, const SubAssetBand& band = {});
-    void DrawCreateMenu(EditorContext& ctx);
+    void DrawCreateMenu(EditorContext& ctx, const std::string& directory);
+    void DrawFolderDestinationMenu(EditorContext& ctx, const std::string& directory);
+    void DrawAssetLocationMenu(EditorContext& ctx, const std::string& path);
     void UpdateMounts(const EditorContext& ctx);
 
     [[nodiscard]] std::string DisplayPath() const;
     [[nodiscard]] std::string ParentPath() const;
-    [[nodiscard]] std::string ResolveFallbackAssetDir(const std::string& childDirName) const;
     [[nodiscard]] bool        IsMountedRoot(const std::string& path) const;
     [[nodiscard]] bool        IsRootOrMountedPath(const std::string& path) const;
     /// @note Asset Browser にはユーザーが直接編集・選択するアセットだけを表示する。
@@ -140,17 +138,9 @@ private:
                                                 ImVec4& outColor);
     /// @note 右クリックメニューの "Set Color" (プリセット / 最近使った色 / カスタム / Reset)。
     void DrawFolderColorMenu(const std::string& folderPath, EditorContext& ctx);
-    /// @note folderPath に色を設定する。color が null なら解除。
-    /// @note m_folderColorApplyRecursive が立っていれば配下のフォルダすべてに同じ操作をする。
-    void ApplyFolderColor(const std::string& folderPath, const uint32_t* color, EditorContext& ctx);
-    /// @note 最近使った色の先頭へ積む (同じ色は重複させず先頭へ移し、上限を超えた分は捨てる)。
-    static void PushRecentFolderColor(uint32_t color, EditorContext& ctx);
-    /// @note 最近使った色の保持数。1 行に収まる数に留める。
-    static constexpr std::size_t kMaxRecentFolderColors = 8;
-
     /// @note Custom ピッカーの作業色と、それがどのフォルダのものか。
     /// @note 別のフォルダでメニューを開いたときに前の編集値が残ると、関係のない色から編集を始めることになる。
-    /// @note 対象が変わったら現在色で初期化する。
+    /// @note ピッカーを開くたびに現在色で初期化する。
     std::string m_folderColorPickerPath;
     ImVec4      m_folderColorPickerValue{ 0.5f, 0.5f, 0.5f, 1.0f };
     /// @note 次に選ぶ色を配下のフォルダにも適用するか (Unreal の Set Color と同じ選択肢)。
@@ -213,7 +203,15 @@ private:
 
     /// @note DrawEntry の責務分割
     void DrawEntryBadges(ImDrawList* dl, ImVec2 origin, float sz, const Entry& e);
-    void DrawEntryContextMenu(const Entry& e, EditorContext& ctx);
+    void DrawEntryContextMenu(const Entry& e, EditorContext& ctx, bool allowBatch = true);
+    void DrawFolderContextItems(const Entry& folder, EditorContext& ctx);
+    void DrawAssetEditItems(const Entry& e, EditorContext& ctx, bool canModify);
+    void DrawAssetTrashItem(EditorContext& ctx, std::vector<std::string> paths, bool enabled = true);
+    void OpenMenuFolder(const std::string& path);
+    void RenameMenuAsset(EditorContext& ctx, const std::string& path);
+    [[nodiscard]] bool CanModifyAssetPath(const std::string& path) const;
+    /// @note 一覧やお気に入りを更新する操作は、現在の描画で参照している行をすべて使い終えてから行う。
+    std::function<void()> m_pendingMenuAction;
     void DrawEntryRenameLabel(const Entry& e, EditorContext& ctx);
     /// @note 作成直後やショートカット操作から、同じインラインリネーム状態へ入るための共通入口。
     void BeginRenameForPath(const std::string& path, EditorContext* ctx = nullptr);
@@ -239,7 +237,8 @@ private:
     /// @note 選択群を「コピーして別フォルダへ貼り付け」る動線がなかった。
     void HandleClipboardShortcuts(EditorContext& ctx);
     void CopySelectionToClipboard();
-    void PasteClipboardAssets(EditorContext& ctx);
+    void PasteClipboardAssets(EditorContext& ctx, const std::string& destination);
+    [[nodiscard]] bool CanPasteClipboardPath(const std::string& path, const std::string& destination) const;
     std::vector<std::string> m_clipboardPaths; /// @note Ctrl+C でスナップショットした絶対パス群
 
     /// @note FBX または Sprite Texture の従属アセットを列挙して、展開時のグリッドに挿入する。
@@ -359,7 +358,8 @@ private:
     /// @name Save Modified ダイアログ状態
     /// @{
     bool m_showSaveModifiedDialog = false;
-    std::vector<bool> m_saveModifiedSelected; /// @note GetAll() の各エントリに対応
+    std::vector<std::string> m_saveModifiedExcluded;
+    int m_saveModifiedFailures = 0;
 
     /// @note このパネルが何枚目か。ウィンドウ名と保存先スロットを決めるだけで、
     /// @note 中身の挙動は 1 枚目と完全に同じ。

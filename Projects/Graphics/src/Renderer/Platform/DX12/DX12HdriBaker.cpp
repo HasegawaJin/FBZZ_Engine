@@ -82,9 +82,8 @@ D3D12_HEAP_PROPERTIES HeapProps(D3D12_HEAP_TYPE type)
 
 } /// @note namespace
 
-DX12HdriBaker::DX12HdriBaker(DX12Context* context, DX12PsoCache* psoCache)
-    : m_context(context), m_psoCache(psoCache),
-      m_device(context ? context->GetDevice() : nullptr)
+DX12HdriBaker::DX12HdriBaker(ID3D12Device* device, ID3D12RootSignature* rootSignature)
+    : m_device(device), m_rootSignature(rootSignature)
 {
 }
 
@@ -108,15 +107,15 @@ bool DX12HdriBaker::Bake(
         FBZZ_LOG_ERROR("DX12HdriBaker: compiledShadersDir が未設定です");
         return false;
     }
-    if (!m_device || !m_context->GetCommandQueue()) {
-        FBZZ_LOG_ERROR("DX12HdriBaker: DX12 デバイス/キューが無効です");
+    if (!m_device || !m_rootSignature) {
+        FBZZ_LOG_ERROR("DX12HdriBaker: DX12 デバイスまたはルート署名が無効です");
         return false;
     }
     if (!EnsureCommon() || !EnsurePipelines(input.compiledShadersDir))
         return false;
 
-    std::error_code ec;
-    fs::create_directories(util::StringUtils::ToWide(outputDir), ec);
+    const auto report = [&](int percent) { return !input.reportProgress || input.reportProgress(percent); };
+    if (!report(25)) return false;
 
     /// @name Phase 1: Equirect → Env Cubemap mip0
     Resource equirectTex;
@@ -143,7 +142,7 @@ bool DX12HdriBaker::Bake(
     /// @note env mip0 を読み戻し、CPU で mip 連鎖を生成する (DX12 は GenerateMips が無いため)。
     DirectX::ScratchImage envMip0Image;
     if (FAILED(DirectX::CaptureTexture(
-            m_context->GetCommandQueue(), envMip0.Get(), /*isCubeMap*/ true, envMip0Image,
+            m_queue.Get(), envMip0.Get(), /*isCubeMap*/ true, envMip0Image,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))) {
         FBZZ_LOG_ERROR("DX12HdriBaker: Env Cubemap の CaptureTexture に失敗しました");
         return false;
@@ -174,20 +173,14 @@ bool DX12HdriBaker::Bake(
     const std::string prefilterPath = makePath("_prefilter");
     const std::string brdfPath      = makePath("_brdf");
 
-    /// @note *_env.dds は mip 連鎖付きで保存 (実行時の Skybox/IBL 消費側が LOD を得られるようにする)。
-    if (FAILED(DirectX::SaveToDDSFile(
-            envChain.GetImages(), envChain.GetImageCount(), envChain.GetMetadata(),
-            DirectX::DDS_FLAGS_NONE, util::StringUtils::ToWide(envPath).c_str()))) {
-        FBZZ_LOG_ERROR("DX12HdriBaker: *_env.dds の保存に失敗しました [%s]", envPath.c_str());
-        return false;
-    }
+    if (!report(55)) return false;
 
     /// @note 畳み込み用に mip 連鎖付き env cube を GPU へ再アップロードする。
     Resource envCube = CreateCubemap(input.envCubemapSize, envMipCount);
     if (!envCube) return false;
     std::vector<D3D12_SUBRESOURCE_DATA> envSubresources;
     if (FAILED(DirectX::PrepareUpload(
-            m_device, envChain.GetImages(), envChain.GetImageCount(),
+            m_device.Get(), envChain.GetImages(), envChain.GetImageCount(),
             envChain.GetMetadata(), envSubresources))) {
         FBZZ_LOG_ERROR("DX12HdriBaker: Env Cubemap の PrepareUpload に失敗しました");
         return false;
@@ -242,6 +235,19 @@ bool DX12HdriBaker::Bake(
     }
     if (!ExecuteAndWait()) return false;
 
+    /// @note ここまでを中止可能とする。書き出し開始後は最後まで一連の出力を確定させる。
+    if (!report(90)) return false;
+    std::error_code ec;
+    fs::create_directories(util::StringUtils::ToWide(outputDir), ec);
+    if (ec) return false;
+
+    if (FAILED(DirectX::SaveToDDSFile(
+            envChain.GetImages(), envChain.GetImageCount(), envChain.GetMetadata(),
+            DirectX::DDS_FLAGS_NONE, util::StringUtils::ToWide(envPath).c_str()))) {
+        FBZZ_LOG_ERROR("DX12HdriBaker: *_env.dds の保存に失敗しました [%s]", envPath.c_str());
+        return false;
+    }
+
     /// @note 読み戻して DDS 保存 (irradiance / prefilter は cube、brdf は 2D)。
     if (!SaveDds(irradianceCube.Get(), true, irrPath)) return false;
     if (!SaveDds(prefilterCube.Get(), true, prefilterPath)) return false;
@@ -261,6 +267,12 @@ bool DX12HdriBaker::EnsureCommon()
 {
     /// @note 構築済み
     if (m_commandList) return true;
+
+    /// @note 描画用のキュー・コンテキストを待たせず、ベイク所有のコマンドとリソースだけを実行する。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/user-mode-heap-synchronization Multi-engine synchronization
+    D3D12_COMMAND_QUEUE_DESC queueDesc{};
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    if (FAILED(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_queue)))) return false;
 
     if (FAILED(m_device->CreateCommandAllocator(
             D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_allocator)))) {
@@ -346,7 +358,7 @@ ComPtr<ID3D12PipelineState> DX12HdriBaker::LoadComputePso(const std::string& cso
         return nullptr;
     }
     D3D12_COMPUTE_PIPELINE_STATE_DESC desc{};
-    desc.pRootSignature = m_psoCache->GetComputeRootSignature();
+    desc.pRootSignature = m_rootSignature.Get();
     desc.CS = {blob.data(), blob.size()};
     ComPtr<ID3D12PipelineState> pso;
     if (FAILED(m_device->CreateComputePipelineState(&desc, IID_PPV_ARGS(&pso)))) {
@@ -364,7 +376,7 @@ void DX12HdriBaker::BeginRecording()
     m_commandList->Reset(m_allocator.Get(), nullptr);
     ID3D12DescriptorHeap* heaps[] = {m_descriptorHeap.Get()};
     m_commandList->SetDescriptorHeaps(1, heaps);
-    m_commandList->SetComputeRootSignature(m_psoCache->GetComputeRootSignature());
+    m_commandList->SetComputeRootSignature(m_rootSignature.Get());
     m_descriptorOffset = 0;
     m_constantOffset = 0;
 }
@@ -376,7 +388,7 @@ bool DX12HdriBaker::ExecuteAndWait()
         return false;
     }
     ID3D12CommandList* lists[] = {m_commandList.Get()};
-    ID3D12CommandQueue* queue = m_context->GetCommandQueue();
+    ID3D12CommandQueue* queue = m_queue.Get();
     queue->ExecuteCommandLists(1, lists);
     const uint64_t value = ++m_fenceValue;
     if (FAILED(queue->Signal(m_fence.Get(), value))) {
@@ -653,7 +665,7 @@ bool DX12HdriBaker::SaveDds(ID3D12Resource* resource, bool isCubeMap, const std:
     /// @note 直前の Dispatch 出力先。ExecuteAndWait 済みでアイドルかつ UAV 状態のまま読み戻す。
     DirectX::ScratchImage image;
     if (FAILED(DirectX::CaptureTexture(
-            m_context->GetCommandQueue(), resource, isCubeMap, image,
+            m_queue.Get(), resource, isCubeMap, image,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS))) {
         FBZZ_LOG_ERROR("DX12HdriBaker: CaptureTexture 失敗 [%s]", absPath.c_str());
         return false;

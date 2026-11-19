@@ -474,6 +474,47 @@ protected:
     ImGuiContext* m_gui = nullptr;
 };
 
+TEST_F(InspectorUndoStartTest, ComponentMenuOrdersClipboardResetAndRemovalActions)
+{
+    auto& object = AttachedScene()->CreateGameObject("Light");
+    object.AddComponent<scene::LightComponent>();
+    std::any clipboard;
+    const std::type_info* clipboardType = nullptr;
+    const char* label = editor::ComponentDisplayName<scene::LightComponent>("Light");
+    const auto frame = [&](bool openPopup) {
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0, 0});
+        ImGui::SetNextWindowSize({600, 500});
+        ImGui::Begin("Component menu test");
+        if (openPopup) {
+            ImGui::PushID(label);
+            ImGui::OpenPopup("##comp_opts");
+            ImGui::PopID();
+        }
+        ImGui::LogToBuffer();
+        editor::DrawComponentSection<scene::LightComponent>(
+            &object, Context(), clipboard, clipboardType, label,
+            [](scene::LightComponent&, editor::EditorContext&) {});
+        const std::string menu = m_gui->LogBuffer.c_str();
+        ImGui::LogFinish();
+        ImGui::End();
+        ImGui::Render();
+        return menu;
+    };
+    frame(true);
+    const auto menu = frame(false);
+    const auto copy = menu.find(LOCT("Copy Component"));
+    const auto paste = menu.find(LOCT("Paste Component Values"));
+    const auto pasteAsNew = menu.find(LOCT("Paste Component As New"));
+    const auto reset = menu.find(LOCT("Reset to Defaults"));
+    const auto remove = menu.find(LOCT("Remove Component"));
+    ASSERT_NE(remove, std::string::npos) << menu;
+    EXPECT_LT(copy, paste) << menu;
+    EXPECT_LT(paste, pasteAsNew) << menu;
+    EXPECT_LT(pasteAsNew, reset) << menu;
+    EXPECT_LT(reset, remove) << menu;
+}
+
 /// @brief First input mutation restores the value before UI and redo keeps the change.
 TEST_F(InspectorUndoStartTest, FirstInputMutationRestoresTheValueBeforeUiAndRedoKeepsTheChange)
 {

@@ -1430,7 +1430,7 @@ void RenderSystem(Scene& scene,
             dbgSnap.passTimings.push_back({ profile.name, profile.cpuMilliseconds });
 
         /// @note 遅延値は出自を保持し、別ビュー・旧 Plan・再生成前の資源へ帰属させない。
-        dbgSnap.gpuCurrentView = pipeline.LastGpuProfilerView();
+        dbgSnap.gpuCurrentView = graphExecuted ? pipeline.LastGpuProfilerView() : renderer::GpuProfilerViewMetadata{};
         dbgSnap.gpuProfiler = renderer.GpuProfGetSnapshot();
         std::erase_if(dbgSnap.gpuProfiler.passes, [&](const auto& gp) {
             return !gp.available || !std::isfinite(gp.gpuMs) || gp.gpuMs < 0.0

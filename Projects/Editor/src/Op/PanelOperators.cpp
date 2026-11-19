@@ -56,15 +56,15 @@ void InspectorPanel::OnRegisterOperators(OperatorRegistry& registry)
 const BuildRecord* BuildOutputPanel::SelectedRecord(const BuildConsole& console) const
 {
     const auto& history = console.History();
-    if (m_viewHistoryIndex >= 0 && m_viewHistoryIndex < static_cast<int>(history.size()))
-        return &history[static_cast<size_t>(m_viewHistoryIndex)];
+    for (const auto& record : history)
+        if (record.id == m_selectedBuild) return &record;
     return console.Latest();
 }
 
 void BuildOutputPanel::ClearHistory(BuildConsole& console)
 {
     console.ClearHistory();
-    m_viewHistoryIndex = -1;
+    m_selectedBuild = 0;
 }
 
 void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
@@ -74,7 +74,7 @@ void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
     inspect.label = "Inspect Build Output";
     inspect.category = "Build";
     inspect.kind = OpKind::Query;
-    inspect.desc = "ビルド履歴と選択中の診断、最新ビルドの生ログを返す。";
+    inspect.desc = "ビルド履歴、選択中の診断と生ログ、最新ビルドの生ログを返す。";
     inspect.poll = [](const OpContext& context, const OpArgs&) { return context.ctx.buildConsole != nullptr; };
     inspect.exec = [this](OpContext& context, const OpArgs&) {
         const auto& console = *context.ctx.buildConsole;
@@ -115,7 +115,13 @@ void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
         auto result = OpData::MakeObject();
         result.Set("history", std::move(history));
         result.Set("diagnostics", std::move(diagnostics));
-        result.Set("index", m_viewHistoryIndex);
+        int index = 0;
+        int selectedIndex = -1;
+        for (const auto& record : console.History()) {
+            if (record.id == m_selectedBuild) selectedIndex = index;
+            ++index;
+        }
+        result.Set("index", selectedIndex);
         result.Set("splitRatio", m_splitRatio);
         result.Set("currentFile", console.CurrentFile());
         result.Set("building", console.IsBuilding());
@@ -123,6 +129,9 @@ void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
         result.Set("diagnosticFilters", filters(m_diagView));
         result.Set("outputFilters", filters(m_rawView));
         result.Set("liveLog", console.LiveLog());
+        const auto* selected = SelectedRecord(console);
+        result.Set("selectedLog", !selected ? std::string{} : selected->result == BuildRecord::Result::Building
+            ? console.LiveLog() : selected->rawLog);
         return OpResult::Data(std::move(result));
     };
     registry.Register(std::move(inspect));
@@ -163,9 +172,9 @@ void BuildOutputPanel::OnRegisterOperators(OperatorRegistry& registry)
             const auto selected = args.GetInt("index", -1);
             if (selected < 0 || selected >= static_cast<int>(console.History().size()))
                 return OpResult::Err("BAD_ARG", "index");
-            m_viewHistoryIndex = selected;
+            m_selectedBuild = console.History()[static_cast<std::size_t>(selected)].id;
         } else if (actionName == "latest") {
-            m_viewHistoryIndex = -1;
+            m_selectedBuild = 0;
         } else if (actionName == "clear") {
             ClearHistory(console);
         } else if (actionName == "focus_first_error") {

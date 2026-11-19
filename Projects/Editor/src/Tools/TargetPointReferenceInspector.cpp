@@ -2,6 +2,7 @@
 /// @brief   共通配置点の接続・明示解除・選択と作成を登録済みOpから表示する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Tools/TargetPointReferenceEditing.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/EditorContext.hpp>
@@ -161,13 +162,13 @@ bool DrawAnchor(EditorContext& ctx, InspectorState& state, scene::GameObject& ow
     if (constraint) ImGui::TextDisabled("現在の方式: %s", AnchorModeName(constraint->mode));
     ImGui::BeginDisabled(!IsControlPointAuthoringAllowed(ctx));
     static constexpr const char* MODES[] = {"位置を追従", "目標へ向ける", "位置と姿勢を追従"};
-    ImGui::Combo("適用する方式", &state.anchorMode, MODES, 3);
+    property::Combo("適用する方式", &state.anchorMode, MODES, 3);
     ImGui::TextWrapped("方式を選ぶだけでは既存制約は変わりません。「接続中の点へ方式を適用」するか、接続先を選び直すと反映されます。");
     OpArgs args; args.Set("node", owner.instanceId); args.Set("kind", std::string(kind));
     args.Set("mode", std::string(state.anchorMode == 1 ? "LookAt" : state.anchorMode == 2 ? "Parent" : "Position"));
     bool handled = false;
     const char* current = target ? target->name.c_str() : targetGuid.empty() ? "点を選んで接続" : "接続先が見つかりません";
-    if (ImGui::BeginCombo("既存のTargetPointへ接続", current)) {
+    if (property::BeginCombo("既存のTargetPointへ接続", current)) {
         for (auto& point : ctx.activeScene->GameObjects()) {
             if (point.IsRuntimeGenerated() || !point.GetComponent<scene::TargetPointComponent>()) continue;
             IdScope pointId(point.instanceId.c_str());
@@ -273,7 +274,7 @@ bool DrawTargetPointReferenceInspector(EditorContext& ctx, scene::GameObject& ob
         int mode = current == 1 ? 1 : 0;
         ImGui::BeginDisabled(!IsControlPointAuthoringAllowed(ctx));
         static constexpr const char* MODES[] = {"開始時の姿勢を使用", "実行中も点へ追従"};
-        const bool changed = ImGui::Combo("MotionWarpの追従方法", &mode, MODES, 2);
+        const bool changed = property::Combo("MotionWarpの追従方法", &mode, MODES, 2);
         ImGui::EndDisabled();
         if (changed) {
             args.Set("target", warp->targetReference.guid); args.Set("mode", std::string(mode == 1 ? "LIVE" : "CAPTURED"));

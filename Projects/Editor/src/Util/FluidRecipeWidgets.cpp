@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 
+#include <Editor/Util/PropertyControls.hpp>
 #include <Editor/Util/FluidRecipeWidgets.hpp>
 
 #include <Editor/Util/ImGuiWidgets.hpp>
@@ -180,7 +181,7 @@ bool EditGasSettings(fluid::FluidRecipe& recipe)
     fluid::FluidGasSettings& gas = recipe.gas;
     bool changed = false;
     bool autoGrid = gas.resolution <= 0;
-    if (ImGui::Checkbox("Auto Grid", &autoGrid)) {
+    if (property::Checkbox("Auto Grid", &autoGrid)) {
         gas.resolution = autoGrid ? 0 : fluid::ResolveGasResolution(recipe);
         changed = true;
     }
@@ -190,40 +191,40 @@ bool EditGasSettings(fluid::FluidRecipe& recipe)
         ImGui::SameLine();
         ImGui::TextDisabled("= %d", fluid::ResolveGasResolution(recipe));
     } else {
-        changed |= ImGui::SliderInt("Grid Resolution", &gas.resolution, 32, 512);
+        changed |= property::SliderInt("Grid Resolution", &gas.resolution, 32, 512);
         Tooltip("解く格子の 1 辺。倍にすると焼き時間はおよそ 8 倍になります。\n"
                 "256 を超える細かさは Look の Detail で出す方が速く、見た目もほぼ同じです。");
     }
-    changed |= ImGui::DragFloat("Buoyancy", &gas.buoyancy, 0.01f, -10.0f, 20.0f);
+    changed |= property::DragFloat("Buoyancy", &gas.buoyancy, 0.01f, -10.0f, 20.0f);
     Tooltip("温度による上昇。負にすると冷気のように沈みます。");
-    changed |= ImGui::DragFloat("Weight", &gas.weight, 0.01f, 0.0f, 10.0f);
+    changed |= property::DragFloat("Weight", &gas.weight, 0.01f, 0.0f, 10.0f);
     Tooltip("密度による下降。砂煙や重い煙で上げます。");
-    changed |= ImGui::DragFloat("Vorticity", &gas.vorticity, 0.01f, 0.0f, 4.0f);
+    changed |= property::DragFloat("Vorticity", &gas.vorticity, 0.01f, 0.0f, 4.0f);
     Tooltip("渦度保存。数値計算で消えてしまう細かい巻き込みを戻します。上げすぎると泡立って見えます。");
-    changed |= ImGui::DragFloat("Turbulence", &gas.turbulence, 0.01f, 0.0f, 10.0f);
-    changed |= ImGui::DragFloat("Turbulence Scale", &gas.turbulenceScale, 0.05f, 0.1f, 32.0f);
-    changed |= ImGui::DragFloat("Density Dissipation", &gas.densityDissipation, 0.01f, 0.0f, 10.0f);
+    changed |= property::DragFloat("Turbulence", &gas.turbulence, 0.01f, 0.0f, 10.0f);
+    changed |= property::DragFloat("Turbulence Scale", &gas.turbulenceScale, 0.05f, 0.1f, 32.0f);
+    changed |= property::DragFloat("Density Dissipation", &gas.densityDissipation, 0.01f, 0.0f, 10.0f);
     Tooltip("1 秒あたりの薄れ方。蒸気は大きく、インクは小さく。");
-    changed |= ImGui::DragFloat("Cooling", &gas.temperatureDissipation, 0.01f, 0.0f, 20.0f);
+    changed |= property::DragFloat("Cooling", &gas.temperatureDissipation, 0.01f, 0.0f, 20.0f);
     Tooltip("1 秒あたりの冷め方。炎の長さはここで決まります (大きいほど短い炎)。");
-    changed |= ImGui::DragFloat("Velocity Damping", &gas.velocityDamping, 0.01f, 0.0f, 10.0f);
+    changed |= property::DragFloat("Velocity Damping", &gas.velocityDamping, 0.01f, 0.0f, 10.0f);
     changed |= widgets::DragVec3("Wind", gas.wind, 0.01f);
-    changed |= ImGui::Checkbox("Floor", &gas.floor);
+    changed |= property::Checkbox("Floor", &gas.floor);
     Tooltip("下端を床として閉じます。砂煙・煙だまりのように地面を這う流れになります。");
-    changed |= ImGui::SliderInt("Pressure Iterations", &gas.pressureIterations, 8, 200);
+    changed |= property::SliderInt("Pressure Iterations", &gas.pressureIterations, 8, 200);
     Tooltip("圧力の反復回数。少ないと煙が «縮んだり膨らんだり» します。");
-    changed |= ImGui::Checkbox("Sharp Advection", &gas.sharpAdvection);
+    changed |= property::Checkbox("Sharp Advection", &gas.sharpAdvection);
     Tooltip("MacCormack 移流。煙の輪郭がコマを追ってもぼやけません。");
-    changed |= ImGui::DragFloat("Detail Period", &gas.detailPeriod, 0.01f, 0.05f, 10.0f, "%.2f s");
+    changed |= property::DragFloat("Detail Period", &gas.detailPeriod, 0.01f, 0.05f, 10.0f, "%.2f s");
     Tooltip("細部のノイズを流れに乗せて運ぶ周期。\n"
             "長いほど流れに引き伸ばされて筋っぽく、短いほど入れ替わりの揺らぎが見えます。");
     if (ImGui::TreeNode("Combustion")) {
         ImGui::TextDisabled("Source の Fuel が無ければ何も起きません。爆風は Expansion が作ります。");
-        changed |= ImGui::DragFloat("Ignition Temperature", &gas.ignitionTemperature, 0.01f, 0.0f, 10.0f);
-        changed |= ImGui::DragFloat("Burn Rate", &gas.burnRate, 0.05f, 0.0f, 50.0f);
-        changed |= ImGui::DragFloat("Heat", &gas.burnHeat, 0.05f, 0.0f, 20.0f);
-        changed |= ImGui::DragFloat("Smoke", &gas.burnSmoke, 0.01f, 0.0f, 10.0f);
-        changed |= ImGui::DragFloat("Expansion", &gas.burnExpansion, 0.05f, 0.0f, 20.0f);
+        changed |= property::DragFloat("Ignition Temperature", &gas.ignitionTemperature, 0.01f, 0.0f, 10.0f);
+        changed |= property::DragFloat("Burn Rate", &gas.burnRate, 0.05f, 0.0f, 50.0f);
+        changed |= property::DragFloat("Heat", &gas.burnHeat, 0.05f, 0.0f, 20.0f);
+        changed |= property::DragFloat("Smoke", &gas.burnSmoke, 0.01f, 0.0f, 10.0f);
+        changed |= property::DragFloat("Expansion", &gas.burnExpansion, 0.05f, 0.0f, 20.0f);
         ImGui::TreePop();
     }
     return changed;
@@ -232,21 +233,21 @@ bool EditGasSettings(fluid::FluidRecipe& recipe)
 bool EditLiquidSettings(fluid::FluidLiquidSettings& liquid)
 {
     bool changed = false;
-    changed |= ImGui::DragInt("Max Particles", &liquid.maxParticles, 10.0f, 100, 20000);
-    changed |= ImGui::DragFloat("Particle Radius", &liquid.particleRadius, 0.0005f, 0.004f, 0.05f, "%.4f");
+    changed |= property::DragInt("Max Particles", &liquid.maxParticles, 10.0f, 100, 20000);
+    changed |= property::DragFloat("Particle Radius", &liquid.particleRadius, 0.0005f, 0.004f, 0.05f, "%.4f");
     Tooltip("液面の細かさ。小さいほど細い糸や小さな雫が出ますが、同じ量に多くの粒子が要ります。");
-    changed |= ImGui::DragFloat("Gravity", &liquid.gravity, 0.05f, -20.0f, 40.0f);
-    changed |= ImGui::SliderFloat("Viscosity", &liquid.viscosity, 0.0f, 1.0f);
+    changed |= property::DragFloat("Gravity", &liquid.gravity, 0.05f, -20.0f, 40.0f);
+    changed |= property::SliderFloat("Viscosity", &liquid.viscosity, 0.0f, 1.0f);
     Tooltip("とろみ。水 0.02 / 血 0.15 / 溶岩 0.5 前後。");
-    changed |= ImGui::SliderFloat("Cohesion", &liquid.cohesion, 0.0f, 1.0f);
+    changed |= property::SliderFloat("Cohesion", &liquid.cohesion, 0.0f, 1.0f);
     Tooltip("まとまり。0 で飛沫が霧状に散り、1 で雫になって固まります。");
-    changed |= ImGui::SliderInt("Solver Iterations", &liquid.solverIterations, 1, 10);
-    changed |= ImGui::Checkbox("Floor", &liquid.floor);
+    changed |= property::SliderInt("Solver Iterations", &liquid.solverIterations, 1, 10);
+    changed |= property::Checkbox("Floor", &liquid.floor);
     if (liquid.floor) {
-        changed |= ImGui::DragFloat("Floor Height", &liquid.floorHeight, 0.01f, -1.5f, 1.0f);
-        changed |= ImGui::SliderFloat("Floor Friction", &liquid.floorFriction, 0.0f, 2.0f);
+        changed |= property::DragFloat("Floor Height", &liquid.floorHeight, 0.01f, -1.5f, 1.0f);
+        changed |= property::SliderFloat("Floor Friction", &liquid.floorFriction, 0.0f, 2.0f);
     }
-    changed |= ImGui::DragFloat("Particle Lifetime", &liquid.particleLifetime, 0.01f, 0.0f, 30.0f,
+    changed |= property::DragFloat("Particle Lifetime", &liquid.particleLifetime, 0.01f, 0.0f, 30.0f,
                                 liquid.particleLifetime <= 0.0f ? "infinite" : "%.2f s");
     Tooltip("正にすると飛沫が細りながら消えます。");
     return changed;
@@ -300,7 +301,7 @@ bool EditMotion(fluid::FluidMotion& motion, const char* inheritTooltip)
     if (!open) return false;
 
     if (inheritTooltip != nullptr) {
-        changed |= ImGui::Checkbox("Inherit Velocity", &motion.inheritVelocity);
+        changed |= property::Checkbox("Inherit Velocity", &motion.inheritVelocity);
         Tooltip(inheritTooltip);
     }
 
@@ -569,7 +570,7 @@ bool EditSourceColorKey(fluid::FluidSource& source, bool liquid, const fluid::Fl
         ImGui::SetNextItemWidth(
             (std::max)(fullWidth - swatchSide - style.ItemInnerSpacing.x, ImGui::GetFontSize() * 3.0f));
     }
-    const bool changed = ImGui::SliderFloat("Color Key", &source.colorKey, 0.0f, 1.0f,
+    const bool changed = property::SliderFloat("Color Key", &source.colorKey, 0.0f, 1.0f,
                                             look.useAlbedoRamp ? "%.2f" : "%.2f (ramp off)",
                                             ImGuiSliderFlags_AlwaysClamp);
     if (look.useAlbedoRamp)
@@ -617,7 +618,7 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
     changed |= widgets::InputString("Name", source.name, 64);
     Tooltip("見分けるための名前です (解き方には関係しません)。空なら «Source N (形)» と出します。");
     int shape = static_cast<int>(source.shape);
-    if (ImGui::Combo("Shape", &shape, kShapeNames, IM_ARRAYSIZE(kShapeNames))) {
+    if (property::Combo("Shape", &shape, kShapeNames, IM_ARRAYSIZE(kShapeNames))) {
         const Shape previous = source.shape;
         source.shape = static_cast<Shape>(shape);
         /// @note Cone / Ring の上向きのまま板にすると、2D では真横から見た細い帯になり画像が見えない。
@@ -628,7 +629,7 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
     Tooltip("領域は各軸 [-1, 1]。y は上向きです。Cone は頂点、Texture は板の中心です。");
     switch (source.shape) {
     case Shape::Sphere:
-        changed |= ImGui::DragFloat("Radius", &source.size.x, 0.002f, 0.005f, 1.5f, "%.3f");
+        changed |= property::DragFloat("Radius", &source.size.x, 0.002f, 0.005f, 1.5f, "%.3f");
         break;
     case Shape::Box:
         changed |= widgets::DragVec3("Half Size", source.size, 0.005f, 0.005f, 1.5f);
@@ -642,12 +643,12 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
         Tooltip("輪の半径と、管の太さ (半径) です (衝撃波・煙の輪)。");
         break;
     case Shape::Texture:
-        changed |= widgets::AssetPathField("Texture", source.texture, kSourceTextureFilter, projectRoot,
+        changed |= property::AssetPathField("Texture", source.texture, kSourceTextureFilter, projectRoot,
                                            widgets::AssetPickerHost::FLUID_EDITOR);
         DrawTextureSourceStatus(source.texture);
         changed |= DragPair("Half Width / Half Height", source.size.x, source.size.y, 0.002f, 0.005f, 1.5f);
         Tooltip("板の半分の幅と高さ。画像は 256x256 に縮めて貼るので、縦横比はここで合わせます。");
-        changed |= ImGui::DragFloat("Half Thickness", &source.size.z, 0.002f, 0.005f, 1.5f, "%.3f");
+        changed |= property::DragFloat("Half Thickness", &source.size.z, 0.002f, 0.005f, 1.5f, "%.3f");
         Tooltip("板の厚みの半分 (法線の向き)。3D で焼くときの奥行きです。\n"
                 "2D で法線が手前向きなら効きません。");
         break;
@@ -684,33 +685,33 @@ bool EditSourceBody(fluid::FluidSource& source, FluidKind kind, const fluid::Flu
     if (liquid) DrawLiquidEmitScaleNote(source, liquidSettings);
 
     if (!liquid) {
-        changed |= ImGui::DragFloat("Density", &source.density, 0.05f, 0.0f, 100.0f);
+        changed |= property::DragFloat("Density", &source.density, 0.05f, 0.0f, 100.0f);
         Tooltip("1 秒あたりに足す煙の量。");
-        changed |= ImGui::DragFloat("Temperature", &source.temperature, 0.05f, 0.0f, 100.0f);
+        changed |= property::DragFloat("Temperature", &source.temperature, 0.05f, 0.0f, 100.0f);
         Tooltip("1 秒あたりに足す熱。浮力 (Simulation > Buoyancy) と炎の明るさになります。");
-        changed |= ImGui::DragFloat("Fuel", &source.fuel, 0.05f, 0.0f, 100.0f);
+        changed |= property::DragFloat("Fuel", &source.fuel, 0.05f, 0.0f, 100.0f);
         Tooltip("1 秒あたりに足す燃料。Simulation > Combustion で燃え、熱・煤・膨張 (爆風) になります。");
-        changed |= ImGui::SliderFloat("Noise", &source.noise, 0.0f, 1.0f);
+        changed |= property::SliderFloat("Noise", &source.noise, 0.0f, 1.0f);
         Tooltip("注入量の揺らぎ。0 だと左右対称な «きのこ雲» になりがちです。");
         changed |= widgets::DragVec3("Flow Velocity", source.velocity, 0.01f);
         Tooltip("発生源の中の流速 [領域単位/秒]。0 なら流速には触りません。");
     } else {
         changed |= widgets::DragVec3("Launch Velocity", source.velocity, 0.01f);
         Tooltip("撃ち出す速度 [領域単位/秒]。");
-        changed |= ImGui::SliderFloat("Spread", &source.spread, 0.0f, 1.0f);
+        changed |= property::SliderFloat("Spread", &source.spread, 0.0f, 1.0f);
         Tooltip("速度のばらつき。1 で全方位に散ります (血しぶき)。");
-        changed |= ImGui::DragInt("Count", &source.count, 5.0f, 1, 20000);
+        changed |= property::DragInt("Count", &source.count, 5.0f, 1, 20000);
         Tooltip("撃ち出す総数。Simulation の Max Particles を超えた分は出ません。");
     }
     changed |= EditSourceColorKey(source, liquid, look);
 
-    changed |= ImGui::DragFloat("Start", &source.startTime, 0.01f, 0.0f, 60.0f, "%.2f s");
+    changed |= property::DragFloat("Start", &source.startTime, 0.01f, 0.0f, 60.0f, "%.2f s");
     if (!liquid) {
-        changed |= ImGui::DragFloat("Duration", &source.duration, 0.01f, 0.0f, 60.0f,
+        changed |= property::DragFloat("Duration", &source.duration, 0.01f, 0.0f, 60.0f,
                                     source.duration <= 0.0f ? "continuous" : "%.2f s");
         Tooltip("注ぎ続ける時間。0 は最後まで出し続けます。");
     } else {
-        changed |= ImGui::DragFloat("Duration", &source.duration, 0.01f, 0.0f, 60.0f,
+        changed |= property::DragFloat("Duration", &source.duration, 0.01f, 0.0f, 60.0f,
                                     source.duration <= 0.0f ? "burst" : "%.2f s");
         Tooltip("0 は Start に一斉に出します。重なって生まれた粒子は押し返されて弾けるので、\n"
                 "塊として飛ばしたいときは 0.1〜0.2 秒に分けて出します。");
@@ -732,7 +733,7 @@ bool EditForceBody(fluid::FluidForce& force)
     using Type = fluid::FluidForceType;
     bool changed = false;
     int type = static_cast<int>(force.type);
-    if (ImGui::Combo("Type", &type, kForceTypeNames, IM_ARRAYSIZE(kForceTypeNames))) {
+    if (property::Combo("Type", &type, kForceTypeNames, IM_ARRAYSIZE(kForceTypeNames))) {
         force.type = static_cast<Type>(type);
         changed = true;
     }
@@ -744,17 +745,17 @@ bool EditForceBody(fluid::FluidForce& force)
     changed |= widgets::InputString("Name", force.name, 64);
 
     if (force.type == Type::Drag) {
-        changed |= ImGui::DragFloat("Damping", &force.strength, 0.01f, 0.0f, 50.0f, "%.2f /s");
+        changed |= property::DragFloat("Damping", &force.strength, 0.01f, 0.0f, 50.0f, "%.2f /s");
         Tooltip("1 秒あたりの減衰係数。大きいほど早く止まります。");
     } else {
-        changed |= ImGui::DragFloat("Strength", &force.strength, 0.01f, -50.0f, 50.0f, "%.2f");
+        changed |= property::DragFloat("Strength", &force.strength, 0.01f, -50.0f, 50.0f, "%.2f");
         Tooltip("加速度 [領域単位/秒²]。負にすると向きが逆になります。");
     }
-    changed |= ImGui::DragFloat("Radius", &force.radius, 0.005f, 0.0f, 4.0f,
+    changed |= property::DragFloat("Radius", &force.radius, 0.005f, 0.0f, 4.0f,
                                 force.radius <= 0.0f ? "everywhere" : "%.3f");
     Tooltip("影響半径。0 は領域全体に一様に効きます。");
     if (force.radius > 0.0f) {
-        changed |= ImGui::DragFloat("Falloff", &force.falloffPower, 0.01f, 0.0f, 8.0f, "%.2f");
+        changed |= property::DragFloat("Falloff", &force.falloffPower, 0.01f, 0.0f, 8.0f, "%.2f");
         Tooltip("influence = (1 - 距離 / Radius)^Falloff。0 で半径の内側は一様です。");
     }
     /// @note 中心は Attract / Repulse / Vortex と、半径を持つ力でしか意味を持たない。効かない欄は出さない。
@@ -773,13 +774,13 @@ bool EditForceBody(fluid::FluidForce& force)
                 "2D (プレビューと 2D ベイク) では常に画面の奥行き軸で回ります。逆回りは Strength を負に。");
     }
     if (force.type == Type::Noise) {
-        changed |= ImGui::DragFloat("Noise Frequency", &force.noiseFrequency, 0.05f, 0.1f, 32.0f, "%.2f");
+        changed |= property::DragFloat("Noise Frequency", &force.noiseFrequency, 0.05f, 0.1f, 32.0f, "%.2f");
         Tooltip("細かさ (領域幅あたりの山の数)。");
-        changed |= ImGui::DragFloat("Noise Speed", &force.noiseSpeed, 0.01f, 0.0f, 20.0f, "%.2f");
+        changed |= property::DragFloat("Noise Speed", &force.noiseSpeed, 0.01f, 0.0f, 20.0f, "%.2f");
         Tooltip("ノイズが流れる速さ。0 で模様が止まります。");
     }
-    changed |= ImGui::DragFloat("Start", &force.startTime, 0.01f, 0.0f, 60.0f, "%.2f s");
-    changed |= ImGui::DragFloat("Duration", &force.duration, 0.01f, 0.0f, 60.0f,
+    changed |= property::DragFloat("Start", &force.startTime, 0.01f, 0.0f, 60.0f, "%.2f s");
+    changed |= property::DragFloat("Duration", &force.duration, 0.01f, 0.0f, 60.0f,
                                 force.duration <= 0.0f ? "always" : "%.2f s");
     Tooltip("効いている時間。0 はずっと効きます。");
     if (usesCenter) changed |= EditMotion(force.motion, nullptr);
@@ -799,7 +800,7 @@ bool EditColliderBody(fluid::FluidCollider& collider, FluidKind kind)
     const bool liquid = kind == FluidKind::Liquid;
     bool changed = false;
     int shape = static_cast<int>(collider.shape);
-    if (ImGui::Combo("Shape", &shape, kColliderShapeNames, IM_ARRAYSIZE(kColliderShapeNames))) {
+    if (property::Combo("Shape", &shape, kColliderShapeNames, IM_ARRAYSIZE(kColliderShapeNames))) {
         collider.shape = static_cast<Shape>(shape);
         changed = true;
     }
@@ -817,7 +818,7 @@ bool EditColliderBody(fluid::FluidCollider& collider, FluidKind kind)
                                            : "領域は各軸 [-1, 1]。y は上向きです。");
     switch (collider.shape) {
     case Shape::Sphere:
-        changed |= ImGui::DragFloat("Radius", &collider.size.x, 0.002f, 0.005f, 1.5f, "%.3f");
+        changed |= property::DragFloat("Radius", &collider.size.x, 0.002f, 0.005f, 1.5f, "%.3f");
         break;
     case Shape::Box:
         changed |= widgets::DragVec3("Half Size", collider.size, 0.005f, 0.005f, 1.5f);
@@ -840,11 +841,11 @@ bool EditColliderBody(fluid::FluidCollider& collider, FluidKind kind)
         break;
     }
     if (liquid) {
-        changed |= ImGui::SliderFloat("Friction", &collider.friction, 0.0f, 2.0f);
+        changed |= property::SliderFloat("Friction", &collider.friction, 0.0f, 2.0f);
         Tooltip("表面に沿った速度を落とす強さ。Simulation の Floor Friction と同じ意味です。");
     }
-    changed |= ImGui::DragFloat("Start", &collider.startTime, 0.01f, 0.0f, 60.0f, "%.2f s");
-    changed |= ImGui::DragFloat("Duration", &collider.duration, 0.01f, 0.0f, 60.0f,
+    changed |= property::DragFloat("Start", &collider.startTime, 0.01f, 0.0f, 60.0f, "%.2f s");
+    changed |= property::DragFloat("Duration", &collider.duration, 0.01f, 0.0f, 60.0f,
                                 collider.duration <= 0.0f ? "always" : "%.2f s");
     Tooltip("居る時間。0 はずっと居ます。");
     changed |= EditMotion(collider.motion, liquid
@@ -944,7 +945,7 @@ bool EditSimulation(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     ImGui::PushID("fluid_simulation");
     static constexpr const char* kKinds[] = { "Gas (grid solver)", "Liquid (particles, PBF)" };
     int kind = static_cast<int>(recipe.kind);
-    if (ImGui::Combo("Kind", &kind, kKinds, IM_ARRAYSIZE(kKinds))) {
+    if (property::Combo("Kind", &kind, kKinds, IM_ARRAYSIZE(kKinds))) {
         recipe.kind = static_cast<FluidKind>(kind);
         /// @note 種類を替えた直後に発生源が無いと、何も写らず «壊れた» ように見える。
         /// @note 発生源は両方の種類で共通なので、ある分はそのまま読み替える。
@@ -954,7 +955,7 @@ bool EditSimulation(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     }
     if (recipe.kind == FluidKind::Gas) changed |= EditGasSettings(recipe);
     else                                changed |= EditLiquidSettings(recipe.liquid);
-    changed |= ImGui::DragScalar("Seed", ImGuiDataType_U32, &recipe.seed, 1.0f);
+    changed |= property::DragScalar("Seed", ImGuiDataType_U32, &recipe.seed, 1.0f);
     ImGui::PopID();
     return changed;
 }
@@ -1001,7 +1002,7 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     if (recipe.kind == FluidKind::Gas) {
         static constexpr const char* kShadings[] = { "Smoke", "Fire", "Glow", "Distortion" };
         int shading = static_cast<int>(EffectiveShading(recipe));
-        if (ImGui::Combo("Shading", &shading, kShadings, IM_ARRAYSIZE(kShadings))) {
+        if (property::Combo("Shading", &shading, kShadings, IM_ARRAYSIZE(kShadings))) {
             look.shading = static_cast<FluidShading>(shading);
             changed = true;
         }
@@ -1013,7 +1014,7 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
         const FluidShading current = look.shading;
         /// @note Distortion は色を焼かない (RG が変位) ので、地の色のグラデーションは出さない。
         if (current != FluidShading::Distortion) {
-            changed |= ImGui::Checkbox("Use Albedo Ramp", &look.useAlbedoRamp);
+            changed |= property::Checkbox("Use Albedo Ramp", &look.useAlbedoRamp);
             Tooltip("発生源ごとの Color Key (0〜1) → 煙の地の色を 4 点のグラデーション (リニア) で決めます。\n"
                     "色は煙に乗って運ばれ、複数の発生源の煙が混ざると色も混ざります。\n"
                     "Glow では発光色になります。2D・3D どちらの焼きにも効きます。");
@@ -1026,7 +1027,7 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
             if (look.useAlbedoRamp)
                 ImGui::TextDisabled("地の色は Albedo Ramp が決めます (影の濃さには Lit と Shadow の明るさの比が効きます)。");
             changed |= widgets::ColorEdit4("Shadow Color", look.shadowColor);
-            changed |= ImGui::DragFloat("Self Shadow", &look.selfShadow, 0.05f, 0.0f, 20.0f);
+            changed |= property::DragFloat("Self Shadow", &look.selfShadow, 0.05f, 0.0f, 20.0f);
             changed |= widgets::DragVec3("Light Direction", look.lightDirection, 0.01f, -1.0f, 1.0f);
         }
         const bool emissive = current == FluidShading::Fire || current == FluidShading::Glow;
@@ -1037,31 +1038,31 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
             if (look.useAlbedoRamp && !look.useEmissionRamp)
                 ImGui::TextDisabled("発光色は Albedo Ramp が決めます。");
         }
-        changed |= ImGui::DragFloat("Opacity", &look.opacity, 0.05f, 0.0f, 50.0f);
+        changed |= property::DragFloat("Opacity", &look.opacity, 0.05f, 0.0f, 50.0f);
         if (current != FluidShading::Distortion) {
-            changed |= ImGui::SliderFloat("Detail", &look.detailStrength, 0.0f, 1.0f);
+            changed |= property::SliderFloat("Detail", &look.detailStrength, 0.0f, 1.0f);
             Tooltip("格子より細かい起伏の強さ。流れに乗って動くノイズで、煙の縁のちぎれや\n"
                     "炎の細い舌を出します。0 で格子の解像度のまま。");
-            changed |= ImGui::DragFloat("Detail Scale", &look.detailScale, 0.1f, 1.0f, 64.0f);
+            changed |= property::DragFloat("Detail Scale", &look.detailScale, 0.1f, 1.0f, 64.0f);
             Tooltip("細部の細かさ (領域幅あたりの山の数)。コマを大きく焼くほど上げられます。");
         }
         if (current == FluidShading::Fire) {
             ImGui::BeginDisabled(look.useEmissionRamp);
-            changed |= ImGui::DragFloat("Fire Kelvin", &look.fireKelvin, 10.0f, 500.0f, 6000.0f, "%.0f K");
+            changed |= property::DragFloat("Fire Kelvin", &look.fireKelvin, 10.0f, 500.0f, 6000.0f, "%.0f K");
             ImGui::EndDisabled();
             Tooltip("温度 1.0 を何ケルビンとみなすか。焚き火 1200〜1500K、爆発の芯 1800K 以上。\n"
                     "Use Emission Ramp の間は色をグラデーションで決めるので使いません。");
-            changed |= ImGui::DragFloat("Fire Intensity", &look.fireIntensity, 0.01f, 0.0f, 10.0f);
+            changed |= property::DragFloat("Fire Intensity", &look.fireIntensity, 0.01f, 0.0f, 10.0f);
         }
         if (emissive) {
-            changed |= ImGui::Checkbox("Use Emission Ramp", &look.useEmissionRamp);
+            changed |= property::Checkbox("Use Emission Ramp", &look.useEmissionRamp);
             Tooltip("温度 (0〜1) → 発光の色を 4 点のグラデーションで決めます (HDR 可)。\n"
                     "外すと Fire は黒体放射、Glow は Glow Color で光ります。\n"
                     "3D で焼くときも、Blackbody Emission を切っていればこの色を使います。");
             if (look.useEmissionRamp) changed |= EditColorRamp(look.emissionRamp, "emission_ramp", "冷 → 熱", false);
         }
     } else {
-        changed |= ImGui::Checkbox("Use Albedo Ramp", &look.useAlbedoRamp);
+        changed |= property::Checkbox("Use Albedo Ramp", &look.useAlbedoRamp);
         Tooltip("発生源ごとの Color Key (0〜1) → 液の色を 4 点のグラデーション (リニア) で決めます。\n"
                 "粒子は撃ち出した発生源の色を一生持つので、水と血を 1 枚に焼き分けられます。\n"
                 "2D・3D どちらの焼きにも効きます。");
@@ -1073,22 +1074,22 @@ bool EditLook(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
         if (look.useAlbedoRamp) {
             /// @note ランプは RGB だけを置き換え、透け具合は liquidColor の A が持ち続ける。灰色にした欄から A を触れなくならないよう別に出す。
             ImGui::TextDisabled("液の色は Albedo Ramp が決めます。透け具合は下の Liquid Alpha で。");
-            changed |= ImGui::SliderFloat("Liquid Alpha", &look.liquidColor.w, 0.0f, 1.0f);
+            changed |= property::SliderFloat("Liquid Alpha", &look.liquidColor.w, 0.0f, 1.0f);
         }
-        changed |= ImGui::DragFloat("Radius Scale", &look.liquidRadiusScale, 0.01f, 0.5f, 6.0f);
+        changed |= property::DragFloat("Radius Scale", &look.liquidRadiusScale, 0.01f, 0.5f, 6.0f);
         Tooltip("描画時の粒子の広がり。上げるほど液面がつながって «一枚の水» になります。");
-        changed |= ImGui::SliderFloat("Threshold", &look.liquidThreshold, 0.05f, 2.0f);
-        changed |= ImGui::SliderFloat("Specular", &look.specular, 0.0f, 2.0f);
+        changed |= property::SliderFloat("Threshold", &look.liquidThreshold, 0.05f, 2.0f);
+        changed |= property::SliderFloat("Specular", &look.specular, 0.0f, 2.0f);
         changed |= widgets::DragVec3("Light Direction", look.lightDirection, 0.01f, -1.0f, 1.0f);
         if (ImGui::TreeNode("3D Surface")) {
             ImGui::TextDisabled("3D (Volume) で焼くときの液面です。2D の絵には効きません。");
-            changed |= ImGui::DragFloat("Softness", &look.liquidSoftness, 0.002f, 0.005f, 0.5f, "%.3f");
+            changed |= property::DragFloat("Softness", &look.liquidSoftness, 0.002f, 0.005f, 0.5f, "%.3f");
             Tooltip("液面の縁の柔らかさ。");
-            changed |= ImGui::DragFloat("Extinction", &look.liquidExtinction, 0.5f, 0.0f, 200.0f, "%.1f");
+            changed |= property::DragFloat("Extinction", &look.liquidExtinction, 0.5f, 0.0f, 200.0f, "%.1f");
             Tooltip("大きいほど不透明 (血)、小さいほど透けます (水)。");
-            changed |= ImGui::DragFloat("Gloss", &look.liquidGloss, 1.0f, 1.0f, 512.0f, "%.0f");
+            changed |= property::DragFloat("Gloss", &look.liquidGloss, 1.0f, 1.0f, 512.0f, "%.0f");
             Tooltip("ハイライトの鋭さ。");
-            changed |= ImGui::SliderFloat("Fresnel F0", &look.liquidFresnel, 0.0f, 0.2f, "%.3f");
+            changed |= property::SliderFloat("Fresnel F0", &look.liquidFresnel, 0.0f, 0.2f, "%.3f");
             Tooltip("正面から見たときの反射率。水は 0.02 前後。");
             ImGui::TreePop();
         }
@@ -1107,29 +1108,29 @@ bool EditOutput(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     int sizeIndex = 2;
     for (int i = 0; i < IM_ARRAYSIZE(kSizes); ++i)
         if (kSizes[i] == output.frameSize) sizeIndex = i;
-    if (ImGui::Combo("Frame Size", &sizeIndex, kSizeLabels, IM_ARRAYSIZE(kSizeLabels))) {
+    if (property::Combo("Frame Size", &sizeIndex, kSizeLabels, IM_ARRAYSIZE(kSizeLabels))) {
         output.frameSize = kSizes[sizeIndex];
         changed = true;
     }
     Tooltip("1 コマの解像度。画面に大きく出る煙・爆発は 256 以上。遠景の小さな粒なら 128 で足ります。");
-    changed |= ImGui::SliderInt("Supersampling", &output.supersampling, 1, 4, "x%d");
+    changed |= property::SliderInt("Supersampling", &output.supersampling, 1, 4, "x%d");
     Tooltip("1 コマを何倍で描いてから縮めるか。液面の縁のギザギザと、細かい煙のちらつきが消えます。\n"
             "描く手間は倍率の 2 乗で増えます (x2 で 4 倍)。");
     int grid[2] = { output.columns, output.rows };
-    if (ImGui::DragInt2("Columns / Rows", grid, 0.1f, 1, 32)) {
+    if (property::DragInt2("Columns / Rows", grid, 0.1f, 1, 32)) {
         output.columns = std::clamp(grid[0], 1, 32);
         output.rows    = std::clamp(grid[1], 1, 32);
         changed = true;
     }
     ImGui::SeparatorText("Bake Range");
     float bakeStart = output.warmup;
-    if (ImGui::DragFloat("Bake Start", &bakeStart, 0.01f, 0.0f, 30.0f, "%.2f s")) {
+    if (property::DragFloat("Bake Start", &bakeStart, 0.01f, 0.0f, 30.0f, "%.2f s")) {
         output.warmup = std::clamp(bakeStart, 0.0f, 30.0f);
         changed = true;
     }
     Tooltip("シミュレーション開始から焼き始めるまでの時間。開始を動かしても収録する長さは変えません。");
     float bakeEnd = output.warmup + output.duration;
-    if (ImGui::DragFloat("Bake End", &bakeEnd, 0.01f, output.warmup + 0.05f,
+    if (property::DragFloat("Bake End", &bakeEnd, 0.01f, output.warmup + 0.05f,
                          output.warmup + 30.0f, "%.2f s")) {
         output.duration = std::clamp(bakeEnd - output.warmup, 0.05f, 30.0f);
         changed = true;
@@ -1137,27 +1138,27 @@ bool EditOutput(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     Tooltip("シミュレーション開始から焼き終えるまでの時間。終了を動かすと収録長と再生 FPS が変わります。");
     ImGui::TextDisabled("Capture %.2f - %.2f s  |  %.2f s", output.warmup,
                         output.warmup + output.duration, output.duration);
-    changed |= ImGui::SliderInt("Substeps", &output.substeps, 1, 8);
-    changed |= ImGui::Checkbox("Loop", &output.loop);
+    changed |= property::SliderInt("Substeps", &output.substeps, 1, 8);
+    changed |= property::Checkbox("Loop", &output.loop);
     Tooltip("末尾を先頭へクロスフェードして、FPS 再生でつながるようにします。\n"
             "一度きりの煙・爆発 (Lifetime 再生) では外したままにします。2D・3D どちらの焼きでも効きます。");
     if (output.loop) {
         float blendPercent = output.loopBlendFraction * 100.0f;
-        if (ImGui::SliderFloat("Loop Blend", &blendPercent, 0.0f, 50.0f, "%.0f%%")) {
+        if (property::SliderFloat("Loop Blend", &blendPercent, 0.0f, 50.0f, "%.0f%%")) {
             output.loopBlendFraction = blendPercent / 100.0f;
             changed = true;
         }
         Tooltip("先頭へ混ぜるコマの割合。0% は混ぜずに周回します。2D と 3D の Bake に共通です。");
     }
-    changed |= ImGui::Checkbox("Motion Vectors", &output.motionVectors);
+    changed |= property::Checkbox("Motion Vectors", &output.motionVectors);
     Tooltip("ソルバーの実速度から Motion Vector を焼きます。少ないコマ数でも滑らかに流れます\n"
             "(使うと GPU シミュレーションは CPU へ縮退します)。");
     if (recipe.kind == FluidKind::Gas) {
-        changed |= ImGui::Checkbox("Vector Field (PNG)", &output.vectorField);
+        changed |= property::Checkbox("Vector Field (PNG)", &output.vectorField);
         Tooltip("同じ流れを 3D で解き直し、時間平均した速度場を焼きます。\n"
                 "FlowField の Baked に割り当てると、火の粉や塵を煙と同じ流れに乗せられます。");
         if (output.vectorField) {
-            changed |= ImGui::SliderInt("Field Resolution", &output.vectorFieldResolution, 8, 64);
+            changed |= property::SliderInt("Field Resolution", &output.vectorFieldResolution, 8, 64);
             changed |= widgets::DragVec3("Field Extents [m]", output.vectorFieldExtents, 0.05f, 0.1f, 500.0f);
         }
     }
@@ -1181,7 +1182,7 @@ bool EditBake(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
     ImGui::PushID("fluid_bake");
     static constexpr const char* kModes[] = { "2D (Flat)", "3D (Volume)" };
     int mode = static_cast<int>(bake.mode);
-    if (ImGui::Combo("Bake Mode", &mode, kModes, IM_ARRAYSIZE(kModes))) {
+    if (property::Combo("Bake Mode", &mode, kModes, IM_ARRAYSIZE(kModes))) {
         bake.mode = static_cast<fluid::FluidBakeMode>(mode);
         changed = true;
     }
@@ -1195,7 +1196,7 @@ bool EditBake(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
         int resolutionIndex = 2;
         for (int i = 0; i < IM_ARRAYSIZE(kResolutions); ++i)
             if (kResolutions[i] == bake.volumeResolution) resolutionIndex = i;
-        if (ImGui::Combo("Volume Resolution", &resolutionIndex, kResolutionLabels, IM_ARRAYSIZE(kResolutionLabels))) {
+        if (property::Combo("Volume Resolution", &resolutionIndex, kResolutionLabels, IM_ARRAYSIZE(kResolutionLabels))) {
             bake.volumeResolution = kResolutions[resolutionIndex];
             changed = true;
         }
@@ -1209,7 +1210,7 @@ bool EditBake(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
                                        "焼き時間は Ray Steps との積で増えます。");
         static constexpr const char* kSolvers[] = { "Auto (GPU → CPU)", "GPU (Compute)", "CPU" };
         int solver = static_cast<int>(bake.solver);
-        if (ImGui::Combo("Solver", &solver, kSolvers, IM_ARRAYSIZE(kSolvers))) {
+        if (property::Combo("Solver", &solver, kSolvers, IM_ARRAYSIZE(kSolvers))) {
             bake.solver = static_cast<fluid::FluidBakeSolver>(solver);
             changed = true;
         }
@@ -1223,7 +1224,7 @@ bool EditBake(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
             ImGui::TextColored(kWarnColor, "CPU ソルバーは %d までです。\n"
                                            "焼きもプレビューも黙って %d に落ちます (GPU なら 160 まで解けます)。",
                                kMaxCpuVolumeResolution, kMaxCpuVolumeResolution);
-        changed |= ImGui::Checkbox("Six-way Lightmaps", &bake.sixWayLightmaps);
+        changed |= property::Checkbox("Six-way Lightmaps", &bake.sixWayLightmaps);
         Tooltip("6 方向ライトマップ (_6wayP / _6wayN) も焼きます。\n"
                 "ランタイムで光の向きを変えても陰影が回り込みます (焼く時間は延びます)。");
         if (ImGui::TreeNode("Quality")) {
@@ -1231,10 +1232,10 @@ bool EditBake(FluidWidgetContext&  , fluid::FluidRecipe& recipe)
                                            "多重散乱の段数です (1 = 単散乱)。増やすほど煙の内側が明るく柔らかくなります。");
             changed |= widgets::RangeField("Sky Occlusion", bake.skyOcclusion, 0.0f, 1.0f, "%.2f",
                                            "環境光を上に積もった煙が遮る割合です。");
-            changed |= ImGui::DragFloat("Density Scale", &bake.densityScale, 0.01f, 0.01f, 20.0f);
-            changed |= ImGui::DragFloat("Exposure", &bake.exposure, 0.01f, 0.01f, 8.0f);
+            changed |= property::DragFloat("Density Scale", &bake.densityScale, 0.01f, 0.01f, 20.0f);
+            changed |= property::DragFloat("Exposure", &bake.exposure, 0.01f, 0.01f, 8.0f);
             Tooltip("HDR の色を 8bit へ落とすときの倍率。マテリアルの HDR Emissive に 1/Exposure が入ります。");
-            changed |= ImGui::Checkbox("Blackbody Emission", &bake.blackbodyEmission);
+            changed |= property::Checkbox("Blackbody Emission", &bake.blackbodyEmission);
             if (bake.blackbodyEmission)
                 changed |= ImGui::DragFloatRange2("Kelvin", &bake.blackbodyMinKelvin, &bake.blackbodyMaxKelvin,
                                                   10.0f, 500.0f, 15000.0f, "%.0f K");

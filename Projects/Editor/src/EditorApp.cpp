@@ -91,6 +91,7 @@
 #include <Engine/Scene/ScriptRuntime.hpp>
 #include <Engine/Scene/SceneUtils.hpp>
 #include <Engine/Scene/Systems/RenderSystem.hpp>
+#include <Engine/Renderer/RenderDebugOverlay.hpp>
 #include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <Engine/Core/Time.hpp>
@@ -337,7 +338,8 @@ void EditorApp::StopAiCommandBus()
     m_ctx.aiCommandBusRunning = false;
 }
 
-bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer, renderer::ResourceManager& resources, core::Window& window)
+bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& imguiRenderer,
+                     renderer::ResourceManager& resources, core::Window& window, bool enableViewports)
 {
     if (m_implotContext) {
         FBZZ_LOG_ERROR("EditorApp is already initialized");
@@ -349,6 +351,7 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     m_renderer      = &renderer;
     m_imguiRenderer = &imguiRenderer;
     m_resources     = &resources;
+    m_viewportsEnabled = enableViewports;
     m_runtime.GetSceneManager().SetResourceManager(&resources);
 
     /// @note ゲーム入力のアクション層は編集中は止め、Play 開始時に PlayModeController が有効化する。
@@ -568,7 +571,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     }
     m_statusBar = std::make_unique<StatusBar>();
     m_panels.push_back(std::make_unique<UndoHistoryPanel>());
-    m_panels.push_back(std::make_unique<HotkeyEditorPanel>());
+    {
+        auto panel = std::make_unique<HotkeyEditorPanel>();
+        m_hotkeyEditorPanel = panel.get();
+        m_panels.push_back(std::move(panel));
+    }
     {
         auto ps = std::make_unique<ProjectSettingsPanel>();
         m_projectSettingsPanel = ps.get();
@@ -640,9 +647,11 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
     RegisterDefaultHotkeys();
     /// @note 保存済みオーバーライドの適用は OpenProject()。ここではまだ設定を読んでいない。
 
-    /// @note 初回 RT をウィンドウサイズで生成する
-    m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
-    m_gameViewportRT  = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    if (m_viewportsEnabled) {
+        /// @note 初回はパネルのサイズが確定していないため、ウィンドウの寸法で確保する。
+        m_sceneViewportRT = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+        m_gameViewportRT  = resources.CreateRenderTarget(window.GetWidth(), window.GetHeight());
+    }
     if (m_sceneViewportPanel) {
         m_sceneViewportPanel->hdrRT     = m_sceneViewportRT;
         m_sceneViewportPanel->renderer  = &renderer;
@@ -676,7 +685,6 @@ bool EditorApp::Init(renderer::IRenderer& renderer, renderer::IImGuiRenderer& im
 
     FBZZ_LOG_INFO("EditorApp init done");
     UpdateWindowTitle();
-    InstallNativeMenuBar();
     return true;
 }
 
@@ -817,7 +825,7 @@ void EditorApp::ApplyEditorSettingsToContext(bool loadPanels)
     m_ctx.assetBrowserBookmarks = m_settings.assetBrowserBookmarks;
     m_ctx.assetBrowserFolderColors.clear();
     for (const auto& [path, color] : m_settings.assetBrowserFolderColors)
-        m_ctx.assetBrowserFolderColors.emplace(path, color);
+        m_ctx.assetBrowserFolderColors.emplace(AssetBrowserFolderKey(path), color);
     m_ctx.assetBrowserRecentFolderColors.assign(
         m_settings.assetBrowserRecentFolderColors.begin(),
         m_settings.assetBrowserRecentFolderColors.end());
@@ -1043,6 +1051,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     m_projectRoot      = projectRoot;
     m_ctx.projectRoot  = projectRoot;
+    m_ctx.gameViewportLayout = EditorContext::GameViewportLayout::AUTOMATIC;
     m_ctx.editorSceneState.Clear();
 
     /// @name EditorConfig を Assets/EditorConfig/ からロード
@@ -1137,7 +1146,7 @@ bool EditorApp::OpenProject(const std::string& projectRoot, const std::string& p
 
     m_ctx.scriptsSourceDir = util::FileSystem::PathToUtf8(
         util::FileSystem::PathFromUtf8(projectRoot) / L"Assets" / L"Scripts");
-    if (m_ctx.hotReloadEnabled) InitHlslHotReload();
+    InitHlslHotReload();
     m_managedScripts = std::make_unique<ManagedScriptEditor>();
     m_managedScripts->Init(util::FileSystem::PathFromUtf8(projectRoot),
         util::FileSystem::PathFromUtf8(m_ctx.engineRoot));
@@ -1311,9 +1320,19 @@ void EditorApp::BeginFrame()
         /// @note ドキュメントを編集する面にフォーカスがある間、Ctrl+S はその面のものにする。
         /// @note        ProcessInput はパネル描画より前に走り SuppressOperatorThisFrame は «次» フレーム
         /// @note        にしか効かないため、前フレームで確定済みのフォーカス状態をここで先に使う。
-        if (m_ctx.PanelScopeFocused(HotkeyScope::FluidEditor))
+        constexpr auto localHistory = HotkeyScope::Sequence | HotkeyScope::BehaviorTree;
+        constexpr auto localSave = localHistory | HotkeyScope::FluidEditor | HotkeyScope::SpriteEditor;
+        if (m_ctx.PanelScopeFocused(localSave) ||
+            (m_ctx.PanelScopeFocused(HotkeyScope::AnimationGraph) && m_ctx.animationControllerEditor))
             m_hotkeys.SuppressOperatorThisFrame("scene.save");
-        m_hotkeys.ProcessInput();
+        if (m_ctx.PanelScopeFocused(localHistory)) {
+            m_hotkeys.SuppressOperatorThisFrame("edit.undo");
+            m_hotkeys.SuppressOperatorThisFrame("edit.redo");
+        }
+        const bool capture = m_hotkeyEditorPanel && m_hotkeyEditorPanel->IsCapturingKeyboard()
+                          && m_ctx.PanelScopeFocused(HotkeyScope::HotkeyEditor);
+        const bool popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+        m_hotkeys.ProcessInput(capture || popupOpen);
     }
     {
         FBZZ_PROFILE_SCOPE("EditorBegin::HotReload");
@@ -1344,7 +1363,8 @@ void EditorApp::BeginFrame()
         ImGuiWindowFlags_NoBringToFrontOnFocus |
         ImGuiWindowFlags_NoNavFocus            |
         ImGuiWindowFlags_NoScrollbar           |
-        ImGuiWindowFlags_NoScrollWithMouse;
+        ImGuiWindowFlags_NoScrollWithMouse      |
+        ImGuiWindowFlags_MenuBar;
 
     {
         FBZZ_PROFILE_SCOPE("EditorBegin::DockSpace");
@@ -1354,6 +1374,7 @@ void EditorApp::BeginFrame()
         ImGui::Begin("##DockSpaceHost", nullptr, hostFlags);
         ImGui::PopStyleVar(3);
 
+        BuildMenuBar(m_ctx);
         BuildPlayToolbar(m_ctx);
         /// @note Prefab 編集モードの帯はツールバー直下・DockSpace の上に置く。パネルの中に
         /// @note        埋めるとレイアウト次第で見えなくなり、「今アセットを直している」という
@@ -1392,6 +1413,7 @@ void EditorApp::RenderPanels(EditorContext& ctx)
     /// @note        非表示のパネルは OnRender が呼ばれず申告できないので、落とさないと
     /// @note        「閉じたパネルにフォーカスがある」ままキーが効き続ける。
     ctx.focusedPanelScope    = HotkeyScope::None;
+    ctx.uiViewportFocused   = false;
     ctx.viewportFocused      = false;
     ctx.sceneViewportHovered = false;
     ctx.gameViewportRectValid = false;
@@ -1574,16 +1596,20 @@ void EditorApp::ProcessMapEditingModeTransition(uint32_t dockId)
     m_ctx.requestMapEditingModeToggle = false;
     if (m_ctx.mapEditingMode)
         ExitMapEditingMode(dockId);
-    else if (m_playMode.IsInEditor() && m_ctx.activeScene)
+    else if (m_playMode.IsInEditor() && m_ctx.activeScene) {
+        m_ctx.gameViewportLayout = EditorContext::GameViewportLayout::AUTOMATIC;
+        if (m_playViewportLayoutActive) ExitPlayViewportLayout(dockId);
         EnterMapEditingMode(dockId);
+    }
 }
 
 void EditorApp::ProcessPlayViewportLayoutTransition(uint32_t dockId)
 {
-    const bool shouldExpandGameView = m_playAllowsPhysicalInput
+    const bool shouldExpandGameView = m_ctx.gameViewportLayout == EditorContext::GameViewportLayout::MAXIMIZED
+        || (m_ctx.gameViewportLayout == EditorContext::GameViewportLayout::AUTOMATIC && m_playAllowsPhysicalInput
         && m_ctx.playFocusMode == EditorContext::PlayFocusMode::Maximized
         && !m_playMode.IsInEditor()
-        && !m_playMode.HasPendingRestore();
+        && !m_playMode.HasPendingRestore());
     if (shouldExpandGameView && !m_playViewportLayoutActive) {
         EnterPlayViewportLayout(dockId);
     } else if (!shouldExpandGameView && m_playViewportLayoutActive) {
@@ -1670,6 +1696,7 @@ void EditorApp::EnterPlayViewportLayout(uint32_t dockId)
     /// @note Unity の Maximize On Play に近い挙動として、Play 中だけ Game View を中央 Dock
     /// @note        全体へ広げる。Stop 時に保存済みレイアウトを復元し、ユーザーの通常レイアウトは変更しない。
     m_playViewportLayoutActive = true;
+    m_ctx.gameViewportMaximized = true;
     m_playIniFilename = ImGui::GetIO().IniFilename;
     ImGui::GetIO().IniFilename = nullptr;
 
@@ -1678,7 +1705,8 @@ void EditorApp::EnterPlayViewportLayout(uint32_t dockId)
 
     if (m_gameViewportPanel)
         m_gameViewportPanel->visible = true;
-    m_ctx.requestGameViewportFocus = true;
+    if (m_playAllowsPhysicalInput && m_ctx.gameViewportLayout == EditorContext::GameViewportLayout::AUTOMATIC)
+        m_ctx.requestGameViewportFocus = true;
 
     BuildPlayViewportLayout(dockId);
 }
@@ -1689,6 +1717,7 @@ void EditorApp::ExitPlayViewportLayout(uint32_t dockId)
         return;
 
     m_playViewportLayoutActive = false;
+    m_ctx.gameViewportMaximized = false;
     ImGui::GetIO().IniFilename = m_playIniFilename;
 
     if (m_playPanelVisibility.size() == m_panels.size()) {
@@ -1851,7 +1880,7 @@ void EditorApp::ResizeViewportRTsIfNeeded()
 {
     m_sceneViewportRTRecreated = false;
     m_gameViewportRTRecreated  = false;
-    if (!m_renderer) return;
+    if (!m_viewportsEnabled || !m_renderer) return;
 
     auto resizeRT = [this](renderer::ResourceHandle<renderer::RenderTargetTag>& rt,
                            ViewportPanel* panel,
@@ -1885,6 +1914,8 @@ void EditorApp::ResizeViewportRTsIfNeeded()
         resizeRT(m_sceneViewportRT, m_sceneViewportPanel, m_ctx.viewportWidth, m_ctx.viewportHeight);
     m_gameViewportRTRecreated =
         resizeRT(m_gameViewportRT, m_gameViewportPanel, m_ctx.gameViewportWidth, m_ctx.gameViewportHeight);
+    if (m_sceneViewportRTRecreated) m_ctx.viewportCaptureFrames[0] = {};
+    if (m_gameViewportRTRecreated) m_ctx.viewportCaptureFrames[1] = {};
     /// @note UI Viewport は専用 RT を持たず、Game View の完成済み RT を参照する。
     /// @note        リサイズ後もパネル側のハンドルを張り直して、古い RT 参照が残らないようにする。
     if (m_uiViewportPanel)
@@ -1924,8 +1955,10 @@ bool EditorApp::OnInit()
         m_debugCamera.camera.m_aspect =
             static_cast<float>(rt->GetWidth()) / static_cast<float>(rt->GetHeight());
 
-    const core::Window::LoadingScope loading(*m_window, L"Preparing scene rendering");
-    WarmupRenderResources();
+    if (m_viewportsEnabled) {
+        const core::Window::LoadingScope loading(*m_window, L"Preparing scene rendering");
+        WarmupRenderResources();
+    }
     return true;
 }
 
@@ -2158,7 +2191,8 @@ void EditorApp::OnRender()
     /// @note        SceneManager::GetActive() を優先する。
     scene::Scene* const resolveScene     = (!m_playMode.IsInEditor() && ActiveRuntime().GetActiveScene())
                                               ? ActiveRuntime().GetActiveScene() : m_scene.get();
-    const renderer::Camera  gameCamera       = scene::ResolveEditorGameCamera(*resolveScene, m_debugCamera.camera, gameAspect);
+    std::string gameCameraId;
+    const renderer::Camera  gameCamera       = scene::ResolveEditorGameCamera(*resolveScene, m_debugCamera.camera, gameAspect, &gameCameraId);
     const fbzz::LayerMask   gameCullingMask  = scene::ResolveGameCullingMask(*resolveScene);
 
     m_renderer->BeginFrame();
@@ -2179,13 +2213,13 @@ void EditorApp::OnRender()
     /// @note        残る。WasContentRendered() は 1 フレーム遅れて寸法変化時に false になりうるため、
     /// @note        そのフレームを飛ばすとパネルが未初期化の RT を貼り、止まった絵と重なって出る。
     const bool fluidPlaybackCapture = m_playtest.IsFluidPlaybackCaptureStep();
-    const bool needSceneView = !fluidPlaybackCapture
+    const bool needSceneView = m_viewportsEnabled && !fluidPlaybackCapture
         && (isViewportShowing(m_sceneViewportPanel) || aiViewportCaptureActive
             || m_sceneViewportRTRecreated
             || (m_renderPassViewerPanel && m_renderPassViewerPanel->CaptureForView(false)));
     /// @note Game View の RT は UI Viewport が背景として共有する (m_uiViewportPanel->hdrRT = m_gameViewportRT)。
     /// @note        どちらか一方でも出ていれば描かないと、UI 編集画面が止まった絵のままになる。
-    const bool needGameView = !fluidPlaybackCapture
+    const bool needGameView = m_viewportsEnabled && !fluidPlaybackCapture
         && (isViewportShowing(m_gameViewportPanel)
             || isViewportShowing(m_uiViewportPanel)
             || m_pendingShadowBakePlayScene
@@ -2200,7 +2234,7 @@ void EditorApp::OnRender()
     if (needSceneView)
         RenderSceneView(gameCamera, gameCullingMask, sharedGeometry);
     if (needGameView)
-        RenderGameView(gameCamera, gameCullingMask, sharedGeometry);
+        RenderGameView(gameCamera, gameCullingMask, gameCameraId, sharedGeometry);
 
     /// @note 3D の焼きは Dispatch と読み戻しを伴うのでフレーム内で回す (DX12 はフレーム外を捨てる)。
     /// @note        パネルの開閉に関わらず毎フレーム進める。Baker が触った RT は直後のバックバッファ設定で戻る。
@@ -2391,6 +2425,53 @@ void EditorApp::UpdateFocusAnim(float dt)
     }
 }
 
+namespace {
+RenderCaptureFrame BeginCaptureFrame(const EditorContext& ctx, scene::Scene& scene,
+    renderer::ResourceHandle<renderer::RenderTargetTag> target, const renderer::Camera& camera,
+    bool gameView, const std::string& cameraId, const std::string& runtimeSceneName)
+{
+    RenderCaptureFrame capture;
+    capture.gameView = gameView;
+    capture.target = target;
+    capture.frame = Time::frameCount;
+    capture.revision = ctx.captureRevision;
+    capture.resourceOwner = ctx.resources->GetInstanceId();
+    capture.resourceEpoch = ctx.resources->GetResetVersion();
+    capture.sceneGeneration = scene.GetRenderSceneGeneration();
+    capture.sceneName = runtimeSceneName;
+    if (runtimeSceneName.empty())
+        capture.scenePath = ctx.InPrefabEditMode() ? ctx.prefabEditPath : ctx.currentScenePath;
+    capture.camera = camera;
+    capture.cameraId = cameraId;
+    const auto semanticUntil = ctx.semanticCaptureUntilFrame[gameView ? 1 : 0];
+    capture.hasSemantic = semanticUntil != 0 && capture.frame <= semanticUntil;
+    if (capture.hasSemantic) {
+        for (auto& object : scene.GameObjects()) {
+            const auto* parent = object.GetParent();
+            capture.objects.push_back({object.instanceId, object.name, parent ? parent->instanceId : "",
+                object.transform.worldPosition});
+        }
+    }
+    return capture;
+}
+
+void PublishCaptureFrame(EditorContext& ctx, RenderCaptureFrame capture)
+{
+    const auto& snapshot = renderer::RenderDebugOverlay::GetLastSnapshot();
+    const auto& source = snapshot.gpuCurrentView;
+    auto& destination = ctx.viewportCaptureFrames[capture.gameView ? 1 : 0];
+    if (source.applicationFrameSerial != ctx.resources->FrameStamp() ||
+        source.sceneGeneration != capture.sceneGeneration || source.resourceEpoch != capture.resourceEpoch ||
+        source.outputId != capture.target.id || source.outputGeneration != capture.target.gen) {
+        destination = {};
+        return;
+    }
+    capture.passes.reserve(snapshot.passTimings.size());
+    for (const auto& pass : snapshot.passTimings) capture.passes.push_back(pass.first);
+    destination = std::move(capture);
+}
+} /// @note namespace
+
 void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
                                 scene::RenderFrameGeometryCache* frameGeometry)
 {
@@ -2467,17 +2548,21 @@ void EditorApp::RenderSceneView(const renderer::Camera&, fbzz::LayerMask,
         BuildSpatialDebugOverlay(m_ctx, *sceneViewScene, sceneRT.id, sceneRT.gen,
             m_resources->FrameStamp(), spatialDebugCommands, sceneRenderSettings.shadowEnabled);
         uiOptions.spatialDebugCommands = spatialDebugCommands;
+        auto captureFrame = BeginCaptureFrame(m_ctx, *sceneViewScene, sceneRT, sceneViewCamera, false, {},
+            m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
         scene::RenderSystem(*sceneViewScene, *m_renderer, *m_resources,
                             sceneViewCamera, sceneRT, &sceneRenderSettings,
                         fbzz::Layer::Everything, &uiOptions, &ActiveRuntime().GetPhysicsWorld(),
                         &sceneViewCulling,
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(false) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
+        PublishCaptureFrame(m_ctx, std::move(captureFrame));
         if (m_ctx.showStats && m_sceneViewportPanel) m_sceneViewportPanel->CaptureStats();
     }
 }
 
 void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMask gameCullingMask,
+                               const std::string& cameraId,
                                scene::RenderFrameGeometryCache* frameGeometry)
 {
     FBZZ_PROFILE_SCOPE("EditorApp::RenderGameView");
@@ -2524,12 +2609,15 @@ void EditorApp::RenderGameView(const renderer::Camera& gameCamera, fbzz::LayerMa
         gameRenderSettings = m_playRenderSettings;
     }
     gameRenderSettings.StripDebugVisualization();
+    auto captureFrame = BeginCaptureFrame(m_ctx, *renderScene, gameRT, gameCamera, true, cameraId,
+        m_playMode.IsInEditor() ? std::string{} : ActiveRuntime().ActiveSceneName());
     scene::RenderSystem(*renderScene, *m_renderer, *m_resources,
                         gameCamera, gameRT,
                         &gameRenderSettings,
                         gameCullingMask, &uiOptions, nullptr, nullptr,
                          m_renderPassViewerPanel ? m_renderPassViewerPanel->CaptureForView(true) : nullptr,
                          frameGeometry, m_surfacePatchPlans);
+    PublishCaptureFrame(m_ctx, std::move(captureFrame));
     if (m_ctx.showStats && m_gameViewportPanel) m_gameViewportPanel->CaptureStats();
 }
 

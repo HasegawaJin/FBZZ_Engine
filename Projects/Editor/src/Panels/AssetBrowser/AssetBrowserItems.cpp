@@ -662,7 +662,7 @@ bool AssetBrowserPanel::TryGetFolderColor(const EditorContext& ctx,
                                           ImVec4& outColor)
 {
     const auto it = ctx.assetBrowserFolderColors.find(
-        util::FileSystem::NormalizePathSeparators(folderPath));
+        AssetBrowserFolderKey(folderPath));
     if (it == ctx.assetBrowserFolderColors.end()) return false;
     outColor = ImGui::ColorConvertU32ToFloat4(it->second);
     return true;
@@ -673,32 +673,6 @@ ImVec4 AssetBrowserPanel::ResolveEntryColor(const Entry& e, const EditorContext&
     ImVec4 folderColor;
     if (e.isDir && TryGetFolderColor(ctx, e.path, folderColor)) return folderColor;
     return EntryColor(e);
-}
-
-void AssetBrowserPanel::ApplyFolderColor(const std::string& folderPath,
-                                         const uint32_t* color,
-                                         EditorContext& ctx)
-{
-    const std::string key = util::FileSystem::NormalizePathSeparators(folderPath);
-    if (color) ctx.assetBrowserFolderColors[key] = *color;
-    else       ctx.assetBrowserFolderColors.erase(key);
-
-    if (!m_folderColorApplyRecursive) return;
-
-    for (const auto& child : util::FileSystem::ListAll(key)) {
-        if (!util::FileSystem::IsDirectory(child)) continue;
-        const std::string childPath = util::FileSystem::NormalizePathSeparators(child);
-        if (!ShouldDisplayEntry(childPath, util::FileSystem::GetFilename(child), true)) continue;
-        ApplyFolderColor(childPath, color, ctx);
-    }
-}
-
-void AssetBrowserPanel::PushRecentFolderColor(uint32_t color, EditorContext& ctx)
-{
-    auto& recent = ctx.assetBrowserRecentFolderColors;
-    recent.erase(std::remove(recent.begin(), recent.end(), color), recent.end());
-    recent.insert(recent.begin(), color);
-    if (recent.size() > kMaxRecentFolderColors) recent.resize(kMaxRecentFolderColors);
 }
 
 void AssetBrowserPanel::DrawFolderColorMenu(const std::string& folderPath, EditorContext& ctx)
@@ -716,95 +690,84 @@ void AssetBrowserPanel::DrawFolderColorMenu(const std::string& folderPath, Edito
 
     /// @note 現在色はイテレータではなく値で持つ。このメニューの中で色を確定すると unordered_map
     /// @note へ挿入が起き、保持していたイテレータが無効化される (以降の参照が未定義動作になる)。
-    const std::string key = util::FileSystem::NormalizePathSeparators(folderPath);
+    const std::string key = AssetBrowserFolderKey(folderPath);
     const auto found = ctx.assetBrowserFolderColors.find(key);
     const bool     hasColor     = found != ctx.assetBrowserFolderColors.end();
     const uint32_t currentColor = hasColor ? found->second : 0u;
 
     /// @note 設定済みかどうかはラベル自体で示す。色見本をラベルの左に描かないのは、メニュー項目は
     /// @note 行幅いっぱいに広がるため、SameLine で図形を差し込むと当たり判定と表示がずれるため。
-    if (!ImGui::BeginMenu(hasColor ? "Set Color \xe2\x97\x8f" : "Set Color")) return;
+    if (!ImGui::BeginMenu(LOC(hasColor ? "Folder Color ●" : "Folder Color"))) return;
 
-    /// @note 色を確定する共通経路。最近使った色への記録と再描画の後始末をここに集約する。
-    const auto commit = [&](const ImVec4& picked) {
-        const uint32_t packed = ImGui::ColorConvertFloat4ToU32(picked);
-        ApplyFolderColor(folderPath, &packed, ctx);
-        PushRecentFolderColor(packed, ctx);
+    const auto apply = [&](const ImVec4* picked) {
+        OpArgs args;
+        args.Set("path", folderPath);
+        args.Set("recursive", m_folderColorApplyRecursive);
+        if (picked)
+            args.Set("color", FormatAssetBrowserFolderColor(ImGui::ColorConvertFloat4ToU32(*picked)));
+        const auto result = InvokeOperator(ctx, picked ? "asset.folder_color.set" : "asset.folder_color.clear", args);
+        if (result.ok && picked) ImGui::CloseCurrentPopup();
     };
 
     const float swatch = ImGui::GetFrameHeight();
 
     /// @note 現在の色。設定済みのフォルダで「今どれが効いているのか」を最初に見せる。
     if (hasColor) {
-        ImGui::TextDisabled("Current");
+        ImGui::TextDisabled("%s", LOCT("Current Color"));
         ImGui::ColorButton("##current", ImGui::ColorConvertU32ToFloat4(currentColor),
                            kSwatchFlags,
                            { swatch * 4.0f + ImGui::GetStyle().ItemSpacing.x * 3.0f, swatch });
         ImGui::Separator();
     }
 
-    ImGui::TextDisabled("Presets");
+    ImGui::Checkbox(LOC("Apply to Subfolders"), &m_folderColorApplyRecursive);
+    ImGui::Separator();
+    ImGui::TextDisabled("%s", LOCT("Color Presets"));
     for (int i = 0; i < IM_ARRAYSIZE(kPresets); ++i) {
         ImGui::PushID(i);
-        if (ImGui::ColorButton("##preset", kPresets[i], kSwatchFlags, { swatch, swatch })) {
-            commit(kPresets[i]);
-            ImGui::CloseCurrentPopup();
-        }
+        if (ImGui::ColorButton("##preset", kPresets[i], kSwatchFlags, { swatch, swatch }))
+            apply(&kPresets[i]);
         ImGui::PopID();
         if (i % 4 != 3) ImGui::SameLine();
     }
 
     if (!ctx.assetBrowserRecentFolderColors.empty()) {
         ImGui::Separator();
-        ImGui::TextDisabled("Recent");
+        ImGui::TextDisabled("%s", LOCT("Recent Colors"));
         for (std::size_t i = 0; i < ctx.assetBrowserRecentFolderColors.size(); ++i) {
             const ImVec4 color = ImGui::ColorConvertU32ToFloat4(
                 ctx.assetBrowserRecentFolderColors[i]);
             ImGui::PushID(static_cast<int>(i) + 1000);
-            if (ImGui::ColorButton("##recent", color, kSwatchFlags, { swatch, swatch })) {
-                commit(color);
-                ImGui::CloseCurrentPopup();
-            }
+            const bool picked = ImGui::ColorButton("##recent", color, kSwatchFlags, { swatch, swatch });
             ImGui::PopID();
+            if (picked) {
+                apply(&color);
+                break;
+            }
             if (i % 4 != 3 && i + 1 < ctx.assetBrowserRecentFolderColors.size())
                 ImGui::SameLine();
         }
     }
 
     ImGui::Separator();
-    if (ImGui::BeginMenu("Custom...")) {
-        /// @note 対象が変わったら、そのフォルダの現在色 (未設定なら既定のフォルダ色) から編集を始める。
-        if (m_folderColorPickerPath != key) {
+    if (ImGui::BeginMenu(LOC("Custom Color..."))) {
+        if (ImGui::IsWindowAppearing() || m_folderColorPickerPath != key) {
             m_folderColorPickerPath  = key;
             m_folderColorPickerValue = hasColor
                 ? ImGui::ColorConvertU32ToFloat4(currentColor)
                 : ImVec4{ 0.80f, 0.60f, 0.10f, 1.0f };
         }
-        /// @note ピッカーの操作中は都度適用する。決定してからでないと結果が見えないと、
-        /// @note ツリーやタイルの中でその色がどう見えるか分からないまま選ぶことになる。
-        if (ImGui::ColorPicker3("##custom", &m_folderColorPickerValue.x,
-                                ImGuiColorEditFlags_NoSidePreview |
-                                ImGuiColorEditFlags_NoSmallPreview |
-                                ImGuiColorEditFlags_DisplayHex)) {
-            const uint32_t packed = ImGui::ColorConvertFloat4ToU32(m_folderColorPickerValue);
-            ApplyFolderColor(folderPath, &packed, ctx);
-        }
-        if (ImGui::Button("Apply", { -FLT_MIN, 0.0f })) {
-            commit(m_folderColorPickerValue);
-            ImGui::CloseCurrentPopup();
-        }
+        ImGui::ColorPicker3("##custom", &m_folderColorPickerValue.x,
+                            ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_DisplayHex);
+        if (ImGui::Button(LOC("Apply"), { -FLT_MIN, 0.0f }))
+            apply(&m_folderColorPickerValue);
         ImGui::EndMenu();
     }
 
-    ImGui::Checkbox("Apply to Subfolders", &m_folderColorApplyRecursive);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("このフォルダ配下のフォルダにも同じ色 / 解除を適用します");
-
     ImGui::Separator();
-    if (ImGui::MenuItem("Reset to Default", nullptr, false,
-                        hasColor || m_folderColorApplyRecursive)) {
-        ApplyFolderColor(folderPath, nullptr, ctx);
-    }
+    if (ImGui::MenuItem(LOC("Reset to Default"), nullptr, false,
+                        hasColor || m_folderColorApplyRecursive))
+        apply(nullptr);
 
     ImGui::EndMenu();
 }
@@ -908,75 +871,9 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
             m_currentPath = dir.path;
             RefreshDirectory();
         }
-        if (ImGui::BeginPopupContextItem()) {
-            auto& bks = ctx.assetBrowserBookmarks;
-            const bool already = std::find(bks.begin(), bks.end(), dir.path) != bks.end();
-            if (ImGui::MenuItem("New Folder")) {
-                std::string newDir = dir.path + "/New Folder";
-                for (int n = 1; util::FileSystem::Exists(newDir) && n <= 999; ++n)
-                    newDir = dir.path + "/New Folder " + std::to_string(n);
-                if (!util::FileSystem::Exists(newDir)) {
-                    util::FileSystem::EnsureDirectory(newDir);
-                    /// @note Undo 履歴には積まない。旧実装の Undo は RemoveAll(newDir) で、
-                    /// @note 作成後にユーザーがそこへ入れたアセットまで巻き添えで消していた。
-                    m_currentPath = dir.path;
-                    InvalidateTreeCache(dir.path);
-                    RefreshDirectory();
-                    BeginRenameForPath(newDir, &ctx);
-                }
-            }
-            if (ImGui::MenuItem("Rename")) {
-                m_currentPath = normDir;
-                RefreshDirectory();
-                BeginRenameForPath(dir.path, &ctx);
-            }
-            if (ImGui::MenuItem("Duplicate")) {
-                const std::string dstPath = UniqueDuplicatePath(dir.path, true);
-                if (!dstPath.empty() && CopyAssetPath(dir.path, dstPath, true)) {
-                    /// @note 複製も Undo 対象外 (削除と同じく、消したいときは Delete から
-                    /// @note ごみ箱へ送る)。Ctrl+Z でフォルダごと RemoveAll されない。
-                    m_currentPath = normDir;
-                    InvalidateTreeCache(normDir);
-                    RefreshDirectory();
-                    BeginRenameForPath(dstPath, &ctx);
-                }
-            }
-            ImGui::Separator();
-            DrawFolderColorMenu(dir.path, ctx);
-            ImGui::Separator();
-            if (!already && ImGui::MenuItem("\xe2\x98\x85 Add to Favorites"))
-                bks.push_back(dir.path);
-            if (already && ImGui::MenuItem("Remove from Favorites"))
-                bks.erase(std::remove(bks.begin(), bks.end(), dir.path), bks.end());
-            ImGui::Separator();
-            if (ImGui::MenuItem("Reveal in Explorer")) {
-                RevealAssetBrowserInExplorer(ctx.projectRoot, dir.path);
-            }
-            if (ImGui::MenuItem("Copy Path"))
-                ImGui::SetClipboardText(dir.path.c_str());
-            if (ImGui::MenuItem("Copy Project Path")) {
-                const std::string projectPath = ToProjectAssetPath(dir.path, ctx);
-                ImGui::SetClipboardText(projectPath.c_str());
-            }
-            ImGui::Separator();
-            if (ImGui::MenuItem("Delete")) {
-                const std::string path = dir.path;
-                const std::string parent = normDir;
-                EditorContext* context = &ctx;
-                ModalDialog::OpenConfirm("Delete Folder",
-                    "Delete \"" + util::FileSystem::GetFilename(path) + "\" and all contents?\n"
-                    "(moved to .fbzz/Trash — not undoable with Ctrl+Z)",
-                    [this, path, parent, context]() {
-                        if (util::FileSystem::SamePathText(m_currentPath, path) ||
-                            util::FileSystem::IsChildPathText(m_currentPath, path))
-                            m_currentPath = parent;
-                        TrashAssets({ path }, *context);
-                        InvalidateTreeCache(parent);
-                        RefreshDirectory();
-                    });
-            }
-            ImGui::EndPopup();
-        }
+        ImGui::PushID(dir.path.c_str());
+        DrawEntryContextMenu(dir, ctx, false);
+        ImGui::PopID();
         /// @note ヒエラルキーエンティティをフォルダノードにドロップ → そのフォルダへ Prefab 保存
         if (ImGui::BeginDragDropTarget()) {
             if (SaveHierarchyPayloadAsPrefab(
@@ -2367,23 +2264,26 @@ void AssetBrowserPanel::CopySelectionToClipboard()
     }
 }
 
-/// @brief 現在開いているフォルダへクリップボードの内容を複製する。
+bool AssetBrowserPanel::CanPasteClipboardPath(const std::string& path, const std::string& destination) const
+{
+    return !m_packageAssetPaths.contains(path) && util::FileSystem::Exists(path)
+        && (!util::FileSystem::IsDirectory(path) || !util::FileSystem::IsChildPathText(destination, path));
+}
+
+/// @brief 指定したフォルダへクリップボードの内容を複製する。
 /// @brief 生成した実体は Undo 対象外 (取り消したいときは Delete でごみ箱へ送る)。
 /// @brief Library/Baked からのコピペは .meta を複製しない仕様のおかげで Extract と同じ結果になる。
 /// @brief これを取り出しの正式な動線として認め、そう説明する。
-void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
+void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx, const std::string& destination)
 {
-    if (m_clipboardPaths.empty()) return;
-    const std::string destDir = m_currentPath;
+    if (m_clipboardPaths.empty() || !util::FileSystem::IsDirectory(destination)) return;
 
     std::vector<std::string> pastedPaths;
     int extractedCount = 0;
     for (const auto& srcPath : m_clipboardPaths) {
-        /// @note 元がリネーム/削除済みなら黙ってスキップ
-        if (!util::FileSystem::Exists(srcPath)) continue;
-        if (m_packageAssetPaths.count(srcPath) > 0) continue;
+        if (!CanPasteClipboardPath(srcPath, destination)) continue;
         const bool isDir = util::FileSystem::IsDirectory(srcPath);
-        const std::string dstPath = UniqueDestPath(srcPath, destDir, isDir);
+        const std::string dstPath = UniqueDestPath(srcPath, destination, isDir);
         if (dstPath.empty()) continue;
         if (!CopyAssetPath(srcPath, dstPath, isDir)) {
             FBZZ_LOG_ERROR("Paste failed: %s -> %s", srcPath.c_str(), dstPath.c_str());
@@ -2393,7 +2293,8 @@ void AssetBrowserPanel::PasteClipboardAssets(EditorContext& ctx)
         pastedPaths.push_back(dstPath);
     }
 
-    RefreshDirectory();
+    if (pastedPaths.empty()) return;
+    OpenMenuFolder(destination);
 
     /// @note 貼り付けた項目をそのまま選択状態にする (Unity と同じく直後にリネーム/移動しやすくする)。
     m_selectedPaths.clear();
@@ -2423,7 +2324,7 @@ void AssetBrowserPanel::HandleClipboardShortcuts(EditorContext& ctx)
     if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false))
         CopySelectionToClipboard();
     else if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false))
-        PasteClipboardAssets(ctx);
+        PasteClipboardAssets(ctx, m_currentPath);
 }
 
 bool AssetBrowserPanel::IsBakedLibraryPath(const std::string& absPath)
@@ -2483,63 +2384,178 @@ std::string AssetBrowserPanel::ExtractSubAsset(const Entry& e, EditorContext& ct
     return destPath;
 }
 
-void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
+void AssetBrowserPanel::OpenMenuFolder(const std::string& path)
+{
+    m_currentPath = path;
+    m_searchBuf[0] = '\0';
+    m_searchResultsQuery.clear();
+    m_searchResultsTypeFilter = -1;
+    RefreshDirectory();
+}
+
+void AssetBrowserPanel::RenameMenuAsset(EditorContext& ctx, const std::string& path)
+{
+    const auto parent = AssetDirectory(path);
+    InvalidateTreeCache(parent);
+    OpenMenuFolder(parent);
+    BeginRenameForPath(path, &ctx);
+}
+
+bool AssetBrowserPanel::CanModifyAssetPath(const std::string& path) const
+{
+    return !util::FileSystem::SamePathText(path, m_rootPath) && !IsMountedRoot(path)
+        && !m_packageAssetPaths.contains(path) && !IsBakedLibraryPath(path)
+        && util::FileSystem::Exists(path);
+}
+
+void AssetBrowserPanel::DrawFolderDestinationMenu(EditorContext& ctx, const std::string& directory)
+{
+    const bool available = util::FileSystem::IsDirectory(directory);
+    if (ImGui::BeginMenu(LOC("Create Here"), available)) {
+        DrawCreateMenu(ctx, directory);
+        ImGui::EndMenu();
+    }
+    const bool canPaste = available && std::any_of(m_clipboardPaths.begin(), m_clipboardPaths.end(),
+        [&](const std::string& path) { return CanPasteClipboardPath(path, directory); });
+    const char* shortcut = util::FileSystem::SamePathText(directory, m_currentPath) ? "Ctrl+V" : nullptr;
+    if (ImGui::MenuItem(LOC("Paste Here"), shortcut, false, canPaste)) {
+        m_pendingMenuAction = [this, &ctx, directory] { PasteClipboardAssets(ctx, directory); };
+    }
+}
+
+void AssetBrowserPanel::DrawAssetLocationMenu(EditorContext& ctx, const std::string& path)
+{
+    if (ImGui::MenuItem(LOC("Reveal in Explorer"), nullptr, false, util::FileSystem::Exists(path)))
+        RevealAssetBrowserInExplorer(ctx.projectRoot, path);
+    if (ImGui::BeginMenu(LOC("Copy Path"))) {
+        if (ImGui::MenuItem(LOC("Absolute Path"))) ImGui::SetClipboardText(path.c_str());
+        if (ImGui::MenuItem(LOC("Copy Project Path"))) {
+            const auto projectPath = ToProjectAssetPath(path, ctx);
+            ImGui::SetClipboardText(projectPath.c_str());
+        }
+        ImGui::EndMenu();
+    }
+}
+
+void AssetBrowserPanel::DrawAssetTrashItem(EditorContext& ctx, std::vector<std::string> paths, bool enabled)
+{
+    if (!ImGui::MenuItem(LOC("Move to Trash"), nullptr, false, enabled)) return;
+    const std::string target = paths.size() == 1 ? util::FileSystem::GetFilename(paths.front()) :
+        std::to_string(paths.size()) + " " + LOCT("selected items");
+    ModalDialog::OpenConfirm(LOCT("Move to Trash"), target + "\n" +
+        LOCT("Move these items and their contents to .fbzz/Trash?"),
+        [this, &ctx, paths = std::move(paths)] {
+            TrashAssets(paths, ctx);
+            for (const auto& path : paths) {
+                const auto parent = AssetDirectory(path);
+                if (util::FileSystem::IsChildPathText(m_currentPath, path) && !util::FileSystem::Exists(path))
+                    m_currentPath = parent;
+                ResetAssetPreviewCache(path);
+                InvalidateTreeCache(parent);
+            }
+            RefreshDirectory();
+        });
+}
+
+void AssetBrowserPanel::DrawAssetEditItems(const Entry& e, EditorContext& ctx, bool canModify)
+{
+    if (!e.isPackageAsset && !e.isMount && util::FileSystem::Exists(e.path)) {
+        const bool generated = IsBakedLibraryPath(e.path);
+        if (ImGui::MenuItem(LOC(generated ? "Copy Generated Asset" : "Copy")))
+            m_clipboardPaths = { e.path };
+        if (generated && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", LOCT("Pasting makes an independent copy in the destination folder."));
+    }
+    if (!canModify) return;
+    if (ImGui::MenuItem(LOC("Rename")))
+        m_pendingMenuAction = [this, &ctx, path = e.path] { RenameMenuAsset(ctx, path); };
+    if (ImGui::MenuItem(LOC("Duplicate"))) {
+        m_pendingMenuAction = [this, &ctx, path = e.path, isDir = e.isDir] {
+            const auto duplicate = UniqueDuplicatePath(path, isDir);
+            if (!duplicate.empty() && CopyAssetPath(path, duplicate, isDir)) RenameMenuAsset(ctx, duplicate);
+            else Toast::Error(std::string(LOCT("Could not duplicate")) + " " + util::FileSystem::GetFilename(path));
+        };
+    }
+}
+
+void AssetBrowserPanel::DrawFolderContextItems(const Entry& folder, EditorContext& ctx)
+{
+    const bool available = util::FileSystem::IsDirectory(folder.path);
+    if (ImGui::MenuItem(LOC("Open Folder"), nullptr, false, available))
+        m_pendingMenuAction = [this, path = folder.path] { OpenMenuFolder(path); };
+    if (!folder.isPackageAsset) DrawFolderDestinationMenu(ctx, folder.path);
+    ImGui::Separator();
+
+    const bool canModify = !folder.isPackageAsset && !folder.isMount && CanModifyAssetPath(folder.path);
+    if (canModify) DrawAssetEditItems(folder, ctx, true);
+    if (available && canModify) DrawFolderColorMenu(folder.path, ctx);
+    const auto& bookmarks = ctx.assetBrowserBookmarks;
+    const bool favorite = std::any_of(bookmarks.begin(), bookmarks.end(), [&](const auto& path) {
+        return util::FileSystem::SamePathText(path, folder.path);
+    });
+    if (ImGui::MenuItem(LOC(favorite ? "Remove from Favorites" : "Add to Favorites"), nullptr, false,
+                         favorite || available)) {
+        m_pendingMenuAction = [&ctx, path = folder.path, favorite] {
+            auto& current = ctx.assetBrowserBookmarks;
+            if (favorite) std::erase_if(current, [&](const auto& entry) { return util::FileSystem::SamePathText(entry, path); });
+            else current.push_back(path);
+        };
+    }
+    ImGui::Separator();
+    DrawAssetLocationMenu(ctx, folder.path);
+    if (canModify) {
+        ImGui::Separator();
+        DrawAssetTrashItem(ctx, { folder.path });
+    }
+}
+
+void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx, bool allowBatch)
 {
     if (!ImGui::BeginPopupContextItem("##entry_ctx")) return;
 
-    /// @note 複数選択時の一括操作
-    const bool multiSel = m_selectedPaths.size() > 1 && m_selectedPaths.count(e.path);
-    if (multiSel) {
-        const int n = static_cast<int>(m_selectedPaths.size());
-        char label[64];
-        bool includesPackageAsset = false;
-        for (const auto& path : m_selectedPaths) {
-            if (m_packageAssetPaths.count(path) > 0) {
-                includesPackageAsset = true;
-                break;
-            }
-        }
-
-        std::snprintf(label, sizeof(label), "Copy %d items", n);
-        if (ImGui::MenuItem(label, "Ctrl+C"))
-            CopySelectionToClipboard();
-        if (ImGui::MenuItem("Paste", "Ctrl+V", false, !m_clipboardPaths.empty()))
-            PasteClipboardAssets(ctx);
+    const bool multi = allowBatch && m_selectedPaths.size() > 1 && m_selectedPaths.contains(e.path);
+    if (multi) {
+        std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
+        ImGui::TextDisabled("%zu %s", paths.size(), LOCT("selected items"));
         ImGui::Separator();
-
-        std::snprintf(label, sizeof(label), "Duplicate %d items", n);
-        ImGui::BeginDisabled(includesPackageAsset);
-        if (ImGui::MenuItem(label)) {
-            std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
-            for (const auto& srcPath : paths) {
-                const bool isDir = util::FileSystem::IsDirectory(srcPath);
-                const std::string dstPath = UniqueDuplicatePath(srcPath, isDir);
-                if (dstPath.empty()) continue;
-                if (!CopyAssetPath(srcPath, dstPath, isDir))
-                    FBZZ_LOG_ERROR("Duplicate failed: %s", srcPath.c_str());
-            }
-            RefreshDirectory();
+        const bool canCopy = std::all_of(paths.begin(), paths.end(), [&](const std::string& path) {
+            return !m_packageAssetPaths.contains(path) && !IsMountedRoot(path)
+                && util::FileSystem::Exists(path);
+        });
+        const bool canModify = std::all_of(paths.begin(), paths.end(), [&](const std::string& path) {
+            return CanModifyAssetPath(path);
+        });
+        if (ImGui::MenuItem(LOC("Copy"), "Ctrl+C", false, canCopy))
+            m_clipboardPaths = paths;
+        if (ImGui::MenuItem(LOC("Duplicate"), nullptr, false, canModify)) {
+            m_pendingMenuAction = [this, paths] {
+                for (const auto& source : paths) {
+                    const bool isDir = util::FileSystem::IsDirectory(source);
+                    const auto duplicate = UniqueDuplicatePath(source, isDir);
+                    if (!duplicate.empty() && CopyAssetPath(source, duplicate, isDir))
+                        InvalidateTreeCache(AssetDirectory(source));
+                    else Toast::Error(std::string(LOCT("Could not duplicate")) + " " + util::FileSystem::GetFilename(source));
+                }
+                RefreshDirectory();
+            };
         }
-        ImGui::EndDisabled();
-
-        std::snprintf(label, sizeof(label), "Delete %d items", n);
-        ImGui::BeginDisabled(includesPackageAsset);
-        if (ImGui::MenuItem(label)) {
-            std::vector<std::string> paths(m_selectedPaths.begin(), m_selectedPaths.end());
-            EditorContext* context = &ctx;
-            ModalDialog::OpenConfirm("Delete",
-                "Delete " + std::to_string(n) + " selected items?\n"
-                "(moved to .fbzz/Trash — not undoable with Ctrl+Z)",
-                [this, paths, context]() {
-                    TrashAssets(paths, *context);
-                    m_selectedPaths.clear();
-                    RefreshDirectory();
-                });
-        }
-        ImGui::EndDisabled();
-
         ImGui::Separator();
-        if (ImGui::BeginMenu("Create")) { DrawCreateMenu(ctx); ImGui::EndMenu(); }
+        DrawAssetTrashItem(ctx, std::move(paths), canModify);
+        ImGui::EndPopup();
+        return;
+    }
+
+    const auto title = e.isDir ? NormalizeAssetPath(e.path) : e.name;
+    widgets::LabelEllipsis(title.c_str(), ImGui::GetFontSize() * 20.0f);
+    if (!e.isDir && IsGlobalSearchActive()) {
+        const auto folder = NormalizeAssetPath(AssetDirectory(e.path));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        widgets::LabelEllipsis(folder.c_str(), ImGui::GetFontSize() * 20.0f);
+        ImGui::PopStyleColor();
+    }
+    ImGui::Separator();
+    if (e.isDir) {
+        DrawFolderContextItems(e, ctx);
         ImGui::EndPopup();
         return;
     }
@@ -2547,13 +2563,13 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     /// @note Sprite サブアセットは実ファイルではないため、複製・削除・リネームを出さず、
     /// @note 元画像を編集する操作と安定参照のコピーだけを提供する。
     if (e.isSpriteSubAsset) {
-        if (ctx.openSpriteEditor && ImGui::MenuItem("Open in Sprite Editor"))
+        if (ctx.openSpriteEditor && ImGui::MenuItem(LOC("Open in Sprite Editor")))
             ctx.openSpriteEditor(e.sourceAssetPath + ".meta");
-        if (ImGui::MenuItem("Copy Sprite Reference")) {
+        if (ImGui::MenuItem(LOC("Copy Sprite Reference"))) {
             const std::string projectReference = ToProjectAssetPath(e.path, ctx);
             ImGui::SetClipboardText(projectReference.c_str());
         }
-        if (ImGui::MenuItem("Reveal Source in Explorer")) {
+        if (ImGui::MenuItem(LOC("Reveal Source in Explorer"))) {
             RevealAssetBrowserInExplorer(ctx.projectRoot, e.sourceAssetPath);
         }
         ImGui::EndPopup();
@@ -2566,8 +2582,8 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     /// @note 上書きされない実体が要る。新しい GUID を振ればモデル原本 から切り離される。
     /// @note 元の参照は書き換えない。全部を新しい方へ向けると「複製したつもりが元も変わった」
     /// @note ことになるので、差し替えるかどうかは人が決める。
-    if (!e.isDir && e.isSubAsset && !e.isSpriteSubAsset && IsExtractableSubAsset(e)) {
-        if (ImGui::MenuItem("Extract to Assets")) {
+    if (IsExtractableSubAsset(e)) {
+        if (ImGui::MenuItem(LOC("Extract to Assets"))) {
             const std::string extracted = ExtractSubAsset(e, ctx);
             if (extracted.empty()) {
                 Toast::Error("Extract failed: " + e.name);
@@ -2575,11 +2591,11 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                 Toast::Success("Extracted " + util::FileSystem::GetFilename(extracted));
                 /// @note 取り出した実体を選択状態にする。Ctrl+V は貼った項目を選択するため、
                 /// @note 同じ «出して続けて編集する» 結果になる操作で選択の扱いが違うと迷う。
-                m_pendingNavigate = util::FileSystem::GetDirectory(extracted);
-                m_selectedPaths.clear();
-                m_lastClickedPath     = extracted;
-                SelectAsset(ctx, extracted);
-                RefreshDirectory();
+                m_pendingMenuAction = [this, &ctx, extracted] {
+                    OpenMenuFolder(AssetDirectory(extracted));
+                    m_lastClickedPath = extracted;
+                    SelectAsset(ctx, extracted);
+                };
             }
             ImGui::CloseCurrentPopup();
         }
@@ -2598,24 +2614,24 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
     /// @note プレファブ本体の編集面へ入る動線。既定のダブルクリックは «シーンへ配置» なので、
     /// @note アセットそのものを直したいときの入口が無かった。シーンに 1 個も置いていない
     /// @note プレファブも編集できる。
-    if (!e.isDir && e.ext == ".prefab") {
-        if (ImGui::MenuItem("Open Prefab (edit asset)")) {
-            ctx.requestOpenPrefabEdit = NormalizeAssetPath(e.path);
-            ImGui::CloseCurrentPopup();
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Edit the .prefab itself — every instance follows on save\n"
-                              "(Alt + double-click does the same)");
+    if (e.ext == ".prefab" || e.ext == ".vfx" || e.ext == ".scene" || e.ext == ".fluid"
+        || e.ext == ".animcontroller" || e.ext == ".behaviortree" || e.ext == ".synth" || e.ext == ".sequence") {
+        OpArgs args;
+        args.Set("path", e.path);
+        const char* label = e.ext == ".prefab" ? "Open Prefab" : e.ext == ".scene" ? "Open Scene" : "Open Asset";
+        if (ImGui::MenuItem(LOC(label), nullptr, false, CanInvokeOperator(ctx, "asset.open", args)))
+            m_pendingMenuAction = [&ctx, args = std::move(args)] { InvokeOperator(ctx, "asset.open", args); };
         ImGui::Separator();
     }
 
-    if (!e.isDir && IsImportableRaw(e.ext)) {
+    if (!e.isPackageAsset && !IsBakedLibraryPath(e.path) && IsImportableRaw(e.ext)) {
         /// @note 原本と設定の変更はウォッチャーが自動で焼き直すので、ここは
         /// @note 「変更が無いのに作り直したい」ときの手動経路。
         /// @note ラベルは m_outdatedPaths ではなく「既に入っているか」で出し分ける
         /// @note (古い印はキュー投入から完了までの一瞬しか立たない)。
         const bool imported = IsAlreadyImported(e.path);
-        if (ImGui::MenuItem(imported ? "\xe2\x86\xbb Re-import" : "Import")) {
+        if (ImGui::MenuItem(LOC(imported ? "Re-import" : "Import"), nullptr, false,
+                            !m_outdatedPaths.contains(e.path))) {
             /// @note 自動経路と同じ「処理中」の印で二重投入を防ぐ (完了時に取り除かれる)。
             if (m_outdatedPaths.insert(e.path).second) {
                 /// @note 保存済み設定を読み直してから積む。既定の options で押し流すと、
@@ -2626,7 +2642,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                 m_importAllRequested = true;
             }
         }
-        if (ImGui::MenuItem("Import with Settings...")) {
+        if (ImGui::MenuItem(LOC("Import with Settings..."))) {
             m_importSettings.path      = e.path;
             m_importSettings.options   = {};
             m_importSettings.open      = true;
@@ -2635,12 +2651,12 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         }
         ImGui::Separator();
     }
-    if (!e.isDir && IsTextureRaw(e.ext)) {
+    if (!e.isPackageAsset && !IsBakedLibraryPath(e.path) && IsTextureRaw(e.ext)) {
         const std::string metaPath = e.path + ".meta";
         const bool hasPendingImportSettings = AssetDirtyRegistry::IsDirty(metaPath);
         if (ctx.openSpriteEditor) {
             if (hasPendingImportSettings) ImGui::BeginDisabled();
-            if (ImGui::MenuItem("Open in Sprite Editor")) {
+            if (ImGui::MenuItem(LOC("Open in Sprite Editor"))) {
                 asset::TextureAsset textureAsset;
                 asset::TexDescSerializer serializer;
                 (void)serializer.Load(metaPath, textureAsset);
@@ -2667,7 +2683,7 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
                 ImGui::SetTooltip("Apply or Revert the Inspector Import Settings first");
             }
         }
-        if (ImGui::MenuItem("Import Settings...")) {
+        if (ImGui::MenuItem(LOC("Import Settings..."))) {
             m_textureImportSettings.path        = e.path;
             m_textureImportSettings.open        = true;
             m_textureImportSettings.visible     = true;
@@ -2676,91 +2692,25 @@ void AssetBrowserPanel::DrawEntryContextMenu(const Entry& e, EditorContext& ctx)
         }
         ImGui::Separator();
     }
-    if (!e.isMount && !e.isPackageAsset) {
-        /// @note 右クリックした e が事前に左クリック選択されているとは限らないため、
-        /// @note m_lastClickedPath 頼みの CopySelectionToClipboard() ではなくこの項目自体を積む。
-        const bool copiesGenerated = IsBakedLibraryPath(e.path);
-        if (ImGui::MenuItem("Copy", "Ctrl+C"))
-            m_clipboardPaths = { e.path };
-        /// @note 生成物を掴んだときは、貼り付けが «取り出し» になることを先に言う。結果として
-        /// @note 独立アセットが増えるのに、操作名が Copy のままだと «再インポートしても
-        /// @note 更新されない実体» を作った自覚が持てない。
-        if (copiesGenerated) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("(extracts on paste)");
-        }
-        if (ImGui::MenuItem("Paste", "Ctrl+V", false, !m_clipboardPaths.empty()))
-            PasteClipboardAssets(ctx);
+    const bool canModify = !e.isMount && !e.isPackageAsset && CanModifyAssetPath(e.path);
+    if (canModify || (!e.isPackageAsset && util::FileSystem::Exists(e.path))) {
+        DrawAssetEditItems(e, ctx, canModify);
         ImGui::Separator();
     }
-    if (!e.isMount && !e.isPackageAsset && ImGui::MenuItem("Duplicate")) {
-        const std::string dstPath = UniqueDuplicatePath(e.path, e.isDir);
-        if (!dstPath.empty()) {
-            if (CopyAssetPath(e.path, dstPath, e.isDir)) {
-                RefreshDirectory();
-                BeginRenameForPath(dstPath, &ctx);
-            } else {
-                FBZZ_LOG_ERROR("Duplicate failed: %s", e.path.c_str());
-            }
-        }
-    }
-    ImGui::Separator();
-    if (!e.isDir && ImGui::MenuItem("Find References...")) {
+
+    if (ImGui::MenuItem(LOC("Find References..."))) {
         StartFindReferences(ctx, e.path);
         m_findRefs.open = true;
     }
-    /// @note 横断検索の結果からその場所へ移動する。検索でアセットを見つけた後、周辺のファイルも
-    /// @note 見たいことが多いため、Explorer を開かずにブラウザ内で辿れるようにする。
-    if (IsGlobalSearchActive() && !e.isDir && ImGui::MenuItem("Go to Containing Folder")) {
-        /// @note GetDirectory は末尾に '/' を付けて返すため落とす (パス比較が壊れる)。
-        std::string folder = util::FileSystem::GetDirectory(e.path);
-        while (folder.size() > 1 && (folder.back() == '/' || folder.back() == '\\'))
-            folder.pop_back();
-        m_pendingNavigate = std::move(folder);
-        /// @note 移動先では検索を解除しないと、そのフォルダの中身が見えない。
-        m_searchBuf[0] = '\0';
-        m_searchResultsQuery.clear();
-        m_searchResultsTypeFilter = -1;
+    const auto folder = AssetDirectory(e.path);
+    if ((IsGlobalSearchActive() || !util::FileSystem::SamePathText(folder, m_currentPath))
+        && ImGui::MenuItem(LOC("Go to Containing Folder"), nullptr, false, util::FileSystem::IsDirectory(folder))) {
+        m_pendingMenuAction = [this, folder] { OpenMenuFolder(folder); };
     }
-    if (e.isDir && !e.isMount) {
-        DrawFolderColorMenu(e.path, ctx);
+    DrawAssetLocationMenu(ctx, e.path);
+    if (canModify) {
         ImGui::Separator();
-    }
-    if (ImGui::MenuItem("Reveal in Explorer")) {
-        RevealAssetBrowserInExplorer(ctx.projectRoot, e.path);
-    }
-    if (ImGui::MenuItem("Copy Path")) {
-        ImGui::SetClipboardText(e.path.c_str());
-    }
-    if (ImGui::MenuItem("Copy Project Path")) {
-        const std::string projectPath = ToProjectAssetPath(e.path, ctx);
-        ImGui::SetClipboardText(projectPath.c_str());
-    }
-    ImGui::Separator();
-    ImGui::BeginDisabled(e.isMount || e.isPackageAsset);
-    if (ImGui::MenuItem("Rename")) {
-        BeginRenameForPath(e.path, &ctx);
-    }
-    ImGui::Separator();
-    if (ImGui::MenuItem("Delete")) {
-        const std::string path = e.path;
-        EditorContext* context = &ctx;
-        ModalDialog::OpenConfirm("Delete",
-            "Delete \"" + util::FileSystem::GetFilename(path) + "\"?\n"
-            "(moved to .fbzz/Trash — not undoable with Ctrl+Z)",
-            [this, path, context]() {
-                TrashAssets({ path }, *context);
-                if (m_selectedFbxPath == path) { m_selectedFbxPath.clear(); m_selectedModel = nullptr; }
-                m_selectedPaths.erase(path);
-                ResetAssetPreviewCache(path);
-                RefreshDirectory();
-            });
-    }
-    ImGui::EndDisabled();
-    ImGui::Separator();
-    if (ImGui::BeginMenu("Create")) {
-        DrawCreateMenu(ctx);
-        ImGui::EndMenu();
+        DrawAssetTrashItem(ctx, { e.path });
     }
     ImGui::EndPopup();
 }
@@ -2857,6 +2807,7 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
 
     ImGui::InvisibleButton("##icon", { sz, sz });
     const bool hov = ImGui::IsItemHovered();
+    const bool iconHoveredForMenu = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
 
     /// @note 遅延リネーム: «選択済みをもう一度クリック» から一定時間で名前欄へ入る (Explorer 方式)。
     /// @note この待ち時間は «開く» (ダブルクリック) と同じ操作の上に乗っており、2 度目の押下が
@@ -2990,8 +2941,6 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
             ImGui::SetTooltip("%s", e.path.c_str());
     }
 
-    DrawEntryContextMenu(e, ctx);
-
     /// @note FBX / Sprite Texture の ▶/▼ 三角クリックで展開トグル。
     if (hov && !e.isSubAsset && e.hasSubAssets &&
         ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -3016,10 +2965,16 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     HandleEntryClick(e, ctx, hov);
     HandleEntryDoubleClick(e, ctx, hov);
     {
-        const bool tintLabel = selected && m_renamingPath != e.path;
+        const bool renaming = m_renamingPath == e.path;
+        const bool tintLabel = selected && !renaming;
         if (tintLabel) ImGui::PushStyleColor(ImGuiCol_Text, ui::TileSelectedTextColor());
         DrawEntryRenameLabel(e, ctx);
         if (tintLabel) ImGui::PopStyleColor();
+        if (!renaming) {
+            if (iconHoveredForMenu && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+                ImGui::OpenPopup("##entry_ctx");
+            DrawEntryContextMenu(e, ctx);
+        }
     }
 
     ImGui::PopID();

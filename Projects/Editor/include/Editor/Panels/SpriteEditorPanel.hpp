@@ -21,6 +21,7 @@ public:
     const char* GetViewMenuName() const override { return "Sprite Editor"; }
     const char* GetMenuCategory() const override { return "Assets"; }
     bool GetDefaultVisibility() const override { return false; }
+    HotkeyScope GetHotkeyScope() const override { return m_metaPath.empty() ? HotkeyScope::None : HotkeyScope::SpriteEditor; }
     void OnRegisterOperators(OperatorRegistry& registry) override;
 
     /// Texture の .meta sidecar を作業コピーへ読み込み、パネルを前面に開く。

@@ -58,16 +58,10 @@ bool DragVec3(const char* label, math::Vector3& v, float speed = 0.1f,
 
 /// @note RGB カラーピッカー (Vector3 を [0,1] で扱う)
 bool ColorEdit3(const char* label, math::Vector3& color);
+bool CheckboxMixed(const char* label, bool& value, bool mixed);
 
 /// @note RGBA カラーピッカー (Vector4 を [0,1] で扱う)
-inline bool ColorEdit4(const char* label, math::Vector4& color) {
-    float v[4] = { color.x, color.y, color.z, color.w };
-    if (ImGui::ColorEdit4(label, v)) {
-        color = { v[0], v[1], v[2], v[3] };
-        return true;
-    }
-    return false;
-}
+bool ColorEdit4(const char* label, math::Vector4& color);
 
 /// @note 流れのチャンネル (32bit マスク) の編集欄。FlowField と ParticleEmitter が共有する。
 /// @return 値が変わったら true。
@@ -203,24 +197,27 @@ bool DragIntExpr(const char* id, int& value, float speed,
 /// @note 軸ごとに色分けした多成分ドラッグ入力 (X [1.234] Y [0.000] Z [-2.500])。
 /// @note 成分ごとに独立した DragFloat のため Ctrl+Click/Alt/Shift はそのまま使える。BeginGroup で
 /// @note 囲んであるので IsItemActivated()/IsItemDeactivatedAfterEdit() は全成分まとめて機能する。
-/// @param id  "##" 始まりならラベル非表示。それ以外は DragFloat3 と同じく右側へ描く。
+/// @param id  "##" 始まりならラベル非表示。それ以外は共通のプロパティ行に置く。
 /// @param count 成分数 (1..4 / それぞれ X Y Z W として描く)
 /// @param speed <= 0 を渡すと成分ごとに AdaptiveDragSpeed() を使う
+/// @param flags 各成分のドラッグと数値の揃え方に適用するフラグ。
 /// @return true if any component changed
 bool DragAxes(const char* id, float* values, int count,
               float speed = 0.1f, float min = 0.0f, float max = 0.0f,
-              const char* fmt = "%.3f");
+              const char* fmt = "%.3f", unsigned mixedAxes = 0,
+              unsigned* changedAxes = nullptr, unsigned disabledAxes = 0, ImGuiSliderFlags flags = 0);
 
 inline bool DragAxes(const char* id, math::Vector3& v, float speed = 0.1f,
-                     float min = 0.0f, float max = 0.0f, const char* fmt = "%.3f")
+                     float min = 0.0f, float max = 0.0f, const char* fmt = "%.3f",
+                     ImGuiSliderFlags flags = 0)
 {
     float arr[3] = { v.x, v.y, v.z };
-    if (!DragAxes(id, arr, 3, speed, min, max, fmt)) return false;
+    if (!DragAxes(id, arr, 3, speed, min, max, fmt, 0, nullptr, 0, flags)) return false;
     v = { arr[0], arr[1], arr[2] };
     return true;
 }
 
-/// @note 等比リンク付きのスケール入力。[鍵] [▌X] [▌Y] [▌Z]
+/// @note 等比リンク付きのスケール入力。[▌X] [▌Y] [▌Z] [鍵]
 /// @note 鍵を閉じている間は、掴んだ成分の変化率を他成分へそのまま掛けて比率を保つ。
 /// @param uniform リンク状態 (呼び出し側が保持する。ボタン押下でトグルされる)
 /// @return true if the vector changed
@@ -257,6 +254,10 @@ void EndPropertyRow(const PropertyRowScope& row);
     const float ratio   = ImGui::GetWindowWidth() * 0.34f;
     return (std::min)((std::max)(ratio, font * 5.0f), font * maxEm);
 }
+
+/// @note 余白が無ければラベルを上に置く。戻り値の 0 は値が次行にあることを示す。
+[[nodiscard]] float DrawPropertyLabel(const char* label);
+void PlacePropertyValue(float column, float trailingWidth = 0.0f);
 
 /// @note 手書きパネル用のプロパティ行。「地色 + 省略付きラベル + 列合わせ済みの値」を 1 回で用意する。
 /// @note 直後に値ウィジェットを 1 つ描き、必ず EndPropertyField() で閉じる。
@@ -551,7 +552,8 @@ inline float SanitizeEulerDeg(float value)
     return value;
 }
 
-inline bool DragQuatEuler3(const char* label, math::Quaternion& q, float speed = 0.5f)
+inline bool DragQuatEuler3(const char* label, math::Quaternion& q, float speed = 0.5f,
+                          ImGuiSliderFlags flags = 0)
 {
     ImGuiStorage* storage = ImGui::GetStateStorage();
     const ImGuiID id = ImGui::GetID(label);
@@ -596,7 +598,7 @@ inline bool DragQuatEuler3(const char* label, math::Quaternion& q, float speed =
 
     /// @note 軸色付きの成分入力を使う。回転はどの軸を触っているかの誤認が最も痛い値なので、
     /// @note Pitch(X) / Yaw(Y) / Roll(Z) を色で区別できるようにしておく。
-    if (!DragAxes(label, values, 3, speed, 0.0f, 0.0f, "%.1f")) return false;
+    if (!DragAxes(label, values, 3, speed, 0.0f, 0.0f, "%.1f", 0, nullptr, 0, flags)) return false;
 
     values[0] = SanitizeEulerDeg(values[0]);
     values[1] = SanitizeEulerDeg(values[1]);

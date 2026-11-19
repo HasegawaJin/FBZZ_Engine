@@ -3,7 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Editor/Util/HotkeyManager.hpp>
+#include <bitset>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <utility>
 
@@ -38,7 +40,6 @@ bool HotkeyManager::ScopeActive(HotkeyScope scope) const
 
 bool HotkeyManager::IsCurrentlyActive(const Hotkey& hk) const
 {
-    if (hk.infoOnly) return false;
     if (!ScopeActive(hk.scope)) return false;
     if (hk.enabled && !hk.enabled()) return false;
     return true;
@@ -53,7 +54,7 @@ void HotkeyManager::SuppressOperatorThisFrame(std::string_view operatorId)
     m_suppressedOperators.emplace_back(operatorId);
 }
 
-void HotkeyManager::ProcessInput()
+void HotkeyManager::ProcessInput(bool capture)
 {
     /// @note 申告は «前回の ProcessInput 以降に積まれた分» を効かせ、ここで空にする。ProcessInput は EditorApp::BeginFrame (どのパネルの描画よりも前) で走るため、
     ///       パネル側の申告は «次に来る» ProcessInput にしか届かず、持ち越さないと押したフレームに間に合わない。早期 return の経路でも必ず空にするため最初に取り出す。
@@ -61,16 +62,21 @@ void HotkeyManager::ProcessInput()
     suppressed.swap(m_suppressedOperators);
 
     /// @note テキスト入力中はキーが文字として消費される: 名前入力の途中で "D" がオブジェクト複製になってはいけない。
-    if (ImGui::GetIO().WantTextInput) return;
+    if (capture || ImGui::GetIO().WantTextInput) return;
 
     const ImGuiIO& io = ImGui::GetIO();
+    std::bitset<ImGuiKey_NamedKey_COUNT> consumed;
     for (const auto& hk : m_hotkeys) {
         if (hk.infoOnly || !hk.callback) continue;
+        if (hk.imguiKey < ImGuiKey_NamedKey_BEGIN || hk.imguiKey >= ImGuiKey_NamedKey_END) continue;
+        const auto index = static_cast<std::size_t>(hk.imguiKey - ImGuiKey_NamedKey_BEGIN);
+        if (consumed.test(index)) continue;
 
         /// @note 修飾キーは完全一致を要求する: 部分一致にすると Ctrl+Z (Undo) が Z (Pivot 切替) も同時に発火させる。
         if (hk.ctrl != io.KeyCtrl || hk.shift != io.KeyShift || hk.alt != io.KeyAlt)
             continue;
-        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(hk.imguiKey), false)) continue;
+        /// @note フォーカス中の Shortcut に割り当てられたキーは、別の全体操作に再割り当てされていても奪わない。
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(hk.imguiKey), ImGuiInputFlags_None, ImGuiKeyOwner_NoOwner)) continue;
         if (!IsCurrentlyActive(hk)) continue;
 
         if (!hk.operatorId.empty()) {
@@ -81,6 +87,8 @@ void HotkeyManager::ProcessInput()
             if (claimed) continue;
         }
 
+        /// @note 旧設定に同じ割り当てが残っていても、入力ごとに一つだけ実行する。
+        consumed.set(index);
         hk.callback();
     }
 }
@@ -174,4 +182,4 @@ const char* HotkeyManager::CategoryLabel(HotkeyCategory category)
     return "Other";
 }
 
-} // namespace fbzz::editor
+} /// @note namespace fbzz::editor
