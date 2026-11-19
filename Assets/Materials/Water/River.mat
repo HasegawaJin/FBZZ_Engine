@@ -1,3 +1,7 @@
+# @file    River.mat
+# @brief   吸収と散乱で浅瀬から淵までの透明感を出す標準河川材質。
+# @author  Hasegawa Jin
+# @date    2026-07-01
 blend_mode = 'AlphaBlend'
 double_sided = false
 mesh_type = 'surface'
@@ -21,24 +25,24 @@ causticsWaveFreq = 0.18
 causticsWaveSpeed = 1.25
 deepColor = [ 0.015, 0.045, 0.055 ]
 deepDepth = 5.0
-opticalMode = 0.0
-absorptionCoefficients = [ 1.1, 0.4, 0.22 ]
-scatteringCoefficients = [ 0.9, 1.2, 0.45 ]
-phaseG = 0.65
+opticalMode = 1.0
+absorptionCoefficients = [ 0.37, 0.14, 0.07 ]
+scatteringCoefficients = [ 0.025, 0.045, 0.045 ]
+phaseG = 0.4
 detailScale = 0.55
 detailSpeed = 1.4
-detailStrength = 1.2
+detailStrength = 0.9
 enableCaustics = 1.0
 flowDirection = [ 0.0, 1.0 ]
 flowSpeed = 1.2
-foamFade = 0.42
+foamFade = 0.34
 foamNoiseScale = 0.85
 foamStrength = 0.36
-foamThreshold = 0.72
+foamThreshold = 0.28
 fresnelBias = 0.02
 fresnelPower = 5.0
 minShallowAlpha = 0.34
-normalStrength = 0.86
+normalStrength = 0.76
 opacity = 0.92
 reflectivity = 0.4
 refractionStrength = 0.018

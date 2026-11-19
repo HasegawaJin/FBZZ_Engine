@@ -213,7 +213,7 @@ WaveMargin ComputeWaveMargin(const WaterComponent& water, bool horizonSurface)
     margin.vertical += flowDisplacement
                      + (water.ripples.empty() ? 0.0f : kWaterRippleHeightAmplitude * 1.6f);
 
-    /// @note さざ波・法線ゆらぎのぶんだけ余裕を持たせる。
+    /// @note さざ波と描画専用の河川波頭（上下 0.15 m 以下）を既存の余裕に収める。
     margin.horizontal += 0.5f;
     margin.vertical   += 0.5f;
     return margin;
@@ -428,6 +428,7 @@ void BuildWaterMesh(const WaterComponent& water, WaterMesh& mesh, WaterRenderCac
                 source.localPosition.z / extent.y + 0.5f};
             vertex.splineData = {(std::min)(source.depth, depthCap),
                 source.worldVelocity.x, source.worldVelocity.z, 1.0f + source.horizonMaterialWeight};
+            vertex.riverTravelTimes = {source.riverTravelTime, source.riverShortTravelTime};
             return vertex;
         };
         const auto appendZoneTriangle = [&](std::span<const uint32_t, 3> triangle,
@@ -1243,15 +1244,16 @@ float MediumSetting(const asset::MaterialAssetAuthoring* material, const char* n
 }
 
 renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const Transform& transform,
-    EntityID owner, const asset::MaterialAssetAuthoring* material, const WaterMesh& mesh, const WaveMargin& margin)
+    EntityID owner, const asset::MaterialAssetAuthoring* material, const WaterMesh& mesh,
+    const WaveMargin& margin, renderer::WaterCB& constants)
 {
     renderer::WaterMediumInput medium;
     medium.stableOwnerKey = (static_cast<uint64_t>(owner.generation) << 32u) | owner.index;
     const auto inverseRotation = transform.worldRotation.Inverse();
     medium.worldToLocalRows = WorldToLocalRows(transform.worldPosition, inverseRotation,
         {1.0f / transform.worldScale.x, 1.0f / transform.worldScale.y, 1.0f / transform.worldScale.z});
-    float minimumX = std::numeric_limits<float>::max(), minimumZ = minimumX;
-    float maximumX = -minimumX, maximumZ = -minimumX;
+    float minimumX = std::numeric_limits<float>::max(), minimumY = minimumX, minimumZ = minimumX;
+    float maximumX = -minimumX, maximumY = -minimumX, maximumZ = -minimumX;
     for (uint32_t corner = 0; corner < 8u; ++corner) {
         const math::Vector3 local = {
             (corner & 1u) ? mesh.aabbMax.x : mesh.aabbMin.x,
@@ -1262,6 +1264,7 @@ renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const T
             local.x * transform.worldScale.x, local.y * transform.worldScale.y, local.z * transform.worldScale.z};
         minimumX = (std::min)(minimumX, world.x); minimumZ = (std::min)(minimumZ, world.z);
         maximumX = (std::max)(maximumX, world.x); maximumZ = (std::max)(maximumZ, world.z);
+        minimumY = (std::min)(minimumY, world.y); maximumY = (std::max)(maximumY, world.y);
     }
     medium.worldBoundsXZ = {minimumX - margin.horizontal, minimumZ - margin.horizontal,
                            maximumX + margin.horizontal, maximumZ + margin.horizontal};
@@ -1284,10 +1287,32 @@ renderer::WaterMediumInput BuildMediumInput(const WaterComponent& water, const T
     medium.causticsIntensity = MediumSetting(material, "causticsIntensity", 1.0f, 0.0f, 100.0f);
     if (const auto* exclusions = WaterSurfaceExclusions(water, WaterSurfaceReadView::SIMULATION)) {
         medium.exclusions.reserve(exclusions->boxes.size());
+        uint32_t waveRockCount = 0;
         for (const auto& box : exclusions->boxes) {
             medium.exclusions.push_back({WorldToLocalRows(box.worldPosition, box.inverseWorldRotation,
                 box.inverseWorldScale), box.halfExtent});
+            if (constants.riverWaveParams.x <= 0.0f || waveRockCount >= renderer::WATER_RIVER_WAVE_ROCK_COUNT)
+                continue;
+            const auto up = box.inverseWorldRotation * math::Vector3::UP;
+            if (up.x * up.x + up.z * up.z > 1.0e-6f) continue;
+            const float halfX = box.halfExtent.x / std::abs(box.inverseWorldScale.x);
+            const float halfY = box.halfExtent.y / std::abs(box.inverseWorldScale.y);
+            const float halfZ = box.halfExtent.z / std::abs(box.inverseWorldScale.z);
+            const float minimumWidth = (std::min)(halfX, halfZ);
+            const float maximumWidth = (std::max)(halfX, halfZ);
+            if (minimumWidth < 0.12f || maximumWidth > 3.0f || maximumWidth > 2.0f * minimumWidth
+                || !std::isfinite(halfY)) continue;
+            const auto& center = box.worldPosition;
+            const float radius = std::sqrt((4.0f / math::PI) * halfX * halfZ);
+            const float reach = 3.7f * radius;
+            if (center.y + halfY < minimumY || center.y - halfY > maximumY
+                || center.x + reach < minimumX || center.x - reach > maximumX
+                || center.z + reach < minimumZ || center.z - reach > maximumZ) continue;
+            constants.riverWaveRocks[2u * waveRockCount] = {center.x, center.y, center.z, radius};
+            constants.riverWaveRocks[2u * waveRockCount + 1u].x = halfY;
+            ++waveRockCount;
         }
+        constants.riverWaveParams.y = static_cast<float>(waveRockCount);
     }
     if (const auto frame = WaterInteractionSnapshot(water)) {
         medium.plumes.reserve(frame->plumes.size());
@@ -1505,6 +1530,14 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
             const float maximumWorldEdge = geometry->maximumWorldEdgeLength;
             if (std::isfinite(maximumWorldEdge) && maximumWorldEdge > 0.0f)
                 input.constants.timeParams.x = input.constants.timeParams.y = maximumWorldEdge;
+            if (geometry->shape == WaterSurfaceShape::SPLINE_RIVER && water.enableGerstnerWaves && water.waveCount > 0) {
+                /// @note Keep the phase period stable across views and reserve a longer band for the shared mesh.
+                const float referenceSpeed = (std::max)(geometry->riverWaveReferenceSpeed, 0.4f);
+                input.constants.riverWaveParams.x = (std::clamp)(3.8f * input.constants.timeParams.x / referenceSpeed,
+                    2.25f, 120.0f);
+                input.constants.riverWaveParams.z = WATER_RIVER_WAVE_REFERENCE_LENGTHS.x;
+                input.constants.riverWaveParams.w = WATER_RIVER_WAVE_REFERENCE_LENGTHS.y;
+            }
             if (geometry->shape == WaterSurfaceShape::SPLINE_RIVER && geometry->outlineIndices.size() >= 4) {
                 const auto& outline = geometry->outlineIndices;
                 const size_t middle = outline.size() / 2;
@@ -1532,7 +1565,7 @@ void ExtractRenderWater(RenderPassContext& ctx, renderer::RenderScene& output) {
         input.constants.terrainDomain = cache.textures.at(cacheKey).terrainDomain;
         {
             FBZZ_PROFILE_SCOPE("WaterPrepare::Medium");
-            input.medium = BuildMediumInput(water, surfaceTransform, eid, mat, mesh, margin);
+            input.medium = BuildMediumInput(water, surfaceTransform, eid, mat, mesh, margin, input.constants);
         }
         input.medium.depthIsUniform = cache.textures.at(cacheKey).depthIsUniform;
         input.effects = BuildWaterEffectParams(mat);

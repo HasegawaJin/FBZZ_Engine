@@ -28,6 +28,37 @@ namespace fbzz::tests {
 
 class WaterSplineTest : public testkit::Fixture {};
 
+/// @brief Equal currents give a longer wave transit time through a shallower reach.
+TEST_F(WaterSplineTest, RiverWaveTransitDependsOnDepthAndFollowsSignedFlow)
+{
+    std::array<scene::WaterSplinePoint, 2> points{};
+    points[0].id = 1;
+    points[1].id = 2;
+    points[1].localPosition.x = 24.0f;
+    const scene::Transform transform;
+    const auto build = [&](float depth, float speed, scene::WaterSplineSnapshot& snapshot) {
+        for (auto& point : points) {
+            point.width = 4.0f;
+            point.depth = depth;
+            point.flowSpeed = speed;
+        }
+        return scene::BuildWaterSplineSnapshot(scene::WaterSurfaceShape::SPLINE_RIVER,
+            points, 4, transform, snapshot, 8.0f, 3.0f);
+    };
+    scene::WaterSplineSnapshot deep;
+    scene::WaterSplineSnapshot shallow;
+    scene::WaterSplineSnapshot reversed;
+    ASSERT_TRUE(build(2.0f, 1.5f, deep));
+    ASSERT_TRUE(build(0.2f, 1.5f, shallow));
+    ASSERT_TRUE(build(0.2f, -1.5f, reversed));
+    const auto outlet = [](const scene::WaterSplineSnapshot& snapshot) -> const scene::WaterSplineVertex& {
+        return snapshot.vertices[snapshot.outlineIndices[snapshot.outlineIndices.size() / 2 - 1]];
+    };
+    EXPECT_GT(outlet(deep).riverTravelTime, 0.0f);
+    EXPECT_GT(outlet(shallow).riverTravelTime, outlet(deep).riverTravelTime);
+    EXPECT_NEAR(outlet(reversed).riverTravelTime, -outlet(shallow).riverTravelTime, testkit::kTolerance);
+}
+
 /// @brief Samples variable river height depth and signed world flow from shared triangles.
 TEST_F(WaterSplineTest, SamplesVariableRiverHeightDepthAndSignedWorldFlowFromSharedTriangles)
 {

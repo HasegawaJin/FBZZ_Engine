@@ -20,6 +20,8 @@ static const uint FBZZ_WATER_MEDIUM_TABLE_MAGIC = 0x574D;
 static const uint FBZZ_WATER_MEDIUM_HEADER_ROWS = 5;
 static const uint FBZZ_WATER_MEDIUM_BODY_ROWS = 12;
 static const uint FBZZ_WATER_MEDIUM_GRID_RESOLUTION = 16;
+static const uint FBZZ_WATER_MEDIUM_MAX_EXCLUSIONS = 64;
+static const uint FBZZ_WATER_MEDIUM_EXCLUSION_ROWS = 4;
 
 /// @brief Validated dimensions shared by point queries in one shader operation.
 struct FBZZWaterMediumQueryContext
@@ -185,28 +187,42 @@ bool FBZZ_WaterAtlasSample(uint bodyIndex, float2 worldXZ,
     return FBZZ_WaterAtlasSampleWithFootprint(bodyIndex, worldXZ, context, sample, unusedBottomRange);
 }
 
+/// @brief Resolve the contiguous box rows for one owner before issuing any box reads.
+bool FBZZ_WaterExclusionRange(uint bodyIndex, FBZZWaterMediumQueryContext context,
+                             out uint firstRow, out uint count)
+{
+    firstRow = 0u;
+    count = 0u;
+    if (bodyIndex >= context.bodyCount) return false;
+    const uint bodyOffset = FBZZ_WATER_MEDIUM_HEADER_ROWS + bodyIndex * FBZZ_WATER_MEDIUM_BODY_ROWS;
+    const uint2 span = (uint2)round(FBZZ_WaterMediumRow(bodyOffset + 10u).xy);
+    if (span.y == 0u) return true;
+    const uint exclusionStart = (uint)round(FBZZ_WaterMediumRow(3u).y);
+    if (exclusionStart < FBZZ_WATER_MEDIUM_HEADER_ROWS + context.bodyCount * FBZZ_WATER_MEDIUM_BODY_ROWS
+        || exclusionStart > context.tableRows || span.y > FBZZ_WATER_MEDIUM_MAX_EXCLUSIONS)
+        return false;
+    const uint available = (context.tableRows - exclusionStart) / FBZZ_WATER_MEDIUM_EXCLUSION_ROWS;
+    if (span.x > available || span.y > available - span.x) return false;
+    firstRow = exclusionStart + span.x * FBZZ_WATER_MEDIUM_EXCLUSION_ROWS;
+    count = span.y;
+    return true;
+}
+
 /// @brief Test whether a point lies inside an owner's transformed dry-volume boxes.
 bool FBZZ_WaterPointExcluded(uint bodyIndex, float3 worldPos, FBZZWaterMediumQueryContext context)
 {
-    const uint bodyOffset = FBZZ_WATER_MEDIUM_HEADER_ROWS + bodyIndex * FBZZ_WATER_MEDIUM_BODY_ROWS;
-    if (bodyIndex >= context.bodyCount || bodyOffset + FBZZ_WATER_MEDIUM_BODY_ROWS > context.tableRows)
-        return true;
-    const float4 spans = FBZZ_WaterMediumRow(bodyOffset + 10u);
-    const uint first = (uint)round(spans.x);
-    const uint count = (uint)round(spans.y);
-    const uint exclusionStart = (uint)round(FBZZ_WaterMediumRow(3u).y);
+    uint firstRow, count;
+    if (!FBZZ_WaterExclusionRange(bodyIndex, context, firstRow, count)) return true;
+    const float4 world = float4(worldPos, 1.0f);
     [loop]
     for (uint i = 0u; i < count; ++i)
     {
-        const uint row = exclusionStart + (first + i) * 4u;
-        if (row + 3u >= context.tableRows) return true;
+        const uint row = firstRow + i * FBZZ_WATER_MEDIUM_EXCLUSION_ROWS;
         const float4 x = FBZZ_WaterMediumRow(row);
         const float4 y = FBZZ_WaterMediumRow(row + 1u);
         const float4 z = FBZZ_WaterMediumRow(row + 2u);
         const float4 extent = FBZZ_WaterMediumRow(row + 3u);
-        const float3 local = float3(dot(x, float4(worldPos, 1.0f)),
-                                    dot(y, float4(worldPos, 1.0f)),
-                                    dot(z, float4(worldPos, 1.0f)));
+        const float3 local = float3(dot(x, world), dot(y, world), dot(z, world));
         if (all(abs(local) <= extent.xyz)) return true;
     }
     return false;

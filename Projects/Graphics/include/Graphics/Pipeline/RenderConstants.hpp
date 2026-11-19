@@ -1059,8 +1059,9 @@ struct WaterVertex {
     math::Vector4 splineData{};
     /// @note Two packed triangle profile index triples, corner plus one, and source weight.
     math::Vector4 zoneMaterial{};
+    math::Vector2 riverTravelTimes{}; ///< @note Signed fundamental and short-band travel times [s].
 };
-static_assert(sizeof(WaterVertex) == 52, "WaterVertex size mismatch");
+static_assert(sizeof(WaterVertex) == 60, "WaterVertex size mismatch");
 
 /// @note WaterCB — Water シェーダーの b1。
 /// @note LAYOUT: Assets/Shaders/Water/Water.hlsl の WaterCB と完全に一致させること。
@@ -1081,6 +1082,8 @@ struct WaterMaterialBlendTarget {
     math::Vector4 rippleColor{};
 };
 static_assert(sizeof(WaterMaterialBlendTarget) == 224);
+
+inline constexpr uint32_t WATER_RIVER_WAVE_ROCK_COUNT = 8;
 
 struct WaterCB {
     math::Matrix4 worldMatrix;
@@ -1157,8 +1160,12 @@ struct WaterCB {
     std::array<math::Vector4, 4> horizonWaveSeams{};
     math::Vector4 horizonLinkedRiverMedia{};
     WaterMaterialBlendTarget materialBlendTarget{};
+    /// @note x=fundamental period [s], y=packed rock count, zw=representative fundamental and short wavelengths [m].
+    math::Vector4 riverWaveParams{};
+    /// @note Row pairs contain center XYZ with radius [m], followed by half height [m] in x.
+    std::array<math::Vector4, 2u * WATER_RIVER_WAVE_ROCK_COUNT> riverWaveRocks{};
 };
-static_assert(sizeof(WaterCB) == 2384, "WaterCB size mismatch");
+static_assert(sizeof(WaterCB) == 2656, "WaterCB size mismatch");
 
 /// @note WaterEffectParams — Water.hlsl の MaterialConstants (b2) の C++ ミラー。
 struct WaterEffectParams {

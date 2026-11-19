@@ -1,0 +1,6 @@
+# @file    WaterSurfaceFoam.hlsli.meta
+# @brief   WaterSurfaceFoam.hlsli のアセット識別子。
+# @author  Hasegawa Jin
+# @date    2026-11-18
+[meta]
+guid = '5af6b6b0bf50459a9a5586f08b0be3d2'

@@ -1,5 +1,5 @@
 /// @file    Caustics.hlsl
-/// @brief   Directional-light caustics projected through the authored rectangular water surface.
+/// @brief   水面で屈折した方向光を水中の受光面へ投影する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-23
 
@@ -29,13 +29,12 @@ FBZZFullscreenVertex VSMain(uint id : SV_VertexID)
 
 /// @brief Sample the water atlas surface and derive its local macro normal from neighboring atlas texels.
 bool FBZZ_WaterSurfaceFrame(uint bodyIndex, float2 worldXZ,
-                            FBZZWaterMediumQueryContext context, out float surfaceY,
-                            out float3 normal, out float jacobian, out float atlasDepth, out float curvature)
+                            FBZZWaterMediumQueryContext context, bool measureCurvature, out float surfaceY,
+                            out float3 normal, out float jacobian, out float3 curvature)
 {
     surfaceY = 0.0f;
     normal = float3(0.0f, 1.0f, 0.0f);
     jacobian = 1.0f;
-    atlasDepth = 0.0f;
     curvature = 0.0f;
     float4 center;
     if (!FBZZ_WaterAtlasSample(bodyIndex, worldXZ, context, center)) return false;
@@ -56,27 +55,82 @@ bool FBZZ_WaterSurfaceFrame(uint bodyIndex, float2 worldXZ,
     float4 downValue = center;
     float4 upValue = center;
     float4 neighbor;
-    if (FBZZ_WaterAtlasSample(bodyIndex, leftXZ, context, neighbor)) leftValue = neighbor;
-    if (FBZZ_WaterAtlasSample(bodyIndex, rightXZ, context, neighbor)) rightValue = neighbor;
-    if (FBZZ_WaterAtlasSample(bodyIndex, downXZ, context, neighbor)) downValue = neighbor;
-    if (FBZZ_WaterAtlasSample(bodyIndex, upXZ, context, neighbor)) upValue = neighbor;
+    const bool hasLeft = FBZZ_WaterAtlasSample(bodyIndex, leftXZ, context, neighbor);
+    if (hasLeft) leftValue = neighbor;
+    const bool hasRight = FBZZ_WaterAtlasSample(bodyIndex, rightXZ, context, neighbor);
+    if (hasRight) rightValue = neighbor;
+    const bool hasDown = FBZZ_WaterAtlasSample(bodyIndex, downXZ, context, neighbor);
+    if (hasDown) downValue = neighbor;
+    const bool hasUp = FBZZ_WaterAtlasSample(bodyIndex, upXZ, context, neighbor);
+    if (hasUp) upValue = neighbor;
     const float dx = max(rightXZ.x - leftXZ.x, 1.0e-4f);
     const float dz = max(upXZ.y - downXZ.y, 1.0e-4f);
     const float dYdX = (rightValue.x - leftValue.x) / dx;
     const float dYdZ = (upValue.x - downValue.x) / dz;
-    const float leftDistance = max(worldXZ.x - leftXZ.x, 1.0e-4f);
-    const float rightDistance = max(rightXZ.x - worldXZ.x, 1.0e-4f);
-    const float downDistance = max(worldXZ.y - downXZ.y, 1.0e-4f);
-    const float upDistance = max(upXZ.y - worldXZ.y, 1.0e-4f);
-    curvature = 2.0f * ((rightValue.x - center.x) / rightDistance
-        - (center.x - leftValue.x) / leftDistance) / dx
-        + 2.0f * ((upValue.x - center.x) / upDistance
-        - (center.x - downValue.x) / downDistance) / dz;
+    if (measureCurvature) {
+        const float leftDistance = worldXZ.x - leftXZ.x;
+        const float rightDistance = rightXZ.x - worldXZ.x;
+        const float downDistance = worldXZ.y - downXZ.y;
+        const float upDistance = upXZ.y - worldXZ.y;
+        /// @note Reduce confidence as the stencil shortens at an atlas edge or loses a neighbor at the shoreline.
+        const bool hasX = hasLeft && hasRight && min(leftDistance, rightDistance) > 1.0e-4f;
+        const bool hasZ = hasDown && hasUp && min(downDistance, upDistance) > 1.0e-4f;
+        const float xSupport = smoothstep(0.0f, texelWorld.x, min(leftDistance, rightDistance));
+        const float zSupport = smoothstep(0.0f, texelWorld.y, min(downDistance, upDistance));
+        if (hasX) curvature.x = 2.0f * xSupport * ((rightValue.x - center.x) / rightDistance
+            - (center.x - leftValue.x) / leftDistance) / dx;
+        if (hasZ) curvature.y = 2.0f * zSupport * ((upValue.x - center.x) / upDistance
+            - (center.x - downValue.x) / downDistance) / dz;
+
+        float4 leftDown, leftUp, rightDown, rightUp;
+        if (hasX && hasZ
+            && FBZZ_WaterAtlasSample(bodyIndex, float2(leftXZ.x, downXZ.y), context, leftDown)
+            && FBZZ_WaterAtlasSample(bodyIndex, float2(leftXZ.x, upXZ.y), context, leftUp)
+            && FBZZ_WaterAtlasSample(bodyIndex, float2(rightXZ.x, downXZ.y), context, rightDown)
+            && FBZZ_WaterAtlasSample(bodyIndex, float2(rightXZ.x, upXZ.y), context, rightUp)) {
+            curvature.z = min(xSupport, zSupport) * ((rightUp.x - rightDown.x) - (leftUp.x - leftDown.x))
+                / (dx * dz);
+        }
+    }
     surfaceY = limits.x + center.x;
     normal = normalize(float3(-dYdX, 1.0f, -dYdZ));
     jacobian = center.z;
-    atlasDepth = min(max(center.y, 0.0f), max(limits.z, 0.0f));
+    const float atlasDepth = min(max(center.y, 0.0f), max(limits.z, 0.0f));
     return isfinite(surfaceY) && all(isfinite(normal)) && isfinite(jacobian) && atlasDepth > 0.0f;
+}
+
+/// @note Convert a refracted ray to horizontal travel per meter of vertical drop.
+float2 FBZZ_CausticRaySlope(float3 incident, float3 normal)
+{
+    const float3 transmitted = refract(incident, normal, 1.0f / WATER_REFRACTIVE_INDEX);
+    return transmitted.xz / max(-transmitted.y, 0.12f);
+}
+
+/// @brief Estimate local light concentration from the change in projected ray footprint area.
+/// @param curvature Surface height Hessian in world XZ, packed as xx, zz, xz [1/m].
+/// @note The reference is the tangent plane. A finite floor on the area models the unresolved focus near a caustic fold.
+/// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-2-rendering-water-caustics GPU Gems 2.3, refracted rays projected onto the bottom.
+/// @see https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission PBRT v4 §9.3.4, Snell's law.
+float FBZZ_CausticCurvatureFocus(float3 incident, float3 normal, float3 curvature, float verticalDepth)
+{
+    if (!all(isfinite(curvature)) || !any(abs(curvature) > 1.0e-5f)) return 0.0f;
+    const float2 surfaceSlope = -normal.xz / max(normal.y, 1.0e-4f);
+    const float2 raySlope = FBZZ_CausticRaySlope(incident, normal);
+    const float step = 0.025f;
+    const float2 slopeX = surfaceSlope + clamp(curvature.xz * step, -0.15f, 0.15f);
+    const float2 slopeZ = surfaceSlope + clamp(curvature.zy * step, -0.15f, 0.15f);
+    const float2 raySlopeX = FBZZ_CausticRaySlope(incident, normalize(float3(-slopeX.x, 1.0f, -slopeX.y)));
+    const float2 raySlopeZ = FBZZ_CausticRaySlope(incident, normalize(float3(-slopeZ.x, 1.0f, -slopeZ.y)));
+    const float2 planarX = float2(1.0f, 0.0f) + raySlope * surfaceSlope.x;
+    const float2 planarZ = float2(0.0f, 1.0f) + raySlope * surfaceSlope.y;
+    const float depthScale = min(verticalDepth, 8.0f) / step;
+    const float2 projectedX = planarX + (raySlopeX - raySlope) * depthScale;
+    const float2 projectedZ = planarZ + (raySlopeZ - raySlope) * depthScale;
+    const float planarArea = abs(planarX.x * planarZ.y - planarX.y * planarZ.x);
+    if (planarArea <= 0.1f) return 0.0f;
+    const float projectedArea = abs(projectedX.x * projectedZ.y - projectedX.y * projectedZ.x);
+    const float relativeArea = projectedArea / planarArea;
+    return clamp(2.2f * (rcp(max(relativeArea, 0.25f)) - 1.0f), 0.0f, 3.0f);
 }
 
 /// @brief Evaluate caustics for the per-pixel visible water owner captured by the interface pass.
@@ -103,16 +157,15 @@ float4 FBZZ_EvaluateWaterMediumCaustics(float3 worldPos, float3 receiverNormal,
     float3 surfaceNormal = float3(0.0f, 1.0f, 0.0f);
     float surfaceY = 0.0f;
     float jacobian = 1.0f;
-    float surfaceDepth = 0.0f;
-    float curvature = 0.0f;
+    float3 curvature = 0.0f;
     float sourceDistance = 0.0f;
     [unroll]
     for (uint iteration = 0u; iteration < 3u; ++iteration)
     {
-        if (!FBZZ_WaterSurfaceFrame(bodyIndex, entry.xz, context,
-                                    surfaceY, surfaceNormal, jacobian, surfaceDepth, curvature))
+        if (!FBZZ_WaterSurfaceFrame(bodyIndex, entry.xz, context, false,
+                                    surfaceY, surfaceNormal, jacobian, curvature))
             return float4(0.0f, 0.0f, 0.0f, 1.0f);
-        const float3 incidentWater = refract(-L, surfaceNormal, 1.0f / 1.333f);
+        const float3 incidentWater = refract(-L, surfaceNormal, 1.0f / WATER_REFRACTIVE_INDEX);
         const float refractedLength = length(incidentWater);
         if (refractedLength <= 1.0e-5f) return float4(0.0f, 0.0f, 0.0f, 1.0f);
         waterToSource = -incidentWater / refractedLength;
@@ -123,8 +176,8 @@ float4 FBZZ_EvaluateWaterMediumCaustics(float3 worldPos, float3 receiverNormal,
         entry = worldPos + waterToSource * sourceDistance;
     }
 
-    if (!FBZZ_WaterSurfaceFrame(bodyIndex, entry.xz, context,
-                                surfaceY, surfaceNormal, jacobian, surfaceDepth, curvature))
+    if (!FBZZ_WaterSurfaceFrame(bodyIndex, entry.xz, context, true,
+                                surfaceY, surfaceNormal, jacobian, curvature))
         return float4(0.0f, 0.0f, 0.0f, 1.0f);
     sourceDistance = (surfaceY - worldPos.y) / max(waterToSource.y, 1.0e-5f);
     if (sourceDistance <= 0.0f || sourceDistance > medium.maxDistance)
@@ -136,7 +189,7 @@ float4 FBZZ_EvaluateWaterMediumCaustics(float3 worldPos, float3 receiverNormal,
     const float receiverNdotL = saturate(dot(receiverNormal, waterToSource));
     if (receiverNdotL <= 0.0f) return float4(0.0f, 0.0f, 0.0f, 1.0f);
     const float cosIncident = saturate(dot(surfaceNormal, L));
-    const float eta = 1.333f;
+    const float eta = WATER_REFRACTIVE_INDEX;
     const float sinTransmittedSquared = (1.0f - cosIncident * cosIncident) / (eta * eta);
     const float cosTransmitted = sqrt(saturate(1.0f - sinTransmittedSquared));
     const float rsNumerator = cosIncident - eta * cosTransmitted;
@@ -169,13 +222,11 @@ float4 FBZZ_EvaluateWaterMediumCaustics(float3 worldPos, float3 receiverNormal,
         projectedDx * tiling, projectedDy * tiling).r
         + g_causticsTex.SampleGrad(sampTiling, uv1,
             projectedDx * tiling * 1.37f, projectedDy * tiling * 1.37f).r) * 0.5f);
-    const float focus = clamp(1.0f + max(1.0f - jacobian, 0.0f) * medium.causticsIntensity,
-                              0.25f, 4.0f);
-    /// @note A flat, uncompressed surface cannot create a moving concentration pattern.
-    /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-2-rendering-water-caustics Wave curvature concentrates refracted light.
-    const float waveFocus = saturate(max(1.0f - jacobian, 0.0f) * 3.0f
-        + abs(curvature) * min(sourceDistance, 8.0f) * 3.0f);
-    const float intensity = pattern * focus * waveFocus * receiverNdotL * (1.0f - saturate(fresnel))
+    const float compression = max(1.0f - jacobian, 0.0f);
+    const float waveFocus = min(1.0f + compression * medium.causticsIntensity, 4.0f)
+        * saturate(compression * 3.0f);
+    const float rayFocus = FBZZ_CausticCurvatureFocus(-L, surfaceNormal, curvature, surfaceY - worldPos.y);
+    const float intensity = pattern * max(waveFocus, rayFocus) * receiverNdotL * (1.0f - saturate(fresnel))
                           * visibility * SampleCloudShadow(worldPos) * medium.causticsIntensity;
     const float3 radiance = lightColor * (max(lightIntensity, 0.0f) * skyDimmer)
                           * sourceBeer * intensity;

@@ -225,6 +225,7 @@ protected:
         bool ssrEnabled = false;
         renderer::ResourceHandle<renderer::BufferTag> depthVertices;
         uint32_t depthVertexCount = 0;
+        renderer::ResourceHandle<renderer::StructuredBufferTag> mediumTable;
     };
 
     bool SetVisualExtent(uint32_t extent)
@@ -383,6 +384,10 @@ protected:
         draw.textures[9] = resources.GetDepthTexture(m_depthTarget);
         draw.textures[17] = resources.GetCubemapTexture(m_environment);
         draw.textures[26] = m_velocityField;
+        if (visual && visual->mediumTable.IsValid()) {
+            draw.auxiliaryPsBuffers[0] = visual->mediumTable;
+            draw.textures[15] = m_white;
+        }
         std::vector<renderer::ResourceHandle<renderer::StructuredBufferTag>> patchBuffers;
         std::vector<renderer::ResourceHandle<renderer::StructuredBufferTag>> meshArgumentBuffers;
         if (patches) {
@@ -776,12 +781,13 @@ protected:
     }
 
     std::pair<renderer::ResourceHandle<renderer::BufferTag>, renderer::ResourceHandle<renderer::BufferTag>>
-    CreateSplineTriangle(float depth, const math::Vector2& flowVelocity)
+    CreateSplineTriangle(float depth, const math::Vector2& flowVelocity,
+        const math::Vector3& heights = {-0.4f, 0.2f, 0.6f})
     {
         const renderer::WaterVertex vertices[] = {
-            {{-4.0f, -0.4f, -4.0f}, {0.0f, 0.0f}, {depth, flowVelocity.x, flowVelocity.y, 1.0f}},
-            {{ 4.0f,  0.2f, -4.0f}, {1.0f, 0.0f}, {depth, flowVelocity.x, flowVelocity.y, 1.0f}},
-            {{ 0.0f,  0.6f,  4.0f}, {0.5f, 1.0f}, {depth, flowVelocity.x, flowVelocity.y, 1.0f}},
+            {{-4.0f, heights.x, -4.0f}, {0.0f, 0.0f}, {depth, flowVelocity.x, flowVelocity.y, 1.0f}},
+            {{ 4.0f, heights.y, -4.0f}, {1.0f, 0.0f}, {depth, flowVelocity.x, flowVelocity.y, 1.0f}},
+            {{ 0.0f, heights.z,  4.0f}, {0.5f, 1.0f}, {depth, flowVelocity.x, flowVelocity.y, 1.0f}},
         };
         const uint32_t indices[] = {0, 1, 2};
         auto& resources = *m_resources;
@@ -3942,6 +3948,128 @@ TEST_F(WaterShaderTest, SplineTriangleKeepsItsAuthoredFootprintInColorAndSelecti
     Resources().Release(buffers.second);
 }
 
+/// @brief 波の傾きと川底方向の基準勾配を合成した法線へ、鏡面反射の中心が向く。
+TEST_F(WaterShaderTest, SplineSunReflectionRetainsBaseSlopeAndVertexWaveDerivatives)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    const auto mesh = CreateSplineTriangle(5.0f, {});
+    ASSERT_TRUE(mesh.first && mesh.second);
+    constexpr float WAVELENGTH = 4.0f;
+    constexpr float WAVE_NUMBER = math::TWO_PI / WAVELENGTH;
+    constexpr float AMPLITUDE = 0.18f;
+    constexpr float STEEPNESS = 0.65f;
+    constexpr float PHASE = 0.6f;
+    constexpr float SLOPE_X = 0.6f / 8.0f;
+    constexpr float SLOPE_Z = 0.7f / 8.0f;
+    const float derivativeX = 1.0f - STEEPNESS * AMPLITUDE * WAVE_NUMBER * std::sin(PHASE);
+    const float derivativeY = AMPLITUDE * WAVE_NUMBER * std::cos(PHASE);
+    const auto reflectionNormal = [](float slopeX, float slopeZ) {
+        return math::Vector3{-slopeX, 1, -slopeZ}.Normalized();
+    };
+    const auto restNormal = reflectionNormal(SLOPE_X, SLOPE_Z);
+    const auto waveNormal = reflectionNormal((SLOPE_X + derivativeY) / derivativeX, SLOPE_Z);
+    const auto waveOnlyNormal = reflectionNormal(derivativeY / derivativeX, 0);
+    auto water = MakeOpticalWater();
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.surfaceParams.z = 0.02f;
+    water.detailParams.w = 0.8f;
+    water.waveDir[0] = {1, 0, STEEPNESS, 1};
+    water.waveParams[0] = {AMPLITUDE, WAVELENGTH, std::sqrt(9.81f * WAVE_NUMBER), WAVE_NUMBER};
+    water.wavePhasePacked[0].x = PHASE;
+    auto light = MakeDarkLight();
+    light.lightColor = {1, 1, 1};
+    light.lightIntensity = 1;
+    VisualOverrides visual;
+    visual.effects.specularStrength = 1;
+    const auto render = [&](bool wave, const math::Vector3& normal) {
+        water.waveControls.x = wave ? 1.0f : 0.0f;
+        light.lightDir = math::Vector3::UP - normal * (2.0f * normal.y);
+        return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {}, &light, m_black,
+            nullptr, nullptr, mesh.first, mesh.second, 3, {}, &visual);
+    };
+    const auto rest = render(false, restNormal);
+    const auto aligned = render(true, waveNormal);
+    const auto triangleOnly = render(true, restNormal);
+    const auto waveOnly = render(true, waveOnlyNormal);
+    ASSERT_EQ(rest.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(aligned.size(), rest.size());
+    ASSERT_EQ(triangleOnly.size(), rest.size());
+    ASSERT_EQ(waveOnly.size(), rest.size());
+    const size_t center = (static_cast<size_t>(EXTENT / 2) * EXTENT + EXTENT / 2) * 4;
+    EXPECT_GT(rest[center], 0.01f);
+    EXPECT_GT(aligned[center], rest[center] * 0.60f);
+    EXPECT_GT(aligned[center], 3.0f * triangleOnly[center]);
+    EXPECT_GT(aligned[center], 2.0f * waveOnly[center]);
+    Resources().Release(mesh.first);
+    Resources().Release(mesh.second);
+}
+
+/// @brief 流れに沿う細長い筋は、太陽の反射を流れと直交する方向に広げる。
+TEST_F(WaterShaderTest, SplineSunGlintWidensAcrossTheCurrent)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+    const auto along = CreateSplineTriangle(5.0f, {2.2f, 0}, {});
+    const auto across = CreateSplineTriangle(5.0f, {0, 2.2f}, {});
+    const auto still = CreateSplineTriangle(5.0f, {}, {});
+    ASSERT_TRUE(along.first && along.second && across.first && across.second && still.first && still.second);
+    auto water = MakeOpticalWater();
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.surfaceParams.z = 0.02f;
+    water.normalParams.w = 1.0f;
+    /// @note さざ波の粗さ補正を小さくし、反射幅の方向差を単独で測る。
+    water.detailParams = {0.08f, 0, 1, 0.75f};
+    auto light = MakeDarkLight();
+    light.lightDir = math::Vector3{-0.25f, -0.968246f, 0}.Normalized();
+    light.lightColor = {1, 1, 1};
+    light.lightIntensity = 1;
+    VisualOverrides visual;
+    visual.effects.specularStrength = 1;
+    const auto render = [&](const auto& mesh) {
+        return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, {}, &light, m_black,
+            nullptr, nullptr, mesh.first, mesh.second, 3, m_neutral, &visual);
+    };
+    const auto narrow = render(along);
+    const auto wide = render(across);
+    const auto isotropic = render(still);
+    ASSERT_EQ(narrow.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(wide.size(), narrow.size());
+    ASSERT_EQ(isotropic.size(), narrow.size());
+    const size_t center = (static_cast<size_t>(EXTENT / 2) * EXTENT + EXTENT / 2) * 4;
+    EXPECT_GT(isotropic[center], 1.3f * narrow[center]);
+    EXPECT_GT(wide[center], 1.3f * isotropic[center]);
+
+    /// @note 反射の中心では軸を変えてもピークが飛ばない。テクスチャの傾きと粗さ補正を除いて比較する。
+    light.lightDir = {0, -1, 0};
+    water.normalParams.z = 0;
+    water.detailParams.x = 0.01f;
+    water.detailParams.w = 0.96f;
+    const auto calmPeak = render(still);
+    const auto movingPeak = render(along);
+    ASSERT_EQ(calmPeak.size(), narrow.size());
+    ASSERT_EQ(movingPeak.size(), narrow.size());
+    EXPECT_GT(calmPeak[center], 0.001f);
+    EXPECT_NEAR(movingPeak[center], calmPeak[center], 0.02f * calmPeak[center]);
+
+    for (const auto& mesh : {along, across, still}) {
+        Resources().Release(mesh.first);
+        Resources().Release(mesh.second);
+    }
+}
+
 /// @brief Checks spline depth caps optical path and authored flow advects surface detail.
 TEST_F(WaterShaderTest, SplineDepthCapsOpticalPathAndAuthoredFlowAdvectsSurfaceDetail)
 {
@@ -4032,8 +4160,9 @@ TEST_F(WaterShaderTest, SplineDetailTravelsAtTheAuthoredWorldVelocityBeforeOctav
     water.deepColorDepth.w = 10;
     const auto noise = MakeWaterDetailTexture();
     ASSERT_TRUE(noise);
-    constexpr float TIME = 0.625f;
-    for (const auto velocity : std::array<math::Vector2, 2>{{{2.0f, 0.0f}, {0.0f, 2.0f}}}) {
+    /// @note 1.6 s 周期の開始直後は切り替え側の重みが 0.002 未満で、比較画像を平行移動で近似できる。
+    constexpr float TIME = 0.02f;
+    for (const auto velocity : std::array<math::Vector2, 2>{{{2.0f, 0.0f}, {0.0f, -2.0f}}}) {
         const auto mesh = CreateSplineTriangle(5.0f, velocity);
         ASSERT_TRUE(mesh.first && mesh.second);
         water.worldMatrix = math::Matrix4::Identity();
@@ -4064,6 +4193,593 @@ TEST_F(WaterShaderTest, SplineDetailTravelsAtTheAuthoredWorldVelocityBeforeOctav
     }
     Resources().Release(noise);
 }
+/// @brief 現地の逆流がスプラインの設定流速を打ち消すと、さざ波の移流が止まる。
+TEST_F(WaterShaderTest, SplineDetailStopsWhenLocalFlowCancelsTheAuthoredCurrent)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    auto water = MakeOpticalWater();
+    water.surfaceParams = {1, 1, 0.04f, 1};
+    water.normalParams = {8, 8, 1, 1};
+    water.detailParams = {0.5f, 0, 2, 1};
+    water.deepColorDepth.w = 10;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.waveShapeParams.y = 1;
+    water.surfaceFlowA[0] = {0, 0, 20, 0};
+    water.surfaceFlowB[0] = {2, 0, 0, 0};
+    water.surfaceFlowC[0] = {-1, 0, 0, 0};
+    const auto mesh = CreateSplineTriangle(5.0f, {2.0f, 0.0f});
+    const auto noise = MakeWaterDetailTexture();
+    ASSERT_TRUE(mesh.first && mesh.second && noise);
+
+    water.timeParams.w = 0.0f;
+    const auto first = RenderSplineTriangle(camera, water, false, true, mesh.first, mesh.second, noise);
+    water.timeParams.w = 0.625f;
+    const auto later = RenderSplineTriangle(camera, water, false, true, mesh.first, mesh.second, noise);
+    water.waveShapeParams.y = 0;
+    const auto unopposed = RenderSplineTriangle(camera, water, false, true, mesh.first, mesh.second, noise);
+    ASSERT_EQ(first.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(later.size(), first.size());
+    ASSERT_EQ(unopposed.size(), first.size());
+    float stationaryDifference = 0.0f;
+    float movingDifference = 0.0f;
+    for (uint32_t y = 40; y < 88; ++y) {
+        for (uint32_t x = 48; x < 80; ++x) {
+            const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            stationaryDifference = (std::max)(stationaryDifference, std::abs(later[pixel] - first[pixel]));
+            movingDifference = (std::max)(movingDifference, std::abs(unopposed[pixel] - first[pixel]));
+        }
+    }
+    EXPECT_LT(stationaryDifference, 0.002f);
+    EXPECT_GT(movingDifference, 0.01f);
+    Resources().Release(mesh.first);
+    Resources().Release(mesh.second);
+    Resources().Release(noise);
+}
+
+/// @brief 岸泡の帯の外でも、浅く速い流れだけに光を受ける泡を作る。
+TEST_F(WaterShaderTest, SplineRapidsFoamUsesTerrainDepthAndFlowSpeed)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    auto water = MakeOpticalWater();
+    water.foamParams = {0, 0.01f, 1, 0.85f};
+    water.deepColorDepth.w = 10;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.terrainInfoParams = {1, 8, 2, 1};
+    const uint16_t word = static_cast<uint16_t>(std::round((0.28f / 8.0f + 1.0f) * 0.5f * 65535.0f));
+    const auto high = static_cast<uint8_t>(word >> 8u);
+    const auto low = static_cast<uint8_t>(word);
+    const auto shallow = TerrainInfoTexture({0, high, low, 1, 0, high, low, 1});
+    const auto missing = TerrainInfoTexture({0, high, low, 0, 0, high, low, 0});
+    const auto dry = TerrainInfoTexture({0, high, low, 3, 0, high, low, 3});
+    const auto fast = CreateSplineTriangle(5.0f, {2.5f, 0.0f});
+    const auto slow = CreateSplineTriangle(5.0f, {0.25f, 0.0f});
+    const auto noise = MakeWaterDetailTexture();
+    ASSERT_TRUE(shallow && missing && dry && fast.first && fast.second && slow.first && slow.second && noise);
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+
+    const auto render = [&](const auto& mesh, auto depth) {
+        return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, depth, &light, m_black,
+            nullptr, nullptr, mesh.first, mesh.second, 3, noise);
+    };
+    const auto rapids = render(fast, shallow);
+    const auto deepWater = render(fast, missing);
+    const auto slowWater = render(slow, shallow);
+    const auto exposedBed = render(fast, dry);
+    water.foamParams.z = 0.0f;
+    const auto foamDisabled = render(fast, shallow);
+    ASSERT_EQ(rapids.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(deepWater.size(), rapids.size());
+    ASSERT_EQ(slowWater.size(), rapids.size());
+    ASSERT_EQ(exposedBed.size(), rapids.size());
+    ASSERT_EQ(foamDisabled.size(), rapids.size());
+
+    float peak = 0.0f;
+    for (uint32_t y = 48; y < 80; ++y) {
+        for (uint32_t x = 48; x < 80; ++x) {
+            const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            peak = (std::max)(peak, rapids[pixel]);
+            EXPECT_LE(deepWater[pixel], 0.002f);
+            EXPECT_LE(slowWater[pixel], 0.002f);
+            EXPECT_LE(exposedBed[pixel], 0.002f);
+            EXPECT_LE(foamDisabled[pixel], 0.002f);
+        }
+    }
+    EXPECT_GT(peak, 0.15f);
+    Resources().Release(shallow);
+    Resources().Release(missing);
+    Resources().Release(dry);
+    Resources().Release(fast.first);
+    Resources().Release(fast.second);
+    Resources().Release(slow.first);
+    Resources().Release(slow.second);
+    Resources().Release(noise);
+}
+
+/// @brief スプラインの透過は制御点より浅い地形水深と、屈折後の水中光路で減衰する。
+TEST_F(WaterShaderTest, SplineTransmissionUsesTerrainColumnAndSnellPath)
+{
+    renderer::Camera camera;
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 6;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    auto water = MakeOpticalWater();
+    water.deepColorDepth.w = 10;
+    water.absorptionCoefficients = {0.9f, 0.45f, 0.2f, 0.0f};
+    water.terrainInfoParams = {1, 8, 2, 1};
+    const uint16_t word = static_cast<uint16_t>(std::round((1.2f / 8.0f + 1.0f) * 0.5f * 65535.0f));
+    const auto high = static_cast<uint8_t>(word >> 8u);
+    const auto low = static_cast<uint8_t>(word);
+    const auto bed = TerrainInfoTexture({0, high, low, 1, 0, high, low, 1});
+    const auto mesh = CreateSplineTriangle(5.0f, {});
+    ASSERT_TRUE(bed && mesh.first && mesh.second);
+    const auto light = MakeDarkLight();
+    const size_t center = (EXTENT / 2 * EXTENT + EXTENT / 2) * 4u;
+
+    for (const float angle : {math::PI * 0.5f, math::PI / 6.0f}) {
+        camera.m_position = {0, 6.0f * std::sin(angle), -6.0f * std::cos(angle)};
+        camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, angle);
+        water.wvpMatrix = camera.GetGpuViewProjection();
+        const auto pixels = RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, bed, &light,
+            {}, nullptr, nullptr, mesh.first, mesh.second, 3);
+        ASSERT_EQ(pixels.size(), EXTENT * EXTENT * 4u);
+        const float snellSine = std::cos(angle) / 1.333f;
+        const float path = 1.2f / std::sqrt(1.0f - snellSine * snellSine);
+        EXPECT_NEAR(pixels[center], std::exp(-0.9f * path), 0.012f);
+        EXPECT_NEAR(pixels[center + 1], std::exp(-0.45f * path), 0.012f);
+        EXPECT_NEAR(pixels[center + 2], std::exp(-0.2f * path), 0.012f);
+    }
+    Resources().Release(mesh.first);
+    Resources().Release(mesh.second);
+    Resources().Release(bed);
+}
+
+/// @brief 極薄の水際で白帯を作らず、その内側では光を受ける岸泡が途切れて見える。
+TEST_F(WaterShaderTest, SplineShoreFoamBreaksUpAndFadesAtTheWaterline)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    auto water = MakeOpticalWater();
+    water.foamParams = {0.22f, 0.2f, 1, 0.85f};
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.terrainInfoParams = {1, 8, 2, 1};
+    const auto makeDepth = [&](float depth) {
+        const uint16_t word = static_cast<uint16_t>(std::round((depth / 8.0f + 1.0f) * 0.5f * 65535.0f));
+        const auto high = static_cast<uint8_t>(word >> 8u);
+        const auto low = static_cast<uint8_t>(word);
+        return TerrainInfoTexture({0, high, low, 1, 0, high, low, 1});
+    };
+    const auto edge = makeDepth(0.015f);
+    const auto shallows = makeDepth(0.15f);
+    const auto mesh = CreateSplineTriangle(5.0f, {});
+    const auto noise = MakeWaterDetailTexture();
+    ASSERT_TRUE(edge && shallows && mesh.first && mesh.second && noise);
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    const auto capture = [&](auto terrain) {
+        return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, terrain, &light, m_black,
+            nullptr, nullptr, mesh.first, mesh.second, 3, noise);
+    };
+    const auto film = capture(edge);
+    const auto deposits = capture(shallows);
+    ASSERT_EQ(film.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(deposits.size(), film.size());
+    float edgePeak = 0.0f;
+    float shallowPeak = 0.0f;
+    float shallowMinimum = 1.0f;
+    for (uint32_t y = 48; y < 80; ++y) {
+        for (uint32_t x = 48; x < 80; ++x) {
+            const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            edgePeak = (std::max)(edgePeak, film[pixel]);
+            shallowPeak = (std::max)(shallowPeak, deposits[pixel]);
+            shallowMinimum = (std::min)(shallowMinimum, deposits[pixel]);
+        }
+    }
+    EXPECT_LT(edgePeak, 0.025f);
+    EXPECT_GT(shallowPeak, 0.15f);
+    EXPECT_LT(shallowMinimum, 0.025f);
+    Resources().Release(edge);
+    Resources().Release(shallows);
+    Resources().Release(mesh.first);
+    Resources().Release(mesh.second);
+    Resources().Release(noise);
+}
+
+/// @brief 速い浅瀬で生まれた泡が深場へ届き、流れを逆にすると深場への輸送が止まる。
+TEST_F(WaterShaderTest, SplineCurrentCarriesFoamDownstreamFromAShoal)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    constexpr uint32_t DEPTH_TEXELS = 64;
+    std::array<uint8_t, DEPTH_TEXELS * 4> depthPixels{};
+    for (uint32_t x = 0; x < DEPTH_TEXELS; ++x) {
+        const float depth = x < DEPTH_TEXELS / 2 ? 0.25f : 5.0f;
+        const auto word = static_cast<uint16_t>(std::round((depth / 8.0f + 1.0f) * 0.5f * 65535.0f));
+        depthPixels[x * 4u + 1u] = static_cast<uint8_t>(word >> 8u);
+        depthPixels[x * 4u + 2u] = static_cast<uint8_t>(word);
+        depthPixels[x * 4u + 3u] = 1;
+    }
+    const auto wetBed = Resources().CreateTexture(depthPixels.data(), DEPTH_TEXELS, 1);
+    const auto downstream = CreateSplineTriangle(5.0f, {2.5f, 0});
+    const auto upstream = CreateSplineTriangle(5.0f, {-2.5f, 0});
+    const auto noise = MakeWaterDetailTexture();
+    ASSERT_TRUE(wetBed && downstream.first && downstream.second && upstream.first && upstream.second && noise);
+    auto water = MakeOpticalWater();
+    water.foamParams = {0, 0.01f, 1, 0.85f};
+    water.terrainInfoParams = {1, 8, DEPTH_TEXELS, 1};
+    water.timeParams.w = 0.8f;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    const auto render = [&](const auto& mesh) {
+        return RenderWater(camera, water, false, false, false, nullptr, nullptr, {}, 0, wetBed, &light, m_black,
+            nullptr, nullptr, mesh.first, mesh.second, 3, noise);
+    };
+    const auto carriedFoam = render(downstream);
+    const auto reversed = render(upstream);
+    ASSERT_EQ(carriedFoam.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(reversed.size(), carriedFoam.size());
+    float forwardPeak = 0.0f;
+    float reversePeak = 0.0f;
+    for (uint32_t y = 44; y < 76; ++y) {
+        for (uint32_t x = 69; x < 84; ++x) {
+            const size_t offset = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            forwardPeak = (std::max)(forwardPeak, carriedFoam[offset]);
+            reversePeak = (std::max)(reversePeak, reversed[offset]);
+        }
+    }
+    EXPECT_GT(forwardPeak, 0.06f);
+    EXPECT_LT(reversePeak, 0.006f);
+    Resources().Release(wetBed);
+    Resources().Release(downstream.first);
+    Resources().Release(downstream.second);
+    Resources().Release(upstream.first);
+    Resources().Release(upstream.second);
+    Resources().Release(noise);
+}
+
+/// @brief 流れの筋の反射と屈折は、細かいさざ波一周期後にも別の位置に見える。
+TEST_F(WaterShaderTest, SplineStreaksKeepMovingAcrossTheFineRippleCycle)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    auto water = MakeOpticalWater();
+    water.surfaceParams = {1, 1, 0.04f, 1};
+    water.normalParams = {8, 8, 1, 1};
+    water.detailParams = {0.5f, 0, 1.3f, 1};
+    water.deepColorDepth.w = 10;
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    const auto mesh = CreateSplineTriangle(5.0f, {1.0f, 0.0f});
+    const auto noise = MakeWaterDetailTexture();
+    ASSERT_TRUE(mesh.first && mesh.second && noise);
+    water.timeParams.w = 0.25f;
+    const auto first = RenderSplineTriangle(camera, water, false, true, mesh.first, mesh.second, noise);
+    water.timeParams.w = 1.85f;
+    const auto later = RenderSplineTriangle(camera, water, false, true, mesh.first, mesh.second, noise);
+    ASSERT_EQ(first.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(later.size(), first.size());
+    float peakDifference = 0.0f;
+    for (uint32_t y = 42; y < 86; ++y) {
+        for (uint32_t x = 48; x < 80; ++x) {
+            const size_t offset = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            peakDifference = (std::max)(peakDifference, std::abs(first[offset] - later[offset]));
+        }
+    }
+    EXPECT_GT(peakDifference, 0.015f);
+    Resources().Release(mesh.first);
+    Resources().Release(mesh.second);
+    Resources().Release(noise);
+}
+
+/// @brief 水面に出た岩の後ろだけに泡が続き、逆流・静水・水中の岩で向きと発生を切り替える。
+TEST_F(WaterShaderTest, SplineObstacleWakeFollowsTheCurrentBehindAGeometryContact)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    const auto makeDepth = [&](float rockHeight) {
+        const renderer::Vertex vertices[] = {
+            {{-8, -2, -8}, {0, 1, 0}, {1, 0, 0}, {0, 0}},
+            {{-8, -2,  8}, {0, 1, 0}, {1, 0, 0}, {0, 1}},
+            {{ 8, -2, -8}, {0, 1, 0}, {1, 0, 0}, {1, 0}},
+            {{ 8, -2, -8}, {0, 1, 0}, {1, 0, 0}, {1, 0}},
+            {{-8, -2,  8}, {0, 1, 0}, {1, 0, 0}, {0, 1}},
+            {{ 8, -2,  8}, {0, 1, 0}, {1, 0, 0}, {1, 1}},
+            {{-0.42f, rockHeight, -0.68f}, {0, 1, 0}, {1, 0, 0}, {0, 0}},
+            {{-0.42f, rockHeight,  0.68f}, {0, 1, 0}, {1, 0, 0}, {0, 1}},
+            {{ 0.42f, rockHeight, -0.68f}, {0, 1, 0}, {1, 0, 0}, {1, 0}},
+            {{ 0.42f, rockHeight, -0.68f}, {0, 1, 0}, {1, 0, 0}, {1, 0}},
+            {{-0.42f, rockHeight,  0.68f}, {0, 1, 0}, {1, 0, 0}, {0, 1}},
+            {{ 0.42f, rockHeight,  0.68f}, {0, 1, 0}, {1, 0, 0}, {1, 1}},
+        };
+        return Resources().CreateVertexBuffer(vertices, sizeof(vertices), sizeof(renderer::Vertex));
+    };
+    const auto exposedRock = makeDepth(0.40f);
+    const auto submergedRock = makeDepth(-0.70f);
+    const auto forward = CreateSplineTriangle(5.0f, {2.2f, 0});
+    const auto reverse = CreateSplineTriangle(5.0f, {-2.2f, 0});
+    const auto still = CreateSplineTriangle(5.0f, {});
+    ASSERT_TRUE(exposedRock && submergedRock && forward.first && forward.second
+        && reverse.first && reverse.second && still.first && still.second);
+
+    auto water = MakeOpticalWater();
+    water.foamParams = {0, 0.01f, 1, 0.85f};
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    VisualOverrides visual;
+    visual.effects.specularStrength = 0;
+    visual.depthVertexCount = 12;
+    const auto render = [&](const auto& mesh, auto depth) {
+        visual.depthVertices = depth;
+        return RenderWater(camera, water, false, true, false, nullptr, nullptr, {}, 0, {}, &light, m_black,
+            nullptr, nullptr, mesh.first, mesh.second, 3, m_white, &visual);
+    };
+    const auto downstream = render(forward, exposedRock);
+    const auto upstream = render(reverse, exposedRock);
+    const auto quiet = render(still, exposedRock);
+    const auto overSubmerged = render(forward, submergedRock);
+    ASSERT_EQ(downstream.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(upstream.size(), downstream.size());
+    ASSERT_EQ(quiet.size(), downstream.size());
+    ASSERT_EQ(overSubmerged.size(), downstream.size());
+    const auto peak = [&](const auto& pixels, uint32_t firstX) {
+        float value = 0.0f;
+        for (uint32_t y = 57; y < 71; ++y) {
+            for (uint32_t x = firstX; x < firstX + 7; ++x) {
+                const size_t offset = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+                value = (std::max)(value, pixels[offset]);
+            }
+        }
+        return value;
+    };
+    EXPECT_GT(peak(downstream, 79), 0.08f);
+    EXPECT_LT(peak(downstream, 42), 0.006f);
+    EXPECT_GT(peak(upstream, 42), 0.08f);
+    EXPECT_LT(peak(upstream, 79), 0.006f);
+    EXPECT_LT(peak(quiet, 79), 0.006f);
+    EXPECT_LT(peak(overSubmerged, 79), 0.006f);
+
+    Resources().Release(exposedRock);
+    Resources().Release(submergedRock);
+    Resources().Release(forward.first);
+    Resources().Release(forward.second);
+    Resources().Release(reverse.first);
+    Resources().Release(reverse.second);
+    Resources().Release(still.first);
+    Resources().Release(still.second);
+}
+
+/// @brief 水面をまたぐ除外ボックスで流向が変わり、深度に岩が映らなくても下流に泡が続く。
+TEST_F(WaterShaderTest, SplineExclusionBendsTheCurrentAndAnchorsTheWakeInWorldSpace)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    const auto makeTable = [&](float inverseHeight) {
+        std::array<math::Vector4, 21> rows{};
+        rows[0] = {22349, 1, 1, static_cast<float>(rows.size())};
+        rows[3].y = 17;
+        rows[4] = {1, 1, 0, 0};
+        rows[15] = {0, 1, 0, 0};
+        rows[17] = {1, 0, 0, 0};
+        rows[18] = {0, 1, 0, inverseHeight};
+        rows[19] = {0, 0, 1, 0};
+        rows[20] = {0.65f, 0.9f, 0.65f, 0};
+        return Resources().CreateStructuredBuffer(rows.data(), static_cast<uint32_t>(rows.size()), sizeof(rows.front()));
+    };
+    const auto surfaced = makeTable(0.0f);
+    const auto submerged = makeTable(1.5f);
+    const auto mesh = CreateSplineTriangle(5.0f, {2.2f, 0});
+    const auto noise = MakeWaterDetailTexture();
+    ASSERT_TRUE(surfaced && submerged && mesh.first && mesh.second && noise);
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    VisualOverrides visual;
+    visual.effects.specularStrength = 0;
+
+    auto water = MakeOpticalWater();
+    water.foamParams = {0, 0.01f, 1, 0.85f};
+    water.timeParams.w = 0.61f;
+    water.farOceanParams.w = 1.0f;
+    const auto render = [&](auto table, bool hasBottom, auto sceneColor, auto noiseTexture) {
+        visual.mediumTable = table;
+        water.wvpMatrix = camera.GetGpuViewProjection();
+        return RenderWater(camera, water, false, hasBottom, false, nullptr, nullptr, {}, 0, {}, &light, sceneColor,
+            nullptr, nullptr, mesh.first, mesh.second, 3, noiseTexture, &visual);
+    };
+    const auto wake = render(surfaced, false, m_black, m_white);
+    const auto deepBox = render(submerged, false, m_black, m_white);
+    /// @note 79 px 平行移動してボックス全体を画角外へ出し、尾の同じワールド位置を比較する。
+    constexpr uint32_t CAMERA_SHIFT_PIXELS = 79;
+    camera.m_position.x = camera.m_orthoHeight * CAMERA_SHIFT_PIXELS / EXTENT;
+    const auto shifted = render(surfaced, false, m_black, m_white);
+    ASSERT_EQ(wake.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(deepBox.size(), wake.size());
+    ASSERT_EQ(shifted.size(), wake.size());
+    float wakePeak = 0.0f;
+    float deepPeak = 0.0f;
+    float cameraDifference = 0.0f;
+    for (uint32_t y = 51; y < 78; ++y) {
+        for (uint32_t x = 80; x < 88; ++x) {
+            const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            wakePeak = (std::max)(wakePeak, wake[pixel]);
+            deepPeak = (std::max)(deepPeak, deepBox[pixel]);
+            cameraDifference = (std::max)(cameraDifference,
+                std::abs(wake[pixel] - shifted[pixel - CAMERA_SHIFT_PIXELS * 4u]));
+        }
+    }
+    EXPECT_GT(wakePeak, 0.09f);
+    EXPECT_LT(deepPeak, 0.002f);
+    EXPECT_LT(cameraDifference, 0.004f);
+
+    camera.m_position.x = 0.0f;
+    water.foamParams.z = 0;
+    water.surfaceParams = {1, 1, 0.04f, 1};
+    water.normalParams = {8, 8, 1, 1};
+    water.detailParams = {0.5f, 0, 1.8f, 1};
+    const auto bent = render(surfaced, true, m_white, noise);
+    const auto straight = render(submerged, true, m_white, noise);
+    ASSERT_EQ(bent.size(), wake.size());
+    ASSERT_EQ(straight.size(), wake.size());
+    float rippleDifference = 0.0f;
+    for (uint32_t y = 51; y < 78; ++y) {
+        for (uint32_t x = 76; x < 85; ++x) {
+            const size_t pixel = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            rippleDifference = (std::max)(rippleDifference, std::abs(bent[pixel] - straight[pixel]));
+        }
+    }
+    EXPECT_GT(rippleDifference, 0.02f);
+    Resources().Release(surfaced);
+    Resources().Release(submerged);
+    Resources().Release(mesh.first);
+    Resources().Release(mesh.second);
+    Resources().Release(noise);
+}
+
+/// @brief 左右の泡の尾が交互に強まり、近傍の描画は離れた除外ボックスの数に依存しない。
+TEST_F(WaterShaderTest, SplineExclusionWakeAlternatesAtTheObstacleSheddingPeriod)
+{
+    renderer::Camera camera;
+    camera.m_position = {0, 6, 0};
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    camera.m_projection = renderer::ProjectionMode::Orthographic;
+    camera.m_orthoHeight = 8;
+    camera.m_aspect = 1;
+    camera.m_near = 0.1f;
+    camera.m_far = 30;
+
+    constexpr float HALF_SIZE = 0.65f;
+    constexpr float SPEED = 2.2f;
+    const auto makeTable = [&](uint32_t boxCount) {
+        std::vector<math::Vector4> rows(17u + 4u * boxCount);
+        rows[0] = {22349, 1, 1, static_cast<float>(rows.size())};
+        rows[3].y = 17;
+        rows[4] = {1, 1, 0, 0};
+        rows[15] = {0, static_cast<float>(boxCount), 0, 0};
+        for (uint32_t box = 0; box < boxCount; ++box) {
+            const uint32_t row = 17 + 4 * box;
+            const bool isLocal = box + 1 == boxCount;
+            rows[row] = {1, 0, 0, isLocal ? 0.0f : 16.0f + static_cast<float>(box)};
+            rows[row + 1] = {0, 1, 0, (isLocal || box % 2 == 0) ? 0.0f : 4.0f};
+            rows[row + 2] = {0, 0, 1, 0};
+            rows[row + 3] = {HALF_SIZE, 0.9f, HALF_SIZE, 0};
+        }
+        return Resources().CreateStructuredBuffer(rows.data(), static_cast<uint32_t>(rows.size()), sizeof(rows.front()));
+    };
+    const auto single = makeTable(1);
+    const auto crowded = makeTable(64);
+    const auto mesh = CreateSplineTriangle(5.0f, {SPEED, 0});
+    ASSERT_TRUE(single && crowded && mesh.first && mesh.second);
+    auto light = MakeDarkLight();
+    light.ambientColor = {1, 1, 1};
+    auto water = MakeOpticalWater();
+    water.wvpMatrix = camera.GetGpuViewProjection();
+    water.foamParams = {0, 0.01f, 1, 0.85f};
+    water.farOceanParams.w = 1;
+    const auto render = [&](auto table, float time, bool selection = false) {
+        VisualOverrides visual;
+        visual.mediumTable = table;
+        visual.background = {-1, 0, 0, 0};
+        water.timeParams.w = time;
+        return RenderWater(camera, water, selection, false, false, nullptr, nullptr, {}, 0, {}, &light, m_black,
+            nullptr, nullptr, mesh.first, mesh.second, 3, m_white, &visual);
+    };
+    const float radius = std::sqrt(4.0f / math::PI) * HALF_SIZE;
+    const float halfPeriod = radius / (0.20f * SPEED);
+    const auto first = render(single, 0.0f);
+    const auto second = render(single, halfPeriod);
+    const auto many = render(crowded, halfPeriod);
+    const auto selection = render(crowded, halfPeriod, true);
+    ASSERT_EQ(first.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(second.size(), first.size());
+    ASSERT_EQ(many, second);
+    ASSERT_EQ(selection.size(), many.size());
+    size_t coverageMismatches = 0;
+    for (size_t pixel = 0; pixel < many.size(); pixel += 4)
+        coverageMismatches += (many[pixel] >= 0.0f) != (selection[pixel] >= 0.0f);
+    EXPECT_EQ(coverageMismatches, 0u);
+    const size_t center = (static_cast<size_t>(EXTENT / 2) * EXTENT + EXTENT / 2) * 4;
+    EXPECT_FLOAT_EQ(many[center], -1.0f);
+
+    float firstBalance = 0.0f;
+    float secondBalance = 0.0f;
+    float upstreamChange = 0.0f;
+    uint32_t sampleCount = 0;
+    for (uint32_t y = 51; y < 58; ++y) {
+        for (uint32_t x = 82; x < 89; ++x) {
+            const size_t top = (static_cast<size_t>(y) * EXTENT + x) * 4u;
+            const size_t bottom = (static_cast<size_t>(EXTENT - 1 - y) * EXTENT + x) * 4u;
+            const size_t upstream = (static_cast<size_t>(y) * EXTENT + EXTENT - 1 - x) * 4u;
+            firstBalance += first[top] - first[bottom];
+            secondBalance += second[top] - second[bottom];
+            upstreamChange += std::abs(first[upstream] - second[upstream]);
+            ++sampleCount;
+        }
+    }
+    const float count = static_cast<float>(sampleCount);
+    EXPECT_GT(std::abs(firstBalance / count), 0.02f);
+    EXPECT_GT(std::abs(secondBalance / count), 0.02f);
+    EXPECT_LT(firstBalance * secondBalance, 0.0f);
+    EXPECT_LT(upstreamChange / count, 0.002f);
+    Resources().Release(single);
+    Resources().Release(crowded);
+    Resources().Release(mesh.first);
+    Resources().Release(mesh.second);
+}
+
 /// @brief Production medium atlas tracks shared wave displacement and releases empty view bindings.
 TEST_F(WaterShaderTest, ProductionMediumAtlasTracksSharedWaveDisplacementAndReleasesEmptyViewBindings)
 {

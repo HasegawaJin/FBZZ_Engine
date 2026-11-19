@@ -530,8 +530,17 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
     if (sampleCount * 2 > WATER_SPLINE_MAX_RIVER_BOUNDARY_VERTICES) return false;
     std::vector<std::uint32_t> left;
     std::vector<std::uint32_t> right;
+    std::vector<float> travelSpeeds;
     left.reserve(sampleCount);
     right.reserve(sampleCount);
+    travelSpeeds.reserve(sampleCount);
+    /// @note A representative wavenumber per band keeps the render phase integral independent of the view and mesh LOD.
+    /// @see https://web.mit.edu/fluids-modules/waves/www/material/chap-3.pdf Akylas and Mei, Eq. (1.21), finite-depth gravity-wave dispersion.
+    const auto phaseSpeed = [](float current, float depth, float wavelength) {
+        const float waveNumber = math::TWO_PI / wavelength;
+        return (std::min)(std::abs(current), 5.0f) + std::sqrt((9.81f / waveNumber)
+            * std::tanh((std::min)(depth * waveNumber, 8.0f)));
+    };
     for (std::size_t segment = 0; segment < segmentCount; ++segment) {
         for (std::uint32_t sample = 0; sample < samplesPerSegment; ++sample) {
             const float t = static_cast<float>(sample) / static_cast<float>(samplesPerSegment);
@@ -553,6 +562,7 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
                 || !AddVertex(snapshot, value, rightLocal, transform, maximumWaterDepth, rightIndex)) return false;
             left.push_back(leftIndex);
             right.push_back(rightIndex);
+            travelSpeeds.push_back(value.flowSpeed);
         }
     }
     const SplineValue end = EvaluateSpline(points, segmentCount - 1, 1.0f, false);
@@ -571,19 +581,46 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
             end.position.z - endNormalZ * endHalfWidth}, transform, maximumWaterDepth, endRight)) return false;
     left.push_back(endLeft);
     right.push_back(endRight);
+    travelSpeeds.push_back(end.flowSpeed);
 
     float distance = 0.0f;
+    double travelTime = 0.0;
+    double shortTravelTime = 0.0;
+    double weightedPhaseSpeed = 0.0;
+    float previousPhaseSpeed = 0.0f;
+    math::Vector2 previousInverseSpeed{};
+    constexpr double TRAVEL_TIME_LIMIT = 0.25 * std::numeric_limits<float>::max();
     math::Vector3 previous = snapshot.vertices[left.front()].worldPosition * 0.5f
         + snapshot.vertices[right.front()].worldPosition * 0.5f;
     for (std::size_t i = 0; i < left.size(); ++i) {
         auto& a = snapshot.vertices[left[i]];
         auto& b = snapshot.vertices[right[i]];
         const auto center = a.worldPosition * 0.5f + b.worldPosition * 0.5f;
-        distance += std::hypot(center.x - previous.x, center.z - previous.z);
+        const float step = std::hypot(center.x - previous.x, center.z - previous.z);
+        const float current = travelSpeeds[i];
+        const float fundamentalSpeed = phaseSpeed(current, a.depth, WATER_RIVER_WAVE_REFERENCE_LENGTHS.x);
+        const float shortSpeed = phaseSpeed(current, a.depth, WATER_RIVER_WAVE_REFERENCE_LENGTHS.y);
+        /// @note Regularize the sign through slack water so the accumulated phase stays continuous at flow reversals.
+        const float direction = std::copysign((std::min)(std::abs(current) / 0.4f, 1.0f), current);
+        const math::Vector2 inverseSpeed{direction / (std::max)(fundamentalSpeed, 0.25f),
+            direction / (std::max)(shortSpeed, 0.25f)};
+        const double halfStep = 0.5 * static_cast<double>(step);
+        distance += step;
+        travelTime += halfStep * (previousInverseSpeed.x + inverseSpeed.x);
+        shortTravelTime += halfStep * (previousInverseSpeed.y + inverseSpeed.y);
+        weightedPhaseSpeed += halfStep * (previousPhaseSpeed + fundamentalSpeed);
         if (!std::isfinite(distance)) return false;
         a.riverDistance = b.riverDistance = distance;
+        a.riverTravelTime = b.riverTravelTime =
+            static_cast<float>((std::clamp)(travelTime, -TRAVEL_TIME_LIMIT, TRAVEL_TIME_LIMIT));
+        a.riverShortTravelTime = b.riverShortTravelTime =
+            static_cast<float>((std::clamp)(shortTravelTime, -TRAVEL_TIME_LIMIT, TRAVEL_TIME_LIMIT));
         previous = center;
+        previousPhaseSpeed = fundamentalSpeed;
+        previousInverseSpeed = inverseSpeed;
     }
+    if (distance > 0.0f)
+        snapshot.riverWaveReferenceSpeed = static_cast<float>(weightedPhaseSpeed / distance);
 
     std::vector<Point2> outline;
     outline.reserve(left.size() + right.size());

@@ -52,6 +52,7 @@ protected:
         float jacobian = 1;
         bool patternedJacobian = false;
         bool patternedSurface = false;
+        float surfaceCurvatureX = 0.0f;
         bool causticsEnabled = false;
         float causticsIntensity = 1;
         float interfaceDistance = 0;
@@ -321,7 +322,8 @@ protected:
         rows[2] = {16, 16, static_cast<float>(gridStart), medium.conservativeVerticalBounds ? 1.0f : 0.0f};
         rows[3] = {static_cast<float>(medium.exclusions.size()), static_cast<float>(exclusionStart),
             static_cast<float>(plumeStart), static_cast<float>(candidateStart)};
-        const uint32_t atlasWidth = medium.patternedJacobian || medium.patternedSurface ? 4u : 1u;
+        const uint32_t atlasWidth = medium.surfaceCurvatureX != 0.0f ? 32u
+            : (medium.patternedJacobian || medium.patternedSurface ? 4u : 1u);
         rows[4] = {static_cast<float>(atlasWidth), 1, 1024, 1};
         if (medium.conservativeVerticalBounds) {
             rows[4].z = medium.surfaceY + medium.relativeSurfaceY - medium.depth;
@@ -372,13 +374,16 @@ protected:
             renderer::RenderTargetDesc{1, renderer::Format::RGBA32F, false});
         m_bundle.renderer->SetRenderTarget(m_mediumAtlas, resources);
         m_bundle.renderer->Clear({medium.relativeSurfaceY, medium.depth, medium.jacobian, 1});
-        if (medium.patternedJacobian || medium.patternedSurface) {
+        if (atlasWidth > 1u) {
             const float jacobians[] = {0, 1, 1, 0};
             const float surfaceOffsets[] = {-0.2f, 0.15f, -0.15f, 0.2f};
             for (uint32_t pixel = 0; pixel < atlasWidth; ++pixel) {
+                const float u = (static_cast<float>(pixel) + 0.5f) / atlasWidth;
+                const float worldX = std::lerp(medium.boundsXZ.x, medium.boundsXZ.z, u);
+                const float height = (medium.patternedSurface ? surfaceOffsets[pixel % 4u] : medium.relativeSurfaceY)
+                    + 0.5f * medium.surfaceCurvatureX * worldX * worldX;
                 const math::Vector4 probe[] = {{0, 0, 0, 3},
-                    {medium.patternedSurface ? surfaceOffsets[pixel] : medium.relativeSurfaceY,
-                     medium.depth, medium.patternedJacobian ? jacobians[pixel] : medium.jacobian, 1}};
+                    {height, medium.depth, medium.patternedJacobian ? jacobians[pixel % 4u] : medium.jacobian, 1}};
                 const auto constants = resources.CreateConstantBuffer(sizeof(probe));
                 resources.Update(constants, probe, sizeof(probe));
                 renderer::DrawCall draw;
@@ -1965,6 +1970,30 @@ TEST_F(UnderwaterShaderTest, SharedCausticPatternRespondsToTheActualAtlasJacobia
         maximum = (std::max)(maximum, compressed[pixel * 4u]);
     }
     EXPECT_GT(maximum - minimum, 0.1f);
+}
+
+/// @brief 同じ絶対曲率でも、屈折光が集まる波頭と広がる谷で川底の明るさが変わる。
+TEST_F(UnderwaterShaderTest, SharedCausticsFocusBelowConvexCrestsAndFadeBelowConcaveTroughs)
+{
+    auto camera = Camera();
+    camera.m_position = {0, 1, 0};
+    camera.m_orthoHeight = 0.75f;
+    camera.m_rotation = math::Quaternion::FromAxisAngle(math::Vector3::RIGHT, math::PI * 0.5f);
+    auto water = Water();
+    water.underwaterAbsorption[0] = water.underwaterAbsorption[1] = water.underwaterAbsorption[2] = 0;
+    water.underwaterScattering[0] = water.underwaterScattering[1] = water.underwaterScattering[2] = 0;
+    SharedMediumInputs medium;
+    medium.boundsXZ = {-3, -4, 3, 4};
+    medium.depth = 5;
+    medium.causticsEnabled = true;
+    medium.surfaceCurvatureX = -0.42f;
+    const auto crest = Caustics(camera, water, Sun(), 3, ShadowMask::OPEN, &medium);
+    medium.surfaceCurvatureX = 0.42f;
+    const auto trough = Caustics(camera, water, Sun(), 3, ShadowMask::OPEN, &medium);
+    ASSERT_EQ(crest.size(), EXTENT * EXTENT * 4u);
+    ASSERT_EQ(trough.size(), crest.size());
+    EXPECT_GT(Mean(crest)[0], 0.10);
+    EXPECT_LT(Mean(trough)[0], 0.002);
 }
 
 /// @brief Checks controlled shared night spot produces current frame composite light and preview.

@@ -44,6 +44,8 @@ WaterSplineVertex Midpoint(const WaterSplineVertex& a, const WaterSplineVertex& 
     vertex.depth = a.depth * 0.5f + b.depth * 0.5f;
     vertex.riverDistance = a.riverDistance * 0.5f + b.riverDistance * 0.5f;
     vertex.horizonMaterialWeight = a.horizonMaterialWeight * 0.5f + b.horizonMaterialWeight * 0.5f;
+    vertex.riverTravelTime = a.riverTravelTime * 0.5f + b.riverTravelTime * 0.5f;
+    vertex.riverShortTravelTime = a.riverShortTravelTime * 0.5f + b.riverShortTravelTime * 0.5f;
     return vertex;
 }
 

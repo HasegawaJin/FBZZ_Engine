@@ -43,6 +43,8 @@ Forward、Deferred、Terrainの受光点が水中なら、Sun・Point/Spotの光
 
 投影集光は同じ波の法線・圧縮と屈折した太陽光から計算し、同じ輪郭と除外mask、RGB透過、生の影を使う。波の平均周波数だけで独立した模様を流す既存近似から共有実波へ接続する。光子追跡を追加する設計ではない。
 
+集光の強さは、水面の傾きと符号付き曲率から隣接光線を屈折させ、受光点の高さに投影した面積で求める。水面の接平面から同じ高さに投影した面積に比べて、光線が狭い範囲に集まるほど明るくする。集光の上限を設け、アトラス端では曲率の寄与を滑らかに下げる。岸や穴では両側を照会できる軸から曲率を求める。波の水平圧縮と光線の集中度は大きい方を使う。[GPU Gems 2.3](https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-2-rendering-water-caustics) と [PBRT 9.3.4](https://www.pbr-book.org/4ed/Reflection_Models/Specular_Reflection_and_Transmission) を参照する。
+
 潜水ライトは既存のCluster/Legacy/Linear入力、距離、Spot cone、Cookie、Point/Spot影を再利用する。体積点には面法線が無いため法線不要の強度と固定biasの生の遮蔽を使う。太陽が無効な夜も局所光を積分する。clusterの選択は各サンプルのviewZと画素座標で行い、全Sceneライトの別走査を増やさない。
 
 局所ライトは体積点で有効な寄与を比較し、最大8灯へ光源透過・影・Cookieの評価を絞る。これは多数の光が重なるときの描画品質の上限。水域のatlasはビュー当たり1024平方のRGBA32F、各ownerのtileは64〜512平方、最大256ownerとする。除外boxと濁り球はビューと光の到達範囲に交差するものだけを詰め、その後owner当たり64件の上限を適用する。超過・無効なownerは水面と媒体を描かず、変更時だけ診断を出す。乾燥領域の入力を途中で捨てて水没させない。

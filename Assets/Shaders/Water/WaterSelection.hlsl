@@ -5,7 +5,9 @@
 
 /// @note 固定の VSMain / PSMain 入口を維持し、波・格子・流れ・波紋の式を本描画から共有する。
 #define PSMain WaterLitPSMain
+#define FBZZ_WATER_GEOMETRY_ONLY 1
 #include "Water.hlsl"
+#undef FBZZ_WATER_GEOMETRY_ONLY
 #undef PSMain
 
 float4 PSSelection(WaterPSInput p) : SV_Target0

@@ -31,6 +31,8 @@ inline constexpr std::uint32_t WATER_SPLINE_MAX_CONTROL_POINTS = 256;
 inline constexpr std::uint32_t WATER_SPLINE_MAX_SAMPLES_PER_SEGMENT = 64;
 /// @brief Maximum accepted generated vertex count for a water spline snapshot.
 inline constexpr std::size_t WATER_SPLINE_MAX_VERTICES = 32768;
+/// @brief Representative wavelengths for the render-only gravity-wave speeds [m].
+inline constexpr math::Vector2 WATER_RIVER_WAVE_REFERENCE_LENGTHS{6.0f, 2.0f};
 /// @brief Maximum ID that fits the reflection system's signed integer field.
 inline constexpr std::uint32_t WATER_SPLINE_MAX_POINT_ID = 0x7fffffffu;
 /// @brief Maximum sampled lake outline vertices accepted before quadratic validation.
@@ -82,6 +84,8 @@ struct WaterSplineVertex {
     float depth = 0.0f;
     float riverDistance = 0.0f; ///< @note Distance along the sampled river centerline from its start [world m].
     float horizonMaterialWeight = 0.0f;
+    float riverTravelTime = 0.0f; ///< @note Signed fundamental travel time along the river centerline [s].
+    float riverShortTravelTime = 0.0f; ///< @note Signed short-band travel time along the river centerline [s].
 };
 
 /// @brief A triangle over the common water surface snapshot.
@@ -121,6 +125,7 @@ struct WaterSplineSnapshot {
     float maximumBaseHeightOffset = 0.0f;
     float maximumDepth = 0.0f;
     float maximumWorldEdgeLength = 0.0f;
+    float riverWaveReferenceSpeed = 0.0f; ///< @note Arc-length-weighted fundamental phase speed magnitude [m/s].
     math::Vector4 horizonMouth{}; ///< @note World XZ center and flat/fade radii [m].
     bool meshQualityLimited = false;
     std::uint64_t signature = 0;

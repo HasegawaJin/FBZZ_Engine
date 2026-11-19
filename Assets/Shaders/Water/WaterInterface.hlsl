@@ -3,7 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
 #define PSMain WaterLitPSMain
+#define FBZZ_WATER_GEOMETRY_ONLY 1
 #include "Water/Water.hlsl"
+#undef FBZZ_WATER_GEOMETRY_ONLY
 #undef PSMain
 #include "Rendering/WaterMedium.hlsli"
 
