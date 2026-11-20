@@ -29,7 +29,11 @@ double ProfileRecorder::NowMs()
 }
 
 double ProfileRecorder::ReadClock() const { return m_clock(); }
-void ProfileRecorder::RequestRecording(bool recording) { m_pendingRecording = recording; m_hasPendingRecording = true; }
+void ProfileRecorder::RequestRecording(bool recording)
+{
+    m_pendingRecording = recording;
+    m_hasPendingRecording = true;
+}
 void ProfileRecorder::RequestClear() { m_pendingClear = true; }
 
 void ProfileRecorder::Reset()
@@ -60,8 +64,12 @@ void ProfileRecorder::SetRecordingImmediate(bool recording)
 
 void ProfileRecorder::BeginFrame(uint64_t applicationFrameSerial, double frameStartMs)
 {
-    if (m_frameOpen) EndFrame();
-    if (m_pendingClear || (m_hasPendingRecording && m_pendingRecording != m_recording)) {
+    if (m_frameOpen) {
+        EndFrame();
+    }
+
+    const bool recordingChanged = m_hasPendingRecording && m_pendingRecording != m_recording;
+    if (m_pendingClear || recordingChanged) {
         ++m_captureSessionId;
         Reset();
     }
@@ -116,7 +124,11 @@ void ProfileRecorder::MarkIncomplete()
 ProfileToken ProfileRecorder::Begin(uint64_t sampleKey, bool collect)
 {
     if (!m_recording) return {};
-    if (!m_frameOpen) { ++m_unframedInvocationCount; return {}; }
+    if (!m_frameOpen) {
+        ++m_unframedInvocationCount;
+        return {};
+    }
+
     ProfileToken token{m_recorderId, m_generation, m_frameIndex, ++m_nextScopeId};
     token.depth = static_cast<uint32_t>(m_stack.size()) + m_suppressionDepth;
     if (m_suppressionDepth || m_stack.size() == MAX_DEPTH || (collect && !sampleKey)) {
@@ -207,7 +219,11 @@ void ProfileRecorder::End(ProfileToken token, ProfileSampleStatus status)
 void ProfileRecorder::Push(uint64_t sampleKey, double durationMs, ProfileSampleKind kind, bool collect)
 {
     if (!m_recording) return;
-    if (!m_frameOpen) { ++m_unframedInvocationCount; return; }
+    if (!m_frameOpen) {
+        ++m_unframedInvocationCount;
+        return;
+    }
+
     if (!collect) {
         ++m_current.filteredSampleCount;
         if (kind != ProfileSampleKind::INSTANT)
@@ -245,31 +261,48 @@ void ProfileRecorder::Push(uint64_t sampleKey, double durationMs, ProfileSampleK
 ProfileCheckpoint ProfileRecorder::Checkpoint() const
 {
     if (!m_frameOpen) return {};
-    if (m_suppressionDepth && (m_suppressionAnchors.empty() || m_suppressionAnchors.back().scopeId != m_suppressionTopScopeId)) {
+    const bool needsSuppressionAnchor = m_suppressionDepth != 0
+        && (m_suppressionAnchors.empty() || m_suppressionAnchors.back().scopeId != m_suppressionTopScopeId);
+    if (needsSuppressionAnchor) {
         if (m_suppressionAnchors.size() == MAX_SAMPLES) return {};
         m_suppressionAnchors.push_back({m_suppressionTopScopeId, m_suppressionDepth});
     }
-    return {m_recorderId, m_generation, m_frameIndex, m_stack.empty() ? 0 : m_stack.back().token.scopeId,
-            m_suppressionTopScopeId, static_cast<uint32_t>(m_stack.size()), m_suppressionDepth};
+    const uint64_t topScopeId = m_stack.empty() ? 0 : m_stack.back().token.scopeId;
+    return {m_recorderId, m_generation, m_frameIndex, topScopeId, m_suppressionTopScopeId,
+            static_cast<uint32_t>(m_stack.size()), m_suppressionDepth};
 }
 
 bool ProfileRecorder::Recover(ProfileCheckpoint checkpoint)
 {
     if (!Matches(checkpoint.recorderId, checkpoint.generation, checkpoint.frame)
         || checkpoint.stackSize > m_stack.size()) return false;
-    if (checkpoint.stackSize && m_stack[checkpoint.stackSize - 1].token.scopeId != checkpoint.topScopeId) return false;
+    if (checkpoint.stackSize != 0 && m_stack[checkpoint.stackSize - 1].token.scopeId != checkpoint.topScopeId) {
+        return false;
+    }
     if (checkpoint.suppressionDepth > m_suppressionDepth
         || (checkpoint.suppressionDepth == m_suppressionDepth
             && checkpoint.suppressionTopScopeId != m_suppressionTopScopeId)) return false;
     /// @note 深さだけでは閉じた旧分岐と新しい分岐を区別できないため、保存した抑制 scope の生存を検証する。
-    if (checkpoint.suppressionDepth && std::none_of(m_suppressionAnchors.begin(), m_suppressionAnchors.end(), [&](const auto& anchor) {
-        return anchor.scopeId == checkpoint.suppressionTopScopeId && anchor.depth == checkpoint.suppressionDepth;
-    })) return false;
-    if (m_suppressionDepth != checkpoint.suppressionDepth || m_suppressionTopScopeId != checkpoint.suppressionTopScopeId)
+    if (checkpoint.suppressionDepth != 0) {
+        const auto matchesCheckpoint = [&checkpoint](const auto& anchor) {
+            return anchor.scopeId == checkpoint.suppressionTopScopeId && anchor.depth == checkpoint.suppressionDepth;
+        };
+        if (std::none_of(m_suppressionAnchors.begin(), m_suppressionAnchors.end(), matchesCheckpoint)) {
+            return false;
+        }
+    }
+
+    if (m_suppressionDepth != checkpoint.suppressionDepth || m_suppressionTopScopeId != checkpoint.suppressionTopScopeId) {
         MarkIncomplete();
+    }
+
+    /// @note End() は抑制中に通常スコープを閉じない。巻き戻し中だけ抑制を解除する。
     m_suppressionDepth = 0;
     m_suppressionTopScopeId = 0;
-    while (m_stack.size() > checkpoint.stackSize) End(m_stack.back().token, ProfileSampleStatus::ABORTED);
+    while (m_stack.size() > checkpoint.stackSize) {
+        End(m_stack.back().token, ProfileSampleStatus::ABORTED);
+    }
+
     m_suppressionDepth = checkpoint.suppressionDepth;
     m_suppressionTopScopeId = checkpoint.suppressionTopScopeId;
     while (!m_suppressionAnchors.empty() && m_suppressionAnchors.back().depth > checkpoint.suppressionDepth)

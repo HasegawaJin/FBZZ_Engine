@@ -24,9 +24,10 @@ ExternalCallbackScope::~ExternalCallbackScope()
 
 bool ExternalCallbackScope::NotifyOuterFirst() noexcept
 {
-    const bool previous = !m_previous || m_previous->NotifyOuterFirst();
-    const bool current = !m_handler || m_handler(m_context);
-    return previous && current;
+    /// @note 外側が失敗しても、内側のハンドラーに状態を確定させる。
+    const bool outerSucceeded = !m_previous || m_previous->NotifyOuterFirst();
+    const bool currentSucceeded = !m_handler || m_handler(m_context);
+    return outerSucceeded && currentSucceeded;
 }
 
 bool NotifyBeforeExternalCallback() noexcept

@@ -137,20 +137,27 @@ void PublishDescriptors()
         s_descriptorSnapshotIndices.reserve(MAX_DESCRIPTORS);
     s_sampleDescriptorIndices.resize(s_snapshot.samples.size());
     s_descriptorSnapshotIndices.assign(s_descriptors.size(), INVALID_DESCRIPTOR_INDEX);
-    for (size_t index = 0; index < s_snapshot.samples.size(); ++index) {
-        const uint32_t descriptorIndex = DescriptorIndex(s_snapshot.samples[index].sampleKey);
-        s_sampleDescriptorIndices[index] = descriptorIndex;
-        if (descriptorIndex < s_descriptors.size()) s_descriptorSnapshotIndices[descriptorIndex] = 0;
+    /// @note 参照された登録項目を 0 で印付けし、次の走査で公開用の索引を割り当てる。
+    for (size_t sampleIndex = 0; sampleIndex < s_snapshot.samples.size(); ++sampleIndex) {
+        const uint32_t descriptorIndex = DescriptorIndex(s_snapshot.samples[sampleIndex].sampleKey);
+        s_sampleDescriptorIndices[sampleIndex] = descriptorIndex;
+        if (descriptorIndex < s_descriptors.size()) {
+            s_descriptorSnapshotIndices[descriptorIndex] = 0;
+        }
     }
+
     size_t publishedCount = 0;
-    bool unchanged = true;
+    bool descriptorOrderUnchanged = true;
     for (size_t index = 0; index < s_descriptors.size(); ++index) {
         if (s_descriptorSnapshotIndices[index] == INVALID_DESCRIPTOR_INDEX) continue;
         if (publishedCount >= s_snapshot.descriptors.size()
-            || s_snapshot.descriptors[publishedCount].sampleKey != s_descriptors[index].sampleKey) unchanged = false;
+            || s_snapshot.descriptors[publishedCount].sampleKey != s_descriptors[index].sampleKey) {
+            descriptorOrderUnchanged = false;
+        }
         s_descriptorSnapshotIndices[index] = static_cast<uint32_t>(publishedCount++);
     }
-    if (!unchanged || publishedCount != s_snapshot.descriptors.size()) {
+
+    if (!descriptorOrderUnchanged || publishedCount != s_snapshot.descriptors.size()) {
         /// @note 同じ ID の所有文字列を移し、変更された descriptor だけを新しく複写する。
         s_snapshot.descriptors.swap(s_previousDescriptors);
         if (s_snapshot.descriptors.capacity() < MAX_DESCRIPTORS) s_snapshot.descriptors.reserve(MAX_DESCRIPTORS);
@@ -158,17 +165,26 @@ void PublishDescriptors()
         for (size_t index = 0; index < s_descriptors.size(); ++index) {
             if (s_descriptorSnapshotIndices[index] == INVALID_DESCRIPTOR_INDEX) continue;
             const auto& descriptor = s_descriptors[index];
-            while (previousIndex < s_previousDescriptors.size() && s_previousDescriptors[previousIndex].sampleKey < descriptor.sampleKey)
+            while (previousIndex < s_previousDescriptors.size()
+                && s_previousDescriptors[previousIndex].sampleKey < descriptor.sampleKey) {
                 ++previousIndex;
-            if (previousIndex < s_previousDescriptors.size() && s_previousDescriptors[previousIndex].sampleKey == descriptor.sampleKey)
+            }
+            if (previousIndex < s_previousDescriptors.size()
+                && s_previousDescriptors[previousIndex].sampleKey == descriptor.sampleKey) {
                 s_snapshot.descriptors.push_back(std::move(s_previousDescriptors[previousIndex++]));
-            else s_snapshot.descriptors.push_back(descriptor);
+            } else {
+                s_snapshot.descriptors.push_back(descriptor);
+            }
         }
         s_previousDescriptors.clear();
     }
+
     /// @note 公開 snapshot の索引へ変換し、次の BeginFrame で実行表が退役しても旧記録を参照できる。
-    for (auto& index : s_sampleDescriptorIndices)
-        if (index < s_descriptors.size()) index = s_descriptorSnapshotIndices[index];
+    for (auto& descriptorIndex : s_sampleDescriptorIndices) {
+        if (descriptorIndex < s_descriptors.size()) {
+            descriptorIndex = s_descriptorSnapshotIndices[descriptorIndex];
+        }
+    }
 }
 } /// @note namespace
 

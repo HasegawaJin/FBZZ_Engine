@@ -27,19 +27,31 @@ public:
     FrameWindow(uint64_t warmup, uint64_t samples) : m_warmup(warmup), m_samples(samples) {}
     [[nodiscard]] FrameRole Next()
     {
-        const uint64_t ordinal = m_seen++;
-        if (ordinal < m_warmup) return ordinal + 1 == m_warmup ? FrameRole::LEADING : FrameRole::UNSELECTED;
-        if (ordinal - m_warmup < m_samples) return FrameRole::SAMPLE;
-        return ordinal - m_warmup == m_samples ? FrameRole::CLOSING_ANCHOR : FrameRole::FINISHED;
+        const uint64_t frameIndex = m_seen++;
+        if (frameIndex < m_warmup) {
+            const bool lastWarmupFrame = frameIndex + 1 == m_warmup;
+            return lastWarmupFrame ? FrameRole::LEADING : FrameRole::UNSELECTED;
+        }
+
+        const uint64_t sampleIndex = frameIndex - m_warmup;
+        if (sampleIndex < m_samples) {
+            return FrameRole::SAMPLE;
+        }
+        return sampleIndex == m_samples ? FrameRole::CLOSING_ANCHOR : FrameRole::FINISHED;
     }
     [[nodiscard]] uint64_t Seen() const { return m_seen; }
 private:
     uint64_t m_warmup = 0, m_samples = 0, m_seen = 0;
 };
 
+/// @note The next frame's begin timestamp closes the interval independently of this frame's end.
 struct FrameTimes {
-    uint64_t begin = 0, end = 0, nextBegin = 0;
-    bool ended = false, closed = false;
+    uint64_t begin = 0;
+    uint64_t end = 0;
+    uint64_t nextBegin = 0;
+    bool ended = false;
+    bool closed = false;
+
     [[nodiscard]] bool CpuAvailable() const { return ended && end >= begin; }
     [[nodiscard]] bool IntervalAvailable() const { return closed && nextBegin >= begin; }
     [[nodiscard]] bool TailAvailable() const { return CpuAvailable() && IntervalAvailable() && nextBegin >= end; }
