@@ -42,6 +42,41 @@ void ResolveRasterFallback(ResolvedRenderPlan& plan, const RenderAvailability& a
         ? RenderPlanReason::NONE : RenderPlanReason::RASTER_PIPELINE_UNAVAILABLE;
 }
 
+RenderPlanReason ResolveHybridEffects(ResolvedRenderPlan& plan, const RenderModeRequest& request,
+    const SceneRayCoverage& coverage, const RenderAvailability& availability, RenderPlanReason prerequisite)
+{
+    if (!request.rayShadow && !request.rayReflection && !request.rayDiffuseGi)
+        return RenderPlanReason::NO_RAY_EFFECT_REQUESTED;
+
+    plan.shadow = ResolveRayEffect(request.rayShadow, coverage.shadow, availability.shadowPipelineReady, prerequisite);
+    plan.reflection = ResolveRayEffect(request.rayReflection, coverage.reflection, availability.reflectionPipelineReady, prerequisite);
+    plan.diffuseGi = ResolveRayEffect(request.rayDiffuseGi, coverage.diffuseGi, availability.diffuseGiPipelineReady, prerequisite);
+    if (plan.shadow.enabled || plan.reflection.enabled || plan.diffuseGi.enabled)
+        return RenderPlanReason::NONE;
+
+    /// @note ビュー全体の復帰理由は、要求した効果のうちシャドウ、反射、拡散 GI の順で選ぶ。
+    if (request.rayShadow) return plan.shadow.fallbackReason;
+    if (request.rayReflection) return plan.reflection.fallbackReason;
+    return plan.diffuseGi.fallbackReason;
+}
+
+RenderPlanReason ResolvePathVisibility(ResolvedRenderPlan& plan, const SceneRayCoverage& coverage,
+    const RenderAvailability& availability, RenderPlanReason prerequisite)
+{
+    const bool gamePath = plan.pathProfile == PathTracingProfile::GAME;
+    if (!gamePath && plan.pathProfile != PathTracingProfile::REFERENCE) return RenderPlanReason::INVALID_REQUEST;
+
+    const auto effect = ResolveRayEffect(true, coverage.path, availability.pathPipelineReady, prerequisite);
+    if (!effect.enabled) return effect.fallbackReason;
+    if (gamePath && !availability.rasterSurfaceReady) return RenderPlanReason::RASTER_SURFACE_UNAVAILABLE;
+
+    if (gamePath)
+        plan.rasterPlan.path = OpaqueRenderPath::DEFERRED;
+    else
+        plan.primaryVisibility = PrimaryVisibility::CAMERA_RAY;
+    return RenderPlanReason::NONE;
+}
+
 } /// @note namespace
 
 const char* DescribeRenderPlanReason(RenderPlanReason reason)
@@ -76,18 +111,16 @@ ResolvedRenderPlan ResolveRenderPlan(
     if (!availability.outputsReady)
         return plan;
 
-    if (request.mode == RenderMode::RASTER) {
-        ResolveRasterFallback(plan, availability, RenderPlanReason::NONE);
-        return plan;
-    }
-    if (request.mode != RenderMode::HYBRID && request.mode != RenderMode::PATH_TRACING) {
-        ResolveRasterFallback(plan, availability, RenderPlanReason::INVALID_REQUEST);
+    const bool hybrid = request.mode == RenderMode::HYBRID;
+    if (!hybrid && request.mode != RenderMode::PATH_TRACING) {
+        const auto reason = request.mode == RenderMode::RASTER ? RenderPlanReason::NONE : RenderPlanReason::INVALID_REQUEST;
+        ResolveRasterFallback(plan, availability, reason);
         return plan;
     }
 
     if (!availability.experimentalRayTracingEnabled) {
         const RayEffectPlan disabled{ false, RenderPlanReason::DEVELOPER_MODE_REQUIRED };
-        if (request.mode == RenderMode::HYBRID) {
+        if (hybrid) {
             if (request.rayShadow) plan.shadow = disabled;
             if (request.rayReflection) plan.reflection = disabled;
             if (request.rayDiffuseGi) plan.diffuseGi = disabled;
@@ -96,60 +129,22 @@ ResolvedRenderPlan ResolveRenderPlan(
         return plan;
     }
 
-    if (request.mode == RenderMode::HYBRID) {
-        if (!availability.rasterPipelineReady) {
-            plan.failureReason = RenderPlanReason::RASTER_PIPELINE_UNAVAILABLE;
-            return plan;
-        }
-        if (!request.rayShadow && !request.rayReflection && !request.rayDiffuseGi) {
-            ResolveRasterFallback(plan, availability, RenderPlanReason::NO_RAY_EFFECT_REQUESTED);
-            return plan;
-        }
-        const auto prerequisite = ResolveRayPrerequisite(capabilities, availability);
-        plan.shadow = ResolveRayEffect(request.rayShadow, coverage.shadow,
-            availability.shadowPipelineReady, prerequisite);
-        plan.reflection = ResolveRayEffect(request.rayReflection, coverage.reflection,
-            availability.reflectionPipelineReady, prerequisite);
-        plan.diffuseGi = ResolveRayEffect(request.rayDiffuseGi, coverage.diffuseGi,
-            availability.diffuseGiPipelineReady, prerequisite);
-        if (plan.shadow.enabled || plan.reflection.enabled || plan.diffuseGi.enabled) {
-            plan.effectiveMode = RenderMode::HYBRID;
-            plan.rayExecution = RayExecution::INLINE_RAY_QUERY;
-            plan.failureReason = RenderPlanReason::NONE;
-        } else {
-            const auto reason = request.rayShadow ? plan.shadow.fallbackReason
-                : request.rayReflection ? plan.reflection.fallbackReason : plan.diffuseGi.fallbackReason;
-            ResolveRasterFallback(plan, availability, reason);
-        }
+    if (hybrid && !availability.rasterPipelineReady) {
+        plan.failureReason = RenderPlanReason::RASTER_PIPELINE_UNAVAILABLE;
         return plan;
     }
 
-    if (request.pathProfile != PathTracingProfile::REFERENCE
-        && request.pathProfile != PathTracingProfile::GAME) {
-        ResolveRasterFallback(plan, availability, RenderPlanReason::INVALID_REQUEST);
-        return plan;
-    }
-    auto reason = ResolveRayPrerequisite(capabilities, availability);
-    if (reason == RenderPlanReason::NONE && !coverage.path)
-        reason = RenderPlanReason::RAY_COVERAGE_INCOMPLETE;
-    if (reason == RenderPlanReason::NONE && !availability.pathPipelineReady)
-        reason = RenderPlanReason::RAY_PIPELINE_UNAVAILABLE;
-    if (reason == RenderPlanReason::NONE && request.pathProfile == PathTracingProfile::GAME
-        && !availability.rasterSurfaceReady)
-        reason = RenderPlanReason::RASTER_SURFACE_UNAVAILABLE;
-    if (reason != RenderPlanReason::NONE) {
+    const auto prerequisite = ResolveRayPrerequisite(capabilities, availability);
+    const auto reason = hybrid ? ResolveHybridEffects(plan, request, coverage, availability, prerequisite)
+        : ResolvePathVisibility(plan, coverage, availability, prerequisite);
+    if (reason == RenderPlanReason::NONE) {
+        plan.effectiveMode = request.mode;
+        plan.rayExecution = RayExecution::INLINE_RAY_QUERY;
+        plan.failureReason = RenderPlanReason::NONE;
+    } else {
         ResolveRasterFallback(plan, availability, reason);
-        return plan;
     }
-
-    plan.effectiveMode = RenderMode::PATH_TRACING;
-    plan.primaryVisibility = request.pathProfile == PathTracingProfile::REFERENCE
-        ? PrimaryVisibility::CAMERA_RAY : PrimaryVisibility::RASTER;
-    if (request.pathProfile == PathTracingProfile::GAME)
-        plan.rasterPlan.path = OpaqueRenderPath::DEFERRED;
-    plan.rayExecution = RayExecution::INLINE_RAY_QUERY;
-    plan.failureReason = RenderPlanReason::NONE;
     return plan;
 }
 
-}
+} /// @note namespace fbzz::renderer

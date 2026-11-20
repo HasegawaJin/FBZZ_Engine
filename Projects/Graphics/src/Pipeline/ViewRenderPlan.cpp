@@ -12,7 +12,7 @@ ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources, IRenderer& 
     const RenderSharedResources& shared, const RenderPassHandles& handles,
     bool experimentalRayTracingEnabled)
 {
-    const auto targetReady = [&](ResourceHandle<RenderTargetTag> handle) {
+    const auto hasViewExtent = [&](ResourceHandle<RenderTargetTag> handle) {
         const auto* target = resources.Get(handle);
         return target && target->GetWidth() == view.width && target->GetHeight() == view.height;
     };
@@ -23,49 +23,52 @@ ResolvedRenderPlan PrepareViewRenderPlan(ResourceManager& resources, IRenderer& 
         && (view.output.IsValid()
             ? output && output->GetWidth() == view.nativeWidth && output->GetHeight() == view.nativeHeight
             : renderer.GetWidth() == view.nativeWidth && renderer.GetHeight() == view.nativeHeight);
+
     available.opaque = {
-        targetReady(view.gbuffer) && resources.Get(view.gbuffer)->GetColorCount() == GBUFFER_COLOR_COUNT
+        hasViewExtent(view.gbuffer) && resources.Get(view.gbuffer)->GetColorCount() == GBUFFER_COLOR_COUNT
             && resources.Get(shared.gbufferShader),
         resources.Get(shared.deferredLightingShader) != nullptr,
         resources.Get(shared.depthCopyShader) != nullptr,
     };
-    available.rasterPipelineReady = targetReady(view.hdr) && targetReady(view.ldr)
+    available.rasterPipelineReady = hasViewExtent(view.hdr) && hasViewExtent(view.ldr)
         && resources.Get(shared.frameCB) && resources.Get(shared.objectCB)
-        && resources.Get(shared.lightCB) && resources.Get(shared.postprocCB)
-        && resources.Get(view.advancedGraphicsCB)
+        && resources.Get(shared.lightCB) && resources.Get(shared.postprocCB) && resources.Get(view.advancedGraphicsCB)
         && resources.Get(settings.IsWireframe() ? shared.wireframePSO : shared.defaultPSO)
         && resources.Get(shared.postprocPSO) && resources.Get(shared.compositeShader);
-    if (view.needsUpscale) {
+    if (view.needsUpscale && available.rasterPipelineReady) {
         const bool magnify = view.width < view.nativeWidth || view.height < view.nativeHeight;
         const auto filter = magnify ? shared.upscaleShader : shared.downscaleShader;
-        available.rasterPipelineReady = available.rasterPipelineReady
-            && targetReady(view.upscaleSrc)
+        available.rasterPipelineReady = hasViewExtent(view.upscaleSrc)
             && (resources.Get(filter) || resources.Get(shared.copyColorShader));
     }
     available.clusteredLightingReady = !settings.IsUnlit() && !settings.clustered.forceAllLights
         && resources.Get(handles.punctualLightBuffer) && resources.Get(shared.clusterCB)
         && resources.Get(shared.clusterIndexBuffer) && resources.Get(shared.clusterCullCS);
+
     SceneRayCoverage coverage;
     coverage.reflection = view.rayReflectionCovered;
     coverage.path = view.rayPathCovered;
-    available.raySceneReady = view.rayReflection.gpu.ready || view.rayPath.gpu.ready;
-    available.reflectionPipelineReady = view.rayReflection.gpu.ready
-        && resources.Get(view.rayReflection.output) && resources.Get(view.rayReflection.constants)
-        && resources.Get(shared.rayReflectionShader) && handles.rayReflectionResult == view.rayReflection.output;
-    available.pathPipelineReady = view.rayPathPrepared && view.rayPath.gpu.ready && targetReady(view.hdr)
-        && resources.Get(view.rayPath.output) && resources.Get(view.rayPath.firstSurface)
-        && resources.Get(view.rayPath.firstMaterial) && resources.Get(view.rayPath.firstGeometry)
-        && resources.Get(view.rayPath.historyBuffer) && resources.Get(view.rayPath.idsBuffer)
-        && resources.Get(view.rayPath.constants) && resources.Get(shared.rayPathShader)
-        && resources.Get(shared.rayPathResolveShader) && resources.Get(shared.rayPathResolvePSO)
-        && resources.Get(shared.copyColorShader) && available.rasterPipelineReady;
+
+    const auto& reflection = view.rayReflection;
+    const auto& path = view.rayPath;
+    available.raySceneReady = reflection.gpu.ready || path.gpu.ready;
+    available.reflectionPipelineReady = reflection.gpu.ready
+        && resources.Get(reflection.output) && resources.Get(reflection.constants)
+        && resources.Get(shared.rayReflectionShader) && handles.rayReflectionResult == reflection.output;
+    available.pathPipelineReady = view.rayPathPrepared && path.gpu.ready && hasViewExtent(view.hdr)
+        && resources.Get(path.output) && resources.Get(path.firstSurface)
+        && resources.Get(path.firstMaterial) && resources.Get(path.firstGeometry)
+        && resources.Get(path.historyBuffer) && resources.Get(path.idsBuffer) && resources.Get(path.constants)
+        && resources.Get(shared.rayPathShader) && resources.Get(shared.rayPathResolveShader)
+        && resources.Get(shared.rayPathResolvePSO) && resources.Get(shared.copyColorShader) && available.rasterPipelineReady;
+    const bool gameSurfaceReady = path.game.prepared && available.opaque.depthNormal;
     if (settings.modeRequest.pathProfile == PathTracingProfile::GAME)
-        available.pathPipelineReady = available.pathPipelineReady && view.rayPath.game.prepared
-            && available.opaque.depthNormal && resources.Get(shared.rayGameReconstructionShader);
-    available.rasterSurfaceReady = view.rayPathPrepared && view.rayPath.game.prepared && available.opaque.depthNormal;
-    view.renderPlan = ResolveRenderPlan(settings, settings.modeRequest,
-        renderer.GetCapabilities(), coverage, available);
+        available.pathPipelineReady = available.pathPipelineReady && gameSurfaceReady
+            && resources.Get(shared.rayGameReconstructionShader);
+    available.rasterSurfaceReady = view.rayPathPrepared && gameSurfaceReady;
+
+    view.renderPlan = ResolveRenderPlan(settings, settings.modeRequest, renderer.GetCapabilities(), coverage, available);
     return view.renderPlan;
 }
 
-}
+} /// @note namespace fbzz::renderer
