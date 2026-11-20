@@ -5,6 +5,7 @@
 /// @note 固定長ブロックを空きリストで管理し、同サイズ割り当てを O(1) で再利用する。
 #include "Core/Memory/PoolAllocator.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <limits>
 #include <memory>
@@ -30,23 +31,14 @@ PoolAllocator& PoolAllocator::operator=(PoolAllocator&& other) noexcept
 
     Shutdown();
 
-    m_rawMemory = other.m_rawMemory;
-    m_memory = other.m_memory;
-    m_freeList = other.m_freeList;
-    m_blockSize = other.m_blockSize;
-    m_blockCount = other.m_blockCount;
-    m_stride = other.m_stride;
-    m_alignment = other.m_alignment;
-    m_stats = other.m_stats;
-
-    other.m_rawMemory = nullptr;
-    other.m_memory = nullptr;
-    other.m_freeList = nullptr;
-    other.m_blockSize = 0;
-    other.m_blockCount = 0;
-    other.m_stride = 0;
-    other.m_alignment = 0;
-    other.m_stats = {};
+    m_rawMemory = std::exchange(other.m_rawMemory, nullptr);
+    m_memory = std::exchange(other.m_memory, nullptr);
+    m_freeList = std::exchange(other.m_freeList, nullptr);
+    m_blockSize = std::exchange(other.m_blockSize, 0);
+    m_blockCount = std::exchange(other.m_blockCount, 0);
+    m_stride = std::exchange(other.m_stride, 0);
+    m_alignment = std::exchange(other.m_alignment, 0);
+    m_stats = std::exchange(other.m_stats, MemoryStats{});
     return *this;
 }
 
@@ -62,46 +54,45 @@ bool PoolAllocator::Initialize(std::size_t blockSize, std::size_t blockCount, st
         return false;
     }
 
-    const std::size_t effectiveAlignment =
-        (alignment > alignof(FreeNode)) ? alignment : alignof(FreeNode);
-    const std::size_t minBlockSize = (blockSize > sizeof(FreeNode)) ? blockSize : sizeof(FreeNode);
-    if (minBlockSize > std::numeric_limits<std::size_t>::max() - (effectiveAlignment - 1)) {
+    /// @note 空きブロックには次の空きブロックへのポインタを格納する。
+    const std::size_t blockAlignment = std::max(alignment, alignof(FreeNode));
+    const std::size_t minimumBlockBytes = std::max(blockSize, sizeof(FreeNode));
+    const std::size_t maxAlignmentPadding = blockAlignment - 1;
+    constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
+    if (minimumBlockBytes > MAX_SIZE - maxAlignmentPadding) {
         return false;
     }
 
+    const std::size_t blockStride = AlignSize(minimumBlockBytes, blockAlignment);
+    if (blockStride > MAX_SIZE / blockCount) {
+        return false;
+    }
+
+    const std::size_t capacity = blockStride * blockCount;
+    if (capacity > MAX_SIZE - maxAlignmentPadding) {
+        return false;
+    }
+
+    const std::size_t reservedBytes = capacity + maxAlignmentPadding;
+    m_rawMemory = std::malloc(reservedBytes);
+    if (m_rawMemory == nullptr) {
+        return false;
+    }
+
+    void* alignedMemory = m_rawMemory;
+    std::size_t remainingBytes = reservedBytes;
+    if (std::align(blockAlignment, capacity, alignedMemory, remainingBytes) == nullptr) {
+        Shutdown();
+        return false;
+    }
+
+    m_memory = static_cast<std::uint8_t*>(alignedMemory);
     m_blockSize = blockSize;
     m_blockCount = blockCount;
-    m_stride = AlignSize(minBlockSize, effectiveAlignment);
-    m_alignment = effectiveAlignment;
-
-    if (m_stride > std::numeric_limits<std::size_t>::max() / m_blockCount) {
-        Shutdown();
-        return false;
-    }
-
-    const std::size_t capacity = m_stride * m_blockCount;
-    if (capacity > std::numeric_limits<std::size_t>::max() - (effectiveAlignment - 1)) {
-        Shutdown();
-        return false;
-    }
-
-    const std::size_t reserved = capacity + effectiveAlignment - 1;
-    m_rawMemory = std::malloc(reserved);
-    if (m_rawMemory == nullptr) {
-        Shutdown();
-        return false;
-    }
-
-    void* aligned = m_rawMemory;
-    std::size_t remaining = reserved;
-    if (std::align(effectiveAlignment, capacity, aligned, remaining) == nullptr) {
-        Shutdown();
-        return false;
-    }
-
-    m_memory = static_cast<std::uint8_t*>(aligned);
-    Reset();
+    m_stride = blockStride;
+    m_alignment = blockAlignment;
     m_stats.capacity = capacity;
+    Reset();
     return true;
 }
 

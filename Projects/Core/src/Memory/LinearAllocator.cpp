@@ -29,13 +29,9 @@ LinearAllocator& LinearAllocator::operator=(LinearAllocator&& other) noexcept
 
     Shutdown();
 
-    m_memory = other.m_memory;
-    m_offset = other.m_offset;
-    m_stats = other.m_stats;
-
-    other.m_memory = nullptr;
-    other.m_offset = 0;
-    other.m_stats = {};
+    m_memory = std::exchange(other.m_memory, nullptr);
+    m_offset = std::exchange(other.m_offset, 0);
+    m_stats = std::exchange(other.m_stats, MemoryStats{});
     return *this;
 }
 
@@ -80,23 +76,20 @@ void* LinearAllocator::Allocate(std::size_t size, std::size_t alignment)
         return nullptr;
     }
 
-    void* current = m_memory + m_offset;
-    std::size_t remaining = m_stats.capacity - m_offset;
-    void* aligned = std::align(alignment, size, current, remaining);
-    if (aligned == nullptr) {
+    void* allocationStart = m_memory + m_offset;
+    std::size_t availableBytes = m_stats.capacity - m_offset;
+    auto* alignedStart = static_cast<std::uint8_t*>(std::align(alignment, size, allocationStart, availableBytes));
+    if (alignedStart == nullptr) {
         return nullptr;
     }
 
-    const std::size_t padding =
-        static_cast<std::size_t>(static_cast<std::uint8_t*>(aligned) - (m_memory + m_offset));
-    const std::size_t required = padding + size;
-
-    m_offset += required;
+    const std::size_t allocationOffset = static_cast<std::size_t>(alignedStart - m_memory);
+    m_offset = allocationOffset + size;
     m_stats.used = m_offset;
     ++m_stats.allocationCount;
     UpdatePeak(m_stats);
 
-    return aligned;
+    return alignedStart;
 }
 
 void LinearAllocator::Free(void* ptr)
