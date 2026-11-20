@@ -60,7 +60,7 @@ SceneManager::SceneManager()
 
 void SceneManager::BuildScheduler()
 {
-    /// @note Physics 固定ステップを設定
+    /// @note 同じ Phase の明示順は OrderingHints が決め、順序のない競合は下記の登録順で解く。
     m_scheduler.ConfigurePhase(Phase::Physics, { .fixedStep = true, .hz = 60, .maxCatchUp = 8.0f });
 
     /// @note PreScript
@@ -75,8 +75,7 @@ void SceneManager::BuildScheduler()
     /// @note ワールド姿勢が確定した直後に流れを集め、物理が読む前に確定させる。
     m_scheduler.AddSystem<FlowFieldSystem>();
 
-    /// @note Physics (固定ステップ)
-    /// @note FixedScriptSystem は OrderingHints で PhysicsSystem より前に並ぶ。
+    /// @note FixedUpdate が指定した力・姿勢を同じ固定刻みの PhysicsSystem が読み、ClothSystem がその結果を使う。
     m_scheduler.AddSystem<FixedScriptSystem>();
     m_scheduler.AddSystem<PhysicsSystem>();
     m_scheduler.AddSystem<ClothSystem>();
@@ -85,26 +84,19 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<TransformPostPhysics>();
     m_scheduler.AddSystem<WaterSystem>();
 
-    /// @note Navigation
-    /// @note 実行順は各 System の OrderingHints が決める:
-    /// @note Sensor → BehaviorTree → Patrol → Navigation
-    /// @note BehaviorTree を Patrol より前に置くのは、BT が SetTarget を呼んだ同じフレームで
-/// @note 設定済み追跡参照は欠損時も巡回を抑止する。
+    /// @note Sensor → BehaviorTree → Patrol → Navigation。巡回判断は BehaviorTree が同じフレームで設定した追跡先を読む。
     m_scheduler.AddSystem<NavMeshSensorSystem>();
     m_scheduler.AddSystem<BehaviorTreeSystem>();
     m_scheduler.AddSystem<NavMeshPatrolSystem>();
     m_scheduler.AddSystem<NavigationSystem>();
 
-    /// @note LateScript
     m_scheduler.AddSystem<LateScriptSystem>();
-    /// @note .sequence は VFX / Audio へ書き込むため、両者より先に評価する
-    /// @note (実行順は SequenceSystem の OrderingHints が決める)。
+    /// @note 同じフレームで VFX と Audio が設定を読めるよう、Sequence を先に評価する。
     m_scheduler.AddSystem<SequenceSystem>();
     m_scheduler.AddSystem<VFXSystem>();
     m_scheduler.AddSystem<VFXBeamSystem>();
     m_scheduler.AddSystem<VFXLineSystem>();
-    /// @note 明滅は VFXLightEnvelope と同じ intensity を書くので、VFX の後に置く
-    /// @note (実行順は LightFlickerSystem の OrderingHints が決める)。
+    /// @note 明滅は VFXLightEnvelope と同じ intensity を書くため、VFX の後に適用する。
     m_scheduler.AddSystem<LightFlickerSystem>();
     /// @note UI の効果音は AudioSystem より前に積む (OrderingHints が実際の順を決める)。
     m_scheduler.AddSystem<UIAudioSystem>();
@@ -115,7 +107,7 @@ void SceneManager::BuildScheduler()
     m_scheduler.AddSystem<WaterInteractionSystem>();
     m_scheduler.AddSystem<FlushDestroyQueueSystem>();
 
-    /// @note LateUpdate
+    /// @note 描画用 world を更新し、LOD と Animator がその姿勢を使う。IK は Animator の結果に適用する。
     m_scheduler.AddSystem<UIAnimatorSystem>();
     m_scheduler.AddSystem<TransformLateUpdate>();
     m_scheduler.AddSystem<LODSystem>();
@@ -126,7 +118,7 @@ void SceneManager::BuildScheduler()
     /// @note ラグドールは «倒れる数秒» だけ骨を丸ごと持っていく。揺れものより後に置き、
     /// @note 戻り際は揺れ込みの姿勢へブレンドする。
     m_scheduler.AddSystem<RagdollSystem>();
-    /// @note DCC Bone姿勢をAnimator/IKが確定した後にSocket、Camera、表示補助を評価する。
+    /// @note 骨姿勢を確定してから、骨を参照する Socket や追従 Camera、表示補助を評価する。
     m_scheduler.AddSystem<ConstraintSystem>();
     m_scheduler.AddSystem<SplineSystem>();
     m_scheduler.AddSystem<CameraRigSystem>();
@@ -319,20 +311,19 @@ void SceneManager::Update(float dt, physics::World& world)
 
     if (!m_pendingLoad.empty()) {
         FBZZ_PROFILE_SCOPE("SceneManager::LoadPendingScene");
-        /// @note Factory 完了までは現在の Scene を保持し、ロード失敗で実行対象を失わないようにする。
-        auto factoryIt = m_factories.find(m_pendingLoad);
-        if (factoryIt == m_factories.end()) {
+        /// @note ロードと検証を現在の Scene の破棄より先に行う。失敗後のフレームでも現在の Scene を使えるようにする。
+        const auto factory = m_factories.find(m_pendingLoad);
+        if (factory == m_factories.end()) {
             FBZZ_LOG_ERROR("SceneManager: pending scene '%s' is no longer registered.",
                            m_pendingLoad.c_str());
             m_pendingLoad.clear();
             return;
         }
 
-        /// @note ロードに失敗しても現在の Scene は保持したまま続ける。ここで実行対象を
-        /// @note 失うと、遷移できなかっただけのはずが「以降なにも動かない」に化ける。
-        const auto scenePath = m_scenePaths.find(m_pendingLoad);
-        std::unique_ptr<Scene> nextScene = scenePath != m_scenePaths.end()
-            ? SceneSerializer::Load(scenePath->second, GetResourceManager()) : factoryIt->second();
+        const auto registeredPath = m_scenePaths.find(m_pendingLoad);
+        std::unique_ptr<Scene> nextScene = registeredPath != m_scenePaths.end()
+            ? SceneSerializer::Load(registeredPath->second, GetResourceManager())
+            : factory->second();
         if (!nextScene) {
             FBZZ_LOG_ERROR("SceneManager: failed to load scene '%s'. Staying in the current scene.",
                            m_pendingLoad.c_str());
@@ -341,6 +332,7 @@ void SceneManager::Update(float dt, physics::World& world)
         }
 
         nextScene->SetResourceManager(GetResourceManager());
+        /// @note ベイク検証と初回スクリプトが確定済みの world 姿勢を使えるようにする。シミュレーション中は Editor 用の事前同期が走らない。
         FlushWorldTransforms(*nextScene);
         if ((m_simulating || m_playing) && !ValidateStaticControlPointBakes(*nextScene)) {
             FBZZ_LOG_ERROR("SceneManager: stale control-point bake in '%s'. Staying in the current scene.", m_pendingLoad.c_str());
@@ -348,19 +340,13 @@ void SceneManager::Update(float dt, physics::World& world)
             return;
         }
 
-        /// @note カーソルの要求はスクリプトの寿命に紐づくので、古い Scene を捨てた時点でほとんどは
-        /// @note 自動的に外れる。残るのは cursor.SetLockMode で基底を直接書いた分で、«誰も外さない»
-        /// @note まま次の画面へ持ち越されるため、画面をまたいで引き継いでよいカーソル状態は無いと
-        /// @note 決めてここで畳む。Scene のデストラクタはコールバックを呼ばないため、次の OnStart が
-        /// @note 破棄済みのシングルトンを読む前に、旧シーンの登録と設定をここで片付ける。
+        /// @note 新しい OnStart より前に旧 Scene の終了処理を実行し、登録やカーソルの基底設定を片付ける。
         if (m_active) {
             ClearWaterInteractions(*m_active);
             m_active->Clear();
         }
         core::Cursor::ClearRequests();
 
-        /// @note Play中のPreScriptではTransformEditorPreviewが動かない。
-        /// @note 初回スクリプトが未計算の原点を接触・出現位置として使う前に階層を確定する。
         m_active = std::move(nextScene);
         /// @note 前シーンの固定ステップの残時間を新しい盤面へ持ち込まない。
         m_scheduler.ResetAccumulator();
@@ -370,9 +356,7 @@ void SceneManager::Update(float dt, physics::World& world)
         m_activeName    = m_pendingLoad;
         m_pendingLoad.clear();
 
-        /// @note 新しいシーンの束を持ってから旧シーンの束を手放す。順序を逆にすると、両方が使う共有物の
-        /// @note 利用権が一瞬ゼロになり解放の対象に入る。先読みしていなかったシーンもロード後に束を作る
-        /// @note (中身は読み込み済みなのでジョブは出ない)。失敗した遷移では上で return するので旧シーンの束は残る。
+        /// @note 新しい Scene のリースを先に確保し、共有アセットの利用権を切らさずに旧リースを解放する。
         (void)AcquireSceneLeases(m_activeName, asset::AssetPriority::Visible);
         if (!previousName.empty() && previousName != m_activeName) m_sceneLeases.erase(previousName);
     }
@@ -380,18 +364,21 @@ void SceneManager::Update(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
+    /// @note セルの追加・削除を反映してから、今回の Scene 世代を検証して各 System に渡す。
     UpdateWorldPartitionRuntime(*scene, GetResourceManager(), m_playing || m_simulating);
 
-    if (!m_simulating && !m_playing) {
-        m_staticBakeValidationScene = 0; m_staticBakeValidationSucceeded = true;
-    } else {
-        const auto generation = scene->GetRenderSceneGeneration();
-        if (m_staticBakeValidationScene != generation) {
+    if (m_simulating || m_playing) {
+        const auto sceneGeneration = scene->GetRenderSceneGeneration();
+        if (m_staticBakeValidationScene != sceneGeneration) {
             FlushWorldTransforms(*scene);
             m_staticBakeValidationSucceeded = ValidateStaticControlPointBakes(*scene);
-            m_staticBakeValidationScene = generation;
+            m_staticBakeValidationScene = sceneGeneration;
         }
         if (!m_staticBakeValidationSucceeded) return;
+    } else {
+        /// @note 編集を挟んだ後は Play 再開時に検証し直す。
+        m_staticBakeValidationScene = 0;
+        m_staticBakeValidationSucceeded = true;
     }
 
     scene->SetResourceManager(GetResourceManager());
@@ -405,6 +392,7 @@ void SceneManager::LateUpdate(float dt, physics::World& world)
     Scene* scene = CurrentScene();
     if (!scene) return;
 
+    /// @note Update が拒否した世代の Scene は、描画用の System 更新にも渡さない。
     if ((m_simulating || m_playing) && m_staticBakeValidationScene == scene->GetRenderSceneGeneration()
         && !m_staticBakeValidationSucceeded) return;
 
@@ -418,4 +406,4 @@ Scene* SceneManager::GetActive()
     return CurrentScene();
 }
 
-} /// @note namespace fbzz::scene
+}

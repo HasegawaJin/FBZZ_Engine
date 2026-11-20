@@ -1,5 +1,5 @@
 /// @file    SystemContext.hpp
-/// @brief   全 System への統一パラメータ。SystemScheduler が毎フレーム生成して渡す。
+/// @brief   SceneManager から Scheduler を経由して各 System に渡す実行コンテキスト。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
@@ -14,14 +14,14 @@ namespace fbzz {
 struct SystemContext {
     scene::Scene&               scene;
     physics::World&             world;
-    renderer::ResourceManager*  resources;    ///< LateUpdate のみ非 null
+    renderer::ResourceManager*  resources;    ///< Update と LateUpdate で利用できる。リソース所有元が無ければ null。
     audio::AudioManager*        audioManager; ///< SetAudioManager で設定するまで null
     float                       dt;
-    float                       fixedDt;      ///< Physics 固定ステップ時のみ有効
+    float                       fixedDt;      ///< 固定ステップの実行中に Scheduler が設定する秒数。
     bool                        simulating;
-    /// @note Play セッションが続いているか。Pause 中も true (simulating だけが false になる)。Pause は「シミュレーションを進めない」だけで編集へ戻ったわけではないため simulating と分ける。同じフラグで見ると ScriptSystem が Pause を「編集モードへ戻った」と読み、Play 中の Script のライフサイクルを畳んでしまう。
+    /// @note Pause 中も Play セッションと Script のライフサイクルは続く。simulating だけが false になる。
     bool                        playing = false;
     float                       interpolationAlpha = 0.0f; ///< 固定ステップ間の描画補間係数 [0, 1]
 };
 
-} // namespace fbzz
+} /// @note namespace fbzz

@@ -19,7 +19,7 @@ namespace fbzz {
 
 class SystemScheduler {
 public:
-    /// @brief Physics Phase など固定ステップを使う Phase の設定 (Build() より前に呼ぶ)。
+    /// @brief Phase の固定刻みと追いつき上限を設定する。Build 後の更新は次の実行から反映する。
     FBZZ_ENGINE_API void ConfigurePhase(Phase phase, PhaseConfig cfg);
 
     /// @brief デフォルトコンストラクタ可能な System を登録する。
@@ -34,8 +34,11 @@ public:
     /// @return 循環があれば false。System を初期化せず、Update も実行しない。
     [[nodiscard]] FBZZ_ENGINE_API bool Build();
 
-    FBZZ_ENGINE_API void Update    (SystemContext ctx);   ///< @note PreScript 〜 Cleanup
-    FBZZ_ENGINE_API void LateUpdate(SystemContext ctx);   ///< @note LateUpdate のみ
+    /// @brief PreScript から Cleanup までを進め、フレーム番号を更新する。
+    FBZZ_ENGINE_API void Update(SystemContext ctx);
+
+    /// @brief Update の残り時間から補間係数を求め、LateUpdate を実行する。
+    FBZZ_ENGINE_API void LateUpdate(SystemContext ctx);
 
     /// @brief true にすると次の Update() で固定ステップを 1 回だけ実行し、自動で false に戻す。
     FBZZ_ENGINE_API void SetSingleStep(bool enabled);
@@ -47,6 +50,7 @@ public:
     /// @note RTTI による dynamic_cast は実行時コストと DLL 境界の型依存を生むため、公開 API では ISystem::Name() を使った明示的な検索に限定する。
     [[nodiscard]] FBZZ_ENGINE_API ISystem* FindSystem(std::string_view name) const;
 
+    /// @brief Build が各 Phase 内に組んだ実行バッチをログに出力する。
     FBZZ_ENGINE_API void DumpGraph() const;
 
     FBZZ_ENGINE_API void Shutdown();
