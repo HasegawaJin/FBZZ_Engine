@@ -48,16 +48,18 @@ namespace fbzz::physics
                         std::vector<ContactPoint>& outContacts);
 
         /// @brief PGS ベースの衝突解決 (Warm Starting 済みの蓄積インパルスを引き継ぐ)。
+        /// @note 接触島ごとに法線・摩擦の速度解決を反復し、最後に貫通を位置で補正する。
         FBZZ_PHYSICS_API void Resolve(std::vector<ContactPoint>& contacts);
 
-        /// @brief 接触点における 2 剛体の相対速度 (A から見た B との差、角速度の寄与を含む)。
-        /// @note Resolve は速度を書き換えるため、呼んだ後では「ぶつかった勢い」が残らない。
-        /// @note ゲーム側が衝突の強さを知るには Resolve の前に同じ値を取る必要があり、
-        /// @note ResolveVelocity 内の計算と食い違わないよう両者で同じ関数を使う。
+        /// @brief ワールド空間の接触点における A の速度から B の速度を引く。重心まわりの回転も含む。
+        /// @note 速度解決前の接近速度が必要な場合は Resolve より前に呼ぶ。
         [[nodiscard]] FBZZ_PHYSICS_API static math::Vector3 RelativeVelocityAt(const ContactPoint& cp);
 
     private:
         friend class World;
+        /// @note 同じ接線基底を WarmStart の前と単独の Resolve 呼び出しで使う。
+        static void PrepareContactTangents(std::vector<ContactPoint>& contacts);
+
         /// @pre Called on the owner thread immediately after BroadPhase with its current inputs/output.
         FBZZ_PHYSICS_API void CaptureBroadPhaseDebugSnapshot(const BroadPhaseDebugRequest& request,
             const std::vector<ColliderInstance>& colliders, const std::vector<CollisionPair>& pairs,

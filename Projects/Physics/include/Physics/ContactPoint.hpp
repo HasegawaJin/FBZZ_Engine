@@ -12,12 +12,11 @@ namespace fbzz::physics
     class Collider;
     struct PhysicsMaterial;
 
-    /// World が bodies を生存管理するため raw pointer で保持する。
-    /// normal は bodyB から bodyA へ押し戻す向きで統一する。
+    /// @note 剛体・コライダー・材質への参照は非所有。World の現在の登録内容に対して使う。
     struct ContactPoint {
-        math::Vector3 point;   ///< 衝突点 (ワールド座標)
-        math::Vector3 normal;  ///< b → a 方向の法線
-        float         depth;   ///< 貫通深度 (正の値)
+        math::Vector3 point;   ///< @note 接触点のワールド座標。
+        math::Vector3 normal;  ///< @note B から A へ押し戻す向きのワールド空間の法線。
+        float         depth;   ///< @note 貫通の深さ。正の値が貫通を表す。
         RigidBody*    bodyA = nullptr;
         RigidBody*    bodyB = nullptr;
         const Collider* colliderA = nullptr;
@@ -27,11 +26,11 @@ namespace fbzz::physics
         bool isTrigger = false;
         bool cacheImpulse = true;
 
-        /// Warm Starting / PGS 用: ContactCache が設定し ResolveVelocity が更新する
-        math::Vector3 tangent[2];                    ///< 摩擦平面の 2 軸 (Resolve 冒頭で計算)
-        float cachedNormalImpulse       = 0.0f;      ///< 蓄積法線インパルス (Λn ≥ 0 にクランプ)
-        float cachedTangentImpulse[2]   = {0.0f, 0.0f}; ///< 蓄積摩擦インパルス
+        /// @note 接触面の摩擦基底。WarmStart と Resolve の前に接触法線から組み立てる。
+        math::Vector3 tangent[2];
+        float cachedNormalImpulse       = 0.0f;      ///< @note 蓄積法線インパルスは 0 以上に制限する。
+        float cachedTangentImpulse[2]   = {0.0f, 0.0f}; ///< @note 現在の摩擦基底での蓄積インパルス。
         float positionCorrectionWeight  = 1.0f;
     };
 
-} // namespace fbzz::physics
+}

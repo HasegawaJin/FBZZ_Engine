@@ -4,8 +4,8 @@
 /// @date    2026-05-24
 #include <Physics/CCDSolver.hpp>
 #include <Physics/RigidBody.hpp>
+
 #include <cmath>
-#include <limits>
 
 namespace fbzz::physics
 {
@@ -18,41 +18,42 @@ namespace fbzz::physics
     {
         CCDResult result;
 
-        /// @note 相対速度・相対位置
-        /// @note フレーム内の移動量
-        const math::Vector3 relVel = velA * dt;
-        const math::Vector3 w      = centerA - centerB;
-        const float sumR  = radiusA + radiusB;
+        const math::Vector3 displacement = velA * dt;
+        const math::Vector3 initialOffset = centerA - centerB;
+        const float combinedRadius = radiusA + radiusB;
 
-        /// @note |w + t * relVel|^2 = sumR^2 を解く二次方程式
-        ///       a*t^2 + b*t + c = 0, t ∈ [0, 1]
-        const float a = math::Vector3::Dot(relVel, relVel);
-        const float b = 2.0f * math::Vector3::Dot(relVel, w);
-        const float c = math::Vector3::Dot(w, w) - sumR * sumR;
+        /// @note |initialOffset + t * displacement|² = combinedRadius²。移動全体を 1 とするので、根は時間の割合になる。
+        const float a = math::Vector3::Dot(displacement, displacement);
+        const float b = 2.0f * math::Vector3::Dot(displacement, initialOffset);
+        const float c = math::Vector3::Dot(initialOffset, initialOffset) - combinedRadius * combinedRadius;
 
-        /// @note 静止 or 極めて遅い
-        if (a < 1e-10f) return result;
+        /// @note 移動量がほぼ 0 の場合は、二次方程式の 2a で除算できない。
+        if (a < 1e-10f)
+            return result;
 
-        const float disc = b * b - 4.0f * a * c;
-        /// @note 交差なし
-        if (disc < 0.0f) return result;
+        const float discriminant = b * b - 4.0f * a * c;
+        if (discriminant < 0.0f)
+            return result;
 
-        const float sqrtDisc = std::sqrt(disc);
-        const float t0 = (-b - sqrtDisc) / (2.0f * a);
-        const float t1 = (-b + sqrtDisc) / (2.0f * a);
+        const float sqrtDiscriminant = std::sqrt(discriminant);
+        const float entryTime = (-b - sqrtDiscriminant) / (2.0f * a);
+        const float exitTime = (-b + sqrtDiscriminant) / (2.0f * a);
 
-        /// @note 最小の正の根 ∈ [0, 1] を採用する
+        /// @note 開始時点で重なっている場合も、区間内の離脱時刻があれば採用する。
         float toi = -1.0f;
-        if (t0 >= 0.0f && t0 <= 1.0f)      toi = t0;
-        else if (t1 >= 0.0f && t1 <= 1.0f) toi = t1;
-        if (toi < 0.0f) return result;
+        if (entryTime >= 0.0f && entryTime <= 1.0f)
+            toi = entryTime;
+        else if (exitTime >= 0.0f && exitTime <= 1.0f)
+            toi = exitTime;
+        if (toi < 0.0f)
+            return result;
 
-        result.hit          = true;
-        result.toi          = toi;
-        const math::Vector3 hitPosA = centerA + relVel * toi;
-        const math::Vector3 diff    = hitPosA - centerB;
-        const float dist = diff.Length();
-        result.normal       = dist > 1e-6f ? diff * (1.0f / dist) : math::Vector3::UP;
+        const math::Vector3 impactCenterA = centerA + displacement * toi;
+        const math::Vector3 impactOffset = impactCenterA - centerB;
+        const float centerDistance = impactOffset.Length();
+        result.hit = true;
+        result.toi = toi;
+        result.normal = centerDistance > 1e-6f ? impactOffset * (1.0f / centerDistance) : math::Vector3::UP;
         result.contactPoint = centerB + result.normal * radiusB;
         return result;
     }
@@ -66,21 +67,20 @@ namespace fbzz::physics
         CCDResult result;
 
         const math::Vector3 movement = vel * dt;
-        const float vDotN = math::Vector3::Dot(movement, planeNormal);
+        const float normalDisplacement = math::Vector3::Dot(movement, planeNormal);
 
-        /// @note 平面に近づいていない場合はスキップ
-        if (vDotN >= 0.0f) return result;
+        if (normalDisplacement >= 0.0f)
+            return result;
 
-        /// @note 現在の符号付き距離
-        const float dist0 = math::Vector3::Dot(center, planeNormal) - planeD;
+        /// @note 球の中心から平面までの符号付き距離が半径と一致する時刻を求める。
+        const float initialDistance = math::Vector3::Dot(center, planeNormal) - planeD;
+        const float toi = (radius - initialDistance) / normalDisplacement;
+        if (toi < 0.0f || toi > 1.0f)
+            return result;
 
-        /// @note t = (radius - dist0) / vDotN
-        const float toi = (radius - dist0) / vDotN;
-        if (toi < 0.0f || toi > 1.0f) return result;
-
-        result.hit          = true;
-        result.toi          = toi;
-        result.normal       = planeNormal;
+        result.hit = true;
+        result.toi = toi;
+        result.normal = planeNormal;
         result.contactPoint = center + movement * toi - planeNormal * radius;
         return result;
     }
@@ -91,4 +91,4 @@ namespace fbzz::physics
         return speed * dt > radius * CCD_THRESHOLD;
     }
 
-} // namespace fbzz::physics
+}

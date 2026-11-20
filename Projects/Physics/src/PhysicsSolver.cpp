@@ -1120,50 +1120,71 @@ namespace fbzz::physics
         }
     }
 
-    /// @name Resolve
+    void PhysicsSolver::PrepareContactTangents(std::vector<ContactPoint>& contacts)
+    {
+        for (auto& contact : contacts)
+        {
+            if (contact.isTrigger)
+                continue;
+
+            math::Vector3 firstTangent = math::Vector3::Cross(contact.normal, math::Vector3::RIGHT);
+            if (firstTangent.LengthSq() < 1e-6f)
+                firstTangent = math::Vector3::Cross(contact.normal, math::Vector3::UP);
+
+            /// @note 法線が退化した場合は正規化の契約違反を避け、接線に既定軸を使う。
+            firstTangent = firstTangent.NormalizedOr(math::Vector3::RIGHT);
+            contact.tangent[0] = firstTangent;
+            contact.tangent[1] = math::Vector3::Cross(contact.normal, firstTangent).NormalizedOr(math::Vector3::FORWARD);
+        }
+    }
+
+    namespace
+    {
+        bool IsActiveContactBody(const RigidBody* body)
+        {
+            return body && !body->IsStatic() && !body->IsSleeping();
+        }
+
+        /// @note 接触点へ軸方向の単位インパルスを加えたとき、回転に由来する同軸方向の速度変化。
+        float AngularInverseMassAt(const RigidBody* body, const math::Vector3& offset, const math::Vector3& axis)
+        {
+            if (!body)
+                return 0.0f;
+
+            const math::Vector3 angularImpulse = math::Vector3::Cross(offset, axis);
+            const math::Vector3 angularVelocity = body->ApplyInvInertia(angularImpulse);
+            return math::Vector3::Dot(math::Vector3::Cross(angularVelocity, offset), axis);
+        }
+    }
+
     void PhysicsSolver::Resolve(std::vector<ContactPoint>& contacts)
     {
-        if (contacts.empty()) return;
+        if (contacts.empty())
+            return;
 
-        /// @note 事前計算: 全接触点の摩擦タンジェント軸を確定する
-        for (auto& cp : contacts)
-        {
-            if (cp.isTrigger) continue;
-
-            /// @note normal に対して垂直な 2 軸を Gram-Schmidt で構築
-            /// @note 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
-            /// @note 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
-            math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
-            if (t0.LengthSq() < 1e-6f)
-                t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
-            t0           = t0.NormalizedOr(math::Vector3::RIGHT);
-            cp.tangent[0] = t0;
-            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).NormalizedOr(math::Vector3::FORWARD);
-        }
+        PrepareContactTangents(contacts);
 
         if (contacts.size() == 1)
         {
-            ContactPoint& cp = contacts[0];
-            if (cp.isTrigger) return;
+            ContactPoint& contact = contacts.front();
+            if (contact.isTrigger)
+                return;
+            const bool activeA = IsActiveContactBody(contact.bodyA);
+            const bool activeB = IsActiveContactBody(contact.bodyB);
+            if (!activeA && !activeB)
+                return;
 
-            const bool activeA = cp.bodyA && !cp.bodyA->IsStatic() && !cp.bodyA->IsSleeping();
-            const bool activeB = cp.bodyB && !cp.bodyB->IsStatic() && !cp.bodyB->IsSleeping();
-            if (!activeA && !activeB) return;
-
-            /// @note Player Capsule と Terrain Mesh のような単一接触では island graph を作る意味がない。
-            /// @note unordered_map / vector island 構築を避け、Solver 本体だけを実行する。
-            for (int i = 0; i < VELOCITY_ITER; ++i)
+            /// @note 単一接触では接触島の構築とバッファ確保を省ける。
+            for (int iteration = 0; iteration < VELOCITY_ITER; ++iteration)
             {
-                ResolveVelocity(cp);
-                ResolveFriction(cp);
+                ResolveVelocity(contact);
+                ResolveFriction(contact);
             }
-            ResolvePosition(cp);
+            ResolvePosition(contact);
             return;
         }
 
-        /// @note Resolve は World::Step の substep ごとに呼ばれる。contacts が多いフレームで
-        /// @note 毎回 unordered_map のバケット確保を行うと solver 本体以外の CPU 時間が増える
-        /// @note ため容量を再利用する。
+        /// @note サブステップごとの再確保を減らすため、接触島の配列とマップの容量をスレッド内で再利用する。
         static thread_local std::vector<std::vector<size_t>> islands;
         static thread_local std::unordered_map<RigidBody*, size_t> bodyToIsland;
         islands.clear();
@@ -1171,51 +1192,62 @@ namespace fbzz::physics
         bodyToIsland.clear();
         bodyToIsland.reserve(contacts.size() * 2);
 
-        for (size_t i = 0; i < contacts.size(); ++i)
+        for (size_t contactIndex = 0; contactIndex < contacts.size(); ++contactIndex)
         {
-            const ContactPoint& cp = contacts[i];
-            if (cp.isTrigger) continue;
-            RigidBody* a = cp.bodyA && !cp.bodyA->IsStatic() && !cp.bodyA->IsSleeping() ? cp.bodyA : nullptr;
-            RigidBody* b = cp.bodyB && !cp.bodyB->IsStatic() && !cp.bodyB->IsSleeping() ? cp.bodyB : nullptr;
-            if (!a && !b) continue;
+            const ContactPoint& contact = contacts[contactIndex];
+            if (contact.isTrigger)
+                continue;
 
-            const auto itA = a ? bodyToIsland.find(a) : bodyToIsland.end();
-            const auto itB = b ? bodyToIsland.find(b) : bodyToIsland.end();
-            if (itA == bodyToIsland.end() && itB == bodyToIsland.end())
-            {
-                const size_t island = islands.size();
-                islands.push_back({});
-                if (a) bodyToIsland[a] = island;
-                if (b) bodyToIsland[b] = island;
-                islands[island].push_back(i);
-            }
+            /// @note 静的・休止中の剛体は接触島の接続に使わない。たとえば共通の床だけでは島はつながらない。
+            RigidBody* activeA = IsActiveContactBody(contact.bodyA) ? contact.bodyA : nullptr;
+            RigidBody* activeB = IsActiveContactBody(contact.bodyB) ? contact.bodyB : nullptr;
+            if (!activeA && !activeB)
+                continue;
+
+            const auto islandA = activeA ? bodyToIsland.find(activeA) : bodyToIsland.end();
+            const auto islandB = activeB ? bodyToIsland.find(activeB) : bodyToIsland.end();
+            size_t islandIndex = islands.size();
+            if (islandA != bodyToIsland.end())
+                islandIndex = islandA->second;
+            else if (islandB != bodyToIsland.end())
+                islandIndex = islandB->second;
             else
+                islands.emplace_back();
+
+            if (islandA != bodyToIsland.end() && islandB != bodyToIsland.end() && islandIndex != islandB->second)
             {
-                size_t island = itA != bodyToIsland.end() ? itA->second : itB->second;
-                if (itA != bodyToIsland.end() && itB != bodyToIsland.end() && itA->second != itB->second)
+                /// @note PGS の解決順を保つため、B の島を A の末尾に追加し、元の島番号は空けておく。
+                const size_t mergedIndex = islandB->second;
+                auto& island = islands[islandIndex];
+                auto& merged = islands[mergedIndex];
+                island.insert(island.end(), merged.begin(), merged.end());
+                for (auto& entry : bodyToIsland)
                 {
-                    const size_t other = itB->second;
-                    islands[island].insert(islands[island].end(), islands[other].begin(), islands[other].end());
-                    for (auto& entry : bodyToIsland)
-                        if (entry.second == other) entry.second = island;
-                    islands[other].clear();
+                    if (entry.second == mergedIndex)
+                        entry.second = islandIndex;
                 }
-                if (a) bodyToIsland[a] = island;
-                if (b) bodyToIsland[b] = island;
-                islands[island].push_back(i);
+                merged.clear();
             }
+
+            if (activeA)
+                bodyToIsland[activeA] = islandIndex;
+            if (activeB)
+                bodyToIsland[activeB] = islandIndex;
+            islands[islandIndex].push_back(contactIndex);
         }
 
-        for (auto& island : islands)
+        for (const auto& island : islands)
         {
-            if (island.empty()) continue;
-            for (int i = 0; i < VELOCITY_ITER; ++i)
+            if (island.empty())
+                continue;
+
+            for (int iteration = 0; iteration < VELOCITY_ITER; ++iteration)
             {
-                /// @note PGS は接触を順に解くため、少ない反復でも前回フレームの Warm Start が効く。
                 for (size_t contactIndex : island)
                 {
-                    ResolveVelocity(contacts[contactIndex]);
-                    ResolveFriction(contacts[contactIndex]);
+                    ContactPoint& contact = contacts[contactIndex];
+                    ResolveVelocity(contact);
+                    ResolveFriction(contact);
                 }
             }
 
@@ -1275,26 +1307,14 @@ namespace fbzz::physics
         if (vRelN >= 0.0f || std::abs(vRelN) < REST_THRESHOLD) e = 0.0f;
         const bool usesRestitution = e > 0.0f;
 
-        float angTermA = 0.0f;
-        float angTermB = 0.0f;
-        if (bodyA)
-        {
-            const math::Vector3 rAxN = math::Vector3::Cross(rA, cp.normal);
-            angTermA = math::Vector3::Dot(
-                math::Vector3::Cross(bodyA->ApplyInvInertia(rAxN), rA), cp.normal);
-        }
-        if (bodyB)
-        {
-            const math::Vector3 rBxN = math::Vector3::Cross(rB, cp.normal);
-            angTermB = math::Vector3::Dot(
-                math::Vector3::Cross(bodyB->ApplyInvInertia(rBxN), rB), cp.normal);
-        }
-
-        const float denom = invMassA + invMassB + angTermA + angTermB;
-        if (denom == 0.0f) return;
+        const float angularInvMassA = AngularInverseMassAt(bodyA, rA, cp.normal);
+        const float angularInvMassB = AngularInverseMassAt(bodyB, rB, cp.normal);
+        const float effectiveInvMass = invMassA + invMassB + angularInvMassA + angularInvMassB;
+        if (effectiveInvMass == 0.0f)
+            return;
 
         /// @note deltaJ は今回追加すべき法線インパルス。蓄積値は 0 未満にしない。
-        const float deltaJ = -(1.0f + e) * vRelN / denom;
+        const float deltaJ = -(1.0f + e) * vRelN / effectiveInvMass;
         float applyJ = 0.0f;
         if (usesRestitution)
         {
@@ -1344,51 +1364,42 @@ namespace fbzz::physics
             staticMu = PhysicsMaterial::CombineStaticFriction(*cp.materialA, *cp.materialB);
         }
 
-        /// @note 摩擦コーン制約: |Λt| ≤ μ * Λn
+        /// @note 各接線の蓄積摩擦を、法線インパルスに比例する範囲へ収める。
         const float maxDynamicFriction = dynamicMu * cp.cachedNormalImpulse;
         const float maxStaticFriction = staticMu * cp.cachedNormalImpulse;
 
         const math::Vector3 rA = bodyA ? cp.point - bodyA->GetPosition() : math::Vector3::ZERO;
         const math::Vector3 rB = bodyB ? cp.point - bodyB->GetPosition() : math::Vector3::ZERO;
 
-        for (int k = 0; k < 2; ++k)
+        for (int tangentIndex = 0; tangentIndex < 2; ++tangentIndex)
         {
+            /// @note 先の接線で適用したインパルスを次の接線の PGS 計算が読むため、軸ごとに速度を取得する。
             const math::Vector3 vA = bodyA ? bodyA->GetVelocity()        : math::Vector3::ZERO;
             const math::Vector3 vB = bodyB ? bodyB->GetVelocity()        : math::Vector3::ZERO;
             const math::Vector3 wA = bodyA ? bodyA->GetAngularVelocity() : math::Vector3::ZERO;
             const math::Vector3 wB = bodyB ? bodyB->GetAngularVelocity() : math::Vector3::ZERO;
             const math::Vector3 vRel = (vA + math::Vector3::Cross(wA, rA))
                                      - (vB + math::Vector3::Cross(wB, rB));
-            const math::Vector3& t     = cp.tangent[k];
-            const float          vRelT = math::Vector3::Dot(vRel, t);
+            const math::Vector3& tangent = cp.tangent[tangentIndex];
+            const float tangentSpeed = math::Vector3::Dot(vRel, tangent);
 
-            float angA = 0.0f;
-            float angB = 0.0f;
-            if (bodyA)
-            {
-                const math::Vector3 rAxT = math::Vector3::Cross(rA, t);
-                angA = math::Vector3::Dot(math::Vector3::Cross(bodyA->ApplyInvInertia(rAxT), rA), t);
-            }
-            if (bodyB)
-            {
-                const math::Vector3 rBxT = math::Vector3::Cross(rB, t);
-                angB = math::Vector3::Dot(math::Vector3::Cross(bodyB->ApplyInvInertia(rBxT), rB), t);
-            }
+            const float angularInvMassA = AngularInverseMassAt(bodyA, rA, tangent);
+            const float angularInvMassB = AngularInverseMassAt(bodyB, rB, tangent);
+            const float effectiveInvMass = invMassA + invMassB + angularInvMassA + angularInvMassB;
+            if (effectiveInvMass == 0.0f)
+                continue;
 
-            const float denom = invMassA + invMassB + angA + angB;
-            if (denom == 0.0f) continue;
-
-            const float deltaJt  = -vRelT / denom;
-            const float oldAccum = cp.cachedTangentImpulse[k];
-            /// @note 蓄積摩擦インパルスを摩擦コーン内に投影する。
+            const float deltaJt = -tangentSpeed / effectiveInvMass;
+            const float oldAccum = cp.cachedTangentImpulse[tangentIndex];
+            /// @note 滑りを止めるのに必要な蓄積値が静止摩擦の上限を超えた軸では、動摩擦の上限を使う。
             const float targetAccum = oldAccum + deltaJt;
             const float newAccum = std::abs(targetAccum) <= maxStaticFriction
                 ? targetAccum
                 : std::clamp(targetAccum, -maxDynamicFriction, maxDynamicFriction);
             const float applyJt  = newAccum - oldAccum;
-            cp.cachedTangentImpulse[k] = newAccum;
+            cp.cachedTangentImpulse[tangentIndex] = newAccum;
 
-            const math::Vector3 impulse = t * applyJt;
+            const math::Vector3 impulse = tangent * applyJt;
             if (bodyA)
             {
                 bodyA->SetVelocity(bodyA->GetVelocity() + impulse * invMassA);

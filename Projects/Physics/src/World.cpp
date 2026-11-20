@@ -1066,15 +1066,10 @@ namespace fbzz::physics
         RetireExpiredRegistrations();
         m_pendingBroadPhaseDebugSnapshot.reset();
         m_layerFilter = layerFilter ? std::move(layerFilter) : m_defaultLayerFilter;
-        /// @note Sleep 済みのシーンでは接触集合が変わらず、毎 substep の
-        /// @note UpdateColliders/BroadPhase/NarrowPhase/Resolve を再実行しても結果は変わらない
-        /// @note (Terrain/TriangleMesh がある resting scene での主な CPU 負荷)。Scene 同期で
-        /// @note 登録・削除・既存 Collider の同期更新がなく動いている非 Static body も無ければ、前回 contacts から
-        /// @note Stay/Exit 分類だけ更新して collision pipeline を省略する。
-        /// @note m_frameImpacts のクリアは分岐より前に置く。早期 return でも前フレームの値が
-        /// @note 残らないようにするため。
+        /// @note 休止中のフレームにも前回の衝撃値を持ち越さない。
         m_frameImpacts.clear();
 
+        /// @note Scene 同期に差分がなく動的剛体が休止中なら、前回の接触集合でイベントを分類できる。
         if (!m_sceneSyncChanged && !HasActiveSimulationBodies()) {
             RefreshQueryIndex();
             ClassifyCollisions();
@@ -1089,35 +1084,40 @@ namespace fbzz::physics
         }
 
         const int substeps = std::max(m_substeps, 1);
-        const float subDt = dt / static_cast<float>(substeps);
+        const float substepDt = dt / static_cast<float>(substeps);
 
-        for (int s = 0; s < substeps; ++s)
+        for (int substep = 0; substep < substeps; ++substep)
         {
             RemoveExpiredVolumes();
-            for (auto& volume : m_volumes)
-                if (volume) volume->Tick(subDt);
-            ApplyForcesAndVolumes(subDt, m_effectiveDts);
-            ApplyConstraintForces(subDt);
+            for (Volume* volume : m_volumes)
+            {
+                if (volume)
+                    volume->Tick(substepDt);
+            }
+            ApplyForcesAndVolumes(substepDt, m_effectiveDts);
+            ApplyConstraintForces(substepDt);
             ApplyGravitationalAttraction();
-            CCDPhase(subDt);
+            CCDPhase(substepDt);
             IntegrateBodies(m_effectiveDts);
-            SolveConstraintPositions(subDt);
+
+            /// @note 拘束が姿勢を書き換えた後にコライダーを同期し、その形状で衝突を検出する。
+            SolveConstraintPositions(substepDt);
             UpdateColliders();
             BroadPhase();
-            if (s + 1 == substeps && m_broadPhaseDebugRequest.enabled) CaptureBroadPhaseDebugSnapshot();
-            /// @note WarmStart は最初のサブステップのみ
-            NarrowPhase(s == 0);
-            /// @note Resolve は速度を書き換えるため、「ぶつかった勢い」はこの時点でしか取れない。
+            if (substep + 1 == substeps && m_broadPhaseDebugRequest.enabled)
+                CaptureBroadPhaseDebugSnapshot();
+
+            /// @note 前フレームのインパルスを再適用するのは先頭サブステップの 1 回だけ。
+            NarrowPhase(substep == 0);
             RecordApproachVelocities();
             WakeSleepingContacts();
             Resolve();
-            /// @note 実際に加わったインパルスは解決後に確定する。
             RecordContactImpulses();
-            UpdateSleepStates(subDt);
+            UpdateSleepStates(substepDt);
         }
 
-        /// @note フレーム末尾に蓄積インパルスを保存し古いキャッシュを削除する
         RefreshQueryIndex();
+        /// @note 次のフレームへ渡すのは最終サブステップで解決した接触。
         m_contactCache.UpdateCache(m_contacts);
         m_contactCache.PurgeStale();
 
@@ -1242,20 +1242,7 @@ namespace fbzz::physics
     {
         m_contacts.clear();
         m_solver.NarrowPhase(m_collisionPairs, m_contacts);
-
-        for (auto& cp : m_contacts)
-        {
-            if (cp.isTrigger) continue;
-            /// @note 法線が潰れた接触では直交基底そのものが作れない。摩擦だけ切って
-            /// @note 法線インパルス側の処理は続けられるよう、既定軸を入れておく。
-            math::Vector3 t0 = math::Vector3::Cross(cp.normal, math::Vector3::RIGHT);
-            if (t0.LengthSq() < 1e-6f)
-                t0 = math::Vector3::Cross(cp.normal, math::Vector3::UP);
-            t0            = t0.NormalizedOr(math::Vector3::RIGHT);
-            cp.tangent[0] = t0;
-            cp.tangent[1] = math::Vector3::Cross(cp.normal, t0).NormalizedOr(math::Vector3::FORWARD);
-        }
-
+        PhysicsSolver::PrepareContactTangents(m_contacts);
         if (doWarmStart)
             m_contactCache.WarmStart(m_contacts);
     }
@@ -1296,7 +1283,9 @@ namespace fbzz::physics
 
     void World::CCDPhase(float dt)
     {
-        if (dt <= 0.0f) return;
+        if (dt <= 0.0f)
+            return;
+
         struct SphereEntry {
             size_t bodyIndex;
             const SphereCollider* sphere;
@@ -1304,67 +1293,67 @@ namespace fbzz::physics
         std::unordered_map<const RigidBody*, const SphereCollider*> firstSpheres;
         std::vector<SphereEntry> spheres;
         bool indexed = false;
-        /// @note m_useCCD が true かつ速度が十分に速い物体について、
-        /// @note 他の球コライダー持ち物体との TOI を計算し速度をクランプする。
-        /// @note この処理は IntegrateBodies の前に呼ぶことで貫通を防ぐ。
-        for (size_t i = 0; i < m_bodies.size(); ++i)
+        for (size_t bodyIndexA = 0; bodyIndexA < m_bodies.size(); ++bodyIndexA)
         {
-            auto& bodyA = m_bodies[i];
-            if (!bodyA->m_useCCD) continue;
-            if (bodyA->IsStatic()) continue;
-            const float localDtA = m_effectiveDts[i];
-            if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, localDtA)) continue;
+            RigidBody* bodyA = m_bodies[bodyIndexA];
+            if (!bodyA->m_useCCD || bodyA->IsStatic())
+                continue;
+            const float localDtA = m_effectiveDts[bodyIndexA];
+            if (!CCDSolver::NeedsCCD(*bodyA, bodyA->m_ccdRadius, localDtA))
+                continue;
 
             if (!indexed) {
                 indexed = true;
-                /// @note 先頭の球と剛体順を保つ。手前の剛体でクランプした速度は後続の TOI が読む。
-                for (size_t index = 0; index < m_colliders.size(); ++index) {
-                    const auto& instance = m_colliders[index];
-                    if (instance.body && IsLiveCollider(index)
+                /// @note 最初の CCD 対象が見つかった時点で、登録順で最初の有効な球を剛体ごとに選ぶ。
+                for (size_t colliderIndex = 0; colliderIndex < m_colliders.size(); ++colliderIndex) {
+                    const auto& instance = m_colliders[colliderIndex];
+                    if (instance.body && IsLiveCollider(colliderIndex)
                         && instance.collider->GetType() == ColliderType::SPHERE) {
                         firstSpheres.try_emplace(instance.body,
                             static_cast<const SphereCollider*>(instance.collider));
                     }
                 }
                 spheres.reserve(firstSpheres.size());
-                for (size_t j = 0; j < m_bodies.size(); ++j) {
-                    const auto sphere = firstSpheres.find(m_bodies[j]);
-                    if (sphere != firstSpheres.end()) spheres.push_back({j, sphere->second});
+                for (size_t bodyIndex = 0; bodyIndex < m_bodies.size(); ++bodyIndex) {
+                    const auto sphere = firstSpheres.find(m_bodies[bodyIndex]);
+                    if (sphere != firstSpheres.end())
+                        spheres.push_back({bodyIndex, sphere->second});
                 }
             }
             const auto firstSphere = firstSpheres.find(bodyA);
-            if (firstSphere == firstSpheres.end()) continue;
+            if (firstSphere == firstSpheres.end())
+                continue;
             const auto* sphereA = firstSphere->second;
 
             const math::Vector3 centerA = sphereA->GetAABB().Center();
-            const float         radiusA = sphereA->m_radius;
-            float minToi = 1.0f;
+            const float radiusA = sphereA->m_radius;
+            float earliestToi = 1.0f;
 
             for (const SphereEntry& entry : spheres)
             {
-                const size_t j = entry.bodyIndex;
-                if (i == j) continue;
-                auto& bodyB = m_bodies[j];
+                const size_t bodyIndexB = entry.bodyIndex;
+                if (bodyIndexA == bodyIndexB)
+                    continue;
+                const RigidBody* bodyB = m_bodies[bodyIndexB];
                 const auto* sphereB = entry.sphere;
 
                 const math::Vector3 centerB = sphereB->GetAABB().Center();
-                const float         radiusB = sphereB->m_radius;
+                const float radiusB = sphereB->m_radius;
 
-                /// @note 相対速度を使った Swept Sphere テスト
-                const math::Vector3 relVel = bodyA->GetVelocity() * (localDtA / dt)
-                                            - (bodyB->IsStatic() ? math::Vector3::ZERO
-                                                                  : bodyB->GetVelocity() * (m_effectiveDts[j] / dt));
-                const CCDResult res = CCDSolver::SweptSphereSphere(
-                    centerA, radiusA, relVel, centerB, radiusB, dt);
+                /// @note 剛体ごとの時間倍率を速度に掛け、同じサブステップ幅で両者の変位を比較する。
+                const math::Vector3 scaledVelocityA = bodyA->GetVelocity() * (localDtA / dt);
+                const math::Vector3 scaledVelocityB = bodyB->IsStatic() ? math::Vector3::ZERO
+                    : bodyB->GetVelocity() * (m_effectiveDts[bodyIndexB] / dt);
+                const CCDResult hit = CCDSolver::SweptSphereSphere(
+                    centerA, radiusA, scaledVelocityA - scaledVelocityB, centerB, radiusB, dt);
 
-                if (res.hit && res.toi < minToi)
-                    minToi = res.toi;
+                if (hit.hit && hit.toi < earliestToi)
+                    earliestToi = hit.toi;
             }
 
-            /// @note 速度を TOI でスケールし、衝突時点までしか進まないようにする
-            /// @note 残りの速度解決は通常の NarrowPhase/Resolve が担う
-            if (minToi < 1.0f)
-                bodyA->SetVelocity(bodyA->GetVelocity() * minToi);
+            /// @note 衝突前の移動量を制限し、応答は通常の接触解決に任せる。後続の TOI はここで更新した速度を読む。
+            if (earliestToi < 1.0f)
+                bodyA->SetVelocity(bodyA->GetVelocity() * earliestToi);
         }
     }
 
