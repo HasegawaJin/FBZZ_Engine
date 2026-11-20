@@ -2747,9 +2747,131 @@ std::unique_ptr<Scene> LoadSceneFromText(
     return RestoreSceneDocument(toml::parse(tomlText), resources, sourcePath, passiveScripts, playTerrains, nullptr);
 }
 
+/// @note 全オブジェクト生成後に保存 ID を EntityID へ戻す。旧データの名前参照はフォールバックに限る。
+void ResolveBoneOwners(Scene& scene, const toml::array& objects, const GuidIndex& guids)
+{
+    for (const auto& item : objects) {
+        const auto* object = item.as_table();
+        if (!object) continue;
+        const auto* boneTable = (*object)["BoneComponent"].as_table();
+        if (!boneTable) continue;
+
+        const std::string ownerGuid = (*boneTable)["skinnedMeshOwnerGuid"].value_or(std::string{});
+        const std::string ownerName = (*boneTable)["skinnedMeshOwner"].value_or(std::string{});
+        if (ownerGuid.empty() && ownerName.empty()) continue;
+
+        /// @note 同じモデルを複数配置するとボーン名が重複するため、ボーン自身の検索にも GUID を優先する。
+        const std::string boneGuid = (*object)["instanceId"].value_or(std::string{});
+        auto* boneObject = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
+        if (!boneObject) boneObject = scene.Find((*object)["name"].value_or(std::string{}));
+        if (!boneObject) continue;
+        auto* bone = boneObject->GetComponent<BoneComponent>();
+        if (!bone) continue;
+
+        auto* owner = ownerGuid.empty() ? nullptr : guids.Find(ownerGuid);
+        if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
+        if (owner) bone->skinnedMeshEntity = owner->GetID();
+    }
+}
+
+struct ScriptRestoreOptions {
+    const char* logSource;
+    bool passive = false;
+    std::vector<std::string>* unresolvedTypes = nullptr;
+};
+
+/// @note 先に保存データを保持する。型が未登録、設定が不正、または passive の場合も保存値は失われない。
+void ReadSavedScriptComponents(Scene& scene, GameObject& owner, const toml::table& object,
+                               std::vector<Script*>& pending, const ScriptRestoreOptions& options)
+{
+    const auto* savedScripts = object["ScriptComponents"].as_array();
+    if (!savedScripts) return;
+
+    ScriptComponent component{};
+    for (const auto& item : *savedScripts) {
+        const auto* saved = item.as_table();
+        if (!saved) continue;
+        const std::string type = (*saved)["type"].value_or(std::string{});
+        if (type.empty()) continue;
+
+        const bool enabled = (*saved)["enabled"].value_or(true);
+        const auto* fields = (*saved)["fields"].as_table();
+        const std::string fieldsToml = fields ? TomlTableToString(*fields) : std::string{};
+
+        ScriptEntry& entry = component.scripts.emplace_back();
+        entry.savedScriptId = (*saved)["savedScriptId"].value_or(entry.savedScriptId);
+        entry.serialized = core::MakeUnique<SerializedScriptData>();
+        entry.serialized->type = type;
+        entry.serialized->enabled = enabled;
+        entry.serialized->fieldsToml = fieldsToml;
+        entry.serialized->savedScriptId = entry.savedScriptId;
+        if (options.passive) continue;
+
+        auto script = ScriptFactory::Create(type, entry.savedScriptId);
+        if (!script) {
+            FBZZ_LOG_DEBUG("%s: script type pending registration '%s'", options.logSource, type.c_str());
+            auto* unresolved = options.unresolvedTypes;
+            if (unresolved && std::find(unresolved->begin(), unresolved->end(), type) == unresolved->end())
+                unresolved->push_back(type);
+            continue;
+        }
+
+        script->SetContext(&scene, &owner);
+        script->enabled = enabled;
+        auto& runtime = ManagedScriptRuntime::Instance();
+        if (auto* adapter = runtime.FindAdapter(script.get())) {
+            if (!runtime.RestoreSettingsToml(*adapter, fieldsToml)) {
+                FBZZ_LOG_ERROR("%s: invalid managed settings retained as Missing Script '%s'",
+                               options.logSource, type.c_str());
+                continue;
+            }
+        } else if (fields) {
+            SceneReadReflector reflector(*fields);
+            script->Reflect(reflector);
+        }
+
+        /// @note 参照とコールバックは、後続の GameObject と Script も作成してから処理する。
+        pending.push_back(script.get());
+        entry.script = std::move(script);
+    }
+
+    if (!component.scripts.empty())
+        owner.AddComponent<ScriptComponent>(std::move(component));
+}
+
+void RebindScriptContexts(Scene& scene)
+{
+    for (auto& gameObject : scene.GameObjects()) {
+        auto* scripts = gameObject.GetComponent<ScriptComponent>();
+        if (!scripts) continue;
+        for (auto& entry : scripts->scripts)
+            if (entry.script) entry.script->SetContext(&scene, &gameObject);
+    }
+}
+
+/// @note 所有先の登録 → 保存参照の接続 → 検証とコールバック。後から生成した Script も最初のコールバックから参照できる。
+void FinalizeDeserializedScripts(const std::vector<Script*>& scripts, void (*pump)() = nullptr)
+{
+    if (scripts.empty()) return;
+    auto& runtime = ManagedScriptRuntime::Instance();
+    for (Script* script : scripts)
+        if (auto* adapter = runtime.FindAdapter(script)) adapter->RefreshOwnerBinding();
+    for (Script* script : scripts)
+        if (auto* adapter = runtime.FindAdapter(script)) adapter->ResolveSavedComponentReferences();
+
+    for (Script* script : scripts) {
+        if (pump) pump();
+        if (auto* adapter = runtime.FindAdapter(script); adapter && !adapter->ValidateReferences())
+            adapter->BlockForMissingRequirements();
+        script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
+        script->ExecuteProfiledCallback(&Script::OnValidate, ScriptCallbackKind::VALIDATE, "OnValidate");
+    }
+}
+
 std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer::ResourceManager* resources,
     const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains, void (*pump)())
 {
+    /// @note アセット参照を復号し、全 GO と Component を生成してから、階層・保存参照・Script の順に復元する。
     if (!result) {
         /// @note 行と列まで出す。壊れたシーンは目視で原因を探すのが難しい。
         const auto& err = result.error();
@@ -3534,60 +3656,8 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
 
         ReadAutomaticComponents(go, *goTbl);
 
-        auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
-            std::string type = scTbl["type"].value_or(std::string{});
-            if (type.empty()) return;
-
-            const bool enabled = scTbl["enabled"].value_or(true);
-            std::string preservedFieldsToml;
-            if (auto* fieldsTbl = scTbl["fields"].as_table()) {
-                preservedFieldsToml = TomlTableToString(*fieldsTbl);
-            }
-
-            ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.savedScriptId = scTbl["savedScriptId"].value_or(entry.savedScriptId);
-            entry.serialized = core::MakeUnique<SerializedScriptData>();
-            entry.serialized->type = type;
-            entry.serialized->enabled = enabled;
-            entry.serialized->fieldsToml = preservedFieldsToml;
-            entry.serialized->savedScriptId = entry.savedScriptId;
-
-            if (passiveScripts) return;
-            auto script = ScriptFactory::Create(type, entry.savedScriptId);
-            if (script) {
-                script->SetContext(scene.get(), &go);
-                script->enabled = enabled;
-                if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script.get())) {
-                    if (!ManagedScriptRuntime::Instance().RestoreSettingsToml(*adapter, preservedFieldsToml)) {
-                        FBZZ_LOG_ERROR("SceneSerializer: invalid managed settings retained as Missing Script '%s'", type.c_str());
-                        return;
-                    }
-                } else if (auto* fieldsTbl = scTbl["fields"].as_table()) {
-                    SceneReadReflector reflector(*fieldsTbl);
-                    script->Reflect(reflector);
-                }
-                pendingDeserializedScripts.push_back(script.get());
-                entry.script = std::move(script);
-            } else {
-                /// @note DLL 再ビルド待ちでも serialized data は保持されるため、1 件ずつは警告にしない。
-                FBZZ_LOG_DEBUG("SceneSerializer: script type pending registration '%s'", type.c_str());
-                if (std::find(unresolvedScriptTypes.begin(), unresolvedScriptTypes.end(), type)
-                    == unresolvedScriptTypes.end())
-                    unresolvedScriptTypes.push_back(type);
-            }
-        };
-
-        /// @note ScriptComponents は ScriptComponent 内の複数 Script を表す唯一の保存形式。まだ
-        /// @note 1.0 前のため旧単体形式との互換を持たず、保存形式の分岐を増やさない。
-        if (auto* scriptsArr = (*goTbl)["ScriptComponents"].as_array()) {
-            ScriptComponent sc{};
-            for (auto& item : *scriptsArr) {
-                if (auto* scTbl = item.as_table())
-                    readScriptEntry(*scTbl, sc);
-            }
-            if (!sc.scripts.empty())
-                go.AddComponent<ScriptComponent>(std::move(sc));
-        }
+        ReadSavedScriptComponents(*scene, go, *goTbl, pendingDeserializedScripts,
+            { .logSource = "SceneSerializer", .passive = passiveScripts, .unresolvedTypes = &unresolvedScriptTypes });
     }
 
     /// @note 以降の解決パスはすべてこの索引を引く。全 GameObject 生成後に一度だけ作る。
@@ -3629,32 +3699,8 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
         if (IKSolverComponent* solver = go.GetComponent<IKSolverComponent>())
             InitializeIKTargetReferences(*scene, *solver);
 
-    /// @note BoneComponent: skinnedMeshEntity
-    /// @note オーナーの EntityID は Pass 1 では確定しないので、識別子をここで変換する。
-    /// @note 解決順は GUID (リネーム耐性) → 名前 (後方互換)。
-    /// @note nodeEntities は EnsureBoneHierarchy が nodeIndex から再構築するので保存不要。
-    for (size_t i = 0; i < goArr->size(); ++i) {
-        auto* goTbl = (*goArr)[i].as_table();
-        if (!goTbl) continue;
-        auto* boneTbl = (*goTbl)["BoneComponent"].as_table();
-        if (!boneTbl) continue;
-        const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
-        const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
-        if (ownerGuid.empty() && ownerName.empty()) continue;
-        /// @note 骨の名前はシーン内で一意ではない (同じモデルを 2 体置くと Seg01 が 2 つになる)
-        /// @note ため名前で引かない。名前で引くと後から来た側の行が 1 体目の骨へ書き込まれ、
-        /// @note 2 体目は skinnedMeshEntity を持たず «バインドポーズで固まる» 形でしか症状が出ない。
-        const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
-        auto* boneGo = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
-        if (!boneGo) boneGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
-        if (!boneGo) continue;
-        auto* bone = boneGo->GetComponent<BoneComponent>();
-        if (!bone) continue;
-        GameObject* owner = nullptr;
-        if (!ownerGuid.empty()) owner = guids.Find(ownerGuid);
-        if (!owner && !ownerName.empty()) owner = scene->Find(ownerName);
-        if (owner) bone->skinnedMeshEntity = owner->GetID();
-    }
+    /// @note nodeEntities は Animator が nodeIndex から再構築するため、ここではボーンの所有先だけを復元する。
+    ResolveBoneOwners(*scene, *goArr, guids);
 
     /// @note SkinnedMeshRenderer: skeletonRootEntity
     /// @note 起点のボーンは Pass 1 では未生成のことがあるので、全 GO を揃えてから変換する。
@@ -3692,34 +3738,11 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
 
     /// @note [environment] を持たないシーンは «半径 0 の Uniform» を環境風と読んでいた頃のもの。
     if (!passiveScripts && !hasEnvironmentTable) MigrateAmbientFlowFields(*scene);
-    /// @note GameObject配列の再配置後に非所有contextを張り直し、callback内の自己参照を安定させる。
-    for (auto& gameObject : scene->GameObjects()) {
-        if (auto* scripts = gameObject.GetComponent<ScriptComponent>()) {
-            for (auto& entry : scripts->scripts)
-                if (entry.script) entry.script->SetContext(scene.get(), &gameObject);
-        }
-    }
-    /// @note Forward Script 参照のため全 managed owner を先に登録する。保存アドレスは Scene 構築完了時だけ解決する。
-    for (Script* script : pendingDeserializedScripts)
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->RefreshOwnerBinding();
-    for (Script* script : pendingDeserializedScripts)
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->ResolveSavedComponentReferences();
-    for (Script* script : pendingDeserializedScripts) {
-        if (pump) pump();
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script); adapter && !adapter->ValidateReferences())
-            adapter->BlockForMissingRequirements();
-        script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
-        script->ExecuteProfiledCallback(&Script::OnValidate, ScriptCallbackKind::VALIDATE, "OnValidate");
-    }
+    /// @note GameObject 配列の最終位置へ Script を接続してから、保存参照とコールバックを処理する。
+    RebindScriptContexts(*scene);
+    FinalizeDeserializedScripts(pendingDeserializedScripts, pump);
 
-    /// @note 生えなかったスクリプトを 1 行で告げる。中身は SerializedScriptData として entry に残り、
-    /// @note エディタは DLL を読み直したあと Reload() で同じデータから生やし直す (捨てていない)。
-    /// @note 1 件ずつ警告にしないのは、DLL 再ビルド中に «まだ居ない» 型を通るたびにログが埋まり、
-    /// @note 本当の欠落が沈むため。
-    /// @note 重さは 2 段: レジストリが空 = DLL がまだ 1 つも載っていない (起動直後のビルド待ち。
-    /// @note 復元されるので INFO)。空でないのに型が無い = 載っている DLL にその型が無い = exe が
-    /// @note 古いか登録リストから漏れている (WARN)。配布ビルドに建て直しは来ないので、後者は
-    /// @note 画面に «その機能だけ動かない» としか出ない。
+    /// @note 未登録の型は保存値を保ったまま型名をまとめて報告する。登録が空ならスクリプトの初回読み込みを待つ。
     if (!unresolvedScriptTypes.empty()) {
         std::string joined;
         for (const std::string& type : unresolvedScriptTypes) {
@@ -3733,7 +3756,7 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
         } else {
             FBZZ_LOG_WARN("SceneSerializer: %zu script type(s) are not registered in the loaded scripts "
                           "and stay dormant (data kept): %s "
-                          "(rebuild the scripts, or check that ScriptList.inl / the runtime exe registers them)",
+                          "(rebuild the C# project and check the script catalog)",
                           unresolvedScriptTypes.size(), joined.c_str());
         }
     }
@@ -3766,13 +3789,8 @@ bool SceneSerializer::LoadInPlace(
     auto newScene = Load(path, &resources);
     if (!newScene) return false;
     scene = std::move(*newScene);
-    /// @note Scene object自体をmoveしたため、Scriptが保持する非所有contextを移動先へ張り直す。
-    for (auto& gameObject : scene.GameObjects()) {
-        if (auto* scripts = gameObject.GetComponent<ScriptComponent>()) {
-            for (auto& entry : scripts->scripts)
-                if (entry.script) entry.script->SetContext(&scene, &gameObject);
-        }
-    }
+    /// @note Load がコールバックまで済ませている。移動で変わった Scene の参照だけを接続し直す。
+    RebindScriptContexts(scene);
     return true;
 }
 
@@ -3784,6 +3802,7 @@ bool SceneSerializer::AppendObjects(
     renderer::ResourceManager* resources,
     std::vector<EntityID>& outRoots)
 {
+    /// @note 追加分の GO と Component を揃え、階層と参照を解決してから Script とルート一覧を公開する。
     outRoots.clear();
     if (tomlText.empty()) return false;
 
@@ -3982,49 +4001,7 @@ bool SceneSerializer::AppendObjects(
 
         ReadAutomaticComponents(go, *goTbl);
 
-        auto readScriptEntry = [&](const toml::table& scTbl, ScriptComponent& sc) {
-            std::string type = scTbl["type"].value_or(std::string{});
-            if (type.empty()) return;
-            const bool enabled = scTbl["enabled"].value_or(true);
-            std::string preservedFieldsToml;
-            if (auto* fieldsTbl = scTbl["fields"].as_table())
-                preservedFieldsToml = TomlTableToString(*fieldsTbl);
-            ScriptEntry& entry = sc.scripts.emplace_back();
-            entry.savedScriptId = scTbl["savedScriptId"].value_or(entry.savedScriptId);
-            entry.serialized = core::MakeUnique<SerializedScriptData>();
-            entry.serialized->type = type;
-            entry.serialized->enabled = enabled;
-            entry.serialized->fieldsToml = preservedFieldsToml;
-            entry.serialized->savedScriptId = entry.savedScriptId;
-            auto script = ScriptFactory::Create(type, entry.savedScriptId);
-            if (script) {
-                script->SetContext(&scene, &go);
-                script->enabled = enabled;
-                if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script.get())) {
-                    if (!ManagedScriptRuntime::Instance().RestoreSettingsToml(*adapter, preservedFieldsToml)) {
-                        FBZZ_LOG_ERROR("AppendObjects: invalid managed settings retained as Missing Script '%s'", type.c_str());
-                        return;
-                    }
-                } else if (auto* fieldsTbl = scTbl["fields"].as_table()) {
-                    SceneReadReflector reflector(*fieldsTbl);
-                    script->Reflect(reflector);
-                }
-                pendingDeserializedScripts.push_back(script.get());
-                entry.script = std::move(script);
-            } else {
-                FBZZ_LOG_DEBUG("AppendObjects: script type pending registration '%s'", type.c_str());
-            }
-        };
-
-        if (auto* scriptsArr = (*goTbl)["ScriptComponents"].as_array()) {
-            ScriptComponent sc{};
-            for (auto& sitem : *scriptsArr) {
-                if (auto* scTbl = sitem.as_table())
-                    readScriptEntry(*scTbl, sc);
-            }
-            if (!sc.scripts.empty())
-                go.AddComponent<ScriptComponent>(std::move(sc));
-        }
+        ReadSavedScriptComponents(scene, go, *goTbl, pendingDeserializedScripts, { .logSource = "AppendObjects" });
     }
 
     /// @note 以降の解決パスはすべてこの索引を引く。全 GameObject 生成後に一度だけ作る。
@@ -4065,37 +4042,8 @@ bool SceneSerializer::AppendObjects(
         if (solver) InitializeIKTargetReferences(scene, *solver);
     }
 
-    for (size_t i = 0; i < goArr->size(); ++i) {
-        auto* goTbl = (*goArr)[i].as_table();
-        if (!goTbl) continue;
-        auto* boneTbl = (*goTbl)["BoneComponent"].as_table();
-        if (!boneTbl) continue;
-        const std::string ownerGuid = (*boneTbl)["skinnedMeshOwnerGuid"].value_or(std::string{});
-        const std::string ownerName = (*boneTbl)["skinnedMeshOwner"].value_or(std::string{});
-        if (ownerGuid.empty() && ownerName.empty()) continue;
-        /// @note 名前は一意でない (上の Pass と同じ理由)。instanceId を先に見る。
-        const std::string boneGuid = (*goTbl)["instanceId"].value_or(std::string{});
-        auto* boneGo = boneGuid.empty() ? nullptr : guids.Find(boneGuid);
-        if (!boneGo) boneGo = scene.Find((*goTbl)["name"].value_or(std::string{}));
-        if (!boneGo) continue;
-        auto* bone = boneGo->GetComponent<BoneComponent>();
-        if (!bone) continue;
-        GameObject* owner = nullptr;
-        if (!ownerGuid.empty()) owner = guids.Find(ownerGuid);
-        if (!owner && !ownerName.empty()) owner = scene.Find(ownerName);
-        if (owner) bone->skinnedMeshEntity = owner->GetID();
-    }
-    /// @note Append の全新規 owner 構築後、保存された typed reference を明示的に接続する。
-    for (Script* script : pendingDeserializedScripts)
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->RefreshOwnerBinding();
-    for (Script* script : pendingDeserializedScripts)
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script)) adapter->ResolveSavedComponentReferences();
-    for (Script* script : pendingDeserializedScripts) {
-        if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(script); adapter && !adapter->ValidateReferences())
-            adapter->BlockForMissingRequirements();
-        script->ExecuteProfiledCallback(&Script::OnAfterDeserialize, ScriptCallbackKind::AFTER_DESERIALIZE, "OnAfterDeserialize");
-        script->ExecuteProfiledCallback(&Script::OnValidate, ScriptCallbackKind::VALIDATE, "OnValidate");
-    }
+    ResolveBoneOwners(scene, *goArr, guids);
+    FinalizeDeserializedScripts(pendingDeserializedScripts);
 
     /// @note root 収集。guid を正とし、フォールバックだけ名前引きにする。
     /// @note Find(name) だと同名ルートが並んだとき常に先頭の 1 体しか拾えない。
