@@ -19,13 +19,8 @@
 
 namespace fbzz::fluid {
 
-/// @brief 格子の気体ソルバー。nz = 1 で 2D (フリップブック)、nz > 1 で 3D (速度場 PNG)。
-/// @brief 1 刻みの順序: 注入 → 燃焼 → 外力 (浮力・風・乱流・渦度保存) → 障害物 → 圧力投影 → 移流 → 障害物 → 散逸。
-/// @note 投影を移流の前に置く理由: 移流は発散ゼロの速度場で運ぶことが前提で、外力で乱れた場のまま
-/// @note 運ぶと密度が湧いたり消えたりして量が合わなくなる。
-/// @brief 障害物は刻みの始めの時刻でセルを固体と決め、固体セルの速度を障害物の動きの速度に、煙・熱・燃料を 0
-/// @brief にする。圧力は固体の隣を床と同じ「通り抜けない壁」(∂p/∂n = 0) として解く。
-/// @brief 速度は「領域単位/秒」(最も長い軸を [-1,1] とする)。セルは全軸で同じ幅。
+/// @brief セル中心に速度とスカラー量を持つ気体ソルバー。nz = 1 で 2D、nz > 1 で 3D。
+/// @note 速度の単位は領域単位/秒。最も長い軸を [-1,1] とし、セル幅は全軸で共通。
 class FluidGasSolver {
 public:
     FBZZ_FLUID_API void Reset(const FluidRecipe& recipe, int nx, int ny, int nz);
@@ -37,7 +32,9 @@ public:
     FBZZ_FLUID_API void Advance(float dt);
     /// @brief 刻みを割らずに 1 回だけ進める。
     FBZZ_FLUID_API void Step(float dt);
-    /// @brief 速度場から発散を取り除く。expansion は «湧き出し» [1/秒] (燃焼の膨張)。
+    /// @brief 圧力投影で速度場の発散を目標値へ近づける。
+    /// @param expansion セルごとの目標発散 [1/秒]。燃焼による膨張を残すために使い、nullptr なら 0。
+    /// @pre expansion を指定する場合は速度場と同じ並びで全セル分を与える。
     FBZZ_FLUID_API void Project(const std::vector<float>* expansion = nullptr);
 
     [[nodiscard]] int   SizeX() const { return m_nx; }
@@ -105,6 +102,9 @@ private:
     FBZZ_FLUID_API void Burn(float dt);
     FBZZ_FLUID_API void ApplyForces(float dt);
     FBZZ_FLUID_API void ApplyVorticityConfinement(float dt);
+    void BuildPressureRhs(const std::vector<float>* expansion);
+    void SolvePressure();
+    void SubtractPressureGradient();
     FBZZ_FLUID_API void Advect(float dt);
     FBZZ_FLUID_API void AdvectScalar(std::vector<float>& field, float dt);
     FBZZ_FLUID_API void Dissipate(float dt);
@@ -148,7 +148,7 @@ private:
     std::vector<float> m_vy;
     std::vector<float> m_vz;
     std::vector<float> m_pressure;
-    std::vector<float> m_divergence;
+    std::vector<float> m_pressureRhs;
     std::vector<float> m_expansion;
     /// @note 移流・渦度の作業領域。刻みごとに確保し直さない。
     std::vector<float> m_prevVx;
@@ -189,11 +189,8 @@ struct FluidLiquidBoundary {
     bool (*drain)(const void*, const math::Vector3&, const math::Vector3&) = nullptr;
 };
 
-/// @brief 粒子液体ソルバー (Position Based Fluids, Macklin & Müller 2013)。
-
-/// @note PBF を選ぶ理由: 力で押し返す SPH は硬い液体ほど刻みを細かくしないと爆発する。PBF は密度を
-/// @note 「位置の拘束」として解くので、しぶきの初速が大きくても刻み数が読める。焼きはオフラインでも
-/// @note 「押したら数秒で返ってくる」ことが大事なので、安定性を優先した。
+/// @brief 密度を位置の拘束として解く粒子液体ソルバー (Position Based Fluids)。
+/// @see https://mmacklin.com/pbf_sig_preprint.pdf Macklin & Müller, Position Based Fluids (2013), Algorithm 1.
 class FluidLiquidSolver {
 public:
     struct Particle {
@@ -239,6 +236,10 @@ private:
     FBZZ_FLUID_API void Emit();
     FBZZ_FLUID_API void BuildNeighbors();
     FBZZ_FLUID_API void SolveDensity();
+    void ComputeDensityMultipliers(float inverseRestDensity, float cohesion);
+    void ComputeDensityCorrections(float inverseRestDensity);
+    void ApplyDensityCorrections();
+    void CommitParticlePositions(float dt, const FluidLiquidBoundary& boundary);
     FBZZ_FLUID_API void ApplyViscosity();
 
     /// @note 刻みの始めの時刻で居る障害物と、その時刻の中心・速度。
@@ -271,7 +272,7 @@ private:
     float m_tensileReference = 1.0f;
     float m_tensileScale = 0.0f;
 
-    /// @note 近傍探索 (一様格子 + 計数ソート)。
+    /// @note 一様格子と計数ソート用。セル幅はカーネルの有効半径 h と同じ。
     int   m_cellsX = 1;
     int   m_cellsY = 1;
     int   m_cellsZ = 1;
@@ -279,6 +280,7 @@ private:
     std::vector<int> m_cellStart;
     std::vector<int> m_cellParticles;
     std::vector<int> m_particleCell;
+    /// @note 粒子 i の近傍は m_neighbors の [m_neighborStart[i], m_neighborStart[i+1]) に並ぶ。
     std::vector<int> m_neighborStart;
     std::vector<int> m_neighbors;
 
@@ -292,4 +294,4 @@ private:
     std::vector<float> m_deltaZ;
 };
 
-} /// @note namespace fbzz::fluid
+}

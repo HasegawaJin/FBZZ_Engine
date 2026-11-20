@@ -135,7 +135,7 @@ void FluidGasSolver::Reset(const FluidRecipe& recipe, int nx, int ny, int nz)
     for (std::vector<float>* field : { &m_density, &m_temperature, &m_fuel,
                                        &m_colorMass, &m_fuelColorMass, &m_colorKey,
                                        &m_vx, &m_vy, &m_vz,
-                                       &m_pressure, &m_divergence, &m_expansion,
+                                       &m_pressure, &m_pressureRhs, &m_expansion,
                                        &m_prevVx, &m_prevVy, &m_prevVz,
                                        &m_scratchA, &m_scratchB, &m_scratchC,
                                        &m_curlX, &m_curlY, &m_curlZ, &m_curlLength })
@@ -192,6 +192,7 @@ void FluidGasSolver::ResetDetailLayer(int layer)
 void FluidGasSolver::AdvectDetail(float dt)
 {
     if (!HasDetail()) return;
+    /// @note 細部の座標も Advect が退避した投影済み速度で運び、煙の移流と同じ流れを読む。
     const float cellsPerUnit = dt / m_h;
     for (int layer = 0; layer < 2; ++layer) {
         for (int y = 0; y < m_ny; ++y)
@@ -401,15 +402,20 @@ void FluidGasSolver::Advance(float dt)
 void FluidGasSolver::Step(float dt)
 {
     if (dt <= 0.0f) return;
+
+    /// @note 障害物と発生源は刻みの始めの時刻で評価する。
     BuildSolids();
     Inject(dt);
     Burn(dt);
     ApplyForces(dt);
+
+    /// @note 障害物の速度を反映してから投影し、燃焼の膨張を含む補正済みの速度場で運ぶ。
     if (m_hasSolid) EnforceSolids(true);
     Project(&m_expansion);
     Advect(dt);
-    /// @note 移流の補間は固体セルの隣から値を引くので、煙が障害物の中へ滲む。刻みの終わりに消す。
+    /// @note 移流で固体セルへ入り込んだスカラー量を消し、固体の速度を戻す。
     if (m_hasSolid) EnforceSolids(true);
+
     AdvectDetail(dt);
     Dissipate(dt);
     UpdateColorKey();
@@ -675,91 +681,126 @@ void FluidGasSolver::ApplyVorticityConfinement(float dt)
     }
 }
 
+/// @note ∇²p = ∇·u − expansion を解き、u から ∇p を引く。発散のうち目標とする膨張分は残す。
+/// @see https://graphics.stanford.edu/courses/cs448-01-spring/papers/stam.pdf Jos Stam, Stable Fluids (1999), §2.1.
 void FluidGasSolver::Project(const std::vector<float>* expansion)
 {
-    for (int z = 0; z < m_nz; ++z)
-        for (int y = 0; y < m_ny; ++y)
-            for (int x = 0; x < m_nx; ++x) {
-                const std::size_t i = Index(x, y, z);
-                m_divergence[i] = Divergence(x, y, z)
-                    - (expansion != nullptr ? (*expansion)[i] : 0.0f);
-            }
+    BuildPressureRhs(expansion);
+    SolvePressure();
+    SubtractPressureGradient();
 
-    /// @note 境界: 開いた縁は p = 0 (流れが自由に出ていく)、床だけは ∂p/∂n = 0 (通り抜けない)。
-    /// @note 障害物 (固体セル) も床と同じ ∂p/∂n = 0。固体セル自身は解かない (速度は障害物が決める)。
-    /// @note 前の刻みの圧力を初期値に残す (warm start) と、同じ反復回数でも収束がずっと進む。
-    const bool solids = m_hasSolid;
-    const float h2 = m_h * m_h;
-    constexpr float kOverRelaxation = 1.7f;
+    if (m_settings.floor) {
+        for (int z = 0; z < m_nz; ++z) {
+            for (int x = 0; x < m_nx; ++x) {
+                float& floorVelocity = m_vy[Index(x, 0, z)];
+                floorVelocity = (std::max)(floorVelocity, 0.0f);
+            }
+        }
+    }
+    /// @note 固体セルの速度は障害物が決める。床の制限と重なる場合も最後に障害物の速度を戻す。
+    if (m_hasSolid) EnforceSolids(false);
+}
+
+void FluidGasSolver::BuildPressureRhs(const std::vector<float>* expansion)
+{
+    for (int z = 0; z < m_nz; ++z) {
+        for (int y = 0; y < m_ny; ++y) {
+            for (int x = 0; x < m_nx; ++x) {
+                const std::size_t cell = Index(x, y, z);
+                m_pressureRhs[cell] = Divergence(x, y, z)
+                    - (expansion != nullptr ? (*expansion)[cell] : 0.0f);
+            }
+        }
+    }
+}
+
+void FluidGasSolver::SolvePressure()
+{
+    /// @note 前の刻みの圧力を初期値にし、赤黒順の SOR で更新済みの隣接圧力を次の色が読む。
+    const bool hasSolids = m_hasSolid;
+    const float cellWidthSquared = m_h * m_h;
+    constexpr float OVER_RELAXATION = 1.7f;
     const int iterations = std::clamp(m_settings.pressureIterations, 1, 400);
     for (int iteration = 0; iteration < iterations; ++iteration) {
         for (int color = 0; color < 2; ++color) {
             for (int z = 0; z < m_nz; ++z) {
                 for (int y = 0; y < m_ny; ++y) {
                     for (int x = ((y + z + color) & 1); x < m_nx; x += 2) {
-                        const std::size_t i = Index(x, y, z);
-                        if (solids && m_solid[i] != 0) continue;
-                        float sum = 0.0f;
-                        int count = 0;
-                        const auto neighbor = [&](int ax, int ay, int az, bool solid) {
-                            if (ax >= 0 && ax < m_nx && ay >= 0 && ay < m_ny && az >= 0 && az < m_nz) {
-                                const std::size_t j = Index(ax, ay, az);
-                                /// @note 固体の隣は数えない (床と同じ)
-                                if (solids && m_solid[j] != 0) return;
-                                sum += m_pressure[j];
-                                ++count;
-                            } else if (!solid) {
-                                /// @note p = 0 の外側
-                                ++count;
+                        const std::size_t cell = Index(x, y, z);
+                        if (hasSolids && m_solid[cell] != 0) continue;
+
+                        float neighborPressureSum = 0.0f;
+                        int stencilSize = 0;
+                        /// @note 床・固体は隣を自セルと同圧にするため差分が消える。開放端は p = 0 のまま分母に数える。
+                        const auto accumulateNeighbor = [&](int nx, int ny, int nz, bool closedOutside) {
+                            if (nx >= 0 && nx < m_nx && ny >= 0 && ny < m_ny && nz >= 0 && nz < m_nz) {
+                                const std::size_t neighbor = Index(nx, ny, nz);
+                                if (hasSolids && m_solid[neighbor] != 0) return;
+                                neighborPressureSum += m_pressure[neighbor];
+                                ++stencilSize;
+                            } else if (!closedOutside) {
+                                ++stencilSize;
                             }
                         };
-                        if (m_nx > 1) { neighbor(x - 1, y, z, false); neighbor(x + 1, y, z, false); }
-                        if (m_ny > 1) { neighbor(x, y - 1, z, m_settings.floor); neighbor(x, y + 1, z, false); }
-                        if (m_nz > 1) { neighbor(x, y, z - 1, false); neighbor(x, y, z + 1, false); }
-                        if (count == 0) continue;
-                        const float target = (sum - h2 * m_divergence[i]) / static_cast<float>(count);
-                        m_pressure[i] += kOverRelaxation * (target - m_pressure[i]);
+                        if (m_nx > 1) {
+                            accumulateNeighbor(x - 1, y, z, false);
+                            accumulateNeighbor(x + 1, y, z, false);
+                        }
+                        if (m_ny > 1) {
+                            accumulateNeighbor(x, y - 1, z, m_settings.floor);
+                            accumulateNeighbor(x, y + 1, z, false);
+                        }
+                        if (m_nz > 1) {
+                            accumulateNeighbor(x, y, z - 1, false);
+                            accumulateNeighbor(x, y, z + 1, false);
+                        }
+                        if (stencilSize == 0) continue;
+
+                        const float targetPressure = (neighborPressureSum - cellWidthSquared * m_pressureRhs[cell])
+                            / static_cast<float>(stencilSize);
+                        m_pressure[cell] += OVER_RELAXATION * (targetPressure - m_pressure[cell]);
                     }
                 }
             }
         }
     }
+}
 
+void FluidGasSolver::SubtractPressureGradient()
+{
+    const bool hasSolids = m_hasSolid;
     const float inverseTwoH = 0.5f / m_h;
-    const auto pressureAt = [&](int x, int y, int z, float self, bool solid) {
+    /// @note 圧力解法と同じ境界条件で、中心差分に使う隣接圧力を選ぶ。
+    const auto pressureAt = [&](int x, int y, int z, float centerPressure, bool closedOutside) {
         if (x >= 0 && x < m_nx && y >= 0 && y < m_ny && z >= 0 && z < m_nz) {
-            const std::size_t j = Index(x, y, z);
-            return solids && m_solid[j] != 0 ? self : m_pressure[j];
+            const std::size_t cell = Index(x, y, z);
+            return hasSolids && m_solid[cell] != 0 ? centerPressure : m_pressure[cell];
         }
-        return solid ? self : 0.0f;
+        return closedOutside ? centerPressure : 0.0f;
     };
     for (int z = 0; z < m_nz; ++z) {
         for (int y = 0; y < m_ny; ++y) {
             for (int x = 0; x < m_nx; ++x) {
-                const std::size_t i = Index(x, y, z);
-                if (solids && m_solid[i] != 0) continue;
-                const float self = m_pressure[i];
+                const std::size_t cell = Index(x, y, z);
+                if (hasSolids && m_solid[cell] != 0) continue;
+                const float centerPressure = m_pressure[cell];
                 if (m_nx > 1)
-                    m_vx[i] -= (pressureAt(x + 1, y, z, self, false) - pressureAt(x - 1, y, z, self, false)) * inverseTwoH;
+                    m_vx[cell] -= (pressureAt(x + 1, y, z, centerPressure, false)
+                        - pressureAt(x - 1, y, z, centerPressure, false)) * inverseTwoH;
                 if (m_ny > 1)
-                    m_vy[i] -= (pressureAt(x, y + 1, z, self, false) - pressureAt(x, y - 1, z, self, m_settings.floor)) * inverseTwoH;
+                    m_vy[cell] -= (pressureAt(x, y + 1, z, centerPressure, false)
+                        - pressureAt(x, y - 1, z, centerPressure, m_settings.floor)) * inverseTwoH;
                 if (m_nz > 1)
-                    m_vz[i] -= (pressureAt(x, y, z + 1, self, false) - pressureAt(x, y, z - 1, self, false)) * inverseTwoH;
+                    m_vz[cell] -= (pressureAt(x, y, z + 1, centerPressure, false)
+                        - pressureAt(x, y, z - 1, centerPressure, false)) * inverseTwoH;
             }
         }
     }
-    if (m_settings.floor) {
-        for (int z = 0; z < m_nz; ++z)
-            for (int x = 0; x < m_nx; ++x) {
-                float& vy = m_vy[Index(x, 0, z)];
-                vy = (std::max)(vy, 0.0f);
-            }
-    }
-    if (solids) EnforceSolids(false);
 }
 
 void FluidGasSolver::Advect(float dt)
 {
+    /// @note スカラー量と速度の自己移流は、同じ投影済み速度を読み、セルを更新する順序の影響を受けない。
     std::copy(m_vx.begin(), m_vx.end(), m_prevVx.begin());
     std::copy(m_vy.begin(), m_vy.end(), m_prevVy.begin());
     std::copy(m_vz.begin(), m_vz.end(), m_prevVz.begin());
@@ -789,49 +830,62 @@ void FluidGasSolver::Advect(float dt)
     }
 }
 
+/// @see https://www.andyselle.com/papers/7/maccormack.pdf Selle et al., An Unconditionally Stable MacCormack Method (2008), error correction and clamping limiter.
 void FluidGasSolver::AdvectScalar(std::vector<float>& field, float dt)
 {
-    const float cellsPerUnit = dt / m_h;
-    const auto backtrace = [&](std::size_t i, int x, int y, int z, float sign, float& gx, float& gy, float& gz) {
-        gx = static_cast<float>(x) - sign * m_prevVx[i] * cellsPerUnit;
-        gy = static_cast<float>(y) - sign * m_prevVy[i] * cellsPerUnit;
-        gz = m_nz > 1 ? static_cast<float>(z) - sign * m_prevVz[i] * cellsPerUnit : 0.0f;
+    const float velocityToCells = dt / m_h;
+    auto& advected = m_scratchA;
+    auto& roundTrip = m_scratchB;
+    auto& limited = m_scratchC;
+
+    const auto trace = [&](std::size_t cell, int x, int y, int z, float timeDirection) {
+        return math::Vector3{
+            static_cast<float>(x) - timeDirection * m_prevVx[cell] * velocityToCells,
+            static_cast<float>(y) - timeDirection * m_prevVy[cell] * velocityToCells,
+            m_nz > 1 ? static_cast<float>(z) - timeDirection * m_prevVz[cell] * velocityToCells : 0.0f
+        };
     };
 
-    float gx = 0.0f, gy = 0.0f, gz = 0.0f;
-    for (int z = 0; z < m_nz; ++z)
-        for (int y = 0; y < m_ny; ++y)
+    for (int z = 0; z < m_nz; ++z) {
+        for (int y = 0; y < m_ny; ++y) {
             for (int x = 0; x < m_nx; ++x) {
-                const std::size_t i = Index(x, y, z);
-                backtrace(i, x, y, z, 1.0f, gx, gy, gz);
-                m_scratchA[i] = SampleGrid(field, gx, gy, gz);
+                const std::size_t cell = Index(x, y, z);
+                const math::Vector3 departure = trace(cell, x, y, z, 1.0f);
+                advected[cell] = SampleGrid(field, departure.x, departure.y, departure.z);
             }
+        }
+    }
     if (!m_settings.sharpAdvection) {
-        field.swap(m_scratchA);
+        field.swap(advected);
         return;
     }
 
-    /// @note MacCormack: 往復させて戻ってこなかった分 (= 数値拡散の見積もり) を半分足し戻す。
-    for (int z = 0; z < m_nz; ++z)
-        for (int y = 0; y < m_ny; ++y)
+    /// @note MacCormack の逆向き移流では、移流後の場を同じ速度で時刻だけ逆に進め、元の場の推定を作る。
+    for (int z = 0; z < m_nz; ++z) {
+        for (int y = 0; y < m_ny; ++y) {
             for (int x = 0; x < m_nx; ++x) {
-                const std::size_t i = Index(x, y, z);
-                backtrace(i, x, y, z, -1.0f, gx, gy, gz);
-                m_scratchB[i] = SampleGrid(m_scratchA, gx, gy, gz);
+                const std::size_t cell = Index(x, y, z);
+                const math::Vector3 arrival = trace(cell, x, y, z, -1.0f);
+                roundTrip[cell] = SampleGrid(advected, arrival.x, arrival.y, arrival.z);
             }
-    for (int z = 0; z < m_nz; ++z)
-        for (int y = 0; y < m_ny; ++y)
+        }
+    }
+
+    /// @note 往復誤差の半分で数値拡散を補正し、出発点の補間に使った値の範囲へ収めて新しい極値を抑える。
+    for (int z = 0; z < m_nz; ++z) {
+        for (int y = 0; y < m_ny; ++y) {
             for (int x = 0; x < m_nx; ++x) {
-                const std::size_t i = Index(x, y, z);
-                const float corrected = m_scratchA[i] + 0.5f * (field[i] - m_scratchB[i]);
-                /// @note 補正で元の近傍の範囲を超えると振動 (縞) が出る。範囲へ押し込めて抑える。
-                backtrace(i, x, y, z, 1.0f, gx, gy, gz);
-                float lo = 0.0f;
-                float hi = 0.0f;
-                MinMaxAround(field, gx, gy, gz, lo, hi);
-                m_scratchC[i] = std::clamp(corrected, lo, hi);
+                const std::size_t cell = Index(x, y, z);
+                const float corrected = advected[cell] + 0.5f * (field[cell] - roundTrip[cell]);
+                const math::Vector3 departure = trace(cell, x, y, z, 1.0f);
+                float donorMin = 0.0f;
+                float donorMax = 0.0f;
+                MinMaxAround(field, departure.x, departure.y, departure.z, donorMin, donorMax);
+                limited[cell] = std::clamp(corrected, donorMin, donorMax);
             }
-    field.swap(m_scratchC);
+        }
+    }
+    field.swap(limited);
 }
 
 void FluidGasSolver::Dissipate(float dt)
@@ -858,4 +912,4 @@ void FluidGasSolver::UpdateColorKey()
         m_colorKey[i] = ColorKeyOf(m_colorMass[i], m_density[i]);
 }
 
-} /// @note namespace fbzz::fluid
+}

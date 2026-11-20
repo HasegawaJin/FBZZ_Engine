@@ -27,7 +27,7 @@ constexpr int   kParticleHardLimit = 20000;
 /// @note この単位系の λ は約 1e-4 のため、論文の k = 0.1 を直接使わず静止時の勾配和で補正単位を揃える。
 constexpr float kTensileStrength = 0.05f;
 /// @note 密度拘束の押し出しが 1 刻みで速度へ持ち越せる上限 [領域単位/秒]。
-constexpr float kMaxPushSpeed = 2.0f;
+constexpr float MAX_CORRECTION_SPEED = 2.0f;
 
 [[nodiscard]] float Saturate(float value) { return std::clamp(value, 0.0f, 1.0f); }
 
@@ -43,7 +43,7 @@ constexpr int kTextureEmitAttempts = 16;
 /// @note 障害物に «触れている» とみなす距離 (粒子半径の倍率)。床の接触と同じ幅。
 constexpr float kColliderContactScale = 1.05f;
 
-} /// @note namespace
+}
 
 /// @brief 発生源・力・障害物とマスクを Reset / ReplaceOperators 共通で取り込む。
 /// @pre m_volumetric と m_radius が確定していること。
@@ -325,20 +325,21 @@ void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
         m_activeColliders.push_back(entry);
     }
 
+    /// @note 先に外力を速度へ積分し、その速度から近傍探索に使う予測位置を作る。
     for (std::size_t i = 0; i < count; ++i) {
         Particle& particle = m_particles[i];
         particle.vy -= m_settings.gravity * dt;
         if (activeCount > 0) {
-            const math::Vector3 p = { particle.x, particle.y, particle.z };
-            math::Vector3 v = { particle.vx, particle.vy, particle.vz };
+            const math::Vector3 position = { particle.x, particle.y, particle.z };
+            math::Vector3 velocity = { particle.vx, particle.vy, particle.vz };
             for (int k = 0; k < activeCount; ++k) {
                 const ActiveForce& force = active[static_cast<std::size_t>(k)];
-                v += FluidForceDelta(m_forces[force.index], force.center, p, v, m_time, dt, noNoiseOffset,
-                                     static_cast<int>(force.index), m_volumetric, force.amount);
+                velocity += FluidForceDelta(m_forces[force.index], force.center, position, velocity, m_time, dt,
+                                            noNoiseOffset, static_cast<int>(force.index), m_volumetric, force.amount);
             }
-            particle.vx = v.x;
-            particle.vy = v.y;
-            particle.vz = v.z;
+            particle.vx = velocity.x;
+            particle.vy = velocity.y;
+            particle.vz = velocity.z;
         }
         m_predictedX[i] = particle.x + particle.vx * dt;
         m_predictedY[i] = particle.y + particle.vy * dt;
@@ -349,46 +350,63 @@ void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
     const int iterations = std::clamp(m_settings.solverIterations, 1, 20);
     for (int iteration = 0; iteration < iterations; ++iteration) SolveDensity();
 
+    CommitParticlePositions(dt, boundary);
+    ApplyViscosity();
+
+    /// @note 排出判定は接触と粘性まで反映した位置・速度を受け取る。近傍索引を使い終えてから粒子を詰める。
+    for (Particle& particle : m_particles) particle.age += dt;
+    std::erase_if(m_particles, [&boundary](const Particle& p) {
+        return p.x < kBoundsMinX || p.x > kBoundsMaxX || p.y < kBoundsMinY || p.y > kBoundsMaxY
+            || p.z < kBoundsMinZ || p.z > kBoundsMaxZ
+            || (boundary.drain && boundary.drain(boundary.context, {p.x, p.y, p.z}, {p.vx, p.vy, p.vz}));
+    });
+    m_time += dt;
+}
+
+void FluidLiquidSolver::CommitParticlePositions(float dt, const FluidLiquidBoundary& boundary)
+{
+    const std::size_t count = m_particles.size();
     const float floorContact = m_settings.floorHeight + m_radius * 1.05f;
     const float frictionKeep = std::exp(-(std::max)(m_settings.floorFriction, 0.0f) * 10.0f * dt);
     for (std::size_t i = 0; i < count; ++i) {
         Particle& particle = m_particles[i];
         FluidLiquidContact surface;
-        bool collided = false;
-        float approach = 0.0f;
+        bool hasBoundaryContact = false;
+        float approachSpeed = 0.0f;
         if (boundary.sample) {
             const math::Vector3 predicted{m_predictedX[i], m_predictedY[i], m_predictedZ[i]};
-            collided = boundary.sample(boundary.context, predicted, m_radius, surface);
-            if (collided) approach = math::Vector3::Dot({particle.vx, particle.vy, particle.vz}, surface.normal);
+            hasBoundaryContact = boundary.sample(boundary.context, predicted, m_radius, surface);
+            /// @note 反発は位置補正から速度を再構成する前の、法線方向への入射速度で決める。
+            if (hasBoundaryContact)
+                approachSpeed = math::Vector3::Dot({particle.vx, particle.vy, particle.vz}, surface.normal);
         }
-        if (collided && surface.distance < m_radius) {
+        if (hasBoundaryContact && surface.distance < m_radius) {
             const auto offset = surface.normal * (m_radius - surface.distance);
             m_predictedX[i] += offset.x;
             m_predictedY[i] += offset.y;
             m_predictedZ[i] += offset.z;
         }
-        /// @note PBF の押し広げ補正をすべて速度へ持ち越すと、重なりや激突のたびに粒子が爆ぜる。
-        /// @note 位置補正を保ち、速度へ持ち越す分だけを抑える。流れの速さは発生源と重力が決める。
-        float pushX = (m_predictedX[i] - particle.x) / dt - particle.vx;
-        float pushY = (m_predictedY[i] - particle.y) / dt - particle.vy;
-        float pushZ = (m_predictedZ[i] - particle.z) / dt - particle.vz;
-        const float push = std::sqrt(pushX * pushX + pushY * pushY + pushZ * pushZ);
-        if (push > kMaxPushSpeed) {
-            const float shrink = kMaxPushSpeed / push;
-            pushX *= shrink;
-            pushY *= shrink;
-            pushZ *= shrink;
+        /// @note (補正後の位置 − 前の位置) / dt と積分済み速度との差が補正由来の速度。粒子の飛散を抑えるため、この寄与だけを制限する。
+        float deltaVx = (m_predictedX[i] - particle.x) / dt - particle.vx;
+        float deltaVy = (m_predictedY[i] - particle.y) / dt - particle.vy;
+        float deltaVz = (m_predictedZ[i] - particle.z) / dt - particle.vz;
+        const float correctionSpeed = std::sqrt(deltaVx * deltaVx + deltaVy * deltaVy + deltaVz * deltaVz);
+        if (correctionSpeed > MAX_CORRECTION_SPEED) {
+            const float shrink = MAX_CORRECTION_SPEED / correctionSpeed;
+            deltaVx *= shrink;
+            deltaVy *= shrink;
+            deltaVz *= shrink;
         }
-        particle.vx += pushX;
-        particle.vy += pushY;
-        particle.vz += pushZ;
+        particle.vx += deltaVx;
+        particle.vy += deltaVy;
+        particle.vz += deltaVz;
         particle.x  = m_predictedX[i];
         particle.y  = m_predictedY[i];
         particle.z  = m_predictedZ[i];
-        if (collided) {
+        if (hasBoundaryContact) {
             math::Vector3 velocity{particle.vx, particle.vy, particle.vz};
             const float normalSpeed = math::Vector3::Dot(velocity, surface.normal);
-            const float rebound = (std::max)(-approach, 0.0f) * surface.restitution;
+            const float rebound = (std::max)(-approachSpeed, 0.0f) * surface.restitution;
             velocity += surface.normal * ((std::max)(normalSpeed, rebound) - normalSpeed);
             particle.vx = velocity.x;
             particle.vy = velocity.y;
@@ -399,7 +417,7 @@ void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
             particle.vz *= frictionKeep;
             particle.vy = (std::max)(particle.vy, 0.0f);
         }
-        /// @note 床と同じ扱いを障害物の面で行う。速度は障害物に対する相対で見る (動く障害物に乗った粒は一緒に動く)。
+        /// @note 障害物との相対速度を法線と接線に分け、内向き成分を切り、摩擦は接線だけに掛ける。
         for (const ActiveCollider& contact : m_activeColliders) {
             const FluidCollider& collider = m_colliders[contact.index];
             const math::Vector3 p = { particle.x, particle.y, particle.z };
@@ -411,21 +429,12 @@ void FluidLiquidSolver::Step(float dt, const FluidLiquidBoundary& boundary)
             const float ry = particle.vy - contact.velocity.y;
             const float rz = particle.vz - contact.velocity.z;
             const float normalSpeed = rx * n.x + ry * n.y + rz * n.z;
-            const float kept = (std::max)(normalSpeed, 0.0f);
-            particle.vx = contact.velocity.x + n.x * kept + (rx - n.x * normalSpeed) * keep;
-            particle.vy = contact.velocity.y + n.y * kept + (ry - n.y * normalSpeed) * keep;
-            particle.vz = contact.velocity.z + n.z * kept + (rz - n.z * normalSpeed) * keep;
+            const float outwardSpeed = (std::max)(normalSpeed, 0.0f);
+            particle.vx = contact.velocity.x + n.x * outwardSpeed + (rx - n.x * normalSpeed) * keep;
+            particle.vy = contact.velocity.y + n.y * outwardSpeed + (ry - n.y * normalSpeed) * keep;
+            particle.vz = contact.velocity.z + n.z * outwardSpeed + (rz - n.z * normalSpeed) * keep;
         }
     }
-    ApplyViscosity();
-
-    for (Particle& particle : m_particles) particle.age += dt;
-    std::erase_if(m_particles, [&boundary](const Particle& p) {
-        return p.x < kBoundsMinX || p.x > kBoundsMaxX || p.y < kBoundsMinY || p.y > kBoundsMaxY
-            || p.z < kBoundsMinZ || p.z > kBoundsMaxZ
-            || (boundary.drain && boundary.drain(boundary.context, {p.x, p.y, p.z}, {p.vx, p.vy, p.vz}));
-    });
-    m_time += dt;
 }
 
 void FluidLiquidSolver::BuildNeighbors()
@@ -439,16 +448,21 @@ void FluidLiquidSolver::BuildNeighbors()
         m_particleCell[i] = cell;
         ++m_cellStart[static_cast<std::size_t>(cell) + 1];
     }
+    /// @note 粒子数の累積和を取ると、各セルに属する粒子を書き込む区間の先頭になる。
     for (int cell = 0; cell < cellCount; ++cell)
         m_cellStart[static_cast<std::size_t>(cell) + 1] += m_cellStart[static_cast<std::size_t>(cell)];
 
-    std::vector<int> cursor(m_cellStart.begin(), m_cellStart.end() - 1);
+    std::vector<int> nextCellSlot(m_cellStart.begin(), m_cellStart.end() - 1);
     m_cellParticles.resize(count);
-    for (std::size_t i = 0; i < count; ++i)
-        m_cellParticles[static_cast<std::size_t>(cursor[static_cast<std::size_t>(m_particleCell[i])]++)] =
-            static_cast<int>(i);
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::size_t cell = static_cast<std::size_t>(m_particleCell[i]);
+        const int slot = nextCellSlot[cell]++;
+        m_cellParticles[static_cast<std::size_t>(slot)] = static_cast<int>(i);
+    }
 
-    /// @note 近傍は反復の前に 1 回だけ組む (論文どおり)。反復中の移動は粒子半径より十分小さい。
+    /// @note セル幅はカーネル半径 h なので、同じセルと隣接セルだけ調べれば予測位置から h 未満の粒子を列挙できる。
+    /// @note 各密度反復では近傍の索引を再利用し、補正後の位置から距離とカーネルの重みを計算し直す。
+    /// @see https://mmacklin.com/pbf_sig_preprint.pdf Macklin & Müller, Position Based Fluids (2013), §6.
     const int reachZ = m_volumetric ? 1 : 0;
     const int layer = m_cellsX * m_cellsY;
     m_neighborStart.resize(count + 1);
@@ -485,16 +499,26 @@ void FluidLiquidSolver::BuildNeighbors()
 
 void FluidLiquidSolver::SolveDensity()
 {
-    const std::size_t count = m_particles.size();
-    const float inverseRest = 1.0f / m_restDensity;
+    const float inverseRestDensity = 1.0f / m_restDensity;
     const float cohesion = Saturate(m_settings.cohesion);
+    /// @note Jacobi 反復では全粒子の λ と位置補正を計算し終えてから予測位置を更新する。
+    ComputeDensityMultipliers(inverseRestDensity, cohesion);
+    ComputeDensityCorrections(inverseRestDensity);
+    ApplyDensityCorrections();
+}
 
+/// @note Cᵢ = ρᵢ / ρ₀ − 1。λᵢ = −Cᵢ / (Σₖ |∇ₖCᵢ|² + ε) は密度誤差を打ち消す位置補正の重み。
+/// @see https://mmacklin.com/pbf_sig_preprint.pdf Macklin & Müller, Position Based Fluids (2013), §3.
+void FluidLiquidSolver::ComputeDensityMultipliers(float inverseRestDensity, float cohesion)
+{
+    const std::size_t count = m_particles.size();
     for (std::size_t i = 0; i < count; ++i) {
+        /// @note Poly6 による密度の総和には自粒子も含める。近傍リストには自粒子が入らない。
         float density = Poly6(0.0f);
-        float gradientX = 0.0f;
-        float gradientY = 0.0f;
-        float gradientZ = 0.0f;
-        float gradientSquared = 0.0f;
+        float selfGradientX = 0.0f;
+        float selfGradientY = 0.0f;
+        float selfGradientZ = 0.0f;
+        float neighborGradientSquares = 0.0f;
         for (int k = m_neighborStart[i]; k < m_neighborStart[i + 1]; ++k) {
             const std::size_t j = static_cast<std::size_t>(m_neighbors[static_cast<std::size_t>(k)]);
             const float dx = m_predictedX[i] - m_predictedX[j];
@@ -502,23 +526,30 @@ void FluidLiquidSolver::SolveDensity()
             const float dz = m_predictedZ[i] - m_predictedZ[j];
             const float r2 = dx * dx + dy * dy + dz * dz;
             density += Poly6(r2);
-            const float scale = SpikyGradientScale(std::sqrt(r2)) * inverseRest;
-            gradientX += scale * dx;
-            gradientY += scale * dy;
-            gradientZ += scale * dz;
-            gradientSquared += (scale * dx) * (scale * dx) + (scale * dy) * (scale * dy)
-                             + (scale * dz) * (scale * dz);
+            const float scale = SpikyGradientScale(std::sqrt(r2)) * inverseRestDensity;
+            selfGradientX += scale * dx;
+            selfGradientY += scale * dy;
+            selfGradientZ += scale * dz;
+            neighborGradientSquares += (scale * dx) * (scale * dx) + (scale * dy) * (scale * dy)
+                                     + (scale * dz) * (scale * dz);
         }
         m_density[i] = density;
-        float constraint = density * inverseRest - 1.0f;
-        /// @note 負 (まばら) の側は «引き寄せ» になる。cohesion で効きを絞り、0 なら飛沫はばらけたまま。
+        float constraint = density * inverseRestDensity - 1.0f;
+        /// @note 静止密度を下回る場合だけ cohesion を掛け、疎な粒子を引き寄せる強さを調整する。
         if (constraint < 0.0f) constraint *= cohesion;
-        m_lambda[i] = -constraint
-            / (gradientX * gradientX + gradientY * gradientY + gradientZ * gradientZ + gradientSquared
-               + m_relaxation);
+        /// @note 自粒子の勾配は寄与を足してから二乗し、近傍粒子の勾配は個別に二乗してから足す。
+        const float denominator = selfGradientX * selfGradientX + selfGradientY * selfGradientY
+            + selfGradientZ * selfGradientZ + neighborGradientSquares + m_relaxation;
+        m_lambda[i] = -constraint / denominator;
     }
+}
 
-    /// @note 1 反復の補正を粒子半径の半分までに抑える。発生直後の重なりで粒子が弾け飛ばないように。
+/// @note 各粒子対の λᵢ + λⱼ に人工圧力 s_corr を加え、引張不安定による粒子の凝集を抑える。
+/// @see https://mmacklin.com/pbf_sig_preprint.pdf Macklin & Müller, Position Based Fluids (2013), 式 (13)–(14).
+void FluidLiquidSolver::ComputeDensityCorrections(float inverseRestDensity)
+{
+    const std::size_t count = m_particles.size();
+    /// @note 発生直後に粒子が重なっても、一反復の補正距離を粒子半径の半分までに抑える。
     const float maxCorrection = m_radius * 0.5f;
     for (std::size_t i = 0; i < count; ++i) {
         float sumX = 0.0f;
@@ -532,9 +563,9 @@ void FluidLiquidSolver::SolveDensity()
             const float r2 = dx * dx + dy * dy + dz * dz;
             const float scale = SpikyGradientScale(std::sqrt(r2));
             if (scale == 0.0f) continue;
-            const float ratio = Poly6(r2) / m_tensileReference;
-            const float tensile = -m_tensileScale * ratio * ratio * ratio * ratio;
-            const float coefficient = (m_lambda[i] + m_lambda[j] + tensile) * scale * inverseRest;
+            const float kernelRatio = Poly6(r2) / m_tensileReference;
+            const float tensileCorrection = -m_tensileScale * kernelRatio * kernelRatio * kernelRatio * kernelRatio;
+            const float coefficient = (m_lambda[i] + m_lambda[j] + tensileCorrection) * scale * inverseRestDensity;
             sumX += coefficient * dx;
             sumY += coefficient * dy;
             sumZ += coefficient * dz;
@@ -550,14 +581,18 @@ void FluidLiquidSolver::SolveDensity()
         m_deltaY[i] = sumY;
         m_deltaZ[i] = sumZ;
     }
+}
 
+void FluidLiquidSolver::ApplyDensityCorrections()
+{
+    const std::size_t count = m_particles.size();
     const float floorLimit = m_settings.floorHeight + m_radius;
     for (std::size_t i = 0; i < count; ++i) {
         m_predictedX[i] += m_deltaX[i];
         m_predictedY[i] += m_deltaY[i];
         m_predictedZ[i] += m_deltaZ[i];
         if (m_settings.floor && m_predictedY[i] < floorLimit) m_predictedY[i] = floorLimit;
-        /// @note 障害物の表面から粒子半径ぶん外へ出す。反復ごとに行うので、最後の反復の後は必ず外に居る。
+        /// @note 各反復で床、次いで登録順の障害物から半径ぶん離す。次の障害物は直前の補正を反映した位置を読む。
         for (const ActiveCollider& active : m_activeColliders) {
             const FluidCollider& collider = m_colliders[active.index];
             const math::Vector3 p = { m_predictedX[i], m_predictedY[i], m_predictedZ[i] };
@@ -572,7 +607,8 @@ void FluidLiquidSolver::SolveDensity()
     }
 }
 
-/// @note XSPH: 近傍の速度へ寄せる。Σ W / ρ0 ≈ 1 なので viscosity はそのまま «寄せる割合» になる。
+/// @note XSPH は近傍との速度差を W / ρ₀ で重み付けして足し、速度のばらつきを抑える。
+/// @see https://mmacklin.com/pbf_sig_preprint.pdf Macklin & Müller, Position Based Fluids (2013), §5, Eq. (17).
 void FluidLiquidSolver::ApplyViscosity()
 {
     const float viscosity = Saturate(m_settings.viscosity);
@@ -597,6 +633,7 @@ void FluidLiquidSolver::ApplyViscosity()
         m_deltaY[i] = sumY * viscosity;
         m_deltaZ[i] = sumZ * viscosity;
     }
+    /// @note 全粒子の速度差は適用前の速度から求める。更新した速度が同じパスの近傍計算へ混ざるのを防ぐ。
     for (std::size_t i = 0; i < count; ++i) {
         m_particles[i].vx += m_deltaX[i];
         m_particles[i].vy += m_deltaY[i];
@@ -604,4 +641,4 @@ void FluidLiquidSolver::ApplyViscosity()
     }
 }
 
-} /// @note namespace fbzz::fluid
+}
