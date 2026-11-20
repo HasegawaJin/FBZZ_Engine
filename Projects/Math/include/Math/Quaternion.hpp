@@ -20,9 +20,13 @@ struct Quaternion {
 
     static Quaternion Identity();
     FBZZ_MATH_API static Quaternion FromAxisAngle(const Vector3& axis, float angleRad);
+    /// @note 内因回転は Yaw → Pitch → Roll (Qy * Qx * Qz)。
     FBZZ_MATH_API static Quaternion FromEuler(const Vector3& eulerRad);
-    FBZZ_MATH_API static Quaternion LookRotation(const Vector3& forward,
-                                   const Vector3& up = Vector3::UP);
+    /// @note forward がほぼゼロなら単位回転。up が forward とほぼ平行なら RIGHT、次に FORWARD を代替軸に試す。
+    FBZZ_MATH_API static Quaternion LookRotation(const Vector3& forward, const Vector3& up = Vector3::UP);
+    /// @brief 回転行列からクォータニオンを抽出する。
+    /// @pre 左上 3x3 はスケールを含まない回転で、各列が回転後の基底ベクトル。
+    FBZZ_MATH_API static Quaternion FromMatrix4(const Matrix4& matrix);
 
     Quaternion  operator*(const Quaternion& rhs) const;
     Vector3     operator*(const Vector3& v)      const;
@@ -33,8 +37,6 @@ struct Quaternion {
     FBZZ_MATH_API Quaternion Normalized() const;
     Quaternion Conjugate()  const;
     FBZZ_MATH_API Quaternion Inverse()    const;
-
-    FBZZ_MATH_API static Quaternion FromMatrix4(const Matrix4& m);
 
     /// @brief NLerp (正規化線形補間)。
     /// @note 等角速度ではないが Slerp より軽量。短弧補間には Slerp を使う。
@@ -83,4 +85,4 @@ inline float Quaternion::Dot(const Quaternion& a, const Quaternion& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
 
-} /// @note namespace fbzz::math
+}

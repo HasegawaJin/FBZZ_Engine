@@ -55,7 +55,7 @@ struct Frustum {
 
     /// @brief ビュープロジェクション行列から 6 平面を抽出する (Gribb-Hartmann 法)。
     /// @pre DirectX 左手系、深度 [0,1] (Reversed-Z 可)、列ベクトル規則 (M * v)。
-    FBZZ_MATH_API static Frustum FromViewProjection(const Matrix4& vp);
+    FBZZ_MATH_API static Frustum FromViewProjection(const Matrix4& viewProjection);
 
 private:
     /// @brief 4 レーン × 2 本。レーン 6, 7 は使わず、判定のビットマスクで捨てる。
@@ -144,4 +144,4 @@ inline bool Frustum::IntersectsAABB(const Vector3& center, const Vector3& halfEx
     return (outside & PLANE_MASK) == 0;
 }
 
-} /// @note namespace fbzz::math
+}

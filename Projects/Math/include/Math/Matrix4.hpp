@@ -25,16 +25,18 @@ struct Matrix4 {
     static Matrix4 Translate(const Vector3& t);
     FBZZ_MATH_API static Matrix4 Rotate(const Quaternion& q);
     static Matrix4 Scale(const Vector3& s);
-    FBZZ_MATH_API static Matrix4 TRS(const Vector3& t, const Quaternion& r, const Vector3& s);
+    /// @note 列ベクトルにスケール、回転、平行移動の順で適用する。
+    FBZZ_MATH_API static Matrix4 TRS(const Vector3& translation, const Quaternion& rotation, const Vector3& scale);
 
     /// @note DirectX 左手系。
     FBZZ_MATH_API static Matrix4 LookAt(const Vector3& eye, const Vector3& target, const Vector3& up);
-    /// @note DirectX 左手系。
+    /// @note DirectX 左手系、深度 [0,1]。
+    /// @note 縮退したアスペクト比や不正な深度範囲は契約違反を報告し、aspect = 1 または farZ = nearZ + 1 に補正する。
     FBZZ_MATH_API static Matrix4 Perspective(float fovY, float aspect, float nearZ, float farZ);
-    /// @note DirectX 左手系。
+    /// @note DirectX 左手系、深度 [0,1]。
     FBZZ_MATH_API static Matrix4 Orthographic(float left, float right,
-                                 float bottom, float top,
-                                 float nearZ, float farZ);
+                                             float bottom, float top,
+                                             float nearZ, float farZ);
     /// @brief Perspective の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
     /// @note 深度 1 付近で粗い float の刻みを遠景へ回さず、遠景の Z-fighting を抑える。
     /// @note 1 - Perspective の深度を後から計算すると、その引き算で精度を失うため直接組む。
@@ -42,20 +44,21 @@ struct Matrix4 {
     FBZZ_MATH_API static Matrix4 PerspectiveReversedZ(float fovY, float aspect, float nearZ, float farZ);
     /// @brief Orthographic の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
     FBZZ_MATH_API static Matrix4 OrthographicReversedZ(float left, float right,
-                                         float bottom, float top,
-                                         float nearZ, float farZ);
+                                                      float bottom, float top,
+                                                      float nearZ, float farZ);
 
     Matrix4 operator*(const Matrix4& rhs) const;
     Vector4 operator*(const Vector4& v)   const;
 
     static Matrix4 Transpose(const Matrix4& mat);
+    /// @note ほぼ特異な行列は契約違反を報告して単位行列を返す。Transform のスケールが 0 の場合などに起きる。
     FBZZ_MATH_API static Matrix4 Inverse(const Matrix4& mat);
 
     /// @brief 法線変換行列 (逆転置) をアフィン行列限定で安く求める。
     /// @return Transpose(Inverse(mat)) の左上 3x3 と同じ値。平行移動成分は寄与しないため残りは単位行列。
     /// @note 完全な 4x4 逆行列より安い。アフィン行列は左上 3x3 の余因子行列 1 回で足りる。
     /// @note シェーダーは float3x3 へキャストして使うため、左上 3x3 が一致していれば結果は変わらない。
-    /// @note 退化行列 (行列式 0) では単位行列を返す。呼び出し側の分岐を不要にするため。
+    /// @note 行列式がほぼ 0 なら単位行列を返す。
     FBZZ_MATH_API static Matrix4 InverseTransposeAffine(const Matrix4& mat);
 
     /// @brief 転置行列を返す。
@@ -66,7 +69,10 @@ struct Matrix4 {
 /// @note FBZZMath は DLL のため、.cpp に置くと呼び出しごとに DLL 境界を越えてインライン化されない。契約を報告しない小関数はヘッダーで定義する。
 inline Matrix4 Matrix4::Identity() {
     Matrix4 result;
-    result.m[0][0] = result.m[1][1] = result.m[2][2] = result.m[3][3] = 1.0f;
+    result.m[0][0] = 1.0f;
+    result.m[1][1] = 1.0f;
+    result.m[2][2] = 1.0f;
+    result.m[3][3] = 1.0f;
     return result;
 }
 
@@ -90,18 +96,18 @@ inline Matrix4 Matrix4::Scale(const Vector3& s) {
 
 /// @note 結果の行 r = Σk m[r][k] * rhs の行 k。k = 0 から順に足すので、スカラーの三重ループと加算の順序が同じで値も一致する。
 inline Matrix4 Matrix4::operator*(const Matrix4& rhs) const {
-    const simd::Vec b0 = simd::Load4(rhs.m[0]);
-    const simd::Vec b1 = simd::Load4(rhs.m[1]);
-    const simd::Vec b2 = simd::Load4(rhs.m[2]);
-    const simd::Vec b3 = simd::Load4(rhs.m[3]);
+    const simd::Vec rhsRow0 = simd::Load4(rhs.m[0]);
+    const simd::Vec rhsRow1 = simd::Load4(rhs.m[1]);
+    const simd::Vec rhsRow2 = simd::Load4(rhs.m[2]);
+    const simd::Vec rhsRow3 = simd::Load4(rhs.m[3]);
     Matrix4 result;
-    for (int r = 0; r < 4; ++r) {
-        const simd::Vec a = simd::Load4(m[r]);
-        simd::Vec row = _mm_mul_ps(simd::SplatLane<0>(a), b0);
-        row = simd::MulAdd(simd::SplatLane<1>(a), b1, row);
-        row = simd::MulAdd(simd::SplatLane<2>(a), b2, row);
-        row = simd::MulAdd(simd::SplatLane<3>(a), b3, row);
-        simd::Store4(result.m[r], row);
+    for (int row = 0; row < 4; ++row) {
+        const simd::Vec lhsRow = simd::Load4(m[row]);
+        simd::Vec sum = _mm_mul_ps(simd::SplatLane<0>(lhsRow), rhsRow0);
+        sum = simd::MulAdd(simd::SplatLane<1>(lhsRow), rhsRow1, sum);
+        sum = simd::MulAdd(simd::SplatLane<2>(lhsRow), rhsRow2, sum);
+        sum = simd::MulAdd(simd::SplatLane<3>(lhsRow), rhsRow3, sum);
+        simd::Store4(result.m[row], sum);
     }
     return result;
 }
@@ -138,4 +144,4 @@ inline Matrix4 Matrix4::Transpose(const Matrix4& mat) {
 
 inline Matrix4 Matrix4::Transposed() const { return Transpose(*this); }
 
-} /// @note namespace fbzz::math
+}

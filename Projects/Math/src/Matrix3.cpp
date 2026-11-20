@@ -9,10 +9,12 @@ namespace fbzz::math {
 
 Matrix3 Matrix3::FromMatrix4(const Matrix4& mat) {
     Matrix3 result;
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            result.m[r][c] = mat.m[r][c];
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            result.m[row][column] = mat.m[row][column];
+        }
+    }
     return result;
 }
 
-} // namespace fbzz::math
+}

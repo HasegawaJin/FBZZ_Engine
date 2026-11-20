@@ -44,8 +44,17 @@ inline Vector2 Vector2::operator-(const Vector2& rhs) const { return {x - rhs.x,
 inline Vector2 Vector2::operator*(float s)            const { return {x * s, y * s}; }
 inline Vector2 Vector2::operator/(float s)            const { return {x / s, y / s}; }
 
-inline Vector2& Vector2::operator+=(const Vector2& rhs) { x += rhs.x; y += rhs.y; return *this; }
-inline Vector2& Vector2::operator-=(const Vector2& rhs) { x -= rhs.x; y -= rhs.y; return *this; }
+inline Vector2& Vector2::operator+=(const Vector2& rhs) {
+    x += rhs.x;
+    y += rhs.y;
+    return *this;
+}
+
+inline Vector2& Vector2::operator-=(const Vector2& rhs) {
+    x -= rhs.x;
+    y -= rhs.y;
+    return *this;
+}
 
 inline bool Vector2::operator==(const Vector2& rhs) const {
     return NearlyEqual(x, rhs.x) && NearlyEqual(y, rhs.y);
@@ -63,4 +72,4 @@ inline Vector2 Vector2::Lerp(const Vector2& a, const Vector2& b, float t) {
     return a + (b - a) * t;
 }
 
-} /// @note namespace fbzz::math
+}

@@ -19,7 +19,7 @@ struct Matrix3 {
     static Matrix3 Identity();
     static Matrix3 Transpose(const Matrix3& mat);
     /// @brief Matrix4 の左上 3x3 を取り出す。
-    /// @note 非一様スケールを含む行列は法線変換に使えない。その場合は Inverse(mat3).Transposed() を使う。
+    /// @note 非一様スケールを含む行列の法線変換には Matrix4::InverseTransposeAffine を使う。
     FBZZ_MATH_API static Matrix3 FromMatrix4(const Matrix4& mat);
 
     Matrix3 operator*(const Matrix3& rhs) const;
@@ -37,18 +37,23 @@ inline Matrix3 Matrix3::Identity() {
 
 inline Matrix3 Matrix3::Transpose(const Matrix3& mat) {
     Matrix3 result;
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            result.m[r][c] = mat.m[c][r];
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            result.m[row][column] = mat.m[column][row];
+        }
+    }
     return result;
 }
 
 inline Matrix3 Matrix3::operator*(const Matrix3& rhs) const {
     Matrix3 result;
-    for (int r = 0; r < 3; ++r)
-        for (int c = 0; c < 3; ++c)
-            for (int k = 0; k < 3; ++k)
-                result.m[r][c] += m[r][k] * rhs.m[k][c];
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            for (int k = 0; k < 3; ++k) {
+                result.m[row][column] += m[row][k] * rhs.m[k][column];
+            }
+        }
+    }
     return result;
 }
 
@@ -60,4 +65,4 @@ inline Vector3 Matrix3::operator*(const Vector3& v) const {
     };
 }
 
-} /// @note namespace fbzz::math
+}
