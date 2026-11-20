@@ -18,13 +18,18 @@ param(
 
     [string]$CompilerPath,
 
-    [string]$ShaderRoot = $PSScriptRoot
+    [string]$ShaderRoot
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $scriptRoot = $PSScriptRoot
+# @note Windows PowerShell の -File では引数の既定値を評価する時点で $PSScriptRoot が空になる。
+# @see https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_automatic_variables?view=powershell-5.1#psscriptroot PowerShell の $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($ShaderRoot)) {
+    $ShaderRoot = $scriptRoot
+}
 $shaderRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ShaderRoot)
 $useSharedIncludes = $shaderRoot -ne $scriptRoot
 $logPath = Join-Path $shaderRoot "compile_log.txt"

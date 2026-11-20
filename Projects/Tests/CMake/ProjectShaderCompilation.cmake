@@ -57,3 +57,15 @@ RunProjectShaderCompile(0 "orphans=1")
 if(EXISTS "${SHADER_OUTPUT}" OR EXISTS "${SHADER_OUTPUT}.compiler")
     message(FATAL_ERROR "Removing the last project shader left generated files in the project")
 endif()
+
+# @note Sandbox runs the compiler from the repository root without a project shader root.
+file(WRITE "${SHADER_TOOL_ROOT}/Default.cs.hlsl" "[numthreads(1, 1, 1)] void CSMain() {}\n")
+file(WRITE "${FIXTURE_ROOT}/build/Stale.hlsl" "#include \"Missing.hlsli\"\n")
+execute_process(COMMAND "${SHADER_POWERSHELL}" -NoProfile -ExecutionPolicy Bypass -File "${SHADER_TOOL}"
+    -CompilerPath "${SOURCE_ROOT}/ThirdParty/DXC/bin/x64/dxc.exe" -PlanOnly
+    WORKING_DIRECTORY "${FIXTURE_ROOT}"
+    RESULT_VARIABLE SHADER_EXIT OUTPUT_VARIABLE SHADER_STDOUT ERROR_VARIABLE SHADER_STDERR)
+if(NOT SHADER_EXIT STREQUAL "0" OR NOT SHADER_STDOUT MATCHES "sources=1 jobs=1"
+   OR NOT SHADER_STDOUT MATCHES "Default[.]cs[.]hlsl -> Default[.]cs[.]cso")
+    message(FATAL_ERROR "Default shader root must be the script directory (exit=${SHADER_EXIT}): ${SHADER_STDOUT}\n${SHADER_STDERR}")
+endif()
