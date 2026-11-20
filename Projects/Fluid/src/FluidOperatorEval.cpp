@@ -836,54 +836,55 @@ math::Vector3 FluidColliderNormal(const FluidCollider& collider, const math::Vec
 }
 
 math::Vector3 FluidForceDelta(const FluidForce& force, const math::Vector3& center,
-                              const math::Vector3& p, const math::Vector3& velocity, float time,
+                              const math::Vector3& position, const math::Vector3& velocity, float time,
                               float dt, const math::Vector3& noiseOffset, int forceIndex,
                               bool volumetric, float strengthScale)
 {
     const math::Vector3 zero = { 0.0f, 0.0f, 0.0f };
+    /// @note 作用範囲と減衰 → 種類ごとの Δv → 2D 平面への投影。
     /// @note 倍率は influence より先に強さへ掛ける (GPU は定数へ詰める段で掛けてある)。
     const float strength = force.strength * strengthScale;
     if (strength == 0.0f) return zero;
-    math::Vector3 d = p - center;
-    if (!volumetric) d.z = 0.0f;
-    const float dist = std::sqrt(Dot(d, d));
+    math::Vector3 fromCenter = position - center;
+    if (!volumetric) fromCenter.z = 0.0f;
+    const float distance = std::sqrt(Dot(fromCenter, fromCenter));
     float influence = 1.0f;
     if (force.radius > 0.0f) {
-        if (dist >= force.radius) return zero;
-        influence = std::pow(1.0f - dist / force.radius, force.falloffPower);
+        if (distance >= force.radius) return zero;
+        influence = std::pow(1.0f - distance / force.radius, force.falloffPower);
     }
-    const math::Vector3 a = NormalizeOr(force.direction, math::Vector3{ 1.0f, 0.0f, 0.0f });
-    const float s = strength * influence;
+    const math::Vector3 direction = NormalizeOr(force.direction, math::Vector3{ 1.0f, 0.0f, 0.0f });
+    const float effectiveStrength = strength * influence;
 
     math::Vector3 delta = zero;
+    /// @note HLSL 側の共通式は Assets/Shaders/Bake/Fluid/FluidForceMath.hlsli にある。
     switch (force.type) {
     case FluidForceType::Wind:
-        delta = a * s * dt;
+        delta = direction * effectiveStrength * dt;
         break;
     case FluidForceType::Attract:
-        if (dist >= 1.0e-5f) delta = -(d / dist) * s * dt;
+        if (distance >= 1.0e-5f) delta = -(fromCenter / distance) * effectiveStrength * dt;
         break;
     case FluidForceType::Repulse:
-        if (dist >= 1.0e-5f) delta = (d / dist) * s * dt;
+        if (distance >= 1.0e-5f) delta = (fromCenter / distance) * effectiveStrength * dt;
         break;
     case FluidForceType::Vortex: {
-        const math::Vector3 k = volumetric ? a : math::Vector3{ 0.0f, 0.0f, 1.0f };
-        const math::Vector3 t = math::Vector3::Cross(k, d);
-        const float length = std::sqrt(Dot(t, t));
-        if (length >= 1.0e-5f) delta = (t / length) * s * dt;
+        const math::Vector3 axis = volumetric ? direction : math::Vector3{ 0.0f, 0.0f, 1.0f };
+        const math::Vector3 tangent = math::Vector3::Cross(axis, fromCenter);
+        const float length = std::sqrt(Dot(tangent, tangent));
+        if (length >= 1.0e-5f) delta = (tangent / length) * effectiveStrength * dt;
         break;
     }
     case FluidForceType::Noise: {
         const float index = static_cast<float>(forceIndex);
-        const math::Vector3 q = p * force.noiseFrequency + noiseOffset
+        const math::Vector3 noisePosition = position * force.noiseFrequency + noiseOffset
             + math::Vector3{ index * 17.31f, -time * force.noiseSpeed, index * 5.73f };
-        delta = math::CurlNoise(q) * s * dt;
+        delta = math::CurlNoise(noisePosition) * effectiveStrength * dt;
         break;
     }
     case FluidForceType::Drag:
-        /// @note 陰的な減衰 (1 − e^{−s·dt})。dt が大きくても速度の向きを越えて振り戻さない。
-        ///       strength は負も許す (2D の渦を逆に回す唯一の手段) が、Drag で負だと速度を増やしてしまうので 0 で止める。
-        delta = -velocity * (1.0f - std::exp(-(std::max)(s, 0.0f) * dt));
+        /// @note 指数減衰で速度を 0 へ近づける。負の強さを使うと速度が増幅するため、Drag では 0 に丸める。
+        delta = -velocity * (1.0f - std::exp(-(std::max)(effectiveStrength, 0.0f) * dt));
         break;
     }
     if (!volumetric) delta.z = 0.0f;

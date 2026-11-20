@@ -3,14 +3,15 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 
-/// @note 手順と式は Projects/Engine/src/Asset/FluidGasSolver.cpp (CPU) に合わせてある。
+/// @note 格子の更新手順は Projects/Fluid/src/FluidGasSolver.cpp (CPU) に合わせてある。
 /// @note 格子は立方体 (1 辺 gResolution)、セル中心は «最長軸 = [-1,1]» の領域座標。
 #ifndef FLUID_GPU_COMMON_HLSLI
 #define FLUID_GPU_COMMON_HLSLI
 
 #include "Common/Binding.hlsli"
 #include "Bake/Fluid/FluidColliderMath.hlsli"
-#include "Rendering/ParticleNoise.hlsli" ///< @note ValueNoise3D (core::ValueNoise3D と同じ式)
+#include "Bake/Fluid/FluidForceMath.hlsli"
+#include "Rendering/ParticleNoise.hlsli" ///< @note ValueNoise3D は CPU の math::ValueNoise3D と同じ式。
 
 struct FluidGpuSource
 {
@@ -110,7 +111,7 @@ bool FluidInside(int3 cell)
     return all(cell >= 0) && all(cell < int(gResolution));
 }
 
-/// @note core::CurlNoise と同じ式 (3 本のポテンシャルを離れた位置から引き、中心差分で回転を取る)。
+/// @note math::CurlNoise と同じ式 (3 本のポテンシャルを離れた位置から引き、中心差分で回転を取る)。
 float3 FluidCurlNoise(float3 p)
 {
     return CurlNoise3D(p);
@@ -209,45 +210,51 @@ float FluidColliderDistance(FluidGpuCollider c, float3 p)
 }
 
 /// @note 力が dt 秒で与える速度の変化 Δv。index はノイズの切り出し位置をずらす添字。
-float3 FluidForceDelta(FluidGpuForce f, uint index, float3 p, float3 v, float time, float dt)
+float3 FluidForceDelta(FluidGpuForce force, uint index, float3 position, float3 velocity, float time, float dt)
 {
-    const float strength = f.directionStrength.w;
+    /// @note 有効範囲と減衰を決めてから、力の種類ごとの速度変化を求める。
+    const float strength = force.directionStrength.w;
     if (strength == 0.0f) return float3(0.0f, 0.0f, 0.0f);
-    const float3 d = p - f.centerType.xyz;
-    const float dist = length(d);
-    const float radius = f.params.x;
+    const float3 fromCenter = position - force.centerType.xyz;
+    const float distance = length(fromCenter);
+    const float radius = force.params.x;
     float influence = 1.0f;
     if (radius > 0.0f)
     {
-        if (dist >= radius) return float3(0.0f, 0.0f, 0.0f);
-        influence = pow(saturate(1.0f - dist / radius), f.params.y);
+        if (distance >= radius) return float3(0.0f, 0.0f, 0.0f);
+        influence = FluidForceFalloff(distance, radius, force.params.y);
     }
-    const float s = strength * influence;
-    const float3 a = f.directionStrength.xyz;
-    const uint type = uint(f.centerType.w + 0.5f);
+    const float effectiveStrength = strength * influence;
+    const float3 direction = force.directionStrength.xyz;
+    const uint type = uint(force.centerType.w + 0.5f);
     switch (type)
     {
-    case 0: ///< @note Wind
-        return a * (s * dt);
-    case 1: ///< @note Attract
-        return dist < 1.0e-5f ? float3(0.0f, 0.0f, 0.0f) : -(d / dist) * (s * dt);
-    case 2: ///< @note Repulse
-        return dist < 1.0e-5f ? float3(0.0f, 0.0f, 0.0f) : (d / dist) * (s * dt);
-    case 3: ///< @note Vortex
+    case FLUID_FORCE_WIND:
+        return direction * (effectiveStrength * dt);
+    case FLUID_FORCE_ATTRACT:
+        return distance < FLUID_FORCE_DIRECTION_EPSILON
+            ? float3(0.0f, 0.0f, 0.0f)
+            : -(fromCenter / distance) * (effectiveStrength * dt);
+    case FLUID_FORCE_REPULSE:
+        return distance < FLUID_FORCE_DIRECTION_EPSILON
+            ? float3(0.0f, 0.0f, 0.0f)
+            : (fromCenter / distance) * (effectiveStrength * dt);
+    case FLUID_FORCE_VORTEX:
     {
-        const float3 t = cross(a, d);
-        const float tl = length(t);
-        return tl < 1.0e-5f ? float3(0.0f, 0.0f, 0.0f) : (t / tl) * (s * dt);
+        const float3 tangent = cross(direction, fromCenter);
+        const float tangentLength = length(tangent);
+        return tangentLength < FLUID_FORCE_DIRECTION_EPSILON
+            ? float3(0.0f, 0.0f, 0.0f)
+            : (tangent / tangentLength) * (effectiveStrength * dt);
     }
-    case 4: ///< @note Noise
+    case FLUID_FORCE_NOISE:
     {
-        const float fi = float(index);
-        const float3 q = p * f.params.z + gNoiseOffset + float3(fi * 17.31f, -time * f.params.w, fi * 5.73f);
-        return FluidCurlNoise(q) * (s * dt);
+        const float3 noisePosition = position * force.params.z + gNoiseOffset
+            + FluidForceNoisePhase(index, time, force.params.w);
+        return FluidCurlNoise(noisePosition) * (effectiveStrength * dt);
     }
-    case 5: ///< @note Drag
-        /// @note 強さは渦の逆回転のために負を許している。減衰に負を入れると速度を増幅して発散するので 0 で止める。
-        return -v * (1.0f - exp(-max(s, 0.0f) * dt));
+    case FLUID_FORCE_DRAG:
+        return FluidForceDragDelta(velocity, effectiveStrength, dt);
     default:
         return float3(0.0f, 0.0f, 0.0f);
     }

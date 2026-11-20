@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 
-/// @note 手順と式は Projects/Engine/src/Asset/FluidLiquidSolver.cpp (CPU) に合わせてある。
+/// @note 粒子の更新手順は Projects/Fluid/src/FluidLiquidSolver.cpp (CPU) に合わせてある。
 /// @note 粒子の状態は float4 × 2: [2i] = xyz 位置 / w 年齢、[2i + 1] = xyz 速度 / w 状態。
 /// @note 状態は 0 = まだ湧いていない / 1 = 生きている / 2 = 消えた (寿命・領域外)。
 
@@ -16,8 +16,9 @@
 #ifndef LIQUID_COMMON_HLSLI
 #define LIQUID_COMMON_HLSLI
 
-#include "Rendering/ParticleNoise.hlsli" ///< @note ValueNoise3D (core::ValueNoise3D と同じ式)
+#include "Rendering/ParticleNoise.hlsli" ///< @note ValueNoise3D は CPU の math::ValueNoise3D と同じ式。
 #include "Bake/Fluid/FluidColliderMath.hlsli"
+#include "Bake/Fluid/FluidForceMath.hlsli"
 
 struct LiquidForce
 {
@@ -60,7 +61,7 @@ cbuffer LiquidPassConstants : register(b1)
     uint gPassD;
 };
 
-/// @note CPU の kMaxPushSpeed / kColliderContactScale と同じ値。
+/// @note CPU の MAX_CORRECTION_SPEED / kColliderContactScale と同じ値。
 static const float kLiquidMaxPushSpeed = 2.0f;
 static const float kLiquidContactScale = 1.05f;
 /// @note 生きていない粒子の鍵。並べると必ず末尾へ落ちる (セル番号は 9200 万未満)。
@@ -98,52 +99,57 @@ uint LiquidCellKey(int3 cell)
     return (uint(cell.z) * gCellsY + uint(cell.y)) * gCellsX + uint(cell.x);
 }
 
-/// @note 以下は Fluid/FluidOperatorEval.hpp の正本の写し (液体は常に 3D なので volumetric = true の枝だけ、
-/// @note ノイズの切り出し位置は 0)。式を変えるときは両方を直す。
-
-/// @note core::CurlNoise と同じ式。
+/// @note CPU の math::CurlNoise と同じ式。
 float3 LiquidCurlNoise(float3 p)
 {
     return CurlNoise3D(p);
 }
 
 /// @note FluidForceDelta。index は有効な力の中での添字 (ノイズの切り出し位置をずらす)。
-float3 LiquidForceDelta(LiquidForce f, uint index, float3 p, float3 v, float time, float dt)
+float3 LiquidForceDelta(LiquidForce force, uint index, float3 position, float3 velocity, float time, float dt)
 {
     float3 delta = float3(0.0f, 0.0f, 0.0f);
-    const float strength = f.directionStrength.w;
-    const float3 d = p - f.centerType.xyz;
-    const float dist = length(d);
-    const float radius = f.params.x;
-    if (strength != 0.0f && (radius <= 0.0f || dist < radius))
+    const float strength = force.directionStrength.w;
+    const float3 fromCenter = position - force.centerType.xyz;
+    const float distance = length(fromCenter);
+    const float radius = force.params.x;
+    /// @note 液体は常に 3D。粒子が届く範囲でのみ距離減衰と速度差分を計算する。
+    if (strength != 0.0f && (radius <= 0.0f || distance < radius))
     {
-        const float influence = radius > 0.0f ? pow(saturate(1.0f - dist / radius), f.params.y) : 1.0f;
-        const float s = strength * influence;
-        const float3 a = f.directionStrength.xyz;
-        const uint type = uint(f.centerType.w + 0.5f);
-        if (type == 0u) ///< @note Wind
+        const float influence = radius > 0.0f ? FluidForceFalloff(distance, radius, force.params.y) : 1.0f;
+        const float effectiveStrength = strength * influence;
+        const float3 direction = force.directionStrength.xyz;
+        const uint type = uint(force.centerType.w + 0.5f);
+        if (type == FLUID_FORCE_WIND)
         {
-            delta = a * (s * dt);
+            delta = direction * (effectiveStrength * dt);
         }
-        else if (type == 1u || type == 2u) ///< @note Attract / Repulse
+        else if (type == FLUID_FORCE_ATTRACT || type == FLUID_FORCE_REPULSE)
         {
-            if (dist >= 1.0e-5f) delta = (d / dist) * (type == 1u ? -(s * dt) : (s * dt));
+            if (distance >= FLUID_FORCE_DIRECTION_EPSILON)
+            {
+                const float signedStep = type == FLUID_FORCE_ATTRACT
+                    ? -(effectiveStrength * dt)
+                    : effectiveStrength * dt;
+                delta = (fromCenter / distance) * signedStep;
+            }
         }
-        else if (type == 3u) ///< @note Vortex (3D は軸 = 向き)
+        else if (type == FLUID_FORCE_VORTEX)
         {
-            const float3 t = cross(a, d);
-            const float tl = length(t);
-            if (tl >= 1.0e-5f) delta = (t / tl) * (s * dt);
+            const float3 tangent = cross(direction, fromCenter);
+            const float tangentLength = length(tangent);
+            if (tangentLength >= FLUID_FORCE_DIRECTION_EPSILON)
+                delta = (tangent / tangentLength) * (effectiveStrength * dt);
         }
-        else if (type == 4u) ///< @note Noise
+        else if (type == FLUID_FORCE_NOISE)
         {
-            const float fi = float(index);
-            const float3 q = p * f.params.z + float3(fi * 17.31f, -time * f.params.w, fi * 5.73f);
-            delta = LiquidCurlNoise(q) * (s * dt);
+            const float3 noisePosition = position * force.params.z
+                + FluidForceNoisePhase(index, time, force.params.w);
+            delta = LiquidCurlNoise(noisePosition) * (effectiveStrength * dt);
         }
-        else if (type == 5u) ///< @note Drag。負の強さは減衰にならず発散するので 0 で止める。
+        else if (type == FLUID_FORCE_DRAG)
         {
-            delta = -v * (1.0f - exp(-max(s, 0.0f) * dt));
+            delta = FluidForceDragDelta(velocity, effectiveStrength, dt);
         }
     }
     return delta;
