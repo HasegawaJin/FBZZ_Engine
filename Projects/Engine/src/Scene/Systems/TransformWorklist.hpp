@@ -7,44 +7,54 @@
 #include <vector>
 
 namespace fbzz::scene::transform_detail {
-/// @note Owns only scratch capacity between calls; object references never outlive a traversal.
+/// @note 呼び出し間で作業領域の容量を再利用する。GameObject の非所有参照は走査終了時に消す。
 class Worklist {
-    struct Entry { GameObject* object; GameObject* parent; bool complete = false; };
+    struct Entry {
+        GameObject* object;
+        GameObject* parent;
+        bool worldUpdated = false;
+    };
     std::vector<Entry> m_entries;
-    std::vector<std::size_t> m_slots, m_ancestors;
+    std::vector<std::size_t> m_entryIndexBySlot;
+    std::vector<std::size_t> m_pendingAncestors;
 public:
     void Collect(Scene& scene)
     {
         m_entries.clear();
-        m_slots.resize(scene.EntitySlotCount());
+        m_entryIndexBySlot.resize(scene.EntitySlotCount());
         for (GameObject& object : scene.GameObjects()) {
-            m_slots[object.GetID().index] = m_entries.size();
+            m_entryIndexBySlot[object.GetID().index] = m_entries.size();
             m_entries.push_back({&object, object.GetParent()});
         }
     }
 
-    /// @pre No callbacks, hierarchy edits or nested traversal occur; the hierarchy is acyclic.
+    /// @pre Collect 後に階層を編集せず、更新関数からコールバックやネストした走査を呼ばない。階層は非循環。
+    /// @see Docs/design/script-transform-contract.md
     template<class Update> void Propagate(Update&& update)
     {
         for (std::size_t index = 0; index < m_entries.size(); ++index) {
-            if (m_entries[index].complete) continue;
-            m_ancestors.clear();
-            std::size_t current = index;
+            if (m_entries[index].worldUpdated) continue;
+            m_pendingAncestors.clear();
+
+            /// @note Scene の格納順に関わらず、親が確定する地点までさかのぼる。
+            std::size_t ancestor = index;
             for (;;) {
-                const auto& entry = m_entries[current];
-                if (entry.complete) break;
-                m_ancestors.push_back(current);
+                const auto& entry = m_entries[ancestor];
+                if (entry.worldUpdated) break;
+                m_pendingAncestors.push_back(ancestor);
                 if (!entry.parent) break;
-                current = m_slots[entry.parent->GetID().index];
+                ancestor = m_entryIndexBySlot[entry.parent->GetID().index];
             }
-            for (auto it = m_ancestors.rbegin(); it != m_ancestors.rend(); ++it) {
+
+            /// @note 逆順に適用すると子は更新済みの親を読み、共有する祖先は一度だけ計算する。
+            for (auto it = m_pendingAncestors.rbegin(); it != m_pendingAncestors.rend(); ++it) {
                 auto& entry = m_entries[*it];
                 update(*entry.object, entry.parent ? &entry.parent->transform : nullptr);
-                entry.complete = true;
+                entry.worldUpdated = true;
             }
         }
-        m_ancestors.clear();
+        m_pendingAncestors.clear();
         m_entries.clear();
     }
 };
-} /// @note namespace fbzz::scene::transform_detail
+}

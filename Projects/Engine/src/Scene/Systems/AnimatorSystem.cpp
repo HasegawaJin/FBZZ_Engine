@@ -3273,13 +3273,170 @@ OrderingHints AnimatorSystem::GetOrder() const
     return OrderingHints{}.After<TransformLateUpdate>();
 }
 
+namespace {
+
+void ClearRootMotionDelta(AnimatorComponent& animator)
+{
+    animator.rootMotionDeltaPosition = math::Vector3::ZERO;
+    animator.rootMotionDeltaRotation = math::Quaternion::Identity();
+    animator.rootMotionWorldDelta = math::Vector3::ZERO;
+    animator.rootMotionWorldVelocity = math::Vector3::ZERO;
+    animator.rootMotionDeltaTime = 0.0f;
+    animator.rootMotionAppliedByEngine = false;
+}
+
+/// @note Pause は物理補正済みの姿勢を保持し、前回パレットと移動差分だけを静止状態へ揃える。
+void HoldPausedPose(AnimatorComponent& animator, renderer::ResourceManager& resources)
+{
+    animator.poseEvaluatedThisFrame = false;
+    animator.firedEvents.clear();
+    SnapshotPreviousBonePalette(animator, resources);
+    ClearRootMotionDelta(animator);
+    /// @note 再開直後の差分を失わないよう、連続した有効履歴だけ時計を止めたまま描画フレームへ繋ぐ。
+    if (animator.clipsLoaded && animator.appliedAssetGeneration == asset::AssetManager::GetAssetGeneration()
+        && animator.loadedControllerPath == animator.controllerPath) {
+        for (auto& sample : animator.rootMotionSamples)
+            if (sample.frame + 1 == Time::frameCount) sample.frame = Time::frameCount;
+    }
+}
+
+void RefreshAnimatorAssets(AnimatorComponent& animator)
+{
+    if (!animator.controllerPath.empty() &&
+        animator.loadedControllerPath != animator.controllerPath) {
+        asset::AnimatorControllerAsset controller;
+        if (asset::LoadAnimatorControllerAsset(animator.controllerPath, controller)) {
+            asset::ApplyAnimatorControllerAsset(controller, animator);
+        }
+        animator.loadedControllerPath = animator.controllerPath;
+        animator.appliedAssetGeneration = asset::AssetManager::GetAssetGeneration();
+    }
+
+    /// @note アセットがディスクで書き換わったら派生キャッシュを捨てる。loadedControllerPath は残す (消すと保存のたびに再生が頭へ戻る)。
+    if (const int assetGeneration = asset::AssetManager::GetAssetGeneration();
+        animator.appliedAssetGeneration != assetGeneration) {
+        animator.appliedAssetGeneration = assetGeneration;
+
+        if (!animator.controllerPath.empty()) {
+            asset::AnimatorControllerAsset controller;
+            if (asset::LoadAnimatorControllerAsset(animator.controllerPath, controller))
+                asset::ApplyAnimatorControllerAsset(controller, animator);
+        }
+        /// @note クリップ参照と直接読込の mask は、資産更新後に明示的に再解決する。
+        animator.clipsLoaded = false;
+        animator.baseLayerMask.Invalidate();
+        for (auto& layer : animator.layers)
+            layer.mask.Invalidate();
+    }
+
+    /// @note 空クリップの再試行は FlushFailed() で世代が進んだときだけ。毎フレーム試すと WARN が溢れる。
+    const bool needsRetry = !animator.clipsLoaded ||
+        (animator.ClipCount() == 0 &&
+         !animator.states.empty() &&
+         asset::AssetManager::GetFlushGeneration() > animator.clipsAttemptGeneration);
+    if (needsRetry) {
+        LoadClips(animator);
+        animator.poseStateName.clear();
+    }
+}
+
+/// @note 編集中もソケットの親付けとボーン選択に階層が要るため、バインド姿勢で構築する。
+void PublishStoppedPose(Scene& scene, GameObject& go, AnimatorComponent& animator,
+                        SkinnedMeshRenderer* smr, const asset::Skeleton* skeleton,
+                        renderer::ResourceManager& resources)
+{
+    animator.boneBake = {};
+    if (smr && skeleton && skeleton->rootNodeIndex >= 0 &&
+        skeleton->rootNodeIndex < static_cast<int>(skeleton->nodes.size()))
+    {
+        if (EnsureBoneHierarchy(scene, go, *smr, *skeleton))
+            ApplyBindPoseToBones(scene, *skeleton, *smr, go);
+    }
+    UploadBindPose(animator, resources, skeleton);
+    /// @note 停止中は移動量ゼロを公開する。前フレームの delta が残ると Inspector やポーリングが古い値を掴む。
+    ClearRootMotionDelta(animator);
+    animator.rootMotionSamples.clear();
+}
+
+/// @note 骨がなくてもステートを進め、Root Motion・イベント・プロパティの副作用を適用する。
+void AdvanceWithoutSkeleton(Scene& scene, GameObject& go, AnimatorComponent& animator,
+                            SkinnedMeshRenderer* smr, renderer::ResourceManager& resources,
+                            float previousTime, float dt)
+{
+    animator.boneBake = {};
+    const asset::AnimationClip* clip = AdvanceStateMachineAnimator(animator, dt);
+    if (clip) {
+        const float currentTime = animator.stateTime;
+        const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
+        ProcessRootMotion(scene, animator, go,
+            { WeightedClip{ clip, nullptr,
+                            static_cast<double>(currentTime) * tps, 1.0f, 1.0f,
+                            ResolveRootMotion(animator, *clip),
+                            animator.speed < 0.0f } },
+            dt);
+        ApplyClipSideEffects(go, animator, *clip, smr,
+                             previousTime, currentTime, true);
+        if (smr) UpdateMorphVertexBuffers(*smr, resources);
+    }
+    UploadBindPose(animator, resources);
+}
+
+float FindNearestCameraDistanceSquared(const std::vector<math::Vector3>& cameraPositions,
+                                       const math::Vector3& worldPosition)
+{
+    float nearestSquared = (std::numeric_limits<float>::max)();
+    for (const auto& position : cameraPositions)
+        nearestSquared = (std::min)(nearestSquared, (position - worldPosition).LengthSq());
+    return nearestSquared;
+}
+
+bool HasRigControl(GameObject& object)
+{
+    return object.GetComponent<IKSolverComponent>() || object.GetComponent<SpringBoneComponent>()
+        || object.GetComponent<RagdollComponent>() || object.GetComponent<MotionWarpComponent>();
+}
+
+BoneBakeFallback ResolveBoneBakeFallback(Scene& scene, GameObject& go,
+                                         const AnimatorComponent& animator, const SkinnedMeshRenderer& smr,
+                                         const std::vector<math::Vector3>& cameraPositions)
+{
+    const int mode = animator.boneBakeMode;
+    if (mode != static_cast<int>(BoneBakeMode::CPU_BAKED) && mode != static_cast<int>(BoneBakeMode::GPU_SHARED)
+        && mode != static_cast<int>(BoneBakeMode::GPU_POSE_SHARED)) return BoneBakeFallback::DISABLED;
+    if (animator.boneBakeRequireCpuBones) return BoneBakeFallback::CPU_BONES_REQUIRED;
+    if (animator.externalPose || HasRigControl(go)) return BoneBakeFallback::RIG_CONTROL;
+    if (!animator.layers.empty() || !animator.baseLayerMask.path.empty()) return BoneBakeFallback::LAYERS_OR_MASK;
+    if (!smr.morphWeights.empty()) return BoneBakeFallback::MORPH;
+    if (!std::isfinite(animator.boneBakeMinDistance) || animator.boneBakeMinDistance < 0.0f)
+        return BoneBakeFallback::INVALID_SOURCE;
+
+    const float nearestSquared = FindNearestCameraDistanceSquared(cameraPositions, go.transform.worldPosition);
+    const float minimumDistance = animator.boneBakeMinDistance;
+    BoneBakeFallback fallback = cameraPositions.empty() || nearestSquared < minimumDistance * minimumDistance
+        ? BoneBakeFallback::NEAR_CAMERA : BoneBakeFallback::NONE;
+
+    /// @note 先に評価した Actor のコールバックで制御が追加され得る。共有を決定するたびに現在のボーンを確認する。
+    if (!scene.GetEntities<IKSolverComponent>().empty() || !scene.GetEntities<SpringBoneComponent>().empty()
+        || !scene.GetEntities<RagdollComponent>().empty() || !scene.GetEntities<MotionWarpComponent>().empty()) {
+        for (EntityID node : smr.nodeEntities) {
+            auto* boneObject = scene.GetGameObject(node);
+            if (boneObject && HasRigControl(*boneObject)) fallback = BoneBakeFallback::RIG_CONTROL;
+        }
+    }
+    return fallback;
+}
+
+} /// @note namespace
+
 void AnimatorSystem::Update(SystemContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("AnimatorSystem");
     if (!ctx.resources) return;
     Scene& scene = ctx.scene;
     renderer::ResourceManager& resources = *ctx.resources;
-    const bool phaseEnabled=ctx.simulating && BeginAnimationPhaseDistribution(resources.FrameStamp(),Time::frameCount,scene.GetRenderSceneGeneration());
+    /// @note Actor 一覧を固定 → 前回姿勢を保存 → 今回の姿勢を評価 → 副作用と境界を更新 → 描画用パレットを送る。
+    const bool phaseEnabled = ctx.simulating
+        && BeginAnimationPhaseDistribution(resources.FrameStamp(), Time::frameCount, scene.GetRenderSceneGeneration());
     AnimationActorFrame actorFrame(ctx.simulating,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion(),resources.GetInstanceId());
     AnimationWorkFrame workFrame(ctx.simulating,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion());
     /// @note Final provenance is read after compatibilityBatch flush; no new clock or ownership is added.
@@ -3303,6 +3460,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
         if (camera && camera->enabled && owner && owner->activeInHierarchy())
             cameraPositions.push_back(owner->transform.worldPosition);
     }
+    /// @note コールバックはコンポーネントを追加・削除できるため、走査の元に使う EntityID だけをコピーする。
     const auto animatorSpan = scene.GetEntities<AnimatorComponent>();
     const auto animatorEntities = std::vector<EntityID>(
         animatorSpan.begin(),
@@ -3328,23 +3486,8 @@ void AnimatorSystem::Update(SystemContext& ctx)
             continue;
         }
         if (!ctx.simulating && ctx.playing) {
-            /// @note Pause は物理補正済みの最終姿勢を保持し、静止した現在姿勢を前回パレットにも反映する。
-            if (AnimationPhaseDistributionEnabled()) CancelAnimationPhaseDistribution(PhaseKey(scene,id));
-            animator->poseEvaluatedThisFrame = false;
-            animator->firedEvents.clear();
-            SnapshotPreviousBonePalette(*animator, resources);
-            animator->rootMotionDeltaPosition = math::Vector3::ZERO;
-            animator->rootMotionDeltaRotation = math::Quaternion::Identity();
-            animator->rootMotionWorldDelta = math::Vector3::ZERO;
-            animator->rootMotionWorldVelocity = math::Vector3::ZERO;
-            animator->rootMotionDeltaTime = 0.0f;
-            animator->rootMotionAppliedByEngine = false;
-            /// @note 再開直後の差分を失わないよう、連続した有効履歴だけ時計を止めたまま描画フレームへ繋ぐ。
-            if (animator->clipsLoaded && animator->appliedAssetGeneration == asset::AssetManager::GetAssetGeneration()
-                && animator->loadedControllerPath == animator->controllerPath) {
-                for (auto& sample : animator->rootMotionSamples)
-                    if (sample.frame + 1 == Time::frameCount) sample.frame = Time::frameCount;
-            }
+            if (AnimationPhaseDistributionEnabled()) CancelAnimationPhaseDistribution(PhaseKey(scene, id));
+            HoldPausedPose(*animator, resources);
             continue;
         }
         auto* actorObservation=actorFrame.Active()?actorFrame.BeginActor(id.index,id.generation,
@@ -3382,41 +3525,7 @@ void AnimatorSystem::Update(SystemContext& ctx)
         /// @note Held poses retain matching culling bounds until a new pose or bind pose replaces them.
         animator->poseEvaluatedThisFrame = false;
 
-        if (!animator->controllerPath.empty() &&
-            animator->loadedControllerPath != animator->controllerPath) {
-            asset::AnimatorControllerAsset controller;
-            if (asset::LoadAnimatorControllerAsset(animator->controllerPath, controller)) {
-                asset::ApplyAnimatorControllerAsset(controller, *animator);
-            }
-            animator->loadedControllerPath = animator->controllerPath;
-            animator->appliedAssetGeneration = asset::AssetManager::GetAssetGeneration();
-        }
-
-        /// @note アセットがディスクで書き換わったら派生キャッシュを捨てる。loadedControllerPath は残す (消すと保存のたびに再生が頭へ戻る)。
-        if (const int assetGeneration = asset::AssetManager::GetAssetGeneration();
-            animator->appliedAssetGeneration != assetGeneration) {
-            animator->appliedAssetGeneration = assetGeneration;
-
-            if (!animator->controllerPath.empty()) {
-                asset::AnimatorControllerAsset controller;
-                if (asset::LoadAnimatorControllerAsset(animator->controllerPath, controller))
-                    asset::ApplyAnimatorControllerAsset(controller, *animator);
-            }
-            /// @note クリップ参照と直接読込の mask は、資産更新後に明示的に再解決する。
-            animator->clipsLoaded = false;
-            animator->baseLayerMask.Invalidate();
-            for (auto& layer : animator->layers)
-                layer.mask.Invalidate();
-        }
-
-        /// @note 空クリップの再試行は FlushFailed() で世代が進んだときだけ。毎フレーム試すと WARN が溢れる。
-        const bool needsRetry = !animator->clipsLoaded ||
-            (animator->ClipCount() == 0 &&
-             !animator->states.empty() &&
-             asset::AssetManager::GetFlushGeneration() > animator->clipsAttemptGeneration);
-        if (needsRetry)
-            LoadClips(*animator);
-        if (needsRetry) animator->poseStateName.clear();
+        RefreshAnimatorAssets(*animator);
 
         if (!animator->skinningBuffer.IsValid())
             animator->skinningBuffer = resources.CreateConstantBuffer(sizeof(SkinningCB));
@@ -3462,24 +3571,8 @@ void AnimatorSystem::Update(SystemContext& ctx)
 
         /// @note 再生は Play Mode のみ。停止中はバインドポーズで静止させる (モーション確認は Animation Preview の役目)。
         if (!ctx.simulating) {
-            if(AnimationPhaseDistributionEnabled())CancelAnimationPhaseDistribution(PhaseKey(scene,id));
-            animator->boneBake = {};
-            /// @note ソケットの親付けやボーン選択のため、ボーン階層は停止中も用意する。
-            if (smr && skeleton && skeleton->rootNodeIndex >= 0 &&
-                skeleton->rootNodeIndex < static_cast<int>(skeleton->nodes.size()))
-            {
-                if (EnsureBoneHierarchy(scene, go, *smr, *skeleton))
-                    ApplyBindPoseToBones(scene, *skeleton, *smr, go);
-            }
-            UploadBindPose(*animator, resources, skeleton);
-            /// @note 停止中は移動量ゼロを公開する。前フレームの delta が残ると Inspector やポーリングが古い値を掴む。
-            animator->rootMotionDeltaPosition = math::Vector3::ZERO;
-            animator->rootMotionDeltaRotation = math::Quaternion::Identity();
-            animator->rootMotionWorldDelta = math::Vector3::ZERO;
-            animator->rootMotionWorldVelocity = math::Vector3::ZERO;
-            animator->rootMotionDeltaTime = 0.0f;
-            animator->rootMotionAppliedByEngine = false;
-            animator->rootMotionSamples.clear();
+            if (AnimationPhaseDistributionEnabled()) CancelAnimationPhaseDistribution(PhaseKey(scene, id));
+            PublishStoppedPose(scene, go, *animator, smr, skeleton, resources);
             continue;
         }
 
@@ -3487,26 +3580,12 @@ void AnimatorSystem::Update(SystemContext& ctx)
         if(actorObservation && !skeleton)actorObservation->posePathStatus=2;
         if (!skeleton) {
             if(phaseEnabled)CancelAnimationPhaseDistribution(PhaseKey(scene,id));
-            animator->boneBake = {};
-            const asset::AnimationClip* clip = AdvanceStateMachineAnimator(*animator, dt);
-            if (clip) {
-                const float currentTime = animator->stateTime;
-                const double tps = clip->ticksPerSecond > 0.0 ? clip->ticksPerSecond : 30.0;
-                ProcessRootMotion(scene, *animator, go,
-                    { WeightedClip{ clip, nullptr,
-                                    static_cast<double>(currentTime) * tps, 1.0f, 1.0f,
-                                    ResolveRootMotion(*animator, *clip),
-                                    animator->speed < 0.0f } },
-                    dt);
-                ApplyClipSideEffects(go, *animator, *clip, smr,
-                                     previousTime, currentTime, true);
-                if (smr) UpdateMorphVertexBuffers(*smr, resources);
-            }
-            UploadBindPose(*animator, resources);
+            AdvanceWithoutSkeleton(scene, go, *animator, smr, resources, previousTime, dt);
             if(actorObservation)actorFrame.FinishActor(actorObservation,scene,resources.FrameStamp(),scene.GetRenderSceneGeneration(),resources.GetResetVersion(),resources.GetInstanceId());
             continue;
         }
 
+        /// @note LOD が飛ばせるのは姿勢評価だけ。ルートモーションや補正が必要な Actor は毎回評価する。
         float interval = 0.0f;
         const AnimationState* lodState = FindState(*animator, animator->currentStateName);
         bool poseOnlyClips = animator->ClipCount() != 0;
@@ -3515,12 +3594,9 @@ void AnimatorSystem::Update(SystemContext& ctx)
         const bool safeLod = animator->poseLodEnabled && lodState && poseOnlyClips
             && animator->blendToState.empty() && !animator->externalPose
             && !animator->rootMotion.Extracts() && animator->layers.empty()
-            && !go.GetComponent<IKSolverComponent>() && !go.GetComponent<SpringBoneComponent>() && !go.GetComponent<RagdollComponent>()
-            && !go.GetComponent<MotionWarpComponent>() && !cameraPositions.empty();
+            && !HasRigControl(go) && !cameraPositions.empty();
         if (safeLod) {
-            float nearestSq = (std::numeric_limits<float>::max)();
-            for (const auto& position : cameraPositions)
-                nearestSq = (std::min)(nearestSq, (position - go.transform.worldPosition).LengthSq());
+            const float nearestSq = FindNearestCameraDistanceSquared(cameraPositions, go.transform.worldPosition);
             const float nearDistance = (std::max)(0.0f, animator->poseLodNearDistance);
             const float farDistance = (std::max)(nearDistance, animator->poseLodFarDistance);
             if(actorObservation) {
@@ -3564,33 +3640,8 @@ void AnimatorSystem::Update(SystemContext& ctx)
             if(phaseRun->creditDue)CountAnimationPhaseCreditDue();
         }
 
-        BoneBakeFallback bakeFallback = BoneBakeFallback::DISABLED;
-        const bool bakeRequested = animator->boneBakeMode == static_cast<int>(BoneBakeMode::CPU_BAKED)
-            || animator->boneBakeMode == static_cast<int>(BoneBakeMode::GPU_SHARED)
-            || animator->boneBakeMode == static_cast<int>(BoneBakeMode::GPU_POSE_SHARED);
-        bool allowBoneBake = bakeRequested;
-        if (allowBoneBake && animator->boneBakeRequireCpuBones) bakeFallback = BoneBakeFallback::CPU_BONES_REQUIRED;
-        else if (allowBoneBake && (animator->externalPose || go.GetComponent<IKSolverComponent>()
-            || go.GetComponent<SpringBoneComponent>() || go.GetComponent<RagdollComponent>() || go.GetComponent<MotionWarpComponent>())) bakeFallback = BoneBakeFallback::RIG_CONTROL;
-        else if (allowBoneBake && (!animator->layers.empty() || !animator->baseLayerMask.path.empty())) bakeFallback = BoneBakeFallback::LAYERS_OR_MASK;
-        else if (allowBoneBake && !smr->morphWeights.empty()) bakeFallback = BoneBakeFallback::MORPH;
-        else if (allowBoneBake && (!std::isfinite(animator->boneBakeMinDistance) || animator->boneBakeMinDistance < 0.0f)) bakeFallback = BoneBakeFallback::INVALID_SOURCE;
-        else if (allowBoneBake) {
-            float nearestSq = (std::numeric_limits<float>::max)();
-            for (const auto& position : cameraPositions)
-                nearestSq = (std::min)(nearestSq, (position - go.transform.worldPosition).LengthSq());
-            bakeFallback = cameraPositions.empty() || nearestSq < animator->boneBakeMinDistance * animator->boneBakeMinDistance
-                ? BoneBakeFallback::NEAR_CAMERA : BoneBakeFallback::NONE;
-            /// @note Query live membership per actor so controls added by an earlier callback still disable sharing in this frame.
-            if (!scene.GetEntities<IKSolverComponent>().empty() || !scene.GetEntities<SpringBoneComponent>().empty()
-                || !scene.GetEntities<RagdollComponent>().empty()
-                || !scene.GetEntities<MotionWarpComponent>().empty()) for (EntityID node : smr->nodeEntities) {
-                auto* boneObject = scene.GetGameObject(node);
-                if (boneObject && (boneObject->GetComponent<IKSolverComponent>() || boneObject->GetComponent<SpringBoneComponent>() || boneObject->GetComponent<RagdollComponent>()
-                    || boneObject->GetComponent<MotionWarpComponent>())) bakeFallback = BoneBakeFallback::RIG_CONTROL;
-            }
-        }
-        allowBoneBake &= bakeFallback == BoneBakeFallback::NONE;
+        const BoneBakeFallback bakeFallback = ResolveBoneBakeFallback(scene, go, *animator, *smr, cameraPositions);
+        const bool allowBoneBake = bakeFallback == BoneBakeFallback::NONE;
         /// @note Diagnostic baselines are scalar only; the existing scheduler and pose path receive unchanged decisions.
         auto* observation = CurrentAnimationWorkRow();
         const uint64_t bindCallsBefore = observation ? observation->bindPaletteUpdateCalls : 0;
@@ -3621,18 +3672,19 @@ void AnimatorSystem::Update(SystemContext& ctx)
         }
         animator->poseSkeleton = skeleton;
 
+        /// @note 追加レイヤーとクリップの副作用を適用してから、最終姿勢に合う描画境界を更新する。
         {
-        AnimationWorkScope effectWork(AnimationWorkPart::SIDE_EFFECTS_BOUNDS);
-        ApplyAnimationLayers(*animator, *skeleton, scene, go, *smr, dt);
+            AnimationWorkScope effectWork(AnimationWorkPart::SIDE_EFFECTS_BOUNDS);
+            ApplyAnimationLayers(*animator, *skeleton, scene, go, *smr, dt);
 
-        const asset::AnimationClip* effectClip = ResolveStateMachineEffectClip(*animator);
-        if (effectClip) {
-            const float currentTime = animator->stateTime;
-            ApplyClipSideEffects(go, *animator, *effectClip, smr,
-                                 previousTime, currentTime, false);
-        }
-        UpdateMorphVertexBuffers(*smr, resources);
-        if (animator->poseEvaluatedThisFrame) UpdateSkinnedBounds(*animator, *skeleton);
+            const asset::AnimationClip* effectClip = ResolveStateMachineEffectClip(*animator);
+            if (effectClip) {
+                const float currentTime = animator->stateTime;
+                ApplyClipSideEffects(go, *animator, *effectClip, smr,
+                                     previousTime, currentTime, false);
+            }
+            UpdateMorphVertexBuffers(*smr, resources);
+            if (animator->poseEvaluatedThisFrame) UpdateSkinnedBounds(*animator, *skeleton);
         }
         if (auto* row = CurrentAnimationWorkRow()) {
             if (!animator->boneBake.active) ++row->legacyPoses;
@@ -3654,14 +3706,16 @@ void AnimatorSystem::Update(SystemContext& ctx)
             CompleteAnimationPhaseDistribution(phaseRun->ticket,phaseRun->outcome,coherent);
         }
 
+        /// @note 保持した姿勢の再転送を省き、GPU で確定する姿勢はその経路に転送を任せる。
         if (!animator->poseEvaluatedThisFrame || animator->boneBake.cpuDeferred) continue;
 
         {
-        AnimationWorkScope currentCbWork(AnimationWorkPart::CURRENT_CB);
-        if (auto* row = CurrentAnimationWorkRow()) {
-            ++row->currentPaletteUpdateCalls; row->currentPaletteApiBytes += asset::MAX_SKINNING_BONES * sizeof(math::Matrix4);
-        }
-        BoneCbBatch::UpdatePalette(resources,animator->skinningBuffer,animator->boneMatrices);
+            AnimationWorkScope currentCbWork(AnimationWorkPart::CURRENT_CB);
+            if (auto* row = CurrentAnimationWorkRow()) {
+                ++row->currentPaletteUpdateCalls;
+                row->currentPaletteApiBytes += asset::MAX_SKINNING_BONES * sizeof(math::Matrix4);
+            }
+            BoneCbBatch::UpdatePalette(resources, animator->skinningBuffer, animator->boneMatrices);
         }
     }
 }

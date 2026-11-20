@@ -16,25 +16,30 @@
 
 namespace fbzz::scene {
 
+static math::Vector3 ComputeWorldScale(const Transform& local, const Transform* parent)
+{
+    if (!parent) return local.scale;
+    return {
+        parent->worldScale.x * local.scale.x,
+        parent->worldScale.y * local.scale.y,
+        parent->worldScale.z * local.scale.z
+    };
+}
+
 void UpdateWorldTransform(Transform& tf, const Transform* parentTransform) {
     if (parentTransform) {
-        math::Vector3 scaledLocal = {
+        const math::Vector3 scaledLocal = {
             tf.position.x * parentTransform->worldScale.x,
             tf.position.y * parentTransform->worldScale.y,
             tf.position.z * parentTransform->worldScale.z
         };
         tf.worldRotation   = (parentTransform->worldRotation * tf.rotation).Normalized();
         tf.worldPosition   = parentTransform->worldPosition + parentTransform->worldRotation * scaledLocal;
-        tf.worldScale = {
-            parentTransform->worldScale.x * tf.scale.x,
-            parentTransform->worldScale.y * tf.scale.y,
-            parentTransform->worldScale.z * tf.scale.z
-        };
     } else {
         tf.worldRotation   = tf.rotation;
         tf.worldPosition   = tf.position;
-        tf.worldScale = tf.scale;
     }
+    tf.worldScale = ComputeWorldScale(tf, parentTransform);
 }
 
 static void UpdateWorldTransform(GameObject& go, const Transform* parentTransform)
@@ -53,18 +58,42 @@ struct TransformTraversalWorkspace {
 };
 
 thread_local TransformTraversalWorkspace s_transformTraversal;
-} /// @note namespace
+}
 
-static void UpdateWorldTransformQueue(std::vector<GameObject*>& queue)
+static void AppendChildren(GameObject& object, std::vector<GameObject*>& pending)
 {
-    for (size_t index = 0; index < queue.size(); ++index) {
-        GameObject* go = queue[index];
-        const GameObject* parent = go->GetParent();
-        UpdateWorldTransform(*go, parent ? &parent->transform : nullptr);
-        for (int i = 0; i < go->GetChildCount(); ++i)
-            if (auto* child = go->GetChild(i)) queue.push_back(child);
+    for (int index = 0; index < object.GetChildCount(); ++index) {
+        if (auto* child = object.GetChild(index)) pending.push_back(child);
     }
-    queue.clear();
+}
+
+static void UpdateWorldTransformQueue(std::vector<GameObject*>& pending)
+{
+    for (size_t index = 0; index < pending.size(); ++index) {
+        GameObject& object = *pending[index];
+        const GameObject* parent = object.GetParent();
+        UpdateWorldTransform(object, parent ? &parent->transform : nullptr);
+        AppendChildren(object, pending);
+    }
+    pending.clear();
+}
+
+static void UpdateInterpolatedWorldTransform(GameObject& object, const Transform* parent, float alpha)
+{
+    const auto* body = object.GetComponent<RigidBodyComponent>();
+    if (!body || !body->enabled || !body->rigidBody || body->rigidBody->IsStatic() ||
+        !body->hasPhysicsPoseHistory) {
+        UpdateWorldTransform(object, parent);
+        return;
+    }
+
+    /// @note 物理履歴はワールド座標なので位置と回転は直接補間し、子がこの描画用の姿勢を親として読む。
+    Transform& pose = object.transform;
+    const float inverseAlpha = 1.0f - alpha;
+    pose.worldPosition = body->previousPhysicsPosition * inverseAlpha + body->lastPhysicsPosition * alpha;
+    pose.worldRotation = math::Quaternion::Slerp(
+        body->previousPhysicsRotation, body->lastPhysicsRotation, alpha).Normalized();
+    pose.worldScale = ComputeWorldScale(pose, parent);
 }
 
 static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
@@ -79,33 +108,8 @@ static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
     profiler::Profiler::EndScope(rootsProfile);
     const auto propagationProfile = profiler::Profiler::BeginScope(
         profiler::ProfilerMarker("Transform::PropagateInterpolation"));
-    worklist.Propagate([alpha](GameObject& object, const Transform* parentTf) {
-        GameObject* go = &object;
-        auto* rb = go->GetComponent<RigidBodyComponent>();
-        if (rb && rb->enabled && rb->rigidBody && !rb->rigidBody->IsStatic() &&
-            rb->hasPhysicsPoseHistory) {
-            const float inverseAlpha = 1.0f - alpha;
-            go->transform.worldPosition =
-                rb->previousPhysicsPosition * inverseAlpha +
-                rb->lastPhysicsPosition * alpha;
-            go->transform.worldRotation = math::Quaternion::Slerp(
-                rb->previousPhysicsRotation,
-                rb->lastPhysicsRotation,
-                alpha).Normalized();
-
-            if (parentTf) {
-                go->transform.worldScale = {
-                    parentTf->worldScale.x * go->transform.scale.x,
-                    parentTf->worldScale.y * go->transform.scale.y,
-                    parentTf->worldScale.z * go->transform.scale.z
-                };
-            } else {
-                go->transform.worldScale = go->transform.scale;
-            }
-        } else {
-            UpdateWorldTransform(*go, parentTf);
-        }
-
+    worklist.Propagate([alpha](GameObject& object, const Transform* parent) {
+        UpdateInterpolatedWorldTransform(object, parent, alpha);
     });
     profiler::Profiler::EndScope(propagationProfile);
 }
@@ -113,6 +117,23 @@ static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
 ComponentAccess TransformSystem::GetAccess() const
 {
     return ComponentAccess{}.Unrestricted();
+}
+
+static void InitializePhysicsSyncStates(Scene& scene)
+{
+    scene.ForEachComponentChunk<RigidBodyComponent>([&scene](auto ids, auto bodies) {
+        for (std::size_t index = 0; index < ids.size(); ++index) {
+            auto& body = bodies[index];
+            if (!body.enabled || !body.rigidBody || body.hasPhysicsSyncState)
+                continue;
+            GameObject* object = scene.GetGameObject(ids[index]);
+            if (!object) continue;
+            const Transform& pose = object->transform;
+            body.rigidBody->SetPosition(pose.worldPosition);
+            body.rigidBody->SetRotation(pose.worldRotation);
+            body.ResetPhysicsSyncState(pose.worldPosition, pose.worldRotation);
+        }
+    });
 }
 
 void TransformSystem::Update(SystemContext& ctx)
@@ -123,22 +144,9 @@ void TransformSystem::Update(SystemContext& ctx)
     else
         FlushWorldTransforms(scene);
 
-    if (ctx.simulating && GetPhase() == Phase::PrePhysics) {
-        /// @note 最初の OnFixedUpdate が書いた姿勢を上書きしないよう、物理履歴は FixedScript より前に初期化する。
-        scene.ForEachComponentChunk<RigidBodyComponent>([&scene](auto ids, auto bodies) {
-            for (std::size_t index = 0; index < ids.size(); ++index) {
-                auto& body = bodies[index];
-                if (!body.enabled || !body.rigidBody || body.hasPhysicsSyncState)
-                    continue;
-                GameObject* go = scene.GetGameObject(ids[index]);
-                if (!go) continue;
-                body.rigidBody->SetPosition(go->transform.worldPosition);
-                body.rigidBody->SetRotation(go->transform.worldRotation);
-                body.ResetPhysicsSyncState(
-                    go->transform.worldPosition, go->transform.worldRotation);
-            }
-        });
-    }
+    /// @note 同期済みの world で剛体を初期化してから FixedScript に渡す。初回の FixedUpdate が設定した姿勢を初期化で上書きしない。
+    if (ctx.simulating && GetPhase() == Phase::PrePhysics)
+        InitializePhysicsSyncStates(scene);
 }
 
 void FlushWorldTransforms(Scene& scene)
@@ -168,6 +176,8 @@ void FlushWorldTransforms(GameObject& root)
     ancestors.clear();
     for (GameObject* parent = root.GetParent(); parent; parent = parent->GetParent())
         ancestors.push_back(parent);
+    /// @note 親の world に以前の描画補間値が残り得るため、祖先を上から local で計算し直してから対象を更新する。
+    /// @see Docs/design/script-transform-contract.md
     for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
         const GameObject* parent = (*it)->GetParent();
         UpdateWorldTransform(**it, parent ? &parent->transform : nullptr);
@@ -178,11 +188,10 @@ void FlushWorldTransforms(GameObject& root)
     const GameObject* parent = root.GetParent();
     UpdateWorldTransform(root, parent ? &parent->transform : nullptr);
     if (root.GetChildCount() == 0) return;
-    auto& queue = s_transformTraversal.pending;
-    queue.clear();
-    for (int i = 0; i < root.GetChildCount(); ++i)
-        if (auto* child = root.GetChild(i)) queue.push_back(child);
-    UpdateWorldTransformQueue(queue);
+    auto& pending = s_transformTraversal.pending;
+    pending.clear();
+    AppendChildren(root, pending);
+    UpdateWorldTransformQueue(pending);
 }
 
 void SetWorldPose(Transform& tf, const Transform* parent,
@@ -227,4 +236,4 @@ void SetWorldPose(GameObject& go,
         worldPosition, worldRotation, worldScale);
 }
 
-} /// @note namespace fbzz::scene
+}
