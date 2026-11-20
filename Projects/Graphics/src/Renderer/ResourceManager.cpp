@@ -34,6 +34,7 @@
 #include <cassert>
 #include <chrono>
 #include <cstring>
+#include <tuple>
 #include <utility>
 
 namespace fbzz::renderer {
@@ -424,21 +425,17 @@ std::size_t ResourceManager::EvictTexture(std::string_view path)
     const std::string key = TextureCacheKey(path);
     if (key.empty()) return 0;
 
-    /// @note フォルダを渡された場合に配下ごと外す。末尾に '/' を付けて前方一致させることで、
-    /// @note       "Assets/UI/Title" が "Assets/UI/TitleOld/..." を巻き込まないようにする。
+    /// @note 区切りを含めて比較し、同じ名前で始まる隣のディレクトリを残す。
     const std::string prefix = key + "/";
-
+    const std::string flippedKey = TextureCacheKey(path, true);
     std::size_t evicted = 0;
-    for (auto it = m_textureCache.begin(); it != m_textureCache.end(); ) {
-        if (it->first == key || it->first == TextureCacheKey(path, true)
-            || it->first.rfind(prefix, 0) == 0) {
-            m_textures.Remove(it->second);
-            it = m_textureCache.erase(it);
-            ++evicted;
-        } else {
-            ++it;
-        }
-    }
+    std::erase_if(m_textureCache, [&](const auto& entry) {
+        if (entry.first != key && entry.first != flippedKey && !entry.first.starts_with(prefix))
+            return false;
+        m_textures.Remove(entry.second);
+        ++evicted;
+        return true;
+    });
     return evicted;
 }
 
@@ -811,33 +808,36 @@ void ResourceManager::ReadBufferStates(std::span<const ResourceHandle<BufferTag>
 }
 
 void ResourceManager::ReadNativeBufferStates(std::span<const ResourceHandle<BufferTag>> handles,
-                                            std::span<BufferResourceState> out)
+                                             std::span<BufferResourceState> out)
 {
-    const uint64_t instance = GetInstanceId(), epoch = GetResetVersion(), frame = FrameStamp();
-    /// @note Resolve after the pump and between getters; callbacks may release, replace or reset any handle.
+    const uint64_t instanceId = GetInstanceId(), resetVersion = GetResetVersion(), frame = FrameStamp();
+    const auto resolveCurrentBuffer = [&](ResourceHandle<BufferTag> handle) -> const IBuffer* {
+        if (GetInstanceId() != instanceId || GetResetVersion() != resetVersion || FrameStamp() != frame)
+            return nullptr;
+        return m_buffers.Get(handle);
+    };
+
     for (size_t index = 0; index < handles.size(); ++index) {
         out[index] = {};
-        if (!handles[index].IsValid()) { cpu_trace::Count(cpu_trace::Counter::BUFFER_INVALID); continue; }
-        const auto resolve = [&]() -> const IBuffer* {
-            if (GetInstanceId() != instance || GetResetVersion() != epoch || FrameStamp() != frame) return nullptr;
-            return m_buffers.Get(handles[index]);
+        if (!handles[index].IsValid()) {
+            cpu_trace::Count(cpu_trace::Counter::BUFFER_INVALID);
+            continue;
+        }
+
+        /// @note getter の再入で資源が差し替わり得るため、毎回の読み取り前と結果の公開前に再解決する。
+        const auto read = [&](auto getter, auto& value) {
+            const auto* buffer = resolveCurrentBuffer(handles[index]);
+            if (!buffer) return false;
+            value = (buffer->*getter)();
+            return true;
         };
-        const auto* buffer = resolve();
-        if (!buffer) continue;
         BufferResourceState state;
-        state.sizeBytes = buffer->GetSize();
-        buffer = resolve();
-        if (!buffer) continue;
-        state.stride = buffer->GetStride();
-        buffer = resolve();
-        if (!buffer) continue;
-        state.bindlessUavIndex = buffer->GetBindlessUavIndex();
-        buffer = resolve();
-        if (!buffer) continue;
-        state.contentVersion = buffer->GetContentVersion();
-        if (!resolve()) continue;
-        state.live = true;
-        out[index] = state;
+        if (read(&IBuffer::GetSize, state.sizeBytes) && read(&IBuffer::GetStride, state.stride)
+            && read(&IBuffer::GetBindlessUavIndex, state.bindlessUavIndex)
+            && read(&IBuffer::GetContentVersion, state.contentVersion) && resolveCurrentBuffer(handles[index])) {
+            state.live = true;
+            out[index] = state;
+        }
     }
 }
 
@@ -853,10 +853,13 @@ BufferStateReadScope::~BufferStateReadScope() { s_bufferReadScope = m_previous; 
 
 bool BufferStateReadScope::HasCurrentReadBoundary() const
 {
-    if (!m_armed || m_previous || s_bufferReadScope != this || m_resources.m_rendererDetached
-        || &m_resources.m_renderer != &m_facade || m_resources.GetInstanceId() != m_instance
-        || m_resources.GetResetVersion() != m_epoch || m_resources.FrameStamp() != m_frame) return false;
-    uint64_t submission = 0, revision = 0;
+    if (!m_armed || m_previous || s_bufferReadScope != this) return false;
+    if (m_resources.m_rendererDetached || &m_resources.m_renderer != &m_facade) return false;
+    if (m_resources.GetInstanceId() != m_instance || m_resources.GetResetVersion() != m_epoch
+        || m_resources.FrameStamp() != m_frame) return false;
+
+    uint64_t submission = 0;
+    uint64_t revision = 0;
     return TryObserveIdleReadBoundary(m_facade, submission, revision)
         && submission == m_submission && revision == m_revision;
 }
@@ -865,22 +868,29 @@ bool BufferStateReadScope::Read(std::span<const ResourceHandle<BufferTag>> handl
 {
     assert(handles.size() == out.size());
     if (handles.size() != out.size()) return false;
+
+    /// @note 読み取り中にキューが更新された場合は観測を破棄し、同期した結果で出力を上書きする。
+    const auto readWithoutReuse = [&] {
+        m_armed = false;
+        m_resources.GetBufferStates(handles, out);
+        return false;
+    };
+
+    /// @note 既存の境界を再利用するときも、前後で同じ境界が見えていることを確認する。
     if (HasCurrentReadBoundary()) {
         const cpu_trace::SourceScope source(cpu_trace::Source::BUFFER_GET, "ResourceManager::ReadCurrentBufferStates", true);
         if (std::any_of(handles.begin(), handles.end(), [](const auto handle) { return handle.IsValid(); }))
             cpu_trace::Count(cpu_trace::Counter::BUFFER_PRODUCER);
         m_resources.ReadNativeBufferStates(handles, out);
         if (HasCurrentReadBoundary()) return true;
-        m_armed = false;
-        m_resources.GetBufferStates(handles, out);
-        return false;
+        return readWithoutReuse();
     }
+
+    /// @note 通常の同期読み取りで境界を取得できたときだけ、次回の再利用を許可する。
     m_armed = false;
     m_resources.ReadBufferStates(handles, out, this);
     if (!m_armed || HasCurrentReadBoundary()) return m_armed;
-    m_armed = false;
-    m_resources.GetBufferStates(handles, out);
-    return false;
+    return readWithoutReuse();
 }
 
 IBuffer* BufferStateReadScope::Get(ResourceHandle<BufferTag> handle)
@@ -1006,6 +1016,12 @@ ResourceHandle<TextureTag> ResourceManager::GetDepthTexture(ResourceHandle<Rende
     return it->second;
 }
 
+bool ResourceManager::RecordCpuShadowTransfer(std::function<void()>&& transfer)
+{
+    const CpuShadowTransferScope classification(m_renderer);
+    return m_renderer.RecordResourceUpdate(std::move(transfer));
+}
+
 void ResourceManager::Update(ResourceHandle<BufferTag> h, const void* data, size_t sizeBytes)
 {
     if (!m_renderer.IsRenderThread() && data && sizeBytes != 0) {
@@ -1014,12 +1030,7 @@ void ResourceManager::Update(ResourceHandle<BufferTag> h, const void* data, size
         std::function<void()> transfer = [this, h, bytes = std::move(bytes)] {
             if (IBuffer* buffer = m_buffers.Get(h)) buffer->Update(bytes.data(), bytes.size());
         };
-        bool recorded = false;
-        {
-            const CpuShadowTransferScope classification(m_renderer);
-            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
-        }
-        if (recorded) {
+        if (RecordCpuShadowTransfer(std::move(transfer))) {
             static_cast<void>(AdvanceBufferContentVersion(h, sizeBytes));
             return;
         }
@@ -1038,12 +1049,7 @@ void ResourceManager::UpdateConstantBuffers(std::shared_ptr<const ConstantBuffer
         if (entry.size == 0 || entry.offset > batch->bytes.size() || entry.size > batch->bytes.size() - entry.offset) return;
     if (!m_renderer.IsRenderThread()) {
         std::function<void()> transfer = [this, batch] { UpdateConstantBuffers(batch); };
-        bool recorded = false;
-        {
-            const CpuShadowTransferScope classification(m_renderer);
-            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
-        }
-        if (recorded) return;
+        if (RecordCpuShadowTransfer(std::move(transfer))) return;
     }
     for (const auto& entry : batch->entries)
         if (auto* cb = Get(entry.handle); cb && entry.size <= cb->GetSize())
@@ -1066,12 +1072,7 @@ void ResourceManager::UpdateOwnedMaterialBytes(ResourceHandle<ConstantBufferTag>
             const auto ownedBytes = payload->Bytes();
             Update(handle, ownedBytes.data(), ownedBytes.size());
         };
-        bool recorded = false;
-        {
-            const CpuShadowTransferScope classification(m_renderer);
-            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
-        }
-        if (recorded) return;
+        if (RecordCpuShadowTransfer(std::move(transfer))) return;
     }
     if (IConstantBuffer* cb = Get(handle)) cb->Update(bytes.data(), bytes.size());
 }
@@ -1082,12 +1083,7 @@ void ResourceManager::Update(ResourceHandle<ConstantBufferTag> h, const void* da
         std::vector<uint8_t> bytes(sizeBytes);
         std::memcpy(bytes.data(), data, sizeBytes);
         std::function<void()> transfer = [this, h, bytes = std::move(bytes)] { Update(h, bytes.data(), bytes.size()); };
-        bool recorded = false;
-        {
-            const CpuShadowTransferScope classification(m_renderer);
-            recorded = m_renderer.RecordResourceUpdate(std::move(transfer));
-        }
-        if (recorded) return;
+        if (RecordCpuShadowTransfer(std::move(transfer))) return;
     }
     if (IConstantBuffer* cb = Get(h))
         cb->Update(data, sizeBytes);
@@ -1115,85 +1111,71 @@ bool ResourceManager::UpdateRegion(ResourceHandle<StructuredBufferTag> handle, c
     return result;
 }
 
+template<class Tag, class ReleaseResource>
+void ResourceManager::ReleaseOnRenderThread(ResourceHandle<Tag> handle, const ReleaseResource& releaseResource)
+{
+    /// @note 終了後の所有者のデストラクタから、切り離し済みの renderer を参照しない。
+    if (handle.owner != m_instanceId || m_rendererDetached) return;
+    if (m_renderer.IsRenderThread())
+        releaseResource();
+    else
+        m_renderer.ExecuteResourceOperation([&] { ReleaseOnRenderThread(handle, releaseResource); });
+}
+
 void ResourceManager::Release(ResourceHandle<ShaderTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    /// @note Renderer shutdown already released owned resources; late Material/FontAtlas destructors must not call its detached reference.
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) {
-        m_renderer.ExecuteResourceOperation([&] { Release(h); });
-        return;
-    }
-    /// @note Released generations must not survive in the path cache; a later Load/Reload creates a new live handle.
-    for (auto it = m_shaderCache.begin(); it != m_shaderCache.end();) {
-        if (it->second == h) it = m_shaderCache.erase(it);
-        else ++it;
-    }
-    m_shaders.Remove(h);
-    m_shaderCapabilities.erase((static_cast<uint64_t>(h.gen) << 32) | h.id);
+    ReleaseOnRenderThread(h, [&] {
+        /// @note Released generations must not survive in the path cache; a later Load/Reload creates a new live handle.
+        std::erase_if(m_shaderCache, [h](const auto& entry) { return entry.second == h; });
+        m_shaders.Remove(h);
+        m_shaderCapabilities.erase((static_cast<uint64_t>(h.gen) << 32) | h.id);
+    });
 }
 void ResourceManager::Release(ResourceHandle<TextureTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
-    m_textures.Remove(h);
+    ReleaseOnRenderThread(h, [&] { m_textures.Remove(h); });
 }
 void ResourceManager::Release(ResourceHandle<BufferTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
-    if (m_meshletGeometryCache)
-        m_meshletGeometryCache->Invalidate(*this, h);
-    RemoveBufferMetadata(h);
-    m_buffers.Remove(h);
+    ReleaseOnRenderThread(h, [&] {
+        if (m_meshletGeometryCache)
+            m_meshletGeometryCache->Invalidate(*this, h);
+        RemoveBufferMetadata(h);
+        m_buffers.Remove(h);
+    });
 }
 void ResourceManager::Release(ResourceHandle<ConstantBufferTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
-    m_constantBuffers.Remove(h);
+    ReleaseOnRenderThread(h, [&] { m_constantBuffers.Remove(h); });
 }
 void ResourceManager::Release(ResourceHandle<PipelineStateTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
-    m_pipelineStates.Remove(h);
+    ReleaseOnRenderThread(h, [&] { m_pipelineStates.Remove(h); });
 }
 void ResourceManager::Release(ResourceHandle<StructuredBufferTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
-    m_structuredBuffers.Remove(h);
+    ReleaseOnRenderThread(h, [&] { m_structuredBuffers.Remove(h); });
 }
 void ResourceManager::Release(ResourceHandle<AccelerationStructureTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
-    m_accelerationStructures.Remove(h);
+    ReleaseOnRenderThread(h, [&] { m_accelerationStructures.Remove(h); });
 }
 void ResourceManager::Release(ResourceHandle<RenderTargetTag> h)
 {
-    if (h.owner != m_instanceId) return;
-    if (m_rendererDetached) return;
-    if (!m_renderer.IsRenderThread()) { m_renderer.ExecuteResourceOperation([&] { Release(h); }); return; }
-    if (m_renderResources) m_renderResources->ReleaseOutput(h);
-    const uint64_t key = Key(h);
-    if (auto colors = m_renderTargetColors.find(key); colors != m_renderTargetColors.end()) {
-        for (ResourceHandle<TextureTag> texture : colors->second)
-            Release(texture);
-        m_renderTargetColors.erase(colors);
-    }
-    if (auto depth = m_renderTargetDepths.find(key); depth != m_renderTargetDepths.end()) {
-        Release(depth->second);
-        m_renderTargetDepths.erase(depth);
-    }
-    m_renderTargets.Remove(h);
+    ReleaseOnRenderThread(h, [&] {
+        if (m_renderResources) m_renderResources->ReleaseOutput(h);
+        const uint64_t key = Key(h);
+        if (auto colors = m_renderTargetColors.find(key); colors != m_renderTargetColors.end()) {
+            for (ResourceHandle<TextureTag> texture : colors->second)
+                Release(texture);
+            m_renderTargetColors.erase(colors);
+        }
+        if (auto depth = m_renderTargetDepths.find(key); depth != m_renderTargetDepths.end()) {
+            Release(depth->second);
+            m_renderTargetDepths.erase(depth);
+        }
+        m_renderTargets.Remove(h);
+    });
 }
 
 uint64_t ResourceManager::Key(ResourceHandle<RenderTargetTag> h)
@@ -1298,28 +1280,20 @@ void ResourceManager::LogLiveDebugResources() const
     LogOriginTotals(SummarizeByOrigin(live), 16);
 }
 
+auto ResourceManager::DebugResourcePools() const
+{
+    return std::tie(m_shaders, m_textures, m_buffers, m_constantBuffers,
+                    m_pipelineStates, m_renderTargets, m_structuredBuffers, m_accelerationStructures);
+}
+
 std::size_t ResourceManager::GetLiveDebugResourceBytes() const
 {
-    return m_shaders.GetLiveDebugBytes()
-         + m_textures.GetLiveDebugBytes()
-         + m_buffers.GetLiveDebugBytes()
-         + m_constantBuffers.GetLiveDebugBytes()
-         + m_pipelineStates.GetLiveDebugBytes()
-         + m_renderTargets.GetLiveDebugBytes()
-         + m_structuredBuffers.GetLiveDebugBytes()
-         + m_accelerationStructures.GetLiveDebugBytes();
+    return std::apply([](const auto&... pools) { return (pools.GetLiveDebugBytes() + ...); }, DebugResourcePools());
 }
 
 std::size_t ResourceManager::GetLiveDebugResourceCount() const
 {
-    return m_shaders.GetLiveDebugCount()
-         + m_textures.GetLiveDebugCount()
-         + m_buffers.GetLiveDebugCount()
-         + m_constantBuffers.GetLiveDebugCount()
-         + m_pipelineStates.GetLiveDebugCount()
-         + m_renderTargets.GetLiveDebugCount()
-         + m_structuredBuffers.GetLiveDebugCount()
-         + m_accelerationStructures.GetLiveDebugCount();
+    return std::apply([](const auto&... pools) { return (pools.GetLiveDebugCount() + ...); }, DebugResourcePools());
 }
 
 void ResourceManager::TickLeakWatchdog()
@@ -1372,14 +1346,7 @@ std::size_t ResourceManager::ReleaseMeshBuffers(Mesh& mesh)
 
 void ResourceManager::CollectLiveDebugResources(std::vector<core::AllocationInfo>& out) const
 {
-    m_shaders.CollectLiveDebugInfo(out);
-    m_textures.CollectLiveDebugInfo(out);
-    m_buffers.CollectLiveDebugInfo(out);
-    m_constantBuffers.CollectLiveDebugInfo(out);
-    m_pipelineStates.CollectLiveDebugInfo(out);
-    m_renderTargets.CollectLiveDebugInfo(out);
-    m_structuredBuffers.CollectLiveDebugInfo(out);
-    m_accelerationStructures.CollectLiveDebugInfo(out);
+    std::apply([&out](const auto&... pools) { (pools.CollectLiveDebugInfo(out), ...); }, DebugResourcePools());
 }
 
 bool SizedRenderTarget::Ensure(ResourceManager& resources,

@@ -19,6 +19,7 @@
 #include <Graphics/Renderer/ITexture.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <source_location>
@@ -347,8 +348,12 @@ private:
     FBZZ_GRAPHICS_API static uint64_t Key(ResourceHandle<RenderTargetTag> h);
     FBZZ_GRAPHICS_API ResourceHandle<TextureTag> LoadTextureImpl(std::string_view path, bool pin, bool flipGreen);
     FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateTextureForPath(const std::string& sourcePath, bool flipGreen);
+    template<class Tag, class ReleaseResource>
+    void ReleaseOnRenderThread(ResourceHandle<Tag> handle, const ReleaseResource& releaseResource);
     FBZZ_GRAPHICS_API void ReleaseOwnedResourcesForShutdown();
     FBZZ_GRAPHICS_API void LogLiveDebugResources() const;
+    [[nodiscard]] auto DebugResourcePools() const;
+    [[nodiscard]] bool RecordCpuShadowTransfer(std::function<void()>&& transfer);
     FBZZ_GRAPHICS_API void RegisterBufferMetadata(ResourceHandle<BufferTag> handle, size_t sizeBytes,
                                 uint32_t stride, bool cpuReadable,
                                 bool gpuWritable, bool indexBuffer);

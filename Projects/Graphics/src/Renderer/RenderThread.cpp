@@ -11,8 +11,25 @@
 #include <utility>
 
 namespace fbzz::renderer {
+namespace {
 
-RenderThread::RenderThread() : m_thread([this] { Run(); }), m_workerId(m_thread.get_id()) { cpu_trace::RegisterThread(this); }
+std::unique_lock<std::mutex> AcquireRenderThreadMutex(std::mutex& mutex)
+{
+    cpu_trace::AcquireScope traceAcquire(cpu_trace::AcquireKind::THREAD_MUTEX);
+    const auto timelineMutex = profiler::frame_timeline::Begin(profiler::frame_timeline::Event::THREAD_MUTEX);
+    std::unique_lock lock(mutex);
+    profiler::frame_timeline::End(timelineMutex);
+    traceAcquire.Acquired();
+    return lock;
+}
+
+} /// @note namespace
+
+RenderThread::RenderThread()
+    : m_thread([this] { Run(); }), m_workerId(m_thread.get_id())
+{
+    cpu_trace::RegisterThread(this);
+}
 
 RenderThread::~RenderThread()
 {
@@ -29,9 +46,13 @@ void RenderThread::Wait(std::unique_lock<std::mutex>& lock, const std::function<
 {
     /// @note Predicates read only mutex-protected completion state; the diagnostic probe never changes readiness.
     const cpu_trace::WaitScope traceWait(cpu_trace::HasSelectedFrame() && !ready());
-    if (!m_waitPump) { m_completed.wait(lock, ready); return; }
-    while (!ready()) {
-        if (m_completed.wait_for(lock, std::chrono::milliseconds(1), ready)) break;
+    if (!m_waitPump) {
+        m_completed.wait(lock, ready);
+        return;
+    }
+
+    while (!ready() && !m_completed.wait_for(lock, std::chrono::milliseconds(1), ready)) {
+        /// @note ポンプは描画待ちへ再入し得るため、呼び出し前に mutex を解放する。
         lock.unlock();
         {
             const cpu_trace::PumpScope tracePump;
@@ -47,22 +68,10 @@ bool RenderThread::Submit(uint64_t serial, std::unique_ptr<IRenderFrame> frame)
 {
     assert(!CalledFromWorker());
     if (CalledFromWorker() || !frame || serial == 0) return false;
-    cpu_trace::AcquireScope traceAcquire(cpu_trace::AcquireKind::THREAD_MUTEX);
-    const auto timelineMutex = profiler::frame_timeline::Begin(profiler::frame_timeline::Event::THREAD_MUTEX);
-    std::unique_lock lock(m_mutex);
-    profiler::frame_timeline::End(timelineMutex);
-    traceAcquire.Acquired();
+    auto lock = AcquireRenderThreadMutex(m_mutex);
     Wait(lock, [this] { return !m_busy || m_stopping; });
     if (m_stopping || serial <= m_submittedSerial) return false;
-    m_submittedSerial = serial;
-    m_frameTimeline = profiler::frame_timeline::CurrentContext();
-    m_frameTimeline.submissionSerial = serial;
-    profiler::frame_timeline::Mark(profiler::frame_timeline::Event::PACKET_ACCEPT, m_frameTimeline);
-    m_frame = std::move(frame);
-    m_busy = true;
-    lock.unlock();
-    m_wakeup.notify_one();
-    return true;
+    return SubmissionReservation(*this, serial, std::move(lock)).Publish(std::move(frame));
 }
 
 RenderThread::SubmissionReservation RenderThread::TryReserveSubmission(uint64_t serial)
@@ -76,6 +85,7 @@ RenderThread::SubmissionReservation RenderThread::TryReserveSubmission(uint64_t 
 bool RenderThread::SubmissionReservation::Publish(std::unique_ptr<IRenderFrame> frame)
 {
     if (!IsValid() || !frame) return false;
+
     auto* owner = m_owner;
     owner->m_submittedSerial = m_serial;
     owner->m_frameTimeline = profiler::frame_timeline::CurrentContext();
@@ -83,6 +93,7 @@ bool RenderThread::SubmissionReservation::Publish(std::unique_ptr<IRenderFrame> 
     profiler::frame_timeline::Mark(profiler::frame_timeline::Event::PACKET_ACCEPT, owner->m_frameTimeline);
     owner->m_frame = std::move(frame);
     owner->m_busy = true;
+
     m_owner = nullptr;
     m_lock.unlock();
     owner->m_wakeup.notify_one();
@@ -93,11 +104,7 @@ bool RenderThread::WaitUntilCompleted(uint64_t serial)
 {
     assert(!CalledFromWorker());
     if (CalledFromWorker() || serial == 0) return false;
-    cpu_trace::AcquireScope traceAcquire(cpu_trace::AcquireKind::THREAD_MUTEX);
-    const auto timelineMutex = profiler::frame_timeline::Begin(profiler::frame_timeline::Event::THREAD_MUTEX);
-    std::unique_lock lock(m_mutex);
-    profiler::frame_timeline::End(timelineMutex);
-    traceAcquire.Acquired();
+    auto lock = AcquireRenderThreadMutex(m_mutex);
     if (serial > m_submittedSerial) return false;
     Wait(lock, [this, serial] { return m_completedSerial >= serial; });
     return true;
@@ -114,11 +121,7 @@ void RenderThread::WaitIdle()
 {
     assert(!CalledFromWorker());
     if (CalledFromWorker()) return;
-    cpu_trace::AcquireScope traceAcquire(cpu_trace::AcquireKind::THREAD_MUTEX);
-    const auto timelineMutex = profiler::frame_timeline::Begin(profiler::frame_timeline::Event::THREAD_MUTEX);
-    std::unique_lock lock(m_mutex);
-    profiler::frame_timeline::End(timelineMutex);
-    traceAcquire.Acquired();
+    auto lock = AcquireRenderThreadMutex(m_mutex);
     Wait(lock, [this] { return !m_busy; });
 }
 
