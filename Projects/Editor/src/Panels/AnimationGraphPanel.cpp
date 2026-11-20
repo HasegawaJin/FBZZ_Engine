@@ -2437,6 +2437,22 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
 {
     FBZZ_PROFILE_SCOPE("AnimationGraphPanel::Render");
 
+    /// @note Inspector の改名を取り込んでから描画先を選ぶ。選択の添字は描画先のデータから引き直す。
+    ApplyInspectorRenames(ctx);
+    /// @note Play 中は実行時状態が毎フレーム変わるため、監視表示で編集用スナップショットを作らない。
+    const bool allowEditing = CanEditAnimationGraph(ctx);
+    UpdateControllerPath(ctx);
+
+    const std::string docPath = ctx.animationControllerEditorPath;
+    if (util::StringUtils::EndsWith(docPath, ".animcontroller")) {
+        DrawControllerDocument(ctx, docPath, allowEditing);
+        return;
+    }
+    DrawSceneAnimator(ctx, allowEditing);
+}
+
+void AnimationGraphPanel::ApplyInspectorRenames(EditorContext& ctx)
+{
     /// @note Inspector の Name 欄で起きた改名を、パネルが名前で覚えている選択へ取り込む。
     /// @note       グラフデータ側 (遷移・レイアウト) の張り替えは RenameStateInGraph が済ませている。
     if (!ctx.animationGraphRenamedFrom.empty()) {
@@ -2453,15 +2469,11 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
         ctx.animationGraphLayerRenamedFrom.clear();
         ctx.animationGraphLayerRenamedTo.clear();
     }
+}
 
-    /// @note Play Mode 中は Animator の実行時状態が毎フレーム変化するため、編集用 snapshot と
-    /// @note       Undo 追跡を続けると監視表示だけで大きな CPU 負荷になる。
-    const bool allowEditing = CanEditAnimationGraph(ctx);
-
-    /// @name 編集ドキュメントの決定
-    /// @note 「明示的に開いたパス」を保持し、選択が動いても手放さない。選択追従だと Source 欄へ
-    /// @note       ドラッグするたびに編集対象ごと切り替わり、未保存の変更が確認なしで消える。
-    /// @note       まだ何も開いていないときだけ、選択中の .animcontroller を初回の入口として拾う。
+void AnimationGraphPanel::UpdateControllerPath(EditorContext& ctx)
+{
+    /// @note 明示的に開いた文書は選択が動いても保持する。選択中のアセットを拾うのは未オープン時だけ。
     if (!m_requestedPath.empty()) {
         /// @note 呼び出し元によって相対パスと絶対パスが混ざる。AssetDirtyRegistry のキーは
         /// @note       絶対パス前提なので、ここで 1 度だけ揃える。
@@ -2477,223 +2489,172 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
                util::StringUtils::EndsWith(ctx.selectedAssetPath, ".animcontroller")) {
         ctx.animationControllerEditorPath = ctx.selectedAssetPath;
     }
+}
 
-    const std::string docPath = ctx.animationControllerEditorPath;
-    const bool editingControllerAsset =
-        util::StringUtils::EndsWith(docPath, ".animcontroller");
-    if (editingControllerAsset) {
-        if (!ctx.animationControllerEditor) {
-            asset::AnimatorControllerAsset controller;
-            if (!asset::LoadAnimatorControllerAsset(docPath, controller)) {
-                ImGui::TextDisabled("Failed to load Animator Controller.");
-                ImGui::TextDisabled("%s", docPath.c_str());
-                if (ImGui::Button("Close")) {
-                    ctx.animationControllerEditorPath.clear();
-                    ctx.animationControllerDirty = false;
-                }
-                return;
-            }
-            ctx.animationControllerEditor =
-                std::shared_ptr<scene::AnimatorComponent>(new scene::AnimatorComponent());
-            asset::ApplyAnimatorControllerAsset(
-                controller, *ctx.animationControllerEditor);
+bool AnimationGraphPanel::LoadControllerDocument(EditorContext& ctx, const std::string& docPath)
+{
+    if (ctx.animationControllerEditor) return true;
+
+    asset::AnimatorControllerAsset controller;
+    if (!asset::LoadAnimatorControllerAsset(docPath, controller)) {
+        ImGui::TextDisabled("Failed to load Animator Controller.");
+        ImGui::TextDisabled("%s", docPath.c_str());
+        if (ImGui::Button("Close")) {
+            ctx.animationControllerEditorPath.clear();
             ctx.animationControllerDirty = false;
-            ctx.graphLayouts[docPath] =
-                ToEditorGraphLayout(controller.editorLayout);
-            m_selectionOwnerInstanceId.clear();
-            /// @note 名前側 (権威) を必ず落とす。派生値だけ消しても、次の
-            /// @note       ResolveSelectionIndices が名前から復元してしまう。
-            ClearSelectionState();
-            m_openBlendTreeStateName.clear();
-            m_openBlendTreeStateName.clear();
-            m_openBlendTreeState = -1;
-            m_selectedMotion = -1;
-            m_pendingTransitionKind = NodeKind::None;
-            m_pendingTransitionFromName.clear();
-            m_pendingTransitionFrom = -1;
-            m_renamingStateName.clear();
-            m_renameRequested = false;
-            m_renameError.clear();
-            m_editingLayer.clear();
-            m_graphCanvas.ClearSelection();
-            m_graphCanvas.ResetView();
-            ctx.animationGraphSelection.Clear();
         }
+        return false;
+    }
+    ctx.animationControllerEditor = std::make_shared<scene::AnimatorComponent>();
+    asset::ApplyAnimatorControllerAsset(
+        controller, *ctx.animationControllerEditor);
+    ctx.animationControllerDirty = false;
+    ctx.graphLayouts[docPath] =
+        ToEditorGraphLayout(controller.editorLayout);
+    m_selectionOwnerInstanceId.clear();
+    /// @note 選択は名前から毎回復元されるため、文書を切り替えたら名前も消す。
+    ClearSelectionState();
+    m_openBlendTreeStateName.clear();
+    m_openBlendTreeState = -1;
+    m_selectedMotion = -1;
+    m_pendingTransitionKind = NodeKind::None;
+    m_pendingTransitionFromName.clear();
+    m_pendingTransitionFrom = -1;
+    m_renamingStateName.clear();
+    m_renameRequested = false;
+    m_renameError.clear();
+    m_editingLayer.clear();
+    m_graphCanvas.ClearSelection();
+    m_graphCanvas.ResetView();
+    ctx.animationGraphSelection.Clear();
+    return true;
+}
 
-        auto& animator = *ctx.animationControllerEditor;
-        scene::AnimatorComponent undoBeforeAnimator;
-        GraphLayout undoBeforeLayout;
-        if (allowEditing) {
-            /// @note スナップショットは差し替え前 (= Base Layer が入っている状態) で取る。
-            /// @note       layers も含むため、レイヤー側の編集も Undo で戻せる。
-            undoBeforeAnimator = MakeAnimationGraphSnapshot(animator);
-            undoBeforeLayout = ctx.graphLayouts[docPath];
-        }
-        const std::uint64_t undoGenerationBefore = AnimationGraphEditGeneration();
+void AnimationGraphPanel::DrawControllerDocument(
+    EditorContext& ctx, const std::string& docPath, bool allowEditing)
+{
+    if (!LoadControllerDocument(ctx, docPath)) return;
 
-        /// @note 編集対象レイヤーを選ばせ、以降の描画中だけそのグラフへ差し替える。
-        DrawLayerSelector(ctx, animator, allowEditing);
-        LayerGraphScope layerScope(animator, m_editingLayer);
+    /// @note Undo 用の正規形を保存 → 選択レイヤーで描画 → Inspector へ公開 → 正規形に戻して差分を記録。
+    /// @note Close が編集先を外したフレームも、レイヤーの復元と Undo の判定までは文書を生かす。
+    const auto documentOwner = ctx.animationControllerEditor;
+    auto& animator = *documentOwner;
+    scene::AnimatorComponent undoBeforeAnimator;
+    GraphLayout undoBeforeLayout;
+    if (allowEditing) {
+        /// @note Base と各 Layer をまとめて Undo できるよう、差し替え前に保存する。
+        undoBeforeAnimator = MakeAnimationGraphSnapshot(animator);
+        undoBeforeLayout = ctx.graphLayouts[docPath];
+    }
+    const std::uint64_t undoGenerationBefore = AnimationGraphEditGeneration();
 
-        ClearInvalidSelection(animator);
-        ImGui::BeginDisabled(!allowEditing);
-        ImGui::TextUnformatted(
-            util::FileSystem::GetFilename(docPath).c_str());
-        ImGui::SameLine();
-        if (m_openBlendTreeState < 0 && ImGui::Button("+ Node"))
-            AddState(ctx, animator, "NewNode");
-        if (m_openBlendTreeState >= 0 &&
-            m_openBlendTreeState < static_cast<int>(animator.states.size())) {
-            const std::string breadcrumbName =
-                animator.states[static_cast<size_t>(m_openBlendTreeState)].name;
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Base Layer")) {
-                m_openBlendTreeStateName.clear();
-                m_openBlendTreeState = -1;
-                m_selectedMotion = -1;
-                m_graphCanvas.ClearSelection();
-                m_graphCanvas.ResetView();
-            }
-            ImGui::SameLine();
-            ImGui::TextDisabled("> %s", breadcrumbName.c_str());
-        }
-        /// @note 保存操作は他のアセット型と揃える (.tex / .mask / .terrain と同じく Ctrl+S も効く)。
-        const bool controllerDirty =
-            ctx.animationControllerDirty || AssetDirtyRegistry::IsDirty(docPath);
-        ImGui::SameLine();
-        const bool savePressed = ImGui::Button("Save Controller");
-        const bool saveShortcut =
-            allowEditing && controllerDirty &&
-            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S);
-        if (savePressed || saveShortcut) {
-            /// @note LayerGraphScope は描画中の states を選択 Layerへ差し替えているため、
-            /// @note       保存時だけ必ず Base + layers の正規形へ戻す。これをしないと空の新規 Layerを
-            /// @note       選択して保存した瞬間、Base Layer が空の Controller として書き出される。
-            layerScope.Restore();
-            const bool saved = SaveAnimatorControllerWithLayout(ctx, docPath, animator);
-            layerScope.Reapply();
-            if (saved) {
-                ctx.animationControllerDirty = false;
-                AssetDirtyRegistry::MarkClean(docPath);
-                ctx.requestAssetBrowserRefresh = true;
-                if (ctx.activeScene) {
-                    asset::AnimatorControllerAsset controller;
-                    if (asset::LoadAnimatorControllerAsset(docPath, controller)) {
-                        const std::string savedPath =
-                            NormalizeAssetPath(docPath);
-                        for (auto [sceneAnimator] :
-                             ctx.activeScene->View<scene::AnimatorComponent>()) {
-                            if (NormalizeAssetPath(sceneAnimator.controllerPath) == savedPath) {
-                                asset::ApplyAnimatorControllerAsset(
-                                    controller, sceneAnimator);
-                                sceneAnimator.loadedControllerPath =
-                                    sceneAnimator.controllerPath;
-                            }
+    /// @note 編集対象レイヤーを選ばせ、以降の描画中だけそのグラフへ差し替える。
+    DrawLayerSelector(ctx, animator, allowEditing);
+    LayerGraphScope layerScope(animator, m_editingLayer);
+
+    ClearInvalidSelection(animator);
+    ImGui::BeginDisabled(!allowEditing);
+    ImGui::TextUnformatted(
+        util::FileSystem::GetFilename(docPath).c_str());
+    ImGui::SameLine();
+    if (m_openBlendTreeState < 0 && ImGui::Button("+ Node"))
+        AddState(ctx, animator, "NewNode");
+    DrawBlendTreeBreadcrumb(animator);
+    /// @note 保存操作は他のアセット型と揃える (.tex / .mask / .terrain と同じく Ctrl+S も効く)。
+    const bool controllerDirty =
+        ctx.animationControllerDirty || AssetDirtyRegistry::IsDirty(docPath);
+    ImGui::SameLine();
+    const bool savePressed = ImGui::Button("Save Controller");
+    const bool saveShortcut =
+        allowEditing && controllerDirty &&
+        ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S);
+    if (savePressed || saveShortcut) {
+        /// @note LayerGraphScope は描画中の states を選択 Layerへ差し替えているため、
+        /// @note       保存時だけ必ず Base + layers の正規形へ戻す。これをしないと空の新規 Layerを
+        /// @note       選択して保存した瞬間、Base Layer が空の Controller として書き出される。
+        layerScope.Restore();
+        const bool saved = SaveAnimatorControllerWithLayout(ctx, docPath, animator);
+        layerScope.Reapply();
+        if (saved) {
+            ctx.animationControllerDirty = false;
+            AssetDirtyRegistry::MarkClean(docPath);
+            ctx.requestAssetBrowserRefresh = true;
+            if (ctx.activeScene) {
+                asset::AnimatorControllerAsset controller;
+                if (asset::LoadAnimatorControllerAsset(docPath, controller)) {
+                    const std::string savedPath =
+                        NormalizeAssetPath(docPath);
+                    for (auto [sceneAnimator] :
+                         ctx.activeScene->View<scene::AnimatorComponent>()) {
+                        if (NormalizeAssetPath(sceneAnimator.controllerPath) == savedPath) {
+                            asset::ApplyAnimatorControllerAsset(
+                                controller, sceneAnimator);
+                            sceneAnimator.loadedControllerPath =
+                                sceneAnimator.controllerPath;
                         }
                     }
                 }
-            } else {
-                /// @note 失敗を必ず言う: 以前は else が無く、書き込みに失敗してもログもトーストも出なかった。
-                /// @note       ユーザーからは「押しても保存できない」としか見えず、原因を絞る手がかりが残らない。
-                FBZZ_LOG_ERROR("Animator Controller save failed: %s", docPath.c_str());
-                Toast::Error("Failed to save " +
-                             util::FileSystem::GetFilename(docPath));
             }
+        } else {
+            /// @note 失敗を必ず言う: 以前は else が無く、書き込みに失敗してもログもトーストも出なかった。
+            /// @note       ユーザーからは「押しても保存できない」としか見えず、原因を絞る手がかりが残らない。
+            FBZZ_LOG_ERROR("Animator Controller save failed: %s", docPath.c_str());
+            Toast::Error("Failed to save " +
+                         util::FileSystem::GetFilename(docPath));
         }
-        /// @note 未保存であることを常に見せる。Material の "Modified" / "Saved" 表示と同じ規約。
+    }
+    /// @note 未保存であることを常に見せる。Material の "Modified" / "Saved" 表示と同じ規約。
+    ImGui::SameLine();
+    if (controllerDirty)
+        ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "Modified");
+    else
+        ImGui::TextDisabled("Saved");
+
+    /// @note 掴んでいるノード数。Delete の対象と一致する。
+    if (m_selectedStateNames.size() > 1) {
         ImGui::SameLine();
-        if (controllerDirty)
-            ImGui::TextColored(EditorTheme::Color(ThemeColor::Warning), "Modified");
-        else
-            ImGui::TextDisabled("Saved");
-
-        /// @note 掴んでいるノード数。Delete の対象と一致する。
-        if (m_selectedStateNames.size() > 1) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("| %zu selected", m_selectedStateNames.size());
-        }
-
-        /// @note ドキュメントを閉じてシーン内 Animator の編集モードへ戻る。
-        /// @note       「開く」を明示にした以上、「閉じる」も明示の操作として要る。
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Close")) {
-            if (controllerDirty) {
-                /// @note 破棄はしない。閉じる前に保存を促す (誤操作で作業を失わせない)。
-                Toast::Warning("Save the controller before closing.");
-            } else {
-                ctx.animationControllerEditorPath.clear();
-                ctx.animationControllerEditor.reset();
-                ctx.animationControllerDirty = false;
-                ctx.animationGraphSelection.Clear();
-            }
-        }
-        DrawZoomControls();
-        ImGui::Separator();
-        ImGui::BeginChild("##AnimationGraphRoot", ImVec2(0.0f, 0.0f), false);
-        DrawParameterSidebar(ctx, animator);
-        ImGui::SameLine();
-        ImGui::BeginGroup();
-        {
-            FBZZ_PROFILE_SCOPE("AnimationGraphPanel::Canvas");
-            if (m_openBlendTreeState >= 0)
-                DrawBlendTreeCanvas(ctx, animator, docPath);
-            else
-                DrawNodeCanvas(ctx, animator, docPath);
-        }
-        ImGui::EndGroup();
-        ImGui::EndChild();
-        ImGui::EndDisabled();
-
-        if (CanPublishSelection()) {
-            auto& selection = ctx.animationGraphSelection;
-            selection.Clear();
-            selection.assetPath = docPath;
-            /// @note BlendTree を開いている間は、Motion ノードの選択を State 選択より優先して公開する:
-            /// @note       m_selectedMotion はキャンバス内では更新されていたが、従来はここで捨てられ
-            /// @note       Inspector が親 State のままになっていた。
-            if (m_openBlendTreeState >= 0 && m_selectedMotion >= 0) {
-                selection.type = EditorContext::AnimationGraphSelection::Type::BlendTreeMotion;
-                selection.stateIndex = m_openBlendTreeState;
-                selection.motionIndex = m_selectedMotion;
-            } else if (m_selectedLink.fromStateIndex == -2) {
-                selection.type = EditorContext::AnimationGraphSelection::Type::AnyStateTransition;
-                selection.transitionIndex = m_selectedLink.transitionIndex;
-            } else if (m_selectedLink.fromStateIndex >= 0) {
-                selection.type = EditorContext::AnimationGraphSelection::Type::Transition;
-                selection.stateIndex = m_selectedLink.fromStateIndex;
-                selection.transitionIndex = m_selectedLink.transitionIndex;
-            } else if (m_selectedNode >= 0) {
-                selection.type = EditorContext::AnimationGraphSelection::Type::State;
-                selection.stateIndex = m_selectedNode;
-            } else if (m_selectedAnyState) {
-                selection.type = EditorContext::AnimationGraphSelection::Type::AnyState;
-            }
-            /// @note どのレイヤーのグラフに対する選択かを Inspector へ伝える。
-            selection.layerName = m_editingLayer;
-            /// @note 複数選択中は「何個掴んでいるか」を Inspector 側でも出せるようにする。
-            selection.selectedCount = static_cast<int>(m_selectedStateNames.size());
-        }
-
-        /// @note Undo 比較の前にレイヤーグラフを元へ戻す: 差し替えたままスナップショットを比較すると、
-        /// @note       Base Layer とレイヤーのステートが入れ替わった状態が「変更」として記録されてしまう。
-        layerScope.Restore();
-
-        if (allowEditing) {
-            TrackAnimationGraphUndo(
-                ctx,
-                docPath,
-                {},
-                ctx.animationControllerEditor,
-                animator,
-                undoBeforeAnimator,
-                undoBeforeLayout,
-                undoGenerationBefore);
-        }
-        return;
+        ImGui::TextDisabled("| %zu selected", m_selectedStateNames.size());
     }
 
-    /// @note ここから下は「アセットを開いていないとき」の経路で、シーン内 GameObject の
-    /// @note       AnimatorComponent を直接編集する従来モード。
+    /// @note ドキュメントを閉じてシーン内 Animator の編集モードへ戻る。
+    /// @note       「開く」を明示にした以上、「閉じる」も明示の操作として要る。
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Close")) {
+        if (controllerDirty) {
+            /// @note 破棄はしない。閉じる前に保存を促す (誤操作で作業を失わせない)。
+            Toast::Warning("Save the controller before closing.");
+        } else {
+            ctx.animationControllerEditorPath.clear();
+            ctx.animationControllerEditor.reset();
+            ctx.animationControllerDirty = false;
+            ctx.animationGraphSelection.Clear();
+        }
+    }
+    DrawZoomControls();
+    ImGui::Separator();
+    DrawGraphCanvas(ctx, animator, docPath);
+    ImGui::EndDisabled();
+
+    if (CanPublishSelection()) PublishControllerSelection(ctx, docPath);
+
+    /// @note Undo は正規形同士で比較する。描画用の差し替えを編集として記録しない。
+    layerScope.Restore();
+
+    if (allowEditing) {
+        TrackAnimationGraphUndo(
+            ctx,
+            docPath,
+            {},
+            ctx.animationControllerEditor,
+            animator,
+            undoBeforeAnimator,
+            undoBeforeLayout,
+            undoGenerationBefore);
+    }
+}
+
+void AnimationGraphPanel::DrawSceneAnimator(EditorContext& ctx, bool allowEditing)
+{
     scene::GameObject* go = ctx.GetSelectedGO();
     if (!go) {
         widgets::EmptyState(icons::Or(icons::kTimeline, nullptr),
@@ -2714,7 +2675,6 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     if (m_selectionOwnerInstanceId != go->instanceId) {
         m_selectionOwnerInstanceId = go->instanceId;
         ClearSelectionState();
-        m_openBlendTreeStateName.clear();
         m_openBlendTreeStateName.clear();
         m_openBlendTreeState = -1;
         m_selectedMotion = -1;
@@ -2742,36 +2702,10 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
     ClearInvalidSelection(*animator);
     ImGui::BeginDisabled(!allowEditing);
     DrawToolbar(ctx, *animator);
-    if (m_openBlendTreeState >= 0 &&
-        m_openBlendTreeState < static_cast<int>(animator->states.size())) {
-        const std::string breadcrumbName =
-            animator->states[static_cast<size_t>(m_openBlendTreeState)].name;
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Base Layer")) {
-            m_openBlendTreeStateName.clear();
-            m_openBlendTreeState = -1;
-            m_selectedMotion = -1;
-            m_graphCanvas.ClearSelection();
-            m_graphCanvas.ResetView();
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("> %s", breadcrumbName.c_str());
-    }
+    DrawBlendTreeBreadcrumb(*animator);
     ImGui::Separator();
 
-    ImGui::BeginChild("##AnimationGraphRoot", ImVec2(0.0f, 0.0f), false);
-    DrawParameterSidebar(ctx, *animator);
-    ImGui::SameLine();
-    ImGui::BeginGroup();
-    {
-        FBZZ_PROFILE_SCOPE("AnimationGraphPanel::Canvas");
-        if (m_openBlendTreeState >= 0)
-            DrawBlendTreeCanvas(ctx, *animator, go->instanceId);
-        else
-            DrawNodeCanvas(ctx, *animator, go->instanceId);
-    }
-    ImGui::EndGroup();
-    ImGui::EndChild();
+    DrawGraphCanvas(ctx, *animator, go->instanceId);
     ImGui::EndDisabled();
     if (CanPublishSelection()) {
         PublishSelection(ctx, *go);
@@ -2792,6 +2726,70 @@ void AnimationGraphPanel::OnRenderContent(EditorContext& ctx)
             undoBeforeLayout,
             undoGenerationBefore);
     }
+}
+
+void AnimationGraphPanel::DrawBlendTreeBreadcrumb(const scene::AnimatorComponent& animator)
+{
+    if (m_openBlendTreeState >= 0 &&
+        m_openBlendTreeState < static_cast<int>(animator.states.size())) {
+        const std::string breadcrumbName =
+            animator.states[static_cast<size_t>(m_openBlendTreeState)].name;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Base Layer")) {
+            m_openBlendTreeStateName.clear();
+            m_openBlendTreeState = -1;
+            m_selectedMotion = -1;
+            m_graphCanvas.ClearSelection();
+            m_graphCanvas.ResetView();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("> %s", breadcrumbName.c_str());
+    }
+}
+
+void AnimationGraphPanel::DrawGraphCanvas(
+    EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& graphKey)
+{
+    ImGui::BeginChild("##AnimationGraphRoot", ImVec2(0.0f, 0.0f), false);
+    DrawParameterSidebar(ctx, animator);
+    ImGui::SameLine();
+    ImGui::BeginGroup();
+    {
+        FBZZ_PROFILE_SCOPE("AnimationGraphPanel::Canvas");
+        if (m_openBlendTreeState >= 0)
+            DrawBlendTreeCanvas(ctx, animator, graphKey);
+        else
+            DrawNodeCanvas(ctx, animator, graphKey);
+    }
+    ImGui::EndGroup();
+    ImGui::EndChild();
+}
+
+void AnimationGraphPanel::PublishControllerSelection(EditorContext& ctx, const std::string& docPath) const
+{
+    auto& selection = ctx.animationGraphSelection;
+    selection.Clear();
+    selection.assetPath = docPath;
+    /// @note BlendTree 内の Motion を選んでいる間は、親 State より優先して Inspector に渡す。
+    if (m_openBlendTreeState >= 0 && m_selectedMotion >= 0) {
+        selection.type = EditorContext::AnimationGraphSelection::Type::BlendTreeMotion;
+        selection.stateIndex = m_openBlendTreeState;
+        selection.motionIndex = m_selectedMotion;
+    } else if (m_selectedLink.fromStateIndex == -2) {
+        selection.type = EditorContext::AnimationGraphSelection::Type::AnyStateTransition;
+        selection.transitionIndex = m_selectedLink.transitionIndex;
+    } else if (m_selectedLink.fromStateIndex >= 0) {
+        selection.type = EditorContext::AnimationGraphSelection::Type::Transition;
+        selection.stateIndex = m_selectedLink.fromStateIndex;
+        selection.transitionIndex = m_selectedLink.transitionIndex;
+    } else if (m_selectedNode >= 0) {
+        selection.type = EditorContext::AnimationGraphSelection::Type::State;
+        selection.stateIndex = m_selectedNode;
+    } else if (m_selectedAnyState) {
+        selection.type = EditorContext::AnimationGraphSelection::Type::AnyState;
+    }
+    selection.layerName = m_editingLayer;
+    selection.selectedCount = static_cast<int>(m_selectedStateNames.size());
 }
 
 /// @note 編集対象レイヤーを選ぶツールバー。Base Layer と各 AnimationLayer を切り替える。

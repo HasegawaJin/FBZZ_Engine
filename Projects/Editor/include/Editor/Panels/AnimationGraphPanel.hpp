@@ -92,6 +92,15 @@ private:
     /// Slot 疑似ノード。遷移グラフに繋がらないためピンを持たない。
     static int SlotNodeId();
 
+    void ApplyInspectorRenames(EditorContext& ctx);
+    void UpdateControllerPath(EditorContext& ctx);
+    bool LoadControllerDocument(EditorContext& ctx, const std::string& docPath);
+    void DrawControllerDocument(EditorContext& ctx, const std::string& docPath, bool allowEditing);
+    void DrawSceneAnimator(EditorContext& ctx, bool allowEditing);
+    void DrawBlendTreeBreadcrumb(const scene::AnimatorComponent& animator);
+    void DrawGraphCanvas(EditorContext& ctx, scene::AnimatorComponent& animator, const std::string& graphKey);
+    void PublishControllerSelection(EditorContext& ctx, const std::string& docPath) const;
+
     /// 編集対象レイヤー (Base Layer / 各 AnimationLayer) を切り替えるツールバー。
     void DrawLayerSelector(EditorContext& ctx, scene::AnimatorComponent& animator,
                            bool allowEditing);
