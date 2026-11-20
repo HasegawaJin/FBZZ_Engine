@@ -78,7 +78,6 @@ fbzz_add_test_suite(CoreAuto
         Core/Auto/Memory/MemoryDebugTests.cpp
         Core/Auto/Memory/MemorySystemTests.cpp
         Core/Auto/Signal/SignalTests.cpp
-        Core/Auto/DeferredDirtySetTests.cpp
         Core/Auto/Logger/LoggerTests.cpp
         Core/Auto/Profiler/ProfilerTests.cpp
         Core/Auto/Profiler/ProfileRecorderTests.cpp
@@ -612,6 +611,7 @@ fbzz_add_test_suite(GraphicsAuto
         Graphics/Auto/GraphicsStandaloneCpuTests.cpp
         Graphics/Auto/OcclusionCullerTests.cpp
         Graphics/Auto/SurfacePatchLodTests.cpp
+        Graphics/Auto/DeferredDirtySetTests.cpp
         Graphics/Auto/RenderMeshSpatialIndexTests.cpp
         Graphics/Auto/DX12UploadArenaSizingTests.cpp
         Graphics/Auto/RenderSceneSpatialQueriesTests.cpp

@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #include <TestKit/TestKit.hpp>
-#include <Core/Containers/DeferredDirtySet.hpp>
+#include "Renderer/DeferredDirtySet.hpp"
 #include <cstdint>
 #include <vector>
 
@@ -16,7 +16,7 @@ struct Identity {
 struct CollisionHash {
     size_t operator()(const Identity&) const { return 0; }
 };
-using DirtySet = core::DeferredDirtySet<Identity, uint32_t, CollisionHash>;
+using DirtySet = renderer::spatial_detail::DeferredDirtySet<Identity, uint32_t, CollisionHash>;
 class DeferredDirtySetTest : public testkit::Fixture {};
 } /// @note namespace
 

@@ -4,7 +4,7 @@
 /// @date    2026-10-23
 #pragma once
 
-#include <Core/Containers/DeferredDirtySet.hpp>
+#include "DeferredDirtySet.hpp"
 #include <Core/Profiler/ProfileScope.hpp>
 #include <Graphics/Renderer/RenderBvhDebug.hpp>
 #include <Math/Frustum.hpp>
@@ -248,7 +248,7 @@ public:
 
 private:
     static constexpr uint32_t NO_INDEX = std::numeric_limits<uint32_t>::max();
-    using DirtySet = core::DeferredDirtySet<size_t>;
+    using DirtySet = DeferredDirtySet<size_t>;
     struct Bounds { math::Vector3 low{}, high{}; };
     struct Entry {
         MeshSource source;

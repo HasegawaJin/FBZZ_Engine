@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace fbzz::core {
+namespace fbzz::renderer::spatial_detail {
 
 /// @note Single-threaded value collector; callers serialize Mark/TakePending/Reset at their existing owner boundary.
 /// @note ownerGeneration is a caller-issued nonzero lifetime, not a frame number; stale producers must pass their captured lifetime.
@@ -113,4 +113,4 @@ private:
     [[no_unique_address]] Equal m_equal;
 };
 
-} /// @note namespace fbzz::core
+} /// @note namespace fbzz::renderer::spatial_detail

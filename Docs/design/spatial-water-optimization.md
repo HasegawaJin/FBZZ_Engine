@@ -24,7 +24,7 @@ Materialのdirty集約は今回実装していない。既存authoring snapshot/
 
 ## APIと更新境界
 
-汎用collectorは[DeferredDirtySet.hpp](../../Projects/Core/include/Core/Containers/DeferredDirtySet.hpp)の`fbzz::core::DeferredDirtySet<Key, ReasonBits, Hash, Equal>`。単一threadの値型であり、event busやcallback dispatcherではない。
+Graphics内部の差分集約には[DeferredDirtySet.hpp](../../Projects/Graphics/src/Renderer/DeferredDirtySet.hpp)の`fbzz::renderer::spatial_detail::DeferredDirtySet<Key, ReasonBits, Hash, Equal>`を使う。単一threadの値型で、呼び出し側が通知とbatchの取り出しを直列化する。
 
 - `Reset(ownerGeneration)`へcaller所有の非ゼロ寿命値を設定する。frame番号ではない。
 - `Mark(ownerGeneration, key, reasons)`は同じkeyをcoalesceし、古い寿命・ゼロ寿命・空reasonを拒否する。pending中のkeyとHash/Equalは安定している必要がある。
