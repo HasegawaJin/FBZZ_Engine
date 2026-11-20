@@ -12,9 +12,7 @@
 #endif
 #include <Windows.h>
 
-/// @note Windows.h は CopyFile / GetCurrentDirectory を A/W サフィックス付き関数へ置換する。
-/// @note       FileSystem のメンバー関数名まで置換されるとヘッダ宣言と実装名がずれ、MSVC が
-/// @note       FileSystem::CopyFileA などを探してしまうため、Win32 API を直接呼ばない本ファイルでは解除する。
+/// @note Win32 の A/W マクロが FileSystem の同名メンバーを置換しないようにする。
 #ifdef CopyFile
 #undef CopyFile
 #endif
@@ -34,39 +32,64 @@
 #include <string>
 #include <limits>
 
-namespace {
-/// @brief UTF-8 文字列をワイド文字列に変換する。
-/// @note std::ifstream(std::string) は Windows ANSI (CP_ACP) でパスを解釈するため、UTF-8 の
-/// @note       多バイト文字を含むパスが正しく開けない。ワイド文字列なら Win32 Unicode API 経由で開ける。
-std::wstring Utf8ToWide(const std::string& s)
-{
-    if (s.empty()) return {};
-    const int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-    if (n <= 0) return {};
-    /// @note MultiByteToWideChar は -1 指定時に終端 NUL も含めて n 文字を書き込むため、n - 1 だけ
-    /// @note       確保して n を渡すと 1 文字分オーバーランし、ReadText などの呼び出し元でクラッシュする。
-    std::wstring w(static_cast<size_t>(n), L'\0');
-    const int written = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
-    if (written <= 0) return {};
-    w.resize(static_cast<size_t>(written - 1));
-    return w;
-}
-
-std::string WideToUtf8(const std::wstring& w)
-{
-    if (w.empty()) return {};
-    const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (n <= 0) return {};
-    /// @note WideCharToMultiByte も終端 NUL を含めて n バイトを書き込むため、同じく n 分を確保してから縮める。
-    std::string s(static_cast<size_t>(n), '\0');
-    const int written = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
-    if (written <= 0) return {};
-    s.resize(static_cast<size_t>(written - 1));
-    return s;
-}
-} /// @note namespace
-
 namespace fbzz::util {
+namespace {
+
+HANDLE CreateSiblingTemporaryFile(const std::filesystem::path& target, std::filesystem::path& temporary)
+{
+    constexpr unsigned MAX_ATTEMPTS = 64;
+    constexpr uint64_t EXHAUSTED_NONCE = std::numeric_limits<uint64_t>::max();
+    static std::atomic<uint64_t> nextNonce{1};
+
+    for (unsigned attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
+        uint64_t nonce = nextNonce.load(std::memory_order_relaxed);
+        while (nonce != EXHAUSTED_NONCE
+            && !nextNonce.compare_exchange_weak(nonce, nonce + 1, std::memory_order_relaxed)) {
+        }
+        if (nonce == EXHAUSTED_NONCE) {
+            return INVALID_HANDLE_VALUE;
+        }
+
+        temporary = target.parent_path() / (L"." + target.filename().wstring() + L"."
+            + std::to_wstring(::GetCurrentProcessId()) + L"." + std::to_wstring(nonce) + L".tmp");
+        /// @note 同じディレクトリに排他的に作成し、名前が衝突した既存ファイルは保持する。
+        /// @see https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew CREATE_NEW の排他的作成。
+        const HANDLE file = ::CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr,
+            CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE) {
+            return file;
+        }
+
+        const DWORD error = ::GetLastError();
+        if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
+            return INVALID_HANDLE_VALUE;
+        }
+    }
+    return INVALID_HANDLE_VALUE;
+}
+
+/// @note 書き込みに失敗した場合もハンドルを閉じ、呼び出し元が一時ファイルを削除できるようにする。
+bool WriteAndCloseTemporaryFile(HANDLE file, const char* data, size_t size)
+{
+    constexpr size_t WRITE_CHUNK_BYTES = 1024U * 1024U;
+    bool writeSucceeded = true;
+    size_t offset = 0;
+    while (offset < size) {
+        const DWORD requestedBytes = static_cast<DWORD>(std::min(size - offset, WRITE_CHUNK_BYTES));
+        DWORD writtenBytes = 0;
+        if (!::WriteFile(file, data + offset, requestedBytes, &writtenBytes, nullptr) || writtenBytes == 0) {
+            writeSucceeded = false;
+            break;
+        }
+        offset += writtenBytes;
+    }
+
+    const bool flushed = writeSucceeded && ::FlushFileBuffers(file) != FALSE;
+    const bool closed = ::CloseHandle(file) != FALSE;
+    return flushed && closed;
+}
+
+} /// @note namespace
 
 std::error_code ReplaceFileAtomic(const std::filesystem::path& temporary, const std::filesystem::path& target)
 {
@@ -101,14 +124,14 @@ std::error_code ReplaceFileAtomic(const std::filesystem::path& temporary, const 
 
 bool FileSystem::Exists(const std::string& path)
 {
-    DWORD attr = GetFileAttributesW(Utf8ToWide(path).c_str());
-    return attr != INVALID_FILE_ATTRIBUTES;
+    const DWORD attributes = GetFileAttributesW(StringUtils::ToWide(path).c_str());
+    return attributes != INVALID_FILE_ATTRIBUTES;
 }
 
 bool FileSystem::IsDirectory(const std::string& path)
 {
-    DWORD attr = GetFileAttributesW(Utf8ToWide(path).c_str());
-    return (attr != INVALID_FILE_ATTRIBUTES) && (attr & FILE_ATTRIBUTE_DIRECTORY);
+    const DWORD attributes = GetFileAttributesW(StringUtils::ToWide(path).c_str());
+    return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
 std::string FileSystem::GetExtension(const std::string& path)
@@ -168,35 +191,32 @@ bool FileSystem::SamePathText(std::string_view a, std::string_view b, bool trimT
 
 bool FileSystem::IsChildPathText(const std::string& path, const std::string& root)
 {
-    std::string normalizedPath = NormalizePathSeparators(path);
-    std::string normalizedRoot = NormalizePathSeparators(root);
-    std::transform(normalizedPath.begin(), normalizedPath.end(), normalizedPath.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    std::transform(normalizedRoot.begin(), normalizedRoot.end(), normalizedRoot.begin(),
-        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const std::string normalizedPath = StringUtils::ToLowerCopy(NormalizePathSeparators(path));
+    std::string normalizedRoot = StringUtils::ToLowerCopy(NormalizePathSeparators(root));
     if (normalizedRoot.empty()) return false;
     if (normalizedPath == normalizedRoot) return true;
-    normalizedRoot += "/";
-    return normalizedPath.rfind(normalizedRoot, 0) == 0;
+
+    normalizedRoot += '/';
+    return normalizedPath.starts_with(normalizedRoot);
 }
 
 std::vector<std::string> FileSystem::ListFiles(const std::string& dir, const std::string& ext)
 {
     std::vector<std::string> result;
-    std::wstring pattern = Utf8ToWide(dir + "\\*");
+    const std::wstring searchPattern = StringUtils::ToWide(dir + "\\*");
 
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return result;
+    WIN32_FIND_DATAW entry;
+    const HANDLE search = FindFirstFileW(searchPattern.c_str(), &entry);
+    if (search == INVALID_HANDLE_VALUE) return result;
 
     do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-        std::string name = WideToUtf8(fd.cFileName);
+        if (entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        const std::string name = StringUtils::ToNarrow(entry.cFileName);
         if (ext.empty() || GetExtension(name) == ext)
             result.push_back(dir + "\\" + name);
-    } while (FindNextFileW(h, &fd));
+    } while (FindNextFileW(search, &entry));
 
-    FindClose(h);
+    FindClose(search);
     return result;
 }
 
@@ -244,27 +264,24 @@ std::vector<std::filesystem::path> FileSystem::ListDirectories(const std::filesy
 std::vector<std::string> FileSystem::ListAll(const std::string& dir)
 {
     std::vector<std::string> result;
-    std::wstring pattern = Utf8ToWide(dir + "\\*");
+    const std::wstring searchPattern = StringUtils::ToWide(dir + "\\*");
 
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return result;
+    WIN32_FIND_DATAW entry;
+    const HANDLE search = FindFirstFileW(searchPattern.c_str(), &entry);
+    if (search == INVALID_HANDLE_VALUE) return result;
 
     do {
-        std::string name = WideToUtf8(fd.cFileName);
+        const std::string name = StringUtils::ToNarrow(entry.cFileName);
         if (name == "." || name == "..") continue;
         result.push_back(dir + "\\" + name);
-    } while (FindNextFileW(h, &fd));
+    } while (FindNextFileW(search, &entry));
 
-    FindClose(h);
+    FindClose(search);
     return result;
 }
 
 bool FileSystem::EnsureDirectory(const std::string& path)
 {
-    /// @note path 版の create_directories に委譲し、中間ディレクトリも掘る。string 版だけ浅い実装だと、
-    /// @note       同じ名前の関数が «引数の型によって深さが違う» ことになり、空ディレクトリから組み立てた
-    /// @note       ときだけ «作ったつもりで書き込みに失敗する» 形で表面化する。
     return EnsureDirectory(PathFromUtf8(path));
 }
 
@@ -334,29 +351,30 @@ bool FileSystem::Rename(const std::filesystem::path& src, const std::filesystem:
 
 bool FileSystem::ReadText(const std::string& path, std::string& out)
 {
-    const std::wstring widePath = Utf8ToWide(path);
+    const std::wstring widePath = StringUtils::ToWide(path);
     if (widePath.empty()) return false;
 
-    std::ifstream f(widePath);
-    if (!f.is_open()) return false;
-    std::ostringstream ss;
-    ss << f.rdbuf();
-    out = ss.str();
+    /// @note 文字列版はテキストモードで CRLF を LF に変換する。
+    std::ifstream stream(widePath);
+    if (!stream.is_open()) return false;
+    std::ostringstream contents;
+    contents << stream.rdbuf();
+    out = contents.str();
     return true;
 }
 
 bool FileSystem::WriteText(const std::string& path, const std::string& text)
 {
-    const std::wstring widePath = Utf8ToWide(path);
+    const std::wstring widePath = StringUtils::ToWide(path);
     if (widePath.empty()) return false;
 
-    std::ofstream f(widePath);
-    if (!f.is_open()) return false;
-    f << text;
-    /// @note ストリームは破棄時にまとめて書き出すため、close() するまで書き込み失敗 (ディスク満杯・
-    /// @note       共有違反) は現れない。close() 後の f.good() で確認してから返す。
-    f.close();
-    return f.good();
+    /// @note 文字列版はテキストモードで LF を CRLF に変換する。
+    std::ofstream stream(widePath);
+    if (!stream.is_open()) return false;
+    stream << text;
+    /// @note バッファの書き出しに伴う失敗も close() 後に確認する。
+    stream.close();
+    return stream.good();
 }
 
 bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& text)
@@ -366,46 +384,35 @@ bool FileSystem::WriteTextAtomic(const std::string& path, const std::string& tex
 
 bool FileSystem::WriteBinaryAtomic(const std::filesystem::path& input, const void* data, size_t size)
 {
-    if (!data && size > 0) return false;
+    if (input.empty() || (!data && size > 0)) {
+        return false;
+    }
+
     std::error_code error;
-    if (input.empty()) return false;
     const auto target = std::filesystem::absolute(input, error).lexically_normal();
-    if (error || !EnsureParentDirectory(target)) return false;
+    if (error || !EnsureParentDirectory(target)) {
+        return false;
+    }
+
     const DWORD attributes = ::GetFileAttributesW(target.c_str());
-    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) return false;
-    static std::atomic<uint64_t> nextTemporary{1};
-    std::filesystem::path temp;
-    HANDLE file = INVALID_HANDLE_VALUE;
-    for (unsigned attempt = 0; attempt < 64; ++attempt) {
-        uint64_t nonce = nextTemporary.load(std::memory_order_relaxed);
-        while (nonce != std::numeric_limits<uint64_t>::max()
-            && !nextTemporary.compare_exchange_weak(nonce, nonce + 1, std::memory_order_relaxed)) {}
-        if (nonce == std::numeric_limits<uint64_t>::max()) return false;
-        temp = target.parent_path() / (L"." + target.filename().wstring() + L"."
-            + std::to_wstring(::GetCurrentProcessId()) + L"." + std::to_wstring(nonce) + L".tmp");
-        /// @note 同一 parent と CREATE_NEW により、既存の他所有 temp を上書き・回収しない。
-        /// @see https://learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-createfilew CREATE_NEW の排他的作成。
-        file = ::CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (file != INVALID_HANDLE_VALUE) break;
-        const DWORD failure = ::GetLastError();
-        if (failure != ERROR_FILE_EXISTS && failure != ERROR_ALREADY_EXISTS) return false;
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        return false;
     }
-    if (file == INVALID_HANDLE_VALUE) return false;
-    bool success = true;
-    size_t offset = 0;
-    while (offset < size) {
-        const DWORD count = static_cast<DWORD>(std::min<size_t>(size - offset, 1024U * 1024U));
-        DWORD written = 0;
-        if (!::WriteFile(file, static_cast<const char*>(data) + offset, count, &written, nullptr) || !written) { success = false; break; }
-        offset += written;
+
+    std::filesystem::path temporary;
+    const HANDLE file = CreateSiblingTemporaryFile(target, temporary);
+    if (file == INVALID_HANDLE_VALUE) {
+        return false;
     }
-    if (success) success = ::FlushFileBuffers(file) != FALSE;
-    if (!::CloseHandle(file)) success = false;
-    /// @note MSVC rename は REPLACE_EXISTING。temp は同一 parent なので cross-volume copy を使わず原本を先に削除しない。
+
+    const bool written = WriteAndCloseTemporaryFile(file, static_cast<const char*>(data), size);
+    /// @note MSVC の同一ディレクトリ内の rename は、原本を先に削除せずに置き換える。
     /// @see https://github.com/microsoft/STL/blob/main/stl/src/filesystem.cpp __std_fs_rename。
-    if (success && Rename(temp, target)) return true;
-    /// @note temp はこの呼出しで排他的に作成した exact path。再帰走査・prefix 一括削除はしない。
-    std::filesystem::remove(temp, error);
+    if (written && Rename(temporary, target)) {
+        return true;
+    }
+
+    std::filesystem::remove(temporary, error);
     return false;
 }
 
@@ -481,7 +488,7 @@ bool FileSystem::WriteText(const std::filesystem::path& path, const std::string&
 
 std::filesystem::path FileSystem::PathFromUtf8(const std::string& path)
 {
-    return std::filesystem::path(Utf8ToWide(path));
+    return std::filesystem::path(StringUtils::ToWide(path));
 }
 
 std::string FileSystem::PathToUtf8(const std::filesystem::path& path)

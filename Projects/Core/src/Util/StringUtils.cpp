@@ -70,16 +70,22 @@ bool StringUtils::EndsWith(const std::string& s, const std::string& suffix)
            s.substr(s.size() - suffix.size()) == suffix;
 }
 
-std::vector<std::string> StringUtils::Split(const std::string& s, char delim)
+std::vector<std::string> StringUtils::Split(const std::string& text, char delimiter)
 {
-    std::vector<std::string> result;
+    std::vector<std::string> tokens;
     std::string token;
-    for (char c : s) {
-        if (c == delim) { result.push_back(token); token.clear(); }
-        else            { token += c; }
+    for (char character : text) {
+        if (character == delimiter) {
+            tokens.push_back(token);
+            token.clear();
+        } else {
+            token += character;
+        }
     }
-    if (!token.empty()) result.push_back(token);
-    return result;
+    if (!token.empty()) {
+        tokens.push_back(token);
+    }
+    return tokens;
 }
 
 std::string StringUtils::Trim(const std::string& s)
@@ -103,40 +109,41 @@ std::string StringUtils::TruncateUtf8(const std::string& s, std::size_t maxBytes
     return s.substr(0, cut) + ellipsis;
 }
 
-std::wstring StringUtils::ToWide(const std::string& s)
+/// @note Win32 に入力長 -1 を渡す変換は、終端 NUL を含めて確保してから結果を縮める。
+std::wstring StringUtils::ToWide(const std::string& utf8)
 {
-    if (s.empty()) return {};
-    const int len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
-    if (len <= 0) return {};
-    std::wstring out(static_cast<size_t>(len), L'\0');
-    const int written = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), len);
-    if (written <= 0) return {};
-    out.resize(static_cast<size_t>(written - 1));
-    return out;
+    if (utf8.empty()) return {};
+    const int requiredChars = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+    if (requiredChars <= 0) return {};
+    std::wstring wide(static_cast<size_t>(requiredChars), L'\0');
+    const int writtenChars = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide.data(), requiredChars);
+    if (writtenChars <= 0) return {};
+    wide.resize(static_cast<size_t>(writtenChars - 1));
+    return wide;
 }
 
-std::string StringUtils::ToNarrow(const std::wstring& s)
+std::string StringUtils::ToNarrow(const std::wstring& wide)
 {
-    if (s.empty()) return {};
-    const int len = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    if (len <= 0) return {};
-    std::string out(static_cast<size_t>(len), '\0');
-    const int written = WideCharToMultiByte(CP_UTF8, 0, s.c_str(), -1, out.data(), len, nullptr, nullptr);
-    if (written <= 0) return {};
-    out.resize(static_cast<size_t>(written - 1));
-    return out;
+    if (wide.empty()) return {};
+    const int requiredBytes = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (requiredBytes <= 0) return {};
+    std::string utf8(static_cast<size_t>(requiredBytes), '\0');
+    const int writtenBytes = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, utf8.data(), requiredBytes, nullptr, nullptr);
+    if (writtenBytes <= 0) return {};
+    utf8.resize(static_cast<size_t>(writtenBytes - 1));
+    return utf8;
 }
 
-std::string StringUtils::ToNarrow(const wchar_t* s, int charCount)
+std::string StringUtils::ToNarrow(const wchar_t* wide, int charCount)
 {
-    if (!s || charCount <= 0) return {};
-    const int len = WideCharToMultiByte(CP_UTF8, 0, s, charCount, nullptr, 0, nullptr, nullptr);
-    if (len <= 0) return {};
-    std::string out(static_cast<size_t>(len), '\0');
-    const int written = WideCharToMultiByte(CP_UTF8, 0, s, charCount, out.data(), len, nullptr, nullptr);
-    if (written <= 0) return {};
-    out.resize(static_cast<size_t>(written));
-    return out;
+    if (!wide || charCount <= 0) return {};
+    const int requiredBytes = WideCharToMultiByte(CP_UTF8, 0, wide, charCount, nullptr, 0, nullptr, nullptr);
+    if (requiredBytes <= 0) return {};
+    std::string utf8(static_cast<size_t>(requiredBytes), '\0');
+    const int writtenBytes = WideCharToMultiByte(CP_UTF8, 0, wide, charCount, utf8.data(), requiredBytes, nullptr, nullptr);
+    if (writtenBytes <= 0) return {};
+    utf8.resize(static_cast<size_t>(writtenBytes));
+    return utf8;
 }
 
 std::string StringUtils::PathToUtf8(const std::filesystem::path& path)
