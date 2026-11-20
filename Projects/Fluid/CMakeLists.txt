@@ -1,10 +1,15 @@
-# 流体の «数式» 層。Physics の兄弟で、互いを知らない (Docs/design/fluid-library.md)。
-# WHY TomlPlusPlus を持たないか: ファイル形式は Engine の担当。リンカーがこの境界を守る。
+# @file    CMakeLists.txt
+# @brief   流体ライブラリのビルド定義。
+# @author  Hasegawa Jin
+# @date    2026-09-17
+# @note 流体のファイル形式は Engine が扱う。Fluid の依存は Math に限定する。
+# @see Docs/design/fluid-library.md
 file(GLOB_RECURSE FLUID_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     src/*.hpp
     include/*.hpp
 )
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${FLUID_SOURCES})
 
 add_library(FBZZFluid SHARED ${FLUID_SOURCES})
 set_target_properties(FBZZFluid PROPERTIES

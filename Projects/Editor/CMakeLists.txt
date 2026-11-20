@@ -7,9 +7,11 @@ file(GLOB_RECURSE EDITOR_SOURCES CONFIGURE_DEPENDS
     src/*.hpp
     include/*.hpp
 )
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${EDITOR_SOURCES})
 
 # @note miniz.c (TinyEXR の zlib バックエンド) は C の tentative definition を使い、C++ TU から include すると C2086 になるので C としてビルドする。
 set(EDITOR_MINIZ_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/TinyExr/miniz.c")
+source_group("ThirdParty" FILES "${EDITOR_MINIZ_SRC}")
 set_source_files_properties(${EDITOR_MINIZ_SRC} PROPERTIES
     LANGUAGE C
     # @note サードパーティの警告を抑制する。

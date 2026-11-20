@@ -1,7 +1,12 @@
+# @file    CMakeLists.txt
+# @brief   数学ライブラリのビルド定義。
+# @author  Hasegawa Jin
+# @date    2026-05-15
 file(GLOB_RECURSE MATH_SOURCES CONFIGURE_DEPENDS
     src/*.cpp
     include/*.hpp
 )
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${MATH_SOURCES})
 
 add_library(FBZZMath SHARED ${MATH_SOURCES})
 set_target_properties(FBZZMath PROPERTIES

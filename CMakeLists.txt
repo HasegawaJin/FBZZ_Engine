@@ -239,7 +239,22 @@ add_subdirectory(Projects/Sandbox)
 # @note 共有 Engine SDK を SDK/<engine-version>/ に生成する。外部ゲームはソースツリーでなく IMPORTED target を参照する。
 include(CMake/FBZZSDK.cmake)
 
+# @note CMake 3.25 のポリシーではソリューションフォルダーが既定で無効になる。
+# @see https://cmake.org/cmake/help/latest/prop_gbl/USE_FOLDERS.html USE_FOLDERS
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+# @see https://cmake.org/cmake/help/latest/prop_gbl/PREDEFINED_TARGETS_FOLDER.html PREDEFINED_TARGETS_FOLDER
+set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "Build")
+
+# @note ソースデバッグ用の Sandbox はソリューション直下に置く。
+# @see https://cmake.org/cmake/help/latest/prop_dir/VS_STARTUP_PROJECT.html VS_STARTUP_PROJECT
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Sandbox)
+set_property(TARGET FBZZEditor FBZZEditorLauncher PROPERTY FOLDER "Editor")
+set_property(TARGET FBZZEngine FBZZCore FBZZGraphics FBZZMath FBZZPhysics FBZZFluid PROPERTY FOLDER "Engine")
+set_property(TARGET ImGui ImGuizmo ImNodes PROPERTY FOLDER "ThirdParty")
+set_property(TARGET SandboxStandalone SyncSandboxAssets CompileShaders CompileEditorLauncherShaders PROPERTY FOLDER "Build")
+if(TARGET FBZZEmbeddedShaders)
+    set_property(TARGET FBZZEmbeddedShaders PROPERTY FOLDER "Build")
+endif()
 
 if(FBZZ_BUILD_TESTS)
     add_subdirectory(Projects/Tests)

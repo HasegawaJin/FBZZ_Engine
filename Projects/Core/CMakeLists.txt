@@ -3,6 +3,7 @@
 # @author  Hasegawa Jin
 # @date    2026-09-21
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS src/*.cpp include/*.hpp)
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${CORE_SOURCES})
 add_library(FBZZCore SHARED ${CORE_SOURCES})
 set_target_properties(FBZZCore PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF EXPORT_NAME Core)
 target_include_directories(FBZZCore PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>" "$<INSTALL_INTERFACE:include>")

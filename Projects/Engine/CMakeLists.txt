@@ -139,6 +139,8 @@ function(fbzz_engine_module TARGET)
     fbzz_validate_engine_module("${CMAKE_SOURCE_DIR}" "${MODULE}" ${ARG_SOURCES} ${PUBLIC_HEADERS})
     fbzz_validate_engine_links("${MODULE}" ${ARG_DEPENDENCIES})
 
+    # @see https://cmake.org/cmake/help/latest/command/source_group.html source_group TREE
+    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${ARG_SOURCES})
     add_library(${TARGET} OBJECT ${ARG_SOURCES})
     target_include_directories(${TARGET} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
@@ -276,6 +278,7 @@ if(FBZZ_UNCLAIMED_CPP)
 endif()
 
 fbzz_validate_engine_module("${CMAKE_SOURCE_DIR}" Host ${ENGINE_SOURCES})
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${ENGINE_SOURCES})
 add_library(FBZZEngine SHARED
     ${ENGINE_SOURCES}
     $<TARGET_OBJECTS:FBZZEnginePlatform>

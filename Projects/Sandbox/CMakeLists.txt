@@ -6,6 +6,7 @@ file(GLOB_RECURSE SANDBOX_SOURCES
     src/*.cpp
     src/*.hpp
 )
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${SANDBOX_SOURCES})
 add_executable(Sandbox ${SANDBOX_SOURCES})
 
 

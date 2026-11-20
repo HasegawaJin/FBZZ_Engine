@@ -694,6 +694,10 @@ cd FBZZ_Engine
 VS Code または Visual Studio で開き、CMake の構成プリセット (`debug` / `development` / `release` / `coverage`) を選んでビルドする。
 VS Code なら `Ctrl+Shift+P` → `Tasks: Run Task` から `CMake: Configure (Debug)` → `CMake: Build All (Debug)`。
 
+Visual Studio で C++ をステップ実行するには、`debug` の Configure 後に `build/Debug/FBZZEngine.slnx` を開き、`Debug | x64` で F5 を押す。既定の起動プロジェクト `Sandbox` がサンプルプロジェクトをエディターで開く。以前に別の起動プロジェクトを選んでいる場合は、ソリューション直下の `Sandbox` を右クリックして「スタートアップ プロジェクトに設定」を選ぶ。
+
+エディターのソースは `Editor/FBZZEditor`、エンジンのソースは `Engine` と `Engine/Modules` にある。主要な C++ プロジェクトでは、`src` と `include` をディスク上と同じ階層で辿れる。テストは `Tests`、シェーダー生成などの補助ターゲットは `Build` にまとまっている。生成済みのソリューションに構成変更を反映するには、そのプリセットで Configure し直す。
+
 シェーダーはエディターと CMake が自動収集し、`Assets/Shaders/compile_shaders.ps1` が include 依存を含む差分だけをコンパイルする。
 
 人は VS Code / Visual Studio のタスク、AI は `Tools/AgentBuild.ps1` をビルドの入口にする。Visual Studio 環境の検出は `Tools/VsEnvironment.ps1` に集約している。ビルドは同時に 1 本だけ実行する。SDK は `FBZZSDK` ターゲットで公開する。

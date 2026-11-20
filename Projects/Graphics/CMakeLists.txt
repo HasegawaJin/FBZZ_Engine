@@ -10,6 +10,7 @@ file(GLOB_RECURSE GRAPHICS_SOURCES CONFIGURE_DEPENDS src/*.cpp include/*.hpp)
 if(NOT FBZZ_ENABLE_DX12)
     list(FILTER GRAPHICS_SOURCES EXCLUDE REGEX "/Platform/DX12/")
 endif()
+source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${GRAPHICS_SOURCES})
 add_library(FBZZGraphics SHARED ${GRAPHICS_SOURCES})
 set_target_properties(FBZZGraphics PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS OFF EXPORT_NAME Graphics)
 target_include_directories(FBZZGraphics
