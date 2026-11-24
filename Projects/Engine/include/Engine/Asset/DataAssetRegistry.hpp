@@ -10,10 +10,12 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include <string>
+#include <typeinfo>
 
 namespace fbzz::asset {
 
 class DataAsset;
+template<typename T> struct Asset;
 
 class DataAssetRegistry {
 public:
@@ -57,6 +59,14 @@ public:
     /// @note しないとリロード後にアクセス違反になる。破棄後は次回 Resolve で遅延再ロードされる。
     FBZZ_ENGINE_API static void ClearCache();
     /// @}
+
+private:
+    template<typename T> friend struct Asset;
+
+    /// @note 型付き factory が生成した場合は requestedType の部分オブジェクトを返す。
+    /// @param legacy 型付き情報のない実体だけを受け取る。型付き実体、または解決不能なら nullptr。
+    [[nodiscard]] FBZZ_ENGINE_API static void* ResolveNative(
+        const std::string& path, const std::type_info& requestedType, DataAsset*& legacy);
 };
 
-} /// @note namespace fbzz::asset
+}

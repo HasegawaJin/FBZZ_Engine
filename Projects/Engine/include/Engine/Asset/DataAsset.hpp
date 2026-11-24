@@ -13,6 +13,7 @@
 /// @note Asset<T>::Get() の解決先。
 #include <Engine/Asset/DataAssetRegistry.hpp>
 #include <string>
+#include <typeinfo>
 
 namespace fbzz {
 
@@ -30,8 +31,19 @@ public:
     virtual void Reflect(scene::IReflector& r) = 0;
 };
 
+/// @return 実行時の型が T と一致し、DataAsset からの公開かつ非仮想の変換経路があれば T のポインター。それ以外は nullptr。
+template<typename T>
+[[nodiscard]] T* TryAsExactDataAsset(DataAsset* source)
+{
+    if constexpr (requires { static_cast<T*>(source); }) {
+        if (source && typeid(*source) == typeid(T)) return static_cast<T*>(source);
+    }
+    return nullptr;
+}
+
 /// @brief 参照側スクリプトのフィールド型。path で共有実体を解決する型安全ハンドル。
 /// @note Get() は未アサイン/型不一致/未存在なら nullptr。operator->/* で `if (asset) asset->field;` のように Ref<T> と同じ書き味で使える。
+/// @note ネイティブ派生型を基底型で参照する場合は DataAssetFactory へ基底型も登録する。
 template<typename T>
 struct Asset {
     scene::DataAssetRef ref;
@@ -42,9 +54,10 @@ struct Asset {
     [[nodiscard]] T* Get() const
     {
         if (ref.path.empty()) return nullptr;
-        DataAsset* a = DataAssetRegistry::Resolve(ref.path);
-        /// @note dynamic_cast はスクリプト DLL 内で実体化されるため、DLL 内型同士の RTTI 比較になる。
-        return dynamic_cast<T*>(a);
+        DataAsset* legacy = nullptr;
+        if (void* typed = DataAssetRegistry::ResolveNative(ref.path, typeid(T), legacy))
+            return static_cast<T*>(typed);
+        return TryAsExactDataAsset<T>(legacy);
     }
 
     T* operator->() const { return Get(); }
@@ -54,13 +67,13 @@ struct Asset {
     void Clear() { ref.path.clear(); }
 };
 
-} /// @note namespace asset
+}
 
 /// @brief 公開エイリアス: `fbzz::DataAsset` / `fbzz::Asset<T>` で使えるようにする。
 using asset::DataAsset;
 template<typename T> using Asset = asset::Asset<T>;
 
-} /// @note namespace fbzz
+}
 
 /// @name ユーザー向けマクロ
 /// @{

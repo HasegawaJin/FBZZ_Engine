@@ -25,7 +25,7 @@ struct LoadedPlacementReference {
 
 auto& LoadedPlacementReferences()
 {
-    /// @note Handles follow hot reload and Unload; index changes invalidate the resolved project paths.
+    /// @note ハンドルはホットリロードと Unload に追従する。索引が変わると解決済みのプロジェクトパスは無効になる。
     static std::unordered_map<std::string, LoadedPlacementReference> loaded;
     static uint64_t revision = UINT64_MAX;
     static int assetGeneration = -1;
@@ -180,7 +180,7 @@ const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& referen
         const auto found = store.cache.find(AssetManager::CanonicalKey(reference));
         if (found != store.cache.end()) {
             handle = found->second;
-            /// @note A renderer lookup must not turn an outstanding asynchronous placement request into a synchronous pin.
+            /// @note レンダラーの検索で保留中の非同期配置リクエストを同期ピンに切り替えないこと。
             if (store.IsPending(handle)) return nullptr;
         }
         if (!AssetManager::Get(handle)) handle = AssetManager::Load<MeshInstancesAsset>(reference);
@@ -199,8 +199,6 @@ const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& referen
         if (asset && loaded.size() < 4096 && detail::IsCacheableLoadedReference(reference)) loaded[reference].paint = handle;
         return asset ? &asset->definition : nullptr;
     }
-    const auto* asset = DataAssetRegistry::Resolve(reference);
-    return asset && std::string_view(asset->GetTypeName()) == InstanceSetAsset::TYPE_NAME
-        ? static_cast<const InstanceSetAsset*>(asset) : nullptr;
+    return TryAsExactDataAsset<InstanceSetAsset>(DataAssetRegistry::Resolve(reference));
 }
 } /// @note namespace fbzz::asset

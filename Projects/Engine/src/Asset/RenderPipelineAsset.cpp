@@ -1,5 +1,5 @@
 /// @file    RenderPipelineAsset.cpp
-/// @brief   Rendering configuration ownership, typed serialization and fallback resolution.
+/// @brief   描画設定の所有範囲、型付きの保存形式、代替設定への解決。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #include <Engine/Asset/RenderPipelineAsset.hpp>
@@ -504,14 +504,12 @@ bool ResolveRenderPipelineSettings(const renderer::RenderSettings& inlineFallbac
     out = inlineFallback;
     if (assetReference.empty()) return false;
     const std::string reference(assetReference);
-    /// @note A cached last-good object survives malformed reloads, but a removed assignment's file must select inline fallback.
+    /// @note 不正な再読込では最後に正常だった値をキャッシュから使う。割り当て先のファイルが削除された場合はインラインの代替設定を選ぶ。
     const std::string absolute = AssetManager::ResolveAssetPath(reference);
     if (absolute.empty() || !util::FileSystem::Exists(absolute)) return false;
-    const auto* data = DataAssetRegistry::Resolve(reference);
-    if (!data || std::string_view(data->GetTypeName()) != RenderPipelineAsset::TYPE_NAME) return false;
-    const auto& pipeline = static_cast<const RenderPipelineAsset&>(*data);
-    if (!Valid(pipeline.Settings())) return false;
-    pipeline.ApplyTo(out);
+    const auto* pipeline = TryAsExactDataAsset<RenderPipelineAsset>(DataAssetRegistry::Resolve(reference));
+    if (!pipeline || !Valid(pipeline->Settings())) return false;
+    pipeline->ApplyTo(out);
     return true;
 }
 

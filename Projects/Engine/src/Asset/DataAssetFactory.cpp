@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-01
 ///
-/// DataAssetRegistry が .fzdata の "type" キーからユーザー定義 DataAsset を復元するために使う。
+/// @note DataAssetRegistry は .fzdata の型名から復元に使うファクトリーを選ぶ。
 #include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Core/Logger.hpp>
 #include <algorithm>
@@ -17,8 +17,8 @@ namespace fbzz::asset {
 namespace {
 
 struct Entry {
-    DataAssetFactory::Factory factory;
-    bool builtin = false;   ///< Engine 側の登録。DLL アンロードでも外さない
+    std::function<detail::CreatedDataAsset()> factory;
+    bool builtin = false; ///< Engine 組み込みの登録は DLL アンロードでも外さない。
 };
 
 std::unordered_map<std::string, Entry>& Registry()
@@ -33,43 +33,58 @@ std::uint64_t& Epoch()
     return epoch;
 }
 
-bool RegisterImpl(const std::string& typeName, DataAssetFactory::Factory factory, bool builtin)
+bool RegisterImpl(const std::string& typeName, Entry entry)
 {
-    if (typeName.empty() || !factory) return false;
+    if (typeName.empty() || !entry.factory) return false;
 
     auto& registry = Registry();
-    /// @note 組み込み型を同名のスクリプト型で上書きさせない。上書きを許すと builtin 印が落ち、
-    ///       次の UnregisterScriptTypes で組み込み型ごと消えて復活しなくなる。
+    /// @note 同名のスクリプト型で組み込み登録を上書きすると UnregisterScriptTypes で組み込み型まで失われる。
     if (const auto it = registry.find(typeName);
-        it != registry.end() && it->second.builtin && !builtin) {
+        it != registry.end() && it->second.builtin && !entry.builtin) {
         FBZZ_LOG_WARN("DataAssetFactory: '%s' is a built-in type; script registration ignored",
                       typeName.c_str());
         return false;
     }
 
-    registry[typeName] = Entry{ std::move(factory), builtin };
+    registry[typeName] = std::move(entry);
     ++Epoch();
     return true;
 }
 
-} // namespace
+std::function<detail::CreatedDataAsset()> WrapLegacyFactory(DataAssetFactory::Factory factory)
+{
+    if (!factory) return {};
+    return [factory = std::move(factory)] { return detail::CreatedDataAsset{factory(), {}}; };
+}
+
+}
 
 bool DataAssetFactory::Register(const std::string& typeName, Factory factory)
 {
-    return RegisterImpl(typeName, std::move(factory), false);
+    return RegisterImpl(typeName, {WrapLegacyFactory(std::move(factory)), false});
 }
 
 bool DataAssetFactory::RegisterBuiltin(const std::string& typeName, Factory factory)
 {
-    return RegisterImpl(typeName, std::move(factory), true);
+    return RegisterImpl(typeName, {WrapLegacyFactory(std::move(factory)), true});
+}
+
+bool DataAssetFactory::RegisterNative(const std::string& typeName, NativeFactory factory, bool builtin)
+{
+    return RegisterImpl(typeName, {factory, builtin});
+}
+
+detail::CreatedDataAsset detail::CreateDataAsset(const std::string& typeName)
+{
+    const auto& registry = Registry();
+    const auto found = registry.find(typeName);
+    if (found == registry.end()) return {};
+    return found->second.factory();
 }
 
 std::unique_ptr<DataAsset> DataAssetFactory::Create(const std::string& typeName)
 {
-    auto& registry = Registry();
-    auto it = registry.find(typeName);
-    if (it == registry.end()) return nullptr;
-    return it->second.factory();
+    return detail::CreateDataAsset(typeName).asset;
 }
 
 std::uint64_t DataAssetFactory::RegistrationEpoch()
@@ -98,4 +113,4 @@ std::vector<std::string> DataAssetFactory::RegisteredTypeNames()
     return names;
 }
 
-} // namespace fbzz::asset
+}

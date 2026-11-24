@@ -6,13 +6,17 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Asset/MaterialParamBinding.hpp>
 #include <Engine/Asset/DataAsset.hpp>
+#include <Engine/Asset/DataAssetFactory.hpp>
 #include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/PostProcessProfile.hpp>
+#include <Engine/Asset/RenderPipelineAsset.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <bit>
 #include <Graphics/Renderer/Material.hpp>
 #include <Engine/Scene/TomlReflector.hpp>
 #include <array>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 
@@ -45,6 +49,38 @@ class ReflectionData final : public asset::DataAsset {
 };
 FBZZ_REFLECT(ReflectionData)
 
+class CheckedAssetBase : public asset::DataAsset {
+public:
+    static constexpr const char* TYPE_NAME = "CheckedAssetBase";
+    const char* GetTypeName() const override { return TYPE_NAME; }
+    void Reflect(scene::IReflector&) override {}
+    int baseValue = 41;
+};
+
+class CheckedAssetImpostor final : public asset::DataAsset {
+public:
+    const char* GetTypeName() const override { return CheckedAssetBase::TYPE_NAME; }
+    void Reflect(scene::IReflector&) override {}
+};
+
+class PipelineAssetImpostor final : public asset::DataAsset {
+public:
+    const char* GetTypeName() const override { return asset::RenderPipelineAsset::TYPE_NAME; }
+    void Reflect(scene::IReflector&) override {}
+};
+
+struct CheckedAssetPadding {
+    virtual ~CheckedAssetPadding() = default;
+    int padding = 73;
+};
+
+class CheckedAssetDerived final : public CheckedAssetPadding, public virtual CheckedAssetBase {
+public:
+    static constexpr const char* TYPE_NAME = "CheckedAssetDerived";
+    const char* GetTypeName() const override { return TYPE_NAME; }
+    int derivedValue = 97;
+};
+
 class NestedReflectionData final : public scene::IScriptSerializable {
     FBZZ_SERIALIZABLE(NestedReflectionData)
     FBZZ_FIELD(int, count, 0, "Count")
@@ -56,7 +92,72 @@ FBZZ_REFLECT(NestedReflectionData)
 
 class MaterialReflectionTest : public testkit::EngineFixture {};
 
-/// @brief Legacy materials stay rigid until leaf wind is explicitly authored.
+TEST_F(MaterialReflectionTest, TypedDataAssetRejectsImpostorWithSameSerializedName)
+{
+    ASSERT_TRUE(asset::DataAssetFactory::Register(CheckedAssetBase::TYPE_NAME,
+        [] { return std::make_unique<CheckedAssetImpostor>(); }));
+    testkit::TempDir directory("typed-data-asset-impostor");
+    asset::Asset<CheckedAssetBase> reference;
+    reference.ref.path = directory.File("impostor.fzdata").generic_string();
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(reference.ref.path, CheckedAssetBase::TYPE_NAME));
+    ASSERT_NE(asset::DataAssetRegistry::Resolve(reference.ref.path), nullptr);
+    EXPECT_EQ(asset::DataAssetRegistry::TypeOf(reference.ref.path), CheckedAssetBase::TYPE_NAME);
+    EXPECT_EQ(reference.Get(), nullptr);
+}
+
+TEST_F(MaterialReflectionTest, TypedDataAssetReturnsCompatibleBaseSubobject)
+{
+    ASSERT_TRUE((asset::DataAssetFactory::Register<CheckedAssetDerived, CheckedAssetBase>()));
+    testkit::TempDir directory("typed-data-asset-derived");
+    asset::Asset<CheckedAssetBase> base;
+    base.ref.path = directory.File("derived.fzdata").generic_string();
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(base.ref.path, CheckedAssetDerived::TYPE_NAME));
+    asset::Asset<CheckedAssetDerived> derived;
+    derived.ref.path = base.ref.path;
+    ASSERT_NE(derived.Get(), nullptr);
+    ASSERT_NE(base.Get(), nullptr);
+    EXPECT_EQ(base.Get(), static_cast<CheckedAssetBase*>(derived.Get()));
+    EXPECT_EQ(base->baseValue, 41);
+    EXPECT_EQ(derived->derivedValue, 97);
+    ASSERT_TRUE(asset::DataAssetFactory::Register(CheckedAssetDerived::TYPE_NAME,
+        [] { return std::make_unique<CheckedAssetImpostor>(); }));
+    EXPECT_EQ(base.Get(), static_cast<CheckedAssetBase*>(derived.Get()));
+}
+
+TEST_F(MaterialReflectionTest, TypedDataAssetAcceptsExactLegacyTypeWithoutLineage)
+{
+    ASSERT_TRUE(asset::DataAssetFactory::Register(ReflectionData::TYPE_NAME,
+        [] { return std::make_unique<ReflectionData>(); }));
+    testkit::TempDir directory("typed-data-asset-legacy");
+    asset::Asset<ReflectionData> reference;
+    reference.ref.path = directory.File("legacy.fzdata").generic_string();
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(reference.ref.path, ReflectionData::TYPE_NAME));
+    ASSERT_NE(reference.Get(), nullptr);
+    EXPECT_EQ(reference->key, input::KeyCode::SPACE);
+}
+
+TEST_F(MaterialReflectionTest, TypedDataAssetResolvesBuiltinAcrossEngineDll)
+{
+    testkit::TempDir directory("typed-data-asset-builtin");
+    asset::Asset<asset::PostProcessProfile> reference;
+    reference.ref.path = directory.File("look.fzdata").generic_string();
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(reference.ref.path, asset::PostProcessProfile::TYPE_NAME));
+    ASSERT_NE(reference.Get(), nullptr);
+    EXPECT_EQ(static_cast<asset::DataAsset*>(reference.Get()), asset::DataAssetRegistry::Resolve(reference.ref.path));
+    EXPECT_TRUE(reference->overrides.empty());
+}
+
+TEST_F(MaterialReflectionTest, DataAssetRegistryRejectsPipelineCodecImpostor)
+{
+    constexpr auto TYPE_NAME = "PipelineCodecImpostor";
+    ASSERT_TRUE(asset::DataAssetFactory::Register(TYPE_NAME, [] { return std::make_unique<PipelineAssetImpostor>(); }));
+    testkit::TempDir directory("typed-data-asset-pipeline-impostor");
+    const auto path = directory.File("impostor.fzdata");
+    EXPECT_FALSE(asset::DataAssetRegistry::Create(path.generic_string(), TYPE_NAME));
+    EXPECT_FALSE(std::filesystem::exists(path));
+}
+
+/// @brief 葉の風変形を明示しない旧形式の材質は変形しない。
 TEST_F(MaterialReflectionTest, LegacyMaterialsStayRigidUntilLeafWindIsExplicitlyAuthored)
 {
     renderer::ShaderDescriptor descriptor;
@@ -87,7 +188,7 @@ TEST_F(MaterialReflectionTest, LegacyMaterialsStayRigidUntilLeafWindIsExplicitly
     EXPECT_FLOAT_EQ(Read<float>(bytes, 76), 1.8f);
 }
 
-/// @brief Integer and bool overrides reach GPU bytes without float rounding.
+/// @brief 整数と bool の上書きを浮動小数点の丸めなしで GPU のバイト列へ渡す。
 TEST_F(MaterialReflectionTest, IntegerAndBoolOverridesReachGpuBytesWithoutFloatRounding)
 {
     renderer::ShaderDescriptor descriptor;
@@ -108,7 +209,7 @@ TEST_F(MaterialReflectionTest, IntegerAndBoolOverridesReachGpuBytesWithoutFloatR
     EXPECT_EQ(Read<uint32_t>(bytes, 12), 0xCDCDCDCDu);
 }
 
-/// @brief Scalar array uses sixteen byte stride and preserves padding.
+/// @brief スカラー配列の 16 バイトストライドとパディングを保つ。
 TEST_F(MaterialReflectionTest, ScalarArrayUsesSixteenByteStrideAndPreservesPadding)
 {
     auto variable = Scalar("weights", renderer::ShaderVarType::Float, 4);
@@ -125,7 +226,7 @@ TEST_F(MaterialReflectionTest, ScalarArrayUsesSixteenByteStrideAndPreservesPaddi
     EXPECT_EQ(Read<uint32_t>(bytes, 40), 0xCDCDCDCDu);
 }
 
-/// @brief Matrix arrays respect both storage orders.
+/// @brief 行列配列の行優先・列優先の両方に対応する。
 TEST_F(MaterialReflectionTest, MatrixArraysRespectBothStorageOrders)
 {
     renderer::ShaderVarDesc variable;
@@ -158,7 +259,7 @@ TEST_F(MaterialReflectionTest, MatrixArraysRespectBothStorageOrders)
     EXPECT_EQ(Read<uint32_t>(bytes, 12), 0xCDCDCDCDu);
 }
 
-/// @brief Invalid values and truncated buffers are atomic.
+/// @brief 不正値や出力バッファーの不足時は書き込み前の値をすべて保つ。
 TEST_F(MaterialReflectionTest, InvalidValuesAndTruncatedBuffersAreAtomic)
 {
     auto variable = Scalar("value", renderer::ShaderVarType::UInt, 4);
@@ -177,7 +278,7 @@ TEST_F(MaterialReflectionTest, InvalidValuesAndTruncatedBuffersAreAtomic)
     EXPECT_FALSE(asset::WriteMaterialValues(variable, valid, bytes));
 }
 
-/// @brief Material file preserves unsigned limits and legacy float params.
+/// @brief 材質ファイルは符号なし整数の上限値と旧形式の浮動小数点パラメーターを保持する。
 TEST_F(MaterialReflectionTest, MaterialFilePreservesUnsignedLimitsAndLegacyFloatParams)
 {
     testkit::TempDir directory("material-reflection");
@@ -198,7 +299,7 @@ TEST_F(MaterialReflectionTest, MaterialFilePreservesUnsignedLimitsAndLegacyFloat
     EXPECT_EQ(Read<int32_t>(bytes, 0), -7);
 }
 
-/// @brief Data asset keys and asset lists round trip.
+/// @brief DataAsset のキーとアセット参照の配列を保存して読み戻す。
 TEST_F(MaterialReflectionTest, DataAssetKeysAndAssetListsRoundTrip)
 {
     ReflectionData original;
@@ -219,7 +320,7 @@ TEST_F(MaterialReflectionTest, DataAssetKeysAndAssetListsRoundTrip)
     EXPECT_TRUE(restored.textures[1].reference.guid.empty());
 }
 
-/// @brief Solid dielectric typed settings round trip and runtime copies.
+/// @brief ソリッド誘電体の型付き設定を保存して読み戻し、実行時の値へコピーする。
 TEST_F(MaterialReflectionTest, SolidDielectricTypedSettingsRoundTripAndRuntimeCopies)
 {
     testkit::TempDir directory("material-dielectric");
@@ -245,7 +346,7 @@ TEST_F(MaterialReflectionTest, SolidDielectricTypedSettingsRoundTripAndRuntimeCo
     EXPECT_EQ(assigned.dielectric, original.dielectric);
 }
 
-/// @brief Legacy alpha does not implicitly enable optical transmission.
+/// @brief 旧形式のアルファ設定で光学透過が暗黙に有効にならない。
 TEST_F(MaterialReflectionTest, LegacyAlphaDoesNotImplicitlyEnableOpticalTransmission)
 {
     testkit::TempDir directory("material-legacy-alpha");
@@ -262,7 +363,7 @@ TEST_F(MaterialReflectionTest, LegacyAlphaDoesNotImplicitlyEnableOpticalTransmis
     EXPECT_EQ(restored.dielectric, renderer::SolidDielectricSettings{});
 }
 
-/// @brief Rejects wrong dielectric types without modifying output.
+/// @brief 誘電体設定の型が不正なら出力を変更せず拒否する。
 TEST_F(MaterialReflectionTest, RejectsWrongDielectricTypesWithoutModifyingOutput)
 {
     testkit::TempDir directory("material-dielectric-invalid");
@@ -300,7 +401,7 @@ TEST_F(MaterialReflectionTest, RejectsWrongDielectricTypesWithoutModifyingOutput
     EXPECT_FALSE(preserved.dielectric.thinWalled);
 }
 
-/// @brief Legacy asset paths and missing fields remain compatible.
+/// @brief 旧形式のアセットパスと項目の欠落を受け付ける。
 TEST_F(MaterialReflectionTest, LegacyAssetPathsAndMissingFieldsRemainCompatible)
 {
     toml::table table{{"texture", "Assets/Old.png"}};
@@ -314,7 +415,7 @@ TEST_F(MaterialReflectionTest, LegacyAssetPathsAndMissingFieldsRemainCompatible)
     EXPECT_EQ(list[0].guid, "keep");
 }
 
-/// @brief Polymorphic data keeps type and nested asset references.
+/// @brief 多態データの型と入れ子のアセット参照を保持する。
 TEST_F(MaterialReflectionTest, PolymorphicDataKeepsTypeAndNestedAssetReferences)
 {
     ASSERT_TRUE(scene::ScriptSerializableFactory::Register("NestedReflectionData",
@@ -339,7 +440,7 @@ TEST_F(MaterialReflectionTest, PolymorphicDataKeepsTypeAndNestedAssetReferences)
     EXPECT_EQ(result.textures[0].reference.guid, "nested-guid");
 }
 
-/// @brief Missing polymorphic type preserves fields across save.
+/// @brief 多態データの型が未登録でも保存時に項目を保持する。
 TEST_F(MaterialReflectionTest, MissingPolymorphicTypePreservesFieldsAcrossSave)
 {
     ReflectionData original;
@@ -358,7 +459,7 @@ TEST_F(MaterialReflectionTest, MissingPolymorphicTypePreservesFieldsAcrossSave)
     EXPECT_EQ(parsed["count"].value_or(0), 42);
 }
 
-/// @brief Retained draft aliases and conflicting edits cannot mutate published authoring.
+/// @brief 下書きへの参照の保持や編集の競合で、公開済みの編集値を変更できない。
 TEST_F(MaterialReflectionTest, RetainedDraftAliasesAndConflictingEditsCannotMutatePublishedAuthoring)
 {
     asset::MaterialAsset material;
@@ -382,7 +483,7 @@ TEST_F(MaterialReflectionTest, RetainedDraftAliasesAndConflictingEditsCannotMuta
     EXPECT_EQ(material.ReadAuthoring(), published);
 }
 
-/// @brief Exact authoring equality preserves unchanged identity and distinguishes float bits.
+/// @brief 編集値が同じなら公開版を維持し、浮動小数点のビット差は変更とみなす。
 TEST_F(MaterialReflectionTest, ExactAuthoringEqualityPreservesUnchangedIdentityAndDistinguishesFloatBits)
 {
     asset::MaterialAsset material;
@@ -406,7 +507,7 @@ TEST_F(MaterialReflectionTest, ExactAuthoringEqualityPreservesUnchangedIdentityA
     EXPECT_EQ(std::bit_cast<uint32_t>(second->Data().params.at("bits")[1]), 0x7FC00001u);
 }
 
-/// @brief Live visibility fallback and slot vector replacement resolve current authoring owners.
+/// @brief スロット配列を置換した場合も、表示の代替値を現行の編集値から取得する。
 TEST_F(MaterialReflectionTest, LiveVisibilityFallbackAndSlotVectorReplacementResolveCurrentAuthoringOwners)
 {
     scene::MaterialComponent material;
@@ -436,7 +537,7 @@ TEST_F(MaterialReflectionTest, LiveVisibilityFallbackAndSlotVectorReplacementRes
     EXPECT_EQ(material.SlotAt(1).ReadAuthoring(), base);
 }
 
-/// @brief Same handle asset replacement and copy move have distinct owned publications.
+/// @brief 同一ハンドルでのアセット置換とコピー・ムーブは、それぞれの公開版の所有権を正しく扱う。
 TEST_F(MaterialReflectionTest, SameHandleAssetReplacementAndCopyMoveHaveDistinctOwnedPublications)
 {
     asset::MaterialAssetAuthoring values;
@@ -459,7 +560,7 @@ TEST_F(MaterialReflectionTest, SameHandleAssetReplacementAndCopyMoveHaveDistinct
     store.Free(handle);
 }
 
-/// @brief Whole value undo publication copies values and failed load preserves owner snapshot.
+/// @brief 全値を置換する取り消しでは値をコピーし、読み込みの失敗時は所有者のスナップショットを保つ。
 TEST_F(MaterialReflectionTest, WholeValueUndoPublicationCopiesValuesAndFailedLoadPreservesOwnerSnapshot)
 {
     asset::MaterialAssetAuthoring values;

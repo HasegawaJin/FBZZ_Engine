@@ -1,5 +1,5 @@
 /// @file    UIThemeAsset.cpp
-/// @brief   Shared game UI theme reflection, registration and value resolution.
+/// @brief   ゲーム UI で共有するテーマの反射、登録、値の解決。
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #include <Engine/Asset/UIThemeAsset.hpp>
@@ -16,7 +16,7 @@
 namespace fbzz::asset {
 namespace {
 
-/// @note The font picker emits atlas bases; only a registered .fnt neighbor upgrades that representation to a GUID.
+/// @note フォント選択欄はアトラスのベースパスを返す。対応する .fnt が登録されている場合だけ GUID へ変換する。
 std::string EncodeFontReference(const std::string& reference)
 {
     const std::string encoded = EncodeGuidRef(reference);
@@ -45,7 +45,7 @@ void UIThemeAsset::Reflect(scene::IReflector& r)
     std::string fontPath = EncodeFontReference(style.fontPath);
     r.FileField("fontPath", fontPath, ".fnt,.ttf,.ttc,.otf",
         "Font GUID, font file, or legacy atlas base path. Empty uses the project default font.");
-    /// @note Generic DataAsset persistence writes reflected strings directly; encode registered font files here for rename stability.
+    /// @note 汎用の DataAsset 保存は反射で公開する文字列を直接書く。名前変更に追従するため、ここで登録済みフォントを GUID へ変換する。
     style.fontPath = EncodeFontReference(fontPath);
     r.FloatRange("fontSize", style.fontSize, 1.0f, 512.0f);
     r.FloatRange("letterSpacing", style.letterSpacing, 0.0f, 128.0f);
@@ -83,13 +83,11 @@ bool ResolveUIThemeStyle(const std::string& reference, UIThemeStyle& out)
 {
     if (reference.empty()) return false;
     const std::string absolute = AssetManager::ResolveAssetPath(reference);
-    /// @note Registry keeps last-good cached values on failed reload; deleting the file must still select inline fallback.
+    /// @note 再読込に失敗すると最後に正常だった値がレジストリに残る。ファイルが削除済みの場合はインラインの代替値を選ぶ。
     if (absolute.empty() || !util::FileSystem::Exists(absolute)) return false;
-    const auto* data = DataAssetRegistry::Resolve(reference);
-    if (!data || std::string_view(data->GetTypeName()) != UIThemeAsset::TYPE_NAME) return false;
-    const auto& style = static_cast<const UIThemeAsset&>(*data).style;
-    if (!IsUIThemeStyleValid(style)) return false;
-    out = style;
+    const auto* theme = TryAsExactDataAsset<UIThemeAsset>(DataAssetRegistry::Resolve(reference));
+    if (!theme || !IsUIThemeStyleValid(theme->style)) return false;
+    out = theme->style;
     return true;
 }
 
