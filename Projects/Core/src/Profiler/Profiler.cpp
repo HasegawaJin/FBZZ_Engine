@@ -1,335 +1,136 @@
 /// @file    Profiler.cpp
-/// @brief   所有 descriptor を用いた Performance 収集の互換 facade。
+/// @brief   Performance 計測の公開 API、収集フィルター、フレーム境界。
 /// @author  Hasegawa Jin
 /// @date    2026-06-02
+
 #include <Core/Profiler/Profiler.hpp>
-#include <algorithm>
+#include "ProfilerThreadState.hpp"
 #include <atomic>
-#include <memory>
 #include <string_view>
-#include <unordered_map>
+#include <utility>
 
 namespace fbzz::profiler {
+
 namespace {
-constexpr size_t MAX_DESCRIPTORS = 8192;
-constexpr uint32_t INVALID_DESCRIPTOR_INDEX = static_cast<uint32_t>(MAX_DESCRIPTORS);
-/// @note 表を 1 MiB に制限し、最新 snapshot と初回登録の一時文字列を含めて 4 MiB 以内に保つ。
-constexpr size_t MAX_STRING_BYTES = 1024 * 1024;
-/// @note MSVC の新規 char 文字列の丸めと終端へ 32 byte の余裕を取り、確保前に過大な入力を拒否する。
-/// @see https://github.com/microsoft/STL/blob/main/stl/inc/xstring basic_string の _Alloc_mask と _Calculate_growth。
-size_t FreshStringBytes(std::string_view value)
-{
-    return value.size() > MAX_STRING_BYTES - 32 ? MAX_STRING_BYTES + 1 : value.size() + 32;
-}
-size_t StringBytes(const PerformanceDescriptor& descriptor)
-{
-    return descriptor.name.capacity() + 1 + descriptor.category.capacity() + 1;
-}
-struct DescriptorKey {
-    std::string_view name;
-    std::string_view category;
-    uint32_t color;
-    bool operator==(const DescriptorKey&) const = default;
-};
-struct DescriptorHash {
-    size_t operator()(const DescriptorKey& key) const {
-        return std::hash<std::string_view>{}(key.name) ^ (std::hash<std::string_view>{}(key.category) << 1) ^ key.color;
-    }
-};
-/// @note Main/Render の scope stack と descriptor の寿命を分け、並行記録で親子関係と snapshot を混ぜない。
+
+using detail::CurrentThreadState;
+using detail::ProfilerThreadState;
+
+/// @note 収集フィルターの要求だけをスレッド間で共有し、適用は各 BeginFrame で行う。
 std::atomic<std::shared_ptr<const PerformanceCaptureFilter>> s_requestedFilter{std::make_shared<const PerformanceCaptureFilter>()};
-thread_local std::shared_ptr<const PerformanceCaptureFilter> s_captureFilter;
-thread_local ProfileRecorder s_recorder;
-thread_local PerformanceSnapshot s_snapshot;
-thread_local std::vector<PerformanceDescriptor> s_descriptors;
-thread_local std::unordered_map<DescriptorKey, uint64_t, DescriptorHash> s_descriptorKeys;
-thread_local std::vector<ProfileToken> s_compatStack;
-thread_local std::vector<ProfileRecord> s_records;
-thread_local std::vector<PerformanceDescriptor> s_previousDescriptors;
-thread_local std::vector<uint32_t> s_sampleDescriptorIndices;
-thread_local std::vector<uint32_t> s_descriptorSnapshotIndices;
-thread_local std::vector<uint32_t> s_completionIndices;
-thread_local bool s_recordsDirty = false;
-thread_local size_t s_stringBytes = 0;
-thread_local uint64_t s_nextDescriptorId = 0;
-thread_local uint64_t s_hostSerial = 0;
-thread_local uint64_t s_lastFrameIndex = 0;
-thread_local uint32_t s_compatSuppressedDepth = 0;
-thread_local ProfileCheckpoint s_compatOverflowCheckpoint;
-thread_local uint64_t s_compatOverflowScopeId = 0;
 
-bool Collect(const ProfilerMarker& marker)
+bool MatchesFrameFilter(const ProfilerThreadState& state, const ProfilerMarker& marker)
 {
-    if (!s_captureFilter) return true;
-    return (s_captureFilter->category.empty() || s_captureFilter->category == (marker.category ? marker.category : "General"))
-        && (s_captureFilter->scope.empty() || std::string_view(marker.name ? marker.name : "Unnamed").find(s_captureFilter->scope) != std::string_view::npos);
+    if (!state.m_frameFilter) return true;
+    const auto& filter = *state.m_frameFilter;
+    return (filter.category.empty() || filter.category == (marker.category ? marker.category : "General"))
+        && (filter.scope.empty()
+            || std::string_view(marker.name ? marker.name : "Unnamed").find(filter.scope) != std::string_view::npos);
 }
 
-uint64_t Resolve(const ProfilerMarker& marker)
+uint64_t ResolveSampleKey(ProfilerThreadState& state, const ProfilerMarker& marker)
 {
-    if (!s_recorder.IsRecording() || !s_recorder.IsFrameOpen()) return 0;
-    const DescriptorKey key{marker.name ? marker.name : "Unnamed", marker.category ? marker.category : "General", marker.color};
-    const auto found = s_descriptorKeys.find(key);
-    if (found != s_descriptorKeys.end()) return found->second;
-    const size_t estimatedBytes = FreshStringBytes(key.name) + FreshStringBytes(key.category);
-    if (s_descriptors.size() == MAX_DESCRIPTORS || estimatedBytes > MAX_STRING_BYTES - s_stringBytes) return 0;
-    PerformanceDescriptor candidate;
-    candidate.name = key.name;
-    candidate.category = key.category;
-    candidate.color = key.color;
-    const size_t bytes = StringBytes(candidate);
-    if (bytes > MAX_STRING_BYTES - s_stringBytes) return 0;
-    if (s_descriptors.capacity() < MAX_DESCRIPTORS) s_descriptors.reserve(MAX_DESCRIPTORS);
-    candidate.sampleKey = ++s_nextDescriptorId;
-    s_descriptors.push_back(std::move(candidate));
-    auto& descriptor = s_descriptors.back();
-    s_stringBytes += bytes;
-    s_descriptorKeys.emplace(DescriptorKey{descriptor.name, descriptor.category, descriptor.color}, descriptor.sampleKey);
-    return descriptor.sampleKey;
+    if (!state.m_recorder.IsRecording() || !state.m_recorder.IsFrameOpen()) return 0;
+    return state.m_descriptorTable.Resolve(marker);
 }
 
-void RetireDescriptors()
-{
-    if (s_descriptors.size() == s_snapshot.descriptors.size()) return;
-    /// @note 両表は登録 ID 順。所有文字列を動かす前に非所有検索キーを破棄する。
-    s_descriptorKeys.clear();
-    size_t retainedCount = 0;
-    size_t snapshotIndex = 0;
-    for (size_t index = 0; index < s_descriptors.size(); ++index) {
-        const auto key = s_descriptors[index].sampleKey;
-        while (snapshotIndex < s_snapshot.descriptors.size() && s_snapshot.descriptors[snapshotIndex].sampleKey < key)
-            ++snapshotIndex;
-        if (snapshotIndex == s_snapshot.descriptors.size() || s_snapshot.descriptors[snapshotIndex].sampleKey != key) continue;
-        if (retainedCount != index) s_descriptors[retainedCount] = std::move(s_descriptors[index]);
-        ++retainedCount;
-    }
-    s_descriptors.resize(retainedCount);
-    s_stringBytes = 0;
-    for (const auto& descriptor : s_descriptors) {
-        s_stringBytes += StringBytes(descriptor);
-        s_descriptorKeys.emplace(DescriptorKey{descriptor.name, descriptor.category, descriptor.color}, descriptor.sampleKey);
-    }
 }
 
-uint32_t DescriptorIndex(uint64_t key)
+ProfilerThreadState& detail::CurrentThreadState()
 {
-    if (s_descriptors.empty() || key < s_descriptors.front().sampleKey) return INVALID_DESCRIPTOR_INDEX;
-    /// @note 退役で ID に穴がない通常の表は定数時間で引き、疎な表でも探索を対数時間に制限する。
-    const uint64_t offset = key - s_descriptors.front().sampleKey;
-    if (offset < s_descriptors.size() && s_descriptors[static_cast<size_t>(offset)].sampleKey == key)
-        return static_cast<uint32_t>(offset);
-    const auto found = std::lower_bound(s_descriptors.begin(), s_descriptors.end(), key,
-        [](const auto& descriptor, uint64_t sampleKey) { return descriptor.sampleKey < sampleKey; });
-    return found != s_descriptors.end() && found->sampleKey == key
-        ? static_cast<uint32_t>(found - s_descriptors.begin()) : INVALID_DESCRIPTOR_INDEX;
+    thread_local ProfilerThreadState state;
+    return state;
 }
-
-void PublishDescriptors()
-{
-    if (s_snapshot.samples.empty()) {
-        s_sampleDescriptorIndices.clear();
-        s_snapshot.descriptors.clear();
-        return;
-    }
-    if (s_sampleDescriptorIndices.capacity() < ProfileRecorder::MAX_SAMPLES)
-        s_sampleDescriptorIndices.reserve(ProfileRecorder::MAX_SAMPLES);
-    if (s_descriptorSnapshotIndices.capacity() < MAX_DESCRIPTORS)
-        s_descriptorSnapshotIndices.reserve(MAX_DESCRIPTORS);
-    s_sampleDescriptorIndices.resize(s_snapshot.samples.size());
-    s_descriptorSnapshotIndices.assign(s_descriptors.size(), INVALID_DESCRIPTOR_INDEX);
-    /// @note 参照された登録項目を 0 で印付けし、次の走査で公開用の索引を割り当てる。
-    for (size_t sampleIndex = 0; sampleIndex < s_snapshot.samples.size(); ++sampleIndex) {
-        const uint32_t descriptorIndex = DescriptorIndex(s_snapshot.samples[sampleIndex].sampleKey);
-        s_sampleDescriptorIndices[sampleIndex] = descriptorIndex;
-        if (descriptorIndex < s_descriptors.size()) {
-            s_descriptorSnapshotIndices[descriptorIndex] = 0;
-        }
-    }
-
-    size_t publishedCount = 0;
-    bool descriptorOrderUnchanged = true;
-    for (size_t index = 0; index < s_descriptors.size(); ++index) {
-        if (s_descriptorSnapshotIndices[index] == INVALID_DESCRIPTOR_INDEX) continue;
-        if (publishedCount >= s_snapshot.descriptors.size()
-            || s_snapshot.descriptors[publishedCount].sampleKey != s_descriptors[index].sampleKey) {
-            descriptorOrderUnchanged = false;
-        }
-        s_descriptorSnapshotIndices[index] = static_cast<uint32_t>(publishedCount++);
-    }
-
-    if (!descriptorOrderUnchanged || publishedCount != s_snapshot.descriptors.size()) {
-        /// @note 同じ ID の所有文字列を移し、変更された descriptor だけを新しく複写する。
-        s_snapshot.descriptors.swap(s_previousDescriptors);
-        if (s_snapshot.descriptors.capacity() < MAX_DESCRIPTORS) s_snapshot.descriptors.reserve(MAX_DESCRIPTORS);
-        size_t previousIndex = 0;
-        for (size_t index = 0; index < s_descriptors.size(); ++index) {
-            if (s_descriptorSnapshotIndices[index] == INVALID_DESCRIPTOR_INDEX) continue;
-            const auto& descriptor = s_descriptors[index];
-            while (previousIndex < s_previousDescriptors.size()
-                && s_previousDescriptors[previousIndex].sampleKey < descriptor.sampleKey) {
-                ++previousIndex;
-            }
-            if (previousIndex < s_previousDescriptors.size()
-                && s_previousDescriptors[previousIndex].sampleKey == descriptor.sampleKey) {
-                s_snapshot.descriptors.push_back(std::move(s_previousDescriptors[previousIndex++]));
-            } else {
-                s_snapshot.descriptors.push_back(descriptor);
-            }
-        }
-        s_previousDescriptors.clear();
-    }
-
-    /// @note 公開 snapshot の索引へ変換し、次の BeginFrame で実行表が退役しても旧記録を参照できる。
-    for (auto& descriptorIndex : s_sampleDescriptorIndices) {
-        if (descriptorIndex < s_descriptors.size()) {
-            descriptorIndex = s_descriptorSnapshotIndices[descriptorIndex];
-        }
-    }
-}
-} /// @note namespace
 
 void Profiler::SetEnabled(bool enabled)
 {
-    if (enabled && s_recorder.IsRecording()) return;
-    s_recorder.SetRecordingImmediate(enabled);
-    s_compatStack.clear();
-    s_compatSuppressedDepth = 0;
-    s_compatOverflowCheckpoint = {};
-    s_compatOverflowScopeId = 0;
-    s_records.clear();
-    s_recordsDirty = false;
-    s_snapshot = {};
-    s_snapshot.recording = enabled;
-    s_snapshot.captureSessionId = s_recorder.GetSnapshot().captureSessionId;
-    if (!enabled) { s_descriptorKeys.clear(); s_descriptors.clear(); s_stringBytes = 0; }
+    auto& state = CurrentThreadState();
+    if (enabled && state.m_recorder.IsRecording()) return;
+    state.m_recorder.SetRecordingImmediate(enabled);
+    state.m_legacyScopes.Clear();
+    state.m_publication.Reset(enabled, state.m_recorder.GetSnapshot().captureSessionId);
+    if (!enabled) state.m_descriptorTable.Clear();
 }
-bool Profiler::IsEnabled() { return s_recorder.IsRecording(); }
-bool Profiler::IsRecordingRequested() { return s_recorder.IsRecordingRequested(); }
-void Profiler::RequestRecording(bool recording) { s_recorder.RequestRecording(recording); }
-void Profiler::RequestClear() { s_recorder.RequestClear(); }
+bool Profiler::IsEnabled() { return CurrentThreadState().m_recorder.IsRecording(); }
+bool Profiler::IsRecordingRequested() { return CurrentThreadState().m_recorder.IsRecordingRequested(); }
+void Profiler::RequestRecording(bool recording) { CurrentThreadState().m_recorder.RequestRecording(recording); }
+void Profiler::RequestClear() { CurrentThreadState().m_recorder.RequestClear(); }
 bool Profiler::RequestCaptureFilter(PerformanceCaptureFilter filter)
 {
     if (filter.category.size() > 128 || filter.scope.size() > 256) return false;
-    const auto current = s_requestedFilter.load();
-    if (*current != filter) s_requestedFilter.store(std::make_shared<const PerformanceCaptureFilter>(std::move(filter)));
+    const auto currentFilter = s_requestedFilter.load();
+    if (*currentFilter != filter) s_requestedFilter.store(std::make_shared<const PerformanceCaptureFilter>(std::move(filter)));
     return true;
 }
 PerformanceCaptureFilter Profiler::GetRequestedCaptureFilter() { return *s_requestedFilter.load(); }
-void Profiler::BeginFrame() { BeginFrame(++s_hostSerial, ProfileRecorder::NowMs()); }
+
+void Profiler::BeginFrame()
+{
+    BeginFrame(++CurrentThreadState().m_nextHostFrameSerial, ProfileRecorder::NowMs());
+}
+
 void Profiler::BeginFrame(uint64_t applicationFrameSerial, double frameStartMs)
 {
-    s_compatStack.clear();
-    s_compatSuppressedDepth = 0;
-    s_compatOverflowCheckpoint = {};
-    s_compatOverflowScopeId = 0;
-    if (s_descriptors.size() > MAX_DESCRIPTORS / 2 || s_stringBytes > MAX_STRING_BYTES / 2) RetireDescriptors();
+    auto& state = CurrentThreadState();
+    state.m_legacyScopes.Clear();
+    state.m_descriptorTable.RetireIfNeeded(state.m_publication.Snapshot().descriptors);
     const auto requestedFilter = s_requestedFilter.load();
-    if (s_captureFilter && *s_captureFilter != *requestedFilter) s_recorder.RequestClear();
-    s_captureFilter = requestedFilter;
-    s_recorder.BeginFrame(applicationFrameSerial, frameStartMs);
-    if (s_snapshot.captureSessionId != s_recorder.GetSnapshot().captureSessionId) {
-        s_records.clear();
-        s_recordsDirty = false;
-        s_snapshot = {};
-    }
-    s_snapshot.recording = IsEnabled();
-    s_snapshot.captureSessionId = s_recorder.GetSnapshot().captureSessionId;
+    if (state.m_frameFilter && *state.m_frameFilter != *requestedFilter) state.m_recorder.RequestClear();
+    state.m_frameFilter = requestedFilter;
+    state.m_recorder.BeginFrame(applicationFrameSerial, frameStartMs);
+    state.m_publication.UpdateSession(state.m_recorder.IsRecording(), state.m_recorder.GetSnapshot().captureSessionId);
 }
+
 void Profiler::EndFrame()
 {
-    if (!s_recorder.IsFrameOpen()) return;
-    s_recorder.EndFrameTo(static_cast<ProfileSnapshot&>(s_snapshot));
-    s_snapshot.captureFilter = *s_captureFilter;
-    s_lastFrameIndex = s_snapshot.frameIndex;
-    PublishDescriptors();
-    s_records.clear();
-    s_recordsDirty = true;
-    s_compatStack.clear();
-    s_compatSuppressedDepth = 0;
-    s_compatOverflowCheckpoint = {};
-    s_compatOverflowScopeId = 0;
+    auto& state = CurrentThreadState();
+    if (!state.m_recorder.IsFrameOpen()) return;
+    state.m_recorder.EndFrameTo(state.m_publication.SampleStorage());
+    state.m_publication.FinishFrame(*state.m_frameFilter, state.m_descriptorTable);
+    state.m_legacyScopes.Clear();
 }
+
 ProfileToken Profiler::BeginScope(const ProfilerMarker& marker)
 {
-    const bool collect = Collect(marker);
-    return s_recorder.Begin(collect ? Resolve(marker) : 0, collect);
+    auto& state = CurrentThreadState();
+    const bool matchesFilter = MatchesFrameFilter(state, marker);
+    return state.m_recorder.Begin(matchesFilter ? ResolveSampleKey(state, marker) : 0, matchesFilter);
 }
-void Profiler::EndScope(ProfileToken token) { s_recorder.End(token); }
-void Profiler::BeginSample(const ProfilerMarker& marker)
+
+void Profiler::EndScope(ProfileToken token)
 {
-    const bool entersOverflow = s_compatStack.size() == ProfileRecorder::MAX_DEPTH && !s_compatSuppressedDepth;
-    if (entersOverflow)
-        s_compatOverflowCheckpoint = s_recorder.Checkpoint();
-    const auto token = BeginScope(marker);
-    if (!token.recorderId) return;
-    if (entersOverflow) s_compatOverflowScopeId = token.scopeId;
-    if (s_compatStack.size() == ProfileRecorder::MAX_DEPTH || s_compatSuppressedDepth) { ++s_compatSuppressedDepth; return; }
-    s_compatStack.push_back(token);
+    CurrentThreadState().m_recorder.End(token);
 }
-void Profiler::EndSample()
-{
-    if (s_compatSuppressedDepth) {
-        if (!--s_compatSuppressedDepth) {
-            s_recorder.Recover(s_compatOverflowCheckpoint);
-            s_compatOverflowCheckpoint = {};
-            s_compatOverflowScopeId = 0;
-        }
-        return;
-    }
-    if (s_compatStack.empty()) return;
-    const auto token = s_compatStack.back();
-    s_compatStack.pop_back();
-    EndScope(token);
-}
+
 void Profiler::PushMarker(const ProfilerMarker& marker)
 {
-    const bool collect = Collect(marker);
-    s_recorder.Push(collect ? Resolve(marker) : 0, 0.0, ProfileSampleKind::INSTANT, collect);
+    auto& state = CurrentThreadState();
+    const bool matchesFilter = MatchesFrameFilter(state, marker);
+    state.m_recorder.Push(matchesFilter ? ResolveSampleKey(state, marker) : 0,
+                          0.0, ProfileSampleKind::INSTANT, matchesFilter);
 }
+
 void Profiler::PushSample(const ProfilerMarker& marker, double elapsedMs)
 {
-    const bool collect = Collect(marker);
-    s_recorder.Push(collect ? Resolve(marker) : 0, elapsedMs, ProfileSampleKind::EXTERNAL_DURATION, collect);
+    auto& state = CurrentThreadState();
+    const bool matchesFilter = MatchesFrameFilter(state, marker);
+    state.m_recorder.Push(matchesFilter ? ResolveSampleKey(state, marker) : 0,
+                          elapsedMs, ProfileSampleKind::EXTERNAL_DURATION, matchesFilter);
 }
-ProfilerCheckpoint Profiler::Checkpoint()
-{
-    return {s_recorder.Checkpoint(), s_compatOverflowCheckpoint,
-            s_compatStack.empty() ? 0 : s_compatStack.back().scopeId, s_compatOverflowScopeId,
-            static_cast<uint32_t>(s_compatStack.size()), s_compatSuppressedDepth};
-}
-void Profiler::Recover(ProfilerCheckpoint checkpoint)
-{
-    if (checkpoint.compatStackSize > s_compatStack.size() || checkpoint.compatSuppressedDepth > s_compatSuppressedDepth) return;
-    if (checkpoint.compatStackSize && s_compatStack[checkpoint.compatStackSize - 1].scopeId != checkpoint.compatTopScopeId) return;
-    /// @note 元の抑制分岐を閉じて同じ深さへ再進入した checkpoint は、現在の対応を巻き戻さない。
-    if (checkpoint.compatSuppressedDepth && checkpoint.compatOverflowScopeId != s_compatOverflowScopeId) return;
-    if (!s_recorder.Recover(checkpoint.recorder)) return;
-    s_compatStack.resize(checkpoint.compatStackSize);
-    s_compatSuppressedDepth = checkpoint.compatSuppressedDepth;
-    s_compatOverflowCheckpoint = checkpoint.compatOverflow;
-    s_compatOverflowScopeId = checkpoint.compatOverflowScopeId;
-}
+
 const std::vector<ProfileRecord>& Profiler::GetLastFrameRecords()
 {
-    if (!s_recordsDirty || s_snapshot.samples.empty()) { s_recordsDirty = false; return s_records; }
-    if (s_records.capacity() < ProfileRecorder::MAX_SAMPLES) s_records.reserve(ProfileRecorder::MAX_SAMPLES);
-    if (s_completionIndices.capacity() < ProfileRecorder::MAX_SAMPLES) s_completionIndices.reserve(ProfileRecorder::MAX_SAMPLES);
-    s_completionIndices.resize(s_snapshot.samples.size());
-    /// @note 全保存 sample は終了時に 1..N の一意な順番を持ち、異常終了もその順番を消費する。
-    for (size_t index = 0; index < s_snapshot.samples.size(); ++index)
-        s_completionIndices[s_snapshot.samples[index].completionOrder - 1] = static_cast<uint32_t>(index);
-    for (const auto index : s_completionIndices) {
-        const auto& sample = s_snapshot.samples[index];
-        const uint32_t descriptorIndex = s_sampleDescriptorIndices[index];
-        if (sample.status != ProfileSampleStatus::COMPLETE || descriptorIndex >= s_snapshot.descriptors.size()) continue;
-        const auto& descriptor = s_snapshot.descriptors[descriptorIndex];
-        s_records.push_back({descriptor.name.c_str(), descriptor.category.c_str(), sample.inclusiveMs,
-                             s_lastFrameIndex, sample.depth, descriptor.color});
-    }
-    s_recordsDirty = false;
-    return s_records;
+    return CurrentThreadState().m_publication.LegacyRecords();
 }
-uint64_t Profiler::GetLastFrameIndex() { return s_lastFrameIndex; }
-const PerformanceSnapshot& Profiler::GetSnapshot() { return s_snapshot; }
 
-} /// @note namespace fbzz::profiler
+uint64_t Profiler::GetLastFrameIndex()
+{
+    return CurrentThreadState().m_publication.LastFrameIndex();
+}
+
+const PerformanceSnapshot& Profiler::GetSnapshot()
+{
+    return CurrentThreadState().m_publication.Snapshot();
+}
+
+}
