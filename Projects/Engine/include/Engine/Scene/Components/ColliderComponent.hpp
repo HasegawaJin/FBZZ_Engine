@@ -290,4 +290,4 @@ struct TerrainColliderComponent : public ColliderComponent {
     void Reflect(IReflector& r) { ColliderComponent::Reflect(r); }
 };
 
-} /// @note namespace fbzz::scene
+}

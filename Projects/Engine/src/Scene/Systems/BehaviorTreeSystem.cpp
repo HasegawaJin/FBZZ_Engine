@@ -494,7 +494,7 @@ void BehaviorTreeSystem::Update(SystemContext& ctx)
 
             /// @note 実際に経過した時間を木へ渡す。1 フレーム分の dt を渡すと、
             /// @note tickRate 間隔で呼ばれる Wait/Cooldown の待ち時間が tickRate/dt 倍に伸びる。
-            /// @note Wake preserves the regular deadline; overdue work runs once without a catch-up burst.
+            /// @note 起床後も通常の期限を維持し、期限超過分は 1 回だけ実行する。
             if (bt->tickTimer <= 0.0f) bt->tickTimer = tickRate;
         }
 

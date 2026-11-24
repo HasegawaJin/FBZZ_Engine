@@ -1,5 +1,5 @@
 /// @file    WaterSpline.cpp
-/// @brief   Build and sample the shared numeric spline surface for water.
+/// @brief   水面で共有する数値スプラインを構築し、サンプリングする。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #include <Engine/Scene/WaterSpline.hpp>
@@ -18,7 +18,7 @@
 
 namespace fbzz::scene {
 
-/// @brief Clip the lake footprint using the same bounded tessellation as water zones.
+/// @brief 水域ゾーンと同じ上限付きテッセレーションで湖の平面領域を切り抜く。
 bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineSnapshot> islands,
     const Transform& transform);
 
@@ -140,7 +140,7 @@ bool IsSimplePolygon(const std::vector<Point2>& polygon, double epsilon)
             std::swap(edge.maxX, edge.maxZ);
         }
     std::sort(edges.begin(), edges.end(), [](const Edge& a, const Edge& b) { return a.minX < b.minX; });
-    /// @note Both forms of the existing tolerance keep endpoint cases admitted by either segment's rounded bounds.
+    /// @note 既存の 2 種の許容判定をともに使い、どちらかの線分の丸め境界に入る端点を残す。
     const auto separated = [epsilon](double lowEnd, double highStart) {
         return lowEnd + epsilon < highStart && lowEnd < highStart - epsilon;
     };
@@ -165,7 +165,7 @@ bool PointInTriangle(const Point2& p, const Point2& a, const Point2& b, const Po
         && orientation * Cross(c, a, p) >= -epsilon;
 }
 
-/// @brief Triangulate a simple polygon by removing ears in input order.
+/// @brief 入力順に耳を除去して単純多角形を三角形分割する。
 /// @see https://www.geometrictools.com/Documentation/TriangulationByEarClipping.pdf David Eberly, Triangulation by Ear Clipping.
 bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
     std::vector<std::array<std::uint32_t, 3>>& triangles)
@@ -227,7 +227,7 @@ bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
         corners[next].previous = previous;
         if (first == ear) first = next;
         if (remaining == 4) break;
-        /// @note Only the adjacent corners change shape. Other ears can only lose the removed point as a blocker.
+        /// @note 形状が変わるのは除去点に隣接する 2 頂点だけ。他の耳では除去点による阻害だけが解消され得る。
         corners[previous].checked = false;
         corners[next].checked = false;
         std::erase_if(blocked, [&](std::uint32_t current) {
@@ -243,7 +243,7 @@ bool TriangulatePolygon(const std::vector<Point2>& polygon, double epsilon,
     return true;
 }
 
-/// @brief Evaluate one uniformly parameterized Catmull-Rom segment and linearly interpolated physical metadata.
+/// @brief 一様パラメーターの Catmull–Rom 区間と、線形補間した物理量を評価する。
 /// @see https://doi.org/10.1145/54852.378511 Barry and Goldman, SIGGRAPH 1988: recursive evaluation of Catmull-Rom splines.
 SplineValue EvaluateSpline(const std::span<const WaterSplinePoint> points, std::size_t segment,
     float t, bool closed)
@@ -534,7 +534,7 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
     left.reserve(sampleCount);
     right.reserve(sampleCount);
     travelSpeeds.reserve(sampleCount);
-    /// @note A representative wavenumber per band keeps the render phase integral independent of the view and mesh LOD.
+    /// @note 帯域ごとの代表波数を使い、描画位相の積分値をビューとメッシュ LOD に依存させない。
     /// @see https://web.mit.edu/fluids-modules/waves/www/material/chap-3.pdf Akylas and Mei, Eq. (1.21), finite-depth gravity-wave dispersion.
     const auto phaseSpeed = [](float current, float depth, float wavelength) {
         const float waveNumber = math::TWO_PI / wavelength;
@@ -600,7 +600,7 @@ bool BuildRiver(WaterSplineSnapshot& snapshot, std::span<const WaterSplinePoint>
         const float current = travelSpeeds[i];
         const float fundamentalSpeed = phaseSpeed(current, a.depth, WATER_RIVER_WAVE_REFERENCE_LENGTHS.x);
         const float shortSpeed = phaseSpeed(current, a.depth, WATER_RIVER_WAVE_REFERENCE_LENGTHS.y);
-        /// @note Regularize the sign through slack water so the accumulated phase stays continuous at flow reversals.
+        /// @note 流速ゼロ付近で符号の遷移を滑らかにし、逆流への切り替わりでも積算位相を連続に保つ。
         const float direction = std::copysign((std::min)(std::abs(current) / 0.4f, 1.0f), current);
         const math::Vector2 inverseSpeed{direction / (std::max)(fundamentalSpeed, 0.25f),
             direction / (std::max)(shortSpeed, 0.25f)};
@@ -720,7 +720,7 @@ void BuildTriangleBvh(WaterSplineSnapshot& snapshot)
         build(build, 0, static_cast<std::uint32_t>(snapshot.triangleOrder.size()));
 }
 
-} /// @note namespace
+}
 
 math::Vector2 WaterSurfaceLocalExtent(const WaterComponent& water, WaterSurfaceReadView view)
 {
@@ -871,7 +871,7 @@ bool BuildWaterSplineSnapshot(WaterSurfaceShape shape, std::span<const WaterSpli
     snapshot.worldBaseY = transform.worldPosition.y;
     snapshot.signature = WaterSplineSnapshotSignature(shape, points, samplesPerSegment,
         transform, maximumWaterDepth, maximumWorldCellSize, islands);
-    /// @note Point depth, width, and signed flow speed are linearly interpolated between controls so positive physical limits cannot spline-overshoot.
+    /// @note 制御点間の水深、幅、符号付き流速は線形補間し、正の物理量がスプライン補間で範囲を超えないようにする。
     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine Epic Games, Water Body Actors: lake and river spline metadata.
     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/Components/USplineComponent Epic Games, USplineComponent spline evaluation.
     const bool success = shape == WaterSurfaceShape::SPLINE_LAKE
@@ -1049,4 +1049,4 @@ bool TrySampleWaterSpline(const WaterSplineSnapshot& snapshot, float worldX, flo
     }
     return false;
 }
-} /// @note namespace fbzz::scene
+}

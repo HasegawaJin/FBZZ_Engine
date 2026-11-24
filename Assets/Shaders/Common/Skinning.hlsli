@@ -8,7 +8,7 @@
 #include "Common/Structs.hlsli"
 #include "Platform/Backend.hlsli"
 #include "Common/BindlessIndices.hlsli"
-/// @note VS descriptors use the vertex index space, independently of PS/CS t14/t15.
+/// @note ボーン行列は頂点シェーダー用の表から読む。ピクセル・計算シェーダーが同じ番号を使っても別の入力を指す。
 FBZZ_VS_SBUFFER(float4x4, sharedBoneMatrices, VS_SB_BUFFER0_SLOT);
 float4x4 ReadSkinMatrix(uint bone)
 {
@@ -19,6 +19,7 @@ float4x4 ReadSkinMatrix(uint bone)
 /// @note ウェイトは入力のまま使い、混合順序・パレット境界・行ベクトルの契約を変更しない。
 float4x4 BlendSkinMatrix(SkinnedVSInput v)
 {
+    /// @note ウェイトは各ボーンに頂点がどれだけ追従するかを表す。例えば 0.75 と 0.25 なら、それぞれで変形した位置を 3 対 1 で混ぜた結果になる。
     return ReadSkinMatrix(v.boneIndices.x) * v.boneWeights.x
          + ReadSkinMatrix(v.boneIndices.y) * v.boneWeights.y
          + ReadSkinMatrix(v.boneIndices.z) * v.boneWeights.z

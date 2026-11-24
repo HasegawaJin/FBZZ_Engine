@@ -80,4 +80,4 @@ struct AudioMixerSendComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

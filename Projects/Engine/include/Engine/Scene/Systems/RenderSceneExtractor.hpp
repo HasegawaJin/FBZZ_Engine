@@ -13,8 +13,8 @@ namespace fbzz::scene {
 class Scene;
 struct EntityID;
 struct RenderPassContext;
-/// @brief Camera-independent mesh inputs retained between views of one frame without material payloads.
-/// @note Each frame validates current inputs; unchanged static transforms and bounds may reuse private value data across frames.
+/// @brief 同一フレームのビュー間で共有する、カメラや材質に依存しないメッシュ入力。
+/// @note フレームごとに入力を照合し、変化のない静的メッシュの変換と境界は前フレームの計算値を再利用できる。
 struct RenderFrameGeometryItem {
     uint32_t objectIndex = 0;
     uint32_t materialSlot = 0;
@@ -47,23 +47,23 @@ struct RenderFrameGeometryCache {
     bool rayTracingInputs = false;
     renderer::ResourceHandle<renderer::ConstantBufferTag> identityPalette;
     std::shared_ptr<const renderer::RenderScene> geometry;
-    /// @note geometry owns immutable object poses; material/selection state never enters the compact rows.
+    /// @note 不変の姿勢は geometry が所有する。材質と選択状態は各ビューで求める。
     std::vector<RenderFrameGeometryItem> itemGeometry;
-    /// @note In fused mode a static-only Raster first view owns the deferred source until a cache hit; only stable geometry fields are read.
-    /// @note Mixed/skinned and Ray views capture compact rows eagerly before per-view mesh-input updates.
+    /// @note 融合抽出の最初のビューが静的メッシュだけを扱うラスタライズなら、次のキャッシュヒットまで元データを保持し、安定した形状項目だけを読む。
+    /// @note スキンドメッシュを含むビューとレイ描画では、ビューごとの更新前に形状行を退避する。
     std::shared_ptr<const renderer::RenderScene> deferredItemGeometry;
-    /// @note Both item representations belong to this exact nonzero geometry publication; unknown/replaced owners rebuild.
+    /// @note どちらの形状表現も所有者と非ゼロの公開番号で照合し、所有者が不明または変化していれば再構築する。
     const renderer::RenderScene* itemGeometryOwner = nullptr;
     uint64_t itemGeometrySerial = 0;
     uint64_t staticGeometryRevision = 0;
-    /// @note Only the matching immutable geometry owner certifies this half-open skinned-object range; unknown metadata keeps full discovery.
+    /// @note スキンドメッシュの半開区間は所有者と公開番号がともに一致するときだけ有効。不明なら全件を調べる。
     const renderer::RenderScene* skinnedObjectRangeOwner = nullptr;
     uint64_t skinnedObjectRangeSerial = 0;
     size_t skinnedObjectBegin = 0;
     size_t skinnedObjectEnd = 0;
 };
-/// @note Call after a MeshRenderer write on the Scene update/extraction thread; invalidates retained geometry without retaining the component.
-/// @note Direct field writes remain supported through current-input validation at the next geometry build.
+/// @note シーンの更新・抽出スレッドで MeshRenderer への書き込み後に呼ぶ。コンポーネントへの参照を保持せずにキャッシュを無効化する。
+/// @note 直接のフィールド更新も、次の形状構築時に現在の入力を照合して検出する。
 /// @see Docs/design/static-mesh-render-reuse.md
 FBZZ_ENGINE_API void NotifyMeshRendererChanged(Scene& scene, EntityID entity);
 /// @return 品質要求用の投影直径 [px]。境界・射影が不明なら 0 (最高品質)。
@@ -84,4 +84,4 @@ FBZZ_ENGINE_API void ExtractRenderScene(RenderPassContext& ctx, RenderFrameGeome
 /// @return 差替前の所有 snapshot。callback handler は返値を handler の外まで退役保持する。
 [[nodiscard]] FBZZ_ENGINE_API std::shared_ptr<const renderer::RenderScene> CompletePreparedSkinningSnapshot(RenderPassContext& ctx);
 
-} /// @note namespace fbzz::scene
+}

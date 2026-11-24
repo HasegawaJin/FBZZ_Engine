@@ -1,5 +1,5 @@
 /// @file    BonePoseSharing.hpp
-/// @brief   Bounded frame-scoped memoization of opt-in time-quantized immutable baked poses.
+/// @brief   時刻を丸めた不変のベイク姿勢を、フレームごとに上限付きで再利用する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
@@ -12,8 +12,8 @@
 #include <tuple>
 
 namespace fbzz::scene {
-/// @note Time snapping changes only the derived pose; state clocks, speed, events and blend weights remain continuous.
-/// @note Assets must remain immutable. Frame/generation boundaries clear the memo; keys include both complete resolved frames.
+/// @note 時刻の丸めは派生姿勢にだけ適用し、状態の時刻、速度、イベント、ブレンドウェイトは連続値を使う。
+/// @note アセットが不変であること。フレームまたは世代が変わると破棄し、キーには解決済みの両フレームを含める。
 class BonePoseSharing {
 public:
     static asset::BoneBakeStatus Quantize(const asset::BakedBoneAnimation& bake, uint32_t rate, asset::BakedBoneFrame& frame)
@@ -62,7 +62,7 @@ public:
                                                              target ? &targetFrame : nullptr,weight,&workspace);
         if (status != asset::BoneBakeStatus::OK) return status;
         const uint64_t bytes = static_cast<uint64_t>(palette.size() + globals.size()) * sizeof(math::Matrix4);
-        /// @note Entry count also bounds map-node/vector/asset-reference overhead; budget exhaustion keeps the uncached evaluator.
+        /// @note 件数上限はマップ要素・配列・アセット参照の費用も抑え、超過時はキャッシュせず評価する。
         if (m_entries.size() < 4096 && bytes <= PAYLOAD_BUDGET - m_payloadBytes) {
             m_entries.emplace(key,Value{palette,globals}); m_payloadBytes += bytes;
         }

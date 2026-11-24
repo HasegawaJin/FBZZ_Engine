@@ -1,5 +1,5 @@
 /// @file    ManagedAiCrowdTransfer.hpp
-/// @brief   Validated numeric crowd packets with retained native work buffers.
+/// @brief   ネイティブ側の作業バッファを再利用する、群衆の数値パケットの検証と実行。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
@@ -10,10 +10,10 @@
 
 namespace fbzz::scene::managed_detail {
 
-/// @note Main callback thread only; no scene, caller pointer or agent identity is retained between Run calls.
+/// @note メインスレッド上のコールバックからだけ呼ぶ。Run 間でシーン、呼び出し元のポインター、エージェントの識別情報は保持しない。
 class ManagedAiCrowdTransfer {
 public:
-    /// @return Failure leaves caller output untouched; BUFFER_TOO_SMALL reports exact outputBytes before simulation.
+    /// @return 失敗時は呼び出し元の出力を変更しない。BUFFER_TOO_SMALL はシミュレーション前に必要な outputBytes を正確に返す。
     FBZZ_ENGINE_API ManagedBridgeStatus Run(const ManagedBridgeRequest& request, ManagedBridgeReply& reply);
 private:
     std::vector<ai::CrowdProfile> m_profiles;

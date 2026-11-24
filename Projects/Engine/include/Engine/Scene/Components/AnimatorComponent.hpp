@@ -212,7 +212,7 @@ struct AnimationLayer {
 
 /// @}
 
-/// @name Root Motion
+/// @name ルートモーション
 /// @{
 
 /// @note 単一の適用可否フラグでは「抽出のみ」「RigidBody 速度として消費」「ポーズへ残したまま
@@ -311,15 +311,15 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     /// @note enabled=false は Animator の評価自体を止めパレットが作られない。playing は
     /// @note       再生位置を止めるだけでバインドポーズへ戻す経路は残る。externalPose はどちらとも別軸。
     bool        externalPose = false;
-    /// @note Opt-in pose sampling LOD. State clocks/events remain per-frame; distances are world metres, intervals are seconds.
+    /// @note 任意で姿勢サンプリングの LOD を使う。状態時間とイベントは毎フレーム更新し、距離はワールド空間の [m]、間隔は [s] で指定する。
     bool poseLodEnabled = false;
-    /// @note 0=ordinary Animator, 1=CPU baked sampling, 2=shared GPU replay; defaults preserve existing FBX playback.
+    /// @note 0 は通常の Animator、1 は CPU のベイク済みサンプリング、2 は GPU 共有再生。既定値は従来の FBX 再生を維持する。
     int boneBakeMode = static_cast<int>(BoneBakeMode::LEGACY);
     float boneBakeSampleRate = 60.0f;
     float boneBakeMinDistance = 20.0f;
-    /// @note Set false only for actors without CPU bone/socket consumers; near-camera and rig-controlled actors retain ordinary FK.
+    /// @note CPU でボーンやソケットを参照する処理がなければ false にできる。カメラ付近とリグ制御下では通常の順運動学を維持する。
     bool boneBakeRequireCpuBones = true;
-    /// @note Runtime only; current/previous CPU palettes stay valid for Velocity, special shaders and failed GPU replay.
+    /// @note 実行時のみ。Velocity、専用シェーダーと GPU 再生の失敗に備え、現在と前回の CPU パレットを保持する。
     BoneBakeRuntime boneBake;
     float poseLodNearDistance = 20.0f;
     float poseLodFarDistance = 60.0f;
@@ -330,7 +330,7 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     std::uint64_t poseEvaluationCount = 0;
     std::string poseStateName;
     const asset::Skeleton* poseSkeleton = nullptr;
-    /// @return False leaves settings unchanged for non-finite, reversed or negative values.
+    /// @return 値に非有限値・逆順・負数が含まれると false を返し、設定を維持する。
     bool SetUpdateLod(bool enabledValue, float nearDistance, float farDistance, float midInterval, float farInterval)
     {
         if (!std::isfinite(nearDistance) || !std::isfinite(farDistance) || !std::isfinite(midInterval)
@@ -354,7 +354,7 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
 
     /// @note ランタイム専用。初回更新時にステート参照から再構築する。
     std::vector<asset::AnimationClip> clips;
-    /// @note AssetManager owns immutable keys; generation handles resolve afresh after reload/unload.
+    /// @note 不変キーは AssetManager が所有し、リロードやアンロード後は世代付きハンドルを解決し直す。
     struct ClipReference {
         asset::AssetHandle<asset::AnimationClip> clip;
         asset::AssetHandle<asset::Model> model;
@@ -362,7 +362,7 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     };
     std::vector<ClipReference> sharedClips;
     [[nodiscard]] std::size_t ClipCount() const { return clips.empty() ? sharedClips.size() : clips.size(); }
-    /// @return An empty clip for expired handles; manually supplied clips retain the value-array contract.
+    /// @return 無効なハンドルは空のクリップを返す。手動で渡したクリップは値の配列として扱う。
     [[nodiscard]] FBZZ_ENGINE_API const asset::AnimationClip& ClipAt(std::size_t index) const;
     struct ClipRange {
         const AnimatorComponent* owner;
@@ -380,7 +380,7 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
     /// @note clips と同じ添字でロード元を保持し、同名クリップを Source Path で識別する。
     std::vector<std::string> clipSourcePaths;
     bool clipsLoaded          = false;
-    int  clipsAttemptGeneration = -1; ///< @note FlushGeneration at last LoadClips attempt
+    int  clipsAttemptGeneration = -1; ///< @note 最後に LoadClips を試行したときの FlushGeneration。
     /// @note 最後に Controller/クリップ/マスクを取り込んだときのアセット世代。AssetManager の現在値と
     /// @note 食い違う間は派生キャッシュが古い。
     int  appliedAssetGeneration = -1;
@@ -516,7 +516,7 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
         r.Field("defaultStateName", defaultStateName);
     }
 
-    /// @name Script API
+    /// @name スクリプト向け API
     /// @{
 
     /// @note AnimatorSystem が毎フレーム更新するため、Set* はフィールド書き換えのみで十分。
@@ -695,7 +695,7 @@ struct AnimatorComponent : TransientGpuState<AnimatorComponentGpuState> {
 
     /// @}
 
-    /// @name Slot API
+    /// @name スロット操作
     /// @{
 
     /// @brief 指定レイヤーへワンショットのクリップを差し込む。既に再生中なら差し替える。
@@ -826,4 +826,4 @@ private:
     }
 };
 
-} /// @note namespace fbzz::scene
+}

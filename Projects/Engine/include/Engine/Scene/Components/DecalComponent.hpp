@@ -159,4 +159,4 @@ struct DecalComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

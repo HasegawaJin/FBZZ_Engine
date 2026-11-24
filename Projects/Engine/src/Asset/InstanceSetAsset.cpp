@@ -1,5 +1,5 @@
 /// @file    InstanceSetAsset.cpp
-/// @brief   Validate shared instance authoring and publish immutable placement snapshots.
+/// @brief   共有インスタンスの編集データを検証し、不変の配置スナップショットを公開する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #include <Engine/Asset/InstanceSetAsset.hpp>

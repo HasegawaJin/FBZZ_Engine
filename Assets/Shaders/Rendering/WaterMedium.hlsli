@@ -874,6 +874,7 @@ float3 FBZZ_WaterSourceRGBTransmittanceInternal(float3 origin, float3 towardSour
     if (foundExit && firstExit < distance && context.bodyCount > 1u)
         opticalDepth += FBZZ_WaterSourceOpticalDepth(origin, direction, firstExit, distance,
             context, initial.ownerIndex, allowCausticsOnly);
+    /// @note 光が水中を進むほど残る割合は掛け算で減る。区間ごとの光学的厚さを足し、最後に exp(−厚さ) で赤・緑・青それぞれの透過率に戻す。
     return exp(-min(opticalDepth, 80.0f));
 }
 

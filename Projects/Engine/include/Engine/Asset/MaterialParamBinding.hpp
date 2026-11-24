@@ -76,7 +76,7 @@ FBZZ_ENGINE_API void ApplyMaterialIntegerOverrides(
 [[nodiscard]] FBZZ_ENGINE_API std::array<std::string, kMaterialTextureSlotNames.size()>
 ResolveMaterialTexturePaths(const MaterialAsset& asset);
 
-/// @note Immutable authoring values use the same binding rules without a borrowed mutable asset owner.
+/// @note 不変の編集値にも、変更可能なアセットを借用する経路と同じバインド契約を適用する。
 [[nodiscard]] FBZZ_ENGINE_API const std::vector<float>* FindMaterialParam(const MaterialAssetAuthoring& asset, std::string_view shaderVarName);
 FBZZ_ENGINE_API void ApplyMaterialAssetParams(const MaterialAssetAuthoring& asset, const renderer::ShaderDescriptor& desc,
     std::vector<uint8_t>& paramData);

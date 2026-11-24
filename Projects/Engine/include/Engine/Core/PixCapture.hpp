@@ -1,5 +1,5 @@
 /// @file    PixCapture.hpp
-/// @brief   Opt-in PIX startup options and verified early-loading status.
+/// @brief   明示指定で有効にする PIX 起動設定と初期ロードの検証結果。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #pragma once
@@ -15,41 +15,41 @@ inline constexpr std::wstring_view PIX_CAPTURE_STABLE_VERSION = L"2603.25";
 
 struct PixCaptureOptions {
     bool requested = false;
-    /// @note Empty selects the pinned stable release beneath Program Files; explicit paths must be absolute directories.
+    /// @note 空なら Program Files 配下の固定した安定版を選ぶ。明示パスは絶対ディレクトリでなければならない。
     std::filesystem::path installedDirectory;
 };
 
 struct PixCaptureStatus {
     bool requested = false;
-    /// @note True only after the startup loader verifies the selected module, not merely its presence on disk.
+    /// @note 起動ローダーが選択したモジュールを検証した場合のみ true。ディスク上の存在確認だけでは true にならない。
     bool ready = false;
     std::string reason;
-    /// @note The resolved capture DLL directory; it can be nonempty on a failed request without implying readiness.
+    /// @note 解決したキャプチャ DLL のディレクトリ。要求に失敗しても値が残る場合があり、準備完了の判定には使わない。
     std::filesystem::path installedDirectory;
 };
 
-/// @brief Parse already-tokenized PIX arguments without filesystem access or module loading.
-/// @note The caller consumes operands of its other options before passing PIX arguments here; unrelated arguments are ignored.
-/// @return False leaves out unchanged and provides a reason; success clears reason.
+/// @brief 分割済みの PIX 引数を解析する。ファイルシステムへのアクセスやモジュールのロードは行わない。
+/// @note 他のオプションの引数は呼び出し側が先に消費する。PIX と無関係の引数は無視する。
+/// @return false の場合は out を変更せず理由を返す。成功時は reason を空にする。
 [[nodiscard]] FBZZ_ENGINE_API bool ParsePixCaptureOptions(std::span<const std::wstring_view> arguments,
                                          PixCaptureOptions& out, std::string& reason);
 
-/// @brief Resolve the opt-in directory lexically without probing disk, changing process state or loading a module.
-/// @note An unrequested option resolves to an empty path even if Program Files is unavailable.
-/// @return False leaves out unchanged and provides a reason; success clears reason.
+/// @brief 明示指定のディレクトリを字句的に解決する。ディスク確認、プロセス状態の変更、モジュールのロードは行わない。
+/// @note オプションが指定されていなければ、Program Files を取得できなくても空のパスを返す。
+/// @return false の場合は out を変更せず理由を返す。成功時は reason を空にする。
 [[nodiscard]] FBZZ_ENGINE_API bool ResolvePixCaptureDirectory(const PixCaptureOptions& options,
                                              const std::filesystem::path& programFilesDirectory,
                                              std::filesystem::path& out, std::string& reason);
 
-/// @brief Load only the selected capturer and retain its module reference until process termination.
-/// @pre Called on the startup thread before any D3D12 API; the launcher must first select the supported DX12 backend.
-/// @note Startup options are immutable after the first call; ordinary startup never loads PIX, and failed startup is not retried.
-/// @return False logs the failure and never reports readiness; callers must stop startup before creating a renderer.
-/// @see https://devblogs.microsoft.com/pix/taking-a-capture/ Matching WinPixGpuCapturer.dll must precede D3D12 initialization.
+/// @brief 選択したキャプチャモジュールだけをロードし、プロセス終了まで参照を保持する。
+/// @pre D3D12 API の初回呼び出し前に起動スレッドから呼ぶ。ランチャーは事前に対応する DX12 バックエンドを選ぶ。
+/// @note 起動オプションは初回呼び出し後に変更できない。通常起動では PIX をロードせず、失敗時は再試行しない。
+/// @return false の場合は失敗をログに記録し、準備完了を報告しない。呼び出し側はレンダラー作成前に起動を中止する。
+/// @see https://devblogs.microsoft.com/pix/taking-a-capture/ D3D12 の初期化より先に対応する WinPixGpuCapturer.dll をロードする条件。
 [[nodiscard]] FBZZ_ENGINE_API bool InitializePixCapture(const PixCaptureOptions& options);
 
-/// @brief Read the process startup proof; no probing, loading, injection or restart is performed.
-/// @note Read on the main thread after startup initialization; the referenced status lives until process termination.
+/// @brief プロセス起動時の検証結果を読む。探索、ロード、注入、再起動は行わない。
+/// @note 起動処理での初期化後にメインスレッドから読む。参照先の状態はプロセス終了まで有効。
 [[nodiscard]] FBZZ_ENGINE_API const PixCaptureStatus& GetPixCaptureStatus();
 
 } /// @note namespace fbzz::core

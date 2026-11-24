@@ -25,7 +25,7 @@ class Input {
 public:
     /// @note Window 生成後に一度呼ぶ
     FBZZ_ENGINE_API static void Init();
-    /// @note Explicit host gestures exclude injected input and do not require game ownership.
+    /// @note 明示的なホスト操作からは注入入力を除外する。ゲームの入力所有権は不要。
     FBZZ_ENGINE_API static bool PhysicalKeyHeld(KeyCode key);
     FBZZ_ENGINE_API static bool PhysicalKeyDown(KeyCode key);
     FBZZ_ENGINE_API static bool PhysicalMouseButtonDown(int button);
@@ -66,7 +66,7 @@ public:
     FBZZ_ENGINE_API static void HandleMouseButton (unsigned int msg);
     FBZZ_ENGINE_API static void HandleMouseScroll (float delta);
     FBZZ_ENGINE_API static void HandleTextInput   (wchar_t character);
-    /// @note Native key identity allows held acquisition controls to suppress only their own text.
+    /// @note ネイティブキーを識別し、入力取得時に押されていたキー自身のテキストだけを抑止する。
     FBZZ_ENGINE_API static void HandleTextInput(wchar_t character, std::uint32_t physicalKey);
     FBZZ_ENGINE_API static std::string_view TextInput();
     /// @}
@@ -91,7 +91,7 @@ private:
     friend class core::Window;
     friend struct input_detail::GameInputAccess;
     friend struct scene::ScriptInputProxy;
-    /// @note Records held controls for gameplay consumption without changing raw host/UI input.
+    /// @note ゲーム操作で消費するために押下中の入力を記録する。ホストや UI の生入力は変更しない。
     FBZZ_ENGINE_API static void ConsumeGameInput();
     FBZZ_ENGINE_API static void CancelGameInput();
     FBZZ_ENGINE_API static std::string_view GameTextInput();

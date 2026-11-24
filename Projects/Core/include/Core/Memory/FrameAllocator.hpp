@@ -41,7 +41,9 @@ public:
     [[nodiscard]] bool IsInitialized() const { return m_allocator.IsInitialized(); }
 
 private:
+    /// @note 同じフレームで使う領域をまとめて所有し、フレーム境界で再利用する。
     LinearAllocator m_allocator;
+    /// @note 領域をリセットして次のフレームに進んだ回数。
     std::uint64_t   m_frameIndex = 0;
 };
 

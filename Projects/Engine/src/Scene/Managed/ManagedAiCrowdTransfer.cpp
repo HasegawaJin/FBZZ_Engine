@@ -1,5 +1,5 @@
 /// @file    ManagedAiCrowdTransfer.cpp
-/// @brief   Atomic one-call crowd packet validation and snapshot publication.
+/// @brief   群衆バッチのパケット検証とスナップショット公開を 1 回の呼び出しで原子的に行う。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include "ManagedAiCrowdTransfer.hpp"
@@ -55,7 +55,7 @@ ManagedBridgeStatus ManagedAiCrowdTransfer::Run(const ManagedBridgeRequest& requ
         reply.outputBytes = static_cast<std::uint32_t>(outputBytes);
         return ManagedBridgeStatus::BUFFER_TOO_SMALL;
     }
-    /// @note Overlapping packet ranges are rejected; an error cannot overwrite the caller's input snapshot.
+    /// @note 入出力のメモリ範囲が重複している場合は拒否する。エラーで呼び出し元の入力スナップショットを上書きしない。
     const std::less<const char*> before;
     if (before(request.input, request.output + outputBytes) && before(request.output, request.input + inputBytes))
         return ManagedBridgeStatus::INVALID_ARGUMENT;

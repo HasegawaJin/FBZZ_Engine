@@ -383,4 +383,4 @@ struct RagdollComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

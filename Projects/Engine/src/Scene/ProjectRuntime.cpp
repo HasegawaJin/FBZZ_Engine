@@ -189,7 +189,7 @@ void ProjectRuntime::Shutdown()
     /// @note 遷移時の owned Scene が同時に存在する。CurrentScene だけを Clear すると owned Scene の
     /// @note DLL 由来 Script が残るため、FreeLibrary 前に両方を明示的に破棄する。
     m_sceneManager.ClearScenes();
-    /// @note OnDestroy can request quit while Play is still active; keep the host hook and override until every teardown callback has returned.
+    /// @note Play 中の OnDestroy が終了を要求できるため、すべての終了コールバックが戻るまでホストフックと設定の上書きを保持する。
     SetScriptQuitHandler(nullptr, nullptr);
     m_scriptRuntime.requestDisplay = nullptr; m_scriptRuntime.displayContext = nullptr; m_displayIntents = {};
     m_scriptRuntime.queryPointerOverUI = nullptr; m_scriptRuntime.pointerContext = nullptr;
@@ -206,4 +206,4 @@ void ProjectRuntime::Shutdown()
     UISystemReleaseGpuResources(*m_gameUICtx);
 }
 
-} /// @note namespace fbzz::scene
+}

@@ -1,5 +1,5 @@
 /// @file    TerrainSurfaceGeometry.hpp
-/// @brief   Shared validation for terrain-owned cave, cliff and overhang triangles.
+/// @brief   地形が所有する洞窟・崖・張り出しの三角形を検証する共通処理。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
@@ -10,8 +10,8 @@
 #include <vector>
 
 namespace fbzz::scene {
-/// @note Positions are terrain-local metres, indices are triangle lists, winding faces empty space.
-/// @note Both arrays empty represents a legacy heightfield; incomplete or degenerate geometry is rejected.
+/// @note 位置は地形ローカル座標 [m]、添字は三角形リスト。頂点順で法線を空間側に向ける。
+/// @note 両配列が空なら従来の高さ場を表す。不完全または縮退した形状は拒否する。
 inline bool IsValidTerrainSurfaceGeometry(const std::vector<math::Vector3>& positions,
     const std::vector<uint32_t>& indices)
 {
@@ -28,4 +28,4 @@ inline bool IsValidTerrainSurfaceGeometry(const std::vector<math::Vector3>& posi
     }
     return true;
 }
-} /// @note namespace fbzz::scene
+}

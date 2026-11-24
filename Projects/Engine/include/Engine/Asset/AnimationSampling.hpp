@@ -57,7 +57,7 @@ namespace fbzz::asset {
                                            double ticks,
                                            AnimInterp interp)
 {
-    /// @note NaN has no ordered interval; never pass it to upper_bound and dereference end().
+    /// @note NaN は順序付き区間を定められないため、upper_bound に渡して end() を間接参照する経路を避ける。
     if (std::isnan(ticks)) return 0.0f;
     if (keys.empty()) return 0.0f;
     if (keys.size() == 1 || ticks <= keys.front().time) return keys.front().value;

@@ -1,5 +1,5 @@
 /// @file    ParticleEmitterPresets.hpp
-/// @brief   Complete particle starters shared by the Inspector and authoring fixtures.
+/// @brief   Inspector と制作時のテストで共用するパーティクルの初期設定一式。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
@@ -35,8 +35,8 @@ struct ParticleEmitterPresetInfo {
     return kPresets;
 }
 
-/// @note Explicitly replaces effect settings/material while retaining enabled state, seed and runtime VFX scope.
-/// @note Existing assets are untouched; all references use the material GUIDs shipped with the engine/templates.
+/// @note 有効状態、シード、実行時の VFX スコープを保ったまま、効果の設定と材質を明示的に置き換える。
+/// @note 既存のアセットは変更しない。参照先にはエンジンやテンプレートに同梱する材質の GUID を使う。
 inline void ApplyParticleEmitterPreset(scene::ParticleEmitterSettings& settings, ParticleEmitterPreset preset)
 {
     const bool enabled = settings.enabled;

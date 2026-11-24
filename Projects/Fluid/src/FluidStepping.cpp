@@ -41,6 +41,7 @@ float FluidLoopKeepWeight(int index, int overlap)
 {
     if (overlap <= 0) return 1.0f;
     const float t = std::clamp(static_cast<float>(index) / static_cast<float>(overlap), 0.0f, 1.0f);
+    /// @note 重なり区間の両端では重みの変化率が 0 になる。先頭と末尾の絵を混ぜても、切り替わる瞬間に明るさが急変しにくい。
     return t * t * (3.0f - 2.0f * t);
 }
 

@@ -63,7 +63,7 @@ struct WaterTerrainSample {
 struct WaterTerrainBakeSettings {
     uint32_t width = MAX_FINITE_WATER_TERRAIN_RESOLUTION, height = MAX_FINITE_WATER_TERRAIN_RESOLUTION;
     float foamThreshold = 0.3f, foamFade = 0.5f;
-    /// @note 0 keeps buoyancyDepth as the encoding range; positive values override it in world metres.
+    /// @note 0 なら buoyancyDepth を符号化範囲に使い、正値ならワールド空間のメートルで上書きする。
     float depthRange = 0.0f;
 };
 struct WaterTerrainInfoAtlas {
@@ -76,14 +76,14 @@ struct WaterTerrainInfoAtlas {
     math::Vector4 domain{};
 };
 
-/// @note Water instance owns one cache. A missed terrain revision or changed atlas layout requires a full bake.
+/// @note 水面インスタンスごとにキャッシュを所有する。地形の更新版を取りこぼした場合やアトラス配置が変わった場合は全体を焼き直す。
 class WaterTerrainInfoAtlasCache {
 public:
-    /// @return Same atlas as a full bake. On failure the cache and out remain unchanged.
+    /// @return 全体ベイクと同じアトラス。失敗時はキャッシュと out を変更しない。
     FBZZ_ENGINE_API bool TryBake(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
         const Transform& transform, const WaterTerrainBakeSettings& settings, WaterTerrainInfoAtlas& out,
         WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
-    /// @return The immutable cached atlas. On failure the cache and out remain unchanged.
+    /// @return 不変のキャッシュ済みアトラス。失敗時はキャッシュと out を変更しない。
     FBZZ_ENGINE_API bool TryBakeSnapshot(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
         const Transform& transform, const WaterTerrainBakeSettings& settings,
         std::shared_ptr<const WaterTerrainInfoAtlas>& out, WaterSurfaceReadView view);
@@ -120,4 +120,4 @@ FBZZ_ENGINE_API bool TryBakeWaterTerrainInfo(const WaterTerrainInfoInputs& input
 /// @return GB を [-depthRange,+depthRange] [m] へ復元する。無効 range/結果では false、out 未変更。
 /// @note nearest の16bit丸め誤差は depthRange/65535 以下。GPU は各 texel を Load 復号し、底ありかつ範囲内の重みだけ補間する。
 FBZZ_ENGINE_API bool TryDecodeWaterTerrainDepth(uint8_t highByte, uint8_t lowByte, float depthRange, float& out);
-} /// @note namespace fbzz::scene
+}

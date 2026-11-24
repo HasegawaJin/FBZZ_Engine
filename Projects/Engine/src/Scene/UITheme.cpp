@@ -1,5 +1,5 @@
 /// @file    UITheme.cpp
-/// @brief   Production theme application with explicit local component overrides.
+/// @brief   コンポーネントの明示的なローカル上書きを優先して UI テーマを適用する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #include <Engine/Scene/UITheme.hpp>
@@ -82,4 +82,4 @@ math::Vector4 ResolveUIButtonImageColor(const math::Vector4& imageColor,
         relativeChannel(imageColor.w, button.normalColor.w, tint.w)};
 }
 
-} /// @note namespace fbzz::scene
+}

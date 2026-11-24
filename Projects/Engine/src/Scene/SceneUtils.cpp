@@ -15,7 +15,7 @@
 namespace fbzz::scene {
 
 namespace {
-/// @note Callback-free query: inspect live Camera values in Scene ownership order and retain only scratch capacity.
+/// @note コールバックを呼ばず、シーンの所有順で現在の Camera の値を調べる。作業領域は容量だけを保持する。
 GameObject* FindMainCameraOwner(Scene& scene)
 {
     const auto cameras = scene.GetEntities<CameraComponent>();
@@ -167,4 +167,4 @@ CameraCullingSettings ResolveGameCullingSettings(Scene& scene)
     return CameraCullingSettings{};
 }
 
-} /// @note namespace fbzz::scene
+}

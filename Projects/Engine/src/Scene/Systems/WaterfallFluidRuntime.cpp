@@ -1,5 +1,5 @@
 /// @file    WaterfallFluidRuntime.cpp
-/// @brief   Snapshot collision inputs and play bounded, asynchronously loaded waterfall mesh frames.
+/// @brief   衝突入力を不変化し、非同期で読み込んだ滝のメッシュフレームを上限付きで再生する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #include "WaterfallFluidRuntime.hpp"
@@ -36,7 +36,7 @@ struct InputStamp {
     void Add(std::uint64_t word) { value = (value ^ word) * 1099511628211ull; }
     void AddFloat(float number)
     {
-        /// @note A submillimeter tolerance keeps round trips through the scene format from invalidating the clip.
+        /// @note 1 mm 未満の許容差を設け、シーンの保存・復元でクリップが不用意に無効にならないようにする。
         Add(std::isfinite(number) ? static_cast<std::uint64_t>(std::llround(std::clamp(number, -1.0e8f, 1.0e8f)
             * 10000.0)) : std::numeric_limits<std::uint64_t>::max());
     }
@@ -245,7 +245,7 @@ void UpdateWaterfallFluid(Scene& scene, GameObject& owner, WaterfallComponent& w
     }
     if (!requested) {
         hide();
-        /// @note A deferred refresh must still compare the connection when the patch comes back into view.
+        /// @note 更新を延期した場合も、パッチがビュー内へ戻ったときに接続を照合する。
         if (waterChanged) waterfall.playingFluidClip.clear();
         return;
     }

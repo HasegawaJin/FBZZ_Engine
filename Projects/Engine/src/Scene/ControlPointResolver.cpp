@@ -149,7 +149,7 @@ bool OwnerLocalPosition(const GameObject& owner, const GameObject& target, math:
         static_cast<double>(target.transform.worldPosition.x) - owner.transform.worldPosition.x,
         static_cast<double>(target.transform.worldPosition.y) - owner.transform.worldPosition.y,
         static_cast<double>(target.transform.worldPosition.z) - owner.transform.worldPosition.z};
-    /// @note The conjugate is the inverse for the already-validated unit owner rotation.
+    /// @note 単位クォータニオンであることを検証済みなので、所有オブジェクトの回転の逆元には共役を使える。
     const math::Quaternion inverse{-owner.transform.worldRotation.x,
                                    -owner.transform.worldRotation.y,
                                    -owner.transform.worldRotation.z,
@@ -196,7 +196,7 @@ void HashQuaternion(uint64_t& hash, const math::Quaternion& value)
     HashValue(hash, std::bit_cast<uint32_t>(value.w));
 }
 
-} /// @note namespace
+}
 
 bool ResolveControlPointBindings(Scene& scene,
                                  EntityID ownerId,
@@ -359,4 +359,4 @@ bool ResolveControlPointBindings(Scene& scene,
     return true;
 }
 
-} /// @note namespace fbzz::scene
+}

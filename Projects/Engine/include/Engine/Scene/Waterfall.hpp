@@ -1,5 +1,5 @@
 /// @file    Waterfall.hpp
-/// @brief   Shared river cross-sections and procedural waterfall geometry.
+/// @brief   河川断面の共有と滝の手続き生成。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #pragma once
@@ -29,19 +29,19 @@ struct WaterfallGeometry {
     bool operator==(const WaterfallGeometry&) const = default;
 };
 
-/// @brief Sample the original bank endpoints and a band inside the same Spline River.
-/// @note Reversing the connection direction also reverses the bank order.
+/// @brief 同じ Spline River の元の両岸端点と内側の帯をサンプリングする。
+/// @note 接続方向を反転すると両岸の順も逆になる。
 [[nodiscard]] FBZZ_ENGINE_API bool GetWaterfallRiverSection(const WaterSplineSnapshot& snapshot,
     bool atStart, bool incoming, WaterfallSection& out);
 
-/// @brief Build a bounded curtain, impact foam, and optional world-space effect anchors.
-/// @param ground Returns the highest terrain surface at the query XZ, or negative infinity outside terrain.
-/// @return False when the connections are invalid or the sampled curtain cannot clear terrain.
+/// @brief 上限付きの滝幕、落水点の泡、任意のワールド空間エフェクト位置を生成する。
+/// @param ground 問い合わせた XZ の最も高い地形面。地形外は負の無限大。
+/// @return 接続が無効か、サンプリングした滝幕を地形より上に保てない場合は false。
 [[nodiscard]] FBZZ_ENGINE_API bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
     const std::function<float(const math::Vector3&)>& ground, MeshBuilder& out,
     math::Vector3* midFall = nullptr, std::uint32_t* farIndexStart = nullptr);
 
-/// @brief Resolve the authoring water references against the current scene.
+/// @brief 制作時の水面参照を現在のシーンに対して解決する。
 [[nodiscard]] FBZZ_ENGINE_API bool ResolveWaterfallGeometry(Scene& scene, GameObject& owner, WaterfallGeometry& out);
 
-} /// @note namespace fbzz::scene
+}

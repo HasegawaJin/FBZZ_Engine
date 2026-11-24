@@ -175,6 +175,7 @@ void AudioSystem::Update(SystemContext& ctx)
 
         if (distance <= 0.0001f) return;
         const math::Vector3 direction = offset / distance;
+        /// @note 音源が聞き手の真右なら内積は 1、真正面なら 0、真左なら −1。これを左右の音量配分に使う。
         outPan = math::Vector3::Dot(direction, listenerTransform->Right()) * blend;
 
         /// @note 空気吸収。距離そのものは rolloff が受け持つ。

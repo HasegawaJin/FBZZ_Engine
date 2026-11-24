@@ -21,4 +21,4 @@ struct LifetimeComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

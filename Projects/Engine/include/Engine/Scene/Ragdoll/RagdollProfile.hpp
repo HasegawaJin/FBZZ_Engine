@@ -142,4 +142,4 @@ struct RagdollProfile {
     [[nodiscard]] FBZZ_ENGINE_API static RagdollProfile Humanoid();
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -1,5 +1,5 @@
 /// @file    CrowdSimulation.cpp
-/// @brief   Bounded spatial queries, budgeted decisions and safety-constrained 3D steering.
+/// @brief   処理量を制限した空間検索と判断、および安全制約付きの 3D 操舵。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include <Engine/AI/CrowdSimulation.hpp>
@@ -98,7 +98,7 @@ CrowdWorkspace::SpatialIndex::Bounds CrowdWorkspace::SpatialIndex::MakeBounds(V 
     constexpr double SLACK = 16.0 * std::numeric_limits<float>::epsilon();
     for (int axis = 0; axis < 3; ++axis) {
         const double center = Axis(position, axis);
-        /// @note Expanding only the final endpoint misses cancellation cases such as 1000000 - 999990 near a rounded sphere boundary.
+        /// @note 最終端点だけを広げても、丸めた球境界の近傍で 1000000 - 999990 のように桁落ちする場合を拾えない。
         const double margin = SLACK * (std::abs(center) + radius + 1.0);
         result.minimum[axis] = center - radius - margin;
         result.maximum[axis] = center + radius + margin;
@@ -112,7 +112,7 @@ bool CrowdWorkspace::SpatialIndex::Overlaps(const Bounds& left, const Bounds& ri
     return true;
 }
 
-/// @see https://pbr-book.org/4ed/Primitives_and_Intersection_Acceleration/Bounding_Volume_Hierarchies Equal-count primitive subdivision bounds binary-tree storage.
+/// @see https://pbr-book.org/4ed/Primitives_and_Intersection_Acceleration/Bounding_Volume_Hierarchies 木の探索順序によって、同じ強さの脅威の扱い、記憶時間、障害物への逐次投影が変わらないようにする。
 template<class Sphere> void CrowdWorkspace::SpatialIndex::Build(std::span<const Sphere> spheres) {
     m_count = spheres.size(); m_nodeCount = 0;
     if (m_count <= SPHERE_LINEAR_LIMIT) return;
@@ -170,7 +170,7 @@ std::size_t CrowdWorkspace::SpatialIndex::Query(V position, float radius, std::s
             stack[pending++] = node.left; stack[pending++] = node.right;
         }
     }
-    /// @note Tree traversal order must not change threat strength ties, remembered duration or sequential obstacle projection.
+    /// @note プリミティブを等個数で分割し、二分木の格納量を抑える節。
     if (found == m_count) return All(candidates);
     std::sort(candidates.begin(), candidates.begin() + found);
     return found;
@@ -237,7 +237,7 @@ bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, s
     }
     const std::size_t start = count ? s.decisionCursor % count : 0;
     std::size_t lastDecision = start;
-    /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-mass-gameplay-in-unreal-engine Simulation LOD separates decision frequency from movement.
+    /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-mass-gameplay-in-unreal-engine Simulation LOD で判断の頻度を移動から分離する設計。
     for (std::size_t offset = 0; offset < count; ++offset) {
         const std::size_t i = (start + offset) % count;
         auto& a = output[i];
@@ -266,7 +266,7 @@ bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, s
         a.sensedIndex = -1; a.sensedDistance = 0;
         float nearestDistanceSq = p.neighborRadius * p.neighborRadius;
         const int cx = coord(a.position.x), cy = coord(a.position.y), cz = coord(a.position.z);
-        /// @see https://www.red3d.com/cwr/boids/ Local separation, alignment and cohesion avoid all-to-all work.
+        /// @see https://www.red3d.com/cwr/boids/ 近傍だけで分離・整列・結合を評価し、全個体の組を処理しない Boids の規則。
         for (int z = -1; z <= 1 && tests < s.candidateLimit && neighbors < s.neighborLimit; ++z)
             for (int y = -1; y <= 1 && tests < s.candidateLimit && neighbors < s.neighborLimit; ++y)
                 for (int x = -1; x <= 1 && tests < s.candidateLimit && neighbors < s.neighborLimit; ++x) {
@@ -345,7 +345,7 @@ bool StepCrowd(const CrowdSettings& s, std::span<const CrowdProfile> profiles, s
             if (away.LengthSq() < safe * safe) {
                 next = o.position + Unit(away, Unit(a.velocity)) * safe; a.events |= CrowdEvents::CONSTRAINED;
                 if (projectionCount != obstacles.size()) {
-                    /// @note A projection can enter a later sphere outside the previous query; earlier indices were already passed by the original scan.
+                    /// @note 投影によって前回の検索外にある後続の球へ進入し得る。それ以前の添字は元の走査で既に通過している。
                     projectionCount = projectionQueries++ < PROJECTION_REQUERY_LIMIT
                         ? w.m_obstacles.Query(next, radius, sphereCandidates) : w.m_obstacles.All(sphereCandidates);
                     candidate = static_cast<std::size_t>(std::lower_bound(sphereCandidates.begin(), sphereCandidates.begin() + projectionCount,

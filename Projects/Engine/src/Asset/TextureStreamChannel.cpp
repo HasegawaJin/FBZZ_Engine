@@ -173,7 +173,7 @@ public:
                 {context.settings.mipmaps, context.settings.srgb}, &outError)) return false;
         if (!context.cachePath.empty()
             && !texturecache::Write(context.cachePath, context.sourceStamp, full, kLowestTextureQuality)) {
-            /// @note The optional cache failure must not turn successfully decoded source pixels into a missing texture.
+            /// @note 任意のキャッシュ処理に失敗しても、正常にデコード済みの元画像のテクスチャは利用できるようにする。
             FBZZ_LOG_WARN("TextureStreamChannel: cache write failed source='%s' cache='%s'; using decoded pixels",
                 input.resolvedPath.c_str(), context.cachePath.c_str());
         }

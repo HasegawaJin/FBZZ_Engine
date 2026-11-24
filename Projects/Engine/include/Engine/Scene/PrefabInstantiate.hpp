@@ -127,10 +127,10 @@ FBZZ_ENGINE_API bool ReplacePrefabInstanceAsset(Scene& scene,
                                  std::vector<EntityID>& outRootEntities,
                                  const PrefabOverrideSet* overrides = nullptr);
 
-/// @brief Replace a reviewed in-memory hierarchy using the same prepare/append/remap/destroy transaction as an asset.
-/// @note sourceSnapshot is the actual template baseline, independent of local overrides in document.
-/// @note preserveGuids includes instance-only keys so retained local objects keep their saved identity.
-/// @pre document has one root with stable source IDs; caller revalidates its review and source before publication.
+/// @brief レビュー済みのメモリ上の階層を、アセットと同じ準備、追加、参照再割り当て、破棄のトランザクションで置き換える。
+/// @note sourceSnapshot は document 内のローカル上書きを含まない、実際のテンプレート基準。
+/// @note preserveGuids にインスタンス固有のキーを含め、保持するローカル個体の保存 ID を保つ。
+/// @pre document は安定したソース ID を持つ単一ルート。公開前に呼び出し側でレビュー結果とソースを再検証する。
 FBZZ_ENGINE_API bool ReplacePrefabInstanceDocument(Scene& scene,
                                     EntityID rootEntity,
                                     const std::string& reference,
@@ -139,4 +139,4 @@ FBZZ_ENGINE_API bool ReplacePrefabInstanceDocument(Scene& scene,
                                     const std::unordered_map<std::string, std::string>& preserveGuids,
                                     std::vector<EntityID>& outRootEntities);
 
-} /// @note namespace fbzz::scene
+}

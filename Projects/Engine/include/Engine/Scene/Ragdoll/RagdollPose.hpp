@@ -54,4 +54,4 @@ inline void PropagateRagdollDescendants(const asset::Skeleton& skeleton,
     }
 }
 
-} // namespace fbzz::scene
+}

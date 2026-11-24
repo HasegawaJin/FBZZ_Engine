@@ -28,7 +28,7 @@ struct MeshInstancesAsset {
 /// @return 同期ロードした配置アセットの非所有参照。失敗時は nullptr、resolvedPath は未変更。
 [[nodiscard]] FBZZ_ENGINE_API MeshInstancesAsset* LoadMeshInstancesReference(const std::string& reference,
     std::string* resolvedPath = nullptr);
-/// @return The indexed path for a previously loaded reference, or an empty string on a cache miss.
+/// @return 読込済み参照のインデックス上のパス。キャッシュに無ければ空文字列。
 [[nodiscard]] FBZZ_ENGINE_API std::string FindLoadedMeshInstancesPath(const std::string& reference);
 /// @note .meshinstances/.terrainpaint は型付き Importer、旧 .fzdata は従来の Registry を使う。戻り値は非所有参照。
 [[nodiscard]] FBZZ_ENGINE_API const InstanceSetAsset* ResolveMeshInstanceDefinition(const std::string& reference);

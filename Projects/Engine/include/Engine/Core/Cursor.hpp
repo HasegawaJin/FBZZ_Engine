@@ -72,7 +72,7 @@ struct CursorRequestInfo {
     bool            active   = false;  ///< @note 今この要求が実効値を決めているか
 };
 
-/// @brief Input ownership is independent of cursor visibility and movement restriction.
+/// @brief 入力の所有権はカーソルの表示状態や移動制限とは独立する。
 enum class CursorInputOwner { HOST = 0, GAME = 1 };
 enum class CursorSuspendReason {
     NONE = 0, NOT_PLAYING, RELEASED, WINDOW_INACTIVE, GAME_VIEW_UNFOCUSED,
@@ -81,8 +81,8 @@ enum class CursorSuspendReason {
 FBZZ_ENGINE_API const char* ToString(CursorInputOwner owner);
 FBZZ_ENGINE_API const char* ToString(CursorSuspendReason reason);
 
-/// @brief Requested game settings and cursor state currently applied by the host.
-/// @note Input owner GAME includes visible, unrestricted pointer interaction.
+/// @brief ゲームが要求した設定と、ホストが現在適用しているカーソル状態。
+/// @note GAME が入力を所有する場合も、表示された移動制限のないポインターで操作できる。
 struct CursorState {
     CursorPolicy requested{};
     CursorPolicy effective{};
@@ -92,17 +92,17 @@ struct CursorState {
 };
 
 struct Cursor {
-    /// @note Legacy IsVisible/GetLockMode/GetEffectivePolicy return the winning requested settings.
-    /// @see https://docs.unity3d.com/ScriptReference/Cursor-visible.html Requested visibility and locked effective visibility.
+    /// @note 既存の IsVisible/GetLockMode/GetEffectivePolicy は優先された要求設定を返す。
+    /// @see https://docs.unity3d.com/ScriptReference/Cursor-visible.html 表示要求とロック時に実際に適用される表示状態。
     [[nodiscard]] FBZZ_ENGINE_API static CursorPolicy GetRequestedPolicy();
     [[nodiscard]] FBZZ_ENGINE_API static CursorState GetState();
 
-    /// @brief Explicit host handoff; focus return alone never reacquires game input.
-    /// @note Consumes controls already held by the host until their individual release; raw Editor UI input is preserved.
-    /// @return False while the application is inactive or physical input is disabled by the host.
+    /// @brief ホストから明示的に所有権を譲渡する。フォーカスの復帰だけではゲーム入力を再取得しない。
+    /// @note ホストが既に押している操作を、個々に離されるまで消費する。Editor UI 向けの生入力は維持する。
+    /// @return アプリケーションが非アクティブか、ホストが物理入力を無効化している間は false。
     FBZZ_ENGINE_API static bool AcquireGameInput();
-    /// @brief Session policy for automated Play; injected game input remains available.
-    /// @note Disabling releases ownership. Enabling never acquires it; ResetForEditor preserves this policy.
+    /// @brief 自動 Play 時のセッション方針。注入したゲーム入力は引き続き使える。
+    /// @note 無効にすると所有権を解放する。有効化だけでは取得しない。この方針は ResetForEditor の後も維持する。
     FBZZ_ENGINE_API static void SetPhysicalInputAllowed(bool allowed);
     [[nodiscard]] FBZZ_ENGINE_API static bool IsPhysicalInputAllowed();
     FBZZ_ENGINE_API static void ReleaseGameInput(CursorSuspendReason reason = CursorSuspendReason::RELEASED);
@@ -149,7 +149,7 @@ struct Cursor {
     FBZZ_ENGINE_API static bool GetRequest(std::size_t index, CursorRequestInfo& out);
 
     /// @brief 実効値 (要求スタックの勝者。無ければ基底)。IsVisible / GetLockMode と同じ出所。
-    /// @deprecated Use GetRequestedPolicy for game intent or GetState for effective OS state. Kept with its original meaning.
+    /// @deprecated 従来の意味を維持する。ゲームの要求値は GetRequestedPolicy、OS に適用済みの状態は GetState を使う。
     [[nodiscard]] FBZZ_ENGINE_API static CursorPolicy GetEffectivePolicy();
     [[nodiscard]] FBZZ_ENGINE_API static CursorPolicy GetBasePolicy();
     /// @}

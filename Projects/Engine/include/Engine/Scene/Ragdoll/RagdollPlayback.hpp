@@ -76,4 +76,4 @@ inline float AdvanceRagdollPhase(RagdollComponent& ragdoll, float dt)
     return math::Clamp01(ragdoll.weight);
 }
 
-} // namespace fbzz::scene
+}

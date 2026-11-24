@@ -1,47 +1,39 @@
-// FBZZ Engine
-// Math.hlsli | Common
-// 数学定数・汎用ヘルパー関数
+/// @file    Math.hlsli
+/// @brief   シェーダーで共有する角度定数と数値演算。
+/// @author  Hasegawa Jin
+/// @date    2026-05-19
 #ifndef MATH_HLSLI
 #define MATH_HLSLI
 
-// ---- 定数 ---------------------------------------------------------------
 static const float PI      = 3.14159265358979f;
 static const float TWO_PI  = 6.28318530717959f;
 static const float HALF_PI = 1.57079632679490f;
 static const float INV_PI  = 0.31830988618379f;
 static const float EPSILON = 1.0e-5f;
 
-// ---- ヘルパー関数 --------------------------------------------------------
 
-// x^2
 float Sq(float x) { return x * x; }
 
-// x^5  (Schlick フレネル近似で頻出)
+/// @note フレネル反射の近似で使う 5 乗を、2 乗を再利用した 3 回の乗算で求める。
 float Pow5(float x) { float x2 = x * x; return x2 * x2 * x; }
 
-// 符号を保持した安全な逆数。負の深度差や方向成分を扱う呼び出し側で
-// abs(x) だけを分母に使うと、結果の向きが反転するため符号を復元する。
+/// @note 分母の絶対値に下限を設け、元の符号を戻す。これで小さな負の方向成分でも逆数が正に転じない。
 float SafeRcp(float x)
 {
     const float signValue = x < 0.0f ? -1.0f : 1.0f;
     return signValue * rcp(max(abs(x), EPSILON));
 }
 
-// [lo, hi] へのクランプ
 float Clamp(float x, float lo, float hi) { return clamp(x, lo, hi); }
 
-// 2 値の符号付き比較 (a < b ? -1 : 1)
+/// @return 0 は正側として扱い、常に −1 または 1 を返す。
 float Sign(float x) { return (x >= 0.0f) ? 1.0f : -1.0f; }
 
-// @brief 0 ベクトルを normalize しないための共通ヘルパー。
-// @note 点光源直下や V+L≈0、ウェイトが全部 0 の頂点でも NaN を出さず、指定した方向へ連続させる。
-// @note ここに置くのは、ライティングだけでなく «変形した法線を正規化する» 側 (GBuffer の
-//       スキンド変種) も要るため。BRDF.hlsli はこのファイルを include しているので、
-//       これまでどおり BRDF 経由でも引ける。
+/// @note 自分自身との内積は長さの二乗。十分長ければ長さの逆数を掛けて向きだけを得る。長さがほぼ 0 なら指定した代替方向を使う。
 float3 SafeNormalize(float3 value, float3 fallback)
 {
     const float lenSq = dot(value, value);
     return lenSq > EPSILON * EPSILON ? value * rsqrt(lenSq) : fallback;
 }
 
-#endif // MATH_HLSLI
+#endif

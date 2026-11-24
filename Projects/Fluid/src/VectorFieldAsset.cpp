@@ -18,7 +18,7 @@ math::Vector3 LerpV(const math::Vector3& a, const math::Vector3& b, float t)
     return { LerpF(a.x, b.x, t), LerpF(a.y, b.y, t), LerpF(a.z, b.z, t) };
 }
 
-} // namespace
+} /// @note namespace
 
 const char* VectorFieldRecipeName(VectorFieldRecipe recipe)
 {
@@ -71,6 +71,7 @@ math::Vector3 VectorFieldAsset::SampleLocal(const math::Vector3& localPosition) 
     const float ty = std::clamp(fy - std::floor(fy), 0.0f, 1.0f);
     const float tz = std::clamp(fz - std::floor(fz), 0.0f, 1.0f);
 
+    /// @note 格子点の間の速度は周囲 8 点から求める。まず X 方向で 4 組を混ぜ、次に Y、最後に Z の割合を使う。
     const math::Vector3 c00 = LerpV(data[Index(x0, y0, z0)], data[Index(x1, y0, z0)], tx);
     const math::Vector3 c10 = LerpV(data[Index(x0, y1, z0)], data[Index(x1, y1, z0)], tx);
     const math::Vector3 c01 = LerpV(data[Index(x0, y0, z1)], data[Index(x1, y0, z1)], tx);
@@ -89,8 +90,7 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
     field.boundsMax = {  std::abs(extents.x),  std::abs(extents.y),  std::abs(extents.z) };
     field.data.resize(static_cast<size_t>(size) * size * size);
 
-    /// @note seed は「ノイズ格子のどこを切り出すか」を決める。値そのものを変えるのではなく
-    ///       座標をずらすことで、同じレシピから何枚でも別の場を焼ける。
+    /// @note 種によってノイズ格子を読む座標をずらすと、同じレシピでも模様の異なる速度場を作れる。
     const float offset = static_cast<float>(math::PcgHash(seed) % 4096u) * 0.25f;
 
     const math::Vector3 span = {
@@ -143,8 +143,7 @@ void BakeVectorField(VectorFieldRecipe recipe, uint32_t resolution,
                     break;
                 }
                 case VectorFieldRecipe::Tornado: {
-                    /// @note 上へ行くほど半径が絞られる。吸い込み (内向き) と接線を混ぜて
-                    ///       «巻きながら中心へ吸われて上がる» を作る。
+                    /// @note 上に行くほど半径を絞り、内向きと接線方向の流れを合わせると、中心へ渦を巻きながら上昇する。
                     const math::Vector3 radial = { local.x, 0.0f, local.z };
                     const float distance = radial.Length();
                     const float height = std::clamp(
@@ -207,10 +206,8 @@ void NormalizeVectorField(VectorFieldAsset& field)
     }
 
     /// @name 2. 正規化係数を決めて量子化
-    /// @note 係数は «成分の絶対値の最大» を使う (長さだと各成分がバイト範囲を使い切らず、最悪 sqrt(3) 倍
-    ///       精度を捨てる)。この選び方は冪等: 係数と同じ大きさの成分はバイト 0/255 に当たり復元すると
-    ///       ちょうど ±maxMagnitude に戻るため、量子化後のデータから測り直しても同じ係数が出る (長さだと
-    ///       丸めで最長ベクトルが縮み、次回係数がずれて格子ごと全成分がずれる)。長さ 0 の場は 0 除算しない。
+    /// @note 各軸を 1 バイトで表すので、成分の絶対値の最大を基準にすると 0～255 を使い切れる。ベクトルの長さを使うと刻み幅が最大 √3 倍になる。
+    /// @note 最大の成分は端の値から正確に復元でき、量子化を繰り返しても基準がずれない。すべての成分がほぼ 0 の場合は係数を 1 とする。
     float maxComponent = 0.0f;
     for (const math::Vector3& v : field.data) {
         maxComponent = (std::max)(maxComponent,
@@ -221,4 +218,4 @@ void NormalizeVectorField(VectorFieldAsset& field)
     for (math::Vector3& value : field.data) value = QuantizeVectorFieldValue(value, field.maxMagnitude);
 }
 
-} // namespace fbzz::fluid
+} /// @note namespace fbzz::fluid

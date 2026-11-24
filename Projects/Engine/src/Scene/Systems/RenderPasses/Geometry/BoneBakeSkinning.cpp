@@ -1,5 +1,5 @@
 /// @file    BoneBakeSkinning.cpp
-/// @brief   Species-shared resident local TRS replay connected to existing skinning batches.
+/// @brief   種別間で共有する常駐局所 TRS の再生を、既存のスキニングバッチへ接続する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #include "BoneBakeSkinning.hpp"
@@ -75,12 +75,12 @@ std::shared_ptr<BoneBakeSkinPairAsset> GetBoneBakeSkinAsset(RenderPassContext& c
         std::as_bytes(std::span(samples)), std::as_bytes(std::span(runtime.source->nodes)), std::as_bytes(std::span(runtime.source->bones)),
         static_cast<uint32_t>(runtime.source->nodes.size()), static_cast<uint32_t>(runtime.source->bones.size()), runtime.source->rootInverse};
     const uint64_t bytes = upload.samples.size() + upload.nodes.size() + upload.bindings.size();
-    /// @note A bounded clip-pair cache avoids unbounded GPU residency; budget overflow uses the existing CPU palette.
+    /// @note クリップ対キャッシュの GPU 常駐量に上限を設け、超過時は通常の CPU パレットを使う。
     if (bytes > BONE_BAKE_GPU_CACHE_BUDGET - s_boneBakeResidentBytes) return nullptr;
     renderer::BoneReplayStatus status;
     entry->gpu = renderer::UploadBakedBoneReplay(ctx.resources, upload, status);
     if (!entry->gpu) return nullptr;
-    /// @note A local entry lease survives cache invalidation while native creation/replay pumps an editor callback.
+    /// @note GPU 資源の作成や再生がエディターのコールバックを起動しても、利用中の項目は破棄されない。
     if (s_boneBakeSkinOwner != ctx.resources.GetInstanceId() || s_boneBakeSkinEpoch != ctx.resources.GetResetVersion()
         || s_boneBakeSkinGeneration != creationGeneration || creationGeneration != asset::AssetManager::GetAssetGeneration()
         || entry->gpu->owner != s_boneBakeSkinOwner || entry->gpu->epoch != s_boneBakeSkinEpoch) return {};
@@ -119,7 +119,7 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
     const auto sameFrame = [](const auto& a, const auto& b) {
         return a.first == b.first && a.second == b.second && std::bit_cast<uint32_t>(a.alpha) == std::bit_cast<uint32_t>(b.alpha);
     };
-    /// @note Native resource operations may pump edits; no component address is trusted across a resource call.
+    /// @note GPU 資源の操作中に編集が走り得るため、操作をまたいでコンポーネントのアドレスを保持しない。
     const auto resolve = [&](BoneBakeRuntime* identity) -> BoneBakeRuntime* {
         const auto found = witnesses.find(identity);
         if (found == witnesses.end() || ctx.scene.GetRenderSceneGeneration() != sceneGeneration
@@ -193,10 +193,10 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
             rowIndices.push_back(pose->second);
             if (inserted) rows.push_back(row);
         }
-        /// @note The 65535 row and 128 bone limits keep the float object offset exact as well as meeting Dispatch Y limits.
+        /// @note 65535 行・128 ボーンの上限で、Dispatch の Y 制限を守りながら float のオブジェクトオフセットを正確に表す。
         replayJobs.push_back({asset, &group, std::move(rowIndices), std::move(rows), {}});
     }
-    /// @note Replay requires the render thread. The callback contains only immutable GPU jobs; all Scene publication stays on the caller thread.
+    /// @note 再生は描画スレッドで不変の GPU 命令だけを扱い、シーンへの公開は呼び出し側スレッドで行う。
     if (!replayJobs.empty()) ctx.renderer.ExecuteResourceOperation([&] {
         for (auto& job : replayJobs) job.result = renderer::ReplayBakedBones(ctx, *job.asset->gpu, job.rows);
     });
@@ -236,7 +236,7 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
         runtime = resolve(runtime);
         if (!runtime) continue;
         runtime->gpuPalette = {}; runtime->gpuPreviousPalette = {};
-        /// @note Packed CPU ranges were captured before replay; repair them before the existing batch consumes a fallback.
+        /// @note CPU のパック範囲は再生前に確定済みなので、フォールバックを既存のバッチが読む前に補正する。
         for (const auto& request : requests) {
             if (request.runtime != runtime || request.requestIndex >= ctx.skinningRequests.size()) continue;
             const auto* animator = ctx.scene.GetComponent<AnimatorComponent>(request.animatorEntity);
@@ -263,7 +263,7 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
         const auto& input = ctx.skinningRequests[index];
         if (input.gpuBonePalette || !input.boneCount) continue;
         const uint32_t old = input.boneOffset;
-        /// @note Keep every CPU offset unchanged if compaction cannot validate the complete input set.
+        /// @note 圧縮する入力をすべて検証できなければ、CPU 側のオフセットを一切更新しない。
         if (old > ctx.skinningMatrices.size() || input.boneCount > ctx.skinningMatrices.size() - old) return;
         const auto range = std::pair{old, input.boneCount};
         if (const auto it = offsets.find(range); it != offsets.end()) rewrites.emplace_back(index, it->second);
@@ -280,7 +280,7 @@ void PrepareBakedSkinningRequests(RenderPassContext& ctx, std::span<const BoneBa
 
 void ReleaseBoneBakeSkinningCaches()
 {
-    /// @note Publish an empty cache before resource retirement can enter the executor.
+    /// @note 資源の破棄が描画実行器に入る前に、空のキャッシュを公開する。
     auto retiredAssets = std::move(s_boneBakeSkinAssets);
     s_boneBakeSkinAssets.clear(); s_boneBakeLodCompatibility.clear(); s_boneBakeResidentBytes = 0;
     s_boneBakeSkinOwner = s_boneBakeSkinEpoch = 0; s_boneBakeSkinGeneration = -1;

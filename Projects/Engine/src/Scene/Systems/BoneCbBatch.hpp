@@ -1,5 +1,5 @@
 /// @file    BoneCbBatch.hpp
-/// @brief   Reused immutable full-palette packets over the existing resource-update executor.
+/// @brief   既存の資源更新実行器で、不変の全パレットパケットを再利用する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
@@ -38,7 +38,7 @@ public:
         constexpr size_t size = asset::MAX_SKINNING_BONES * sizeof(math::Matrix4);
         CountAnimationCompatibilityUpdate(size);
         if (s_current && &s_current->m_resources == &resources && s_current->AddPalette(handle,matrices)) return;
-        /// @note Byte storage avoids constructing 128 matrices for every compatibility CB; all identity tail bytes remain exact.
+        /// @note バイト列を使って互換 CB ごとに 128 行列を構築するコストを省き、末尾の単位行列のバイト列は保持する。
         std::array<uint8_t,size> data;
         const auto& identity=IdentityPalette();
         std::memcpy(data.data(),identity.data(),size);
@@ -46,7 +46,7 @@ public:
         if(prefix) std::memcpy(data.data(),matrices.data(),prefix);
         resources.Update(handle,data.data(),size);
     }
-    /// @note Flush before bone creation, bind fallback, CPU materialization or other callback-capable legacy work.
+    /// @note ボーン生成、バインド姿勢へのフォールバック、CPU データ生成など、コールバックが起こり得る既存処理の前に送信する。
     static void BeforeBoneHierarchy(renderer::ResourceManager& resources)
     {
         if (s_current && &s_current->m_resources == &resources) s_current->SetActorEligible(false);
@@ -54,7 +54,7 @@ public:
     BoneCbBatch(const BoneCbBatch&) = delete;
     BoneCbBatch& operator=(const BoneCbBatch&) = delete;
 private:
-    /// @note A queued packet holds its own strong reference. Reuse is allowed only after all renderer consumers release it.
+    /// @note キュー内のパケットは強参照を持つ。レンダラー側の利用者がすべて手放してから領域を再利用する。
     static std::shared_ptr<renderer::ConstantBufferUpdateBatch> Acquire(size_t hint)
     {
         static std::mutex mutex;

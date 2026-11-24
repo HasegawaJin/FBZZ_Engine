@@ -25,23 +25,23 @@ FBZZ_ENGINE_API void WriteWorldPoseToTransform(GameObject& go, const math::Vecto
                                 const math::Quaternion& worldRotation);
 
 
-/// @note Only successfully validated AI arithmetic is recorded; entries contain no Scene or object references.
+/// @note AI サービスで検証に成功した演算だけを記録し、シーンやオブジェクトへの参照を保持しない。
 struct AiWorldMathEntry {
     Transform value;
     math::Vector3 parentPosition, parentScale;
     math::Quaternion parentRotation;
     bool valid = false, hasParent = false;
 };
-/// @note A constant-initialized borrowed view avoids dynamic TLS initialization checks on every bone lookup.
+/// @note 借用ビューを定数初期化し、ボーンの照会ごとの動的なスレッドローカル初期化確認を省く。
 struct AiWorldMathWorkspace { AiWorldMathEntry* rows = nullptr; std::size_t count = 0; uint32_t control = UINT32_MAX; };
 extern constinit thread_local AiWorldMathWorkspace g_aiWorldMath;
 
-/// @note Scratch grows up to 65536 entity slots (under 8 MiB); larger indices retain ordinary computation.
+/// @note 作業領域は 65536 エンティティ（8 MiB 未満）まで拡張し、それを超える添字は通常の演算を使う。
 FBZZ_ENGINE_API void ReserveAiWorldMath(std::size_t slots);
-/// @note Traversals contain no callbacks; reset pure arithmetic proofs when SSE rounding, denormals or exception masks change.
+/// @note コールバックなしで走査する。SSE の丸め、非正規数、例外マスクが変わった場合は検証済みの記録を破棄する。
 FBZZ_ENGINE_API void PrepareAiWorldMath();
 
-/// @note Bitwise input keys preserve signed zero and exact arithmetic; stale world fields are always replaced.
+/// @note 入力のビット列をキーにして符号付きゼロと計算結果を保持し、古いワールド値は常に上書きする。
 inline bool TryReuseAiWorldMath(uint32_t slot, Transform& value, const Transform* parent)
 {
     if (slot >= g_aiWorldMath.count) return false;
@@ -58,7 +58,7 @@ inline bool TryReuseAiWorldMath(uint32_t slot, Transform& value, const Transform
     return true;
 }
 
-/// @pre Local inputs, parent multiplication and world outputs passed the AI pose service's finite/normalizable validation.
+/// @pre ローカル入力、親との乗算、ワールド出力が AI 姿勢サービスによる有限性・正規化可能性の検証を通過していること。
 inline void RememberAiWorldMath(uint32_t slot, const Transform& value, const Transform* parent)
 {
     if (slot >= g_aiWorldMath.count) return;

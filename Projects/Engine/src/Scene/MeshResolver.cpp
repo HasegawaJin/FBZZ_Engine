@@ -15,7 +15,7 @@
 
 namespace fbzz::scene {
 namespace {
-/// @note GUID identity is stable until the index revision changes; handles are resolved again after unload/reimport.
+/// @note 索引の版が変わるまで GUID の識別は維持できる。アンロードや再インポート後のハンドルは解決し直す。
 struct GuidMeshResolutionCache {
     struct Entry { asset::AssetHandle<asset::Model> model; int meshIndex = 0; };
     uint64_t resourceOwner = 0, resourceEpoch = 0, indexRevision = 0;
@@ -35,7 +35,7 @@ struct GuidMeshResolutionCache {
     }
 };
 thread_local GuidMeshResolutionCache s_guidMeshResolutionCache;
-} /// @note namespace
+}
 
 
 renderer::Mesh* ResolveMeshPath(const std::string& path, renderer::ResourceManager& resources)
@@ -54,7 +54,7 @@ renderer::Mesh* ResolveMeshPath(const std::string& path, renderer::ResourceManag
         return nullptr;
     }
 
-    /// @note Relative/absolute paths retain their filesystem precedence checks. Failed GUID loads are never cached.
+    /// @note 相対パスと絶対パスはファイルシステム上の従来の優先順位で確認する。GUID の読み込み失敗はキャッシュしない。
     const bool cacheGuid = asset::AssetDatabase::IsGuidRef(path);
     auto& cache = s_guidMeshResolutionCache;
     if (cacheGuid) {
@@ -94,10 +94,10 @@ renderer::Mesh* ResolveMeshPath(const std::string& path, renderer::ResourceManag
     auto* model = asset::AssetManager::Get(handle);
     if (!model) return nullptr;
     if (meshIndex < 0 || meshIndex >= static_cast<int>(model->meshes.size())) return nullptr;
-    /// @note Bound retained keys; resource callbacks may have changed the lookup epoch during Load.
+    /// @note 保持するキー数には上限を設ける。Load 中の資源コールバックで検索世代が変わる可能性がある。
     if (cacheGuid && cache.Matches(resources) && cache.entries.size() < 4096)
         cache.entries.insert_or_assign(path, GuidMeshResolutionCache::Entry{handle, meshIndex});
     return model->meshes[meshIndex].get();
 }
 
-} /// @note namespace fbzz::scene
+}

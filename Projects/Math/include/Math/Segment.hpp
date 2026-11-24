@@ -17,6 +17,7 @@ namespace fbzz::math {
     const Vector3 segment = to - from;
     const float lengthSq = segment.LengthSq();
     if (lengthSq <= EPSILON * EPSILON) return from;
+    /// @note 内積を線分の長さの二乗で割ると、始点を 0、終点を 1 とした位置になる。範囲外では近い方の端点を選ぶ。
     return from + segment * Clamp01(Vector3::Dot(point - from, segment) / lengthSq);
 }
 
@@ -31,4 +32,4 @@ namespace fbzz::math {
     return (point - closest).Length();
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

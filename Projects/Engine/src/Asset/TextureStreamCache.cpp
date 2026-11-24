@@ -29,7 +29,7 @@ struct CacheMeta {
 };
 static_assert(sizeof(CacheMeta) == 24, "CacheMeta size mismatch");
 
-/// @brief FNV-1a 64bit。
+/// @brief 64 ビットの FNV-1a。
 /// @see http://www.isthe.com/chongo/tech/comp/fnv/index.html «FNV-1a»
 uint64_t Fnv1a(const void* bytes, std::size_t size, uint64_t hash = 0xcbf29ce484222325ull)
 {

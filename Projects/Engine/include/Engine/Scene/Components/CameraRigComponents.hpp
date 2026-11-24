@@ -110,4 +110,4 @@ struct CameraShakeComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

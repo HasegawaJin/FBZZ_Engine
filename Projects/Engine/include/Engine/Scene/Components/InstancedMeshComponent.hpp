@@ -1,5 +1,5 @@
 /// @file    InstancedMeshComponent.hpp
-/// @brief   One scene component owns shared mesh placements and Play-local edits.
+/// @brief   共有メッシュの配置と Play 中の編集を一つのシーンコンポーネントで管理する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
@@ -46,13 +46,13 @@ public:
         r.Field("vegetationShadowDetailPerCell", m_vegetationBudget.shadowDetailPerCell);
     }
     [[nodiscard]] FBZZ_ENGINE_API std::shared_ptr<const renderer::InstanceSetData> Snapshot() const;
-    /// @pre resolvedDefinition is the current m_instanceSetRef.path asset; the reference and registry stay unchanged during this call.
-    /// @note Borrows the definition only for this call; matching runtime overrides take priority without repeating the asset lookup.
+    /// @pre resolvedDefinition は現在の m_instanceSetRef.path に対応し、呼び出し中に参照とレジストリを変更しないこと。
+    /// @note 定義は呼び出し中だけ借りる。一致する実行時の上書きを優先し、アセットは引き直さない。
     [[nodiscard]] FBZZ_ENGINE_API std::shared_ptr<const renderer::InstanceSetData> Snapshot(const asset::InstanceSetAsset& resolvedDefinition) const;
-    /// @note IDs survive changes/removal; editing copies the asset or a snapshot shared with Edit/another view.
+    /// @note 編集や削除で既存の ID を振り直さない。編集時はアセットまたは Edit や他ビューと共有するスナップショットを複製する。
     [[nodiscard]] FBZZ_ENGINE_API bool SetTransform(uint32_t id, const math::Vector3& position, const math::Vector3& eulerRadians, const math::Vector3& scale);
     [[nodiscard]] FBZZ_ENGINE_API bool Remove(uint32_t id);
-    /// @return Newly assigned stable ID, or zero for invalid values/capacity/asset; removed IDs are never reused.
+    /// @return 新規の安定 ID。不正な値、容量超過、無効なアセットの場合は 0。削除済み ID は再利用しない。
     [[nodiscard]] FBZZ_ENGINE_API uint32_t Add(const math::Vector3& position,const math::Vector3& eulerRadians,const math::Vector3& scale);
     FBZZ_ENGINE_API void ResetOverrides();
 private:
@@ -62,4 +62,4 @@ private:
     std::string m_runtimeAssetPath;
     uint32_t m_nextId=1;
 };
-} /// @note namespace fbzz::scene
+}

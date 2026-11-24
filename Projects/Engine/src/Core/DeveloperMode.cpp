@@ -23,7 +23,7 @@ bool g_developerForcedByLaunch = false;
 bool g_developerPreference     = false;
 
 /// @brief 環境変数 FBZZ_DEVELOPER_MODE が "1" か。
-/// @see https://learn.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-getenvironmentvariablew GetEnvironmentVariableW buffer length and missing variables
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-getenvironmentvariablew GetEnvironmentVariableW のバッファ長と変数が存在しない場合の規定。
 bool DeveloperEnvironmentFlag()
 {
     wchar_t value[8] = {};

@@ -1,18 +1,9 @@
 /// @file    NavMeshModifierComponent.hpp
-/// @brief   NavMesh Bake に対して、この GO のコライダーを「歩行不可」または「歩行可」として。
+/// @brief   オブジェクトのコライダーを NavMesh ベイクの障害物または歩行面として扱う。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
-///
-/// @note 明示的に修飾するコンポーネント。
-///
-/// @note NotWalkable (デフォルト):
-/// @note この GO のコライダーを NavMesh から除外する障害物として扱う。
-/// @note 旧 NavMeshObstacleComponent と同等。
-///
-/// @note Walkable:
-/// @note この GO のコライダーを歩行可能面として NavMesh Bake ソースに追加する。
-/// @note Terrain のない室内床・プラットフォームなど、明示的にウォーカブル指定が
-/// @note 必要なオブジェクトに付ける。
+/// @note 既定値 NotWalkable は旧 NavMeshObstacleComponent と同じ障害物指定。
+/// @note Terrain を伴わない室内床や足場のコライダーは Walkable で歩行面に加えられる。
 #pragma once
 #include <Engine/Scene/Reflection.hpp>
 #include <cstdint>
@@ -43,4 +34,4 @@ struct NavMeshModifierComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

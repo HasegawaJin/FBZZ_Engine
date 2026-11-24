@@ -1,5 +1,5 @@
 /// @file    BoneBakeRuntime.cpp
-/// @brief   Generation-scoped shared bone bake cache and CPU compatibility publication.
+/// @brief   世代ごとのボーンベイク共有キャッシュと互換 CPU パレットの公開を扱う。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #include <Engine/Scene/BoneBakeRuntime.hpp>
@@ -25,7 +25,7 @@ struct BoneBakeCachedValue {
     asset::BoneBakeStatus status = asset::BoneBakeStatus::INVALID_DATA;
     std::shared_ptr<const asset::BakedBoneAnimation> bake;
 };
-/// @note AssetManager owns the pointers and bumps generation before reimport/reload; mutable runtime clips are excluded.
+/// @note ポインターは AssetManager が所有し、再インポート・再読込前に世代を進める。可変のランタイムクリップは除外する。
 using BoneBakeLookupKey = std::tuple<const asset::Model*, const asset::AnimationClip*, uint32_t>;
 using BoneBakeContentKey = std::tuple<uint64_t, uint64_t, uint32_t, uint32_t>;
 std::map<BoneBakeLookupKey, BoneBakeCachedValue> s_boneBakeLookup;
@@ -50,7 +50,7 @@ bool LoadBoneBakeCache(const std::string& path, const asset::Skeleton& skeleton,
     const auto file = util::FileSystem::PathFromUtf8(path);
     std::error_code error;
     const auto size = std::filesystem::file_size(file, error);
-    /// @note Bound before FileSystem allocates the byte vector; invalid caches are rebuilt from the source asset.
+    /// @note FileSystem が配列を確保する前に上限を確認し、不正なキャッシュは元アセットから作り直す。
     if (error || size > 257ull * 1024ull * 1024ull) return false;
     std::vector<uint8_t> bytes;
     if (!util::FileSystem::ReadBinary(file, bytes)
@@ -66,7 +66,7 @@ void SaveBoneBakeCache(const std::string& path, const asset::BakedBoneAnimation&
     if (asset::EncodeBoneBake(bake, bytes) != asset::BoneBakeStatus::OK) return;
     std::string payload(bytes.size(), '\0');
     for (size_t i = 0; i < bytes.size(); ++i) payload[i] = std::bit_cast<char>(bytes[i]);
-    /// @note The existing atomic writer preserves exact bytes (including NUL) and retires its own temporary file.
+    /// @note 既存の原子的な書き込みは NUL を含むバイト列を保持し、自身の一時ファイルを片付ける。
     if (!util::FileSystem::WriteTextAtomic(path, payload))
         FBZZ_LOG_WARN("BoneBake: unable to save derived cache '%s'; using in-memory bake", path.c_str());
 }
@@ -76,7 +76,7 @@ BoneBakeCachedValue GetCachedBoneBake(const asset::Model& model, const asset::An
     if (s_boneBakeGeneration != generation) { s_boneBakeBlendRadii.clear(); s_boneBakeLookup.clear(); s_boneBakeContent.clear(); s_boneBakeGeneration = generation; }
     const BoneBakeLookupKey lookup{&model, &clip, std::bit_cast<uint32_t>(rate)};
     if (const auto it = s_boneBakeLookup.find(lookup); it != s_boneBakeLookup.end()) return it->second;
-    /// @note Asset models are immutable within their import generation; remember rejected meshes as well as successful bakes.
+    /// @note 同じインポート世代のモデルは不変なので、成功したベイクと対象外のメッシュの両方を記憶する。
     const auto reject = [&]() { const BoneBakeCachedValue invalid; s_boneBakeLookup.emplace(lookup, invalid); return invalid; };
     float radius = 0.0f;
     for (const auto& mesh : model.meshes) {
@@ -216,7 +216,7 @@ bool MaterializeBoneBakeCpu(AnimatorComponent& animator, renderer::ResourceManag
     if (current) runtime.cpuDeferred = false;
     if (!valid) animator.prevBoneMatricesValid = false;
     const auto currentBuffer = animator.skinningBuffer.Get(), previousBuffer = animator.prevSkinningBuffer.Get();
-    /// @note All component publication precedes resource calls; local packets remain valid if the executor pumps a Scene edit.
+    /// @note コンポーネントへの公開を資源操作より先に済ませ、操作中にシーン編集が走ってもローカルパケットを有効に保つ。
     if (publishCurrent) BoneCbBatch::UpdatePalette(resources, currentBuffer, currentMatrices);
     if (publishPrevious) BoneCbBatch::UpdatePalette(resources, previousBuffer, previousMatrices);
     return valid;
@@ -251,7 +251,7 @@ bool TryEvaluateBoneBake(AnimatorComponent& animator, const asset::Model& model,
         if (!target.bake) return false;
     }
     asset::BakedBoneFrame frame, targetFrame;
-    /// @note State machine already wraps/clamps and applies speeds; do not apply clip.loop or animator.speed a second time.
+    /// @note ループ・クランプ・速度は状態機械が適用済みのため、clip.loop や animator.speed を重ねて適用しない。
     if (asset::ResolveBakedBoneFrame(*source.bake, clips[0].ticks / clips[0].clip->ticksPerSecond, 1.0, 0.0, false, frame) != asset::BoneBakeStatus::OK
         || (target.bake && asset::ResolveBakedBoneFrame(*target.bake, clips[1].ticks / clips[1].clip->ticksPerSecond, 1.0, 0.0, false, targetFrame) != asset::BoneBakeStatus::OK)) {
         runtime.fallback = BoneBakeFallback::INVALID_CLOCK; return false;

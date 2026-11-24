@@ -1,5 +1,5 @@
 /// @file    WaterfallFluid.hpp
-/// @brief   Capture connected water and collision inputs for the local waterfall bake.
+/// @brief   滝のローカルベイクに使う接続水面と衝突入力を採取する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #pragma once
@@ -11,7 +11,7 @@ namespace fbzz::scene {
 class GameObject;
 class Scene;
 
-/// @note Main-thread snapshot. The result owns its collision data and can be moved to a worker.
+/// @note メインスレッドで採取する。結果は衝突データを所有し、ワーカーへ移動できる。
 [[nodiscard]] FBZZ_ENGINE_API bool CaptureWaterfallFluidBake(Scene& scene, GameObject& owner,
     asset::WaterfallFluidBakeInput& out, std::string& error);
-} /// @note namespace fbzz::scene
+}

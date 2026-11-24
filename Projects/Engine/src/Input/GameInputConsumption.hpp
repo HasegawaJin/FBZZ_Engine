@@ -1,5 +1,5 @@
 /// @file    GameInputConsumption.hpp
-/// @brief   Consumes only controls held during game input acquisition until their individual release.
+/// @brief   ゲーム入力取得時に押されていた操作だけを、個々に離されるまで消費する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
@@ -21,11 +21,11 @@ public:
     static constexpr std::size_t PAD_BUTTON_COUNT = 16;
     static constexpr std::size_t PAD_AXIS_COUNT = 6;
 
-    /// @note Explicit input.inject automation remains usable without OS focus; physical host input stays excluded.
+    /// @note 明示的な input.inject の自動操作は OS フォーカスが無くても使える。ホストの物理入力は除外したままにする。
     [[nodiscard]] static bool ResolveButton(bool physical, bool injected, bool gameOwned, bool consumed)
     { return injected || (gameOwned && !consumed && physical); }
 
-    /// @note Caller viewport coordinates are physical; client-space injection cannot enable them while Host owns input.
+    /// @note 呼び出し側のビューポート座標は物理座標。ホストが入力を所有している間はクライアント領域への注入でも有効化できない。
     [[nodiscard]] static bool RuntimePointerAvailable(bool gameOwned, bool acquisitionConsumed)
     { return gameOwned && !acquisitionConsumed; }
 
@@ -68,10 +68,10 @@ private:
     std::uint64_t m_interactionRevision = 0;
 };
 
-/// @note Engine-private shared consumption state; the raw Input API stays available to Editor UI.
+/// @note 入力を消費する状態は Engine 内部で共有する。Editor UI には生の Input API が引き続き使える。
 FBZZ_ENGINE_API GameInputConsumption& GameInputConsumptionState();
 
-/// @note Private gameplay/host source selection shared by scripts, action maps and runtime UI.
+/// @note ゲーム入力とホスト入力の選択は非公開とし、スクリプト、アクションマップ、実行時 UI で共有する。
 struct GameInputAccess final {
     static bool KeyHeld(KeyCode key) { return Input::GameKeyHeld(key); }
     static bool MouseButton(int button) { return Input::GameMouseButton(button); }

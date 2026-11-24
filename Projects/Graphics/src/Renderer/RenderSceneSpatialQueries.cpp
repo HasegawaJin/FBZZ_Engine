@@ -1,5 +1,5 @@
 /// @file    RenderSceneSpatialQueries.cpp
-/// @brief   影の独立view unionをprivate空間indexへ接続するopt-in境界。
+/// @brief   ライト視錐台の和集合を使った影候補の検索と診断出力。
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #include "RenderSceneSpatialQueries.hpp"
@@ -63,7 +63,7 @@ BvhDebugPublication& DebugPublication()
     return publication;
 }
 
-/// @note Integer observations only; frameStamp is the snapshot clock and contextFrameStamp is the resource context clock.
+/// @note frameStamp は抽出側、contextFrameStamp は資源コンテキスト側のフレーム番号。記録する値は整数のみ。
 #define FBZZ_SPATIAL_TRACE_COLUMNS(X) \
     X(snapshotSerial, batch.snapshot->snapshotSerial) X(frameStamp, batch.snapshot->frameStamp) \
     X(contextFrameStamp, context.frameStamp) X(sceneGeneration, batch.snapshot->sceneGeneration) \
@@ -105,8 +105,8 @@ const char* UpdateName(UpdateMode mode)
     return mode == UpdateMode::STABLE ? "stable" : "legacy";
 }
 
-/// @note Diagnostic runs only: reservation, locking and row copies are observable overhead; timing runs leave TRACE unset.
-/// @note Producers must finish before normal Graphics teardown; no Scene/resource owner or pointer is retained by a row.
+/// @note 診断専用。行の確保・ロック・コピーが計測へ影響するため、時間計測ではトレースを無効にする。
+/// @note Graphics の終了処理の前に記録側を停止する。記録行はシーンや資源を参照しない。
 class SpatialTraceCapture {
 public:
     static constexpr size_t MAX_ROWS = 4096;
@@ -123,8 +123,8 @@ public:
         else ++m_dropped;
     }
 
-    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/sopen-s-wsopen-s _O_CREAT|_O_EXCL refuses an existing output.
-    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fdopen-wfdopen The stream owns its descriptor after success.
+    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/sopen-s-wsopen-s _sopen_s の排他的な出力ファイル作成。
+    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fdopen-wfdopen _fdopen 成功後のファイル記述子の所有権。
     ~SpatialTraceCapture()
     {
         int descriptor = -1;
@@ -186,7 +186,7 @@ void RecordTrace(const RenderPassContext& context, int cascades, const Candidate
     TraceCapture().Add(row);
 }
 #undef FBZZ_SPATIAL_TRACE_COLUMNS
-} /// @note namespace
+} // namespace
 
 bool MeshSpatialQueriesEnabled()
 {
@@ -228,7 +228,7 @@ CandidateBatch CollectShadowCandidates(const RenderPassContext& context, uint32_
     return batch;
 }
 
-} /// @note namespace fbzz::renderer::spatial_detail
+} // namespace fbzz::renderer::spatial_detail
 
 namespace fbzz::renderer {
 
@@ -258,4 +258,4 @@ void RenderBvhDebug::Invalidate()
     spatial_detail::DebugPublication().Invalidate();
 }
 
-} /// @note namespace fbzz::renderer
+} // namespace fbzz::renderer

@@ -26,6 +26,7 @@ struct Vector3 {
     bool     operator!=(const Vector3& rhs) const;
 
     float   Length()     const;
+    /// @note 長さの二乗。距離の大小だけを比べるときは、半径も二乗すると平方根を求めずに済む。
     float   LengthSq()   const;
     /// @brief 正規化したベクトルを返す。
     /// @pre 長さが 0 でないこと。
@@ -35,8 +36,11 @@ struct Vector3 {
     /// @note 接触法線・進行方向・視線ベクトルなど退化入力が正常系に含まれる箇所で使う。契約違反として報告しない。
     Vector3 NormalizedOr(const Vector3& fallback) const;
 
+    /// @brief 内積。b が長さ 1 なら、a が b の方向へどれだけ進むかを符号付きで返す。
     FBZZ_MATH_API static float   Dot(const Vector3& a, const Vector3& b);
+    /// @brief 外積。両方に垂直なベクトルを返す。二つの辺を渡すと、その長さが三角形の面積の 2 倍になる。
     FBZZ_MATH_API static Vector3 Cross(const Vector3& a, const Vector3& b);
+    /// @note t は a から b への進み具合。0.5 なら中点、1 を超えると b の先まで進む。
     static Vector3 Lerp(const Vector3& a, const Vector3& b, float t);
 
     static const Vector3 ZERO;

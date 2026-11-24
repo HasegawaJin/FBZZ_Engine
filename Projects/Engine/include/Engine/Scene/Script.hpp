@@ -165,11 +165,13 @@ public:
     /// @note rootMotion.mode が None 以外なら毎フレーム発火する (delta がゼロでも呼ばれる)。
     /// @note ExtractOnly のときはエンジンが何も動かさないため、ここで移動を適用する。
     virtual void OnAnimatorMove(const RootMotionInfo&) {}
-    /// @note Editor authoring / serialization lifecycle。
+    /// @name エディター編集とシリアライズのコールバック
+    /// @{
     virtual void Reset() {}
     virtual void OnValidate() {}
     virtual void OnBeforeSerialize() {}
     virtual void OnAfterDeserialize() {}
+    /// @}
     virtual void Reflect(IReflector&) {}
     virtual const char* GetTypeName() const { return "Script"; }
 

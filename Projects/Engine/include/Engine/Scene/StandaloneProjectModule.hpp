@@ -30,7 +30,7 @@ public:
                             std::filesystem::path startSceneFile,
                             ProjectSettings& settings);
 
-    /// @note Editor Play can select an exact scene file without changing ProjectSettings or resolving a duplicate stem.
+    /// @note エディターの Play からシーンファイルを直接選べる。ProjectSettings の変更や、同名ファイルの候補検索は不要。
     FBZZ_ENGINE_API StandaloneProjectModule(renderer::IRenderer& renderer,
                             renderer::ResourceManager& resources,
                             std::filesystem::path projectRoot,
@@ -43,7 +43,7 @@ public:
     FBZZ_ENGINE_API void OnLateUpdate(float dt) override;
     FBZZ_ENGINE_API void OnRender() override;
     FBZZ_ENGINE_API void OnShutdown() override;
-    /// @note Hosts use this after Application::Run to distinguish startup failure from a normal game exit.
+    /// @note ホストは Application::Run の後に参照し、起動失敗と通常終了を区別する。
     [[nodiscard]] bool StartedSuccessfully() const { return m_startedSuccessfully; }
 
 private:
@@ -59,4 +59,4 @@ private:
     bool                       m_waitingForStartScene = false;
 };
 
-} /// @note namespace fbzz::scene
+}

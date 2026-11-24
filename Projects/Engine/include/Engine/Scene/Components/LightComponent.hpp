@@ -199,4 +199,4 @@ struct LightComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

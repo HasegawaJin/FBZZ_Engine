@@ -1,5 +1,5 @@
 /// @file    SelectionPasses.hpp
-/// @brief   Selection mask render pass declarations.
+/// @brief   選択マスクと輪郭を描くパスを宣言する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #pragma once
@@ -17,7 +17,7 @@ namespace fbzz::scene {
 struct RenderPassContext;
 class GameObject;
 
-/// @note A render pass reads one immutable selection list. Large selections share membership checks across all draws.
+/// @note 描画パスは選択リストの不変スナップショットを読み、大量選択時の所属判定を描画間で共有する。
 class RenderSelectionLookup {
 public:
     explicit RenderSelectionLookup(std::span<const renderer::RenderSelectionID> selected) : m_selected(selected)

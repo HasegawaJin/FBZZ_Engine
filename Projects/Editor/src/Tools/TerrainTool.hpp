@@ -132,6 +132,7 @@ private:
     /// @{
     bool        m_active  = false;
     Mode        m_mode    = Mode::Sculpt;
+    /// @note パネルで選んだモードを保持し、修飾キーを離したときに元のブラシに戻せるようにする。
     SculptMode  m_sculpt  = SculptMode::Raise;
     /// @note 修飾キーで一時的に切り替わる実効サブモード。Shift+drag=Smooth / Ctrl+drag=Lower をパネルへ視線を戻さず使える。
     SculptMode  m_activeSculpt = SculptMode::Raise;
@@ -154,6 +155,7 @@ private:
     bool m_scatterStrokeErase = false;
     bool m_scatterStrokeContinuous = false;
     float m_scatterStrokeRadius = 0.0f;
+    /// @note ドラッグの開始時に記録し、途中で地形が付け直されたら古いストロークの適用を止める。
     uint64_t m_scatterTerrainLifetime = 0;
     std::string m_scatterStrokeTerrainId;
     struct PaintSource {
@@ -166,7 +168,9 @@ private:
     double m_nextPaintPreviewTime = 0.0;
     size_t m_paintPreviewTotal = 0;
     std::vector<TerrainPaintPreviewPoint> m_paintPreview;
+    /// @note 配置を確定する前に描画できるよう、プレビューの配置を描画用にまとめておく。
     std::vector<scene::RenderInstancePreview> m_paintPreviewInputs;
+    /// @note プレビューを作った描画シーンの世代。シーンを切り替えた後の描画と区別する。
     uint64_t m_paintPreviewGeneration = 0;
     bool m_paintAvoidWater = true;
     bool m_paintAvoidPaths = true;
@@ -185,13 +189,16 @@ private:
     std::string m_instanceOwner;
     uint32_t m_instanceId = 0;
     uint64_t m_instanceRevision = 0, m_instanceLifetime = 0;
+    /// @note ギズモや数値入力で編集中の配置。確定前の見た目にも使う。
     renderer::InstancePlacement m_instanceDraft;
+    /// @note 選択した時点の配置。プレビューの差分判定とリセットの戻り先に使う。
     renderer::InstancePlacement m_instanceOriginal;
     bool m_instanceDragging = false;
     int m_instanceGizmo = 0;
     std::string m_paintPreviewError;
     std::string m_paintPreviewTerrainId;
     math::Vector3 m_paintPreviewCenter;
+    /// @note ドラッグで通った散布ブラシの中心をワールド座標で記録し、確定時にまとめて適用する。
     std::vector<math::Vector3> m_scatterStroke;
     float    m_flattenTarget = 0.0f;   ///< @note 基準高さ (ローカル Y [m])。
     bool     m_flattenLocked = false;
@@ -202,13 +209,14 @@ private:
     };
     struct TerrainStrokeSnapshot {
         std::string instanceId;
+        /// @note このストロークで初めて触れた時点の地形。Undo で戻す値を確定まで保持する。
         std::shared_ptr<const TerrainHistorySnapshot> before;
         uint64_t lifetime = 0;
         scene::EntityID entity;
         scene::TerrainHeightRegion edited;
         scene::TerrainHeightRegion heightRegion, splatRegion, holeRegion;
         bool fullPcgBounds = false;
-        /// @note Per-channel row bounds keep diagonal dabs from scanning the entire stroke rectangle at commit.
+        /// @note 高さ・塗り・穴ごとに各行の編集範囲を記録し、斜めに描いたときも囲み矩形の空白を調べずに済む。
         std::array<std::vector<TerrainStrokeRow>, static_cast<std::size_t>(TerrainStrokeChannel::COUNT)> rows;
 
         void Include(const scene::TerrainHeightRegion& region, TerrainStrokeChannel channel);

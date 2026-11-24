@@ -155,7 +155,7 @@ bool ApplyCommand(physics::RigidBody& body, const ManagedBridgeRequest& request)
 
 using ColliderOwners = std::unordered_map<const physics::Collider*, GameObject*>;
 
-/// @note Compare the borrowed address with current owned shapes before reading the source or returning an owner.
+/// @note 入力の照会や所有者の返却に先立ち、借用アドレスを現在所有している形状と照合する。
 template<typename T>
 GameObject* FindColliderOwner(Scene& scene, const physics::Collider* source)
 {
@@ -188,7 +188,7 @@ void CollectColliderOwners(Scene& scene, ColliderOwners& owners)
         if (object && object->activeInHierarchy()) owners.emplace(component->collider.get(),object);
     }
 }
-/// @note Broad All/Overlap queries and unusually many ray candidates use O(component count) collection, never Scene GameObjects.
+/// @note 全件・重複照会やレイ候補が極端に多い場合は、シーンの GameObject 全体を走査せず O(コンポーネント数) で収集する。
 void CollectQueryColliderOwners(Scene& scene, ColliderOwners& owners)
 {
     const profiler::ProfileScope ownersBuildScope(profiler::ProfilerMarker{"ManagedPhysicsBridge::Query.OwnersBuild", "PhysicsQuery"});
@@ -251,7 +251,7 @@ bool ShapeBoundsFinite(const GameObject& target, const math::Vector3& extent)
         && Finite(pose.worldPosition - math::Vector3{radius, radius, radius});
 }
 
-} /// @note namespace
+}
 
 Transform* ManagedPhysicsBridge::Shadow(GameObject& target)
 {
@@ -637,8 +637,8 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
         std::memcpy(&triggers, request.input + baseBytes + 4, 4);
         if (triggers > 2) return ManagedBridgeStatus::INVALID_ARGUMENT;
     }
-    /// @note Owner results exist only during this readonly query. No raw owner pointer survives deletion, Play/Stop or Scene replacement.
-    /// @note Stable names and category match the baseline capture; valid query scope counts are actual call counts.
+    /// @note 所有者の結果は、この読み取り専用照会の間だけ有効。削除、Play/Stop、シーンの置換を越えて生ポインターを保持しない。
+    /// @note マーカー名とカテゴリは基準計測に揃える。有効な照会スコープ数は実際の呼び出し回数を示す。
     const char* queryName = overlap ? "ManagedPhysicsBridge::Query.OverlapSphere"
         : all ? "ManagedPhysicsBridge::Query.RaycastAll" : sphere ? "ManagedPhysicsBridge::Query.SphereCast"
         : "ManagedPhysicsBridge::Query.Raycast";
@@ -711,4 +711,4 @@ ManagedBridgeStatus ManagedPhysicsBridge::Query(Scene& scene, const physics::Wor
     return ManagedBridgeStatus::OK;
 }
 
-} /// @note namespace fbzz::scene::managed_detail
+}

@@ -8,14 +8,15 @@
 
 namespace fbzz::sandbox {
 
-/// --project と --standalone の解析結果。
-/// Parse() は引数なし起動時の既定プロジェクト探索も行う。
+/// @brief コマンドラインの指定と実行ファイルの配置から決めた起動先。
 struct LaunchArgs {
+    /// @note 明示指定がなければ実行ファイルと同じ場所か既定プロジェクトを探し、見つからなければ空になる。
     std::filesystem::path projectPath;
+    /// @note 配布用の配置または明示指定のときに、編集画面を開かずゲームを起動する。
     bool                  standalone = false;
 
-    /// Win32 のコマンドラインを解析して起動モードを決定する。
+    /// @return --project を優先し、省略時は実行ファイルの配置から補った起動設定。
     [[nodiscard]] static LaunchArgs Parse();
 };
 
-} // namespace fbzz::sandbox
+} /// @note namespace fbzz::sandbox

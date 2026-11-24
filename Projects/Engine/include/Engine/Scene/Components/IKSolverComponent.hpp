@@ -158,4 +158,4 @@ struct IKSolverComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -1,5 +1,5 @@
 /// @file    GerstnerWaves.cpp
-/// @brief   Deterministic Gerstner wave generation and contraction bounds.
+/// @brief   同じ種から再現できるゲルストナー波の生成と、水面の横ずれが変化する割合の上限。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #include <Fluid/GerstnerWaves.hpp>
@@ -31,6 +31,7 @@ public:
 
     float UnitFloat()
     {
+        /// @note float が正確に表せる上位 24 ビットだけを使い、2 の 24 乗で割って 0 以上 1 未満の乱数にする。
         return static_cast<float>(Next() >> 8u) * (1.0f / 16777216.0f);
     }
 
@@ -119,19 +120,21 @@ float GerstnerWaveContractionBound(std::span<const GerstnerWave> waves, float gr
             || !IsFinite(wave.phaseOffsetRadians)) {
             return std::numeric_limits<float>::infinity();
         }
+        /// @note 波長ぶん進むと位相が 1 周するので、1 メートル当たりの角度は 2π ÷ 波長。同じ高さの波なら短い波ほど傾きが大きい。
         const double waveNumber = static_cast<double>(math::TWO_PI) / wave.wavelength;
         sum += static_cast<double>(wave.steepness) * wave.amplitude * waveNumber;
     }
 
     const double spreadEnergy = 0.40 * spread;
     const double spreadSum = std::sqrt(1.0 - spreadEnergy) + std::sqrt(spreadEnergy);
-    /// @note The envelope gradient and float-rounded directions add to the carrier-wave Jacobian bound.
+    /// @note 波の強弱が場所によって変わる分と、方向ベクトルの丸め誤差も加えて、横ずれの変化率を過小評価しないようにする。
     const double envelopeDerivative = 1.0 + grouping + grouping * 0.195;
     const double directionSlack = 1.0 + 32.0 * std::numeric_limits<float>::epsilon();
     const double bound = sum * envelopeDerivative * spreadSum * directionSlack;
     if (!std::isfinite(bound) || bound > std::numeric_limits<float>::max())
         return std::numeric_limits<float>::infinity();
     if (bound == 0.0) return 0.0f;
+    /// @note 安全側の上限が float への丸めで小さくならないよう、正の値は大きい側の隣の表現値へ進める。
     const float roundedBound = static_cast<float>(bound);
     if (roundedBound == 0.0f) return std::numeric_limits<float>::denorm_min();
     return std::nextafter(roundedBound, std::numeric_limits<float>::infinity());

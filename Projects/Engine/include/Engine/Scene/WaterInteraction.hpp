@@ -36,7 +36,7 @@ inline constexpr const char* WATER_SEDIMENT_MATERIAL =
 
 enum class WaterInteractionKind : uint8_t { SURFACE_FOAM = 0, BUBBLES = 1, SEDIMENT = 2 };
 
-/// @brief World-space authoring impulse; position/radius use meters and velocity uses meters per second.
+/// @brief ワールド空間の制作時インパルス。位置と半径は [m]、速度は [m/s]。
 struct WaterInteractionImpulse {
     WaterInteractionKind kind = WaterInteractionKind::BUBBLES;
     math::Vector3 worldPosition{};
@@ -65,7 +65,7 @@ struct WaterInteractionSettings {
     FBZZ_ENGINE_API void Reflect(IReflector& reflector);
 };
 
-/// @brief Immutable numeric plume; density multiplies scattering coefficients in inverse meters.
+/// @brief 不変の拡散雲データ。密度は散乱係数 [1/m] に掛ける倍率。
 struct WaterInteractionPlume {
     WaterInteractionKind kind = WaterInteractionKind::SEDIMENT;
     math::Vector3 worldPosition{};
@@ -77,7 +77,7 @@ struct WaterInteractionPlume {
     float lifetime = 2.0f;
 };
 
-/// @brief Render consumers retain only values; this frame has no Scene, GameObject, Physics or RHI references.
+/// @brief 描画側が保持するのは値のみ。Scene、GameObject、Physics、RHI の参照を含まない。
 struct WaterInteractionFrame {
     uint64_t sceneGeneration = 0;
     EntityID owner = EntityID::INVALID;
@@ -91,7 +91,7 @@ struct WaterInteractionEmitterState {
     uint64_t lifetime = 0;
 };
 
-/// @brief Water-owned transient state; omit from reflection, save and clone.
+/// @brief 水面が所有する一時状態。反射、保存、複製の対象外。
 struct WaterInteractionRuntime {
     uint64_t sceneGeneration = 0;
     EntityID owner = EntityID::INVALID;
@@ -104,31 +104,31 @@ struct WaterInteractionRuntime {
     std::shared_ptr<WaterInteractionSceneStore> sceneStore;
 };
 
-/// @return False leaves the pending queue unchanged for invalid input, disabled/excluded water or exhausted capacity.
-/// @note This entry only records values; Cleanup performs structural changes.
+/// @return 入力が無効、水面が無効または除外対象、あるいは容量不足なら false。待ち行列は未変更。
+/// @note この入口では値だけを記録し、構造変更は Cleanup で行う。
 FBZZ_ENGINE_API bool QueueWaterInteraction(Scene& scene, EntityID owner, const WaterInteractionImpulse& impulse);
 
-/// @brief Projects a validated surface ripple/splash position onto its existing water interface and records foam.
+/// @brief 検証済みの波紋や水しぶきの位置を既存の水面へ投影し、泡を記録する。
 FBZZ_ENGINE_API bool QueueWaterSurfaceInteraction(Scene& scene, EntityID owner, math::Vector3 worldPosition, float strength);
 
-/// @brief Establishes tracked owner/body lifetime and rate-limited foam or bubbles using the existing WaterSystem body traversal.
+/// @brief WaterSystem の剛体走査で所有者と剛体の寿命を追跡し、泡の発生頻度を制限する。
 FBZZ_ENGINE_API void SupplyWaterMotionImpulse(Scene& scene, EntityID owner, EntityID body,
     math::Vector3 worldPosition, math::Vector3 worldVelocity, float dt, bool nearSurface,
     bool emitSurfaceRipple = true);
 
-/// @brief Records the current fixed-step contact of a previously tracked body; no owner/Scene scan is performed.
+/// @brief 追跡済み剛体の現在の固定ステップ接触を記録する。所有者や Scene の走査は不要。
 FBZZ_ENGINE_API void SupplyWaterGroundContact(Scene& scene, EntityID body,
     math::Vector3 worldPoint, math::Vector3 worldNormal, float approachSpeed = 0.0f);
 
-/// @brief Accumulates fixed-step simulation time; contact expiry follows the serial Cleanup frame so catchup steps remain valid.
+/// @brief 固定ステップの時間を累積する。接触は直列 Cleanup で失効し、追いつき処理中のステップでも有効。
 FBZZ_ENGINE_API void BeginWaterInteractionPhysicsStep(Scene& scene, float fixedDt);
 
-/// @brief Copies runtime values at the production renderer boundary.
+/// @brief 通常の描画入力の受け渡し時にランタイム値をコピーする。
 FBZZ_ENGINE_API std::shared_ptr<const WaterInteractionFrame> WaterInteractionSnapshot(const WaterComponent& water);
 
-/// @brief Clears transient authoring-copy state without deleting another owner's generated objects.
+/// @brief 制作データの複製で一時状態を消去し、別の所有者が生成した個体を保持する。
 FBZZ_ENGINE_API void ResetWaterInteractionRuntime(WaterComponent& water);
 
-/// @brief Retires this Scene's generated emitters and transient data at a serial Scene deactivation boundary.
+/// @brief Scene の直列な非アクティブ化処理で、生成済みエミッターと一時データを破棄する。
 FBZZ_ENGINE_API void ClearWaterInteractions(Scene& scene);
-} /// @note namespace fbzz::scene
+}

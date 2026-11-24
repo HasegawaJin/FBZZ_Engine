@@ -1,5 +1,5 @@
 /// @file    NavMeshAgentComponent.hpp
-/// @brief   NavMesh agent movement settings, target reference, and path state.
+/// @brief   NavMesh エージェントの移動設定、対象への参照と経路状態。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #pragma once
@@ -13,7 +13,7 @@
 
 namespace fbzz::scene {
 
-/// @brief Interpolation state while an agent traverses an Off-Mesh Link.
+/// @brief オフメッシュリンクを通過中の補間状態。
 struct NavMeshLinkTraversal {
     math::Vector3 startPos = math::Vector3::ZERO;
     math::Vector3 endPos = math::Vector3::ZERO;
@@ -22,14 +22,14 @@ struct NavMeshLinkTraversal {
     bool active = false;
 };
 
-/// @brief Current NavMesh agent movement state.
+/// @brief NavMesh エージェントの現在の移動状態。
 enum class NavMeshAgentState : std::uint8_t {
     IDLE,
     MOVING,
     TRAVERSING_LINK,
 };
 
-/// @brief Navigation tuning, persistent target, and runtime path-following state.
+/// @brief 移動設定、保存対象の参照と追従時の経路状態。
 struct NavMeshAgentComponent {
     float radius = 0.4f;
     float maxSpeed = 3.5f;
@@ -45,7 +45,7 @@ struct NavMeshAgentComponent {
     int areaMask = -1;
     bool enabled = true;
 
-    /// @name Runtime movement state
+    /// @name 実行時の移動状態
     /// @{
     bool hasDestination = false;
     math::Vector3 velocity = math::Vector3::ZERO;
@@ -62,9 +62,9 @@ struct NavMeshAgentComponent {
     float remainingDistance = 0.0f;
     /// @}
 
-    /// @name Target follow state
+    /// @name 対象の追従状態
     /// @{
-    /// @note Assigned missing GUIDs remain assigned and stop the agent instead of enabling fixed-route fallback.
+    /// @note 割り当て済み GUID を解決できない場合は参照を保持して停止し、固定経路への代替を抑止する。
     EntityRef target{};
     float repathInterval = 0.5f;
     float repathTimer = 0.0f;
@@ -72,20 +72,20 @@ struct NavMeshAgentComponent {
     std::uint64_t lastTargetDiagnosticSignature = 0;
     /// @}
 
-    /// @name Stuck detection state
+    /// @name 移動の停滞検出
     /// @{
     math::Vector3 lastStuckCheckPos = math::Vector3::ZERO;
     float stuckTimer = 0.0f;
     bool isStuck = false;
     /// @}
 
-    /// @brief Report whether a path is available.
+    /// @brief 現在の経路が利用可能かを返す。
     [[nodiscard]] bool HasPath() const { return !path.empty(); }
 
-    /// @brief Return the Inspector component label.
+    /// @brief Inspector 上のコンポーネント名を返す。
     [[nodiscard]] const char* GetTypeName() const { return "NavMesh Agent"; }
 
-    /// @brief Reflect persistent agent settings and its target reference.
+    /// @brief 保存対象のエージェント設定と対象参照を公開する。
     void Reflect(IReflector& reflector)
     {
         reflector.Field("enabled", enabled);
@@ -105,8 +105,8 @@ struct NavMeshAgentComponent {
         reflector.Field("repathInterval", repathInterval);
     }
 
-    /// @brief Set a fixed world destination and clear target-follow state.
-    /// @param worldPosition Destination in world coordinates.
+    /// @brief ワールド空間の固定目的地を設定し、追従状態を破棄する。
+    /// @param worldPosition ワールド空間の目的地。
     void SetDestination(const math::Vector3& worldPosition)
     {
         destination = worldPosition;
@@ -123,9 +123,9 @@ struct NavMeshAgentComponent {
         state = NavMeshAgentState::MOVING;
     }
 
-    /// @brief Track an EntityID target using the Scene-local compatibility path.
-    /// @param entity Target entity; its current Scene GUID is attached during resolution.
-    /// @param interval Minimum time between automatic path recalculations in seconds.
+    /// @brief シーン内の EntityID を使う互換経路で対象を追従する。
+    /// @param entity 追従対象。解決時に現在のシーンの GUID を関連付ける。
+    /// @param interval 自動経路再計算の最小間隔 [s]。
     void SetTarget(EntityID entity, float interval = 0.5f)
     {
         target.guid.clear();
@@ -136,14 +136,14 @@ struct NavMeshAgentComponent {
         repathTimer = 0.0f;
     }
 
-    /// @brief Clear target GUID and its Scene-local cache.
+    /// @brief 対象 GUID とシーン内のキャッシュを破棄する。
     void ClearTarget()
     {
         target = EntityRef{};
         lastTargetDiagnosticSignature = 0;
     }
 
-    /// @brief Drop the current route and stop movement.
+    /// @brief 現在の経路を破棄して移動を停止する。
     void Stop()
     {
         hasDestination = false;
@@ -161,4 +161,4 @@ struct NavMeshAgentComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

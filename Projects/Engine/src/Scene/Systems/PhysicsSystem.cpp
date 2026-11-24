@@ -133,8 +133,8 @@ physics::ColliderHandle SelectedColliderHandle(Scene& scene, EntityID selected, 
         ? collider->colliderHandle : physics::ColliderHandle{};
 }
 
-/// @note The owner resolves only synced, active components; no component pointer survives this call.
-/// @note Multiple collider types use the first valid handle in the same order as PhysicsSystem sync.
+/// @note 同期済みで有効なコンポーネントだけを解決し、呼び出し後はコンポーネントのポインターを保持しない。
+/// @note 複数のコライダー型がある場合は PhysicsSystem の同期順で最初の有効なハンドルを使う。
 physics::ColliderHandle ResolveSelectedCollider(Scene& scene, EntityID selected, const ColliderOwnerMap& owners)
 {
     GameObject* owner = scene.GetGameObject(selected);
@@ -241,8 +241,8 @@ physics::FluidVolumeDesc MakeWaterFluidDesc(const WaterComponent& water,
     desc.buoyancy   = water.buoyancy;
     desc.drag       = water.waterDrag;
     desc.depthLimit = water.buoyancyDepth;
-    /// @note Time::Tick has already published the frame endpoint. World ticks volumes before each substep,
-    /// @note so start at the interval's beginning and let the last buoyancy sample reach the rendered wave time.
+    /// @note Time::Tick はフレーム終端時刻を公開済みで、World は各サブステップ前に水域を更新する。
+    /// @note 区間の始めからサンプリングし、最後の浮力計算を描画時の波の時刻に合わせる。
     desc.startTime  = Time::time - fixedDt;
     desc.surfaceHeightBound = water.SurfaceHeightBound(WaterSurfaceReadView::SIMULATION);
     desc.radii      = std::move(radii);

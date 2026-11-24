@@ -1,5 +1,5 @@
 /// @file    WorldHlod.cpp
-/// @brief   Cell-local proxy instances aggregate compatible lowest-LOD definitions without modifying their sources.
+/// @brief   互換性のある最低詳細度の定義を、元データを変更せずセル単位の代理インスタンスに集約する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #include <Engine/Scene/WorldHlod.hpp>
@@ -91,7 +91,7 @@ bool Decompose(const math::Matrix4& matrix, renderer::InstancePlacement& out)
         - axes[1][0] * (axes[0][1] * axes[2][2] - axes[0][2] * axes[2][1])
         + axes[2][0] * (axes[0][1] * axes[1][2] - axes[0][2] * axes[1][1]);
     if (determinant <= 0.0 || std::abs(determinant - 1.0) > AXIS_TOLERANCE * 3.0) return false;
-    /// @note Quaternion::FromEuler uses YXZ; the singular branch fixes roll at zero while preserving the combined yaw.
+    /// @note Quaternion::FromEuler は YXZ 順。特異点では合成したヨー角を保ちながらロールを 0 に固定する。
     const double cosinePitch = std::hypot(axes[2][0], axes[2][2]);
     const double pitch = std::atan2(-axes[2][1], cosinePitch);
     const double yaw = cosinePitch > 0.000001
@@ -154,7 +154,7 @@ bool IncludeBounds(const WorldCellBounds& local, const math::Matrix4& world, Sta
                 value += term;
                 magnitude += std::abs(term);
             }
-            /// @note The arithmetic margin and outward float rounding keep both authored and reconstituted proxy corners enclosed.
+            /// @note 演算誤差の余裕と単精度での外向き丸めにより、設定値と再構築後の代理形状の頂点をともに境界内へ収める。
             const double margin = (magnitude + 1.0) * 8.0 * std::numeric_limits<float>::epsilon();
             const double minimum = value - margin, maximum = value + margin;
             low[row] = static_cast<float>(minimum);
@@ -179,7 +179,7 @@ bool IncludeBounds(const WorldCellBounds& local, const math::Matrix4& world, Sta
     }
     return true;
 }
-} /// @note namespace
+}
 
 bool BuildWorldHlod(std::span<const WorldHlodSource> sources, const WorldHlodBuildSettings& settings,
     std::vector<WorldHlodGroup>& out, std::string& diagnostic)
@@ -279,4 +279,4 @@ bool BuildWorldHlod(std::span<const WorldHlodSource> sources, const WorldHlodBui
     diagnostic.clear();
     return true;
 }
-} /// @note namespace fbzz::scene
+}

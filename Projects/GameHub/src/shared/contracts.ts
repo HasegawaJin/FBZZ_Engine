@@ -18,6 +18,7 @@ export function compareVersions(left: string, right: string): number | null {
   if (leftParts.length === 0 || rightParts.length === 0) return null;
   if ([...leftParts, ...rightParts].some(Number.isNaN)) return null;
   for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    /// @note 足りない桁を 0 として先頭から比較するため、1.2 と 1.2.0 は同じ版として扱う。
     const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
     if (difference !== 0) return difference;
   }

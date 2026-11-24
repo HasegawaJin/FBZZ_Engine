@@ -27,4 +27,4 @@ struct BoneComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

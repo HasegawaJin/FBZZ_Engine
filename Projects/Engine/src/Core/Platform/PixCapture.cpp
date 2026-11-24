@@ -1,5 +1,5 @@
 /// @file    PixCapture.cpp
-/// @brief   Restricted, opt-in loading of a pinned or explicitly selected PIX capturer.
+/// @brief   明示指定で、固定または指定された PIX キャプチャモジュールだけをロードする。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #include <Engine/Core/PixCapture.hpp>
@@ -58,7 +58,7 @@ bool FailInitialization(std::string reason)
 
 bool CanonicalModulePath(HMODULE module, std::filesystem::path& out)
 {
-    /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew Truncated paths return the buffer capacity.
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew GetModuleFileNameW はパスを切り詰めた場合にバッファ容量を返す。
     for (size_t capacity = 256; capacity <= MAX_MODULE_PATH_CHARACTERS; capacity *= 2) {
         std::vector<wchar_t> value(capacity);
         const DWORD length = GetModuleFileNameW(module, value.data(), static_cast<DWORD>(capacity));
@@ -187,8 +187,8 @@ bool InitializePixCapture(const PixCaptureOptions& options)
             return FailInitialization("A different PIX capturer is already loaded; it will not be replaced.");
     }
 
-    /// @note Retain the LoadLibrary reference for process lifetime, including a matching preloaded module; no unload can race D3D12 teardown.
-    /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw DLL_LOAD_DIR plus SYSTEM32 excludes CWD, PATH and application-directory dependencies.
+    /// @note 同一のロード済みモジュールも含め、LoadLibrary の参照はプロセスの寿命まで保持する。D3D12 の終了中にアンロードされない。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryexw DLL_LOAD_DIR と SYSTEM32 を使い、依存 DLL の探索から CWD、PATH、アプリケーションディレクトリを外す。
     const HMODULE module = LoadLibraryExW(capturerPath.c_str(), nullptr,
                                          LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!module)

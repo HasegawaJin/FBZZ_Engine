@@ -42,7 +42,7 @@ public:
     /// @note 無効時、全アクションは false / 全軸は 0 を返す。
     /// @note エディタでシーン編集中に W を押すとプレイヤーが歩き出す事故を防ぐため、Play モード外では無効にする。
     FBZZ_ENGINE_API static void SetEnabled(bool enabled);
-    /// @brief Clears evaluated input at host ownership handoffs, preserving settings, bindings and requested enabled state.
+    /// @brief ホストの所有権が切り替わったとき評価済みの入力を消去する。設定、バインド、有効化の要求は保持する。
     FBZZ_ENGINE_API static void ResetRuntime();
     [[nodiscard]] FBZZ_ENGINE_API static bool IsEnabled();
 

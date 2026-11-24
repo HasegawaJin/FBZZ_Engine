@@ -27,8 +27,8 @@ struct RigidBodyComponent {
     std::unique_ptr<physics::RigidBody> rigidBody;
     physics::BodyHandle bodyHandle;
     bool enabled = true;
-    /// @note Opt-in AI Transform authority for static bodies; queries use the next fixed-step confirmed pose.
-    /// @note This does not provide kinematic velocity, swept collision or automatic wall stopping.
+    /// @note 静的剛体の位置姿勢を AI が Transform で制御する任意設定。照会には次の固定ステップで確定した姿勢を使う。
+    /// @note キネマティック速度、掃引衝突、自動的な壁での停止は適用されない。
     bool poseDriven = false;
 
     MassMode massMode = MassMode::Manual;
@@ -177,4 +177,4 @@ struct RigidBodyComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -110,4 +110,4 @@ struct SkyRenderer {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

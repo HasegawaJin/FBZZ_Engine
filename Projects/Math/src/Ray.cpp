@@ -15,6 +15,7 @@ Vector3 Ray::At(float t) const
 
 bool Ray::IntersectPlane(const Plane& plane, float& outT) const
 {
+    /// @note 内積はレイが 1 進む間に平面の法線方向へ進む量。ほぼ 0 なら平行で、交点を一つに決められない。
     float denom = Vector3::Dot(plane.normal, direction);
     if (NearlyZero(denom)) return false;
     outT = -(Vector3::Dot(plane.normal, origin) + plane.distance) / denom;
@@ -27,9 +28,11 @@ bool Ray::IntersectSphere(const Vector3& center, float radius, float& outT) cons
     Vector3 oc   = origin - center;
     float   b    = Vector3::Dot(oc, direction);
     float   c    = Vector3::Dot(oc, oc) - radius * radius;
+    /// @note レイ上の点が球面にある条件は t² + 2bt + c = 0。判別式が負ならレイは球面に届かない。
     float   disc = b * b - c;
     if (disc < 0.0f) return false;
     float s  = std::sqrt(disc);
+    /// @note 小さい解は球への入口、大きい解は出口。始点が球内なら入口は後方なので、前方の出口を採る。
     float t0 = -b - s;
     float t1 = -b + s;
     float t  = (t0 > EPSILON) ? t0 : ((t1 > EPSILON) ? t1 : -1.0f);
@@ -50,6 +53,7 @@ bool Ray::IntersectTriangle(const Vector3& v0, const Vector3& v1, const Vector3&
     float invDet = 1.0f / det;
 
     Vector3 tvec = origin - v0;
+    /// @note u と v は三角形の 2 辺に沿う割合。残りの頂点の割合は 1 − u − v で、三つとも 0 以上なら三角形の内側にある。
     float   u    = Vector3::Dot(tvec, p) * invDet;
     if (u < 0.0f || u > 1.0f) return false;
 
@@ -69,6 +73,7 @@ Ray Ray::FromNDC(float ndcX, float ndcY,
     Vector4 nearClip = { ndcX, ndcY, 0.0f, 1.0f };
     Vector4 farClip  = { ndcX, ndcY, 1.0f, 1.0f };
 
+    /// @note 画面上の同じ点を手前と奥の 2 点に戻す。それぞれ w で割ってから差を取ると、世界空間の視線の向きが得られる。
     Vector4 nearWorld = invViewProj * nearClip;
     Vector4 farWorld  = invViewProj * farClip;
     if (!NearlyZero(nearWorld.w)) nearWorld = nearWorld * (1.0f / nearWorld.w);
@@ -79,4 +84,4 @@ Ray Ray::FromNDC(float ndcX, float ndcY,
     return { cameraPos, (farW - nearW).Normalized() };
 }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

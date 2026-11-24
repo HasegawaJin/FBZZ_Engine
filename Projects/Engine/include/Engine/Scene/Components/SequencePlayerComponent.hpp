@@ -39,11 +39,11 @@ struct SequenceTrackRuntime {
     /// @note 撮っておけば、差し替わった後でも復帰は常に成立する。
     asset::SequenceTrackType type = asset::SequenceTrackType::Event;
     bool                     restoreOnStop = true;
-    std::string              layerName;        ///< @note Animation
+    std::string              layerName;        ///< @note アニメーション
     /// @note Property の当たり先 (キーは持たない。復帰には識別だけあればよい)。
     asset::PropertyAnimationTrack propertyBinding;
 
-    /// @note Transform
+    /// @note 位置・姿勢・スケール
     math::Vector3    position = math::Vector3::ZERO;
     math::Quaternion rotation = math::Quaternion::Identity();
     math::Vector3    scale    = math::Vector3::ONE;
@@ -51,10 +51,10 @@ struct SequenceTrackRuntime {
     math::Vector3    basePosition = math::Vector3::ZERO;
     math::Quaternion baseRotation = math::Quaternion::Identity();
 
-    /// @note Activation
+    /// @note 有効状態
     bool active = true;
 
-    /// @note Property
+    /// @note プロパティ
     asset::AnimValueType propertyType  = asset::AnimValueType::Float;
     float                propertyValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     int32_t              propertyInt   = 0;
@@ -204,4 +204,4 @@ struct SequencePlayerComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

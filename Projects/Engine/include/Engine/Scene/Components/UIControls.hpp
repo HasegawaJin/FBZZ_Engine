@@ -250,4 +250,4 @@ struct UIEventTrigger {
     void Reflect(IReflector& r) { r.Field("enabled", enabled); }
 };
 
-} /// @note namespace fbzz::scene
+}

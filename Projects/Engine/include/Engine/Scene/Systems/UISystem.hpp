@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 
-/// @note UICanvas / UIImage / UIText / UIButton を走査して DrawCall とヒット状態を作る。
+/// @note CPU のレイアウト・入力更新と、Canvas ごとの描画を接続する。
 /// @note WorldSpace UI には viewProjection を渡して座標変換する。
 #pragma once
 #include <Engine/Api.hpp>
@@ -39,8 +39,7 @@ class GameObject;
 namespace fbzz::scene {
 
 
-/// @note UI の頂点。UISystem.cpp の UIVertex と同じレイアウトで、
-/// @note 作業領域を Context に置くためにヘッダーへ出したもの。
+/// @note 画像とテキストの描画、およびコンテキストの頂点作業領域で共有する。
 
 /// @note LAYOUT: Assets/Shaders/UI/UICommon.hlsli の UIVertexInput と
 /// @note 宣言順・詰め方を一致させること (入力レイアウトは VS のリフレクションから
@@ -55,8 +54,7 @@ struct UIVertex2D {
 /// @note UI パスの b0。UI は b0 を CameraConstants ではなく UIConstants として使う。
 
 /// @note レイアウトは Assets/Shaders/UI/UICommon.hlsli の cbuffer UIConstants と一致させること。
-/// @note ヘッダーに出す理由: エディタの UI マテリアルプレビューが本編と同じ矩形を焼くのに
-/// @note 同じレイアウトを要り、UISystem.cpp に閉じると写しが 2 つになる。
+/// @note エディターの UI マテリアルプレビューもこの定数バッファのレイアウトを使う。
 struct UIConstantsCB {
     math::Matrix4 ortho;  ///< @note Canvas 空間 → clip 空間
     math::Vector4 color;  ///< @note UIImage.color / UIText.color

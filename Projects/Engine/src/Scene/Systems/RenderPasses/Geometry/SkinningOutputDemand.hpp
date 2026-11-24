@@ -36,7 +36,7 @@ private:
     std::unique_ptr<GpuOutputDemandState> m_state;
     GpuOutputDemandState* m_previous = nullptr;
 };
-/// @note Definitions and TLS live in the Engine skinning TU, including for callers in the test executable.
+/// @note 本体とネイティブテストは、同じ需要スコープの定義とスレッドローカル状態を使う。
 class OutputDemandScope {
 public:
     FBZZ_ENGINE_API explicit OutputDemandScope(const RenderPassContext& context);
@@ -47,9 +47,9 @@ private:
     const RenderPassContext* m_previous=nullptr;
 };
 [[nodiscard]] FBZZ_ENGINE_API bool IsOutputDemandScoped(const RenderPassContext& context);
-/// @note Pure component/value reads; no native resource Get, user callback, asset load, GPU request or publication.
+/// @note コンポーネントの値だけを読み、GPU 資源取得・コールバック・アセット読込・要求・公開を行わない。
 [[nodiscard]] FBZZ_ENGINE_API SceneDemandSnapshot ObserveSceneDemand(const RenderPassContext& context);
-/// @note Existing stored bounds provide only a provisional color exclusion. No result authorizes omission.
+/// @note 既存の境界によるカラー描画の除外は暫定判定であり、処理の省略には使えない。
 [[nodiscard]] FBZZ_ENGINE_API Observation ObserveRendererDemand(const RenderPassContext& context,
     GameObject& object,const SkinnedMeshRenderer& skin,const SceneDemandSnapshot& scene);
 }

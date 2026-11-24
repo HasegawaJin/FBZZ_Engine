@@ -75,7 +75,7 @@ struct ScriptAnimatorProxy {
     FBZZ_ENGINE_API std::string GetLayerMask(std::string_view layerName) const;
     /// @}
 
-    /// @name Slot (ワンショット差し込み)
+    /// @name スロットへのクリップ差し込み
     /// @note 指定レイヤーへクリップを割り込ませる。終端に達すると自動でフェードアウトする。
     /// @note 例: 移動を流したまま上半身レイヤーへ攻撃モーションを差し込む。
     /// @{
@@ -102,7 +102,7 @@ struct ScriptAnimatorProxy {
     FBZZ_ENGINE_API void        SetMorphWeight(std::string_view morphName, float weight) const;
     FBZZ_ENGINE_API float       GetMorphWeight(std::string_view morphName) const;
 
-    /// @name Root Motion
+    /// @name ルートモーション
     /// @note 移動の権威を Script 側へ持ってくるときは Script::OnAnimatorMove() を使うこと。
     /// @note 下のアクセサは「エンジンが適用した結果を後から読む」用途。AnimatorSystem は
     /// @note Phase::LateUpdate に居るため、OnUpdate から呼ぶと 1 フレーム前の値になる。

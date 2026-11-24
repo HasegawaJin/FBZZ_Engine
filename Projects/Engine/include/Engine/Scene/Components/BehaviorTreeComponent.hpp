@@ -88,11 +88,11 @@ struct BehaviorTreeComponent {
     /// @note 木を最初から評価し直す (Blackboard は保持する)。
     void Restart() { restartRequested = true; }
 
-    /// @brief Wakes the next system update without discarding running action state.
+    /// @brief 実行中のアクション状態を保持したまま、次回のシステム更新で再開する。
     void RequestEvaluation() { evaluationRequested = true; }
 
     [[nodiscard]] bool IsRunning() const { return lastRootStatus == ai::BTStatus::Running; }
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

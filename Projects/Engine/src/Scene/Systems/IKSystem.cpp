@@ -90,7 +90,7 @@ float ApplySoftIK(float dist, float dMax, float softness)
 }
 
 /// @note 末端の重み付け後に固定骨長で中間関節を再計算し、位置と回転の独立補間による節の収縮を防ぐ。
-/// @see https://www.ryanjuckett.com/analytic-two-bone-ik-in-2d/ The solvable domain / Law of cosines.
+/// @see https://www.ryanjuckett.com/analytic-two-bone-ik-in-2d/ 解析的 2 ボーン IK の可解範囲と余弦定理。
 void BlendTwoBonePositions(const math::Vector3& root,
                            const math::Vector3& sourceMid,
                            const math::Vector3& sourceTip,

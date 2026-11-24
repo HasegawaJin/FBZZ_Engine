@@ -1,5 +1,5 @@
 /// @file    WorldPartition.hpp
-/// @brief   Bounded asynchronous cell residency with atomic near and HLOD publication.
+/// @brief   容量制限付きの非同期セル常駐管理と、近距離・HLOD 表現の一括公開。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #pragma once
@@ -28,7 +28,7 @@ struct WorldPartitionSettings {
     uint32_t maxResidentCells = 256;
     uint64_t maxCellBytes = 16ull * 1024ull * 1024ull;
     uint64_t maxResidentBytes = 512ull * 1024ull * 1024ull;
-    /// @note Enabled only for the isolated Play scene. Authoring scenes never retire their baked sources implicitly.
+    /// @note 分離された Play シーンだけで有効。制作シーンが既存のベイク元を暗黙に破棄することはない。
     bool retireSourceObjects = false;
     bool operator==(const WorldPartitionSettings&) const = default;
 };
@@ -63,13 +63,13 @@ struct WorldPartitionStatus {
 [[nodiscard]] FBZZ_ENGINE_API bool ValidateWorldPartitionSettings(const WorldPartitionSettings& settings, std::string& diagnostic);
 [[nodiscard]] FBZZ_ENGINE_API const char* WorldCellRepresentationName(WorldCellRepresentation representation);
 [[nodiscard]] FBZZ_ENGINE_API const char* WorldCellLoadStateName(WorldCellLoadState state);
-/// @note Called by SceneManager before the scheduler. The first enabled component is the partition owner; multiple owners are refused.
+/// @note SceneManager がスケジューラーより前に呼ぶ。最初の有効コンポーネントが所有者になり、複数所有者は拒否する。
 FBZZ_ENGINE_API void UpdateWorldPartitionRuntime(Scene& scene, renderer::ResourceManager* resources, bool playing);
-/// @note Internal Scene move hook; resident identities and leases move together after object ownership is rebound.
+/// @note Scene の内部移動処理。個体の所有先を再接続した後に常駐 ID とリースを移す。
 FBZZ_ENGINE_API void TransferWorldPartitionRuntime(Scene& source, Scene& destination);
 
-/// @note All public operations and destruction are main-thread-only. Jobs capture immutable input and completion storage, never Scene pointers.
-/// @pre A caller-owned runtime is reset or detached before its Scene is destroyed. GetWorldPartitionRuntime manages this lifetime automatically.
+/// @note 公開操作と破棄はメインスレッド専用。ジョブには不変の入力と完了結果の領域を渡し、Scene を参照しない。
+/// @pre 呼び出し側が所有するランタイムは Scene の破棄前にリセットまたは切り離す。GetWorldPartitionRuntime は寿命を自動管理する。
 class WorldPartitionRuntime {
 public:
     using JobExecutor = std::function<void(std::function<void()>)>;
@@ -77,23 +77,23 @@ public:
     FBZZ_ENGINE_API ~WorldPartitionRuntime();
     WorldPartitionRuntime(const WorldPartitionRuntime&) = delete;
     WorldPartitionRuntime& operator=(const WorldPartitionRuntime&) = delete;
-    /// @note Invalid replacement leaves the currently published partition unchanged. Paths are rooted under projectRoot/Assets.
+    /// @note 無効な置き換えでは現在公開中のパーティションを維持する。パスは projectRoot/Assets を基準とする。
     [[nodiscard]] FBZZ_ENGINE_API bool Configure(Scene& scene, const WorldPartitionManifest& manifest,
         const std::string& projectRoot, const WorldPartitionSettings& settings, std::string& diagnostic);
     [[nodiscard]] FBZZ_ENGINE_API bool Open(Scene& scene, const std::string& manifestReference,
         const WorldPartitionSettings& settings, std::string& diagnostic);
     FBZZ_ENGINE_API void Update(const math::Vector3& source, renderer::ResourceManager* resources = nullptr);
-    /// @note An explicit cell override persists until ClearCellOverride, Configure, or Reset. UNLOADED cancels pending work and unloads that cell.
+    /// @note 明示的なセルの上書きは ClearCellOverride、Configure、Reset まで有効。UNLOADED は保留処理を取り消してセルを解放する。
     [[nodiscard]] FBZZ_ENGINE_API bool RequestCell(WorldCellId id, WorldCellRepresentation representation, std::string& diagnostic);
     [[nodiscard]] FBZZ_ENGINE_API bool ClearCellOverride(WorldCellId id);
     FBZZ_ENGINE_API void RetryFailed();
     FBZZ_ENGINE_API void Reset();
     [[nodiscard]] FBZZ_ENGINE_API WorldPartitionStatus Status() const;
     [[nodiscard]] FBZZ_ENGINE_API const WorldPartitionManifest& Manifest() const;
-    /// @note Called after a Scene has retired its objects; does not dereference or mutate the retired Scene.
+    /// @note Scene の個体が退役した後に呼ぶ。退役済みの Scene は参照も変更もしない。
     FBZZ_ENGINE_API void DetachRetiredScene();
 private:
-    /// @note The friend redeclarations share the namespace declarations' DLL linkage.
+    /// @note friend の再宣言は名前空間スコープの宣言と同じ DLL リンケージを持つ。
     /// @see https://learn.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-1-c4273 MSVC DLL linkage rules.
     friend FBZZ_ENGINE_API void UpdateWorldPartitionRuntime(Scene&, renderer::ResourceManager*, bool);
     friend FBZZ_ENGINE_API void TransferWorldPartitionRuntime(Scene&, Scene&);
@@ -101,9 +101,9 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-/// @note Scene-owned service lifetime is retired automatically by Scene::Clear/destruction. The returned runtime must not outlive its Scene.
+/// @note Scene が所有するサービスは Scene::Clear またはデストラクターで退役する。戻り値は Scene の生存期間内だけ有効。
 [[nodiscard]] FBZZ_ENGINE_API WorldPartitionRuntime& GetWorldPartitionRuntime(Scene& scene);
 [[nodiscard]] FBZZ_ENGINE_API const WorldPartitionRuntime* FindWorldPartitionRuntime(const Scene& scene);
-/// @note Internal lifetime hook; callers normally use runtime.Reset() to unload resident objects.
+/// @note 内部の寿命管理用フック。通常は runtime.Reset() で常駐個体をアンロードする。
 FBZZ_ENGINE_API void ForgetWorldPartitionRuntime(Scene& scene);
-} /// @note namespace fbzz::scene
+}

@@ -128,31 +128,31 @@ enum class LineSpace : int { Local = 0, World = 1 };
 /// @note Tube にすると細い線ほど画面上で消えるため。用途が違うので選択式にする。
 enum class LineShape : int { Ribbon = 0, Tube = 1 };
 
-/// @brief Stable reference row for one authored Line point.
+/// @brief Line の一点に対応する安定 ID 付きの参照行。
 struct LineControlPointBinding {
     std::uint32_t id = 0;
     ObjectReference target;
 
-    /// @brief Reflect the stable id and typed TargetPoint reference.
+    /// @brief 安定 ID と TargetPoint 型参照を公開する。
     FBZZ_ENGINE_API void Reflect(IReflector& reflector);
     FBZZ_ENGINE_API bool operator==(const LineControlPointBinding& other) const;
 };
 
-/// @brief Numeric Line point retained by a static bake.
+/// @brief 静的ベイクで保持する Line の数値座標。
 struct LineControlPointValue {
     std::uint32_t id = 0;
     math::Vector3 position = math::Vector3::ZERO;
 
-    /// @brief Reflect the stable id and captured position.
+    /// @brief 安定 ID と取得済みの位置を公開する。
     FBZZ_ENGINE_API void Reflect(IReflector& reflector);
     bool operator==(const LineControlPointValue& other) const = default;
 };
 
-/// @brief Reflect ordered Line point bindings without changing their order or attributes.
+/// @brief 順序と属性を保持したまま Line の点参照を公開する。
 FBZZ_ENGINE_API void ReflectLineControlPointBindings(IReflector& reflector,
     std::vector<LineControlPointBinding>& bindings);
 
-/// @brief Reflect stable-ID numeric Line points.
+/// @brief 安定 ID を持つ Line の数値点を公開する。
 FBZZ_ENGINE_API void ReflectLineControlPointValues(IReflector& reflector, const char* fieldName,
     std::vector<LineControlPointValue>& points);
 
@@ -165,8 +165,8 @@ struct LineRendererComponent {
     std::vector<LineControlPointValue> bakedPoints;
     std::uint64_t bakedInputSignature = 0;
     ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
-    /// @brief Coordinate interpretation retained with the numeric point bake.
-    /// @note Changing authored space marks the bake stale; saved points keep this interpretation until rebake.
+    /// @brief 数値点のベイクに保存する座標系。
+    /// @note 設定の座標系を変更するとベイクは期限切れになる。保存した点は再ベイクまで取得時の座標系で解釈する。
     LineSpace bakedSpace = LineSpace::Local;
     std::uint32_t bakedAdapterVersion = 0;
     bool bakeValid = false;
@@ -279,4 +279,4 @@ struct ProjectorComponent {
     }
 };
 
-} ///< @note namespace fbzz::scene
+}

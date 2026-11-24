@@ -30,7 +30,7 @@ void GridDebugPass::Execute(PassResources&, RenderPassContext& ctx)
     constexpr math::Vector4 kAxisColorZ = { 0.18f, 0.18f, 0.60f, 1.0f };
 
     /// @note TAA 前の HDR 深度と同じ射影で比較し、モデルとの重なりを位相ごとにずらさない。
-    /// @see Graphics/Pipeline/RenderConstants.hpp MakeJitteredViewProjection.
+    /// @see Graphics/Pipeline/RenderConstants.hpp の MakeJitteredViewProjection。
     const auto viewProjection = MakeJitteredViewProjection(ctx.camera, ctx.taaJitterNdcX, ctx.taaJitterNdcY);
     renderer::DebugDraw::BeginFrame(ctx.renderer, ctx.resources, viewProjection);
     const float extent = static_cast<float>(kHalfCount) * kCellSize;

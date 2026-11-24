@@ -241,7 +241,7 @@ bool CompileBehaviorTree(const BehaviorTreeAsset& asset, BehaviorTreeRuntime& ou
         const auto& childList = children[frame.assetIndex];
 
         if (frame.nextChild < childList.size()) {
-            /// @note The evaluator follows the execution path recursively.
+            /// @note 評価器は実行経路を再帰的にたどる。
             if (stack.size() >= 256) {
                 SetError(outError, "Behavior Tree execution depth exceeds 256 nodes");
                 return false;

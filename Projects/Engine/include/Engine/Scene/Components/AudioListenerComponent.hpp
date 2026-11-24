@@ -31,4 +31,4 @@ struct AudioListenerComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

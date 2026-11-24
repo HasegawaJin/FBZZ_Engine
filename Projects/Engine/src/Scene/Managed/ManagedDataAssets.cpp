@@ -24,7 +24,7 @@ ManagedBridgeStatus ReadDataAsset(std::string_view reference, std::string& json)
     if (!util::FileSystem::ReadText(resolved, text)) return ManagedBridgeStatus::NOT_FOUND;
     auto parsed = toml::parse(text);
     if (!parsed || parsed.table()["type"].value_or(std::string{}).empty()) return ManagedBridgeStatus::LOAD_FAILED;
-    /// @note Portable managed documents keep their canonical typed value JSON in TOML; parsing occurs once per owned runtime read.
+    /// @note 移植可能なマネージド文書では、正規化した型付き値の JSON を TOML に保存する。実行時に所有して読み込むたび、一度だけ解析する。
     if (parsed.table()["formatVersion"].value_or(0) == 2) {
         const auto value = parsed.table()["json"].value<std::string>();
         if (!value) return ManagedBridgeStatus::LOAD_FAILED;
@@ -35,4 +35,4 @@ ManagedBridgeStatus ReadDataAsset(std::string_view reference, std::string& json)
     json = output.str();
     return ManagedBridgeStatus::OK;
 }
-} /// @note namespace fbzz::scene::managed_detail
+}

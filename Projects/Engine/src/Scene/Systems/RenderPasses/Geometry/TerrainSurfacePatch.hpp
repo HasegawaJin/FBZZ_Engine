@@ -1,5 +1,5 @@
 /// @file    TerrainSurfacePatch.hpp
-/// @brief   CPU terrain surface vertices and full three-dimensional culling bounds.
+/// @brief   地表の CPU 頂点と、奥行きを含む三次元カリング境界。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <vector>
 namespace fbzz::scene {
-/// @note GPU layout matches TerrainVSInput: POSITION/NORMAL/TANGENT float3, TEXCOORD float2.
+/// @note GPU レイアウトは TerrainVSInput と一致する。POSITION・NORMAL・TANGENT は float3、TEXCOORD は float2。
 struct TerrainVertex {
     math::Vector3 position;
     math::Vector3 normal;
@@ -22,8 +22,8 @@ struct TerrainSurfacePatchData {
     std::vector<uint32_t> indices;
     math::Vector3 aabbMin, aabbMax;
 };
-/// @pre Valid nonempty surface geometry, first is a triangle boundary within surfaceIndices.
-/// @note All LODs use this topology; caves must not lose roofs or close entrances when LOD changes.
+/// @pre 有効な空でないサーフェスを渡し、first は surfaceIndices 内の三角形の先頭を指すこと。
+/// @note 全 LOD が同じトポロジーを使い、切り替え時に洞窟の天井が消えたり入口が塞がったりしないようにする。
 inline TerrainSurfacePatchData BuildTerrainSurfacePatch(const TerrainComponent& terrain, size_t first)
 {
     TerrainSurfacePatchData result;

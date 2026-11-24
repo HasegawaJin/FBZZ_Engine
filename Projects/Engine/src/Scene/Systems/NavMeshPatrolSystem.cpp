@@ -1,5 +1,5 @@
 /// @file    NavMeshPatrolSystem.cpp
-/// @brief   Resolve patrol points and submit throttled NavMesh destinations.
+/// @brief   巡回点を解決し、送信間隔を制限して NavMesh の目的地を更新する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #include <Engine/Scene/Systems/NavMeshPatrolSystem.hpp>
@@ -134,7 +134,7 @@ void NavMeshPatrolSystem::Update(SystemContext& ctx)
         if (!patrol || !agent || !go || !go->activeInHierarchy()
             || !patrol->enabled || !agent->enabled) continue;
         if (agent->target.IsAssigned()) continue;
-        /// @note A loaded behavior tree owns route activation; its Patrol action retains permission between decision ticks.
+        /// @note 読込済みの行動ツリーが巡回を制御し、Patrol アクションの許可を次の判断まで保持する。
         if (const auto* bt = scene.GetComponent<BehaviorTreeComponent>(eid); bt && bt->runtime && !bt->patrolRequested) continue;
 
         const NavMeshPatrolPointSnapshot snapshot = ResolveNavMeshPatrolPoints(

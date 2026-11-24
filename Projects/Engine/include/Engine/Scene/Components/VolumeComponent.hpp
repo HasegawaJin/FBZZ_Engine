@@ -59,4 +59,4 @@ struct VolumeComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

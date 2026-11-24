@@ -1,5 +1,5 @@
 /// @file    AnimationWorkTrace.hpp
-/// @brief   Opt-in independent animation work timings and completed GPU timestamp capture.
+/// @brief   アニメーション演算時間と完了済み GPU タイムスタンプの任意計測。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
@@ -27,7 +27,7 @@ inline bool TryClaimCapture(std::atomic_flag& ownership) { return !ownership.tes
 inline void ReleaseCapture(std::atomic_flag& ownership) { ownership.clear(std::memory_order_release); }
 enum DueReason : uint32_t { ZERO_INTERVAL=1, SKELETON_CHANGED=2, EMPTY_PALETTE=4, ELAPSED_THRESHOLD=8 };
 enum ForceReason : uint32_t { STATE_CHANGED=1, BLENDING=2, NON_LEGACY_MODE=4, BAKED_ACTIVE=8 };
-/// @note Scalar identity only; no object, component, resource, vector or callback pointer is retained.
+/// @note 識別にはスカラー値だけを使い、オブジェクト・コンポーネント・資源・配列・コールバックのポインターは残さない。
 struct ActorKey {
     uint64_t sceneGeneration=0,resourceEpoch=0,resourceInstance=0,componentLifetime=0;
     uint32_t entityIndex=0,entityGeneration=0,previousHandleId=0,previousHandleGeneration=0;
@@ -43,7 +43,7 @@ struct PaletteEquality {
     uint64_t compareArgumentBytes=0;
     uint32_t currentClampedCount=0,previousClampedCount=0;
 };
-/// @note Compare the effective 128-matrix packets: raw prefix bits and identity-padded unequal-count tails.
+/// @note 先頭の元のビット列と、不足分を単位行列で埋めた末尾を含め、実効 128 行列のパケットとして比較する。
 inline PaletteEquality CompareEffectivePalettes(std::span<const math::Matrix4> current,
                                                  std::span<const math::Matrix4> previous)
 {
@@ -83,7 +83,7 @@ struct ActorRow {
     bool cpuSameDesiredPotentialAvailable=false,cpuSameDesiredPotential=false;
     bool Complete() const { return key.componentLifetime!=0 && afterRunObserved && afterRunIdentityValid && frameEndIdentityValid && sourceComplete && !duplicateActor; }
 };
-/// @note Held suffixes become exact only after an observed refresh; gaps and invalid rows cut continuity.
+/// @note 更新を観測してから保持区間を確定し、欠落や無効な行があれば連続性を打ち切る。
 struct HeldHistory {
     ActorKey lastKey;
     uint64_t lastResourceFrame=0,lastTimeFrame=0,lastOrdinal=0;
@@ -108,7 +108,7 @@ struct HeldHistory {
         valid=true;
     }
 };
-/// @note Shared by the production bounded collector and deterministic capacity tests.
+/// @note 本体の上限付き収集と、容量を決定的に検証するテストが共有する。
 inline bool ClaimBoundedSlot(uint32_t& count,uint32_t capacity,uint32_t& index)
 {
     if(count>=capacity)return false; index=count++; return true;
@@ -116,7 +116,7 @@ inline bool ClaimBoundedSlot(uint32_t& count,uint32_t capacity,uint32_t& index)
 }
 class Scene;
 namespace animation_actor_detail { struct ActorCapture; }
-/// @note Separate opt-in scalar collector; its OFF path reads no clock and creates no capture storage.
+/// @note 有効化したときだけスカラー値を収集し、無効時は時刻取得もバッファ確保も行わない。
 FBZZ_ENGINE_API bool AnimationActorTraceRequested();
 FBZZ_ENGINE_API animation_actor_detail::ActorRow* CurrentAnimationActorRow();
 class AnimationActorScope {
@@ -137,9 +137,9 @@ public:
     FBZZ_ENGINE_API void SetPopulation(uint64_t population);
     FBZZ_ENGINE_API void CountExcluded(uint32_t reason);
     FBZZ_ENGINE_API animation_actor_detail::ActorRow* BeginActor(uint32_t entityIndex,uint32_t entityGeneration,uint64_t lifetime,float ctxDt,float localScale);
-    /// @note Reacquires the component after pose/effect callbacks; no actor reference is stored for later use.
+    /// @note 姿勢・演出のコールバック後にコンポーネントを再取得し、アクター参照を持ち越さない。
     FBZZ_ENGINE_API void FinishActor(animation_actor_detail::ActorRow* row,Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
-    /// @note Called after compatibilityBatch flush, before destruction; all pending component lifetimes are revalidated.
+    /// @note 互換バッチの送信後、破棄前に呼び出す。未処理コンポーネントの寿命を再検証する。
     FBZZ_ENGINE_API void FinalizeSource(Scene& scene,uint64_t frame,uint64_t generation,uint64_t epoch,uint64_t instance);
     AnimationActorFrame(const AnimationActorFrame&)=delete;
     AnimationActorFrame& operator=(const AnimationActorFrame&)=delete;
@@ -159,54 +159,54 @@ struct AnimationWorkRow {
     uint64_t legacyPoses = 0, bakedCpuPoses = 0, bakedGpuPoses = 0, poseCacheHits = 0, poseCacheMisses = 0;
     uint64_t cbBulkPackets = 0;
     uint64_t wallBeginIntervalNs = 0;
-    /// @note Appended observation schema; counters are actor updates/calls/writes, never unique population or GPU bytes.
+    /// @note 追記する診断項目はアクター更新・呼び出し・書き込みの回数であり、個体数や GPU バイト数を表さない。
     static constexpr uint32_t POSE_OBSERVATION_SCHEMA = 1;
     bool poseCountersAvailable = false, legacyBoneWritesAvailable = false, paletteApiCountersAvailable = false;
     uint64_t beginResourceFrame = 0, beginSceneGeneration = 0, beginResourceEpoch = 0;
     uint64_t endResourceFrame = 0, endSceneGeneration = 0, endResourceEpoch = 0;
     bool sourceIdentityFinalized = false, sourceIdentityMismatch = false;
     uint64_t posePathActors = 0, poseLodGatePassed = 0, poseReducedIntervalActors = 0;
-    /// @note Refresh entry includes bind/error/external-pose fallbacks; it is not successful clip evaluation.
+    /// @note 更新経路に入った回数にはバインド姿勢、エラー、外部姿勢へのフォールバックも含む。
     uint64_t poseRefreshEntered = 0, poseHeld = 0, poseLegacyFkCalls = 0, poseBakedSuccesses = 0;
     uint64_t poseBindFallbackActors = 0, poseOtherRefreshActors = 0, legacyEvaluatedBoneWrites = 0;
     uint64_t previousPaletteUpdateCalls = 0, previousPaletteApiBytes = 0;
     uint64_t currentPaletteUpdateCalls = 0, currentPaletteApiBytes = 0;
     uint64_t bindPaletteUpdateCalls = 0, bindPaletteApiBytes = 0, heldCurrentPaletteUpdates = 0;
-    /// @brief Save update-begin provenance without changing legacy end-source columns.
+    /// @brief 既存の終了時の入力列を変更せず、更新開始時の入力情報を保存する。
     void BeginSource(uint64_t frame, uint64_t generation, uint64_t epoch)
     {
         resourceFrame = beginResourceFrame = frame; sceneGeneration = beginSceneGeneration = generation;
         resourceEpoch = beginResourceEpoch = epoch;
     }
-    /// @brief Preserve raw end identity and retain any observed discontinuity, even across repeated finalization.
+    /// @brief 完了処理を繰り返しても、終了時の元の識別情報と観測済みの不連続を保持する。
     void FinalizeSource(uint64_t frame, uint64_t generation, uint64_t epoch)
     {
         resourceFrame = endResourceFrame = frame; sceneGeneration = endSceneGeneration = generation;
         resourceEpoch = endResourceEpoch = epoch; sourceIdentityFinalized = true;
         sourceIdentityMismatch |= beginResourceFrame != frame || beginSceneGeneration != generation || beginResourceEpoch != epoch;
     }
-    /// @return True only for finalized, unbroken source identity with coherent legacy/end columns.
+    /// @return 完了済みで入力元が連続し、既存列と終了時列が整合する場合に限り true。
     bool HasCompleteSourceIdentity() const
     {
         return sourceIdentityFinalized && !sourceIdentityMismatch
             && beginResourceFrame == endResourceFrame && beginSceneGeneration == endSceneGeneration && beginResourceEpoch == endResourceEpoch
             && resourceFrame == endResourceFrame && sceneGeneration == endSceneGeneration && resourceEpoch == endResourceEpoch;
     }
-    /// @brief Diagnostic joins refuse incomplete rows; raw row data is still serialized.
+    /// @brief 未完了の行は診断の結合から外し、元データはシリアライズする。
     bool MatchesCompleteSource(uint64_t frame, uint64_t generation, uint64_t epoch) const
     {
         return HasCompleteSourceIdentity() && resourceFrame == frame && sceneGeneration == generation && resourceEpoch == epoch;
     }
-    /// @brief Observe the final decision after state-machine updates; no decision is fed back into scheduling.
+    /// @brief 状態機械の更新後に確定した判断を記録し、スケジューリングには反映しない。
     void CountPoseDecision(bool lodGatePassed, bool reducedInterval, bool refreshEntered)
     {
         ++posePathActors; if (lodGatePassed) ++poseLodGatePassed; if (reducedInterval) ++poseReducedIntervalActors;
         if (refreshEntered) ++poseRefreshEntered; else { ++poseHeld; ++heldCurrentPaletteUpdates; }
     }
 };
-/// @note One TLS row is active only within a simulating AnimatorSystem update; shared storage serializes completed rows.
+/// @note シミュレーション中の AnimatorSystem の更新内だけでスレッドローカルの作業行が有効となり、完了した行は共有領域で直列化する。
 
-/// @note Private, default-OFF one-shot early-credit experiment. Public elapsed/count/component layout are unchanged.
+/// @note 初回だけ先行加算する実験は既定で無効であり、公開する時間・件数とコンポーネント構造を維持する。
 namespace animation_phase_detail {
 inline constexpr uint32_t CAPACITY=8192, NO_ENTRY=UINT32_MAX;
 struct Key {
@@ -232,7 +232,7 @@ struct Ticket {
 FBZZ_ENGINE_API uint64_t HashKey(const Key& key);
 FBZZ_ENGINE_API float InitialCredit(const Key& key,float interval);
 FBZZ_ENGINE_API bool CreditDue(bool normalDue,float elapsed,float interval,float credit);
-/// @note No eviction: issued lifetimes remain tombstones on invalidation/removal, so neither gaps nor source changes re-seed.
+/// @note 失効・削除後も識別子を使用済みとして保持し、欠落や入力元の変更で再採番しない。
 class Ledger {
 public:
     FBZZ_ENGINE_API explicit Ledger(uint32_t capacity=CAPACITY);
@@ -265,54 +265,54 @@ FBZZ_ENGINE_API AnimationWorkRow* CurrentAnimationWorkRow();
 FBZZ_ENGINE_API void CountAnimationCompatibilityUpdate(uint64_t bytes);
 FBZZ_ENGINE_API void CaptureAnimationGpuWork(const renderer::GpuProfilerSnapshot& snapshot);
 FBZZ_ENGINE_API bool AnimationGpuTraceRequested();
-/// @note Experimental process opt-in; zero preserves continuous phase and the existing uncached pose path.
+/// @note プロセス単位で有効化する実験。値がゼロなら連続位相と既存の非キャッシュ姿勢経路を使う。
 FBZZ_ENGINE_API uint32_t AnimationPoseShareRate();
 FBZZ_ENGINE_API bool AnimationCompatibilityBatchRequested();
-/// @note All counters describe one ExecuteSkinningComputePass call; existing frame-accumulated UI stats are not copied.
+/// @note カウンターは ExecuteSkinningComputePass 1 回分のみで、フレーム累積の UI 統計は含めない。
 struct AnimationSkinningCpuRow {
     uint64_t resourceFrame=0,sceneGeneration=0,resourceEpoch=0;
     uint64_t totalNs=0,profilerSyncNs=0,replaySubmitNs=0,vertexSubmitNs=0;
     uint64_t resourceInstanceId=0,passOrdinalWithinResourceFrame=0;
     uint64_t renderersVisited=0,renderersEligible=0,alreadyCurrentReuse=0;
     uint64_t requestedDispatches=0,requestedVertexCount=0;
-    /// @note Opt-in, count-only demand observations; overlapping reasons are not a partition or a safe-to-omit count.
+    /// @note 需要の件数だけを任意収集する。理由は重複するため、合計値を内訳や省略可能件数として扱わない。
     uint64_t demandScopeActive=0,sceneObjectCount=0,sceneAnimatorComponentCount=0,sceneSkinnedRendererComponentCount=0;
     uint64_t activeNativeScriptEntries=0,activeManagedScriptEntries=0,activeReflectionProbes=0,activeReflectionSceneProbes=0;
     uint64_t activeLightProbeVolumes=0,activeLightProbeBakeConsumers=0,activeInstancedComponents=0;
     uint64_t demandObservedRenderers=0,provisionalColorExcludedRenderers=0,conservativeNonColorRequiredRenderers=0;
     uint64_t provisionalNoKnownConsumerRenderers=0,legacyEnteredRenderers=0,renderersWithOutputRequests=0,nativePublishedRenderers=0;
     std::array<uint64_t,skinning_demand_detail::REASON_COUNT> outputDemandReasonRenderers{};
-    /// @note Version 2 separates logical morph containers, selected source paths and native observations; no GPU omission is enabled.
+    /// @note 版 2 では論理上のモーフ配列、選択した入力経路、GPU 側の観測を区別する。計測値による GPU 処理の省略は行わない。
     uint64_t demandClassifierVersion=2;
     std::array<uint64_t,skinning_demand_detail::INPUT_FLAG_COUNT> inputObservedRenderers{};
-    /// @note Each slot observation uses the existing signature lookup; non-null does not prove coherent bytes or a complete vertex format.
+    /// @note 各スロットは既存のシグネチャ取得で観測する。取得に成功しても、内容の整合性や頂点形式の完全性は保証しない。
     uint64_t sourceObservedSlots=0,sourceBasePathSlots=0,sourceMorphPathSlots=0,sourceDiffersFromBaseSlots=0;
     uint64_t sourceLookupNonNullBasePathSlots=0,sourceLookupNonNullMorphPathSlots=0,sourceLookupNullSlots=0,sourceNativeVersionZeroSlots=0;
     uint64_t boneBakeQueuedReplayRows=0;
     uint64_t sourceCacheHits=0,sourceCacheMisses=0,sourceCreateAttempts=0,sourceCreateSuccesses=0,sourceReleaseCalls=0,sourceCopyBytes=0;
     uint64_t outputCreateAttempts=0,outputCreateSuccesses=0,outputReleaseCalls=0,outputCapacityRejects=0;
-    /// @note Vectors counts logical builds, capacity sums repeated observations; lower bound counts nonempty builds with observed successful growth.
+    /// @note 配列数は論理的な生成回数、容量は観測の合計、下限は容量増加を観測した非空の生成回数を表す。
     uint64_t signatureVectors=0,signatureBytes=0,signatureCapacityBytes=0,signatureAllocationLowerBound=0;
     renderer::skinning_trace_detail::RequestCounters requests;
-    /// @note Growth-push time is inside build time and includes allocation, relocation, old-block free and the appended word; it is not pure malloc time.
+    /// @note 拡張を伴う追加時間は、確保・移動・旧領域の解放・新要素の追加を含み、生成時間の内数となる。
     uint64_t signatureBuildNs=0,signatureGrowthPushNs=0,signatureCompareNs=0,signaturePublicationMoveNs=0,signatureReserveNs=0;
     uint64_t signatureBuildCalls=0,signatureGrowthPushCalls=0,signatureCompareCalls=0,signaturePublicationMoveCalls=0,signatureReserveCalls=0;
-    /// @note Successful capacity changes count new vector payload blocks, excluding allocator bookkeeping and CLR/GPU memory.
+    /// @note 容量増分は配列本体の再確保だけを数え、アロケーターの管理情報や CLR・GPU のメモリを除く。
     uint64_t signaturePayloadAllocationCalls=0,signaturePayloadAllocationBytes=0,signatureGrowthRelocatedLogicalBytes=0;
     uint64_t signatureClockPairCount=0,signatureClockProbeNs=0,unattributedSkinningNs=0;
-    /// @note Assign includes the native destination copy and any destination allocation; clear and scratch acquisition are disjoint spans.
+    /// @note 代入時間は宛先へのコピーと確保を含み、クリアおよび作業領域の取得とは重複しない。
     uint64_t signatureAssignNs=0,signatureAssignCalls=0,signatureAssignCopyLogicalBytes=0;
     uint64_t signatureClearNs=0,signatureClearCalls=0;
     uint64_t signatureDestinationPayloadAllocationCalls=0,signatureDestinationPayloadAllocationBytes=0;
     uint64_t signatureScratchAcquireNs=0,signatureScratchAcquireCalls=0;
-    /// @note Successful native storage objects and pointer-vector payload blocks exclude allocator metadata and word payload growth.
+    /// @note 生成に成功したネイティブ記憶領域とポインター配列本体を数え、管理情報やワード配列の増加は除く。
     uint64_t signatureScratchStorageAllocationCalls=0,signatureScratchStorageAllocationBytes=0;
     uint64_t signatureScratchPoolPointerAllocationCalls=0,signatureScratchPoolPointerAllocationBytes=0;
-    /// @note Current-thread pass-end gauges are retained capacity, not allocation volume or pass-attributable physical RAM.
+    /// @note パス終了時の現在スレッドの値は保持容量を表し、確保総量やパスに帰属する実メモリを表さない。
     uint64_t signatureScratchRetainedPayloadBytes=0,signatureScratchRetainedStorageBytes=0;
     uint64_t signatureScratchRetainedPointerPayloadBytes=0,signatureScratchSlotsAtPassEnd=0;
 };
-/// @note This is an invocation ordinal per resource instance/epoch/frame, not a GPU view ID; zero means ordinal tracking capacity was exhausted.
+/// @note 資源管理者・世代・フレームごとの呼び出し番号。ゼロは追跡枠の使い切りを表す。
 FBZZ_ENGINE_API void AssignAnimationSkinningPassOrdinal(AnimationSkinningCpuRow& row);
 FBZZ_ENGINE_API void CaptureAnimationSkinningCpuWork(const AnimationSkinningCpuRow& row);
 class AnimationSkinningCpuFrame {
@@ -327,7 +327,7 @@ public:
     {
         if(m_enabled){
             row.totalNs=Elapsed(m_start);
-            /// @note Subtract only disjoint raw spans; growth and reserve are inside build, and the clock probe is not an exact overhead correction.
+            /// @note 重複しない生の区間だけを差し引く。拡張と予約は生成時間に含み、計時自体の時間は概算となる。
             const uint64_t measured=row.profilerSyncNs+row.replaySubmitNs+row.vertexSubmitNs+row.signatureBuildNs
                 +row.signatureCompareNs+row.signaturePublicationMoveNs+row.signatureClockProbeNs
                 +row.signatureAssignNs+row.signatureClearNs+row.signatureScratchAcquireNs;

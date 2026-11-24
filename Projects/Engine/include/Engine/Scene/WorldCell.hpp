@@ -1,5 +1,5 @@
 /// @file    WorldCell.hpp
-/// @brief   Shared world-space cell coordinates and deterministic generation keys.
+/// @brief   ワールド空間で共有するセル座標と決定的な生成キー。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #pragma once
@@ -10,7 +10,7 @@
 
 namespace fbzz::scene {
 
-/// @note Authoring placement cells use this world-space XZ size independently of streaming cells.
+/// @note 制作時の配置セルが使うワールド XZ の寸法。ストリーミングセルとは独立する。
 inline constexpr float VEGETATION_BUDGET_CELL_SIZE = 128.0f;
 
 struct WorldCellId {
@@ -30,14 +30,14 @@ struct WorldCellBounds {
     math::Vector3 max{};
 };
 
-/// @note Cells own half-open XZ intervals; Y never determines the owning cell.
+/// @note セルの所有範囲は XZ の半開区間。Y は所属判定に使わない。
 [[nodiscard]] FBZZ_ENGINE_API bool ValidateWorldCellGrid(const WorldCellGrid& grid, std::string& diagnostic);
 [[nodiscard]] FBZZ_ENGINE_API bool TryLocateWorldCell(const WorldCellGrid& grid, const math::Vector3& worldPosition, WorldCellId& out);
 [[nodiscard]] FBZZ_ENGINE_API math::Vector3 WorldCellOrigin(const WorldCellGrid& grid, WorldCellId id);
 [[nodiscard]] FBZZ_ENGINE_API WorldCellBounds WorldCellFootprint(const WorldCellGrid& grid, WorldCellId id);
 [[nodiscard]] FBZZ_ENGINE_API float WorldCellDistanceXZ(const WorldCellGrid& grid, WorldCellId id, const math::Vector3& source);
-/// @note A fixed integer hash avoids implementation-defined standard-library distributions.
+/// @note 固定の整数ハッシュを用い、標準ライブラリの分布の実装差を避ける。
 [[nodiscard]] FBZZ_ENGINE_API uint64_t WorldCellSeed(uint64_t seed, WorldCellId id, uint64_t stream = 0);
 [[nodiscard]] FBZZ_ENGINE_API std::string WorldCellName(WorldCellId id);
 
-} /// @note namespace fbzz::scene
+}

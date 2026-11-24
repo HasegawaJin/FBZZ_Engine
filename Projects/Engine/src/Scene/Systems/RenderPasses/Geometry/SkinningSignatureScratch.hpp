@@ -1,5 +1,5 @@
 /// @file    SkinningSignatureScratch.hpp
-/// @brief   Source-private, reentrant numeric signature scratch owned by one Engine DLL thread.
+/// @brief   Engine DLL のスレッドが所有する、再入可能な内部数値シグネチャ作業領域。
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
@@ -19,13 +19,13 @@ namespace fbzz::scene {
 struct AnimationSkinningCpuRow;
 namespace skinning_signature_detail {
 
-/// @note Numeric capacity survives until thread exit; words are empty between leases, and scene/resource/model references never enter the pool.
+/// @note 数値の容量だけをスレッド終了まで保持し、借用の間は空にしてシーン・資源・モデルの参照を入れない。
 struct ScratchMetrics {
     size_t slots=0,pointerCapacity=0,activeLeases=0;
     uint64_t payloadBytes=0,storageBytes=0,pointerPayloadBytes=0;
 };
 
-/// @note Leases must end in stack order on their creating thread. Out-of-line acquisition shares production TLS with native tests.
+/// @note 借用元スレッドで取得の逆順に返却すること。取得の定義を共通化し本体とテストで同じスレッドローカル状態を使う。
 class SignatureScratchLease {
 public:
     FBZZ_SKINNING_SIGNATURE_SCRATCH_API explicit SignatureScratchLease(AnimationSkinningCpuRow* trace=nullptr);
@@ -39,7 +39,7 @@ private:
     std::vector<uint32_t>* m_words=nullptr;
 };
 
-/// @brief Read current-thread retained capacities; these gauges exclude allocator metadata and component-owned vectors.
+/// @brief 現在のスレッドで保持する容量を返す。アロケーターの管理情報とコンポーネント所有の配列を除く。
 FBZZ_SKINNING_SIGNATURE_SCRATCH_API ScratchMetrics CurrentSignatureScratchMetrics();
 
 } /// @note namespace skinning_signature_detail

@@ -1,5 +1,5 @@
 /// @file    CursorControlPolicy.hpp
-/// @brief   Resolves requested cursor settings and explicit game input ownership without OS calls.
+/// @brief   OS を呼ばずに、要求されたカーソル設定と明示的なゲーム入力の所有権を解決する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
@@ -42,8 +42,8 @@ public:
         return m_physicalInputAllowed && m_windowActive && m_owner == CursorInputOwner::GAME;
     }
 
-    /// @note Returning focus never acquires ownership; only an explicit Acquire does.
-    /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/playing-and-simulating-in-unreal-engine Play In Editor mouse control.
+    /// @note フォーカスの復帰だけでは取得しない。所有権の取得には明示的な Acquire が必要。
+    /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/playing-and-simulating-in-unreal-engine Play In Editor のマウス操作。
     [[nodiscard]] CursorState Resolve(CursorPolicy requested, bool suppressed, bool targetAvailable = true) const
     {
         CursorState state{};
@@ -57,14 +57,14 @@ public:
             : !targetAvailable ? CursorSuspendReason::TARGET_UNAVAILABLE : CursorSuspendReason::NONE;
         if (state.suspendedReason == CursorSuspendReason::NONE) {
             state.effective = requested;
-            /// @see https://docs.unity3d.com/ScriptReference/Cursor-lockState.html Locked overrides effective visibility.
+            /// @see https://docs.unity3d.com/ScriptReference/Cursor-lockState.html ロックが実際のカーソル表示状態に優先する規定。
             if (requested.lockMode == CursorLockMode::Locked) state.effective.visible = false;
         }
         return state;
     }
 
 private:
-    /// @note Default ownership preserves existing standalone startup before an explicit host handoff.
+    /// @note 明示的なホストの引き渡し前は、既定の所有権で従来のスタンドアロン起動時の挙動を保つ。
     CursorInputOwner m_owner = CursorInputOwner::GAME;
     CursorSuspendReason m_reason = CursorSuspendReason::NONE;
     bool m_windowActive = true;

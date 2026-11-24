@@ -110,8 +110,8 @@ private:
     }
 
     friend class ChunkFileReader;
-    /// @brief ChunkFileReader alone permits atomic replacement while retaining the opened file's immutable snapshot.
-    /// @note Generic OpenStreaming retains its existing sharing policy; no Windows type escapes this header.
+    /// @brief 原子的な置換を許可するのは ChunkFileReader のみ。開いたファイルの内容は置換されても読み続けられる。
+    /// @note 汎用の OpenStreaming は従来の共有ポリシーを使う。このヘッダーは Windows の型を公開しない。
     FBZZ_ENGINE_API bool OpenReplaceableChunkStream(const std::string& path);
 
     std::FILE* m_file = nullptr;

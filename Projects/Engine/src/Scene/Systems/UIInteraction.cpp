@@ -1007,7 +1007,7 @@ bool UINavigationSystem(Scene& scene, UICanvas& canvas, GameObject& canvasGO,
 
     /// @note ポインターをフォーカスの中心へ置く。ここから先は既存のウィジェットが
     /// @note マウスと同じように反応する (理由は UIPointer.hpp を参照)。
-    /// @note Built-in navigation is local to this pass; only script-authored UIPointer retains virtual ownership.
+    /// @note 組み込みナビゲーションの状態はこのパスに限り、仮想入力の所有はスクリプトが設定した UIPointer にだけ残す。
     pointerPosition = { current->rectPosition.x + current->rectSize.x * 0.5f,
                         current->rectPosition.y + current->rectSize.y * 0.5f };
     pointerPressed = ReadNavigationSubmit(gameplayInput);

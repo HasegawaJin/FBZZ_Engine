@@ -65,6 +65,7 @@ namespace fbzz::physics
             const std::vector<ColliderInstance>& colliders, const std::vector<CollisionPair>& pairs,
             std::size_t selectedIndex, BroadPhaseDebugSnapshot& snapshot) const;
         struct BroadPhaseState;
+        /// @note 衝突候補の絞り込みに再利用する空間索引を、このソルバーが所有する。剛体の現在の状態は呼び出しごとに入力から読む。
         std::unique_ptr<BroadPhaseState> m_broadPhase;
 
         FBZZ_PHYSICS_API bool TestSphereSphere(const SphereCollider& a, const SphereCollider& b,

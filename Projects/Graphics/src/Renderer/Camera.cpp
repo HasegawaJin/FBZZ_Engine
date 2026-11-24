@@ -25,6 +25,7 @@ math::Matrix4 Camera::GetProjectionMatrix() const {
 }
 
 math::Matrix4 Camera::GetViewProjection() const {
+    /// @note 列ベクトルには右側の行列から作用する。世界座標をまずカメラから見た座標にしてから、画面に投影する。
     return GetProjectionMatrix() * GetViewMatrix();
 }
 

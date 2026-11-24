@@ -188,4 +188,4 @@ struct TrailComponent : TransientGpuState<TrailComponentGpuState> {
     return trail.widthEnd + (trail.widthStart - trail.widthEnd) * easedAge;
 }
 
-} /// @note namespace fbzz::scene
+}

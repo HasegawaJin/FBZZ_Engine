@@ -1,5 +1,5 @@
 /// @file    InstancedMeshComponent.cpp
-/// @brief   Stable instance IDs and copy-on-write overrides preserve authored and Play scene data.
+/// @brief   安定したインスタンス ID と書き込み時コピーの上書きで、オーサリングと Play のシーンデータを保持する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
@@ -69,4 +69,4 @@ uint32_t InstancedMeshComponent::Add(const math::Vector3& position,const math::V
     m_runtime->placements.push_back({id,position,rotation,scale,true}); m_idToSlot.emplace(id,slot);
     m_runtime->dirtySlots.push_back(slot); ++m_runtime->revision; return id;
 }
-} /// @note namespace fbzz::scene
+}

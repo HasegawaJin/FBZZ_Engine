@@ -1,5 +1,5 @@
 /// @file    NavMeshOffMeshLinkComponent.hpp
-/// @brief   Authored numeric or TargetPoint-backed endpoints for a NavMesh off-mesh link.
+/// @brief   NavMesh オフメッシュリンクの端点。数値または TargetPoint で指定する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #pragma once
@@ -11,7 +11,7 @@
 
 namespace fbzz::scene {
 
-/// @brief Connect two NavMesh polygons with numeric world-space endpoints.
+/// @brief ワールド座標の端点で二つの NavMesh ポリゴンを結ぶ。
 struct NavMeshOffMeshLinkComponent {
     math::Vector3 startPoint = math::Vector3::ZERO;
     math::Vector3 endPoint = math::Vector3::ZERO;
@@ -24,10 +24,10 @@ struct NavMeshOffMeshLinkComponent {
     float traversalTime = 0.3f;
     int agentTypeMask = -1;
 
-    /// @brief Return the Inspector component label.
+    /// @brief Inspector 上のコンポーネント名を返す。
     const char* GetTypeName() const { return "Off-Mesh Link"; }
 
-    /// @brief Reflect legacy endpoints and optional typed TargetPoint endpoints.
+    /// @brief 従来の数値端点と、任意指定の TargetPoint 型参照を公開する。
     void Reflect(IReflector& reflector)
     {
         reflector.Field("enabled", enabled);
@@ -43,4 +43,4 @@ struct NavMeshOffMeshLinkComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

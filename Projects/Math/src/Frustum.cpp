@@ -73,6 +73,7 @@ void Frustum::IntersectsSpheres(std::span<const Vector4> spheres, std::span<uint
         simd::Vec centerZ = simd::Load4(&spheres[sphere + 2].x);
         simd::Vec radius = simd::Load4(&spheres[sphere + 3].x);
         simd::Transpose4x4(centerX, centerY, centerZ, radius);
+        /// @note 内向きの平面から球中心までの符号付き距離が −半径より小さければ、最も近い表面まで含めて視野の外にある。
         const simd::Vec negativeRadius = _mm_xor_ps(radius, signBit);
 
         simd::Vec outside = _mm_setzero_ps();

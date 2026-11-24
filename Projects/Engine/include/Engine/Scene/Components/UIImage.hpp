@@ -136,7 +136,7 @@ struct UIImage {
     /// @note Spriteサブアセット参照時に.metaから解決したUV。通常TextureではuvMin/uvMaxを使う。
     math::Vector2 resolvedSpriteUvMin = { 0.0f, 0.0f };
     math::Vector2 resolvedSpriteUvMax = { 1.0f, 1.0f };
-    math::Vector4 resolvedSpriteBorder = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< @note L,T,R,B pixels
+    math::Vector4 resolvedSpriteBorder = { 0.0f, 0.0f, 0.0f, 0.0f }; ///< @note 左・上・右・下の順 [px]。
     math::Vector2 resolvedTextureSize = { 0.0f, 0.0f };
     /// @note 切り抜き (Sprite なら矩形、通常テクスチャなら画像全体) のピクセル寸法。
     /// @note Tiled の 1 タイル分の大きさと、Inspector の Set Native Size がこれを読む。
@@ -227,4 +227,4 @@ struct UIImage {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

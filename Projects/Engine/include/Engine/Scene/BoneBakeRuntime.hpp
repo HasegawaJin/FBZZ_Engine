@@ -18,18 +18,18 @@ struct BoneBakeClipInput {
     float weight = 0.0f;
 };
 
-/// @note Asset loading/edit preparation warms shared derived caches before playback; unsupported clips remain ordinary Animator inputs.
+/// @note 再生前のアセット読み込み・編集準備で共有派生キャッシュを用意する。非対応のクリップは Animator の通常入力として扱う。
 FBZZ_ENGINE_API void PrepareBoneBakeAssets(AnimatorComponent& animator, const asset::Model& model);
 
-/// @note Uses only prepared immutable cache entries; a changed source, sample rate, generation or invalid clock requires a fresh pose.
-/// @note The caller applies the distance LOD and excludes CPU bone consumers, controls and transitions before retaining the published pose.
+/// @note 準備済みの不変キャッシュだけを使う。入力元、サンプルレート、世代が変わった場合や時計が無効な場合は姿勢を作り直す。
+/// @note 公開姿勢を保持する前に、呼び出し側で距離 LOD を適用し、CPU ボーン利用側、制御、遷移を除外する。
 FBZZ_ENGINE_API bool CanHoldBoneBake(const AnimatorComponent& animator, const asset::Model& model,
                      std::span<const BoneBakeClipInput> clips);
 
-/// @note Caller excludes CPU bone consumers, rig controls, masks, layers, morph and root motion before taking this path.
-/// @note GPU_POSE_SHARED defers CPU palettes only after a successful GPU preparation; CPU bone readers must opt out.
-/// @note Reconstructs deferred current/previous CPU palettes before a legacy consumer or a failed GPU preparation.
-/// @return False invalidates previous history; validated immutable bake inputs normally cannot fail evaluation.
+/// @note この経路の呼び出し側は、CPU ボーン利用側、リグ制御、マスク、レイヤー、モーフ、ルートモーションを除外する。
+/// @note GPU_POSE_SHARED は GPU 準備成功後だけ CPU パレットを保留する。CPU ボーンを読む処理では使わない。
+/// @note 従来の利用側に渡す前、または GPU の準備失敗時に、保留した現在と前回の CPU パレットを再構築する。
+/// @return false のときは前回の履歴を無効にする。検証済みの不変ベイク入力は通常評価に失敗しない。
 FBZZ_ENGINE_API bool MaterializeBoneBakeCpu(AnimatorComponent& animator, renderer::ResourceManager& resources, bool current);
 
 FBZZ_ENGINE_API bool TryEvaluateBoneBake(AnimatorComponent& animator, const asset::Model& model,

@@ -1,5 +1,5 @@
 /// @file    MaterialAuthoringState.hpp
-/// @brief   Owned material drafts publish deeply immutable authoring values.
+/// @brief   所有する材質の下書きを、参照先も含めて不変な編集値として公開する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
@@ -15,10 +15,10 @@
 
 namespace fbzz::asset::detail {
 
-/// @note A conflict leaves the current owner unchanged; callers must preserve their existing failure/notification contract.
+/// @note 競合時は現在の所有者の値を変更しない。呼び出し側は既存の失敗処理と通知の契約に従う。
 enum class MaterialAuthoringCommitResult : uint8_t { COMMITTED, UNCHANGED, CONFLICT };
 
-/// @note Signed zero and distinct NaN payloads remain authored changes; approximate math equality cannot witness an unchanged publication.
+/// @note 符号付きゼロの違いと NaN ペイロードの違いも編集とみなすため、近似比較では公開値が不変か判定できない。
 [[nodiscard]] inline bool MaterialAuthoringFloatEqual(float lhs, float rhs)
 {
     return std::bit_cast<uint32_t>(lhs) == std::bit_cast<uint32_t>(rhs);
@@ -38,8 +38,8 @@ enum class MaterialAuthoringCommitResult : uint8_t { COMMITTED, UNCHANGED, CONFL
     return true;
 }
 
-/// @note Values must own their strings/containers and contain no borrowed mutable authoring aliases.
-/// @note Access is confined to the existing scene/asset authoring thread; this does not make those owners concurrently writable.
+/// @note 値は文字列とコンテナを所有し、変更可能な外部の編集値を参照しないこと。
+/// @note 既存のシーン・アセット編集スレッドからのみアクセスする。同じ所有者への並行書き込みは許可しない。
 template<typename Values>
 class MaterialAuthoringState {
 private:
@@ -54,7 +54,7 @@ private:
 public:
     class Snapshot {
     public:
-        /// @note CreationTag is private and constructible only by this state; allocator forwarding requires this constructor to be public.
+        /// @note CreationTag はこの状態だけが生成できる非公開の型。アロケータが引数を転送するため、コンストラクタは公開する。
         Snapshot(CreationTag, std::shared_ptr<const OwnerIdentity> owner,
             uint64_t revision, const Values& values)
             : m_owner(std::move(owner)), m_revision(revision), m_values(values) {}
@@ -80,7 +80,7 @@ public:
         [[nodiscard]] Values& Draft() { return m_draft; }
         [[nodiscard]] const Values& Draft() const { return m_draft; }
 
-        /// @note The live target must be reacquired before calling; the edit retains no raw owner pointer.
+        /// @note 編集は所有者の生ポインターを保持しないため、呼び出し前に現行の対象を取得し直す。
         template<typename Owner>
         [[nodiscard]] MaterialAuthoringCommitResult Commit(Owner& target)
         {
@@ -101,7 +101,7 @@ public:
         : m_snapshot(MakeInitial(Values{})) {}
     explicit MaterialAuthoringState(const Values& values)
         : m_snapshot(MakeInitial(values)) {}
-    /// @note Copying values creates a distinct authoring owner, even when the source snapshot is retained elsewhere.
+    /// @note 元のスナップショットを別の場所で保持していても、値をコピーした側は別の編集所有者となる。
     MaterialAuthoringState(const MaterialAuthoringState& other)
         : m_snapshot(CopyInitial(other.m_snapshot)) {}
     MaterialAuthoringState& operator=(const MaterialAuthoringState& other)
@@ -112,12 +112,12 @@ public:
         }
         return *this;
     }
-    /// @note Move transfers the owner identity; the moved-from state has no cacheable snapshot until an edit/replacement initializes it.
+    /// @note ムーブで所有者の識別情報を移す。ムーブ元は編集または置換で初期化するまでキャッシュ可能なスナップショットを持たない。
     MaterialAuthoringState(MaterialAuthoringState&&) noexcept = default;
     MaterialAuthoringState& operator=(MaterialAuthoringState&&) noexcept = default;
 
     [[nodiscard]] SnapshotPtr Read() const { return m_snapshot; }
-    /// @pre The borrowed view must not cross a mutation, reload or callback; use Read() for an owned lifetime.
+    /// @pre 借用したビューは変更・再読込・コールバックをまたいで使わない。寿命を延ばす場合は Read() で所有する。
     [[nodiscard]] const Snapshot* View() const { return m_snapshot.get(); }
     [[nodiscard]] Edit BeginEdit()
     {
@@ -125,8 +125,8 @@ public:
         return Edit(m_snapshot);
     }
 
-    /// @note Publication always copies the draft. References retained from Edit::Draft cannot mutate the resulting const snapshot.
-    /// @pre The owner remains alive for this member call; standard value copies/allocators must not destroy the owner.
+    /// @note 公開時は下書きを必ずコピーするため、Edit::Draft から得た参照を保持しても公開後の const 値は変更できない。
+    /// @pre メンバー呼び出し中は所有者が生存していること。通常の値コピーやアロケータから所有者を破棄しないこと。
     [[nodiscard]] MaterialAuthoringCommitResult Commit(Edit& edit)
     {
         if (edit.m_terminal || !edit.m_base || m_snapshot != edit.m_base)
@@ -144,7 +144,7 @@ public:
         return MaterialAuthoringCommitResult::COMMITTED;
     }
 
-    /// @note Replacement is an explicit new publication, used by intentional whole-value assignment/load/undo.
+    /// @note 置換は明示的な新規公開で、意図的な全値代入・読込・取り消しに使う。
     void Replace(const Values& values)
     {
         const auto base = m_snapshot;

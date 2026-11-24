@@ -9,7 +9,7 @@
 namespace fbzz::core::detail {
 
 /// @return 実行ファイル名を除いた独立した引数に --developer があれば true。
-/// @see https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw CommandLineToArgvW argument parsing and LocalFree ownership
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-commandlinetoargvw CommandLineToArgvW の引数解析と LocalFree で解放する所有権。
 [[nodiscard]] FBZZ_ENGINE_API bool HasDeveloperLaunchFlag(std::wstring_view commandLine);
 
 } /// @note namespace fbzz::core::detail

@@ -274,7 +274,7 @@ ResolveMaterialTexturePaths(const MaterialAssetAuthoring& asset)
     return paths;
 }
 
-/// @pre Returned values are borrowed until the next authoring edit/reload; callback-spanning users retain ReadAuthoring and use the value overload.
+/// @pre 戻り値は次の編集や再読込までの借用。コールバックをまたぐ場合は ReadAuthoring の戻り値を保持し、値を受け取るオーバーロードを使う。
 const std::vector<float>* FindMaterialParam(const MaterialAsset& asset, std::string_view name)
 {
     return FindMaterialParam(asset.Authoring(), name);

@@ -1,5 +1,5 @@
 /// @file    WaterfallRuntime.hpp
-/// @brief   Waterfall mesh and water surface update boundaries.
+/// @brief   滝のメッシュと水面の更新境界。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #pragma once
@@ -7,12 +7,12 @@
 namespace fbzz::scene {
 class Scene;
 
-/// @note World-space displacement bound shared by vertex animation and mesh culling.
+/// @note 頂点アニメーションとメッシュカリングで共有するワールド空間の変位上限。
 inline constexpr float WATERFALL_VERTEX_MARGIN = 0.36f;
 
-/// @brief Prepare connected geometry and reusable effect children before procedural mesh uploads.
+/// @brief 手続きメッシュを転送する前に、接続形状と再利用できる子の演出を準備する。
 void UpdateWaterfallRuntime(Scene& scene, float dt);
 
-/// @brief Rebuild live wave constraints from the successfully prepared waterfall connections.
+/// @brief 準備できた滝の接続から、実行時の波の拘束条件を再構築する。
 void PrepareWaterfallSeams(Scene& scene);
 } /// @note namespace fbzz::scene

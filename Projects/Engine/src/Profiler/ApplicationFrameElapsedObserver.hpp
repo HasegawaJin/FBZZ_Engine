@@ -1,5 +1,5 @@
 /// @file    ApplicationFrameElapsedObserver.hpp
-/// @brief   Main-thread-only passive frame boundary values and deterministic accumulation.
+/// @brief   メインスレッド専用の受動的なフレーム境界の記録と決定的な時間の集計。
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
@@ -43,10 +43,10 @@ struct ApplicationFrameElapsedSnapshot {
 static_assert(std::is_trivially_copyable_v<ApplicationFrameElapsedSnapshot>);
 static_assert(std::is_standard_layout_v<ApplicationFrameElapsedSnapshot>);
 
-/// @note Pure timestamp inputs are the production accumulator contract; this type owns no clock or allocation.
+/// @note 本番の集計処理が受け取るのはタイムスタンプ値だけ。この型は時計も動的な作業領域も所有しない。
 class ApplicationFrameElapsedObserver {
 public:
-    /// @return Reserved next-boundary session, or zero on session exhaustion.
+    /// @return 次のフレーム境界用に予約したセッション ID。使い切った場合は 0。
     uint64_t Arm()
     {
         if (m_nextSession == (std::numeric_limits<uint64_t>::max)()) return 0;
@@ -119,7 +119,7 @@ private:
     bool m_active = false, m_open = false, m_stopPending = false, m_havePrevious = false;
 };
 
-/// @pre All bridge calls are on the application main thread; state remains inside FBZZEngine.dll.
+/// @pre ブリッジの呼び出しはアプリケーションのメインスレッドに限る。状態は FBZZEngine.dll 内に保持する。
 [[nodiscard]] FBZZ_ENGINE_API uint64_t ArmApplicationFrameElapsedObserver();
 FBZZ_ENGINE_API void RequestStopApplicationFrameElapsedObserver();
 [[nodiscard]] FBZZ_ENGINE_API ApplicationFrameElapsedSnapshot ReadApplicationFrameElapsedObserver();

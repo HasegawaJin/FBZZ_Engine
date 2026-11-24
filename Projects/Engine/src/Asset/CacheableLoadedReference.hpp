@@ -11,13 +11,13 @@
 #include <string_view>
 
 namespace fbzz::asset::detail {
-/// @note Call only after a successful load. Runtime Assets paths decoded from GUIDs retain indexed identity until revision/asset-generation changes.
-/// @note Relative fallbacks, unindexed files and alternate spellings keep normal filesystem precedence; no negative result is retained.
+/// @note 読込成功後にのみ呼ぶ。GUID から解決した実行時の Assets パスは、版またはアセット世代が変わるまで索引上の識別を維持する。
+/// @note 相対参照の代替解決、未登録ファイル、別表記では従来のファイルシステムの優先順位を使う。失敗結果は保持しない。
 /// @see Docs/design/instanced-mesh.md
 inline bool IsCacheableLoadedReference(const std::string& reference, std::string_view resolvedPath = {},
     std::string* cachedPath = nullptr)
 {
-    /// @note Startup-only polling mode supports filesystem-driven hosts without index notifications and same-binary profiling.
+    /// @note 起動時だけ選べるポーリングは、索引通知のないファイル駆動型ホストと同一バイナリでの計測に使う。
     static const bool polling = [] {
         const auto* mode = std::getenv("FBZZ_LOADED_REFERENCE_MODE");
         return mode && std::string_view(mode) == "poll";

@@ -73,4 +73,4 @@ struct VFXBeamComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -1,5 +1,5 @@
 /// @file    GraphicsStandaloneTests.cpp
-/// @brief   Engine をリンクせず Graphics のパイプラインと GPU 描画を検証する。
+/// @brief   Scene を使わず Graphics のパイプラインと GPU 描画を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #include <TestKit/TestKit.hpp>
@@ -379,7 +379,7 @@ TEST_F(GraphicsStandaloneTest, CubeFacesKeepDepthAcrossRebindsAndClearEachSelect
     EXPECT_EQ(diagnostics.failures, 0u);
 }
 
-/// @brief Draws and reads back without engine.
+/// @brief シーンを用意せず、Graphics に提出した描画命令から期待する画素を読み戻せることを検証する。
 TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
 {
     struct ComScope {
@@ -410,6 +410,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
     EXPECT_TRUE(capabilities.bindless);
     {
         renderer::ResourceManager resources(device);
+        /// @note 頂点シェーダーが SV_VertexID から三角形の位置を作るので、メッシュや頂点バッファの準備は不要。
         const auto shader = resources.LoadShader(FBZZ_GRAPHICS_SMOKE_SHADER);
         const auto target = resources.CreateRenderTarget(64, 64);
         const auto state = resources.CreatePipelineState({renderer::RasterizerMode::SOLID,
@@ -420,6 +421,7 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
             resources.AdvanceFrame();
             device.BeginFrame();
             device.SetRenderTarget(target, resources);
+            /// @note 三角形が覆わない画素を黒で初期化し、描画後に背景が残っているかも調べる。
             device.Clear({0, 0, 0, 1});
             renderer::DrawCall draw;
             draw.shader = shader;
@@ -430,11 +432,13 @@ TEST_F(GraphicsStandaloneTest, DrawsAndReadsBackWithoutEngine)
             device.SetRenderTarget({}, resources);
             device.EndFrame();
             FBZZ_LOG_INFO("GraphicsStandalone: frame ended");
+            /// @note 提出した描画の結果を、行優先の線形 RGBA として CPU へ読み戻す。
             std::vector<float> pixels;
             uint32_t width = 0, height = 0;
             const bool captured = device.CaptureRenderTargetToLinearRGBA(target, resources, pixels, width, height);
             EXPECT_TRUE(captured);
             if (captured && width == 64 && height == 64 && pixels.size() == 64 * 64 * 4) {
+                /// @note 中央は三角形の内側、左上は背景。各画素は RGBA の4成分なので添字を4倍する。
                 EXPECT_GT(pixels[(32 * 64 + 32) * 4], 0.9f);
                 EXPECT_LT(pixels[(32 * 64 + 32) * 4 + 1], 0.1f);
                 EXPECT_LT(pixels[0], 0.1f);

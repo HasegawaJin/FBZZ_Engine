@@ -121,4 +121,4 @@ struct SpringBoneComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

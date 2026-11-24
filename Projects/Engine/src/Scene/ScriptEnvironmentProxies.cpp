@@ -40,12 +40,12 @@ WaterComponent* SelfWater(const Script* script)
     return SelfComponent<WaterComponent>(script);
 }
 
-/// @brief Resolve the active shared surface while retaining the requesting component as the fallback.
-/// @param script Script whose GameObject owns the WaterComponent.
+/// @brief 有効な共有水面を解決し、共有水面がなければ要求元のコンポーネントを使う。
+/// @param script 呼び出し元。所属する GameObject が WaterComponent を所有する。
 /// @param sceneContext 非所有のScript実行Scene。nullptrなら自水面を使う。
-/// @param water Receives the standalone surface or Zone owner component.
-/// @param object Receives the corresponding surface GameObject.
-/// @return False when the requested component or resolved surface no longer exists.
+/// @param water 単独の水面またはゾーンを所有するコンポーネントを受け取る。
+/// @param object 解決した水面の GameObject を受け取る。
+/// @return 要求元のコンポーネントまたは解決先の水面が存在しなければ false。
 
 bool ResolveScriptWaterSurface(Script* script, Scene* sceneContext, WaterComponent*& water, GameObject*& object)
 {
@@ -113,7 +113,7 @@ FlowFieldSettings* SelfPrimaryForce(const Script* script)
 }
 
 
-} /// @note namespace
+}
 float ScriptWaterProxy::GetSurfaceHeightWorld(float worldX, float worldZ, float time) const
 {
     if (!script || !script->m_scene) return 0.0f;
@@ -627,4 +627,4 @@ void ScriptWindProxy::SetPulseFrequency(float frequency) const
 }
 
 
-} /// @note namespace fbzz::scene
+}

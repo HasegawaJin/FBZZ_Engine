@@ -36,7 +36,7 @@ NavMeshPatrolPointSnapshot ResolveScriptPatrolPoints(
     return ResolveNavMeshPatrolPoints(scene, owner, patrol, ScriptControlPointReadContext());
 }
 
-/// @brief Resolve a Line's selected numeric source after synchronizing its referenced transforms.
+/// @brief 参照先の Transform を同期してから、Line の選択中の数値入力を解決する。
 
 bool MaterializePatrolPoints(const NavMeshPatrolPointSnapshot& snapshot,
     std::vector<math::Vector3>& positions, std::vector<float>& waitTimes,
@@ -61,7 +61,7 @@ bool MaterializePatrolPoints(const NavMeshPatrolPointSnapshot& snapshot,
 }
 
 
-} /// @note namespace
+}
 #undef GIZMO_ASSERT
 
 /// @name ScriptNavigationProxy 実装
@@ -448,4 +448,4 @@ bool ScriptPatrolProxy::GetWaypoint(size_t index, math::Vector3& position) const
 /// @note 各メソッドで 1 行ずつ引く。
 
 
-} /// @note namespace fbzz::scene
+}

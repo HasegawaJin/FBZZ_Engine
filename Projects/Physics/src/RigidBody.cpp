@@ -44,6 +44,7 @@ void RigidBody::ApplyForceAtPoint(const math::Vector3& force,
 {
     if (force.LengthSq() > 1e-12f) WakeUp();
     m_force  += ApplyPositionFreeze(force, math::Vector3::ZERO);
+    /// @note 重心から作用点までの腕と力の外積が回転させる強さになる。力の作用線が重心を通ると、同じ力でも回転は生じない。
     m_torque += math::Vector3::Cross(worldPoint - m_position, force);
     m_torque = ApplyRotationFreeze(m_torque);
 }
@@ -160,6 +161,7 @@ void RigidBody::Integrate(float dt)
     {
         /// @note 線形運動は半陰的オイラーで積分する。速度を先に更新するため単純な陽的オイラーより安定する。
         /// @note m_force には World が事前に重力・Volume・制約力を ApplyForce 済み。
+        /// @note 力に逆質量を掛けると加速度になる。今回の秒数で速度を更新し、その新しい速度で位置を進める。
         m_velocity += m_force * m_invMass * dt;
         m_velocity = m_velocity * (1.0f / (1.0f + std::max(m_linearDrag, 0.0f) * dt));
         m_velocity = ApplyPositionFreeze(m_velocity, math::Vector3::ZERO);

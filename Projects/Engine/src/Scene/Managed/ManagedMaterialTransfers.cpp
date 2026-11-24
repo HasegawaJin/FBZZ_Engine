@@ -30,7 +30,7 @@ struct ManagedMaterialTransfers::Impl {
         bool captured = false;
         MaterialSlot::AuthoringSnapshotPtr slotOwner;
     };
-    /// @note Reacquire by stable entity/birth after importer/reflection callbacks; no old GameObject/component/slot borrow is used.
+    /// @note インポーターやリフレクションのコールバック後は、変わらない Entity と生成時の識別情報で引き直す。以前に借りた GameObject、コンポーネント、スロットは使わない。
     static ManagedBridgeStatus ValidateOwner(Scene& scene, const Record& record, MaterialComponent*& material, bool opening = false)
     {
         if (record.scene != scene.GetRenderSceneGeneration()) return ManagedBridgeStatus::INVALID_SCOPE;
@@ -117,7 +117,7 @@ ManagedBridgeStatus ManagedMaterialTransfers::Run(Scene& scene, GameObject& targ
             if (!record.read || bytes.size() != 24 || !rawReply || (count && !request.output)) return ManagedBridgeStatus::INVALID_ARGUMENT;
             const uint32_t needed = count * static_cast<uint32_t>(sizeof(double));
             if (request.outputCapacity < needed) { rawReply->outputBytes = needed; return ManagedBridgeStatus::BUFFER_TOO_SMALL; }
-            /// @note Own reflection inputs across native callbacks; count-only opens still defer conversion until the first page.
+            /// @note ネイティブのコールバックをまたぐリフレクション入力は所有する。件数だけを取得して開いた場合も、最初のページまで変換を遅らせる。
             if (needed && !record.captured) {
                 const auto ownedRecord = record;
                 std::vector<double> capturedValues;
@@ -161,4 +161,4 @@ ManagedBridgeStatus ManagedMaterialTransfers::Run(Scene& scene, GameObject& targ
 void ManagedMaterialTransfers::CancelOwner(uint64_t owner) { std::erase_if(m_impl->records, [owner](const auto& pair) { return pair.second.owner == owner; }); }
 void ManagedMaterialTransfers::RetireGeneration(uint64_t generation) { std::erase_if(m_impl->records, [generation](const auto& pair) { return pair.second.generation == generation; }); }
 void ManagedMaterialTransfers::EndCall(uint64_t call) { std::erase_if(m_impl->records, [call](const auto& pair) { return pair.second.call == call; }); }
-} /// @note namespace fbzz::scene::managed_detail
+}

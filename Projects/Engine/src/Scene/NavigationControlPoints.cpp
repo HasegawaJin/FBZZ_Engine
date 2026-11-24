@@ -1,5 +1,5 @@
 /// @file    NavigationControlPoints.cpp
-/// @brief   Resolve navigation control-point authoring and static bake inputs.
+/// @brief   ナビゲーションの制御点設定と静的ベイク入力を解決する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
@@ -211,7 +211,7 @@ void HashOffMeshRaw(std::uint64_t& hash, const NavMeshOffMeshLinkComponent& link
     }
 }
 
-} /// @note namespace
+}
 
 NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPointAuthoring(
     Scene& scene, EntityID ownerId, const NavMeshPatrolComponent& patrol,
@@ -372,7 +372,7 @@ NavMeshPatrolPointSnapshot ResolveNavMeshPatrolPoints(
         snapshot.valid = false;
         return snapshot;
     }
-    /// @note Authoring reads retain source values after the saved bake has passed its existing validation.
+    /// @note 保存済みベイクが既存の検証を通った後も、オーサリング用の参照では元の値を返す。
     if (context == ControlPointReadContext::AUTHORING) {
         if (snapshot.valid && snapshot.bakeStale)
             snapshot.status = NavigationControlPointStatus::STALE_BAKE;
@@ -453,4 +453,4 @@ bool ValidateStaticNavMeshPatrolBakes(Scene& scene)
     return valid;
 }
 
-} /// @note namespace fbzz::scene
+}

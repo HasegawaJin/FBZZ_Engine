@@ -34,6 +34,7 @@ Quaternion FromDominantDiagonal(const Vector3& right, const Vector3& up, const V
 }
 
 Quaternion Quaternion::FromAxisAngle(const Vector3& axis, float angleRad) {
+    /// @note 回転は q とその逆で向きを両側から変換する。角度 θ の回転は、軸に sin(θ/2) を掛けた 3 成分と cos(θ/2) で表す。
     const float halfAngle = angleRad * 0.5f;
     const float sinHalfAngle = std::sin(halfAngle);
     const float cosHalfAngle = std::cos(halfAngle);
@@ -147,6 +148,7 @@ Quaternion Quaternion::Slerp(const Quaternion& a, const Quaternion& b, float t) 
 
     const float theta = std::acos(dot);
     const float sinTheta = std::sin(theta);
+    /// @note 二つの姿勢を結ぶ円弧上で、進んだ角度が t × θ になる重み。t が同じだけ増えるたびに同じ角度だけ回る。
     const float startWeight = std::sin((1.0f - t) * theta) / sinTheta;
     const float endWeight = std::sin(t * theta) / sinTheta;
 

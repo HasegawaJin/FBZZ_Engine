@@ -83,4 +83,4 @@ inline bool LimitStandingPose(const std::vector<RagdollBonePose>& targets,
     return true;
 }
 
-} // namespace fbzz::scene
+}

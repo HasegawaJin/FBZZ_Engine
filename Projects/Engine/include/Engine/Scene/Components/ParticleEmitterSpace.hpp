@@ -47,4 +47,4 @@ inline math::Vector3 InverseTransformEmitterVector(const Transform& transform, c
     return transform.worldRotation.Inverse() * worldVector;
 }
 
-} // namespace fbzz::scene
+}

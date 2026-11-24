@@ -68,18 +68,18 @@ struct TerrainComponent {
     /// @note 穴は三角形を作らないことで表す。描画・物理・NavMesh・Fiber が同じ配列を見る。
     std::vector<std::uint8_t> holeData;
 
-    /// @note Additional terrain-local triangles share the terrain transform, collider and persistence.
-    /// @note Winding faces the empty side: cave floors up, ceilings down. Holes remove the entrance heightfield.
+    /// @note 地形ローカルの追加三角形は、地形の Transform、コライダーと永続化を共有する。
+    /// @note 三角形の巻き順は空間側を向ける。洞窟の床は上、天井は下。穴で入口の高さ場を除く。
     std::vector<math::Vector3> surfacePositions;
     std::vector<uint32_t> surfaceIndices;
-    /// @note Empty uses terrain layers; a .mat overrides the added surface with one triplanar layer.
+    /// @note 空の場合は地形レイヤーを使い、.mat を指定すると追加面を単一のトライプラナー層で上書きする。
     std::string surfaceMaterial;
 
     /// @brief Assets/Terrain/*.terrain への参照。空文字ならシーン / Prefab 内に地形データを直接保存する。
     std::string terrainAssetPath;
 
     /// @brief 層ごとの .mat。添字がスプラットの番号になる。
-    /// @note fzmat keys: diffuse/normal/ao_roughness/height/tilingX/tilingZ/normalStrength/roughness/
+    /// @note fzmat のキーは diffuse/normal/ao_roughness/height/tilingX/tilingZ/normalStrength/roughness/
     /// @note ambientOcclusion/heightBlend/triplanar/triplanarSharpness/macroScale/macroStrength/
     /// @note autoBlendEnabled/autoBlendStrength/autoMinHeight/autoMaxHeight/autoHeightFade/
     /// @note autoMinSlope/autoMaxSlope/autoSlopeFade
@@ -110,9 +110,9 @@ struct TerrainComponent {
         bool heightChanged = true;
         bool topologyChanged = false;
     } heightPreview;
-    /// @note Layer/hole authoring invalidates grass independently of water depth and collider revisions.
+    /// @note レイヤー・穴の編集は、水深やコライダーの版とは独立して草のキャッシュを無効化する。
     uint64_t vegetationRevision = 1;
-    /// @note The last published rectangle stays available to other renderer caches at the same base revision.
+    /// @note 最後に公開した矩形を保持し、同じ基準版の他の描画キャッシュからも利用できるようにする。
     struct SplatPreview {
         TerrainHeightRegion region;
         uint64_t baseRevision = 0, revision = 0;
@@ -171,7 +171,7 @@ struct TerrainComponent {
     /// @param localX テレインローカル座標 X (Transform 適用前)。
     /// @param localZ テレインローカル座標 Z (Transform 適用前)。
     /// @note 範囲外はクランプして継続する (Physics・足 IK から呼ばれるため assert しない)。穴でも高さを返す。
-    /// @note Legacy heightfield authoring sample; ignores holes and added surfaces. Use TerrainSurfaceQuery for occupancy.
+    /// @note 従来の高さ場の編集用サンプル。穴と追加面を含む占有判定には TerrainSurfaceQuery を使う。
     FBZZ_ENGINE_API float GetHeightAt(float localX, float localZ) const;
 
     /// @brief 有限差分で計算した法線をバイリニア補間して返す。
@@ -217,13 +217,13 @@ struct TerrainComponent {
     /// @pre region は現在の高さ場の範囲内。寸法・穴・追加メッシュが変わるときは全体を失効させる。
     /// @note ドラッグ中は描画を更新し、コライダーはストローク確定側で失効させる。
     void RequestHeightPreview(const TerrainHeightRegion& region) { RequestSurfacePreview(region, true, false); }
-    /// @pre Inclusive cell rectangle within the current grid. Collision is invalidated by the stroke commit.
+    /// @pre 現在の格子範囲内のセル矩形で、両端を含むこと。ストロークの確定時に衝突データを無効化する。
     void RequestHolePreview(const TerrainHeightRegion& cells)
     {
         if (!cells.Empty()) RequestSurfacePreview({cells.minX, cells.minZ, cells.maxX + 1, cells.maxZ + 1}, false, true);
     }
     void RequestSplatRebuild() { splatDirty = true; splatPreview = {}; }
-    /// @note Inclusive vertex XZ rectangle. Whole-grid writers use RequestSplatRebuild, including when merging with a preview.
+    /// @note 両端を含む頂点 XZ 矩形。プレビューとの統合を含め、格子全体を更新する場合は RequestSplatRebuild を使う。
     void RequestSplatPreview(const TerrainHeightRegion& region)
     {
         if (splatDirty || region.Empty()) return;
@@ -235,10 +235,10 @@ struct TerrainComponent {
     /// @note 穴は三角形の有無なので、描画メッシュとコライダーを作り直す。
     void RequestHoleRebuild() { RequestHeightRebuild(); }
 
-    /// @return Invalid geometry leaves the current surface and revisions unchanged. Empty arrays remove it.
+    /// @return 不正な形状では現在の表面と各版を維持する。空の配列は追加面を削除する。
     FBZZ_ENGINE_API bool SetSurfaceGeometry(std::vector<math::Vector3> positions, std::vector<uint32_t> indices,
         std::string material = {});
-    /// @note Direct surface array edits must call this; renderer, collider and water bounds share the revision.
+    /// @note 追加面の配列を直接編集した後に呼ぶ。描画、コライダーと水面境界が同じ版を参照する。
     void RequestSurfaceRebuild() { RequestHeightRebuild(); }
 
     FBZZ_ENGINE_API bool SetHeightAtGrid(int x, int z, float worldHeight);
@@ -270,4 +270,4 @@ private:
     }
 };
 
-} /// @note namespace fbzz::scene
+}

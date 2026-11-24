@@ -82,7 +82,7 @@ struct BodyEntry {
     float approachSpeed = 0;
     bool hasContact = false;
 };
-} /// @note namespace
+}
 
 struct WaterInteractionSceneStore {
     uint64_t generation = 0;
@@ -96,7 +96,7 @@ struct WaterInteractionSceneStore {
 };
 
 namespace {
-/// @note The index is weak; Water runtime and its active Cleanup System own the store, never the Scene or a Physics callback.
+/// @note 索引は弱参照を持つ。格納領域は Water の実行時状態と稼働中の Cleanup システムが所有する。
 std::unordered_map<uint64_t, std::weak_ptr<WaterInteractionSceneStore>> s_stores;
 
 std::shared_ptr<WaterInteractionSceneStore> ExistingStore(const Scene& scene)
@@ -242,7 +242,7 @@ void Publish(WaterInteractionRuntime& runtime)
     runtime.snapshot = std::move(frame);
 }
 
-/// @note The mixed foam/bubble emitter may occupy the surface band; sediment remains inside the physical water volume.
+/// @note 泡と気泡を混ぜるエミッターは水面帯に置ける。堆積物は物理的な水域の内部に限る。
 void PruneParticles(Scene& scene, EntityID owner, bool sediment, float dt,
     const WaterInteractionEmitterState& emitterState)
 {
@@ -266,13 +266,13 @@ void PruneParticles(Scene& scene, EntityID owner, bool sediment, float dt,
         WaterSurfaceSample sample;
         if (!TrySampleWaterSurfaceWorld(*water, pose, noSceneFields, particle.position, Time::time,
                 sample, WaterSurfaceReadView::SIMULATION)) return true;
-        /// @note Scene fields act once through ParticleSimulator's receiveFlowFields; only the Water/Spline carrier translates positions here.
+        /// @note シーンの場は ParticleSimulator の receiveFlowFields で一度だけ適用する。ここで位置を移動するのは Water/Spline の流れだけ。
         particle.position = particle.position + sample.flowVelocity * dt;
         return !allowed(particle.position);
     });
     std::erase_if(emitter->runtime.injectedSpawns, [&](const auto& spawn) { return !allowed(spawn.position); });
 }
-} /// @note namespace
+}
 
 void WaterInteractionSettings::Reflect(IReflector& reflector)
 {
@@ -543,4 +543,4 @@ void WaterInteractionSystem::Update(SystemContext& context)
             || !store->owners.contains(Key(body.owner));
     });
 }
-} /// @note namespace fbzz::scene
+}

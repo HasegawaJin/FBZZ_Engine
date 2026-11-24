@@ -24,7 +24,7 @@
 
 namespace fbzz::scene {
 
-/// @brief Owned mutable drafts are distinct from each published const slot snapshot.
+/// @brief 編集中の可変データを、公開済みの不変スロットスナップショットから独立して所有する。
 struct MaterialSlotAuthoring {
     asset::AssetHandle<asset::MaterialAsset> materialAsset;
     std::string materialPath;
@@ -64,7 +64,7 @@ struct EffectiveMaterialTemplate;
 class EffectiveMaterialCache;
 }
 
-/// @note Transient bindings never enter authoring snapshots or Scene copies; resource identity protects reset and handle reuse.
+/// @note 一時バインディングは設定スナップショットやシーンの複製に含めない。資源 ID でリセットとハンドル再利用を識別する。
 struct RuntimeMaterialTexture {
     renderer::ResourceHandle<renderer::TextureTag> texture;
     uint64_t resourceOwner = 0;
@@ -72,14 +72,14 @@ struct RuntimeMaterialTexture {
     std::string propertyName;
 };
 
-/// @note Slot authoring is private; runtime Material remains uniquely owned and is refreshed on every synchronization.
+/// @note スロット設定は非公開。実行時の Material は単独所有し、同期のたびに更新する。
 struct MaterialSlot {
 public:
     using AuthoringState = asset::detail::MaterialAuthoringState<MaterialSlotAuthoring>;
     using AuthoringSnapshot = AuthoringState::Snapshot;
     using AuthoringSnapshotPtr = AuthoringState::SnapshotPtr;
     using AuthoringEdit = AuthoringState::Edit;
-    /// @note Live selection/gating is evaluated on every Sync/SlotAt; it is deliberately outside the effective CPU template.
+    /// @note 現在の選択と有効条件は Sync や SlotAt ごとに評価するため、実効 CPU テンプレートには含めない。
     bool visible = true;
     std::unique_ptr<renderer::Material> material;
     std::unordered_map<std::string, RuntimeMaterialTexture> runtimeTextureOverrides;
@@ -89,7 +89,7 @@ public:
 
     MaterialSlot() = default;
     ~MaterialSlot() = default;
-    /// @note Copy keeps values but creates a new edit/cache identity and does not copy GPU ownership.
+    /// @note コピーは設定値を引き継ぎ、編集とキャッシュ用の ID を新たに割り当てる。GPU 資源の所有権はコピーしない。
     MaterialSlot(const MaterialSlot& other)
         : visible(other.visible), material(other.material ? std::make_unique<renderer::Material>(other.material->CloneWithoutGpuResources()) : nullptr),
           propertyNameCache(other.propertyNameCache), m_authoring(other.m_authoring),
@@ -138,7 +138,7 @@ public:
     }
 
     [[nodiscard]] AuthoringSnapshotPtr ReadAuthoring() const { return m_authoring.Read(); }
-    /// @pre Retain ReadAuthoring() when the reference must survive a mutation or callback.
+    /// @pre 変更やコールバックをまたいで参照を使う場合は ReadAuthoring() の戻り値を保持すること。
     [[nodiscard]] const MaterialSlotAuthoring& Authoring() const
     {
         const auto* snapshot = m_authoring.View();
@@ -155,8 +155,8 @@ public:
             (m_resolvedReferenceRevision == m_referenceRevision ? m_resolvedAsset : asset::AssetHandle<asset::MaterialAsset>{});
     }
 
-    /// @note Explicit editor/reimport refresh invalidates derived bindings without pretending that authoring values changed.
-    /// @pre The owner remains alive for this call; native release is last and no member is accessed after it.
+    /// @note エディターでの明示更新や再インポートでは、設定値を変更せず派生バインディングを無効化する。
+    /// @pre 呼び出し中は所有者が生存すること。ネイティブ資源の解放は最後に行い、その後はメンバーに触れない。
     void InvalidateResolvedMaterialReference()
     {
         m_resolvedAsset = {}; m_resolvedReferenceRevision = 0;
@@ -166,7 +166,7 @@ public:
         material.reset();
     }
 
-    /// @pre This individual slot remains alive and stationary throughout importer callbacks. Use MaterialComponent's indexed resolver for movable slots.
+    /// @pre インポーターのコールバック中も、このスロットが生存しアドレスが変わらないこと。移動し得るスロットは MaterialComponent のインデックス指定で解決する。
     bool EnsureMaterialAsset()
     {
         if (GetMaterialAsset().IsValid()) return true;
@@ -177,7 +177,7 @@ public:
         return PublishResolvedMaterialAsset(snapshot, revision, handle);
     }
 
-    /// @note A changed path clears explicit/lazy binding and native validation; unchanged paths retain the existing binding.
+    /// @note パスが変わった場合だけ、明示・遅延バインディングとネイティブ資源の検証状態を破棄する。
     void SetMaterialPath(std::string path)
     {
         if (GetMaterialPath() == path) return;
@@ -266,7 +266,7 @@ public:
     }
 
 private:
-    /// @note No importer/native callback occurs here; a moved owner can publish only to its freshly reacquired identity.
+    /// @note ここではインポーターやネイティブのコールバックを呼ばない。移動した所有者は取得し直した ID にだけ公開できる。
     bool PublishResolvedMaterialAsset(const AuthoringSnapshotPtr& expected, uint64_t referenceRevision,
         asset::AssetHandle<asset::MaterialAsset> handle)
     {
@@ -289,7 +289,7 @@ private:
         }
         return result;
     }
-    /// @note Immediate setters run without callbacks on the authoring thread; a conflict violates that owner-thread contract.
+    /// @note 即時設定は編集スレッドでコールバックなしに行う。競合は所有スレッドの契約違反を示す。
     void CommitSetter(AuthoringEdit& edit)
     {
         const auto result = edit.Commit(*this);
@@ -306,11 +306,11 @@ private:
     friend struct MaterialComponent;
 };
 
-/// @note Slot zero is the base MaterialSlot; extra slots retain existing submesh fallback semantics.
+/// @note スロット 0 は基底の MaterialSlot。追加スロットには既存のサブメッシュ用フォールバックを適用する。
 struct MaterialComponent : MaterialSlot {
 public:
     MaterialComponent() = default;
-    /// @note Public live flags preserve generic reflection/managed trait behavior; they do not certify a template cache hit.
+    /// @note 公開フラグは共通リフレクションとマネージド特性から直接読み取る。テンプレートのキャッシュ照合には使わない。
     bool enabled = true;
     std::vector<MaterialSlot> extraSlots;
     [[nodiscard]] bool IsEnabled() const { return enabled; }
@@ -336,9 +336,9 @@ public:
         const MaterialSlot& slot = RawSlotAt(index);
         return !slot.IsVisible() || !slot.GetMaterialPath().empty() ? slot : *this;
     }
-    /// @pre The component remains alive throughout importer callbacks; its slots may move or be replaced.
+    /// @pre インポーターのコールバック中もコンポーネントは生存すること。スロット自体は移動・差し替えを許す。
     bool EnsureMaterialAsset(size_t index = 0) { return EnsureIndexedMaterialAsset(index, false); }
-    /// @note Managed explicit-slot and serialization operations preserve RawSlotAt selection.
+    /// @note マネージドの明示スロット指定とシリアライズでは RawSlotAt の選択規則を使う。
     bool EnsureRawMaterialAsset(size_t index) { return EnsureIndexedMaterialAsset(index, true); }
     void ResizeSlots(size_t count) { extraSlots.resize(count > 0 ? count - 1u : 0u); }
     void SetOnlyVisibleSlot(int index)
@@ -363,9 +363,9 @@ private:
         if (!snapshot || snapshot->Data().materialPath.empty()) return false;
         const uint64_t revision = (raw ? RawSlotAt(index) : SlotAt(index)).m_referenceRevision;
         const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(snapshot->Data().materialPath);
-        /// @note Load may relocate/replace extraSlots; no old slot pointer or reference survives it.
+        /// @note ロードで追加スロットが移動・差し替えされ得るため、ロード前のスロットのポインターや参照は保持しない。
         return (raw ? RawSlotAt(index) : SlotAt(index)).PublishResolvedMaterialAsset(snapshot, revision, handle);
     }
 };
 
-} /// @note namespace fbzz::scene
+}

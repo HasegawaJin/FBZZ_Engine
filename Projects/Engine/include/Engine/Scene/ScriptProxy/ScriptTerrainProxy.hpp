@@ -31,9 +31,9 @@ struct ScriptTerrainProxy {
     /// @see https://pbr-book.org/4ed/Geometry_and_Transformations/Applying_Transformations#Normals PBRT 3.10.3 Normals。
     FBZZ_ENGINE_API math::Vector3 GetNormalWorld(const math::Vector3& worldPos) const;
 
-    /// @return Nearest floor below reference in world metres. False leaves outs unchanged.
+    /// @return 基準より下で最も近い床 [ワールド m]。失敗時は false で出力は未変更。
     FBZZ_ENGINE_API bool TryGetFloorWorld(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
-    /// @return Nearest ceiling above reference in world metres. False leaves outs unchanged.
+    /// @return 基準より上で最も近い天井。失敗時は false で出力は未変更。
     FBZZ_ENGINE_API bool TryGetCeilingWorld(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
 
     FBZZ_ENGINE_API bool SetHeightAtGrid(int x, int z, float worldHeight) const;
@@ -51,4 +51,4 @@ struct ScriptTerrainProxy {
     FBZZ_ENGINE_API void RequestRebuild() const;
 };
 
-} /// @note namespace fbzz::scene
+}

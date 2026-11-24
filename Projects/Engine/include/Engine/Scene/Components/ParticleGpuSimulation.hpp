@@ -42,4 +42,4 @@ struct ParticleEmitterSettings;
 /// @note 担当者と AI 向けの説明。「なぜ落ちたか」と「どうすれば GPU に載るか」を含む。
 [[nodiscard]] FBZZ_ENGINE_API const char* ParticleGpuFallbackDescription(ParticleGpuFallbackReason reason);
 
-} /// @note namespace fbzz::scene
+}

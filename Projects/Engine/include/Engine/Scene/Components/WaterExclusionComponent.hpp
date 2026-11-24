@@ -1,5 +1,5 @@
 /// @file    WaterExclusionComponent.hpp
-/// @brief   Scene-authored oriented box that removes a selected water region.
+/// @brief   選択した水域の一部を取り除く、シーン設定の回転付きボックス。
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
 #pragma once
@@ -14,17 +14,17 @@
 
 namespace fbzz::scene {
 
-/// @brief A 3D box that carves a hole in matching Water surface and volume queries.
+/// @brief 対象水面と水中領域の照会から三次元ボックスの内部を除外する。
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/water-body-actors-in-unreal-engine#waterbodyexclusionvolume UE Water Body Exclusion Volume.
 struct WaterExclusionComponent {
     bool enabled = true;
     bool excludeAll = true;
     math::Vector3 size{4.0f, 4.0f, 4.0f};
     std::vector<EntityRef> waters;
-    /// @brief Runtime-only explanation of the last snapshot preparation result.
+    /// @brief 直近のスナップショット準備結果の実行時診断。
     std::string diagnostic;
 
-    /// @brief Expose the authored extent and typed water references to Inspector and persistence.
+    /// @brief 設定済みの範囲と型付き水面参照を Inspector と保存処理に公開する。
     void Reflect(IReflector& reflector)
     {
         reflector.Field("enabled", enabled);
@@ -40,8 +40,8 @@ struct WaterExclusionComponent {
         reflector.Readonly("status", diagnostic.empty() ? std::string{"Not prepared"} : diagnostic);
     }
 
-    /// @brief Return the registered display name.
+    /// @brief 登録済みの表示名を返す。
     [[nodiscard]] const char* GetTypeName() const { return "Water Exclusion"; }
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -20,6 +20,7 @@ std::size_t AlignSize(std::size_t size, std::size_t alignment)
         return size;
     }
 
+    /// @note 例えば境界が 8 バイトなら 7 を足して下位 3 ビットを消す。これで元のサイズ以上となる最小の 8 の倍数へ切り上がる。
     const std::size_t mask = alignment - 1;
     return (size + mask) & ~mask;
 }

@@ -41,7 +41,7 @@ struct ParticleInjectedSpawn {
     /// @brief 発火元のワールド速度 [m/s]。継ぐ割合は受け側の subEmitterInheritVelocity が決める。
     math::Vector3 velocity;
     int           count = 1;
-    /// @note Runtime-only CPU spawn override; zero retains the emitter's authored lifetime distribution.
+    /// @note CPU で生成する際の実行時専用の寿命上書き。0 では設定済みの寿命分布を使う。
     float         lifetime = 0.0f;
 };
 
@@ -884,7 +884,7 @@ struct ParticleEmitter {
         if (clear) ClearParticles();
     }
 
-    /// @note Requests are bounded by the authored pool capacity; excess requests are dropped this frame.
+    /// @note 生成要求は設定済みプール容量まで受け付ける。超過分はそのフレームで破棄する。
     void Burst(int count)
     {
         const int capacity = (std::max)(settings.maxParticles, 0);
@@ -924,4 +924,4 @@ struct ParticleEmitter {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

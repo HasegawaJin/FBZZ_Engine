@@ -1,5 +1,5 @@
 /// @file    BoneBakeSkinning.hpp
-/// @brief   Resolve scene-owned bone bakes into existing independent skinning requests.
+/// @brief   シーン所有のボーンベイクを既存の独立したスキニング要求に解決する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
@@ -18,7 +18,7 @@ struct BoneBakeSkinRequest {
     EntityID animatorEntity = EntityID::INVALID;
     uint64_t animatorLifetime = 0;
 };
-/// @note CPU packed palettes are retained until replay succeeds, then unused matrix transfers are removed.
+/// @note 再生が成功するまで CPU パレットを保持し、成功後に不要となった行列転送を除く。
 FBZZ_ENGINE_API void PrepareBakedSkinningRequests(RenderPassContext& context, std::span<const BoneBakeSkinRequest> requests);
 FBZZ_ENGINE_API void ReleaseBoneBakeSkinningCaches();
 }

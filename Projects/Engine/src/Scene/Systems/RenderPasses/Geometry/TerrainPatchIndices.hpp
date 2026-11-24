@@ -1,5 +1,5 @@
 /// @file    TerrainPatchIndices.hpp
-/// @brief   Keep shared patch borders at unit spacing while coarsening the interior and preserving holes.
+/// @brief   共有境界を元の間隔に保ち、穴を保持して内部だけを粗くする。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
@@ -9,8 +9,8 @@
 #include <vector>
 
 namespace fbzz::scene {
-/// @note Appends triangle-list indices into the unchanged full-resolution vertex grid; every LOD shares the same border polyline.
-/// @note Hole blocks retain unit cells; adjacent coarse blocks split their common edge to avoid internal T-junctions.
+/// @note 解像度を保った頂点格子に三角形インデックスを追加する。境界の折れ線は全 LOD で共有する。
+/// @note 穴がある区画は元のセル幅を保ち、粗い隣接区画との共有辺を分割して T 字接続を防ぐ。
 inline void BuildTerrainPatchLodIndices(const TerrainComponent& terrain,int x0,int z0,int x1,int z1,int step,std::vector<uint32_t>& output)
 {
     assert(step>0); const int width=x1-x0,height=z1-z0,stride=width+1;
@@ -32,7 +32,7 @@ inline void BuildTerrainPatchLodIndices(const TerrainComponent& terrain,int x0,i
                 if (!terrain.IsHoleCell(x0+cx,z0+cz)) quad(cx,cz,cx+1,cz+1);
             continue;
         }
-        /// @note A one-cell-wide strip has no interior fan vertex; retain unit quads and split its neighbor's shared edge.
+        /// @note 幅 1 セルの帯に内部頂点を置けないため、元の四角形を残して隣の粗いセルの共有辺を分割する。
         if (step==1 || endX-x==1 || endZ-z==1) {
             for (int cz=z;cz<endZ;++cz) for (int cx=x;cx<endX;++cx) quad(cx,cz,cx+1,cz+1);
             continue;
@@ -45,7 +45,7 @@ inline void BuildTerrainPatchLodIndices(const TerrainComponent& terrain,int x0,i
         const int centerX=x+(endX-x)/2,centerZ=z+(endZ-z)/2;
         const uint32_t center=index(centerX,centerZ);
         const auto triangle=[&](int ax,int az,int bx,int bz) {
-            /// @note Partial edge blocks may place the center on a border; omit zero-area XZ triangles, including vertical height folds.
+            /// @note 残余区画の中心が境界に載ることがあるため、鉛直な折り返しを含め XZ 面積がゼロの三角形を除く。
             const int area=(az-centerZ)*(bx-centerX)-(ax-centerX)*(bz-centerZ);
             if (area>0) output.insert(output.end(),{center,index(ax,az),index(bx,bz)});
         };

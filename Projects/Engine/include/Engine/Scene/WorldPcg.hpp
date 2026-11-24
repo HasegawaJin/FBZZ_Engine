@@ -1,5 +1,5 @@
 /// @file    WorldPcg.hpp
-/// @brief   Deterministic authored biome placement profiles and cell-split generation.
+/// @brief   制作時のバイオーム配置プロファイルとセル分割による決定的な生成。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #pragma once
@@ -21,9 +21,9 @@ struct WorldPcgRule {
     std::string key, name, biome, prototypeRef;
     std::vector<asset::InstanceMeshPart> parts;
     std::vector<float> lodHeights{0.2f, 0.08f, 0.02f, 0.0f};
-    /// @note Spacing and noise scale use world metres; slope and yaw use degrees.
+    /// @note 間隔とノイズの尺度は [ワールド m]、傾斜とヨーは [度]。
     float spacing = 8.0f, density = 1.0f;
-    /// @note Strength blends uniform density toward smooth, world-anchored value-noise density.
+    /// @note 強度は一様密度からワールド座標に固定した滑らかな値ノイズによる密度への補間量。
     float noiseScale = 128.0f, clusterStrength = 0.0f;
     float minHeight = -100000.0f, maxHeight = 100000.0f;
     float minSlope = 0.0f, maxSlope = 45.0f;
@@ -32,12 +32,12 @@ struct WorldPcgRule {
     float minYaw = 0.0f, maxYaw = 360.0f;
     bool alignToSurface = false;
     bool includeHlod = true;
-    /// @note Embedding follows the negative surface normal; protected distance is measured in world XZ.
+    /// @note 埋め込みは面法線の逆方向。保護距離はワールド XZ で測る。
     float embedDepth = 0.0f, protectedDistance = 0.0f;
-    /// @note A shared patchGroup and noiseScale sample the same world-anchored habitat mask.
+    /// @note patchGroup と noiseScale を共有するルールはワールド座標に固定した同じ生息地マスクを読む。
     std::string patchGroup;
     float minPatch = 0.0f, maxPatch = 1.0f;
-    /// @note Distances use world XZ metres. Zero disables spacing, water fade, or the neighbor upper bound.
+    /// @note 距離は [ワールド XZ m]。0 は間隔、水面フェード、隣接距離の上限をそれぞれ無効にする。
     float minSpacing = 0.0f, waterFade = 0.0f;
     std::string neighborRule;
     float minNeighborDistance = 0.0f, maxNeighborDistance = 0.0f;
@@ -45,29 +45,29 @@ struct WorldPcgRule {
     std::string includeMaterial, excludeMaterial, competitionGroup;
     float minMaterialWeight = 0.25f, excludeMaterialWeight = 0.35f;
     float competitionRadius = 0.0f, competitionPriority = 0.0f;
-    /// @note Tapers are inside their allowed ranges. Height uses world metres; slope and aspect use degrees.
+    /// @note フェードは各許容範囲の内側にかかる。高さは [ワールド m]、傾斜と方位角は [度]。
     float heightFade = 0.0f, slopeFade = 0.0f;
-    /// @note Downhill headings turn from +Z toward +X. Half-angle 180 disables the aspect filter.
+    /// @note 下り方向の角度は +Z から +X に向けて増える。半角 180 度で方位フィルターを無効にする。
     float aspectHeading = 0.0f, aspectHalfAngle = 180.0f, aspectMinSlope = 3.0f, aspectFade = 0.0f;
-    /// @note Source tags index emitted roots, including only the placements surviving the cell cap.
+    /// @note ソースタグは生成したルートに対応し、セルの上限を適用した後の配置だけを含む。
     std::string canopySourceGroup, canopyGroup;
     float canopyRadius = 0.0f;
     int minCanopyCount = 0, maxCanopyCount = -1;
     bool scaleCompetitionRadius = false;
-    /// @note Signed water offsets and relief are in world metres. Negative water offsets are submerged.
+    /// @note 符号付き水面差と比高は [ワールド m]。負の水面差は水中を示す。
     bool useWaterLevel = false;
     float minWaterOffset = -1000000.0f, maxWaterOffset = 1000000.0f;
     float minNearRelief = -1000000.0f, maxNearRelief = 1000000.0f;
     float minFarRelief = -1000000.0f, maxFarRelief = 1000000.0f;
     float maxCliffDistance = 0.0f, cliffFarScale = 0.45f;
     float minPathDistance = 0.0f, maxPathDistance = 1000000.0f, pathFade = 0.0f;
-    /// @note Scale uses lerp(minScale,maxScale,u^scaleBias); values above one favor small stones. One preserves legacy sampling.
+    /// @note スケールは lerp(minScale,maxScale,u^scaleBias)。1 より大きいと小石が増え、1 で従来のサンプリングを維持する。
     float scaleBias = 1.0f;
-    /// @note Adds a stable [0,embedJitter] displacement to embedDepth in world metres, independent of scale and density.
+    /// @note スケールと密度に依存せず、embedDepth に決定的な変位 [0,embedJitter] をワールドメートルで加える。
     float embedJitter = 0.0f;
-    /// @note Feathers density inside the signed water-height band in world metres; requires useWaterLevel.
+    /// @note 符号付き水位帯 [ワールド m] の内側で密度を徐々に変える。useWaterLevel が必要。
     float waterLevelFade = 0.0f;
-    /// @note Aligns +Y with the surface and +Z downhill, with a seeded angular spread in degrees. Flat sites retain authored yaw.
+    /// @note +Y を面法線、+Z を下り方向に揃え、シードで決まるばらつき角 [度] を適用する。平地では制作時のヨーを保つ。
     bool alignDownslope = false;
     float downslopeJitter = 0.0f;
 
@@ -79,15 +79,15 @@ struct WorldPcgRule {
 struct WorldPcgProfile {
     std::string key = "WorldPcg", name;
     WorldCellGrid grid;
-    /// @note Bounds own embedded root positions in half-open world XZ intervals; their Y components are ignored.
+    /// @note 埋め込み後のルート位置がワールド XZ の半開区間内にあるかで所属を決める。Y は使わない。
     WorldCellBounds bounds{{0,0,0},{256,0,256}};
     uint64_t seed = 1;
     uint32_t maxInstances = 100000;
     uint64_t maxCandidates = 1000000;
     std::vector<WorldPcgRule> rules;
-    /// @note Exclusion boxes are closed world XYZ intervals, including their boundary.
+    /// @note 除外ボックスは境界を含むワールド XYZ の閉区間。
     std::vector<WorldCellBounds> exclusions;
-    /// @note Aggregate cap across rules in each 128 m XZ cell at grid.origin; zero disables the cap.
+    /// @note grid.origin を基準とする各 128 m の XZ セルで、全ルールを合わせた上限。0 で無効。
     uint32_t maxPlacementsPerCell = 0;
     std::string pathMaterial;
 };
@@ -102,9 +102,9 @@ struct WorldPcgSurfaceSample {
     float waterDistance = 1000000.0f, biomeDensity = 1.0f;
     std::string biome;
     bool water = false, excluded = false;
-    /// @note Weights are keyed by profile reference and must remain readable until the next sampler call.
+    /// @note 重みのキーはプロファイル参照。次のサンプラー呼び出しまで読み取れる必要がある。
     std::span<const WorldPcgMaterialWeight> materialWeights;
-    /// @note NaN denotes unavailable habitat data.
+    /// @note NaN は利用できる生息地データがないことを示す。
     float waterOffset = std::numeric_limits<float>::quiet_NaN();
     float nearRelief = std::numeric_limits<float>::quiet_NaN();
     float farRelief = std::numeric_limits<float>::quiet_NaN();
@@ -113,10 +113,10 @@ struct WorldPcgSurfaceSample {
     bool onPath = false;
 };
 
-/// @note Called synchronously on the caller's thread; false denotes holes or unavailable ground.
-/// @note A worker must receive a callback over immutable captured samples, never a live Scene.
+/// @note 呼び出しスレッドで同期実行する。地面に穴があるか取得できない場合は false。
+/// @note ワーカーには固定済みの不変サンプルを参照するコールバックを渡す。実行中の Scene は参照しない。
 using WorldPcgSampler = std::function<bool(float worldX, float worldZ, WorldPcgSurfaceSample& out)>;
-/// @note Optionally fills habitat fields after base terrain, material, and mask filters pass.
+/// @note 地形、材質、マスクの基本フィルター通過後に、必要なら生息地フィールドを埋める。
 using WorldPcgHabitatSampler = std::function<void(const WorldPcgRule& rule, WorldPcgSurfaceSample& sample)>;
 
 struct WorldPcgCellGroup {
@@ -125,9 +125,9 @@ struct WorldPcgCellGroup {
     bool includeHlod = true;
     std::vector<asset::InstanceMeshPart> parts;
     std::vector<float> lodHeights;
-    /// @note Positions are local to WorldCellOrigin(profile.grid,cell); IDs are positive 31-bit keys.
+    /// @note 位置は WorldCellOrigin(profile.grid,cell) を基準としたローカル値。ID は正の 31 ビットキー。
     std::vector<renderer::InstancePlacement> placements;
-    /// @note Full candidate keys disambiguate hash collisions and identify authored overrides.
+    /// @note 完全な候補キーでハッシュ衝突を区別し、制作時の上書きを識別する。
     std::vector<uint64_t> candidateKeys;
 };
 
@@ -154,7 +154,7 @@ inline constexpr std::size_t MAX_WORLD_PCG_DEBUG_SAMPLES = 1024;
 struct WorldPcgRejectedSample {
     math::Vector3 position;
     std::string ruleKey;
-    /// @note Static reason key shared with the preview's rejection counts.
+    /// @note プレビューの棄却件数と共有する固定の理由キー。
     std::string_view reason;
 };
 
@@ -163,33 +163,33 @@ struct WorldPcgDiagnostics {
     std::vector<WorldPcgRejectedSample> rejected;
 };
 
-/// @brief Builds layered boulders, satellite debris, shore gravel, submerged stones and cliff-foot scree rules.
-/// @note Sources are authored rock/pebble prototypes with metre-scale geometry and a ground-level pivot. No asset I/O or Scene mutation.
-/// @note Bounds default to 256 m; inspect the preview and adjust source scales and water bands before generating.
+/// @brief 層状の巨岩、周囲の岩屑、岸辺の砂利、水没石、崖下のがれ場のルールを構築する。
+/// @note 入力はメートル尺度の形状と接地位置のピボットを持つ岩や小石のプロトタイプ。アセット I/O や Scene の変更は行わない。
+/// @note 既定の範囲は 256 m。生成前にプレビューで確認してプロトタイプの倍率と水位帯を調整する。
 [[nodiscard]] FBZZ_ENGINE_API WorldPcgProfile CreateRockNaturePcgProfile(std::string_view rockPrototype, std::string_view pebblePrototype);
 
 [[nodiscard]] FBZZ_ENGINE_API bool ValidateWorldPcgProfile(const WorldPcgProfile& profile, std::string& diagnostic);
-/// @return Failure leaves out unchanged, including candidate/instance budget and ID collision failures.
-/// @note A world-anchored jitter lattice keeps existing candidates fixed when bounds or cell size change.
-/// @note The optional placement cap keeps stable candidates after filtering and does not change streaming cells.
-/// @note Results contain only generated ownership; protected/manual placements are read-only input.
+/// @return 候補やインスタンスの上限超過、ID 衝突を含め、失敗時は out を変更しない。
+/// @note ワールド空間に固定したジッター格子により、範囲やセル寸法を変えても既存候補の位置は変わらない。
+/// @note 任意の配置上限はフィルター後の候補を決定的に選び、ストリーミングセルは変えない。
+/// @note 結果は生成した個体だけを所有し、保護済み配置と手動配置は読み取り専用入力とする。
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/using-pcg-generation-modes-in-unreal-engine Epic PCG partitioned generation concepts.
 [[nodiscard]] FBZZ_ENGINE_API bool GenerateWorldPcg(const WorldPcgProfile& profile, const WorldPcgSampler& sample,
     std::span<const math::Vector3> protectedPositions, WorldPcgResult& out, std::string& diagnostic,
     const WorldPcgHabitatSampler& sampleHabitat = {});
-/// @note Captures a bounded, deterministic sample of rejected ground sites. Sites without ground have only a count.
-/// @return Failure leaves out and diagnostics unchanged. Samples do not affect placements or fingerprints.
+/// @note 棄却した地表地点を件数制限付きで決定的に抜き出す。地面のない地点は件数だけを記録する。
+/// @return 失敗時は out と diagnostics を変更しない。採取サンプルは配置や指紋に影響しない。
 [[nodiscard]] FBZZ_ENGINE_API bool GenerateWorldPcg(const WorldPcgProfile& profile, const WorldPcgSampler& sample,
     std::span<const math::Vector3> protectedPositions, WorldPcgResult& out, std::string& diagnostic,
     const WorldPcgHabitatSampler& sampleHabitat, WorldPcgDiagnostics* diagnostics);
-/// @return Validated UTF-8 TOML; failure leaves outText unchanged and performs no file I/O.
+/// @return 検証済みの UTF-8 TOML。失敗時は outText を変更しない。ファイル I/O は行わない。
 [[nodiscard]] FBZZ_ENGINE_API bool SerializeWorldPcgProfile(const WorldPcgProfile& profile, std::string& outText, std::string& diagnostic);
-/// @return Invalid or unknown-version text leaves out unchanged and performs no file I/O.
+/// @return 不正なテキストや未知の版では out を変更しない。ファイル I/O は行わない。
 [[nodiscard]] FBZZ_ENGINE_API bool DeserializeWorldPcgProfile(std::string_view text, WorldPcgProfile& out, std::string& diagnostic);
-/// @note Native UTF-8 TOML .pcg profiles contain rules and presentation definitions, never generated placements.
-/// @return Invalid, unknown-version or unreadable input leaves out unchanged.
+/// @note ネイティブ UTF-8 TOML の .pcg プロファイルはルールと表示定義を保持する。生成した配置は保存しない。
+/// @return 無効、未知の版、読み取り不能な入力では out を変更しない。
 [[nodiscard]] FBZZ_ENGINE_API bool LoadWorldPcgProfile(std::string_view path, WorldPcgProfile& out, std::string& diagnostic);
-/// @return Validated atomic write; failed validation never replaces an existing file.
+/// @return 検証後にアトミックに書き込む。検証に失敗したら既存ファイルを置き換えない。
 [[nodiscard]] FBZZ_ENGINE_API bool SaveWorldPcgProfile(std::string_view path, const WorldPcgProfile& profile, std::string& diagnostic);
 
-} /// @note namespace fbzz::scene
+}

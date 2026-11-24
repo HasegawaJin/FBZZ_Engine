@@ -84,7 +84,7 @@ bool IsUpright(const Transform& transform)
 bool SupportsLocalAtlasProjection(const Transform& transform)
 {
     const auto rotation = transform.worldRotation;
-    /// @note The height query uses the quaternion inverse. Restrict regional projection to normalized yaw poses.
+    /// @note 高さ照会はクォータニオンの逆元を使う。領域の投影は正規化されたヨー回転に限る。
     return rotation.x == 0.0f && rotation.z == 0.0f && std::abs(rotation.Length() - 1.0f) <= 0.000001f;
 }
 bool IsContiguousHeightPreview(const TerrainComponent& terrain, uint64_t previousRevision)
@@ -164,7 +164,7 @@ void SetWaterTerrainDepth(WaterTerrainSample& sample, float meanWaterY, float de
         sample.shoreFoam = sample.dry ? 0.0f : ShoreFoam(sample.signedDepth, foamThreshold, foamFade);
     }
 }
-} /// @note namespace
+}
 
 bool WaterTerrainInfoCache::TryCollect(const Scene& scene, WaterTerrainInfoInputs& out)
 {
@@ -208,7 +208,7 @@ bool WaterTerrainInfoCache::TryCollect(const Scene& scene, WaterTerrainInfoInput
                 }
             };
             if (local) {
-                /// @note Previous extrema remain conservative; upright terrain XZ bounds do not depend on height.
+                /// @note 従来の極値は引き続き保守的な境界として使える。傾きのない地形の XZ 境界は高さに依存しない。
                 validation.valid = true;
                 validation.conservative = true;
                 validation.minHeight = found->second.minHeight;
@@ -335,7 +335,7 @@ bool PrepareWaterTerrainAtlas(const WaterTerrainInfoInputs& inputs, const WaterC
         }
         const auto center = minimum * 0.5f + maximum * 0.5f;
         const auto span = maximum - minimum;
-        /// @note One empty texel at each side prevents the boundary clamp from extending the last Terrain tile into open water.
+        /// @note 両端に空テクセルを 1 個ずつ置き、境界のクランプで最後の地形タイルが沖へ伸びないようにする。
         const math::Vector2 padded{
             span.x + 2.0f * (std::max)(1.0f, span.x / (std::max)(1.0f, static_cast<float>(atlas.width) - 2.0f)),
             span.y + 2.0f * (std::max)(1.0f, span.y / (std::max)(1.0f, static_cast<float>(atlas.height) - 2.0f))};
@@ -422,7 +422,7 @@ bool BakeWaterTerrainAtlasRegion(const WaterTerrainInfoInputs& inputs, const Wat
         for (const auto& point : {topLeft, topRight, bottomLeft, bottomRight})
             if (!std::isfinite(point.x) || !std::isfinite(point.z)) return bake(area, parent);
 
-        /// @note The canonical texel mapping is monotonic per world component in each atlas axis, including float rounding.
+        /// @note 基準のテクセル写像は、単精度の丸めを含めてもアトラスの各軸で対応するワールド座標に対して単調。
         const float minX = (std::min)({topLeft.x, topRight.x, bottomLeft.x, bottomRight.x});
         const float maxX = (std::max)({topLeft.x, topRight.x, bottomLeft.x, bottomRight.x});
         const float minZ = (std::min)({topLeft.z, topRight.z, bottomLeft.z, bottomRight.z});
@@ -467,7 +467,7 @@ uint64_t SourceLayout(const WaterTerrainSource& source)
     return layout;
 }
 
-/// @note A changed vertex contributes to height triangles and the interpolated normals of neighboring cells.
+/// @note 変更した頂点は隣接セルの高さ三角形と補間法線に影響する。
 bool TryAtlasEditRegion(const WaterTerrainSource& source, const Transform& waterTransform, const AtlasMapping& mapping,
     const WaterTerrainInfoAtlas& atlas, TerrainHeightRegion& out)
 {
@@ -498,7 +498,7 @@ bool TryAtlasEditRegion(const WaterTerrainSource& source, const Transform& water
     double lowX = std::numeric_limits<double>::infinity(), lowZ = lowX;
     double highX = -lowX, highZ = -lowX;
     for (const int x : {minX, maxX}) for (const int z : {minZ, maxZ}) {
-        /// @note Invert the same XZ mapping that the vertical heightfield query uses to find its source cell.
+        /// @note 高さ場の鉛直照会が入力セルを特定するために使う XZ 写像と同じ写像を逆変換する。
         const double terrainX = static_cast<double>(x) * terrain.cellSize * pose.worldScale.x;
         const double terrainZ = static_cast<double>(z) * terrain.cellSize * pose.worldScale.z;
         const double worldX = (terrainX * terrainForward.z - terrainForward.x * terrainZ) / terrainDeterminant + pose.worldPosition.x;
@@ -515,7 +515,7 @@ bool TryAtlasEditRegion(const WaterTerrainSource& source, const Transform& water
         lowZ = (std::min)(lowZ, (v + 0.5) * atlas.height);
         highZ = (std::max)(highZ, (v + 0.5) * atlas.height);
     }
-    /// @note One extra texel absorbs roundoff differences between forward and inverse world mappings.
+    /// @note テクセルを 1 個余分に含め、ワールド座標への順変換と逆変換の丸め差を吸収する。
     const auto low = [](double value, uint32_t limit) {
         return static_cast<int>((std::clamp)(std::floor(value) - 1.0, 0.0, static_cast<double>(limit)));
     };
@@ -526,7 +526,7 @@ bool TryAtlasEditRegion(const WaterTerrainSource& source, const Transform& water
         high(highX, atlas.width), high(highZ, atlas.height)});
     return true;
 }
-} /// @note namespace
+}
 
 bool TryComputeWaterTerrainInfoSignature(const WaterTerrainInfoInputs& inputs, const WaterComponent& water,
     const Transform& transform, const WaterTerrainBakeSettings& settings, uint64_t& out,
@@ -616,4 +616,4 @@ bool TryDecodeWaterTerrainDepth(uint8_t highByte, uint8_t lowByte, float depthRa
     out = result;
     return true;
 }
-} /// @note namespace fbzz::scene
+}

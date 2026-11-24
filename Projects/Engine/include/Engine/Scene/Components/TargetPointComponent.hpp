@@ -21,4 +21,4 @@ struct TargetPointComponent {
     FBZZ_ENGINE_API void Reflect(IReflector& reflector);
 };
 
-} /// @note namespace fbzz::scene
+}

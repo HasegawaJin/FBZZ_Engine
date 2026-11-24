@@ -1,5 +1,5 @@
 /// @file    NavMeshPatrolComponent.hpp
-/// @brief   NavMesh patrol route authoring and runtime state.
+/// @brief   NavMesh 巡回経路の設定と実行時状態。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #pragma once
@@ -19,14 +19,14 @@ namespace fbzz::scene {
 inline constexpr std::size_t MAX_NAV_MESH_PATROL_WAYPOINTS = 4096;
 inline constexpr std::uint32_t NAV_MESH_PATROL_ADAPTER_VERSION = 1;
 
-/// @brief One ordered object-backed patrol waypoint with its attached movement attributes.
+/// @brief 対象オブジェクトを参照する巡回点と、その点に付随する移動設定。
 struct NavMeshPatrolWaypointBinding {
     std::uint32_t id = 0;
     ObjectReference target;
     float waitTime = 0.0f;
     float speed = 0.0f;
 
-    /// @brief Reflect a typed TargetPoint reference and attributes as one ordered row.
+    /// @brief TargetPoint 型参照と設定を一行にまとめて公開する。
     void Reflect(IReflector& reflector)
     {
         int reflectedId = id <= 0x7fffffffu ? static_cast<int>(id) : -1;
@@ -38,7 +38,7 @@ struct NavMeshPatrolWaypointBinding {
     }
 };
 
-/// @brief Numeric world-space patrol waypoint captured by a static bake.
+/// @brief 静的ベイクで取得したワールド座標の巡回点。
 struct NavMeshPatrolWaypointValue {
     std::uint32_t id = 0;
     math::Vector3 worldPosition = math::Vector3::ZERO;
@@ -47,7 +47,7 @@ struct NavMeshPatrolWaypointValue {
     bool operator==(const NavMeshPatrolWaypointValue&) const = default;
 };
 
-/// @brief Reflect ordered point-object rows while retaining one over-limit sentinel row for validation.
+/// @brief 上限超過を検証できるよう余分な一行を保持し、対象オブジェクトの参照を順序通りに公開する。
 inline void ReflectNavMeshPatrolWaypointBindings(IReflector& reflector,
     std::vector<NavMeshPatrolWaypointBinding>& values)
 {
@@ -70,7 +70,7 @@ inline void ReflectNavMeshPatrolWaypointBindings(IReflector& reflector,
     }
 }
 
-/// @brief Reflect numeric static-bake rows while retaining one over-limit sentinel row for validation.
+/// @brief 上限超過を検証できるよう余分な一行を保持し、静的ベイクの数値点を公開する。
 inline void ReflectNavMeshPatrolWaypointValues(IReflector& reflector,
     std::vector<NavMeshPatrolWaypointValue>& values)
 {
@@ -92,9 +92,9 @@ inline void ReflectNavMeshPatrolWaypointValues(IReflector& reflector,
     if (removed < values.size()) values.erase(values.begin() + static_cast<std::ptrdiff_t>(removed));
 }
 
-/// @brief Authored ordered patrol route and its runtime cursor.
+/// @brief 設定された巡回経路と、実行時に選択中の点。
 struct NavMeshPatrolComponent {
-    /// @brief Patrol direction policy.
+    /// @brief 巡回方向の方針。
     enum class Mode : std::uint8_t {
         LOOP,
         PING_PONG,
@@ -113,7 +113,7 @@ struct NavMeshPatrolComponent {
     std::uint64_t bakedInputSignature = 0;
     bool bakeValid = false;
 
-    /// @note Route progression policy remains live configuration and is independent of numeric point baking.
+    /// @note 巡回順序の方針は実行時に参照し、点座標のベイクとは独立する。
     Mode mode = Mode::LOOP;
     float waitTime = 0.0f;
     float liveRepathInterval = 0.5f;
@@ -131,10 +131,10 @@ struct NavMeshPatrolComponent {
     bool hasSubmittedPosition = false;
     std::uint64_t lastDiagnosticSignature = 0;
 
-    /// @brief Return the Inspector component label.
+    /// @brief Inspector 上のコンポーネント名を返す。
     const char* GetTypeName() const { return "NavMesh Patrol"; }
 
-    /// @brief Reflect settings and typed point bindings; legacy numeric arrays use the Scene codec.
+    /// @brief 設定と型付きの点参照を公開する。従来の数値配列はシーンのコーデックで扱う。
     void Reflect(IReflector& reflector)
     {
         reflector.Field("enabled", enabled);
@@ -153,4 +153,4 @@ struct NavMeshPatrolComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

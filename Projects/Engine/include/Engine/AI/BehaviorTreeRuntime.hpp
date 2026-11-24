@@ -20,7 +20,7 @@ namespace fbzz::ai {
 /// @brief 走査時に触る最小限。8 バイト。
 struct BTNode {
     BTNodeType     type       = BTNodeType::Sequence;  ///< @note uint16
-    std::uint16_t  firstChild = 0;   ///< @note First direct child; the next sibling is subtreeEnd[child].
+    std::uint16_t  firstChild = 0;   ///< @note 最初の直接の子。次の兄弟は subtreeEnd[child]。
     std::uint16_t  childCount = 0;
     std::uint16_t  paramIndex = 0;   ///< @note params[] への添字
 };

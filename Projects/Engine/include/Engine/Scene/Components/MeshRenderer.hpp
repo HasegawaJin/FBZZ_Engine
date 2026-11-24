@@ -14,7 +14,7 @@
 
 namespace fbzz::renderer {
 struct Mesh;
-} /// @note namespace fbzz::renderer
+}
 
 namespace fbzz::scene {
 
@@ -61,4 +61,4 @@ struct MeshRenderer {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

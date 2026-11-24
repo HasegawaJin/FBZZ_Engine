@@ -56,7 +56,7 @@ struct TerrainGpuState {
     std::vector<decltype(renderer::RenderTerrainPatch::gpuStartIndexLOD)> indexStarts;
     uint32_t indexCount = 0, vertexCapacity = 0;
     size_t lodCount = 0;
-    /// @note Full, right-edge, bottom-edge, and corner grids share their draw-only buffers by dimensions.
+    /// @note 通常・右端・下端・角の格子は、寸法が一致すると描画専用バッファを共有する。
     std::array<RasterStrip, 4> rasterStrips;
     bool geometryDirty = true;
     bool heightsDirty = true;

@@ -19,7 +19,7 @@ inline constexpr std::array<const char*, REASON_COUNT> REASON_NAMES{
     "materialProofPending", "inputProofPending", "initialOrFailed", "unscopedOrReentry"
 };
 [[nodiscard]] constexpr uint32_t Bit(Reason reason) { return uint32_t{1} << static_cast<uint32_t>(reason); }
-/// @note Renderer-instance input observations overlap; typed-handle presence is not native liveness or input equality.
+/// @note Renderer インスタンスの入力観測条件は重複する。型付きハンドルの有無だけではネイティブ資源の生存や入力の一致を判断できない。
 enum class InputFlag : uint32_t {
     WEIGHT_MAP_PRESENT, APPLIED_MAP_PRESENT, BUFFER_VECTOR_PRESENT, LOGICAL_BUFFER_HANDLE_PRESENT,
     SELECTED_MORPH_PATH, SELECTED_SOURCE_DIFFERS_FROM_BASE, SELECTED_TARGET_PRESENT,
@@ -41,7 +41,7 @@ inline constexpr std::array<const char*,INPUT_FLAG_COUNT> INPUT_NAMES{
     "boneBakeActive","boneBakeWithSource","boneBakeGpuMode"
 };
 [[nodiscard]] constexpr uint32_t InputBit(InputFlag flag) {return uint32_t{1}<<static_cast<uint32_t>(flag);}
-/// @note Stack value only. Counts refer to the current Scene; global flags conservatively retain candidates.
+/// @note スタック上の値のみ。件数は現在の Scene 内で数え、全体のフラグは候補を保守的に残す。
 struct SceneDemandSnapshot {
     uint64_t sceneObjects=0,animatorComponents=0,skinnedRendererComponents=0;
     uint64_t activeNativeScriptEntries=0,activeManagedScriptEntries=0;

@@ -1,5 +1,5 @@
 /// @file    WorldCell.cpp
-/// @brief   Validated grid ownership, cell distance and stable integer seeds.
+/// @brief   検証済み格子のセル所属、セル間距離、安定した整数シード。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #include <Engine/Scene/WorldCell.hpp>
@@ -73,4 +73,4 @@ uint64_t WorldCellSeed(uint64_t seed, WorldCellId id, uint64_t stream)
 
 std::string WorldCellName(WorldCellId id) { return std::to_string(id.x) + "_" + std::to_string(id.z); }
 
-} /// @note namespace fbzz::scene
+}

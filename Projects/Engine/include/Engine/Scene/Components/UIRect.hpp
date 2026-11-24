@@ -137,4 +137,4 @@ struct UIAnchor {
     return { parentSize.x * anchoring.anchor.x, parentSize.y * anchoring.anchor.y };
 }
 
-} ///< @note namespace fbzz::scene
+}

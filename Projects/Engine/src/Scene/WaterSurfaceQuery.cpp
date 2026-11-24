@@ -131,7 +131,7 @@ bool TryFootprint(const WaterComponent& water, const Transform& transform,
     inside = std::abs(local.x) <= halfX + toleranceX && std::abs(local.y) <= halfZ + toleranceZ;
     return true;
 }
-} /// @note namespace
+}
 
 bool WaterSurfaceUsesHorizon(const WaterComponent& water, WaterSurfaceReadView view)
 {
@@ -223,7 +223,7 @@ bool TrySampleHeight(const WaterComponent& water, const Transform& transform,
     if (UsesWaterSurfaceGeometry(water, view)) {
         bool hasSplineSample = true;
         if constexpr (!INSIDE_ONLY) {
-            /// @note Extrapolating callers also need height and depth when the footprint rejected the point.
+            /// @note 外挿を許す呼び出し元には、平面領域外の点についても水面高と水深を返す。
             const WaterSplineSnapshot* geometry = WaterSurfaceGeometry(water, view);
             if (!geometry) return false;
             const math::Vector2 origin = water.SolveUndisplacedXZ(worldPosition.x, worldPosition.z, time, view);
@@ -256,7 +256,7 @@ bool TrySampleHeight(const WaterComponent& water, const Transform& transform,
     return true;
 }
 
-} /// @note namespace
+}
 
 bool TrySampleWaterSurfaceHeightWorld(const WaterComponent& water, const Transform& transform,
     const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
@@ -346,4 +346,4 @@ bool TrySampleWaterSurfaceWorld(const WaterComponent& water, const Transform& tr
     out = sample;
     return true;
 }
-} /// @note namespace fbzz::scene
+}

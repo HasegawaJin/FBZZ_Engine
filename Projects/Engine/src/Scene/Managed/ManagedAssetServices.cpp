@@ -138,7 +138,7 @@ ManagedBridgeStatus ManagedAssetServices::Impl::RunTexture(Scene& scene, Script&
                 const auto texture = textures.find(reception.texture);
                 if (texture != textures.end() && OwnedTexture(texture->second, scene, caller, request)) {
                     if (auto* resources = TextureResources(texture->second)) {
-                        /// @note Dynamic ITexture::UpdateRegion synchronously delegates to its owning CPU renderer before borrowing these bytes.
+                        /// @note 動的テクスチャの ITexture::UpdateRegion は所有する CPU レンダラーへ同期的に処理を委ねてから、バイト列を借用する。
                         if (auto* nativeTexture = resources->Get(texture->second.texture))
                             output.integer = nativeTexture->UpdateRegion(reception.x, reception.y, reception.width,
                                 reception.height, reception.bytes.data(), reception.rowPitch) ? 1 : 0;
@@ -275,4 +275,4 @@ void ManagedAssetServices::EndCall(uint64_t call)
 {
     std::erase_if(m_impl->textureReceptions, [call](const auto& entry) { return entry.second.call == call; });
 }
-} /// @note namespace fbzz::scene::managed_detail
+}

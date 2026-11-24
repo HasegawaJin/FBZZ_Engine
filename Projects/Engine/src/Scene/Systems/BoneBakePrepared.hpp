@@ -1,5 +1,5 @@
 /// @file    BoneBakePrepared.hpp
-/// @brief   Callback-free readiness proof for batching prepared animation resource updates.
+/// @brief   コールバックなしでバッチ更新可能なアニメーション資源を判定する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-18
 #pragma once
@@ -7,6 +7,6 @@
 #include <Engine/Scene/BoneBakeRuntime.hpp>
 
 namespace fbzz::scene {
-/// @note Includes cached rejections: this proves preparation performs no loading or logging, not that a bake is supported.
+/// @note ベイク不可のキャッシュも含む。準備時の読込やログ出力を省けるが、ベイクの可否は各項目で判断する。
 FBZZ_ENGINE_API bool AreBoneBakeAssetsPrepared(const AnimatorComponent& animator, const asset::Model& model);
 }

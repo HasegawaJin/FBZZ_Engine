@@ -245,4 +245,4 @@ struct VFXDecalEnvelope {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

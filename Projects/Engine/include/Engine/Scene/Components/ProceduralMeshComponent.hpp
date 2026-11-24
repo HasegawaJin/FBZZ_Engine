@@ -38,4 +38,4 @@ struct ProceduralMeshComponent : TransientGpuState<ProceduralMeshComponentGpuSta
     const char* GetTypeName() const { return "Procedural Mesh"; }
 };
 
-} /// @note namespace fbzz::scene
+}

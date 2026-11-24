@@ -30,7 +30,7 @@ namespace fbzz::scene {
 
 using renderer::RenderPassCapture;
 
-/// @note View-local authoring geometry; never added to Scene, serialization, physics or the shared geometry cache.
+/// @note 編集プレビュー専用。Scene・シリアライズ・物理・共有ジオメトリキャッシュの対象外。
 struct RenderInstancePreview {
     std::string definition;
     std::shared_ptr<const renderer::InstanceSetData> data;
@@ -55,14 +55,16 @@ struct RenderSystemUIOptions {
     /// @note 複数 Viewport が同フレームに UISystem を呼ぶときインスタンスを分離し、定数バッファの
     /// @note 上書き競合を防ぐ。
     UISystemContext* context = nullptr;
-    /// @note True for runtime Game View/standalone; false preserves raw Editor authoring preview input.
+    /// @note Game View と Standalone の実行時入力に true、編集プレビューの入力をそのまま使う場合は false。
     bool gameplayInput = false;
-    /// @note Borrowed only for this RenderSystem call; DebugDraw captures owned line/triangle values.
-    /// @note Per-view diagnostics bypass the script flag and queue; at most 8192 commands are captured.
+    /// @note コマンドの借用は RenderSystem の実行中だけ。DebugDraw は線と三角形の値を複製して所有する。
+    /// @note ビューの診断用にはスクリプトのフラグとキューを経由せず、最大 8192 件を取り込む。
     std::span<const ScriptDebugDrawCommand> spatialDebugCommands;
     std::span<const RenderInstancePreview> instancePreviews;
 };
 
+/// @param cullingSettings 明示指定がなければシーンのメインカメラから解決する。編集ビューは自分の設定を渡す。
+/// @param surfacePatchPlans 呼び出し側が所有する水面 LOD キャッシュ。記録スレッドで呼び出しの間だけ使用する。
 FBZZ_ENGINE_API void RenderSystem(Scene& scene,
                   renderer::IRenderer& renderer,
                   renderer::ResourceManager& resources,
@@ -72,14 +74,9 @@ FBZZ_ENGINE_API void RenderSystem(Scene& scene,
                   fbzz::LayerMask cullingMask = fbzz::Layer::Everything,
                   const RenderSystemUIOptions* uiOptions = nullptr,
                   const physics::World* physicsWorld = nullptr,
-                  /// @note カリング挙動の上書き。nullptr のときはシーンのメインカメラから解決する。
-                  /// @note Standalone/GameHub は RenderSystem を素朴に呼ぶだけなので既定は «シーンから解決»。
-                  /// @note Editor の Scene View は自前のデバッグカメラで描くため、ゲームカメラの設定を
-                  /// @note 持ち込まないよう明示的に既定値を渡す。
                   const CameraCullingSettings* cullingSettings = nullptr,
                   RenderPassCapture* capture = nullptr,
                   RenderFrameGeometryCache* frameGeometry = nullptr,
-                  /// @note Optional caller-owned pure Water LOD cache; pinned for this call on the recording thread.
                   std::shared_ptr<renderer::SurfacePatchSelectionCacheOwner> surfacePatchPlans = {});
 
 } /// @note namespace fbzz::scene

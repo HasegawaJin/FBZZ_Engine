@@ -1,5 +1,5 @@
 /// @file    WaterfallFluidClip.cpp
-/// @brief   Bake and stream quantized surfaces from a local liquid simulation.
+/// @brief   ローカル液体シミュレーションの量子化した表面をベイクし、ストリーミングする。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #include <Engine/Asset/WaterfallFluidClip.hpp>
@@ -106,7 +106,7 @@ bool SampleContact(const void* context, const Vector3& point, float radius, flui
 bool Drain(const void* context, const Vector3& point, const Vector3& velocity)
 {
     const auto& input = *static_cast<const WaterfallFluidBakeInput*>(context);
-    /// @note Let incoming particles reach the impact plane before absorbing settled water.
+    /// @note 流入粒子が衝突面へ到達してから、落ち着いた水を吸収する。
     return std::abs(point.x) > 1.0f || std::abs(point.z) > 1.0f || point.y > 1.0f
         || (point.y < input.receiverHeight + 0.06f && std::abs(velocity.y) < 0.09f);
 }
@@ -131,8 +131,8 @@ void Splat(const fluid::FluidLiquidSolver& solver, const WaterfallFluidBakeInput
     }
 }
 
-/// @brief Surface nets use one vertex per active cell and a shared quad around each crossed edge.
-/// @see https://www.merl.com/publications/TR99-24 Frisken Gibson, Constrained Elastic SurfaceNets (cell connectivity).
+/// @brief Surface Nets は有効セルごとに 1 頂点を置き、境界が横切る辺を囲む共有四角形でつなぐ。
+/// @see https://www.merl.com/publications/TR99-24 Frisken・Gibson, Constrained Elastic SurfaceNets のセル接続。
 bool ExtractSurface(const WaterfallFluidBakeInput& input, const std::vector<float>& density,
     std::vector<int>& cells, std::vector<PackedVertex>& vertices, std::vector<std::uint16_t>& indices)
 {

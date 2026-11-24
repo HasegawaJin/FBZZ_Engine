@@ -116,7 +116,7 @@ struct ProjectSettings {
     GameProjectConfig            game;     ///< @note タグ・レイヤー・シーンパス等のゲーム固有設定。
     PhysicsSettings              physics;
     renderer::RenderSettings     render;
-    /// @note Load keeps this reference unresolved until AssetManager initialization; render remains the detach/missing-asset fallback.
+    /// @note 読込時は AssetManager が初期化されるまでこの参照を解決しない。render は割り当て解除やアセット欠落時にも使う代替設定。
     std::string                  renderPipelineAssetPath;
     AudioSettings                audio;
     UISettings                   ui;

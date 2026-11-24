@@ -76,7 +76,7 @@ struct UICanvas {
     /// @note 実行時の値でシーンへは保存しない (Reflect に出さない)。UISystem が回る前は 0。
     math::Vector2 resolvedMousePosition = {};
 
-    /// @note Empty or unresolved assignment preserves legacy component appearance. Shared across screens by GUID/path.
+    /// @note 未割り当てや解決不能の場合は従来の外観を維持する。GUID またはパスで画面間の参照を共有する。
     DataAssetRef theme = { {}, "UIThemeAsset" };
 
     const char* GetTypeName() const { return "UICanvas"; }
@@ -135,4 +135,4 @@ struct UICanvas {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

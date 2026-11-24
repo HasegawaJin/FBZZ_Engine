@@ -22,12 +22,14 @@ inline float Clamp(float v, float minVal, float maxVal) {
     return v < minVal ? minVal : (v > maxVal ? maxVal : v);
 }
 inline float Clamp01(float v)                { return Clamp(v, 0.0f, 1.0f); }
+/// @note t は移動の割合。0 なら a、1 なら b、範囲外なら同じ直線上で区間の外を指す。
 inline float Lerp(float a, float b, float t) { return a + (b - a) * t; }
 /// @brief 区間 [a,b] における v の正規化位置を返す。
-/// @note a == b (ゼロ幅区間) のときは v を区間先頭とみなし 0 を返す。
+/// @note 区間の幅 b − a が EPSILON 未満なら 0 を返す。逆順の区間もこの扱いになる。
 inline float InverseLerp(float a, float b, float v) {
     return (b - a) < EPSILON ? 0.0f : (v - a) / (b - a);
 }
+/// @note 入力範囲での割合を出力範囲に移す。例えば 0～100 の 25 は、0～8 に写すと 2 になる。
 inline float Remap(float v, float inMin, float inMax, float outMin, float outMax) {
     return Lerp(outMin, outMax, InverseLerp(inMin, inMax, v));
 }
@@ -44,4 +46,4 @@ inline float Max(float a, float b) { return a > b ? a : b; }
 inline bool NearlyEqual(float a, float b, float eps = EPSILON) { return Abs(a - b) < eps; }
 inline bool NearlyZero(float v,           float eps = EPSILON) { return Abs(v) < eps; }
 
-} // namespace fbzz::math
+} /// @note namespace fbzz::math

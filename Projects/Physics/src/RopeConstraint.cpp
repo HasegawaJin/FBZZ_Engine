@@ -17,6 +17,7 @@ namespace fbzz::physics
 
         const math::Vector3 delta = m_bodyB->GetPosition() - m_bodyA->GetPosition();
         const float length = delta.Length();
+        /// @note ロープは張ったときだけ両端を引く。たるんだ間も距離を補正すると、ロープが棒のように両端を押してしまう。
         if (length <= m_maxLength || length < 1e-6f) return;
 
         const float invA = m_bodyA->GetInvMass();
@@ -28,4 +29,4 @@ namespace fbzz::physics
         m_bodyA->SetPosition(m_bodyA->GetPosition() + correction * (invA / invSum));
         m_bodyB->SetPosition(m_bodyB->GetPosition() - correction * (invB / invSum));
     }
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

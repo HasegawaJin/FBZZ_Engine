@@ -34,7 +34,7 @@ struct ReflectionProbeComponentGpuState {
     renderer::OwnedResource<renderer::TextureTag> runtimePrefilter;
     uint32_t runtimeResolution = 0;
     uint32_t runtimePrefilterMipCount = 0;
-    /// @note Successful capture publishes fresh never-again-written textures; invalidation clears the proof independently of authored state.
+    /// @note キャプチャ成功時に、以後書き換えない新規テクスチャを公開する。無効化は設定値を変えずにキャプチャ済みの証跡を消す。
     const renderer::ResourceManager* runtimePublicationOwner = nullptr;
     renderer::ResourceHandle<renderer::TextureTag> runtimePublishedIrradiance, runtimePublishedPrefilter;
     uint64_t runtimePublicationEpoch = 0;
@@ -75,4 +75,4 @@ struct ReflectionProbeComponent : TransientGpuState<ReflectionProbeComponentGpuS
     }
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -72,4 +72,4 @@ struct PostProcessVolumeComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

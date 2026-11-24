@@ -1,5 +1,5 @@
 /// @file    PhysicsMaterialImporter.cpp
-/// @brief   .physmat TOML → PhysicsMaterialAsset。
+/// @brief   .physmat の TOML を PhysicsMaterialAsset に読み込む。
 /// @author  Hasegawa Jin
 /// @date    2026-08-16
 #include <Engine/Asset/PhysicsMaterialImporter.hpp>

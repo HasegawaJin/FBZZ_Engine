@@ -51,7 +51,7 @@ using asset::FindMaterialParam;
 using asset::InitDefaultMaterialParams;
 constexpr auto& kTextureSlotNames = asset::kMaterialTextureSlotNames;
 
-/// @note Reuse bounded per-thread byte capacity; nested calls own a local vector and never alias the outer Sprite/texture snapshot.
+/// @note 上限付きのバイト容量をスレッドごとに再利用し、入れ子の呼び出しは別のバッファで外側のスナップショットを保持する。
 constexpr size_t MATERIAL_PARAMETER_SCRATCH_MAX_CAPACITY = 4096;
 struct MaterialParameterScratchStorage {
     std::vector<uint8_t> bytes;
@@ -212,7 +212,7 @@ renderer::Material* GetFallbackMaterial(renderer::ResourceManager& resources, bo
 
 namespace material_detail {
 
-/// @note Immutable pre-streaming derivation; these bytes never include Sprite UV, texture residency/masks/bindless indices or a GPU buffer.
+/// @note ストリーミング前に作る不変データには Sprite の UV、テクスチャの常駐状態・マスク・バインドレス番号、GPU バッファを含めない。
 struct EffectiveMaterialTemplate {
     MaterialSlot::AuthoringSnapshotPtr slot;
     asset::MaterialAsset::AuthoringSnapshotPtr asset;
@@ -226,7 +226,7 @@ struct EffectiveMaterialTemplate {
     renderer::ShaderVertexContract vertex;
 };
 
-/// @note Only this helper reads/writes the two private retained entries; publication compares the entry observed before deriving.
+/// @note 保持する 2 件の項目はこの関数だけが操作し、公開時には生成前に観測した項目と照合する。
 class EffectiveMaterialCache {
 public:
     static std::shared_ptr<const EffectiveMaterialTemplate> Read(const MaterialSlot& slot, bool skinned)
@@ -287,7 +287,7 @@ bool EffectiveMaterialInputsCurrent(const MaterialComponent& component, size_t s
 {
     const auto& currentSlot = component.SlotAt(slotIndex);
     const auto current = currentSlot.ReadAuthoring();
-    /// @note A same-owner edit does not mutate the captured call snapshot; only publication must require its exact current revision.
+    /// @note 同じ所有者が編集されても今回のスナップショットは変わらず、公開時にだけ現在の版との一致を求める。
     return current && current->OwnerToken() == value.slot->OwnerToken()
         && resources.GetInstanceId() == value.resourceOwner && resources.GetResetVersion() == value.resetVersion
         && resources.GetShaderVersion() == value.shaderVersion && resources.GetShaderCapabilities(value.shader).vertex == value.vertex;
@@ -304,7 +304,7 @@ bool EffectiveMaterialLayoutCurrent(const material_detail::EffectiveMaterialTemp
 
 } /// @note namespace
 
-/// @pre The component remains alive for this call. Slot-vector edits are re-resolved after resource callbacks; no slot reference crosses them.
+/// @pre 実行中はコンポーネントが生存すること。資源コールバック後にスロットを再取得し、その前の参照を使わない。
 static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, size_t slotIndex,
     renderer::ResourceManager& resources, bool preferSkinnedFallback, float screenPixels,
     const PreparedMaterialParams* prepared = nullptr)
@@ -318,7 +318,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
                 GetFallbackMaterialPath(preferSkinnedFallback));
         return resources.GetErrorMaterial(preferSkinnedFallback);
     };
-    /// @note Reentrant edits get a fresh derivation. Continually mutating custom callbacks fail closed after this bounded retry.
+    /// @note 再入による編集後は再計算し、再試行の上限まで編集が続けば公開を見送る。
     for (size_t attempt = 0; attempt < 2; ++attempt) {
         if (!component.enabled || !component.SlotAt(slotIndex).visible) return nullptr;
         if (!component.EnsureMaterialAsset(slotIndex)) {
@@ -358,7 +358,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
         if ((preferSkinnedFallback && vertex == renderer::ShaderVertexContract::STANDARD_SURFACE)
             || (!preferSkinnedFallback && vertex == renderer::ShaderVertexContract::STANDARD_SKINNED))
             return useErrorMaterial("shader vertex contract does not match mesh");
-        /// @note Unknown/native custom descriptor access is copied before callbacks and bypasses persistent reuse.
+        /// @note 未知の記述子またはネイティブ独自の記述子の参照は、コールバック前に複製し永続的な再利用を行わない。
         auto descriptor = preparedReady ? prepared->descriptor
             : std::make_shared<const renderer::ShaderDescriptor>(shader->GetDescriptor());
         if (resources.GetInstanceId() != owner || resources.GetResetVersion() != reset || resources.GetShaderVersion() != shaderVersion
@@ -397,7 +397,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
         if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)
             || !EffectiveMaterialLayoutCurrent(*effective, resources)) continue;
 
-        /// @note Own per-call CPU results rather than a runtime Material reference across Sprite/texture callbacks.
+        /// @note Sprite やテクスチャのコールバックをまたいで Material を参照せず、各呼び出しの CPU 結果を所有する。
         OwnedMaterialParameterSnapshot viewParameterSnapshot(effective->bytes);
         auto& viewBytes = viewParameterSnapshot.Bytes();
         std::array<renderer::ResourceHandle<renderer::TextureTag>, asset::kMaterialTextureSlotNames.size()> viewTextures{};
@@ -407,7 +407,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
         float texturePixels = 0.0f;
         bool hasTextureRequest = false;
         for (size_t i = 0; i < effective->texturePaths.size(); ++i) {
-            /// @note Empty paths call no resolver or callback; the final check still covers the complete texture pass.
+            /// @note 空のパスでは解決器を呼ばないが、最終照合はテクスチャ処理全体を対象とする。
             if (effective->texturePaths[i].empty()) continue;
             if (!hasTextureRequest) {
                 texturePixels = TextureRequestPixels(screenPixels, *effective->descriptor, viewBytes);
@@ -417,7 +417,7 @@ static renderer::Material* SyncMaterialSlotImpl(MaterialComponent& component, si
             if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) break;
         }
         if (!EffectiveMaterialInputsCurrent(component, slotIndex, *effective, resources)) continue;
-        /// @note Re-resolve after callbacks, preserving a nested Sync's unique GPU owner and the existing native Upload lifetime contract.
+        /// @note コールバック後に解決し直し、再入した同期が公開した GPU 資源の単独所有権と Upload の寿命契約を守る。
         const auto& runtimeTextures = component.SlotAt(slotIndex).runtimeTextureOverrides;
         for (size_t i = 0; i < viewTextures.size(); ++i) {
             const auto found = runtimeTextures.find(kTextureSlotNames[i]);
@@ -534,7 +534,7 @@ WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh, 
 
 float ComputeWorldBoundsScale(const math::Matrix4& world)
 {
-    /// @note Maximum axis norm keeps spheres conservative under nonuniform and negative world scale.
+    /// @note 各軸の最大ノルムを使うと、非一様・負スケールでも境界球が小さくなり過ぎない。
     const float sx = std::sqrt(world.m[0][0]*world.m[0][0] + world.m[1][0]*world.m[1][0] + world.m[2][0]*world.m[2][0]);
     const float sy = std::sqrt(world.m[0][1]*world.m[0][1] + world.m[1][1]*world.m[1][1] + world.m[2][1]*world.m[2][1]);
     const float sz = std::sqrt(world.m[0][2]*world.m[0][2] + world.m[1][2]*world.m[1][2] + world.m[2][2]*world.m[2][2]);
@@ -571,9 +571,9 @@ float ComputeLeafWindBoundsPadding(const GameObject& go, size_t slotCount)
         if (!known) return -1.0f;
         maximumStrength = (std::max)(maximumStrength, strength);
     }
-    /// @note LeafWind's |gust|<=1 and |flutter|<=0.5 bound the local displacement below 2*strength; shader deformation precedes renderer-world scaling.
-    /// @see Assets/Shaders/Rendering/LeafWind.hlsli FbzzLeafWind displacement.
-    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-sin HLSL sine range.
+    /// @note |gust| ≤ 1、|flutter| ≤ 0.5 なので局所の葉の変位は 2 × strength 未満。シェーダーの変形後にワールドスケールを掛ける。
+    /// @see Assets/Shaders/Rendering/LeafWind.hlsli の FbzzLeafWind の変位。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-sin HLSL の正弦関数の値域。
     const auto& scale = go.transform.worldScale;
     const float padding = maximumStrength * 2.0f * (std::max)({std::abs(scale.x), std::abs(scale.y), std::abs(scale.z)});
     return std::isfinite(padding) ? padding : -1.0f;
@@ -762,7 +762,7 @@ ActiveWeather FindActiveWeather(Scene& scene)
     ActiveWeather result;
     const auto entities = scene.GetEntities<WeatherComponent>();
     if (entities.empty()) return result;
-    /// @note This callback-free query retains capacity only; component packing order must not change the first Scene-owned weather.
+    /// @note コールバックなしの走査で容量のみ保持し、Scene の所有順で最初の天候を選ぶ。
     thread_local std::vector<EntityID> candidates;
     candidates.assign(entities.begin(), entities.end());
     scene.SortEntitiesBySceneOrder(candidates);

@@ -1,5 +1,5 @@
 /// @file    WaterExclusion.cpp
-/// @brief   Resolve authored Water exclusion boxes into shared immutable numeric snapshots.
+/// @brief   設定された水の除外ボックスを共有可能な不変の数値スナップショットに解決する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
 #include <Engine/Scene/WaterExclusion.hpp>
@@ -133,7 +133,7 @@ std::uint64_t SnapshotSignature(const std::vector<const ExclusionSource*>& sourc
     return signature == 0 ? 1 : signature;
 }
 
-} /// @note namespace
+}
 
 bool WaterExclusionBox::Contains(const math::Vector3& worldPoint) const
 {
@@ -286,4 +286,4 @@ void PrepareWaterExclusionSnapshots(Scene& scene)
     }
 }
 
-} /// @note namespace fbzz::scene
+}

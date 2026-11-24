@@ -1,5 +1,5 @@
 /// @file    WorldPartition.cpp
-/// @brief   Stream validated cell forests through bounded CPU jobs and main-thread residency transactions.
+/// @brief   検証済みセル階層を上限付きの CPU ジョブで読み込み、メインスレッドで常駐状態を切り替える。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #include <Engine/Scene/WorldPartition.hpp>
@@ -49,7 +49,7 @@ bool Finite(const math::Vector3& value)
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
-/// @note Terrain baking only emits static leaves. A scripted owner must stay live across cell changes.
+/// @note 地形ベイクの出力は静的な葉だけ。スクリプトを持つ所有オブジェクトはセル切り替え後も稼働させる。
 bool CanRetireAuthoredSource(GameObject& object)
 {
     return !object.GetComponent<CameraComponent>() && !object.GetComponent<WorldPartitionComponent>()
@@ -100,7 +100,7 @@ bool ReadBounded(const std::string& path, uint64_t limit, const std::atomic<bool
     return true;
 }
 
-/// @note Validation runs on value-only documents. Component construction and asset/GUID resolution remain on the main thread.
+/// @note 検証は値だけの文書を対象に行う。コンポーネントの構築とアセットや GUID の解決はメインスレッドで行う。
 bool ValidateDocument(const std::string& text, std::vector<std::string>& ids, std::string& diagnostic)
 {
     return ValidateSceneForestDocument(text, ids, diagnostic);
@@ -165,7 +165,7 @@ std::shared_ptr<WorldPartitionRuntime> RetainService(const WorldPartitionRuntime
     for (const auto& [scene, service] : Services()) { (void)scene; if (service.get() == runtime) return service; }
     return {};
 }
-} /// @note namespace
+}
 
 bool ValidateWorldPartitionSettings(const WorldPartitionSettings& settings, std::string& diagnostic)
 {
@@ -329,7 +329,7 @@ struct WorldPartitionRuntime::Impl {
             queue->pending.push_back(std::move(result));
         });
     }
-    /// @note Extract references on the worker. The owner thread resolves paths against the live asset database.
+    /// @note 参照はワーカーで取り出す。パスの解決は所有スレッドが現在のアセットデータベースに対して行う。
     static void CollectCellInputs(Completion& result)
     {
         const auto document = toml::parse(result.text);
@@ -532,7 +532,7 @@ struct WorldPartitionRuntime::Impl {
         const auto residentBytes = ResidentBytes();
         if (bytes > settings.maxResidentBytes || residentBytes - cell.bytes > settings.maxResidentBytes - bytes) { Fail(cell, "Cell publication exceeds resident byte budget"); return false; }
 
-        /// @note Old representation remains live until its replacement has fully validated and appended. Reused saved IDs are hidden only during this transaction.
+        /// @note 置換先の検証と追加が完了するまで元の表現を保持する。再利用する保存済み ID を隠すのはこの処理中だけ。
         std::vector<std::pair<EntityID, std::string>> hidden;
         for (const auto id : cell.entities) if (auto* object = scene->GetGameObject(id)) {
             hidden.emplace_back(id, object->instanceId);
@@ -707,7 +707,7 @@ void WorldPartitionRuntime::Update(const math::Vector3& source, renderer::Resour
         if (target != WorldCellRepresentation::UNLOADED) wanted.emplace_back(distance, i);
     }
     const size_t admitted = (std::min)(wanted.size(), static_cast<size_t>(state.settings.maxResidentCells));
-    /// @note Cell index breaks distance ties in manifest order, matching the previous stable ordering.
+    /// @note 距離が同じときはマニフェスト順のセルインデックスで比較し、従来の安定順序を保つ。
     std::partial_sort(wanted.begin(), wanted.begin() + admitted, wanted.end());
     for (size_t i = admitted; i < wanted.size(); ++i) state.cells[wanted[i].second].desired = WorldCellRepresentation::UNLOADED;
     wanted.resize(admitted);
@@ -946,4 +946,4 @@ void UpdateWorldPartitionRuntime(Scene& scene, renderer::ResourceManager* resour
     }
     runtime.Update(source, resources);
 }
-} /// @note namespace fbzz::scene
+}

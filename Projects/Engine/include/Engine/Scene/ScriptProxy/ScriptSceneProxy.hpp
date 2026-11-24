@@ -63,9 +63,9 @@ struct ScriptSceneProxy {
     FBZZ_ENGINE_API float GetTerrainHeightAt(const math::Vector3& worldPos) const;
     /// @return GetTerrainHeightAtと同じ最上面の単位world法線。未交差はUP。
     FBZZ_ENGINE_API math::Vector3 GetTerrainNormalAt(const math::Vector3& worldPos) const;
-    /// @return Nearest floor below reference across active Terrain, within maxDistance world metres. False leaves outs unchanged.
+    /// @return 有効な Terrain 全体から、基準より下かつ maxDistance [ワールド m] 以内の最も近い床を返す。失敗時は false で出力は未変更。
     FBZZ_ENGINE_API bool TryGetTerrainFloorAt(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
-    /// @return Nearest ceiling above reference across active Terrain. False leaves outs unchanged.
+    /// @return 有効な Terrain 全体から、基準より上で最も近い天井を返す。失敗時は false で出力は未変更。
     FBZZ_ENGINE_API bool TryGetTerrainCeilingAt(const math::Vector3& reference, float maxDistance, math::Vector3& position, math::Vector3& normal) const;
     FBZZ_ENGINE_API float GetWaterSurfaceHeight(const math::Vector3& worldPos, float time) const;
 
@@ -113,4 +113,4 @@ struct ScriptSceneProxy {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

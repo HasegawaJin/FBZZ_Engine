@@ -35,4 +35,4 @@ struct SunMoonRenderer {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

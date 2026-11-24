@@ -129,7 +129,7 @@ void ReadKeys(const toml::table& table, std::string_view name,
         Key key;
         key.time = ReadDouble(*keyTable, "time", 0.0);
         readValue(*keyTable, key);
-        /// @note Unordered times invalidate stable_sort; malformed keys must not reach sampling.
+        /// @note 比較で順序を定められない時刻は stable_sort の前提を破る。不正なキーはサンプリングに渡さない。
         if (!std::isfinite(key.time)) continue;
         if constexpr (std::is_same_v<Key, FloatKey>) {
             if (!std::isfinite(key.value) || !std::isfinite(key.inTangent)
@@ -594,7 +594,7 @@ bool SaveSequenceAsset(const std::string& path, const SequenceAsset& asset)
 
 bool SerializeSequenceAsset(const SequenceAsset& asset, std::string& text)
 {
-    /// @note Reject invalid authored floats before opening the destination, preserving its last good contents.
+    /// @note 不正な浮動小数点の編集値は出力先を開く前に拒否し、最後に正常だった内容を保持する。
     if (!std::isfinite(asset.duration)) return false;
     for (const auto& track : asset.tracks)
         for (const auto& key : track.property.floatKeys)

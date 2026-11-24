@@ -94,6 +94,7 @@ size_t NavMesh::BuildPolygonNode(std::vector<PolygonNode>& leaves, size_t begin,
 
 float NavMesh::PolygonNode::DistanceSqXZ(const math::Vector3& pos) const
 {
+    /// @note 点が箱の内側にある軸の距離は 0。外へはみ出した軸だけを二乗して足せば、箱に含まれるどの多角形よりも近いか等しい距離の二乗になる。
     const float dx = std::max({minX - pos.x, pos.x - maxX, 0.0f});
     const float dz = std::max({minZ - pos.z, pos.z - maxZ, 0.0f});
     return dx * dx + dz * dz;
@@ -192,7 +193,7 @@ bool FindPolygonPath(const NavMesh& navMesh, int startPoly, int goalPoly, std::v
         return (areaMask & (1 << (at & 31))) != 0;
     };
 
-    /// @note (fScore, polygon index)
+    /// @note 優先度は fScore、同値ならポリゴンの添字。
     using OpenEntry = std::pair<float, int>;
     std::priority_queue<OpenEntry, std::vector<OpenEntry>, std::greater<OpenEntry>> open;
     open.push({ heuristic(startPoly, goalPoly), startPoly });

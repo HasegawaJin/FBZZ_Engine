@@ -1,5 +1,5 @@
 /// @file    WaterZoneSnapshot.cpp
-/// @brief   Build the bounded exact triangle union and river-mouth attributes for a Water Zone.
+/// @brief   水域ゾーンの三角形の厳密な和集合と河口属性を、上限付きで構築する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #include <Engine/Scene/WaterZoneSnapshot.hpp>
@@ -86,7 +86,7 @@ double SignedArea(const std::vector<Point2>& points)
     return area * 0.5;
 }
 
-/// @brief Returns a coordinate's conservative radial float-rounding bound.
+/// @brief 座標の単精度丸め誤差を覆う半径を返す。
 double FloatRoundingRadius(const Point2& point)
 {
     const auto halfStep = [](double coordinate) {
@@ -100,8 +100,8 @@ double FloatRoundingRadius(const Point2& point)
     return std::hypot(halfStep(point.x), halfStep(point.z));
 }
 
-/// @brief Checks whether two numeric points are indistinguishable in the emitted float mesh.
-/// @note Callers also require at least one point to be a generated clipping intersection.
+/// @brief 出力する単精度メッシュで 2 点が区別できないかを判定する。
+/// @note 呼び出し側では少なくとも一方がクリッピングで生成された交点であることも確認する。
 bool FloatRoundoffEquivalent(const Point2& a, const Point2& b)
 {
     if (static_cast<float>(a.x) != static_cast<float>(b.x)
@@ -148,8 +148,8 @@ bool NormalizeTriangle(Triangle2& triangle, double areaEpsilon)
     return true;
 }
 
-/// @brief Tests whether a point lies strictly inside a segment within orientation roundoff.
-/// @note The determinant bound scales with its product terms and does not use the geometric merge tolerance.
+/// @brief 向き判定の丸め誤差を考慮し、点が線分の端点を除く内部にあるかを判定する。
+/// @note 行列式の誤差境界は積の項の大きさに比例させる。形状を併合する許容値は使わない。
 /// @see Jonathan Richard Shewchuk, “Adaptive Precision Floating-Point Arithmetic and Fast Robust Predicates for Computational Geometry,” Robust Orientation Tests: https://www.cs.cmu.edu/~quake/robust.html
 bool PointWithinSegmentRoundoff(const Point2& a, const Point2& b, const Point2& point)
 {
@@ -167,8 +167,8 @@ bool PointWithinSegmentRoundoff(const Point2& a, const Point2& b, const Point2& 
     return std::abs(cross) <= roundoffBound;
 }
 
-/// @brief Removes duplicate and orientation-roundoff-collinear vertices from a clipped polygon.
-/// @note The geometric merge tolerance applies only to duplicates; collinear cleanup requires a strictly intermediate point within the determinant roundoff bound.
+/// @brief クリッピング後の多角形から重複頂点と、向き判定の丸め誤差内で共線となる頂点を取り除く。
+/// @note 形状を併合する許容値は重複にだけ適用する。共線の除去には、端点間に厳密に入り、行列式が丸め誤差内に収まることが必要。
 void CleanPolygon(Polygon2& polygon, double epsilon)
 {
     if (polygon.points.size() < 2) return;
@@ -528,8 +528,8 @@ struct PointKey {
 
 class PointPool {
 public:
-    /// @brief Stores a vertex at the float precision used by the shared output mesh.
-    /// @note Distinct authored vertices still fail when they collide; only generated clipping intersections may alias an indistinguishable emitted point.
+    /// @brief 共有出力メッシュと同じ単精度で頂点を格納する。
+    /// @note 異なる設定頂点が同じ位置に丸められた場合は失敗とする。出力で識別できない同一点への統合はクリッピングで生成した交点に限る。
     bool Insert(const Point2& point, double mergeTolerance, std::uint32_t& out)
     {
         if (!std::isfinite(point.x) || !std::isfinite(point.z)) return false;
@@ -589,8 +589,8 @@ private:
     bool m_precisionCollision = false;
 };
 
-/// @brief Adds a clipped polygon as consistently wound shared-mesh triangles.
-/// @note A generated intersection wedge may collapse only when its canonical indices repeat; nonzero authored triangles remain a precision failure.
+/// @brief クリッピング後の多角形を、一貫した頂点の巻き順で共有メッシュに三角形として追加する。
+/// @note 生成した交点の細片の退化を許すのは正規化後のインデックスが重複するときだけ。元の非ゼロ面積の三角形の退化は精度不足とする。
 bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilon,
     std::vector<std::array<std::uint32_t, 3>>& output, bool mergeGeneratedSlivers = false)
 {
@@ -629,7 +629,7 @@ bool AddPolygonTriangles(const Polygon2& polygon, PointPool& pool, double epsilo
         const double emittedArea = Cross(a, b, c);
         const bool generatedTriangle = inputPoints[0].generatedIntersection || inputPoints[i].generatedIntersection
             || inputPoints[i + 1].generatedIntersection;
-        /// @note A clipped wedge with no positive area in the final mesh contributes no drawable coverage.
+        /// @note クリッピング後の細片が最終メッシュで正の面積を持たなければ、描画領域には寄与しない。
         if (mergeGeneratedSlivers && generatedTriangle && emittedArea <= epsilon * epsilon) continue;
         if (exactArea == 0.0) {
             const bool repeatedIndex = indices[0] == indices[i] || indices[i] == indices[i + 1]
@@ -792,7 +792,7 @@ bool PreferredSource(std::size_t a, std::size_t b, std::span<const WaterZoneSour
         || (sources[a].priority == sources[b].priority && a < b);
 }
 
-/// @note Resolve only an emitted point within one float-rounding radius of an original footprint triangle.
+/// @note 元の平面領域の三角形から単精度丸め誤差の半径以内にある出力点だけを解決する。
 WaterSplineSample SampleRoundedFootprint(const WaterSplineSnapshot& geometry,
     const WaterSplineTriangle& triangle, const Point2& point)
 {
@@ -911,7 +911,7 @@ bool BuildBoundaryEdges(const std::vector<WaterSplineTriangle>& triangles,
     return true;
 }
 
-} /// @note namespace
+}
 
 bool SubtractLakeIslands(WaterSplineSnapshot& lake, std::span<const WaterSplineSnapshot> islands,
     const Transform& transform)
@@ -1137,12 +1137,12 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     std::stable_sort(sourceOrder.begin(), sourceOrder.end(), [&](std::size_t a, std::size_t b) {
         return PreferredSource(a, b, sources);
     });
-    /// @note Corridor boundaries subdivide the winning mesh so mouth interpolation remains represented when source meshes are coarse.
+    /// @note 元のメッシュが粗くても河口の補間を保つため、採用したメッシュを帯状領域の境界で分割する。
     for (const std::size_t sourceIndex : sourceOrder) {
         TriangleIndex coveredIndex;
         if (!coveredIndex.Build(coveredTriangles)) return fail("union coverage index exceeds its budget");
         std::vector<Polygon2> accepted;
-        /// @note Arc-distance transitions are already represented by the river's sampled cross sections.
+        /// @note 弧長方向の遷移はサンプリング済みの河川断面に含まれる。
         const bool needsMouthBoundarySplit = !followsRiver
             && (isMouthReceiver[sourceIndex] || sourceMouthCount[sourceIndex] > 0);
         for (const Triangle2& triangle : sourceTriangles[sourceIndex]) {
@@ -1362,4 +1362,4 @@ bool BuildWaterZoneSnapshot(std::span<const WaterZoneSource> sources,
     diagnostic.clear();
     return true;
 }
-} /// @note namespace fbzz::scene
+}

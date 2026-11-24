@@ -41,4 +41,4 @@ private:
             static_cast<State&>(*this).OnResetGpuRuntime();
     }
 };
-} /// @note namespace fbzz::scene
+}

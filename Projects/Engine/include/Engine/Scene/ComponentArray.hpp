@@ -38,6 +38,7 @@ public:
     FBZZ_ENGINE_API size_t Count() const;
     FBZZ_ENGINE_API void* Get(size_t index) const;
 private:
+    /// @note 各ブロックを、元の要素型に合う解放関数と一緒に所有する。
     std::vector<Allocation> m_chunks;
 };
 
@@ -245,11 +246,17 @@ private:
         other.m_sparseToIndex.clear();
     }
 
+    /// @note 一定個数ずつまとめて確保し、コンポーネントが増えても既存のブロックを動かさずに済む。
     ComponentChunkStorage m_chunks;
+    /// @note 格納位置から持ち主を引く表。削除の穴を末尾の要素で埋めるとき、その持ち主の逆引きも更新する。
     std::vector<EntityID> m_denseToEntity;
+    /// @note 追加のたびに新しい識別値を持たせ、同じ個体に付け直したコンポーネントを古い参照と区別する。
     std::vector<uint64_t> m_lifetimes;
+    /// @note 個体の番号から現在の格納位置を引く表。コンポーネントを持たない個体には EMPTY を置く。
     std::vector<uint32_t> m_sparseToIndex;
+    /// @note 確保したブロックのうち、先頭から何要素までが使用中かを表す。
     uint32_t m_count = 0;
+    /// @note 並びに依存するキャッシュが、前回の参照以降に追加・削除があったか判定するための値。
     uint64_t m_structureRevision = 0;
 };
 

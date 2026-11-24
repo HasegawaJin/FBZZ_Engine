@@ -1,5 +1,5 @@
 /// @file    NavMeshBakeSystem.hpp
-/// @brief   Submit asynchronous NavMesh bakes and validate their captured inputs.
+/// @brief   非同期の NavMesh ベイクを投入し、取得した入力を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-17
 #pragma once
@@ -20,7 +20,7 @@ namespace fbzz::scene {
 
 class Scene;
 
-/// @brief Numeric link input captured before a background NavMesh bake starts.
+/// @brief バックグラウンドの NavMesh ベイク開始前に確定した数値リンク入力。
 struct NavMeshBakeOffMeshLinkInput {
     EntityID entity = EntityID::INVALID;
     std::uint64_t inputSignature = 0;
@@ -31,28 +31,28 @@ struct NavMeshBakeOffMeshLinkInput {
     int agentTypeMask = -1;
 };
 
-/// @brief Hash the current surface, terrain, modifier, and Off-Mesh Link inputs.
-/// @param scene Scene whose world transforms have already been synchronized.
-/// @param surfaceId Entity carrying the surface component.
-/// @return Nonzero signature, or zero if the surface or its GameObject is missing.
-/// @note Terrain height data is scanned; avoid calling this once per frame.
+/// @brief 現在のサーフェス、地形、モディファイアー、Off-Mesh Link 入力をハッシュする。
+/// @param scene ワールド変換を同期済みの Scene。
+/// @param surfaceId サーフェスコンポーネントを持つ Entity。
+/// @return 非ゼロの署名。サーフェスまたは GameObject がなければ 0。
+/// @note 地形の高さデータを走査するため、毎フレームの呼び出しは避ける。
 [[nodiscard]] FBZZ_ENGINE_API std::uint64_t HashNavMeshBakeSources(Scene& scene, EntityID surfaceId);
 
-/// @brief Schedule, validate, and publish NavMesh bake jobs.
+/// @brief NavMesh ベイクジョブの登録、検証、公開を担う。
 class NavMeshBakeSystem final : public ISystem {
 public:
-    /// @brief Return the scheduler name.
+    /// @brief スケジューラーで使う名前を返す。
     std::string_view Name() const override { return "NavMeshBakeSystem"; }
-    /// @brief Return the phase in which bake requests are collected.
+    /// @brief ベイク要求を収集するフェーズを返す。
     Phase GetPhase() const override { return Phase::PreScript; }
-    /// @brief Run in editor and simulation scenes.
+    /// @brief エディターとシミュレーションの両方のシーンで実行する。
     RunMode GetRunMode() const override { return RunMode::Always; }
-    /// @brief Declare NavMesh, transform, marker, terrain, and modifier access.
+    /// @brief NavMesh、変換、マーカー、地形、モディファイアーのアクセスを宣言する。
     FBZZ_ENGINE_API ComponentAccess GetAccess() const override;
-    /// @brief Complete ready jobs and submit requested bakes.
+    /// @brief 準備ができたジョブを完了し、要求されたベイクを投入する。
     FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 
-    /// @brief Return current job progress for a surface entity index.
+    /// @brief サーフェスの Entity 添字に対応するジョブの現在の進捗を返す。
     FBZZ_ENGINE_API float BakeProgress(std::uint32_t surfaceId) const;
 
 private:
@@ -69,4 +69,4 @@ private:
     std::unordered_map<std::uint32_t, BakeJob> m_jobs;
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -1,5 +1,5 @@
 /// @file    UIThemeAsset.hpp
-/// @brief   Persistent shared visual values for Canvas-based game UI.
+/// @brief   Canvas ベースのゲーム UI で共有する見た目の設定を永続化する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #pragma once
@@ -10,8 +10,8 @@
 
 namespace fbzz::asset {
 
-/// @note Canvas pixels match UIText and UILayoutGroup; lineSpacing is a line-height multiplier.
-/// @note Font references contain a GUID, project path, or legacy atlas base path; GPU objects are never stored here.
+/// @note Canvas のピクセル単位は UIText と UILayoutGroup に準じる。lineSpacing は行高に掛ける倍率。
+/// @note フォント参照は GUID、プロジェクトパス、旧形式のアトラスのベースパスのいずれか。GPU オブジェクトは保持しない。
 struct UIThemeStyle {
     math::Vector4 imageColor{1.0f, 1.0f, 1.0f, 1.0f};
     math::Vector4 textColor{1.0f, 1.0f, 1.0f, 1.0f};
@@ -39,9 +39,9 @@ public:
 
 [[nodiscard]] FBZZ_ENGINE_API bool IsUIThemeStyleValid(const UIThemeStyle& style);
 
-/// @pre Call on the AssetManager/DataAssetRegistry owner thread, like the existing UISystem entry point.
-/// @return False leaves out unchanged for an empty, removed, wrong-type or invalid asset.
-/// @note Copies values per Canvas pass; no pointer is retained across edits, reloads, cache clears or device resets.
+/// @pre UISystem の既存の入口と同様、AssetManager と DataAssetRegistry の所有スレッドから呼ぶ。
+/// @return アセットが未指定、削除済み、別型または不正なら false。out は変更しない。
+/// @note Canvas パスごとに値をコピーする。編集、再読込、キャッシュ破棄、デバイスリセットをまたぐポインターは保持しない。
 [[nodiscard]] FBZZ_ENGINE_API bool ResolveUIThemeStyle(const std::string& reference, UIThemeStyle& out);
 
 } /// @note namespace fbzz::asset

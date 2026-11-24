@@ -24,10 +24,10 @@ struct ScriptGameplayProxy {
     FBZZ_ENGINE_API bool SetSprite(std::string_view assetPath) const;
     FBZZ_ENGINE_API bool SetSpriteColor(float r, float g, float b, float a) const;
 
-    /// @name Line Renderer
+    /// @name ライン描画
     /// @note managed facade は実 row の寿命と scope を dispatcher で検証し、native 操作と row の query を組み合わせる。
     /// @note PresentationSystem が全入力 snapshot を比較するため、呼び出し側で cache を無効化しない。2 点未満では描画しない。
-    /// @note Point queries read the runtime-selected values during Play and current authoring values during Edit.
+    /// @note 点の照会は Play 中に選択されたランタイム値を読み、Edit 中は現在の制作値を読む。
     /// @{
     [[nodiscard]] FBZZ_ENGINE_API bool HasLineRenderer() const;
     /// @return 未存在または無効な入力なら 0。POINT_OBJECTS の点数も返す。
@@ -48,8 +48,8 @@ struct ScriptGameplayProxy {
     FBZZ_ENGINE_API bool SetLine(const math::Vector3& start,
                  const math::Vector3& end,
                  bool worldSpace = true) const;
-    /// @brief Numeric point update. Empty or one-point input hides the line; larger inputs replace the selected source.
-    /// @note Writes select INLINE+LIVE and retain inactive target bindings and bake metadata.
+    /// @brief 数値点を更新する。0 点または 1 点なら非表示にし、2 点以上なら選択中の入力元を置き換える。
+    /// @note 書き込み時は INLINE+LIVE を選び、非アクティブな参照先のバインドとベイクのメタデータを保持する。
     FBZZ_ENGINE_API bool SetLinePoints(std::span<const math::Vector3> points, bool worldSpace = true) const;
     /// @brief 始点側と終点側の色 (RGBA)。異極を結ぶ線を赤→青にする、といった用途。
     FBZZ_ENGINE_API bool SetLineColors(const math::Vector4& startColor, const math::Vector4& endColor) const;
@@ -71,4 +71,4 @@ struct ScriptGameplayProxy {
     FBZZ_ENGINE_API bool SetAudioMixerSend(std::string_view busName, float level) const;
 };
 
-} /// @note namespace fbzz::scene
+}

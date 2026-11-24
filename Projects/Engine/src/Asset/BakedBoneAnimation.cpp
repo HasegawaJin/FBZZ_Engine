@@ -1,5 +1,5 @@
 /// @file    BakedBoneAnimation.cpp
-/// @brief   Safe skeletal bake generation, sampling, bounds and derived-cache codec.
+/// @brief   骨格のベイク生成、サンプリング、境界計算、および派生キャッシュの読み書き。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #include <Engine/Asset/BakedBoneAnimation.hpp>
@@ -99,7 +99,7 @@ bool BoneBakeShape(const BakedBoneAnimation& b)
         && BoneBakeAffine(b.rootInverse);
 }
 
-/// @note sqrt(||A||1 * ||A||inf) bounds the spectral norm even for shear and nonuniform scale.
+/// @note sqrt(||A||1 * ||A||inf) はせん断や非一様スケールを含む場合もスペクトルノルムの上界になる。
 double BoneBakeLinearNorm(const math::Matrix4& m)
 {
     double one = 0.0, infinity = 0.0;
@@ -140,7 +140,7 @@ float BoneBakeRadius(const BakedBoneAnimation& b, const std::vector<uint32_t>& o
             * (BoneBakeTranslationNorm(bone.offset) + BoneBakeLinearNorm(bone.offset) * meshRadius);
         radius = (std::max)(radius, BoneBakeTranslationNorm(b.rootInverse) + BoneBakeLinearNorm(b.rootInverse) * r);
     }
-    /// @note Float conversion and matrix accumulation must not round an otherwise conservative radius downward.
+    /// @note 浮動小数点への変換と行列の累積で、保守的に算出した半径を下方向に丸めないようにする。
     radius = radius * 1.00001 + 0.00001;
     if (!std::isfinite(radius) || radius > (std::numeric_limits<float>::max)()) return -1.0f;
     return std::nextafter(static_cast<float>(radius), (std::numeric_limits<float>::infinity)());

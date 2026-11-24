@@ -1,5 +1,5 @@
 /// @file    UIInputPolicy.hpp
-/// @brief   Cancels UI interactions on input handoff and implements the shared button event handler.
+/// @brief   入力の引き継ぎ時に UI 操作を取り消し、共通のボタンイベントを処理する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
@@ -57,7 +57,7 @@ inline void CancelInteraction(UIDropTarget& control)
     control.receivedPayload.clear();
 }
 
-/// @note This is the production event handler shared with GPU-independent UI lifecycle regression tests.
+/// @note 本体のイベント処理を、GPU を必要としない UI ライフサイクルの回帰テストと共有する。
 inline bool UpdateButton(UIButton& button, math::Vector2 rectPosition, math::Vector2 rectSize,
                          math::Vector2 mouse, bool mousePressed)
 {

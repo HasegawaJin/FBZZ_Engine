@@ -189,7 +189,7 @@ bool MotionConstraints(Scene& scene, const ClothComponent& cloth, std::vector<ph
                 && attachment.topologySignature != topologySignature)) return false;
         ObjectReference reference = attachment.targetReference;
         if (reference.guid.empty() && attachment.target.IsValid()) {
-            /// @note Legacy Cloth attachments store only EntityID; create the canonical temporary reference without mutating authored data.
+            /// @note EntityID だけを保存した旧 Cloth の取り付けには、元データを変更せず標準形式の一時参照を組み立てる。
             if (const GameObject* legacyTarget = scene.GetGameObject(attachment.target)) {
                 reference.guid = legacyTarget->instanceId;
                 reference.id = legacyTarget->GetID();

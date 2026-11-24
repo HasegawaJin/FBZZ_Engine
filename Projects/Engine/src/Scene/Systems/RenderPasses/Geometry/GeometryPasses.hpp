@@ -243,7 +243,7 @@ FBZZ_ENGINE_API renderer::Material* SyncMaterialSlot(
     MaterialComponent& mc, size_t slotIndex, renderer::ResourceManager& resources,
     bool preferSkinnedFallback = false, float screenPixels = 0.0f);
 
-/// @note One extraction owns its immutable asset/descriptor snapshots and CPU bytes; instance overrides, Sprite UV and streamed texture bindings are applied afterwards.
+/// @note 抽出呼び出しが不変のアセット・記述子と CPU データを所有し、その後に個別上書き・Sprite の UV・テクスチャ束縛を適用する。
 struct PreparedMaterialParams {
     asset::MaterialAsset::AuthoringSnapshotPtr source;
     std::shared_ptr<const renderer::ShaderDescriptor> descriptor;
@@ -255,7 +255,7 @@ struct PreparedMaterialParams {
     bool standardDescriptorVerified = false;
     std::vector<uint8_t> bytes;
 };
-/// @note Reuse only matching asset, shader descriptor and ResourceManager generations; invalid preparation falls back to ordinary synchronization.
+/// @note アセット、シェーダー記述子、資源管理者の世代が一致する場合だけ再利用し、準備結果が無効なら通常の同期を行う。
 FBZZ_ENGINE_API renderer::Material* SyncMaterialSlotPrepared(MaterialComponent& mc, size_t slotIndex,
     renderer::ResourceManager& resources, bool preferSkinnedFallback, float screenPixels,
     const PreparedMaterialParams* prepared);
@@ -309,12 +309,12 @@ FBZZ_ENGINE_API ActiveWeather FindActiveWeather(Scene& scene);
 FBZZ_ENGINE_API WorldBounds ComputeWorldBounds(const Transform& tf, const renderer::Mesh& mesh,
                                float padding = 0.0f);
 
-/// @return Maximum axis norm of the current world matrix, preserving nonuniform and negative scale bounds.
+/// @return 現在のワールド行列の各軸の最大ノルム。非一様・負スケールにも対応する。
 FBZZ_ENGINE_API float ComputeWorldBoundsScale(const math::Matrix4& world);
-/// @return World-space leaf displacement for the selected material slots; -1 means unresolved bounds and requires fail-open culling.
-/// @note Reads current immutable authoring without importer/GPU callbacks; slot overrides follow material synchronization order.
+/// @return 選択した材質スロットのワールド空間における葉の変位。境界を解決できない場合は -1 を返し、カリング対象から外す。
+/// @note インポーターや GPU のコールバックを起動せず現在の不変設定を読み、スロット上書きは材質同期と同順に適用する。
 [[nodiscard]] FBZZ_ENGINE_API float ComputeLeafWindBoundsPadding(const GameObject& go, size_t slotCount);
-/// @pre maximumScale was computed from this same world matrix; both values belong to one callback-free extraction.
+/// @pre maximumScale はこのワールド行列から求め、両方の値をコールバックなしの同じ抽出で取得すること。
 FBZZ_ENGINE_API WorldBounds ComputeWorldBounds(const math::Matrix4& world, float maximumScale,
                                const renderer::Mesh& mesh, float padding = 0.0f);
 

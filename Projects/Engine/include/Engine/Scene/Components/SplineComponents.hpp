@@ -22,7 +22,7 @@ struct SplineComponent {
     std::uint64_t bakedInputSignature = 0;
     ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
     std::uint32_t bakedAdapterVersion = 0;
-    /// @brief Whether the retained point sequence closes its last segment back to the first.
+    /// @brief 保持した点列の末尾を先頭につないで閉じるか。
     bool bakedClosed = false;
     bool bakeValid = false;
     bool closed = false;
@@ -76,4 +76,4 @@ struct SplineFollowerComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

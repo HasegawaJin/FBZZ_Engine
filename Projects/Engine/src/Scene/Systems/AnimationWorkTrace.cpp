@@ -1,5 +1,5 @@
 /// @file    AnimationWorkTrace.cpp
-/// @brief   Fixed-size independent animation trace, serialized after the capture window.
+/// @brief   独立した固定長アニメーション計測を記録し、計測区間終了後にシリアライズする。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #include "AnimationWorkTrace.hpp"
@@ -107,7 +107,7 @@ void WriteAnimationCpuCapture(AnimationWorkCapture& capture)
             text << ','; if (row.paletteApiCountersAvailable) text << value;
         }
         text << ','; if (row.poseCountersAvailable) text << row.heldCurrentPaletteUpdates;
-        /// @note This CPU observation does not observe GPU transfer bytes or bones evaluated by baked/cache replay.
+        /// @note CPU 側の計測であり、GPU 転送バイト数やベイク・キャッシュ再生で評価されたボーン数は含めない。
         text << ",0,,0,\n";
     }
     if (!util::FileSystem::WriteTextAtomic(capture.path + ".cpu.csv", text.str()))
@@ -321,7 +321,7 @@ void AssignAnimationSkinningPassOrdinal(AnimationSkinningCpuRow& row)
 {
     auto& capture=Capture();
     std::lock_guard lock(capture.mutex);
-    /// @note Bounded diagnostic state retains only integer provenance; no scene/resource pointer or buffer lifetime is extended.
+    /// @note 上限付きの診断状態は整数の識別情報だけを保持し、シーン・資源・バッファの寿命を延ばさない。
     for(auto& state:capture.skinningOrdinals) {
         if(state.resourceInstanceId!=0 && state.resourceInstanceId!=row.resourceInstanceId)continue;
         if(state.resourceInstanceId!=row.resourceInstanceId || state.resourceEpoch!=row.resourceEpoch || state.resourceFrame!=row.resourceFrame)
@@ -426,7 +426,7 @@ struct ActorCapture {
     uint64_t overlapAtBegin=0;
     ActorFrameRow current;
     std::array<ActorRow,HISTORY_CAPACITY> pending{};
-    /// @note Runtime allocation preserves the fixed row cap without a giant compile-time aggregate.
+    /// @note 実行時に確保し、巨大なコンパイル時集成体を作らずに行数の上限を固定する。
     std::unique_ptr<ActorRow[]> actors=std::make_unique<ActorRow[]>(ACTOR_CAPACITY);
     std::array<ActorFrameRow,FRAME_CAPACITY> frames{};
     std::array<HistoryEntry,HISTORY_CAPACITY> histories{};
@@ -464,7 +464,7 @@ struct ActorCaptureConfig {
         samples=ReadAnimationTraceCount("FBZZ_ANIMATION_ACTOR_TRACE_SAMPLES",120,animation_actor_detail::FRAME_CAPACITY);
     }
 };
-/// @note Nonblocking capture ownership also rejects same-thread recursion without touching a nonrecursive mutex.
+/// @note 取得を待たない方式により、同一スレッドの再入時に非再帰ミューテックスを取り直さない。
 struct ActorCaptureLease {
     animation_actor_detail::ActorCapture& capture;
     bool acquired;
@@ -667,7 +667,7 @@ AnimationWorkFrame::AnimationWorkFrame(bool simulating, uint64_t frame, uint64_t
     if (capture.cpuCount >= capture.samples) return;
     if (capture.lastStartedFrame == frame) { ++capture.duplicateCpuFrames; return; }
     capture.lastStartedFrame = frame;
-    /// @note Independent wall interval between unique animation-update beginnings; no inclusive scope sum or lockstep delta.
+    /// @note 連続する別々のアニメーション更新開始間の実時間を測り、スコープの累計や固定ステップ時間は使わない。
     const uint64_t beginNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     const uint64_t intervalNs = capture.lastBeginNs && capture.lastBeginGeneration == generation && capture.lastBeginEpoch == epoch ? beginNs-capture.lastBeginNs : 0;
     capture.lastBeginNs = beginNs; capture.lastBeginGeneration = generation; capture.lastBeginEpoch = epoch;
@@ -689,8 +689,8 @@ void AnimationWorkFrame::FinalizeSource(uint64_t frame, uint64_t generation, uin
 {
     if (m_active) m_row.FinalizeSource(frame, generation, epoch);
 }
-/// @note This reads the renderer's completed raw timestamp snapshot, bypassing PerformanceProfiler and game-view filtering.
-/// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/timing Completed queue timestamps use the queue's timestamp frequency.
+/// @note PerformanceProfiler とゲームビューの絞り込みを経由せず、レンダラーの完了済みタイムスタンプを読む。
+/// @see https://learn.microsoft.com/en-us/windows/win32/direct3d12/timing 完了済みキューのタイムスタンプをそのキューの周波数で換算する。
 void CaptureAnimationGpuWork(const renderer::GpuProfilerSnapshot& snapshot)
 {
     auto& capture = Capture();

@@ -169,4 +169,4 @@ struct UIText {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

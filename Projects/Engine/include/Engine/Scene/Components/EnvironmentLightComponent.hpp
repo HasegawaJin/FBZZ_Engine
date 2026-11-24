@@ -58,4 +58,4 @@ struct EnvironmentLightComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -1,5 +1,5 @@
 /// @file    SplineCurve.cpp
-/// @brief   Numeric Catmull-Rom position, tangent, and length evaluation.
+/// @brief   Catmull–Rom 曲線の位置、接線、長さを数値評価する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #include <Engine/Scene/SplineCurve.hpp>
@@ -50,7 +50,7 @@ CurveSegment GetSegment(std::span<const math::Vector3> points, bool closed, floa
         t, segmentCount };
 }
 
-} /// @note namespace
+}
 
 math::Vector3 EvaluateSplineCurve(std::span<const math::Vector3> points, bool closed,
     float normalizedPosition)
@@ -107,4 +107,4 @@ float EstimateSplineCurveLength(std::span<const math::Vector3> points, bool clos
     return std::max(length, 0.0001f);
 }
 
-} /// @note namespace fbzz::scene
+}

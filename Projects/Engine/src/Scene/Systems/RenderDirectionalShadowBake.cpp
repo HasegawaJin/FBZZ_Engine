@@ -433,7 +433,7 @@ bool PreparePreset(renderer::IRenderer& renderer, renderer::ResourceManager& res
     return true;
 }
 
-} /// @note namespace
+}
 
 DirectionalShadowBakeStatus RequestDirectionalShadowBake(Scene& scene, const std::filesystem::path& cacheDirectory)
 {
@@ -478,7 +478,7 @@ void ProcessDirectionalShadowBake(Scene& scene, renderer::IRenderer& renderer,
         return;
     }
     if (!s_pending.snapshot) {
-        /// @note Play must still start when a Game View cannot supply a render snapshot.
+        /// @note ゲームビューから描画スナップショットを取得できない場合も Play を開始できるようにする。
         if (Time::frameCount - s_pending.requestedFrame >= SNAPSHOT_WAIT_FRAMES)
             s_pending.status = Status::UNAVAILABLE;
         return;
@@ -527,7 +527,7 @@ void PrepareDirectionalShadowBakeForRender(RenderPassContext& context, EntityID 
         && s_pending.light == light && gameView && !s_pending.snapshot) {
         s_pending.snapshot = context.renderScene;
         s_pending.coverage = sceneBounds;
-        /// @note Bounded motion of realtime receivers can stay inside this fixed projection.
+        /// @note 固定した投影範囲には、リアルタイムの受影物が動ける余白を含める。
         s_pending.coverage.radius = sceneBounds.radius * 1.125f + 1.0f;
         s_pending.resourceOwner = context.resources.GetInstanceId();
         s_pending.resourceEpoch = context.resources.GetResetVersion();
@@ -546,4 +546,4 @@ void PrepareDirectionalShadowBakeForRender(RenderPassContext& context, EntityID 
     }
 }
 
-} /// @note namespace fbzz::scene
+}

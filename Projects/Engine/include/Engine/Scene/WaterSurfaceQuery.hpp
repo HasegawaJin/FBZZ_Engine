@@ -23,7 +23,7 @@ struct WaterSurfaceHeightSample {
     float waterDepthLimit = 0.0f; ///< @note この XZ で浮力が届く表面下の深さ [world m]。
     float baseHeightOffset = 0.0f; ///< @note Spline 三角形の基準 worldY 差。絶対 worldY から分離して精度を保つ。
     math::Vector2 baseHeightGradient = math::Vector2::ZERO; ///< @note Spline の基準面 dY/d(worldX,worldZ)。
-    bool excluded = false; ///< @note 3D exclusion box contains the queried world point, or its snapshot is invalid.
+    bool excluded = false; ///< @note 除外ボックスがワールド座標を含むか、スナップショットが無効。
 };
 
 struct WaterSurfaceSample {
@@ -55,8 +55,8 @@ struct WaterSurfaceSample {
     const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
 
-/// @return False for invalid, excluded or outside-footprint points. Failure leaves out unchanged.
-/// @note Accepted samples match TrySampleWaterSurfaceHeightWorld, including above-water points.
+/// @return 無効な座標、除外領域内、水面の範囲外で false。失敗時は out を変更しない。
+/// @note 水面より上の点を含め、採用するサンプルは TrySampleWaterSurfaceHeightWorld と一致する。
 [[nodiscard]] FBZZ_ENGINE_API bool TrySampleInsideWaterSurfaceHeightWorld(const WaterComponent& water,
     const Transform& transform, const math::Vector3& worldPosition, float time, WaterSurfaceHeightSample& out,
     WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
@@ -68,4 +68,4 @@ struct WaterSurfaceSample {
 [[nodiscard]] FBZZ_ENGINE_API bool TrySampleWaterSurfaceWorld(const WaterComponent& water, const Transform& transform,
     const std::vector<ActiveFlowField>& fields, const math::Vector3& worldPosition, float time,
     WaterSurfaceSample& out, WaterSurfaceReadView view = WaterSurfaceReadView::LIVE_QUERY);
-} /// @note namespace fbzz::scene
+}

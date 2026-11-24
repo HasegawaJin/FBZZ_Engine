@@ -47,4 +47,4 @@ struct UICanvasGroup {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

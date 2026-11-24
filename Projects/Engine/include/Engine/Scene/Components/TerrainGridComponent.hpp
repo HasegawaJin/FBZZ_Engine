@@ -99,4 +99,4 @@ struct TerrainGridComponent {
     FBZZ_ENGINE_API void SyncInstanceIds(const Scene& scene);
 };
 
-} /// @note namespace fbzz::scene
+}

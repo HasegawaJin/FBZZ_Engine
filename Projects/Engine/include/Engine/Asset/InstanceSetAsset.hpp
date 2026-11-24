@@ -1,5 +1,5 @@
 /// @file    InstanceSetAsset.hpp
-/// @brief   Shared authored placements and mesh/material LOD parts in a native .fzdata asset.
+/// @brief   共有配置とメッシュ・材質の LOD 部品を定義する .fzdata アセット。
 /// @author  Hasegawa Jin
 /// @date    2026-10-10
 #pragma once
@@ -21,11 +21,11 @@ public:
     static constexpr const char* TYPE_NAME = "InstanceSetAsset";
     const char* GetTypeName() const override { return TYPE_NAME; }
     FBZZ_ENGINE_API void Reflect(scene::IReflector& reflector) override;
-    /// @return Null for invalid authoring data; otherwise a stable snapshot until the asset changes.
+    /// @return 編集値が無効なら null。それ以外はアセットが変わるまで同じスナップショットを返す。
     [[nodiscard]] std::shared_ptr<const renderer::InstanceSetData> Snapshot() const { return m_snapshot; }
     [[nodiscard]] std::span<const InstanceMeshPart> Parts() const { return m_parts; }
     [[nodiscard]] std::span<const float> LodHeights() const { return m_lodHeights; }
-    /// @note All parts use the same local placement transforms. IDs are positive and unique.
+    /// @note 各部品は同じローカル配置変換を使う。ID は正で重複しない。
     [[nodiscard]] FBZZ_ENGINE_API bool Replace(std::span<const InstanceMeshPart> parts, std::span<const float> lodHeights,
         std::span<const renderer::InstancePlacement> placements);
 private:

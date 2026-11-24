@@ -1,5 +1,5 @@
 /// @file    WaterWavesAsset.cpp
-/// @brief   Reflection and seeded generation for WaterWavesAsset.
+/// @brief   WaterWavesAsset の反射とシードに基づく波の生成。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #include <Engine/Asset/WaterWavesAsset.hpp>

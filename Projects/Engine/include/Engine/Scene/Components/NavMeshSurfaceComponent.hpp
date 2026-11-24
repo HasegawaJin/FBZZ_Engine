@@ -291,4 +291,4 @@ struct NavMeshSurfaceComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -61,7 +61,7 @@ bool StandaloneProjectModule::OnInit()
     m_runtime.ApplySettings(m_settings);
     m_runtime.RegisterScenes(m_projectRoot, m_resources);
     if (m_exactStartScene) {
-        /// @note Register last so the exact selected path wins even when two scene files share a stem.
+        /// @note 同じ拡張子なしファイル名のシーンが複数ある場合も、選択された正確なパスを優先するため最後に登録する。
         const std::string name = util::FileSystem::PathToUtf8(m_startSceneFile.stem());
         m_runtime.GetSceneManager().RegisterFromFile(name, util::FileSystem::PathToUtf8(m_startSceneFile), m_resources);
     }
@@ -177,4 +177,4 @@ void StandaloneProjectModule::OnShutdown()
     core::Cursor::ResetForEditor();
 }
 
-} /// @note namespace fbzz::scene
+}

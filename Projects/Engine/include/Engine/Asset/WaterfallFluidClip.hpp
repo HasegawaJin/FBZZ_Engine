@@ -1,5 +1,5 @@
 /// @file    WaterfallFluidClip.hpp
-/// @brief   Local liquid surface baking and frame streaming for connected waterfalls.
+/// @brief   連結された滝のローカル液面をベイクし、フレーム単位でストリーミングする。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #pragma once
@@ -20,7 +20,7 @@ struct WaterfallFluidObstacle {
     float sphereRadius = 0.0f;
 };
 
-/// @note Positions are normalized to the bake cube [-1,1]. Gravity and velocity are in cube units per second squared and per second.
+/// @note 位置はベイク立方体の [-1,1] に正規化する。重力加速度は立方体の単位毎秒毎秒、速度は立方体の単位毎秒。
 struct WaterfallFluidBakeInput {
     math::Vector3 inlet;
     math::Vector3 inletVelocity;
@@ -33,7 +33,7 @@ struct WaterfallFluidBakeInput {
     int frameCount = 48;
     int framesPerSecond = 24;
     std::uint64_t stamp = 0;
-    /// @note grid × grid height samples across XZ from -1 to 1, X varies fastest.
+    /// @note XZ の [-1,1] を grid × grid でサンプルした高さ。X の添字が最も速く変化する。
     std::vector<float> ground;
     std::vector<WaterfallFluidObstacle> obstacles;
 };
@@ -51,11 +51,11 @@ struct WaterfallFluidFrame {
     int framesPerSecond = 0;
 };
 
-/// @return Empty on success. Failure and cancellation leave an existing file intact.
+/// @return 成功時は空文字列。失敗やキャンセルでは既存ファイルを変更しない。
 [[nodiscard]] FBZZ_ENGINE_API std::string BakeWaterfallFluidClip(const WaterfallFluidBakeInput& input,
     const std::string& path, const std::atomic<bool>& cancel, std::atomic<int>& progress);
 
-/// @note Reads the index and one checksummed frame. The stamp identifies the placement and bake settings.
+/// @note インデックスと、チェックサムを検証した 1 フレームを読む。スタンプは配置とベイク設定を識別する。
 [[nodiscard]] FBZZ_ENGINE_API bool LoadWaterfallFluidFrame(const std::string& path, std::uint64_t stamp,
     int requestedFrame, WaterfallFluidFrame& out);
 

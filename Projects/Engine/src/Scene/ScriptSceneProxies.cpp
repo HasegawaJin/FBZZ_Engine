@@ -50,7 +50,7 @@ LineControlPointSnapshot ResolveScriptLinePoints(
     return ResolveLineControlPoints(scene, owner, line, ScriptControlPointReadContext());
 }
 
-/// @brief Copy a resolved route to legacy numeric arrays without changing them on failure.
+/// @brief 解決済みの経路を従来の数値配列へコピーする。失敗時は配列を変更しない。
 
 
 LifetimeComponent* SelfLifetime(const Script* script)
@@ -58,7 +58,7 @@ LifetimeComponent* SelfLifetime(const Script* script)
     return SelfComponent<LifetimeComponent>(script);
 }
 
-} /// @note namespace
+}
 GameObject* ScriptSceneProxy::Find(std::string_view name, bool includeInactive) const
 {
     if (!script || !script->m_scene) return nullptr;
@@ -321,7 +321,7 @@ bool ScriptSceneProxy::TryGetTerrainFloorAt(const math::Vector3& reference, floa
     bool found = false;
     TerrainSurfaceSample best;
     GameObject* bestOwner = nullptr;
-    /// @note Component dense order can differ after removal/reorder. Only equal-height ties need the old flat Scene order.
+    /// @note コンポーネントの密な格納順は削除や並べ替えで変わる。同じ高さの候補だけシーンの従来の順序で比較する。
     const auto earlierInScene = [&](GameObject* candidate) {
         for (auto& object : script->m_scene->GameObjects()) {
             if (&object == candidate) return true;
@@ -355,7 +355,7 @@ bool ScriptSceneProxy::TryGetTerrainCeilingAt(const math::Vector3& reference, fl
     bool found = false;
     TerrainSurfaceSample best;
     GameObject* bestOwner = nullptr;
-    /// @note Component dense order can differ after removal/reorder. Only equal-height ties need the old flat Scene order.
+    /// @note コンポーネントの密な格納順は削除や並べ替えで変わる。同じ高さの候補だけシーンの従来の順序で比較する。
     const auto earlierInScene = [&](GameObject* candidate) {
         for (auto& object : script->m_scene->GameObjects()) {
             if (&object == candidate) return true;
@@ -787,4 +787,4 @@ bool ScriptGameplayProxy::SetAudioMixerSend(std::string_view busName, float leve
 /// @brief save と config の違いは Store() が返すストアだけなので、実装はここ 1 つに閉じる。
 
 
-} /// @note namespace fbzz::scene
+}

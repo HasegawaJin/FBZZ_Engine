@@ -1,23 +1,13 @@
 /// @file    ScriptProxyMembers.inl
-/// @brief   ScriptProxyMembers.inl — Script クラスが持つプロキシメンバーの X-macro リスト。
+/// @brief   Script のメンバーとして展開するプロキシの一覧。
 /// @author  Hasegawa Jin
 /// @date    2026-06-22
 ///
-/// 使い方 (Script.hpp 内):
-/// #define FBZZ_PROXY_MEMBER(Type, Name)     Type Name { this };
-/// #define FBZZ_PROXY_STANDALONE(Type, Name) Type Name;
-/// #include <Engine/Scene/ScriptProxy/ScriptProxyMembers.inl>
-/// #undef FBZZ_PROXY_MEMBER
-/// #undef FBZZ_PROXY_STANDALONE
-///
-/// 新しいプロキシを追加するには:
-/// 1. ScriptProxy/XxxProxy.hpp を作成
-/// 2. AllScriptProxies.hpp に #include を追加
-/// 3. ここにエントリを 1 行追加 (コンストラクタが Script* を受け取る → MEMBER, そうでない → STANDALONE)
-/// 4. 領域に対応する Script*Proxies.cpp に実装を追加
+/// @note Script.hpp は取り込みの前後で展開マクロを定義・解除する。
+/// @note Script* を受け取る型は FBZZ_PROXY_MEMBER で this を渡し、受け取らない型は FBZZ_PROXY_STANDALONE で既定の初期化を行う。
+/// @note 追加時は宣言を AllScriptProxies.hpp から取り込み、領域に対応する Script*Proxies.cpp に実装を置く。
+/// @note DLL ABI で既存プロキシのオフセットを維持するため、新しい項目は末尾へ追加する。
 
-/// FBZZ_PROXY_MEMBER     — Script* { this } で初期化するプロキシ (大多数)
-/// FBZZ_PROXY_STANDALONE — デフォルト初期化するプロキシ (Script* を受け取らない設計のもの)
 FBZZ_PROXY_MEMBER(ScriptTransformProxy,   transform)
 FBZZ_PROXY_MEMBER(ScriptInputProxy,       input)
 FBZZ_PROXY_MEMBER(ScriptCursorProxy,      cursor)
@@ -56,14 +46,13 @@ FBZZ_PROXY_MEMBER(ScriptDecalProxy,         decal)
 FBZZ_PROXY_MEMBER(ScriptVolumeProxy,        volume)
 FBZZ_PROXY_MEMBER(ScriptReflectionProbeProxy, reflectionProbe)
 FBZZ_PROXY_MEMBER(ScriptLifetimeProxy,      lifetime)
-/// @note Script の DLL ABI で既存 Proxy のオフセットを維持するため、新規 Proxy は末尾へ追加する。
 FBZZ_PROXY_MEMBER(ScriptVFXProxy,           vfx)
 FBZZ_PROXY_MEMBER(ScriptGameplayProxy,      gameplay)
 FBZZ_PROXY_MEMBER(ScriptSaveProxy,          save)
 FBZZ_PROXY_MEMBER(ScriptEventProxy,         events)
 FBZZ_PROXY_MEMBER(ScriptRandomProxy,        random)
 FBZZ_PROXY_MEMBER(ScriptTweenProxy,         tween)
-/// 環境設定 (Option)。save と同じ API で、保存先だけが別ファイル。
+/// @note 環境設定は save と同じ API を持ち、別ファイルに保存する。
 FBZZ_PROXY_MEMBER(ScriptConfigProxy,        config)
 FBZZ_PROXY_MEMBER(ScriptDisplayProxy,       display)
 FBZZ_PROXY_MEMBER(ScriptGraphicsProxy,      graphics)
@@ -72,7 +61,7 @@ FBZZ_PROXY_MEMBER(ScriptSequenceProxy,      sequence)
 FBZZ_PROXY_MEMBER(ScriptObjectMaskProxy,    objectMask)
 FBZZ_PROXY_MEMBER(ScriptSpringBoneProxy,    springBone)
 FBZZ_PROXY_MEMBER(ScriptRagdollProxy,       ragdoll)
-/// 剛体の関節。制約の実体は World が持つので、ここからは宣言 (JointComponent) を触る。
+/// @note 制約の実体は World が所有し、プロキシは JointComponent の宣言を扱う。
 FBZZ_PROXY_MEMBER(ScriptJointProxy,         joint)
-/// アセットの非同期読み込み・先読み。要求はスクリプトの破棄で手放される。
+/// @note 非同期読み込み・先読みの要求は、スクリプトの破棄時に手放す。
 FBZZ_PROXY_MEMBER(ScriptAssetProxy,         assets)

@@ -97,7 +97,7 @@ bool GuardedInvoke(const Callback& callback)
 #endif
 }
 
-} /// @note namespace
+}
 
 /// @see https://learn.microsoft.com/en-us/cpp/cpp/pointers-to-members?view=msvc-170 メンバー関数ポインターによる仮想ディスパッチ。
 template<typename Argument, typename Callback>
@@ -355,7 +355,7 @@ void Script::UpdateFrameDelays()
 {
     if (m_frameDelays.empty()) return;
 
-    /// @note Swap out so fn() callbacks can safely call FrameDelay() without invalidating our iterator.
+    /// @note コールバックが FrameDelay() を再度呼んでも走査中のイテレーターを無効化しないよう、処理対象を別の配列に移す。
     std::vector<FrameDelayEntry> current;
     current.swap(m_frameDelays);
 
@@ -542,4 +542,4 @@ void Script::ClearRuntimePostProcessSettings()
         m_scene->ClearRuntimePostProcessSettings();
 }
 
-} /// @note namespace fbzz::scene
+}

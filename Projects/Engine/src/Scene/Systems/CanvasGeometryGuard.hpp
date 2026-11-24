@@ -1,5 +1,5 @@
 /// @file    CanvasGeometryGuard.hpp
-/// @brief   Check the union of active Canvas subtrees without repeating geometry probes.
+/// @brief   有効な Canvas の部分木を、同じ形状を重ねて調べずに確認する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #pragma once
@@ -13,11 +13,11 @@
 
 namespace fbzz::scene::canvas_geometry_detail {
 
-/// @brief Check geometry presence over eligible Canvas subtrees using invocation-local scratch.
-/// @pre The Scene hierarchy and components remain unchanged for this synchronous call.
-/// @note Only completed geometry-free roots are memoized; the first geometry hit returns before any memo allocation.
-/// @note UI measurement, layout and dragging can write transforms before the target-view filter.
-/// @note The probe must only observe component presence; no activity, enabled or view filter applies to children.
+/// @brief 呼び出し単位の作業領域を使い、有効な Canvas の部分木に描画形状があるか調べる。
+/// @pre 同期走査の間、シーン階層とコンポーネントが変化しないこと。
+/// @note 走査済みで形状のない根だけを記憶し、最初に形状が見つかれば記憶領域を確保せずに返す。
+/// @note ビューによる絞り込みより先に UI の計測・配置・ドラッグが姿勢を変更し得る。
+/// @note 子はアクティブ状態・有効設定・ビュー条件で絞らず、コンポーネントの有無だけを調べる。
 template<typename GeometryProbe>
 [[nodiscard]] bool CanShareCanvasFrameGeometry(Scene& scene, GeometryProbe&& hasGeometry)
 {
@@ -46,7 +46,7 @@ template<typename GeometryProbe>
         while (!pending.empty()) {
             auto* object = pending.back();
             pending.pop_back();
-            /// @note A previously checked child root proves its whole subtree; registration order need not be parent first.
+            /// @note 確認済みの子の根は部分木全体を確認済みとして扱えるため、登録順が親からである必要はない。
             if (skipProven && provenRoots.contains(key(*object))) continue;
             if (hasGeometry(*object)) return false;
             for (int childIndex = 0; childIndex < object->GetChildCount(); ++childIndex)
@@ -57,7 +57,7 @@ template<typename GeometryProbe>
     return true;
 }
 
-/// @brief Preserve conservative renderer-component presence, including disabled or empty renderers.
+/// @brief 無効または空のレンダラーも含め、描画コンポーネントの有無を保守的に調べる。
 [[nodiscard]] inline bool CanShareCanvasFrameGeometry(Scene& scene)
 {
     return CanShareCanvasFrameGeometry(scene, [](GameObject& object) {

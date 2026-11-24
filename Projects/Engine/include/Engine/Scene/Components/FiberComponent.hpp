@@ -140,4 +140,4 @@ struct FiberComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

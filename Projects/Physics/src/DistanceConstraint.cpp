@@ -24,8 +24,9 @@ namespace fbzz::physics
         const float invSum = invA + invB;
         if (invSum == 0.0f) return;
 
+        /// @note 現在の長さから目標を引いた分だけ両端を戻す。逆質量の割合で分けるので軽い方が大きく動き、固定端は動かない。
         const math::Vector3 correction = delta * ((length - m_distance) / length);
         m_bodyA->SetPosition(m_bodyA->GetPosition() + correction * (invA / invSum));
         m_bodyB->SetPosition(m_bodyB->GetPosition() - correction * (invB / invSum));
     }
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

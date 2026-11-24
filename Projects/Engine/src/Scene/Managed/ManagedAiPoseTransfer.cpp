@@ -32,7 +32,7 @@ bool Finite(const Transform& value)
     return Finite(value.position) && Finite(value.rotation) && Finite(value.scale)
         && Finite(value.worldPosition) && Finite(value.worldRotation) && Finite(value.worldScale);
 }
-/// @note Match Quaternion's normalization and inverse preconditions before invoking Math contracts.
+/// @note Math の契約を呼び出す前に、Quaternion の正規化と逆元の前提条件を確認する。
 /// @see Projects/Math/src/Quaternion.cpp Quaternion::Normalized / Quaternion::Inverse.
 bool Normalizable(const math::Quaternion& value, float& length)
 {
@@ -44,7 +44,7 @@ bool Normalizable(const math::Quaternion& value)
     float length = 0.0f;
     return Normalizable(value, length);
 }
-/// @pre The supplied length passed Normalizable in the same callback-free arithmetic phase.
+/// @pre 渡された長さは、コールバックを呼ばない同じ演算段階で Normalizable を満たした値であること。
 math::Quaternion NormalizeValidated(const math::Quaternion& value, float length)
 {
     const float inverse = 1.0f / length;
@@ -55,13 +55,13 @@ bool Invertible(const math::Quaternion& value, float& squared)
     squared = value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w;
     return Finite(value) && std::isfinite(squared) && !math::NearlyZero(squared);
 }
-/// @pre The supplied squared length passed Invertible; preserve Quaternion::Inverse's negation order.
+/// @pre 渡された二乗長は Invertible を満たすこと。Quaternion::Inverse と同じ順で符号を反転する。
 math::Quaternion InverseValidated(const math::Quaternion& value, float squared)
 {
     const float inverse = 1.0f / squared;
     return {-value.x * inverse, -value.y * inverse, -value.z * inverse, value.w * inverse};
 }
-/// @note Match SetWorldPose's tolerance, including signed zero, rather than the exact-zero physics helper.
+/// @note 符号付きゼロを含め、ゼロの厳密一致を使う物理用関数ではなく SetWorldPose の許容値に揃える。
 math::Vector3 DividePoseScale(const math::Vector3& value, const math::Vector3& scale)
 {
     return {std::abs(scale.x) > 1e-6f ? value.x / scale.x : 0.0f,
@@ -74,7 +74,7 @@ template<typename T> T Read(const char* bytes)
     std::memcpy(&result, bytes, sizeof(result));
     return result;
 }
-} /// @note namespace
+}
 
 void ManagedAiPoseTransfer::BeginEpoch(const Scene& scene)
 {
@@ -124,7 +124,7 @@ bool ManagedAiPoseTransfer::Update(GameObject& object)
         return true;
     if (!Finite(transform->position)
         || !Finite(transform->scale) || !Normalizable(transform->rotation)) return false;
-    /// @note The retained topology visits validated ancestors before each child, without callbacks or nested target roots.
+    /// @note 保持した階層順は、検証済みの祖先を子より先に処理できる。コールバックの呼び出しと対象の入れ子はない。
     /// @note Parent world finiteness and quaternion normalizability were already established by that successful Update.
     math::Quaternion worldRotation;
     float rotationLength = 0.0f;
@@ -134,7 +134,7 @@ bool ManagedAiPoseTransfer::Update(GameObject& object)
         if (!Finite(worldRotation) || !std::isfinite(rotationLength) || math::NearlyZero(rotationLength)) return false;
     }
     if (parentTransform) {
-        /// @note Reuse the validated product and length with Quaternion::Normalized's exact reciprocal/multiply order.
+        /// @note 検証済みの積と長さを使い、Quaternion::Normalized と同じ逆数計算・乗算の順を保つ。
         /// @see Projects/Math/src/Quaternion.cpp Quaternion::Normalized.
         transform->worldRotation = NormalizeValidated(worldRotation, rotationLength);
         const math::Vector3 scaledLocal = {transform->position.x * parentTransform->worldScale.x,
@@ -145,7 +145,7 @@ bool ManagedAiPoseTransfer::Update(GameObject& object)
     } else {
         UpdateWorldTransform(*transform, nullptr);
     }
-    /// @note UpdateWorldTransform writes only world values; local inputs were already validated above.
+    /// @note UpdateWorldTransform はワールド値だけを書き込む。ローカル入力はこの前に検証済み。
     if (!Finite(transform->worldPosition) || !Finite(transform->worldRotation)
         || !Finite(transform->worldScale)) return false;
     world_pose_detail::RememberAiWorldMath(object.GetID().index, *transform, parentTransform);
@@ -155,8 +155,8 @@ bool ManagedAiPoseTransfer::Update(GameObject& object)
 bool ManagedAiPoseTransfer::ValidateHierarchy(const Scene& scene)
 {
     const size_t slots = scene.EntitySlotCount();
-    /// @note All resolver calls and target marks are complete before any topology proof is retained.
-    /// @note A completed ancestor path cannot contain a target; subsequent paths stop at that exact proof.
+    /// @note 階層の検証結果は、解決関数の呼び出しと全対象への印付けが終わってから保持する。
+    /// @note 検証済みの祖先経路に対象が含まれないため、後続の経路は検証済みの点で打ち切れる。
     for (const Entry& entry : m_entries) {
         if (!entry.object) continue;
         const uint32_t target = entry.object->GetID().index;
@@ -178,8 +178,8 @@ bool ManagedAiPoseTransfer::ValidateHierarchy(const Scene& scene)
             m_ancestorEpoch[(*it)->GetID().index] = m_epoch;
         }
     }
-    /// @note Ancestor/target rejection proves distinct target subtrees cannot overlap.
-    /// @note Retain each breadth-first range once, including inactive descendants; no callbacks follow this phase.
+    /// @note 祖先と子孫がともに対象である場合を拒否するので、別の対象の部分木は重ならない。
+    /// @note 非アクティブな子孫も含めて幅優先順の各範囲を 1 回だけ保持する。この段階以降にコールバックはない。
     for (GameObject* root : m_roots) {
         const uint32_t slot = root->GetID().index;
         const size_t begin = m_queue.size();
@@ -206,8 +206,8 @@ bool ManagedAiPoseTransfer::Stage(Entry& entry)
     GameObject& object = *entry.object;
     const uint32_t slot = object.GetID().index;
     const size_t begin = m_subtreeBegin[slot], end = m_subtreeEnd[slot];
-    /// @note Duplicates still perform each intermediate pre/post calculation in packet order.
-    /// @note A later duplicate cannot hide an earlier overflow or invalid descendant.
+    /// @note 同じ対象が複数回現れる場合も、途中の適用前後の演算をパケット順にすべて実行する。
+    /// @note 後続の同一対象が、先行したオーバーフローや無効な子孫を隠すことはできない。
     for (size_t index = begin; index < end; ++index)
         if (!Update(*m_queue[index])) return false;
     Transform* transform = Shadow(object);
@@ -228,8 +228,8 @@ bool ManagedAiPoseTransfer::Stage(Entry& entry)
         localRotation = inverse * entry.rotation;
         if (!Normalizable(localRotation, localRotationLength)) return false;
     }
-    /// @note Do not retain a parsed row's length across later resolver calls: they may change floating-point control.
-    /// @note This phase has no callbacks, so validated factors exactly replace SetWorldPose's repeated arithmetic.
+    /// @note 後続の解決関数で浮動小数点環境が変わり得るため、解析済み行の長さを呼び出しの前後で使い回さない。
+    /// @note この段階はコールバックを呼ばないので、SetWorldPose の再計算を検証済みの係数で厳密に置き換えられる。
     float worldRotationLength = 0.0f;
     if (!Normalizable(entry.rotation, worldRotationLength)) return false;
     const math::Quaternion worldRotation = NormalizeValidated(entry.rotation, worldRotationLength);
@@ -246,7 +246,7 @@ bool ManagedAiPoseTransfer::Stage(Entry& entry)
         transform->rotation = worldRotation;
         transform->scale = worldScale;
     }
-    /// @note Preserve SetWorldPose's finite check of the temporary projected scale before restoring authored local scale.
+    /// @note 元のローカルスケールを戻す前に、投影した一時スケールに対して SetWorldPose と同じ有限性チェックを行う。
     if (!Finite(*transform)) return false;
     transform->scale = localScale;
     for (size_t index = begin; index < end; ++index)
@@ -269,7 +269,7 @@ ManagedBridgeStatus ManagedAiPoseTransfer::Run(Scene& scene, const ManagedBridge
     const uint32_t outputBytes = count * STATUS_BYTES;
     reply.outputBytes = outputBytes;
     if (request.outputCapacity < outputBytes) return ManagedBridgeStatus::BUFFER_TOO_SMALL;
-    /// @note Overlap cannot corrupt the caller's input snapshot while publishing its status packet.
+    /// @note ステータスの書き込み先が入力と重複し、呼び出し元の入力スナップショットを壊さないようにする。
     const std::less<const char*> before;
     if (outputBytes && before(request.input, request.output + outputBytes)
         && before(request.output, request.input + request.inputBytes)) return ManagedBridgeStatus::INVALID_ARGUMENT;
@@ -294,8 +294,8 @@ ManagedBridgeStatus ManagedAiPoseTransfer::Run(Scene& scene, const ManagedBridge
         if (scene.GetGameObject(entry.object->GetID()) != entry.object || slot >= m_shadow.size())
             return ManagedBridgeStatus::INVALID_ARGUMENT;
         const auto* body = entry.object->GetComponent<RigidBodyComponent>();
-        /// @note Static opt-in bodies synchronize from Transform in PhysicsSystem and never integrate gravity.
-        /// @note Dynamic and ordinary static bodies retain exclusive Physics authority and atomic rejection.
+        /// @note 明示的に設定された静的ボディは PhysicsSystem で Transform から同期し、重力は積分しない。
+        /// @note 動的ボディと通常の静的ボディは Physics が排他的に管理する。対象に含まれればパケット全体を拒否する。
         if (body && body->enabled && body->rigidBody
             && (!body->poseDriven || !body->rigidBody->IsStatic())) return ManagedBridgeStatus::PHYSICS_BODY;
         entry.position = {Read<float>(row + 16), Read<float>(row + 20), Read<float>(row + 24)};
@@ -314,9 +314,9 @@ ManagedBridgeStatus ManagedAiPoseTransfer::Run(Scene& scene, const ManagedBridge
         if (!Update(*ancestor)) return ManagedBridgeStatus::INVALID_ARGUMENT;
     for (Entry& entry : m_entries)
         if (entry.object && !Stage(entry)) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    /// @note No callbacks or resolver calls occur after validation; all staged hierarchy calculations have succeeded.
-    /// @note The final shadow already contains every validated ancestor and descendant world pose.
-    /// @note Publish those values once; a third hierarchy calculation would repeat identical arithmetic.
+    /// @note 検証後にコールバックや解決関数の呼び出しはなく、準備段階の階層計算はすべて成功している。
+    /// @note 確定した作業領域には、検証済みの祖先と子孫のワールド姿勢がすべて入っている。
+    /// @note その値を一度だけ公開する。階層を三度目に計算しても同じ演算を繰り返すことになる。
     for (GameObject* object : m_publish)
         object->transform = m_shadow[object->GetID().index];
     for (uint32_t index = 0; index < count; ++index) {
@@ -328,4 +328,4 @@ ManagedBridgeStatus ManagedAiPoseTransfer::Run(Scene& scene, const ManagedBridge
     return ManagedBridgeStatus::OK;
 }
 
-} /// @note namespace fbzz::scene::managed_detail
+}

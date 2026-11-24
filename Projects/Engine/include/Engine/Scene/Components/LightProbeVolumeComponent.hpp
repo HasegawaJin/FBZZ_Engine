@@ -92,4 +92,4 @@ struct LightProbeVolumeComponent : TransientGpuState<LightProbeVolumeComponentGp
     }
 };
 
-} /// @note namespace fbzz::scene
+}

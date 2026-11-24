@@ -72,14 +72,21 @@ public:
 
     FBZZ_GRAPHICS_API void LookAt(const math::Vector3& target);
 
+    /// @note ビュー行列の原点となる、世界空間での視点の位置。
     math::Vector3    m_position = { 0.0f, 0.0f, -10.0f };
+    /// @note カメラの前・右・上を世界空間へ向ける回転。
     math::Quaternion m_rotation;
 
+    /// @note 透視投影の縦の画角（度）。投影行列を組むときにラジアンへ変換する。
     float m_fovY   = 60.0f;
+    /// @note 描画領域の幅 ÷ 高さ。縦の画角を固定したまま、横に映る範囲を決める。
     float m_aspect = 16.0f / 9.0f;
+    /// @note 手前のクリップ面までの距離（m）。これより近い面は投影の範囲外になる。
     float m_near   = 0.1f;
+    /// @note 奥のクリップ面までの距離（m）。深度の向きを反転しても、世界空間での意味は同じ。
     float m_far    = DEFAULT_CAMERA_FAR_Z;
 
+    /// @note 遠くの物体を小さく映すか、距離によらず同じ大きさで映すかを選ぶ。
     ProjectionMode m_projection = ProjectionMode::Perspective;
     /// @brief Orthographic のときに映る縦幅 (ワールド単位)。横幅は m_aspect 倍。
     /// @note 半分でなく全体を持つのは、ビューポート上の「1 画面に何 m 入るか」がそのまま値になり
@@ -91,6 +98,7 @@ public:
     /// @note       ときは使われない。空 (Sky) を描くシーンでは空が上書きするため見えない。
     math::Vector4 m_backgroundColor = kDefaultBackgroundColor;
 
+    /// @note このカメラが描画を始めるとき、前のカメラの色を残すか背景色で消すかを決める。
     CameraClearMode m_clearMode = CameraClearMode::SolidColor;
 };
 

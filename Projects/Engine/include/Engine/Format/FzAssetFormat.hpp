@@ -50,7 +50,7 @@ struct FzSkelHeader {
     int32_t  rootNodeIndex;
     uint32_t nodeCount;
     uint32_t boneCount;
-    float    rootInverse[16]; ///< row-major Matrix4
+    float    rootInverse[16]; ///< 行優先の Matrix4
 };
 static_assert(sizeof(FzSkelHeader) == 84, "FzSkelHeader size mismatch");
 

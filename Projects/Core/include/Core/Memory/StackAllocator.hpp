@@ -44,7 +44,9 @@ private:
     };
 
     std::uint8_t* m_memory = nullptr;
+    /// @note 領域の先頭からスタック頂上までのバイト数。最後の割り当てを返却すると巻き戻る。
     std::size_t  m_offset = 0;
+    /// @note 最後に渡した領域。途中の割り当てを先に解放して後続の領域を壊すのを防ぐ。
     void*        m_lastAllocation = nullptr;
     MemoryStats  m_stats;
 };

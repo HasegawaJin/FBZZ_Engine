@@ -21,7 +21,9 @@ struct EntityID;
 struct ScriptComponent;
 
 struct PreparedSceneSave {
+    /// @note 所有スレッドで取得済みの値から TOML を作る。編集中の Scene を再び参照する必要はない。
     std::function<std::string()> formatScene;
+    /// @note 保存対象に外部地形や材質がある場合だけ設定される。書き込み直前に元ファイルの変更を確認する。
     std::function<bool()> writeAssets;
 };
 
@@ -50,12 +52,13 @@ public:
     FBZZ_ENGINE_API static bool Save(Scene& scene, const std::string& path);
 
     /// @brief Scene を TOML テキストへ直列化する。失敗時は空文字。
-    /// @param scenePath シーンの置き場所。Terrain はこの隣へ `.terrain`/`.mat` の実体を書き出す副作用を持つ (参照だけ保存すると実体が古いまま残り再起動後に白地形になる)。省略すると副作用を起こさず純粋にテキストだけを返す。
+    /// @param scenePath 地形と材質の参照を解決する基準。省略すると地形をテキストに含め、外部アセットへの書き込みを省く。
+    /// @note パスを省略してもスクリプトの保存コールバックを呼び、採取した値を保存用キャッシュへ反映する。変更検出には CaptureSaveComparison を使う。
     /// @note Script 設定の保存失敗時は空文字を返し、全 Script の以前の保存データを保持する。読み込み側の LoadDataFromText と対。
     FBZZ_ENGINE_API static std::string SaveToText(Scene& scene, const std::string& scenePath = {});
     /// @note 保存失敗の型・フィールド等を diagnostic に返す。成功時は空にする。
     FBZZ_ENGINE_API static std::string SaveToText(Scene& scene, const std::string& scenePath, std::string& diagnostic);
-    /// @note Passive text capture skips callbacks and cached Script data publication.
+    /// @note 複製用のテキストを採取する間は保存コールバックを呼ばず、編集元のスクリプトの保存用キャッシュを更新しない。
     FBZZ_ENGINE_API static std::string CapturePassiveClone(Scene& scene, std::string& diagnostic);
 
     /// @brief Edit の保存値を取得し、Play 用 Scene を一度だけ構築する関数を返す。
@@ -121,8 +124,8 @@ public:
         return LoadFromText(tomlText, nullptr, sourcePath);
     }
 
-    /// @note Main-thread preparation preserves serialized Script settings without constructors or callbacks.
-    /// @note Referenced or inline Terrain data must load successfully; no fallback geometry is substituted.
+    /// @note メインスレッドで保存設定を復元する。スクリプトの生成とコールバックは後段まで遅らせる。
+    /// @note 地形の読み込みに失敗したら復元を中止する。平地に置き換えると、元の地形を忠実に複製できない。
     [[nodiscard]] FBZZ_ENGINE_API static std::unique_ptr<Scene> LoadPassiveDataFromText(
         const std::string& tomlText, const std::string& sourcePath);
 

@@ -34,7 +34,7 @@ void InitializeWaterAppearanceParameters(const MaterialAssetAuthoring& values,
 {
     parameters.assign(descriptor.cbufferSize, uint8_t{0});
     InitDefaultMaterialParams(descriptor, parameters);
-    /// @note Name-based writes preserve old missing-key appearance without assuming the user's byte offsets.
+    /// @note ユーザー材質のバイトオフセットを決め打ちせず、名前で書き込むことでキー欠落時の従来の見た目を保つ。
     static const std::unordered_map<std::string, std::vector<float>> defaults{
         {"rimGlowStrength", {0.40f}}, {"minShallowAlpha", {0.65f}}, {"specularStrength", {0.75f}},
         {"skyReflectTint", {0.45f, 0.82f, 1.0f}}, {"rippleRingColor", {0.88f, 0.97f, 1.0f}},

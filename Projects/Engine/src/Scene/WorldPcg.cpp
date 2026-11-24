@@ -89,7 +89,7 @@ float Unit(uint64_t key,uint64_t stream) { return static_cast<float>(Mix(key+str
 
 float PlacementScale(const WorldPcgRule& rule, uint64_t key)
 {
-    /// @note Inverse CDF F(t)=t^(1/scaleBias); the identity branch keeps existing profiles bit-for-bit stable.
+    /// @note 累積分布 F(t)=t^(1/scaleBias) の逆変換で尺度をサンプリングする。恒等写像の分岐は既存プロファイルの結果をビット単位で維持する。
     /// @see https://www.pbr-book.org/4ed/Monte_Carlo_Integration/Sampling_Using_the_Inversion_Method PBRT 4e, Sampling Using the Inversion Method.
     const float unit = Unit(key, 5);
     return std::lerp(rule.minScale, rule.maxScale, rule.scaleBias == 1.0f ? unit : std::pow(unit, rule.scaleBias));
@@ -163,7 +163,7 @@ math::Vector3 Rotation(const WorldPcgRule& rule, uint64_t key, const math::Vecto
                 * math::Quaternion::FromAxisAngle(math::Vector3::UP,
                     math::ToRad(std::lerp(-rule.downslopeJitter, rule.downslopeJitter, sample)));
     }
-    /// @note Euler serialization uses Quaternion::FromEuler's YXZ order, preserving the same surface pose.
+    /// @note オイラー角は Quaternion::FromEuler と同じ YXZ 順で保存し、表面に沿う姿勢を再現する。
     const auto matrix=math::Matrix4::Rotate(rotation);
     const float pitch=std::asin(std::clamp(-matrix.m[1][2],-1.0f,1.0f));
     if(std::abs(std::cos(pitch))<=0.000001f)return {pitch,std::atan2(-matrix.m[2][0],matrix.m[0][0]),0};
@@ -180,7 +180,7 @@ struct PlacementSiteIndex {
         }
     };
     float size=0;
-    /// @note Explicit neighbor traversal and per-cell insertion order keep rejection and budget behavior deterministic.
+    /// @note 隣接セルを明示した順序で調べ、各セルの挿入順を保つことで、棄却と予算適用の結果を決定的にする。
     std::unordered_map<Cell, std::vector<Site>, CellHash> cells;
     Cell Locate(const math::Vector3& p) const
     { return {static_cast<int64_t>(std::floor(static_cast<double>(p.x)/size)),static_cast<int64_t>(std::floor(static_cast<double>(p.z)/size))}; }
@@ -370,7 +370,7 @@ private:
             Build(first, half);
             Build(first + half, count - half);
         }
-        /// @note Preorder subtrees are contiguous, so an outside point can jump directly to the next sibling.
+        /// @note 先行順では部分木が連続するため、範囲外の点では次の兄弟へ直接進める。
         m_nodes[index].next = static_cast<uint32_t>(m_nodes.size());
     }
 
@@ -420,7 +420,7 @@ bool ReadVector(const toml::node_view<const toml::node>& view,math::Vector3& val
 bool ReadBounds(const toml::table& table,WorldCellBounds& box) { return ReadVector(table["min"],box.min)&&ReadVector(table["max"],box.max); }
 toml::table BoundsData(const WorldCellBounds& box) { return toml::table{{"min",VectorData(box.min)},{"max",VectorData(box.max)}}; }
 
-} /// @note namespace world_pcg_detail
+}
 
 WorldPcgProfile CreateRockNaturePcgProfile(std::string_view rockPrototype, std::string_view pebblePrototype)
 {
@@ -653,7 +653,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             group.parts = rule.parts;
             group.lodHeights = rule.lodHeights;
         }
-        /// @note Coordinate bits avoid birthday collisions in dense cells; wrapping or the remote zero alias is explicitly rejected.
+        /// @note 密なセルで誕生日衝突を避けるため座標値のビットを使う。折り返しと、離れた点が 0 に対応する場合は拒否する。
         const uint32_t packed = (static_cast<uint32_t>(candidate.lattice.x) & 0xffffu)
             | ((static_cast<uint32_t>(candidate.lattice.z) & 0x7fffu) << 16);
         const uint32_t id = packed == 0 ? 0x40008000u : packed;
@@ -730,7 +730,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             if (filterAspect && slope >= rule->aspectMinSlope) {
                 const float horizontal = std::hypot(normal.x, normal.z);
                 if (horizontal > 0.000001f) {
-                    /// @note The horizontal projection of an upward terrain normal points downhill.
+                    /// @note 上向き地形法線の水平投影は斜面の下り方向を指す。
                     /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/procedural-content-generation-framework-node-reference-in-unreal-engine Epic PCG Node Reference: Normal To Density.
                     const float dot = std::clamp((normal.x * aspectX + normal.z * aspectZ) / horizontal, -1.0f, 1.0f);
                     const float angle = math::ToDeg(std::acos(dot));
@@ -822,7 +822,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
                 reject(staged.stats.spacingRejected, "spacing", *rule, candidate, position);
                 continue;
             }
-            /// @note Provisional sites reserve their full exclusion discs before the independent cell quota.
+            /// @note 仮採用地点はセルごとの上限を適用する前に、排他円の全域を確保する。
             /// @see https://dev.epicgames.com/documentation/unreal-engine/open-world-tools-property-reference-in-unreal-engine Epic Open World Tools: Collision Radius and Overlap Priority.
             if (competitors != competition.end()) {
                 auto& index = competitors->second;
@@ -886,7 +886,7 @@ bool GenerateWorldPcg(const WorldPcgProfile& profile,const WorldPcgSampler& samp
             if (!generateRule(rule)) return false;
         for (auto& [cell, ranked] : placementCells) {
             if (stages.size() > 1) usedCellSlots[cell] += ranked.size();
-            /// @note Emit in rank order before later stages test which source plants survived the cap.
+            /// @note 後段で上限適用後に残った元の植生を確認できるように、順位順で出力する。
             std::sort_heap(ranked.begin(), ranked.end(), PlacementRankLess);
             for (const auto& placement : ranked)
                 if (!emit(placement.candidate)) return false;
@@ -1072,4 +1072,4 @@ bool LoadWorldPcgProfile(std::string_view path,WorldPcgProfile& out,std::string&
     return DeserializeWorldPcgProfile(text,out,diagnostic);
 }
 
-} /// @note namespace fbzz::scene
+}

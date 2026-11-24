@@ -83,11 +83,11 @@ public:
     /// @note true のとき accumulator を無視して physics を 1 回だけ実行する (frame step 用)
     FBZZ_ENGINE_API void SetSingleStep(bool singleStep);
 
-    /// @note Phase PreScript 〜 Cleanup
+    /// @note Phase::PreScript から Phase::Cleanup までを実行する。
     /// @note RenderSystem はゲームループ側から BeginFrame/EndFrame の間に直接呼ぶこと
     FBZZ_ENGINE_API void Update(float dt, physics::World& world);
 
-    /// @note Phase LateUpdate のみ
+    /// @note Phase::LateUpdate だけを実行する。
     FBZZ_ENGINE_API void LateUpdate(float dt, physics::World& world);
 
     FBZZ_ENGINE_API Scene* GetActive();

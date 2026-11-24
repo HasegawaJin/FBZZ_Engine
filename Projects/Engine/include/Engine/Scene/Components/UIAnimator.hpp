@@ -289,4 +289,4 @@ struct UIAnimator {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

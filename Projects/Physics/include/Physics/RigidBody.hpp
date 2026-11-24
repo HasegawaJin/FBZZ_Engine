@@ -125,10 +125,15 @@ namespace fbzz::physics
         float m_gravityScale = 1.0f;
         /// @note ワールドのステップに対する時計倍率。ランタイム専用。
         float m_timeScale = 1.0f;
+        /// @note 移動速度の減衰率。1 秒当たりの強さをステップ幅に応じて適用する。
         float m_linearDrag   = 0.0f;
+        /// @note 回転速度に掛ける減衰率。直進の減衰とは独立に設定する。
         float m_angularDrag  = 0.0f;
+        /// @note 低速の状態が続いたとき、この剛体のシミュレーションを休止してよいか。
         bool  m_allowSleeping = true;
+        /// @note 現在休止中か。加力などで起床すると移動と回転の更新を再開する。
         bool  m_isSleeping = false;
+        /// @note 並進と回転の両方が休止しきい値以下だった連続時間（秒）。
         float m_sleepTimer = 0.0f;
         /// @}
 
@@ -150,9 +155,13 @@ namespace fbzz::physics
         /// @note Step 4-6 の単純なソルバーに合わせる。SetMass() / SetInertiaFromCollider() 呼び出し時に
         /// @note 自動再計算される。m_isStatic == true のとき {0,0,0}。
         math::Vector3 m_invInertiaDiag = { 1.0f, 1.0f, 1.0f };
+        /// @note 慣性を再計算するときに借りる形状。剛体は形状の寿命を所有しない。
         const Collider* m_inertiaCollider = nullptr;
+        /// @note 形状からの計算を上書きする、物体の各軸まわりの慣性。形状を再指定すると解除する。
         math::Vector3 m_authoredInertia = math::Vector3::ZERO;
+        /// @note ワールドの指定軸に沿う移動を止めるための軸別設定。
         AxisLock m_freezePosition;
+        /// @note ワールドの指定軸まわりの角速度やトルクを抑えるための軸別設定。
         AxisLock m_freezeRotation;
         float m_flowCoupling = 0.0f; ///< @brief 媒質との結合係数 [1/s]。0 で流れを受けない
 

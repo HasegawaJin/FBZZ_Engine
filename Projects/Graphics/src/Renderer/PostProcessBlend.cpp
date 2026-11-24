@@ -65,6 +65,7 @@ float PostProcessVolumeDistanceWeight(float distance, float radius, float blendD
     const float solidRadius = radius - fade;
     if (distance <= solidRadius) return 1.0f;
     if (fade <= 0.0f) return 1.0f;
+    /// @note 境界までに残った距離がフェード幅の半分なら、効果も半分にする。内側の完全適用域との境目では重みが 1 になる。
     return std::clamp((radius - distance) / fade, 0.0f, 1.0f);
 }
 

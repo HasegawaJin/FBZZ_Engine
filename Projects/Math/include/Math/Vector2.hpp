@@ -28,6 +28,7 @@ struct Vector2 {
     float   LengthSq()   const;
     FBZZ_MATH_API Vector2 Normalized() const;
 
+    /// @note 単位方向との内積は、その向きに沿った長さ。負なら反対側を向いている。
     static float   Dot(const Vector2& a, const Vector2& b);
     static Vector2 Lerp(const Vector2& a, const Vector2& b, float t);
 

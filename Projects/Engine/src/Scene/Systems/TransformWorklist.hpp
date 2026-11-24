@@ -1,5 +1,5 @@
 /// @file    TransformWorklist.hpp
-/// @brief   Build a callback-free parent-first transform worklist without enumerating child links.
+/// @brief   子リンクを列挙せず、親を先に処理するコールバックなしの Transform 作業リストを作る。
 /// @author  Hasegawa Jin
 /// @date    2026-10-18
 #pragma once

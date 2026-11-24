@@ -8,7 +8,7 @@ namespace fbzz::renderer { class ResourceManager; struct RenderScene; }
 namespace fbzz::scene {
 class Scene;
 struct RenderPassContext;
-/// @note Append after Raster extraction. CPU shape counts and existing terrain draws prove source presence without camera, distance, or renderer LOD rejection; no geometry is uploaded.
+/// @note ラスタライズ用の抽出後に追加する。形状の有無は CPU 上の個数と地形の描画件数で確認し、カメラ、距離、LOD による除外や GPU 転送を行わない。
 /// @note 実験 RT の許可なしでは Scene / 材質を走査せず、output を変更しない。
 FBZZ_ENGINE_API void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, renderer::RenderScene& output,
     bool experimentalRayTracingEnabled = false);

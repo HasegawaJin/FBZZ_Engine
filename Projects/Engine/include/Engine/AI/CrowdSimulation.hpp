@@ -1,5 +1,5 @@
 /// @file    CrowdSimulation.hpp
-/// @brief   Bounded 3D crowd decisions and continuous steering over caller-owned snapshots.
+/// @brief   呼び出し側のスナップショットを使う、処理量を制限した 3D 群衆の判断と連続的な操舵。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
@@ -27,7 +27,7 @@ inline constexpr std::uint32_t CONSTRAINED = 16;
 inline constexpr std::uint32_t RECOVERED = 32;
 }
 
-/// @note All distances are world meters; intervals and memory are seconds. One simulation is one habitat.
+/// @note 距離はワールド空間の [m]、間隔と記憶時間は [s]。1 シミュレーションで 1 生息域を扱う。
 struct CrowdSettings {
     math::Vector3 minimum{-50, -20, -50};
     math::Vector3 maximum{50, 0, 50};
@@ -49,7 +49,7 @@ struct CrowdSettings {
     std::uint32_t reserved = 0;
 };
 
-/// @note Grouping is per-agent; profiles hold species or movement policies, with no fish-specific code.
+/// @note グループ化は個体単位。プロファイルは魚固有の処理を持たず、種別や移動方針を定義する。
 struct CrowdProfile {
     float neighborRadius = 2;
     float separationRadius = 0.6f;
@@ -69,8 +69,8 @@ struct CrowdProfile {
     std::uint32_t followFloor = 0;
 };
 
-/// @note Input and output are separate snapshots. RNG, decisions and threat memory are per individual.
-/// @note Floor/ceiling are cached world-Y envelopes supplied by terrain sampling; this is not 3D pathfinding.
+/// @note 入力と出力のスナップショットは別々に保持する。乱数状態、判断、脅威の記憶は個体ごとに持つ。
+/// @note 上下限は地形サンプルからキャッシュしたワールド Y の包絡。3D 経路探索は行わない。
 struct CrowdAgent {
     math::Vector3 position{};
     math::Vector3 velocity{};
@@ -121,13 +121,13 @@ struct CrowdStats {
     float maximumTurn = 0;
 };
 
-/// @brief Scratch capacity is retained between batches; no world or agent identity is retained.
+/// @brief バッチ間で一時領域の容量を再利用する。ワールドや個体の識別子は保持しない。
 class CrowdWorkspace {
 public:
-    /// @brief Preallocates capacity before measured or real-time work.
+    /// @brief 計測やリアルタイム処理を始める前に必要な容量を確保する。
     FBZZ_ENGINE_API void Reserve(std::size_t capacity);
 private:
-    /// @note Spheres are rebuilt per batch; candidates are original input indices and never escape StepCrowd.
+    /// @note 球はバッチごとに再構築する。候補は元入力の添字で、StepCrowd の外部へ渡さない。
     struct SpatialIndex {
         struct Bounds { double minimum[3]{}, maximum[3]{}; };
         struct Node { Bounds bounds; std::uint16_t begin = 0, end = 0, left = 0, right = 0; };
@@ -138,10 +138,10 @@ private:
         std::size_t m_nodeCount = 0;
         FBZZ_ENGINE_API void Reserve(std::size_t capacity);
         template<class Sphere> void Build(std::span<const Sphere> spheres);
-        /// @note Returns every index in original order when the query is unsafe or traversal exceeds its fixed budget.
+        /// @note 問い合わせが安全に行えない場合や探索量が固定上限を超えた場合は、全添字を入力順で返す。
         FBZZ_ENGINE_API std::size_t Query(math::Vector3 position, float radius, std::span<std::uint16_t> candidates) const;
         FBZZ_ENGINE_API std::size_t All(std::span<std::uint16_t> candidates) const;
-        /// @note Bounds include operand-scaled float slack so the unchanged rounded sphere test remains authoritative.
+        /// @note オペランドの大きさに応じた浮動小数点の丸め余白を境界に加え、従来の球判定を最終判定に使う。
         FBZZ_ENGINE_API static Bounds MakeBounds(math::Vector3 position, float radius);
         FBZZ_ENGINE_API static bool Overlaps(const Bounds& left, const Bounds& right);
     };
@@ -155,9 +155,9 @@ private:
                           CrowdStats&, CrowdWorkspace&);
 };
 
-/// @brief Runs one bounded decision pass and continuous movement pass without touching a Scene.
-/// @return Invalid inputs or aliased input/output return false and leave output and stats unchanged.
-/// @note Decision budgets are deterministic work counts. Threat steering bypasses the decision budget.
+/// @brief Scene に触れず、処理量を制限した判断と連続的な移動を 1 回ずつ行う。
+/// @return 不正な入力や同じ領域を参照する入出力では false を返し、出力と統計は変更しない。
+/// @note 判断の上限は決定的な処理回数で指定する。脅威回避の操舵は上限の対象外。
 /// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/overview-of-mass-gameplay-in-unreal-engine
 /// @see https://www.red3d.com/cwr/boids/
 [[nodiscard]] FBZZ_ENGINE_API bool StepCrowd(const CrowdSettings& settings, std::span<const CrowdProfile> profiles,

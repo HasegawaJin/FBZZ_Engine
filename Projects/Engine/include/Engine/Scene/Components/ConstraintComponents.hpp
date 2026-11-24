@@ -104,4 +104,4 @@ struct TransformConstraintComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

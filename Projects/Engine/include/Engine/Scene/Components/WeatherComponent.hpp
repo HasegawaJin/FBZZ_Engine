@@ -66,4 +66,4 @@ struct WeatherComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

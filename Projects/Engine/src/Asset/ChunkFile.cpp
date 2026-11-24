@@ -43,7 +43,7 @@ constexpr std::array<uint32_t, 256> MakeCrcTable()
 
 constexpr std::array<uint32_t, 256> kCrcTable = MakeCrcTable();
 
-/// @brief Capture a CRT failure before the next CRT operation can replace either thread-local error.
+/// @brief 次の CRT 操作でスレッドローカルの 2 種類のエラーが変わる前に、CRT の失敗を記録する。
 detail::AtomicWriteError CrtFailure(int code = errno)
 {
     unsigned long nativeCode = 0;
@@ -57,7 +57,7 @@ void ResetCrtFailure()
     (void)_set_doserrno(0);
 }
 
-/// @note No user callback runs while the temporary FILE is open or while a publication/cleanup error is mutable.
+/// @note 一時 FILE を開いている間や公開・後始末のエラーが変わり得る間はユーザーのコールバックを実行しない。
 class NativeAtomicChunkIo {
 public:
     explicit NativeAtomicChunkIo(std::filesystem::path target) : m_target(std::move(target)) {}
@@ -73,8 +73,8 @@ public:
     {
         static std::atomic<uint64_t> serial{0};
         detail::AtomicWriteError failure;
-        /// @note Exclusive create never truncates a residue or another writer's temporary; only name collisions get another name.
-        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fopen-s-wfopen-s C11 x exclusive-create mode.
+        /// @note 排他的な作成では残留ファイルや他のライターの一時ファイルを切り詰めない。名前が衝突した場合だけ別の名前を試す。
+        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fopen-s-wfopen-s C11 の x による排他的な作成モード。
         for (unsigned attempt = 0; attempt < 8; ++attempt) {
             m_temporary = m_target;
             m_temporary += L".tmp" + std::to_wstring(std::hash<std::thread::id>{}(std::this_thread::get_id()))
@@ -99,8 +99,8 @@ public:
     detail::AtomicWriteError Flush()
     {
         ResetCrtFailure();
-        /// @note Flush CRT buffers before close; this does not promise persistence across power loss.
-        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fflush fflush return value.
+        /// @note 閉じる前に CRT バッファをフラッシュする。電源断に対する永続化は保証しない。
+        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fflush fflush の戻り値。
         if (std::fflush(m_file) == 0) return {};
         return CrtFailure();
     }
@@ -108,7 +108,7 @@ public:
     detail::AtomicWriteError Close()
     {
         ResetCrtFailure();
-        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fclose-fcloseall fclose closes the underlying handle even on failure.
+        /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fclose-fcloseall fclose は失敗時も内部のハンドルを閉じる。
         const int result = std::fclose(m_file);
         m_file = nullptr;
         return result == 0 ? detail::AtomicWriteError{} : CrtFailure();
@@ -123,7 +123,7 @@ public:
     detail::AtomicWriteError Cleanup()
     {
         std::error_code error;
-        /// @note Only the path exclusively created by this call is eligible; do not scan or delete other temporary files.
+        /// @note 後始末するのは、この呼び出しで排他的に作成したパスだけ。他の一時ファイルを探したり削除したりしない。
         std::filesystem::remove(m_temporary, error);
         return {error};
     }
@@ -212,19 +212,19 @@ bool BinaryReader::OpenReplaceableChunkStream(const std::string& path)
     pos = 0;
     bytesRead = 0;
     const auto nativePath = util::FileSystem::PathFromUtf8(path);
-    /// @note Readers permit delete/rename but not in-place writes; an old reader keeps its old file after publication.
-    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew FILE_SHARE_DELETE also permits rename.
+    /// @note リーダーは削除や名前変更を許可し、元のファイルへの直接書き込みを禁止する。置換後も開いていた元のファイルを読み続ける。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew FILE_SHARE_DELETE による名前変更の許可。
     const HANDLE file = ::CreateFileW(nativePath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
         nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) return false;
-    /// @note Ownership transfers once: HANDLE -> CRT descriptor -> FILE; the successful owner alone closes it.
-    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/open-osfhandle _open_osfhandle ownership transfer.
+    /// @note 所有権は HANDLE から CRT 記述子を経て FILE へ移る。移譲に成功した時点の所有者だけが閉じる。
+    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/open-osfhandle _open_osfhandle による所有権の移譲。
     const int descriptor = _open_osfhandle(std::bit_cast<std::intptr_t>(file), _O_RDONLY | _O_BINARY);
     if (descriptor == -1) {
         ::CloseHandle(file);
         return false;
     }
-    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fdopen-wfdopen _fdopen shares descriptor ownership with fclose.
+    /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/fdopen-wfdopen _fdopen の記述子は fclose で閉じられる。
     m_file = _fdopen(descriptor, "rb");
     if (!m_file) {
         _close(descriptor);

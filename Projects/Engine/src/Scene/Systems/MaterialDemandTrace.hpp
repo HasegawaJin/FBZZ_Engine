@@ -1,5 +1,5 @@
 /// @file    MaterialDemandTrace.hpp
-/// @brief   Conservative material-binding demand and bounded diagnostics for one extraction.
+/// @brief   描画抽出で省略できるマテリアルバインディングの判定と診断用カウンター。
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
@@ -28,11 +28,12 @@ namespace fbzz::scene { struct RenderPassContext; }
 namespace fbzz::scene::material_demand_detail {
 
 struct PendingBindings;
-/// @note A changed consumer restores all omitted bindings once with fresh resource resolution; earlier published snapshots remain immutable.
+/// @note 利用条件が変化した場合、資源を解決し直して省略分を一度だけ補完する。公開済みスナップショットは変更しない。
 FBZZ_MATERIAL_DEMAND_API void CompleteBindings(RenderPassContext& context);
 
-/// @note Only the built-in view pipeline can certify its consumers; direct and nested extraction retain full bindings.
-/// @note The scope owns only a snapshot and omitted indices between consumer boundaries; completion copies published snapshots.
+/// @note 組み込みの描画パイプラインでのみ利用先を限定できる。直接呼び出しと再入時は全件を同期する。
+/// @note 同一スレッドでスタック順に破棄する。描画コンテキストはこのスコープより長く生存すること。
+/// @note 利用境界間は公開済みスナップショットと省略したインデックスを保持し、補完時にスナップショットを複製する。
 class BindingDemandScope {
 public:
     FBZZ_MATERIAL_DEMAND_API explicit BindingDemandScope(const RenderPassContext& context);
@@ -76,9 +77,9 @@ struct View {
     bool reflectionProbePotential = false;
     bool lightProbePotential = false;
     bool rayPotential = false;
-    /// @note Certification also excludes native script hooks that can register consumers after extraction.
+    /// @note 抽出後に利用先を追加できるネイティブのスクリプトフックがある場合は false。
     bool consumerScopeCertified = false;
-    /// @note Before Sync a failed/custom material may become opaque ErrorSurface; no pre-sync alpha exclusion is certified here.
+    /// @note 同期に失敗したマテリアルは不透明な ErrorSurface へ切り替わり得るため、同期前の透明度だけで除外しない。
     bool materialCoverageKnown = false;
 };
 
@@ -91,7 +92,7 @@ struct Result {
     bool KnownConsumerPotential() const { return (reasons & ~UNKNOWN_CONSUMER) != 0; }
 };
 
-/// @note The range guard proves finite intermediate float arithmetic before invoking Math visibility; out-of-range data stays conservative.
+/// @note 可視判定の浮動小数点中間値が有限に収まる範囲だけを許可し、範囲外は描画候補に残す。
 inline bool SafeScalar(float value)
 {
     return std::isfinite(value) && std::abs(value) <= 1.0e10f;
@@ -121,11 +122,11 @@ inline bool SafeCulling(const View& view, const renderer::RenderObject& object)
     const double z = static_cast<double>(object.boundsCenter.z) - view.culling.position.z;
     const double distance = view.culling.distanceSpherical ? std::sqrt(x*x + y*y + z*z)
         : x*view.culling.forward.x + y*view.culling.forward.y + z*view.culling.forward.z;
-    /// @note Tiny positive depth can overflow the small-object projection division even when each input is finite.
+    /// @note 入力がすべて有限でも、正の深度が極小なら小物判定の投影除算はオーバーフローし得る。
     return distance <= 0.0 || distance >= 1.0e-10;
 }
 
-/// @note This pure predicate never increments renderer cull statistics or resolves resources; omission requires certified invocation provenance.
+/// @note 資源解決も描画の除外統計の更新も行わない。省略には描画の利用先を限定できることが必要。
 inline Result Evaluate(const View& view, const renderer::RenderObject& object, const renderer::RenderMeshItem& item)
 {
     Result result;
@@ -174,7 +175,7 @@ inline Result Evaluate(const View& view, const renderer::RenderObject& object, c
     return result;
 }
 
-/// @note Non-owning invocation-local validation; the view and its frustum must remain unchanged until all object evaluators are destroyed.
+/// @note ビューと視錐台は借用する。依存する ObjectEvaluator がすべて破棄されるまで両方を保持し、変更しない。
 struct PreparedView {
     explicit PreparedView(const View& source) : view(source)
     {
@@ -212,8 +213,8 @@ inline bool SafeObjectCulling(const PreparedView& prepared, const renderer::Rend
     return distance <= 0.0 || distance >= 1.0e-10;
 }
 
-/// @note The object is immutable for this evaluator's lifetime; slot visibility, geometry and material coverage remain per-item decisions.
-/// @note Camera work is lazy so hidden or geometry-less slots preserve the legacy unevaluated result without extra visibility queries.
+/// @note 借用したオブジェクトは判定器が生存する間変更しない。スロットの可視性、形状、材質の被覆は項目ごとに判定する。
+/// @note 非表示または形状のないスロットはカメラ判定を行わず、未判定の結果を維持する。
 class ObjectEvaluator {
 public:
     ObjectEvaluator(const PreparedView& prepared, const renderer::RenderObject& object)
@@ -291,7 +292,7 @@ private:
     bool m_withinShadowDistance = false;
 };
 
-/// @note Every field is an integer count or identity; bytes are logical observed source/output bytes, not native upload or physical allocation.
+/// @note バイト数は観測した入力・出力データの論理サイズ。実際の GPU 転送量やメモリ確保量とは別に集計する。
 #define FBZZ_MATERIAL_DEMAND_COLUMNS(X) \
     X(resourceInstanceId) X(resourceEpoch) X(resourceFrame) X(sceneGeneration) X(snapshotSerial) \
     X(passOrdinalWithinResourceFrame) X(ordinalKnown) X(reentryDepth) X(sceneObjects) X(sceneMeshRenderers) \
@@ -341,5 +342,5 @@ inline void CountPotential(Row& row, const Result& result)
     }
 }
 
-} /// @note namespace fbzz::scene::material_demand_detail
+}
 #undef FBZZ_MATERIAL_DEMAND_API

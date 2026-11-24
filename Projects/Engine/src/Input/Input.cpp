@@ -97,7 +97,7 @@ GameInputConsumption& GameInputConsumptionState()
 } /// @note namespace input_detail
 
 namespace {
-/// @note Match the existing default InputAxis deadzone; small pad drift never consumes an axis.
+/// @note 既存の InputAxis の既定デッドゾーンに合わせ、パッドの微小なドリフトでは軸を消費しない。
 constexpr float ACQUISITION_AXIS_DEADZONE = 0.25f;
 static_assert(static_cast<std::size_t>(GamepadButton::COUNT) == input_detail::GameInputConsumption::PAD_BUTTON_COUNT);
 static_assert(static_cast<std::size_t>(GamepadAxis::COUNT) == input_detail::GameInputConsumption::PAD_AXIS_COUNT);
@@ -267,7 +267,7 @@ void Input::Update()
 {
     auto& consumed = input_detail::GameInputConsumptionState();
     consumed.BeginFrame();
-    /// @note Test the previous raw state before polling so the release frame itself is also consumed.
+    /// @note ポーリング前の生の状態を確認し、操作を離したフレームも消費の対象に含める。
     for (std::size_t key = 0; key < s_current.size(); ++key)
         consumed.ReleaseKey(key, s_current[key] || s_injectedKeys[key]);
     for (std::size_t button = 0; button < s_mouseCurrent.size(); ++button)

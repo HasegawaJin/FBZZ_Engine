@@ -55,18 +55,18 @@ struct WaterZoneComponent {
     /// @note 不変の数値結果と試行署名は保存しない。
     std::shared_ptr<const WaterZoneSnapshot> snapshot;
     std::vector<EntityID> materialSources;
-    /// @brief Fixed-step Zone surface retained independently from LiveQuery preparation.
+    /// @brief LiveQuery の準備とは独立に保持する、固定ステップの Zone 水面。
     std::shared_ptr<const WaterZoneSnapshot> simulationSnapshot;
     std::vector<EntityID> simulationMaterialSources;
-    /// @brief Owner pose captured atomically with simulationSnapshot.
+    /// @brief simulationSnapshot と同時に取得する所有者の姿勢。
     Transform simulationOwnerTransform{};
-    /// @brief True after the first simulation publication, including an invalid result.
+    /// @brief 最初のシミュレーション公開後は true。結果が無効な場合も含む。
     bool simulationPublished = false;
     std::uint64_t attemptSignature = 0;
     bool attempted = false;
     std::string diagnostic;
 
-    /// @brief Clear published geometry and preparation state after copying this component to another Scene.
+    /// @brief このコンポーネントを別のシーンへコピーした後、公開済みの形状と準備状態を破棄する。
     void ResetRuntimeState()
     {
         snapshot.reset();
@@ -119,4 +119,4 @@ private:
         }
     }
 };
-} /// @note namespace fbzz::scene
+}

@@ -152,7 +152,7 @@ void CollectGroup(GameObject& go,
     }
 }
 
-} /// @note namespace
+}
 
 void CollectScriptRequirementIssues(GameObject& go,
                                     const Script& script,
@@ -169,7 +169,7 @@ void CollectScriptRequirementIssues(GameObject& go,
                 "requires one attached script '" + type + "', found " + std::to_string(matches)));
     }
     if (auto* adapter = ManagedScriptRuntime::Instance().FindAdapter(const_cast<Script*>(&script))) {
-        /// @note The Host checks nested required references against existing tokens after owner binding; Inspector collection does not latch a stopped entry.
+        /// @note 所有者の割り当て後、Host が入れ子の必須参照を既存トークンと照合する。Inspector の収集では停止状態を確定しない。
         adapter->SetContext(go.GetScene(), &go);
         if (!adapter->RefreshOwnerBinding() || !adapter->ValidateReferences()) {
             std::string diagnostic = ManagedScriptRuntime::Instance().LastDiagnostic();
@@ -246,4 +246,4 @@ std::string FormatScriptRequirementIssue(const ScriptRequirementIssue& issue)
     return text;
 }
 
-} /// @note namespace fbzz::scene
+}

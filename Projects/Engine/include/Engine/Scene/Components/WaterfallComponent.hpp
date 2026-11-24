@@ -1,5 +1,5 @@
 /// @file    WaterfallComponent.hpp
-/// @brief   Persistent waterfall connections and their disposable render parts.
+/// @brief   保存対象の滝接続と、再生成できる描画部品。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #pragma once
@@ -91,4 +91,4 @@ struct WaterfallPart {
     std::uint32_t farIndexStart = 0;
     std::uint32_t pendingFarIndexStart = 0;
 };
-} /// @note namespace fbzz::scene
+}

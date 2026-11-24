@@ -100,7 +100,7 @@ public:
     FBZZ_ENGINE_API bool CaptureFields(std::vector<ManagedFieldValue>& fields, bool includeReloadState = false);
     /// @note 設定・観測・path 別の exact 参照 identity を callback や保存 codec 投影なしで取得する。
     FBZZ_ENGINE_API bool ReadSettingsSnapshot(std::string& json);
-    /// @note Visible page reads never hash or copy the full parent collection.
+    /// @note 表示中のページの読み取りでは、親コレクション全体のハッシュやコピーを行わない。
     FBZZ_ENGINE_API bool ReadSettingsPage(std::string_view path, uint64_t start, uint32_t count, std::string& json);
     FBZZ_ENGINE_API bool OpenSettingsEdit(uint64_t& sessionId, std::string& revision);
     FBZZ_ENGINE_API void CloseSettingsEdit(uint64_t sessionId, bool retainPrepared = false);
@@ -139,4 +139,4 @@ private:
     friend class ManagedScriptRuntime;
 };
 
-} /// @note namespace fbzz::scene
+}

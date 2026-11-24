@@ -74,7 +74,7 @@ public:
     FBZZ_ENGINE_API void ActivateScriptRuntime(renderer::IRenderer& renderer,
                                uint32_t viewportWidth,
                                uint32_t viewportHeight);
-    /// @note Headless hosts can install the same Scene/quit ownership without a renderer.
+    /// @note ヘッドレスホストはレンダラーなしで Scene と終了処理を同じように管理できる。
     FBZZ_ENGINE_API void ActivateScriptRuntime(uint32_t viewportWidth, uint32_t viewportHeight);
 
     /// @note Game ViewportのリサイズをScriptProxyへ反映する。
@@ -107,4 +107,4 @@ private:
     uint64_t         m_uiPointerFrame = UINT64_MAX;
 };
 
-} /// @note namespace fbzz::scene
+}

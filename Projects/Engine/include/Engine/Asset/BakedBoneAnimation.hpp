@@ -1,5 +1,5 @@
 /// @file    BakedBoneAnimation.hpp
-/// @brief   Validated skeletal clip bake, independent clocks and CPU fallback palette.
+/// @brief   検証付きの骨格クリップのベイク、個体ごとの再生時刻と CPU 代替パレット。
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
 #pragma once
@@ -22,7 +22,7 @@ enum class BoneBakeStatus : uint8_t {
     INVALID_DATA, INCOMPATIBLE_SKELETON, INCOMPATIBLE_LOD, STALE_SOURCE
 };
 
-/// @note Layout is shared with BakedBoneReplay.cs.hlsl; 32-bit floats avoid quantization in the first comparison.
+/// @note BakedBoneReplay.cs.hlsl とレイアウトを共有する。初回の比較に量子化が影響しないよう 32 ビット浮動小数点を使う。
 struct BakedBoneTransform {
     math::Vector4 translation{0.0f, 0.0f, 0.0f, 0.0f};
     math::Vector4 rotation{0.0f, 0.0f, 0.0f, 1.0f};
@@ -44,8 +44,8 @@ struct BakedBoneBinding {
 };
 static_assert(sizeof(BakedBoneBinding) == 80);
 
-/// @note Both endpoints are retained; the last interval never interpolates directly from the last interior sample to frame zero.
-/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/AnimToTexture/UAnimToTextureDataAsset Bone animation data and sample rate.
+/// @note 両端点を保持するため、最終区間で最後の内部サンプルからフレーム 0 へ直接補間しない。
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/AnimToTexture/UAnimToTextureDataAsset ボーンアニメーションのデータとサンプルレート。
 struct BakedBoneAnimation {
     static constexpr uint32_t FORMAT_VERSION = 1;
     uint64_t skeletonFingerprint = 0;
@@ -63,7 +63,7 @@ struct BakedBoneAnimation {
     std::vector<BakedBoneTransform> samples;
 };
 
-/// @note Row clocks are per individual; immutable samples and skeleton bindings are shared per species/clip.
+/// @note 各行の時刻は個体ごとに持つ。不変サンプルと骨格の対応付けは種別とクリップの組で共有する。
 struct BakedBoneFrame {
     uint32_t first = 0;
     uint32_t second = 0;
@@ -74,24 +74,24 @@ static_assert(sizeof(BakedBoneFrame) == 16);
 
 struct BoneBakeSettings {
     float sampleRate = 60.0f;
-    /// @note Maximum model-space length of every input vertex in every participating mesh LOD.
+    /// @note 対象の全メッシュ LOD の入力頂点について、モデル空間原点からの距離の最大値。
     float meshRadius = 0.0f;
     uint32_t maxFrames = 65536;
     uint64_t maxSampleBytes = 256ull * 1024ull * 1024ull;
 };
 
-/// @note One workspace per Animator reuses temporary storage; failed evaluation leaves published outputs unchanged.
+/// @note Animator ごとに一時作業領域を再利用する。評価に失敗しても公開済みの出力は変更しない。
 struct BakedBoneWorkspace {
     std::vector<uint32_t> order;
     std::vector<uint8_t> visited;
     std::vector<math::Matrix4> globals, matrices;
 };
 
-/// @return Failure leaves output untouched; unsupported tracks must continue through the ordinary Animator.
+/// @return 失敗時は出力を変更しない。未対応のトラックは通常の Animator で再生する。
 FBZZ_ENGINE_API BoneBakeStatus BakeBoneAnimation(const Skeleton& skeleton, const AnimationClip& clip,
                                 const BoneBakeSettings& settings, BakedBoneAnimation& output);
 
-/// @note Content keys include hierarchy, bind TRS, inverse bind matrices, clip keys, times and loop policy; never use a raw asset pointer as a cache key.
+/// @note 内容キーは階層、バインド TRS、逆バインド行列、クリップのキー・時刻・ループ方針を含む。資産ポインターはキーに使わない。
 FBZZ_ENGINE_API uint64_t BoneBakeSkeletonFingerprint(const Skeleton& skeleton);
 FBZZ_ENGINE_API uint64_t BoneBakeClipFingerprint(const AnimationClip& clip);
 
@@ -99,18 +99,18 @@ FBZZ_ENGINE_API BoneBakeStatus ValidateBakedBoneAnimation(const BakedBoneAnimati
 FBZZ_ENGINE_API BoneBakeStatus ValidateBoneBakeSource(const BakedBoneAnimation& bake, const Skeleton& skeleton,
                                     const AnimationClip& clip, float lodMeshRadius);
 
-/// @note Two-clip bounds combine per-node maxima before hierarchy propagation; max(radiusA, radiusB) is insufficient for blended hierarchies.
+/// @note 2 クリップの境界は各ノードの最大値を合成してから階層へ伝播させる。ブレンドした階層を max(radiusA, radiusB) では包めない。
 FBZZ_ENGINE_API BoneBakeStatus BoneBakeBlendRadius(const BakedBoneAnimation& bake, const BakedBoneAnimation& target,
                                   float& output);
 
-/// @param elapsedSeconds Unscaled per-individual time; phase is measured in clip seconds and is added after speed.
-/// @return Non-finite clocks are rejected; finite loop clocks wrap in both directions and non-looping clocks clamp.
+/// @param elapsedSeconds 個体ごとの倍率適用前の経過秒。位相はクリップ時間の秒単位で、速度倍率の適用後に加える。
+/// @return 非有限値の時刻は拒否する。有限値はループなら正負両方向に折り返し、非ループなら範囲内に丸める。
 FBZZ_ENGINE_API BoneBakeStatus ResolveBakedBoneFrame(const BakedBoneAnimation& bake, double elapsedSeconds,
                                    double speed, double phaseSeconds, bool loop,
                                    BakedBoneFrame& output);
 
-/// @note Evaluates local TRS with shortest-arc Slerp before hierarchy composition; matrices are never linearly blended.
-/// @note Optional target uses the same skeleton and local two-clip blend as the GPU kernel. Failure leaves outputs untouched.
+/// @note 階層を合成する前に、最短弧の Slerp を使ってローカル TRS を評価する。行列は線形補間しない。
+/// @note 任意のブレンド先は GPU カーネルと同じ骨格とローカルの 2 クリップブレンドを使う。失敗時は出力を変更しない。
 FBZZ_ENGINE_API BoneBakeStatus EvaluateBakedBoneAnimation(const BakedBoneAnimation& bake, const BakedBoneFrame& frame,
                                         std::vector<math::Matrix4>& palette,
                                         std::vector<math::Matrix4>& nodeGlobals,
@@ -119,8 +119,8 @@ FBZZ_ENGINE_API BoneBakeStatus EvaluateBakedBoneAnimation(const BakedBoneAnimati
                                         float blendWeight = 0.0f,
                                         BakedBoneWorkspace* workspace = nullptr);
 
-/// @note .bba is little endian, versioned, length checked and checksummed; it is a derived cache, not an FBX replacement.
-/// @see https://github.com/microsoft/DirectXTex/wiki/DirectXTex DDS supports float image payloads; a structured asset also retains skeleton/cache metadata.
+/// @note .bba は FBX から派生したキャッシュ。リトルエンディアンで、版番号・長さ・チェックサムを検証する。
+/// @see https://github.com/microsoft/DirectXTex/wiki/DirectXTex DDS は浮動小数点画像を格納できる。構造化アセットでは骨格やキャッシュのメタデータも保持する。
 FBZZ_ENGINE_API BoneBakeStatus EncodeBoneBake(const BakedBoneAnimation& bake, std::vector<std::byte>& output);
 FBZZ_ENGINE_API BoneBakeStatus DecodeBoneBake(std::span<const std::byte> bytes, BakedBoneAnimation& output);
 }

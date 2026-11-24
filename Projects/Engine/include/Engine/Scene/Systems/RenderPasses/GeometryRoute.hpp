@@ -35,7 +35,7 @@ using renderer::GeometryRoute;
 [[nodiscard]] FBZZ_ENGINE_API renderer::GeometryMaterialInput ExtractGeometryMaterial(
     const MaterialSlot& slot, const asset::MaterialAsset* material, bool shaderSupportsGBuffer);
 
-/// @note Pure route derivation over owned immutable values; no asset/resource access occurs here.
+/// @note 所有済みの不変な値から経路を判定し、アセットや資源にはアクセスしない。
 [[nodiscard]] FBZZ_ENGINE_API renderer::GeometryMaterialInput ExtractGeometryMaterial(
     const MaterialSlotAuthoring& slot, const asset::MaterialAssetAuthoring* material, bool shaderSupportsGBuffer);
 

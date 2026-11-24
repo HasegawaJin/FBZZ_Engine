@@ -34,4 +34,4 @@ struct ParticleLightEmission {
 FBZZ_ENGINE_API void SelectParticleLights(const ParticleLightSettings& light, const std::vector<Particle>& particles,
                           std::size_t budget, std::vector<ParticleLightEmission>& out);
 
-} /// @note namespace fbzz::scene
+}

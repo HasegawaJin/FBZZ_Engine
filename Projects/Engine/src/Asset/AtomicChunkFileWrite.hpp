@@ -1,5 +1,5 @@
 /// @file    AtomicChunkFileWrite.hpp
-/// @brief   Keep atomic chunk publication and owned-temporary cleanup independent of filesystem failure injection.
+/// @brief   チャンクの原子的な公開と、自分が所有する一時ファイルの後始末をファイルシステム障害注入から分離する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-20
 #pragma once
@@ -7,7 +7,7 @@
 
 namespace fbzz::asset::detail {
 
-/// @note CRT failures retain both errno and the underlying Windows error before any close, cleanup or log callback.
+/// @note CRT の失敗時は閉じる処理、後始末、ログのコールバックより前に errno と Windows 側の元のエラーを保存する。
 struct AtomicWriteError {
     std::error_code code;
     unsigned long nativeCode = 0;
@@ -15,7 +15,7 @@ struct AtomicWriteError {
     [[nodiscard]] explicit operator bool() const { return static_cast<bool>(code) || nativeCode != 0; }
 };
 
-/// @note Each failed operation retains its own error; cleanup cannot overwrite the original publication failure.
+/// @note 各操作の失敗にはそれぞれのエラーを保持する。後始末の失敗で公開時の元のエラーを上書きしない。
 struct AtomicWriteResult {
     AtomicWriteError createParent;
     AtomicWriteError open;
@@ -28,9 +28,9 @@ struct AtomicWriteResult {
     bool cleanupAttempted = false;
 };
 
-/// @brief Publish only a fully written, flushed and closed exclusive temporary; otherwise clean only that owned path.
-/// @note Io owns the exclusive temporary after a successful Open; failed Open never grants cleanup ownership.
-/// @note No retry or callback occurs here. Production Io bounds name collisions and reports errors after this procedure.
+/// @brief 排他的に作成した一時ファイルへの書き込み・フラッシュ・クローズが完了してから公開する。失敗時はそのパスだけを後始末する。
+/// @note Io が排他的な一時ファイルの所有権を得るのは Open の成功後。Open に失敗した場合は後始末しない。
+/// @note ここでは再試行やコールバックを行わない。本番の Io が名前衝突の再試行回数を制限し、この処理後にエラーを報告する。
 /// @see Docs/design/asset-streaming.md «チャンク索引・部分 I/O»
 template<typename Io, typename WritePayload>
 [[nodiscard]] AtomicWriteResult WriteAtomicChunkFile(Io& io, WritePayload&& writePayload)

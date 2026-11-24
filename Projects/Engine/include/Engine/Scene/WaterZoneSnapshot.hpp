@@ -35,7 +35,7 @@ struct WaterZoneMaterialSample {
 struct WaterZoneSnapshot {
     WaterSplineSnapshot geometry;
     std::vector<std::array<std::uint32_t, 2>> boundaryEdges;
-    /// @note Geometry vertex order, with the same source/receiver interpolation as the surface.
+    /// @note 形状の頂点順。水面と同じ発生元・受け側補間を用いる。
     std::vector<WaterZoneMaterialSample> materials;
     std::uint32_t sourceCount = 0;
     std::uint32_t mouthCount = 0;
@@ -48,4 +48,4 @@ struct WaterZoneSnapshot {
     std::span<const WaterZoneMouthInput> mouths, const Transform& ownerTransform,
     float maximumWaterDepth, float maximumWorldCellSize, WaterZoneSnapshot& out,
     std::string& diagnostic, bool blendMaterials = false);
-} /// @note namespace fbzz::scene
+}

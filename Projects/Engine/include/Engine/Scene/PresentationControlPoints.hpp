@@ -1,5 +1,5 @@
 /// @file    PresentationControlPoints.hpp
-/// @brief   Resolve presentation target references into immutable numeric inputs.
+/// @brief   表示用の参照先を不変の数値入力に解決する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #pragma once
@@ -21,7 +21,7 @@ enum class LineSpace : int;
 
 inline constexpr std::uint32_t LINE_CONTROL_POINT_ADAPTER_VERSION = 1;
 
-/// @brief Line-specific result status for point source validation and resolution.
+/// @brief Line の点入力元の検証と解決の結果。
 enum class LineControlPointStatus : std::uint8_t {
     SUCCESS,
     INVALID_SOURCE_MODE,
@@ -32,7 +32,7 @@ enum class LineControlPointStatus : std::uint8_t {
     RESOLUTION_FAILED,
 };
 
-/// @brief Effective ordered point sequence consumed by Line geometry generation.
+/// @brief Line 形状の生成に使う実効の順序付き点列。
 struct LineControlPointSnapshot {
     std::vector<math::Vector3> points;
     LineSpace space = static_cast<LineSpace>(0);
@@ -43,26 +43,26 @@ struct LineControlPointSnapshot {
     bool valid = false;
 };
 
-/// @brief Resolve the current authoring source and capture its canonical numeric signature.
-/// @note Successful signatures use ordered stable ids and numeric coordinates, excluding object GUIDs and Scene caches.
+/// @brief 現在の制作時の入力元を解決し、正規化した数値署名を取得する。
+/// @note 成功時の署名は順序付きの安定 ID と数値座標を使い、個体 GUID や Scene キャッシュを含めない。
 [[nodiscard]] FBZZ_ENGINE_API LineControlPointSnapshot ResolveLineControlPointAuthoring(
     Scene& scene, EntityID ownerId, LineRendererComponent& line,
     ControlPointRuntimeMode signatureRuntimeMode);
 
-/// @brief Resolve the live source or return the captured static values for a Line.
-/// @note RUNTIME reads BAKED_STATIC numeric values without resolving target objects.
+/// @brief Line の現在の入力元を解決するか、記録済みの静的な数値を返す。
+/// @note RUNTIME は参照先の個体を解決せず、BAKED_STATIC の数値を読む。
 [[nodiscard]] FBZZ_ENGINE_API LineControlPointSnapshot ResolveLineControlPoints(
     Scene& scene, EntityID ownerId, LineRendererComponent& line,
     ControlPointReadContext context = ControlPointReadContext::AUTHORING);
 
-/// @brief Capture a configured target pose and begin one object-backed MotionWarp.
-/// @note LIVE targets must be outside the owner hierarchy; CAPTURED targets may be descendants.
+/// @brief 設定された参照先の姿勢を記録し、個体参照を使う MotionWarp を一回開始する。
+/// @note LIVE の参照先は所有者の階層外に置く。CAPTURED の参照先には子孫も使える。
 [[nodiscard]] FBZZ_ENGINE_API bool BeginMotionWarpToTarget(Scene& scene, EntityID ownerId,
     MotionWarpComponent& warp, float duration);
 
-/// @brief Refresh only the pose of an active LIVE object-backed MotionWarp.
-/// @return False when the reference no longer resolves or enters the owner hierarchy; the active warp is canceled.
+/// @brief 実行中の個体参照型 LIVE MotionWarp の姿勢だけを更新する。
+/// @return 参照が解決できないか所有者の階層内に入った場合は false を返し、実行中のワープを取り消す。
 [[nodiscard]] FBZZ_ENGINE_API bool RefreshLiveMotionWarpTarget(Scene& scene, EntityID ownerId,
     MotionWarpComponent& warp);
 
-} /// @note namespace fbzz::scene
+}

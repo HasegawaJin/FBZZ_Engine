@@ -24,23 +24,23 @@ struct ScriptPatrolProxy {
     FBZZ_ENGINE_API void SetEnabled(bool enabled) const;
     FBZZ_ENGINE_API void SetMode(ScriptPatrolMode mode) const;
     FBZZ_ENGINE_API void SetWaitTime(float seconds) const;
-    /// @note Clear selects INLINE+LIVE and retains inactive binding metadata and referenced GameObjects.
+    /// @note クリア時は INLINE+LIVE を選ぶ。非アクティブなバインドのメタデータと参照先の GameObject は保持する。
     FBZZ_ENGINE_API void ClearWaypoints() const;
-    /// @note Numeric writes select INLINE+LIVE; point-object routes are materialized before appending.
+    /// @note 数値書き込みは INLINE+LIVE を選ぶ。点の個体参照で構成した経路は、追加の前に数値化する。
     FBZZ_ENGINE_API void AddWaypoint(const math::Vector3& position, float waitTime = -1.0f,
                      float speed = -1.0f) const;
-    /// @brief Replace one numeric waypoint in world space.
-    /// @return False for an invalid index or unresolved active route; failure leaves source and numeric rows unchanged.
-    /// @note Point-object routes are materialized before replacement, retaining other points and attributes.
+    /// @brief ワールド空間の数値経由点を一つ置き換える。
+    /// @return 添字が無効か現在の経路を解決できない場合は false。入力元と数値行は未変更。
+    /// @note 点の個体参照で構成した経路は置き換え前に数値化し、他の点と属性を保持する。
     FBZZ_ENGINE_API bool SetWaypoint(size_t index, const math::Vector3& position) const;
     FBZZ_ENGINE_API void Restart(size_t startIndex = 0) const;
     [[nodiscard]] FBZZ_ENGINE_API int GetCurrentIndex() const;
     [[nodiscard]] FBZZ_ENGINE_API bool IsEnabled() const;
-    /// @brief Return the point count from the selected runtime or authoring route.
+    /// @brief 選択中のランタイムまたは制作時の経路の点数を返す。
     [[nodiscard]] FBZZ_ENGINE_API size_t GetWaypointCount() const;
-    /// @brief Read a waypoint's world position without changing the output on failure.
-    /// @return False if the component, route, or index is invalid.
+    /// @brief 経由点のワールド座標を取得する。失敗時は出力を変更しない。
+    /// @return コンポーネント、経路、添字のいずれかが無効なら false。
     [[nodiscard]] FBZZ_ENGINE_API bool GetWaypoint(size_t index, math::Vector3& position) const;
 };
 
-} /// @note namespace fbzz::scene
+}

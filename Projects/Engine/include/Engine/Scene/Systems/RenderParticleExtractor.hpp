@@ -8,7 +8,7 @@ namespace fbzz::renderer { struct RenderScene; }
 namespace fbzz::scene {
 class Scene;
 struct RenderPassContext;
-/// @note Append once after the snapshot's particle simulation. GPU alive counts are unavailable on CPU, so positive draw capacity is conservatively unsupported.
+/// @note 粒子シミュレーション後に一度だけ追加する。CPU から GPU の生存数は取得できないため、描画可能数が正ならレイ描画の未対応要素に数える。
 /// @note 実験 RT の許可なしでは Scene を走査せず、output を変更しない。
 FBZZ_ENGINE_API void ExtractRayParticleSources(const Scene& scene, renderer::RenderScene& output,
     bool experimentalRayTracingEnabled = false);

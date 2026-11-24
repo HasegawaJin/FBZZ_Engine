@@ -464,7 +464,7 @@ MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAs
     return owner ? owner->ReadAuthoring() : MaterialAsset::AuthoringSnapshotPtr{};
 }
 
-/// @note All authoring fields participate; bit-exact float comparison preserves signed-zero, NaN payload and micro-edits.
+/// @note すべての編集項目を比較する。浮動小数点はビット単位で比較し、ゼロの符号、NaN ペイロード、微小な編集を区別する。
 bool MaterialAssetAuthoring::operator==(const MaterialAssetAuthoring& other) const
 {
     return shaderPath == other.shaderPath

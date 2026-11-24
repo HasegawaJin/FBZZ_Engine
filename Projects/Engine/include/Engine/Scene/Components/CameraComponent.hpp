@@ -99,4 +99,4 @@ struct CameraComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -33,7 +33,7 @@ struct PreparedShaderReference {
     bool hasDatabaseRevision = false;
 };
 
-/// @note Only reference parsing and native path conversion are retained; existence and metadata timestamps are queried on every resolution.
+/// @note 保持するのは参照の解析とネイティブパスへの変換のみ。ファイルの存在とメタデータの更新時刻は参照解決ごとに確認する。
 class PreparedShaderReferences {
 public:
     PreparedShaderReference& Select(std::string_view reference)
@@ -62,7 +62,7 @@ private:
 PreparedShaderReference& PrepareShaderReference(std::string_view reference)
 {
     const bool guidReference = AssetDatabase::IsGuidRef(reference);
-    /// @note Reporting callbacks can edit the caller's input; retain the original non-GUID bytes before resolution and cache selection.
+    /// @note 報告コールバックが呼び出し側の入力を編集できるため、解決とキャッシュ選択より先に GUID 以外の元の入力バイト列を保持する。
     std::string ownedReference;
     std::string resolvedPath;
     if (!guidReference) {
@@ -73,11 +73,11 @@ PreparedShaderReference& PrepareShaderReference(std::string_view reference)
     thread_local PreparedShaderReferences preparedReferences;
     auto& prepared = preparedReferences.Select(reference);
     if (guidReference) {
-        /// @note Database revision advances for all GUID mapping/ambiguity changes, including Init and Shutdown; metadata freshness remains independent.
+        /// @note Init や Shutdown を含め、GUID 対応付けや曖昧性の変化はすべてデータベースの版を進める。メタデータの鮮度は個別に確認する。
         const uint64_t revision = AssetDatabase::Revision();
         if (prepared.hasDatabaseRevision && prepared.databaseRevision == revision) return prepared;
         resolvedPath = AssetDatabase::PathFromGuid(prepared.guid);
-        /// @note Tag with the revision read before PathFromGuid; a concurrent mapping edit forces the next call to resolve again.
+        /// @note PathFromGuid の前に読んだ版を記録する。対応付けが並行して変わった場合は次回に再解決する。
         prepared.databaseRevision = revision;
         prepared.hasDatabaseRevision = true;
     }
@@ -160,16 +160,16 @@ renderer::ShaderCapabilities ResolveShaderCapabilities(std::string_view shaderRe
 {
     if (shaderReference.empty()) return {};
     auto& prepared = PrepareShaderReference(shaderReference);
-    /// @note The native-path overload uses the same GetFileAttributesW existence contract, including source symlinks.
-    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesw GetFileAttributesW symbolic-link behavior.
+    /// @note ネイティブパスのオーバーロードでも、入力のシンボリックリンクを含め GetFileAttributesW と同じ存在確認の契約を使う。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesw GetFileAttributesW のシンボリックリンクに対する挙動。
     if (prepared.path.empty() || !util::FileSystem::Exists(prepared.nativeSourcePath)) return {};
-    /// @note Preserve conversion order for absent sources; an empty native metadata path records only that conversion has not run.
+    /// @note 入力が存在しない場合も変換順を保つ。ネイティブのメタデータパスが空なら、まだ変換していないことだけを表す。
     if (prepared.nativeMetaPath.empty()) {
         prepared.nativeMetaPath = std::filesystem::u8path(prepared.metaPath);
     }
     std::error_code error;
-    /// @note Keep standard-library target timestamp and sharing-violation handling; no filesystem result enters the prepared-reference cache.
-    /// @see https://github.com/microsoft/STL/blob/main/stl/src/filesystem.cpp __std_fs_get_stats follows reparse points and handles sharing violations.
+    /// @note 更新日時と共有違反は標準ライブラリの扱いに従う。変換済み参照のキャッシュにはファイルシステムの結果を入れない。
+    /// @see https://github.com/microsoft/STL/blob/main/stl/src/filesystem.cpp __std_fs_get_stats の再解析ポイントの追跡と共有違反の処理。
     const auto timestamp = std::filesystem::last_write_time(prepared.nativeMetaPath, error);
     if (error) return {};
     static std::unordered_map<std::string, CachedCapabilities> cache;

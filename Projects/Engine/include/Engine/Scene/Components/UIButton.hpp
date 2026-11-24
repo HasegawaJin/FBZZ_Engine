@@ -98,4 +98,4 @@ struct UIButton {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

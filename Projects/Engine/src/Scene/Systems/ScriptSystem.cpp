@@ -65,7 +65,7 @@ struct ScriptSnapshotStorage {
     std::vector<ScriptTarget> targets;
     std::vector<char> identities;
 };
-/// @note Each active or nested dispatch owns its vectors; only cleared value buffers return to thread-local idle storage.
+/// @note 各ディスパッチと再入呼び出しが作業配列を所有し、空にした値のバッファだけをスレッドローカル領域へ返す。
 struct ScriptSnapshot : ScriptSnapshotStorage {
     ScriptSnapshot()
     {
@@ -224,7 +224,7 @@ void ScriptSystem::Update(SystemContext& ctx)
             };
             /// @note 遅延処理でも自身や他者を無効化・削除できるため、各呼び出し後に引き直す。
             auto* script = active();
-            /// @note Once a gate rejects the target, no callback runs that could make a later gate accept it in this target's turn.
+            /// @note 一度条件を満たさなかった対象は、この順番の途中で後続条件が成功するようなコールバックを実行しない。
             if (!script) continue;
             script->UpdateFrameDelays();
             if (!(script = active())) continue;

@@ -65,7 +65,7 @@ bool Finish(const TerrainComponent& terrain, const Transform& transform, const m
     out = sample;
     return true;
 }
-} /// @note namespace
+}
 
 bool TryTerrainNormalToWorld(const Transform& transform, const math::Vector3& localNormal, math::Vector3& out)
 {
@@ -212,7 +212,7 @@ struct SurfaceVertexScratch {
     std::array<bool, SURFACE_VERTEX_SCRATCH_CAPACITY> transformed{};
     bool busy = false;
 };
-/// @note Only values are retained per thread; each query clears its flags and nested queries use the scalar path.
+/// @note スレッドごとに数値のみ保持する。各照会でフラグを初期化し、再入した照会ではスカラー経路を使う。
 class SurfaceVertexScratchLease {
 public:
     explicit SurfaceVertexScratchLease(size_t vertexCount)
@@ -252,13 +252,13 @@ SurfaceTriangleProjection PrepareProjection(const math::Vector3& wa, const math:
     projection.determinant = projection.ax * projection.bz - projection.az * projection.bx;
     if (std::abs(projection.determinant) <= 1e-12) return projection;
     projection.origin = wa;
-    /// @note Preserve the original float subtraction before barycentric double multiplication.
+    /// @note 重心座標の倍精度乗算の前に、元の単精度減算を行う。
     projection.heightDifferenceB = wb.y - wa.y;
     projection.heightDifferenceC = wc.y - wa.y;
     projection.usable = true;
     return projection;
 }
-/// @note Intersect the infinite world vertical line by projected barycentrics; t=0 is a valid contact.
+/// @note ワールドの無限鉛直線と三角形の交差を、投影面の重心座標で求める。t=0 も有効な接触とする。
 bool VerticalProjectedTriangle(const Transform& transform, const math::Vector3& a, const math::Vector3& b,
     const math::Vector3& c, const SurfaceTriangleProjection& projection,
     float worldX, float worldZ, TerrainSurfaceSample& out)
@@ -305,7 +305,7 @@ bool VerticalTriangle(const Transform& transform, const math::Vector3& a, const 
 constexpr size_t SURFACE_PREPARED_INDEX_CAPACITY = 2048;
 constexpr size_t SURFACE_PREPARED_TRIANGLE_CAPACITY = SURFACE_PREPARED_INDEX_CAPACITY / 3;
 enum class SurfacePreparation { PREPARED, FALLBACK, INVALID };
-/// @note The byte key contains exactly x/y/z float bits; layout changes must not silently add padding to the key.
+/// @note キーには x/y/z の単精度浮動小数点のビットだけを格納する。型のレイアウトが変わってもパディングを含めない。
 static_assert(std::is_standard_layout_v<math::Vector3> && std::is_trivially_copyable_v<math::Vector3>
     && sizeof(math::Vector3) == 3 * sizeof(float)
     && offsetof(math::Vector3, x) == 0 && offsetof(math::Vector3, y) == sizeof(float)
@@ -313,7 +313,7 @@ static_assert(std::is_standard_layout_v<math::Vector3> && std::is_trivially_copy
 constexpr size_t SURFACE_PROJECTION_BLOCK_SIZE = 16;
 constexpr size_t SURFACE_PROJECTION_BLOCK_COUNT =
     (SURFACE_PREPARED_TRIANGLE_CAPACITY + SURFACE_PROJECTION_BLOCK_SIZE - 1) / SURFACE_PROJECTION_BLOCK_SIZE;
-/// @note Bounds are deliberately loose; an uncertain projection keeps the entire original-order block searchable.
+/// @note 境界を広めに取る。投影が確定できないブロックは元の順序のまま全件を検索する。
 struct SurfaceProjectionBlock {
     double minimumX = std::numeric_limits<double>::infinity(), maximumX = -std::numeric_limits<double>::infinity();
     double minimumZ = std::numeric_limits<double>::infinity(), maximumZ = -std::numeric_limits<double>::infinity();
@@ -323,7 +323,7 @@ struct SurfaceProjectionBlock {
         if (!projection.usable || !bounded) return;
         const double edge = (std::max)({std::abs(projection.ax), std::abs(projection.az),
             std::abs(projection.bx), std::abs(projection.bz)});
-        /// @note With |det|>=1e-6*edge^2, double evaluation uncertainty is far below the spare factor in radius=8*edge.
+        /// @note |det|>=1e-6*edge^2 では、倍精度評価の誤差は半径 8*edge に含めた余裕より十分小さい。
         /// @see Docs/design/script-dispatch-workspaces.md Projected-surface conservative rejection.
         if (std::abs(projection.determinant) < 1e-6 * edge * edge) { bounded = false; return; }
         const double radius = 8 * edge;
@@ -346,7 +346,7 @@ struct PreparedSurfaceEntry {
     size_t vertexCount = 0, indexCount = 0;
     bool validated = false, prepared = false, busy = false;
 };
-/// @note One value-only entry per thread; no source pointers, revisions or scene identity survive the call.
+/// @note スレッドごとに数値だけを 1 件保持する。入力ポインター、リビジョン、シーンの識別は呼び出しを越えて保持しない。
 class PreparedSurfaceLease {
 public:
     explicit PreparedSurfaceLease(bool eligible)
@@ -408,7 +408,7 @@ std::array<uint32_t, 10> TransformBits(const Transform& transform)
 SurfacePreparation PrepareSurface(PreparedSurfaceEntry& entry, const TerrainComponent& terrain, const Transform& transform)
 {
     if (!GeometryMatches(entry, terrain)) {
-        /// @note Heightfield reporting can mutate inputs or replace this entry through a nested query; invalid indices must not reach fallback.
+        /// @note 高さ場の報告処理は入力を変えたり、再入照会でこの項目を置き換えたりできる。無効なインデックスを代替経路に渡さない。
         if (!IsValidTerrainSurfaceGeometry(terrain.surfacePositions, terrain.surfaceIndices)) return SurfacePreparation::INVALID;
         StoreValidatedGeometry(entry, terrain);
     }
@@ -464,7 +464,7 @@ bool SampleSurface(const TerrainComponent& terrain, const Transform& transform, 
     };
     {
         FBZZ_PROFILE_SCOPE("TerrainSurfaceQuery::Heightfield");
-        /// @note Upright heightfields have one intersection per vertical line. Preserve the existing constant-time grid path.
+        /// @note 鉛直方向の高さ場と各鉛直線の交点は 1 個なので、既存の定数時間の格子照会を使う。
         const auto localUp = transform.worldRotation.Inverse() * math::Vector3::UP;
         if (selection == SurfaceSelection::TOP || (localUp.x == 0 && localUp.z == 0)) {
             TerrainSurfaceSample heightfield;
@@ -486,7 +486,7 @@ bool SampleSurface(const TerrainComponent& terrain, const Transform& transform, 
     }
     {
         FBZZ_PROFILE_SCOPE("TerrainSurfaceQuery::CustomSurface");
-        /// @note Recompare all geometry and pose bits after heightfield callbacks; a lease never spans those callbacks.
+        /// @note 高さ場のコールバックの後に形状と姿勢の全ビットを照合し直す。貸出はコールバックをまたがない。
         PreparedSurfaceLease preparedLease(CanPrepareSurface(terrain));
         auto* prepared = preparedLease.Get();
         const auto preparation = prepared ? PrepareSurface(*prepared, terrain, transform)
@@ -539,7 +539,7 @@ bool SampleSurface(const TerrainComponent& terrain, const Transform& transform, 
     out = best;
     return true;
 }
-} /// @note namespace
+}
 
 bool TrySampleTerrainWorld(const TerrainComponent& terrain, const Transform& transform,
     float worldX, float worldZ, TerrainSurfaceSample& out)
@@ -561,4 +561,4 @@ bool TrySampleTerrainCeilingWorld(const TerrainComponent& terrain, const Transfo
 {
     return SampleSurface(terrain, transform, reference, maxDistance, SurfaceSelection::CEILING, out);
 }
-} /// @note namespace fbzz::scene
+}

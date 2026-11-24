@@ -77,8 +77,8 @@ struct MaterialAssetAuthoring {
     [[nodiscard]] FBZZ_ENGINE_API bool operator==(const MaterialAssetAuthoring& other) const;
 };
 
-/// @brief Shared material authoring exposes only controlled immutable publications.
-/// @note Native consumers must rebuild after this private-state layout migration; managed Material service signatures are unchanged.
+/// @brief 共有材質の編集値を不変のスナップショットとして公開する。
+/// @note 非公開の状態レイアウトが変わったためネイティブの利用側は再ビルドが必要。マネージド Material サービスのシグネチャは同じ。
 struct MaterialAsset {
 public:
     using AuthoringState = detail::MaterialAuthoringState<MaterialAssetAuthoring>;
@@ -93,7 +93,7 @@ public:
     MaterialAsset& operator=(MaterialAsset&&) noexcept = default;
 
     [[nodiscard]] AuthoringSnapshotPtr ReadAuthoring() const { return m_authoring.Read(); }
-    /// @pre Retain ReadAuthoring() instead when a reference must survive an edit, reload or callback.
+    /// @pre 編集・再読込・コールバックをまたいで参照する場合は ReadAuthoring() の戻り値を保持する。
     [[nodiscard]] const MaterialAssetAuthoring& Authoring() const
     {
         const auto* snapshot = m_authoring.View();
@@ -101,7 +101,7 @@ public:
         return snapshot ? snapshot->Data() : empty;
     }
     [[nodiscard]] AuthoringEdit BeginAuthoringEdit() { return m_authoring.BeginEdit(); }
-    /// @note Intentional whole-value load/undo publication; draft aliases are copied and never become mutable stored aliases.
+    /// @note 読込と取り消しに使う明示的な全値置換。下書きはコピーされ、下書きへの参照から公開値を変更できない。
     void ReplaceAuthoring(const MaterialAssetAuthoring& values) { m_authoring.Replace(values); }
 
 private:
@@ -113,17 +113,17 @@ private:
     friend AuthoringEdit;
 };
 
-/// @note Own authoring values before callbacks/native waits; a missing or retired asset produces an empty snapshot.
+/// @note コールバックやネイティブ側の待機前に編集値の所有権を確保する。アセットが存在しないか退役済みなら空のスナップショットを返す。
 [[nodiscard]] FBZZ_ENGINE_API MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAsset> handle);
 
 /// @note TOML から .mat を読み込む。破損・未存在時は false を返し、例外は使わない。
 [[nodiscard]] FBZZ_ENGINE_API bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset);
-/// @note Owned draft loading keeps the target unchanged on failure and preserves the same TOML normalization.
+/// @note 下書きの読み込みは失敗時に対象を変更せず、従来と同じ TOML の正規化を行う。
 [[nodiscard]] FBZZ_ENGINE_API bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& outAsset);
 
 /// @note .mat を TOML へ保存する。Editor からの Save とテンプレート生成で共有する。
 [[nodiscard]] FBZZ_ENGINE_API bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset);
-/// @note Owned generator/editor drafts use the same unchanged TOML representation without publishing a stored asset.
+/// @note 生成器やエディターの所有する下書きは、ストアへ公開せず既存の TOML 表現を使う。
 [[nodiscard]] FBZZ_ENGINE_API bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring& asset);
 
 } /// @note namespace fbzz::asset

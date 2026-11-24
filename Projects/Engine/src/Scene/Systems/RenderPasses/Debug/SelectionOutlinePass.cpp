@@ -1,5 +1,5 @@
 /// @file    SelectionOutlinePass.cpp
-/// @brief   Selection outline render pass implementation.
+/// @brief   選択マスクから輪郭を描く。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "SelectionPasses.hpp"

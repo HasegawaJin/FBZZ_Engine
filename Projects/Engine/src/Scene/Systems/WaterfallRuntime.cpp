@@ -1,5 +1,5 @@
 /// @file    WaterfallRuntime.cpp
-/// @brief   Connected waterfall geometry, pooled effects and shared waterline constraints.
+/// @brief   滝の接続形状、再利用できる演出、水面線の共有拘束条件を組み立てる。
 /// @author  Hasegawa Jin
 /// @date    2026-11-11
 #include "WaterfallRuntime.hpp"
@@ -127,7 +127,7 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
         static_cast<std::size_t>((rings + 2) * sides * 6 + 6));
     Vector3 middle = Midpoint(start, end);
     float previousY = start.y;
-    /// @see https://doi.org/10.1061/(ASCE)HY.1943-7900.0001188 Ma et al., growth of disturbances in a falling water jet.
+    /// @see https://doi.org/10.1061/(ASCE)HY.1943-7900.0001188 Ma らによる落下水流の擾乱成長。
     for (int ring = -1; ring <= rings + 1; ++ring) {
         const float t = std::clamp(static_cast<float>(ring) / static_cast<float>(rings), 0.0f, 1.0f);
         const float blend = t * t * (3.0f - 2.0f * t);
@@ -156,7 +156,7 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
                     * std::sqrt((std::max)(0.0f, 1.0f - across * across)));
                 lift = (std::max)({lift, ground(lower) - lower.y, ground(upper) - upper.y});
             }
-            /// @note A shallow intersection at the lip can be submerged by the upper river band.
+            /// @note 落ち口での浅い交差は上流の水面帯に覆われる場合がある。
             const float clearance = std::lerp(0.28f, 0.10f, envelope);
             if (lift > clearance && !geometry.rockAttached) return false;
             if (geometry.rockAttached && std::isfinite(lift))
@@ -197,7 +197,7 @@ bool BuildWaterfallGeometry(const WaterfallGeometry& geometry,
     candidate.AddQuad(first, first + 1, first + 2, first + 3);
     if (farIndexStart) {
         *farIndexStart = candidate.IndexCount();
-        /// @note Both index ranges reuse the same seam vertices and foam. Terrain-hugging falls retain all trajectory rings.
+        /// @note 両インデックス範囲で継ぎ目の頂点と泡を共有し、地形に沿う滝は軌道上の全リングを保持する。
         const auto vertex = [&](int ring, int side) { return static_cast<std::uint32_t>((ring + 1) * (sides + 1) + side); };
         const int ringStep = geometry.rockAttached ? 1 : 3;
         for (int row = -1; row < rings + 1;) {
@@ -257,7 +257,7 @@ bool ReadWaterfallConnections(Scene& scene, GameObject& owner, WaterfallComponen
         }
         return Finite(surface) && depth > 0.0f;
     };
-    /// @note A lake/rectangle has no incoming cross-section. Fit the requested impact band entirely inside the wet footprint.
+    /// @note 湖・長方形には流入断面がないため、落下位置の帯全体を水域の内側に収める。
     for (float fraction : {1.0f, 0.7f, 0.45f, 0.25f}) {
         const float span = halfWidth * fraction;
         const Vector3 back = forward * (std::max)(span, 0.4f);
@@ -366,8 +366,8 @@ bool ResolveWaterfallGeometry(Scene& scene, GameObject& owner, WaterfallGeometry
         && ReadWaterfallConnections(scene, owner, *waterfall, out);
 }
 
-/// @note Identity rotation uses the same subtract/divide and double grid extents as the vertical heightfield query.
-/// @note Other poses and custom triangles can reach outside the upright grid and always use the full query.
+/// @note 無回転の場合は高さ場の鉛直照会と同じ減算・除算と倍精度の格子範囲を使う。
+/// @note 回転した形状と独自三角形は直立時の格子をはみ出し得るため、完全な照会を使う。
 struct WaterfallTerrainSource {
     const TerrainComponent* terrain;
     const Transform* pose;
@@ -492,7 +492,7 @@ void UpdateWaterfallRuntime(Scene& scene, float dt)
             };
             std::uint32_t farIndexStart = 0;
             waterfall.valid = BuildWaterfallGeometry(geometry, ground, builder, &waterfall.midFall, &farIndexStart);
-            /// @note Ground affects Y and can abort a build. Every XZ probe through the first failure remains a dependency.
+            /// @note 地面は高さを変え、生成を中断する場合もある。最初の失敗までに調べた XZ 座標は依存関係に残す。
             waterfall.terrainRevision = curtainRevision(waterfall);
             if (!waterfall.valid) {
                 hide();

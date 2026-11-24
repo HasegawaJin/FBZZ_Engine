@@ -27,11 +27,13 @@ namespace fbzz::physics
         if (length < 1e-6f) return;
 
         const math::Vector3 dir = delta * (1.0f / length);
+        /// @note 内積でばねの軸に沿う速度差だけを取り出す。横切る動きには伸び縮みに対する抵抗を掛けない。
         const float relVel = math::Vector3::Dot(m_bodyB->GetVelocity() - m_bodyA->GetVelocity(), dir);
+        /// @note 自然長からのずれが復元力を、伸縮する速さが減衰力を決める。どちらもずれや動きを打ち消す向きに働く。
         const float forceScale = -m_stiffness * (length - m_restLength) - m_damping * relVel;
         const math::Vector3 force = dir * forceScale;
 
         m_bodyA->ApplyForce(-force);
         m_bodyB->ApplyForce(force);
     }
-} // namespace fbzz::physics
+} /// @note namespace fbzz::physics

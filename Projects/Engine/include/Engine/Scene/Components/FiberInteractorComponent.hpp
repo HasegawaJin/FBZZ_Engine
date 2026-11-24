@@ -24,4 +24,4 @@ struct FiberInteractorComponent {
         r.FloatRange("recoverySeconds", m_recoverySeconds, 0.05f, 30.0f);
     }
 };
-} /// @note namespace fbzz::scene
+}

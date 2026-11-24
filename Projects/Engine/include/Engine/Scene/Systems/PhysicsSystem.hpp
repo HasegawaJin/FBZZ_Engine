@@ -21,12 +21,12 @@ public:
     /// @note ctx.fixedDt を使う。固定ステップループは SystemScheduler::RunPhase が担う。
     FBZZ_ENGINE_API void Update(SystemContext& ctx) override;
 
-    /// @note Thread-safe; effective changes retire the previous publication and advance its revision.
-    /// @return The current request revision; an unchanged request preserves the revision.
+    /// @note スレッドセーフ。実際に変更があれば直前の公開データを退役させ、更新版を進める。
+    /// @return 現在の要求版。要求内容が同じなら版を保持する。
     FBZZ_ENGINE_API static uint64_t SetSpatialDebugRequest(const PhysicsSpatialDebugRequest& request);
-    /// @note Thread-safe; disables capture and rejects any in-flight publication immediately.
+    /// @note スレッドセーフ。採取を停止し、処理中の公開結果も直ちに拒否する。
     FBZZ_ENGINE_API static void InvalidateSpatialDebugSnapshot();
-    /// @return Immutable current-revision values for this scene, or null while disabled or awaiting a step.
+    /// @return このシーンの現在版に対する不変値。無効時やステップ待ちなら null。
     [[nodiscard]] FBZZ_ENGINE_API static std::shared_ptr<const PhysicsSpatialDebugSnapshot>
         GetSpatialDebugSnapshot(uint64_t sceneGeneration);
 
@@ -37,4 +37,4 @@ private:
     physics::VolumeHandle m_flowVolumeHandle;
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -225,7 +225,7 @@ bool ProjectSettings::LoadFromToml(std::string_view text)
             FBZZ_LOG_WARN("ProjectSettings: render.pipelineAsset must be a string: %s", path.c_str());
             return false;
         }
-        /// @note GUID resolution requires the later AssetManager initialization; preserve unresolved references rather than dropping missing assets.
+        /// @note GUID は後続の AssetManager 初期化後に解決できる。欠落とみなして除外せず、未解決の参照を保持する。
         pipelineAsset = token->get();
     }
     renderPipelineAssetPath = std::move(pipelineAsset);

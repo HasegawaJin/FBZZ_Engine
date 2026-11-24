@@ -95,4 +95,4 @@ struct VFXComponent {
                                    math::Vector3 position,
                                    math::Quaternion rotation);
 
-} /// @note namespace fbzz::scene
+}

@@ -79,7 +79,7 @@ public:
     FBZZ_ENGINE_API bool SetVector4(MaterialPropertyId property, const math::Vector4& value) const;
     FBZZ_ENGINE_API bool SetColor(MaterialPropertyId property, const math::Vector4& value) const;
     FBZZ_ENGINE_API bool SetTexture(MaterialPropertyId property, const TextureRef& texture) const;
-    /// @note Binds a validated transient texture; the caller owns its GPU lifetime and the slot never serializes the handle.
+    /// @note 検証済みの一時テクスチャを割り当てる。呼び出し側が GPU 資源の寿命を管理し、スロットはハンドルを保存しない。
     FBZZ_ENGINE_API bool SetRuntimeTexture(MaterialPropertyId property, renderer::ResourceHandle<renderer::TextureTag> texture,
         uint64_t resourceOwner, uint64_t resetVersion) const;
 
@@ -202,4 +202,4 @@ struct ScriptMaterialProxy {
     FBZZ_ENGINE_API void QueueRenderPass(UserRenderPassDesc desc) const;
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -30,7 +30,7 @@ namespace {
 /// @note 双方向インデックス。キーは正規化 (小文字ドライブ + '/' 区切り) した絶対パス。
 std::unordered_map<std::string, std::string> s_guidToPath;
 std::unordered_map<std::string, std::string> s_pathToGuid;
-/// @brief Immutable Engine assets stay outside the project index and its writeback file.
+/// @brief 不変の Engine アセットはプロジェクトのインデックスと書き戻しファイルの対象外。
 std::unordered_map<std::string, std::string> s_sharedGuidToPath;
 std::unordered_map<std::string, std::string> s_sharedPathToGuid;
 std::unordered_set<std::string> s_ambiguousSharedGuids;
@@ -498,7 +498,7 @@ void AssetDatabase::IndexBakedLibrary(const std::string& libraryBakedRoot)
 
 namespace {
 
-/// @brief Shared roots may be the Assets directory itself or a staged EngineAssets parent.
+/// @brief 共有ルートには Assets ディレクトリ自体、または配置済みの EngineAssets の親を指定できる。
 std::string NormalizeSharedAssetsRoot(const std::string& sharedAssetsRoot)
 {
     if (sharedAssetsRoot.empty()) return {};
@@ -518,8 +518,8 @@ std::string NormalizeSharedAssetsRoot(const std::string& sharedAssetsRoot)
     return normalized;
 }
 
-/// @brief Shared assets are indexed from existing metadata only.
-/// @note This pass never repairs or writes files.
+/// @brief 共有アセットのインデックスには既存のメタデータだけを使う。
+/// @note この処理はファイルを修復・書き込みしない。
 void IndexSharedAssetsLocked()
 {
     namespace fs = std::filesystem;
@@ -613,8 +613,8 @@ void AssetDatabase::Init(const std::string& assetsRoot,
         if (ShouldHaveMeta(util::StringUtils::ToLowerCopy(util::FileSystem::GetFilename(path))))
             metaReads.push_back({path, {}});
     }
-    /// @note Only independent reads run on workers; repairs and duplicate winners retain traversal order.
-    /// @note Finish before taking s_mutex so queued asset tasks cannot deadlock the shared pool.
+    /// @note ワーカーで実行するのは独立した読み込みだけ。修復と重複時の採用順は探索順を保つ。
+    /// @note キュー内のアセット処理と共有プールがデッドロックしないよう、s_mutex を取る前に完了を待つ。
     const size_t readerCount = metaReads.size() < 64 ? 0
         : static_cast<size_t>((std::min)(8, TaskSystem::WorkerCount()));
     std::vector<std::future<void>> reads;

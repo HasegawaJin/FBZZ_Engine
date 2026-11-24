@@ -42,7 +42,7 @@ namespace fbzz::scene {
 #undef FBZZ_MANAGED_CALL
 #undef FBZZ_MANAGED_CALLBACK
 
-/// @note The shared callback declarations also govern native access, managed discovery and authoring diagnostics.
+/// @note 共有のコールバック宣言はネイティブアクセス、managed 検出、制作時の診断にも適用する。
 inline constexpr const char* ManagedCallbackPolicy(ManagedCallback callback)
 {
     switch (callback) {
@@ -81,4 +81,4 @@ static_assert(sizeof(void*) == 8);
 static_assert(std::is_standard_layout_v<ManagedBridgeRequest> && std::is_trivially_copyable_v<ManagedBridgeRequest>);
 static_assert(std::is_standard_layout_v<ManagedBridgeReply> && std::is_trivially_copyable_v<ManagedBridgeReply>);
 
-} /// @note namespace fbzz::scene
+}

@@ -53,4 +53,4 @@ struct VFXAudioEnvelope {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

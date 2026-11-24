@@ -139,4 +139,4 @@ struct UIContentSizeFitter {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

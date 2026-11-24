@@ -18,7 +18,7 @@ inline constexpr const char* FIBER_MASK_TEXTURE_KEY = "tex5";
 
 /// @return 欠損 / 非有限値は既定値、範囲外は clamp。asset が null なら既定の毛皮。
 [[nodiscard]] FBZZ_ENGINE_API FiberMaterialSettings ResolveFiberMaterial(const MaterialAsset* asset);
-/// @note The caller owns the immutable snapshot when passing its values across resource callbacks.
+/// @note 資源のコールバックをまたいで値を渡す間、呼び出し側が不変のスナップショットを所有する。
 [[nodiscard]] FBZZ_ENGINE_API FiberMaterialSettings ResolveFiberMaterial(const MaterialAssetAuthoring& values);
 
 } /// @note namespace fbzz::asset

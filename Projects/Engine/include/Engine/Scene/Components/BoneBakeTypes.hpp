@@ -18,7 +18,7 @@ enum class BoneBakeFallback : uint8_t {
 };
 FBZZ_ENGINE_API const char* BoneBakeFallbackName(BoneBakeFallback reason);
 
-/// @note Immutable clip references preserve the exact previous displayed pose across LOD holds and clip transitions.
+/// @note 不変のクリップ参照により、LOD で姿勢を保持する間やクリップ遷移をまたいでも直前の表示姿勢を復元できる。
 struct BoneBakePoseState {
     std::shared_ptr<const asset::BakedBoneAnimation> source, target;
     asset::BakedBoneFrame frame, targetFrame;
@@ -44,4 +44,4 @@ struct BoneBakeRuntime {
     float blendWeight = 0.0f;
     asset::BakedBoneWorkspace workspace;
 };
-} /// @note namespace fbzz::scene
+}

@@ -98,4 +98,4 @@ struct MeshTrailComponent : TransientGpuState<MeshTrailComponentGpuState> {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

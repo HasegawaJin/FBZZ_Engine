@@ -196,4 +196,4 @@ private:
     }
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -43,4 +43,4 @@ namespace fbzz::scene {
     return go.GetComponent<UIText>() && !go.GetComponent<UIImage>();
 }
 
-} // namespace fbzz::scene
+}

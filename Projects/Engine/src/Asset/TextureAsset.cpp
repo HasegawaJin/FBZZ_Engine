@@ -137,7 +137,7 @@ TextureImportSettings DefaultSettingsForType(TextureType type)
     case TextureType::Color:
         s.type        = TextureType::Color;
         s.srgb        = true;
-        /// @note BC1/BC3 depending on alpha
+        /// @note アルファの有無に応じた BC1 または BC3。
         s.compression = TextureCompression::Auto;
         s.mipmaps     = true;
         s.mipFilter   = MipFilter::Kaiser;
@@ -228,19 +228,19 @@ TextureType GuessTextureType(std::string_view filename)
     if (lower.ends_with(".hdr") || lower.ends_with(".exr"))
         return TextureType::HDR;
 
-    /// @note UI hint
+    /// @note UI 用のヒント。
     if (stem.ends_with("_ui") || stem.ends_with("_icon") ||
         stem.ends_with("_hud") || stem.starts_with("ui_"))
         return TextureType::UI;
 
-    /// @note Normal map suffixes
+    /// @note 法線マップの接尾辞。
     static constexpr std::string_view kNormalSuffixes[] = {
         "_n", "_nrm", "_normal", "_nmap", "_bump", "_normalmap"
     };
     for (auto& suf : kNormalSuffixes)
         if (stem.ends_with(suf)) return TextureType::Normal;
 
-    /// @note Data / linear map suffixes (roughness, metallic, AO, opacity, mask, emissive mask)
+    /// @note データ用・線形マップの接尾辞（粗さ、金属度、AO、不透明度、マスク、発光マスク）。
     static constexpr std::string_view kDataSuffixes[] = {
         "_r", "_rough", "_roughness",
         "_m", "_metal", "_metallic",
@@ -254,7 +254,7 @@ TextureType GuessTextureType(std::string_view filename)
     for (auto& suf : kDataSuffixes)
         if (stem.ends_with(suf)) return TextureType::Data;
 
-    /// @note Emissive is still sRGB color
+    /// @note 発光色には sRGB を使う。
     if (stem.ends_with("_e") || stem.ends_with("_emissive") || stem.ends_with("_emission"))
         return TextureType::Color;
 

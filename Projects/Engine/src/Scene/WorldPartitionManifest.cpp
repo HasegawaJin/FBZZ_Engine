@@ -1,5 +1,5 @@
 /// @file    WorldPartitionManifest.cpp
-/// @brief   Bounded TOML manifests with canonical cell ordering and atomic persistence.
+/// @brief   上限付きの TOML マニフェストを、正規化したセル順で原子的に保存する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #include <Engine/Scene/WorldPartitionManifest.hpp>
@@ -161,7 +161,7 @@ bool ReadCellId(const toml::node* node, WorldCellId& out)
     return true;
 }
 
-} /// @note namespace
+}
 
 bool ValidateWorldPartitionManifest(const WorldPartitionManifest& manifest, std::string& diagnostic)
 {
@@ -333,4 +333,4 @@ bool SaveWorldPartitionManifest(std::string_view path, const WorldPartitionManif
     return true;
 }
 
-} /// @note namespace fbzz::scene
+}

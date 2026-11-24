@@ -58,7 +58,7 @@ inline void WaterSplinePoint::Reflect(IReflector& reflector)
 /// @note 水面全体をシミュレーションせず、少数の解析波を合成して低コストに大きなうねりを表現する。
 using GerstnerWave = fluid::GerstnerWave;
 
-/// @note Maximum extra crossing-crest height as a fraction of the linear wave height bound.
+/// @note 交差波の波頂に加える最大の高さを、線形波高上限に対する比で指定する。
 /// @see https://doi.org/10.1017/jfm.2018.886 McAllister et al., wave breaking in crossing seas.
 inline constexpr float WATER_CROSSING_CREST_STRENGTH = 0.85f;
 
@@ -66,18 +66,18 @@ enum class WaterSeaPreset { AUTHORED, CALM, GENTLE, OFFSHORE, STORM };
 /// @note SCENE_WIND は旧シーンの値 1 を保持し、MATERIAL と同様に解決される。
 enum class WaterRippleDirectionMode { MATERIAL, SCENE_WIND, MANUAL };
 
-/// @brief Per-surface controls layered over a generated sea or a shared wave asset.
-/// @note All angles specify travel toward +Z from +X on the world XZ plane, in degrees.
+/// @brief 生成海面または共有波アセットに重ねる水面ごとの設定。
+/// @note 角度はワールド XZ 平面で +X から +Z へ向かう進行方向 [°]。
 struct WaterWaveAuthoring {
     WaterSeaPreset preset = WaterSeaPreset::AUTHORED;
     bool overrideHeading = false;
     float headingDegrees = 0.0f;
-    /// @note Full angular width. A negative value uses the source width.
+    /// @note 全角幅。負値では元の角幅を使う。
     float spreadDegrees = -1.0f;
     float secondaryHeadingDegrees = 60.0f;
-    /// @note Relative amplitude of the secondary group. Zero disables it.
+    /// @note 第 2 波群の相対振幅。0 で無効。
     float secondaryStrength = 0.0f;
-    /// @note Temporal multiplier for the Gerstner swell. Zero samples its initial phase.
+    /// @note Gerstner うねりの時間倍率。0 では初期位相を参照する。
     float speedMultiplier = 1.0f;
     WaterRippleDirectionMode rippleMode = WaterRippleDirectionMode::MATERIAL;
     float rippleHeadingDegrees = 0.0f;
@@ -194,36 +194,36 @@ struct WaterComponent {
     uint32_t resolutionZ = 64;
     float    extentX     = 100.0f;
     float    extentZ     = 100.0f;
-    /// @brief Footprint geometry shared by rendering, physical queries, and water membership.
+    /// @brief 描画、物理照会、水域の所属判定で共有する平面形状。
     WaterSurfaceShape surfaceShape = WaterSurfaceShape::RECTANGLE;
-    /// @brief Stable-ID local control points for lake outlines and river centerlines.
+    /// @brief 湖の輪郭および川の中心線を表す安定 ID 付きのローカル制御点。
     std::vector<WaterSplinePoint> splinePoints;
     std::vector<WaterLakeIslandPoint> lakeIslandPoints;
-    /// @brief Select inline numeric points or ordered TargetPoint bindings as the position source.
+    /// @brief 位置の取得元として、直接指定の数値点または順序付き TargetPoint 参照を選ぶ。
     ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
-    /// @brief Select live TargetPoint resolution or the last explicit owner-local numeric bake.
+    /// @brief 現在の TargetPoint の解決値か、直近に明示ベイクした所有者ローカル座標かを選ぶ。
     ControlPointRuntimeMode pointRuntimeMode = ControlPointRuntimeMode::LIVE;
-    /// @brief Ordered TargetPoint rows; IDs and Water attributes remain owner-authored.
+    /// @brief TargetPoint の順序付き参照。ID と水の属性はこの所有者で設定する。
     std::vector<WaterControlPointBinding> pointBindings;
-    /// @brief Owner-local Y required by POINT_OBJECTS lake outlines.
+    /// @brief POINT_OBJECTS で指定した湖の輪郭に使う所有者ローカルの Y 座標。
     float lakePlaneHeight = 0.0f;
-    /// @brief Last explicitly baked owner-local water control points.
+    /// @brief 直近に明示ベイクした所有者ローカルの水面制御点。
     std::vector<WaterSplinePoint> bakedSplinePoints;
-    /// @brief Source signature captured by the last explicit static bake.
+    /// @brief 直近の明示的な静的ベイクで記録した取得元の署名。
     std::uint64_t bakedInputSignature = 0;
-    /// @brief Source mode used to create the last explicit static bake.
+    /// @brief 直近の明示的な静的ベイクで使用した取得元のモード。
     ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
-    /// @brief Water interpretation captured with the last explicit static bake.
+    /// @brief 直近の明示的な静的ベイクとともに記録した水面の解釈。
     WaterSurfaceShape bakedSurfaceShape = WaterSurfaceShape::RECTANGLE;
-    /// @brief Lake plane captured with the last explicit static bake.
+    /// @brief 直近の明示的な静的ベイクで記録した湖の平面。
     float bakedLakePlaneHeight = 0.0f;
-    /// @brief Adapter version used to interpret the last explicit static bake.
+    /// @brief 直近の明示的な静的ベイクを解釈するときのアダプター版。
     std::uint32_t bakedAdapterVersion = 0;
-    /// @brief Whether bakedSplinePoints contains an explicit numeric snapshot.
+    /// @brief bakedSplinePoints に明示ベイクした数値スナップショットがあるか。
     bool bakeValid = false;
-    /// @brief Catmull-Rom samples per segment, bounded by the numeric snapshot builder.
+    /// @brief 区間当たりの Catmull-Rom サンプル数。数値スナップショットの生成時に上限を適用する。
     std::uint32_t splineSamplesPerSegment = 8;
-    /// @brief Target maximum world edge length for the shared refined spline mesh [m].
+    /// @brief 共有の細分化スプラインメッシュで目標とする最大辺長 [ワールド m]。
     float splineMeshCellSize = 2.0f;
     /// @brief チャンク分割数。水面を chunkCount×chunkCount のサブメッシュに分割し、
     /// @brief チャンク単位でフラスタムカリングする。
@@ -244,10 +244,10 @@ struct WaterComponent {
     bool lodMorphEnabled = false;
     float lodMorphTransitionWidth = 0.25f;
     /// @note Rectangle の水平水域を延長し、描画・浮力・水中判定を共有する。深さと除外は維持する。
-    /// @note Optional receiving Horizon Water for the selected river endpoint.
+    /// @note 選択した川の端点を受ける任意の Horizon 水面。
     EntityRef horizonMaterialReceiver;
     bool horizonMaterialAtStart = false;
-    float horizonMaterialBlendLength = 80.0f; ///< @note Upstream transition length in world meters.
+    float horizonMaterialBlendLength = 80.0f; ///< @note 上流側への移行区間の長さ [ワールド m]。
     bool farOceanEnabled = false;
     /// @note active view の far clip を包む外周に掛ける余裕率。
     float farOceanCoverageScale = 1.05f;
@@ -312,55 +312,55 @@ struct WaterComponent {
     float waveGrouping = 0.0f;
     /// @brief 方向広がり [0,1]。.mat の waveSpread をそのまま持つ。0 で «1 波 1 方向»。
     float waveSpread = 0.0f;
-    /// @note Resolved generator center and full angular width [degrees], for the editor.
+    /// @note 解決済みの生成中心角と全角幅 [°]。エディター表示用。
     math::Vector2 waveDirectionDisplay = math::Vector2::ZERO;
-    /// @note Zero uses the surface's material or local flow. Only the shading ripple band reads this.
+    /// @note 0 では水面の材質または局所流を使う。この値を参照するのはシェーディングのさざ波帯のみ。
     math::Vector2 rippleDirectionOverride = math::Vector2::ZERO;
     /// @brief WaterSystem が FlowFieldFrame から毎フレーム選び直す «この水面に効く流れ»。
     std::array<WaterSurfaceFlow, kWaterSurfaceFlowCount> surfaceFlows = {};
     int surfaceFlowCount = 0;
     /// @brief 生きている着水の輪。WaterSystem が寿命を進め、描画と GetSurfaceHeightAt が読む。
     std::vector<WaterRipple> ripples;
-    /// @note The Waterfall's contact bands are pinned in both surface reads. XY is world XZ; ZW are radii in metres.
+    /// @note 滝の接触帯を両方の水面照会で固定する。XY はワールド XZ、ZW は半径 [m]。
     std::array<math::Vector4, 4> waterfallSeams{}, simulationWaterfallSeams{};
-    /// @note Linked river and Horizon share these pinned bands in world XZ.
+    /// @note 接続した川と Horizon 水面が、ワールド XZ 上で固定した帯を共有する。
     std::array<math::Vector4, 4> horizonWaveSeams{}, simulationHorizonWaveSeams{};
     /// @brief LiveQuery surface 用に Terrain から作る不変の数値 snapshot。
     /// @note Simulation は別 pointer と減衰閾値を捕捉し、LiveQuery の再構築で固定stepの評価を変えない。
     std::shared_ptr<const WaterDepthField> depthField;
-    /// @brief Last fixed-step terrain depth mapping used by Simulation and rendering.
+    /// @brief シミュレーションと描画が使用する直近の固定ステップの地形水深マッピング。
     std::shared_ptr<const WaterDepthField> simulationDepthField;
-    /// @brief Wave attenuation threshold captured with the Simulation depth mapping.
+    /// @brief シミュレーションの水深マッピングと同時に取得した波の減衰しきい値。
     float simulationWaveAttenuationDepth = 0.0f;
     /// @brief Scene 変換と制御点から作る不変の数値水面。保存対象ではない。
     std::shared_ptr<const WaterSplineSnapshot> splineSnapshot;
     /// @brief Zone ownerが共有する不変の和集合水面。保存対象ではない。
     std::shared_ptr<const WaterZoneSnapshot> zoneSnapshot;
-    /// @brief Last fixed-step water-zone publication used by simulation readers.
+    /// @brief シミュレーション照会が使う、直近の固定ステップで公開された水域。
     std::shared_ptr<const WaterZoneSnapshot> simulationZoneSnapshot;
-    /// @brief Exclusion boxes shared by LiveQuery consumers and the renderer.
+    /// @brief LiveQuery の利用側と描画が共有する除外ボックス。
     std::shared_ptr<const WaterExclusionSnapshot> exclusionSnapshot;
-    /// @brief Fixed-step exclusion boxes captured with the simulation surface.
+    /// @brief シミュレーション用の水面と同じ固定ステップで取得した除外ボックス。
     std::shared_ptr<const WaterExclusionSnapshot> simulationExclusionSnapshot;
-    /// @brief Pending water contact events, active plumes and their reusable emitters.
+    /// @brief 未処理の水面接触イベント、活動中の水煙と再利用用のエミッター。
     WaterInteractionRuntime interactionRuntime;
-    /// @brief Input key for reusing the immutable live exclusion snapshot.
+    /// @brief 不変のライブ除外スナップショットを再利用するための入力キー。
     std::uint64_t exclusionSnapshotAttemptSignature = 0;
     bool exclusionSnapshotAttempted = false;
-    /// @brief Last fixed-step standalone spline publication used by simulation readers.
+    /// @brief シミュレーション照会が使う、直近の固定ステップで公開された独立スプライン。
     std::shared_ptr<const WaterSplineSnapshot> simulationSplineSnapshot;
-    /// @brief Owner pose captured with the last fixed-step surface publication.
+    /// @brief 直近の固定ステップで公開した水面と同時に取得した所有者の姿勢。
     Transform simulationTransform{};
-    /// @brief Surface shape and Zone selection captured with the simulation geometry.
+    /// @brief シミュレーション用形状と同時に取得した水面形状と Zone の選択。
     WaterSurfaceShape simulationSurfaceShape = WaterSurfaceShape::RECTANGLE;
     bool simulationZoneSurfaceSelected = false;
-    /// @brief True while an enabled Zone owns this Water surface, including an invalid Zone result.
+    /// @brief 有効な Zone がこの水面を所有している間は true。Zone の結果が無効な場合も含む。
     bool zoneSurfaceSelected = false;
-    /// @brief True after the first simulation publication, including an invalid/empty result.
+    /// @brief 最初のシミュレーション公開後は true。無効や空の結果も含む。
     bool simulationSurfacePublished = false;
-    /// @brief Whether simulation readers should consume the captured surface instead of LiveQuery values.
+    /// @brief シミュレーション照会で LiveQuery の値に代えて取得済みの水面を使うか。
     bool simulationReadEnabled = false;
-    /// @brief Zone owner captured with the last fixed-step surface publication.
+    /// @brief 直近の固定ステップで公開した水面とともに取得した Zone の所有者。
     EntityID simulationZoneOwner{};
     /// @brief Zone memberが参照するownerのEntityID。owner自身と単独水域は無効値。
     EntityID zoneOwner{};
@@ -369,7 +369,7 @@ struct WaterComponent {
     bool splineSnapshotAttempted = false;
     physics::VolumeHandle volumeHandle;
 
-    /// @brief Select the immutable depth field for the requested water read boundary.
+    /// @brief 指定した水面読み取り境界に対応する不変の水深場を選ぶ。
     [[nodiscard]] const WaterDepthField* EffectiveDepthField(WaterSurfaceReadView view) const
     {
         if (view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled
@@ -377,7 +377,7 @@ struct WaterComponent {
         return depthField.get();
     }
 
-    /// @brief Select the attenuation threshold paired with the requested depth field.
+    /// @brief 指定された水深場と対になる減衰しきい値を選ぶ。
     [[nodiscard]] float EffectiveWaveAttenuationDepth(WaterSurfaceReadView view) const
     {
         if (view == WaterSurfaceReadView::SIMULATION && simulationReadEnabled
@@ -397,7 +397,7 @@ struct WaterComponent {
             ? simulationHorizonWaveSeams : horizonWaveSeams;
     }
 
-    /// @brief Clear non-authoring geometry and handles after copying this component into another Scene.
+    /// @brief このコンポーネントを他のシーンにコピーした後、設定に含まれない形状とハンドルを破棄する。
     void ResetSurfaceRuntimeState()
     {
         depthField.reset();
@@ -568,7 +568,7 @@ struct WaterComponent {
 
     /// @brief 半径内の局所うねり、または螺旋渦の変位 [m]。
     /// @note コンパクト包絡の値と一次微分は外周で 0。時刻は海面の共通時計 [s]。
-    /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1, directional waves and deep-water phase speed.
+    /// @see https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models GPU Gems 1 第1章、方向を持つ波と深水波の位相速度。
     /// @warning WaterSurface.hlsli の WaterSwellDisplacement と位相・包絡を揃える。
     static float WaterSwellDisplacement(const WaterSurfaceFlow& flow, float worldX, float worldZ, float time)
     {
@@ -697,7 +697,7 @@ struct WaterComponent {
         m_horizontalContraction = 0.0f;
         float baseHeightSum = 0.0f;
         const float grouping = math::Clamp01(waveGrouping);
-        /// @note Float-rounded direction normalization and rotations get a small upper-bound margin.
+        /// @note float の丸めを含む方向の正規化と回転に備え、上限に小さな余裕を加える。
         const float peak = (1.0f + grouping + grouping * 0.195f) * WaveSpreadAmplitudeSum(waveSpread)
             * (1.0f + 32.0f * std::numeric_limits<float>::epsilon());
         for (size_t i = 0; i < activeCount; ++i) {
@@ -722,7 +722,7 @@ struct WaterComponent {
                 m_horizontalDisplacementBound += std::abs(resolved.horizontalAmplitude) * (1.0f + grouping);
             }
         }
-        /// @note Match the unsharpened height reference in RenderWaterExtractor.cpp, including tiny spread components.
+        /// @note 微小な方向分散成分も含め、RenderWaterExtractor.cpp と同じ波頂補正前の基準高を使う。
         m_waveHeightBound = baseHeightSum * ((1.0f + grouping) * WaveSpreadAmplitudeSum(waveSpread));
         float attenuationGradient = 0.0f;
         if (attenuationDepth > 0.0f && depth
@@ -916,8 +916,8 @@ public:
                 }
             }
             if (crossingCrests) {
-                /// @note The difference is twice the pair sum weighted by 1 - dot(direction_i, direction_j).
-                /// @note The vertical-only correction leaves the horizontal inverse unchanged.
+                /// @note 差は、重み 1 - dot(direction_i, direction_j) を掛けた全ペアの総和の 2 倍になる。
+                /// @note 補正は鉛直成分だけに適用するため、水平方向の逆変換は変わらない。
                 const float crossing = (std::max)(crestSum * crestSum - directionalCrestSum.LengthSq(), 0.0f);
                 height += WATER_CROSSING_CREST_STRENGTH * crossing * attenuation * attenuation
                     / (std::max)(m_waveHeightBound, 0.01f);
@@ -1138,4 +1138,4 @@ public:
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

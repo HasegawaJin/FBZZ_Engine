@@ -151,4 +151,4 @@ struct AudioSourceComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

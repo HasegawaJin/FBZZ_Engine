@@ -1,5 +1,5 @@
 /// @file    RenderPipelineAssetCodec.hpp
-/// @brief   Private typed TOML boundary for rendering configuration assets.
+/// @brief   描画設定アセットを型付き値と TOML の間で変換する非公開の境界。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #pragma once
@@ -10,11 +10,11 @@
 namespace fbzz::asset {
 
 struct RenderPipelineAssetCodec {
-    /// @return Invalid types, unsupported schema or non-finite values leave out unchanged.
+    /// @return 型が不正、スキーマが未対応、または値が非有限の場合は out を変更しない。
     FBZZ_ENGINE_API static bool Load(const toml::table& table, RenderPipelineAsset& out);
-    /// @return Invalid edited values leave out unchanged and cannot overwrite a valid disk asset.
+    /// @return 編集値が不正な場合は out を変更せず、ディスク上の有効なアセットを上書きできない。
     FBZZ_ENGINE_API static bool Save(const RenderPipelineAsset& asset, toml::table& out);
-    /// @note Shared by .fzdata and the inline ProjectSettings fallback; invalid input leaves out unchanged.
+    /// @note .fzdata と ProjectSettings のインラインの代替設定で共用する。入力が不正なら out は変更しない。
     FBZZ_ENGINE_API static bool LoadHybridQuality(const toml::table& table, renderer::HybridQualitySettings& out);
     FBZZ_ENGINE_API static void SaveHybridQuality(const renderer::HybridQualitySettings& value, toml::table& out);
 };

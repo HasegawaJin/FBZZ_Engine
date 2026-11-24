@@ -61,4 +61,4 @@ struct NavMeshSensorComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

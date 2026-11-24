@@ -36,7 +36,7 @@ struct TerrainAsset {
     /// @brief 穴セルの添字 (cz * (columns - 1) + cx) の昇順列。
     std::vector<uint32_t>      holeCells;
 
-    /// @note Terrain-local surface geometry; same winding and validation as TerrainComponent.
+    /// @note 地形ローカル空間の表面形状。頂点の巻き順と検証規則は TerrainComponent と同じ。
     std::vector<math::Vector3> surfacePositions;
     std::vector<uint32_t> surfaceIndices;
     std::string surfaceMaterial;

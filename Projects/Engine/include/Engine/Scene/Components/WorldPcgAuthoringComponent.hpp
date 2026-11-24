@@ -1,5 +1,5 @@
 /// @file    WorldPcgAuthoringComponent.hpp
-/// @brief   Saved PCG volumes and generated-output ownership for checked regeneration.
+/// @brief   保存対象の PCG 領域と、再生成の検証に使う生成物の所有関係。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #pragma once
@@ -42,7 +42,7 @@ struct WorldPcgVolumeComponent {
     bool enabled = true;
     std::string profilePath;
     bool overrideBounds = false;
-    /// @note Bounds are world-space half-open XZ intervals; Y is ignored.
+    /// @note 境界はワールド XZ 空間の半開区間で、Y は判定に使わない。
     math::Vector3 boundsMin{}, boundsMax{256,0,256};
     bool overrideSeed = false;
     int seed = 1;
@@ -62,7 +62,7 @@ struct WorldPcgVolumeComponent {
 struct WorldPcgGeneratedComponent {
     std::string volumeId, ruleKey, signature;
     int cellX = 0, cellZ = 0;
-    /// @note Protected generated outputs require explicit detach before their owner can be regenerated.
+    /// @note 保護された生成物は、所有者を再生成する前に明示的に切り離す。
     bool manualOverride = false;
     bool includeHlod = true;
     const char* GetTypeName() const { return "WorldPcgGenerated"; }
@@ -75,4 +75,4 @@ struct WorldPcgGeneratedComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

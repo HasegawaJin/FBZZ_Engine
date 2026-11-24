@@ -63,4 +63,4 @@ struct LODGroupComponent {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

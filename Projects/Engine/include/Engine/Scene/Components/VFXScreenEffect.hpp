@@ -123,4 +123,4 @@ struct VFXTimeScale {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -783,7 +783,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
             uncertain = true;
             return 0.0;
         }
-        /// @note Subtract in double: finite, distant float positions can overflow Vector3::LengthSq().
+        /// @note 有限でも遠い座標は Vector3::LengthSq() でオーバーフローし得るため、倍精度で差を求める。
         const double x = static_cast<double>(first.x) - second.x;
         const double y = static_cast<double>(first.y) - second.y;
         const double z = static_cast<double>(first.z) - second.z;
@@ -806,7 +806,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
         double stretch = 1.0;
         if (settings.renderMode == ParticleRenderMode::StretchedBillboard && speed > 1.0e-4)
             stretch = stretchLength + speed * stretchVelocity;
-        /// @note ParticleCommon rotates a square BEFORE axis scaling; any rotation fits sqrt(2)/2 * max axis.
+        /// @note ParticleCommon は正方形を回転してから軸別に拡大するため、最大軸長の √2 / 2 倍で全回転を覆う。
         return std::abs(finiteValue(size)) * 0.7071067811865476
             * (std::max)(axisX, axisY * stretch);
     };
@@ -829,7 +829,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
             if (settings.trail.trailEnabled && settings.trail.trailRibbon) {
                 const double configuredWidth = finiteValue(settings.trail.trailRibbonWidth);
                 const double width = configuredWidth > 0.0 ? configuredWidth : std::abs(finiteValue(particle.size));
-                /// @note Ribbon half width * miter limit 2; BuildRibbonMiterNormals clamps 1/cos to 2.
+                /// @note リボンの半幅にマイター上限 2 を掛ける。BuildRibbonMiterNormals は 1 / cos を 2 以下に制限する。
                 historyRadius = width * widthScale;
             }
             include(worldPoint(particle.position), settings.trail.trailEnabled
@@ -840,7 +840,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
                 include(worldPoint(particle.trailPoints[static_cast<std::size_t>(point)]), historyRadius);
         }
     } else {
-        /// @note Empty/CPU-unreadable GPU pools need a spawn and travel envelope, including negative Transform scale.
+        /// @note 空または CPU から読めない GPU プールには、負スケールも考慮した発生・移動範囲を使う。
         const double transformScale = (std::max)({std::abs(finiteValue(tf.worldScale.x)),
             std::abs(finiteValue(tf.worldScale.y)), std::abs(finiteValue(tf.worldScale.z))});
         double shapeRadius = 0.0;
@@ -869,7 +869,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
             std::abs(finiteValue(settings.sizeEnd))));
         const double positionScale = localSpace ? transformScale : 1.0;
         radius += shapeRadius * transformScale + speed * lifetime * travelScale * positionScale + cardRadius(size, speed) + padding;
-        /// @note GPU flow tracking already bounds actual spawn/history positions without a readback; retain that envelope.
+        /// @note GPU の流れは実際の発生・履歴の位置を読み戻しなしで囲んでいるため、その境界を保持する。
         if (emitter.runtime.gpuInitialized && !emitter.runtime.gpuClearPending
             && emitter.runtime.flowMinimumAge < emitter.runtime.flowMaxLifetime) {
             const double flowSpeed = (std::max)(finiteValue(emitter.runtime.flowSpeedBound), speed);
@@ -877,7 +877,7 @@ void UpdateParticleBounds(ParticleEmitter& emitter, const Transform& tf)
                 + cardRadius(size, flowSpeed));
         }
     }
-    /// @note Invalid input fails open with a finite sphere, rather than letting NaN silently discard the entire emitter.
+    /// @note 不正な入力では有限の境界球を使い、NaN によりエミッター全体がカリングされるのを防ぐ。
     const double maximumRadius = (std::numeric_limits<float>::max)();
     const bool radiusOverflow = !std::isfinite(radius) || radius * 1.00001 + 1.0e-4 > maximumRadius;
     const bool unbounded = uncertain || radiusOverflow;

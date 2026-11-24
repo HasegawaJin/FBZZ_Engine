@@ -1,5 +1,5 @@
 /// @file    WorldPartitionComponent.hpp
-/// @brief   Saved world manifest, streaming distances, budgets and source selection.
+/// @brief   保存対象のワールドマニフェスト、ストリーミング距離、予算と取得元の選択。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #pragma once
@@ -46,4 +46,4 @@ struct WorldPartitionComponent {
         r.Field("maxResidentMegabytes", maxResidentMegabytes);
     }
 };
-} /// @note namespace fbzz::scene
+}

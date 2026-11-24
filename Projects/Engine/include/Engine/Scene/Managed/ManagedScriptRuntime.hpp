@@ -55,7 +55,7 @@ public:
     FBZZ_ENGINE_API void ReleaseRetainedGeneration(uint64_t generation);
     [[nodiscard]] FBZZ_ENGINE_API std::string GetTypeSourceName(std::string_view typeKey) const;
     [[nodiscard]] FBZZ_ENGINE_API std::string GetTypeSourcesJson(std::string_view typeKey) const;
-    /// @note Passive schema defaults only; no managed Adapter or user constructor is created for catalog queries.
+    /// @note スキーマの受動的な既定値だけを返す。カタログ照会では managed Adapter やユーザーコンストラクターを実行しない。
     [[nodiscard]] FBZZ_ENGINE_API std::string GetTypeSchemaJson(std::string_view typeKey) const;
     [[nodiscard]] FBZZ_ENGINE_API ManagedScriptAdapter* FindAdapter(const Script* script) const;
     FBZZ_ENGINE_API bool DiscoverSourceCatalog(const std::filesystem::path& assemblyPath, std::string& sourceJson);
@@ -118,4 +118,4 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-} /// @note namespace fbzz::scene
+}

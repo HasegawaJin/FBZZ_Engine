@@ -277,6 +277,7 @@ bool RefinementScore(const SelectionContext& context, const SurfacePatch& patch,
         - std::abs(forward.y) * static_cast<double>(halfExtents.y)
         - std::abs(forward.z) * static_cast<double>(halfExtents.z);
     const double cell = (std::max)(patch.cellSize.x, patch.cellSize.y);
+    /// @note 分割後の 1 セルが画面で占めるピクセル数を見積もる。透視投影では奥行きが倍なら見かけの幅は半分になり、平行投影では変わらない。
     const double projected = cell * view.projectionScalePixels / (view.orthographic
         ? 1.0 : (std::max)(nearestDepth, static_cast<double>(view.minProjectionDistance)));
     score = projected / settings.targetCellPixels;

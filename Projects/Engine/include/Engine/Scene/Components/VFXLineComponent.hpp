@@ -186,4 +186,4 @@ struct VFXLineComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

@@ -1,5 +1,5 @@
 /// @file    WaterWavesAsset.hpp
-/// @brief   Shared deterministic Gerstner wave authoring for water surfaces.
+/// @brief   水面で共有する、決定的な Gerstner 波の設定。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #pragma once
@@ -12,7 +12,7 @@
 
 namespace fbzz::asset {
 
-/// @brief Seeded base-wave settings stored in a native .fzdata asset.
+/// @brief シードで生成する基底波の設定を .fzdata に保存する。
 /// @see Docs/design/water-waves.md 水面の波
 class WaterWavesAsset final : public DataAsset {
 public:
@@ -37,13 +37,13 @@ public:
     float waveGrouping = 0.45f;
     float waveSpread = 0.0f;
 
-    /// @brief Generate the asset's authored base waves without changing output on invalid settings.
-    /// @param out Destination for up to 16 generated base waves.
-    /// @return False when the algorithm version, numeric ranges, or count is invalid.
+    /// @brief アセットの設定から基底波を生成する。設定が無効な場合は出力を変更しない。
+    /// @param out 最大 16 本の基底波の出力先。
+    /// @return アルゴリズムの版、数値の範囲、波の本数のいずれかが無効なら false。
     [[nodiscard]] FBZZ_ENGINE_API bool GenerateWaves(
         std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES>& out) const;
 
-    /// @brief Convert reflected authoring values to the math-only generator settings.
+    /// @brief 反射で公開する編集値を、数式だけを扱う生成器の設定へ変換する。
     [[nodiscard]] FBZZ_ENGINE_API fluid::GerstnerWaveGenerationSettings GenerationSettings() const;
 };
 

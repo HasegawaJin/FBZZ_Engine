@@ -1,5 +1,5 @@
 /// @file    SkinnedMeshRenderer.hpp
-/// @brief   Component that draws a skinned model and owns runtime bone entity links.
+/// @brief   スキンドモデルを描画し、実行時にボーンのエンティティへの参照を保持する。
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
@@ -174,4 +174,4 @@ struct SkinnedMeshRenderer : TransientGpuState<SkinnedMeshRendererGpuState> {
     }
 };
 
-} /// @note namespace fbzz::scene
+}

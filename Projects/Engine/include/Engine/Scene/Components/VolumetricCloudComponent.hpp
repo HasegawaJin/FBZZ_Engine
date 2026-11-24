@@ -173,4 +173,4 @@ struct VolumetricCloudComponent {
     /// @}
 };
 
-} /// @note namespace fbzz::scene
+}

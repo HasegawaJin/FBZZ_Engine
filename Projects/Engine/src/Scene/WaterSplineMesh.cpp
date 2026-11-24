@@ -69,7 +69,7 @@ bool ValidTriangle(const std::vector<WaterSplineVertex>& vertices, WaterSplineTr
     triangle.baseHeightGradient = {static_cast<float>(dx), static_cast<float>(dz)};
     return true;
 }
-} /// @note namespace
+}
 
 void RefineWaterSplineMesh(WaterSplineSnapshot& snapshot, float maximumWorldCellSize)
 {
@@ -78,7 +78,7 @@ void RefineWaterSplineMesh(WaterSplineSnapshot& snapshot, float maximumWorldCell
     snapshot.maximumWorldEdgeLength = MaximumEdgeLength(snapshot);
     for (unsigned level = 0; level < MAX_REFINEMENT_LEVELS
         && snapshot.maximumWorldEdgeLength > maximumWorldCellSize; ++level) {
-        /// @note Spend the remaining budget on longer edges before attempting the final target spacing.
+        /// @note 目標の辺間隔を最後に試す前に、残りの分割予算を長い辺から使う。
         const double edgeLimit = (std::max)(static_cast<double>(maximumWorldCellSize),
             0.5 * static_cast<double>(snapshot.maximumWorldEdgeLength));
         const double limitSquared = edgeLimit * edgeLimit;
@@ -97,7 +97,7 @@ void RefineWaterSplineMesh(WaterSplineSnapshot& snapshot, float maximumWorldCell
             return index;
         };
         for (const auto& source : snapshot.triangles) {
-            /// @note Adjacent triangles make the same split decision for their shared edge.
+            /// @note 隣接する三角形では共有辺の分割有無が一致する。
             bool split[3]{};
             size_t splitCount = 0;
             for (size_t edge = 0; edge < 3; ++edge) {
@@ -112,7 +112,7 @@ void RefineWaterSplineMesh(WaterSplineSnapshot& snapshot, float maximumWorldCell
                 continue;
             }
 
-            /// @note Rotate the indices so that the split edges start at AB, then BC, then CA.
+            /// @note 分割辺の並びが AB、BC、CA の順になるよう、頂点インデックスを巡回させる。
             size_t first = 0;
             if (splitCount == 1) {
                 while (!split[first]) ++first;
@@ -164,4 +164,4 @@ void RefineWaterSplineMesh(WaterSplineSnapshot& snapshot, float maximumWorldCell
     }
     if (snapshot.maximumWorldEdgeLength > maximumWorldCellSize) snapshot.meshQualityLimited = true;
 }
-} /// @note namespace fbzz::scene
+}

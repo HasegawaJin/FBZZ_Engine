@@ -74,8 +74,7 @@ namespace fbzz::physics
         if (h <= 0.0f) return math::Vector3::ZERO;
 
         const math::Quaternion delta = current * previous.Inverse();
-        /// @note 同じ姿勢を表す符号違いの 2 つのうち短い方を採る。採らないと «ほぼ 1 回転ぶん»
-        ///       の角速度が出て、次の substep で体が弾け飛ぶ。
+        /// @note 符号が逆のクォータニオンも同じ姿勢を表す。短い回転を選ぶと、わずかな姿勢差をほぼ 1 回転と誤認せず角速度を求められる。
         const float scale = (delta.w < 0.0f ? -2.0f : 2.0f) / h;
         return math::Vector3{ delta.x, delta.y, delta.z } * scale;
     }
@@ -85,6 +84,7 @@ namespace fbzz::physics
                                  const math::Vector3& n)
     {
         if (!body) return 0.0f;
+        /// @note 同じ押し方でも重心から離れた点は回転でも動く。押す向きにどれだけ点が動くかを、並進分と回転分を足して求める。
         const math::Vector3 rn = math::Vector3::Cross(r, n);
         return body->GetInvMass() + math::Vector3::Dot(rn, body->ApplyInvInertia(rn));
     }
@@ -105,8 +105,7 @@ namespace fbzz::physics
         const float alphaTilde = compliance / (h * h);
         float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
 
-        /// @note SolveAngular と同じく «蓄積した λ» に掛ける。摩擦は λ が上限に当たった時点で
-        ///       滑り出す ─ 差分に掛けると substep が細かいほど強い摩擦になってしまう。
+        /// @note 摩擦で支えられる上限は蓄積した λ に掛ける。毎回の差分を制限すると、時間を細かく分けるほど合計の摩擦が強くなってしまう。
         if (maxLambda > 0.0f) {
             float clamped = lambda + deltaLambda;
             clamped = clamped >  maxLambda ?  maxLambda : clamped;
@@ -139,8 +138,7 @@ namespace fbzz::physics
         const float alphaTilde = compliance / (h * h);
         float deltaLambda = (-violation - alphaTilde * lambda) / (wSum + alphaTilde);
 
-        /// @note 上限は «加えた分» ではなく «蓄積した λ» に掛ける。λ/h² がその substep で
-        ///       関節が出しているトルクそのものなので、ここを切ると出力が頭打ちになる。
+        /// @note 蓄積した λ を時間刻み h の二乗で割ると関節のトルクになるため、λ の合計を制限すればトルクを設定範囲に保てる。
         if (maxLambda > 0.0f) {
             float clamped = lambda + deltaLambda;
             clamped = clamped >  maxLambda ?  maxLambda : clamped;

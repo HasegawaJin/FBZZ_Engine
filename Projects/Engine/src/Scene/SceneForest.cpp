@@ -1,5 +1,5 @@
 /// @file    SceneForest.cpp
-/// @brief   Passive preparation and checked publication of closed object hierarchies.
+/// @brief   閉じたオブジェクト階層を副作用なしで準備し、検証を通過した階層を公開する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-07
 #include <Engine/Scene/SceneForest.hpp>
@@ -106,7 +106,7 @@ bool ValidateObjectFields(const toml::table& table, std::string& error)
                     if (const auto* settings = fields->get("fields"); settings && !settings->is_table()) valid = false;
                     if (const auto* idNode = fields->get("savedScriptId")) {
                         const auto id = idNode->value<std::string>();
-                        /// @note This format predicate has no registry, factory or mutable global access.
+                        /// @note この形式判定はレジストリ、ファクトリー、書き換え可能なグローバル状態を参照しない。
                         if (!id || !ScriptFactory::IsValidSavedScriptId(*id) || !identities.insert(*id).second) valid = false;
                     }
                     if (!valid) break;
@@ -288,7 +288,7 @@ bool ParseDocument(const std::string& document, toml::table& normalized,
     return ValidateDocument(normalized, objects, error);
 }
 
-} /// @note namespace
+}
 
 bool ValidateSceneForestDocument(const std::string& document, std::vector<std::string>& outIds, std::string& error)
 {
@@ -382,4 +382,4 @@ bool AppendSceneForest(Scene& destination, const std::string& document, const st
     return true;
 }
 
-} /// @note namespace fbzz::scene
+}

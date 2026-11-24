@@ -1,5 +1,5 @@
 /// @file    PresentationControlPoints.cpp
-/// @brief   Resolve Line and MotionWarp TargetPoint references into numeric runtime inputs.
+/// @brief   Line と MotionWarp の TargetPoint 参照を実行時の数値入力に変換する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #include <Engine/Scene/Components/MotionWarpComponent.hpp>
@@ -181,7 +181,7 @@ void FailResolution(LineControlPointSnapshot& snapshot,
     if (snapshot.inputSignature == 0) snapshot.inputSignature = 1;
 }
 
-} /// @note namespace
+}
 
 void LineControlPointBinding::Reflect(IReflector& reflector)
 {
@@ -398,4 +398,4 @@ bool RefreshLiveMotionWarpTarget(Scene& scene, EntityID ownerId,
     return true;
 }
 
-} /// @note namespace fbzz::scene
+}

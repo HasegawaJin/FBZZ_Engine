@@ -29,7 +29,7 @@ struct FzTerrainHeader {
     uint32_t layerCount;
     uint32_t holeCount;         ///< v2 から。v1 では予約領域 (0)
     float    heightBlendDepth;  ///< v2 から。v1 では予約領域 (0)
-    /// @note v3 appends surface material path, local float3 vertices, then triangle-list indices after holes.
+    /// @note v3 は穴の後ろに表面材質パス、ローカル空間の float3 頂点、三角形リストの添字の順で追加する。
     uint32_t surfaceVertexCount;
     uint32_t surfaceIndexCount;
 };
