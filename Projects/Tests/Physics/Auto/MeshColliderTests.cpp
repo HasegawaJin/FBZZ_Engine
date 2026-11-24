@@ -2,11 +2,7 @@
 /// @brief   三角メッシュ / ハイトフィールドが生データから BVH を組み、ワールド変換へ追従することを検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// BVH そのものの不変条件は BVHTests が見ている。ここで見るのは «入口» ──
-/// 頂点とインデックス、あるいは高さの格子から、正しい枚数・正しい位置の三角形が
-/// 作られるか。ここがずれると地形の «見えない床» が実際の地面とずれ、
-/// 足が浮くか沈むかのどちらかになる。
+/// @note BVH 自体の不変条件は BVHTests で、地形などから生成されるワールド三角形はここで検証する。
 #include <TestKit/TestKit.hpp>
 
 #include <Math/MathUtils.hpp>
@@ -22,7 +18,7 @@
 namespace fbzz::tests {
 namespace {
 
-/// y=0 に広がる 2 三角形の板。角は (±1, 0, ±1)。
+/// @note y=0 に広がる 2 三角形の板。角は (±1, 0, ±1)。
 std::vector<math::Vector3> QuadPositions()
 {
     return {
@@ -33,7 +29,7 @@ std::vector<math::Vector3> QuadPositions()
 
 std::vector<std::uint32_t> QuadIndices() { return { 0, 2, 1, 1, 2, 3 }; }
 
-/// 三角形群の外接箱。BVH が持つワールド三角形から直接測る。
+/// @note ノードの境界とは独立に、保持されたワールド三角形から測る。
 physics::AABB BoundsOf(const physics::BVHTree& bvh)
 {
     physics::AABB bounds{ { 1e30f, 1e30f, 1e30f }, { -1e30f, -1e30f, -1e30f } };
@@ -48,7 +44,7 @@ physics::AABB BoundsOf(const physics::BVHTree& bvh)
     return bounds;
 }
 
-} // namespace
+} /// @note namespace
 
 /// @name 三角メッシュ
 
@@ -146,9 +142,6 @@ TEST_F(TriangleMeshColliderTest, IgnoresATrailingPartialTriangle)
     EXPECT_EQ(mesh.GetBVH().triangles.size(), 1u);
 }
 
-/// 以下 3 本は «2 回目以降の Update»。スケールが変わらない移動・回転は BVH を組み直さず
-/// refit で済ませる経路に入るので、組み直した場合と同じ結果になることを見る。
-
 /// @brief Refit and rebuild agree after a move.
 TEST_F(TriangleMeshColliderTest, RefitAndRebuildAgreeAfterAMove)
 {
@@ -183,6 +176,26 @@ TEST_F(TriangleMeshColliderTest, RefitFollowsARotationAfterTheFirstUpdate)
     const physics::AABB bounds = BoundsOf(mesh.GetBVH());
     EXPECT_NEAR(bounds.max.y - bounds.min.y, 2.0f, testkit::kLooseTolerance);
     EXPECT_NEAR(bounds.max.z - bounds.min.z, 0.0f, testkit::kLooseTolerance);
+}
+
+TEST_F(TriangleMeshColliderTest, RefitAndQueryKeepTheInputIndexAfterSkippingADegenerateTriangle)
+{
+    physics::TriangleMeshCollider mesh(QuadPositions(), {0, 0, 0, 0, 2, 1});
+    const auto& bvh = mesh.GetBVH();
+    ASSERT_EQ(bvh.triangles.size(), 1u);
+    EXPECT_EQ(bvh.triangles.front().index, 1u);
+
+    mesh.Update({10.0f, 0.0f, 0.0f}, math::Quaternion::Identity());
+    EXPECT_VEC3_NEAR(bvh.triangles.front().v[0], math::Vector3(9.0f, 0.0f, -1.0f), testkit::kLooseTolerance);
+
+    std::vector<uint32_t> foundTriangleIndices;
+    const auto recordTriangle = [&](const physics::Triangle& triangle) {
+        foundTriangleIndices.push_back(triangle.index);
+    };
+    bvh.Query({{-2.0f, -1.0f, -2.0f}, {2.0f, 1.0f, 2.0f}}, recordTriangle);
+    EXPECT_TRUE(foundTriangleIndices.empty());
+    bvh.Query({{8.0f, -1.0f, -2.0f}, {12.0f, 1.0f, 2.0f}}, recordTriangle);
+    EXPECT_EQ(foundTriangleIndices, std::vector<uint32_t>{1u});
 }
 
 /// @brief Rebuilds instead of refitting when the scale changes.
@@ -291,8 +304,7 @@ TEST_F(HeightFieldColliderTest, RebuildCanChangeTheResolution)
     EXPECT_EQ(field.GetBVH().triangles.size(), 18u);
 }
 
-/// 以下 4 本は «2 回目以降の Update» を見る。初回の Update は BVH の «構築» 経路を通るため、
-/// 1 回しか呼ばないテストでは transform 追従を確かめたことにならない。
+/// @note 2 回目以降の Update で、高さ場の構築後に姿勢へ追従する経路を検証する。
 
 /// @brief Follows a move after the first update.
 TEST_F(HeightFieldColliderTest, FollowsAMoveAfterTheFirstUpdate)
@@ -412,6 +424,28 @@ TEST_F(HeightFieldColliderTest, RefitAfterMoveKeepsHoleCellsEmpty)
     EXPECT_EQ(field.GetBVH().triangles.size(), 6u);
 }
 
+TEST_F(HeightFieldColliderTest, RebuildWithEveryCellMaskedCollapsesBoundsToTheTerrainOrigin)
+{
+    const std::vector<float> heightSamples(9, 0.5f);
+    const math::Vector3 originalPosition{8.0f, 3.0f, -4.0f};
+    physics::HeightFieldCollider field(heightSamples, 3, 3, 1.0f, 2.0f);
+    field.Update(originalPosition, math::Quaternion::Identity());
+    ASSERT_FALSE(field.GetBVH().nodes.empty());
+
+    field.Rebuild(heightSamples, 3, 3, 1.0f, 2.0f, {1, 2, 3, 4});
+    EXPECT_TRUE(field.GetBVH().triangles.empty());
+    EXPECT_TRUE(field.GetBVH().nodes.empty());
+    EXPECT_VEC3_NEAR(field.GetAABB().min, originalPosition, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(field.GetAABB().max, originalPosition, testkit::kTolerance);
+
+    const math::Vector3 movedPosition{-5.0f, 0.0f, 2.0f};
+    field.Update(movedPosition, math::Quaternion::Identity());
+    EXPECT_TRUE(field.GetBVH().triangles.empty());
+    EXPECT_TRUE(field.GetBVH().nodes.empty());
+    EXPECT_VEC3_NEAR(field.GetAABB().min, movedPosition, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(field.GetAABB().max, movedPosition, testkit::kTolerance);
+}
+
 /// @brief Rebuild can clear holes.
 TEST_F(HeightFieldColliderTest, RebuildCanClearHoles)
 {
@@ -424,4 +458,4 @@ TEST_F(HeightFieldColliderTest, RebuildCanClearHoles)
     EXPECT_EQ(field.GetBVH().triangles.size(), 8u);
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

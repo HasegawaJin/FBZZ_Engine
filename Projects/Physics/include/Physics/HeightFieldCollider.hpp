@@ -3,10 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-16
 
-/// @note TriangleMeshCollider の代替。heightData をグリッドとして保持し、メモリ量を
-/// @note 削減しつつ地形専用の BVH 再構築パスを提供する。地形は均一グリッドのため
-/// @note float 配列だけで positions + indices + BVH と同等の情報を表現でき、
-/// @note transform 変化と heightData 変化を分離して管理できる。
+/// @note 均一な格子を使い、ローカルの頂点・添字の配列を持たずにワールド三角形を生成する。
 #pragma once
 #include <Physics/Api.hpp>
 #include <Physics/Collider.hpp>
@@ -21,66 +18,66 @@ namespace fbzz::physics
 class HeightFieldCollider : public Collider
 {
 public:
-    /// @param heights row-major、値域 [-1, 1]、index = z * cols + x。ワールド高さ = heights[i] * maxHeight。
-    /// @param holes セル単位の穴 (index = cz * (cols - 1) + cx、非 0 = 穴)。空なら穴なし。大きさが合わなければ無視する。
+    /// @param heightSamples 行優先、値域 [-1, 1]。maxHeight を掛けた値がローカル高さ。
+    /// @param holeMask セルの行優先配列。非 0 が穴で、空またはセル数と違う配列は穴なしとして扱う。
     /// @see Docs/design/terrain-layers.md §4 穴
-    FBZZ_PHYSICS_API HeightFieldCollider(const std::vector<float>& heights,
-                        int rows, int cols,
-                        float cellSize, float maxHeight,
-                        std::vector<std::uint8_t> holes = {});
+    FBZZ_PHYSICS_API HeightFieldCollider(const std::vector<float>& heightSamples,
+                                        int rowCount, int columnCount,
+                                        float cellSize, float maxHeight,
+                                        std::vector<std::uint8_t> holeMask = {});
 
     AABB         GetAABB() const override { return m_worldAABB; }
     ColliderType GetType() const override { return ColliderType::HEIGHT_FIELD; }
 
-    /// @brief Transform を BVH に反映する。
-    /// @note heightData が変わっていなければ木の構造は使い回し、三角形の頂点を置き直して
-    /// @note ノード AABB を refit するだけで済ませる。地形は静的が前提だが、エディタで
-    /// @note ギズモを掴めば動く。毎回全再構築すると TriangleMeshCollider と同コストになる。
-    FBZZ_PHYSICS_API void Update(const math::Vector3& worldPos,
-                const math::Quaternion& worldRot) override;
-    FBZZ_PHYSICS_API void UpdateWithScale(const math::Vector3&    worldPos,
-                         const math::Quaternion& worldRot,
-                         const math::Vector3&    worldScale);
+    /// @note 姿勢だけの変更は、格子と三角形の対応を保ったまま BVH の境界を更新する。
+    FBZZ_PHYSICS_API void Update(const math::Vector3& worldPosition,
+                                const math::Quaternion& worldRotation) override;
+    FBZZ_PHYSICS_API void UpdateWithScale(const math::Vector3& worldPosition,
+                                         const math::Quaternion& worldRotation,
+                                         const math::Vector3& worldScale);
 
-    /// @brief heightData が変更されたとき (地形彫刻後) に呼ぶ。BVH をフル再構築する。
-    /// @param holes コンストラクタと同じ規約。空なら穴なし。
-    FBZZ_PHYSICS_API void Rebuild(const std::vector<float>& heights,
-                 int rows, int cols,
-                 float cellSize, float maxHeight,
-                 std::vector<std::uint8_t> holes = {});
+    /// @note 高さや穴が変わったときは格子を置き換えて BVH を再構築する。
+    /// @param holeMask コンストラクタと同じ規約。空なら穴なし。
+    FBZZ_PHYSICS_API void Rebuild(const std::vector<float>& heightSamples,
+                                 int rowCount, int columnCount,
+                                 float cellSize, float maxHeight,
+                                 std::vector<std::uint8_t> holeMask = {});
 
     const BVHTree& GetBVH() const { return m_bvh; }
 
-    /// @return セル (cx, cz) が穴なら true。範囲外は false。
-    [[nodiscard]] FBZZ_PHYSICS_API bool IsHoleCell(int cx, int cz) const;
+    /// @return 指定したセルが穴なら true。範囲外は false。
+    [[nodiscard]] FBZZ_PHYSICS_API bool IsHoleCell(int cellColumn, int cellRow) const;
     /// @return 穴マスク。穴なしなら空。
-    const std::vector<std::uint8_t>& GetHoles() const { return m_holes; }
+    const std::vector<std::uint8_t>& GetHoles() const { return m_holeMask; }
 
-    int   GetRows()      const { return m_rows; }
-    int   GetCols()      const { return m_cols; }
+    int   GetRows()      const { return m_rowCount; }
+    int   GetCols()      const { return m_columnCount; }
     float GetCellSize()  const { return m_cellSize; }
     float GetMaxHeight() const { return m_maxHeight; }
 
 private:
-    int   m_rows      = 0;
-    int   m_cols      = 0;
+    int   m_rowCount = 0;
+    int   m_columnCount = 0;
     float m_cellSize  = 1.0f;
     float m_maxHeight = 1.0f;
 
-    std::vector<float> m_heights;  ///< @note ローカル空間の高さデータ (positions/indices バッファは持たない)
-    std::vector<std::uint8_t> m_holes;  ///< @note セル単位の穴。空 = 穴なし (大きさはセル数と一致を保証)
+    std::vector<float> m_heightSamples;
+    std::vector<std::uint8_t> m_holeMask; ///< @note 空、またはセル数と同じ長さ。
 
     BVHTree m_bvh;
     AABB    m_worldAABB;
 
-    math::Vector3    m_worldPos;
-    math::Quaternion m_worldRot;
+    math::Vector3    m_worldPosition;
+    math::Quaternion m_worldRotation;
     math::Vector3    m_worldScale = { 1.f, 1.f, 1.f };
 
-    /// @brief 格子点 (x, z) のローカル座標。ワールド高さ = heights[i] * maxHeight。
-    FBZZ_PHYSICS_API math::Vector3 LocalVertex(int x, int z) const;
+    FBZZ_PHYSICS_API math::Vector3 LocalVertex(int vertexColumn, int vertexRow) const;
     /// @brief ローカル座標へ scale → rotation → translation を掛ける。
-    FBZZ_PHYSICS_API math::Vector3 ToWorld(const math::Vector3& local) const;
+    FBZZ_PHYSICS_API math::Vector3 ToWorld(const math::Vector3& localPosition) const;
+
+    [[nodiscard]] std::vector<Triangle> BuildWorldTriangles() const;
+    /// @note 三角形の入力上の番号から格子を逆算し、BVH の葉への所属を維持する。
+    void UpdateWorldTriangles(std::vector<Triangle>& worldTriangles) const;
 
     /// @brief 穴マスクの大きさがセル数と違う、または穴が 1 つも無いなら空にする。
     FBZZ_PHYSICS_API void SanitizeHoles();

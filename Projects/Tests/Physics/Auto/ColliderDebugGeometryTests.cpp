@@ -2,13 +2,7 @@
 /// @brief   コライダー可視化のワイヤーが、実際の衝突形状と同じ場所に出ることを検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-09
-///
-/// このワイヤーはエディターで «当たり判定がどこにあるか» を確かめる唯一の手段。ここがずれると、
-/// 見えている線を信じてレベルを組むほど当たり判定が合わなくなる。線の本数だけでなく、
-/// 端点が本当に形状の表面に乗っているかを不変条件として固定する。
-///
-/// メッシュと凸包は «重い形状で描画を殺さない» ことも契約に含む。上限を外すと、
-/// 地形コライダーを表示した瞬間にエディターが止まる。
+/// @note 線端の位置と、重い形状の表示で使う線分の予算を検証する。
 #include <TestKit/TestKit.hpp>
 
 #include <Math/MathUtils.hpp>
@@ -35,14 +29,14 @@
 namespace fbzz::tests {
 namespace {
 
-/// 生成側の分割数。テストが «丸いものは閉じた輪として出る» を数で表せるよう写している。
+/// @note 円の閉じた輪を検証するために生成側と分割数を揃える。
 constexpr int kCircleSegments = 24;
 constexpr int kArcSegments    = kCircleSegments / 2;
-/// 三角メッシュ 1 形状あたりの線の上限。3 の倍数へ切り捨てた本数で頭打ちになる。
+/// @note 三角メッシュの等間隔表示では三角形単位で上限に収める。
 constexpr std::size_t kMaxMeshLines = 8192;
 constexpr std::size_t kMeshLineCap  = kMaxMeshLines - (kMaxMeshLines % 3);
 
-/// 12 本 = 箱の稜線。球やカプセルの «軸が潰れたときの代替表示» もこの本数になる。
+/// @note 軸が潰れた形状の代替表示は箱の稜線数になる。
 constexpr std::size_t kBoxEdgeCount = 12;
 
 std::vector<math::Vector3> Endpoints(const physics::ColliderDebugGeometry& geometry)
@@ -68,7 +62,7 @@ float DistanceToSegment(const math::Vector3& point,
     return (point - (start + segment * t)).Length();
 }
 
-/// 端点が箱の «角» であること。稜線の描画が面の途中から生えていないかを見る。
+/// @note 箱の面の途中ではなく角にある端点を検出する。
 bool IsCornerOf(const math::Vector3& point, const physics::AABB& bounds)
 {
     const auto OnEdge = [](float value, float low, float high) {
@@ -80,7 +74,7 @@ bool IsCornerOf(const math::Vector3& point, const physics::AABB& bounds)
            OnEdge(point.z, bounds.min.z, bounds.max.z);
 }
 
-/// y = 0 に広がる cells x cells の格子メッシュ。三角形数は cells² * 2。
+/// @note y = 0 に広がる cells × cells の格子メッシュ。三角形数は cells² × 2。
 void BuildGrid(int cells,
                std::vector<math::Vector3>& positions,
                std::vector<std::uint32_t>& indices)
@@ -110,7 +104,7 @@ std::vector<math::Vector3> CubePoints(float half)
     };
 }
 
-} // namespace
+} /// @note namespace
 
 class ColliderDebugGeometryTest : public testkit::Fixture {};
 
@@ -308,6 +302,56 @@ TEST_F(ColliderDebugGeometryTest, DrawsThreeEdgesPerTriangleOfAHeightField)
     EXPECT_EQ(geometry.lines.size(), field.GetBVH().triangles.size() * 3);
 }
 
+TEST_F(ColliderDebugGeometryTest, PlacesNearbyTriangleEdgesBeforeDistantBVHBoxes)
+{
+    std::vector<math::Vector3> positions;
+    std::vector<std::uint32_t> indices;
+    BuildGrid(2, positions, indices);
+    const auto firstGridVertexCount = static_cast<std::uint32_t>(positions.size());
+    const std::size_t firstGridIndexCount = indices.size();
+    const math::Vector3 secondGridOffset{128.0f, 0.0f, 0.0f};
+    for (std::uint32_t pointIndex = 0; pointIndex < firstGridVertexCount; ++pointIndex)
+        positions.push_back(positions[pointIndex] + secondGridOffset);
+    for (std::size_t indexOffset = 0; indexOffset < firstGridIndexCount; ++indexOffset)
+        indices.push_back(indices[indexOffset] + firstGridVertexCount);
+    const physics::TriangleMeshCollider mesh(positions, indices);
+
+    const physics::ColliderDebugView view{secondGridOffset, 4.0f, true};
+    const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(mesh, view);
+    const std::size_t expectedDetailLines = firstGridIndexCount;
+    ASSERT_EQ(geometry.detailLineCount, expectedDetailLines);
+    ASSERT_EQ(geometry.lines.size(), expectedDetailLines + kBoxEdgeCount);
+
+    const physics::AABB farGridBounds{{0.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 2.0f}};
+    for (std::size_t lineIndex = 0; lineIndex < geometry.detailLineCount; ++lineIndex)
+    {
+        EXPECT_GE(geometry.lines[lineIndex].from.x, secondGridOffset.x);
+        EXPECT_GE(geometry.lines[lineIndex].to.x, secondGridOffset.x);
+    }
+    for (std::size_t lineIndex = geometry.detailLineCount; lineIndex < geometry.lines.size(); ++lineIndex)
+    {
+        EXPECT_TRUE(IsCornerOf(geometry.lines[lineIndex].from, farGridBounds));
+        EXPECT_TRUE(IsCornerOf(geometry.lines[lineIndex].to, farGridBounds));
+    }
+}
+
+TEST_F(ColliderDebugGeometryTest, UsesTheRootBoundsForADistantHeightField)
+{
+    physics::HeightFieldCollider field(std::vector<float>(9, 0.0f), 3, 3, 1.0f, 1.0f);
+    field.Update(math::Vector3::ZERO, math::Quaternion::Identity());
+
+    const physics::ColliderDebugView view{{100.0f, 0.0f, 100.0f}, 4.0f, true};
+    const physics::ColliderDebugGeometry geometry = physics::BuildColliderDebugGeometry(field, view);
+
+    EXPECT_EQ(geometry.detailLineCount, 0u);
+    ASSERT_EQ(geometry.lines.size(), kBoxEdgeCount);
+    for (const physics::DebugLine& line : geometry.lines)
+    {
+        EXPECT_TRUE(IsCornerOf(line.from, field.GetAABB()));
+        EXPECT_TRUE(IsCornerOf(line.to, field.GetAABB()));
+    }
+}
+
 /// @name 凸包
 
 /// @brief Draws each convex hull edge only once.
@@ -348,4 +392,4 @@ TEST_F(ColliderDebugGeometryTest, DrawsNothingForAHullWithoutVertices)
     EXPECT_TRUE(physics::BuildColliderDebugGeometry(hull).lines.empty());
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests

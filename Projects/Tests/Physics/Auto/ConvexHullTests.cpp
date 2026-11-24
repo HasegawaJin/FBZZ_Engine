@@ -119,6 +119,17 @@ TEST_F(ConvexHullTest, SupportPointIsTheFarthestCornerAlongTheAxes)
                      math::Vector3(-1.0f, -1.0f, -1.0f), testkit::kTolerance);
 }
 
+TEST_F(ConvexHullTest, SupportPointUsesTheFirstVertexWhenProjectionsTie)
+{
+    const std::vector<math::Vector3> points = {
+        {-1.0f, 0.0f, 0.0f}, {2.0f, 1.0f, 0.0f}, {2.0f, -1.0f, 0.0f},
+    };
+    const physics::ConvexHullCollider hull(points);
+
+    EXPECT_VEC3_NEAR(hull.SupportPoint(math::Vector3::RIGHT), points[1], testkit::kTolerance);
+    EXPECT_VEC3_NEAR(hull.SupportPoint(math::Vector3::ZERO), points[0], testkit::kTolerance);
+}
+
 /// @brief Support point is never beaten by an input point.
 TEST_F(ConvexHullTest, SupportPointIsNeverBeatenByAnInputPoint)
 {

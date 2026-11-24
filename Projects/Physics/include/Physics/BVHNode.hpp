@@ -1,9 +1,10 @@
 /// @file    BVHNode.hpp
-/// @brief   AABB バウンディングボリューム階層 (TriangleMeshCollider 用)。
+/// @brief   三角形メッシュと高さ場で共有する AABB 階層。
 /// @author  Hasegawa Jin
 /// @date    2026-05-24
 #pragma once
 #include <Physics/Api.hpp>
+#include <Physics/BVHBounds.hpp>
 #include <array>
 #include <vector>
 #include <cstdint>
@@ -38,75 +39,56 @@ namespace fbzz::physics
 
         /// @note ワールド変換済み三角形リストから中点分割で BVH を構築する。
         /// @note maxLeafTris は、葉ノードに格納する最大三角形数。
-        FBZZ_PHYSICS_API void Build(std::vector<Triangle>&& tris, int maxLeafTris = 8);
+        FBZZ_PHYSICS_API void Build(std::vector<Triangle>&& worldTriangles, int maxLeafTris = 8);
 
         /// @note triangles の頂点を書き換えた後に、木の構造はそのままノード AABB だけ測り直す。
-        /// @note transform だけが変わったとき「どの三角形がどの葉に入るか」は妥当な空間分割のままで、
-        /// @note 作り直す必要があるのは境界だけ。Build は重心ソートを伴う O(n log n) だが、こちらは
-        /// @note 葉から根への一巡で済む。
+        /// @note 三角形の所属する葉を保持し、葉から根への一巡で境界だけを更新する。
         FBZZ_PHYSICS_API void Refit();
 
-        /// @note AABB と重なる三角形だけを列挙する。非再帰 DFS にして深いメッシュでも C++ の呼び出しスタックを使わない。
-        /// @note predicate: void(const Triangle&)
-        template<typename Pred>
-        void Query(const AABB& queryAABB, Pred&& predicate) const
-        {
-            if (nodes.empty()) return;
-
-            std::array<int, 64> stack;
-            int top = 0;
-            stack[top++] = 0;
-
-            while (top > 0)
-            {
-                const int idx = stack[--top];
-                if (idx < 0 || idx >= static_cast<int>(nodes.size())) continue;
-                const BVHNode& node = nodes[idx];
-                if (!node.aabb.Overlaps(queryAABB)) continue;
-
-                if (node.IsLeaf())
-                {
-                    for (uint32_t ti : node.triIndices)
-                    {
-                        /// @note 葉ノードは複数三角形をまとめて持つため、葉 AABB が当たっても個別
-                        /// @note 三角形は queryAABB から大きく外れていることがある。Terrain のような
-                        /// @note 大規模メッシュでは、この軽い判定で最近傍計算まで進む候補数を抑える。
-                        const Triangle& tri = triangles[ti];
-                        AABB triAABB;
-                        triAABB.min = tri.v[0];
-                        triAABB.max = tri.v[0];
-                        for (int k = 1; k < 3; ++k)
-                        {
-                            const math::Vector3& v = tri.v[k];
-                            if (v.x < triAABB.min.x) triAABB.min.x = v.x;
-                            if (v.y < triAABB.min.y) triAABB.min.y = v.y;
-                            if (v.z < triAABB.min.z) triAABB.min.z = v.z;
-                            if (v.x > triAABB.max.x) triAABB.max.x = v.x;
-                            if (v.y > triAABB.max.y) triAABB.max.y = v.y;
-                            if (v.z > triAABB.max.z) triAABB.max.z = v.z;
-                        }
-
-                        if (triAABB.Overlaps(queryAABB))
-                            predicate(tri);
-                    }
-                }
-                else
-                {
-                    /// @note 固定長スタックで上限を明示する。maxLeafTris=8 の通常分割では深さ 64 に到達しない想定。
-                    if (top + 1 < static_cast<int>(stack.size()))
-                    {
-                        stack[top++] = node.right;
-                        stack[top++] = node.left;
-                    }
-                }
-            }
-        }
+        /// @note 個々の境界が検索範囲と重なる三角形を、左の子を先にたどる深さ優先順で列挙する。
+        template<typename TriangleVisitor>
+        void Query(const AABB& queryBounds, TriangleVisitor&& visitTriangle) const;
 
     private:
-        /// @note 再帰的なノード構築。[begin, end) の三角形インデックス範囲を処理し
-        /// @note 構築したノードのインデックスを返す
-        FBZZ_PHYSICS_API int BuildRecursive(std::vector<uint32_t>& triOrder,
-                           int begin, int end, int maxLeafTris);
+        /// @return [rangeBegin, rangeEnd) の三角形から構築したノードの添字。
+        FBZZ_PHYSICS_API int BuildRecursive(std::vector<uint32_t>& triangleOrder,
+                                          int rangeBegin, int rangeEnd, int maxLeafTris);
     };
+
+    template<typename TriangleVisitor>
+    void BVHTree::Query(const AABB& queryBounds, TriangleVisitor&& visitTriangle) const
+    {
+        if (nodes.empty()) return;
+
+        /// @note 固定長スタックを使い、検索でヒープ確保や再帰呼び出しを行わない。
+        std::array<int, 64> pendingNodes;
+        int pendingCount = 0;
+        pendingNodes[pendingCount++] = 0;
+
+        while (pendingCount > 0)
+        {
+            const int nodeIndex = pendingNodes[--pendingCount];
+            if (nodeIndex < 0 || nodeIndex >= static_cast<int>(nodes.size())) continue;
+
+            const BVHNode& node = nodes[nodeIndex];
+            if (!node.aabb.Overlaps(queryBounds)) continue;
+
+            if (node.IsLeaf())
+            {
+                /// @note 葉全体に当たっても、各三角形の範囲まで重なるとは限らない。
+                for (const uint32_t triangleIndex : node.triIndices)
+                {
+                    const Triangle& triangle = triangles[triangleIndex];
+                    if (mesh_bvh_detail::TriangleBounds(triangle.v).Overlaps(queryBounds))
+                        visitTriangle(triangle);
+                }
+            }
+            else if (pendingCount + 1 < static_cast<int>(pendingNodes.size()))
+            {
+                pendingNodes[pendingCount++] = node.right;
+                pendingNodes[pendingCount++] = node.left;
+            }
+        }
+    }
 
 } /// @note namespace fbzz::physics
