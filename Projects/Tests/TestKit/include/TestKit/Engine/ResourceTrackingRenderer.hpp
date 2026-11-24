@@ -23,12 +23,16 @@ public:
     renderer::ShaderDescriptor m_shaderDescriptor;
     std::unordered_map<const renderer::IConstantBuffer*, std::vector<uint8_t>> m_constantBytes;
     std::unordered_map<const renderer::IStructuredBuffer*, std::vector<uint8_t>> m_structuredBytes;
+    std::vector<renderer::DrawCall>* m_drawCalls = nullptr;
 
     void Shutdown() override {}
     void BeginFrame() override {}
     void EndFrame() override {}
     void Clear(const math::Vector4&) override {}
-    void Submit(const renderer::DrawCall&, renderer::ResourceManager&) override {}
+    void Submit(const renderer::DrawCall& call, renderer::ResourceManager&) override
+    {
+        if (m_drawCalls) m_drawCalls->push_back(call);
+    }
     void Dispatch(const renderer::ComputeCall&, renderer::ResourceManager&) override { ++m_dispatches; }
     void Resize(uint32_t, uint32_t) override {}
     uint32_t GetWidth() const override { return 1; }

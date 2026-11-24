@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-15
 #include <Engine/Scene/ScriptComponent.hpp>
+#include <Core/Profiler/Profiler.hpp>
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/OwnedResources.hpp>
 #include <Graphics/Renderer/BuiltinShader.hpp>
@@ -957,9 +958,9 @@ TEST_F(MaterialScriptIntegrationTest, MissingComponentIsVisibleWithoutAddingItTo
     r::RenderPassHandles handles;
     scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
     scene::ExtractRenderScene(context);
-    ASSERT_EQ(context.renderScene->objects.size(), 1u);
+    ASSERT_EQ(context.renderScene->Objects().size(), 1u);
     ASSERT_EQ(context.renderScene->items.size(), 1u);
-    EXPECT_TRUE(context.renderScene->objects[0].colorEligible);
+    EXPECT_TRUE(context.renderScene->Objects()[0].colorEligible);
     EXPECT_TRUE(context.renderScene->items[0].material.valid);
     EXPECT_EQ(m_resources->Get(context.renderScene->items[0].material.shader)->GetPath(), r::ERROR_SURFACE_SHADER);
     EXPECT_EQ(go.GetComponent<scene::MaterialComponent>(), nullptr);
@@ -1037,8 +1038,8 @@ TEST_F(MaterialScriptIntegrationTest, BrokenPrimarySlotDoesNotHideOtherSubmeshes
     r::RenderPassHandles handles;
     scene::RenderPassContext context(m_scene, m_backend, *m_resources, camera, settings, {}, UINT32_MAX, handles);
     scene::ExtractRenderScene(context);
-    ASSERT_EQ(context.renderScene->objects.size(), 1u);
-    EXPECT_TRUE(context.renderScene->objects[0].colorEligible);
+    ASSERT_EQ(context.renderScene->Objects().size(), 1u);
+    EXPECT_TRUE(context.renderScene->Objects()[0].colorEligible);
     ASSERT_EQ(context.renderScene->items.size(), 2u);
     const auto& first = context.renderScene->items[0].material;
     const auto& second = context.renderScene->items[1].material;
@@ -1060,7 +1061,7 @@ TEST_F(MaterialScriptIntegrationTest, BrokenPrimarySlotDoesNotHideOtherSubmeshes
     EXPECT_FALSE(context.renderScene->items[1].visible);
     slots.enabled = false;
     scene::ExtractRenderScene(context);
-    EXPECT_FALSE(context.renderScene->objects[0].colorEligible);
+    EXPECT_FALSE(context.renderScene->Objects()[0].colorEligible);
 }
 
 /// @brief Surface material on skinned mesh uses embedded skinned shader.
@@ -1519,13 +1520,46 @@ protected:
         component.scripts.emplace_back().script = std::move(observer);
         return *result;
     }
-    void Render(const r::RenderSettings& settings) {
+    void Render(const r::RenderSettings& settings, LayerMask mask = Layer::Everything) {
         r::Camera camera;
-        scene::RenderSystem(m_scene, m_backend, *m_resources, camera, {}, &settings);
+        scene::RenderSystem(m_scene, m_backend, *m_resources, camera, {}, &settings, mask);
     }
 };
 
-/// @brief Shadows off still publishes the original fit to a native consumer.
+/// @brief 描画レイヤーが空のビューでは境界計算を省き、レイヤーを戻すと再開する。
+TEST_F(ShadowPreparationRenderTest, SkipsSceneBoundsWhenNoLayersAreVisible)
+{
+    auto& object = m_scene.CreateGameObject("Shadow bounds geometry");
+    object.AddComponent<scene::MeshRenderer>().mesh = &m_mesh;
+    ASSERT_TRUE(m_scene.GetEntities<scene::ScriptComponent>().empty());
+    ASSERT_TRUE(m_scene.GetUserRenderPasses().empty());
+    r::RenderSettings settings;
+    settings.shadowEnabled = true;
+    settings.volumetricLight.enabled = false;
+    settings.froxelFog.enabled = false;
+
+    const bool profilerEnabled = profiler::Profiler::IsEnabled();
+    const auto captureFilter = profiler::Profiler::GetRequestedCaptureFilter();
+    profiler::Profiler::SetEnabled(true);
+    EXPECT_TRUE(profiler::Profiler::RequestCaptureFilter({}));
+    const auto countBoundsScopes = [&](LayerMask mask) {
+        profiler::Profiler::BeginFrame();
+        Render(settings, mask);
+        profiler::Profiler::EndFrame();
+        EXPECT_TRUE(profiler::Profiler::GetSnapshot().complete);
+        unsigned count = 0;
+        for (const auto& record : profiler::Profiler::GetLastFrameRecords())
+            if (std::strcmp(record.name, "RenderSystem::ComputeShadowBounds") == 0) ++count;
+        return count;
+    };
+
+    EXPECT_EQ(countBoundsScopes(Layer::Nothing), 0u);
+    EXPECT_EQ(countBoundsScopes(Layer::Everything), 1u);
+    EXPECT_TRUE(profiler::Profiler::RequestCaptureFilter(captureFilter));
+    profiler::Profiler::SetEnabled(profilerEnabled);
+}
+
+/// @brief 影無効でもネイティブ利用側へ元の投影範囲を公開する。
 TEST_F(ShadowPreparationRenderTest, ShadowsOffStillPublishesTheOriginalFitToANativeConsumer)
 {
     auto& object = AddObject(0);
@@ -1550,6 +1584,40 @@ TEST_F(ShadowPreparationRenderTest, ShadowsOffStillPublishesTheOriginalFitToANat
     EXPECT_MAT4_NEAR(observer.lighting.lightVP, current.lightVP, testkit::kTolerance);
     ASSERT_NE(observer.snapshot, nullptr);
     EXPECT_MAT4_NEAR(observer.snapshot->lighting.lightVP, current.lightVP, testkit::kTolerance);
+}
+
+/// @brief 同じフレームの連続ビューでも公開フィールドを直接編集すると影の投影を更新する。
+TEST_F(ShadowPreparationRenderTest, DirectEditsRefreshShadowFitAcrossEligibleViews)
+{
+    auto& object = AddObject(0);
+    auto& observer = Observe(m_scene.CreateGameObject("Native shadow input reader"));
+    r::RenderSettings settings;
+    settings.shadowEnabled = true;
+    settings.volumetricLight.enabled = false;
+    settings.froxelFog.enabled = false;
+    r::Camera camera;
+
+    const auto checkFit = [&](const r::ShadowBounds& expectedBounds) {
+        const int previousCalls = observer.calls;
+        Render(settings);
+        ASSERT_EQ(observer.calls, previousCalls + 1);
+        const auto expected = r::PrepareShadows(camera, settings, expectedBounds,
+            observer.lighting.lightData.lightDir.Normalized(), 0, 1);
+        EXPECT_MAT4_NEAR(observer.lighting.lightVP, expected.lightVP, testkit::kTolerance);
+        EXPECT_VEC3_NEAR(observer.lighting.lightEyePos, expected.lightPos, testkit::kTolerance);
+        ASSERT_NE(observer.snapshot, nullptr);
+        EXPECT_MAT4_NEAR(observer.snapshot->lighting.lightVP, expected.lightVP, testkit::kTolerance);
+    };
+
+    const r::ShadowBounds initial{{0, 0, 0}, 1, true};
+    checkFit(initial);
+    checkFit(initial);
+    object.transform.position = object.transform.worldPosition = {90, 0, 0};
+    checkFit({{90, 0, 0}, 1, true});
+    m_mesh.boundsCenter = {2, 0, 0};
+    m_mesh.boundsRadius = 6;
+    checkFit({{92, 0, 0}, 6, true});
+    checkFit({{92, 0, 0}, 6, true});
 }
 
 /// @brief Late native consumer keeps the initial fit without reextracting geometry.
@@ -1587,7 +1655,43 @@ TEST_F(ShadowPreparationRenderTest, LateNativeConsumerKeepsTheInitialFitWithoutR
     EXPECT_MAT4_NEAR(lateObserver->snapshot->lighting.lightVP, expected.lightVP, testkit::kTolerance);
 }
 
-/// @brief Uses current pose bounds for skinned directional and punctual shadows.
+/// @brief 後から登録した利用側にも、既存の遮蔽物のビュー開始時の影投影を公開する。
+TEST_F(ShadowPreparationRenderTest, LateNativeConsumerKeepsTheInitialFitOfAnExistingCaster)
+{
+    auto& caster = m_scene.CreateGameObject("Initial shadow caster");
+    caster.AddComponent<scene::MeshRenderer>().mesh = &m_mesh;
+    ASSERT_TRUE(m_scene.GetEntities<scene::ScriptComponent>().empty());
+    r::RenderSettings settings;
+    settings.shadowEnabled = false;
+    settings.volumetricLight.enabled = false;
+    settings.froxelFog.enabled = false;
+    ShadowContextObserver* lateObserver = nullptr;
+    int callbacks = 0;
+    m_backend.afterConstantBufferUpdate = [&](size_t bytes) {
+        if (bytes != sizeof(r::AdvancedGraphicsCB) || callbacks != 0) return;
+        ++callbacks;
+        caster.transform.position = caster.transform.worldPosition = {90, 0, 0};
+        lateObserver = &Observe(m_scene.CreateGameObject("Late native shadow reader"));
+    };
+    Render(settings);
+    m_backend.afterConstantBufferUpdate = {};
+    ASSERT_EQ(callbacks, 1);
+    ASSERT_NE(lateObserver, nullptr);
+    ASSERT_EQ(lateObserver->calls, 1);
+
+    r::Camera camera;
+    const r::ShadowBounds initial{{0, 0, 0}, 1, true};
+    const auto expected = r::PrepareShadows(camera, settings, initial,
+        lateObserver->lighting.lightData.lightDir.Normalized(), 0, 1);
+    EXPECT_MAT4_NEAR(lateObserver->lighting.lightVP, expected.lightVP, testkit::kTolerance);
+    EXPECT_MAT4_NEAR(lateObserver->lighting.lightView, expected.lightView, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(lateObserver->lighting.lightEyePos, expected.lightPos, testkit::kTolerance);
+    EXPECT_EQ(lateObserver->lighting.shadowCascadeCount, expected.count);
+    ASSERT_NE(lateObserver->snapshot, nullptr);
+    EXPECT_MAT4_NEAR(lateObserver->snapshot->lighting.lightVP, expected.lightVP, testkit::kTolerance);
+}
+
+/// @brief スキン付きの平行光影と局所光影では現在姿勢の境界を使う。
 TEST_F(ShadowPreparationRenderTest, UsesCurrentPoseBoundsForSkinnedDirectionalAndPunctualShadows)
 {
     r::RenderSettings settings;
@@ -1625,7 +1729,7 @@ TEST_F(ShadowPreparationRenderTest, UsesCurrentPoseBoundsForSkinnedDirectionalAn
                 object.skinningPalette = palette;
                 object.boundsCenter = {boundsCase == 1 ? 100.0f : 0.0f, 0, 0.5f};
                 object.boundsRadius = boundsCase == 2 ? 0.0f : 0.25f;
-                snapshot->objects.push_back(object);
+                snapshot->geometry.EditObjects().push_back(object);
                 r::RenderMeshItem item;
                 item.vertexBuffer = item.skinningVertexBuffer = source;
                 item.deformedVertexBuffer = computed ? deformed : r::ResourceHandle<r::BufferTag>{};
@@ -1783,7 +1887,7 @@ TEST_F(MaterialExtractionSharingTest, FiltersOpaqueCoverageInForwardAndGBufferOc
                 if (gbuffer) item.forwardMaterial = item.material;
                 const auto& submittedMaterial = gbuffer ? item.material : item.forwardMaterial;
                 m_resources->Update(submittedMaterial.paramsBuffer, submittedMaterial.gbufferParams.data(), submittedMaterial.gbufferParams.size());
-                snapshot->objects.push_back(object);
+                snapshot->geometry.EditObjects().push_back(object);
                 snapshot->items.push_back(item);
             }
             renderer::OcclusionCuller culler;
@@ -1847,7 +1951,7 @@ TEST_F(MaterialExtractionSharingTest, InvalidatesCpuAndGpuOcclusionWitnessAfterV
         object.colorEligible = true; object.itemCount = 1;
         object.boundsCenter = {0, 0, 10}; object.boundsRadius = std::sqrt(3.0f);
         object.world.m[2][3] = 10;
-        snapshot->objects.push_back(object);
+        snapshot->geometry.EditObjects().push_back(object);
         r::RenderMeshItem item;
         item.vertexBuffer = vb; item.indexBuffer = ib; item.indexCount = 36; item.vertexCount = 8;
         item.occluderRadius = 1;
@@ -1939,7 +2043,7 @@ TEST_F(MaterialExtractionSharingTest, OccludersFollowExecutedPassesAcrossPlanCac
         object.boundsCenter = {0, 0, index == 0 ? 10.0f : 20.0f};
         object.boundsRadius = index == 0 ? std::sqrt(3.0f) : 0.01f;
         object.world.m[2][3] = object.boundsCenter.z;
-        snapshot->objects.push_back(object);
+        snapshot->geometry.EditObjects().push_back(object);
         r::RenderMeshItem item;
         item.objectIndex = index; item.vertexBuffer = vb; item.indexBuffer = ib;
         item.indexCount = 36; item.vertexCount = 8; item.occluderRadius = index == 0 ? 1.0f : 0.0f;
@@ -1989,7 +2093,7 @@ TEST_F(MaterialExtractionSharingTest, OccludersFollowExecutedPassesAcrossPlanCac
         pipeline.AddRawPass("ForwardOpaque", {}, {"UnusedSource"}, [&] { ++sourceRuns; });
         const auto observer = [&] {
             ++observerRuns;
-            occluded = r::IsViewOccluded(context, snapshot->objects[1].boundsCenter, snapshot->objects[1].boundsRadius);
+            occluded = r::IsViewOccluded(context, snapshot->Objects()[1].boundsCenter, snapshot->Objects()[1].boundsRadius);
         };
         if (stage.readSource) pipeline.AddRawPass("OcclusionObserver", {"UnusedSource"}, {"ObserverOutput"}, observer, false);
         else pipeline.AddRawPass("OcclusionObserver", {}, {"ObserverOutput"}, observer, false);
@@ -2122,8 +2226,8 @@ TEST_F(ManagedFrameGeometryTest, KeepsManagedViewsIndependentWithoutPublishingFr
     RenderView(cache, settings, 1200, 700, scene::UIRenderTargetView::GameViewport);
     EXPECT_EQ(cache.geometry, nullptr);
     const auto second = ExtractView(settings, nullptr);
-    EXPECT_FALSE(first->sharedObjects);
-    EXPECT_FALSE(second->sharedObjects);
+    EXPECT_FALSE(first->geometry.IsShared());
+    EXPECT_FALSE(second->geometry.IsShared());
     EXPECT_NE(first->Objects().data(), second->Objects().data());
     ASSERT_EQ(first->items.size(), 2u);
     ASSERT_EQ(second->items.size(), 2u);
@@ -2345,7 +2449,7 @@ TEST_F(ManagedFrameGeometryTest, RebuildsColorEligibilityForDirectMaterialEnable
     const auto enabledGeometry = cache.geometry;
     ASSERT_EQ(enabled->Objects().size(), 1u);
     ASSERT_EQ(enabled->items.size(), 1u);
-    EXPECT_NE(enabled->sharedObjects, disabled->sharedObjects);
+    EXPECT_NE(&enabled->geometry.Read(), &disabled->geometry.Read());
     EXPECT_TRUE(enabled->Objects()[0].colorEligible);
     EXPECT_TRUE(enabled->items[0].visible);
     ASSERT_TRUE(enabled->items[0].material.valid);
@@ -3241,7 +3345,7 @@ TEST_F(MaterialExtractionSharingTest, MaterialDemandLateCompletionCopiesThePubli
     };
     scene::material_demand_detail::CompleteBindings(context);
     ASSERT_NE(context.renderScene,original);ASSERT_NE(nested,nullptr);EXPECT_EQ(callbacks,1);
-    EXPECT_EQ(context.renderScene->sharedObjects,original->sharedObjects);
+    EXPECT_EQ(&context.renderScene->geometry.Read(), &original->geometry.Read());
     EXPECT_NE(context.renderScene->snapshotSerial,original->snapshotSerial);
     EXPECT_EQ(context.renderScene->Objects().size(),original->Objects().size());
     for(size_t index=0;index<original->items.size();++index){

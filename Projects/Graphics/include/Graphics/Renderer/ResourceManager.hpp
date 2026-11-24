@@ -189,7 +189,7 @@ public:
     /// @note LoadTexture 系のキャッシュミスを計測する。ResourceManager のレンダースレッドから読む。
     [[nodiscard]] const SynchronousTextureLoadStats& GetSynchronousTextureLoadStats() const
     {
-        return m_syncTextureLoadStats;
+        return m_textureCache.LoadStats();
     }
     /// @note CPU生成したRGBA8ボリュームから3D Textureを作る。Color LUTなどに使用する。
     FBZZ_GRAPHICS_API ResourceHandle<TextureTag> CreateTexture3D(
@@ -346,8 +346,7 @@ private:
     std::unique_ptr<RenderResources> m_renderResources;
     uint64_t m_frameStamp = 0;
     FBZZ_GRAPHICS_API static uint64_t Key(ResourceHandle<RenderTargetTag> h);
-    FBZZ_GRAPHICS_API ResourceHandle<TextureTag> LoadTextureImpl(std::string_view path, bool pin, bool flipGreen);
-    FBZZ_GRAPHICS_API std::unique_ptr<ITexture> CreateTextureForPath(const std::string& sourcePath, bool flipGreen);
+    static std::size_t EstimateTextureBytes(const ITexture& texture, std::size_t bytesPerTexel = 4);
     template<class Tag, class ReleaseResource>
     void ReleaseOnRenderThread(ResourceHandle<Tag> handle, const ReleaseResource& releaseResource);
     FBZZ_GRAPHICS_API void ReleaseOwnedResourcesForShutdown();
@@ -361,8 +360,10 @@ private:
                                                    size_t updateSizeBytes);
     FBZZ_GRAPHICS_API void RemoveBufferMetadata(ResourceHandle<BufferTag> handle);
 
+    /// @note GPU 操作を委ねる非所有の描画先。終了通知以降はこの参照を使ってはならない。
     IRenderer& m_renderer;
 
+    /// @note 以下の型別プールが GPU 資源の実体を所有する。呼び出し側は型と世代を持つハンドルで参照する。
     ResourcePool<IShader, ShaderTag> m_shaders;
     ResourcePool<ITexture, TextureTag> m_textures;
     ResourcePool<IBuffer, BufferTag> m_buffers;
@@ -372,24 +373,47 @@ private:
     ResourcePool<IStructuredBuffer, StructuredBufferTag> m_structuredBuffers;
     ResourcePool<IAccelerationStructure, AccelerationStructureTag> m_accelerationStructures;
 
+    /// @note 描画要求側と資源管理側がバッファのサイズや版を同時に読み書きする際に使う。
     mutable std::mutex m_bufferMetadataMutex;
     std::vector<BufferResourceMetadata> m_bufferMetadata = std::vector<BufferResourceMetadata>(1);
     std::unique_ptr<MeshletGeometryCache> m_meshletGeometryCache;
 
     std::unordered_map<std::string, ResourceHandle<ShaderTag>> m_shaderCache;
+    /// @note 世代と番号を組にして能力を保持する。番号が再利用されても旧シェーダーと混同しない。
     std::unordered_map<uint64_t, ShaderCapabilities> m_shaderCapabilities;
-    std::unordered_map<std::string, ResourceHandle<TextureTag>> m_textureCache;
-    SynchronousTextureLoadStats m_syncTextureLoadStats;
-    /// @note LoadTexture で外へ配ったキー。配られた先がハンドルを持ち続けるかもしれないので、非同期側は外さない。
-    std::unordered_set<std::string> m_texturesHandedOut;
+    class TextureCache {
+    public:
+        explicit TextureCache(ResourceManager& owner) : m_owner(owner) {}
+        ResourceHandle<TextureTag> Load(std::string_view path, bool pin, bool flipGreen);
+        ResourceHandle<TextureTag> Reload(std::string_view path, bool flipGreen);
+        ResourceHandle<TextureTag> Find(std::string_view path, bool flipGreen) const;
+        ResourceHandle<TextureTag> Publish(std::string_view path, ResourceHandle<TextureTag> uploaded, bool flipGreen);
+        std::size_t Evict(std::string_view path);
+        bool EvictStreamed(std::string_view path, bool flipGreen);
+        void Clear();
+        const SynchronousTextureLoadStats& LoadStats() const { return m_loadStats; }
+
+    private:
+        std::unique_ptr<ITexture> CreateTextureForPath(const std::string& sourcePath, bool flipGreen);
+        ResourceManager& m_owner;
+        std::unordered_map<std::string, ResourceHandle<TextureTag>> m_entries;
+        /// @note 同期ロードで配ったキーは、強制破棄後も次のリセットまでストリーミング回収から保護する。
+        std::unordered_set<std::string> m_pinnedKeys;
+        SynchronousTextureLoadStats m_loadStats;
+    };
+    TextureCache m_textureCache{*this};
     std::unordered_map<uint64_t, std::vector<ResourceHandle<TextureTag>>> m_renderTargetColors;
     std::unordered_map<uint64_t, ResourceHandle<TextureTag>> m_renderTargetDepths;
     ResourceHandle<TextureTag> m_whiteTexture;
     std::unique_ptr<Material> m_surfaceErrorMaterial;
     std::unique_ptr<Material> m_skinnedErrorMaterial;
+    /// @note 同じ Manager の GPU 資源を作り直した世代。Reset 前のキャッシュを使い回さないために照合する。
     uint64_t m_resetVersion = 1;
+    /// @note この Manager の寿命を特定する ID。同じメモリアドレスに別の Manager が作られても区別できる。
     uint64_t m_instanceId = 0;
+    /// @note 描画先を切り離した状態。破棄順の都合で Manager だけが残っても GPU を呼び出さない。
     bool m_rendererDetached = false;
+    /// @note 再読み込みの成功を利用側へ伝える版。シェーダーに依存する描画状態を更新する判断に使う。
     uint64_t m_shaderVersion = 1;
 
     /// @note リーク見張りの状態。前フレームの合計と «増え続けた連続フレーム数»。
