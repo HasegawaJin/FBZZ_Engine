@@ -77,9 +77,9 @@ RT の hit と、その地点の照明を求める処理を分ける。初期の
 
 | 確認した場所 | 現状 | 今回の接続方針 |
 |---|---|---|
-| `Engine/Scene/Components/ReflectionProbeComponent.hpp` | 球 / box の影響範囲、Static / DynamicSky / DynamicScene、更新間隔を持つ | 捕捉機構を再利用し、反射点で選べる probe table を Graphics へ渡す |
-| `Engine/src/Scene/Systems/RenderPasses/Geometry/ReflectionProbeCapturePass.cpp` | 動的な有効 probe のうち、カメラが影響範囲内にいる最寄り一個を選ぶ | まず互換動作を維持し、その後、反射面の worldPos と influence で選択・ブレンドする |
-| `Engine/src/Scene/Systems/RenderSystem.cpp` | 選んだ動的 probe がグローバル IBL の irradiance / prefilter スロットを置換する | 鏡面の反射供給と拡散環境光の選択を分離する |
+| `Engine/Scene/Components/Lighting/ReflectionProbeComponent.hpp` | 球 / box の影響範囲、Static / DynamicSky / DynamicScene、更新間隔を持つ | 捕捉機構を再利用し、反射点で選べる probe table を Graphics へ渡す |
+| `Engine/src/Rendering/Passes/Geometry/SceneReflectionProbeCapturePass.cpp` | 動的な有効 probe のうち、カメラが影響範囲内にいる最寄り一個を選ぶ | まず互換動作を維持し、その後、反射面の worldPos と influence で選択・ブレンドする |
+| `Engine/src/Rendering/RenderSystem.cpp` | 選んだ動的 probe がグローバル IBL の irradiance / prefilter スロットを置換する | 鏡面の反射供給と拡散環境光の選択を分離する |
 | `Assets/Shaders/Rendering/IBL.hlsli` | roughness に応じた prefilter と BRDF LUT で鏡面環境光を評価 | Probe / IBL の鏡面項だけを反射 resolver へ渡す |
 | `Assets/Shaders/PostProcess/Reflections/SSR.cs.hlsl` | HDR と深度を追跡し、画面外・未交差では無効。roughness で confidence を下げる | SSR の出力を共通反射契約へ変換し、材質・寄与・有効度から補完要求を作る |
 | `Assets/Shaders/PostProcess/Color/Composite.hlsl` | SSR の alpha と intensity で HDR 全体を lerp する | 新構成では IndirectSpecular だけを置換し、直接光・拡散・発光を保つ |

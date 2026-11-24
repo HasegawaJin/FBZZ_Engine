@@ -21,15 +21,15 @@
       "sha256": "69f3290552c812bcc3000a35b06afa33ae90e5a95d11d90c8b02b1a8c3ab6d4f"
     },
     {
-      "path": "Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp",
+      "path": "Projects/Tests/Engine/Auto/Rendering/Extraction/RenderSceneExtractorTests.cpp",
       "sha256": "ea71b2b1f331f93a66d1c0a2349eaa8659a577494554da1d2c006c86816e95e7"
     },
     {
-      "path": "Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp",
+      "path": "Projects/Tests/Engine/Auto/Rendering/Geometry/RegularMeshRenderPerformanceTests.cpp",
       "sha256": "5c27f9689c16444ed91972e6bee1eadecb60ce6e9a296d7f318047073cff0245"
     },
     {
-      "path": "Projects/Tests/Engine/Auto/StaticMeshRenderReuseTests.cpp",
+      "path": "Projects/Tests/Engine/Auto/Rendering/Geometry/StaticMeshRenderReuseTests.cpp",
       "sha256": "fdaeae10472ba617ea960bb8398a1605ee372229902f51a9640cb6aa54ac4376"
     },
     {
@@ -37,7 +37,7 @@
       "sha256": "d41a410a580e3396e2b144e1a0b54d5418d540146558ba937c68e9b779492cc4"
     },
     {
-      "path": "Projects/Tests/Engine/Auto/StaticMeshRenderMotionTests.cpp",
+      "path": "Projects/Tests/Engine/Auto/Rendering/Geometry/StaticMeshRenderMotionTests.cpp",
       "sha256": "2786c28052916d2ec02f1b01ec81c8c0e19eac8f14b58c38fb984bccfb2ccf34"
     },
     {

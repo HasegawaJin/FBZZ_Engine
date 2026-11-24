@@ -1,5 +1,7 @@
 # Game Settings — ユーザー定義シリアライズと Option 画面
 
+この文書から廃止・移動されたファイルへ移るリンクは Git 履歴を開く。現行コードの入口は [機能別ソース索引](../source-reading-guide.md#機能からコードを探す) から引ける。
+
 セーブデータ (進行) と環境設定 (Option) を、ゲーム側がスキーマを決められる形で
 永続化する。あわせて Option 画面から触る必要のある表示・画質の口を ScriptProxy へ出す。
 
@@ -11,10 +13,10 @@
 
 | 部品 | 現状 |
 |---|---|
-| `IScriptSerializable` ([Script.hpp:54](../../Projects/Engine/include/Engine/Scene/Script.hpp)) | `Reflect(IReflector&)` 1 本。既に DLL 境界を越えている |
-| `IReflector` ([Script.hpp:126](../../Projects/Engine/include/Engine/Scene/Script.hpp)) | `ObjectField` (入れ子) / `ListField` (配列 7 型) / `BeginObject` を持つ |
-| `TomlWriteReflector` / `TomlReadReflector` | **2 か所に重複実装** — [DataAssetRegistry.cpp:78](../../Projects/Engine/src/Asset/DataAssetRegistry.cpp) と [SceneSerializer.cpp:504](../../Projects/Engine/src/Scene/SceneSerializer.cpp) |
-| `util::SaveData` ([SaveData.hpp](../../Projects/Engine/include/Engine/Util/SaveData.hpp)) | TOML の flat KVS。**全 static = テーブルが 1 本しかない** |
+| `IScriptSerializable` ([Script.hpp:54](../../Projects/Engine/include/Engine/Scene/Scripting/Script.hpp)) | `Reflect(IReflector&)` 1 本。既に DLL 境界を越えている |
+| `IReflector` ([Script.hpp:126](../../Projects/Engine/include/Engine/Scene/Scripting/Script.hpp)) | `ObjectField` (入れ子) / `ListField` (配列 7 型) / `BeginObject` を持つ |
+| `TomlWriteReflector` / `TomlReadReflector` | **2 か所に重複実装** — [DataAssetRegistry.cpp:78](../../Projects/Engine/src/Asset/Data/DataAssetRegistry.cpp) と [SceneSerializer.cpp:504](../../Projects/Engine/src/Scene/Serialization/SceneSerializer.cpp) |
+| `util::SaveData` ([SaveData.hpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/292e1b9e33ccb2ab86a94e50a608ef2668ced89c/Projects/Engine/include/Engine/Util/SaveData.hpp)) | TOML の flat KVS。**全 static = テーブルが 1 本しかない** |
 | `ScriptSaveProxy` | `SetInt` / `GetVector3` 等のスカラーのみ。ユーザー定義型を渡す口が無い |
 
 つまり **入れ子・配列を TOML へ落とす機構はもう完成していて、`save` から呼べないだけ**。
@@ -30,15 +32,15 @@
 
 | 項目 | エンジン側の現状 |
 |---|---|
-| フレームレート上限 | ✅ `time.SetTargetFps()` ([ScriptTimeProxy.hpp:25](../../Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptTimeProxy.hpp)) |
+| フレームレート上限 | ✅ `time.SetTargetFps()` ([ScriptTimeProxy.hpp:25](../../Projects/Engine/include/Engine/Scene/ScriptProxy/Runtime/ScriptTimeProxy.hpp)) |
 | 画質設定の実体 | △ `RenderSettings` に全部あるが script から触る口が無い |
 | 明るさ | △ `postProcess.exposure` で代用できるが後述の理由で不可 |
 | フルスクリーン切替 | ❌ `Window::Config.fullscreen` は `Initialize` 時のみ |
 | 解像度変更 | ❌ `Window` に寸法変更 API 自体が無い (WM_SIZE 受けのみ) |
-| VSync | ❌ DX12 は `Present(0)` 決め打ち ([DX12Context.cpp:18](../../Projects/Engine/src/Renderer/Platform/DX12/DX12Context.cpp)) |
+| VSync | ❌ DX12 は `Present(0)` 決め打ち ([DX12Context.cpp:18](https://github.com/HasegawaJin/FBZZ_Engine/blob/fd843385645b5dbb0bddfb8a1be058df0a852b21/Projects/Engine/src/Renderer/Platform/DX12/DX12Context.cpp)) |
 | 描画スケール | ❌ 無い (§9.3 で追加) |
 
-**明るさを `postProcess` に置けない理由:** [PostProcessBlend.cpp:27](../../Projects/Engine/src/Renderer/PostProcessBlend.cpp) が
+**明るさを `postProcess` に置けない理由:** [PostProcessBlend.cpp:27](https://github.com/HasegawaJin/FBZZ_Engine/blob/3e84f91606c995a4a526795c8e9edd832b272279/Projects/Engine/src/Renderer/PostProcessBlend.cpp) が
 `out.postProcess = volume.post;` と**丸ごと差し替える**。PostProcessVolume に入った瞬間、
 プレイヤーが設定した明るさが消える。`postprocess.LoadProfile()` も同様。
 ユーザー設定はアーティストのオーサリングと別レイヤーに置く必要がある。
@@ -239,7 +241,7 @@ void GetMonitorSize(uint32_t& outWidth, uint32_t& outHeight) const;
 `BorderlessFullscreen` の実装は
 `SetWindowLongPtr(GWL_STYLE, WS_POPUP)` → `MonitorFromWindow` → `SetWindowPos` の 3 手。
 `WM_SIZE` が飛ぶので既存の `SetResizeCallback` → `IRenderer::Resize`
-([IRenderer.hpp:71](../../Projects/Engine/include/Engine/Renderer/IRenderer.hpp)) の経路がそのまま繋がる。
+([IRenderer.hpp:71](../../Projects/Graphics/include/Graphics/Renderer/IRenderer.hpp)) の経路がそのまま繋がる。
 
 **WHY 排他フルスクリーンを採らないか:** DXGI `SetFullscreenState` は
 スワップチェーンの作り直しとデバイスロスト処理を DX11 / DX12 の両バックエンドに
@@ -259,7 +261,7 @@ virtual void SetVSync(bool enabled) = 0;
 ```
 
 DX12 は現在 `Present(0)` 固定なので、`m_syncInterval` を持たせて分岐させる。
-DX11 側は既に VSync 無効時の分岐がある ([DX11Renderer.hpp:194](../../Projects/Engine/src/Renderer/Platform/DX11/DX11Renderer.hpp)) ので、
+DX11 側は既に VSync 無効時の分岐がある ([DX11Renderer.hpp:194](https://github.com/HasegawaJin/FBZZ_Engine/blob/cb6627a15c6d4067da28cab60488bf480a0a3ce1/Projects/Engine/src/Renderer/Platform/DX11/DX11Renderer.hpp)) ので、
 そこへ繋ぐ。
 
 ---
@@ -317,7 +319,7 @@ struct RenderSettings {
 ```
 
 `CompositePass` が `PostProcCB` へ流し、**画面フェードの直前**に 1 回掛ける
-([CompositePass.cpp:162](../../Projects/Engine/src/Scene/Systems/RenderPasses/PostProcess/CompositePass.cpp) の隣)。
+([CompositePass.cpp:162](../../Projects/Graphics/src/Passes/PostProcess/CompositePass.cpp) の隣)。
 
 ```hlsl
 color.rgb *= userBrightness;
@@ -374,13 +376,13 @@ void  SetRenderScale(float scale) const;   ///< 0.5 - 2.0
 ```
 
 **倍率を掛けるのは 1 か所だけ。**
-[RenderSystem.cpp](../../Projects/Engine/src/Scene/Systems/RenderSystem.cpp) の中間 RT 生成で
+[RenderSystem.cpp](../../Projects/Engine/src/Rendering/RenderSystem.cpp) の中間 RT 生成で
 出力寸法 → 内部寸法へ変換すれば、`passCtx.width` を経由して各パスのビューポート・
 `texelSize`・TAA のジッターまで追従する。
 
 **アップスケール専用のパスは要らない。** ポストプロセスはどれもフルスクリーン三角形の
 再サンプルで、`SetRenderTarget` がビューポートを RT 全体へ戻す規約
-([IRenderer.hpp](../../Projects/Engine/include/Engine/Renderer/IRenderer.hpp))。
+([IRenderer.hpp](../../Projects/Graphics/include/Graphics/Renderer/IRenderer.hpp))。
 小さい `hdrRT` を実寸の `outputRT` へ描いた時点で linear サンプラーが引き伸ばす。
 
 丸め規則は `renderer::ResolveRenderResolution()` に閉じる。

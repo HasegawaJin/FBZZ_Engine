@@ -21,7 +21,7 @@
                            },
                            {
                                "sha256":  "FC038CD507114C85AB2F0ADF838D343B326498C3834700DB1C07E487DA99BC3E",
-                               "path":  "Projects/Physics/include/Physics/PhysicsSolver.hpp"
+                               "path":  "Projects/Physics/include/Physics/Collision/NarrowPhase/PhysicsSolver.hpp"
                            }
                        ]
 }

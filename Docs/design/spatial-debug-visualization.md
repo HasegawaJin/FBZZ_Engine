@@ -24,7 +24,7 @@ Render の緑は観測した生存内部ノード、赤は観測した除外、�
 
 ## 所有権と寿命
 
-`Graphics/Renderer/RenderBvhDebug.hpp` は thread-safe な要求と不変値snapshotを提供する。要求をScene寿命、出力RTのIDと世代に限定し、別Viewによる上書きを防ぐ。UIはScene / Viewを検証し、ResourceManagerの時計で2フレーム以内の値だけを描く。抽出フレームの時計と混同しない。
+`Graphics/Renderer/Diagnostics/RenderBvhDebug.hpp` は thread-safe な要求と不変値snapshotを提供する。要求をScene寿命、出力RTのIDと世代に限定し、別Viewによる上書きを防ぐ。UIはScene / Viewを検証し、ResourceManagerの時計で2フレーム以内の値だけを描く。抽出フレームの時計と混同しない。
 
 `Physics/World` の診断setter/getterは物理所有スレッド専用。Editorは呼ばない。`PhysicsSystem` のthread-safeなbridgeが要求を集約し、EndSceneSync後にEntity世代と現存ColliderHandleを解決してStep前へ渡す。Step後の値だけを要求revisionとScene寿命を再検証して公開する。World epochはWorld再生成後の同じhandle値と区別する。
 

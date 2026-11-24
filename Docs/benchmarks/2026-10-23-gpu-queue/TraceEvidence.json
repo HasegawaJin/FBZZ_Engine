@@ -209,7 +209,7 @@
     "Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.cpp": "d8879898ecd29c5b38c0941b1e197707eb33bd94bcecfa5da9db6d4b8b470984",
     "Projects/Graphics/src/Renderer/Platform/DX12/DX12Context.hpp": "ff1113fa2c4f7a785f46642120eec7a2280328555f14715de99e28e4af717627",
     "Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp": "6905283ec23bd7b5eefc8f45cb1f823ea267428e0918f599246f81540cc088e4",
-    "Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp": "0e48c2ae3706a27dc7f83156946a178eff91b8641d8792a14f7be56abae32b0b",
+    "Projects/Tests/Engine/Auto/Rendering/Geometry/RegularMeshRenderPerformanceTests.cpp": "0e48c2ae3706a27dc7f83156946a178eff91b8641d8792a14f7be56abae32b0b",
     "Docs/design/graphics-library.md": "daf7e08965a91410dfa4f68bc684eefe3a3ca4647f94037bf1a0b4d64680a854"
   },
   "formalHarness": {

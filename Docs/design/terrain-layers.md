@@ -16,7 +16,7 @@ bindless 化 ([bindless.md](bindless.md)) で「テクスチャはスロット 3
 
 | 何 | どこ |
 |---|---|
-| データと不変条件 | `Engine/Scene/Components/TerrainComponent.hpp`、`Engine/Scene/TerrainSplat.hpp` |
+| データと不変条件 | `Engine/Scene/Components/Terrain/TerrainComponent.hpp`、`Engine/Scene/Terrain/TerrainSplat.hpp` |
 | 描画 | `Systems/RenderPasses/Geometry/TerrainRenderPass.cpp`、`Assets/Shaders/Terrain/TerrainSurface.hlsli` |
 | 保存 | `Scene/TerrainAssetSerializer.cpp` (.terrain TOML)、`Asset/FzTerrainSerializer.cpp` (FZTN) |
 | 物理・経路 | `Physics/HeightFieldCollider`、`Systems/ColliderSync.cpp`、`Systems/NavMeshBakeSystem.cpp` |
@@ -77,7 +77,7 @@ holeData       : vector<uint8>  セル × 1    1 = 穴。空 = 穴なし
 
 ### 定数とバッファ
 
-`TerrainObjectCB` (b1, 240 バイト)。正本は `Graphics/Pipeline/RenderConstants.hpp`、HLSL は `TerrainSurface.hlsli`。
+`TerrainObjectCB` (b1, 240 バイト)。正本は `Graphics/Pipeline/Resources/RenderConstants.hpp`、HLSL は `TerrainSurface.hlsli`。
 
 ```
 float4x4 worldMatrix

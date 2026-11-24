@@ -25,7 +25,7 @@ Math の演算を SSE4.1 の intrinsics で書き直す。前段の «小関数�
 - `Matrix4` の非整列ロード (`_mm_loadu_ps`) は、64B のキャッシュラインをまたがない限り整列ロードと同じ速さ。MSVC の x64 ヒープは 16B 境界で返すのでまたぎはまれ。計測で問題が出たら `Matrix4` だけ `alignas(16)` にする
 - Unreal (`FVector` と `VectorRegister`)・DirectXMath・Unity (Burst の SoA) も同じ分け方をしている
 
-## 3. 内部の道具 (`Math/Simd.hpp`)
+## 3. 内部の道具 (`Math/Simd/Simd.hpp`)
 
 - 名前空間 `fbzz::math::simd`。`<smmintrin.h>` を include するのはこのヘッダーだけ
 - 中身は薄い関数だけ: `Load3` / `Load4` / `Store3` / `Store4`・`Splat`・`Transpose4x4`・`Dot3` / `Dot4`・`MulAdd` (FMA ではなく mul + add)

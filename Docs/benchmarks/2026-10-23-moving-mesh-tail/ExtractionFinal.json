@@ -19,7 +19,7 @@
       "testsuite": [
         {
           "name": "ExplicitStandardContractsWorkWithAnyFilename",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 137,
           "status": "RUN",
           "result": "COMPLETED",
@@ -30,7 +30,7 @@
         },
         {
           "name": "NonGuidInputEditsDuringLoggingCannotOverwriteAnotherPreparedGuidIdentity",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 388,
           "status": "RUN",
           "result": "COMPLETED",
@@ -41,7 +41,7 @@
         },
         {
           "name": "SharedWaterAndFiberGeometryRequireExplicitVertexContracts",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 102,
           "status": "RUN",
           "result": "COMPLETED",
@@ -52,7 +52,7 @@
         },
         {
           "name": "MissingSourceWithInvalidUtf8ReturnsUnknown",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 306,
           "status": "RUN",
           "result": "COMPLETED",
@@ -63,7 +63,7 @@
         },
         {
           "name": "MovingShaderAndMetaKeepsTheGuidCapabilities",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 229,
           "status": "RUN",
           "result": "COMPLETED",
@@ -74,7 +74,7 @@
         },
         {
           "name": "UnicodePreparedPathsKeepMetadataDeletionAndRestorationFresh",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 280,
           "status": "RUN",
           "result": "COMPLETED",
@@ -85,7 +85,7 @@
         },
         {
           "name": "SurfaceOrGeometryAloneDoesNotGrantGBufferSupport",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 159,
           "status": "RUN",
           "result": "COMPLETED",
@@ -96,7 +96,7 @@
         },
         {
           "name": "FilenameDoesNotGrantCapabilitiesWithoutADeclaration",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 125,
           "status": "RUN",
           "result": "COMPLETED",
@@ -107,7 +107,7 @@
         },
         {
           "name": "MetaTimestampChangesAndRemovedFilesInvalidateCachedCapabilities",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 248,
           "status": "RUN",
           "result": "COMPLETED",
@@ -118,7 +118,7 @@
         },
         {
           "name": "StandardSkinnedVariantsRequireTheMatchingVertexContract",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 144,
           "status": "RUN",
           "result": "COMPLETED",
@@ -129,7 +129,7 @@
         },
         {
           "name": "GuidAuthorityIgnoresFalseAndUnresolvedPathHints",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 215,
           "status": "RUN",
           "result": "COMPLETED",
@@ -140,7 +140,7 @@
         },
         {
           "name": "ManyDistinctGuidHintsKeepMetadataQueriesFreshAfterReferenceChurn",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 349,
           "status": "RUN",
           "result": "COMPLETED",
@@ -151,7 +151,7 @@
         },
         {
           "name": "PreparedSharedGuidBecomesUnknownWhenTheIndexMakesItAmbiguous",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 367,
           "status": "RUN",
           "result": "COMPLETED",
@@ -162,7 +162,7 @@
         },
         {
           "name": "InvalidVersionsTokensAndVariantPairsRejectTheWholeDeclaration",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 190,
           "status": "RUN",
           "result": "COMPLETED",
@@ -173,7 +173,7 @@
         },
         {
           "name": "GuidPreparedPathsFollowRemovalRemappingAndDatabaseReset",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderCapabilitiesTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderCapabilitiesTests.cpp",
           "line": 316,
           "status": "RUN",
           "result": "COMPLETED",
@@ -195,7 +195,7 @@
       "testsuite": [
         {
           "name": "TransparencyAlwaysWins",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 64,
           "status": "RUN",
           "result": "COMPLETED",
@@ -206,7 +206,7 @@
         },
         {
           "name": "EveryCombinationResolvesToExactlyOneRoute",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 109,
           "status": "RUN",
           "result": "COMPLETED",
@@ -217,7 +217,7 @@
         },
         {
           "name": "UnknownShaderStaysForward",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 92,
           "status": "RUN",
           "result": "COMPLETED",
@@ -228,7 +228,7 @@
         },
         {
           "name": "EmptyShaderPathDoesNotDeclareGBufferEquivalence",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 141,
           "status": "RUN",
           "result": "COMPLETED",
@@ -239,7 +239,7 @@
         },
         {
           "name": "ProjectAuthoredShadersAreNotGBufferEquivalent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 163,
           "status": "RUN",
           "result": "COMPLETED",
@@ -250,7 +250,7 @@
         },
         {
           "name": "NonPbrLightingModelsAreNotGBufferEquivalent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 155,
           "status": "RUN",
           "result": "COMPLETED",
@@ -261,7 +261,7 @@
         },
         {
           "name": "StandardPbrShadersAreGBufferEquivalent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 146,
           "status": "RUN",
           "result": "COMPLETED",
@@ -272,7 +272,7 @@
         },
         {
           "name": "StandardOpaqueMaterialGoesToTheGBuffer",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 58,
           "status": "RUN",
           "result": "COMPLETED",
@@ -283,7 +283,7 @@
         },
         {
           "name": "AdvancedLobeStaysForward",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 100,
           "status": "RUN",
           "result": "COMPLETED",
@@ -294,7 +294,7 @@
         },
         {
           "name": "ForwardPipelineNeverProducesGBufferRoute",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\GeometryRouteTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Pipeline\\GeometryRouteTests.cpp",
           "line": 84,
           "status": "RUN",
           "result": "COMPLETED",
@@ -316,7 +316,7 @@
       "testsuite": [
         {
           "name": "CompactFrameGeometryPreservesStaticAndSkinnedInputsAcrossViews",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1074,
           "status": "RUN",
           "result": "COMPLETED",
@@ -327,7 +327,7 @@
         },
         {
           "name": "SharesPosesAcrossViewsWhileKeepingSelectionAndMaterialsIndependent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1049,
           "status": "RUN",
           "result": "COMPLETED",
@@ -338,7 +338,7 @@
         },
         {
           "name": "MeshNotificationsInvalidateSameFrameGeometryWithoutMutatingPublishedViews",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1157,
           "status": "RUN",
           "result": "COMPLETED",
@@ -349,7 +349,7 @@
         },
         {
           "name": "TypedEnvironmentCandidatesKeepScenePrecedenceAndRefreshWithinOneFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1373,
           "status": "RUN",
           "result": "COMPLETED",
@@ -360,7 +360,7 @@
         },
         {
           "name": "FullViewsRecheckMetadataAndSlotEditsWithoutChangingRetainedSnapshots",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1007,
           "status": "RUN",
           "result": "COMPLETED",
@@ -371,7 +371,7 @@
         },
         {
           "name": "ResolvesEachShaderOnceWhilePreservingIndependentMaterialOverrides",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 852,
           "status": "RUN",
           "result": "COMPLETED",
@@ -382,7 +382,7 @@
         },
         {
           "name": "KeepsSharedPosesAliveAfterCacheRetirementAndSceneGenerationChanges",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1311,
           "status": "RUN",
           "result": "COMPLETED",
@@ -393,7 +393,7 @@
         },
         {
           "name": "CompactCachedItemsRetainOffCameraShadowProbeAndRayDemand",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1235,
           "status": "RUN",
           "result": "COMPLETED",
@@ -404,7 +404,7 @@
         },
         {
           "name": "RetainedSnapshotsStayImmutableAfterWorkerRetirementAndSceneClear",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 228,
           "status": "RUN",
           "result": "COMPLETED",
@@ -415,7 +415,7 @@
         },
         {
           "name": "DemandDiagnosticCandidatePreservesMaskRejectedItemsAndMutableSlots",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1561,
           "status": "RUN",
           "result": "COMPLETED",
@@ -426,7 +426,7 @@
         },
         {
           "name": "CompactFrameGeometryRebuildsMovedBoundsAndRendererMembershipEveryFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1182,
           "status": "RUN",
           "result": "COMPLETED",
@@ -437,7 +437,7 @@
         },
         {
           "name": "FullExtractionDefersItemCapabilitiesUntilMaterialSynchronization",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 948,
           "status": "RUN",
           "result": "COMPLETED",
@@ -448,7 +448,7 @@
         },
         {
           "name": "RechecksChangedAndRemovedShaderMetadataWithoutAdvancingTheRenderFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 895,
           "status": "RUN",
           "result": "COMPLETED",
@@ -459,7 +459,7 @@
         },
         {
           "name": "IndexedMasksRetainBothRendererKindsAndRespectEachViewsLayerAndChildren",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1278,
           "status": "RUN",
           "result": "COMPLETED",
@@ -470,7 +470,7 @@
         },
         {
           "name": "EmptyEffectExtractionObservesComponentsAddedAndRemovedWithinTheSameFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1333,
           "status": "RUN",
           "result": "COMPLETED",
@@ -481,7 +481,7 @@
         },
         {
           "name": "ManagedMeshWritesInvalidateSharedViewsWithoutRebuildingUnchangedMath",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1125,
           "status": "RUN",
           "result": "COMPLETED",
@@ -503,7 +503,7 @@
       "testsuite": [
         {
           "name": "ReferencePosePrecedesIdentityFallbackWithoutAnimator",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 771,
           "status": "RUN",
           "result": "COMPLETED",
@@ -514,7 +514,7 @@
         },
         {
           "name": "NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 732,
           "status": "RUN",
           "result": "COMPLETED",
@@ -525,7 +525,7 @@
         },
         {
           "name": "ResolvesLodGuidForMembershipWithoutChangingReferences",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 491,
           "status": "RUN",
           "result": "COMPLETED",
@@ -536,7 +536,7 @@
         },
         {
           "name": "LocalSlotsResolveReorderedSubmeshesAndMorphInputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 664,
           "status": "RUN",
           "result": "COMPLETED",
@@ -547,7 +547,7 @@
         },
         {
           "name": "RefreshesRendererMembershipAndHierarchyActivityWithinTheSameFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 387,
           "status": "RUN",
           "result": "COMPLETED",
@@ -558,7 +558,7 @@
         },
         {
           "name": "DeformedOutputRequiresCurrentFrameAndMatchingModelIncludingMorph",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 681,
           "status": "RUN",
           "result": "COMPLETED",
@@ -569,7 +569,7 @@
         },
         {
           "name": "KeepsOffscreenAndOtherLayerCandidatesButRejectsInactiveHierarchy",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 319,
           "status": "RUN",
           "result": "COMPLETED",
@@ -580,7 +580,7 @@
         },
         {
           "name": "InitialFrameDoesNotTreatUninitializedHistoryAsPreviousFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 797,
           "status": "RUN",
           "result": "COMPLETED",
@@ -591,7 +591,7 @@
         },
         {
           "name": "PreservesOrderAcrossDestroyCallbacksCompactionAndEntityReuse",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 423,
           "status": "RUN",
           "result": "COMPLETED",
@@ -602,7 +602,7 @@
         },
         {
           "name": "ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 753,
           "status": "RUN",
           "result": "COMPLETED",
@@ -613,7 +613,7 @@
         },
         {
           "name": "RejectsRendererMembershipInMultipleLodGroups",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 701,
           "status": "RUN",
           "result": "COMPLETED",
@@ -624,7 +624,7 @@
         },
         {
           "name": "SkinnedSubmeshBoundsKeepRendererScaleAndAnimatorOwnerSphereIndependent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 615,
           "status": "RUN",
           "result": "COMPLETED",
@@ -635,7 +635,7 @@
         },
         {
           "name": "CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 536,
           "status": "RUN",
           "result": "COMPLETED",
@@ -646,7 +646,7 @@
         },
         {
           "name": "SelectsCanonicalLodZeroWithoutFilteringRasterHiddenRenderers",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 459,
           "status": "RUN",
           "result": "COMPLETED",
@@ -657,7 +657,7 @@
         },
         {
           "name": "PreviousWorldAdvancesOnceAcrossViewsAndResetsAfterGap",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 782,
           "status": "RUN",
           "result": "COMPLETED",
@@ -668,7 +668,7 @@
         },
         {
           "name": "DiagnosesUnresolvedCanonicalLodInsteadOfPublishingAnEmptyShape",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 713,
           "status": "RUN",
           "result": "COMPLETED",
@@ -679,7 +679,7 @@
         },
         {
           "name": "PreservesSceneOrderForLateRendererRegistrationAndMixedRenderersAmongBones",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 336,
           "status": "RUN",
           "result": "COMPLETED",
@@ -690,7 +690,7 @@
         },
         {
           "name": "WarmRendererIndexKeepsCurrentValuesAndOldGeometrySnapshotsIndependent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 557,
           "status": "RUN",
           "result": "COMPLETED",
@@ -701,7 +701,7 @@
         },
         {
           "name": "SparseCameraQueriesPreserveScenePriorityAndObserveSameFrameEdits",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 281,
           "status": "RUN",
           "result": "COMPLETED",
@@ -712,7 +712,7 @@
         },
         {
           "name": "SceneGenerationIsStableAcrossViewsAndChangesBeforeEntityReuse",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 824,
           "status": "RUN",
           "result": "COMPLETED",
@@ -723,7 +723,7 @@
         },
         {
           "name": "DenseGeometryKeepsChunkEdgesSharedMeshEditsAndSnapshotOwnership",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1669,
           "status": "RUN",
           "result": "COMPLETED",
@@ -734,7 +734,7 @@
         },
         {
           "name": "SceneMoveDoesNotReuseAnotherScenesRenderIdentity",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 838,
           "status": "RUN",
           "result": "COMPLETED",
@@ -745,7 +745,7 @@
         },
         {
           "name": "MaterialSlotsStayIndependentAndHiddenSlotsRemainAddressable",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 808,
           "status": "RUN",
           "result": "COMPLETED",
@@ -756,7 +756,7 @@
         },
         {
           "name": "SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 518,
           "status": "RUN",
           "result": "COMPLETED",
@@ -767,7 +767,7 @@
         },
         {
           "name": "StaticBoundsUseCurrentRotatedNegativeNonuniformScaleAcrossViews",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 589,
           "status": "RUN",
           "result": "COMPLETED",
@@ -789,7 +789,7 @@
       "testsuite": [
         {
           "name": "LayerDistanceAndOrthographicSmallObjectPolicyUseCurrentValues",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1467,
           "status": "RUN",
           "result": "COMPLETED",
@@ -799,7 +799,7 @@
         },
         {
           "name": "NonfiniteOrExtremeValuesAreConservativeBeforeMathVisibility",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1541,
           "status": "RUN",
           "result": "COMPLETED",
@@ -809,7 +809,7 @@
         },
         {
           "name": "RayAndUncertifiedUserPassScopeNeverAuthorizeCameraOnlyOmission",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1521,
           "status": "RUN",
           "result": "COMPLETED",
@@ -819,7 +819,7 @@
         },
         {
           "name": "FreshViewMasksFrustaAndPaddingDoNotMutateGeometry",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1446,
           "status": "RUN",
           "result": "COMPLETED",
@@ -829,7 +829,7 @@
         },
         {
           "name": "StaticProbePotentialIgnoresMainCameraFrustumAndSkinnedInputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1506,
           "status": "RUN",
           "result": "COMPLETED",
@@ -839,7 +839,7 @@
         },
         {
           "name": "OffCameraDirectionalAndPunctualShadowPotentialRemainRequired",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1489,
           "status": "RUN",
           "result": "COMPLETED",
@@ -860,7 +860,7 @@
       "testsuite": [
         {
           "name": "RechecksVolatileScenesWithinABoundedNumberOfBuildsAfterMotionStops",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderMotionTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderMotionTests.cpp",
           "line": 48,
           "status": "RUN",
           "result": "COMPLETED",
@@ -871,7 +871,7 @@
         },
         {
           "name": "LeavesColdScenesOnTheOriginalPathBeforeCreatingReusableValues",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderMotionTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderMotionTests.cpp",
           "line": 33,
           "status": "RUN",
           "result": "COMPLETED",
@@ -882,7 +882,7 @@
         },
         {
           "name": "ObservesRawPoseMeshAndPresentationWritesWithoutNotifications",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 33,
           "status": "RUN",
           "result": "COMPLETED",
@@ -893,7 +893,7 @@
         },
         {
           "name": "RevalidatesAfterBoundedSceneEvictionAndRendererReordering",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 154,
           "status": "RUN",
           "result": "COMPLETED",
@@ -904,7 +904,7 @@
         },
         {
           "name": "KeepsMovingGeometryCurrentAndReentersReuseAfterMotionStops",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderMotionTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderMotionTests.cpp",
           "line": 8,
           "status": "RUN",
           "result": "COMPLETED",
@@ -915,7 +915,7 @@
         },
         {
           "name": "ObservesParentMotionReparentingAndHierarchyActivation",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 129,
           "status": "RUN",
           "result": "COMPLETED",
@@ -926,7 +926,7 @@
         },
         {
           "name": "RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 69,
           "status": "RUN",
           "result": "COMPLETED",
@@ -937,7 +937,7 @@
         },
         {
           "name": "SeparatesComponentEntityAndSceneLifetimes",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 106,
           "status": "RUN",
           "result": "COMPLETED",
@@ -948,7 +948,7 @@
         },
         {
           "name": "AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 87,
           "status": "RUN",
           "result": "COMPLETED",
@@ -959,7 +959,7 @@
         },
         {
           "name": "ReusesUnchangedGeometryAndRebuildsOnlyChangedInputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 8,
           "status": "RUN",
           "result": "COMPLETED",
@@ -981,7 +981,7 @@
       "testsuite": [
         {
           "name": "MaterialDemandRechecksLayerDistanceAfterNoDemandBoundaries",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2749,
           "status": "RUN",
           "result": "COMPLETED",
@@ -992,7 +992,7 @@
         },
         {
           "name": "MaterialStateRechecksShaderCapabilitiesAfterNativeReloadWithinTheExtraction",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2227,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1003,7 +1003,7 @@
         },
         {
           "name": "MaterialDemandPreservesOffCameraShadowBindings",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2511,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1014,7 +1014,7 @@
         },
         {
           "name": "MaterialDemandLateNativeSetupHookCompletesAPreviouslyPublishedSnapshot",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2705,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1025,7 +1025,7 @@
         },
         {
           "name": "MaterialDemandRestoresBindingAfterADifferentExtractorChangesTheView",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2655,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1036,7 +1036,7 @@
         },
         {
           "name": "MaterialDemandPreservesStaticReflectionAndLightProbeBindings",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2536,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1047,7 +1047,7 @@
         },
         {
           "name": "MaterialDemandRechecksInPlaceFrustumEditsAfterRepeatedNoDemandBoundaries",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2721,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1058,7 +1058,7 @@
         },
         {
           "name": "MaterialDemandRestoresEarlierOffCameraBindingAfterLaterSlotAddsAProbe",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2624,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1069,7 +1069,7 @@
         },
         {
           "name": "MaterialDemandKeepsRayInputsOutsideTheRasterMask",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2597,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1080,7 +1080,7 @@
         },
         {
           "name": "MaterialDemandKeepsUnscopedAndNestedExtractionBindings",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2563,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1091,7 +1091,7 @@
         },
         {
           "name": "MaterialDemandRechecksResourceFrameAfterNoDemandBoundaries",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2773,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1102,7 +1102,7 @@
         },
         {
           "name": "ShaderCapabilitiesReconsiderNonGuidProjectPriorityAfterRawFallbackWasPrepared",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2308,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1113,7 +1113,7 @@
         },
         {
           "name": "MaterialDemandLateCompletionCopiesThePublishedSnapshotAndRestoresAllOmissionsOnce",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2670,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1124,7 +1124,7 @@
         },
         {
           "name": "MaterialDemandSkipsMaskedBindingsAndRestoresThemForTheNextView",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2453,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1135,7 +1135,7 @@
         },
         {
           "name": "MaterialDemandRestoresEarlierBindingAfterLaterSlotAddsANativeSetupHook",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2640,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1146,7 +1146,7 @@
         },
         {
           "name": "MaterialDemandKeepsNativeSetupHooksAndObjectMaskFallback",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2577,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1157,7 +1157,7 @@
         },
         {
           "name": "MaterialDemandRestoresEarlierMaskedBindingAfterLaterSlotChangesTheView",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2611,
           "status": "RUN",
           "result": "COMPLETED",
@@ -1168,7 +1168,7 @@
         },
         {
           "name": "MaterialDemandRestoresOmissionsWhenTheResourceFrameAdvancesDuringExtraction",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2485,
           "status": "RUN",
           "result": "COMPLETED",

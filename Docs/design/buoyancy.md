@@ -4,9 +4,9 @@
 **水がどれだけ強く押すか**。今は 1 つ目と 3 つ目を `WaterComponent` が両方持ち、2 つ目を
 捨てている。**表面を持つのは正しく、法則を持つのが間違い。** 形は Physics が既に知っている。
 
-実装は `Engine/Scene/Components/WaterComponent.hpp`、
+実装は `Engine/Scene/Components/Water/WaterComponent.hpp`、
 `Engine/Scene/Systems/PhysicsSystem.cpp` の `WaterBuoyancyVolume`、
-`Physics/Volume.hpp` / `Physics/ColliderVolume.hpp`。
+`Physics/Volumes/Volume.hpp` / `Physics/Volumes/ColliderVolume.hpp`。
 
 ---
 
@@ -167,7 +167,7 @@ callback で渡すか `FluidParams` に箱を持たせる。
 | 流速のある水 | 速度が `v_flow` へ収束する |
 | `depthLimit` の外 | 力ゼロ |
 
-float は `EXPECT_VEC3_NEAR` 等 (`TestKit/Approx.hpp:83`)。`TEST_F` + fixture で、
+float は `EXPECT_VEC3_NEAR` 等 (`TestKit/Assertions/Approx.hpp:83`)。`TEST_F` + fixture で、
 乱数・時刻・sleep は持ち込まない (`Docs/conventions/test.md`)。表面 callback は
 `[](float, float){ return 0.0f; }` のような固定平面で足りる — **波を巻き込まずに法則だけ試せる**
 のが、`std::function` で受ける形にした理由そのもの。

@@ -37,7 +37,7 @@ GreenWare実機での連続被弾・加減速・足滑り・カメラ端・低FP
 
 ### 1. [P1] 姿勢維持の補正が関節拘束と物理状態を破る（前回追加分）
 
-場所: [RagdollSystem.cpp:698](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L698)、[StandingPose.hpp:27](../../Projects/Engine/include/Engine/Scene/Ragdoll/StandingPose.hpp#L27)
+現行の関連箇所は [姿勢の混合](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L646) と [StandingPose.hpp](../../Projects/Engine/include/Engine/Scene/Ragdoll/StandingPose.hpp#L27)。
 
 ソルバを解いた後、各骨のワールド位置と回転を独立にクランプする。根と足の位置だけをFKへ固定するため、親子間の長さや関節アンカーの一致は保持されない。
 補正後の姿勢は描画・ボーンTransformへ渡るが、通常のクランプでは剛体へ戻さない。内部の接触位置・速度と画面上の体がずれる。
@@ -48,7 +48,7 @@ GreenWare実機での連続被弾・加減速・足滑り・カメラ端・低FP
 
 ### 2. [P1] 物理対象から除外した子ボーンが、動いた親へ追従しない
 
-場所: [RagdollSystem.cpp:214](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L214)、[RagdollSystem.cpp:724](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L724)
+現行の関連箇所は [リグへ入れるボーンの選択](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L93) と [子孫への姿勢伝播](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L654)。
 
 maxDepthやprofile.IsExcludedで子孫をruntime.bonesから取り除く一方、書き戻しとスキニング行列の更新もruntime.bonesの範囲だけを対象にする。
 RagdollRig::WritePoseの「剛体を持たない骨を親に追従させる」処理は、この配列に含まれている骨にしか効かない。
@@ -58,7 +58,7 @@ RagdollRig::WritePoseの「剛体を持たない骨を親に追従させる」�
 
 ### 3. [P2] 30fpsを下回ると物理と復帰タイマーの時間がずれる
 
-場所: [RagdollSystem.cpp:627](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L627)、[RagdollSystem.cpp:681](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L681)、[RagdollSystem.cpp:712](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L712)
+現行の関連箇所は [リグを固定刻みで更新する処理](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L606)。
 
 筋力回復・Blend・Holdは実フレームdtを使う一方、物理Stepは最大1/30秒に制限され、余剰時間を捨てる。
 15fpsが続くと1秒の間に物理は0.5秒しか進まず、アニメーションと復帰タイマーだけが1秒進む。負荷が高い場面ほど反動・追従遅れ・復帰の見え方が変わる。
@@ -67,7 +67,7 @@ RagdollRig::WritePoseの「剛体を持たない骨を親に追従させる」�
 
 ### 4. [P2] 支える力を0にすると、逆に無制限の固定になる
 
-場所: [XPBDPoseAnchor.cpp:10](../../Projects/Physics/src/XPBDPoseAnchor.cpp#L10)、[XPBDPoseAnchor.cpp:36](../../Projects/Physics/src/XPBDPoseAnchor.cpp#L36)、[XPBDConstraint.cpp:98](../../Projects/Physics/src/XPBDConstraint.cpp#L98)
+場所: [XPBDPoseAnchor.cpp:10](../../Projects/Physics/src/Solver/XPBD/XPBDPoseAnchor.cpp#L10)、[XPBDPoseAnchor.cpp:36](../../Projects/Physics/src/Solver/XPBD/XPBDPoseAnchor.cpp#L36)、[XPBDConstraint.cpp:98](../../Projects/Physics/src/Solver/XPBD/XPBDConstraint.cpp#L98)
 
 maxForce/maxTorque=0のとき、アンカーはcompliance=0、maxLambda=0を渡す。共通拘束関数はmaxLambda>0の場合しか制限しないため、これは「力なし」ではなく「硬い拘束、上限なし」になる。
 rootAnchor=0、重力0、impactSlack=1によってアンカー出力が0へ落ちる経路で、意図と逆に固定が強くなる。関節ドライブも0と無制限の意味を共有しており、境界の契約を整理する必要がある。
@@ -76,7 +76,7 @@ rootAnchor=0、重力0、impactSlack=1によってアンカー出力が0へ落�
 
 ### 5. [P2] アセット準備前のBegin要求が失われる
 
-場所: [RagdollSystem.cpp:509](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L509)、[RagdollSystem.cpp:498](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L498)
+場所: [RagdollSystem.cpp:509](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L509)、[RagdollSystem.cpp:498](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L498)
 
 Begin直後にAnimatorやモデル・スケルトンが未準備だと、beginRequestedをfalseにしてreturnする。
 phaseはIdleのままで、次のフレームはモデル確認より前のIdle分岐に入り続ける。後からモデルを読み込めても、自動再試行されない。
@@ -86,7 +86,7 @@ activateOnStartも開始要求を出した時点で消費するため、この�
 
 ### 6. [P2] BlendIn途中のEndで、物理の適用率が急増する
 
-場所: [RagdollSystem.cpp:621](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L621)、[RagdollSystem.cpp:409](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L409)
+場所: [RagdollSystem.cpp:621](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L621)、[RagdollSystem.cpp:409](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L409)
 
 EndはBlendOutへ移る際にphaseTimerを0へ戻すが、開始時点のweightを保存しない。
 BlendOutは常にactivationWeightを起点に計算するため、weight=0.2で停止しても次フレームに約0.96へ跳ねる（上限1、blendOut=0.4秒、60fpsの場合）。反応を弱めようとして、逆に一瞬大きくなる。
@@ -95,7 +95,7 @@ BlendOutは常にactivationWeightを起点に計算するため、weight=0.2で�
 
 ### 7. [P2] ラグドール後の姿勢が描画カリング範囲へ反映されない
 
-場所: [AnimatorSystem.cpp:3072](../../Projects/Engine/src/Scene/Systems/AnimatorSystem.cpp#L3072)、[RagdollSystem.cpp:734](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp#L734)、[GeometryPassHelpers.cpp:532](../../Projects/Engine/src/Scene/Systems/RenderPasses/Geometry/GeometryPassHelpers.cpp#L532)
+現行の関連箇所は [Animator の更新](../../Projects/Engine/src/Scene/Systems/Animation/AnimatorSystem.cpp#L3072)、[最終姿勢の書き戻し](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp#L637)、[描画側の処理](../../Projects/Engine/src/Rendering/Passes/Geometry/SceneGeometryPassHelpers.cpp#L532)。
 
 カリング用のskinnedBoundsはAnimatorの姿勢で更新される。その後RagdollSystemが骨とスキニング行列を動かすが、範囲を更新しない。
 描画側は古い中心・半径を使うため、Passiveで本体原点から離れた死体や、大きく押された部位を誤って画面外と判定する可能性がある。

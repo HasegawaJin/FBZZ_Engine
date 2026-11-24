@@ -48,11 +48,11 @@ Engine 内部は Platform、Assets、Audio、AI、Scene、Rendering、Managed �
 | 調べたい処理 | 実装の入口 | 詳細 |
 |---|---|---|
 | 更新順、アクセス競合、待ち | [`SystemScheduler.cpp`](../../Projects/Engine/src/Core/Scheduler/SystemScheduler.cpp)、[`TaskSystem.cpp`](../../Projects/Engine/src/Core/Concurrency/TaskSystem.cpp) | [大量個体処理](ecs-bulk-processing.md) |
-| シーンから描画データを作る | [`RenderSceneExtractor.cpp`](../../Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp) | [抽出作業領域](runtime-workset-optimization.md) · [静的メッシュの再利用](static-mesh-render-reuse.md) |
-| 描画のキュー、描画可否 | [`RenderThread.cpp`](../../Projects/Graphics/src/Renderer/RenderThread.cpp)、[`ViewPipeline.cpp`](../../Projects/Graphics/src/Pipeline/ViewPipeline.cpp) | [描画スレッド](render-thread.md) · [ビュー別カリング](view-culling.md) |
-| 衝突候補と形状クエリ | [`PhysicsSolver.cpp`](../../Projects/Physics/src/PhysicsSolver.cpp)、[`World.cpp`](../../Projects/Physics/src/World.cpp) | [差分 BroadPhase](broadphase-incremental.md) · [物理クエリ作業領域](runtime-workset-optimization.md#physics-query) |
-| C# の呼び出しとデータ接続 | [`ManagedScriptAdapter.cpp`](../../Projects/Engine/src/Scene/Managed/ManagedScriptAdapter.cpp) | [C# ホスト](csharp-scripting.md) · [Component サービス](csharp-component-services.md) |
-| アセットの読み込み・公開、ワールドの常駐 | [`AssetStreaming.cpp`](../../Projects/Engine/src/Asset/AssetStreaming.cpp)、[`WorldPartition.cpp`](../../Projects/Engine/src/Scene/WorldPartition.cpp) | [アセット](asset-streaming.md) · [World Partition](world-partition-pcg.md) |
+| シーンから描画データを作る | [`RenderSceneExtractor.cpp`](../../Projects/Engine/src/Rendering/Extraction/RenderSceneExtractor.cpp) | [抽出作業領域](runtime-workset-optimization.md) · [静的メッシュの再利用](static-mesh-render-reuse.md) |
+| 描画のキュー、描画可否 | [`RenderThread.cpp`](../../Projects/Graphics/src/Renderer/Commands/RenderThread.cpp)、[`ViewPipeline.cpp`](../../Projects/Graphics/src/Pipeline/View/ViewPipeline.cpp) | [描画スレッド](render-thread.md) · [ビュー別カリング](view-culling.md) |
+| 衝突候補と形状クエリ | [`PhysicsSolver.cpp`](../../Projects/Physics/src/Collision/NarrowPhase/PhysicsSolver.cpp)、[`World.cpp`](../../Projects/Physics/src/World/World.cpp) | [差分 BroadPhase](broadphase-incremental.md) · [物理クエリ作業領域](runtime-workset-optimization.md#physics-query) |
+| C# の呼び出しとデータ接続 | [`ManagedScriptAdapter.cpp`](../../Projects/Engine/src/Scene/Managed/Runtime/ManagedScriptAdapter.cpp) | [C# ホスト](csharp-scripting.md) · [Component サービス](csharp-component-services.md) |
+| アセットの読み込み・公開、ワールドの常駐 | [`AssetStreaming.cpp`](../../Projects/Engine/src/Asset/Streaming/AssetStreaming.cpp)、[`WorldPartition.cpp`](../../Projects/Engine/src/Scene/World/WorldPartition.cpp) | [アセット](asset-streaming.md) · [World Partition](world-partition-pcg.md) |
 | 計測・実行経路の確認 | [Profiler](profiler.md) · [PIX](pix-profiling.md) | [最適化の計測仕様](runtime-performance.md#比較計測の手順) · [ベンチマーク](../benchmarks/README.md) |
 
 仕様を変えるときは、データの正本、書き込み主体、同期境界、失効条件、既定の代替経路を明記する。機能の回帰と速度の比較は別の証拠で残す。検証の入口は [AI 検証手順](ai-verification-loop.md) と [テスト規約](../conventions/test.md)。

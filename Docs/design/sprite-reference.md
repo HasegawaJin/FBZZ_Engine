@@ -5,7 +5,7 @@ Texture を切り分けた 1 コマ (Sprite) を、シーン・マテリアル�
 
 - 実装: `Engine/Asset/TextureAsset.{hpp,cpp}` (解決)、`Engine/Asset/GuidRefCodec.cpp` (保存形)、
   `Engine/Asset/TexDescSerializer.cpp` (.meta)、`Editor/Panels/SpriteEditorPanel.cpp` (編集)
-- 前提: `Engine/Asset/GuidRefCodec.hpp` の「guid が権威 / `|` 以降は人向けのヒント」規約。
+- 前提: `Engine/Asset/References/GuidRefCodec.hpp` の「guid が権威 / `|` 以降は人向けのヒント」規約。
   Sprite はその規約をサブアセットへ広げただけで、新しい構文を 1 つも足していない
 
 ---
@@ -74,7 +74,7 @@ Single かつトークン == ファイル名  → ResolvedAsImplicitSingle
 ので、**エラーにならずアトラス全面が出る**。受けられない欄は入り口で断る。
 
 宣言は**欄の拡張子フィルター**で行う。`".sprite"` を含むフィルターだけが Sprite を受け、
-ピッカーがコマを並べ、D&D を受理する (`Editor/Util/ImGuiWidgets.hpp` の `kSpriteAssetFilter`)。
+ピッカーがコマを並べ、D&D を受理する (`Editor/UI/Widgets/ImGuiWidgets.hpp` の `kSpriteAssetFilter`)。
 フィルターは全部の欄が既に持っているので、新しいメタデータも仮想関数も足さずに済む。
 
 | 受ける欄 | 矩形を読む場所 |
@@ -98,7 +98,7 @@ GPU のテクスチャを作らずに画像を自前で展開して縮めるの�
 ## 4. ID の寿命
 
 1. `id` は**発行一度きり**。リネーム・矩形移動・並び替えでは変えない
-2. 再スライスは重なり面積で既存へ畳み込む (`Editor/Util/SpriteSlicer.hpp`)。
+2. 再スライスは重なり面積で既存へ畳み込む (`Editor/Asset/Authoring/SpriteSlicer.hpp`)。
    Smart は ID・名前・pivot・Border を残して**矩形だけ**合わせ直し、Safe は重なった
    既存に一切触れない。どれも人が「この絵のための値」として詰めたもので、
    切り直しの意図は位置の修正でしかない

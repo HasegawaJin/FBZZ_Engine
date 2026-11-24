@@ -149,7 +149,7 @@ frame分布は600フレーム。CPU pass値は測定後の16個の詳細snapshot
 
 ## 実装と根拠
 
-- 所有・登録: `Projects/Graphics/include/Graphics/Pipeline/RenderResources.hpp`、`Projects/Graphics/src/Pipeline/RenderResources.cpp`、`ViewPipeline.cpp`。
+- 所有・登録: `Projects/Graphics/include/Graphics/Pipeline/Resources/RenderResources.hpp`、`Projects/Graphics/src/Pipeline/Resources/RenderResources.cpp`、`ViewPipeline.cpp`。
 - パス: `Projects/Graphics/src/Passes/PostProcess/VolumetricLightPass.cpp`。
 - 積分・再構成: `Assets/Shaders/PostProcess/Lighting/VolumetricLight.cs.hlsl`、`VolumetricLightUpsample.cs.hlsl`。GreenWare 側にも同じコピーを置く。
 - [NVIDIA — Fast, Flexible, Physically-Based Volumetric Light Scattering](https://developer.download.nvidia.com/assets/gameworks/papers/Fast_Flexible_Physically-Based_Volumetric_Light_Scattering.pdf)、Apply Lighting / Composite Results: 低解像度の照明を bilateral upsample し、加算合成する構成。

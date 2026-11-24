@@ -22,7 +22,11 @@ GPU の動的バッファプールは単独所有・move のみとし、切り�
 
 地形抽出の GPU キャッシュは Scene 世代ごとに持ち、その中で ResourceManager の寿命 ID と Reset 世代を分離する。複数 Scene と複数 Manager を交互に描画しても、別の地形のデータを再利用したり、生存中の作成元の資源を見失ったりしない。Scene の Clear／破棄で全作成元へ、Entity／TerrainComponent の削除でその個体の資源だけを返す。高さ・スプラットの更新はキャッシュごとの revision と照合し、最初の抽出が dirty を消しても他の作成元へ反映する。キャッシュの所有と終了処理は内部の TerrainRenderCache に閉じ、抽出処理から分離する。
 
-Engine の内部ターゲットは Platform、Assets、Audio、AI、Scene、Rendering、Managed の OBJECT モジュールとする。Scene の走査・抽出とホスト描画アダプターは EngineRendering、GPU のパス実装と資源管理は引き続き Graphics が所有する。Asset の Assimp／画像デコード、Scene の高さマップ読込み、Managed の .NET host ヘッダーはそれぞれの PRIVATE 依存へ閉じる。FBZZEngine DLL は Application 等の合成ルートと各 OBJECT を一度ずつ取り込み、自己登録 TU を維持する。configure で未所属と重複所属を拒否する。内部モジュールは独立ライブラリの ABI ではなく、Engine 内の責務・コンパイル依存の境界である。
+Engine の内部ターゲットは Platform、Assets、Audio、AI、Scene、Rendering、Managed の OBJECT モジュールとする。Scene の走査・抽出とホスト描画アダプターは EngineRendering、GPU のパス実装と資源管理は Graphics が所有する。Asset の Assimp／画像デコード、Scene の高さマップ読込み、Managed の .NET host ヘッダーはそれぞれの PRIVATE 依存へ閉じる。FBZZEngine DLL は Application 等の合成ルートと各 OBJECT を一度ずつ取り込み、自己登録 TU を維持する。configure で未所属と重複所属を拒否する。内部モジュールは Engine 内の責務・コンパイル依存の境界である。
+
+EngineRendering の実装は `Projects/Engine/src/Rendering/`、宣言は `Projects/Engine/include/Engine/Rendering/` に置く。Scene の GPU 解放処理は宣言と同じ分類の `Scene/Rendering/` に置き、描画抽出のキャッシュを扱うため EngineRendering でコンパイルする。`Extraction/` は Scene から Graphics への入力変換、`Passes/` は Scene を使うパスと Graphics への接続、`UI/` は UI 描画を担当する。`RenderScene`、`IRenderer`、`RenderGraph` と Graphics のパス資源・描画キャプチャは Graphics のヘッダーを直接読む。
+
+Scene 更新のシステムは `Scene/Systems/` に機能別に置く。保存処理は `Scene/Serialization/`、Prefab の生成と再利用は `Scene/Prefab/`、地形・水域・ワールド分割は `Scene/Terrain/`、`Scene/Water/`、`Scene/World/` に置く。物理コンポーネントは `Scene/Components/Physics/`、Scene と Physics World の同期は `Scene/Systems/Physics/` で扱う。
 
 Script のアセット要求台帳と先読み転送は ScriptAssetProxy.cpp へ閉じ、他の Component プロキシの実装から分離する。公開 C# SDK と managed POD ABI は変更しない。
 
@@ -50,7 +54,7 @@ RunFrames は既存 WaitForFrames(1) を使い、生成フレームを消費し�
 
 CMake/EngineModuleBoundaries.cmake が各 OBJECT モジュールのソースからリポジトリ内の include を再帰走査し、直接・推移依存と明示リンク先を configure 時に検査する。共通の値型・反射、アセット契約、描画契約、managed POD 契約は実装とは別に分類する。許可表を変えるときはこの設計と検査を同時に更新する。
 
-SceneContracts は Components 以下のデータ契約と、明示した TerrainSplat.hpp、TerrainSurfaceGeometry.hpp、Fields/FlowField.hpp、TomlReflector.hpp に限定する。他の Scene ヘッダーは Scene 実行系として扱い、Assets から Scene.hpp、ISystem、Systems の実行システムや BoneBakeRuntime.hpp を直接・推移的に読み込むことを拒否する。Animator のベイク姿勢・状態型は Components/BoneBakeTypes.hpp に分け、評価関数は BoneBakeRuntime.hpp に残す。走査した既存ソース・ヘッダーの include 変更も構成の再実行対象にする。
+SceneContracts は `Components/` 以下のデータ契約と、`Terrain/TerrainSplat.hpp`、`Terrain/TerrainSurfaceGeometry.hpp`、`Fields/FlowField.hpp`、`Serialization/TomlReflector.hpp` に限定する。他の Scene ヘッダーは Scene 実行系として扱い、Assets から Scene.hpp、ISystem、Systems の実行システムや BoneBakeRuntime.hpp を直接・推移的に読み込むことを拒否する。Animator のベイク姿勢・状態型は Components/BoneBakeTypes.hpp に分け、評価関数は BoneBakeRuntime.hpp に残す。走査した既存ソース・ヘッダーの include 変更も構成の再実行対象にする。
 
 | 利用側 | 許可する Engine 内部依存 |
 | --- | --- |

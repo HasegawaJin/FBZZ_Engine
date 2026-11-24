@@ -8,9 +8,29 @@
 **C++20 の Engine と C# ゲームスクリプトを備える自作 3D ゲームエンジン (Windows)。**
 数学と物理をゼロから実装し、描画を独立した **Graphics ライブラリ**へ分離している。DirectX 12 の実装は `IRenderer` の背後に閉じ、Engine が抽出した `RenderScene` を使って Forward / Deferred を構成する。RenderGraph、クラスタードライティング、C# スクリプトのホットリロード、アニメーショングラフ、NavMesh、地形・水面・天候、毛・草、VFX / 流体オーサリング、ImGui エディター、MCP 経由の AI 連携を備える。
 
-更新日 **2026-11-04**。作業ツリーの CMake プロジェクト版は **0.10.0**。以下はソースツリーの構成を説明する。個別設計と検証記録は [Docs の索引](Docs/README.md) を参照。
+作業ツリーの CMake プロジェクト版は **0.10.0**。SDK 0.9.1 で制作した旧作 [GreenWare](https://github.com/HasegawaJin/GreenWare) は別リポジトリで管理する。
 
-`Assets/` に初期シーンと表面材質・粒子制作のサンプルを収録する。ゲームスクリプトは現行 SDK の C# API で制作する。SDK 0.9.1 で制作した旧作 **GreenWare** は別リポジトリで管理する。 [GreenWare](https://github.com/HasegawaJin/GreenWare)
+## フォルダ構成
+
+すぐにコードを開くなら [機能別ソース索引](Docs/source-reading-guide.md#機能からコードを探す)。調べたい挙動ごとに、入口の関数、次に呼ばれる実装、対応するテストを引ける。
+
+| やりたいこと | 開く場所 |
+|---|---|
+| Scene、GameObject、Component、保存処理を追う | [Engine の Scene 実装](Projects/Engine/src/Scene/) · [保存と読み込み](Projects/Engine/src/Scene/Serialization/) · [Prefab](Projects/Engine/src/Scene/Prefab/) · [Component 宣言](Projects/Engine/include/Engine/Scene/Components/) |
+| 衝突、剛体、布、拘束、Raycast を追う | [物理エンジンの実装とテスト](#物理エンジン) · [Scene と Physics の接続](Projects/Engine/src/Scene/Systems/Physics/) |
+| アニメーション、NavMesh、VFX の更新を追う | [Scene の機能別システム](Projects/Engine/src/Scene/Systems/) · [Fluid の数式](Projects/Fluid/) |
+| Scene から描画入力を作る処理を追う | [Engine の Rendering](Projects/Engine/src/Rendering/) · [地形・水面・ライトなどの抽出](Projects/Engine/src/Rendering/Extraction/) |
+| GUID、モデルの取り込み、非同期ロードを追う | [アセットの登録・解決](Projects/Engine/src/Asset/) · [モデル変換](Projects/Engine/src/Asset/Model/) · [ストリーミング](Projects/Engine/src/Asset/Streaming/) |
+| 描画パス、GPU 資源、DX12、HLSL を直す | [Graphics の実装配置](#レンダラー) · [Graphics の公開 API](Projects/Graphics/include/Graphics/) · [シェーダー](Assets/Shaders/) |
+| 数式、流体ソルバー、ログ・計測を追う | [Math の実装](#数学ライブラリ) · [Fluid の実装](#vfx-と流体) · [Core の実装](Projects/Core/src/) |
+| Editor の更新、画面、Play、配布を追う | [EditorApp](Projects/Editor/src/App/) · [Panels](Projects/Editor/src/Panels/) · [操作の登録](Projects/Editor/src/Op/) · [Play](Projects/Editor/src/Play/) · [ビルドと配布](Projects/Editor/src/BuildPipeline/) |
+| C# の公開 API と C++ の接続先を追う | [ScriptApi](Projects/Managed/Fbzz.ScriptApi/) · [ManagedHost](Projects/Managed/Fbzz.ManagedHost/) · [ネイティブの実行管理](Projects/Engine/src/Scene/Managed/Runtime/) · [機能別サービス](Projects/Engine/src/Scene/Managed/Services/) |
+| 起動や外部連携を追う | [GameHub](Projects/GameHub/) · [EditorLauncher](Projects/EditorLauncher/) · [EditorMcp](Projects/EditorMcp/) · [Sandbox](Projects/Sandbox/) |
+| 基盤、ビルド、テストを調べる | [Core](Projects/Core/) · [Math](Projects/Math/) · [CMake](CMake/) · [実行手順とスクリプト](Tools/README.md) · [開発用プログラム](Projects/DevTools/README.md) · [テスト](Projects/Tests/) · [外部依存](ThirdParty/) |
+
+`Assets/` はエンジン共通アセットと作例のソース。`SDK/<version>/` は公開処理の出力先で、通常起動する Editor は `SDK/<version>/tools/<Config>/Editor/` にある。`build/<Config>/` は中間出力とテスト、`Scratch/` は一時作業に使う。 [SDK の公開と起動](#sdk-publish-とスタンドアロン)
+
+実行順を追うときは [ソースコードの読み順](Docs/source-reading-guide.md)、機能の契約を調べるときは [Docs の索引](Docs/README.md) を参照。
 
 | | |
 |---|---|
@@ -24,6 +44,7 @@
 
 ## 目次
 
+- [フォルダ構成](#フォルダ構成)
 - [規模](#規模)
 - [設計の芯](#設計の芯)
 - [アーキテクチャ](#アーキテクチャ)
@@ -108,30 +129,6 @@ Play 中は managed assembly を検証して世代単位で差し替える。Eng
 
 ## アーキテクチャ
 
-```
-FBZZ_Engine/
-├── Projects/
-│   ├── Math/           自作数学ライブラリ (依存なし)
-│   ├── Core/           Logger・メモリ・計測基盤 → FBZZCore.dll
-│   ├── Graphics/       RHI・DX12・描画パイプライン → FBZZGraphics.dll
-│   ├── Physics/        自作物理エンジン (Math のみ)
-│   ├── Fluid/          流体の数式 (Math のみ)
-│   ├── Engine/         Scene・アセット・システム・描画入力抽出 → FBZZEngine.dll
-│   ├── DevTools/       AgentLint・ApiReference などの開発ツール
-│   ├── Editor/         ImGui フルエディター
-│   ├── EditorLauncher/ スタンドアロン起動ラッパー
-│   ├── EditorMcp/      TypeScript 製 MCP サーバー (fbzz-editor-mcp)
-│   ├── GameHub/        Electron / React 製プロジェクトランチャー
-│   ├── Sandbox/        エンジン検証用の最小アプリ
-│   └── Tests/          GoogleTest スイート + TestKit + 目視ベンチ
-├── Assets/             エディター既定プロジェクト (Shaders / Scenes / Models / Fonts …)
-├── SDK/                版ごとに publish されたエンジン SDK
-├── ThirdParty/         Assimp / DirectXTex / ImGui / ImPlot / ImGuizmo / ImNodes / toml++ / stb / TinyEXR / GoogleTest
-├── CMake/              ビルド基盤 (PCH / Unity / SDK publish / カバレッジ / テスト登録)
-├── Tools/              ビルド・検証・カバレッジの入口
-└── Docs/               規約・設計ドキュメント
-```
-
 ```mermaid
 graph LR
     subgraph サードパーティ
@@ -212,6 +209,14 @@ Core: Logger / Memory / Profiler の共通基盤
 ---
 
 ## レンダラー
+
+| 追いたい処理 | 実装の場所 |
+|---|---|
+| ビューの組み立て、描画順、RenderGraph の実行 | [Pipeline](Projects/Graphics/src/Pipeline/) |
+| Forward・Deferred、照明と影、スキニング、地形と水面、VFX | [ジオメトリパスと機能別の実装](Projects/Graphics/src/Passes/Geometry/) · [ポストプロセス](Projects/Graphics/src/Passes/PostProcess/) |
+| GPU 資源とその寿命、描画コマンドとスレッド、可視性 | [Resources](Projects/Graphics/src/Renderer/Resources/) · [Commands](Projects/Graphics/src/Renderer/Commands/) · [Visibility](Projects/Graphics/src/Renderer/Visibility/) |
+| DirectX 12 の GPU 資源、コマンド、PSO・シェーダー、環境マップベイク | [DX12 実装](Projects/Graphics/src/Renderer/Platform/DX12/) |
+| 描画の検証 | [機能別の Graphics テスト](Projects/Tests/Graphics/Auto/) · [テスト用シェーダーとフィクスチャ](Projects/Tests/Graphics/Fixtures/) |
 
 ### RenderGraph
 
@@ -360,6 +365,8 @@ graph LR
 
 `Projects/Math` は他のどこにも依存しない。左手座標系・行優先・`v * M` 合成。
 
+ベクトル、行列、Quaternion の実装は [LinearAlgebra](Projects/Math/src/LinearAlgebra/)、レイ、平面、視錐台は [Geometry](Projects/Math/src/Geometry/) にある。[Math のテスト](Projects/Tests/Math/Auto/) も同じ分類で参照できる。
+
 | 型 | 内容 |
 |---|---|
 | `Vector2` / `Vector3` / `Vector4` | 基本演算・内積 / 外積・射影・補間 |
@@ -371,7 +378,19 @@ graph LR
 
 ## 物理エンジン
 
-`Projects/Physics` は `Math` にだけ依存する。
+`Projects/Physics` は `Math` を公開依存とし、剛体の TOML 読み書きに toml++ を内部で使う。
+
+| 追いたい処理 | 実装とテスト |
+|---|---|
+| コライダーの形状、三角形メッシュ、高さ場 | [Collision/Shapes](Projects/Physics/src/Collision/Shapes/) · [テスト](Projects/Tests/Physics/Auto/Collision/Shapes/) |
+| 衝突候補の絞り込み、GJK・EPA、CCD | [Collision/BroadPhase](Projects/Physics/src/Collision/BroadPhase/) · [Collision/NarrowPhase](Projects/Physics/src/Collision/NarrowPhase/) · [テスト](Projects/Tests/Physics/Auto/Collision/) |
+| Raycast、SphereCast、Overlap | [Queries](Projects/Physics/src/Queries/) · [テスト](Projects/Tests/Physics/Auto/Queries/) |
+| 物理ステップ、登録、剛体の積分 | [World](Projects/Physics/src/World/) · [Dynamics](Projects/Physics/src/Dynamics/) |
+| 接触応答、拘束、XPBD、布 | [Solver](Projects/Physics/src/Solver/) · [Constraints](Projects/Physics/src/Constraints/) · [Cloth](Projects/Physics/src/Cloth/) |
+| 浮力・流れの領域、診断用ジオメトリ | [Volumes](Projects/Physics/src/Volumes/) · [Debug](Projects/Physics/src/Debug/) |
+| Scene の剛体、コライダー、関節、接地、物理効果領域 | [Component 宣言](Projects/Engine/include/Engine/Scene/Components/Physics/) · [同期・更新システム](Projects/Engine/src/Scene/Systems/Physics/) |
+
+上記の機能別フォルダは実装とテストの配置。スタンドアロンで使う C++ ヘッダーは [Physics の公開 include](Projects/Physics/include/Physics/) にあり、SDK からも `Physics/World/World.hpp` などのパスで読む。
 
 | 機能 | 概要 |
 |---|---|
@@ -391,7 +410,7 @@ graph LR
 
 ## シーンとコンポーネント
 
-GameObject の階層と型別の `ComponentArray` を使う。世代付き EntityID から sparse set で参照を引き、密側のチャンクを走査する。削除は末尾要素で穴を埋める。 [コンポーネント格納](Projects/Engine/include/Engine/Scene/ComponentArray.hpp) · [一括処理](Docs/design/ecs-bulk-processing.md)
+GameObject の階層と型別の `ComponentArray` を使う。世代付き EntityID から sparse set で参照を引き、密側のチャンクを走査する。削除は末尾要素で穴を埋める。 [コンポーネント格納](Projects/Engine/include/Engine/Scene/Components/ComponentArray.hpp) · [一括処理](Docs/design/ecs-bulk-processing.md)
 
 | クラス | 概要 |
 |---|---|
@@ -531,6 +550,8 @@ FBX をドラッグ & ドロップすると自動インポートし、`.mat` を
 | 天候 | 降雨と濡れ表現、雲との連動。風は `ForceField` に統一してワールド解決する |
 
 ## VFX と流体
+
+Fluid の数値計算は [Gas](Projects/Fluid/src/Gas/) と [Liquid](Projects/Fluid/src/Liquid/) に分かれる。噴出源・外力・障害物の評価は [Operators](Projects/Fluid/src/Operators/)、時間刻みは [Stepping](Projects/Fluid/src/Stepping/)、波と速度場の標本化は [Fields](Projects/Fluid/src/Fields/) を参照。GPU 実行とベイクは Engine が担当する。 [流体の設計](Docs/design/fluid-library.md)
 
 | 機能 | 概要 |
 |---|---|
@@ -837,7 +858,7 @@ clang は `&&` / `||` の**項ごと**に分岐リージョンを作るため、
 | [`Docs/`](Docs/README.md) | ドキュメント全体の索引 |
 | [FBZZ Engine 内部仕様](Docs/design/engine-internal-spec.md) · [ランタイム最適化仕様](Docs/design/runtime-performance.md) | フレーム処理、所有権と同期、各最適化の適用条件と計測方法 |
 | [`AGENTS.md`](AGENTS.md) | コーディング規約・アーキテクチャ方針・禁止パターン (人にも AI にも同じものを渡す) |
-| [`CLAUDE.md`](CLAUDE.md) | ディレクトリ地図とタスク別の入口 |
+| [`CLAUDE.md`](CLAUDE.md) | Claude Code の作業手順 |
 | [`Docs/conventions/`](Docs/conventions/) | ビルド時間・Git 運用・テストの規約 |
 | [`Docs/design/`](Docs/design/) | 機能単位の設計文書 (ラグドール・オーディオ・シーケンス・流体ベイク・Blender パイプラインなど) |
 | [GreenWare の専用リポジトリ](https://github.com/HasegawaJin/GreenWare/tree/main/Assets/Docs) | デモゲームの企画書と仕様 |

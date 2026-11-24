@@ -92,7 +92,7 @@ Nodeは配布済みdependenciesのまま使用する。SDK更新や常駐サー�
 ```powershell
 npm --prefix <isolated-EditorMcp-directory> run build
 node --test "<isolated-EditorMcp-directory>/dist/tests/*.test.js"
-powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check Projects/Editor/src/Ai/EditorBusDispatcher.cpp Projects/Editor/src/Ai/Bus/EditorHandlers.cpp Projects/Tests/Editor/Auto/EditorBusDispatcherTests.cpp
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check Projects/Editor/src/Ai/Bus/EditorBusDispatcher.cpp Projects/Editor/src/Ai/Bus/EditorHandlers.cpp Projects/Tests/Editor/Auto/Ai/Bus/EditorBusDispatcherTests.cpp
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 build FBZZTestsEditorAuto
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 test -Filter 'EditorBusReliabilityTest|EditorBusProfilerSnapshotTest|EditorBusDispatcherTest|EditorBusFluidTest|BusContractParityTest'
 ```

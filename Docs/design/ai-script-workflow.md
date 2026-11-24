@@ -257,11 +257,11 @@ Playtest は既存 scenario_run / scenario_status とシナリオを使う。「
 | 接続点 | 現行ファイル |
 |---|---|
 | 読み取り catalog / inspect | `Projects/Editor/src/Ai/Bus/ScriptHandlers.cpp` |
-| transaction の command 構築 | `Projects/Editor/src/Ai/EditorBusDispatcher.cpp` |
-| Composite / Undo revision | `Projects/Editor/src/Util/UndoStack.cpp` |
+| transaction の command 構築 | `Projects/Editor/src/Ai/Bus/EditorBusDispatcher.cpp` |
+| Composite / Undo revision | `Projects/Editor/src/Scene/Editing/UndoStack.cpp` |
 | Scene 検索と MCP の上限 | `Projects/Editor/src/Ai/Bus/SceneHandlers.cpp`、`Projects/EditorMcp/src/Tools/SceneTools.ts` |
-| GUID の保存・要求検証 | `Projects/Engine/src/Scene/SceneSerializer.cpp`、既存 ScriptSystem |
+| GUID の保存・要求検証 | `Projects/Engine/src/Scene/Serialization/SceneSerializer.cpp`、既存 ScriptSystem |
 | Op の共通登録 | `Projects/Editor/src/Op/` |
 | シナリオの実行・表明 | `Projects/Editor/src/Playtest/PlaytestRunner.cpp`、`Projects/Editor/src/Ai/Bus/PlaytestHandlers.cpp`、[AI の検証ループ](ai-verification-loop.md) |
 
-2026-10-04 の段階 2 では Projects/Editor/src/ManagedScriptMetadata.cpp と ManagedScriptEditor.cpp、Projects/Managed/Fbzz.ScriptGenerator、Projects/Editor/src/Op/ScriptConfigureOperators.cpp を接続し、型 GUID の発行、partial の明示 primary、source checksum、共通 plan を実装した。単体 / native の 256 件と、実 Editor の名前・参照・保存・実行 84 手順を確認し、この時点の受入を完了した。型移行・Prefab 往復・Undo / stale / 再送は TestKit の検証であり、全条件を実 Editor の 84 手順で実行したという意味ではない。[当時の検証記録](../../Projects/Managed/README.md#2026-10-04-の検証)。追加 API・Play 更新・配布・正常終了を含む現在の結果は [Managed の最新検証記録](../../Projects/Managed/README.md)を参照する。
+2026-10-04 の段階 2 では Projects/Editor/src/Script/Managed/ManagedScriptMetadata.cpp と ManagedScriptEditor.cpp、Projects/Managed/Fbzz.ScriptGenerator、Projects/Editor/src/Op/Script/ScriptConfigureOperators.cpp を接続し、型 GUID の発行、partial の明示 primary、source checksum、共通 plan を実装した。単体 / native の 256 件と、実 Editor の名前・参照・保存・実行 84 手順を確認し、この時点の受入を完了した。型移行・Prefab 往復・Undo / stale / 再送は TestKit の検証であり、全条件を実 Editor の 84 手順で実行したという意味ではない。[当時の検証記録](../../Projects/Managed/README.md#2026-10-04-の検証)。追加 API・Play 更新・配布・正常終了を含む現在の結果は [Managed の最新検証記録](../../Projects/Managed/README.md)を参照する。

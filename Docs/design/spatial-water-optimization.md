@@ -24,14 +24,14 @@ Materialのdirty集約は今回実装していない。既存authoring snapshot/
 
 ## APIと更新境界
 
-Graphics内部の差分集約には[DeferredDirtySet.hpp](../../Projects/Graphics/src/Renderer/DeferredDirtySet.hpp)の`fbzz::renderer::spatial_detail::DeferredDirtySet<Key, ReasonBits, Hash, Equal>`を使う。単一threadの値型で、呼び出し側が通知とbatchの取り出しを直列化する。
+Graphics内部の差分集約には[DeferredDirtySet.hpp](../../Projects/Graphics/src/Renderer/Resources/DeferredDirtySet.hpp)の`fbzz::renderer::spatial_detail::DeferredDirtySet<Key, ReasonBits, Hash, Equal>`を使う。単一threadの値型で、呼び出し側が通知とbatchの取り出しを直列化する。
 
 - `Reset(ownerGeneration)`へcaller所有の非ゼロ寿命値を設定する。frame番号ではない。
 - `Mark(ownerGeneration, key, reasons)`は同じkeyをcoalesceし、古い寿命・ゼロ寿命・空reasonを拒否する。pending中のkeyとHash/Equalは安定している必要がある。
 - `TakePending(ownerGeneration, output)`はvectorをswapしてcallerへbatch所有権を渡す。処理中の追加Markは次batchへ残る。callerは前batchを使い終えてから次をtakeする。
 - 重複Markはgrow前に判定し、通常drain/resetはepoch更新でhash slotのhigh-water全走査を避ける。保持capacityとhash衝突の費用は残り、epoch wrap時だけstamp全消去を行う。
 
-Graphics内部の[RenderMeshSpatialIndex.hpp](../../Projects/Graphics/src/Renderer/RenderMeshSpatialIndex.hpp)は`Refresh(sceneGeneration, sources, options)`と`QueryUnion(frusta, output, diagnostics, mode)`を持つ。`MeshIdentity`はsource entity index/generation、renderer種別と任意lifetime値を扱う。adapterが持たないComponent寿命tokenを捏造しない。現在boundsが同じ置換は空間結果を変えない。
+Graphics内部の[RenderMeshSpatialIndex.hpp](../../Projects/Graphics/src/Renderer/Visibility/RenderMeshSpatialIndex.hpp)は`Refresh(sceneGeneration, sources, options)`と`QueryUnion(frusta, output, diagnostics, mode)`を持つ。`MeshIdentity`はsource entity index/generation、renderer種別と任意lifetime値を扱う。adapterが持たないComponent寿命tokenを捏造しない。現在boundsが同じ置換は空間結果を変えない。
 
 `Refresh`は現在snapshotの全sphere witnessを比較する。boundsが変わったordinalを`DeferredDirtySet`へ集約し、leafと重複ancestorのrefitへ渡す。既定のlegacy更新では、scene世代・membership・並び・renderer種別等の変更でtopologyを再構築し、変更K件のtree更新でも全R件のprojection/witness照合はO(R)で残る。任意のstable/journal経路は、後述するproducerの完全な変更一覧を`ApplyChanges`へ渡して、この重複した全件投影・照合を省く。認証がない場合や適用条件を満たさない場合は全件`Refresh`へ戻す。
 
@@ -72,11 +72,11 @@ producerはO(N)のidentity容量、snapshotはO(k)のjournal容量を保持す�
 
 ## snapshot・世代・候補の寿命
 
-[RenderSceneSpatialQueries.hpp](../../Projects/Graphics/src/Renderer/RenderSceneSpatialQueries.hpp)の`RenderSceneSpatialCache::Collect`がimmutable `RenderScene`を値入力へ投影する。cacheはthread_localで最大4 Scene世代。Scene/Component/Mesh/resource pointerは保持せず、値index・source scratchとweak snapshot ownerを保持する。
+[RenderSceneSpatialQueries.hpp](../../Projects/Graphics/src/Renderer/Visibility/RenderSceneSpatialQueries.hpp)の`RenderSceneSpatialCache::Collect`がimmutable `RenderScene`を値入力へ投影する。cacheはthread_localで最大4 Scene世代。Scene/Component/Mesh/resource pointerは保持せず、値index・source scratchとweak snapshot ownerを保持する。
 
 legacyまたは認証journalのない経路では、shared owner、非ゼロ`snapshotSerial`、`frameStamp`、`sceneGeneration`、padding、optionsの一致で同publicationを再利用し、serial=0なら毎回全件照合する。stableの認証journal経路は、Scene世代・件数・padding・optionsが互換なら同じgeometry versionを再利用でき、この再利用にsnapshotSerialの非ゼロは要求しない。異なるversionの差分適用には即時のbaseVersion一致も必要。poolの同addressやobject pointer一致だけではhitにしない。返却`CandidateBatch`はsnapshotのstrong ownerとordinal vectorを所有するため、後のRefresh、別view、slot evictionは既存batchを変更しない。Scene退役は別Scene query時にexpired weak ownerを検出して行い、次queryがなければ値capacityはthread終了まで残り得る。
 
-[ShadowPass.cpp](../../Projects/Graphics/src/Passes/Geometry/ShadowPass.cpp)はcascadeとSpot/Point shadow viewのunionを一度作り、同じbatchをstatic/skinned収集へ渡す。camera frustumをshadow候補へ混ぜない。candidateの元snapshotはcaster提出完了まで保持し、resource callbackが別snapshotを公開しても既存item pointerのownerを失わない。無効snapshotは元のSceneInput経路へ戻す。
+[ShadowPass.cpp](../../Projects/Graphics/src/Passes/Geometry/Lighting/ShadowPass.cpp)はcascadeとSpot/Point shadow viewのunionを一度作り、同じbatchをstatic/skinned収集へ渡す。camera frustumをshadow候補へ混ぜない。candidateの元snapshotはcaster提出完了まで保持し、resource callbackが別snapshotを公開しても既存item pointerのownerを失わない。無効snapshotは元のSceneInput経路へ戻す。
 
 既存のcastShadows、layer/LOD、colorEligible、draw distance、cascade/punctual texel判定、skinned submesh、material/geometry条件はleaf側に残る。candidate ordinalは元のObjects順へ戻す。全RenderScene object/item payloadとpreviousWorld更新も維持する。BVH導入をpayload生成削減や全consumerの可視性変更として扱わない。
 
@@ -105,7 +105,7 @@ shadow mode・dense policy・update mode・traceはprocess内の初回読取り�
 
 ## DX12 upload arenaとメモリ予算
 
-[DX12Renderer.cpp](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp)はrenderer初期化時に`FBZZ_DX12_UPLOAD_ARENA_MIB`を読み、[DX12UploadArenaSizing.hpp](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12UploadArenaSizing.hpp)の`ParseUploadArenaMiB`で完全一致の4値だけを受ける。符号、単位、空白、先頭ゼロ、空文字、範囲外の数値を変換せず、明示無効値は既定16 MiBとする。初期化後に容量を動的変更しない。
+[DX12Renderer.cpp](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12Renderer.cpp)はrenderer初期化時に`FBZZ_DX12_UPLOAD_ARENA_MIB`を読み、[DX12UploadArenaSizing.hpp](../../Projects/Graphics/src/Renderer/Platform/DX12/Commands/DX12UploadArenaSizing.hpp)の`ParseUploadArenaMiB`で完全一致の4値だけを受ける。符号、単位、空白、先頭ゼロ、空文字、範囲外の数値を変換せず、明示無効値は既定16 MiBとする。初期化後に容量を動的変更しない。
 
 arenaは2frame分のcommitted upload resourceを所有する。既定16 MiB/frameは計32 MiB、比較用64 MiB/frameは計128 MiBで、追加capacityは96 MiBになる。これは確保容量であり、実使用量、process working set、GPU専用memory使用量の実測値ではない。初期化logのbytes/frame・frameCount・totalBytesをrun記録へ残す。
 
@@ -113,13 +113,13 @@ arenaは2frame分のcommitted upload resourceを所有する。既定16 MiB/fram
 
 ## Waterのbyte契約と既存CPU処理
 
-[RenderWaterExtractor.cpp](../../Projects/Engine/src/Scene/Systems/RenderWaterExtractor.cpp)の`UpdateRippleState`はfull/tiled共通の`bakeRegion`を使う。texel-center座標、per-texelの既存ゼロtail条件、波紋の加算順、[WaterComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/WaterComponent.hpp)の`WaterRippleWave`、RGBA8量子化を維持する。tiledは順序を保つ浅い候補配列を渡し、空tileの中立値はRGB=127、A=255とする。
+[RenderWaterExtractor.cpp](../../Projects/Engine/src/Rendering/Extraction/Water/RenderWaterExtractor.cpp)の`UpdateRippleState`はfull/tiled共通の`bakeRegion`を使う。texel-center座標、per-texelの既存ゼロtail条件、波紋の加算順、[WaterComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Water/WaterComponent.hpp)の`WaterRippleWave`、RGBA8量子化を維持する。tiledは順序を保つ浅い候補配列を渡し、空tileの中立値はRGB=127、A=255とする。
 
 tile world AABBと距離判定は丸めを保守膨張する。非有限・overflowなど除外を証明できない境界は従来のper-texel経路へ残す。signature再利用、GPU resource存在確認、入力変更時の再bake、最後の波紋消失時のclear、upload経路を維持する。active非有限入力には既存抽出policyを適用し、NaNからbyteへの変換同値を主張しない。
 
 tiledは波紋の局所支持で評価数を減らし得るが、全面支持ではtile判定・候補管理費が加わる。自動適応は追加しておらず、実測前に既定化しない。波紋なしの広いocean、Gerstner計算、GPU微細波、SSR・屈折が主費用の場合の短縮も仮定しない。
 
-既存のCPU波処理には`WaterComponent::PrepareWaveCache`の係数共有と[WaterSurfaceQuery.cpp](../../Projects/Engine/src/Scene/WaterSurfaceQuery.cpp)の高さ・水面照会がある。Simulation/LiveQueryのsnapshot契約も既存のまま。この変更はそれらの再導入でも、任意のuser HLSLを自動解析してCPU浮力へ同期する仕組みでもない。波形・meshFade・height scale等のCPU/GPU契約は[water-waves.md](water-waves.md)と実装直近の注記を正本とする。shader、LOD、SSR・反射品質は変更していない。
+既存のCPU波処理には`WaterComponent::PrepareWaveCache`の係数共有と[WaterSurfaceQuery.cpp](../../Projects/Engine/src/Scene/Water/Surface/WaterSurfaceQuery.cpp)の高さ・水面照会がある。Simulation/LiveQueryのsnapshot契約も既存のまま。この変更はそれらの再導入でも、任意のuser HLSLを自動解析してCPU浮力へ同期する仕組みでもない。波形・meshFade・height scale等のCPU/GPU契約は[water-waves.md](water-waves.md)と実装直近の注記を正本とする。shader、LOD、SSR・反射品質は変更していない。
 
 ## profilerとメモリの読み方
 

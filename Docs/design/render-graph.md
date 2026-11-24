@@ -5,7 +5,7 @@
 
 # RenderGraph の依存解決と責務
 
-Engine が Scene を `RenderScene` へ抽出し、Graphics の `RenderPipeline` がパスを登録・実行する。`RenderGraph` は資源アクセスから実行計画を導く。DX12 の資源状態と GPU への記録はバックエンドが扱う。 [RenderGraph](../../Projects/Graphics/include/Graphics/Renderer/RenderGraph.hpp) · [RenderPipeline](../../Projects/Graphics/src/Pipeline/RenderPipeline.cpp) · [Graphics の境界](graphics-library.md)
+Engine が Scene を `RenderScene` へ抽出し、Graphics の `RenderPipeline` がパスを登録・実行する。`RenderGraph` は資源アクセスから実行計画を導く。DX12 の資源状態と GPU への記録はバックエンドが扱う。 [RenderGraph](../../Projects/Graphics/include/Graphics/RenderGraph/RenderGraph.hpp) · [RenderPipeline](../../Projects/Graphics/src/Pipeline/RenderPipeline.cpp) · [Graphics の境界](graphics-library.md)
 
 ---
 
@@ -44,7 +44,7 @@ FNV-1a 指紋が前フレームと一致すれば、依存解決・カリング�
 
 ### グラフ駆動のリソース状態遷移（バリア）
 
-DX12 の `DX12StateTracker` がリソースごとの状態を追跡する。束縛時に `QueueTransition` で集め、必要な時点で `ResourceBarrier` にまとめて発行する。 [DX12StateTracker](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12StateTracker.cpp)
+DX12 の `DX12StateTracker` がリソースごとの状態を追跡する。束縛時に `QueueTransition` で集め、必要な時点で `ResourceBarrier` にまとめて発行する。 [DX12StateTracker](../../Projects/Graphics/src/Renderer/Platform/DX12/Commands/DX12StateTracker.cpp)
 
 非同期コンピュートへ渡すための一括 `COMMON` 遷移では、保留中の遷移を先に更新し、残りの追跡中リソースを一巡して追加する。既存遷移の順序を保ち、各リソースを処理するたびに保留列を探し直さない。
 

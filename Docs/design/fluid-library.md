@@ -59,7 +59,7 @@ Physics    Fluid          ← 兄弟。互いを知らない
 
 ### ほどく 3 か所
 
-**1. `CurlNoise` を Math へ。** `Engine/Core/CurlNoise.hpp` → `Math/CurlNoise.hpp`、`fbzz::core` → `fbzz::math`。
+**1. `CurlNoise` を Math へ。** `Engine/Core/CurlNoise.hpp` → `Math/Noise/CurlNoise.hpp`、`fbzz::core` → `fbzz::math`。
 流体の全ファイルと `ParticleForces` が使う純粋な数学で、これが Engine にいる限り何も下へ動かせない。
 HLSL (`ParticleNoise.hlsli`) との一対一の契約はそのまま。
 

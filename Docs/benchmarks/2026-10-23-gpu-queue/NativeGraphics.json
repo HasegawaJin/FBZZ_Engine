@@ -2750,7 +2750,7 @@
       "testsuite": [
         {
           "name": "ProjectWaterAppearanceUsesReflectedTintAndCanonicalTextureAfterSaveReload",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 202,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2761,7 +2761,7 @@
         },
         {
           "name": "HybridPreviewUsesTheIndependentProjectFinAppearance",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 479,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2772,7 +2772,7 @@
         },
         {
           "name": "ProjectHybridPreviewUsesShellAndFinAppearanceAfterMaterialSaveReload",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 389,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2783,7 +2783,7 @@
         },
         {
           "name": "IncompleteHybridPreviewFallsBackAsOneCompatibleFamily",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 434,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2794,7 +2794,7 @@
         },
         {
           "name": "BuiltinParticleMaterialPreservesTintLightingAndOutputGain",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 160,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2805,7 +2805,7 @@
         },
         {
           "name": "WaterPreviewUsesTheAuthoredWavesInsteadOfFixedSmallWaves",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 187,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2816,7 +2816,7 @@
         },
         {
           "name": "ProjectFiberFamiliesCompileSharedGeometryAcrossEveryPass",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 311,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2827,7 +2827,7 @@
         },
         {
           "name": "ProjectGrassAndFurAppearanceEditReloadPreservesCoverage",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 344,
           "status": "RUN",
           "result": "COMPLETED",
@@ -2838,7 +2838,7 @@
         },
         {
           "name": "UnsupportedWaterVertexPreviewUsesSharedGeometryAfterSaveReload",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\MaterialPreviewShaderTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Editor\\Auto\\Panels\\Preview\\MaterialPreviewShaderTests.cpp",
           "line": 242,
           "status": "RUN",
           "result": "COMPLETED",

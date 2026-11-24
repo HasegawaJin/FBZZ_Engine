@@ -259,8 +259,8 @@ Scene Viewの選択導線も追加した。実OverlayボタンからWater/Spline
 | GameObject識別/Transform | Engine/Scene/GameObject.hpp、Transform.hpp、Systems/TransformSystem.cpp |
 | 参照保存/再解決 | Engine/Scene/SceneSerializer.cpp、Script.hppのObjectReferenceField |
 | Component寿命 | Scene.hppのGetComponentLifetime、ComponentArray.hpp |
-| clone forest | Editor/Util/SceneEditUtils.cppのDuplicateHierarchyRecursive、CopyHierarchyToSceneRecursive、clipboard、Engine/Scene/Scene.cppのScriptコピー |
-| Prefab | Editor/Util/PrefabSerializer.cpp、Engine/Scene/PrefabReferenceRemap.cpp、prefab-safety.md |
+| clone forest | `Projects/Editor/src/Scene/Editing/SceneEditUtils.cpp` の `DuplicateHierarchyRecursive` と `CopyHierarchyToSceneRecursive`、clipboard、Engine の Scene の Script コピー |
+| Prefab | `Projects/Editor/src/Prefab/PrefabSerializer.cpp`、`Engine/Scene/PrefabReferenceRemap.cpp`、`prefab-safety.md` |
 | 選択/Gizmo/入力 | Editor/Panels/ViewportPanel、ViewportSceneGizmos、ViewportPicking、DebugCamera |
 | 操作/Undo | Editor/src/Op、OperatorRegistry、UndoStack |
 | Water | WaterComponent、WaterSpline、WaterSystem、WaterSurfaceQuery、WaterZoneSnapshot |

@@ -214,13 +214,13 @@ Editor の exe リンクは毎回これを読む。
 
 | ヘッダー | 波及 |
 |---|---:|
-| `Math/Vector3.hpp` | 320 (74%) |
-| `Math/Quaternion.hpp` | 285 (66%) |
-| `Engine/Renderer/ResourceHandle.hpp` | 264 (61%) |
-| `Engine/Renderer/RenderState.hpp` | 259 (60%) |
-| `Engine/Renderer/Mesh.hpp` | 236 (55%) |
-| `Engine/Renderer/RenderSettings.hpp` | 219 (51%) |
-| `Engine/Scene/Script.hpp` | 100 (Engine 内 42%) |
+| `Math/LinearAlgebra/Vector3.hpp` | 320 (74%) |
+| `Math/LinearAlgebra/Quaternion.hpp` | 285 (66%) |
+| `Graphics/Renderer/Resources/ResourceHandle.hpp` | 264 (61%) |
+| `Graphics/Renderer/State/RenderState.hpp` | 259 (60%) |
+| `Graphics/Renderer/Geometry/Mesh.hpp` | 236 (55%) |
+| `Graphics/Renderer/View/RenderSettings.hpp` | 219 (51%) |
+| `Engine/Scene/Scripting/Script.hpp` | 100 (Engine 内 42%) |
 
 Math のように安定した土台が上位に来るのは正常。問題は
 `RenderSettings.hpp` (794 行) や `Script.hpp` (1,467 行) のように
@@ -254,7 +254,7 @@ export set に居ることを要求する。オブジェクトとして取り込
 **バックエンドの隔離**: DX11 / DX12 の具象ヘッダーは各モジュールの PRIVATE include
 ディレクトリにしか無く、`FBZZEngine` の include パスから `src` を外してある。
 `RendererFactory` からも DX 型は見えない。外へ出るのは
-`Engine/Renderer/BackendEntry.hpp` の `CreateDX11Backend` / `CreateDX12Backend` だけ。
+`Graphics/Renderer/Platform/BackendEntry.hpp` の `CreateDX11Backend` / `CreateDX12Backend` だけ。
 「上位レイヤーは `IRenderer&` のみ」がレビューではなくコンパイルエラーで守られる。
 
 **`FBZZEngine_EXPORTS` はモジュール側でも定義する**: `Time.hpp` / `Cursor.hpp` は

@@ -1,5 +1,7 @@
 # Sequence — 演出タイムライン (`.sequence`)
 
+この文書から廃止・移動されたファイルへ移るリンクは Git 履歴を開く。現行コードの入口は [機能別ソース索引](../source-reading-guide.md#機能からコードを探す) から引ける。
+
 複数の GameObject を 1 本の時間軸に載せ、**どの時刻でも同じ絵になる**形で再生する仕組み。
 エンジンが提供するのは「時刻 → 状態」の器 (Track / Clip / Key / Binding) だけで、
 何を演出とみなすかはゲーム側が EventTrack で受け取る。
@@ -14,12 +16,12 @@
 
 | 部品 | できること | 足りないこと |
 |---|---|---|
-| `AnimationClip` ([AnimationClip.hpp](../../Projects/Engine/include/Engine/Asset/AnimationClip.hpp)) | `NodeAnimationTrack` / `PropertyAnimationTrack` / `AnimEvent` を持つ | **1 つの Animator に閉じる**。ターゲットは Animator 所有 GameObject からの相対パスのみ |
-| `AnimationSlotPlayback` ([AnimatorComponent.hpp:235](../../Projects/Engine/include/Engine/Scene/Components/AnimatorComponent.hpp)) | レイヤーへワンショットを差し込み、フェードで戻す | 自分で `time` を進めるので**外から時刻を指定できない** |
-| `Coroutine` ([Coroutine.hpp](../../Projects/Engine/include/Engine/Scene/Coroutine.hpp)) | `co_await WaitForSeconds` で時間軸処理を直線的に書ける | 巻き戻せない / エディタに何も出ない / DLL リロードで消える |
+| `AnimationClip` ([AnimationClip.hpp](../../Projects/Engine/include/Engine/Asset/Animation/Clips/AnimationClip.hpp)) | `NodeAnimationTrack` / `PropertyAnimationTrack` / `AnimEvent` を持つ | **1 つの Animator に閉じる**。ターゲットは Animator 所有 GameObject からの相対パスのみ |
+| `AnimationSlotPlayback` ([AnimatorComponent.hpp:235](../../Projects/Engine/include/Engine/Scene/Components/Animation/AnimatorComponent.hpp)) | レイヤーへワンショットを差し込み、フェードで戻す | 自分で `time` を進めるので**外から時刻を指定できない** |
+| `Coroutine` ([Coroutine.hpp](../../Projects/Engine/include/Engine/Scene/Scripting/Coroutine.hpp)) | `co_await WaitForSeconds` で時間軸処理を直線的に書ける | 巻き戻せない / エディタに何も出ない / DLL リロードで消える |
 | `ScriptTweenProxy` | 単発の MoveTo / Value | 1 オブジェクト 1 値。合奏できない |
 | `UIAnimator` | UI 1 要素の色・位置・スケール Tween | UI 専用。3 本固定 |
-| `VFXEditor` ([VFXTimelineView.hpp](../../Projects/Editor/include/Editor/VFXEditor/Views/VFXTimelineView.hpp)) | 決定論スクラブ付きのタイムライン UI | VFX グラフ専用。他のオブジェクトを載せられない |
+| `VFXEditor` ([VFXTimelineView.hpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/850eccc3d9e60d15e39cda34a8cd28d849b9716c/Projects/Editor/include/Editor/VFXEditor/Views/VFXTimelineView.hpp)) | 決定論スクラブ付きのタイムライン UI | VFX グラフ専用。他のオブジェクトを載せられない |
 
 つまり **「時間軸で 1 つの対象を動かす」機構は 4 種類あって、「複数の対象を 1 本の時間軸へ載せる」ものだけが無い。**
 
@@ -30,7 +32,7 @@
 - **巻き戻せない。** 演出の良し悪しは数値ではなく尺で決まるのに、0.2 秒ずらすたびにゲームを頭から再生することになる。
 - **途中から再生できない。** 現在の絵が「それまでの副作用の積み重ね」なので、4 秒目の絵を見る手段が「4 秒待つ」しかない。
 - **途中終了で壊れる。** スクリプト DLL のホットリロードと Play/Stop 往復でコルーチンは破棄される
-  ([Script.hpp:1393](../../Projects/Engine/include/Engine/Scene/Script.hpp) の注記)。
+  ([Script.hpp:1393](../../Projects/Engine/include/Engine/Scene/Scripting/Script.hpp) の注記)。
   入力を止めて AI を止めた状態でコルーチンだけが消えると、**二度と操作が戻らない**。
 - **誰が何を触っているか読めない。** 1 本の演出が Camera / Animator / VFX / Audio / 4 つのマネージャーを
   順不同に叩くコードになり、後から「この揺れはどこから来たか」が追えない。
@@ -107,7 +109,7 @@
 ### 4.2 キーと補間は `.anim` の型をそのまま使う
 
 `FloatKey` / `VectorKey` / `QuaternionKey` / `Vector4Key` / `AnimInterp` / `AnimValueType` /
-`AnimTargetType` は [AnimationClip.hpp](../../Projects/Engine/include/Engine/Asset/AnimationClip.hpp) に既にある。
+`AnimTargetType` は [AnimationClip.hpp](../../Projects/Engine/include/Engine/Asset/Animation/Clips/AnimationClip.hpp) に既にある。
 **新しいキー型を作らない。**
 
 > **WHY:** 補間規則を 2 か所に持つと、`.anim` の Cubic とシーケンスの Cubic が別物になった瞬間に
@@ -208,7 +210,7 @@ World で焼くと、ボスの出現位置を変えるたびに全キーを打�
 
 #### 4.4.3 PropertyTrack
 
-`PropertyAnimationTrack` ([AnimationClip.hpp:73](../../Projects/Engine/include/Engine/Asset/AnimationClip.hpp)) を
+`PropertyAnimationTrack` ([AnimationClip.hpp:73](../../Projects/Engine/include/Engine/Asset/Animation/Clips/AnimationClip.hpp)) を
 そのまま使い、`targetPath` の代わりに `binding` で解決する。
 `AnimTargetType::MaterialProperty` があるので、**極性リングの発光を時間で上げ下げする**用途がそのまま乗る。
 
@@ -238,7 +240,7 @@ struct SequenceVfxClip {
 ```
 
 VFXTrack はターゲットの `VFXGraphComponent` を叩くだけで、グラフ自体は `.vfx` が持つ。
-スクラブ中は `editorScrubTime` へ書く ([VFXGraphComponent.hpp:91](../../Projects/Engine/include/Engine/Scene/Components/VFXGraphComponent.hpp)) —
+スクラブ中は `editorScrubTime` へ書く ([VFXGraphComponent.hpp:91](https://github.com/HasegawaJin/FBZZ_Engine/blob/22ce4192a089dff5890543d01af58f3bf7e200fc/Projects/Engine/include/Engine/Scene/Components/VFXGraphComponent.hpp)) —
 VFXEditor が既に使っている決定論スクラブの経路にそのまま乗る。
 
 #### 4.4.5 EventTrack
@@ -276,7 +278,7 @@ struct SequenceBinding {
 ```
 
 > **WHY アセットへ焼かないか:** `.scene` の `EntityRef` は GameObject の `instanceId` (GUID) で解決される
-> ([SceneSerializer.cpp:593](../../Projects/Engine/src/Scene/SceneSerializer.cpp))。これをアセットへ焼くと
+> ([SceneSerializer.cpp:593](../../Projects/Engine/src/Scene/Serialization/SceneSerializer.cpp))。これをアセットへ焼くと
 > **その .scene 専用の演出**になり、同じ登場演出を別のシーンやテスト用シーンで再生できない。
 > `AnimationClip::targetPath` が Animator 相対のパスしか持たないのと同じ判断。
 
@@ -366,7 +368,7 @@ RunMode GetRunMode() const override { return RunMode::Always; }   // 停止中�
   Audio と VFX と Event は**戻せない出来事**なので、ループしている音を止める以外は何もしない。
 
 `SequencePlayerComponent` の再生位置 (`time` / `playing`) は Reflect しない。
-Play/Stop 往復で既定値へ戻るのが正しい ([SceneSerializer 往復の性質](../../Projects/Engine/src/Scene/SceneSerializer.cpp))。
+Play/Stop 往復で既定値へ戻るのが正しい ([SceneSerializer 往復の性質](../../Projects/Engine/src/Scene/Serialization/SceneSerializer.cpp))。
 
 ### 5.5 物理を持つ対象
 
@@ -504,7 +506,7 @@ void BossDirectorComponent::OnSequenceEvent(const SequenceEventInfo& e)
 ## 7. アセット形式 (`.sequence` / TOML)
 
 `.animcontroller` と同じく TOML。GUID 参照は `guid:<32hex>|<path>`
-([GuidRefCodec.hpp](../../Projects/Engine/include/Engine/Asset/GuidRefCodec.hpp))。
+([GuidRefCodec.hpp](../../Projects/Engine/include/Engine/Asset/References/GuidRefCodec.hpp))。
 
 ```toml
 [sequence]
@@ -596,7 +598,7 @@ class SequenceImporter final : public IAssetImporter<SequenceAsset> {
 - **Record モードは作らない。** キーは数値入力とドラッグのみ。
 
 `kScrubStep = 1.0f / 60.0f` などの定数は
-[VFXEditorUiCommon.hpp](../../Projects/Editor/include/Editor/VFXEditor/Views/VFXEditorUiCommon.hpp) と揃える。
+[VFXEditorUiCommon.hpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/37570f85e28545dc51f02bdc85e7d93969ffa248/Projects/Editor/include/Editor/VFXEditor/Views/VFXEditorUiCommon.hpp) と揃える。
 
 ---
 
@@ -604,18 +606,18 @@ class SequenceImporter final : public IAssetImporter<SequenceAsset> {
 
 | ファイル | 内容 |
 |---|---|
-| `Engine/Asset/SequenceAsset.hpp` | 新規。§4 の型定義 |
-| `Engine/Asset/SequenceImporter.hpp` / `.cpp` | 新規。`.sequence` TOML ローダー |
-| `Engine/Scene/Components/SequencePlayerComponent.hpp` | 新規。§6.1 |
-| `Engine/Scene/Systems/SequenceSystem.hpp` / `.cpp` | 新規。§5 |
+| `Engine/Asset/Animation/Sequences/SequenceAsset.hpp` | 新規。§4 の型定義 |
+| `Engine/Asset/Animation/Sequences/SequenceImporter.hpp` / `.cpp` | 新規。`.sequence` TOML ローダー |
+| `Engine/Scene/Components/Animation/SequencePlayerComponent.hpp` | 新規。§6.1 |
+| `Engine/Scene/Systems/Animation/SequenceSystem.hpp` / `.cpp` | 新規。§5 |
 | `Engine/Scene/ScriptProxy/SequenceProxy.hpp` | 新規。§6.2 |
 | `Engine/Scene/ScriptProxy/ScriptProxyMembers.inl` | **末尾へ** 1 行追加 |
 | `Engine/Scene/ScriptProxy/AllScriptProxies.hpp` | include 追加 |
-| `Engine/Scene/Script.hpp` | `SequenceEventInfo` / `OnSequenceEvent` / `OnSequenceFinished` を**末尾へ** |
-| `Engine/Scene/Components/AnimatorComponent.hpp` | `AnimationSlotPlayback::driven` を 1 つ追加 |
-| `Engine/src/Scene/Systems/AnimatorSystem.cpp` | `driven` の間は `slot.time` を進めない |
+| `Engine/Scene/Scripting/Script.hpp` | `SequenceEventInfo` / `OnSequenceEvent` / `OnSequenceFinished` を**末尾へ** |
+| `Engine/Scene/Components/Animation/AnimatorComponent.hpp` | `AnimationSlotPlayback::driven` を 1 つ追加 |
+| `Engine/src/Scene/Systems/Animation/AnimatorSystem.cpp` | `driven` の間は `slot.time` を進めない |
 | `Engine/src/Scene/SceneManager.cpp` | `Phase::LateScript` へ `SequenceSystem` を登録 |
-| `Engine/src/Scene/SceneSerializer.cpp` | `SequencePlayerComponent` の入出力 |
+| `Engine/src/Scene/Serialization/SceneSerializer.cpp` | `SequencePlayerComponent` の入出力 |
 | `Editor/include/Editor/Panels/SequencePanel.hpp` / `.cpp` | 新規 |
 | `Editor/src/EditorApp.cpp` | パネル登録 |
 
@@ -739,9 +741,9 @@ Step 3 と Step 5 が実用上のマイルストーン。Step 3 の時点で、
 
 2. **補間規則とプロパティ束縛は `.anim` と共有する実体を作った。**
    §4.2 の「評価関数も 1 つで済む」を実装として満たすため、`AnimatorSystem.cpp` に
-   あったサンプリング関数を [AnimationSampling.hpp](../../Projects/Engine/include/Engine/Asset/AnimationSampling.hpp) へ、
+   あったサンプリング関数を [AnimationSampling.hpp](../../Projects/Engine/include/Engine/Asset/Animation/Clips/AnimationSampling.hpp) へ、
    `componentType + propertyName` の解決を
-   [AnimationPropertyBinding.hpp](../../Projects/Engine/include/Engine/Scene/AnimationPropertyBinding.hpp) へ出し、
+   [AnimationPropertyBinding.hpp](../../Projects/Engine/include/Engine/Scene/Animation/AnimationPropertyBinding.hpp) へ出し、
    `AnimatorSystem` はそちらを使うようにした。
 
 3. **`wrapMode` / `timeMode` は既定でアセットが正本。**

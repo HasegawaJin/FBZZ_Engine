@@ -22,7 +22,7 @@
 
 ## Starter
 
-`Engine/Asset/ParticleEmitterPresets.hpp`に8種をまとめ、Inspectorとテストが同じfactoryを使う。
+`Engine/Asset/VFX/Particles/ParticleEmitterPresets.hpp`に8種をまとめ、Inspectorとテストが同じfactoryを使う。
 
 | Starter | 表現 | 最大粒子数 | モード |
 |---|---|---:|---|
@@ -62,7 +62,7 @@ CPU更新・スクラブ・ループ検証と共有の自動境界計算はScene
 共通CPU枠の取得後に、次を既存のAgentBuild入口で直列実行する。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check Projects/Engine/src/Scene/Systems/RenderParticleExtractor.cpp Projects/Editor/src/Util/ParticleEmitterModules.cpp Projects/Tests/Engine/Auto/ParticleCurveTests.cpp Projects/Tests/Engine/Auto/ParticleCodecTests.cpp Projects/Tests/Engine/Auto/ParticleLoopInspectionTests.cpp
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check Projects/Engine/src/Rendering/Extraction/Effects/RenderParticleExtractor.cpp Projects/Editor/src/VFX/ParticleEmitterModules.cpp Projects/Tests/Engine/Auto/Asset/VFX/ParticleCurveTests.cpp Projects/Tests/Engine/Auto/Asset/VFX/ParticleCodecTests.cpp Projects/Tests/Engine/Auto/Scene/VFX/ParticleLoopInspectionTests.cpp
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 build FBZZTestsEngineAuto
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 test -Filter 'ParticleCurveTest|ParticleCodecTest|ParticleLoopInspectionTest'
 ```

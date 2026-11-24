@@ -26,14 +26,14 @@ TerrainTool をライブラリ化する方向は妥当である。ただし、�
 
 | 現在の場所 | 観察と分離の意味 |
 |---|---|
-| [ViewportPanel.cpp](../../Projects/Editor/src/Panels/ViewportPanel.cpp) | Scene View から activeScene、カメラ、入力、Scene dirty、共通 UndoStack を TerrainTool へ渡している |
+| [ViewportPanel.cpp](../../Projects/Editor/src/Panels/Viewport/ViewportPanel.cpp) | Scene View から activeScene、カメラ、入力、Scene dirty、共通 UndoStack を TerrainTool へ渡している |
 | [TerrainTool.cpp](../../Projects/Editor/src/Tools/TerrainTool.cpp) | Scene 内の地形検索、raycast、ストローク、全 TerrainComponent の before / after コピーをまとめて持つ |
 | [TerrainBrush.hpp](../../Projects/Editor/src/Tools/TerrainBrush.hpp) | 人と AI が共有する計算は分離済み。ただし TerrainComponent / scene::Transform が引数に入る |
-| [TerrainComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/TerrainComponent.hpp) / [TerrainSplat.hpp](../../Projects/Engine/include/Engine/Scene/TerrainSplat.hpp) | 高さ・穴・層重み・格子操作と、Component / asset path / dirty が混在する |
-| [SceneSerializer.cpp](../../Projects/Engine/src/Scene/SceneSerializer.cpp) | Scene 保存時に .terrain / .mat も保存する。ロード後には Scene の layerMaterials をアセットへ上書きする |
+| [TerrainComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Terrain/TerrainComponent.hpp) / [TerrainSplat.hpp](../../Projects/Engine/include/Engine/Scene/Terrain/TerrainSplat.hpp) | 高さ・穴・層重み・格子操作と、Component / asset path / dirty が混在する |
+| [SceneSerializer.cpp](../../Projects/Engine/src/Scene/Serialization/SceneSerializer.cpp) | Scene 保存時に .terrain / .mat も保存する。ロード後には Scene の layerMaterials をアセットへ上書きする |
 | [InspectorPanel_Asset.cpp](../../Projects/Editor/src/Panels/Inspector/InspectorPanel_Asset.cpp) | .terrain を一時 TerrainComponent として開く経路がある。複数文書・専用 viewport の出発点になる |
-| [RenderScene.hpp](../../Projects/Graphics/include/Graphics/Renderer/RenderScene.hpp) / [ViewPipeline.hpp](../../Projects/Graphics/include/Graphics/Pipeline/ViewPipeline.hpp) | Scene 非依存の描画入力と BuildViewPipeline が既にあり、専用ビューの基盤にできる |
-| [FbxImportTool.hpp](../../Projects/Editor/include/Editor/Import/FbxImportTool.hpp) | FBX + .meta が source、Library/Baked/<guid> の .fzasset が cache という既存パイプラインがある |
+| [RenderScene.hpp](../../Projects/Graphics/include/Graphics/Scene/RenderScene.hpp) / [ViewPipeline.hpp](../../Projects/Graphics/include/Graphics/Pipeline/View/ViewPipeline.hpp) | Scene 非依存の描画入力と BuildViewPipeline が既にあり、専用ビューの基盤にできる |
+| [FbxImportTool.hpp](../../Projects/Editor/include/Editor/Import/Fbx/FbxImportTool.hpp) | FBX + .meta が source、Library/Baked/<guid> の .fzasset が cache という既存パイプラインがある |
 
 特に保存の責任を先に決める。アセット編集画面が保存した後、古い Scene 側のコピーを保存すると編集結果を巻き戻せる。単なるコード移設では解消しない問題である。
 
@@ -259,7 +259,7 @@ texture paint を追加する場合は、圧縮済み GPU texture を編集正�
 
 地形の Undo はタイル全体コピーから変更 block / 矩形の patch にする。複数タイルをまたぐストロークは一個の compound transaction にまとめる。Mesh のトポロジ変更は生成・削除要素と ID 対応も記録する。文書を閉じる場合は履歴対象の寿命をホストで調停し、別の文書へ同じ ID のコマンドを適用しない。
 
-既存 [FluidDocument](../../Projects/Editor/include/Editor/Util/FluidDocument.hpp) の dirty、interactive edit、外部更新衝突の考え方を再利用する。ただし EditorContext を Authoring に移さず、保存と履歴接続をアダプターに分ける。FluidDocument の閉じた文書への Undo はディスク保存を行う経路を持つため、その挙動は引き継がない。新しい Undo はメモリ内の文書だけを変更し、source の書き込みは Save が行う。
+既存 [FluidDocument](../../Projects/Editor/include/Editor/Fluid/Authoring/FluidDocument.hpp) の dirty、interactive edit、外部更新衝突の考え方を再利用する。ただし EditorContext を Authoring に移さず、保存と履歴接続をアダプターに分ける。FluidDocument の閉じた文書への Undo はディスク保存を行う経路を持つため、その挙動は引き継がない。新しい Undo はメモリ内の文書だけを変更し、source の書き込みは Save が行う。
 
 組込みホストの初期編集は既存 Play 中の履歴停止契約に合わせる。専用 AssetEditor の文書編集はゲームの Play 状態と独立させ、ゲームへの反映可否を別に扱う。RE のライブ編集と同じ機能を実装したとは扱わない。
 
@@ -271,7 +271,7 @@ dirty は単調増加する内容版との比較だけで判定しない。保�
 
 ## タイル境界と地形表面の契約
 
-現在は [RenderTerrainExtractor.cpp](../../Projects/Engine/src/Scene/Systems/RenderTerrainExtractor.cpp) と [ColliderSync.cpp](../../Projects/Engine/src/Scene/Systems/ColliderSync.cpp) が、原データを変更せずに隣接高さを平均している。一方、TerrainTool の raycast や NavMesh の処理は raw heightData を参照する経路を持つ。境界の見た目・当たり・編集対象が一致しない要因になる。
+現在は [RenderTerrainExtractor.cpp](../../Projects/Engine/src/Rendering/Extraction/Terrain/RenderTerrainExtractor.cpp) と [ColliderSync.cpp](../../Projects/Engine/src/Scene/Systems/Physics/ColliderSync.cpp) が、原データを変更せずに隣接高さを平均している。一方、TerrainTool の raycast や NavMesh の処理は raw heightData を参照する経路を持つ。境界の見た目・当たり・編集対象が一致しない要因になる。
 
 Geometry に隣接タイルを値で受ける共通 surface query / triangle 生成を置く。境界高さ、法線計算に使う隣接標本、セルの対角線、穴の判定を一つの契約にし、描画・CPU Pick・Physics への入力・NavMesh・Fiber の抽出から利用する。Physics 自体は Geometry に依存せず、Engine が解決済みの高さや三角形を渡す。
 
@@ -362,7 +362,7 @@ meshoptimizer の通常の順序は indexing、vertex cache、必要なら overd
 
 MikkTSpace の結果は face corner ごとに受ける。旧 index のまま接線を平均・上書きせず、接線を含む属性で描画頂点を再構築する。xatlas も UV seam により頂点を増やすため、元の編集要素との対応を保存する。[MikkTSpace の契約](https://raw.githubusercontent.com/mmikk/MikkTSpace/master/mikktspace.h)・[xatlas の説明](https://github.com/jpcy/xatlas)
 
-現行 [Mesh.hpp](../../Projects/Graphics/include/Graphics/Renderer/Mesh.hpp) の static / skinned tangent は Vector3 で、PBR は cross(N, T) から bitangent を作る。MikkTSpace の符号を保持するには、頂点レイアウト・Engine 形式の版と旧形式の読み込み・skinning / GPU skinning・全対応シェーダーへ tangent sign を通し、B = sign * cross(N, T) の規則を揃える必要がある。corner 分割だけで鏡像 UV に対応済みとはしない。導入の受け入れ条件に鏡像 UV の normal map 描画を加える。
+現行 [Mesh.hpp](../../Projects/Graphics/include/Graphics/Renderer/Geometry/Mesh.hpp) の static / skinned tangent は Vector3 で、PBR は cross(N, T) から bitangent を作る。MikkTSpace の符号を保持するには、頂点レイアウト・Engine 形式の版と旧形式の読み込み・skinning / GPU skinning・全対応シェーダーへ tangent sign を通し、B = sign * cross(N, T) の規則を揃える必要がある。corner 分割だけで鏡像 UV に対応済みとはしない。導入の受け入れ条件に鏡像 UV の normal map 描画を加える。
 
 外部ライブラリは Cook / 高度な編集のアダプターに PRIVATE で置く。Math のみの Geometry に OpenMesh / Eigen / GLM 型を持ち込まない。libigl、Geometry Central、CGAL は高度な solver などの目的が出るまで導入しない。これは初期工数・公開ヘッダーの重さ・依存とライセンスの確認範囲を抑える設計判断である。
 
@@ -418,7 +418,7 @@ RE の新旧 resource を並行保持して handle を更新する考え方は�
 | FluidDocument | interactive edit、revision、外部更新の考え方を使う。閉じた文書への Undo 保存と EditorContext 依存はコピーしない |
 | Graphics RenderScene / BuildViewPipeline | Scene を使わない描画入力を使う。文書からの抽出、専用ビュー初期化、GPU ownership は追加する |
 
-確認した実装: [EditorOperator.hpp](../../Projects/Editor/include/Editor/Op/EditorOperator.hpp)、[AssetDirtyRegistry.hpp](../../Projects/Editor/include/Editor/Util/AssetDirtyRegistry.hpp)、[AssetDatabase.hpp](../../Projects/Engine/include/Engine/Asset/AssetDatabase.hpp)、[AssetBrowserImport.cpp](../../Projects/Editor/src/Panels/AssetBrowser/AssetBrowserImport.cpp)、[ImportCacheStore.hpp](../../Projects/Editor/include/Editor/Import/ImportCacheStore.hpp)、[FbxImportTool.cpp](../../Projects/Editor/src/Import/FbxImportTool.cpp)、[FluidDocument.cpp](../../Projects/Editor/src/Util/FluidDocument.cpp)、[AssetManager.cpp](../../Projects/Engine/src/Asset/AssetManager.cpp)。
+確認した実装: [EditorOperator.hpp](../../Projects/Editor/include/Editor/Op/EditorOperator.hpp)、[AssetDirtyRegistry.hpp](../../Projects/Editor/include/Editor/Asset/Storage/AssetDirtyRegistry.hpp)、[AssetDatabase.hpp](../../Projects/Engine/include/Engine/Asset/AssetDatabase.hpp)、[AssetBrowserImport.cpp](../../Projects/Editor/src/Panels/AssetBrowser/AssetBrowserImport.cpp)、[ImportCacheStore.hpp](../../Projects/Editor/include/Editor/Import/Settings/ImportCacheStore.hpp)、[FbxImportTool.cpp](../../Projects/Editor/src/Import/Fbx/FbxImportTool.cpp)、[FluidDocument.cpp](../../Projects/Editor/src/Fluid/Authoring/FluidDocument.cpp)、[AssetManager.cpp](../../Projects/Engine/src/Asset/AssetManager.cpp)。
 
 FBX から Library に生成する .mat は再 import で作り直される。永続的に材質を編集する場合は Assets の独立した .mat + .meta へ複製・昇格し、元 FBX の material slot と source 材質 GUID の対応を保持する。再 import がこの対応を初期化しない条件を作る。Library の材質を書いて保存成功と表示しない。
 

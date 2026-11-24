@@ -346,11 +346,11 @@
       "before": "745c0297a77d17af682e90b0b64bbe47482ee8a5d07922755926d9b20d2d8947",
       "after": "a2e531c7779619efb6b096e31cdc28067af21845bdd066120c602145a1892572"
     },
-    "Projects/Tests/Engine/Auto/RenderSceneExtractorTests.cpp": {
+    "Projects/Tests/Engine/Auto/Rendering/Extraction/RenderSceneExtractorTests.cpp": {
       "before": "ea71b2b1f331f93a66d1c0a2349eaa8659a577494554da1d2c006c86816e95e7",
       "after": "a07d4a78aec44b5e94a27ca5696b60800ef41081d3fcde0ef36966d0430921bb"
     },
-    "Projects/Tests/Engine/Auto/RegularMeshRenderPerformanceTests.cpp": {
+    "Projects/Tests/Engine/Auto/Rendering/Geometry/RegularMeshRenderPerformanceTests.cpp": {
       "before": "0e48c2ae3706a27dc7f83156946a178eff91b8641d8792a14f7be56abae32b0b",
       "after": "f699c06920ab9cb9509a772b19e715119ae84bbf5147a0fe1bf2e6c3d8547486"
     },

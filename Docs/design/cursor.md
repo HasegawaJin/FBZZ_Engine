@@ -3,10 +3,10 @@
 カーソルの「拘束・表示」をスクリプトの要求スタックへ移し、プロジェクト設定には
 「絵」だけを残す。あわせて Editor の Game View に状態オーバーレイを置く。
 
-対象: [Cursor.hpp](../../Projects/Engine/include/Engine/Core/Cursor.hpp) /
-[ScriptCursorProxy.hpp](../../Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptCursorProxy.hpp) /
-[ProjectSettings.hpp](../../Projects/Engine/include/Engine/ProjectSettings.hpp) /
-[ViewportPanel.cpp](../../Projects/Editor/src/Panels/ViewportPanel.cpp)
+対象: [Cursor.hpp](../../Projects/Engine/include/Engine/Core/Platform/Cursor.hpp) /
+[ScriptCursorProxy.hpp](../../Projects/Engine/include/Engine/Scene/ScriptProxy/Input/ScriptCursorProxy.hpp) /
+[ProjectSettings.hpp](../../Projects/Engine/include/Engine/Project/ProjectSettings.hpp) /
+[ViewportPanel.cpp](../../Projects/Editor/src/Panels/Viewport/ViewportPanel.cpp)
 
 ---
 

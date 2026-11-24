@@ -60,7 +60,7 @@ Assets/Sounds/hit.wav ──▶ RIFF parse ────────────�
 
 ---
 
-## 4. Layer 1 — Synth コア (`Engine/Audio/Synth.hpp` / `Synth.cpp`)
+## 4. Layer 1 — Synth コア (`Engine/Audio/Synthesis/Synth.hpp` / `Synth.cpp`)
 
 XAudio2 にも Scene にも依存しない純粋な PCM 生成器。決定論的で、同じ `SynthSpec` からは
 常に同じバイト列が出る (`seed` を含むため Noise も再現する)。
@@ -68,7 +68,7 @@ XAudio2 にも Scene にも依存しない純粋な PCM 生成器。決定論的
 ### 4.1 `SynthSpec`
 
 sfxr 由来のパラメーター集合を整理したもの。**依存ゼロの POD** として
-`Engine/Audio/SynthSpec.hpp` に単独で置く (ScriptProxy ヘッダーから include するため)。
+`Engine/Audio/Synthesis/SynthSpec.hpp` に単独で置く (ScriptProxy ヘッダーから include するため)。
 
 ```cpp
 enum class SynthWave : uint8_t { Sine, Square, Saw, Triangle, Noise };
@@ -144,7 +144,7 @@ enum class SynthPreset : uint8_t {
 
 ---
 
-## 5. Layer 2 — `.synth` アセット (`Engine/Asset/SynthAsset.hpp` / `.cpp`)
+## 5. Layer 2 — `.synth` アセット (`Engine/Asset/Audio/SynthAsset.hpp` / `.cpp`)
 
 `.physmat` と同じ native アセットの型。TOML で保存し、`.meta` / guid を持つ。
 
@@ -178,12 +178,12 @@ seed           = 7
 | [AssetBrowserCreate.cpp](../../Projects/Editor/src/Panels/AssetBrowser/AssetBrowserCreate.cpp) | Create メニューにプリセット選択付き `.synth` 生成 |
 | [AssetBrowserImport.cpp:49](../../Projects/Editor/src/Panels/AssetBrowser/AssetBrowserImport.cpp#L49) | native 扱い (インポート対象外) に追加 |
 | [AssetBrowserItems.cpp:260](../../Projects/Editor/src/Panels/AssetBrowser/AssetBrowserItems.cpp#L260) | バッジ `SYNTH` と色 |
-| [AssetBrowserPanel.cpp:49](../../Projects/Editor/src/Panels/AssetBrowserPanel.cpp#L49) | `TypeFilter::Audio` に `.synth` を追加 |
-| [ImGuiReflector.hpp:87](../../Projects/Editor/include/Editor/ImGuiReflector.hpp#L87) / [:542](../../Projects/Editor/include/Editor/ImGuiReflector.hpp#L542) | `clipPath` フィルタを `.wav,.mp3,.ogg,.flac,.synth` に**統一** (現在 2 種類ある) |
-| [ImportSettingsSchema.cpp:37](../../Projects/Editor/src/Import/ImportSettingsSchema.cpp#L37) | `ImportCategory::Native` へ。`.flac` は `Audio` へ |
-| [EditorApp_CommandPalette.cpp:43](../../Projects/Editor/src/EditorApp_CommandPalette.cpp#L43) | クイックオープンの拡張子一覧 |
+| [AssetBrowserPanel.cpp:49](../../Projects/Editor/src/Panels/AssetBrowser/AssetBrowserPanel.cpp#L49) | `TypeFilter::Audio` に `.synth` を追加 |
+| [ImGuiReflector.hpp:87](../../Projects/Editor/include/Editor/Inspector/ImGuiReflector.hpp#L87) / [:542](../../Projects/Editor/include/Editor/Inspector/ImGuiReflector.hpp#L542) | `clipPath` フィルタを `.wav,.mp3,.ogg,.flac,.synth` に**統一** (現在 2 種類ある) |
+| [ImportSettingsSchema.cpp:37](../../Projects/Editor/src/Import/Settings/ImportSettingsSchema.cpp#L37) | `ImportCategory::Native` へ。`.flac` は `Audio` へ |
+| [EditorApp_CommandPalette.cpp:43](../../Projects/Editor/src/App/EditorApp_CommandPalette.cpp#L43) | クイックオープンの拡張子一覧 |
 | [EditorContext.hpp:440](../../Projects/Editor/include/Editor/EditorContext.hpp#L440) | ファイル監視によるリロード対象 |
-| [JsonReflector.hpp:405](../../Projects/Editor/include/Editor/Ai/JsonReflector.hpp#L405) | AI 経由の型名解決 |
+| [JsonReflector.hpp:405](../../Projects/Editor/include/Editor/Ai/Serialization/JsonReflector.hpp#L405) | AI 経由の型名解決 |
 
 ---
 
@@ -224,7 +224,7 @@ void ReleaseClip(ClipId clip);
 ### 6.3 ⚠ XAudio2 のバッファ寿命 — 最重要の落とし穴
 
 `XAUDIO2_BUFFER::pAudioData` は**ポインタであり、`SubmitSourceBuffer` は PCM をコピーしない**
-([XAudio2Device.cpp](../../Projects/Engine/src/Audio/XAudio2Device.cpp))。
+([XAudio2Device.cpp](../../Projects/Engine/src/Audio/Device/XAudio2Device.cpp))。
 生成した `std::vector` をローカル変数のまま渡すと、再生中に解放されてノイズかクラッシュになる。
 
 現状の `m_cache` (`unordered_map<string, WavBuffer>`) がたまたま安全なのは、
@@ -252,7 +252,7 @@ Play 側の `SynthClip` メンバーは毎回 `OnStart` で作り直す。保存
 ### 7.1 バスの定義
 
 ```cpp
-// Engine/Audio/AudioBus.hpp
+// Engine/Audio/Playback/AudioBus.hpp
 using BusIndex = uint16_t;
 inline constexpr BusIndex kInvalidBus = 0xFFFF;
 inline constexpr BusIndex kMasterBus  = 0;
@@ -331,8 +331,8 @@ XAudio2 の複数出力 (`SetOutputVoices`) へ結び、主出力のゲインを
 ## 8. Layer 5 — ScriptProxy API
 
 `SynthSpec` は依存ゼロの POD なので、`ScriptAudioProxy.hpp` から
-`Engine/Audio/SynthSpec.hpp` を直接 include する。既存プロキシも
-`Engine/Core/Cursor.hpp` や `Engine/Renderer/RenderSettings.hpp` を include しており前例に沿う。
+`Engine/Audio/Synthesis/SynthSpec.hpp` を直接 include する。既存プロキシも
+`Engine/Core/Platform/Cursor.hpp` や `Graphics/Renderer/View/RenderSettings.hpp` を include しており前例に沿う。
 
 ```cpp
 // ScriptAudioProxy への追加
@@ -391,7 +391,7 @@ audio::SynthSpec m_shotSpec{};
 
 ## 9. Layer 6 — Editor: SFX Editor パネル
 
-`Editor/include/Editor/Panels/SfxEditorPanel.hpp` + `Editor/src/Panels/SfxEditorPanel.cpp`。
+`Editor/include/Editor/Panels/SfxEditorPanel.hpp` + `Editor/src/Panels/Tools/SfxEditorPanel.cpp`。
 `EditorApp.cpp` に登録する。
 
 - **プリセット行** — Pickup / Laser / Explosion / PowerUp / Hit / Jump / Blip の 7 ボタン
@@ -463,7 +463,7 @@ RMS 周波数 `fs/(2π)·√(Σ(Δx)²/Σx²)`。必要なのは「明るいか�
 
 | 段 | 内容 | 主なファイル |
 |---|---|---|
-| 1 | Synth コア | `Engine/Audio/SynthSpec.hpp`, `Synth.hpp/.cpp` (新規) |
+| 1 | Synth コア | `Engine/Audio/Synthesis/SynthSpec.hpp`, `Synth.hpp/.cpp` (新規) |
 | 2 | `.flac` / 拡張子まわりの不整合是正 | `AssetDatabase.cpp`, `ImGuiReflector.hpp`, `ImportSettingsSchema.cpp` |
 | 3 | `.synth` アセット + ロード経路 | `Asset/SynthAsset.hpp/.cpp` (新規), `AudioManager.cpp` |
 | 4 | クリップ登録簿 (寿命・予算) | `AudioManager.hpp/.cpp` |

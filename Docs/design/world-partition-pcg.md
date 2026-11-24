@@ -6,7 +6,7 @@
 
 ## Implementation
 
-`Engine/Scene/WorldCell.hpp` is the coordinate contract used by generation, persistence, streaming and editor operations. A controller's configured grid is shared by PCG preview, generation and cell baking. The operation catalog exposes the same services to AI clients.
+`Engine/Scene/World/WorldCell.hpp` is the coordinate contract used by generation, persistence, streaming and editor operations. A controller's configured grid is shared by PCG preview, generation and cell baking. The operation catalog exposes the same services to AI clients.
 
 The pipeline takes an authored region through deterministic generation, persisted cell records, asynchronous loading and an independently baked distant representation. It uses the existing Scene, asset, instancing, scheduler and editor-operation infrastructure.
 

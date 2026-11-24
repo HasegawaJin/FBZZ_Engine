@@ -72,7 +72,7 @@ struct GeometryMaterialInput {
     const GeometryMaterialInput& material, bool gbufferPipeline);
 ```
 
-型と純粋な振り分けは `Engine/Renderer/GeometryRoute.hpp` の `fbzz::renderer` に置く。
+型と純粋な振り分けは `Graphics/Renderer/Geometry/GeometryRoute.hpp` の `fbzz::renderer` に置く。
 Engine 側の `scene::ExtractGeometryMaterial` が MaterialSlot と共有アセットから値を抽出し、
 インスタンスのブレンド・ローブ上書きと GUID を解決する。描画方式は入力値へ固定せず、
 同じ抽出結果を Forward と Deferred のビューで使う。既存パス向けの Scene overload は抽出と純粋関数を順に呼ぶ。

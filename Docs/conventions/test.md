@@ -296,7 +296,7 @@ friend へ付け替えるだけで既存テストを移行したことにしな�
 `ManagedScriptEditor` の完了・Stop 検証は `src/ManagedScriptPublicationState.hpp` に分離し、
 本番も同じ部品を使う。内部状態を捏造する friend を削除し、サービスとの接続も公開の診断・適用結果で守る。
 
-記録 fake の既存例は `Projects/Tests/Engine/Auto/AudioStreamingTests.cpp` の `IAudioDevice` と、
+記録 fake の既存例は `Projects/Tests/Engine/Auto/Audio/AudioStreamingTests.cpp` の `IAudioDevice` と、
 `Projects/Tests/Core/Auto/Scheduler/SchedulerExecutionTests.cpp` の `ISystem`。
 本体の内部を公開せず、既存の依存境界へ渡された操作を記録する。
 

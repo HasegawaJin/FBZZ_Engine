@@ -57,57 +57,57 @@ P0/P1/P2は元の実装順であり、今回の依頼で配置点に適切な範
 
 ## 汎用SplineとCamera
 
-[SplineComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/SplineComponents.hpp)の`SplineComponent`はINLINEのlocal点列とPOINT_OBJECTSの順序付きBindingを明示的に選び、`SplineFollowerComponent.spline`は曲線を持つGOを参照する。[ControlPointAdapters.hpp](../../Projects/Engine/include/Engine/Scene/ControlPointAdapters.hpp)の`ResolveSplinePoints`がowner-localの数値点列と開閉状態を返し、[GameplayComponentSystems.cpp](../../Projects/Engine/src/Scene/Systems/GameplayComponentSystems.cpp)の`SplineSystem::Update`が同じSplineを読むFollower間でその更新内の解決結果を共有する。LIVEは現在の点を読み、BAKED_STATICは数値点と`bakedClosed`を使う。追従位置や各フレームの補間標本は数値のまま保つ。
+[SplineComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/Geometry/SplineComponents.hpp)の`SplineComponent`はINLINEのlocal点列とPOINT_OBJECTSの順序付きBindingを明示的に選び、`SplineFollowerComponent.spline`は曲線を持つGOを参照する。[ControlPointAdapters.hpp](../../Projects/Engine/include/Engine/Scene/ControlPoints/ControlPointAdapters.hpp)の`ResolveSplinePoints`がowner-localの数値点列と開閉状態を返し、[GameplayComponentSystems.cpp](../../Projects/Engine/src/Scene/Systems/Gameplay/GameplayComponentSystems.cpp)の`SplineSystem::Update`が同じSplineを読むFollower間でその更新内の解決結果を共有する。LIVEは現在の点を読み、BAKED_STATICは数値点と`bakedClosed`を使う。追従位置や各フレームの補間標本は数値のまま保つ。
 
-Camera pathはCamera GOへ既存Followerを付けて曲線を参照すれば構成できる。[SplineCurve.hpp](../../Projects/Engine/include/Engine/Scene/SplineCurve.hpp)の`EvaluateSplineCurve`と`EvaluateSplineCurveTangent`をFollowerが使い、[ViewportControlPoints.cpp](../../Projects/Editor/src/Panels/Viewport/ViewportControlPoints.cpp)の候補曲線表示も同じ位置評価を使う。Camera専用の点リスト、補間器、参照形式を追加せず、通常Splineの実装を利用する。静的ベイクを使う場合、authoring側の編集表示とruntime側の保持した曲線は明示したmodeに従う。
+Camera pathはCamera GOへ既存Followerを付けて曲線を参照すれば構成できる。[SplineCurve.hpp](../../Projects/Engine/include/Engine/Scene/Geometry/SplineCurve.hpp)の`EvaluateSplineCurve`と`EvaluateSplineCurveTangent`をFollowerが使い、[ViewportControlPoints.cpp](../../Projects/Editor/src/Panels/Viewport/ViewportControlPoints.cpp)の候補曲線表示も同じ位置評価を使う。Camera専用の点リスト、補間器、参照形式を追加せず、通常Splineの実装を利用する。静的ベイクを使う場合、authoring側の編集表示とruntime側の保持した曲線は明示したmodeに従う。
 
-以前のlocal長さによる進行とscaleを省いた接線は修正済みである。[SplineCurve.cpp](../../Projects/Engine/src/Scene/SplineCurve.cpp)の`EstimateSplineCurveLength`は32区間の線分へsigned worldScaleを適用してworld長さを見積もる。`SplineSystem::Update`はその長さで速度進行を計算し、位置と接線の両方へ同じsigned scaleとworld回転を適用する。INLINEとPOINT_OBJECTSは共通の数値点列からこの経路を通るため、鏡像や非一様scaleでも位置と姿勢のTRS解釈が一致する。進行は推定総長を使う正規化parameter方式であり、局所速度には曲線parameter化の影響が残る。
+以前のlocal長さによる進行とscaleを省いた接線は修正済みである。[SplineCurve.cpp](../../Projects/Engine/src/Scene/Geometry/SplineCurve.cpp)の`EstimateSplineCurveLength`は32区間の線分へsigned worldScaleを適用してworld長さを見積もる。`SplineSystem::Update`はその長さで速度進行を計算し、位置と接線の両方へ同じsigned scaleとworld回転を適用する。INLINEとPOINT_OBJECTSは共通の数値点列からこの経路を通るため、鏡像や非一様scaleでも位置と姿勢のTRS解釈が一致する。進行は推定総長を使う正規化parameter方式であり、局所速度には曲線parameter化の影響が残る。
 
-[CameraRigComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/CameraRigComponents.hpp)の`CameraFollowComponent.target`は任意GOへの参照で、`CameraRigSystem::Update`がworld位置と必要なworld回転を読む。`offset`は`useTargetRotation`時だけtargetの回転で回し、target scaleで乗算しない。Markerを追従/look-at目標へ割り当てる既存経路はすでにある。`CameraBlendComponent.fromCamera/toCamera`はカメラ役の入力なので、単なるMarkerをCameraの代替として自動挿入しない。
+[CameraRigComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/Camera/CameraRigComponents.hpp)の`CameraFollowComponent.target`は任意GOへの参照で、`CameraRigSystem::Update`がworld位置と必要なworld回転を読む。`offset`は`useTargetRotation`時だけtargetの回転で回し、target scaleで乗算しない。Markerを追従/look-at目標へ割り当てる既存経路はすでにある。`CameraBlendComponent.fromCamera/toCamera`はカメラ役の入力なので、単なるMarkerをCameraの代替として自動挿入しない。
 
 受入は、Markerへのfollow/look-at、Spline path上のCamera、Marker欠損、二つのPrefab個体の独立、親TRS下の移動を扱う。点入力adapterの変更でCamera固有のdamping、FOV、blend時間を変更しない。
 
 ## IKとTransform制約
 
-[ConstraintComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/ConstraintComponents.hpp)と`ConstraintSystem::Update`は位置、回転、scale、Aim/LookAtを任意GOのTransformから解決する。Markerはこのtargetへ直接割り当てられる。姿勢やscaleを採用するかは制約modeの意味であり、Markerの表示サイズではない。
+[ConstraintComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/Physics/ConstraintComponents.hpp)と`ConstraintSystem::Update`は位置、回転、scale、Aim/LookAtを任意GOのTransformから解決する。Markerはこのtargetへ直接割り当てられる。姿勢やscaleを採用するかは制約modeの意味であり、Markerの表示サイズではない。
 
-[IKSolverComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/IKSolverComponent.hpp)の`IKChain`はtarget/poleのEntityIDに加えてGUIDと名前を持つ。[IKSystem.cpp](../../Projects/Engine/src/Scene/Systems/IKSystem.cpp)のTwoBone処理はtarget world位置と`targetOffset`、pole world位置を数値の解法へ渡す。`SolveAimAt`もtargetのworld位置を読む。新しい位置adapterは不要で、骨長、softness、角度制限、autoPole、足の接地を共通Markerへ移さない。
+[IKSolverComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Animation/IKSolverComponent.hpp)の`IKChain`はtarget/poleのEntityIDに加えてGUIDと名前を持つ。[IKSystem.cpp](../../Projects/Engine/src/Scene/Systems/Animation/IKSystem.cpp)のTwoBone処理はtarget world位置と`targetOffset`、pole world位置を数値の解法へ渡す。`SolveAimAt`もtargetのworld位置を読む。新しい位置adapterは不要で、骨長、softness、角度制限、autoPole、足の接地を共通Markerへ移さない。
 
 ここで「参照で足りる」は、古いEntityID/GUID/名前の複合保存が新しい欠損GUID契約を自動的に満たすという意味ではない。共通参照再対応を導入するとき、IKの専用SerializerとPrefabReferenceRemapのcustom component参照も対象に含める。名前だけによる別個体への付け直しを新しいBindingの正常復旧として扱わない。
 
 ## AIの巡回とNavMesh Link
 
-[NavMeshAgentComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/NavMeshAgentComponent.hpp)の単一`target`追従は既存経路を使える。`repathInterval`等は動く目標へのA*再計算を制御するため、Markerを導入しただけで毎フレーム`SetDestination`へ置き換えない。
+[NavMeshAgentComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Navigation/NavMeshAgentComponent.hpp)の単一`target`追従は既存経路を使える。`repathInterval`等は動く目標へのA*再計算を制御するため、Markerを導入しただけで毎フレーム`SetDestination`へ置き換えない。
 
-[NavMeshPatrolComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/NavMeshPatrolComponent.hpp)はINLINEのworld点列、または安定ID・target・wait seconds・speed world m/sを持つ行を保存する。[NavMeshPatrolSystem.cpp](../../Projects/Engine/src/Scene/Systems/NavMeshPatrolSystem.cpp)は開始・待機終了・到達とLIVEの間隔/移動距離条件で数値目的地を更新する。並べ替えでも現在行のIDと属性を保持し、現在行の削除・欠損で旧経路の移動を停止する。
+[NavMeshPatrolComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Navigation/NavMeshPatrolComponent.hpp)はINLINEのworld点列、または安定ID・target・wait seconds・speed world m/sを持つ行を保存する。[NavMeshPatrolSystem.cpp](../../Projects/Engine/src/Scene/Systems/Navigation/NavMeshPatrolSystem.cpp)は開始・待機終了・到達とLIVEの間隔/移動距離条件で数値目的地を更新する。並べ替えでも現在行のIDと属性を保持し、現在行の削除・欠損で旧経路の移動を停止する。
 
-設定済みの`agent.target`は欠損時も巡回を抑止する。[BehaviorTreeSystem.cpp](../../Projects/Engine/src/Scene/Systems/BehaviorTreeSystem.cpp)の`ExecutePatrol`は明示的に追跡targetを解除する。静止したLIVE点へ同じ目的地を繰り返し設定して到達をリセットしない。Actor自身の子孫をLIVE巡回点にする接続は拒否する。
+設定済みの`agent.target`は欠損時も巡回を抑止する。[BehaviorTreeSystem.cpp](../../Projects/Engine/src/Scene/Systems/AI/BehaviorTreeSystem.cpp)の`ExecutePatrol`は明示的に追跡targetを解除する。静止したLIVE点へ同じ目的地を繰り返し設定して到達をリセットしない。Actor自身の子孫をLIVE巡回点にする接続は拒否する。
 
-[NavMeshOffMeshLinkComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp)はworld数値または二つのtargetを選ぶ。[NavMeshBakeSystem.cpp](../../Projects/Engine/src/Scene/Systems/NavMeshBakeSystem.cpp)は捕捉した端点・設定と地形穴を含む署名で非同期結果を検証し、同じ数値から近傍polygonへ`OffMeshConnection`を作る。同じpolygon内の不要な自己リンクは作らない。
+[NavMeshOffMeshLinkComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Navigation/NavMeshOffMeshLinkComponent.hpp)はworld数値または二つのtargetを選ぶ。[NavMeshBakeSystem.cpp](../../Projects/Engine/src/Scene/Systems/Navigation/NavMeshBakeSystem.cpp)は捕捉した端点・設定と地形穴を含む署名で非同期結果を検証し、同じ数値から近傍polygonへ`OffMeshConnection`を作る。同じpolygon内の不要な自己リンクは作らない。
 
 非同期ベイク開始時の入力と、完了時の接続処理が読む入力は同じ署名の数値を使う。ベイク中にMarkerが動いた場合、新しいtargetを古いmeshへ黙って接続せず、現在入力と結果の署名を検証して再ベイク/再接続を要求する。A*、Funnel、生成したpath点とpolygonは数値のまま保持する。Sensorが検出するゲーム上の対象も単なる配置Markerに置き換えない。
 
 ## VFX、Line、Motion Warp
 
-[VFXBeamComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/VFXBeamComponent.hpp)の`fromEntity/toEntity`は既に任意GOを参照する。[VFXBeamSystem.cpp](../../Projects/Engine/src/Scene/Systems/VFXBeamSystem.cpp)の`ResolveEndpoint`はworld位置へworld offsetを加え、未設定端点はworld fallbackを使う。Markerに新しい位置adapterは不要である。
+[VFXBeamComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/VFX/VFXBeamComponent.hpp)の`fromEntity/toEntity`は既に任意GOを参照する。[VFXBeamSystem.cpp](../../Projects/Engine/src/Scene/Systems/VFX/VFXBeamSystem.cpp)の`ResolveEndpoint`はworld位置へworld offsetを加え、未設定端点はworld fallbackを使う。Markerに新しい位置adapterは不要である。
 
-[VFXLineComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/VFXLineComponent.hpp)と[VFXLineSystem.cpp](../../Projects/Engine/src/Scene/Systems/VFXLineSystem.cpp)は同じ実体参照を持つが、未設定fromは自分の位置、未設定toはowner-local `toPoint`をTRS変換する。Beamのworld fallbackと混同しない。未設定と「設定済みtargetの欠損」は区別し、`disableWhenEndpointMissing`を保持する。欠損GUIDを空へ落とすとこの区別も失われるため、参照基盤の回帰対象にする。
+[VFXLineComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/VFX/VFXLineComponent.hpp)と[VFXLineSystem.cpp](../../Projects/Engine/src/Scene/Systems/VFX/VFXLineSystem.cpp)は同じ実体参照を持つが、未設定fromは自分の位置、未設定toはowner-local `toPoint`をTRS変換する。Beamのworld fallbackと混同しない。未設定と「設定済みtargetの欠損」は区別し、`disableWhenEndpointMissing`を保持する。欠損GUIDを空へ落とすとこの区別も失われるため、参照基盤の回帰対象にする。
 
-[PresentationComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/PresentationComponents.hpp)のLineRendererは数値列とTargetPoint列を明示選択し、Local/World解釈もベイクへ保存する。Rendererへの入力とEditor候補は同じ解決済み点順序を使う。Beam、Lightning、Trailの生成線やGPU頂点は引き続き数値である。
+[PresentationComponents.hpp](../../Projects/Engine/include/Engine/Scene/Components/Gameplay/PresentationComponents.hpp)のLineRendererは数値列とTargetPoint列を明示選択し、Local/World解釈もベイクへ保存する。Rendererへの入力とEditor候補は同じ解決済み点順序を使う。Beam、Lightning、Trailの生成線やGPU頂点は引き続き数値である。
 
 spawn用途は`InstantiateAt`へMarkerを渡す。永続参照はScriptのpublic GameObject/配列設定を使い、発動時に有限poseと同Sceneの寿命を検証する。local offsetは符号付きworld scaleとrotation、rotation offsetはworld rotationとの積を使う。offsetが0ならscaleの逆変換や階層列挙を必要としない。生成後の個体は後から動かしたMarkerへ追従しない。
 
-[MotionWarpComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/MotionWarpComponent.hpp)は設定済みtargetとCAPTURED/LIVEを保存する。`WarpToTarget`は開始時にpose/durationを一度捕捉し、LIVEはposeだけを更新する。自己・子孫へのLIVE接続や欠損は拒否/中断し、開始時の拒否では既存補正を変更しない。数値`WarpTo/WarpToPose`はNUMERICへ復帰する。
+[MotionWarpComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Animation/MotionWarpComponent.hpp)は設定済みtargetとCAPTURED/LIVEを保存する。`WarpToTarget`は開始時にpose/durationを一度捕捉し、LIVEはposeだけを更新する。自己・子孫へのLIVE接続や欠損は拒否/中断し、開始時の拒否では既存補正を変更しない。数値`WarpTo/WarpToPose`はNUMERICへ復帰する。
 
 ## FlowField、Light、LOD
 
 [FlowField.hpp](../../Projects/Engine/include/Engine/Scene/Fields/FlowField.hpp)の`Sink`が旧Attractの役割を持つ。シーン配置のFlowFieldは自分のGOで中心/向きを持ち、[FlowFieldEval.cpp](../../Projects/Engine/src/Scene/Fields/FlowFieldEval.cpp)がworld Transformを数値へ写し、[FlowFieldSystem.cpp](../../Projects/Engine/src/Scene/Fields/FlowFieldSystem.cpp)が`Scene::FlowFrame`を物理前に準備する。既存のParentまたはTransform ConstraintでMarkerに追従させられる。`FlowFieldSettings`、ParticleEmitterの内蔵`localForces`、速度場の格子は数値のままにし、粒子ごとにEntity参照を解決しない。
 
-[LightComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/LightComponent.hpp)の位置/方向は所有GOのTransformを読み、[RenderLightExtractor.cpp](../../Projects/Engine/src/Scene/Systems/RenderLightExtractor.cpp)の`ExtractRenderLights`が数値GPU入力へ渡す。Markerを配置anchorにする場合、Parent/Position制約、SpotのAim/LookAt制約を使えばよい。ライト位置の第二のTargetPoint正本を無条件に追加しない。色・光度・範囲・影・flickerはLight固有の数値である。
+[LightComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Lighting/LightComponent.hpp)の位置/方向は所有GOのTransformを読み、[RenderLightExtractor.cpp](../../Projects/Engine/src/Rendering/Extraction/Lighting/RenderLightExtractor.cpp)の`ExtractRenderLights`が数値GPU入力へ渡す。Markerを配置anchorにする場合、Parent/Position制約、SpotのAim/LookAt制約を使えばよい。ライト位置の第二のTargetPoint正本を無条件に追加しない。色・光度・範囲・影・flickerはLight固有の数値である。
 
-[LODGroupComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/LODGroupComponent.hpp)は中心だけをowner原点または`centerTarget`から選ぶ。[LODSystem.cpp](../../Projects/Engine/src/Scene/Systems/LODSystem.cpp)はそのworld位置とCameraの距離を評価し、sizeには従来のowner scaleを使う。Markerのscaleはsizeへ混ぜない。欠損時は一度診断し、Rendererを全表示へ戻す。renderer集合と閾値・fadeは従来の契約を保つ。
+[LODGroupComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Geometry/LODGroupComponent.hpp)は中心だけをowner原点または`centerTarget`から選ぶ。[LODSystem.cpp](../../Projects/Engine/src/Scene/Systems/Geometry/LODSystem.cpp)はそのworld位置とCameraの距離を評価し、sizeには従来のowner scaleを使う。Markerのscaleはsizeへ混ぜない。欠損時は一度診断し、Rendererを全表示へ戻す。renderer集合と閾値・fadeは従来の契約を保つ。
 
-[LightProbeVolumeComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/LightProbeVolumeComponent.hpp)のbox、格子数、SH値、ベイク結果は数値であり、各probeをTargetPointへ変換しない。volume ownerの配置に共通Transformを使うことと、密なprobeをScene実体にすることは別の操作である。
+[LightProbeVolumeComponent.hpp](../../Projects/Engine/include/Engine/Scene/Components/Lighting/LightProbeVolumeComponent.hpp)のbox、格子数、SH値、ベイク結果は数値であり、各probeをTargetPointへ変換しない。volume ownerの配置に共通Transformを使うことと、密なprobeをScene実体にすることは別の操作である。
 
 ## 統合した操作とAPI
 

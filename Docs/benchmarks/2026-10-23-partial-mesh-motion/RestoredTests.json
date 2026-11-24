@@ -18,7 +18,7 @@
       "testsuite": [
         {
           "name": "MaterialDemandLateNativeSetupHookCompletesAPreviouslyPublishedSnapshot",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2705,
           "status": "RUN",
           "result": "COMPLETED",
@@ -29,7 +29,7 @@
         },
         {
           "name": "MaterialDemandRechecksInPlaceFrustumEditsAfterRepeatedNoDemandBoundaries",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2721,
           "status": "RUN",
           "result": "COMPLETED",
@@ -40,7 +40,7 @@
         },
         {
           "name": "MaterialDemandRechecksLayerDistanceAfterNoDemandBoundaries",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2749,
           "status": "RUN",
           "result": "COMPLETED",
@@ -51,7 +51,7 @@
         },
         {
           "name": "MaterialDemandRechecksResourceFrameAfterNoDemandBoundaries",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\ShaderReloadTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Shaders\\ShaderReloadTests.cpp",
           "line": 2773,
           "status": "RUN",
           "result": "COMPLETED",

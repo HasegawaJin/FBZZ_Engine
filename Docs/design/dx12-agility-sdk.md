@@ -226,7 +226,7 @@ SDK 指定はプロセス開始時から有効であり、Editor 設定、manage
 | `GreenWare/CMakeLists.txt`、`Projects/GameHub/Templates/{standard,empty}/CMakeLists.txt` | ゲーム EXE の適用。Scripts に適用しない |
 | `CMake/FBZZSDK.cmake`、`CMake/SDK/fbzz-sdk.toml.in`、`FBZZConfig.cmake.in` | helper・テンプレート・配布契約の SDK 公開、構成別の契約一致と有効状態 |
 | `CMake/SDK/StageFBZZSDK.cmake`、`ValidateFBZZSDK.cmake` | runtime / Editor の独立配置と必須検証 |
-| `Projects/Editor/src/BuildPipeline.cpp`、`Panels/BuildSettingsPanel.cpp` | 同じ必須契約による事前確認、階層付き配布・告知 |
+| `Projects/Editor/src/BuildPipeline/BuildPipeline.cpp`、`Panels/BuildSettingsPanel.cpp` | 同じ必須契約による事前確認、階層付き配布・告知 |
 | `Projects/GameHub/scripts/SdkFreshness.mjs`、`Projects/GameHub/src/main/configStore.ts`、`Projects/GameHub/scripts/AssembleDistribution.mjs` | 開発時・通常起動・配布生成の SDK 完全性と構成一致の判定 |
 | `CMake/SDK/TestSharedSDKTemplates.cmake`、既存 Graphics 単独テスト | export、階層・版・告知の回帰と単独描画 |
 | `Tools/AgentBuild.ps1`、`Tools/README.md` | リポジトリ内の構成済み SDK consumer を、既存 VS 環境・全体 BUSY 検査を使ってビルド |

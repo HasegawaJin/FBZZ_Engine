@@ -57,11 +57,11 @@ C++ / C# / TypeScript / JavaScript / HLSL を本体比較対象にした。Power
 |---|---|---:|---:|---|
 | Editor/Import | Assimp 行列転記 | 2 | 1 | `src/Import/AssimpNodeExport.hpp` |
 | Editor/Import | Assimp ノード走査 | 2 | 1 | `src/Import/AssimpNodeExport.hpp` |
-| Editor/Util | ローカル Transform 編集値の厳密比較 | 3 | 1 | `Editor/Util/TransformAuthoringValues.hpp` |
-| Editor/Util | マテリアル保存名 | 2 | 1 | `Editor/Util/AssetPath.hpp` |
-| Editor/Util | Prefab / VFX 保存名 | 2 | 1 | `Editor/Util/AssetPath.hpp` |
-| Editor/Util | 親ディレクトリの末尾区切り除去 | 2 | 1 | `Editor/Util/AssetPath.hpp` |
-| Editor/Util | アセットパスのドラッグデータ読み取り | 2 | 1 | `Editor/Util/AssetDragPayload.hpp` |
+| Editor/Util | ローカル Transform 編集値の厳密比較 | 3 | 1 | `Editor/Inspector/Authoring/TransformAuthoringValues.hpp` |
+| Editor/Util | マテリアル保存名 | 2 | 1 | `Editor/Asset/Storage/AssetPath.hpp` |
+| Editor/Util | Prefab / VFX 保存名 | 2 | 1 | `Editor/Asset/Storage/AssetPath.hpp` |
+| Editor/Util | 親ディレクトリの末尾区切り除去 | 2 | 1 | `Editor/Asset/Storage/AssetPath.hpp` |
+| Editor/Util | アセットパスのドラッグデータ読み取り | 2 | 1 | `Editor/Asset/Browser/AssetDragPayload.hpp` |
 | Engine/Scene/Systems | スキン描画コンポーネント探索 | 3 | 1 | `src/Scene/Systems/BonePoseHelpers.hpp` |
 | Engine/Scene/Systems | SpringBone / Ragdoll のボーン名正規化 | 2 | 1 | `src/Scene/Systems/BonePoseHelpers.hpp` |
 | Engine/Scene/Systems | ボーン行列再計算 | 3 | 1 | `src/Scene/Systems/BonePoseHelpers.cpp` |
@@ -69,14 +69,14 @@ C++ / C# / TypeScript / JavaScript / HLSL を本体比較対象にした。Power
 | Engine/Scene/Systems | ボーン GameObject 取得 | 2 | 1 | `src/Scene/Systems/BonePoseHelpers.hpp` |
 | Engine/Util | 保存浮動小数点の丸め | 3 | 1 | `src/Util/TomlFloatNormalization.cpp` |
 | Engine/Util | TOML の再帰的数値正規化 | 3 | 1 | `src/Util/TomlFloatNormalization.hpp` |
-| Fluid | ソースマスク読み込み | 2 | 1 | `Fluid/FluidSourceMask.hpp` |
+| Fluid | ソースマスク読み込み | 2 | 1 | `Fluid/Operators/FluidSourceMask.hpp` |
 | Engine/Util | 単位円内のサンプリング | 2 | 1 | `src/Util/Random.cpp` |
 | Engine/Util | 単位円上のサンプリング | 2 | 1 | `src/Util/Random.cpp` |
 | Engine/Util | 単位球内のサンプリング | 2 | 1 | `src/Util/Random.cpp` |
 | Engine/Util | 単位球上のサンプリング | 2 | 1 | `src/Util/Random.cpp` |
 | Core/Util | 大文字小文字を無視する文字列比較 | 3 | 1 | `Core/Util/StringUtils.hpp` |
 | Core/Util | 文字列の小文字化 | 4 | 1 | `Core/Util/StringUtils.hpp` |
-| Engine/Util | 符号・整数幅を維持する全消費整数解析 | 5 | 1 | `Engine/Util/NumberParsing.hpp` |
+| Engine/Util | 符号・整数幅を維持する全消費整数解析 | 5 | 1 | `Engine/Util/Text/NumberParsing.hpp` |
 | Shaders | 4 本のボーンパレット混合 | 21 | 1 | `Common/Skinning.hlsli` |
 | Shaders | normalize 系スキン材質頂点変換 | 9 | 1 | `Common/MaterialVertex.hlsli` |
 | Shaders | 標準表面材質頂点変換 | 10 | 1 | `Common/MaterialVertex.hlsli` |
@@ -95,19 +95,19 @@ C++ / C# / TypeScript / JavaScript / HLSL を本体比較対象にした。Power
 | Core/Util | 区切り末尾の契約を保持するパス比較 | 3 | 1 | `Core/Util/FileSystem.hpp` |
 | Engine/Scene/Managed | packet の境界検査と POD 読み取り | 4 | 1 | `src/Scene/Managed/ManagedPacketRead.hpp` |
 | Graphics/Passes/Geometry | ForwardDraw | 2 | 1 | `Projects/Graphics/src/Passes/Geometry/RenderSceneDraw.cpp` |
-| Engine/Scene/Systems | WriteWorldPoseToTransform | 2 | 1 | `Projects/Engine/src/Scene/Systems/WorldPoseHelpers.cpp` |
-| Engine/Scene/Systems | FindLoadedClip / FindClipBySource | 2 | 1 | `Projects/Engine/src/Scene/Systems/AnimationClipHelpers.cpp` |
-| Engine/Scene | ExecuteProfiledCallback (typed argument) | 5 | 1 | `Projects/Engine/src/Scene/Script.cpp::ExecuteProfiledCallbackWithArgument` |
-| Engine/Scene/Systems | TryAddTerrainHeightSample | 2 | 1 | `Projects/Engine/src/Scene/Systems/TerrainHeightHelpers.cpp` |
-| Editor/Fluid | EvaluateRamp | 2 | 1 | `Projects/Editor/include/Editor/Util/FluidRecipeWidgets.hpp : fluidui::EvaluateRamp` |
-| Editor/Fluid | PartCount / ListCount | 2 | 1 | `Projects/Editor/include/Editor/Util/FluidDocument.hpp : CountFluidParts` |
-| Math/UI/Particles | LerpV4 / LerpVec4 | 2 | 1 | `Projects/Math/include/Math/Vector4.hpp : Vector4::Lerp` |
+| Engine/Scene/Systems | WriteWorldPoseToTransform | 2 | 1 | `Projects/Engine/src/Scene/Systems/Transform/WorldPoseHelpers.cpp` |
+| Engine/Scene/Systems | FindLoadedClip / FindClipBySource | 2 | 1 | `Projects/Engine/src/Scene/Systems/Animation/AnimationClipHelpers.cpp` |
+| Engine/Scene | ExecuteProfiledCallback (typed argument) | 5 | 1 | `Projects/Engine/src/Scene/Scripting/Script.cpp::ExecuteProfiledCallbackWithArgument` |
+| Engine/Scene/Systems | TryAddTerrainHeightSample | 2 | 1 | `Projects/Engine/src/Scene/Systems/Geometry/TerrainHeightHelpers.cpp` |
+| Editor/Fluid | EvaluateRamp | 2 | 1 | `Projects/Editor/include/Editor/Fluid/Authoring/FluidRecipeWidgets.hpp : fluidui::EvaluateRamp` |
+| Editor/Fluid | PartCount / ListCount | 2 | 1 | `Projects/Editor/include/Editor/Fluid/Authoring/FluidDocument.hpp : CountFluidParts` |
+| Math/UI/Particles | LerpV4 / LerpVec4 | 2 | 1 | `Projects/Math/include/Math/LinearAlgebra/Vector4.hpp : Vector4::Lerp` |
 | Editor/Status | LocalClockNow | 2 | 1 | `Projects/Editor/include/Editor/Util/LocalClock.hpp : LocalClockNow` |
-| Engine/UI + Editor/Viewport | Rotate2D / RotateUIVector | 2 | 1 | `Projects/Engine/include/Engine/Scene/Components/UIRect.hpp : RotateUIVector` |
-| Engine/UI + Editor/Viewport | ExtractZRotation / ExtractUIZRotation | 2 | 1 | `Projects/Engine/include/Engine/Scene/Components/UIRect.hpp : ExtractUIZRotation` |
+| Engine/UI + Editor/Viewport | Rotate2D / RotateUIVector | 2 | 1 | `Projects/Engine/include/Engine/Scene/Components/UI/UIRect.hpp : RotateUIVector` |
+| Engine/UI + Editor/Viewport | ExtractZRotation / ExtractUIZRotation | 2 | 1 | `Projects/Engine/include/Engine/Scene/Components/UI/UIRect.hpp : ExtractUIZRotation` |
 | Editor/Panels/Inspector | Mesh/Hull Collider Undo apply | 2 | 1 | `Projects/Editor/src/Panels/Inspector/InspectorPhysics.cpp::ApplyMeshBasedColliderValue` |
 | Editor/Panels/Inspector | Capsule/Cylinder Collider draw | 2 | 1 | `Projects/Editor/src/Panels/Inspector/InspectorPhysics.cpp::DrawAxialCollider` |
-| Engine/Scene | Mesh/Hull Collider field read | 2 | 1 | `Projects/Engine/src/Scene/SceneSerializer.cpp::ReadMeshColliderFields` |
+| Engine/Scene | Mesh/Hull Collider field read | 2 | 1 | `Projects/Engine/src/Scene/Serialization/SceneSerializer.cpp::ReadMeshColliderFields` |
 | Tests/Graphics | Shader source path resolution | 7 | 1 | `Projects/Tests/TestKit/include/TestKit/Graphics/ShaderPath.hpp::ResolveShaderPath` |
 
 ## 維持する契約

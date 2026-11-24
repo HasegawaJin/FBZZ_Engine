@@ -21,7 +21,7 @@ C++20 自作 3D ゲームエンジン (Windows / DX11 + DX12)。数学・物理�
 | `.generated.hpp` の新規作成・include | 廃止済み。内蔵Componentの反射はEngine側の共通Reflectionを使う |
 | ヘッダーへの `<Windows.h>` | `.cpp` に閉じ、`WIN32_LEAN_AND_MEAN` を先に定義 (`NOMINMAX` は CMake が定義済み) |
 | エンジン `.hpp` での `using namespace` | 修飾名を使う |
-| C++20 Modules / `std::ranges` / コルーチン | `Engine/Scene/Coroutine.hpp` の自作実装 |
+| C++20 Modules / `std::ranges` / コルーチン | `Engine/Scene/Scripting/Coroutine.hpp` の自作実装 |
 | FetchContent | `ThirdParty/` へベンダー + `LICENSE` + `VERSION` + `THIRD-PARTY-NOTICES.md` へ追記 |
 | `cmake` / `msbuild` の直叩き | 人は VS Code / VS のタスク、AI は `Tools/AgentBuild.ps1` (VS 環境を知るのは `Tools/VsEnvironment.ps1` だけ) |
 | `git checkout -- <path>` / `git restore` | 戻したい対象を提示して判断を仰ぐ |

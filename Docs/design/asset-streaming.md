@@ -11,7 +11,7 @@
 
 | 設計の要素 | 実装 | 備考 |
 |---|---|---|
-| 要求台帳・`AssetLease<T>`・重複集約・完了キュー | `Engine/Asset/AssetStreaming.hpp` の `AssetStreamer` | ジョブ実行関数を注入できる。本番は `AssetStreamer::Engine()` (TaskSystem) |
+| 要求台帳・`AssetLease<T>`・重複集約・完了キュー | `Engine/Asset/Streaming/AssetStreaming.hpp` の `AssetStreamer` | ジョブ実行関数を注入できる。本番は `AssetStreamer::Engine()` (TaskSystem) |
 | 型別の経路 | `IAssetStreamChannel` / `AssetStreamChannel<T>` | `IAssetImporter` は変えず、Decode / BeginUpload / Publish を経路側に分けた |
 | 世代照合 | projectEpoch・attempt・contentRevision・deviceEpoch | slotGeneration はハンドルの gen。`AssetStore::Clear` は世代を床へ畳み旧ハンドルを蘇らせない |
 | 依存 | 必須 / 任意、循環は経路付きで失敗 | Material がテクスチャを任意依存として宣言する |
@@ -84,7 +84,7 @@ AssetTypeBoundaryTest はテスト EXE から Engine が登録した VectorField
 | `TaskSystem::Submit` | FIFO の共有スレッドプールと future | 既存基盤を再利用し、投入前の優先順位と同時実行数を Asset 側で制御する |
 | `ReloadPath` | 一部 CPU 型はハンドルを維持して差し替える | 読み込み途中の旧リビジョンを棄却する |
 
-参照実装は `Projects/Engine/include/Engine/Asset/AssetManager.hpp`、`IAssetImporter.hpp`、`TextureAsset.hpp`、`ModelAsset.hpp`、`Projects/Engine/include/Engine/Renderer/ResourceManager.hpp`、`Projects/Engine/src/Core/Concurrency/TaskSystem.cpp`。
+参照実装は `Projects/Engine/include/Engine/Asset/AssetManager.hpp`、`IAssetImporter.hpp`、`TextureAsset.hpp`、`ModelAsset.hpp`、`Projects/Graphics/include/Graphics/Renderer/Resources/ResourceManager.hpp`、`Projects/Engine/src/Core/Concurrency/TaskSystem.cpp`。
 
 現行バックエンドは [DX11 撤去設計](dx11-removal.md) に従い DX12 を対象とする。上位層は引き続き `IRenderer` 越しに接続し、DX 型を公開しない。[bindless 設計](bindless.md) のディスクリプタ遅延解放と整合させる。
 

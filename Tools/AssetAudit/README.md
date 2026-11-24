@@ -89,4 +89,4 @@ FBXテクスチャの相対パス不在はcandidate warningです。元ファイ
 
 閾値はmobile/desktop/cinematicと`thresholds`個別上書きで調整できます。これらはツールのレビュー用初期値であり、EngineやGPUの仕様上限を意味しません。
 
-実装の形式根拠は `FzAssetFormat.hpp` / `FzModelFormat.hpp` / `AnimationImporter.cpp` / `Graphics/Renderer/Mesh.hpp` / `GuidRefCodec.hpp` / `AssetDatabase.cpp`。外部仕様は実装直近の`@see`に記載しています。BlenderのFBX仕様説明と型幅確認、Nodeのzlib、W3C PNG、Microsoft DDS、TOML仕様を参照し、他製品のImporterは実行していません。
+実装の形式根拠は `FzAssetFormat.hpp` / `FzModelFormat.hpp` / `AnimationImporter.cpp` / `Graphics/Renderer/Geometry/Mesh.hpp` / `GuidRefCodec.hpp` / `AssetDatabase.cpp`。外部仕様は実装直近の`@see`に記載しています。BlenderのFBX仕様説明と型幅確認、Nodeのzlib、W3C PNG、Microsoft DDS、TOML仕様を参照し、他製品のImporterは実行していません。

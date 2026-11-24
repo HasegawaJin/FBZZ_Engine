@@ -14,4 +14,4 @@ Engineの `asset::MetaFile::Save` は保存候補と既存ファイルをTOMLと
 
 Sceneの `[editor].game_objects` は `instance_id` 順に保存し、非表示・ロック対象のIDも昇順にする。各GameObjectの `component_order` は作者が指定した表示順を保持する。共有メタデータの並びを `unordered_map` の挿入順や再ハッシュに依存させない。
 
-回帰テストは `Projects/Tests/Editor/Auto/MetaFilePersistenceTests.cpp`。同値保存時の更新時刻維持、CRLF移行、GUID・参照・Sprite IDの維持、変更した設定の反映、インポート記録の分離、Scene保存順、解析失敗時の原本保護を検証する。
+回帰テストは `Projects/Tests/Editor/Auto/Asset/Storage/MetaFilePersistenceTests.cpp`。同値保存時の更新時刻維持、CRLF移行、GUID・参照・Sprite IDの維持、変更した設定の反映、インポート記録の分離、Scene保存順、解析失敗時の原本保護を検証する。

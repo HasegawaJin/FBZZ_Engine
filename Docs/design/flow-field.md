@@ -82,7 +82,7 @@ body.ApplyForceNoWake((flow - body.GetVelocity()) * (m_water.waterDrag * mass * 
   「流速 0 の Uniform への coupling」で書ける。今の `Drag` が `strength` を [1/s] として扱っているのは、
   型の皮をかぶった結合係数だった。
 - **重力も型ではない。** 媒質の運動ではなく加速度で、正本は `PhysicsSettings::gravity`
-  (`Engine/ProjectSettings.hpp` 24 行、既定 `(0, -9.81, 0)`)。
+  (`Engine/Project/ProjectSettings.hpp` 24 行、既定 `(0, -9.81, 0)`)。
   `ParticleEmitter::MakeDefaultLocalForces` が `direction = (0,-1,0)` / `strength = 5` の **Wind を
   重力として置いている**現状 (`ParticleEmitter.hpp` 150〜163 行) は、エミッターのローカル加速度として
   場の外へ出す。粒子の重力が 5 で物理が 9.81 なのも、場に相乗りしているせいで気付けなかった。
@@ -155,9 +155,9 @@ Layer::Contains(mask, go.layer)`)。ForceField は描かれない。ここで絞
 → `SceneEnvironment` のシーン設定にする。**重力が `ProjectSettings` にあるのと同じ位置づけ。**
 局所の `FlowField` は必ず半径を持つ GameObject とし、「半径 0 なら環境風」という暗黙の規約をやめる。
 
-- `ScriptWindProxy` (`Engine/Scene/ScriptProxy/ScriptWindProxy.hpp`) は残す。スクリプトから見た
+- `ScriptWindProxy` (`Engine/Scene/ScriptProxy/Environment/ScriptWindProxy.hpp`) は残す。スクリプトから見た
   `SetDirection` / `SetStrength` / `SetTurbulence` の語彙はそのままで、触る先を `SceneEnvironment` にする
-- Create メニューの `env.windZone` "Wind Zone" (`Projects/Editor/src/Util/ObjectPresets.cpp` 882 行) は
+- Create メニューの `env.windZone` "Wind Zone" (`Projects/Editor/src/Scene/Objects/ObjectPresets.cpp` 882 行) は
   **"Ambient Wind" へ改名**。`WindZoneComponent` という型はもう無く、`MakeWindZone` は
   `ForceField` + `MakeAmbientWindForces()` を置いているだけ (同 280〜287 行) なので、
   プリセットの向き先をシーン設定へ差し替える

@@ -19,7 +19,7 @@
       "testsuite": [
         {
           "name": "RetainedSnapshotsStayImmutableAfterWorkerRetirementAndSceneClear",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 228,
           "status": "RUN",
           "result": "COMPLETED",
@@ -29,7 +29,7 @@
           "rng_seed": "15890040036443039241",
           "failures": [
             {
-              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp:260\nExpected equality of these values:\n  current->items.size()\n    Which is: 2\n  1u\n    Which is: 1\n",
+              "failure": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp:260\nExpected equality of these values:\n  current->items.size()\n    Which is: 2\n  1u\n    Which is: 1\n",
               "type": ""
             }
           ]

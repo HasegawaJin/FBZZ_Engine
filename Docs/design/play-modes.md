@@ -82,7 +82,7 @@ FBZZEditor.exe --standalone --editor-play --project "<absolute project>" --play-
 リポジトリルートから、共通ビルドを直列に実行する。`check` には変更した C++ ファイルを指定する。次はプロセスサービスと起動経路を確認する例となる。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check Projects/Editor/src/StandalonePlaySession.cpp Projects/Editor/src/EditorApp_StandalonePlay.cpp Projects/EditorLauncher/src/main.cpp Projects/Engine/src/Scene/StandaloneProjectModule.cpp
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 check Projects/Editor/src/Play/StandalonePlaySession.cpp Projects/Editor/src/App/EditorApp_StandalonePlay.cpp Projects/EditorLauncher/src/main.cpp Projects/Engine/src/Scene/Runtime/StandaloneProjectModule.cpp
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 build FBZZTestsEditorAuto
 powershell -NoProfile -ExecutionPolicy Bypass -File Tools/AgentBuild.ps1 test -Filter "StandalonePlaySessionTest|EditorSettingsTest"
 ```

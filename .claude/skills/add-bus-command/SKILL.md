@@ -31,7 +31,7 @@ description: FBZZ Editor の AI Command Bus (MCP から Editor を操作する�
 
 ## 4. テスト
 
-- `Projects/Tests/Editor/Auto/EditorBusDispatcherTests.cpp` の `@@COMMANDS_BEGIN` 一覧へ型名を足す (シーン無し・空シーン・dryRun で落ちないことを全型に対して確かめる)
+- `Projects/Tests/Editor/Auto/Ai/Bus/EditorBusDispatcherTests.cpp` の `@@COMMANDS_BEGIN` 一覧へ型名を足す (シーン無し・空シーン・dryRun で落ちないことを全型に対して確かめる)
 - 振る舞いのテストが要るなら同じディレクトリに `TEST_F` で足し、`Projects/Tests/CMakeLists.txt` に登録
 
 ## 5. 検証

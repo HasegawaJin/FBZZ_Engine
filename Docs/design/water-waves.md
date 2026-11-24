@@ -7,7 +7,7 @@ Wireframe Lit / Unlit は、水面の頂点変形を維持したまま両面の�
 帯の境目が切れないように繋ぐ**方針を取る。
 
 実装は `Assets/Shaders/Water/Water.hlsl`、
-`Projects/Graphics/src/Passes/Geometry/WaterRenderPass.cpp`、
+`Projects/Graphics/src/Passes/Geometry/Surfaces/WaterRenderPass.cpp`、
 ノイズタイルのベイクは同ディレクトリの `WaterNoiseBake.hpp`。
 
 ---

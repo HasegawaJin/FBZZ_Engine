@@ -1,5 +1,7 @@
 # VFX — プレハブとしてのエフェクト (`.vfx`)
 
+この文書から廃止・移動されたファイルへ移るリンクは Git 履歴を開く。現行コードの入口は [機能別ソース索引](../source-reading-guide.md#機能からコードを探す) から引ける。
+
 > SDK 0.9.1 の GreenWare に関する C++ Script 例は旧作の履歴資料であり、現行 SDK の authoring 手順ではない。現行のゲームコードは C# SDK を使う。
 
 エフェクトを**シーンに置く普通の GameObject 階層**として作り、`.vfx` (= プレハブ) として保存・生成する。
@@ -12,7 +14,7 @@
 
 ### 1.1 `.vfx` のノード設定はコンポーネントの影のコピーになっている
 
-[VFXGraphSystem.cpp:169-407](../../Projects/Engine/src/Scene/Systems/VFXGraphSystem.cpp) がやっているのは、
+[VFXGraphSystem.cpp:169-407](https://github.com/HasegawaJin/FBZZ_Engine/blob/37570f85e28545dc51f02bdc85e7d93969ffa248/Projects/Engine/src/Scene/Systems/VFXGraphSystem.cpp) がやっているのは、
 DAG ノードの設定を読んで **GameObject を生やし、既存コンポーネントへ写す**ことだけ。
 
 | `.vfx` のノード設定 | 生成される実体 |
@@ -31,16 +33,16 @@ DAG ノードの設定を読んで **GameObject を生やし、既存コンポ�
 `particle` が実型を共用していることが答えになっている。`ParticleEmitter` に項目を足すと `.vfx` にも自動で乗るが、
 `LightComponent` に項目を足しても `VFXLightSettings` には乗らない。乗せるには 4 箇所を追随させる必要がある。
 
-1. `VFXxxxSettings` 構造体 ([VFXGraphAsset.hpp](../../Projects/Engine/include/Engine/Asset/VFXGraphAsset.hpp))
-2. TOML codec ([VFXGraphAsset.cpp](../../Projects/Engine/src/Asset/VFXGraphAsset.cpp) — 1,492 行)
-3. AI 向けスキーマ ([VFXAuthoringSchema.hpp](../../Projects/Engine/include/Engine/Asset/VFXAuthoringSchema.hpp))
-4. ノード Inspector ([VFXGraphInspector.cpp](../../Projects/Editor/src/VFXEditor/Views/VFXGraphInspector.cpp) — 1,058 行)
+1. `VFXxxxSettings` 構造体 ([VFXGraphAsset.hpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/37570f85e28545dc51f02bdc85e7d93969ffa248/Projects/Engine/include/Engine/Asset/VFXGraphAsset.hpp))
+2. TOML codec ([VFXGraphAsset.cpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/37570f85e28545dc51f02bdc85e7d93969ffa248/Projects/Engine/src/Asset/VFXGraphAsset.cpp) — 1,492 行)
+3. AI 向けスキーマ ([VFXAuthoringSchema.hpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/524ed12ad4f52e06602c3a89b68a98a13daa8aeb/Projects/Engine/include/Engine/Asset/VFXAuthoringSchema.hpp))
+4. ノード Inspector ([VFXGraphInspector.cpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/37570f85e28545dc51f02bdc85e7d93969ffa248/Projects/Editor/src/VFXEditor/Views/VFXGraphInspector.cpp) — 1,058 行)
 
 **この 4 重メンテこそが「VFX に機能を足すのが重い」の正体**で、ノードを増やすほど増える。
 
 ### 1.2 エディタが 2 つある
 
-[Projects/Editor/src/VFXEditor/](../../Projects/Editor/src/VFXEditor/) は **13,700 行の別アプリ**で、
+[Projects/Editor/src/VFXEditor/](https://github.com/HasegawaJin/FBZZ_Engine/tree/524ed12ad4f52e06602c3a89b68a98a13daa8aeb/Projects/Editor/src/VFXEditor) は **13,700 行の別アプリ**で、
 Hierarchy・Inspector・ギズモ・選択・Undo・プレビューカメラをすべて VFX 専用に作り直している。
 一方、本体エディタ側にはそれらが完成した形で存在する。
 
@@ -440,8 +442,8 @@ Hierarchy の `SaveSelectedAsPrefab` を「サブフォルダと拡張子を受�
 | 移した先 | 中身 |
 |---|---|
 | `Engine/Scene/PrefabInstantiate.{hpp,cpp}` (新設) | `InstantiatePrefabAsset` / `PrefabOverride` / `PrefabOverrideSet` / `FindNodeAtPath` / `SetNodeAtPath` |
-| `Editor/Util/PrefabSerializer` (残る) | `SaveSelection` / `Apply` / `Revert` / `PropagateToInstances` — `Instantiate` は Engine へ委譲する 1 行 |
-| `Editor/Util/PrefabOverrides` (残る) | `ComputePrefabOverrides` / `WithoutEntry` / `FormatNodeForDisplay` (差分の**算出**はオーサリング) |
+| `Projects/Editor/src/Prefab/PrefabSerializer.cpp` | `SaveSelection` / `Apply` / `Revert` / `PropagateToInstances` — `Instantiate` は Engine へ委譲する 1 行 |
+| `Projects/Editor/src/Prefab/PrefabOverrides.cpp` | `ComputePrefabOverrides` / `WithoutEntry` / `FormatNodeForDisplay` (差分の**算出**はオーサリング) |
 
 併せて 3 つ手当てした。
 

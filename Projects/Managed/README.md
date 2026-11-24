@@ -86,7 +86,7 @@ Standalone の準備は `Scratch/ManagedStandaloneSmoke/PrepareStandalone.report
 
 検証は `Tools/AgentBuild.ps1 managed-test`。C++ と同じ排他と診断形式を使う。通常の変更には C++ の再リンクを要求せず、`managed-build <csproj> -ManagedOutputDirectory <世代ディレクトリ> -ManagedApiPath <常駐 API DLL>` で候補を構築する。
 
-Host tests は本物の catalog、instance、callback delegate、collectible ALC を使い、native サービス境界だけを固定した bridge で検証する。protected override lifecycle、継承、保存属性、constructor、fault、候補失敗時の旧世代保持、スレッド制限、実 ALC 解放と外部参照による解放待ち上限を対象にする。SDKとGameHubが共有するAuthoring/ManagedStarterのcsprojも同じAPI/generatorでコンパイルする。native integration は `Projects/Tests/Engine/Auto/ManagedScriptRuntimeTests.cpp` の TestKit fixture で確認する。
+Host tests は本物の catalog、instance、callback delegate、collectible ALC を使い、native サービス境界だけを固定した bridge で検証する。protected override lifecycle、継承、保存属性、constructor、fault、候補失敗時の旧世代保持、スレッド制限、実 ALC 解放と外部参照による解放待ち上限を対象にする。SDKとGameHubが共有するAuthoring/ManagedStarterのcsprojも同じAPI/generatorでコンパイルする。native integration は `Projects/Tests/Engine/Auto/Scene/Managed/ManagedScriptRuntimeTests.cpp` の TestKit fixture で確認する。
 
 Generator tests は managed-test に統合し、空クラス・全 partial 宣言・同じ行の partial 宣言・継承・型の除外・元の BOM を含む checksum・不正な compiler 設定・設定 field の限定警告抑制を検証する。
 

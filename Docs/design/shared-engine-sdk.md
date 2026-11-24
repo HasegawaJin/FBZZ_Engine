@@ -15,6 +15,8 @@
 
 ## ビルドと公開
 
+ネイティブヘッダーは、たとえば `Math/LinearAlgebra/Vector3.hpp` や `Physics/World/World.hpp` のように機能別のパスで配布する。旧 SDK のパスは、インストール時に同じ宣言へ転送する互換ヘッダーとして収録する。実装を探す場合は [ヘッダー索引](../source-reading-guide.md#ヘッダーを機能別に探す) を参照する。
+
 Editor のビルド入口は同じ構成の `FBZZSDK` とする。SDK target が Engine、各 DLL、EditorLauncher をビルドし、install、配置、検証を順に実行する。VS Code の Build Editor はこの target を使い、Build All は通常の全体ビルド成功後に同じ preset の SDK を直列公開する。テスト、ベンチ、compile check だけの入口へ SDK 公開は追加しない。
 
 配布変更を正式ストアへ公開せず検証する場合は `Tools/AgentBuild.ps1 build FBZZSDKPreview -Preset debug` を使う。同じnative/managed依存をビルドし、公式SDKと共通のinstall・Stage・Validateを `build/<Preset>/SDKPreview/<version>/` だけへ実行する。正式 `SDK/` の公開・旧世代pruneは行わない。既存symlink / junctionによる出力先や子要素の転送は、書き込み前のREAL_PATH検査で拒否する。全体ビルドと直列に実行し、Previewの成功は正式ストアへの公開完了を意味しない。

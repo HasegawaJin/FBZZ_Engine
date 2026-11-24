@@ -24,7 +24,7 @@ Engine 側のシーン構造と、Graphics 側の描画方式を別々に変更�
 
 | 現在の場所 | 分離前に解くこと |
 |---|---|
-| `Engine/src/Scene/Systems/RenderSystem.cpp` | Scene の走査、アセット解決、GPU 資源準備、方式選択、パス登録、UI・スクリプト呼び出しが集まっている |
+| `Engine/src/Rendering/RenderSystem.cpp` | Scene の走査、アセット解決、GPU 資源準備、方式選択、パス登録、UI・スクリプト呼び出しが集まっている |
 | `RenderPassContext.hpp` | `Scene&`、`physics::World*`、WaterComponent、Model、GPU 定数とビュー資源が同居している |
 | `Geometry/ForwardPasses.cpp` / `DeferredPasses.cpp` | 両方がコンポーネントを直接走査し、透明キューのソート・提出にも重複がある |
 | `GeometryRoute.hpp` | 材質ごとの経路を一意に決める純粋関数が既にある。MaterialSlot から事実を集める overload は Engine 側に残す |
@@ -35,6 +35,10 @@ Engine 側のシーン構造と、Graphics 側の描画方式を別々に変更�
 既存の [pipeline-boundary.md](pipeline-boundary.md) は材質の振り分けを、[render-graph.md](render-graph.md) は依存解決と実行の契約を定める。本書はその上にライブラリ境界・構成の境界を置く。両方の仕組みを置き換えない。
 
 ## 3. 依存方向と配置
+
+`Projects/Graphics/src/Pipeline/` がビューと描画グラフを組み立て、`src/Passes/` が各処理を記録する。`Passes/Geometry/` の共通描画処理の下に、照明、スキニング、インスタンシング、地形と水面、VFX の実装を置く。
+
+バックエンド非依存の資源管理、コマンド、可視性はそれぞれ `src/Renderer/Resources/`、`Commands/`、`Visibility/` に置く。DX12 固有の資源、アップロードと状態管理、PSO とシェーダー、環境マップベイクは `src/Renderer/Platform/DX12/` 内の `Resources/`、`Commands/`、`Pipeline/`、`Baking/` に置く。公開宣言は `include/Graphics/` から提供する。
 
 矢印は利用側から依存先へ向く。Core の独立化も本分離の前提作業に含める。
 

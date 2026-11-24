@@ -18,7 +18,7 @@
       "testsuite": [
         {
           "name": "SparseCameraQueriesPreserveScenePriorityAndObserveSameFrameEdits",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 225,
           "status": "RUN",
           "result": "COMPLETED",
@@ -29,7 +29,7 @@
         },
         {
           "name": "KeepsOffscreenAndOtherLayerCandidatesButRejectsInactiveHierarchy",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 263,
           "status": "RUN",
           "result": "COMPLETED",
@@ -40,7 +40,7 @@
         },
         {
           "name": "PreservesSceneOrderForLateRendererRegistrationAndMixedRenderersAmongBones",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 280,
           "status": "RUN",
           "result": "COMPLETED",
@@ -51,7 +51,7 @@
         },
         {
           "name": "RefreshesRendererMembershipAndHierarchyActivityWithinTheSameFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 331,
           "status": "RUN",
           "result": "COMPLETED",
@@ -62,7 +62,7 @@
         },
         {
           "name": "PreservesOrderAcrossDestroyCallbacksCompactionAndEntityReuse",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 367,
           "status": "RUN",
           "result": "COMPLETED",
@@ -73,7 +73,7 @@
         },
         {
           "name": "SelectsCanonicalLodZeroWithoutFilteringRasterHiddenRenderers",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 403,
           "status": "RUN",
           "result": "COMPLETED",
@@ -84,7 +84,7 @@
         },
         {
           "name": "ResolvesLodGuidForMembershipWithoutChangingReferences",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 435,
           "status": "RUN",
           "result": "COMPLETED",
@@ -95,7 +95,7 @@
         },
         {
           "name": "SkinnedTextureQualityUsesAnimatedBoundsInsteadOfBindPose",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 462,
           "status": "RUN",
           "result": "COMPLETED",
@@ -106,7 +106,7 @@
         },
         {
           "name": "CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 480,
           "status": "RUN",
           "result": "COMPLETED",
@@ -117,7 +117,7 @@
         },
         {
           "name": "WarmRendererIndexKeepsCurrentValuesAndOldGeometrySnapshotsIndependent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 501,
           "status": "RUN",
           "result": "COMPLETED",
@@ -128,7 +128,7 @@
         },
         {
           "name": "StaticBoundsUseCurrentRotatedNegativeNonuniformScaleAcrossViews",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 533,
           "status": "RUN",
           "result": "COMPLETED",
@@ -139,7 +139,7 @@
         },
         {
           "name": "SkinnedSubmeshBoundsKeepRendererScaleAndAnimatorOwnerSphereIndependent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 559,
           "status": "RUN",
           "result": "COMPLETED",
@@ -150,7 +150,7 @@
         },
         {
           "name": "LocalSlotsResolveReorderedSubmeshesAndMorphInputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 608,
           "status": "RUN",
           "result": "COMPLETED",
@@ -161,7 +161,7 @@
         },
         {
           "name": "DeformedOutputRequiresCurrentFrameAndMatchingModelIncludingMorph",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 625,
           "status": "RUN",
           "result": "COMPLETED",
@@ -172,7 +172,7 @@
         },
         {
           "name": "RejectsRendererMembershipInMultipleLodGroups",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 645,
           "status": "RUN",
           "result": "COMPLETED",
@@ -183,7 +183,7 @@
         },
         {
           "name": "DiagnosesUnresolvedCanonicalLodInsteadOfPublishingAnEmptyShape",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 657,
           "status": "RUN",
           "result": "COMPLETED",
@@ -194,7 +194,7 @@
         },
         {
           "name": "NormalExtractionSkipsUnresolvedRayLodDiagnosticsAndKeepsRasterGeometry",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 676,
           "status": "RUN",
           "result": "COMPLETED",
@@ -205,7 +205,7 @@
         },
         {
           "name": "ParentAnimatorWinsOverReferencePoseAndPreservesPreviousPalette",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 697,
           "status": "RUN",
           "result": "COMPLETED",
@@ -216,7 +216,7 @@
         },
         {
           "name": "ReferencePosePrecedesIdentityFallbackWithoutAnimator",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 715,
           "status": "RUN",
           "result": "COMPLETED",
@@ -227,7 +227,7 @@
         },
         {
           "name": "PreviousWorldAdvancesOnceAcrossViewsAndResetsAfterGap",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 726,
           "status": "RUN",
           "result": "COMPLETED",
@@ -238,7 +238,7 @@
         },
         {
           "name": "InitialFrameDoesNotTreatUninitializedHistoryAsPreviousFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 741,
           "status": "RUN",
           "result": "COMPLETED",
@@ -249,7 +249,7 @@
         },
         {
           "name": "MaterialSlotsStayIndependentAndHiddenSlotsRemainAddressable",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 752,
           "status": "RUN",
           "result": "COMPLETED",
@@ -260,7 +260,7 @@
         },
         {
           "name": "SceneGenerationIsStableAcrossViewsAndChangesBeforeEntityReuse",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 768,
           "status": "RUN",
           "result": "COMPLETED",
@@ -271,7 +271,7 @@
         },
         {
           "name": "SceneMoveDoesNotReuseAnotherScenesRenderIdentity",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 782,
           "status": "RUN",
           "result": "COMPLETED",
@@ -282,7 +282,7 @@
         },
         {
           "name": "DenseGeometryKeepsChunkEdgesSharedMeshEditsAndSnapshotOwnership",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1581,
           "status": "RUN",
           "result": "COMPLETED",
@@ -304,7 +304,7 @@
       "testsuite": [
         {
           "name": "ResolvesEachShaderOnceWhilePreservingIndependentMaterialOverrides",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 796,
           "status": "RUN",
           "result": "COMPLETED",
@@ -315,7 +315,7 @@
         },
         {
           "name": "RechecksChangedAndRemovedShaderMetadataWithoutAdvancingTheRenderFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 839,
           "status": "RUN",
           "result": "COMPLETED",
@@ -326,7 +326,7 @@
         },
         {
           "name": "FullExtractionDefersItemCapabilitiesUntilMaterialSynchronization",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 892,
           "status": "RUN",
           "result": "COMPLETED",
@@ -337,7 +337,7 @@
         },
         {
           "name": "FullViewsRecheckMetadataAndSlotEditsWithoutChangingRetainedSnapshots",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 951,
           "status": "RUN",
           "result": "COMPLETED",
@@ -348,7 +348,7 @@
         },
         {
           "name": "SharesPosesAcrossViewsWhileKeepingSelectionAndMaterialsIndependent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 993,
           "status": "RUN",
           "result": "COMPLETED",
@@ -359,7 +359,7 @@
         },
         {
           "name": "CompactFrameGeometryPreservesStaticAndSkinnedInputsAcrossViews",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1018,
           "status": "RUN",
           "result": "COMPLETED",
@@ -370,7 +370,7 @@
         },
         {
           "name": "MeshNotificationsInvalidateSameFrameGeometryWithoutMutatingPublishedViews",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1069,
           "status": "RUN",
           "result": "COMPLETED",
@@ -381,7 +381,7 @@
         },
         {
           "name": "CompactFrameGeometryRebuildsMovedBoundsAndRendererMembershipEveryFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1094,
           "status": "RUN",
           "result": "COMPLETED",
@@ -392,7 +392,7 @@
         },
         {
           "name": "CompactCachedItemsRetainOffCameraShadowProbeAndRayDemand",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1147,
           "status": "RUN",
           "result": "COMPLETED",
@@ -403,7 +403,7 @@
         },
         {
           "name": "IndexedMasksRetainBothRendererKindsAndRespectEachViewsLayerAndChildren",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1190,
           "status": "RUN",
           "result": "COMPLETED",
@@ -414,7 +414,7 @@
         },
         {
           "name": "KeepsSharedPosesAliveAfterCacheRetirementAndSceneGenerationChanges",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1223,
           "status": "RUN",
           "result": "COMPLETED",
@@ -425,7 +425,7 @@
         },
         {
           "name": "EmptyEffectExtractionObservesComponentsAddedAndRemovedWithinTheSameFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1245,
           "status": "RUN",
           "result": "COMPLETED",
@@ -436,7 +436,7 @@
         },
         {
           "name": "TypedEnvironmentCandidatesKeepScenePrecedenceAndRefreshWithinOneFrame",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1285,
           "status": "RUN",
           "result": "COMPLETED",
@@ -447,7 +447,7 @@
         },
         {
           "name": "DemandDiagnosticCandidatePreservesMaskRejectedItemsAndMutableSlots",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1473,
           "status": "RUN",
           "result": "COMPLETED",
@@ -469,7 +469,7 @@
       "testsuite": [
         {
           "name": "RepeatedGuidLoadsObserveExplicitUnloadAndCurrentModelContents",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1544,
           "status": "RUN",
           "result": "COMPLETED",
@@ -480,7 +480,7 @@
         },
         {
           "name": "StableGuidFollowsIndexMovesAndOldPathHints",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1558,
           "status": "RUN",
           "result": "COMPLETED",
@@ -491,7 +491,7 @@
         },
         {
           "name": "ProjectRetirementDoesNotReviveCachedModelHandles",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 1571,
           "status": "RUN",
           "result": "COMPLETED",
@@ -513,7 +513,7 @@
       "testsuite": [
         {
           "name": "ReusesUnchangedGeometryAndInvalidatesOnlyTheNotifiedRenderer",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 77,
           "status": "RUN",
           "result": "COMPLETED",
@@ -524,7 +524,7 @@
         },
         {
           "name": "ManagedMeshWritesNotifyTheProductionExtractionCache",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 100,
           "status": "RUN",
           "result": "COMPLETED",
@@ -535,7 +535,7 @@
         },
         {
           "name": "ObservesRawPoseMeshAndPresentationWritesWithoutNotifications",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 120,
           "status": "RUN",
           "result": "COMPLETED",
@@ -546,7 +546,7 @@
         },
         {
           "name": "RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 156,
           "status": "RUN",
           "result": "COMPLETED",
@@ -557,7 +557,7 @@
         },
         {
           "name": "AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 174,
           "status": "RUN",
           "result": "COMPLETED",
@@ -568,7 +568,7 @@
         },
         {
           "name": "SeparatesComponentEntityAndSceneLifetimes",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 193,
           "status": "RUN",
           "result": "COMPLETED",
@@ -579,7 +579,7 @@
         },
         {
           "name": "ObservesParentMotionReparentingAndHierarchyActivation",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 216,
           "status": "RUN",
           "result": "COMPLETED",
@@ -590,7 +590,7 @@
         },
         {
           "name": "RevalidatesAfterBoundedSceneEvictionAndRendererReordering",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\StaticMeshRenderReuseTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Geometry\\StaticMeshRenderReuseTests.cpp",
           "line": 241,
           "status": "RUN",
           "result": "COMPLETED",

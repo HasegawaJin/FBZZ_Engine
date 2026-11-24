@@ -19,7 +19,7 @@
       "testsuite": [
         {
           "name": "RetainedSnapshotsStayImmutableAfterWorkerRetirementAndSceneClear",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RenderSceneExtractorTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\Extraction\\RenderSceneExtractorTests.cpp",
           "line": 228,
           "status": "RUN",
           "result": "COMPLETED",

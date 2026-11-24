@@ -1,5 +1,7 @@
 # Blender × FBZZ Engine — DCC 分業パイプライン設計
 
+この文書から廃止・移動されたファイルへ移るリンクは Git 履歴を開く。現行コードの入口は [機能別ソース索引](../source-reading-guide.md#機能からコードを探す) から引ける。
+
 - Status: Draft
 - Author: Hasegawa Jin
 - Date: 2026-08-22
@@ -46,7 +48,7 @@
 Blender の Shader Editor を上流に据え、自作側は「ノードグラフを HLSL へ落とすコンパイラ」を持つ。
 
 WHY:
-- ノード UI そのものは既に ImGui ベースで [VFXGraphCanvas.cpp](../../Projects/Editor/src/VFXEditor/Views/VFXGraphCanvas.cpp) に実装済みで、
+- ノード UI そのものは既に ImGui ベースで [VFXGraphCanvas.cpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/524ed12ad4f52e06602c3a89b68a98a13daa8aeb/Projects/Editor/src/VFXEditor/Views/VFXGraphCanvas.cpp) に実装済みで、
   同じものをマテリアル用にもう一つ作っても得るものが薄い。
 - 一方、グラフ → HLSL のコード生成（型解決・定数畳み込み・cbuffer 割り付け・
   既存の差分コンパイルとリフレクション基盤への接続）は本作のレンダラー実装と密結合で、
@@ -66,7 +68,7 @@ WHY:
 | UV 展開 | `.fbx` に同梱 | UV0=ベース、UV1=ライトマップ／ディテール |
 | テクスチャ | `.png` / `.tga` / `.exr` | ベイク結果も含む |
 | マテリアルノード | `.fzmatgraph`（アドオン出力） | Blender は**オーサリング UI のみ**担当。実行時の意味論は保証しない |
-| リグ / スキン / アクション | `.fbx` | 既存 [AnimSubExporter.cpp](../../Projects/Editor/src/Import/AnimSubExporter.cpp) が受ける |
+| リグ / スキン / アクション | `.fbx` | 既存 [AnimSubExporter.cpp](../../Projects/Editor/src/Import/Fbx/AnimSubExporter.cpp) が受ける |
 | カーブ / ColorRamp | `.fzcurve`（アドオン出力） | VFX の size-over-life / color-over-life 用 |
 
 ### 2.2 自作ツールの責務
@@ -74,9 +76,9 @@ WHY:
 | 項目 | 実装先 | 既存 / 新規 |
 |------|--------|------|
 | VFX グラフ構成 | `Projects/Editor/src/VFXEditor/` | 既存 |
-| Particle Spawn / Burst / Lifetime | [ParticleEmitter.hpp](../../Projects/Engine/include/Engine/Scene/Components/ParticleEmitter.hpp) | 既存 |
+| Particle Spawn / Burst / Lifetime | [ParticleEmitter.hpp](../../Projects/Engine/include/Engine/Scene/Components/Particles/ParticleEmitter.hpp) | 既存 |
 | Billboard / GPU Particle | `ParticleGpuSim.cs.hlsl` + `GpuParticle` | 既存 |
-| 再生制御・決定論スクラブ | [VFXPreviewController.hpp](../../Projects/Editor/include/Editor/VFXEditor/Services/VFXPreviewController.hpp) | 既存 |
+| 再生制御・決定論スクラブ | [VFXPreviewController.hpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/850eccc3d9e60d15e39cda34a8cd28d849b9716c/Projects/Editor/include/Editor/VFXEditor/Services/VFXPreviewController.hpp) | 既存 |
 | エンジン固有パラメータ | `MaterialAsset` / `VFXGraphAsset` | 既存 |
 | **マテリアルグラフ → HLSL 生成** | `Projects/Engine/src/Asset/MaterialGraphCompiler.cpp` | **新規** |
 | **F-Curve → ParticleCurve 変換** | `Projects/Engine/src/Asset/CurveImporter.cpp` | **新規** |
@@ -227,7 +229,7 @@ Tools/BlenderAddon/fbzz_bridge/
 
 ### 5.2 FBX エクスポート設定の固定
 
-既存の [IFbxSubExporter.hpp](../../Projects/Editor/include/Editor/Import/IFbxSubExporter.hpp) は
+既存の [IFbxSubExporter.hpp](../../Projects/Editor/include/Editor/Import/Fbx/IFbxSubExporter.hpp) は
 Blender 由来の root 焼き込み（-90°X 回転 + scale 100）を検出して補正する実装が入っている。
 アドオン側でエクスポート設定を固定し、**インポーター側の推測を不要にする**。
 
@@ -335,7 +337,7 @@ Geometry Nodes 依存の Attribute / Cycles 専用ノード。
 ```
 
 ここが重要な設計上の利点で、**`.mat` は既にバイトオフセットではなく変数名で値を持っている**
-（[MaterialAsset.hpp:53](../../Projects/Engine/include/Engine/Asset/MaterialAsset.hpp#L53) の WHY コメント）。
+（[MaterialAsset.hpp:53](../../Projects/Engine/include/Engine/Asset/Material/MaterialAsset.hpp#L53) の WHY コメント）。
 生成シェーダーの cbuffer レイアウトが変わっても、名前が一致していれば値が生き残る。
 
 ### 6.4 生成コードの形
@@ -417,7 +419,7 @@ Validate が Error を出したとき、**Blender 側にベイク導線を提示
 
 ### 7.1 制約
 
-エンジン側 [ParticleCurve](../../Projects/Engine/include/Engine/Scene/Components/ParticleEmitter.hpp#L134) は
+エンジン側 [ParticleCurve](../../Projects/Engine/include/Engine/Scene/Components/Particles/ParticleEmitter.hpp#L134) は
 GPU 定数バッファ転送のため固定長：
 
 - 最大 8 キー（`kMaxParticleCurveKeys`）
@@ -444,7 +446,7 @@ Blender F-Curve
 
 - 8 キー以内ならそのまま `ParticleGradient` へ。
 - **色空間規約を守る**: キーの RGB は sRGB オーサリング値のまま書き出し、`colorSpace = Gamma` を立てる
-  （[ParticleEmitter.hpp:166-171](../../Projects/Engine/include/Engine/Scene/Components/ParticleEmitter.hpp#L166-L171) の規約）。
+  （[ParticleEmitter.hpp:166-171](../../Projects/Engine/include/Engine/Scene/Components/Particles/ParticleEmitter.hpp#L166-L171) の規約）。
   Blender の ColorRamp は内部でリニアを持つため、**アドオン側で sRGB へ戻してから書き出す**。
   ここを間違えると CPU/GPU 双方で色が食い違う。
 - Blender の `Constant` 補間 → `Step`、`Linear` → `Linear`、`Ease`/`B-Spline` → `Smooth`。
@@ -554,9 +556,9 @@ Phase 1・2 は Phase 3 の依存ではないので、先に通してパイプ�
 
 ## 13. 参照
 
-- [ParticleEmitter.hpp](../../Projects/Engine/include/Engine/Scene/Components/ParticleEmitter.hpp) — `ParticleCurve` / `ParticleGradient` / `GpuParticle`
-- [MaterialAsset.hpp](../../Projects/Engine/include/Engine/Asset/MaterialAsset.hpp) — `.mat` のスキーマと名前束縛の設計意図
-- [ShaderDescriptor.hpp](../../Projects/Engine/include/Engine/Renderer/ShaderDescriptor.hpp) — リフレクション結果。生成 HLSL の接続先
-- [VFXGraphAsset.hpp](../../Projects/Engine/include/Engine/Asset/VFXGraphAsset.hpp) — `.vfx` のノード種別
-- [IFbxSubExporter.hpp](../../Projects/Editor/include/Editor/Import/IFbxSubExporter.hpp) — `FbxSourceDcc::Blender` の補正仕様
-- [FbxImportTool.cpp](../../Projects/Editor/src/Import/FbxImportTool.cpp) — root 焼き込み正規化の実装
+- [ParticleEmitter.hpp](../../Projects/Engine/include/Engine/Scene/Components/Particles/ParticleEmitter.hpp) — `ParticleCurve` / `ParticleGradient` / `GpuParticle`
+- [MaterialAsset.hpp](../../Projects/Engine/include/Engine/Asset/Material/MaterialAsset.hpp) — `.mat` のスキーマと名前束縛の設計意図
+- [ShaderDescriptor.hpp](../../Projects/Graphics/include/Graphics/Renderer/Shaders/ShaderDescriptor.hpp) — リフレクション結果。生成 HLSL の接続先
+- [VFXGraphAsset.hpp](https://github.com/HasegawaJin/FBZZ_Engine/blob/37570f85e28545dc51f02bdc85e7d93969ffa248/Projects/Engine/include/Engine/Asset/VFXGraphAsset.hpp) — `.vfx` のノード種別
+- [IFbxSubExporter.hpp](../../Projects/Editor/include/Editor/Import/Fbx/IFbxSubExporter.hpp) — `FbxSourceDcc::Blender` の補正仕様
+- [FbxImportTool.cpp](../../Projects/Editor/src/Import/Fbx/FbxImportTool.cpp) — root 焼き込み正規化の実装

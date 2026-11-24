@@ -18,10 +18,10 @@
 |---|---|
 | [Core の Profiler](../../Projects/Core/include/Core/Profiler/Profiler.hpp) | CPU のフレーム収集と入れ子の計測。記録は名前、カテゴリ、経過時間、フレーム、深さ、色で、開始位置と対象識別子がない |
 | [Engine の Profiler ヘッダー](../../Projects/Engine/include/Engine/Profiler/Profiler.hpp) | Core への互換 include。別の CPU 収集器ではない |
-| [ScriptSystem](../../Projects/Engine/src/Scene/Systems/ScriptSystem.cpp) | ScriptSystem、FixedScriptSystem、LateScriptSystem 全体の計測。個々のスクリプトやコールバックは計測しない |
-| [Script の呼び出し入口](../../Projects/Engine/src/Scene/Script.cpp) | ExecuteCallback と ResumeCoroutine で障害を隔離する。個別計測はない |
-| [AnalysisPanel](../../Projects/Editor/src/Panels/AnalysisPanel.cpp) | CPU の Profiler、Memory、Rendering の 3 タブと各履歴を一つの実装に保持。Scripts は文字列から推定する分類 |
-| [GPU 計測](../../Projects/Graphics/include/Graphics/Renderer/GpuProfiler.hpp) | Graphics の独立した非同期計測。フレームとビューの出自を保持する |
+| [ScriptSystem](../../Projects/Engine/src/Scene/Systems/Scripting/ScriptSystem.cpp) | ScriptSystem、FixedScriptSystem、LateScriptSystem 全体の計測。個々のスクリプトやコールバックは計測しない |
+| [Script の呼び出し入口](../../Projects/Engine/src/Scene/Scripting/Script.cpp) | ExecuteCallback と ResumeCoroutine で障害を隔離する。個別計測はない |
+| [AnalysisPanel](../../Projects/Editor/src/Panels/Diagnostics/AnalysisPanel.cpp) | CPU の Profiler、Memory、Rendering の 3 タブと各履歴を一つの実装に保持。Scripts は文字列から推定する分類 |
+| [GPU 計測](../../Projects/Graphics/include/Graphics/Renderer/Diagnostics/GpuProfiler.hpp) | Graphics の独立した非同期計測。フレームとビューの出自を保持する |
 | [profiler.snapshot](../../Projects/Editor/src/Ai/Bus/EditorHandlers.cpp) | CPU、フレーム時間、描画統計、GPU、メモリを一度に返す。スクリプト専用の問い合わせはない |
 
 表示の分割だけではスクリプトの型、インスタンス、OnUpdate などの負荷を復元できない。個別計測と識別情報を先に導入し、画面を分ける。
@@ -179,7 +179,7 @@ owner 付き EventBus ハンドラーは受信側の保護された入口へ通�
 
 DLL 更新、対象削除、Play 終了後も古い履歴は表示できる。対象選択は現在の runtimeEpoch、Scene 世代、GameObject UUID と EntityID、Script InspectionId が一致するときだけ行う。見つからなければ「対象は現在存在しない」と表示する。同名の新しいオブジェクトへ移動しない。
 
-新しい profiler メンバーや仮想関数を Script、Scene、ScriptEntry へ追加しない。既存識別子と Engine 側の外部表を使い、[Script DLL ABI](../../Projects/Engine/include/Engine/Scene/ScriptDllAbi.hpp) のレイアウトを維持する。公開署名や値型を変える必要が出た場合は、該当 ABI の世代更新と SDK 配布を別途実施する。再読み込み失敗時は [既存の DLL 復帰契約](script-dll-recovery.md) を維持する。
+旧 Script DLL の設計では、既存識別子と Engine 側の外部表を使い、[当時の Script DLL ABI](https://github.com/HasegawaJin/FBZZ_Engine/blob/3bd7421899413be2f926c1ee3ae19f362d756ed3/Projects/Engine/include/Engine/Scene/ScriptDllAbi.hpp) のレイアウトを維持していた。公開署名や値型の変更時は ABI の世代更新と SDK 配布を行う。再読み込み失敗時の動作は [DLL 復帰の設計](script-dll-recovery.md) を参照する。
 
 履歴採取とスパイク判定は Editor の毎フレーム処理で行い、OnRenderContent の外に置く。収集器、captureSessionId、application serial の組ごとに確定 snapshot を一度だけ採り、そのフレームの文脈表を丸ごと保持する。非表示パネルや背面タブでも採取を続け、表示更新間隔を計測間隔にしない。Freeze した snapshot と現在のデータを混ぜない。
 

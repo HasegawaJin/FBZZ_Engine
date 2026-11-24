@@ -527,7 +527,7 @@
   ],
   "sources": [
     {
-      "file": "Projects/Engine/src/Scene/Systems/ScriptSystem.cpp",
+      "file": "Projects/Engine/src/Scene/Systems/Scripting/ScriptSystem.cpp",
       "sha256": "626bfad3ce853de8ae829703afb9bcfb725fb500500c168980e22eaacbfc7557"
     },
     {
@@ -535,15 +535,15 @@
       "sha256": "dfd8925b2cc2392cc9b03e1d4247c79f3405d52ee114c5a9bb08207c5b3a9e51"
     },
     {
-      "file": "Projects/Engine/include/Engine/Scene/ComponentArray.hpp",
+      "file": "Projects/Engine/include/Engine/Scene/Components/ComponentArray.hpp",
       "sha256": "325160ec7acd201ecab31e38cc01a287fd3e938fcffd693647c994bc9bbb60d2"
     },
     {
-      "file": "Projects/Engine/include/Engine/Scene/Script.hpp",
+      "file": "Projects/Engine/include/Engine/Scene/Scripting/Script.hpp",
       "sha256": "278a93a80ede7bfc1d23620d93f8f60dd39499d720dfd005f7636cf0b8c636d4"
     },
     {
-      "file": "Projects/Engine/src/Scene/Script.cpp",
+      "file": "Projects/Engine/src/Scene/Scripting/Script.cpp",
       "sha256": "39d5e571b12112ae5d491b7abae9eabef819e4b9175450d15a602372459c13f1"
     },
     {
@@ -555,11 +555,11 @@
       "sha256": "e67b68512e45692d9f2df76e313bd3a00970ce167a008dc576152fbae24ca136"
     },
     {
-      "file": "Projects/Engine/include/Engine/Scene/ScriptValidation.hpp",
+      "file": "Projects/Engine/include/Engine/Scene/Scripting/ScriptValidation.hpp",
       "sha256": "ff45f0a2c2a3411e1a345519f1e6c54c1bb7efc5ca4846c8b5408664e4b25c13"
     },
     {
-      "file": "Projects/Engine/src/Scene/ScriptValidation.cpp",
+      "file": "Projects/Engine/src/Scene/Scripting/ScriptValidation.cpp",
       "sha256": "546679af4be010aafee418d9669c7df1623cd1d274ba18c0c731d6894c78d1e2"
     },
     {
@@ -575,15 +575,15 @@
       "sha256": "612809a95e198789f9adf902670338c2d1c4c9281908c81546d5dce656a4bde9"
     },
     {
-      "file": "Projects/Engine/include/Engine/Scene/ScriptProxy/ScriptAudioProxy.hpp",
+      "file": "Projects/Engine/include/Engine/Scene/ScriptProxy/Audio/ScriptAudioProxy.hpp",
       "sha256": "2b27c4a8ba9cb278998f51eac645fdbdd005d5c94f9b4e7f71fad3c82c48528b"
     },
     {
-      "file": "Projects/Engine/src/Scene/ScriptAudioLoops.cpp",
+      "file": "Projects/Engine/src/Scene/Scripting/ScriptAudioLoops.cpp",
       "sha256": "ae1711ad1245ea5e605608fb70b5e6646921e545976424634ac1107459edddd5"
     },
     {
-      "file": "Projects/Engine/include/Engine/Audio/VoiceLifetime.hpp",
+      "file": "Projects/Engine/include/Engine/Audio/Playback/VoiceLifetime.hpp",
       "sha256": "cc77b53e5d01d8c777f6b00c404d9c15e99c675a3375a29f7b6c2cf8f0436ad2"
     },
     {
@@ -595,7 +595,7 @@
       "sha256": "00eda63c2bd2cc3516bac1fc2991bce1e71ac570b825b53c9d60cac2e303464f"
     },
     {
-      "file": "Projects/Engine/include/Engine/Scene/Components/AudioSourceComponent.hpp",
+      "file": "Projects/Engine/include/Engine/Scene/Components/Audio/AudioSourceComponent.hpp",
       "sha256": "20931198115ffd67e755e7fabc135d6ff7179dd7125526179a51bca21907bf19"
     },
     {
@@ -635,7 +635,7 @@
       "sha256": "39597a14013f3e4c8b7abe9717405e696b03d78b37ec23b7630784f943ee7d80"
     },
     {
-      "file": "Projects/Tests/Engine/Auto/ComponentArrayTests.cpp",
+      "file": "Projects/Tests/Engine/Auto/Scene/Components/ComponentArrayTests.cpp",
       "sha256": "04c503d4ebed0286a01d82e49e79ce6cf0550dba4d23cfc733b62fa2c0f2fd4b"
     },
     {

@@ -19,7 +19,7 @@
       "testsuite": [
         {
           "name": "GpuDemandUnusedTicketSurvivesViewThenReappearsWithoutRecapture",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2173,
           "status": "RUN",
           "result": "COMPLETED",
@@ -30,7 +30,7 @@
         },
         {
           "name": "DirectSignatureReuseSkipsWordMaterializationAndPreservesAllConsumers",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1858,
           "status": "RUN",
           "result": "COMPLETED",
@@ -41,7 +41,7 @@
         },
         {
           "name": "DirectSignatureReuseDetectsPublicPoseAndBorrowedSourceUpdates",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1883,
           "status": "RUN",
           "result": "COMPLETED",
@@ -52,7 +52,7 @@
         },
         {
           "name": "DefaultOwnedBatchPreservesDistinctSourceGroupsAndCurrentGpuOutputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 576,
           "status": "RUN",
           "result": "COMPLETED",
@@ -63,7 +63,7 @@
         },
         {
           "name": "DirectSignatureReuseKeepsUnreadyOutputAndUnknownFacadeFallbacks",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1912,
           "status": "RUN",
           "result": "COMPLETED",
@@ -74,7 +74,7 @@
         },
         {
           "name": "NativePreparedReusePinsRawBorrowUntilTheNewFrameCompletes",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2039,
           "status": "RUN",
           "result": "COMPLETED",
@@ -85,7 +85,7 @@
         },
         {
           "name": "GroupedBufferReadRejectsAComponentReplacedByTheWaitPumpAndRecovers",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 464,
           "status": "RUN",
           "result": "COMPLETED",
@@ -96,7 +96,7 @@
         },
         {
           "name": "NativePreparedOldItemDrawsCapturedPoseAfterPublicHandleRelease",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2351,
           "status": "RUN",
           "result": "COMPLETED",
@@ -107,7 +107,7 @@
         },
         {
           "name": "GpuDemandWaitPumpCancelsPreparationBeforeSceneMutation",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2413,
           "status": "RUN",
           "result": "COMPLETED",
@@ -118,7 +118,7 @@
         },
         {
           "name": "GroupedBufferReadRejectsAClearedSceneAndUsesTheReplacementPoseNextView",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 488,
           "status": "RUN",
           "result": "COMPLETED",
@@ -129,7 +129,7 @@
         },
         {
           "name": "GroupedBufferReadRestoresOutputSlotsClearedOnTheSameComponentDuringTheWait",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 514,
           "status": "RUN",
           "result": "COMPLETED",
@@ -140,7 +140,7 @@
         },
         {
           "name": "IdleBufferReadsPreserveIndependentActorsAndPreviouslyBorrowedSourceUpdates",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 541,
           "status": "RUN",
           "result": "COMPLETED",
@@ -151,7 +151,7 @@
         },
         {
           "name": "NativePreparedSourceSnapshotTracksDirectUpdatesAndHandleGeneration",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1964,
           "status": "RUN",
           "result": "COMPLETED",
@@ -173,7 +173,7 @@
       "testsuite": [
         {
           "name": "OwnedBatchRejectsPoseChangedDuringTheOperationAndRecoversNextView",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 732,
           "status": "RUN",
           "result": "COMPLETED",
@@ -184,7 +184,7 @@
         },
         {
           "name": "ReferencePoseWorksWithoutAnimatorAndMissingPoseDoesNotPublishGeometry",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1562,
           "status": "RUN",
           "result": "COMPLETED",
@@ -195,7 +195,7 @@
         },
         {
           "name": "OwnedBatchRejectsClearedSceneWithoutDereferencingThePreviousActor",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 656,
           "status": "RUN",
           "result": "COMPLETED",
@@ -206,7 +206,7 @@
         },
         {
           "name": "RendererMembershipRefreshPreservesSceneOrderAndAncestorPalettes",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1337,
           "status": "RUN",
           "result": "COMPLETED",
@@ -217,7 +217,7 @@
         },
         {
           "name": "OwnedBatchNeverPublishesOldOutputWhenResourceFrameRejectsItsWork",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 694,
           "status": "RUN",
           "result": "COMPLETED",
@@ -228,7 +228,7 @@
         },
         {
           "name": "SceneClearWithSameSizeNewActorDoesNotReusePreviousSignature",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 952,
           "status": "RUN",
           "result": "COMPLETED",
@@ -239,7 +239,7 @@
         },
         {
           "name": "AssetClipsShareImmutableKeysKeepIndependentTimeAndExpireSafely",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1005,
           "status": "RUN",
           "result": "COMPLETED",
@@ -250,7 +250,7 @@
         },
         {
           "name": "DeformedIndexedShadowAndAllGbufferTargetsMatchAfterFrustumCompaction",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1126,
           "status": "RUN",
           "result": "COMPLETED",
@@ -261,7 +261,7 @@
         },
         {
           "name": "OwnedBatchReacquiresReplacedComponentBeforePublishingNativeResults",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 619,
           "status": "RUN",
           "result": "COMPLETED",
@@ -272,7 +272,7 @@
         },
         {
           "name": "RejectedDispatchNeverPublishesAnOldNonzeroContentVersion",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1833,
           "status": "RUN",
           "result": "COMPLETED",
@@ -283,7 +283,7 @@
         },
         {
           "name": "DemandInputClassificationSeparatesEmptySlotsAndZeroWeightsFromNativeMorphBytes",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2689,
           "status": "RUN",
           "result": "COMPLETED",
@@ -294,7 +294,7 @@
         },
         {
           "name": "MorphSnapshotRatherThanOriginalCpuVerticesIsSkinnedAndItsUpdateInvalidatesTheCache",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1538,
           "status": "RUN",
           "result": "COMPLETED",
@@ -305,7 +305,7 @@
         },
         {
           "name": "GpuDemandNextFrameUnevaluatedLodDoesNotPublishOldPendingPose",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2443,
           "status": "RUN",
           "result": "COMPLETED",
@@ -316,7 +316,7 @@
         },
         {
           "name": "ResourceResetRecreatesStaleOutputAndNeverReusesPreviousDeviceInputs",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1718,
           "status": "RUN",
           "result": "COMPLETED",
@@ -327,7 +327,7 @@
         },
         {
           "name": "ScratchReuseAcrossDifferentPaletteLengthsKeepsActorOutputsIndependent",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 864,
           "status": "RUN",
           "result": "COMPLETED",
@@ -338,7 +338,7 @@
         },
         {
           "name": "GpuDemandFrustumAndDistanceExcludedRowsNeverSubmitAtViewExit",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2214,
           "status": "RUN",
           "result": "COMPLETED",
@@ -349,7 +349,7 @@
         },
         {
           "name": "NativePreparedTicketDefersWritesAndOwnsOriginalSourceAndPose",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1930,
           "status": "RUN",
           "result": "COMPLETED",
@@ -360,7 +360,7 @@
         },
         {
           "name": "DeformedMaskBatchMatchesIndependentDrawsAndDitherFallsBack",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1062,
           "status": "RUN",
           "result": "COMPLETED",
@@ -371,7 +371,7 @@
         },
         {
           "name": "ReleasedSkinningShaderOrConstantsNeverPublishesOldOutputForANewPose",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1780,
           "status": "RUN",
           "result": "COMPLETED",
@@ -382,7 +382,7 @@
         },
         {
           "name": "GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKeepsCapturedPose",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2105,
           "status": "RUN",
           "result": "COMPLETED",
@@ -393,7 +393,7 @@
         },
         {
           "name": "SamePoseAndTwoViewsShareOneDispatchButPoseChangesAdvanceTheOutputVersion",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1430,
           "status": "RUN",
           "result": "COMPLETED",
@@ -404,7 +404,7 @@
         },
         {
           "name": "MissingProgramInvalidatesInactiveAndDisabledRendererPublications",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1397,
           "status": "RUN",
           "result": "COMPLETED",
@@ -415,7 +415,7 @@
         },
         {
           "name": "GpuDemandPreparationCallbackAndNestedScopeRetainOriginalFullPath",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2294,
           "status": "RUN",
           "result": "COMPLETED",
@@ -426,7 +426,7 @@
         },
         {
           "name": "DisabledExperimentalPermissionDoesNotDeformHiddenGeometryForASavedPathRequest",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1297,
           "status": "RUN",
           "result": "COMPLETED",
@@ -437,7 +437,7 @@
         },
         {
           "name": "WrongStrideOrNonWritableOutputNeverReusesACachedPose",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1657,
           "status": "RUN",
           "result": "COMPLETED",
@@ -448,7 +448,7 @@
         },
         {
           "name": "DemandCountOnlyReadsSlotMaskDenseAndNestedStateWithoutNativeWork",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2601,
           "status": "RUN",
           "result": "COMPLETED",
@@ -459,7 +459,7 @@
         },
         {
           "name": "ModelAndSourceHandleGenerationsInvalidatePreviousOutputAndSourceSnapshots",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1689,
           "status": "RUN",
           "result": "COMPLETED",
@@ -470,7 +470,7 @@
         },
         {
           "name": "PartialOrWrongStrideSourceNeverPublishesAWholeRendererDeformation",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1745,
           "status": "RUN",
           "result": "COMPLETED",
@@ -481,7 +481,7 @@
         },
         {
           "name": "RayDemandDeformsOffscreenLodHiddenGeometryAndPublishesTheCurrentSnapshot",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1274,
           "status": "RUN",
           "result": "COMPLETED",
@@ -492,7 +492,7 @@
         },
         {
           "name": "ThousandIndependentPalettesSurviveFrameLanesAndPreserveExactDeformation",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 969,
           "status": "RUN",
           "result": "COMPLETED",
@@ -503,7 +503,7 @@
         },
         {
           "name": "DemandCountOnlyReasonsUnionActualConsumersAndSeparateStaticPresence",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2543,
           "status": "RUN",
           "result": "COMPLETED",
@@ -514,7 +514,7 @@
         },
         {
           "name": "GpuDemandOffPreservesOriginalDispatchWithoutCapture",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2075,
           "status": "RUN",
           "result": "COMPLETED",
@@ -525,7 +525,7 @@
         },
         {
           "name": "NativePreparedTicketRejectsResetWithoutPublishingReceipt",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2324,
           "status": "RUN",
           "result": "COMPLETED",
@@ -536,7 +536,7 @@
         },
         {
           "name": "DemandCountOnlyInvalidBoundsGuardDoesNotInvokeThePublicMathHandler",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2656,
           "status": "RUN",
           "result": "COMPLETED",
@@ -547,7 +547,7 @@
         },
         {
           "name": "GpuDemandShadowOnlyCasterAndUnknownNativeKeepFullDispatch",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2250,
           "status": "RUN",
           "result": "COMPLETED",
@@ -558,7 +558,7 @@
         },
         {
           "name": "DemandInputClassificationMapsSelectedTargetsAndBakeFlagsStayDistinct",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2746,
           "status": "RUN",
           "result": "COMPLETED",
@@ -569,7 +569,7 @@
         },
         {
           "name": "SameHandleTopologyGrowthReallocatesOutputAndPublishesAllCurrentVertices",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1605,
           "status": "RUN",
           "result": "COMPLETED",
@@ -580,7 +580,7 @@
         },
         {
           "name": "NativePreparedPublishedOutputRejectsExternalNativeWrite",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2388,
           "status": "RUN",
           "result": "COMPLETED",
@@ -591,7 +591,7 @@
         },
         {
           "name": "SameHandleBaseSourceUpdateUsesCurrentBufferBytesRatherThanTheOriginalCpuArray",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1581,
           "status": "RUN",
           "result": "COMPLETED",
@@ -602,7 +602,7 @@
         },
         {
           "name": "SameFrameModelRoundTripAndSourceVersionUpdateNeverReuseOldDeformation",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 920,
           "status": "RUN",
           "result": "COMPLETED",
@@ -613,7 +613,7 @@
         },
         {
           "name": "SameFramePoseAndExactBitChangesInvalidateAReusedSignature",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 810,
           "status": "RUN",
           "result": "COMPLETED",
@@ -624,7 +624,7 @@
         },
         {
           "name": "PoseLodAdvancesClockWhileHoldingPoseAndSamplesCurrentTimeOnNearReturn",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1215,
           "status": "RUN",
           "result": "COMPLETED",
@@ -635,7 +635,7 @@
         },
         {
           "name": "DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWrites",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 2490,
           "status": "RUN",
           "result": "COMPLETED",
@@ -646,7 +646,7 @@
         },
         {
           "name": "CanonicalSkinnedMaterialRequiresVerifiedCurrentDeformationBeforeRaySceneCollection",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 1456,
           "status": "RUN",
           "result": "COMPLETED",
@@ -668,7 +668,7 @@
       "testsuite": [
         {
           "name": "NestedLeasesPreserveOuterWordsAndReturnEmptyRetainedStorage",
-          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\RaySkinningTests.cpp",
+          "file": "K:\\FBZZ_Engine\\Projects\\Tests\\Engine\\Auto\\Rendering\\RayTracing\\RaySkinningTests.cpp",
           "line": 770,
           "status": "RUN",
           "result": "COMPLETED",

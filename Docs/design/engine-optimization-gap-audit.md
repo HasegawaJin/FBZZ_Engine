@@ -26,10 +26,10 @@ Godot・UE・Unityが表のすべてを同じ構成で実装している、と�
 
 ## ソースで確認した境界
 
-- [RenderSceneExtractor.cpp](../../Projects/Engine/src/Scene/Systems/RenderSceneExtractor.cpp)：`ExtractRenderScene`のcache hit条件に`Time::frameCount`があり、同一フレームの共有である。miss時は`BuildRenderSceneGeometry`がRenderer候補を走査し直す。
+- [RenderSceneExtractor.cpp](../../Projects/Engine/src/Rendering/Extraction/RenderSceneExtractor.cpp)：`ExtractRenderScene`のcache hit条件に`Time::frameCount`があり、同一フレームの共有である。miss時は`BuildRenderSceneGeometry`がRenderer候補を走査し直す。
 - [DeferredPasses.cpp](../../Projects/Graphics/src/Passes/Geometry/DeferredPasses.cpp)：GBuffer等のqueueを作り、材質順にsortし、DrawCallを組み立てる。材質CBの共有とinstancingは存在するため、その効果と永続命令cacheを分ける。
 - [TaskSystem.cpp](../../Projects/Engine/src/Core/Concurrency/TaskSystem.cpp)：一つの`m_queue`からmutex下で取り出す。`SystemScheduler.cpp`はbatch末尾で`future::get`する。Phaseを跨いだ任意のScene並列更新は許可されていない。
-- [DX12PsoCache.cpp](../../Projects/Graphics/src/Renderer/Platform/DX12/DX12PsoCache.cpp)：`GetOrCreate`のcache missからnative PSO作成へ進み、その結果をメモリ内mapへ保存する。
+- [DX12PsoCache.cpp](../../Projects/Graphics/src/Renderer/Platform/DX12/Pipeline/DX12PsoCache.cpp)：`GetOrCreate`のcache missからnative PSO作成へ進み、その結果をメモリ内mapへ保存する。
 - [RenderGraph設計](render-graph.md)：物理aliasプールは以前の計測で共有先がなく撤去した。現在のDX12資源生成はCommittedResourceが中心で、寿命解析結果をPlacedResource / aliasing barrierへ接続する実装はない。
 
 ## 次の範囲

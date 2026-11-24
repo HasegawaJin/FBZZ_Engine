@@ -170,7 +170,7 @@ Submit 経路を同時に切り替えると、失敗したときに「画面が�
 
 | 追加したもの | 場所 |
 |---|---|
-| 添字ブロックのレイアウト | `Engine/Renderer/BindlessIndices.hpp` ↔ `Common/BindlessIndices.hlsli` |
+| 添字ブロックのレイアウト | `Graphics/Renderer/Resources/BindlessIndices.hpp` ↔ `Common/BindlessIndices.hlsli` |
 | ルートパラメーター 16 = `b14` (root CBV) | `DX12PsoCache::CreateRootSignature` / `CreateComputeRootSignature` |
 | ドローごとの添字書き込み | `DX12Renderer::Submit` / `Dispatch` |
 | バッファ側の添字 | `IStructuredBuffer::GetBindlessIndex()` + DX12 実装 |

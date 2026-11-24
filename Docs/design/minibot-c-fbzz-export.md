@@ -107,8 +107,8 @@ Blenderの実際の `axis_conversion(to_forward='-Z', to_up='Y')` と、
 この補正込みの点の対応は **`(x,y,z) → (−x,z,−y)`**。
 アニメーションFBXだけを180度回す、スキンメッシュだけを回す、ソケットへ同じ補正を二度掛ける、といった運用にしない。
 
-参照: [Vector3.hpp](../../Projects/Math/include/Math/Vector3.hpp)、
-[FbxImportTool.cpp](../../Projects/Editor/src/Import/FbxImportTool.cpp)。
+参照: [Vector3.hpp](../../Projects/Math/include/Math/LinearAlgebra/Vector3.hpp)、
+[FbxImportTool.cpp](../../Projects/Editor/src/Import/Fbx/FbxImportTool.cpp)。
 変換行列・現行実装・完成FBXの軸メタデータを照合済み。FBZZの実機表示は未検証。
 
 ## 4. 固定するFBX設定
@@ -182,7 +182,7 @@ Blenderの実際の `axis_conversion(to_forward='-Z', to_up='Y')` と、
 RightHandの子のままでも、親の逆行列でローカル姿勢へ変換すれば再現できる。骨の総数は54を維持する。
 
 剣モデルには原点・単位スケールの `Attach_Grip` ノードを出力用に設ける。
-FBZZでは [AttachToSocket](../../Projects/Engine/src/Scene/SocketAttach.cpp) を使い、
+FBZZでは [AttachToSocket](../../Projects/Engine/src/Scene/Animation/SocketAttach.cpp) を使い、
 モデルのインポート時の軸変換も含めたアタッチ相対姿勢を打ち消す。
 取り込み後に **剣のアタッチ点と出力ソケットのワールド姿勢が一致すること** を確認する。
 生のBlender行列を無変換でゲームのオフセットへ貼り付けない。
@@ -231,8 +231,8 @@ Player本体のBaseColorは全LODで共有し、法線はLODごとに別画像�
 
 `.fzhint` はDCC設計書には登場するが、現行 `FbxImportTool::Import` の `sourceHint` 引数は未使用。
 それだけで座標設定やループが伝わるとは扱わず、**`.fbx.meta` が取り込み設定の正本**。
-参照: [FbxMetaSerializer.cpp](../../Projects/Editor/src/Import/FbxMetaSerializer.cpp)、
-[AnimSubExporter.cpp](../../Projects/Editor/src/Import/AnimSubExporter.cpp)。
+参照: [FbxMetaSerializer.cpp](../../Projects/Editor/src/Import/Fbx/FbxMetaSerializer.cpp)、
+[AnimSubExporter.cpp](../../Projects/Editor/src/Import/Fbx/AnimSubExporter.cpp)。
 
 ## 8. 検証済みの範囲と出力後の確認
 

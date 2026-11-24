@@ -352,8 +352,8 @@ AGENTS.mdに従いVS CodeのBuild All / Tests: Build & Run Suiteで実施する�
 
 ### 1.1 置き換え前の実装 (〜M2b-1 / 2026-09-03 に撤去済み)
 
-[`RagdollComponent`](../../Projects/Engine/include/Engine/Scene/Components/RagdollComponent.hpp) /
-[`RagdollSystem`](../../Projects/Engine/src/Scene/Systems/RagdollSystem.cpp) は、
+[`RagdollComponent`](../../Projects/Engine/include/Engine/Scene/Components/Physics/RagdollComponent.hpp) /
+[`RagdollSystem`](../../Projects/Engine/src/Scene/Systems/Physics/RagdollSystem.cpp) は、
 骨 1 本を質点 1 個とする Verlet + 距離拘束で組んであった。
 
 | 要素 | 実装 |
@@ -500,7 +500,7 @@ Math
 
 ### 4.2 データ構造
 
-**剛体**は既存の [`physics::RigidBody`](../../Projects/Physics/include/Physics/RigidBody.hpp) を使う。
+**剛体**は既存の [`physics::RigidBody`](../../Projects/Physics/include/Physics/Dynamics/RigidBody.hpp) を使う。
 必要な要素は揃っている。
 
 | 必要なもの | 現状 |
@@ -511,7 +511,7 @@ Math
 | トルク | `ApplyTorque()` |
 | **点インパルス** | `ApplyImpulseAtPoint(J, worldPoint)` を追加済み (M4)。瓦礫へ反作用を返すのに使う |
 
-**関節**は新規。実装は [`XPBDJoint`](../../Projects/Physics/include/Physics/XPBDJoint.hpp)
+**関節**は新規。実装は [`XPBDJoint`](../../Projects/Physics/include/Physics/Solver/XPBD/XPBDJoint.hpp)
 （可動域は `XPBDJointLimits`、ドライブは `XPBDJointDrive` に分けた）。関節フレームは
 **X = ツイスト軸 (骨の向き)、Y/Z = スイング軸**に固定し、`Build()` が今の姿勢を「たわみ 0」に据える。
 スイング制限は円錐ではなく**軸ごとの非対称な上下限 (角錐)** — 円錐は中立軸まわりに対称なので
@@ -602,7 +602,7 @@ Scene 側 (`RagdollSystem`) の責務。現行の構造をほぼそのまま使�
 寄せる」筋力が根も引いていたので問題にならず、この差に気付いていなかった。
 
 倒れる数秒だけ走らせる分には見えないが、**立っている間ずっと走らせると胴が床下へ沈む**。
-[`XPBDPoseAnchor`](../../Projects/Physics/include/Physics/XPBDPoseAnchor.hpp) が
+[`XPBDPoseAnchor`](../../Projects/Physics/include/Physics/Solver/XPBD/XPBDPoseAnchor.hpp) が
 根の剛体を FK の姿勢へ引き止める。完全固定にしないのは、固定すると押しても胴が動かず
 「押されて沈む」が手足のたわみだけになるため ─ サーボと同じく compliance と力の上限を
 持たせ、力も自重比 (`rootAnchor`) で持つ。押された瞬間は `impactSlack` が繋ぎ止めにも
@@ -687,8 +687,8 @@ HFF 側では同じ機構が「握力が足りず手が滑る」「腰が砕け�
 
 | 段階 | 相手 | 生成 |
 |---|---|---|
-| M2b-2 | 水平面 1 枚 | [`XPBDPlaneContact`](../../Projects/Physics/include/Physics/XPBDPlaneContact.hpp) をカプセルの両端に張る |
-| M3 ✅ | 静的コライダ | 全身を包む球で `World::OverlapSphere` を **1 回**引き、AABB で絞ってから既存の `PhysicsSolver::NarrowPhase` へ丸投げする。返った `ContactPoint` を [`XPBDContact`](../../Projects/Physics/include/Physics/XPBDContact.hpp) に包んでソルバの transient 拘束にする |
+| M2b-2 | 水平面 1 枚 | [`XPBDPlaneContact`](../../Projects/Physics/include/Physics/Solver/XPBD/XPBDPlaneContact.hpp) をカプセルの両端に張る |
+| M3 ✅ | 静的コライダ | 全身を包む球で `World::OverlapSphere` を **1 回**引き、AABB で絞ってから既存の `PhysicsSolver::NarrowPhase` へ丸投げする。返った `ContactPoint` を [`XPBDContact`](../../Projects/Physics/include/Physics/Solver/XPBD/XPBDContact.hpp) に包んでソルバの transient 拘束にする |
 | M4 ✅ | 動的剛体 | 同じ経路。外部の姿勢は固定し、双方の有効質量で反作用を求める (§7) |
 | M5 | 全部 | `World::Step` の substep ループが全接触を生成・解決 |
 
@@ -728,7 +728,7 @@ NarrowPhase が返す接触点は形状の組ごとに 1 個で、寝かせた�
    元から重ねてある組がある。当てると起動した瞬間に押し合って自壊するので、
    `Build()` で AABB の重なりを記録し、その組は永久に外す
 
-[`Layer`](../../Projects/Physics/include/Physics/Layer.hpp) は使わない ─
+[`Layer`](../../Projects/Physics/include/Physics/Collision/Filtering/Layer.hpp) は使わない ─
 レイヤーは «誰と誰が» をシーン全体で決める仕組みで、骨ごとに違う除外は表現できない。
 
 ---
@@ -866,13 +866,13 @@ substep の中で動かすと 1 フレームに 2 回進む**。そこで M4 で
 ### 受け入れ条件
 
 - **M1**: 単体の剛体が自由落下し、床に相当する 1 枚の接触拘束で止まる。substep 数を変えても静止位置が変わらない
-  → [`Projects/Tests/Physics/Auto/XPBDSolverTests.cpp`](../../Projects/Tests/Physics/Auto/XPBDSolverTests.cpp) で自動検証 (`FBZZTestsPhysicsAuto`)
+  → [`Projects/Tests/Physics/Auto/Solver/XPBD/XPBDSolverTests.cpp`](../../Projects/Tests/Physics/Auto/Solver/XPBD/XPBDSolverTests.cpp) で自動検証 (`FBZZTestsPhysicsAuto`)
 - **M2a**: 関節 1 本の試験台で、(a) 可動域でちょうど止まる、(b) 非対称な可動域が書ける、
   (c) ドライブが重力に抗して目標を保つ、(d) トルク上限を下げると `m·g·L·cos θ = τ_max` の角度まで垂れる
-  → [`XPBDJointTests.cpp`](../../Projects/Tests/Physics/Auto/XPBDJointTests.cpp)
+  → [`XPBDJointTests.cpp`](../../Projects/Tests/Physics/Auto/Solver/XPBD/XPBDJointTests.cpp)
 - **M2b-1**: 骨の並びから剛体と関節を組み、(a) 捕獲 → 書き戻しで元の姿勢に戻る（組んだ時と違う姿勢でも）、
   (b) 落としても骨が伸びない、(c) 剛体を持たない葉が親に付いてくる、(d) ドライブがクリップの形を保つ
-  → [`RagdollRigTests.cpp`](../../Projects/Tests/Engine/Auto/RagdollRigTests.cpp)
+  → [`RagdollRigTests.cpp`](../../Projects/Tests/Engine/Auto/Scene/Ragdoll/RagdollRigTests.cpp)
 - **M2b-2**: ボスのスケルトンで、(a) 膝が逆に折れない、(b) `maxTorque` を下げると腰から崩れる、
   (c) 無負荷でクリップと一致する（`GetDeviation()` が 0 付近）、(d) 押すと沈んで戻る
   → 実装は入った。**シーン上での確認と数値の詰めは残っている**。
@@ -880,7 +880,7 @@ substep の中で動かすと 1 フレームに 2 回進む**。そこで M4 で
   Saturated が常に 0 なら Muscle が強すぎ、常に全部なら弱すぎる
 - **M3**: 傾斜地形の上で倒すと、地形に沿って止まる。階段で足が沈まない
   → 世界のコライダーで止まること・繋がった骨が自己衝突しないことは
-  [`RagdollRigTests.cpp`](../../Projects/Tests/Engine/Auto/RagdollRigTests.cpp) で自動検証。
+  [`RagdollRigTests.cpp`](../../Projects/Tests/Engine/Auto/Scene/Ragdoll/RagdollRigTests.cpp) で自動検証。
   **傾斜と階段での見え方はシーン上で確認する**
 - **M4**: 倒れたボスが近くの動的剛体を弾く。逆に弾かれる
   → 弾く側は `RagdollRigTests.cpp` で自動検証。弾かれる側は接触が «壁» として効くだけなので

@@ -287,7 +287,7 @@ float 用の Mathf.Clamp / Clamp01 / Lerp / ToRadians / ToDegrees と PI / TWO_P
 | 精度・丸め | float32 の評価順と許容差を決める。std::round と MathF.Round の既定丸めは同じとは限らず、名前だけで置き換えない |
 | 不正値 | NaN / Infinity、逆転区間、零除算の入力条件・失敗時の値を各関数で宣言する。既存の曖昧な挙動を無条件に SDK の契約へしない |
 
-根拠は `Projects/Math/include/Math/MathUtils.hpp` と `Vector3.hpp`。ManagedTests は非有限値・零除算・float32 のオーバーフロー・符号付きゼロを、ManagedMathParityTests は実 CoreCLR の計算結果と C++ Math の通常値・境界値・退化入力・定数・Vector3 の配置を照合する。NormalizedOr は長さが EPSILON 未満の場合だけ fallback をそのまま返す。Clamp の区間は min <= max を前提とし、逆転区間の修正は行わない。浮動小数点の全プラットフォームでの bit 単位の一致や、ネットワークの決定性は別の要求とする。
+根拠は `Projects/Math/include/Math/Scalar/MathUtils.hpp` と `Vector3.hpp`。ManagedTests は非有限値・零除算・float32 のオーバーフロー・符号付きゼロを、ManagedMathParityTests は実 CoreCLR の計算結果と C++ Math の通常値・境界値・退化入力・定数・Vector3 の配置を照合する。NormalizedOr は長さが EPSILON 未満の場合だけ fallback をそのまま返す。Clamp の区間は min <= max を前提とし、逆転区間の修正は行わない。浮動小数点の全プラットフォームでの bit 単位の一致や、ネットワークの決定性は別の要求とする。
 
 MoveTowardsWorld は現在、C# で距離を計算し、native の WorldPosition 読み書きを使う。最大移動量・停止半径・親子同期を維持する共通 helper であり、単一 native 呼び出しや一括版としては公開していない。
 
@@ -511,18 +511,18 @@ runtime 同梱、NativeAOT、コンソール対応は別の配布判断とする
 
 | 接続点 | 現行ファイル |
 |---|---|
-| 所有と Missing 保持 | `Projects/Engine/include/Engine/Scene/ScriptComponent.hpp` |
-| 型登録と全解除 | `Projects/Engine/include/Engine/Scene/ScriptFactory.hpp`、`Projects/Engine/src/Scene/ScriptFactory.cpp` |
-| 更新・初期化 | `Projects/Engine/src/Scene/Systems/ScriptSystem.cpp` |
-| managed 型取得と参照 | `Projects/Engine/include/Engine/Scene/Scene.hpp`、`Projects/Engine/include/Engine/Scene/Ref.hpp` |
-| 反射・観測 | `Projects/Engine/include/Engine/Scene/Script.hpp`、`Projects/Engine/include/Engine/Scene/SchemaReflectorAdapter.hpp` |
-| 保存往復 | `Projects/Engine/src/Scene/SceneSerializer.cpp` |
-| 階層と Prefab 内参照 | `Projects/Engine/include/Engine/Scene/GameObject.hpp`、`Projects/Engine/src/Scene/PrefabInstantiate.cpp`、`Projects/Editor/src/Util/PrefabSerializer.cpp` |
+| 所有と Missing 保持 | `Projects/Engine/include/Engine/Scene/Scripting/ScriptComponent.hpp` |
+| 型登録と全解除 | `Projects/Engine/include/Engine/Scene/Scripting/ScriptFactory.hpp`、`Projects/Engine/src/Scene/Scripting/ScriptFactory.cpp` |
+| 更新・初期化 | `Projects/Engine/src/Scene/Systems/Scripting/ScriptSystem.cpp` |
+| managed 型取得と参照 | `Projects/Engine/include/Engine/Scene/Scene.hpp`、`Projects/Engine/include/Engine/Scene/References/Ref.hpp` |
+| 反射・観測 | `Projects/Engine/include/Engine/Scene/Scripting/Script.hpp`、`Projects/Engine/include/Engine/Scene/Serialization/SchemaReflectorAdapter.hpp` |
+| 保存往復 | `Projects/Engine/src/Scene/Serialization/SceneSerializer.cpp` |
+| 階層と Prefab 内参照 | `Projects/Engine/include/Engine/Scene/GameObject.hpp`、`Projects/Engine/src/Scene/Prefab/PrefabInstantiate.cpp`、`Projects/Editor/src/Prefab/PrefabSerializer.cpp` |
 | AI の候補検索と範囲 | `Projects/Editor/src/Ai/Bus/SceneHandlers.cpp`、`Projects/EditorMcp/src/Tools/SceneTools.ts` |
-| C# の全宣言元と型 GUID | `Projects/Managed/Fbzz.ScriptGenerator/ScriptSourceGenerator.cs`、`Projects/Editor/src/ManagedScriptMetadata.cpp` |
+| C# の全宣言元と型 GUID | `Projects/Managed/Fbzz.ScriptGenerator/ScriptSourceGenerator.cs`、`Projects/Editor/src/Script/Managed/ManagedScriptMetadata.cpp` |
 | C++ / C# の固定 ABI 生成 | `Projects/Engine/include/Engine/Scene/ManagedBridgeContract.inl`、`Projects/Managed/Fbzz.ScriptGenerator/ManagedBridgeSourceGenerator.cs` |
-| 純粋な数学計算 | `Projects/Managed/Fbzz.ScriptApi/Vector3.cs`、`Mathf.cs`、`Projects/Tests/Engine/Auto/ManagedMathParityTests.cpp` |
-| 一括位置操作 | `Projects/Managed/Fbzz.ScriptApi/ScriptObjects.cs`、`Fbzz.ManagedHost/NativeObjectBatchBridge.cs`、`Projects/Engine/src/Scene/Managed/ManagedTransformBatch.cpp` |
-| C# の共通設定と Undo | `Projects/Editor/src/Op/ScriptConfigureOperators.cpp` |
+| 純粋な数学計算 | `Projects/Managed/Fbzz.ScriptApi/Vector3.cs`、`Mathf.cs`、`Projects/Tests/Engine/Auto/Scene/Managed/ManagedMathParityTests.cpp` |
+| 一括位置操作 | `Projects/Managed/Fbzz.ScriptApi/ScriptObjects.cs`、`Fbzz.ManagedHost/NativeObjectBatchBridge.cs`、`Projects/Engine/src/Scene/Managed/Objects/ManagedTransformBatch.cpp` |
+| C# の共通設定と Undo | `Projects/Editor/src/Op/Script/ScriptConfigureOperators.cpp` |
 
 名前による参照接続・配列・保存・実行から、追加した API と Play 中の更新まで、受入結果と制約は [Managed の検証記録](../../Projects/Managed/README.md)に置く。本書の API 説明と、時点を付けた過去の検証記録を区別する。
