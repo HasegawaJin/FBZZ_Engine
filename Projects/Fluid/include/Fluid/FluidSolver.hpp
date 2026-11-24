@@ -37,15 +37,15 @@ public:
     /// @pre expansion を指定する場合は速度場と同じ並びで全セル分を与える。
     FBZZ_FLUID_API void Project(const std::vector<float>* expansion = nullptr);
 
-    [[nodiscard]] int   SizeX() const { return m_nx; }
-    [[nodiscard]] int   SizeY() const { return m_ny; }
-    [[nodiscard]] int   SizeZ() const { return m_nz; }
-    [[nodiscard]] float CellSize() const { return m_h; }
+    [[nodiscard]] int   SizeX() const { return m_cellsX; }
+    [[nodiscard]] int   SizeY() const { return m_cellsY; }
+    [[nodiscard]] int   SizeZ() const { return m_cellsZ; }
+    [[nodiscard]] float CellSize() const { return m_cellWidth; }
     [[nodiscard]] float Time() const { return m_time; }
     [[nodiscard]] std::size_t Index(int x, int y, int z) const
     {
-        return (static_cast<std::size_t>(z) * static_cast<std::size_t>(m_ny) + static_cast<std::size_t>(y))
-            * static_cast<std::size_t>(m_nx) + static_cast<std::size_t>(x);
+        return (static_cast<std::size_t>(z) * static_cast<std::size_t>(m_cellsY) + static_cast<std::size_t>(y))
+            * static_cast<std::size_t>(m_cellsX) + static_cast<std::size_t>(x);
     }
 
     /// @brief 領域座標での値 (範囲外は縁の値)。2D では z を無視する。
@@ -113,28 +113,28 @@ private:
     FBZZ_FLUID_API void AdvectDetail(float dt);
     FBZZ_FLUID_API void UpdateDetailEpochs();
 
-    FluidGasSettings            m_settings;
+    FluidGasSettings            m_settings; ///< @note 圧力反復回数・散逸率など、各ステップで参照する気体の設定。
     /// @note 有効な部品だけを先頭から上限数まで持つ。ノイズの切り出し位置は「有効な部品の中での添字」で
     /// @note 決まり、GPU (有効な部品だけを詰める) と同じ数え方になる。
     std::vector<FluidSource>    m_sources;
-    std::vector<FluidForce>     m_forces;
-    std::vector<FluidCollider>  m_colliders;
+    std::vector<FluidForce>     m_forces; ///< @note この格子の速度に作用する外力。
+    std::vector<FluidCollider>  m_colliders; ///< @note セルのうち流れを遮る領域を決める障害物。
     /// @note m_sources と同じ並び。Texture 以外と読めなかった画像は空 (= 1 として引かれ、板の形に湧く)。
     std::vector<FluidSourceMask> m_sourceMasks;
     math::Vector3 m_noiseOffset = { 0.0f, 0.0f, 0.0f };
     /// @note ReplaceOperators が「同じ格子の続き」と言えるかを判じるための、Reset したレシピの控え
     /// @note (seed = ノイズの切り出し位置、要求解像度 = 2D は ResolveGasResolution・3D は vectorFieldResolution)。
     uint32_t m_seed = 1;
-    int   m_gridRequest = 0;
-    int   m_nx = 1;
-    int   m_ny = 1;
-    int   m_nz = 1;
-    float m_h = 1.0f;
-    float m_time = 0.0f;
+    int   m_requestedResolution = 0; ///< @note 格子の再利用が可能かをレシピ変更時に判定するための要求解像度。
+    int   m_cellsX = 1; ///< @note 横方向のセル数。X が配列上で隣り合う。
+    int   m_cellsY = 1; ///< @note 縦方向のセル数。隣の行への添字計算に使う。
+    int   m_cellsZ = 1; ///< @note 奥行き方向のセル数。2 次元では 1 層だけ使う。
+    float m_cellWidth = 1.0f; ///< @note 隣り合うセル中心間の距離。速度や圧力の差を領域座標での変化率に換算する。
+    float m_time = 0.0f; ///< @note 発生源や動く障害物の位置を決めるシミュレーション時刻（秒）。
 
-    std::vector<float> m_density;
-    std::vector<float> m_temperature;
-    std::vector<float> m_fuel;
+    std::vector<float> m_density; ///< @note セルごとの煙の濃さ。速度場に乗せて運ぶ。
+    std::vector<float> m_temperature; ///< @note 浮力や燃焼に使うセルごとの温度。
+    std::vector<float> m_fuel; ///< @note 燃焼によって熱や煙に変わるセルごとの残存燃料。
     /// @note 色の量 (密度 × 鍵)。密度と同じ移流・散逸で運ぶ。鍵の付いた発生源が 1 つも無いレシピは
     /// @note m_hasColor = false で運ぶのを飛ばす (鍵は全部 0 のまま。密度には元から触らない)。
     std::vector<float> m_colorMass;
@@ -142,25 +142,27 @@ private:
     /// @note 煙と別に持つ理由: 煙を注がない発生源 (Fire プリセット = density 0・fuel > 0) では、
     /// @note 燃えて生まれる煤が「その場の煙の鍵」しか受け取れず、色の付いた炎が作れなかった。
     std::vector<float> m_fuelColorMass;
-    std::vector<float> m_colorKey;
+    std::vector<float> m_colorKey; ///< @note 描画で色を選ぶため、色の量を煙の密度で割り戻した値。
     bool m_hasColor = false;
+    /// @note セル中心の流速を X・Y・Z 成分別に保持する。圧力で補正した流速を使って煙と熱を運ぶ。
     std::vector<float> m_vx;
     std::vector<float> m_vy;
     std::vector<float> m_vz;
-    std::vector<float> m_pressure;
-    std::vector<float> m_pressureRhs;
-    std::vector<float> m_expansion;
+    std::vector<float> m_pressure; ///< @note 余分な膨張を打ち消す圧力。前の刻みの結果を次の反復の初期値に使う。
+    std::vector<float> m_excessDivergence; ///< @note セルから出る流れの広がりから、燃焼で残したい膨張を引いた値。
+    std::vector<float> m_expansion; ///< @note 燃焼によって許す局所的な膨張率。圧力計算の目標にする。
     /// @note 移流・渦度の作業領域。刻みごとに確保し直さない。
     std::vector<float> m_prevVx;
     std::vector<float> m_prevVy;
     std::vector<float> m_prevVz;
+    /// @note 移流に使う 3 枚の作業格子。スカラーの移流では順に片道の結果・往復した結果・補正後の結果を置く。
     std::vector<float> m_scratchA;
     std::vector<float> m_scratchB;
     std::vector<float> m_scratchC;
     std::vector<float> m_curlX;
     std::vector<float> m_curlY;
     std::vector<float> m_curlZ;
-    std::vector<float> m_curlLength;
+    std::vector<float> m_vorticityMagnitude; ///< @note 渦の強さ。隣のセルとの強さの差から、細かな渦を補う力の向きを決める。
     /// @note 障害物のセル (1 = 固体) と、そのセルの速度 (障害物の動きの速度。重なったら先の障害物)。
     /// @note 刻みの始めに BuildSolids が作り直す。効いている障害物が無い刻みは m_hasSolid = false で
     /// @note 全部飛ばす (障害物の無いレシピの結果を 1 ビットも変えない)。
@@ -172,11 +174,11 @@ private:
     /// @note 流れに乗せた細部の座標 (2 層)。3D では空のまま。
     std::vector<float> m_detailU[2];
     std::vector<float> m_detailV[2];
-    int m_detailEpoch[2] = { 0, 0 };
+    int m_detailEpoch[2] = { 0, 0 }; ///< @note 各層の座標を初期位置へ戻す周期の番号。同じ周期での二重リセットを防ぐ。
 };
 
-/// @brief Collision field sampled in normalized liquid simulation coordinates.
-/// @note distance is positive outside the solid and normal is a unit outward gradient.
+/// @brief 液体の正規化座標で取得した障害物表面との接触情報。
+/// @note distance は固体の外側で正。normal は外側を向く長さ 1 のベクトル。
 struct FluidLiquidContact {
     math::Vector3 normal = math::Vector3::UP;
     float distance = 0.0f;
@@ -214,13 +216,13 @@ public:
     [[nodiscard]] bool IsVolumetric() const { return m_volumetric; }
     /// @brief dt 秒ぶん進める。1 刻みで粒子半径以上動かないよう内部で刻みを割る。
     FBZZ_FLUID_API void Advance(float dt);
-    /// @note The boundary and its context are borrowed for this call only.
+    /// @note 境界のコールバックとその context は、この呼び出しの間だけ借りる。
     FBZZ_FLUID_API void Advance(float dt, const FluidLiquidBoundary& boundary);
     FBZZ_FLUID_API void Step(float dt);
 
     [[nodiscard]] const std::vector<Particle>& Particles() const { return m_particles; }
     [[nodiscard]] float Time() const { return m_time; }
-    [[nodiscard]] float ParticleRadius() const { return m_radius; }
+    [[nodiscard]] float ParticleRadius() const { return m_particleRadius; }
     [[nodiscard]] float RestDensity() const { return m_restDensity; }
     /// @brief 粒子 i の近傍で測った密度 (Step の最後の反復時点)。
     [[nodiscard]] FBZZ_FLUID_API float MeasuredDensity(std::size_t index) const;
@@ -249,46 +251,48 @@ private:
         math::Vector3 velocity = { 0.0f, 0.0f, 0.0f };
     };
 
-    FluidLiquidSettings             m_settings;
+    FluidLiquidSettings             m_settings; ///< @note 反復回数・粘性・粒子寿命など、各ステップで使う液体の設定。
     /// @note 気体と同じく有効な部品だけ。液体の発生源は粒子半径未満の寸法を粒子半径まで広げてある。
     std::vector<FluidSource>        m_sources;
     std::vector<FluidForce>         m_forces;
     std::vector<FluidCollider>      m_colliders;
-    std::vector<ActiveCollider>     m_activeColliders;
+    std::vector<ActiveCollider>     m_activeColliders; ///< @note 今回の刻みで作用する障害物と、その時刻での中心・速度。
     /// @note m_sources と同じ並び (気体と同じ)。
     std::vector<FluidSourceMask>    m_sourceMasks;
-    std::vector<int>                m_emitted;
-    std::vector<Particle>           m_particles;
-    uint32_t m_rngState = 1;
-    float m_time = 0.0f;
+    std::vector<int>                m_emittedPerSource; ///< @note 発生源ごとにこれまで放出した粒子数。設定を編集しても既に出した分は数え直さない。
+    std::vector<Particle>           m_particles; ///< @note 位置・速度・年齢を確定した粒子。次の刻みの出発点になる。
+    uint32_t m_rngState = 1; ///< @note 同じ種から粒子を同じ順序で放出するための乱数状態。
+    float m_time = 0.0f; ///< @note 発生量と障害物の位置を評価する経過秒数。
 
-    float m_radius = 0.01f;
-    float m_h = 0.04f;
-    float m_h2 = 0.0016f;
-    float m_poly6 = 0.0f;
-    float m_spikyGradient = 0.0f;
-    float m_restDensity = 1.0f;
-    float m_relaxation = 1.0e-6f;
-    float m_tensileReference = 1.0f;
-    float m_tensileScale = 0.0f;
+    float m_particleRadius = 0.01f; ///< @note 境界との接触や静止時の粒子間隔を決める粒子の半径。
+    float m_kernelRadius = 0.04f; ///< @note 周囲の粒子が密度に影響する距離。近傍検索のセル幅にも使う。
+    float m_kernelRadiusSquared = 0.0016f; ///< @note 平方根を取らずに近傍の範囲内か判定するための半径の二乗。
+    float m_densityKernelScale = 0.0f; ///< @note 近い粒子ほど密度への寄与を大きくする Poly6 の係数。2 次元と 3 次元で異なる。
+    float m_gradientKernelScale = 0.0f; ///< @note 粒子間の距離から位置補正の勾配を求める Spiky カーネルの係数。
+    float m_restDensity = 1.0f; ///< @note 粒子を直径間隔で並べたときの密度。現在の密度が過密かどうかの比較基準。
+    float m_densityRegularization = 1.0e-6f; ///< @note 周囲に粒子が少ないときも密度補正の分母が小さくなり過ぎるのを防ぐ。
+    float m_tensileReference = 1.0f; ///< @note 粒子が密集するときだけ強くなる反発を計算するための基準密度カーネル値。
+    float m_tensileScale = 0.0f; ///< @note 近距離の粒子同士が固まり過ぎないように加える補正の倍率。
 
     /// @note 一様格子と計数ソート用。セル幅はカーネルの有効半径 h と同じ。
     int   m_cellsX = 1;
     int   m_cellsY = 1;
     int   m_cellsZ = 1;
     bool  m_volumetric = false;
-    std::vector<int> m_cellStart;
-    std::vector<int> m_cellParticles;
-    std::vector<int> m_particleCell;
+    std::vector<int> m_cellStart; ///< @note 各セルに入った粒子番号の区間の先頭。次のセルの先頭が区間の終端になる。
+    std::vector<int> m_cellParticles; ///< @note 同じセルの粒子番号をまとめた配列。周辺セルだけから近傍を探す。
+    std::vector<int> m_cellOfParticle; ///< @note 粒子番号から所属セルを引く逆引き表。
     /// @note 粒子 i の近傍は m_neighbors の [m_neighborStart[i], m_neighborStart[i+1]) に並ぶ。
     std::vector<int> m_neighborStart;
     std::vector<int> m_neighbors;
 
+    /// @note X・Y・Z は位置を仮に時間発展させた値。密度・衝突の補正が済んでから粒子の位置と速度を確定する。
     std::vector<float> m_predictedX;
     std::vector<float> m_predictedY;
     std::vector<float> m_predictedZ;
-    std::vector<float> m_lambda;
-    std::vector<float> m_density;
+    std::vector<float> m_densityMultiplier; ///< @note 密度のずれを各粒子の位置補正に換算する重み（数式の λ）。
+    std::vector<float> m_density; ///< @note 近傍粒子から最後に測った密度。基準密度と比較して補正量を決める。
+    /// @note X・Y・Z に全粒子の補正を一旦ためる。隣を調べている途中で書き換えず、位置補正と粘性の段階で使い回す。
     std::vector<float> m_deltaX;
     std::vector<float> m_deltaY;
     std::vector<float> m_deltaZ;
