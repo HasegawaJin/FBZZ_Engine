@@ -21,6 +21,7 @@
 #include <Engine/Scene/Components/InstancedMeshComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/TerrainGridComponent.hpp>
 #include <Engine/Scene/Components/WaterComponent.hpp>
 #include <Engine/Util/FileSystem.hpp>
@@ -32,6 +33,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace fbzz::tests {
 
@@ -62,7 +64,85 @@ private:
 
 /// @name 骨格
 
-/// @brief Saves and reloads an empty scene.
+TEST_F(SceneSerializerTest, RestoresParticleGradientColorSpaceAndPlaybackThroughBothLoadPaths)
+{
+    const std::string text = R"(
+[[gameobjects]]
+name = 'Mixed'
+[gameobjects.ParticleEmitter]
+gradientColorSpace = 2
+playing = false
+randomSeed = 17
+[gameobjects.ParticleEmitter.colorGradient]
+space = 1
+keys = [[0.0, 0.25, 0.5, 0.75, 1.0]]
+
+[[gameobjects]]
+name = 'LegacyOnly'
+[gameobjects.ParticleEmitter]
+gradientColorSpace = 2
+
+[[gameobjects]]
+name = 'LegacySpace'
+[gameobjects.ParticleEmitter]
+gradientColorSpace = 1
+[gameobjects.ParticleEmitter.colorGradient]
+keys = [[0.0, 0.25, 0.5, 0.75, 1.0]]
+
+[[gameobjects]]
+name = 'ModernSpaceOnly'
+[gameobjects.ParticleEmitter]
+gradientColorSpace = 1
+[gameobjects.ParticleEmitter.colorGradient]
+space = 2
+)";
+
+    const auto loaded = scene::SceneSerializer::LoadDataFromText(text, ScenePath());
+    ASSERT_NE(loaded, nullptr);
+    scene::Scene appended;
+    std::vector<scene::EntityID> roots;
+    ASSERT_TRUE(scene::SceneSerializer::AppendObjects(appended, text, nullptr, roots));
+    ASSERT_EQ(roots.size(), 4u);
+
+    for (auto* restored : {loaded.get(), &appended}) {
+        SCOPED_TRACE(restored == loaded.get() ? "LoadDataFromText" : "AppendObjects");
+        auto* mixedObject = restored->Find("Mixed");
+        auto* legacyObject = restored->Find("LegacyOnly");
+        auto* legacySpaceObject = restored->Find("LegacySpace");
+        auto* modernSpaceObject = restored->Find("ModernSpaceOnly");
+        ASSERT_NE(mixedObject, nullptr);
+        ASSERT_NE(legacyObject, nullptr);
+        ASSERT_NE(legacySpaceObject, nullptr);
+        ASSERT_NE(modernSpaceObject, nullptr);
+        const auto* mixed = mixedObject->GetComponent<scene::ParticleEmitter>();
+        const auto* legacy = legacyObject->GetComponent<scene::ParticleEmitter>();
+        const auto* legacySpace = legacySpaceObject->GetComponent<scene::ParticleEmitter>();
+        const auto* modernSpace = modernSpaceObject->GetComponent<scene::ParticleEmitter>();
+        ASSERT_NE(mixed, nullptr);
+        ASSERT_NE(legacy, nullptr);
+        ASSERT_NE(legacySpace, nullptr);
+        ASSERT_NE(modernSpace, nullptr);
+
+        EXPECT_EQ(mixed->settings.colorGradient.colorSpace, scene::ParticleColorSpace::Linear);
+        EXPECT_EQ(mixed->runtime.runtimeGradient.colorSpace, scene::ParticleColorSpace::Linear);
+        EXPECT_FALSE(mixed->settings.playing);
+        EXPECT_EQ(mixed->runtime.randomState, 17u);
+
+        EXPECT_EQ(legacy->settings.colorGradient.colorSpace, scene::ParticleColorSpace::Oklab);
+        EXPECT_EQ(legacy->runtime.runtimeGradient.colorSpace, scene::ParticleColorSpace::Oklab);
+        EXPECT_TRUE(legacy->settings.playing);
+
+        EXPECT_EQ(legacySpace->settings.colorGradient.colorSpace, scene::ParticleColorSpace::Linear);
+        EXPECT_EQ(legacySpace->runtime.runtimeGradient.colorSpace, scene::ParticleColorSpace::Linear);
+        ASSERT_EQ(legacySpace->settings.colorGradient.keyCount, 1u);
+        EXPECT_FLOAT_EQ(legacySpace->settings.colorGradient.keys[0].color.x, 0.25f);
+
+        EXPECT_EQ(modernSpace->settings.colorGradient.colorSpace, scene::ParticleColorSpace::Oklab);
+        EXPECT_EQ(modernSpace->runtime.runtimeGradient.colorSpace, scene::ParticleColorSpace::Oklab);
+    }
+}
+
+/// @brief 空の Scene を保存し、再読み込みする。
 TEST_F(SceneSerializerTest, SavesAndReloadsAnEmptyScene)
 {
     scene::Scene source;
@@ -73,7 +153,7 @@ TEST_F(SceneSerializerTest, SavesAndReloadsAnEmptyScene)
     EXPECT_TRUE(restored->GetRootGameObjects().empty());
 }
 
-/// @brief Migrates legacy water and persists the new sea controls.
+/// @brief 旧形式の水面を移行し、新しい海面設定を保存する。
 TEST_F(SceneSerializerTest, MigratesLegacyWaterAndPersistsTheNewSeaControls)
 {
     const auto scene = scene::SceneSerializer::LoadDataFromText(R"(
@@ -128,7 +208,7 @@ wavesAssetRef = 'Assets/Shared.fzdata'
     EXPECT_FLOAT_EQ(loaded.rippleHeadingDegrees, 40.0f);
 }
 
-/// @brief Keeps directional shadow bake presets and defaults legacy lights to realtime.
+/// @brief 平行光のシャドウベイク設定を保持し、旧形式のライトはリアルタイムを既定値とする。
 TEST_F(SceneSerializerTest, KeepsDirectionalShadowBakePresetsAndDefaultsLegacyLightsToRealtime)
 {
     scene::Scene source;
@@ -187,7 +267,7 @@ TEST_F(SceneSerializerTest, KeepsDirectionalShadowBakePresetsAndDefaultsLegacyLi
     EXPECT_FALSE(oldMesh->bakeStaticShadow);
 }
 
-/// @brief Keeps vegetation cell budgets in the scene and play clone.
+/// @brief 植生セルの予算を保存後の Scene と Play 用の複製に保持する。
 TEST_F(SceneSerializerTest, KeepsVegetationCellBudgetsInTheSceneAndPlayClone)
 {
     using Instances = scene::InstancedMeshComponent;
@@ -223,7 +303,7 @@ TEST_F(SceneSerializerTest, KeepsVegetationCellBudgetsInTheSceneAndPlayClone)
     expectBudget(*old, {});
 }
 
-/// @brief Keeps animator pose LOD across save and passive play clone and defaults legacy data.
+/// @brief Animator の姿勢 LOD を保存と受動的な Play 複製で保持し、旧データには既定値を適用する。
 TEST_F(SceneSerializerTest, KeepsAnimatorPoseLodAcrossSaveAndPassivePlayCloneAndDefaultsLegacyData)
 {
     scene::Scene source;
@@ -259,7 +339,7 @@ TEST_F(SceneSerializerTest, KeepsAnimatorPoseLodAcrossSaveAndPassivePlayCloneAnd
     EXPECT_FLOAT_EQ(oldAnimator->poseLodFarDistance, 60);
 }
 
-/// @brief Keeps every game object.
+/// @brief すべての GameObject を保持する。
 TEST_F(SceneSerializerTest, KeepsEveryGameObject)
 {
     scene::Scene source;
@@ -276,7 +356,7 @@ TEST_F(SceneSerializerTest, KeepsEveryGameObject)
     EXPECT_EQ(restored->GetRootGameObjects().size(), 3u);
 }
 
-/// @brief Keeps name tag and layer.
+/// @brief 名前、タグ、レイヤーを保持する。
 TEST_F(SceneSerializerTest, KeepsNameTagAndLayer)
 {
     scene::Scene source;
@@ -293,7 +373,7 @@ TEST_F(SceneSerializerTest, KeepsNameTagAndLayer)
     EXPECT_EQ(reloaded->layer, 4);
 }
 
-/// @brief Keeps the persistent identifier.
+/// @brief 永続識別子を保持する。
 TEST_F(SceneSerializerTest, KeepsThePersistentIdentifier)
 {
     /// @note instanceId はクロスオブジェクト参照 (IK の Pole/Target 等) の永続キー。
@@ -308,7 +388,7 @@ TEST_F(SceneSerializerTest, KeepsThePersistentIdentifier)
     EXPECT_NE(restored->FindByGuid(id), nullptr);
 }
 
-/// @brief Keeps the active flag.
+/// @brief アクティブフラグを保持する。
 TEST_F(SceneSerializerTest, KeepsTheActiveFlag)
 {
     scene::Scene source;
@@ -324,7 +404,7 @@ TEST_F(SceneSerializerTest, KeepsTheActiveFlag)
 
 /// @name Transform
 
-/// @brief Keeps the local transform.
+/// @brief ローカル変換を保持する。
 TEST_F(SceneSerializerTest, KeepsTheLocalTransform)
 {
     scene::Scene source;
@@ -349,7 +429,7 @@ TEST_F(SceneSerializerTest, KeepsTheLocalTransform)
 
 /// @name 階層
 
-/// @brief Keeps the parent child hierarchy.
+/// @brief 親子階層を保持する。
 TEST_F(SceneSerializerTest, KeepsTheParentChildHierarchy)
 {
     scene::Scene source;
@@ -365,7 +445,7 @@ TEST_F(SceneSerializerTest, KeepsTheParentChildHierarchy)
     EXPECT_NE(restored->Find("Child"), nullptr);
 }
 
-/// @brief Keeps deep hierarchies.
+/// @brief 深い階層も保持する。
 TEST_F(SceneSerializerTest, KeepsDeepHierarchies)
 {
     scene::Scene source;
@@ -382,7 +462,7 @@ TEST_F(SceneSerializerTest, KeepsDeepHierarchies)
     EXPECT_NE(restored->Find("C"), nullptr);
 }
 
-/// @brief Terrain grid resolves forward and missing cell GUIDs.
+/// @brief 地形グリッドは後出のセル GUID を解決し、欠落した GUID を扱う。
 TEST_F(SceneSerializerTest, TerrainGridResolvesForwardAndMissingCellGuids)
 {
     const auto restored = scene::SceneSerializer::LoadDataFromText(R"(
@@ -411,7 +491,7 @@ instanceId = 'cell'
 
 /// @name 実行時生成物
 
-/// @brief Does not save runtime generated objects.
+/// @brief ランタイムで生成した個体を保存対象から除く。
 TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
 {
     /// @note VFX のノード実体や Water の飛沫。保存すると、開くたびにゾンビ GO が増える。
@@ -428,7 +508,7 @@ TEST_F(SceneSerializerTest, DoesNotSaveRuntimeGeneratedObjects)
 
 /// @name GPU リソースを作らない復元
 
-/// @brief Keeps the mesh path without building GPU resources.
+/// @brief GPU 資源を構築せずにメッシュのパスを保持する。
 TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
 {
     /// @note これが «データ復元と GPU リソース生成を分けた» ことの中身。
@@ -453,7 +533,7 @@ TEST_F(SceneSerializerTest, KeepsTheMeshPathWithoutBuildingGpuResources)
     EXPECT_EQ(mr->mesh, nullptr);
 }
 
-/// @brief Keeps several mesh paths independently.
+/// @brief 複数のメッシュパスを独立して保持する。
 TEST_F(SceneSerializerTest, KeepsSeveralMeshPathsIndependently)
 {
     /// @note 後から ResolveMeshes() で結び直すのはこの meshPath。1 つでも落ちると
@@ -480,20 +560,20 @@ TEST_F(SceneSerializerTest, KeepsSeveralMeshPathsIndependently)
 
 /// @name 壊れた入力
 
-/// @brief Rejects text that is not TOML.
+/// @brief TOML として無効なテキストを拒否する。
 TEST_F(SceneSerializerTest, RejectsTextThatIsNotToml)
 {
     EXPECT_EQ(scene::SceneSerializer::LoadDataFromText("{{{ not toml ]]]", "broken.scene"),
               nullptr);
 }
 
-/// @brief Rejects a missing file.
+/// @brief ファイルがなければ読み込みに失敗する。
 TEST_F(SceneSerializerTest, RejectsAMissingFile)
 {
     EXPECT_EQ(scene::SceneSerializer::LoadData(ScenePath("does_not_exist.scene")), nullptr);
 }
 
-/// @brief Accepts an empty document.
+/// @brief 空の文書を読み込める。
 TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
 {
     /// @note 空のシーンファイルは «壊れている» ではなく «何も無い»。
@@ -506,7 +586,7 @@ TEST_F(SceneSerializerTest, AcceptsAnEmptyDocument)
 
 /// @name 安定性
 
-/// @brief Checks saving twice produces the same file.
+/// @brief 2 回保存した結果が同じファイル内容になることを確認する。
 TEST_F(SceneSerializerTest, SavingTwiceProducesTheSameFile)
 {
     /// @note 触っていないのに差分が出ると、シーンのコミットに毎回ノイズが混ざる。
@@ -524,7 +604,7 @@ TEST_F(SceneSerializerTest, SavingTwiceProducesTheSameFile)
     EXPECT_EQ(first, second);
 }
 
-/// @brief A second round trip changes nothing.
+/// @brief 2 回目の保存と読み込みでも内容を維持する。
 TEST_F(SceneSerializerTest, ASecondRoundTripChangesNothing)
 {
     scene::Scene source;
@@ -544,7 +624,7 @@ TEST_F(SceneSerializerTest, ASecondRoundTripChangesNothing)
                      testkit::kLooseTolerance);
 }
 
-/// @brief Missing scripts keep stable saved identity through save play restore and clone.
+/// @brief 欠落したスクリプトは保存、Play からの復元、複製をまたいで保存時の識別子を保持する。
 TEST_F(SceneSerializerTest, MissingScriptsKeepStableSavedIdentityThroughSavePlayRestoreAndClone)
 {
     scene::Scene source;
@@ -580,7 +660,7 @@ TEST_F(SceneSerializerTest, MissingScriptsKeepStableSavedIdentityThroughSavePlay
     EXPECT_FALSE(scene::SceneSerializer::SaveToText(*restored).empty());
 }
 
-/// @brief Rejects owner local duplicate IDs before loading or appending any objects.
+/// @brief 所有者内で ID が重複していれば、個体を読み込む前や追加する前に拒否する。
 TEST_F(SceneSerializerTest, RejectsOwnerLocalDuplicateIdsBeforeLoadingOrAppendingAnyObjects)
 {
     const std::string text = R"([[gameobjects]]
@@ -604,7 +684,7 @@ savedScriptId = '11111111-1111-4111-8111-111111111111'
     EXPECT_NE(existing.GetGameObject(sentinelId), nullptr);
 }
 
-/// @brief Rejects duplicate IDs on save and clone and assigns legacy missing IDs once.
+/// @brief 保存や複製時の重複 ID を拒否し、旧データで欠落した ID を一度だけ割り当てる。
 TEST_F(SceneSerializerTest, RejectsDuplicateIdsOnSaveAndCloneAndAssignsLegacyMissingIdsOnce)
 {
     const std::string text = R"([[gameobjects]]
@@ -630,4 +710,4 @@ type = 'MissingIdentityComponent'
     EXPECT_TRUE(scene::CloneScriptComponent(*scripts, restored.get(), restored.get(), &cloneOwner).scripts.empty());
 }
 
-} /// @note namespace fbzz::tests
+}

@@ -7,6 +7,8 @@
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/SceneSerializer.hpp>
 #include "SceneLoadWork.hpp"
+#include "SceneAnimationCodec.hpp"
+#include "ScenePhysicsCodec.hpp"
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/GuidRefCodec.hpp>
 #include <Engine/Core/Memory/MakeUnique.hpp>
@@ -80,10 +82,6 @@
 #include <Math/Vector2.hpp>
 #include <Math/Vector4.hpp>
 #include <Math/Quaternion.hpp>
-#include <Physics/AABBCollider.hpp>
-#include <Physics/OBBCollider.hpp>
-#include <Physics/CapsuleCollider.hpp>
-#include <Physics/SphereCollider.hpp>
 #include "../Util/TomlFloatNormalization.hpp"
 #include <toml++/toml.hpp>
 #include <algorithm>
@@ -102,7 +100,6 @@
 
 namespace fbzz::scene {
 
-/// @note 内部ヘルパー
 namespace {
 
 std::size_t CountSceneObjects(const toml::array& objects, bool skipRuntimeNames)
@@ -360,40 +357,12 @@ using util::Vec2ToArr;
 using util::Vec3ToArr;
 using util::Vec4ToArr;
 
-toml::table SerializeCollider(const ColliderComponent& col)
-{
-    toml::table colTbl;
-    colTbl.insert("enabled",   col.enabled);
-    colTbl.insert("center",    Vec3ToArr(col.center));
-    colTbl.insert("isTrigger", col.isTrigger);
-
-    /// @note 共有 .physmat への参照。EncodeGuidRefs がドキュメント全体を走査して
-    /// @note guid 形式へ変換するため、ここでは素のパス文字列を入れるだけでよい。
-    colTbl.insert("physicsMaterial", col.physicsMaterialPath);
-
-    /// @note 参照がある場合も値を書くのは .physmat が失われたときのフォールバック。参照が解決できず
-    /// @note 物理挙動が既定値へ落ちるより、最後に解決できた値を保っている方が壊れ方として穏やか。
-    toml::table matTbl;
-    matTbl.insert("restitution",      (double)col.material.restitution);
-    matTbl.insert("staticFriction",   (double)col.material.staticFriction);
-    matTbl.insert("dynamicFriction",  (double)col.material.dynamicFriction);
-    matTbl.insert("density",          (double)col.material.density);
-    matTbl.insert("restitutionCombine", (int64_t)col.material.restitutionCombine);
-    matTbl.insert("frictionCombine",    (int64_t)col.material.frictionCombine);
-    colTbl.insert("material", std::move(matTbl));
-
-    /// @note shape はここで書かない。physics::Collider の寸法は worldScale を焼き込んだ後の値で、
-    /// @note ここから書き出すと保存のたびにスケールが 1 段ずつ掛かって太り続ける。
-    /// @note 呼び出し側がコンポーネントのフィールドから書くこと。
-    return colTbl;
-}
-
 /// @note MaterialComponent を TOML から復元する。
 /// @note LoadScene と AppendObjects の 2 経路が同じ表を読むため、スロット配列の読み取りを
 /// @note 1 か所に集約して差異が生まれないようにする。
 MaterialComponent ReadMaterialComponent(const toml::table& matTbl)
 {
-MaterialComponent material;
+    MaterialComponent material;
     material.SetEnabled(matTbl["enabled"].value_or(true));
     material.SetVisible(matTbl["visible"].value_or(true));
     material.SetMaterialPath(matTbl["material"].value_or(std::string{}));
@@ -413,157 +382,6 @@ MaterialComponent material;
     return material;
 }
 
-void ReadColliderCommon(const toml::table& colTbl, ColliderComponent& col)
-{
-    col.enabled   = colTbl["enabled"].value_or(true);
-    col.center    = ArrToVec3(colTbl["center"].as_array(), math::Vector3::ZERO);
-    col.isTrigger = colTbl["isTrigger"].value_or(false);
-
-    col.physicsMaterialPath = colTbl["physicsMaterial"].value_or(std::string{});
-
-    if (auto* matTbl = colTbl["material"].as_table()) {
-        col.material.restitution     = (float)(*matTbl)["restitution"].value_or(0.3);
-        col.material.staticFriction  = (float)(*matTbl)["staticFriction"].value_or(0.6);
-        col.material.dynamicFriction = (float)(*matTbl)["dynamicFriction"].value_or(0.4);
-        col.material.density         = (float)(*matTbl)["density"].value_or(1.0);
-
-        /// @note 既定は選択制にする前の固定規則 (反発 = Minimum / 摩擦 = GeometricMean)。
-        /// @note これにより合成規則を持たない既存シーンの挙動が変わらない。
-        const auto restitutionCombine = (*matTbl)["restitutionCombine"].value_or(
-            (int64_t)physics::PhysicsMaterialCombine::Minimum);
-        const auto frictionCombine = (*matTbl)["frictionCombine"].value_or(
-            (int64_t)physics::PhysicsMaterialCombine::GeometricMean);
-        col.material.restitutionCombine =
-            static_cast<physics::PhysicsMaterialCombine>(restitutionCombine);
-        col.material.frictionCombine =
-            static_cast<physics::PhysicsMaterialCombine>(frictionCombine);
-    }
-
-    /// @note 参照があるならこの時点で共有アセットの値へ解決しておく。PhysicsSystem は Play 中しか
-    /// @note 回らないため、エディタでシーンを開いた直後の Inspector 表示を正しい値にする目的で
-    /// @note ロード時にも 1 回通す。
-    col.ResolvePhysicsMaterial();
-}
-
-void ReadAabbCollider(const toml::table& colTbl, AabbColliderComponent& col)
-{
-    ReadColliderCommon(colTbl, col);
-    math::Vector3 halfExtents = { 0.5f, 0.5f, 0.5f };
-    if (auto* shapeTbl = colTbl["shape"].as_table())
-        halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
-    col.size = halfExtents * 2.0f;
-    col.collider = std::make_unique<physics::AABBCollider>(halfExtents);
-}
-
-void ReadBoxCollider(const toml::table& colTbl, BoxColliderComponent& col)
-{
-    ReadColliderCommon(colTbl, col);
-    math::Vector3 halfExtents = { 0.5f, 0.5f, 0.5f };
-    if (auto* shapeTbl = colTbl["shape"].as_table())
-        halfExtents = ArrToVec3((*shapeTbl)["halfExtents"].as_array(), halfExtents);
-    col.size = halfExtents * 2.0f;
-    col.collider = std::make_unique<physics::OBBCollider>(halfExtents);
-}
-
-void ReadSphereCollider(const toml::table& colTbl, SphereColliderComponent& col)
-{
-    ReadColliderCommon(colTbl, col);
-    float radius = 0.5f;
-    if (auto* shapeTbl = colTbl["shape"].as_table())
-        radius = (float)(*shapeTbl)["radius"].value_or(0.5);
-    col.radius = radius;
-    col.collider = std::make_unique<physics::SphereCollider>(radius);
-}
-
-void ReadCapsuleCollider(const toml::table& colTbl, CapsuleColliderComponent& col)
-{
-    ReadColliderCommon(colTbl, col);
-    float radius = 0.5f;
-    float halfHeight = 1.0f;
-    if (auto* shapeTbl = colTbl["shape"].as_table()) {
-        radius = (float)(*shapeTbl)["radius"].value_or(0.5);
-        halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
-    }
-    col.radius = radius;
-    col.halfHeight = halfHeight;
-    col.collider = std::make_unique<physics::CapsuleCollider>(radius, halfHeight);
-}
-
-void ReadCylinderCollider(const toml::table& colTbl, CylinderColliderComponent& col)
-{
-    ReadColliderCommon(colTbl, col);
-    float radius = 0.5f;
-    float halfHeight = 1.0f;
-    if (auto* shapeTbl = colTbl["shape"].as_table()) {
-        radius = (float)(*shapeTbl)["radius"].value_or(0.5);
-        halfHeight = (float)(*shapeTbl)["halfHeight"].value_or(1.0);
-    }
-    col.radius = radius;
-    col.halfHeight = halfHeight;
-    col.collider = std::make_unique<physics::CylinderCollider>(radius, halfHeight);
-}
-
-template<typename ColliderT>
-void ReadMeshColliderFields(const toml::table& colTbl, ColliderT& col)
-{
-    ReadColliderCommon(colTbl, col);
-    col.meshPath = colTbl["meshPath"].value_or(std::string{});
-    col.meshIndex = (int)colTbl["meshIndex"].value_or((int64_t)0);
-    col.useTransformScale = colTbl["useTransformScale"].value_or(true);
-}
-
-void ReadMeshCollider(const toml::table& colTbl, MeshColliderComponent& col)
-{
-    ReadMeshColliderFields(colTbl, col);
-}
-
-void ReadConvexHullCollider(const toml::table& colTbl, ConvexHullColliderComponent& col)
-{
-    ReadMeshColliderFields(colTbl, col);
-}
-
-
-const char* VolumeTypeToString(physics::VolumeType type)
-{
-    switch (type) {
-    case physics::VolumeType::Gravity:      return "Gravity";
-    case physics::VolumeType::Vortex:       return "Vortex";
-    case physics::VolumeType::Explosion:    return "Explosion";
-    case physics::VolumeType::TimeDilation: return "TimeDilation";
-    case physics::VolumeType::Magnetic:     return "Magnetic";
-    }
-    return "Gravity";
-}
-
-/// @note "Buoyancy" は廃止した型なので、読めても Gravity へ落ちる。
-/// @see Docs/design/buoyancy.md
-physics::VolumeType StringToVolumeType(const std::string& value)
-{
-    if (value == "Vortex")       return physics::VolumeType::Vortex;
-    if (value == "Explosion")    return physics::VolumeType::Explosion;
-    if (value == "TimeDilation") return physics::VolumeType::TimeDilation;
-    if (value == "Magnetic")     return physics::VolumeType::Magnetic;
-    return physics::VolumeType::Gravity;
-}
-
-/// @brief 廃止した VolumeType::Buoyancy (保存値 2) の VolumeComponent を無効化して知らせる。
-/// @note 黙って Gravity のまま生かすと «消したはずの浮力の代わりに重力が掛かる» が起きる。
-/// @note 水面の浮力は WaterComponent が持つので、この Volume はもう要らない。
-/// @see Docs/design/buoyancy.md
-void RetireLegacyBuoyancyVolume(const toml::table& goTbl, GameObject& go)
-{
-    constexpr int64_t LEGACY_BUOYANCY_TYPE = 2;
-    const auto* volTbl = goTbl["VolumeComponent"].as_table();
-    if (!volTbl || (*volTbl)["type"].value_or((int64_t)0) != LEGACY_BUOYANCY_TYPE) return;
-
-    auto* volume = go.GetComponent<VolumeComponent>();
-    if (!volume) return;
-    volume->enabled = false;
-    core::Logger::Warn("Buoyancy Volume は廃止。水面の浮力は WaterComponent が持つ "
-                       "(Docs/design/buoyancy.md): %s", go.name.c_str());
-}
-
-/// @note KeyCode ↔ 文字列変換。シリアライズは文字列名で保存し可読性を確保する。
 std::string TomlTableToString(const toml::table& table);
 toml::table TomlTableFromString(const std::string& text);
 
@@ -637,7 +455,6 @@ public:
     {
         Put(name, value.guid.empty() ? GuidOfEntity(value.id) : value.guid);
     }
-
 
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
@@ -725,10 +542,6 @@ public:
         }
     }
 
-
-
-
-
     void ListField(const char* name, std::vector<EntityRef>& values) override
     {
         const toml::array* array = FindArray(name);
@@ -757,8 +570,6 @@ public:
         for (const auto& node : *array)
             values.push_back(ObjectReference{node.value_or(std::string{}), EntityFromGuid(node), m_sceneGeneration});
     }
-
-
 
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
     {
@@ -830,7 +641,6 @@ public:
     void ListField(const char*, std::vector<math::Vector3>&) override {}
     void ListField(const char*, std::vector<math::Vector4>&) override {}
 
-
     /// @note 入れ子の Serializable は作り直さず、既にある実体の参照だけを解決する。
     /// @note 基底の実装はファクトリで作り直すので、Pass 1 で読んだオブジェクトが差し替わる。
     void ReferenceField(const char* name, ScriptSerializedReference& value) override
@@ -847,7 +657,7 @@ public:
     }
 };
 
-/// @brief Resolve the reflected object references of a custom-codec component.
+/// @brief 独自形式で読んだコンポーネントの反射対象にある GameObject 参照を復元する。
 template<class T>
 void ResolveReflectedComponentReferences(GameObject& go,
                                          const toml::table& gameObjectTable,
@@ -895,7 +705,7 @@ void ReadAutomaticComponents(GameObject& go, const toml::table& gameObjectTable)
     });
 }
 
-/// @brief Read the custom Water schema shared by full loads and object appends.
+/// @brief シーンの読み込みとオブジェクトの追加で共通の水面形式を読む。
 WaterComponent ReadWaterComponent(const toml::table& waterTable)
 {
     WaterComponent water{};
@@ -965,7 +775,7 @@ WaterComponent ReadWaterComponent(const toml::table& waterTable)
         SceneReadReflector waveReader(*waveTable);
         water.waveAuthoring.Reflect(waveReader);
     } else if (water.wavesAssetRef.path.empty()) {
-        /// @note Open oceans receive swell while finite legacy lakes and rivers receive restrained waves.
+        /// @note 波の設定がない旧データでは、外洋にうねり、有限の湖と川に弱い波を設定する。
         water.waveAuthoring.preset = water.farOceanEnabled ? WaterSeaPreset::OFFSHORE : WaterSeaPreset::CALM;
     }
     water.buoyancyEnabled = waterTable["buoyancyEnabled"].value_or(true);
@@ -984,7 +794,7 @@ WaterComponent ReadWaterComponent(const toml::table& waterTable)
     return water;
 }
 
-/// @brief Read the custom LOD level list and reflected center binding through one codec.
+/// @brief LOD の距離段階と切り替え中心への参照を復元する。
 LODGroupComponent ReadLODGroupComponent(const toml::table& lodTable)
 {
     LODGroupComponent lodGroup{};
@@ -1011,7 +821,7 @@ LODGroupComponent ReadLODGroupComponent(const toml::table& lodTable)
     return lodGroup;
 }
 
-/// @brief Read reflected patrol bindings while preserving the legacy INLINE waypoint arrays.
+/// @brief 巡回経路の参照を復元し、旧形式の埋め込みウェイポイント配列も読む。
 NavMeshPatrolComponent ReadNavMeshPatrolComponent(const toml::table& patrolTable)
 {
     NavMeshPatrolComponent patrol{};
@@ -1037,7 +847,7 @@ NavMeshPatrolComponent ReadNavMeshPatrolComponent(const toml::table& patrolTable
     return patrol;
 }
 
-/// @brief Read IK chains and preserve canonical-reference presence separately from legacy aliases.
+/// @brief IK チェーンを復元し、正規の参照フィールドがあるかを旧形式の別名と区別する。
 IKSolverComponent ReadIKSolverComponent(const toml::table& ikTable)
 {
     IKSolverComponent ikSolver{};
@@ -1128,7 +938,7 @@ IKSolverComponent ReadIKSolverComponent(const toml::table& ikTable)
     return ikSolver;
 }
 
-/// @brief Select the canonical IK GUID without reviving cleared references from cached EntityIDs.
+/// @brief 解除済みの IK 参照をキャッシュ済み EntityID から復活させず、保存用の GUID を選ぶ。
 std::string SavedIKReferenceGuid(const ObjectReference& reference,
                                  bool migrationPending,
                                  EntityID legacyEntity,
@@ -1144,7 +954,7 @@ std::string SavedIKReferenceGuid(const ObjectReference& reference,
     return legacyGuid;
 }
 
-/// @brief Keep the old IK name alias only while a canonical target remains assigned.
+/// @brief 正規の IK ターゲットが設定されている場合だけ、旧形式用の名前を保存する。
 std::string SavedIKReferenceName(const std::string& guid,
                                  const std::string& legacyName,
                                  bool migrationPending,
@@ -1321,7 +1131,7 @@ std::string ResolveTerrainLayerWritePath(const std::string& scenePath, const std
     return path;
 }
 
-} /// @note namespace
+}
 
 /// @note ScriptComponent の複製
 ScriptComponent CloneScriptComponent(const ScriptComponent& src,
@@ -1496,7 +1306,6 @@ void FinalizePassiveCopiedScripts(Scene& scene, std::span<const EntityID> owners
     }
 }
 
-/// @note Save
 bool SceneSerializer::Save(Scene& scene, const std::string& path)
 {
     const std::string text = SaveToText(scene, path);
@@ -1516,11 +1325,11 @@ namespace {
 using PlayTerrainSnapshots = std::unordered_map<size_t, TerrainComponent>;
 
 struct SceneDocumentOptions {
-    bool passiveClone = false;
-    std::function<bool()>* writeAssets = nullptr;
-    const std::vector<EntityID>* subtree = nullptr;
-    PlayTerrainSnapshots* playTerrains = nullptr;
-    bool validatePlay = false;
+    bool passiveClone = false; ///< @note 編集元のスクリプトを実行せず、保存用キャッシュも更新せずに採取する。
+    std::function<bool()>* writeAssets = nullptr; ///< @note 外部地形・材質を後で保存する処理の受け渡し先。
+    const std::vector<EntityID>* subtree = nullptr; ///< @note 指定時は、この順番の個体だけを文書に含める。
+    PlayTerrainSnapshots* playTerrains = nullptr; ///< @note Play 用に、未保存の地形配列を文書内の個体番号に対応付けて渡す。
+    bool validatePlay = false; ///< @note 複製後の Play シーンで、保存設定を検証する呼び出しか。
 };
 
 std::unique_ptr<Scene> LoadSceneFromText(const std::string& tomlText, renderer::ResourceManager* resources,
@@ -1735,7 +1544,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("parentInstanceId", std::string{});
         }
 
-        /// @note Transform
         {
             auto& t = go.transform;
             toml::table tfTbl;
@@ -1745,7 +1553,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("transform", std::move(tfTbl));
         }
 
-        /// @note MeshRenderer
         if (auto* mr = go.GetComponent<MeshRenderer>(); mr) {
             if (mr->mesh && mr->meshPath.empty())
                 FBZZ_LOG_WARN("SceneSerializer: MeshRenderer '%s' has mesh but no meshPath; it cannot be restored", go.name.c_str());
@@ -1757,7 +1564,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("MeshRenderer", std::move(mrTbl));
         }
 
-        /// @note MaterialComponent
         if (auto* mc = go.GetComponent<MaterialComponent>(); mc) {
             toml::table matTbl;
             matTbl.insert("material", mc->GetMaterialPath());
@@ -1779,7 +1585,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("MaterialComponent", std::move(matTbl));
         }
 
-        /// @note DecalComponent
         if (auto* decal = go.GetComponent<DecalComponent>()) {
             toml::table decalTbl;
             decalTbl.insert("enabled",           decal->enabled);
@@ -1815,10 +1620,8 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("DecalComponent", std::move(decalTbl));
         }
 
-        /// @note LightComponent
         WriteComponentReflected<LightComponent>(go, goTbl, "LightComponent");
 
-        /// @note CameraComponent
         if (auto* cc = go.GetComponent<CameraComponent>()) {
             toml::table ccTbl;
             ccTbl.insert("fovY",    (double)cc->fovY);
@@ -1852,7 +1655,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("CameraComponent", std::move(ccTbl));
         }
 
-        /// @note LODGroupComponent
         if (auto* lodGroup = go.GetComponent<LODGroupComponent>()) {
             toml::table lodTbl;
             SceneWriteReflector lodWriter(lodTbl, &scene);
@@ -1876,10 +1678,8 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("LODGroupComponent", std::move(lodTbl));
         }
 
-        /// @note EnvironmentLightComponent
         WriteComponentReflected<EnvironmentLightComponent>(go, goTbl, "EnvironmentLightComponent");
 
-        /// @note ReflectionProbeComponent
         WriteComponentReflected<ReflectionProbeComponent>(go, goTbl, "ReflectionProbeComponent");
 
         /// @note PostProcessVolumeComponent — ルック本体は .fzdata プロファイル側にあるため、
@@ -1895,369 +1695,19 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
         /// @note FlowField (読み込みは旧 ForceField / ParticleForceField / WindZoneComponent も受ける)
         WriteComponentReflected<FlowField>(go, goTbl, "FlowField");
 
-        /// @note TrailComponent
         WriteComponentReflected<TrailComponent>(go, goTbl, "TrailComponent");
 
-        /// @note MeshTrailComponent
         WriteComponentReflected<MeshTrailComponent>(go, goTbl, "MeshTrailComponent");
 
-        if (auto* col = go.GetComponent<AabbColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            toml::table shapeTbl;
-            shapeTbl.insert("type", "AABB");
-            shapeTbl.insert("halfExtents", Vec3ToArr(col->size * 0.5f));
-            colTbl.insert_or_assign("shape", std::move(shapeTbl));
-            goTbl.insert("AabbColliderComponent", std::move(colTbl));
-        }
+        scene_codec::WritePhysicsComponents(go, goTbl);
 
-        if (auto* col = go.GetComponent<BoxColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            toml::table shapeTbl;
-            shapeTbl.insert("type", "OBB");
-            shapeTbl.insert("halfExtents", Vec3ToArr(col->size * 0.5f));
-            colTbl.insert_or_assign("shape", std::move(shapeTbl));
-            goTbl.insert("BoxColliderComponent", std::move(colTbl));
-        }
-
-        if (auto* col = go.GetComponent<SphereColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            toml::table shapeTbl;
-            shapeTbl.insert("type", "Sphere");
-            shapeTbl.insert("radius", (double)col->radius);
-            colTbl.insert_or_assign("shape", std::move(shapeTbl));
-            goTbl.insert("SphereColliderComponent", std::move(colTbl));
-        }
-
-        if (auto* col = go.GetComponent<CapsuleColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            toml::table shapeTbl;
-            shapeTbl.insert("type", "Capsule");
-            shapeTbl.insert("radius", (double)col->radius);
-            shapeTbl.insert("halfHeight", (double)col->halfHeight);
-            colTbl.insert_or_assign("shape", std::move(shapeTbl));
-            goTbl.insert("CapsuleColliderComponent", std::move(colTbl));
-        }
-
-        if (auto* col = go.GetComponent<CylinderColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            toml::table shapeTbl;
-            shapeTbl.insert("type", "Cylinder");
-            shapeTbl.insert("radius", (double)col->radius);
-            shapeTbl.insert("halfHeight", (double)col->halfHeight);
-            colTbl.insert_or_assign("shape", std::move(shapeTbl));
-            goTbl.insert("CylinderColliderComponent", std::move(colTbl));
-        }
-
-        if (auto* col = go.GetComponent<MeshColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            colTbl.insert("meshPath", col->meshPath);
-            colTbl.insert("meshIndex", (int64_t)col->meshIndex);
-            colTbl.insert("useTransformScale", col->useTransformScale);
-            goTbl.insert("MeshColliderComponent", std::move(colTbl));
-        }
-
-        if (auto* col = go.GetComponent<ConvexHullColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            colTbl.insert("meshPath", col->meshPath);
-            colTbl.insert("meshIndex", (int64_t)col->meshIndex);
-            colTbl.insert("useTransformScale", col->useTransformScale);
-            goTbl.insert("ConvexHullColliderComponent", std::move(colTbl));
-        }
-
-        if (auto* col = go.GetComponent<TerrainColliderComponent>()) {
-            toml::table colTbl = SerializeCollider(*col);
-            goTbl.insert("TerrainColliderComponent", std::move(colTbl));
-        }
-
-        /// @note RigidBodyComponent
-        if (auto* rb = go.GetComponent<RigidBodyComponent>(); rb && rb->rigidBody) {
-            auto& body = *rb->rigidBody;
-            toml::table rbTbl;
-            rbTbl.insert("enabled",                rb->enabled);
-            rbTbl.insert("poseDriven",             rb->poseDriven);
-            /// @note 質量の決め方。未記載の既存シーンは Manual として読まれる (従来どおり)。
-            rbTbl.insert("massMode",               (int64_t)rb->massMode);
-            /// @note 媒質との結合係数 [1/s]。未記載の既存シーンは 0 = 流れを受けない。
-            rbTbl.insert("flowCoupling",           (double)rb->flowCoupling);
-            rbTbl.insert("mass",                   (double)body.GetMass());
-            rbTbl.insert("isStatic",               body.m_isStatic);
-            rbTbl.insert("velocity",               Vec3ToArr(body.GetVelocity()));
-            rbTbl.insert("angularVelocity",        Vec3ToArr(body.GetAngularVelocity()));
-            rbTbl.insert("freezePosition",         Vec3ToArr({
-                body.GetFreezePosition().x ? 1.0f : 0.0f,
-                body.GetFreezePosition().y ? 1.0f : 0.0f,
-                body.GetFreezePosition().z ? 1.0f : 0.0f
-            }));
-            rbTbl.insert("freezeRotation",         Vec3ToArr({
-                body.GetFreezeRotation().x ? 1.0f : 0.0f,
-                body.GetFreezeRotation().y ? 1.0f : 0.0f,
-                body.GetFreezeRotation().z ? 1.0f : 0.0f
-            }));
-            rbTbl.insert("useGravity",             body.m_useGravity);
-            rbTbl.insert("gravityScale",           (double)body.m_gravityScale);
-            rbTbl.insert("linearDrag",             (double)body.m_linearDrag);
-            rbTbl.insert("angularDrag",            (double)body.m_angularDrag);
-            rbTbl.insert("allowSleeping",          body.m_allowSleeping);
-            rbTbl.insert("useCCD",                 body.m_useCCD);
-            rbTbl.insert("ccdRadius",              (double)body.m_ccdRadius);
-            rbTbl.insert("charge",                 (double)body.m_charge);
-            rbTbl.insert("isGravitationalSource",  body.m_isGravitationalSource);
-            rbTbl.insert("gravitationalMass",      (double)body.m_gravitationalMass);
-            goTbl.insert("RigidBodyComponent", std::move(rbTbl));
-        }
-
-        /// @note CharacterControllerComponent
-        WriteComponentReflected<CharacterControllerComponent>(go, goTbl, "CharacterControllerComponent");
-
-        /// @note VolumeComponent
-        WriteComponentReflected<VolumeComponent>(go, goTbl, "VolumeComponent");
-
-        /// @note SkyRenderer
         WriteComponentReflected<SkyRenderer>(go, goTbl, "SkyRenderer");
 
-        /// @note SunMoonRenderer
         WriteComponentReflected<SunMoonRenderer>(go, goTbl, "SunMoonRenderer");
 
-        /// @note VolumetricCloudComponent
         WriteComponentReflected<VolumetricCloudComponent>(go, goTbl, "VolumetricCloudComponent");
 
-        /// @note SkinnedMeshRenderer
-        if (auto* smr = go.GetComponent<SkinnedMeshRenderer>()) {
-            toml::table smrTbl;
-            smrTbl.insert("enabled",     smr->enabled);
-            smrTbl.insert("castShadows", smr->castShadows);
-            smrTbl.insert("modelPath",   smr->modelPath);
-            /// @note この Renderer が担当する submesh の添字列。空なら書き出さない
-            /// @note (=「モデル全体を描く」)。DCC のノード 1 個が複数マテリアルを持つので配列。
-            if (!smr->submeshIndices.empty()) {
-                toml::array submeshes;
-                for (const uint32_t index : smr->submeshIndices)
-                    submeshes.push_back(static_cast<int64_t>(index));
-                smrTbl.insert("submeshIndices", std::move(submeshes));
-            }
-            /// @note ボーン階層の起点 (Unity の SkinnedMeshRenderer.rootBone 相当)。
-            /// @note EnsureBoneHierarchy の「自分の子孫から探す」だけだと、ボーンが兄弟の
-            /// @note Armature 側に居る構成で見つからず Renderer ごとにスケルトンが複製される。
-            /// @note EntityID は実行ごとに変わるので GUID + 名前で持つ。
-            if (smr->skeletonRootEntity.IsValid()) {
-                if (auto* skeletonRoot = scene.GetGameObject(smr->skeletonRootEntity)) {
-                    smrTbl.insert("skeletonRootGuid", skeletonRoot->instanceId);
-                    smrTbl.insert("skeletonRootName", skeletonRoot->name);
-                }
-            }
-            goTbl.insert("SkinnedMeshRenderer", std::move(smrTbl));
-        }
-
-        /// @note BoneComponent: skinnedMeshEntity は EntityID (実行ごとに変わる) ため、オーナー
-        /// @note GameObject の名前として保存し、ロード後の Pass 3 で解決する。
-        if (auto* bone = go.GetComponent<BoneComponent>()) {
-            toml::table boneTbl;
-            boneTbl.insert("boneName",  bone->boneName);
-            boneTbl.insert("nodeIndex", (int64_t)bone->nodeIndex);
-            boneTbl.insert("boneIndex", (int64_t)bone->boneIndex);
-            boneTbl.insert("generated", bone->generated);
-            /// @note skinnedMeshEntity の参照を GUID + 名前の両方で保存する。GUID はリネームに
-            /// @note 耐性があり、名前は古いファイルとの後方互換フォールバック。
-            std::string ownerName;
-            std::string ownerGuid;
-            if (bone->skinnedMeshEntity.IsValid())
-                if (auto* owner = scene.GetGameObject(bone->skinnedMeshEntity)) {
-                    ownerName = owner->name;
-                    ownerGuid = owner->instanceId;
-                }
-            boneTbl.insert("skinnedMeshOwner",     ownerName);
-            boneTbl.insert("skinnedMeshOwnerGuid", ownerGuid);
-            goTbl.insert("BoneComponent", std::move(boneTbl));
-        }
-
-        /// @note AnimatorComponent
-        if (auto* anim = go.GetComponent<AnimatorComponent>()) {
-            toml::table animTbl;
-            animTbl.insert("speed",     (double)anim->speed);
-            animTbl.insert("enabled",   anim->enabled);
-            animTbl.insert("playing",   anim->playing);
-            animTbl.insert("externalPose", anim->externalPose);
-            animTbl.insert("poseLodEnabled", anim->poseLodEnabled);
-            animTbl.insert("boneBakeMode", (int64_t)anim->boneBakeMode);
-            animTbl.insert("boneBakeSampleRate", (double)anim->boneBakeSampleRate);
-            animTbl.insert("boneBakeMinDistance", (double)anim->boneBakeMinDistance);
-            animTbl.insert("boneBakeRequireCpuBones", anim->boneBakeRequireCpuBones);
-            animTbl.insert("poseLodNearDistance", (double)anim->poseLodNearDistance);
-            animTbl.insert("poseLodFarDistance", (double)anim->poseLodFarDistance);
-            animTbl.insert("poseLodMidInterval", (double)anim->poseLodMidInterval);
-            animTbl.insert("poseLodFarInterval", (double)anim->poseLodFarInterval);
-            animTbl.insert("rootMotionMode",     (int64_t)anim->rootMotion.mode);
-            animTbl.insert("rootMotionSource",   (int64_t)anim->rootMotion.source);
-            animTbl.insert("rootMotionPoseMode", (int64_t)anim->rootMotion.poseMode);
-            animTbl.insert("rootMotionNodeName", anim->rootMotion.nodeName);
-            animTbl.insert("rootMotionTarget",   anim->rootMotion.targetPath);
-            animTbl.insert("rootMotionApplyXZ",  (int64_t)anim->rootMotion.applyXZ);
-            animTbl.insert("rootMotionApplyY",   (int64_t)anim->rootMotion.applyY);
-            animTbl.insert("rootMotionApplyRotation",
-                           (int64_t)anim->rootMotion.applyRotation);
-            animTbl.insert("rootMotionPositionScale",
-                           (double)anim->rootMotion.positionScale);
-            animTbl.insert("rootMotionRotationScale",
-                           (double)anim->rootMotion.rotationScale);
-            animTbl.insert("controllerPath", anim->controllerPath);
-
-            animTbl.insert("defaultStateName", anim->defaultStateName);
-
-            toml::array statesArr;
-            for (const auto& st : anim->states) {
-                toml::table stTbl;
-                stTbl.insert("name",      st.name);
-                stTbl.insert("mode",      (int64_t)st.mode);
-                stTbl.insert("sourcePath", st.sourcePath);
-                stTbl.insert("clipName",  st.clipName);
-                stTbl.insert("clipIndex", (int64_t)st.clipIndex);
-                stTbl.insert("speed",     (double)st.speed);
-                stTbl.insert("loop",      st.loop);
-                stTbl.insert("ikWeight",  (double)st.ikWeight);
-                toml::array transArr;
-                for (const auto& tr : st.transitions) {
-                    toml::table trTbl;
-                    trTbl.insert("toStateName",        tr.toStateName);
-                    trTbl.insert("hasExitTime",        tr.hasExitTime);
-                    trTbl.insert("exitTime",           (double)tr.exitTime);
-                    trTbl.insert("fixedDuration",      tr.fixedDuration);
-                    trTbl.insert("transitionDuration", (double)tr.transitionDuration);
-                    if (tr.interruptActiveBlend) trTbl.insert("interruptActiveBlend", true);
-                    toml::array condArr;
-                    for (const auto& c : tr.conditions) {
-                        toml::table cTbl;
-                        cTbl.insert("paramName", c.paramName);
-                        cTbl.insert("op",        (int64_t)c.op);
-                        cTbl.insert("threshold", (double)c.threshold);
-                        condArr.push_back(std::move(cTbl));
-                    }
-                    trTbl.insert("conditions", std::move(condArr));
-                    transArr.push_back(std::move(trTbl));
-                }
-                stTbl.insert("transitions", std::move(transArr));
-
-                toml::table blend1DTbl;
-                blend1DTbl.insert("paramName", st.blendTree1D.paramName);
-                blend1DTbl.insert("dampTime",  (double)st.blendTree1D.dampTime);
-                blend1DTbl.insert("syncNormalizedTime", st.blendTree1D.syncNormalizedTime);
-                toml::array motions1D;
-                for (const auto& motion : st.blendTree1D.motions) {
-                    toml::table motionTbl;
-                    motionTbl.insert("threshold", (double)motion.threshold);
-                    motionTbl.insert("posX",      (double)motion.posX);
-                    motionTbl.insert("posY",      (double)motion.posY);
-                    motionTbl.insert("sourcePath", motion.sourcePath);
-                    motionTbl.insert("clipName",  motion.clipName);
-                    motionTbl.insert("clipIndex", (int64_t)motion.clipIndex);
-                    motionTbl.insert("speed",     (double)motion.speed);
-                    motionTbl.insert("ikWeight",  (double)motion.ikWeight);
-                    motions1D.push_back(std::move(motionTbl));
-                }
-                blend1DTbl.insert("motions", std::move(motions1D));
-                stTbl.insert("blendTree1D", std::move(blend1DTbl));
-
-                toml::table blend2DTbl;
-                blend2DTbl.insert("paramX", st.blendTree2D.paramX);
-                blend2DTbl.insert("paramY", st.blendTree2D.paramY);
-                blend2DTbl.insert("type",   (int64_t)st.blendTree2D.type);
-                blend2DTbl.insert("dampTime", (double)st.blendTree2D.dampTime);
-                blend2DTbl.insert("syncNormalizedTime", st.blendTree2D.syncNormalizedTime);
-                toml::array motions2D;
-                for (const auto& motion : st.blendTree2D.motions) {
-                    toml::table motionTbl;
-                    motionTbl.insert("threshold", (double)motion.threshold);
-                    motionTbl.insert("posX",      (double)motion.posX);
-                    motionTbl.insert("posY",      (double)motion.posY);
-                    motionTbl.insert("sourcePath", motion.sourcePath);
-                    motionTbl.insert("clipName",  motion.clipName);
-                    motionTbl.insert("clipIndex", (int64_t)motion.clipIndex);
-                    motionTbl.insert("speed",     (double)motion.speed);
-                    motionTbl.insert("ikWeight",  (double)motion.ikWeight);
-                    motions2D.push_back(std::move(motionTbl));
-                }
-                blend2DTbl.insert("motions", std::move(motions2D));
-                stTbl.insert("blendTree2D", std::move(blend2DTbl));
-                statesArr.push_back(std::move(stTbl));
-            }
-            animTbl.insert("states", std::move(statesArr));
-
-            toml::array anyStateArr;
-            for (const auto& tr : anim->anyStateTransitions) {
-                toml::table trTbl;
-                trTbl.insert("toStateName",        tr.toStateName);
-                trTbl.insert("hasExitTime",        tr.hasExitTime);
-                trTbl.insert("exitTime",           (double)tr.exitTime);
-                trTbl.insert("fixedDuration",      tr.fixedDuration);
-                trTbl.insert("transitionDuration", (double)tr.transitionDuration);
-                if (tr.interruptActiveBlend) trTbl.insert("interruptActiveBlend", true);
-                toml::array condArr;
-                for (const auto& c : tr.conditions) {
-                    toml::table cTbl;
-                    cTbl.insert("paramName", c.paramName);
-                    cTbl.insert("op",        (int64_t)c.op);
-                    cTbl.insert("threshold", (double)c.threshold);
-                    condArr.push_back(std::move(cTbl));
-                }
-                trTbl.insert("conditions", std::move(condArr));
-                anyStateArr.push_back(std::move(trTbl));
-            }
-            animTbl.insert("anyStateTransitions", std::move(anyStateArr));
-
-            toml::array paramsArr;
-            for (const auto& p : anim->parameters) {
-                toml::table pTbl;
-                pTbl.insert("name",       p.name);
-                pTbl.insert("type",       (int64_t)p.type);
-                pTbl.insert("floatValue", (double)p.floatValue);
-                pTbl.insert("intValue",   (int64_t)p.intValue);
-                /// @note Trigger は一時的な発火信号であり、Scene に初期値を保存しない。保存された
-                /// @note true がロード直後の遷移を発火させると、Play 開始時に Player の
-                /// @note Jump / Draw / Holster が勝手に再生される。
-                pTbl.insert(
-                    "boolValue",
-                    p.type == ParamType::Trigger ? false : p.boolValue);
-                paramsArr.push_back(std::move(pTbl));
-            }
-            animTbl.insert("parameters", std::move(paramsArr));
-
-            toml::array layersArr;
-            for (const auto& layer : anim->layers) {
-                toml::table layerTbl;
-                layerTbl.insert("name", layer.name);
-                layerTbl.insert("weight", (double)layer.weight);
-                layerTbl.insert("mode", (int64_t)layer.mode);
-                layerTbl.insert("enabled", layer.enabled);
-                /// @note .mask アセット参照と加算基準ポーズ。
-                /// @note レイヤー独自ステートマシン (layer.states) は保存しない ─ 遷移グラフの
-                /// @note 置き場は .animcontroller で、両方に持たせると二重管理になる。
-                layerTbl.insert("maskPath", layer.mask.path);
-                toml::table additiveRef;
-                additiveRef.insert("sourcePath", layer.additiveReference.sourcePath);
-                additiveRef.insert("clipName", layer.additiveReference.clipName);
-                additiveRef.insert("time", (double)layer.additiveReference.time);
-                layerTbl.insert("additiveReference", std::move(additiveRef));
-                toml::array mappings;
-                for (const auto& mapping : layer.retargetMappings) {
-                    toml::table mappingTbl;
-                    mappingTbl.insert("sourcePath", mapping.sourcePath);
-                    mappingTbl.insert("targetPath", mapping.targetPath);
-                    mappingTbl.insert("translationScale", (double)mapping.translationScale);
-                    toml::array rotation;
-                    rotation.push_back((double)mapping.rotationOffset.x);
-                    rotation.push_back((double)mapping.rotationOffset.y);
-                    rotation.push_back((double)mapping.rotationOffset.z);
-                    rotation.push_back((double)mapping.rotationOffset.w);
-                    mappingTbl.insert("rotationOffset", std::move(rotation));
-                    mappings.push_back(std::move(mappingTbl));
-                }
-                layerTbl.insert("retargetMappings", std::move(mappings));
-                layersArr.push_back(std::move(layerTbl));
-            }
-            animTbl.insert("layers", std::move(layersArr));
-            animTbl.insert("baseLayerMaskPath", anim->baseLayerMask.path);
-
-            goTbl.insert("AnimatorComponent", std::move(animTbl));
-        }
+        scene_codec::WriteSkeletonAndAnimator(go, goTbl, scene);
 
         /// @note IKSolverComponent: targetEntity / poleEntity は EntityID (実行ごとに変わる) ため、
         /// @note 参照先 GameObject の名前として保存し、ロード後の Pass 3 で解決する。
@@ -2346,7 +1796,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("IKSolverComponent", std::move(ikTbl));
         }
 
-        /// @note SpringBoneComponent
         if (auto* spring = go.GetComponent<SpringBoneComponent>()) {
             toml::table springTbl;
             springTbl.insert("enabled",               spring->enabled);
@@ -2387,11 +1836,8 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("SpringBoneComponent", std::move(springTbl));
         }
 
-        /// @note RagdollComponent
         WriteComponentReflected<RagdollComponent>(go, goTbl, "RagdollComponent");
 
-        /// @note ScriptComponent
-        /// @note TerrainComponent
         if (auto* tc = go.GetComponent<TerrainComponent>()) {
             toml::table terrainTbl;
             terrainTbl.insert("enabled",          tc->enabled);
@@ -2404,7 +1850,7 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
                 return {};
             }
             if (playTerrains) {
-                /// @note The document keeps the asset references; the authored arrays travel outside TOML.
+                /// @note TOML にはアセット参照を残し、編集時点の地形配列は別途 Play 用に渡す。
                 terrainTbl.insert("surfaceMaterial", tc->surfaceMaterial);
                 playTerrains->emplace(goArr.size(), *tc);
             } else if (!validatePlay && (tc->terrainAssetPath.empty() || path.empty())) {
@@ -2433,7 +1879,6 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
             goTbl.insert("TerrainComponent", std::move(terrainTbl));
         }
 
-        /// @note TerrainGridComponent
         if (auto* tgc = go.GetComponent<TerrainGridComponent>()) {
             tgc->SyncInstanceIds(scene);
             toml::table tbl;
@@ -2627,7 +2072,7 @@ std::function<std::string()> PrepareSceneDocument(Scene& scene, const std::strin
     };
 }
 
-} /// @note namespace
+}
 
 PreparedSceneSave SceneSerializer::PrepareSave(Scene& scene, const std::string& scenePath, std::string& diagnostic)
 {
@@ -2703,7 +2148,6 @@ std::string SceneSerializer::CapturePassiveSubtree(Scene& scene, EntityID root)
     return format ? format() : std::string{};
 }
 
-/// @note Load
 std::unique_ptr<Scene> SceneSerializer::Load(
     const std::string& path, renderer::ResourceManager* resources)
 {
@@ -2868,6 +2312,430 @@ void FinalizeDeserializedScripts(const std::vector<Script*>& scripts, void (*pum
     }
 }
 
+void ReadParticleEmitter(GameObject& go, const toml::table& object)
+{
+    const auto* table = object["ParticleEmitter"].as_table();
+    if (!table) return;
+
+    ParticleEmitter emitter{};
+    asset::DeserializeParticleEmitterSettings(*table, emitter.settings);
+
+    /// @note シーンではキー配列の有無にかかわらず、現行形式の整数を旧形式の平坦なキーより優先する。
+    auto space = (*table)["colorGradient"]["space"].value<int64_t>();
+    if (!space)
+        space = (*table)["gradientColorSpace"].value<int64_t>();
+    if (space) {
+        emitter.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
+            std::clamp(*space, int64_t{0}, static_cast<int64_t>(ParticleColorSpace::Oklab)));
+    }
+
+    /// @note 確定済みの色空間で実行時グラデーションを初期化し、保存されていた再生状態を戻す。
+    const bool playing = emitter.settings.playing;
+    emitter.ResetPlayback();
+    emitter.settings.playing = playing;
+    go.AddComponent<ParticleEmitter>(std::move(emitter));
+}
+
+void ReadVisualComponents(GameObject& go, const toml::table& object, Scene& scene, renderer::ResourceManager* resources)
+{
+    if (auto* tfTbl = object["transform"].as_table()) {
+        auto& t = go.transform;
+        t.position = ArrToVec3(((*tfTbl)["position"].as_array()
+                          ? (*tfTbl)["position"].as_array()
+                          : (*tfTbl)["localPosition"].as_array()));
+        t.rotation = ArrToQuat(((*tfTbl)["rotation"].as_array()
+                          ? (*tfTbl)["rotation"].as_array()
+                          : (*tfTbl)["localRotation"].as_array()));
+        t.scale     = ArrToVec3(((*tfTbl)["scale"].as_array() ? (*tfTbl)["scale"].as_array() : (*tfTbl)["localScale"].as_array()), { 1.0f, 1.0f, 1.0f });
+    }
+
+    if (auto* mrTbl = object["MeshRenderer"].as_table()) {
+        MeshRenderer mr{};
+        mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
+        mr.enabled  = (*mrTbl)["enabled"].value_or(true);
+        /// @note 既存シーンにキーが無い場合は true (従来どおり全メッシュが影を落とす)。
+        mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
+        mr.bakeStaticShadow = (*mrTbl)["bakeStaticShadow"].value_or(false);
+
+        if (!mr.meshPath.empty()) {
+            mr.mesh = ResolveMesh(mr.meshPath, resources);
+            if (!mr.mesh)
+                FBZZ_LOG_WARN("SceneSerializer: failed to resolve mesh '%s'", mr.meshPath.c_str());
+        }
+        go.AddComponent<MeshRenderer>(std::move(mr));
+    }
+
+    if (auto* matTbl = object["MaterialComponent"].as_table())
+        go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
+
+    if (auto* decalTbl = object["DecalComponent"].as_table()) {
+        DecalComponent decal{};
+        decal.enabled         = (*decalTbl)["enabled"].value_or(true);
+        decal.materialPath    = (*decalTbl)["material"].value_or(std::string{});
+        decal.albedoTexPath   = (*decalTbl)["albedoTex"].value_or(std::string{});
+        decal.normalTexPath   = (*decalTbl)["normalTex"].value_or(std::string{});
+        decal.emissiveTexPath = (*decalTbl)["emissiveTex"].value_or(std::string{});
+
+        const math::Vector4 albedo = ArrToVec4(
+            (*decalTbl)["albedo"].as_array(),
+            { 1.0f, 1.0f, 1.0f, 1.0f });
+        decal.albedoColor[0] = albedo.x;
+        decal.albedoColor[1] = albedo.y;
+        decal.albedoColor[2] = albedo.z;
+        decal.albedoColor[3] = albedo.w;
+
+        decal.normalStrength = (float)(*decalTbl)["normalStrength"].value_or(1.0);
+        decal.angleFadeStrength = (float)(*decalTbl)["angleFadeStrength"].value_or(1.0);
+        decal.angleFadeDegrees  = (float)(*decalTbl)["angleFadeDegrees"].value_or(70.0);
+
+        const math::Vector3 emissive = ArrToVec3(
+            (*decalTbl)["emissiveColor"].as_array(),
+            { 1.0f, 1.0f, 1.0f });
+        decal.emissiveColor[0] = emissive.x;
+        decal.emissiveColor[1] = emissive.y;
+        decal.emissiveColor[2] = emissive.z;
+        decal.emissiveScale    = (float)(*decalTbl)["emissiveScale"].value_or(0.0);
+
+        decal.lifetime          = (float)(*decalTbl)["lifetime"].value_or(-1.0);
+        decal.fadeTime          = (float)(*decalTbl)["fadeTime"].value_or(1.0);
+        decal.fadeInTime        = (float)(*decalTbl)["fadeInTime"].value_or(0.0);
+        decal.age               = (float)(*decalTbl)["age"].value_or(0.0);
+        decal.frameCount        = (int)(*decalTbl)["frameCount"].value_or((int64_t)0);
+        decal.framesPerRow      = (int)(*decalTbl)["framesPerRow"].value_or((int64_t)1);
+        decal.frameRate         = (float)(*decalTbl)["frameRate"].value_or(0.0);
+        decal.frameLoop         = (*decalTbl)["frameLoop"].value_or(false);
+        decal.sortOrder         = (int)(*decalTbl)["sortOrder"].value_or((int64_t)0);
+        decal.receiverLayerMask = static_cast<fbzz::LayerMask>(
+            static_cast<uint32_t>((*decalTbl)["receiverLayerMask"].value_or((int64_t)fbzz::Layer::Everything)));
+        go.AddComponent<DecalComponent>(std::move(decal));
+    }
+
+    ReadLightComponent(go, object);
+
+    if (auto* ccTbl = object["CameraComponent"].as_table()) {
+        CameraComponent cc{};
+        cc.fovY    = (float)(*ccTbl)["fovY"].value_or(60.0);
+        cc.aspectRatio = (float)(*ccTbl)["aspectRatio"].value_or(16.0 / 9.0);
+        cc.nearZ   = (float)(*ccTbl)["nearZ"].value_or(0.1);
+        cc.farZ    = (float)(*ccTbl)["farZ"].value_or(static_cast<double>(cc.farZ));
+        cc.isMain  = (*ccTbl)["isMain"].value_or(true);
+        cc.enabled = (*ccTbl)["enabled"].value_or(true);
+        cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);
+        /// @note 既定値は「これまでの挙動」= 両方有効・余白なし。旧シーンを読んでも絵は変わらない。
+        cc.frustumCulling   = (*ccTbl)["frustumCulling"].value_or(true);
+        /// @note 既定はコンポーネント側と揃える (未記載の古いシーンも無効で読む)。
+        cc.occlusionCulling = (*ccTbl)["occlusionCulling"].value_or(false);
+        cc.cullingBoundsPadding = (float)(*ccTbl)["cullingBoundsPadding"].value_or(0.0);
+        cc.maxDrawDistance = (float)(*ccTbl)["maxDrawDistance"].value_or(0.0);
+        cc.cullDistanceSpherical = (*ccTbl)["cullDistanceSpherical"].value_or(true);
+        cc.smallObjectScreenHeight = (float)(*ccTbl)["smallObjectScreenHeight"].value_or(0.0);
+        /// @note 未記載の旧シーンはこれまでの背景色のまま読む (絵が変わらない)。
+        cc.backgroundColor = ArrToVec4((*ccTbl)["backgroundColor"].as_array(),
+                                       renderer::kDefaultBackgroundColor);
+        {
+            int clearMode = (int)(*ccTbl)["clearMode"].value_or((int64_t)0);
+            clearMode = clearMode < 0 ? 0 : (clearMode > 1 ? 1 : clearMode);
+            cc.clearMode = static_cast<renderer::CameraClearMode>(clearMode);
+        }
+        /// @note 要素数が足りない / 多い旧データでも壊れないよう、書ける範囲だけ読む。
+        if (const auto* layerArr = (*ccTbl)["layerCullDistances"].as_array()) {
+            const size_t count =
+                (std::min)(layerArr->size(), (size_t)kCullLayerCount);
+            for (size_t i = 0; i < count; ++i)
+                cc.layerCullDistances[i] = (float)(*layerArr)[i].value_or(0.0);
+        }
+        go.AddComponent<CameraComponent>(cc);
+    }
+
+    /// @note LOD の切替距離は専用形式で読み、中心となる個体の参照は全個体の生成後に復元する。
+    if (const auto* lodTable = object["LODGroupComponent"].as_table())
+        go.AddComponent<LODGroupComponent>(ReadLODGroupComponent(*lodTable));
+
+    ReadComponentReflected<EnvironmentLightComponent>(go, object, "EnvironmentLightComponent");
+
+    ReadComponentReflected<ReflectionProbeComponent>(go, object, "ReflectionProbeComponent");
+
+    /// @note PostProcessVolumeComponent — pp サブテーブルから PostProcessSettings を復元する。
+    ReadComponentReflected<PostProcessVolumeComponent>(go, object, "PostProcessVolumeComponent");
+
+    ReadParticleEmitter(go, object);
+
+    /// @note 流れの場 (旧 WindZoneComponent と旧フラット形式もここで吸収する)
+    ReadFlowFieldComponent(go, object, scene.Environment());
+
+    ReadComponentReflected<TrailComponent>(go, object, "TrailComponent");
+
+    ReadComponentReflected<MeshTrailComponent>(go, object, "MeshTrailComponent");
+}
+
+void ReadRigComponents(GameObject& go, const toml::table& object)
+{
+    /// @note シーン全体の復元と追加入力で同じ IK 参照形式を読む。
+    if (const auto* ikTable = object["IKSolverComponent"].as_table())
+        go.AddComponent<IKSolverComponent>(ReadIKSolverComponent(*ikTable));
+
+    if (auto* springTbl = object["SpringBoneComponent"].as_table()) {
+        SpringBoneComponent spring{};
+        spring.enabled          = (*springTbl)["enabled"].value_or(true);
+        spring.simulateInEditor = (*springTbl)["simulateInEditor"].value_or(true);
+        spring.teleportResetDistance =
+            (float)(*springTbl)["teleportResetDistance"].value_or(1.0);
+
+        if (const auto* chainsArr = (*springTbl)["chains"].as_array()) {
+            for (const auto& elem : *chainsArr) {
+                const auto* chainTbl = elem.as_table();
+                if (!chainTbl) continue;
+                SpringBoneChain chain{};
+                chain.enabled      = (*chainTbl)["enabled"].value_or(true);
+                chain.rootBoneName = (*chainTbl)["rootBoneName"].value_or(std::string{});
+                chain.maxDepth     = (int)(*chainTbl)["maxDepth"].value_or((int64_t)0);
+                chain.stiffness    = (float)(*chainTbl)["stiffness"].value_or(0.6);
+                chain.damping      = (float)(*chainTbl)["damping"].value_or(0.4);
+                chain.gravityPower = (float)(*chainTbl)["gravityPower"].value_or(0.0);
+                chain.gravityDirection =
+                    ArrToVec3((*chainTbl)["gravityDirection"].as_array(),
+                              math::Vector3{ 0.0f, -1.0f, 0.0f });
+                chain.radius         = (float)(*chainTbl)["radius"].value_or(0.02);
+                chain.limitAngle     = (float)(*chainTbl)["limitAngle"].value_or(60.0);
+                chain.weight         = (float)(*chainTbl)["weight"].value_or(1.0);
+                chain.leafTailLength = (float)(*chainTbl)["leafTailLength"].value_or(0.03);
+                spring.chains.push_back(std::move(chain));
+            }
+        }
+
+        if (const auto* collidersArr = (*springTbl)["colliders"].as_array()) {
+            for (const auto& elem : *collidersArr) {
+                const auto* colliderTbl = elem.as_table();
+                if (!colliderTbl) continue;
+                SpringBoneCollider collider{};
+                collider.enabled  = (*colliderTbl)["enabled"].value_or(true);
+                collider.boneName = (*colliderTbl)["boneName"].value_or(std::string{});
+                const int64_t shape = (*colliderTbl)["shape"].value_or((int64_t)0);
+                collider.shape = shape == 1
+                    ? SpringBoneColliderShape::Capsule
+                    : SpringBoneColliderShape::Sphere;
+                collider.offset =
+                    ArrToVec3((*colliderTbl)["offset"].as_array(), math::Vector3::ZERO);
+                collider.tailOffset =
+                    ArrToVec3((*colliderTbl)["tailOffset"].as_array(), math::Vector3::ZERO);
+                collider.radius = (float)(*colliderTbl)["radius"].value_or(0.05);
+                spring.colliders.push_back(std::move(collider));
+            }
+        }
+        go.AddComponent<SpringBoneComponent>(std::move(spring));
+    }
+
+    /// @note 実行状態 (rig / phase) は保存しない。ラグドールは倒れる数秒のための一時状態で、
+    /// @note シーンに焼き付いていると Play した瞬間に崩れている。
+    ReadComponentReflected<RagdollComponent>(go, object, "RagdollComponent");
+}
+
+bool ReadTerrainAndWaterComponents(GameObject& go, const toml::table& object, const std::string& sourcePath,
+    bool passiveScripts, PlayTerrainSnapshots* playTerrains, size_t objectIndex, void (*pump)())
+{
+    if (auto* terrainTbl = object["TerrainComponent"].as_table()) {
+        TerrainComponent tc{};
+        tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
+        const auto* inlineData = (*terrainTbl)["inlineData"].as_table();
+        /// @note 複製に地形が埋め込まれていれば、その編集時点の形を使う。外部ファイルには未保存の変更が含まれない。
+        const bool passiveSnapshot = passiveScripts && inlineData;
+
+        if (playTerrains) {
+            const auto captured = playTerrains->find(objectIndex);
+            if (captured == playTerrains->end()) return false;
+            tc = std::move(captured->second);
+            tc.surfaceMaterial = (*terrainTbl)["surfaceMaterial"].value_or(std::string{});
+            if (tc.heightData.size() != tc.VertexCount()) tc.heightData.assign(tc.VertexCount(), 0.0f);
+            if (tc.holeData.size() != tc.CellCount()) tc.holeData.clear();
+            tc.EnsureSplat();
+            tc.heightDirty = tc.splatDirty = tc.materialParamDirty = true;
+        } else if (!tc.terrainAssetPath.empty() && !passiveSnapshot) {
+            const std::string terrainDiskPath =
+                ResolveAssetDiskPathForScene(sourcePath, tc.terrainAssetPath);
+            const bool loaded = passiveScripts ? TerrainAssetSerializer::LoadStrict(terrainDiskPath, tc)
+                : TerrainAssetSerializer::LoadWithProgress(terrainDiskPath, tc, pump);
+            if (!loaded) {
+                /// @note 通常の読込は平地で続行できるが、複製では元と異なる地形を渡すことになるため失敗を返す。
+                if (passiveScripts) return false;
+                FBZZ_LOG_WARN("SceneSerializer: failed to load terrain asset '%s'",
+                              terrainDiskPath.c_str());
+                tc.InitFlat(0.0f);
+            }
+        } else if (!passiveSnapshot) {
+            tc.InitFlat(0.0f);
+        }
+        if (inlineData) {
+            std::ostringstream text;
+            text << *inlineData;
+            const auto serialized = text.str();
+            const bool loaded = passiveScripts ? TerrainAssetSerializer::DeserializeStrict(serialized, tc)
+                : TerrainAssetSerializer::Deserialize(serialized, tc);
+            if (!loaded) {
+                if (passiveScripts) return false;
+                FBZZ_LOG_WARN("SceneSerializer: invalid inline terrain geometry");
+            }
+        }
+
+        tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
+        tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
+        const auto farLodDistance = (*terrainTbl)["farLodDistance"].value_or(0.0f);
+        tc.farLodDistance = std::isfinite(farLodDistance) && farLodDistance > 0.0f ? farLodDistance : 0.0f;
+
+        /// @note 層数は可変。配列の長さをそのまま層数にする (番号が層数を超える頂点は描画が既定層で補う)。
+        if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {
+            const size_t layerCount = (std::min)(layerArr->size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
+            tc.layerMaterials.resize(layerCount);
+            for (size_t li = 0; li < layerCount; ++li)
+                tc.layerMaterials[li] = (*layerArr)[li].value_or(std::string{});
+        }
+
+        /// @note ロード後にコライダー再構築をトリガーする
+        tc.colliderDirty = true;
+        go.AddComponent<TerrainComponent>(std::move(tc));
+    }
+
+    /// @note TerrainGridComponent — cells は全 GO ロード後に ResolveFromScene() で解決する
+    if (auto* tgcTbl = object["TerrainGridComponent"].as_table()) {
+        TerrainGridComponent tgc;
+        tgc.enabled    = (*tgcTbl)["enabled"].value_or(true);
+        tgc.cellCountX = (int)(*tgcTbl)["cellCountX"].value_or((int64_t)4);
+        tgc.cellCountZ = (int)(*tgcTbl)["cellCountZ"].value_or((int64_t)4);
+        tgc.defaultColumns   = (int)(*tgcTbl)["defaultColumns"].value_or((int64_t)65);
+        tgc.defaultRows      = (int)(*tgcTbl)["defaultRows"].value_or((int64_t)65);
+        tgc.defaultCellSize  = (float)(*tgcTbl)["defaultCellSize"].value_or(2.0);
+        tgc.defaultChunkSize = (int)(*tgcTbl)["defaultChunkSize"].value_or((int64_t)32);
+        if (const auto* cellArr = (*tgcTbl)["cells"].as_array()) {
+            for (const auto& node : *cellArr)
+                tgc.cellInstanceIds.push_back(node.value_or(std::string{}));
+        }
+        tgc.EnsureSize();
+        go.AddComponent<TerrainGridComponent>(std::move(tgc));
+    }
+
+    /// @note 旧シーンの波Asset・浅水減衰・モーフは無効として、材質4基波との互換を維持する。
+    if (auto* waterTbl = object["WaterComponent"].as_table()) {
+        go.AddComponent<WaterComponent>(ReadWaterComponent(*waterTbl));
+    }
+    return true;
+}
+
+void ReadNavigationComponents(GameObject& go, const toml::table& object)
+{
+    /// @note navMesh は Bake で再生成するため needsBake=true で登録し非保存。
+    {
+        /// @note 値の読み込みは Reflect() が担う。既定は NavMeshSurfaceComponent{} から来るので、
+        /// @note キーの無い古いシーンも構造体の既定で開く。
+        /// @note (maxClimb は既定 0.4。0 で読むと «段差を無視して繋がる» 旧 NavMesh の状態が
+        /// @note 固定され、しかも Inspector には 0 と出て設定として正しく見えてしまう。)
+        if (const auto* surfTbl = object["NavMeshSurfaceComponent"].as_table()) {
+            NavMeshSurfaceComponent surface{};
+            DeserializeReflected(*surfTbl, surface);
+            /// @note ベイク結果 (navMesh) は保存しないので、開いた直後は «設定はあるが面が無い»。
+            /// @note シーンを開いたら必ず焼き直す。
+            surface.needsBake = true;
+            go.AddComponent<NavMeshSurfaceComponent>(std::move(surface));
+        }
+    }
+
+    {
+        const toml::table* modTbl = object["NavMeshModifierComponent"].as_table();
+        if (modTbl) {
+            NavMeshModifierComponent modifier{};
+            modifier.enabled = (*modTbl)["enabled"].value_or(true);
+            modifier.mode    = static_cast<NavMeshModifierMode>(
+                static_cast<uint8_t>((*modTbl)["mode"].value_or(int64_t{0})));
+            modifier.areaType = static_cast<int>((*modTbl)["areaType"].value_or(int64_t{0}));
+            go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
+        }
+    }
+
+    ReadComponentReflected<NavMeshAgentComponent>(go, object, "NavMeshAgentComponent");
+
+    ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, object, "NavMeshOffMeshLinkComponent");
+
+    if (const auto* patrolTable = object["NavMeshPatrolComponent"].as_table())
+        go.AddComponent<NavMeshPatrolComponent>(ReadNavMeshPatrolComponent(*patrolTable));
+
+    ReadComponentReflected<NavMeshSensorComponent>(go, object, "NavMeshSensorComponent");
+}
+
+void RestoreParentLinks(const toml::array& objects, const GuidIndex& guids, void (*pump)())
+{
+    /// @note 親が子より後に保存される場合もあるため、全個体が揃った索引を使う。
+    for (auto& item : objects) {
+        if (pump) pump();
+        auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+
+        std::string parentGuid = (*goTbl)["parentInstanceId"].value_or(std::string{});
+        if (parentGuid.empty()) continue;
+
+        std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (childGuid.empty()) continue;
+
+        auto* child = guids.Find(childGuid);
+        auto* parent = guids.Find(parentGuid);
+        if (child && parent) child->SetParent(*parent);
+    }
+}
+
+void RestoreComponentLinks(Scene& scene, const toml::array& objects, const GuidIndex& guids, void (*pump)())
+{
+    /// @note EntityID は実行ごとに変わるので識別子で保存し、全 GameObject を揃えてから解決する。
+
+    /// @note Reflect() を通る全コンポーネント / スクリプトの GameObject 参照。
+    for (auto& item : objects) {
+        if (pump) pump();
+        const auto* goTbl = item.as_table();
+        if (!goTbl) continue;
+        const std::string guid = (*goTbl)["instanceId"].value_or(std::string{});
+        if (guid.empty()) continue;
+        if (GameObject* go = guids.Find(guid))
+            ResolveEntityReferences(*go, *goTbl, guids);
+    }
+
+    /// @note IK の参照先には他のコンポーネントも使えるので、全員の参照を結んだ後で初期化する。
+    for (GameObject& go : scene.GameObjects())
+        if (IKSolverComponent* solver = go.GetComponent<IKSolverComponent>())
+            InitializeIKTargetReferences(scene, *solver);
+
+    /// @note nodeEntities は Animator が nodeIndex から再構築するため、ここではボーンの所有先だけを復元する。
+    ResolveBoneOwners(scene, objects, guids);
+
+    /// @note 起点のボーンは Pass 1 では未生成のことがあるので、全 GO を揃えてから変換する。
+    /// @note 解決できていれば AnimatorSystem は子孫を探さずに共有スケルトンへ束縛できる。
+    for (size_t i = 0; i < objects.size(); ++i) {
+        auto* goTbl = objects[i].as_table();
+        if (!goTbl) continue;
+        auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table();
+        if (!smrTbl) continue;
+        const std::string rootGuid = (*smrTbl)["skeletonRootGuid"].value_or(std::string{});
+        const std::string rootName = (*smrTbl)["skeletonRootName"].value_or(std::string{});
+        if (rootGuid.empty() && rootName.empty()) continue;
+        const std::string ownerGuid = (*goTbl)["instanceId"].value_or(std::string{});
+        GameObject* ownerGo = ownerGuid.empty() ? nullptr : guids.Find(ownerGuid);
+        if (!ownerGo) ownerGo = scene.Find((*goTbl)["name"].value_or(std::string{}));
+        if (!ownerGo) continue;
+        auto* smr = ownerGo->GetComponent<SkinnedMeshRenderer>();
+        if (!smr) continue;
+        GameObject* skeletonRoot = nullptr;
+        if (!rootGuid.empty()) skeletonRoot = guids.Find(rootGuid);
+        if (!skeletonRoot && !rootName.empty()) skeletonRoot = scene.Find(rootName);
+        if (skeletonRoot) smr->skeletonRootEntity = skeletonRoot->GetID();
+    }
+
+    /// @note TerrainGridComponent の cellInstanceIds → cells を全 GO ロード後に解決する。Grid が
+    /// @note 参照する Terrain GO はシリアライズ順で後に来る可能性があるため、全 GO を追加してから
+    /// @note GUID → EntityID の変換を行う。
+    for (auto& go : scene.GameObjects()) {
+        if (auto* tgc = go.GetComponent<TerrainGridComponent>())
+            tgc->ResolveCellReferences([&guids](const std::string& guid) {
+                const auto* object = guids.Find(guid);
+                return object ? object->GetID() : EntityID::INVALID;
+            });
+    }
+}
+
 std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer::ResourceManager* resources,
     const std::string& sourcePath, bool passiveScripts, PlayTerrainSnapshots* playTerrains, void (*pump)())
 {
@@ -2896,10 +2764,10 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
     if (const auto* environmentTbl = doc["environment"].as_table())
         DeserializeReflected(*environmentTbl, scene->Environment());
 
-    auto* goArr = doc["gameobjects"].as_array();
-    if (!goArr) return scene;
-    if (!ValidateSavedScriptIds(*goArr)) return nullptr;
-    if (!scene->CanCreateGameObjects(CountSceneObjects(*goArr, true))) {
+    auto* savedObjects = doc["gameobjects"].as_array();
+    if (!savedObjects) return scene;
+    if (!ValidateSavedScriptIds(*savedObjects)) return nullptr;
+    if (!scene->CanCreateGameObjects(CountSceneObjects(*savedObjects, true))) {
         FBZZ_LOG_ERROR("SceneSerializer: entity capacity exceeded in [%s]", sourcePath.c_str());
         return nullptr;
     }
@@ -2907,834 +2775,60 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
     /// @note ファクトリに居なかったスクリプト型。読み終わりに 1 度だけまとめて告げる。
     std::vector<std::string> unresolvedScriptTypes;
 
-    /// @note Pass 1: GameObject 生成 + Component アタッチ
-    for (size_t objectIndex = 0; objectIndex < goArr->size(); ++objectIndex) {
+    /// @note まず保存値から全個体を作る。ここで親や骨を検索すると、ファイルの後ろにある個体を取りこぼす。
+    for (size_t objectIndex = 0; objectIndex < savedObjects->size(); ++objectIndex) {
         if (pump) pump();
-        auto* goTbl = (*goArr)[objectIndex].as_table();
-        if (!goTbl) continue;
+        auto* savedObject = (*savedObjects)[objectIndex].as_table();
+        if (!savedObject) continue;
 
-        std::string name   = (*goTbl)["name"].value_or(std::string{"GameObject"});
+        std::string name   = (*savedObject)["name"].value_or(std::string{"GameObject"});
         /// @note 古いシーンファイルにランタイム専用 GO が保存されていた場合もスキップする。
         if (name.size() >= 2 && name[0] == '_' && name[1] == '_') continue;
-        std::string tag    = (*goTbl)["tag"].value_or(std::string{"Untagged"});
-        bool        active = (*goTbl)["active"].value_or(true);
+        std::string tag    = (*savedObject)["tag"].value_or(std::string{"Untagged"});
+        bool        active = (*savedObject)["active"].value_or(true);
 
         auto* created = scene->TryCreateGameObject(name);
         if (!created) return nullptr;
         auto& go = *created;
         go.tag   = tag;
-        go.layer = (int)(*goTbl)["layer"].value_or((int64_t)0);
+        go.layer = (int)(*savedObject)["layer"].value_or((int64_t)0);
         go.SetActive(active);
         /// @note instanceId: ファイルに保存された UUID を復元する。
         /// @note 古いシーンファイルには instanceId がないため、その場合は CreateGameObject が
         /// @note 生成した UUID をそのまま使う (後方互換)。
         {
-            std::string id = (*goTbl)["instanceId"].value_or(std::string{});
+            std::string id = (*savedObject)["instanceId"].value_or(std::string{});
             if (!id.empty()) go.instanceId = std::move(id);
         }
-        go.prefabAssetPath = (*goTbl)["prefabAssetPath"].value_or(std::string{});
-        go.prefabSourceId  = (*goTbl)["prefabSourceId"].value_or(std::string{});
-        go.prefabSourceSnapshot = (*goTbl)["prefabSourceSnapshot"].value_or(std::string{});
-
-        /// @note Transform
-        if (auto* tfTbl = (*goTbl)["transform"].as_table()) {
-            auto& t = go.transform;
-            t.position = ArrToVec3(((*tfTbl)["position"].as_array()
-                              ? (*tfTbl)["position"].as_array()
-                              : (*tfTbl)["localPosition"].as_array()));
-            t.rotation = ArrToQuat(((*tfTbl)["rotation"].as_array()
-                              ? (*tfTbl)["rotation"].as_array()
-                              : (*tfTbl)["localRotation"].as_array()));
-            t.scale     = ArrToVec3(((*tfTbl)["scale"].as_array() ? (*tfTbl)["scale"].as_array() : (*tfTbl)["localScale"].as_array()), { 1.0f, 1.0f, 1.0f });
-        }
-
-        /// @note MeshRenderer
-        if (auto* mrTbl = (*goTbl)["MeshRenderer"].as_table()) {
-            MeshRenderer mr{};
-            mr.meshPath = (*mrTbl)["mesh"].value_or(std::string{});
-            mr.enabled  = (*mrTbl)["enabled"].value_or(true);
-            /// @note 既存シーンにキーが無い場合は true (従来どおり全メッシュが影を落とす)。
-            mr.castShadows = (*mrTbl)["castShadows"].value_or(true);
-            mr.bakeStaticShadow = (*mrTbl)["bakeStaticShadow"].value_or(false);
-
-            if (!mr.meshPath.empty()) {
-                mr.mesh = ResolveMesh(mr.meshPath, resources);
-                if (!mr.mesh)
-                    FBZZ_LOG_WARN("SceneSerializer: failed to resolve mesh '%s'", mr.meshPath.c_str());
-            }
-            go.AddComponent<MeshRenderer>(std::move(mr));
-        }
-
-        /// @note MaterialComponent
-        if (auto* matTbl = (*goTbl)["MaterialComponent"].as_table())
-            go.AddComponent<MaterialComponent>(ReadMaterialComponent(*matTbl));
-
-        /// @note DecalComponent
-        if (auto* decalTbl = (*goTbl)["DecalComponent"].as_table()) {
-            DecalComponent decal{};
-            decal.enabled         = (*decalTbl)["enabled"].value_or(true);
-            decal.materialPath    = (*decalTbl)["material"].value_or(std::string{});
-            decal.albedoTexPath   = (*decalTbl)["albedoTex"].value_or(std::string{});
-            decal.normalTexPath   = (*decalTbl)["normalTex"].value_or(std::string{});
-            decal.emissiveTexPath = (*decalTbl)["emissiveTex"].value_or(std::string{});
-
-            const math::Vector4 albedo = ArrToVec4(
-                (*decalTbl)["albedo"].as_array(),
-                { 1.0f, 1.0f, 1.0f, 1.0f });
-            decal.albedoColor[0] = albedo.x;
-            decal.albedoColor[1] = albedo.y;
-            decal.albedoColor[2] = albedo.z;
-            decal.albedoColor[3] = albedo.w;
-
-            decal.normalStrength = (float)(*decalTbl)["normalStrength"].value_or(1.0);
-            decal.angleFadeStrength = (float)(*decalTbl)["angleFadeStrength"].value_or(1.0);
-            decal.angleFadeDegrees  = (float)(*decalTbl)["angleFadeDegrees"].value_or(70.0);
-
-            const math::Vector3 emissive = ArrToVec3(
-                (*decalTbl)["emissiveColor"].as_array(),
-                { 1.0f, 1.0f, 1.0f });
-            decal.emissiveColor[0] = emissive.x;
-            decal.emissiveColor[1] = emissive.y;
-            decal.emissiveColor[2] = emissive.z;
-            decal.emissiveScale    = (float)(*decalTbl)["emissiveScale"].value_or(0.0);
-
-            decal.lifetime          = (float)(*decalTbl)["lifetime"].value_or(-1.0);
-            decal.fadeTime          = (float)(*decalTbl)["fadeTime"].value_or(1.0);
-            decal.fadeInTime        = (float)(*decalTbl)["fadeInTime"].value_or(0.0);
-            decal.age               = (float)(*decalTbl)["age"].value_or(0.0);
-            decal.frameCount        = (int)(*decalTbl)["frameCount"].value_or((int64_t)0);
-            decal.framesPerRow      = (int)(*decalTbl)["framesPerRow"].value_or((int64_t)1);
-            decal.frameRate         = (float)(*decalTbl)["frameRate"].value_or(0.0);
-            decal.frameLoop         = (*decalTbl)["frameLoop"].value_or(false);
-            decal.sortOrder         = (int)(*decalTbl)["sortOrder"].value_or((int64_t)0);
-            decal.receiverLayerMask = static_cast<fbzz::LayerMask>(
-                static_cast<uint32_t>((*decalTbl)["receiverLayerMask"].value_or((int64_t)fbzz::Layer::Everything)));
-            go.AddComponent<DecalComponent>(std::move(decal));
-        }
-
-        /// @note LightComponent
-        ReadLightComponent(go, *goTbl);
-
-        /// @note CameraComponent
-        if (auto* ccTbl = (*goTbl)["CameraComponent"].as_table()) {
-            CameraComponent cc{};
-            cc.fovY    = (float)(*ccTbl)["fovY"].value_or(60.0);
-            cc.aspectRatio = (float)(*ccTbl)["aspectRatio"].value_or(16.0 / 9.0);
-            cc.nearZ   = (float)(*ccTbl)["nearZ"].value_or(0.1);
-            cc.farZ    = (float)(*ccTbl)["farZ"].value_or(static_cast<double>(cc.farZ));
-            cc.isMain  = (*ccTbl)["isMain"].value_or(true);
-            cc.enabled = (*ccTbl)["enabled"].value_or(true);
-            cc.cullingMask = (fbzz::LayerMask)(*ccTbl)["cullingMask"].value_or((int64_t)fbzz::Layer::Everything);
-            /// @note 既定値は「これまでの挙動」= 両方有効・余白なし。旧シーンを読んでも絵は変わらない。
-            cc.frustumCulling   = (*ccTbl)["frustumCulling"].value_or(true);
-            /// @note 既定はコンポーネント側と揃える (未記載の古いシーンも無効で読む)。
-            cc.occlusionCulling = (*ccTbl)["occlusionCulling"].value_or(false);
-            cc.cullingBoundsPadding = (float)(*ccTbl)["cullingBoundsPadding"].value_or(0.0);
-            cc.maxDrawDistance = (float)(*ccTbl)["maxDrawDistance"].value_or(0.0);
-            cc.cullDistanceSpherical = (*ccTbl)["cullDistanceSpherical"].value_or(true);
-            cc.smallObjectScreenHeight = (float)(*ccTbl)["smallObjectScreenHeight"].value_or(0.0);
-            /// @note 未記載の旧シーンはこれまでの背景色のまま読む (絵が変わらない)。
-            cc.backgroundColor = ArrToVec4((*ccTbl)["backgroundColor"].as_array(),
-                                           renderer::kDefaultBackgroundColor);
-            {
-                int clearMode = (int)(*ccTbl)["clearMode"].value_or((int64_t)0);
-                clearMode = clearMode < 0 ? 0 : (clearMode > 1 ? 1 : clearMode);
-                cc.clearMode = static_cast<renderer::CameraClearMode>(clearMode);
-            }
-            /// @note 要素数が足りない / 多い旧データでも壊れないよう、書ける範囲だけ読む。
-            if (const auto* layerArr = (*ccTbl)["layerCullDistances"].as_array()) {
-                const size_t count =
-                    (std::min)(layerArr->size(), (size_t)kCullLayerCount);
-                for (size_t i = 0; i < count; ++i)
-                    cc.layerCullDistances[i] = (float)(*layerArr)[i].value_or(0.0);
-            }
-            go.AddComponent<CameraComponent>(cc);
-        }
-
-        /// @note LOD levels use the custom codec; center target uses the reflected typed reference.
-        if (const auto* lodTable = (*goTbl)["LODGroupComponent"].as_table())
-            go.AddComponent<LODGroupComponent>(ReadLODGroupComponent(*lodTable));
-
-        /// @note EnvironmentLightComponent
-        ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");
-
-        /// @note ReflectionProbeComponent
-        ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
-
-        /// @note PostProcessVolumeComponent — pp サブテーブルから PostProcessSettings を復元する。
-        ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");
-
-        /// @note ParticleEmitter
-        if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
-            ParticleEmitter pe{};
-            asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
-            /// @note 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
-            /// @note 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
-            pe.ResetPlayback();
-            /// @note 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
-            /// @note colorGradient.space が無い場合だけ、こちらを正として反映する。
-            if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
-                pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
-                    std::clamp(static_cast<int>(*legacySpace), 0,
-                               static_cast<int>(ParticleColorSpace::Oklab)));
-            }
-            /// @note ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
-            pe.settings.playing = (*peTbl)["playing"].value_or(true);
-            go.AddComponent<ParticleEmitter>(std::move(pe));
-        }
-
-        /// @note 流れの場 (旧 WindZoneComponent と旧フラット形式もここで吸収する)
-        ReadFlowFieldComponent(go, *goTbl, scene->Environment());
-
-        /// @note TrailComponent
-        ReadComponentReflected<TrailComponent>(go, *goTbl, "TrailComponent");
-
-        /// @note MeshTrailComponent
-        ReadComponentReflected<MeshTrailComponent>(go, *goTbl, "MeshTrailComponent");
-
-        if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
-            AabbColliderComponent col{};
-            ReadAabbCollider(*colTbl, col);
-            go.AddComponent<AabbColliderComponent>(std::move(col));
-        }
-
-        if (auto* colTbl = (*goTbl)["BoxColliderComponent"].as_table()) {
-            BoxColliderComponent col{};
-            ReadBoxCollider(*colTbl, col);
-            go.AddComponent<BoxColliderComponent>(std::move(col));
-        }
-
-        if (auto* colTbl = (*goTbl)["SphereColliderComponent"].as_table()) {
-            SphereColliderComponent col{};
-            ReadSphereCollider(*colTbl, col);
-            go.AddComponent<SphereColliderComponent>(std::move(col));
-        }
-
-        if (auto* colTbl = (*goTbl)["CapsuleColliderComponent"].as_table()) {
-            CapsuleColliderComponent col{};
-            ReadCapsuleCollider(*colTbl, col);
-            go.AddComponent<CapsuleColliderComponent>(std::move(col));
-        }
-
-        if (auto* colTbl = (*goTbl)["CylinderColliderComponent"].as_table()) {
-            CylinderColliderComponent col{};
-            ReadCylinderCollider(*colTbl, col);
-            go.AddComponent<CylinderColliderComponent>(std::move(col));
-        }
-
-        if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
-            MeshColliderComponent col{};
-            ReadMeshCollider(*colTbl, col);
-            go.AddComponent<MeshColliderComponent>(std::move(col));
-        }
-
-        if (auto* colTbl = (*goTbl)["ConvexHullColliderComponent"].as_table()) {
-            ConvexHullColliderComponent col{};
-            ReadConvexHullCollider(*colTbl, col);
-            go.AddComponent<ConvexHullColliderComponent>(std::move(col));
-        }
-
-        if (auto* colTbl = (*goTbl)["TerrainColliderComponent"].as_table()) {
-            TerrainColliderComponent col{};
-            ReadColliderCommon(*colTbl, col);
-            go.AddComponent<TerrainColliderComponent>(std::move(col));
-        }
-
-        /// @note RigidBodyComponent
-        if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
-            RigidBodyComponent rb{};
-            rb.enabled = (*rbTbl)["enabled"].value_or(true);
-            rb.poseDriven = (*rbTbl)["poseDriven"].value_or(false);
-            rb.massMode = static_cast<MassMode>(
-                (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
-            rb.flowCoupling = (float)(*rbTbl)["flowCoupling"].value_or(0.0);
-            if (!rb.rigidBody)
-                rb.rigidBody = std::make_unique<physics::RigidBody>();
-
-            rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
-            rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
-            rb.rigidBody->SetPosition(go.transform.position);
-            rb.rigidBody->SetRotation(go.transform.rotation);
-            rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
-            rb.rigidBody->SetAngularVelocity(
-                ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
-            const math::Vector3 freezePosition = ArrToVec3((*rbTbl)["freezePosition"].as_array(), math::Vector3::ZERO);
-            const math::Vector3 freezeRotation = ArrToVec3((*rbTbl)["freezeRotation"].as_array(), math::Vector3::ZERO);
-            rb.rigidBody->SetFreezePosition({
-                freezePosition.x != 0.0f,
-                freezePosition.y != 0.0f,
-                freezePosition.z != 0.0f
-            });
-            rb.rigidBody->SetFreezeRotation({
-                freezeRotation.x != 0.0f,
-                freezeRotation.y != 0.0f,
-                freezeRotation.z != 0.0f
-            });
-            rb.rigidBody->m_useGravity = (*rbTbl)["useGravity"].value_or(true);
-            rb.rigidBody->m_gravityScale = (float)(*rbTbl)["gravityScale"].value_or(1.0);
-            rb.rigidBody->m_linearDrag = (float)(*rbTbl)["linearDrag"].value_or(0.0);
-            rb.rigidBody->m_angularDrag = (float)(*rbTbl)["angularDrag"].value_or(0.0);
-            rb.rigidBody->m_allowSleeping = (*rbTbl)["allowSleeping"].value_or(true);
-            rb.rigidBody->m_useCCD = (*rbTbl)["useCCD"].value_or(false);
-            rb.rigidBody->m_ccdRadius = (float)(*rbTbl)["ccdRadius"].value_or(0.5);
-            rb.rigidBody->m_charge = (float)(*rbTbl)["charge"].value_or(0.0);
-            rb.rigidBody->m_isGravitationalSource =
-                (*rbTbl)["isGravitationalSource"].value_or(false);
-            rb.rigidBody->m_gravitationalMass =
-                (float)(*rbTbl)["gravitationalMass"].value_or(1.0);
-            go.AddComponent<RigidBodyComponent>(std::move(rb));
-        }
-
-        /// @note CharacterControllerComponent
-        ReadComponentReflected<CharacterControllerComponent>(go, *goTbl, "CharacterControllerComponent");
-
-        /// @note VolumeComponent
-        ReadComponentReflected<VolumeComponent>(go, *goTbl, "VolumeComponent");
-        RetireLegacyBuoyancyVolume(*goTbl, go);
-
-        /// @note SkyRenderer
-        ReadComponentReflected<SkyRenderer>(go, *goTbl, "SkyRenderer");
-
-        /// @note SunMoonRenderer
-        ReadComponentReflected<SunMoonRenderer>(go, *goTbl, "SunMoonRenderer");
-
-        /// @note VolumetricCloudComponent
-        ReadComponentReflected<VolumetricCloudComponent>(go, *goTbl, "VolumetricCloudComponent");
-
-        /// @note SkinnedMeshRenderer
-        if (auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table()) {
-            SkinnedMeshRenderer smr{};
-            smr.enabled     = (*smrTbl)["enabled"].value_or(true);
-            smr.castShadows = (*smrTbl)["castShadows"].value_or(true);
-            smr.modelPath   = (*smrTbl)["modelPath"].value_or(std::string{});
-            if (!smr.modelPath.empty() && !passiveScripts) {
-                smr.model = asset::AssetManager::LoadAndGet<asset::Model>(smr.modelPath);
-                if (!smr.model)
-                    FBZZ_LOG_WARN("SceneSerializer: failed to load SkinnedMeshRenderer model '%s'", smr.modelPath.c_str());
-            }
-            /// @note 無い / 空なら submeshIndices は空のまま = モデル全体を描く。
-            if (auto* submeshes = (*smrTbl)["submeshIndices"].as_array()) {
-                smr.submeshIndices.reserve(submeshes->size());
-                for (const auto& node : *submeshes)
-                    if (const auto value = node.value<int64_t>(); value && *value >= 0)
-                        smr.submeshIndices.push_back(static_cast<uint32_t>(*value));
-            }
-            go.AddComponent<SkinnedMeshRenderer>(std::move(smr));
-        }
-
-        /// @note BoneComponent
-        if (auto* boneTbl = (*goTbl)["BoneComponent"].as_table()) {
-            BoneComponent bone{};
-            bone.boneName  = (*boneTbl)["boneName"].value_or(std::string{});
-            bone.nodeIndex = (int)(*boneTbl)["nodeIndex"].value_or((int64_t)-1);
-            bone.boneIndex = (int)(*boneTbl)["boneIndex"].value_or((int64_t)-1);
-            bone.generated = (*boneTbl)["generated"].value_or(true);
-            go.AddComponent<BoneComponent>(std::move(bone));
-        }
-
-        /// @note AnimatorComponent
-        if (auto* animTbl = (*goTbl)["AnimatorComponent"].as_table()) {
-            AnimatorComponent anim{};
-            anim.speed     = (float)(*animTbl)["speed"].value_or(1.0);
-            anim.enabled   = (*animTbl)["enabled"].value_or(true);
-            anim.playing   = (*animTbl)["playing"].value_or(true);
-            anim.externalPose = (*animTbl)["externalPose"].value_or(false);
-            anim.boneBakeMode = (int)(*animTbl)["boneBakeMode"].value_or((int64_t)BoneBakeMode::LEGACY);
-            anim.boneBakeSampleRate = (float)(*animTbl)["boneBakeSampleRate"].value_or(60.0);
-            anim.boneBakeMinDistance = (float)(*animTbl)["boneBakeMinDistance"].value_or(20.0);
-            anim.boneBakeRequireCpuBones = (*animTbl)["boneBakeRequireCpuBones"].value_or(true);
-            if (!anim.SetUpdateLod((*animTbl)["poseLodEnabled"].value_or(false),
-                (float)(*animTbl)["poseLodNearDistance"].value_or(20.0),
-                (float)(*animTbl)["poseLodFarDistance"].value_or(60.0),
-                (float)(*animTbl)["poseLodMidInterval"].value_or(1.0 / 30.0),
-                (float)(*animTbl)["poseLodFarInterval"].value_or(1.0 / 15.0)))
-                core::Logger::Warn("SceneSerializer: invalid Animator update LOD; using full-rate defaults");
-
-            const auto readEnum = [&animTbl](const char* key, int fallback) {
-                return (int)(*animTbl)[key].value_or((int64_t)fallback);
-            };
-            anim.rootMotion.mode = (RootMotionMode)readEnum(
-                "rootMotionMode",
-                (int)RootMotionMode::None);
-            anim.rootMotion.source = (RootMotionSource)readEnum(
-                "rootMotionSource", (int)RootMotionSource::ClipDefined);
-            anim.rootMotion.poseMode = (RootMotionPoseMode)readEnum(
-                "rootMotionPoseMode", (int)RootMotionPoseMode::Strip);
-            anim.rootMotion.nodeName =
-                (*animTbl)["rootMotionNodeName"].value_or(std::string{});
-            anim.rootMotion.targetPath =
-                (*animTbl)["rootMotionTarget"].value_or(std::string{});
-            anim.rootMotion.applyXZ = (RootMotionAxisOverride)readEnum(
-                "rootMotionApplyXZ", (int)RootMotionAxisOverride::UseClip);
-            anim.rootMotion.applyY = (RootMotionAxisOverride)readEnum(
-                "rootMotionApplyY", (int)RootMotionAxisOverride::UseClip);
-            anim.rootMotion.applyRotation = (RootMotionAxisOverride)readEnum(
-                "rootMotionApplyRotation", (int)RootMotionAxisOverride::UseClip);
-            anim.rootMotion.positionScale =
-                (float)(*animTbl)["rootMotionPositionScale"].value_or(1.0);
-            anim.rootMotion.rotationScale =
-                (float)(*animTbl)["rootMotionRotationScale"].value_or(1.0);
-
-            anim.controllerPath =
-                (*animTbl)["controllerPath"].value_or(std::string{});
-
-            anim.defaultStateName = (*animTbl)["defaultStateName"].value_or(std::string{});
-
-            if (const auto* statesArr = (*animTbl)["states"].as_array()) {
-                for (const auto& stElem : *statesArr) {
-                    const auto* stTbl = stElem.as_table();
-                    if (!stTbl) continue;
-                    AnimationState st{};
-                    st.name      = (*stTbl)["name"].value_or(std::string{});
-                    const int64_t stateMode = (*stTbl)["mode"].value_or((int64_t)0);
-                    st.mode = stateMode >= 0 && stateMode <= 2
-                        ? static_cast<AnimationStateMode>(stateMode)
-                        : AnimationStateMode::Clip;
-                    st.sourcePath =
-                        (*stTbl)["sourcePath"].value_or(std::string{});
-                    st.clipName  = (*stTbl)["clipName"].value_or(std::string{});
-                    st.clipIndex = (int)(*stTbl)["clipIndex"].value_or((int64_t)-1);
-                    st.speed     = (float)(*stTbl)["speed"].value_or(1.0);
-                    st.loop      = (*stTbl)["loop"].value_or(true);
-                    st.ikWeight  = (float)(*stTbl)["ikWeight"].value_or(1.0);
-                    if (const auto* transArr = (*stTbl)["transitions"].as_array()) {
-                        for (const auto& trElem : *transArr) {
-                            const auto* trTbl = trElem.as_table();
-                            if (!trTbl) continue;
-                            AnimationTransition tr{};
-                            tr.toStateName        = (*trTbl)["toStateName"].value_or(std::string{});
-                            tr.hasExitTime        = (*trTbl)["hasExitTime"].value_or(false);
-                            tr.exitTime           = (float)(*trTbl)["exitTime"].value_or(1.0);
-                            /// @note 旧シーンは秒指定のみなので true として読み込む。
-                            tr.fixedDuration      = (*trTbl)["fixedDuration"].value_or(true);
-                            tr.transitionDuration = (float)(*trTbl)["transitionDuration"].value_or(0.25);
-                            tr.interruptActiveBlend = (*trTbl)["interruptActiveBlend"].value_or(false);
-                            if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
-                                for (const auto& cElem : *condArr) {
-                                    const auto* cTbl = cElem.as_table();
-                                    if (!cTbl) continue;
-                                    AnimatorCondition cond{};
-                                    cond.paramName = (*cTbl)["paramName"].value_or(std::string{});
-                                    cond.op        = (ConditionOp)(*cTbl)["op"].value_or((int64_t)4);
-                                    cond.threshold = (float)(*cTbl)["threshold"].value_or(0.0);
-                                    tr.conditions.push_back(std::move(cond));
-                                }
-                            }
-                            st.transitions.push_back(std::move(tr));
-                        }
-                    }
-
-                    auto readMotions = [](const toml::array* motionsArr,
-                                          std::vector<BlendTreeMotion>& motions) {
-                        if (!motionsArr) return;
-                        for (const auto& motionElem : *motionsArr) {
-                            const auto* motionTbl = motionElem.as_table();
-                            if (!motionTbl) continue;
-                            BlendTreeMotion motion{};
-                            motion.threshold = (float)(*motionTbl)["threshold"].value_or(0.0);
-                            motion.posX      = (float)(*motionTbl)["posX"].value_or(0.0);
-                            motion.posY      = (float)(*motionTbl)["posY"].value_or(0.0);
-                            motion.sourcePath =
-                                (*motionTbl)["sourcePath"].value_or(std::string{});
-                            motion.clipName  = (*motionTbl)["clipName"].value_or(std::string{});
-                            motion.clipIndex = (int)(*motionTbl)["clipIndex"].value_or((int64_t)-1);
-                            motion.speed     = (float)(*motionTbl)["speed"].value_or(1.0);
-                            motion.ikWeight  = (float)(*motionTbl)["ikWeight"].value_or(1.0);
-                            motions.push_back(std::move(motion));
-                        }
-                    };
-                    if (const auto* blend1DTbl = (*stTbl)["blendTree1D"].as_table()) {
-                        st.blendTree1D.paramName =
-                            (*blend1DTbl)["paramName"].value_or(std::string{});
-                        st.blendTree1D.dampTime =
-                            (float)(*blend1DTbl)["dampTime"].value_or(0.0);
-                        st.blendTree1D.syncNormalizedTime =
-                            (*blend1DTbl)["syncNormalizedTime"].value_or(false);
-                        readMotions((*blend1DTbl)["motions"].as_array(),
-                                    st.blendTree1D.motions);
-                    }
-                    if (const auto* blend2DTbl = (*stTbl)["blendTree2D"].as_table()) {
-                        st.blendTree2D.paramX =
-                            (*blend2DTbl)["paramX"].value_or(std::string{});
-                        st.blendTree2D.paramY =
-                            (*blend2DTbl)["paramY"].value_or(std::string{});
-                        const int64_t blendType =
-                            (*blend2DTbl)["type"].value_or((int64_t)0);
-                        st.blendTree2D.type = blendType >= 0 && blendType <= 1
-                            ? static_cast<BlendTree2DType>(blendType)
-                            : BlendTree2DType::SimpleDirectional;
-                        st.blendTree2D.dampTime =
-                            (float)(*blend2DTbl)["dampTime"].value_or(0.0);
-                        st.blendTree2D.syncNormalizedTime =
-                            (*blend2DTbl)["syncNormalizedTime"].value_or(false);
-                        readMotions((*blend2DTbl)["motions"].as_array(),
-                                    st.blendTree2D.motions);
-                    }
-                    anim.states.push_back(std::move(st));
-                }
-            }
-
-            if (const auto* anyStateArr = (*animTbl)["anyStateTransitions"].as_array()) {
-                for (const auto& trElem : *anyStateArr) {
-                    const auto* trTbl = trElem.as_table();
-                    if (!trTbl) continue;
-                    AnimationTransition tr{};
-                    tr.toStateName = (*trTbl)["toStateName"].value_or(std::string{});
-                    tr.hasExitTime = (*trTbl)["hasExitTime"].value_or(false);
-                    tr.exitTime = (float)(*trTbl)["exitTime"].value_or(1.0);
-                    tr.fixedDuration = (*trTbl)["fixedDuration"].value_or(true);
-                    tr.transitionDuration =
-                        (float)(*trTbl)["transitionDuration"].value_or(0.25);
-                    tr.interruptActiveBlend = (*trTbl)["interruptActiveBlend"].value_or(false);
-                    if (const auto* condArr = (*trTbl)["conditions"].as_array()) {
-                        for (const auto& cElem : *condArr) {
-                            const auto* cTbl = cElem.as_table();
-                            if (!cTbl) continue;
-                            AnimatorCondition cond{};
-                            cond.paramName =
-                                (*cTbl)["paramName"].value_or(std::string{});
-                            cond.op =
-                                (ConditionOp)(*cTbl)["op"].value_or((int64_t)4);
-                            cond.threshold =
-                                (float)(*cTbl)["threshold"].value_or(0.0);
-                            tr.conditions.push_back(std::move(cond));
-                        }
-                    }
-                    anim.anyStateTransitions.push_back(std::move(tr));
-                }
-            }
-
-            if (const auto* paramsArr = (*animTbl)["parameters"].as_array()) {
-                for (const auto& pElem : *paramsArr) {
-                    const auto* pTbl = pElem.as_table();
-                    if (!pTbl) continue;
-                    AnimatorParameter p{};
-                    p.name       = (*pTbl)["name"].value_or(std::string{});
-                    p.type       = (ParamType)(*pTbl)["type"].value_or((int64_t)0);
-                    p.floatValue = (float)(*pTbl)["floatValue"].value_or(0.0);
-                    p.intValue   = (int)(*pTbl)["intValue"].value_or((int64_t)0);
-                    p.boolValue  = (*pTbl)["boolValue"].value_or(false);
-                    /// @note 旧 Scene に残った Trigger=true もランタイム初期値にはしない。
-                    if (p.type == ParamType::Trigger)
-                        p.boolValue = false;
-                    anim.parameters.push_back(std::move(p));
-                }
-            }
-            if (const auto* layersArr = (*animTbl)["layers"].as_array()) {
-                for (const auto& layerElem : *layersArr) {
-                    const auto* layerTbl = layerElem.as_table();
-                    if (!layerTbl) continue;
-                    AnimationLayer layer{};
-                    layer.name = (*layerTbl)["name"].value_or(std::string{"Layer"});
-                    layer.weight = (float)(*layerTbl)["weight"].value_or(1.0);
-                    layer.mode = (AnimationLayerMode)(*layerTbl)["mode"].value_or((int64_t)0);
-                    layer.enabled = (*layerTbl)["enabled"].value_or(true);
-                    layer.mask.path = (*layerTbl)["maskPath"].value_or(std::string{});
-                    if (const auto* additiveRef = (*layerTbl)["additiveReference"].as_table()) {
-                        layer.additiveReference.sourcePath =
-                            (*additiveRef)["sourcePath"].value_or(std::string{});
-                        layer.additiveReference.clipName =
-                            (*additiveRef)["clipName"].value_or(std::string{});
-                        layer.additiveReference.time =
-                            (float)(*additiveRef)["time"].value_or(0.0);
-                    }
-                    if (const auto* mappings = (*layerTbl)["retargetMappings"].as_array()) {
-                        for (const auto& mappingElem : *mappings) {
-                            const auto* mappingTbl = mappingElem.as_table();
-                            if (!mappingTbl) continue;
-                            RetargetBoneMapping mapping{};
-                            mapping.sourcePath =
-                                (*mappingTbl)["sourcePath"].value_or(std::string{});
-                            mapping.targetPath =
-                                (*mappingTbl)["targetPath"].value_or(std::string{});
-                            mapping.translationScale =
-                                (float)(*mappingTbl)["translationScale"].value_or(1.0);
-                            if (const auto* rotation =
-                                    (*mappingTbl)["rotationOffset"].as_array();
-                                rotation && rotation->size() >= 4) {
-                                mapping.rotationOffset = {
-                                    (float)(*rotation)[0].value_or(0.0),
-                                    (float)(*rotation)[1].value_or(0.0),
-                                    (float)(*rotation)[2].value_or(0.0),
-                                    (float)(*rotation)[3].value_or(1.0)
-                                };
-                            }
-                            layer.retargetMappings.push_back(std::move(mapping));
-                        }
-                    }
-                    anim.layers.push_back(std::move(layer));
-                }
-            }
-
-            anim.baseLayerMask.path =
-                (*animTbl)["baseLayerMaskPath"].value_or(std::string{});
-            go.AddComponent<AnimatorComponent>(std::move(anim));
-        }
-
-        /// @note IKSolverComponent uses a shared custom reader for full loads and appends.
-        if (const auto* ikTable = (*goTbl)["IKSolverComponent"].as_table())
-            go.AddComponent<IKSolverComponent>(ReadIKSolverComponent(*ikTable));
-
-        /// @note SpringBoneComponent
-        if (auto* springTbl = (*goTbl)["SpringBoneComponent"].as_table()) {
-            SpringBoneComponent spring{};
-            spring.enabled          = (*springTbl)["enabled"].value_or(true);
-            spring.simulateInEditor = (*springTbl)["simulateInEditor"].value_or(true);
-            spring.teleportResetDistance =
-                (float)(*springTbl)["teleportResetDistance"].value_or(1.0);
-
-            if (const auto* chainsArr = (*springTbl)["chains"].as_array()) {
-                for (const auto& elem : *chainsArr) {
-                    const auto* chainTbl = elem.as_table();
-                    if (!chainTbl) continue;
-                    SpringBoneChain chain{};
-                    chain.enabled      = (*chainTbl)["enabled"].value_or(true);
-                    chain.rootBoneName = (*chainTbl)["rootBoneName"].value_or(std::string{});
-                    chain.maxDepth     = (int)(*chainTbl)["maxDepth"].value_or((int64_t)0);
-                    chain.stiffness    = (float)(*chainTbl)["stiffness"].value_or(0.6);
-                    chain.damping      = (float)(*chainTbl)["damping"].value_or(0.4);
-                    chain.gravityPower = (float)(*chainTbl)["gravityPower"].value_or(0.0);
-                    chain.gravityDirection =
-                        ArrToVec3((*chainTbl)["gravityDirection"].as_array(),
-                                  math::Vector3{ 0.0f, -1.0f, 0.0f });
-                    chain.radius         = (float)(*chainTbl)["radius"].value_or(0.02);
-                    chain.limitAngle     = (float)(*chainTbl)["limitAngle"].value_or(60.0);
-                    chain.weight         = (float)(*chainTbl)["weight"].value_or(1.0);
-                    chain.leafTailLength = (float)(*chainTbl)["leafTailLength"].value_or(0.03);
-                    spring.chains.push_back(std::move(chain));
-                }
-            }
-
-            if (const auto* collidersArr = (*springTbl)["colliders"].as_array()) {
-                for (const auto& elem : *collidersArr) {
-                    const auto* colliderTbl = elem.as_table();
-                    if (!colliderTbl) continue;
-                    SpringBoneCollider collider{};
-                    collider.enabled  = (*colliderTbl)["enabled"].value_or(true);
-                    collider.boneName = (*colliderTbl)["boneName"].value_or(std::string{});
-                    const int64_t shape = (*colliderTbl)["shape"].value_or((int64_t)0);
-                    collider.shape = shape == 1
-                        ? SpringBoneColliderShape::Capsule
-                        : SpringBoneColliderShape::Sphere;
-                    collider.offset =
-                        ArrToVec3((*colliderTbl)["offset"].as_array(), math::Vector3::ZERO);
-                    collider.tailOffset =
-                        ArrToVec3((*colliderTbl)["tailOffset"].as_array(), math::Vector3::ZERO);
-                    collider.radius = (float)(*colliderTbl)["radius"].value_or(0.05);
-                    spring.colliders.push_back(std::move(collider));
-                }
-            }
-            go.AddComponent<SpringBoneComponent>(std::move(spring));
-        }
-
-        /// @note RagdollComponent
-        /// @note 実行状態 (rig / phase) は保存しない。ラグドールは倒れる数秒のための一時状態で、
-        /// @note シーンに焼き付いていると Play した瞬間に崩れている。
-        ReadComponentReflected<RagdollComponent>(go, *goTbl, "RagdollComponent");
-
-        /// @note TerrainComponent
-        if (auto* terrainTbl = (*goTbl)["TerrainComponent"].as_table()) {
-            TerrainComponent tc{};
-            tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
-            const auto* inlineData = (*terrainTbl)["inlineData"].as_table();
-            const bool passiveSnapshot = passiveScripts && inlineData;
-
-            if (playTerrains) {
-                const auto captured = playTerrains->find(objectIndex);
-                if (captured == playTerrains->end()) return nullptr;
-                tc = std::move(captured->second);
-                tc.surfaceMaterial = (*terrainTbl)["surfaceMaterial"].value_or(std::string{});
-                if (tc.heightData.size() != tc.VertexCount()) tc.heightData.assign(tc.VertexCount(), 0.0f);
-                if (tc.holeData.size() != tc.CellCount()) tc.holeData.clear();
-                tc.EnsureSplat();
-                tc.heightDirty = tc.splatDirty = tc.materialParamDirty = true;
-            } else if (!tc.terrainAssetPath.empty() && !passiveSnapshot) {
-                const std::string terrainDiskPath =
-                    ResolveAssetDiskPathForScene(sourcePath, tc.terrainAssetPath);
-                const bool loaded = passiveScripts ? TerrainAssetSerializer::LoadStrict(terrainDiskPath, tc)
-                    : TerrainAssetSerializer::LoadWithProgress(terrainDiskPath, tc, pump);
-                if (!loaded) {
-                    if (passiveScripts) return nullptr;
-                    FBZZ_LOG_WARN("SceneSerializer: failed to load terrain asset '%s'",
-                                  terrainDiskPath.c_str());
-                    tc.InitFlat(0.0f);
-                }
-            } else if (!passiveSnapshot) {
-                tc.InitFlat(0.0f);
-            }
-            if (inlineData) {
-                std::ostringstream text;
-                text << *inlineData;
-                const auto serialized = text.str();
-                const bool loaded = passiveScripts ? TerrainAssetSerializer::DeserializeStrict(serialized, tc)
-                    : TerrainAssetSerializer::Deserialize(serialized, tc);
-                if (!loaded) {
-                    if (passiveScripts) return nullptr;
-                    FBZZ_LOG_WARN("SceneSerializer: invalid inline terrain geometry");
-                }
-            }
-
-            tc.enabled          = (*terrainTbl)["enabled"].value_or(true);
-            tc.terrainAssetPath = (*terrainTbl)["terrainAssetPath"].value_or(std::string{});
-            const auto farLodDistance = (*terrainTbl)["farLodDistance"].value_or(0.0f);
-            tc.farLodDistance = std::isfinite(farLodDistance) && farLodDistance > 0.0f ? farLodDistance : 0.0f;
-
-            /// @note 層数は可変。配列の長さをそのまま層数にする (番号が層数を超える頂点は描画が既定層で補う)。
-            if (const auto* layerArr = (*terrainTbl)["layerMaterials"].as_array()) {
-                const size_t layerCount = (std::min)(layerArr->size(), static_cast<size_t>(TERRAIN_MAX_LAYERS));
-                tc.layerMaterials.resize(layerCount);
-                for (size_t li = 0; li < layerCount; ++li)
-                    tc.layerMaterials[li] = (*layerArr)[li].value_or(std::string{});
-            }
-
-            /// @note ロード後にコライダー再構築をトリガーする
-            tc.colliderDirty = true;
-            go.AddComponent<TerrainComponent>(std::move(tc));
-        }
-
-        /// @note TerrainGridComponent — cells は全 GO ロード後に ResolveFromScene() で解決する
-        if (auto* tgcTbl = (*goTbl)["TerrainGridComponent"].as_table()) {
-            TerrainGridComponent tgc;
-            tgc.enabled    = (*tgcTbl)["enabled"].value_or(true);
-            tgc.cellCountX = (int)(*tgcTbl)["cellCountX"].value_or((int64_t)4);
-            tgc.cellCountZ = (int)(*tgcTbl)["cellCountZ"].value_or((int64_t)4);
-            tgc.defaultColumns   = (int)(*tgcTbl)["defaultColumns"].value_or((int64_t)65);
-            tgc.defaultRows      = (int)(*tgcTbl)["defaultRows"].value_or((int64_t)65);
-            tgc.defaultCellSize  = (float)(*tgcTbl)["defaultCellSize"].value_or(2.0);
-            tgc.defaultChunkSize = (int)(*tgcTbl)["defaultChunkSize"].value_or((int64_t)32);
-            if (const auto* cellArr = (*tgcTbl)["cells"].as_array()) {
-                for (const auto& node : *cellArr)
-                    tgc.cellInstanceIds.push_back(node.value_or(std::string{}));
-            }
-            tgc.EnsureSize();
-            go.AddComponent<TerrainGridComponent>(std::move(tgc));
-        }
-
-        /// @note 旧シーンの波Asset・浅水減衰・モーフは無効として、材質4基波との互換を維持する。
-        if (auto* waterTbl = (*goTbl)["WaterComponent"].as_table()) {
-            go.AddComponent<WaterComponent>(ReadWaterComponent(*waterTbl));
-        }
-
-        /// @note NavMeshSurfaceComponent
-        /// @note navMesh は Bake で再生成するため needsBake=true で登録し非保存。
-        {
-            /// @note 値の読み込みは Reflect() が担う。既定は NavMeshSurfaceComponent{} から来るので、
-            /// @note キーの無い古いシーンも構造体の既定で開く。
-            /// @note (maxClimb は既定 0.4。0 で読むと «段差を無視して繋がる» 旧 NavMesh の状態が
-            /// @note 固定され、しかも Inspector には 0 と出て設定として正しく見えてしまう。)
-            if (const auto* surfTbl = (*goTbl)["NavMeshSurfaceComponent"].as_table()) {
-                NavMeshSurfaceComponent surface{};
-                DeserializeReflected(*surfTbl, surface);
-                /// @note ベイク結果 (navMesh) は保存しないので、開いた直後は «設定はあるが面が無い»。
-                /// @note シーンを開いたら必ず焼き直す。
-                surface.needsBake = true;
-                go.AddComponent<NavMeshSurfaceComponent>(std::move(surface));
-            }
-        }
-
-        /// @note NavMeshModifierComponent
-        {
-            const toml::table* modTbl = (*goTbl)["NavMeshModifierComponent"].as_table();
-            if (modTbl) {
-                NavMeshModifierComponent modifier{};
-                modifier.enabled = (*modTbl)["enabled"].value_or(true);
-                modifier.mode    = static_cast<NavMeshModifierMode>(
-                    static_cast<uint8_t>((*modTbl)["mode"].value_or(int64_t{0})));
-                modifier.areaType = static_cast<int>((*modTbl)["areaType"].value_or(int64_t{0}));
-                go.AddComponent<NavMeshModifierComponent>(std::move(modifier));
-            }
-        }
-
-        ReadComponentReflected<NavMeshAgentComponent>(go, *goTbl, "NavMeshAgentComponent");
-
-        ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, *goTbl, "NavMeshOffMeshLinkComponent");
-
-        if (const auto* patrolTable = (*goTbl)["NavMeshPatrolComponent"].as_table())
-            go.AddComponent<NavMeshPatrolComponent>(ReadNavMeshPatrolComponent(*patrolTable));
-
-        ReadComponentReflected<NavMeshSensorComponent>(go, *goTbl, "NavMeshSensorComponent");
-
-        ReadAutomaticComponents(go, *goTbl);
-
-        ReadSavedScriptComponents(*scene, go, *goTbl, pendingDeserializedScripts,
+        go.prefabAssetPath = (*savedObject)["prefabAssetPath"].value_or(std::string{});
+        go.prefabSourceId  = (*savedObject)["prefabSourceId"].value_or(std::string{});
+        go.prefabSourceSnapshot = (*savedObject)["prefabSourceSnapshot"].value_or(std::string{});
+
+        ReadVisualComponents(go, *savedObject, *scene, resources);
+        scene_codec::ReadPhysicsComponents(go, *savedObject);
+        ReadComponentReflected<SkyRenderer>(go, *savedObject, "SkyRenderer");
+
+        ReadComponentReflected<SunMoonRenderer>(go, *savedObject, "SunMoonRenderer");
+
+        ReadComponentReflected<VolumetricCloudComponent>(go, *savedObject, "VolumetricCloudComponent");
+
+        scene_codec::ReadSkeletonComponents(go, *savedObject, passiveScripts);
+        scene_codec::ReadAnimatorComponent(go, *savedObject);
+        ReadRigComponents(go, *savedObject);
+        if (!ReadTerrainAndWaterComponents(go, *savedObject, sourcePath, passiveScripts, playTerrains, objectIndex, pump))
+            return nullptr;
+        ReadNavigationComponents(go, *savedObject);
+        ReadAutomaticComponents(go, *savedObject);
+
+        ReadSavedScriptComponents(*scene, go, *savedObject, pendingDeserializedScripts,
             { .logSource = "SceneSerializer", .passive = passiveScripts, .unresolvedTypes = &unresolvedScriptTypes });
     }
 
     /// @note 以降の解決パスはすべてこの索引を引く。全 GameObject 生成後に一度だけ作る。
     const GuidIndex guids(*scene);
 
-    /// @note Pass 2: 親子関係の解決
-    for (auto& item : *goArr) {
-        if (pump) pump();
-        auto* goTbl = item.as_table();
-        if (!goTbl) continue;
-
-        std::string parentGuid = (*goTbl)["parentInstanceId"].value_or(std::string{});
-        if (parentGuid.empty()) continue;
-
-        std::string childGuid = (*goTbl)["instanceId"].value_or(std::string{});
-        if (childGuid.empty()) continue;
-
-        auto* child = guids.Find(childGuid);
-        auto* parent = guids.Find(parentGuid);
-        if (child && parent) child->SetParent(*parent);
-    }
-
-    /// @note Pass 3: EntityID 参照を識別子から解決する
-    /// @note EntityID は実行ごとに変わるので識別子で保存し、全 GameObject を揃えてから解決する。
-
-    /// @note Reflect() を通る全コンポーネント / スクリプトの GameObject 参照。
-    for (auto& item : *goArr) {
-        if (pump) pump();
-        const auto* goTbl = item.as_table();
-        if (!goTbl) continue;
-        const std::string guid = (*goTbl)["instanceId"].value_or(std::string{});
-        if (guid.empty()) continue;
-        if (GameObject* go = guids.Find(guid))
-            ResolveEntityReferences(*go, *goTbl, guids);
-    }
-
-    /// @note Initialize canonical/legacy IK references after every component reference has resolved.
-    for (GameObject& go : scene->GameObjects())
-        if (IKSolverComponent* solver = go.GetComponent<IKSolverComponent>())
-            InitializeIKTargetReferences(*scene, *solver);
-
-    /// @note nodeEntities は Animator が nodeIndex から再構築するため、ここではボーンの所有先だけを復元する。
-    ResolveBoneOwners(*scene, *goArr, guids);
-
-    /// @note SkinnedMeshRenderer: skeletonRootEntity
-    /// @note 起点のボーンは Pass 1 では未生成のことがあるので、全 GO を揃えてから変換する。
-    /// @note 解決できていれば AnimatorSystem は子孫を探さずに共有スケルトンへ束縛できる。
-    for (size_t i = 0; i < goArr->size(); ++i) {
-        auto* goTbl = (*goArr)[i].as_table();
-        if (!goTbl) continue;
-        auto* smrTbl = (*goTbl)["SkinnedMeshRenderer"].as_table();
-        if (!smrTbl) continue;
-        const std::string rootGuid = (*smrTbl)["skeletonRootGuid"].value_or(std::string{});
-        const std::string rootName = (*smrTbl)["skeletonRootName"].value_or(std::string{});
-        if (rootGuid.empty() && rootName.empty()) continue;
-        const std::string ownerGuid = (*goTbl)["instanceId"].value_or(std::string{});
-        GameObject* ownerGo = ownerGuid.empty() ? nullptr : guids.Find(ownerGuid);
-        if (!ownerGo) ownerGo = scene->Find((*goTbl)["name"].value_or(std::string{}));
-        if (!ownerGo) continue;
-        auto* smr = ownerGo->GetComponent<SkinnedMeshRenderer>();
-        if (!smr) continue;
-        GameObject* skeletonRoot = nullptr;
-        if (!rootGuid.empty()) skeletonRoot = guids.Find(rootGuid);
-        if (!skeletonRoot && !rootName.empty()) skeletonRoot = scene->Find(rootName);
-        if (skeletonRoot) smr->skeletonRootEntity = skeletonRoot->GetID();
-    }
-
-    /// @note TerrainGridComponent の cellInstanceIds → cells を全 GO ロード後に解決する。Grid が
-    /// @note 参照する Terrain GO はシリアライズ順で後に来る可能性があるため、全 GO を追加してから
-    /// @note GUID → EntityID の変換を行う。
-    for (auto& go : scene->GameObjects()) {
-        if (auto* tgc = go.GetComponent<TerrainGridComponent>())
-            tgc->ResolveCellReferences([&guids](const std::string& guid) {
-                const auto* object = guids.Find(guid);
-                return object ? object->GetID() : EntityID::INVALID;
-            });
-    }
+    RestoreParentLinks(*savedObjects, guids, pump);
+    RestoreComponentLinks(*scene, *savedObjects, guids, pump);
 
     /// @note [environment] を持たないシーンは «半径 0 の Uniform» を環境風と読んでいた頃のもの。
     if (!passiveScripts && !hasEnvironmentTable) MigrateAmbientFlowFields(*scene);
@@ -3764,7 +2858,7 @@ std::unique_ptr<Scene> RestoreSceneDocument(toml::parse_result result, renderer:
     return scene;
 }
 
-} /// @note namespace
+}
 
 /// @note 既存 Scene への読み込み
 int SceneSerializer::ResolveMeshes(Scene& scene, renderer::ResourceManager& resources)
@@ -3882,78 +2976,20 @@ bool SceneSerializer::AppendObjects(
 
         ReadLightComponent(go, *goTbl);
 
-        /// @note EnvironmentLightComponent
         ReadComponentReflected<EnvironmentLightComponent>(go, *goTbl, "EnvironmentLightComponent");
 
-        /// @note ReflectionProbeComponent
         ReadComponentReflected<ReflectionProbeComponent>(go, *goTbl, "ReflectionProbeComponent");
 
-        /// @note PostProcessVolumeComponent
         ReadComponentReflected<PostProcessVolumeComponent>(go, *goTbl, "PostProcessVolumeComponent");
 
-        if (auto* peTbl = (*goTbl)["ParticleEmitter"].as_table()) {
-            ParticleEmitter pe{};
-            asset::DeserializeParticleEmitterSettings(*peTbl, pe.settings);
-            /// @note 設定を流し込んだら再生状態を初期化する。codec はランタイムを触らないので、
-            /// @note 乱数列・GPU 状態のリセットはコンポーネントを持つ側の責任になる。
-            pe.ResetPlayback();
-            /// @note 旧シーンは gradient の色空間を平坦なキーで持つ。コーデックが読む
-            /// @note colorGradient.space が無い場合だけ、こちらを正として反映する。
-            if (auto legacySpace = (*peTbl)["gradientColorSpace"].value<int64_t>()) {
-                pe.settings.colorGradient.colorSpace = static_cast<ParticleColorSpace>(
-                    std::clamp(static_cast<int>(*legacySpace), 0,
-                               static_cast<int>(ParticleColorSpace::Oklab)));
-            }
-            /// @note ResetPlayback() が playing を必ず true へ戻すため、保存値で上書きし直す。
-            pe.settings.playing = (*peTbl)["playing"].value_or(true);
-            go.AddComponent<ParticleEmitter>(std::move(pe));
-        }
+        ReadParticleEmitter(go, *goTbl);
 
         /// @note 追記 (Prefab / クリップボード) では環境流を書き換えない。
         /// @note «部品を 1 つ足しただけでシーン全体の風が変わる» のは事故になる。
         SceneEnvironment discardedEnvironment;
         ReadFlowFieldComponent(go, *goTbl, discardedEnvironment);
 
-        if (auto* colTbl = (*goTbl)["AabbColliderComponent"].as_table()) {
-            AabbColliderComponent col{};
-            ReadAabbCollider(*colTbl, col);
-            go.AddComponent<AabbColliderComponent>(std::move(col));
-        }
-        if (auto* colTbl = (*goTbl)["BoxColliderComponent"].as_table()) {
-            BoxColliderComponent col{};
-            ReadBoxCollider(*colTbl, col);
-            go.AddComponent<BoxColliderComponent>(std::move(col));
-        }
-        if (auto* colTbl = (*goTbl)["SphereColliderComponent"].as_table()) {
-            SphereColliderComponent col{};
-            ReadSphereCollider(*colTbl, col);
-            go.AddComponent<SphereColliderComponent>(std::move(col));
-        }
-        if (auto* colTbl = (*goTbl)["CapsuleColliderComponent"].as_table()) {
-            CapsuleColliderComponent col{};
-            ReadCapsuleCollider(*colTbl, col);
-            go.AddComponent<CapsuleColliderComponent>(std::move(col));
-        }
-        if (auto* colTbl = (*goTbl)["CylinderColliderComponent"].as_table()) {
-            CylinderColliderComponent col{};
-            ReadCylinderCollider(*colTbl, col);
-            go.AddComponent<CylinderColliderComponent>(std::move(col));
-        }
-        if (auto* colTbl = (*goTbl)["MeshColliderComponent"].as_table()) {
-            MeshColliderComponent col{};
-            ReadMeshCollider(*colTbl, col);
-            go.AddComponent<MeshColliderComponent>(std::move(col));
-        }
-        if (auto* colTbl = (*goTbl)["ConvexHullColliderComponent"].as_table()) {
-            ConvexHullColliderComponent col{};
-            ReadConvexHullCollider(*colTbl, col);
-            go.AddComponent<ConvexHullColliderComponent>(std::move(col));
-        }
-        if (auto* colTbl = (*goTbl)["TerrainColliderComponent"].as_table()) {
-            TerrainColliderComponent col{};
-            ReadColliderCommon(*colTbl, col);
-            go.AddComponent<TerrainColliderComponent>(std::move(col));
-        }
+        scene_codec::ReadColliders(go, *goTbl);
 
         if (const auto* waterTbl = (*goTbl)["WaterComponent"].as_table())
             go.AddComponent<WaterComponent>(ReadWaterComponent(*waterTbl));
@@ -3966,36 +3002,7 @@ bool SceneSerializer::AppendObjects(
         if (const auto* patrolTable = (*goTbl)["NavMeshPatrolComponent"].as_table())
             go.AddComponent<NavMeshPatrolComponent>(ReadNavMeshPatrolComponent(*patrolTable));
 
-        if (auto* rbTbl = (*goTbl)["RigidBodyComponent"].as_table()) {
-            RigidBodyComponent rb{};
-            rb.enabled = (*rbTbl)["enabled"].value_or(true);
-            rb.poseDriven = (*rbTbl)["poseDriven"].value_or(false);
-            rb.massMode = static_cast<MassMode>(
-                (*rbTbl)["massMode"].value_or((int64_t)MassMode::Manual));
-            rb.flowCoupling = (float)(*rbTbl)["flowCoupling"].value_or(0.0);
-            if (!rb.rigidBody) rb.rigidBody = std::make_unique<physics::RigidBody>();
-            rb.rigidBody->m_isStatic = (*rbTbl)["isStatic"].value_or(false);
-            rb.rigidBody->SetMass((float)(*rbTbl)["mass"].value_or(1.0));
-            rb.rigidBody->SetPosition(go.transform.position);
-            rb.rigidBody->SetRotation(go.transform.rotation);
-            rb.rigidBody->SetVelocity(ArrToVec3((*rbTbl)["velocity"].as_array()));
-            rb.rigidBody->SetAngularVelocity(ArrToVec3((*rbTbl)["angularVelocity"].as_array()));
-            const math::Vector3 freezePos = ArrToVec3((*rbTbl)["freezePosition"].as_array(), math::Vector3::ZERO);
-            const math::Vector3 freezeRot = ArrToVec3((*rbTbl)["freezeRotation"].as_array(), math::Vector3::ZERO);
-            rb.rigidBody->SetFreezePosition({ freezePos.x != 0.0f, freezePos.y != 0.0f, freezePos.z != 0.0f });
-            rb.rigidBody->SetFreezeRotation({ freezeRot.x != 0.0f, freezeRot.y != 0.0f, freezeRot.z != 0.0f });
-            rb.rigidBody->m_useGravity      = (*rbTbl)["useGravity"].value_or(true);
-            rb.rigidBody->m_gravityScale    = (float)(*rbTbl)["gravityScale"].value_or(1.0);
-            rb.rigidBody->m_linearDrag      = (float)(*rbTbl)["linearDrag"].value_or(0.0);
-            rb.rigidBody->m_angularDrag     = (float)(*rbTbl)["angularDrag"].value_or(0.0);
-            rb.rigidBody->m_allowSleeping   = (*rbTbl)["allowSleeping"].value_or(true);
-            rb.rigidBody->m_useCCD          = (*rbTbl)["useCCD"].value_or(false);
-            rb.rigidBody->m_ccdRadius       = (float)(*rbTbl)["ccdRadius"].value_or(0.5);
-            rb.rigidBody->m_charge          = (float)(*rbTbl)["charge"].value_or(0.0);
-            rb.rigidBody->m_isGravitationalSource = (*rbTbl)["isGravitationalSource"].value_or(false);
-            rb.rigidBody->m_gravitationalMass = (float)(*rbTbl)["gravitationalMass"].value_or(1.0);
-            go.AddComponent<RigidBodyComponent>(std::move(rb));
-        }
+        scene_codec::ReadRigidBody(go, *goTbl);
 
         ReadComponentReflected<NavMeshOffMeshLinkComponent>(go, *goTbl, "NavMeshOffMeshLinkComponent");
 
@@ -4032,7 +3039,7 @@ bool SceneSerializer::AppendObjects(
             ResolveEntityReferences(*go, *goTbl, guids);
     }
 
-    /// @note Initialize IK references for appended owners only after their reference pass is complete.
+    /// @note 追加したオブジェクトの IK は、参照先をすべて解決してから初期化する。
     for (const auto& item : *goArr) {
         const auto* goTable = item.as_table();
         if (!goTable) continue;
@@ -4059,4 +3066,4 @@ bool SceneSerializer::AppendObjects(
     return !outRoots.empty();
 }
 
-} /// @note namespace fbzz::scene
+}
