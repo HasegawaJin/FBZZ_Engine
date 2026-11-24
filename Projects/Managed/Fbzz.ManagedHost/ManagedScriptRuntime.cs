@@ -614,6 +614,7 @@ public sealed partial class ManagedScriptRuntime : IDisposable, IScriptComponent
         public void TranslateLocal(ScriptExecutionScope scope, ulong ownerId, Vector3 delta) => throw Missing();
         public Quaternion ReadRotation(ScriptExecutionScope scope, ulong objectId, bool world) => throw Missing();
         public void WriteLocalRotation(ScriptExecutionScope scope, ulong objectId, Quaternion value) => throw Missing();
+        public void WriteWorldRotation(ScriptExecutionScope scope, ulong objectId, Quaternion value) => throw Missing();
         public Vector3 ReadLocalScale(ScriptExecutionScope scope, ulong objectId) => throw Missing();
         public void WriteLocalScale(ScriptExecutionScope scope, ulong objectId, Vector3 value) => throw Missing();
         public Vector3 ReadDirection(ScriptExecutionScope scope, ulong objectId, uint direction) => throw Missing();

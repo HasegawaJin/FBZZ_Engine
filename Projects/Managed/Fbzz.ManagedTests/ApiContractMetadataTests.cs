@@ -17,6 +17,7 @@ internal static class ApiContractMetadataTests
     internal static IReadOnlyList<(string Name, Action Run)> Cases => [
         (nameof(CatalogLifecycleAndGenericConstraintsMatchCompiledSdk), CatalogLifecycleAndGenericConstraintsMatchCompiledSdk),
         (nameof(ReadAndMutationScopesDescribeConnectSeparately), ReadAndMutationScopesDescribeConnectSeparately),
+        (nameof(TransformWorldAliasesPublishUnitsAndCallbackAuthority), TransformWorldAliasesPublishUnitsAndCallbackAuthority),
         (nameof(BoundsReadWorksInUpdateWhileShapeMutationRequiresFixedUpdate), BoundsReadWorksInUpdateWhileShapeMutationRequiresFixedUpdate),
         (nameof(TryConversionsExposeTheirActualFailureOutputs), TryConversionsExposeTheirActualFailureOutputs),
         (nameof(ImportantNumericalContractsRemainOnTheirDeclarations), ImportantNumericalContractsRemainOnTheirDeclarations)
@@ -44,6 +45,27 @@ internal static class ApiContractMetadataTests
     }
     static bool Allows(JsonElement member, string access, string callback) => member.GetProperty("contract")
         .GetProperty("allowedCallbacks").GetProperty(access).EnumerateArray().Any(value => value.GetString() == callback);
+
+    /// @brief ワールド姿勢の短縮名と明示名が同じ単位と読み書き権限を公開することを検証する。
+    static void TransformWorldAliasesPublishUnitsAndCallbackAuthority()
+    {
+        using JsonDocument document = JsonDocument.Parse(ApiCatalog.Json);
+        foreach (var (name, units) in new[] {
+            ("Position", "m"), ("WorldPosition", "m"),
+            ("Rotation", "unitless_quaternion_xyzw"), ("WorldRotation", "unitless_quaternion_xyzw")
+        }) {
+            JsonElement member = Member(document.RootElement, "Fbzz.Transform", name);
+            JsonElement contract = member.GetProperty("contract");
+            Program.Check(member.GetProperty("readable").GetBoolean() && member.GetProperty("writable").GetBoolean()
+                && contract.GetProperty("units").GetProperty("result").GetString() == units
+                && contract.GetProperty("coordinate").GetProperty("result").GetString() == "world",
+                $"{name} must declare a readable and writable world-space value with its native units.");
+            Program.Check(Allows(member, "read", "Connect") && !Allows(member, "write", "Connect")
+                && Allows(member, "read", "Update") && Allows(member, "write", "Update")
+                && !Allows(member, "write", "DrawGizmos") && !Allows(member, "write", "DrawGizmosSelected"),
+                $"{name} must preserve the transform read and mutation authority split.");
+        }
+    }
 
     /// @brief Native lookup draw authority is explicit and conditional.
     static void NativeLookupDrawAuthorityIsExplicitAndConditional()

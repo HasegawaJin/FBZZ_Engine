@@ -34,7 +34,7 @@ class FollowTargetComponent : Script
             return;
 
         Transform.MoveTowardsWorld(
-            target.Transform.WorldPosition,
+            target.Transform.Position,
             moveSpeed * Time.DeltaSeconds,
             stopDistance);
     }

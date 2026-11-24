@@ -31,6 +31,8 @@ EditorでC#のビルド要求が `applied` になってから接続します。�
 
 ゲームコードは `Assets/Scripts/**/*.cs` に置きます。`using Fbzz;` と `class XxxComponent : Script` だけで登録され、namespaceや登録マクロは不要です。設定はpublic field、実行中だけの値はprivate fieldを使います。ライフサイクルは同期の `protected override void Update()` / `protected override void FixedUpdate()` などで実装します。物理変更は `FixedUpdate`、Engine APIは現在のcallbackのスレッドから呼びます。
 
+通常のオブジェクトは `Transform.Position` と `Transform.Rotation` でワールド位置・回転を読み書きできます。親からの相対位置・回転を扱う場合は `LocalPosition` と `LocalRotation` を使います。物理ボディの位置を変えるときは、Play の `FixedUpdate` から `RigidBody.Teleport` を使ってください。
+
 - [公開API・単位・座標・lifecycle・保存・リロードの規約](design/csharp-authoring.md)
 - [AIのAPI発見→ソース同期→設定→Playtest手順](design/ai-script-workflow.md)
 - [実装と配布条件](design/csharp-scripting.md)

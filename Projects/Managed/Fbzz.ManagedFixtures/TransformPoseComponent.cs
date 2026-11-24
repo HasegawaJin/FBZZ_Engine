@@ -21,6 +21,11 @@ public sealed class TransformPoseComponent : Script
     public float localRotationW;
     public Vector3 worldRotationXYZ;
     public float worldRotationW;
+    public Vector3 assignedPosition;
+    public Vector3 aliasPosition;
+    public Vector3 worldPosition;
+    public Vector3 aliasRotationXYZ;
+    public float aliasRotationW;
     public Vector3 localScale;
     public Vector3 forward;
     public Vector3 right;
@@ -38,6 +43,21 @@ public sealed class TransformPoseComponent : Script
             case 2: pose.LocalScale = scale; break;
             case 3: pose.Rotate(axis, angleDegrees); break;
             case 4: pose.LookAt(lookTarget); break;
+            case 5:
+                pose.Position = Transform.Position;
+                pose.Rotation = Transform.Rotation;
+                break;
+            case 6: pose.WorldRotation = new Quaternion(rotationXYZ.X, rotationXYZ.Y, rotationXYZ.Z, rotationW); break;
+            case 7: pose.Position = assignedPosition; break;
+            case 9: pose.WorldPosition = assignedPosition; break;
+        }
+        if (operation >= 5)
+        {
+            aliasPosition = pose.Position;
+            worldPosition = pose.WorldPosition;
+            Quaternion aliasRotation = pose.Rotation;
+            aliasRotationXYZ = new Vector3(aliasRotation.X, aliasRotation.Y, aliasRotation.Z);
+            aliasRotationW = aliasRotation.W;
         }
         Quaternion local = pose.LocalRotation;
         Quaternion world = pose.WorldRotation;
@@ -49,5 +69,10 @@ public sealed class TransformPoseComponent : Script
         forward = pose.Forward;
         right = pose.Right;
         up = pose.Up;
+    }
+
+    protected override void DrawGizmos()
+    {
+        if (operation >= 5) Update();
     }
 }

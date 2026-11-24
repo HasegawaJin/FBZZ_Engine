@@ -6,20 +6,23 @@
 /// @see Docs/design/csharp-scripting.md C++ と C# に共通する公開契約。
 
 FBZZ_MANAGED_CONST(uint32_t, uint, kManagedBridgeAbiVersion, VERSION, 1)
-/// @note Animator service selector50 adds opt-in distance/interval pose LOD; existing selectors and packet meanings are unchanged.
+/// @note 距離に応じた姿勢更新の間引きを設定する既存 SDK 向けの番号。AnimatorMethod.SET_UPDATE_LOD と同じ値を保つ。
 FBZZ_MANAGED_CONST(uint32_t, uint, kManagedAnimatorUpdateLodSelector, ANIMATOR_UPDATE_LOD_SELECTOR, 50)
-/// @note 世代 0B は CREATE の保存 Script ID、GET_TYPE の schema/要件/実行順、exact Component 寿命と Script 存在 query を共有する。
-FBZZ_MANAGED_CONST(uint64_t, ulong, kManagedBridgeSchemaHash, SCHEMA_HASH, 0x46425A5A4D414E15)
-/// @note Generation15 adds owned runtime textures: Assets201 selectors10-16, raw byte stages12-14, Material191 selector42.
-/// @note Generation 14 ships Audio181 selectors46-56, Terrain194 selectors16-17/Scene190 selectors2-3, and AI340 index0 crowd/index1 world poses together.
-/// @note 世代13は描画/実行Componentのexact birth、可変長の線/mesh転送とnative通知をC#へ公開する。
+/// @note ホストと SDK の通信形式が一致するかを起動時に確認する。既存の番号に名前を付けても通信形式は変わらない。
+FBZZ_MANAGED_CONST(uint64_t, ulong, kManagedBridgeSchemaHash, SCHEMA_HASH, 0x46425A5A4D414E16)
+/// @note 世代 15 の実行時テクスチャは Assets 201 の操作 10～16 で所有し、12～14 でバイト列を転送する。材質への設定は Material 191 の操作 42。
+/// @note 世代 14 の音声設定は Audio 181 の 46～56、地形は Terrain 194 の 16～17 と Scene 190 の 2～3、群集・ワールド姿勢は AI 340 の 0～1。
+/// @note 世代 13 では描画・実行コンポーネントの寿命識別子、可変長の線・メッシュ転送、ネイティブ側の通知を C# へ公開する。
 /// @note 世代12 は全幅 primitive、bounded store/material転送、COUNT由来のComponent容量とTerrain/Water/VFX/Sequence/Joint/Render/Display/Assetsを共有する。
 /// @note 世代11 は Play 採用46..48、portable DataAsset49..54 と、既存サービスの staged store semantics を共有する。
+
 /// @note Store192/193 selector14 は key のみと found 応答、22beginUTF8、23raw(token64/offset64/count32/reserved32/bytes<=65512)、24commit、25abort を使う。
 /// @note DataAsset open/prepare flags0=begin、1=raw UTF8 chunk(reserved0/1=offset64)、2=finish。読取53 flags0 は64KiB byte page、1 は bounded review。
 /// @note 世代 10 は ComponentRef の保存住所と exact epoch/birth、Material/Texture GUID 型、Material/Save/Config を共有する。
 /// @note BIND_OWNER の UTF8 は ownerGuid+改行+adapter birth UUID。Resolve33 は同じ Scene の保存住所のみを明示解決し Script の birth も返す。
 /// @note CAPTURE_RELOAD flags1 は Edit の保存設定/KeepOnReload を移行し、private runtime cache を復元しない。
+
+/// @note 世代 0B では、保存した Script ID、GET_TYPE の型情報・要件・実行順、Component の寿命と Script の有無を共有する。
 
 /// @note 世代 0F は候補と Undo の完全値を保持し、外部 review の対象・変更・詳細だけを aggregate byte 予算でページ化する。
 /// @note 世代 0E は owned code generation lease を持ち、parked Edit/current Play/candidate の共存を保持する。
@@ -144,6 +147,7 @@ FBZZ_MANAGED_ENUM_VALUE(SCENE_QUERY, SCENE_QUERY, 145)
 FBZZ_MANAGED_ENUM_VALUE(SCENE_SPAWN_MANY, SCENE_SPAWN_MANY, 146)
 FBZZ_MANAGED_ENUM_VALUE(OBJECT_SET_PARENT, OBJECT_SET_PARENT, 147)
 FBZZ_MANAGED_ENUM_VALUE(OBJECTS_OWN, OBJECTS_OWN, 148)
+FBZZ_MANAGED_ENUM_VALUE(TRANSFORM_WRITE_WORLD_ROTATION, TRANSFORM_WRITE_WORLD_ROTATION, 149)
 FBZZ_MANAGED_ENUM_VALUE(COLLIDER_READ, COLLIDER_READ, 150)
 FBZZ_MANAGED_ENUM_VALUE(COLLIDER_WRITE, COLLIDER_WRITE, 151)
 FBZZ_MANAGED_ENUM_VALUE(COLLIDER_COMMAND, COLLIDER_COMMAND, 152)
@@ -340,6 +344,61 @@ FBZZ_MANAGED_CALLBACK(NAV_DESTINATION_REACHED, "OnNavMeshDestinationReached", ""
 FBZZ_MANAGED_CALLBACK(NAV_PATH_FAILED, "OnNavMeshPathFailed", "", "live")
 FBZZ_MANAGED_CALLBACK(NAV_TARGET_SPOTTED, "OnNavMeshTargetSpotted", "", "live")
 FBZZ_MANAGED_CALLBACK(NAV_TARGET_LOST, "OnNavMeshTargetLost", "", "live")
+/// @note Animator の操作番号は C# と C++ の間で受け渡す固定値。両言語の呼び出し元はここから生成した名前を使う。
+FBZZ_MANAGED_ENUM_BEGIN(ManagedAnimatorMethod, AnimatorMethod, uint32_t, uint, SDK, internal)
+FBZZ_MANAGED_ENUM_VALUE(SET_FLOAT, SET_FLOAT, 0)
+FBZZ_MANAGED_ENUM_VALUE(GET_FLOAT, GET_FLOAT, 1)
+FBZZ_MANAGED_ENUM_VALUE(SET_INT, SET_INT, 2)
+FBZZ_MANAGED_ENUM_VALUE(GET_INT, GET_INT, 3)
+FBZZ_MANAGED_ENUM_VALUE(SET_BOOL, SET_BOOL, 4)
+FBZZ_MANAGED_ENUM_VALUE(GET_BOOL, GET_BOOL, 5)
+FBZZ_MANAGED_ENUM_VALUE(SET_TRIGGER, SET_TRIGGER, 6)
+FBZZ_MANAGED_ENUM_VALUE(IS_IN_STATE, IS_IN_STATE, 7)
+FBZZ_MANAGED_ENUM_VALUE(GET_NORMALIZED_TIME, GET_NORMALIZED_TIME, 8)
+FBZZ_MANAGED_ENUM_VALUE(GET_CURRENT_STATE, GET_CURRENT_STATE, 9)
+FBZZ_MANAGED_ENUM_VALUE(GET_BLEND_TO_STATE, GET_BLEND_TO_STATE, 10)
+FBZZ_MANAGED_ENUM_VALUE(GET_BLEND_TO_NORMALIZED_TIME, GET_BLEND_TO_NORMALIZED_TIME, 11)
+FBZZ_MANAGED_ENUM_VALUE(GET_SPEED, GET_SPEED, 12)
+FBZZ_MANAGED_ENUM_VALUE(IS_PLAYING, IS_PLAYING, 13)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_DELTA_POSITION, GET_ROOT_MOTION_DELTA_POSITION, 14)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_DELTA_ROTATION, GET_ROOT_MOTION_DELTA_ROTATION, 15)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_WORLD_DELTA, GET_ROOT_MOTION_WORLD_DELTA, 16)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_WORLD_VELOCITY, GET_ROOT_MOTION_WORLD_VELOCITY, 17)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_DELTA_TIME, GET_ROOT_MOTION_DELTA_TIME, 18)
+FBZZ_MANAGED_ENUM_VALUE(IS_ROOT_MOTION_APPLIED_BY_ENGINE, IS_ROOT_MOTION_APPLIED_BY_ENGINE, 19)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_MODE, GET_ROOT_MOTION_MODE, 20)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_POSITION_SCALE, GET_ROOT_MOTION_POSITION_SCALE, 21)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_ROTATION_SCALE, GET_ROOT_MOTION_ROTATION_SCALE, 22)
+FBZZ_MANAGED_ENUM_VALUE(GET_ROOT_MOTION_NODE_NAME, GET_ROOT_MOTION_NODE_NAME, 23)
+FBZZ_MANAGED_ENUM_VALUE(GET_CURRENT_BLEND_WEIGHTS, GET_CURRENT_BLEND_WEIGHTS, 24)
+FBZZ_MANAGED_ENUM_VALUE(SET_SPEED, SET_SPEED, 25)
+FBZZ_MANAGED_ENUM_VALUE(SET_LOCAL_TIME_SCALE, SET_LOCAL_TIME_SCALE, 26)
+FBZZ_MANAGED_ENUM_VALUE(PLAY, PLAY, 27)
+FBZZ_MANAGED_ENUM_VALUE(SET_PLAYING, SET_PLAYING, 28)
+FBZZ_MANAGED_ENUM_VALUE(SET_LAYER_WEIGHT, SET_LAYER_WEIGHT, 29)
+FBZZ_MANAGED_ENUM_VALUE(GET_LAYER_WEIGHT, GET_LAYER_WEIGHT, 30)
+FBZZ_MANAGED_ENUM_VALUE(GET_LAYER_STATE, GET_LAYER_STATE, 31)
+FBZZ_MANAGED_ENUM_VALUE(IS_LAYER_IN_STATE, IS_LAYER_IN_STATE, 32)
+FBZZ_MANAGED_ENUM_VALUE(PLAY_LAYER_STATE, PLAY_LAYER_STATE, 33)
+FBZZ_MANAGED_ENUM_VALUE(SET_LAYER_MASK, SET_LAYER_MASK, 34)
+FBZZ_MANAGED_ENUM_VALUE(GET_LAYER_MASK, GET_LAYER_MASK, 35)
+FBZZ_MANAGED_ENUM_VALUE(PLAY_SLOT, PLAY_SLOT, 36)
+FBZZ_MANAGED_ENUM_VALUE(STOP_SLOT, STOP_SLOT, 37)
+FBZZ_MANAGED_ENUM_VALUE(IS_SLOT_PLAYING, IS_SLOT_PLAYING, 38)
+FBZZ_MANAGED_ENUM_VALUE(GET_SLOT_WEIGHT, GET_SLOT_WEIGHT, 39)
+FBZZ_MANAGED_ENUM_VALUE(SET_SLOT_SPEED, SET_SLOT_SPEED, 40)
+FBZZ_MANAGED_ENUM_VALUE(GET_SLOT_TIME, GET_SLOT_TIME, 41)
+FBZZ_MANAGED_ENUM_VALUE(SET_STATE_SPEED, SET_STATE_SPEED, 42)
+FBZZ_MANAGED_ENUM_VALUE(GET_STATE_SPEED, GET_STATE_SPEED, 43)
+FBZZ_MANAGED_ENUM_VALUE(SET_MORPH_WEIGHT, SET_MORPH_WEIGHT, 44)
+FBZZ_MANAGED_ENUM_VALUE(GET_MORPH_WEIGHT, GET_MORPH_WEIGHT, 45)
+FBZZ_MANAGED_ENUM_VALUE(SET_ROOT_MOTION_MODE, SET_ROOT_MOTION_MODE, 46)
+FBZZ_MANAGED_ENUM_VALUE(SET_ROOT_MOTION_POSITION_SCALE, SET_ROOT_MOTION_POSITION_SCALE, 47)
+FBZZ_MANAGED_ENUM_VALUE(SET_ROOT_MOTION_ROTATION_SCALE, SET_ROOT_MOTION_ROTATION_SCALE, 48)
+FBZZ_MANAGED_ENUM_VALUE(SET_ROOT_MOTION_NODE_NAME, SET_ROOT_MOTION_NODE_NAME, 49)
+FBZZ_MANAGED_ENUM_VALUE(SET_UPDATE_LOD, SET_UPDATE_LOD, 50)
+FBZZ_MANAGED_ENUM_END()
+
 FBZZ_MANAGED_ENUM_BEGIN(ManagedPhysicsBodyValue, PhysicsBodyValue, uint32_t, uint, SDK, internal)
 FBZZ_MANAGED_ENUM_VALUE(VELOCITY, VELOCITY, 0)
 FBZZ_MANAGED_ENUM_VALUE(ANGULAR_VELOCITY, ANGULAR_VELOCITY, 1)
@@ -589,6 +648,7 @@ FBZZ_MANAGED_CALL("private", "float", ReadDeltaSecondsNative, "", TIME, "scope.O
 /// @note Rotation の index は LOCAL_POSITION / WORLD_POSITION と同じ 0 / 1。scale はローカルだけ、direction は現在の worldRotation から求める。
 FBZZ_MANAGED_CALL("public", "Quaternion", ReadRotation, "ulong objectId, bool world", TRANSFORM_READ_ROTATION, "objectId", "request.Index = (uint)(world ? BridgeTransformValue.WORLD_POSITION : BridgeTransformValue.LOCAL_POSITION);", "return new Quaternion(reply.X, reply.Y, reply.Z, reply.W);")
 FBZZ_MANAGED_CALL("public", "void", WriteLocalRotation, "ulong objectId, Quaternion value", TRANSFORM_WRITE_LOCAL_ROTATION, "objectId", "request.X = value.X; request.Y = value.Y; request.Z = value.Z; request.W = value.W;", "")
+FBZZ_MANAGED_CALL("public", "void", WriteWorldRotation, "ulong objectId, Quaternion value", TRANSFORM_WRITE_WORLD_ROTATION, "objectId", "request.X = value.X; request.Y = value.Y; request.Z = value.Z; request.W = value.W;", "")
 FBZZ_MANAGED_CALL("public", "Vector3", ReadLocalScale, "ulong objectId", TRANSFORM_READ_SCALE, "objectId", "", "return new Vector3(reply.X, reply.Y, reply.Z);")
 FBZZ_MANAGED_CALL("public", "void", WriteLocalScale, "ulong objectId, Vector3 value", TRANSFORM_WRITE_LOCAL_SCALE, "objectId", "request.X = value.X; request.Y = value.Y; request.Z = value.Z;", "")
 FBZZ_MANAGED_CALL("public", "Vector3", ReadDirection, "ulong objectId, uint direction", TRANSFORM_READ_DIRECTION, "objectId", "request.Index = direction;", "return new Vector3(reply.X, reply.Y, reply.Z);")
@@ -596,7 +656,7 @@ FBZZ_MANAGED_CALL("public", "Vector3", ReadDirection, "ulong objectId, uint dire
 FBZZ_MANAGED_CALL("public", "void", Rotate, "ulong objectId, Vector3 axis, float degrees", TRANSFORM_ROTATE, "objectId", "request.X = axis.X; request.Y = axis.Y; request.Z = axis.Z; request.W = degrees;", "")
 FBZZ_MANAGED_CALL("public", "void", LookAt, "ulong objectId, Vector3 worldTarget", TRANSFORM_LOOK_AT, "objectId", "request.X = worldTarget.X; request.Y = worldTarget.Y; request.Z = worldTarget.Z;", "")
 
-/// @note Body selectors share read/write IDs. Commands with borrowed payloads are explicit Host marshallers.
+/// @note 剛体の選択子は読み書きで ID を共有する。借用ペイロードを受け取るコマンドは Host 側で明示的にマーシャリングする。
 FBZZ_MANAGED_CALL("public", "Vector3", ReadPhysicsVector, "ulong objectId, uint selector", PHYSICS_BODY_READ, "objectId", "request.Index = selector;", "return new Vector3(reply.X, reply.Y, reply.Z);")
 FBZZ_MANAGED_CALL("public", "float", ReadPhysicsScalar, "ulong objectId, uint selector", PHYSICS_BODY_READ, "objectId", "request.Index = selector;", "return reply.X;")
 FBZZ_MANAGED_CALL("public", "bool", ReadPhysicsFlag, "ulong objectId, uint selector", PHYSICS_BODY_READ, "objectId", "request.Index = selector;", "return reply.Integer != 0;")

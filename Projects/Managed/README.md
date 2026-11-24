@@ -90,7 +90,7 @@ Host tests は本物の catalog、instance、callback delegate、collectible ALC
 
 Generator tests は managed-test に統合し、空クラス・全 partial 宣言・同じ行の partial 宣言・継承・型の除外・元の BOM を含む checksum・不正な compiler 設定・設定 field の限定警告抑制を検証する。
 
-固定 ABI の正本は `Projects/Engine/include/Engine/Scene/ManagedBridgeContract.inl`。C++ は同じ定義を展開し、Host / API は AdditionalFiles と明示した FbzzBindingTarget により enum・定数・wire 型を生成する。位置・回転・拡縮・方向・raw key・delta time の十二の Host 呼び出しも生成し、可変長 buffer と native の処理は明示実装を使う。通常のゲーム csproj に binding の指定は不要。SDK 配置ではこの共通定義も必須として検査する。
+固定 ABI の正本は `Projects/Engine/include/Engine/Scene/ManagedBridgeContract.inl`。C++ は同じ定義を展開し、Host / API は AdditionalFiles と明示した FbzzBindingTarget により enum・定数・wire 型を生成する。位置・回転・拡縮・方向・raw key・delta time の Host 呼び出しも生成し、可変長 buffer と native の処理は明示実装を使う。通常のゲーム csproj に binding の指定は不要。SDK 配置ではこの共通定義も必須として検査する。
 
 CMake の `FBZZManagedHost` は Host / API / generator を各構成の `Managed/` へ配置し、Editor と Sandbox、SDK に同じ配置を渡す。Roslyn 本体はインストール済み SDK を参照し、NuGet 依存を追加しない。製品は framework-dependent であり、.NET runtime 本体を同梱しない。
 
@@ -108,7 +108,7 @@ Script を継承しない通常 class / static class / struct / enum / interface
 
 Vector3.Dot / Cross / Lerp / NormalizedOr と Mathf.Clamp / Clamp01 / Lerp / ToRadians / ToDegrees は純粋な C# 計算で、constructor と通常 helper から利用できる。自作 C++ Math と同じ float32 の式と境界条件を使い、各計算で native 境界を越えない。Lerp は外挿可能で、NormalizedOr は長さが EPSILON 未満なら指定 fallback をそのまま返す。速度や全プラットフォームの bit 単位の一致を保証する機能ではない。
 
-Quaternion の生成・合成・補間も同じ純粋計算として使える。Transform は LocalRotation / WorldRotation / LocalScale / Forward / Right / Up と Rotate / LookAt を持つ。Quaternion の生成角度は radian、Transform.Rotate は既存 C++ API に合わせて degree。Quaternion 設定の XYZW は保存 codec に含める。回転・拡縮の変更は子孫も事前に検証し、失敗時に Scene の一部を更新しない。[回転・拡縮の作者契約](../../Docs/design/csharp-authoring.md)
+Quaternion の生成・合成・補間も同じ純粋計算として使える。`Transform.Position` / `WorldPosition` と `Transform.Rotation` / `WorldRotation` はワールド位置・回転の読み書きに使う。`LocalPosition`、`LocalRotation`、`LocalScale` は親座標の値。Quaternion の生成角度はラジアンで、`Transform.Rotate` の角度は度。Quaternion 設定の XYZW は保存 codec に含める。姿勢の変更は子孫も事前に検証し、成功時にローカル正本とワールド姿勢を同期する。[回転・拡縮の作者契約](../../Docs/design/csharp-authoring.md)
 
 Objects.TranslateWorld / TryReadWorldPositions / TrySetWorldPositions で普通の GameObject[] を一回の native 呼び出しへまとめられる。読み書きには既存の Vector3[] と private な ObjectStatus[] を再利用する。入力順・重複・即時親子同期を維持し、未設定・失効はスキップ、要求全体のエラーは対象と出力を変更しない。上限は一要求 32768 スロットで、Scene の 4096 Entity 枠とは別。物理 body は FixedUpdate の RigidBody を使う。Scene の ReadObjects、CreateMany / InstantiateMany / DestroyMany も caller buffer / 一括転送を使う。[一括 API の契約と例](../../Docs/design/csharp-authoring.md#大量対象の制御)
 
@@ -119,10 +119,10 @@ class ManagedMoverComponent : Script
 {
     public float moveSpeed = 4f;
 
-    void Update()
+    protected override void Update()
     {
         if (Input.GetKey(KeyCode.W))
-            Transform.WorldPosition += Vector3.FORWARD * (moveSpeed * Time.DeltaSeconds);
+            Transform.Position += Vector3.FORWARD * (moveSpeed * Time.DeltaSeconds);
     }
 }
 ~~~

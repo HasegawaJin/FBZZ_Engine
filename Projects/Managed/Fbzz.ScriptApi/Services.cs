@@ -41,7 +41,9 @@ public readonly struct NativeServiceResult
         m_6 = values.Length > 6 ? values[6] : 0f; m_7 = values.Length > 7 ? values[7] : 0f;
         Text = text; Integer = integer; GameObject = gameObject;
     }
+    /// @note 9 個以上の数値を返す場合の所有配列。呼び出しに使った一時バッファには依存しない。
     readonly float[]? m_values;
+    /// @note 8 個までの戻り値はこの構造体に直接保持し、短いベクトルなどの取得ごとに配列を確保せずに済ませる。
     readonly float m_0, m_1, m_2, m_3, m_4, m_5, m_6, m_7;
     /// @return 呼出元が保持できる通常配列。小さい inline 応答は、この明示的な配列投影時にだけ確保する。
     public float[] Values
@@ -80,6 +82,7 @@ public abstract class NativeComponent : Component, IEquatable<NativeComponent>
 {
     internal NativeComponent(GameObject owner, uint kind, ulong lifetimeToken = 0)
     { m_owner = owner; m_kind = kind; LifetimeToken = lifetimeToken != 0 ? lifetimeToken : NativeComponentFactory.CaptureLifetime(owner, kind); }
+    /// @note 取得した時点のコンポーネントの寿命を識別する。同じ個体に同じ型を付け直しても古い参照は失効する。
     internal ulong LifetimeToken { get; }
     readonly GameObject m_owner;
     readonly uint m_kind;
@@ -141,54 +144,63 @@ public readonly struct BlendWeight
 /// @note Play の同期 callback 内で既存 Animator サービスへ転送する。
 public sealed class Animator : NativeComponent
 {
-    internal Animator(GameObject owner, ulong lifetimeToken = 0) : base(owner, 5, lifetimeToken) { }
-    public void SetFloat(string name, float value) => Invoke(180, 0, false, 0, [value], [name], null);
+    internal Animator(GameObject owner, ulong lifetimeToken = 0) : base(owner, (uint)NativeComponentKind.ANIMATOR, lifetimeToken) { }
+
+    private const uint ANIMATOR_SERVICE = (uint)ScriptServiceKind.SERVICE_ANIMATOR;
+
+    private NativeServiceResult Read(AnimatorMethod method, ReadOnlySpan<string> text = default)
+        => Invoke(ANIMATOR_SERVICE, (uint)method, readOnly: true, text: text);
+
+    private void Write(AnimatorMethod method, long integer = 0, ReadOnlySpan<float> values = default, ReadOnlySpan<string> text = default)
+        => Invoke(ANIMATOR_SERVICE, (uint)method, readOnly: false, integer: integer, values: values, text: text);
+
+    public void SetFloat(string name, float value) => Write(AnimatorMethod.SET_FLOAT, values: [value], text: [name]);
     [ApiContract(Call = "read")]
-    public float GetFloat(string name) => Invoke(180, 1, true, 0, [], [name], null).Scalar;
-    public void SetInt(string name, int value) => Invoke(180, 2, false, (long)value, [], [name], null);
+    public float GetFloat(string name) => Read(AnimatorMethod.GET_FLOAT, text: [name]).Scalar;
+    public void SetInt(string name, int value) => Write(AnimatorMethod.SET_INT, integer: value, text: [name]);
     [ApiContract(Call = "read")]
-    public int GetInt(string name) => Invoke(180, 3, true, 0, [], [name], null).Int32;
-    public void SetBool(string name, bool value) => Invoke(180, 4, false, value ? 1 : 0, [], [name], null);
+    public int GetInt(string name) => Read(AnimatorMethod.GET_INT, text: [name]).Int32;
+    public void SetBool(string name, bool value) => Write(AnimatorMethod.SET_BOOL, integer: value ? 1 : 0, text: [name]);
     [ApiContract(Call = "read")]
-    public bool GetBool(string name) => Invoke(180, 5, true, 0, [], [name], null).Flag;
-    public void SetTrigger(string name) => Invoke(180, 6, false, 0, [], [name], null);
+    public bool GetBool(string name) => Read(AnimatorMethod.GET_BOOL, text: [name]).Flag;
+    public void SetTrigger(string name) => Write(AnimatorMethod.SET_TRIGGER, text: [name]);
     [ApiContract(Call = "read")]
-    public bool IsInState(string name) => Invoke(180, 7, true, 0, [], [name], null).Flag;
+    public bool IsInState(string name) => Read(AnimatorMethod.IS_IN_STATE, text: [name]).Flag;
     [ApiContract(Call = "read")]
-    public float GetNormalizedTime() => Invoke(180, 8, true, 0, [], [], null).Scalar;
+    public float GetNormalizedTime() => Read(AnimatorMethod.GET_NORMALIZED_TIME).Scalar;
     [ApiContract(Call = "read")]
-    public string GetCurrentState() => Invoke(180, 9, true, 0, [], [], null).String;
+    public string GetCurrentState() => Read(AnimatorMethod.GET_CURRENT_STATE).String;
     [ApiContract(Call = "read")]
-    public string GetBlendToState() => Invoke(180, 10, true, 0, [], [], null).String;
+    public string GetBlendToState() => Read(AnimatorMethod.GET_BLEND_TO_STATE).String;
     [ApiContract(Call = "read")]
-    public float GetBlendToNormalizedTime() => Invoke(180, 11, true, 0, [], [], null).Scalar;
+    public float GetBlendToNormalizedTime() => Read(AnimatorMethod.GET_BLEND_TO_NORMALIZED_TIME).Scalar;
     [ApiContract(Call = "read")]
-    public float GetSpeed() => Invoke(180, 12, true, 0, [], [], null).Scalar;
+    public float GetSpeed() => Read(AnimatorMethod.GET_SPEED).Scalar;
     [ApiContract(Call = "read")]
-    public bool IsPlaying() => Invoke(180, 13, true, 0, [], [], null).Flag;
+    public bool IsPlaying() => Read(AnimatorMethod.IS_PLAYING).Flag;
     [ApiContract(Call = "read")]
-    public Vector3 GetRootMotionDeltaPosition() => Invoke(180, 14, true, 0, [], [], null).Vector3;
+    public Vector3 GetRootMotionDeltaPosition() => Read(AnimatorMethod.GET_ROOT_MOTION_DELTA_POSITION).Vector3;
     [ApiContract(Call = "read")]
-    public Quaternion GetRootMotionDeltaRotation() => Invoke(180, 15, true, 0, [], [], null).Quaternion;
+    public Quaternion GetRootMotionDeltaRotation() => Read(AnimatorMethod.GET_ROOT_MOTION_DELTA_ROTATION).Quaternion;
     [ApiContract(Call = "read")]
-    public Vector3 GetRootMotionWorldDelta() => Invoke(180, 16, true, 0, [], [], null).Vector3;
+    public Vector3 GetRootMotionWorldDelta() => Read(AnimatorMethod.GET_ROOT_MOTION_WORLD_DELTA).Vector3;
     [ApiContract(Call = "read")]
-    public Vector3 GetRootMotionWorldVelocity() => Invoke(180, 17, true, 0, [], [], null).Vector3;
+    public Vector3 GetRootMotionWorldVelocity() => Read(AnimatorMethod.GET_ROOT_MOTION_WORLD_VELOCITY).Vector3;
     [ApiContract(Call = "read")]
-    public float GetRootMotionDeltaTime() => Invoke(180, 18, true, 0, [], [], null).Scalar;
+    public float GetRootMotionDeltaTime() => Read(AnimatorMethod.GET_ROOT_MOTION_DELTA_TIME).Scalar;
     [ApiContract(Call = "read")]
-    public bool IsRootMotionAppliedByEngine() => Invoke(180, 19, true, 0, [], [], null).Flag;
+    public bool IsRootMotionAppliedByEngine() => Read(AnimatorMethod.IS_ROOT_MOTION_APPLIED_BY_ENGINE).Flag;
     [ApiContract(Call = "read")]
-    public int GetRootMotionMode() => Invoke(180, 20, true, 0, [], [], null).Int32;
+    public int GetRootMotionMode() => Read(AnimatorMethod.GET_ROOT_MOTION_MODE).Int32;
     [ApiContract(Call = "read")]
-    public float GetRootMotionPositionScale() => Invoke(180, 21, true, 0, [], [], null).Scalar;
+    public float GetRootMotionPositionScale() => Read(AnimatorMethod.GET_ROOT_MOTION_POSITION_SCALE).Scalar;
     [ApiContract(Call = "read")]
-    public float GetRootMotionRotationScale() => Invoke(180, 22, true, 0, [], [], null).Scalar;
+    public float GetRootMotionRotationScale() => Read(AnimatorMethod.GET_ROOT_MOTION_ROTATION_SCALE).Scalar;
     [ApiContract(Call = "read")]
-    public string GetRootMotionNodeName() => Invoke(180, 23, true, 0, [], [], null).String;
+    public string GetRootMotionNodeName() => Read(AnimatorMethod.GET_ROOT_MOTION_NODE_NAME).String;
     public BlendWeight[] GetCurrentBlendWeights()
     {
-        NativeServiceResult result = Invoke(180, 24, true, 0, [], [], null);
+        NativeServiceResult result = Read(AnimatorMethod.GET_CURRENT_BLEND_WEIGHTS);
         if (result.ValueCount != result.Text.Length) throw new InvalidOperationException("Invalid blend weights.");
         BlendWeight[] weights = new BlendWeight[result.ValueCount];
         for (int index = 0; index < weights.Length; index++) weights[index] = new(result.Text[index], result.Value(index));
@@ -202,44 +214,44 @@ public sealed class Animator : NativeComponent
         ScriptExecutionScope scope = Scope();
         return scope.Bridge.ReadBlendWeights(scope, GameObject.ObjectId, output);
     }
-    public void SetSpeed(float speed) => Invoke(180, 25, false, 0, [speed], [], null);
-    public void SetLocalTimeScale(float scale) => Invoke(180, 26, false, 0, [scale], [], null);
-    public void Play(string stateName) => Invoke(180, 27, false, 0, [], [stateName], null);
-    public void SetPlaying(bool playing) => Invoke(180, 28, false, playing ? 1 : 0, [], [], null);
-    public void SetLayerWeight(string layerName, float weight) => Invoke(180, 29, false, 0, [weight], [layerName], null);
+    public void SetSpeed(float speed) => Write(AnimatorMethod.SET_SPEED, values: [speed]);
+    public void SetLocalTimeScale(float scale) => Write(AnimatorMethod.SET_LOCAL_TIME_SCALE, values: [scale]);
+    public void Play(string stateName) => Write(AnimatorMethod.PLAY, text: [stateName]);
+    public void SetPlaying(bool playing) => Write(AnimatorMethod.SET_PLAYING, integer: playing ? 1 : 0);
+    public void SetLayerWeight(string layerName, float weight) => Write(AnimatorMethod.SET_LAYER_WEIGHT, values: [weight], text: [layerName]);
     [ApiContract(Call = "read")]
-    public float GetLayerWeight(string layerName) => Invoke(180, 30, true, 0, [], [layerName], null).Scalar;
+    public float GetLayerWeight(string layerName) => Read(AnimatorMethod.GET_LAYER_WEIGHT, text: [layerName]).Scalar;
     [ApiContract(Call = "read")]
-    public string GetLayerState(string layerName) => Invoke(180, 31, true, 0, [], [layerName], null).String;
+    public string GetLayerState(string layerName) => Read(AnimatorMethod.GET_LAYER_STATE, text: [layerName]).String;
     [ApiContract(Call = "read")]
-    public bool IsLayerInState(string layerName, string stateName) => Invoke(180, 32, true, 0, [], [layerName, stateName], null).Flag;
-    public void PlayLayerState(string layerName, string stateName) => Invoke(180, 33, false, 0, [], [layerName, stateName], null);
-    public void SetLayerMask(string layerName, string maskPath) => Invoke(180, 34, false, 0, [], [layerName, maskPath], null);
+    public bool IsLayerInState(string layerName, string stateName) => Read(AnimatorMethod.IS_LAYER_IN_STATE, text: [layerName, stateName]).Flag;
+    public void PlayLayerState(string layerName, string stateName) => Write(AnimatorMethod.PLAY_LAYER_STATE, text: [layerName, stateName]);
+    public void SetLayerMask(string layerName, string maskPath) => Write(AnimatorMethod.SET_LAYER_MASK, text: [layerName, maskPath]);
     [ApiContract(Call = "read")]
-    public string GetLayerMask(string layerName) => Invoke(180, 35, true, 0, [], [layerName], null).String;
-    public void PlaySlot(string layerName, string sourcePath, string clipName, float fadeIn = 0.15f, float fadeOut = 0.15f, float speed = 1f, bool loop = false) => Invoke(180, 36, false, loop ? 1 : 0, [fadeIn, fadeOut, speed], [layerName, sourcePath, clipName], null);
-    public void StopSlot(string layerName, float fadeOut = -1f) => Invoke(180, 37, false, 0, [fadeOut], [layerName], null);
+    public string GetLayerMask(string layerName) => Read(AnimatorMethod.GET_LAYER_MASK, text: [layerName]).String;
+    public void PlaySlot(string layerName, string sourcePath, string clipName, float fadeIn = 0.15f, float fadeOut = 0.15f, float speed = 1f, bool loop = false) => Write(AnimatorMethod.PLAY_SLOT, integer: loop ? 1 : 0, values: [fadeIn, fadeOut, speed], text: [layerName, sourcePath, clipName]);
+    public void StopSlot(string layerName, float fadeOut = -1f) => Write(AnimatorMethod.STOP_SLOT, values: [fadeOut], text: [layerName]);
     [ApiContract(Call = "read")]
-    public bool IsSlotPlaying(string layerName) => Invoke(180, 38, true, 0, [], [layerName], null).Flag;
+    public bool IsSlotPlaying(string layerName) => Read(AnimatorMethod.IS_SLOT_PLAYING, text: [layerName]).Flag;
     [ApiContract(Call = "read")]
-    public float GetSlotWeight(string layerName) => Invoke(180, 39, true, 0, [], [layerName], null).Scalar;
-    public void SetSlotSpeed(string layerName, float speed) => Invoke(180, 40, false, 0, [speed], [layerName], null);
+    public float GetSlotWeight(string layerName) => Read(AnimatorMethod.GET_SLOT_WEIGHT, text: [layerName]).Scalar;
+    public void SetSlotSpeed(string layerName, float speed) => Write(AnimatorMethod.SET_SLOT_SPEED, values: [speed], text: [layerName]);
     [ApiContract(Call = "read")]
-    public float GetSlotTime(string layerName) => Invoke(180, 41, true, 0, [], [layerName], null).Scalar;
-    public void SetStateSpeed(string stateName, float speed) => Invoke(180, 42, false, 0, [speed], [stateName], null);
+    public float GetSlotTime(string layerName) => Read(AnimatorMethod.GET_SLOT_TIME, text: [layerName]).Scalar;
+    public void SetStateSpeed(string stateName, float speed) => Write(AnimatorMethod.SET_STATE_SPEED, values: [speed], text: [stateName]);
     [ApiContract(Call = "read")]
-    public float GetStateSpeed(string stateName) => Invoke(180, 43, true, 0, [], [stateName], null).Scalar;
-    public void SetMorphWeight(string morphName, float weight) => Invoke(180, 44, false, 0, [weight], [morphName], null);
+    public float GetStateSpeed(string stateName) => Read(AnimatorMethod.GET_STATE_SPEED, text: [stateName]).Scalar;
+    public void SetMorphWeight(string morphName, float weight) => Write(AnimatorMethod.SET_MORPH_WEIGHT, values: [weight], text: [morphName]);
     [ApiContract(Call = "read")]
-    public float GetMorphWeight(string morphName) => Invoke(180, 45, true, 0, [], [morphName], null).Scalar;
-    public void SetRootMotionMode(int mode) => Invoke(180, 46, false, (long)mode, [], [], null);
-    public void SetRootMotionPositionScale(float scale) => Invoke(180, 47, false, 0, [scale], [], null);
-    public void SetRootMotionRotationScale(float scale) => Invoke(180, 48, false, 0, [scale], [], null);
-    public void SetRootMotionNodeName(string nodeName) => Invoke(180, 49, false, 0, [], [nodeName], null);
-    /// @note Opt-in pose sampling for independent skeletal animation; clocks and events remain per-frame. Complex procedural rigs use full-rate evaluation.
+    public float GetMorphWeight(string morphName) => Read(AnimatorMethod.GET_MORPH_WEIGHT, text: [morphName]).Scalar;
+    public void SetRootMotionMode(int mode) => Write(AnimatorMethod.SET_ROOT_MOTION_MODE, integer: mode);
+    public void SetRootMotionPositionScale(float scale) => Write(AnimatorMethod.SET_ROOT_MOTION_POSITION_SCALE, values: [scale]);
+    public void SetRootMotionRotationScale(float scale) => Write(AnimatorMethod.SET_ROOT_MOTION_ROTATION_SCALE, values: [scale]);
+    public void SetRootMotionNodeName(string nodeName) => Write(AnimatorMethod.SET_ROOT_MOTION_NODE_NAME, text: [nodeName]);
+    /// @note 遠くの骨格は姿勢を計算する間隔だけを延ばす。再生時刻とイベントは毎フレーム進め、IK などが姿勢を使う場合は毎フレーム計算する。
     [ApiContract(Summary = "Configure pose update LOD using nearest enabled scene camera. Distances are world metres and intervals are seconds. Near poses evaluate every frame; defaults are disabled. Clocks/events continue each frame; root motion, external poses, layers, IK and spring bones use full-rate fallback.", Failure = "invalid_or_nonfinite_arguments_leave_settings_unchanged")]
     public void SetUpdateLod(bool enabled, float nearDistance = 20f, float farDistance = 60f, float midInterval = 1f / 30f, float farInterval = 1f / 15f)
-        => Invoke(180, 50, false, enabled ? 1 : 0, [nearDistance, farDistance, midInterval, farInterval], [], null);
+        => Write(AnimatorMethod.SET_UPDATE_LOD, integer: enabled ? 1 : 0, values: [nearDistance, farDistance, midInterval, farInterval]);
 }
 
 /// @note Play の同期 callback 内で既存 AudioSource サービスへ転送する。

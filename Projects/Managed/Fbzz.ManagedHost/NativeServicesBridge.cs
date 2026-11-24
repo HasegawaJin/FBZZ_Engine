@@ -214,7 +214,10 @@ public static unsafe partial class EntryPoint
             {
               fixed (byte* source = input) {
                 BridgeRequest request = Request(scope, objectId, BridgeOp.SERVICE_ANIMATOR);
-                request.Index = 24; request.Flags = 1; request.Input = source; request.InputBytes = 24;
+                request.Index = (uint)AnimatorMethod.GET_CURRENT_BLEND_WEIGHTS;
+                request.Flags = 1;
+                request.Input = source;
+                request.InputBytes = 24;
                 ServiceReader reader = new(this, request, page, scope.SceneLifetime);
                 int count = checked((int)reader.UInt32());
                 if (reader.UInt32() != count || (ulong)count * 8 + 12 > reader.Remaining)

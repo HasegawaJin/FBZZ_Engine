@@ -18,6 +18,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace fbzz::tests {
 
@@ -40,7 +41,7 @@ protected:
     }
 };
 
-/// @brief Synchronizes rotated scaled hierarchy and inactive descendants.
+/// @brief 回転・拡縮した階層と非アクティブな子孫を同期する。
 TEST_F(ManagedTransformPoseKernelTest, SynchronizesRotatedScaledHierarchyAndInactiveDescendants)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -67,7 +68,7 @@ TEST_F(ManagedTransformPoseKernelTest, SynchronizesRotatedScaledHierarchyAndInac
     EXPECT_VEC3_NEAR(child.transform.position, (math::Vector3{1, 2, 3}), testkit::kTolerance);
 }
 
-/// @brief Rejects descendant overflow without repairing any live cache.
+/// @brief 子孫でオーバーフローすると実シーンのキャッシュを変更せずに拒否する。
 TEST_F(ManagedTransformPoseKernelTest, RejectsDescendantOverflowWithoutRepairingAnyLiveCache)
 {
     auto& ancestor = m_scene.CreateGameObject("Ancestor");
@@ -90,7 +91,7 @@ TEST_F(ManagedTransformPoseKernelTest, RejectsDescendantOverflowWithoutRepairing
     EXPECT_QUAT_NEAR(target.transform.rotation, originalTarget.rotation, testkit::kTolerance);
 }
 
-/// @brief Reads world cache and rejects malformed selectors without mutation.
+/// @brief ワールドキャッシュを読み、不正なセレクターは姿勢を変更せずに拒否する。
 TEST_F(ManagedTransformPoseKernelTest, ReadsWorldCacheAndRejectsMalformedSelectorsWithoutMutation)
 {
     auto& object = m_scene.CreateGameObject("Target");
@@ -119,7 +120,7 @@ TEST_F(ManagedTransformPoseKernelTest, ReadsWorldCacheAndRejectsMalformedSelecto
     EXPECT_QUAT_NEAR(object.transform.worldRotation, cached, testkit::kTolerance);
 }
 
-/// @brief Checks rotate look at match existing math and guard live physics body.
+/// @brief Rotate と LookAt は既存の姿勢計算に従い、有効な剛体への書き込みを拒否する。
 TEST_F(ManagedTransformPoseKernelTest, RotateLookAtMatchExistingMathAndGuardLivePhysicsBody)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -165,7 +166,7 @@ protected:
         ASSERT_TRUE(runtime.Load(FBZZ_MANAGED_FIXTURE_TEST_ASSEMBLY, true)) << runtime.LastDiagnostic();
         m_owner = &m_scene.CreateGameObject("PoseOwner");
         auto& entry = m_owner->AddComponent<scene::ScriptComponent>().scripts.emplace_back();
-    entry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.TransformPoseComponent", entry.savedScriptId);
+        entry.script = scene::ScriptFactory::Create("cs-internal:ManagedFixtures.TransformPoseComponent", entry.savedScriptId);
         ASSERT_NE(entry.script, nullptr);
         entry.script->SetContext(&m_scene, m_owner);
         m_adapter = runtime.FindAdapter(entry.script.get());
@@ -204,9 +205,159 @@ protected:
         const auto value = Field(name);
         return {value.x, value.y, value.z};
     }
+    math::Quaternion Rotation(std::string_view xyz, std::string_view w)
+    {
+        const auto value = Vector(xyz);
+        return {value.x, value.y, value.z, Field(w).x};
+    }
 };
 
-/// @brief Pure quaternion matches native math before any callback.
+/// @brief 異なる親を持つ個体間でワールド位置と回転をコピーし、非アクティブな子孫も同期する。
+TEST_F(ManagedTransformPoseTest, CopiesWorldAliasesAcrossRotatedScaledParentsThroughCoreClr)
+{
+    auto& sourceParent = m_scene.CreateGameObject("SourceParent");
+    auto& targetParent = m_scene.CreateGameObject("TargetParent");
+    auto& target = m_scene.CreateGameObject("Target");
+    auto& child = m_scene.CreateGameObject("InactiveChild");
+    ASSERT_TRUE(m_owner->SetParent(&sourceParent));
+    ASSERT_TRUE(target.SetParent(&targetParent));
+    ASSERT_TRUE(child.SetParent(&target));
+    sourceParent.transform.position = {4, 5, 6};
+    sourceParent.transform.rotation = math::Quaternion::FromEuler({0.2f, -0.4f, 0.7f});
+    sourceParent.transform.scale = {2, 3, 4};
+    m_owner->transform.position = {1, 2, 3};
+    m_owner->transform.rotation = math::Quaternion::FromEuler({-0.3f, 0.4f, 0.1f});
+    targetParent.transform.position = {-8, 2, 4};
+    targetParent.transform.rotation = math::Quaternion::FromEuler({0.5f, 0.6f, -0.2f});
+    targetParent.transform.scale = {-3, 2, 5};
+    target.transform.scale = {2, 1, 3};
+    child.transform.position = {-2, 1, 0.5f};
+    child.transform.rotation = math::Quaternion::FromEuler({0.1f, -0.2f, 0.5f});
+    child.SetActive(false);
+    scene::FlushWorldTransforms(m_scene);
+
+    const auto authoritativeParent = targetParent.transform;
+    targetParent.transform.worldPosition = {100, -100, 50};
+    targetParent.transform.worldRotation = math::Quaternion::Identity();
+    targetParent.transform.worldScale = math::Vector3::ONE;
+    const math::Vector3 position = m_owner->transform.worldPosition;
+    const math::Quaternion rotation = m_owner->transform.worldRotation;
+    const math::Vector3 targetScale = target.transform.scale;
+    ASSERT_TRUE(Configure("{\"target\":\"" + target.instanceId + "\",\"operation\":5}"));
+    ASSERT_TRUE(Tick());
+    ASSERT_FALSE(m_adapter->IsRuntimeFaulted()) << m_adapter->FaultDiagnostic();
+
+    EXPECT_VEC3_NEAR(Vector("aliasPosition"), position, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(Vector("worldPosition"), position, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(Rotation("aliasRotationXYZ", "aliasRotationW"), rotation, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(Rotation("worldRotationXYZ", "worldRotationW"), rotation, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(target.transform.worldPosition, position, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(target.transform.worldRotation, rotation, testkit::kTolerance);
+    const auto inverseParent = authoritativeParent.worldRotation.Inverse();
+    const auto unscaled = inverseParent * (position - authoritativeParent.worldPosition);
+    const auto parentScale = authoritativeParent.worldScale;
+    EXPECT_VEC3_NEAR(target.transform.position,
+        (math::Vector3{unscaled.x / parentScale.x, unscaled.y / parentScale.y, unscaled.z / parentScale.z}), testkit::kTolerance);
+    EXPECT_QUAT_NEAR(target.transform.rotation, (inverseParent * rotation).Normalized(), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(target.transform.scale, targetScale, testkit::kTolerance);
+    scene::Transform expectedChild = child.transform;
+    scene::UpdateWorldTransform(expectedChild, &target.transform);
+    EXPECT_VEC3_NEAR(child.transform.worldPosition, expectedChild.worldPosition, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(child.transform.worldRotation, expectedChild.worldRotation, testkit::kTolerance);
+
+    targetParent.transform.worldRotation = math::Quaternion::Identity();
+    ASSERT_TRUE(Configure(R"({"operation":6,"rotationXYZ":[0,2,0],"rotationW":0})"));
+    ASSERT_TRUE(Tick());
+    ASSERT_FALSE(m_adapter->IsRuntimeFaulted()) << m_adapter->FaultDiagnostic();
+    const math::Quaternion reversed{0, 1, 0, 0};
+    EXPECT_QUAT_NEAR(Rotation("aliasRotationXYZ", "aliasRotationW"), reversed, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(Rotation("worldRotationXYZ", "worldRotationW"), reversed, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(target.transform.worldPosition, position, testkit::kTolerance);
+    scene::FlushWorldTransforms(m_scene);
+    EXPECT_VEC3_NEAR(target.transform.worldPosition, position, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(target.transform.worldRotation, reversed, testkit::kTolerance);
+
+    ASSERT_TRUE(Configure(R"({"operation":9,"assignedPosition":[-4,8,1]})"));
+    ASSERT_TRUE(Tick());
+    EXPECT_VEC3_NEAR(Vector("aliasPosition"), (math::Vector3{-4, 8, 1}), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(Vector("worldPosition"), (math::Vector3{-4, 8, 1}), testkit::kTolerance);
+    EXPECT_QUAT_NEAR(target.transform.worldRotation, reversed, testkit::kTolerance);
+}
+
+/// @brief 子孫の姿勢が非有限になる回転は、対象と子孫のキャッシュを書き換えない。
+TEST_F(ManagedTransformPoseTest, WorldRotationRejectsInvalidInactiveDescendantAtomically)
+{
+    auto& parent = m_scene.CreateGameObject("Parent");
+    auto& child = m_scene.CreateGameObject("InactiveChild");
+    ASSERT_TRUE(m_owner->SetParent(&parent));
+    ASSERT_TRUE(child.SetParent(m_owner));
+    child.SetActive(false);
+    parent.transform.rotation = math::Quaternion::FromEuler({0.3f, 0.2f, 0.1f});
+    m_owner->transform.scale = {2, 1, 1};
+    scene::FlushWorldTransforms(m_scene);
+    child.transform.position.x = std::numeric_limits<float>::max();
+    parent.transform.worldPosition = {40, 50, 60};
+    m_owner->transform.worldPosition = {70, 80, 90};
+    child.transform.worldPosition = {-1, -2, -3};
+    const auto before = m_owner->transform;
+    const auto childBefore = child.transform;
+    ASSERT_TRUE(Configure(R"({"operation":6,"rotationXYZ":[0,1,0],"rotationW":0})"));
+
+    Tick();
+
+    EXPECT_TRUE(m_adapter->IsRuntimeFaulted());
+    EXPECT_FALSE(m_adapter->FaultDiagnostic().empty());
+    EXPECT_VEC3_NEAR(parent.transform.worldPosition, (math::Vector3{40, 50, 60}), testkit::kTolerance);
+    EXPECT_VEC3_NEAR(m_owner->transform.position, before.position, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(m_owner->transform.worldPosition, before.worldPosition, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(m_owner->transform.rotation, before.rotation, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(m_owner->transform.worldRotation, before.worldRotation, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(m_owner->transform.scale, before.scale, testkit::kTolerance);
+    EXPECT_EQ(child.transform.position.x, childBefore.position.x);
+    EXPECT_VEC3_NEAR(child.transform.worldPosition, childBefore.worldPosition, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(child.transform.worldRotation, childBefore.worldRotation, testkit::kTolerance);
+}
+
+/// @brief 実体のある有効な剛体をスクリプトの回転代入で変更できない。
+TEST_F(ManagedTransformPoseTest, WorldRotationRejectsEnabledPhysicsBodyAtomically)
+{
+    auto& body = m_owner->AddComponent<scene::RigidBodyComponent>();
+    body.rigidBody = std::make_unique<physics::RigidBody>();
+    m_owner->transform.position = {1, 2, 3};
+    const auto before = m_owner->transform;
+    ASSERT_TRUE(Configure(R"({"operation":6,"rotationXYZ":[0,1,0],"rotationW":0})"));
+
+    Tick();
+
+    EXPECT_TRUE(m_adapter->IsRuntimeFaulted());
+    EXPECT_VEC3_NEAR(m_owner->transform.position, before.position, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(m_owner->transform.rotation, before.rotation, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(m_owner->transform.worldRotation, before.worldRotation, testkit::kTolerance);
+}
+
+/// @brief 読み取り専用の Gizmos コールバックではワールド姿勢の読み取りだけを許す。
+TEST_F(ManagedTransformPoseTest, AllowsWorldAliasReadsButRejectsWritesFromGizmos)
+{
+    auto& runtime = scene::ManagedScriptRuntime::Instance();
+    std::vector<scene::ScriptDebugDrawCommand> commands;
+    m_owner->transform.position = {1, 2, 3};
+    scene::FlushWorldTransforms(m_scene);
+    const auto before = m_owner->transform;
+    ASSERT_TRUE(Configure(R"({"operation":8})"));
+    ASSERT_TRUE(runtime.CaptureGizmos(*m_adapter, false, commands)) << runtime.LastDiagnostic();
+
+    ASSERT_TRUE(Configure(R"({"operation":7,"assignedPosition":[4,5,6]})"));
+    EXPECT_FALSE(runtime.CaptureGizmos(*m_adapter, false, commands));
+    ASSERT_TRUE(Configure(R"({"operation":6,"rotationXYZ":[0,1,0],"rotationW":0})"));
+    EXPECT_FALSE(runtime.CaptureGizmos(*m_adapter, false, commands));
+    EXPECT_FALSE(m_adapter->IsRuntimeFaulted());
+    EXPECT_VEC3_NEAR(m_owner->transform.position, before.position, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(m_owner->transform.worldPosition, before.worldPosition, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(m_owner->transform.rotation, before.rotation, testkit::kTolerance);
+    EXPECT_QUAT_NEAR(m_owner->transform.worldRotation, before.worldRotation, testkit::kTolerance);
+}
+
+/// @brief コールバック外の C# クォータニオン演算がネイティブ計算と一致する。
 TEST_F(ManagedTransformPoseTest, PureQuaternionMatchesNativeMathBeforeAnyCallback)
 {
     auto& entry = m_owner->GetComponent<scene::ScriptComponent>()->scripts.emplace_back();
@@ -260,7 +411,7 @@ TEST_F(ManagedTransformPoseTest, PureQuaternionMatchesNativeMathBeforeAnyCallbac
     EXPECT_NEAR(readFloat(scalarBytes, 12), 30, testkit::kTolerance);
 }
 
-/// @brief Reads local and interpolated world rotation through core CLR.
+/// @brief CoreCLR 経由でローカル回転と補間済みワールド回転を読む。
 TEST_F(ManagedTransformPoseTest, ReadsLocalAndInterpolatedWorldRotationThroughCoreClr)
 {
     const math::Quaternion local = math::Quaternion::FromEuler({0.4f, -0.7f, 0.2f});
@@ -280,7 +431,7 @@ TEST_F(ManagedTransformPoseTest, ReadsLocalAndInterpolatedWorldRotationThroughCo
     EXPECT_QUAT_NEAR(m_owner->transform.worldRotation, world, testkit::kTolerance);
 }
 
-/// @brief Writes target scale and synchronizes children through core CLR.
+/// @brief CoreCLR 経由で対象の拡縮を書き込み、子を同期する。
 TEST_F(ManagedTransformPoseTest, WritesTargetScaleAndSynchronizesChildrenThroughCoreClr)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -301,7 +452,7 @@ TEST_F(ManagedTransformPoseTest, WritesTargetScaleAndSynchronizesChildrenThrough
     EXPECT_VEC3_NEAR(target.transform.Forward(), math::Vector3::RIGHT, testkit::kTolerance);
 }
 
-/// @brief Failed descendant preflight retains original scene and fault diagnostic.
+/// @brief 子孫の事前検証に失敗したときはシーンを保ち、診断を残す。
 TEST_F(ManagedTransformPoseTest, FailedDescendantPreflightRetainsOriginalSceneAndFaultDiagnostic)
 {
     auto& child = m_scene.CreateGameObject("Child");
@@ -315,7 +466,7 @@ TEST_F(ManagedTransformPoseTest, FailedDescendantPreflightRetainsOriginalSceneAn
     EXPECT_VEC3_NEAR(child.transform.worldPosition, math::Vector3::ZERO, testkit::kTolerance);
 }
 
-/// @brief Cached transform rejects destroyed target with reused entity and GUID.
+/// @brief Entity と GUID が再利用されても、キャッシュ済み Transform は破棄された対象を拒否する。
 TEST_F(ManagedTransformPoseTest, CachedTransformRejectsDestroyedTargetWithReusedEntityAndGuid)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -331,4 +482,4 @@ TEST_F(ManagedTransformPoseTest, CachedTransformRejectsDestroyedTargetWithReused
     EXPECT_VEC3_NEAR(recreated.transform.scale, math::Vector3::ONE, testkit::kTolerance);
 }
 
-} /// @note namespace fbzz::tests
+} // namespace fbzz::tests

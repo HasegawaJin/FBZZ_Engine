@@ -321,25 +321,42 @@ public sealed class Transform : Component, IEquatable<Transform>
         get { ScriptExecutionScope scope = ScriptApiRuntime.RequireScope(); return scope.Bridge.ReadPosition(scope, m_owner.ObjectId, true); }
         set { ValidateFinite(value); ScriptExecutionScope scope = ScriptApiRuntime.RequireScope(); scope.Bridge.WritePosition(scope, m_owner.ObjectId, value, true); }
     }
+    /// @note WorldPosition と同じワールド座標 [m]。書き込みは親子の即時同期を伴う。
+    [ApiContract(Units = "m", Coordinate = "world", Failure = "invalid_scope_lifetime_or_nonfinite_write_throws; local_is_authoritative; write_synchronizes_parent_and_descendants")]
+    public Vector3 Position
+    {
+        get => WorldPosition;
+        set => WorldPosition = value;
+    }
     /// @note ローカルの正本。有限で長さ EPSILON 以上の値だけを書き、入力の成分を保持する。子孫のワールド姿勢へ即時反映する。
     [ApiContract(Units = "unitless_quaternion_xyzw", Coordinate = "local", Failure = "nonfinite_or_length_below_EPSILON_write_throws; write_synchronizes_descendants")]
     public Quaternion LocalRotation
    {
         get { ScriptExecutionScope scope = ScriptApiRuntime.RequireScope(); return scope.Bridge.ReadRotation(scope, m_owner.ObjectId, false); }
-        set
-        {
-            float length = value.Length;
-            if (!value.IsFinite || !float.IsFinite(length) || length < Mathf.EPSILON)
-                throw new ArgumentOutOfRangeException(nameof(value), "Rotation must be finite and nondegenerate.");
-            ScriptExecutionScope scope = ScriptApiRuntime.RequireScope();
-            scope.Bridge.WriteLocalRotation(scope, m_owner.ObjectId, value);
-        }
+        set => WriteRotation(value, world: false);
     }
-    /// @note 親子同期済みのワールド回転。ローカル設定は LocalRotation を使う。
-    [ApiContract(Units = "unitless_quaternion_xyzw", Coordinate = "world")]
+    /// @note 読み取りは同期済みのワールド回転。書き込みは親の回転からローカルの正本を求め、子孫へ即時反映する。
+    [ApiContract(Units = "unitless_quaternion_xyzw", Coordinate = "world", Failure = "invalid_scope_lifetime_or_invalid_pose_throws; nonfinite_or_length_below_EPSILON_write_throws; local_is_authoritative; write_synchronizes_parent_and_descendants")]
     public Quaternion WorldRotation
    {
         get { ScriptExecutionScope scope = ScriptApiRuntime.RequireScope(); return scope.Bridge.ReadRotation(scope, m_owner.ObjectId, true); }
+        set => WriteRotation(value, world: true);
+    }
+    /// @note WorldRotation と同じワールド回転。親に対する回転は LocalRotation を使う。
+    [ApiContract(Units = "unitless_quaternion_xyzw", Coordinate = "world", Failure = "invalid_scope_lifetime_or_invalid_pose_throws; nonfinite_or_length_below_EPSILON_write_throws; local_is_authoritative; write_synchronizes_parent_and_descendants")]
+    public Quaternion Rotation
+    {
+        get => WorldRotation;
+        set => WorldRotation = value;
+    }
+    void WriteRotation(Quaternion value, bool world)
+    {
+        float length = value.Length;
+        if (!value.IsFinite || !float.IsFinite(length) || length < Mathf.EPSILON)
+            throw new ArgumentOutOfRangeException(nameof(value), "Rotation must be finite and nondegenerate.");
+        ScriptExecutionScope scope = ScriptApiRuntime.RequireScope();
+        if (world) scope.Bridge.WriteWorldRotation(scope, m_owner.ObjectId, value);
+        else scope.Bridge.WriteLocalRotation(scope, m_owner.ObjectId, value);
     }
     /// @note 零・負の成分も許可するローカル拡縮。親と子孫のワールド姿勢へ即時反映する。
     [ApiContract(Units = "ratio", Coordinate = "local", Failure = "invalid_scope_lifetime_or_nonfinite_write_throws; zero_and_negative_components_allowed")]
@@ -647,6 +664,7 @@ internal interface IScriptNativeBridge
     void TranslateLocal(ScriptExecutionScope scope, ulong objectId, Vector3 delta);
     Quaternion ReadRotation(ScriptExecutionScope scope, ulong objectId, bool world);
     void WriteLocalRotation(ScriptExecutionScope scope, ulong objectId, Quaternion value);
+    void WriteWorldRotation(ScriptExecutionScope scope, ulong objectId, Quaternion value);
     Vector3 ReadLocalScale(ScriptExecutionScope scope, ulong objectId);
     void WriteLocalScale(ScriptExecutionScope scope, ulong objectId, Vector3 value);
     Vector3 ReadDirection(ScriptExecutionScope scope, ulong objectId, uint direction);

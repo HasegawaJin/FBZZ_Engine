@@ -510,6 +510,7 @@ static class Program
         public GameObject[] OverlapSphere(ScriptExecutionScope scope, Vector3 center, float radius) => throw new NotSupportedException();
         public Quaternion ReadRotation(ScriptExecutionScope scope, ulong objectId, bool world) => throw new NotSupportedException();
         public void WriteLocalRotation(ScriptExecutionScope scope, ulong objectId, Quaternion value) => throw new NotSupportedException();
+        public void WriteWorldRotation(ScriptExecutionScope scope, ulong objectId, Quaternion value) => throw new NotSupportedException();
         public Vector3 ReadLocalScale(ScriptExecutionScope scope, ulong objectId) => throw new NotSupportedException();
         public void WriteLocalScale(ScriptExecutionScope scope, ulong objectId, Vector3 value) => throw new NotSupportedException();
         public Vector3 ReadDirection(ScriptExecutionScope scope, ulong objectId, uint direction) => throw new NotSupportedException();

@@ -17,8 +17,8 @@
 | 保存する型 | bool、各幅の整数、float/double、decimal、char/string、各整数基底 enum、Vector2/3/4、Quaternion、GameObject、typed Component/Script・DataAsset・Material/Texture 参照、配列・List、対応メンバーだけの Serializable class / struct |
 | 未設定と欠損 | GameObject の CLR null と、保存 GUID が残る失効参照を区別。配列の空・順序・重複・null 要素を保持 |
 | 取得・制御 | GetComponent<T>() / GetComponents<T>()、AddComponent<T>() / RemoveComponent<T>()、SetActive、Layer、Tag、Script.Enabled |
-| 移動 | LocalPosition / WorldPosition / TranslateLocal / TranslateWorld / MoveTowardsWorld |
-| 回転・拡縮 | LocalRotation / WorldRotation、LocalScale、Forward / Right / Up、Rotate / LookAt |
+| 移動 | Position と WorldPosition（ワールド）、LocalPosition（親座標）、TranslateLocal / TranslateWorld / MoveTowardsWorld |
+| 回転・拡縮 | Rotation と WorldRotation（ワールド）、LocalRotation と LocalScale（親座標）、Forward / Right / Up、Rotate / LookAt |
 | 一括位置操作 | Objects.TranslateWorld / TryReadWorldPositions / TrySetWorldPositions。普通の GameObject[] と再利用する値・状態バッファ |
 | 純粋な計算 | Vector3 の演算、Quaternion の生成・積・補間、Mathf.Clamp / Clamp01 / Lerp / 角度変換と定数 |
 | 検索 | Scene.TryFind、FindAll、ReadObjects、GameObject.TryFindChild、GetChildren、GetDescendants、FindDescendants、FindPrefabPart、ReadDescendants |
@@ -56,7 +56,7 @@ class FollowTargetComponent : Script
             return;
 
         Transform.MoveTowardsWorld(
-            target.Transform.WorldPosition,
+            target.Transform.Position,
             moveSpeed * Time.DeltaSeconds,
             stopDistance);
     }
@@ -547,7 +547,7 @@ class ProjectileSpawnerComponent : Script
         m_fireRequested = false;
 
         GameObject projectile = Scene.Instantiate(projectilePrefab,
-            Transform.WorldPosition, Transform.WorldRotation);
+            Transform.Position, Transform.Rotation);
         if (projectile is null)
             return;
 
@@ -633,7 +633,7 @@ Connect は初回 Start 成功後と、開始済み個体の再有効化で購�
 
 順序は初回が `Start → Connect`、Play 差し替えが `AfterReload → Connect`。自身の Connect で登録する購読へ、Start / AfterReload 内の同期 Publish は届かない。接続後の通知が必要なら `Jobs.WaitFrames(1, () => Events.Publish(value))` 等へ延期する。秒の Tween とフレーム待機の完了順は固定せず、両方を待つロジックでは各完了状態を確認する。
 
-位置設定は Transform.WorldPosition = destination の通常の property 代入で書けるようにする。LocalPosition は親座標、WorldPosition はワールド座標。setter が入力検証と親子の即時同期を行い、別の SetPosition メソッドを併設しない。Transform 参照も保持可能とし、過去の操作権限・時間差・呼び出し ID を参照に保存しない。
+ワールド位置 [m] は `Transform.Position = destination` で設定する。`WorldPosition` は同じプロパティの明示名で、親座標で設定する場合は `LocalPosition` を使う。setter が入力を検証し、ローカル正本と対象・子孫のワールド姿勢を同期する。Transform 参照は保持でき、使うたびに現在の操作権限と対象の寿命を確認する。物理ボディの位置変更は Play の `FixedUpdate` で `RigidBody.Teleport` を使う。
 
 入力の観測値は一フレーム内で安定させる。Fixed が零回・複数回のフレームでも、ジャンプ等の一回性要求はロジック側でラッチして一度消費する。InputPressed を全 Fixed 呼び出しへそのままコピーする形式を標準例にしない。
 
@@ -666,21 +666,23 @@ protected override void Update()
 
 ### 回転・拡縮と方向
 
-通常の property とメソッドを使う。LocalRotation はローカルの Quaternion を読み書きし、WorldRotation はワールド回転の読み取り専用。LocalScale はローカル拡縮を読み書きする。Forward / Right / Up はワールド回転に +Z / +X / +Y の基底を掛けた方向で、取得だけのために親子のキャッシュを再計算しない。WorldScale の公開は今回含めない。
+`Rotation` と `WorldRotation` は同じワールド回転の読み書きで、`LocalRotation` は親座標の回転、`LocalScale` はローカル拡縮を読み書きする。`Forward` / `Right` / `Up` はワールド回転に +Z / +X / +Y の基底を掛けた方向で、取得時は現在の描画キャッシュを使う。
 
 ~~~csharp
 Quaternion facing = Quaternion.FromAxisAngle(Vector3.UP, Mathf.ToRadians(90f));
-Transform.LocalRotation = facing;
+Transform.Rotation = facing;
 Transform.LocalScale = new Vector3(2f, 1f, 2f);
 Transform.Rotate(Vector3.UP, turnSpeed * Time.DeltaSeconds);
-Transform.LookAt(target.Transform.WorldPosition);
+Transform.LookAt(target.Transform.Position);
 ~~~
 
 Quaternion.FromAxisAngle の角度と FromEuler の各成分はラジアン。FromEuler は native Math と同じ YXZ 内因順 Qy * Qx * Qz。Transform.Rotate(axis, degrees) は度数で、C++ ScriptTransformProxy と同じ delta * LocalRotation の順に回す。自分の軸を回転後の姿勢で解釈する別 overload は増やさない。長さ EPSILON 未満の axis は native の no-op だが、呼び出し権限と対象寿命の検証を省略しない。
 
-LookAt の対象はワールド位置 [m]。更新前に親子の姿勢を同期し、native Transform.LookAt と同じ親回転の逆算を行う。対象との差の長さ二乗が 1e-6 未満なら回転を維持する。ローカル回転の setter は入力成分をそのまま正本へ保存し、子孫のワールド姿勢へ即時反映する。親子同期で生成するワールド回転は root がローカル値、親付きが親とローカルの正規化した積になる。WorldRotation の getter は描画用のワールドキャッシュを返し、読み取り時には再同期しない。
+LookAt の対象はワールド位置 [m]。更新時にローカル正本から親子の姿勢を求め、native Transform.LookAt と同じ親回転の逆算を行う。対象との差の長さ二乗が 1e-6 未満なら回転を維持する。
 
-LocalRotation の書き込みは有限で、長さも有限かつ EPSILON 以上の Quaternion に限定する。LocalScale は有限なら零・負の成分も許可する。Rotate / LookAt も有限入力を要求する。失効した対象・別 Scene・不正な値・子孫の計算 overflow を拒否し、変更は未適用のままにする。有効で実体を持つ物理 body への回転・拡縮も専用物理 API ができるまでは拒否する。native が拒否すると既存 Script API と同じ例外診断で実行元を停止し、変更要求を再送しない。
+`Rotation` / `WorldRotation` に代入した Quaternion は向きとして正規化し、親付きなら現在のローカル姿勢から求めた親の逆回転を掛けて、対象のローカル回転を更新する。ローカル位置と拡縮は保持する。`LocalRotation` に代入した場合は、有効な入力の成分をそのまま保存する。各 setter は対象と子孫のワールド姿勢を即時同期する。読み取りは描画補間を含むワールド回転のキャッシュを返す。
+
+回転の書き込みは、成分と長さが有限で、長さが EPSILON 以上の Quaternion に限定する。LocalScale は有限なら零・負の成分も許可する。Rotate / LookAt も有限入力を要求する。失効した対象、別 Scene、不正な値、子孫の計算のオーバーフロー、有効で実体を持つ物理ボディへの回転・拡縮は適用前に拒否する。native からの拒否は既存の Script API と同じ例外診断で通知し、未捕捉の例外は実行元の停止条件になる。
 
 Quaternion は XYZW の 16 byte 値型で、Engine や実行スコープに依存せず通常 helper や別スレッドでも計算できる。FromAxisAngle / FromEuler / LookRotation / Dot、Quaternion と Quaternion・Vector3 の積、Length / LengthSquared / Normalized / Conjugate / Inverse / Lerp / Slerp を提供する。Lerp / Slerp の t は clamp しない。Slerp は正規化済み入力を前提として短弧を使う。Normalized は長さ、Inverse と LookRotation は長さ二乗に native の EPSILON 判定を使うため、退化閾値を混同しない。退化した純計算の回復値は native と同じ IDENTITY で、非有限値の通常の float32 演算は置き換えない。default(Quaternion) は零で、回転の既定値は Quaternion.IDENTITY を明示する。Equals は Vector3 と同じ厳密な成分比較とし、native の NearlyEqual 演算子とは区別する。
 
@@ -692,7 +694,7 @@ Quaternion / Quaternion[] / List<Quaternion> は現在の保存 codec に含む�
 
 ~~~csharp
 Transform.MoveTowardsWorld(
-    target.Transform.WorldPosition,
+    target.Transform.Position,
     moveSpeed * Time.DeltaSeconds,
     stopDistance);
 ~~~

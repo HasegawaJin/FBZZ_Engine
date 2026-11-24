@@ -62,7 +62,7 @@ void Write(char* bytes, const T& value)
     std::memcpy(bytes, &value, sizeof(value));
 }
 
-} /// @note namespace
+}
 
 Transform* ManagedTransformBatch::Shadow(GameObject& object)
 {
@@ -94,6 +94,11 @@ bool ManagedTransformBatch::Update(GameObject& object, bool shadow)
 
 bool ManagedTransformBatch::Synchronize(GameObject& root, bool shadow)
 {
+    return SynchronizeAncestors(root, shadow) && SynchronizeSubtree(root, shadow);
+}
+
+bool ManagedTransformBatch::SynchronizeAncestors(GameObject& root, bool shadow)
+{
     Scene* scene = root.GetScene();
     if (!scene) return false;
     const size_t slots = scene->EntitySlotCount();
@@ -105,6 +110,14 @@ bool ManagedTransformBatch::Synchronize(GameObject& root, bool shadow)
     }
     for (auto it = m_ancestors.rbegin(); it != m_ancestors.rend(); ++it)
         if (!Update(**it, shadow)) return false;
+    return true;
+}
+
+bool ManagedTransformBatch::SynchronizeSubtree(GameObject& root, bool shadow)
+{
+    Scene* scene = root.GetScene();
+    if (!scene) return false;
+    const size_t slots = scene->EntitySlotCount();
     m_queue.clear();
     m_queue.push_back(&root);
     for (size_t i = 0; i < m_queue.size(); ++i) {
@@ -284,6 +297,7 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
         return vectorReply(request.index == 0 ? target.transform.Forward()
             : request.index == 1 ? target.transform.Right() : target.transform.Up());
     case ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_ROTATION:
+    case ManagedBridgeOp::TRANSFORM_WRITE_WORLD_ROTATION:
     case ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_SCALE:
     case ManagedBridgeOp::TRANSFORM_ROTATE:
     case ManagedBridgeOp::TRANSFORM_LOOK_AT:
@@ -305,9 +319,23 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
     BeginShadow(*target.GetScene());
     Transform* transform = Shadow(target);
     if (!transform) return ManagedBridgeStatus::INVALID_ARGUMENT;
-    if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_ROTATION) {
-        const math::Quaternion rotation{request.x, request.y, request.z, request.w};
+    const bool worldRotationWrite = request.op == ManagedBridgeOp::TRANSFORM_WRITE_WORLD_ROTATION;
+    if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_ROTATION || worldRotationWrite) {
+        math::Quaternion rotation{request.x, request.y, request.z, request.w};
         if (!FiniteNormalization(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+        if (worldRotationWrite) {
+            /// @note 描画補間のキャッシュは逆算に使わず、祖先をローカル姿勢から確定して回転成分だけを書き換える。
+            if (!SynchronizeAncestors(target, true)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+            rotation = rotation.Normalized();
+            if (auto* parent = target.GetParent()) {
+                const auto* parentTransform = Shadow(*parent);
+                if (!parentTransform || !FiniteNormalization(parentTransform->worldRotation))
+                    return ManagedBridgeStatus::INVALID_ARGUMENT;
+                rotation = parentTransform->worldRotation.Normalized().Inverse() * rotation;
+                if (!FiniteNormalization(rotation)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+                rotation = rotation.Normalized();
+            }
+        }
         transform->rotation = rotation;
     } else if (request.op == ManagedBridgeOp::TRANSFORM_WRITE_LOCAL_SCALE) {
         transform->scale = value;
@@ -334,7 +362,8 @@ ManagedBridgeStatus ManagedTransformBatch::RunPose(GameObject& target,
             }
         }
     }
-    if (!Synchronize(target, true)) return ManagedBridgeStatus::INVALID_ARGUMENT;
+    const bool synchronized = worldRotationWrite ? SynchronizeSubtree(target, true) : Synchronize(target, true);
+    if (!synchronized) return ManagedBridgeStatus::INVALID_ARGUMENT;
     CommitShadow();
     return ManagedBridgeStatus::OK;
 }
@@ -433,4 +462,4 @@ ManagedBridgeStatus ManagedTransformBatch::RunAggregate(Scene& scene, const Mana
     return ManagedBridgeStatus::OK;
 }
 
-} /// @note namespace fbzz::scene::managed_detail
+}
