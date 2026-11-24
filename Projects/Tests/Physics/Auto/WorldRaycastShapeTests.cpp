@@ -245,6 +245,20 @@ TEST_F(WorldRaycastShapeTest, RaycastHitsATriangleMeshThroughItsBVH)
     EXPECT_VEC3_NEAR(hit.normal, math::Vector3::UP, testkit::kLooseTolerance);
 }
 
+TEST_F(WorldRaycastShapeTest, RaycastHitsATriangleMeshFromBelowAtASmallPositiveDistance)
+{
+    physics::TriangleMeshCollider mesh(QuadPositions(), QuadIndices());
+    Register({Instance(mesh)});
+
+    constexpr float distanceToSurface = 5.0e-7f;
+    const math::Vector3 origin{0.25f, -distanceToSurface, 0.25f};
+    ASSERT_TRUE(world.Raycast(origin, math::Vector3::UP, 1.0f, hit));
+    EXPECT_NEAR(hit.distance, distanceToSurface, 1.0e-8f);
+    EXPECT_VEC3_NEAR(hit.normal, kDown, testkit::kLooseTolerance);
+
+    EXPECT_FALSE(world.Raycast({0.25f, 0.0f, 0.25f}, math::Vector3::UP, 1.0f, hit));
+}
+
 /// @brief Raycast misses a triangle mesh beside the path.
 TEST_F(WorldRaycastShapeTest, RaycastMissesATriangleMeshBesideThePath)
 {

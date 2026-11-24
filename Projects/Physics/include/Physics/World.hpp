@@ -251,42 +251,65 @@ namespace fbzz::physics
         struct QueryNode {
             AABB bounds;
             size_t colliderIndex = SIZE_MAX;
-            size_t escape = 0;
+            size_t nextAfterSubtree = 0;
         };
+        enum class QueryIndexUpdate { UNAVAILABLE, REFIT, REBUILD };
+
         FBZZ_PHYSICS_API void RefreshQueryIndex();
-        FBZZ_PHYSICS_API size_t BuildQueryNode(size_t begin, size_t end);
+        [[nodiscard]] QueryIndexUpdate CaptureQueryIndexInputs();
+        void RefitQueryNodes();
+        void RebuildQueryNodes();
+        FBZZ_PHYSICS_API size_t BuildQueryNode(size_t rangeBegin, size_t rangeEnd);
         [[nodiscard]] FBZZ_PHYSICS_API bool QueryIndexMatchesColliders() const;
         FBZZ_PHYSICS_API bool SphereCastImpl(const math::Vector3& origin, float radius,
             const math::Vector3& direction, float maxDistance, RaycastHit& hit,
             const ColliderFilter& filter, const bool* preparedIndex) const;
         /// @note Collider は外部所有で直接変更可能。境界が同期時点と一致しない問い合わせは全候補へ戻す。
         /// @note 作業状態を書き換えず、filter 内の再入問い合わせと複数スレッドの読み取りを許す。
+        /// @param preparedIndex バッチ開始時の索引の有効性。nullptr の場合はこの問い合わせで照合する。
         template<typename Callback>
-        void ForEachQueryCandidate(const AABB& bounds, Callback&& callback,
+        void ForEachQueryCandidate(const AABB& queryBounds, Callback&& visitCandidate,
                                    const bool* preparedIndex = nullptr) const
         {
-            if (!(preparedIndex ? *preparedIndex : QueryIndexMatchesColliders())) {
-                for (size_t index = 0; index < m_colliders.size(); ++index)
-                    if (IsLiveCollider(index)) callback(index, m_colliders[index]);
+            const bool useQueryIndex = preparedIndex ? *preparedIndex : QueryIndexMatchesColliders();
+            if (useQueryIndex) {
+                ForEachIndexedQueryCandidate(queryBounds, visitCandidate);
                 return;
             }
-            for (size_t index = 0; index < m_queryNodes.size();) {
-                const auto& node = m_queryNodes[index];
-                if (!node.bounds.Overlaps(bounds)) {
-                    index = node.escape;
+            ForEachLiveQueryCandidate(visitCandidate);
+        }
+
+        template<typename Callback>
+        void ForEachIndexedQueryCandidate(const AABB& queryBounds, Callback& visitCandidate) const
+        {
+            for (size_t nodeIndex = 0; nodeIndex < m_queryNodes.size();) {
+                const QueryNode& node = m_queryNodes[nodeIndex];
+                if (!node.bounds.Overlaps(queryBounds)) {
+                    nodeIndex = node.nextAfterSubtree;
                     continue;
                 }
-                if (node.colliderIndex != SIZE_MAX)
-                    callback(node.colliderIndex, m_colliders[node.colliderIndex]);
-                ++index;
+                if (node.colliderIndex != SIZE_MAX) {
+                    visitCandidate(node.colliderIndex, m_colliders[node.colliderIndex]);
+                }
+                ++nodeIndex;
+            }
+        }
+
+        template<typename Callback>
+        void ForEachLiveQueryCandidate(Callback& visitCandidate) const
+        {
+            for (size_t colliderIndex = 0; colliderIndex < m_colliders.size(); ++colliderIndex) {
+                if (IsLiveCollider(colliderIndex)) {
+                    visitCandidate(colliderIndex, m_colliders[colliderIndex]);
+                }
             }
         }
         std::vector<QueryNode> m_queryNodes;
-        std::vector<AABB> m_queryBounds;
-        std::vector<size_t> m_queryOrder;
-        std::vector<const Collider*> m_queryColliders;
+        std::vector<AABB> m_indexedColliderBounds;
+        std::vector<size_t> m_queryBuildOrder;
+        std::vector<const Collider*> m_indexedColliderIdentities;
         /// @note World の move を保ちつつ、並行 read query から次の安全点での refit 要求だけを記録する。
-        alignas(std::atomic_ref<bool>::required_alignment) mutable bool m_queryUsed = false;
+        alignas(std::atomic_ref<bool>::required_alignment) mutable bool m_queryRefreshRequested = false;
 
         FBZZ_PHYSICS_API void RemoveExpiredVolumes();
         FBZZ_PHYSICS_API void ApplyForcesAndVolumes(float dt, std::vector<float>& effectiveDts);
@@ -294,8 +317,6 @@ namespace fbzz::physics
         FBZZ_PHYSICS_API void ApplyGravitationalAttraction();
         FBZZ_PHYSICS_API void IntegrateBodies(const std::vector<float>& effectiveDts);
         FBZZ_PHYSICS_API void SolveConstraintPositions(float dt);
-        /// @brief m_ownedConstraints と制約プールから m_activeConstraints を組み直す。
-        FBZZ_PHYSICS_API void RebuildConstraintViews();
         FBZZ_PHYSICS_API void UpdateColliders();
         FBZZ_PHYSICS_API void BroadPhase();
         FBZZ_PHYSICS_API void NarrowPhase(bool doWarmStart = false);
@@ -323,8 +344,6 @@ namespace fbzz::physics
         std::vector<ColliderInstance>           m_colliders;
         std::vector<ColliderLifetime>           m_colliderLifetimes;
         std::vector<Volume*>                    m_volumes;
-        std::vector<std::unique_ptr<Constraint>> m_ownedConstraints;  ///< @note World が唯一の所有者。AddConstraint で置かれた «消えない» ぶん。
-        std::vector<Constraint*>                 m_activeConstraints; ///< @note Step() が走らせる非所有ビュー (所有分 + 同期分。RebuildConstraintViews で再構築)
         /// @}
         struct BodySlot {
             RigidBody* body = nullptr;  ///< @note 所有権は RigidBodyComponent が持つ。World は非所有参照のみ保持する。
@@ -344,17 +363,33 @@ namespace fbzz::physics
             uint32_t generation = 1;
             bool touched = false;
         };
-        struct ConstraintSlot {
-            /// @brief SyncConstraint で渡された Constraint。World が所有し、申告が途切れたら
-            /// @note EndSceneSync がここで破棄する。
-            std::unique_ptr<Constraint> constraint;
-            uint32_t generation = 1;
-            bool touched = false;
-        };
         std::vector<BodySlot> m_bodyPool;
         std::vector<ColliderSlot> m_colliderPool;
         std::vector<VolumeSlot> m_volumePool;
-        std::vector<ConstraintSlot> m_constraintPool;
+        class ConstraintRegistry {
+        public:
+            void Add(std::unique_ptr<Constraint> constraint);
+            ConstraintHandle Sync(ConstraintHandle handle, std::unique_ptr<Constraint> constraint);
+            bool Keep(ConstraintHandle handle);
+            Constraint* Find(ConstraintHandle handle) const;
+            bool Remove(ConstraintHandle handle);
+            void BeginSceneSync();
+            bool EndSceneSync();
+            bool RetireExpired();
+            const std::vector<Constraint*>& Active() const { return m_activeConstraints; }
+
+        private:
+            void RebuildActiveView();
+            struct ConstraintSlot {
+                std::unique_ptr<Constraint> constraint;
+                uint32_t generation = 1;
+                bool touched = false;
+            };
+            std::vector<std::unique_ptr<Constraint>> m_ownedConstraints;
+            std::vector<Constraint*> m_activeConstraints;
+            std::vector<ConstraintSlot> m_constraintPool;
+        };
+        ConstraintRegistry m_constraints;
         bool m_sceneSyncChanged = false; ///< @note 追加・削除など接触集合が変わり得る同期変更があったか
         std::vector<CollisionPair>              m_collisionPairs;
         std::vector<ContactPoint>               m_contacts;

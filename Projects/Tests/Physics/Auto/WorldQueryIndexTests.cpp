@@ -163,6 +163,29 @@ TEST_F(WorldQueryIndexTest, SphereCastBatchChecksBoundsOnceAndAcceptsChangesBefo
     EXPECT_EQ(hit.collider, &target);
 }
 
+TEST_F(WorldQueryIndexTest, SphereCastBatchReusesFallbackAfterBoundsChange)
+{
+    auto& forwardTarget = Add({0, 0, 10});
+    DistantShapes();
+    Sync();
+    auto& distantProbe = *m_shapes[1];
+    auto& movedTarget = *m_shapes.back();
+    movedTarget.Update({0, 0, -10}, math::Quaternion::Identity());
+    distantProbe.m_boundsReads = 0;
+
+    const auto batch = m_world.PrepareSphereCasts();
+    ASSERT_EQ(distantProbe.m_boundsReads, 1u);
+    const auto filter = [&forwardTarget, &movedTarget](const auto& instance) {
+        return instance.collider == &forwardTarget || instance.collider == &movedTarget;
+    };
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(batch.Cast({}, 1, math::Vector3::FORWARD, 20, hit, filter));
+    EXPECT_EQ(hit.collider, &forwardTarget);
+    ASSERT_TRUE(batch.Cast({}, 1, -math::Vector3::FORWARD, 20, hit, filter));
+    EXPECT_EQ(hit.collider, &movedTarget);
+    EXPECT_EQ(distantProbe.m_boundsReads, 1u);
+}
+
 /// @brief Refits moved shapes and removes unregistered shapes.
 TEST_F(WorldQueryIndexTest, RefitsMovedShapesAndRemovesUnregisteredShapes)
 {
@@ -311,6 +334,35 @@ TEST_F(WorldQueryIndexTest, DestroyedBodyRetiresItsShapeAndConstraintBeforeTheNe
     m_world.Step(0.01f);
     EXPECT_TRUE(m_world.GetConstraints().empty());
     EXPECT_TRUE(m_world.OverlapSphere({0, 0, 10}, 1).empty());
+}
+
+TEST_F(WorldQueryIndexTest, SyncBodyWithLostHandleRetiresPriorOccupantAndItsConstraint)
+{
+    std::optional<physics::RigidBody> body(std::in_place);
+    auto& shape = Add({0, 0, 10});
+    m_world.BeginSceneSync();
+    const auto oldBodyHandle = m_world.SyncBody({}, &*body);
+    const auto oldColliderHandle = m_world.SyncCollider({}, {&shape, &*body});
+    const auto oldConstraintHandle = m_world.SyncConstraint({},
+        std::make_unique<physics::DistanceConstraint>(&*body, nullptr, 1.0f));
+    m_world.EndSceneSync();
+
+    m_world.BeginSceneSync();
+    body.reset();
+    body.emplace();
+    const auto newBodyHandle = m_world.SyncBody({}, &*body);
+    EXPECT_EQ(newBodyHandle.slot, oldBodyHandle.slot);
+    EXPECT_NE(newBodyHandle.generation, oldBodyHandle.generation);
+    EXPECT_FALSE(m_world.KeepConstraint(oldConstraintHandle));
+    EXPECT_TRUE(m_world.GetConstraints().empty());
+
+    const auto newColliderHandle = m_world.SyncCollider(oldColliderHandle, {&shape, &*body});
+    m_world.EndSceneSync();
+    EXPECT_EQ(newColliderHandle.slot, oldColliderHandle.slot);
+    EXPECT_NE(newColliderHandle.generation, oldColliderHandle.generation);
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(m_world.Raycast({}, math::Vector3::FORWARD, 20, hit));
+    EXPECT_EQ(hit.body, &*body);
 }
 
 } /// @note namespace fbzz::tests

@@ -2,10 +2,6 @@
 /// @brief   World の空間クエリ (Raycast / RaycastAll / SphereCast / OverlapSphere) の契約を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-08
-///
-/// エディターのピッキング、着地判定、索敵、当たり判定つきの当たり — ゲーム側から
-/// «世界に何があるか» を尋ねる経路はすべてここを通る。最も近い 1 件を返す、距離順に返す、
-/// フィルタで除外する、という約束が崩れると «たまに掴めない / 見えない» になる。
 #include <TestKit/TestKit.hpp>
 
 #include <Math/Quaternion.hpp>
@@ -22,7 +18,7 @@
 namespace fbzz::tests {
 namespace {
 
-/// World へ登録する球 1 個。ColliderInstance がメンバーを指すのでコピーしない。
+/// @note ColliderInstance がメンバーを非所有参照する。
 class Probe {
 public:
     Probe(const math::Vector3& position, float radius)
@@ -59,11 +55,11 @@ private:
     bool m_trigger = false;
 };
 
-} // namespace
+} /// @note namespace
 
 class WorldQueryTest : public testkit::Fixture {
 protected:
-    /// 登録は BeginSceneSync 〜 EndSceneSync で囲む。囲まないと «前フレームの残り» として掃除される。
+    /// @note 照会対象の登録はシーン同期の区間内で行う。
     void Register(std::initializer_list<physics::ColliderInstance> colliders)
     {
         world.BeginSceneSync();
@@ -255,6 +251,20 @@ TEST_F(WorldQueryTest, SphereCastSkipsWhatTheFilterRejects)
                                   [](const physics::ColliderInstance& i) { return !i.isTrigger; }));
 }
 
+TEST_F(WorldQueryTest, SphereCastReportsSweptCenterNormalAndOwner)
+{
+    Probe target({2.0f, 3.0f, 12.0f}, 1.0f);
+    const physics::ColliderInstance targetInstance = target.Instance();
+    Register({targetInstance});
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.SphereCast({2.0f, 3.0f, 2.0f}, 1.0f, {0.0f, 0.0f, 7.0f}, 100.0f, hit));
+    EXPECT_VEC3_NEAR(hit.point, math::Vector3(2.0f, 3.0f, 10.0f), testkit::kLooseTolerance);
+    EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::FORWARD, testkit::kLooseTolerance);
+    EXPECT_EQ(hit.collider, targetInstance.collider);
+    EXPECT_EQ(hit.body, targetInstance.body);
+}
+
 /// @name OverlapSphere
 
 /// @brief Overlap sphere finds what touches the query.
@@ -304,4 +314,4 @@ TEST_F(WorldQueryTest, OverlapSphereSkipsWhatTheFilterRejects)
     EXPECT_TRUE(found.empty());
 }
 
-} // namespace fbzz::tests
+} /// @note namespace fbzz::tests
