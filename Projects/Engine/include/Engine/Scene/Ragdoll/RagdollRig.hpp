@@ -24,6 +24,7 @@
 #include <Physics/XPBDPoseAnchor.hpp>
 #include <Physics/XPBDSolver.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <span>
@@ -331,44 +332,94 @@ private:
                           math::Vector3& outPosition, math::Quaternion& outRotation) const;
     /// @note 今の倍率を全関節のドライブへ反映する。
     FBZZ_ENGINE_API void ApplyDrive();
+    void ApplyBodyDriveSettings();
+    void ApplyRootAnchorSettings(float gravityMagnitude);
+    void ApplyJointServoSettings(float gravityMagnitude);
     FBZZ_ENGINE_API void ProjectStandingPose();
-    /// @note 根はworld、子は親ローカル。速度・角速度は直前サンプルからの区間微分で、始点サンプルは0。
-    struct TargetBonePose {
-        math::Vector3 position;
-        math::Quaternion rotation = math::Quaternion::Identity();
-        math::Vector3 velocity = math::Vector3::ZERO;
-        math::Vector3 angularVelocity = math::Vector3::ZERO;
+    class DriveTargetHistory {
+    public:
+        struct PoseInterval {
+            const std::vector<RagdollBonePose>& before;
+            const std::vector<RagdollBonePose>& after;
+        };
+        struct SampledPose {
+            const std::vector<RagdollBonePose>& bones;
+            bool hasVelocities;
+        };
+
+        void Clear();
+        void Reset(const std::vector<RagdollBonePose>& bones, double simulationTime);
+        void RecycleSamples();
+        [[nodiscard]] bool HasSamples() const { return !m_samples.empty(); }
+        [[nodiscard]] bool NeedsRebase(double simulationTime) const;
+        [[nodiscard]] const std::vector<RagdollBonePose>& LatestPose() const { return m_latestPose; }
+        /// @pre サンプルがあり、bones は直前のサンプルと同じ骨格で、sampleDt は正の秒数。
+        /// @note 戻り値は次の履歴更新まで有効。
+        [[nodiscard]] PoseInterval Append(const std::vector<RagdollBonePose>& bones, float sampleDt);
+        /// @pre HasSamples() が true であること。
+        /// @note 戻り値は次の履歴更新まで有効。速度はワールド空間。
+        [[nodiscard]] SampledPose Sample(double simulationTime);
+        /// @note 待機中のワールド空間の根だけを運び、親ローカルの目標に共通移動を再加算しない。
+        void TransportRoot(std::size_t rootBoneIndex, const math::Vector3& previousOrigin,
+            const math::Vector3& currentOrigin, const math::Quaternion& rotationDelta);
+        [[nodiscard]] const math::Vector3& SampledLinearVelocity(std::size_t boneIndex) const
+        {
+            return m_sampledLinearVelocities[boneIndex];
+        }
+        [[nodiscard]] const math::Vector3& SampledAngularVelocity(std::size_t boneIndex) const
+        {
+            return m_sampledAngularVelocities[boneIndex];
+        }
+
+    private:
+        /// @note 根はワールド空間、子は親ローカル。速度は直前サンプルからの区間微分で、始点は 0。
+        struct BoneSample {
+            math::Vector3 position;
+            math::Quaternion rotation = math::Quaternion::Identity();
+            math::Vector3 velocity = math::Vector3::ZERO;
+            math::Vector3 angularVelocity = math::Vector3::ZERO;
+        };
+        struct TimedPose {
+            double time = 0.0;
+            std::vector<BoneSample> bones;
+        };
+
+        void Store(const std::vector<RagdollBonePose>& bones);
+        void ComposeWorldPose(const TimedPose& sample, std::vector<RagdollBonePose>& worldPose) const;
+
+        /// @note 未消費の描画サンプルを保持し、固定刻みの backlog で将来の姿勢へ飛ばさない。
+        std::vector<TimedPose> m_samples;
+        std::size_t m_firstPendingSample = 0;
+        std::vector<std::vector<BoneSample>> m_recycledBoneSamples;
+        double m_latestSampleTime = 0.0;
+        std::vector<RagdollBonePose> m_latestPose;
+        std::vector<RagdollBonePose> m_sampledWorldPose;
+        std::vector<RagdollBonePose> m_intervalStartPose;
+        std::vector<RagdollBonePose> m_intervalEndPose;
+        std::vector<math::Vector3> m_sampledLinearVelocities;
+        std::vector<math::Vector3> m_sampledAngularVelocities;
     };
-    struct TargetSample {
-        double time = 0.0;
-        std::vector<TargetBonePose> bones;
-    };
-    void ResetTargetSamples(const std::vector<RagdollBonePose>& bones);
-    void StoreTargetSample(const std::vector<RagdollBonePose>& bones);
-    void ComposeTargetSample(const TargetSample& sample, std::vector<RagdollBonePose>& output) const;
-    void SampleDriveTargets(double time);
-    /// @note 補間時の骨原点のworld速度を重心・親剛体空間へ変換し、Controlsの上書きを最後に適用する。
-    /// @see https://modernrobotics.northwestern.edu/nu-gm-book-resource/3-3-2-twists-part-1-of-2/ Modern Robotics §3.3.2 原点と座標系による速度の変換。
+
+    void ResetDriveTargetHistory(const std::vector<RagdollBonePose>& bones);
+    void TransportStandingTargets(const std::vector<RagdollBonePose>& bones, const RagdollOwnerPose* ownerPose);
+    void SampleDriveTargets(double simulationTime);
     void ApplyTargetPose(const std::vector<RagdollBonePose>& bones,
         const std::vector<RagdollBonePose>* before, const std::vector<RagdollBonePose>* after, float sampleDt,
         bool useSampledVelocities = false);
+    /// @note 補間時の骨原点のワールド速度を重心・親剛体空間へ変換し、Controls の上書きを最後に適用する。
+    /// @see https://modernrobotics.northwestern.edu/nu-gm-book-resource/3-3-2-twists-part-1-of-2/ Modern Robotics §3.3.2 原点と座標系による速度の変換。
+    void ApplyBodyDriveTargets(const std::vector<RagdollBonePose>& bones,
+        const std::vector<RagdollBonePose>* before, const std::vector<RagdollBonePose>* after, float sampleDt,
+        bool useSampledVelocities);
+    void ApplyRootAnchorTargets(const std::vector<RagdollBonePose>& bones);
+    void ApplyJointDriveTargets(const std::vector<RagdollBonePose>& bones);
 
     bool m_standingGuard = false;
-    RagdollOwnerPose m_ownerPose;
-    bool m_ownerHistory = false;
-    /// @note 未消費の描画サンプルだけを保持し、固定刻みのbacklogでも将来の姿勢へ飛ばさない。
-    std::vector<TargetSample> m_targetSamples;
-    std::size_t m_targetSampleHead = 0;
-    std::vector<std::vector<TargetBonePose>> m_targetPosePool;
-    double m_sampleTime = 0.0;
+    RagdollOwnerPose m_previousOwnerPose;
+    bool m_hasPreviousOwnerPose = false;
+    DriveTargetHistory m_driveTargetHistory;
     double m_simulationTime = 0.0;
-    double m_targetStepTime = 0.0;
-    std::vector<RagdollBonePose> m_sourceTargets;
-    std::vector<RagdollBonePose> m_sampledTargets;
-    std::vector<RagdollBonePose> m_sampleBefore;
-    std::vector<RagdollBonePose> m_sampleAfter;
-    std::vector<math::Vector3> m_sampledVelocities;
-    std::vector<math::Vector3> m_sampledAngularVelocities;
+    double m_substepTargetTime = 0.0;
     float m_standingMaxDistance = 0.15f;
     float m_standingMaxRadians = 0.25f;
     std::vector<RagdollBonePose> m_standingTargets;
@@ -463,4 +514,4 @@ private:
     float m_groundFriction = 0.9f;
 };
 
-} /// @note namespace fbzz::scene
+}

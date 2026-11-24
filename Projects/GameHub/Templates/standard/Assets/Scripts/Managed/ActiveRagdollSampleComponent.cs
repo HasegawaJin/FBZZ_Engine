@@ -52,56 +52,90 @@ public sealed class ActiveRagdollSampleComponent : Script
 
     private sealed class Foot(int bone, float side)
     {
+        /// @note 足に対応する BONES の番号。接触の読み取りと床への固定を同じ剛体に対して行う。
         internal readonly int Bone = bone;
+        /// @note 左を −1、右を +1 とし、同じ計算で左右対称の歩幅と重心移動を作る。
         internal readonly float Side = side;
+        /// @note 制御が目指す足のワールド位置。実際に床に触れたかは物理側から別に取得する。
         internal Vector3 Goal;
+        /// @note 足の目標姿勢。振り出し開始時の向きから着地時の向きへ補間する。
         internal Quaternion Rotation = Quaternion.IDENTITY;
+        /// @note 足を床の一点へ固定できた後だけ立て、離地するときにその固定を解除する。
         internal bool Planted;
+        /// @note 足を着いた瞬間の接触点をワールド座標で記録し、後で足裏の滑りを測る基準にする。
         internal Vector3 Anchor;
+        /// @note 同じ接触点を足の剛体から見た座標でも保存し、足が回転した後の位置を求める。
         internal Vector3 LocalAnchor;
     }
 
     private readonly Foot[] m_feet = [new(5, -1f), new(11, 1f)];
+    /// @note 制御を始めた時点の全身の姿勢。腰の移動距離や足の初期目標を決める基準になる。
     private readonly RagdollBodyState[] m_rest = new RagdollBodyState[BONES.Length];
+    /// @note 起き上がり始めの各部位の姿勢。立ち姿勢の目標へなめらかにつなぐために使う。
     private readonly RagdollBodyState[] m_fallPose = new RagdollBodyState[BONES.Length];
+    /// @note 前の物理更新の位置を骨ごとに保持し、次の目標位置との差から速度を求める。
     private readonly Vector3[] m_previous = new Vector3[BONES.Length];
+    /// @note 今回目指す骨ごとの位置と回転を次の 2 配列にそろえ、全身の目標をまとめて剛体へ渡す。
     private readonly Vector3[] m_positions = new Vector3[BONES.Length];
     private readonly Quaternion[] m_rotations = new Quaternion[BONES.Length];
     private Ragdoll? m_rig;
     private RigidBody? m_crate;
     private Transform? m_camera;
+    /// @note 足場や障害物を探す際、自分の剛体とトリガーを命中候補から除く。
     private PhysicsQueryOptions m_floorQuery;
     private Phase m_phase;
+    /// @note 腰と箱の開始位置を別々に覚え、それぞれがワールドの各軸に沿ってどれだけ動いたか測る。
     private Vector3 m_origin;
     private Vector3 m_crateOrigin;
+    /// @note 目標姿勢を組み立てる足元の基準点。歩行に合わせて水平移動し、着地後に地面の高さに追従する。
     private Vector3 m_center;
+    /// @note 一歩を始めるときに身体の基準点の始点と終点を決め、歩行の進みに合わせて間を移動する。
     private Vector3 m_stepCenterStart;
     private Vector3 m_stepCenterEnd;
+    /// @note 遊脚が通る経路の両端を固定し、その間を補間した位置に足を持ち上げる高さを足す。
     private Vector3 m_footStart;
     private Vector3 m_footEnd;
+    /// @note 一歩の始まりに記録した足の向き。旋回中に毎回取り直すと補間の出発点が動いてしまう。
     private Quaternion m_footRotationStart;
+    /// @note 今持ち上げている足。両足で体を支えている間は null。
     private Foot? m_swing;
+    /// @note 身体の水平な向き（ラジアン）。一歩の開始角と目標角を補間して旋回する。
     private float m_yaw;
     private float m_yawStart;
     private float m_yawEnd;
     private float m_stepTime;
-    private float m_stepLength;
+    /// @note 一歩を終えるまでの予定時間（秒）。経過秒数をこの値で割ると、一歩の進み具合が 0～1 で得られる。
+    private float m_stepDurationSeconds;
+    /// @note 足場に合わせて身体の基準点が近づく目標の高さ。段差の移動を滑らかにする。
     private float m_supportHeight;
+    /// @note 現在の動作に入ってからの秒数。ジャンプ・着地・起き上がりはそれぞれここから時間を測る。
     private float m_phaseTime;
+    /// @note 離陸時の腰の高さ。空中の腰との差を取ってジャンプの高さを測る。
     private float m_jumpFrom;
+    /// @note 前後方向の入力。箱をつかんで押す場合と引く場合で、胴の傾きを変える。
     private float m_travelSign;
+    /// @note 次にどちらの足を上げるかを保持し、反対側の足を支持足として残す。
     private bool m_nextRight;
+    /// @note 現在の歩幅が障害物をまたぐ場合だけ、空中の足先で実際の引っ掛かりを調べる。
     private bool m_tripObstacle;
+    /// @note 同じ障害物に連続してつまずくのを防ぐ残り時間（秒）。
     private float m_tripCooldown;
+    /// @note つまずいた足が着いた後、反対の足を一歩出してバランスを取り戻すための予約。
     private bool m_catchStep;
+    /// @note 転び始めの方向。胸の向きから仰向け・うつ伏せを区別しにくいときの判断に使う。
     private bool m_fallForward;
+    /// @note うつ伏せから起きるかを姿勢観測から決め、身体を支える手を前後どちらに置くかを選ぶ。
     private bool m_recoverProne;
+    /// @note 箱へ手を伸ばしている途中かどうか。つかみ終わった状態とは別に姿勢を制御する。
     private bool m_reaching;
+    /// @note ジャンプ・把持・前後への転倒キーの前回の押下状態を保持し、押した瞬間だけ操作を開始する。
     private bool m_jumpDown;
     private bool m_grabDown;
     private bool m_proneDown;
     private bool m_supineDown;
+    /// @note 通常の腕の姿勢から箱の取っ手へどれだけ近づけるかを表す 0～1 の値。
     private float m_reach;
+    /// @note 前回の注視点から今回の目標へ徐々に近づけ、歩行の細かな揺れをカメラに伝えにくくする。
     private Vector3 m_lastCameraTarget;
 
     protected override void FixedUpdate()
@@ -222,11 +256,12 @@ public sealed class ActiveRagdollSampleComponent : Script
         if (m_swing is Foot moving)
         {
             m_stepTime += dt;
-            float progress = Clamp01(m_stepTime / m_stepLength);
+            float progress = Clamp01(m_stepTime / m_stepDurationSeconds);
             float eased = Smooth(progress);
             m_yaw = Mix(m_yawStart, m_yawEnd, eased);
             float path = Smooth(Clamp01((progress - 0.21f) / 0.57f));
             Vector3 sole = Mix(m_footStart, m_footEnd, path);
+            /// @note 離地時と着地時には高さを 0 にしたいので、立ち上がる曲線と立ち下がる曲線を掛け合わせる。
             float arc = Smooth(Clamp01(progress / 0.3f)) * Smooth(Clamp01((1f - progress) / 0.32f));
             float lift = m_tripObstacle ? 0.033f : 0.11f;
             sole.Y += arc * (lift + MathF.Abs(m_footEnd.Y - m_footStart.Y) * 0.65f);
@@ -242,7 +277,7 @@ public sealed class ActiveRagdollSampleComponent : Script
                 StartTrip(moving, observed);
             else if (progress >= 1f && Plant(moving, observed))
                 FinishStep();
-            else if (m_stepTime > m_stepLength + 0.60f)
+            else if (m_stepTime > m_stepDurationSeconds + 0.60f)
                 AbortStep(moving, observed);
         }
 
@@ -263,12 +298,12 @@ public sealed class ActiveRagdollSampleComponent : Script
                 BeginStep(direction, turn);
         }
         state = m_phase == Phase.TRIP ? "tripping" : m_swing is null ? "idle" : "walking";
-        float shift = m_swing is null ? 0f : MathF.Sin(MathF.PI * Clamp01(m_stepTime / m_stepLength)) * m_swing.Side;
+        float shift = m_swing is null ? 0f : MathF.Sin(MathF.PI * Clamp01(m_stepTime / m_stepDurationSeconds)) * m_swing.Side;
         float trip = m_phase == Phase.TRIP ? MathF.Sin(MathF.PI * Clamp01(m_phaseTime / 0.64f)) : 0f;
         float pitch = 0.04f + trip * 0.48f;
         if (grabbing) pitch += 0.20f * m_travelSign;
         float lower = m_swing is not null ? Math.Clamp(m_footStart.Y - m_footEnd.Y, 0f, 0.06f) *
-            Smooth(Clamp01(m_stepTime / m_stepLength)) : 0f;
+            Smooth(Clamp01(m_stepTime / m_stepDurationSeconds)) : 0f;
         Pose(m_center, 0.10f + 0.025f * MathF.Abs(shift) + lower, pitch, -0.09f * shift, dt);
     }
 
@@ -298,7 +333,7 @@ public sealed class ActiveRagdollSampleComponent : Script
         m_yawStart = m_yaw;
         m_yawEnd = yawEnd;
         m_stepTime = 0f;
-        m_stepLength = (m_phase == Phase.TRIP ? 0.41f : STEP_SECONDS) + (grabbing ? 0.13f : 0f);
+        m_stepDurationSeconds = (m_phase == Phase.TRIP ? 0.41f : STEP_SECONDS) + (grabbing ? 0.13f : 0f);
         m_stepCenterStart = m_center;
         m_stepCenterEnd = (end + stance.Goal) * 0.5f - forward * 0.059f;
         /// @note 高さは接地の確認後に上げる。腰を先に段差へ動かすと支持足を引っ張る。
@@ -312,7 +347,7 @@ public sealed class ActiveRagdollSampleComponent : Script
         Vector3 goalVelocity = (foot.Goal - m_previous[foot.Bone]) / dt;
         Vector3 force = (foot.Goal - observed.Position) * 4200f + (goalVelocity - observed.Velocity) * 100f;
         float envelope = Smooth(Clamp01(m_stepTime / 0.08f)) *
-            Smooth(Clamp01((0.86f * m_stepLength - m_stepTime) / 0.12f));
+            Smooth(Clamp01((0.86f * m_stepDurationSeconds - m_stepTime) / 0.12f));
         Vector3 bounded = force.NormalizedOr(Vector3.ZERO) * (MathF.Min(680f, force.Length) * envelope);
         m_rig!.ApplyBodyForce(BONES[foot.Bone], bounded, dt);
     }
@@ -383,7 +418,7 @@ public sealed class ActiveRagdollSampleComponent : Script
         m_stepCenterStart = m_center;
         m_stepCenterEnd = m_center + direction * 0.11f;
         m_stepTime = 0f;
-        m_stepLength = 0.39f;
+        m_stepDurationSeconds = 0.39f;
         m_rig!.ApplyBodyImpulse(BONES[TORSO], direction * 6f);
         m_nextRight = foot.Side < 0f;
         Enter(Phase.TRIP);
@@ -583,7 +618,7 @@ public sealed class ActiveRagdollSampleComponent : Script
             int upperArm = foot.Bone + 1;
             Vector3 shoulder = torso + torsoRotation * new Vector3(side * 0.235f, 0.13f, 0f);
             Vector3 hand = shoulder + torsoRotation * new Vector3(side * 0.09f, -0.48f,
-                m_swing is null ? 0.035f : m_swing.Side * side * 0.12f * MathF.Sin(MathF.PI * Clamp01(m_stepTime / m_stepLength)));
+                m_swing is null ? 0.035f : m_swing.Side * side * 0.12f * MathF.Sin(MathF.PI * Clamp01(m_stepTime / m_stepDurationSeconds)));
             if (m_crate?.IsAlive == true && m_reach > 0f)
             {
                 Vector3 handle = grabbing ? center + yaw * new Vector3(side * 0.23f, 0.86f, 0.40f) : CrateHandle(side);
@@ -625,7 +660,9 @@ public sealed class ActiveRagdollSampleComponent : Script
         Vector3 axis = delta.NormalizedOr(frame * -Vector3.UP);
         float distance = Math.Clamp(delta.Length, MathF.Abs(first - second) + 0.008f, first + second - 0.006f);
         Vector3 pole = (bend - axis * Vector3.Dot(bend, axis)).NormalizedOr(frame * Vector3.RIGHT);
+        /// @note 脚や腕の二節と始点・終点を結ぶ線で三角形を作り、余弦定理で関節までの軸方向の距離を求める。
         float along = (first * first - second * second + distance * distance) / (2f * distance);
+        /// @note 最初の節を斜辺とする直角三角形から、軸に垂直な距離を求め、膝や肘を曲げたい方向に足す。
         Vector3 middle = start + axis * along + pole * MathF.Sqrt(MathF.Max(0f, first * first - along * along));
         Quaternion upperRotation = Align(frame, upperRest, middle - start);
         Quaternion lowerRotation = Align(frame, lowerRest, start + axis * distance - middle);

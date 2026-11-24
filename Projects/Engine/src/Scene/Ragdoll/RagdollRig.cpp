@@ -25,45 +25,6 @@ namespace {
 
 constexpr float kMinBoneLength = 1.0e-4f;
 
-bool ValidBodyDrive(const RagdollBodyDrive& settings)
-{
-    const float values[] = {settings.linearFrequency, settings.angularFrequency, settings.linearDampingRatio,
-        settings.angularDampingRatio, settings.maxForce, settings.maxTorque, settings.targetVelocityMultiplier};
-    return (settings.space == RagdollDriveSpace::PARENT || settings.space == RagdollDriveSpace::WORLD)
-        && std::all_of(std::begin(values), std::end(values), [](float value) { return std::isfinite(value) && value >= 0.0f; });
-}
-
-RagdollBodyDrive ResolveDrivePatch(const RagdollBodyDrive& base, const RagdollBodyDrivePatch& patch)
-{
-    return {
-        patch.enabled.value_or(base.enabled),
-        patch.space.value_or(base.space),
-        patch.linearFrequency.value_or(base.linearFrequency),
-        patch.angularFrequency.value_or(base.angularFrequency),
-        patch.linearDampingRatio.value_or(base.linearDampingRatio),
-        patch.angularDampingRatio.value_or(base.angularDampingRatio),
-        patch.maxForce.value_or(base.maxForce),
-        patch.maxTorque.value_or(base.maxTorque),
-        patch.targetVelocityMultiplier.value_or(base.targetVelocityMultiplier),
-    };
-}
-
-RagdollBodyDrive BlendBodyDrive(const RagdollBodyDrive& from, const RagdollBodyDrive& to, float weight)
-{
-    /// @note on/off を切り替える間は出力上限を 0 から補間し、最後に目標の enabled と値へ揃える。
-    return {
-        from.enabled || to.enabled,
-        to.space,
-        std::lerp(from.linearFrequency, to.linearFrequency, weight),
-        std::lerp(from.angularFrequency, to.angularFrequency, weight),
-        std::lerp(from.linearDampingRatio, to.linearDampingRatio, weight),
-        std::lerp(from.angularDampingRatio, to.angularDampingRatio, weight),
-        std::lerp(from.enabled ? from.maxForce : 0.0f, to.enabled ? to.maxForce : 0.0f, weight),
-        std::lerp(from.enabled ? from.maxTorque : 0.0f, to.enabled ? to.maxTorque : 0.0f, weight),
-        std::lerp(from.targetVelocityMultiplier, to.targetVelocityMultiplier, weight),
-    };
-}
-
 /// @note 箱の頂点球で近接点を探し、プローブの余白を除いた実形状の深さで支持を取る。
 class RagdollBoxCollider final : public physics::OBBCollider {
 public:
@@ -276,17 +237,9 @@ void RagdollRig::Clear()
     m_driveProfileElapsed = m_driveProfileDuration = 0.0;
     m_boneToBody.clear();
     m_standingTargets.clear();
-    m_ownerHistory = false;
-    m_targetSamples.clear();
-    m_targetSampleHead = 0;
-    m_targetPosePool.clear();
-    m_sampleTime = m_simulationTime = m_targetStepTime = 0.0;
-    m_sourceTargets.clear();
-    m_sampledTargets.clear();
-    m_sampleBefore.clear();
-    m_sampleAfter.clear();
-    m_sampledVelocities.clear();
-    m_sampledAngularVelocities.clear();
+    m_hasPreviousOwnerPose = false;
+    m_driveTargetHistory.Clear();
+    m_simulationTime = m_substepTargetTime = 0.0;
     m_standingPositions.clear();
     m_standingRotations.clear();
     m_standingLocalRotations.clear();
@@ -631,179 +584,6 @@ void RagdollRig::BuildShapeInstances()
             m_instances.push_back(cap);
         }
     }
-}
-
-void RagdollRig::ApplyDrive()
-{
-    FBZZ_PROFILE_SCOPE("RagdollRig::ApplyDrive");
-    const float gravity = m_solver.GetGravity().Length();
-    for (auto& link : m_bodies) {
-        if (!link.drive) continue;
-        const auto& d=link.activeDrive;
-        int depth=0;
-        for (int p=link.parentBody;p>=0;p=m_bodies[static_cast<std::size_t>(p)].parentBody) ++depth;
-        const float strength=std::max(m_driveScale,0.0f)*std::pow(std::max(m_driveFalloff,0.0f),static_cast<float>(depth));
-        physics::XPBDBodyDriveSettings settings;
-        settings.enabled=d.enabled && m_driveEnabled && strength>0.0f;
-        settings.linearFrequency=d.linearFrequency*std::sqrt(strength);
-        settings.angularFrequency=d.angularFrequency*std::sqrt(strength);
-        settings.linearDampingRatio=d.linearDampingRatio*std::max(m_driveDamping,0.0f);
-        settings.angularDampingRatio=d.angularDampingRatio*std::max(m_driveDamping,0.0f);
-        settings.maxForce=d.maxForce*strength;
-        settings.maxTorque=d.maxTorque*strength;
-        settings.targetVelocityMultiplier=d.targetVelocityMultiplier;
-        link.drive->SetReference(m_controls->Space(link.name,d.space)==RagdollDriveSpace::PARENT && link.parentBody>=0
-            ? m_bodies[static_cast<std::size_t>(link.parentBody)].body.get() : nullptr);
-        link.drive->SetSettings(settings);
-    }
-
-    /// @note 繋ぎ止めもサーボと同じ «自重比» で持つ。重力を変えれば必要な力も変わる。
-    const float anchorStrength = std::max(m_anchorScale, 0.0f);
-    for (std::size_t a = 0; a < m_anchors.size(); ++a) {
-        const float mass   = a < m_anchorMass.size()   ? m_anchorMass[a]   : m_totalMass;
-        const float moment = a < m_anchorMoment.size() ? m_anchorMoment[a] : 0.0f;
-        m_anchors[a]->SetFiniteStrength(mass * gravity * anchorStrength,
-                                  moment * gravity * anchorStrength,
-                                   std::max(m_anchorSag, 0.0f), std::max(m_anchorTilt, 0.0f));
-        /// @note XPBD の上限 0 は無制限を意味する。自重比から算出した出力 0 は明示的に切る。
-        m_anchors[a]->SetEnabled(m_driveEnabled && anchorStrength > 0.0f && gravity > 0.0f
-            && !m_bodies[static_cast<std::size_t>(m_anchorBody[a])].authoredDrive
-            && !m_bodies[static_cast<std::size_t>(m_anchorBody[a])].customDrive
-            && !m_bodies[static_cast<std::size_t>(m_anchorBody[a])].profileDrive);
-    }
-
-    for (JointLink& link : m_joints) {
-        const float strength =
-            std::max(m_driveScale, 0.0f) *
-            std::pow(std::max(m_driveFalloff, 0.0f), static_cast<float>(link.depth));
-
-        physics::XPBDJointDrive& drive = link.joint->Drive();
-        /// @note 目標は毎フレーム別に更新される
-        const math::Quaternion target = drive.target;
-
-        drive         = physics::XPBDJointDrive{};
-        drive.target  = target;
-        drive.enabled = link.baseServo.enabled && m_driveEnabled && strength > 0.0f
-            && !m_bodies[static_cast<std::size_t>(link.childBody)].authoredDrive
-            && !m_bodies[static_cast<std::size_t>(link.childBody)].customDrive
-            && !m_bodies[static_cast<std::size_t>(link.childBody)].profileDrive;
-        if (!drive.enabled) continue;
-
-        /// @note «その先を支えるのに要るトルク» に倍率を掛けたものが上限になる。骨格の
-        /// @note 大きさが変わっても «どれだけ余裕があるか» が保たれる (理由は RagdollServo を参照)。
-        drive.maxTorque =
-            link.holdMoment * gravity * std::max(link.baseServo.torqueScale, 0.0f) * strength;
-        drive.enabled = drive.maxTorque > 0.0f;
-        if (!drive.enabled) continue;
-        /// @note たわみ角 θ でのトルクは θ/α。α = holdSag / maxTorque と置くと、
-        /// @note «holdSag だけたわんだところで上限を出し切る» という一貫した意味になる。
-        ///
-        /// @note 弱くすると上限が下がり、同じ式で compliance が上がる ─ 硬いまま上限だけ
-        /// @note 下げると、押した瞬間は耐えて限界で急に落ちる不連続な動きになる。
-        drive.compliance =
-            std::max(link.baseServo.holdSag, 0.0f) / std::max(drive.maxTorque, 1.0e-4f);
-        drive.damping = link.baseServo.damping * std::max(m_driveDamping, 0.0f);
-    }
-}
-
-void RagdollRig::SetEffectiveDrive(BodyLink& link, const RagdollBodyDrive& settings)
-{
-    if (link.activeDrive.space != settings.space) link.targetHistory = false;
-    link.activeDrive = settings;
-}
-
-bool RagdollRig::SetBodyDrive(std::string_view bone, const RagdollBodyDrive& settings)
-{
-    if (!ValidBodyDrive(settings)) return false;
-    for (auto& link:m_bodies) if (link.name==bone) {
-        SetEffectiveDrive(link, settings);
-        link.customDrive=true;
-        ResetRest();
-        ApplyDrive();
-        return true;
-    }
-    return false;
-}
-
-bool RagdollRig::ClearBodyDrive(std::string_view bone)
-{
-    for (auto& link:m_bodies) if (link.name==bone) {
-        link.customDrive = false;
-        SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
-        ResetRest();
-        ApplyDrive();
-        return true;
-    }
-    return false;
-}
-
-bool RagdollRig::ApplyDriveProfile(std::span<const RagdollBodyDriveEntry> entries, float transitionSeconds)
-{
-    if (!std::isfinite(transitionSeconds) || transitionSeconds < 0.0f || entries.size() > m_bodies.size()) return false;
-    std::vector<std::optional<RagdollBodyDrive>> targets(m_bodies.size());
-    for (const auto& entry : entries) {
-        const auto body = std::find_if(m_bodies.begin(), m_bodies.end(),
-            [&entry](const BodyLink& link) { return link.name == entry.bone; });
-        if (entry.bone.empty() || body == m_bodies.end()) return false;
-        auto& target = targets[static_cast<std::size_t>(body - m_bodies.begin())];
-        if (target) return false;
-        target = ResolveDrivePatch(body->baseDrive, entry.patch);
-        if (!ValidBodyDrive(*target)) return false;
-    }
-
-    m_driveProfileTransitions.clear();
-    m_driveProfileElapsed = 0.0;
-    m_driveProfileDuration = transitionSeconds;
-    for (std::size_t i = 0; i < m_bodies.size(); ++i) {
-        auto& link = m_bodies[i];
-        if (!targets[i] && !link.profileDrive) continue;
-        if (transitionSeconds > 0.0f) {
-            const auto from = link.profileDrive.value_or(link.baseDrive);
-            m_driveProfileTransitions.push_back({i, from, targets[i]});
-        } else {
-            link.profileDrive = targets[i];
-            if (!link.customDrive) SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
-        }
-    }
-    ResetRest();
-    ApplyDrive();
-    return true;
-}
-
-void RagdollRig::AdvanceDriveProfile(float dt)
-{
-    if (m_driveProfileTransitions.empty()) return;
-    m_driveProfileElapsed += static_cast<double>(dt);
-    const bool finished = m_driveProfileElapsed >= m_driveProfileDuration;
-    const float weight = static_cast<float>(std::min(1.0, m_driveProfileElapsed / m_driveProfileDuration));
-    for (const auto& transition : m_driveProfileTransitions) {
-        auto& link = m_bodies[transition.bodyIndex];
-        link.profileDrive = finished ? transition.to : std::optional{
-            BlendBodyDrive(transition.from, transition.to.value_or(link.baseDrive), weight)};
-        if (!link.customDrive) SetEffectiveDrive(link, link.profileDrive.value_or(link.baseDrive));
-    }
-    if (finished) m_driveProfileTransitions.clear();
-    ApplyDrive();
-}
-
-void RagdollRig::SetDrive(bool enabled, float scale, float falloff, float damping)
-{
-    if (enabled) ResetRest();
-    m_driveEnabled = enabled;
-    m_driveScale   = scale;
-    m_driveFalloff = falloff;
-    m_driveDamping = damping;
-    /// @note 脱力するときは繋ぎ止めも外す。残すと «力が抜けたのに胴だけ宙に留まる» になる。
-    for (physics::XPBDPoseAnchor* anchor : m_anchors) anchor->SetEnabled(enabled);
-    ApplyDrive();
-}
-
-void RagdollRig::SetRootAnchor(float scale, float sag, float tilt)
-{
-    m_anchorScale = scale;
-    m_anchorSag   = sag;
-    m_anchorTilt  = tilt;
-    ApplyDrive();
 }
 
 void RagdollRig::RefreshContacts(physics::World* world)
@@ -1174,7 +954,7 @@ void RagdollRig::Capture(const std::vector<RagdollBonePose>& bones)
     m_contactCache.clear();
     m_previousContacts.clear();
     for (auto& link:m_bodies) link.targetHistory=false;
-    m_ownerHistory = false;
+    m_hasPreviousOwnerPose = false;
     m_standingTargets = bones;
     for (std::size_t i = 0; i < m_bodies.size(); ++i) {
         const BodyLink& link = m_bodies[i];
@@ -1195,10 +975,9 @@ void RagdollRig::Capture(const std::vector<RagdollBonePose>& bones)
     /// @note 剛体を «瞬間移動» させたので、接触が覚えている前フレームの位置は無効。
     for (physics::XPBDPlaneContact* contact : m_ground) contact->ResetHistory();
     m_simulationTime = 0.0;
-    ResetTargetSamples(bones);
+    ResetDriveTargetHistory(bones);
     /// @note 捕獲だけでは駆動目標を更新しない。最初のUpdateDriveTargetsで現在の物理時刻から補間を開始する。
-    m_targetPosePool.push_back(std::move(m_targetSamples.back().bones));
-    m_targetSamples.clear();
+    m_driveTargetHistory.RecycleSamples();
 }
 
 bool RagdollRig::TryGetBoneSupport(std::string_view bone, math::Vector3& outPosition,
@@ -1252,331 +1031,9 @@ bool RagdollRig::TryGetFootPlacement(std::string_view bone, const math::Quaterni
     return false;
 }
 
-void RagdollRig::StoreTargetSample(const std::vector<RagdollBonePose>& bones)
-{
-    if (m_targetSampleHead > 0 && m_targetSampleHead * 2 >= m_targetSamples.size()) {
-        m_targetSamples.erase(m_targetSamples.begin(), m_targetSamples.begin() + m_targetSampleHead);
-        m_targetSampleHead = 0;
-    }
-    TargetSample sample;
-    sample.time = m_sampleTime;
-    if (!m_targetPosePool.empty()) {
-        sample.bones = std::move(m_targetPosePool.back());
-        m_targetPosePool.pop_back();
-    }
-    sample.bones.resize(bones.size());
-    const float sampleDt = m_targetSamples.empty() ? 0.0f
-        : static_cast<float>(sample.time - m_targetSamples.back().time);
-    for (std::size_t i = 0; i < bones.size(); ++i) {
-        const auto& bone = bones[i];
-        auto& target = sample.bones[i];
-        target.position = bone.position;
-        target.rotation = bone.rotation;
-        target.velocity = math::Vector3::ZERO;
-        target.angularVelocity = math::Vector3::ZERO;
-        if (bone.parent >= 0 && bone.parent < static_cast<int>(i)) {
-            const auto& parent = bones[static_cast<std::size_t>(bone.parent)];
-            const auto inverse = parent.rotation.Inverse();
-            target.position = inverse * (bone.position - parent.position);
-            target.rotation = (inverse * bone.rotation).Normalized();
-        }
-        if (sampleDt > 0.0f) {
-            const auto& previous = m_targetSamples.back().bones[i];
-            target.velocity = (target.position - previous.position) / sampleDt;
-            /// @note Slerpの区間角速度を一度だけ保存し、小角近似やsubstep再差分による標本間隔依存を避ける。
-            /// @see https://modernrobotics.northwestern.edu/nu-gm-book-resource/3-2-3-exponential-coordinates-of-rotation-part-1-of-2/ Modern Robotics §3.2.3 回転ベクトルと一定角速度。
-            target.angularVelocity = physics::RotationVector(
-                (target.rotation * previous.rotation.Inverse()).Normalized()) / sampleDt;
-        }
-    }
-    m_targetSamples.push_back(std::move(sample));
-}
-
-void RagdollRig::ResetTargetSamples(const std::vector<RagdollBonePose>& bones)
-{
-    for (std::size_t i = m_targetSampleHead; i < m_targetSamples.size(); ++i)
-        m_targetPosePool.push_back(std::move(m_targetSamples[i].bones));
-    m_targetSamples.clear();
-    m_targetSampleHead = 0;
-    m_sampleTime = m_simulationTime;
-    m_sourceTargets = bones;
-    m_sampledTargets = bones;
-    m_sampleBefore = bones;
-    m_sampleAfter = bones;
-    m_sampledVelocities.assign(bones.size(), math::Vector3::ZERO);
-    m_sampledAngularVelocities.assign(bones.size(), math::Vector3::ZERO);
-    m_standingTargets = bones;
-    StoreTargetSample(bones);
-}
-
-void RagdollRig::ComposeTargetSample(const TargetSample& sample, std::vector<RagdollBonePose>& output) const
-{
-    for (std::size_t i = 0; i < sample.bones.size(); ++i) {
-        auto& bone = output[i];
-        bone.position = sample.bones[i].position;
-        bone.rotation = sample.bones[i].rotation;
-        const int parent = m_sourceTargets[i].parent;
-        if (parent >= 0 && parent < static_cast<int>(i)) {
-            const auto& ancestor = output[static_cast<std::size_t>(parent)];
-            bone.position = ancestor.position + ancestor.rotation * bone.position;
-            bone.rotation = (ancestor.rotation * bone.rotation).Normalized();
-        }
-    }
-}
-
-void RagdollRig::SampleDriveTargets(double time)
-{
-    if (m_targetSamples.empty() || (!m_driveEnabled && !m_standingGuard)) return;
-    FBZZ_PROFILE_SCOPE("RagdollRig::SampleDriveTargets");
-    constexpr double TARGET_TIME_TOLERANCE = 1.0e-7;
-    while (m_targetSampleHead + 2 < m_targetSamples.size()
-        && m_targetSamples[m_targetSampleHead + 1].time < time - TARGET_TIME_TOLERANCE) {
-        m_targetPosePool.push_back(std::move(m_targetSamples[m_targetSampleHead].bones));
-        ++m_targetSampleHead;
-    }
-    const auto& before = m_targetSamples[m_targetSampleHead];
-    if (m_targetSampleHead + 1 == m_targetSamples.size()) {
-        ComposeTargetSample(before, m_sampledTargets);
-        ApplyTargetPose(m_sampledTargets, nullptr, nullptr, 0.0f);
-        return;
-    }
-    const auto& after = m_targetSamples[m_targetSampleHead + 1];
-    const double duration = after.time - before.time;
-    const float weight = duration > 0.0
-        ? static_cast<float>(std::clamp((time - before.time) / duration, 0.0, 1.0)) : 1.0f;
-    const bool moving = duration > 0.0 && time <= after.time + TARGET_TIME_TOLERANCE;
-    for (std::size_t i = 0; i < before.bones.size(); ++i) {
-        auto& bone = m_sampledTargets[i];
-        bone.position = math::Vector3::Lerp(before.bones[i].position, after.bones[i].position, weight);
-        bone.rotation = math::Quaternion::Slerp(before.bones[i].rotation, after.bones[i].rotation, weight);
-        auto& velocity = m_sampledVelocities[i];
-        auto& angular = m_sampledAngularVelocities[i];
-        velocity = moving ? after.bones[i].velocity : math::Vector3::ZERO;
-        angular = moving ? after.bones[i].angularVelocity : math::Vector3::ZERO;
-        const int parent = m_sourceTargets[i].parent;
-        if (parent >= 0 && parent < static_cast<int>(i)) {
-            const auto index = static_cast<std::size_t>(parent);
-            const auto& ancestor = m_sampledTargets[index];
-            const auto offset = ancestor.rotation * bone.position;
-            /// @note 親の回転が子のworld位置を運ぶ速度を加え、同じ補間曲線の姿勢と速度を使う。
-            /// @see https://modernrobotics.northwestern.edu/nu-gm-book-resource/3-3-2-twists-part-1-of-2/ Modern Robotics §3.3.2 回転による原点速度。
-            velocity = m_sampledVelocities[index]
-                + math::Vector3::Cross(m_sampledAngularVelocities[index], offset) + ancestor.rotation * velocity;
-            angular = m_sampledAngularVelocities[index] + ancestor.rotation * angular;
-            bone.position = ancestor.position + offset;
-            bone.rotation = (ancestor.rotation * bone.rotation).Normalized();
-        }
-    }
-    ApplyTargetPose(m_sampledTargets, nullptr, nullptr, 0.0f, true);
-}
-
-void RagdollRig::UpdateDriveTargets(const std::vector<RagdollBonePose>& bones, float sampleDt,
-    const RagdollOwnerPose* ownerPose)
-{
-    if (!std::isfinite(sampleDt) || sampleDt < 0.0f) return;
-    if (m_sourceTargets.size() == bones.size()
-        && (m_targetSamples.empty() || m_sampleTime + 1.0e-7 < m_simulationTime))
-        ResetTargetSamples(m_sourceTargets);
-    const auto transport = [](BodyLink& link, const math::Vector3& before,
-        const math::Vector3& after, const math::Quaternion& delta) {
-        link.body->SetPosition(after + delta * (link.body->GetPosition() - before));
-        link.body->SetRotation((delta * link.body->GetRotation()).Normalized());
-        link.body->SetVelocity(delta * link.body->GetVelocity());
-        link.body->SetAngularVelocity(delta * link.body->GetAngularVelocity());
-    };
-    /// @note 待機中のworld根だけを運び、親ローカル目標へ共通移動を再加算しない。
-    const auto transportSamples = [this](std::size_t root, const math::Vector3& before,
-        const math::Vector3& after, const math::Quaternion& delta) {
-        for (std::size_t i = m_targetSampleHead; i < m_targetSamples.size(); ++i) {
-            auto& pose = m_targetSamples[i].bones[root];
-            pose.position = after + delta * (pose.position - before);
-            pose.rotation = (delta * pose.rotation).Normalized();
-            pose.velocity = delta * pose.velocity;
-            pose.angularVelocity = delta * pose.angularVelocity;
-        }
-    };
-    if (m_standingGuard && m_sourceTargets.size() == bones.size()) {
-        /// @note 腰アニメーションを所有者の移動と混同すると、接地中の足まで毎フレーム動かしてしまう。
-        /// @see Docs/design/active-ragdoll.md
-        if (ownerPose && m_ownerHistory) {
-            const auto delta = (ownerPose->rotation * m_ownerPose.rotation.Inverse()).Normalized();
-            for (auto& link : m_bodies) transport(link,m_ownerPose.position,ownerPose->position,delta);
-            for (std::size_t i = 0; i < bones.size(); ++i)
-                if (bones[i].parent < 0) transportSamples(i,m_ownerPose.position,ownerPose->position,delta);
-        } else if (!ownerPose) for (auto& link : m_bodies) {
-            int root = link.boneIndex;
-            while (bones[static_cast<std::size_t>(root)].parent >= 0 &&
-                   bones[static_cast<std::size_t>(root)].parent < root)
-                root = bones[static_cast<std::size_t>(root)].parent;
-            const auto index = static_cast<std::size_t>(root);
-            const auto delta = (bones[index].rotation * m_sourceTargets[index].rotation.Inverse()).Normalized();
-            transport(link,m_sourceTargets[index].position,bones[index].position,delta);
-        }
-        if (!ownerPose) for (std::size_t i = 0; i < bones.size(); ++i) {
-            if (bones[i].parent >= 0) continue;
-            const auto delta = (bones[i].rotation * m_sourceTargets[i].rotation.Inverse()).Normalized();
-            transportSamples(i,m_sourceTargets[i].position,bones[i].position,delta);
-        }
-    }
-    m_ownerHistory = ownerPose != nullptr;
-    if (ownerPose) m_ownerPose = *ownerPose;
-    if (sampleDt == 0.0f) {
-        /// @note 即時編集とActive再開は現在の物理時刻から始め、過去の停止時間を速度へ変換しない。
-        ResetTargetSamples(bones);
-        ApplyTargetPose(bones, nullptr, nullptr, 0.0f);
-        return;
-    }
-    if (m_sourceTargets.size() != bones.size()) ResetTargetSamples(bones);
-    m_sampleTime += static_cast<double>(sampleDt);
-    m_sourceTargets = bones;
-    StoreTargetSample(bones);
-    const auto count = m_targetSamples.size();
-    ComposeTargetSample(m_targetSamples[count - 2], m_sampleBefore);
-    ComposeTargetSample(m_targetSamples[count - 1], m_sampleAfter);
-    ApplyTargetPose(bones, &m_sampleBefore, &m_sampleAfter, sampleDt);
-}
-
-void RagdollRig::ApplyTargetPose(const std::vector<RagdollBonePose>& bones,
-    const std::vector<RagdollBonePose>* before, const std::vector<RagdollBonePose>* after, float sampleDt,
-    bool useSampledVelocities)
-{
-    for (std::size_t i = 0; i < bones.size(); ++i) {
-        m_standingTargets[i].position = bones[i].position;
-        m_standingTargets[i].rotation = bones[i].rotation;
-        m_standingTargets[i].scale = bones[i].scale;
-    }
-    const auto bodyTarget = [this](int index, const std::vector<RagdollBonePose>& pose,
-        math::Vector3& position, math::Quaternion& rotation,
-        math::Vector3* velocity = nullptr, math::Vector3* angular = nullptr) {
-        const auto& link = m_bodies[static_cast<std::size_t>(index)];
-        const auto boneIndex = static_cast<std::size_t>(link.boneIndex);
-        BodyPoseFromBone(index,pose[boneIndex],position,rotation);
-        if (velocity && angular) {
-            *angular = m_sampledAngularVelocities[boneIndex];
-            /// @note 骨原点から重心へ移した速度には、固定オフセットの回転速度を差し引く。
-            *velocity = m_sampledVelocities[boneIndex] - math::Vector3::Cross(*angular, rotation * link.boneOffset);
-        }
-        if (m_controls->Space(link.name,link.activeDrive.space)==RagdollDriveSpace::PARENT && link.parentBody>=0) {
-            const auto& parent=m_bodies[static_cast<std::size_t>(link.parentBody)];
-            const auto parentBoneIndex = static_cast<std::size_t>(parent.boneIndex);
-            math::Vector3 parentPosition;
-            math::Quaternion parentRotation;
-            BodyPoseFromBone(link.parentBody,pose[parentBoneIndex],parentPosition,parentRotation);
-            const auto inverse = parentRotation.Inverse();
-            if (velocity && angular) {
-                const auto parentAngular = m_sampledAngularVelocities[parentBoneIndex];
-                const auto parentVelocity = m_sampledVelocities[parentBoneIndex]
-                    - math::Vector3::Cross(parentAngular, parentRotation * parent.boneOffset);
-                /// @note 親重心の移動と回転が運ぶ速度を除いてから、親の剛体空間へ変換する。
-                *velocity = inverse * (*velocity - parentVelocity
-                    - math::Vector3::Cross(parentAngular, position - parentPosition));
-                *angular = inverse * (*angular - parentAngular);
-            }
-            position=inverse*(position-parentPosition);
-            rotation=(inverse*rotation).Normalized();
-        }
-    };
-    for (std::size_t i=0;i<m_bodies.size();++i) {
-        auto& link=m_bodies[i];
-        if (!link.drive || link.boneIndex<0 || link.boneIndex>=static_cast<int>(bones.size())) continue;
-        math::Vector3 position;
-        math::Quaternion rotation;
-        auto velocity = math::Vector3::ZERO;
-        auto angular = math::Vector3::ZERO;
-        const bool sampledVelocity = useSampledVelocities && link.targetHistory;
-        bodyTarget(static_cast<int>(i),bones,position,rotation,
-            sampledVelocity ? &velocity : nullptr, sampledVelocity ? &angular : nullptr);
-        if (!useSampledVelocities && before && after && sampleDt > 0.0f && link.targetHistory) {
-            math::Vector3 previousPosition, nextPosition;
-            math::Quaternion previousRotation, nextRotation;
-            bodyTarget(static_cast<int>(i),*before,previousPosition,previousRotation);
-            bodyTarget(static_cast<int>(i),*after,nextPosition,nextRotation);
-            velocity = (nextPosition-previousPosition)/sampleDt;
-            angular = physics::AngularVelocityFromDelta(previousRotation,nextRotation,sampleDt);
-        }
-        m_controls->BlendTarget(link.name,position,rotation,velocity,angular);
-        link.drive->SetTarget(position,rotation,velocity,angular);
-        link.targetHistory=true;
-    }
-    /// @note 目標は «この骨の姿勢なら関節はどれだけ曲がっているか»。剛体の «あるべき» 姿勢を
-    /// @note 骨から作り、関節フレームへ落として相対を取る。捕獲した姿勢と同じなら Identity に
-    /// @note なるので、無負荷での釣り合い点がそのままアニメーションになる。
-    const auto rotationFromBone = [this, &bones](int bodyIndex, math::Quaternion& out) {
-        if (bodyIndex < 0 || bodyIndex >= static_cast<int>(m_bodies.size())) return false;
-        const int boneIndex = m_bodies[static_cast<std::size_t>(bodyIndex)].boneIndex;
-        if (boneIndex < 0 || boneIndex >= static_cast<int>(bones.size())) return false;
-
-        math::Vector3 position;
-        BodyPoseFromBone(bodyIndex, bones[static_cast<std::size_t>(boneIndex)], position, out);
-        return true;
-    };
-
-    /// @note 根は関節を持たないので、繋ぎ止めの目標をここで取り直す。これが無いと
-    /// @note サーボが形を保ったまま全体が落ちていく。
-    for (std::size_t i = 0; i < m_anchors.size(); ++i) {
-        const int bodyIndex = m_anchorBody[i];
-        const int boneIndex = m_bodies[static_cast<std::size_t>(bodyIndex)].boneIndex;
-        if (boneIndex < 0 || boneIndex >= static_cast<int>(bones.size())) continue;
-
-        math::Vector3    position;
-        math::Quaternion rotation;
-        BodyPoseFromBone(bodyIndex, bones[static_cast<std::size_t>(boneIndex)],
-                         position, rotation);
-        m_anchors[i]->SetTarget(position, rotation);
-    }
-
-    for (JointLink& link : m_joints) {
-        math::Quaternion parentRotation;
-        math::Quaternion childRotation;
-        if (!rotationFromBone(link.parentBody, parentRotation)) continue;
-        if (!rotationFromBone(link.childBody, childRotation)) continue;
-
-        const math::Quaternion parentFrame =
-            (parentRotation * link.joint->GetFrameParent()).Normalized();
-        const math::Quaternion childFrame =
-            (childRotation * link.joint->GetFrameChild()).Normalized();
-        const math::Quaternion target = (parentFrame.Inverse() * childFrame).Normalized();
-        link.joint->Drive().target = target;
-
-        if (!m_learnLimits) continue;
-
-        /// @note 角の測り方は関節側 (押し戻しに使うのと同じ分解) に任せる。学習側と検査側で
-        /// @note 分解や符号の扱いが 1 つでも違うと «広げたはずなのに押し戻される» という形でしか
-        /// @note 表面化しないため、測る関数を 1 つにして食い違いようが無い状態にする。
-        link.joint->LearnLimits(target, m_limitMargin);
-    }
-}
-
-void RagdollRig::SetLimitLearning(bool enabled, float margin)
-{
-    const bool wasEnabled = m_learnLimits;
-    m_learnLimits = enabled;
-    m_limitMargin = std::max(margin, 0.0f);
-
-    if (!m_learnLimits || wasEnabled) return;
-
-    /// @note 有効にした «その瞬間の姿勢» は、可動域の内側であることにする。毎フレーム今の姿勢を
-    /// @note 取り込むと、崩れて押し込まれた角まで «許可された角» として焼き込み、可動域が時間と
-    /// @note ともに意味を失うため、false → true の遷移の 1 回だけにする
-    /// @note (RagdollSystem は毎フレーム同じ値で呼ぶ)。
-    /// @note 有効にするのはふつう捕獲の直後で、その姿勢が既に可動域の外まで曲がっていることが
-    /// @note ある。UpdateDriveTargets が目標から学習するより先に 1 ステップ回ると、そこで
-    /// @note 押し戻されて «学習が効く前に崩れる» ため、クリップの要求値ではなく «実際に置いた
-    /// @note 姿勢» を測る (両者がずれていても効く)。
-    for (JointLink& link : m_joints) link.joint->LearnLimitsFromCurrentPose(m_limitMargin);
-}
-
-int RagdollRig::CountLimitedJoints() const
-{
-    int count = 0;
-    for (const JointLink& link : m_joints)
-        if (link.joint->IsLimited()) ++count;
-    return count;
-}
-
 void RagdollRig::SetStandingGuard(bool enabled, float maxDistance, float maxRadians)
 {
-    if (m_standingGuard != enabled) m_ownerHistory = false;
+    if (m_standingGuard != enabled) m_hasPreviousOwnerPose = false;
     m_standingGuard = enabled;
     m_standingMaxDistance = std::max(maxDistance, 0.0f);
     m_standingMaxRadians = std::max(maxRadians, 0.0f);
@@ -1718,7 +1175,7 @@ void RagdollRig::Step(float dt)
     if (!std::isfinite(dt) || dt <= 0.0f) return;
     AdvanceDriveProfile(dt);
     m_controlSubstep=dt/static_cast<float>(m_solver.GetSubsteps());
-    m_targetStepTime = m_simulationTime;
+    m_substepTargetTime = m_simulationTime;
     if (!m_resting) CaptureContactPoses();
     /// @note フレーム間の移動で薄い地形を通過する前に、積分後の形状から接触を作り直す。
     /// @see https://matthias-research.github.io/pages/publications/smallsteps.pdf Small Steps in Physics Simulation, §3 の substep 積分と拘束解決。
@@ -1737,8 +1194,8 @@ void RagdollRig::Step(float dt)
     m_solver.Step(dt, [](void* context) {
         auto& rig = *static_cast<RagdollRig*>(context);
         FBZZ_PROFILE_SCOPE("RagdollRig::PrepareSubstep");
-        rig.m_targetStepTime += static_cast<double>(rig.m_controlSubstep);
-        rig.SampleDriveTargets(rig.m_targetStepTime);
+        rig.m_substepTargetTime += static_cast<double>(rig.m_controlSubstep);
+        rig.SampleDriveTargets(rig.m_substepTargetTime);
         rig.m_controls->IntegrateForces(rig.m_controlSubstep);
         /// @note 次の substep は相手の反応済み速度を読む。フレーム末まで溜めると軽い物体へ同じ衝撃を重ねる。
         rig.ApplyContactReactions();
@@ -1896,16 +1353,6 @@ void RagdollRig::BuildDebugLines(std::vector<RagdollDebugLine>& out) const
         const math::Vector3 point = contact.ContactPointWorld();
         push(point, point + contact.GetNormal() * 0.25f, Kind::Contact);
     }
-}
-
-int RagdollRig::CountSaturatedJoints() const
-{
-    int count = 0;
-    for (const JointLink& link : m_joints)
-        if (link.joint->IsDriveSaturated()) ++count;
-    for (const auto& link:m_bodies)
-        if (link.drive && link.drive->IsSaturated()) ++count;
-    return count;
 }
 
 } /// @note namespace fbzz::scene
