@@ -8,8 +8,8 @@
 /// @note 細かい影を正確に表現できないため、スクリーンスペースで深度バッファを直接トレース
 /// @note し解像度に依らない鋭い接触影を低コストで追加する。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 
 namespace fbzz::renderer {
 

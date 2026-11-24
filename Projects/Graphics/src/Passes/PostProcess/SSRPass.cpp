@@ -6,10 +6,10 @@
 /// @note SSR が使えるのは現在のカメラで見える表面だけ。欠落と交差の不確かさは別 provider へ委ねる。
 /// @note GBuffer の法線・深度・金属度が要るため GBuffer 経路でのみ有効。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
-#include <Graphics/Renderer/DrawCall.hpp>
-#include "../../Renderer/QueuedComputeComposite.hpp"
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
+#include <Graphics/Renderer/Commands/DrawCall.hpp>
+#include "../../Renderer/Commands/QueuedComputeComposite.hpp"
 #include <cstdlib>
 
 namespace fbzz::renderer {

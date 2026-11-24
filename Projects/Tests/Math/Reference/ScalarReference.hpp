@@ -6,13 +6,13 @@
 /// @see Docs/design/math-simd.md §5 正しさの確かめ方
 #pragma once
 
-#include <Math/Frustum.hpp>
-#include <Math/MathUtils.hpp>
-#include <Math/Matrix4.hpp>
-#include <Math/Plane.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
-#include <Math/Vector4.hpp>
+#include <Math/Geometry/Frustum.hpp>
+#include <Math/Scalar/MathUtils.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
+#include <Math/Geometry/Plane.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 
 #include <array>
 #include <cmath>

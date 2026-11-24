@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-13
 #pragma once
-#include <Engine/Scene/Components/RagdollComponent.hpp>
-#include <Math/MathUtils.hpp>
+#include <Engine/Scene/Components/Physics/RagdollComponent.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 #include <algorithm>
 #include <cmath>
 

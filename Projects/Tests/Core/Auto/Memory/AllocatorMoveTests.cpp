@@ -12,9 +12,9 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Memory/LinearAllocator.hpp>
-#include <Engine/Core/Memory/PoolAllocator.hpp>
-#include <Engine/Core/Memory/StackAllocator.hpp>
+#include <Engine/Core/Memory/Allocators/LinearAllocator.hpp>
+#include <Engine/Core/Memory/Allocators/PoolAllocator.hpp>
+#include <Engine/Core/Memory/Allocators/StackAllocator.hpp>
 
 #include <cstddef>
 #include <utility>

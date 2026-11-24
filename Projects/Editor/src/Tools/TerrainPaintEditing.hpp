@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-05
 #pragma once
-#include <Engine/Asset/TerrainPaintAsset.hpp>
+#include <Engine/Asset/Terrain/TerrainPaintAsset.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 
 namespace fbzz::editor {

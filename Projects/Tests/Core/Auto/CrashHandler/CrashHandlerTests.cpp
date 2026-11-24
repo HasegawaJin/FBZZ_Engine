@@ -4,12 +4,12 @@
 /// @date    2026-09-19
 /// @see Docs/design/crash-report.md
 #include <TestKit/TestKit.hpp>
-#include <TestKit/TempDir.hpp>
+#include <TestKit/Support/TempDir.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/CrashHandler.hpp>
-#include <Engine/Core/DeveloperMode.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Diagnostics/CrashHandler.hpp>
+#include <Engine/Core/Platform/DeveloperMode.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 
 #include <filesystem>
 #include <fstream>

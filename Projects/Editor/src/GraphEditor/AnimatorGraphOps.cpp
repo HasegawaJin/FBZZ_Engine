@@ -6,12 +6,12 @@
 
 #include <Editor/EditorContext.hpp>
 #include <Editor/GraphEditor/GraphLayoutAlgo.hpp>
-#include <Editor/GraphLayout.hpp>
-#include <Editor/Util/AssetDirtyRegistry.hpp>
-#include <Editor/Util/AssetPath.hpp>
-#include <Engine/Asset/AnimatorControllerAsset.hpp>
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Util/StringUtils.hpp>
+#include <Editor/GraphEditor/GraphLayout.hpp>
+#include <Editor/Asset/Storage/AssetDirtyRegistry.hpp>
+#include <Editor/Asset/Storage/AssetPath.hpp>
+#include <Engine/Asset/Animation/Controllers/AnimatorControllerAsset.hpp>
+#include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
 
 #include <memory>
 #include <string>

@@ -4,11 +4,11 @@
 /// @date    2026-09-21
 #pragma once
 #include <Graphics/Api.hpp>
-#include <Graphics/Pipeline/IRenderPass.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/Material.hpp>
-#include <Graphics/Renderer/Mesh.hpp>
-#include <Math/MathUtils.hpp>
+#include <Graphics/Pipeline/Passes/IRenderPass.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Materials/Material.hpp>
+#include <Graphics/Renderer/Geometry/Mesh.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 #include <vector>
 #include <algorithm>
 namespace fbzz::renderer {

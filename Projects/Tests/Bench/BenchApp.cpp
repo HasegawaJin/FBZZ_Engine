@@ -10,11 +10,11 @@
 
 #include "Scenes/Scenes.hpp"
 
-#include <Engine/Core/Application.hpp>
-#include <Engine/Core/Window.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/IRenderer.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Core/Platform/Window.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 
 #include <imgui.h>
 

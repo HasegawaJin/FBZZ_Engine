@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
 #pragma once
-#include <Engine/Scene/Entity.hpp>
-#include <Math/Vector3.hpp>
+#include <Engine/Scene/References/Entity.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <memory>
 #include <vector>
 

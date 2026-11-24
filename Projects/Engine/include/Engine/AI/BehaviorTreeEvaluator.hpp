@@ -6,7 +6,7 @@
 #include <Engine/Api.hpp>
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
 #include <Engine/AI/Blackboard.hpp>
-#include <Engine/Scene/Entity.hpp>
+#include <Engine/Scene/References/Entity.hpp>
 
 #include <cstdint>
 #include <vector>

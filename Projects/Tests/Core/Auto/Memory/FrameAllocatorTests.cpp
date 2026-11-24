@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Memory/FrameAllocator.hpp>
+#include <Engine/Core/Memory/Allocators/FrameAllocator.hpp>
 
 namespace fbzz::tests {
 

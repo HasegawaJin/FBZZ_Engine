@@ -2,29 +2,29 @@
 /// @brief   Transform / Script の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Scene/Components/ColliderComponent.hpp>
-#include <Engine/Scene/Components/UIImage.hpp>
-#include <Engine/Scene/Components/UIText.hpp>
-#include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/Components/Physics/ColliderComponent.hpp>
+#include <Engine/Scene/Components/UI/UIImage.hpp>
+#include <Engine/Scene/Components/UI/UIText.hpp>
+#include <Engine/Scene/Scripting/ScriptComponent.hpp>
 #include "InspectorCore.hpp"
-#include <Editor/Util/TransformAuthoringValues.hpp>
+#include <Editor/Inspector/Authoring/TransformAuthoringValues.hpp>
 #include "ManagedSettingsReflector.hpp"
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/Util/EditorTheme.hpp>
-#include <Editor/Util/ManagedScriptSettings.hpp>
-#include <Editor/Util/SceneIO.hpp>
-#include <Editor/Util/ScriptSnapshot.hpp>
-#include <Editor/Util/UndoStack.hpp>
+#include <Editor/UI/Appearance/EditorTheme.hpp>
+#include <Editor/Script/Managed/ManagedScriptSettings.hpp>
+#include <Editor/Scene/Persistence/SceneIO.hpp>
+#include <Editor/Script/Authoring/ScriptSnapshot.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/TextureAsset.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/Texture/TextureAsset.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
-#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
-#include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>
-#include <Editor/ManagedScriptEditor.hpp>
-#include <Editor/PlayModeController.hpp>
-#include <Engine/Renderer/ITexture.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Managed/Runtime/ManagedScriptRuntime.hpp>
+#include <Engine/Scene/Managed/Runtime/ManagedScriptAdapter.hpp>
+#include <Editor/Script/Managed/ManagedScriptEditor.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Graphics/Renderer/Resources/Textures/ITexture.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <algorithm>
 #include <cfloat>
 #include <charconv>

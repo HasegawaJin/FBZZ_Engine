@@ -7,8 +7,8 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include <Engine/AI/BehaviorTreeTypes.hpp>
-#include <Engine/Scene/Entity.hpp>
-#include <Math/Vector3.hpp>
+#include <Engine/Scene/References/Entity.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <cstddef>
 #include <cstdint>

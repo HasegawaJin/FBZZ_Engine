@@ -7,9 +7,9 @@
 /// @note 変わっても値は変わらない。毎フレーム計算するのは無駄なため初回フレームのみ実行し
 /// @note 以降はスキップする。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 
 namespace fbzz::renderer {
 

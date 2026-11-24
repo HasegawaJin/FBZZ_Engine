@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-09
 #pragma once
-#include <Graphics/Pipeline/RenderConstants.hpp>
-#include <Graphics/Renderer/RenderEnvironment.hpp>
-#include <Graphics/Renderer/RenderScene.hpp>
+#include <Graphics/Pipeline/Resources/RenderConstants.hpp>
+#include <Graphics/Renderer/View/Lighting/RenderEnvironment.hpp>
+#include <Graphics/Scene/RenderScene.hpp>
 
 namespace fbzz::renderer {
 /// @brief Plans the shared field from immutable numeric bodies, including rays originating inside a dry exclusion.

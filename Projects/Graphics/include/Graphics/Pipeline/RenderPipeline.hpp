@@ -11,13 +11,13 @@
 /// @note Execute() の冒頭で登録簿へ流し、パスは PassResources から名前で引く。
 #pragma once
 #include <Graphics/Api.hpp>
-#include "IRenderPass.hpp"
-#include <Graphics/Pipeline/ResolvedRenderPlan.hpp>
-#include <Graphics/Renderer/GpuProfiler.hpp>
-#include <Graphics/Renderer/RenderGraph.hpp>
-#include <Graphics/Renderer/RenderSettings.hpp>
-#include <Graphics/Renderer/ResourceHandle.hpp>
-#include <Graphics/Renderer/ResourceManager.hpp>
+#include "Graphics/Pipeline/Passes/IRenderPass.hpp"
+#include <Graphics/Pipeline/View/ResolvedRenderPlan.hpp>
+#include <Graphics/Renderer/Diagnostics/GpuProfiler.hpp>
+#include <Graphics/RenderGraph/RenderGraph.hpp>
+#include <Graphics/Renderer/View/RenderSettings.hpp>
+#include <Graphics/Renderer/Resources/ResourceHandle.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <cstdint>
 #include <functional>
 #include <initializer_list>

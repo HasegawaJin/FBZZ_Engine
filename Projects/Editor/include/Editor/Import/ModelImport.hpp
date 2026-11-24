@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-03
 #pragma once
-#include <Editor/Import/FbxImportTool.hpp>
+#include <Editor/Import/Fbx/FbxImportTool.hpp>
 #include <string>
 
 namespace fbzz::editor {

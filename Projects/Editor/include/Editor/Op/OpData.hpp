@@ -4,11 +4,11 @@
 /// @date    2026-08-22
 ///
 /// @note OpKind::Query は最初から型にあったが、OpResult が持てるのは ok / errorCode / message だけで読み取り結果を返す場所が無く、実際に登録された Query 操作は 1 つも無かった (読む機能は 10,000 行の EditorBusDispatcher 側へ書き続けるしかなかった)。返り値の器を 1 つ足すことで読み書き両方が同じ登録簿へ載る。
-/// @note Op 層が AI 層 (Editor/Ai/Json.hpp) を知ると AI を外した構成でエディターが組めなくなるため JsonValue は使わず、Op 層だけで完結する型を持つ。JSON への変換は境界の OperatorBridge が 1 箇所で行う。表現方法は JsonValue と同じ「タグ + 全フィールド」方式にそろえ、recursive-variant を避けて自己参照 (Array/Object が OpData を含む) を素直に書ける。
+/// @note Op 層が AI 層 (Editor/Ai/Serialization/Json.hpp) を知ると AI を外した構成でエディターが組めなくなるため JsonValue は使わず、Op 層だけで完結する型を持つ。JSON への変換は境界の OperatorBridge が 1 箇所で行う。表現方法は JsonValue と同じ「タグ + 全フィールド」方式にそろえ、recursive-variant を避けて自己参照 (Array/Object が OpData を含む) を素直に書ける。
 /// @see Docs/design/editor-operator-model.md §7
 #pragma once
 
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <cmath>
 #include <cstdint>
 #include <limits>

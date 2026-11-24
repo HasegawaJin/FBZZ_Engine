@@ -8,7 +8,7 @@
 /// 全テストへ一度に配れる。
 #pragma once
 
-#include <TestKit/Deterministic.hpp>
+#include <TestKit/Support/Deterministic.hpp>
 
 #include <gtest/gtest.h>
 

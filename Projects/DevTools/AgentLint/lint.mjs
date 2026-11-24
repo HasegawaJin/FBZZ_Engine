@@ -122,8 +122,8 @@ function LintCpp(repoPath, source) {
     const isHeader = extension === '.hpp' || extension === '.h';
     const isRendererBackend = /Renderer\/DX1[12]|RenderDX1[12]|\/DX1[12]\//.test(repoPath);
     /// @note 中断構文と標準 coroutine ABI は、既存待機型と内部フレームループの実装だけに閉じる。
-    const isCoroutinePrimitive = repoPath === 'Projects/Engine/include/Engine/Scene/Coroutine.hpp'
-        || repoPath === 'Projects/Engine/src/Scene/CoroutineFrameLoop.cpp';
+    const isCoroutinePrimitive = repoPath === 'Projects/Engine/include/Engine/Scene/Scripting/Coroutine.hpp'
+        || repoPath === 'Projects/Engine/src/Scene/Scripting/CoroutineFrameLoop.cpp';
     /// @note `new` は nothrow による確保プリミティブへ限定する (AGENTS.md «絶対制約»)。
     const isAllocationPrimitive = /(^|\/)Memory\/MakeUnique\.hpp$/.test(repoPath);
     /// @note key は HEAD 版と突き合わせて «増えた違反» だけを残すための識別子 (OnlyNew)。

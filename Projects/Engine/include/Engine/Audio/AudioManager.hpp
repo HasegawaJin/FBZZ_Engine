@@ -4,10 +4,10 @@
 /// @date    2025-01-01
 #pragma once
 #include <Engine/Api.hpp>
-#include "AudioBus.hpp"
-#include "IAudioDevice.hpp"
-#include "SynthSpec.hpp"
-#include "VoiceLifetime.hpp"
+#include "Engine/Audio/Playback/AudioBus.hpp"
+#include "Engine/Audio/Device/IAudioDevice.hpp"
+#include "Engine/Audio/Synthesis/SynthSpec.hpp"
+#include "Engine/Audio/Playback/VoiceLifetime.hpp"
 #include <memory>
 #include <cstdint>
 #include <string>

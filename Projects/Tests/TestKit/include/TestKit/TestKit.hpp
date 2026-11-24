@@ -4,12 +4,12 @@
 /// @date    2026-09-02
 #pragma once
 
-#include <TestKit/Approx.hpp>
-#include <TestKit/Deterministic.hpp>
+#include <TestKit/Assertions/Approx.hpp>
+#include <TestKit/Support/Deterministic.hpp>
 #include <TestKit/Fixture.hpp>
-#include <TestKit/Print.hpp>
-#include <TestKit/TempDir.hpp>
-#include <TestKit/Tolerance.hpp>
+#include <TestKit/Output/Print.hpp>
+#include <TestKit/Support/TempDir.hpp>
+#include <TestKit/Assertions/Tolerance.hpp>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

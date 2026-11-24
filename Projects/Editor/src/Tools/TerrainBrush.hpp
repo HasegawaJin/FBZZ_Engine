@@ -8,9 +8,9 @@
 /// @note レイキャスト・ImGui・Undo・dirty フラグ管理は含まない。呼び出し側 (ツール/ディスパッチャ) の責務。
 /// @see Docs/design/terrain-layers.md
 #pragma once
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Transform.hpp>
-#include <Math/Vector3.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Hierarchy/Transform.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <cstdint>
 #include <string>
 

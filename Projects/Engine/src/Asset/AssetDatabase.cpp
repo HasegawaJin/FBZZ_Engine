@@ -2,13 +2,13 @@
 /// @brief   GUID ⇄ アセットパスの双方向インデックス実装。
 /// @author  Hasegawa Jin
 /// @date    2026-07-08
-#include <Engine/Asset/ModelSource.hpp>
+#include <Engine/Asset/Model/Import/ModelSource.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
-#include <Engine/Asset/MetaFile.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/Registry/MetaFile.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cctype>

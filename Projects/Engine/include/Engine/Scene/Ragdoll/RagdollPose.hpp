@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-13
 #pragma once
-#include <Engine/Asset/Skeleton.hpp>
+#include <Engine/Asset/Animation/Rig/Skeleton.hpp>
 #include <Engine/Scene/Ragdoll/RagdollRig.hpp>
 
 namespace fbzz::scene {

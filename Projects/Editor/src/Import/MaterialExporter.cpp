@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include <Editor/Import/MaterialExporter.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
 #include <DirectXTex.h>
 #include <wincodec.h>
 #include <assimp/material.h>

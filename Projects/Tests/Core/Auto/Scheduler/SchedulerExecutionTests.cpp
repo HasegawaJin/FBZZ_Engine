@@ -7,7 +7,7 @@
 
 #include <Engine/Core/Scheduler/SystemScheduler.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Physics/World.hpp>
+#include <Physics/World/World.hpp>
 
 #include <memory>
 #include <string_view>

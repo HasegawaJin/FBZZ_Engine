@@ -5,15 +5,15 @@
 /// @note Forward / Deferred で共通の専用 RT を使い、物体とカメラの移動を同じ UV 差分で渡す。
 
 #include "RenderScenePassHelpers.hpp"
-#include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
-#include <Graphics/Pipeline/InstanceBatch.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
+#include <Graphics/Passes/Geometry/Surfaces/FiberRenderPass.hpp>
+#include <Graphics/Pipeline/Geometry/InstanceBatch.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
+#include <Graphics/Passes/Geometry/Instancing/InstanceRenderPasses.hpp>
 
-#include "Graphics/Renderer/DrawCall.hpp"
-#include "Graphics/Renderer/ResourceManager.hpp"
-#include <Math/Matrix4.hpp>
-#include <Math/Vector4.hpp>
+#include "Graphics/Renderer/Commands/DrawCall.hpp"
+#include "Graphics/Renderer/Resources/ResourceManager.hpp"
+#include <Math/LinearAlgebra/Matrix4.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 
 #include <cstddef>
 #include <cstdint>

@@ -5,8 +5,8 @@
 #pragma once
 #include <Core/Profiler/Profiler.hpp>
 #include <Engine/Profiler/ScriptProfiler.hpp>
-#include <Engine/Renderer/RenderDebugOverlay.hpp>
-#include <Core/Memory/MemoryTracker.hpp>
+#include <Graphics/Renderer/Diagnostics/RenderDebugOverlay.hpp>
+#include <Core/Memory/Diagnostics/MemoryTracker.hpp>
 #include <array>
 #include <deque>
 #include <memory>

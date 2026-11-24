@@ -47,8 +47,6 @@ set(DIRECTXTEX_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/
 set(DIRECTXTEX_LIB_DEBUG   "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/lib/x64/Debug/DirectXTex.lib")
 set(DIRECTXTEX_LIB_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/DirectXTex/lib/x64/Release/DirectXTex.lib")
 
-# @note stb_truetype / stb_rect_pack の実装展開は src/Renderer/StbFontImpl.cpp だけが行う。
-# @see Docs/design/font-system.md
 set(STB_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Stb")
 
 set(ASSIMP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../ThirdParty/Assimp/include")
@@ -92,12 +90,10 @@ set(FBZZ_ENGINE_DEFINES
 
 # @brief Unity ビルドで統合してはいけない翻訳単位。
 set(FBZZ_ENGINE_UNITY_EXCLUDE
-    # @note STB_TRUETYPE_IMPLEMENTATION / STB_RECT_PACK_IMPLEMENTATION の展開場所。
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/StbFontImpl.cpp"
     # @note STB_IMAGE_IMPLEMENTATION の展開場所 (カーソル画像のデコード)。
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Cursor.cpp"
     # @note STB_IMAGE_IMPLEMENTATION の展開場所。STB_IMAGE_STATIC で Cursor.cpp とは別の実体。
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Asset/FluidSourceMaskLoader.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Asset/Fluid/Import/FluidSourceMaskLoader.cpp"
     # @note DPI_AWARENESS_CONTEXT_* と WM_DPICHANGED を \#undef せずに定義する。
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Window.cpp"
     # @note WIN32_LEAN_AND_MEAN を定義し、同じバッチの後続 TU の Windows.h の中身を変えてしまう。
@@ -116,32 +112,29 @@ function(fbzz_engine_module TARGET)
     set(PUBLIC_ROOTS_Audio Audio)
     set(PUBLIC_ROOTS_AI AI)
     set(PUBLIC_ROOTS_Scene Scene)
-    set(PUBLIC_ROOTS_Rendering Renderer Scene/Systems/RenderPasses)
+    set(PUBLIC_ROOTS_Rendering Rendering)
     set(PUBLIC_ROOTS_Managed Scene/Managed)
     set(PUBLIC_HEADERS)
     foreach(PUBLIC_ROOT IN LISTS PUBLIC_ROOTS_${MODULE})
         file(GLOB_RECURSE MODULE_HEADERS CONFIGURE_DEPENDS
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/${PUBLIC_ROOT}/*.hpp")
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/${PUBLIC_ROOT}/*.hpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/${PUBLIC_ROOT}/*.inl")
         list(APPEND PUBLIC_HEADERS ${MODULE_HEADERS})
     endforeach()
     if(MODULE STREQUAL "Platform")
         list(REMOVE_ITEM PUBLIC_HEADERS
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/Core/Application.hpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/Core/Platform/Application.hpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/Profiler/ScriptProfiler.hpp")
     elseif(MODULE STREQUAL "Scene")
-        list(FILTER PUBLIC_HEADERS EXCLUDE REGEX "/Scene/(Managed/|Systems/(Render|UISystem))")
-    elseif(MODULE STREQUAL "Rendering")
-        file(GLOB RENDER_HEADERS CONFIGURE_DEPENDS
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/Scene/Systems/Render*.hpp")
-        list(APPEND PUBLIC_HEADERS ${RENDER_HEADERS}
-            "${CMAKE_CURRENT_SOURCE_DIR}/include/Engine/Scene/Systems/UISystem.hpp")
+        list(FILTER PUBLIC_HEADERS EXCLUDE REGEX "/Scene/Managed/")
     endif()
     fbzz_validate_engine_module("${CMAKE_SOURCE_DIR}" "${MODULE}" ${ARG_SOURCES} ${PUBLIC_HEADERS})
     fbzz_validate_engine_links("${MODULE}" ${ARG_DEPENDENCIES})
 
     # @see https://cmake.org/cmake/help/latest/command/source_group.html source_group TREE
-    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${ARG_SOURCES})
-    add_library(${TARGET} OBJECT ${ARG_SOURCES})
+    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${ARG_SOURCES} ${PUBLIC_HEADERS})
+    add_library(${TARGET} OBJECT ${ARG_SOURCES} ${PUBLIC_HEADERS})
+    set_property(GLOBAL APPEND PROPERTY FBZZ_ENGINE_MODULE_HEADERS ${PUBLIC_HEADERS})
     target_include_directories(${TARGET} PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         ${ARG_PRIVATE_INCLUDES}
@@ -186,7 +179,7 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
 list(REMOVE_ITEM CORE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Application.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Cursor.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/SaveStore.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/Files/SaveStore.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ScriptProfiler.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/Profiler.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ProfilerFrame.cpp"
@@ -194,31 +187,22 @@ list(REMOVE_ITEM CORE_SOURCES
 fbzz_engine_module(FBZZEnginePlatform SOURCES ${CORE_SOURCES}
     DEPENDENCIES FBZZCore FBZZMath TomlPlusPlus
     PRIVATE_INCLUDES "${STB_INCLUDE}")
-fbzz_validate_layer_includes("EnginePlatform" "Engine/(Scene|Asset|Renderer|Audio|AI)|Graphics|Physics|Fluid" ${CORE_SOURCES})
+fbzz_validate_layer_includes("EnginePlatform" "Engine/(Scene|Asset|Rendering|Audio|AI)|Graphics|Physics|Fluid" ${CORE_SOURCES})
 
 # @name 責務ごとの Engine 内部モジュール
 file(GLOB_RECURSE ASSET_SOURCES CONFIGURE_DEPENDS src/Asset/*.cpp src/Asset/*.hpp)
 file(GLOB_RECURSE AUDIO_SOURCES CONFIGURE_DEPENDS src/Audio/*.cpp src/Audio/*.hpp)
 file(GLOB_RECURSE AI_SOURCES CONFIGURE_DEPENDS src/AI/*.cpp src/AI/*.hpp)
 file(GLOB_RECURSE SCENE_SOURCES CONFIGURE_DEPENDS src/Scene/*.cpp src/Scene/*.hpp)
-file(GLOB_RECURSE RENDERING_SOURCES CONFIGURE_DEPENDS
-    src/Renderer/*.cpp src/Renderer/*.hpp
-    src/Scene/Systems/RenderPasses/*.cpp src/Scene/Systems/RenderPasses/*.hpp)
-file(GLOB RENDER_EXTRACTOR_SOURCES CONFIGURE_DEPENDS
-    src/Scene/Systems/Render*.cpp src/Scene/Systems/Render*.hpp
-    src/Scene/Systems/TerrainRenderCache.cpp src/Scene/Systems/TerrainRenderCache.hpp)
-list(APPEND RENDERING_SOURCES ${RENDER_EXTRACTOR_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIImageRendering.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIRenderClipping.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIRendering.hpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIRenderResources.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UISystem.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UITextRendering.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/SceneRenderResources.cpp")
-list(REMOVE_ITEM SCENE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/StandaloneProjectModule.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/ProjectRuntime.cpp")
+file(GLOB_RECURSE RENDERING_SOURCES CONFIGURE_DEPENDS src/Rendering/*.cpp src/Rendering/*.hpp)
+# @note Scene の GPU 解放は描画抽出のキャッシュを操作するため Rendering がコンパイルする。
+set(SCENE_GPU_RESOURCE_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Rendering/SceneRenderResources.cpp")
+list(APPEND RENDERING_SOURCES "${SCENE_GPU_RESOURCE_SOURCE}")
+list(REMOVE_ITEM SCENE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Runtime/StandaloneProjectModule.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Runtime/ProjectRuntime.cpp"
+    "${SCENE_GPU_RESOURCE_SOURCE}")
 file(GLOB_RECURSE MANAGED_SOURCES CONFIGURE_DEPENDS src/Scene/Managed/*.cpp src/Scene/Managed/*.hpp)
-list(REMOVE_ITEM SCENE_SOURCES ${MANAGED_SOURCES} ${RENDERING_SOURCES})
+list(REMOVE_ITEM SCENE_SOURCES ${MANAGED_SOURCES})
 
 fbzz_engine_module(FBZZEngineAssets SOURCES ${ASSET_SOURCES}
     PRIVATE_INCLUDES "${DIRECTXTEX_INCLUDE}" "${ASSIMP_INCLUDE}" "${STB_INCLUDE}"
@@ -234,19 +218,20 @@ fbzz_engine_module(FBZZEngineRendering SOURCES ${RENDERING_SOURCES}
     DEPENDENCIES FBZZGraphics FBZZPhysics FBZZFluid FBZZMath TomlPlusPlus)
 
 # @name FBZZEngine 合成ルート
-file(GLOB_RECURSE ENGINE_HEADERS CONFIGURE_DEPENDS include/*.hpp)
+file(GLOB_RECURSE ENGINE_HEADERS CONFIGURE_DEPENDS include/*.hpp include/*.inl)
 set(ENGINE_SOURCES ${ENGINE_HEADERS})
 # @note src 直下は非再帰 GLOB で別に拾う。GLOB_RECURSE に src/*.cpp を足すと全モジュールのソースを二重に拾う。
 file(GLOB ENGINE_ROOT_SOURCES CONFIGURE_DEPENDS
     src/*.cpp src/*.hpp
+    src/Project/*.cpp src/Project/*.hpp
 )
 list(APPEND ENGINE_SOURCES
     ${ENGINE_ROOT_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/ProjectRuntime.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/StandaloneProjectModule.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Runtime/ProjectRuntime.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Runtime/StandaloneProjectModule.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Application.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Core/Platform/Cursor.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/SaveStore.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Util/Files/SaveStore.cpp"
 )
 
 list(APPEND ENGINE_SOURCES
@@ -255,10 +240,14 @@ list(APPEND ENGINE_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Profiler/ProfilerFrame.cpp"
 )
 
-# @note Runtime hosting headers are confined to this module; Scene adapters expose only FBZZ POD ABI types.
+# @note .NET ホスト SDK のヘッダーはこのモジュールに閉じ、Scene には POD の ABI 型だけを公開する。
 fbzz_engine_module(FBZZEngineManaged SOURCES ${MANAGED_SOURCES}
     PRIVATE_INCLUDES "${FBZZ_DOTNET_HOST_PACK}"
     DEPENDENCIES FBZZGraphics FBZZPhysics FBZZFluid FBZZMath TomlPlusPlus)
+
+# @note 所属する OBJECT モジュールでヘッダーを表示し、合成ルートでの重複表示を避ける。
+get_property(FBZZ_ENGINE_MODULE_HEADERS GLOBAL PROPERTY FBZZ_ENGINE_MODULE_HEADERS)
+list(REMOVE_ITEM ENGINE_SOURCES ${FBZZ_ENGINE_MODULE_HEADERS})
 
 # @note 新ディレクトリをモジュールへ足し忘れると、リンクエラーか実行時の機能欠落としてしか現れないので configure で落とす。
 file(GLOB_RECURSE FBZZ_ALL_ENGINE_CPP CONFIGURE_DEPENDS src/*.cpp)

@@ -1,0 +1,24 @@
+/// @file    MatAssetImporter.hpp
+/// @brief   .mat TOML → MaterialAsset ローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+#pragma once
+#include <Engine/Api.hpp>
+#include <Engine/Asset/Import/IAssetImporter.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+
+namespace fbzz::asset {
+
+class MatAssetImporter final : public IAssetImporter<MaterialAsset> {
+public:
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<MaterialAsset> Import(
+        const std::string&         absPath,
+        renderer::ResourceManager* resources) override;
+
+    std::span<const std::string_view> SupportedExtensions() const override {
+        static constexpr std::string_view kExts[] = { ".mat" };
+        return kExts;
+    }
+};
+
+} /// @note namespace fbzz::asset

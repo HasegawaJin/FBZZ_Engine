@@ -4,7 +4,7 @@
 /// @date    2026-08-12
 #include <TestKit/TestKit.hpp>
 
-#include <Engine/Core/Window.hpp>
+#include <Engine/Core/Platform/Window.hpp>
 
 #include <chrono>
 #include <thread>

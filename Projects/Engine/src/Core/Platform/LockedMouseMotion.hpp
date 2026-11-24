@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-09
 #pragma once
-#include <Math/Vector2.hpp>
+#include <Math/LinearAlgebra/Vector2.hpp>
 #include <optional>
 #include <utility>
 

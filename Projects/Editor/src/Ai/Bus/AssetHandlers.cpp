@@ -4,15 +4,15 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Util/BuildConsole.hpp>
-#include <Editor/Util/SpriteSlicer.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Editor/Diagnostics/Logging/BuildConsole.hpp>
+#include <Editor/Asset/Authoring/SpriteSlicer.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/FlipbookMotionVectors.hpp>
-#include <Engine/Asset/TexDescSerializer.hpp>
-#include <Engine/Asset/TextureAsset.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
+#include <Engine/Asset/Flipbook/Atlas/FlipbookMotionVectors.hpp>
+#include <Engine/Asset/Texture/TexDescSerializer.hpp>
+#include <Engine/Asset/Texture/TextureAsset.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
 #include <stb_image.h>
 #include <miniz.h>
 
@@ -472,7 +472,7 @@ std::unique_ptr<ICommand> BuildSpriteCommand(editor::EditorContext& ctx,
                 JsonValue(asset::MakeSpriteReference(relative, newName)));
         }
     } else if (type == "sprite.slice") {
-        /// @note 生成も畳み込みも Sprite Editor と同じ実装を通す (`Editor/Util/SpriteSlicer.hpp`)。
+        /// @note 生成も畳み込みも Sprite Editor と同じ実装を通す (`Editor/Asset/Authoring/SpriteSlicer.hpp`)。
         const std::string imagePath = util::FileSystem::PathToUtf8(absolute);
         const auto intField = [&payload](const char* key, int fallback) {
             const JsonValue* value = payload.Find(key);

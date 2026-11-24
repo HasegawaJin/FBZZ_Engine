@@ -2,9 +2,9 @@
 /// @brief   BroadPhaseとWorld同期の固定入力を画面なしで比較し、生標本を保存する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-22
-#include <Physics/PhysicsSolver.hpp>
-#include <Physics/SphereCollider.hpp>
-#include <Physics/World.hpp>
+#include <Physics/Collision/NarrowPhase/PhysicsSolver.hpp>
+#include <Physics/Collision/Shapes/SphereCollider.hpp>
+#include <Physics/World/World.hpp>
 #include <algorithm>
 #include <chrono>
 #include <cmath>

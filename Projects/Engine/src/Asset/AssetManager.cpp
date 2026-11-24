@@ -4,56 +4,56 @@
 /// @date    2026-05-21
 
 /// @brief Load<T>() はヘッダーでインライン化し、ここでは型ごとの特殊化と Init を実装する。
-#include <Engine/Asset/ModelSource.hpp>
+#include <Engine/Asset/Model/Import/ModelSource.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/CellAssetStreaming.hpp>
-#include <Core/ExternalCallbackBoundary.hpp>
-#include "BundledModel.hpp"
-#include "ModelStreamChannel.hpp"
-#include <Engine/Asset/AnimationClip.hpp>
-#include <Engine/Asset/AnimationImporter.hpp>
+#include <Engine/Asset/Streaming/CellAssetStreaming.hpp>
+#include <Core/Util/ExternalCallbackBoundary.hpp>
+#include "Model/BundledModel.hpp"
+#include "Streaming/ModelStreamChannel.hpp"
+#include <Engine/Asset/Animation/Clips/AnimationClip.hpp>
+#include <Engine/Asset/Animation/Clips/AnimationImporter.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
-#include <Engine/Asset/AnimatorControllerAsset.hpp>
-#include <Engine/Asset/AnimCtrlImporter.hpp>
-#include <Engine/Asset/SequenceAsset.hpp>
-#include <Engine/Asset/SequenceImporter.hpp>
-#include <Engine/Asset/BinaryReader.hpp>
+#include <Engine/Asset/Animation/Controllers/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/Animation/Controllers/AnimCtrlImporter.hpp>
+#include <Engine/Asset/Animation/Sequences/SequenceAsset.hpp>
+#include <Engine/Asset/Animation/Sequences/SequenceImporter.hpp>
+#include <Engine/Asset/Storage/BinaryReader.hpp>
 #include <Engine/Format/FzAssetFormat.hpp>
-#include <Engine/Asset/FzTerrainSerializer.hpp>
-#include <Engine/Asset/FzVertexCompat.hpp>
-#include <Engine/Asset/IblAsset.hpp>
-#include <Engine/Asset/IblImporter.hpp>
-#include <Engine/Asset/ImageImporter.hpp>
-#include <Engine/Asset/MatAssetImporter.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Asset/Model.hpp>
-#include <Engine/Asset/ModelAsset.hpp>
-#include <Engine/Asset/ModelAssetImporter.hpp>
-#include <Engine/Asset/ModelImporter.hpp>
-#include <Engine/Asset/PhysicsMaterialAsset.hpp>
-#include <Engine/Asset/PhysicsMaterialImporter.hpp>
-#include <Engine/Asset/ClothImporter.hpp>
-#include <Engine/Asset/FiberPaintAsset.hpp>
-#include <Engine/Asset/TerrainPaintAsset.hpp>
-#include <Engine/Asset/MeshInstancesAsset.hpp>
-#include <Engine/Asset/ParticleCurveImporter.hpp>
-#include <Engine/Asset/VectorFieldImporter.hpp>
-#include <Engine/Asset/VelocityFieldAtlas.hpp>
-#include <Engine/Asset/Skeleton.hpp>
-#include <Engine/Asset/SkeletonImporter.hpp>
-#include <Engine/Asset/TerrainAsset.hpp>
-#include <Engine/Asset/TerrainImporter.hpp>
-#include <Engine/Asset/TexDescSerializer.hpp>
-#include <Engine/Asset/TextureAsset.hpp>
-#include <Engine/Asset/StreamedTextureResolver.hpp>
-#include <Engine/Asset/TextureStreamChannel.hpp>
-#include <Engine/Renderer/AssetPathService.hpp>
-#include <Engine/Renderer/TextureFileDecoder.hpp>
-#include <Engine/Asset/ShaderCapabilities.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Util/EngineAssetPath.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Asset/Terrain/FzTerrainSerializer.hpp>
+#include <Engine/Asset/Model/Format/FzVertexCompat.hpp>
+#include <Engine/Asset/Lighting/IblAsset.hpp>
+#include <Engine/Asset/Lighting/IblImporter.hpp>
+#include <Engine/Asset/Texture/ImageImporter.hpp>
+#include <Engine/Asset/Material/MatAssetImporter.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Engine/Asset/Model/Model.hpp>
+#include <Engine/Asset/Model/ModelAsset.hpp>
+#include <Engine/Asset/Model/Import/ModelAssetImporter.hpp>
+#include <Engine/Asset/Model/Import/ModelImporter.hpp>
+#include <Engine/Asset/Physics/PhysicsMaterialAsset.hpp>
+#include <Engine/Asset/Physics/PhysicsMaterialImporter.hpp>
+#include <Engine/Asset/Physics/ClothImporter.hpp>
+#include <Engine/Asset/Material/FiberPaintAsset.hpp>
+#include <Engine/Asset/Terrain/TerrainPaintAsset.hpp>
+#include <Engine/Asset/Instances/MeshInstancesAsset.hpp>
+#include <Engine/Asset/VFX/Curves/ParticleCurveImporter.hpp>
+#include <Engine/Asset/Fluid/Import/VectorFieldImporter.hpp>
+#include <Engine/Asset/Fluid/Rendering/VelocityFieldAtlas.hpp>
+#include <Engine/Asset/Animation/Rig/Skeleton.hpp>
+#include <Engine/Asset/Animation/Rig/SkeletonImporter.hpp>
+#include <Engine/Asset/Terrain/TerrainAsset.hpp>
+#include <Engine/Asset/Terrain/TerrainImporter.hpp>
+#include <Engine/Asset/Texture/TexDescSerializer.hpp>
+#include <Engine/Asset/Texture/TextureAsset.hpp>
+#include <Engine/Asset/Streaming/StreamedTextureResolver.hpp>
+#include <Engine/Asset/Streaming/TextureStreamChannel.hpp>
+#include <Graphics/Renderer/Resources/AssetPathService.hpp>
+#include <Graphics/Renderer/Resources/Textures/TextureFileDecoder.hpp>
+#include <Engine/Asset/Material/ShaderCapabilities.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Engine/Util/Files/EngineAssetPath.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -594,7 +594,7 @@ void AssetManager::Init(renderer::ResourceManager& resources, const std::string&
 
     /// @name インポーター登録
 #define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) RegisterImporter<Type>(std::make_unique<Importer>());
-#include <Engine/Asset/AssetTypes.inl>
+#include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
 
     /// @name 非同期経路の登録
@@ -618,7 +618,7 @@ void AssetManager::UnloadAll()
     /// @note アセットが cache に残り続け、パスが同名なら別プロジェクトの中身が黙って引き
     /// @note 当たるという、最も気付きにくい壊れ方をする。
 #define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) AssetStore<Type>::Get().Clear();
-#include <Engine/Asset/AssetTypes.inl>
+#include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
     VelocityFieldAtlas::Reset();
 
@@ -732,14 +732,14 @@ void AssetManager::NotifyStreamerUnloaded(std::string_view typeName, const std::
     template<> AssetHandle<Type> AssetManager::Load<Type>(const std::string& path) { return LoadFromStore<Type>(path); } \
     template<> Type* AssetManager::Get<Type>(AssetHandle<Type> handle) { return GetFromStore<Type>(handle); } \
     template<> void AssetManager::Unload<Type>(const std::string& path) { UnloadFromStore<Type>(path); }
-#include <Engine/Asset/AssetTypes.inl>
+#include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
 
 void AssetManager::FlushFailed()
 {
     /// @note 失敗もキャッシュするため、Init と同じ型一覧から掃除口を作り、型の追加漏れによる永続失敗を防ぐ。
 #define FBZZ_ASSET_TYPE(Type, Importer, Reloadable) FlushStore<Type>();
-#include <Engine/Asset/AssetTypes.inl>
+#include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
 
     ++s_flushGeneration;
@@ -847,7 +847,7 @@ int AssetManager::ReloadPath(const std::string& absPath)
         reloaded += count; \
         if constexpr (std::is_same_v<Type, fluid::VectorFieldAsset>) fields += count; \
     }
-#include <Engine/Asset/AssetTypes.inl>
+#include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
     if (fields > 0 && s_resources != nullptr) VelocityFieldAtlas::Invalidate(*s_resources);
 

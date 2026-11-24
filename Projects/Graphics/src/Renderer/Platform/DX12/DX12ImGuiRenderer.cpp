@@ -5,10 +5,10 @@
 #include "DX12ImGuiRenderer.hpp"
 
 #include "DX12Context.hpp"
-#include "DX12RenderTarget.hpp"
-#include "DX12Texture.hpp"
-#include <Core/Logger.hpp>
-#include <Graphics/Renderer/ResourceManager.hpp>
+#include "Resources/DX12RenderTarget.hpp"
+#include "Resources/DX12Texture.hpp"
+#include <Core/Logger/Logger.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <bit>
 #include <cstddef>
 #include <imgui.h>

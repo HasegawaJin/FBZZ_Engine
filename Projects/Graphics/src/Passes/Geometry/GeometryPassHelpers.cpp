@@ -4,13 +4,13 @@
 /// @date    2026-09-21
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include "RenderScenePassHelpers.hpp"
-#include <Graphics/Pipeline/OcclusionCuller.hpp>
-#include <Graphics/Pipeline/GpuHiZ.hpp>
-#include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
-#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
-#include <Graphics/Renderer/DynamicBufferPool.hpp>
+#include <Graphics/Pipeline/Culling/OcclusionCuller.hpp>
+#include <Graphics/Pipeline/Culling/GpuHiZ.hpp>
+#include <Graphics/Pipeline/Geometry/MeshletDrawHelpers.hpp>
+#include <Graphics/Passes/Geometry/Instancing/InstanceRenderPasses.hpp>
+#include <Graphics/Renderer/Resources/Buffers/DynamicBufferPool.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
 #include <bit>
 #include <cmath>
 #include <cstring>

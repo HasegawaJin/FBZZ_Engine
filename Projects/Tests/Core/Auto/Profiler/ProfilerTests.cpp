@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-21
 #include <TestKit/TestKit.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <Profiler/ApplicationFrameElapsedObserver.hpp>
 #include <Engine/Profiler/ProfilerFrame.hpp>
 #include <Engine/Profiler/ScriptProfiler.hpp>

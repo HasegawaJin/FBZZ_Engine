@@ -2,15 +2,15 @@
 /// @brief   Material Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/Geometry/MaterialComponent.hpp>
+#include <Engine/Scene/Components/Geometry/MeshRenderer.hpp>
+#include <Engine/Scene/Components/Geometry/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
 #include "InspectorMaterial.hpp"
-#include <Editor/Util/AssetDirtyRegistry.hpp>
-#include "../../Util/MaterialAuthoringEditing.hpp"
+#include <Editor/Asset/Storage/AssetDirtyRegistry.hpp>
+#include "../../Material/MaterialAuthoringEditing.hpp"
 
 namespace fbzz::editor {
 

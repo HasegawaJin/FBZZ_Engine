@@ -4,9 +4,9 @@
 /// @date    2026-10-01
 #include <Graphics/Passes/RayTracing/RayPathTracePass.hpp>
 #include <Graphics/Passes/RayTracing/RayDebugPass.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
-#include <Graphics/Renderer/IStructuredBuffer.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
+#include <Graphics/Renderer/Resources/Buffers/IStructuredBuffer.hpp>
 
 namespace fbzz::renderer {
 

@@ -4,10 +4,10 @@
 /// @date    2026-10-01
 #include <Graphics/Passes/RayTracing/RayReflectionPass.hpp>
 #include <Graphics/Passes/RayTracing/RayDebugPass.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
-#include <Graphics/Renderer/Mesh.hpp>
+#include <Graphics/Renderer/Geometry/Mesh.hpp>
 #include <cstddef>
 
 namespace fbzz::renderer {

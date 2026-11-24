@@ -1,0 +1,66 @@
+/// @file    LODGroupComponent.hpp
+/// @brief   カメラ上の相対表示サイズに応じて Renderer 群を切り替える LOD 定義。
+/// @author  Hasegawa Jin
+/// @date    2026-07-15
+#pragma once
+
+#include <Engine/Scene/References/Entity.hpp>
+#include <Engine/Scene/ControlPoints/ControlPointModes.hpp>
+#include <Engine/Scene/References/ObjectReference.hpp>
+#include <Engine/Reflection/Reflection.hpp>
+#include <string>
+#include <vector>
+
+namespace fbzz::scene {
+
+/// @note LODRendererReference — Scene 保存に安定な instanceId とランタイム EntityID を併記する。
+/// @note EntityID は Scene ロードごとに変化するため、永続化には GameObject::instanceId を使う。
+struct LODRendererReference {
+    std::string instanceId;
+    EntityID entity = EntityID::INVALID;
+};
+
+/// @note LODLevel — screenRelativeHeight 以上のとき、このレベルの Renderer を表示する。
+/// @note レベルは高品質から低品質へ閾値の降順で並べる。
+struct LODLevel {
+    float screenRelativeHeight = 0.5f;
+    std::vector<LODRendererReference> renderers;
+};
+
+/// @note LODGroupComponent — Unity の LODGroup に相当する切り替え単位。
+struct LODGroupComponent {
+    bool enabled = true;
+    float size = 1.0f;
+    bool cullBelowLastLevel = false;
+    /// @note INLINEはowner原点、POINT_OBJECTSは距離判定専用の代表中心を使う。
+    ControlPointSourceMode centerSourceMode = ControlPointSourceMode::INLINE;
+    ObjectReference centerTarget;
+
+    /// @note レベルを入れ替えるときのディザクロスフェード秒数。0 で従来どおり即差し替え。
+    /// @note 長くすると、まだら模様が TAA で溶けきる前に視点が動き「メッシュが 2 つ
+    /// @note 重なっている」状態が見えてしまうため既定は短め。
+    float fadeDuration = 0.25f;
+
+    std::vector<LODLevel> levels;
+
+    /// @note ランタイム状態。Scene には保存しない (Play/Stop で遷移が復元される必要はない)。
+    int   activeLevel = -1;   ///< @note 今フレーム表示すべきレベル。-1 は未決定
+    int   fadingLevel = -1;   ///< @note 退場中のレベル。-1 は遷移していない
+    float fadeElapsed = 0.0f;
+    bool runtimeCenterValid = true;
+    std::string runtimeCenterDiagnosticGuid;
+
+    const char* GetTypeName() const { return "LOD Group"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("size", size);
+        r.Field("cullBelowLastLevel", cullBelowLastLevel);
+        r.Field("fadeDuration", fadeDuration);
+        ReflectControlPointSourceMode(r, "centerSourceMode", centerSourceMode);
+        r.TypedObjectReferenceField("centerTarget", centerTarget, "TargetPointComponent");
+        /// @note levels は入れ子 vector のため SceneSerializer が専用コードで保存する。
+    }
+};
+
+}

@@ -8,11 +8,11 @@
 #include <Editor/Op/OpData.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/TerrainSplat.hpp>
-#include <Engine/Scene/TerrainSurfaceQuery.hpp>
-#include <Engine/Scene/WaterSpline.hpp>
-#include <Math/Matrix4.hpp>
-#include <Math/Vector4.hpp>
+#include <Engine/Scene/Terrain/TerrainSplat.hpp>
+#include <Engine/Scene/Terrain/TerrainSurfaceQuery.hpp>
+#include <Engine/Scene/Water/Surface/WaterSpline.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>

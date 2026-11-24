@@ -1,0 +1,24 @@
+/// @file    AnimCtrlImporter.hpp
+/// @brief   .animctrl TOML → AnimatorControllerAsset ローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+#pragma once
+#include <Engine/Api.hpp>
+#include <Engine/Asset/Animation/Controllers/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/Import/IAssetImporter.hpp>
+
+namespace fbzz::asset {
+
+class AnimCtrlImporter final : public IAssetImporter<AnimatorControllerAsset> {
+public:
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<AnimatorControllerAsset> Import(
+        const std::string&         absPath,
+        renderer::ResourceManager* resources) override;
+
+    std::span<const std::string_view> SupportedExtensions() const override {
+        static constexpr std::string_view kExts[] = { ".animctrl", ".animcontroller" };
+        return kExts;
+    }
+};
+
+} /// @note namespace fbzz::asset

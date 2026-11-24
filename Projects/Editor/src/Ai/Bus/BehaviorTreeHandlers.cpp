@@ -4,16 +4,16 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Util/AssetPath.hpp>
-#include <Editor/Util/UndoStack.hpp>
+#include <Editor/Asset/Storage/AssetPath.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
 #include <Editor/GraphEditor/BehaviorTreeOps.hpp>
 #include <Engine/AI/BehaviorTreeAsset.hpp>
 #include <Engine/AI/BehaviorTreeRuntime.hpp>
 #include <Engine/AI/BehaviorTreeTypes.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Scene/Components/BehaviorTreeComponent.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Scene/Components/AI/BehaviorTreeComponent.hpp>
 #include <Engine/Scene/GameObject.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <algorithm>
 #include <cstdint>

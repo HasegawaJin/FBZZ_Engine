@@ -8,8 +8,8 @@
 /// @see Docs/design/flow-field.md
 #pragma once
 #include <Engine/Api.hpp>
-#include <Engine/Scene/Script.hpp>
-#include <Math/Vector3.hpp>
+#include <Engine/Scene/Scripting/Script.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <vector>
 
 namespace fbzz::scene {

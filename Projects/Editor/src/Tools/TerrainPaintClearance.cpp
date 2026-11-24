@@ -4,12 +4,12 @@
 /// @date    2026-11-05
 #include "TerrainPaintClearance.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Scene/TerrainSplat.hpp>
-#include <Engine/Scene/WaterSpline.hpp>
-#include <Engine/Scene/WaterSurfaceQuery.hpp>
-#include <Engine/Scene/Transform.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
+#include <Engine/Scene/Terrain/TerrainSplat.hpp>
+#include <Engine/Scene/Water/Surface/WaterSpline.hpp>
+#include <Engine/Scene/Water/Surface/WaterSurfaceQuery.hpp>
+#include <Engine/Scene/Hierarchy/Transform.hpp>
 #include <algorithm>
 #include <cmath>
 

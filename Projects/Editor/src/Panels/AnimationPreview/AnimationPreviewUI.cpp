@@ -7,13 +7,13 @@
 /// @note スケルトン・軌跡・情報をオーバーレイし、再生とカメラの操作口を出す。
 /// @note Inspector 埋め込みと独立パネルの両方がこのファイルの 1 つのウィジェットを呼ぶ。
 #include "AnimationPreviewInternal.hpp"
-#include <Editor/Panels/PreviewPanelRenderers.hpp>
-#include <Editor/Util/EditorIcons.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Panels/Preview/PreviewPanelRenderers.hpp>
+#include <Editor/UI/Appearance/EditorIcons.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <algorithm>
 #include <bit>
 #include <cfloat>

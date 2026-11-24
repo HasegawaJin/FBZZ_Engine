@@ -4,25 +4,25 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Ai/JsonReflector.hpp>
-#include <Editor/Util/BuildConsole.hpp>
+#include <Editor/Ai/Serialization/JsonReflector.hpp>
+#include <Editor/Diagnostics/Logging/BuildConsole.hpp>
 #include <Tools/TerrainBrush.hpp>
-#include <Editor/Util/SpriteSlicer.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Core/Application.hpp>
-#include <Engine/Scene/ComponentRegistry.hpp>
-#include <Engine/Scene/Components/AudioListenerComponent.hpp>
-#include <Engine/Scene/Components/AudioSourceComponent.hpp>
-#include <Engine/Scene/Components/LightComponent.hpp>
-#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
-#include <Engine/Scene/Components/NavMeshSurfaceComponent.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/UICanvas.hpp>
-#include <Engine/Scene/Systems/NavMeshBakeSystem.hpp>
-#include <Engine/Scene/Systems/NavMeshQuery.hpp>
+#include <Editor/Asset/Authoring/SpriteSlicer.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Scene/Components/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/Audio/AudioListenerComponent.hpp>
+#include <Engine/Scene/Components/Audio/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/Lighting/LightComponent.hpp>
+#include <Engine/Scene/Components/Navigation/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/Navigation/NavMeshSurfaceComponent.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Components/UI/UICanvas.hpp>
+#include <Engine/Scene/Systems/Navigation/NavMeshBakeSystem.hpp>
+#include <Engine/Scene/Systems/Navigation/NavMeshQuery.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <Engine/Audio/AudioManager.hpp>
 
 #include <algorithm>

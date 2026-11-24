@@ -4,8 +4,8 @@
 /// @date    2026-07-02
 #include "Graphics/Renderer/RendererFactory.hpp"
 
-#include "Core/Logger.hpp"
-#include "Graphics/Renderer/BackendEntry.hpp"
+#include "Core/Logger/Logger.hpp"
+#include "Graphics/Renderer/Platform/BackendEntry.hpp"
 
 namespace fbzz::renderer {
 

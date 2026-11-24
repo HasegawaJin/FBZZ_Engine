@@ -9,21 +9,21 @@
 #include "JobBreakaway.hpp"
 #include "StandaloneApp.hpp"
 #include "EditorPlayLog.hpp"
-#include <Engine/Scene/StandaloneProjectModule.hpp>
+#include <Engine/Scene/Runtime/StandaloneProjectModule.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Core/Application.hpp>
-#include <Engine/Core/CrashHandler.hpp>
-#include <Engine/Core/Cursor.hpp>
-#include <Engine/Core/DeveloperMode.hpp>
-#include <Engine/Core/EngineRebuildBootstrap.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Core/PixCapture.hpp>
-#include <Engine/ProjectResolver.hpp>
-#include <Engine/ProjectSettings.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Scene/SceneUtils.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Core/Diagnostics/CrashHandler.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
+#include <Engine/Core/Platform/DeveloperMode.hpp>
+#include <Engine/Core/Platform/EngineRebuildBootstrap.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Engine/Core/Diagnostics/PixCapture.hpp>
+#include <Engine/Project/ProjectResolver.hpp>
+#include <Engine/Project/ProjectSettings.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Engine/Scene/Hierarchy/SceneUtils.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
 #include <Editor/EditorApp.hpp>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -186,7 +186,7 @@ int Run()
     const bool batch = !args.batchScenario.empty();
     if (args.hidden) {
         /// @note CI はダイアログに応答できない。強制終了時も直前の診断を残す。
-        /// @see Projects/Tests/TestKit/src/Console.cpp SuppressBlockingErrorDialogs
+        /// @see Projects/Tests/TestKit/src/Output/Console.cpp SuppressBlockingErrorDialogs
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
         _set_error_mode(_OUT_TO_STDERR);

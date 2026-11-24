@@ -4,7 +4,7 @@
 /// @date    2026-06-18
 #pragma once
 #include <Graphics/Api.hpp>
-#include <Graphics/Pipeline/IRenderPass.hpp>
+#include <Graphics/Pipeline/Passes/IRenderPass.hpp>
 
 #include <cstdint>
 

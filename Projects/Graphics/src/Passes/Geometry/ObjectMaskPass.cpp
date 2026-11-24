@@ -6,11 +6,11 @@
 /// @note マスクの RGBA はエンジンが意味を決めない。申告した側 (スクリプト) と読む側
 /// @note (カスタムパスのシェーダー) の取り決めで、輪郭の色にも強さにもボカし量にもなる。
 #include "RenderScenePassHelpers.hpp"
-#include <Graphics/Effects/ComputedSkinningOutput.hpp>
-#include <Graphics/Pipeline/InstanceBatch.hpp>
-#include <Core/Logger.hpp>
-#include <Graphics/Renderer/DrawCall.hpp>
-#include <Math/Matrix4.hpp>
+#include <Graphics/Effects/Animation/ComputedSkinningOutput.hpp>
+#include <Graphics/Pipeline/Geometry/InstanceBatch.hpp>
+#include <Core/Logger/Logger.hpp>
+#include <Graphics/Renderer/Commands/DrawCall.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
 #include <algorithm>
 
 namespace fbzz::renderer {

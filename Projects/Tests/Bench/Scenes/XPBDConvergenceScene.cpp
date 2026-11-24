@@ -8,8 +8,8 @@
 /// 一度深く沈んでから戻る、といった過渡は自動テストでは拾えない。
 #include "Scenes.hpp"
 
-#include <Physics/XPBDPlaneContact.hpp>
-#include <Physics/XPBDSolver.hpp>
+#include <Physics/Solver/XPBD/XPBDPlaneContact.hpp>
+#include <Physics/Solver/XPBD/XPBDSolver.hpp>
 
 #include <imgui.h>
 

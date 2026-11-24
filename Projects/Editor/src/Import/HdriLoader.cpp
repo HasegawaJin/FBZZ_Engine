@@ -11,8 +11,8 @@
 #include <tinyexr.h>
 
 #include <Editor/Import/HdriLoader.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>

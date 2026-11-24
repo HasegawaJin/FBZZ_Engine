@@ -2,16 +2,16 @@
 /// @brief   Physics 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/CharacterControllerComponent.hpp>
-#include <Engine/Scene/Components/ColliderComponent.hpp>
-#include <Engine/Scene/Components/JointComponent.hpp>
-#include <Engine/Scene/Components/RigidBodyComponent.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/VolumeComponent.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/Physics/CharacterControllerComponent.hpp>
+#include <Engine/Scene/Components/Physics/ColliderComponent.hpp>
+#include <Engine/Scene/Components/Physics/JointComponent.hpp>
+#include <Engine/Scene/Components/Physics/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Components/Physics/VolumeComponent.hpp>
 #include "InspectorPhysics.hpp"
 #include <Editor/Op/EditorOperator.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 #include <algorithm>
 
 namespace fbzz::editor {

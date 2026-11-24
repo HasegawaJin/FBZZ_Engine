@@ -4,10 +4,10 @@
 /// @date    2026-09-17
 #include <Editor/Playtest/PlaytestRunner.hpp>
 
-#include <Editor/Ai/EditorBusProtocol.hpp>
+#include <Editor/Ai/Bus/EditorBusProtocol.hpp>
 #include <Editor/Playtest/ImageCompare.hpp>
 #include <Editor/Playtest/PlaytestJson.hpp>
-#include <Engine/Core/Time.hpp>
+#include <Engine/Core/Timing/Time.hpp>
 
 #include <algorithm>
 #include <chrono>

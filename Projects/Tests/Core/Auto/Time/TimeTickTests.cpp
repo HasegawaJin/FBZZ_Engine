@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Time.hpp>
+#include <Engine/Core/Timing/Time.hpp>
 
 namespace fbzz::tests {
 

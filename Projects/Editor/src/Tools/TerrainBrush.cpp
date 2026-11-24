@@ -3,13 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
 /// @see Docs/design/terrain-layers.md
-#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
 #include "TerrainBrush.hpp"
 
-#include <Engine/Scene/TerrainSplat.hpp>
-#include <Math/Matrix4.hpp>
-#include <Math/MathUtils.hpp>
-#include <Math/Vector4.hpp>
+#include <Engine/Scene/Terrain/TerrainSplat.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
+#include <Math/Scalar/MathUtils.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 
 #include <algorithm>
 #include <array>

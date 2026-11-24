@@ -199,7 +199,9 @@ foreach(FIXTURE_PATH
         "include/Engine/Scene/ManagedBridgeAbi.hpp" "include/Engine/Scene/ManagedBridgeContract.inl"
         "include/Engine/Api.hpp" "include/Engine/Standalone.hpp"
         "include/Physics/World.hpp" "include/Fluid/FluidSolver.hpp"
-        "include/Math/Vector3.hpp" "include/Core/Logger.hpp" "include/Graphics/Renderer/RenderScene.hpp")
+        "include/Math/Vector3.hpp" "include/Core/Logger.hpp" "include/Graphics/Renderer/RenderScene.hpp"
+        "include/Physics/World/World.hpp" "include/Fluid/Solver/FluidSolver.hpp"
+        "include/Math/LinearAlgebra/Vector3.hpp" "include/Core/Logger/Logger.hpp" "include/Graphics/Scene/RenderScene.hpp")
     file(WRITE "${FIXTURE_SDK}/${FIXTURE_PATH}" "")
 endforeach()
 # @note Managed artifacts model the same install contract without running CoreCLR or requiring an SDK build for this layout regression.
@@ -646,7 +648,7 @@ foreach(REQUIRED_TEXT
     endif()
 endforeach()
 include("${SOURCE_ROOT}/CMake/SDK/TestFBZZRuntimeAssets.cmake")
-file(READ "${SOURCE_ROOT}/Projects/Editor/src/BuildPipeline.cpp" PIPELINE_TEXT)
+file(READ "${SOURCE_ROOT}/Projects/Editor/src/BuildPipeline/BuildPipeline.cpp" PIPELINE_TEXT)
 foreach(REQUIRED_TEXT
         "required.push_back(L\"WinPixEventRuntime.dll\");"
         "exeDir / L\"EngineLicenses\" / L\"WinPixEventRuntime\" / name"

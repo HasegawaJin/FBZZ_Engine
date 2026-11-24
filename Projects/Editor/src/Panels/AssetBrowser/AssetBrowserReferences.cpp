@@ -4,7 +4,7 @@
 /// @date    2026-10-24
 #include "AssetBrowserCommon.hpp"
 #include "AssetReferenceScan.hpp"
-#include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Asset/Browser/AssetSearch.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <memory>
 #include <string>

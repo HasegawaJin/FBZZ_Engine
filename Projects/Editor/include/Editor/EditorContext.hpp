@@ -3,25 +3,25 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Scene/Components/CameraComponent.hpp>
-#include <Engine/Scene/Components/VolumeComponent.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/Camera/CameraComponent.hpp>
+#include <Engine/Scene/Components/Physics/VolumeComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
 #include <Engine/Scene/Fields/FlowField.hpp>
-#include <Editor/StandalonePlaySession.hpp>
-#include <Editor/GraphLayout.hpp>
-#include <Editor/Import/FbxImportTool.hpp>
-#include <Editor/Util/EditorSceneState.hpp>
-#include <Editor/Util/HotkeyScope.hpp>
-#include <Editor/Util/RenderCaptureFrame.hpp>
-#include <Editor/Util/ScriptRequirementReview.hpp>
-#include <Editor/Util/SpatialDebugVisualization.hpp>
-#include <Engine/Audio/SynthSpec.hpp>
-#include <Engine/ProjectSettings.hpp>
-#include <Engine/Renderer/Camera.hpp>
+#include <Editor/Play/StandalonePlaySession.hpp>
+#include <Editor/GraphEditor/GraphLayout.hpp>
+#include <Editor/Import/Fbx/FbxImportTool.hpp>
+#include <Editor/Scene/Editing/EditorSceneState.hpp>
+#include <Editor/Op/HotkeyScope.hpp>
+#include <Editor/Diagnostics/Rendering/RenderCaptureFrame.hpp>
+#include <Editor/Script/Authoring/ScriptRequirementReview.hpp>
+#include <Editor/Diagnostics/Rendering/SpatialDebugVisualization.hpp>
+#include <Engine/Audio/Synthesis/SynthSpec.hpp>
+#include <Engine/Project/ProjectSettings.hpp>
+#include <Graphics/Renderer/View/Camera.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -165,7 +165,7 @@ struct EditorContext {
     std::string animationControllerEditorPath;
     bool animationControllerDirty = false;
 
-    /// @note  選択状態 (Multi-select 対応)。直接書き換えず Editor/Util/Selection.hpp の SelectEntity / SelectEntities 等を使う。
+    /// @note  選択状態 (Multi-select 対応)。直接書き換えず Editor/Scene/Editing/Selection.hpp の SelectEntity / SelectEntities 等を使う。
     /// @note 選択にはアセット選択との排他と Hierarchy への反映が付いて回るため、直接代入すると後始末をした面としない面が混在する。
     std::vector<scene::EntityID> selectedEntities;
 

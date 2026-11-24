@@ -2,9 +2,9 @@
 /// @brief   DX12 バックエンドの生成と、ImGui バックエンドとのコンテキスト配線。
 /// @author  Hasegawa Jin
 /// @date    2026-09-03
-#include <Graphics/Renderer/BackendEntry.hpp>
+#include <Graphics/Renderer/Platform/BackendEntry.hpp>
 
-#include <Core/Logger.hpp>
+#include <Core/Logger/Logger.hpp>
 
 #include "DX12ImGuiRenderer.hpp"
 #include "DX12Renderer.hpp"

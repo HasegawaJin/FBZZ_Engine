@@ -7,7 +7,7 @@
 ///   - InitGoogleMock を確実に通す (gtest_main だけでは gmock が初期化されない)
 ///   - 結果が読める状態で画面に残るようコンソールを整える
 ///   - «テスト全体に一度だけ» 効かせたい設定を足す場所を確保しておく
-#include <TestKit/Console.hpp>
+#include <TestKit/Output/Console.hpp>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

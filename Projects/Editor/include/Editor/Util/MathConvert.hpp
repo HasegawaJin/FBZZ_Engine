@@ -4,9 +4,9 @@
 /// @date    2026-05-21
 #pragma once
 #include <imgui.h>
-#include <Math/Vector2.hpp>
-#include <Math/Vector3.hpp>
-#include <Math/Vector4.hpp>
+#include <Math/LinearAlgebra/Vector2.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 
 namespace fbzz::editor {
 

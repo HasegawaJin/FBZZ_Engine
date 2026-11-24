@@ -10,7 +10,7 @@
 #include "BenchScene.hpp"
 #include "Viewport2D.hpp"
 
-#include <Engine/Core/IModule.hpp>
+#include <Engine/Core/Platform/IModule.hpp>
 
 #include <memory>
 #include <vector>

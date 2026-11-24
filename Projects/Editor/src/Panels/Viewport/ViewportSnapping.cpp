@@ -5,13 +5,13 @@
 
 /// @note ImGuizmo に混ぜないのは、軸に沿った移動ではなく «掴んだ点をカーソル下の点へ吸着させる» 操作だから。
 /// @note スナップ中は呼び出し側 (ViewportPanel) がギズモ・ピッキング・矩形選択を止める。
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/Geometry/MaterialComponent.hpp>
+#include <Engine/Scene/Components/Geometry/MeshRenderer.hpp>
+#include <Engine/Scene/Components/Geometry/SkinnedMeshRenderer.hpp>
 #include "ViewportCommon.hpp"
-#include <Editor/Util/UndoStack.hpp>
-#include <Editor/Util/HierarchyTraversal.hpp>
-#include <Editor/Util/SceneEditUtils.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Editor/Scene/Editing/HierarchyTraversal.hpp>
+#include <Editor/Scene/Editing/SceneEditUtils.hpp>
 
 namespace fbzz::editor {
 

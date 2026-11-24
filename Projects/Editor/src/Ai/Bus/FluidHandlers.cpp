@@ -4,19 +4,19 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Ai/JsonReflector.hpp>
-#include <Editor/Util/BuildConsole.hpp>
-#include <Editor/Util/FluidBakeService.hpp>
-#include <Editor/Util/FluidDocument.hpp>
-#include <Editor/Util/SpriteSlicer.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Editor/Ai/Serialization/JsonReflector.hpp>
+#include <Editor/Diagnostics/Logging/BuildConsole.hpp>
+#include <Editor/Fluid/Bake/FluidBakeService.hpp>
+#include <Editor/Fluid/Authoring/FluidDocument.hpp>
+#include <Editor/Asset/Authoring/SpriteSlicer.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/FluidRecipeCodec.hpp>
-#include <Engine/Asset/TextureAsset.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
-#include <Math/Vector4.hpp>
+#include <Engine/Asset/Fluid/Import/FluidRecipeCodec.hpp>
+#include <Engine/Asset/Texture/TextureAsset.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 
 #include <algorithm>
 #include <cmath>

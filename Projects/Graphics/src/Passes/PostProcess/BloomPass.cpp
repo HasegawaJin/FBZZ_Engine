@@ -8,8 +8,8 @@
 /// @note だとぼけ半径が全解像度で ±4px 程度しかなく、光らせるには発光を強くして白クリップ
 /// @note させるしかないため。段を積み面積でにじませると彩度を保ったまま光って見せられる。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 #include <algorithm>
 
 namespace fbzz::renderer {

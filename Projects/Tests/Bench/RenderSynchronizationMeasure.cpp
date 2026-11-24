@@ -6,7 +6,7 @@
 #include <Windows.h>
 #include <objbase.h>
 #include "../Graphics/Fixtures/ProfilerRecordingProbe.hpp"
-#include <Graphics/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <algorithm>
 #include <chrono>
 #include <cmath>

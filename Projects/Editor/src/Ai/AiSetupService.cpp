@@ -4,7 +4,7 @@
 /// @date    2026-07-20
 #include <Editor/Ai/AiSetupService.hpp>
 
-#include <Editor/Ai/Json.hpp>
+#include <Editor/Ai/Serialization/Json.hpp>
 
 #include <filesystem>
 #include <fstream>

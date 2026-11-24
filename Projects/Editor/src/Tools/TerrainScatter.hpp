@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #pragma once
-#include <Graphics/Effects/RenderInstanceInput.hpp>
-#include <Math/Matrix4.hpp>
+#include <Graphics/Scene/RenderInstanceInput.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
 #include <cstdint>
 #include <functional>
 #include <array>

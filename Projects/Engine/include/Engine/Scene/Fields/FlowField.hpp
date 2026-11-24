@@ -4,12 +4,12 @@
 /// @date    2026-07-15
 #pragma once
 #include <Engine/Api.hpp>
-#include <Engine/Scene/Reflection.hpp>
+#include <Engine/Reflection/Reflection.hpp>
 #include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 namespace fbzz::scene {
 

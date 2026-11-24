@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-03
 #include <Editor/Import/ModelImport.hpp>
-#include <Editor/Import/FbxMetaSerializer.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Editor/Import/Fbx/FbxMetaSerializer.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <filesystem>
 #include <mutex>
 

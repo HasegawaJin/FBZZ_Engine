@@ -123,6 +123,7 @@ install(DIRECTORY
     "${CMAKE_SOURCE_DIR}/ThirdParty/TomlPlusPlus/include/"
     DESTINATION "include"
 )
+include("${CMAKE_CURRENT_LIST_DIR}/SDK/LegacyNativeHeaders.cmake")
 install(FILES
     "${CMAKE_SOURCE_DIR}/Projects/Engine/include/Engine/Api.hpp"
     "${CMAKE_SOURCE_DIR}/Projects/Engine/include/Engine/Standalone.hpp"

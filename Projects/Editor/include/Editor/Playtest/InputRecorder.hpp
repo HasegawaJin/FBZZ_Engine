@@ -4,7 +4,7 @@
 /// @date    2026-09-17
 /// @see     Docs/design/ai-verification-loop.md «入力の記録と再生»
 #pragma once
-#include <Editor/Ai/Json.hpp>
+#include <Editor/Ai/Serialization/Json.hpp>
 
 #include <array>
 #include <cstdint>

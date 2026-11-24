@@ -4,27 +4,27 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Ai/JsonReflector.hpp>
-#include <Editor/Ai/OperatorBridge.hpp>
+#include <Editor/Ai/Serialization/JsonReflector.hpp>
+#include <Editor/Ai/Bus/OperatorBridge.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/ManagedScriptEditor.hpp>
-#include <Editor/PackageBuildService.hpp>
-#include <Editor/Util/BuildConsole.hpp>
-#include <Editor/Util/SpriteSlicer.hpp>
-#include <Editor/Util/Selection.hpp>
-#include <Engine/Renderer/RenderDebugOverlay.hpp>
-#include <Engine/Renderer/IShader.hpp>
-#include <Engine/Renderer/ShaderCompileDiagnostics.hpp>
+#include <Editor/Script/Managed/ManagedScriptEditor.hpp>
+#include <Editor/BuildPipeline/PackageBuildService.hpp>
+#include <Editor/Diagnostics/Logging/BuildConsole.hpp>
+#include <Editor/Asset/Authoring/SpriteSlicer.hpp>
+#include <Editor/Scene/Editing/Selection.hpp>
+#include <Graphics/Renderer/Diagnostics/RenderDebugOverlay.hpp>
+#include <Graphics/Renderer/Shaders/IShader.hpp>
+#include <Graphics/Renderer/Shaders/ShaderCompileDiagnostics.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Core/Time.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Engine/Core/Timing/Time.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <Engine/Profiler/Profiler.hpp>
-#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/ComponentRegistry.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Editor/PlayModeController.hpp>
-#include <Editor/Util/ConsoleSink.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Editor/Diagnostics/Logging/ConsoleSink.hpp>
 #include <Engine/Core/Memory/MemorySystem.hpp>
 
 #include <algorithm>

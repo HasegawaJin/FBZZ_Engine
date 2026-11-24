@@ -12,24 +12,24 @@
 #include <functional>
 #include <string>
 #include <vector>
-#include "ComputeCall.hpp"
-#include "AccelerationStructure.hpp"
-#include "DrawCall.hpp"
-#include "Format.hpp"
-#include "GraphicsCapabilities.hpp"
-#include "GpuProfiler.hpp"
-#include "IIblBaker.hpp"
-#include "IBuffer.hpp"
-#include "IConstantBuffer.hpp"
-#include "IStructuredBuffer.hpp"
-#include "IPipelineState.hpp"
-#include "IRenderTarget.hpp"
-#include "IShader.hpp"
-#include "ITexture.hpp"
-#include "RenderState.hpp"
-#include "ResourceHandle.hpp"
-#include "SamplerMode.hpp"
-#include <Math/Vector4.hpp>
+#include "Graphics/Renderer/Commands/ComputeCall.hpp"
+#include "Graphics/RayTracing/AccelerationStructure.hpp"
+#include "Graphics/Renderer/Commands/DrawCall.hpp"
+#include "Graphics/Renderer/Resources/Format.hpp"
+#include "Graphics/Renderer/Platform/GraphicsCapabilities.hpp"
+#include "Graphics/Renderer/Diagnostics/GpuProfiler.hpp"
+#include "Graphics/Renderer/View/Lighting/IIblBaker.hpp"
+#include "Graphics/Renderer/Resources/Buffers/IBuffer.hpp"
+#include "Graphics/Renderer/Resources/Buffers/IConstantBuffer.hpp"
+#include "Graphics/Renderer/Resources/Buffers/IStructuredBuffer.hpp"
+#include "Graphics/Renderer/State/IPipelineState.hpp"
+#include "Graphics/Renderer/Resources/Textures/IRenderTarget.hpp"
+#include "Graphics/Renderer/Shaders/IShader.hpp"
+#include "Graphics/Renderer/Resources/Textures/ITexture.hpp"
+#include "Graphics/Renderer/State/RenderState.hpp"
+#include "Graphics/Renderer/Resources/ResourceHandle.hpp"
+#include "Graphics/Renderer/Resources/Textures/SamplerMode.hpp"
+#include <Math/LinearAlgebra/Vector4.hpp>
 
 namespace fbzz::renderer {
 

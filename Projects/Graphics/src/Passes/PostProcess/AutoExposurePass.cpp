@@ -7,8 +7,8 @@
 /// @note の 2 Dispatch。結果は 1 要素の StructuredBuffer に残ったまま Composite が t29 で読み、
 /// @note CPU へ読み戻さない (GPU 完了待ちのストールを避けるため。露出の 1 フレーム遅延は無害)。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 #include <algorithm>
 
 namespace fbzz::renderer {

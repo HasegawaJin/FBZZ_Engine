@@ -5,19 +5,19 @@
 /// @note Transform は Set / Offset の 2 モード、共通コンポーネントは Reflect() 経由で実編集し、
 /// @note 列挙はコンポーネントレジストリ由来にして追加漏れを防ぐ (「選んだ 20 個のライト強度を
 /// @note まとめて下げる」「全員を +Y に 2m」のようなレベル調整の一括操作に対応する)。
-#include <Engine/Scene/ScriptComponent.hpp>
+#include <Engine/Scene/Scripting/ScriptComponent.hpp>
 #include "InspectorMultiEdit.hpp"
 #include "InspectorCommon.hpp"
 #include "ManagedSettingsReflector.hpp"
-#include <Editor/PlayModeController.hpp>
-#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
-#include <Engine/Scene/ScriptFactory.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Engine/Scene/Managed/Runtime/ManagedScriptRuntime.hpp>
+#include <Engine/Scene/Scripting/ScriptFactory.hpp>
 
-#include <Editor/ImGuiReflector.hpp>
-#include <Editor/Util/EditorTheme.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Editor/Util/ManagedScriptSettings.hpp>
-#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Editor/Inspector/ImGuiReflector.hpp>
+#include <Editor/UI/Appearance/EditorTheme.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Editor/Script/Managed/ManagedScriptSettings.hpp>
+#include <Engine/Scene/Components/ComponentRegistry.hpp>
 
 #include <imgui.h>
 #include <array>

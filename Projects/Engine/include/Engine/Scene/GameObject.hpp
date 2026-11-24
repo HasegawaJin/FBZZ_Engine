@@ -6,8 +6,8 @@
 /// @note  親子関係は EntityID で持ち、TransformSystem が world 値を更新する。
 #pragma once
 #include <Engine/Api.hpp>
-#include "Entity.hpp"
-#include "Transform.hpp"
+#include "Engine/Scene/References/Entity.hpp"
+#include "Engine/Scene/Hierarchy/Transform.hpp"
 #include "ManagedBridgeAbi.hpp"
 #include <bitset>
 #include <cstddef>

@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
-#include <Engine/Core/ILogSink.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Diagnostics/ILogSink.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 #include <filesystem>
 #include <fstream>
 #include <mutex>

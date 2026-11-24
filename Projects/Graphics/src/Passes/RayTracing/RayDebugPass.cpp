@@ -3,10 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
 #include <Graphics/Passes/RayTracing/RayDebugPass.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
-#include <Math/MathUtils.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 #include <cmath>
 
 namespace fbzz::renderer {

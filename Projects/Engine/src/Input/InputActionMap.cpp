@@ -6,7 +6,7 @@
 #include "Engine/Input/Input.hpp"
 #include "Engine/Input/Gamepad.hpp"
 #include "Engine/Input/KeyCode.hpp"
-#include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
 #include "GameInputConsumption.hpp"
 
 #include <algorithm>

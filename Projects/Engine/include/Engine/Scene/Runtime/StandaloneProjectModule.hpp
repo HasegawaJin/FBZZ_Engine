@@ -1,0 +1,62 @@
+/// @file    StandaloneProjectModule.hpp
+/// @brief   Standaloneプロジェクト共通のゲーム更新・描画モジュール。
+/// @author  Hasegawa Jin
+/// @date    2026-06-22
+#pragma once
+#include <Engine/Api.hpp>
+
+#include <Engine/Core/Platform/IModule.hpp>
+#include <Engine/Project/ProjectSettings.hpp>
+#include <Engine/Scene/Runtime/ProjectRuntime.hpp>
+
+#include <filesystem>
+
+namespace fbzz::renderer {
+class IRenderer;
+class ResourceManager;
+}
+
+namespace fbzz::scene {
+
+/// @brief Sandbox と GameHub 生成プロジェクトで共通の Standalone 実行ループを提供する。
+/// @note 各プロジェクトが初期化・更新・描画・終了処理を複製すると、片方で修正したランタイム不具合がもう片方に残るため、実行経路全体を Engine 側に集約する。
+class StandaloneProjectModule final : public core::IModule {
+public:
+    /// @brief プロジェクトの Assets ルートと開始シーンを使って Standalone 実行を構成する。
+    /// @param settings 非 const。`graphics` プロキシ (Option 画面) が実行中に `settings.render` を書き換えるため可変で握る。配布ゲームは ProjectSettings をファイルへ書き戻さないので、書き換えはプロセスが生きている間だけ効く。
+    FBZZ_ENGINE_API StandaloneProjectModule(renderer::IRenderer& renderer,
+                            renderer::ResourceManager& resources,
+                            std::filesystem::path projectRoot,
+                            std::filesystem::path startSceneFile,
+                            ProjectSettings& settings);
+
+    /// @note エディターの Play からシーンファイルを直接選べる。ProjectSettings の変更や、同名ファイルの候補検索は不要。
+    FBZZ_ENGINE_API StandaloneProjectModule(renderer::IRenderer& renderer,
+                            renderer::ResourceManager& resources,
+                            std::filesystem::path projectRoot,
+                            std::filesystem::path startSceneFile,
+                            ProjectSettings& settings,
+                            bool exactStartScene);
+
+    [[nodiscard]] FBZZ_ENGINE_API bool OnInit() override;
+    FBZZ_ENGINE_API void OnUpdate(float dt) override;
+    FBZZ_ENGINE_API void OnLateUpdate(float dt) override;
+    FBZZ_ENGINE_API void OnRender() override;
+    FBZZ_ENGINE_API void OnShutdown() override;
+    /// @note ホストは Application::Run の後に参照し、起動失敗と通常終了を区別する。
+    [[nodiscard]] bool StartedSuccessfully() const { return m_startedSuccessfully; }
+
+private:
+    renderer::IRenderer&       m_renderer;
+    renderer::ResourceManager& m_resources;
+    std::filesystem::path      m_projectRoot;
+    std::filesystem::path      m_startSceneFile;
+    ProjectSettings&           m_settings;
+    ProjectRuntime             m_runtime;
+    bool                       m_managedLoaded = false;
+    bool                       m_exactStartScene = false;
+    bool                       m_startedSuccessfully = false;
+    bool                       m_waitingForStartScene = false;
+};
+
+}

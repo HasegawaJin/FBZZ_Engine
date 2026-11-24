@@ -6,7 +6,7 @@
 #include <Engine/Api.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Input/Gamepad.hpp>
-#include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
 #include <cstdint>
 #include <array>
 #include <cstddef>

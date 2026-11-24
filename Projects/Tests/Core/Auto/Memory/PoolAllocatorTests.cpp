@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Memory/PoolAllocator.hpp>
+#include <Engine/Core/Memory/Allocators/PoolAllocator.hpp>
 
 namespace fbzz::tests {
 

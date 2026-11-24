@@ -2,15 +2,15 @@
 /// @brief   選択 Entity / Asset の Inspector ルーティング。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Scene/ComponentRegistry.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Scene/ScriptComponent.hpp>
-#include <Editor/Panels/InspectorPanel.hpp>
-#include <Editor/Panels/AnimationGraphInspector.hpp>
-#include <Editor/Panels/AnimationPreview.hpp>
-#include <Editor/Util/EditorTheme.hpp>
-#include <Editor/Util/SceneQueryIndex.hpp>
+#include <Engine/Scene/Components/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
+#include <Engine/Scene/Scripting/ScriptComponent.hpp>
+#include <Editor/Panels/Inspector/InspectorPanel.hpp>
+#include <Editor/Panels/Animation/AnimationGraphInspector.hpp>
+#include <Editor/Panels/Animation/AnimationPreview.hpp>
+#include <Editor/UI/Appearance/EditorTheme.hpp>
+#include <Editor/Scene/Editing/SceneQueryIndex.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorAudio.hpp"
@@ -26,18 +26,18 @@
 #include "InspectorRendering.hpp"
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
-#include <Editor/PlayModeController.hpp>
-#include <Editor/Util/PlaySettingsAdoption.hpp>
-#include <Editor/Util/PrefabStructureMerge.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
-#include <Editor/Util/Localization.hpp>
-#include <Editor/Util/SceneEditUtils.hpp>
-#include <Editor/Util/Selection.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Editor/Play/PlaySettingsAdoption.hpp>
+#include <Editor/Prefab/PrefabStructureMerge.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
+#include <Editor/UI/Localization.hpp>
+#include <Editor/Scene/Editing/SceneEditUtils.hpp>
+#include <Editor/Scene/Editing/Selection.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Scene/Components/TerrainGridComponent.hpp>
+#include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainGridComponent.hpp>
 #include <imgui_internal.h>
 
 namespace fbzz::editor {

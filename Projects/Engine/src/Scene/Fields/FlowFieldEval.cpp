@@ -7,13 +7,13 @@
 #include <Engine/Scene/Fields/FlowFieldFrame.hpp>
 
 #include "Engine/Asset/AssetManager.hpp"
-#include "Fluid/VectorFieldAsset.hpp"
-#include <Math/CurlNoise.hpp>
-#include "Engine/Scene/Components/ParticleEmitter.hpp"
-#include "Engine/Scene/Components/ParticleEmitterSpace.hpp"
+#include "Fluid/Fields/VectorFieldAsset.hpp"
+#include <Math/Noise/CurlNoise.hpp>
+#include "Engine/Scene/Components/Particles/ParticleEmitter.hpp"
+#include "Engine/Scene/Components/Particles/ParticleEmitterSpace.hpp"
 #include "Engine/Scene/GameObject.hpp"
 #include "Engine/Scene/Scene.hpp"
-#include "Engine/Scene/Transform.hpp"
+#include "Engine/Scene/Hierarchy/Transform.hpp"
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -21,7 +21,7 @@
 namespace fbzz::scene {
 namespace {
 
-/// @note 乱流の式は Math/CurlNoise.hpp が正本。FlowFieldEval・VectorFieldAsset・
+/// @note 乱流の式は Math/Noise/CurlNoise.hpp が正本。FlowFieldEval・VectorFieldAsset・
 /// @note ParticleNoise.hlsli の 3 者で同じ値が出ることが前提なので、実体は 1 つに保つ。
 using math::CurlNoise;
 using math::TurbulenceSamplePoint;

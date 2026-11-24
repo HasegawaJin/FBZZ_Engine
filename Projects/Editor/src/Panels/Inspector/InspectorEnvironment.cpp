@@ -2,15 +2,15 @@
 /// @brief   Environment / Decal / IBL / PostProcess 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/DecalComponent.hpp>
-#include <Engine/Scene/Components/EnvironmentLightComponent.hpp>
-#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
-#include <Engine/Scene/Components/PostProcessVolumeComponent.hpp>
-#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
-#include <Engine/Scene/Components/SkyRenderer.hpp>
-#include <Engine/Scene/Components/SunMoonRenderer.hpp>
-#include <Engine/Scene/Components/VolumetricCloudComponent.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/Rendering/DecalComponent.hpp>
+#include <Engine/Scene/Components/Environment/EnvironmentLightComponent.hpp>
+#include <Engine/Scene/Components/Lighting/LightProbeVolumeComponent.hpp>
+#include <Engine/Scene/Components/Rendering/PostProcessVolumeComponent.hpp>
+#include <Engine/Scene/Components/Lighting/ReflectionProbeComponent.hpp>
+#include <Engine/Scene/Components/Environment/SkyRenderer.hpp>
+#include <Engine/Scene/Components/Environment/SunMoonRenderer.hpp>
+#include <Engine/Scene/Components/Environment/VolumetricCloudComponent.hpp>
 #include "InspectorEnvironment.hpp"
 #include <Editor/Op/EditorOperator.hpp>
 

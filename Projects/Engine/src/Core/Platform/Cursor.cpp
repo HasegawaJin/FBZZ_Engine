@@ -2,9 +2,9 @@
 /// @brief   Win32 カーソル状態を Engine API として一元管理する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-26
-#include <Engine/Core/Cursor.hpp>
-#include <Engine/Core/Application.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Input/InputActionMap.hpp>
 #include <Engine/Input/Gamepad.hpp>

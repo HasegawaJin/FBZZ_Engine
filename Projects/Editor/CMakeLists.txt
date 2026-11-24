@@ -27,7 +27,7 @@ fbzz_use_std_pch(FBZZEditor)
 fbzz_use_unity_build(FBZZEditor EXCLUDE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Import/StbImage.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Import/HdriLoader.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/Panels/FontPreview.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Panels/Preview/FontPreview.cpp"
     "${EDITOR_MINIZ_SRC}"
 )
 set_target_properties(FBZZEditor PROPERTIES

@@ -4,7 +4,7 @@
 /// @date    2026-09-21
 /// @see Docs/design/crash-report.md
 #include <TestKit/TestKit.hpp>
-#include "Core/CrashLogTail.hpp"
+#include "Core/Diagnostics/CrashLogTail.hpp"
 #include <string>
 #include <string_view>
 #include <vector>

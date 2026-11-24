@@ -1,0 +1,282 @@
+/// @file    PresentationComponents.hpp
+/// @brief   2Dスプライト、線、ビルボード、投影表示に使う汎用描画Component。
+/// @author  Hasegawa Jin
+/// @date    2026-08-12
+#pragma once
+#include <Engine/Api.hpp>
+
+#include <Engine/Scene/References/EntityRef.hpp>
+#include <Engine/Scene/ControlPoints/ControlPointModes.hpp>
+#include <Engine/Scene/References/ObjectReference.hpp>
+#include <Engine/Reflection/Reflection.hpp>
+#include <Math/LinearAlgebra/Vector2.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
+#include <Graphics/Renderer/Geometry/Mesh.hpp>
+#include <memory>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace fbzz::scene {
+
+/// @note CPU で組み直すメッシュを 2 枚持ち、書くたびに入れ替える置き場。
+/// @note PresentationSystem が Sprite / Line の帯を焼くのに使う (シーンへは保存しない)。
+/// @note 2 枚必要: DX12 は BeginFrame が 2 フレーム前のフェンスまでしか待たないため、1 枚だと
+/// @note GPU が読んでいる最中の頂点を上書きする (DX11 は WRITE_DISCARD で無害、DX12 でのみ壊れる)。
+/// @note 毎フレーム作り直さない: 以前は Release+CreateBuffer を焼くたびに行い、電極 61 本で
+/// @note 15ms 掛かっていた。unique_ptr 単独所有にして、複製時は「まだ焼いていない」状態から
+/// @note 始める (次フレームで焼き直す)。所有者は常に 1 つなので shared_ptr の参照カウントは不要。
+struct DoubleBufferedMesh {
+    std::unique_ptr<renderer::Mesh> slots[2];
+    /// @note 入力が変わっていないかの判定に使う。変わらなければ書き直さない。
+    std::size_t signature = 0;
+    /// @note 頂点生成に使った全値を順序付きで保持する。candidate は毎更新の比較用領域を再利用する。
+    std::vector<float> geometryInputs;
+    std::vector<float> candidateInputs;
+    bool geometryValid = false;
+    /// @note 今 slots のどちらを描いているか。
+    std::uint32_t current = 0;
+
+    DoubleBufferedMesh() = default;
+    FBZZ_ENGINE_API ~DoubleBufferedMesh();
+    FBZZ_ENGINE_API DoubleBufferedMesh(DoubleBufferedMesh&& other) noexcept;
+    FBZZ_ENGINE_API DoubleBufferedMesh& operator=(DoubleBufferedMesh&& other) noexcept;
+    FBZZ_ENGINE_API void Reset();
+
+    /// @note コピーで中身を連れていかないのは、Component の複製・プレファブ展開が値コピーのため。
+    /// @note GPU バッファまで写すと 2 つの GameObject が同じバッファへ交互に書き、片方が畳まれた
+    /// @note 時点でもう片方が消えたバッファを描く。複製先は «まだ焼いていない» 状態から始める。
+    DoubleBufferedMesh(const DoubleBufferedMesh&) {}
+    DoubleBufferedMesh& operator=(const DoubleBufferedMesh& other)
+    {
+        if (this != &other) Reset();
+        return *this;
+    }
+
+    [[nodiscard]] renderer::Mesh* Current() const { return slots[current].get(); }
+    [[nodiscard]] bool HasMesh() const { return static_cast<bool>(slots[current]); }
+};
+
+enum class SpriteDrawMode : int { Simple = 0, Sliced = 1, Tiled = 2 };
+
+struct SpriteRendererComponent {
+    bool enabled = true;
+    std::string spritePath;
+    std::string materialPath = "Assets/Materials/Fallback/SpriteFallback.mat";
+    math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    math::Vector2 size = { 1.0f, 1.0f };
+    math::Vector2 pivot = { 0.5f, 0.5f };
+    /// @note size と pivot を Sprite の .meta から取る (Pixels Per Unit と Pivot)。
+    /// @note 既定 false: 既存シーンの size / pivot は手で決めた値で、素材由来の値へ勝手に
+    /// @note 置き換えると全部の見た目が変わる。
+    /// @note 1 回きりのボタンではなく常時追従にする: Sprite Editor で Pivot を直したら、
+    /// @note その絵を使う全オブジェクトが直ってほしいため。
+    bool useSpriteNativeSize = false;
+    SpriteDrawMode drawMode = SpriteDrawMode::Simple;
+    int sortingLayer = 0;
+    int orderInLayer = 0;
+    bool flipX = false;
+    bool flipY = false;
+    bool receiveLighting = false;
+    DoubleBufferedMesh runtimeMesh;
+
+    const char* GetTypeName() const { return "Sprite Renderer"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("spritePath", spritePath);
+        r.Field("materialPath", materialPath);
+        r.ColorField("color", color);
+        r.Field("useSpriteNativeSize", useSpriteNativeSize);
+        r.Tooltip("Sprite の Pixels Per Unit と Pivot から size / pivot を毎フレーム求めます");
+        r.FieldIf("size", size, !useSpriteNativeSize);
+        r.FieldIf("pivot", pivot, !useSpriteNativeSize);
+        int mode = static_cast<int>(drawMode);
+        static constexpr const char* MODES[] = { "Simple", "Sliced", "Tiled" };
+        r.Enum("drawMode", mode, MODES);
+        drawMode = static_cast<SpriteDrawMode>(mode < 0 || mode > 2 ? 0 : mode);
+        r.Field("sortingLayer", sortingLayer);
+        r.Field("orderInLayer", orderInLayer);
+        r.Field("flipX", flipX);
+        r.Field("flipY", flipY);
+        r.Field("receiveLighting", receiveLighting);
+    }
+};
+
+struct SortingGroupComponent {
+    bool enabled = true;
+    int sortingLayer = 0;
+    int orderInLayer = 0;
+
+    const char* GetTypeName() const { return "Sorting Group"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        r.Field("sortingLayer", sortingLayer);
+        r.Field("orderInLayer", orderInLayer);
+    }
+};
+
+enum class LineSpace : int { Local = 0, World = 1 };
+
+/// @note 点列を «どんな断面で» 押し出すか。
+/// @note Tube を足したのは、Ribbon (板 1 枚をカメラへ向ける) だと «太さのあるもの» (レーザー筒・
+/// @note パイプ) が視線が寄ると潰れ、地形へ突き刺さる端が板の切り口として出て刺さって見えないため。
+/// @note Ribbon も残すのは、軌跡・放電・UI の線は «常にこちらを向く» ことが読みやすさそのもので、
+/// @note Tube にすると細い線ほど画面上で消えるため。用途が違うので選択式にする。
+enum class LineShape : int { Ribbon = 0, Tube = 1 };
+
+/// @brief Line の一点に対応する安定 ID 付きの参照行。
+struct LineControlPointBinding {
+    std::uint32_t id = 0;
+    ObjectReference target;
+
+    /// @brief 安定 ID と TargetPoint 型参照を公開する。
+    FBZZ_ENGINE_API void Reflect(IReflector& reflector);
+    FBZZ_ENGINE_API bool operator==(const LineControlPointBinding& other) const;
+};
+
+/// @brief 静的ベイクで保持する Line の数値座標。
+struct LineControlPointValue {
+    std::uint32_t id = 0;
+    math::Vector3 position = math::Vector3::ZERO;
+
+    /// @brief 安定 ID と取得済みの位置を公開する。
+    FBZZ_ENGINE_API void Reflect(IReflector& reflector);
+    bool operator==(const LineControlPointValue& other) const = default;
+};
+
+/// @brief 順序と属性を保持したまま Line の点参照を公開する。
+FBZZ_ENGINE_API void ReflectLineControlPointBindings(IReflector& reflector,
+    std::vector<LineControlPointBinding>& bindings);
+
+/// @brief 安定 ID を持つ Line の数値点を公開する。
+FBZZ_ENGINE_API void ReflectLineControlPointValues(IReflector& reflector, const char* fieldName,
+    std::vector<LineControlPointValue>& points);
+
+struct LineRendererComponent {
+    bool enabled = true;
+    std::vector<math::Vector3> points;
+    ControlPointSourceMode pointSourceMode = ControlPointSourceMode::INLINE;
+    ControlPointRuntimeMode pointRuntimeMode = ControlPointRuntimeMode::LIVE;
+    std::vector<LineControlPointBinding> pointBindings;
+    std::vector<LineControlPointValue> bakedPoints;
+    std::uint64_t bakedInputSignature = 0;
+    ControlPointSourceMode bakedSourceMode = ControlPointSourceMode::INLINE;
+    /// @brief 数値点のベイクに保存する座標系。
+    /// @note 設定の座標系を変更するとベイクは期限切れになる。保存した点は再ベイクまで取得時の座標系で解釈する。
+    LineSpace bakedSpace = LineSpace::Local;
+    std::uint32_t bakedAdapterVersion = 0;
+    bool bakeValid = false;
+    std::string materialPath = "Assets/Materials/Fallback/VFXMeshFallback.mat";
+    math::Vector4 startColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    math::Vector4 endColor = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float startWidth = 0.05f;
+    float endWidth = 0.05f;
+    LineSpace space = LineSpace::Local;
+    bool loop = false;
+    /// @note Ribbon のときだけ意味を持つ。Tube は形が視点に依存しない。
+    bool billboard = true;
+    LineShape shape = LineShape::Ribbon;
+    /// @note Tube の円周分割数。小さいと角が見え、大きくしても遠目には変わらない。
+    int radialSegments = 8;
+    int sortingLayer = 0;
+    int orderInLayer = 0;
+    DoubleBufferedMesh runtimeMesh;
+
+    const char* GetTypeName() const { return "Line Renderer"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        ReflectControlPointSourceMode(r, "pointSourceMode", pointSourceMode);
+        ReflectControlPointRuntimeMode(r, "pointRuntimeMode", pointRuntimeMode);
+        if (pointSourceMode == ControlPointSourceMode::INLINE)
+            r.ListField("points", points);
+        ReflectLineControlPointBindings(r, pointBindings);
+        ReflectLineControlPointValues(r, "bakedPoints", bakedPoints);
+        ReflectControlPointSignature(r, "bakedInputSignature", bakedInputSignature);
+        ReflectControlPointSourceMode(r, "bakedSourceMode", bakedSourceMode);
+        ReflectControlPointVersion(r, "bakedAdapterVersion", bakedAdapterVersion);
+        int bakedSpaceValue = static_cast<int>(bakedSpace);
+        static constexpr const char* BAKED_SPACES[] = { "Local", "World" };
+        r.Enum("bakedSpace", bakedSpaceValue, BAKED_SPACES);
+        bakedSpace = static_cast<LineSpace>(bakedSpaceValue < 0 || bakedSpaceValue > 1 ? 0xff : bakedSpaceValue);
+        r.Field("bakeValid", bakeValid);
+        r.Field("materialPath", materialPath);
+        r.ColorField("startColor", startColor);
+        r.ColorField("endColor", endColor);
+        r.Field("startWidth", startWidth);
+        r.Field("endWidth", endWidth);
+        int value = static_cast<int>(space);
+        static constexpr const char* SPACES[] = { "Local", "World" };
+        r.Enum("space", value, SPACES);
+        space = static_cast<LineSpace>(value < 0 || value > 1 ? 0 : value);
+        r.Field("loop", loop);
+        r.Field("billboard", billboard);
+        int shapeValue = static_cast<int>(shape);
+        static constexpr const char* SHAPES[] = { "Ribbon", "Tube" };
+        r.Enum("shape", shapeValue, SHAPES);
+        shape = static_cast<LineShape>(shapeValue < 0 || shapeValue > 1 ? 0 : shapeValue);
+        r.Field("radialSegments", radialSegments);
+        r.Field("sortingLayer", sortingLayer);
+        r.Field("orderInLayer", orderInLayer);
+    }
+};
+
+enum class BillboardMode : int { FaceCamera = 0, YAxisOnly = 1, MatchCamera = 2 };
+
+struct BillboardComponent {
+    bool enabled = true;
+    BillboardMode mode = BillboardMode::FaceCamera;
+    bool reverseForward = false;
+
+    const char* GetTypeName() const { return "Billboard"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        int value = static_cast<int>(mode);
+        static constexpr const char* MODES[] = { "Face Camera", "Y Axis Only", "Match Camera" };
+        r.Enum("mode", value, MODES);
+        mode = static_cast<BillboardMode>(value < 0 || value > 2 ? 0 : value);
+        r.Field("reverseForward", reverseForward);
+    }
+};
+
+enum class ProjectorShape : int { Box = 0, Perspective = 1 };
+
+struct ProjectorComponent {
+    bool enabled = true;
+    ProjectorShape shape = ProjectorShape::Box;
+    /// @note render_path = "decal" の .mat はシェーダーごと DecalComponent へ渡る。
+    /// @note それ以外の .mat は albedo / normal / emissive のテクスチャだけを抜き出して
+    /// @note 組み込みデカール描画へ載せる (旧来の Projector 設定を壊さないため)。
+    std::string materialPath;
+    math::Vector4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float fieldOfView = 45.0f;
+    float nearClip = 0.01f;
+    float farClip = 10.0f;
+    int receiverLayerMask = -1;
+    std::string runtimeLoadedMaterialPath;
+
+    const char* GetTypeName() const { return "Projector"; }
+    void Reflect(IReflector& r)
+    {
+        r.Field("enabled", enabled);
+        int value = static_cast<int>(shape);
+        static constexpr const char* SHAPES[] = { "Box", "Perspective" };
+        r.Enum("shape", value, SHAPES);
+        shape = static_cast<ProjectorShape>(value < 0 || value > 1 ? 0 : value);
+        r.Field("materialPath", materialPath);
+        r.Tooltip("投影するマテリアル (.mat)。render_path = \"decal\" ならシェーダーごと使い、"
+                  "それ以外は albedo / normal / emissive のテクスチャだけを取り出します");
+        r.ColorField("color", color);
+        r.FloatRange("fieldOfView", fieldOfView, 1.0f, 179.0f);
+        r.Field("nearClip", nearClip);
+        r.Field("farClip", farClip);
+        r.Field("receiverLayerMask", receiverLayerMask);
+    }
+};
+
+}

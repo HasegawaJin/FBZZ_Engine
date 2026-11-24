@@ -4,7 +4,7 @@
 /// @date    2026-10-24
 #pragma once
 
-#include <Graphics/Renderer/GpuProfiler.hpp>
+#include <Graphics/Renderer/Diagnostics/GpuProfiler.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <deque>

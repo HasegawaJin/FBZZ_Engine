@@ -2,17 +2,17 @@
 /// @brief   Terrain / Water 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
 #include "InspectorTerrainWater.hpp"
 #include "InspectorUI.hpp"
-#include "../../Util/MaterialAuthoringEditing.hpp"
+#include "../../Material/MaterialAuthoringEditing.hpp"
 #include <Tools/TerrainAuthoring.hpp>
 #include <Tools/WorldAuthoring.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Engine/Scene/Components/TerrainGridComponent.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/WaterSurfaceQuery.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainGridComponent.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Water/Surface/WaterSurfaceQuery.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>

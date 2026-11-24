@@ -11,7 +11,7 @@
 /// **設定を動かして初めて破れるもの** ── つまり自動テストでは配置を固定できないものに限る。
 #pragma once
 
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <cstdarg>
 #include <string>

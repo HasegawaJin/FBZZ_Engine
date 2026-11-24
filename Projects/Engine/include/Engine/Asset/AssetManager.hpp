@@ -14,11 +14,11 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
-#include <Engine/Asset/AssetStreaming.hpp>
-#include <Engine/Asset/IAssetImporter.hpp>
-#include <Engine/Asset/Model.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Renderer/ResourceHandle.hpp>
+#include <Engine/Asset/Streaming/AssetStreaming.hpp>
+#include <Engine/Asset/Import/IAssetImporter.hpp>
+#include <Engine/Asset/Model/Model.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Graphics/Renderer/Resources/ResourceHandle.hpp>
 #include <algorithm>
 #include <cassert>
 #include <limits>
@@ -325,7 +325,7 @@ private:
     template<> FBZZ_ENGINE_API AssetHandle<Type> AssetManager::Load<Type>(const std::string& path); \
     template<> FBZZ_ENGINE_API Type* AssetManager::Get<Type>(AssetHandle<Type> handle); \
     template<> FBZZ_ENGINE_API void AssetManager::Unload<Type>(const std::string& path);
-#include <Engine/Asset/AssetTypes.inl>
+#include <Engine/Asset/Registry/AssetTypes.inl>
 #undef FBZZ_ASSET_TYPE
 
 } /// @note namespace fbzz::asset

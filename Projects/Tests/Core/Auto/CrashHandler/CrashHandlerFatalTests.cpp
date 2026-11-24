@@ -5,10 +5,10 @@
 /// @see Docs/design/crash-report.md
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
-#include <TestKit/TempDir.hpp>
-#include <Engine/Core/CrashHandler.hpp>
-#include <Engine/Core/DeveloperMode.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <TestKit/Support/TempDir.hpp>
+#include <Engine/Core/Diagnostics/CrashHandler.hpp>
+#include <Engine/Core/Platform/DeveloperMode.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>

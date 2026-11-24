@@ -4,8 +4,8 @@
 /// @date    2026-11-03
 #include <Engine/Scene/Ragdoll/RagdollRig.hpp>
 #include <Engine/Scene/Ragdoll/RagdollControls.hpp>
-#include <Math/MathUtils.hpp>
-#include <Physics/World.hpp>
+#include <Math/Scalar/MathUtils.hpp>
+#include <Physics/World/World.hpp>
 #include <algorithm>
 #include <cmath>
 #include <vector>

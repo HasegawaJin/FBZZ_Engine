@@ -5,8 +5,8 @@
 #pragma once
 #include <Physics/Api.hpp>
 
-#include <Math/Vector3.hpp>
-#include <Math/Matrix3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Math/LinearAlgebra/Matrix3.hpp>
 #include <array>
 #include <cstdint>
 #include <functional>

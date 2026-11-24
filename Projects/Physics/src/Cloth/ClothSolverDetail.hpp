@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>

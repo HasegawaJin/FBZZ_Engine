@@ -2,11 +2,11 @@
 /// @brief   RegistryとReflect定義から標準コンポーネントInspectorを自動生成する。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Scene/ComponentRegistry.hpp>
-#include <Engine/Scene/Components/WaterfallComponent.hpp>
-#include <Engine/Scene/Components/WaterZoneComponent.hpp>
+#include <Engine/Scene/Components/ComponentRegistry.hpp>
+#include <Engine/Scene/Components/Water/WaterfallComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterZoneComponent.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/Util/WaterfallFluidBake.hpp>
+#include <Editor/Fluid/Bake/WaterfallFluidBake.hpp>
 #include "InspectorUI.hpp"
 
 namespace fbzz::editor {

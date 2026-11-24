@@ -9,8 +9,8 @@
 #include "Engine/Input/InputActionMap.hpp"
 #include <Engine/Input/InputBindingsDocument.hpp>
 #include <sstream>
-#include "Engine/Core/Logger.hpp"
-#include "Engine/Util/FileSystem.hpp"
+#include "Engine/Core/Diagnostics/Logger.hpp"
+#include "Engine/Util/Files/FileSystem.hpp"
 
 #include <toml++/toml.hpp>
 

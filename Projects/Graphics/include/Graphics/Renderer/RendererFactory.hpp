@@ -16,9 +16,9 @@
 #include <cstdint>
 #include <memory>
 
-#include "IImGuiRenderer.hpp"
+#include "Graphics/Renderer/UI/IImGuiRenderer.hpp"
 #include "IRenderer.hpp"
-#include "RendererBackend.hpp"
+#include "Graphics/Renderer/Platform/RendererBackend.hpp"
 
 namespace fbzz::renderer {
 

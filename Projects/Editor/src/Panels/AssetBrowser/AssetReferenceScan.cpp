@@ -5,8 +5,8 @@
 #include "AssetReferenceScan.hpp"
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/TexDescSerializer.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Asset/Texture/TexDescSerializer.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <cctype>

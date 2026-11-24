@@ -7,11 +7,11 @@
 #include <Engine/Scene/Ragdoll/StandingPose.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 
-#include <Math/MathUtils.hpp>
-#include <Physics/ColliderDebugGeometry.hpp>
-#include <Physics/OBBCollider.hpp>
-#include <Physics/PhysicsSolver.hpp>
-#include <Physics/World.hpp>
+#include <Math/Scalar/MathUtils.hpp>
+#include <Physics/Debug/ColliderDebugGeometry.hpp>
+#include <Physics/Collision/Shapes/OBBCollider.hpp>
+#include <Physics/Collision/NarrowPhase/PhysicsSolver.hpp>
+#include <Physics/World/World.hpp>
 
 #include <algorithm>
 #include <array>

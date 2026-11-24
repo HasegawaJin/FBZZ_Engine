@@ -4,15 +4,15 @@
 /// @date    2026-09-26
 #include "BusInternal.hpp"
 #include "ManagedScriptInspection.hpp"
-#include <Editor/Ai/JsonReflector.hpp>
+#include <Editor/Ai/Serialization/JsonReflector.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/PlayModeController.hpp>
-#include <Engine/Core/Time.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Engine/Core/Timing/Time.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/ScriptComponent.hpp>
-#include <Engine/Scene/ScriptFactory.hpp>
-#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
-#include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>
+#include <Engine/Scene/Scripting/ScriptComponent.hpp>
+#include <Engine/Scene/Scripting/ScriptFactory.hpp>
+#include <Engine/Scene/Managed/Runtime/ManagedScriptRuntime.hpp>
+#include <Engine/Scene/Managed/Runtime/ManagedScriptAdapter.hpp>
 #include <algorithm>
 #include <cmath>
 #include <set>

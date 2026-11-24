@@ -2,7 +2,7 @@
 /// @brief   Compare production per-slot and prepared-object material demand using identical immutable CPU inputs.
 /// @author  Hasegawa Jin
 /// @date    2026-10-25
-#include "../../Engine/src/Scene/Systems/MaterialDemandTrace.hpp"
+#include "../../Engine/src/Rendering/Extraction/MaterialDemandTrace.hpp"
 #include <algorithm>
 #include <array>
 #include <atomic>

@@ -4,8 +4,8 @@
 /// @date    2026-10-01
 #pragma once
 #include <Graphics/Api.hpp>
-#include <Graphics/Pipeline/IRenderPass.hpp>
-#include <Graphics/RayTracing/RayReflectionResources.hpp>
+#include <Graphics/Pipeline/Passes/IRenderPass.hpp>
+#include <Graphics/RayTracing/Reflection/RayReflectionResources.hpp>
 
 namespace fbzz::renderer {
 class RayReflectionReconstructionPass final : public IRenderPass {

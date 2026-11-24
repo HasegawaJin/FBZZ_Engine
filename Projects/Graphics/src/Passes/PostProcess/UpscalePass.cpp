@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-10
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/DrawCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/DrawCall.hpp>
 
 namespace fbzz::renderer {
 

@@ -9,20 +9,20 @@
 #include <Engine/Api.hpp>
 
 #include <Engine/Scene/Ragdoll/RagdollProfile.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
-#include <Physics/CapsuleCollider.hpp>
-#include <Physics/Collider.hpp>
-#include <Physics/CollisionPair.hpp>
-#include <Physics/ContactPoint.hpp>
-#include <Physics/PhysicsMaterial.hpp>
-#include <Physics/SphereCollider.hpp>
-#include <Physics/XPBDContact.hpp>
-#include <Physics/XPBDBodyDrive.hpp>
-#include <Physics/XPBDJoint.hpp>
-#include <Physics/XPBDPlaneContact.hpp>
-#include <Physics/XPBDPoseAnchor.hpp>
-#include <Physics/XPBDSolver.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Physics/Collision/Shapes/CapsuleCollider.hpp>
+#include <Physics/Collision/Shapes/Collider.hpp>
+#include <Physics/Collision/BroadPhase/CollisionPair.hpp>
+#include <Physics/Solver/ContactPoint.hpp>
+#include <Physics/Dynamics/PhysicsMaterial.hpp>
+#include <Physics/Collision/Shapes/SphereCollider.hpp>
+#include <Physics/Solver/XPBD/XPBDContact.hpp>
+#include <Physics/Solver/XPBD/XPBDBodyDrive.hpp>
+#include <Physics/Solver/XPBD/XPBDJoint.hpp>
+#include <Physics/Solver/XPBD/XPBDPlaneContact.hpp>
+#include <Physics/Solver/XPBD/XPBDPoseAnchor.hpp>
+#include <Physics/Solver/XPBD/XPBDSolver.hpp>
 
 #include <cstddef>
 #include <cstdint>

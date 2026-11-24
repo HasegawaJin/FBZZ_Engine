@@ -2,22 +2,22 @@
 /// @brief   Patrol、Line、Off-Mesh Linkの制御点sourceとordered bindingをInspectorへ表示する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
-#include <Editor/Util/PropertyControls.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
 #include <Editor/Tools/AdditionalControlPointEditing.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/PlayModeController.hpp>
+#include <Editor/Play/PlayModeController.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Scene/Components/NavMeshOffMeshLinkComponent.hpp>
-#include <Engine/Scene/Components/NavMeshPatrolComponent.hpp>
-#include <Engine/Scene/Components/PresentationComponents.hpp>
-#include <Engine/Scene/Components/TargetPointComponent.hpp>
-#include <Engine/Scene/NavigationControlPoints.hpp>
-#include <Engine/Scene/PresentationControlPoints.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Scene/Components/Navigation/NavMeshOffMeshLinkComponent.hpp>
+#include <Engine/Scene/Components/Navigation/NavMeshPatrolComponent.hpp>
+#include <Engine/Scene/Components/Gameplay/PresentationComponents.hpp>
+#include <Engine/Scene/Components/Gameplay/TargetPointComponent.hpp>
+#include <Engine/Scene/ControlPoints/NavigationControlPoints.hpp>
+#include <Engine/Scene/ControlPoints/PresentationControlPoints.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
+#include <Engine/Scene/Systems/Transform/TransformSystem.hpp>
 #include <imgui.h>
 #include <array>
 #include <cstdint>

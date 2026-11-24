@@ -7,11 +7,11 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-#include "Engine/Core/Window.hpp"
-#include "Engine/Core/Cursor.hpp"
-#include "Engine/Core/Logger.hpp"
+#include "Engine/Core/Platform/Window.hpp"
+#include "Engine/Core/Platform/Cursor.hpp"
+#include "Engine/Core/Diagnostics/Logger.hpp"
 #include "Engine/Input/Input.hpp"
-#include "Engine/Util/FileSystem.hpp"
+#include "Engine/Util/Files/FileSystem.hpp"
 #include "LockedMouseMotion.hpp"
 #include "WindowClientCursor.hpp"
 

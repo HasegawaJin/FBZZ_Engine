@@ -2,9 +2,9 @@
 /// @brief   Explicit playback mode and safe CPU bone consumer defaults.
 /// @author  Hasegawa Jin
 /// @date    2026-10-12
-#include <Editor/Util/PropertyControls.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
 #include "InspectorBoneBake.hpp"
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
 #include <imgui.h>
 namespace fbzz::editor {
 void DrawBoneBakeControls(scene::AnimatorComponent& animator)

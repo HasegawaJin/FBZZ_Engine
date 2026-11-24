@@ -7,7 +7,7 @@
 ///       PUBLIC リンクする)。ここは宣言だけを含める。
 #include <Editor/GraphEditor/GraphCanvas.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/Util/EditorTheme.hpp>
+#include <Editor/UI/Appearance/EditorTheme.hpp>
 
 #include <imgui.h>
 #include <imgui_internal.h>

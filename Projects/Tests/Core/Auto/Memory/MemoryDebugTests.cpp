@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Memory/MemoryDebug.hpp>
+#include <Engine/Core/Memory/Diagnostics/MemoryDebug.hpp>
 
 namespace fbzz::tests {
 

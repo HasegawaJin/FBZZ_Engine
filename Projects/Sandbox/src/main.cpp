@@ -11,18 +11,18 @@
 #include <Editor/EditorApp.hpp>
 #endif
 #include "LaunchArgs.hpp"
-#include <Engine/Asset/AssetSession.hpp>
-#include <Engine/ProjectResolver.hpp>
-#include <Engine/Scene/SceneUtils.hpp>
-#include <Engine/Scene/StandaloneProjectModule.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
-#include <Engine/Core/Application.hpp>
-#include <Engine/Core/CrashHandler.hpp>
-#include <Engine/Core/DeveloperMode.hpp>
-#include <Engine/Core/EngineRebuildBootstrap.hpp>
-#include <Engine/ProjectSettings.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Asset/Registry/AssetSession.hpp>
+#include <Engine/Project/ProjectResolver.hpp>
+#include <Engine/Scene/Hierarchy/SceneUtils.hpp>
+#include <Engine/Scene/Runtime/StandaloneProjectModule.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Core/Diagnostics/CrashHandler.hpp>
+#include <Engine/Core/Platform/DeveloperMode.hpp>
+#include <Engine/Core/Platform/EngineRebuildBootstrap.hpp>
+#include <Engine/Project/ProjectSettings.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 
 #include <Windows.h>
 

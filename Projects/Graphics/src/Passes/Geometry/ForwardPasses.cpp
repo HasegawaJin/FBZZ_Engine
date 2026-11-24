@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "RenderScenePassHelpers.hpp"
-#include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
-#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
-#include <Graphics/Pipeline/GpuHiZ.hpp>
+#include <Graphics/Passes/Geometry/Surfaces/FiberRenderPass.hpp>
+#include <Graphics/Passes/Geometry/Instancing/InstanceRenderPasses.hpp>
+#include <Graphics/Pipeline/Culling/GpuHiZ.hpp>
 #include <algorithm>
 #include <vector>
 #include <optional>

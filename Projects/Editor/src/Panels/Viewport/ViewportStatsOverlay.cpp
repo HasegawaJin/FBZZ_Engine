@@ -5,8 +5,8 @@
 ///
 /// @note パス別の内訳と GPU パス履歴は Analysis > Rendering に表示する。
 #include "ViewportCommon.hpp"
-#include <Editor/Util/EditorTheme.hpp>
-#include <Editor/Util/FrameTimeGraph.hpp>
+#include <Editor/UI/Appearance/EditorTheme.hpp>
+#include <Editor/Diagnostics/Performance/FrameTimeGraph.hpp>
 #include <Profiler/AnalysisProfilerGpu.hpp>
 
 namespace fbzz::editor {

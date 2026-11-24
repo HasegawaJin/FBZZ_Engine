@@ -6,10 +6,10 @@
 /// @note レイマーチで各ピクセルのカメラ→シーンのパスをシャドウマップで遮蔽判定しつつ Mie 散乱で積分し、
 /// @note HDR バッファへ加算合成する。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
-#include <Graphics/Renderer/DrawCall.hpp>
-#include <Graphics/Renderer/RenderState.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
+#include <Graphics/Renderer/Commands/DrawCall.hpp>
+#include <Graphics/Renderer/State/RenderState.hpp>
 #include "UnderwaterPassHelpers.hpp"
 #include <algorithm>
 

@@ -4,8 +4,8 @@
 /// @date    2026-10-01
 #pragma once
 #include <Graphics/Api.hpp>
-#include <Graphics/Pipeline/IRenderPass.hpp>
-#include <Graphics/RayTracing/RayPathTraceResources.hpp>
+#include <Graphics/Pipeline/Passes/IRenderPass.hpp>
+#include <Graphics/RayTracing/PathTracing/RayPathTraceResources.hpp>
 
 namespace fbzz::renderer {
 

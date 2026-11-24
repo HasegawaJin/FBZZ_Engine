@@ -6,14 +6,14 @@
 /// @note 通常の Animation Preview と GPU・カメラは共有するが、「対象は .mask とその骨格 FBX」
 /// @note 「再生しない」「色は Weight」と入口も出口も別物。同じファイルに置くと、
 /// @note どちらの都合で書かれた分岐かが読めなくなるため分ける。
-#include <Engine/Asset/ModelSource.hpp>
+#include <Engine/Asset/Model/Import/ModelSource.hpp>
 #include "AnimationPreviewInternal.hpp"
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/Util/AssetPath.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Asset/Storage/AssetPath.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
 #include <algorithm>
 #include <cmath>
 #include <string>

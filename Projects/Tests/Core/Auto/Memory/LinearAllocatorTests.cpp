@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Memory/LinearAllocator.hpp>
+#include <Engine/Core/Memory/Allocators/LinearAllocator.hpp>
 
 namespace fbzz::tests {
 

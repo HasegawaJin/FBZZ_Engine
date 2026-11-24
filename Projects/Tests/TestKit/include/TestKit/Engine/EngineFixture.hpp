@@ -10,7 +10,7 @@
 
 #include <TestKit/Fixture.hpp>
 
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 
 namespace fbzz::testkit {
 

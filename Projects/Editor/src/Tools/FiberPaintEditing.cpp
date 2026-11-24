@@ -5,13 +5,13 @@
 #include <Editor/Tools/FiberPaintTool.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/Util/AssetDirtyRegistry.hpp>
-#include <Editor/Util/AssetPath.hpp>
+#include <Editor/Asset/Storage/AssetDirtyRegistry.hpp>
+#include <Editor/Asset/Storage/AssetPath.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Scene/Components/FiberComponent.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Scene/Components/VFX/FiberComponent.hpp>
+#include <Engine/Scene/Components/Geometry/MeshRenderer.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Renderer/Camera.hpp>
+#include <Graphics/Renderer/View/Camera.hpp>
 #include <algorithm>
 #include <set>
 

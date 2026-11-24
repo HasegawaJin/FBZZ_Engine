@@ -4,7 +4,7 @@
 /// @date    2026-05-21
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/SceneManager.hpp"
-#include "Engine/Scene/ScriptRuntime.hpp"
+#include "Engine/Scene/Scripting/ScriptRuntime.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>

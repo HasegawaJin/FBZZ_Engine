@@ -6,7 +6,7 @@
 /// @note ここで見たいのは «収束したか» «向きが合っているか» であって見栄えではない。3D レンダラを噛ませるとシェーダー・カメラ・ライトの都合が混ざり «物理が変なのか描画が変なのか» が切り分けられなくなる。
 #pragma once
 
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <imgui.h>
 

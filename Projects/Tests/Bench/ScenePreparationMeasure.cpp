@@ -3,16 +3,16 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-25
 #include <Core/Profiler/Profiler.hpp>
-#include <Engine/Asset/Model.hpp>
-#include <Engine/Core/Time.hpp>
-#include <Engine/Renderer/Mesh.hpp>
+#include <Engine/Asset/Model/Model.hpp>
+#include <Engine/Core/Timing/Time.hpp>
+#include <Graphics/Renderer/Geometry/Mesh.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
+#include <Engine/Scene/Systems/Transform/TransformSystem.hpp>
+#include <Engine/Scene/Components/Geometry/MeshRenderer.hpp>
+#include <Engine/Scene/Components/Geometry/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
 #include "../../Editor/src/Profiler/AnalysisProfilerCpu.hpp"
-#include "../../Engine/src/Scene/Systems/RenderShadowPreparation.hpp"
+#include "../../Engine/src/Rendering/Extraction/Lighting/RenderShadowPreparation.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>

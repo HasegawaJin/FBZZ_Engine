@@ -1,0 +1,737 @@
+/// @file    WorldCellBakingTests.cpp
+/// @brief   Checked world authoring, persisted PCG cells and production near/HLOD residency integration.
+/// @author  Hasegawa Jin
+/// @date    2026-11-07
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Editor/EditorFixture.hpp>
+#include <TestKit/Engine/ResourceTrackingRenderer.hpp>
+#include <Tools/WorldAuthoring.hpp>
+#include <Editor/Asset/Storage/AssetDirtyRegistry.hpp>
+#include <Engine/Asset/AssetDatabase.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/Streaming/AssetStreamChannel.hpp>
+#include <Engine/Asset/Streaming/AssetStreaming.hpp>
+#include <Engine/Asset/Streaming/CellAssetStreaming.hpp>
+#include <Engine/Asset/Instances/MeshInstancesAsset.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Engine/Scene/Components/Physics/ColliderComponent.hpp>
+#include <Engine/Scene/Components/VFX/FiberComponent.hpp>
+#include <Engine/Scene/Components/Geometry/InstancedMeshComponent.hpp>
+#include <Engine/Scene/Components/Lighting/LightProbeVolumeComponent.hpp>
+#include <Engine/Scene/Components/Geometry/MaterialComponent.hpp>
+#include <Engine/Scene/Components/Geometry/MeshRenderer.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Components/World/WorldPartitionComponent.hpp>
+#include <Engine/Scene/Components/World/WorldPcgAuthoringComponent.hpp>
+#include <Engine/Scene/Hierarchy/SceneForest.hpp>
+#include <Engine/Scene/Serialization/SceneSerializer.hpp>
+#include <Engine/Scene/Systems/Transform/TransformSystem.hpp>
+#include <Engine/Scene/World/WorldPartition.hpp>
+#include <Engine/Scene/World/WorldPcg.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <algorithm>
+#include <functional>
+#include <limits>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace fbzz::tests {
+namespace {
+
+struct BakingMaterialDecoded final : asset::IDecodedAsset {
+    [[nodiscard]] size_t CpuBytes() const override { return sizeof(asset::MaterialAsset); }
+};
+
+/// @note Cell and placement files use their production codecs; the material fixture avoids native GPU shader compilation.
+class BakingMaterialChannel final : public asset::AssetStreamChannel<asset::MaterialAsset> {
+public:
+    [[nodiscard]] bool Snapshot(const std::string& key, asset::AssetJobInput& out, std::string&) override
+    {
+        out.resolvedPath = key;
+        return true;
+    }
+    [[nodiscard]] asset::AssetDecodeResult Decode(const asset::AssetJobInput&) override
+    {
+        asset::AssetDecodeResult result;
+        result.decoded = std::make_unique<BakingMaterialDecoded>();
+        return result;
+    }
+    [[nodiscard]] std::unique_ptr<asset::IAssetCandidate> BeginUpload(
+        asset::IDecodedAsset&, uint64_t& token, std::string&) override
+    {
+        token = 0;
+        auto candidate = std::make_unique<asset::AssetCandidate<asset::MaterialAsset>>();
+        candidate->asset = std::make_unique<asset::MaterialAsset>();
+        return candidate;
+    }
+};
+
+} /// @note namespace
+
+class WorldCellBakingTest : public testkit::EditorFixture {
+protected:
+    void SetUp() override
+    {
+        EditorFixture::SetUp();
+        editor::AssetDirtyRegistry::DiscardAll();
+        Context().projectRoot = util::FileSystem::PathToUtf8(ProjectRoot());
+        asset::AssetManager::Init(m_resources, util::FileSystem::PathToUtf8(ProjectRoot() / "Assets"));
+        auto& scene = AttachScene();
+        Context().editScene = &scene;
+        Context().undoStack = &m_undo;
+        m_manifestPath = util::FileSystem::PathToUtf8(ProjectRoot() / "Assets/World/Forest.worldcells");
+    }
+
+    void TearDown() override
+    {
+        m_undo.Clear();
+        editor::AssetDirtyRegistry::DiscardAll();
+        asset::AssetManager::UnloadAll();
+        EditorFixture::TearDown();
+    }
+
+    using Service = editor::OpResult (*)(editor::OpContext&, const editor::OpArgs&);
+    editor::OpResult Call(Service service, const editor::OpArgs& args = {})
+    {
+        editor::OpContext context{Context(), m_undo};
+        auto result = service(context, args);
+        if (result.ok && result.command) EXPECT_TRUE(m_undo.Push(std::move(result.command)));
+        return result;
+    }
+
+    editor::OpArgs PartitionArgs() const
+    {
+        editor::OpArgs args;
+        if (!m_partition.empty()) args.Set("partition", m_partition);
+        return args;
+    }
+
+    void Configure()
+    {
+        auto args = PartitionArgs();
+        args.Set("manifest", m_manifestPath);
+        args.Set("cellSize", 16.0f);
+        args.Set("nearDistance", 8.0f);
+        args.Set("hlodDistance", 64.0f);
+        args.Set("hysteresis", 2.0f);
+        auto result = Call(editor::ConfigureWorldCells, args);
+        ASSERT_TRUE(result.ok) << result.errorCode << ": " << result.message;
+        ASSERT_NE(result.data.Find("partition"), nullptr);
+        m_partition = result.data.Find("partition")->AsString();
+    }
+
+    void GenerateForest()
+    {
+        Configure();
+        ASSERT_FALSE(m_partition.empty());
+        auto& ground = AttachedScene()->CreateGameObject("Ground");
+        m_ground = ground.instanceId;
+        auto& terrain = ground.AddComponent<scene::TerrainComponent>();
+        terrain.Resize(17, 17);
+        terrain.cellSize = 2.0f;
+        terrain.InitFlat();
+        scene::WorldPcgProfile profile;
+        profile.grid.cellSize = 16.0f;
+        profile.bounds = {{0, 0, 0}, {32, 0, 32}};
+        scene::WorldPcgRule rule;
+        rule.key = "rocks";
+        rule.parts = {{"primitive:cube", "Assets/Materials/Baking.mat", 0}};
+        rule.lodHeights = {0.0f};
+        rule.spacing = 4.0f;
+        profile.rules.push_back(rule);
+        const auto profilePath = util::FileSystem::PathToUtf8(ProjectRoot() / "Assets/Profiles/Forest.pcg");
+        std::string diagnostic;
+        ASSERT_TRUE(scene::SaveWorldPcgProfile(profilePath, profile, diagnostic)) << diagnostic;
+        ASSERT_FALSE(asset::AssetDatabase::GuidFromPath(profilePath).empty());
+        editor::OpArgs volumeArgs;
+        volumeArgs.Set("profile", profilePath);
+        auto configured = Call(editor::ConfigureWorldPcgVolume, volumeArgs);
+        ASSERT_TRUE(configured.ok) << configured.message;
+        ASSERT_NE(configured.data.Find("volume"), nullptr);
+        m_volume = configured.data.Find("volume")->AsString();
+        auto args = PartitionArgs();
+        args.Set("volume", m_volume);
+        auto preview = Call(editor::PreviewWorldPcg, args);
+        ASSERT_TRUE(preview.ok) << preview.message;
+        ASSERT_NE(preview.data.Find("expected"), nullptr);
+        EXPECT_EQ(preview.data.Find("instanceCount")->AsInt64(), 64);
+        args.Set("expected", preview.data.Find("expected")->AsString());
+        auto generated = Call(editor::GenerateWorldPcg, args);
+        ASSERT_TRUE(generated.ok) << generated.message;
+        for (auto id : AttachedScene()->GetEntities<scene::WorldPcgGeneratedComponent>())
+            m_generated.insert(AttachedScene()->GetGameObject(id)->instanceId);
+        ASSERT_EQ(m_generated.size(), 4u);
+    }
+
+    editor::OpResult Bake(bool hlod = true)
+    {
+        auto args = PartitionArgs();
+        args.Set("buildHlod", hlod);
+        return Call(editor::BakeWorldCells, args);
+    }
+
+    std::string Capture()
+    {
+        std::string diagnostic;
+        auto result = scene::SceneSerializer::CapturePassiveClone(*AttachedScene(), diagnostic);
+        EXPECT_FALSE(result.empty()) << diagnostic;
+        /// @note Baking registers the manifest's .meta. Serialization can then emit a GUID for an unchanged live path.
+        if (auto* owner = AttachedScene()->FindByGuid(m_partition)) {
+            if (const auto* partition = owner->GetComponent<scene::WorldPartitionComponent>()) {
+                const std::string field = "\n    manifestPath = ";
+                const auto start = result.find(field);
+                if (start != std::string::npos) {
+                    const auto end = result.find('\n', start + field.size());
+                    result.replace(start, (end == std::string::npos ? result.size() : end) - start,
+                        field + partition->manifestPath);
+                }
+            }
+        }
+        return result;
+    }
+
+    scene::WorldPartitionManifest LoadManifest()
+    {
+        scene::WorldPartitionManifest manifest;
+        std::string diagnostic;
+        EXPECT_TRUE(scene::LoadWorldPartitionManifest(m_manifestPath, manifest, diagnostic)) << diagnostic;
+        return manifest;
+    }
+
+    std::string Read(const std::string& relative)
+    {
+        std::string text;
+        EXPECT_TRUE(util::FileSystem::ReadText(ProjectRoot() / util::FileSystem::PathFromUtf8(relative), text)) << relative;
+        return text;
+    }
+
+    std::set<std::string> PayloadIds(const scene::WorldPartitionManifest& manifest, bool hlod)
+    {
+        std::set<std::string> result;
+        for (const auto& cell : manifest.cells) {
+            const auto& path = hlod ? cell.hlodPath : cell.nearPath;
+            std::vector<std::string> ids;
+            std::string diagnostic;
+            EXPECT_FALSE(path.empty());
+            EXPECT_TRUE(scene::ValidateSceneForestDocument(Read(path), ids, diagnostic)) << diagnostic;
+            for (const auto& id : ids) EXPECT_TRUE(result.insert(id).second) << id;
+        }
+        return result;
+    }
+
+    size_t PayloadPlacementCount(const scene::WorldPartitionManifest& manifest, bool hlod)
+    {
+        size_t result = 0;
+        for (const auto& cell : manifest.cells) {
+            const auto& path = hlod ? cell.hlodPath : cell.nearPath;
+            auto prepared = scene::SceneSerializer::LoadPassiveDataFromText(Read(path),
+                util::FileSystem::PathToUtf8(ProjectRoot() / util::FileSystem::PathFromUtf8(path)));
+            EXPECT_NE(prepared, nullptr);
+            if (!prepared) continue;
+            for (const auto id : prepared->GetEntities<scene::InstancedMeshComponent>()) {
+                const auto* component = prepared->GetComponent<scene::InstancedMeshComponent>(id);
+                const auto* definition = asset::ResolveMeshInstanceDefinition(component->m_instanceSetRef.path);
+                EXPECT_NE(definition, nullptr);
+                if (!definition) continue;
+                const auto snapshot = component->Snapshot(*definition);
+                EXPECT_NE(snapshot, nullptr);
+                if (snapshot) result += snapshot->placements.size();
+            }
+        }
+        return result;
+    }
+
+    std::vector<std::string> WorldFiles() const
+    {
+        std::vector<std::string> result;
+        for (const auto& path : util::FileSystem::ListFilesRecursive(ProjectRoot() / "Assets/World"))
+            result.push_back(util::FileSystem::PathToUtf8(path));
+        std::sort(result.begin(), result.end());
+        return result;
+    }
+
+    editor::UndoStack m_undo;
+    std::string m_partition, m_volume, m_ground, m_manifestPath;
+    std::set<std::string> m_generated;
+    testkit::ResourceTrackingRenderer m_device;
+    renderer::ResourceManager m_resources{m_device};
+};
+
+/// @brief Partition configuration uses checked undo and rejects invalid inputs without changes.
+TEST_F(WorldCellBakingTest, PartitionConfigurationUsesCheckedUndoAndRejectsInvalidInputsWithoutChanges)
+{
+    auto& manual = AttachedScene()->CreateGameObject("Manual");
+    const auto manualId = manual.GetID();
+    Configure();
+    ASSERT_FALSE(m_partition.empty());
+    auto* partition = AttachedScene()->FindByGuid(m_partition);
+    ASSERT_NE(partition, nullptr);
+    EXPECT_FLOAT_EQ(partition->GetComponent<scene::WorldPartitionComponent>()->cellSize, 16.0f);
+    const auto recorded = m_undo.GetCursor();
+    auto unchanged = Call(editor::ConfigureWorldCells, PartitionArgs());
+    ASSERT_TRUE(unchanged.ok) << unchanged.message;
+    EXPECT_TRUE(unchanged.noChange);
+    EXPECT_EQ(m_undo.GetCursor(), recorded);
+    const auto before = Capture();
+    for (const auto value : {0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN()}) {
+        auto args = PartitionArgs();
+        args.Set("cellSize", value);
+        auto result = Call(editor::ConfigureWorldCells, args);
+        EXPECT_FALSE(result.ok);
+        EXPECT_EQ(result.errorCode, "BAD_ARG");
+        EXPECT_EQ(Capture(), before);
+        EXPECT_EQ(m_undo.GetCursor(), recorded);
+    }
+    auto invalidPath = PartitionArgs();
+    invalidPath.Set("manifest", std::string{"../outside.worldcells"});
+    EXPECT_FALSE(Call(editor::ConfigureWorldCells, invalidPath).ok);
+    auto invalidDistance = PartitionArgs();
+    invalidDistance.Set("hlodDistance", 1.0f);
+    EXPECT_FALSE(Call(editor::ConfigureWorldCells, invalidDistance).ok);
+    EXPECT_EQ(Capture(), before);
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(AttachedScene()->FindByGuid(m_partition), nullptr);
+    EXPECT_EQ(AttachedScene()->GetGameObject(manualId), &manual);
+    ASSERT_TRUE(m_undo.Redo());
+    partition = AttachedScene()->FindByGuid(m_partition);
+    ASSERT_NE(partition, nullptr);
+    partition->tag = "Edited after configuration";
+    EXPECT_FALSE(m_undo.Undo());
+    EXPECT_EQ(m_undo.GetCursor(), recorded);
+    EXPECT_EQ(AttachedScene()->FindByGuid(m_partition), partition);
+    partition->tag = "Untagged";
+    ASSERT_TRUE(m_undo.Undo());
+    EXPECT_EQ(AttachedScene()->GameObjectCount(), 1u);
+}
+
+/// @brief Checks generated cells persist near and HLOD with source ownership and preserve authoring scene.
+TEST_F(WorldCellBakingTest, GeneratedCellsPersistNearAndHlodWithSourceOwnershipAndPreserveAuthoringScene)
+{
+    GenerateForest();
+    ASSERT_EQ(m_generated.size(), 4u);
+    Context().sceneDirty = false;
+    const auto before = Capture();
+    const auto count = AttachedScene()->GameObjectCount();
+    const auto cursor = m_undo.GetCursor();
+    auto baked = Bake();
+    ASSERT_TRUE(baked.ok) << baked.errorCode << ": " << baked.message;
+    EXPECT_TRUE(baked.data.Find("authoringScenePreserved")->AsBool());
+    EXPECT_EQ(baked.data.Find("cells")->AsInt64(), 4);
+    EXPECT_EQ(baked.data.Find("instances")->AsInt64(), 64);
+    EXPECT_EQ(Capture(), before);
+    EXPECT_EQ(AttachedScene()->GameObjectCount(), count);
+    EXPECT_EQ(m_undo.GetCursor(), cursor);
+    EXPECT_FALSE(Context().sceneDirty);
+    const auto published = Read("Assets/World/Forest.worldcells");
+    const auto files = WorldFiles();
+    auto repeated = Bake();
+    ASSERT_TRUE(repeated.ok) << repeated.message;
+    EXPECT_TRUE(repeated.noChange);
+    EXPECT_EQ(Read("Assets/World/Forest.worldcells"), published);
+    EXPECT_EQ(WorldFiles(), files);
+    const auto manifest = LoadManifest();
+    ASSERT_EQ(manifest.cells.size(), 4u);
+    EXPECT_FLOAT_EQ(manifest.grid.cellSize, 16.0f);
+    EXPECT_EQ((std::set<std::string>{manifest.sourceInstanceIds.begin(), manifest.sourceInstanceIds.end()}), m_generated);
+    EXPECT_EQ(PayloadIds(manifest, false), m_generated);
+    const auto distantIds = PayloadIds(manifest, true);
+    EXPECT_EQ(distantIds.size(), 4u);
+    for (const auto& id : distantIds) EXPECT_FALSE(m_generated.contains(id));
+    EXPECT_EQ(PayloadPlacementCount(manifest, false), 64u);
+    EXPECT_EQ(PayloadPlacementCount(manifest, true), 64u);
+    EXPECT_FALSE(m_generated.contains(m_ground));
+    EXPECT_FALSE(m_generated.contains(m_partition));
+    EXPECT_FALSE(m_generated.contains(m_volume));
+}
+
+/// @brief Persisted PCG cells stream near and HLOD exclusively then unload only owned objects.
+TEST_F(WorldCellBakingTest, PersistedPcgCellsStreamNearAndHlodExclusivelyThenUnloadOnlyOwnedObjects)
+{
+    GenerateForest();
+    ASSERT_EQ(m_generated.size(), 4u);
+    auto baked = Bake();
+    ASSERT_TRUE(baked.ok) << baked.message;
+    auto manifest = LoadManifest();
+    ASSERT_EQ(manifest.cells.size(), 4u);
+    const auto nearIds = PayloadIds(manifest, false), distantIds = PayloadIds(manifest, true);
+    manifest.sourceInstanceIds.clear();
+    scene::Scene resident;
+    auto& manual = resident.CreateGameObject("Manual persistent actor");
+    const auto manualId = manual.GetID();
+    std::vector<std::function<void()>> jobs;
+    const auto enqueue = [&jobs](std::function<void()> job) { jobs.push_back(std::move(job)); };
+    asset::AssetStreamer streamer(enqueue);
+    streamer.RegisterChannel(std::make_shared<BakingMaterialChannel>());
+    streamer.RegisterChannel(asset::CreateMeshInstancesStreamChannel());
+    scene::WorldPartitionRuntime runtime(enqueue, &streamer);
+    scene::WorldPartitionSettings settings;
+    settings.nearDistance = 8.0f;
+    settings.hlodDistance = 64.0f;
+    settings.hysteresis = 2.0f;
+    settings.maxConcurrentLoads = 4;
+    settings.maxPublishesPerFrame = 4;
+    std::string diagnostic;
+    ASSERT_TRUE(runtime.Configure(resident, manifest, Context().projectRoot, settings, diagnostic)) << diagnostic;
+    const auto drive = [&] {
+        for (int step = 0; step < 32; ++step) {
+            runtime.Update({16, 0, 16});
+            streamer.Pump();
+            auto queued = std::move(jobs);
+            jobs.clear();
+            for (auto& job : queued) job();
+        }
+        runtime.Update({16, 0, 16});
+    };
+    drive();
+    EXPECT_EQ(runtime.Status().residentNear, 4u);
+    EXPECT_EQ(runtime.Status().residentHlod, 0u);
+    for (const auto& id : nearIds) EXPECT_NE(resident.FindByGuid(id), nullptr);
+    for (const auto& id : distantIds) EXPECT_EQ(resident.FindByGuid(id), nullptr);
+    for (const auto& cell : manifest.cells)
+        ASSERT_TRUE(runtime.RequestCell(cell.id, scene::WorldCellRepresentation::HLOD, diagnostic)) << diagnostic;
+    runtime.Update({16, 0, 16});
+    EXPECT_EQ(runtime.Status().residentNear, 4u);
+    for (const auto& id : nearIds) EXPECT_NE(resident.FindByGuid(id), nullptr);
+    drive();
+    const auto status = runtime.Status();
+    EXPECT_TRUE(status.diagnostic.empty()) << status.diagnostic;
+    EXPECT_EQ(status.residentNear, 0u);
+    EXPECT_EQ(status.residentHlod, 4u);
+    for (const auto& cell : status.cells) {
+        EXPECT_EQ(cell.state, scene::WorldCellLoadState::RESIDENT) << cell.diagnostic;
+        EXPECT_EQ(cell.resident, scene::WorldCellRepresentation::HLOD);
+    }
+    for (const auto& id : nearIds) EXPECT_EQ(resident.FindByGuid(id), nullptr);
+    for (const auto& id : distantIds) EXPECT_NE(resident.FindByGuid(id), nullptr);
+    EXPECT_EQ(resident.GameObjectCount(), distantIds.size() + 1u);
+    for (const auto& cell : manifest.cells)
+        ASSERT_TRUE(runtime.RequestCell(cell.id, scene::WorldCellRepresentation::UNLOADED, diagnostic)) << diagnostic;
+    drive();
+    EXPECT_EQ(runtime.Status().residentNear + runtime.Status().residentHlod, 0u);
+    EXPECT_EQ(resident.GameObjectCount(), 1u);
+    EXPECT_EQ(resident.GetGameObject(manualId), &manual);
+}
+
+/// @brief Terrain bake streams shared edges and colliders through near far and unload.
+TEST_F(WorldCellBakingTest, TerrainBakeStreamsSharedEdgesAndCollidersThroughNearFarAndUnload)
+{
+    Configure();
+    auto& original = AttachedScene()->CreateGameObject("Heightfield");
+    const auto id = original.instanceId;
+    auto& terrain = original.AddComponent<scene::TerrainComponent>();
+    terrain.Resize(17, 9);
+    terrain.cellSize = 2.0f;
+    terrain.chunkSize = 8;
+    terrain.InitFlat();
+    terrain.heightData[8] = 0.25f;
+    terrain.holeData.assign(terrain.CellCount(), 0);
+    terrain.holeData[8] = 1;
+    original.AddComponent<scene::TerrainColliderComponent>();
+    auto& fiber = original.AddComponent<scene::FiberComponent>();
+    fiber.m_mode = scene::FiberRenderMode::BLADE;
+    fiber.m_materialPath.clear();
+
+    auto args = PartitionArgs();
+    args.Set("includeTerrain", true);
+    auto baked = Call(editor::BakeWorldCells, args);
+    ASSERT_TRUE(baked.ok) << baked.message;
+    EXPECT_EQ(baked.data.Find("terrainTiles")->AsInt64(), 2);
+    EXPECT_EQ(terrain.columns, 17);
+    auto manifest = LoadManifest();
+    ASSERT_EQ(manifest.cells.size(), 2u);
+    EXPECT_EQ(manifest.sourceInstanceIds, (std::vector<std::string>{id}));
+    EXPECT_EQ(PayloadIds(manifest, true), PayloadIds(manifest, false));
+    const auto rebuilt = Call(editor::BuildWorldHlod, PartitionArgs());
+    ASSERT_TRUE(rebuilt.ok) << rebuilt.message;
+    EXPECT_EQ(PayloadIds(LoadManifest(), true), PayloadIds(manifest, true));
+
+    scene::Scene resident;
+    auto& source = resident.CreateGameObject("Original Terrain");
+    source.instanceId = id;
+    source.AddComponent<scene::TerrainComponent>(terrain);
+    std::vector<std::function<void()>> jobs;
+    const auto enqueue = [&](std::function<void()> job) { jobs.push_back(std::move(job)); };
+    asset::AssetStreamer streamer(enqueue);
+    scene::WorldPartitionRuntime runtime(enqueue, &streamer);
+    scene::WorldPartitionSettings settings;
+    settings.retireSourceObjects = true;
+    std::string diagnostic;
+    ASSERT_TRUE(runtime.Configure(resident, manifest, Context().projectRoot, settings, diagnostic)) << diagnostic;
+    const auto drive = [&] {
+        for (int step = 0; step < 16; ++step) {
+            runtime.Update({16, 0, 0});
+            auto queued = std::move(jobs);
+            jobs.clear();
+            for (auto& job : queued) job();
+        }
+    };
+    const auto checkTiles = [&] {
+        const auto tiles = resident.GetEntities<scene::TerrainComponent>();
+        ASSERT_EQ(tiles.size(), 2u);
+        for (const auto tile : tiles) {
+            auto* object = resident.GetGameObject(tile);
+            ASSERT_NE(object, nullptr);
+            const auto* component = object->GetComponent<scene::TerrainComponent>();
+            EXPECT_EQ(component->columns, 9);
+            const bool right = object->instanceId != id;
+            EXPECT_FLOAT_EQ(component->heightData[right ? 0 : 8], 0.25f);
+            EXPECT_EQ(component->IsHoleCell(0, 0), right);
+            EXPECT_NE(object->GetComponent<scene::TerrainColliderComponent>(), nullptr);
+            const auto* tileFiber = object->GetComponent<scene::FiberComponent>();
+            ASSERT_NE(tileFiber, nullptr);
+            EXPECT_EQ(tileFiber->m_mode, scene::FiberRenderMode::BLADE);
+        }
+    };
+    drive();
+    ASSERT_EQ(runtime.Status().residentNear, 2u) << runtime.Status().diagnostic;
+    checkTiles();
+    for (const auto& cell : manifest.cells)
+        ASSERT_TRUE(runtime.RequestCell(cell.id, scene::WorldCellRepresentation::HLOD, diagnostic)) << diagnostic;
+    drive();
+    ASSERT_EQ(runtime.Status().residentHlod, 2u) << runtime.Status().diagnostic;
+    checkTiles();
+    for (const auto& cell : manifest.cells)
+        ASSERT_TRUE(runtime.RequestCell(cell.id, scene::WorldCellRepresentation::UNLOADED, diagnostic)) << diagnostic;
+    drive();
+    EXPECT_TRUE(resident.GetEntities<scene::TerrainComponent>().empty());
+    EXPECT_NE(AttachedScene()->FindByGuid(id), nullptr);
+}
+
+/// @brief HLOD rebuild preserves render only terrain near probes and authored proxy.
+TEST_F(WorldCellBakingTest, HlodRebuildPreservesRenderOnlyTerrainNearProbesAndAuthoredProxy)
+{
+    Configure();
+    auto& ground = AttachedScene()->CreateGameObject("Ground");
+    auto& terrain = ground.AddComponent<scene::TerrainComponent>();
+    terrain.Resize(9, 9);
+    terrain.cellSize = 2.0f;
+    terrain.chunkSize = 8;
+    terrain.InitFlat();
+    ground.AddComponent<scene::TerrainColliderComponent>();
+    auto& probe = AttachedScene()->CreateGameObject("Near probe");
+    probe.transform.position = {4.0f, 0.0f, 4.0f};
+    probe.AddComponent<scene::LightProbeVolumeComponent>();
+    auto& proxy = AttachedScene()->CreateGameObject("Far forest proxy");
+    proxy.transform.position = {6.0f, 0.0f, 6.0f};
+    proxy.AddComponent<scene::MeshRenderer>().meshPath = "primitive:cube";
+    proxy.AddComponent<scene::MaterialComponent>().SetMaterialPath("Assets/Materials/Baking.mat");
+    proxy.AddComponent<scene::WorldHlodSourceComponent>().farOnlyMesh = true;
+
+    auto args = PartitionArgs();
+    args.Set("includeTerrain", true);
+    args.Set("omitTerrainCollisionInHlod", true);
+    args.Set("includeLightProbes", true);
+    const auto baked = Call(editor::BakeWorldCells, args);
+    ASSERT_TRUE(baked.ok) << baked.message;
+    const auto manifest = LoadManifest();
+    ASSERT_EQ(manifest.cells.size(), 1u);
+    const auto& cell = manifest.cells.front();
+    auto nearScene = scene::SceneSerializer::LoadPassiveDataFromText(Read(cell.nearPath),
+        util::FileSystem::PathToUtf8(ProjectRoot() / util::FileSystem::PathFromUtf8(cell.nearPath)));
+    ASSERT_NE(nearScene, nullptr);
+    EXPECT_EQ(nearScene->GetEntities<scene::TerrainColliderComponent>().size(), 1u);
+    EXPECT_EQ(nearScene->GetEntities<scene::LightProbeVolumeComponent>().size(), 1u);
+    auto* nearProxyObject = nearScene->FindByGuid(proxy.instanceId);
+    ASSERT_NE(nearProxyObject, nullptr);
+    const auto* nearProxy = nearProxyObject->GetComponent<scene::MeshRenderer>();
+    ASSERT_NE(nearProxy, nullptr);
+    EXPECT_FALSE(nearProxy->enabled);
+    EXPECT_TRUE(proxy.GetComponent<scene::MeshRenderer>()->enabled);
+    EXPECT_EQ(PayloadPlacementCount(manifest, true), 1u);
+    const auto farText = Read(cell.hlodPath);
+    EXPECT_EQ(farText.find("TerrainColliderComponent"), std::string::npos);
+    EXPECT_EQ(farText.find("LightProbeVolumeComponent"), std::string::npos);
+
+    const auto rebuilt = Call(editor::BuildWorldHlod, PartitionArgs());
+    ASSERT_TRUE(rebuilt.ok) << rebuilt.message;
+    const auto rebuiltManifest = LoadManifest();
+    ASSERT_EQ(rebuiltManifest.cells.size(), 1u);
+    const auto rebuiltText = Read(rebuiltManifest.cells.front().hlodPath);
+    EXPECT_EQ(rebuiltText.find("TerrainColliderComponent"), std::string::npos);
+    EXPECT_EQ(rebuiltText.find("LightProbeVolumeComponent"), std::string::npos);
+    EXPECT_EQ(PayloadPlacementCount(rebuiltManifest, true), 1u);
+}
+
+/// @brief HLOD rebuild uses persisted near while keeping near paths and source identities.
+TEST_F(WorldCellBakingTest, HlodRebuildUsesPersistedNearWhileKeepingNearPathsAndSourceIdentities)
+{
+    GenerateForest();
+    ASSERT_EQ(m_generated.size(), 4u);
+    auto baked = Bake(false);
+    ASSERT_TRUE(baked.ok) << baked.message;
+    const auto before = LoadManifest();
+    ASSERT_EQ(before.cells.size(), 4u);
+    std::map<scene::WorldCellId, std::string> nearText;
+    for (const auto& cell : before.cells) {
+        EXPECT_TRUE(cell.hlodPath.empty());
+        nearText.emplace(cell.id, Read(cell.nearPath));
+    }
+    for (const auto& id : m_generated) {
+        auto* node = AttachedScene()->FindByGuid(id);
+        ASSERT_NE(node, nullptr);
+        node->transform.position = {5000.0f, 0.0f, 5000.0f};
+        node->GetComponent<scene::InstancedMeshComponent>()->m_enabled = false;
+    }
+    scene::FlushWorldTransforms(*AttachedScene());
+    const auto liveEdited = Capture();
+    auto inspected = Call(editor::InspectWorldCells, PartitionArgs());
+    ASSERT_TRUE(inspected.ok) << inspected.message;
+    auto args = PartitionArgs();
+    args.Set("expected", inspected.data.Find("expected")->AsString());
+    auto rebuilt = Call(editor::BuildWorldHlod, args);
+    ASSERT_TRUE(rebuilt.ok) << rebuilt.errorCode << ": " << rebuilt.message;
+    EXPECT_TRUE(rebuilt.data.Find("fromPersistedNear")->AsBool());
+    const auto after = LoadManifest();
+    ASSERT_EQ(after.cells.size(), before.cells.size());
+    EXPECT_EQ(after.sourceInstanceIds, before.sourceInstanceIds);
+    for (size_t i = 0; i < after.cells.size(); ++i) {
+        EXPECT_EQ(after.cells[i].id, before.cells[i].id);
+        EXPECT_EQ(after.cells[i].nearPath, before.cells[i].nearPath);
+        EXPECT_EQ(after.cells[i].revision, before.cells[i].revision);
+        EXPECT_EQ(Read(after.cells[i].nearPath), nearText.at(after.cells[i].id));
+        EXPECT_FALSE(after.cells[i].hlodPath.empty());
+    }
+    EXPECT_EQ(PayloadPlacementCount(after, true), 64u);
+    EXPECT_EQ(Capture(), liveEdited);
+    const auto published = Read("Assets/World/Forest.worldcells");
+    auto repeated = Call(editor::BuildWorldHlod, PartitionArgs());
+    ASSERT_TRUE(repeated.ok) << repeated.message;
+    EXPECT_TRUE(repeated.noChange);
+    EXPECT_EQ(Read("Assets/World/Forest.worldcells"), published);
+    args.Set("expected", std::string{"stale"});
+    auto rejected = Call(editor::BuildWorldHlod, args);
+    EXPECT_FALSE(rejected.ok);
+    EXPECT_EQ(rejected.errorCode, "STALE_MANIFEST");
+    EXPECT_EQ(Read("Assets/World/Forest.worldcells"), published);
+}
+
+/// @brief Cell and instance budget failures do not publish files or replace the manifest.
+TEST_F(WorldCellBakingTest, CellAndInstanceBudgetFailuresDoNotPublishFilesOrReplaceTheManifest)
+{
+    GenerateForest();
+    ASSERT_EQ(m_generated.size(), 4u);
+    const auto authored = Capture();
+    const auto initialFiles = WorldFiles();
+    auto cells = PartitionArgs();
+    cells.Set("maxCells", 1);
+    auto rejected = Call(editor::BakeWorldCells, cells);
+    EXPECT_FALSE(rejected.ok);
+    EXPECT_EQ(rejected.errorCode, "BUDGET_EXCEEDED");
+    EXPECT_EQ(WorldFiles(), initialFiles);
+    EXPECT_FALSE(util::FileSystem::Exists(m_manifestPath));
+    auto instances = PartitionArgs();
+    instances.Set("maxInstances", 1);
+    rejected = Call(editor::BakeWorldCells, instances);
+    EXPECT_FALSE(rejected.ok);
+    EXPECT_EQ(rejected.errorCode, "BUDGET_EXCEEDED");
+    EXPECT_EQ(WorldFiles(), initialFiles);
+    EXPECT_EQ(Capture(), authored);
+    auto baked = Bake();
+    ASSERT_TRUE(baked.ok) << baked.message;
+    const auto saved = Read("Assets/World/Forest.worldcells");
+    const auto savedFiles = WorldFiles();
+    EXPECT_FALSE(Call(editor::BakeWorldCells, cells).ok);
+    EXPECT_FALSE(Call(editor::BakeWorldCells, instances).ok);
+    EXPECT_EQ(Read("Assets/World/Forest.worldcells"), saved);
+    EXPECT_EQ(WorldFiles(), savedFiles);
+    auto hlod = PartitionArgs();
+    hlod.Set("maxInstances", 1);
+    EXPECT_FALSE(Call(editor::BuildWorldHlod, hlod).ok);
+    EXPECT_EQ(Read("Assets/World/Forest.worldcells"), saved);
+    EXPECT_EQ(WorldFiles(), savedFiles);
+    EXPECT_EQ(Capture(), authored);
+}
+
+/// @brief Invalid manifest metadata cannot publish a replacement manifest.
+TEST_F(WorldCellBakingTest, InvalidManifestMetadataCannotPublishAReplacementManifest)
+{
+    GenerateForest();
+    ASSERT_EQ(m_generated.size(), 4u);
+    ASSERT_TRUE(Bake().ok);
+    const auto saved = Read("Assets/World/Forest.worldcells");
+    auto* edited = AttachedScene()->FindByGuid(*m_generated.begin());
+    ASSERT_NE(edited, nullptr);
+    edited->transform.position.x += 64.0f;
+    scene::FlushWorldTransforms(*AttachedScene());
+    const auto authored = Capture();
+    ASSERT_TRUE(util::FileSystem::WriteTextAtomic(m_manifestPath + ".meta", "invalid metadata ]\n"));
+    auto failed = Bake();
+    EXPECT_FALSE(failed.ok);
+    EXPECT_FALSE(failed.message.empty());
+    EXPECT_EQ(Read("Assets/World/Forest.worldcells"), saved);
+    EXPECT_EQ(Capture(), authored);
+}
+
+/// @brief Malformed persisted near is rejected before terrain grid allocation or manifest publication.
+TEST_F(WorldCellBakingTest, MalformedPersistedNearIsRejectedBeforeTerrainGridAllocationOrManifestPublication)
+{
+    GenerateForest();
+    ASSERT_EQ(m_generated.size(), 4u);
+    ASSERT_TRUE(Bake(false).ok);
+    const auto manifest = LoadManifest();
+    ASSERT_FALSE(manifest.cells.empty());
+    const auto saved = Read("Assets/World/Forest.worldcells");
+    const auto path = ProjectRoot() / util::FileSystem::PathFromUtf8(manifest.cells.front().nearPath);
+    ASSERT_TRUE(util::FileSystem::WriteTextAtomic(util::FileSystem::PathToUtf8(path),
+        "[[gameobjects]]\ninstanceId='invalid-grid'\nname='Grid'\n"
+        "[gameobjects.TerrainGridComponent]\ncellCountX=-1\ncellCountZ=1\n"));
+    const auto files = WorldFiles();
+    const auto authored = Capture();
+    auto failed = Call(editor::BuildWorldHlod, PartitionArgs());
+    EXPECT_FALSE(failed.ok);
+    EXPECT_FALSE(failed.message.empty());
+    EXPECT_EQ(Read("Assets/World/Forest.worldcells"), saved);
+    EXPECT_EQ(WorldFiles(), files);
+    EXPECT_EQ(Capture(), authored);
+}
+
+/// @brief Streaming controls preserve current source unless explicitly overridden.
+TEST_F(WorldCellBakingTest, StreamingControlsPreserveCurrentSourceUnlessExplicitlyOverridden)
+{
+    Configure();
+    ASSERT_FALSE(m_partition.empty());
+    const auto* controller = AttachedScene()->FindByGuid(m_partition)->GetComponent<scene::WorldPartitionComponent>();
+    ASSERT_NE(controller, nullptr);
+    ASSERT_TRUE(controller->useMainCamera);
+    scene::WorldPartitionManifest manifest;
+    manifest.grid = {controller->gridOrigin, controller->cellSize};
+    std::string diagnostic;
+    ASSERT_TRUE(scene::SaveWorldPartitionManifest(m_manifestPath, manifest, diagnostic)) << diagnostic;
+    auto& runtime = scene::GetWorldPartitionRuntime(*AttachedScene());
+    ASSERT_TRUE(runtime.Configure(*AttachedScene(), manifest, Context().projectRoot, {}, diagnostic)) << diagnostic;
+    const math::Vector3 cameraSource{750.0f, 20.0f, 1300.0f};
+    runtime.Update(cameraSource);
+    auto args = PartitionArgs();
+    args.Set("action", std::string{"update"});
+    auto updated = Call(editor::ControlWorldStreaming, args);
+    ASSERT_TRUE(updated.ok) << updated.message;
+    EXPECT_VEC3_NEAR(runtime.Status().source, cameraSource, testkit::kTolerance);
+    ASSERT_NE(updated.data.Find("source"), nullptr);
+    EXPECT_VEC3_NEAR(updated.data.Find("source")->AsVec3(), cameraSource, testkit::kTolerance);
+    const math::Vector3 explicitSource{-30.0f, 5.0f, 60.0f};
+    args.Set("source", explicitSource);
+    ASSERT_TRUE(Call(editor::ControlWorldStreaming, args).ok);
+    EXPECT_VEC3_NEAR(runtime.Status().source, explicitSource, testkit::kTolerance);
+    auto omitted = PartitionArgs();
+    omitted.Set("action", std::string{"update"});
+    ASSERT_TRUE(Call(editor::ControlWorldStreaming, omitted).ok);
+    EXPECT_VEC3_NEAR(runtime.Status().source, explicitSource, testkit::kTolerance);
+    args.Set("source", math::Vector3{std::numeric_limits<float>::quiet_NaN(), 0, 0});
+    auto invalid = Call(editor::ControlWorldStreaming, args);
+    EXPECT_FALSE(invalid.ok);
+    EXPECT_EQ(invalid.errorCode, "BAD_ARG");
+    EXPECT_VEC3_NEAR(runtime.Status().source, explicitSource, testkit::kTolerance);
+    editor::OpArgs wrongPartition;
+    wrongPartition.Set("partition", std::string{"not-a-partition"});
+    auto inspected = Call(editor::InspectWorldStreaming, wrongPartition);
+    EXPECT_FALSE(inspected.ok);
+    EXPECT_EQ(inspected.errorCode, "NO_PARTITION");
+    EXPECT_TRUE(runtime.Status().configured);
+}
+
+} /// @note namespace fbzz::tests

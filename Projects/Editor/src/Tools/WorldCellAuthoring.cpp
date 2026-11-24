@@ -4,13 +4,13 @@
 /// @date    2026-11-07
 #include "WorldAuthoring.hpp"
 #include <Editor/EditorContext.hpp>
-#include <Editor/PlayModeController.hpp>
+#include <Editor/Play/PlayModeController.hpp>
 #include <Engine/Asset/AssetManager.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/ComponentRegistry.hpp>
-#include <Engine/Scene/WorldPartition.hpp>
-#include <Engine/Scene/Components/WorldPartitionComponent.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Scene/Components/ComponentRegistry.hpp>
+#include <Engine/Scene/World/WorldPartition.hpp>
+#include <Engine/Scene/Components/World/WorldPartitionComponent.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>

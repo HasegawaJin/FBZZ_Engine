@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #pragma once
-#include <Editor/Util/HotkeyScope.hpp>
-#include <Editor/Util/Localization.hpp>
+#include <Editor/Op/HotkeyScope.hpp>
+#include <Editor/UI/Localization.hpp>
 #include <imgui.h>
 #include <string>
 

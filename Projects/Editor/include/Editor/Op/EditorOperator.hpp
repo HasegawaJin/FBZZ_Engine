@@ -8,8 +8,8 @@
 #pragma once
 
 #include <Editor/Op/OpData.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Math/Vector3.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <functional>
 #include <memory>
@@ -57,7 +57,7 @@ struct OpParam {
 };
 
 /// 実行時に渡される引数の入れ物。
-/// @note JSON へ直接依存させない。AI バス側 (Editor/Ai/Json.hpp) は Op を知っていてよいが、Op が AI 層を知ると AI を外した構成でエディターが組めなくなる。
+/// @note JSON へ直接依存させない。AI バス側 (Editor/Ai/Serialization/Json.hpp) は Op を知っていてよいが、Op が AI 層を知ると AI を外した構成でエディターが組めなくなる。
 class OpArgs {
 public:
     void Set(std::string name, OpValue value) { m_values[std::move(name)] = std::move(value); }

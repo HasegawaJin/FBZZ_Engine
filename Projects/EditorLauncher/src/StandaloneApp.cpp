@@ -6,21 +6,21 @@
 /// @note IModule を継承して Application::Run() に乗せることで、Profiler::BeginFrame/EndFrame・MemorySystem・
 /// @note Input::Update・PollEvents などのフレーム境界処理をエンジン側に統一する。
 #include "StandaloneApp.hpp"
-#include <Engine/Asset/RenderPipelineAsset.hpp>
+#include <Engine/Asset/RenderSettings/RenderPipelineAsset.hpp>
 #include <Engine/Audio/AudioManager.hpp>
-#include <Engine/Core/Application.hpp>
-#include <Engine/Core/Cursor.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Core/Time.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Engine/Core/Timing/Time.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Engine/Profiler/Profiler.hpp>
-#include <Engine/Scene/SceneUtils.hpp>
-#include <Engine/Scene/Systems/RenderSystem.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/IRenderer.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Hierarchy/SceneUtils.hpp>
+#include <Engine/Rendering/RenderSystem.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <imgui.h>
 #include <chrono>
 #include <ctime>

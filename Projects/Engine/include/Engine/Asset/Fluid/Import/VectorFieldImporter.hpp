@@ -1,0 +1,24 @@
+/// @file    VectorFieldImporter.hpp
+/// @brief   速度場 PNG / .fga → VectorFieldAsset ローダー。
+/// @author  Hasegawa Jin
+/// @date    2026-09-11
+#pragma once
+#include <Engine/Api.hpp>
+#include <Engine/Asset/Import/IAssetImporter.hpp>
+#include <Fluid/Fields/VectorFieldAsset.hpp>
+
+namespace fbzz::asset {
+
+class VectorFieldImporter final : public IAssetImporter<fluid::VectorFieldAsset> {
+public:
+    [[nodiscard]] FBZZ_ENGINE_API std::unique_ptr<fluid::VectorFieldAsset> Import(
+        const std::string&         absPath,
+        renderer::ResourceManager* resources) override;
+
+    std::span<const std::string_view> SupportedExtensions() const override {
+        static constexpr std::string_view kExts[] = { ".png", ".fga" };
+        return kExts;
+    }
+};
+
+} /// @note namespace fbzz::asset

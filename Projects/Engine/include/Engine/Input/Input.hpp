@@ -7,7 +7,7 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include "KeyCode.hpp"
-#include "Math/Vector2.hpp"
+#include "Math/LinearAlgebra/Vector2.hpp"
 
 #include <array>
 #include <cstdint>

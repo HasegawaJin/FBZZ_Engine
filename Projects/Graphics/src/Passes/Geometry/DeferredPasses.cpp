@@ -3,13 +3,13 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "RenderScenePassHelpers.hpp"
-#include <Graphics/Pipeline/GpuHiZ.hpp>
-#include <Graphics/Effects/ComputedSkinningOutput.hpp>
-#include <Graphics/Passes/Geometry/FiberRenderPass.hpp>
-#include <Graphics/Pipeline/MeshletDrawHelpers.hpp>
-#include <Graphics/Pipeline/InstanceBatch.hpp>
-#include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
-#include <Core/Logger.hpp>
+#include <Graphics/Pipeline/Culling/GpuHiZ.hpp>
+#include <Graphics/Effects/Animation/ComputedSkinningOutput.hpp>
+#include <Graphics/Passes/Geometry/Surfaces/FiberRenderPass.hpp>
+#include <Graphics/Pipeline/Geometry/MeshletDrawHelpers.hpp>
+#include <Graphics/Pipeline/Geometry/InstanceBatch.hpp>
+#include <Graphics/Passes/Geometry/Instancing/InstanceRenderPasses.hpp>
+#include <Core/Logger/Logger.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>

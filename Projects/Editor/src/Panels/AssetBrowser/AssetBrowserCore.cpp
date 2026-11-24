@@ -2,13 +2,13 @@
 /// @brief   AssetBrowser のルート、マウント、ディレクトリ走査。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Asset/ModelSource.hpp>
+#include <Engine/Asset/Model/Import/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/Util/EditorSettings.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Asset/ModelAsset.hpp>
-#include <Engine/Asset/TexDescSerializer.hpp>
+#include <Editor/Project/EditorSettings.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Asset/Model/ModelAsset.hpp>
+#include <Engine/Asset/Texture/TexDescSerializer.hpp>
 
 namespace fbzz::editor {
 

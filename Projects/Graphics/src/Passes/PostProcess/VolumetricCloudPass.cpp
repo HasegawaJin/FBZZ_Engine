@@ -8,11 +8,11 @@
 /// @note kCloudResShift で Full/Half を切り替える (既定 Full)。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
-#include <Graphics/Renderer/DrawCall.hpp>
-#include <Graphics/Renderer/ResourceManager.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
-#include <Math/Vector4.hpp>
+#include <Graphics/Renderer/Commands/DrawCall.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 #include <algorithm>
 
 namespace fbzz::renderer {

@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include "InspectorAudio.hpp"
-#include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/Audio/AudioSourceComponent.hpp>
 #include <algorithm>
 #include <array>
 #include <cmath>

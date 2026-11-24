@@ -3,12 +3,12 @@
 /// @author  Hasegawa Jin
 /// @date    2025-01-01
 #include "Engine/Audio/AudioManager.hpp"
-#include "Engine/Audio/Synth.hpp"
-#include "Engine/Core/Logger.hpp"
-#include <Engine/Asset/AssetPath.hpp>
-#include <Engine/Asset/SynthAsset.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
+#include "Engine/Audio/Synthesis/Synth.hpp"
+#include "Engine/Core/Diagnostics/Logger.hpp"
+#include <Engine/Asset/References/AssetPath.hpp>
+#include <Engine/Asset/Audio/SynthAsset.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>

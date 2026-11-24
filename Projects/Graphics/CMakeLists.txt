@@ -6,7 +6,7 @@ option(FBZZ_ENABLE_DX12 "Build the Direct3D 12 backend" ON)
 set(DIRECTXTEX_INCLUDE "${CMAKE_SOURCE_DIR}/ThirdParty/DirectXTex/include")
 set(DIRECTXTEX_LIB_DEBUG "${CMAKE_SOURCE_DIR}/ThirdParty/DirectXTex/lib/x64/Debug/DirectXTex.lib")
 set(DIRECTXTEX_LIB_RELEASE "${CMAKE_SOURCE_DIR}/ThirdParty/DirectXTex/lib/x64/Release/DirectXTex.lib")
-file(GLOB_RECURSE GRAPHICS_SOURCES CONFIGURE_DEPENDS src/*.cpp include/*.hpp)
+file(GLOB_RECURSE GRAPHICS_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.hpp include/*.hpp)
 if(NOT FBZZ_ENABLE_DX12)
     list(FILTER GRAPHICS_SOURCES EXCLUDE REGEX "/Platform/DX12/")
 endif()
@@ -22,7 +22,7 @@ target_link_libraries(FBZZGraphics PUBLIC FBZZCore FBZZMath
     "$<$<CONFIG:Debug>:${DIRECTXTEX_LIB_DEBUG}>"
     "$<$<OR:$<CONFIG:Release>,$<CONFIG:Development>>:${DIRECTXTEX_LIB_RELEASE}>")
 fbzz_use_std_pch(FBZZGraphics)
-fbzz_use_unity_build(FBZZGraphics EXCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/StbFontImpl.cpp")
+fbzz_use_unity_build(FBZZGraphics EXCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/src/Renderer/Text/StbFontImpl.cpp")
 
 if(FBZZ_ENABLE_DX12)
     # @note 診断用 DXIL は DLL へ埋め込み、実行時の Assets・GUID・DXC reflection に依存しない。

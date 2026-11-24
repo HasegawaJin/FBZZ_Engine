@@ -2,8 +2,8 @@
 /// @brief   個体専用の二枚メッシュを単独所有し、コピーへ GPU 資源を持ち越さない。
 /// @author  Hasegawa Jin
 /// @date    2026-10-31
-#include <Engine/Scene/Components/PresentationComponents.hpp>
-#include <Graphics/Renderer/OwnedResource.hpp>
+#include <Engine/Scene/Components/Gameplay/PresentationComponents.hpp>
+#include <Graphics/Renderer/Resources/OwnedResource.hpp>
 #include <utility>
 
 namespace fbzz::scene {

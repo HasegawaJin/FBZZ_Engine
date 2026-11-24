@@ -4,10 +4,10 @@
 /// @date    2026-09-17
 /// @see     Docs/design/ai-verification-loop.md «6. バスの分割»
 #pragma once
-#include <Editor/Ai/Json.hpp>
+#include <Editor/Ai/Serialization/Json.hpp>
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Renderer/ResourceHandle.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Graphics/Renderer/Resources/ResourceHandle.hpp>
 #include <Engine/Scene/GameObject.hpp>
 
 #include <filesystem>

@@ -4,9 +4,9 @@
 /// @date    2026-06-23
 
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
-#include <Graphics/Renderer/DrawCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
+#include <Graphics/Renderer/Commands/DrawCall.hpp>
 #include <algorithm>
 
 namespace fbzz::renderer {

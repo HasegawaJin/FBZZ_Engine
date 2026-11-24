@@ -4,11 +4,11 @@
 /// @date    2026-11-04
 #include "TerrainScatter.hpp"
 #include "TerrainAuthoring.hpp"
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/TerrainSurfaceQuery.hpp>
-#include <Engine/Scene/Transform.hpp>
-#include <Engine/Scene/WorldCell.hpp>
-#include <Math/MathUtils.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Terrain/TerrainSurfaceQuery.hpp>
+#include <Engine/Scene/Hierarchy/Transform.hpp>
+#include <Engine/Scene/World/WorldCell.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 #include <algorithm>
 #include <cmath>
 #include <limits>

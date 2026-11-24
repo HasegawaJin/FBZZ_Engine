@@ -5,8 +5,8 @@
 #include <Editor/Op/EditorOperator.hpp>
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/PlayModeController.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 
 #include <algorithm>
 #include <utility>

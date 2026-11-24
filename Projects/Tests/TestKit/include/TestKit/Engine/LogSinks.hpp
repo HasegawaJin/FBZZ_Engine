@@ -8,8 +8,8 @@
 ///   - 呼ばれる回数 / 順序 / 呼ばれないことが契約 -> MockLogSink
 #pragma once
 
-#include <Engine/Core/ILogSink.hpp>
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Diagnostics/ILogSink.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 
 #include <gmock/gmock.h>
 

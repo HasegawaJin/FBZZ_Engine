@@ -3,10 +3,10 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
 #include "ManagedScriptInspection.hpp"
-#include <Editor/Ai/Json.hpp>
-#include <Editor/Util/ManagedSettingsCodec.hpp>
-#include <Engine/Scene/Managed/ManagedScriptAdapter.hpp>
-#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
+#include <Editor/Ai/Serialization/Json.hpp>
+#include <Editor/Script/Managed/ManagedSettingsCodec.hpp>
+#include <Engine/Scene/Managed/Runtime/ManagedScriptAdapter.hpp>
+#include <Engine/Scene/Managed/Runtime/ManagedScriptRuntime.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <bit>
 #include <cmath>

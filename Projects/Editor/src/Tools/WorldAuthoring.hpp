@@ -4,7 +4,7 @@
 /// @date    2026-11-07
 #pragma once
 #include <Editor/Op/EditorOperator.hpp>
-#include <Engine/Scene/WorldCell.hpp>
+#include <Engine/Scene/World/WorldCell.hpp>
 #include <span>
 
 namespace fbzz::scene { class GameObject; struct TerrainComponent; struct TerrainHeightRegion; }

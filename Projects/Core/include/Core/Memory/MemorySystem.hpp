@@ -6,8 +6,8 @@
 #pragma once
 #include <Core/Api.hpp>
 
-#include "Core/Memory/FrameAllocator.hpp"
-#include "Core/Memory/MemoryTracker.hpp"
+#include "Core/Memory/Allocators/FrameAllocator.hpp"
+#include "Core/Memory/Diagnostics/MemoryTracker.hpp"
 
 namespace fbzz::core {
 

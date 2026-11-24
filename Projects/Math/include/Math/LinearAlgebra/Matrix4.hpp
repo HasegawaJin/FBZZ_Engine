@@ -1,0 +1,147 @@
+/// @file    Matrix4.hpp
+/// @brief   4x4行列 (ワールド・ビュー・プロジェクション行列)。
+/// @author  Hasegawa Jin
+/// @date    2026-05-21
+#pragma once
+#include <Math/Api.hpp>
+
+#include "Vector3.hpp"
+#include "Vector4.hpp"
+#include "Quaternion.hpp"
+#include "Matrix3.hpp"
+#include "Math/Simd/Simd.hpp"
+
+namespace fbzz::math {
+
+struct Matrix4 {
+    /// @brief 要素配列。m[row][col]、行優先。
+    float m[4][4] = {};
+
+    constexpr Matrix4() = default;
+
+    static Matrix4 Identity();
+    static Matrix4 Zero();
+
+    static Matrix4 Translate(const Vector3& t);
+    FBZZ_MATH_API static Matrix4 Rotate(const Quaternion& q);
+    static Matrix4 Scale(const Vector3& s);
+    /// @note 列ベクトルにスケール、回転、平行移動の順で適用する。
+    FBZZ_MATH_API static Matrix4 TRS(const Vector3& translation, const Quaternion& rotation, const Vector3& scale);
+
+    /// @note DirectX 左手系。
+    FBZZ_MATH_API static Matrix4 LookAt(const Vector3& eye, const Vector3& target, const Vector3& up);
+    /// @note DirectX 左手系、深度 [0,1]。
+    /// @note 縮退したアスペクト比や不正な深度範囲は契約違反を報告し、aspect = 1 または farZ = nearZ + 1 に補正する。
+    FBZZ_MATH_API static Matrix4 Perspective(float fovY, float aspect, float nearZ, float farZ);
+    /// @note DirectX 左手系、深度 [0,1]。
+    FBZZ_MATH_API static Matrix4 Orthographic(float left, float right,
+                                             float bottom, float top,
+                                             float nearZ, float farZ);
+    /// @brief Perspective の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
+    /// @note 深度 1 付近で粗い float の刻みを遠景へ回さず、遠景の Z-fighting を抑える。
+    /// @note 1 - Perspective の深度を後から計算すると、その引き算で精度を失うため直接組む。
+    /// @see https://developer.nvidia.com/content/depth-precision-visualized (NVIDIA, "Depth Precision Visualized")
+    FBZZ_MATH_API static Matrix4 PerspectiveReversedZ(float fovY, float aspect, float nearZ, float farZ);
+    /// @brief Orthographic の深度を反転した射影 (Reversed-Z)。near → 1、far → 0。
+    FBZZ_MATH_API static Matrix4 OrthographicReversedZ(float left, float right,
+                                                      float bottom, float top,
+                                                      float nearZ, float farZ);
+
+    Matrix4 operator*(const Matrix4& rhs) const;
+    Vector4 operator*(const Vector4& v)   const;
+
+    static Matrix4 Transpose(const Matrix4& mat);
+    /// @note ほぼ特異な行列は契約違反を報告して単位行列を返す。Transform のスケールが 0 の場合などに起きる。
+    FBZZ_MATH_API static Matrix4 Inverse(const Matrix4& mat);
+
+    /// @brief 法線変換行列 (逆転置) をアフィン行列限定で安く求める。
+    /// @return Transpose(Inverse(mat)) の左上 3x3 と同じ値。平行移動成分は寄与しないため残りは単位行列。
+    /// @note 完全な 4x4 逆行列より安い。アフィン行列は左上 3x3 の余因子行列 1 回で足りる。
+    /// @note シェーダーは float3x3 へキャストして使うため、左上 3x3 が一致していれば結果は変わらない。
+    /// @note 行列式がほぼ 0 なら単位行列を返す。
+    FBZZ_MATH_API static Matrix4 InverseTransposeAffine(const Matrix4& mat);
+
+    /// @brief 転置行列を返す。
+    /// @note HLSL cbuffer は column-major で読むため、row-major な C++ 側の行列はこれで転置してからアップロードする。
+    Matrix4 Transposed() const;
+};
+
+/// @note FBZZMath は DLL のため、.cpp に置くと呼び出しごとに DLL 境界を越えてインライン化されない。契約を報告しない小関数はヘッダーで定義する。
+inline Matrix4 Matrix4::Identity() {
+    Matrix4 result;
+    result.m[0][0] = 1.0f;
+    result.m[1][1] = 1.0f;
+    result.m[2][2] = 1.0f;
+    result.m[3][3] = 1.0f;
+    return result;
+}
+
+inline Matrix4 Matrix4::Zero() { return {}; }
+
+inline Matrix4 Matrix4::Translate(const Vector3& t) {
+    Matrix4 result = Identity();
+    result.m[0][3] = t.x;
+    result.m[1][3] = t.y;
+    result.m[2][3] = t.z;
+    return result;
+}
+
+inline Matrix4 Matrix4::Scale(const Vector3& s) {
+    Matrix4 result = Identity();
+    result.m[0][0] = s.x;
+    result.m[1][1] = s.y;
+    result.m[2][2] = s.z;
+    return result;
+}
+
+/// @note 結果の行 r = Σk m[r][k] * rhs の行 k。k = 0 から順に足すので、スカラーの三重ループと加算の順序が同じで値も一致する。
+inline Matrix4 Matrix4::operator*(const Matrix4& rhs) const {
+    const simd::Vec rhsRow0 = simd::Load4(rhs.m[0]);
+    const simd::Vec rhsRow1 = simd::Load4(rhs.m[1]);
+    const simd::Vec rhsRow2 = simd::Load4(rhs.m[2]);
+    const simd::Vec rhsRow3 = simd::Load4(rhs.m[3]);
+    Matrix4 result;
+    for (int row = 0; row < 4; ++row) {
+        const simd::Vec lhsRow = simd::Load4(m[row]);
+        simd::Vec sum = _mm_mul_ps(simd::SplatLane<0>(lhsRow), rhsRow0);
+        sum = simd::MulAdd(simd::SplatLane<1>(lhsRow), rhsRow1, sum);
+        sum = simd::MulAdd(simd::SplatLane<2>(lhsRow), rhsRow2, sum);
+        sum = simd::MulAdd(simd::SplatLane<3>(lhsRow), rhsRow3, sum);
+        simd::Store4(result.m[row], sum);
+    }
+    return result;
+}
+
+/// @note 行優先に列ベクトルを掛けるので、転置して列を取り出し «列 j × v[j]» を j 順に足す。加算の順序はスカラーの内積と同じで値も一致する。
+inline Vector4 Matrix4::operator*(const Vector4& v) const {
+    simd::Vec c0 = simd::Load4(m[0]);
+    simd::Vec c1 = simd::Load4(m[1]);
+    simd::Vec c2 = simd::Load4(m[2]);
+    simd::Vec c3 = simd::Load4(m[3]);
+    simd::Transpose4x4(c0, c1, c2, c3);
+    simd::Vec sum = _mm_mul_ps(c0, _mm_set1_ps(v.x));
+    sum = simd::MulAdd(c1, _mm_set1_ps(v.y), sum);
+    sum = simd::MulAdd(c2, _mm_set1_ps(v.z), sum);
+    sum = simd::MulAdd(c3, _mm_set1_ps(v.w), sum);
+    Vector4 result;
+    simd::Store4(&result.x, sum);
+    return result;
+}
+
+inline Matrix4 Matrix4::Transpose(const Matrix4& mat) {
+    simd::Vec r0 = simd::Load4(mat.m[0]);
+    simd::Vec r1 = simd::Load4(mat.m[1]);
+    simd::Vec r2 = simd::Load4(mat.m[2]);
+    simd::Vec r3 = simd::Load4(mat.m[3]);
+    simd::Transpose4x4(r0, r1, r2, r3);
+    Matrix4 result;
+    simd::Store4(result.m[0], r0);
+    simd::Store4(result.m[1], r1);
+    simd::Store4(result.m[2], r2);
+    simd::Store4(result.m[3], r3);
+    return result;
+}
+
+inline Matrix4 Matrix4::Transposed() const { return Transpose(*this); }
+
+}

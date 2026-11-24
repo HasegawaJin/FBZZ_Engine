@@ -2,17 +2,17 @@
 /// @brief   Animation / IK 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Scene/Components/BoneComponent.hpp>
-#include <Engine/Scene/Components/IKSolverComponent.hpp>
-#include <Engine/Scene/Components/SpringBoneComponent.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/Animation/BoneComponent.hpp>
+#include <Engine/Scene/Components/Animation/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/Animation/SpringBoneComponent.hpp>
 #include "InspectorAnimation.hpp"
 #include "InspectorBoneBake.hpp"
-#include <Editor/Util/EditorTheme.hpp>
+#include <Editor/UI/Appearance/EditorTheme.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/AnimatorControllerAsset.hpp>
-#include <Engine/Asset/AvatarMaskAsset.hpp>
+#include <Engine/Asset/Animation/Controllers/AnimatorControllerAsset.hpp>
+#include <Engine/Asset/Animation/Rig/AvatarMaskAsset.hpp>
 #include <algorithm>
 
 namespace fbzz::editor {

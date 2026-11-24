@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-24
 #pragma once
-#include <Editor/Util/AssetSearch.hpp>
+#include <Editor/Asset/Browser/AssetSearch.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <string>

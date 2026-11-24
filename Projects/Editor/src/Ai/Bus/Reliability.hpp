@@ -5,9 +5,9 @@
 /// @see     Docs/design/ai-reliability.md
 #pragma once
 #include "BusInternal.hpp"
-#include <Editor/PlayModeController.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <algorithm>
 #include <cmath>
 

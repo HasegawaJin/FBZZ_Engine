@@ -3,14 +3,14 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #include <TestKit/TestKit.hpp>
-#include <TestKit/TempDir.hpp>
+#include <TestKit/Support/TempDir.hpp>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-#include <Engine/Core/Cursor.hpp>
-#include <Engine/Core/Application.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 
 #include <array>
 #include <bit>

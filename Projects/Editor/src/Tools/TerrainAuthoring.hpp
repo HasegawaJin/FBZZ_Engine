@@ -3,11 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-04
 #pragma once
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/TerrainSplat.hpp>
-#include <Engine/Scene/TerrainSurfaceQuery.hpp>
-#include <Engine/Scene/Transform.hpp>
-#include <Math/Vector2.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Terrain/TerrainSplat.hpp>
+#include <Engine/Scene/Terrain/TerrainSurfaceQuery.hpp>
+#include <Engine/Scene/Hierarchy/Transform.hpp>
+#include <Math/LinearAlgebra/Vector2.hpp>
 #include <array>
 #include <cstddef>
 #include <cstdint>

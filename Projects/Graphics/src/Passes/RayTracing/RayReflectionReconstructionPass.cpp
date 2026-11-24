@@ -3,8 +3,8 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-01
 #include <Graphics/Passes/RayTracing/RayReflectionReconstructionPass.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
 
 namespace fbzz::renderer {

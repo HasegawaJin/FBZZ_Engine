@@ -4,10 +4,10 @@
 /// @date    2026-10-03
 #include <Editor/Profiler/ProfilerHistory.hpp>
 #include "PassiveFrameElapsedCapture.hpp"
-#include <Editor/PlayModeController.hpp>
+#include <Editor/Play/PlayModeController.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Engine/Core/Memory/MemorySystem.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <Core/Profiler/FrameTimeline.hpp>
 #include <algorithm>
 #include <cmath>

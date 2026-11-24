@@ -4,7 +4,7 @@
 /// @date    2026-09-21
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
-#include <TestKit/TempDir.hpp>
+#include <TestKit/Support/TempDir.hpp>
 #include <Core/Util/FileSystem.hpp>
 #include <algorithm>
 #ifndef WIN32_LEAN_AND_MEAN

@@ -1,0 +1,46 @@
+/// @file    UIElement.hpp
+/// @brief   Canvas 配下で矩形を持つ「UI 要素」の判定
+/// @author  Hasegawa Jin
+/// @date    2026-08-26
+/// @note 1 か所に置くのは、「これは UI 要素か」を Editor が選択・ギズモ・Inspector の 3 か所で
+///       問うため。絵を持つものだけを条件に書くと、Mask や Scroll View のように自分では
+///       何も描かない要素が Viewport から触れなくなる。散っていると拾い漏れが出る。
+#pragma once
+
+#include <Engine/Scene/Components/UI/UIButton.hpp>
+#include <Engine/Scene/Components/UI/UIControls.hpp>
+#include <Engine/Scene/Components/UI/UIImage.hpp>
+#include <Engine/Scene/Components/UI/UILayoutGroup.hpp>
+#include <Engine/Scene/Components/UI/UIText.hpp>
+#include <Engine/Scene/GameObject.hpp>
+
+namespace fbzz::scene {
+
+/// Canvas 空間の矩形を持つ要素なら true。Canvas 自身は含まない。
+[[nodiscard]] inline bool IsUIElement(GameObject& go)
+{
+    return go.GetComponent<UIImage>()
+        || go.GetComponent<UIText>()
+        || go.GetComponent<UIButton>()
+        || go.GetComponent<UIMask>()
+        || go.GetComponent<UISlider>()
+        || go.GetComponent<UIToggle>()
+        || go.GetComponent<UIScrollView>()
+        || go.GetComponent<UIInputField>()
+        || go.GetComponent<UIEventTrigger>()
+        || go.GetComponent<UILayoutGroup>()
+        || go.GetComponent<UIContentSizeFitter>()
+        || go.GetComponent<UINavigation>()
+        || go.GetComponent<UIDragSource>()
+        || go.GetComponent<UIDropTarget>();
+    /// @note UICanvasGroup は入れない。あれは配下の見え方と入力可否を変えるだけで
+    ///       自分の矩形を持たない (掴んでも動かす対象が無い)。
+}
+
+/// サイズが実測でしか決まらない要素。掴んで広げることはできない。
+[[nodiscard]] inline bool HasMeasuredUISize(GameObject& go)
+{
+    return go.GetComponent<UIText>() && !go.GetComponent<UIImage>();
+}
+
+}

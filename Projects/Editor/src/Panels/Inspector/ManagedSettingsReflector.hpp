@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-04
 #pragma once
-#include <Editor/ImGuiReflector.hpp>
-#include <Editor/Util/ManagedSettingsCodec.hpp>
-#include <Editor/Util/ManagedScriptSettings.hpp>
+#include <Editor/Inspector/ImGuiReflector.hpp>
+#include <Editor/Script/Managed/ManagedSettingsCodec.hpp>
+#include <Editor/Script/Managed/ManagedScriptSettings.hpp>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>

@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-11-03
 #include <Engine/Scene/Ragdoll/RagdollDefinition.hpp>
-#include <Engine/Asset/AssetPath.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Math/MathUtils.hpp>
+#include <Engine/Asset/References/AssetPath.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 #include <toml++/toml.hpp>
 #include <cmath>
 #include <sstream>

@@ -4,23 +4,23 @@
 /// @date    2026-07-15
 #include "DX12Renderer.hpp"
 
-#include <Core/Logger.hpp>
-#include <Core/HResult.hpp>
-#include "DX12AccelerationStructure.hpp"
-#include "DX12Buffer.hpp"
-#include "DX12ConstantBuffer.hpp"
-#include "DX12UploadArenaSizing.hpp"
-#include "DX12PipelineState.hpp"
-#include "DX12Shader.hpp"
-#include "DX12Texture.hpp"
-#include "DX12IblBaker.hpp"
-#include "DX12HdriBaker.hpp"
-#include "DX12RenderTarget.hpp"
-#include "DX12StructuredBuffer.hpp"
-#include <Graphics/Renderer/BindlessIndices.hpp>
-#include <Graphics/Renderer/ResourceManager.hpp>
-#include <Graphics/Renderer/Mesh.hpp>
-#include "../../ResourceManagerLifetime.hpp"
+#include <Core/Logger/Logger.hpp>
+#include <Core/Util/HResult.hpp>
+#include "Resources/DX12AccelerationStructure.hpp"
+#include "Resources/DX12Buffer.hpp"
+#include "Resources/DX12ConstantBuffer.hpp"
+#include "Commands/DX12UploadArenaSizing.hpp"
+#include "Pipeline/DX12PipelineState.hpp"
+#include "Pipeline/DX12Shader.hpp"
+#include "Resources/DX12Texture.hpp"
+#include "Baking/DX12IblBaker.hpp"
+#include "Baking/DX12HdriBaker.hpp"
+#include "Resources/DX12RenderTarget.hpp"
+#include "Resources/DX12StructuredBuffer.hpp"
+#include <Graphics/Renderer/Resources/BindlessIndices.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Graphics/Renderer/Geometry/Mesh.hpp>
+#include "../../Resources/ResourceManagerLifetime.hpp"
 /// @note RT → PNG エンコードは AI 連携用の共通処理。
 #include "../RenderTargetCapture.hpp"
 #include <DirectXTex.h>

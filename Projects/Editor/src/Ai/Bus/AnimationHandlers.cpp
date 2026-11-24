@@ -4,12 +4,12 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Engine/Util/StringUtils.hpp>
-#include <Engine/Asset/AvatarMaskAsset.hpp>
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
+#include <Engine/Asset/Animation/Rig/AvatarMaskAsset.hpp>
+#include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/Geometry/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 

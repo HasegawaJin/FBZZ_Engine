@@ -12,7 +12,7 @@
 /// «常に一番遠い頂点が選ばれているか» を見る。
 #include "Scenes.hpp"
 
-#include <Physics/ConvexHullCollider.hpp>
+#include <Physics/Collision/Shapes/ConvexHullCollider.hpp>
 
 #include <imgui.h>
 

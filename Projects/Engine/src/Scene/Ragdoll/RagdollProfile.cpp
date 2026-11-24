@@ -4,7 +4,7 @@
 /// @date    2026-09-02
 #include <Engine/Scene/Ragdoll/RagdollProfile.hpp>
 
-#include <Math/MathUtils.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 
 #include <algorithm>
 #include <cctype>

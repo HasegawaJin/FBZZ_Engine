@@ -2,10 +2,10 @@
 /// @brief   全カメラ共通の描画候補から用途 mask 付きの静的レイ入力を収集する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-30
-#include <Graphics/RayTracing/RayScene.hpp>
-#include <Graphics/Renderer/RenderScene.hpp>
-#include <Graphics/Renderer/Mesh.hpp>
-#include <Graphics/Effects/ComputedSkinningOutput.hpp>
+#include <Graphics/RayTracing/Scene/RayScene.hpp>
+#include <Graphics/Scene/RenderScene.hpp>
+#include <Graphics/Renderer/Geometry/Mesh.hpp>
+#include <Graphics/Effects/Animation/ComputedSkinningOutput.hpp>
 #include <cmath>
 #include <functional>
 #include <optional>

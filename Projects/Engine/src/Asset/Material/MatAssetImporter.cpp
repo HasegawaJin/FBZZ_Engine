@@ -1,0 +1,23 @@
+/// @file    MatAssetImporter.cpp
+/// @brief   .mat TOML → MaterialAsset ローダー (LoadMaterialAssetFromFile ラッパー)。
+/// @author  Hasegawa Jin
+/// @date    2026-06-18
+#include <Engine/Asset/Material/MatAssetImporter.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+
+namespace fbzz::asset {
+
+std::unique_ptr<MaterialAsset> MatAssetImporter::Import(
+    const std::string&         absPath,
+    renderer::ResourceManager* /*resources*/)
+{
+    auto mat = std::make_unique<MaterialAsset>();
+    if (!LoadMaterialAssetFromFile(absPath, *mat)) {
+        FBZZ_LOG_WARN("MatAssetImporter: failed to load [%s]", absPath.c_str());
+        return nullptr;
+    }
+    return mat;
+}
+
+} // namespace fbzz::asset

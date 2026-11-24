@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Memory/MemoryTracker.hpp>
+#include <Engine/Core/Memory/Diagnostics/MemoryTracker.hpp>
 #include <memory>
 #include <vector>
 

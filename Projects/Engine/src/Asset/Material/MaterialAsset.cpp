@@ -1,0 +1,693 @@
+/// @file    MaterialAsset.cpp
+/// @brief   .mat マテリアルアセットの TOML シリアライズ / デシリアライズ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-07
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Engine/Asset/AssetManager.hpp>
+#include <Engine/Asset/References/GuidRefCodec.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <toml++/toml.hpp>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <filesystem>
+#include <limits>
+#include <sstream>
+
+namespace fbzz::asset {
+
+namespace {
+
+/// @note 旧 Fiber キーは読込と保存の両方で正規化する。両方あれば新キーの値を保持する。
+void NormalizeFiberShading(MaterialAssetAuthoring& asset)
+{
+    const bool hasCanonical = asset.params.contains("planarShading") || asset.integerParams.contains("planarShading");
+    auto legacyFloat = asset.params.extract("grassShading");
+    auto legacyInteger = asset.integerParams.extract("grassShading");
+    if (hasCanonical) return;
+    if (!legacyFloat.empty()) {
+        legacyFloat.key() = "planarShading";
+        asset.params.insert(std::move(legacyFloat));
+    } else if (!legacyInteger.empty()) {
+        legacyInteger.key() = "planarShading";
+        asset.integerParams.insert(std::move(legacyInteger));
+    }
+}
+
+/// @note GeometryPassHelpers の kTextureSlotNames (t0-t7) と一致させる。
+/// @note t5-t7 は "tex5"/"tex6"/"tex7" という汎用キーでカスタムシェーダーが自由に利用できる。
+constexpr std::array<const char*, 8> kTextureSlots = {
+    "albedo",
+    "normal",
+    "metallic",
+    "emissive",
+    "ao",
+    "tex5",
+    "tex6",
+    "tex7",
+};
+
+std::string ResolveTexturePath(std::string_view materialPath, std::string value)
+{
+    if (value.empty()) return value;
+    std::replace(value.begin(), value.end(), '\\', '/');
+    if (value.starts_with("Assets/") || value.starts_with("assets/"))
+        return value;
+    if (value.find('/') != std::string::npos)
+        return value;
+
+    /// @note FBX インポートは `materials/<MaterialName>.mat` と `textures/foo.png` を sibling に出す。
+    /// @note 旧エクスポーターは basename だけを保存していたため、ここで絶対パスへ補完する。
+    const std::filesystem::path materialDir = std::filesystem::path(std::string(materialPath)).parent_path();
+    return (materialDir.parent_path() / "textures" / value).string();
+}
+
+/// @note 手書きされる綴りの揺れを受ける。未知の綴りは Opaque へ落ち、半透明のつもりで書いた
+/// @note .mat が不透明で描かれても «濃く出る» だけなので綴り違いに気付けないまま調整を続けて
+/// @note しまう。意図と結果がずれる経路を塞ぐ。
+renderer::BlendMode BlendModeFromString(std::string_view value)
+{
+    if (value == "AlphaBlend" || value == "Alpha Blend" || value == "Alpha" || value == "Transparent")
+        return renderer::BlendMode::ALPHA_BLEND;
+    if (value == "Additive" || value == "Add")
+        return renderer::BlendMode::ADDITIVE;
+    if (value == "Premultiplied" || value == "PremultipliedAlpha")
+        return renderer::BlendMode::PREMULTIPLIED;
+    return renderer::BlendMode::OPAQUE_BLEND;
+}
+
+DepthTest DepthTestFromString(std::string_view value)
+{
+    if (value == "Always")       return DepthTest::Always;
+    if (value == "Never")        return DepthTest::Never;
+    if (value == "Less")         return DepthTest::Less;
+    if (value == "Equal")        return DepthTest::Equal;
+    if (value == "Greater")      return DepthTest::Greater;
+    if (value == "GreaterEqual") return DepthTest::GreaterEqual;
+    if (value == "NotEqual")     return DepthTest::NotEqual;
+    return DepthTest::LessEqual;
+}
+
+const char* DepthTestToString(DepthTest test)
+{
+    switch (test) {
+    case DepthTest::Always:       return "Always";
+    case DepthTest::Never:        return "Never";
+    case DepthTest::Less:         return "Less";
+    case DepthTest::Equal:        return "Equal";
+    case DepthTest::Greater:      return "Greater";
+    case DepthTest::GreaterEqual: return "GreaterEqual";
+    case DepthTest::NotEqual:     return "NotEqual";
+    case DepthTest::LessEqual:
+    default:                      return "LessEqual";
+    }
+}
+
+const char* BlendModeToString(renderer::BlendMode mode)
+{
+    switch (mode) {
+    case renderer::BlendMode::ALPHA_BLEND:  return "AlphaBlend";
+    case renderer::BlendMode::ADDITIVE:     return "Additive";
+    case renderer::BlendMode::PREMULTIPLIED: return "Premultiplied";
+    case renderer::BlendMode::OPAQUE_BLEND:
+    default:                                return "Opaque";
+    }
+}
+
+RenderPath RenderPathFromString(std::string_view value)
+{
+    if (value == "auto" || value == "Auto") return RenderPath::Auto;
+    if (value == "particle" || value == "Particle") return RenderPath::Particle;
+    if (value == "trail" || value == "Trail") return RenderPath::Trail;
+    if (value == "ui" || value == "UI") return RenderPath::UI;
+    if (value == "decal" || value == "Decal") return RenderPath::Decal;
+    if (value == "post_process" || value == "PostProcess") return RenderPath::PostProcess;
+    return RenderPath::Auto;
+}
+
+const char* RenderPathToString(RenderPath rp)
+{
+    switch (rp) {
+    case RenderPath::Particle: return "particle";
+    case RenderPath::Trail:    return "trail";
+    case RenderPath::UI:       return "ui";
+    case RenderPath::Decal:    return "decal";
+    case RenderPath::PostProcess: return "post_process";
+    case RenderPath::Auto:
+    default:                   return "auto";
+    }
+}
+
+MeshType MeshTypeFromString(std::string_view value)
+{
+    if (value == "surface" || value == "Surface") return MeshType::Surface;
+    if (value == "skinned" || value == "Skinned") return MeshType::Skinned;
+    return MeshType::Any;
+}
+
+const char* MeshTypeToString(MeshType mt)
+{
+    switch (mt) {
+    case MeshType::Surface: return "surface";
+    case MeshType::Skinned: return "skinned";
+    case MeshType::Any:
+    default:                return "any";
+    }
+}
+
+void ReadFloatParam(const toml::table& table, const char* key, MaterialAssetAuthoring& asset)
+{
+    if (const auto value = table[key].value<double>())
+        asset.params[key] = { static_cast<float>(*value) };
+    else if (const auto value = table[key].value<int64_t>())
+        asset.params[key] = { static_cast<float>(*value) };
+}
+
+void ReadFloatArrayParam(const toml::table& table, const char* key, MaterialAssetAuthoring& asset)
+{
+    auto* arr = table[key].as_array();
+    if (!arr) return;
+
+    std::vector<float> values;
+    values.reserve(arr->size());
+    for (const auto& node : *arr) {
+        if (const auto value = node.value<double>())
+            values.push_back(static_cast<float>(*value));
+        else if (const auto value = node.value<int64_t>())
+            values.push_back(static_cast<float>(*value));
+    }
+    if (!values.empty())
+        asset.params[key] = std::move(values);
+}
+
+void ReadParamsTable(const toml::table& table, MaterialAssetAuthoring& asset)
+{
+    for (const auto& [key, node] : table) {
+        const std::string name(key);
+        std::vector<float> floats;
+        std::vector<int64_t> integers;
+        bool allInteger = true;
+        bool valid = true;
+        const auto read = [&](const toml::node& item) {
+            if (item.is_integer()) {
+                const int64_t value = item.value_or(int64_t{0});
+                integers.push_back(value);
+                floats.push_back(static_cast<float>(value));
+            } else if (item.is_boolean()) {
+                const int64_t value = item.value_or(false) ? 1 : 0;
+                integers.push_back(value);
+                floats.push_back(static_cast<float>(value));
+            } else if (item.is_floating_point()) {
+                allInteger = false;
+                floats.push_back(static_cast<float>(item.value_or(0.0)));
+            } else valid = false;
+        };
+        if (const auto* array = node.as_array()) {
+            for (const auto& item : *array) read(item);
+        } else read(node);
+        if (!valid) {
+            FBZZ_LOG_WARN("Material parameter must be a number/bool or flat numeric array: %s", name.c_str());
+            continue;
+        }
+        asset.params.erase(name);
+        asset.integerParams.erase(name);
+        if (allInteger && std::any_of(integers.begin(), integers.end(), [](int64_t value) { return value < -16777216 || value > 16777216; }))
+            asset.integerParams[name] = std::move(integers);
+        else asset.params[name] = std::move(floats);
+    }
+}
+
+/// @name [particle] テーブル
+/// @note 列挙は文字列で持つ。.mat は人が読み書きするので `alpha_source = 1` より
+/// @note `alpha_source = "luminance"` の方が «何が起きるか» が読んで分かる。未知の綴りは
+/// @note 既定へ落とす (壊れた .mat でも描画は続く)。
+
+scene::ParticleAlphaSource AlphaSourceFromString(std::string_view value)
+{
+    if (value == "luminance")          return scene::ParticleAlphaSource::Luminance;
+    if (value == "luminance_inverted") return scene::ParticleAlphaSource::LuminanceInverted;
+    if (value == "red")                return scene::ParticleAlphaSource::Red;
+    if (value == "green")              return scene::ParticleAlphaSource::Green;
+    if (value == "blue")               return scene::ParticleAlphaSource::Blue;
+    if (value == "alpha_inverted")     return scene::ParticleAlphaSource::AlphaInverted;
+    return scene::ParticleAlphaSource::TextureAlpha;
+}
+
+const char* AlphaSourceToString(scene::ParticleAlphaSource value)
+{
+    switch (value) {
+    case scene::ParticleAlphaSource::Luminance:         return "luminance";
+    case scene::ParticleAlphaSource::LuminanceInverted: return "luminance_inverted";
+    case scene::ParticleAlphaSource::Red:               return "red";
+    case scene::ParticleAlphaSource::Green:             return "green";
+    case scene::ParticleAlphaSource::Blue:              return "blue";
+    case scene::ParticleAlphaSource::AlphaInverted:     return "alpha_inverted";
+    case scene::ParticleAlphaSource::TextureAlpha:
+    default:                                            return "texture_alpha";
+    }
+}
+
+scene::ParticleFlipbookMode FlipbookModeFromString(std::string_view value)
+{
+    if (value == "fps")         return scene::ParticleFlipbookMode::FramesPerSecond;
+    if (value == "random")      return scene::ParticleFlipbookMode::RandomFrame;
+    if (value == "ping_pong")   return scene::ParticleFlipbookMode::PingPong;
+    return scene::ParticleFlipbookMode::Lifetime;
+}
+
+const char* FlipbookModeToString(scene::ParticleFlipbookMode value)
+{
+    switch (value) {
+    case scene::ParticleFlipbookMode::FramesPerSecond: return "fps";
+    case scene::ParticleFlipbookMode::RandomFrame:     return "random";
+    case scene::ParticleFlipbookMode::PingPong:        return "ping_pong";
+    case scene::ParticleFlipbookMode::Lifetime:
+    default:                                           return "lifetime";
+    }
+}
+
+void ReadParticleTable(const toml::table& table, ParticleMaterialSettings& out)
+{
+    const ParticleMaterialSettings d{};
+    const auto flt = [&](const char* key, float fallback) {
+        return static_cast<float>(table[key].value_or(static_cast<double>(fallback)));
+    };
+    const auto integer = [&](const char* key, int fallback) {
+        return static_cast<int>(table[key].value_or(static_cast<int64_t>(fallback)));
+    };
+
+    out.alphaSource = AlphaSourceFromString(
+        table["alpha_source"].value_or(std::string{ AlphaSourceToString(d.alphaSource) }));
+
+    out.flipbook.spriteColumns          = integer("sprite_columns", d.flipbook.spriteColumns);
+    out.flipbook.spriteRows             = integer("sprite_rows", d.flipbook.spriteRows);
+    out.flipbook.spriteStartFrame       = integer("sprite_start_frame", d.flipbook.spriteStartFrame);
+    out.flipbook.spriteEndFrame         = integer("sprite_end_frame", d.flipbook.spriteEndFrame);
+    out.flipbook.flipbookMode           = FlipbookModeFromString(
+        table["flipbook_mode"].value_or(std::string{ FlipbookModeToString(d.flipbook.flipbookMode) }));
+    out.flipbook.flipbookFramesPerSecond = flt("flipbook_fps", d.flipbook.flipbookFramesPerSecond);
+    out.flipbook.flipbookFrameBlending  = table["flipbook_frame_blending"].value_or(d.flipbook.flipbookFrameBlending);
+    out.flipbook.spriteRandomStartFrame = table["sprite_random_start_frame"].value_or(d.flipbook.spriteRandomStartFrame);
+    out.flipbook.spriteRandomRow        = table["sprite_random_row"].value_or(d.flipbook.spriteRandomRow);
+    out.flipbook.motionVectorFlipbook   = table["motion_vector_flipbook"].value_or(d.flipbook.motionVectorFlipbook);
+    out.flipbook.motionVectorStrength   = flt("motion_vector_strength", d.flipbook.motionVectorStrength);
+
+    out.softParticles            = table["soft_particles"].value_or(d.softParticles);
+    out.softParticleFadeDistance = flt("soft_particle_fade_distance", d.softParticleFadeDistance);
+    out.cameraFadeNear           = flt("camera_fade_near", d.cameraFadeNear);
+    out.cameraFadeFar            = flt("camera_fade_far", d.cameraFadeFar);
+
+    out.distortion          = table["distortion"].value_or(d.distortion);
+    out.distortionStrength  = flt("distortion_strength", d.distortionStrength);
+    out.distortionChromatic = flt("distortion_chromatic", d.distortionChromatic);
+
+    out.sixWayLighting        = table["six_way_lighting"].value_or(d.sixWayLighting);
+    out.lightingStrength      = flt("lighting_strength", d.lightingStrength);
+    out.smokeWrap             = flt("smoke_wrap", d.smokeWrap);
+    out.smokeTransmission     = flt("smoke_transmission", d.smokeTransmission);
+    out.smokeBackScatterPower = flt("smoke_back_scatter_power", d.smokeBackScatterPower);
+    out.sixWayMaps            = table["six_way_maps"].value_or(d.sixWayMaps);
+    if (const toml::array* color = table["six_way_emission_color"].as_array(); color != nullptr && color->size() >= 3) {
+        out.sixWayEmissionColor = { static_cast<float>((*color)[0].value_or(0.0)),
+                                    static_cast<float>((*color)[1].value_or(0.0)),
+                                    static_cast<float>((*color)[2].value_or(0.0)) };
+    }
+    out.sixWayEmissionScale  = flt("six_way_emission_scale", d.sixWayEmissionScale);
+    out.punctualLighting      = table["punctual_lighting"].value_or(d.punctualLighting);
+
+    out.volumetric           = table["volumetric"].value_or(d.volumetric);
+    out.volumetricSteps      = integer("volumetric_steps", d.volumetricSteps);
+    out.volumetricDensity    = flt("volumetric_density", d.volumetricDensity);
+    out.volumetricAnisotropy = flt("volumetric_anisotropy", d.volumetricAnisotropy);
+    out.volumetricNoiseScale = flt("volumetric_noise_scale", d.volumetricNoiseScale);
+
+    out.receiveShadows     = table["receive_shadows"].value_or(d.receiveShadows);
+    out.shadowStrength     = flt("shadow_strength", d.shadowStrength);
+    out.selfShadowStrength = flt("self_shadow_strength", d.selfShadowStrength);
+
+    out.emissiveScale = flt("emissive_scale", d.emissiveScale);
+}
+
+/// @brief 既定値と同じものは書かない。
+/// @note 31 個を全部書き出すと、手で開いたときに «この素材で実際に効いている設定» が既定値の
+/// @note 海に埋もれる。差分だけ残せば .mat が意図の記録になる。
+void WriteParticleTable(const ParticleMaterialSettings& value, toml::table& out)
+{
+    const ParticleMaterialSettings d{};
+    const auto putF = [&](const char* key, float v, float def) {
+        if (v != def) out.insert(key, static_cast<double>(v));
+    };
+    const auto putI = [&](const char* key, int v, int def) {
+        if (v != def) out.insert(key, static_cast<int64_t>(v));
+    };
+    const auto putB = [&](const char* key, bool v, bool def) {
+        if (v != def) out.insert(key, v);
+    };
+
+    if (value.alphaSource != d.alphaSource)
+        out.insert("alpha_source", AlphaSourceToString(value.alphaSource));
+
+    putI("sprite_columns", value.flipbook.spriteColumns, d.flipbook.spriteColumns);
+    putI("sprite_rows", value.flipbook.spriteRows, d.flipbook.spriteRows);
+    putI("sprite_start_frame", value.flipbook.spriteStartFrame, d.flipbook.spriteStartFrame);
+    putI("sprite_end_frame", value.flipbook.spriteEndFrame, d.flipbook.spriteEndFrame);
+    if (value.flipbook.flipbookMode != d.flipbook.flipbookMode)
+        out.insert("flipbook_mode", FlipbookModeToString(value.flipbook.flipbookMode));
+    putF("flipbook_fps", value.flipbook.flipbookFramesPerSecond, d.flipbook.flipbookFramesPerSecond);
+    putB("flipbook_frame_blending", value.flipbook.flipbookFrameBlending, d.flipbook.flipbookFrameBlending);
+    putB("sprite_random_start_frame", value.flipbook.spriteRandomStartFrame, d.flipbook.spriteRandomStartFrame);
+    putB("sprite_random_row", value.flipbook.spriteRandomRow, d.flipbook.spriteRandomRow);
+    putB("motion_vector_flipbook", value.flipbook.motionVectorFlipbook, d.flipbook.motionVectorFlipbook);
+    putF("motion_vector_strength", value.flipbook.motionVectorStrength, d.flipbook.motionVectorStrength);
+
+    putB("soft_particles", value.softParticles, d.softParticles);
+    putF("soft_particle_fade_distance", value.softParticleFadeDistance, d.softParticleFadeDistance);
+    putF("camera_fade_near", value.cameraFadeNear, d.cameraFadeNear);
+    putF("camera_fade_far", value.cameraFadeFar, d.cameraFadeFar);
+
+    putB("distortion", value.distortion, d.distortion);
+    putF("distortion_strength", value.distortionStrength, d.distortionStrength);
+    putF("distortion_chromatic", value.distortionChromatic, d.distortionChromatic);
+
+    putB("six_way_lighting", value.sixWayLighting, d.sixWayLighting);
+    putF("lighting_strength", value.lightingStrength, d.lightingStrength);
+    putF("smoke_wrap", value.smokeWrap, d.smokeWrap);
+    putF("smoke_transmission", value.smokeTransmission, d.smokeTransmission);
+    putF("smoke_back_scatter_power", value.smokeBackScatterPower, d.smokeBackScatterPower);
+    putB("six_way_maps", value.sixWayMaps, d.sixWayMaps);
+    if (value.sixWayEmissionColor.x != d.sixWayEmissionColor.x || value.sixWayEmissionColor.y != d.sixWayEmissionColor.y
+        || value.sixWayEmissionColor.z != d.sixWayEmissionColor.z) {
+        out.insert("six_way_emission_color", toml::array{ static_cast<double>(value.sixWayEmissionColor.x),
+                                                          static_cast<double>(value.sixWayEmissionColor.y),
+                                                          static_cast<double>(value.sixWayEmissionColor.z) });
+    }
+    putF("six_way_emission_scale", value.sixWayEmissionScale, d.sixWayEmissionScale);
+    putB("punctual_lighting", value.punctualLighting, d.punctualLighting);
+
+    putB("volumetric", value.volumetric, d.volumetric);
+    putI("volumetric_steps", value.volumetricSteps, d.volumetricSteps);
+    putF("volumetric_density", value.volumetricDensity, d.volumetricDensity);
+    putF("volumetric_anisotropy", value.volumetricAnisotropy, d.volumetricAnisotropy);
+    putF("volumetric_noise_scale", value.volumetricNoiseScale, d.volumetricNoiseScale);
+
+    putB("receive_shadows", value.receiveShadows, d.receiveShadows);
+    putF("shadow_strength", value.shadowStrength, d.shadowStrength);
+    putF("self_shadow_strength", value.selfShadowStrength, d.selfShadowStrength);
+
+    putF("emissive_scale", value.emissiveScale, d.emissiveScale);
+}
+
+bool ReadDielectricTable(const toml::table& table, renderer::SolidDielectricSettings& out)
+{
+    /// @note 表現範囲外の有限値を clamp しない。inf / nan は表面能力の診断へ保持する。
+    const auto floatValue = [](const toml::node& node, float& target) {
+        if (!node.is_number()) return false;
+        const auto value = node.value<double>();
+        if (!value || (std::isfinite(*value)
+            && std::abs(*value) > static_cast<double>(std::numeric_limits<float>::max()))) return false;
+        target = static_cast<float>(*value);
+        return true;
+    };
+    const auto number = [&](const char* key, float& target) {
+        const auto* node = table.get(key);
+        if (!node) return true;
+        return floatValue(*node, target);
+    };
+    if (!number("transmission", out.transmission) || !number("ior", out.ior)
+        || !number("attenuation_distance", out.attenuationDistance)) return false;
+    if (const auto* node = table.get("thin_walled")) {
+        if (!node->is_boolean()) return false;
+        out.thinWalled = node->value_or(false);
+    }
+    if (const auto* node = table.get("attenuation_color")) {
+        const auto* color = node->as_array();
+        if (!color || color->size() != 3) return false;
+        std::array<float, 3> values{};
+        for (size_t i = 0; i < values.size(); ++i) {
+            if (!floatValue((*color)[i], values[i])) return false;
+        }
+        out.attenuationColor = {values[0], values[1], values[2]};
+    }
+    return true;
+}
+
+void WriteDielectricTable(const renderer::SolidDielectricSettings& value, toml::table& out)
+{
+    const renderer::SolidDielectricSettings defaults;
+    if (value.transmission != defaults.transmission)
+        out.insert("transmission", static_cast<double>(value.transmission));
+    if (value.ior != defaults.ior) out.insert("ior", static_cast<double>(value.ior));
+    if (value.attenuationColor.x != defaults.attenuationColor.x
+        || value.attenuationColor.y != defaults.attenuationColor.y
+        || value.attenuationColor.z != defaults.attenuationColor.z)
+        out.insert("attenuation_color", toml::array{static_cast<double>(value.attenuationColor.x),
+            static_cast<double>(value.attenuationColor.y), static_cast<double>(value.attenuationColor.z)});
+    if (value.attenuationDistance != defaults.attenuationDistance)
+        out.insert("attenuation_distance", static_cast<double>(value.attenuationDistance));
+    if (value.thinWalled != defaults.thinWalled) out.insert("thin_walled", value.thinWalled);
+}
+
+toml::array FloatArrayToToml(const std::vector<float>& values)
+{
+    toml::array arr;
+    for (const float value : values)
+        arr.push_back(static_cast<double>(value));
+    return arr;
+}
+
+} /// @note namespace
+
+MaterialAsset::AuthoringSnapshotPtr ReadMaterialAuthoring(AssetHandle<MaterialAsset> handle)
+{
+    const auto* owner = AssetManager::Get<MaterialAsset>(handle);
+    return owner ? owner->ReadAuthoring() : MaterialAsset::AuthoringSnapshotPtr{};
+}
+
+/// @note すべての編集項目を比較する。浮動小数点はビット単位で比較し、ゼロの符号、NaN ペイロード、微小な編集を区別する。
+bool MaterialAssetAuthoring::operator==(const MaterialAssetAuthoring& other) const
+{
+    return shaderPath == other.shaderPath
+        && blendMode == other.blendMode
+        && doubleSided == other.doubleSided
+        && depthWrite == other.depthWrite
+        && depthTest == other.depthTest
+        && depthBias == other.depthBias
+        && detail::MaterialAuthoringFloatEqual(depthBiasSlope, other.depthBiasSlope)
+        && renderQueue == other.renderQueue
+        && renderPath == other.renderPath
+        && meshType == other.meshType
+        && textures == other.textures
+        && detail::MaterialAuthoringFloatMapsEqual(params, other.params)
+        && integerParams == other.integerParams
+        && keywords == other.keywords
+        && dielectric == other.dielectric
+        && particle.alphaSource == other.particle.alphaSource
+        && particle.flipbook.spriteColumns == other.particle.flipbook.spriteColumns
+        && particle.flipbook.spriteRows == other.particle.flipbook.spriteRows
+        && particle.flipbook.spriteStartFrame == other.particle.flipbook.spriteStartFrame
+        && particle.flipbook.spriteEndFrame == other.particle.flipbook.spriteEndFrame
+        && particle.flipbook.flipbookMode == other.particle.flipbook.flipbookMode
+        && detail::MaterialAuthoringFloatEqual(particle.flipbook.flipbookFramesPerSecond, other.particle.flipbook.flipbookFramesPerSecond)
+        && particle.flipbook.flipbookFrameBlending == other.particle.flipbook.flipbookFrameBlending
+        && particle.flipbook.spriteRandomStartFrame == other.particle.flipbook.spriteRandomStartFrame
+        && particle.flipbook.spriteRandomRow == other.particle.flipbook.spriteRandomRow
+        && particle.flipbook.motionVectorFlipbook == other.particle.flipbook.motionVectorFlipbook
+        && detail::MaterialAuthoringFloatEqual(particle.flipbook.motionVectorStrength, other.particle.flipbook.motionVectorStrength)
+        && particle.softParticles == other.particle.softParticles
+        && detail::MaterialAuthoringFloatEqual(particle.softParticleFadeDistance, other.particle.softParticleFadeDistance)
+        && detail::MaterialAuthoringFloatEqual(particle.cameraFadeNear, other.particle.cameraFadeNear)
+        && detail::MaterialAuthoringFloatEqual(particle.cameraFadeFar, other.particle.cameraFadeFar)
+        && particle.distortion == other.particle.distortion
+        && detail::MaterialAuthoringFloatEqual(particle.distortionStrength, other.particle.distortionStrength)
+        && detail::MaterialAuthoringFloatEqual(particle.distortionChromatic, other.particle.distortionChromatic)
+        && particle.sixWayLighting == other.particle.sixWayLighting
+        && detail::MaterialAuthoringFloatEqual(particle.lightingStrength, other.particle.lightingStrength)
+        && detail::MaterialAuthoringFloatEqual(particle.smokeWrap, other.particle.smokeWrap)
+        && detail::MaterialAuthoringFloatEqual(particle.smokeTransmission, other.particle.smokeTransmission)
+        && detail::MaterialAuthoringFloatEqual(particle.smokeBackScatterPower, other.particle.smokeBackScatterPower)
+        && particle.sixWayMaps == other.particle.sixWayMaps
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionColor.x, other.particle.sixWayEmissionColor.x)
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionColor.y, other.particle.sixWayEmissionColor.y)
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionColor.z, other.particle.sixWayEmissionColor.z)
+        && detail::MaterialAuthoringFloatEqual(particle.sixWayEmissionScale, other.particle.sixWayEmissionScale)
+        && particle.volumetric == other.particle.volumetric
+        && particle.volumetricSteps == other.particle.volumetricSteps
+        && detail::MaterialAuthoringFloatEqual(particle.volumetricDensity, other.particle.volumetricDensity)
+        && detail::MaterialAuthoringFloatEqual(particle.volumetricAnisotropy, other.particle.volumetricAnisotropy)
+        && detail::MaterialAuthoringFloatEqual(particle.volumetricNoiseScale, other.particle.volumetricNoiseScale)
+        && particle.receiveShadows == other.particle.receiveShadows
+        && detail::MaterialAuthoringFloatEqual(particle.shadowStrength, other.particle.shadowStrength)
+        && detail::MaterialAuthoringFloatEqual(particle.selfShadowStrength, other.particle.selfShadowStrength)
+        && particle.punctualLighting == other.particle.punctualLighting
+        && detail::MaterialAuthoringFloatEqual(particle.emissiveScale, other.particle.emissiveScale);
+}
+
+bool LoadMaterialAssetFromFile(std::string_view path, MaterialAsset& outAsset)
+{
+    MaterialAssetAuthoring values;
+    if (!LoadMaterialAssetFromFile(path, values)) return false;
+    outAsset.ReplaceAuthoring(values);
+    return true;
+}
+
+bool LoadMaterialAssetFromFile(std::string_view path, MaterialAssetAuthoring& outAsset)
+{
+    const std::string pathString(path);
+    std::string text;
+    if (!util::FileSystem::ReadText(pathString, text)) {
+        FBZZ_LOG_WARN("MaterialAsset: cannot open [%s]", pathString.c_str());
+        return false;
+    }
+
+    /// @note `toml::parse_file(std::string_view)` に Editor 側の一時パス表現を直接渡すと、
+    /// @note Windows パス / string_view の寿命 / 終端 NUL の前提が呼び出し先へ漏れるため、
+    /// @note Engine の FileSystem で UTF-8/Win32 パスを解決してから本文を parse する。
+    toml::parse_result parsed = toml::parse(text, pathString);
+    if (!parsed) {
+        FBZZ_LOG_WARN("MaterialAsset: parse failed [%s]", pathString.c_str());
+        return false;
+    }
+
+    MaterialAssetAuthoring asset;
+    /// @note guid: 参照を "Assets/..." パスへ戻してから読む (ランタイムは常にパスを持つ)。
+    DecodeGuidRefs(parsed.table());
+    const toml::table& table = parsed.table();
+    asset.shaderPath = table["shader"].value_or(std::string{});
+    asset.blendMode = BlendModeFromString(table["blend_mode"].value_or(std::string{ "Opaque" }));
+    asset.doubleSided = table["double_sided"].value_or(false);
+    asset.depthWrite  = table["depth_write"].value_or(true);
+    asset.depthTest   = DepthTestFromString(table["depth_test"].value_or(std::string{ "LessEqual" }));
+    asset.depthBias      = static_cast<int32_t>(table["depth_bias"].value_or(int64_t{ 0 }));
+    asset.depthBiasSlope = static_cast<float>(table["depth_bias_slope"].value_or(0.0));
+    asset.renderQueue = static_cast<int32_t>(table["render_queue"].value_or(
+        static_cast<int64_t>(renderer::RenderQueue::GEOMETRY)));
+    asset.renderPath = RenderPathFromString(table["render_path"].value_or(std::string{ "auto" }));
+    asset.meshType   = MeshTypeFromString(table["mesh_type"].value_or(std::string{ "any" }));
+
+    if (auto* keywords = table["keywords"].as_array()) {
+        for (const auto& node : *keywords) {
+            if (const auto keyword = node.value<std::string>(); keyword && !keyword->empty())
+                asset.keywords.push_back(*keyword);
+        }
+    }
+
+    for (const char* slot : kTextureSlots)
+        asset.textures[slot] = {};
+
+    if (auto* textures = table["textures"].as_table()) {
+        /// @note Terrain / Water などの専用シェーダーは標準 t0-t7 以外の意味名 (`layer0_diffuse`,
+        /// @note `normalMap1` など) を .mat に保存する。固定スロットだけを読むと、専用マテリアルを
+        /// @note Inspector で保存した時にテクスチャ参照が消えるため、textures テーブルの全キーを保持する。
+        for (const auto& [key, node] : *textures) {
+            const std::string name = std::string(key);
+            const auto texturePath = node.value<std::string>();
+            asset.textures[name] = ResolveTexturePath(path, texturePath ? *texturePath : std::string{});
+        }
+    }
+
+    if (auto* params = table["params"].as_table())
+        ReadParamsTable(*params, asset);
+    NormalizeFiberShading(asset);
+
+    /// @note 未記載のキーは既定値のまま (テーブルごと無くても壊れない)。
+    if (auto* particle = table["particle"].as_table())
+        ReadParticleTable(*particle, asset.particle);
+
+    if (const auto* node = table.get("dielectric")) {
+        const auto* dielectric = node->as_table();
+        if (!dielectric || !ReadDielectricTable(*dielectric, asset.dielectric)) {
+            FBZZ_LOG_WARN("MaterialAsset: invalid typed dielectric settings [%s]", pathString.c_str());
+            return false;
+        }
+    }
+
+    outAsset = std::move(asset);
+    return true;
+}
+
+bool SaveMaterialAssetToFile(std::string_view path, const MaterialAsset& asset)
+{
+    const auto snapshot = asset.ReadAuthoring();
+    return snapshot && SaveMaterialAssetToFile(path, snapshot->Data());
+}
+
+bool SaveMaterialAssetToFile(std::string_view path, const MaterialAssetAuthoring& asset)
+{
+    const std::string pathString(path);
+    toml::table table;
+    table.insert("version", int64_t{ 1 });
+    table.insert("shader", asset.shaderPath);
+    table.insert("blend_mode", BlendModeToString(asset.blendMode));
+    table.insert("double_sided", asset.doubleSided);
+    table.insert("depth_write", asset.depthWrite);
+    table.insert("depth_test",  DepthTestToString(asset.depthTest));
+    /// @note 既定値のときは書かない (既存 .mat を保存し直しても差分を出さない)。
+    if (asset.depthBias != 0)          table.insert("depth_bias", static_cast<int64_t>(asset.depthBias));
+    if (asset.depthBiasSlope != 0.0f)  table.insert("depth_bias_slope", static_cast<double>(asset.depthBiasSlope));
+    table.insert("render_queue", static_cast<int64_t>(asset.renderQueue));
+    table.insert("render_path", RenderPathToString(asset.renderPath));
+    table.insert("mesh_type",   MeshTypeToString(asset.meshType));
+
+    if (!asset.keywords.empty()) {
+        toml::array keywords;
+        for (const std::string& keyword : asset.keywords)
+            keywords.push_back(keyword);
+        table.insert("keywords", std::move(keywords));
+    }
+
+    toml::table textures;
+    /// @note ロードと同じく、標準スロットに限定せず MaterialAsset が持つ全キーを保存する。
+    /// @note これにより Terrain / Water の意味名テクスチャを generic .mat と同じ保存 API で扱える。
+    for (const auto& [slot, texturePath] : asset.textures)
+        textures.insert(slot, texturePath);
+    for (const char* slot : kTextureSlots) {
+        if (!textures.contains(slot))
+            textures.insert(slot, std::string{});
+    }
+    table.insert("textures", std::move(textures));
+
+    MaterialAssetAuthoring canonical = asset;
+    NormalizeFiberShading(canonical);
+    toml::table params;
+    for (const auto& [name, values] : canonical.params) {
+        if (values.size() == 1)
+            params.insert(name, static_cast<double>(values[0]));
+        else
+            params.insert(name, FloatArrayToToml(values));
+    }
+    for (const auto& [name, values] : canonical.integerParams) {
+        if (values.size() == 1) params.insert_or_assign(name, values[0]);
+        else {
+            toml::array array;
+            for (const int64_t value : values) array.push_back(value);
+            params.insert_or_assign(name, std::move(array));
+        }
+    }
+    table.insert("params", std::move(params));
+
+    /// @note パーティクル用の .mat だけ [particle] を書く。既定のままの項目は省く。
+    if (asset.renderPath == RenderPath::Particle) {
+        toml::table particle;
+        WriteParticleTable(asset.particle, particle);
+        if (!particle.empty()) table.insert("particle", std::move(particle));
+    }
+
+    /// @note 光学設定だけの独立 table。旧 alpha 材質を透過材質へ自動変換しない。
+    toml::table dielectric;
+    WriteDielectricTable(asset.dielectric, dielectric);
+    if (!dielectric.empty()) table.insert("dielectric", std::move(dielectric));
+
+    /// @note ディスク上のテクスチャ / シェーダー参照は guid: 形式にする (リネーム・移動耐性)。
+    EncodeGuidRefs(table);
+
+    std::ostringstream out;
+    out << table << '\n';
+    if (!util::FileSystem::WriteTextAtomic(pathString, out.str())) {
+        FBZZ_LOG_ERROR("MaterialAsset: cannot open [%s]", pathString.c_str());
+        return false;
+    }
+    return true;
+}
+
+} /// @note namespace fbzz::asset

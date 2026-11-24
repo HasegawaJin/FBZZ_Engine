@@ -8,7 +8,7 @@
 /// 結果は正しくても形が悪い木は、地形の当たり判定だけが重い、という形で表に出る。
 #include "Scenes.hpp"
 
-#include <Physics/BVHNode.hpp>
+#include <Physics/Collision/BroadPhase/BVHNode.hpp>
 
 #include <imgui.h>
 

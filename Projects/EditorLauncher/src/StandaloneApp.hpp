@@ -4,13 +4,13 @@
 /// @date    2026-05-31
 /// @note フレームの境界で必要な入力更新・イベント処理・計測は、IModule を呼ぶ Application::Run が担当する。
 #pragma once
-#include <Engine/Core/ILogSink.hpp>
-#include <Engine/Core/IModule.hpp>
-#include <Engine/ProjectResolver.hpp>
-#include <Engine/ProjectSettings.hpp>
-#include <Engine/Scene/ProjectRuntime.hpp>
-#include <Engine/Renderer/Camera.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Core/Diagnostics/ILogSink.hpp>
+#include <Engine/Core/Platform/IModule.hpp>
+#include <Engine/Project/ProjectResolver.hpp>
+#include <Engine/Project/ProjectSettings.hpp>
+#include <Engine/Scene/Runtime/ProjectRuntime.hpp>
+#include <Graphics/Renderer/View/Camera.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <filesystem>
 #include <fstream>
 #include <memory>

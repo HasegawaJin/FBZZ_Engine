@@ -6,16 +6,16 @@
 #include <Graphics/Api.hpp>
 
 #include <Graphics/Renderer/IRenderer.hpp>
-#include <Graphics/Renderer/GpuProfilerLedger.hpp>
+#include <Graphics/Renderer/Diagnostics/GpuProfilerLedger.hpp>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 #include <string>
 #include "DX12Context.hpp"
-#include "DX12UploadArena.hpp"
-#include "DX12PsoCache.hpp"
-#include "DX12StateTracker.hpp"
-#include "DX12PreparedSkinning.hpp"
+#include "Commands/DX12UploadArena.hpp"
+#include "Pipeline/DX12PsoCache.hpp"
+#include "Commands/DX12StateTracker.hpp"
+#include "Pipeline/DX12PreparedSkinning.hpp"
 
 namespace fbzz::renderer {
 

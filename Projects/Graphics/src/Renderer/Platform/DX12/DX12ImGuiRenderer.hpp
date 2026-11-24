@@ -5,7 +5,7 @@
 #pragma once
 #include <Graphics/Api.hpp>
 
-#include <Graphics/Renderer/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
 #include <d3d12.h>
 #include <unordered_map>
 #include <vector>

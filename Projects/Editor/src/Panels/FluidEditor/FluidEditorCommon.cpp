@@ -5,7 +5,7 @@
 #include "FluidEditorInternal.hpp"
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/FluidRecipeWidgets.hpp>
+#include <Editor/Fluid/Authoring/FluidRecipeWidgets.hpp>
 
 #include <algorithm>
 #include <cmath>

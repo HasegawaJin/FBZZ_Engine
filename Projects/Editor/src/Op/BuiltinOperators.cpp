@@ -8,22 +8,22 @@
 /// @see Docs/design/editor-operator-model.md
 #include <Editor/EditorApp.hpp>
 #include <Editor/EditorContext.hpp>
-#include <Editor/ManagedScriptEditor.hpp>
+#include <Editor/Script/Managed/ManagedScriptEditor.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
-#include <Editor/Util/PrefabStructureMerge.hpp>
-#include <Editor/Profiler/ProfilerOperators.hpp>
-#include <Editor/PlayModeController.hpp>
-#include <Editor/Util/AssetDirtyRegistry.hpp>
-#include <Editor/Util/SceneEditUtils.hpp>
-#include <Editor/Util/Selection.hpp>
-#include <Editor/Util/WaterfallFluidBake.hpp>
-#include <Editor/Util/ViewportCamera.hpp>
+#include <Editor/Prefab/PrefabStructureMerge.hpp>
+#include <Editor/Op/Diagnostics/ProfilerOperators.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Editor/Asset/Storage/AssetDirtyRegistry.hpp>
+#include <Editor/Scene/Editing/SceneEditUtils.hpp>
+#include <Editor/Scene/Editing/Selection.hpp>
+#include <Editor/Fluid/Bake/WaterfallFluidBake.hpp>
+#include <Editor/Viewport/ViewportCamera.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/Tools/TargetPointReferenceEditing.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <imgui.h>
 

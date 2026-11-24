@@ -7,22 +7,22 @@
 /// @note 一方 3 段は同じ再生状態 (時刻・カメラ・トグル) を見るため、状態を跨がせる口が要る。
 /// @note Editor/Panels/ 側の公開ヘッダーには出さず、この src 配下だけで閉じる。
 #pragma once
-#include <Editor/Panels/AnimationPreview.hpp>
-#include <Editor/Util/AnimationTrackTable.hpp>
-#include <Engine/Asset/AvatarMaskAsset.hpp>
-#include <Engine/Asset/Model.hpp>
-#include <Engine/Renderer/DynamicBufferPool.hpp>
-#include <Engine/Renderer/Material.hpp>
+#include <Editor/Panels/Animation/AnimationPreview.hpp>
+#include <Editor/Animation/AnimationTrackTable.hpp>
+#include <Engine/Asset/Animation/Rig/AvatarMaskAsset.hpp>
+#include <Engine/Asset/Model/Model.hpp>
+#include <Graphics/Renderer/Resources/Buffers/DynamicBufferPool.hpp>
+#include <Graphics/Renderer/Materials/Material.hpp>
 #include <Engine/Asset/AssetHandle.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Renderer/ResourceHandle.hpp>
-#include <Engine/Scene/Components/AnimatorComponent.hpp>
-#include <Engine/Scene/Entity.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Graphics/Renderer/Resources/ResourceHandle.hpp>
+#include <Engine/Scene/Components/Animation/AnimatorComponent.hpp>
+#include <Engine/Scene/References/Entity.hpp>
 #include <Editor/EditorContext.hpp>
-#include <Math/Matrix4.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
-#include <Math/Vector4.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 #include <imgui.h>
 #include <cstdint>
 #include <memory>

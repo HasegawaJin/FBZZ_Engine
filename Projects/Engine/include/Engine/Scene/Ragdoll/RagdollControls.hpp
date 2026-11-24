@@ -5,7 +5,7 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include <Engine/Scene/Ragdoll/RagdollProfile.hpp>
-#include <Physics/XPBDGrip.hpp>
+#include <Physics/Solver/XPBD/XPBDGrip.hpp>
 #include <memory>
 #include <string>
 #include <string_view>

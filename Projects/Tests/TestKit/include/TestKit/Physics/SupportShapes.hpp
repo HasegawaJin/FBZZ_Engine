@@ -8,8 +8,8 @@
 /// こうしておくと «GJK が落ちたのか、Collider の Update が落ちたのか» が切り分けられる。
 #pragma once
 
-#include <Math/Vector3.hpp>
-#include <Physics/GJK.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Physics/Collision/NarrowPhase/GJK.hpp>
 
 namespace fbzz::testkit {
 

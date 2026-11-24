@@ -4,14 +4,14 @@
 /// @date    2026-10-08
 #include "WaterControlPointCases.hpp"
 
-#include <Engine/Scene/Components/TargetPointComponent.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Scene/Components/WaterZoneComponent.hpp>
-#include <Engine/Scene/ControlPointAdapters.hpp>
+#include <Engine/Scene/Components/Gameplay/TargetPointComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterZoneComponent.hpp>
+#include <Engine/Scene/ControlPoints/ControlPointAdapters.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
-#include <Engine/Scene/Systems/WaterSystem.hpp>
-#include <Engine/Scene/WaterZoneSnapshot.hpp>
+#include <Engine/Scene/Systems/Transform/TransformSystem.hpp>
+#include <Engine/Scene/Systems/Water/WaterSystem.hpp>
+#include <Engine/Scene/Water/Surface/WaterZoneSnapshot.hpp>
 
 #include <algorithm>
 #include <array>

@@ -4,16 +4,16 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Ai/JsonReflector.hpp>
-#include <Editor/Ai/OperatorBridge.hpp>
-#include <Editor/PlayModeController.hpp>
-#include <Editor/Util/BuildConsole.hpp>
-#include <Editor/Util/SpriteSlicer.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Scene/ComponentRegistry.hpp>
+#include <Editor/Ai/Serialization/JsonReflector.hpp>
+#include <Editor/Ai/Bus/OperatorBridge.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Editor/Diagnostics/Logging/BuildConsole.hpp>
+#include <Editor/Asset/Authoring/SpriteSlicer.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Engine/Scene/Components/ComponentRegistry.hpp>
 #include <Engine/Scene/GameObject.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <algorithm>
 #include <cctype>

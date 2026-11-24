@@ -6,11 +6,11 @@
 /// @note Inject → Integrate の 2 ディスパッチ。結果は `handles.froxelIntegrated` に残り、
 /// @note Composite が深度からスライスを引いて 1 回サンプルする。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
-#include <Graphics/Renderer/Camera.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
+#include <Graphics/Renderer/View/Camera.hpp>
 #include "UnderwaterPassHelpers.hpp"
-#include <Math/Matrix4.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

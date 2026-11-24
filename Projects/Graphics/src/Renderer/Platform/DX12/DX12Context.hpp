@@ -14,8 +14,8 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 #include <vector>
-#include "DX12PixEventStack.hpp"
-#include "DX12UploadArena.hpp"
+#include "Commands/DX12PixEventStack.hpp"
+#include "Commands/DX12UploadArena.hpp"
 
 namespace fbzz::renderer {
 

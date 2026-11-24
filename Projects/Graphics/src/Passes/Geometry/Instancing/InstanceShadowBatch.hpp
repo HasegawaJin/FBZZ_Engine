@@ -1,0 +1,58 @@
+/// @file    InstanceShadowBatch.hpp
+/// @brief   Prepares InstanceSet visibility for all light views before submitting atlas draws.
+/// @author  Hasegawa Jin
+/// @date    2026-11-07
+#pragma once
+#include <Graphics/Pipeline/Culling/GpuHiZ.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
+#include <Math/Geometry/Frustum.hpp>
+#include <cstdint>
+#include <memory>
+#include <span>
+#include <vector>
+
+namespace fbzz::renderer {
+
+struct RenderPassContext;
+
+struct InstanceShadowView {
+    math::Frustum frustum;
+    bool directional = false;
+    bool preserveVegetationDetail = false;
+    float texelWorldSize = 0.0f;
+    math::Matrix4 viewProjection;
+    uint32_t viewportX = 0;
+    uint32_t viewportY = 0;
+    uint32_t viewportSize = 0;
+    GpuHiZ hierarchy;
+};
+
+/// @note Each bit identifies a light view that may use a current-frame shadow depth hierarchy.
+[[nodiscard]] uint32_t InstanceShadowOcclusionViewMask(RenderPassContext& context,std::span<const InstanceShadowView> views);
+
+class PreparedInstanceShadowBatch {
+public:
+    PreparedInstanceShadowBatch();
+    ~PreparedInstanceShadowBatch();
+    PreparedInstanceShadowBatch(PreparedInstanceShadowBatch&&) noexcept;
+    PreparedInstanceShadowBatch& operator=(PreparedInstanceShadowBatch&&) noexcept;
+
+private:
+    struct State;
+    std::unique_ptr<State> m_state;
+
+    friend PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext&,
+        std::span<const InstanceShadowView>,std::vector<ComputeCall>&);
+    friend void SubmitInstanceShadowBatchView(RenderPassContext&,const PreparedInstanceShadowBatch&,
+        size_t,std::span<const uint8_t>,ResourceHandle<ConstantBufferTag>);
+};
+
+/// @note Commands append to the caller's batch and share its receipt indices. Visibility outputs are leased for this resource frame.
+[[nodiscard]] PreparedInstanceShadowBatch PrepareInstanceShadowBatch(RenderPassContext& context,
+    std::span<const InstanceShadowView> views,std::vector<ComputeCall>& commands);
+
+/// @note The caller has bound the light viewport and uploaded its frame constants before replaying this view.
+void SubmitInstanceShadowBatchView(RenderPassContext& context,const PreparedInstanceShadowBatch& batch,
+    size_t viewIndex,std::span<const uint8_t> receipts,ResourceHandle<ConstantBufferTag> lightFrame);
+
+} /// @note namespace fbzz::renderer

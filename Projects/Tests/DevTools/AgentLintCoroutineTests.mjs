@@ -8,9 +8,9 @@ import {fileURLToPath} from 'node:url';
 import test from 'node:test';
 import {LintContent} from '../../DevTools/AgentLint/lint.mjs';
 
-const backend='Projects/Engine/src/Scene/CoroutineFrameLoop.cpp';
-const runtime='Projects/Engine/src/Scene/ScriptRuntimeProxies.cpp';
-const header='Projects/Engine/include/Engine/Scene/Coroutine.hpp';
+const backend='Projects/Engine/src/Scene/Scripting/CoroutineFrameLoop.cpp';
+const runtime='Projects/Engine/src/Scene/ScriptProxy/Runtime/ScriptRuntimeProxies.cpp';
+const header='Projects/Engine/include/Engine/Scene/Scripting/Coroutine.hpp';
 const findings=(path,source)=>LintContent(path,source).filter(f=>/coroutine/.test(f.rule));
 const read=path=>readFileSync(fileURLToPath(new URL('../../../'+path,import.meta.url)),'utf8');
 
@@ -24,7 +24,7 @@ test('Tween has no suspension constructs to exempt',()=>{
 });
 test('Including the Engine Coroutine does not exempt its callers',()=>{
     for(const keyword of ['co_await WaitForFrames(1)','co_return','co_yield 1']) {
-        assert.ok(findings(runtime,'#include <Engine/Scene/Coroutine.hpp>\nvoid Bad(){ '+keyword+'; }')
+        assert.ok(findings(runtime,'#include <Engine/Scene/Scripting/Coroutine.hpp>\nvoid Bad(){ '+keyword+'; }')
             .some(f=>f.rule==='no-coroutine'));
     }
 });

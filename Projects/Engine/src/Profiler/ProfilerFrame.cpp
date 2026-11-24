@@ -6,8 +6,8 @@
 #include "ApplicationFrameElapsedObserver.hpp"
 #include <Core/Profiler/Profiler.hpp>
 #include <Engine/Profiler/ScriptProfiler.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Core/Time.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Engine/Core/Timing/Time.hpp>
 #include <Core/Profiler/FrameTimeline.hpp>
 
 namespace fbzz::profiler {

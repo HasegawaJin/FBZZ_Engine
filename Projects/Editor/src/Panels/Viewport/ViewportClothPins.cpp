@@ -6,7 +6,7 @@
 #include <Editor/Tools/ClothPinBrush.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Scene/Components/ClothComponent.hpp>
+#include <Engine/Scene/Components/Physics/ClothComponent.hpp>
 #include <cmath>
 
 namespace fbzz::editor {

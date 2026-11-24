@@ -3,15 +3,15 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "Graphics/Pipeline/RenderPipeline.hpp"
-#include "Graphics/Pipeline/RenderPassContext.hpp"
-#include <Graphics/Pipeline/RenderPassCapture.hpp>
-#include <Graphics/Pipeline/GpuHiZ.hpp>
+#include "Graphics/Pipeline/Passes/RenderPassContext.hpp"
+#include <Graphics/Pipeline/Capture/RenderPassCapture.hpp>
+#include <Graphics/Pipeline/Culling/GpuHiZ.hpp>
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
-#include <Core/Logger.hpp>
+#include <Core/Logger/Logger.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
-#include <Graphics/Renderer/RenderBindingGuard.hpp>
+#include <Graphics/Renderer/Commands/RenderBindingGuard.hpp>
 #include <Graphics/Renderer/IRenderer.hpp>
-#include <Graphics/Renderer/ResourceManager.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <algorithm>
 #include <unordered_set>
 

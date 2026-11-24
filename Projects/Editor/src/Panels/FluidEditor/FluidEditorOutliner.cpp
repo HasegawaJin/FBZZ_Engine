@@ -7,9 +7,9 @@
 #include "FluidEditorExtras.hpp"
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/FluidRecipeWidgets.hpp>
-#include <Editor/Util/HotkeyManager.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
+#include <Editor/Fluid/Authoring/FluidRecipeWidgets.hpp>
+#include <Editor/Op/HotkeyManager.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
 
 #include <algorithm>
 #include <cfloat>

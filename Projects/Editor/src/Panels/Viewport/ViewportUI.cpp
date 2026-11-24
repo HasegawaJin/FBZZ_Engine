@@ -2,14 +2,14 @@
 /// @brief   UI Viewport の Canvas ガイド、2Dピッキング、UI Gizmo。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Scene/Components/UICanvas.hpp>
-#include <Engine/Scene/Components/UIImage.hpp>
-#include <Engine/Scene/Components/UIText.hpp>
+#include <Engine/Scene/Components/UI/UICanvas.hpp>
+#include <Engine/Scene/Components/UI/UIImage.hpp>
+#include <Engine/Scene/Components/UI/UIText.hpp>
 #include "ViewportCommon.hpp"
-#include <Editor/Util/TransformAuthoringValues.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Scene/Components/UIElement.hpp>
-#include <Engine/Scene/Components/UIRect.hpp>
+#include <Editor/Inspector/Authoring/TransformAuthoringValues.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Scene/Components/UI/UIElement.hpp>
+#include <Engine/Scene/Components/UI/UIRect.hpp>
 
 namespace fbzz::editor {
 

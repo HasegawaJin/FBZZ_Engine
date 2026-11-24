@@ -11,11 +11,11 @@
 /// @note 要り、HDR 段の ping-pong 用 2 枚は借りられるが PostProcess 段はその 2 枚を入出力に
 /// @note 使い切っていて 3 枚目が無いため HDR 段限定にする。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Pipeline/RenderResources.hpp>
-#include <Graphics/Renderer/RenderScene.hpp>
-#include <Graphics/Renderer/DrawCall.hpp>
-#include <Core/Logger.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Pipeline/Resources/RenderResources.hpp>
+#include <Graphics/Scene/RenderScene.hpp>
+#include <Graphics/Renderer/Commands/DrawCall.hpp>
+#include <Core/Logger/Logger.hpp>
 namespace fbzz::renderer {
 namespace {
 constexpr int kMaxCustomIterations = 8;

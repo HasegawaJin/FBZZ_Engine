@@ -3,9 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include "AssetBrowserCommon.hpp"
-#include "../../Util/ContentGlyph.hpp"
-#include <Editor/Panels/AssetBrowserThumbnail.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
+#include "../../UI/ContentGlyph.hpp"
+#include <Editor/Panels/AssetBrowser/AssetBrowserThumbnail.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
 #include <array>
 #include <bit>
 #include <cmath>

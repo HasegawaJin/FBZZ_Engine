@@ -2,10 +2,10 @@
 /// @brief   Light / Camera 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/CameraComponent.hpp>
-#include <Engine/Scene/Components/LightComponent.hpp>
-#include <Engine/Scene/Components/SkyRenderer.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/Camera/CameraComponent.hpp>
+#include <Engine/Scene/Components/Lighting/LightComponent.hpp>
+#include <Engine/Scene/Components/Environment/SkyRenderer.hpp>
 #include "InspectorLighting.hpp"
 
 namespace fbzz::editor {

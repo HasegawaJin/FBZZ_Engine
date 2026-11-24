@@ -7,9 +7,9 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <TestKit/Engine/LogSinks.hpp>
 
-#include <Engine/Core/ILogSink.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Core/ExternalCallbackBoundary.hpp>
+#include <Engine/Core/Diagnostics/ILogSink.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Core/Util/ExternalCallbackBoundary.hpp>
 
 #include <string>
 #include <thread>

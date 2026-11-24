@@ -4,8 +4,8 @@
 /// @date    2026-10-10
 #pragma once
 #include <Graphics/Api.hpp>
-#include <Graphics/Pipeline/RenderConstants.hpp>
-#include <Graphics/Renderer/RenderGeometryInput.hpp>
+#include <Graphics/Pipeline/Resources/RenderConstants.hpp>
+#include <Graphics/Renderer/Geometry/RenderGeometryInput.hpp>
 
 namespace fbzz::renderer {
 struct DrawCall;

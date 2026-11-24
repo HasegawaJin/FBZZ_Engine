@@ -3,17 +3,17 @@
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
 
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/MeshTrailComponent.hpp>
-#include <Engine/Scene/Components/ParticleEmitter.hpp>
-#include <Engine/Scene/Components/TrailComponent.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/VFX/MeshTrailComponent.hpp>
+#include <Engine/Scene/Components/Particles/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/VFX/TrailComponent.hpp>
 #include <Engine/Scene/Fields/FlowField.hpp>
 #include "InspectorEffects.hpp"
 
-#include <Editor/Util/ParticleEditWidgets.hpp>
-#include <Editor/Util/ParticleEmitterModules.hpp>
-#include <Editor/Util/VFXLineInspector.hpp>
-#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Editor/VFX/ParticleEditWidgets.hpp>
+#include <Editor/VFX/ParticleEmitterModules.hpp>
+#include <Editor/VFX/VFXLineInspector.hpp>
+#include <Engine/Scene/Components/VFX/VFXLineComponent.hpp>
 #include <algorithm>
 #include <iterator>
 

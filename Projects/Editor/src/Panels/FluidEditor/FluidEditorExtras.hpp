@@ -6,7 +6,7 @@
 /// @note パネル本体 (FluidEditorPanel.cpp) から呼ぶ。状態はこのモジュールの中に閉じる。
 #pragma once
 
-#include <Editor/Util/FluidDocument.hpp>
+#include <Editor/Fluid/Authoring/FluidDocument.hpp>
 
 #include <cstdint>
 #include <string>

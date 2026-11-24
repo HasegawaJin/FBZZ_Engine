@@ -4,10 +4,10 @@
 /// @date    2026-09-21
 /// @see Docs/design/crash-report.md
 #include <TestKit/TestKit.hpp>
-#include <TestKit/TempDir.hpp>
+#include <TestKit/Support/TempDir.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/CrashHandler.hpp>
+#include <Engine/Core/Diagnostics/CrashHandler.hpp>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN

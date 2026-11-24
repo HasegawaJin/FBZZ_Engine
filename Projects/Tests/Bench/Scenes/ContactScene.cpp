@@ -8,18 +8,18 @@
 /// @note ゲームと同じ経路 (実コライダー + NarrowPhase) を通して見る。
 #include "Scenes.hpp"
 
-#include <Physics/AABBCollider.hpp>
-#include <Physics/CapsuleCollider.hpp>
-#include <Physics/CollisionPair.hpp>
-#include <Physics/ConvexHullCollider.hpp>
-#include <Physics/CylinderCollider.hpp>
-#include <Physics/OBBCollider.hpp>
-#include <Physics/PhysicsMaterial.hpp>
-#include <Physics/PhysicsSolver.hpp>
-#include <Physics/RigidBody.hpp>
-#include <Physics/SphereCollider.hpp>
+#include <Physics/Collision/Shapes/AABBCollider.hpp>
+#include <Physics/Collision/Shapes/CapsuleCollider.hpp>
+#include <Physics/Collision/BroadPhase/CollisionPair.hpp>
+#include <Physics/Collision/Shapes/ConvexHullCollider.hpp>
+#include <Physics/Collision/Shapes/CylinderCollider.hpp>
+#include <Physics/Collision/Shapes/OBBCollider.hpp>
+#include <Physics/Dynamics/PhysicsMaterial.hpp>
+#include <Physics/Collision/NarrowPhase/PhysicsSolver.hpp>
+#include <Physics/Dynamics/RigidBody.hpp>
+#include <Physics/Collision/Shapes/SphereCollider.hpp>
 
-#include <Math/MathUtils.hpp>
+#include <Math/Scalar/MathUtils.hpp>
 
 #include <imgui.h>
 

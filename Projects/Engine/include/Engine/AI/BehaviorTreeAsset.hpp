@@ -9,7 +9,7 @@
 #include <Engine/Api.hpp>
 #include <Engine/AI/BehaviorTreeTypes.hpp>
 #include <Engine/AI/Blackboard.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 #include <string>
 #include <vector>

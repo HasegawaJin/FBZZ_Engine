@@ -5,7 +5,7 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/Signal.hpp>
+#include <Engine/Core/Events/Signal.hpp>
 
 namespace fbzz::tests {
 

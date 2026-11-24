@@ -4,8 +4,8 @@
 /// @date    2026-09-12
 #pragma once
 #include <Engine/Scene/Ragdoll/RagdollRig.hpp>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <algorithm>
 #include <cmath>
 

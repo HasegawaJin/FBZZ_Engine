@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-31
 #pragma once
-#include <Graphics/Renderer/OwnedResource.hpp>
+#include <Graphics/Renderer/Resources/OwnedResource.hpp>
 #include <initializer_list>
 #include <vector>
 

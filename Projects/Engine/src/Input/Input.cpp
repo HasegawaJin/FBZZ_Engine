@@ -6,7 +6,7 @@
 /// @note KeyDown / MouseButtonDown は現在と前回の差分から判定する。
 #include "Engine/Input/Input.hpp"
 #include "Engine/Input/Gamepad.hpp"
-#include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
 #include "GameInputConsumption.hpp"
 
 #include <algorithm>

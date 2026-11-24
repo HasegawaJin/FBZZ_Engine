@@ -2,28 +2,28 @@
 /// @brief   専用 Paint 素材を検索・選択し、同じ材質プレビューで作成・編集する。
 /// @author  Hasegawa Jin
 /// @date    2026-11-05
-#include <Editor/Util/PropertyControls.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
 #include "TerrainPaintLibrary.hpp"
 #include "TerrainPaintEditing.hpp"
 #include "TerrainTool.hpp"
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/AssetPath.hpp>
-#include <Editor/Util/AssetSearch.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
-#include <Editor/Panels/MaterialPreviewCore.hpp>
+#include <Editor/Asset/Storage/AssetPath.hpp>
+#include <Editor/Asset/Browser/AssetSearch.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
+#include <Editor/Panels/Preview/MaterialPreviewCore.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/MeshInstancesAsset.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Scene/MeshResolver.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/Mesh.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Asset/Instances/MeshInstancesAsset.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Engine/Scene/Geometry/MeshResolver.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/Geometry/Mesh.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <imgui.h>
 #include <algorithm>
 #include <cmath>
-#include <Math/Quaternion.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
 #include <filesystem>
 #include <unordered_map>
 

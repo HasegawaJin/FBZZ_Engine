@@ -5,8 +5,8 @@
 #pragma once
 #include <Graphics/Passes/Geometry/GeometryPasses.hpp>
 #include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
-#include <Graphics/Renderer/RenderScene.hpp>
-#include <Graphics/Renderer/RenderVisibility.hpp>
+#include <Graphics/Scene/RenderScene.hpp>
+#include <Graphics/Renderer/Visibility/RenderVisibility.hpp>
 #include <cassert>
 #include <algorithm>
 #include <cmath>

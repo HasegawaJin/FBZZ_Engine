@@ -3,11 +3,11 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include "AssetBrowserExplorer.hpp"
-#include <Editor/Util/Toast.hpp>
+#include <Editor/UI/Widgets/Toast.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif

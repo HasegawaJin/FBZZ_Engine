@@ -6,7 +6,7 @@
 #include <Engine/Scene/Ragdoll/RagdollControls.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 
-#include <Physics/XPBDConstraint.hpp>
+#include <Physics/Solver/XPBD/XPBDConstraint.hpp>
 
 #include <cmath>
 

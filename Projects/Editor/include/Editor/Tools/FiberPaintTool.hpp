@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
-#include <Engine/Asset/FiberPaintAsset.hpp>
+#include <Engine/Asset/Material/FiberPaintAsset.hpp>
 #include <memory>
 #include <string>
 #include <vector>

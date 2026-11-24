@@ -6,8 +6,8 @@
 #include <Engine/Api.hpp>
 
 #include <Core/Profiler/Profiler.hpp>
-#include <Engine/Scene/Entity.hpp>
-#include <Engine/Scene/ScriptCallbackKind.hpp>
+#include <Engine/Scene/References/Entity.hpp>
+#include <Engine/Scene/Scripting/ScriptCallbackKind.hpp>
 #include <cstdint>
 #include <string>
 #include <vector>

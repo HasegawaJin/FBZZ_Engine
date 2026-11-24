@@ -1,0 +1,153 @@
+/// @file    TerrainHeightMapLoader.cpp
+/// @brief   DirectXTex で画像ファイルと heightData[] を相互変換する。
+/// @author  Hasegawa Jin
+/// @date    2026-06-06
+///
+/// @note 読み込み: 拡張子でローダーを選ぶ → R32_FLOAT へ変換 → 地形サイズへ三次補間 → 正規化モードで写す。
+/// @note DirectXTex の WIC コーデックに ole32.lib (COM) が要る。
+/// @see https://github.com/microsoft/DirectXTex/wiki/WIC-I-O-Functions (DirectXTex Wiki, "WIC I/O Functions")
+#pragma comment(lib, "ole32.lib")
+#include <Engine/Asset/Texture/TexDescSerializer.hpp>
+#include <Engine/Scene/Terrain/TerrainHeightMapLoader.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
+#include <DirectXTex.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+namespace fbzz::scene {
+
+namespace {
+
+/// @brief 呼び出しスレッドで COM を使える状態にする。
+/// @return COM が使えるか。既に別モード (STA) で初期化済みの RPC_E_CHANGED_MODE も使える扱い。
+/// @note DirectXTex の共有 WIC ファクトリの寿命中は COM を維持する。
+/// @see https://learn.microsoft.com/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex (CoInitializeEx, Return value)
+bool HeightMapEnsureCom()
+{
+    const HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    return SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE;
+}
+
+} /// @note namespace
+
+bool LoadHeightMapFromFile(
+    const std::string& path,
+    TerrainComponent&  terrain,
+    bool               unipolar)
+{
+    if (path.empty() || terrain.columns < 2 || terrain.rows < 2
+        || terrain.columns > 4097 || terrain.rows > 4097) return false;
+    /// @note ハイトマップも ".meta" サイドカー表記 / 生画像の両形式を受け付ける。
+    std::string sourcePath;
+    if (!asset::TexDescSerializer::ResolveSourcePath(path, sourcePath)) return false;
+    const std::wstring wpath = util::StringUtils::ToWide(sourcePath);
+
+    if (!HeightMapEnsureCom()) return false;
+
+    DirectX::ScratchImage image;
+    HRESULT hr;
+    if (sourcePath.ends_with(".dds") || sourcePath.ends_with(".DDS"))
+        hr = DirectX::LoadFromDDSFile(wpath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, image);
+    else if (sourcePath.ends_with(".tga") || sourcePath.ends_with(".TGA"))
+        hr = DirectX::LoadFromTGAFile(wpath.c_str(), nullptr, image);
+    else
+        hr = DirectX::LoadFromWICFile(wpath.c_str(), DirectX::WIC_FLAGS_IGNORE_SRGB, nullptr, image);
+
+    if (FAILED(hr)) return false;
+
+    /// @note グレースケール (R8/R16) もカラー (R8G8B8A8) も R チャンネルだけを高さとして使う。
+    DirectX::ScratchImage converted;
+    if (!image.GetImage(0, 0, 0)) return false;
+    DirectX::Image linear = *image.GetImage(0, 0, 0);
+    /// @note 高さは色ではないため PNG/TGA/DDS の sRGB 指定によるガンマ変換を行わない。
+    /// @see https://github.com/microsoft/DirectXTex/wiki/Convert Convert の sRGB 入出力契約。
+    linear.format = DirectX::MakeLinear(linear.format);
+    const DirectX::Image* src = &linear;
+    if (linear.format != DXGI_FORMAT_R32_FLOAT) {
+        hr = DirectX::Convert(linear, DXGI_FORMAT_R32_FLOAT, DirectX::TEX_FILTER_DEFAULT,
+            DirectX::TEX_THRESHOLD_DEFAULT, converted);
+        if (FAILED(hr)) return false;
+        src = converted.GetImage(0, 0, 0);
+    }
+    if (!src) return false;
+    DirectX::ScratchImage resized;
+    const size_t targetW = static_cast<size_t>(terrain.columns);
+    const size_t targetH = static_cast<size_t>(terrain.rows);
+    if (src->width != targetW || src->height != targetH) {
+        hr = DirectX::Resize(*src, targetW, targetH, DirectX::TEX_FILTER_CUBIC, resized);
+        if (FAILED(hr)) return false;
+        src = resized.GetImage(0, 0, 0);
+    }
+
+    const size_t count = targetW * targetH;
+    std::vector<float> heights(count);
+    for (size_t z = 0; z < targetH; ++z) {
+        const std::uint8_t* row = src->pixels + z * src->rowPitch;
+        for (size_t x = 0; x < targetW; ++x) {
+            float value = 0.0f;
+            std::memcpy(&value, row + x * sizeof(float), sizeof(float));
+            if (!std::isfinite(value)) return false;
+            const float p = std::clamp(value, 0.0f, 1.0f);
+            heights[z * targetW + x] = unipolar ? p : (p * 2.0f - 1.0f);
+        }
+    }
+
+    terrain.heightData.swap(heights);
+    terrain.RequestHeightRebuild();
+    return true;
+}
+
+bool SaveHeightMapToFile(
+    const std::string&      path,
+    const TerrainComponent& terrain,
+    bool                    unipolar)
+{
+    if (path.empty() || terrain.columns <= 0 || terrain.rows <= 0
+        || terrain.heightData.size() != terrain.VertexCount())
+        return false;
+    for (float height : terrain.heightData)
+        if (!std::isfinite(height)) return false;
+
+    const size_t width  = static_cast<size_t>(terrain.columns);
+    const size_t height = static_cast<size_t>(terrain.rows);
+
+    DirectX::ScratchImage image;
+    if (FAILED(image.Initialize2D(DXGI_FORMAT_R16_UNORM, width, height, 1, 1))) return false;
+    const DirectX::Image* dst = image.GetImage(0, 0, 0);
+    if (!dst) return false;
+
+    for (size_t z = 0; z < height; ++z) {
+        std::uint8_t* row = dst->pixels + z * dst->rowPitch;
+        for (size_t x = 0; x < width; ++x) {
+            const float h = terrain.heightData[z * width + x];
+            /// @note LoadHeightMapFromFile の逆写像: unipolar は p = h、bipolar は p = h * 0.5 + 0.5。
+            const float p = std::clamp(unipolar ? h : h * 0.5f + 0.5f, 0.0f, 1.0f);
+            const std::uint16_t value = static_cast<std::uint16_t>(std::lround(p * 65535.0f));
+            std::memcpy(row + x * sizeof(std::uint16_t), &value, sizeof(std::uint16_t));
+        }
+    }
+
+    const std::filesystem::path fsPath(util::StringUtils::ToWide(path));
+    if (!HeightMapEnsureCom()) return false;
+
+    /// @note R16_UNORM は WIC の 16bppGray へ写り、PNG エンコーダーはそのまま 16 bit グレースケールで保存する。
+    DirectX::Blob png;
+    const HRESULT hr = DirectX::SaveToWICMemory(
+        *dst, DirectX::WIC_FLAGS_NONE,
+        DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG),
+        png);
+    return SUCCEEDED(hr) && util::FileSystem::WriteBinaryAtomic(fsPath, png.GetBufferPointer(), png.GetBufferSize());
+}
+
+} /// @note namespace fbzz::scene

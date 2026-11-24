@@ -79,7 +79,7 @@ function Skeleton(reader, result) {
     result.metrics.bones = boneCount; result.metrics.skeletonNodes = nodeCount;
 }
 
-/// @see Projects/Graphics/include/Graphics/Renderer/Mesh.hpp Vertex/SkinnedVertex.
+/// @see Projects/Graphics/include/Graphics/Renderer/Geometry/Mesh.hpp Vertex/SkinnedVertex.
 function MeshPayload(reader, result, vertices, indices, format, version, label) {
     if (format !== 0 && format !== 1) throw new UnknownFormat(`unsupported vertex format ${format}`);
     const stride = format === 1 ? 76 : version >= 5 ? 60 : 44;
@@ -103,7 +103,7 @@ function MeshPayload(reader, result, vertices, indices, format, version, label) 
     return { vertices, indices, triangles: Math.floor(indices / 3), usedBoneIndices: [...boneIndices] };
 }
 
-/// @see Projects/Engine/include/Engine/Asset/FzModelFormat.hpp v4/v5 layout.
+/// @see Projects/Engine/include/Engine/Asset/Model/Format/FzModelFormat.hpp v4/v5 layout.
 function Fz(buffer, extension, limits) {
     const reader = new Reader(buffer, limits.maxElements), result = Result('FBZZ binary');
     if (extension === '.skel') { Skeleton(reader, result); reader.Done(); return result; }
@@ -172,7 +172,7 @@ function Fz(buffer, extension, limits) {
     reader.Done(); return result;
 }
 
-/// @see Projects/Engine/src/Asset/AnimationImporter.cpp LoadV3 and its fixed layouts.
+/// @see Projects/Engine/src/Asset/Animation/Clips/AnimationImporter.cpp LoadV3 and its fixed layouts.
 function Animation(buffer, limits) {
     const reader = new Reader(buffer, limits.maxElements), result = Result('FBZZ animation v3');
     if (reader.Text(4) !== 'FZAN') throw new InvalidFormat('expected FZAN magic');

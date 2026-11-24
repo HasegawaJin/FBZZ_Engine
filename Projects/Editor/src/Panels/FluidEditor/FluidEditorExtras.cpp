@@ -10,31 +10,31 @@
 
 #include "FluidEditorInternal.hpp"
 
-#include "../VolumeFlipbookComparePreview.hpp"
+#include "VolumeFlipbookComparePreview.hpp"
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/AssetPath.hpp>
-#include <Editor/Util/FluidAssetWriters.hpp>
-#include <Editor/Util/FluidRecipeWidgets.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
-#include <Engine/Asset/FluidBaker.hpp>
-#include <Engine/Asset/FluidRecipeCodec.hpp>
+#include <Editor/Asset/Storage/AssetPath.hpp>
+#include <Editor/Fluid/Bake/FluidAssetWriters.hpp>
+#include <Editor/Fluid/Authoring/FluidRecipeWidgets.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
+#include <Engine/Asset/Fluid/Baking/FluidBaker.hpp>
+#include <Engine/Asset/Fluid/Import/FluidRecipeCodec.hpp>
 #include <Engine/Asset/AssetManager.hpp>
-#include <Fluid/FluidSolver.hpp>
-#include <Fluid/FluidStepping.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Asset/SixWayLighting.hpp>
-#include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Fluid/Solver/FluidSolver.hpp>
+#include <Fluid/Stepping/FluidStepping.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Engine/Asset/VFX/Textures/SixWayLighting.hpp>
+#include <Engine/Scene/Components/Particles/ParticleEmitter.hpp>
 #include <Engine/Scene/GameObject.hpp>
-#include <Engine/Scene/PrefabInstantiate.hpp>
+#include <Engine/Scene/Prefab/PrefabInstantiate.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/ParticleSimulationRuntime.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/IRenderer.hpp>
-#include <Engine/Renderer/ITexture.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Util/FileSystem.hpp>
-#include <Physics/World.hpp>
+#include <Engine/Scene/Systems/VFX/ParticleSimulationRuntime.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/Resources/Textures/ITexture.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
+#include <Physics/World/World.hpp>
 #include <imgui.h>
 
 #include <DirectXTex.h>

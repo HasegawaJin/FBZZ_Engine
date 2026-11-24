@@ -4,7 +4,7 @@
 /// @date    2026-11-21
 #include <Engine/Scene/Ragdoll/RagdollRig.hpp>
 
-#include <Physics/XPBDConstraint.hpp>
+#include <Physics/Solver/XPBD/XPBDConstraint.hpp>
 
 #include <algorithm>
 #include <utility>

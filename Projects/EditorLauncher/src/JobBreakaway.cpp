@@ -4,7 +4,7 @@
 /// @date    2026-09-10
 #include "JobBreakaway.hpp"
 
-#include <Engine/Core/Logger.hpp>
+#include <Engine/Core/Diagnostics/Logger.hpp>
 
 #include <Windows.h>
 #include <string>

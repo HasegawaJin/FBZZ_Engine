@@ -2,18 +2,18 @@
 /// @brief   AssetBrowser の未変換アセット検出とバックグラウンドインポート。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Asset/ModelSource.hpp>
+#include <Engine/Asset/Model/Import/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
-#include <Editor/Import/FbxMetaSerializer.hpp>
+#include <Editor/Import/Fbx/FbxMetaSerializer.hpp>
 #include <Editor/Import/ModelImport.hpp>
-#include <Editor/Import/ImportCacheStore.hpp>
-#include <Editor/Import/ImportSettingsSchema.hpp>
+#include <Editor/Import/Settings/ImportCacheStore.hpp>
+#include <Editor/Import/Settings/ImportSettingsSchema.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
-#include <Engine/Asset/VectorFieldFile.hpp>
-#include <Editor/Util/Toast.hpp>
-#include <Editor/Util/AssetSearch.hpp>
-#include <Engine/Asset/TexDescSerializer.hpp>
-#include <Engine/Asset/TextureAsset.hpp>
+#include <Engine/Asset/Fluid/Import/VectorFieldFile.hpp>
+#include <Editor/UI/Widgets/Toast.hpp>
+#include <Editor/Asset/Browser/AssetSearch.hpp>
+#include <Engine/Asset/Texture/TexDescSerializer.hpp>
+#include <Engine/Asset/Texture/TextureAsset.hpp>
 #include <Engine/Core/Concurrency/TaskSystem.hpp>
 #include <toml++/toml.hpp>
 #include <chrono>

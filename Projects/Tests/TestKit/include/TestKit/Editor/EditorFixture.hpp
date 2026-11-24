@@ -13,7 +13,7 @@
 #pragma once
 
 #include <TestKit/Engine/EngineFixture.hpp>
-#include <TestKit/TempDir.hpp>
+#include <TestKit/Support/TempDir.hpp>
 
 #include <Editor/EditorContext.hpp>
 #include <Engine/Scene/Scene.hpp>

@@ -3,15 +3,15 @@
 /// @author  Hasegawa Jin
 /// @date    2026-07-15
 #include "DX12Context.hpp"
-#include <Graphics/Effects/PreparedSkinning.hpp>
+#include <Graphics/Effects/Animation/PreparedSkinning.hpp>
 #include <Core/Profiler/FrameTimeline.hpp>
 
 #include "../GpuValidation.hpp"
 
-#include <Core/Logger.hpp>
-#include <Core/HResult.hpp>
+#include <Core/Logger/Logger.hpp>
+#include <Core/Util/HResult.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
-#include <Graphics/Renderer/RuntimePackageValidation.hpp>
+#include <Graphics/Renderer/Platform/RuntimePackageValidation.hpp>
 #include <Core/Util/StringUtils.hpp>
 #include "GraphicsRuntimeContract.hpp"
 #include <cstring>

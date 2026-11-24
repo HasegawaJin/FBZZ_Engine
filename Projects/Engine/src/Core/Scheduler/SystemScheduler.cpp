@@ -9,7 +9,7 @@
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
 #include "Engine/Profiler/Profiler.hpp"
-#include "Engine/Core/Logger.hpp"
+#include "Engine/Core/Diagnostics/Logger.hpp"
 #include <algorithm>
 #include <cassert>
 #include <chrono>

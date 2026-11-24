@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 namespace fbzz::scene {
 

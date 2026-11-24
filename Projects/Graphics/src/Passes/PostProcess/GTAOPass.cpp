@@ -7,8 +7,8 @@
 /// @note サンプルで AO を近似するため法線方向と無関係なアーティファクトが出やすいのに対し、
 /// @note GTAO はスライスごとに水平線角度を積分するため物理的に正確な AO が得られる。
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
-#include <Graphics/Pipeline/RenderPassContext.hpp>
-#include <Graphics/Renderer/ComputeCall.hpp>
+#include <Graphics/Pipeline/Passes/RenderPassContext.hpp>
+#include <Graphics/Renderer/Commands/ComputeCall.hpp>
 
 namespace fbzz::renderer {
 

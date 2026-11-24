@@ -1,0 +1,259 @@
+/// @file    XPBDPlaneContactTests.cpp
+/// @brief   平面接触の «半径ぶん浮いて止まる»・摩擦・面の移動・貫通量の報告を検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-09-08
+#include <TestKit/TestKit.hpp>
+
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Physics/Dynamics/RigidBody.hpp>
+#include <Physics/Solver/XPBD/XPBDPlaneContact.hpp>
+#include <Physics/Solver/XPBD/XPBDSolver.hpp>
+
+#include <memory>
+#include <vector>
+
+namespace fbzz::tests {
+namespace {
+
+constexpr float kGravity = -9.81f;
+
+void Simulate(physics::XPBDSolver& solver, int frames)
+{
+    for (int i = 0; i < frames; ++i) solver.Step(testkit::kFixedDeltaTime);
+}
+
+} /// @note namespace
+
+class XPBDPlaneContactTest : public testkit::Fixture {
+private:
+    /// @note solver より先に宣言して後に壊す。AddBody は非所有ポインターを取り、ClearBodies が m_allowSleeping を書き戻すため、剛体が solver より先に死ぬと解放済みメモリへ書く。
+    std::vector<std::unique_ptr<physics::RigidBody>> m_bodies;
+
+protected:
+    void TearDown() override { solver.ClearBodies(); }
+
+    /// @brief 質量 1 の剛体をフィクスチャの所有で作る。
+    /// @return 非所有ポインター。フィクスチャが壊れるまで有効。
+    physics::RigidBody* MakeBody(const math::Vector3& position)
+    {
+        const auto& body = m_bodies.emplace_back(std::make_unique<physics::RigidBody>());
+        body->SetMass(1.0f);
+        body->SetPosition(position);
+        return body.get();
+    }
+
+    physics::XPBDSolver solver;
+};
+
+/// @brief Rests one radius above the plane.
+TEST_F(XPBDPlaneContactTest, RestsOneRadiusAboveThePlane)
+{
+    /// @note 太さを持つ点として解く。半径を無視すると足首まで床へ埋まる。
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    auto* body = MakeBody({ 0.0f, 3.0f, 0.0f });
+    solver.AddBody(body);
+    solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f));
+
+    Simulate(solver, 120);
+
+    EXPECT_NEAR(body->GetPosition().y, 0.5f, testkit::kLooseTolerance);
+}
+
+/// @brief Honours the plane offset.
+TEST_F(XPBDPlaneContactTest, HonoursThePlaneOffset)
+{
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    auto* body = MakeBody({ 0.0f, 5.0f, 0.0f });
+    solver.AddBody(body);
+    solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 2.0f));
+
+    Simulate(solver, 120);
+
+    EXPECT_NEAR(body->GetPosition().y, 2.5f, testkit::kLooseTolerance);
+}
+
+/// @brief Offsets the contact point by the local offset.
+TEST_F(XPBDPlaneContactTest, OffsetsTheContactPointByTheLocalOffset)
+{
+    /// @note 接触点は重心ではなく «足の裏»。ローカル offset を無視すると体が半分沈む。
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    auto* body = MakeBody({ 0.0f, 5.0f, 0.0f });
+    solver.AddBody(body);
+    solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3{ 0.0f, -1.0f, 0.0f }, 0.5f, math::Vector3::UP, 0.0f));
+
+    Simulate(solver, 120);
+
+    /// @note 重心の 1m 下が接触点。そこが半径 0.5 で止まるので重心は 1.5。
+    EXPECT_NEAR(body->GetPosition().y, 1.5f, testkit::kLooseTolerance);
+}
+
+/// @brief Does not pull the body down from above.
+TEST_F(XPBDPlaneContactTest, DoesNotPullTheBodyDownFromAbove)
+{
+    /// @note 片側拘束。上に居るものを引き寄せてはいけない。
+    auto* body = MakeBody({ 0.0f, 10.0f, 0.0f });
+    solver.SetGravity(math::Vector3::ZERO);
+    solver.AddBody(body);
+    solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f));
+
+    Simulate(solver, 60);
+
+    EXPECT_NEAR(body->GetPosition().y, 10.0f, testkit::kLooseTolerance);
+}
+
+/// @brief Reports no penetration while in the air.
+TEST_F(XPBDPlaneContactTest, ReportsNoPenetrationWhileInTheAir)
+{
+    auto* body = MakeBody({ 0.0f, 10.0f, 0.0f });
+    solver.SetGravity(math::Vector3::ZERO);
+    solver.AddBody(body);
+    auto contact = std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f);
+    const physics::XPBDPlaneContact* probe = contact.get();
+    solver.AddConstraint(std::move(contact));
+
+    Simulate(solver, 10);
+
+    EXPECT_NEAR(probe->GetPenetration(), 0.0f, testkit::kTolerance);
+}
+
+/// @brief Reports the penetration it pushed back.
+TEST_F(XPBDPlaneContactTest, ReportsThePenetrationItPushedBack)
+{
+    /// @note 接地しているかの判定にそのまま使える値であること。
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    /// @note 最初から半径ぶん埋まっている
+    auto* body = MakeBody({ 0.0f, 0.0f, 0.0f });
+    solver.AddBody(body);
+    auto contact = std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f);
+    const physics::XPBDPlaneContact* probe = contact.get();
+    solver.AddConstraint(std::move(contact));
+
+    Simulate(solver, 1);
+
+    EXPECT_GT(probe->GetPenetration(), 0.0f);
+}
+
+/// @brief Slides forever without friction.
+TEST_F(XPBDPlaneContactTest, SlidesForeverWithoutFriction)
+{
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    auto* body = MakeBody({ 0.0f, 0.5f, 0.0f });
+    body->SetVelocity({ 4.0f, 0.0f, 0.0f });
+    solver.AddBody(body);
+    solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f));
+
+    Simulate(solver, 60);
+
+    /// @note 1 秒で 4m。氷の上なので目立って減速しない。
+    EXPECT_GT(body->GetPosition().x, 3.0f);
+}
+
+/// @brief Friction shortens the slide.
+TEST_F(XPBDPlaneContactTest, FrictionShortensTheSlide)
+{
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    auto* body = MakeBody({ 0.0f, 0.5f, 0.0f });
+    body->SetVelocity({ 4.0f, 0.0f, 0.0f });
+    solver.AddBody(body);
+    auto contact = std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f);
+    contact->SetFriction(1.0f);
+    solver.AddConstraint(std::move(contact));
+
+    Simulate(solver, 60);
+
+    EXPECT_LT(body->GetPosition().x, 3.0f);
+    /// @note 逆走はしない
+    EXPECT_GT(body->GetPosition().x, 0.0f);
+}
+
+/// @brief Friction does not drag a standing body sideways.
+TEST_F(XPBDPlaneContactTest, FrictionDoesNotDragAStandingBodySideways)
+{
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    auto* body = MakeBody({ 0.0f, 0.5f, 0.0f });
+    solver.AddBody(body);
+    auto contact = std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f);
+    contact->SetFriction(1.0f);
+    solver.AddConstraint(std::move(contact));
+
+    Simulate(solver, 60);
+
+    EXPECT_NEAR(body->GetPosition().x, 0.0f, testkit::kLooseTolerance);
+    EXPECT_NEAR(body->GetPosition().z, 0.0f, testkit::kLooseTolerance);
+}
+
+/// @brief Follows the plane when it is moved.
+TEST_F(XPBDPlaneContactTest, FollowsThePlaneWhenItIsMoved)
+{
+    /// @note 歩いているキャラクターの足元へ «床を付いて回らせる» 経路。
+    solver.SetGravity({ 0.0f, kGravity, 0.0f });
+    auto* body = MakeBody({ 0.0f, 3.0f, 0.0f });
+    solver.AddBody(body);
+    auto contact = std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::UP, 0.0f);
+    physics::XPBDPlaneContact* movable = contact.get();
+    solver.AddConstraint(std::move(contact));
+
+    Simulate(solver, 120);
+    movable->SetPlane(math::Vector3::UP, 4.0f);
+    Simulate(solver, 60);
+
+    EXPECT_NEAR(body->GetPosition().y, 4.5f, testkit::kLooseTolerance);
+}
+
+/// @brief Supports a non vertical plane.
+TEST_F(XPBDPlaneContactTest, SupportsANonVerticalPlane)
+{
+    /// @note 壁として使う。法線方向にだけ押し返し、面に沿っては滑る。
+    solver.SetGravity(math::Vector3::ZERO);
+    auto* body = MakeBody({ -2.0f, 0.0f, 0.0f });
+    body->SetVelocity({ -1.0f, 0.0f, 0.0f });
+    solver.AddBody(body);
+    solver.AddConstraint(std::make_unique<physics::XPBDPlaneContact>(
+        body, math::Vector3::ZERO, 0.5f, math::Vector3::RIGHT, -3.0f));
+
+    Simulate(solver, 120);
+
+    EXPECT_NEAR(body->GetPosition().x, -2.5f, testkit::kLooseTolerance);
+}
+
+/// @brief Penetration correction preserves separating velocity without friction.
+TEST_F(XPBDPlaneContactTest, PenetrationCorrectionPreservesSeparatingVelocityWithoutFriction)
+{
+    auto* body=MakeBody({0,0.49f,0});
+    body->m_linearDrag=0; body->m_angularDrag=0;
+    body->SetVelocity({2,1,0});
+    solver.SetGravity(math::Vector3::ZERO); solver.SetSubsteps(1); solver.AddBody(body);
+    auto contact=std::make_unique<physics::XPBDPlaneContact>(body,math::Vector3::ZERO,0.5f,math::Vector3::UP,0.0f);
+    contact->SetFriction(1);
+    solver.AddConstraint(std::move(contact));
+    solver.Step(0.001f);
+    EXPECT_GE(body->GetPosition().y,0.5f);
+    EXPECT_VEC3_NEAR(body->GetVelocity(),math::Vector3(2,1,0),0.0001f);
+}
+
+/// @brief Closing velocity receives only compressive friction.
+TEST_F(XPBDPlaneContactTest, ClosingVelocityReceivesOnlyCompressiveFriction)
+{
+    auto* body=MakeBody({0,0.49f,0});
+    body->m_linearDrag=0; body->m_angularDrag=0;
+    body->SetVelocity({2,-1,0});
+    solver.SetGravity(math::Vector3::ZERO); solver.SetSubsteps(1); solver.AddBody(body);
+    auto contact=std::make_unique<physics::XPBDPlaneContact>(body,math::Vector3::ZERO,0.5f,math::Vector3::UP,0.0f);
+    contact->SetFriction(0.5f);
+    solver.AddConstraint(std::move(contact));
+    solver.Step(0.001f);
+    EXPECT_NEAR(body->GetVelocity().y,0,0.0001f);
+    EXPECT_NEAR(body->GetVelocity().x,1.5f,0.0001f);
+}
+
+} /// @note namespace fbzz::tests

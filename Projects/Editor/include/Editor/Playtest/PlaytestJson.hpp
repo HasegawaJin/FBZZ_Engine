@@ -4,7 +4,7 @@
 /// @date    2026-09-17
 /// @see     Docs/design/ai-verification-loop.md «2. Playtest»
 #pragma once
-#include <Editor/Ai/Json.hpp>
+#include <Editor/Ai/Serialization/Json.hpp>
 
 #include <string>
 #include <string_view>

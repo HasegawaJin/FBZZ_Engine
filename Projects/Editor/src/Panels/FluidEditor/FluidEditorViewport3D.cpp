@@ -10,15 +10,15 @@
 #include "FluidEditorInternal.hpp"
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/FluidBakeService.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
-#include <Engine/Asset/FluidVolumeBake.hpp>
-#include <Engine/Asset/VolumeFlipbookBaker.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Editor/Fluid/Bake/FluidBakeService.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
+#include <Engine/Asset/Fluid/Baking/FluidVolumeBake.hpp>
+#include <Engine/Asset/Flipbook/Volume/VolumeFlipbookBaker.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 #include <ImGuizmo.h>
-#include <Math/Matrix4.hpp>
-#include <Math/Vector4.hpp>
+#include <Math/LinearAlgebra/Matrix4.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
 
 #include <algorithm>
 #include <cmath>

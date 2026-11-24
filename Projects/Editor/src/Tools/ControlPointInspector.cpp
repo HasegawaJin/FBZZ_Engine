@@ -2,18 +2,18 @@
 /// @brief   制御点の接続、変換、Bakeを登録済みOpから編集するInspector。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
-#include <Editor/Util/PropertyControls.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/Tools/AdditionalControlPointEditing.hpp>
 #include <Editor/Tools/TargetPointReferenceEditing.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Editor/Util/Selection.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Scene/Components/SplineComponents.hpp>
-#include <Engine/Scene/Components/ClothComponent.hpp>
-#include <Engine/Scene/Components/TargetPointComponent.hpp>
-#include <Engine/Scene/ControlPointAdapters.hpp>
+#include <Editor/Scene/Editing/Selection.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
+#include <Engine/Scene/Components/Geometry/SplineComponents.hpp>
+#include <Engine/Scene/Components/Physics/ClothComponent.hpp>
+#include <Engine/Scene/Components/Gameplay/TargetPointComponent.hpp>
+#include <Engine/Scene/ControlPoints/ControlPointAdapters.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <imgui.h>

@@ -8,7 +8,7 @@
 #pragma once
 #include <Engine/Api.hpp>
 
-#include <Physics/XPBDJoint.hpp>
+#include <Physics/Solver/XPBD/XPBDJoint.hpp>
 
 #include <optional>
 #include <string>

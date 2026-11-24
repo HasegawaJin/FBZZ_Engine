@@ -1,0 +1,35 @@
+/// @file    FiberPaintAsset.hpp
+/// @brief   表面の密度・高さペイントを保存する CPU 専用アセット。
+/// @author  Hasegawa Jin
+/// @date    2026-10-11
+#pragma once
+#include <Engine/Api.hpp>
+#include <Graphics/Renderer/Geometry/FiberPlacement.hpp>
+#include <Engine/Asset/Import/IAssetImporter.hpp>
+
+namespace fbzz::asset {
+struct FiberPaintAsset {
+    renderer::FiberPaintData data;
+    /// @note 読込・編集・Undo ごとに更新するランタイム世代。ファイルへ保存しない。
+    uint64_t revision = 0;
+};
+FBZZ_ENGINE_API void TouchFiberPaintAsset(FiberPaintAsset& asset);
+/// @return 不正形式・上限超過・I/O 失敗時は false。out は未変更。
+[[nodiscard]] FBZZ_ENGINE_API bool LoadFiberPaintAssetFromFile(std::string_view path, FiberPaintAsset& out);
+/// @note ディスク上のアセットをテンポラリから原子的に置き換える。
+[[nodiscard]] FBZZ_ENGINE_API bool SaveFiberPaintAssetToFile(std::string_view path, const FiberPaintAsset& asset);
+class FiberPaintImporter final : public IAssetImporter<FiberPaintAsset> {
+public:
+    std::unique_ptr<FiberPaintAsset> Import(const std::string& path, renderer::ResourceManager*) override
+    {
+        auto result = std::make_unique<FiberPaintAsset>();
+        if (!LoadFiberPaintAssetFromFile(path,*result)) return nullptr;
+        return result;
+    }
+    std::span<const std::string_view> SupportedExtensions() const override
+    {
+        static constexpr std::string_view extensions[]{".fiberpaint"};
+        return extensions;
+    }
+};
+} /// @note namespace fbzz::asset

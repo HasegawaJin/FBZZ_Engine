@@ -5,13 +5,13 @@
 /// @see     Docs/design/ai-verification-loop.md
 #include "BusInternal.hpp"
 
-#include <Editor/PlayModeController.hpp>
+#include <Editor/Play/PlayModeController.hpp>
 #include <Editor/Playtest/ImageCompare.hpp>
 #include <Editor/Playtest/InputRecorder.hpp>
 #include <Editor/Playtest/PlaytestRunner.hpp>
-#include <Engine/Core/Time.hpp>
-#include <Engine/Renderer/IRenderer.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Core/Timing/Time.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 
 #include <algorithm>
 #include <chrono>

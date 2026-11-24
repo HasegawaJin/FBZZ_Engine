@@ -4,19 +4,19 @@
 /// @date    2026-09-17
 #include "BusInternal.hpp"
 
-#include <Editor/Ai/OperatorBridge.hpp>
+#include <Editor/Ai/Bus/OperatorBridge.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Playtest/ImageCompare.hpp>
-#include <Engine/Renderer/Camera.hpp>
-#include <Engine/Core/Time.hpp>
+#include <Graphics/Renderer/View/Camera.hpp>
+#include <Engine/Core/Timing/Time.hpp>
 #include <Engine/Input/Input.hpp>
 #include <Engine/Scene/GameObject.hpp>
-#include <Engine/Scene/SceneUtils.hpp>
-#include <Math/Vector3.hpp>
-#include <Math/Vector4.hpp>
-#include <Editor/PlayModeController.hpp>
-#include <Engine/Renderer/IRenderer.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
+#include <Engine/Scene/Hierarchy/SceneUtils.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector4.hpp>
+#include <Editor/Play/PlayModeController.hpp>
+#include <Graphics/Renderer/IRenderer.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
 
 #include <cstdint>
 #include <algorithm>

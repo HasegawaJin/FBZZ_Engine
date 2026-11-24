@@ -11,11 +11,11 @@
 #include "BenchApp.hpp"
 #include "Measure.hpp"
 
-#include <TestKit/Console.hpp>
+#include <TestKit/Output/Console.hpp>
 
-#include <Engine/Core/Application.hpp>
-#include <Engine/Core/Window.hpp>
-#include <Engine/Renderer/RendererBackend.hpp>
+#include <Engine/Core/Platform/Application.hpp>
+#include <Engine/Core/Platform/Window.hpp>
+#include <Graphics/Renderer/Platform/RendererBackend.hpp>
 
 #include <cstdio>
 

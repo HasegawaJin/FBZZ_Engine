@@ -2,14 +2,14 @@
 /// @brief   Rendering 系 Component の Inspector 描画。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Editor/Util/PropertyControls.hpp>
-#include <Engine/Scene/Components/LODGroupComponent.hpp>
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
+#include <Engine/Scene/Components/Geometry/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/Geometry/MaterialComponent.hpp>
+#include <Engine/Scene/Components/Geometry/MeshRenderer.hpp>
+#include <Engine/Scene/Components/Geometry/SkinnedMeshRenderer.hpp>
 #include "InspectorRendering.hpp"
 
-#include <Engine/Scene/Components/ProceduralMeshComponent.hpp>
+#include <Engine/Scene/Components/Geometry/ProceduralMeshComponent.hpp>
 
 namespace fbzz::editor {
 

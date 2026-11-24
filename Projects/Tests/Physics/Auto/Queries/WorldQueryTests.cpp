@@ -1,0 +1,317 @@
+/// @file    WorldQueryTests.cpp
+/// @brief   World の空間クエリ (Raycast / RaycastAll / SphereCast / OverlapSphere) の契約を検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-09-08
+#include <TestKit/TestKit.hpp>
+
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
+#include <Physics/World/BodyHandle.hpp>
+#include <Physics/Collision/BroadPhase/CollisionPair.hpp>
+#include <Physics/Dynamics/RigidBody.hpp>
+#include <Physics/Collision/Shapes/SphereCollider.hpp>
+#include <Physics/World/World.hpp>
+
+#include <memory>
+#include <vector>
+
+namespace fbzz::tests {
+namespace {
+
+/// @note ColliderInstance がメンバーを非所有参照する。
+class Probe {
+public:
+    Probe(const math::Vector3& position, float radius)
+        : m_collider(std::make_unique<physics::SphereCollider>(radius))
+    {
+        /// @note クエリはコライダーが覚えているワールド形状を見る。Step を回さないので手で同期する。
+        m_collider->Update(position, math::Quaternion::Identity());
+        m_body.SetMass(1.0f);
+        m_body.SetPosition(position);
+    }
+
+    Probe(const Probe&)            = delete;
+    Probe& operator=(const Probe&) = delete;
+
+    physics::ColliderInstance Instance()
+    {
+        physics::ColliderInstance instance;
+        instance.collider  = m_collider.get();
+        instance.body      = &m_body;
+        instance.isTrigger = m_trigger;
+        instance.layer     = m_layer;
+        return instance;
+    }
+
+    Probe& OnLayer(int layer) { m_layer = layer;     return *this; }
+    Probe& AsTrigger()        { m_trigger = true;    return *this; }
+
+    [[nodiscard]] const physics::Collider* Collider() const { return m_collider.get(); }
+
+private:
+    std::unique_ptr<physics::SphereCollider> m_collider;
+    physics::RigidBody                       m_body;
+    int  m_layer   = 0;
+    bool m_trigger = false;
+};
+
+} /// @note namespace
+
+class WorldQueryTest : public testkit::Fixture {
+protected:
+    /// @note 照会対象の登録はシーン同期の区間内で行う。
+    void Register(std::initializer_list<physics::ColliderInstance> colliders)
+    {
+        world.BeginSceneSync();
+        for (const physics::ColliderInstance& instance : colliders)
+            world.SyncCollider(physics::ColliderHandle{}, instance);
+        world.EndSceneSync();
+    }
+
+    physics::World world;
+};
+
+/// @name Raycast
+
+/// @brief Checks raycast hits a sphere on its path.
+TEST_F(WorldQueryTest, RaycastHitsASphereOnItsPath)
+{
+    Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
+
+    EXPECT_NEAR(hit.distance, 9.0f, testkit::kLooseTolerance);
+    EXPECT_EQ(hit.collider, target.Collider());
+}
+
+/// @brief Raycast reports the point and the outward normal.
+TEST_F(WorldQueryTest, RaycastReportsThePointAndTheOutwardNormal)
+{
+    Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
+
+    EXPECT_VEC3_NEAR(hit.point, math::Vector3(0.0f, 0.0f, 9.0f), testkit::kLooseTolerance);
+    EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::FORWARD, testkit::kLooseTolerance);
+}
+
+/// @brief Raycast misses what is beside the path.
+TEST_F(WorldQueryTest, RaycastMissesWhatIsBesideThePath)
+{
+    Probe target({ 10.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
+}
+
+/// @brief Raycast stops at the maximum distance.
+TEST_F(WorldQueryTest, RaycastStopsAtTheMaximumDistance)
+{
+    Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 5.0f, hit));
+    EXPECT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 50.0f, hit));
+}
+
+/// @brief Raycast returns the nearest of several hits.
+TEST_F(WorldQueryTest, RaycastReturnsTheNearestOfSeveralHits)
+{
+    /// @note 一番近いものを返さないと、壁の向こうの敵を掴めてしまう。
+    Probe nearest({ 0.0f, 0.0f, 5.0f }, 1.0f);
+    Probe farthest({ 0.0f, 0.0f, 20.0f }, 1.0f);
+    /// @note 登録順は関係しない
+    Register({ farthest.Instance(), nearest.Instance() });
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
+
+    EXPECT_EQ(hit.collider, nearest.Collider());
+}
+
+/// @brief Raycast accepts an unnormalised direction.
+TEST_F(WorldQueryTest, RaycastAcceptsAnUnnormalisedDirection)
+{
+    Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, { 0.0f, 0.0f, 7.0f }, 100.0f, hit));
+
+    /// @note 距離は正規化した向きで測る。長さを掛けたままだと maxDistance の意味が変わる。
+    EXPECT_NEAR(hit.distance, 9.0f, testkit::kLooseTolerance);
+}
+
+/// @brief Raycast misses with a degenerate direction.
+TEST_F(WorldQueryTest, RaycastMissesWithADegenerateDirection)
+{
+    /// @note 「対象と重なっていて向きが決まらない」はスクリプトから普通に来る。
+    Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::ZERO, 100.0f, hit));
+}
+
+/// @brief Raycast misses in an empty world.
+TEST_F(WorldQueryTest, RaycastMissesInAnEmptyWorld)
+{
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit));
+}
+
+/// @brief Raycast skips what the filter rejects.
+TEST_F(WorldQueryTest, RaycastSkipsWhatTheFilterRejects)
+{
+    Probe ignored({ 0.0f, 0.0f, 5.0f }, 1.0f);
+    Probe wanted({ 0.0f, 0.0f, 20.0f }, 1.0f);
+    ignored.OnLayer(2);
+    Register({ ignored.Instance(), wanted.Instance() });
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, hit,
+                              [](const physics::ColliderInstance& i) { return i.layer != 2; }));
+
+    EXPECT_EQ(hit.collider, wanted.Collider());
+}
+
+/// @name RaycastAll
+
+/// @brief Raycast all returns every hit in distance order.
+TEST_F(WorldQueryTest, RaycastAllReturnsEveryHitInDistanceOrder)
+{
+    Probe first({ 0.0f, 0.0f, 5.0f }, 1.0f);
+    Probe second({ 0.0f, 0.0f, 20.0f }, 1.0f);
+    Probe third({ 0.0f, 0.0f, 35.0f }, 1.0f);
+    Register({ third.Instance(), first.Instance(), second.Instance() });
+
+    const std::vector<physics::World::RaycastHit> hits =
+        world.RaycastAll(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f);
+
+    ASSERT_EQ(hits.size(), 3u);
+    EXPECT_EQ(hits[0].collider, first.Collider());
+    EXPECT_EQ(hits[1].collider, second.Collider());
+    EXPECT_EQ(hits[2].collider, third.Collider());
+}
+
+/// @brief Raycast all is empty when nothing is on the path.
+TEST_F(WorldQueryTest, RaycastAllIsEmptyWhenNothingIsOnThePath)
+{
+    Probe aside({ 10.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ aside.Instance() });
+
+    EXPECT_TRUE(world.RaycastAll(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f).empty());
+}
+
+/// @name SphereCast
+
+/// @brief Sphere cast hits what a ray would miss.
+TEST_F(WorldQueryTest, SphereCastHitsWhatARayWouldMiss)
+{
+    /// @note 太さのある弾や «足元の接地» はこちら。半径ぶん外れていても当たる。
+    Probe target({ 1.5f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit rayHit;
+    physics::World::RaycastHit sweepHit;
+
+    EXPECT_FALSE(world.Raycast(math::Vector3::ZERO, math::Vector3::FORWARD, 100.0f, rayHit));
+    EXPECT_TRUE(world.SphereCast(math::Vector3::ZERO, 1.0f, math::Vector3::FORWARD, 100.0f,
+                                 sweepHit));
+}
+
+/// @brief Sphere cast stops short of the surface by its radius.
+TEST_F(WorldQueryTest, SphereCastStopsShortOfTheSurfaceByItsRadius)
+{
+    Probe target({ 0.0f, 0.0f, 10.0f }, 1.0f);
+    Register({ target.Instance() });
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.SphereCast(math::Vector3::ZERO, 1.0f, math::Vector3::FORWARD, 100.0f, hit));
+
+    /// @note 半径 1 の球が半径 1 の的に触れるのは中心間 2 = 進んだ距離 8。
+    EXPECT_NEAR(hit.distance, 8.0f, testkit::kLooseTolerance);
+}
+
+/// @brief Sphere cast skips what the filter rejects.
+TEST_F(WorldQueryTest, SphereCastSkipsWhatTheFilterRejects)
+{
+    Probe blocker({ 0.0f, 0.0f, 5.0f }, 1.0f);
+    blocker.AsTrigger();
+    Register({ blocker.Instance() });
+
+    physics::World::RaycastHit hit;
+    EXPECT_FALSE(world.SphereCast(math::Vector3::ZERO, 1.0f, math::Vector3::FORWARD, 100.0f, hit,
+                                  [](const physics::ColliderInstance& i) { return !i.isTrigger; }));
+}
+
+TEST_F(WorldQueryTest, SphereCastReportsSweptCenterNormalAndOwner)
+{
+    Probe target({2.0f, 3.0f, 12.0f}, 1.0f);
+    const physics::ColliderInstance targetInstance = target.Instance();
+    Register({targetInstance});
+
+    physics::World::RaycastHit hit;
+    ASSERT_TRUE(world.SphereCast({2.0f, 3.0f, 2.0f}, 1.0f, {0.0f, 0.0f, 7.0f}, 100.0f, hit));
+    EXPECT_VEC3_NEAR(hit.point, math::Vector3(2.0f, 3.0f, 10.0f), testkit::kLooseTolerance);
+    EXPECT_VEC3_NEAR(hit.normal, -math::Vector3::FORWARD, testkit::kLooseTolerance);
+    EXPECT_EQ(hit.collider, targetInstance.collider);
+    EXPECT_EQ(hit.body, targetInstance.body);
+}
+
+/// @name OverlapSphere
+
+/// @brief Overlap sphere finds what touches the query.
+TEST_F(WorldQueryTest, OverlapSphereFindsWhatTouchesTheQuery)
+{
+    Probe inside({ 1.0f, 0.0f, 0.0f }, 1.0f);
+    Probe outside({ 50.0f, 0.0f, 0.0f }, 1.0f);
+    Register({ inside.Instance(), outside.Instance() });
+
+    const std::vector<const physics::ColliderInstance*> found =
+        world.OverlapSphere(math::Vector3::ZERO, 2.0f);
+
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_EQ(found.front()->collider, inside.Collider());
+}
+
+/// @brief Overlap sphere includes shapes that only reach in.
+TEST_F(WorldQueryTest, OverlapSphereIncludesShapesThatOnlyReachIn)
+{
+    /// @note 中心が範囲の外でも、半径で届いていれば «触れている»。索敵で取りこぼさないため。
+    Probe reaching({ 4.0f, 0.0f, 0.0f }, 2.5f);
+    Register({ reaching.Instance() });
+
+    EXPECT_EQ(world.OverlapSphere(math::Vector3::ZERO, 2.0f).size(), 1u);
+}
+
+/// @brief Overlap sphere is empty when nothing is in range.
+TEST_F(WorldQueryTest, OverlapSphereIsEmptyWhenNothingIsInRange)
+{
+    Probe outside({ 50.0f, 0.0f, 0.0f }, 1.0f);
+    Register({ outside.Instance() });
+
+    EXPECT_TRUE(world.OverlapSphere(math::Vector3::ZERO, 2.0f).empty());
+}
+
+/// @brief Overlap sphere skips what the filter rejects.
+TEST_F(WorldQueryTest, OverlapSphereSkipsWhatTheFilterRejects)
+{
+    Probe zone({ 1.0f, 0.0f, 0.0f }, 1.0f);
+    zone.AsTrigger();
+    Register({ zone.Instance() });
+
+    const std::vector<const physics::ColliderInstance*> found = world.OverlapSphere(
+        math::Vector3::ZERO, 2.0f,
+        [](const physics::ColliderInstance& i) { return !i.isTrigger; });
+
+    EXPECT_TRUE(found.empty());
+}
+
+} /// @note namespace fbzz::tests

@@ -2,18 +2,18 @@
 /// @brief   Scene View のアセットドロップと3Dピッキング。
 /// @author  Hasegawa Jin
 /// @date    2026-06-07
-#include <Engine/Scene/Components/MeshRenderer.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
-#include <Engine/Asset/ModelSource.hpp>
+#include <Engine/Scene/Components/Geometry/MeshRenderer.hpp>
+#include <Engine/Scene/Components/Geometry/SkinnedMeshRenderer.hpp>
+#include <Engine/Asset/Model/Import/ModelSource.hpp>
 #include "ViewportCommon.hpp"
-#include "../../Util/MaterialAuthoringEditing.hpp"
+#include "../../Material/MaterialAuthoringEditing.hpp"
 #include <Engine/Profiler/ProfileScope.hpp>
-#include <Editor/Util/ModelPlacement.hpp>
-#include <Editor/Util/UndoStack.hpp>
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/WaterComponent.hpp>
-#include <Engine/Util/StringUtils.hpp>
-#include <Physics/BVHNode.hpp>
+#include <Editor/Asset/Authoring/ModelPlacement.hpp>
+#include <Editor/Scene/Editing/UndoStack.hpp>
+#include <Engine/Scene/Components/Geometry/MaterialComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
+#include <Engine/Util/Text/StringUtils.hpp>
+#include <Physics/Collision/BroadPhase/BVHNode.hpp>
 #include <cmath>
 #include <deque>
 #include <iterator>

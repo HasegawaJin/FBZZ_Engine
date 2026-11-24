@@ -6,8 +6,8 @@
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Engine/EngineFixture.hpp>
 
-#include <Engine/Core/DeveloperMode.hpp>
-#include "Core/DeveloperModeLaunch.hpp"
+#include <Engine/Core/Platform/DeveloperMode.hpp>
+#include "Core/Platform/DeveloperModeLaunch.hpp"
 #include <string>
 
 #ifndef WIN32_LEAN_AND_MEAN

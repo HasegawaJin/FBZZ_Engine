@@ -1,0 +1,550 @@
+/// @file    WaterTerrainInfoTests.cpp
+/// @brief   複数地形・穴・world TRS の水深と岸泡 atlas の更新・符号付き量子化を検証する。
+/// @author  Hasegawa Jin
+/// @date    2026-10-07
+#include <TestKit/TestKit.hpp>
+#include <TestKit/Engine/EngineFixture.hpp>
+#include <Engine/Scene/Components/Terrain/TerrainComponent.hpp>
+#include <Engine/Scene/Components/Water/WaterComponent.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Systems/Transform/TransformSystem.hpp>
+#include <Engine/Scene/Water/Surface/WaterTerrainInfo.hpp>
+#include <Math/Scalar/MathUtils.hpp>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
+namespace fbzz::tests {
+namespace {
+scene::GameObject& AddTerrain(scene::Scene& source, float height)
+{
+    auto& object = source.CreateGameObject("Terrain");
+    auto& terrain = object.AddComponent<scene::TerrainComponent>();
+    terrain.columns = terrain.rows = 3;
+    terrain.cellSize = terrain.maxHeight = 1.0f;
+    terrain.InitFlat(height);
+    return object;
+}
+scene::WaterComponent Water()
+{
+    scene::WaterComponent water;
+    water.enableGerstnerWaves = false;
+    water.extentX = water.extentZ = 2.0f;
+    water.buoyancyDepth = 2.0f;
+    return water;
+}
+void ExpectSampleUnchanged(const scene::WaterTerrainSample& sample)
+{
+    EXPECT_TRUE(sample.hasBottom);
+    EXPECT_FLOAT_EQ(sample.bottomY, 7.0f);
+    EXPECT_DOUBLE_EQ(sample.signedDepth, 9.0);
+    EXPECT_FLOAT_EQ(sample.depth, 9.0f);
+    EXPECT_TRUE(sample.dry);
+    EXPECT_FLOAT_EQ(sample.shoreFoam, 0.8f);
+}
+} /// @note namespace
+
+class WaterTerrainInfoTest : public testkit::EngineFixture {};
+
+/// @brief Selects the highest terrain even when it is above the water.
+TEST_F(WaterTerrainInfoTest, SelectsTheHighestTerrainEvenWhenItIsAboveTheWater)
+{
+    scene::Scene source;
+    AddTerrain(source, -2.0f);
+    AddTerrain(source, 0.75f);
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    scene::WaterTerrainSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {0.25f, 0.25f}, 1.0f, 8.0f, 0.3f, 0.5f, sample));
+    EXPECT_TRUE(sample.hasBottom);
+    EXPECT_FLOAT_EQ(sample.bottomY, 0.75f);
+    EXPECT_DOUBLE_EQ(sample.signedDepth, 0.25);
+    EXPECT_FALSE(sample.dry);
+    EXPECT_GT(sample.shoreFoam, 0.0f);
+    AddTerrain(source, 2.0f);
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {0.25f, 0.25f}, 1.0f, 8.0f, 0.3f, 0.5f, sample));
+    EXPECT_FLOAT_EQ(sample.bottomY, 2.0f);
+    EXPECT_DOUBLE_EQ(sample.signedDepth, -1.0);
+    EXPECT_TRUE(sample.dry);
+    EXPECT_FLOAT_EQ(sample.depth, 0.0f);
+    EXPECT_FLOAT_EQ(sample.shoreFoam, 0.0f);
+}
+
+/// @brief Holes reveal the lower terrain and then explicitly report no bottom.
+TEST_F(WaterTerrainInfoTest, HolesRevealTheLowerTerrainAndThenExplicitlyReportNoBottom)
+{
+    scene::Scene source;
+    const auto lowerId = AddTerrain(source, -2.0f).GetID();
+    const auto upperId = AddTerrain(source, 0.75f).GetID();
+    auto* upper = source.GetComponent<scene::TerrainComponent>(upperId);
+    ASSERT_TRUE(upper->SetHoleCell(0, 0, true));
+    upper->RequestHoleRebuild();
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    scene::WaterTerrainSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {0.25f, 0.25f}, 1.0f, 8.0f, 0.3f, 0.5f, sample));
+    EXPECT_TRUE(sample.hasBottom);
+    EXPECT_FLOAT_EQ(sample.bottomY, -2.0f);
+    auto* lower = source.GetComponent<scene::TerrainComponent>(lowerId);
+    ASSERT_TRUE(lower->SetHoleCell(0, 0, true));
+    lower->RequestHoleRebuild();
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {0.25f, 0.25f}, 1.0f, 8.0f, 0.3f, 0.5f, sample));
+    EXPECT_FALSE(sample.hasBottom);
+    EXPECT_FALSE(sample.dry);
+    EXPECT_FLOAT_EQ(sample.depth, 8.0f);
+    EXPECT_FLOAT_EQ(sample.shoreFoam, 0.0f);
+}
+
+/// @brief Respects parent yaw signed scale and water UV world mapping.
+TEST_F(WaterTerrainInfoTest, RespectsParentYawSignedScaleAndWaterUvWorldMapping)
+{
+    scene::Scene source;
+    const auto terrainId = AddTerrain(source, 0.25f).GetID();
+    auto& parent = source.CreateGameObject("Parent");
+    parent.transform.position = {10.0f, 4.0f, 20.0f};
+    parent.transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(45.0f));
+    parent.transform.scale = {2.0f, 3.0f, 0.5f};
+    auto* object = source.GetGameObject(terrainId);
+    object->transform.position = {1.0f, 0.0f, 1.0f};
+    object->transform.scale.x = -1.0f;
+    object->SetParent(parent);
+    scene::FlushWorldTransforms(source);
+    const auto point = object->transform.GetWorldMatrix() * math::Vector4{0.5f, 0.25f, 0.5f, 1.0f};
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    scene::WaterTerrainSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {point.x, point.z}, 5.0f, 2.0f, 0.3f, 0.5f, sample));
+    EXPECT_TRUE(sample.hasBottom);
+    EXPECT_NEAR(sample.bottomY, 4.75f, testkit::kTolerance);
+    auto water = Water();
+    water.extentX = 0.5f; water.extentZ = 0.25f;
+    scene::Transform pose;
+    pose.worldPosition = {point.x, 5.0f, point.z};
+    pose.worldRotation = parent.transform.worldRotation;
+    pose.worldScale.x = -1.0f;
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = settings.height = 2;
+    scene::WaterTerrainInfoAtlas atlas;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, atlas));
+    for (size_t pixel = 0; pixel < 4; ++pixel) {
+        EXPECT_EQ(atlas.rgba[pixel * 4 + 3], 1u);
+        float depth = 0.0f;
+        ASSERT_TRUE(scene::TryDecodeWaterTerrainDepth(atlas.rgba[pixel * 4 + 1], atlas.rgba[pixel * 4 + 2], atlas.depthRange, depth));
+        EXPECT_NEAR(depth, 0.25f, atlas.depthRange / 65535.0f + 0.00001f);
+    }
+}
+
+/// @brief Uses the existing inclined terrain vertical intersection.
+TEST_F(WaterTerrainInfoTest, UsesTheExistingInclinedTerrainVerticalIntersection)
+{
+    scene::Scene source;
+    auto& object = AddTerrain(source, 0.0f);
+    object.transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, math::ToRad(30.0f));
+    object.transform.scale.y = 2.0f;
+    scene::FlushWorldTransforms(source);
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    scene::WaterTerrainSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {0.5f, 0.5f}, 1.0f, 2.0f, 0.3f, 0.5f, sample));
+    EXPECT_TRUE(sample.hasBottom);
+    EXPECT_NEAR(sample.bottomY, 0.5f * std::tan(math::ToRad(30.0f)), testkit::kLooseTolerance);
+}
+
+/// @brief Updates signatures for consumed dirty content geometry pose water and foam.
+TEST_F(WaterTerrainInfoTest, UpdatesSignaturesForConsumedDirtyContentGeometryPoseWaterAndFoam)
+{
+    scene::Scene source;
+    const auto id = AddTerrain(source, 0.0f).GetID();
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs first, changed;
+    ASSERT_TRUE(cache.TryCollect(source, first));
+    auto* terrain = source.GetComponent<scene::TerrainComponent>(id);
+    ASSERT_TRUE(terrain->SetHeightAtGrid(0, 0, 0.5f));
+    terrain->heightDirty = false;
+    ASSERT_TRUE(cache.TryCollect(source, changed));
+    EXPECT_NE(first.signature, changed.signature);
+    first = changed;
+    terrain->maxHeight = 2.0f;
+    ASSERT_TRUE(cache.TryCollect(source, changed));
+    EXPECT_NE(first.signature, changed.signature);
+    first = changed;
+    source.GetGameObject(id)->transform.position.x = 1.0f;
+    scene::FlushWorldTransforms(source);
+    ASSERT_TRUE(cache.TryCollect(source, changed));
+    EXPECT_NE(first.signature, changed.signature);
+    auto water = Water();
+    scene::Transform pose;
+    scene::WaterTerrainBakeSettings settings;
+    uint64_t original = 0, replacement = 0;
+    ASSERT_TRUE(scene::TryComputeWaterTerrainInfoSignature(changed, water, pose, settings, original));
+    settings.foamThreshold = 0.6f;
+    ASSERT_TRUE(scene::TryComputeWaterTerrainInfoSignature(changed, water, pose, settings, replacement));
+    EXPECT_NE(original, replacement);
+    original = replacement;
+    water.buoyancyDepth = 3.0f;
+    ASSERT_TRUE(scene::TryComputeWaterTerrainInfoSignature(changed, water, pose, settings, replacement));
+    EXPECT_NE(original, replacement);
+    original = replacement;
+    pose.worldPosition.z = 5.0f;
+    ASSERT_TRUE(scene::TryComputeWaterTerrainInfoSignature(changed, water, pose, settings, replacement));
+    EXPECT_NE(original, replacement);
+    original = replacement;
+    water.extentX = 3.0f;
+    ASSERT_TRUE(scene::TryComputeWaterTerrainInfoSignature(changed, water, pose, settings, replacement));
+    EXPECT_NE(original, replacement);
+}
+
+/// @brief Packs signed depth at texel centers within the sixteen bit quantization error.
+TEST_F(WaterTerrainInfoTest, PacksSignedDepthAtTexelCentersWithinTheSixteenBitQuantizationError)
+{
+    scene::Scene source;
+    auto& terrain = *AddTerrain(source, 0.0f).GetComponent<scene::TerrainComponent>();
+    terrain.columns = terrain.rows = 2;
+    terrain.cellSize = 2.0f;
+    terrain.heightData = {-2.0f, 2.0f, -2.0f, 2.0f};
+    terrain.RequestHeightRebuild();
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    const auto water = Water();
+    scene::Transform pose;
+    pose.worldPosition = {1.0f, 0.0f, 1.0f};
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = 5; settings.height = 1;
+    settings.foamThreshold = 1.0f;
+    scene::WaterTerrainInfoAtlas atlas;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, atlas));
+    ASSERT_EQ(atlas.rgba.size(), 20u);
+    for (uint32_t x = 0; x < 5; ++x) {
+        const float worldX = (static_cast<float>(x) + 0.5f) / 5.0f * 2.0f;
+        const float expected = 2.0f - 2.0f * worldX;
+        float decoded = 0.0f;
+        ASSERT_TRUE(scene::TryDecodeWaterTerrainDepth(atlas.rgba[x * 4 + 1], atlas.rgba[x * 4 + 2], atlas.depthRange, decoded));
+        EXPECT_NEAR(decoded, expected, atlas.depthRange / 65535.0f + 0.000001f);
+        EXPECT_EQ(atlas.rgba[x * 4 + 3], expected <= 0.0f ? 3u : 1u);
+        scene::WaterTerrainSample sample;
+        ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {worldX, 1.0f}, 0.0f, 2.0f, settings.foamThreshold, settings.foamFade, sample));
+        EXPECT_NEAR(static_cast<float>(atlas.rgba[x * 4]) / 255.0f, sample.shoreFoam, 0.5f / 255.0f + 0.000001f);
+    }
+}
+
+/// @brief Rotated atlas matches individual queries across terrain tiles.
+TEST_F(WaterTerrainInfoTest, RotatedAtlasMatchesIndividualQueriesAcrossTerrainTiles)
+{
+    scene::Scene source;
+    for (int z = 0; z < 4; ++z) {
+        for (int x = 0; x < 4; ++x) {
+            auto& tile = AddTerrain(source, 0.15f * x - 0.3f * z);
+            tile.transform.worldPosition = {2.0f * x, 0.0f, 2.0f * z};
+        }
+    }
+    auto& overlapping = AddTerrain(source, 0.75f);
+    overlapping.transform.worldPosition = {2.0f, 0.0f, 4.0f};
+    ASSERT_TRUE(overlapping.GetComponent<scene::TerrainComponent>()->SetHoleCell(1, 0, true));
+
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    auto water = Water();
+    water.extentX = 9.0f;
+    water.extentZ = 10.0f;
+    scene::Transform pose;
+    pose.worldPosition = {4.0f, 0.2f, 4.0f};
+    pose.worldRotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(37.0f));
+    pose.worldScale.x = -1.0f;
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = 65;
+    settings.height = 45;
+    scene::WaterTerrainInfoAtlas atlas;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, atlas));
+
+    const auto world = pose.GetWorldMatrix();
+    for (uint32_t z = 0; z < settings.height; ++z) {
+        for (uint32_t x = 0; x < settings.width; ++x) {
+            const auto position = world * math::Vector4{
+                ((static_cast<float>(x) + 0.5f) / settings.width - 0.5f) * water.extentX, 0.0f,
+                ((static_cast<float>(z) + 0.5f) / settings.height - 0.5f) * water.extentZ, 1.0f};
+            scene::WaterTerrainSample sample;
+            ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {position.x, position.z}, position.y,
+                atlas.depthRange, settings.foamThreshold, settings.foamFade, sample));
+            const auto normalized = (std::clamp)(sample.signedDepth / atlas.depthRange, -1.0, 1.0) * 0.5 + 0.5;
+            const auto depth = static_cast<uint32_t>(std::round(normalized * 65535.0));
+            const size_t pixel = (static_cast<size_t>(z) * settings.width + x) * 4u;
+            EXPECT_EQ(atlas.rgba[pixel], static_cast<uint8_t>(std::round(sample.shoreFoam * 255.0f)));
+            EXPECT_EQ(atlas.rgba[pixel + 1], depth >> 8u);
+            EXPECT_EQ(atlas.rgba[pixel + 2], depth & 255u);
+            EXPECT_EQ(atlas.rgba[pixel + 3], (sample.hasBottom ? 1u : 0u) | (sample.dry ? 2u : 0u));
+        }
+    }
+}
+
+/// @brief Regional height previews match a full atlas rebake.
+TEST_F(WaterTerrainInfoTest, RegionalHeightPreviewsMatchAFullAtlasRebake)
+{
+    scene::Scene source;
+    const auto lowerId = AddTerrain(source, -0.6f).GetID();
+    const auto upperId = AddTerrain(source, 0.25f).GetID();
+    auto& lower = *source.GetComponent<scene::TerrainComponent>(lowerId);
+    auto& upper = *source.GetComponent<scene::TerrainComponent>(upperId);
+    lower.columns = lower.rows = upper.columns = upper.rows = 17;
+    lower.InitFlat(-0.6f);
+    upper.InitFlat(0.25f);
+    lower.heightDirty = upper.heightDirty = false;
+
+    auto water = Water();
+    water.extentX = water.extentZ = 16.0f;
+    water.farOceanEnabled = true;
+    scene::Transform pose;
+    pose.worldPosition = {8.0f, 0.0f, 8.0f};
+    pose.worldRotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, math::ToRad(15.0f));
+    pose.worldScale.x = -1.0f;
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = settings.height = 33;
+    scene::WaterTerrainInfoCache sourceCache;
+    scene::WaterTerrainInfoAtlasCache atlasCache;
+    scene::WaterTerrainInfoInputs inputs;
+    scene::WaterTerrainInfoAtlas previous;
+    ASSERT_TRUE(sourceCache.TryCollect(source, inputs));
+    ASSERT_TRUE(atlasCache.TryBake(inputs, water, pose, settings, previous));
+    EXPECT_GT(previous.domain.z, water.extentX);
+
+    const auto expectFullBake = [&]() {
+        scene::WaterTerrainInfoAtlas cached, fresh;
+        ASSERT_TRUE(sourceCache.TryCollect(source, inputs));
+        ASSERT_TRUE(atlasCache.TryBake(inputs, water, pose, settings, cached));
+        ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, fresh));
+        EXPECT_EQ(cached.width, fresh.width);
+        EXPECT_EQ(cached.height, fresh.height);
+        EXPECT_EQ(cached.depthRange, fresh.depthRange);
+        EXPECT_EQ(cached.domain, fresh.domain);
+        EXPECT_EQ(cached.signature, fresh.signature);
+        EXPECT_EQ(cached.rgba, fresh.rgba);
+        EXPECT_NE(cached.rgba, previous.rgba);
+        previous = std::move(cached);
+    };
+    upper.heightData[8 * 17 + 8] = -1.0f;
+    upper.RequestHeightPreview({8, 8, 8, 8});
+    upper.heightPreview.pending = false;
+    expectFullBake();
+
+    upper.heightData[4 * 17 + 4] = -0.8f;
+    upper.RequestHeightPreview({4, 4, 4, 4});
+    upper.heightPreview.pending = false;
+    upper.heightData[12 * 17 + 12] = -0.8f;
+    upper.RequestHeightPreview({12, 12, 12, 12});
+    expectFullBake();
+
+    ASSERT_TRUE(upper.SetHoleCell(3, 11, true));
+    upper.RequestHolePreview({3, 11, 3, 11});
+    expectFullBake();
+}
+
+/// @brief Tilting terrain revalidates bounds after its height range shrinks.
+TEST_F(WaterTerrainInfoTest, TiltingTerrainRevalidatesBoundsAfterItsHeightRangeShrinks)
+{
+    scene::Scene source;
+    const auto id = AddTerrain(source, 0.0f).GetID();
+    auto* object = source.GetGameObject(id);
+    auto& terrain = *object->GetComponent<scene::TerrainComponent>();
+    ASSERT_TRUE(terrain.SetHeightAtGrid(1, 1, 1.0f));
+    terrain.heightDirty = false;
+
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    terrain.heightData[4] = 0.0f;
+    terrain.RequestHeightPreview({1, 1, 1, 1});
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+
+    object->transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, math::ToRad(30.0f));
+    scene::FlushWorldTransforms(source);
+    scene::WaterTerrainInfoCache freshCache;
+    scene::WaterTerrainInfoInputs fresh;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    ASSERT_TRUE(freshCache.TryCollect(source, fresh));
+    ASSERT_EQ(inputs.terrains.size(), 1u);
+    ASSERT_EQ(fresh.terrains.size(), 1u);
+    EXPECT_VEC3_NEAR(inputs.terrains.front().boundsMin, fresh.terrains.front().boundsMin, 0.00001f);
+    EXPECT_VEC3_NEAR(inputs.terrains.front().boundsMax, fresh.terrains.front().boundsMax, 0.00001f);
+}
+
+/// @brief Checks no bottom and inactive terrain produce zero foam and explicit flags.
+TEST_F(WaterTerrainInfoTest, NoBottomAndInactiveTerrainProduceZeroFoamAndExplicitFlags)
+{
+    scene::Scene source;
+    AddTerrain(source, 0.0f).SetActive(false);
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    EXPECT_TRUE(inputs.terrains.empty());
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = settings.height = 1;
+    scene::WaterTerrainInfoAtlas atlas;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, Water(), {}, settings, atlas));
+    EXPECT_EQ(atlas.rgba[0], 0u);
+    EXPECT_EQ(atlas.rgba[3], 0u);
+}
+
+/// @brief Marks clipped depth without inventing foam or rejecting an exact range endpoint.
+TEST_F(WaterTerrainInfoTest, MarksClippedDepthWithoutInventingFoamOrRejectingAnExactRangeEndpoint)
+{
+    scene::Scene source;
+    const auto id = AddTerrain(source, -2.0f).GetID();
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    auto water = Water();
+    water.buoyancyDepth = 0.1f;
+    scene::Transform pose;
+    pose.worldPosition = {1.0f, 0.0f, 1.0f};
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = settings.height = 1;
+    scene::WaterTerrainInfoAtlas atlas;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, atlas));
+    EXPECT_EQ(atlas.rgba[0], 0u);
+    EXPECT_EQ(atlas.rgba[1], 255u);
+    EXPECT_EQ(atlas.rgba[2], 255u);
+    EXPECT_EQ(atlas.rgba[3], 5u);
+    source.GetComponent<scene::TerrainComponent>(id)->InitFlat(-water.buoyancyDepth);
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, pose, settings, atlas));
+    EXPECT_EQ(atlas.rgba[3], 1u);
+}
+
+/// @brief Revalidates when a terrain component is readded to the same entity and revision.
+TEST_F(WaterTerrainInfoTest, RevalidatesWhenATerrainComponentIsReaddedToTheSameEntityAndRevision)
+{
+    scene::Scene source;
+    const auto id = AddTerrain(source, 0.0f).GetID();
+    auto* object = source.GetGameObject(id);
+    object->transform.rotation = math::Quaternion::FromAxisAngle(math::Vector3::FORWARD, math::ToRad(45.0f));
+    scene::FlushWorldTransforms(source);
+    const auto birth = source.GetComponentLifetime<scene::TerrainComponent>(id);
+    const auto revision = source.GetComponent<scene::TerrainComponent>(id)->surfaceRevision;
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs first, replaced;
+    ASSERT_TRUE(cache.TryCollect(source, first));
+    source.RemoveComponent<scene::TerrainComponent>(id);
+    auto& terrain = object->AddComponent<scene::TerrainComponent>();
+    terrain.columns = terrain.rows = 3;
+    terrain.cellSize = terrain.maxHeight = 1.0f;
+    terrain.InitFlat(2.0f);
+    EXPECT_EQ(terrain.surfaceRevision, revision);
+    EXPECT_NE(source.GetComponentLifetime<scene::TerrainComponent>(id), birth);
+    ASSERT_TRUE(cache.TryCollect(source, replaced));
+    EXPECT_NE(first.signature, replaced.signature);
+    const auto point = object->transform.GetWorldMatrix() * math::Vector4{0.5f, 2.0f, 0.5f, 1.0f};
+    scene::WaterTerrainSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(replaced, {point.x, point.z}, 3.0f, 4.0f, 0.3f, 0.5f, sample));
+    EXPECT_TRUE(sample.hasBottom);
+    EXPECT_NEAR(sample.bottomY, point.y, testkit::kLooseTolerance);
+}
+
+/// @brief Invalid terrain content and query inputs keep the previous outputs.
+TEST_F(WaterTerrainInfoTest, InvalidTerrainContentAndQueryInputsKeepThePreviousOutputs)
+{
+    scene::Scene source;
+    const auto id = AddTerrain(source, 0.0f).GetID();
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    const auto signature = inputs.signature;
+    auto* terrain = source.GetComponent<scene::TerrainComponent>(id);
+    terrain->heightData[0] = std::numeric_limits<float>::quiet_NaN();
+    terrain->RequestHeightRebuild();
+    EXPECT_FALSE(cache.TryCollect(source, inputs));
+    EXPECT_EQ(inputs.signature, signature);
+    EXPECT_EQ(inputs.terrains.size(), 1u);
+    scene::WaterTerrainSample sample{true, 7.0f, 9.0, 9.0f, true, 0.8f};
+    EXPECT_FALSE(scene::TrySampleWaterTerrainInfo({}, {std::numeric_limits<float>::quiet_NaN(), 0.0f}, 0.0f, 2.0f, 0.3f, 0.5f, sample));
+    ExpectSampleUnchanged(sample);
+    EXPECT_FALSE(scene::TrySampleWaterTerrainInfo({}, {}, 0.0f, std::numeric_limits<float>::infinity(), 0.3f, 0.5f, sample));
+    ExpectSampleUnchanged(sample);
+    scene::WaterTerrainInfoAtlas atlas{4, 4, 9.0f, 123, {42}};
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = 258;
+    EXPECT_FALSE(scene::TryBakeWaterTerrainInfo({}, Water(), {}, settings, atlas));
+    EXPECT_EQ(atlas.width, 4u);
+    EXPECT_FLOAT_EQ(atlas.depthRange, 9.0f);
+    EXPECT_EQ(atlas.signature, 123u);
+    EXPECT_EQ(atlas.rgba, std::vector<uint8_t>{42});
+    float decoded = 7.0f;
+    EXPECT_FALSE(scene::TryDecodeWaterTerrainDepth(0, 0, std::numeric_limits<float>::quiet_NaN(), decoded));
+    EXPECT_FLOAT_EQ(decoded, 7.0f);
+}
+/// @brief Spline atlas shares the local baseline depth and shape signature.
+TEST_F(WaterTerrainInfoTest, SplineAtlasSharesTheLocalBaselineDepthAndShapeSignature)
+{
+    auto water = Water();
+    water.surfaceShape = scene::WaterSurfaceShape::SPLINE_RIVER;
+    water.buoyancyDepth = 10.0f;
+    water.splinePoints = {{1, {-2.0f, 2.0f, 0.0f}, 2.0f, 4.0f, 1.0f},
+                         {2, { 2.0f, 0.0f, 0.0f}, 2.0f, 4.0f, 1.0f}};
+    scene::Transform transform;
+    scene::WaterSplineSnapshot snapshot;
+    ASSERT_TRUE(scene::BuildWaterSplineSnapshot(water.surfaceShape, water.splinePoints, 1, transform, snapshot));
+    water.splineSnapshot = std::make_shared<const scene::WaterSplineSnapshot>(std::move(snapshot));
+    scene::WaterTerrainBakeSettings settings;
+    settings.width = settings.height = 3;
+    settings.depthRange = 10.0f;
+    scene::WaterTerrainInfoInputs inputs;
+    scene::WaterTerrainInfoAtlas virtualBottom;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, transform, settings, virtualBottom));
+    constexpr size_t CENTER_PIXEL = (1u * 3u + 1u) * 4u;
+    EXPECT_EQ(virtualBottom.rgba[CENTER_PIXEL + 3] & 1u, 1u);
+    float depth = 0.0f;
+    ASSERT_TRUE(scene::TryDecodeWaterTerrainDepth(virtualBottom.rgba[CENTER_PIXEL + 1],
+        virtualBottom.rgba[CENTER_PIXEL + 2], virtualBottom.depthRange, depth));
+    EXPECT_NEAR(depth, 4.0f, 0.001f);
+
+    scene::Scene source;
+    AddTerrain(source, 0.5f);
+    scene::WaterTerrainInfoCache cache;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    scene::WaterTerrainInfoAtlas groundBottom;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, transform, settings, groundBottom));
+    ASSERT_TRUE(scene::TryDecodeWaterTerrainDepth(groundBottom.rgba[CENTER_PIXEL + 1],
+        groundBottom.rgba[CENTER_PIXEL + 2], groundBottom.depthRange, depth));
+    EXPECT_NEAR(depth, 0.5f, 0.001f);
+    water.splinePoints[0].localPosition.y += 1.0f;
+    ASSERT_TRUE(scene::BuildWaterSplineSnapshot(water.surfaceShape, water.splinePoints, 1, transform, snapshot));
+    water.splineSnapshot = std::make_shared<const scene::WaterSplineSnapshot>(std::move(snapshot));
+    scene::WaterTerrainInfoAtlas edited;
+    ASSERT_TRUE(scene::TryBakeWaterTerrainInfo(inputs, water, transform, settings, edited));
+    EXPECT_NE(edited.signature, groundBottom.signature);
+    ASSERT_TRUE(scene::TryDecodeWaterTerrainDepth(edited.rgba[CENTER_PIXEL + 1],
+        edited.rgba[CENTER_PIXEL + 2], edited.depthRange, depth));
+    EXPECT_NEAR(depth, 1.0f, 0.001f);
+}
+
+/// @brief Cave surface expands bounds and invalidates exterior depth.
+TEST_F(WaterTerrainInfoTest, CaveSurfaceExpandsBoundsAndInvalidatesExteriorDepth)
+{
+    scene::Scene source;
+    const auto id = AddTerrain(source, 0).GetID();
+    auto* terrain = source.GetComponent<scene::TerrainComponent>(id);
+    ASSERT_TRUE(terrain->SetHoleCell(0,0,true));
+    ASSERT_TRUE(terrain->SetSurfaceGeometry({{0,-6,0},{0,-6,1},{1,-6,0}}, {0,1,2}));
+    scene::WaterTerrainInfoCache cache;
+    scene::WaterTerrainInfoInputs inputs;
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    ASSERT_EQ(inputs.terrains.size(), 1u);
+    EXPECT_FLOAT_EQ(inputs.terrains[0].boundsMin.y, -6);
+    const auto signature = inputs.signature;
+    scene::WaterTerrainSample sample;
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {.25f,.25f}, 2, 20, .3f, .5f, sample));
+    EXPECT_TRUE(sample.hasBottom); EXPECT_FLOAT_EQ(sample.bottomY, -6); EXPECT_FLOAT_EQ(sample.depth, 8);
+    /// @note This atlas remains exterior/topmost data; camera occupancy uses the directional floor query.
+    ASSERT_TRUE(terrain->SetSurfaceGeometry({{0,-2,0},{0,-2,1},{1,-2,0}}, {0,1,2}));
+    ASSERT_TRUE(cache.TryCollect(source, inputs));
+    EXPECT_NE(inputs.signature, signature);
+    ASSERT_TRUE(scene::TrySampleWaterTerrainInfo(inputs, {.25f,.25f}, 2, 20, .3f, .5f, sample));
+    EXPECT_FLOAT_EQ(sample.bottomY, -2); EXPECT_FLOAT_EQ(sample.depth, 4);
+}
+} /// @note namespace fbzz::tests

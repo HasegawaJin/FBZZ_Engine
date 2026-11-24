@@ -4,7 +4,7 @@
 /// @date    2026-10-11
 #pragma once
 #include <Engine/Api.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <cstdint>
 #include <span>
 #include <vector>

@@ -28,7 +28,7 @@ target_include_directories(ImGui
 # @see https://cmake.org/cmake/help/latest/manual/cmake-generator-expressions.7.html#target-properties TARGET_PROPERTY:prop consuming-target evaluation.
 target_compile_definitions(ImGui
     PUBLIC
-        "IMGUI_USER_CONFIG=\"Graphics/Renderer/ImGuiContextConfig.hpp\""
+        "IMGUI_USER_CONFIG=\"Graphics/Renderer/UI/ImGuiContextConfig.hpp\""
         "$<$<NOT:$<STREQUAL:$<TARGET_PROPERTY:NAME>,ImNodes>>:IMGUI_DEFINE_MATH_OPERATORS>"
     PRIVATE
         FBZZ_IMGUI_EXPORTS

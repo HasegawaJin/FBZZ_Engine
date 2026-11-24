@@ -4,11 +4,11 @@
 /// @date    2026-09-12
 #pragma once
 
-#include <Editor/Util/FluidDocument.hpp>
-#include <Editor/Util/FluidPartOverlay.hpp>
-#include <Editor/Util/FluidPreviewCache.hpp>
-#include <Fluid/FluidRecipe.hpp>
-#include <Math/Vector3.hpp>
+#include <Editor/Fluid/Authoring/FluidDocument.hpp>
+#include <Editor/Fluid/Authoring/FluidPartOverlay.hpp>
+#include <Editor/Fluid/Preview/FluidPreviewCache.hpp>
+#include <Fluid/Recipe/FluidRecipe.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 #include <imgui.h>
 
 #include <cstddef>

@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
-#include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/Platform/Cursor.hpp>
 
 namespace fbzz::core::cursor_detail {
 

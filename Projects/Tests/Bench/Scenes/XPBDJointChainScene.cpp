@@ -8,8 +8,8 @@
 /// 止まったあとに震えていないか。どちらも静止状態の数値には出ない。
 #include "Scenes.hpp"
 
-#include <Physics/XPBDJoint.hpp>
-#include <Physics/XPBDSolver.hpp>
+#include <Physics/Solver/XPBD/XPBDJoint.hpp>
+#include <Physics/Solver/XPBD/XPBDSolver.hpp>
 
 #include <imgui.h>
 

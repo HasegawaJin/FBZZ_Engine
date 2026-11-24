@@ -2,21 +2,21 @@
 /// @brief   共通配置点の接続・明示解除・選択と作成を登録済みOpから表示する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-08
-#include <Editor/Util/PropertyControls.hpp>
+#include <Editor/Inspector/Widgets/PropertyControls.hpp>
 #include <Editor/Tools/TargetPointReferenceEditing.hpp>
 #include <Editor/Tools/ControlPointEditing.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
-#include <Engine/Scene/Components/CameraRigComponents.hpp>
-#include <Engine/Scene/Components/ConstraintComponents.hpp>
-#include <Engine/Scene/Components/IKSolverComponent.hpp>
-#include <Engine/Scene/Components/LightComponent.hpp>
-#include <Engine/Scene/Components/LODGroupComponent.hpp>
-#include <Engine/Scene/Components/MotionWarpComponent.hpp>
-#include <Engine/Scene/Components/NavMeshAgentComponent.hpp>
-#include <Engine/Scene/Components/TargetPointComponent.hpp>
-#include <Engine/Scene/Components/VFXBeamComponent.hpp>
-#include <Engine/Scene/Components/VFXLineComponent.hpp>
+#include <Engine/Scene/Components/Camera/CameraRigComponents.hpp>
+#include <Engine/Scene/Components/Physics/ConstraintComponents.hpp>
+#include <Engine/Scene/Components/Animation/IKSolverComponent.hpp>
+#include <Engine/Scene/Components/Lighting/LightComponent.hpp>
+#include <Engine/Scene/Components/Geometry/LODGroupComponent.hpp>
+#include <Engine/Scene/Components/Animation/MotionWarpComponent.hpp>
+#include <Engine/Scene/Components/Navigation/NavMeshAgentComponent.hpp>
+#include <Engine/Scene/Components/Gameplay/TargetPointComponent.hpp>
+#include <Engine/Scene/Components/VFX/VFXBeamComponent.hpp>
+#include <Engine/Scene/Components/VFX/VFXLineComponent.hpp>
 #include <Engine/Scene/Fields/FlowField.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <Engine/Scene/Scene.hpp>

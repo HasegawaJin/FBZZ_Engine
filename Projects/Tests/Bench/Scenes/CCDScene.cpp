@@ -12,8 +12,8 @@
 /// 連続的に動かして、どこから破綻するかを手で確かめるための場面。
 #include "Scenes.hpp"
 
-#include <Physics/CCDSolver.hpp>
-#include <Physics/RigidBody.hpp>
+#include <Physics/Collision/NarrowPhase/CCDSolver.hpp>
+#include <Physics/Dynamics/RigidBody.hpp>
 
 #include <imgui.h>
 

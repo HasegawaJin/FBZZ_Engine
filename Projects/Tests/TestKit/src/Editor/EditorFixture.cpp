@@ -4,7 +4,7 @@
 /// @date    2026-09-10
 #include <TestKit/Editor/EditorFixture.hpp>
 
-#include <Editor/Util/SceneIO.hpp>
+#include <Editor/Scene/Persistence/SceneIO.hpp>
 
 #include <filesystem>
 #include <system_error>

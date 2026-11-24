@@ -8,8 +8,8 @@
 #include "FluidEditorInternal.hpp"
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/EditorTheme.hpp>
-#include <Editor/Util/FluidRecipeWidgets.hpp>
+#include <Editor/UI/Appearance/EditorTheme.hpp>
+#include <Editor/Fluid/Authoring/FluidRecipeWidgets.hpp>
 
 #include <algorithm>
 #include <cmath>

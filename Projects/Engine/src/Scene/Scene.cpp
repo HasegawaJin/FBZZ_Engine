@@ -3,17 +3,17 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include "Engine/Scene/Scene.hpp"
-#include "SceneComponentStorage.hpp"
-#include <Engine/Scene/WorldPartition.hpp>
-#include <Engine/Renderer/RenderSettings.hpp>
-#include "Engine/Scene/PrefabPool.hpp"
-#include "Engine/Scene/SceneRenderResources.hpp"
-#include "Engine/Scene/ScriptComponent.hpp"
-#include "Engine/Scene/Managed/ManagedScriptRuntime.hpp"
-#include "Engine/Core/Logger.hpp"
-#include "Engine/Core/Time.hpp"
-#include "Engine/Renderer/ResourceManager.hpp"
-#include "Engine/Util/Uuid.hpp"
+#include "Components/SceneComponentStorage.hpp"
+#include <Engine/Scene/World/WorldPartition.hpp>
+#include <Graphics/Renderer/View/RenderSettings.hpp>
+#include "Engine/Scene/Prefab/PrefabPool.hpp"
+#include "Engine/Scene/Rendering/SceneRenderResources.hpp"
+#include "Engine/Scene/Scripting/ScriptComponent.hpp"
+#include "Engine/Scene/Managed/Runtime/ManagedScriptRuntime.hpp"
+#include "Engine/Core/Diagnostics/Logger.hpp"
+#include "Engine/Core/Timing/Time.hpp"
+#include "Graphics/Renderer/Resources/ResourceManager.hpp"
+#include "Engine/Util/Types/Uuid.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cassert>

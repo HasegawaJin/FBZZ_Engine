@@ -1,0 +1,172 @@
+/// @file    XPBDJoint.hpp
+/// @brief   ボールソケット + swing/twist 制限 + 角度ドライブを 1 本にまとめた関節
+/// @author  Hasegawa Jin
+/// @date    2026-09-02
+
+/// @note 関節フレームの X は twist、Y/Z は swing 軸で、Build 時の相対姿勢をたわみ 0 とする。
+/// @note 同じフレームとアンカーを共有し、ドライブ → 制限 → ソケットの順で解く。
+/// @note 非対称の可動域を表すため、swing は円錐でなく軸ごとの上下限を使う。
+/// @see Docs/design/active-ragdoll.md
+#pragma once
+#include <Physics/Api.hpp>
+
+#include <Physics/Solver/XPBD/XPBDConstraint.hpp>
+
+namespace fbzz::physics
+{
+    /// @note 関節の可動域 [rad]。すべて «たわみ 0» からの符号付きの量。
+    struct XPBDJointLimits
+    {
+        bool  enabled = false;
+        /// @note 関節フレーム X 軸まわり (ねじり)。
+        float twistMin = 0.0f, twistMax = 0.0f;
+        /// @note 関節フレーム Y 軸まわり。
+        float swingMinY = 0.0f, swingMaxY = 0.0f;
+        /// @note 関節フレーム Z 軸まわり。
+        float swingMinZ = 0.0f, swingMaxZ = 0.0f;
+        /// @note 0 で «そこで止まる»。大きくすると止まり際に食い込む (ゴムの止まり方)。
+        float compliance = 0.0f;
+    };
+
+    /// @note 目標姿勢へ引き戻すサーボ。
+    struct XPBDJointDrive
+    {
+        /// @note false で完全に脱力する (Passive ラグドール)。
+        bool  enabled = false;
+        /// @note 0 で剛。単位 [rad/(N·m)]。定常たわみは compliance × トルクで、刻みに依らない。
+        float compliance = 1.0e-4f;
+        /// @note 相対角速度を削る割合 [1/s]。ドライブの D 項。
+        float damping = 0.0f;
+        /// @note 比例・減衰を合算したトルクの上限 [N·m]。0 以下で無制限。
+        /// @note 超えた関節は目標へ追従できず back-drive する ─ «モーターが力負けする» 画。
+        float maxTorque = 0.0f;
+        /// @note 関節フレームでの目標相対姿勢。Identity で «たわみ 0 の姿勢»。
+        math::Quaternion target = math::Quaternion::Identity();
+    };
+
+    class XPBDJoint final : public XPBDConstraint
+    {
+    public:
+        /// @param parent null なら «ワールドへ固定» になる。ローカル量はワールド量として扱う。
+        FBZZ_PHYSICS_API XPBDJoint(RigidBody* parent, RigidBody* child);
+
+        /// @note 今の両者の姿勢を «たわみ 0» として、アンカーと関節フレームを組む。
+
+        /// @param worldAnchor 関節の位置 (ワールド)。
+        /// @param worldFrame  関節フレームの姿勢 (ワールド)。X が骨の向きになるように渡す。
+        FBZZ_PHYSICS_API void Build(const math::Vector3& worldAnchor, const math::Quaternion& worldFrame);
+
+        [[nodiscard]] XPBDJointLimits& Limits() { return m_limits; }
+        [[nodiscard]] XPBDJointDrive&  Drive()  { return m_drive;  }
+        [[nodiscard]] const XPBDJointLimits& Limits() const { return m_limits; }
+        [[nodiscard]] const XPBDJointDrive&  Drive()  const { return m_drive;  }
+
+        /// @note ソケットの柔らかさ [m/N]。0 で «伸びない»。
+        void SetSocketCompliance(float compliance) { m_socketCompliance = compliance; }
+
+        [[nodiscard]] RigidBody* GetParent() const { return m_parent; }
+        [[nodiscard]] RigidBody* GetChild()  const { return m_child;  }
+
+        /// @note Build() が組んだ関節フレーム (各剛体ローカル)。
+        /// @note ドライブの目標を «別の姿勢» から計算する側と、可動域のデバッグ表示が使う。
+        [[nodiscard]] math::Quaternion GetFrameParent() const { return m_frameParent; }
+        [[nodiscard]] math::Quaternion GetFrameChild()  const { return m_frameChild;  }
+        [[nodiscard]] math::Vector3    GetAnchorChild() const { return m_anchorChild;  }
+
+        /// @note 可動域を «今どこを向いているか» ごと描くための、ワールドでの関節フレーム。
+        [[nodiscard]] math::Quaternion GetParentFrameWorld() const { return ParentFrameWorld(); }
+        [[nodiscard]] math::Quaternion GetChildFrameWorld()  const { return ChildFrameWorld();  }
+        [[nodiscard]] math::Vector3    GetAnchorParentWorld() const { return ParentAnchorWorld(); }
+
+        FBZZ_PHYSICS_API void ResetLambda() override;
+        FBZZ_PHYSICS_API void SolvePosition(float h) override;
+        FBZZ_PHYSICS_API void SolvePhysicalPosition(float h) override;
+        FBZZ_PHYSICS_API void SolveCorrectionPosition(float h) override;
+        FBZZ_PHYSICS_API void SolveVelocity(float h) override;
+
+        class VelocityProjection
+        {
+            friend class XPBDJoint;
+            struct Limit
+            {
+                math::Vector3 axis;
+                bool atLower = false;
+                bool atUpper = false;
+            };
+
+            math::Vector3 m_childArm;
+            math::Vector3 m_parentArm;
+            math::Vector3 m_columnX;
+            math::Vector3 m_columnY;
+            math::Vector3 m_columnZ;
+            math::Vector3 m_cofactorX;
+            float m_determinant = 0.0f;
+            Limit m_limits[3]{};
+            int m_limitCount = 0;
+        };
+
+        /// @note 硬いソケットと可動域の速度射影を準備する。モーターの減衰は SolveVelocity が扱う。
+        [[nodiscard]] FBZZ_PHYSICS_API VelocityProjection PrepareVelocityProjection() const;
+        /// @pre 準備時と同じ関節、姿勢、可動域、有効逆質量・逆慣性を使うこと。速度は変更してよい。
+        FBZZ_PHYSICS_API void ProjectVelocity(const VelocityProjection& projection);
+
+        /// @note 直前の substep で測ったたわみ [rad]。可動域の調整と、崩れ方の診断に使う。
+        [[nodiscard]] float GetTwistAngle() const { return m_twistAngle; }
+        [[nodiscard]] float GetSwingAngleY() const { return m_swingAngleY; }
+        [[nodiscard]] float GetSwingAngleZ() const { return m_swingAngleZ; }
+        /// @note 直前の substep で位置追従または合算出力がトルク上限に達したか。減衰で出力が減っても位置追従の力不足を残す。
+        [[nodiscard]] bool  IsDriveSaturated() const { return m_driveSaturated; }
+        /// @brief 可動域に食い込んで押し戻されているか。
+        /// @note 飽和と分ける理由: «アニメーションどおりに動かない» の原因は «力が足りない»
+        /// @note (飽和) と «そこまで曲げてよいことになっていない» (可動域) の 2 つあり、
+        /// @note 絵はどちらも同じ «崩れる» にしか見えないため切り分けが要る。
+        [[nodiscard]] bool  IsLimited() const { return m_limited; }
+
+        /// @brief 与えられた関節角が可動域の内側へ入るまで、範囲を広げる (狭めはしない)。
+        /// @note 押し戻し側と同じクラスに置く理由: 学習側と検査側で «角度の測り方» が
+        /// @note 1 つでも違うと «広げたはずなのに押し戻される» という形でしか現れない。
+        /// @note どちらも SolveLimits と同じ分解 (DecomposeSwingTwist + TwistAngle) を通す。
+
+        /// @param deviation 親フレームから見た子フレームの相対回転。
+        /// @param margin    測った角へ足す余裕 [rad]。押されて少し越える分を吸収する。
+        FBZZ_PHYSICS_API void LearnLimits(const math::Quaternion& deviation, float margin);
+
+        /// @note 今の姿勢をそのまま可動域へ取り込む。
+        /// @note クリップの要求値だけを学習すると、捕獲直後の «実際の角» が範囲外に残ることがある。
+        FBZZ_PHYSICS_API void LearnLimitsFromCurrentPose(float margin);
+
+    private:
+        [[nodiscard]] FBZZ_PHYSICS_API math::Quaternion ParentFrameWorld() const;
+        [[nodiscard]] FBZZ_PHYSICS_API math::Quaternion ChildFrameWorld()  const;
+        [[nodiscard]] FBZZ_PHYSICS_API math::Vector3    ParentAnchorWorld() const;
+
+        FBZZ_PHYSICS_API void SolveDrive(float h);
+        FBZZ_PHYSICS_API void SolveDriveVelocity(float h);
+        FBZZ_PHYSICS_API void SolveLimits(float h);
+        FBZZ_PHYSICS_API void SolveSocket(float h);
+
+        RigidBody* m_parent = nullptr;
+        RigidBody* m_child  = nullptr;
+
+        math::Vector3    m_anchorParent;
+        math::Vector3    m_anchorChild;
+        math::Quaternion m_frameParent = math::Quaternion::Identity();
+        math::Quaternion m_frameChild  = math::Quaternion::Identity();
+
+        XPBDJointLimits m_limits;
+        XPBDJointDrive  m_drive;
+        float           m_socketCompliance = 0.0f;
+
+        float m_lambdaSocket = 0.0f;
+        float m_lambdaTwist  = 0.0f;
+        float m_lambdaSwing  = 0.0f;
+        float m_lambdaDrive  = 0.0f;
+        math::Vector3 m_driveImpulse;
+
+        float m_twistAngle     = 0.0f;
+        float m_swingAngleY    = 0.0f;
+        float m_swingAngleZ    = 0.0f;
+        bool  m_driveSaturated = false;
+        bool  m_limited        = false;
+    };
+} /// @note namespace fbzz::physics

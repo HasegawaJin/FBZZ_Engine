@@ -9,16 +9,16 @@
 #endif
 #include <Windows.h>
 #include <timeapi.h>
-#include "Engine/Core/Application.hpp"
-#include "Engine/Asset/AssetStreaming.hpp"
-#include "Engine/Asset/StreamedTextureResolver.hpp"
+#include "Engine/Core/Platform/Application.hpp"
+#include "Engine/Asset/Streaming/AssetStreaming.hpp"
+#include "Engine/Asset/Streaming/StreamedTextureResolver.hpp"
 #include "Engine/Core/Concurrency/TaskSystem.hpp"
-#include "Engine/Core/Cursor.hpp"
-#include "Engine/Core/IModule.hpp"
-#include "Engine/Core/Logger.hpp"
-#include "Engine/Core/Time.hpp"
+#include "Engine/Core/Platform/Cursor.hpp"
+#include "Engine/Core/Platform/IModule.hpp"
+#include "Engine/Core/Diagnostics/Logger.hpp"
+#include "Engine/Core/Timing/Time.hpp"
 #include "Engine/Audio/AudioManager.hpp"
-#include "Engine/Audio/XAudio2Device.hpp"
+#include "Engine/Audio/Device/XAudio2Device.hpp"
 #include "Engine/Input/Input.hpp"
 #include "Engine/Input/InputActionMap.hpp"
 #include "Engine/Profiler/ProfileScope.hpp"
@@ -26,12 +26,12 @@
 #include <Engine/Profiler/ProfilerFrame.hpp>
 #include <Core/Profiler/FrameTimeline.hpp>
 #include <ApplicationFrameElapsedObserver.hpp>
-#include "Engine/Renderer/ResourceManager.hpp"
-#include "Engine/Renderer/RendererFactory.hpp"
-#include <Graphics/Renderer/ShaderPathResolver.hpp>
-#include <Engine/Util/EngineAssetPath.hpp>
-#include "Engine/Util/SaveStore.hpp"
-#include "Math/MathContract.hpp"
+#include "Graphics/Renderer/Resources/ResourceManager.hpp"
+#include "Graphics/Renderer/RendererFactory.hpp"
+#include <Graphics/Renderer/Shaders/ShaderPathResolver.hpp>
+#include <Engine/Util/Files/EngineAssetPath.hpp>
+#include "Engine/Util/Files/SaveStore.hpp"
+#include "Math/Scalar/MathContract.hpp"
 
 namespace fbzz::core {
 

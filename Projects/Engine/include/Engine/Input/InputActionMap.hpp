@@ -12,7 +12,7 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include "InputBinding.hpp"
-#include "Math/Vector2.hpp"
+#include "Math/LinearAlgebra/Vector2.hpp"
 #include <string>
 #include <string_view>
 #include <vector>

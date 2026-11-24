@@ -5,16 +5,16 @@
 #include "FluidEditorInternal.hpp"
 
 #include <Editor/EditorContext.hpp>
-#include <Editor/Util/AssetPath.hpp>
-#include <Editor/Util/FluidAssetWriters.hpp>
-#include <Editor/Util/ImGuiWidgets.hpp>
-#include <Engine/Asset/FluidBaker.hpp>
-#include <Engine/Asset/FluidRecipeCodec.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Renderer/IImGuiRenderer.hpp>
-#include <Engine/Renderer/ITexture.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Editor/Asset/Storage/AssetPath.hpp>
+#include <Editor/Fluid/Bake/FluidAssetWriters.hpp>
+#include <Editor/UI/Widgets/ImGuiWidgets.hpp>
+#include <Engine/Asset/Fluid/Baking/FluidBaker.hpp>
+#include <Engine/Asset/Fluid/Import/FluidRecipeCodec.hpp>
+#include <Engine/Asset/Material/MaterialAsset.hpp>
+#include <Graphics/Renderer/UI/IImGuiRenderer.hpp>
+#include <Graphics/Renderer/Resources/Textures/ITexture.hpp>
+#include <Graphics/Renderer/Resources/ResourceManager.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 
 #include <algorithm>
 #include <cmath>

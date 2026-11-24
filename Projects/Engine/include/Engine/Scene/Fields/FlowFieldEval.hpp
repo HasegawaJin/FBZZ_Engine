@@ -14,8 +14,8 @@
 #include <functional>
 #include <span>
 #include <vector>
-#include <Math/Quaternion.hpp>
-#include <Math/Vector3.hpp>
+#include <Math/LinearAlgebra/Quaternion.hpp>
+#include <Math/LinearAlgebra/Vector3.hpp>
 
 namespace fbzz::fluid { struct VectorFieldAsset; }
 

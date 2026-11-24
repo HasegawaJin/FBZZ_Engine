@@ -6,12 +6,12 @@
 #include <Engine/Scene/Fields/FlowFieldSystem.hpp>
 
 #include <Engine/Core/Scheduler/SystemContext.hpp>
-#include <Engine/Core/Time.hpp>
+#include <Engine/Core/Timing/Time.hpp>
 #include <Engine/Scene/Environment/SceneEnvironment.hpp>
 #include <Engine/Scene/Fields/FlowFieldEval.hpp>
 #include <Engine/Scene/Scene.hpp>
-#include <Engine/Scene/Systems/TransformSystem.hpp>
-#include <Engine/Scene/Transform.hpp>
+#include <Engine/Scene/Systems/Transform/TransformSystem.hpp>
+#include <Engine/Scene/Hierarchy/Transform.hpp>
 
 namespace fbzz::scene {
 

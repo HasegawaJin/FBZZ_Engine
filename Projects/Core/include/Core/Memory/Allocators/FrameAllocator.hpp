@@ -1,0 +1,50 @@
+/// @file    FrameAllocator.hpp
+/// @brief   1 フレーム内の一時メモリを管理する専用アロケータ。
+/// @author  Hasegawa Jin
+/// @date    2026-06-01
+/// @note BeginFrame/EndFrame のタイミングで Reset し、短命データをまとめて再利用する。
+#pragma once
+#include <Core/Api.hpp>
+
+#include "Core/Memory/Allocators/LinearAllocator.hpp"
+
+#include <cstdint>
+
+namespace fbzz::core {
+
+/// @brief ゲームループ単位で使い捨てる一時メモリ領域。
+/// @note レンダリングリストや一時的な計算結果はフレームを跨がないため、明示的な個別解放を不要にする。
+class FrameAllocator final : public Allocator {
+public:
+    FrameAllocator() = default;
+    ~FrameAllocator() override = default;
+
+    FrameAllocator(const FrameAllocator&)            = delete;
+    FrameAllocator& operator=(const FrameAllocator&) = delete;
+
+    FrameAllocator(FrameAllocator&&) noexcept = default;
+    FrameAllocator& operator=(FrameAllocator&&) noexcept = default;
+
+    [[nodiscard]] FBZZ_CORE_API bool Initialize(std::size_t capacity);
+    FBZZ_CORE_API void Shutdown();
+
+    FBZZ_CORE_API void BeginFrame();
+    FBZZ_CORE_API void EndFrame();
+
+    [[nodiscard]] FBZZ_CORE_API void* Allocate(std::size_t size,
+                                 std::size_t alignment = alignof(std::max_align_t)) override;
+    FBZZ_CORE_API void Free(void* ptr) override;
+    FBZZ_CORE_API void Reset() override;
+
+    [[nodiscard]] FBZZ_CORE_API bool Owns(const void* ptr) const override;
+    [[nodiscard]] FBZZ_CORE_API MemoryStats GetStats() const override;
+    [[nodiscard]] bool IsInitialized() const { return m_allocator.IsInitialized(); }
+
+private:
+    /// @note 同じフレームで使う領域をまとめて所有し、フレーム境界で再利用する。
+    LinearAllocator m_allocator;
+    /// @note 領域をリセットして次のフレームに進んだ回数。
+    std::uint64_t   m_frameIndex = 0;
+};
+
+} /// @note namespace fbzz::core

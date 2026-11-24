@@ -2,9 +2,9 @@
 /// @brief   CPU image decoding with fixed allocation and thumbnail bounds.
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
-#include <Editor/Panels/AssetBrowserThumbnail.hpp>
-#include <Editor/Util/IcoImage.hpp>
-#include <Engine/Util/FileSystem.hpp>
+#include <Editor/Panels/AssetBrowser/AssetBrowserThumbnail.hpp>
+#include <Editor/Project/IcoImage.hpp>
+#include <Engine/Util/Files/FileSystem.hpp>
 #include <DirectXTex.h>
 #include <stb_image.h>
 #include <algorithm>

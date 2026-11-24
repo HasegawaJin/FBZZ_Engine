@@ -8,7 +8,7 @@
 #pragma once
 #include <Graphics/Api.hpp>
 
-#include <Core/Logger.hpp>
+#include <Core/Logger/Logger.hpp>
 
 #include <cstdint>
 struct _GUID;

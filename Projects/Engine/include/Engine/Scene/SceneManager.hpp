@@ -8,9 +8,9 @@
 #pragma once
 #include <Engine/Api.hpp>
 #include "Scene.hpp"
-#include "Engine/Asset/AssetLeaseSet.hpp"
+#include "Engine/Asset/Streaming/AssetLeaseSet.hpp"
 #include "Engine/Core/Scheduler/SystemScheduler.hpp"
-#include <Physics/World.hpp>
+#include <Physics/World/World.hpp>
 
 namespace fbzz::audio { class AudioManager; }
 #include <functional>

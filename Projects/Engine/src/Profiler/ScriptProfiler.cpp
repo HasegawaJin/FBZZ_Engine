@@ -5,7 +5,7 @@
 #include <Engine/Profiler/ScriptProfiler.hpp>
 #include <Engine/Profiler/ProfileScope.hpp>
 #include <Core/Profiler/Profiler.hpp>
-#include <Engine/Scene/Script.hpp>
+#include <Engine/Scene/Scripting/Script.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/GameObject.hpp>
 #include <algorithm>
