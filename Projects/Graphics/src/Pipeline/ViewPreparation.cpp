@@ -381,7 +381,7 @@ void PrepareTaaProviderHistory(RenderPassContext& context, RenderViewResources& 
     const bool changed = !history.valid || history.mode != view.renderPlan.effectiveMode
         || history.reflectionActive != context.rayReflectionPassActive
         || history.reflectionResolveActive != context.hybridReflectionResolveActive
-        || history.screenReflectionActive != context.ssrPassActive
+        || history.screenReflectionActive != context.ssrContributionSubmitted
         || context.frameStamp <= history.frameStamp || context.frameStamp - history.frameStamp != 1;
     if (changed) {
         view.taaHistoryValid = false;
@@ -390,7 +390,7 @@ void PrepareTaaProviderHistory(RenderPassContext& context, RenderViewResources& 
     history.mode = view.renderPlan.effectiveMode;
     history.reflectionActive = context.rayReflectionPassActive;
     history.reflectionResolveActive = context.hybridReflectionResolveActive;
-    history.screenReflectionActive = context.ssrPassActive;
+    history.screenReflectionActive = context.ssrContributionSubmitted;
     history.frameStamp = context.frameStamp;
     history.valid = true;
     if (view.advancedGraphicsSnapshotValid) {

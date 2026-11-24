@@ -32,7 +32,7 @@ inline WorldBounds RenderBounds(const RenderPassContext& ctx, const renderer::Re
 }
 
 /// @note 実形状内部でも切り抜き・変形・フェード・深度移動があれば不透明被覆の証明には使えない。
-/// @see Assets/Shaders/Material/Surface/PBR.hlsl MaterialConstants and alpha/leaf vertex contracts.
+/// @see Assets/Shaders/Material/Surface/PBR.hlsl MaterialConstants とアルファ・葉の頂点契約。
 inline float OccluderRadius(const RenderPassContext& ctx, const RenderObject& object,
     const RenderMeshItem& item, const RenderMaterial& material)
 {
@@ -44,7 +44,7 @@ inline float OccluderRadius(const RenderPassContext& ctx, const RenderObject& ob
         || material.depthBias != 0 || material.depthBiasSlope != 0) return 0;
     uint32_t textureMask;
     std::memcpy(&textureMask, material.gbufferParams.data() + 80, sizeof(textureMask));
-    /// @note Float albedo textures may have negative alpha; cutoff 0 alone cannot prove their coverage.
+    /// @note 浮動小数点のアルベドは負のアルファを持ち得るため、cutoff=0 だけでは被覆を証明できない。
     if (!material.shaderCapabilities.HasOpaqueOutput() && ((textureMask & 1u) != 0 || material.textures[0].IsValid())) return 0;
     float alpha, cutoff, wind;
     std::memcpy(&alpha, material.gbufferParams.data() + 12, sizeof(alpha));
@@ -73,7 +73,7 @@ inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::Render
     const auto bounds = RenderBounds(ctx, object);
     auto view = CullingView(ctx);
     bool gpuEstimateOutside = false;
-    /// @note Keep CPU counters as estimates while the instance batch owns the actual GPU frustum decision.
+    /// @note インスタンスバッチが GPU 上で視錐台を判定し、CPU カウンターは推定値だけを記録する。
     if (gpuFrustum && view.frustum) {
         gpuEstimateOutside = !view.frustum->IntersectsSphere(bounds.center, bounds.radius);
         view.frustum = nullptr;
@@ -94,18 +94,7 @@ inline bool IsRenderObjectVisible(RenderPassContext& ctx, const renderer::Render
     return true;
 }
 
-inline PerObjectCB ObjectConstants(const renderer::RenderObject& object)
-{
-    PerObjectCB data{};
-    data.world = object.world;
-    data.worldInvTranspose = object.worldInvTranspose;
-    data.objectParams.x = object.lodDither;
-    data.objectParams.z = object.gpuBones.current.IsValid() ? 1.0f : 0.0f;
-    data.objectParams.w = static_cast<float>(object.gpuBones.currentOffset);
-    return data;
-}
-
-/// @note t14/t15 belong to VS palette reads only; never attach them to particle or meshlet draws.
+/// @note t14/t15 は VS のボーンパレット専用で、粒子やメッシュレットの描画には束縛しない。
 inline void BindGpuBonePalette(DrawCall& draw, const RenderObject& object)
 {
     if (object.gpuBones.current.IsValid()) { draw.vsBuffers[0] = object.gpuBones.current; draw.constantBuffers[7] = {}; }
@@ -122,9 +111,9 @@ inline bool HasColorGeometry(const renderer::RenderMeshItem& item)
     return item.visible && item.vertexBuffer.IsValid() && item.indexBuffer.IsValid();
 }
 
-/// @note Borrow only this execution's resolved view resources; no registry or resource handle is retained across passes or views.
-/// @note Long registry names create owning temporary strings; resolve them once before the per-object loop.
-/// @see https://github.com/microsoft/STL/blob/main/stl/inc/xstring basic_string small storage and string_view construction.
+/// @note 現在のビューで解決した資源を借用する。登録簿やハンドルをパス・ビューの外に保持しない。
+/// @note 長いリソース名の一時文字列確保を個体ごとに繰り返さないよう、走査の前に解決する。
+/// @see https://github.com/microsoft/STL/blob/main/stl/inc/xstring basic_string の短い文字列の格納と string_view からの構築。
 inline DrawCall ForwardPassBindings(RenderPassContext& ctx, bool bindIbl = true)
 {
     const auto& h = ctx.handles;
@@ -163,4 +152,4 @@ inline DrawCall ForwardDrawWithBindings(RenderPassContext& ctx, const RenderObje
     return draw;
 }
 
-} /// @note namespace fbzz::renderer
+}

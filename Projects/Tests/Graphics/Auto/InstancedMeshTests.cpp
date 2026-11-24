@@ -587,7 +587,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     occluder.itemCount = 1;
     occluder.colorEligible = true;
     occluder.world = math::Matrix4::TRS({centers[1], 0, 2}, math::Quaternion::Identity(), {4.5f, 4.5f, 1});
-    scene->objects.push_back(occluder);
+    scene->geometry.EditObjects().push_back(occluder);
     auto opaquePart = input.parts[0].mesh;
     opaquePart.material = {};
     opaquePart.material.doubleSided = true;
@@ -596,7 +596,7 @@ TEST_F(InstancedMeshTest, DirectionalCascadeBatchMatchesFourIndependentMaskedWin
     EXPECT_NE(occludedReference, budgeted);
     Same(occludedReference, renderAtlas(true, 1.7f, false, true));
 
-    scene->objects.clear();
+    scene->geometry.EditObjects().clear();
     scene->items.clear();
     input.localBoundsRadius = 0.5f;
     input.lodCount = 4;

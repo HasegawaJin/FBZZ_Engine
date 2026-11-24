@@ -1,5 +1,5 @@
 /// @file    RenderEntitySlotMask.hpp
-/// @brief   Bounded invocation-local candidate membership for ordered render collection.
+/// @brief   順序付きの描画抽出で候補スロットを絞る、一時ビットマスク。
 /// @author  Hasegawa Jin
 /// @date    2026-10-13
 #pragma once
@@ -13,9 +13,8 @@
 
 namespace fbzz::scene::detail {
 
-/// @brief Prunes unrelated slots without changing Scene order or final component checks.
-/// @note The source spans are consumed during construction and never retained. Collection
-///       must remain callback-free while the lease is alive; resource work follows release.
+/// @brief シーンの順序と各コンポーネントの最終確認を保ち、候補外のスロットを除く。
+/// @note 入力の span は構築時だけ参照する。作業領域の貸出中はコールバックを呼ばず、リソース処理は返却後に行う。
 class RenderEntitySlotMask final {
 public:
     static constexpr uint32_t kSlotCapacity = 1u << 20;
@@ -38,6 +37,7 @@ public:
             scratch.busy = false;
             return;
         }
+        /// @note 返却時にビットを消去しないため、貸出時に参照可能な全ワードを初期化する。
         std::fill_n(scratch.words.begin(), usedWords, uint64_t{0});
         const auto insert = [&scratch](std::span<const EntityID> entities) {
             for (const EntityID id : entities)
@@ -52,7 +52,6 @@ public:
     ~RenderEntitySlotMask()
     {
         if (!m_scratch) return;
-        std::fill_n(m_scratch->words.begin(), m_scratch->usedWords, uint64_t{0});
         m_scratch->usedWords = 0;
         m_scratch->busy = false;
     }
@@ -62,8 +61,8 @@ public:
     RenderEntitySlotMask(RenderEntitySlotMask&&) = delete;
     RenderEntitySlotMask& operator=(RenderEntitySlotMask&&) = delete;
 
-    /// @brief Unknown IDs and unavailable scratch preserve the original scan conservatively.
-    /// @note Generation is deliberately ignored: the existing GetComponent checks the full ID.
+    /// @brief ID が不明な場合や作業領域を借りられない場合は候補に残す。
+    /// @note 世代の照合は後段の GetComponent が完全な EntityID を使って行う。
     bool MayContain(EntityID id) const noexcept
     {
         if (!m_scratch || !id.IsValid() || id.index >= kSlotCapacity) return true;
@@ -79,7 +78,7 @@ private:
         bool busy = false;
     };
 
-    /// @note Inline function-local TLS shares one numeric scratch pool across extractor TUs.
+    /// @note 同一スレッドの抽出処理は翻訳単位をまたいで作業領域を共有する。
     static Scratch& ScratchForThread() noexcept
     {
         static thread_local Scratch scratch;
@@ -89,4 +88,4 @@ private:
     Scratch* m_scratch = nullptr;
 };
 
-} // namespace fbzz::scene::detail
+}

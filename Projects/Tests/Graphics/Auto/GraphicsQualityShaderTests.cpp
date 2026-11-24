@@ -757,7 +757,7 @@ TEST_F(GraphicsQualityShaderTest, MovingLaterSubmeshWritesVelocityWhenFirstSlotI
     auto scene = std::make_shared<r::RenderScene>();
     r::RenderObject object;
     object.colorEligible = true; object.itemCount = 2; object.previousWorld.m[0][3] = -0.5f;
-    scene->objects.push_back(object);
+    scene->geometry.EditObjects().push_back(object);
     r::RenderMeshItem hidden; hidden.slotVisible = false;
     scene->items.push_back(hidden);
     r::RenderMeshItem visible;

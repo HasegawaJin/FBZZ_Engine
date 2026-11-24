@@ -578,7 +578,7 @@ TEST_F(RayReflectionReconstructionTest, HybridGlassSubsetPreparesTypedGraphAndRe
     scene->sceneGeneration = 77;
     renderer::RenderObject object;
     object.sourceIndex = 7; object.sourceGeneration = 9; object.itemCount = 1;
-    scene->objects.push_back(object);
+    scene->geometry.EditObjects().push_back(object);
     std::array<renderer::Vertex, 3> vertices{};
     vertices[0].position = {-1, -1, 3}; vertices[1].position = {0, 1, 3}; vertices[2].position = {1, -1, 3};
     for (auto& vertex : vertices) { vertex.normal = {0, 0, -1}; vertex.tangent = {1, 0, 0}; }

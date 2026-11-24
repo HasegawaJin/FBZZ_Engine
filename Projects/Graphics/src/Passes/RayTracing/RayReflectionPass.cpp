@@ -18,7 +18,7 @@ void RayReflectionPass::Setup(PassBuilder& builder, const RenderPassContext& con
 {
     using Purpose = RenderGraph::ResourceAccessPurpose;
     builder.Read("GBuffer", Purpose::SHADER_READ);
-    if (context.hybridReflectionSsrPlanned) builder.Read("SSRResult", Purpose::SHADER_READ);
+    if (context.IsHybridSsrPlanned()) builder.Read("SSRResult", Purpose::SHADER_READ);
     builder.Read("RayReflectionIrradiance", Purpose::SHADER_READ);
     builder.Read("RayReflectionPrefilter", Purpose::SHADER_READ);
     builder.Read("RayReflectionBrdfLut", Purpose::SHADER_READ);
@@ -82,12 +82,13 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     constants.sceneLighting = m_lighting.sceneLighting;
     constants.diffuseIndirectEnabled = m_lighting.diffuseIndirectEnabled ? 1u : 0u;
     constants.reflectionResolveEnabled = context.hybridReflectionResolveActive ? 1u : 0u;
-    constants.reflectionSsrEnabled = context.hybridReflectionResolveActive && context.ssrPassActive
-        && !context.hybridReflectionSourcePass ? 1u : 0u;
+    const auto ssrResult = context.IsHybridSsrPlanned() && context.ssrDispatchRecorded && !context.hybridReflectionSourcePass
+        ? resources.Texture("SSRResult") : ResourceHandle<TextureTag>{};
+    constants.reflectionSsrEnabled = context.resources.Get(ssrResult) ? 1u : 0u;
     constants.glassEnabled = m_lighting.glassEnabled ? 1u : 0u;
     constants.glassBoundaryLimit = constants.glassEnabled ? quality.glassBoundaryLimit : 0u;
     constants.hybridPolicyFlags = (m_scene.hybridCandidatePolicy ? 1u : 0u) | (quality.glassStochastic ? 2u : 0u);
-    /// @note A changed camera or orthographic pixel origins cannot reuse a preparation-time perspective proof.
+    /// @note カメラが変わった場合や正射影の画素別原点では、準備時の透視投影による証明を再利用できない。
     constants.cameraOriginProvenAir = constants.glassEnabled && !camera.orthographic
         && m_lighting.cameraOriginProvenAir
         && m_lighting.provenAirOrigin.x == camera.cameraPosition.x
@@ -135,7 +136,7 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     call.srvInputs[6] = context.resources.GetColorTexture(gbuffer, 1);
     call.srvInputs[7] = context.resources.GetDepthTexture(gbuffer);
     if (constants.glassEnabled) call.srvInputs[22] = context.resources.GetColorTexture(gbuffer, 2);
-    if (constants.reflectionSsrEnabled) call.srvInputs[23] = resources.Texture("SSRResult");
+    if (constants.reflectionSsrEnabled) call.srvInputs[23] = ssrResult;
     call.srvInputs[16] = resources.Texture("RayReflectionIrradiance");
     call.srvInputs[17] = resources.Texture("RayReflectionPrefilter");
     call.srvInputs[18] = resources.Texture("RayReflectionBrdfLut");
@@ -177,4 +178,4 @@ void RayReflectionPass::Execute(PassResources& resources, RenderPassContext& con
     }
 }
 
-} /// @note namespace fbzz::renderer
+}

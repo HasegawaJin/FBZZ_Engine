@@ -314,6 +314,7 @@ fbzz_add_test_suite(EngineAuto
         Engine/Auto/GeometryPipelineTests.cpp
         Engine/Auto/RenderVisibilityTests.cpp
         Engine/Auto/RenderSceneExtractorTests.cpp
+        Engine/Auto/RenderEffectExtractionTests.cpp
         Engine/Auto/StaticMeshRenderReuseTests.cpp
         Engine/Auto/StaticMeshRenderMotionTests.cpp
         Engine/Auto/RenderLightExtractorTests.cpp

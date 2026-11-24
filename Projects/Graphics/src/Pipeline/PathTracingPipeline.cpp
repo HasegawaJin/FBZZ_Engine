@@ -164,7 +164,7 @@ bool PrepareGameResources(RenderPassContext& context, RenderViewResources& view,
     /// @note 毎フレームの変換表は immutable UPLOAD。default buffer 作成時の同期 Flush を避ける。
     if (!motion.empty()) game.motionInstances = resources.CreateStructuredBuffer(motion.data(),
         static_cast<uint32_t>(motion.size()), sizeof(RayGameMotionRecord));
-    /// @note Lazy descriptor allocation must succeed before the view can claim Game availability.
+    /// @note 遅延ディスクリプターを確保できたビューだけを Game で利用可能とする。
     const auto readWriteReady = [&](ResourceHandle<StructuredBufferTag> handle) {
         const auto* buffer = resources.Get(handle);
         return buffer && buffer->GetBindlessIndex() != INVALID_BINDLESS_INDEX
@@ -178,7 +178,7 @@ bool PrepareGameResources(RenderPassContext& context, RenderViewResources& view,
     return game.prepared;
 }
 
-} /// @note namespace
+}
 
 bool PrepareRayPathView(RenderPassContext& context, RenderViewResources& view, RenderSharedResources& shared)
 {
@@ -372,7 +372,9 @@ void BuildRayPathViewPipeline(RenderPipeline& pipeline, RenderPassContext& conte
     pipeline.SetSchedulePolicy(context.settings.schedulePolicy);
     context.rayReflectionPassActive = false;
     context.rayPathViewActive = true;
-    context.ssrPassActive = false;
+    context.ssrPassPlanned = false;
+    context.ssrDispatchRecorded = false;
+    context.ssrContributionSubmitted = false;
     context.taaJitterNdcX = 0;
     context.taaJitterNdcY = 0;
     view.taaHistoryValid = false;
@@ -515,4 +517,4 @@ void BuildRayPathViewPipeline(RenderPipeline& pipeline, RenderPassContext& conte
     else pipeline.SetOutputs({"Output", "RayPathHistory", "RayPathIds", "RayPathMaterial", "RayPathGeometry"});
 }
 
-} /// @note namespace fbzz::renderer
+}

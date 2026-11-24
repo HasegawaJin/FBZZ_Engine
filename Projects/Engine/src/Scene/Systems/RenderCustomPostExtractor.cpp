@@ -33,9 +33,6 @@ namespace fbzz::scene {
 
 namespace {
 
-constexpr int kMaxCustomIterations = 8;
-constexpr int kMaxCustomDownscale  = 8;
-
 /// @name .mat の解決
 /// @note 解決はシェーダーのロードとリフレクションを伴うので毎ドローやる値段ではない。
 /// @note フレームに 1 度だけやり直して、.mat の編集をその場で絵へ出す (DecalPass と同じ作り)。
@@ -44,30 +41,40 @@ struct CustomMaterialBinding {
     renderer::ShaderDescriptor descriptor;
     renderer::BlendMode        blendMode = renderer::BlendMode::OPAQUE_BLEND;
     uint64_t                   resolvedFrame = UINT64_MAX;
-    bool                       ok = false;
+    bool                       resolved = false;
 };
 
-std::unordered_map<std::string, CustomMaterialBinding> g_customMaterials;
-std::unordered_set<std::string>                        g_warnedCustomMaterials;
+class CustomPostMaterialCache {
+public:
+    CustomMaterialBinding* Resolve(renderer::ResourceManager& resources, const std::string& path);
+    void Clear();
 
-bool WarnCustomMaterialOnce(const std::string& path)
+private:
+    bool WarnOnce(const std::string& path);
+    std::unordered_map<std::string, CustomMaterialBinding> m_materials;
+    std::unordered_set<std::string> m_warnedMaterials;
+};
+
+CustomPostMaterialCache s_materials;
+
+bool CustomPostMaterialCache::WarnOnce(const std::string& path)
 {
-    return g_warnedCustomMaterials.insert(path).second;
+    return m_warnedMaterials.insert(path).second;
 }
 
 /// @note materialPath から «シェーダー + テクスチャ + b2» を揃える。解決できなければ nullptr
 /// @note (呼び出し側は shaderPath の経路へ落ちる)。
-CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resources,
+CustomMaterialBinding* CustomPostMaterialCache::Resolve(renderer::ResourceManager& resources,
                                              const std::string& path)
 {
     if (path.empty()) return nullptr;
 
     const auto assetHandle = asset::AssetManager::Load<asset::MaterialAsset>(path);
-    const auto matAssetAuthoringSnapshot = assetHandle.IsValid()
+    const auto authoringSnapshot = assetHandle.IsValid()
         ? asset::ReadMaterialAuthoring(assetHandle) : asset::MaterialAsset::AuthoringSnapshotPtr{};
-    const auto* matAsset = matAssetAuthoringSnapshot ? &matAssetAuthoringSnapshot->Data() : nullptr;
-    if (!matAsset) {
-        if (WarnCustomMaterialOnce(path))
+    const auto* authoring = authoringSnapshot ? &authoringSnapshot->Data() : nullptr;
+    if (!authoring) {
+        if (WarnOnce(path))
             FBZZ_LOG_WARN("Custom pass material load failed '%s' -> falling back to shaderPath.",
                           path.c_str());
         return nullptr;
@@ -75,33 +82,33 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
     /// @note 用途を検査するのは、メッシュ用の .mat が頂点入力を前提にしたシェーダーを指す
     /// @note ため。カスタムパスは頂点バッファを持たない SV_VertexID 描画なので、割り当てると
     /// @note 入力レイアウト不一致で何も出ないか画面が塗り潰され、絵からは原因が読めない。
-    if (matAsset->renderPath != asset::RenderPath::PostProcess) {
-        if (WarnCustomMaterialOnce(path))
+    if (authoring->renderPath != asset::RenderPath::PostProcess) {
+        if (WarnOnce(path))
             FBZZ_LOG_WARN("Custom pass material '%s' is not declared for post process "
                           "(render_path must be \"post_process\") -> falling back to shaderPath.",
                           path.c_str());
         return nullptr;
     }
-    if (matAsset->shaderPath.empty()) {
-        if (WarnCustomMaterialOnce(path))
+    if (authoring->shaderPath.empty()) {
+        if (WarnOnce(path))
             FBZZ_LOG_WARN("Custom pass material '%s' has no shader -> falling back to shaderPath.",
                           path.c_str());
         return nullptr;
     }
 
-    CustomMaterialBinding& binding = g_customMaterials[path];
+    CustomMaterialBinding& binding = m_materials[path];
     if (binding.resolvedFrame == resources.FrameStamp())
-        return binding.ok ? &binding : nullptr;
+        return binding.resolved ? &binding : nullptr;
     binding.resolvedFrame = resources.FrameStamp();
-    binding.ok            = false;
+    binding.resolved            = false;
 
     renderer::Material& material = binding.material;
-    material.shaderPath = matAsset->shaderPath;
-    material.shader     = resources.LoadShader(matAsset->shaderPath);
+    material.shaderPath = authoring->shaderPath;
+    material.shader     = resources.LoadShader(authoring->shaderPath);
     if (!material.shader.IsValid()) {
-        if (WarnCustomMaterialOnce(path))
+        if (WarnOnce(path))
             FBZZ_LOG_WARN("Custom pass material '%s' shader '%s' failed to load -> falling back.",
-                          path.c_str(), matAsset->shaderPath.c_str());
+                          path.c_str(), authoring->shaderPath.c_str());
         return nullptr;
     }
 
@@ -114,51 +121,64 @@ CustomMaterialBinding* ResolveCustomMaterial(renderer::ResourceManager& resource
     material.paramData.assign(binding.descriptor.cbufferSize, 0u);
     if (binding.descriptor.IsValid()) {
         asset::InitDefaultMaterialParams(binding.descriptor, material.paramData);
-        asset::ApplyMaterialAssetParams(*matAsset, binding.descriptor, material.paramData);
+        asset::ApplyMaterialAssetParams(*authoring, binding.descriptor, material.paramData);
     }
 
-    const auto texturePaths = asset::ResolveMaterialTexturePaths(*matAsset);
+    const auto texturePaths = asset::ResolveMaterialTexturePaths(*authoring);
     material.textures.resize(texturePaths.size());
-    for (size_t i = 0; i < texturePaths.size(); ++i) {
-        material.textures[i] = texturePaths[i].empty()
+    for (size_t textureSlot = 0; textureSlot < texturePaths.size(); ++textureSlot) {
+        material.textures[textureSlot] = texturePaths[textureSlot].empty()
             ? renderer::ResourceHandle<renderer::TextureTag>{}
-            : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePaths[i]);
+            : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, texturePaths[textureSlot]);
     }
 
     material.Init(resources, binding.descriptor.cbufferSize);
     material.Upload(resources, binding.descriptor);
 
-    binding.blendMode = matAsset->blendMode;
-    binding.ok        = true;
+    binding.blendMode = authoring->blendMode;
+    binding.resolved        = true;
     return &binding;
 }
 
+void CustomPostMaterialCache::Clear()
+{
+    m_materials.clear();
+    m_warnedMaterials.clear();
 }
-void ExtractRenderCustomPost(RenderPassContext& ctx, renderer::RenderScene& output)
+
+void BindCustomPostMaterial(renderer::RenderCustomPostInput& input, const CustomMaterialBinding& binding)
+{
+    input.shader = binding.material.shader;
+    input.paramsBuffer = binding.material.paramsBuffer;
+    input.parameters = binding.material.paramData;
+    input.blendMode = binding.blendMode;
+    for (size_t textureSlot = 0; textureSlot < input.textures.size() && textureSlot < binding.material.textures.size(); ++textureSlot)
+        input.textures[textureSlot] = binding.material.textures[textureSlot];
+}
+
+} /// @note namespace
+
+void ExtractRenderCustomPost(RenderPassContext& context, renderer::RenderScene& output)
 {
     auto& inputs = output.customPost;
-    const auto& effects = ctx.settings.postProcess.customEffects;
+    const auto& effects = context.settings.postProcess.customEffects;
     inputs.resize(effects.size());
-    for (size_t i = 0; i < effects.size(); ++i) {
-        const auto& effect = effects[i];
+    for (size_t effectIndex = 0; effectIndex < effects.size(); ++effectIndex) {
+        const auto& effect = effects[effectIndex];
         if (!effect.enabled) continue;
-        auto& input = inputs[i];
+        auto& input = inputs[effectIndex];
         input.blendMode = effect.blendMode;
-        if (auto* binding = ResolveCustomMaterial(ctx.resources, effect.materialPath)) {
-            input.shader = binding->material.shader;
-            input.paramsBuffer = binding->material.paramsBuffer;
-            input.parameters = binding->material.paramData;
-            input.blendMode = binding->blendMode;
-            for (size_t j = 0; j < input.textures.size() && j < binding->material.textures.size(); ++j)
-                input.textures[j] = binding->material.textures[j];
-        } else if (i < ctx.handles.customPostProcessShaders.size()) {
-            input.shader = ctx.handles.customPostProcessShaders[i];
+        if (auto* binding = s_materials.Resolve(context.resources, effect.materialPath)) {
+            BindCustomPostMaterial(input, *binding);
+        } else if (effectIndex < context.handles.customPostProcessShaders.size()) {
+            input.shader = context.handles.customPostProcessShaders[effectIndex];
         }
     }
 }
+
 void ReleaseCustomPassMaterialCache()
 {
-    g_customMaterials.clear();
-    g_warnedCustomMaterials.clear();
+    s_materials.Clear();
 }
-}
+
+} /// @note namespace fbzz::scene

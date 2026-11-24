@@ -54,8 +54,8 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
     auto& materialCB = h.gbufferMaterialCB;
     if (!resources.Get(materialCB)) materialCB = resources.CreateConstantBuffer(96);
     if (!resources.Get(materialCB)) return;
-    /// @note Sorted value groups share b2; flush the previous draws before updating the view-owned fallback, whose queued update owns its bytes.
-    /// @note Native Submit snapshots CB data into its upload slice before later ordered updates; material-slot buffers remain untouched.
+    /// @note 整列済みの値グループは b2 を共有する。ビュー所有の代替バッファを更新する前に前グループの描画を確定し、キューの更新が入力バイト列を所有する。
+    /// @note ネイティブ Submit は後続の順序付き更新より先に CB の内容を転送領域へ写す。材質スロットのバッファは変更しない。
     /// @see Docs/design/runtime-workset-optimization.md GBuffer材質の同値共有。
     std::array<uint8_t, 96> boundParameters{};
     renderer::ResourceHandle<renderer::ConstantBufferTag> parameterBuffer;
@@ -89,7 +89,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                 return a.distanceSquared < b.distanceSquared;
             });
         }
-        /// @note Opaque material sorting uses final canonical values, so identical per-object buffers do not split one material group; DrawCall still validates every binding.
+        /// @note 不透明材質は正規化した最終値で整列するため、値が同じ個体別バッファは同じ材質グループにまとまる。DrawCall は各バインドを検証する。
         std::stable_sort(queue.begin(), queue.end(), [](const MeshEntry& a, const MeshEntry& b) {
             if (a.params != b.params) return a.params < b.params;
             return a.item->vertexBuffer.id < b.item->vertexBuffer.id;
@@ -144,7 +144,7 @@ void ExecuteGBufferPass(RenderPassContext& ctx)
                 batcher.InvalidateObjectConstants();
                 continue;
             }
-            /// @note A seed item must keep its indexed surface even when mesh selection failed and instances still use Hi-Z.
+            /// @note メッシュ選択が失敗してもインスタンスが Hi-Z を使う場合、初期描画項目はインデックス付きの面を保持する。
             const bool seeded = ctx.gpuOccluderDepthReady && ctx.renderScene.get() == &input
                 && itemIndex < ctx.gpuOccluderItems.size() && ctx.gpuOccluderItems[itemIndex];
             if (!seeded && ctx.settings.geometryDrawMode == GeometryDrawMode::MESH_SHADER) {
@@ -190,10 +190,8 @@ void ExecuteDeferredDepthCopyPass(RenderPassContext& ctx)
 
     renderer::DrawCall dc;
     dc.shader        = h.depthCopyShader;
-    /// @note DEPTH_ON: 深度テスト + 書き込みあり
     dc.pipelineState = h.defaultPSO;
     dc.vertexCount   = 3;
-    /// @note TEX_DEPTH
     dc.textures[7]   = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
     renderer.Submit(dc, resources);
 }
@@ -216,7 +214,6 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     float aoIntensity = 0.0f;
     if (gtaoActive && !underwater) {
         aoTex       = ctx.Res().Texture("GTAOResult");
-        /// @note GTAO 出力は intensity 適用済み
         aoIntensity = 1.0f;
     } else if (ctx.ssaoEnabled && !underwater) {
         aoTex       = ctx.Res().Texture("SSAO");
@@ -229,8 +226,9 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
         && resources.Get(ctx.handles.rayReflectionResult);
     lightingPostData.rayReflectionEnabled = rayReflectionActive ? 1.0f : 0.0f;
     const bool reflectionResolveActive = ctx.hybridReflectionResolveActive && !ctx.hybridReflectionSourcePass;
-    const bool reflectionSsrActive = reflectionResolveActive && ctx.ssrPassActive
-        && resources.Get(h.ssrResult);
+    const auto ssrResult = ctx.IsHybridSsrPlanned() && !ctx.hybridReflectionSourcePass && ctx.ssrDispatchRecorded
+        ? ctx.Res().Texture("SSRResult") : ResourceHandle<TextureTag>{};
+    const bool reflectionSsrActive = ssrResult == h.ssrResult && resources.Get(ssrResult);
     lightingPostData.reflectionResolveEnabled = static_cast<float>(ctx.hybridReflectionSourcePass
         ? ReflectionResolveStage::SOURCE : (reflectionResolveActive
             ? ReflectionResolveStage::FINAL : ReflectionResolveStage::LEGACY));
@@ -241,7 +239,6 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
 
     renderer::DrawCall dc;
     dc.shader             = h.deferredLightingShader;
-    /// @note DEPTH_OFF: 深度テスト・書き込みなし
     dc.pipelineState      = h.postprocPSO;
     dc.vertexCount        = 3;
     dc.constantBuffers[0] = h.frameCB;
@@ -265,11 +262,9 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     /// @note b9 + t29/t30: クラスタライティング。Legacy モードのときは束縛しない。b9 が未束縛だと clusterLightMode が 0 (= Legacy) として読まれ、シェーダーは b3 の固定長配列へフォールバックするため従来と完全に同じ経路になる。
     if (ctx.clusterLightMode != ClusterLightMode::Legacy) {
         dc.constantBuffers[9] = h.clusterCB;
-        /// @note t29
         dc.psBuffers[0]       = h.punctualLightBuffer;
         /// @note クラスタリストは Clustered モードでしか読まれない (Linear は全数走査)。
         if (UsesClusterLightIndices(ctx.clusterLightMode))
-            /// @note t30
             dc.psBuffers[1]   = h.clusterIndexBuffer;
     }
     /// @note b12 + t28 + t31: Spot / Point のシャドウと Cookie。
@@ -279,15 +274,11 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
         dc.textures[28]        = resources.GetDepthTexture(ctx.Res().Target("PunctualShadowMap"));
         dc.textures[31]        = resources.GetColorTexture(ctx.Res().Target("LightCookieAtlas"), 0);
     }
-    /// @note TEX_GBUFFER0
     dc.textures[5]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 0);
-    /// @note TEX_GBUFFER1
     dc.textures[6]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
     /// @note Deferred の t3 は材質の emissive texture ではなく、GBuffer に保持した線形 HDR emission。
     dc.textures[3]        = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 2);
-    /// @note TEX_DEPTH
     dc.textures[7]        = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
-    /// @note TEX_SHADOW
     dc.textures[8]        = resources.GetDepthTexture(ctx.Res().Target("ShadowMap"));
     /// @note TEX_SSAO スロット: GTAO(優先) or SSAO の AO テクスチャ
     dc.textures[9]        = aoTex;
@@ -295,22 +286,19 @@ void ExecuteDeferredLightingPass(RenderPassContext& ctx)
     /// @note contactShadowStrength>0 のガードでサンプルを回避する)。
     dc.textures[24]       = (rs.contactShadow.enabled && ctx.Res().Texture("ContactShadowResult").IsValid())
         ? ctx.Res().Texture("ContactShadowResult")
-        /// @note TEX_CONTACT_SHADOW
         : renderer::ResourceHandle<renderer::TextureTag>{};
-    /// @note TEX_IBL_IRRADIANCE: 拡散 IBL キューブマップ
     dc.textures[16]       = h.iblIrradiance;
-    /// @note TEX_IBL_PREFILTER:  鏡面 IBL キューブマップ
     dc.textures[17]       = h.iblPrefilter;
-    /// @note TEX_IBL_BRDF_LUT:   BRDF 積分テーブル
     dc.textures[18]       = h.iblBrdfLut;
     /// @note t20 はこのパスと Composite のレイ反射用。無効時は b5 の gate で読まない。
     if (rayReflectionActive) dc.textures[20] = ctx.handles.rayReflectionResult;
-    if (reflectionSsrActive) dc.textures[23] = h.ssrResult;
+    if (reflectionSsrActive) dc.textures[23] = ssrResult;
     /// @note TEX_LIGHT_PROBE_SH / _OUTER: 無効ハンドルなら未束縛 (b8 の probeVolumes[i].intensity が 0 で引かない)
     dc.textures[22]       = h.lightProbeSH[0];
     dc.textures[21]       = h.lightProbeSH[1];
     dc.indirectReadTextures = { h.lightProbeVisibility[0], h.lightProbeVisibility[1] };
     renderer.Submit(dc, resources);
+    if (reflectionSsrActive) ctx.ssrContributionSubmitted = true;
 }
 
 /// @name Deferred 内スキンドメッシュフォワードパス
@@ -408,7 +396,7 @@ void ExecuteForwardTransparency(RenderPassContext& ctx, bool waterfalls)
     UpdatePunctualShadowConstants(ctx);
     SubmitForwardRoute(ctx, renderer::GeometryRoute::ForwardTransparent, waterfalls);
 }
-} /// @note namespace
+}
 
 void ExecuteForwardTransparentPass(RenderPassContext& ctx)
 {
@@ -494,7 +482,7 @@ void DeferredLightingPass::Setup(PassBuilder& builder, const RenderPassContext& 
         builder.Read("RayReflectionResult", RenderGraph::ResourceAccessPurpose::SHADER_READ);
     if (!m_reflectionSource && ctx.rayReflectionReconstructionPrepared)
         builder.Read("RayReflectionRaw", RenderGraph::ResourceAccessPurpose::SHADER_READ);
-    if (!m_reflectionSource && ctx.hybridReflectionSsrPlanned)
+    if (!m_reflectionSource && ctx.IsHybridSsrPlanned())
         builder.Read("SSRResult", RenderGraph::ResourceAccessPurpose::SHADER_READ);
 }
 

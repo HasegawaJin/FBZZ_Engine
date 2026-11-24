@@ -84,7 +84,7 @@ private:
     r::PipelineStateDesc m_desc;
 };
 
-/// @note Only the native Submit boundary observes bytes, so the threaded fixture exercises real owned updates and command ordering.
+/// @note バイト列を観測するのはネイティブの Submit 境界だけ。スレッド付きのフィクスチャで更新データの所有と実コマンド順を検証する。
 class GBufferTraceRenderer final : public r::IRenderer {
 public:
     explicit GBufferTraceRenderer(GBufferParameterTrace& trace) : m_trace(trace) {}
@@ -183,7 +183,7 @@ protected:
                 item.indexCount = item.vertexCount = 3;
                 item.material.valid = true; item.material.capabilities.gbufferEquivalentShader = true;
                 item.material.gbufferParams[0] = static_cast<uint8_t>(base + (n * 2) % 3);
-                scene->objects.push_back(object); scene->items.push_back(item);
+                scene->geometry.EditObjects().push_back(object); scene->items.push_back(item);
             }
             return scene;
         };
@@ -227,19 +227,19 @@ protected:
     }
 };
 
-/// @brief Ordered groups preserve static skinned and view values without temporary allocation.
+/// @brief 順序付きのグループは一時確保なしで静的・スキン付き・ビューの値を保持する。
 TEST_F(GBufferParameterReuseTest, OrderedGroupsPreserveStaticSkinnedAndViewValuesWithoutTemporaryAllocation)
 {
     CheckGroups(false);
 }
 
-/// @brief Threaded groups own update bytes across views frames and resource reset.
+/// @brief スレッド付きのグループはビュー、フレーム、資源リセットをまたいで更新バイト列を所有する。
 TEST_F(GBufferParameterReuseTest, ThreadedGroupsOwnUpdateBytesAcrossViewsFramesAndResourceReset)
 {
     CheckGroups(true);
 }
 
-/// @brief Missing view buffer retains creation failure and next pass recovery.
+/// @brief ビューバッファがなければ作成失敗を保持し、次のパスで復旧する。
 TEST_F(GBufferParameterReuseTest, MissingViewBufferRetainsCreationFailureAndNextPassRecovery)
 {
     GBufferParameterTrace trace;
@@ -263,7 +263,7 @@ TEST_F(GBufferParameterReuseTest, MissingViewBufferRetainsCreationFailureAndNext
     EXPECT_EQ(trace.attempted, 2u); EXPECT_EQ(trace.created, 1u);
 }
 
-/// @brief Prepared material keeps per instance overrides and rejects stale resource generations.
+/// @brief 準備済み材質がインスタンスごとの上書きを保持し、古い資源世代を拒否する。
 TEST_F(GraphicsQualityShaderTest, PreparedMaterialKeepsPerInstanceOverridesAndRejectsStaleResourceGenerations)
 {
     const auto shaderPath = m_temp.File("PreparedMaterial.hlsl").generic_string();
@@ -337,7 +337,7 @@ TEST_F(GraphicsQualityShaderTest, PreparedMaterialKeepsPerInstanceOverridesAndRe
     verify(red, 0, 0.75f); verify(green, 1, 0.75f);
 }
 
-/// @brief Checks g buffer groups equal values without mutating instance material buffers.
+/// @brief GBuffer は同じ値をグループ化し、インスタンスの材質バッファを変更しない。
 TEST_F(GraphicsQualityShaderTest, GBufferGroupsEqualValuesWithoutMutatingInstanceMaterialBuffers)
 {
     m_camera.m_aspect = 1.0f;
@@ -363,7 +363,7 @@ TEST_F(GraphicsQualityShaderTest, GBufferGroupsEqualValuesWithoutMutatingInstanc
         item.material.capabilities.gbufferEquivalentShader = true;
         item.material.paramsBuffer = m_resources->CreateConstantBuffer(96);
         std::memcpy(item.material.gbufferParams.data(), parameters.data(), sizeof(parameters));
-        scene->objects.push_back(object); scene->items.push_back(item);
+        scene->geometry.EditObjects().push_back(object); scene->items.push_back(item);
     }
     ASSERT_NE(scene->items[0].material.paramsBuffer, scene->items[1].material.paramsBuffer);
     const auto output = m_resources->CreateRenderTarget(8,8,r::CameraDepthTargetDesc(r::GBUFFER_COLOR_COUNT));
@@ -426,7 +426,7 @@ TEST_F(GraphicsQualityShaderTest, GBufferGroupsEqualValuesWithoutMutatingInstanc
     r::ReleaseInstanceBatchCaches(*m_resources);
 }
 
-/// @brief TAA resources are lazy retired and recreated without old history.
+/// @brief TAA 資源を遅延退役させ、古い履歴なしで再作成する。
 TEST_F(GraphicsQualityShaderTest, TaaResourcesAreLazyRetiredAndRecreatedWithoutOldHistory)
 {
     auto& rendering = m_resources->Rendering();
@@ -454,7 +454,7 @@ TEST_F(GraphicsQualityShaderTest, TaaResourcesAreLazyRetiredAndRecreatedWithoutO
     EXPECT_EQ(m_resources->Get(newA), nullptr);
     EXPECT_FALSE(view.taaHistoryA.IsValid()); EXPECT_FALSE(view.taaHistoryB.IsValid());
 }
-/// @brief Sampled HDR composite is lazy and switching modes rejects old history.
+/// @brief サンプリングする HDR 合成資源は遅延作成し、モード切り替え時に以前の履歴を拒否する。
 TEST_F(GraphicsQualityShaderTest, SampledHdrCompositeIsLazyAndSwitchingModesRejectsOldHistory)
 {
     auto& rendering = m_resources->Rendering();
@@ -481,7 +481,7 @@ TEST_F(GraphicsQualityShaderTest, SampledHdrCompositeIsLazyAndSwitchingModesReje
     EXPECT_EQ(m_resources->Get(view.ldr)->GetColorCount(), 1u);
     EXPECT_FALSE(view.taaHistoryA.IsValid());
 }
-/// @brief Terrain renders when managers alternate and one resets.
+/// @brief 資源管理者を交互に使い、一方をリセットしても地形を描画する。
 TEST_F(GraphicsQualityShaderTest, TerrainRendersWhenManagersAlternateAndOneResets)
 {
     r::ResourceManager second(*m_bundle.renderer);
@@ -541,7 +541,7 @@ TEST_F(GraphicsQualityShaderTest, TerrainRendersWhenManagersAlternateAndOneReset
     }
 }
 
-/// @brief Forward skinned surface receives environment specular.
+/// @brief Forward のスキン付き面が環境の鏡面反射を受ける。
 TEST_F(GraphicsQualityShaderTest, ForwardSkinnedSurfaceReceivesEnvironmentSpecular)
 {
     const auto shader = m_resources->LoadShader("Assets/Shaders/Material/Skinned/SkinnedPBR.hlsl");
@@ -566,7 +566,7 @@ TEST_F(GraphicsQualityShaderTest, ForwardSkinnedSurfaceReceivesEnvironmentSpecul
     bones.fill(math::Matrix4::Identity());
     r::RenderObject object; object.skinned = true; object.colorEligible = true; object.itemCount = 1;
     object.skinningPalette = m_resources->CreateConstantBuffer(sizeof(bones));
-    auto scene = std::make_shared<r::RenderScene>(); scene->objects.push_back(object); scene->items.push_back(item);
+    auto scene = std::make_shared<r::RenderScene>(); scene->geometry.EditObjects().push_back(object); scene->items.push_back(item);
     const auto hdr = m_resources->CreateRenderTarget(8,8,r::CameraDepthTargetDesc(1));
     r::RenderPassHandles handles;
     handles.frameCB = m_frame; handles.advancedGraphicsCB = m_advanced;
@@ -596,7 +596,7 @@ TEST_F(GraphicsQualityShaderTest, ForwardSkinnedSurfaceReceivesEnvironmentSpecul
     EXPECT_GT(pixels[center+2], 0.5f); EXPECT_GT(pixels[center+2], pixels[center+1] * 1.5f);
 }
 
-/// @brief TAA ignores old velocity until the current view writes it.
+/// @brief TAA は現在のビューが速度を書き込むまで古い速度を使わない。
 TEST_F(GraphicsQualityShaderTest, TaaIgnoresOldVelocityUntilTheCurrentViewWritesIt)
 {
     const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
@@ -626,7 +626,7 @@ TEST_F(GraphicsQualityShaderTest, TaaIgnoresOldVelocityUntilTheCurrentViewWrites
     }
 }
 
-/// @brief Moving cutout velocity preserves texture and material holes.
+/// @brief 移動するカットアウトの速度描画がテクスチャと材質の穴を保持する。
 TEST_F(GraphicsQualityShaderTest, MovingCutoutVelocityPreservesTextureAndMaterialHoles)
 {
     const r::Vertex vertices[] = {
@@ -637,7 +637,7 @@ TEST_F(GraphicsQualityShaderTest, MovingCutoutVelocityPreservesTextureAndMateria
     auto scene = std::make_shared<r::RenderScene>();
     r::RenderObject object;
     object.colorEligible = true; object.itemCount = 1; object.previousWorld.m[0][3] = -0.5f;
-    scene->objects.push_back(object);
+    scene->geometry.EditObjects().push_back(object);
     r::RenderMeshItem item;
     item.vertexBuffer = m_resources->CreateVertexBuffer(vertices, sizeof(vertices), sizeof(r::Vertex));
     item.indexBuffer = m_resources->CreateIndexBuffer(indices, 6); item.indexCount = 6; item.vertexCount = 4;
@@ -691,7 +691,7 @@ TEST_F(GraphicsQualityShaderTest, MovingCutoutVelocityPreservesTextureAndMateria
     }
 }
 
-/// @brief Motion blur removes raster jitter and preserves camera motion.
+/// @brief モーションブラーはラスタジッターを除き、カメラ移動を維持する。
 TEST_F(GraphicsQualityShaderTest, MotionBlurRemovesRasterJitterAndPreservesCameraMotion)
 {
     std::array<uint8_t, 8 * 8 * 4> source{};
@@ -747,7 +747,7 @@ TEST_F(GraphicsQualityShaderTest, MotionBlurRemovesRasterJitterAndPreservesCamer
     }
 }
 
-/// @brief Motion blur ignores old velocity until the current view writes it.
+/// @brief モーションブラーは現在のビューが速度を書き込むまで古い速度を使わない。
 TEST_F(GraphicsQualityShaderTest, MotionBlurIgnoresOldVelocityUntilTheCurrentViewWritesIt)
 {
     const auto copy = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
@@ -777,7 +777,7 @@ TEST_F(GraphicsQualityShaderTest, MotionBlurIgnoresOldVelocityUntilTheCurrentVie
     }
 }
 
-/// @brief View graph keeps TAA and motion blur working when velocity is disabled.
+/// @brief 速度を無効化してもビューグラフで TAA とモーションブラーが動作する。
 TEST_F(GraphicsQualityShaderTest, ViewGraphKeepsTaaAndMotionBlurWorkingWhenVelocityIsDisabled)
 {
     auto& rendering = m_resources->Rendering();
@@ -814,7 +814,70 @@ TEST_F(GraphicsQualityShaderTest, ViewGraphKeepsTaaAndMotionBlurWorkingWhenVeloc
     EXPECT_FALSE(context.velocityWritten);
 }
 
-/// @brief View graph declares water resources for the first water frame.
+/// @brief SSR の合成や入力が無効なビューでは TAA が前フレームの反射を引き継がない。
+TEST_F(GraphicsQualityShaderTest, RasterSsrHistoryFollowsCurrentViewComposition)
+{
+    auto& rendering = m_resources->Rendering();
+    auto& view = rendering.View(98);
+    auto& shared = rendering.Shared();
+    r::RenderSettings settings;
+    settings.pipeline = r::RenderingPipeline::Forward;
+    settings.shadowEnabled = settings.ibl.enabled = settings.autoExposure.enabled = false;
+    settings.postProcess.fxaaEnabled = settings.postProcess.bloom.enabled = false;
+    settings.taa.enabled = settings.ssr.enabled = true;
+
+    shared.frameCB = m_frame;
+    shared.postprocCB = m_post;
+    shared.objectCB = m_resources->CreateConstantBuffer(sizeof(r::PerObjectCB));
+    shared.lightCB = m_resources->CreateConstantBuffer(sizeof(r::LightConstantsCB));
+    shared.shadowCB = m_resources->CreateConstantBuffer(sizeof(r::ShadowConstantsCB));
+    shared.defaultPSO = shared.postprocPSO = shared.taaPSO = m_opaque;
+    shared.causticsPSO = m_resources->CreatePipelineState(
+        {r::RasterizerMode::SOLID, r::BlendMode::ADDITIVE, r::DepthMode::DEPTH_OFF});
+    shared.gbufferShader = m_resources->LoadShader("Assets/Shaders/Pipeline/Deferred/GBuffer.hlsl");
+    shared.ssrShader = m_resources->LoadShader("Assets/Shaders/PostProcess/Reflections/SSR.cs.hlsl");
+    shared.ssrResolveShader = m_resources->LoadShader("Assets/Shaders/PostProcess/Reflections/SSRResolve.hlsl");
+    shared.copyColorShader = m_resources->LoadShader("Assets/Shaders/PostProcess/Color/CopyColor.hlsl");
+    shared.compositeShader = shared.upscaleShader = shared.downscaleShader = shared.copyColorShader;
+    shared.taaShader = m_taa;
+    ASSERT_TRUE(shared.gbufferShader && shared.ssrShader && shared.ssrResolveShader && shared.causticsPSO);
+
+    const auto renderScene = std::make_shared<r::RenderScene>();
+    uint64_t previousEpoch = 0;
+    for (const char* disabledPass : {"", "SSRResolve", "DepthNormalPrepass", ""}) {
+        SCOPED_TRACE(disabledPass);
+        settings.passOverrides.clear();
+        if (*disabledPass) settings.passOverrides.push_back({disabledPass, false});
+        ASSERT_TRUE(rendering.PrepareView(view, *m_bundle.renderer, m_output, settings));
+        r::RenderPassHandles handles;
+        rendering.BindPassHandles(view, handles);
+        r::RenderPassContext context{{}, *m_bundle.renderer, *m_resources, m_camera, settings, m_output, ~0u, handles};
+        context.width = view.width;
+        context.height = view.height;
+        context.outputWidth = context.outputHeight = 8;
+        context.chainOutputRT = m_output;
+        context.renderScene = renderScene;
+
+        Begin();
+        context.frameStamp = m_resources->FrameStamp();
+        r::PrepareAdvancedConstants(context, view, {});
+        const auto plan = r::PrepareViewRenderPlan(*m_resources, *m_bundle.renderer, settings, view, shared, handles);
+        ASSERT_TRUE(plan.IsValid() && plan.rasterPlan.HasScreenSpaceInputs());
+        r::BuildViewPipeline(view.pipeline, context, view, shared, {plan}, {});
+        EXPECT_FALSE(context.ssrDispatchRecorded);
+        ASSERT_TRUE(view.pipeline.Execute(context));
+        End();
+
+        const bool composed = !*disabledPass;
+        EXPECT_EQ(context.ssrDispatchRecorded, composed);
+        ASSERT_TRUE(view.taaProviderHistory.valid);
+        EXPECT_EQ(view.taaProviderHistory.screenReflectionActive, composed);
+        EXPECT_EQ(view.taaProviderHistory.epoch, previousEpoch + (std::string_view(disabledPass) == "DepthNormalPrepass" ? 0u : 1u));
+        previousEpoch = view.taaProviderHistory.epoch;
+    }
+}
+
+/// @brief ビューグラフは水面の最初のフレームから必要な資源を宣言する。
 TEST_F(GraphicsQualityShaderTest, ViewGraphDeclaresWaterResourcesForTheFirstWaterFrame)
 {
     auto& rendering = m_resources->Rendering();
@@ -897,7 +960,7 @@ TEST_F(GraphicsQualityShaderTest, ViewGraphDeclaresWaterResourcesForTheFirstWate
     ASSERT_TRUE(executeFrame());
 }
 
-/// @brief Auto exposure resumes at current brightness after settings or pass disable.
+/// @brief 設定またはパスの無効化後、自動露出は現在の明るさから再開する。
 TEST_F(GraphicsQualityShaderTest, AutoExposureResumesAtCurrentBrightnessAfterSettingsOrPassDisable)
 {
     auto& rendering = m_resources->Rendering();
@@ -934,7 +997,7 @@ TEST_F(GraphicsQualityShaderTest, AutoExposureResumesAtCurrentBrightnessAfterSet
     }
 }
 
-/// @brief Brdf bake and custom blend remain valid across managers and reset.
+/// @brief BRDF ベイクとカスタムブレンドは資源管理者の切り替えとリセットをまたいで有効。
 TEST_F(GraphicsQualityShaderTest, BrdfBakeAndCustomBlendRemainValidAcrossManagersAndReset)
 {
     r::ResourceManager first(*m_bundle.renderer);
@@ -990,7 +1053,7 @@ TEST_F(GraphicsQualityShaderTest, BrdfBakeAndCustomBlendRemainValidAcrossManager
     }
 }
 
-/// @brief Clear keeps its bound owner and recovers after that manager is destroyed.
+/// @brief クリア処理はバインド済みの所有者を維持し、その管理者の破棄後に復旧する。
 TEST_F(GraphicsQualityShaderTest, ClearKeepsItsBoundOwnerAndRecoversAfterThatManagerIsDestroyed)
 {
     auto other = std::make_unique<r::ResourceManager>(*m_bundle.renderer);
@@ -1011,5 +1074,5 @@ TEST_F(GraphicsQualityShaderTest, ClearKeepsItsBoundOwnerAndRecoversAfterThatMan
     const auto color = Read();
     EXPECT_NEAR(color.x, 0.2f, 0.001f); EXPECT_NEAR(color.y, 0.3f, 0.001f); EXPECT_NEAR(color.z, 0.4f, 0.001f);
 }
-} /// @note namespace
-} /// @note namespace fbzz::tests
+}
+}

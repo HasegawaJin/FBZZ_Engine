@@ -1,17 +1,19 @@
 /// @file    SelectionMaskPass.cpp
-/// @brief   Selection mask render pass implementation.
+/// @brief   選択対象を画面空間のマスクに描く。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include "SelectionPasses.hpp"
 #include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
 #include <Graphics/Passes/Geometry/InstanceRenderPasses.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
-/// @note `FindAnimator` (親方向探索) を共用する。
-#include "../Geometry/RenderScenePassHelpers.hpp"
+#include "../Geometry/GeometryPasses.hpp"
+#include <Graphics/Passes/Geometry/RenderSceneDraw.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/TerrainRenderPass.hpp>
 #include <Engine/Scene/Systems/RenderPasses/Geometry/WaterRenderPass.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
-#include <Engine/Renderer/DynamicBufferPool.hpp>
+#include <Graphics/Effects/ParticleBillboards.hpp>
+#include <Graphics/Pipeline/RenderResources.hpp>
+#include <Engine/Renderer/RenderScene.hpp>
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/ParticleGpuSimulation.hpp>
 #include <Engine/Scene/GameObject.hpp>
@@ -19,6 +21,8 @@
 #include <Math/Matrix4.hpp>
 #include <Physics/Layer.hpp>
 #include <algorithm>
+#include <bit>
+#include <cassert>
 #include <vector>
 
 namespace fbzz::scene {
@@ -38,26 +42,6 @@ bool IsSelectedForOutline(const GameObject& go, const renderer::RenderSettings& 
 
 namespace {
 
-/// @note ParticlePass と同じ Local → World 変換を使う。
-math::Vector3 ParticleWorldPoint(const Transform& transform, const math::Vector3& localPoint)
-{
-    const math::Vector3 scaled = {
-        localPoint.x * transform.worldScale.x,
-        localPoint.y * transform.worldScale.y,
-        localPoint.z * transform.worldScale.z
-    };
-    return transform.worldPosition + transform.worldRotation * scaled;
-}
-
-math::Vector3 ParticleWorldVector(const Transform& transform, const math::Vector3& localVector)
-{
-    return transform.worldRotation * localVector;
-}
-
-/// @brief エミッター 1 個ぶんのマスク頂点を貸し出すプール。
-/// @note 共有バッファを使わない理由: 複数エミッター同時選択で Update → Submit が並ぶと、DX12 では後の Update が先に記録した Draw の中身まで差し替えてしまう (詳細は `DynamicBufferPool.hpp`)。
-renderer::DynamicVertexBufferPool g_selectionMaskParticlePool;
-
 /// @brief 選択された ParticleEmitter の現在形状を、テクスチャ Alpha 込みで Selection Mask へ描く。
 /// @note GameObject の Bounds 矩形では炎・煙の透明部分まで囲まれ、Unity 型のシルエット輪郭にならない。
 void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderPassContext& ctx)
@@ -70,84 +54,19 @@ void DrawParticleSelectionMask(GameObject& go, ParticleEmitter& emitter, RenderP
         return;
     }
 
-    constexpr float uv[4][2] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } };
-    std::vector<ParticleVertex> vertices;
-    const int particleCount = (std::min)(
-        static_cast<int>(emitter.runtime.particles.size()), kMaxParticleDraw);
-    vertices.reserve(static_cast<std::size_t>(particleCount) * 4);
-    int quadCount = 0;
-
-    const auto emitQuad = [&](const math::Vector3& center, const math::Vector3& velocity,
-                              float size, float rotation, const math::Vector4& color,
-                              const Particle& source) {
-        if (quadCount >= kMaxParticleDraw) return;
-        for (int corner = 0; corner < 4; ++corner) {
-            ParticleVertex vertex{};
-            vertex.center[0] = center.x;
-            vertex.center[1] = center.y;
-            vertex.center[2] = center.z;
-            vertex.uv[0] = uv[corner][0];
-            vertex.uv[1] = uv[corner][1];
-            vertex.color[0] = color.x;
-            vertex.color[1] = color.y;
-            vertex.color[2] = color.z;
-            vertex.color[3] = color.w;
-            vertex.size = size;
-            vertex.rotation = rotation;
-            vertex.uvRect[0] = source.uvRect.x;
-            vertex.uvRect[1] = source.uvRect.y;
-            vertex.uvRect[2] = source.uvRect.z;
-            vertex.uvRect[3] = source.uvRect.w;
-            vertex.velocity[0] = velocity.x;
-            vertex.velocity[1] = velocity.y;
-            vertex.velocity[2] = velocity.z;
-            vertex.nextUvRect[0] = source.nextUvRect.x;
-            vertex.nextUvRect[1] = source.nextUvRect.y;
-            vertex.nextUvRect[2] = source.nextUvRect.z;
-            vertex.nextUvRect[3] = source.nextUvRect.w;
-            vertex.spriteBlend = source.spriteBlend;
-            vertices.push_back(vertex);
-        }
-        ++quadCount;
-    };
-
+    /// @note 選択マスクは抽出前の粒子を読むため、ローカル空間の粒子だけワールドへ変換する。
     const bool localSpace = emitter.settings.simulationSpace == ParticleSimulationSpace::Local;
-    const bool billboardTrails = emitter.settings.trail.trailEnabled && !emitter.settings.trail.trailRibbon;
-    const int trailPoints = billboardTrails
-        ? std::clamp(emitter.settings.trail.trailPointCount, 1, kMaxParticleTrailPoints) : 0;
-    for (int index = 0; index < particleCount; ++index) {
-        const Particle& particle = emitter.runtime.particles[static_cast<std::size_t>(index)];
-        const math::Vector3 position = localSpace
-            ? ParticleWorldPoint(go.transform, particle.position) : particle.position;
-        const math::Vector3 velocity = localSpace
-            ? ParticleWorldVector(go.transform, particle.velocity) : particle.velocity;
-        emitQuad(position, velocity, particle.size, particle.rotation, particle.color, particle);
-
-        const int usedTrail = (std::min)(static_cast<int>(particle.trailCount), trailPoints);
-        for (int trail = 0; trail < usedTrail; ++trail) {
-            const float fade = 1.0f - static_cast<float>(trail + 1)
-                / static_cast<float>(trailPoints + 1);
-            const math::Vector3 trailPosition = localSpace
-                ? ParticleWorldPoint(go.transform,
-                    particle.trailPoints[static_cast<std::size_t>(trail)])
-                : particle.trailPoints[static_cast<std::size_t>(trail)];
-            const float width = emitter.settings.trail.trailWidthScale
-                + (1.0f - emitter.settings.trail.trailWidthScale) * fade;
-            const float alpha = emitter.settings.trail.trailAlphaScale
-                + (1.0f - emitter.settings.trail.trailAlphaScale) * fade;
-            const math::Vector4 trailColor = {
-                particle.color.x * emitter.settings.trail.trailColorTint.x,
-                particle.color.y * emitter.settings.trail.trailColorTint.y,
-                particle.color.z * emitter.settings.trail.trailColorTint.z,
-                particle.color.w * emitter.settings.trail.trailColorTint.w * alpha
-            };
-            emitQuad(trailPosition, velocity, particle.size * width, particle.rotation,
-                     trailColor, particle);
-        }
-    }
+    const auto& transform = go.transform;
+    const renderer::ParticleBillboardTransform localToWorld{
+        transform.worldPosition, transform.worldRotation, transform.worldScale,
+    };
+    std::vector<ParticleVertex> vertices;
+    const int quadCount = renderer::BuildParticleBillboards(emitter.runtime.particles, emitter.settings.trail,
+        emitter.settings.trail.trailColorTint, vertices, localSpace ? &localToWorld : nullptr);
     if (quadCount == 0) return;
 
-    const auto vertexBuffer = g_selectionMaskParticlePool.Acquire(
+    /// @note 同じフレームの別パスやエミッターには、同じプールから別々のバッファを貸し出す。
+    const auto vertexBuffer = ctx.resources.Rendering().Shared().particleVertexPool.Acquire(
         ctx.resources, vertices.size(), static_cast<std::uint32_t>(sizeof(ParticleVertex)));
     if (!vertexBuffer.IsValid()) return;
     ctx.resources.Update(vertexBuffer, vertices.data(),
@@ -190,7 +109,7 @@ void DrawGpuParticleSelectionMask(ParticleEmitter& emitter, RenderPassContext& c
     ctx.renderer.Submit(draw, ctx.resources);
 }
 
-} /// @note namespace
+}
 
 void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
 {
@@ -203,13 +122,14 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
     r.SetRenderTarget(res.Target("SelectionMask"), resources);
     r.Clear({ 0.0f, 0.0f, 0.0f, 0.0f });
 
-    const auto& input = SceneInput(ctx);
-    for (size_t objectIndex = 0; objectIndex < input.Objects().size(); ++objectIndex) {
-        const auto& object = input.Objects()[objectIndex];
-        if (!input.IsObjectSelected(objectIndex) || !MatchesView(ctx, object)) continue;
+    assert(ctx.renderScene && "RenderScene must be extracted after skinning and before drawing");
+    const auto& input = *ctx.renderScene;
+    const auto objects = input.Objects();
+    const auto drawMesh = [&](const renderer::RenderObject& object) {
+        if (!object.lodVisible || !fbzz::Layer::Contains(ctx.cullingMask, object.layer)) return;
         const auto shader = object.skinned ? h.selectionMaskSkinnedShader : h.selectionMaskShader;
-        if (!shader.IsValid()) continue;
-        auto constants = ObjectConstants(object);
+        if (!shader.IsValid()) return;
+        auto constants = renderer::ObjectConstants(object);
         constants.objectParams.x = 0.0f;
         resources.Update(h.objectCB, &constants, sizeof(constants));
         for (uint32_t i = object.firstItem; i < object.firstItem + object.itemCount; ++i) {
@@ -230,13 +150,17 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
             }
             r.Submit(dc, resources);
         }
+    };
+    if (const auto selection = input.PublishedMeshSelection()) {
+        for (uint32_t ordinal : *selection)
+            if (ordinal < objects.size()) drawMesh(objects[ordinal]);
+    } else {
+        for (size_t ordinal = 0; ordinal < objects.size(); ++ordinal)
+            if (input.IsObjectSelected(ordinal)) drawMesh(objects[ordinal]);
     }
 
-    const RenderSelectionLookup selection(ctx.settings.selectedObjects);
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (!go.activeInHierarchy()) continue;
-        if (!fbzz::Layer::Contains(ctx.cullingMask, go.layer)) continue;
-        if (!selection.Contains(go.GetID())) continue;
+    const auto drawSelectedObject = [&](GameObject& go) {
+        if (!go.activeInHierarchy() || !fbzz::Layer::Contains(ctx.cullingMask, go.layer)) return;
 
         PerObjectCB objData{};
         objData.world = go.transform.GetWorldMatrix();
@@ -246,6 +170,25 @@ void ExecuteSelectionMaskPass(PassResources& res, RenderPassContext& ctx)
         if (auto* particle = go.GetComponent<ParticleEmitter>()) {
             DrawParticleSelectionMask(go, *particle, ctx);
             DrawGpuParticleSelectionMask(*particle, ctx);
+        }
+    };
+    const auto& selected = ctx.settings.selectedObjects;
+    if (!selected.empty()) {
+        /// @note 選択 ID の整列に要する比較数の目安がシーン走査を上回る場合は、走査と選択集合の照合を使う。
+        const auto sortDepth = std::bit_width(selected.size());
+        if (selected.size() > ctx.scene.GameObjectCount() / sortDepth) {
+            const RenderSelectionLookup selection(selected);
+            for (auto& go : ctx.scene.GameObjects())
+                if (selection.Contains(go.GetID())) drawSelectedObject(go);
+        } else {
+            std::vector<EntityID> selectedIds;
+            selectedIds.reserve(selected.size());
+            for (const auto id : selected) selectedIds.push_back({id.index, id.generation});
+            /// @note 透過シルエットの提出順と同一 ID の一回描画を従来の Scene 順に揃える。
+            ctx.scene.SortEntitiesBySceneOrder(selectedIds);
+            const auto end = std::unique(selectedIds.begin(), selectedIds.end());
+            for (auto id = selectedIds.begin(); id != end; ++id)
+                if (auto* go = ctx.scene.GetGameObject(*id)) drawSelectedObject(*go);
         }
     }
 
@@ -275,4 +218,4 @@ void SelectionMaskPass::Execute(PassResources& resources, RenderPassContext& ctx
 {
     ExecuteSelectionMaskPass(resources, ctx);
 }
-} /// @note namespace fbzz::scene
+}

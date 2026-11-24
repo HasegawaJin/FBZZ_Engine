@@ -112,7 +112,7 @@ bool AppendTaaDepthMaterial(std::vector<uint64_t>& witness, const RenderMaterial
     return true;
 }
 
-} /// @note namespace
+}
 namespace taa_depth_detail {
 /// @note 不透明深度の入力だけを証明する。透明色の静止や新しい多層履歴の保証は含めない。
 /// @see Docs/design/shader-capabilities.md
@@ -219,7 +219,7 @@ bool BuildDepthWitness(RenderPassContext& context, std::vector<uint64_t>& witnes
         && epoch == resources.GetResetVersion() && shaders == resources.GetShaderVersion();
 }
 
-} /// @note namespace taa_depth_detail
+}
 namespace {
 bool PrepareTaaStaticView(RenderPassContext& context, RenderViewResources& view)
 {
@@ -241,7 +241,7 @@ bool PrepareTaaStaticView(RenderPassContext& context, RenderViewResources& view)
     return staticView;
 }
 
-} /// @note namespace
+}
 
 void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     RenderViewResources& viewTargets, RenderSharedResources& shared,
@@ -251,12 +251,13 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         profiler::ProfilerMarker("RenderSystem::BuildPipeline", "Rendering"));
     pipeline.BeginBuild();
     passCtx.rayPathViewActive = false;
-    passCtx.ssrPassActive = false;
+    passCtx.ssrPassPlanned = false;
+    passCtx.ssrDispatchRecorded = false;
+    passCtx.ssrContributionSubmitted = false;
     passCtx.velocityWritten = false;
     passCtx.underwaterLightPassActive = false;
     passCtx.hybridReflectionResolveActive = false;
     passCtx.hybridReflectionSourcePass = false;
-    passCtx.hybridReflectionSsrPlanned = false;
     if (!options.renderPlan.IsValid()) {
         FBZZ_LOG_ERROR("ViewPipeline: 実行できない描画構成です");
         return;
@@ -337,22 +338,18 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     const bool needsUpscale = viewTargets.needsUpscale;
     const auto& opaquePlan = renderPlan.rasterPlan;
     const bool screenSpaceReady = opaquePlan.HasScreenSpaceInputs();
-    const bool ssrOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
-        [](const RenderPassOverride& override) { return override.name == "SSR" && !override.enabled; });
-    /// @note A persistent GBuffer is graph-readable after its producer is disabled, but cannot prove a new Hybrid surface or SSR receipt.
-    const bool hybridGBufferOverriddenOff = passCtx.hybridReflectionResolveActive
-        && std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
-            [](const RenderPassOverride& override) { return override.name == "DeferredGBuffer" && !override.enabled; });
-    const bool ssrAvailable = rs.ssr.enabled && screenSpaceReady && !ssrOverriddenOff && !hybridGBufferOverriddenOff
-        && resources.Get(passHandles.ssrShader) && resources.Get(viewTargets.ssrResult)
-        && resources.Get(viewTargets.gbuffer);
-    const bool ssrSourceOverriddenOff = std::any_of(rs.passOverrides.begin(), rs.passOverrides.end(),
-        [](const RenderPassOverride& override) {
-            return override.name == "ReflectionSourceLighting" && !override.enabled;
-        });
-    /// @note source を止めたフレームは未照明 HDR を SSR として採用せず、RT-only resolve に戻す。
-    passCtx.hybridReflectionSsrPlanned = passCtx.hybridReflectionResolveActive
-        && ssrAvailable && !ssrSourceOverriddenOff;
+    /// @note 永続 GBuffer や HDR のハンドルが有効でも、生成パスを無効にしたビューは旧内容を参照しない。
+    const bool ssrInputsPlanned = opaquePlan.UsesDeferredLighting()
+        ? rs.IsPassEnabled("DeferredGBuffer") && rs.IsPassEnabled("DeferredDepthCopy")
+            && rs.IsPassEnabled("DeferredLighting")
+        : rs.IsPassEnabled("DepthNormalPrepass") && rs.IsPassEnabled("ForwardOpaque");
+    const bool ssrConsumerPlanned = passCtx.hybridReflectionResolveActive
+        ? rs.IsPassEnabled("ReflectionSourceLighting")
+        : rs.IsPassEnabled("SSRResolve") && resources.Get(passHandles.ssrResolveShader)
+            && resources.Get(passHandles.causticsPSO);
+    passCtx.ssrPassPlanned = rs.ssr.enabled && screenSpaceReady && rs.IsPassEnabled("SSR")
+        && ssrInputsPlanned && ssrConsumerPlanned && resources.Get(passHandles.ssrShader)
+        && resources.Get(viewTargets.ssrResult) && resources.Get(viewTargets.gbuffer) && resources.Get(viewTargets.hdr);
     const bool ssaoEnabled = passCtx.ssaoEnabled;
     const bool selectionOutlineEnabled = passCtx.selectionOutlineEnabled;
     const bool objectMaskEnabled = passCtx.objectMaskEnabled;
@@ -391,7 +388,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     /// @note 読むものが構成で変わるパスは vector を渡す。
     using RA = renderer::RenderGraph::ResourceAccess;
     using RU = renderer::RenderGraph::ResourceUsage;
-    /// @note 論理リソースの宣言
     /// @note 申告 (依存解析に使う «形») と実体 (名前 → ハンドル) を同じ 1 行で渡す。宣言と登録を
     /// @note 分けると、片方だけ足しても Plan が通り «申告したのに実体が無い» が静かに成立してしまう。
     /// @note 登録簿は RenderPipeline がここから組み立てる。
@@ -527,7 +523,7 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     BuildGeometryPipeline(pipeline, opaquePlan, [&]() {
         if (passCtx.rayReflectionPassActive)
             BuildRayReflectionPipeline(pipeline, viewTargets, shared, passCtx);
-    }, passCtx.hybridReflectionSsrPlanned);
+    }, passCtx.IsHybridSsrPlanned());
 
     if (extensions.setup) extensions.setup();
 
@@ -547,13 +543,9 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
 
     BuildGeometryTransparency(pipeline, opaquePlan);
     BuildWaterComposition(pipeline);
-
-    /// @note デカール用深度スナップショット
     /// @note 深度専用 RT (colorCount = 0)。カラーを持つ RT と貸し回してはいけない。
     declareViewTarget("DecalDepth", decalDepthRT, 0, true);
     pipeline.AddPass<DecalDepthCopyPass>();
-
-    /// @note Decal + Trail + Particle
     pipeline.AddPass<DecalPass>();
 
     pipeline.AddPass<MeshTrailRenderPass>();
@@ -576,8 +568,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     pipeline.AddPass<ParticleReactivePass>();
 
     if (extensions.userPasses) extensions.userPasses(UserRenderPassInjectionPoint::AfterTransparent);
-
-    /// @note Selection / Debug
     if (extensions.selectionMask) extensions.selectionMask();
 
     /// @note SceneHDR 段のユーザーシェーダー
@@ -599,8 +589,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     if (extensions.depthDebug) extensions.depthDebug();
 
     if (extensions.userPasses) extensions.userPasses(UserRenderPassInjectionPoint::BeforePostProcess);
-
-    /// @note モーションベクター
     /// @note TAA とモーションブラーは深度再投影だけでは「カメラの動き」しか復元できない。
     /// @note 不透明ジオメトリの実際の移動量を専用 RT へ描いて両者へ供給する。
     /// @note 消費側が 1 つも無いフレームは丸ごと省く (不透明をもう一度ラスタライズするため)。
@@ -610,8 +598,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
     if (velocityNeeded) {
         pipeline.AddPass<VelocityPass>();
     }
-
-    /// @note PostProcess チェーン
     /// @note MotionBlur CS — HDR 空間で計算し motionBlurResult へ書く (Composite が hdrRT の代わりに読む)。
     /// @note Bloom の前に走らせるので blur 後の輝度が Bloom に乗る。
     if (rs.motionBlur.enabled) {
@@ -685,12 +671,9 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
             ExecuteCompositePass(passCtx);
         });
     }
-
-    /// @note Post-composite チェーン
     /// @note ppCurrent は「LDR 空間の最新フレームを持つリソース名」。これを進めるだけで
     /// @note TAA/CustomPP/SelectionOutline/FXAA の任意の組み合わせが 1 本の直列チェーンになる。
     std::string ppCurrent  = hasPostCompositeEffects ? "LDR" : chainOutRes;
-    /// @note customPostProcessRT の ping-pong インデックス
     int         ppPingPong = 0;
 
     /// @note TAA — 最初に適用することで後続の CustomPP/SelectionOutline が TAA 済み映像に乗る。
@@ -728,8 +711,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         }
         pipeline.AddRawPass("TAA", std::move(taaAccesses), taaBody);
     }
-
-    /// @note Custom PostProcess チェーン
     for (uint32_t i = 0; i < static_cast<uint32_t>(customPostProcessIndices.size()); ++i) {
         const uint32_t customIndex  = customPostProcessIndices[i];
         const bool     isLastEffect = (i + 1 == static_cast<uint32_t>(customPostProcessIndices.size()))
@@ -758,8 +739,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
         ppCurrent = outRes;
         ++ppPingPong;
     }
-
-    /// @note SelectionOutline
     if (selectionOutlineEnabled) {
         const bool        isLastEffect = !rs.postProcess.fxaaEnabled;
         const std::string outRes       = isLastEffect ? chainOutRes : "Outline";
@@ -770,8 +749,6 @@ void BuildViewPipeline(RenderPipeline& pipeline, RenderPassContext& passCtx,
             [execute = extensions.selectionOutline](PassResources& res) { if (execute) execute(res); });
         ppCurrent = outRes;
     }
-
-    /// @note FXAA
     if (rs.postProcess.fxaaEnabled) {
         pipeline.AddRawPass("FXAA", { ppCurrent }, { chainOutRes }, [&]() { ExecuteFxaaPass(passCtx); });
         ppCurrent = chainOutRes;

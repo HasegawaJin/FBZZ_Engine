@@ -13,7 +13,7 @@
 #include <map>
 
 namespace fbzz::scene {
-namespace {
+namespace fiber_extraction_detail {
 struct FiberPlacementPage {
     renderer::ResourceHandle<renderer::StructuredBufferTag> buffer;
     uint32_t count = 0;
@@ -29,13 +29,13 @@ struct FiberPlacementResources {
     uint64_t seen = 0;
     bool valid = false;
 };
-void ReleaseFiberPlacement(FiberPlacementResources& state, renderer::ResourceManager& resources)
+inline void ReleaseFiberPlacement(FiberPlacementResources& state, renderer::ResourceManager& resources)
 {
     for (auto& [key,page] : state.pages) resources.Release(page.buffer);
     state.pages.clear();
 }
 /// @note 同一個体を全ビュー・影パスで共有する。未変更なら CPU 三角形・マスクを走査しない。
-void UpdateFiberPlacementResources(FiberPlacementResources& state, const renderer::Mesh& mesh,
+inline void UpdateFiberPlacementResources(FiberPlacementResources& state, const renderer::Mesh& mesh,
     FiberComponent& fiber, const math::Matrix4& world, renderer::ResourceManager& resources)
 {
     state.seen = Time::frameCount;
@@ -96,5 +96,5 @@ void UpdateFiberPlacementResources(FiberPlacementResources& state, const rendere
     state.valid = true; fiber.m_placementFailed = false;
     fiber.m_placementRootCount = state.cpu.bladeCount; fiber.m_placementChunkCount = static_cast<uint32_t>(state.pages.size());
 }
-} /// @note namespace
+} /// @note namespace fiber_extraction_detail
 } /// @note namespace fbzz::scene

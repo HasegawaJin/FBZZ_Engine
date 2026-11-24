@@ -3,28 +3,17 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-14
 
-/// @note スキニングは各マテリアルの VS 内で毎回計算されていた。ここで 1 回だけ変形し、静的メッシュと
-/// @note 同じ頂点レイアウト (`renderer::Vertex`) へ書き出すことで後続パスは「ただの静的メッシュ」として
-/// @note 扱える。次の場合は従来の VS スキニングへフォールバックする: ポーズまたは入力未解決、
-/// @note バックエンドが GPU 書き込み頂点バッファ非対応。
+/// @note 静的頂点と同じレイアウトを共有し、入力や GPU 書き込みが未対応なら頂点シェーダーへ戻す。
 #include "GeometryPasses.hpp"
 #include "BoneBakeSkinning.hpp"
 #include "SkinningSignatureScratch.hpp"
 #include "SkinningOutputDemand.hpp"
+#include "SkinningPreparedOutput.hpp"
+#include "SkinningComputeCache.hpp"
 #include <Graphics/Renderer/SkinningPolicy.hpp>
 #include <Graphics/Renderer/BufferReadScope.hpp>
-#include <Engine/Scene/ScriptComponent.hpp>
 #include <Engine/Scene/BoneBakeRuntime.hpp>
-#include <Engine/Scene/Managed/ManagedScriptRuntime.hpp>
-#include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
-#include <Engine/Scene/Components/LightProbeVolumeComponent.hpp>
-#include <Engine/Scene/Components/InstancedMeshComponent.hpp>
-#include <Engine/Scene/Components/FiberComponent.hpp>
-#include <Graphics/Renderer/RenderVisibility.hpp>
 #include <Graphics/Effects/PreparedSkinning.hpp>
-#include <Graphics/Passes/Geometry/ComputedSkinningDemand.hpp>
-#include <Core/ExternalCallbackBoundary.hpp>
-#include <cmath>
 #include "../../AnimationWorkTrace.hpp"
 #include <Engine/Scene/Systems/RenderSceneExtractor.hpp>
 #include "Engine/Core/Time.hpp"
@@ -34,7 +23,6 @@
 #include "Engine/Renderer/ComputeCall.hpp"
 #include "Engine/Renderer/IBuffer.hpp"
 #include <Graphics/Renderer/IStructuredBuffer.hpp>
-#include "Engine/Renderer/DynamicBufferPool.hpp"
 #include "Engine/Renderer/ResourceManager.hpp"
 #include <Graphics/Pipeline/RayTracingPipeline.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
@@ -48,268 +36,22 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
-#include <functional>
 #include <limits>
 #include <memory>
 #include <span>
 #include <type_traits>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace fbzz::scene {
-
-namespace skinning_demand_detail {
-namespace {
-thread_local const RenderPassContext* s_demandContext=nullptr;
-thread_local uint32_t s_demandDepth=0;
-bool Finite(const math::Vector3& value)
-{
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-}
-bool Finite(const math::Matrix4& value)
-{
-    for(const auto& row:value.m)for(float element:row)if(!std::isfinite(element))return false;
-    return true;
-}
-bool SafeWorldTransform(const Transform& transform)
-{
-    if(!Finite(transform.worldPosition) || !Finite(transform.worldScale))return false;
-    const auto& rotation=transform.worldRotation;
-    if(!std::isfinite(rotation.x) || !std::isfinite(rotation.y)
-        || !std::isfinite(rotation.z) || !std::isfinite(rotation.w))return false;
-    const float squared=rotation.x*rotation.x+rotation.y*rotation.y+rotation.z*rotation.z+rotation.w*rotation.w;
-    /// @note Matrix4::TRS normalizes this quaternion. Reject before that call can report its zero-length contract.
-    return std::isfinite(squared) && squared>math::EPSILON*math::EPSILON;
-}
-bool StoredPoseBounds(GameObject& object,const SkinnedMeshRenderer& skin,WorldBounds& bounds)
-{
-    const AnimatorComponent* animator=nullptr;
-    GameObject* owner=nullptr;
-    for(GameObject* current=&object;current;current=current->GetParent()) {
-        if(const auto* candidate=current->GetComponent<AnimatorComponent>()) { animator=candidate;owner=current;break; }
-    }
-    /// @note Bind-pose fallback bounds are not evidence of a current CPU pose, even in this provisional diagnostic.
-    if(!animator || !owner || !Finite(animator->skinnedBoundsCenter)
-        || !std::isfinite(animator->skinnedBoundsRadius) || animator->skinnedBoundsRadius<=0
-        || !SafeWorldTransform(owner->transform))return false;
-    for(size_t slot=0;slot<skin.SubmeshCount();++slot) {
-        const auto* mesh=skin.SubmeshMesh(slot);
-        if(!mesh || !std::isfinite(mesh->boundsRadius))return false;
-    }
-    if(!Finite(owner->transform.GetWorldMatrix()))return false;
-    return ComputeSkinnedWorldBounds(object,skin,bounds) && Finite(bounds.center)
-        && std::isfinite(bounds.radius) && bounds.radius>0;
-}
-uint32_t ObserveMorphContainersAndSelection(const SkinnedMeshRenderer& skin)
-{
-    uint32_t flags=0;
-    if(!skin.morphWeights.empty())flags|=InputBit(InputFlag::WEIGHT_MAP_PRESENT);
-    if(!skin.appliedMorphWeights.empty())flags|=InputBit(InputFlag::APPLIED_MAP_PRESENT);
-    if(!skin.morphVertexBuffers.empty())flags|=InputBit(InputFlag::BUFFER_VECTOR_PRESENT);
-    const auto weights=[&](const auto& map,InputFlag nonzero,InputFlag nonfinite) {
-        for(const auto& entry:map) {
-            if(!std::isfinite(entry.second))flags|=InputBit(nonfinite);
-            else if(entry.second!=0.0f)flags|=InputBit(nonzero);
-        }
-    };
-    weights(skin.morphWeights,InputFlag::WEIGHT_FINITE_NONZERO,InputFlag::WEIGHT_NONFINITE);
-    weights(skin.appliedMorphWeights,InputFlag::APPLIED_WEIGHT_FINITE_NONZERO,InputFlag::APPLIED_WEIGHT_NONFINITE);
-    if(skin.morphWeights!=skin.appliedMorphWeights)flags|=InputBit(InputFlag::REQUESTED_APPLIED_DIFFER);
-    bool bitwiseDiffer=skin.morphWeights.size()!=skin.appliedMorphWeights.size();
-    if(!bitwiseDiffer)for(const auto& entry:skin.morphWeights) {
-        const auto found=skin.appliedMorphWeights.find(entry.first);
-        if(found==skin.appliedMorphWeights.end() || std::bit_cast<uint32_t>(entry.second)!=std::bit_cast<uint32_t>(found->second)) {
-            bitwiseDiffer=true;break;
-        }
-    }
-    if(bitwiseDiffer)flags|=InputBit(InputFlag::REQUESTED_APPLIED_BITWISE_DIFFER);
-    for(const auto& handle:skin.morphVertexBuffers)
-        if(handle.IsValid()) {flags|=InputBit(InputFlag::LOGICAL_BUFFER_HANDLE_PRESENT);break;}
-    for(size_t slot=0;slot<skin.SubmeshCount();++slot) {
-        const auto* mesh=skin.SubmeshMesh(slot);
-        if(!mesh)continue;
-        const uint32_t index=skin.SubmeshAt(slot);
-        if(index<skin.morphVertexBuffers.size() && skin.morphVertexBuffers[index].IsValid()) {
-            flags|=InputBit(InputFlag::SELECTED_MORPH_PATH);
-            if(skin.morphVertexBuffers[index]!=mesh->vertexBuffer)flags|=InputBit(InputFlag::SELECTED_SOURCE_DIFFERS_FROM_BASE);
-        }
-        if(!mesh->morphTargets.empty())flags|=InputBit(InputFlag::SELECTED_TARGET_PRESENT);
-        for(const auto& target:mesh->morphTargets) {
-            const auto classify=[&](const auto& map,InputFlag nonzero,InputFlag nonfinite) {
-                const auto found=map.find(target.name);
-                if(found==map.end())return;
-                if(!std::isfinite(found->second))flags|=InputBit(nonfinite);
-                else if(found->second!=0.0f)flags|=InputBit(nonzero);
-            };
-            classify(skin.morphWeights,InputFlag::SELECTED_TARGET_REQUESTED_NONZERO,InputFlag::SELECTED_TARGET_REQUESTED_NONFINITE);
-            classify(skin.appliedMorphWeights,InputFlag::SELECTED_TARGET_APPLIED_NONZERO,InputFlag::SELECTED_TARGET_APPLIED_NONFINITE);
-        }
-    }
-    constexpr uint32_t maps=InputBit(InputFlag::WEIGHT_MAP_PRESENT)|InputBit(InputFlag::APPLIED_MAP_PRESENT);
-    constexpr uint32_t nonzeroOrNonfinite=InputBit(InputFlag::WEIGHT_FINITE_NONZERO)|InputBit(InputFlag::WEIGHT_NONFINITE)
-        |InputBit(InputFlag::APPLIED_WEIGHT_FINITE_NONZERO)|InputBit(InputFlag::APPLIED_WEIGHT_NONFINITE);
-    if((flags&maps)!=0 && (flags&nonzeroOrNonfinite)==0)flags|=InputBit(InputFlag::MAPS_ALL_FINITE_ZERO);
-    if((flags&maps)==0 && (flags&InputBit(InputFlag::BUFFER_VECTOR_PRESENT))!=0
-        && (flags&InputBit(InputFlag::LOGICAL_BUFFER_HANDLE_PRESENT))==0)flags|=InputBit(InputFlag::VECTOR_PRESENCE_ONLY);
-    return flags;
-}
-
-bool FiniteCullingView(const RenderPassContext& context)
-{
-    if(!Finite(context.camera.m_position) || !Finite(context.cullCameraForward)
-        || !std::isfinite(context.cullingBoundsPadding) || !std::isfinite(context.cullMaxDistance)
-        || !std::isfinite(context.cullProjScaleY) || !std::isfinite(context.smallObjectScreenHeight))return false;
-    if(context.hasLayerCullDistances)
-        for(float distance:context.cullLayerDistances)if(!std::isfinite(distance))return false;
-    if(context.frustumCullingEnabled && context.cameraFrustum)
-        for(int index=0;index<math::Frustum::PLANE_COUNT;++index) {
-            const auto plane=context.cameraFrustum->GetPlane(index);
-            if(!Finite(plane.normal) || !std::isfinite(plane.distance))return false;
-        }
-    return true;
-}
-}
-OutputDemandScope::OutputDemandScope(const RenderPassContext& context):m_previous(s_demandContext)
-{
-    s_demandContext=&context;++s_demandDepth;
-}
-OutputDemandScope::~OutputDemandScope()
-{
-    s_demandContext=m_previous;--s_demandDepth;
-}
-bool IsOutputDemandScoped(const RenderPassContext& context)
-{
-    return s_demandContext==&context && s_demandDepth==1;
-}
-SceneDemandSnapshot ObserveSceneDemand(const RenderPassContext& context)
-{
-    SceneDemandSnapshot result;
-    auto& scene=context.scene;
-    result.sceneObjects=scene.GameObjectCount();
-    result.animatorComponents=scene.GetEntities<AnimatorComponent>().size();
-    result.skinnedRendererComponents=scene.GetEntities<SkinnedMeshRenderer>().size();
-    result.scopeActive=IsOutputDemandScoped(context);
-    if(!result.scopeActive)result.globalReasons|=Bit(Reason::UNSCOPED_OR_REENTRY);
-    result.shadowRequested=context.settings.shadowEnabled
-        && (context.shadowStrength>0 || context.settings.volumetricLight.enabled || context.punctualShadowViewCount>0);
-    result.rayRequested=context.experimentalRayTracingEnabled
-        && (context.settings.modeRequest.mode!=renderer::RenderMode::RASTER || renderer::IsRayDebugView(context.settings.viewMode));
-    if(result.rayRequested)result.globalReasons|=Bit(Reason::RAY);
-    if(context.objectMaskEnabled || !context.settings.objectMaskRequests.empty())result.globalReasons|=Bit(Reason::OBJECT_MASK);
-    for(EntityID id:scene.GetEntities<ReflectionProbeComponent>()) {
-        const auto* object=scene.GetGameObject(id);const auto* probe=scene.GetComponent<ReflectionProbeComponent>(id);
-        if(object && object->activeInHierarchy() && probe && probe->enabled) {
-            ++result.activeReflectionProbes;
-            if(probe->captureMode==ReflectionProbeCaptureMode::DynamicScene)++result.activeReflectionSceneProbes;
-        }
-    }
-    const bool canBake=context.handles.lightProbeProjectCS.IsValid() && context.handles.lightProbeProjectCB.IsValid()
-        && context.handles.lightProbeCaptureFrameCB.IsValid() && context.handles.lightProbeCaptureAdvancedCB.IsValid();
-    for(EntityID id:scene.GetEntities<LightProbeVolumeComponent>()) {
-        const auto* object=scene.GetGameObject(id);const auto* volume=scene.GetComponent<LightProbeVolumeComponent>(id);
-        if(object && object->activeInHierarchy() && volume && volume->enabled) {
-            ++result.activeLightProbeVolumes;
-            if(canBake)++result.activeLightProbeBakeConsumers;
-        }
-    }
-    if(result.activeReflectionSceneProbes || result.activeLightProbeBakeConsumers)result.globalReasons|=Bit(Reason::PROBE_GI);
-    for(EntityID id:scene.GetEntities<InstancedMeshComponent>()) {
-        const auto* object=scene.GetGameObject(id);const auto* instances=scene.GetComponent<InstancedMeshComponent>(id);
-        if(object && object->activeInHierarchy() && instances && instances->m_enabled)++result.activeInstancedComponents;
-    }
-    /// @note Scene presence is separate from demand: static instance extraction does not resolve SMR-owned deformed buffers.
-    if(!scene.GetUserRenderPasses().empty())result.globalReasons|=Bit(Reason::NATIVE_SCRIPT_OR_PASS);
-    for(EntityID id:scene.GetEntities<ScriptComponent>()) {
-        const auto* object=scene.GetGameObject(id);const auto* scripts=scene.GetComponent<ScriptComponent>(id);
-        if(!object || !object->activeInHierarchy() || !scripts)continue;
-        for(const auto& entry:scripts->scripts) {
-            if(!entry.script || !entry.script->enabled)continue;
-            if(ManagedScriptRuntime::Instance().FindAdapter(entry.script.get()))++result.activeManagedScriptEntries;
-            else ++result.activeNativeScriptEntries;
-        }
-    }
-    if(result.activeNativeScriptEntries)result.globalReasons|=Bit(Reason::NATIVE_SCRIPT_OR_PASS);
-    return result;
-}
-Observation ObserveRendererDemand(const RenderPassContext& context,GameObject& object,
-    const SkinnedMeshRenderer& skin,const SceneDemandSnapshot& scene)
-{
-    Observation result;result.reasons=scene.globalReasons;
-    if(scene.shadowRequested && skin.castShadows)result.reasons|=Bit(Reason::SHADOW);
-    if(const auto* fiber=object.GetComponent<FiberComponent>();fiber && fiber->m_enabled)
-        result.reasons|=Bit(Reason::FIBER_OR_PROCEDURAL);
-    result.inputFlags=ObserveMorphContainersAndSelection(skin);
-    if(result.HasInput(InputFlag::SELECTED_MORPH_PATH))result.reasons|=Bit(Reason::MORPH_OR_BAKE);
-    for(GameObject* current=&object;current;current=current->GetParent()) {
-        if(const auto* animator=current->GetComponent<AnimatorComponent>()) {
-            if(animator->boneBake.active) {
-                result.reasons|=Bit(Reason::MORPH_OR_BAKE);
-                result.inputFlags|=InputBit(InputFlag::BONE_BAKE_ACTIVE);
-                if(animator->boneBake.source)result.inputFlags|=InputBit(InputFlag::BONE_BAKE_WITH_SOURCE);
-                if(animator->boneBakeMode>=static_cast<int>(BoneBakeMode::GPU_SHARED))result.inputFlags|=InputBit(InputFlag::BONE_BAKE_GPU_MODE);
-            }
-            break;
-        }
-    }
-    constexpr uint32_t containers=InputBit(InputFlag::WEIGHT_MAP_PRESENT)|InputBit(InputFlag::APPLIED_MAP_PRESENT)|InputBit(InputFlag::BUFFER_VECTOR_PRESENT);
-    if((result.inputFlags&containers)!=0 && !result.HasInput(InputFlag::SELECTED_MORPH_PATH) && !result.HasInput(InputFlag::BONE_BAKE_ACTIVE)) {
-        /// @note Presence without a selected source is an unproved input state, not an actual morph consumer.
-        result.inputFlags|=InputBit(InputFlag::CONTAINERS_WITHOUT_SELECTED_MORPH_OR_BAKE);
-        result.reasons|=Bit(Reason::INPUT_PROOF_PENDING);
-    }
-    constexpr uint32_t nonColorReasons=Bit(Reason::SHADOW)|Bit(Reason::RAY)|Bit(Reason::OBJECT_MASK)|Bit(Reason::PROBE_GI)
-        |Bit(Reason::NATIVE_SCRIPT_OR_PASS)|Bit(Reason::FIBER_OR_PROCEDURAL)|Bit(Reason::MORPH_OR_BAKE)|Bit(Reason::UNSCOPED_OR_REENTRY);
-    result.conservativeNonColorRequired=(result.reasons&nonColorReasons)!=0;
-    const uint32_t layer=static_cast<uint32_t>(object.layer);
-    bool color=skin.lodVisible && layer<32 && (context.cullingMask&(uint32_t{1}<<layer))!=0;
-    const auto* materials=object.GetComponent<MaterialComponent>();
-    bool visibleSlot=false;
-    for(size_t slot=0;slot<skin.SubmeshCount();++slot)
-        if(skin.SubmeshMesh(slot) && (!materials || (materials->enabled && materials->SlotAt(slot).visible))) {
-            visibleSlot=true;break;
-        }
-    color &= visibleSlot;
-    if(color) {
-        WorldBounds bounds{};
-        if(!FiniteCullingView(context) || !StoredPoseBounds(object,skin,bounds))result.reasons|=Bit(Reason::UNPROVEN_BOUNDS);
-        else {
-            bounds.radius+=(std::max)(context.cullingBoundsPadding,0.0f);
-            if(!std::isfinite(bounds.radius))result.reasons|=Bit(Reason::UNPROVEN_BOUNDS);
-            else {
-                const float layerDistance=context.cullLayerDistances[layer];
-                const float distance=context.hasLayerCullDistances && layerDistance>0 ? layerDistance:context.cullMaxDistance;
-                const renderer::RenderCullingView view{context.camera.m_position,context.cullCameraForward,
-                    context.frustumCullingEnabled?context.cameraFrustum:nullptr,context.cullProjScaleY,
-                    context.smallObjectScreenHeight,context.cullDistanceSpherical,context.cullOrthographic};
-                color=renderer::EvaluateVisibility(view,{bounds.center,bounds.radius,distance})==renderer::VisibilityResult::VISIBLE;
-            }
-        }
-    }
-    if(color)result.reasons|=Bit(Reason::COLOR);
-    else {
-        result.provisionalColorExcluded=true;
-        /// @note Count-only: neither current-pose nor coherent native-input proof has been performed.
-        result.reasons|=Bit(Reason::UNPROVEN_BOUNDS)|Bit(Reason::INPUT_PROOF_PENDING)|Bit(Reason::MATERIAL_PROOF_PENDING);
-    }
-    if(skin.gpuSkinningContent.empty() || skin.skinnedBufferModel!=skin.model)
-        result.reasons|=Bit(Reason::INITIAL_OR_FAILED);
-    if(!scene.scopeActive)result.reasons|=Bit(Reason::UNSCOPED_OR_REENTRY);
-    return result;
-}
-}
-
-
 
 namespace {
 
 /// @note CS のスレッドグループ幅。SkinningCompute.cs.hlsl の SKINNING_GROUP_SIZE と一致させること。
 constexpr uint32_t kSkinningGroupSize = 64u;
 
-/// @note StructuredBuffer は密詰め (cbuffer のような 16 バイト整列パディングが入らない) なので、
-/// @note HLSL 側の struct と C++ 側でオフセットが 1 対 1 に対応する。
-/// @note ここがずれると頂点が明後日の方向へ飛ぶ形で壊れるため、サイズで固定しておく。
+/// @note StructuredBuffer は定数バッファのように整列しないため、HLSL の頂点レイアウトとサイズを合わせる。
 static_assert(sizeof(renderer::SkinnedVertex) == 76,
     "SkinSrcVertex in SkinningCompute.cs.hlsl must match renderer::SkinnedVertex (76 bytes)");
 static_assert(sizeof(renderer::Vertex) == 60,
@@ -322,92 +64,6 @@ struct SkinningCB {
     uint32_t _pad1 = 0;
     uint32_t _pad2 = 0;
 };
-
-struct EntityIDHash {
-    size_t operator()(const EntityID& id) const noexcept
-    {
-        size_t result = std::hash<uint32_t>{}(id.index);
-        result ^= std::hash<uint32_t>{}(id.generation) + 0x9e3779b9u +
-                  (result << 6u) + (result >> 2u);
-        return result;
-    }
-};
-
-struct SourceVertexCacheKey {
-    const renderer::SkinnedVertex* cpuData = nullptr;
-    uint32_t vertexCount = 0;
-    renderer::ResourceHandle<renderer::BufferTag> vertexBuffer;
-    uint64_t contentVersion = 0;
-
-    bool operator==(const SourceVertexCacheKey&) const = default;
-};
-
-struct SourceVertexCacheKeyHash {
-    size_t operator()(const SourceVertexCacheKey& key) const noexcept
-    {
-        size_t result = std::hash<const renderer::SkinnedVertex*>{}(key.cpuData);
-        result ^= static_cast<size_t>(key.vertexCount) + 0x9e3779b9u +
-                  (result << 6u) + (result >> 2u);
-        result ^= static_cast<size_t>(key.vertexBuffer.id) + 0x9e3779b9u +
-                  (result << 6u) + (result >> 2u);
-        result ^= static_cast<size_t>(key.vertexBuffer.gen) + 0x9e3779b9u +
-                  (result << 6u) + (result >> 2u);
-        result ^= std::hash<uint64_t>{}(key.contentVersion) + 0x9e3779b9u + (result << 6u) + (result >> 2u);
-        return result;
-    }
-};
-
-/// @note 入力頂点の StructuredBuffer は Mesh 単位で共有する (ポーズに依存しない生データのため)。同じ
-/// @note モデルを何体出しても入力は 1 本で足りる。Mesh の破棄・再生成でアドレスが再利用されても古い
-/// @note 頂点バッファを掴まないよう、CPU 配列と元 GPU バッファの世代を値としてキーにする。
-struct SourceVertexCacheEntry {
-    renderer::ResourceHandle<renderer::StructuredBufferTag> handle;
-    uint32_t maxBoneIndex = 0;
-};
-std::unordered_map<SourceVertexCacheKey,
-                   SourceVertexCacheEntry,
-                   SourceVertexCacheKeyHash> g_srcVertexCache;
-
-/// @note ボーンパレットはポーズが毎フレーム変わるので、Animator ごとに 1 本持たずフレームごとに借りる。
-/// @note DX12 の読み取り専用 StructuredBuffer は Upload ヒープへの直 memcpy のため、1 本を使い回すと
-/// @note GPU がまだ実行中の前フレームのスキニングが今フレームのポーズを読んでしまう (詳細は
-/// @note `DynamicBufferPool.hpp`)。
-renderer::DynamicStructuredBufferPool g_bonePalettePool;
-
-/// @note このフレームに借りたパレット。Animator の下に Renderer が何本あっても転送は 1 回で済ませる。
-/// @note キーは EntityID: ComponentArray::Remove は末尾要素を swap するため AnimatorComponent* は
-/// @note 安定した識別子ではなく、EntityID なら generation を含むので削除後の再利用も区別できる。
-std::unordered_map<EntityID,
-                   renderer::ResourceHandle<renderer::StructuredBufferTag>,
-                   EntityIDHash> g_framePalettes;
-
-/// @note 使用集合はビュー単位ではなくエンジンフレーム全体で累積する。Scene View にだけ見えるメッシュを
-/// @note Game View 側の判定末尾で「未使用」と誤判定すると、次フレームに immutable 入力 SRV を
-/// @note 再アップロードすることになる。
-std::unordered_set<SourceVertexCacheKey, SourceVertexCacheKeyHash> g_usedSourceKeys;
-uint64_t g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
-uint64_t g_cacheOwner = 0;
-uint64_t g_cacheResetVersion = 0;
-struct FrameSkinningStats { uint32_t dispatches = 0, uploads = 0; uint64_t vertices = 0, bytes = 0; };
-FrameSkinningStats g_frameStats;
-
-void ReleaseSourceSkinningCache()
-{
-    if (auto* resources = renderer::ResourceManager::FindOwner(g_cacheOwner);
-        resources && resources->GetResetVersion() == g_cacheResetVersion) {
-        for (const auto& [key, entry] : g_srcVertexCache)
-            resources->Release(entry.handle);
-        renderer::ReleaseSkinningRequestCaches(*resources);
-    }
-    g_bonePalettePool.ReleaseAll();
-    g_srcVertexCache.clear();
-    g_framePalettes.clear();
-    g_usedSourceKeys.clear();
-    g_cacheUsageFrame = (std::numeric_limits<uint64_t>::max)();
-    g_cacheOwner = 0;
-    g_cacheResetVersion = 0;
-    g_frameStats = {};
-}
 
 struct RendererWorklistStorage {
     std::vector<EntityID> entities;
@@ -426,8 +82,8 @@ RendererWorklistPool& WorklistPool()
     return pool;
 }
 
-/// @note Component packing order differs from Scene ownership order after late registration or removal.
-/// @note Nested passes borrow separate ID storage; release retains capacity without retaining Scene references.
+/// @note 後から登録・削除したコンポーネントは、Scene の所有順と格納順が異なることがある。
+/// @note 入れ子のパスは別々の ID バッファを借り、返却後は容量だけを保持する。
 class RendererWorklistLease {
 public:
     explicit RendererWorklistLease(Scene& scene)
@@ -457,19 +113,7 @@ private:
     RendererWorklistStorage* m_storage = nullptr;
 };
 
-/// @note Each nested actor borrow owns stable numeric storage even if the pool's owner-pointer vector reallocates.
-struct SignatureScratchStorage {std::vector<uint32_t> words;};
-struct SignatureScratchPool {
-    std::vector<std::unique_ptr<SignatureScratchStorage>> entries;
-    size_t depth=0;
-};
-SignatureScratchPool& SignaturePool()
-{
-    thread_local SignatureScratchPool pool;
-    return pool;
-}
-
-/// @note Sample current-thread retained capacity at pass end; row capture follows this guard and the request-counter TLS guard.
+/// @note パス終了時に現在のスレッドの保持容量を計測し、容量と要求件数の計測を締めてから行データを公開する。
 class SignatureScratchPassGauge {
 public:
     explicit SignatureScratchPassGauge(AnimationSkinningCpuRow* trace):m_trace(trace){}
@@ -488,7 +132,7 @@ private:
     AnimationSkinningCpuRow* m_trace;
 };
 
-/// @note Both paths preserve exact row-major float bits; tracing observes only actual reserve and push growth.
+/// @note 両経路は行優先の浮動小数点ビット列を保持し、計測には予約または追加による実際の容量増加だけを含める。
 template<bool TRACE_ENABLED>
 class SignatureWordWriter {
 public:
@@ -556,7 +200,7 @@ private:
 
 enum class DirectSignatureResult { UNAVAILABLE, DIFFERENT, EQUAL_UNREADY, EQUAL_READY };
 
-/// @note Compare the same values used by the ordinary non-baked builder; no native lookup, retained state or publication is introduced.
+/// @note 通常の非ベイク経路と同じ入力値を照合し、GPU 資源の照会・状態の保持・結果の公開は行わない。
 DirectSignatureResult CompareCurrentSignature(const SkinnedMeshRenderer& skin,
     std::span<const math::Matrix4> matrices, std::span<const renderer::BufferResourceState> states, bool allowPending = false)
 {
@@ -592,275 +236,6 @@ DirectSignatureResult CompareCurrentSignature(const SkinnedMeshRenderer& skin,
     return ready ? DirectSignatureResult::EQUAL_READY : DirectSignatureResult::EQUAL_UNREADY;
 }
 
-/// @note BeginSkinningCacheFrame — 前フレームの全ビューで未使用だったキャッシュだけを回収する。
-void BeginSkinningCacheFrame(renderer::ResourceManager& resources, uint64_t frameStamp, AnimationSkinningCpuRow* trace)
-{
-    if (g_cacheOwner != resources.GetInstanceId() || g_cacheResetVersion != resources.GetResetVersion()) {
-        ReleaseSourceSkinningCache();
-        g_cacheOwner = resources.GetInstanceId();
-        g_cacheResetVersion = resources.GetResetVersion();
-    }
-    if (g_cacheUsageFrame == frameStamp) return;
-
-    if (g_cacheUsageFrame != (std::numeric_limits<uint64_t>::max)()) {
-        for (auto it = g_srcVertexCache.begin(); it != g_srcVertexCache.end();) {
-            if (g_usedSourceKeys.contains(it->first)) {
-                ++it;
-                continue;
-            }
-            if (it->second.handle.IsValid()) {
-                if(trace)++trace->sourceReleaseCalls;
-                resources.Release(it->second.handle);
-            }
-            it = g_srcVertexCache.erase(it);
-        }
-    }
-
-    g_usedSourceKeys.clear();
-    g_framePalettes.clear();
-    g_frameStats = {};
-    g_cacheUsageFrame = frameStamp;
-}
-
-/// @note EnsureSourceVertexBuffer — スキニング入力の StructuredBuffer を Mesh 単位で用意する。
-renderer::ResourceHandle<renderer::StructuredBufferTag> EnsureSourceVertexBuffer(
-    renderer::ResourceManager& resources, const renderer::Mesh& mesh,
-    renderer::ResourceHandle<renderer::BufferTag> source, size_t boneCount, AnimationSkinningCpuRow* trace,
-    renderer::buffer_state_detail::BufferStateReadScope* bufferReads = nullptr, uint64_t* capturedVersion = nullptr)
-{
-    /// @note cpuSkinnedVertices はインポート時に保持される。空なら GPU スキニングは行えない。
-    const auto* sourceBuffer = bufferReads ? bufferReads->Get(source) : resources.Get(source);
-    if (mesh.cpuSkinnedVertices.empty() || mesh.cpuSkinnedVertices.size() > UINT32_MAX
-        || !sourceBuffer || sourceBuffer->GetContentVersion() == 0
-        || sourceBuffer->GetStride() != sizeof(renderer::SkinnedVertex)
-        || sourceBuffer->GetSize() < mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex))
-        return {};
-
-    const SourceVertexCacheKey key{
-        mesh.cpuSkinnedVertices.data(),
-        static_cast<uint32_t>(mesh.cpuSkinnedVertices.size()),
-        source, sourceBuffer->GetContentVersion()};
-    if (capturedVersion) *capturedVersion = key.contentVersion;
-    g_usedSourceKeys.insert(key);
-    const auto it = g_srcVertexCache.find(key);
-    if (it != g_srcVertexCache.end()) {
-        if (resources.Get(it->second.handle)) {
-            if(trace)++trace->sourceCacheHits;
-            return it->second.maxBoneIndex < boneCount ? it->second.handle : renderer::ResourceHandle<renderer::StructuredBufferTag>{};
-        }
-        g_srcVertexCache.erase(it);
-    }
-
-    if(trace)++trace->sourceCacheMisses;
-    /// @note 元 mesh と同じ handle でも内容更新を持つため、authoritative な版付き入力を読む。
-    std::vector<renderer::SkinnedVertex> currentVertices(mesh.cpuSkinnedVertices.size());
-    if (!sourceBuffer->CopyData(0, currentVertices.size() * sizeof(renderer::SkinnedVertex), currentVertices.data())) return {};
-    if(trace)trace->sourceCopyBytes+=currentVertices.size()*sizeof(renderer::SkinnedVertex);
-    uint32_t maxBoneIndex = 0;
-    for (const auto& vertex : currentVertices)
-        for (uint32_t index : vertex.boneIndices) maxBoneIndex = (std::max)(maxBoneIndex, index);
-    /// @note Packed palettes must not read into the next character, including zero-weight source indices.
-    if (maxBoneIndex >= boneCount) return {};
-    if(trace)++trace->sourceCreateAttempts;
-    const auto handle = resources.CreateGpuLocalStructuredBuffer(
-        currentVertices.data(),
-        static_cast<uint32_t>(mesh.cpuSkinnedVertices.size()),
-        static_cast<uint32_t>(sizeof(renderer::SkinnedVertex)));
-
-    if(trace && handle.IsValid())++trace->sourceCreateSuccesses;
-    g_srcVertexCache[key] = {handle, maxBoneIndex};
-    return handle;
-}
-
-/// @brief AcquireBonePalette — アニメーターのボーンパレットを今フレーム用に借りて転送する。
-/// @note cbuffer ではなく StructuredBuffer を使う: 頂点あたり 4 回の動的インデックスアクセスが
-/// @note 走り、128 要素の cbuffer 配列への動的アクセスは定数キャッシュの高速経路を外れやすい。
-renderer::ResourceHandle<renderer::StructuredBufferTag> AcquireBonePalette(
-    renderer::ResourceManager& resources,
-    EntityID animatorEntity,
-    const std::vector<math::Matrix4>& matrices, AnimationSkinningCpuRow* trace)
-{
-    if (matrices.empty()) return {};
-    if (const auto it = g_framePalettes.find(animatorEntity); it != g_framePalettes.end())
-        return it->second;
-
-    const size_t count  = matrices.size();
-    const auto   handle = g_bonePalettePool.Acquire(
-        resources, count, static_cast<uint32_t>(sizeof(math::Matrix4)));
-    if (handle.IsValid()) {
-        resources.Update(handle, matrices.data(), count * sizeof(math::Matrix4));
-        if(trace){++trace->requests.bonePaletteUploadCalls;trace->requests.bonePaletteUploadBytes+=count*sizeof(math::Matrix4);}
-    }
-    g_framePalettes[animatorEntity] = handle;
-    return handle;
-}
-
-} /// @note namespace
-
-namespace skinning_demand_detail {
-struct GpuOutputDemandState {
-    struct Publication {
-        EntityID owner = EntityID::INVALID;
-        uint64_t lifetime = 0, generation = 0;
-        const asset::Model* model = nullptr;
-        std::shared_ptr<renderer::PreparedSkinningTicket> ticket;
-        uint64_t vertices = 0;
-        uint32_t dispatches = 0;
-        bool submitted = false;
-    };
-    explicit GpuOutputDemandState(RenderPassContext& value) : context(value), observer(&BeforeCallback, this) {}
-    static bool BeforeCallback(void* value) { return static_cast<GpuOutputDemandState*>(value)->Complete(); }
-    bool SubmitTicket(const std::shared_ptr<renderer::PreparedSkinningTicket>& ticket)
-    {
-        const auto writes = ticket->Writes();
-        const bool previouslyRecorded = !writes.empty() && writes.front().recorded;
-        const bool submitted = renderer::SubmitPreparedSkinning(ticket);
-        if (submitted && !previouslyRecorded) {
-            context.statsSkinningDemandSubmitted += writes.size();
-            context.statsSkinningDemandSkipped -= (std::min)(context.statsSkinningDemandSkipped, static_cast<uint64_t>(writes.size()));
-            uint64_t vertices = 0;
-            for (const auto& write : writes) vertices += write.vertexCount;
-            g_frameStats.dispatches += static_cast<uint32_t>(writes.size()); g_frameStats.vertices += vertices;
-            context.statsSkinningDispatchCount += static_cast<uint32_t>(writes.size());
-            context.statsSkinningVertexCount += vertices;
-        }
-        return submitted;
-    }
-    bool Complete()
-    {
-        if (!committed) {
-            cancelled = true;
-            if (publications.empty()) return true;
-        }
-        bool success = true;
-        std::array<const renderer::PreparedSkinningTicket*, 16> submittedTickets{};
-        std::array<bool, 16> submittedResults{};
-        size_t submittedCount = 0;
-        /// @note 全 native 結果を先に確定する。以後の所有値 COW は Logger/pump/Scene 再抽出を呼ばない。
-        for (auto& publication : publications) {
-            size_t index = 0;
-            while (index < submittedCount && submittedTickets[index] != publication.ticket.get()) ++index;
-            if (index < submittedCount) publication.submitted = submittedResults[index];
-            else {
-                publication.submitted = SubmitTicket(publication.ticket);
-                if (submittedCount < submittedTickets.size()) {
-                    submittedTickets[submittedCount] = publication.ticket.get();
-                    submittedResults[submittedCount++] = publication.submitted;
-                }
-            }
-            success = publication.submitted && success;
-        }
-        for (const auto& publication : publications) {
-            auto* component = context.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
-            if (!component || context.scene.GetRenderSceneGeneration() != publication.generation
-                || context.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) != publication.lifetime
-                || component->model != publication.model || component->preparedSkinning != publication.ticket) continue;
-            bool written = publication.submitted && publication.ticket->ResourceInstance() == context.resources.GetInstanceId()
-                && publication.ticket->ResourceEpoch() == context.resources.GetResetVersion();
-            const auto writes = publication.ticket->Writes();
-            for (size_t slot = 0; slot < component->SubmeshCount(); ++slot) {
-                const uint32_t submesh = component->SubmeshAt(slot);
-                const uint32_t row = submesh < component->preparedSkinningRows.size() ? component->preparedSkinningRows[submesh] : UINT32_MAX;
-                written = written && row < writes.size() && writes[row].recorded
-                    && writes[row].resultingVersion > writes[row].previousVersion && publication.ticket->IsWriteCurrent(row);
-            }
-            component->gpuSkinnedThisFrame = written;
-            component->gpuSkinningFrame = written ? Time::frameCount : (std::numeric_limits<uint64_t>::max)();
-            component->gpuSkinningVertexCount = written ? publication.vertices : 0;
-            component->gpuSkinningDispatchCount = written ? publication.dispatches : 0;
-            if (!written) component->gpuSkinningContent.clear();
-        }
-        if (auto previous = CompletePreparedSkinningSnapshot(context)) retiredSnapshots.push_back(std::move(previous));
-        return success;
-    }
-    RenderPassContext& context;
-    std::vector<Publication> publications;
-    std::vector<std::shared_ptr<const renderer::RenderScene>> retiredSnapshots;
-    bool cancelled = false, committed = false;
-    core::ExternalCallbackScope observer;
-};
-namespace { thread_local GpuOutputDemandState* s_gpuDemandState = nullptr; }
-
-bool NeedsCurrentOutput(RenderPassContext& context, GameObject& object,
-    const SkinnedMeshRenderer& skin, const AnimatorComponent* animator)
-{
-    if ((animator && animator->boneBake.active) || !skin.morphWeights.empty()
-        || !skin.appliedMorphWeights.empty()
-        || (object.GetComponent<FiberComponent>() && object.GetComponent<FiberComponent>()->m_enabled)
-        || !FiniteCullingView(context) || context.selectionOutlineEnabled
-        || !context.settings.objectMaskRequests.empty()) return true;
-    for (const auto& handle : skin.morphVertexBuffers) if (handle.IsValid()) return true;
-    WorldBounds bounds;
-    if (!StoredPoseBounds(object, skin, bounds)) return true;
-    renderer::RenderObject captured;
-    captured.layer = static_cast<uint32_t>(object.layer);
-    captured.lodVisible = skin.lodVisible;
-    captured.castShadows = skin.castShadows;
-    captured.colorEligible = true;
-    captured.boundsCenter = bounds.center;
-    captured.boundsRadius = bounds.radius;
-    return renderer::RequiresComputedSkinning(context, captured);
-}
-
-GpuOutputDemandScope::GpuOutputDemandScope(RenderPassContext& context) : m_previous(s_gpuDemandState)
-{
-    s_gpuDemandState = nullptr;
-    if (!renderer::GpuSkinningDemandEnabled() || m_previous || !context.scene.GetUserRenderPasses().empty()
-        || !renderer::SupportsCapturedSkinning(context.renderer, context.resources)) return;
-    for (EntityID id : context.scene.GetEntities<ScriptComponent>()) {
-        const auto* object = context.scene.GetGameObject(id);
-        const auto* scripts = context.scene.GetComponent<ScriptComponent>(id);
-        if (!object || !object->activeInHierarchy() || !scripts) continue;
-        for (const auto& entry : scripts->scripts)
-            if (entry.script && entry.script->enabled && !ManagedScriptRuntime::Instance().FindAdapter(entry.script.get())) return;
-    }
-    m_state = std::make_unique<GpuOutputDemandState>(context);
-    s_gpuDemandState = m_state.get();
-}
-GpuOutputDemandScope::~GpuOutputDemandScope()
-{
-    s_gpuDemandState = m_previous;
-}
-} /// @note namespace skinning_demand_detail
-
-skinning_signature_detail::SignatureScratchLease::SignatureScratchLease(AnimationSkinningCpuRow* trace)
-{
-    auto& pool=SignaturePool();
-    if(pool.depth==pool.entries.size()){
-        const size_t pointerCapacityBefore=pool.entries.capacity();
-        auto storage=std::make_unique<SignatureScratchStorage>();
-        pool.entries.push_back(std::move(storage));
-        if(trace){
-            ++trace->signatureScratchStorageAllocationCalls;
-            trace->signatureScratchStorageAllocationBytes+=sizeof(SignatureScratchStorage);
-            if(pool.entries.capacity()!=pointerCapacityBefore){
-                ++trace->signatureScratchPoolPointerAllocationCalls;
-                trace->signatureScratchPoolPointerAllocationBytes+=pool.entries.capacity()*sizeof(std::unique_ptr<SignatureScratchStorage>);
-            }
-        }
-    }
-    m_words=&pool.entries[pool.depth]->words;
-    m_words->clear();
-    ++pool.depth;
-}
-
-skinning_signature_detail::SignatureScratchLease::~SignatureScratchLease()
-{
-    m_words->clear();
-    --SignaturePool().depth;
-}
-
-skinning_signature_detail::ScratchMetrics skinning_signature_detail::CurrentSignatureScratchMetrics()
-{
-    const auto& pool=SignaturePool();
-    ScratchMetrics metrics;
-    metrics.slots=pool.entries.size();
-    metrics.pointerCapacity=pool.entries.capacity();
-    metrics.activeLeases=pool.depth;
-    metrics.storageBytes=pool.entries.size()*sizeof(SignatureScratchStorage);
-    metrics.pointerPayloadBytes=pool.entries.capacity()*sizeof(std::unique_ptr<SignatureScratchStorage>);
-    for(const auto& entry:pool.entries)metrics.payloadBytes+=entry->words.capacity()*sizeof(uint32_t);
-    return metrics;
 }
 
 void ExecuteSkinningComputePass(RenderPassContext& ctx)
@@ -870,7 +245,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     auto* trace=skinCpu.TraceRow();
     skinning_demand_detail::SceneDemandSnapshot demand;
     if(trace) {
-        /// @note Entry snapshot is diagnostic only; no omission, publication or resource-lifetime decision uses it.
+        /// @note 開始時のスナップショットは診断専用であり、省略・公開・資源寿命の判定には使わない。
         demand=skinning_demand_detail::ObserveSceneDemand(ctx);
         trace->demandScopeActive=demand.scopeActive;
         trace->sceneObjectCount=demand.sceneObjects;
@@ -894,15 +269,14 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
     renderer::buffer_state_detail::BufferStateReadScope bufferReads(resources, ctx.renderer);
-    auto* gpuDemand = skinning_demand_detail::s_gpuDemandState;
-    if (gpuDemand && (&gpuDemand->context != &ctx || gpuDemand->cancelled || gpuDemand->committed)) gpuDemand = nullptr;
+    auto* gpuDemand = skinning_demand_detail::FindGpuOutputDemand(ctx);
     bool directReuseMarker = false, fullPreparationMarker = false;
 
     const bool ownedBatchRequested = renderer::UseOwnedSkinningBatch();
     ctx.statsSkinningDemandMode = renderer::GpuSkinningDemandEnabled() ? 1 : 0;
     ctx.skinningRequests.clear();
     ctx.skinningMatrices.clear();
-    std::unordered_map<EntityID, uint32_t, EntityIDHash> packedOffsets;
+    std::unordered_map<EntityID, uint32_t, skinning_cache_detail::EntityIDHash> packedOffsets;
     const bool packed = renderer::ResolveSkinningBatchShader(ctx).IsValid();
     ctx.skinningExecuted = false;
     const auto invalidatePublication = [](SkinnedMeshRenderer& smr) {
@@ -921,16 +295,16 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     for (EntityID id : ctx.scene.GetEntities<AnimatorComponent>()) {
         auto* animator = ctx.scene.GetComponent<AnimatorComponent>(id);
         if (!animator || animator->boneBakeMode != static_cast<int>(BoneBakeMode::GPU_POSE_SHARED)) continue;
-        /// @note Offscreen individuals need no CPU palette; a newly visible individual is repaired before drawing if replay fails.
+        /// @note 画面外の個体は CPU パレットを省き、再生に失敗した直後に可視になった個体は描画前に復旧する。
         animator->boneBake.gpuReady = replayAvailable;
         animator->boneBake.gpuOwner = resources.GetInstanceId(); animator->boneBake.gpuEpoch = resources.GetResetVersion();
         if (!replayAvailable && animator->boneBake.cpuDeferred) restoreCpuActors.push_back(id);
     }
-    /// @note Restoration may enter the resource executor; keep identities rather than a live packed component span across it.
+    /// @note 復元で描画実行器へ入る場合に備え、コンポーネント配列の参照をまたがせず ID を保持する。
     for (EntityID id : restoreCpuActors)
         if (auto* animator = ctx.scene.GetComponent<AnimatorComponent>(id)) MaterializeBoneBakeCpu(*animator, resources, true);
     if (!skinningProgramReady) {
-        /// @note Non-null typed handles can be stale. A missing program/CB must not expose an old pose as current deformation.
+        /// @note 型付きハンドルが非 null でも失効し得る。プログラムや CB がなければ、古い姿勢を現在の変形として公開しない。
         RendererWorklistLease worklist(ctx.scene);
         for (EntityID entity : worklist.Entities())
             if (auto* smr = ctx.scene.GetComponent<SkinnedMeshRenderer>(entity)) {
@@ -976,11 +350,10 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     std::vector<PendingPublication> pendingPublications;
     std::vector<BoneBakeSkinRequest> bakeRequests;
 
-    BeginSkinningCacheFrame(resources, Time::frameCount, trace);
+    skinning_cache_detail::BeginSkinningCacheFrame(resources, Time::frameCount, trace);
     /// @note EntityID は Scene 内だけで一意。別 Scene の同番号の Animator とパレットを共有しない。
     /// @note 計算済み Renderer は gpuSkinningFrame で再利用するため、既存出力を再 Dispatch しない。
-    g_framePalettes.clear();
-    auto& usedSourceKeys = g_usedSourceKeys;
+    skinning_cache_detail::ResetSkinningPalettes();
     /// @note 各 submesh の Dispatch は別出力へ書き、相互依存しない。DX12 は UAV バリアを
     /// @note Dispatch ごとに発行せず、このバッチを閉じる時点の 1 回へ集約する。
 
@@ -1076,7 +449,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         }
         bufferStates.resize(bufferHandles.size());
         bufferReads.Read(bufferHandles, bufferStates);
-        /// @note The drain may pump Scene edits; reacquire packed components and reject identities captured before the wait.
+        /// @note 待機中にシーン編集が発生し得るため、コンポーネント配列を再取得して待機前の識別情報を検証する。
         auto* resumedObject = ctx.scene.GetGameObject(entity);
         auto* resumedRenderer = ctx.scene.GetComponent<SkinnedMeshRenderer>(entity);
         if (ctx.scene.GetRenderSceneGeneration() != readSceneGeneration || resumedObject != object || !resumedRenderer
@@ -1090,7 +463,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         }
         if (!go.activeInHierarchy() || !smr->enabled || (!smr->lodVisible && !rayDemand) || !smr->model) continue;
         if (smr->model->meshes.size() != meshCount) { invalidatePublication(*smr); continue; }
-        /// @note The same component can lose output slots during the pump without changing its lifetime or model.
+        /// @note コンポーネントやモデルの寿命が変わらなくても、待機中に出力スロットが削除される場合がある。
         if (smr->skinnedVertexBuffers.size() < meshCount) smr->skinnedVertexBuffers.resize(meshCount);
         bool useBufferStates = smr->model == readModel && smr->SubmeshCount() == readSlotCount;
         for (size_t slot = 0; useBufferStates && slot < readSlotCount; ++slot) {
@@ -1100,7 +473,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 && (mesh ? smr->ResolveSlotSkinnedVertexBuffer(slot)
                          : renderer::ResourceHandle<renderer::BufferTag>{}) == bufferHandles[slot * 2 + 1];
         }
-        /// @note Pose vectors can move during the same pump; resolve their current owner only after the native read has returned.
+        /// @note 待機でポーズ配列の位置が変わり得るため、GPU 資源の取得後に現在の所有者を解決する。
         anim = nullptr;
         animatorEntity = EntityID::INVALID;
         for (GameObject* current = &go; current; current = current->GetParent()) {
@@ -1144,8 +517,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 uint64_t version = 0;
                 if (useBufferStates) version = bufferStates[slot * 2].contentVersion;
                 else if (const auto* buffer = resources.Get(source)) version = buffer->GetContentVersion();
-                usedSourceKeys.insert(SourceVertexCacheKey{meshPtr->cpuSkinnedVertices.data(),
-                    static_cast<uint32_t>(meshPtr->cpuSkinnedVertices.size()), source, version});
+                skinning_cache_detail::RetainSkinningSource(*meshPtr, source, version);
             }
             if (smr->gpuSkinningFrame != frameStamp) {
                 smr->gpuSkinningVertexCount = 0;
@@ -1245,7 +617,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 const auto source = smr->ResolveSlotVertexBuffer(slot, mesh->vertexBuffer);
                 [[maybe_unused]] bool observedMorphPath=false,observedDifferentSource=false;
                 if constexpr(TRACE_ENABLED) {
-                    /// @note Preserve pre-lookup choice as values; do not dereference earlier scene/model inputs after this lookup's possible wait.
+                    /// @note GPU 資源の取得が待機に入る場合に備え、取得前の選択は値で保持し、以前のシーン・モデル参照を再利用しない。
                     const uint32_t index=smr->SubmeshAt(slot);
                     observedMorphPath=index<smr->morphVertexBuffers.size() && smr->morphVertexBuffers[index].IsValid();
                     observedDifferentSource=source!=mesh->vertexBuffer;
@@ -1317,8 +689,8 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             boneOffset = it->second;
             if (inserted) ctx.skinningMatrices.insert(ctx.skinningMatrices.end(), matrices->begin(), matrices->end());
         } else {
-            const bool needsUpload = !g_framePalettes.contains(paletteEntity);
-            bonePalette = AcquireBonePalette(resources, paletteEntity, *matrices, trace);
+            const bool needsUpload = !skinning_cache_detail::HasSkinningPalette(paletteEntity);
+            bonePalette = skinning_cache_detail::AcquireBonePalette(resources, paletteEntity, *matrices, trace);
             const auto* palette = resources.Get(bonePalette);
             if (!palette || palette->GetStride() != sizeof(math::Matrix4) || palette->GetElementCount() == 0
                 || palette->GetSize() / sizeof(math::Matrix4) < palette->GetElementCount()) {
@@ -1373,7 +745,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             if (!meshPtr) { allSkinned = false; continue; }
             const auto source = smr->ResolveSlotVertexBuffer(slot, meshPtr->vertexBuffer);
             uint64_t capturedSourceVersion = 0;
-            const auto srcVertices = EnsureSourceVertexBuffer(resources, *meshPtr, source, matrices->size(), trace,
+            const auto srcVertices = skinning_cache_detail::EnsureSourceVertexBuffer(resources, *meshPtr, source, matrices->size(), trace,
                 useBufferStates ? &bufferReads : nullptr, publication.demandCandidate ? &capturedSourceVersion : nullptr);
             const uint32_t vertexCount = static_cast<uint32_t>(meshPtr->cpuSkinnedVertices.size());
             const auto* sourceVertices = resources.Get(srcVertices);
@@ -1438,7 +810,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
         }
 
         if(trace && skinningDispatchCount!=0)++trace->renderersWithOutputRequests;
-        /// @note Owned work publishes only after native writes and the current owner witness are confirmed.
+        /// @note GPU 書き込みと現在の所有者の一致を確認してから、所有済みの作業結果を公開する。
         smr->gpuSkinnedThisFrame = !ownedBatchRequested && allSkinned;
         if(allSkinned){
             if(!trace)smr->gpuSkinningContent.assign(content.begin(),content.end());
@@ -1541,7 +913,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
 
     {
         FBZZ_PROFILE_SCOPE("RenderSystem::SkinningDispatch");
-        /// @note Skinning precedes RenderGraph; a separate preparation view records its actual GPU commands without claiming whole-frame GPU time.
+        /// @note グラフに先行するスキニングには独立した計測ビューを使い、発行した GPU 命令の時間だけを記録する。
         renderer::GpuProfilerViewMetadata skinView;
         skinView.applicationFrameSerial = resources.FrameStamp();
         skinView.sceneGeneration = ctx.scene.GetRenderSceneGeneration();
@@ -1567,18 +939,10 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             ctx.renderer.GpuProfEndRecordedView();
         }
     }
-    g_frameStats.dispatches += ctx.statsSkinningDispatchCount;
-    g_frameStats.vertices += ctx.statsSkinningVertexCount;
-    g_frameStats.uploads += ctx.statsSkinningPaletteUploads;
-    g_frameStats.bytes += ctx.statsSkinningPaletteUploadBytes;
-    /// @note Every view reports actual preparation accumulated in this engine frame, including earlier reused views.
-    ctx.statsSkinningDispatchCount = g_frameStats.dispatches;
-    ctx.statsSkinningVertexCount = g_frameStats.vertices;
-    ctx.statsSkinningPaletteUploads = g_frameStats.uploads;
-    ctx.statsSkinningPaletteUploadBytes = g_frameStats.bytes;
-    /// @note Dispatch is a void API; only the backend's successful DIRECT write publication advances this version.
+    skinning_cache_detail::AccumulateSkinningFrameStats(ctx);
+    /// @note 戻り値のない Dispatch では成否を判断せず、バックエンドが DIRECT キューの書き込みを公開したときだけ版を進める。
     if (ownedBatchRequested) {
-        /// @note Scene/ResourceManager remain caller-owned for this synchronous pass; re-resolve every actor after Win32 message reentry before dereferencing a saved component.
+        /// @note 同期パス中もシーンと資源管理者は呼び出し側が所有する。Win32 メッセージによる再入後にコンポーネントを解決し直す。
         for (const auto& publication : pendingPublications) {
             if (publication.sceneGeneration != ctx.scene.GetRenderSceneGeneration() || publication.frame != Time::frameCount
                 || publication.resourceOwner != resources.GetInstanceId() || publication.resourceEpoch != resources.GetResetVersion()
@@ -1586,7 +950,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
             auto* component = ctx.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
             auto* object = ctx.scene.GetGameObject(publication.owner);
             if (!component || !object || ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) != publication.componentLifetime) continue;
-            /// @note A nested pass may have published a newer pose; the outer call never invalidates that different publication.
+            /// @note 入れ子のパスが新しいポーズを公開していたら、外側のパスはその公開状態を失効させない。
             if (component->gpuSkinningContent != publication.content) continue;
             bool current = component->enabled && object->activeInHierarchy() && component->model == publication.model
                 && component->model && component->model->meshes.size() == publication.modelMeshCount
@@ -1620,7 +984,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 if (!current) break;
                 const auto* mesh = component->SubmeshMesh(slot.slot);
                 renderer::BufferResourceMetadata metadata;
-                /// @note Accepted CPU metadata is only a change witness; successful native writes are proven exclusively by the worker receipt.
+                /// @note 受理した CPU メタデータは変化の手掛かりに限り、GPU 書き込みの成功は実行側の受領記録で確認する。
                 current = component->SubmeshAt(slot.slot) == slot.submesh && mesh == slot.mesh && mesh
                     && mesh->cpuSkinnedVertices.size() == slot.vertices
                     && component->ResolveSlotVertexBuffer(slot.slot, mesh->vertexBuffer) == slot.source
@@ -1657,7 +1021,7 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
                 break;
             }
         }
-        /// @note Buffer completion may pump edits made while another actor was prepared; never dereference a previous packed component address.
+        /// @note 他のアクターの準備中の編集がバッファ待機で実行され得るため、以前のコンポーネントのアドレスを使わない。
         auto* component = ctx.scene.GetComponent<SkinnedMeshRenderer>(publication.owner);
         if (!component || ctx.scene.GetRenderSceneGeneration() != publication.sceneGeneration
             || ctx.scene.GetComponentLifetime<SkinnedMeshRenderer>(publication.owner) != publication.componentLifetime
@@ -1669,14 +1033,4 @@ void ExecuteSkinningComputePass(RenderPassContext& ctx)
     }
 }
 
-/// @brief ReleaseSkinningComputeCaches — シーン切り替え / リソースリセット時にキャッシュを捨てる。
-/// @note キャッシュの GPU ハンドルはデバイス世代に属するため、デバイスリセット後に古い世代の
-/// @note ハンドルを再利用しない。通常のシーン上の破棄は Execute 側で回収する。
-void ReleaseSkinningComputeCaches()
-{
-    ReleaseBoneBakeSkinningCaches();
-    ReleaseSourceSkinningCache();
 }
-
-
-} /// @note namespace fbzz::scene

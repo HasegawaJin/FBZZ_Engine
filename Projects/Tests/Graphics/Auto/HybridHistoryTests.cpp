@@ -50,16 +50,16 @@ protected:
         ASSERT_TRUE(m_taaShader && m_copyShader && m_state);
         std::array<uint8_t, 3 * 3 * 4> current{};
         std::array<uint8_t, 3 * 3 * 4> previous{};
+        constexpr std::array<uint8_t, 4> CURRENT_COLOR{64, 128, 192, 255};
+        constexpr std::array<uint8_t, 4> HISTORY_COLOR{192, 64, 32, 255};
+        /// @note 3×3 近傍を現在色 5 点・履歴色 4 点にして両色を YCoCg の統計範囲に収め、履歴の重みだけを測る。
         for (uint32_t pixel = 0; pixel < 9; ++pixel) {
-            const uint8_t value = (pixel & 1u) != 0 ? 255 : 0;
-            for (uint32_t channel = 0; channel < 3; ++channel) current[pixel * 4 + channel] = value;
-            current[pixel * 4 + 3] = 255;
-            previous[pixel * 4] = 192;
-            previous[pixel * 4 + 1] = 64;
-            previous[pixel * 4 + 2] = 32;
-            previous[pixel * 4 + 3] = 255;
+            const auto& color = (pixel & 1u) != 0 ? HISTORY_COLOR : CURRENT_COLOR;
+            for (uint32_t channel = 0; channel < 4; ++channel) {
+                current[pixel * 4 + channel] = color[channel];
+                previous[pixel * 4 + channel] = HISTORY_COLOR[channel];
+            }
         }
-        current[16] = 64; current[17] = 128; current[18] = 192;
         m_current = resources.CreateTexture(current.data(), 3, 3);
         m_previous = resources.CreateTexture(previous.data(), 3, 3);
         m_source = resources.CreateRenderTarget(3, 3, {1, renderer::Format::RGBA16F, false});
@@ -96,20 +96,21 @@ protected:
         auto& device = *m_bundle.renderer;
         if (!view.advancedGraphicsCB) {
             view.advancedGraphicsCB = resources.CreateConstantBuffer(sizeof(renderer::AdvancedGraphicsCB));
-            view.taaHistoryA = resources.CreateRenderTarget(3, 3, {1, renderer::Format::RGBA16F, false});
-            view.taaHistoryB = resources.CreateRenderTarget(3, 3, {1, renderer::Format::RGBA16F, false});
+            view.taaHistoryA = resources.CreateRenderTarget(3, 3, {2, renderer::Format::RGBA16F, false});
+            view.taaHistoryB = resources.CreateRenderTarget(3, 3, {2, renderer::Format::RGBA16F, false});
         }
         view.width = view.height = 3;
         view.taaHistoryValid = true;
         view.renderPlan.effectiveMode = mode;
         view.renderPlan.failureReason = renderer::RenderPlanReason::NONE;
-        view.prevViewProjection = math::Matrix4::Identity();
-        view.invPrevViewProjection = math::Matrix4::Identity();
         renderer::RenderSettings settings;
         settings.taa.enabled = true;
         settings.taa.feedback = 0.8f;
         settings.postProcess.fxaaEnabled = false;
         renderer::Camera camera;
+        const auto cameraFrame = renderer::MakeCameraFrameCB(camera, 0, 0);
+        view.prevViewProjection = cameraFrame.viewProjection;
+        view.invPrevViewProjection = cameraFrame.invViewProjection;
         renderer::RenderPassHandles handles;
         handles.frameCB = m_frameCB;
         handles.postprocCB = m_postCB;
@@ -124,15 +125,18 @@ protected:
         context.width = context.height = 3;
         context.rayReflectionPassActive = reflectionActive;
         context.hybridReflectionResolveActive = reflectionResolveActive;
-        context.ssrPassActive = screenReflectionActive;
+        context.ssrContributionSubmitted = screenReflectionActive;
         renderer::PrepareAdvancedConstants(context, view, {});
         EXPECT_FLOAT_EQ(view.advancedGraphicsSnapshot.taaFeedback, 0.8f);
         resources.AdvanceFrame();
         device.BeginFrame();
         m_frameOpen = true;
+        resources.Update(m_frameCB, &cameraFrame, sizeof(cameraFrame));
         Copy(m_source, m_current);
         Copy(view.taaHistoryA, m_previous);
         Copy(view.taaHistoryB, m_previous);
+        ClearHistorySkyDepth(view.taaHistoryA);
+        ClearHistorySkyDepth(view.taaHistoryB);
         device.SetRenderTarget(m_depth, resources);
         device.ClearDepth();
         device.SetRenderTarget(m_before, resources);
@@ -144,6 +148,7 @@ protected:
         before.constantBuffers[5] = m_postCB;
         before.constantBuffers[8] = view.advancedGraphicsCB;
         before.textures[5] = resources.GetColorTexture(m_source, 0);
+        before.textures[6] = resources.GetColorTexture(view.taaHistoryA, 1);
         before.textures[21] = resources.GetColorTexture(view.taaHistoryA, 0);
         before.textures[7] = resources.GetDepthTexture(m_depth);
         device.Submit(before, resources);
@@ -225,6 +230,14 @@ protected:
     }
 
 private:
+    void ClearHistorySkyDepth(renderer::ResourceHandle<renderer::RenderTargetTag> history)
+    {
+        const std::array<renderer::RenderTargetColorAttachment, 1> depth{{{history, 1u}}};
+        ASSERT_TRUE(m_bundle.renderer->SetRenderTargetColors(depth, *m_resources));
+        /// @note HDR の最遠深度をクリアした空の画素には、LDR 履歴の空を示す -1 を対応させる。
+        m_bundle.renderer->Clear({-1, 0, 0, 1});
+    }
+
     void Copy(renderer::ResourceHandle<renderer::RenderTargetTag> output,
         renderer::ResourceHandle<renderer::TextureTag> input)
     {
@@ -271,7 +284,7 @@ private:
     renderer::ResourceHandle<renderer::ConstantBufferTag> m_postCB;
 };
 
-/// @brief Unlit view keeps white ambient instead of using image based lighting.
+/// @brief Unlit ビューの環境光は白を維持し、画像ベース照明を使わない。
 TEST_F(HybridHistoryTest, UnlitViewKeepsWhiteAmbientInsteadOfUsingImageBasedLighting)
 {
     for (const bool dynamic : {false, true}) {
@@ -282,7 +295,7 @@ TEST_F(HybridHistoryTest, UnlitViewKeepsWhiteAmbientInsteadOfUsingImageBasedLigh
     }
 }
 
-/// @brief Provider changes and rejected reflection reset GPU feedback without changing earlier submits.
+/// @brief 反射の供給元の変更や棄却で GPU フィードバックをリセットし、以前の投入内容は変更しない。
 TEST_F(HybridHistoryTest, ProviderChangesAndRejectedReflectionResetGpuFeedbackWithoutChangingEarlierSubmits)
 {
     renderer::RenderViewResources view;
@@ -301,7 +314,7 @@ TEST_F(HybridHistoryTest, ProviderChangesAndRejectedReflectionResetGpuFeedbackWi
     ExpectBlended(pixels.after);
 }
 
-/// @brief View epochs frame gaps and disabled TAA remain independent.
+/// @brief ビューの世代、フレームの欠落、TAA の無効化はそれぞれ独立して扱う。
 TEST_F(HybridHistoryTest, ViewEpochsFrameGapsAndDisabledTaaRemainIndependent)
 {
     renderer::RenderViewResources gameView, sceneView;
@@ -316,12 +329,12 @@ TEST_F(HybridHistoryTest, ViewEpochsFrameGapsAndDisabledTaaRemainIndependent)
     }
 }
 
-/// @brief Screen resolve and actual SSR changes reset feedback during raster fallback.
+/// @brief ラスタへのフォールバック中に画面空間の解決方法や実 SSR 結果が変わるとフィードバックをリセットする。
 TEST_F(HybridHistoryTest, ScreenResolveAndActualSsrChangesResetFeedbackDuringRasterFallback)
 {
     renderer::RenderViewResources view;
     uint64_t previousEpoch = 0;
-    /// @note Effective Raster and unavailable RT stay fixed; only the selected resolver and actual SSR receipt change. Earlier recorded b8 values must remain at the original feedback.
+    /// @note 実効モードはラスタ、RT は利用不能のまま。解決方法と実 SSR の実行記録だけが変化し、以前に記録した b8 の値は元のフィードバックを保持する。
     const auto frame = [&](uint64_t stamp, bool resolve, bool screen, bool changed) {
         const auto pixels = Render(view, renderer::RenderMode::RASTER, false, stamp, resolve, screen);
         ExpectBlended(pixels.before);
@@ -346,5 +359,5 @@ TEST_F(HybridHistoryTest, ScreenResolveAndActualSsrChangesResetFeedbackDuringRas
     frame(15, false, false, true);
 }
 
-} /// @note namespace
-} /// @note namespace fbzz::tests
+}
+}

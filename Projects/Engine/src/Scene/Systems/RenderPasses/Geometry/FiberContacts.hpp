@@ -16,33 +16,33 @@
 #include <vector>
 
 namespace fbzz::scene {
-namespace {
-constexpr uint32_t FIBER_CONTACT_LIMIT = 32;
-constexpr float FIBER_CONTACT_CELL_SIZE = 8.0f;
+namespace fiber_extraction_detail {
+inline constexpr uint32_t FIBER_CONTACT_LIMIT = 32;
+inline constexpr float FIBER_CONTACT_CELL_SIZE = 8.0f;
 
 struct FiberContactSample {
     math::Vector4 m_center{}, m_time{}, m_extent{}, m_rotation{0, 0, 0, 1};
 };
 
-math::Vector3 FiberContactPosition(const FiberContactSample& sample)
+inline math::Vector3 FiberContactPosition(const FiberContactSample& sample)
 {
     return {sample.m_center.x, sample.m_center.y, sample.m_center.z};
 }
 
-float FiberContactRadius(const FiberContactSample& sample)
+inline float FiberContactRadius(const FiberContactSample& sample)
 {
     const math::Vector3 extent{sample.m_extent.x, sample.m_extent.y, sample.m_extent.z};
     if (sample.m_time.w == 1.0f) return sample.m_center.w + extent.Length();
     return sample.m_center.w;
 }
 
-bool FiberContactFinite(const math::Vector3& value)
+inline bool FiberContactFinite(const math::Vector3& value)
 {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
-/// @note Reads authored settings without modifying Physics resources, including while Edit is paused.
-bool ReadFiberContact(GameObject& go, const FiberInteractorComponent& actor, FiberContactSample& sample)
+/// @note 編集を停止中でもオーサリング設定を読み、物理資源には変更を加えない。
+inline bool ReadFiberContact(GameObject& go, const FiberInteractorComponent& actor, FiberContactSample& sample)
 {
     if (!std::isfinite(actor.m_strength) || !std::isfinite(actor.m_recoverySeconds)
         || actor.m_strength <= 0.0f) return false;
@@ -134,8 +134,8 @@ struct FiberContactCache {
     float m_time = 0, m_previousTime = 0;
 };
 
-/// @note Bounds outside the integer grid, or spanning too many cells, use a bounded full scan instead.
-bool FiberContactCells(const math::Vector3& center, float radius, int budget,
+/// @note 整数グリッド外または広すぎる範囲は、上限付きの全件走査に切り替える。
+inline bool FiberContactCells(const math::Vector3& center, float radius, int budget,
     std::array<int, 3>& low, std::array<int, 3>& high)
 {
     if (!FiberContactFinite(center) || !std::isfinite(radius) || radius < 0) return false;
@@ -152,7 +152,7 @@ bool FiberContactCells(const math::Vector3& center, float radius, int budget,
     return true;
 }
 
-void BuildFiberContactIndex(FiberContactIndex& index, const std::vector<FiberContactSample>& samples)
+inline void BuildFiberContactIndex(FiberContactIndex& index, const std::vector<FiberContactSample>& samples)
 {
     index.m_cells.clear(); index.m_large.clear();
     for (size_t i = 0; i < samples.size(); ++i) {
@@ -167,8 +167,8 @@ void BuildFiberContactIndex(FiberContactIndex& index, const std::vector<FiberCon
     std::sort(index.m_cells.begin(), index.m_cells.end());
 }
 
-/// @note Translation and angular travel are sampled at half the smallest shape thickness; long jumps never stamp a world-spanning trail.
-void StampFiberContact(FiberActorContacts& state, const FiberContactSample& current, bool consecutive)
+/// @note 形状の最小厚さの半分を間隔として並進・回転をサンプリングし、長距離移動でワールドを横断する跡が付くのを避ける。
+inline void StampFiberContact(FiberActorContacts& state, const FiberContactSample& current, bool consecutive)
 {
     float thickness = current.m_center.w;
     if (current.m_time.w == 2.0f)
@@ -180,7 +180,7 @@ void StampFiberContact(FiberActorContacts& state, const FiberContactSample& curr
     const math::Quaternion oldQ{oldRotation.x, oldRotation.y, oldRotation.z, oldRotation.w};
     const math::Quaternion newQ{newRotation.x, newRotation.y, newRotation.z, newRotation.w};
     const float rotationDot = std::clamp(std::abs(math::Quaternion::Dot(oldQ, newQ)), 0.0f, 1.0f);
-    /// @note Identical unit quaternions can have dot < 1 after float rounding; do not accumulate phantom angular travel while stationary.
+    /// @note 同じ単位四元数でも丸めで内積が 1 を下回るため、静止中の見かけ上の回転を加算しない。
     const float angle = rotationDot >= 1.0f - 1.0e-6f ? 0.0f : 2.0f * std::acos(rotationDot);
     const math::Vector3 oldExtent{state.m_last.m_extent.x, state.m_last.m_extent.y, state.m_last.m_extent.z};
     const math::Vector3 newExtent{current.m_extent.x, current.m_extent.y, current.m_extent.z};
@@ -218,8 +218,8 @@ void StampFiberContact(FiberActorContacts& state, const FiberContactSample& curr
     state.m_seen = Time::frameCount;
 }
 
-/// @note One immutable current/previous snapshot is shared by every view and shadow pass in the frame.
-void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
+/// @note 現在と前回の状態の不変スナップショットを、同一フレームの全ビューと影パスで共有する。
+inline void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
 {
     if (cache.m_frame == Time::frameCount) return;
     if (!std::isfinite(Time::time)) { cache = {}; return; }
@@ -261,7 +261,7 @@ void UpdateFiberContacts(FiberContactCache& cache, Scene& scene)
     });
 }
 
-void SelectFiberContactSide(FiberContactCache& cache, const std::vector<FiberContactSample>& samples,
+inline void SelectFiberContactSide(FiberContactCache& cache, const std::vector<FiberContactSample>& samples,
     const FiberContactIndex& index, const math::Vector3& center, float radius, bool hasBounds,
     float time, uint32_t first, renderer::FiberContactCB& output)
 {
@@ -309,12 +309,12 @@ void SelectFiberContactSide(FiberContactCache& cache, const std::vector<FiberCon
     (first == 0 ? output.m_count : output.m_previousCount) = static_cast<uint32_t>(count);
 }
 
-/// @note Current and previous selections use their own deformed surface bounds, including when a grass owner moves.
-renderer::FiberContactCB SelectFiberContacts(FiberContactCache& cache, const renderer::RenderFiberInput& input)
+/// @note 現在と前回の選択はそれぞれの変形済み境界を使い、草の所有者が移動した場合も時点を混ぜない。
+inline renderer::FiberContactCB SelectFiberContacts(FiberContactCache& cache, const renderer::RenderFiberInput& input)
 {
     renderer::FiberContactCB output;
     if (input.material.m_planarShading <= 0 || (cache.m_current.empty() && cache.m_previous.empty())) return output;
-    /// @note Terrain patches share their owner's render identity; the geometry generation separates their motion bounds.
+    /// @note 地形パッチは所有者の描画 ID を共有するため、移動境界はジオメトリの世代で識別する。
     const auto geometry = input.blades.m_blades.IsValid()
         ? (static_cast<uint64_t>(input.blades.m_blades.gen) << 32) | input.blades.m_blades.id
         : (static_cast<uint64_t>(input.vertices.gen) << 32) | input.vertices.id;
@@ -332,5 +332,5 @@ renderer::FiberContactCB SelectFiberContacts(FiberContactCache& cache, const ren
         surface.m_previousRadius, input.hasBounds, cache.m_previousTime, FIBER_CONTACT_LIMIT, output);
     return output;
 }
-} /// @note namespace
+} /// @note namespace fiber_extraction_detail
 } /// @note namespace fbzz::scene

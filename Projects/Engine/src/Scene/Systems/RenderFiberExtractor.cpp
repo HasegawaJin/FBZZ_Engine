@@ -1,478 +1,31 @@
 /// @file    RenderFiberExtractor.cpp
-/// @brief   共通 RHI で表面繊維を描き、Fin の GPU データをメッシュごとに共有する。
+/// @brief   繊維を生やす面・材質・環境から描画入力を発行する。
 /// @author  Hasegawa Jin
 /// @date    2026-09-17
-#include <Engine/Scene/Components/MaterialComponent.hpp>
-#include <Engine/Scene/Components/MeshRenderer.hpp>
-#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
-#include <Engine/Scene/Components/TerrainComponent.hpp>
-#include <Engine/Scene/Fields/FlowField.hpp>
-#include <Engine/Asset/StreamedTextureResolver.hpp>
-#include <Engine/Scene/Systems/RenderPasses/Geometry/FiberRenderPass.hpp>
-#include "RenderPasses/Geometry/GeometryPasses.hpp"
+
+#include "RenderFiberExtraction.hpp"
 #include <Engine/Scene/Systems/RenderFiberExtractor.hpp>
+#include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Components/FiberComponent.hpp>
+#include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Core/Time.hpp>
+#include <Engine/Asset/VelocityFieldAtlas.hpp>
 #include <Engine/Scene/Systems/RenderTerrainExtractor.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
-#include <Engine/Asset/AssetManager.hpp>
-#include <Engine/Asset/FiberMaterialSettings.hpp>
-#include <Engine/Asset/MaterialAsset.hpp>
-#include <Engine/Core/Logger.hpp>
-#include <Engine/Core/Time.hpp>
-#include <Engine/Renderer/FiberGeometry.hpp>
-#include <Engine/Renderer/ITexture.hpp>
-#include <Engine/Renderer/ResourceManager.hpp>
-#include <Engine/Scene/Components/FiberComponent.hpp>
-#include <Engine/Scene/Scene.hpp>
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstring>
-#include <limits>
-#include <map>
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <Engine/Renderer/DynamicBufferPool.hpp>
-#include <Engine/Scene/Fields/FlowFieldFrame.hpp>
-#include "RenderPasses/Geometry/FiberSurfaceSources.hpp"
-#include "RenderPasses/Geometry/FiberContacts.hpp"
-#include "RenderPasses/Geometry/FiberPlacementResources.hpp"
-#include "RenderPasses/Geometry/FiberAppearanceResources.hpp"
-#include "RenderPasses/Geometry/FlowFieldGpu.hpp"
 #include "RenderPasses/Debug/SelectionPasses.hpp"
+#include <algorithm>
+#include <cmath>
+#include <utility>
 
 namespace fbzz::scene {
+
 namespace {
 
+using namespace fiber_extraction_detail;
 
-
-/// @note Fin は頂点/インデックスバッファ、Blade は根元の StructuredBuffer だけを持つ。
-struct FiberFinBuffers {
-    renderer::ResourceHandle<renderer::BufferTag> m_vertices;
-    renderer::ResourceHandle<renderer::BufferTag> m_indices;
-    uint32_t m_indexCount = 0;
-    renderer::ResourceHandle<renderer::StructuredBufferTag> m_blades;
-    uint32_t m_bladeCount = 0;
-    uint64_t m_seen = 0;
-    bool m_terrain = false;
-};
-
-
-
-
-/// @note 1 フレーム内の全パス・全カスケードで共有する解決結果。フレームが進むと読み直す。
-struct FiberMaterialEntry {
-    asset::FiberMaterialSettings m_settings;
-    FiberMaskSlot m_mask;
-    FiberAppearanceResources m_appearance;
-    asset::MaterialAsset::AuthoringSnapshotPtr m_snapshot;
-    uint64_t m_shaderVersion = UINT64_MAX;
-    uint64_t m_frame = (std::numeric_limits<uint64_t>::max)();
-    bool m_valid = false;
-};
-
-/// @note シーンに置いた FlowField を 1 フレーム 1 回だけ詰め、前フレームの一覧を velocity 用に後ろへ連結する。
-/// @note 環境流は FiberFrameCB の風が持つため含めない (FlowFieldFrame::sceneFieldCount で切る)。
-struct FiberFlowCache {
-    uint64_t m_frame = (std::numeric_limits<uint64_t>::max)();
-    /// @note 物体ごとの交差判定用。前フレームの vectorField は解放済みかもしれないので null にして持つ。
-    std::vector<ActiveFlowField> m_current;
-    std::vector<ActiveFlowField> m_previous;
-    std::vector<GpuFlowField> m_currentPacked;
-    std::vector<GpuFlowField> m_previousPacked;
-    std::vector<GpuFlowField> m_upload;
-    renderer::ResourceHandle<renderer::StructuredBufferTag> m_buffer;
-};
-
-/// @note 直前に転送した内容。一致する CB 更新を省く。
-
-
-/// @note ResourceManager が GPU 実体を単独所有する。保持するのは失効検出付き参照だけ。
-struct FiberResources {
-    renderer::ResourceManager* m_owner = nullptr;
-    uint64_t m_resetVersion = 0;
-    uint64_t m_ownerIdentity = 0;
-    uint64_t m_sweptFrame = (std::numeric_limits<uint64_t>::max)();
-    std::map<std::array<uint32_t, 8>, FiberFinBuffers> m_fins;
-    std::map<std::pair<uint64_t,std::string>,FiberTerrainCache> m_terrains;
-    std::map<std::pair<uint64_t,std::string>,FiberPlacementResources> m_placements;
-    std::map<uint64_t,FiberContactCache> m_contactStates;
-    std::unordered_map<std::string, FiberMaterialEntry> m_materials;
-    /// @note FiberComponent::m_maskPath による個体ごとの差し替え。パスごとに 1 枠。
-    std::unordered_map<std::string, FiberMaskSlot> m_maskOverrides;
-    std::map<uint64_t, FiberFlowCache> m_flows;
-    /// @note 流れの一覧は毎フレーム書き換える。GPU が読んでいる前フレームのバッファを上書きしないよう借り直す。
-    /// @note プールの既定コンストラクターは explicit。集成体の {} 初期化から呼べるよう明示的に構築する。
-    renderer::DynamicStructuredBufferPool m_flowBuffers = renderer::DynamicStructuredBufferPool();
-};
-
-/// @brief シーンの FlowField を今フレームぶん詰め、前フレームと連結して VS 用 StructuredBuffer へ送る。
-/// @note 連続しないフレーム (初回・描画の空白) は前フレーム = 今フレームとし、流れの変化を速度に出さない。
-FiberFlowCache& UpdateFiberFlows(FiberResources& cache, Scene& scene, renderer::ResourceManager& resources)
+FiberFrameCB BuildFiberFrame(const AmbientWind& wind)
 {
-    auto& flow = cache.m_flows[scene.GetRenderSceneGeneration()];
-    if (flow.m_frame == Time::frameCount) return flow;
-    const bool consecutive = flow.m_frame != (std::numeric_limits<uint64_t>::max)() && Time::frameCount == flow.m_frame + 1;
-    flow.m_frame = Time::frameCount;
-    std::swap(flow.m_previous, flow.m_current);
-    std::swap(flow.m_previousPacked, flow.m_currentPacked);
-    const auto& frame = scene.FlowFrame();
-    const auto fields = SelectFlowFields(frame, false);
-    flow.m_current.assign(fields.begin(), fields.end());
-    flow.m_currentPacked.clear();
-    for (const auto& field : flow.m_current) flow.m_currentPacked.push_back(PackGpuFlowField(field, resources));
-    for (auto& field : flow.m_current) field.vectorField = nullptr;
-    if (!consecutive) {
-        flow.m_previous = flow.m_current;
-        flow.m_previousPacked = flow.m_currentPacked;
-    }
-    flow.m_upload = flow.m_currentPacked;
-    flow.m_upload.insert(flow.m_upload.end(), flow.m_previousPacked.begin(), flow.m_previousPacked.end());
-    /// @note 0 本でも 1 要素は借りる。未束縛の SRV を VS が静的に参照しないようにする。
-    flow.m_buffer = cache.m_flowBuffers.Acquire(resources, (std::max)(flow.m_upload.size(), size_t{ 1 }),
-                                                static_cast<uint32_t>(sizeof(GpuFlowField)));
-    if (flow.m_buffer.IsValid() && !flow.m_upload.empty())
-        resources.Update(flow.m_buffer, flow.m_upload.data(), flow.m_upload.size() * sizeof(GpuFlowField));
-    return flow;
-}
-
-/// @return 球 (ワールド [m]) に届き、channels が重なる場の本数。0 本なら VS で場を評価しない。
-/// @note radius < 0 は境界不明 (スキン) として全本数を返す。
-uint32_t CountFiberFlows(const std::vector<ActiveFlowField>& fields, uint32_t channels,
-                         const math::Vector3& center, float radius)
-{
-    if (channels == 0u) return 0;
-    for (const auto& field : fields)
-        if (FlowReceiver{true, channels}.Intersects(field, center, radius))
-            return static_cast<uint32_t>(fields.size());
-    return 0;
-}
-
-/// @note DX12 の CB は Update のたびに次の提出でアリーナへ複製し直す。同じ内容の再転送を省く。
-const FiberMaterialEntry& GetFiberMaterial(FiberResources& cache, renderer::ResourceManager& resources,
-    const std::string& path)
-{
-    auto& entry = cache.m_materials[path];
-    if (entry.m_frame == Time::frameCount) return entry;
-    entry.m_frame = Time::frameCount;
-    const auto handle = asset::AssetManager::Load<asset::MaterialAsset>(path);
-    const auto authoringSnapshot = asset::ReadMaterialAuthoring(handle);
-    const auto* material = authoringSnapshot ? &authoringSnapshot->Data() : nullptr;
-    entry.m_valid = material != nullptr;
-    if (material) {
-        entry.m_settings = asset::ResolveFiberMaterial(*material);
-        const auto found = material->textures.find(asset::FIBER_MASK_TEXTURE_KEY);
-        const std::string maskPath = found != material->textures.end() ? found->second : std::string{};
-        ResolveFiberMaskTexture(entry.m_settings, maskPath, resources, entry.m_mask);
-        if (entry.m_snapshot != authoringSnapshot || entry.m_appearance.resolved
-            || entry.m_shaderVersion != resources.GetShaderVersion()) {
-            ResolveFiberAppearance(entry.m_appearance, *material, entry.m_settings, entry.m_mask.m_texture, resources);
-            entry.m_snapshot = authoringSnapshot;
-            entry.m_shaderVersion = resources.GetShaderVersion();
-        }
-    }
-    return entry;
-}
-
-/// @brief FiberComponent の個体ごとの倍率を共有 .mat の解決結果へ掛ける。
-/// @note 長さ・密度・毛束は ResolveFiberMaterial と同じ上限で丸める。色の乗算は 1 を超えてよい (HDR)。非有限は 1 とみなす。
-asset::FiberMaterialSettings ApplyFiberOverrides(const asset::FiberMaterialSettings& base, const FiberComponent& fiber,
-    FiberResources& cache, renderer::ResourceManager& resources)
-{
-    const auto scale = [](float value) { return std::isfinite(value) ? std::max(value, 0.0f) : 1.0f; };
-    asset::FiberMaterialSettings settings = base;
-    const math::Vector3 tint{ scale(fiber.m_colorTint.x), scale(fiber.m_colorTint.y), scale(fiber.m_colorTint.z) };
-    settings.m_rootColor = { base.m_rootColor.x * tint.x, base.m_rootColor.y * tint.y, base.m_rootColor.z * tint.z, base.m_rootColor.w };
-    settings.m_tipColor = { base.m_tipColor.x * tint.x, base.m_tipColor.y * tint.y, base.m_tipColor.z * tint.z, base.m_tipColor.w };
-    settings.m_length = std::clamp(base.m_length * scale(fiber.m_lengthScale), 0.0f, 2.0f);
-    settings.m_density = std::clamp(base.m_density * scale(fiber.m_densityScale), 0.0f, 1.0f);
-    settings.m_clumping = std::clamp(base.m_clumping * scale(fiber.m_clumpingScale), 0.0f, 1.0f);
-    if (!fiber.m_maskPath.empty())
-        ResolveFiberMaskTexture(settings, fiber.m_maskPath, resources, cache.m_maskOverrides[fiber.m_maskPath]);
-    return settings;
-}
-
-/// @note 同じ面の形状設定違いも一緒に返す。先頭 4 語の範囲検索で、全パッチの根元を毎回走査しない。
-void ReleaseFiberTerrainMesh(FiberResources& cache, renderer::ResourceManager& resources, const renderer::Mesh& mesh)
-{
-    const std::array<uint32_t, 8> first{mesh.vertexBuffer.id, mesh.vertexBuffer.gen,
-        mesh.indexBuffer.id, mesh.indexBuffer.gen, 0, 0, 0, 0};
-    for (auto it = cache.m_fins.lower_bound(first); it != cache.m_fins.end();) {
-        if (!std::equal(first.begin(), first.begin() + 4, it->first.begin())) break;
-        resources.Release(it->second.m_vertices);
-        resources.Release(it->second.m_indices);
-        resources.Release(it->second.m_blades);
-        it = cache.m_fins.erase(it);
-    }
-    resources.Release(mesh.vertexBuffer);
-    resources.Release(mesh.indexBuffer);
-}
-
-FiberResources& GetFiberResources(renderer::ResourceManager& resources)
-{
-    /// @note 複数の Renderer を交互に抽出しても、既に返した別所有者の非所有ハンドルを失効させない。
-    static std::map<uint64_t, FiberResources> owners;
-    std::erase_if(owners, [](const auto& owner) { return !renderer::ResourceManager::FindOwner(owner.first); });
-    auto& cache = owners[resources.GetInstanceId()];
-    if (cache.m_ownerIdentity != resources.GetInstanceId() || cache.m_resetVersion != resources.GetResetVersion()) {
-        /// @note Reset が旧 GPU 実体を返却済みなので、失効した参照を新しい世代へ持ち越さない。
-        cache = FiberResources{};
-        cache.m_owner = &resources;
-        cache.m_ownerIdentity = resources.GetInstanceId();
-        cache.m_resetVersion = resources.GetResetVersion();
-    }
-    /// @note 世代切れの掃除は 1 フレーム 1 回。影のカスケード・面ごとに繰り返さない。
-    const uint64_t frame = resources.FrameStamp();
-    if (cache.m_sweptFrame == frame) return cache;
-    cache.m_sweptFrame = frame;
-    for (auto it = cache.m_placements.begin(); it != cache.m_placements.end();) {
-        if (Time::frameCount > it->second.seen && Time::frameCount-it->second.seen > 120) {
-            ReleaseFiberPlacement(it->second,resources);
-            it = cache.m_placements.erase(it);
-        } else ++it;
-    }
-    for (auto it = cache.m_materials.begin(); it != cache.m_materials.end();) {
-        if (Time::frameCount > it->second.m_frame && Time::frameCount - it->second.m_frame > 120) {
-            auto& buffer = it->second.m_appearance.material.paramsBuffer;
-            if (buffer.IsValid()) resources.Release(buffer);
-            buffer = {};
-            it = cache.m_materials.erase(it);
-        }
-        else ++it;
-    }
-    for (auto it=cache.m_terrains.begin();it!=cache.m_terrains.end();) {
-        SweepFiberTerrain(it->second, frame, [&](const renderer::Mesh& mesh) { ReleaseFiberTerrainMesh(cache, resources, mesh); });
-        if (FiberTerrainExpired(frame, it->second.m_seen)) it=cache.m_terrains.erase(it);
-        else ++it;
-    }
-    for (auto it = cache.m_flows.begin(); it != cache.m_flows.end();) {
-        if (Time::frameCount > it->second.m_frame && Time::frameCount - it->second.m_frame > 120) it = cache.m_flows.erase(it);
-        else ++it;
-    }
-    for (auto it=cache.m_contactStates.begin();it!=cache.m_contactStates.end();) {
-        if (Time::frameCount>it->second.m_frame && Time::frameCount-it->second.m_frame>120)
-            it=cache.m_contactStates.erase(it);
-        else ++it;
-    }
-    for (auto it = cache.m_fins.begin(); it != cache.m_fins.end();) {
-        const auto& entry = it->second;
-        const auto& key = it->first;
-        const bool expired = frame > entry.m_seen && frame - entry.m_seen > (entry.m_terrain ? 2u : 120u);
-        /// @note Terrain patches own their source buffers. ReleaseFiberTerrainMesh removes their fin entries
-        /// @note before returning those buffers, so probing them here would only drain pending render work.
-        const bool staleSource = !expired && !entry.m_terrain
-            && (!resources.Get(renderer::ResourceHandle<renderer::BufferTag>{key[0], key[1], resources.GetInstanceId()})
-                || !resources.Get(renderer::ResourceHandle<renderer::BufferTag>{key[2], key[3], resources.GetInstanceId()}));
-        if (expired || staleSource) {
-            resources.Release(it->second.m_vertices);
-            resources.Release(it->second.m_indices);
-            resources.Release(it->second.m_blades);
-            it = cache.m_fins.erase(it);
-        } else ++it;
-    }
-    return cache;
-}
-
-const FiberFinBuffers& GetFiberFinBuffers(FiberResources& cache, renderer::ResourceManager& resources,
-                                          const renderer::Mesh& mesh, const FiberComponent& fiber, float bladeDensity,
-                                          bool blades, bool densityFromAlpha, bool terrain)
-{
-    const std::array<uint32_t,8> key{mesh.vertexBuffer.id,mesh.vertexBuffer.gen,mesh.indexBuffer.id,mesh.indexBuffer.gen,
-        blades ? 1u : 0u, blades ? std::bit_cast<uint32_t>(bladeDensity) : 0u,
-        blades ? std::bit_cast<uint32_t>(fiber.m_bladeWidth) : 0u, blades ? static_cast<uint32_t>(fiber.m_seed) : 0u};
-    const auto [it, inserted] = cache.m_fins.try_emplace(key);
-    auto& result = it->second;
-    result.m_seen=resources.FrameStamp();
-    result.m_terrain = terrain;
-    if (!inserted) return result;
-    if (blades) {
-        /// @note 頂点は GPU で SV_VertexID から組み立てる。CPU で作って送るのは 1 葉 64 バイトの根元だけ。
-        std::vector<renderer::FiberBladeRoot> roots;
-        if (!renderer::BuildFiberBlades(mesh, bladeDensity, fiber.m_bladeWidth, static_cast<uint32_t>(fiber.m_seed), roots,
-                densityFromAlpha)) {
-            core::Logger::Warn("Fiber: blade roots rejected invalid input or budget above 32768; reduce density/patch size");
-            return result;
-        }
-        /// @note 面積×密度が 1 未満なら葉は 0 本。黙って描かない。
-        if (roots.empty()) return result;
-        result.m_blades = resources.CreateGpuLocalStructuredBuffer(roots.data(), static_cast<uint32_t>(roots.size()),
-            sizeof(renderer::FiberBladeRoot));
-        result.m_bladeCount = result.m_blades.IsValid() ? static_cast<uint32_t>(roots.size()) : 0;
-        return result;
-    }
-    renderer::FiberFinMesh fins;
-    if (!renderer::BuildFiberFins(mesh, fins)) {
-        core::Logger::Warn("Fiber: geometry rejected invalid input, unsupported surface or blade budget above 32768; reduce density/patch size");
-        return result;
-    }
-    if (fins.m_indices.empty()) {
-        core::Logger::Warn("Fiber: Fin requires CPU triangle data; this mesh has no usable triangles");
-        return result;
-    }
-    result.m_vertices = resources.CreateVertexBuffer(fins.m_vertices.data(),
-        fins.m_vertices.size() * sizeof(renderer::FiberFinVertex), sizeof(renderer::FiberFinVertex));
-    result.m_indices = resources.CreateIndexBuffer(fins.m_indices.data(), static_cast<uint32_t>(fins.m_indices.size()));
-    result.m_indexCount = static_cast<uint32_t>(fins.m_indices.size());
-    return result;
-}
-
-bool HasFiberSurface(GameObject& go, fbzz::LayerMask mask)
-{
-    if (!ShouldRenderGameObject(go, mask)) return false;
-    const auto* fiber = go.GetComponent<FiberComponent>();
-    if (!fiber || !fiber->m_enabled || fiber->m_materialPath.empty()) return false;
-    if (const auto* mesh=go.GetComponent<MeshRenderer>(); mesh && mesh->enabled && mesh->lodVisible && mesh->mesh) return true;
-    if (const auto* skin=go.GetComponent<SkinnedMeshRenderer>(); skin && skin->enabled && skin->lodVisible && skin->model) return true;
-    const auto* terrain=go.GetComponent<TerrainComponent>();
-    return terrain && terrain->enabled;
-}
-
-/// @note Count proof follows BuildFiberFins/BuildFiberBlades without allocating the expanded shape or uploading GPU buffers.
-bool HasRayFiberMesh(const renderer::Mesh& mesh, const FiberComponent& fiber,
-                     renderer::ResourceHandle<renderer::BufferTag> vertices)
-{
-    if (!vertices.IsValid() || !mesh.indexBuffer.IsValid()) return false;
-    if (fiber.m_mode == FiberRenderMode::SHELL) return mesh.indexCount >= 3;
-    if (fiber.m_mode == FiberRenderMode::HYBRID && mesh.indexCount >= 3) return true;
-    const bool blades = fiber.m_mode == FiberRenderMode::BLADE;
-    if (!blades && fiber.m_mode != FiberRenderMode::FIN && fiber.m_mode != FiberRenderMode::HYBRID) return false;
-    if (mesh.cpuIndices.size() % 3 != 0 || mesh.cpuIndices.size() > 600000) return false;
-    if (blades && (mesh.isSkinned || !std::isfinite(fiber.m_bladeDensity)
-        || fiber.m_bladeDensity <= 0 || !std::isfinite(fiber.m_bladeWidth) || fiber.m_bladeWidth <= 0)) return false;
-    const size_t vertexCount = mesh.isSkinned ? mesh.cpuSkinnedVertices.size() : mesh.cpuVertices.size();
-    const auto position = [&](size_t i) { return mesh.isSkinned ? mesh.cpuSkinnedVertices[i].position : mesh.cpuVertices[i].position; };
-    const auto normal = [&](size_t i) { return mesh.isSkinned ? mesh.cpuSkinnedVertices[i].normal : mesh.cpuVertices[i].normal; };
-    const auto uv = [&](size_t i) { return mesh.isSkinned ? mesh.cpuSkinnedVertices[i].uv : mesh.cpuVertices[i].uv; };
-    const auto finite = [](math::Vector3 v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); };
-    if (!blades)
-        for (size_t i = 0; i < vertexCount; ++i)
-            if (!finite(position(i)) || !finite(normal(i)) || !std::isfinite(uv(i).x) || !std::isfinite(uv(i).y)) return false;
-    std::map<std::array<float, 6>, uint32_t> edges;
-    float area = 0;
-    for (size_t first = 0; first < mesh.cpuIndices.size(); first += 3) {
-        const uint32_t indices[]{mesh.cpuIndices[first], mesh.cpuIndices[first + 1], mesh.cpuIndices[first + 2]};
-        for (uint32_t index : indices)
-            if (index >= vertexCount || !finite(position(index)) || !finite(normal(index))) return false;
-        const auto face = math::Vector3::Cross(position(indices[1]) - position(indices[0]),
-                                             position(indices[2]) - position(indices[0]));
-        if (!finite(face)) return false;
-        if (blades) {
-            area += face.Length() * 0.5f;
-            continue;
-        }
-        if (face.LengthSq() <= 1.0e-16f) continue;
-        for (uint32_t edge = 0; edge < 3; ++edge) {
-            const uint32_t a = indices[edge], b = indices[(edge + 1) % 3];
-            const auto pa = position(a), pb = position(b);
-            auto ka = std::array{pa.x, pa.y, pa.z}, kb = std::array{pb.x, pb.y, pb.z};
-            if (kb < ka) std::swap(ka, kb);
-            const auto deltaUv = uv(b) - uv(a);
-            if (!std::isfinite((pb - pa).Length()) || !std::isfinite(std::sqrt(deltaUv.x * deltaUv.x + deltaUv.y * deltaUv.y))) return false;
-            if (++edges[{ka[0], ka[1], ka[2], kb[0], kb[1], kb[2]}] > 2) return false;
-        }
-    }
-    if (!blades) return !edges.empty();
-    const float count = area * fiber.m_bladeDensity;
-    return std::isfinite(area) && std::isfinite(count) && count >= 1 && count <= static_cast<float>(renderer::FIBER_MAX_BLADES);
-}
-
-} /// @note namespace
-void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const asset::MaterialAsset* material,
-    renderer::ResourceManager& resources, FiberMaskSlot& slot)
-{
-    std::string path;
-    const auto snapshot = material ? material->ReadAuthoring() : asset::MaterialAsset::AuthoringSnapshotPtr{};
-    const auto* values = snapshot ? &snapshot->Data() : nullptr;
-    if (values) {
-        if (const auto it = values->textures.find(asset::FIBER_MASK_TEXTURE_KEY); it != values->textures.end())
-            path = it->second;
-    }
-    ResolveFiberMaskTexture(settings, path, resources, slot);
-}
-
-void ResolveFiberMaskTexture(asset::FiberMaterialSettings& settings, const std::string& path,
-    renderer::ResourceManager& resources, FiberMaskSlot& slot)
-{
-    /// @note 毎フレーム利用権を更新する。読込失敗は resolver が保持し、同期 I/O を繰り返さない。
-    {
-        slot.m_path = path;
-        slot.m_texture = path.empty() ? renderer::ResourceHandle<renderer::TextureTag>{} : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, path);
-    }
-    const renderer::ITexture* texture = resources.Get(slot.m_texture);
-    if (!texture) texture = resources.Get(resources.GetWhiteTexture());
-    settings.m_maskIndex = texture ? texture->GetBindlessIndex() : renderer::INVALID_BINDLESS_INDEX;
-}
-
-void ExtractRayFiberSources(Scene& scene, renderer::ResourceManager& resources, renderer::RenderScene& output,
-    bool experimentalRayTracingEnabled)
-{
-    if (!experimentalRayTracingEnabled) return;
-    auto& cache = GetFiberResources(resources);
-    constexpr uint8_t SHELL = 1u << 0;
-    constexpr uint8_t FIN = 1u << 1;
-    constexpr uint8_t BLADE = 1u << 2;
-    constexpr std::array<uint8_t, 4> MODE_MASKS{SHELL, FIN, SHELL | FIN, BLADE};
-    std::optional<std::unordered_map<uint64_t, uint8_t>> terrainModes;
-    for (EntityID id : scene.GetEntities<FiberComponent>()) {
-        auto* go = scene.GetGameObject(id);
-        const auto* fiber = go ? go->GetComponent<FiberComponent>() : nullptr;
-        if (!go || !go->activeInHierarchy() || !fiber || !fiber->m_enabled || fiber->m_materialPath.empty()) continue;
-        const auto& material = GetFiberMaterial(cache, resources, fiber->m_materialPath);
-        if (!material.m_valid) continue;
-        const auto settings = ApplyFiberOverrides(material.m_settings, *fiber, cache, resources);
-        if (settings.m_length <= 0 || settings.m_density <= 0) continue;
-        bool hasSource = false;
-        if (const auto* mesh = go->GetComponent<MeshRenderer>(); mesh && mesh->enabled && mesh->mesh && !mesh->mesh->isSkinned)
-            hasSource = HasRayFiberMesh(*mesh->mesh, *fiber, mesh->mesh->vertexBuffer);
-        if (const auto* skin = go->GetComponent<SkinnedMeshRenderer>(); !hasSource && skin && skin->enabled && skin->model) {
-            const auto* baseMaterial = go->GetComponent<MaterialComponent>();
-            for (size_t slot = 0; slot < skin->SubmeshCount() && !hasSource; ++slot) {
-                const auto* mesh = skin->SubmeshMesh(slot);
-                if (!mesh || (baseMaterial && !baseMaterial->SlotAt(slot).visible)) continue;
-                hasSource = HasRayFiberMesh(*mesh, *fiber, skin->ResolveSlotVertexBuffer(slot, mesh->vertexBuffer));
-            }
-        }
-        if (const auto* terrain = go->GetComponent<TerrainComponent>();
-            !hasSource && terrain && terrain->enabled && fiber->m_renderIdentity) {
-            /// @note Reuse resident terrain draw counts, including seeded vertex-alpha rejection; diagnostics do not generate additional patches.
-            if (!terrainModes) {
-                terrainModes.emplace();
-                for (const auto& surface : output.fibers) {
-                    if (!surface.identity) continue;
-                    uint8_t mask = 0;
-                    if (surface.vertices.IsValid() && surface.indices.IsValid() && surface.indexCount >= 3)
-                        mask |= SHELL;
-                    if (surface.fins.m_vertices.IsValid() && surface.fins.m_indices.IsValid() && surface.fins.m_indexCount > 0)
-                        mask |= FIN;
-                    if (surface.blades.m_blades.IsValid() && surface.blades.m_bladeCount > 0)
-                        mask |= BLADE;
-                    if (mask) (*terrainModes)[surface.identity] |= mask;
-                }
-            }
-            const auto modes = terrainModes->find(fiber->m_renderIdentity);
-            const auto mode = static_cast<size_t>(fiber->m_mode);
-            hasSource = modes != terrainModes->end() && mode < MODE_MASKS.size()
-                && (modes->second & MODE_MASKS[mode]) != 0;
-        }
-        if (hasSource) {
-            const uint32_t layerMask = go->layer >= 0 && go->layer < 32 ? uint32_t{1} << go->layer : 0;
-            output.rayUnsupportedEffects.push_back({id.index, id.generation, layerMask,
-                renderer::RenderRayUnsupportedEffect::FIBER});
-        }
-    }
-}
-
-void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) {
-    if (ctx.scene.GetEntities<FiberComponent>().empty()) return;
-    const RenderSelectionLookup selection(ctx.settings.selectedObjects);
-    auto& resources = ctx.resources;
-    auto& cache = GetFiberResources(resources);
-    const auto wind = ctx.scene.FlowFrame().ambient;
-    auto& contacts=cache.m_contactStates[ctx.scene.GetRenderSceneGeneration()];
-    UpdateFiberContacts(contacts,ctx.scene);
-
-    const auto& flows = UpdateFiberFlows(cache, ctx.scene, resources);
-    const auto terrainWaterClip = GetTerrainGrassWaterClip(ctx.scene);
     /// @note 風・時刻はパス内で共通。物体・面ごとに検証し直さない。
     FiberFrameCB frameBase;
     frameBase.m_time = std::isfinite(Time::time) ? Time::time : 0.0f;
@@ -485,94 +38,83 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
         frameBase.m_pulseFrequency = std::isfinite(wind.pulseFrequency) ? wind.pulseFrequency : 0.0f;
     }
 
-    struct Surface {
-        renderer::Mesh* mesh=nullptr;
-        renderer::ResourceHandle<renderer::BufferTag> vertices;
-        renderer::ResourceHandle<renderer::ConstantBufferTag> skin,previousSkin;
-        bool cast=true;
-        bool validPreviousSkin=true;
-        float dither=0;
-        bool densityFromAlpha=false;  ///< @brief 地形の層指定時だけ true。葉の密度を頂点色 A で間引く
-        /// @note コンピュートスキニング済みの頂点 (静的メッシュと同じ並び)。有効なら Shell は VS でスキニングし直さない。
-        renderer::ResourceHandle<renderer::BufferTag> skinnedVertices;
-        std::shared_ptr<renderer::PreparedSkinningTicket> preparedSkinning;
-        uint32_t preparedSkinningWrite = UINT32_MAX;
-        /// @note スキンの今の姿勢のワールド球 (毛丈込み)。得られないときは false で、カリングせずに描く。
-        bool hasSkinBounds=false;
-        WorldBounds skinBounds{};
-        bool terrain = false;
-    };
-    static std::vector<Surface> surfaces;
+    return frameBase;
+}
+
+void AppendFiberPlacementPages(GameObject& owner, FiberComponent& fiber, const renderer::Mesh& mesh,
+    float fiberPadding, const renderer::RenderFiberInput& input, const FiberFlowCache& flows, FiberContactCache& contacts,
+    FiberResources& cache, RenderPassContext& context, renderer::RenderScene& output)
+{
+    auto& resources = context.resources;
+    auto& placementResources = cache.m_placements[{context.scene.GetRenderSceneGeneration(),owner.instanceId}];
+    UpdateFiberPlacementResources(placementResources,mesh,fiber,input.object.world,resources);
+    if (placementResources.valid) {
+        const float maxScale = std::max({std::abs(owner.transform.worldScale.x),std::abs(owner.transform.worldScale.y),std::abs(owner.transform.worldScale.z)});
+        for (const auto& [pageKey,placementPage] : placementResources.pages) {
+            auto chunkInput = input;
+            chunkInput.identity = placementPage.identity;
+            chunkInput.blades.m_blades = placementPage.buffer; chunkInput.blades.m_bladeCount = placementPage.count;
+            const auto center = input.object.world*math::Vector4{placementPage.center.x,placementPage.center.y,placementPage.center.z,1};
+            chunkInput.hasBounds = true;
+            chunkInput.boundsCenter = {center.x,center.y,center.z};
+            chunkInput.lodCenter = chunkInput.boundsCenter;
+            chunkInput.boundsRadius = placementPage.radius*maxScale+fiberPadding+fiber.m_bladeWidth;
+            chunkInput.frame.m_flowCount = CountFiberFlows(flows.m_current,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
+            chunkInput.frame.m_flowPreviousCount = CountFiberFlows(flows.m_previous,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
+            chunkInput.contacts = SelectFiberContacts(contacts, chunkInput);
+            output.fibers.push_back(std::move(chunkInput));
+        }
+    }
+}
+
+} /// @note namespace
+
+void ExtractRenderFibers(RenderPassContext& context, renderer::RenderScene& output)
+{
+    if (context.scene.GetEntities<FiberComponent>().empty()) return;
+    const RenderSelectionLookup selection(context.settings.selectedObjects);
+    auto& resources = context.resources;
+    auto& cache = GetFiberResources(resources);
+    const auto wind = context.scene.FlowFrame().ambient;
+    auto& contacts=cache.m_contactStates[context.scene.GetRenderSceneGeneration()];
+    UpdateFiberContacts(contacts,context.scene);
+
+    const auto& flows = UpdateFiberFlows(cache, context.scene, resources);
+    const auto terrainWaterClip = GetTerrainGrassWaterClip(context.scene);
+    const auto frameBase = BuildFiberFrame(wind);
+
+    static std::vector<FiberSurface> surfaces;
     static uint64_t nextIdentity = 0;
-    for (auto& go : ctx.scene.GameObjects()) {
-        if (!HasFiberSurface(go, ~0u)) continue;
-        auto& fiber = *go.GetComponent<FiberComponent>();
+    for (auto& owner : context.scene.GameObjects()) {
+        if (!HasFiberSurface(owner, ~0u)) continue;
+        auto& fiber = *owner.GetComponent<FiberComponent>();
         const auto& materialEntry = GetFiberMaterial(cache, resources, fiber.m_materialPath);
         if (!materialEntry.m_valid) continue;
         const asset::FiberMaterialSettings settings = ApplyFiberOverrides(materialEntry.m_settings, fiber, cache, resources);
         if (settings.m_length <= 0.0f || settings.m_density <= 0.0f) continue;
         /// @note 毛丈と曲げを含めたカリング球の余白。静的メッシュとスキンで同じ値を使う。
-        const float fiberPadding = ctx.cullingBoundsPadding + settings.m_length * 3.0f + settings.m_maxBend;
-        surfaces.clear();
-        if (auto* mr=go.GetComponent<MeshRenderer>(); mr && mr->enabled && mr->lodVisible && mr->mesh && !mr->mesh->isSkinned)
-            surfaces.push_back({mr->mesh,mr->mesh->vertexBuffer,{}, {},mr->castShadows,true,mr->lodDither});
-        if (auto* smr=go.GetComponent<SkinnedMeshRenderer>(); smr && smr->enabled && smr->lodVisible && smr->model) {
-            auto* anim=FindAnimator(go);
-            const auto skin=ResolveSkinningCB(anim ? anim->skinningBuffer.Get() : renderer::ResourceHandle<renderer::ConstantBufferTag>{},
-                smr->model,ctx.handles.bindPoseSkinningCB);
-            const bool valid=anim && anim->prevBoneMatricesValid && anim->prevSkinningBuffer.IsValid();
-            const auto prev=valid ? anim->prevSkinningBuffer.Get() : skin;
-            const auto* baseMaterial=go.GetComponent<MaterialComponent>();
-            /// @note 骨の今の広がりから作る球 (Animator が焼く)。以前はスキンをカリングせず、画面外でも全カスケードへ全層を描いていた。
-            WorldBounds skinBounds{};
-            const bool hasSkinBounds=ComputeSkinnedWorldBounds(go,*smr,skinBounds,fiberPadding);
-            for (size_t i=0;i<smr->SubmeshCount();++i) {
-                auto* mesh=smr->SubmeshMesh(i);
-                if (!mesh || (baseMaterial && !baseMaterial->SlotAt(i).visible)) continue;
-                Surface surface{mesh,smr->ResolveSlotVertexBuffer(i,mesh->vertexBuffer),skin,prev,smr->castShadows,valid,smr->lodDither};
-                surface.skinnedVertices=smr->ResolveSlotSkinnedVertexBuffer(i);
-                const uint32_t submesh = smr->SubmeshAt(i);
-                if (smr->preparedSkinning && smr->preparedSkinningFrame == Time::frameCount
-                    && submesh < smr->preparedSkinningRows.size()) {
-                    surface.preparedSkinning = smr->preparedSkinning;
-                    surface.preparedSkinningWrite = smr->preparedSkinningRows[submesh];
-                }
-                surface.hasSkinBounds=hasSkinBounds;
-                surface.skinBounds=skinBounds;
-                surfaces.push_back(surface);
-            }
-        }
-        if (auto* terrain=go.GetComponent<TerrainComponent>(); terrain && terrain->enabled) {
-            auto& patches=cache.m_terrains[{ctx.scene.GetRenderSceneGeneration(),go.instanceId}];
-            UpdateFiberTerrain(patches,*terrain,fiber.m_terrainPatchCells,fiber.m_terrainLayer,fiber.m_terrainLayerThreshold,
-                go.transform,ctx.camera.m_position,fiber.m_distanceLod,fiber.m_lodNear,fiber.m_lodFar,resources);
-            const bool layered=fiber.m_terrainLayer>=0;
-            for (auto* mesh:patches.m_visible) {
-                Surface surface{mesh,mesh->vertexBuffer,{},{},true,true,0,layered};
-                surface.terrain = true;
-                surfaces.push_back(std::move(surface));
-            }
-        }
+        const float fiberPadding = context.cullingBoundsPadding + settings.m_length * 3.0f + settings.m_maxBend;
+        CollectFiberSurfaces(owner, fiber, fiberPadding, cache, context, surfaces);
         if (!fiber.m_renderIdentity) fiber.m_renderIdentity = ++nextIdentity;
-        const bool selected = selection.Contains(go.GetID());
+        const bool selected = selection.Contains(owner.GetID());
         for (const auto& surface : surfaces) {
             const auto* mesh = surface.mesh;
             if (!surface.vertices.IsValid() || !mesh->indexBuffer.IsValid()) continue;
             renderer::RenderFiberInput input;
             input.identity = fiber.m_renderIdentity;
-            input.layer = static_cast<uint32_t>(go.layer);
+            input.layer = static_cast<uint32_t>(owner.layer);
             input.selected = selected;
             input.skinned = mesh->isSkinned;
             input.preparedSkinning = surface.preparedSkinning;
             input.preparedSkinningWrite = surface.preparedSkinningWrite;
             input.cast = fiber.m_castShadows && surface.cast;
             input.validPreviousSkin = surface.validPreviousSkin;
-            input.object.world = go.transform.GetWorldMatrix();
+            input.object.world = owner.transform.GetWorldMatrix();
             input.object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(input.object.world);
             input.object.objectParams.x = surface.dither;
             input.hasBounds = input.skinned ? surface.hasSkinBounds : mesh->boundsRadius > 0;
-            const auto bounds = input.skinned ? surface.skinBounds : ComputeWorldBounds(go.transform, *mesh, fiberPadding);
-            input.boundsCenter = input.hasBounds ? bounds.center : go.transform.worldPosition;
+            const auto bounds = input.skinned ? surface.skinBounds : ComputeWorldBounds(owner.transform, *mesh, fiberPadding);
+            input.boundsCenter = input.hasBounds ? bounds.center : owner.transform.worldPosition;
             input.boundsRadius = input.hasBounds ? bounds.radius : -1;
             const auto center = input.object.world * math::Vector4{mesh->boundsCenter.x, mesh->boundsCenter.y, mesh->boundsCenter.z, 1};
             input.lodCenter = input.skinned && surface.hasSkinBounds ? bounds.center : math::Vector3{center.x,center.y,center.z};
@@ -590,7 +132,7 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             if (surface.terrain && fiber.m_mode == FiberRenderMode::BLADE && fiber.m_distanceLod
                 && sparseStart > std::max(fiber.m_lodNear, 0.0f) && sparseStart < fiber.m_lodFar) {
                 input.settings.m_terrainSparseLodStart = sparseStart;
-                if ((input.lodCenter - ctx.camera.m_position).Length() >= sparseStart)
+                if ((input.lodCenter - context.camera.m_position).Length() >= sparseStart)
                     bladeDensity *= renderer::TERRAIN_SPARSE_BLADE_DENSITY_SCALE;
             }
             input.material = settings;
@@ -612,26 +154,8 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
             };
             if (fiber.m_mode == FiberRenderMode::FIN || fiber.m_mode == FiberRenderMode::HYBRID) input.fins = resolveShape(false);
             if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned && fiber.m_chunkedPlacement
-                && go.GetComponent<MeshRenderer>()) {
-                auto& placement = cache.m_placements[{ctx.scene.GetRenderSceneGeneration(),go.instanceId}];
-                UpdateFiberPlacementResources(placement,*mesh,fiber,input.object.world,resources);
-                if (placement.valid) {
-                    const float maxScale = std::max({std::abs(go.transform.worldScale.x),std::abs(go.transform.worldScale.y),std::abs(go.transform.worldScale.z)});
-                    for (const auto& [key,page] : placement.pages) {
-                        auto chunkInput = input;
-                        chunkInput.identity = page.identity;
-                        chunkInput.blades.m_blades = page.buffer; chunkInput.blades.m_bladeCount = page.count;
-                        const auto center = input.object.world*math::Vector4{page.center.x,page.center.y,page.center.z,1};
-                        chunkInput.hasBounds = true;
-                        chunkInput.boundsCenter = {center.x,center.y,center.z};
-                        chunkInput.lodCenter = chunkInput.boundsCenter;
-                        chunkInput.boundsRadius = page.radius*maxScale+fiberPadding+fiber.m_bladeWidth;
-                        chunkInput.frame.m_flowCount = CountFiberFlows(flows.m_current,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
-                        chunkInput.frame.m_flowPreviousCount = CountFiberFlows(flows.m_previous,chunkInput.frame.m_flowChannels,chunkInput.boundsCenter,chunkInput.boundsRadius);
-                        chunkInput.contacts = SelectFiberContacts(contacts, chunkInput);
-                        output.fibers.push_back(std::move(chunkInput));
-                    }
-                }
+                && owner.GetComponent<MeshRenderer>()) {
+                AppendFiberPlacementPages(owner, fiber, *mesh, fiberPadding, input, flows, contacts, cache, context, output);
                 continue;
             }
             if (fiber.m_mode == FiberRenderMode::BLADE && !input.skinned) input.blades = resolveShape(true);
@@ -640,6 +164,7 @@ void ExtractRenderFibers(RenderPassContext& ctx, renderer::RenderScene& output) 
         }
     }
     surfaces.clear();
-    ExtractRayFiberSources(ctx.scene, resources, output, ctx.experimentalRayTracingEnabled);
+    ExtractRayFiberSources(context.scene, resources, output, context.experimentalRayTracingEnabled);
 }
-}
+
+} /// @note namespace fbzz::scene

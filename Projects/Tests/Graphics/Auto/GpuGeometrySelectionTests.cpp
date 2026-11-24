@@ -406,8 +406,8 @@ TEST_F(GpuGeometrySelectionTest, DepthPrepassFeedsRegularMeshIndirectDrawsThroug
         object.world.m[1][3] = center.y;
         object.world.m[2][3] = center.z;
         object.worldInvTranspose = math::Matrix4::InverseTransposeAffine(object.world);
-        mesh.objectIndex = static_cast<uint32_t>(scene->objects.size());
-        scene->objects.push_back(object);
+        mesh.objectIndex = static_cast<uint32_t>(scene->Objects().size());
+        scene->geometry.EditObjects().push_back(object);
         scene->items.push_back(mesh);
     };
     add({-1.2f, 0, 3}, 1.0f, 2.2f);

@@ -1,5 +1,5 @@
 /// @file    ParticleGpuOwnershipTests.cpp
-/// @brief   粒子 GPU 資源の作成元分離と Clear・Restart・容量変更時の返却を検証する。
+/// @brief   粒子の描画入力、GPU 資源の所有と返却を検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-31
 #include <TestKit/TestKit.hpp>
@@ -13,8 +13,13 @@
 #include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Systems/RenderParticleExtractor.hpp>
 #include <Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp>
+#include <Graphics/Passes/Geometry/GeometryPasses.hpp>
+#include <Graphics/Renderer/DrawCall.hpp>
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include "../../../Engine/src/Scene/Systems/RenderPasses/Debug/SelectionPasses.hpp"
+#include <array>
+#include <cmath>
 
 namespace fbzz::tests {
 class ParticleGpuOwnershipTest : public testkit::EngineFixture {
@@ -92,7 +97,7 @@ protected:
     float m_delta = 0.0f;
 };
 
-/// @brief Clear restart and capacity change return owned buffers and keep borrowed pool buffers.
+/// @brief クリア・再始動・容量変更で所有バッファを返却し、借用したプールのバッファを保つ。
 TEST_F(ParticleGpuOwnershipTest, ClearRestartAndCapacityChangeReturnOwnedBuffersAndKeepBorrowedPoolBuffers)
 {
     auto previous = Extract(m_device, *m_resources);
@@ -119,7 +124,7 @@ TEST_F(ParticleGpuOwnershipTest, ClearRestartAndCapacityChangeReturnOwnedBuffers
     EXPECT_NE(m_resources->Get(previous.runtime.gpuSpawnBuffer), nullptr);
 }
 
-/// @brief Checks alternating managers recreate emitter buffers and retain per owner material.
+/// @brief マネージャーの交互使用でエミッターのバッファを作り直し、所有者別の材質を保つ。
 TEST_F(ParticleGpuOwnershipTest, AlternatingManagersRecreateEmitterBuffersAndRetainPerOwnerMaterial)
 {
     testkit::ResourceTrackingRenderer otherDevice;
@@ -145,7 +150,7 @@ TEST_F(ParticleGpuOwnershipTest, AlternatingManagersRecreateEmitterBuffersAndRet
     EXPECT_EQ(otherDevice.m_constantsAlive, 0u);
 }
 
-/// @brief Checks reset recreates emitter and material resources without releasing unrelated buffers.
+/// @brief リセット後にエミッターと材質の資源を再作成し、無関係なバッファは解放しない。
 TEST_F(ParticleGpuOwnershipTest, ResetRecreatesEmitterAndMaterialResourcesWithoutReleasingUnrelatedBuffers)
 {
     const auto initial = Extract(m_device, *m_resources);
@@ -163,7 +168,7 @@ TEST_F(ParticleGpuOwnershipTest, ResetRecreatesEmitterAndMaterialResourcesWithou
     m_resources->Release(unrelated);
 }
 
-/// @brief Shader reload without parameters returns old material buffer.
+/// @brief 再読み込みしたシェーダーがパラメーターを持たない場合は古い材質バッファを返却する。
 TEST_F(ParticleGpuOwnershipTest, ShaderReloadWithoutParametersReturnsOldMaterialBuffer)
 {
     const auto initial = Extract(m_device, *m_resources);
@@ -174,4 +179,276 @@ TEST_F(ParticleGpuOwnershipTest, ShaderReloadWithoutParametersReturnsOldMaterial
     EXPECT_FALSE(reloaded.runtime.materialParamsCB.IsValid());
     EXPECT_EQ(m_resources->Get(initial.runtime.materialParamsCB), nullptr);
 }
-} /// @note namespace fbzz::tests
+
+/// @brief 正の描画予算を CPU と GPU で共有し、予算が尽きても GPU の更新を一度だけ行う。
+TEST_F(ParticleGpuOwnershipTest, DrawBudgetExhaustionDoesNotReopenBudgetOrSkipGpuSimulation)
+{
+    auto& resources = *m_resources;
+    m_emitter->settings.maxParticles = 4;
+    m_emitter->settings.renderPriority = 0;
+    auto& cpuObject = m_scene.CreateGameObject("CPU");
+    auto& gpuObject = m_scene.CreateGameObject("GPU");
+    cpuObject.AddComponent<scene::ParticleEmitter>();
+    gpuObject.AddComponent<scene::ParticleEmitter>();
+    auto& cpu = *cpuObject.GetComponent<scene::ParticleEmitter>();
+    auto& gpu = *gpuObject.GetComponent<scene::ParticleEmitter>();
+    cpu.settings = gpu.settings = m_emitter->settings;
+    cpu.settings.simulationMode = scene::ParticleSimulationMode::Cpu;
+    cpu.settings.sortMode = scene::ParticleSortMode::None;
+    cpu.settings.renderPriority = 1;
+    gpu.settings.renderPriority = 2;
+    cpu.runtime.particles.resize(3);
+
+    renderer::Camera camera;
+    renderer::RenderPassHandles handles;
+    handles.particleShader = resources.LoadShader("Particle.hlsl");
+    handles.particleGpuShader = resources.LoadShader("ParticleGpu.hlsl");
+    handles.particleGpuSimCS = resources.LoadShader("ParticleSim.hlsl");
+    handles.particleGpuPSO = handles.particleGpuAlphaPSO = handles.particleGpuPremultipliedPSO
+        = resources.CreatePipelineState({});
+    const uint32_t indices[]{0, 1, 2};
+    handles.particleIB = resources.CreateIndexBuffer(indices, 3);
+    ASSERT_TRUE(handles.particleShader && handles.particleGpuShader && handles.particleGpuSimCS && handles.particleIB);
+
+    struct BudgetCase {
+        bool enabled;
+        int configured;
+        int cpuDraw;
+        int gpuDraw;
+        int dropped;
+    };
+    for (const BudgetCase test : {BudgetCase{true, 4, 0, 0, 2}, BudgetCase{true, 6, 2, 0, 2}, BudgetCase{true, 9, 3, 2, 1},
+                                 BudgetCase{true, 0, 3, 4, 0}, BudgetCase{true, -1, 3, 4, 0},
+                                 BudgetCase{false, 1, 3, 4, 0}}) {
+        SCOPED_TRACE(test.configured);
+        ++Time::frameCount;
+        renderer::RenderSettings settings;
+        settings.particleBudgetEnabled = test.enabled;
+        settings.particleBudget = test.configured;
+        for (const bool firstView : {true, false}) {
+            scene::RenderPassContext context(m_scene, m_device, resources, camera, settings, {}, UINT32_MAX, handles);
+            auto frame = std::make_shared<renderer::RenderScene>();
+            scene::ExtractRenderParticles(context, *frame);
+            EXPECT_EQ(context.statsParticleEmitters, 3);
+            EXPECT_EQ(context.statsParticleVisible, 4 + test.cpuDraw + test.gpuDraw);
+            EXPECT_EQ(context.statsParticleBudgetDropped, test.dropped);
+            EXPECT_EQ(m_emitter->runtime.visibleParticleCount, 4);
+            EXPECT_EQ(cpu.runtime.visibleParticleCount, test.cpuDraw);
+            EXPECT_EQ(gpu.runtime.visibleParticleCount, test.gpuDraw);
+            EXPECT_EQ(cpu.runtime.particles.size(), 3u);
+            EXPECT_EQ(gpu.runtime.lastGpuSimulationFrame, Time::frameCount);
+
+            const renderer::RenderParticleInput* cpuDraw = nullptr;
+            const renderer::RenderParticleInput* lastGpu = nullptr;
+            for (const auto& particle : frame->particles) {
+                if (particle.priority == 1) cpuDraw = &particle;
+                if (particle.priority == 2) lastGpu = &particle;
+            }
+            if (test.cpuDraw == 0) {
+                EXPECT_EQ(cpuDraw, nullptr);
+            } else {
+                ASSERT_NE(cpuDraw, nullptr);
+                EXPECT_EQ(cpuDraw->drawCount, test.cpuDraw);
+                EXPECT_EQ(cpuDraw->runtime.particles.size(), static_cast<std::size_t>(test.cpuDraw));
+            }
+            if (firstView || test.gpuDraw > 0) {
+                ASSERT_NE(lastGpu, nullptr);
+                EXPECT_TRUE(lastGpu->gpu);
+                EXPECT_EQ(lastGpu->drawCount, test.gpuDraw);
+                EXPECT_EQ(lastGpu->simulate, firstView);
+            }
+            if (!firstView && lastGpu) EXPECT_FALSE(lastGpu->simulate);
+
+            context.renderScene = std::move(frame);
+            std::vector<renderer::DrawCall> draws;
+            m_device.m_drawCalls = &draws;
+            const auto dispatches = m_device.m_dispatches;
+            renderer::ExecuteParticlePass(context);
+            m_device.m_drawCalls = nullptr;
+            EXPECT_EQ(m_device.m_dispatches - dispatches, firstView ? 2u : 0u);
+            std::vector<uint32_t> gpuVertexCounts;
+            for (const auto& draw : draws)
+                if (draw.vsBuffers[0].IsValid()) gpuVertexCounts.push_back(draw.vertexCount);
+            const auto expectedGpuVertices = test.gpuDraw > 0
+                ? std::vector<uint32_t>{24u, static_cast<uint32_t>(test.gpuDraw) * 6u} : std::vector<uint32_t>{24u};
+            EXPECT_EQ(gpuVertexCounts, expectedGpuVertices);
+        }
+    }
+    resources.Release(handles.particleIB);
+}
+
+/// @brief 通常描画と選択マスクが提出する CPU 粒子頂点と、履歴込みの描画上限を検証する。
+TEST_F(ParticleGpuOwnershipTest, CpuBillboardDrawsPreserveQuadPayloadAndTrailBudget)
+{
+    const auto materialPath = m_emitter->settings.materialPath;
+    m_emitter->settings.enabled = false;
+    auto& object = m_scene.CreateGameObject("Billboard");
+    object.transform.worldPosition = {10, 3, -2};
+    object.transform.worldScale = {-2, 3, 0.5f};
+    object.transform.worldRotation = math::Quaternion::FromAxisAngle(math::Vector3::UP, 1.5707963268f);
+    auto& emitter = object.AddComponent<scene::ParticleEmitter>();
+    emitter.settings.materialPath = materialPath;
+    emitter.settings.simulationMode = scene::ParticleSimulationMode::Cpu;
+    emitter.settings.culling.cullingEnabled = false;
+    emitter.settings.trail.trailEnabled = true;
+    emitter.settings.trail.trailPointCount = 2;
+    emitter.settings.trail.trailWidthScale = 0.25f;
+    emitter.settings.trail.trailAlphaScale = 0.4f;
+    emitter.settings.trail.trailColorTint = {0.5f, 1, 0.25f, 0.5f};
+    renderer::Particle particle{};
+    particle.position = {1, 2, 3};
+    particle.velocity = {2, 4, 6};
+    particle.color = {0.5f, 0.25f, 0.75f, 0.8f};
+    particle.size = 2;
+    particle.rotation = 0.25f;
+    particle.uvRect = {0, 0.25f, 0.25f, 0.5f};
+    particle.nextUvRect = {0.25f, 0.5f, 0.5f, 0.75f};
+    particle.spriteBlend = 0.375f;
+    particle.trailCount = 2;
+    particle.trailPoints[0] = {-2, 2, -3};
+    particle.trailPoints[1] = {-3, 1, -4};
+
+    auto& resources = *m_resources;
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    settings.particleBudgetEnabled = false;
+    settings.selectedObjects.push_back({object.GetID().index, object.GetID().generation});
+    renderer::RenderPassHandles handles;
+    handles.particleShader = resources.LoadShader("Particle.hlsl");
+    handles.selectionMaskParticleShader = resources.LoadShader("ParticleSelection.hlsl");
+    const auto pso = resources.CreatePipelineState({});
+    handles.particlePSO = handles.particleAlphaPSO = handles.particlePremultipliedPSO = handles.selectionMaskPSO = pso;
+    handles.objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
+    std::vector<uint32_t> indices;
+    constexpr auto QUAD_LIMIT = static_cast<uint32_t>(renderer::kMaxParticleDraw);
+    indices.reserve(QUAD_LIMIT * 6);
+    for (uint32_t quad = 0; quad < QUAD_LIMIT; ++quad) {
+        const uint32_t first = quad * 4;
+        indices.insert(indices.end(), {first, first + 1, first + 2, first + 2, first + 1, first + 3});
+    }
+    handles.particleIB = resources.CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
+    scene::RenderPassContext context(m_scene, m_device, resources, camera, settings, {}, UINT32_MAX, handles);
+    context.selectionOutlineEnabled = true;
+    const std::array<math::Vector2, 4> expectedUv{{{0, 0}, {1, 0}, {0, 1}, {1, 1}}};
+
+    for (int passCase = 0; passCase < 3; ++passCase) {
+        SCOPED_TRACE(passCase);
+        const bool local = passCase == 1;
+        const bool capped = passCase == 2;
+        emitter.settings.simulationSpace = local ? scene::ParticleSimulationSpace::Local : scene::ParticleSimulationSpace::World;
+        emitter.runtime.particles.assign(capped ? renderer::kMaxParticleDraw / 3 + 1 : 1, particle);
+        const auto frame = std::make_shared<renderer::RenderScene>();
+        scene::ExtractRenderParticles(context, *frame);
+        ASSERT_EQ(frame->particles.size(), 1u);
+        context.renderScene = frame;
+
+        std::vector<renderer::DrawCall> draws;
+        m_device.m_drawCalls = &draws;
+        renderer::ExecuteParticlePass(context);
+        auto passResources = context.Res();
+        scene::ExecuteSelectionMaskPass(passResources, context);
+        m_device.m_drawCalls = nullptr;
+        ASSERT_EQ(draws.size(), 2u);
+        EXPECT_NE(draws[0].vertexBuffer, draws[1].vertexBuffer);
+
+        for (size_t drawIndex = 0; drawIndex < draws.size(); ++drawIndex) {
+            SCOPED_TRACE(drawIndex);
+            const auto& draw = draws[drawIndex];
+            EXPECT_EQ(draw.indexCount, (capped ? QUAD_LIMIT : 3u) * 6u);
+            const auto* buffer = resources.Get(draw.vertexBuffer);
+            ASSERT_NE(buffer, nullptr);
+            ASSERT_EQ(buffer->GetStride(), sizeof(renderer::ParticleVertex));
+            std::array<renderer::ParticleVertex, 12> vertices{};
+            ASSERT_TRUE(buffer->CopyData(0, sizeof(vertices), vertices.data()));
+            const std::array<math::Vector3, 3> centers = local
+                ? std::array<math::Vector3, 3>{{{11.5f, 9, 0}, {8.5f, 9, -6}, {8, 6, -8}}}
+                : std::array<math::Vector3, 3>{{particle.position, particle.trailPoints[0], particle.trailPoints[1]}};
+            for (size_t i = 0; i < vertices.size(); ++i) {
+                const auto& vertex = vertices[i];
+                EXPECT_VEC3_NEAR((math::Vector3{vertex.center[0], vertex.center[1], vertex.center[2]}),
+                    centers[i / 4], testkit::kLooseTolerance);
+                const math::Vector3 velocity = local ? math::Vector3{6, 4, -2} : particle.velocity;
+                EXPECT_VEC3_NEAR((math::Vector3{vertex.velocity[0], vertex.velocity[1], vertex.velocity[2]}),
+                    velocity, testkit::kLooseTolerance);
+                EXPECT_FLOAT_EQ(vertex.uv[0], expectedUv[i % 4].x);
+                EXPECT_FLOAT_EQ(vertex.uv[1], expectedUv[i % 4].y);
+                EXPECT_FLOAT_EQ(vertex.uvRect[1], particle.uvRect.y);
+                EXPECT_FLOAT_EQ(vertex.nextUvRect[1], particle.nextUvRect.y);
+                EXPECT_FLOAT_EQ(vertex.spriteBlend, particle.spriteBlend);
+                EXPECT_FLOAT_EQ(vertex.rotation, particle.rotation);
+            }
+            EXPECT_FLOAT_EQ(vertices[0].size, particle.size);
+            EXPECT_FLOAT_EQ(vertices[4].size, 1.5f);
+            EXPECT_FLOAT_EQ(vertices[8].size, 1.0f);
+            EXPECT_FLOAT_EQ(vertices[0].color[3], 0.8f);
+            EXPECT_FLOAT_EQ(vertices[4].color[3], 0.32f);
+            EXPECT_FLOAT_EQ(vertices[8].color[3], 0.24f);
+            /// @note 通常描画はシェーダーと共通のガンマ 2.2 で変換し、選択マスクは変換前の色を使う。
+            const float authoredTint = emitter.settings.trail.trailColorTint.x;
+            const float expectedTint = drawIndex == 0 ? std::pow(authoredTint, 2.2f) : authoredTint;
+            EXPECT_NEAR(vertices[4].color[0], particle.color.x * expectedTint, testkit::kLooseTolerance);
+        }
+    }
+}
+
+TEST_F(ParticleGpuOwnershipTest, ReplayedParticleSnapshotSortsBillboardsAndRibbonsForCurrentCamera)
+{
+    auto& resources = *m_resources;
+    renderer::RenderPassHandles handles;
+    handles.particleShader = resources.LoadShader("Particle.hlsl");
+    handles.trailShader = resources.LoadShader("ParticleTrail.hlsl");
+    handles.particlePSO = handles.trailPSO = resources.CreatePipelineState({});
+    constexpr uint32_t QUAD_INDICES[]{0, 1, 2, 2, 1, 3};
+    handles.particleIB = resources.CreateIndexBuffer(QUAD_INDICES, 6);
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    auto& emitter = snapshot->particles.emplace_back();
+    emitter.settings.sortMode = renderer::ParticleSortMode::BackToFront;
+    emitter.settings.trail.trailEnabled = true;
+    emitter.settings.trail.trailRibbon = true;
+    emitter.drawCount = 1;
+    constexpr uint8_t WHITE[]{255, 255, 255, 255};
+    emitter.runtime.texture = resources.CreateTexture(WHITE, 1, 1);
+    emitter.runtime.renderCB = resources.CreateConstantBuffer(sizeof(renderer::ParticleRenderCB));
+    emitter.runtime.trailRibbonCB = resources.CreateConstantBuffer(sizeof(renderer::TrailCB));
+    ASSERT_TRUE(emitter.runtime.texture.IsValid());
+    for (float x : {-8.0f, 9.0f}) {
+        auto& particle = emitter.runtime.particles.emplace_back();
+        particle.position = {x, 0, 0};
+        particle.size = 1;
+        particle.color = {1, 1, 1, 1};
+        particle.trailCount = 1;
+        particle.trailPoints[0] = {x - 1, 0, 0};
+    }
+    renderer::RenderSettings settings;
+
+    const auto checkView = [&](float cameraX, float expectedParticleX) {
+        renderer::Camera camera;
+        camera.m_position = {cameraX, 0, 5};
+        scene::RenderPassContext context(m_scene, m_device, resources, camera, settings, {}, UINT32_MAX, handles);
+        context.renderScene = snapshot;
+        std::vector<renderer::DrawCall> draws;
+        m_device.m_drawCalls = &draws;
+        renderer::ExecuteParticlePass(context);
+        m_device.m_drawCalls = nullptr;
+        ASSERT_EQ(draws.size(), 2u);
+        EXPECT_EQ(draws[0].indexCount, 6u);
+        EXPECT_EQ(draws[1].vertexCount, 6u);
+        const auto* billboardBuffer = resources.Get(draws[0].vertexBuffer);
+        const auto* ribbonBuffer = resources.Get(draws[1].vertexBuffer);
+        ASSERT_NE(billboardBuffer, nullptr);
+        ASSERT_NE(ribbonBuffer, nullptr);
+        renderer::ParticleVertex billboard{};
+        renderer::TrailVertex ribbon{};
+        ASSERT_TRUE(billboardBuffer->CopyData(0, sizeof(billboard), &billboard));
+        ASSERT_TRUE(ribbonBuffer->CopyData(0, sizeof(ribbon), &ribbon));
+        EXPECT_FLOAT_EQ(billboard.center[0], expectedParticleX);
+        EXPECT_FLOAT_EQ(ribbon.position.x, expectedParticleX);
+    };
+
+    checkView(-20, 9);
+    checkView(20, -8);
+    ASSERT_EQ(snapshot->particles.front().runtime.particles.size(), 2u);
+    EXPECT_FLOAT_EQ(snapshot->particles.front().runtime.particles[0].position.x, -8);
+    EXPECT_FLOAT_EQ(snapshot->particles.front().runtime.particles[1].position.x, 9);
+}
+}

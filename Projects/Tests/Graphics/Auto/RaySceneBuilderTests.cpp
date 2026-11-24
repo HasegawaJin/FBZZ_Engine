@@ -34,7 +34,7 @@ protected:
         object.firstItem = static_cast<uint32_t>(m_scene.items.size());
         object.itemCount = 1;
         renderer::RenderMeshItem item;
-        item.objectIndex = static_cast<uint32_t>(m_scene.objects.size());
+        item.objectIndex = static_cast<uint32_t>(m_scene.Objects().size());
         item.vertexBuffer = {100, 3};
         item.indexBuffer = {101, 4};
         item.vertexContentVersion = 1;
@@ -43,7 +43,7 @@ protected:
         item.vertexCount = item.indexCount = 3;
         item.material.valid = true;
         item.material.rayCapabilities = {true, renderer::RayOpacity::OPAQUE_SURFACE};
-        m_scene.objects.push_back(object);
+        m_scene.geometry.EditObjects().push_back(object);
         m_scene.items.push_back(item);
     }
 
@@ -64,9 +64,9 @@ protected:
 TEST_F(RaySceneBuilderTest, KeepsOffscreenAndRasterInvisibleCandidatesButFiltersLayers)
 {
     AddObject();
-    m_scene.objects[0].layer = 7;
-    m_scene.objects[0].lodVisible = false;
-    m_scene.objects[0].world = math::Matrix4::Translate({10000, 0, 0});
+    m_scene.geometry.EditObjects()[0].layer = 7;
+    m_scene.geometry.EditObjects()[0].lodVisible = false;
+    m_scene.geometry.EditObjects()[0].world = math::Matrix4::Translate({10000, 0, 0});
     m_scene.items[0].visible = false;
     AddObject(1, 2);
     const auto result = renderer::BuildRayScene(m_scene, {1u << 7});
@@ -76,7 +76,7 @@ TEST_F(RaySceneBuilderTest, KeepsOffscreenAndRasterInvisibleCandidatesButFilters
     EXPECT_EQ(result.instances[0].sourceItem, 0u);
     EXPECT_FLOAT_EQ(result.instances[0].world.m[0][3], 10000);
     EXPECT_TRUE(result.diagnostics.empty());
-    m_scene.objects[0].layer = 32;
+    m_scene.geometry.EditObjects()[0].layer = 32;
     EXPECT_TRUE(renderer::BuildRayScene(m_scene, {1u << 7}).instances.empty());
 }
 /// @brief Resident instances diagnose exact owner and respect layers and inactive placements.
@@ -96,10 +96,12 @@ TEST_F(RaySceneBuilderTest, ResidentInstancesDiagnoseExactOwnerAndRespectLayersA
 TEST_F(RaySceneBuilderTest, ReadsSharedGeometryAfterTheOriginalViewRetires)
 {
     AddObject(12, 3);
-    m_scene.objects[0].world = math::Matrix4::Translate({2, 3, 4});
-    m_scene.sharedObjects = std::make_shared<const std::vector<renderer::RenderObject>>(std::move(m_scene.objects));
+    m_scene.geometry.EditObjects()[0].world = math::Matrix4::Translate({2, 3, 4});
+    auto geometry = std::make_shared<renderer::RenderObjectGeometry>();
+    geometry->objects = std::move(m_scene.geometry.EditObjects());
+    m_scene.geometry.UseShared(std::move(geometry));
     renderer::RenderScene secondView = m_scene;
-    secondView.objectSelection = {1};
+    secondView.selection.EditFlags() = {1};
     const auto first = renderer::BuildRayScene(m_scene);
     ASSERT_EQ(first.instances.size(), 1u);
     EXPECT_FLOAT_EQ(first.instances[0].world.m[0][3], 2);
@@ -214,11 +216,11 @@ TEST_F(RaySceneBuilderTest, ResolvedFiberCountsProveEmptinessWithoutUsingCameraO
 TEST_F(RaySceneBuilderTest, PreservesCompleteObjectIdsAcrossDenseSubmeshInstances)
 {
     AddObject();
-    m_scene.objects[0].itemCount = 2;
+    m_scene.geometry.EditObjects()[0].itemCount = 2;
     m_scene.items.push_back(m_scene.items[0]);
     m_scene.items[1].sourceSubmesh = 11;
     m_scene.items[1].materialSlot = 3;
-    m_scene.objects[0].previousWorld = math::Matrix4::Translate({1, 2, 3});
+    m_scene.geometry.EditObjects()[0].previousWorld = math::Matrix4::Translate({1, 2, 3});
     const auto result = renderer::BuildRayScene(m_scene);
 
     ASSERT_EQ(result.instances.size(), 2u);
@@ -239,7 +241,7 @@ TEST_F(RaySceneBuilderTest, PreservesCompleteObjectIdsAcrossDenseSubmeshInstance
 TEST_F(RaySceneBuilderTest, DisablesOnlyShadowPurposeAndHonorsExplicitSlotVisibility)
 {
     AddObject();
-    m_scene.objects[0].castShadows = false;
+    m_scene.geometry.EditObjects()[0].castShadows = false;
     const auto result = renderer::BuildRayScene(m_scene);
 
     ASSERT_EQ(result.instances.size(), 1u);
@@ -277,7 +279,7 @@ TEST_F(RaySceneBuilderTest, ReusesOnlyMatchingBufferGenerationsContentVersionsAn
 TEST_F(RaySceneBuilderTest, UsesOnlyVersionedCurrentDeformationAndCanonicalLod)
 {
     AddObject();
-    auto& object = m_scene.objects[0];
+    auto& object = m_scene.geometry.EditObjects()[0];
     auto& item = m_scene.items[0];
     object.skinned = true;
     object.lodVisible = false;
@@ -317,7 +319,7 @@ TEST_F(RaySceneBuilderTest, CandidateAlphaRequiresValidatedSurfaceAndNonOpaqueBl
 TEST_F(RaySceneBuilderTest, DiagnosesUnsupportedGeometryWithoutUsingRasterRouteAsProof)
 {
     AddObject();
-    m_scene.objects[0].skinned = true;
+    m_scene.geometry.EditObjects()[0].skinned = true;
     AddObject(1, 1);
     m_scene.items[1].material.rayCapabilities.staticGeometry = false;
     m_scene.items[1].material.capabilities.gbufferEquivalentShader = true;
@@ -348,17 +350,17 @@ TEST_F(RaySceneBuilderTest, RejectsMissingIdentityMalformedRangesAndUnavailableC
     ASSERT_EQ(result.diagnostics.size(), 1u);
     EXPECT_EQ(result.diagnostics[0].issue, renderer::RaySceneIssue::SCENE_ID_UNAVAILABLE);
     m_scene.sceneGeneration = 17;
-    m_scene.objects[0].firstItem = UINT32_MAX;
+    m_scene.geometry.EditObjects()[0].firstItem = UINT32_MAX;
     result = renderer::BuildRayScene(m_scene);
     ASSERT_EQ(result.diagnostics.size(), 1u);
     EXPECT_EQ(result.diagnostics[0].issue, renderer::RaySceneIssue::INVALID_OBJECT_RANGE);
-    m_scene.objects[0].firstItem = 0;
+    m_scene.geometry.EditObjects()[0].firstItem = 0;
     m_scene.items[0].vertexContentVersion = 0;
     result = renderer::BuildRayScene(m_scene);
     ASSERT_EQ(result.diagnostics.size(), 1u);
     EXPECT_EQ(result.diagnostics[0].issue, renderer::RaySceneIssue::CONTENT_VERSION_UNAVAILABLE);
     m_scene.items[0].vertexContentVersion = 1;
-    m_scene.objects[0].world = math::Matrix4::Scale({1, 0, 1});
+    m_scene.geometry.EditObjects()[0].world = math::Matrix4::Scale({1, 0, 1});
     result = renderer::BuildRayScene(m_scene);
     ASSERT_EQ(result.diagnostics.size(), 1u);
     EXPECT_EQ(result.diagnostics[0].issue, renderer::RaySceneIssue::INVALID_TRANSFORM);
@@ -541,7 +543,7 @@ TEST_F(RaySceneBuilderTest, HybridCandidatesSeparateGlassFromOpaqueAndAlphaGeome
     m_scene.items[0].material.surface = opaque;
     AddObject(20, 2);
     m_scene.items[1].material.surface = ResolveSurface(true, false, false, glass);
-    m_scene.objects[1].castShadows = false;
+    m_scene.geometry.EditObjects()[1].castShadows = false;
     AddObject(30, 3);
     m_scene.items[2].material.surface = opaque;
     m_scene.items[2].material.rayCapabilities.opacity = renderer::RayOpacity::ALPHA_TEST;

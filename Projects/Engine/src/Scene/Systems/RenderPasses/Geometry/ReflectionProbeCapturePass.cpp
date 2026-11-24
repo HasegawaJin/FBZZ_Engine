@@ -5,12 +5,13 @@
 /// @note プローブごとに 6 面を毎フレーム描くとゲーム本体の描画より高価になり得るため、更新間隔と
 /// @note 明示リクエストで間引く。昼夜変化だけを追う用途には DynamicSky、室内・配置物の反射には
 /// @note DynamicScene を使う。
-#include "RenderScenePassHelpers.hpp"
+#include "GeometryPasses.hpp"
 #include <Graphics/Effects/RenderProbeInput.hpp>
 #include <Graphics/Pipeline/EnvironmentResources.hpp>
 #include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
 #include <Engine/Renderer/ITexture.hpp>
+#include <Engine/Renderer/RenderScene.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/ReflectionProbeComponent.hpp>
@@ -115,11 +116,11 @@ bool CaptureAndBake(RenderPassContext& ctx, GameObject& owner, ReflectionProbeCo
     return true;
 }
 
-} /// @note namespace
+}
 
 ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& ctx)
 {
-    /// @note No probe means no capture, selection or budget mutation; reevaluate live membership on every view.
+    /// @note 各ビューで有効なプローブを確認し、対象がなければ捕捉・選択・予算の変更を省く。
     if (ctx.scene.GetEntities<ReflectionProbeComponent>().empty()) return nullptr;
     struct CaptureCandidate { GameObject* owner; ReflectionProbeComponent* probe; };
     std::vector<CaptureCandidate> dueProbes;
@@ -154,7 +155,7 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
             const auto a = first.owner->GetID(), b = second.owner->GetID();
             return a.index < b.index || (a.index == b.index && a.generation < b.generation);
         });
-        /// @note Continue after the last attempted owner, including failures, so a broken or every-frame probe cannot starve the rest.
+        /// @note 失敗時も次の所有者から再開し、失敗するプローブや毎フレーム更新のプローブが他の更新を妨げないようにする。
         while (!dueProbes.empty() && budget.CanAttempt(frame, epoch, quality.maxProbeCapturesPerFrame)) {
             auto candidate = std::find_if(dueProbes.begin(), dueProbes.end(), [&](const auto& entry) {
                 const auto id = entry.owner->GetID();
@@ -166,7 +167,7 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
             (void)CaptureAndBake(ctx, *candidate->owner, *candidate->probe);
             dueProbes.erase(candidate);
         }
-        /// @note Selection follows publication; an initial capture may become available in this very frame.
+        /// @note 初回捕捉も同じフレームで使えるよう、公開後に選択する。
         selected = nullptr;
         for (auto& go : ctx.scene.GameObjects()) {
             auto* probe = go.GetComponent<ReflectionProbeComponent>();
@@ -181,4 +182,4 @@ ReflectionProbeComponent* ExecuteReflectionProbeCapturePass(RenderPassContext& c
     return selected;
 }
 
-} /// @note namespace fbzz::scene
+}

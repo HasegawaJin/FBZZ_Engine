@@ -1,5 +1,5 @@
 /// @file    FiberAppearanceResources.hpp
-/// @brief   Resolve project Fiber shader families and reflected material bytes without replacing engine geometry.
+/// @brief   エンジンの形状を保ったまま、プロジェクトの Fiber シェーダー群と反射情報に基づく材質データを解決する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-21
 #pragma once
@@ -17,13 +17,13 @@
 #include <string>
 
 namespace fbzz::scene {
-namespace {
+namespace fiber_extraction_detail {
 
 struct FiberAppearanceResources {
     FiberAppearanceResources() = default;
     FiberAppearanceResources(FiberAppearanceResources&&) = default;
     FiberAppearanceResources& operator=(FiberAppearanceResources&&) = default;
-    /// @note The static cache may outlive its owner; normal eviction explicitly releases through the known manager.
+    /// @note 静的キャッシュが資源管理者より長く残る場合があるため、通常の追い出し時は対応する管理者を通して明示解放する。
     ~FiberAppearanceResources() { material.paramsBuffer = {}; }
     renderer::Material material;
     std::shared_ptr<renderer::FiberAppearance> resolved;
@@ -36,21 +36,21 @@ struct FiberAppearanceResources {
     bool valid = false;
 };
 
-void FiberAppearanceWarning(FiberAppearanceResources& state, const std::string& message)
+inline void FiberAppearanceWarning(FiberAppearanceResources& state, const std::string& message)
 {
     if (state.warning == message) return;
     state.warning = message;
     FBZZ_LOG_WARN("Fiber appearance: %s; using the compatible built-in family", message.c_str());
 }
 
-bool IsSharedFiberGeometry(renderer::ShaderVertexContract vertex)
+inline bool IsSharedFiberGeometry(renderer::ShaderVertexContract vertex)
 {
     return vertex == renderer::ShaderVertexContract::FIBER_SHELL
         || vertex == renderer::ShaderVertexContract::FIBER_FIN
         || vertex == renderer::ShaderVertexContract::FIBER_BLADE;
 }
 
-void ResolveFiberAppearance(FiberAppearanceResources& state, const asset::MaterialAssetAuthoring& values,
+inline void ResolveFiberAppearance(FiberAppearanceResources& state, const asset::MaterialAssetAuthoring& values,
     const renderer::FiberMaterialSettings& settings, renderer::ResourceHandle<renderer::TextureTag> mask,
     renderer::ResourceManager& resources)
 {
@@ -58,7 +58,7 @@ void ResolveFiberAppearance(FiberAppearanceResources& state, const asset::Materi
     const auto capability = resources.GetShaderCapabilities(primary);
     if (!IsSharedFiberGeometry(capability.vertex)) {
         state.resolved.reset();
-        /// @note Legacy Fiber materials intentionally use the old fixed family, including old preview-only metadata.
+        /// @note プレビュー専用の旧メタデータを含む既存の Fiber 材質には、従来の固定シェーダー群を使う。
         const bool legacy = capability.preview == renderer::ShaderPreviewKind::FIBER_SHELL
             || capability.preview == renderer::ShaderPreviewKind::FIBER_FIN
             || capability.preview == renderer::ShaderPreviewKind::FIBER_BLADE;
@@ -105,7 +105,7 @@ void ResolveFiberAppearance(FiberAppearanceResources& state, const asset::Materi
             state.resolved.reset();
             return;
         }
-        /// @note A Shell material opts into Hybrid by supplying a complete StemFin family with the same material ABI.
+        /// @note Shell 材質は同じ材質 ABI の StemFin シェーダー群をすべて提供すると Hybrid を使える。
         std::error_code finError;
         if (capability.vertex == renderer::ShaderVertexContract::FIBER_SHELL
             && std::filesystem::is_regular_file(stem + "Fin.hlsl", finError)) {
@@ -144,7 +144,7 @@ void ResolveFiberAppearance(FiberAppearanceResources& state, const asset::Materi
     for (size_t slot = 0; slot < textures.size(); ++slot)
         state.material.textures[slot] = textures[slot].empty() ? renderer::ResourceHandle<renderer::TextureTag>{}
             : asset::StreamedTextureResolver::Engine().ResolveGpu(resources, textures[slot]);
-    /// @note Geometry mask remains the resolved tex5, including the white fallback.
+    /// @note ジオメトリマスクには白テクスチャへのフォールバックを含め、解決済みの tex5 を使う。
     state.material.textures[5] = mask.IsValid() ? mask : resources.GetWhiteTexture();
     state.material.Upload(resources, descriptor);
     if (!state.resolved || state.resolved->params != state.material.paramData
@@ -161,7 +161,7 @@ void ResolveFiberAppearance(FiberAppearanceResources& state, const asset::Materi
     }
 }
 
-std::shared_ptr<const renderer::FiberAppearance> FiberAppearanceFor(const FiberAppearanceResources& state,
+inline std::shared_ptr<const renderer::FiberAppearance> FiberAppearanceFor(const FiberAppearanceResources& state,
     renderer::FiberRenderMode mode)
 {
     if (!state.resolved) return {};
@@ -176,6 +176,5 @@ std::shared_ptr<const renderer::FiberAppearance> FiberAppearanceFor(const FiberA
     return {};
 }
 
-} /// @note namespace
+} /// @note namespace fiber_extraction_detail
 } /// @note namespace fbzz::scene
-

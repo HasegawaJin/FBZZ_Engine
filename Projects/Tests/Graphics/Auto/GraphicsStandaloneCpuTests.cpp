@@ -168,7 +168,7 @@ protected:
         scene->sceneGeneration=1; scene->snapshotSerial=1;
         renderer::RenderObject object;
         object.colorEligible=true; object.itemCount=1; object.boundsRadius=2;
-        scene->objects.push_back(object);
+        scene->geometry.EditObjects().push_back(object);
         const std::array<renderer::Vertex,3> vertices{};
         const uint32_t indices[]{0,1,2};
         renderer::RenderMeshItem item;
@@ -210,9 +210,9 @@ TEST_F(TaaDepthWitnessTest, OccluderInteriorChangesInvalidateDepthWhileUnchanged
     ASSERT_TRUE(Build(scene,changed)); EXPECT_NE(original,changed);
     scene->items[0].occluderRadius=0.5f;
     ASSERT_TRUE(Build(scene,unchanged)); EXPECT_EQ(original,unchanged);
-    scene->objects[0].leafWindBoundsPadding=0.5f;
+    scene->geometry.EditObjects()[0].leafWindBoundsPadding=0.5f;
     EXPECT_FALSE(Build(scene,changed));
-    scene->objects[0].leafWindBoundsPadding=-1;
+    scene->geometry.EditObjects()[0].leafWindBoundsPadding=-1;
     EXPECT_FALSE(Build(scene,changed));
 }
 

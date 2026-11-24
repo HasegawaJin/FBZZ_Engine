@@ -152,7 +152,7 @@ protected:
         renderer::RenderObject object;
         object.sourceIndex = 7; object.sourceGeneration = 9; object.itemCount = 1; object.colorEligible = true;
         object.boundsCenter = {0, 0, 2}; object.boundsRadius = 20;
-        scene->objects.push_back(object);
+        scene->geometry.EditObjects().push_back(object);
         renderer::RenderMeshItem item;
         item.vertexBuffer = m_resources->CreateVertexBuffer(vertices.data(), sizeof(vertices), sizeof(renderer::Vertex));
         item.indexBuffer = m_resources->CreateIndexBuffer(indices.data(), static_cast<uint32_t>(indices.size()));
@@ -440,9 +440,9 @@ TEST_F(RayGameTest, ReprojectsRigidPreviousWorldAndRejectsTheNewlyExposedPixel)
     camera.m_projection = renderer::ProjectionMode::Orthographic; camera.m_orthoHeight = 2;
     auto* view = RenderScene(scene, camera, 103, 1, renderer::PathTracingProfile::GAME);
     ASSERT_NE(view, nullptr);
-    scene->objects[0].previousWorld = scene->objects[0].world;
-    scene->objects[0].world = math::Matrix4::Translate({2, 0, 0});
-    scene->objects[0].boundsCenter.x = 2;
+    scene->geometry.EditObjects()[0].previousWorld = scene->geometry.EditObjects()[0].world;
+    scene->geometry.EditObjects()[0].world = math::Matrix4::Translate({2, 0, 0});
+    scene->geometry.EditObjects()[0].boundsCenter.x = 2;
     ASSERT_NE(RenderScene(scene, camera, 103, 2, renderer::PathTracingProfile::GAME), nullptr);
     EXPECT_EQ(view->rayPath.game.reconstructionData.resetHistory, 0u);
     const auto surface = ReadTable(view->rayPath.game.surface, 5);

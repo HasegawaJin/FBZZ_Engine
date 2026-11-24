@@ -65,7 +65,7 @@
 namespace fbzz::tests {
 namespace {
 
-/// @note Only the existing public synchronous boundary is intercepted; ResourceManager remains bound to the real DX12 backend.
+/// @note 既存の公開同期境界だけを捕捉し、ResourceManager は実際の DX12 バックエンドに接続したままとする。
 class BeforeOwnedSkinningRenderer final : public renderer::IRenderer {
 public:
     explicit BeforeOwnedSkinningRenderer(renderer::IRenderer& target) : m_target(target) {}
@@ -89,7 +89,7 @@ public:
     void ClearDepth() override { m_target.ClearDepth(); }
     void SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) override { m_target.SetViewport(x, y, width, height); }
 private:
-    /// @note This non-owning execution facade is never installed as ResourceManager's creation owner.
+    /// @note この非所有の実行ファサードは ResourceManager の資源作成側として登録しない。
     std::unique_ptr<renderer::IBuffer> CreateNativeVertexBuffer(const void*, size_t, uint32_t) override { return {}; }
     std::unique_ptr<renderer::IBuffer> CreateNativeIndexBuffer(const void*, uint32_t) override { return {}; }
     std::unique_ptr<renderer::IConstantBuffer> CreateNativeConstantBuffer(size_t) override { return {}; }
@@ -139,7 +139,7 @@ private:
     std::optional<std::string> m_demand, m_owned;
 };
 
-/// @note A queued native operation holds the worker until the producer wait pump performs one Scene edit; no timing or sleep is involved.
+/// @note キューのネイティブ処理でワーカーを止め、投入側の待機ポンプで Scene を一度編集する。時刻や sleep に依存しない。
 class SkinningBufferReadPumpScope {
 public:
     SkinningBufferReadPumpScope(renderer::IRenderer& renderer, uint64_t frame, std::function<void()> callback)
@@ -261,7 +261,7 @@ protected:
         model->skeleton->referencePose = {math::Matrix4::Identity()};
         return model;
     }
-    /// @note Derived test cases borrow the fixture-owned capture target without exposing a production getter.
+    /// @note 派生テストはフィクスチャが所有する読戻し先を借りる。本番用の getter は追加しない。
     renderer::ResourceHandle<renderer::RenderTargetTag> Target() const { return m_target; }
     scene::GameObject& Object() { return *m_scene.GetGameObject(m_object); }
     virtual bool UseRenderThread() const { return false; }
@@ -304,7 +304,7 @@ protected:
         m_snapshot=context.renderScene;
         return context.skinningRequests.size();
     }
-    /// @note Existing profiler output observes whether signature words were materialized, independently of output equality.
+    /// @note 出力の一致とは独立に、既存のプロファイラー出力で署名ワードを構築したかを確認する。
     size_t ExecuteComparedView(scene::RenderPassContext& context)
     {
         const bool enabled = profiler::Profiler::IsEnabled();
@@ -326,7 +326,7 @@ protected:
         m_snapshot = context.renderScene;
         return context.skinningRequests.size();
     }
-    /// @note Require fresh recovery work without changing the selected source handle or expected vertex pixels.
+    /// @note 選択中の入力ハンドルや期待する頂点の画素値を変えず、復旧時の再実行を確認する。
     void RewriteBaseSourceForRecovery()
     {
         const auto& mesh = *m_model->meshes[0];
@@ -462,7 +462,7 @@ protected:
     bool UseRenderThread() const override { return true; }
 };
 
-/// @brief Grouped buffer read rejects a component replaced by the wait pump and recovers.
+/// @brief 待機ポンプで差し替わったコンポーネントを一括バッファ読み取りが拒否し、次回に復旧する。
 TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAComponentReplacedByTheWaitPumpAndRecovers)
 {
     BeginFrame();
@@ -487,7 +487,7 @@ TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAComponentReplacedByTheW
     EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
-/// @brief Grouped buffer read rejects a cleared scene and uses the replacement pose next view.
+/// @brief 待機中にクリアした Scene の結果を棄却し、次のビューで置き換え後の姿勢を使う。
 TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAClearedSceneAndUsesTheReplacementPoseNextView)
 {
     BeginFrame();
@@ -514,7 +514,7 @@ TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRejectsAClearedSceneAndUsesTheR
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Grouped buffer read restores output slots cleared on the same component during the wait.
+/// @brief 待機中に同じコンポーネントから消去された出力スロットを一括読み取りの後に再確保する。
 TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRestoresOutputSlotsClearedOnTheSameComponentDuringTheWait)
 {
     BeginFrame();
@@ -542,7 +542,7 @@ TEST_F(ThreadedRaySkinningTest, GroupedBufferReadRestoresOutputSlotsClearedOnThe
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Idle buffer reads preserve independent actors and previously borrowed source updates.
+/// @brief アイドル時のバッファ読み取りで個体ごとの結果を保ち、過去に借用した入力への更新も反映する。
 TEST_F(ThreadedRaySkinningTest, IdleBufferReadsPreserveIndependentActorsAndPreviouslyBorrowedSourceUpdates)
 {
     const auto second = m_scene.CreateGameObject("Second idle-read actor").GetID();
@@ -577,8 +577,8 @@ TEST_F(ThreadedRaySkinningTest, IdleBufferReadsPreserveIndependentActorsAndPrevi
     EXPECT_NEAR(pixels[2], 8, 0.001f);
 }
 
-/// @brief Default owned batch preserves distinct source groups and current GPU outputs.
-/// @note Default owned execution keeps distinct source groups, per-actor palettes, and later direct source changes authoritative on the real worker.
+/// @brief 既定の所有バッチが異なる入力グループを区別し、現在の GPU 出力を保持する。
+/// @note 実ワーカーで入力グループと個体別パレットを分離し、直接書き換えた入力の現在値も使うことを確認する。
 TEST_F(ThreadedRaySkinningTest, DefaultOwnedBatchPreservesDistinctSourceGroupsAndCurrentGpuOutputs)
 {
     const SkinningDemandEnvironment environment("0", nullptr);
@@ -621,8 +621,8 @@ TEST_F(ThreadedRaySkinningTest, DefaultOwnedBatchPreservesDistinctSourceGroupsAn
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 5, 0.001f);
 }
 
-/// @brief Owned batch reacquires replaced component before publishing native results.
-/// @note Exercise the production DLL lease, including owner-vector reallocation while an outer word buffer is borrowed.
+/// @brief 所有バッチは差し替わったコンポーネントを再解決してからネイティブ結果を公開する。
+/// @note 本番 DLL の借用機構を使い、外側のワード配列を借りたまま所有者配列を再確保する場合も検証する。
 TEST_F(RaySkinningTest, OwnedBatchReacquiresReplacedComponentBeforePublishingNativeResults)
 {
     BeginFrame();
@@ -660,7 +660,7 @@ TEST_F(RaySkinningTest, OwnedBatchReacquiresReplacedComponentBeforePublishingNat
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
-/// @brief Owned batch rejects cleared scene without dereferencing the previous actor.
+/// @brief 所有バッチはクリアされた Scene を拒否し、以前の個体を参照しない。
 TEST_F(RaySkinningTest, OwnedBatchRejectsClearedSceneWithoutDereferencingThePreviousActor)
 {
     BeginFrame();
@@ -699,7 +699,7 @@ TEST_F(RaySkinningTest, OwnedBatchRejectsClearedSceneWithoutDereferencingThePrev
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], OwnedSkinningComparisonRequested() ? 3 : 1, 0.001f);
 }
 
-/// @brief Owned batch never publishes old output when resource frame rejects its work.
+/// @brief 資源フレームが処理を拒否したとき、所有バッチは以前の出力を公開しない。
 TEST_F(RaySkinningTest, OwnedBatchNeverPublishesOldOutputWhenResourceFrameRejectsItsWork)
 {
     BeginFrame();
@@ -738,7 +738,7 @@ TEST_F(RaySkinningTest, OwnedBatchNeverPublishesOldOutputWhenResourceFrameReject
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Owned batch rejects pose changed during the operation and recovers next view.
+/// @brief 所有バッチは処理中に変わった姿勢を棄却し、次のビューで復旧する。
 TEST_F(RaySkinningTest, OwnedBatchRejectsPoseChangedDuringTheOperationAndRecoversNextView)
 {
     BeginFrame();
@@ -777,7 +777,7 @@ TEST_F(RaySkinningTest, OwnedBatchRejectsPoseChangedDuringTheOperationAndRecover
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], OwnedSkinningComparisonRequested() ? 5 : 2, 0.001f);
 }
 
-/// @brief Nested leases preserve outer words and return empty retained storage.
+/// @brief 入れ子の借用で外側のワードを保持し、返却後は空の容量だけを保持する。
 TEST_F(RaySkinningSignatureScratchTest, NestedLeasesPreserveOuterWordsAndReturnEmptyRetainedStorage)
 {
     using Lease=scene::skinning_signature_detail::SignatureScratchLease;
@@ -817,12 +817,12 @@ TEST_F(RaySkinningSignatureScratchTest, NestedLeasesPreserveOuterWordsAndReturnE
     EXPECT_GE(reused.Words().capacity(),outerCapacity);
 }
 
-/// @brief Same frame pose and exact bit changes invalidate a reused signature.
-/// @note Every view still builds all exact float bits even when the renderer/resource frame did not advance.
+/// @brief 同じフレームで姿勢や浮動小数点のビット列が変わると再利用署名が失効する。
+/// @note レンダラーと資源のフレームが進まなくても、ビューごとにすべての浮動小数点ビットを正確に構築する。
 TEST_F(RaySkinningTest, SameFramePoseAndExactBitChangesInvalidateAReusedSignature)
 {
     Animator().boneMatrices.resize(3, math::Matrix4::Identity());
-    /// @note The mesh uses bone zero; special values in the final unused bone must still invalidate its full-palette signature.
+    /// @note メッシュが参照するのはボーン 0 だが、未使用の末尾ボーンの特殊値もパレット全体の署名を失効させる。
     const std::array<uint32_t, 16> tailBits{
         0x00000000u, 0x80000000u, 0x3f800000u, 0xbf800000u,
         0x40000000u, 0xc0000000u, 0x7f800000u, 0xff800000u,
@@ -872,8 +872,8 @@ TEST_F(RaySkinningTest, SameFramePoseAndExactBitChangesInvalidateAReusedSignatur
     EXPECT_NEAR(pixels[2],3.0f,0.001f);
 }
 
-/// @brief Scratch reuse across different palette lengths keeps actor outputs independent.
-/// @note Different palette lengths and model inputs must not retain a preceding actor's trailing words or pose.
+/// @brief 長さの異なるパレット間で作業領域を再利用しても、個体ごとの出力が混ざらない。
+/// @note パレット長やモデルが変わった場合、直前の個体の末尾ワードや姿勢を引き継がない。
 TEST_F(RaySkinningTest, ScratchReuseAcrossDifferentPaletteLengthsKeepsActorOutputsIndependent)
 {
     m_otherModel=MakeModel(5);
@@ -929,8 +929,8 @@ TEST_F(RaySkinningTest, ScratchReuseAcrossDifferentPaletteLengthsKeepsActorOutpu
     EXPECT_NEAR(pixels[2],9.0f,0.001f);
 }
 
-/// @brief Same frame model round trip and source version update never reuse old deformation.
-/// @note Model/source changes in one frame keep the existing invalidation and authoritative GPU-source version checks.
+/// @brief 同フレームのモデル差し替えと復帰、および元バッファの内容版更新では古い変形を再利用しない。
+/// @note 同じフレーム内でもモデルと入力の変更による失効と、GPU 入力の内容版照合を維持する。
 TEST_F(RaySkinningTest, SameFrameModelRoundTripAndSourceVersionUpdateNeverReuseOldDeformation)
 {
     m_otherModel=MakeModel(5);
@@ -962,8 +962,8 @@ TEST_F(RaySkinningTest, SameFrameModelRoundTripAndSourceVersionUpdateNeverReuseO
     EXPECT_NEAR(pixels[2],7.0f,0.001f);
 }
 
-/// @brief Scene clear with same size new actor does not reuse previous signature.
-/// @note Retained numeric capacity outlives scene clear; component generations and signatures still belong to the new scene objects.
+/// @brief Scene のクリア後に同数の個体を作っても、以前の署名を再利用しない。
+/// @note 数値配列の容量は Scene のクリアをまたいで保持され、世代と署名は新しい個体のものを使う。
 TEST_F(RaySkinningTest, SceneClearWithSameSizeNewActorDoesNotReusePreviousSignature)
 {
     BeginFrame();
@@ -981,7 +981,7 @@ TEST_F(RaySkinningTest, SceneClearWithSameSizeNewActorDoesNotReusePreviousSignat
     EXPECT_NEAR(pixels[2],11.0f,0.001f);
 }
 
-/// @brief Thousand independent palettes survive frame lanes and preserve exact deformation.
+/// @brief 1,000 個の独立したパレットをフレームスロット間で使い、変形の値を正確に保つ。
 TEST_F(RaySkinningTest, ThousandIndependentPalettesSurviveFrameLanesAndPreserveExactDeformation)
 {
     std::vector<scene::EntityID> objects{m_object};
@@ -1018,14 +1018,14 @@ TEST_F(RaySkinningTest, ThousandIndependentPalettesSurviveFrameLanesAndPreserveE
     }
 }
 
-/// @brief Asset clips share immutable keys keep independent time and expire safely.
+/// @brief アセットクリップは不変のキーを共有し、個別の再生時刻を保持して安全に退役する。
 TEST_F(RaySkinningTest, AssetClipsShareImmutableKeysKeepIndependentTimeAndExpireSafely)
 {
     const auto path = m_temp.Path() / "Shared.anim";
     asset::FzAnimHeader header{};
     std::memcpy(header.magic, "FZAN", 4); std::memcpy(header.name, "Swim", 5);
     header.version = 3; header.durationTicks = 10; header.ticksPerSecond = 1; header.trackCount = 1;
-    /// @note The v3 on-disk extension is 48 bytes; the 400-byte track stores nodeName at 256 and positionCount at 388.
+    /// @note 保存形式 v3 の拡張は 48 バイト。400 バイトのトラックで nodeName は 256、positionCount は 388 バイト位置にある。
     std::array<char, 48> extension{};
     const double durationSeconds = 10;
     std::memcpy(extension.data(), &durationSeconds, sizeof(durationSeconds)); extension[12] = 1;
@@ -1076,7 +1076,7 @@ TEST_F(RaySkinningTest, AssetClipsShareImmutableKeysKeepIndependentTimeAndExpire
     EXPECT_TRUE(a->ClipAt(0).tracks.empty()); EXPECT_TRUE(b->ClipAt(0).tracks.empty());
 }
 
-/// @brief Deformed mask batch matches independent draws and dither falls back.
+/// @brief 変形済みマスクのバッチ描画が個別描画と一致し、ディザー時は従来経路へ戻る。
 TEST_F(RaySkinningTest, DeformedMaskBatchMatchesIndependentDrawsAndDitherFallsBack)
 {
     std::array<scene::EntityID, 3> entities{m_object};
@@ -1141,7 +1141,7 @@ TEST_F(RaySkinningTest, DeformedMaskBatchMatchesIndependentDrawsAndDitherFallsBa
     renderer::ReleaseInstanceBatchCaches(*m_resources);
 }
 
-/// @brief Deformed indexed shadow and all gbuffer targets match after frustum compaction.
+/// @brief 視錐台コンパクション後、変形済みのインデックス付きシャドウと GBuffer の全ターゲットが一致する。
 TEST_F(RaySkinningTest, DeformedIndexedShadowAndAllGbufferTargetsMatchAfterFrustumCompaction)
 {
     std::array<scene::EntityID, 4> entities{m_object};
@@ -1231,7 +1231,7 @@ TEST_F(RaySkinningTest, DeformedIndexedShadowAndAllGbufferTargetsMatchAfterFrust
     renderer::ReleaseInstanceBatchCaches(*m_resources);
 }
 
-/// @brief Pose LOD advances clock while holding pose and samples current time on near return.
+/// @brief 姿勢 LOD は姿勢を保持しても時刻を進め、近距離に戻ると現在時刻の姿勢を読む。
 TEST_F(RaySkinningTest, PoseLodAdvancesClockWhileHoldingPoseAndSamplesCurrentTimeOnNearReturn)
 {
     auto& skeleton = *m_model->skeleton;
@@ -1291,7 +1291,7 @@ TEST_F(RaySkinningTest, PoseLodAdvancesClockWhileHoldingPoseAndSamplesCurrentTim
     EXPECT_NEAR(Animator().stateTime, 0.4f, 0.0001f);
 }
 
-/// @brief Ray demand deforms off-screen LOD hidden geometry and publishes the current snapshot.
+/// @brief Ray の需要は画面外の LOD 非表示形状も変形し、現在のスナップショットを公開する。
 TEST_F(RaySkinningTest, RayDemandDeformsOffscreenLodHiddenGeometryAndPublishesTheCurrentSnapshot)
 {
     Skinned().lodVisible = false;
@@ -1309,13 +1309,13 @@ TEST_F(RaySkinningTest, RayDemandDeformsOffscreenLodHiddenGeometryAndPublishesTh
     ASSERT_EQ(m_snapshot->items.size(), 1u);
     EXPECT_EQ(m_snapshot->items[0].deformedVertexBuffer, Skinned().ResolveSlotSkinnedVertexBuffer(0));
     EXPECT_EQ(m_snapshot->items[0].deformedContentVersion, OutputVersion());
-    EXPECT_FALSE(m_snapshot->objects[0].lodVisible);
+    EXPECT_FALSE(m_snapshot->Objects()[0].lodVisible);
     const auto pixels = ReadAndEndFrame();
     ASSERT_EQ(pixels.size(), 4u);
     EXPECT_NEAR(pixels[0], -1, 0.001f); EXPECT_NEAR(pixels[1], -1, 0.001f); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Disabled experimental permission does not deform hidden geometry for a saved path request.
+/// @brief 実験機能の許可が無効なら、保存済みの Path 要求で非表示形状を変形しない。
 TEST_F(RaySkinningTest, DisabledExperimentalPermissionDoesNotDeformHiddenGeometryForASavedPathRequest)
 {
     Skinned().lodVisible = false;
@@ -1355,8 +1355,8 @@ TEST_F(RaySkinningTest, DisabledExperimentalPermissionDoesNotDeformHiddenGeometr
     EndFrameWithoutRead();
 }
 
-/// @brief Renderer membership refresh preserves scene order and ancestor palettes.
-/// @note GPU request order follows Scene ownership, including late component registration and recycled entity indices.
+/// @brief レンダラー所属の更新後も Scene 順と祖先から解決したパレットを保持する。
+/// @note 遅れて登録したコンポーネントや再利用した Entity 添字があっても、GPU 要求は Scene の所有順に従う。
 TEST_F(RaySkinningTest, RendererMembershipRefreshPreservesSceneOrderAndAncestorPalettes)
 {
     const auto removed = m_scene.CreateGameObject("Recycled hole").GetID();
@@ -1416,8 +1416,8 @@ TEST_F(RaySkinningTest, RendererMembershipRefreshPreservesSceneOrderAndAncestorP
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Missing program invalidates inactive and disabled renderer publications.
-/// @note Program failure invalidates all publications even when normal eligibility would skip a renderer.
+/// @brief プログラムがなければ非アクティブ・無効なレンダラーも含め公開済み出力を失効させる。
+/// @note 通常の適格判定で除外されるレンダラーも、プログラムの失敗時は公開済み出力を失効させる。
 TEST_F(RaySkinningTest, MissingProgramInvalidatesInactiveAndDisabledRendererPublications)
 {
     auto& inactive = m_scene.CreateGameObject("Inactive after publication");
@@ -1451,7 +1451,7 @@ TEST_F(RaySkinningTest, MissingProgramInvalidatesInactiveAndDisabledRendererPubl
     EndFrameWithoutRead();
 }
 
-/// @brief Same pose and two views share one dispatch but pose changes advance the output version.
+/// @brief 同じ姿勢は 2 ビューでディスパッチを共有し、姿勢が変わると出力の内容版を進める。
 TEST_F(RaySkinningTest, SamePoseAndTwoViewsShareOneDispatchButPoseChangesAdvanceTheOutputVersion)
 {
     BeginFrame();
@@ -1478,7 +1478,7 @@ TEST_F(RaySkinningTest, SamePoseAndTwoViewsShareOneDispatchButPoseChangesAdvance
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Canonical skinned material requires verified current deformation before ray scene collection.
+/// @brief Ray シーンの収集では、正規のスキン材質に検証済みの現在の変形を要求する。
 TEST_F(RaySkinningTest, CanonicalSkinnedMaterialRequiresVerifiedCurrentDeformationBeforeRaySceneCollection)
 {
     asset::MaterialAssetAuthoring material;
@@ -1537,7 +1537,7 @@ TEST_F(RaySkinningTest, CanonicalSkinnedMaterialRequiresVerifiedCurrentDeformati
     ASSERT_EQ(m_snapshot->Objects().size(), 1u);
     EXPECT_FALSE(m_snapshot->Objects()[0].skinned);
     EXPECT_FALSE(m_snapshot->items[0].deformedVertexBuffer.IsValid());
-    /// @note Static mesh/material type mismatch selects the existing opaque Unlit ErrorSurface; its geometry remains an occluder.
+    /// @note 静的メッシュと材質の型が合わない場合は既存の不透明な Unlit ErrorSurface を使う。形状は遮蔽物として残る。
     const auto* errorMaterial = m_resources->GetErrorMaterial(false);
     ASSERT_NE(errorMaterial, nullptr);
     EXPECT_EQ(errorMaterial->shaderPath, renderer::ERROR_SURFACE_SHADER);
@@ -1561,7 +1561,7 @@ TEST_F(RaySkinningTest, CanonicalSkinnedMaterialRequiresVerifiedCurrentDeformati
     Object().RemoveComponent<scene::MeshRenderer>();
 }
 
-/// @brief Skinning uses the current morph vertex snapshot and invalidates the cache when that snapshot changes.
+/// @brief スキニングは現在のモーフ頂点スナップショットを使い、その変更でキャッシュを失効させる。
 TEST_F(RaySkinningTest, MorphSnapshotRatherThanOriginalCpuVerticesIsSkinnedAndItsUpdateInvalidatesTheCache)
 {
     auto morphed = m_model->meshes[0]->cpuSkinnedVertices;
@@ -1586,7 +1586,7 @@ TEST_F(RaySkinningTest, MorphSnapshotRatherThanOriginalCpuVerticesIsSkinnedAndIt
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 7, 0.001f);
 }
 
-/// @brief Reference pose works without animator and missing pose does not publish geometry.
+/// @brief Animator がなくても参照姿勢を使い、姿勢がなければ形状を公開しない。
 TEST_F(RaySkinningTest, ReferencePoseWorksWithoutAnimatorAndMissingPoseDoesNotPublishGeometry)
 {
     Object().RemoveComponent<scene::AnimatorComponent>();
@@ -1603,10 +1603,10 @@ TEST_F(RaySkinningTest, ReferencePoseWorksWithoutAnimatorAndMissingPoseDoesNotPu
     ASSERT_EQ(m_snapshot->items.size(), 1u);
     EXPECT_FALSE(m_snapshot->items[0].deformedVertexBuffer.IsValid());
     EndFrameWithoutRead();
-    /// @note Readback is intentionally skipped when no valid output exists.
+    /// @note 有効な出力がない場合は読戻しを省く。
 }
 
-/// @brief Updating the base source buffer in place makes skinning consume the current vertex bytes.
+/// @brief 元バッファの内容を直接更新すると、スキニングは現在の頂点バイト列を使う。
 TEST_F(RaySkinningTest, SameHandleBaseSourceUpdateUsesCurrentBufferBytesRatherThanTheOriginalCpuArray)
 {
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 1});
@@ -1631,7 +1631,7 @@ TEST_F(RaySkinningTest, SameHandleBaseSourceUpdateUsesCurrentBufferBytesRatherTh
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 8, 0.001f);
 }
 
-/// @brief Same handle topology growth reallocates output and publishes all current vertices.
+/// @brief 同じハンドルでトポロジーが拡大した場合は出力を再確保し、現在の全頂点を公開する。
 TEST_F(RaySkinningTest, SameHandleTopologyGrowthReallocatesOutputAndPublishesAllCurrentVertices)
 {
     auto& mesh = *m_model->meshes[0];
@@ -1684,7 +1684,7 @@ TEST_F(RaySkinningTest, SameHandleTopologyGrowthReallocatesOutputAndPublishesAll
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 10, 0.001f);
 }
 
-/// @brief Wrong stride or non writable output never reuses a cached pose.
+/// @brief 出力のストライドが不正か書き込み不能なら、キャッシュ済みの姿勢を再利用しない。
 TEST_F(RaySkinningTest, WrongStrideOrNonWritableOutputNeverReusesACachedPose)
 {
     BeginFrame();
@@ -1717,7 +1717,7 @@ TEST_F(RaySkinningTest, WrongStrideOrNonWritableOutputNeverReusesACachedPose)
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
-/// @brief Model and source handle generations invalidate previous output and source snapshots.
+/// @brief モデルと入力ハンドルの世代が変わると、過去の出力と入力スナップショットは失効する。
 TEST_F(RaySkinningTest, ModelAndSourceHandleGenerationsInvalidatePreviousOutputAndSourceSnapshots)
 {
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 1});
@@ -1747,7 +1747,7 @@ TEST_F(RaySkinningTest, ModelAndSourceHandleGenerationsInvalidatePreviousOutputA
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 8, 0.001f);
 }
 
-/// @brief Resource reset recreates stale output and never reuses previous device inputs.
+/// @brief 資源リセット後は失効した出力を再作成し、旧デバイスの入力は再利用しない。
 TEST_F(RaySkinningTest, ResourceResetRecreatesStaleOutputAndNeverReusesPreviousDeviceInputs)
 {
     BeginFrame();
@@ -1756,7 +1756,7 @@ TEST_F(RaySkinningTest, ResourceResetRecreatesStaleOutputAndNeverReusesPreviousD
     const auto first = ReadAndEndFrame();
     ASSERT_EQ(first.size(), 4u);
     EXPECT_NEAR(first[2], 1, 0.001f);
-    /// @note Reversed creation order exercises shader allocation-address reuse; PSOs must remain associated with the new bytecode identity.
+    /// @note シェーダーの作成順を逆にしてアドレスの再利用を検証する。PSO は新しいバイトコードに対応したものを使う。
     for (uint32_t iteration = 0; iteration < 6; ++iteration) {
         m_resources->Reset();
         CreateReadResources((iteration & 1u) == 0);
@@ -1775,7 +1775,7 @@ TEST_F(RaySkinningTest, ResourceResetRecreatesStaleOutputAndNeverReusesPreviousD
     }
 }
 
-/// @brief Partial or wrong stride source never publishes a whole renderer deformation.
+/// @brief 入力が部分的かストライドが不正なら、レンダラー全体の変形を公開しない。
 TEST_F(RaySkinningTest, PartialOrWrongStrideSourceNeverPublishesAWholeRendererDeformation)
 {
     m_otherModel = MakeModel(2);
@@ -1811,7 +1811,7 @@ TEST_F(RaySkinningTest, PartialOrWrongStrideSourceNeverPublishesAWholeRendererDe
     ASSERT_EQ(result.size(), 4u); EXPECT_NEAR(result[2], 1, 0.001f);
 }
 
-/// @brief Released skinning shader or constants never publishes old output for a new pose.
+/// @brief スキニングのシェーダーまたは定数を解放した場合、新しい姿勢に以前の出力を公開しない。
 TEST_F(RaySkinningTest, ReleasedSkinningShaderOrConstantsNeverPublishesOldOutputForANewPose)
 {
     BeginFrame();
@@ -1865,7 +1865,7 @@ TEST_F(RaySkinningTest, ReleasedSkinningShaderOrConstantsNeverPublishesOldOutput
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 6, 0.001f);
 }
 
-/// @brief Rejected dispatch never publishes an old nonzero content version.
+/// @brief 拒否されたディスパッチでは以前の非ゼロの内容版を公開しない。
 TEST_F(RaySkinningTest, RejectedDispatchNeverPublishesAnOldNonzeroContentVersion)
 {
     BeginFrame();
@@ -1876,7 +1876,7 @@ TEST_F(RaySkinningTest, RejectedDispatchNeverPublishesAnOldNonzeroContentVersion
     auto pixels = ReadAndEndFrame();
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 
-    /// @note All resources remain valid; DX12 rejects Dispatch outside a frame without recording a write or advancing its version.
+    /// @note 全資源を有効にしたまま DX12 のフレーム外で Dispatch を拒否させ、書き込み記録と内容版が進まないことを確認する。
     Animator().boneMatrices[0] = math::Matrix4::Translate({0, 0, 2});
     EXPECT_EQ(ExecuteView(), 1u);
     ExpectNoCurrentDeformation();
@@ -1891,7 +1891,7 @@ TEST_F(RaySkinningTest, RejectedDispatchNeverPublishesAnOldNonzeroContentVersion
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Direct signature reuse skips word materialization and preserves all consumers.
+/// @brief 署名の直接照合による再利用ではワードの実体化を省き、すべての利用側の結果を保つ。
 TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseSkipsWordMaterializationAndPreservesAllConsumers)
 {
     scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1917,7 +1917,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseSkipsWordMaterializationAndP
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
-/// @brief Direct signature reuse detects public pose and borrowed source updates.
+/// @brief 署名の直接照合で公開姿勢と借用した入力の更新を検出する。
 TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseDetectsPublicPoseAndBorrowedSourceUpdates)
 {
     scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1935,7 +1935,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseDetectsPublicPoseAndBorrowed
     EXPECT_EQ(m_directReuse, 0u); EXPECT_EQ(m_fullPreparation, 1u);
     EXPECT_EQ(ExecuteComparedView(context), 0u);
     EXPECT_EQ(m_directReuse, 1u); EXPECT_EQ(m_fullPreparation, 0u);
-    /// @note Preserve the baseline predicate: an unchanged signature and a nonzero native output version still reuse the same output.
+    /// @note 従来どおり、署名が変わらずネイティブ出力の内容版が非ゼロなら同じ出力を再利用する。
     auto* output = m_resources->Get(Skinned().ResolveSlotSkinnedVertexBuffer(0));
     ASSERT_NE(output, nullptr);
     output->NotifyGpuWrite();
@@ -1947,7 +1947,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseDetectsPublicPoseAndBorrowed
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 6, 0.001f);
 }
 
-/// @brief Direct signature reuse keeps unready output and unknown facade fallbacks.
+/// @brief 署名の直接照合でも未準備出力や未知のファサードでは従来経路へ戻る。
 TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseKeepsUnreadyOutputAndUnknownFacadeFallbacks)
 {
     scene::RenderPassContext context{m_scene, *m_bundle.renderer, *m_resources, m_camera, m_settings, {}, ~0u, m_handles};
@@ -1966,7 +1966,7 @@ TEST_F(ThreadedRaySkinningTest, DirectSignatureReuseKeepsUnreadyOutputAndUnknown
     ASSERT_EQ(pixels.size(), 4u); EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
-/// @brief Native prepared ticket defers writes and owns original source and pose.
+/// @brief 準備済みネイティブチケットは書き込みを遅延し、元の入力と姿勢を所有する。
 TEST_F(RaySkinningTest, NativePreparedTicketDefersWritesAndOwnsOriginalSourceAndPose)
 {
     SkinningDemandEnvironment mode;
@@ -2001,7 +2001,7 @@ TEST_F(RaySkinningTest, NativePreparedTicketDefersWritesAndOwnsOriginalSourceAnd
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Native prepared source snapshot tracks direct updates and handle generation.
+/// @brief 準備済みネイティブ入力のスナップショットは直接更新とハンドル世代を追跡する。
 TEST_F(ThreadedRaySkinningTest, NativePreparedSourceSnapshotTracksDirectUpdatesAndHandleGeneration)
 {
     SkinningDemandEnvironment mode;
@@ -2077,7 +2077,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedSourceSnapshotTracksDirectUpdatesA
     EXPECT_NEAR(pixels[2], 14, 0.001f);
 }
 
-/// @brief Native prepared reuse pins raw borrow until the new frame completes.
+/// @brief 準備済みネイティブ出力の再利用は、新しいフレームの完了まで生の借用ハンドルを保護する。
 TEST_F(ThreadedRaySkinningTest, NativePreparedReusePinsRawBorrowUntilTheNewFrameCompletes)
 {
     SkinningDemandEnvironment mode;
@@ -2114,7 +2114,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedReusePinsRawBorrowUntilTheNewFrame
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief GPU demand off preserves original dispatch without capture.
+/// @brief GPU 需要が無効な場合は入力を捕捉せずに元のディスパッチを行う。
 TEST_F(RaySkinningTest, GpuDemandOffPreservesOriginalDispatchWithoutCapture)
 {
     SkinningDemandEnvironment mode("0");
@@ -2145,7 +2145,7 @@ TEST_F(RaySkinningTest, GpuDemandOffPreservesOriginalDispatchWithoutCapture)
     EXPECT_NEAR(pixels[2], 1, 0.001f);
 }
 
-/// @brief GPU demand masked output remains unsubmitted and late consumer keeps captured pose.
+/// @brief マスクで除外された GPU 出力を未投入のまま保持し、後から利用する際に元の捕捉姿勢を使う。
 TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKeepsCapturedPose)
 {
     SkinningDemandEnvironment mode;
@@ -2200,7 +2200,7 @@ TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKe
     ASSERT_EQ(pixels.size(), 4u);
     EXPECT_NEAR(pixels[2], 3, 0.001f);
     const auto completed = context.renderScene;
-    /// @note A caller-owned copy has no extraction index and must retain conservative full discovery.
+    /// @note 呼び出し側が所有するコピーには抽出索引がないため、見落とさないよう全体を探索する。
     const auto external = std::make_shared<renderer::RenderScene>(*completed);
     context.renderScene = external;
     auto* overwritten = m_resources->Get(output);
@@ -2214,7 +2214,7 @@ TEST_F(RaySkinningTest, GpuDemandMaskedOutputRemainsUnsubmittedAndLateConsumerKe
     EXPECT_FALSE(context.renderScene->items[0].deformedVertexBuffer.IsValid());
 }
 
-/// @brief GPU demand unused ticket survives view then reappears without recapture.
+/// @brief GPU 需要のないチケットがビュー終了後も残り、再表示で入力を取り直さず使える。
 TEST_F(ThreadedRaySkinningTest, GpuDemandUnusedTicketSurvivesViewThenReappearsWithoutRecapture)
 {
     SkinningDemandEnvironment mode;
@@ -2256,7 +2256,7 @@ TEST_F(ThreadedRaySkinningTest, GpuDemandUnusedTicketSurvivesViewThenReappearsWi
     EXPECT_NEAR(pixels[2], 5, 0.001f);
 }
 
-/// @brief GPU demand frustum and distance excluded rows never submit at view exit.
+/// @brief 視錐台と距離で除外された GPU 要求はビュー終了時に投入しない。
 TEST_F(RaySkinningTest, GpuDemandFrustumAndDistanceExcludedRowsNeverSubmitAtViewExit)
 {
     SkinningDemandEnvironment mode;
@@ -2293,7 +2293,7 @@ TEST_F(RaySkinningTest, GpuDemandFrustumAndDistanceExcludedRowsNeverSubmitAtView
     }
 }
 
-/// @brief GPU demand shadow only caster and unknown native keep full dispatch.
+/// @brief シャドウ専用の遮蔽物と未知のネイティブ利用側では GPU 変形をすべてディスパッチする。
 TEST_F(RaySkinningTest, GpuDemandShadowOnlyCasterAndUnknownNativeKeepFullDispatch)
 {
     SkinningDemandEnvironment mode;
@@ -2338,7 +2338,7 @@ TEST_F(RaySkinningTest, GpuDemandShadowOnlyCasterAndUnknownNativeKeepFullDispatc
     EXPECT_NEAR(pixels[2], 5, 0.001f);
 }
 
-/// @brief GPU demand preparation callback and nested scope retain original full path.
+/// @brief 準備時のコールバックと入れ子スコープでは元の全ディスパッチ経路を維持する。
 TEST_F(RaySkinningTest, GpuDemandPreparationCallbackAndNestedScopeRetainOriginalFullPath)
 {
     SkinningDemandEnvironment mode;
@@ -2369,7 +2369,7 @@ TEST_F(RaySkinningTest, GpuDemandPreparationCallbackAndNestedScopeRetainOriginal
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Native prepared ticket rejects reset without publishing receipt.
+/// @brief 準備済みネイティブチケットはリセット後に拒否され、書き込み記録を公開しない。
 TEST_F(RaySkinningTest, NativePreparedTicketRejectsResetWithoutPublishingReceipt)
 {
     SkinningDemandEnvironment mode;
@@ -2397,7 +2397,7 @@ TEST_F(RaySkinningTest, NativePreparedTicketRejectsResetWithoutPublishingReceipt
     EXPECT_FALSE(renderer::SubmitPreparedSkinning(completed));
 }
 
-/// @brief Native prepared old item draws captured pose after public handle release.
+/// @brief 公開ハンドルの解放後も、準備済みの古い描画項目が捕捉した姿勢で描画される。
 TEST_F(ThreadedRaySkinningTest, NativePreparedOldItemDrawsCapturedPoseAfterPublicHandleRelease)
 {
     SkinningDemandEnvironment mode;
@@ -2435,7 +2435,7 @@ TEST_F(ThreadedRaySkinningTest, NativePreparedOldItemDrawsCapturedPoseAfterPubli
     EXPECT_GT(pixels[3], 0.99f);
 }
 
-/// @brief Native prepared published output rejects external native write.
+/// @brief 準備済みの公開出力が外部ネイティブ書き込み後に拒否される。
 TEST_F(RaySkinningTest, NativePreparedPublishedOutputRejectsExternalNativeWrite)
 {
     SkinningDemandEnvironment mode;
@@ -2461,7 +2461,7 @@ TEST_F(RaySkinningTest, NativePreparedPublishedOutputRejectsExternalNativeWrite)
     EndFrameWithoutRead();
 }
 
-/// @brief GPU demand wait pump cancels preparation before scene mutation.
+/// @brief GPU 需要の準備中、待機ポンプは Scene を変更する前に準備を取り消す。
 TEST_F(ThreadedRaySkinningTest, GpuDemandWaitPumpCancelsPreparationBeforeSceneMutation)
 {
     SkinningDemandEnvironment mode;
@@ -2492,7 +2492,7 @@ TEST_F(ThreadedRaySkinningTest, GpuDemandWaitPumpCancelsPreparationBeforeSceneMu
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief GPU demand next frame unevaluated LOD does not publish old pending pose.
+/// @brief 次フレームで LOD が評価されない場合、前フレームの保留姿勢を公開しない。
 TEST_F(RaySkinningTest, GpuDemandNextFrameUnevaluatedLodDoesNotPublishOldPendingPose)
 {
     SkinningDemandEnvironment mode;
@@ -2540,7 +2540,7 @@ TEST_F(RaySkinningTest, GpuDemandNextFrameUnevaluatedLodDoesNotPublishOldPending
     EXPECT_NEAR(pixels[2], 3, 0.001f);
 }
 
-/// @brief Demand count only scope preserves two view requests and native writes.
+/// @brief 需要の件数観測だけを行うスコープでは、2 ビューの要求とネイティブ書き込みを維持する。
 TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWrites)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2568,7 +2568,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWri
     const auto firstHandle=firstSnapshot->items[0].deformedVertexBuffer;
     ASSERT_TRUE(firstHandle.IsValid());
     const uint64_t firstVersion=OutputVersion();ASSERT_GT(firstVersion,0u);
-    /// @note A second view and a new public CPU pose still run the original request/publication path.
+    /// @note 新しい公開 CPU 姿勢を使う 2 番目のビューでも、既存の要求入力と結果公開の経路を通る。
     context.cullMaxDistance=0;
     Animator().boneMatrices[0]=math::Matrix4::Translate({0,0,2});
     EXPECT_EQ(ExecuteObservedView(context),1u);
@@ -2586,7 +2586,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWri
     EXPECT_EQ(ExecuteObservedView(context),1u);
     const uint64_t visibleVersion=OutputVersion();
     context.cullMaxDistance=5;
-    /// @note Count-only keeps legacy same-pose reuse for the later offscreen view; no unpublication is added.
+    /// @note 後の画面外ビューでも、件数観測だけなら同じ姿勢の従来出力を再利用し、公開を取り消さない。
     EXPECT_EQ(ExecuteObservedView(context),0u);
     EXPECT_TRUE(m_lastDemandObservation.provisionalColorExcluded);
     EXPECT_TRUE(Skinned().gpuSkinnedThisFrame);
@@ -2594,7 +2594,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyScopePreservesTwoViewRequestsAndNativeWri
     pixels=ReadAndEndFrame();ASSERT_EQ(pixels.size(),4u);EXPECT_NEAR(pixels[2],5,0.001f);
 }
 
-/// @brief Demand count only reasons union actual consumers and separate static presence.
+/// @brief 需要の観測理由は実際の利用側を和集合で示し、静的コンポーネントの存在と区別する。
 TEST_F(RaySkinningTest, DemandCountOnlyReasonsUnionActualConsumersAndSeparateStaticPresence)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2653,7 +2653,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyReasonsUnionActualConsumersAndSeparateSta
     auto pixels=ReadAndEndFrame();ASSERT_EQ(pixels.size(),4u);EXPECT_NEAR(pixels[2],7,0.001f);
 }
 
-/// @brief Demand count only reads slot mask dense and nested state without native work.
+/// @brief 件数観測はネイティブ処理なしで、スロット、マスク、格納順、入れ子の状態を読む。
 TEST_F(RaySkinningTest, DemandCountOnlyReadsSlotMaskDenseAndNestedStateWithoutNativeWork)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2709,7 +2709,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyReadsSlotMaskDenseAndNestedStateWithoutNa
 
 thread_local uint32_t demandContractCallbacks=0;
 void CountDemandMathContract(const math::ContractViolation&) { ++demandContractCallbacks; }
-/// @brief Demand count only invalid bounds guard does not invoke the public math handler.
+/// @brief 需要の件数観測は無効な境界を除外し、公開の数学エラーハンドラーを呼ばない。
 TEST_F(RaySkinningTest, DemandCountOnlyInvalidBoundsGuardDoesNotInvokeThePublicMathHandler)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2734,7 +2734,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyInvalidBoundsGuardDoesNotInvokeThePublicM
         observed=demand::ObserveRendererDemand(context,Object(),Skinned(),snapshot);
         EXPECT_TRUE(observed.Has(demand::Reason::UNPROVEN_BOUNDS));EXPECT_EQ(demandContractCallbacks,0u);
         Animator().skinnedBoundsCenter={0,0,0};
-        /// @note CTest launches each TEST_F in a fresh process. Confirm this real Normalize call site has not been consumed.
+        /// @note CTest では TEST_F ごとに別プロセスで起動する。Normalize のこの呼び出し箇所が未使用であることを確認する。
         const auto normalized=math::Quaternion{0,0,0,0}.Normalized();
         EXPECT_FLOAT_EQ(normalized.w,1);EXPECT_EQ(demandContractCallbacks,1u);
     }
@@ -2743,7 +2743,7 @@ TEST_F(RaySkinningTest, DemandCountOnlyInvalidBoundsGuardDoesNotInvokeThePublicM
 }
 
 
-/// @brief Demand input classification separates empty slots and zero weights from native morph bytes.
+/// @brief 需要の入力分類では、空のスロットとゼロの重みをネイティブのモーフ頂点と区別する。
 TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeightsFromNativeMorphBytes)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2753,7 +2753,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     Animator().skinnedBoundsCenter={0,0,0};Animator().skinnedBoundsRadius=1;
     scene::RenderPassContext context{m_scene,*m_bundle.renderer,*m_resources,m_camera,m_settings,{},~0u,m_handles};
     context.frustumCullingEnabled=false;context.cullMaxDistance=5;
-    /// @note This is the ordinary resize-before-empty-target state from AnimatorSystem, not an actual morph source.
+    /// @note AnimatorSystem が空のターゲットを確認するより先に配列を拡張した状態であり、有効なモーフ入力はまだない。
     Skinned().morphVertexBuffers.resize(m_model->meshes.size());
     BeginFrame();EXPECT_EQ(ExecuteObservedView(context),1u);
     EXPECT_TRUE(m_lastDemandObservation.HasInput(demand::InputFlag::VECTOR_PRESENCE_ONLY));
@@ -2769,7 +2769,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     renderer::MorphTarget target;target.name="Raise";
     target.positionDeltas.resize(3);target.normalDeltas.resize(3);target.tangentDeltas.resize(3);
     m_model->meshes[0]->morphTargets.push_back(std::move(target));
-    /// @note Public native buffer content can differ from both zero maps; do not infer bytes or bounds from the maps.
+    /// @note 公開ネイティブバッファの内容は、両方の重みマップがゼロでも異なり得る。マップだけから頂点や境界を推定しない。
     auto actualMorph=m_model->meshes[0]->cpuSkinnedVertices;
     for(auto& vertex:actualMorph)vertex.position.z=4;
     const auto source=m_resources->CreateVertexBuffer(actualMorph.data(),actualMorph.size()*sizeof(renderer::SkinnedVertex),sizeof(renderer::SkinnedVertex));
@@ -2788,7 +2788,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     ASSERT_NE(m_resources->Get(source),nullptr);EXPECT_GT(m_resources->Get(source)->GetContentVersion(),0u);
     pixels=ReadAndEndFrame();ASSERT_EQ(pixels.size(),4u);EXPECT_NEAR(pixels[2],4,0.001f);
 
-    /// @note A typed source can remain selected after native release. Native lookup validity is a separate observation.
+    /// @note ネイティブ資源を解放した後も型付きハンドルが選択され得る。ネイティブ解決の可否は別に確認する。
     m_resources->Release(source);m_bundle.renderer->WaitForCpuFrame();
     ASSERT_EQ(m_resources->Get(source),nullptr);
     {
@@ -2801,7 +2801,7 @@ TEST_F(RaySkinningTest, DemandInputClassificationSeparatesEmptySlotsAndZeroWeigh
     }
 }
 
-/// @brief Demand input classification maps selected targets and bake flags stay distinct.
+/// @brief 需要診断でモーフの選択先とベイク状態を区別する。
 TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlagsStayDistinct)
 {
     namespace demand=scene::skinning_demand_detail;
@@ -2812,8 +2812,12 @@ TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlags
     m_model->meshes[0]->morphTargets.push_back(std::move(target));
     Skinned().morphWeights={{"UnusedNonzero",2.0f},{"Used",0.0f}};
     Skinned().appliedMorphWeights={{"UnusedNonzero",2.0f},{"Used",0.0f}};
-    /// @note A valid handle in an unselected model slot is not the renderer's selected morph input.
-    Skinned().morphVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{},m_model->meshes[0]->vertexBuffer});
+    auto& mesh = *m_model->meshes[0];
+    const auto morphSource = m_resources->CreateVertexBuffer(mesh.cpuSkinnedVertices.data(),
+        mesh.cpuSkinnedVertices.size() * sizeof(renderer::SkinnedVertex), sizeof(renderer::SkinnedVertex));
+    ASSERT_TRUE(morphSource.IsValid());
+    /// @note 診断用バッファをモーフスロットで単独所有し、元メッシュの頂点バッファは保持する。
+    Skinned().morphVertexBuffers = testkit::MakeOwnedResources<renderer::BufferTag>({{}, morphSource});
     scene::RenderPassContext context{m_scene,*m_bundle.renderer,*m_resources,m_camera,m_settings,{},~0u,m_handles};
     context.frustumCullingEnabled=false;
     {
@@ -2832,12 +2836,19 @@ TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlags
         EXPECT_TRUE(observed.HasInput(demand::InputFlag::REQUESTED_APPLIED_DIFFER));
         EXPECT_FALSE(observed.HasInput(demand::InputFlag::APPLIED_WEIGHT_NONFINITE));
         Skinned().submeshIndices={0};
-        Skinned().morphVertexBuffers[0]=m_model->meshes[0]->vertexBuffer;
+        Skinned().morphVertexBuffers[0] = std::move(Skinned().morphVertexBuffers[1]);
         observed=demand::ObserveRendererDemand(context,Object(),Skinned(),snapshot);
+        EXPECT_TRUE(observed.HasInput(demand::InputFlag::SELECTED_SOURCE_DIFFERS_FROM_BASE));
+        /// @note 同一ハンドルの診断中だけメッシュからモーフバッファを借用し、描画前に元の頂点バッファを復元する。
+        const auto baseSource = mesh.vertexBuffer;
+        mesh.vertexBuffer = morphSource;
+        observed=demand::ObserveRendererDemand(context,Object(),Skinned(),snapshot);
+        mesh.vertexBuffer = baseSource;
         EXPECT_TRUE(observed.HasInput(demand::InputFlag::SELECTED_MORPH_PATH));
         EXPECT_FALSE(observed.HasInput(demand::InputFlag::SELECTED_SOURCE_DIFFERS_FROM_BASE));
         EXPECT_TRUE(observed.Has(demand::Reason::MORPH_OR_BAKE));
         Skinned().morphVertexBuffers.clear();Skinned().morphWeights.clear();Skinned().appliedMorphWeights.clear();
+        ASSERT_NE(m_resources->Get(baseSource), nullptr);
         Animator().boneBake.active=true;Animator().boneBakeMode=static_cast<int>(scene::BoneBakeMode::GPU_SHARED);
         observed=demand::ObserveRendererDemand(context,Object(),Skinned(),snapshot);
         EXPECT_TRUE(observed.HasInput(demand::InputFlag::BONE_BAKE_ACTIVE));
@@ -2852,5 +2863,5 @@ TEST_F(RaySkinningTest, DemandInputClassificationMapsSelectedTargetsAndBakeFlags
 }
 
 
-} /// @note namespace
-} /// @note namespace fbzz::tests
+}
+}

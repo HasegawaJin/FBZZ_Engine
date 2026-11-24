@@ -254,11 +254,9 @@ bool ScriptPostProcessProxy::LoadProfile(std::string_view profilePath) const
 {
     /// @note DataAssetRegistry 経由: 同じプロファイルを複数箇所から読んでも TOML の再パースが起きず、
     /// @note エディタでの編集が即座に反映される。旧 .fzpp の直接パース経路より安く共有実体とも一致する。
-    const asset::DataAsset* resolvedAsset = asset::DataAssetRegistry::Resolve(std::string(profilePath));
-    if (!resolvedAsset) return false;
-    const char* typeName = resolvedAsset->GetTypeName();
-    if (!typeName || std::string_view(typeName) != asset::PostProcessProfile::TYPE_NAME) return false;
-    const auto* profile = static_cast<const asset::PostProcessProfile*>(resolvedAsset);
+    const auto* profile = asset::TryAsExactDataAsset<asset::PostProcessProfile>(
+        asset::DataAssetRegistry::Resolve(std::string(profilePath)));
+    if (!profile) return false;
 
     /// @note プロファイルは «効果のリスト» なので、まず既定値へ重み 1 で解決してから渡す。渡すのは
     /// @note ポストプロセス部分のみ: このプロキシが書くランタイム上書きの器は Scene の

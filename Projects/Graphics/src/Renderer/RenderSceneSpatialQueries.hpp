@@ -1,5 +1,5 @@
 /// @file    RenderSceneSpatialQueries.hpp
-/// @brief   所有snapshotと独立query volumeを結び、旧batchから独立した候補を返す。
+/// @brief   ビュー別の視錐台から、不変のスナップショットを保持する描画候補列を得る。
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #pragma once
@@ -8,6 +8,7 @@
 #include "RenderMeshSpatialIndex.hpp"
 #include <Graphics/Renderer/RenderScene.hpp>
 #include <Core/Profiler/ProfileScope.hpp>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <bit>
@@ -16,6 +17,7 @@
 #include <memory>
 #include <mutex>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace fbzz::renderer { struct RenderPassContext; }
@@ -26,7 +28,8 @@ struct BvhDebugCaptureTicket {
     uint64_t revision = 0;
 };
 
-/// @note This mailbox serializes only bounded immutable diagnostic publications; it never owns a RenderScene or a tree.
+/// @brief ビュー別の BVH 診断要求と応答をスレッド間で同期する。
+/// @note 保持するのは上限付きの不変な診断値。描画スナップショットや BVH 本体は所有しない。
 class BvhDebugPublication {
 public:
     bool SetRequest(const RenderBvhDebugRequest& request)
@@ -89,6 +92,8 @@ private:
     std::shared_ptr<const RenderBvhDebugSnapshot> m_snapshot;
 };
 
+/// @brief 候補を参照先のスナップショットとともに保持する。
+/// @note fullScan の場合は ordinals が空でも Objects() 全体が候補になる。
 struct CandidateBatch {
     std::shared_ptr<const RenderScene> snapshot;
     std::vector<uint32_t> ordinals;
@@ -98,17 +103,21 @@ struct CandidateBatch {
     bool deltaApplied = false, geometryReused = false;
 
     [[nodiscard]] size_t Size() const { return fullScan ? (snapshot ? snapshot->Objects().size() : 0) : ordinals.size(); }
+    /// @pre position は [0, Size()) の候補列添字。戻り値は snapshot->Objects() の添字。
     [[nodiscard]] uint32_t ObjectIndex(size_t position) const
     {
         return fullScan ? static_cast<uint32_t>(position) : ordinals[position];
     }
 };
 
-/// @note One producer thread owns each cache; production uses bounded thread_local storage and never stores Scene pointers.
-/// @note The cache identifies publications by shared owner plus serial/frame/scene lifetime, never by a pooled array address alone.
-/// @note Old batches own their snapshot and ordinal vector; refreshing any slot cannot mutate a previously returned batch.
+/// @brief シーンごとに形状境界を再利用するビュー横断キャッシュ。
+/// @note インスタンスは 1 スレッドで使う。通常経路では thread_local の有限スロットに保持する。
+/// @note 配列領域が再利用されるため、公開版は shared_ptr の所有者と公開番号・フレーム・シーン世代で照合する。
+/// @note キャッシュの更新後も、返却済みの候補は各候補列が所有するスナップショットを指す。
 class RenderSceneSpatialCache {
 public:
+    /// @param padding 正のワールド境界半径に加える余白 [m]。負値は 0 として扱う。
+    /// @param frusta 候補を集める視錐台の和集合。各視錐台は呼び出し中だけ参照する。
     [[nodiscard]] CandidateBatch Collect(std::shared_ptr<const RenderScene> snapshot, float padding,
         std::span<const math::Frustum* const> frusta, const IndexOptions& options, bool validate = false,
         const RenderBvhDebugRequest* debugRequest = nullptr, RenderBvhDebugSnapshot* debugSnapshot = nullptr)
@@ -136,7 +145,7 @@ public:
         const bool compatible = slot.padding == std::bit_cast<uint32_t>(padding) && SameOptions(slot.options, options);
         if (!samePublication || !compatible) {
             const auto objects = batch.snapshot->Objects();
-            const auto& journal = batch.snapshot->spatialUpdate;
+            const auto* journal = batch.snapshot->geometry.SpatialUpdate();
             const bool knownJournal = options.updateMode == UpdateMode::STABLE && journal && journal->version != 0
                 && journal->objectCount == objects.size();
             const bool matchingShape = compatible && slot.sources.size() == objects.size();
@@ -215,7 +224,7 @@ public:
                 }
                 batch.fullScan = true;
                 batch.ordinals.clear();
-                /// @note A rejected producer lineage cannot authorize a later delta or same-version reuse.
+                /// @note 検証に失敗した形状の公開版は、後続の差分適用や同一版の再利用の基点にしない。
                 slot.geometryVersion = 0;
                 slot.owner.reset();
                 slot.serial = 0;
@@ -225,7 +234,7 @@ public:
     }
 
 private:
-    /// @note Snapshot values contain no Component lifetime token; producer journals cover replacement and finalized bounds before publication.
+    /// @note スナップショットは Component の寿命トークンを持たない。抽出側の差分記録が置換と確定した境界を記録する。
     static MeshSource Project(const RenderObject& object, float padding)
     {
         return {{object.sourceIndex, object.sourceGeneration, 0, object.skinned}, object.boundsCenter,
@@ -245,7 +254,7 @@ private:
 
     Slot& SlotFor(uint64_t generation)
     {
-        /// @note A scene that no longer publishes snapshots retires on the next other-scene query; no callback or Scene reference is retained.
+        /// @note 最新の公開版が退役したシーンのスロットは、他シーンの問い合わせ時に解放する。
         for (auto& slot : m_slots)
             if (slot.generation != 0 && slot.generation != generation && slot.owner.expired()) slot = {};
         for (auto& slot : m_slots) if (slot.generation == generation) return slot;
@@ -261,9 +270,9 @@ private:
     size_t m_nextSlot = 0;
 };
 
-/// @note Unset/linear bypass all source projection and index maintenance; environment choices are captured once per process.
+/// @note 未設定・linear では境界変換と索引更新を省く。環境変数はプロセス内の初回呼び出しで確定する。
 [[nodiscard]] FBZZ_GRAPHICS_API bool MeshSpatialQueriesEnabled();
-/// @note Shadow query owns the union of light frusta; camera visibility and reflection-face visibility are separate consumers.
+/// @note 影の候補はライト視錐台の和集合で求める。カメラや反射面の可視判定とは独立する。
 [[nodiscard]] FBZZ_GRAPHICS_API CandidateBatch CollectShadowCandidates(const RenderPassContext& context, uint32_t updateMask);
 
-} /// @note namespace fbzz::renderer::spatial_detail
+} // namespace fbzz::renderer::spatial_detail

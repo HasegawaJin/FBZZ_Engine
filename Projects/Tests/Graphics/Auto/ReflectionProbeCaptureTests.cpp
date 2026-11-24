@@ -1,5 +1,5 @@
 /// @file    ReflectionProbeCaptureTests.cpp
-/// @brief   DynamicScene probe capture isolates camera providers and preserves current direct lights.
+/// @brief   DynamicScene のプローブ捕捉がカメラ依存入力を分離し、現在の直接光を保持することを検証する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-02
 #include <TestKit/TestKit.hpp>
@@ -126,7 +126,7 @@ protected:
         object.sourceGeneration = 3;
         object.itemCount = 1;
         object.colorEligible = true;
-        scene->objects.push_back(object);
+        scene->geometry.EditObjects().push_back(object);
         r::RenderMeshItem item;
         item.vertexBuffer = m_vertex;
         item.indexBuffer = m_index;
@@ -318,7 +318,7 @@ private:
     uint32_t m_validationFailures = 0;
 };
 
-/// @brief Ignores previous camera providers and keeps main constants unchanged.
+/// @brief 前のカメラの入力を使わず、メインビューの定数を変更しない。
 TEST_F(ReflectionProbeCaptureTest, IgnoresPreviousCameraProvidersAndKeepsMainConstantsUnchanged)
 {
     auto context = Context();
@@ -344,7 +344,7 @@ TEST_F(ReflectionProbeCaptureTest, IgnoresPreviousCameraProvidersAndKeepsMainCon
     End();
     EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{}), 0.001f);
 }
-/// @brief Resident instances match ordinary capture across camera and provider changes.
+/// @brief カメラと入力元が変わっても、常駐インスタンスの捕捉は通常の捕捉と一致する。
 TEST_F(ReflectionProbeCaptureTest, ResidentInstancesMatchOrdinaryCaptureAcrossCameraAndProviderChanges)
 {
     auto context=Context();ProbeMaterialConstants material;
@@ -358,7 +358,7 @@ TEST_F(ReflectionProbeCaptureTest, ResidentInstancesMatchOrdinaryCaptureAcrossCa
     for (uint32_t id=1;id<=64;++id) data->placements.push_back({id,{},{},{1,1,1},true});
     r::RenderInstanceInput input;input.identity={1,(uint64_t{3}<<32)|7};input.data=data;
     input.localBoundsCenter={0,0,2};input.localBoundsRadius=1.5f;input.lodCount=1;input.parts.push_back({mesh,0});
-    m_scene->objects.clear();m_scene->items.clear();m_scene->instances.push_back(input);
+    m_scene->geometry.EditObjects().clear();m_scene->items.clear();m_scene->instances.push_back(input);
     m_camera.m_position={80,30,-40};m_camera.LookAt({100,80,100});
     for (bool gpu : {false,true}) {
         m_settings.geometryDrawMode=gpu ? r::GeometryDrawMode::GPU_INDIRECT : r::GeometryDrawMode::CPU;
@@ -369,7 +369,7 @@ TEST_F(ReflectionProbeCaptureTest, ResidentInstancesMatchOrdinaryCaptureAcrossCa
         EXPECT_EQ(ConstantBytes(m_handles.shadowCB,m_handles.punctualShadowCB),before);
     }
 }
-/// @brief Resident probe owner does not capture itself.
+/// @brief 常駐プローブの所有者は自分自身を捕捉しない。
 TEST_F(ReflectionProbeCaptureTest, ResidentProbeOwnerDoesNotCaptureItself)
 {
     auto context=Context();ProbeMaterialConstants material;
@@ -379,12 +379,12 @@ TEST_F(ReflectionProbeCaptureTest, ResidentProbeOwnerDoesNotCaptureItself)
     auto data=std::make_shared<r::InstanceSetData>();data->placements.push_back({1,{},{},{1,1,1},true});
     r::RenderInstanceInput input;input.identity={1,99};input.data=data;input.localBoundsCenter={0,0,2};
     input.localBoundsRadius=1.5f;input.lodCount=1;input.parts.push_back({mesh,0});
-    m_scene->objects.clear();m_scene->items.clear();m_scene->instances.push_back(input);
+    m_scene->geometry.EditObjects().clear();m_scene->items.clear();m_scene->instances.push_back(input);
     Begin();m_resources->Update(m_material,&material,sizeof(material));ASSERT_TRUE(Capture(context));End();
     EXPECT_VEC3_NEAR(CubeColor(),(math::Vector3{}),0.001f);
 }
 
-/// @brief Keeps current cloud and light shape while unbinding camera textures.
+/// @brief カメラ依存テクスチャを外しても、現在の雲と光源の形状を保持する。
 TEST_F(ReflectionProbeCaptureTest, KeepsCurrentCloudAndLightShapeWhileUnbindingCameraTextures)
 {
     auto context = Context();
@@ -444,12 +444,12 @@ TEST_F(ReflectionProbeCaptureTest, KeepsCurrentCloudAndLightShapeWhileUnbindingC
     }
 }
 
-/// @brief Captures later submesh when first material is invalid.
+/// @brief 最初の材質が無効でも後続のサブメッシュを捕捉する。
 TEST_F(ReflectionProbeCaptureTest, CapturesLaterSubmeshWhenFirstMaterialIsInvalid)
 {
     const auto second = m_scene->items[0];
     m_scene->items.push_back(second);
-    m_scene->objects[0].itemCount = 2;
+    m_scene->geometry.EditObjects()[0].itemCount = 2;
     m_scene->items[0].material.valid = false;
     auto context = Context();
     Begin();
@@ -460,7 +460,7 @@ TEST_F(ReflectionProbeCaptureTest, CapturesLaterSubmeshWhenFirstMaterialIsInvali
     EXPECT_GT(CubeColor().x, 0.05f);
 }
 
-/// @brief Hidden material slot does not occlude later visible submesh.
+/// @brief 非表示の材質スロットは後続の可視サブメッシュを遮蔽しない。
 TEST_F(ReflectionProbeCaptureTest, HiddenMaterialSlotDoesNotOccludeLaterVisibleSubmesh)
 {
     auto second = m_scene->items[0];
@@ -469,7 +469,7 @@ TEST_F(ReflectionProbeCaptureTest, HiddenMaterialSlotDoesNotOccludeLaterVisibleS
     ASSERT_TRUE(secondParams.IsValid());
     second.material.paramsBuffer = secondParams;
     m_scene->items.push_back(second);
-    m_scene->objects[0].itemCount = 2;
+    m_scene->geometry.EditObjects()[0].itemCount = 2;
     m_scene->items[0].slotVisible = false;
     auto context = Context();
     context.legacyShapedLightCount = 0;
@@ -486,7 +486,7 @@ TEST_F(ReflectionProbeCaptureTest, HiddenMaterialSlotDoesNotOccludeLaterVisibleS
     EXPECT_GT(color.y, 1.0f);
 }
 
-/// @brief Opaque capture precedes transparent even when scene order is reversed.
+/// @brief シーン順が逆でも不透明面を透明面より先に捕捉する。
 TEST_F(ReflectionProbeCaptureTest, OpaqueCapturePrecedesTransparentEvenWhenSceneOrderIsReversed)
 {
     auto opaque = m_scene->items[0];
@@ -496,10 +496,10 @@ TEST_F(ReflectionProbeCaptureTest, OpaqueCapturePrecedesTransparentEvenWhenScene
     m_scene->items[0].material.capabilities.blend = r::BlendMode::ALPHA_BLEND;
     m_scene->items[0].material.renderQueue = 3000;
     m_scene->items.push_back(opaque);
-    auto opaqueObject = m_scene->objects[0];
+    auto opaqueObject = m_scene->geometry.EditObjects()[0];
     opaqueObject.sourceIndex = 8; opaqueObject.firstItem = 1;
-    m_scene->objects.push_back(opaqueObject);
-    m_scene->objects[0].world.m[2][3] = -0.25f;
+    m_scene->geometry.EditObjects().push_back(opaqueObject);
+    m_scene->geometry.EditObjects()[0].world.m[2][3] = -0.25f;
     auto context = Context(); context.legacyShapedLightCount = 0;
     Begin();
     ProbeMaterialConstants material;
@@ -511,7 +511,7 @@ TEST_F(ReflectionProbeCaptureTest, OpaqueCapturePrecedesTransparentEvenWhenScene
     EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{1,1,0}), 0.01f);
 }
 
-/// @brief Transparent capture uses face depth instead of scene order.
+/// @brief 透明面の捕捉順は捕捉面からの深度に従う。
 TEST_F(ReflectionProbeCaptureTest, TransparentCaptureUsesFaceDepthInsteadOfSceneOrder)
 {
     m_scene->items[0].material.capabilities.blend = r::BlendMode::ALPHA_BLEND;
@@ -523,10 +523,10 @@ TEST_F(ReflectionProbeCaptureTest, TransparentCaptureUsesFaceDepthInsteadOfScene
     ASSERT_TRUE(farParams.IsValid());
     farItem.material.paramsBuffer = farParams;
     m_scene->items.push_back(farItem);
-    auto farObject = m_scene->objects[0];
+    auto farObject = m_scene->geometry.EditObjects()[0];
     farObject.sourceIndex = 8; farObject.firstItem = 1;
     farObject.world.m[2][3] = 1;
-    m_scene->objects.push_back(farObject);
+    m_scene->geometry.EditObjects().push_back(farObject);
     auto context = Context(); context.legacyShapedLightCount = 0;
     Begin();
     ProbeMaterialConstants material;
@@ -538,11 +538,11 @@ TEST_F(ReflectionProbeCaptureTest, TransparentCaptureUsesFaceDepthInsteadOfScene
     EXPECT_VEC3_NEAR(CubeColor(), (math::Vector3{1,0.5f,0}), 0.01f);
 }
 
-/// @brief Light probe capture includes later opaque slots and respects hidden slots.
+/// @brief ライトプローブは後続の不透明スロットを捕捉し、非表示のスロットは除外する。
 TEST_F(ReflectionProbeCaptureTest, LightProbeCaptureIncludesLaterOpaqueSlotsAndRespectsHiddenSlots)
 {
+    /// @note スロットの発光だけを画素値で照合するため、Context の既定の環境光 0 を維持する。
     auto context = Context(); context.legacyShapedLightCount = 0;
-    context.lightData.ambientColor = {1,1,1};
     const auto root = std::filesystem::path(FBZZ_GRAPHICS_SHADER_ROOT);
     m_handles.lightProbeCaptureFrameCB = m_resources->CreateConstantBuffer(sizeof(r::PerFrameCB));
     m_handles.lightProbeCaptureAdvancedCB = m_resources->CreateConstantBuffer(sizeof(r::AdvancedGraphicsCB));
@@ -558,7 +558,7 @@ TEST_F(ReflectionProbeCaptureTest, LightProbeCaptureIncludesLaterOpaqueSlotsAndR
     auto later = m_scene->items[0]; later.materialSlot = 1;
     const auto laterParams = m_resources->CreateConstantBuffer(sizeof(ProbeMaterialConstants));
     later.material.paramsBuffer = laterParams;
-    m_scene->items.push_back(later); m_scene->objects[0].itemCount = 2;
+    m_scene->items.push_back(later); m_scene->geometry.EditObjects()[0].itemCount = 2;
     for (bool hidden : {false, true}) {
         SCOPED_TRACE(hidden);
         m_scene->items[0].material.valid = hidden;
@@ -580,7 +580,7 @@ TEST_F(ReflectionProbeCaptureTest, LightProbeCaptureIncludesLaterOpaqueSlotsAndR
     }
 }
 
-/// @brief Capture buffers are manager owned and recreated after reset.
+/// @brief 捕捉用バッファは資源管理者ごとに所有し、リセット後に再作成する。
 TEST_F(ReflectionProbeCaptureTest, CaptureBuffersAreManagerOwnedAndRecreatedAfterReset)
 {
     r::ResourceManager other(*m_bundle.renderer);
@@ -611,5 +611,5 @@ TEST_F(ReflectionProbeCaptureTest, CaptureBuffersAreManagerOwnedAndRecreatedAfte
     EXPECT_NE(m_resources->Get(m_handles.reflectionProbeCaptureShadowCB), nullptr);
     EXPECT_NE(m_resources->Get(m_handles.reflectionProbeCapturePunctualCB), nullptr);
 }
-} ///< @note namespace
-} ///< @note namespace fbzz::tests
+}
+}

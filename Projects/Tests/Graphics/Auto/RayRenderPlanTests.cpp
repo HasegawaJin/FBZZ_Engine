@@ -37,7 +37,7 @@ protected:
     }
 };
 
-/// @brief Hybrid screen first overrides keep current receipts and independent views.
+/// @brief Hybrid の画面空間優先の上書きが現在の実行記録とビューごとの独立性を保つ。
 TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndependentViews)
 {
     struct ComScope {
@@ -53,7 +53,7 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
             if (entry.message.find("  [WARNING] (id=") == std::string::npos
                 && entry.message.find("  [ERROR] (id=") == std::string::npos
                 && entry.message.find("  [CORRUPTION] (id=") == std::string::npos) return;
-            /// @note Empty-view clears may lack optimized-clear metadata; only the known id820 performance warning is excluded.
+            /// @note 空のビューのクリアに最適化クリア値がない場合がある。既知の性能警告 id820 だけを除外する。
             if (entry.message.find("  [WARNING] (id=820) ID3D12CommandList::ClearRenderTargetView: The application did not pass any clear value")
                 != std::string::npos) return;
             ++failures;
@@ -151,8 +151,8 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
                 context.chainOutputRT = outputs[viewIndex];
                 context.frameStamp = resources.FrameStamp();
                 context.punctualShadowResolution = 1;
-                /// @note Engine's optimistic old flag must not survive a skipped SSR pass.
-                context.ssrPassActive = context.hybridReflectionSourcePass = true;
+                /// @note SSR パスが省略された場合、Engine が先に設定した有効フラグを引き継がない。
+                context.ssrDispatchRecorded = context.hybridReflectionSourcePass = true;
                 renderer::PrepareAdvancedConstants(context, view, {});
                 const auto initial = renderer::PrepareViewRenderPlan(resources, device, currentSettings,
                     view, shared, handles, true);
@@ -164,15 +164,15 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
                     ? renderer::RenderMode::HYBRID : renderer::RenderMode::RASTER);
                 const bool expectedSsr = viewIndex == 1 || (frame != 1 && frame != 2 && frame != 4);
                 EXPECT_TRUE(context.hybridReflectionResolveActive);
-                EXPECT_EQ(context.hybridReflectionSsrPlanned, expectedSsr);
-                EXPECT_FALSE(context.ssrPassActive);
+                EXPECT_EQ(context.IsHybridSsrPlanned(), expectedSsr);
+                EXPECT_FALSE(context.ssrDispatchRecorded);
                 EXPECT_FALSE(context.hybridReflectionSourcePass);
                 ASSERT_TRUE(view.pipeline.Execute(context));
                 EXPECT_EQ(context.rayReflectionPassActive, expectedRay);
-                EXPECT_EQ(context.ssrPassActive, expectedSsr);
+                EXPECT_EQ(context.ssrDispatchRecorded, expectedSsr);
                 EXPECT_FALSE(context.hybridReflectionSourcePass);
                 if (gbufferDisabled) {
-                    /// @note Cached RAW/storage may remain live, but the stopped producer must not publish a new RT/SSR result or history commit.
+                    /// @note RAW や保存領域が残っていても、停止した生成処理は新しい RT・SSR 結果や履歴を公開しない。
                     EXPECT_NE(resources.Get(view.rayReflection.output), nullptr);
                     EXPECT_FALSE(context.rayReflectionReconstructionPrepared);
                     EXPECT_FALSE(view.rayReflection.reconstruction.historyValid);
@@ -211,7 +211,7 @@ TEST_F(RayRenderPlanTest, HybridScreenFirstOverridesKeepCurrentReceiptsAndIndepe
     EXPECT_EQ(diagnostics.failures, 0u);
 }
 
-/// @brief Reference path keeps accumulating after another view prepares derived probes.
+/// @brief 別ビューが派生プローブを準備した後も、参照 Path は蓄積を続ける。
 TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPreparesDerivedProbes)
 {
     struct ComScope {
@@ -227,7 +227,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
             if (entry.message.find("  [WARNING] (id=") == std::string::npos
                 && entry.message.find("  [ERROR] (id=") == std::string::npos
                 && entry.message.find("  [CORRUPTION] (id=") == std::string::npos) return;
-            /// @note This fixture intentionally clears PathColor's target without optimized-clear metadata; id820 changes performance, not validation correctness.
+            /// @note 最適化クリア値なしで PathColor ターゲットをクリアする。警告 id820 は性能に関係し、検証の正しさに影響しない。
             if (entry.message.find("  [WARNING] (id=820) ID3D12CommandList::ClearRenderTargetView: The application did not pass any clear value")
                 != std::string::npos) return;
             ++failures;
@@ -309,7 +309,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
         renderer::AdvancedViewInput input;
         input.dynamicIblReady = true;
         input.dynamicIblMipCount = 1;
-        /// @note SceneView completes shared raster probes before GameView prepares its next independent Path history.
+        /// @note SceneView は共有ラスタプローブを完成し、その後 GameView は独立した次の Path 履歴を準備する。
         for (uint32_t frame = 0; frame < 4; ++frame) {
             resources.AdvanceFrame();
             device.BeginFrame();
@@ -355,7 +355,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
         EXPECT_NEAR(pixels[1], 2, 0.001f);
         EXPECT_NEAR(pixels[2], 3, 0.001f);
 
-        /// @note Reflection hit lighting uses the complete ray table and explicit raw environment, independently of Raster probes.
+        /// @note 反射ヒットの照明は、ラスタプローブから独立して完全な Ray テーブルと明示的な未加工の環境を使う。
         settings.modeRequest.mode = renderer::RenderMode::HYBRID;
         settings.modeRequest.rayReflection = true;
         input.reflectionProbeSelected = false;
@@ -396,7 +396,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
         EXPECT_TRUE(renderer::PrepareRayPathView(context, gameView, shared));
         EXPECT_EQ(gameView.rayPath.history.GetSampleCount(), 0u);
         EXPECT_EQ(gameView.rayPath.constantsData.resetHistory, 1u);
-        /// @note A complete Ray table replaces truncated Raster inputs and uploads t3/t5 through the production graph.
+        /// @note 完全な Ray テーブルが切り詰められたラスタ入力を置き換え、本番グラフ経由で t3 と t5 を転送する。
         context.rayLightsComplete = true;
         context.lightData.lightIntensity = 99;
         context.lightData.pointLightCount = 8;
@@ -461,7 +461,7 @@ TEST_F(RayRenderPlanTest, ReferencePathKeepsAccumulatingAfterAnotherViewPrepares
     EXPECT_EQ(diagnostics.failures, 0u);
 }
 
-/// @brief Ray resources and path readback are available without engine.
+/// @brief Engine なしで Ray 資源と Path の読戻しを利用できる。
 TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
 {
     struct ComScope {
@@ -486,7 +486,7 @@ TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
     auto bundle = renderer::CreateRenderer(renderer::RendererBackend::DX12, window.handle, 64, 64);
     ASSERT_NE(bundle.renderer, nullptr);
     auto& device = *bundle.renderer;
-    /// @note Hidden-window verification records multiple frames even after DXGI occlusion.
+    /// @note 非表示ウィンドウでは DXGI がオクルージョンを返した後も複数フレームを記録する。
     device.SetRenderWhenOccluded(true);
     const auto capabilities = device.GetCapabilities();
     EXPECT_TRUE(capabilities.bindless);
@@ -545,7 +545,10 @@ TEST_F(RayRenderPlanTest, RayResourcesAndPathReadbackAreAvailableWithoutEngine)
         viewA.prevViewProjection.m[0][0] = 2.0f;
         viewA.rayReflection.gpu.ready = true;
         viewA.rayReflectionCovered = true;
-        ASSERT_TRUE(rendering.PrepareView(viewA, device, outputB, settings));
+        auto resizeSettings = settings;
+        /// @note 停止時の露出履歴失効を避け、稼働中のビューをリサイズした場合の保持だけを検証する。
+        resizeSettings.autoExposure.enabled = true;
+        ASSERT_TRUE(rendering.PrepareView(viewA, device, outputB, resizeSettings));
         EXPECT_FALSE(viewA.renderPlan.IsValid());
         EXPECT_FALSE(viewA.rayReflection.gpu.ready);
         EXPECT_FALSE(viewA.rayReflectionCovered);

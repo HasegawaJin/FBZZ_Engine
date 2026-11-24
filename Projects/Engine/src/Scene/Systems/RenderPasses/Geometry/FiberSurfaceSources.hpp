@@ -14,7 +14,7 @@
 #include <vector>
 
 namespace fbzz::scene {
-namespace {
+namespace fiber_extraction_detail {
 struct FiberTerrainPatch {
     renderer::Mesh m_mesh;
     math::Vector3 m_center{};
@@ -35,7 +35,7 @@ struct FiberTerrainCache {
     std::vector<renderer::Mesh*> m_visible;
 };
 
-bool FiberTerrainExpired(uint64_t frame, uint64_t seen)
+inline bool FiberTerrainExpired(uint64_t frame, uint64_t seen)
 {
     return frame > seen && frame - seen > 2;
 }
@@ -58,12 +58,12 @@ void SweepFiberTerrain(FiberTerrainCache& cache, uint64_t frame, ReleaseMesh&& r
     });
 }
 
-bool FiberTerrainFinite(const math::Vector3& value)
+inline bool FiberTerrainFinite(const math::Vector3& value)
 {
     return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
 
-bool FiberTerrainEditMissesPatch(const TerrainHeightRegion& edit, int x, int z, int nx, int nz, int halo)
+inline bool FiberTerrainEditMissesPatch(const TerrainHeightRegion& edit, int x, int z, int nx, int nz, int halo)
 {
     return !edit.Empty() && (edit.maxX < x - halo || edit.minX > x + nx + halo
         || edit.maxZ < z - halo || edit.minZ > z + nz + halo);
@@ -71,7 +71,7 @@ bool FiberTerrainEditMissesPatch(const TerrainHeightRegion& edit, int x, int z, 
 
 /// @note world 球を逆 TRS で local 楕円体へ移す。各軸の投影半径は radius / abs(scale) で回転に依存しない。
 /// @see Docs/design/fiber-rendering.md 地形の近傍常駐。
-bool FiberTerrainWindow(const TerrainComponent& terrain, const Transform& transform,
+inline bool FiberTerrainWindow(const TerrainComponent& terrain, const Transform& transform,
     const math::Vector3& camera, float farDistance, int patch, std::array<int, 4>& window)
 {
     const auto scale = transform.worldScale;
@@ -98,7 +98,7 @@ bool FiberTerrainWindow(const TerrainComponent& terrain, const Transform& transf
 }
 
 /// @note 法線は隣接高さを読むため、署名だけ 1 頂点広く採る。植生は指定層に寄与する重みだけ比較する。
-bool ReadFiberTerrainPatch(const TerrainComponent& terrain, int x, int z, int nx, int nz,
+inline bool ReadFiberTerrainPatch(const TerrainComponent& terrain, int x, int z, int nx, int nz,
     int layer, const std::array<uint32_t, 7>& metadata, uint64_t& signature, math::Vector3& center)
 {
     signature = 1469598103934665603ull;
@@ -126,7 +126,7 @@ bool ReadFiberTerrainPatch(const TerrainComponent& terrain, int x, int z, int nx
     return FiberTerrainFinite(center);
 }
 
-void GenerateFiberTerrainPatch(renderer::Mesh& mesh, const TerrainComponent& terrain,
+inline void GenerateFiberTerrainPatch(renderer::Mesh& mesh, const TerrainComponent& terrain,
     int x, int z, int nx, int nz, int layer, float threshold, renderer::ResourceManager& resources)
 {
     const bool holes = terrain.holeData.size() == terrain.CellCount();
@@ -165,7 +165,7 @@ void GenerateFiberTerrainPatch(renderer::Mesh& mesh, const TerrainComponent& ter
 /// @brief 閲覧カメラの距離 LOD に入る地形パッチだけを生成し、別ビューの要求を同じ常駐キャッシュへ追加する。
 /// @note 穴・保存層の判定と頂点順序・seed は全域生成時と同じ。錐台で省かず、画面外の投影影も保つ。
 /// @see Docs/design/fiber-rendering.md 地形の近傍常駐。
-void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrain, int patchCells,
+inline void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrain, int patchCells,
     int terrainLayer, float layerThreshold, const Transform& transform, const math::Vector3& camera,
     bool distanceLod, float nearDistance, float farDistance, renderer::ResourceManager& resources)
 {
@@ -199,7 +199,7 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
         const bool newFrame = entry.m_checkedFrame != frame;
         const auto& heightEdit = terrain.heightPreview;
         const auto& splatEdit = terrain.splatPreview;
-        /// @note A skipped revision may contain older changes; use the rectangle only from the exact known base.
+        /// @note 版を飛ばすと過去の変更を見落とすため、基準版が一致する場合だけ矩形差分を適用する。
         const bool heightOutside = heightChanged && !terrain.heightDirty && heightEdit.revision == terrain.surfaceRevision
             && heightEdit.baseRevision == entry.m_surfaceRevision
             && FiberTerrainEditMissesPatch(heightEdit.region, x, z, nx, nz, heightEdit.heightChanged ? 1 : 0);
@@ -240,5 +240,5 @@ void UpdateFiberTerrain(FiberTerrainCache& cache, const TerrainComponent& terrai
         if (entry.m_mesh.vertexBuffer.IsValid() && entry.m_mesh.indexBuffer.IsValid()) cache.m_visible.push_back(&entry.m_mesh);
     }
 }
-} /// @note namespace
+} /// @note namespace fiber_extraction_detail
 } /// @note namespace fbzz::scene

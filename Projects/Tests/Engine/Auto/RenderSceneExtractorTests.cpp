@@ -9,6 +9,7 @@
 #include "../../../Engine/src/Scene/Systems/MaterialDemandTrace.hpp"
 #include <limits>
 #include <TestKit/Engine/EngineFixture.hpp>
+#include <TestKit/Engine/ResourceTrackingRenderer.hpp>
 #include <TestKit/TempDir.hpp>
 #include <Core/Profiler/Profiler.hpp>
 #include <Engine/Core/Scheduler/SystemContext.hpp>
@@ -29,6 +30,7 @@
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/AnimatorComponent.hpp>
 #include <Engine/Scene/Components/MaterialComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
 #include <Engine/Scene/Components/LODGroupComponent.hpp>
 #include <Engine/Asset/Model.hpp>
 #include <Engine/Asset/AssetDatabase.hpp>
@@ -52,6 +54,7 @@
 #include <string_view>
 #include <system_error>
 #include <thread>
+#include "../../../Engine/src/Scene/Systems/RenderPasses/Debug/SelectionPasses.hpp"
 
 namespace fbzz::tests {
 namespace {
@@ -411,13 +414,13 @@ TEST_F(RenderSceneExtractorTest, KeepsOffscreenAndOtherLayerCandidatesButRejects
     go.transform.worldPosition = go.transform.position;
     go.GetComponent<scene::MeshRenderer>()->lodVisible = false;
     auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(snapshot.objects.size(), 1u);
-    EXPECT_EQ(snapshot.objects[0].layer, 7u);
-    EXPECT_FALSE(snapshot.objects[0].lodVisible);
+    ASSERT_EQ(snapshot.Objects().size(), 1u);
+    EXPECT_EQ(snapshot.Objects()[0].layer, 7u);
+    EXPECT_FALSE(snapshot.Objects()[0].lodVisible);
     auto& parent = m_scene.CreateGameObject("Parent");
     go.SetParent(parent);
     parent.SetActive(false);
-    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).objects.empty());
+    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).Objects().empty());
 }
 
 /// @brief Preserves scene order for late renderer registration and mixed renderers among bones.
@@ -443,18 +446,18 @@ TEST_F(RenderSceneExtractorTest, PreservesSceneOrderForLateRendererRegistrationA
 
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
 
-    ASSERT_EQ(snapshot.objects.size(), 4u);
+    ASSERT_EQ(snapshot.Objects().size(), 4u);
     ASSERT_EQ(snapshot.items.size(), 5u);
-    EXPECT_EQ(snapshot.objects[0].sourceIndex, firstId.index);
-    EXPECT_EQ(snapshot.objects[1].sourceIndex, mixedId.index);
-    EXPECT_EQ(snapshot.objects[2].sourceIndex, mixedId.index);
-    EXPECT_EQ(snapshot.objects[3].sourceIndex, lastId.index);
-    EXPECT_FALSE(snapshot.objects[0].skinned);
-    EXPECT_FALSE(snapshot.objects[1].skinned);
-    EXPECT_TRUE(snapshot.objects[2].skinned);
-    EXPECT_FALSE(snapshot.objects[3].skinned);
-    EXPECT_EQ(snapshot.objects[2].firstItem, 2u);
-    EXPECT_EQ(snapshot.objects[2].itemCount, 2u);
+    EXPECT_EQ(snapshot.Objects()[0].sourceIndex, firstId.index);
+    EXPECT_EQ(snapshot.Objects()[1].sourceIndex, mixedId.index);
+    EXPECT_EQ(snapshot.Objects()[2].sourceIndex, mixedId.index);
+    EXPECT_EQ(snapshot.Objects()[3].sourceIndex, lastId.index);
+    EXPECT_FALSE(snapshot.Objects()[0].skinned);
+    EXPECT_FALSE(snapshot.Objects()[1].skinned);
+    EXPECT_TRUE(snapshot.Objects()[2].skinned);
+    EXPECT_FALSE(snapshot.Objects()[3].skinned);
+    EXPECT_EQ(snapshot.Objects()[2].firstItem, 2u);
+    EXPECT_EQ(snapshot.Objects()[2].itemCount, 2u);
     EXPECT_EQ(snapshot.items[2].objectIndex, 2u);
     EXPECT_EQ(snapshot.items[3].objectIndex, 2u);
     EXPECT_EQ(snapshot.items[4].objectIndex, 3u);
@@ -462,14 +465,14 @@ TEST_F(RenderSceneExtractorTest, PreservesSceneOrderForLateRendererRegistrationA
     ASSERT_TRUE(m_scene.MoveGameObjectToIndex(lastId, 0));
     const auto reordered = scene::ExtractRenderSceneGeometry(m_scene, 10);
 
-    ASSERT_EQ(reordered.objects.size(), 4u);
-    EXPECT_EQ(reordered.objects[0].sourceIndex, lastId.index);
-    EXPECT_EQ(reordered.objects[1].sourceIndex, firstId.index);
-    EXPECT_EQ(reordered.objects[2].sourceIndex, mixedId.index);
-    EXPECT_FALSE(reordered.objects[2].skinned);
-    EXPECT_EQ(reordered.objects[3].sourceIndex, mixedId.index);
-    EXPECT_TRUE(reordered.objects[3].skinned);
-    EXPECT_EQ(snapshot.objects[0].sourceIndex, firstId.index);
+    ASSERT_EQ(reordered.Objects().size(), 4u);
+    EXPECT_EQ(reordered.Objects()[0].sourceIndex, lastId.index);
+    EXPECT_EQ(reordered.Objects()[1].sourceIndex, firstId.index);
+    EXPECT_EQ(reordered.Objects()[2].sourceIndex, mixedId.index);
+    EXPECT_FALSE(reordered.Objects()[2].skinned);
+    EXPECT_EQ(reordered.Objects()[3].sourceIndex, mixedId.index);
+    EXPECT_TRUE(reordered.Objects()[3].skinned);
+    EXPECT_EQ(snapshot.Objects()[0].sourceIndex, firstId.index);
 }
 
 /// @brief Refreshes renderer membership and hierarchy activity within the same frame.
@@ -481,13 +484,13 @@ TEST_F(RenderSceneExtractorTest, RefreshesRendererMembershipAndHierarchyActivity
     const auto firstId = first.GetID();
     const auto secondId = second.GetID();
     const auto initial = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(initial.objects.size(), 2u);
+    ASSERT_EQ(initial.Objects().size(), 2u);
 
     first.RemoveComponent<scene::MeshRenderer>();
     const auto removed = scene::ExtractRenderSceneGeometry(m_scene, 10);
 
-    ASSERT_EQ(removed.objects.size(), 1u);
-    EXPECT_EQ(removed.objects[0].sourceIndex, secondId.index);
+    ASSERT_EQ(removed.Objects().size(), 1u);
+    EXPECT_EQ(removed.Objects()[0].sourceIndex, secondId.index);
 
     scene::MeshRenderer mesh;
     mesh.mesh = &m_mesh;
@@ -496,17 +499,17 @@ TEST_F(RenderSceneExtractorTest, RefreshesRendererMembershipAndHierarchyActivity
     parent.SetActive(false);
     const auto inactive = scene::ExtractRenderSceneGeometry(m_scene, 10);
 
-    ASSERT_EQ(inactive.objects.size(), 1u);
-    EXPECT_EQ(inactive.objects[0].sourceIndex, firstId.index);
+    ASSERT_EQ(inactive.Objects().size(), 1u);
+    EXPECT_EQ(inactive.Objects()[0].sourceIndex, firstId.index);
 
     ASSERT_TRUE(second.ClearParent());
     const auto restored = scene::ExtractRenderSceneGeometry(m_scene, 10);
 
-    ASSERT_EQ(restored.objects.size(), 2u);
-    EXPECT_EQ(restored.objects[0].sourceIndex, firstId.index);
-    EXPECT_EQ(restored.objects[1].sourceIndex, secondId.index);
-    EXPECT_EQ(initial.objects[0].sourceIndex, firstId.index);
-    EXPECT_EQ(initial.objects[1].sourceIndex, secondId.index);
+    ASSERT_EQ(restored.Objects().size(), 2u);
+    EXPECT_EQ(restored.Objects()[0].sourceIndex, firstId.index);
+    EXPECT_EQ(restored.Objects()[1].sourceIndex, secondId.index);
+    EXPECT_EQ(initial.Objects()[0].sourceIndex, firstId.index);
+    EXPECT_EQ(initial.Objects()[1].sourceIndex, secondId.index);
 }
 
 /// @brief Preserves order across destroy callbacks compaction and entity reuse.
@@ -532,18 +535,18 @@ TEST_F(RenderSceneExtractorTest, PreservesOrderAcrossDestroyCallbacksCompactionA
     const auto replacementId = replacement.GetID();
     const auto afterDestroy = scene::ExtractRenderSceneGeometry(m_scene, 10);
 
-    ASSERT_EQ(duringDestroy.objects.size(), 2u);
-    EXPECT_EQ(duringDestroy.objects[0].sourceIndex, secondId.index);
-    EXPECT_EQ(duringDestroy.objects[0].sourceGeneration, secondId.generation);
-    EXPECT_EQ(duringDestroy.objects[1].sourceIndex, survivorId.index);
+    ASSERT_EQ(duringDestroy.Objects().size(), 2u);
+    EXPECT_EQ(duringDestroy.Objects()[0].sourceIndex, secondId.index);
+    EXPECT_EQ(duringDestroy.Objects()[0].sourceGeneration, secondId.generation);
+    EXPECT_EQ(duringDestroy.Objects()[1].sourceIndex, survivorId.index);
     EXPECT_EQ(replacementId.index, secondId.index);
     EXPECT_NE(replacementId.generation, secondId.generation);
     EXPECT_EQ(m_scene.GetGameObject(firstId), nullptr);
     EXPECT_EQ(m_scene.GetGameObject(secondId), nullptr);
-    ASSERT_EQ(afterDestroy.objects.size(), 2u);
-    EXPECT_EQ(afterDestroy.objects[0].sourceIndex, survivorId.index);
-    EXPECT_EQ(afterDestroy.objects[1].sourceIndex, replacementId.index);
-    EXPECT_EQ(afterDestroy.objects[1].sourceGeneration, replacementId.generation);
+    ASSERT_EQ(afterDestroy.Objects().size(), 2u);
+    EXPECT_EQ(afterDestroy.Objects()[0].sourceIndex, survivorId.index);
+    EXPECT_EQ(afterDestroy.Objects()[1].sourceIndex, replacementId.index);
+    EXPECT_EQ(afterDestroy.Objects()[1].sourceGeneration, replacementId.generation);
 }
 
 /// @brief Selects canonical LOD zero without filtering raster hidden renderers.
@@ -567,8 +570,8 @@ TEST_F(RenderSceneExtractorTest, SelectsCanonicalLodZeroWithoutFilteringRasterHi
     m_scene.CreateGameObject("LOD Group").AddComponent<scene::LODGroupComponent>(group);
 
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
-    ASSERT_EQ(snapshot.objects.size(), 3u);
-    for (const auto& object : snapshot.objects) {
+    ASSERT_EQ(snapshot.Objects().size(), 3u);
+    for (const auto& object : snapshot.Objects()) {
         const scene::EntityID source{ object.sourceIndex, object.sourceGeneration };
         EXPECT_FALSE(object.rayLodSelectionRequired);
         EXPECT_EQ(object.rayVisible, source != hiddenId);
@@ -593,8 +596,8 @@ TEST_F(RenderSceneExtractorTest, ResolvesLodGuidForMembershipWithoutChangingRefe
     owner.AddComponent<scene::LODGroupComponent>(group);
 
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
-    ASSERT_EQ(snapshot.objects.size(), 2u);
-    for (const auto& object : snapshot.objects) {
+    ASSERT_EQ(snapshot.Objects().size(), 2u);
+    for (const auto& object : snapshot.Objects()) {
         const scene::EntityID source{ object.sourceIndex, object.sourceGeneration };
         EXPECT_FALSE(object.rayLodSelectionRequired);
         EXPECT_TRUE(object.rayVisible);
@@ -616,8 +619,8 @@ TEST_F(RenderSceneExtractorTest, SkinnedTextureQualityUsesAnimatedBoundsInsteadO
     animator.skinnedBoundsRadius = 7.0f;
     go.AddComponent<scene::AnimatorComponent>(animator);
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 1);
-    ASSERT_EQ(snapshot.objects.size(), 1u);
-    const auto& object = snapshot.objects[0];
+    ASSERT_EQ(snapshot.Objects().size(), 1u);
+    const auto& object = snapshot.Objects()[0];
     const auto& item = snapshot.items[0];
     EXPECT_FLOAT_EQ(object.boundsRadius, 10.0f);
     EXPECT_FLOAT_EQ(scene::EstimateRenderTexturePixels(object, item, {}, 1.0f, 1000, false), 100.0f);
@@ -626,26 +629,30 @@ TEST_F(RenderSceneExtractorTest, SkinnedTextureQualityUsesAnimatedBoundsInsteadO
     EXPECT_FLOAT_EQ(scene::EstimateRenderTexturePixels(object, item, {}, 0.0f, 1000, false), 0.0f);
 }
 
-/// @brief Copies world bounds and handles without owning the source mesh.
+/// @brief 元のメッシュや姿勢を書き換えても、抽出済みの境界・ハンドル・変換が保持されることを検証する。
 TEST_F(RenderSceneExtractorTest, CopiesWorldBoundsAndHandlesWithoutOwningTheSourceMesh)
 {
     auto& go = StaticObject();
     go.transform.worldPosition = { 10.0f, 2.0f, 3.0f };
+    /// @note 中心をローカル原点からずらし、抽出時にメッシュの中心にもワールド変換が掛かることを確認する。
     m_mesh.boundsCenter = { 1.0f, 0.0f, 0.0f };
     m_mesh.boundsRadius = 2.0f;
+    /// @note ハンドルは抽出結果の比較用。GPU バッファの実体は作らない。
     m_mesh.vertexBuffer = { 11, 4 };
     m_mesh.indexBuffer = { 12, 5 };
     m_mesh.indexCount = 36;
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10);
     ASSERT_EQ(snapshot.items.size(), 1u);
-    EXPECT_VEC3_NEAR(snapshot.objects[0].boundsCenter, (math::Vector3{ 11.0f, 2.0f, 3.0f }), testkit::kTolerance);
-    EXPECT_FLOAT_EQ(snapshot.objects[0].boundsRadius, 2.0f);
+    EXPECT_VEC3_NEAR(snapshot.Objects()[0].boundsCenter, (math::Vector3{ 11.0f, 2.0f, 3.0f }), testkit::kTolerance);
+    EXPECT_FLOAT_EQ(snapshot.Objects()[0].boundsRadius, 2.0f);
+    /// @note スナップショットの生成後に元データを変更し、抽出結果の独立性を検証する。
     m_mesh.vertexBuffer = {};
     m_mesh.indexCount = 0;
     go.transform.worldPosition = {};
     EXPECT_EQ(snapshot.items[0].vertexBuffer, (renderer::ResourceHandle<renderer::BufferTag>{ 11, 4 }));
     EXPECT_EQ(snapshot.items[0].indexCount, 36u);
-    EXPECT_FLOAT_EQ(snapshot.objects[0].world.m[0][3], 10.0f);
+    /// @note ワールド行列の第4列に抽出時の平行移動が残る。
+    EXPECT_FLOAT_EQ(snapshot.Objects()[0].world.m[0][3], 10.0f);
 }
 
 /// @brief Warm renderer index keeps current values and old geometry snapshots independent.
@@ -656,29 +663,29 @@ TEST_F(RenderSceneExtractorTest, WarmRendererIndexKeepsCurrentValuesAndOldGeomet
     object.transform.worldPosition = {1, 2, 3};
     m_mesh.vertexCount = 5;
     const auto first = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(first.objects.size(), 2u);
+    ASSERT_EQ(first.Objects().size(), 2u);
     ASSERT_EQ(first.items.size(), 3u);
 
     object.transform.worldPosition = {9, 2, 3};
     m_mesh.vertexCount = 17;
     skinned.GetComponent<scene::SkinnedMeshRenderer>()->enabled = false;
     const auto second = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(second.objects.size(), 1u);
+    ASSERT_EQ(second.Objects().size(), 1u);
     ASSERT_EQ(second.items.size(), 1u);
-    EXPECT_FLOAT_EQ(second.objects[0].world.m[0][3], 9);
+    EXPECT_FLOAT_EQ(second.Objects()[0].world.m[0][3], 9);
     EXPECT_EQ(second.items[0].vertexCount, 17u);
     object.GetComponent<scene::MeshRenderer>()->enabled = false;
-    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).objects.empty());
+    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).Objects().empty());
     object.GetComponent<scene::MeshRenderer>()->enabled = true;
     object.SetActive(false);
-    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).objects.empty());
+    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).Objects().empty());
     object.SetActive(true);
     object.GetComponent<scene::MeshRenderer>()->mesh = nullptr;
-    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).objects.empty());
+    EXPECT_TRUE(scene::ExtractRenderSceneGeometry(m_scene, 10).Objects().empty());
 
-    EXPECT_FLOAT_EQ(first.objects[0].world.m[0][3], 1);
+    EXPECT_FLOAT_EQ(first.Objects()[0].world.m[0][3], 1);
     EXPECT_EQ(first.items[0].vertexCount, 5u);
-    EXPECT_EQ(first.objects.size(), 2u);
+    EXPECT_EQ(first.Objects().size(), 2u);
 }
 
 /// @brief Static bounds use current rotated negative nonuniform scale across views.
@@ -694,7 +701,7 @@ TEST_F(RenderSceneExtractorTest, StaticBoundsUseCurrentRotatedNegativeNonuniform
     ASSERT_EQ(first.items.size(), 1u);
     EXPECT_VEC3_NEAR(first.items[0].boundsCenter, (math::Vector3{4, 0, 3}), testkit::kTolerance);
     EXPECT_FLOAT_EQ(first.items[0].boundsRadius, 8);
-    EXPECT_VEC3_NEAR(first.objects[0].boundsCenter, first.items[0].boundsCenter, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(first.Objects()[0].boundsCenter, first.items[0].boundsCenter, testkit::kTolerance);
 
     go.transform.worldPosition = {-3, 4, 5};
     go.transform.worldScale = {-5, 1, 0.5f};
@@ -703,7 +710,7 @@ TEST_F(RenderSceneExtractorTest, StaticBoundsUseCurrentRotatedNegativeNonuniform
     ASSERT_EQ(second.items.size(), 1u);
     EXPECT_VEC3_NEAR(second.items[0].boundsCenter, (math::Vector3{-8, 6, 5}), testkit::kTolerance);
     EXPECT_FLOAT_EQ(second.items[0].boundsRadius, 10);
-    EXPECT_VEC3_NEAR(second.objects[0].boundsCenter, second.items[0].boundsCenter, testkit::kTolerance);
+    EXPECT_VEC3_NEAR(second.Objects()[0].boundsCenter, second.items[0].boundsCenter, testkit::kTolerance);
     EXPECT_VEC3_NEAR(first.items[0].boundsCenter, (math::Vector3{4, 0, 3}), testkit::kTolerance);
     EXPECT_FLOAT_EQ(first.items[0].boundsRadius, 8);
 }
@@ -723,8 +730,8 @@ TEST_F(RenderSceneExtractorTest, SkinnedSubmeshBoundsKeepRendererScaleAndAnimato
     EXPECT_VEC3_NEAR(first.items[1].boundsCenter, (math::Vector3{14, 2, 3}), testkit::kTolerance);
     EXPECT_FLOAT_EQ(first.items[0].boundsRadius, 12);
     EXPECT_FLOAT_EQ(first.items[1].boundsRadius, 4);
-    EXPECT_VEC3_NEAR(first.objects[0].boundsCenter, (math::Vector3{9.5f, 2, 3}), testkit::kTolerance);
-    EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 13.5f);
+    EXPECT_VEC3_NEAR(first.Objects()[0].boundsCenter, (math::Vector3{9.5f, 2, 3}), testkit::kTolerance);
+    EXPECT_FLOAT_EQ(first.Objects()[0].boundsRadius, 13.5f);
 
     go.GetComponent<scene::SkinnedMeshRenderer>()->submeshIndices = {0, 2};
     go.transform.worldScale = {-1, 2, 3};
@@ -734,8 +741,8 @@ TEST_F(RenderSceneExtractorTest, SkinnedSubmeshBoundsKeepRendererScaleAndAnimato
     EXPECT_VEC3_NEAR(reordered.items[1].boundsCenter, (math::Vector3{9, 2, 3}), testkit::kTolerance);
     EXPECT_FLOAT_EQ(reordered.items[0].boundsRadius, 3);
     EXPECT_FLOAT_EQ(reordered.items[1].boundsRadius, 9);
-    EXPECT_VEC3_NEAR(reordered.objects[0].boundsCenter, (math::Vector3{9.75f, 2, 3}), testkit::kTolerance);
-    EXPECT_FLOAT_EQ(reordered.objects[0].boundsRadius, 9.75f);
+    EXPECT_VEC3_NEAR(reordered.Objects()[0].boundsCenter, (math::Vector3{9.75f, 2, 3}), testkit::kTolerance);
+    EXPECT_FLOAT_EQ(reordered.Objects()[0].boundsRadius, 9.75f);
 
     auto& parent = m_scene.CreateGameObject("BoundsAnimatorOwner");
     go.SetParent(parent);
@@ -749,13 +756,13 @@ TEST_F(RenderSceneExtractorTest, SkinnedSubmeshBoundsKeepRendererScaleAndAnimato
     animator.skinnedBoundsRadius = 5;
     const auto animated = scene::ExtractRenderSceneGeometry(m_scene, 20);
     ASSERT_EQ(animated.items.size(), 2u);
-    EXPECT_VEC3_NEAR(animated.objects[0].boundsCenter, (math::Vector3{98, 10, 0}), testkit::kTolerance);
-    EXPECT_FLOAT_EQ(animated.objects[0].boundsRadius, 32);
+    EXPECT_VEC3_NEAR(animated.Objects()[0].boundsCenter, (math::Vector3{98, 10, 0}), testkit::kTolerance);
+    EXPECT_FLOAT_EQ(animated.Objects()[0].boundsRadius, 32);
     EXPECT_VEC3_NEAR(animated.items[0].boundsCenter, (math::Vector3{12, 2, 3}), testkit::kTolerance);
     EXPECT_VEC3_NEAR(animated.items[1].boundsCenter, (math::Vector3{9, 2, 3}), testkit::kTolerance);
     EXPECT_FLOAT_EQ(animated.items[0].boundsRadius, 3);
     EXPECT_FLOAT_EQ(animated.items[1].boundsRadius, 9);
-    EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 13.5f);
+    EXPECT_FLOAT_EQ(first.Objects()[0].boundsRadius, 13.5f);
 }
 
 /// @brief Leaf wind bounds follow asset overrides and scaled spatial updates.
@@ -773,22 +780,22 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindBoundsFollowAssetOverridesAndSc
     auto& material = go.AddComponent<scene::MaterialComponent>();
     material.SetMaterialAsset(handle);
     const auto first = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(first.objects.size(), 1u);
+    ASSERT_EQ(first.Objects().size(), 1u);
     ASSERT_EQ(first.items.size(), 1u);
-    EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 10);
+    EXPECT_FLOAT_EQ(first.Objects()[0].boundsRadius, 10);
     EXPECT_FLOAT_EQ(first.items[0].boundsRadius, 10);
     EXPECT_FLOAT_EQ(first.items[0].occluderRadius, 0);
     (void)scene::ExtractRenderSceneGeometry(m_scene, 10);
 
     EditMaterialAuthoring(material, [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
     const auto overridden = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    EXPECT_FLOAT_EQ(overridden.objects[0].boundsRadius, 12);
-    ASSERT_NE(overridden.spatialUpdate, nullptr);
-    ASSERT_EQ(overridden.spatialUpdate->changedObjectOrdinals.size(), 1u);
-    EXPECT_EQ(overridden.spatialUpdate->changedObjectOrdinals[0], 0u);
+    EXPECT_FLOAT_EQ(overridden.Objects()[0].boundsRadius, 12);
+    ASSERT_NE(overridden.geometry.SpatialUpdate(), nullptr);
+    ASSERT_EQ(overridden.geometry.SpatialUpdate()->changedObjectOrdinals.size(), 1u);
+    EXPECT_EQ(overridden.geometry.SpatialUpdate()->changedObjectOrdinals[0], 0u);
 
     EditMaterialAuthoring(material, [](auto& authored) { authored.integerParamOverrides["leafWindStrength"] = {1}; });
-    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).objects[0].boundsRadius, 16);
+    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).Objects()[0].boundsRadius, 16);
     EditMaterialAuthoring(material, [](auto& authored) {
         authored.paramOverrides.clear(); authored.integerParamOverrides.clear();
     });
@@ -796,9 +803,9 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindBoundsFollowAssetOverridesAndSc
     ASSERT_NE(sourceAsset, nullptr);
     EditMaterialAuthoring(*sourceAsset, [](auto& authored) { authored.params["leafWindStrength"] = {0}; });
     const auto rigid = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    EXPECT_FLOAT_EQ(rigid.objects[0].boundsRadius, 8);
+    EXPECT_FLOAT_EQ(rigid.Objects()[0].boundsRadius, 8);
     EXPECT_FLOAT_EQ(rigid.items[0].occluderRadius, 0.5f);
-    EXPECT_FLOAT_EQ(first.objects[0].boundsRadius, 10);
+    EXPECT_FLOAT_EQ(first.Objects()[0].boundsRadius, 10);
 }
 
 /// @brief Unresolved leaf material bounds fail open without loading.
@@ -809,11 +816,11 @@ TEST_F(RenderSceneExtractorTest, UnresolvedLeafMaterialBoundsFailOpenWithoutLoad
     auto& material = go.AddComponent<scene::MaterialComponent>();
     material.SetMaterialPath("UnresolvedLeafMaterial.mat");
     const auto unresolved = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(unresolved.objects.size(), 1u);
-    EXPECT_FLOAT_EQ(unresolved.objects[0].boundsRadius, 0);
+    ASSERT_EQ(unresolved.Objects().size(), 1u);
+    EXPECT_FLOAT_EQ(unresolved.Objects()[0].boundsRadius, 0);
     EXPECT_FALSE(material.GetMaterialAsset().IsValid());
     EditMaterialAuthoring(material, [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
-    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).objects[0].boundsRadius, 2);
+    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).Objects()[0].boundsRadius, 2);
 }
 
 /// @brief Skinned leaf wind uses renderer scale and all material slots.
@@ -829,11 +836,11 @@ TEST_F(RenderSceneExtractorTest, SkinnedLeafWindUsesRendererScaleAndAllMaterialS
     material.extraSlots[0].SetMaterialPath("SecondLeafMaterial.mat");
     EditMaterialAuthoring(material.extraSlots[0], [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
     const auto animated = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(animated.objects.size(), 1u);
-    EXPECT_FLOAT_EQ(animated.objects[0].boundsRadius, 36);
+    ASSERT_EQ(animated.Objects().size(), 1u);
+    EXPECT_FLOAT_EQ(animated.Objects()[0].boundsRadius, 36);
     animator.skinnedBoundsRadius = 0;
     const auto bindPose = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    EXPECT_FLOAT_EQ(bindPose.objects[0].boundsRadius, 16);
+    EXPECT_FLOAT_EQ(bindPose.Objects()[0].boundsRadius, 16);
 }
 
 /// @brief Leaf wind material edits rebuild shared geometry between views.
@@ -852,7 +859,7 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindMaterialEditsRebuildSharedGeome
     EXPECT_FLOAT_EQ(first->Objects()[0].boundsRadius, 4);
     EXPECT_FLOAT_EQ(first->items[0].occluderRadius, 0.5f);
     const auto warm = ExtractView(settings, cache, UINT32_MAX, false, 7.0f);
-    EXPECT_EQ(warm->sharedObjects, first->sharedObjects);
+    EXPECT_EQ(&warm->geometry.Read(), &first->geometry.Read());
     EXPECT_FLOAT_EQ(warm->items[0].occluderRadius, 0.5f);
     EditMaterialAuthoring(material, [](auto& authored) { authored.paramOverrides["leafWindStrength"] = {0.5f}; });
     const auto windy = ExtractView(settings, cache);
@@ -862,7 +869,7 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindMaterialEditsRebuildSharedGeome
     const auto retainedGeometry = cache.geometry;
     const auto unchanged = ExtractView(settings, cache);
     EXPECT_EQ(cache.geometry, retainedGeometry);
-    EXPECT_EQ(unchanged->sharedObjects, windy->sharedObjects);
+    EXPECT_EQ(&unchanged->geometry.Read(), &windy->geometry.Read());
 }
 
 /// @brief Leaf wind importer callbacks fail open without mutating retained geometry.
@@ -901,7 +908,7 @@ TEST_F(RenderSceneExtractorMaterialTest, LeafWindImporterCallbacksFailOpenWithou
         ASSERT_NE(nested, nullptr);
         EXPECT_FLOAT_EQ(outer->Objects()[0].boundsRadius, 0);
         EXPECT_FLOAT_EQ(outer->items[0].occluderRadius, 0);
-        EXPECT_EQ(outer->spatialUpdate, nullptr);
+        EXPECT_EQ(outer->geometry.SpatialUpdate(), nullptr);
         EXPECT_FLOAT_EQ(nested->Objects()[0].boundsRadius, 3);
         EXPECT_FLOAT_EQ(first->Objects()[0].boundsRadius, 1);
         const auto current = ExtractView({}, cache);
@@ -958,8 +965,8 @@ TEST_F(RenderSceneExtractorTest, RejectsRendererMembershipInMultipleLodGroups)
     m_scene.CreateGameObject("First LOD").AddComponent<scene::LODGroupComponent>(group);
     m_scene.CreateGameObject("Second LOD").AddComponent<scene::LODGroupComponent>(group);
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
-    ASSERT_EQ(snapshot.objects.size(), 1u);
-    EXPECT_TRUE(snapshot.objects[0].rayLodSelectionRequired);
+    ASSERT_EQ(snapshot.Objects().size(), 1u);
+    EXPECT_TRUE(snapshot.Objects()[0].rayLodSelectionRequired);
 }
 
 /// @brief Diagnoses unresolved canonical LOD instead of publishing an empty shape.
@@ -974,8 +981,8 @@ TEST_F(RenderSceneExtractorTest, DiagnosesUnresolvedCanonicalLodInsteadOfPublish
     const auto ownerId = m_scene.CreateGameObject("Unresolved LOD").GetID();
     m_scene.GetGameObject(ownerId)->AddComponent<scene::LODGroupComponent>(group);
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
-    ASSERT_EQ(snapshot.objects.size(), 1u);
-    EXPECT_FALSE(snapshot.objects[0].rayVisible);
+    ASSERT_EQ(snapshot.Objects().size(), 1u);
+    EXPECT_FALSE(snapshot.Objects()[0].rayVisible);
     ASSERT_EQ(snapshot.rayLodDiagnostics.size(), 1u);
     EXPECT_EQ(snapshot.rayLodDiagnostics[0].sourceIndex, ownerId.index);
     EXPECT_EQ(snapshot.rayLodDiagnostics[0].sourceGeneration, ownerId.generation);
@@ -993,14 +1000,14 @@ TEST_F(RenderSceneExtractorTest, NormalExtractionSkipsUnresolvedRayLodDiagnostic
         {0.25f, {{{}, lowerId}}}};
     m_scene.CreateGameObject("Unresolved LOD").AddComponent<scene::LODGroupComponent>(group);
     const auto normal = scene::ExtractRenderSceneGeometry(m_scene, 10);
-    ASSERT_EQ(normal.objects.size(), 1u);
-    EXPECT_TRUE(normal.objects[0].lodVisible);
-    EXPECT_FALSE(normal.objects[0].rayLodSelectionRequired);
+    ASSERT_EQ(normal.Objects().size(), 1u);
+    EXPECT_TRUE(normal.Objects()[0].lodVisible);
+    EXPECT_FALSE(normal.Objects()[0].rayLodSelectionRequired);
     EXPECT_TRUE(normal.rayLodDiagnostics.empty());
     const auto experimental = scene::ExtractRenderSceneGeometry(m_scene, 10, {}, true);
-    ASSERT_EQ(experimental.objects.size(), 1u);
-    EXPECT_TRUE(experimental.objects[0].lodVisible);
-    EXPECT_FALSE(experimental.objects[0].rayVisible);
+    ASSERT_EQ(experimental.Objects().size(), 1u);
+    EXPECT_TRUE(experimental.Objects()[0].lodVisible);
+    EXPECT_FALSE(experimental.Objects()[0].rayVisible);
     EXPECT_EQ(experimental.rayLodDiagnostics.size(), 1u);
 }
 
@@ -1017,10 +1024,10 @@ TEST_F(RenderSceneExtractorTest, ParentAnimatorWinsOverReferencePoseAndPreserves
     parent.AddComponent<scene::AnimatorComponent>(std::move(animator));
     m_model.referencePoseCB = { 81, 1 };
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, { 91, 1 });
-    ASSERT_EQ(snapshot.objects.size(), 1u);
-    EXPECT_EQ(snapshot.objects[0].skinningPalette.id, 71u);
-    EXPECT_EQ(snapshot.objects[0].previousSkinningPalette.id, 72u);
-    EXPECT_TRUE(snapshot.objects[0].previousSkinningValid);
+    ASSERT_EQ(snapshot.Objects().size(), 1u);
+    EXPECT_EQ(snapshot.Objects()[0].skinningPalette.id, 71u);
+    EXPECT_EQ(snapshot.Objects()[0].previousSkinningPalette.id, 72u);
+    EXPECT_TRUE(snapshot.Objects()[0].previousSkinningValid);
 }
 
 /// @brief Checks reference pose precedes identity fallback without animator.
@@ -1028,11 +1035,11 @@ TEST_F(RenderSceneExtractorTest, ReferencePosePrecedesIdentityFallbackWithoutAni
 {
     SkinnedObject();
     m_model.referencePoseCB = { 81, 1 };
-    EXPECT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10, { 91, 1 }).objects[0].skinningPalette.id, 81u);
+    EXPECT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10, { 91, 1 }).Objects()[0].skinningPalette.id, 81u);
     m_model.referencePoseCB = {};
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 10, { 91, 1 });
-    EXPECT_EQ(snapshot.objects[0].skinningPalette.id, 91u);
-    EXPECT_FALSE(snapshot.objects[0].previousSkinningValid);
+    EXPECT_EQ(snapshot.Objects()[0].skinningPalette.id, 91u);
+    EXPECT_FALSE(snapshot.Objects()[0].previousSkinningValid);
 }
 
 /// @brief Previous world advances once across views and resets after gap.
@@ -1040,14 +1047,14 @@ TEST_F(RenderSceneExtractorTest, PreviousWorldAdvancesOnceAcrossViewsAndResetsAf
 {
     auto& go = StaticObject();
     go.transform.worldPosition.x = 1.0f;
-    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).objects[0].previousWorld.m[0][3], 1.0f);
+    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 10).Objects()[0].previousWorld.m[0][3], 1.0f);
     go.transform.worldPosition.x = 2.0f;
     const auto firstView = scene::ExtractRenderSceneGeometry(m_scene, 11);
     const auto secondView = scene::ExtractRenderSceneGeometry(m_scene, 11);
-    EXPECT_FLOAT_EQ(firstView.objects[0].previousWorld.m[0][3], 1.0f);
-    EXPECT_FLOAT_EQ(secondView.objects[0].previousWorld.m[0][3], 1.0f);
+    EXPECT_FLOAT_EQ(firstView.Objects()[0].previousWorld.m[0][3], 1.0f);
+    EXPECT_FLOAT_EQ(secondView.Objects()[0].previousWorld.m[0][3], 1.0f);
     go.transform.worldPosition.x = 5.0f;
-    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 15).objects[0].previousWorld.m[0][3], 5.0f);
+    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 15).Objects()[0].previousWorld.m[0][3], 5.0f);
     EXPECT_NE(firstView.snapshotSerial, secondView.snapshotSerial);
 }
 
@@ -1057,10 +1064,10 @@ TEST_F(RenderSceneExtractorTest, InitialFrameDoesNotTreatUninitializedHistoryAsP
     auto& go = StaticObject();
     go.transform.worldPosition.x = 3.0f;
     const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 0);
-    ASSERT_EQ(snapshot.objects.size(), 1u);
-    EXPECT_FLOAT_EQ(snapshot.objects[0].previousWorld.m[0][3], 3.0f);
+    ASSERT_EQ(snapshot.Objects().size(), 1u);
+    EXPECT_FLOAT_EQ(snapshot.Objects()[0].previousWorld.m[0][3], 3.0f);
     go.transform.worldPosition.x = 4.0f;
-    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 1).objects[0].previousWorld.m[0][3], 3.0f);
+    EXPECT_FLOAT_EQ(scene::ExtractRenderSceneGeometry(m_scene, 1).Objects()[0].previousWorld.m[0][3], 3.0f);
 }
 
 /// @brief Material slots stay independent and hidden slots remain addressable.
@@ -1104,7 +1111,7 @@ TEST_F(RenderSceneExtractorTest, SceneMoveDoesNotReuseAnotherScenesRenderIdentit
     const auto destinationGeneration = destination.GetRenderSceneGeneration();
     destination = std::move(m_scene);
     const auto snapshot = scene::ExtractRenderSceneGeometry(destination, 10);
-    ASSERT_EQ(snapshot.objects.size(), 1u);
+    ASSERT_EQ(snapshot.Objects().size(), 1u);
     EXPECT_NE(snapshot.sceneGeneration, sourceGeneration);
     EXPECT_NE(snapshot.sceneGeneration, destinationGeneration);
     EXPECT_NE(snapshot.sceneGeneration, m_scene.GetRenderSceneGeneration());
@@ -1335,6 +1342,131 @@ TEST_F(RenderSceneExtractorMaterialTest, SharesPosesAcrossViewsWhileKeepingSelec
     EXPECT_TRUE(second->IsObjectSelected(1));
     EXPECT_TRUE(first->Objects()[0].colorEligible);
     EXPECT_EQ(m_scene.GetGameObject(firstId)->GetComponent<scene::MaterialComponent>(), nullptr);
+}
+
+/// @brief 選択メッシュの添字は入力 ID の順序と重複に依存せず、ビューごとに確定する。
+TEST_F(RenderSceneExtractorMaterialTest, SelectedMeshOrdinalsFollowSnapshotOrder)
+{
+    const auto first = StaticObject().GetID();
+    const auto middle = StaticObject().GetID();
+    const auto last = StaticObject().GetID();
+    scene::RenderFrameGeometryCache cache;
+    renderer::RenderSettings settings;
+    settings.selectedObjects = {
+        {last.index, last.generation},
+        {middle.index, middle.generation + 1},
+        {first.index, first.generation},
+        {last.index, last.generation},
+    };
+    const auto selected = ExtractView(settings, cache);
+    const auto unselected = ExtractView({}, cache);
+    ASSERT_EQ(selected->Objects().size(), 3u);
+    ASSERT_EQ(selected->Objects().data(), unselected->Objects().data());
+    const auto ordinals = selected->PublishedMeshSelection();
+    ASSERT_TRUE(ordinals.has_value());
+    EXPECT_EQ((std::vector<uint32_t>{ordinals->begin(), ordinals->end()}), (std::vector<uint32_t>{0, 2}));
+    EXPECT_TRUE(selected->IsObjectSelected(0));
+    EXPECT_FALSE(selected->IsObjectSelected(1));
+    EXPECT_TRUE(selected->IsObjectSelected(2));
+    const auto emptyOrdinals = unselected->PublishedMeshSelection();
+    ASSERT_TRUE(emptyOrdinals.has_value());
+    EXPECT_TRUE(emptyOrdinals->empty());
+    EXPECT_FALSE(unselected->IsObjectSelected(0));
+    for (const auto& original : {selected, unselected}) {
+        auto editable = *original;
+        editable.selection.EditFlags() = {0, 1, 0};
+        EXPECT_FALSE(editable.PublishedMeshSelection().has_value());
+        EXPECT_FALSE(editable.IsObjectSelected(0));
+        EXPECT_TRUE(editable.IsObjectSelected(1));
+    }
+}
+
+/// @brief 旧形式のメッシュ選択と新しい選択添字の提出順を揃え、選択 ID は重複や旧世代を描かない。
+TEST_F(RenderSceneExtractorTest, SelectionMaskKeepsMeshAndParticleDrawOrder)
+{
+    testkit::ResourceTrackingRenderer device;
+    renderer::ResourceManager resources(device);
+    scene::Scene sourceScene;
+    renderer::Camera camera;
+    renderer::RenderSettings settings;
+    renderer::RenderPassHandles handles;
+    handles.selectionMaskShader = resources.LoadShader("MeshMask.hlsl");
+    handles.selectionMaskSkinnedShader = resources.LoadShader("SkinnedMask.hlsl");
+    handles.selectionMaskParticleShader = resources.LoadShader("ParticleMask.hlsl");
+    handles.selectionMaskPSO = resources.CreatePipelineState({});
+    handles.objectCB = resources.CreateConstantBuffer(sizeof(scene::PerObjectCB));
+    const uint32_t indices[]{0, 1, 2, 2, 1, 3};
+    handles.particleIB = resources.CreateIndexBuffer(indices, 6);
+    const uint8_t white[]{255, 255, 255, 255};
+    const auto texture = resources.CreateTexture(white, 1, 1);
+    const auto createParticle = [&](const char* name) -> scene::GameObject& {
+        auto& object = sourceScene.CreateGameObject(name);
+        auto& emitter = object.AddComponent<scene::ParticleEmitter>();
+        emitter.runtime.particles.emplace_back();
+        emitter.runtime.texture = texture;
+        emitter.runtime.renderCB = resources.CreateConstantBuffer(sizeof(scene::ParticleRenderCB));
+        return object;
+    };
+    auto& first = createParticle("First");
+    auto& inactive = createParticle("Inactive");
+    inactive.SetActive(false);
+    auto& masked = createParticle("Masked");
+    masked.layer = 1;
+    const auto& stale = createParticle("Stale");
+    auto& last = createParticle("Last");
+    settings.selectedObjects = {
+        {last.GetID().index, last.GetID().generation},
+        {inactive.GetID().index, inactive.GetID().generation},
+        {stale.GetID().index, stale.GetID().generation + 1},
+        {masked.GetID().index, masked.GetID().generation},
+        {first.GetID().index, first.GetID().generation},
+        {last.GetID().index, last.GetID().generation},
+    };
+    std::vector<renderer::RenderSelectionID> filler;
+    for (int index = 0; index < 24; ++index) {
+        const auto id = sourceScene.CreateGameObject("Filler").GetID();
+        filler.push_back({id.index, id.generation});
+    }
+    const uint32_t vertexData[]{0, 1, 2, 3};
+    const auto meshVertices = resources.CreateVertexBuffer(vertexData, sizeof(vertexData), sizeof(uint32_t));
+    auto snapshot = std::make_shared<renderer::RenderScene>();
+    snapshot->geometry.EditObjects().resize(2);
+    snapshot->items.resize(2);
+    for (uint32_t index = 0; index < 2; ++index) {
+        snapshot->geometry.EditObjects()[index].selected = true;
+        snapshot->geometry.EditObjects()[index].firstItem = index;
+        snapshot->geometry.EditObjects()[index].itemCount = 1;
+        snapshot->items[index].vertexBuffer = meshVertices;
+        snapshot->items[index].skinningVertexBuffer = meshVertices;
+        snapshot->items[index].indexBuffer = handles.particleIB;
+    }
+    snapshot->geometry.EditObjects()[1].skinned = true;
+    scene::RenderPassContext context(sourceScene, device, resources, camera, settings, {}, 1u, handles);
+    context.selectionOutlineEnabled = true;
+    context.renderScene = snapshot;
+    for (int route = 0; route < 3; ++route) {
+        SCOPED_TRACE(route);
+        if (route == 1) snapshot->selection.Publish({0, 1});
+        if (route == 2) {
+            settings.selectedObjects.insert(settings.selectedObjects.end(), filler.begin(), filler.end());
+            auto editable = std::make_shared<renderer::RenderScene>(*snapshot);
+            editable->selection.EditFlags() = {0, 1};
+            context.renderScene = std::move(editable);
+        }
+        std::vector<renderer::DrawCall> draws;
+        device.m_drawCalls = &draws;
+        auto passResources = context.Res();
+        scene::ExecuteSelectionMaskPass(passResources, context);
+        device.m_drawCalls = nullptr;
+        const size_t meshCount = route == 2 ? 1u : 2u;
+        ASSERT_EQ(draws.size(), meshCount + 2);
+        if (meshCount == 2) EXPECT_EQ(draws[0].shader, handles.selectionMaskShader);
+        EXPECT_EQ(draws[meshCount - 1].shader, handles.selectionMaskSkinnedShader);
+        EXPECT_EQ(draws[meshCount].constantBuffers[scene::kParticleConstantSlot],
+            first.GetComponent<scene::ParticleEmitter>()->runtime.renderCB.Get());
+        EXPECT_EQ(draws[meshCount + 1].constantBuffers[scene::kParticleConstantSlot],
+            last.GetComponent<scene::ParticleEmitter>()->runtime.renderCB.Get());
+    }
 }
 
 /// @brief Static raster cache owns retired seed until the first later view.
@@ -2604,24 +2736,24 @@ TEST_F(RenderSpatialPublicationTest, KeepsNoChangePublicationsImmutableAndMarksD
     auto& moving = StaticObject();
     StaticObject();
     const auto warm = Warm();
-    ASSERT_NE(warm.spatialUpdate, nullptr);
-    EXPECT_FALSE(warm.spatialUpdate->fullReplacement);
-    EXPECT_TRUE(warm.spatialUpdate->changedObjectOrdinals.empty());
+    ASSERT_NE(warm.geometry.SpatialUpdate(), nullptr);
+    EXPECT_FALSE(warm.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_TRUE(warm.geometry.SpatialUpdate()->changedObjectOrdinals.empty());
     const auto unchanged = scene::ExtractRenderSceneGeometry(m_scene, 11);
-    ASSERT_NE(unchanged.spatialUpdate, nullptr);
-    EXPECT_EQ(unchanged.spatialUpdate->baseVersion, warm.spatialUpdate->version);
-    EXPECT_NE(unchanged.spatialUpdate->version, warm.spatialUpdate->version);
-    EXPECT_EQ(unchanged.spatialUpdate->objectCount, 3u);
-    EXPECT_TRUE(unchanged.spatialUpdate->changedObjectOrdinals.empty());
+    ASSERT_NE(unchanged.geometry.SpatialUpdate(), nullptr);
+    EXPECT_EQ(unchanged.geometry.SpatialUpdate()->baseVersion, warm.geometry.SpatialUpdate()->version);
+    EXPECT_NE(unchanged.geometry.SpatialUpdate()->version, warm.geometry.SpatialUpdate()->version);
+    EXPECT_EQ(unchanged.geometry.SpatialUpdate()->objectCount, 3u);
+    EXPECT_TRUE(unchanged.geometry.SpatialUpdate()->changedObjectOrdinals.empty());
 
     moving.transform.worldPosition = {19, 2, 3};
     const auto moved = scene::ExtractRenderSceneGeometry(m_scene, 12);
-    ASSERT_NE(moved.spatialUpdate, nullptr);
-    EXPECT_FALSE(moved.spatialUpdate->fullReplacement);
-    EXPECT_EQ(moved.spatialUpdate->baseVersion, unchanged.spatialUpdate->version);
-    EXPECT_EQ(moved.spatialUpdate->changedObjectOrdinals, (std::vector<uint32_t>{1}));
+    ASSERT_NE(moved.geometry.SpatialUpdate(), nullptr);
+    EXPECT_FALSE(moved.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(moved.geometry.SpatialUpdate()->baseVersion, unchanged.geometry.SpatialUpdate()->version);
+    EXPECT_EQ(moved.geometry.SpatialUpdate()->changedObjectOrdinals, (std::vector<uint32_t>{1}));
     EXPECT_VEC3_NEAR(moved.Objects()[1].boundsCenter, (math::Vector3{19, 2, 3}), 0.0f);
-    EXPECT_TRUE(unchanged.spatialUpdate->changedObjectOrdinals.empty());
+    EXPECT_TRUE(unchanged.geometry.SpatialUpdate()->changedObjectOrdinals.empty());
     EXPECT_VEC3_NEAR(warm.Objects()[1].boundsCenter, math::Vector3::ZERO, 0.0f);
 }
 
@@ -2635,22 +2767,22 @@ TEST_F(RenderSpatialPublicationTest, IncludesParentPropagationAndRawTransformRes
     scene::FlushWorldTransforms(m_scene);
     const auto saved = parent.transform;
     const auto warm = Warm();
-    ASSERT_NE(warm.spatialUpdate, nullptr);
+    ASSERT_NE(warm.geometry.SpatialUpdate(), nullptr);
     parent.transform.position = {5, 0, 0};
     scene::FlushWorldTransforms(parent);
     const auto moved = scene::ExtractRenderSceneGeometry(m_scene, 11);
-    ASSERT_NE(moved.spatialUpdate, nullptr);
-    EXPECT_FALSE(moved.spatialUpdate->fullReplacement);
-    EXPECT_EQ(moved.spatialUpdate->changedObjectOrdinals, (std::vector<uint32_t>{0, 1}));
+    ASSERT_NE(moved.geometry.SpatialUpdate(), nullptr);
+    EXPECT_FALSE(moved.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(moved.geometry.SpatialUpdate()->changedObjectOrdinals, (std::vector<uint32_t>{0, 1}));
     EXPECT_VEC3_NEAR(moved.Objects()[1].boundsCenter, (math::Vector3{7, 0, 0}), 0.0f);
 
     /// @note Undo restores the public Transform value before the existing hierarchy flush.
     parent.transform = saved;
     scene::FlushWorldTransforms(m_scene);
     const auto restored = scene::ExtractRenderSceneGeometry(m_scene, 12);
-    ASSERT_NE(restored.spatialUpdate, nullptr);
-    EXPECT_EQ(restored.spatialUpdate->baseVersion, moved.spatialUpdate->version);
-    EXPECT_EQ(restored.spatialUpdate->changedObjectOrdinals, (std::vector<uint32_t>{0, 1}));
+    ASSERT_NE(restored.geometry.SpatialUpdate(), nullptr);
+    EXPECT_EQ(restored.geometry.SpatialUpdate()->baseVersion, moved.geometry.SpatialUpdate()->version);
+    EXPECT_EQ(restored.geometry.SpatialUpdate()->changedObjectOrdinals, (std::vector<uint32_t>{0, 1}));
     EXPECT_VEC3_NEAR(restored.Objects()[1].boundsCenter, (math::Vector3{2, 0, 0}), 0.0f);
     EXPECT_VEC3_NEAR(moved.Objects()[1].boundsCenter, (math::Vector3{7, 0, 0}), 0.0f);
 }
@@ -2666,9 +2798,9 @@ TEST_F(RenderSpatialPublicationTest, IncludesEveryOwnerOfDirectlyEditedSharedMes
     m_mesh.boundsCenter = {3, 1, 0};
     m_mesh.boundsRadius = 7;
     const auto edited = scene::ExtractRenderSceneGeometry(m_scene, 11);
-    ASSERT_NE(edited.spatialUpdate, nullptr);
-    EXPECT_FALSE(edited.spatialUpdate->fullReplacement);
-    EXPECT_EQ(edited.spatialUpdate->changedObjectOrdinals, (std::vector<uint32_t>{0, 1}));
+    ASSERT_NE(edited.geometry.SpatialUpdate(), nullptr);
+    EXPECT_FALSE(edited.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(edited.geometry.SpatialUpdate()->changedObjectOrdinals, (std::vector<uint32_t>{0, 1}));
     EXPECT_VEC3_NEAR(edited.Objects()[0].boundsCenter, (math::Vector3{3, 1, 0}), 0.0f);
     EXPECT_VEC3_NEAR(edited.Objects()[1].boundsCenter, (math::Vector3{13, 1, 0}), 0.0f);
     EXPECT_FLOAT_EQ(edited.Objects()[1].boundsRadius, 7);
@@ -2684,36 +2816,36 @@ TEST_F(RenderSpatialPublicationTest, ResetsLineageForOrderComponentLifetimeEntit
     const auto warm = Warm();
     ASSERT_TRUE(second.SetSiblingIndex(0));
     const auto reordered = scene::ExtractRenderSceneGeometry(m_scene, 11);
-    ASSERT_NE(reordered.spatialUpdate, nullptr);
-    EXPECT_TRUE(reordered.spatialUpdate->fullReplacement);
-    EXPECT_EQ(reordered.spatialUpdate->baseVersion, 0u);
+    ASSERT_NE(reordered.geometry.SpatialUpdate(), nullptr);
+    EXPECT_TRUE(reordered.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(reordered.geometry.SpatialUpdate()->baseVersion, 0u);
     EXPECT_EQ(reordered.Objects()[0].sourceIndex, secondId.index);
 
     second.RemoveComponent<scene::MeshRenderer>();
     second.AddComponent<scene::MeshRenderer>().mesh = &m_mesh;
     const auto replaced = scene::ExtractRenderSceneGeometry(m_scene, 12);
-    ASSERT_NE(replaced.spatialUpdate, nullptr);
-    EXPECT_TRUE(replaced.spatialUpdate->fullReplacement);
-    EXPECT_EQ(replaced.spatialUpdate->baseVersion, 0u);
+    ASSERT_NE(replaced.geometry.SpatialUpdate(), nullptr);
+    EXPECT_TRUE(replaced.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(replaced.geometry.SpatialUpdate()->baseVersion, 0u);
     ASSERT_TRUE(m_scene.DestroyGameObject(secondId));
     auto& reused = StaticObject();
     EXPECT_EQ(reused.GetID().index, secondId.index);
     EXPECT_NE(reused.GetID().generation, secondId.generation);
     const auto recreated = scene::ExtractRenderSceneGeometry(m_scene, 13);
-    ASSERT_NE(recreated.spatialUpdate, nullptr);
-    EXPECT_TRUE(recreated.spatialUpdate->fullReplacement);
+    ASSERT_NE(recreated.geometry.SpatialUpdate(), nullptr);
+    EXPECT_TRUE(recreated.geometry.SpatialUpdate()->fullReplacement);
     first.SetActive(false);
     reused.SetActive(false);
     const auto empty = scene::ExtractRenderSceneGeometry(m_scene, 14);
-    ASSERT_NE(empty.spatialUpdate, nullptr);
-    EXPECT_TRUE(empty.spatialUpdate->fullReplacement);
-    EXPECT_EQ(empty.spatialUpdate->objectCount, 0u);
+    ASSERT_NE(empty.geometry.SpatialUpdate(), nullptr);
+    EXPECT_TRUE(empty.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(empty.geometry.SpatialUpdate()->objectCount, 0u);
     const auto stillEmpty = scene::ExtractRenderSceneGeometry(m_scene, 15);
-    ASSERT_NE(stillEmpty.spatialUpdate, nullptr);
-    EXPECT_FALSE(stillEmpty.spatialUpdate->fullReplacement);
-    EXPECT_EQ(stillEmpty.spatialUpdate->baseVersion, empty.spatialUpdate->version);
-    EXPECT_TRUE(stillEmpty.spatialUpdate->changedObjectOrdinals.empty());
-    EXPECT_EQ(warm.spatialUpdate->objectCount, 2u);
+    ASSERT_NE(stillEmpty.geometry.SpatialUpdate(), nullptr);
+    EXPECT_FALSE(stillEmpty.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(stillEmpty.geometry.SpatialUpdate()->baseVersion, empty.geometry.SpatialUpdate()->version);
+    EXPECT_TRUE(stillEmpty.geometry.SpatialUpdate()->changedObjectOrdinals.empty());
+    EXPECT_EQ(warm.geometry.SpatialUpdate()->objectCount, 2u);
 }
 
 /// @brief Starts a full publication after serializer restoration and scene generation change.
@@ -2734,10 +2866,10 @@ TEST_F(RenderSpatialPublicationTest, StartsAFullPublicationAfterSerializerRestor
     m_scene = std::move(*loaded);
     scene::FlushWorldTransforms(m_scene);
     const auto restored = scene::ExtractRenderSceneGeometry(m_scene, 11);
-    ASSERT_NE(restored.spatialUpdate, nullptr);
+    ASSERT_NE(restored.geometry.SpatialUpdate(), nullptr);
     EXPECT_NE(restored.sceneGeneration, warm.sceneGeneration);
-    EXPECT_TRUE(restored.spatialUpdate->fullReplacement);
-    EXPECT_EQ(restored.spatialUpdate->baseVersion, 0u);
+    EXPECT_TRUE(restored.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(restored.geometry.SpatialUpdate()->baseVersion, 0u);
     ASSERT_EQ(restored.Objects().size(), 1u);
     EXPECT_VEC3_NEAR(restored.Objects()[0].boundsCenter, (math::Vector3{3, 4, 5}), 0.0f);
     EXPECT_VEC3_NEAR(warm.Objects()[0].boundsCenter, (math::Vector3{3, 4, 5}), 0.0f);
@@ -2752,14 +2884,14 @@ TEST_F(RenderSpatialPublicationTest, ConservativelyMarksSkinnedBoundsOnEveryPubl
     animator.skinnedBoundsCenter = {1, 0, 0};
     animator.skinnedBoundsRadius = 3;
     const auto warm = Warm();
-    ASSERT_NE(warm.spatialUpdate, nullptr);
-    EXPECT_EQ(warm.spatialUpdate->changedObjectOrdinals, (std::vector<uint32_t>{1}));
+    ASSERT_NE(warm.geometry.SpatialUpdate(), nullptr);
+    EXPECT_EQ(warm.geometry.SpatialUpdate()->changedObjectOrdinals, (std::vector<uint32_t>{1}));
     animator.skinnedBoundsCenter = {9, 2, 3};
     animator.skinnedBoundsRadius = 8;
     const auto animated = scene::ExtractRenderSceneGeometry(m_scene, 11);
-    ASSERT_NE(animated.spatialUpdate, nullptr);
-    EXPECT_FALSE(animated.spatialUpdate->fullReplacement);
-    EXPECT_EQ(animated.spatialUpdate->changedObjectOrdinals, (std::vector<uint32_t>{1}));
+    ASSERT_NE(animated.geometry.SpatialUpdate(), nullptr);
+    EXPECT_FALSE(animated.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(animated.geometry.SpatialUpdate()->changedObjectOrdinals, (std::vector<uint32_t>{1}));
     EXPECT_VEC3_NEAR(animated.Objects()[1].boundsCenter, (math::Vector3{9, 2, 3}), 0.0f);
     EXPECT_FLOAT_EQ(animated.Objects()[1].boundsRadius, 11);
     EXPECT_FLOAT_EQ(warm.Objects()[1].boundsRadius, 6);
@@ -2774,19 +2906,19 @@ TEST_F(RenderSpatialPublicationTest, IncludesConsecutiveMotionAndDenseFallbackBe
     for (uint64_t frame = 2; frame <= 6; ++frame) {
         for (auto id : ids) m_scene.GetGameObject(id)->transform.worldPosition.x = static_cast<float>(frame);
         const auto moving = scene::ExtractRenderSceneGeometry(m_scene, frame);
-        ASSERT_NE(moving.spatialUpdate, nullptr);
-        EXPECT_FALSE(moving.spatialUpdate->fullReplacement);
-        ASSERT_EQ(moving.spatialUpdate->changedObjectOrdinals.size(), ids.size());
-        EXPECT_EQ(moving.spatialUpdate->changedObjectOrdinals.front(), 0u);
-        EXPECT_EQ(moving.spatialUpdate->changedObjectOrdinals.back(), 127u);
+        ASSERT_NE(moving.geometry.SpatialUpdate(), nullptr);
+        EXPECT_FALSE(moving.geometry.SpatialUpdate()->fullReplacement);
+        ASSERT_EQ(moving.geometry.SpatialUpdate()->changedObjectOrdinals.size(), ids.size());
+        EXPECT_EQ(moving.geometry.SpatialUpdate()->changedObjectOrdinals.front(), 0u);
+        EXPECT_EQ(moving.geometry.SpatialUpdate()->changedObjectOrdinals.back(), 127u);
         EXPECT_FLOAT_EQ(moving.Objects().back().boundsCenter.x, static_cast<float>(frame));
     }
     renderer::RenderScene stopped;
     for (uint64_t frame = 7; frame <= 26; ++frame)
         stopped = scene::ExtractRenderSceneGeometry(m_scene, frame);
-    ASSERT_NE(stopped.spatialUpdate, nullptr);
-    EXPECT_FALSE(stopped.spatialUpdate->fullReplacement);
-    EXPECT_TRUE(stopped.spatialUpdate->changedObjectOrdinals.empty());
+    ASSERT_NE(stopped.geometry.SpatialUpdate(), nullptr);
+    EXPECT_FALSE(stopped.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_TRUE(stopped.geometry.SpatialUpdate()->changedObjectOrdinals.empty());
     EXPECT_FLOAT_EQ(stopped.Objects().back().boundsCenter.x, 6);
 }
 
@@ -2795,17 +2927,17 @@ TEST_F(RenderSpatialPublicationTest, LeavesLegacyAndUnknownModesUncertifiedAndRe
 {
     StaticObject();
     const auto warm = Warm();
-    ASSERT_NE(warm.spatialUpdate, nullptr);
+    ASSERT_NE(warm.geometry.SpatialUpdate(), nullptr);
     for (const char* mode : std::array<const char*, 5>{nullptr, "legacy", "Journal", "journal ", "1"}) {
         const SpatialProducerEnvironment legacy(mode);
         const auto snapshot = scene::ExtractRenderSceneGeometry(m_scene, 11);
-        EXPECT_EQ(snapshot.spatialUpdate, nullptr);
+        EXPECT_EQ(snapshot.geometry.SpatialUpdate(), nullptr);
     }
     const auto restarted = scene::ExtractRenderSceneGeometry(m_scene, 12);
-    ASSERT_NE(restarted.spatialUpdate, nullptr);
-    EXPECT_TRUE(restarted.spatialUpdate->fullReplacement);
-    EXPECT_EQ(restarted.spatialUpdate->baseVersion, 0u);
-    EXPECT_NE(restarted.spatialUpdate->version, warm.spatialUpdate->version);
+    ASSERT_NE(restarted.geometry.SpatialUpdate(), nullptr);
+    EXPECT_TRUE(restarted.geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_EQ(restarted.geometry.SpatialUpdate()->baseVersion, 0u);
+    EXPECT_NE(restarted.geometry.SpatialUpdate()->version, warm.geometry.SpatialUpdate()->version);
 }
 
 /// @brief Shares spatial journal across views and preserves it after notification.
@@ -2818,21 +2950,51 @@ TEST_F(RenderSceneExtractorMaterialTest, SharesSpatialJournalAcrossViewsAndPrese
     scene::RenderFrameGeometryCache cache;
     const auto first = ExtractView({}, cache);
     const auto second = ExtractView({}, cache);
-    ASSERT_NE(first->spatialUpdate, nullptr);
-    EXPECT_EQ(first->spatialUpdate, second->spatialUpdate);
-    EXPECT_EQ(first->spatialUpdate, cache.geometry->spatialUpdate);
+    ASSERT_NE(first->geometry.SpatialUpdate(), nullptr);
+    EXPECT_EQ(first->geometry.SpatialUpdate(), second->geometry.SpatialUpdate());
+    EXPECT_EQ(first->geometry.SpatialUpdate(), cache.geometry->geometry.SpatialUpdate());
     EXPECT_NE(first->snapshotSerial, second->snapshotSerial);
-    EXPECT_TRUE(first->spatialUpdate->changedObjectOrdinals.empty());
+    EXPECT_TRUE(first->geometry.SpatialUpdate()->changedObjectOrdinals.empty());
     owner.GetComponent<scene::MeshRenderer>()->castShadows = false;
     scene::NotifyMeshRendererChanged(m_scene, owner.GetID());
     const auto notified = ExtractView({}, cache);
-    ASSERT_NE(notified->spatialUpdate, nullptr);
-    EXPECT_NE(first->spatialUpdate, notified->spatialUpdate);
-    EXPECT_EQ(notified->spatialUpdate->baseVersion, first->spatialUpdate->version);
-    EXPECT_FALSE(notified->spatialUpdate->fullReplacement);
-    EXPECT_TRUE(notified->spatialUpdate->changedObjectOrdinals.empty());
+    ASSERT_NE(notified->geometry.SpatialUpdate(), nullptr);
+    EXPECT_NE(first->geometry.SpatialUpdate(), notified->geometry.SpatialUpdate());
+    EXPECT_EQ(notified->geometry.SpatialUpdate()->baseVersion, first->geometry.SpatialUpdate()->version);
+    EXPECT_FALSE(notified->geometry.SpatialUpdate()->fullReplacement);
+    EXPECT_TRUE(notified->geometry.SpatialUpdate()->changedObjectOrdinals.empty());
     EXPECT_TRUE(first->Objects()[0].castShadows);
     EXPECT_FALSE(notified->Objects()[0].castShadows);
+}
+
+/// @brief キャッシュ退役後のビューを編集しても、元の姿勢・空間差分・選択添字を保持する。
+TEST_F(RenderSceneExtractorMaterialTest, EditingRetiredViewDetachesGeometryAndSelection)
+{
+    const SpatialProducerEnvironment journal;
+    const auto entity = StaticObject().GetID();
+    renderer::RenderSettings settings;
+    settings.selectedObjects = {{entity.index, entity.generation}};
+    const auto original = [&] {
+        scene::RenderFrameGeometryCache cache;
+        return ExtractView(settings, cache);
+    }();
+    ASSERT_EQ(original->Objects().size(), 1u);
+    ASSERT_NE(original->geometry.SpatialUpdate(), nullptr);
+    ASSERT_TRUE(original->PublishedMeshSelection().has_value());
+    ASSERT_EQ(original->PublishedMeshSelection()->size(), 1u);
+    auto edited = *original;
+    EXPECT_EQ(edited.Objects().data(), original->Objects().data());
+    EXPECT_FALSE(edited.PublishedMeshSelection().has_value());
+    const float radius = original->Objects()[0].boundsRadius;
+    edited.geometry.EditObjects()[0].boundsRadius = radius + 1;
+    edited.selection.EditFlags() = {0};
+    EXPECT_EQ(edited.geometry.SpatialUpdate(), nullptr);
+    EXPECT_NE(edited.Objects().data(), original->Objects().data());
+    EXPECT_FLOAT_EQ(edited.Objects()[0].boundsRadius, radius + 1);
+    EXPECT_FLOAT_EQ(original->Objects()[0].boundsRadius, radius);
+    EXPECT_NE(original->geometry.SpatialUpdate(), nullptr);
+    EXPECT_TRUE(original->IsObjectSelected(0));
+    EXPECT_FALSE(edited.IsObjectSelected(0));
 }
 
 } /// @note namespace fbzz::tests

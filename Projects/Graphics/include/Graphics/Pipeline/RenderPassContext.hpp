@@ -29,7 +29,7 @@ struct StaticShadowCacheView {
     std::array<uint64_t, kMaxShadowCascades> contentKeys{};
 };
 
-/// @note Only a successful bake may publish a never-again-written texture; resource owner/epoch and exact handle bind the proof.
+/// @note 成功したベイクだけが、その後書き換えないテクスチャを公開できる。資源管理者・世代と正確なハンドルを照合する。
 struct RenderTexturePublication {
     ResourceHandle<TextureTag> texture;
     const ResourceManager* owner = nullptr;
@@ -39,6 +39,32 @@ struct RenderTexturePublication {
         return texture.IsValid() && texture == handle && owner == resources && resourceEpoch == epoch;
     }
 };
+
+/// @note 色パスで実際に描いた粒子のバインディングを、同じビューの後続パスに渡す。
+struct ParticleViewDraws {
+    struct Bindings {
+        ResourceHandle<ConstantBufferTag> renderCB;
+        ResourceHandle<TextureTag> texture;
+        ResourceHandle<TextureTag> motionVectorTexture;
+    };
+    struct Billboard {
+        Bindings bindings;
+        ResourceHandle<BufferTag> vertexBuffer;
+        int quadCount = 0;
+    };
+    struct Gpu {
+        Bindings bindings;
+        ResourceHandle<StructuredBufferTag> particleBuffer;
+        ResourceHandle<StructuredBufferTag> sortBuffer;
+        int drawCount = 0;
+    };
+    std::vector<Billboard> billboards;
+    std::vector<Gpu> gpu;
+    std::weak_ptr<const RenderScene> snapshot;
+    uint64_t frame = 0;
+    uint64_t resourceResetVersion = 0;
+};
+
 struct RenderPassContext : RenderLightingInput {
     renderer::IRenderer& renderer;
     renderer::ResourceManager& resources;
@@ -51,7 +77,7 @@ struct RenderPassContext : RenderLightingInput {
     /// @note 既定値付きフィールドを挿すと呼び出し側の初期化子が 1 つずつずれるため、
     /// @note 新しい設定は必ず handles より後ろへ追加すること。
     RenderPassHandles& handles;
-    /// @note Invocation-exclusive pure geometry; RenderSystem may lease a bounded view owner, while direct callers keep local storage.
+    /// @note 呼び出し専用の形状データ。RenderSystem は上限付きのビュー領域を借用でき、直接の呼び出し元はローカル領域を保持する。
     SurfacePatchSelectionCache surfacePatchSelectionCache;
     /// @note ホストが実験 RT のセッション許可を渡す。保存された描画要求や実機能力とは独立する。
     /// @see Docs/design/developer-mode.md
@@ -62,7 +88,7 @@ struct RenderPassContext : RenderLightingInput {
     std::vector<RenderSkinningInput> skinningRequests;
     std::vector<math::Matrix4> skinningMatrices;
     bool skinningExecuted = false;
-    /// @note The opt-in worker returns values only; no native pointer or producer input is borrowed by this receipt.
+    /// @note 明示的に有効化したワーカーは値だけを返す。実行記録はネイティブポインターや生成側の入力を借用しない。
     RenderSkinningBatchReceipt skinningBatchReceipt;
     uint64_t frameStamp = 0;
     StaticShadowCacheView staticShadowCache;
@@ -142,29 +168,30 @@ struct RenderPassContext : RenderLightingInput {
     bool selectionOutlineEnabled = false;
     /// @note 今フレームに 1 件でも生きた輪郭要求があるか (RenderSettings::objectMaskRequests)。
     bool objectMaskEnabled = false;
-    /// @note 今フレーム SSR のパスが実際に走るか。
-    /// @note 出力先 (ssrResult) は RenderGraph の外にある永続テクスチャで、設定が有効でも
-    /// @note パスが登録されない / 早期 return する経路がある (GBuffer 無し、Unlit、シェーダー未ロード)。
-    /// @note 設定だけを見て Composite が読むと、最後に書かれた絵がそのまま毎フレーム乗り続ける。
-    bool ssrPassActive = false;
+    /// @note 当該ビューで入力パスと消費先を登録できる。出力を参照する際は記録結果を確認する。
+    bool ssrPassPlanned = false;
+    /// @note 同期 TryDispatch が当該ビューの SSRResult への記録を受理した場合だけ true。
+    bool ssrDispatchRecorded = false;
+    /// @note 当該ビューの SSR を参照して HDR への描画を Submit した。TAA はこの状態で照明履歴を照合する。
+    bool ssrContributionSubmitted = false;
     /// @note 当該ビューの Velocity がクリア・更新済みの場合だけ消費側へ公開する。
     bool velocityWritten = false;
     /// @note 水中の散乱だけCompositeへ遅延合成する。今フレームの記録成功をビュー単位で保持する。
     bool underwaterLightPassActive = false;
-    /// @note Water receiver lighting can read the view-local medium table and world-XZ atlas this frame.
+    /// @note このフレームの水面受光処理は、ビュー固有の媒質テーブルとワールド XZ アトラスを参照できる。
     bool waterMediumPassActive = false;
-    /// @note Water interface mask is valid only after its graph pass writes the current view.
+    /// @note 水面界面マスクが有効になるのは、グラフパスが現在のビューの出力を書いた後。
     bool waterInterfacePassActive = false;
-    /// @note Zero leaves all pixels on the exact path.
+    /// @note 0 の場合はすべての画素を厳密な経路で処理する。
     std::array<uint32_t, 8> waterOpticalDryTiles{};
-    /// @note Quality is reduced when visible water bodies share the fixed atlas pixel budget.
+    /// @note 可視の水域が固定のアトラス画素予算を共有する場合、品質を下げる。
     bool waterMediumQualityLimited = false;
     /// @note HYBRID を要求した Lit Deferred の反射 resolver。RT 縮退・記録失敗でも全 HDR 補間へ戻さない。
     bool hybridReflectionResolveActive = false;
     /// @note SSR の照明入力を作る間だけ true。RT と SSR の差し替え前の baseline を描く。
     bool hybridReflectionSourcePass = false;
     /// @note 生きた SSR 資源と pass override を確認した当該ビューの graph 宣言条件。
-    bool hybridReflectionSsrPlanned = false;
+    [[nodiscard]] bool IsHybridSsrPlanned() const { return hybridReflectionResolveActive && ssrPassPlanned; }
     /// @note 当該ビューで RayReflection が実行可能なフレームだけ有効。材質・形状の被覆不足では false。
     bool rayReflectionPassActive = false;
     /// @note Graph は filtered/RAW の両方を申告し、再構成の記録失敗時も同フレーム RAW だけを読む。
@@ -256,11 +283,11 @@ struct RenderPassContext : RenderLightingInput {
     bool gpuOcclusionEnabled = false;
     bool gpuOcclusionTerrain = false;
     bool gpuOccluderDepthReady = false;
-    /// @note Maps this snapshot's mesh items to the graph's indirect argument buffer.
+    /// @note このスナップショットのメッシュ項目をグラフの間接引数バッファへ対応付ける。
     std::vector<uint32_t> gpuOcclusionArguments;
     std::vector<bool> gpuOccluderItems;
     std::vector<bool> gpuOcclusionCounted;
-    /// @note CPU depth and uploaded rows belong to this immutable publication and exact view; callbacks invalidate the proof by replacing either input.
+    /// @note CPU 深度と転送済みの行は、この不変の公開データと該当ビューに属する。コールバックでいずれかの入力が置き換わると照合が失効する。
     std::shared_ptr<const renderer::RenderScene> occlusionPreparedScene;
     const OcclusionCuller* occlusionPreparedCuller = nullptr;
     uint64_t occlusionPreparedCullerVersion = 0;
@@ -290,7 +317,7 @@ struct RenderPassContext : RenderLightingInput {
     /// @see Docs/design/gpu-instancing.md
     int statsInstancedBatches    = 0;
     int statsInstancedDrawsSaved = 0;
-    /// @note Bytes copied for persistent placement rows; zero after warmup on an unchanged set.
+    /// @note 永続配置行のコピー量 [バイト]。配置が変わらなければウォームアップ後は 0。
     uint64_t statsInstanceUploadBytes = 0;
     /// @note SkinningComputePass がこのフレームのポーズについて実際に処理した仕事量。
     /// @note Scene/Game View が結果を共有した場合も、後側のビューへ同じ値を引き継ぐ。
@@ -313,6 +340,7 @@ struct RenderPassContext : RenderLightingInput {
     int statsParticleVisible = 0;
     int statsParticleCulled = 0;
     int statsParticleBudgetDropped = 0;
+    ParticleViewDraws particleDraws;
     /// @}
 
     /// @note 選択中の Directional Light が Auto Bake のとき true。ベイクの有効性は directionalShadowBake が持つ。
@@ -367,4 +395,4 @@ inline void SubmitCountedShadow(RenderPassContext& ctx, const renderer::DrawCall
     ctx.statsShadowTriangleCount += DrawCallTriangleCount(call);
 }
 
-} /// @note namespace fbzz::renderer
+}

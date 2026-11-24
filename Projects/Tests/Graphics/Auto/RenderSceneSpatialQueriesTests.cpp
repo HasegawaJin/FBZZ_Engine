@@ -28,7 +28,7 @@ std::shared_ptr<renderer::RenderScene> Snapshot(uint64_t scene, uint64_t serial,
         object.boundsCenter = {static_cast<float>(static_cast<int>(ordinal % 16) - 8) * 8 + xOffset,
             static_cast<float>(static_cast<int>(ordinal / 16) - 4) * 7, 30};
         object.boundsRadius = 1;
-        snapshot->objects.push_back(object);
+        snapshot->geometry.EditObjects().push_back(object);
     }
     return snapshot;
 }
@@ -36,13 +36,13 @@ std::shared_ptr<renderer::RenderScene> Snapshot(uint64_t scene, uint64_t serial,
 void Journal(const std::shared_ptr<renderer::RenderScene>& snapshot, uint64_t version, uint64_t base,
     bool fullReplacement, std::vector<uint32_t> changed = {})
 {
-    auto journal = std::make_shared<renderer::RenderSpatialUpdate>();
-    journal->version = version;
-    journal->baseVersion = base;
-    journal->objectCount = snapshot->Objects().size();
-    journal->fullReplacement = fullReplacement;
-    journal->changedObjectOrdinals = std::move(changed);
-    snapshot->spatialUpdate = std::move(journal);
+    renderer::RenderSpatialUpdate journal;
+    journal.version = version;
+    journal.baseVersion = base;
+    journal.objectCount = snapshot->Objects().size();
+    journal.fullReplacement = fullReplacement;
+    journal.changedObjectOrdinals = std::move(changed);
+    snapshot->geometry.SetSpatialUpdate(std::move(journal));
 }
 
 class RenderSceneSpatialQueriesTest : public testkit::Fixture {
@@ -142,7 +142,7 @@ TEST_F(RenderSceneSpatialQueriesTest, PooledPublicationWithSameOwnerRequiresNewS
     /// @note The prior batch is retired before the producer reuses its publication storage.
     pooled->snapshotSerial = 31;
     pooled->frameStamp = 31;
-    for (auto& object : pooled->objects) object.boundsCenter.x += 10000;
+    for (auto& object : pooled->geometry.EditObjects()) object.boundsCenter.x += 10000;
     const auto current = Collect(cache, pooled);
     EXPECT_TRUE(current.refreshed);
     EXPECT_TRUE(current.ordinals.empty());
@@ -192,7 +192,7 @@ TEST_F(RenderSceneSpatialQueriesTest, StableJournalUpdatesOnlyTheChangedCurrentO
     RenderSceneSpatialCache cache;
     const auto previous = Collect(cache, initial);
     auto next = Snapshot(13, 131);
-    next->objects[72].boundsCenter.x = 10000;
+    next->geometry.EditObjects()[72].boundsCenter.x = 10000;
     Journal(next, 101, 100, false, {72});
 
     const auto current = Collect(cache, next);
@@ -222,7 +222,7 @@ TEST_F(RenderSceneSpatialQueriesTest, EmptyJournalAndSharedGeometryVersionReuseN
 
     const auto emptyDelta = Collect(cache, next);
     auto materialOnly = Snapshot(14, 142);
-    materialOnly->spatialUpdate = next->spatialUpdate;
+    materialOnly->geometry.SetSpatialUpdate(next->geometry.Read().spatialUpdate);
     const auto shared = Collect(cache, materialOnly);
 
     EXPECT_TRUE(emptyDelta.deltaApplied);
@@ -275,7 +275,7 @@ TEST_F(RenderSceneSpatialQueriesTest, InvalidJournalOrdinalAndClassificationChan
     RenderSceneSpatialCache cache;
     (void)Collect(cache, initial);
     auto invalid = Snapshot(16, 161);
-    invalid->objects[72].boundsCenter.x = 10000;
+    invalid->geometry.EditObjects()[72].boundsCenter.x = 10000;
     Journal(invalid, 401, 400, false, {72, 999});
 
     const auto rejected = Collect(cache, invalid);
@@ -284,14 +284,14 @@ TEST_F(RenderSceneSpatialQueriesTest, InvalidJournalOrdinalAndClassificationChan
     EXPECT_EQ(rejected.update.witnessedSources, invalid->Objects().size());
     EXPECT_FALSE(rejected.validationMismatch);
     auto unbounded = Snapshot(16, 162);
-    unbounded->objects[72].boundsRadius = 0;
+    unbounded->geometry.EditObjects()[72].boundsRadius = 0;
     Journal(unbounded, 402, 401, false, {72});
     const auto unknownBounds = Collect(cache, unbounded);
     EXPECT_FALSE(unknownBounds.deltaApplied);
     EXPECT_EQ(unknownBounds.update.witnessedSources, unbounded->Objects().size());
     EXPECT_FALSE(unknownBounds.validationMismatch);
     auto skinned = Snapshot(16, 163);
-    skinned->objects[72].skinned = true;
+    skinned->geometry.EditObjects()[72].skinned = true;
     Journal(skinned, 403, 402, false, {72});
     const auto changedClass = Collect(cache, skinned);
     EXPECT_FALSE(changedClass.deltaApplied);
@@ -312,7 +312,7 @@ TEST_F(RenderSceneSpatialQueriesTest, PaddingOptionsAndSceneLifetimeInvalidateJo
     options.denseUpdate = DenseUpdate::REFIT;
     const auto changedOptions = Collect(cache, initial, 20);
     auto otherScene = Snapshot(18, 180, 10000);
-    otherScene->spatialUpdate = initial->spatialUpdate;
+    otherScene->geometry.SetSpatialUpdate(initial->geometry.Read().spatialUpdate);
     const auto changedScene = Collect(cache, otherScene, 20);
 
     EXPECT_TRUE(padded.refreshed);
@@ -334,7 +334,7 @@ TEST_F(RenderSceneSpatialQueriesTest, LegacyUpdateModeIgnoresProducerJournalReus
     RenderSceneSpatialCache cache;
     (void)Collect(cache, initial);
     auto next = Snapshot(19, 191, 10000);
-    next->spatialUpdate = initial->spatialUpdate;
+    next->geometry.SetSpatialUpdate(initial->geometry.Read().spatialUpdate);
 
     const auto current = Collect(cache, next);
 
@@ -354,7 +354,7 @@ TEST_F(RenderSceneSpatialQueriesTest, ValidationRejectsOmittedCurrentBoundsAndRe
     RenderSceneSpatialCache cache;
     (void)Collect(cache, initial);
     auto omitted = Snapshot(20, 201);
-    omitted->objects[72].boundsCenter.x = 10000;
+    omitted->geometry.EditObjects()[72].boundsCenter.x = 10000;
     Journal(omitted, 701, 700, false);
 
     const auto rejected = Collect(cache, omitted);
@@ -380,7 +380,7 @@ TEST_F(RenderSceneSpatialQueriesTest, ValidationUsesCurrentSnapshotWhenGeometryV
     RenderSceneSpatialCache cache;
     (void)Collect(cache, initial);
     auto invalidReuse = Snapshot(21, 211, 10000);
-    invalidReuse->spatialUpdate = initial->spatialUpdate;
+    invalidReuse->geometry.SetSpatialUpdate(initial->geometry.Read().spatialUpdate);
 
     const auto rejected = Collect(cache, invalidReuse);
 
@@ -457,7 +457,7 @@ TEST_F(RenderSceneSpatialQueriesTest, ValidationFailureRetiresCapturedHierarchy)
     RenderSceneSpatialCache cache;
     (void)Collect(cache, initial);
     auto invalidReuse = Snapshot(26, 261, 10000);
-    invalidReuse->spatialUpdate = initial->spatialUpdate;
+    invalidReuse->geometry.SetSpatialUpdate(initial->geometry.Read().spatialUpdate);
     const std::array<const math::Frustum*, 1> volumes{&view};
     renderer::RenderBvhDebugRequest request;
     request.enabled = true;

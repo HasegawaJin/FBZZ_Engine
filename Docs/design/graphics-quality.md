@@ -10,7 +10,7 @@ Raster の SSR は受光側 Fresnel を掛けた反射から、同じ IBL 評価
 
 Hybrid の SSR 出力は既存の Fresnel 適用済み RGB と confidence を維持する。Hybrid は DeferredLighting の provider resolver が所有し、SSRResolve を重ねない。単一鏡面方向が表せない粗いローブは prefilter 済み IBL へ戻す。
 
-SSR の生産者と解決パスはそれぞれ HDR / SSRResult の依存を宣言する。Dispatch を記録していないフレームの永続テクスチャは採用しない。カスタム材質の深度・法線能力不足による縮退は既存の ResolvedRenderPlan が担当する。
+SSR の生産者と解決パスは HDR / SSRResult の依存を宣言する。入力を更新するパスと消費先の両方が有効なビューだけで SSR を計画する。実行時の消費先は当該ビューの Dispatch 記録と有効なテクスチャを確認し、TAA は SSR を参照した HDR 描画が投入されたかを履歴に記録する。カスタム材質の深度・法線能力不足による縮退は ResolvedRenderPlan が担当する。
 
 ## 地形と環境光
 

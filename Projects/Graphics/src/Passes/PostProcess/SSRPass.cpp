@@ -10,15 +10,14 @@
 #include <Graphics/Renderer/ComputeCall.hpp>
 #include <Graphics/Renderer/DrawCall.hpp>
 #include "../../Renderer/QueuedComputeComposite.hpp"
-#include <algorithm>
 #include <cstdlib>
 
 namespace fbzz::renderer {
 namespace {
-/// @note Hybrid providers and TAA history still require the synchronous current-frame receipt.
+/// @note Hybrid の反射選択と TAA の履歴は当該フレームの同期記録を必要とする。
 bool QueueRasterComposite(const RenderPassContext& ctx)
 {
-    /// @note Process-start control isolates the queue change in same-binary performance comparisons.
+    /// @note 同一バイナリーで同期経路と比較できるよう、起動時の設定で切り替える。
     static const bool forceSynchronous = [] {
         const char* value = std::getenv("FBZZ_RASTER_SSR_FORCE_SYNC");
         return value && value[0] == '1' && value[1] == '\0';
@@ -45,7 +44,8 @@ void ExecuteSSRPass(RenderPassContext& ctx)
     auto& resources = ctx.resources;
     auto& h         = ctx.handles;
     const auto& ssr = ctx.settings.ssr;
-    ctx.ssrPassActive = false;
+    ctx.ssrDispatchRecorded = false;
+    ctx.ssrContributionSubmitted = false;
 
     /// @note SSR はパイプライン名でなく GBuffer の有無で判定する。Forward 選択時も不透明物は
     /// @note GBuffer 経由になるため、反射の見た目を Deferred と揃えられる。
@@ -62,22 +62,15 @@ void ExecuteSSRPass(RenderPassContext& ctx)
     ssrDC.shader             = h.ssrShader;
     PostProcCB reflectionData{};
     reflectionData.reflectionResolveEnabled = ctx.hybridReflectionResolveActive ? 1.0f : 0.0f;
-    reflectionData.reflectionSsrEnabled = ctx.hybridReflectionSsrPlanned ? 1.0f : 0.0f;
     resources.Update(h.postprocCB, &reflectionData, sizeof(reflectionData));
     ssrDC.constantBuffers[5] = h.postprocCB;
-    /// @note b0: CameraConstants
     ssrDC.constantBuffers[0] = h.frameCB;
-    /// @note b8: ssrMaxDistance, ssrThickness, ssrSteps, ssrIntensity
     ssrDC.constantBuffers[8] = h.advancedGraphicsCB;
-    /// @note t0: GBuffer0 (albedo + roughness)
     ssrDC.srvInputs[0]       = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 0);
-    /// @note t5: HDR color (TEX_GBUFFER0 スロット再利用)
+    /// @note SSR では TEX_GBUFFER0 スロット (t5) を照明済み HDR 色の入力に使う。
     ssrDC.srvInputs[5]       = resources.GetColorTexture(ctx.Res().Target("HDR"), 0);
-    /// @note t6: GBuffer1 (normal + metallic)
     ssrDC.srvInputs[6]       = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 1);
-    /// @note t7: 反射面の GBuffer 深度
     ssrDC.srvInputs[7]       = resources.GetDepthTexture(ctx.Res().Target("GBuffer"));
-    /// @note t25: Forward 不透明物を含むシーン深度
     ssrDC.srvInputs[25]      = resources.GetDepthTexture(ctx.Res().Target("HDR"));
     if (ctx.hybridReflectionResolveActive) {
         ssrDC.srvInputs[22] = resources.GetColorTexture(ctx.Res().Target("GBuffer"), 2);
@@ -99,25 +92,17 @@ void ExecuteSSRPass(RenderPassContext& ctx)
     }
     for (const uint32_t slot : {0u, 5u, 6u, 7u, 25u})
         if (!resources.Get(ssrDC.srvInputs[slot])) return;
-    /// @note u3: UAV_SSR
     ssrDC.uavOutputs[3]      = h.ssrResult;
     ssrDC.dispatchX          = (ctx.width  + 7) / 8;
     ssrDC.dispatchY          = (ctx.height + 7) / 8;
     ssrDC.dispatchZ          = 1;
     if (QueueRasterComposite(ctx)) {
         if (!resources.Get(h.ssrResolveShader) || !resources.Get(h.causticsPSO)) return;
-        /// @note Native dispatch acceptance gates its own composite, so failure cannot sample the previous SSR texture.
+        /// @note キュー内の合成は記録に成功した場合だけ行い、CPU へ成功状態を公開しない。
         compute_composite_detail::Submit(r, resources, ssrDC, ctx.Res().Target("HDR"), CompositeDraw(ctx));
         return;
     }
-    if (r.GetCapabilities().bindless) {
-        /// @note DX12 は当該フレームの記録 receipt だけを採用し、Raster 縮退でも旧 SSR を読まない。
-        ctx.ssrPassActive = r.TryDispatch(ssrDC, resources);
-    } else {
-        /// @note DX11 は資源の生存確認後に旧 void Dispatch の契約を維持し、記録成功までは証明しない。
-        r.Dispatch(ssrDC, resources);
-        ctx.ssrPassActive = true;
-    }
+    ctx.ssrDispatchRecorded = r.TryDispatch(ssrDC, resources);
 }
 
 
@@ -134,12 +119,12 @@ void SSRPass::Setup(PassBuilder& builder, const RenderPassContext& ctx) const
 
 bool SSRPass::IsEnabled(const RenderPassContext& ctx) const
 {
-    return ctx.settings.ssr.enabled
-        && (!ctx.hybridReflectionResolveActive || ctx.hybridReflectionSsrPlanned);
+    return ctx.ssrPassPlanned;
 }
 
-void SSRPass::Execute(PassResources&, RenderPassContext& ctx)
+void SSRPass::Execute(PassResources& resources, RenderPassContext& ctx)
 {
+    if (resources.Texture("SSRResult") != ctx.handles.ssrResult) return;
     ExecuteSSRPass(ctx);
 }
 
@@ -150,16 +135,20 @@ void SSRResolvePass::Setup(PassBuilder& builder, const RenderPassContext&) const
 }
 bool SSRResolvePass::IsEnabled(const RenderPassContext& ctx) const
 {
-    return ctx.settings.ssr.enabled && !ctx.hybridReflectionResolveActive && !QueueRasterComposite(ctx)
-        && !std::any_of(ctx.settings.passOverrides.begin(), ctx.settings.passOverrides.end(),
-            [](const RenderPassOverride& override) { return override.name == "SSR" && !override.enabled; });
+    return ctx.ssrPassPlanned && !ctx.hybridReflectionResolveActive && !QueueRasterComposite(ctx);
 }
-void SSRResolvePass::Execute(PassResources&, RenderPassContext& ctx)
+void SSRResolvePass::Execute(PassResources& resources, RenderPassContext& ctx)
 {
+    ctx.ssrContributionSubmitted = false;
     auto& h = ctx.handles;
-    if (!ctx.ssrPassActive || !ctx.resources.Get(h.ssrResolveShader) || !ctx.resources.Get(h.causticsPSO)) return;
-    ctx.renderer.SetRenderTarget(ctx.Res().Target("HDR"), ctx.resources);
+    const auto hdr = resources.Target("HDR");
+    if (!ctx.ssrDispatchRecorded || resources.Texture("SSRResult") != h.ssrResult
+        || !ctx.resources.Get(h.ssrResult) || !ctx.resources.Get(h.advancedGraphicsCB)
+        || !ctx.resources.Get(h.ssrResolveShader) || !ctx.resources.Get(h.causticsPSO)
+        || !ctx.resources.Get(hdr)) return;
+    ctx.renderer.SetRenderTarget(hdr, ctx.resources);
     ctx.renderer.Submit(CompositeDraw(ctx), ctx.resources);
+    ctx.ssrContributionSubmitted = true;
 }
 
-} /// @note namespace fbzz::renderer
+}

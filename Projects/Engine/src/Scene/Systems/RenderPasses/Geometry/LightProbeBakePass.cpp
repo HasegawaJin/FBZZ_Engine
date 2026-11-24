@@ -6,7 +6,7 @@
 /// @note 面は深度付きの 2D RT。キューブ RT は深度を持たず、壁の向こうの物体が描画順しだいで手前に出て空の遮蔽が崩れるため使わない。
 /// @note 射影 CS は生のボリュームへ書き、膨張 CS が壁に埋まったプローブを周りで埋めて描画用ボリュームを作る。
 /// @see Docs/design/light-probe-gi.md
-#include "RenderScenePassHelpers.hpp"
+#include "GeometryPasses.hpp"
 #include <Graphics/Effects/RenderProbeInput.hpp>
 #include <Engine/Renderer/ComputeCall.hpp>
 #include <Engine/Renderer/DrawCall.hpp>
@@ -107,7 +107,7 @@ float DistanceSqToBox(const math::Vector3& point, const math::Vector3& boxMin, c
     return dx * dx + dy * dy + dz * dz;
 }
 
-} /// @note namespace
+}
 
 void FillLightProbeVolumeConstants(const GameObject& owner, const LightProbeVolumeComponent& volume,
                                    ProbeVolumeParamsCB& data)
@@ -124,7 +124,7 @@ void FillLightProbeVolumeConstants(const GameObject& owner, const LightProbeVolu
 
 LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, const AdvancedGraphicsCB& mainData)
 {
-    /// @note Empty live membership has no bake/publication work and never changes capture resources.
+    /// @note 有効なプローブがなければ、ベイク・公開を省き、キャプチャ資源を変更しない。
     if (ctx.scene.GetEntities<LightProbeVolumeComponent>().empty()) return {};
     auto& h = ctx.handles;
     auto& resources = ctx.resources;
@@ -243,4 +243,4 @@ LightProbeVolumeSelection ExecuteLightProbeBakePass(RenderPassContext& ctx, cons
     return selected;
 }
 
-} /// @note namespace fbzz::scene
+}

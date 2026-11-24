@@ -1,5 +1,5 @@
 /// @file    CompositePass.cpp
-/// @brief   Composite render pass implementation.
+/// @brief   最終画面の合成パス。
 /// @author  Hasegawa Jin
 /// @date    2026-06-18
 #include <Graphics/Passes/PostProcess/PostProcessPasses.hpp>
@@ -47,7 +47,7 @@ bool CanUseWaterRectangleComposite(const RenderPassContext& ctx)
     return false;
 }
 
-} /// @note namespace
+}
 
 void ExecuteCompositePass(RenderPassContext& ctx)
 {
@@ -65,7 +65,6 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         && resources.Get(ctx.handles.rayReflectionResult);
     postData.rayReflectionEnabled = rayReflectionActive ? 1.0f : 0.0f;
     postData.reflectionResolveEnabled = ctx.hybridReflectionResolveActive ? 1.0f : 0.0f;
-    postData.reflectionSsrEnabled = ctx.hybridReflectionResolveActive && ctx.ssrPassActive ? 1.0f : 0.0f;
     postData.texelSize[0] = 1.0f / static_cast<float>(ctx.width);
     postData.texelSize[1] = 1.0f / static_cast<float>(ctx.height);
     postData.screenSize[0] = static_cast<float>(ctx.width);
@@ -149,7 +148,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     if (sharedWaterOptics) {
         postData.underwaterOpticalMode = 2.0f;
         postData.underwaterStrength = 1.0f;
-        /// @note Shared composition also runs on land; only the resolved camera depth suppresses air fog.
+        /// @note 共有合成は陸上でも実行する。大気フォグを抑えるかは解決済みのカメラ深度で決める。
         postData.underwaterDepth = UsesOpticalUnderwater(underwater) ? underwater.depth : 0.0f;
         postData.underwaterMaxDistance = 0.0f;
         postData.underwaterLightSteps = 16.0f;
@@ -173,7 +172,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     if (sharedWaterOptics && !underwaterLightWritten
         && std::any_of(ctx.waterOpticalDryTiles.begin(), ctx.waterOpticalDryTiles.end(),
                        [](uint32_t tiles) { return tiles != 0u; })) {
-        /// @note Mode 2.25 selects the tile mask for the single-pass compositor. Mode 3 retains the split coverage contract.
+        /// @note モード 2.25 は単一パス合成用のタイルマスクを選ぶ。モード 3 は分割描画の範囲を維持する。
         postData.underwaterOpticalMode = 2.25f;
         postData.waterOpticalDryTiles = ctx.waterOpticalDryTiles;
     }
@@ -243,7 +242,7 @@ void ExecuteCompositePass(RenderPassContext& ctx)
         compositeDC.textures[22] = h.proceduralColorLut;
     r.Submit(compositeDC, resources);
     if (compositeDC.shader != h.compositeShader) {
-        /// @note Mode 3 suppresses precisely the pixels written by the fast shader; updates and draws retain their command order and use the original HDR source twice.
+        /// @note モード 3 は高速シェーダーが書いた画素だけを除外する。更新と描画のコマンド順を保ち、元の HDR 入力を両方で使う。
         postData.underwaterOpticalMode = 3.0f;
         resources.Update(h.postprocCB, &postData, sizeof(postData));
         compositeDC.shader = h.compositeShader;
@@ -255,4 +254,4 @@ void ExecuteCompositePass(RenderPassContext& ctx)
     h.fxaaInput = h.postProcessInput;
 }
 
-} /// @note namespace fbzz::renderer
+}

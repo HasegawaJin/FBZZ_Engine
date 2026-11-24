@@ -3,13 +3,16 @@
 /// @author  Hasegawa Jin
 /// @date    2026-10-23
 #include <Engine/Scene/Components/MeshRenderer.hpp>
+#include <Engine/Asset/Model.hpp>
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include "../Fixtures/StaticMeshRenderReuseFixture.hpp"
 #include "../../../Engine/src/Scene/Systems/RenderShadowPreparation.hpp"
 #include <Engine/Scene/Components/TerrainComponent.hpp>
 #include <cmath>
 
 namespace fbzz::tests {
-/// @brief Reuses unchanged geometry and rebuilds only changed inputs.
+/// @brief 入力が変わらない形状を再利用し、変化した形状だけを再構築する。
 TEST_F(StaticMeshRenderReuseTest, ReusesUnchangedGeometryAndRebuildsOnlyChangedInputs)
 {
     auto& first = Object(m_scene);
@@ -35,7 +38,7 @@ TEST_F(StaticMeshRenderReuseTest, ReusesUnchangedGeometryAndRebuildsOnlyChangedI
     EXPECT_VEC3_NEAR(original.items[1].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
 }
 
-/// @brief Scene bounds observe type membership and direct terrain height writes.
+/// @brief Scene 境界にコンポーネントの所属変更と地形高さの直接書き込みを反映する。
 TEST_F(StaticMeshRenderReuseTest, SceneBoundsObserveTypeMembershipAndDirectTerrainHeightWrites)
 {
     const auto bounds = [&] { return scene::shadow_preparation_detail::ComputeSceneBounds(m_scene, Layer::Everything); };
@@ -74,7 +77,7 @@ TEST_F(StaticMeshRenderReuseTest, SceneBoundsObserveTypeMembershipAndDirectTerra
     EXPECT_FLOAT_EQ(replacement.radius, 1);
 }
 
-/// @brief Scene bounds respect current layer activation and renderer enabled state.
+/// @brief Scene 境界は現在のレイヤー、階層のアクティブ状態、レンダラーの有効状態に従う。
 TEST_F(StaticMeshRenderReuseTest, SceneBoundsRespectCurrentLayerActivationAndRendererEnabledState)
 {
     auto& object = Object(m_scene);
@@ -98,7 +101,7 @@ TEST_F(StaticMeshRenderReuseTest, SceneBoundsRespectCurrentLayerActivationAndRen
     EXPECT_TRUE(bounds(uint32_t{1} << 4).valid);
 }
 
-/// @brief Scene bounds keep mixed renderer scene order.
+/// @brief 異なる描画種別が混在しても、Scene 順で境界を合成する。
 TEST_F(StaticMeshRenderReuseTest, SceneBoundsKeepMixedRendererSceneOrder)
 {
     m_mesh.boundsCenter = math::Vector3::ZERO; m_mesh.boundsRadius = 1;
@@ -115,7 +118,62 @@ TEST_F(StaticMeshRenderReuseTest, SceneBoundsKeepMixedRendererSceneOrder)
     EXPECT_NEAR(bounds.radius, 4.236068f, testkit::kTolerance);
 }
 
-/// @brief Observes raw pose mesh and presentation writes without notifications.
+/// @brief 静的・スキン付き・地形の境界が同じ Entity 内で変化しても、Scene 順の全再計算と一致する。
+TEST_F(StaticMeshRenderReuseTest, MixedComponentsRefreshLiveShadowBoundsInSceneOrder)
+{
+    asset::Model model;
+    auto skinMesh = std::make_unique<renderer::Mesh>();
+    skinMesh->isSkinned = true;
+    skinMesh->boundsRadius = 1;
+    model.meshes.push_back(std::move(skinMesh));
+    scene::Scene owner;
+    auto& mixed = Object(owner);
+    auto& skin = mixed.AddComponent<scene::SkinnedMeshRenderer>();
+    skin.model = &model;
+    auto& animator = mixed.AddComponent<scene::AnimatorComponent>();
+    animator.skinnedBoundsCenter = {0, 0, 9};
+    animator.skinnedBoundsRadius = 1;
+    auto& terrain = mixed.AddComponent<scene::TerrainComponent>();
+    terrain.columns = terrain.rows = 2;
+    terrain.cellSize = 1;
+    terrain.maxHeight = 32;
+    terrain.heightData = {0, 0, 0, 0};
+    terrain.surfaceRevision = 7;
+    Object(owner).transform.worldPosition = {12, 0, 0};
+
+    namespace shadows = scene::shadow_preparation_detail;
+    const auto verify = [&] {
+        const auto actual = shadows::ResolveSceneBounds(owner, Layer::Everything);
+        const auto full = shadows::ComputeSceneBounds(owner, Layer::Everything);
+        EXPECT_TRUE(actual.valid);
+        EXPECT_EQ(actual.valid, full.valid);
+        EXPECT_EQ(actual.center.x, full.center.x);
+        EXPECT_EQ(actual.center.y, full.center.y);
+        EXPECT_EQ(actual.center.z, full.center.z);
+        EXPECT_EQ(actual.radius, full.radius);
+        EXPECT_EQ(actual.terrainRevision, full.terrainRevision);
+        return actual;
+    };
+
+    const auto first = verify();
+    EXPECT_NE(first.terrainRevision, 0u);
+    verify();
+    /// @note スキン付きメッシュと地形を同一 Entity に保ち、通知なしの動的入力を連続ビューで更新する。
+    animator.skinnedBoundsCenter.z = 24;
+    const auto movedPose = verify();
+    EXPECT_GT(movedPose.radius, first.radius);
+    terrain.heightData.back() = 1;
+    const auto editedHeight = verify();
+    EXPECT_GT(editedHeight.radius, movedPose.radius);
+    EXPECT_EQ(editedHeight.terrainRevision, first.terrainRevision);
+    skin.enabled = false;
+    mixed.RemoveComponent<scene::TerrainComponent>();
+    const auto staticOnly = verify();
+    EXPECT_LT(staticOnly.radius, editedHeight.radius);
+    EXPECT_EQ(staticOnly.terrainRevision, 0u);
+}
+
+/// @brief 通知なしの姿勢、メッシュ、表示設定の直接編集を反映する。
 TEST_F(StaticMeshRenderReuseTest, ObservesRawPoseMeshAndPresentationWritesWithoutNotifications)
 {
     auto& object = Object(m_scene);
@@ -152,7 +210,7 @@ TEST_F(StaticMeshRenderReuseTest, ObservesRawPoseMeshAndPresentationWritesWithou
     EXPECT_TRUE(original.items[0].reliableOccluder);
 }
 
-/// @brief Rebuilds rotated bounds and separates skinned mesh inputs.
+/// @brief 回転後の境界を再構築し、スキン付きのメッシュ入力を区別する。
 TEST_F(StaticMeshRenderReuseTest, RebuildsRotatedBoundsAndSeparatesSkinnedMeshInputs)
 {
     auto& object = Object(m_scene);
@@ -171,7 +229,7 @@ TEST_F(StaticMeshRenderReuseTest, RebuildsRotatedBoundsAndSeparatesSkinnedMeshIn
     EXPECT_VEC3_NEAR(restored.items[0].boundsCenter, (math::Vector3{-1, 0, 0}), testkit::kTolerance);
 }
 
-/// @brief Advances previous world on reuse and resets after missing frames.
+/// @brief 再利用時も前回のワールド変換を進め、フレーム欠落時に初期化する。
 TEST_F(StaticMeshRenderReuseTest, AdvancesPreviousWorldOnReuseAndResetsAfterMissingFrames)
 {
     auto& object = Object(m_scene);
@@ -191,7 +249,7 @@ TEST_F(StaticMeshRenderReuseTest, AdvancesPreviousWorldOnReuseAndResetsAfterMiss
     EXPECT_FLOAT_EQ(gap.Objects()[0].previousWorld.m[0][3], 9);
 }
 
-/// @brief Separates component entity and scene lifetimes.
+/// @brief コンポーネント、Entity、Scene の寿命を区別する。
 TEST_F(StaticMeshRenderReuseTest, SeparatesComponentEntityAndSceneLifetimes)
 {
     auto& object = Object(m_scene);
@@ -215,7 +273,7 @@ TEST_F(StaticMeshRenderReuseTest, SeparatesComponentEntityAndSceneLifetimes)
     EXPECT_VEC3_NEAR(retained.items[0].boundsCenter, (math::Vector3{1, 0, 0}), testkit::kTolerance);
 }
 
-/// @brief Observes parent motion reparenting and hierarchy activation.
+/// @brief 親の移動、親の付け替え、階層のアクティブ状態を反映する。
 TEST_F(StaticMeshRenderReuseTest, ObservesParentMotionReparentingAndHierarchyActivation)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -241,7 +299,7 @@ TEST_F(StaticMeshRenderReuseTest, ObservesParentMotionReparentingAndHierarchyAct
     EXPECT_VEC3_NEAR(moved.items[0].boundsCenter, (math::Vector3{13, 0, 0}), testkit::kTolerance);
 }
 
-/// @brief Keeps unchanged geometry when an early renderer leaves and rejoins.
+/// @brief 先行レンダラーが離脱・復帰しても、入力が変わらない形状を保持する。
 TEST_F(StaticMeshRenderReuseTest, KeepsUnchangedGeometryWhenAnEarlyRendererLeavesAndRejoins)
 {
     auto& parent = m_scene.CreateGameObject("Parent");
@@ -279,7 +337,7 @@ TEST_F(StaticMeshRenderReuseTest, KeepsUnchangedGeometryWhenAnEarlyRendererLeave
     EXPECT_EQ(SampleCount("RenderSceneExtractor::DenseGeometryFallback"), 0u);
 }
 
-/// @brief Revalidates after bounded scene eviction and renderer reordering.
+/// @brief 上限付きキャッシュからの Scene 退役とレンダラー順の変更後に再検証する。
 TEST_F(StaticMeshRenderReuseTest, RevalidatesAfterBoundedSceneEvictionAndRendererReordering)
 {
     const auto firstId = Object(m_scene).GetID();

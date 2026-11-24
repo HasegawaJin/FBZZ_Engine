@@ -43,7 +43,9 @@ Graphics内部の[RenderMeshSpatialIndex.hpp](../../Projects/Graphics/src/Render
 
 `FBZZ_MESH_SPATIAL_UPDATE_MODE=stable` と `FBZZ_MESH_SPATIAL_PRODUCER=journal` を組み合わせると、既存の現在値検査から不変の変更一覧を発行し、Graphics側の重複した全件投影・球照合を省ける。どちらも既定はlegacyであり、shadowの既定linearも変えない。比較では同じbinaryで値を切り替え、dense policyも明示する。
 
-`RenderScene::spatialUpdate` の `RenderSpatialUpdate` は `version`、`baseVersion`、`objectCount`、`fullReplacement`、`changedObjectOrdinals` を持つ。versionはgeometry publicationごとの非ゼロ一意値で、viewのsnapshotSerialとは別。即時の前版、Scene世代、件数、paddingと全optionsが一致したときだけ差分を適用する。同じversionの再利用もこれらの互換条件が必要。cold、欠落版、未認証の手動snapshot、件数・順序・renderer寿命変更、無効なordinalでは従来の全件検査へ戻す。versionが飽和した場合も認証を止める。
+`RenderObjectStorage::SpatialUpdate()` の `RenderSpatialUpdate` は `version`、`baseVersion`、`objectCount`、`fullReplacement`、`changedObjectOrdinals` を持つ。versionはgeometry publicationごとの非ゼロ一意値で、viewのsnapshotSerialとは別。即時の前版、Scene世代、件数、paddingと全optionsが一致したときだけ差分を適用する。同じversionの再利用もこれらの互換条件が必要。cold、欠落版、未認証の手動snapshot、件数・順序・renderer寿命変更、無効なordinalでは従来の全件検査へ戻す。versionが飽和した場合も認証を止める。
+
+姿勢列と差分は `RenderObjectGeometry` が値として所有する。複数ビューや公開後の補完に形状を引き継ぐ場合だけ、各ビューが同じ不変の形状を保持する。キャッシュを破棄しても公開済みビューは読める。`geometry.EditObjects()` で共有中の姿勢を編集すると、そのビューに姿勢列を複製し、以前の差分を失効させる。選択フラグはビューごとの値で、公開時に確定した選択添字は編集用のコピーへ引き継がない。
 
 この通知は現在のgeometry抽出中に、既存のstatic pose/shared-mesh witnessとbounds再計算の結果から発行する。新たな全Objects照合をproducerへ移してはいない。skinned・uncached・dense fallbackのboundsは保守的にすべて通知し、同じimmutable journalをviewやmaterial-onlyコピーで共有する。consumerごとに消費して空にするqueueではない。公開Transform/meshの直接変更、親子同期、Undoの値復元、serializerを守る既存producerのO(N)走査とpayload生成は残る。全Engineをsetter起点のO(k)更新にしたものではない。
 

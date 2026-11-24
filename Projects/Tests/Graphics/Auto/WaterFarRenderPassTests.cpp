@@ -337,7 +337,7 @@ protected:
         auto result = std::make_shared<renderer::RenderScene>();
         for (const auto& spec : specs) {
             renderer::RenderObject object;
-            object.sourceIndex = static_cast<uint32_t>(result->objects.size());
+            object.sourceIndex = static_cast<uint32_t>(result->Objects().size());
             object.firstItem = static_cast<uint32_t>(result->items.size());
             object.itemCount = 1; object.colorEligible = true; object.skinned = spec.skinned;
             object.sortPosition = m_camera.m_position + math::Vector3{0, 0, spec.distance};
@@ -349,7 +349,7 @@ protected:
                 ? renderer::BlendMode::ALPHA_BLEND : renderer::BlendMode::OPAQUE_BLEND;
             item.forwardMaterial.valid = true; item.forwardMaterial.shader = m_shader;
             item.forwardMaterial.paramsBuffer = m_resources.CreateConstantBuffer(64);
-            result->objects.push_back(object); result->items.push_back(item);
+            result->geometry.EditObjects().push_back(object); result->items.push_back(item);
         }
         return result;
     }
@@ -467,7 +467,7 @@ TEST_F(ForwardScratchPassTest, OversizedAndEmptyScenesDoNotLeakEntriesIntoLaterV
     auto oversized = Scene({{false, false, 1, 2000}});
     const auto repeated = oversized->items.front();
     oversized->items.resize(4097, repeated);
-    oversized->objects.front().itemCount = 4097;
+    oversized->geometry.EditObjects().front().itemCount = 4097;
     const std::weak_ptr<const renderer::RenderScene> retired = oversized;
 
     Draw(oversized);
@@ -580,7 +580,7 @@ TEST_F(WaterFarRenderPassTest, RejectsUnprovenOccludersBeforeResolvingNativeMesh
         default: break;
         }
         item.forwardMaterial = item.material;
-        snapshot->objects.push_back(object); snapshot->items.push_back(item);
+        snapshot->geometry.EditObjects().push_back(object); snapshot->items.push_back(item);
         renderer::RenderPassContext context{{}, backend, resources, camera, settings, {}, UINT32_MAX, handles};
         auto culler = std::make_unique<renderer::OcclusionCuller>();
         context.renderScene = snapshot; context.occlusionCuller = culler.get();
@@ -651,7 +651,7 @@ TEST_F(WaterFarRenderPassTest, RejectsSameVersionCullerReplacementDuringNativePr
         renderer::ShaderVariantSet::STANDARD_SURFACE};
     const float alpha = 1; std::memcpy(item.material.gbufferParams.data() + 12, &alpha, sizeof(alpha));
     item.forwardMaterial = item.material;
-    snapshot->objects.push_back(object); snapshot->items.push_back(item);
+    snapshot->geometry.EditObjects().push_back(object); snapshot->items.push_back(item);
     for (bool deferred : {false, true}) {
         SCOPED_TRACE(deferred);
         auto original = std::make_unique<renderer::OcclusionCuller>();
@@ -721,7 +721,7 @@ TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshShare
         item.forwardMaterial.textures[0] = index == 1 ? secondTexture : firstTexture;
         item.material.capabilities.blend = item.forwardMaterial.capabilities.blend = index == 2
             ? renderer::BlendMode::ALPHA_BLEND : renderer::BlendMode::OPAQUE_BLEND;
-        input->objects.push_back(object); input->items.push_back(item);
+        input->geometry.EditObjects().push_back(object); input->items.push_back(item);
     }
     renderer::RenderPassContext context{{}, backend, resources, camera, settings, output, ~0u, handles};
     context.renderScene = input; context.frustumCullingEnabled = false;
@@ -765,7 +765,7 @@ TEST_F(WaterFarRenderPassTest, ForwardGroupsKeepPerObjectBindingsAndRefreshShare
             EXPECT_EQ(draw.vsBuffers[0], index == 1 ? palette : renderer::ResourceHandle<renderer::StructuredBufferTag>{});
             EXPECT_EQ(draw.layer, index == 2 ? renderer::RenderLayer::TRANSPARENT_LAYER : renderer::RenderLayer::OPAQUE_LAYER);
         }
-        const auto withoutIbl = renderer::ForwardDraw(context, input->objects[0], input->items[0], false);
+        const auto withoutIbl = renderer::ForwardDraw(context, input->Objects()[0], input->items[0], false);
         EXPECT_FALSE(withoutIbl.textures[16].IsValid());
         EXPECT_FALSE(withoutIbl.textures[17].IsValid());
         EXPECT_FALSE(withoutIbl.textures[18].IsValid());
