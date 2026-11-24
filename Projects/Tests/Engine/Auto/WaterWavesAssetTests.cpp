@@ -1,5 +1,5 @@
 /// @file    WaterWavesAssetTests.cpp
-/// @brief   Water-wave asset persistence, generation, and CPU query contracts.
+/// @brief   水面の波アセットの保存、波の生成と CPU 照会の契約。
 /// @author  Hasegawa Jin
 /// @date    2026-10-07
 #include <TestKit/TestKit.hpp>
@@ -29,7 +29,7 @@
 namespace fbzz::tests {
 namespace {
 
-/// @note Tests author through the same owned draft/publication path as production; no mutable stored alias is exposed.
+/// @note 本番と同じく、所有された編集データを公開して更新する。
 template<typename Owner, typename Change>
 void EditMaterialAuthoring(Owner& owner, Change&& change)
 {
@@ -87,7 +87,7 @@ protected:
     testkit::TempDir m_temp{"WaterWavesAsset"};
 };
 
-/// @brief Builtin asset round-trips reflected values and reloads the shared instance.
+/// @brief 組み込みアセットの反射値を保存し、同じ共有実体へ再ロードする。
 TEST_F(WaterWavesAssetTest, BuiltinAssetRoundTripsReflectedValuesAndReloadsTheSharedInstance)
 {
     ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
@@ -137,7 +137,7 @@ TEST_F(WaterWavesAssetTest, BuiltinAssetRoundTripsReflectedValuesAndReloadsTheSh
         EXPECT_TRUE(SameWave(reloaded[i], expected[i]));
 }
 
-/// @brief Asset resolution keeps eight base waves and limits scaled contraction.
+/// @brief アセット由来の基底波 8 本を保持し、振幅倍率を適用した後の収縮率を制限する。
 TEST_F(WaterWavesAssetTest, AssetResolutionKeepsEightBaseWavesAndLimitsScaledContraction)
 {
     asset::WaterWavesAsset source;
@@ -167,7 +167,7 @@ TEST_F(WaterWavesAssetTest, AssetResolutionKeepsEightBaseWavesAndLimitsScaledCon
         water.waveGrouping, water.waveSpread), 0.95f);
 }
 
-/// @brief Invalid asset settings fail without changing the resolved wave source.
+/// @brief アセット設定が不正なら解決済みの波を変更しない。
 TEST_F(WaterWavesAssetTest, InvalidAssetSettingsFailWithoutChangingTheResolvedWaveSource)
 {
     asset::WaterWavesAsset source;
@@ -186,7 +186,7 @@ TEST_F(WaterWavesAssetTest, InvalidAssetSettingsFailWithoutChangingTheResolvedWa
     EXPECT_FLOAT_EQ(water.waves[0].phaseOffsetRadians, before.phaseOffsetRadians);
 }
 
-/// @brief Shared material publication keeps per water scale and immediate edits.
+/// @brief 同じ材質を使う水面ごとの倍率を保持し、公開値の編集を即時反映する。
 TEST_F(WaterWavesAssetTest, SharedMaterialPublicationKeepsPerWaterScaleAndImmediateEdits)
 {
     asset::MaterialAsset material;
@@ -220,7 +220,7 @@ TEST_F(WaterWavesAssetTest, SharedMaterialPublicationKeepsPerWaterScaleAndImmedi
     EXPECT_FLOAT_EQ(retained->Data().params.at(scene::water_keys::kWaveAmplitude[0])[0], 1.0f);
 }
 
-/// @brief Material preparation eviction and mutable authoring keep current values.
+/// @brief 材質の準備結果を追い出した後も、現在の設定を解決し直す。
 TEST_F(WaterWavesAssetTest, MaterialPreparationEvictionAndMutableAuthoringKeepCurrentValues)
 {
     std::array<asset::MaterialAsset, 40> materials;
@@ -247,7 +247,7 @@ TEST_F(WaterWavesAssetTest, MaterialPreparationEvictionAndMutableAuthoringKeepCu
     EXPECT_FLOAT_EQ(water.waves[0].amplitude, 9.0f);
 }
 
-/// @brief CPU surface query uses the phase offset and only active waves.
+/// @brief CPU の水面照会は位相オフセットと有効な波だけを使う。
 TEST_F(WaterWavesAssetTest, CpuSurfaceQueryUsesThePhaseOffsetAndOnlyActiveWaves)
 {
     scene::WaterComponent water;
@@ -283,7 +283,7 @@ TEST_F(WaterWavesAssetTest, CpuSurfaceQueryUsesThePhaseOffsetAndOnlyActiveWaves)
     ASSERT_FALSE(scene::IsWaterSurfaceSupported(water, transform));
 }
 
-/// @brief Update keeps same reference last good and clears it when the reference changes.
+/// @brief 同じ参照の解決に失敗した間は直前の正常波を使い、参照変更時は破棄する。
 TEST_F(WaterWavesAssetTest, UpdateKeepsSameReferenceLastGoodAndClearsItWhenTheReferenceChanges)
 {
     ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
@@ -312,7 +312,95 @@ TEST_F(WaterWavesAssetTest, UpdateKeepsSameReferenceLastGoodAndClearsItWhenTheRe
     EXPECT_EQ(water.waveCount, 0u);
 }
 
-/// @brief Update does not carry last good waves across scene generations.
+/// @brief プリセットと材質へ切り替えても別の波源の正常値を引き継がない。
+TEST_F(WaterWavesAssetTest, UpdateKeepsPresetAndMaterialFallbackIndependent)
+{
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
+    auto* source = Resolve();
+    ASSERT_NE(source, nullptr);
+
+    scene::Scene scene;
+    physics::World world;
+    scene::GameObject& object = scene.CreateGameObject("Water");
+    auto& water = object.AddComponent<scene::WaterComponent>();
+    scene::WaterSystem system;
+
+    UpdateWaterSystem(system, scene, world);
+    const auto materialWaves = water.waves;
+    const auto materialWaveCount = water.waveCount;
+    ASSERT_GT(materialWaveCount, 0u);
+
+    water.wavesAssetRef.path = File();
+    UpdateWaterSystem(system, scene, world);
+    ASSERT_EQ(water.waveCount, 8u);
+    source->waveCount = static_cast<int>(fluid::MAX_BASE_GERSTNER_WAVES + 1);
+
+    water.waveAuthoring.preset = scene::WaterSeaPreset::GENTLE;
+    UpdateWaterSystem(system, scene, world);
+    ASSERT_EQ(water.waveCount, 6u);
+
+    water.waveAuthoring.preset = scene::WaterSeaPreset::AUTHORED;
+    UpdateWaterSystem(system, scene, world);
+    EXPECT_EQ(water.waveCount, 0u);
+
+    water.wavesAssetRef.path.clear();
+    UpdateWaterSystem(system, scene, world);
+    ASSERT_EQ(water.waveCount, materialWaveCount);
+    for (size_t index = 0; index < water.waveCount; ++index)
+        EXPECT_TRUE(SameWave(water.waves[index], materialWaves[index]));
+}
+
+/// @brief 無効な間にキャッシュを退役させ、再有効化時に古い正常波を復活させない。
+TEST_F(WaterWavesAssetTest, UpdatePrunesWaveHistoryWhileInactive)
+{
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
+    auto* source = Resolve();
+    ASSERT_NE(source, nullptr);
+
+    scene::Scene scene;
+    physics::World world;
+    scene::GameObject& object = scene.CreateGameObject("Water");
+    auto& water = object.AddComponent<scene::WaterComponent>();
+    water.wavesAssetRef.path = File();
+    scene::WaterSystem system;
+
+    UpdateWaterSystem(system, scene, world);
+    ASSERT_EQ(water.waveCount, 8u);
+    object.SetActive(false);
+    source->waveCount = static_cast<int>(fluid::MAX_BASE_GERSTNER_WAVES + 1);
+    UpdateWaterSystem(system, scene, world);
+
+    object.SetActive(true);
+    UpdateWaterSystem(system, scene, world);
+    EXPECT_EQ(water.waveCount, 0u);
+}
+
+/// @brief 同一 EntityID へ再追加した波源に、削除したコンポーネントの正常波を引き継がない。
+TEST_F(WaterWavesAssetTest, UpdateDoesNotRestoreRemovedComponentWaves)
+{
+    ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
+    auto* source = Resolve();
+    ASSERT_NE(source, nullptr);
+
+    scene::Scene scene;
+    physics::World world;
+    scene::GameObject& object = scene.CreateGameObject("Water");
+    auto& original = object.AddComponent<scene::WaterComponent>();
+    original.wavesAssetRef.path = File();
+    scene::WaterSystem system;
+    UpdateWaterSystem(system, scene, world);
+    ASSERT_EQ(original.waveCount, 8u);
+
+    source->waveCount = static_cast<int>(fluid::MAX_BASE_GERSTNER_WAVES + 1);
+    object.RemoveComponent<scene::WaterComponent>();
+    auto& replacement = object.AddComponent<scene::WaterComponent>();
+    replacement.wavesAssetRef.path = File();
+
+    UpdateWaterSystem(system, scene, world);
+    EXPECT_EQ(replacement.waveCount, 0u);
+}
+
+/// @brief 別シーンの同じ EntityID に正常波を引き継がない。
 TEST_F(WaterWavesAssetTest, UpdateDoesNotCarryLastGoodWavesAcrossSceneGenerations)
 {
     ASSERT_TRUE(asset::DataAssetRegistry::Create(File(), asset::WaterWavesAsset::TYPE_NAME));
@@ -343,7 +431,7 @@ TEST_F(WaterWavesAssetTest, UpdateDoesNotCarryLastGoodWavesAcrossSceneGeneration
     EXPECT_EQ(secondWater.waveCount, 0u);
 }
 
-/// @brief Sea heading keeps the seeded wave pattern and adds independent cross swell.
+/// @brief 海況の向きを変えても同じ種の波形を保持し、独立した副うねりを加える。
 TEST_F(WaterWavesAssetTest, SeaHeadingKeepsTheSeededWavePatternAndAddsIndependentCrossSwell)
 {
     scene::Scene scene;
@@ -377,7 +465,7 @@ TEST_F(WaterWavesAssetTest, SeaHeadingKeepsTheSeededWavePatternAndAddsIndependen
     EXPECT_EQ(water.current, math::Vector2::ZERO);
 }
 
-/// @brief Reflected appearance keeps legacy missing key defaults without assuming offsets.
+/// @brief 旧形式に無い外観キーには、オフセットに依存せず既定値を使う。
 TEST_F(WaterWavesAssetTest, ReflectedAppearanceKeepsLegacyMissingKeyDefaultsWithoutAssumingOffsets)
 {
     renderer::ShaderDescriptor descriptor;

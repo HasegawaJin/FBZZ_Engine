@@ -184,7 +184,7 @@ TEST_F(WaterInspectorRuntimeTest, ResetMenuUndoAndRedoRetainTheCurrentTargetRunt
     auto* water = Context().activeScene->GetComponent<scene::WaterComponent>(id);
     water->extentX = 24;
     const auto emitter = water->interactionRuntime.emitters[0].id;
-    Menu(id, "Reset");
+    Menu(id, "Reset to Defaults");
     water = Context().activeScene->GetComponent<scene::WaterComponent>(id);
     EXPECT_FLOAT_EQ(water->extentX, 80);
     EXPECT_EQ(water->interactionRuntime.emitters[0].id, emitter);

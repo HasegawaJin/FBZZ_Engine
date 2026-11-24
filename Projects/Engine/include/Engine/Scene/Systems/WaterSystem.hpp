@@ -14,7 +14,9 @@
 #include <Math/Vector3.hpp>
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -25,25 +27,25 @@ namespace fbzz::scene {
 struct Transform;
 class Scene;
 
-/// @brief Build or reuse each Scene water's immutable spline geometry from control points and world pose.
-/// @param scene Scene whose WaterComponent spline snapshots are prepared.
+/// @brief 各水面の制御点とワールド姿勢から不変のスプライン形状を構築または再利用する。
+/// @param scene WaterComponent のスプラインスナップショットを準備する対象 Scene。
 FBZZ_ENGINE_API void PrepareWaterSplineSnapshots(Scene& scene);
-/// @brief Prepare shared Zone geometry and member ownership after source splines are current.
+/// @brief 元のスプラインを更新した後、Zone の共有形状とメンバーの所有関係を準備する。
 FBZZ_ENGINE_API void PrepareWaterZoneSnapshots(Scene& scene);
-/// @brief Prepare spline sources, shared Zone surfaces, and matching exclusion boxes.
+/// @brief 元のスプライン、Zone の共有水面、対応する除外ボックスを準備する。
 FBZZ_ENGINE_API void PrepareWaterSceneSurfaces(Scene& scene);
-/// @brief Publish the current scene surface inputs as one immutable simulation read boundary.
+/// @brief 現在のシーンの水面入力を、一つの不変なシミュレーション読み取り境界として公開する。
 FBZZ_ENGINE_API void PrepareWaterSimulationSurfaces(Scene& scene);
-/// @brief Initialize the simulation read boundary before its first fixed-step publication.
+/// @brief 最初に固定ステップから公開する前に、シミュレーションの読み取り境界を初期化する。
 FBZZ_ENGINE_API void EnsureWaterSimulationSurfaces(Scene& scene);
-/// @brief Resolve a Zone member to its active shared owner, or return its own Water.
+/// @brief Zone メンバーの有効な共有所有者を返す。存在しない場合は自身の Water を返す。
 [[nodiscard]] FBZZ_ENGINE_API WaterComponent* ResolveWaterZoneOwner(Scene& scene, EntityID entity);
-/// @brief Build or reuse one water's immutable spline geometry before a live world-space query.
-/// @param water Mutable water component receiving the shared runtime snapshot.
-/// @param transform Current world pose used to validate or rebuild the snapshot.
-/// @return True for a supported rectangle or a valid current spline snapshot.
+/// @brief ワールド空間の現在値を照会する前に、水面の不変なスプライン形状を構築または再利用する。
+/// @param water 共有ランタイムスナップショットを受け取る水面コンポーネント。
+/// @param transform スナップショットの検証や再構築に使う現在のワールド姿勢。
+/// @return 対応する矩形または有効な現在のスプラインスナップショットで true。
 [[nodiscard]] FBZZ_ENGINE_API bool PrepareWaterSplineSnapshot(WaterComponent& water, const Transform& transform);
-/// @brief Resolve one Water's authored or bound control points before preparing its live geometry.
+/// @brief 現在の水面形状を準備する前に、水面の制作時またはバインド先の制御点を解決する。
 [[nodiscard]] FBZZ_ENGINE_API bool PrepareWaterSplineSnapshot(Scene& scene, EntityID ownerId,
     WaterComponent& water, const Transform& transform);
 
@@ -81,10 +83,10 @@ inline constexpr float kWaveGrowthReferenceWindSpeed = 10.0f;
 
 /// @note .mat の波に個体の倍率を掛け、water.waves / water.current を組み立てる。
 FBZZ_ENGINE_API void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind);
-/// @note Pure wave derivation from caller-owned immutable values preserves preview snapshot lifetime.
+/// @note 呼び出し側が所有する不変値だけから波を導出し、プレビューのスナップショット寿命を保つ。
 FBZZ_ENGINE_API void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAssetAuthoring& material, const WaterWind& wind);
-/// @brief Resolve asset base waves while retaining material optics and current.
-/// @return False leaves the active wave source unchanged when generated values are invalid.
+/// @brief 材質の光学特性と流れを維持し、アセットの基底波を解決する。
+/// @return 生成値が無効なら false を返し、現在の波の入力元は変更しない。
 [[nodiscard]] FBZZ_ENGINE_API bool ResolveWaterWavesFromAsset(
     WaterComponent& water, const asset::MaterialAsset* material, const WaterWind& wind,
     const asset::WaterWavesAsset& wavesAsset);
@@ -142,25 +144,36 @@ public:
 
 private:
     struct WaveAssetCache {
+        struct GenerationAttempt {
+            const asset::DataAsset* source;
+            std::uint64_t signature;
+            bool succeeded;
+        };
+        struct GeneratedWaves {
+            std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> values{};
+            std::uint32_t count = 0;
+            float grouping = 0.0f;
+            float spread = 0.0f;
+            math::Vector2 directionDisplay = math::Vector2::ZERO;
+        };
+        struct Diagnostic {
+            const asset::DataAsset* source;
+            std::uint64_t settingsSignature;
+            /// @note 理由は静的な文字列リテラルを参照する。
+            std::string_view reason;
+        };
+        /// @note コンポーネントの再追加、参照変更、プリセット変更で試行と最後の正常値を破棄する。
         std::string referencePath;
         WaterSeaPreset preset = WaterSeaPreset::AUTHORED;
-        const asset::DataAsset* attemptedAsset = nullptr;
-        std::uint64_t attemptedSignature = 0;
-        std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> generatedWaves{};
-        std::uint32_t generatedWaveCount = 0;
-        float generatedGrouping = 0.0f;
-        float generatedSpread = 0.0f;
-        math::Vector2 generatedDirectionDisplay = math::Vector2::ZERO;
-        bool hasLastGood = false;
-        bool hasAttempt = false;
-        bool lastAttemptValid = false;
+        std::uint64_t componentLifetime = 0;
+        std::optional<GenerationAttempt> attempt;
+        /// @note 水面ごとの振幅倍率や現在の材質を適用する前の生成結果。
+        std::optional<GeneratedWaves> lastGood;
+        std::optional<Diagnostic> diagnostic;
         bool seen = false;
-        bool diagnosticActive = false;
-        std::string diagnosticPath;
-        std::string diagnosticReason;
-        const asset::DataAsset* diagnosticAsset = nullptr;
-        std::uint64_t diagnosticSignature = 0;
     };
+
+    void PrepareResolvedWaves(const Scene& scene, EntityID entity, WaterComponent& water);
 
     struct BodyState {
         bool  submerged = false;

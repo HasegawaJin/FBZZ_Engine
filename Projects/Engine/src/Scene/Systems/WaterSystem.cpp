@@ -32,7 +32,6 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
-#include <cstring>
 #include <limits>
 #include <string_view>
 #include <unordered_map>
@@ -108,8 +107,8 @@ WaterMaterialPreparation BuildWaterMaterialPreparation(const asset::MaterialAsse
     return result;
 }
 
-/// @note Only owned immutable publications are keys; mutable authoring, Component state and Scene lifetimes are never cached.
-/// @note A value copy survives eviction or nested preparation; every caller still resolves the current publication before lookup.
+/// @note 所有済みの不変な公開結果だけをキーに使い、可変な設定やコンポーネント・シーンの寿命はキャッシュに持ち込まない。
+/// @note 追い出しや再入があっても値のコピーは生存する。検索前には呼び出し側で現在の公開結果を解決する。
 /// @see Docs/design/water-surface-quality.md 抽出候補と水面材質の共通準備。
 WaterMaterialPreparation PrepareWaterMaterial(const asset::MaterialAsset::AuthoringSnapshotPtr& publication)
 {
@@ -222,9 +221,9 @@ float WaveHeadingRadians(float degrees)
     return std::isfinite(degrees) ? std::remainder(degrees, 360.0f) * (math::PI / 180.0f) : 0.0f;
 }
 
-/// @note The seed and random draw order stay fixed when a heading or spread changes.
-/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/simulating-waves-using-the-water-waves-asset-in-unreal-engine Gerstner direction and angular spread.
-/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/Water/FGerstnerWaveOctave Direction per Gerstner wave group.
+/// @note 流れの向きや広がりを変えても、乱数の種と引く順序を保つ。
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/simulating-waves-using-the-water-waves-asset-in-unreal-engine Gerstner 波の進行方向と角度の広がり。
+/// @see https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/Water/FGerstnerWaveOctave Gerstner 波群ごとの方向設定。
 bool GenerateWaveBands(const asset::WaterWavesAsset& source, const WaterWaveAuthoring& authoring,
     std::array<GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES>& waves, std::uint32_t& count,
     math::Vector2& directionDisplay)
@@ -259,14 +258,6 @@ bool GenerateWaveBands(const asset::WaterWavesAsset& source, const WaterWaveAuth
     std::copy_n(secondary.begin(), SECONDARY_COUNT, waves.begin() + count);
     count += SECONDARY_COUNT;
     return true;
-}
-
-std::uint64_t WaveDiagnosticSignature(std::string_view path, std::string_view reason,
-    const fluid::GerstnerWaveGenerationSettings& settings, float grouping, float spread, bool hasSettings)
-{
-    std::uint64_t hash = WaveSettingsSignature(path, settings, grouping, spread);
-    hash = HashString(hash, reason);
-    return HashByte(hash, hasSettings ? 1u : 0u);
 }
 
 uint64_t BodyKey(EntityID id)
@@ -1044,12 +1035,17 @@ static bool ResolveWaterWavesFromValues(WaterComponent& water, const WaterMateri
     return true;
 }
 
+static void ResolveMaterialWaveBases(WaterComponent& water, const WaterMaterialPreparation& material)
+{
+    water.waveDirectionDisplay = math::Vector2::ZERO;
+    ResolveWaterWaveBases(water, material, material.bases, material.grouping, material.spread, false);
+}
+
 static void ResolveWaterWavesValues(WaterComponent& water, const WaterMaterialPreparation& material)
 {
     const auto* preset = BuiltInSeaPreset(water.waveAuthoring.preset);
     if (preset && ResolveWaterWavesFromValues(water, material, *preset)) return;
-    water.waveDirectionDisplay = math::Vector2::ZERO;
-    ResolveWaterWaveBases(water, material, material.bases, material.grouping, material.spread, false);
+    ResolveMaterialWaveBases(water, material);
 }
 
 void ResolveWaterWaves(WaterComponent& water, const asset::MaterialAsset* material, const WaterWind&)
@@ -1250,7 +1246,7 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
                 flow.speed  = field.direction.y >= 0.0f ? flow.speed : -flow.speed;
                 if (wantsSwell) {
                     setSwellBand();
-                    /// @note Explicit vortex depth is an art control, limited relative to its horizontal support.
+                    /// @note 明示的な渦の深さは演出設定であり、水平方向の作用範囲に応じて制限する。
                     flow.height = -(std::min)({field.waterSwellAmplitude, 24.0f, 0.45f * flow.radius})
                                 * planeInfluence * flow.swellNearFade;
                 }
@@ -1287,8 +1283,8 @@ void ResolveWaterSurfaceFlows(WaterComponent& water, const Transform& transform,
     }
 }
 
-/// @brief Return the local base current plus explicit field contributions at a water query point.
-/// @note Spline vertex velocity replaces material current so CPU queries match the renderer's vertex payload.
+/// @brief 水面の照会点で、局所の基礎流速と明示的な速度場の寄与を返す。
+/// @note CPU 照会と描画用頂点データを一致させるため、スプライン頂点の流速を材質の流速に優先する。
 math::Vector3 WaterFlowVelocityAt(const WaterComponent& water,
                                   const std::vector<ActiveFlowField>& fields,
                                   float surfaceBaseY,
@@ -1333,6 +1329,80 @@ ComponentAccess WaterSystem::GetAccess() const
         .Writes<WaterComponent, WaterZoneComponent, WaterExclusionComponent>();
 }
 
+void WaterSystem::PrepareResolvedWaves(const Scene& scene, EntityID entity, WaterComponent& water)
+{
+    const auto materialSnapshot = LoadWaterMaterialSnapshot(water);
+    const auto material = PrepareWaterMaterial(materialSnapshot);
+    const auto& referencePath = water.wavesAssetRef.path;
+    const auto presetMode = water.waveAuthoring.preset;
+    const auto* preset = BuiltInSeaPreset(presetMode);
+    const auto entityKey = BodyKey(entity);
+    if (referencePath.empty() && !preset) {
+        m_waveAssets.erase(entityKey);
+        ResolveMaterialWaveBases(water, material);
+        return;
+    }
+
+    const auto componentLifetime = scene.GetComponentLifetime<WaterComponent>(entity);
+    auto& cache = m_waveAssets[entityKey];
+    if (cache.componentLifetime != componentLifetime || cache.referencePath != referencePath || cache.preset != presetMode) {
+        WaveAssetCache replacement;
+        replacement.referencePath = referencePath;
+        replacement.preset = presetMode;
+        replacement.componentLifetime = componentLifetime;
+        cache = std::move(replacement);
+    }
+    cache.seen = true;
+
+    auto* loaded = preset ? nullptr : asset::DataAssetRegistry::Resolve(referencePath);
+    const asset::DataAsset* resolved = preset ? preset : loaded;
+    const auto* source = preset ? preset : asset::TryAsExactDataAsset<asset::WaterWavesAsset>(loaded);
+    std::uint64_t settingsSignature = 0;
+    std::string_view reason;
+    if (!resolved) {
+        reason = "asset could not be resolved";
+    } else if (!source) {
+        reason = "asset type is not WaterWavesAsset";
+    } else {
+        settingsSignature = WaveSettingsSignature(referencePath, source->GenerationSettings(),
+            source->waveGrouping, source->waveSpread);
+        const auto signature = WaveAuthoringSignature(settingsSignature, water.waveAuthoring);
+        if (!cache.attempt || cache.attempt->source != resolved || cache.attempt->signature != signature) {
+            WaveAssetCache::GeneratedWaves generated;
+            generated.grouping = source->waveGrouping;
+            generated.spread = source->waveSpread;
+            const bool succeeded = GenerateWaveBands(*source, water.waveAuthoring,
+                generated.values, generated.count, generated.directionDisplay);
+            cache.attempt = WaveAssetCache::GenerationAttempt{resolved, signature, succeeded};
+            if (succeeded) cache.lastGood = std::move(generated);
+        }
+        if (!cache.attempt->succeeded)
+            reason = "asset settings are invalid or use an unsupported algorithm version";
+    }
+
+    /// @note 同じ参照の生成失敗では最後の正常波を直接読み、現在の材質と振幅倍率を適用し直す。
+    const auto applyLastGood = [&] {
+        if (!cache.lastGood) return ResolveWaterWaveBases(water, material, {}, 0.0f, 0.0f, true);
+        const auto& waves = *cache.lastGood;
+        return ResolveWaterWaveBases(water, material, std::span(waves.values.data(), waves.count),
+            waves.grouping, waves.spread, true);
+    };
+    const bool useFallback = !reason.empty();
+    if (!useFallback && applyLastGood()) {
+        cache.diagnostic.reset();
+    } else {
+        if (!useFallback) reason = "resolved values could not be applied safely";
+        if (!cache.diagnostic || cache.diagnostic->source != resolved
+            || cache.diagnostic->reason != reason || cache.diagnostic->settingsSignature != settingsSignature) {
+            FBZZ_LOG_ERROR("WaterSystem: waves asset '%s' failed: %s; using same-reference last-good waves or calm water.",
+                referencePath.c_str(), reason.data());
+            cache.diagnostic = WaveAssetCache::Diagnostic{resolved, settingsSignature, reason};
+        }
+        if (useFallback) static_cast<void>(applyLastGood());
+    }
+    water.waveDirectionDisplay = cache.lastGood ? cache.lastGood->directionDisplay : math::Vector2::ZERO;
+}
+
 void WaterSystem::Update(SystemContext& ctx)
 {
     Scene& scene = ctx.scene;
@@ -1357,114 +1427,7 @@ void WaterSystem::Update(SystemContext& ctx)
         GameObject* go = scene.GetGameObject(id);
         /// @note 親ごと無効化された水面は波・流れ・波紋も止める。描画・浮力・スクリプトの問い合わせはどれも無効な水面を見ないので、準備だけ進めても使われない。
         if (!water || !go || !go->activeInHierarchy()) continue;
-        const auto materialSnapshot = LoadWaterMaterialSnapshot(*water);
-        const auto material = PrepareWaterMaterial(materialSnapshot);
-        WaveAssetCache& cache = m_waveAssets[BodyKey(id)];
-        cache.seen = true;
-        const std::string& referencePath = water->wavesAssetRef.path;
-        const auto* preset = BuiltInSeaPreset(water->waveAuthoring.preset);
-        if (referencePath.empty() && !preset) {
-            cache = WaveAssetCache{};
-            cache.seen = true;
-            ResolveWaterWavesValues(*water, material);
-        } else {
-            if (cache.referencePath != referencePath || cache.preset != water->waveAuthoring.preset) {
-                cache = WaveAssetCache{};
-                cache.referencePath = referencePath;
-                cache.preset = water->waveAuthoring.preset;
-                cache.seen = true;
-            }
-
-            const asset::DataAsset* resolved = preset ? preset : asset::DataAssetRegistry::Resolve(referencePath);
-            const asset::WaterWavesAsset* source = nullptr;
-            fluid::GerstnerWaveGenerationSettings settings{};
-            float grouping = 0.0f;
-            float spread = 0.0f;
-            bool hasSettings = false;
-            std::string reason;
-            if (!resolved) {
-                reason = "asset could not be resolved";
-            } else {
-                const char* typeName = resolved->GetTypeName();
-                if (!typeName || std::strcmp(typeName, asset::WaterWavesAsset::TYPE_NAME) != 0) {
-                    reason = "asset type is not WaterWavesAsset";
-                } else {
-                    source = static_cast<const asset::WaterWavesAsset*>(resolved);
-                    settings = source->GenerationSettings();
-                    grouping = source->waveGrouping;
-                    spread = source->waveSpread;
-                    hasSettings = true;
-                    const std::uint64_t signature = WaveAuthoringSignature(
-                        WaveSettingsSignature(referencePath, settings, grouping, spread), water->waveAuthoring);
-                    const bool cacheMatches = cache.hasAttempt && cache.attemptedAsset == resolved
-                        && cache.attemptedSignature == signature;
-                    if (!cacheMatches) {
-                        std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> generated{};
-                        std::uint32_t count = 0;
-                        math::Vector2 display;
-                        const bool generatedValid = GenerateWaveBands(*source, water->waveAuthoring, generated, count, display);
-                        cache.attemptedAsset = resolved;
-                        cache.attemptedSignature = signature;
-                        cache.hasAttempt = true;
-                        cache.lastAttemptValid = generatedValid;
-                        if (generatedValid) {
-                            cache.generatedWaves = generated;
-                            cache.generatedWaveCount = count;
-                            cache.generatedGrouping = grouping;
-                            cache.generatedSpread = spread;
-                            cache.generatedDirectionDisplay = display;
-                            cache.hasLastGood = true;
-                        }
-                    }
-                    if (!cache.lastAttemptValid)
-                        reason = "asset settings are invalid or use an unsupported algorithm version";
-                }
-            }
-
-            if (reason.empty()) {
-                if (!ResolveWaterWaveBases(*water, material,
-                        std::span<const GerstnerWave>(cache.generatedWaves.data(), cache.generatedWaveCount),
-                        cache.generatedGrouping, cache.generatedSpread, true)) {
-                    reason = "resolved values could not be applied safely";
-                } else {
-                    cache.diagnosticActive = false;
-                }
-            }
-
-            if (!reason.empty()) {
-                const std::uint64_t diagnosticSignature = WaveDiagnosticSignature(
-                    referencePath, reason, settings, grouping, spread, hasSettings);
-                const bool newDiagnostic = !cache.diagnosticActive
-                    || cache.diagnosticPath != referencePath
-                    || cache.diagnosticReason != reason
-                    || cache.diagnosticAsset != resolved
-                    || cache.diagnosticSignature != diagnosticSignature;
-                if (newDiagnostic) {
-                    FBZZ_LOG_ERROR("WaterSystem: waves asset '%s' failed: %s; using same-reference last-good waves or calm water.",
-                        referencePath.c_str(), reason.c_str());
-                }
-                cache.diagnosticActive = true;
-                cache.diagnosticPath = referencePath;
-                cache.diagnosticReason = reason;
-                cache.diagnosticAsset = resolved;
-                cache.diagnosticSignature = diagnosticSignature;
-
-                std::array<fluid::GerstnerWave, fluid::MAX_BASE_GERSTNER_WAVES> fallback{};
-                std::uint32_t fallbackCount = 0;
-                float fallbackGrouping = 0.0f;
-                float fallbackSpread = 0.0f;
-                if (cache.hasLastGood && cache.referencePath == referencePath) {
-                    fallback = cache.generatedWaves;
-                    fallbackCount = cache.generatedWaveCount;
-                    fallbackGrouping = cache.generatedGrouping;
-                    fallbackSpread = cache.generatedSpread;
-                }
-                static_cast<void>(ResolveWaterWaveBases(*water, material,
-                    std::span<const GerstnerWave>(fallback.data(), fallbackCount),
-                    fallbackGrouping, fallbackSpread, true));
-            }
-            water->waveDirectionDisplay = cache.generatedDirectionDisplay;
-        }
+        PrepareResolvedWaves(scene, id, *water);
     }
 
     PrepareWaterZoneSnapshots(scene);
@@ -1486,7 +1449,7 @@ void WaterSystem::Update(SystemContext& ctx)
     if (ctx.simulating) {
         CaptureWaterSimulationSurfaces(scene);
     } else if (ctx.playing) {
-        /// @note Pause publishes new surfaces once while preserving every prior fixed-step snapshot.
+        /// @note 停止時は新しい水面を一度公開し、以前の固定ステップのスナップショットを保持する。
         CaptureWaterSimulationSurfaces(scene, true);
     }
     std::erase_if(m_waveAssets, [](const auto& entry) { return !entry.second.seen; });
