@@ -1,11 +1,13 @@
 /// @file    ScenePreparationMeasure.cpp
-/// @brief   Measure production CPU profiler aggregation and scene bounds with identical fixed inputs across binaries.
+/// @brief   同一の固定入力で CPU プロファイラー集約、影境界の準備、シーン階層の操作を計測する。
 /// @author  Hasegawa Jin
 /// @date    2026-10-25
 #include <Core/Profiler/Profiler.hpp>
 #include <Engine/Asset/Model.hpp>
+#include <Engine/Core/Time.hpp>
 #include <Engine/Renderer/Mesh.hpp>
 #include <Engine/Scene/Scene.hpp>
+#include <Engine/Scene/Systems/TransformSystem.hpp>
 #include <Engine/Scene/Components/MeshRenderer.hpp>
 #include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
 #include <Engine/Scene/Components/TerrainComponent.hpp>
@@ -65,7 +67,8 @@ bool Parse(int argc, char** argv, Options& options)
             (key == "--samples" ? options.samples : options.warmup) = static_cast<int>(number);
         } else return false;
     }
-    return options.family == "all" || options.family == "profiler_tree" || options.family == "shadow_bounds";
+    return options.family == "all" || options.family == "profiler_tree" || options.family == "shadow_bounds"
+        || options.family == "shadow_views" || options.family == "hierarchy";
 }
 struct Hash {
     uint64_t value = 14695981039346656037ULL;
@@ -98,6 +101,16 @@ uint64_t BoundsHash(const renderer::ShadowBounds& bounds)
     Hash hash; hash.Word(bounds.valid); hash.Scalar(bounds.center.x); hash.Scalar(bounds.center.y);
     hash.Scalar(bounds.center.z); hash.Scalar(bounds.radius); return hash.value;
 }
+
+uint64_t ViewBoundsHash(const std::array<renderer::ShadowBounds, 3>& views)
+{
+    Hash hash;
+    for (const auto& bounds : views) {
+        hash.Word(BoundsHash(bounds));
+        hash.Word(bounds.terrainRevision);
+    }
+    return hash.value;
+}
 double Percentile(std::vector<double> values, double quantile)
 {
     std::sort(values.begin(), values.end());
@@ -115,6 +128,7 @@ struct Result {
     std::vector<uint64_t> hashes;
     std::array<uint64_t, 2> expected{};
     renderer::ShadowBounds lastBounds;
+    size_t operationsPerSample = 1;
     bool hasBounds = false;
     uint64_t checksum = 14695981039346656037ULL;
     bool valid = true, complete = true;
@@ -138,7 +152,8 @@ void Write(std::ostream& output, const Options& options, const char* family, con
     output << "{\"kind\":\"case\",\"family\":" << Quote(family) << ",\"case\":" << Quote(name)
         << ",\"label\":" << Quote(options.label) << ",\"warmup\":" << options.warmup << ",\"samples\":" << options.samples
         << ",\"inputCount\":" << objects << ",\"heightSamples\":" << heights << ",\"descriptors\":" << descriptors
-        << ",\"parentRoots\":" << parents << ",\"operationsPerSample\":1,\"valid\":" << (result.valid ? "true" : "false")
+        << ",\"parentRoots\":" << parents << ",\"operationsPerSample\":" << result.operationsPerSample
+        << ",\"valid\":" << (result.valid ? "true" : "false")
         << ",\"complete\":" << (result.complete ? "true" : "false") << ",\"checksum\":" << Quote(std::to_string(result.checksum))
         << ",\"expectedStateHashes\":[" << Quote(std::to_string(result.expected[0])) << ',' << Quote(std::to_string(result.expected[1]))
         << "],\"memoryBytes\":null,\"allocationCount\":null,\"rawHashes\":[";
@@ -199,11 +214,128 @@ bool RunTrees(const Options& options, std::ostream& output, size_t& executed)
         }
     return valid;
 }
-/// @note Mesh/Model owners outlive Scene; no native renderer, ResourceManager, window or device is created.
-bool RunBoundsCase(const Options& options, std::ostream& output, const std::string& shape, bool mutate, size_t& executed)
+bool RunRootSiblingRanks(const Options& options, std::ostream& output, size_t& executed)
 {
-    const std::string name = shape + (mutate ? "_direct_updates" : "_stationary");
-    if (!Selected(options, "shadow_bounds", name)) return true;
+    constexpr std::string_view FAMILY = "hierarchy";
+    const std::string name = "root_sibling_4096";
+    if (!Selected(options, FAMILY, name)) return true;
+
+    constexpr size_t COUNT = 4096;
+    constexpr size_t QUERIES = 32;
+    scene::Scene owner;
+    std::array<scene::GameObject*, QUERIES> objects{};
+    std::array<int, QUERIES> expected{};
+    std::array<int, QUERIES> actual{};
+    for (size_t query = 0; query < QUERIES; ++query)
+        expected[query] = static_cast<int>(query * (COUNT - 1) / (QUERIES - 1));
+    size_t query = 0;
+    for (size_t index = 0; index < COUNT; ++index) {
+        auto& object = owner.CreateGameObject("Root");
+        if (query < QUERIES && index == static_cast<size_t>(expected[query]))
+            objects[query++] = &object;
+    }
+
+    const auto hashRanks = [](const std::array<int, QUERIES>& ranks) {
+        Hash hash;
+        for (const int rank : ranks) hash.Word(static_cast<uint64_t>(rank));
+        return hash.value;
+    };
+    Result result(options.samples);
+    result.operationsPerSample = QUERIES;
+    result.expected.fill(hashRanks(expected));
+    for (int iteration = 0; iteration < options.warmup + options.samples; ++iteration) {
+        const auto begin = Clock::now();
+        for (size_t index = 0; index < QUERIES; ++index)
+            actual[index] = objects[index]->GetSiblingIndex();
+        const auto end = Clock::now();
+        result.Observe(iteration, options, Us(begin, end), Us(begin, end), 0,
+            hashRanks(actual), result.expected[0], actual == expected);
+    }
+    Write(output, options, FAMILY.data(), name, COUNT, 0, 0, COUNT, result);
+    ++executed;
+    return result.valid && result.complete;
+}
+
+bool RunHierarchySync(const Options& options, std::ostream& output, size_t& executed, bool flushLeaf)
+{
+    constexpr std::string_view FAMILY = "hierarchy";
+    const std::string name = flushLeaf ? "flush_leaf_512" : "flush_subtree_4096";
+    if (!Selected(options, FAMILY, name)) return true;
+
+    const size_t count = flushLeaf ? 512 : 4096;
+    const size_t branches = flushLeaf ? 1 : 4;
+    scene::Scene owner;
+    auto& ancestor = owner.CreateGameObject("Ancestor");
+    ancestor.transform.position = {1, 2, 3};
+    std::vector<scene::GameObject*> nodes;
+    nodes.reserve(count);
+    std::vector<math::Vector3> basePositions;
+    basePositions.reserve(count);
+    for (size_t index = 0; index < count; ++index) {
+        auto& node = owner.CreateGameObject("Node");
+        const size_t parent = index == 0 ? 0 : (index - 1) / branches;
+        node.SetParent(index == 0 ? ancestor : *nodes[parent]);
+        node.transform.position = {1, static_cast<float>(index % branches + 1), 1};
+        basePositions.push_back((index == 0 ? ancestor.transform.position : basePositions[parent])
+            + node.transform.position);
+        nodes.push_back(&node);
+    }
+
+    const auto offsetFor = [](int state) { return math::Vector3{state ? 11.0f : 5.0f, 0, 0}; };
+    const auto addPosition = [](Hash& hash, const math::Vector3& position) {
+        hash.Scalar(position.x);
+        hash.Scalar(position.y);
+        hash.Scalar(position.z);
+    };
+    Result result(options.samples);
+    for (int state = 0; state < 2; ++state) {
+        Hash expected;
+        for (const auto& position : basePositions) addPosition(expected, position + offsetFor(state));
+        result.expected[state] = expected.value;
+    }
+
+    /// @note ルートのローカル位置を交互に変更し、部分木または末端までの祖先が同期したことを計測外で照合する。
+    scene::GameObject& root = *nodes.front();
+    scene::GameObject& target = flushLeaf ? *nodes.back() : root;
+    const math::Vector3 rootPosition = root.transform.position;
+    for (int iteration = 0; iteration < options.warmup + options.samples; ++iteration) {
+        const int state = iteration % 2;
+        const auto offset = offsetFor(state);
+        root.transform.position = rootPosition + offset;
+        const auto begin = Clock::now();
+        scene::FlushWorldTransforms(target);
+        const auto end = Clock::now();
+
+        Hash actual;
+        bool matches = true;
+        for (size_t index = 0; index < count; ++index) {
+            const auto& position = nodes[index]->transform.worldPosition;
+            const auto expected = basePositions[index] + offset;
+            addPosition(actual, position);
+            matches &= position.x == expected.x && position.y == expected.y && position.z == expected.z;
+        }
+        result.Observe(iteration, options, Us(begin, end), Us(begin, end), 0,
+            actual.value, result.expected[state], matches);
+    }
+    Write(output, options, FAMILY.data(), name, count, 0, 0, 1, result);
+    ++executed;
+    return result.valid && result.complete;
+}
+
+enum class ShadowWorkload { RAW_STATIONARY, RAW_DIRECT_UPDATES, EMPTY_MASK, ELIGIBLE_VIEWS, DIRECT_EDIT_VIEWS };
+
+/// @note Mesh と Model の所有者は Scene より長く生存する。レンダラー・資源管理者・ウィンドウ・デバイスは作らない。
+bool RunBoundsCase(const Options& options, std::ostream& output, const std::string& shape,
+    ShadowWorkload workload, size_t& executed, bool uncachedViews = false)
+{
+    const bool raw = workload == ShadowWorkload::RAW_STATIONARY || workload == ShadowWorkload::RAW_DIRECT_UPDATES;
+    const bool mutate = workload == ShadowWorkload::RAW_DIRECT_UPDATES || workload == ShadowWorkload::DIRECT_EDIT_VIEWS;
+    const bool expectBounds = workload != ShadowWorkload::EMPTY_MASK;
+    const char* family = raw ? "shadow_bounds" : "shadow_views";
+    const char* suffix = raw ? (mutate ? "_direct_updates" : "_stationary")
+        : (!expectBounds ? "_empty_mask" : (mutate ? "_edits_between_views" : "_eligible_views"));
+    const std::string name = shape + suffix + (uncachedViews ? "_uncached" : "");
+    if (!Selected(options, family, name)) return true;
     asset::Model model; renderer::Mesh mesh; scene::Scene owner;
     mesh.boundsRadius = 1; mesh.boundsExtents = {1, 1, 1};
     auto skin = std::make_unique<renderer::Mesh>(); skin->boundsRadius = 1; skin->isSkinned = true;
@@ -231,8 +363,47 @@ bool RunBoundsCase(const Options& options, std::ostream& output, const std::stri
         }
         for (const auto id : terrains) owner.GetComponent<scene::TerrainComponent>(id)->heightData[0] = state ? 1.0f : -1.0f;
     };
-    const auto compute = [&] { return scene::shadow_preparation_detail::ComputeSceneBounds(owner, Layer::Mask(0)); };
+    const LayerMask mask = expectBounds ? Layer::Mask(0) : Layer::Nothing;
+    const auto compute = [&] { return scene::shadow_preparation_detail::ComputeSceneBounds(owner, mask); };
     Result result(options.samples);
+    if (!raw) {
+        const auto resolve = [&] {
+            return uncachedViews ? compute()
+                : scene::shadow_preparation_detail::ResolveSceneBounds(owner, mask);
+        };
+        std::array<renderer::ShadowBounds, 2> references{};
+        if (mutate) update(0);
+        references[0] = compute();
+        if (mutate) update(1);
+        references[1] = compute();
+        for (int state = 0; state < 2; ++state)
+            result.expected[state] = ViewBoundsHash({references[state], references[state], references[1 - state]});
+        result.operationsPerSample = 3;
+        for (int iteration = 0; iteration < options.warmup + options.samples; ++iteration) {
+            const int state = iteration % 2;
+            ++Time::frameCount;
+            const auto begin = Clock::now();
+            if (mutate) update(state);
+            const auto first = Clock::now();
+            const auto firstView = resolve();
+            const auto secondView = resolve();
+            const auto beforeEdit = Clock::now();
+            /// @note 同一フレームの 3 ビュー目だけが通知なしの入力変更を見る。
+            if (mutate) update(1 - state);
+            const auto afterEdit = Clock::now();
+            const auto thirdView = resolve();
+            const auto end = Clock::now();
+            result.Observe(iteration, options, Us(begin, end), Us(first, beforeEdit) + Us(afterEdit, end),
+                Us(begin, first) + Us(beforeEdit, afterEdit), ViewBoundsHash({firstView, secondView, thirdView}),
+                result.expected[state], firstView.valid == expectBounds && secondView.valid == expectBounds
+                    && thirdView.valid == expectBounds);
+            result.lastBounds = thirdView;
+            result.hasBounds = true;
+        }
+        Write(output, options, family, name, count, terrains.size() * static_cast<size_t>(side * side), 0, 0, result);
+        ++executed;
+        return result.valid && result.complete;
+    }
     if (mutate) {
         for (int state = 0; state < 2; ++state) { update(state); result.expected[state] = BoundsHash(compute()); }
         update(1);
@@ -248,18 +419,18 @@ bool RunBoundsCase(const Options& options, std::ostream& output, const std::stri
             result.expected[mutate ? state : 0], bounds.valid);
         result.lastBounds = bounds; result.hasBounds = true;
     }
-    Write(output, options, "shadow_bounds", name, count, terrains.size() * static_cast<size_t>(side * side), 0, 0, result);
+    Write(output, options, family, name, count, terrains.size() * static_cast<size_t>(side * side), 0, 0, result);
     ++executed; return result.valid && result.complete;
 }
-} /// @note namespace
-} /// @note namespace fbzz::bench
+}
+}
 
 int main(int argc, char** argv)
 {
     using namespace fbzz::bench;
     Options options;
     if (!Parse(argc, argv, options)) {
-        std::cerr << "Usage: FBZZScenePreparationBench [--family all|profiler_tree|shadow_bounds] [--case all|name] [--samples 1..256] [--warmup 0..256] [--label text] [--output path]\n";
+        std::cerr << "Usage: FBZZScenePreparationBench [--family all|profiler_tree|shadow_bounds|shadow_views|hierarchy] [--case all|name] [--samples 1..256] [--warmup 0..256] [--label text] [--output path]\n";
         return 2;
     }
     fbzz::profiler::Profiler::SetEnabled(false);
@@ -275,8 +446,16 @@ int main(int argc, char** argv)
         << ",\"memoryBytes\":null,\"allocationCount\":null}\n";
     size_t executed = 0;
     bool valid = RunTrees(options, output, executed);
-    for (const std::string shape : {"static10000", "mixed1000", "terrain16x129"})
-        for (const bool mutate : {false, true}) valid = RunBoundsCase(options, output, shape, mutate, executed) && valid;
+    valid = RunRootSiblingRanks(options, output, executed) && valid;
+    valid = RunHierarchySync(options, output, executed, false) && valid;
+    valid = RunHierarchySync(options, output, executed, true) && valid;
+    for (const std::string shape : {"static10000", "mixed1000", "terrain16x129"}) {
+        for (const auto workload : {ShadowWorkload::RAW_STATIONARY, ShadowWorkload::RAW_DIRECT_UPDATES,
+                 ShadowWorkload::EMPTY_MASK, ShadowWorkload::ELIGIBLE_VIEWS, ShadowWorkload::DIRECT_EDIT_VIEWS})
+            valid = RunBoundsCase(options, output, shape, workload, executed) && valid;
+        for (const auto workload : {ShadowWorkload::EMPTY_MASK, ShadowWorkload::ELIGIBLE_VIEWS, ShadowWorkload::DIRECT_EDIT_VIEWS})
+            valid = RunBoundsCase(options, output, shape, workload, executed, true) && valid;
+    }
     output << "{\"kind\":\"summary\",\"cases\":" << executed << ",\"valid\":" << (valid && executed != 0 ? "true" : "false") << "}\n";
     output.flush();
     return output.good() && valid && executed != 0 ? 0 : 1;

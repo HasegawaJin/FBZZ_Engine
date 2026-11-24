@@ -6,7 +6,9 @@
 #include <TestKit/Engine/EngineFixture.hpp>
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/LightComponent.hpp>
+#include <Engine/Scene/ScriptComponent.hpp>
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,7 +39,7 @@ protected:
     std::vector<uint64_t> m_lifetimes;
 };
 
-/// @brief Capacity queries use entity representation without reserving.
+/// @brief 容量の照会は EntityID の表現範囲を使い、スロットを確保しない。
 TEST_F(SceneCapacityTest, CapacityQueriesUseEntityRepresentationWithoutReserving)
 {
     EXPECT_EQ(m_scene.EntitySlotCount(), 0u);
@@ -59,7 +61,7 @@ TEST_F(SceneCapacityTest, CapacityQueriesUseEntityRepresentationWithoutReserving
     EXPECT_FALSE(m_scene.CanCreateGameObjects(scene::Scene::MAX_ENTITIES));
 }
 
-/// @brief Growth preserves objects hierarchy components and lifetimes.
+/// @brief スロットを増やしても個体、階層、コンポーネント、寿命トークンを保つ。
 TEST_F(SceneCapacityTest, GrowthPreservesObjectsHierarchyComponentsAndLifetimes)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -89,7 +91,7 @@ TEST_F(SceneCapacityTest, GrowthPreservesObjectsHierarchyComponentsAndLifetimes)
     }
 }
 
-/// @brief Freed slots reuse generations and issue new component lifetimes.
+/// @brief スロット再利用時に世代を進め、新しいコンポーネントの寿命トークンを発行する。
 TEST_F(SceneCapacityTest, FreedSlotsReuseGenerationsAndIssueNewComponentLifetimes)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -122,7 +124,52 @@ TEST_F(SceneCapacityTest, FreedSlotsReuseGenerationsAndIssueNewComponentLifetime
     EXPECT_EQ(m_scene.GetComponentLifetime<scene::LightComponent>(m_ids[0]), m_lifetimes[0]);
 }
 
-/// @brief Invalid entity queries remain safe beyond allocated slots.
+/// @brief 破棄通知中は個体を参照でき、解放後は世代が一致する空きスロットも無効になる。
+TEST_F(SceneCapacityTest, RejectsVacantSlotEvenWhenItsGenerationMatches)
+{
+    struct DestroyObserver final : scene::Script {
+        DestroyObserver(scene::Scene& scene, scene::EntityID id, bool& called)
+            : m_scene(scene), m_id(id), m_called(called) {}
+
+        void OnDestroy() override
+        {
+            m_called = true;
+            EXPECT_TRUE(m_scene.IsValid(m_id));
+            EXPECT_NE(m_scene.GetGameObject(m_id), nullptr);
+        }
+
+        scene::Scene& m_scene;
+        scene::EntityID m_id;
+        bool& m_called;
+    };
+
+    bool notified = false;
+    auto& object = m_scene.CreateGameObject("BeforeReuse");
+    const auto id = object.GetID();
+    auto& entry = object.AddComponent<scene::ScriptComponent>().scripts.emplace_back();
+    entry.script = std::make_unique<DestroyObserver>(m_scene, id, notified);
+    entry.script->SetContext(&m_scene, &object);
+    entry.m_awoken = true;
+    entry.m_started = true;
+
+    ASSERT_TRUE(m_scene.DestroyGameObject(id));
+    EXPECT_TRUE(notified);
+    EXPECT_FALSE(m_scene.IsValid(id));
+    const scene::EntityID vacant{id.index, id.generation + 1};
+    EXPECT_FALSE(m_scene.IsValid(vacant));
+    EXPECT_EQ(m_scene.GetGameObject(vacant), nullptr);
+    EXPECT_FALSE(m_scene.DestroyGameObject(vacant));
+    EXPECT_EQ(m_scene.GameObjectCount(), 0u);
+
+    const auto replacement = m_scene.CreateGameObject("AfterReuse").GetID();
+    EXPECT_EQ(replacement.index, id.index);
+    EXPECT_EQ(replacement.generation, vacant.generation + 1);
+    EXPECT_TRUE(m_scene.IsValid(replacement));
+    EXPECT_FALSE(m_scene.IsValid(id));
+    EXPECT_FALSE(m_scene.IsValid(vacant));
+}
+
+/// @brief 確保済み範囲の外にある EntityID も安全に拒否する。
 TEST_F(SceneCapacityTest, InvalidEntityQueriesRemainSafeBeyondAllocatedSlots)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -143,7 +190,7 @@ TEST_F(SceneCapacityTest, InvalidEntityQueriesRemainSafeBeyondAllocatedSlots)
     EXPECT_EQ(m_scene.EntitySlotCount(), GROWTH_COUNT);
 }
 
-/// @brief Queued destruction keeps object live until cleanup then reuses slot.
+/// @brief 遅延破棄を実行するまで個体を保持し、実行後にスロットを再利用する。
 TEST_F(SceneCapacityTest, QueuedDestructionKeepsObjectLiveUntilCleanupThenReusesSlot)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -164,7 +211,7 @@ TEST_F(SceneCapacityTest, QueuedDestructionKeepsObjectLiveUntilCleanupThenReuses
     EXPECT_EQ(m_scene.EntitySlotCount(), GROWTH_COUNT);
 }
 
-/// @brief Clear and move preserve dynamic storage ownership.
+/// @brief Clear と move の後も動的ストレージの所有権を保つ。
 TEST_F(SceneCapacityTest, ClearAndMovePreserveDynamicStorageOwnership)
 {
     ASSERT_TRUE(CreatePopulation());
@@ -199,7 +246,7 @@ TEST_F(SceneCapacityTest, ClearAndMovePreserveDynamicStorageOwnership)
     EXPECT_NE(moved.GetComponentLifetime<scene::LightComponent>(afterClear->GetID()), m_lifetimes.front());
 }
 
-/// @brief Sparse component rows grow without dense population for every slot.
+/// @brief 疎なコンポーネント追加で全スロット分の実体を確保しない。
 TEST_F(SceneCapacityTest, SparseComponentRowsGrowWithoutDensePopulationForEverySlot)
 {
     for (uint32_t index = 0; index < GROWTH_COUNT; ++index)
@@ -215,4 +262,4 @@ TEST_F(SceneCapacityTest, SparseComponentRowsGrowWithoutDensePopulationForEveryS
     EXPECT_NE(m_scene.GetComponentLifetime<scene::LightComponent>(lastId), 0u);
 }
 
-} /// @note namespace fbzz::tests
+} // namespace fbzz::tests

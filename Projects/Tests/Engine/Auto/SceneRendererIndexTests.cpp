@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string_view>
 #include <utility>
@@ -42,7 +43,7 @@ struct RestoreRendererIndexProfiler {
     }
 };
 
-} /// @note namespace
+}
 
 class SceneRendererIndexTest : public testkit::EngineFixture {
 protected:
@@ -96,7 +97,7 @@ protected:
     }
 };
 
-/// @brief Checks late registration deduplicates kinds and includes disabled inactive and empty renderers.
+/// @brief 後から登録した複数の描画種別を重複なくまとめ、無効・非アクティブ・空のレンダラーも含める。
 TEST_F(SceneRendererIndexTest, LateRegistrationDeduplicatesKindsAndIncludesDisabledInactiveAndEmptyRenderers)
 {
     EXPECT_TRUE(Ids(m_scene).empty());
@@ -117,7 +118,7 @@ TEST_F(SceneRendererIndexTest, LateRegistrationDeduplicatesKindsAndIncludesDisab
     ExpectCurrent(m_scene);
 }
 
-/// @brief Membership copies dense removal and generation reuse invalidate every dependent set.
+/// @brief 所属のコピー、密配列からの削除、世代更新付きの再利用で、依存する全候補集合を失効させる。
 TEST_F(SceneRendererIndexTest, MembershipCopiesDenseRemovalAndGenerationReuseInvalidateEveryDependentSet)
 {
     auto& source = m_scene.CreateGameObject("Source");
@@ -158,7 +159,7 @@ TEST_F(SceneRendererIndexTest, MembershipCopiesDenseRemovalAndGenerationReuseInv
     EXPECT_NE(Ids(m_scene).back(), retired);
 }
 
-/// @brief Ownership moves and sibling reorders are visible without membership changes.
+/// @brief コンポーネントの所属が変わらなくても、格納順と兄弟順の変更を観測する。
 TEST_F(SceneRendererIndexTest, OwnershipMovesAndSiblingReordersAreVisibleWithoutMembershipChanges)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -181,7 +182,36 @@ TEST_F(SceneRendererIndexTest, OwnershipMovesAndSiblingReordersAreVisibleWithout
     ExpectCurrent(m_scene);
 }
 
-/// @brief Clear move assignment and sidecar eviction never reuse another scenes IDs.
+/// @brief 移動量を全整数範囲で丸め、子が混在してもルートの格納順を保つ。
+TEST_F(SceneRendererIndexTest, ClampsExtremeMovesAndPreservesRootPlacementAroundChildren)
+{
+    auto& root = m_scene.CreateGameObject("First root");
+    auto& child = m_scene.CreateGameObject("First child");
+    auto& lastRoot = m_scene.CreateGameObject("Last root");
+    auto& lastChild = m_scene.CreateGameObject("Last child");
+    ASSERT_TRUE(child.SetParent(&root));
+    ASSERT_TRUE(lastChild.SetParent(&lastRoot));
+    for (auto* object : {&root, &child, &lastRoot, &lastChild})
+        object->AddComponent<scene::MeshRenderer>();
+
+    const auto rootID = root.GetID();
+    const auto childID = child.GetID();
+    const auto lastRootID = lastRoot.GetID();
+    const auto lastChildID = lastChild.GetID();
+    EXPECT_EQ(Ids(m_scene), (std::vector<scene::EntityID>{rootID, childID, lastRootID, lastChildID}));
+    ASSERT_TRUE(m_scene.MoveGameObject(childID, (std::numeric_limits<int>::max)()));
+    EXPECT_EQ(Ids(m_scene), (std::vector<scene::EntityID>{rootID, lastRootID, lastChildID, childID}));
+    ASSERT_TRUE(m_scene.MoveGameObject(childID, (std::numeric_limits<int>::min)()));
+    EXPECT_EQ(Ids(m_scene), (std::vector<scene::EntityID>{childID, rootID, lastRootID, lastChildID}));
+    ASSERT_TRUE(m_scene.SetRootSiblingIndex(lastRootID, (std::numeric_limits<int>::max)()));
+    EXPECT_EQ(Ids(m_scene), (std::vector<scene::EntityID>{childID, rootID, lastChildID, lastRootID}));
+    const auto revision = m_scene.GetHierarchyRevision();
+    EXPECT_FALSE(m_scene.SetRootSiblingIndex(lastRootID, 1));
+    EXPECT_FALSE(m_scene.SetRootSiblingIndex(lastChildID, 0));
+    EXPECT_EQ(m_scene.GetHierarchyRevision(), revision);
+}
+
+/// @brief Clear、ムーブ代入、補助キャッシュの退役後に別の Scene の ID を再利用しない。
 TEST_F(SceneRendererIndexTest, ClearMoveAssignmentAndSidecarEvictionNeverReuseAnotherScenesIds)
 {
     auto& original = m_scene.CreateGameObject("Original");
@@ -213,7 +243,7 @@ TEST_F(SceneRendererIndexTest, ClearMoveAssignmentAndSidecarEvictionNeverReuseAn
     EXPECT_EQ(saved.size(), 1u);
 }
 
-/// @brief Checks destroy callback observes sparse owners and can mutate and query reentrantly.
+/// @brief 破棄コールバックは欠番のある格納を観測し、再入して変更と照会を行える。
 TEST_F(SceneRendererIndexTest, DestroyCallbackObservesSparseOwnersAndCanMutateAndQueryReentrantly)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -248,7 +278,7 @@ TEST_F(SceneRendererIndexTest, DestroyCallbackObservesSparseOwnersAndCanMutateAn
     EXPECT_EQ(saved, (std::vector<scene::EntityID>{firstId, secondId, thirdId}));
 }
 
-/// @brief Profile rebuild occurs only when the requested membership or order changes.
+/// @brief 要求した集合の所属または順序が変わった場合だけ、プロファイルに再構築を記録する。
 TEST_F(SceneRendererIndexTest, ProfileRebuildOccursOnlyWhenTheRequestedMembershipOrOrderChanges)
 {
     RestoreRendererIndexProfiler restore;
@@ -270,7 +300,7 @@ TEST_F(SceneRendererIndexTest, ProfileRebuildOccursOnlyWhenTheRequestedMembershi
     EXPECT_EQ(Rebuilds([&] { Ids(m_scene); Ids(m_scene); }), 1u);
 }
 
-/// @brief Profile records one selected path and skips unchanged structure after non renderer append.
+/// @brief プロファイルには選択した経路を一つ記録し、非レンダラーの追加で構造が同じなら再構築を省く。
 TEST_F(SceneRendererIndexTest, ProfileRecordsOneSelectedPathAndSkipsUnchangedStructureAfterNonRendererAppend)
 {
     RestoreRendererIndexProfiler restore;
@@ -292,7 +322,7 @@ TEST_F(SceneRendererIndexTest, ProfileRecordsOneSelectedPathAndSkipsUnchangedStr
     ExpectCurrent(m_scene);
 }
 
-/// @brief Non renderer compaction refreshes skinned owners before other sets are queried.
+/// @brief 非レンダラーの削除による詰め直し後、ほかの集合を照会する前にスキン付きの所有位置を更新する。
 TEST_F(SceneRendererIndexTest, NonRendererCompactionRefreshesSkinnedOwnersBeforeOtherSetsAreQueried)
 {
     RestoreRendererIndexProfiler restore;
@@ -318,7 +348,7 @@ TEST_F(SceneRendererIndexTest, NonRendererCompactionRefreshesSkinnedOwnersBefore
     ExpectCurrent(m_scene);
 }
 
-/// @brief Deferred queries and equal counts keep every renderer set current.
+/// @brief 照会を遅らせた場合や件数が変わらない場合も、各レンダラー集合を現在値に保つ。
 TEST_F(SceneRendererIndexTest, DeferredQueriesAndEqualCountsKeepEveryRendererSetCurrent)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -345,7 +375,7 @@ TEST_F(SceneRendererIndexTest, DeferredQueriesAndEqualCountsKeepEveryRendererSet
     ExpectCurrent(m_scene);
 }
 
-/// @brief Serialized snapshot restoration retires primed membership and owner order.
+/// @brief 保存スナップショットを復元すると、準備済みの所属と所有順を失効させる。
 TEST_F(SceneRendererIndexTest, SerializedSnapshotRestorationRetiresPrimedMembershipAndOwnerOrder)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -373,4 +403,4 @@ TEST_F(SceneRendererIndexTest, SerializedSnapshotRestorationRetiresPrimedMembers
     EXPECT_EQ(Ids(m_scene, RendererSet::SKINNED), (std::vector<scene::EntityID>{m_scene.Find("Second")->GetID()}));
 }
 
-} /// @note namespace fbzz::tests
+}

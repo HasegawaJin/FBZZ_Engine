@@ -7,6 +7,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/ScriptComponent.hpp>
 #include <Scene/Managed/ManagedObjectLifecycle.hpp>
+#include <array>
 #include <functional>
 #include <memory>
 #include <string>
@@ -24,7 +25,7 @@ private:
     std::function<void()> m_callback;
 };
 
-} /// @note namespace
+}
 
 class SceneBulkDestroyTest : public testkit::EngineFixture {
 protected:
@@ -49,7 +50,7 @@ protected:
     }
 };
 
-/// @brief Large queued burst preserves survivor order and delayed objects.
+/// @brief 大量の遅延破棄を処理しても、生存個体の順序と期限前の個体を保つ。
 TEST_F(SceneBulkDestroyTest, LargeQueuedBurstPreservesSurvivorOrderAndDelayedObjects)
 {
     std::vector<scene::EntityID> survivors;
@@ -79,7 +80,7 @@ TEST_F(SceneBulkDestroyTest, LargeQueuedBurstPreservesSurvivorOrderAndDelayedObj
     EXPECT_EQ(m_scene.GameObjectCount(), survivors.size());
 }
 
-/// @brief Callback sees live order and can create reorder and destroy reentrantly.
+/// @brief 破棄通知から生存個体を順に参照し、生成・並べ替え・再入破棄を行える。
 TEST_F(SceneBulkDestroyTest, CallbackSeesLiveOrderAndCanCreateReorderAndDestroyReentrantly)
 {
     auto& first = m_scene.CreateGameObject("First");
@@ -120,7 +121,7 @@ TEST_F(SceneBulkDestroyTest, CallbackSeesLiveOrderAndCanCreateReorderAndDestroyR
     EXPECT_EQ(LiveIds(), (std::vector<scene::EntityID>{survivorId}));
 }
 
-/// @brief Descendants destroy before parent and duplicate requests do not repeat callbacks.
+/// @brief 子孫は親より先に破棄し、重複要求で同じ通知を繰り返さない。
 TEST_F(SceneBulkDestroyTest, DescendantsDestroyBeforeParentAndDuplicateRequestsDoNotRepeatCallbacks)
 {
     auto& survivor = m_scene.CreateGameObject("Survivor");
@@ -147,7 +148,65 @@ TEST_F(SceneBulkDestroyTest, DescendantsDestroyBeforeParentAndDuplicateRequestsD
     EXPECT_EQ(m_scene.GameObjectCount(), 1u);
 }
 
-/// @brief Spawn during child destroy keeps the new root outside the captured subtree.
+/// @brief 所有付き破棄は空スロットと重複を除外し、所有外の子がいればコールバック前に拒否する。
+TEST_F(SceneBulkDestroyTest, OwnedBatchIgnoresTombstonesAndRejectsUnownedChildrenBeforeCallbacks)
+{
+    auto& root = m_scene.CreateGameObject("Root");
+    auto& child = m_scene.CreateGameObject("Child");
+    ASSERT_TRUE(child.SetParent(&root));
+    const auto rootId = root.GetID();
+    const auto childId = child.GetID();
+    const auto retired = m_scene.CreateGameObject("Retired").GetID();
+    ASSERT_TRUE(m_scene.DestroyGameObject(retired));
+    const scene::EntityID tombstone{retired.index, retired.generation + 1};
+    ASSERT_EQ(m_scene.GetGameObject(tombstone), nullptr);
+
+    std::vector<scene::EntityID> callbacks;
+    Observe(child, [&] {
+        callbacks.push_back(childId);
+        EXPECT_EQ(root.GetChildCount(), 1);
+    });
+    Observe(root, [&] {
+        callbacks.push_back(rootId);
+        EXPECT_EQ(root.GetChildCount(), 0);
+    });
+
+    const std::array incomplete{rootId, tombstone};
+    EXPECT_FALSE(m_scene.CanDestroyOwnedGameObjects(incomplete));
+    EXPECT_FALSE(m_scene.DestroyOwnedGameObjects(incomplete));
+    EXPECT_TRUE(callbacks.empty());
+    EXPECT_EQ(LiveIds(), (std::vector<scene::EntityID>{rootId, childId}));
+
+    const std::array complete{childId, tombstone, rootId, rootId};
+    EXPECT_TRUE(m_scene.CanDestroyOwnedGameObjects(complete));
+    EXPECT_TRUE(m_scene.DestroyOwnedGameObjects(complete));
+    EXPECT_EQ(callbacks, (std::vector<scene::EntityID>{childId, rootId}));
+    EXPECT_TRUE(LiveIds().empty());
+}
+
+/// @brief 破棄中にコンポーネント配列が変わっても、借用した入力の要求順と生存判定を保持する。
+TEST_F(SceneBulkDestroyTest, ComponentEntitySpanSurvivesReentrantBatchDestruction)
+{
+    auto& first = m_scene.CreateGameObject("First");
+    auto& second = m_scene.CreateGameObject("Second");
+    auto& third = m_scene.CreateGameObject("Third");
+    const auto firstId = first.GetID();
+    const auto secondId = second.GetID();
+    const auto thirdId = third.GetID();
+    std::vector<scene::EntityID> callbacks;
+    Observe(first, [&] {
+        callbacks.push_back(firstId);
+        EXPECT_TRUE(m_scene.DestroyGameObject(thirdId));
+    });
+    Observe(second, [&] { callbacks.push_back(secondId); });
+    Observe(third, [&] { callbacks.push_back(thirdId); });
+
+    m_scene.DestroyGameObjects(m_scene.GetEntities<scene::ScriptComponent>());
+    EXPECT_EQ(callbacks, (std::vector<scene::EntityID>{firstId, thirdId, secondId}));
+    EXPECT_TRUE(LiveIds().empty());
+}
+
+/// @brief 子の破棄通知から生成したルートは、初めに捕捉した部分木の破棄対象に含めない。
 TEST_F(SceneBulkDestroyTest, SpawnDuringChildDestroyKeepsTheNewRootOutsideTheCapturedSubtree)
 {
     auto& root = m_scene.CreateGameObject("Root");
@@ -171,7 +230,7 @@ TEST_F(SceneBulkDestroyTest, SpawnDuringChildDestroyKeepsTheNewRootOutsideTheCap
     EXPECT_EQ(m_scene.Find("Born"), created.front());
 }
 
-/// @brief Owner locations remain correct after moves and scene move.
+/// @brief 個体の並べ替えや Scene のムーブ後も、所有位置から正しい個体を破棄する。
 TEST_F(SceneBulkDestroyTest, OwnerLocationsRemainCorrectAfterMovesAndSceneMove)
 {
     std::vector<scene::EntityID> ids;
@@ -193,4 +252,4 @@ TEST_F(SceneBulkDestroyTest, OwnerLocationsRemainCorrectAfterMovesAndSceneMove)
     EXPECT_NE(moved.GetGameObject(ids[65]), nullptr);
 }
 
-} /// @note namespace fbzz::tests
+}

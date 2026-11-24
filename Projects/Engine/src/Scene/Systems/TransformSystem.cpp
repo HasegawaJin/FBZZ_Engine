@@ -28,6 +28,7 @@ static math::Vector3 ComputeWorldScale(const Transform& local, const Transform* 
 
 void UpdateWorldTransform(Transform& tf, const Transform* parentTransform) {
     if (parentTransform) {
+        /// @note 子の位置は親から見た距離。親の各軸の倍率を掛け、親の向きに回してから、世界空間での親の位置を足す。
         const math::Vector3 scaledLocal = {
             tf.position.x * parentTransform->worldScale.x,
             tf.position.y * parentTransform->worldScale.y,
@@ -44,12 +45,13 @@ void UpdateWorldTransform(Transform& tf, const Transform* parentTransform) {
 
 static void UpdateWorldTransform(GameObject& go, const Transform* parentTransform)
 {
-    /// @note Reuse only arithmetic already validated by the AI service, with bitwise local/parent keys; traversal and publication remain immediate.
+    /// @note AI サービスで検証済みの演算だけをローカル姿勢と親行列のビット列で再利用し、走査と結果の公開は即時に行う。
     if (!world_pose_detail::TryReuseAiWorldMath(go.GetID().index, go.transform, parentTransform))
         UpdateWorldTransform(go.transform, parentTransform);
 }
 
 namespace {
+
 /// @note 同期中に callback は呼ばない。スレッドごとに容量だけを再利用し、呼び出し後に非所有参照を残さない。
 struct TransformTraversalWorkspace {
     std::vector<GameObject*> pending;
@@ -62,7 +64,8 @@ thread_local TransformTraversalWorkspace s_transformTraversal;
 
 static void AppendChildren(GameObject& object, std::vector<GameObject*>& pending)
 {
-    for (int index = 0; index < object.GetChildCount(); ++index) {
+    const int count = object.GetChildCount();
+    for (int index = 0; index < count; ++index) {
         if (auto* child = object.GetChild(index)) pending.push_back(child);
     }
 }
@@ -70,12 +73,28 @@ static void AppendChildren(GameObject& object, std::vector<GameObject*>& pending
 static void UpdateWorldTransformQueue(std::vector<GameObject*>& pending)
 {
     for (size_t index = 0; index < pending.size(); ++index) {
-        GameObject& object = *pending[index];
-        const GameObject* parent = object.GetParent();
+        auto& object = *pending[index];
+        /// @note 起点の値コピーや破棄中の操作で、子一覧のリンクとシーン内の親が一致しない場合がある。
+        const auto* parent = object.GetParent();
         UpdateWorldTransform(object, parent ? &parent->transform : nullptr);
         AppendChildren(object, pending);
     }
     pending.clear();
+}
+
+template<typename Update>
+static void CollectAndPropagateScene(Scene& scene, const char* collectMarker, const char* propagateMarker, Update update)
+{
+    world_pose_detail::PrepareAiWorldMath();
+    auto& worklist = s_transformTraversal.sceneWorklist;
+    {
+        const profiler::ProfileScope profile{profiler::ProfilerMarker(collectMarker)};
+        worklist.Collect(scene);
+    }
+    {
+        const profiler::ProfileScope profile{profiler::ProfilerMarker(propagateMarker)};
+        worklist.Propagate(update);
+    }
 }
 
 static void UpdateInterpolatedWorldTransform(GameObject& object, const Transform* parent, float alpha)
@@ -100,18 +119,10 @@ static void ApplyPhysicsInterpolation(Scene& scene, float alpha)
 {
     FBZZ_PROFILE_SCOPE("Transform::InterpolateScene");
     /// @note 物理の確定姿勢を変更しないため、描画補間は world だけへ適用する。
-    world_pose_detail::PrepareAiWorldMath();
-    auto& worklist = s_transformTraversal.sceneWorklist;
-    const auto rootsProfile = profiler::Profiler::BeginScope(
-        profiler::ProfilerMarker("Transform::CollectInterpolationRoots"));
-    worklist.Collect(scene);
-    profiler::Profiler::EndScope(rootsProfile);
-    const auto propagationProfile = profiler::Profiler::BeginScope(
-        profiler::ProfilerMarker("Transform::PropagateInterpolation"));
-    worklist.Propagate([alpha](GameObject& object, const Transform* parent) {
-        UpdateInterpolatedWorldTransform(object, parent, alpha);
-    });
-    profiler::Profiler::EndScope(propagationProfile);
+    CollectAndPropagateScene(scene, "Transform::CollectInterpolationRoots", "Transform::PropagateInterpolation",
+        [alpha](GameObject& object, const Transform* parent) {
+            UpdateInterpolatedWorldTransform(object, parent, alpha);
+        });
 }
 
 ComponentAccess TransformSystem::GetAccess() const
@@ -152,18 +163,10 @@ void TransformSystem::Update(SystemContext& ctx)
 void FlushWorldTransforms(Scene& scene)
 {
     FBZZ_PROFILE_SCOPE("Transform::FlushScene");
-    world_pose_detail::PrepareAiWorldMath();
-    auto& worklist = s_transformTraversal.sceneWorklist;
-    const auto rootsProfile = profiler::Profiler::BeginScope(
-        profiler::ProfilerMarker("Transform::CollectRoots"));
-    worklist.Collect(scene);
-    profiler::Profiler::EndScope(rootsProfile);
-    {
-        FBZZ_PROFILE_SCOPE("Transform::PropagateScene");
-        worklist.Propagate([](GameObject& object, const Transform* parent) {
+    CollectAndPropagateScene(scene, "Transform::CollectRoots", "Transform::PropagateScene",
+        [](GameObject& object, const Transform* parent) {
             UpdateWorldTransform(object, parent);
         });
-    }
 }
 
 void FlushWorldTransforms(GameObject& root)
@@ -178,15 +181,16 @@ void FlushWorldTransforms(GameObject& root)
         ancestors.push_back(parent);
     /// @note 親の world に以前の描画補間値が残り得るため、祖先を上から local で計算し直してから対象を更新する。
     /// @see Docs/design/script-transform-contract.md
+    const Transform* parent = nullptr;
     for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
-        const GameObject* parent = (*it)->GetParent();
-        UpdateWorldTransform(**it, parent ? &parent->transform : nullptr);
+        GameObject& ancestor = **it;
+        UpdateWorldTransform(ancestor, parent);
+        parent = &ancestor.transform;
     }
     ancestors.clear();
     profiler::Profiler::EndScope(ancestorsProfile);
     FBZZ_PROFILE_SCOPE("Transform::PropagateSubtree");
-    const GameObject* parent = root.GetParent();
-    UpdateWorldTransform(root, parent ? &parent->transform : nullptr);
+    UpdateWorldTransform(root, parent);
     if (root.GetChildCount() == 0) return;
     auto& pending = s_transformTraversal.pending;
     pending.clear();

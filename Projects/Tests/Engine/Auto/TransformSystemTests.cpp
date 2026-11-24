@@ -108,7 +108,7 @@ protected:
     }
 };
 
-/// @brief Late update interpolates world pose without changing local or physics pose.
+/// @brief 描画補間はローカル姿勢と物理姿勢を変更しない。
 TEST_F(TransformSystemTest, LateUpdateInterpolatesWorldPoseWithoutChangingLocalOrPhysicsPose)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -143,7 +143,7 @@ TEST_F(TransformSystemTest, LateUpdateInterpolatesWorldPoseWithoutChangingLocalO
     EXPECT_VEC3_NEAR(child->transform.worldPosition, (math::Vector3{14.0f, 0.0f, 0.0f}), testkit::kLooseTolerance);
 }
 
-/// @brief Empty gameplay pose systems preserve the interpolated hierarchy.
+/// @brief 空のゲーム姿勢システムは補間済みの階層を保持する。
 TEST_F(TransformSystemTest, EmptyGameplayPoseSystemsPreserveTheInterpolatedHierarchy)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -165,7 +165,7 @@ TEST_F(TransformSystemTest, EmptyGameplayPoseSystemsPreserveTheInterpolatedHiera
     ExpectInterpolatedHierarchy(*root, *child);
 }
 
-/// @brief Disabled and unresolved gameplay pose systems preserve the interpolated hierarchy.
+/// @brief 無効または参照未解決の姿勢システムは補間済みの階層を保持する。
 TEST_F(TransformSystemTest, DisabledAndUnresolvedGameplayPoseSystemsPreserveTheInterpolatedHierarchy)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -194,7 +194,7 @@ TEST_F(TransformSystemTest, DisabledAndUnresolvedGameplayPoseSystemsPreserveTheI
     ExpectInterpolatedHierarchy(*root, *child);
 }
 
-/// @brief Animator barrier requires resources and an active enabled owner.
+/// @brief Animator の同期点は資源と稼働中の有効な所有者を要求する。
 TEST_F(TransformSystemTest, AnimatorBarrierRequiresResourcesAndAnActiveEnabledOwner)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -231,7 +231,7 @@ TEST_F(TransformSystemTest, AnimatorBarrierRequiresResourcesAndAnActiveEnabledOw
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{22.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
-/// @brief Bone pose producer barrier updates non bone children including resource free ragdoll.
+/// @brief ボーン姿勢の同期点は資源を持たないラグドールを含む非ボーンの子を更新する。
 TEST_F(TransformSystemTest, BonePoseProducerBarrierUpdatesNonBoneChildrenIncludingResourceFreeRagdoll)
 {
     auto& owner = m_scene.CreateGameObject("Owner");
@@ -265,7 +265,7 @@ TEST_F(TransformSystemTest, BonePoseProducerBarrierUpdatesNonBoneChildrenIncludi
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{32.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
-/// @brief Checks transform constraints observe the completed socket attachment stage.
+/// @brief 変換拘束はソケット取り付けが完了した姿勢を読む。
 TEST_F(TransformSystemTest, TransformConstraintsObserveTheCompletedSocketAttachmentStage)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -297,7 +297,7 @@ TEST_F(TransformSystemTest, TransformConstraintsObserveTheCompletedSocketAttachm
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{15.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
-/// @brief Spline follower synchronizes its inputs without a constraint pass.
+/// @brief スプライン追従は拘束パスなしでも入力姿勢を同期する。
 TEST_F(TransformSystemTest, SplineFollowerSynchronizesItsInputsWithoutAConstraintPass)
 {
     auto& splineParent = m_scene.CreateGameObject("SplineParent");
@@ -330,7 +330,7 @@ TEST_F(TransformSystemTest, SplineFollowerSynchronizesItsInputsWithoutAConstrain
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{20.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
-/// @brief Checks constraint propagates small position changes to inactive children.
+/// @brief 拘束による小さな位置変更も非アクティブな子へ反映する。
 TEST_F(TransformSystemTest, ConstraintPropagatesSmallPositionChangesToInactiveChildren)
 {
     auto& target = m_scene.CreateGameObject("Target");
@@ -352,7 +352,7 @@ TEST_F(TransformSystemTest, ConstraintPropagatesSmallPositionChangesToInactiveCh
     EXPECT_VEC3_NEAR(child.transform.worldPosition, target.transform.position, 0.00000001f);
 }
 
-/// @brief Camera follow synchronizes current inputs and inactive descendants.
+/// @brief カメラ追従は現在の入力と非アクティブな子孫を同期する。
 TEST_F(TransformSystemTest, CameraFollowSynchronizesCurrentInputsAndInactiveDescendants)
 {
     auto& targetParent = m_scene.CreateGameObject("TargetParent");
@@ -384,7 +384,7 @@ TEST_F(TransformSystemTest, CameraFollowSynchronizesCurrentInputsAndInactiveDesc
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{14.0f, 0.0f, 0.0f}), testkit::kTolerance);
 }
 
-/// @brief Disabling camera shake still removes its previously applied pose.
+/// @brief カメラシェイクを無効にすると前回のオフセットを除去する。
 TEST_F(TransformSystemTest, DisablingCameraShakeStillRemovesItsPreviouslyAppliedPose)
 {
     auto& camera = m_scene.CreateGameObject("Camera");
@@ -413,7 +413,7 @@ TEST_F(TransformSystemTest, DisablingCameraShakeStillRemovesItsPreviouslyApplied
     EXPECT_QUAT_NEAR(shake.appliedRotationOffset, math::Quaternion::Identity(), testkit::kTolerance);
 }
 
-/// @brief Billboard uses the current camera pose and synchronizes inactive descendants.
+/// @brief ビルボードは現在のカメラ姿勢を使い、非アクティブな子孫も同期する。
 TEST_F(TransformSystemTest, BillboardUsesTheCurrentCameraPoseAndSynchronizesInactiveDescendants)
 {
     auto& camera = m_scene.CreateGameObject("Camera");
@@ -435,7 +435,7 @@ TEST_F(TransformSystemTest, BillboardUsesTheCurrentCameraPoseAndSynchronizesInac
     EXPECT_VEC3_NEAR(child.transform.worldPosition, (math::Vector3{2.0f, 0.0f, 0.0f}), testkit::kLooseTolerance);
 }
 
-/// @brief Pre physics initializes chunked bodies and preserves existing sync state.
+/// @brief 物理前の初期化はチャンク内の剛体を同期し、既存の同期状態を保持する。
 TEST_F(TransformSystemTest, PrePhysicsInitializesChunkedBodiesAndPreservesExistingSyncState)
 {
     for (int index = 0; index < 129; ++index) {
@@ -466,7 +466,28 @@ TEST_F(TransformSystemTest, PrePhysicsInitializesChunkedBodiesAndPreservesExisti
     }
 }
 
-/// @brief Reuses traversal storage across wide hierarchies and scene replacement.
+/// @brief 値コピーを起点にしても、シーン内の子は登録された親のワールド姿勢を使う。
+TEST_F(TransformSystemTest, FlushFromAValueCopyUsesTheRegisteredParent)
+{
+    auto& root = m_scene.CreateGameObject("Root");
+    auto& child = m_scene.CreateGameObject("Child");
+    child.SetParent(root);
+    root.transform.position.x = 10.0f;
+    child.transform.position.x = 2.0f;
+    scene::FlushWorldTransforms(root);
+
+    auto copy = root;
+    copy.transform.position.x = 100.0f;
+    root.transform.position.x = 30.0f;
+    child.transform.position.x = 3.0f;
+    scene::FlushWorldTransforms(copy);
+
+    EXPECT_FLOAT_EQ(copy.transform.worldPosition.x, 100.0f);
+    EXPECT_FLOAT_EQ(root.transform.worldPosition.x, 10.0f);
+    EXPECT_FLOAT_EQ(child.transform.worldPosition.x, 13.0f);
+}
+
+/// @brief 幅の広い階層とシーン差し替えをまたいで作業領域を再利用する。
 TEST_F(TransformSystemTest, ReusesTraversalStorageAcrossWideHierarchiesAndSceneReplacement)
 {
     auto& root = m_scene.CreateGameObject("Wide root");
@@ -493,7 +514,7 @@ TEST_F(TransformSystemTest, ReusesTraversalStorageAcrossWideHierarchiesAndSceneR
 }
 
 } /// @note namespace
-/// @brief Empty optional consumers preserve interpolation and reset renderer visibility.
+/// @brief 任意コンシューマーが空のときは補間を維持し、描画の可視状態を初期化する。
 TEST_F(TransformSystemTest, EmptyOptionalConsumersPreserveInterpolationAndResetRendererVisibility)
 {
     auto [root, child] = InterpolatedHierarchy();
@@ -526,7 +547,7 @@ TEST_F(TransformSystemTest, EmptyOptionalConsumersPreserveInterpolationAndResetR
     ExpectInterpolatedHierarchy(*root, *child);
 }
 
-/// @brief Beam added after an empty update synchronizes the current endpoints.
+/// @brief 空の更新後に追加したビームは現在の両端を同期する。
 TEST_F(TransformSystemTest, BeamAddedAfterAnEmptyUpdateSynchronizesTheCurrentEndpoints)
 {
     auto context = Context();
@@ -551,7 +572,7 @@ TEST_F(TransformSystemTest, BeamAddedAfterAnEmptyUpdateSynchronizesTheCurrentEnd
 }
 
 
-/// @brief Parent first propagation ignores flat storage order and tracks hierarchy edits.
+/// @brief 親優先の伝播は格納順に依存せず、親子関係の変更を反映する。
 TEST_F(TransformSystemTest, ParentFirstPropagationIgnoresFlatStorageOrderAndTracksHierarchyEdits)
 {
     auto& leaf = m_scene.CreateGameObject("Leaf");

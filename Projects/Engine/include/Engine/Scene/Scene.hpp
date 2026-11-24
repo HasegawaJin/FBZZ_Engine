@@ -43,12 +43,12 @@ enum class ScriptDebugDrawType {
     Sphere,
     Box,
     Ray,
-    Arrow,       ///< @note from=a, to=b, headLength=radius, headRadius=halfExtents.x
-    Cone,        ///< @note apex=a, direction=b, height=halfExtents.x, baseRadius=radius
-    OrientedBox, ///< @note center=a, halfExtents, rotation
-    Capsule,     ///< @note center=a, radius, halfHeight=halfExtents.x, rotation (軸はローカル Y)
-    Circle,      ///< @note center=a, normal=b, radius
-    Arc,         ///< @note center=a, normal=b, fromDirection=halfExtents, radius, angle [rad]
+    Arrow,       ///< @note 始点 a、終点 b、矢尻の長さ radius、矢尻の半径 halfExtents.x。
+    Cone,        ///< @note 頂点 a、方向 b、高さ halfExtents.x、底面半径 radius。
+    OrientedBox, ///< @note 中心 a、各軸の半幅 halfExtents、回転 rotation。
+    Capsule,     ///< @note 中心 a、半径 radius、半高 halfExtents.x。rotation を適用する前の軸はローカル Y。
+    Circle,      ///< @note 中心 a、法線 b、半径 radius。
+    Arc,         ///< @note 中心 a、法線 b、開始方向 halfExtents、半径 radius、角度 angle [rad]。
 };
 
 /// @brief OnUpdate など任意のタイミングで発行されたデバッグ描画要求。
@@ -95,9 +95,9 @@ public:
     FBZZ_ENGINE_API ~Scene();
     Scene(const Scene&) = delete;
     Scene& operator=(const Scene&) = delete;
-    /// @pre 移動元と移動先で個体破棄 callback を実行していないこと。
+    /// @pre 移動元と移動先で個体破棄コールバックを実行していないこと。
     FBZZ_ENGINE_API Scene(Scene&& other) noexcept;
-    /// @pre 移動元と移動先で個体破棄 callback を実行していないこと。
+    /// @pre 移動元と移動先で個体破棄コールバックを実行していないこと。
     FBZZ_ENGINE_API Scene& operator=(Scene&& other) noexcept;
 
     /// @note 保存しない寿命識別値。Clear / 移動代入で更新し、再利用された EntityID と区別する。
@@ -107,7 +107,7 @@ public:
     /// @note ホストの実行資源を寿命 ID で借用する。保存・個体複製の対象外で、Clear 後も同じホストへ接続する。
     FBZZ_ENGINE_API void SetResourceManager(renderer::ResourceManager* resources);
     [[nodiscard]] FBZZ_ENGINE_API renderer::ResourceManager* GetResourceManager() const;
-    /// @note Parking suspends owned event delivery without changing authoring active/enabled fields or destroying cached runtime objects.
+    /// @note 待機化は制作時の active/enabled やキャッシュ済みランタイム個体を保ち、所有するイベントの配送を中断する。
     void SetExecutionParked(bool parked) { m_executionParked = parked; }
     [[nodiscard]] bool IsExecutionParked() const { return m_executionParked; }
 
@@ -143,12 +143,12 @@ public:
     /// @note 保存・Undo のフラット順を維持する階層操作。
     FBZZ_ENGINE_API bool DestroyGameObject(EntityID id);
     /// @note 入力順に子孫から退役し、所有配列は一度だけ整理する。失効 ID と重複 ID は無視する。
-    /// @note callback が Scene 世代を変えた場合は旧要求の続きを実行しない。
+    /// @note コールバックが Scene 世代を変えた場合は旧要求の続きを実行しない。
     FBZZ_ENGINE_API void DestroyGameObjects(std::span<const EntityID> ids);
-    /// @note Stale IDs are ignored. Every surviving child must belong to the supplied ownership set.
+    /// @note 無効になった ID は無視する。残っている子はすべて指定の所有集合に含まれていること。
     [[nodiscard]] FBZZ_ENGINE_API bool CanDestroyOwnedGameObjects(std::span<const EntityID> ids) const;
-    /// @note Retires owned children before parents and refuses foreign descendants, including those attached by destruction callbacks.
-    /// @return False preserves every foreign object; callbacks may already have retired some owned children.
+    /// @note 所有する子を親より先に退役させる。破棄コールバックで付いたものも含め、所有外の子孫は拒否する。
+    /// @return false のときも所有外の個体はすべて保持される。コールバックで一部の所有する子が退役済みの場合がある。
     [[nodiscard]] FBZZ_ENGINE_API bool DestroyOwnedGameObjects(std::span<const EntityID> ids);
     FBZZ_ENGINE_API bool MoveGameObject(EntityID id, int offset);
     FBZZ_ENGINE_API bool MoveGameObjectToIndex(EntityID id, size_t newIndex);
@@ -194,13 +194,13 @@ public:
     FBZZ_ENGINE_API void TickScriptDebugDrawCommands(float dt);
     FBZZ_ENGINE_API const std::vector<ScriptDebugDrawCommand>& GetScriptDebugDrawCommands() const;
 
-    /// @name GameObject / SceneView の template 本体から呼ばれる内部 API
+    /// @name GameObject と SceneView のテンプレート用内部 API
     /// @{
 
-    /// @note 追加は既存 Component のアドレスを保つ。Entity 走査 Span は追加で失効し得る。
+    /// @note 追加は既存コンポーネントのアドレスを保つ。Entity の走査用 span は追加で失効し得る。
     template<typename T> T&   AddComponent(EntityID id, T component);
     template<typename T> T*   GetComponent(EntityID id);
-    /// @return Component row の追加時 identity。未存在・失効 Entity は 0。mutable array を公開しない。
+    /// @return コンポーネントの追加時に割り当てた寿命 ID。コンポーネントが存在しないか、Entity が失効していれば 0。
     template<typename T> [[nodiscard]] uint64_t GetComponentLifetime(EntityID id) const { return GetArray<T>().GetLifetime(id); }
     template<typename T> bool HasComponent(EntityID id) const;
     /// @note 未存在の Component と失効・無効な Entity の除去は何も変更しない。
@@ -209,23 +209,23 @@ public:
     template<typename T> std::vector<const T*> GetComponents() const;
 
     FBZZ_ENGINE_API void DuplicateComponents(EntityID src, EntityID dst);
-    /// @brief Component を受動的に複製する。Script は保存値だけを作り、forest 後段まで実体化しない。
+    /// @brief コンポーネントを受動的に複製する。スクリプトの実体化は複製対象の階層が揃うまで遅らせる。
     FBZZ_ENGINE_API void DuplicateComponentsPassive(EntityID src, EntityID dst);
     /// @brief 別 Scene 上の src から dst へ全 Component をコピーする (Prefab / Clipboard 用)。
     /// @note Prefab は一時 Scene に通常ロードしてから現在の Scene へ追加するため、Scene 内複製だけでは全 Component 対応を共有できない。
     FBZZ_ENGINE_API void CopyComponentsFrom(const Scene& srcScene, EntityID src, EntityID dst);
-    /// @brief 別 Scene から受動的に Component を複製する。Script callback は後段へ遅延する。
+    /// @brief 別シーンからコンポーネントを受動的に複製し、スクリプトのコールバックを遅延する。
     FBZZ_ENGINE_API void CopyComponentsFromPassive(const Scene& srcScene, EntityID src, EntityID dst);
-    /// @brief 複製 forest の参照再対応後に Script 実体と保存値を準備する。
+    /// @brief 複製対象の階層で参照を付け替えた後、スクリプト実体と保存値を準備する。
     FBZZ_ENGINE_API void PreparePassiveCopiedScripts(std::span<const EntityID> owners);
-    /// @brief 全参照再対応後に managed cache 解決と Script callback を実行する。
+    /// @brief すべての参照を付け替えた後、マネージド参照を解決し、スクリプトのコールバックを実行する。
     FBZZ_ENGINE_API void FinalizePassiveCopiedScripts(std::span<const EntityID> owners);
 
     template<typename T>
     std::span<const EntityID> GetEntities() const;
 
-    /// @pre callback 中に Component の追加、削除、Clear を行わないこと。
-    /// @note 同じ添字の EntityID と Component を chunk ごとの連続 span で渡す。
+    /// @pre コールバック中にコンポーネントを追加・削除したり、Clear を呼び出したりしないこと。
+    /// @note 同じ添字の EntityID とコンポーネントを、チャンクごとの連続した span で渡す。
     template<typename T, typename Fn>
     void ForEachComponentChunk(Fn&& callback) { GetArray<T>().ForEachChunk(std::forward<Fn>(callback)); }
     template<typename T, typename Fn>
@@ -244,35 +244,50 @@ public:
     /// @}
 
 private:
+    /// @note 作り直したシーンを古い描画キャッシュや処理中のコールバックから区別する世代番号。
     uint64_t m_renderSceneGeneration = 0;
+    /// @note 個体の作成・削除や階層の変更で進む。前回の階層を記憶した側が再走査の要否を判定する。
     uint64_t m_hierarchyRevision = 0;
+    /// @note 描画資源を所有する ResourceManager の寿命 ID。所有者が終了していればポインターを取得しない。
     uint64_t m_resourceOwner = 0;
-    /// @note 既存個体の所有位置を変える整理・並べ替え・move で更新する。末尾生成と穴化は既存位置を変えない。
+    /// @note 既存個体の所有位置を変える整理・並べ替え・ムーブで更新する。末尾への追加や削除直後の穴は既存位置を変えない。
     uint64_t m_rendererOwnerRevision = 0;
+    /// @note Play 用シーンが動いている間、元の編集シーンを保持したまま実行を休止するための状態。
     bool m_executionParked = false;
+    /// @note スロットを再利用するたびに世代を進め、削除済みの EntityID が新しい個体を指すのを防ぐ。
     std::vector<uint32_t> m_generations;
+    /// @note 未使用スロットから次に発行する添字。削除で空いたスロットを先に再利用する。
     uint32_t              m_nextIndex   = 0;
+    /// @note 次の個体に再利用できる空きスロット。ここにある添字だけでは個体を識別できない。
     std::vector<uint32_t> m_freeIndices;
 
+    /// @note 個体の所有元。破棄処理中は空きが残り、最後に生存個体の並びを保って詰める。
     std::vector<std::unique_ptr<GameObject>> m_gameObjects;
+    /// @note 穴を除いた生存個体数。破棄直後は所有配列の長さと一致しないことがある。
     size_t m_gameObjectCount = 0;
+    /// @note 破棄処理の入れ子の深さ。最も外側の処理が終わるまで所有配列の詰め直しを遅らせる。
     size_t m_destroyBatchDepth = 0;
 
     /// @note EntityID.index から非所有 GameObject 参照を引く。
     std::vector<GameObject*> m_entityToGameObject;
 
     struct ComponentStorage;
+    /// @note コンポーネントの型別配列を所有する。配置を実装側に閉じて利用側のヘッダー依存を減らす。
     std::unique_ptr<ComponentStorage> m_components;
     template<typename T> friend struct detail::ComponentStorageAccess;
 
     struct DestroyEntry { EntityID id; float delay; };
+    /// @note 指定時間が経過した個体を後で破棄する。待機中に添字が再利用されても世代付き ID で区別する。
     std::vector<DestroyEntry> m_destroyQueue;
 
     /// @brief runtime PostProcess は Script から一時的に上書きされる optional な状態。
     /// @note 値メンバにすると Clear 時の全体代入で std::vector を破棄/再構築し、レイアウト変更時のクラッシュ地点になりやすい。
     std::unique_ptr<renderer::PostProcessSettings> m_runtimePostProcessSettings;
+    /// @note このシーンに追加された描画パス。描画側が取り出せるようシーン単位で保持する。
     std::vector<UserRenderPassDesc> m_userRenderPasses;
+    /// @note スクリプトが要求した診断用の描画と、その表示が続く時間を保持する。
     std::vector<ScriptDebugDrawCommand> m_scriptDebugDrawCommands;
+    /// @note 同じフレームで複数回描画しても診断表示の残り時間を二重に減らさないための記録。
     uint64_t m_lastScriptDebugDrawTickFrame = 0;
 
     /// @note environment は保存対象、flowFrame は未保存のフレームキャッシュ。
@@ -281,6 +296,10 @@ private:
 
     FBZZ_ENGINE_API EntityID TryAllocateEntity();
     FBZZ_ENGINE_API bool     DestroyImmediate(EntityID id, const std::vector<EntityID>* ownership = nullptr);
+    bool DestroyBatch(std::span<const EntityID> pending, const std::vector<EntityID>* ownership = nullptr);
+    bool OwnedChildrenMatch(const GameObject& object, std::span<const EntityID> owned) const;
+    bool ValidateOwnedDestruction(std::span<const EntityID> owned) const;
+    void InvokeClearDestroyScripts();
     /// @note 生存個体の相対順を保って空位置を詰め、所有位置を更新する。
     /// @see Docs/design/ecs-bulk-processing.md
     FBZZ_ENGINE_API void     CompactGameObjects();
@@ -304,27 +323,8 @@ private:
         return detail::ComponentStorageAccess<T>::Get(*this);
     }
 
-    template<typename T>
-    static void RemoveIfHas(ComponentArray<T>& arr, EntityID id) {
-        if (arr.Has(id)) arr.Remove(id);
-    }
-
-    /// @note unique_ptr を持つ ScriptComponent の複製は CopyScriptComponentFrom が担う。
-    template<typename T>
-    static void CopyIfHas(ComponentArray<T>& arr, EntityID src, EntityID dst) {
-        if constexpr (std::is_copy_constructible_v<T>) {
-            if (arr.Has(src) && !arr.Has(dst)) arr.Add(dst, arr.Get(src));
-        }
-    }
-
-    template<typename T>
-    static void CopyFromOtherIfHas(const ComponentArray<T>& srcArr, ComponentArray<T>& dstArr,
-                                   EntityID src, EntityID dst) {
-        if constexpr (std::is_copy_constructible_v<T>) {
-            if (srcArr.Has(src) && !dstArr.Has(dst)) dstArr.Add(dst, srcArr.Get(src));
-        }
-    }
-
+    /// @note 型の登録順に値をコピーし、水面の実行時状態とメッシュの借用をスクリプトの複製前に整理する。
+    void CopyComponentValues(const Scene& source, EntityID src, EntityID dst);
     FBZZ_ENGINE_API void CopyScriptComponentFrom(const Scene& srcScene, EntityID src, EntityID dst);
     FBZZ_ENGINE_API void CopyScriptComponentPassive(const Scene& srcScene, EntityID src, EntityID dst);
 
@@ -492,7 +492,7 @@ std::span<const EntityID> Scene::GetEntities() const {
     return GetArray<T>().Entities();
 }
 
-/// @note Scene の完全型が必要な GameObject の template 定義。
+/// @note Scene の完全型を参照する GameObject のテンプレート定義。
 
 template<typename T>
 T& GameObject::AddComponent(T component) {
@@ -526,12 +526,11 @@ T* GameObject::GetScript() {
 
 template<typename T>
 std::vector<GameObject*> GameObject::FindObjectsOfType() {
-    /// @note Application::Get().GetSceneManager().GetActive() 追加後に実装
+    /// @todo Application::Get().GetSceneManager().GetActive() を利用できるようになったら実装する。
     return {};
 }
 
-/// @brief `Script::GetComponent<T>` template 本体
-/// @note Script.hpp は Scene.hpp を循環依存のため include できず、GameObject が完全型になるこのタイミングで定義する。`GameObject::GetComponent<T>()` も同じパターン。
+/// @note Script.hpp との循環依存を避け、GameObject の完全型を参照できる位置で定義する。
 template<typename T>
 T* Script::GetComponent() const
 {
@@ -628,4 +627,4 @@ T& ScriptSceneProxy::RequireComponent() const
     return *component;
 }
 
-} /// @note namespace fbzz::scene
+}

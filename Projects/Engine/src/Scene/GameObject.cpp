@@ -1,14 +1,13 @@
 /// @file    GameObject.cpp
-/// @brief   GameObject の非 template メソッド実装。
+/// @brief   GameObject の階層、状態、検索と破棄の操作。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-///
-/// @note Component 操作の template 本体は Scene.hpp 側に置く。
 #include "Engine/Scene/Scene.hpp"
 #include "Engine/Scene/SceneManager.hpp"
 #include "Engine/Scene/ScriptRuntime.hpp"
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 
 namespace fbzz::scene {
 
@@ -47,10 +46,14 @@ void GameObject::SetParent(GameObject& parent)
 
 bool GameObject::SetParent(GameObject* parent)
 {
-    if (!parent) return ClearParent();
-    if (!m_scene || m_scene != parent->m_scene) return false;
-    if (parent == this || parent->IsDescendantOf(*this)) return false;
-    if (m_parent == parent->m_id) return true;
+    if (!m_scene) return false;
+    if (parent) {
+        if (m_scene != parent->m_scene || parent == this) return false;
+        if (m_parent == parent->m_id) return true;
+        if (parent->IsDescendantOf(*this)) return false;
+    } else if (!m_parent.IsValid()) {
+        return true;
+    }
 
     if (m_parent.IsValid()) {
         if (auto* oldParent = m_scene->GetGameObject(m_parent)) {
@@ -59,25 +62,15 @@ bool GameObject::SetParent(GameObject* parent)
         }
     }
 
-    /// @note 既に同じ親なら上で返しているため、追加先にこの子は存在しない。
-    m_parent = parent->m_id;
-    parent->m_children.push_back(m_id);
+    m_parent = parent ? parent->m_id : EntityID::INVALID;
+    if (parent) parent->m_children.push_back(m_id);
     ++m_scene->m_hierarchyRevision;
     return true;
 }
 
 bool GameObject::ClearParent()
 {
-    if (!m_scene) return false;
-    if (!m_parent.IsValid()) return true;
-
-    if (auto* oldParent = m_scene->GetGameObject(m_parent)) {
-        auto& children = oldParent->m_children;
-        children.erase(std::remove(children.begin(), children.end(), m_id), children.end());
-    }
-    m_parent = EntityID::INVALID;
-    ++m_scene->m_hierarchyRevision;
-    return true;
+    return SetParent(nullptr);
 }
 
 bool GameObject::IsDescendantOf(const GameObject& ancestor) const
@@ -117,11 +110,11 @@ int GameObject::GetSiblingIndex() const
         }
         return 0;
     }
-    /// @note ルート: Scene のルート一覧における出現順
+    /// @note 非アクティブなルートも順位に含め、退役済みの格納位置は GameObjects が飛ばす。
     int index = 0;
-    for (auto* root : m_scene->GetRootGameObjects()) {
-        if (root == this) return index;
-        ++index;
+    for (const auto& object : m_scene->GameObjects()) {
+        if (&object == this) return index;
+        if (!object.m_parent.IsValid()) ++index;
     }
     return 0;
 }
@@ -135,18 +128,16 @@ bool GameObject::SetSiblingIndex(int index)
         auto& siblings = parent->m_children;
         const auto it = std::find(siblings.begin(), siblings.end(), m_id);
         if (it == siblings.end()) return false;
-        const int current = static_cast<int>(std::distance(siblings.begin(), it));
-        const int clamped = std::clamp(index, 0, static_cast<int>(siblings.size()) - 1);
-        if (clamped == current) return false;
-        siblings.erase(it);
-        siblings.insert(siblings.begin() + clamped, m_id);
+        const auto clamped = std::min(static_cast<size_t>(std::max(index, 0)), siblings.size() - 1);
+        const auto target = siblings.begin() + static_cast<std::ptrdiff_t>(clamped);
+        if (target == it) return false;
+        if (it < target) std::rotate(it, it + 1, target + 1);
+        else std::rotate(target, it, it + 1);
         ++m_scene->m_hierarchyRevision;
-        /// @note シリアライザは flat 順で親子を再構築するため、m_children の並び替えだけでは
-        /// @note 保存 / Undo スナップショット / Play 復元で順序が元に戻る。
+        /// @note 保存・Undo・Play の復元は Scene の格納順で親子を再構築するため、兄弟順と同期する。
         m_scene->SyncSiblingFlatOrder(m_id);
         return true;
     }
-    /// @note ルート: フラット配列上のルート順序を Scene 側で並べ替える
     return m_scene->SetRootSiblingIndex(m_id, index);
 }
 
@@ -210,4 +201,4 @@ void GameObject::Destroy(GameObject& go, float delay)
     go.m_scene->m_destroyQueue.push_back({ go.m_id, delay });
 }
 
-} /// @note namespace fbzz::scene
+}
