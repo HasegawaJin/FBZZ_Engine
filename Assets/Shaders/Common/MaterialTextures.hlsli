@@ -1,35 +1,35 @@
-// FBZZ Engine
-// MaterialTextures.hlsli | Common
-// マテリアルが差すテクスチャの bindless 添字と、その参照マクロ
-//
-// LAYOUT: 並びは Engine/Renderer/ShaderDescriptor.hpp の kMaterialTextureSlots が正本。
-//         フィールド名が食い違うと «Inspector に枠が出ない» か «別の枠へ差さる» になる。
-//
-// WHY cbuffer に添字を置くか: bindless のテクスチャは DXIL に束縛情報を残さないため、
-//     レジスタのリフレクションからは «このシェーダーが何枚テクスチャを使うか» が分からない。
-//     cbuffer の変数はリフレクションに残るので、添字フィールドを枠の宣言そのものにする。
-//     値は Material::Upload が毎フレーム書き込む。
-//
-// 使い方:
-//   cbuffer MaterialConstants : register(CB_MATERIAL)
-//   {
-//       float4 albedo;
-//       ...
-//       FBZZ_MATERIAL_TEXTURE_INDICES   // 末尾に置く
-//   };
-//   FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
-//
-// @see Docs/design/bindless.md
+/// @file    MaterialTextures.hlsli
+/// @brief   材質テクスチャの bindless 添字とアクセスマクロ。
+/// @author  Hasegawa Jin
+/// @date    2026-09-16
+/// @note 並びは Graphics/Renderer/ShaderDescriptor.hpp の kMaterialTextureSlots が正本。
+/// @note フィールド名が食い違うと «Inspector に枠が出ない» か «別の枠へ差さる» になる。
+///
+/// @note cbuffer に添字を置くか: bindless のテクスチャは DXIL に束縛情報を残さないため、
+/// @note レジスタのリフレクションからは «このシェーダーが何枚テクスチャを使うか» が分からない。
+/// @note cbuffer の変数はリフレクションに残るので、添字フィールドを枠の宣言そのものにする。
+/// @note 値は Material::Upload が毎フレーム書き込む。
+///
+/// @note 使い方:
+/// @note cbuffer MaterialConstants : register(CB_MATERIAL)
+/// @note {
+/// @note float4 albedo;
+/// @note ...
+/// @note FBZZ_MATERIAL_TEXTURE_INDICES   /// @note 末尾に置く
+/// @note };
+/// @note FBZZ_MATERIAL_TEX(texAlbedo, texAlbedoIndex);
+///
+/// @see Docs/design/bindless.md
 #ifndef FBZZ_COMMON_MATERIAL_TEXTURES_HLSLI
 #define FBZZ_COMMON_MATERIAL_TEXTURES_HLSLI
 
 #include "Common/BindlessIndices.hlsli"
 
-// MaterialConstants の末尾へ置く添字フィールド一式。
-//
-// WHY 使わない枠も宣言するか: 宣言した枠だけが Inspector に出る。albedo しか使わない
-//     シェーダーで 8 個すべて宣言すると、差せない枠が並んで «差したのに効かない» になる。
-//     そのため «全部入り» ではなく、必要な枠だけを個別に宣言するマクロも用意してある。
+/// @note MaterialConstants の末尾へ置く添字フィールド一式。
+///
+/// @note 使わない枠も宣言するか: 宣言した枠だけが Inspector に出る。albedo しか使わない
+/// @note シェーダーで 8 個すべて宣言すると、差せない枠が並んで «差したのに効かない» になる。
+/// @note そのため «全部入り» ではなく、必要な枠だけを個別に宣言するマクロも用意してある。
 #define FBZZ_MATERIAL_TEX_ALBEDO    uint texAlbedoIndex;
 #define FBZZ_MATERIAL_TEX_NORMAL    uint texNormalIndex;
 #define FBZZ_MATERIAL_TEX_METALLIC  uint texMetallicIndex;
@@ -53,4 +53,4 @@
 #define FBZZ_MATERIAL_TEX(name, indexField) \
     static Texture2D name = ResourceDescriptorHeap[NonUniformResourceIndex(indexField)]
 
-#endif // FBZZ_COMMON_MATERIAL_TEXTURES_HLSLI
+#endif

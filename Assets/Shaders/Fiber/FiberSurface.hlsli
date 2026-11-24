@@ -37,7 +37,7 @@ FBZZ_TEX2D_T(float, fiberSceneDepth, TEX_DEPTH_SLOT);
 #endif
 
 #if FIBER_FIN == 2
-/// @note Engine/Renderer/FiberGeometry.hpp の FiberBladeRoot と一致 (1 葉 64 バイト)。頂点バッファは持たない。
+/// @note Graphics/Renderer/FiberGeometry.hpp の FiberBladeRoot と一致 (1 葉 64 バイト)。頂点バッファは持たない。
 struct FiberBladeRoot {
     float3 position;
     float height;

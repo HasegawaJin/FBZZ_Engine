@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 
-/// @note 格子の更新手順は Projects/Fluid/src/FluidGasSolver.cpp (CPU) に合わせてある。
+/// @note 格子の更新手順は Projects/Fluid/src/Gas/FluidGasSolver.cpp (CPU) に合わせてある。
 /// @note 格子は立方体 (1 辺 gResolution)、セル中心は «最長軸 = [-1,1]» の領域座標。
 #ifndef FLUID_GPU_COMMON_HLSLI
 #define FLUID_GPU_COMMON_HLSLI

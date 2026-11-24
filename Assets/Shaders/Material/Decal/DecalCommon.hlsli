@@ -41,13 +41,13 @@ cbuffer CameraConstants : register(CB_CAMERA)
     float3   cameraPos;
     float    nearZ;
     float    farZ;
-    float    _camReserved;   // Water パスのみ waterSsrEnabled として使う枠
-    float    isOrthographic; // 1 = 平行投影
+    float    _camReserved;   /// @note Water パスのみ waterSsrEnabled として使う枠
+    float    isOrthographic; /// @note 1 = 平行投影
     float    _camPad;
 };
 
-// デカールパスは DeferredLighting 後の HDR へ合成するため GBuffer 法線を更新できない。
-// 法線マップの陰影を「相対的な明暗差」として乗せるのに主平行光だけ要る。
+/// @note デカールパスは DeferredLighting 後の HDR へ合成するため GBuffer 法線を更新できない。
+/// @note 法線マップの陰影を「相対的な明暗差」として乗せるのに主平行光だけ要る。
 cbuffer LightConstants : register(CB_LIGHT)
 {
     float3 lightDir;
@@ -56,37 +56,37 @@ cbuffer LightConstants : register(CB_LIGHT)
     float  lightIntensity;
 };
 
-// DecalPass が毎ドロー埋める。材質側からは読み取り専用。
-// LAYOUT: Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp の DecalCB と一致させること。
+/// @note DecalPass が毎ドロー埋める。材質側からは読み取り専用。
+/// @note Graphics/Pipeline/RenderConstants.hpp の DecalCB と一致させること。
 cbuffer DecalConstants : register(CB_DECAL)
 {
-    float4x4 invDecalWorld;      // ワールド → デカールローカル ([-0.5, 0.5]^3)
-    float3   decalTangent;       // デカールローカル +X (法線マップの T 軸)
+    float4x4 invDecalWorld;      /// @note ワールド → デカールローカル ([-0.5, 0.5]^3)
+    float3   decalTangent;       /// @note デカールローカル +X (法線マップの T 軸)
     float    _decalPad0;
-    float3   decalBitangent;     // デカールローカル +Z (投影 UV の V 軸)
+    float3   decalBitangent;     /// @note デカールローカル +Z (投影 UV の V 軸)
     float    _decalPad1;
-    float3   decalNormal;        // 投影軸 (デカールローカル +Y)
+    float3   decalNormal;        /// @note 投影軸 (デカールローカル +Y)
     float    _decalPad2;
-    float    decalAlpha;         // ライフタイムフェード込みの不透明度
-    float    angleFadeStrength;  // 0 = 角度フェードなし
-    float    angleFadeCos;       // この cos より寝た面では完全に消える
-    uint     decalFlags;         // bit0 = 受信レイヤーフィルタ有効
-    uint     decalReceiverMask;  // 受信を許すレイヤーのビットマスク
-    float2   decalFrameScale;    // フリップブック 1 コマぶんの UV スケール (無効なら (1,1))
-    float    decalFrameIndex;    // 今のコマ番号 (0 起点)
+    float    decalAlpha;         /// @note ライフタイムフェード込みの不透明度
+    float    angleFadeStrength;  /// @note 0 = 角度フェードなし
+    float    angleFadeCos;       /// @note この cos より寝た面では完全に消える
+    uint     decalFlags;         /// @note bit0 = 受信レイヤーフィルタ有効
+    uint     decalReceiverMask;  /// @note 受信を許すレイヤーのビットマスク
+    float2   decalFrameScale;    /// @note フリップブック 1 コマぶんの UV スケール (無効なら (1,1))
+    float    decalFrameIndex;    /// @note 今のコマ番号 (0 起点)
 };
 
 #define DECAL_FLAG_RECEIVER_FILTER 1u
 
-// 材質パラメータを公開したいシェーダーだけが宣言する。宣言する場合は必ず
-// この名前とレジスタを使う (組み込みの Decal.hlsl が最小の実例)。
-//
-//   cbuffer MaterialConstants : register(CB_MATERIAL)
-//   {
-//       float4 albedoTint;   // offset  0
-//       ...
-//       uint   textureMask;  // Material::Upload がスロットの有効性から埋める
-//   };
+/// @note 材質パラメータを公開したいシェーダーだけが宣言する。宣言する場合は必ず
+/// @note この名前とレジスタを使う (組み込みの Decal.hlsl が最小の実例)。
+///
+/// @note cbuffer MaterialConstants : register(CB_MATERIAL)
+/// @note {
+/// @note float4 albedoTint;   /// @note offset  0
+/// @note ...
+/// @note uint   textureMask;  /// @note Material::Upload がスロットの有効性から埋める
+/// @note };
 
 struct DecalPixelInput
 {
@@ -94,8 +94,8 @@ struct DecalPixelInput
     float2 screenUv : TEXCOORD0;
 };
 
-// 全デカールシェーダーで共通の頂点処理。頂点バッファは持たない。
-// 呼び出し側の VSMain が SV_VertexID を受け取ってそのまま渡す。
+/// @note 全デカールシェーダーで共通の頂点処理。頂点バッファは持たない。
+/// @note 呼び出し側の VSMain が SV_VertexID を受け取ってそのまま渡す。
 DecalPixelInput DecalVertexMain(uint id)
 {
     DecalPixelInput output;
@@ -106,13 +106,13 @@ DecalPixelInput DecalVertexMain(uint id)
     return output;
 }
 
-// DecalResolve() が返す、この画素へデカールを乗せるのに要る値一式。
+/// @note DecalResolve() が返す、この画素へデカールを乗せるのに要る値一式。
 struct DecalSurface
 {
-    float2 uv;             // デカールローカル XZ 平面へ投影した UV
-    float3 worldPos;       // 受け面のワールド座標
-    float3 receiverNormal; // 受け面のワールド法線
-    float  alpha;          // ライフタイム × 角度フェード
+    float2 uv;             /// @note デカールローカル XZ 平面へ投影した UV
+    float3 worldPos;       /// @note 受け面のワールド座標
+    float3 receiverNormal; /// @note 受け面のワールド法線
+    float  alpha;          /// @note ライフタイム × 角度フェード
 };
 
 /// 深度から受け面を復元し、この画素にデカールが乗るかを判定する。
@@ -127,11 +127,11 @@ bool DecalResolve(float2 screenUv, out DecalSurface surface)
 
     float  ndcDepth = texDecalDepth.Sample(sampDecal, screenUv).r;
     float3 worldPos = ReconstructWorldPos(screenUv, ndcDepth, invViewProjection);
-    // 受け面の法線はスクリーン空間微分から求める。
-    // WHY GBuffer 法線を使わないか: このパスは DeferredLighting 後の HDR へ合成し、
-    //     Forward 経路でも走るため、GBuffer が読める保証が無い。
-    // NOTE: 深度の不連続 (シルエット境界) では微分が跳ねる。そこは角度フェードで
-    //       薄くなる側へ倒れるだけなので、破綻としては安全側。
+    /// @note 受け面の法線はスクリーン空間微分から求める。
+    /// @note GBuffer 法線を使わないか: このパスは DeferredLighting 後の HDR へ合成し、
+    /// @note Forward 経路でも走るため、GBuffer が読める保証が無い。
+    /// @note 深度の不連続 (シルエット境界) では微分が跳ねる。そこは角度フェードで
+    /// @note 薄くなる側へ倒れるだけなので、破綻としては安全側。
     float3 receiverNormal = normalize(cross(ddy(worldPos), ddx(worldPos)));
 
     surface.worldPos       = worldPos;
@@ -143,9 +143,9 @@ bool DecalResolve(float2 screenUv, out DecalSurface surface)
 
     if (decalFlags & DECAL_FLAG_RECEIVER_FILTER)
     {
-        // バッファには可視サーフェスのレイヤー番号 + 1 が入る。0 は「不明」で、
-        // 受信バッファへ描かないジオメトリ (地形・フォリッジ等) が該当する。
-        // 不明を除外側へ倒すとそれらへ一切デカールが乗らなくなるため受信させる。
+        /// @note バッファには可視サーフェスのレイヤー番号 + 1 が入る。0 は「不明」で、
+        /// @note 受信バッファへ描かないジオメトリ (地形・フォリッジ等) が該当する。
+        /// @note 不明を除外側へ倒すとそれらへ一切デカールが乗らなくなるため受信させる。
         uint encoded = (uint)(texDecalReceiver.Sample(sampDecal, screenUv).r + 0.5f);
         if (encoded != 0u && (decalReceiverMask & (1u << ((encoded - 1u) & 31u))) == 0u)
             return false;
@@ -155,22 +155,22 @@ bool DecalResolve(float2 screenUv, out DecalSurface surface)
     if (any(abs(localPos) > 0.5f))
         return false;
 
-    // ローカル -Y が投影軸。XZ 平面へ落として UV にする。
+    /// @note ローカル -Y が投影軸。XZ 平面へ落として UV にする。
     surface.uv = localPos.xz + 0.5f;
 
-    // --- 角度フェード -----------------------------------------------------------
-    //
-    // WHY: OBB 投影は投影軸に対して斜めな面へ当てるとテクスチャが引き伸ばされ、
-    //      長い筋になる。着弾痕が壁と床の角をまたいだ瞬間に「伸びた汚れ」として
-    //      露見する、デカールで最も目立つ破綻がこれ。角度で薄めれば破綻する範囲が
-    //      そのまま消える (Unity / Unreal の Angle Fade と同じ考え方)。
-    //
-    // 表裏どちらの向きでも同じ扱いにしたいので abs を取る。
+    /// @note --- 角度フェード -----------------------------------------------------------
+    ///
+    /// @note OBB 投影は投影軸に対して斜めな面へ当てるとテクスチャが引き伸ばされ、
+    /// @note 長い筋になる。着弾痕が壁と床の角をまたいだ瞬間に「伸びた汚れ」として
+    /// @note 露見する、デカールで最も目立つ破綻がこれ。角度で薄めれば破綻する範囲が
+    /// @note そのまま消える (Unity / Unreal の Angle Fade と同じ考え方)。
+    ///
+    /// @note 表裏どちらの向きでも同じ扱いにしたいので abs を取る。
     float facing = abs(dot(receiverNormal, normalize(decalNormal)));
     float angleFactor = angleFadeCos < 1.0f
         ? saturate((facing - angleFadeCos) / max(1.0f - angleFadeCos, 1.0e-3f))
         : 1.0f;
-    // 端で硬く切れると縁が線として見えるため、なめらかに落とす。
+    /// @note 端で硬く切れると縁が線として見えるため、なめらかに落とす。
     angleFactor = angleFactor * angleFactor * (3.0f - 2.0f * angleFactor);
 
     surface.alpha = decalAlpha * lerp(1.0f, angleFactor, saturate(angleFadeStrength));
@@ -188,14 +188,14 @@ bool DecalResolve(float2 screenUv, out DecalSurface surface)
 ///       1〜2 画素の余白を持たせて作ること。
 float2 DecalApplyFlipbook(float2 uv)
 {
-    // スケールから «横のコマ数 / 縦の段数» を復元する。無効時は (1, 1) なので素通し。
+    /// @note スケールから «横のコマ数 / 縦の段数» を復元する。無効時は (1, 1) なので素通し。
     float2 tiles = round(1.0f / max(decalFrameScale, 1.0e-6f));
     if (tiles.x <= 1.0f && tiles.y <= 1.0f)
         return uv;
 
     float column = fmod(max(decalFrameIndex, 0.0f), max(tiles.x, 1.0f));
     float row    = floor(max(decalFrameIndex, 0.0f) / max(tiles.x, 1.0f));
-    // frac は «タイリングを掛けた UV がコマから溢れる» のを防ぐためのもの。
+    /// @note frac は «タイリングを掛けた UV がコマから溢れる» のを防ぐためのもの。
     return (frac(uv) + float2(column, row)) * decalFrameScale;
 }
 
@@ -221,4 +221,4 @@ float DecalNormalLightRatio(float3 baseNormal, float3 mappedNormal)
     return clamp(mappedLight / max(baseLight, 0.001f), 0.25f, 2.0f);
 }
 
-#endif // DECAL_COMMON_HLSLI
+#endif

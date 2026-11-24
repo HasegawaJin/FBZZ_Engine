@@ -2,7 +2,7 @@
 /// @brief   共通のクラスタライト供給と確率補正付きの大量ライト評価。
 /// @author  Hasegawa Jin
 /// @date    2026-08-16
-/// @note Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp の
+/// @note Graphics/Pipeline/RenderConstants.hpp の
 /// @note PunctualLightGPU / ClusterConstantsCB と完全に一致させること。
 /// @note 片方だけ変えると、ライトが黙って別の位置・別の色で評価される。
 #ifndef CLUSTER_CONSTANTS_HLSLI
@@ -127,4 +127,4 @@ uint FBZZ_ClusterIndex(uint3 coord)
          + coord.z * FBZZ_CLUSTER_GRID_X * FBZZ_CLUSTER_GRID_Y;
 }
 
-#endif /// @note CLUSTER_CONSTANTS_HLSLI
+#endif

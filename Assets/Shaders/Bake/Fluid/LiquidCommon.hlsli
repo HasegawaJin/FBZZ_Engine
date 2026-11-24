@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-12
 
-/// @note 粒子の更新手順は Projects/Fluid/src/FluidLiquidSolver.cpp (CPU) に合わせてある。
+/// @note 粒子の更新手順は Projects/Fluid/src/Liquid/FluidLiquidSolver.cpp (CPU) に合わせてある。
 /// @note 粒子の状態は float4 × 2: [2i] = xyz 位置 / w 年齢、[2i + 1] = xyz 速度 / w 状態。
 /// @note 状態は 0 = まだ湧いていない / 1 = 生きている / 2 = 消えた (寿命・領域外)。
 

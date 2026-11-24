@@ -3,7 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-09-11
 //
-// 式は Projects/Engine/src/Asset/VolumeFlipbookAnalytic.cpp の SampleVolumeFill と 1:1。
+// 式は Projects/Engine/src/Asset/Flipbook/VolumeFlipbookAnalytic.cpp の SampleVolumeFill と 1:1。
 // 片方だけ直すと、テストが守っている CPU 側と実際に焼かれる絵が静かにずれる。
 //
 // WHY このシェーダーが境界か: 流体ソルバーに置き換えるときも、下流 (レイマーチ・MV・Atlas) は

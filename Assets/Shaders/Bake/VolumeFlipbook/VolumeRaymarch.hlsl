@@ -9,7 +9,7 @@
 /// @note 1 は画面空間速度 (タイル UV/秒) と重みの合計を格納する。
 /// @note 2 は 6 方向ライトマップ Positive (右, 上, 奥, α) で、gSixWay が 0 なら描かない。
 /// @note 3 は 6 方向ライトマップ Negative (左, 下, 手前, 発光マスク)。
-/// @note 6 方向マップの規約は Engine/Asset/SixWayLighting.hpp を参照する (単位白色光の明るさ、モノクロ・リニア・ストレート)。
+/// @note 6 方向マップの規約は Engine/Asset/VFX/SixWayLighting.hpp を参照する (単位白色光の明るさ、モノクロ・リニア・ストレート)。
 /// @note 4 は覆い率で重み付けした albedo ramp 色相、5 は積分済み emission RGB (Fire はソフトニー済み)。
 /// @note CPU へ読み戻せる色は color 0 だけなので、各 tile の値を 1 枚へ横並びにする。
 /// @note MRT にするとバックエンドの改修が要り、RT を 2 枚にすると GPU 待ちが 2 回になる。

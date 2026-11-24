@@ -15,14 +15,14 @@
 #define CB_ATMOSPHERE   b6  /// @note AtmosphereConstants per-frame (Skydome のみ)
 
 /// @note Velocity パス専用: 前フレームのボーンパレット。
-/// @note WHY b2 に相乗りするか: b0〜b13 は全て別用途に埋まっている。Velocity パスは
+/// @note b2 に相乗りするか: b0〜b13 は全て別用途に埋まっている。Velocity パスは
 /// @note 速度しか書かずマテリアルを一切読まないので、このパスに限り b2 が空く。
 /// @note Velocity.hlsl / VelocitySkinned.hlsl 以外がこの名前を使ってはいけない。
 #define CB_PREV_SKINNING b2
 
 /// @note ---- UI (UISystem / UI マテリアル) -----------------------------------
 /// @note UI パスは b0 を CameraConstants ではなく UIConstants として使う。
-/// @note WHY 専用スロットへ逃がさないか:
+/// @note 専用スロットへ逃がさないか:
 /// @note UI の描画に view / projection は要らない。矩形は Canvas 空間で組み立て、
 /// @note ortho 1 本で clip 空間へ送る。カメラ行列を束縛しないパスで b0 を空けておく
 /// @note 意味が無く、逆に UI だけ離れた番号を使うと DrawCall の埋め方が UI だけ
@@ -37,7 +37,7 @@
 /// @note ---- Decal (DecalPass) -----------------------------------------------
 /// @note 投影ボリューム・角度フェード・受信レイヤーはエンジンが毎ドロー埋める。
 ///
-/// @note WHY b2 に置かないか:
+/// @note b2 に置かないか:
 /// @note シェーダーリフレクションは cbuffer 名 "MaterialConstants" を探す
 /// @note (DX11Shader/DX12Shader::BuildDescriptor)。デカール定数をそこへ置くと
 /// @note .mat の params を 1 つも束縛できず、デカールだけマテリアルを持てない
@@ -50,7 +50,7 @@
 /// @note ビルボードの展開方法・フリップブック・歪み・煙・自己影といった、エンジンが
 /// @note エミッターごとに決める値。材質側からは読み取り専用。
 ///
-/// @note WHY b2 に置かないか:
+/// @note b2 に置かないか:
 /// @note CB_DECAL とまったく同じ理由。リフレクションは cbuffer 名 "MaterialConstants" を
 /// @note b2 に探すため、ここを占有するとパーティクル材質だけ .mat の [params] を
 /// @note 1 つも持てない例外になる。b2 は材質へ明け渡し、エンジン側は空きスロットへ逃がす。
@@ -60,11 +60,11 @@
 
 /// @note 残像 1 枚ぶんの色 (古いサンプルほど colorEnd 寄り)。エンジンが毎ドロー埋める。
 ///
-/// @note WHY b2 に置かないか:
+/// @note b2 に置かないか:
 /// @note CB_DECAL / CB_PARTICLE とまったく同じ理由。リフレクションは cbuffer 名
 /// @note "MaterialConstants" を b2 に探すため、ここを占有すると残像材質だけ .mat の
 /// @note [params] を 1 つも持てない例外になる。
-/// @note WHY 新しい番号を作らず b6 を借りるか:
+/// @note 新しい番号を作らず b6 を借りるか:
 /// @note b0〜b13 は既に全て別用途で埋まっている。残像の描画は大気も空も読まないので、
 /// @note このパスに限り b6 が空く (CB_PREV_SKINNING が b2 を借りるのと同じ作法)。
 /// @note MeshTrail / SkinnedMeshTrail とその材質シェーダー以外がこの名前を使ってはいけない。
@@ -91,12 +91,12 @@
 #define TEX_PARTICLE_SIX_WAY_EMISSION t11 /// @note Particle pass の six-way emission atlas
 #define TEX_ENV_EQUIRECT t12 /// @note Skydome 等緯度テクスチャ
 /// @note カスタムパスが宣言したときだけ束縛される追加入力。IBL / Skydome と時分割で共有する。
-/// @note WHY 空きスロットを増やさず時分割か: 全画面のカスタムパスはシーンのジオメトリを
+/// @note 空きスロットを増やさず時分割か: 全画面のカスタムパスはシーンのジオメトリを
 /// @note 描かないので環境マップを読まない。同じフレームでも同時に束縛されることが無い。
 #define TEX_CUSTOM_VELOCITY t11 /// @note モーションベクター (RG = 速度)
 #define TEX_CUSTOM_NORMAL   t12 /// @note GBuffer 法線 (Deferred 系のみ)
 /// @note 各ピクセルの可視サーフェスが属するレイヤー番号 + 1 を格納する。0 = 未描画。
-/// @note WHY 0 を「未描画」に使うか: レイヤー 0 (Default) が有効な番号なので、クリア値と
+/// @note 0 を「未描画」に使うか: レイヤー 0 (Default) が有効な番号なので、クリア値と
 /// @note 区別が付かないと地形やフォリッジのように受信バッファへ描かないジオメトリが
 /// @note すべて Default 扱いになる。+1 しておけば「不明なら受信させる」に倒せる。
 #define TEX_DECAL_MASK   t13 /// @note デカール受信レイヤーバッファ (レイヤーフィルタ使用時のみ)
@@ -108,12 +108,12 @@
 #define SB_GPU_PARTICLES    t14  /// @note StructuredBuffer<GpuParticle> (VS 描画用 / CS RW 用)
 #define SB_GPU_SPAWN        t15  /// @note StructuredBuffer<GpuSpawnEntry> (CS スポーン入力)
 /// @note GPU ソート済みの (key, particleIndex)。t15 を CS のスポーン入力と時分割で共有する。
-/// @note WHY: スポーン CS と描画 VS は別ステージ・別ディスパッチで、同時にバインドされることがない。
+/// @note スポーン CS と描画 VS は別ステージ・別ディスパッチで、同時にバインドされることがない。
 /// @note t16 以降は Advanced Graphics が使い切っているため、空きスロットを増やすより時分割が安い。
 #define SB_GPU_SORT         t15  /// @note VS: StructuredBuffer<uint2> (ソート済みインデックス)
 
 /// @note 粒子に効く流れ一式 (内蔵 + シーン)。StructuredBuffer<GpuFlowField>。
-/// @note WHY 定数バッファではないか: cbuffer は固定長なので «渡せる力の本数» に上限が要り、
+/// @note 定数バッファではないか: cbuffer は固定長なので «渡せる力の本数» に上限が要り、
 /// @note あふれた分は捨てるしかない。捨てられたのが重力だと粒子がその場に浮くという、
 /// @note 設定ミスと区別の付かない壊れ方をする。SRV にすれば上限そのものが消える。
 /// @note SB_PUNCTUAL_LIGHTS と同じ t29 を時分割する (粒子 CS はライトを読まない)。
@@ -146,22 +146,22 @@
 /// @note 定義がここに無いと「どのフィルタが来るか」がバックエンドのコードを読まないと分からない。
 #define SAMPLER_UI           s5   /// @note Linear clamp (UI スプライト / テキスト)
 /// @note Cookie アトラス用。設定は SAMPLER_UI と同じ Linear clamp なので同じ枠を使う。
-/// @note WHY 同居できるか: UI シェーダーは Constants.hlsli / Lighting.hlsli を include しない
+/// @note 同居できるか: UI シェーダーは Constants.hlsli / Lighting.hlsli を include しない
 /// @note 規約 (UICommon.hlsli の #error が機械的に守らせている) ため、s5 を宣言する
 /// @note シェーダーは「UI か、ライティングを持つマテリアルか」のどちらか一方に必ずなる。
-/// @note WHY s2 (SAMPLER_LINEAR_CLAMP) を使わないか: あちらは IBL BRDF LUT 用に
+/// @note s2 (SAMPLER_LINEAR_CLAMP) を使わないか: あちらは IBL BRDF LUT 用に
 /// @note マテリアルシェーダーが自前の名前で宣言済み。共有ヘッダーから重ねて宣言できない。
 #define SAMPLER_COOKIE       s5   /// @note Linear clamp (ライト Cookie)
 #define SAMPLER_UI_POINT     s6   /// @note Point  clamp (ドット絵 UI / 拡大時に補間させたくない図版)
 /// @note Spot / Point シャドウ用の 2 本目の比較サンプラー。設定は s1 と同一。
-/// @note WHY s1 を使い回さないか: s1 の SamplerComparisonState は各マテリアルシェーダーが
+/// @note s1 を使い回さないか: s1 の SamplerComparisonState は各マテリアルシェーダーが
 /// @note 自前の名前で宣言している (texShadow / sampShadow / gSampShadow …)。
 /// @note 共有ヘッダーからもう 1 つ s1 を宣言するとレジスタが二重定義になり、
 /// @note かといって呼び出し側の名前は統一されていないので参照もできない。
 /// @note 専用スロットを 1 本使うのが、40 以上のシェーダーを書き換えずに済む唯一の道。
 #define SAMPLER_SHADOW_PUNCTUAL s7 /// @note SamplerComparisonState (Spot / Point の PCF 用)
 /// @note 地形レイヤー (diffuse / normal / aoRoughness) のタイリング用。
-/// @note WHY s0 と分けるか: 地形は画面を広く覆い、レイヤーごとに 3 枚を引くので x16 異方性の
+/// @note s0 と分けるか: 地形は画面を広く覆い、レイヤーごとに 3 枚を引くので x16 異方性の
 /// @note コストが枚数ぶん乗る。x4 なら見た目はほぼ変わらず約 1/3 で済む。
 #define SAMPLER_WRAP_ANISO4  s8   /// @note Aniso x4 wrap (地形レイヤー)
 
@@ -177,7 +177,7 @@
 #define TEX_TAA_HISTORY      t21  /// @note TAA 前フレームカラーバッファ
 #define TEX_LUT_COLOR_GRADE  t22  /// @note 3D カラーグレーディング LUT
 /// @note Light Probe Volume の SH 係数 (Texture3D, Z 方向に 7 枚を積む)。
-/// @note WHY TEX_LUT_COLOR_GRADE と時分割か: t22 を読むのは Composite だけで、ライティングを
+/// @note TEX_LUT_COLOR_GRADE と時分割か: t22 を読むのは Composite だけで、ライティングを
 /// @note 持つマテリアル / DeferredLighting は宣言していない。どちらも Texture3D なので
 /// @note null ディスクリプタの次元も食い違わない (TEX_VELOCITY_FIELD と同じ組み方)。
 #define TEX_LIGHT_PROBE_SH   t22
@@ -187,10 +187,10 @@
 #define TEX_GTAO             t23  /// @note GTAO 結果 (SSAO の代替)
 /// @note Forward のマテリアルシェーダーが読む「統一済み画面空間 AO」(GTAO か SSAO のどちらか)。
 ///
-/// @note WHY TEX_SSAO (t9) を使わないか: t9 は Terrain が AO/Roughness レイヤー配列に、
+/// @note TEX_SSAO (t9) を使わないか: t9 は Terrain が AO/Roughness レイヤー配列に、
 /// @note Water がシャドウマップに、パーティクルが自己影の密度バッファに使っており、
 /// @note マテリアル側では空いていない。t23 はマテリアル系のどのシェーダーも宣言していない。
-/// @note WHY TEX_GTAO と同じ番号でよいか: t23 を読むのは GTAO のブラー CS (中間出力) と
+/// @note TEX_GTAO と同じ番号でよいか: t23 を読むのは GTAO のブラー CS (中間出力) と
 /// @note Composite (froxel fog) だけで、どちらもマテリアル描画とは別のディスパッチ / パス。
 /// @note 同時に束縛されることがない。
 #define TEX_SCREEN_AO        t23
@@ -207,7 +207,7 @@
 /// @note モーションベクター: RG = 現 UV - 前フレーム UV、B = 書き込み済みフラグ (1)。
 /// @note B が 0 の画素 (空・未描画) では読み手が従来どおり深度再投影へフォールバックする。
 ///
-/// @note WHY TEX_CLOUD_SHAPE と時分割か: DrawCall::textures は t0〜t31 の 32 枠で空きが無い。
+/// @note TEX_CLOUD_SHAPE と時分割か: DrawCall::textures は t0〜t31 の 32 枠で空きが無い。
 /// @note 枠を増やすと DX12 のルートシグネチャ (srvRange.NumDescriptors) の変更になり
 /// @note 全 PSO へ波及する。雲 3D ノイズを読むのは VolumetricCloud.hlsl だけで、
 /// @note TAA / MotionBlur / Velocity は雲を一切参照しないため同時に束縛されない。
@@ -216,7 +216,7 @@
 
 /// @note ---- Spot / Point シャドウ + Cookie -----------------------------------
 /// @note Directional の CSM (TEX_SHADOW) とは別アトラス。
-/// @note WHY 相乗りさせないか: CSM は「カメラ視錐台をどう分割するか」でタイル数が決まるのに対し、
+/// @note 相乗りさせないか: CSM は「カメラ視錐台をどう分割するか」でタイル数が決まるのに対し、
 /// @note こちらは「シーンにいくつ影付きライトがあるか」で決まる。同じ面積を奪い合わせると、
 /// @note ライトを 1 つ置いただけで Directional の遠景カスケードが粗くなる。
 #define TEX_PUNCTUAL_SHADOW  t28  /// @note Spot / Point シャドウアトラス (深度)
@@ -229,7 +229,7 @@
 #define UAV_MOTION_BLUR      u5   /// @note モーションブラー Compute 書き込み先
 #define UAV_GTAO_RAW         u6   /// @note GTAO RAW Compute 書き込み先
 #define UAV_GTAO_BLUR        u7   /// @note GTAO ブラー後 Compute 書き込み先
-/// @note WHY: DX11 SM5.0 の CS UAV スロットは u0〜u7 の 8 本しかない。
+/// @note DX11 SM5.0 の CS UAV スロットは u0〜u7 の 8 本しかない。
 /// @note 下記 2 パスはどちらも他の CS と同時実行しない逐次パスなので、
 /// @note 既存スロットを再利用することで上限内に収める。
 #define UAV_CONTACT_SHADOW   u3   /// @note コンタクトシャドウ Compute 書き込み先 (UAV_SSR と時分割で再利用)
@@ -241,13 +241,13 @@
 /// @note 2. Integrate : Z 方向へ前から積分し、透過率込みの結果を gFroxelIntegrated へ書く
 /// @note 適用は Composite が深度からスライスを引いて 1 回サンプルするだけ。
 ///
-/// @note WHY u0/u1 を使い回すか: どちらのパスも他の CS と同時実行しない逐次パスで、
+/// @note u0/u1 を使い回すか: どちらのパスも他の CS と同時実行しない逐次パスで、
 /// @note DX11 SM5.0 の CS UAV は u0〜u7 しかない。専用スロットを増やすより時分割が安い。
 #define UAV_FROXEL_SCATTER    u0  /// @note RWTexture3D<float4> (UAV_OUTPUT と時分割)
 #define UAV_FROXEL_INTEGRATED u1  /// @note RWTexture3D<float4> (UAV_OUTPUT2 と時分割)
 
 /// @note Bloom アップサンプルが「同じ寸法のダウンサンプル結果」を足すための入力。
-/// @note WHY 書き込み先の UAV から読まないか: コンピュート用テクスチャは RGBA16F で、
+/// @note 書き込み先の UAV から読まないか: コンピュート用テクスチャは RGBA16F で、
 /// @note D3D11 の typed UAV load が保証されるのは R32 系だけ。RWTexture2D<float4> を
 /// @note 読むと未定義動作になり、実際に画面が 2x2 に割れる形で壊れた。
 /// @note 読むものは必ず SRV から読む。t9 (TEX_SSAO) は Bloom の経路では使われない。
@@ -257,7 +257,7 @@
 #define TEX_FROXEL_FOG        t23 /// @note Composite が読む積分済みボリューム (TEX_GTAO と時分割)
 
 /// @note Inject が読む前フレームの散乱ボリューム。t20 を TEX_FROXEL_SCATTER と時分割する。
-/// @note WHY 同じ番号でよいか: Inject と Integrate は別のディスパッチで、どちらも
+/// @note 同じ番号でよいか: Inject と Integrate は別のディスパッチで、どちらも
 /// @note 「そのパスが読むフロクセルボリューム」を t20 に置く。同時には読まない。
 /// @note サンプラーは 3D の linear clamp が要るだけなので s2 を共用する (s5/s7 は満杯)。
 #define TEX_FROXEL_HISTORY     t20
@@ -274,7 +274,7 @@
 #define CB_CLUSTER           b9   /// @note ClusterConstants (グリッド寸法 / Z スライス係数 / ライト数)
 
 /// @note ---- Spot / Point シャドウ + Cookie の定数 ----------------------------
-/// @note WHY b4 (ShadowConstants) へ足さないか: あちらは 464 bytes 固定で C++ 側に
+/// @note b4 (ShadowConstants) へ足さないか: あちらは 464 bytes 固定で C++ 側に
 /// @note static_assert があり、Terrain / Water / パーティクルまで含む 20 以上の
 /// @note シェーダーが同じレイアウトを読む。1 つ追加するたびに全経路の再検証が要る。
 /// @note Spot / Point は「読むシェーダーが増えていく途中」なので、別 cbuffer にして
@@ -282,10 +282,10 @@
 #define CB_PUNCTUAL_SHADOW   b12  /// @note PunctualShadowConstants (VP / アトラス矩形 / バイアス / Cookie)
 
 /// @note ライトデータ。DrawCall::psBuffers[0..1] と ComputeCall::srvBuffers[29] / [30] が束縛される。
-/// @note LAYOUT: Engine/Renderer/DrawCall.hpp の kPsBufferBaseSlot (=29) と一致させること。
-/// @note WHY t14/t15 を使わないか: あちらは両バックエンドとも頂点シェーダー専用スロットで、
+/// @note Graphics/Renderer/DrawCall.hpp の kPsBufferBaseSlot (=29) と一致させること。
+/// @note t14/t15 を使わないか: あちらは両バックエンドとも頂点シェーダー専用スロットで、
 /// @note PS からは読めない (DX11 は VSSetShaderResources、DX12 の root param 15 は VERTEX 可視)。
-/// @note NOTE: フロクセル霧の Inject CS もここを読む。CS の SRV テーブルは t0〜t31 を覆うので、
+/// @note フロクセル霧の Inject CS もここを読む。CS の SRV テーブルは t0〜t31 を覆うので、
 /// @note PS と同じレジスタのまま ComputeCall::srvBuffers 経由で渡せる。
 #define SB_PUNCTUAL_LIGHTS   t29  /// @note StructuredBuffer<PunctualLight>  点光源+スポットを統合した配列
 #define SB_CLUSTER_INDICES   t30  /// @note StructuredBuffer<uint>  [cluster*stride] = 個数, 続けてライト番号
@@ -295,7 +295,7 @@
 #define SB_CLUSTER_LIGHTS_CS t14  /// @note StructuredBuffer<PunctualLight>
 
 /// @note カリング CS の出力。ComputeCall::uavBuffers[0] が u2 へ束縛される。
-/// @note WHY UAV が 1 本で足りるか: 1 スレッド = 1 クラスタにするとカウンタがスレッド内で完結するため、
+/// @note UAV が 1 本で足りるか: 1 スレッド = 1 クラスタにするとカウンタがスレッド内で完結するため、
 /// @note InterlockedAdd も offset テーブルも不要になり、固定ストライドで直接書ける。
 /// @note おかげで UAV_SSR / UAV_CONTACT_SHADOW / UAV_GPU_SORT が密集する u3 を避けられる。
 #define UAV_CLUSTER_LIGHTS   u2   /// @note RWStructuredBuffer<uint> (UAV_GPU_PARTICLES と時分割で再利用)
@@ -383,4 +383,4 @@
 #define UAV_MOTION_BLUR_SLOT         5
 #define UAV_GTAO_RAW_SLOT            6
 #define UAV_GTAO_BLUR_SLOT           7
-#endif /// @note BINDING_HLSLI
+#endif

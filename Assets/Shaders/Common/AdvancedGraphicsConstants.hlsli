@@ -4,7 +4,7 @@
 /// @date    2026-08-25
 ///
 /// @note Constants.hlsli を include できない Terrain / Water (b0 / b1 / b3 が自前レイアウト) も b8 を読むので、定義を 1 か所に集める。
-/// @note レイアウトは Engine/Scene/Systems/RenderPasses/RenderPassContext.hpp の AdvancedGraphicsCB と完全に一致させる (464 bytes)。
+/// @note レイアウトは Graphics/Pipeline/RenderConstants.hpp の AdvancedGraphicsCB と完全に一致させる (464 bytes)。
 #ifndef ADVANCED_GRAPHICS_CONSTANTS_HLSLI
 #define ADVANCED_GRAPHICS_CONSTANTS_HLSLI
 
@@ -125,4 +125,4 @@ cbuffer AdvancedGraphicsConstants : register(CB_ADVANCED_GRAPHICS)
 /// @note Shadow.hlsli が b8 の有無を判定するガード。b8 を宣言しない Terrain 等で pcss* が未定義になるのをフォールバックへ切り替える。
 #define HAVE_ADVANCED_GRAPHICS_CB 1
 
-#endif // ADVANCED_GRAPHICS_CONSTANTS_HLSLI
+#endif
