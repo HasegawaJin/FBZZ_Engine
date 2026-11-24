@@ -3,9 +3,17 @@
 /// @author  Hasegawa Jin
 /// @date    2026-08-12
 #include <TestKit/TestKit.hpp>
+#include <TestKit/TempDir.hpp>
+
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 
 #include <Engine/Core/Cursor.hpp>
+#include <Engine/Core/Application.hpp>
+#include <Engine/Util/FileSystem.hpp>
 
+#include <array>
+#include <bit>
 #include <tuple>
 
 namespace fbzz::tests {
@@ -19,7 +27,7 @@ protected:
     void TearDown() override { core::Cursor::ResetForEditor(); }
 };
 
-/// @brief Applies and restores cursor state.
+/// @brief カーソルの表示と拘束を適用し、エディターへ戻す。
 TEST_F(CursorManualTest, AppliesAndRestoresCursorState)
 {
     core::Cursor::SetVisible(true);
@@ -37,7 +45,7 @@ TEST_F(CursorManualTest, AppliesAndRestoresCursorState)
     EXPECT_EQ(core::Cursor::GetLockMode(), core::CursorLockMode::None);
 }
 
-/// @brief Lock mode survives TOML round trip.
+/// @brief 拘束モードを設定文字列と相互変換する。
 TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
 {
     for (core::CursorLockMode mode : { core::CursorLockMode::None,
@@ -49,7 +57,7 @@ TEST_F(CursorManualTest, LockModeSurvivesTomlRoundTrip)
     EXPECT_EQ(core::CursorLockModeFromString("bogus"), core::CursorLockMode::None);
 }
 
-/// @brief Shape names survive TOML round trip.
+/// @brief 形状名を設定文字列と相互変換する。
 TEST_F(CursorManualTest, ShapeNamesSurviveTomlRoundTrip)
 {
     for (std::size_t i = 0; i < core::kCursorShapeCount; ++i) {
@@ -59,7 +67,7 @@ TEST_F(CursorManualTest, ShapeNamesSurviveTomlRoundTrip)
     EXPECT_EQ(core::CursorShapeFromString("bogus"), core::CursorShape::Default);
 }
 
-/// @brief Suppression keeps the game request.
+/// @brief 入力の抑制中もゲームの要求を保持する。
 TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
 {
     /// @note Game View に戻ったときに復元できるよう、OS への反映を抑制している間もゲームの要求を保持する。
@@ -76,7 +84,7 @@ TEST_F(CursorManualTest, SuppressionKeepsTheGameRequest)
     EXPECT_TRUE(core::Cursor::IsVisible());
 }
 
-/// @brief Policy knows when it takes the cursor.
+/// @brief カーソルを引き受けるポリシーを判定する。
 TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
 {
     EXPECT_FALSE((core::CursorPolicy{ core::CursorLockMode::None, true }).CapturesCursor());
@@ -84,7 +92,7 @@ TEST_F(CursorManualTest, PolicyKnowsWhenItTakesTheCursor)
     EXPECT_TRUE((core::CursorPolicy{ core::CursorLockMode::Confined, true }).CapturesCursor());
 }
 
-/// @brief Stronger request wins and popping restores the weaker one.
+/// @brief 強い要求の解除後に弱い要求を復元する。
 TEST_F(CursorManualTest, StrongerRequestWinsAndPoppingRestoresTheWeakerOne)
 {
     /// @note メニューを閉じると、視点操作が要求した拘束と表示がスタックから復元される。
@@ -106,7 +114,7 @@ TEST_F(CursorManualTest, StrongerRequestWinsAndPoppingRestoresTheWeakerOne)
     EXPECT_TRUE(core::Cursor::IsVisible());
 }
 
-/// @brief Same priority lets the latest request win.
+/// @brief 同じ優先度では後から追加した要求を採用する。
 TEST_F(CursorManualTest, SamePriorityLetsTheLatestRequestWin)
 {
     const auto first = core::Cursor::Push({ core::CursorLockMode::Confined, true },
@@ -120,7 +128,7 @@ TEST_F(CursorManualTest, SamePriorityLetsTheLatestRequestWin)
     core::Cursor::Release(first);
 }
 
-/// @brief Requests are listed strongest first.
+/// @brief 要求一覧を有効な順に取得する。
 TEST_F(CursorManualTest, RequestsAreListedStrongestFirst)
 {
     std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
@@ -140,7 +148,7 @@ TEST_F(CursorManualTest, RequestsAreListedStrongestFirst)
     EXPECT_FALSE(below.active);
 }
 
-/// @brief Owner release drops every request from that object.
+/// @brief 同じ所有者の要求をまとめて解除する。
 TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
 {
     std::ignore = core::Cursor::Push({ core::CursorLockMode::Locked, false },
@@ -155,7 +163,7 @@ TEST_F(CursorManualTest, OwnerReleaseDropsEveryRequestFromThatObject)
     EXPECT_FALSE(core::Cursor::IsVisible());
 }
 
-/// @brief Clear requests also resets the base.
+/// @brief 要求の一括解除で基底の設定も復元する。
 TEST_F(CursorManualTest, ClearRequestsAlsoResetsTheBase)
 {
     /// @note シーン遷移時に基底もリセットし、前のシーンが直接指定した拘束を解除する。
@@ -169,7 +177,7 @@ TEST_F(CursorManualTest, ClearRequestsAlsoResetsTheBase)
     EXPECT_TRUE(core::Cursor::IsVisible());
 }
 
-/// @brief Updating a request keeps its place in the stack.
+/// @brief 要求を更新しても優先順位を維持する。
 TEST_F(CursorManualTest, UpdatingARequestKeepsItsPlaceInTheStack)
 {
     const auto ui = core::Cursor::Push({ core::CursorLockMode::Confined, false },
@@ -187,4 +195,97 @@ TEST_F(CursorManualTest, UpdatingARequestKeepsItsPlaceInTheStack)
     EXPECT_STREQ(top.label, "Pointer");
 }
 
-} // namespace fbzz::tests
+TEST_F(CursorManualTest, CustomShapePreservesWindowClassAndFallbackCursor)
+{
+    auto& application = core::Application::Get();
+    struct Shutdown {
+        core::Application& application;
+        bool physicalInputAllowed;
+        ~Shutdown()
+        {
+            application.Shutdown();
+            core::Cursor::SetPhysicalInputAllowed(physicalInputAllowed);
+        }
+    } shutdown{application, core::Cursor::IsPhysicalInputAllowed()};
+
+    core::Cursor::SetPhysicalInputAllowed(false);
+    ASSERT_TRUE(application.Init({L"Cursor shape test", 320, 240, false}));
+    core::Cursor::SetPhysicalInputAllowed(true);
+
+    const HWND window = application.GetWindow().GetHandle();
+    const HCURSOR arrow = LoadCursor(nullptr, IDC_ARROW);
+    const auto classCursor = GetClassLongPtrW(window, GCLP_HCURSOR);
+    ASSERT_NE(classCursor, 0u);
+    const auto setCursorMessage = [&](WORD hit) {
+        return SendMessageW(window, WM_SETCURSOR, std::bit_cast<WPARAM>(window), MAKELPARAM(hit, WM_MOUSEMOVE));
+    };
+    setCursorMessage(HTLEFT);
+    const HCURSOR resizeCursor = GetCursor();
+
+    testkit::TempDir temp("cursor-shape");
+    ASSERT_TRUE(temp.IsValid());
+    const auto path = temp.File("cursor.tga");
+    /// @note 2 × 2 の非圧縮 BGRA 画像。先頭画素のアルファは 128。
+    const std::array<unsigned char, 34> tga{
+        0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 32, 0x28,
+        16, 32, 64, 128, 32, 64, 128, 255, 0, 0, 0, 0, 0, 0, 0, 255
+    };
+    ASSERT_TRUE(util::FileSystem::WriteBinary(path, tga.data(), tga.size()));
+
+    core::Cursor::SetWindowActive(true);
+    ASSERT_TRUE(core::Cursor::AcquireGameInput());
+    ASSERT_TRUE(core::Cursor::SetShapeImage(core::CursorShape::Default, path.string().c_str(), 1, 0));
+    EXPECT_EQ(GetClassLongPtrW(window, GCLP_HCURSOR), classCursor);
+
+    EXPECT_EQ(setCursorMessage(HTCLIENT), TRUE);
+    const HCURSOR custom = GetCursor();
+    ASSERT_NE(custom, nullptr);
+    ASSERT_NE(custom, arrow);
+
+    struct CursorBitmaps {
+        ICONINFO info{};
+        ~CursorBitmaps()
+        {
+            if (info.hbmColor) DeleteObject(info.hbmColor);
+            if (info.hbmMask) DeleteObject(info.hbmMask);
+        }
+    } cursorBitmaps;
+    ASSERT_TRUE(GetIconInfo(custom, &cursorBitmaps.info));
+    EXPECT_FALSE(cursorBitmaps.info.fIcon);
+    EXPECT_EQ(cursorBitmaps.info.xHotspot, 1u);
+    EXPECT_EQ(cursorBitmaps.info.yHotspot, 0u);
+
+    BITMAPINFO bmp{};
+    bmp.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmp.bmiHeader.biWidth = 2;
+    bmp.bmiHeader.biHeight = -2;
+    bmp.bmiHeader.biPlanes = 1;
+    bmp.bmiHeader.biBitCount = 32;
+    bmp.bmiHeader.biCompression = BI_RGB;
+    std::array<unsigned char, 16> pixels{};
+    HDC dc = GetDC(nullptr);
+    ASSERT_NE(dc, nullptr);
+    const int rows = GetDIBits(dc, cursorBitmaps.info.hbmColor, 0, 2, pixels.data(), &bmp, DIB_RGB_COLORS);
+    ReleaseDC(nullptr, dc);
+    ASSERT_EQ(rows, 2);
+    EXPECT_EQ(pixels[3], 128);
+    EXPECT_EQ(pixels[7], 255);
+
+    const HCURSOR textCursor = LoadCursor(nullptr, IDC_IBEAM);
+    application.GetWindow().SetWndProcHook([textCursor](HWND, UINT msg, WPARAM, LPARAM lp) {
+        if (msg != WM_SETCURSOR || LOWORD(lp) != HTCLIENT) return false;
+        SetCursor(textCursor);
+        return true;
+    });
+    EXPECT_EQ(setCursorMessage(HTCLIENT), TRUE);
+    EXPECT_EQ(GetCursor(), textCursor);
+    application.GetWindow().SetWndProcHook({});
+
+    setCursorMessage(HTLEFT);
+    EXPECT_EQ(GetCursor(), resizeCursor);
+    core::Cursor::ReleaseGameInput();
+    setCursorMessage(HTCLIENT);
+    EXPECT_EQ(GetCursor(), arrow);
+}
+
+}

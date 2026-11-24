@@ -2,7 +2,7 @@
 /// @brief   Win32 ウィンドウの生成とメッセージ処理。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
-/// @note /// Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
+/// @note Input へのメッセージ転送、リサイズ通知、WndProc フックをまとめる。
 /// @note Renderer / ImGui とはコールバックで疎結合に接続する。
 
 #define WIN32_LEAN_AND_MEAN
@@ -13,6 +13,7 @@
 #include "Engine/Input/Input.hpp"
 #include "Engine/Util/FileSystem.hpp"
 #include "LockedMouseMotion.hpp"
+#include "WindowClientCursor.hpp"
 
 #include <dwmapi.h>
 #include <windowsx.h>
@@ -360,7 +361,7 @@ bool Window::Initialize(const Config& config)
     wc.hInstance     = instance;
     wc.hIcon         = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXICON));
     wc.hIconSm       = LoadApplicationIcon(instance, GetSystemMetrics(SM_CXSMICON));
-    wc.hCursor       = LoadCursorW(nullptr, std::bit_cast<LPCWSTR>(IDC_ARROW));
+    wc.hCursor       = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = kWindowClassName;
 
     RegisterClassExW(&wc);
@@ -408,7 +409,7 @@ bool Window::Initialize(const Config& config)
         }
     }
 
-    /// @note Automated Play may render a normal window but must not activate it.
+    /// @note 自動 Play は通常のウィンドウを描画できるが、アクティブ化してはならない。
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow
     ShowWindow(m_hwnd, Cursor::IsPhysicalInputAllowed() ? SW_SHOW : SW_SHOWNOACTIVATE);
     UpdateWindow(m_hwnd);
@@ -650,7 +651,7 @@ LRESULT CALLBACK LoadingPanelProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
     return 0;
 }
 
-/// @see https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#owned-windows Owned windows follow owner minimization.
+/// @see https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#owned-windows 所有ウィンドウの最小化に追従する被所有ウィンドウの規定。
 HWND CreateLoadingPanel(HWND owner, const std::wstring& status)
 {
     const HINSTANCE instance = GetModuleHandleW(nullptr);
@@ -682,7 +683,7 @@ void UpdateLoadingPanel(HWND panel, HWND owner)
     RedrawWindow(panel, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
 }
 
-/// @note A detached editor panel can receive input even while its owner ignores editing commands.
+/// @note エディター本体が編集コマンドを無視している場合も、分離したエディターパネルは入力を受け取れる。
 void DisableOwnedWindows(HWND owner, std::vector<HWND>& disabled)
 {
     struct Enumeration {
@@ -742,7 +743,7 @@ bool Window::IsLoading() const
     return s_loadingWindow == this;
 }
 
-/// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew PeekMessageW also processes sent messages.
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-peekmessagew PeekMessageW は送信済みのメッセージも処理する。
 bool Window::PollLoadingEvents()
 {
     Window* const window = s_loadingWindow;
@@ -820,7 +821,7 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
-    /// @note Safety lifecycle must run even when the ImGui hook consumes a window message.
+    /// @note ImGui フックがウィンドウメッセージを消費した場合も、安全のためのライフサイクル処理は実行する。
     if (msg == WM_ACTIVATEAPP) {
         Cursor::SetWindowActive(wParam != FALSE);
         if (wParam == FALSE && GetCapture() == hwnd) ReleaseCapture();
@@ -869,6 +870,12 @@ LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPar
     if (window && window->m_wndProcHook && (!loading || (msg != WM_SIZE && msg != WM_DPICHANGED)))
         if (window->m_wndProcHook(hwnd, msg, wParam, lParam))
             return true;
+
+    /// @note 子ウィンドウから親へ転送された場合や非クライアント領域では既定のカーソルを保つ。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/menurc/wm-setcursor 対象 HWND、ヒットテスト、親への転送。
+    if (msg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT && std::bit_cast<HWND>(wParam) == hwnd
+        && cursor_detail::TrySetWindowClientCursor(hwnd))
+        return TRUE;
 
     if (window && msg == WM_COMMAND && HIWORD(wParam) == 0 && lParam == 0
         && window->m_nativeMenuCommandCallback) {

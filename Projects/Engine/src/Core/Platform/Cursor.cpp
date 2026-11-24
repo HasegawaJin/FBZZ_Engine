@@ -10,6 +10,7 @@
 #include <Engine/Input/Gamepad.hpp>
 #include "CursorControlPolicy.hpp"
 #include "LockedMouseMotion.hpp"
+#include "WindowClientCursor.hpp"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -17,6 +18,10 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstring>
+#include <type_traits>
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -77,7 +82,19 @@ CursorRequestId      g_nextId = 1;
 
 /// @note 種類ごとのカーソル画像。未設定 (nullptr) なら OS の既定矢印を使う。
 HCURSOR g_shapeCursors[kCursorShapeCount]{};
-bool    g_shapeApplied = false;   ///< @note ウィンドウクラスの矢印を自前の絵で置き換えているか
+/// @note WM_SETCURSOR が参照するハンドルは g_shapeCursors が所有する。
+HWND g_cursorWindow = nullptr;
+HCURSOR g_appliedCursor = nullptr;
+
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-destroycursor 使用中と共有カーソルの破棄制約。
+void DestroyShapeCursor(HCURSOR retired)
+{
+    if (!retired) return;
+    /// @note 現在のカーソルを破棄する前に、選択中なら共有の矢印に戻す。
+    if (GetCursor() == retired)
+        SetCursor(LoadCursor(nullptr, IDC_ARROW));
+    DestroyCursor(retired);
+}
 
 std::size_t ShapeIndex(CursorShape shape)
 {
@@ -138,14 +155,16 @@ void ReleaseClip(bool& clipActive)
     /// @note 自分が張っていないときに毎フレーム呼ぶと他アプリの拘束まで剥がしてしまう。
     if (!clipActive) return;
     RECT current{};
-    /// @note ClipCursor is shared with other applications; never remove a later owner's different rectangle.
-    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clipcursor Cursor ownership responsibility.
+    /// @note ClipCursor は他のアプリケーションと共有される。後から他の所有者が設定した領域は解除しない。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-clipcursor カーソルのクリップ領域を所有するアプリケーションの責務。
     if (GetClipCursor(&current) && EqualRect(&current, &g_appliedClip)) ClipCursor(nullptr);
     clipActive = false;
     g_appliedLock = CursorLockMode::None;
 }
 
 /// @note PNG / TGA / BMP から HCURSOR を作る。失敗したら nullptr。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapv5header アルファマスク付きの V5 ヘッダー。
+/// @see https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-createdibsection BITMAPINFO の先頭から DIB ヘッダーを渡す契約。
 HCURSOR CreateCursorFromImage(const char* path, int hotspotX, int hotspotY)
 {
     int width = 0, height = 0, channels = 0;
@@ -169,10 +188,22 @@ HCURSOR CreateCursorFromImage(const char* path, int hotspotX, int hotspotY)
     header.bV5BlueMask    = 0x000000FF;
     header.bV5AlphaMask   = 0xFF000000;
 
+    /// @note API に実在する BITMAPINFO を渡し、その後ろに V5 の残りのバイトを連続して保持する。
+    struct Version5BitmapInfo {
+        BITMAPINFO info;
+        std::array<std::byte, sizeof(BITMAPV5HEADER) - sizeof(BITMAPINFO)> remaining;
+    };
+    static_assert(std::is_standard_layout_v<Version5BitmapInfo>);
+    static_assert(sizeof(Version5BitmapInfo) == sizeof(BITMAPV5HEADER));
+    static_assert(offsetof(Version5BitmapInfo, info) == 0);
+    static_assert(offsetof(Version5BitmapInfo, remaining) == sizeof(BITMAPINFO));
+    static_assert(offsetof(BITMAPV5HEADER, bV5RedMask) == offsetof(BITMAPINFO, bmiColors));
+    Version5BitmapInfo bitmap{};
+    std::memcpy(&bitmap, &header, sizeof(header));
+
     void* bits = nullptr;
     HDC screenDC = GetDC(nullptr);
-    HBITMAP color = CreateDIBSection(screenDC, reinterpret_cast<BITMAPINFO*>(&header),
-                                     DIB_RGB_COLORS, &bits, nullptr, 0);
+    HBITMAP color = CreateDIBSection(screenDC, &bitmap.info, DIB_RGB_COLORS, &bits, nullptr, 0);
     ReleaseDC(nullptr, screenDC);
     if (!color || !bits) {
         if (color) DeleteObject(color);
@@ -505,20 +536,21 @@ bool Cursor::SetShapeImage(CursorShape shape, const char* path, float hotspotX, 
         return false;
     }
 
-    if (g_shapeCursors[index]) DestroyIcon(static_cast<HICON>(g_shapeCursors[index]));
+    const HCURSOR retired = g_shapeCursors[index];
     g_shapeCursors[index] = created;
     ApplyShape();
+    DestroyShapeCursor(retired);
     return created != nullptr;
 }
 
 void Cursor::ClearShapeImages()
 {
-    for (HCURSOR& cursor : g_shapeCursors) {
-        if (!cursor) continue;
-        DestroyIcon(static_cast<HICON>(cursor));
-        cursor = nullptr;
-    }
+    std::array<HCURSOR, kCursorShapeCount> retired{};
+    std::copy_n(g_shapeCursors, retired.size(), retired.begin());
+    std::fill_n(g_shapeCursors, retired.size(), nullptr);
     ApplyShape();
+    for (const HCURSOR cursor : retired)
+        DestroyShapeCursor(cursor);
 }
 
 bool Cursor::HasShapeImage(CursorShape shape)
@@ -538,36 +570,30 @@ CursorShape Cursor::GetShape()
     return s_shape;
 }
 
+bool cursor_detail::TrySetWindowClientCursor(HWND window)
+{
+    if (!g_appliedCursor || window != g_cursorWindow) return false;
+    SetCursor(g_appliedCursor);
+    return true;
+}
+
 void Cursor::ApplyShape()
 {
-    /// @note 差し替え先はウィンドウクラスのカーソルで、Editor では «エディタの窓全体» が対象になる。
-    /// @note Play を抜けた後もゲームの絵が残ると、パネル上でもゲームのカーソルが出続けるため、
-    /// @note 効かせない間は矢印へ戻す。
-    HCURSOR wanted = Effective() ? g_shapeCursors[ShapeIndex(s_shape)] : nullptr;
+    const HCURSOR wanted = Effective() ? g_shapeCursors[ShapeIndex(s_shape)] : nullptr;
+    if (!wanted && !g_appliedCursor) return;
 
-    /// @note 絵を一度も差し込んでいないなら触るものが無い。ここで抜けることで、
-    /// @note カーソル画像を使わないゲームとテストは Window にも触らずに済む。
-    if (!wanted && !g_shapeApplied) return;
+    const HWND window = wanted ? Application::Get().GetWindow().GetHandle() : g_cursorWindow;
+    g_cursorWindow = wanted ? window : nullptr;
+    g_appliedCursor = window ? wanted : nullptr;
 
-    HWND hwnd = Application::Get().GetWindow().GetHandle();
-    if (!hwnd) return;
-
-    if (!wanted) {
-        g_shapeApplied = false;
-        wanted = LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW));
-    } else {
-        g_shapeApplied = true;
-    }
-
-    SetClassLongPtrW(hwnd, GCLP_HCURSOR, reinterpret_cast<LONG_PTR>(wanted));
-
-    /// @note クラスのカーソルは «次に WM_SETCURSOR が来たとき» に効く。マウスが止まっている間も
-    /// @note 切り替わって見えるよう、カーソルがこのウィンドウの上に居るなら即座に差し替える。
+    /// @note ポインターが停止中でも、対象のクライアント領域ではゲームの形状変更を即時反映する。
+    /// @see https://learn.microsoft.com/en-us/windows/win32/menurc/wm-setcursor クライアント判定と既定処理。
     POINT screen{};
-    if (GetCursorPos(&screen)) {
-        HWND under = WindowFromPoint(screen);
-        if (under && GetAncestor(under, GA_ROOT) == hwnd) SetCursor(wanted);
-    }
+    if (!window || GetCapture() || !GetCursorPos(&screen) || WindowFromPoint(screen) != window) return;
+    POINT client = screen;
+    RECT bounds{};
+    if (!ScreenToClient(window, &client) || !GetClientRect(window, &bounds) || !PtInRect(&bounds, client)) return;
+    SetCursor(g_appliedCursor ? g_appliedCursor : LoadCursor(nullptr, IDC_ARROW));
 }
 
 void Cursor::SetClipRegion(float x, float y, float width, float height)
