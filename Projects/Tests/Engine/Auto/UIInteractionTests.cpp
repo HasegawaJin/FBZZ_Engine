@@ -9,6 +9,7 @@
 #include <Engine/Scene/Scene.hpp>
 #include <Engine/Scene/Components/UICanvas.hpp>
 #include <Engine/Scene/Components/UIButton.hpp>
+#include <Engine/Scene/Components/UIImage.hpp>
 #include <Engine/Scene/Components/UIText.hpp>
 #include <Engine/Scene/Components/UIControls.hpp>
 #include <Engine/Scene/Systems/UIInteraction.hpp>
@@ -16,6 +17,8 @@
 #include <Engine/Scene/UIPointer.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Graphics/Renderer/ResourceManager.hpp>
+#include <algorithm>
+#include <array>
 
 namespace fbzz::tests {
 class UIInteractionTest : public testkit::EngineFixture {
@@ -119,6 +122,73 @@ TEST_F(UIInteractionTest, FailedGpuInitializationStillProcessesInputAndSceneView
     EXPECT_TRUE(m_button->onClick);
     draw(false, scene::UIRenderTargetView::SceneViewport);
     EXPECT_TRUE(m_button->onClick);
+    scene::UISystemReleaseGpuResources(context);
+}
+
+/// @brief 画像の塗り潰しとテキストの描画順を、GPU リソースの再作成前後で検証する。
+TEST_F(UIInteractionTest, DrawsFilledImageThenTextBeforeAndAfterResourceReset)
+{
+    testkit::TempDir temp("ui-render-font");
+    ASSERT_TRUE(temp.IsValid());
+    const auto fontBasePath = temp.File("Font").generic_string();
+    ASSERT_TRUE(util::FileSystem::WriteText(fontBasePath + ".fnt",
+        "info face=\"Test\" size=20\ncommon lineHeight=20 base=15 scaleW=32 scaleH=32 pages=1\n"
+        "page id=0 file=\"Glyphs.png\"\nchars count=1\n"
+        "char id=65 x=0 y=0 width=8 height=10 xoffset=0 yoffset=0 xadvance=8 page=0 chnl=15\n"));
+
+    auto& image = m_buttonObject->AddComponent<scene::UIImage>();
+    image.fillAmount = 0.5f;
+    auto& labelObject = m_scene.CreateGameObject("Label");
+    labelObject.SetParent(*m_buttonObject->GetParent());
+    auto& text = labelObject.AddComponent<scene::UIText>();
+    text.text = "AA";
+    text.fontPath = fontBasePath;
+    text.fontSize = 20.0f;
+    text.sortOrder = 1;
+
+    std::vector<renderer::DrawCall> drawCalls;
+    testkit::ResourceTrackingRenderer device;
+    device.m_drawCalls = &drawCalls;
+    renderer::ResourceManager resources(device);
+    scene::UISystemContext context;
+    context.gameplayInput = false;
+
+    const auto verifyDraws = [&] {
+        const std::array<uint8_t, 4> glyphPixel{ 255, 255, 255, 255 };
+        const auto glyphTexture = resources.PublishTexture(temp.File("Glyphs.png").generic_string(),
+            resources.CreateTexture(glyphPixel.data(), 1, 1));
+        ASSERT_TRUE(glyphTexture.IsValid());
+
+        drawCalls.clear();
+        ++Time::frameCount;
+        scene::UISystem(m_scene, device, resources, context, 100, 100, {}, false);
+        ASSERT_EQ(drawCalls.size(), 2u);
+        const auto& imageDraw = drawCalls[0];
+        const auto& textDraw = drawCalls[1];
+        EXPECT_EQ(imageDraw.shader, context.shader);
+        EXPECT_EQ(imageDraw.textures[0], resources.GetWhiteTexture());
+        EXPECT_EQ(imageDraw.vertexCount, 6u);
+        EXPECT_EQ(textDraw.shader, context.textShader);
+        EXPECT_EQ(textDraw.textures[0], glyphTexture);
+        EXPECT_EQ(textDraw.vertexCount, 12u);
+        EXPECT_NE(imageDraw.vertexBuffer, textDraw.vertexBuffer);
+
+        std::array<scene::UIVertex2D, 6> imageVertices{};
+        const auto* imageBuffer = resources.Get(imageDraw.vertexBuffer);
+        ASSERT_NE(imageBuffer, nullptr);
+        ASSERT_TRUE(imageBuffer->CopyData(0, sizeof(imageVertices), imageVertices.data()));
+        const auto [left, right] = std::minmax_element(imageVertices.begin(), imageVertices.end(),
+            [](const auto& first, const auto& second) { return first.pos.x < second.pos.x; });
+        EXPECT_NEAR(right->pos.x - left->pos.x, 20.0f, testkit::kTolerance);
+    };
+
+    ASSERT_NO_FATAL_FAILURE(verifyDraws());
+    const auto previousImageShader = drawCalls[0].shader;
+    const auto previousFontPage = drawCalls[1].textures[0];
+    resources.Reset();
+    ASSERT_NO_FATAL_FAILURE(verifyDraws());
+    EXPECT_NE(drawCalls[0].shader, previousImageShader);
+    EXPECT_NE(drawCalls[1].textures[0], previousFontPage);
     scene::UISystemReleaseGpuResources(context);
 }
 

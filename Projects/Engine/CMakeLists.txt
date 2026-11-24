@@ -208,7 +208,12 @@ file(GLOB RENDER_EXTRACTOR_SOURCES CONFIGURE_DEPENDS
     src/Scene/Systems/Render*.cpp src/Scene/Systems/Render*.hpp
     src/Scene/Systems/TerrainRenderCache.cpp src/Scene/Systems/TerrainRenderCache.hpp)
 list(APPEND RENDERING_SOURCES ${RENDER_EXTRACTOR_SOURCES}
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIImageRendering.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIRenderClipping.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIRendering.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UIRenderResources.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UISystem.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/Systems/UITextRendering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/SceneRenderResources.cpp")
 list(REMOVE_ITEM SCENE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/StandaloneProjectModule.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Scene/ProjectRuntime.cpp")
