@@ -335,6 +335,46 @@
       "revision": 2,
       "revised_at_utc": "2026-10-11T16:31:25.138834+00:00",
       "revision_reason": "User requested clearer Animation and Shader silhouettes at small display sizes."
+    },
+    {
+      "name": "Folder",
+      "date": "2026-11-24",
+      "prompt": "Create one production bitmap icon for the Assets browser of a modern desktop 3D game engine. One open, EMPTY file folder, unmistakable tab on upper left, broad front flap and a clearly visible sliver of dark interior. Orthographic, almost straight-on, slight top view. Rich layered warm pale ivory and cool silver, with broad flat planes, a clean soft bevel only along the upper lip and a dark slate blue inside; premium restrained industrial workstation UI, not emoji. The front flap is a plain calm pale near-neutral surface intended to accept tint from code. No symbols on front, no badge, no paper files, no text, no letters, no logo, no auxiliary elements. Strong, compact, simple silhouette optimised for rendering at 64 pixels on a near-black navy panel. Square canvas, entire icon centered with a transparent margin of about 10% on every side, icon visibly wider than tall. Isolated on fully transparent background including all four corners; no ground plane, no cast shadow beyond silhouette. Deliver only this single original icon.",
+      "original_sha256": "4429133d32b29eb17ce5132c63259ddbebbd466e8bcffa16e139c981392a4b57",
+      "original_path": "Docs/media/asset-browser-icons/Source/Folder.png",
+      "processing": "Proportional downsampling onto a transparent square with centered artwork. Folder tints and category marks are applied in the editor.",
+      "files": [
+        {
+          "path": "Assets/Icons/AssetBrowser/Folder16.png",
+          "sha256": "330c38bc9af44dacc92e6eb0e06bfb9db82f64706b414d024de74fac2546cff5",
+          "size": 16
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Folder24.png",
+          "sha256": "ccf5095ace7d24093af5b3d257a8ed5aa4288c2bea79cf36e1093d1f078ea407",
+          "size": 24
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Folder32.png",
+          "sha256": "7685c4c0088795801e3186039a6fcf7bd6b05d51e27c8996ea390c6e6642d218",
+          "size": 32
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Folder64.png",
+          "sha256": "4e8ac2cb0e1bbc3a1981b57121a6a6ee898ab1a944468f86a6c8c84cfa4d1e31",
+          "size": 64
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Folder128.png",
+          "sha256": "0d06c71058e181d73d137323685186043912aef262a83323f4c140bb59bfe9eb",
+          "size": 128
+        },
+        {
+          "path": "Assets/Icons/AssetBrowser/Folder256.png",
+          "sha256": "18fbada7691999aa405ce8513cae2564a075db217627640acd9e3e59637c5ef4",
+          "size": 256
+        }
+      ]
     }
   ],
   "revision_history": [

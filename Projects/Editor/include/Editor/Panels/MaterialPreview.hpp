@@ -33,6 +33,7 @@ enum class MaterialPreviewBackground {
 class MaterialPreviewView {
 public:
     /// @brief .mat を選択中の形状へ適用して描画する。
+    /// @param previewHeight キャンバスの最大高。0 ならツールバー描画後の残り高を使う。
     bool Draw(EditorContext& ctx, asset::MaterialAssetAuthoring material, float previewHeight);
 
     /// @brief 視点・照明・表示チャンネルを既定へ戻す。
@@ -43,7 +44,7 @@ public:
 
 private:
     void DrawToolbar(matpreview::Flavor flavor, bool gpuReady);
-    void DrawBackground(ImVec2 origin, float size, bool hovered) const;
+    void DrawBackground(ImVec2 min, ImVec2 max) const;
     /// @brief .mat の標準 normal スロットを raw RGB で表示する。
     void DrawNormalMap(EditorContext& ctx, const asset::MaterialAssetAuthoring& material);
     void DrawUnsupported(EditorContext& ctx, const asset::MaterialAssetAuthoring& material,

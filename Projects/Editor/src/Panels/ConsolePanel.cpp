@@ -3,8 +3,9 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Editor/Panels/ConsolePanel.hpp>
+#include "../Util/PanelToolbar.hpp"
+#include <Editor/Util/Localization.hpp>
 #include <Editor/EditorContext.hpp>
-#include <Editor/ManagedScriptEditor.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/EditorSettings.hpp>
@@ -17,7 +18,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cfloat>
 #include <cstdio>
 #include <unordered_map>
@@ -27,7 +27,7 @@ namespace fbzz::editor {
 
 namespace {
 
-/// ログレベルを表す色 (左のバー・バッジ・件数トグルが共有する)。
+/// @note ログレベルを表す色 (左のバー・バッジ・件数トグルが共有する)。
 ImVec4 LogLevelColor(core::LogLevel level)
 {
     switch (level) {
@@ -39,7 +39,7 @@ ImVec4 LogLevelColor(core::LogLevel level)
     }
 }
 
-/// 本文そのものの色。
+/// @note 本文そのものの色。
 /// @note 重大度は行の左バーとバッジで示すため、本文は常に通常色に固定する。
 ImVec4 LogMessageColor(core::LogLevel level)
 {
@@ -52,8 +52,8 @@ ImVec4 LogMessageColor(core::LogLevel level)
     }
 }
 
-/// 行の背景。警告とエラーだけ、レベル色をごく薄く敷いて面として目立たせる。
-/// 0 を返す行は背景を描かない。
+/// @note 行の背景。警告とエラーだけ、レベル色をごく薄く敷いて面として目立たせる。
+/// @note 0 を返す行は背景を描かない。
 ImU32 LogRowTint(core::LogLevel level, bool selected)
 {
     /// @note 選択色を濁らせない
@@ -65,7 +65,7 @@ ImU32 LogRowTint(core::LogLevel level, bool selected)
     }
 }
 
-/// 一覧 1 行の高さ。
+/// @note 一覧 1 行の高さ。
 /// @note Selectable の既定行間 0 だと文字が帯状になるため広げる。
 /// @note ImGuiListClipper は等高前提で間引くので、この値を Begin へも渡すこと。
 float ConsoleRowHeight()
@@ -73,7 +73,7 @@ float ConsoleRowHeight()
     return ImGui::GetTextLineHeight() + 6.0f;
 }
 
-/// 色に頼らずレベルを読めるようにするバッジ。記号が使えない環境では 1 文字へ落ちる。
+/// @note 色に頼らずレベルを読めるようにするバッジ。記号が使えない環境では 1 文字へ落ちる。
 /// @note 形の違いは色より速く目に入るため、色覚に依らない手がかりとして優先する。
 const char* LogLevelBadge(core::LogLevel level)
 {
@@ -86,13 +86,13 @@ const char* LogLevelBadge(core::LogLevel level)
     }
 }
 
-/// バッジ列の幅。記号は 1 文字より広いので、本文の開始 X をここで決める。
+/// @note バッジ列の幅。記号は 1 文字より広いので、本文の開始 X をここで決める。
 float LogLevelBadgeWidth()
 {
     return ImGui::CalcTextSize(LogLevelBadge(core::LogLevel::WARNING)).x;
 }
 
-/// 詳細ペインの見出しに出すレベル名。
+/// @note 詳細ペインの見出しに出すレベル名。
 const char* LogLevelName(core::LogLevel level)
 {
     switch (level) {
@@ -104,24 +104,7 @@ const char* LogLevelName(core::LogLevel level)
     }
 }
 
-const char* ManagedBuildStateLabel(ManagedBuildState state)
-{
-    switch (state) {
-    case ManagedBuildState::SCANNING:   return "ソース確認中";
-    case ManagedBuildState::QUEUED:     return "待機中";
-    case ManagedBuildState::COMPILING:  return "コンパイル中";
-    case ManagedBuildState::VALIDATING: return "検証中";
-    case ManagedBuildState::COMPILED:   return "コンパイル完了";
-    case ManagedBuildState::APPLYING:   return "適用中";
-    case ManagedBuildState::APPLIED:    return "適用済み";
-    case ManagedBuildState::FAILED:     return "失敗";
-    case ManagedBuildState::DEFERRED:   return "保留";
-    case ManagedBuildState::SUPERSEDED: return "新しい要求に置換";
-    default:                            return "状態不明";
-    }
-}
-
-/// 幅 width に収まるよう改行を挿し込んだ文字列を返す。
+/// @note 幅 width に収まるよう改行を挿し込んだ文字列を返す。
 /// @note InputTextMultiline は折り返しを持たないため、表示直前に自前で折る。
 std::string WrapText(const std::string& text, float width)
 {
@@ -156,7 +139,7 @@ std::string WrapText(const std::string& text, float width)
     return out;
 }
 
-/// 一覧では 1 行に収めたいので、改行以降を省略した 1 行表現を作る。
+/// @note 一覧では 1 行に収めたいので、改行以降を省略した 1 行表現を作る。
 /// @note 複数行だと ImGuiListClipper の等高前提が崩れるため。全文は詳細ペインで読ませる。
 std::string FirstLineOf(const std::string& message)
 {
@@ -219,7 +202,7 @@ void ConsolePanel::RebuildRows()
 {
     const std::string filter(m_filterBuf.data());
     /// @note GetEntries()[i] の通し番号は oldest + i。リングバッファから押し出された行は
-    ///       ここより小さい番号になるので、選択から落とす判定にも使える。
+    /// @note ここより小さい番号になるので、選択から落とす判定にも使える。
     const std::uint64_t oldest = m_sink.GetOldestSequence();
 
     m_rows.clear();
@@ -368,139 +351,14 @@ void ConsolePanel::JumpToSource(EditorContext& ctx, const std::string& message)
     OpenSourceInExternalEditor(resolved, line);
 }
 
-void ConsolePanel::DrawManagedBuildStatus(EditorContext& ctx)
-{
-    if (!ctx.managedScripts) return;
-    const ManagedBuildRequest* latest = ctx.managedScripts->Builds().Latest();
-    if (!latest) return;
-    const ManagedBuildRequest& request = *latest;
-    double elapsedMilliseconds = request.elapsedMilliseconds;
-    double queueMilliseconds = request.queueMilliseconds;
-    double compileMilliseconds = request.compileMilliseconds;
-    double sourceMilliseconds = request.sourceMilliseconds;
-    double validationMilliseconds = request.validationMilliseconds;
-    double applyMilliseconds = request.applyMilliseconds;
-    if (!ManagedBuildHistory::IsTerminal(request.state)) {
-        const auto now = std::chrono::steady_clock::now();
-        const double stage = std::chrono::duration<double, std::milli>(now - request.stageStartedAt).count();
-        elapsedMilliseconds = std::chrono::duration<double, std::milli>(now - request.queuedAt).count();
-        if (request.state == ManagedBuildState::QUEUED) queueMilliseconds += stage;
-        if (request.state == ManagedBuildState::COMPILING) compileMilliseconds += stage;
-        if (request.state == ManagedBuildState::APPLYING) applyMilliseconds += stage;
-        if (request.state == ManagedBuildState::SCANNING) sourceMilliseconds += stage;
-        if (request.state == ManagedBuildState::VALIDATING) validationMilliseconds += stage;
-    }
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
-    if (request.state == ManagedBuildState::FAILED) flags |= ImGuiTreeNodeFlags_DefaultOpen;
-    const bool open = ImGui::TreeNodeEx("C# ビルド", flags);
-    ImGui::SameLine();
-    const ImVec4 color = request.state == ManagedBuildState::FAILED
-                       ? EditorTheme::Color(ThemeColor::Danger)
-                       : EditorTheme::Color(ThemeColor::TextMuted);
-    ImGui::TextColored(color, "%s  %.0f ms", ManagedBuildStateLabel(request.state),
-                       elapsedMilliseconds);
-    if (!open) return;
-
-    ImGui::TextDisabled("待機 %.0f ms  ソース %.0f ms  コンパイル %.0f ms  検証 %.0f ms  適用 %.0f ms",
-                        queueMilliseconds, sourceMilliseconds,
-                        compileMilliseconds, validationMilliseconds,
-                        applyMilliseconds);
-    if (!request.message.empty()) ImGui::TextWrapped("%s", request.message.c_str());
-    if (m_managedDiagnosticRequestId != request.managedRequestId) {
-        m_managedDiagnosticRequestId = request.managedRequestId;
-        m_managedDiagnosticPage = 0;
-        m_managedDiagnosticSelection = 0;
-    }
-    if (m_managedDiagnosticSelection >= request.diagnostics.size())
-        m_managedDiagnosticSelection = request.diagnostics.empty() ? 0 : request.diagnostics.size() - 1;
-    ImGui::TextDisabled("診断 %zu 件  Editor保持出力 %llu / %llu bytes%s",
-        request.diagnostics.size(), static_cast<unsigned long long>(request.logRetainedBytes),
-        static_cast<unsigned long long>(request.logOriginalBytes),
-        request.logRetainedBytes < request.logOriginalBytes ? " (末尾を保持)" : "");
-    if (ImGui::SmallButton("保持したEditor出力をコピー")) ImGui::SetClipboardText(request.log.c_str());
-    if (!request.logFilePath.empty()) {
-        ImGui::TextWrapped("完全な AgentBuild ログ: %s", request.logFilePath.c_str());
-        ImGui::SameLine();
-        if (ImGui::SmallButton("ログパスをコピー")) ImGui::SetClipboardText(request.logFilePath.c_str());
-    }
-    constexpr std::size_t diagnosticPageSize = 128;
-    const std::size_t pageCount = std::max<std::size_t>(1,
-        (request.diagnostics.size() + diagnosticPageSize - 1) / diagnosticPageSize);
-    m_managedDiagnosticPage = std::min(m_managedDiagnosticPage, pageCount - 1);
-    ImGui::BeginDisabled(m_managedDiagnosticPage == 0);
-    if (ImGui::SmallButton("前の診断")) --m_managedDiagnosticPage;
-    ImGui::EndDisabled(); ImGui::SameLine();
-    ImGui::BeginDisabled(m_managedDiagnosticPage + 1 >= pageCount);
-    if (ImGui::SmallButton("次の診断")) ++m_managedDiagnosticPage;
-    ImGui::EndDisabled(); ImGui::SameLine();
-    const std::size_t firstDiagnostic = m_managedDiagnosticPage * diagnosticPageSize;
-    const std::size_t lastDiagnostic = std::min(request.diagnostics.size(), firstDiagnostic + diagnosticPageSize);
-    ImGui::Text("%zu / %zu", m_managedDiagnosticPage + 1, pageCount);
-    const std::vector<std::string> roots = {
-        ctx.scriptsSourceDir,
-        ctx.projectRoot,
-        ctx.engineRoot
-    };
-    ImGui::BeginChild("##managed_diagnostics", ImVec2(0.0f, 220.0f), true);
-    ImGuiListClipper clipper;
-    clipper.Begin(static_cast<int>(lastDiagnostic - firstDiagnostic));
-    while (clipper.Step()) for (int local = clipper.DisplayStart; local < clipper.DisplayEnd; ++local) {
-        const std::size_t i = firstDiagnostic + static_cast<std::size_t>(local);
-        const ManagedBuildDiagnostic& diagnostic = request.diagnostics[i];
-        std::string resolved = ResolveSourceFilePath(diagnostic.file, roots);
-        if (resolved.empty()) resolved = ResolveSourceFileByName(diagnostic.file, roots);
-        const std::size_t separator = diagnostic.file.find_last_of("/\\");
-        const std::string fileLabel = diagnostic.file.empty()
-                                    ? "(source unavailable)"
-                                    : diagnostic.file.substr(separator == std::string::npos ? 0 : separator + 1);
-        char location[512];
-        if (diagnostic.line > 0 && diagnostic.column > 0)
-            std::snprintf(location, sizeof(location), "%s:%d:%d", fileLabel.c_str(),
-                          diagnostic.line, diagnostic.column);
-        else if (diagnostic.line > 0)
-            std::snprintf(location, sizeof(location), "%s:%d", fileLabel.c_str(), diagnostic.line);
-        else
-            std::snprintf(location, sizeof(location), "%s", fileLabel.c_str());
-        ImGui::PushID(&diagnostic);
-        char rowLabel[640];
-        std::snprintf(rowLabel, sizeof(rowLabel), "%zu  %s  %s: %s", i + 1,
-            diagnostic.warning ? "WARN" : "ERROR", diagnostic.code.c_str(), diagnostic.message.c_str());
-        if (ImGui::Selectable(rowLabel, m_managedDiagnosticSelection == i,
-                0, ImVec2(0.0f, ImGui::GetTextLineHeightWithSpacing())))
-            m_managedDiagnosticSelection = i;
-        ImGui::SameLine();
-        ImGui::BeginDisabled(resolved.empty() || diagnostic.line <= 0);
-        if (ImGui::SmallButton(location)) OpenSourceInExternalEditor(resolved, diagnostic.line);
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-            ImGui::SetTooltip("%s\n%s", diagnostic.file.c_str(), diagnostic.message.c_str());
-        ImGui::PopID();
-    }
-    clipper.End();
-    ImGui::EndChild();
-    if (!request.diagnostics.empty()) {
-        const ManagedBuildDiagnostic& diagnostic = request.diagnostics[m_managedDiagnosticSelection];
-        ImGui::TextColored(EditorTheme::Color(diagnostic.warning ? ThemeColor::Warning : ThemeColor::Danger),
-            "%s %s", diagnostic.warning ? "警告" : "エラー", diagnostic.code.c_str());
-        ImGui::TextWrapped("%s", diagnostic.file.c_str());
-        ImGui::Text("%d:%d", diagnostic.line, diagnostic.column);
-        ImGui::TextWrapped("%s", diagnostic.message.c_str());
-        if (ImGui::SmallButton("選択した診断をコピー")) {
-            const std::string copied = diagnostic.file + ":" + std::to_string(diagnostic.line) + ":" +
-                std::to_string(diagnostic.column) + " " + diagnostic.code + " " + diagnostic.message;
-            ImGui::SetClipboardText(copied.c_str());
-        }
-    }
-    ImGui::TreePop();
-}
-
 void ConsolePanel::DrawDetailPane(EditorContext& ctx)
 {
     const auto& entries = m_sink.GetEntries();
     const int detailRow = RowIndexOf(m_detailSequence);
     if (detailRow < 0) {
-        ImGui::TextDisabled("Select a log line to see the full message. "
-                            "Shift+click for a range, Ctrl+C to copy.");
+        ImGui::PushTextWrapPos(0.0f);
+        ImGui::TextDisabled("%s", LOCT("Select a log line to see the full message."));
+        ImGui::PopTextWrapPos();
         return;
     }
     const std::size_t entryIndex = m_rows[static_cast<std::size_t>(detailRow)].entryIndex;
@@ -614,7 +472,7 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
     const float rowH = ConsoleRowHeight();
 
     /// @note 本文をそのまま Selectable のラベルにすると "##" を含むログ (シェーダー診断等) で
-    ///       以降が表示されなくなる。当たり判定は ID だけの Selectable に任せ本文は重ね描きする。
+    /// @note 以降が表示されなくなる。当たり判定は ID だけの Selectable に任せ本文は重ね描きする。
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     if (ImGui::Selectable("##row", selected,
                           ImGuiSelectableFlags_AllowDoubleClick, { 0.0f, rowH }))
@@ -641,9 +499,9 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
         m_anchorSequence = r.sequence;
 
     /// @note 押したままなぞって範囲を伸ばす。飛ばした行も起点からの範囲で埋まるため、
-    ///       クリッパーが間引いた行が選択から抜け落ちることはない。
+    /// @note クリッパーが間引いた行が選択から抜け落ちることはない。
     /// @note ドラッグ中は押した行が ActiveId を握るため、他の行の IsItemHovered には
-    ///       AllowWhenBlockedByActiveItem が要る。
+    /// @note AllowWhenBlockedByActiveItem が要る。
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)
         && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         const int anchor = RowIndexOf(m_anchorSequence);
@@ -655,7 +513,7 @@ void ConsolePanel::DrawLogRow(EditorContext& ctx, int row, const core::LogEntry&
 
     /// @note 右クリックは選択外の行なら選び直す。選択内ならまとめて扱いたいので触らない。
     /// @note ポップアップは開いている間ずっと毎フレーム走るため、そこで選び直すと
-    ///       複数選択が毎フレーム 1 行へ潰れる。
+    /// @note 複数選択が毎フレーム 1 行へ潰れる。
     if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
         if (!m_selection.contains(r.sequence)) {
             m_selection.clear();
@@ -746,7 +604,8 @@ void ConsolePanel::DrawLevelToggle(const char* label, core::LogLevel level, bool
     /// @note 押下状態 = そのレベルを表示中。件数を同じボタンに載せ、件数と表示可否を 1 か所で確認できるようにする。
     const int count = m_levelCounts[static_cast<std::size_t>(level)];
     char text[32];
-    std::snprintf(text, sizeof(text), "%s %d", label, count);
+    std::snprintf(text, sizeof(text), "%s %d###%s", LogLevelBadge(level), count, label);
+    if (level != core::LogLevel::DEBUG) toolbar::SameLineIfFits(toolbar::ButtonWidth(text));
 
     const ImVec4 levelColor = LogLevelColor(level);
     if (enabled) {
@@ -761,72 +620,57 @@ void ConsolePanel::DrawLevelToggle(const char* label, core::LogLevel level, bool
     ImGui::PopStyleColor(2);
 
     if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s: %d 件\nクリックで表示 / 非表示",
-                          label, count);
+        ImGui::SetTooltip("%s (%d)\n%s", LogLevelName(level), count,
+                          enabled ? LOCT("Click to hide this level.") : LOCT("Click to show this level."));
     }
 }
 
 bool ConsolePanel::DrawToolbar()
 {
-    const ImGuiStyle& st = ImGui::GetStyle();
-    const float sp = st.ItemSpacing.x;
-    const auto btnW = [&](const char* s) {
-        return ImGui::CalcTextSize(s).x + st.FramePadding.x * 2.0f;
-    };
-
-    /// @note レベルのトグル。DEBUG は表示フィルタであると同時に Logger の収集レベルも動かす
-    ///       (収集していないものは表示しようがない)。実際に変わったフレームだけ反映する。
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    /// @note DEBUG は表示と収集の両方に影響するため、切り替えたフレームだけ収集レベルを変更する。
     const bool debugBefore = m_showDebug;
     DrawLevelToggle("D", core::LogLevel::DEBUG, m_showDebug);
     if (m_showDebug != debugBefore)
         core::Logger::SetMinLevel(m_showDebug ? core::LogLevel::DEBUG : core::LogLevel::INFO);
-    ImGui::SameLine(0.0f, 4.0f);
-    DrawLevelToggle("I", core::LogLevel::INFO,      m_showInfo);  ImGui::SameLine(0.0f, 4.0f);
-    DrawLevelToggle("W", core::LogLevel::WARNING,   m_showWarn);  ImGui::SameLine(0.0f, 4.0f);
-    DrawLevelToggle("E", core::LogLevel::LOG_ERROR, m_showError); ImGui::SameLine(0.0f, sp);
+    DrawLevelToggle("I", core::LogLevel::INFO, m_showInfo);
+    DrawLevelToggle("W", core::LogLevel::WARNING, m_showWarn);
+    DrawLevelToggle("E", core::LogLevel::LOG_ERROR, m_showError);
 
-    /// @note 右側のクラスタ幅を実測し、検索欄を残り全部へ伸ばす (固定幅だと長い検索語の全体が見えない)。
     const int selectedCount = static_cast<int>(m_selection.size());
-    char copyLabel[64];
-    std::snprintf(copyLabel, sizeof(copyLabel), "Copy (%d)###console_copy_selected",
-                  selectedCount);
-    char copyLabelVisible[64];
-    std::snprintf(copyLabelVisible, sizeof(copyLabelVisible), "Copy (%d)", selectedCount);
+    char copyLabel[96];
+    std::snprintf(copyLabel, sizeof(copyLabel), "%s (%d)###console_copy_selected", LOCT("Copy"), selectedCount);
+    const toolbar::Action options{LOC("Options"), icons::kSettings, "...", LOCT("Options")};
+    const toolbar::Action copy{copyLabel, icons::kCopy, "C", LOCT("Copy selected logs (Ctrl+C)")};
+    const toolbar::Action clear{LOC("Clear logs"), icons::kDelete, "X", LOCT("Clear logs")};
+    const float minSearch = 10.0f * ImGui::GetFontSize();
+    const auto actionsWidth = [&](bool compact) {
+        return options.Width(compact) + copy.Width(compact) + clear.Width(compact) + 3.0f * spacing;
+    };
+    toolbar::SameLineIfFits(minSearch + actionsWidth(false));
+    const float available = ImGui::GetContentRegionAvail().x;
+    const bool compact = available < minSearch + actionsWidth(false);
+    const float reserve = actionsWidth(compact);
+    const float searchWidth = available >= reserve + 4.0f * ImGui::GetFontSize() ? available - reserve : available;
+    toolbar::SearchField("##console_filter", "Search logs...", m_filterBuf.data(), m_filterBuf.size(), searchWidth);
 
-    float rightW = btnW("Options") + sp + btnW(copyLabelVisible) + sp + btnW("Clear");
-    const float searchW = std::max(120.0f, ImGui::GetContentRegionAvail().x - rightW - sp);
-
-    ImGui::SetNextItemWidth(searchW);
-    ImGui::InputTextWithHint("##console_filter", "Search logs...",
-                             m_filterBuf.data(), m_filterBuf.size());
-    ImGui::SameLine(0.0f, sp);
-
-    /// @note 表示オプション 4 つは一度決めたらほとんど触らないため 1 つのポップアップへ畳む。
-    if (ImGui::Button("Options")) ImGui::OpenPopup("##console_options");
+    toolbar::SameLineIfFits(options.Width(compact));
+    if (options.Draw(compact)) ImGui::OpenPopup("##console_options");
     if (ImGui::BeginPopup("##console_options")) {
-        ImGui::Checkbox("Collapse", &m_collapse);
+        ImGui::Checkbox(LOC("Collapse"), &m_collapse);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Merge identical messages into one row with a count");
-        ImGui::Checkbox("Clear on Play", &m_clearOnPlay);
-        ImGui::Checkbox("Auto Scroll", &m_autoScroll);
-        ImGui::Checkbox("Details", &m_showDetail);
+            ImGui::SetTooltip("%s", LOCT("Merge identical messages into one row with a count"));
+        ImGui::Checkbox(LOC("Clear on Play"), &m_clearOnPlay);
+        ImGui::Checkbox(LOC("Auto Scroll"), &m_autoScroll);
+        ImGui::Checkbox(LOC("Details"), &m_showDetail);
         ImGui::EndPopup();
     }
-    ImGui::SameLine(0.0f, sp);
-
+    toolbar::SameLineIfFits(copy.Width(compact));
     ImGui::BeginDisabled(selectedCount == 0);
-    /// @note "###" 以降が ID。件数で表示は変わっても ID は動かさない
-    ///       (ラベルがそのまま ID だと、件数が変わった瞬間に別ボタン扱いになる)。
-    const bool copySelected = ImGui::Button(copyLabel);
+    const bool copySelected = copy.Draw(compact);
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("Click a line, Shift+click (or drag) for a range, Ctrl+click to add.\n"
-                          "Ctrl+A selects every visible line, Ctrl+C copies the selection.\n"
-                          "Right-click a line for Copy All Visible.");
-    }
-    ImGui::SameLine(0.0f, sp);
-
-    if (ImGui::Button("Clear")) {
+    toolbar::SameLineIfFits(clear.Width(compact));
+    if (clear.Draw(compact)) {
         m_sink.Clear();
         m_selection.clear();
         m_anchorSequence = 0;
@@ -850,26 +694,26 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     m_wasInEditor = inEditor;
 
     const bool copySelectedRequested = DrawToolbar();
-    DrawManagedBuildStatus(ctx);
     ImGui::Separator();
 
     /// @note フィルタ条件かログ内容が変わったときだけ、表示行を作り直す。
     /// @note logChanged は Auto Scroll の追従判定にも使う。行数比較だと、リングバッファが満杯で
-    ///       「古い行が落ちて新しい行が入る」状況を新着として検出できない。
+    /// @note 「古い行が落ちて新しい行が入る」状況を新着として検出できない。
     const bool logChanged = (m_cachedRevision != m_sink.GetRevision());
     if (logChanged || FiltersChanged())
         RebuildRows();
 
     /// @note ツールバーは RebuildRows より前に描くため、押した瞬間の m_visibleLogText / 選択は
-    ///       1 フレーム古い可能性がある。コピーは RebuildRows の後で行う。
+    /// @note 1 フレーム古い可能性がある。コピーは RebuildRows の後で行う。
     if (copySelectedRequested)
         CopySelection();
 
     /// @name ログ一覧
     /// @note ImVec2(0, 0) は「残り全部」を意味するため、詳細ペイン分の高さを先に引いておかないと
-    ///       一覧が下端まで伸びて詳細が押し出される。
-    const float splitterH = m_showDetail ? 4.0f + ImGui::GetStyle().ItemSpacing.y * 2.0f : 0.0f;
-    const float detailH   = m_showDetail
+    /// @note 一覧が下端まで伸びて詳細が押し出される。
+    const bool showSelection = m_showDetail && RowIndexOf(m_detailSequence) >= 0;
+    const float splitterH = showSelection ? 4.0f + ImGui::GetStyle().ItemSpacing.y * 2.0f : 0.0f;
+    const float detailH   = showSelection
                           ? ImGui::GetContentRegionAvail().y * m_detailRatio + splitterH
                           : 0.0f;
     ImVec2 logRegion = ImGui::GetContentRegionAvail();
@@ -881,14 +725,16 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
 
     if (m_rows.empty()) {
         const bool hasAny = !m_sink.GetEntries().empty();
+        ImGui::PushTextWrapPos(0.0f);
         ImGui::TextDisabled("%s", hasAny
-            ? "No logs match the current filters (level toggles / filter text)."
-            : "No logs yet. Engine and script messages will appear here.");
+            ? LOCT("No logs match the current filters (level toggles / filter text).")
+            : LOCT("No logs yet. Engine and script messages will appear here."));
+        ImGui::PopTextWrapPos();
     } else {
         const auto& entries = m_sink.GetEntries();
 
         /// @note 全行を毎フレーム ImGui へ積むと無駄な文字列処理とジオメトリ生成が走るため、
-        ///       可視範囲だけ描く。行間は 1px のみ (既定の 5px を足すと 1 画面の行数が減る)。
+        /// @note 可視範囲だけ描く。行間は 1px のみ (既定の 5px を足すと 1 画面の行数が減る)。
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                             ImVec2(ImGui::GetStyle().ItemSpacing.x, 1.0f));
 
@@ -909,10 +755,10 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note Ctrl+C / Ctrl+A は Console にフォーカスがある間だけ拾う。HotkeyManager の
-    ///       edit.copy / select.all は Scene View / Hierarchy に閉じ、Console では発火しない。
+    /// @note edit.copy / select.all は Scene View / Hierarchy に閉じ、Console では発火しない。
     /// @note WantTextInput で降りる: 検索欄編集中の Ctrl+C は入力欄のコピー。
     /// @note Shortcut() でなく素の IsKeyPressed を使う: Shortcut は子ウィンドウの focused 状態で
-    ///       決まり、ツールバー操作直後など一覧側へフォーカスが入っていないフレームで落ちるため。
+    /// @note 決まり、ツールバー操作直後など一覧側へフォーカスが入っていないフレームで落ちるため。
     const ImGuiIO& shortcutIo = ImGui::GetIO();
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
         && !shortcutIo.WantTextInput && shortcutIo.KeyCtrl) {
@@ -923,14 +769,14 @@ void ConsolePanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note Auto Scroll: 最下部に居るときだけ追従する。無条件だと過去ログを読もうと
-    ///       上へスクロールしても毎フレーム引き戻される (Unity / VSCode の出力ペインと同じ挙動)。
+    /// @note 上へスクロールしても毎フレーム引き戻される (Unity / VSCode の出力ペインと同じ挙動)。
     if (m_autoScroll && logChanged && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
         ImGui::SetScrollHereY(1.0f);
 
     ImGui::EndChild();
 
     /// @name 詳細ペイン
-    if (m_showDetail) {
+    if (showSelection) {
         DrawDetailSplitter();
         ImGui::BeginChild("##log_detail", ImVec2(0, 0), true);
         DrawDetailPane(ctx);

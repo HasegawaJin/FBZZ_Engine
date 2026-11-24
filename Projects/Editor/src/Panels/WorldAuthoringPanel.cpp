@@ -260,7 +260,7 @@ void DrawCellGrid(const OpData::Array& cells, int (&selected)[2])
 
 void WorldAuthoringPanel::ClearPreview()
 {
-    m_expected.clear();
+    m_previewFingerprint.clear();
     m_previewData = {};
     m_previewStatus.clear();
     m_previewPending = true;
@@ -272,7 +272,7 @@ void WorldAuthoringPanel::SyncContext(EditorContext& context)
     const auto generation = context.activeScene ? context.activeScene->GetRenderSceneGeneration() : 0;
     if (m_project == context.projectRoot && m_sceneGeneration == generation) return;
     if (m_project != context.projectRoot) {
-        m_profile.clear(); m_profileFile.clear(); m_profileLoadedPath.clear(); m_profileExpected.clear();
+        m_profile.clear(); m_profileFile.clear(); m_profileLoadedPath.clear(); m_profileFileFingerprint.clear();
         m_profileDraft.reset(); m_profileText[0] = '\0'; m_editProfileText = false; m_profileDirty = false;
         m_selectedRule = 0; m_rockSource.clear(); m_pebbleSource.clear();
     }
@@ -348,8 +348,8 @@ void WorldAuthoringPanel::ReadPartitionSettings(const OpData& data)
     };
     readFloat("cellSize", m_cellSize); readFloat("nearDistance", m_nearDistance);
     readFloat("hlodDistance", m_hlodDistance); readFloat("hysteresis", m_hysteresis);
-    if (const auto* value = data.Find("maxConcurrentReads")) m_reads = value->AsInt(m_reads);
-    if (const auto* value = data.Find("maxCommitsPerUpdate")) m_commits = value->AsInt(m_commits);
+    if (const auto* value = data.Find("maxConcurrentReads")) m_maxConcurrentReads = value->AsInt(m_maxConcurrentReads);
+    if (const auto* value = data.Find("maxCommitsPerUpdate")) m_maxCommitsPerUpdate = value->AsInt(m_maxCommitsPerUpdate);
     if (const auto* value = data.Find("streamInEditor")) m_streamInEditor = value->AsBool(m_streamInEditor);
 }
 
@@ -389,7 +389,7 @@ void WorldAuthoringPanel::RefreshPcgPreview(EditorContext& context, bool automat
 {
     m_previewPending = false;
     m_previewStatus.clear();
-    m_expected.clear();
+    m_previewFingerprint.clear();
     m_previewData = {};
     const auto* owner = context.activeScene ? context.activeScene->FindByGuid(m_volume) : nullptr;
     const auto* volume = owner ? context.activeScene->GetComponent<scene::WorldPcgVolumeComponent>(owner->GetID()) : nullptr;
@@ -423,7 +423,7 @@ void WorldAuthoringPanel::RefreshPcgPreview(EditorContext& context, bool automat
         return;
     }
     m_previewData = std::move(result.data);
-    m_expected = String(m_previewData, "expected");
+    m_previewFingerprint = String(m_previewData, "expected");
     m_previewUndoRevision = context.undoStack ? context.undoStack->GetRevision() : 0;
     if (const auto* rules = m_previewData.Find("ruleCounts"); rules && !rules->Find(m_debugRule)) m_debugRule.clear();
     if (!automatic) {
@@ -454,14 +454,14 @@ void WorldAuthoringPanel::DrawPartition(EditorContext& context)
         property::InputFloat("Near distance (m)", &m_nearDistance);
         property::InputFloat("HLOD distance (m)", &m_hlodDistance);
         property::InputFloat("Hysteresis (m)", &m_hysteresis);
-        property::InputInt("Concurrent reads", &m_reads);
-        property::InputInt("Commits per update", &m_commits);
+        property::InputInt("Concurrent reads", &m_maxConcurrentReads);
+        property::InputInt("Commits per update", &m_maxCommitsPerUpdate);
         property::Checkbox("Stream in editor", &m_streamInEditor);
         auto args = PartitionArgs();
         args.Set("manifest", std::string(m_manifest)); args.Set("origin", Vector(m_origin));
         args.Set("cellSize", m_cellSize); args.Set("nearDistance", m_nearDistance);
         args.Set("hlodDistance", m_hlodDistance); args.Set("hysteresis", m_hysteresis);
-        args.Set("maxConcurrentReads", m_reads); args.Set("maxCommitsPerUpdate", m_commits);
+        args.Set("maxConcurrentReads", m_maxConcurrentReads); args.Set("maxCommitsPerUpdate", m_maxCommitsPerUpdate);
         args.Set("streamInEditor", m_streamInEditor);
         if (ActionButton(context, "Apply grid settings", "worldcell.configure", args, &m_partitionData)) {
             ReadPartitionSettings(m_partitionData); ClearPreview();
@@ -562,8 +562,8 @@ void WorldAuthoringPanel::DrawPcg(EditorContext& context)
     if (ImGui::Button("Preview")) RefreshPcgPreview(context, false);
     ImGui::EndDisabled();
     ImGui::SameLine();
-    auto generate = previewArgs; generate.Set("expected", m_expected);
-    ImGui::BeginDisabled(m_expected.empty());
+    auto generate = previewArgs; generate.Set("expected", m_previewFingerprint);
+    ImGui::BeginDisabled(m_previewFingerprint.empty());
     if (ActionButton(context, "Generate", "pcg.generate", generate)) ClearPreview();
     ImGui::EndDisabled();
     DrawPcgDebugControls(context);
@@ -586,7 +586,7 @@ void WorldAuthoringPanel::DrawPcg(EditorContext& context)
             ImGui::TreePop();
         }
     }
-    if (!m_expected.empty()) ImGui::TextWrapped("Current preview: %s", m_expected.c_str());
+    if (!m_previewFingerprint.empty()) ImGui::TextWrapped("Current preview: %s", m_previewFingerprint.c_str());
     if (const auto* draft = m_previewData.Find("draft"); draft && draft->AsBool())
         ImGui::TextWrapped("Draft preview. Save the profile or apply the volume settings before generating.");
     if (!m_previewStatus.empty()) ImGui::TextWrapped("%s", m_previewStatus.c_str());
@@ -746,7 +746,7 @@ void WorldAuthoringPanel::DrawPcgProfile(EditorContext& context)
         m_selectedRule = 0;
         m_editProfileText = false;
         m_profileDirty = true;
-        m_profileLoadedPath.clear(); m_profileExpected.clear(); m_error.clear();
+        m_profileLoadedPath.clear(); m_profileFileFingerprint.clear(); m_error.clear();
         if (m_profileFile.empty()) m_profileFile = "Assets/World/Custom.pcg";
         ClearPreview();
     }
@@ -756,7 +756,7 @@ void WorldAuthoringPanel::DrawPcgProfile(EditorContext& context)
     OpData loaded;
     if (ActionButton(context, "Load profile", "pcg.profile.inspect", inspect, &loaded) && ReadPcgProfileDraft(loaded)) {
         m_profileLoadedPath = m_profileFile;
-        m_profileExpected = String(loaded, "fingerprint");
+        m_profileFileFingerprint = String(loaded, "fingerprint");
     }
     ImGui::EndDisabled();
     ImGui::EndDisabled();
@@ -765,7 +765,7 @@ void WorldAuthoringPanel::DrawPcgProfile(EditorContext& context)
         if (ImGui::Button("Discard draft")) {
             m_profileDraft.reset(); m_editProfileText = false; m_profileText[0] = '\0';
             m_profileDirty = false;
-            m_profileLoadedPath.clear(); m_profileExpected.clear(); m_error.clear();
+            m_profileLoadedPath.clear(); m_profileFileFingerprint.clear(); m_error.clear();
             ClearPreview();
         }
     }
@@ -816,11 +816,11 @@ void WorldAuthoringPanel::DrawPcgProfile(EditorContext& context)
             if (m_editProfileText) text = m_profileText;
             OpArgs save;
             save.Set("path", m_profileFile); save.Set("text", std::move(text));
-            save.Set("expected", m_profileFile == m_profileLoadedPath ? m_profileExpected : std::string{});
+            save.Set("expected", m_profileFile == m_profileLoadedPath ? m_profileFileFingerprint : std::string{});
             OpData saved;
             if (Run(context, "pcg.profile.save", save, &saved)) {
                 m_profileLoadedPath = m_profileFile;
-                m_profileExpected = String(saved, "fingerprint");
+                m_profileFileFingerprint = String(saved, "fingerprint");
                 m_profileDirty = false;
                 ClearPreview();
                 m_volumeBounds = {};

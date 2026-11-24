@@ -1,8 +1,9 @@
 /// @file    AssetBrowserThumbnail.hpp
-/// @brief   Bounded CPU thumbnail decoding and original asset-type icon selection.
+/// @brief   サムネイル復号の上限とアセット種別アイコンの選択。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #pragma once
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <string_view>
@@ -10,7 +11,10 @@
 
 namespace fbzz::editor::assetthumbnail {
 
-enum class Icon : uint8_t { SCRIPT, SCENE, PREFAB, AUDIO, ANIMATION, SHADER, COUNT, NONE = COUNT };
+enum class Icon : uint8_t { SCRIPT, SCENE, PREFAB, AUDIO, ANIMATION, SHADER, FOLDER, COUNT, NONE = COUNT };
+inline constexpr std::array<uint32_t, 6> ICON_SIZES{16, 24, 32, 64, 128, 256};
+inline constexpr size_t ICON_CACHE_SIZE = static_cast<size_t>(Icon::COUNT) * ICON_SIZES.size();
+
 enum class State : uint8_t { PENDING, READY, FAILED, UNSUPPORTED };
 
 inline constexpr uint64_t MAX_FILE_BYTES = 32ull * 1024 * 1024;
@@ -42,6 +46,7 @@ inline constexpr size_t MAX_CACHE_ENTRIES = 192;
     case Icon::AUDIO: return "Audio";
     case Icon::ANIMATION: return "Animation";
     case Icon::SHADER: return "Shader";
+    case Icon::FOLDER: return "Folder";
     default: return "";
     }
 }

@@ -122,6 +122,7 @@ Thumbs.db
 **/Assets/**/*.fbx
 **/Assets/**/*.dds
 **/Assets/**/*.png
+!/Assets/Icons/AssetBrowser/*.png
 **/Assets/**/*.jpg
 **/Assets/**/*.jpeg
 **/Assets/**/*.bmp

@@ -2640,8 +2640,7 @@ void InspectorPanel::DrawAssetInspector(EditorContext& ctx, const std::string& a
         reflector.m_projectRoot = ctx.projectRoot;
 
         bool editedByCustomUi = false;
-        if (std::string_view(data->GetTypeName()) == asset::PostProcessProfile::TYPE_NAME) {
-            auto* profile = static_cast<asset::PostProcessProfile*>(data);
+        if (auto* profile = asset::TryAsExactDataAsset<asset::PostProcessProfile>(data)) {
             /// @note PostProcessProfile だけは専用 UI を使う。中身は「効果のリスト」で、追加・削除・
             /// @note 並べ替え・一時無効化という配列固有の操作は汎用のフィールド列挙では表現できない。
             /// @note 編集対象は Registry の共有実体そのものなので、変更は全参照へ即反映される。

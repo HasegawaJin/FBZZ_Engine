@@ -52,7 +52,9 @@ private:
     char m_manifest[512] = "Assets/World/World.worldcells";
     std::string m_profile;
     std::string m_profileFile;
+    /// @note 編集中の内容を読み込んだファイル。保存先を変えたときは元ファイルの版と照合しない。
     std::string m_profileLoadedPath;
+    /// @note 画面で編集する生成ルールの下書き。保存するまでディスク上の設定とは分けて持つ。
     std::optional<scene::WorldPcgProfile> m_profileDraft;
     char m_profileText[65536]{};
     std::size_t m_selectedRule = 0;
@@ -61,8 +63,10 @@ private:
     bool m_volumeDraft = false;
     std::string m_rockSource;
     std::string m_pebbleSource;
-    std::string m_profileExpected;
-    std::string m_expected;
+    /// @note 読み込み・保存時のファイルの識別値。同じ保存先に外部の変更が入ったかを確かめる。
+    std::string m_profileFileFingerprint;
+    /// @note 直近のプレビュー結果の識別値。実際の生成が、そのプレビューと同じ条件で行われるかを確かめる。
+    std::string m_previewFingerprint;
     std::string m_message;
     std::string m_error;
     std::string m_streamError;
@@ -70,9 +74,11 @@ private:
     OpData m_partitionData;
     OpData m_previewData;
     OpData m_volumeBounds;
+    /// @note プレビュー確認時の履歴の版。Undo や再編集で版が進んだら表示済みの結果を破棄する。
     std::uint64_t m_previewUndoRevision = 0;
     bool m_livePreview = true;
     bool m_previewPending = false;
+    /// @note 設定を連続して動かす間の再計算をまとめるための残り待ち時間（秒）。
     float m_previewDelay = 0.0f;
     std::string m_previewStatus;
     bool m_showPcgBounds = true;
@@ -87,8 +93,9 @@ private:
     float m_nearDistance = 384;
     float m_hlodDistance = 2048;
     float m_hysteresis = 64;
-    int m_reads = 4;
-    int m_commits = 2;
+    int m_maxConcurrentReads = 4;
+    /// @note 1 回の更新でシーンへ反映するセル数の上限。ディスクから同時に読み出す件数とは別に設定する。
+    int m_maxCommitsPerUpdate = 2;
     bool m_streamInEditor = false;
     float m_boundsMin[3]{};
     float m_boundsMax[3] = {256, 0, 256};

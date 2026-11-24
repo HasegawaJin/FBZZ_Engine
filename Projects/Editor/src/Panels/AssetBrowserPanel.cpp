@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include "AssetBrowser/AssetBrowserCommon.hpp"
+#include "../Util/PanelToolbar.hpp"
 #include <Editor/Op/EditorOperator.hpp>
 #include "../Tools/TerrainScatter.hpp"
 #include <Editor/PlayModeController.hpp>
@@ -234,190 +235,21 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     /// @note 横断検索の索引はプロジェクトルート基準。ルートが変わったときだけ再構築される。
     AssetSearch::SetProjectRoot(ctx.projectRoot);
 
-    /// @name 左ペイン: フォルダツリー
-    /// @note セクション見出し (FAVORITES / FOLDERS) を控えめなラベルで描く小ヘルパー。
-    const auto sectionHeader = [](const char* label) {
-        ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
-        ImGui::TextUnformatted(label);
-        ImGui::PopStyleColor();
-        ImGui::Separator();
-    };
-
-    /// @note 高さを確保し、ツリー / スプリッター / コンテンツを同じ高さで並べる。
     const float paneH = ImGui::GetContentRegionAvail().y;
-    const float treeLimit = std::max(1.0f, ImGui::GetContentRegionAvail().x * 0.4f);
+    const float width = ImGui::GetContentRegionAvail().x;
+    const float treeLimit = std::max(1.0f, width * 0.4f);
     const float treeWidth = std::min(m_treeWidth, treeLimit);
-
-    ImGui::BeginChild("##tree", { treeWidth, paneH }, true);
-
-    /// @note Favorites セクション
-    if (!ctx.assetBrowserBookmarks.empty()) {
-        sectionHeader("FAVORITES");
-        for (const auto& bk : ctx.assetBrowserBookmarks) {
-            ImGui::PushID(bk.c_str());
-            const std::string label = util::FileSystem::GetFilename(bk).empty()
-                ? bk : util::FileSystem::GetFilename(bk);
-            const bool sel = util::FileSystem::SamePathText(m_currentPath, bk);
-            /// @note 先頭に星を付けてお気に入りであることを示す。
-            ImGui::PushStyleColor(ImGuiCol_Text, sel
-                ? ImGui::GetStyleColorVec4(ImGuiCol_Text)
-                : EditorTheme::Color(ThemeColor::Warning));
-            const std::string row = "\xe2\x98\x85 " + label;
-            if (ImGui::Selectable(row.c_str(), sel, ImGuiSelectableFlags_SpanAllColumns)) {
-                if (util::FileSystem::Exists(bk)) {
-                    m_currentPath = bk;
-                    RefreshDirectory();
-                }
-            }
-            ImGui::PopStyleColor();
-            DrawEntryContextMenu(Entry{.path = bk, .name = label, .isDir = true}, ctx, false);
-            ImGui::PopID();
-        }
+    /// @note 一覧に検索欄と最低 2 枚のタイルを置けなくなる幅で、ツリーを呼び出し式にする。
+    const float minimumContent = std::max(22.0f * ImGui::GetFontSize(), 2.0f * m_iconSize + 12.0f);
+    const bool narrow = width - treeWidth - 6.0f < minimumContent;
+    if (!narrow) {
+        if (ImGui::BeginChild("##tree", {treeWidth, paneH}, true))
+            DrawFolderNavigator(ctx);
+        ImGui::EndChild();
+        ImGui::SameLine(0.0f, 0.0f);
+        DrawTreeSplitter(treeWidth, treeLimit, paneH);
+        ImGui::SameLine(0.0f, 0.0f);
     }
-
-    /// @note 見出しの行の右端に、ファイルまで木に並べるかのトグルを置く: sectionHeader は見出しの直後に
-    /// @note Separator を引くため SameLine で並べると罫線の後ろになり使えない。設定はツリーの内容を
-    /// @note 変えるものなので、グリッド側のツールバーではなくツリーの持ち物として置く。
-    {
-        ImGui::Spacing();
-        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
-        ImGui::TextUnformatted(m_treeShowFiles ? "HIERARCHY" : "FOLDERS");
-        ImGui::PopStyleColor();
-
-        /// @note 状態を控える: Push と Pop の条件に m_treeShowFiles を直接使うと、間に挟まるボタンが
-        /// @note その値を反転させ、push していない色を pop (またはその逆) してスタックが壊れて落ちる。
-        const bool showFiles = m_treeShowFiles;
-        const char* toggleLabel = showFiles ? "Files" : "Dirs";
-        const float toggleW = ImGui::CalcTextSize(toggleLabel).x
-                            + ImGui::GetStyle().FramePadding.x * 2.0f;
-        ImGui::SameLine(std::max(ImGui::GetCursorPosX(),
-                                 ImGui::GetContentRegionMax().x - toggleW));
-        if (showFiles)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (ImGui::SmallButton(toggleLabel)) m_treeShowFiles = !m_treeShowFiles;
-        if (showFiles) ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
-                "Dirs  : フォルダだけを木に並べる\n"
-                "Files : ファイルも木に並べる (種別の色で表示)");
-        }
-        ImGui::Separator();
-    }
-
-    ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow
-                                 | ImGuiTreeNodeFlags_SpanAvailWidth
-                                 | ImGuiTreeNodeFlags_DefaultOpen;
-    const bool rootIsCurrent = util::FileSystem::SamePathText(m_currentPath, m_rootPath);
-    if (rootIsCurrent) rootFlags |= ImGuiTreeNodeFlags_Selected;
-
-    /// @note 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
-    if (rootIsCurrent)
-        ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
-    bool rootOpen = ImGui::TreeNodeEx("##root", rootFlags, "Assets");
-    if (rootIsCurrent)
-        ImGui::PopStyleColor();
-    /// @note エクスプローラーからのドロップが Assets ルート行に落ちたらルートを取り込み先にする。
-    ConsiderExternalDropTarget(m_rootPath, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
-        m_currentPath = m_rootPath;
-        RefreshDirectory();
-    }
-    DrawEntryContextMenu(Entry{.path = m_rootPath, .name = "Assets", .isDir = true}, ctx, false);
-    /// @note Assets ルートへのドロップ
-    if (ImGui::BeginDragDropTarget()) {
-        if (SaveHierarchyPayloadAsPrefab(
-                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_rootPath)) {
-            RefreshDirectory();
-        }
-        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-            std::string sourcePath;
-            if (ReadAssetDragPayload(p, sourcePath))
-                QueueAssetMove(sourcePath, m_rootPath);
-        }
-        ImGui::EndDragDropTarget();
-    }
-    if (rootOpen) {
-        {
-            FBZZ_PROFILE_SCOPE("AssetBrowser::FolderTree");
-            DrawFolderTree(m_rootPath, ctx);
-        }
-        ImGui::TreePop();
-    }
-
-    /// @name EXTERNAL: マウント (外部ソースフォルダ) を専用セクションに分離
-    /// @note 由来が異なる外部フォルダは見出しで分ける (以前は Assets ツリーの子に混ぜていた)。
-    if (!m_mounts.empty()) {
-        sectionHeader("EXTERNAL");
-        for (const AssetMount& mount : m_mounts) {
-            ImGui::PushID(mount.path.c_str());
-            ImGuiTreeNodeFlags mflags = ImGuiTreeNodeFlags_OpenOnArrow
-                                      | ImGuiTreeNodeFlags_SpanAvailWidth;
-            const bool mCurrent = util::FileSystem::SamePathText(m_currentPath, mount.path);
-            if (mCurrent) mflags |= ImGuiTreeNodeFlags_Selected;
-            if (mCurrent)
-                ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
-            /// @note 表示名は Assets 側の仮想名、ID は実パスにして同名マウントでも衝突しない。
-            const bool mOpen = ImGui::TreeNodeEx(mount.path.c_str(), mflags, "%s", mount.name.c_str());
-            if (mCurrent)
-                ImGui::PopStyleColor();
-            ConsiderExternalDropTarget(mount.path, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
-                m_currentPath = mount.path;
-                RefreshDirectory();
-            }
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", mount.path.c_str());
-            DrawEntryContextMenu(Entry{.path = mount.path, .name = mount.name, .isDir = true, .isMount = true}, ctx, false);
-            /// @note 外部フォルダへのドロップ → そのフォルダへ Prefab 保存
-            if (ImGui::BeginDragDropTarget()) {
-                if (SaveHierarchyPayloadAsPrefab(
-                        ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, mount.path)) {
-                    RefreshDirectory();
-                }
-                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
-                    std::string sourcePath;
-                    if (ReadAssetDragPayload(p, sourcePath))
-                        QueueAssetMove(sourcePath, mount.path);
-                }
-                ImGui::EndDragDropTarget();
-            }
-            if (mOpen) {
-                {
-                    FBZZ_PROFILE_SCOPE("AssetBrowser::FolderTree");
-                    DrawFolderTree(mount.path, ctx);
-                }
-                ImGui::TreePop();
-            }
-            ImGui::PopID();
-        }
-    }
-
-    ImGui::EndChild();
-
-    /// @name スプリッター: 左ツリーの幅をドラッグで可変にする
-    ImGui::SameLine(0.0f, 0.0f);
-    ImGui::InvisibleButton("##tree_splitter", { 6.0f, paneH });
-    const bool splitActive = ImGui::IsItemActive();
-    if (ImGui::IsItemHovered() || splitActive)
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-    if (splitActive) {
-        /// @note 永続化は OnSaveSettings が担当する (パネルごとに別々の値を持つため)。
-        m_treeWidth = std::clamp(treeWidth + ImGui::GetIO().MouseDelta.x,
-                                 std::min(140.0f, treeLimit), std::min(420.0f, treeLimit));
-    }
-    {
-        /// @note ホバー / ドラッグ中だけアクセント色の縦線を見せる。
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        const ImVec2 p0 = ImGui::GetItemRectMin();
-        const ImVec2 p1 = ImGui::GetItemRectMax();
-        const float  cx = (p0.x + p1.x) * 0.5f;
-        const ImU32  col = (ImGui::IsItemHovered() || splitActive)
-            ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered)
-            : ImGui::GetColorU32(ImGuiCol_Separator);
-        dl->AddLine({ cx, p0.y + 2.0f }, { cx, p1.y - 2.0f }, col, 1.5f);
-    }
-    ImGui::SameLine(0.0f, 0.0f);
 
     /// @name 右ペイン: コンテンツエリア
     ImGui::BeginChild("##content", { 0.0f, paneH }, false);
@@ -443,133 +275,126 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note パンくずリスト
+    if (narrow) {
+        const toolbar::Action folders{"##folder_navigator", icons::kFolder, "/", LOCT("Browse folders")};
+        if (folders.Draw(true)) ImGui::OpenPopup("##folders");
+        const ImVec2 viewport = ImGui::GetWindowViewport()->WorkSize;
+        const float font = ImGui::GetFontSize();
+        ImGui::SetNextWindowSizeConstraints({std::min(13.0f * font, viewport.x), 0.0f},
+                                            {std::min(26.0f * font, viewport.x), std::min(25.0f * font, viewport.y)});
+        if (ImGui::BeginPopup("##folders")) {
+            const auto before = m_currentPath;
+            DrawFolderNavigator(ctx);
+            if (m_currentPath != before) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+        ImGui::SameLine();
+    }
     DrawBreadcrumb(ctx);
 
-    /// @name ツールバー: 検索(伸縮) | Type / Sort | Save / Create / Refresh / View | 件数
-    /// @note 旧実装は検索欄を固定 -470px で予約していたがフォントサイズ変更でズレるため、右側コントロール群の
-    /// @note 幅を実測して検索欄を動的に伸縮させ、どの DPI/フォントでも揃える。
-    static constexpr const char* kSortLabels[] = { "Name ^", "Name v", "Type", "Modified" };
     {
         FBZZ_PROFILE_SCOPE("AssetBrowser::Toolbar");
-        const ImGuiStyle& st = ImGui::GetStyle();
-        const float sp = st.ItemSpacing.x;
-        const auto  btnW = [&](const char* s) {
-            return ImGui::CalcTextSize(s).x + st.FramePadding.x * 2.0f;
-        };
-
-        constexpr float kComboW = 78.0f;
-
-        /// @note Filters ボタンは有効件数を添えて、畳んでいても効いていることを示す。
-        char filterLabel[32] = "Filters";
-        if (const int active = std::popcount(m_typeFilterMask); active > 0)
-            std::snprintf(filterLabel, sizeof(filterLabel), "Filters (%d)", active);
-
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        const int activeFilters = std::popcount(m_typeFilterMask);
+        char filters[96];
+        if (activeFilters)
+            std::snprintf(filters, sizeof(filters), "%s (%d)###asset_filters", LOCT("Filters"), activeFilters);
+        else
+            std::snprintf(filters, sizeof(filters), "%s###asset_filters", LOCT("Filters"));
+        const char* scope = m_searchAllFolders ? LOCT("All Assets") : LOCT("This Folder");
+        const auto& scopeGlyph = m_searchAllFolders ? icons::kWorld : icons::kFolder;
         const bool dirty = AssetDirtyRegistry::HasAny();
-        char saveLabel[32] = {};
+        char save[96]{};
         if (dirty)
-            std::snprintf(saveLabel, sizeof(saveLabel), "Save* (%d)",
+            std::snprintf(save, sizeof(save), "%s (%d)###asset_save", LOCT("Save"),
                           static_cast<int>(AssetDirtyRegistry::GetAll().size()));
-
-        const char* viewLabel = (m_viewMode == ViewMode::Grid) ? "List" : "Grid";
-
-        /// @note 検索範囲トグル。押下状態が一目で分かるようラベル自体を切り替える。
-        const char* scopeLabel = m_searchAllFolders ? "All Assets" : "This Folder";
-
-        char countStr[48];
-        if (IsGlobalSearchActive()) {
-            std::snprintf(countStr, sizeof(countStr), "%d hits",
-                          static_cast<int>(m_searchResults.size()));
-        } else {
-            int files = 0, dirs = 0;
-            for (const auto& e : m_entries) { if (e.isDir) ++dirs; else ++files; }
-            std::snprintf(countStr, sizeof(countStr), "%d files, %d dirs", files, dirs);
-        }
-
-        /// @note 右クラスタの合計幅を実測して検索欄の幅を決める。
-        /// @note 検索範囲トグル
-        float rightW = btnW(scopeLabel) + sp;
-        /// @note Filters / Sort
-        rightW += btnW(filterLabel) + sp + kComboW + sp;
-        if (dirty) rightW += btnW(saveLabel) + sp;
-        rightW += btnW(LOCT("Create")) + sp + btnW("Refresh") + sp + btnW(viewLabel) + sp;
-        rightW += ImGui::CalcTextSize(countStr).x;
-
-        const float avail   = ImGui::GetContentRegionAvail().x;
-        const float searchW = avail >= rightW + sp + 120.0f ? avail - rightW - sp : avail;
-        const auto placeNext = [sp](float width) {
-            ImGui::SameLine(0.0f, sp);
-            if (ImGui::GetContentRegionAvail().x < width) ImGui::NewLine();
+        const toolbar::Action scopeAction{scope, scopeGlyph, "/", LOCT("Switch between this folder and the entire project.")};
+        const toolbar::Action filterAction{filters, icons::kFilter, "F", LOCT("Filters")};
+        const toolbar::Action createAction{LOC("Create"), icons::kAdd, "+", LOCT("Create")};
+        const toolbar::Action viewAction{LOC("View"), icons::kGrid, "#", LOCT("View")};
+        const toolbar::Action saveAction{save, icons::kSave, "S", LOCT("Save")};
+        const auto actionsWidth = [&](bool compact) {
+            return scopeAction.Width(compact) + filterAction.Width(compact) + createAction.Width(compact)
+                 + viewAction.Width(compact) + 4.0f * spacing + (dirty ? saveAction.Width(compact) + spacing : 0.0f);
         };
+        const float available = ImGui::GetContentRegionAvail().x;
+        const float minSearch = 14.0f * ImGui::GetFontSize();
+        const bool compact = available < actionsWidth(false) + minSearch;
+        const float compactActions = actionsWidth(true);
+        const float createExtra = createAction.Width(false) - createAction.Width(true);
+        const float filterExtra = filterAction.Width(false) - filterAction.Width(true);
+        const bool compactCreate = compact && available < minSearch + compactActions + createExtra;
+        const bool compactFilter = compact && available < minSearch + compactActions + createExtra + filterExtra;
+        const float actions = actionsWidth(compact)
+                            + (compact && !compactCreate ? createExtra : 0.0f)
+                            + (compact && !compactFilter ? filterExtra : 0.0f);
+        const float searchWidth = available >= actions + 5.0f * ImGui::GetFontSize() ? available - actions : available;
+        toolbar::SearchField("##search", m_searchAllFolders ? "Search all assets..." : "Search this folder...",
+                             m_searchBuf.data(), m_searchBuf.size(), searchWidth);
 
-        ImGui::SetNextItemWidth(searchW);
-        ImGui::InputTextWithHint("##search",
-                                 m_searchAllFolders ? "Search all assets..."
-                                                    : "Search this folder...",
-                                 m_searchBuf.data(), m_searchBuf.size());
-        placeNext(btnW(scopeLabel));
-
-        /// @note 検索範囲の切り替え。ON の間はアクセント色で状態を示す。状態を控えるのは、Push / Pop の
-        /// @note 条件にメンバーを直接使うと間のボタンがその値を反転させ、push していない色を pop して
-        /// @note スタックが壊れるため。
-        const bool searchAllFoldersBefore = m_searchAllFolders;
-        if (searchAllFoldersBefore)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (ImGui::Button(scopeLabel)) {
-            m_searchAllFolders = !m_searchAllFolders;
-            /// @note トグル直後に確実に組み直させる。
+        toolbar::SameLineIfFits(scopeAction.Width(compact));
+        const bool wasGlobal = m_searchAllFolders;
+        if (wasGlobal) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        ImGui::PushID("asset_scope");
+        if (scopeAction.Draw(compact)) {
+            m_searchAllFolders = !wasGlobal;
             m_searchResultsQuery.clear();
             m_searchResultsTypeFilter = -1;
         }
-        if (searchAllFoldersBefore) ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip(
-                "検索範囲を切り替えます。\n"
-                "This Folder : 現在のフォルダ内だけを名前で絞り込む\n"
-                "All Assets  : プロジェクト全体を横断検索する (略記・部分列も一致)");
-        }
-        placeNext(btnW(filterLabel));
+        ImGui::PopID();
+        if (wasGlobal) ImGui::PopStyleColor();
 
-        /// @note Filters: 種別を複数同時に有効化できるドロップダウン (Unreal と同じ方式)。
-        if (m_typeFilterMask != 0)
-            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-        if (ImGui::Button(filterLabel)) ImGui::OpenPopup("##type_filters");
-        if (m_typeFilterMask != 0) ImGui::PopStyleColor();
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("表示するアセットの種別を選びます (複数選択可)");
+        toolbar::SameLineIfFits(filterAction.Width(compactFilter));
+        if (activeFilters) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (filterAction.Draw(compactFilter)) ImGui::OpenPopup("##type_filters");
+        if (activeFilters) ImGui::PopStyleColor();
         if (ImGui::BeginPopup("##type_filters")) {
             DrawFilterMenu();
             ImGui::EndPopup();
         }
-        placeNext(kComboW);
-
-        ImGui::SetNextItemWidth(kComboW);
-        { int sm = static_cast<int>(m_sortMode);
-          if (ImGui::Combo("##sort", &sm, kSortLabels, 4)) { m_sortMode = static_cast<SortMode>(sm); RefreshDirectory(); } }
-        if (dirty) {
-            placeNext(btnW(saveLabel));
-            ImGui::PushStyleColor(ImGuiCol_Button, EditorTheme::Color(ThemeColor::Warning));
-            if (ImGui::Button(saveLabel)) {
-                m_showSaveModifiedDialog = true;
-            }
-            ImGui::PopStyleColor();
-        }
-
-        placeNext(btnW(LOCT("Create")));
-        if (ImGui::Button(LOC("Create"))) ImGui::OpenPopup("##create_asset");
+        toolbar::SameLineIfFits(createAction.Width(compactCreate));
+        if (createAction.Draw(compactCreate)) ImGui::OpenPopup("##create_asset");
         if (ImGui::BeginPopup("##create_asset")) {
             DrawCreateMenu(ctx, m_currentPath);
             ImGui::EndPopup();
         }
-        placeNext(btnW("Refresh"));
-        if (ImGui::Button("Refresh")) RefreshDirectory();
-        placeNext(btnW(viewLabel));
-        if (ImGui::Button(viewLabel))
-            m_viewMode = (m_viewMode == ViewMode::Grid) ? ViewMode::List : ViewMode::Grid;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Grid size: Ctrl + Mouse Wheel");
-        placeNext(ImGui::CalcTextSize(countStr).x);
-        ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("%s", countStr);
+
+        toolbar::SameLineIfFits(viewAction.Width(compact));
+        if (viewAction.Draw(compact)) ImGui::OpenPopup("##asset_view");
+        if (ImGui::BeginPopup("##asset_view")) {
+            if (ImGui::MenuItem(LOC("Grid"), nullptr, m_viewMode == ViewMode::Grid)) m_viewMode = ViewMode::Grid;
+            if (ImGui::MenuItem(LOC("List"), nullptr, m_viewMode == ViewMode::List)) m_viewMode = ViewMode::List;
+            if (m_viewMode == ViewMode::Grid) {
+                ImGui::SetNextItemWidth(10.0f * ImGui::GetFontSize());
+                ImGui::SliderFloat(LOC("Thumbnail size"), &m_iconSize, 56.0f, 132.0f, "%.0f");
+                ImGui::SetItemTooltip("%s", LOCT("Ctrl + mouse wheel also changes thumbnail size."));
+                if (!IsGlobalSearchActive() && ImGui::BeginMenu(LOC("Sort by"))) {
+                    constexpr const char* names[] = { "Name (A-Z)", "Name (Z-A)", "Type", "Newest first" };
+                    for (int i = 0; i < IM_ARRAYSIZE(names); ++i) {
+                        const auto mode = static_cast<SortMode>(i);
+                        if (ImGui::MenuItem(LOC(names[i]), nullptr, m_sortMode == mode)) {
+                            m_sortMode = mode;
+                            RefreshDirectory();
+                        }
+                    }
+                    ImGui::EndMenu();
+                }
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem(LOC("Refresh"))) RefreshDirectory();
+            if (IsGlobalSearchActive()) {
+                ImGui::TextDisabled(LOCT("%d results"), static_cast<int>(m_searchResults.size()));
+            } else {
+                const int dirs = static_cast<int>(std::count_if(m_entries.begin(), m_entries.end(),
+                    [](const Entry& entry) { return entry.isDir; }));
+                ImGui::TextDisabled(LOCT("%d files, %d folders"), static_cast<int>(m_entries.size()) - dirs, dirs);
+            }
+            ImGui::EndPopup();
+        }
+        if (dirty) {
+            toolbar::SameLineIfFits(saveAction.Width(compact));
+            if (saveAction.Draw(compact)) m_showSaveModifiedDialog = true;
+        }
     }
 
     DrawSaveModifiedDialog();
@@ -590,19 +415,13 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     const bool globalSearch = IsGlobalSearchActive();
     const std::vector<Entry>& entries = VisibleEntries();
 
-    if (globalSearch && entries.empty()) {
-        ImGui::Spacing();
-        ImGui::TextDisabled("\"%s\" に一致するアセットはありません。", filter.c_str());
-        ImGui::TextDisabled("Type フィルタが絞り込みすぎていないか確認してください。");
-    }
-
     if (m_viewMode == ViewMode::List) {
         DrawListView(ctx, filter);
     } else {
         const float padding  = 12.0f;
         const float avail    = ImGui::GetContentRegionAvail().x;
-        const int   cols     = std::max(1, (int)(avail / (m_iconSize + padding)));
-        const float rowH     = m_iconSize + ImGui::GetTextLineHeightWithSpacing() * 1.6f;
+        const int   cols     = std::max(1, static_cast<int>((avail + padding) / (m_iconSize + padding)));
+        const float rowH     = m_iconSize + ImGui::GetFrameHeight() + 2.0f * ImGui::GetStyle().ItemSpacing.y;
 
         std::vector<size_t> visIndices;
         {
@@ -618,6 +437,9 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                 visIndices.push_back(i);
             }
         }
+
+        if (visIndices.empty() && (!filter.empty() || m_typeFilterMask))
+            ImGui::TextDisabled("%s", LOCT("No matching assets"));
 
         const int totalRows = cols > 0
             ? static_cast<int>((visIndices.size() + cols - 1) / cols)
@@ -669,10 +491,8 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
                     if (inBand(entryIndex)) {
                         band.active   = true;
                         band.isParent = isBandParent(entryIndex);
-                        /// @note 帯はセルの中点で接合させる。タイル矩形は左右 4px 張り出しているため、
-                        /// @note 中点までの残りは padding/2 - 4px。半透明色なので重ねず「ぴったり」繋ぐ。
-                        band.bleed = padding * 0.5f - 4.0f;
-                        /// @note 左へ続く = 自分がサブアセットで、直前の可視エントリも同じ帯。
+                        /// @note 隣接するサブアセットの帯は、両側からセルの間隔の半分ずつ延ばして接続する。
+                        band.bleed = padding * 0.5f;
                         const bool continuesLeft = entries[entryIndex].isSubAsset &&
                                                    idx > 0 && inBand(visIndices[idx - 1]);
                         /// @note 右へ続く = 次の可視エントリがサブアセット (= 自分の子か兄弟)。
@@ -760,23 +580,196 @@ void AssetBrowserPanel::OnRenderContent(EditorContext& ctx)
     }
 }
 
+void AssetBrowserPanel::DrawFolderNavigator(EditorContext& ctx)
+{
+    /// @note セクション見出し (FAVORITES / FOLDERS) を控えめなラベルで描く小ヘルパー。
+    const auto sectionHeader = [](const char* label) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
+        ImGui::TextUnformatted(LOCT(label));
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+    };
+
+    /// @note Favorites セクション
+    if (!ctx.assetBrowserBookmarks.empty()) {
+        sectionHeader("FAVORITES");
+        for (const auto& bk : ctx.assetBrowserBookmarks) {
+            ImGui::PushID(bk.c_str());
+            const std::string label = util::FileSystem::GetFilename(bk).empty()
+                ? bk : util::FileSystem::GetFilename(bk);
+            const bool sel = util::FileSystem::SamePathText(m_currentPath, bk);
+            /// @note 先頭に星を付けてお気に入りであることを示す。
+            ImGui::PushStyleColor(ImGuiCol_Text, sel
+                ? ImGui::GetStyleColorVec4(ImGuiCol_Text)
+                : EditorTheme::Color(ThemeColor::Warning));
+            const std::string row = "\xe2\x98\x85 " + label;
+            if (ImGui::Selectable(row.c_str(), sel, ImGuiSelectableFlags_SpanAllColumns)) {
+                if (util::FileSystem::Exists(bk)) {
+                    m_currentPath = bk;
+                    RefreshDirectory();
+                }
+            }
+            ImGui::PopStyleColor();
+            DrawEntryContextMenu(Entry{.path = bk, .name = label, .isDir = true}, ctx, false);
+            ImGui::PopID();
+        }
+    }
+
+    /// @note 見出しの行の右端に、ファイルまで木に並べるかのトグルを置く: sectionHeader は見出しの直後に
+    /// @note Separator を引くため SameLine で並べると罫線の後ろになり使えない。設定はツリーの内容を
+    /// @note 変えるものなので、グリッド側のツールバーではなくツリーの持ち物として置く。
+    {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextMuted));
+        ImGui::TextUnformatted(LOCT("Folders"));
+        ImGui::PopStyleColor();
+
+        /// @note 状態を控える: Push と Pop の条件に m_treeShowFiles を直接使うと、間に挟まるボタンが
+        /// @note その値を反転させ、push していない色を pop (またはその逆) してスタックが壊れて落ちる。
+        const bool showFiles = m_treeShowFiles;
+        const toolbar::Action files{LOC("Show files"), icons::kDocument, "F", LOCT("Include files in the folder tree.")};
+        const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+        if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + files.Width(true) <= right) {
+            ImGui::SameLine();
+            ImGui::SetCursorScreenPos({right - files.Width(true), ImGui::GetCursorScreenPos().y});
+        }
+        if (showFiles)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        if (files.Draw(true)) m_treeShowFiles = !showFiles;
+        if (showFiles) ImGui::PopStyleColor();
+        ImGui::Separator();
+    }
+
+    ImGuiTreeNodeFlags rootFlags = ImGuiTreeNodeFlags_OpenOnArrow
+                                 | ImGuiTreeNodeFlags_SpanAvailWidth
+                                 | ImGuiTreeNodeFlags_DefaultOpen;
+    const bool rootIsCurrent = util::FileSystem::SamePathText(m_currentPath, m_rootPath);
+    if (rootIsCurrent) rootFlags |= ImGuiTreeNodeFlags_Selected;
+
+    /// @note 現在フォルダはアクセント色の塗りで強調する (既定の薄い選択色より目立たせる)。
+    if (rootIsCurrent)
+        ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+    bool rootOpen = DrawFolderNode("##root", "Assets", rootFlags);
+    if (rootIsCurrent)
+        ImGui::PopStyleColor();
+    /// @note エクスプローラーからのドロップが Assets ルート行に落ちたらルートを取り込み先にする。
+    ConsiderExternalDropTarget(m_rootPath, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
+        m_currentPath = m_rootPath;
+        RefreshDirectory();
+    }
+    DrawEntryContextMenu(Entry{.path = m_rootPath, .name = "Assets", .isDir = true}, ctx, false);
+    /// @note Assets ルートへのドロップ
+    if (ImGui::BeginDragDropTarget()) {
+        if (SaveHierarchyPayloadAsPrefab(
+                ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, m_rootPath)) {
+            RefreshDirectory();
+        }
+        if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+            std::string sourcePath;
+            if (ReadAssetDragPayload(p, sourcePath))
+                QueueAssetMove(sourcePath, m_rootPath);
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (rootOpen) {
+        {
+            FBZZ_PROFILE_SCOPE("AssetBrowser::FolderTree");
+            DrawFolderTree(m_rootPath, ctx);
+        }
+        ImGui::TreePop();
+    }
+
+    /// @name EXTERNAL: マウント (外部ソースフォルダ) を専用セクションに分離
+    /// @note 由来が異なる外部フォルダは見出しで分ける (以前は Assets ツリーの子に混ぜていた)。
+    if (!m_mounts.empty()) {
+        sectionHeader("EXTERNAL");
+        for (const AssetMount& mount : m_mounts) {
+            ImGui::PushID(mount.path.c_str());
+            ImGuiTreeNodeFlags mflags = ImGuiTreeNodeFlags_OpenOnArrow
+                                      | ImGuiTreeNodeFlags_SpanAvailWidth;
+            const bool mCurrent = util::FileSystem::SamePathText(m_currentPath, mount.path);
+            if (mCurrent) mflags |= ImGuiTreeNodeFlags_Selected;
+            if (mCurrent)
+                ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+            /// @note 表示名は Assets 側の仮想名、ID は実パスにして同名マウントでも衝突しない。
+            const bool mOpen = DrawFolderNode(mount.path.c_str(), mount.name.c_str(), mflags);
+            if (mCurrent)
+                ImGui::PopStyleColor();
+            ConsiderExternalDropTarget(mount.path, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+            if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
+                m_currentPath = mount.path;
+                RefreshDirectory();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", mount.path.c_str());
+            DrawEntryContextMenu(Entry{.path = mount.path, .name = mount.name, .isDir = true, .isMount = true}, ctx, false);
+            /// @note 外部フォルダへのドロップ → そのフォルダへ Prefab 保存
+            if (ImGui::BeginDragDropTarget()) {
+                if (SaveHierarchyPayloadAsPrefab(
+                        ImGui::AcceptDragDropPayload("FBZZ_HIERARCHY_ENTITY"), ctx, mount.path)) {
+                    RefreshDirectory();
+                }
+                if (const ImGuiPayload* p = ImGui::AcceptDragDropPayload("ASSET_PATH")) {
+                    std::string sourcePath;
+                    if (ReadAssetDragPayload(p, sourcePath))
+                        QueueAssetMove(sourcePath, mount.path);
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (mOpen) {
+                {
+                    FBZZ_PROFILE_SCOPE("AssetBrowser::FolderTree");
+                    DrawFolderTree(mount.path, ctx);
+                }
+                ImGui::TreePop();
+            }
+            ImGui::PopID();
+        }
+    }
+}
+
+void AssetBrowserPanel::DrawTreeSplitter(float treeWidth, float treeLimit, float paneH)
+{
+    /// @name スプリッター: 左ツリーの幅をドラッグで可変にする
+    ImGui::InvisibleButton("##tree_splitter", { 6.0f, paneH });
+    const bool splitActive = ImGui::IsItemActive();
+    if (ImGui::IsItemHovered() || splitActive)
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    if (splitActive) {
+        /// @note 永続化は OnSaveSettings が担当する (パネルごとに別々の値を持つため)。
+        m_treeWidth = std::clamp(treeWidth + ImGui::GetIO().MouseDelta.x,
+                                 std::min(140.0f, treeLimit), std::min(420.0f, treeLimit));
+    }
+    {
+        /// @note ホバー / ドラッグ中だけアクセント色の縦線を見せる。
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 p0 = ImGui::GetItemRectMin();
+        const ImVec2 p1 = ImGui::GetItemRectMax();
+        const float  cx = (p0.x + p1.x) * 0.5f;
+        const ImU32  col = (ImGui::IsItemHovered() || splitActive)
+            ? ImGui::GetColorU32(ImGuiCol_SeparatorHovered)
+            : ImGui::GetColorU32(ImGuiCol_Separator);
+        dl->AddLine({ cx, p0.y + 2.0f }, { cx, p1.y - 2.0f }, col, 1.5f);
+    }
+}
+
 void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
 {
-    /// @note Build list of (label, absPath) from root down to m_currentPath
     struct Crumb { std::string label; std::string path; };
     std::vector<Crumb> crumbs;
 
     const std::string cur = util::FileSystem::NormalizePathSeparators(m_currentPath);
     const std::string root = util::FileSystem::NormalizePathSeparators(m_rootPath);
 
-    /// @note Walk cur up to root, collecting segments
     std::string walk = cur;
     while (true) {
         if (util::FileSystem::SamePathText(walk, root)) {
             crumbs.push_back({ "Assets", root });
             break;
         }
-        /// @note check if walk is a mounted root
+        /// @note 外部マウントはディスク上の親へ辿らず、Assets の直下へ接続する。
         bool isMountRoot = false;
         for (const AssetMount& mount : m_mounts) {
             if (util::FileSystem::SamePathText(walk, mount.path)) {
@@ -794,30 +787,62 @@ void AssetBrowserPanel::DrawBreadcrumb(EditorContext&)
     }
     std::reverse(crumbs.begin(), crumbs.end());
 
-    if (!util::FileSystem::SamePathText(cur, root)) {
-        if (ImGui::SmallButton(" ^ ")) {
-            m_currentPath = ParentPath();
-            RefreshDirectory();
-        }
-        ImGui::SameLine(0.0f, 2.0f);
-    }
-
-    for (size_t i = 0; i < crumbs.size(); ++i) {
-        ImGui::PushID(static_cast<int>(i));
-        const bool isLast = (i + 1 == crumbs.size());
-        if (isLast) {
-            ImGui::TextDisabled("%s", crumbs[i].label.c_str());
-        } else {
-            if (ImGui::SmallButton(crumbs[i].label.c_str())) {
-                m_currentPath = crumbs[i].path;
+    if (crumbs.empty()) return;
+    const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float available = ImGui::GetContentRegionAvail().x;
+    const auto& current = crumbs.back();
+    const auto textSize = ImGui::CalcTextSize(current.label.c_str());
+    if (crumbs.size() > 1) {
+        const toolbar::Action up{"##parent", icons::kUp, "^", LOCT("Go up one folder")};
+        if (available >= 7.0f * ImGui::GetFontSize()) {
+            if (up.Draw(true)) {
+                m_currentPath = ParentPath();
                 RefreshDirectory();
             }
-            ImGui::SameLine(0.0f, 2.0f);
-            ImGui::TextDisabled("/");
-            ImGui::SameLine(0.0f, 2.0f);
+            ImGui::SameLine(0.0f, gap);
         }
-        ImGui::PopID();
+
+        const float separator = ImGui::CalcTextSize("/").x + 2.0f * gap;
+        float totalWidth = textSize.x;
+        for (std::size_t i = 0; i + 1 < crumbs.size(); ++i)
+            totalWidth += toolbar::ButtonWidth(crumbs[i].label.c_str()) + separator;
+        if (totalWidth > ImGui::GetContentRegionAvail().x) {
+            const toolbar::Action ancestors{"##ancestors", icons::kDetail, "...", LOCT("Parent folders")};
+            if (ancestors.Draw(true)) ImGui::OpenPopup("##ancestor_list");
+            if (ImGui::BeginPopup("##ancestor_list")) {
+                for (std::size_t i = 0; i + 1 < crumbs.size(); ++i) {
+                    ImGui::PushID(static_cast<int>(i));
+                    if (ImGui::MenuItem(crumbs[i].label.c_str())) {
+                        m_currentPath = crumbs[i].path;
+                        RefreshDirectory();
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::SameLine(0.0f, gap);
+        } else {
+            for (std::size_t i = 0; i + 1 < crumbs.size(); ++i) {
+                ImGui::PushID(static_cast<int>(i));
+                if (ImGui::Button(crumbs[i].label.c_str())) {
+                    m_currentPath = crumbs[i].path;
+                    RefreshDirectory();
+                }
+                ImGui::PopID();
+                ImGui::SameLine(0.0f, gap);
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("/");
+                ImGui::SameLine(0.0f, gap);
+            }
+        }
     }
+    const float width = std::max(1.0f, std::min(textSize.x, ImGui::GetContentRegionAvail().x));
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImGui::Dummy({width, ImGui::GetFrameHeight()});
+    const ImVec2 max = ImGui::GetItemRectMax();
+    ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), {pos.x, pos.y + ImGui::GetStyle().FramePadding.y},
+                              max, max.x, current.label.data(), current.label.data() + current.label.size(), &textSize);
+    ImGui::SetItemTooltip("%s", cur.c_str());
 }
 
 bool AssetBrowserPanel::IsInstanceSetFile(const std::string& path)
@@ -1061,6 +1086,11 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
     m_listSortAscending = asc;
     if (specs) specs->SpecsDirty = false;
     const auto& visIndices = m_listIndices;
+    if (visIndices.empty() && (!filter.empty() || m_typeFilterMask)) {
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::TextWrapped("%s", LOCT("No matching assets"));
+    }
 
     /// @note Reveal 要求の対象行。間引かれていても必ず描かせてからスクロールを合わせる: ImGuiListClipper は
     /// @note 表示範囲外の行を一切描かないため、IncludeItemByIndex で対象行だけ描画対象へ戻さないと
@@ -1157,7 +1187,10 @@ void AssetBrowserPanel::DrawListView(EditorContext& ctx, const std::string& filt
                 ImGui::SameLine();
             }
             const ImVec4 col = ResolveEntryColor(e, ctx);
-            if (!e.isDir && DrawOriginalTypeIcon(ImGui::GetCursorScreenPos(), ImGui::GetTextLineHeight(), e))
+            ImVec4 folderTint;
+            const bool tintedFolder = e.isDir && TryGetFolderColor(ctx, e.path, folderTint);
+            if (DrawOriginalTypeIcon(ImGui::GetCursorScreenPos(), ImGui::GetTextLineHeight(), e,
+                                     tintedFolder ? &folderTint : nullptr))
                 ImGui::Dummy({ ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight() });
             else
                 ImGui::TextColored(col, "%s", e.isDir ? "[D]" : EntryLabel(e));

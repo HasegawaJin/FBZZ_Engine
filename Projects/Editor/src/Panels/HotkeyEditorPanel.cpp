@@ -2,14 +2,13 @@
 /// @brief   ホットキー一覧表示とリバインド UI。
 /// @author  Hasegawa Jin
 /// @date    2026-06-16
-///
-/// 一覧・整形・競合判定は HotkeyManager 側に持たせ、このパネルは表示と入力待ちだけを担当する
-/// (整形処理を F1 オーバーレイと重複させない)。
 #include <Editor/Panels/HotkeyEditorPanel.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/Localization.hpp>
+#include "../Util/PanelToolbar.hpp"
+#include <Engine/Util/StringUtils.hpp>
 #include <imgui.h>
 
 namespace fbzz::editor {
@@ -98,7 +97,8 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
     }
 
     /// @note リバインド待ち中: 次のキー入力を捕捉する
-    if (!m_rebindTarget.empty()) {
+    const bool capturing = !m_rebindTarget.empty();
+    if (capturing) {
         ImGui::TextColored({ 0.4f, 0.9f, 1.0f, 1.0f },
             "Press any key to rebind \"%s\"  (Esc = cancel)",
             m_rebindTarget.c_str());
@@ -139,7 +139,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
     if (!m_conflictNote.empty()) {
         ImGui::TextColored({ 1.0f, 0.75f, 0.25f, 1.0f }, "%s", m_conflictNote.c_str());
         ImGui::SameLine();
-        if (ImGui::SmallButton("Dismiss")) m_conflictNote.clear();
+        if (ImGui::SmallButton(LOC("Dismiss"))) m_conflictNote.clear();
         ImGui::Separator();
     }
 
@@ -149,25 +149,36 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
         return;
     }
 
+    if (!capturing)
+        toolbar::SearchField("##hotkey_search", "Search actions, shortcuts or contexts...", m_search, sizeof(m_search));
+
     if (ImGui::BeginTable("##hotkeys", 4,
             ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
     {
-        ImGui::TableSetupColumn("Action",   ImGuiTableColumnFlags_WidthStretch, 2.0f);
-        ImGui::TableSetupColumn("Context",  ImGuiTableColumnFlags_WidthStretch, 1.0f);
-        ImGui::TableSetupColumn("Binding",  ImGuiTableColumnFlags_WidthStretch, 1.5f);
-        ImGui::TableSetupColumn("",         ImGuiTableColumnFlags_WidthFixed,   80.0f);
+        ImGui::TableSetupColumn(LOCT("Action"),   ImGuiTableColumnFlags_WidthStretch, 2.0f);
+        ImGui::TableSetupColumn(LOCT("Context"),  ImGuiTableColumnFlags_WidthStretch, 1.0f);
+        ImGui::TableSetupColumn(LOCT("Binding"),  ImGuiTableColumnFlags_WidthStretch, 1.5f);
+        ImGui::TableSetupColumn("",         ImGuiTableColumnFlags_WidthFixed,   toolbar::ButtonWidth(LOCT("Rebind")));
         ImGui::TableHeadersRow();
 
+        bool anyShown = false;
         for (const auto& hk : hotkeys) {
+            const char* action = LOCT(hk.name.c_str());
+            const std::string scopeText = ScopeLabel(hk.scope);
+            const std::string binding = HotkeyManager::FormatBinding(hk);
+            if (m_search[0] && hk.name != m_rebindTarget
+                && !util::StringUtils::ContainsCI(action, m_search)
+                && !util::StringUtils::ContainsCI(hk.name, m_search)
+                && !util::StringUtils::ContainsCI(binding, m_search)
+                && !util::StringUtils::ContainsCI(scopeText, m_search))
+                continue;
+            anyShown = true;
             ImGui::TableNextRow();
 
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(hk.name.c_str());
+            ImGui::TextUnformatted(action);
 
-            /// @note どこにフォーカスがあるとき効くのかを出す。同じ Delete が複数のスコープで効くことが
-            ///       分からないと「効いたり効かなかったりする」ように見える。
             ImGui::TableSetColumnIndex(1);
-            const std::string scopeText = ScopeLabel(hk.scope);
             ImGui::TextDisabled("%s", scopeText.c_str());
 
             ImGui::TableSetColumnIndex(2);
@@ -175,7 +186,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
             if (waiting)
                 ImGui::TextColored({ 0.4f, 0.9f, 1.0f, 1.0f }, "...");
             else
-                ImGui::TextUnformatted(HotkeyManager::FormatBinding(hk).c_str());
+                ImGui::TextUnformatted(binding.c_str());
 
             ImGui::TableSetColumnIndex(3);
             /// @note 説明専用エントリ (マウス操作など) は割り当てを持たないのでリバインドできない。
@@ -183,7 +194,7 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
                 ImGui::TextDisabled("-");
             } else {
                 ImGui::PushID(hk.name.c_str());
-                if (ImGui::SmallButton("Rebind")) {
+                if (ImGui::SmallButton(LOC("Rebind"))) {
                     m_rebindTarget = hk.name;
                     m_conflictNote.clear();
                 }
@@ -191,10 +202,13 @@ void HotkeyEditorPanel::OnRenderContent(EditorContext& ctx)
             }
         }
         ImGui::EndTable();
+        if (!anyShown) ImGui::TextDisabled("%s", LOCT("No matching shortcuts"));
     }
 
     ImGui::Spacing();
-    ImGui::TextDisabled("Rebinds are saved to editor_settings.toml when the editor exits.");
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextDisabled("%s", LOCT("Shortcut changes are saved when the editor exits."));
+    ImGui::PopTextWrapPos();
 }
 
 } /// @note namespace fbzz::editor

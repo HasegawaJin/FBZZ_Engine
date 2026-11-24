@@ -4,16 +4,16 @@
 /// @date    2026-09-12
 ///
 /// @note 画像 (.png) でなくフォントを使う: 拡大・着色が UI スケール (SetUiScale) に自動で追従し、
-///       日本語フォントを既に merge 済みなので追加コストが小さい。エディターは Windows 専用で
-///       再配布もしないため ThirdParty 化やライセンス管理が不要。見つからない環境では
-///       Available() が false になり、呼び出し側は Or() の文字ラベルへ落ちる (豆腐は出さない)。
+/// @note 日本語フォントを既に merge 済みなので追加コストが小さい。エディターは Windows 専用で
+/// @note 再配布もしないため ThirdParty 化やライセンス管理が不要。見つからない環境では
+/// @note Available() が false になり、呼び出し側は Or() の文字ラベルへ落ちる (豆腐は出さない)。
 #pragma once
 
 namespace fbzz::editor::icons {
 
 namespace detail {
 
-/// PUA のコードポイント 1 つを UTF-8 の文字列にしたもの。
+/// @note PUA のコードポイント 1 つを UTF-8 の文字列にしたもの。
 /// @note "\xEE\x9D\xA8" を手で書くと間違えてもコンパイルは通り、画面に別の絵が出るまで気付けない。
 struct Glyph {
     char text[4];
@@ -27,12 +27,12 @@ struct Glyph {
                     '\0' } };
 }
 
-/// 記号フォントを merge できたか。書くのは EditorTheme::Apply() だけ。
+/// @note 記号フォントを merge できたか。書くのは EditorTheme::Apply() だけ。
 /// @note フォントを積む場所とアイコンを使う場所は別ファイルで、成否を伝える経路がここ以外に無い。
-///       読むのは Available() / Or() を通す。
+/// @note 読むのは Available() / Or() を通す。
 extern bool g_iconFontLoaded;
 
-} // namespace detail
+} /// @note namespace detail
 
 inline constexpr detail::Glyph kPlay     = detail::ToUtf8(0xE768);
 inline constexpr detail::Glyph kPause    = detail::ToUtf8(0xE769);
@@ -42,7 +42,7 @@ inline constexpr detail::Glyph kStep     = detail::ToUtf8(0xE893);
 inline constexpr detail::Glyph kInfo     = detail::ToUtf8(0xE946);
 inline constexpr detail::Glyph kWarning  = detail::ToUtf8(0xE7BA);
 inline constexpr detail::Glyph kError    = detail::ToUtf8(0xE783);
-inline constexpr detail::Glyph kDetail   = detail::ToUtf8(0xE712); ///< 詳細ログ (…)
+inline constexpr detail::Glyph kDetail   = detail::ToUtf8(0xE712); ///< @note 詳細ログ (…)
 inline constexpr detail::Glyph kAccept   = detail::ToUtf8(0xE8FB);
 inline constexpr detail::Glyph kCancel   = detail::ToUtf8(0xE711);
 
@@ -52,6 +52,11 @@ inline constexpr detail::Glyph kSettings = detail::ToUtf8(0xE713);
 inline constexpr detail::Glyph kAdd      = detail::ToUtf8(0xE710);
 inline constexpr detail::Glyph kDelete   = detail::ToUtf8(0xE74D);
 inline constexpr detail::Glyph kSave     = detail::ToUtf8(0xE74E);
+inline constexpr detail::Glyph kSaveAs   = detail::ToUtf8(0xE792);
+inline constexpr detail::Glyph kUndo     = detail::ToUtf8(0xE7A7);
+inline constexpr detail::Glyph kRedo     = detail::ToUtf8(0xE7A6);
+inline constexpr detail::Glyph kPaste    = detail::ToUtf8(0xE77F);
+inline constexpr detail::Glyph kCopy     = detail::ToUtf8(0xE8C8);
 inline constexpr detail::Glyph kEdit     = detail::ToUtf8(0xE70F);
 inline constexpr detail::Glyph kFilter   = detail::ToUtf8(0xE71C);
 inline constexpr detail::Glyph kLink     = detail::ToUtf8(0xE71B);
@@ -65,6 +70,7 @@ inline constexpr detail::Glyph kWorld    = detail::ToUtf8(0xE909);
 inline constexpr detail::Glyph kPivot    = detail::ToUtf8(0xE81D);
 inline constexpr detail::Glyph kSnapGrid = detail::ToUtf8(0xE80A);
 
+inline constexpr detail::Glyph kUp       = detail::ToUtf8(0xE74A);
 inline constexpr detail::Glyph kFolder   = detail::ToUtf8(0xE8B7);
 inline constexpr detail::Glyph kDocument = detail::ToUtf8(0xE8A5);
 inline constexpr detail::Glyph kCamera   = detail::ToUtf8(0xE722);
@@ -72,11 +78,11 @@ inline constexpr detail::Glyph kLight    = detail::ToUtf8(0xE706);
 inline constexpr detail::Glyph kGrid     = detail::ToUtf8(0xE80A);
 inline constexpr detail::Glyph kTimeline = detail::ToUtf8(0xE916);
 
-/// 記号フォントが読めているか。読めていなければ描画側は文字へ落とす。
+/// @note 記号フォントが読めているか。読めていなければ描画側は文字へ落とす。
 [[nodiscard]] bool Available();
 
-/// 記号が使えればその字を、使えなければ fallback を返す。
+/// @note 記号が使えればその字を、使えなければ fallback を返す。
 /// @note 戻り値は静的記憶域を指す。書き換えない。
 [[nodiscard]] const char* Or(const detail::Glyph& glyph, const char* fallback);
 
-} // namespace fbzz::editor::icons
+} /// @note namespace fbzz::editor::icons

@@ -109,6 +109,9 @@ private:
     /// @note ウィンドウが collapsed / 非表示でも毎フレーム呼ばれる。
     void OnBeforeBegin(EditorContext& ctx) override;
     void RefreshDirectory();
+    void DrawFolderNavigator(EditorContext& ctx);
+    void DrawTreeSplitter(float width, float limit, float height);
+    static bool DrawFolderNode(const char* id, const char* name, ImGuiTreeNodeFlags flags);
     void DrawFolderTree(const std::string& dirPath, EditorContext& ctx);
     /// @note 左ツリーのファイル 1 行 (m_treeShowFiles が有効なときだけ描かれる葉)。
     void DrawTreeFileRow(const Entry& e, EditorContext& ctx);
@@ -154,7 +157,7 @@ private:
     void               ClearAllAssetPreviews();
     void               ResetSingleAssetPreviewCache(const std::string& path);
     void               TouchAssetPreview(const std::string& path);
-    bool               DrawOriginalTypeIcon(ImVec2 origin, float size, const Entry& entry);
+    bool               DrawOriginalTypeIcon(ImVec2 origin, float size, const Entry& entry, const ImVec4* folderTint = nullptr);
     void               DrawAssetPreviewState(ImVec2 origin, float size, const Entry& entry,
                                             assetthumbnail::State state);
     std::unordered_map<std::string, uint64_t> m_previewAccess;
@@ -165,8 +168,8 @@ private:
     int m_thumbnailWorkFrame = -1;
     renderer::IImGuiRenderer* m_thumbnailGui = nullptr;
     std::string m_typeIconRoot;
-    std::array<renderer::ResourceHandle<renderer::TextureTag>, 36> m_typeIcons{};
-    std::array<bool, 36> m_typeIconAttempted{};
+    std::array<renderer::ResourceHandle<renderer::TextureTag>, assetthumbnail::ICON_CACHE_SIZE> m_typeIcons{};
+    std::array<bool, assetthumbnail::ICON_CACHE_SIZE> m_typeIconAttempted{};
     std::future<assetthumbnail::Image> m_thumbnailFuture;
     std::string m_thumbnailJobPath;
     uint64_t m_thumbnailJobTicket = 0;

@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
 #include <Editor/Panels/StatusBar.hpp>
+#include "ManagedBuildPresentation.hpp"
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
 #include <Editor/Util/AssetDirtyRegistry.hpp>
@@ -15,6 +16,8 @@
 #include <Engine/Util/FileSystem.hpp>
 #include <imgui.h>
 #include <cstdio>
+#include <cmath>
+#include <chrono>
 #include <string>
 
 namespace fbzz::editor {
@@ -48,15 +51,45 @@ float SnapFieldsWidth()
     return w;
 }
 
-/// 直前に描いた項目の右端 (ウィンドウローカル X)。バーは 1 行なので、これが次の項目の開始位置になる。
+/// @note 直前に描いた項目の右端 (ウィンドウローカル X)。バーは 1 行なので、これが次の項目の開始位置になる。
 float LastItemEndX()
 {
     return ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x;
 }
 
+void DrawManagedProgress(EditorContext& ctx)
+{
+    if (!ctx.managedScripts) return;
+    const auto* request = ctx.managedScripts->Builds().Latest();
+    if (!request && !ctx.managedBuildBusy) return;
+    const auto state = request ? request->state : ManagedBuildState::SCANNING;
+    const auto now = std::chrono::steady_clock::now();
+    if (state == ManagedBuildState::SUPERSEDED ||
+        (state == ManagedBuildState::APPLIED && now - request->stageStartedAt > std::chrono::seconds(3))) return;
+
+    char label[160];
+    if (request) {
+        const double seconds = ManagedBuildHistory::IsTerminal(state) ? request->elapsedMilliseconds / 1000.0
+            : std::chrono::duration<double>(now - request->queuedAt).count();
+        std::snprintf(label, sizeof(label), "C#  %s  %.1f s###managed_build", ManagedBuildStateLabel(state), seconds);
+    } else {
+        std::snprintf(label, sizeof(label), "C#  %s###managed_build", ManagedBuildStateLabel(state));
+    }
+    if (ImGui::SmallButton(label)) ctx.requestOpenBuildOutput = true;
+    ImGui::SetItemTooltip("%s", LOCT("Open Build Output"));
+    if (!ManagedBuildHistory::IsTerminal(state) && state != ManagedBuildState::DEFERRED && state != ManagedBuildState::COMPILED) {
+        const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+        const float span = (max.x - min.x) * 0.22f;
+        const float start = min.x + (max.x - min.x - span) * (0.5f + 0.5f * std::sin(4.0f * static_cast<float>(ImGui::GetTime())));
+        ImGui::GetWindowDrawList()->AddLine({start, max.y - 1}, {start + span, max.y - 1},
+            EditorTheme::ColorU32(ThemeColor::Info), 2.0f);
+    }
+    Sep();
+}
+
 } /// @note namespace
 
-/// 下端ドロワーの開閉ボタン。開いている間は押下色にして状態を一目で分かるようにする。
+/// @note 下端ドロワーの開閉ボタン。開いている間は押下色にして状態を一目で分かるようにする。
 /// @note どのレイアウトからでも同じ位置で開閉できることに価値がある (Unreal の Content Drawer 同様)。
 void DrawDrawerToggle(const char* label, bool* visible, const char* tooltipTarget)
 {
@@ -96,13 +129,13 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     ImGui::PopStyleVar();
 
     /// @note 行の基準は枠付きウィジェット (Checkbox / DragFloat) の高さに合わせる。テキスト基準だと
-    ///       枠の下端がバー下端をはみ出す。AlignTextToFramePadding でテキストをこの行に合わせ直す。
+    /// @note 枠の下端がバー下端をはみ出す。AlignTextToFramePadding でテキストをこの行に合わせ直す。
     const float rowY = (barH - ImGui::GetFrameHeight()) * 0.5f;
     ImGui::SetCursorPosY(rowY);
     ImGui::AlignTextToFramePadding();
 
     /// @note 右端に置く内容を描画前に決めておく。左から流し込む情報の打ち切り位置は右端領域と
-    ///       Snap 群の幅が確定しないと判定できず、しないとウィンドウが狭いとき Snap が外へ押し出される。
+    /// @note Snap 群の幅が確定しないと判定できず、しないとウィンドウが狭いとき Snap が外へ押し出される。
     const float pbW       = 280.0f;
     const auto& hrs       = ctx.hotReloadState;
     const bool  compiling = (hrs == EditorContext::HotReloadState::Compiling);
@@ -116,7 +149,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
                               - ctx.hotReloadStartTime;
 
     /// @note 恒常表示: 直近ビルドの結果を「消さずに」出す。従来は Done/Failed が数秒で消えて
-    ///       ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
+    /// @note ビルド状況を後から確認できなかったため、BuildConsole の最新レコードを常時表示する。
     const BuildRecord* latest       = ctx.buildConsole ? ctx.buildConsole->Latest() : nullptr;
     const char*        reloadText   = nullptr;
     ImVec4             reloadColor  = EditorTheme::Color(ThemeColor::Text);
@@ -155,6 +188,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
     const float leftBudget = windowW - rightW - snapW;
 
     /// @name 下端ドロワー
+    DrawManagedProgress(ctx);
     DrawDrawerToggle("Asset Browser", assetBrowserVisible, "Asset Browser");
     DrawDrawerToggle("Console", consoleVisible, "Console (debug log)");
 
@@ -181,13 +215,13 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
 
     /// @name シーン名 + 未保存インジケーター
     /// @note 未保存状態はタイトルバーの * と AssetBrowser の Save* (N) に分散していたため、ここへ
-    ///       シーン未保存の橙ドットと未保存アセット件数を集約する。
+    /// @note シーン未保存の橙ドットと未保存アセット件数を集約する。
     const std::string sceneName = ctx.currentScenePath.empty()
         ? "Untitled"
         : util::FileSystem::GetFilename(ctx.currentScenePath);
     ImGui::Text("Scene: %s", sceneName.c_str());
     /// @note Play 中に LoadScene で移った先は「今走っているシーン」であって編集対象ではない。
-    ///       名前を並べておかないと、遷移したこと自体が画面のどこにも出ない。
+    /// @note 名前を並べておかないと、遷移したこと自体が画面のどこにも出ない。
     if (!ctx.playSceneName.empty()) {
         ImGui::SameLine(0.0f, 4.0f);
         ImGui::TextColored(EditorTheme::Color(ThemeColor::Success), "\xE2\x96\xB6 %s",
@@ -340,7 +374,7 @@ void StatusBar::Draw(EditorContext& ctx, bool* assetBrowserVisible, bool* consol
             ImGui::PushStyleColor(ImGuiCol_PlotHistogram, barCol);
             ImGui::PushStyleColor(ImGuiCol_FrameBg, EditorTheme::Color(ThemeColor::Field));
             /// @note 進捗が取れないときは掃引アニメーションで「動いている」ことだけ示す。唯一の
-            ///       使い手であるこのブロックへ寄せる (Detail Bake との共用は廃止済み)。
+            /// @note 使い手であるこのブロックへ寄せる (Detail Bake との共用は廃止済み)。
             const bool  hasProgress = ctx.hotReloadProgress >= 0.0f;
             const float sweep       = fmodf(static_cast<float>(ImGui::GetTime()) * 0.7f, 1.0f);
             const float progress    = hasProgress ? ctx.hotReloadProgress : sweep;

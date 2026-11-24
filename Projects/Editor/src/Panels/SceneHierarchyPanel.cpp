@@ -1,7 +1,16 @@
 /// @file    SceneHierarchyPanel.cpp
-/// @brief   Scene GameObject hierarchy and selection editing.
+/// @brief   シーン内のオブジェクトの階層表示と選択操作。
 /// @author  Hasegawa Jin
 /// @date    2026-05-21
+#include "../Util/PanelToolbar.hpp"
+#include "../Util/ContentGlyph.hpp"
+#include <Engine/Scene/Components/AnimatorComponent.hpp>
+#include <Engine/Scene/Components/ParticleEmitter.hpp>
+#include <Engine/Scene/Components/RigidBodyComponent.hpp>
+#include <Engine/Scene/Components/VFXComponent.hpp>
+#include <Engine/Scene/Components/AudioSourceComponent.hpp>
+#include <Engine/Scene/Components/SkinnedMeshRenderer.hpp>
+#include <Engine/Scene/Components/WaterfallComponent.hpp>
 #include <Engine/Asset/ModelSource.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
 #include "../Util/MaterialAuthoringEditing.hpp"
@@ -54,7 +63,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <algorithm>
-#include <cstring>
+#include <cstdio>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -581,6 +590,75 @@ void DrawHierarchyNodeMenu(EditorContext& ctx, const scene::GameObject& object, 
     ImGui::EndPopup();
 }
 
+struct ObjectAppearance {
+    ui::ContentGlyph glyph;
+    ThemeColor color;
+    const char* type;
+};
+
+ObjectAppearance ObjectIcon(scene::GameObject& object)
+{
+    using Glyph = ui::ContentGlyph;
+    if (object.GetComponent<scene::CameraComponent>()) return {Glyph::CAMERA, ThemeColor::Info, "Camera"};
+    if (object.GetComponent<scene::LightComponent>()) return {Glyph::LIGHT, ThemeColor::Warning, "Light"};
+    if (object.GetComponent<scene::WaterComponent>() || object.GetComponent<scene::WaterfallComponent>())
+        return {Glyph::WATER, ThemeColor::Info, "Water"};
+    if (object.GetComponent<scene::TerrainComponent>() || object.GetComponent<scene::TerrainGridComponent>())
+        return {Glyph::TERRAIN, ThemeColor::Success, "Terrain"};
+    if (object.GetComponent<scene::AudioSourceComponent>()) return {Glyph::AUDIO, ThemeColor::Secondary, "Audio"};
+    if (object.GetComponent<scene::VFXComponent>() || object.GetComponent<scene::ParticleEmitter>())
+        return {Glyph::EFFECTS, ThemeColor::Secondary, "Effects"};
+    if (object.GetComponent<scene::UICanvas>()) return {Glyph::CANVAS, ThemeColor::Info, "UI Canvas"};
+    if (object.GetComponent<scene::AnimatorComponent>()) return {Glyph::ANIMATION, ThemeColor::Secondary, "Animation"};
+    if (object.GetComponent<scene::MeshRenderer>() || object.GetComponent<scene::SkinnedMeshRenderer>())
+        return {Glyph::MESH, ThemeColor::TextMuted, "Mesh"};
+    if (!object.prefabAssetPath.empty()) return {Glyph::PREFAB, ThemeColor::Accent, "Prefab"};
+    if (object.GetComponent<scene::RigidBodyComponent>()) return {Glyph::PHYSICS, ThemeColor::TextMuted, "Physics"};
+    return {Glyph::OBJECT, ThemeColor::TextMuted, "GameObject"};
+}
+
+/// @note 可視行だけで Component を引く。アイコン・名前・件数は同じ行の非対話描画で、入力判定はツリーに残す。
+void DrawObjectLabel(scene::GameObject& object, float left, float right, int hiddenCount, bool active)
+{
+    if (!ImGui::IsItemVisible() || right <= left) return;
+    const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+    const float size = ImGui::GetFontSize();
+    const float y = (min.y + max.y - size) * 0.5f;
+    const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
+    const auto icon = ObjectIcon(object);
+    auto& draw = *ImGui::GetWindowDrawList();
+    draw.PushClipRect({left, min.y}, {right, max.y}, true);
+    ui::DrawContentGlyph(icon.glyph, {left + size * 0.5f, y + size * 0.5f}, size,
+                         EditorTheme::ColorU32(active ? icon.color : ThemeColor::TextFaint));
+    const float textLeft = left + size + gap;
+    char badge[32]{};
+    float badgeWidth = 0;
+    if (hiddenCount > 0) {
+        std::snprintf(badge, sizeof(badge), "(+%d)", hiddenCount);
+        badgeWidth = ImGui::CalcTextSize(badge).x + gap;
+    }
+    const float textRight = right - badgeWidth;
+    const char* name = object.name.c_str();
+    if (textRight > textLeft)
+        ImGui::RenderTextEllipsis(&draw, {textLeft, y}, {textRight, max.y}, textRight,
+                                  name, name + object.name.size(), nullptr);
+    if (badgeWidth > 0 && right - left >= badgeWidth) {
+        const float x = std::min(right - badgeWidth + gap, textLeft + ImGui::CalcTextSize(name).x + gap);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::RenderText({x, y}, badge);
+        ImGui::PopStyleColor();
+    }
+    draw.PopClipRect();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) &&
+        ImGui::IsMouseHoveringRect({left, min.y}, {right, max.y})) {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted(name);
+        ImGui::TextDisabled("%s", LOCT(icon.type));
+        if (hiddenCount) ImGui::Text(LOCT("%d generated objects hidden"), hiddenCount);
+        ImGui::EndTooltip();
+    }
+}
+
 /// @param deferred 描画ループの後でスナップショット Undo に包んで実行する編集。
 /// @param pendingCreate 描画ループの後で呼ぶ生成 Operator (Undo は Operator が積む)。
 void DrawHierarchyNode(EditorContext& ctx,
@@ -677,13 +755,17 @@ void DrawHierarchyNode(EditorContext& ctx,
     else if (!isActive)         ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::TextFaint));
     else if (isLocked)          ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Warning));
     else if (isPrefabInstance)  ImGui::PushStyleColor(ImGuiCol_Text, EditorTheme::Color(ThemeColor::Accent));
-    const bool opened = ImGui::TreeNodeEx(go.name.c_str(), flags);
+    const float labelLeft = ImGui::GetCursorScreenPos().x + ImGui::GetTreeNodeToLabelSpacing();
+    const bool opened = ImGui::TreeNodeEx(go.name.c_str(), flags, "%s", "");
+    const float slot = ImGui::GetItemRectSize().y + 2.0f;
+    const int actionSlots = isPrefabInstance ? 4 : (ImGui::IsItemHovered() || isEditorHidden) ? 3 :
+                            !isActive ? 2 : isLocked ? 1 : 0;
+    const float labelRight = ImGui::GetItemRectMax().x - actionSlots * slot;
+    DrawObjectLabel(go, labelLeft, labelRight, HiddenGeneratedCount(ctx, go, visited), isActive);
     if (isEditorHidden || !isActive || isLocked || isPrefabInstance) ImGui::PopStyleColor();
     ui::PopHierarchySelectionColors();
 
-    /// @note ノード本体のアイテム状態は TreeNodeEx 直後に確定させ、以降で使い回す。この後に描く
-    /// @note 「隠し生成物」バッジ (TextDisabled) が新しい item として LastItemData を上書きし、
-    /// @note 後段の IsItemClicked()/GetItemRectMin() がバッジ側を指してしまうため。
+    /// @note 右端の操作と行選択に同じ矩形を使い、アイコン上のクリックを行選択から除く。
     const ImVec2 nodeMin         = ImGui::GetItemRectMin();
     const ImVec2 nodeMax         = ImGui::GetItemRectMax();
     const bool   nodeHovered     = ImGui::IsItemHovered();
@@ -699,16 +781,6 @@ void DrawHierarchyNode(EditorContext& ctx,
     if (reveal.scrollTo == id) {
         ImGui::SetScrollHereY(0.5f);
         reveal.scrollTo = scene::EntityID{};
-    }
-
-    /// @note 隠している生成物の件数バッジ。「Hierarchy に出ていない = 存在しない」ではないことを示す。
-    /// @note VFX 再生中は裏で十数個の GameObject が動くが、何も出さないと「生成されていない」と誤診断させる。
-    if (const int hiddenCount = HiddenGeneratedCount(ctx, go, visited); hiddenCount > 0) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("(+%d)", hiddenCount);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("%d generated object(s) hidden\nView > Show Generated Objects to reveal",
-                              hiddenCount);
     }
 
     /// @name 右端 visibility/editor-hide/lock アイコン (DrawList で直接描画)
@@ -727,9 +799,9 @@ void DrawHierarchyNode(EditorContext& ctx,
         const ImVec2 lockMax = { rx,                 nodeMax.y };
 
         /// @note ヒット判定
-        const bool ehHov   = ImGui::IsMouseHoveringRect(ehMin,   ehMax,   false);
-        const bool visHov  = ImGui::IsMouseHoveringRect(visMin,  visMax,  false);
-        const bool lockHov = ImGui::IsMouseHoveringRect(lockMin, lockMax, false);
+        const bool ehHov   = nodeHovered && ImGui::IsMouseHoveringRect(ehMin,   ehMax,   false);
+        const bool visHov  = nodeHovered && ImGui::IsMouseHoveringRect(visMin,  visMax,  false);
+        const bool lockHov = nodeHovered && ImGui::IsMouseHoveringRect(lockMin, lockMax, false);
         const bool ehClick   = ehHov   && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         const bool visClick  = visHov  && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
         const bool lockClick = lockHov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
@@ -743,35 +815,27 @@ void DrawHierarchyNode(EditorContext& ctx,
         ImDrawList* dl = ImGui::GetWindowDrawList();
         ui::DrawSelectionAccent(dl, nodeMin, nodeMax, selected, isPrimarySelected);
 
-        /// @note エディタ専用非表示アイコン (editor-hide: ホバー時/非表示中のみ表示)
-        if (ehHov || isEditorHidden) {
-            if (ehHov) dl->AddRectFilled(ehMin, ehMax, IM_COL32(80, 80, 80, 160), 2.0f);
-            const char* ehChar = isEditorHidden ? "E" : "e";
-            ImVec2 ets = ImGui::CalcTextSize(ehChar);
-            dl->AddText({ ehMin.x + (btnW - ets.x) * 0.5f, ehMin.y + (h - ets.y) * 0.5f },
-                        isEditorHidden ? IM_COL32(80, 200, 220, 240) : IM_COL32(120, 120, 120, 140),
-                        ehChar);
-        }
-        if (ehHov) ImGui::SetTooltip(isEditorHidden
-            ? "Editor-only hidden (click to show)\nEntity is active at runtime & saved as active"
-            : "Click to hide in editor only\nWill be active at runtime & saved as active");
+        const float glyphSize = ImGui::GetFontSize() * 0.92f;
+        const auto drawToggle = [&](ui::ContentGlyph glyph, ImVec2 min, ImVec2 max, bool hovered, ThemeColor color) {
+            if (hovered) dl->AddRectFilled(min, max, EditorTheme::ColorU32(ThemeColor::SurfaceHover), 3.0f);
+            ui::DrawContentGlyph(glyph, {(min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f},
+                                 glyphSize, EditorTheme::ColorU32(color));
+        };
+        if (nodeHovered || isEditorHidden)
+            drawToggle(isEditorHidden ? ui::ContentGlyph::EYE_OFF : ui::ContentGlyph::EYE, ehMin, ehMax,
+                       ehHov, isEditorHidden ? ThemeColor::Info : ThemeColor::TextMuted);
+        if (ehHov) ImGui::SetTooltip("%s", LOCT(isEditorHidden ? "Show in Editor" : "Hide in Editor"));
 
-        /// @note visibility アイコン
-        if (visHov) dl->AddRectFilled(visMin, visMax, IM_COL32(80, 80, 80, 160), 2.0f);
-        const char* visChar = isActiveSelf ? "o" : "-";
-        ImVec2 vts = ImGui::CalcTextSize(visChar);
-        dl->AddText({ visMin.x + (btnW - vts.x) * 0.5f, visMin.y + (h - vts.y) * 0.5f },
-                    isActive ? IM_COL32(200, 200, 200, 200) : IM_COL32(100, 100, 100, 200), visChar);
-        if (visHov && isActiveSelf && !isActive)
-            ImGui::SetTooltip("親の GameObject が無効なため、この GameObject も無効です");
+        if (nodeHovered || !isActive)
+            drawToggle(isActiveSelf ? ui::ContentGlyph::ENABLED : ui::ContentGlyph::DISABLED, visMin, visMax,
+                       visHov, isActive ? ThemeColor::Success : ThemeColor::TextFaint);
+        if (visHov) ImGui::SetTooltip("%s", LOCT(isActiveSelf && !isActive ? "Inactive parent" :
+                                                 isActiveSelf ? "Deactivate object" : "Activate object"));
 
-        /// @note lock アイコン (常時描画: ロック中はオレンジ、非ロック+ホバーは薄く)
-        if (lockHov || isLocked) {
-            if (lockHov) dl->AddRectFilled(lockMin, lockMax, IM_COL32(80, 80, 80, 160), 2.0f);
-            ImVec2 lts = ImGui::CalcTextSize("L");
-            dl->AddText({ lockMin.x + (btnW - lts.x) * 0.5f, lockMin.y + (h - lts.y) * 0.5f },
-                        isLocked ? IM_COL32(255, 175, 50, 240) : IM_COL32(120, 120, 120, 140), "L");
-        }
+        if (nodeHovered || isLocked)
+            drawToggle(isLocked ? ui::ContentGlyph::LOCK : ui::ContentGlyph::UNLOCK, lockMin, lockMax,
+                       lockHov, isLocked ? ThemeColor::Warning : ThemeColor::TextMuted);
+        if (lockHov) ImGui::SetTooltip("%s", LOCT(isLocked ? "Unlock selection" : "Lock selection"));
 
         /// @note prefab インスタンスバッジ (右端 4 番目スロット, 常時表示の水色ダイヤ)。青いテキスト
         /// @note だけだと非アクティブや選択ハイライトと重なった際に判別しづらいため常設マーカーを置き、
@@ -784,7 +848,7 @@ void DrawHierarchyNode(EditorContext& ctx,
             /// @note 外周を少し濃く、内側を塗って小さなダイヤ(菱形)にする
             dl->AddNgonFilled(pfCenter, pfRadius, IM_COL32(100, 180, 255, 235), 4);
             dl->AddNgon(pfCenter, pfRadius, IM_COL32(40, 90, 150, 235), 4, 1.0f);
-            if (ImGui::IsMouseHoveringRect(pfMin, pfMax, false))
+            if (nodeHovered && ImGui::IsMouseHoveringRect(pfMin, pfMax, false))
                 ImGui::SetTooltip("Prefab instance\n%s", go.prefabAssetPath.c_str());
         }
 
@@ -1160,7 +1224,13 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
     widgets::UpdateDragAutoScroll();
 
     PendingObjectCreate pendingCreate;
-    if (ImGui::Button(LOCT("Create"))) ImGui::OpenPopup("##hierarchyCreate");
+    if (toolbar::IconButton(LOC("Create"), icons::kAdd)) ImGui::OpenPopup("##hierarchyCreate");
+    const auto checkboxWidth = [](const char* caption) {
+        return ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(caption).x;
+    };
+    toolbar::SameLineIfFits(checkboxWidth(LOCT("Generated")));
+    ImGui::Checkbox(LOC("Generated"), &ctx.showGeneratedObjects);
+    ImGui::SetItemTooltip("%s", LOCT("Show temporary objects created by systems, such as VFX and water splashes."));
     if (ImGui::BeginPopup("##hierarchyCreate")) {
         DrawCreateObjectMenu(ctx, pendingCreate);
         ImGui::EndPopup();
@@ -1168,26 +1238,13 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
 
     if (ctx.mapEditingMode) {
         ImGui::TextColored({ 0.35f, 0.88f, 0.48f, 1.0f }, "MAP MODE");
-        ImGui::SameLine();
-        ImGui::Checkbox("Map Objects Only", &ctx.mapHierarchyFilter);
+        toolbar::SameLineIfFits(checkboxWidth(LOCT("Map Objects Only")));
+        ImGui::Checkbox(LOC("Map Objects Only"), &ctx.mapHierarchyFilter);
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
             ImGui::SetTooltip("Show only Terrain Grid, Terrain, Water and their children\nUncheck to browse all objects in Map Mode");
     }
 
-    /// @note 生成物トグルは «見えているのが全部か» の前提なので、メニューの奥でなく検索欄の右に常に出す。
-    {
-        const float toggleWidth = ImGui::CalcTextSize("Generated").x
-                                + ImGui::GetFrameHeight()
-                                + ImGui::GetStyle().ItemSpacing.x * 2.0f;
-        ImGui::SetNextItemWidth(-toggleWidth);
-        ImGui::InputTextWithHint("##hierarchy_search", "Search...", m_searchFilter, sizeof(m_searchFilter));
-        ImGui::SameLine();
-        ImGui::Checkbox("Generated", &ctx.showGeneratedObjects);
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
-            ImGui::SetTooltip("Show objects created at runtime by systems\n"
-                              "(VFX Graph nodes, water splash).\n"
-                              "These are never saved into the scene.");
-    }
+    toolbar::SearchField("##hierarchy_search", "Search objects...", m_searchFilter, sizeof(m_searchFilter));
 
     if (ctx.activeScene->GameObjectCount() == 0 && m_searchFilter[0] == '\0') {
         ImGui::Spacing();
@@ -1251,11 +1308,13 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
             }
 
             ui::PushHierarchySelectionColors();
-            if (ImGui::Selectable(go.name.c_str(), selected)) {
+            const float labelLeft = ImGui::GetCursorScreenPos().x;
+            if (ImGui::Selectable("##search_result", selected)) {
                 if (ImGui::GetIO().KeyCtrl) ToggleSelection(ctx, id, SelectionReveal::Skip);
                 else                        SelectEntity(ctx, id, SelectionReveal::Skip);
                 SetHierarchyMembers(visited.selected, ctx.selectedEntities);
             }
+            DrawObjectLabel(go, labelLeft, ImGui::GetItemRectMax().x, 0, go.activeSelf());
             ui::PopHierarchySelectionColors();
             if (m_revealScrollTo == id) {
                 ImGui::SetScrollHereY(0.5f);
@@ -1274,6 +1333,7 @@ void SceneHierarchyPanel::OnRenderContent(EditorContext& ctx)
         m_revealOpenChain.clear();
         m_revealScrollTo = {};
         m_visibleOrder.swap(visibleRows);
+        if (m_visibleOrder.empty()) ImGui::TextDisabled("%s", LOCT("No matching objects"));
 
         HandleKeyboardNavigation(ctx);
         HandlePanelRequests(ctx);

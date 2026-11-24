@@ -1,0 +1,15 @@
+# @file    Folder24.png.meta
+# @brief   エディター用フォルダーアイコンのインポート設定。
+# @author  Hasegawa Jin
+# @date    2026-11-24
+[meta]
+guid = 'edd770a6bb63446ea97c44d6147facb0'
+
+[texture]
+type = 'color'
+srgb = true
+compression = 'None'
+mipmaps = false
+filter = 'Bilinear'
+wrap_u = 'Clamp'
+wrap_v = 'Clamp'

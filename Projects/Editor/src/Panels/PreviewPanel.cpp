@@ -2,8 +2,6 @@
 /// @brief   Animation / Material の共通ルーター。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
-///
-/// 各アセット種別の描画実装は分離し、ここでは拡張子判定とパネルのライフサイクルだけを扱う。
 /// @see Docs/design/vfx-prefab.md §8.2 .vfx は専用の隔離プレビューを作らず Prefab 編集モードで開く。
 #include <Editor/Panels/PreviewPanel.hpp>
 #include <Editor/EditorContext.hpp>
@@ -39,7 +37,7 @@ std::string LowerPreviewExtension(std::string_view path)
     return extension;
 }
 
-} // namespace
+}
 
 bool PreviewPanel::Supports(std::string_view extension) const
 {
@@ -136,8 +134,7 @@ bool PreviewPanel::DrawIconPreview(EditorContext& ctx, std::string_view assetPat
     return true;
 }
 
-/// Animation Preview の状態はパネルのメンバーではなくファイルスコープの共有状態なので、
-/// ここでは往復の «口» を開けるだけにして、中身は AnimationPreview 側に閉じる。
+/// @note Animation Preview の設定は共有状態を持つ描画側で読み込む。
 void PreviewPanel::OnLoadSettings(const EditorSettings& settings)
 {
     LoadAnimationPreviewSettings(settings);
@@ -153,7 +150,7 @@ void PreviewPanel::OnRenderContent(EditorContext& ctx)
     const std::string extension = LowerPreviewExtension(ctx.selectedAssetPath);
     if (extension == ".mat" || extension == ".mask" || extension == ".maskpreset" ||
         extension == ".ico") {
-        const float previewHeight =
+        const float previewHeight = extension == ".mat" ? 0.0f :
             (std::max)(ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing(), 120.0f);
         if (!DrawPreview(ctx, ctx.selectedAssetPath, previewHeight))
             widgets::EmptyState(icons::Or(icons::kView, nullptr),
@@ -165,4 +162,4 @@ void PreviewPanel::OnRenderContent(EditorContext& ctx)
     DrawAnimationPreviewPanelContent(ctx);
 }
 
-} // namespace fbzz::editor
+}

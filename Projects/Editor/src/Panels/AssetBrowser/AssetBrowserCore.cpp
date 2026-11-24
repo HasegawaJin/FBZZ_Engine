@@ -561,13 +561,16 @@ void AssetBrowserPanel::RefreshDirectory()
     }
 
     std::stable_sort(m_entries.begin(), m_entries.end(), [this](const Entry& a, const Entry& b) {
-        /// @note dirs first
+        /// @note 並び替えの種類に関わらずフォルダーを先頭にまとめる。
         if (a.isDir != b.isDir) return a.isDir > b.isDir;
         switch (m_sortMode) {
         case SortMode::NameDesc:    return a.name > b.name;
         case SortMode::Type:        return a.ext < b.ext;
-        /// @note fallback: name (file_time requires filesystem call)
-        case SortMode::Modified:    return a.name < b.name;
+        case SortMode::Modified: {
+            const auto left = ListMetadataFor(a).modified;
+            const auto right = ListMetadataFor(b).modified;
+            return left == right ? a.name < b.name : left > right;
+        }
         default:                    return a.name < b.name;
         }
     });

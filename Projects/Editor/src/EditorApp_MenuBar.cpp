@@ -16,6 +16,7 @@
 #include <Editor/Util/AssetDirtyRegistry.hpp>
 #include <Editor/Util/CreateObjectMenu.hpp>
 #include <Editor/Util/EditorMenuCatalog.hpp>
+#include <Editor/Util/EditorIcons.hpp>
 #include <Editor/Util/HotkeyManager.hpp>
 #include <Editor/Util/ImGuiWidgets.hpp>
 #include <Editor/Util/Localization.hpp>
@@ -36,7 +37,8 @@
 #include <Engine/Scene/Systems/DirectionalShadowBakeSystem.hpp>
 #include <Engine/Util/FileSystem.hpp>
 #include <Engine/Util/StringUtils.hpp>
-#include <imgui.h>
+#include <imgui_internal.h>
+#include <string_view>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -46,6 +48,23 @@
 namespace fbzz::editor {
 
 namespace {
+
+const char* MenuIcon(std::string_view operatorId)
+{
+    if (!icons::Available()) return nullptr;
+    struct Entry { std::string_view id; const icons::detail::Glyph& glyph; };
+    static constexpr Entry entries[] = {
+        {"scene.new", icons::kDocument}, {"scene.open", icons::kFolder}, {"scene.save", icons::kSave},
+        {"scene.save_as", icons::kSaveAs}, {"asset.save_all", icons::kSave}, {"edit.undo", icons::kUndo},
+        {"edit.redo", icons::kRedo}, {"edit.copy", icons::kCopy}, {"edit.paste", icons::kPaste},
+        {"edit.duplicate", icons::kCopy}, {"edit.delete_selected", icons::kDelete},
+        {"play.start", icons::kPlay}, {"play.pause", icons::kPause}, {"play.stop", icons::kStop},
+        {"play.step", icons::kStep}, {"panel.command_palette", icons::kSearch}, {"debug.hot_reload", icons::kRefresh},
+    };
+    for (const auto& entry : entries)
+        if (entry.id == operatorId) return entry.glyph.text;
+    return nullptr;
+}
 
 enum class PlayToolbarIcon {
     Play,
@@ -1037,7 +1056,7 @@ bool EditorApp::MenuItemOpArgs(const char* operatorId, const OpArgs& args,
         checked = op->checked(context, args);
     }
 
-    if (!ImGui::MenuItem(label, shortcut.empty() ? nullptr : shortcut.c_str(), checked, enabled))
+    if (!ImGui::MenuItemEx(label, MenuIcon(operatorId), shortcut.empty() ? nullptr : shortcut.c_str(), checked, enabled))
         return false;
 
     InvokeOperator(operatorId, args);

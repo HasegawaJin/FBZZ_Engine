@@ -246,9 +246,11 @@ GameObject の Parent、直下の子、子孫、root 相対の名前セグメン
 
 ## ScriptProxy と生成する API
 
-座標、単位、失敗時の値、所有者は既存 Engine の契約を正本にする。position はローカル、worldPosition はワールド、書き込みは親子の world 値を即時同期する。[Transform の契約](script-transform-contract.md)を C# API と native 実装で共有する。
+座標、単位、失敗時の値、所有者は既存 Engine の契約を正本にする。native `ScriptTransformProxy` の `position` と `rotation` はローカル値で、`worldRotation` は読み取り専用。[Transform の契約](script-transform-contract.md)を C# API と native 実装で共有する。
 
-C# では LocalPosition / WorldPosition を通常の読み書き property にし、Transform.WorldPosition = position と書ける。setter は既存の座標変換・入力検証・親子即時同期へ接続し、独立した SetLocalPosition / SetWorldPosition を重複公開しない。LocalPosition は親座標、TranslateLocal は自分の軸による移動量、TranslateWorld はワールドの移動量とする。Rotate(axis, degrees) の角度は度、Quaternion の生成角度はラジアン。DeltaSeconds は該当フェーズの秒単位の時間差。この facade と既存 Proxy の対応を binding schema に記録し、通常 Transform の setter で物理 body を移動しない。
+C# の `Position` / `WorldPosition` と `Rotation` / `WorldRotation` はワールド姿勢を読み書きする。親座標には `LocalPosition` / `LocalRotation` を使う。ワールド回転の setter は向きを正規化し、親の逆回転から対象のローカル回転を求める。各 setter は入力検証、ローカル正本の更新、対象と子孫の即時同期を行う。有効で実体を持つ物理ボディへの回転・拡縮は拒否する。物理ボディの位置変更には専用の `RigidBody.Teleport` を使う。
+
+`TranslateLocal` は自分の軸による移動量、`TranslateWorld` はワールドの移動量を受け取る。`Rotate(axis, degrees)` の角度は度、Quaternion の生成角度はラジアン。`DeltaSeconds` は該当フェーズの秒単位の時間差。facade が使う native 処理は binding schema に記録する。
 
 MoveTowardsWorld は段階 2 の共通 helper で、最大移動量と停止半径をメートル単位で受ける。時間を内部で掛けず、入力検証後に既存 world 更新を使い、座標・即時同期・物理の制約を変えない。追跡・巡回等のゲーム判断は C# 側へ残す。参照の検索 Try API は成功時の非 null を標準 nullable 注釈へ記録する。GetComponent は未検出で null、GetComponents は非 null の T[] を返す。通常の作者例は T と if の表記にし、nullable を使う SDK の署名・metadata と catalog には null 許容を正確に記録する。作者が明示型の out 変数をそのまま使えるようにする。
 
@@ -360,6 +362,8 @@ Edit / Play モードで自動ビルドと差し替えを行う。失敗時は�
 ビルドごとに新しい出力ディレクトリを使い、稼働中 DLL を上書きしない。API、型、schema、依存を検証した後、callback と描画用 Script 通知が終わったメインスレッドの安全点で適用する。
 
 ビルド要求は source fingerprint と候補世代、request ID と終端状態を持ち、Compiler の状態と適用済み catalog generation を区別する。AI の設定 Op は適用世代と Scene・対象・変更前値を照合し、差分があれば stale とする。失敗・旧要求の置換で現行 catalog が残る場合、新ソースの schema として使わない。
+
+Editor 下端には、C# のソース確認、ビルド待機、コンパイル、検証、ホットリロードの各段階と経過時間を表示する。進行中はバーを動かし、同期適用の直前には「ホットリロード中」を描画できるフレームを設ける。完了表示は 3 秒で閉じる。失敗と明示適用待ちは画面に残し、表示をクリックすると Build Output で診断と出力を確認できる。Console はログ一覧と選択したログの詳細を表示する。
 
 2026-10-05 の反復ビルド契約として、AgentBuild は通常の増分 MSBuild を使い、各 project の評価済み Compile / AdditionalFiles / EmbeddedFiles / Analyzer / ReferencePath / EditorConfig / import の SHA256 内容 stamp を `CustomAdditionalCompileInputs` へ追加する。更新日時を保持した変更もコンパイルを無効化する。source の日時を書き換えず、恒常的な Rebuild や obj 全削除で正しさを補わない。MSBuild task は固定 SDK 用の `Fbzz.ManagedBuildTasks.dll` と `ManagedIncremental.targets` へ事前コンパイルし、ゲーム保存ごとに task のコードを再コンパイルしない。
 

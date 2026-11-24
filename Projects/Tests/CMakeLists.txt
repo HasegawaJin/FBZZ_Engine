@@ -414,6 +414,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/HotkeyManagerTests.cpp
     Editor/Auto/BuildOutputTests.cpp
     Editor/Auto/PropertyControlsTests.cpp
+    Editor/Auto/EditorPanelToolbarTests.cpp
     Editor/Auto/AssetInspectorPersistenceTests.cpp
     Editor/Auto/MetaFilePersistenceTests.cpp
     Editor/Auto/AssetPathTests.cpp
@@ -444,6 +445,7 @@ fbzz_add_test_suite(EditorAuto
     Editor/Auto/AnimationTrackTableTests.cpp
     Editor/Auto/BehaviorTreeChildCountsTests.cpp
     Editor/Auto/MaterialPreviewCacheTests.cpp
+    Editor/Auto/MaterialPreviewToolbarTests.cpp
     Editor/Auto/FluidAssetWritersTests.cpp
     Editor/Auto/FluidDocumentTests.cpp
     Editor/Auto/FluidEffectTemplateTests.cpp

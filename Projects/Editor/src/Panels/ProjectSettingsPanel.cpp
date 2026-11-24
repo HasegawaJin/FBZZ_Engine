@@ -3,6 +3,7 @@
 /// @author  Hasegawa Jin
 /// @date    2026-05-23
 #include <Editor/Panels/ProjectSettingsPanel.hpp>
+#include "../Util/PanelToolbar.hpp"
 #include <Editor/Util/LocalClock.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/PlayModeController.hpp>
@@ -392,11 +393,7 @@ void ProjectSettingsPanel::DrawSidebar()
 {
     ImGui::BeginChild("##ProjectSettingsSidebar", { SidebarWidth(), 0.0f }, true);
 
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
-        && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_F))
-        ImGui::SetKeyboardFocusHere();
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    ImGui::InputTextWithHint("##search", LOCT("Search settings..."), m_search, sizeof(m_search));
+    toolbar::SearchField("##search", "Search settings...", m_search, sizeof(m_search));
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
         ImGui::SetTooltip("%s", LOCT("Searches every section by name, description and value names (Ctrl+F)."));
     ImGui::Spacing();

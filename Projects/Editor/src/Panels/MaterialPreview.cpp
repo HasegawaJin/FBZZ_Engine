@@ -2,7 +2,8 @@
 /// @brief   Material 専用オフスクリーンプレビューのウィジェット。
 /// @author  Hasegawa Jin
 /// @date    2026-08-19
-#include <Editor/Panels/MaterialPreview.hpp>
+#include "MaterialPreviewChoices.hpp"
+#include <Editor/Util/Localization.hpp>
 #include <Editor/EditorContext.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Engine/Asset/AssetManager.hpp>
@@ -18,11 +19,9 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <system_error>
@@ -103,111 +102,30 @@ ImTextureID ToImTextureID(void* ptr)
     return static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(ptr));
 }
 
-constexpr std::array<mp::Shape, 7> kShapes = {
-    mp::Shape::Sphere, mp::Shape::Cube, mp::Shape::Plane, mp::Shape::Cylinder,
-    mp::Shape::Cone,   mp::Shape::Torus, mp::Shape::Capsule,
-};
-
-constexpr std::array<mp::Channel, 10> kChannels = {
-    mp::Channel::Shaded,    mp::Channel::Albedo,    mp::Channel::Normal,
-    mp::Channel::Roughness, mp::Channel::Metallic,  mp::Channel::Occlusion,
-    mp::Channel::Emissive,  mp::Channel::Uv,        mp::Channel::HeightMap, mp::Channel::Wireframe,
-};
-
-constexpr std::array<mp::FiberMode, 4> kFiberModes = {
-    mp::FiberMode::Shell, mp::FiberMode::Fin, mp::FiberMode::Hybrid, mp::FiberMode::Blade,
-};
-
-constexpr std::array<mp::LightPreset, 4> kPresets = {
-    mp::LightPreset::Studio, mp::LightPreset::Outdoor,
-    mp::LightPreset::Night,  mp::LightPreset::Flat,
-};
-
-constexpr std::array<MaterialPreviewBackground, 4> kBackgrounds = {
-    MaterialPreviewBackground::Gradient, MaterialPreviewBackground::Checker,
-    MaterialPreviewBackground::Solid,    MaterialPreviewBackground::Grid,
-};
-
-const char* BackgroundLabel(MaterialPreviewBackground background)
+void DrawChecker(ImDrawList& draw, ImVec2 min, ImVec2 max)
 {
-    switch (background) {
-        case MaterialPreviewBackground::Checker: return "Checker";
-        case MaterialPreviewBackground::Solid:   return "Solid";
-        case MaterialPreviewBackground::Grid:    return "Grid";
-        case MaterialPreviewBackground::Gradient:
-        default:                                 return "Gradient";
+    const float cell = ImGui::GetFontSize();
+    draw.AddRectFilled(min, max, IM_COL32(58, 60, 66, 255));
+    int row = 0;
+    for (float y = min.y; y < max.y; y += cell, ++row) {
+        for (float x = min.x + (row & 1) * cell; x < max.x; x += 2.0f * cell)
+            draw.AddRectFilled({ x, y }, { std::min(x + cell, max.x), std::min(y + cell, max.y) },
+                               IM_COL32(40, 42, 47, 255));
     }
 }
 
-const char* LockedShapeLabel(mp::Flavor flavor)
+void DrawGrid(ImDrawList& draw, ImVec2 min, ImVec2 max)
 {
-    switch (flavor) {
-        case mp::Flavor::Ui:          return "Rect";
-        case mp::Flavor::Particle:    return "Billboard";
-        case mp::Flavor::Trail:       return "Ribbon";
-        case mp::Flavor::Decal:       return "Projected";
-        case mp::Flavor::PostProcess: return "Fullscreen";
-        default:                      return "Plane";
-    }
-}
-
-void DrawFrameBorder(ImDrawList* drawList, ImVec2 origin, float size)
-{
-    drawList->AddRect(origin, { origin.x + size, origin.y + size },
-                      IM_COL32(95, 100, 112, 230), 4.0f, 0, 1.0f);
-}
-
-void DrawChecker(ImDrawList* drawList, ImVec2 origin, float size)
-{
-    constexpr float kCell = 12.0f;
-    drawList->AddRectFilled(origin, { origin.x + size, origin.y + size },
-                            IM_COL32(58, 60, 66, 255), 4.0f);
-    drawList->PushClipRect(origin, { origin.x + size, origin.y + size }, true);
-    const int cells = static_cast<int>(std::ceil(size / kCell));
-    for (int y = 0; y < cells; ++y) {
-        for (int x = (y & 1); x < cells; x += 2) {
-            const ImVec2 cellMin{ origin.x + x * kCell, origin.y + y * kCell };
-            drawList->AddRectFilled(
-                cellMin,
-                { std::min(cellMin.x + kCell, origin.x + size),
-                  std::min(cellMin.y + kCell, origin.y + size) },
-                IM_COL32(40, 42, 47, 255));
-        }
-    }
-    drawList->PopClipRect();
-}
-
-void DrawGrid(ImDrawList* drawList, ImVec2 origin, float size)
-{
-    constexpr float kCell = 16.0f;
-    drawList->AddRectFilled(origin, { origin.x + size, origin.y + size },
-                            IM_COL32(24, 26, 30, 255), 4.0f);
-    drawList->PushClipRect(origin, { origin.x + size, origin.y + size }, true);
-    for (float offset = kCell; offset < size; offset += kCell) {
-        drawList->AddLine({ origin.x + offset, origin.y }, { origin.x + offset, origin.y + size },
-                          IM_COL32(48, 52, 60, 255));
-        drawList->AddLine({ origin.x, origin.y + offset }, { origin.x + size, origin.y + offset },
-                          IM_COL32(48, 52, 60, 255));
-    }
-    const float center = std::floor(size * 0.5f / kCell) * kCell;
-    drawList->AddLine({ origin.x + center, origin.y }, { origin.x + center, origin.y + size },
-                      IM_COL32(74, 80, 92, 255));
-    drawList->AddLine({ origin.x, origin.y + center }, { origin.x + size, origin.y + center },
-                      IM_COL32(74, 80, 92, 255));
-    drawList->PopClipRect();
-}
-
-void DrawGradient(ImDrawList* drawList, ImVec2 origin, float size, bool hovered)
-{
-    const ImU32 base = hovered ? IM_COL32(42, 45, 52, 255) : IM_COL32(30, 32, 38, 255);
-    drawList->AddRectFilled(origin, { origin.x + size, origin.y + size }, base, 4.0f);
-    const ImU32 gradTop    = hovered ? IM_COL32(56, 60, 70, 255) : IM_COL32(44, 47, 56, 255);
-    const ImU32 gradBottom = hovered ? IM_COL32(30, 32, 38, 255) : IM_COL32(19, 20, 24, 255);
-    /// @note 角丸を残すため、MultiColor の矩形を 2px 内側へ描く。
-    drawList->AddRectFilledMultiColor(
-        { origin.x + 2.0f, origin.y + 2.0f },
-        { origin.x + size - 2.0f, origin.y + size - 2.0f },
-        gradTop, gradTop, gradBottom, gradBottom);
+    const float cell = ImGui::GetFrameHeight();
+    const ImVec2 center{ (min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f };
+    draw.AddRectFilled(min, max, IM_COL32(24, 26, 30, 255));
+    const ImU32 grid = IM_COL32(48, 52, 60, 255), axis = IM_COL32(74, 80, 92, 255);
+    for (float x = min.x + std::fmod(center.x - min.x, cell); x < max.x; x += cell)
+        draw.AddLine({ x, min.y }, { x, max.y }, grid);
+    for (float y = min.y + std::fmod(center.y - min.y, cell); y < max.y; y += cell)
+        draw.AddLine({ min.x, y }, { max.x, y }, grid);
+    draw.AddLine({ center.x, min.y }, { center.x, max.y }, axis);
+    draw.AddLine({ min.x, center.y }, { max.x, center.y }, axis);
 }
 
 void DrawBadge(ImDrawList* drawList, ImVec2 origin, float size, const char* badge)
@@ -289,11 +207,11 @@ void MaterialPreviewView::RegisterOperators(OperatorRegistry& registry, std::str
                         return true;
                     });
             };
-            choice("shape", m_shape, kShapes, mp::ShapeLabel);
-            choice("channel", m_channel, kChannels, mp::ChannelLabel);
-            choice("light", m_rig.preset, kPresets, mp::LightPresetLabel);
-            choice("background", m_background, kBackgrounds, BackgroundLabel);
-            choice("fiberMode", m_fiberMode, kFiberModes, mp::FiberModeLabel);
+            choice("shape", m_shape, previewchoices::SHAPES, mp::ShapeLabel);
+            choice("channel", m_channel, previewchoices::CHANNELS, mp::ChannelLabel);
+            choice("light", m_rig.preset, previewchoices::LIGHT_PRESETS, mp::LightPresetLabel);
+            choice("background", m_background, previewchoices::BACKGROUNDS, previewchoices::BackgroundLabel);
+            choice("fiberMode", m_fiberMode, previewchoices::FIBER_MODES, mp::FiberModeLabel);
             number("backgroundRed", m_solidColor[0], 0, 1);
             number("backgroundGreen", m_solidColor[1], 0, 1);
             number("backgroundBlue", m_solidColor[2], 0, 1);
@@ -356,131 +274,21 @@ void MaterialPreviewView::InvalidateGpu(renderer::ResourceManager* resources)
     m_frameCache.Invalidate();
 }
 
-void MaterialPreviewView::DrawToolbar(mp::Flavor flavor, bool gpuReady)
+void MaterialPreviewView::DrawBackground(ImVec2 min, ImVec2 max) const
 {
-    const float full = (std::max)(ImGui::GetContentRegionAvail().x, 120.0f);
-    const float half = (full - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
-
-    /// @note Terrain / Water と独自形状は選択形状を使わない。
-    const bool shapeLocked = flavor == mp::Flavor::Terrain ||
-                             flavor == mp::Flavor::Water ||
-                             mp::UsesOwnGeometry(flavor);
-    const char* lockedLabel = LockedShapeLabel(flavor);
-
-    ImGui::BeginDisabled(shapeLocked);
-    ImGui::SetNextItemWidth(half);
-    if (ImGui::BeginCombo("##Shape", shapeLocked ? lockedLabel : mp::ShapeLabel(m_shape))) {
-        for (mp::Shape shape : kShapes) {
-            if (ImGui::Selectable(mp::ShapeLabel(shape), shape == m_shape)) m_shape = shape;
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::EndDisabled();
-    if (shapeLocked && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("This material type is previewed on its own geometry.");
-
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(half);
-    const bool supportsParallax = gpuReady && m_gpu.parallaxDepthOffset != UINT32_MAX
-        && (flavor == mp::Flavor::Surface || flavor == mp::Flavor::Skinned);
-    const bool hasHeightMap = supportsParallax && m_gpu.textures.size() > 5 && m_gpu.textures[5].IsValid();
-    if (m_channel == mp::Channel::HeightMap && !hasHeightMap) m_channel = mp::Channel::Shaded;
-    if (ImGui::BeginCombo("##Channel", mp::ChannelLabel(m_channel))) {
-        for (mp::Channel channel : kChannels) {
-            if (channel == mp::Channel::HeightMap && !hasHeightMap) continue;
-            const bool supported = mp::ChannelSupported(flavor, channel);
-            ImGui::BeginDisabled(!supported);
-            if (ImGui::Selectable(mp::ChannelLabel(channel), channel == m_channel) && supported)
-                m_channel = channel;
-            ImGui::EndDisabled();
-        }
-        ImGui::EndCombo();
-    }
-    /// @note Flavor の変更後に未対応チャンネルを Shaded へ戻す。
-    if (!mp::ChannelSupported(flavor, m_channel)) m_channel = mp::Channel::Shaded;
-
-    ImGui::SetNextItemWidth(half);
-    if (ImGui::BeginCombo("##Light", mp::LightPresetLabel(m_rig.preset))) {
-        for (mp::LightPreset preset : kPresets) {
-            if (ImGui::Selectable(mp::LightPresetLabel(preset), preset == m_rig.preset))
-                m_rig.preset = preset;
-        }
-        ImGui::EndCombo();
-    }
-
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(half);
-    if (ImGui::BeginCombo("##Background", BackgroundLabel(m_background))) {
-        for (MaterialPreviewBackground background : kBackgrounds) {
-            if (ImGui::Selectable(BackgroundLabel(background), background == m_background))
-                m_background = background;
-        }
-        ImGui::EndCombo();
-    }
-
-    if (m_background == MaterialPreviewBackground::Solid) {
-        ImGui::SetNextItemWidth(full);
-        ImGui::ColorEdit3("##BackgroundColor", m_solidColor,
-                          ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
-    }
-
-    ImGui::SetNextItemWidth(half);
-    ImGui::SliderFloat("##Exposure", &m_rig.exposure, 0.1f, 4.0f, "EV %.2f");
-    if (supportsParallax) {
-        float depth = 0.0f;
-        std::memcpy(&depth, m_gpu.paramData.data() + m_gpu.parallaxDepthOffset, sizeof(depth));
-        const bool active = hasHeightMap && depth > 0.0f;
-        ImGui::SameLine();
-        ImGui::BeginDisabled(!active);
-        bool showParallax = active && m_showParallax;
-        if (ImGui::Checkbox("POM", &showParallax)) m_showParallax = showParallax;
-        ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-            if (!hasHeightMap) ImGui::SetTooltip("Assign a loadable Height Map in the Material Inspector.");
-            else if (!active) ImGui::SetTooltip("Set Parallax Depth above 0 cm in the Material Inspector.");
-            else ImGui::SetTooltip("Compare parallax on and off at the current angle. Drag to orbit.");
-        }
-    }
-    if (flavor == mp::Flavor::Water || flavor == mp::Flavor::Fiber) {
-        ImGui::SameLine();
-        ImGui::Checkbox("Animate", &m_animateWater);
-    }
-
-    if (flavor == mp::Flavor::Fiber) {
-        ImGui::SetNextItemWidth(half);
-        if (ImGui::BeginCombo("##FiberMode", mp::FiberModeLabel(m_fiberMode))) {
-            for (mp::FiberMode mode : kFiberModes) {
-                if (ImGui::Selectable(mp::FiberModeLabel(mode), mode == m_fiberMode)) m_fiberMode = mode;
-            }
-            ImGui::EndCombo();
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Fiber render mode. The .mat is shared by all modes; the Fiber component picks one.");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(half);
-        ImGui::BeginDisabled(m_fiberMode == mp::FiberMode::Fin || m_fiberMode == mp::FiberMode::Blade);
-        ImGui::SliderInt("##FiberShells", &m_fiberShellCount, 1, 64, "Shells %d");
-        ImGui::EndDisabled();
-        ImGui::SetNextItemWidth(full);
-        ImGui::SliderFloat("##FiberWind", &m_fiberWind, 0.0f, 10.0f, "Wind %.1f m/s");
-    }
-}
-
-void MaterialPreviewView::DrawBackground(ImVec2 origin, float size, bool hovered) const
-{
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    auto& draw = *ImGui::GetWindowDrawList();
     switch (m_background) {
-        case MaterialPreviewBackground::Checker: DrawChecker(drawList, origin, size); break;
-        case MaterialPreviewBackground::Grid:    DrawGrid(drawList, origin, size);    break;
+        case MaterialPreviewBackground::Checker: DrawChecker(draw, min, max); break;
+        case MaterialPreviewBackground::Grid:    DrawGrid(draw, min, max);    break;
         case MaterialPreviewBackground::Solid:
-            drawList->AddRectFilled(origin, { origin.x + size, origin.y + size },
-                ImGui::ColorConvertFloat4ToU32({ m_solidColor[0], m_solidColor[1], m_solidColor[2], 1.0f }),
-                4.0f);
+            draw.AddRectFilled(min, max, ImGui::GetColorU32({ m_solidColor[0], m_solidColor[1], m_solidColor[2], 1.0f }));
             break;
-        case MaterialPreviewBackground::Gradient:
-        default: DrawGradient(drawList, origin, size, hovered); break;
+        case MaterialPreviewBackground::Gradient: {
+            const ImU32 top = IM_COL32(44, 47, 56, 255), bottom = IM_COL32(19, 20, 24, 255);
+            draw.AddRectFilledMultiColor(min, max, top, top, bottom, bottom);
+            break;
+        }
     }
-    DrawFrameBorder(drawList, origin, size);
 }
 
 void MaterialPreviewView::DrawNormalMap(EditorContext& ctx,
@@ -694,12 +502,14 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     const bool gpuReady = flavor != mp::Flavor::Unsupported && EnsureGpuData(ctx, material);
     DrawToolbar(flavor, gpuReady);
 
-    /// @note AssetBrowser と同じ正方形比率で表示する。
-    const float width  = (std::max)(ImGui::GetContentRegionAvail().x, 64.0f);
-    const float height = (std::max)(previewHeight, 96.0f);
-    const float size   = (std::max)((std::min)(width, height), 64.0f);
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImGui::InvisibleButton("##Image", ImVec2(size, size));
+    const ImVec2 available = ImGui::GetContentRegionAvail();
+    const float width = std::max(1.0f, available.x);
+    const float requestedHeight = previewHeight > 0.0f ? previewHeight : std::max(available.y, 4.0f * ImGui::GetFrameHeight());
+    const float height = std::clamp(requestedHeight, 1.0f, width);
+    ImGui::InvisibleButton("##Image", { width, height });
+    const ImVec2 canvasMin = ImGui::GetItemRectMin(), canvasMax = ImGui::GetItemRectMax();
+    /// @note 正方形の描画ターゲットは縦横比を保って中央に置き、左右の余白でも視点を操作できる。
+    const ImVec2 imageMin{ canvasMin.x + (width - height) * 0.5f, canvasMin.y };
     const bool hovered = ImGui::IsItemHovered();
     const bool active  = ImGui::IsItemActive();
     if (hovered) ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY);
@@ -721,34 +531,24 @@ bool MaterialPreviewView::Draw(EditorContext& ctx,
     }
     if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) ResetView();
 
-    DrawBackground(origin, size, hovered);
+    if (hovered && !active && flavor != mp::Flavor::Unsupported)
+        ImGui::SetItemTooltip("%s", LOCT("Drag to orbit\nCtrl + drag to rotate light\nWheel to zoom\nDouble-click to reset view"));
 
-    if (flavor == mp::Flavor::Unsupported) {
-        /// @note 未対応 Flavor でも代表表示を出し、呼び出し側へ描画済みを返す。
-        DrawUnsupported(ctx, material, origin, size);
-        DrawNormalMap(ctx, material);
-        ImGui::PopID();
-        return true;
-    }
-
+    DrawBackground(canvasMin, canvasMax);
     const bool rendered = gpuReady && EnsurePreviewFrame(ctx, material, flavor);
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    void* rawId = (rendered && ctx.imguiRenderer && ctx.resources)
+    auto& draw = *ImGui::GetWindowDrawList();
+    void* rawId = rendered && ctx.imguiRenderer && ctx.resources
         ? ctx.imguiRenderer->GetImTextureID(m_renderTarget, *ctx.resources, 0)
         : nullptr;
+    draw.PushClipRect(canvasMin, canvasMax, true);
     if (rawId) {
-        drawList->AddImage(ToImTextureID(rawId), origin, { origin.x + size, origin.y + size });
+        draw.AddImage(ToImTextureID(rawId), imageMin, { imageMin.x + height, imageMin.y + height });
     } else {
         m_frameCache.Invalidate();
-        /// @note 描画失敗時も代表表示で素材種別を示す。
-        DrawUnsupported(ctx, material, origin, size);
+        DrawUnsupported(ctx, material, imageMin, height);
     }
-
-    if (hovered) {
-        drawList->AddText({ origin.x + 8.0f, origin.y + size - ImGui::GetTextLineHeight() - 6.0f },
-                          IM_COL32(170, 178, 190, 210),
-                          "Drag: Orbit | Ctrl+Drag: Light | Wheel: Zoom | Dbl: Reset");
-    }
+    draw.PopClipRect();
+    draw.AddRect(canvasMin, canvasMax, ImGui::GetColorU32(ImGuiCol_Border));
 
     DrawNormalMap(ctx, material);
     ImGui::PopID();

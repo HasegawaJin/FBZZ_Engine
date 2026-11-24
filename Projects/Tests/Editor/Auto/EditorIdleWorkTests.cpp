@@ -4,9 +4,13 @@
 /// @date    2026-10-10
 #include <TestKit/TestKit.hpp>
 #include <TestKit/Editor/EditorFixture.hpp>
+#include <Editor/ManagedScriptEditor.hpp>
 #include <Editor/Panels/AssetBrowserPanel.hpp>
+#include <Editor/Panels/BuildOutputPanel.hpp>
+#include <Editor/Panels/ConsolePanel.hpp>
 #include <Editor/Panels/DependencyViewPanel.hpp>
 #include <Editor/Panels/SceneHierarchyPanel.hpp>
+#include <Editor/Panels/StatusBar.hpp>
 #include <Editor/Op/EditorOperator.hpp>
 #include <Editor/Op/OperatorGroups.hpp>
 #include <Editor/Util/EditorSettings.hpp>
@@ -103,6 +107,60 @@ protected:
     std::any m_clipboard;
     const std::type_info* m_clipboardType = nullptr;
 };
+
+/// @brief Console を閉じていてもソース確認中の C# 要求が見え、同時に動くシェーダーの進捗も残る。
+TEST_F(EditorIdleWorkTest, StatusBarShowsManagedBuildProgressWithConsoleClosed)
+{
+    editor::StatusBar bar;
+    bool consoleVisible = false;
+    ImVec2 start;
+    const auto draw = [&] {
+        start = ImGui::GetCursorScreenPos();
+        bar.Draw(Context(), nullptr, &consoleVisible);
+    };
+    EXPECT_EQ(Frame(draw).find("C#"), std::string::npos);
+
+    ASSERT_TRUE(util::FileSystem::WriteText(File("Fixture.Scripts.csproj"), "<Project />"));
+    editor::ManagedScriptEditor scripts;
+    scripts.Init(ProjectRoot(), FBZZ_SOURCE_DIR);
+    ASSERT_TRUE(scripts.IsAvailable()) << scripts.AvailabilityDiagnostic();
+    Context().managedScripts = &scripts;
+    Context().managedBuildBusy = scripts.IsBusy();
+    Context().hotReloadState = editor::EditorContext::HotReloadState::Compiling;
+    EXPECT_NE(Frame(draw).find("ソース確認中"), std::string::npos);
+
+    std::string request;
+    ASSERT_TRUE(scripts.RequestBuild(request));
+    const auto text = Frame(draw);
+    EXPECT_NE(text.find("C#"), std::string::npos) << text;
+    EXPECT_NE(text.find("ソース確認中"), std::string::npos) << text;
+    EXPECT_NE(text.find("Compiling shaders"), std::string::npos) << text;
+    ImGui::GetIO().AddMousePosEvent(start.x + 12.0f, start.y + ImGui::GetFrameHeight() * 0.5f);
+    Frame(draw);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    Frame(draw);
+    ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    Frame(draw);
+    EXPECT_TRUE(Context().requestOpenBuildOutput);
+    EXPECT_FALSE(consoleVisible);
+    editor::ConsoleSink sink;
+    editor::ConsolePanel console(sink);
+    editor::BuildOutputPanel output;
+    const auto drawPanel = [&](editor::IPanel& panel) {
+        return Frame([&] {
+            ImGui::SetNextWindowPos({0, 0});
+            ImGui::SetNextWindowSize({900, 600});
+            panel.OnRender(Context());
+        });
+    };
+    const auto consoleText = drawPanel(console);
+    EXPECT_NE(consoleText.find(LOCT("No logs yet. Engine and script messages will appear here.")), std::string::npos) << consoleText;
+    EXPECT_EQ(consoleText.find("C# ビルド"), std::string::npos);
+    EXPECT_EQ(consoleText.find(LOCT("Select a log line to see the full message.")), std::string::npos);
+    EXPECT_NE(drawPanel(output).find("ソース確認中"), std::string::npos);
+    scripts.Shutdown(nullptr);
+    Context().managedScripts = nullptr;
+}
 
 /// @brief Hierarchy roots and generated badges refresh after direct scene changes.
 TEST_F(EditorIdleWorkTest, HierarchyRootsAndGeneratedBadgesRefreshAfterDirectSceneChanges)

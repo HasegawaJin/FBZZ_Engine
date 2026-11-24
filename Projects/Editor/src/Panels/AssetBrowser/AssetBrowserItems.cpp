@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #include <Engine/Asset/ModelSource.hpp>
 #include "AssetBrowserCommon.hpp"
+#include "../../Util/ContentGlyph.hpp"
 #include "AssetBrowserExplorer.hpp"
 #include <Editor/Import/FbxMetaSerializer.hpp>
 #include <Editor/Op/EditorOperator.hpp>
@@ -800,6 +801,27 @@ const char* AssetBrowserPanel::EntryLabel(const Entry& e)
 
 /// @name フォルダツリー (左ペイン)
 
+bool AssetBrowserPanel::DrawFolderNode(const char* id, const char* name, ImGuiTreeNodeFlags flags)
+{
+    const float labelX = ImGui::GetCursorScreenPos().x + ImGui::GetTreeNodeToLabelSpacing();
+    const bool open = ImGui::TreeNodeEx(id, flags, "%s", "");
+    if (!ImGui::IsItemVisible()) return open;
+    const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+    const float size = ImGui::GetFontSize();
+    const float middle = (min.y + max.y) * 0.5f;
+    const auto glyph = ui::FolderGlyph(name);
+    auto& draw = *ImGui::GetWindowDrawList();
+    ui::DrawContentGlyph(glyph == ui::ContentGlyph::NONE ? ui::ContentGlyph::FOLDER : glyph,
+                         {labelX + size * 0.5f, middle}, size, ImGui::GetColorU32(ImGuiCol_Text));
+    const float left = labelX + size + ImGui::GetStyle().ItemInnerSpacing.x;
+    if (left < max.x)
+        ImGui::RenderTextEllipsis(&draw, {left, middle - size * 0.5f}, max, max.x,
+                                  name, name + std::strlen(name), nullptr);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip) && left + ImGui::CalcTextSize(name).x > max.x)
+        ImGui::SetTooltip("%s", name);
+    return open;
+}
+
 void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext& ctx)
 {
     const std::string normDir = util::FileSystem::NormalizePathSeparators(dirPath);
@@ -853,7 +875,7 @@ void AssetBrowserPanel::DrawFolderTree(const std::string& dirPath, EditorContext
         ImVec4 folderColor;
         const bool colored = !isCurrent && TryGetFolderColor(ctx, dir.path, folderColor);
         if (colored) ImGui::PushStyleColor(ImGuiCol_Text, folderColor);
-        bool open = ImGui::TreeNodeEx(dir.path.c_str(), flags, "%s", dir.name.c_str());
+        const bool open = DrawFolderNode(dir.path.c_str(), dir.name.c_str(), flags);
         if (colored) ImGui::PopStyleColor();
         if (isCurrent)
             ImGui::PopStyleColor();
@@ -976,7 +998,7 @@ void AssetBrowserPanel::DrawTreeFileRow(const Entry& e, EditorContext& ctx)
 void AssetBrowserPanel::DrawFileIconAt(ImVec2 origin, float sz, const Entry& e, bool hovered,
                                        const ImVec4* colorOverride)
 {
-    if (!e.isDir && DrawOriginalTypeIcon(origin, sz, e)) return;
+    if (DrawOriginalTypeIcon(origin, sz, e, colorOverride)) return;
     const ImVec4 base  = colorOverride ? *colorOverride : EntryColor(e);
     const ImU32 cFill  = ImGui::ColorConvertFloat4ToU32(hovered ? Lighten(base) : base);
     const ImU32 cDark  = ImGui::ColorConvertFloat4ToU32(
@@ -2782,19 +2804,15 @@ void AssetBrowserPanel::DrawEntryRenameLabel(const Entry& e, EditorContext& ctx)
             m_renameExtension.clear();
         }
     } else {
-        std::string display = e.name;
-        while (display.size() > 2 &&
-               ImGui::CalcTextSize(display.c_str()).x + ImGui::CalcTextSize("..").x > m_iconSize)
-            display.pop_back();
-        if (display.size() < e.name.size()) display += "..";
+        const float height = ImGui::GetFrameHeight();
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        const auto size = ImGui::CalcTextSize(e.name.c_str());
+        const float x = origin.x + std::max(0.0f, (m_iconSize - size.x) * 0.5f);
+        ImGui::Dummy({m_iconSize, height});
+        const ImVec2 max = ImGui::GetItemRectMax();
+        ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), {x, origin.y + (height - size.y) * 0.5f},
+                                  max, max.x, e.name.data(), e.name.data() + e.name.size(), &size);
 
-        const float indent = (m_iconSize - ImGui::CalcTextSize(display.c_str()).x) * 0.5f;
-        if (indent > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + indent);
-        ImGui::TextUnformatted(display.c_str());
-
-        if (!e.isMount && ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_F2)) {
-            BeginRenameForPath(e.path, &ctx);
-        }
     }
 }
 
@@ -2805,8 +2823,13 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const float  sz     = m_iconSize;
 
-    ImGui::InvisibleButton("##icon", { sz, sz });
+    const float labelTop = origin.y + sz + ImGui::GetStyle().ItemSpacing.y;
+    const float cardHeight = sz + ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeight();
+    /// @note 編集中だけ名前欄を入力ウィジェットへ譲る。通常は名前と絵でクリック・ドラッグ先を共有する。
+    const bool editing = m_renamingPath == e.path;
+    ImGui::InvisibleButton("##icon", {sz, editing ? sz : cardHeight});
     const bool hov = ImGui::IsItemHovered();
+    const bool showInfo = ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_NoSharedDelay);
     const bool iconHoveredForMenu = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
 
     /// @note 遅延リネーム: «選択済みをもう一度クリック» から一定時間で名前欄へ入る (Explorer 方式)。
@@ -2840,8 +2863,8 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     const bool panelFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const ImVec2 tileMin = { origin.x - 4.0f, origin.y - 4.0f };
-    const ImVec2 tileMax = { origin.x + sz + 4.0f, origin.y + sz + 22.0f };
+    const ImVec2 tileMin = origin;
+    const ImVec2 tileMax = {origin.x + sz, origin.y + cardHeight};
 
     /// @note サブアセット (FBX 内メッシュ / 画像内スプライト) と展開元の親を 1 本の帯で繋ぐ。
     /// @note 帯は隣接タイルとセル間の中点で接合するため、左右へ bleed だけ伸ばす。
@@ -2930,15 +2953,19 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
         ImGui::EndDragDropTarget();
     }
 
-    if (hov && m_renamingPath != e.path) {
+    if (showInfo && !editing && ImGui::BeginTooltip()) {
+        const float wrap = std::min(30.0f * ImGui::GetFontSize(),
+                                    ImGui::GetWindowViewport()->WorkSize.x - 4.0f * ImGui::GetStyle().WindowPadding.x);
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + std::max(1.0f, wrap));
+        ImGui::TextUnformatted(e.path.c_str());
         if (e.isMount)
-            ImGui::SetTooltip("%s\n\nExternal source folder mounted under Assets", e.path.c_str());
+            ImGui::TextDisabled("%s", LOCT("External source folder mounted under Assets"));
         else if (e.ext == ".fnt")
-            ImGui::SetTooltip("%s\n\nStatic font atlas metadata\nDrag and drop onto UI Text Font Path to assign it", e.path.c_str());
+            ImGui::TextDisabled("%s", LOCT("Drop this font atlas onto the Font Path of a UI Text component."));
         else if (e.ext == ".ttf" || e.ext == ".ttc" || e.ext == ".otf")
-            ImGui::SetTooltip("%s\n\nFont file\nDrag and drop onto UI Text Font Path to assign it\nGlyphs are rasterized at runtime as they are used", e.path.c_str());
-        else
-            ImGui::SetTooltip("%s", e.path.c_str());
+            ImGui::TextDisabled("%s", LOCT("Drop this font onto the Font Path of a UI Text component. Glyphs are rasterized on demand."));
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
     }
 
     /// @note FBX / Sprite Texture の ▶/▼ 三角クリックで展開トグル。
@@ -2964,6 +2991,9 @@ void AssetBrowserPanel::DrawEntry(const Entry& e, EditorContext& ctx, const SubA
     }
     HandleEntryClick(e, ctx, hov);
     HandleEntryDoubleClick(e, ctx, hov);
+    if (hov && !e.isMount && !editing && ImGui::IsKeyPressed(ImGuiKey_F2))
+        BeginRenameForPath(e.path, &ctx);
+    ImGui::SetCursorScreenPos({origin.x, labelTop});
     {
         const bool renaming = m_renamingPath == e.path;
         const bool tintLabel = selected && !renaming;

@@ -4,6 +4,7 @@
 /// @date    2026-06-07
 #pragma once
 
+#include "../../Util/PanelToolbar.hpp"
 #include <Editor/Util/PropertyControls.hpp>
 #include <Engine/Scene/ComponentRegistry.hpp>
 #include <Engine/Scene/Components/ClothComponent.hpp>
@@ -2010,8 +2011,7 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
         filterBuffer[0] = '\0';
         ImGui::SetKeyboardFocusHere();
     }
-    ImGui::SetNextItemWidth(-1.0f);
-    ImGui::InputTextWithHint("##comp_search", "Search...", filterBuffer, sizeof(filterBuffer));
+    toolbar::SearchField("##comp_search", "Search components...", filterBuffer, sizeof(filterBuffer));
     ImGui::Separator();
 
     const char* filter  = filterBuffer;
@@ -2121,7 +2121,7 @@ inline void DrawAddComponentMenuMulti(const std::vector<scene::GameObject*>& tar
     }
 
     if (!anyShown)
-        ImGui::TextDisabled("No results");
+        ImGui::TextDisabled("%s", LOCT("No matching components"));
 
     ImGui::EndPopup();
 

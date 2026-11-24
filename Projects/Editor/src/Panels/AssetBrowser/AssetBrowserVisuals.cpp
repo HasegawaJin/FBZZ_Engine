@@ -1,8 +1,9 @@
 /// @file    AssetBrowserVisuals.cpp
-/// @brief   Original bitmap type icons, explicit preview states and bounded cache lifetime.
+/// @brief   アセット種別アイコン、プレビューの状態表示とキャッシュの寿命管理。
 /// @author  Hasegawa Jin
 /// @date    2026-10-11
 #include "AssetBrowserCommon.hpp"
+#include "../../Util/ContentGlyph.hpp"
 #include <Editor/Panels/AssetBrowserThumbnail.hpp>
 #include <Engine/Renderer/IImGuiRenderer.hpp>
 #include <array>
@@ -48,19 +49,19 @@ void AssetBrowserPanel::ResetAssetPreviewCache(const std::string& path)
     releaseDependent(m_terrainPreviews);
 }
 
-bool AssetBrowserPanel::DrawOriginalTypeIcon(ImVec2 origin, float size, const Entry& entry)
+bool AssetBrowserPanel::DrawOriginalTypeIcon(ImVec2 origin, float size, const Entry& entry, const ImVec4* folderTint)
 {
-    const auto type = assetthumbnail::TypeIcon(entry.ext);
+    const auto type = entry.isDir ? assetthumbnail::Icon::FOLDER : assetthumbnail::TypeIcon(entry.ext);
     if (type == assetthumbnail::Icon::NONE || !m_resources || !m_thumbnailGui) return false;
-    constexpr std::array<uint32_t, 6> SIZES{ 16, 24, 32, 64, 128, 256 };
+    const auto& sizes = assetthumbnail::ICON_SIZES;
     const float pixels = size * std::max(1.0f, ImGui::GetIO().DisplayFramebufferScale.x);
     size_t scaleIndex = 0;
-    while (scaleIndex + 1 < SIZES.size() && SIZES[scaleIndex] < pixels) ++scaleIndex;
-    const size_t index = static_cast<size_t>(type) * SIZES.size() + scaleIndex;
+    while (scaleIndex + 1 < sizes.size() && sizes[scaleIndex] < pixels) ++scaleIndex;
+    const size_t index = static_cast<size_t>(type) * sizes.size() + scaleIndex;
     auto& handle = m_typeIcons[index];
     if (!m_typeIconAttempted[index]) {
         m_typeIconAttempted[index] = true;
-        const std::string name = std::string(assetthumbnail::IconName(type)) + std::to_string(SIZES[scaleIndex]) + ".png";
+        const std::string name = std::string(assetthumbnail::IconName(type)) + std::to_string(sizes[scaleIndex]) + ".png";
         const auto root = util::FileSystem::PathFromUtf8(m_typeIconRoot);
         auto source = util::FileSystem::PathFromUtf8(__FILE__);
         for (int parent = 0; parent < 6; ++parent) source = source.parent_path();
@@ -81,7 +82,14 @@ bool AssetBrowserPanel::DrawOriginalTypeIcon(ImVec2 origin, float size, const En
     void* raw = m_thumbnailGui->GetImTextureID(handle, *m_resources);
     if (!raw) return false;
     const auto id = static_cast<ImTextureID>(std::bit_cast<std::uintptr_t>(raw));
-    ImGui::GetWindowDrawList()->AddImage(id, origin, { origin.x + size, origin.y + size });
+    ImU32 tint = IM_COL32_WHITE;
+    if (entry.isDir) tint = folderTint ? ImGui::ColorConvertFloat4ToU32(*folderTint) : IM_COL32(162, 199, 225, 255);
+    ImGui::GetWindowDrawList()->AddImage(id, origin, {origin.x + size, origin.y + size}, {0,0}, {1,1}, tint);
+    if (entry.isDir && size >= 2.5f * ImGui::GetFontSize()) {
+        const bool dark = folderTint && (0.21f * folderTint->x + 0.72f * folderTint->y + 0.07f * folderTint->z) < 0.45f;
+        ui::DrawContentGlyph(ui::FolderGlyph(entry.name), {origin.x + 0.5f * size, origin.y + 0.60f * size},
+                             0.26f * size, dark ? IM_COL32(232, 240, 248, 230) : IM_COL32(27, 48, 69, 230));
+    }
     return true;
 }
 
